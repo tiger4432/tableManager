@@ -607,6 +607,144 @@ function throws(fn, what) {
      'I6 a zero count is not reported as a rejection');
 }
 
+// ── J. a tie shows the tie ──────────────────────────────────────────────────────
+//
+// 🔴 A VERDICT IS A CONCLUSION ABOUT THE DATA, NOT A GATE ON SHOWING IT. Reported live: the
+//    screen said `동점 · 판별 불가` and then drew NOTHING -- no candidates, no valid-die floor.
+//    A tie does not mean there is nothing to show, it means eight candidates scored equally,
+//    and an operator cannot check that claim without the eight scores side by side.
+//
+//    THE PAYLOAD BELOW IS THE WIRE SHAPE MEASURED against a live server:
+//      GET /api/maps/alignment/view?rule=dt_job_lot_slot_attribution&map_table=dt_log
+//          &reference=valid_die_ref:TEST_TEST
+//      -> state "no_winner", refusal "동점 - 판별 불가", reference.state "resolved" with 425
+//         cells, and eight `candidates` every one of them `state: "scored"`.
+//    Both the refusal sentence AND the scored state travel together, because
+//    `compose_refusal` runs for every state (`server/map_alignment.py:1234`). The client used
+//    to read the sentence as "the server declined", flip to NOT_SCORABLE, and from that one
+//    flip lose the counts, the eight controls and the floor.
+{
+  const doc = makeDocument();
+  const TIED = ['rot0_front', 'rot0_back', 'rot90_front', 'rot90_back',
+                'rot180_front', 'rot180_back', 'rot270_front', 'rot270_back'];
+  const tiePayload = {
+    state: 'no_winner',
+    refusal: '동점 - 판별 불가',
+    reference: { state: 'resolved', kind: 'values', map_kind: 'values',
+                 table: 'valid_die_ref', map_id: 'TEST_TEST', count: 4,
+                 cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+    sources: {
+      map_count: 3, usable_map_count: 3, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
+      maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+               declared_frame_source: 'declared' }],
+    },
+    // Every one of the eight on the SAME two figures. That is what a tie looks like, and it is
+    // the picture that lets an operator decide the reference is too symmetric to settle this.
+    candidates: TIED.map(frame => ({ frame, state: 'scored', agreement: 312, discriminating: 374 })),
+    declaration: { frames: { rot0_front: 3 }, attested_maps: 3, unattested_maps: 0, axis_sources: {} },
+    ruling: { winner: null, margin: 0, reason_code: 'tie', tied: TIED.slice() },
+    excluded_total: 0,
+    stats: { scored_cells: 374, elapsed_ms: 12 },
+  };
+  const app = bootstrap({
+    document: doc,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve(tiePayload),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm = app.render();
+
+  eq(vm.state, VIEW_STATE.SCORED_NO_WINNER,
+     'J1 a refusal SENTENCE on a run the server itself called `no_winner` is not a refusal EVENT');
+  eq(doc.getElementById('me2-workbench').getAttribute('data-me2-state'), 'no-winner',
+     'J2 and the page is told the scored state, not the unscorable one');
+  ok(vm.numerals, 'J3 the run was measured, so its numerals stand');
+
+  // The eight, visible, with their counts.
+  const gridEl = doc.getElementById('me2-cands-s1');
+  eq(gridEl.hidden, false, 'J4 the candidate grid is unhidden even with no column key resolved');
+  const cells = doc.querySelectorAll('[data-me2-candidate]');
+  eq(cells.length, 8, 'J5 eight candidate controls');
+  eq(cells.filter(c => c.disabled).length, 0, 'J6 none of them is inert in a scored state');
+  const agreeText = cells.map(c => c.querySelector('[data-me2-cand-agree]').textContent);
+  const discText = cells.map(c => c.querySelector('[data-me2-cand-discriminating]').textContent);
+  eq(agreeText.join(','), new Array(8).fill('312').join(','),
+     'J7 all eight carry the agreement count, and equal scores read as equal');
+  eq(discText.join(','), new Array(8).fill('374').join(','),
+     'J8 with the denominator beside each one');
+  // The three-sibling rule: the figures go INSIDE `.me2-num`, and the sibling word survives.
+  eq(cells[0].querySelector('[data-me2-cand-unknown]').textContent, 'AUTHORED',
+     'J9 the shell wrote into the num slot and did not blank its siblings');
+  eq(cells.filter(c => c.querySelector('[data-me2-cand-tags]').textContent.includes('추천')).length, 0,
+     'J10 nothing is recommended in a tie -- the ABSENCE of the badge is the answer');
+
+  // The floor. Its whole purpose is to be looked at.
+  eq(vm.picture, 'compare', 'J11 a resolved reference is compared against, not drawn alone');
+  ok(doc.getElementById('me2-layer-floor').children.length > 0,
+     'J12 the valid-die floor is drawn');
+  eq(doc.getElementById('me2-layer-alone').children.length, 0,
+     'J13 and the source is not drawn as though it related to nothing');
+
+  // The headline counts the tie; the cause names the repair; the server sentence is not lost.
+  eq(doc.querySelector('[data-me2-verdict]').textContent, '구별 안 됨 · 후보 8개',
+     'J14 the headline says how many tied');
+  eq(vm.cause.token, '대칭 기준', 'J15 the cause names which repair, not the server prose');
+  eq(vm.cause.count, 8, 'J16 with the count beside it');
+
+  // 🔴 THE FLOOR DRAWS WHEN IT RESOLVED, EVEN WITH NOTHING SEATED ON IT. This path used to
+  //    `return null` before the floor was computed, so a served reference with no usable
+  //    source painted an empty stage -- a picture that says "no dies here" about 425 of them.
+  const doc2 = makeDocument();
+  const app2 = bootstrap({
+    document: doc2,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve({ ...tiePayload,
+        sources: { map_count: 0, usable_map_count: 0, cell_count: 0, cells: [], maps: [] } }),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app2.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  app2.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  app2.render();
+  ok(doc2.getElementById('me2-layer-floor').children.length > 0,
+     'J17 the floor draws with no source seated on it');
+
+  // A real refusal is still a refusal: no scored state, and the sentence verbatim.
+  const doc3 = makeDocument();
+  const app3 = bootstrap({
+    document: doc3,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve({ ...tiePayload, state: 'not_scorable',
+        candidates: [], refusal: '규격이 선언되지 않았습니다.' }),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app3.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  app3.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm3 = app3.render();
+  eq(vm3.state, VIEW_STATE.NOT_SCORABLE,
+     'J18 a refusal the server did NOT label scored still refuses');
+  eq(doc3.getElementById('me2-refusal').textContent, '규격이 선언되지 않았습니다.',
+     'J19 and its sentence is carried verbatim');
+  ok(doc3.querySelectorAll('[data-me2-candidate]').every(c => c.disabled),
+     'J20 with nothing scored, every candidate is inert');
+}
+
 console.log(`ASSERTIONS ${compared} ${failures.length}`);
 if (failures.length > 0) {
   console.log('\nFAILURES');
@@ -788,7 +926,14 @@ function makeDocument() {
   }
 
   // The eight candidate controls, 2 columns by 4 rows, as the page lays them out.
+  //
+  // 🔴 THE GRID SHIPS `hidden`, EXACTLY AS `map_editor2.html` AUTHORS IT. That is not a detail
+  //    of the stub, it is the condition the shell has to clear: the page publishes eight
+  //    controls in a container it hides, and something has to unhide it. A stub that started
+  //    visible could not tell "the shell unhid the grid" from "nobody ever hid it", and the
+  //    live screen showed no candidates at all for exactly that reason.
   const grid = node('div', 'me2-cands-s1', { 'data-me2-candidates-for': 's1' });
+  grid.hidden = true;
   for (const rot of [0, 90, 180, 270]) {
     for (const side of ['front', 'back']) {
       const cand = node('button', null, {
@@ -796,6 +941,18 @@ function makeDocument() {
         'data-frame-code': `rot${rot}_${side}`, 'aria-pressed': 'false',
       });
       cand.appendChild(node('span', null, { 'data-me2-cand-tags': '' }));
+      // The per-candidate score slot, three siblings deep like every other count on the page:
+      // `.me2-num` holds the two figures, and the words for the states with no figures sit
+      // beside it. Seeded `AUTHORED` so a write to the wrong node is visible.
+      const score = node('span', null, { 'data-me2-cand-score': '' });
+      const scoreNum = node('span', null, { 'data-me2-cand-num': '' });
+      scoreNum.appendChild(node('span', null, { 'data-me2-cand-agree': '' }));
+      scoreNum.appendChild(node('span', null, { 'data-me2-cand-discriminating': '' }));
+      const scoreUnknown = node('span', null, { 'data-me2-cand-unknown': '' });
+      scoreUnknown.textContent = 'AUTHORED';
+      score.appendChild(scoreNum);
+      score.appendChild(scoreUnknown);
+      cand.appendChild(score);
       grid.appendChild(cand);
     }
   }

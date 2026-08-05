@@ -346,7 +346,13 @@ def test_the_view_serves_the_declared_thresholds_and_omits_undeclared_ones(env):
     spec = "%s:R1" % REFT
     none = _view(env, reference_spec=spec, include_cells=False)
     assert none["thresholds"] == {}
-    assert none["ruling"]["reason_code"] in ("no_thresholds", "tie", "no_discrimination")
+    # 🔴 THE STRUCTURAL SET, AND `tie` IS NOT IN IT. This fixture's source cells land nowhere
+    #    near the reference, so every candidate agrees on ZERO dies. Eight zeros used to be
+    #    read as an eight-way tie, which claims the evidence was real and level; the honest
+    #    fact is that nothing overlapped. Whichever structural reason fires, it must be one
+    #    that is true of a run where no candidate placed a cell on the floor.
+    assert none["ruling"]["reason_code"] == ma.RULING_NO_OVERLAP
+    assert none["ruling"]["placed_cells"] > 0, "cells reached the scorer; none of them landed"
 
     cfg = dict(CFG, alignment={"min_margin_dies": 4, "min_discriminating_dies": 2})
     both = _view(env, cfg=cfg, reference_spec=spec, include_cells=False)
@@ -356,6 +362,24 @@ def test_the_view_serves_the_declared_thresholds_and_omits_undeclared_ones(env):
                  reference_spec=spec, include_cells=False)
     assert half["thresholds"] == {"min_margin_dies": 4}
     assert "min_discriminating_dies" not in half["thresholds"]
+
+
+def test_a_run_with_no_reference_still_counts_the_maps_it_could_have_scored(env):
+    """🔴 AN UNMEASURED COUNT MUST NOT BE REPORTED AS ZERO. With no reference plugged in the
+    scorer never runs, so `stats` is empty and `usable_map_count` used to fall out of
+    `stats.get(..., 0)` - a fabricated zero reading as "no map here is usable", about a unit
+    that is one plug away from scoring. The branch already applies the scorer's own three
+    gates to build the exclusion tally, so the survivors ARE measured; they just were not
+    reported.
+    """
+    _seed(env)                       # one map, declared geometry, three cells, no reference
+    v = _view(env, include_cells=False)
+    assert v["reference"]["state"] == ma.REFERENCE_ABSENT
+    assert v["sources"]["map_count"] == 1
+    assert v["excluded_total"] == 0
+    assert v["sources"]["usable_map_count"] == 1, (
+        "the map passes all three gates - reporting 0 says the unit is hopeless when it is "
+        "one reference away from a verdict")
 
 
 def test_the_reference_map_kind_is_not_folded_into_the_comparison_kind(env):

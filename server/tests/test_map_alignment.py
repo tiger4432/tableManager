@@ -229,6 +229,146 @@ def test_scoring_does_not_invent_a_bounding_box_basis(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# nothing scored vs nothing discriminating - the distinction that was missing
+# ---------------------------------------------------------------------------
+# 🔴 THE MEASURED FAILURE (product owner, 2026-08-05). One source map, chip spec undeclared,
+#    so `geometry_refusal` excluded it and NO cell reached the scorer. The eight candidates
+#    each placed an empty array, each scored zero agreement, and `_rule_on` read those eight
+#    zeros as an eight-way TIE. The screen said 동점 while `1 of 1 excluded` sat beside it in
+#    the same response, and the operator went to swap the reference when the repair was to
+#    declare the geometry.
+#
+#    Zero candidates scoring zero is not eight candidates scoring equally. These tests assert
+#    the four facts apart, because each names a different repair.
+
+def _refused_map(map_id="M1"):
+    """A source map whose grid spec is auto-registered: the same refusal the live case hit."""
+    return {"map_id": map_id, "meta": _auto_meta(), "cells": _ref_cells()}
+
+
+def test_a_run_where_no_cell_reached_the_scorer_is_not_a_tie():
+    """THE REGRESSION. The reference resolves, the only source map is excluded, and the answer
+    must say that nothing was scored - never that the candidates were level."""
+    cands, excluded, ruling, stats = ma.score_candidates(
+        [_refused_map()], _ref_cells(), _meta(), thresholds=THRESHOLDS)
+    assert ruling["reason_code"] == ma.RULING_NO_CELLS_SCORED
+    assert ruling["reason_code"] != ma.RULING_TIE
+    assert "tied" not in ruling, "a run that scored nothing has nobody to tie with"
+    assert ruling["winner"] is None and ruling["margin"] is None
+    # and no candidate claims to have been scored
+    assert {c["state"] for c in cands} == {ma.STATE_NOT_SCORABLE}
+    assert all(c["placed"] == 0 and c["shift"] is None and c["margin"] is None for c in cands)
+    assert excluded.total() == 1 and stats["placed_cells"] == 0
+
+
+def test_eight_candidates_agreeing_on_nothing_is_not_a_tie_either():
+    """The same misreading as the zero-cell case, one step along: here cells WERE placed, and
+    not one of them landed on the reference. Eight zeros again - and eight zeros again used to
+    be read as an eight-way tie, which claims the evidence was real and level. The operator's
+    repair is a third one: the floor, the coordinate columns, or the shift window is wrong.
+    """
+    ref_meta, ref = _meta(), _ref_cells()
+    far = [(x + 100, y + 100) for (x, y) in ref]      # outside any shift the scorer will try
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": far}], ref, ref_meta,
+        thresholds=THRESHOLDS)
+    assert all(c["placed"] > 0 for c in cands), "the point is that cells DID reach the scorer"
+    assert all(c["agreement"] == 0 for c in cands)
+    assert ruling["reason_code"] == ma.RULING_NO_OVERLAP
+    assert ruling["reason_code"] not in (ma.RULING_TIE, ma.RULING_NO_CELLS_SCORED)
+    assert ruling["placed_cells"] > 0, "and the verdict says so, beside the reason"
+
+
+def test_the_verdict_carries_the_exclusion_count_and_its_reason():
+    """A verdict that contradicts a fact sitting beside it is worse than one that says less.
+    The exclusion tally was in the response and the ruling said something else."""
+    _e, excluded, ruling, _s = ma.score_candidates(
+        [_refused_map("M1"), _refused_map("M2")], _ref_cells(), _meta(), thresholds=THRESHOLDS)
+    assert ruling["source_map_count"] == 2
+    assert ruling["excluded_map_count"] == 2 == excluded.total()
+    assert ruling["excluded_reason_code"] == ma.EXCLUDE_GEOMETRY_REFUSED
+    assert ruling["placed_cells"] == 0
+
+
+def test_the_nothing_scored_sentence_names_what_to_declare():
+    """The sentence IS the instruction. It has to carry the count that was only in the console
+    AND the word for the thing the operator must declare."""
+    _c, excluded, ruling, _s = ma.score_candidates(
+        [_refused_map()], _ref_cells(), _meta(), thresholds=THRESHOLDS)
+    why = ma.compose_refusal(ma.STATE_NOT_SCORABLE, {"state": ma.REFERENCE_RESOLVED},
+                             excluded, ruling, 1)
+    assert "동점" not in why, why
+    assert "1개 중 1개 제외" in why, why
+    # the repair, named: the excluded reason label already says WHICH declaration is missing
+    assert ma._EXCLUDE_TEXT[ma.EXCLUDE_GEOMETRY_REFUSED] in why, why
+    assert "\n" not in why
+
+
+def test_nothing_scored_and_nothing_discriminating_are_different_reasons_and_sentences():
+    """Three facts, three repairs: declare the geometry / plug in a better reference / relax
+    the floor. One shared word would send two thirds of the operators to the wrong place."""
+    ref_meta, ref = _meta(), _ref_cells()
+    nothing = ma.score_candidates([_refused_map()], ref, ref_meta, thresholds=THRESHOLDS)[2]
+    blind = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta,
+          "cells": _plant(ref_meta, _symmetric_ref(), "rot90_front")}],
+        _symmetric_ref(), ref_meta, thresholds=THRESHOLDS)[2]
+    tight = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
+        ref, ref_meta, thresholds={"min_margin_dies": 10_000,
+                                   "min_discriminating_dies": 1})[2]
+    codes = [nothing["reason_code"], blind["reason_code"], tight["reason_code"]]
+    assert codes == [ma.RULING_NO_CELLS_SCORED, ma.RULING_NO_DISCRIMINATION,
+                     "margin_too_small"]
+    assert len({ma._ruling_text(r) for r in (nothing, blind, tight)}) == 3
+
+
+def test_the_scored_and_separable_case_still_reaches_the_thresholds():
+    """The floor must stay reachable: a run with real, separating evidence is ranked, so the
+    new structural checks did not swallow the ordinary path."""
+    ref_meta, ref = _meta(), _ref_cells()
+    ruling = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
+        ref, ref_meta, thresholds=THRESHOLDS)[2]
+    assert ruling["winner"] == "rot90_front"
+    assert ruling["discriminating"] > 0 and ruling["margin"] >= 1
+
+
+def test_a_margin_is_never_measured_against_a_candidate_that_was_not_scored(monkeypatch):
+    """The same class one level down: a refused candidate's `agreement: 0` is a placeholder,
+    not a score. Ranking against it lets a lone survivor report its ENTIRE agreement as a gap,
+    and a fabricated gap of 800 dies clears any declared floor.
+
+    🔴 THE SCORER'S OWN RUNNER-UP CODE HAS TO RUN. Asserting this by handing `_rule_on` a
+       list built here would leave the loop that picks the runner-up unexecuted, and a test
+       that never runs the changed line proves nothing. So seven of the eight transforms are
+       made to refuse and the real `score_candidates` does the picking.
+    """
+    real = map_overlay.make_frame_transform
+    survivor = "rot0_front"
+
+    def only_one_frame(src, tgt):
+        if (map_overlay._rotation_of(src), map_overlay._side_of(src)) != parse_frame(survivor):
+            raise ValueError("refused by the fixture")
+        return real(src, tgt)
+
+    monkeypatch.setattr(map_overlay, "make_frame_transform", only_one_frame)
+    ref_meta, ref = _meta(), _ref_cells()
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref}], ref, ref_meta,
+        thresholds={"min_margin_dies": 1, "min_discriminating_dies": 1})
+
+    top = next(c for c in cands if c["frame"] == survivor)
+    assert top["state"] == ma.STATE_SCORED and top["agreement"] > 0
+    assert sum(1 for c in cands if c["state"] == ma.STATE_SCORED) == 1
+    assert top["margin"] is None, (
+        "the only scored candidate has no runner-up, so its margin is unmeasured - reporting "
+        "%s means it was ranked against a candidate that never scored" % top["margin"])
+    assert ruling["winner"] is None
+    assert ruling["reason_code"] in (ma.RULING_NO_DISCRIMINATION, "margin_too_small")
+
+
+# ---------------------------------------------------------------------------
 # refusals - first-class states with a cause, never zeros
 # ---------------------------------------------------------------------------
 
@@ -603,16 +743,56 @@ def test_every_threshold_refusal_has_its_own_sentence():
         seen[text] = code
 
 
-def test_a_structural_tie_is_named_before_the_thresholds_are_blamed():
+def _half_symmetric_ref():
+    """Invariant under the transpose and NOTHING else, so exactly two of the eight frames land
+    on the same dies while the other six do not.
+
+    This is the only shape that produces a TIE in the strict sense: the evidence is real (it
+    separates six candidates) and it still cannot choose between the top two. Every other
+    "tie" this suite used to build was a symmetric footprint, where the eight scores are equal
+    because the reference carries no orientation at all - a different fact with a different
+    repair, and now a different reason code.
+    """
+    return sorted(({(x, y) for x in range(4, 9) for y in range(4, 9)}
+                   - {(4, 5), (5, 4)}) | {(9, 9)})
+
+
+def test_a_structural_refusal_is_named_before_the_thresholds_are_blamed():
     """"These eight are indistinguishable" is true whatever the thresholds say. Reporting it
-    as `no_thresholds` sends the operator to edit config, where nothing will change."""
+    as `no_thresholds` sends the operator to edit config, where nothing will change.
+
+    🔴 THIS FIXTURE IS SYMMETRIC UNDER ALL EIGHT, AND THAT IS `no_discrimination`, NOT `tie`.
+       The assertion used to read `tie`, which contradicted this module's own documented rule
+       (see the REFERENCE_KIND_* block: eight candidates occupying the same dies is the
+       reference failing to distinguish them, not a tie). The tie branch ran first and swallowed
+       the most common production shape - a circular or symmetric footprint - and told the
+       operator the evidence was real when it carried no orientation at all.
+    """
     ref_meta = _meta()
-    ref = _symmetric_ref()          # invariant under all eight - a REAL tie, not a threshold
+    ref = _symmetric_ref()          # invariant under all eight: the reference cannot choose
     ruling = ma.score_candidates(
         [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
         ref, ref_meta, thresholds=None)[2]
-    assert ruling["reason_code"] == "tie"
-    assert len(ruling["tied"]) > 1
+    assert ruling["reason_code"] == ma.RULING_NO_DISCRIMINATION
+    assert ruling["discriminating"] == 0
+
+
+def test_a_tie_is_reported_only_when_the_evidence_separates_something():
+    """The product owner's distinction, as an assertion: a tie means the evidence is REAL and
+    still does not choose. So `tie` requires discrimination above zero - candidates level at
+    zero discrimination are the reference's failure, not a tie between candidates.
+    """
+    ref_meta = _meta()
+    ref = _half_symmetric_ref()
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot0_front")}],
+        ref, ref_meta, thresholds=THRESHOLDS)
+    assert ruling["reason_code"] == ma.RULING_TIE
+    assert len(ruling["tied"]) == 2, ruling["tied"]
+    assert ruling["discriminating"] > 0, (
+        "a tie with nothing discriminating is not a tie - it is an unusable reference")
+    # and the fixture really does separate the other six, so the tie is between two REAL scores
+    assert len({c["agreement"] for c in cands}) > 1
 
 
 def test_the_ruling_says_which_metric_it_ranked_on():

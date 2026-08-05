@@ -21,6 +21,19 @@ import enrichment_candidates
 import enrichment_config
 from database import crud, models, schemas
 
+
+def _caps(**overrides):
+    """A read-cap snapshot with the shipped values and any override applied.
+
+    Built through `load_read_caps` rather than hand-assembled, so a test that
+    overrides a cap still exercises the real reader - including the `declared`
+    flag the refusals report on.
+    """
+    caps = enrichment_config.load_read_caps({})
+    for name, value in overrides.items():
+        caps[name] = {"value": value, "declared": True}
+    return caps
+
 CAND_TABLES = {
     "encand_test_src": {
         "business_key": "log_key",
@@ -513,24 +526,142 @@ def test_support_counts_every_row_not_just_the_first_limit(cand_env):
     assert res["evidence"][0]["rows"] == 5
 
 
-def test_a_truncated_probe_refuses_instead_of_claiming_single(cand_env, monkeypatch):
+def test_a_truncated_probe_refuses_instead_of_claiming_single(cand_env):
     """A truncated READ cannot prove 'exactly one' - the unread remainder may hold
     the contradiction. Same posture as `view_error`: incomplete is UNKNOWN, not empty.
 
-    `CANDIDATE_PROBE_MAX_ROWS` is the only thing bounding a candidate-declaring view
-    with no binds, which would otherwise scan its whole table once per probed key.
+    `probe_scan_rows` is the only thing bounding a candidate-declaring view with no
+    binds, which would otherwise scan its whole table once per probed key.
+
+    The cap arrives as a DECLARED value in the caps snapshot, not as a patched
+    module constant, so this exercises the config path an operator actually has.
     """
-    monkeypatch.setattr(enrichment_config, "CANDIDATE_PROBE_MAX_ROWS", 2)
     _seed(cand_env, "encand_test_hist", [
         {"hist_id": f"P{i}", "lot": "LP", "slot": "S1", "wafer_id": "WF1"}
         for i in range(4)
     ])
     res = enrichment_candidates.resolve_target_candidate(
-        cand_env, _loaded_rule(), {"lot": "LP", "slot": "S1"}, "wafer_id")
+        cand_env, _loaded_rule(), {"lot": "LP", "slot": "S1"}, "wafer_id",
+        caps=_caps(probe_scan_rows=2))
     assert res["status"] == enrichment_candidates.STATUS_REFUSED
     assert res["reason"] == enrichment_candidates.REASON_PROBE_TRUNCATED
     # The partial finding is still reported so a UI can show it; it just cannot gate.
     assert res["value"] == "WF1"
+
+
+def test_a_truncation_refusal_names_the_cap_that_cut_it_and_where_to_set_it(cand_env):
+    """[2026-08-05 incident] The refusal must name its own repair.
+
+    Told only that a read was clipped, an operator raised the CLI's key budget -
+    the one number spelled `limit` they could reach - and nothing changed. So the
+    error carries the CAP's config name, its value, whether anyone declared it,
+    and the file+key to edit. Asserting the exact cap name is the point: a refusal
+    that said `limit` would be the defect restored.
+    """
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"C{i}", "lot": "LC", "slot": "S1", "wafer_id": "WF1"}
+        for i in range(4)
+    ])
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, _loaded_rule(), {"lot": "LC", "slot": "S1"}, "wafer_id",
+        caps=_caps(probe_scan_rows=2))
+    err = res["errors"][0]
+    assert err["cap"] == enrichment_config.CAP_PROBE_SCAN_ROWS
+    assert err["cap"] != "limit"
+    assert err["cap_value"] == 2
+    assert err["cap_declared"] is True
+    assert enrichment_config.READ_CAPS_SETTINGS_KEY in err["cap_home"]
+    assert "ingestion_settings.json" in err["cap_home"]
+
+
+def test_an_undeclared_cap_says_so_in_the_refusal(cand_env):
+    """Absence must not be invisible. An operator refused by a cap NOBODY set has
+    no way to learn the knob exists unless the refusal tells them - and that
+    ignorance is exactly what made the incident expensive.
+
+    Uses the shipped `probe_distinct_values`, which is undeclared by design: it
+    inherits the view's own display `limit`.
+    """
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"U{i}", "lot": "LU", "slot": "S1", "wafer_id": f"W{i}"}
+        for i in range(4)
+    ])
+    rule = _loaded_rule()
+    narrow = dict(rule["reference_views"][0], limit=1)
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, dict(rule, reference_views=[narrow]), {"lot": "LU", "slot": "S1"},
+        "wafer_id", caps=_caps())
+    err = next(e for e in res["errors"]
+               if e["reason"] == enrichment_candidates.REASON_DISTINCT_TRUNCATED)
+    assert err["cap"] == enrichment_config.CAP_PROBE_DISTINCT_VALUES
+    assert err["cap_declared"] is False, (
+        "undeclared must read as undeclared - reporting the inherited number as a "
+        "declaration hides the fact that nobody ever chose it")
+    assert err["cap_value"] == 1, "undeclared inherits the view's own row limit"
+
+
+def test_the_refusal_says_whether_a_bigger_cap_could_even_help(cand_env):
+    """Two outcomes, two repairs, and the refusal must not merge them.
+
+    A clipped read that ALREADY holds two different values cannot become `single`
+    at any cap - raising it renames the refusal `ambiguous`, which is a person's
+    judgement. A clipped read holding one value so far is genuinely unknown.
+    Offering "a bigger number" for the first case sends someone to turn a knob
+    that cannot work.
+    """
+    rule = _loaded_rule()
+    narrow = dict(rule["reference_views"][0], limit=1)
+
+    # Two DIFFERENT values already read -> a bigger cap yields `ambiguous`.
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"A{i}", "lot": "LA", "slot": "S1", "wafer_id": f"W{i}"}
+        for i in range(4)
+    ])
+    amb = enrichment_candidates.resolve_target_candidate(
+        cand_env, dict(rule, reference_views=[narrow]), {"lot": "LA", "slot": "S1"},
+        "wafer_id", caps=_caps())
+    err = next(e for e in amb["errors"]
+               if e["reason"] == enrichment_candidates.REASON_DISTINCT_TRUNCATED)
+    assert err["distinct_values_read"] >= 2
+    assert err["expected_if_raised"] == enrichment_candidates.EXPECT_AMBIGUOUS
+
+    # One value read so far -> the remainder may agree or may not. Say unknown.
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"K{i}", "lot": "LK", "slot": "S1", "wafer_id": "WSAME"}
+        for i in range(4)
+    ])
+    unk = enrichment_candidates.resolve_target_candidate(
+        cand_env, dict(rule, reference_views=[narrow]), {"lot": "LK", "slot": "S1"},
+        "wafer_id", caps=_caps(probe_scan_rows=2))
+    err = next(e for e in unk["errors"]
+               if e["reason"] == enrichment_candidates.REASON_PROBE_TRUNCATED)
+    assert err["distinct_values_read"] <= 1
+    assert err["expected_if_raised"] == enrichment_candidates.EXPECT_UNKNOWN
+
+
+def test_the_two_outcomes_are_counted_apart_in_the_sweep_stats(cand_env):
+    """`distinct_truncated=76` is not an instruction. Split by what a bigger cap
+    would do, it becomes two: N that a knob resolves, M that a person must judge.
+    The census is keyed by CAP NAME so the operator is told what to turn."""
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"S{i}", "lot": "LS2", "slot": "S1", "wafer_id": f"W{i}"}
+        for i in range(4)
+    ])
+    _seed(cand_env, "encand_test_derived",
+          [{"wafer_key": "LS2_S1", "lot": "LS2", "slot": "S1"}])
+    rule = _loaded_rule()
+    narrow = dict(rule["reference_views"][0], limit=1)
+    st = enrichment_candidates.confirm_keys(
+        cand_env, dict(rule, reference_views=[narrow]),
+        [{"row_id": None, "business_key_val": "LS2_S1",
+          "keys": {"lot": "LS2", "slot": "S1"}, "blank_targets": ["wafer_id"]}],
+        apply=False, caps=_caps())
+    slot = st["cap_hits"][enrichment_config.CAP_PROBE_DISTINCT_VALUES]
+    assert slot["hits"] == 1
+    assert slot[enrichment_candidates.EXPECT_AMBIGUOUS] == 1
+    assert slot[enrichment_candidates.EXPECT_UNKNOWN] == 0
+    assert slot["cap_declared"] is False
+    assert "ingestion_settings.json" in slot["cap_home"]
 
 
 def test_the_display_path_keeps_its_row_limit(cand_env):

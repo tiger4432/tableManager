@@ -106,12 +106,19 @@ REFERENCE_KIND_VALUES = "values"       # 점유 + 값
 EXCLUDE_META_MISSING = "meta_missing"
 EXCLUDE_GEOMETRY_REFUSED = "geometry_refused"
 EXCLUDE_NO_CELLS = "no_cells"
+# [D3] **웨이퍼 규격 가정으로도 안 열리는 두 자리.** 격자 치수는 웨이퍼가 아니라 맵의
+# 성질이라 바닥에서 빌릴 수 없다 - 한 웨이퍼의 두 맵이 서로 다르게 잘려 있을 수 있고,
+# 빌리면 없는 사실을 만든다. 없으면 **무엇이 필요한지 이름을 대고** 거절한다.
+EXCLUDE_GRID_DIMS_MISSING = "grid_dims_missing"
+EXCLUDE_GRID_DIMS_DIFFER = "grid_dims_differ"
 
 # 표찰이지 문장이 아니다(§compose_refusal).
 _EXCLUDE_TEXT = {
     EXCLUDE_META_MISSING: "맵 규격 미등록 (wafer_map_metadata)",
     EXCLUDE_GEOMETRY_REFUSED: "칩 규격 미선언 - 좌표 변환 불가",
     EXCLUDE_NO_CELLS: "좌표 0건",
+    EXCLUDE_GRID_DIMS_MISSING: "격자 치수(grid_cols/grid_rows) 미등록 - 가정 대상 아님",
+    EXCLUDE_GRID_DIMS_DIFFER: "격자 치수가 기준과 다름 - 같은 잘림이 아님",
 }
 
 # 기준(floor) 거절 사유 코드 — **「제안되지 않았다」에는 언제나 이유가 붙는다.**
@@ -257,7 +264,9 @@ def _membership(placed_keys, ref_sorted, dx, dy):
 
 def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                      shift_window: int = SHIFT_WINDOW, cell_cap: int = MAX_SCORED_CELLS,
-                     reference_values=None, thresholds: dict = None):
+                     reference_values=None, thresholds: dict = None,
+                     assume_reference_geometry: bool = False,
+                     reference_ref: dict = None):
     """후보 8개를 **한 호출로** 채점한다. DB를 모른다 — 셀과 메타만 받는다.
 
     `source_maps`: `[{"map_id": str, "meta": dict, "cells": [(x, y), ...],
@@ -266,6 +275,10 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     `reference_values`: 기준 셀의 값. `reference_cells`와 같은 순서. 없으면 점유 채점만.
     `thresholds`: `{min_margin_dies, min_discriminating_dies}`. **기본값이 없다** — 선언되지
         않으면 순위를 내지 않는다(`_rule_on`).
+    `assume_reference_geometry`: 규격 선언이 없는 소스 맵을 **바닥의 웨이퍼 치수를 빌려**
+        채점한다(스펙 §9ⓐ, `map_overlay.assume_phys_from`). 조작자가 내는 주장이므로
+        **기본값은 False**다 - 자동으로 걸면 아무도 주장한 적 없는 가정 위에서 판정이 나온다.
+    `reference_ref`: `{"table":..., "map_id":...}` - 빌린 출처를 기록에 남기기 위한 이름표.
 
     반환: `(candidates, excluded, ruling, stats)`.
 
@@ -306,6 +319,19 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
 
     # [1] 기하 거절은 **후보와 무관하다** — 회전·면은 `geometry_declaration`을 바꾸지 않는다.
     #     그래서 후보 루프 밖에서 한 번만 판정한다(8배 비용을 치를 이유가 없다).
+    #
+    # [D3] 그리고 여기가 **가정이 들어오는 유일한 자리**다. 규격 선언이 없는 맵을 그냥
+    #      제외하면 「규격을 선언하라」인데, 조작자가 정렬을 도는 이유가 그 규격을 모르기
+    #      때문이다 - 질문보다 답을 먼저 요구하는 셈이다(스펙 §9ⓐ). 그래서 바닥이 선언돼
+    #      있으면 그 웨이퍼 치수를 **계산에만** 빌려 온다. 빌린 사본은 메모리에만 살고
+    #      `geometry_declaration`에 여전히 `declared`가 아니라고 답한다.
+    #
+    # 🔴 **가정을 요청하지 않아도 「열 수 있었는가」는 센다.** 그 수가 없으면 화면은 막다른
+    #    길을 그리고, 조작자는 여기 제안이 있다는 것을 알 방법이 없다.
+    basis_ok = (map_overlay.geometry_declaration(reference_meta)
+                == map_overlay.GEOMETRY_DECLARED)
+    ref_grid = map_overlay.grid_dims(reference_meta) if basis_ok else None
+    assumed_ids, offerable_ids = [], []
     usable = []
     for sm in source_maps:
         meta, mid = sm.get("meta"), sm.get("map_id")
@@ -315,10 +341,39 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         if not sm.get("cells"):
             excluded.add(EXCLUDE_NO_CELLS, mid)
             continue
+        use_meta = meta
         why = map_overlay.geometry_refusal(meta)
         if why is not None:
-            excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+            borrowed = (map_overlay.assume_phys_from(meta, reference_meta, reference_ref)
+                        if basis_ok else None)
+            if borrowed is None:
+                # 바닥이 선언돼 있는데도 못 빌리는 경우는 하나뿐이다: 격자 치수가 없다.
+                # 그때는 규격이 아니라 치수를 대라고 말해야 한다 - 사유가 갈려야 수리가 갈린다.
+                if basis_ok and map_overlay.grid_dims(meta) is None:
+                    excluded.add(EXCLUDE_GRID_DIMS_MISSING, mid)
+                else:
+                    excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+                continue
+            offerable_ids.append(mid)
+            if not assume_reference_geometry:
+                excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+                continue
+            use_meta = borrowed
+            assumed_ids.append(mid)
+        # 🔴 격자 치수 대조를 후보 루프 **앞**으로 끌어올린다. `make_frame_transform`이
+        #    후보마다 같은 답을 내는 검사이고(회전은 `_grid_of`를 바꾸지 않는다), 안에서
+        #    터지면 맵 하나 때문에 **여덟 후보 전부**가 죽어 단위 전체가 답을 잃는다.
+        #    가정이 모집단을 열면서 이 자리가 훨씬 자주 밟힌다 - 치수는 빌리는 값이 아니라
+        #    맵마다 다를 수 있는 값이므로, 어긋난 맵 하나는 그 맵만 빠져야 한다.
+        s_grid = map_overlay.grid_dims(use_meta)
+        if s_grid is None:
+            excluded.add(EXCLUDE_GRID_DIMS_MISSING, mid)
             continue
+        if ref_grid and s_grid != ref_grid:
+            excluded.add(EXCLUDE_GRID_DIMS_DIFFER, mid,
+                         "소스 %dx%d · 기준 %dx%d" % (s_grid + ref_grid))
+            continue
+        sm["_meta"] = use_meta
         usable.append(sm)
 
     scored_cells = 0
@@ -351,7 +406,10 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         for sm in usable:
             if not sm.get("_use"):
                 continue
-            src_meta = source_meta_for_frame(sm["meta"], frame)
+            # 🔴 `_meta`이지 `meta`가 아니다. 가정이 걸린 맵은 **빌린 사본** 위에서 후보를
+            #    세운다. 원본(`meta`)은 그대로 남아 있어야 한다 - `declared_frame_of`가 읽는
+            #    「이 맵이 적어 둔 것」이 빌린 값으로 오염되면 배지가 남의 선언을 단다.
+            src_meta = source_meta_for_frame(sm.get("_meta") or sm["meta"], frame)
             if src_meta is None:
                 failed = "프레임 '%s'을 이 맵의 규격에 적용할 수 없습니다" % frame
                 break
@@ -374,12 +432,20 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         per_candidate.append({"frame": frame, "keys": _encode(placed), "reason": None})
 
     # [3] 후보별 시프트를 풀고 셀별 진리값을 모은다.
+    #
+    # 🔴 **놓인 셀이 0건인 후보는 채점된 후보가 아니다.** 소스가 전부 제외되면 여덟 후보가
+    #    모두 빈 배열을 놓고 일치 0을 받는다. 그 0은 잰 값이 아니라 **잴 것이 없었다**는 뜻인데,
+    #    「채점됨」으로 표시하면 판정기가 여덟 개의 0을 여덟 자 동점으로 읽는다. 그래서 채점
+    #    여부는 배열의 존재(`keys is not None`)가 아니라 **크기**로 판정한다 - 앞의 것은
+    #    변환기가 거절했는가만 말하고, 잰 것이 있었는가는 말하지 않는다.
+    #    빈 배열과 None은 조작자에게 다른 사실이므로 여기서 접지 않고 `scored` 하나로 합류시킨
+    #    뒤 `_rule_on`이 `placed_cells`로 다시 가른다.
     for c in per_candidate:
-        if c["keys"] is None:
-            c.update(dx=None, dy=None, agreement=0, member=None)
+        if c["keys"] is None or c["keys"].size == 0:
+            c.update(dx=None, dy=None, agreement=0, member=None, scored=False)
             continue
         dx, dy, hit = _solve_shift(c["keys"], ref_sorted, shift_window)
-        c.update(dx=dx, dy=dy, agreement=int(hit),
+        c.update(dx=dx, dy=dy, agreement=int(hit), scored=True,
                  member=_membership(c["keys"], ref_sorted, dx, dy))
 
     # [3b] 값 일치: 이 후보가 앉힌 자리의 **기준 값과 소스 값이 같은가**, 셀마다.
@@ -388,7 +454,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     scorable_values = bool(ref_value_at) and bool(source_values) and \
         any(v is not None for v in source_values)
     for c in per_candidate:
-        if c["keys"] is None or not scorable_values:
+        if not c["scored"] or not scorable_values:
             c["value_member"] = None
             continue
         shifted = c["keys"] + c["dx"] * _KEY_STRIDE + c["dy"]
@@ -430,46 +496,94 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 else int(np.count_nonzero(c["value_member"] & value_varies)))
 
     # [5] 순위와 판정. **개수만** 낸다 — 백분율을 만들지 않는다(모듈 상단).
-    agrees = [c["agreement"] for c in per_candidate]
-    vagrees = [c["value_agreement"] for c in per_candidate]
+    #
+    # 🔴 2위는 **채점된 후보 중에서만** 고른다. 채점되지 않은 후보의 일치수 0은 잰 값이 아니라
+    #    자리 표시이고, 그것을 2위로 삼으면 혼자 채점된 후보가 자기 일치수를 통째로 「격차」로
+    #    보고한다 - 있지도 않은 비교로 만든 수다. 비교할 상대가 없으면 격차는 **null이지 0도,
+    #    자기 점수도 아니다**(문턱 비교는 null을 이미 거절로 다룬다).
+    scored_i = [i for i, c in enumerate(per_candidate) if c["scored"]]
     out = []
     for i0, c in enumerate(per_candidate):
-        others = [a for i, a in enumerate(agrees) if i != i0]
-        runner = max(others) if others else 0
-        v_others = [a for i, a in enumerate(vagrees) if i != i0 and a is not None]
-        v_runner = max(v_others) if v_others else 0
+        others = [per_candidate[i]["agreement"] for i in scored_i if i != i0]
+        runner = max(others) if others else None
+        v_others = [per_candidate[i]["value_agreement"] for i in scored_i
+                    if i != i0 and per_candidate[i]["value_agreement"] is not None]
+        v_runner = max(v_others) if v_others else None
         rot_side = parse_frame(c["frame"])
         out.append({
             "frame": c["frame"],
             "rotation": rot_side[0], "side": rot_side[1],
-            "state": STATE_NOT_SCORABLE if c["keys"] is None else STATE_SCORED,
-            "shift": None if c["dx"] is None else {"dx": c["dx"], "dy": c["dy"]},
+            "state": STATE_SCORED if c["scored"] else STATE_NOT_SCORABLE,
+            "shift": None if not c["scored"] else {"dx": c["dx"], "dy": c["dy"]},
             "agreement": c["agreement"],
             "discriminating": c["discriminating"],
             # 값 지표는 **점유를 대체하지 않는다.** 기준이 값을 안 실으면 점유가 정직한 답이고,
             # 그때 이 셋은 null이다(0이 아니다 — §[3b]).
             "value_agreement": c["value_agreement"],
             "value_discriminating": c["value_discriminating"],
-            "value_margin": (None if c["value_agreement"] is None
+            "value_margin": (None if c["value_agreement"] is None or v_runner is None
                              else int(c["value_agreement"] - v_runner)),
             "placed": 0 if c["keys"] is None else int(c["keys"].size),
-            "margin": None if c["keys"] is None else int(c["agreement"] - runner),
+            "margin": (None if not c["scored"] or runner is None
+                       else int(c["agreement"] - runner)),
             "reason": c["reason"],
         })
 
     metric = METRIC_VALUES if scorable_values else METRIC_OCCUPANCY
-    ruling = _rule_on(out, thresholds, metric)
+    # 후보들은 **같은 소스 셀을 같은 순서로** 놓으므로 놓인 개수는 후보마다 같다. max는 그 사실에
+    # 기대지 않고도 「무엇이든 놓였는가」를 답한다.
+    placed_cells = max((int(c["keys"].size) for c in per_candidate
+                        if c["keys"] is not None), default=0)
+    ex_rows = excluded.as_list()
+    ruling = _rule_on(out, thresholds, metric, scoring={
+        "placed_cells": placed_cells,
+        "source_map_count": len(source_maps),
+        "excluded_map_count": excluded.total(),
+        "excluded_reason_code": (ex_rows[0]["reason_code"] if ex_rows else None),
+    })
+    # 🔴 [D3] **가정 아래에서 나온 판정은 다른 사실이다.** 판정 dict 자신이 그 사실을 나른다 -
+    #    옆 필드에만 두면 판정을 옮겨 적는 자리(확정 기록·목록)가 그것을 흘린다. 참일 때만
+    #    싣는 것이 아니라 **언제나** 싣는다: 없는 키와 False는 받는 쪽에서 같아 보인다.
+    ruling["geometry_assumed"] = bool(assumed_ids)
+    ruling["assumed_map_count"] = len(assumed_ids)
     stats = {"scored_cells": scored_cells, "truncated": truncated,
              "cell_cap": cell_cap, "shift_window": shift_window,
              "reference_cells": int(ref_sorted.size),
              "reference_values": len(ref_value_at),
              "source_maps_usable": len(usable),
+             "placed_cells": placed_cells,
+             # 「가정을 걸었다」와 「가정을 걸 수 있었다」는 다른 수다. 뒤엣것이 없으면 화면은
+             # 제안을 그릴 수 없고, 제외된 맵은 그냥 막다른 길로 남는다.
+             "assumed_map_ids": list(assumed_ids),
+             "assumable_map_ids": list(offerable_ids),
+             # 「어느 맵이 실제로 바닥에 올라갔나」. `geometry_basis_of`의 유일한 입력이라
+             # 화면과 확정 기록이 같은 집합을 본다.
+             "usable_map_ids": [sm.get("map_id") for sm in usable],
              "elapsed_ms": (time.monotonic() - t0) * 1000.0}
     return out, excluded, ruling, stats
 
 
 METRIC_OCCUPANCY = "occupancy"
 METRIC_VALUES = "values"
+
+# ---------------------------------------------------------------------------
+# 판정 사유 - 「승자 없음」의 **왜**. 여러 자리에서 참조되는 것만 상수로 둔다
+# ---------------------------------------------------------------------------
+# 🔴 **「아무것도 채점되지 않았다」와 「채점했는데 못 가른다」는 다른 사실이고 다른 수리다.**
+#    앞은 증거가 없었다는 뜻이라 조작자가 할 일은 규격을 선언하는 것이고, 뒤는 증거가 실재
+#    하는데 후보를 못 가른다는 뜻이라 할 일은 더 나은 기준을 꽂는 것이다. 두 사실이 한 낱말로
+#    합쳐지면 조작자는 절반의 경우에 반드시 틀린 곳을 고친다 - 실측(2026-08-05): 소스 맵이
+#    칩 규격 미선언으로 전량 제외돼 채점기에 좌표가 **하나도 도달하지 않았는데** 화면은
+#    「동점」이라고 말했고, 제품 소유자는 기준을 갈아 끼우러 갔다(고칠 것은 규격 선언이었다).
+#
+#    그 오진이 일어난 기전은 「없음을 0으로 접기」다. 놓인 셀이 없는 후보 여덟이 모두 일치 0을
+#    받고, 그 여덟 개의 0이 **여덟 자 동점**으로 읽혔다. 0 후보가 0점을 받은 것은 8 후보가
+#    같은 점수를 받은 것이 아니다(`Number(null) === 0` 계열의 결함, 한 층 위에서).
+RULING_NO_CELLS_SCORED = "no_cells_scored"            # 채점기에 좌표가 0건 도달 (소스 전멸)
+RULING_NO_CANDIDATE_SCORED = "no_candidate_scored"    # 좌표는 도달, 8후보 전부 변환 거절
+RULING_NO_OVERLAP = "no_overlap"                      # 좌표는 놓였는데 기준 위 일치가 0건
+RULING_NO_DISCRIMINATION = "no_discrimination"        # 대조는 됐는데 후보가 안 갈린다
+RULING_TIE = "tie"                                    # 갈리는데 1위가 둘 이상
 
 #: 판정 문턱. **코드에 기본값을 두지 않는다.** 여기 숫자를 하나 적으면 그것이 선언을 사칭하는
 #: 그럴듯한 기본값이고(I4), 그 사칭의 대가가 정확히 이 라운드가 닫고 있는 실패다 —
@@ -498,7 +612,7 @@ def load_alignment_thresholds(cfg: dict) -> dict:
 
 
 def _rule_on(candidates: list, thresholds: dict = None,
-             metric: str = METRIC_OCCUPANCY) -> dict:
+             metric: str = METRIC_OCCUPANCY, scoring: dict = None) -> dict:
     """이길 후보가 있는가 — 없으면 **없다고 말한다**(스펙 §0.2 ⑦: 억지 1등 금지).
 
     이기려면 넷 다 필요하다: 단독 최고 · 판별수 > 0 · 판별수 ≥ 선언된 문턱 · 격차 ≥ 선언된
@@ -508,19 +622,40 @@ def _rule_on(candidates: list, thresholds: dict = None,
        점유는 기준 발자국이 원일 때 **아무 방위 정보도 싣지 않고**(스펙 §1), 그때 벌어지는
        격차는 표본 잡음이다. 그래서 문턱은 잡음 위의 1등을 막는 자리이고, 선언이 없으면
        막을 방법이 없으므로 아예 순위를 내지 않는다.
+
+    `scoring`: 판정이 **자기 옆의 사실과 어긋나지 않게** 하는 재료 -
+        `{placed_cells, source_map_count, excluded_map_count, excluded_reason_code}`.
+        제외 개수는 곁가지 필드가 아니라 판정의 일부다: 「1개 중 1개 제외」가 응답 안에 있는데
+        판정이 「동점」이면 화면은 서로를 부정하는 두 문장을 같은 카드에 그리고, 그 카드는
+        말을 아끼는 카드보다 나쁘다. 그래서 개수와 지배 사유가 **모든** 판정에 실린다.
     """
+    sc = dict(scoring or {})
+    ctx = {"metric": metric,
+           "placed_cells": sc.get("placed_cells"),
+           "source_map_count": sc.get("source_map_count"),
+           "excluded_map_count": sc.get("excluded_map_count"),
+           "excluded_reason_code": sc.get("excluded_reason_code")}
+
     live = [c for c in candidates if c["state"] == STATE_SCORED]
     if not live:
-        return {"winner": None, "margin": None, "metric": metric,
-                "reason_code": "no_candidate_scored"}
+        # 🔴 **채점 0건에는 두 원인이 있고 수리가 다르다.** 「좌표가 하나도 도달하지 않았다」는
+        #    소스가 전멸했다는 뜻이라 고칠 것은 **선언**이고(제외 사유가 무엇을 선언할지 이미
+        #    이름 붙여 두었다), 「도달했는데 여덟 후보가 전부 변환을 거절했다」는 격자 규격이
+        #    기준과 맞지 않는다는 뜻이라 고칠 것은 규격 자체다. 한 낱말로 합치면 절반이
+        #    틀린 곳으로 간다. `placed_cells`가 없으면(호출자가 안 넘겼으면) 단정하지 않고
+        #    기존 낱말을 쓴다 - 모르는 것을 0으로 접지 않는다.
+        placed = sc.get("placed_cells")
+        return dict(ctx, winner=None, margin=None,
+                    reason_code=(RULING_NO_CELLS_SCORED if placed == 0
+                                 else RULING_NO_CANDIDATE_SCORED))
 
     a_key = "value_agreement" if metric == METRIC_VALUES else "agreement"
     d_key = "value_discriminating" if metric == METRIC_VALUES else "discriminating"
     m_key = "value_margin" if metric == METRIC_VALUES else "margin"
     scoreable = [c for c in live if c.get(a_key) is not None]
     if not scoreable:
-        return {"winner": None, "margin": None, "metric": metric,
-                "reason_code": "no_candidate_scored"}
+        return dict(ctx, winner=None, margin=None,
+                    reason_code=RULING_NO_CANDIDATE_SCORED)
 
     th = dict(thresholds or {})
     missing = [k for k in THRESHOLD_KEYS if th.get(k) is None]
@@ -528,19 +663,30 @@ def _rule_on(candidates: list, thresholds: dict = None,
     best = max(c[a_key] for c in scoreable)
     tops = [c for c in scoreable if c[a_key] == best]
     top = tops[0]
-    base = {"metric": metric, "margin": top.get(m_key),
-            "discriminating": top.get(d_key),
-            "min_margin_dies": th.get("min_margin_dies"),
-            "min_discriminating_dies": th.get("min_discriminating_dies")}
+    base = dict(ctx, margin=top.get(m_key),
+                discriminating=top.get(d_key),
+                min_margin_dies=th.get("min_margin_dies"),
+                min_discriminating_dies=th.get("min_discriminating_dies"))
 
-    if len(tops) > 1:
-        return dict(base, winner=None, margin=0, reason_code="tie",
-                    tied=[c["frame"] for c in tops])
-    # 🔴 **구조적 사실을 문턱보다 먼저 말한다.** 동점과 판별 0은 문턱과 무관하게 참이고
-    #    (§1 정리: 판별이 0이면 그 점수는 여덟 후보 모두에 똑같이 붙는다), 그 사실을
-    #    「기준값 미선언」으로 덮으면 조작자가 config를 고치러 가서 아무것도 달라지지 않는다.
+    # 🔴 **구조적 사실을 문턱보다 먼저 말한다.** 문턱과 무관하게 참인 사실을 「기준값 미선언」
+    #    으로 덮으면 조작자가 config를 고치러 가서 아무것도 달라지지 않는다.
+    #
+    # 🔴 그리고 **구조적 사실끼리도 좁은 것이 먼저다.** 순서가 곧 조작자가 가는 곳이다:
+    #    ① 아무 후보도 기준 위에 한 셀도 못 놓았다 → 잰 것이 없다. 여덟이 0으로 나란한 것은
+    #       동점이 아니다(0 후보가 0점 받은 것과 같은 계열의 오독, 한 층 아래).
+    #    ② 대조는 됐는데 셀들의 답이 후보마다 갈리지 않는다 → **기준이 못 가른 것**이다.
+    #       이 모듈의 §REFERENCE_KIND 문서가 이미 그렇게 말한다: 점유만 있는 기준에서 여덟이
+    #       같은 다이를 차지하면 그것은 진짜 동점이 아니다. 그런데 동점 검사가 먼저 있어서,
+    #       가장 흔한 운영 형상(대칭·원 발자국)이 통째로 「동점」으로 나갔다 - 「증거는 실재
+    #       하는데 못 갈랐다」고 말한 것이고, 실제로는 증거가 방위를 싣지 않았다.
+    #    ③ 갈리기는 하는데 1위가 둘 이상 → **이것만이 동점이다.**
+    if best <= 0:
+        return dict(base, winner=None, margin=None, reason_code=RULING_NO_OVERLAP)
     if (top.get(d_key) or 0) <= 0:
-        return dict(base, winner=None, reason_code="no_discrimination")
+        return dict(base, winner=None, reason_code=RULING_NO_DISCRIMINATION)
+    if len(tops) > 1:
+        return dict(base, winner=None, margin=0, reason_code=RULING_TIE,
+                    tied=[c["frame"] for c in tops])
     if missing:
         return dict(base, winner=None, reason_code="no_thresholds", missing=missing)
     if (top.get(d_key) or 0) < th["min_discriminating_dies"]:
@@ -560,15 +706,32 @@ def _rule_on(candidates: list, thresholds: dict = None,
 # 금지 어투: `~를 지지합니다` `~가 수행되었습니다` `~이 존재하지 않습니다` `~하시겠습니까`.
 # 짧게 만들되 **사실은 안 버린다** — 줄일 것은 군더더기이지 정보가 아니다.
 _RULING_TEXT = {
-    "no_candidate_scored": "후보 채점 0건",
-    "tie": "동점 - 판별 불가",
-    "no_discrimination": "기준 발자국이 대칭 - 8프레임 구별 불가",
+    RULING_NO_CANDIDATE_SCORED: "8후보 전부 변환 거절 - 채점 0건",
+    # 🔴 이 줄이 없어서 화면이 「동점」이라고 말했다. **없는 것과 나란한 것은 다른 사실이다.**
+    RULING_NO_CELLS_SCORED: "채점 0건 - 소스 좌표 미도달",
+    RULING_NO_OVERLAP: "기준 위 일치 0건 - 순위 없음",
+    RULING_TIE: "동점 - 1위 복수",
+    RULING_NO_DISCRIMINATION: "기준 발자국이 대칭 - 8프레임 구별 불가",
     "no_margin": "1-2위 격차 0 - 순위 없음",
     # 문턱은 **선언**이므로 미선언은 「0」이 아니라 「모름」이다. 문장이 그렇게 말한다.
     "no_thresholds": "판정 기준값 미선언 - 순위 없음",
     "too_few_discriminating": "판별 다이 부족 - 순위 없음",
     "margin_too_small": "1-2위 격차 부족 - 순위 없음",
 }
+
+#: 값 축으로 매길 때의 「일치 0건」. 같은 사실이 축마다 다른 낱말을 갖는 유일한 자리다 -
+#: 점유 0과 값 일치 0은 조작자가 볼 곳이 다르고(좌표 컬럼 vs 값 컬럼), 사유 코드를 둘로
+#: 나누면 같은 사실에 철자가 둘이 된다. 그래서 코드는 하나이고 문장만 축을 따라간다.
+_RULING_TEXT_BY_METRIC = {
+    (RULING_NO_OVERLAP, METRIC_VALUES): "값 일치 0건 - 순위 없음",
+}
+
+
+def _ruling_text(ruling: dict) -> str:
+    """판정 사유 → 표찰. 축에 따라 갈리는 줄만 `_RULING_TEXT_BY_METRIC`이 덮는다."""
+    code = (ruling or {}).get("reason_code")
+    keyed = _RULING_TEXT_BY_METRIC.get((code, (ruling or {}).get("metric")))
+    return keyed or _RULING_TEXT.get(code, "순위 근거 부족")
 
 # 🔴 목록(`build_alignment_worklist`)과 상세(`build_alignment_view`)가 **같은 사실에 같은
 #    문장을 낸다.** 두 자리에 따로 적으면 그것이 두 번째 철자이고, 한쪽만 고쳐지는 날 같은
@@ -594,21 +757,81 @@ def compose_refusal(state: str, reference: dict, excluded: _Excluded,
                                 reference.get("reason") or "사유 미상")
         if source_map_count == 0:
             return "소스 맵 0건"
-        parts = ["%s (%d)" % (e["reason"], e["count"]) for e in excluded.as_list()]
-        if parts:
-            return "소스 전량 제외 - " + " · ".join(parts)
         # 🔴 여기가 실측으로 드러난 자리다. 기준도 있고 소스도 남아 있는데 **후보가 전부
         #    변환에 실패한** 경우가 있다 — 기준 맵과 소스 맵의 격자 규격이 다르면
         #    `make_frame_transform`이 여덟 후보 모두를 거절한다. 그때 "채점할 좌표가 없다"고
         #    답하면 조작자는 데이터를 의심하며 엉뚱한 곳을 고친다. 실제 사유는 변환기가 이미
         #    문장으로 만들어 놓았으므로 **그것을 그대로 올린다**(두 번째 사유 문장을 짓지 않는다).
+        #
+        #    🔴 이 검사가 제외 집계보다 **먼저**다. 순서가 반대이면, 맵 일부가 제외되고 남은
+        #       맵이 전부 변환 거절된 경우에 「소스 전량 제외」라고 답한다 - 전량이 아니었고,
+        #       거절한 것은 변환기였다. 참인 사실이 옆에 있는데 거짓 문장을 고르는 자리다.
         why = next((c.get("reason") for c in (candidates or []) if c.get("reason")), None)
         if why:
             return "8후보 전부 변환 거절 - %s" % why
+        # 🔴 **아무것도 채점되지 않았다**는 사실은 제외 개수·사유와 함께 나가야 한다. 제외를
+        #    곁가지 필드로만 실으면 화면은 「1개 중 1개 제외」를 콘솔에 두고 판정에는 다른 말을
+        #    적는다. 그리고 사유 표찰이 곧 **무엇을 선언해야 하는가**다(`_EXCLUDE_TEXT`:
+        #    「칩 규격 미선언」·「맵 규격 미등록」·「좌표 0건」) - 여기서 문장을 새로 짓지 않고
+        #    그 표찰을 그대로 올린다.
+        rows = excluded.as_list()
+        if rows:
+            parts = [(e["reason"] if len(rows) == 1 else "%s (%d)" % (e["reason"], e["count"]))
+                     for e in rows]
+            return ("채점 0건 - 소스 맵 %d개 중 %d개 제외 · %s"
+                    % (source_map_count, excluded.total(), " · ".join(parts)))
         return "소스 좌표 0건"
     if state == STATE_NO_WINNER:
-        return _RULING_TEXT.get(ruling.get("reason_code"), "순위 근거 부족")
+        return _ruling_text(ruling)
     return None
+
+
+# ---------------------------------------------------------------------------
+# [D3] 가정 - 제안 문장과, 「이 소스는 무엇 위에서 정렬됐나」의 유일한 철자
+# ---------------------------------------------------------------------------
+ASSUMPTION_APPLIED = "applied"          # 걸었다. 판정이 이 가정 위에 서 있다
+ASSUMPTION_AVAILABLE = "available"      # 걸 수 있다. 아직 안 걸었다 - 이것이 제안이다
+ASSUMPTION_UNAVAILABLE = "unavailable"  # 걸 자리가 없다 (제외가 없거나 바닥이 미선언)
+
+
+def compose_assumption_offer(state: str, count: int, basis: dict) -> str | None:
+    """제안 한 줄. 걸 자리가 없으면 None.
+
+    🔴 **막다른 길 대신 제안이 서는 자리다.** 규격 미선언으로 제외된 맵에 대해 화면이 지금
+       할 수 있는 말은 「규격을 선언하십시오」뿐인데, 조작자가 정렬을 도는 이유가 그 규격을
+       모르기 때문이다. 문장은 서버가 만든다(`compose_refusal`과 같은 규율).
+    """
+    if state == ASSUMPTION_UNAVAILABLE or count <= 0:
+        return None
+    where = "%s / %s" % ((basis or {}).get("table") or "?",
+                         (basis or {}).get("map_id") or "?")
+    if state == ASSUMPTION_APPLIED:
+        return ("맵 %d개를 기준(%s)의 웨이퍼 치수를 빌려 채점 - 동일 웨이퍼 가정이며 "
+                "이 맵의 규격 선언이 아님" % (count, where))
+    return ("맵 %d개는 기준(%s)과 같은 웨이퍼로 가정하면 채점 가능 - 가정은 기록에 남고 "
+            "규격으로 저장되지 않음" % (count, where))
+
+
+def geometry_basis_of(meta: dict | None, excluded_reason: str = None) -> str:
+    """이 소스가 **무엇 위에서** 정렬됐는가 → `map_overlay.GEOMETRY_*` 토큰 하나.
+
+    🔴 **철자는 여기 하나다.** 확정 기록(층 ⑧)이 이 답을 저장하는데, 그 경로가 자기 규칙을
+       다시 쓰면 조작자가 본 사실과 기록된 사실이 갈릴 수 있다. 그리고 이 답은 **재채점이
+       아니다** - 이미 DB에 있는 두 사실(그 맵의 메타, 제외됐는가)만 읽는다.
+
+    규칙 한 줄: **제외되지 않았는데 자기 기하가 선언이 아니면, 그것은 빌린 기하 위에서
+    정렬된 것이다.** 선언 없는 맵이 채점기를 통과하는 경로가 가정 하나뿐이기 때문에 이
+    유도는 애매하지 않다(§score_candidates [1]).
+
+    제외된 소스는 **어디에도 정렬되지 않았다.** 그때 답은 그 맵이 스스로 말하는 토큰이고,
+    `assumed`가 아니다 - 일어나지 않은 일에 근거를 붙이지 않는다.
+    """
+    token = map_overlay.geometry_declaration(meta)
+    if excluded_reason:
+        return token
+    if token == map_overlay.GEOMETRY_DECLARED:
+        return token
+    return map_overlay.GEOMETRY_ASSUMED
 
 
 # ---------------------------------------------------------------------------
@@ -979,7 +1202,8 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                          reference_spec: str = None, include_cells: bool = True,
                          cell_cap: int = MAX_PAYLOAD_CELLS,
                          x_col: str = None, y_col: str = None,
-                         value_col: str = None) -> dict:
+                         value_col: str = None,
+                         assume_reference_geometry: bool = False) -> dict:
     """한 결정 단위의 정렬 화면 payload **전부**를 한 번에 만든다. 읽기 전용이다.
 
     후보 8개의 채점이 같은 응답에 들어간다. 후보를 바꾸는 것은 네트워크가 아니라 리페인트여야
@@ -988,6 +1212,10 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     `x_col`/`y_col`/`value_col`: **읽을 좌표 삼중항**. 이것이 원시 단위이고, 생략하면 선언
     바인딩이 제안한다(`resolve_source_columns`). 응답 `unit.columns`가 축마다 고른 것인지
     제안받은 것인지를 말한다.
+
+    `assume_reference_geometry`: 규격 선언이 없는 소스 맵을 **기준의 웨이퍼 치수를 빌려**
+    채점한다(스펙 §9ⓐ). 조작자가 내는 주장이므로 **켜야 걸린다** - 응답의 `assumption`이
+    걸었는지·걸 수 있는지·무엇에서 빌리는지를 말하고, 켜지 않아도 제안은 실린다.
     """
     from database import models
 
@@ -1054,7 +1282,10 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     if reference["state"] == REFERENCE_RESOLVED:
         candidates, excluded, ruling, stats = score_candidates(
             source_maps, reference["cells"], reference["meta"],
-            reference_values=reference.get("values"), thresholds=thresholds)
+            reference_values=reference.get("values"), thresholds=thresholds,
+            assume_reference_geometry=assume_reference_geometry,
+            reference_ref={"table": reference.get("table"),
+                           "map_id": reference.get("map_id")})
         if ruling.get("winner"):
             state = STATE_SCORED
         elif any(c["state"] == STATE_SCORED for c in candidates):
@@ -1074,6 +1305,11 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                 why = map_overlay.geometry_refusal(sm["meta"])
                 if why is not None:
                     excluded.add(EXCLUDE_GEOMETRY_REFUSED, sm["map_id"], why)
+        # 🔴 이 루프가 채점기와 **같은 세 관문**을 돌렸으므로 남은 수는 잰 값이다. 예전에는
+        #    이 갈래에서 `stats`가 비어 `usable_map_count`가 `stats.get(..., 0)`의 기본값 0으로
+        #    나갔다 - 아무것도 안 재고 「쓸 수 있는 맵 0장」이라고 말한 것이고, 기준만 꽂으면
+        #    채점될 단위를 조작자가 가망 없는 단위로 읽었다.
+        stats["source_maps_usable"] = len(source_maps) - excluded.total()
 
     pooled = []
     if include_cells:
@@ -1113,6 +1349,29 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     for c in candidates:
         c["declared_by_maps"] = int(tally.get(c["frame"], 0))
 
+    # [D3] 가정의 상태 - **걸었나 · 걸 수 있나 · 무엇에서 빌리나.** 세 번째가 없으면 나중에
+    # 「이 판정은 무엇을 참이라 치고 나왔나」에 답할 수 없다.
+    assumed_ids = list(stats.get("assumed_map_ids") or ())
+    assumable_ids = list(stats.get("assumable_map_ids") or ())
+    _aligned = set(stats.get("usable_map_ids") or ())
+    a_basis = ({"table": reference.get("table"), "map_id": reference.get("map_id")}
+               if reference["state"] == REFERENCE_RESOLVED else None)
+    if assumed_ids:
+        a_state = ASSUMPTION_APPLIED
+    elif assumable_ids:
+        a_state = ASSUMPTION_AVAILABLE
+    else:
+        a_state = ASSUMPTION_UNAVAILABLE
+    a_ids = assumed_ids or assumable_ids
+    assumption = {
+        "state": a_state,
+        "requested": bool(assume_reference_geometry),
+        "basis": a_basis if a_state != ASSUMPTION_UNAVAILABLE else None,
+        "map_count": len(a_ids),
+        "map_ids": a_ids,
+        "text": compose_assumption_offer(a_state, len(a_ids), a_basis),
+    }
+
     return {
         "unit": {"rule": rule.get("name"), "decision_key": dict(key_values or {}),
                  "source_table": src_table, "map_table": map_table,
@@ -1145,12 +1404,23 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             "usable_map_count": stats.get("source_maps_usable", 0),
             "cell_count": sum(len(sm["cells"]) for sm in source_maps),
             "cells": pooled, "truncated": src_truncated, "cell_cap": cell_cap,
+            # `geometry`는 **이 맵이 스스로 말하는 기하 출처**이고 `geometry_basis`는
+            # **이번 실행이 실제로 무엇 위에 올렸나**다. 둘을 한 필드로 접으면 가정이
+            # 선언처럼 보이거나(I4) 가정이 사라진다. 뒤엣것의 철자는 `geometry_basis_of`
+            # 하나이고 확정 기록도 같은 함수를 부른다.
             "maps": [dict({"map_id": sm["map_id"], "cell_count": len(sm["cells"])},
                           declared_frame=_df(sm)["frame"],
-                          declared_frame_source=_df(sm)["source"])
+                          declared_frame_source=_df(sm)["source"],
+                          geometry=map_overlay.geometry_declaration(sm.get("meta")),
+                          geometry_basis=geometry_basis_of(
+                              sm.get("meta"),
+                              None if sm["map_id"] in _aligned else "not_aligned"))
                      for sm in source_maps],
         },
         "candidates": candidates,
+        # [D3] 가정은 **판정 옆이 아니라 판정과 함께** 산다. `ruling.geometry_assumed`가
+        # 판정 자신의 사실이고, 이 블록은 그 가정의 내용(무엇에서, 몇 장, 제안인가)이다.
+        "assumption": assumption,
         # 적혀 있는 것. **결정이 아니다** (§declared_frame_of).
         "declaration": {
             "frames": dict(tally),
@@ -1640,6 +1910,16 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
                   and map_overlay.geometry_declaration(metas[m])
                   == map_overlay.GEOMETRY_DECLARED]
         u["usable_map_count"] = len(usable)
+        # [D3] **가정으로 열릴 수 있는 맵의 수** - 기하 선언은 없지만 격자 치수는 있어서
+        # 바닥을 꽂으면 「같은 웨이퍼」 가정 아래 채점되는 맵들이다(스펙 §9ⓐ).
+        # 🔴 `state`·`reason_code`는 **건드리지 않는다.** 목록은 바닥을 풀지 않은 채로
+        #    이 수를 세므로 「가정이 실제로 걸린다」고 말할 수 없다 - 그것은 상세가 바닥을
+        #    풀고 나서야 아는 사실이다. 여기서 상태를 바꾸면 목록이 상세보다 많이 주장한다.
+        u["assumable_map_count"] = sum(
+            1 for m in ids
+            if metas.get(m) is not None
+            and map_overlay.geometry_declaration(metas[m]) != map_overlay.GEOMETRY_DECLARED
+            and map_overlay.grid_dims(metas[m]) is not None)
         header = live.get(u["unit_key"])
         u["confirmation"] = (None if header is None else {
             "version": header.version,

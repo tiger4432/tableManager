@@ -193,9 +193,13 @@ SYSTEM_TABLE_COLUMNS = {
     "file_ingestion_checkpoints": ('chunk_index', 'file_signature', 'filename', 'filepath', 'id', 'note', 'processed_rows', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'updated_at'),
     "file_ingestion_logs": ('created_at', 'error_message', 'filename', 'filepath', 'id', 'retry_count', 'status', 'table_name', 'updated_at'),
     # new table this round - created whole by create_all, no ordering hazard
-    "frame_confirmation": ('confirmation_uid', 'confirmed_at', 'confirmed_by', 'core_frame', 'decision_key', 'discriminating', 'dt_eqp', 'dt_frame', 'enrichment_row_id', 'id', 'margin', 'product', 'reference_map_id', 'reference_table', 'rule_name', 'ruling_reason', 'ruling_state', 'superseded_by', 'supersedes_uid', 'unit_key', 'version', 'weakest_priority', 'weakest_source', 'winner_frame'),
+    # geometry_assumed: migrations/add_frame_confirmation.py (spec MAP_ALIGNMENT 9a - which
+    # confirmations rest on a borrowed wafer spec)
+    "frame_confirmation": ('confirmation_uid', 'confirmed_at', 'confirmed_by', 'core_frame', 'decision_key', 'discriminating', 'dt_eqp', 'dt_frame', 'enrichment_row_id', 'geometry_assumed', 'id', 'margin', 'product', 'reference_map_id', 'reference_table', 'rule_name', 'ruling_reason', 'ruling_state', 'superseded_by', 'supersedes_uid', 'unit_key', 'version', 'weakest_priority', 'weakest_source', 'winner_frame'),
     # new table this round - created whole by create_all, no ordering hazard
-    "frame_confirmation_source": ('agreement', 'applied_frame', 'confirmation_uid', 'discriminating', 'excluded_reason', 'id', 'map_id', 'role', 'shift_dx', 'shift_dy', 'source_name', 'source_priority', 'source_table'),
+    # geometry_basis: migrations/add_frame_confirmation.py (same round - which SOURCE stood
+    # on the borrowed spec, since the header flag alone cannot name it)
+    "frame_confirmation_source": ('agreement', 'applied_frame', 'confirmation_uid', 'discriminating', 'excluded_reason', 'geometry_basis', 'id', 'map_id', 'role', 'shift_dx', 'shift_dy', 'source_name', 'source_priority', 'source_table'),
     "graph_edges": ('created_at', 'event_time', 'from_node', 'id', 'props', 'source_name', 'source_row_ref', 'to_node', 'type', 'updated_by'),
     "graph_nodes": ('created_at', 'id', 'identity_key', 'label', 'props', 'updated_at'),
     "graph_sync_state": ('id', 'last_outbox_id', 'updated_at'),

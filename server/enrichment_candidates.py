@@ -44,6 +44,16 @@ ABSENCE IS NOT ZERO (the refusal rules)
       clipped read can FOLD back down to a single value under
       `crud.clean_str_value`, so the truncation has to refuse on its own rather
       than trust the `ambiguous` count.
+      🔴 EACH ONE NAMES THE CAP THAT CUT IT [2026-08-05, live incident]. Three
+      different numbers were all called `limit` - the CLI's key budget, the
+      view's display row limit, and a module constant no operator could reach -
+      and the refusal named none of them. Told to "raise the limit", the operator
+      raised the only one within reach, which touches no read, and nothing
+      changed. So a truncation now carries `cap` (its config name), `cap_value`,
+      `cap_declared`, `cap_home` (the file and key to edit), and
+      `expected_if_raised`: `ambiguous` when this read ALREADY holds >= 2 distinct
+      values (a bigger cap renames the refusal, it does not resolve it), else
+      `unknown`. A refusal that names no repair sends someone to a person.
     - `cell_has_provenance` -> the target cell already has a CellSource row
       from ANY writer. A human who deliberately cleared a value has said "not
       this"; re-confirming over that would erase a judgement. This is stricter
@@ -189,24 +199,39 @@ REASON_MISSING_BIND = "missing_bind"
 REASON_CANDIDATE_COLUMN_MISSING = "candidate_column_missing"
 REASON_CELL_HAS_PROVENANCE = "cell_has_provenance"
 REASON_OVER_CAP = "over_cap"
-# The probe hit `enrichment_config.CANDIDATE_PROBE_MAX_ROWS`, so the read is
+# The probe's ROW scan hit `enrichment_read_caps.probe_scan_rows`, so the read is
 # TRUNCATED. "Exactly one candidate" is not provable from a truncated read - the
 # unread remainder may hold the contradiction. Same posture as `view_error`: an
 # incompletely evaluated view is UNKNOWN, not empty.
 REASON_PROBE_TRUNCATED = "probe_truncated"
-# The probe returned more DISTINCT groups than the view's `limit`, so the GROUP BY
+# The probe returned more DISTINCT groups than `enrichment_read_caps
+# .probe_distinct_values` (undeclared: the view's own row `limit`), so the GROUP BY
 # result itself was clipped. The same fact as `probe_truncated` one axis over - an
 # incomplete read - and therefore the same named refusal, not a hint.
 #
-# It used to carry no error at all, on the reasoning that ">limit distinct values
+# It used to carry no error at all, on the reasoning that ">cap distinct values
 # is >=2, which the ambiguous branch already names correctly". That reasoning
 # ignores this function's OWN `clean_str_value` folding (2026-07-30 QA, at the
-# default CANDIDATE_PROBE_MAX_ROWS with a legal `limit: 1`):
+# shipped scan cap with a legal `limit: 1`):
 #     pairs [('WF01', 1), ('WF01 ', 1)] -> folds to {'WF01'} -> verdict `single`
 #     truth: two candidates (WF01, WF02); WF02 sat in the clipped group.
 # So a clipped read could fold back down to one value and be auto-confirmed. That
 # is the same lie the truncation rules exist to prevent, one layer down.
 REASON_DISTINCT_TRUNCATED = "distinct_truncated"
+
+# WHAT A BIGGER CAP WOULD ACTUALLY DO  [2026-08-05, user ruling]
+# "Raise it" and "a person has to decide" are different repairs, and a refusal
+# that offers only the first sends operators to turn a knob that cannot help.
+# The probe already knows enough to tell them apart WITHOUT another query: the
+# values it DID read are a lower bound on the distinct values that exist.
+#   - >= 2 distinct canonical values already in hand -> raising the cap cannot
+#     produce `single`. It converts this refusal into `ambiguous`, which is a
+#     human judgement, not a setting.
+#   - <= 1 so far -> genuinely unknown. The clipped remainder may agree (the cap
+#     was the whole problem) or may hold the contradiction. Say so; do not
+#     promise the operator a resolution the read cannot support.
+EXPECT_AMBIGUOUS = "ambiguous"
+EXPECT_UNKNOWN = "unknown"
 
 _warned_once = set()
 
@@ -312,6 +337,31 @@ def _refused(target_field, reason, **extra):
     return out
 
 
+def _truncation_error(label, reason, cap_key, cap_value, cap_declared, read, distinct_so_far):
+    """One truncation refusal that names its own repair.
+
+    Every field here exists because it was missing on 2026-08-05: the operator
+    was told a read was clipped, was not told WHICH of three numbers spelled
+    `limit` clipped it, raised the one they could reach (the CLI key budget,
+    which touches no read), and nothing changed.
+    """
+    import enrichment_config
+
+    return {
+        "label": label,
+        "reason": reason,
+        "detail": read,
+        # The cap by the name it has in config - never "limit".
+        "cap": cap_key,
+        "cap_value": cap_value,
+        "cap_declared": bool(cap_declared),
+        "cap_home": enrichment_config.read_cap_home(cap_key),
+        "expected_if_raised": (EXPECT_AMBIGUOUS if distinct_so_far >= 2
+                               else EXPECT_UNKNOWN),
+        "distinct_values_read": distinct_so_far,
+    }
+
+
 def _diagnose_probe_failure(db, view: dict, column: str, key_values: dict) -> str:
     """Why did the grouped probe fail - a missing COLUMN, or a broken VIEW?
 
@@ -335,7 +385,8 @@ def _diagnose_probe_failure(db, view: dict, column: str, key_values: dict) -> st
     return REASON_VIEW_ERROR if column in columns else REASON_CANDIDATE_COLUMN_MISSING
 
 
-def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str) -> dict:
+def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str,
+                             caps: dict = None) -> dict:
     """THE predicate: does exactly one candidate exist for this (key, field)?
 
     Returns a dict; `status` is `single` (safe to confirm) or `refused` (with a
@@ -370,10 +421,15 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
       - `no_decision_key` (below): nothing survives at all.
     `partial_key` rides on the result so the caller can STAMP the write; it never
     changes `status`. Blocking is not what the fact is for.
+
+    `caps`: the read-cap snapshot (`enrichment_config.load_read_caps`). Passed in
+    from the work-unit boundary so every key in one sweep is measured against the
+    same ceilings; loaded here only when a caller has none.
     """
     import enrichment_config
     from database import crud
 
+    caps = caps if caps is not None else enrichment_config.load_read_caps()
     views = declaring_views(rule, target_field)
     if not views:
         return _refused(target_field, REASON_NOT_DECLARED)
@@ -401,33 +457,48 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
             errors.append({"label": label, "reason": REASON_MISSING_BIND, "detail": missing})
             continue
         try:
-            probe = enrichment_config.execute_candidate_probe(db, view, column, key_values)
+            probe = enrichment_config.execute_candidate_probe(db, view, column, key_values,
+                                                              caps=caps)
         except enrichment_config.ReferenceViewError as e:
             errors.append({"label": label,
                            "reason": _diagnose_probe_failure(db, view, column, key_values),
                            "detail": str(e)})
             continue
         hits = 0
+        # This view's OWN folded values. Kept separate from the cross-view `values`
+        # tally because a truncation is one view's fact: what a bigger cap would do
+        # is decided by what THAT read already saw, not by what a sibling view
+        # contributed.
+        view_values = set()
         for raw, count in probe["pairs"]:
             val = crud.clean_str_value(raw)
             if val == "":
                 continue
             values[val] = values.get(val, 0) + count
+            view_values.add(val)
             hits += count
         evidence.append({"label": label, "rows": probe["scanned"],
                          "distinct_values": len(probe["pairs"]),
                          "candidate_rows": hits,
-                         "distinct_truncated": probe["distinct_truncated"]})
+                         "distinct_truncated": probe["distinct_truncated"],
+                         "scan_rows_cap": probe["scan_rows_cap"],
+                         "distinct_values_cap": probe["distinct_values_cap"]})
         # Both truncations are the SAME fact - the read is incomplete - so both
         # are named refusals. Neither can be left to the `ambiguous` branch: the
-        # folding two lines above can collapse a clipped result back to one
-        # value (see REASON_DISTINCT_TRUNCATED).
+        # folding above can collapse a clipped result back to one value (see
+        # REASON_DISTINCT_TRUNCATED). Each one now names WHICH cap cut it, where
+        # that cap is set, and whether raising it can even help.
         if probe["row_truncated"]:
-            errors.append({"label": label, "reason": REASON_PROBE_TRUNCATED,
-                           "detail": probe["scanned"]})
+            errors.append(_truncation_error(
+                label, REASON_PROBE_TRUNCATED,
+                enrichment_config.CAP_PROBE_SCAN_ROWS, probe["scan_rows_cap"],
+                probe["scan_rows_cap_declared"], probe["scanned"], len(view_values)))
         if probe["distinct_truncated"]:
-            errors.append({"label": label, "reason": REASON_DISTINCT_TRUNCATED,
-                           "detail": len(probe["pairs"])})
+            errors.append(_truncation_error(
+                label, REASON_DISTINCT_TRUNCATED,
+                enrichment_config.CAP_PROBE_DISTINCT_VALUES, probe["distinct_values_cap"],
+                probe["distinct_values_cap_declared"], len(probe["pairs"]),
+                len(view_values)))
     distinct = sorted(values)
 
     # An unevaluated view is UNKNOWN, not empty: refuse even when the surviving
@@ -494,8 +565,29 @@ def _bump_target(st: dict, field: str, reason=None):
     st["refused"][reason] = st["refused"].get(reason, 0) + 1
 
 
+def _record_cap_hit(st: dict, res: dict):
+    """Roll this verdict's truncations up into the stats, BY CAP NAME.
+
+    A census of `distinct_truncated=76` tells an operator a read was clipped 76
+    times and nothing about what to do. Keyed by cap it says which number, what
+    it is set to, whether anyone set it, and how the 76 split between "a bigger
+    cap resolves this" and "a bigger cap just renames it `ambiguous`". Those are
+    two different instructions and they must not arrive as one total.
+    """
+    for err in res.get("errors") or []:
+        if not err.get("cap"):
+            continue
+        slot = st["cap_hits"].setdefault(err["cap"], {
+            "cap_value": err["cap_value"], "cap_declared": err["cap_declared"],
+            "cap_home": err["cap_home"], "hits": 0,
+            EXPECT_AMBIGUOUS: 0, EXPECT_UNKNOWN: 0, "max_read": 0})
+        slot["hits"] += 1
+        slot[err["expected_if_raised"]] += 1
+        slot["max_read"] = max(slot["max_read"], err.get("detail") or 0)
+
+
 def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
-                 stats: dict = None, tx_prefix: str = None) -> dict:
+                 stats: dict = None, tx_prefix: str = None, caps: dict = None) -> dict:
     """Resolve + (optionally) write single candidates for a set of derived rows.
 
     `keyed_rows`: [{"row_id":..., "business_key_val":..., "keys": {col: val},
@@ -532,7 +624,9 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                 so that work reported as a thousand rows still queued.
     """
     from database import crud, schemas
+    import enrichment_config
 
+    caps = caps if caps is not None else enrichment_config.load_read_caps()
     st = stats if stats is not None else {}
     st.setdefault("keys_examined", 0)
     st.setdefault("confirmed", 0)
@@ -549,6 +643,9 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
     st.setdefault("rows_unconfirmed", 0)
     # COLUMN grain: {target_field: {"confirmed": n, "refused": {reason: n}}}.
     st.setdefault("per_target", {})
+    # CAP grain: {cap_name: {cap_value, cap_declared, cap_home, hits, ambiguous,
+    # unknown, max_read}} - what to turn, and whether turning it would help.
+    st.setdefault("cap_hits", {})
 
     derived_table = rule["derived_table"]
     target_fields = candidate_target_fields(rule)
@@ -596,12 +693,14 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                 _bump_target(st, field, REASON_CELL_HAS_PROVENANCE)
                 continue
             st["keys_examined"] += 1
-            res = resolve_target_candidate(db, rule, entry.get("keys") or {}, field)
+            res = resolve_target_candidate(db, rule, entry.get("keys") or {}, field,
+                                           caps=caps)
             if res["status"] != STATUS_SINGLE:
                 # This column stays blank and its reason is recorded AGAINST THE
                 # COLUMN. The row carries on: a sibling column with unanimous
                 # candidates is still determined.
                 _bump_target(st, field, res["reason"])
+                _record_cap_hit(st, res)
                 continue
             _bump_target(st, field, None)
             updates[field] = res["value"]
@@ -679,6 +778,19 @@ def log_stats(rule_name: str, st: dict, apply: bool):
                 + (", " + ", ".join(f"{r}={n}" for r, n in sorted(s["refused"].items()))
                    if s["refused"] else "")
                 for f, s in sorted(per_target.items())))
+    # A third line, only when a cap actually clipped something. It names the cap,
+    # its value, whether anyone declared it, and where to set it - because the
+    # 2026-08-05 incident was an operator raising a DIFFERENT number that shared
+    # the word `limit`, and no message here told them there were three.
+    for cap, s in sorted((st.get("cap_hits") or {}).items()):
+        logger.warning(
+            "[Enrichment:%s] auto-confirm: %d read(s) clipped by '%s'=%s (%s; largest "
+            "read %s). Raising it would turn %d into an AMBIGUOUS judgement (a person "
+            "decides, not a knob) and %d are unknowable until the read completes. "
+            "Set it at: %s",
+            rule_name, s["hits"], cap, s["cap_value"],
+            "declared" if s["cap_declared"] else "NOT declared - this is the shipped value",
+            s["max_read"], s[EXPECT_AMBIGUOUS], s[EXPECT_UNKNOWN], s["cap_home"])
 
 
 class AutoConfirmCollector:
@@ -701,7 +813,11 @@ class AutoConfirmCollector:
         self.active = False
         self.rule = None
         self.entries = {}   # business_key_val -> {"keys": {...}}
-        self._cap = DEFAULT_MAX_KEYS_PER_UNIT
+        self._max_keys = DEFAULT_MAX_KEYS_PER_UNIT
+        # Read caps come from the SAME settings snapshot as the knobs, taken once
+        # here at the work-unit boundary (D1). One file read, one set of ceilings
+        # for the whole transaction group.
+        self._caps = None
 
         settings = settings if settings is not None else _load_ingestion_settings()
         if not global_auto_confirm_enabled(settings):
@@ -723,8 +839,10 @@ class AutoConfirmCollector:
                     "DECLARED candidate column - it never guesses one.",
                     r.get("name"), RULE_KNOB)
                 continue
+            import enrichment_config
             self.rule = r
-            self._cap = max_keys_per_unit(settings)
+            self._max_keys = max_keys_per_unit(settings)
+            self._caps = enrichment_config.load_read_caps(settings)
             self.active = True
             return
 
@@ -776,9 +894,9 @@ class AutoConfirmCollector:
 
         bks = list(self.entries)
         over_cap = 0
-        if len(bks) > self._cap:
-            over_cap = len(bks) - self._cap
-            bks = bks[:self._cap]
+        if len(bks) > self._max_keys:
+            over_cap = len(bks) - self._max_keys
+            bks = bks[:self._max_keys]
 
         # Fetch row_id + current target values for the collected keys, batched on
         # the indexed business_key_val column. Only rows whose target is
@@ -801,13 +919,15 @@ class AutoConfirmCollector:
         stats = {"refused": {REASON_OVER_CAP: over_cap} if over_cap else {}}
         if keyed_rows:
             confirm_keys(db, self.rule, keyed_rows, apply=True, stats=stats,
-                         tx_prefix=SOURCE_NAME)
+                         tx_prefix=SOURCE_NAME, caps=self._caps)
         if over_cap:
             logger.warning(
-                "[Enrichment:%s] %d decision key(s) beyond the per-unit cap (%s=%d) were "
-                "NOT probed - they stay in the worklist. Raise the cap or let the next "
-                "ingestion pick them up.",
-                self.rule.get("name"), over_cap, MAX_KEYS_SETTINGS_KEY, self._cap)
+                "[Enrichment:%s] %d decision KEY(s) beyond the per-unit key budget "
+                "('%s'=%d) were NOT probed - they stay in the worklist. This budget "
+                "bounds HOW MANY KEYS are examined; it does not widen any single read "
+                "(that is enrichment_read_caps.probe_scan_rows / probe_distinct_values). "
+                "Raise it or let the next ingestion pick them up.",
+                self.rule.get("name"), over_cap, MAX_KEYS_SETTINGS_KEY, self._max_keys)
         if stats.get("confirmed") or stats.get("refused"):
             log_stats(self.rule.get("name"), stats, apply=True)
         return stats

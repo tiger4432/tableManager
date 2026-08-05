@@ -430,10 +430,54 @@ export function bootstrap(deps) {
     setAttrText(doc, sel, Number(value));
   }
 
+  /**
+   * 🔴 THE PAGE PUBLISHES THE SOURCE ROW AND ITS EIGHT CANDIDATE CONTROLS INSIDE A `<template>`,
+   *    AND NOTHING WAS CLONING IT. Measured on the live page: `[data-me2-candidate]` matched
+   *    ZERO nodes and `[data-me2-candidates-for]` matched zero containers, while the template's
+   *    own content held all eight. Template content is inert -- it is not in the document, CSS
+   *    does not reach it and `querySelectorAll` does not see it -- so no amount of correct view
+   *    model could put a candidate on screen. That is the other half of "a tie showed nothing".
+   *
+   *    This clones the page's OWN markup and fills in exactly the fields the wiring contract
+   *    above the template names (`data-source-field`, `aria-controls`, the grid's `id`). It
+   *    invents no container, no class and no ordering, which is the same rule `fillGrid`
+   *    follows. `data-me2-candidates-for` is left as the page authored it: which key a grid
+   *    carries is the markup lane's model to state, and guessing one here would be this file
+   *    asserting a per-column-set layout nobody declared.
+   *
+   *    The cross-source row is the (N+1)th and stays last, so clones go in ahead of it.
+   */
+  function ensureSourceRows(sources) {
+    const tpl = doc.getElementById('me2-source-row-template');
+    const list = el.sourceList;
+    if (!list || !tpl || !tpl.content || typeof tpl.content.cloneNode !== 'function') return;
+    const known = new Set(queryAll(doc, '[data-me2-source]')
+      .map(r => r.getAttribute('data-source-field')));
+    const cross = queryAll(list, '[data-me2-source]')
+      .find(r => r.getAttribute('data-source-field') === CROSS_SOURCE_ROW_ID) || null;
+    for (const src of sources) {
+      if (!src || !src.id || known.has(src.id)) continue;
+      const frag = tpl.content.cloneNode(true);
+      const row = frag.querySelector ? frag.querySelector('[data-me2-source]') : null;
+      const grid = frag.querySelector ? frag.querySelector('[data-me2-candidates-for]') : null;
+      if (!row || !grid) return;
+      const gridId = `me2-cands-${String(src.id).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+      row.setAttribute('data-source-field', src.id);
+      row.setAttribute('aria-controls', gridId);
+      grid.setAttribute('id', gridId);
+      // Which source this grid belongs to, so the accordion can show one at a time without
+      // this file re-deriving the pairing from an id string on every render.
+      grid.setAttribute('data-me2-cands-source', src.id);
+      if (cross) list.insertBefore(frag, cross); else list.appendChild(frag);
+      known.add(src.id);
+    }
+  }
+
   function renderSources(vm) {
     const payload = session.payload;
     const sources = payload && Array.isArray(payload.sources) ? payload.sources : [];
     text(el.sourcesMeta, sources.length > 0 ? `출처 ${sources.length}개` : '출처 없음');
+    ensureSourceRows(sources);
 
     const rows = queryAll(doc, '[data-me2-source]');
     for (const row of rows) {
@@ -486,15 +530,31 @@ export function bootstrap(deps) {
     //    it. When no grid carries the active key -- which is the case until that lane re-keys
     //    them -- every candidate control on the page is treated as the one grid, so a
     //    half-migrated page renders exactly as it did rather than going blank.
+    //
+    // 🔴 THE EIGHT ARE NOT GATED ON A COLUMN KEY, AND THAT GATE IS WHY A TIE SHOWED NOTHING.
+    //    The page ships the grid `hidden` with `data-me2-candidates-for=""`, and the only
+    //    branch that ever unhid it was guarded by `if (activeKey && ...)`. Until a coordinate
+    //    pair resolves -- which never happens on a server whose `/schema` and reference routes
+    //    are not reachable -- `columnKey` returns `''`, the guard never runs, and eight controls
+    //    the markup had already authored stayed invisible. A key decides WHICH grid is the
+    //    active one; it does not decide whether the operator may see the candidate set at all.
     const activeKey = columnKey(session.question && session.question.columns);
     const grids = queryAll(doc, '[data-me2-candidates-for]');
     const keyed = grids.filter(g => g.getAttribute('data-me2-candidates-for') === activeKey);
-    if (activeKey && grids.length > 0) {
-      for (const g of grids) {
-        const mine = g.getAttribute('data-me2-candidates-for') === activeKey;
-        g.hidden = !mine && keyed.length > 0;
-        if (mine && queryAll(g, '[data-me2-candidate]').length === 0) fillGrid(g, vm);
-      }
+    const drawnSource = pickSource(session.payload, session.focusedSourceId);
+    const activeSourceId = drawnSource ? drawnSource.id : null;
+    for (const g of grids) {
+      // A grid cloned for a source belongs to that source: one open at a time, and the one
+      // that is open is the one whose cells the picture is drawing. There is always exactly
+      // one, because `pickSource` falls back to the first source rather than to nothing.
+      const paired = g.getAttribute('data-me2-cands-source');
+      // When no grid carries the active key, every candidate control on the page IS the one
+      // grid -- a half-migrated page renders exactly as it did rather than going blank.
+      const mine = paired
+        ? paired === activeSourceId
+        : (keyed.length > 0 ? g.getAttribute('data-me2-candidates-for') === activeKey : true);
+      g.hidden = !mine;
+      if (mine && queryAll(g, '[data-me2-candidate]').length === 0) fillGrid(g, vm);
     }
     const scope = keyed.length > 0 ? keyed : [doc];
     for (const host of scope) {
@@ -504,6 +564,16 @@ export function bootstrap(deps) {
       if (!card) continue;
       cell.setAttribute('aria-pressed', String(card.selected));
       cell.disabled = card.inert;
+      // 🔴 EQUAL SCORES MUST BE VISIBLY EQUAL. Eight rows reading the same two numbers is the
+      //    honest picture of a tie, and it is the only thing that lets the operator check the
+      //    claim instead of believing it. Written into the `[data-me2-cand-*]` spans INSIDE
+      //    `.me2-num`, never into `.me2-num` itself -- the three-sibling pattern is what keeps
+      //    the computing and unscorable states from leaking a stale numeral. And written only
+      //    when there IS a measured number: never blanked, never given a `0` stand-in.
+      if (card.agree !== null && card.discriminating !== null) {
+        setChildText(cell, '[data-me2-cand-agree]', card.agree);
+        setChildText(cell, '[data-me2-cand-discriminating]', card.discriminating);
+      }
       const tags = cell.querySelector ? cell.querySelector('[data-me2-cand-tags]') : null;
       if (tags) {
         tags.textContent = '';
@@ -590,6 +660,14 @@ export function bootstrap(deps) {
     //    the caption and the inline meta one-line with ellipsis, and deleted the cause node
     //    outright. Anything not logged here whole is not moved to the console, it is DESTROYED.
     if (vm.cause && vm.cause.detail) lines.push(vm.cause.detail);
+    // 🔴 THE SERVER'S SENTENCE SURVIVES A SCORED STATE. On a tie `/view` sends both a
+    //    `no_winner` state and a refusal sentence, and the cause line shows the TOKEN there
+    //    because the token names the repair (`대칭 기준` and `기준 값 없음` are repaired
+    //    differently). The sentence is the server's own words about the same run, so it goes
+    //    here whole rather than being dropped: one line on screen, the record in the console.
+    const servedRefusal = session.payload && session.payload.refusal_detail
+      ? String(session.payload.refusal_detail) : '';
+    if (servedRefusal && !(vm.cause && vm.cause.detail === servedRefusal)) lines.push(servedRefusal);
     if (vm.cause && vm.cause.token) {
       lines.push(vm.cause.count === null ? vm.cause.token : `${vm.cause.token} (${vm.cause.count})`);
     }
@@ -634,10 +712,15 @@ export function bootstrap(deps) {
     if (vm.picture === 'skeleton' || vm.picture === 'empty') return null;
 
     const payload = session.payload;
+    if (!payload) return null;
+    // 🔴 NO EARLY RETURN AHEAD OF THE FLOOR. This read `if (!source) return null` before the
+    //    floor was ever computed, so a resolved reference with nothing seated on it drew an
+    //    empty stage -- a picture that says "there are no dies here" about a reference that
+    //    served 425 of them. The floor is drawn because it RESOLVED, not because something
+    //    else also arrived.
     const source = pickSource(payload, session.focusedSourceId);
-    if (!source) return null;
 
-    const candidateId = vm.selectedCandidateId || source.stored_candidate_id;
+    const candidateId = vm.selectedCandidateId || (source && source.stored_candidate_id);
     const axes = parseCandidateId(candidateId) || { rotation: 0, side: 'front' };
     const dims = payload.dims || { cols: gridSpan(payload, 'x'), rows: gridSpan(payload, 'y') };
     const frame = {
@@ -650,12 +733,27 @@ export function bootstrap(deps) {
     // precisely what makes it evidence.
     const floorFrame = { ...frame, rotation: 0, side: 'front' };
     const floor = computeSeating(payload.floor_cells || [], floorFrame);
-    const seated = computeSeating(source.cells || [], frame);
+    const seated = source ? computeSeating(source.cells || [], frame) : null;
 
     if (vm.picture === 'alone') {
-      const layout = layoutFor(seated.bounds, STAGE);
-      drawSeats(el.layerAlone, seated.seats, layout, 'me2-cell-alone');
-      return { pxPerDie: layout.cell };
+      // 🔴 THE FLOOR STILL DRAWS HERE, INTO THE LAYER THIS STATE ACTUALLY SHOWS. The stylesheet
+      //    displays only `#me2-layer-alone` while the workbench reads `unscorable`
+      //    (`map_editor2.css`), so putting the floor in `#me2-layer-floor` would be drawing it
+      //    into a hidden `<g>`. Its whole purpose is to be looked at: whether the reference
+      //    resolved is a fact about the data, and no verdict may switch it off. Floor first so
+      //    the source reads as the figure on top of it, which is the same order the comparison
+      //    picture uses.
+      const layout = layoutFor(unionBounds(floor.bounds, seated ? seated.bounds : null), STAGE);
+      let drawnAlone = drawSeats(el.layerAlone, floor.seats, layout, 'me2-cell-floor');
+      if (seated) drawnAlone += drawSeats(el.layerAlone, seated.seats, layout, 'me2-cell-alone');
+      return { pxPerDie: layout.cell, drawn: drawnAlone };
+    }
+
+    if (!seated) {
+      // A floor with nothing seated on it is still the thing the operator asked to look at.
+      const layout = layoutFor(floor.bounds, STAGE);
+      const drawnFloor = drawSeats(el.layerFloor, floor.seats, layout, 'me2-cell-floor');
+      return { pxPerDie: layout.cell, drawn: drawnFloor };
     }
 
     const layout = layoutFor(unionBounds(floor.bounds, seated.bounds), STAGE);

@@ -69,6 +69,12 @@ export const REF_NONE = 'none';
 export const REF_OCCUPANCY = 'occupancy';
 export const REF_VALUES = 'values';
 
+// What the PAYLOAD said it did, in the payload's own spelling. Declared beside the one branch
+// that reads them, same discipline as the reference kinds above: this file never computes a
+// state, it reads the one the server put on the wire.
+export const STATE_SCORED = 'scored';
+export const STATE_NO_WINNER = 'no_winner';
+
 export const VERDICT = Object.freeze({
   WINNER: 'winner',
   INDISTINGUISHABLE: 'indistinguishable',
@@ -156,8 +162,27 @@ export function degradationFor(verdict) {
 export function decideVerdict(scorings, thresholds, context) {
   const ctx = context || {};
 
+  // 🔴 A REFUSAL SENTENCE IS NOT A REFUSAL EVENT, AND READING IT AS ONE EMPTIED THE SCREEN.
+  //    MEASURED on the wire (`/api/maps/alignment/view`, dt_log against `valid_die_ref:TEST_TEST`):
+  //    `state: "no_winner"` arrives TOGETHER WITH `refusal: "동점 - 판별 불가"`, eight scored
+  //    candidates and 425 reference cells. `compose_refusal` is called for every state
+  //    (`server/map_alignment.py:1234`), so on a tie the sentence explains WHY NOTHING WON --
+  //    it is not the server declining to score. Treating it as a refusal flipped the verdict to
+  //    NOT_SCORABLE, and from that one flip followed everything the operator reported: no
+  //    counts (`view_model.numerals`), eight inert cards, and the floor layer switched off in
+  //    favour of the source-alone picture. A verdict is a conclusion ABOUT the data; it may not
+  //    be a gate ON showing it.
+  //
+  //    So the sentence is CARRIED rather than obeyed, and it short-circuits only when the
+  //    server did NOT say it scored -- which is the case where `candidates` is empty anyway and
+  //    the refusal is the only thing there is to show. The server's own `state` is the
+  //    authority on whether scoring happened; re-deriving that from the presence of prose is
+  //    the client acquiring a second opinion about what the server meant.
   const detail = ctx.refusalDetail ? String(ctx.refusalDetail) : '';
-  if (detail) return frozen(VERDICT.NOT_SCORABLE, REASON.SERVER_REFUSED, { refusalDetail: detail });
+  const serverScored = ctx.serverState === STATE_SCORED || ctx.serverState === STATE_NO_WINNER;
+  if (detail && !serverScored) {
+    return frozen(VERDICT.NOT_SCORABLE, REASON.SERVER_REFUSED, { refusalDetail: detail });
+  }
   if (ctx.sourceRefusal) {
     return frozen(VERDICT.NOT_SCORABLE, REASON.SOURCE_REFUSED, { refusalDetail: String(ctx.sourceRefusal) });
   }
@@ -197,6 +222,10 @@ export function decideVerdict(scorings, thresholds, context) {
   const shared = {
     rankedIds, discriminating, marginDies, minMargin, minDiscriminating,
     blindCandidates: blind, reasons: Object.freeze(reasons.slice()),
+    // The server's sentence survives into every scored outcome. It is the only place the
+    // operator is told WHY nothing won in the server's own words, and a local re-spelling of
+    // it would be the two-spellings defect this file exists to avoid.
+    refusalDetail: detail || null,
   };
 
   if (reasons.includes(REASON.TOO_FEW_DISCRIMINATING)) {
