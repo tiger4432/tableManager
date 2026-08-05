@@ -17,7 +17,10 @@ THE TWO INVARIANTS THAT MUST NOT MOVE
 1. The result is an ASSUMPTION and never a declaration. It answers `geometry_declaration`
    as `assumed`, it carries `PHYS_ASSUMED_KEY` provenance, and nothing on this path writes
    to `wafer_map_metadata` (`test_nothing_on_this_path_writes_a_meta_row` runs the real DB
-   path and counts rows before and after).
+   path and counts rows before and after). ⚠️ `this path` means SCORING, and since
+   2026-08-06 that qualifier matters: a CONFIRMATION does write a metadata row and is a
+   different act (MAP_ALIGNMENT_SPEC 9.7 / `test_frame_confirmation_meta.py`). What stays
+   forbidden is an UNMARKED borrow reaching a stored row.
 2. An undeclared floor REFUSES - there is no eyeball-it fallback - and the refusal names
    THE FLOOR. The old behaviour turned every source map into `meta_missing`, which sends
    the operator to fix N source maps when the one thing needing a declaration is the single
@@ -540,7 +543,16 @@ def _meta_rows(db):
 def test_nothing_on_this_path_writes_a_meta_row(env):
     """THE line this change must not cross. If the borrowed spec ever reached
     `wafer_map_metadata` it would afterwards read as a value somebody measured, and nobody
-    could tell it was assumed. Counted against the real table, not asserted about the code."""
+    could tell it was assumed. Counted against the real table, not asserted about the code.
+
+    ⚠️ **THE SCOPE IS THIS PATH, AND SINCE 2026-08-06 THAT WORD IS LOAD-BEARING.** Scoring
+    is a READ and still writes nothing — that is what this counts. A confirmation is a
+    different act and DOES write a metadata row (MAP_ALIGNMENT_SPEC 9.7): the product owner
+    overturned the prohibition because a match against a product-specific reference is
+    evidence, and the row carries `phys_confirmed_from`/`frame_confirmed_from` with the
+    confirmation's identity so it can never read as something somebody measured. The half
+    of the old rule that survives is the half this test guards: an UNMARKED borrow reaches
+    no stored row. `test_frame_confirmation_meta.py` is the other side."""
     _seed(env)
     before = _meta_rows(env)
 

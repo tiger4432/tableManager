@@ -220,6 +220,32 @@ def test_a_usable_population_with_no_reference_is_unscorable_for_the_reference(e
     assert u["usable_map_count"] == 1
 
 
+def test_a_confirmed_geometry_counts_as_usable_and_is_not_offered_the_assumption(env):
+    """[D7] The list and the detail must not disagree about the same map.
+
+    A confirmed geometry is not `declared` — nobody measured this map — so a counter that
+    asks "is this declared?" calls it unusable AND offers to borrow for it, while the
+    detail scores it without borrowing anything (`phys_needs_basis` is False). Both
+    counters therefore ask the DETAIL's question, and this is the fixture that separates
+    the two questions: the meta below carries no `phys_*` declaration of its own beyond the
+    derived values and the marker, so `geometry_declaration` answers `confirmed`, not
+    `declared`.
+    """
+    confirmed = _meta()
+    confirmed[map_overlay.PHYS_CONFIRMED_KEY] = {
+        "table": map_overlay.VALID_DIE_TABLE, "map_id": "PRD_A",
+        "confirmation_uid": "fc_seed", "confirmed_by": "operator",
+        "confirmed_at": "2026-08-06T00:00:00+00:00"}
+    _seed_unit(env, "E1", "P1", ["J1"], meta_for={"J1": confirmed})
+
+    u = _wl(env)["units"][0]
+    assert map_overlay.geometry_declaration(confirmed) == map_overlay.GEOMETRY_CONFIRMED
+    assert map_overlay.geometry_declaration(confirmed) != map_overlay.GEOMETRY_DECLARED
+    assert u["usable_map_count"] == 1, "the list called a confirmed map unusable"
+    assert u["assumable_map_count"] == 0, \
+        "the list offered to borrow geometry for a map that already has confirmed geometry"
+
+
 def test_a_declared_but_unresolvable_reference_is_a_different_cause(env):
     """'no reference declared' and 'the declared reference does not resolve' need
     different repairs, so they cannot collapse into one code."""

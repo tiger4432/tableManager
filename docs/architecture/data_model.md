@@ -176,7 +176,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 | `frame_confirmation_source` | 소스 하나에 한 행 | **소스 목록** + 소스별 적용 프레임과 **시프트(dx, dy)** + 근거 개수 + 제외 사유 + **`geometry_basis`** |
 | `cell_sources.confirmation_uid` | 셀 | 파생 도장 — 「이 셀은 어느 확정 아래에서 만들어졌나」. NULL이 기존 전 행의 상태 |
 
-**소유자**: `server/frame_confirmation.py`(쓰기는 `record_confirmation` 하나) · 라우트 `POST /api/maps/alignment/confirm` · 모델 `server/database/models.py` · 스키마 `server/migrations/add_frame_confirmation.py` + `server/scripts/setup_db_performance.py` Step 3.10 · 회귀 그물 `server/tests/test_frame_confirmation.py`.
+**소유자**: `server/frame_confirmation.py`(쓰기는 `record_confirmation` 하나) · 라우트 `POST /api/maps/alignment/confirm` · 모델 `server/database/models.py` · 스키마 `server/migrations/add_frame_confirmation.py` + `server/scripts/setup_db_performance.py` Step 3.10 · 회귀 그물 `server/tests/test_frame_confirmation.py` + `server/tests/test_frame_confirmation_meta.py`(2026-08-06 [D7]).
 
 🔴 **결정 단위에 컬럼명을 적지 않습니다.** 단위의 정본은 규칙의 `decision_key` 선언이고, 저장은 `rule_name` + `unit_key`(그 규칙 파생 테이블의 `business_key_val`과 **같은 조립**: 선언된 `composite_key_separator`로 join) + `decision_key` JSON입니다. `dt_eqp`·`product` 컬럼은 첫 선언의 흔적으로 남아 있을 뿐 신규 코드의 단위가 아닙니다(추가 전용 규율이라 지우지 않고 NULL 허용으로 물러났습니다). 확정 대상도 마찬가지로 규칙의 `target_fields` 밖이면 거절합니다.
 
@@ -195,7 +195,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - 🔴 **자기 판정과 어긋나는 상태는 거절합니다.** 승자를 지명한 판정은 정의상 채점된 판정이고, 「채점 안 됨 + 승자 있음」은 명시로 도착한다고 참이 되지 않습니다.
 - ⚠️ **어휘의 정본은 `map_alignment` 하나입니다** — `frame_confirmation.accepted_ruling_states()`가 거기서 읽습니다(`_ASSUMED`·`bonding_plan`의 BINDING_* 블록과 같은 규율). 여기 철자를 복사하면 화면이 본 낱말과 기록된 낱말이 갈리는 날 양쪽 다 멀쩡해 보입니다.
 
-🔴 **`POST /api/maps/alignment/confirm`은 이 사슬에서 데이터베이스에 쓰는 유일한 요청입니다.** 같은 일을 하는 GET이 없고(404), 읽기 경로(`/api/maps/alignment/view`)에는 부작용이 없으며, 화면 쪽 arm-then-commit이 앞에 섭니다. **판정(`ruling`)과 소스 목록은 요청이 명시적으로 실어 옵니다** — 쓰기 경로가 재채점하면 조작자가 보고 결정한 것과 기록된 것이 갈릴 수 있고, 기록해야 하는 것은 조작자가 본 쪽입니다. 응답은 만들어진 기록 전체(`confirmation_uid`·`version` 포함)라 화면이 다시 조회할 필요가 없습니다. **WS 브로드캐스트는 없습니다**(총괄 결정 2026-08-05 — 듣는 쪽이 아직 없고 별도 결정입니다).
+🔴 **`POST /api/maps/alignment/confirm`은 이 사슬에서 데이터베이스에 쓰는 유일한 요청입니다.** (2026-08-06 [D7]부터 그 한 요청이 **표 두 개**에 씁니다 — 확정 기록과 `wafer_map_metadata`, **한 트랜잭션**으로. 아래 [D7] 문단이 그 계약의 정본입니다.) 같은 일을 하는 GET이 없고(404), 읽기 경로(`/api/maps/alignment/view`)에는 부작용이 없으며, 화면 쪽 arm-then-commit이 앞에 섭니다. **판정(`ruling`)과 소스 목록은 요청이 명시적으로 실어 옵니다** — 쓰기 경로가 재채점하면 조작자가 보고 결정한 것과 기록된 것이 갈릴 수 있고, 기록해야 하는 것은 조작자가 본 쪽입니다. 응답은 만들어진 기록 전체(`confirmation_uid`·`version` 포함)라 화면이 다시 조회할 필요가 없습니다. **WS 브로드캐스트는 없습니다**(총괄 결정 2026-08-05 — 듣는 쪽이 아직 없고 별도 결정입니다).
 
 ⚠️ **거절은 전부 무쓰기 경로입니다** — 결정키 미완·미선언 결정키·미선언 확정 대상·소스 없음·주체 없음·없는 규칙·**프레임 미명명**·**빈 프레임 값**·**미선언 판정 상태**·**판정과 어긋나는 상태**(뒤 넷은 2026-08-06 [D-1]/[D-2]). 소스 목록이 반쯤 들어간 확정은 목록이 있다고 주장하면서 틀린 목록을 주므로 없느니만 못합니다.
 
@@ -223,6 +223,20 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - 🔴 **요청이 이 값을 실어 오지 않습니다.** `record_confirmation`이 쓰기 시점에 유도합니다(`map_alignment.geometry_basis_of`). 클라가 보내면 그것이 같은 사실의 두 번째 철자이고, **낡은 클라 하나가 이 기록의 존재 이유를 통째로 흘립니다.** 이것은 「쓰기 경로에서 재채점하지 마라」와 어긋나지 않습니다 — 채점이 아니라 이미 DB에 있는 사실을 읽는 것이고, 질의는 **테이블마다 한 번**(+ 바닥 한 번)입니다.
 - 🔴 **유도 규칙에는 축이 둘입니다** (맵 정렬 스펙 [§9.5-bis](../spec/MAP_ALIGNMENT_SPEC.md), 2026-08-05). 「제외되지 않았는데 자기 기하가 선언이 아니면 빌린 기하 위에 선 것」은 빌림의 입구가 조건 하나이던 시절의 규칙이고, 지금은 **phys를 선언한 맵이 격자만 빌려** 통과할 수 있습니다. 그래서 읽는 사실이 **셋**입니다: 그 맵의 메타 · 제외됐는가 · **바닥의 메타**(격자를 빌렸는지는 소스 메타에 없고 소스와 바닥의 **차이**에만 있습니다). 바닥을 못 읽으면 phys 축만 보는 옛 답으로 퇴화합니다 — 바닥 조회 실패가 확정 기록 전체를 죽이지는 않습니다.
 - ⚠️ **제외된 소스는 `assumed`가 아닙니다.** 어디에도 정렬되지 않았으므로 자기 토큰(`auto_registered`·`absent`…)을 그대로 갖습니다 — 일어나지 않은 일에 근거를 붙이면 이 컬럼이 답해야 할 질문의 답이 부풀려집니다.
+
+🔴 **확정은 `wafer_map_metadata`까지 갑니다 — 사슬의 종점이고, 이것이 §9.1의 금지를 뒤집었습니다** (2026-08-06, 제품 소유자 확정, 맵 정렬 스펙 [§9.7](../spec/MAP_ALIGNMENT_SPEC.md)). 종전에 사슬은 이 표에서 끊겼고, 바로 위 문단의 「빌린 값은 어디에도 저장되지 않지만」은 **그 절반이 더 이상 참이 아닙니다.**
+
+- **근거가 금지보다 셉니다**: 유효 다이 맵은 **제품 규격마다 다르므로**, 어떤 소스 맵이 특정 유효 다이 맵과 **일치한다**는 것은 같은 제품 규격이라는 뜻이고 따라서 웨이퍼·칩 기하가 같습니다. **일치가 곧 증거**이고, 제품별 기준에 대고 맞춰 본 정렬은 가정이 아니라 **파생**입니다. 금지가 막던 것은 **표지 없는** 빌림이었고 그 금지는 지금도 유효합니다.
+- **일곱 번째 토큰 `confirmed`** — 서열은 `declared`와 `assumed` **사이**입니다. `geometry_computable`은 근거로 받아들이고 `geometry_declaration`은 **`declared`가 아니라고** 답합니다(이 맵을 잰 사람은 없습니다). 🔴 **이 토큰이 없으면 확정이 관측 불가능해집니다 — 실측입니다**: 씨앗 단위의 확정 승자가 `rot0_front`, 즉 정확히 무증거 삼중항이라 표지 없이 쓴 행은 **아무도 손대지 않은 맵의 행과 바이트 동일**합니다.
+- **키는 둘입니다** — `phys_confirmed_from`(웨이퍼·칩 기하) / `frame_confirmed_from`(회전·면). 각각 `{table, map_id, confirmation_uid, confirmed_by, confirmed_at}`을 싣습니다. **`confirmation_uid`가 이 파생을 다시 검사 가능하게 만들고, 확정 없이 파생이 일어난 것처럼 읽히지 않게 하는 것도 그 키입니다.** 하나로 합치면 phys를 선언한 맵의 프레임만 확정한 경우에 거짓말이 됩니다(`grid_assumed_from`을 가른 것과 같은 이유).
+- 🔴 **`grid_y_invert`는 쓰지 않습니다.** 후보 공간이 4회전×2면이고 y반전은 별칭으로 상쇄돼 **아무것도 그것을 채점하지 않습니다**. 확정된 프레임은 그 맵에 이미 적혀 있는 y반전에 **상대적으로** 표현된 것이라, 덮어쓰면 확정된 회전·면의 뜻 자체가 바뀝니다. 기존 행에서는 손대지 않고, 새 행에서는 어느 표지에도 덮이지 않아 `indeterminate`가 됩니다.
+- 🔴 **격자는 채점에서 옵니다.** 정렬이 돈 격자는 그 맵의 셀이 아니라 **바닥에서 빌린 것**이고, 새로 합성하면 채점이 쓴 적 없는 프레임을 기록하게 됩니다. 철자는 `map_alignment.confirmed_meta_for` 하나이며 채점이 부르는 바로 그 함수들을 부릅니다. 격자를 쓰는 것은 **행을 새로 만들 때뿐**입니다(확정된 사실이 아니라, 행이 격자 없이는 읽히지 않아서 싣습니다).
+- 🔴 **잰 phys는 덮지 않습니다.** 그 맵의 기하가 `declared`면 프레임만 기록합니다 — `assume_phys_from`의 거절과 **같은 조건**이라 같은 술어를 씁니다.
+- 🔴 **머리 행·소스 행·메타 행이 한 트랜잭션입니다 — 규율이 아니라 구조로.** `crud.apply_batch_updates`가 무조건 커밋하고 그 세션이 아직 안 커밋된 확정 머리를 들고 있는 그 세션이라, 커밋 하나가 셋을 함께 내보냅니다. `record_confirmation(commit=False)`로 부르면서 메타를 쓰라는 요청은 **조용히 둘로 갈리는 대신 거절**합니다(`ValueError`).
+- 🔴 **쓰기 서열은 `user`입니다.** 사람의 결정이고(`confirmed_by`), 그보다 낮게 쓰면 `custom_script`가 써 둔 셀이 이겨 **아무것도 안 바뀐 채 200이 나갑니다** — [D-1]이 방금 고친 실패의 같은 형태입니다. 업무 키는 `map_meta_registrar.meta_business_key` **한 철자**를 등록기와 공유합니다(두 철자면 재확정이 맵 하나를 두 행으로 쪼갭니다 — 실측).
+- 🔴 **확정된 기하는 다시 빌리지 않습니다.** `phys_needs_basis`가 묻는 것은 「선언인가」가 아니라 「빌려야 하는가」이고, 다시 빌리면 값은 그대로인 채 표지만 `assumed`로 덮여 **확정 다음 조회가 확정 이전과 구별되지 않습니다.** 같은 술어를 `geometry_basis_of`와 목록의 `usable_map_count`/`assumable_map_count`도 씁니다.
+- **소유자·회귀 그물**: `server/map_overlay.py`(어휘·표지·`geometry_declaration`/`geometry_computable`/`orientation_declaration`) · `server/map_alignment.py`(`confirmed_meta_for`·`phys_needs_basis`·`geometry_basis_of`) · `server/frame_confirmation.py`(`_write_confirmed_meta`) · `server/tests/test_frame_confirmation_meta.py`.
+- ⚠️ **클라 절반은 아직 없습니다** — `client2/src/map2/declaration.js`의 `DECLARATION_TOKENS`에 `confirmed`가 없고 `decode.js`의 `token()`은 모르는 토큰을 `null`로 접습니다. 서버 레인은 그 파일에 손대지 않았습니다.
 - ⚠️ **두 컬럼 모두 NULL이 「아니오」가 아니라 「모름」입니다.** 이 어휘가 생기기 전에 남은 판은 그 질문을 받은 적이 없습니다. 기본값을 두면 옛 행들이 묻힌 적 없는 질문에 답하게 됩니다.
 - ⚠️ **시스템 테이블 컬럼 추가는 마이그레이션 없이는 그 테이블 전체를 죽입니다** — 두 컬럼은 `migrations/add_frame_confirmation.py`에 있고 `server/tests/test_system_schema_drift.py`의 `SYSTEM_TABLE_COLUMNS`에 마이그레이션 이름과 함께 등재돼 있습니다.
 

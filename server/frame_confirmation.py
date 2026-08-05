@@ -198,19 +198,14 @@ def warrant_of(header) -> str:
             else WARRANT_CONFIRMED)
 
 
-def _geometry_bases(db, contributors: list, reference: dict = None) -> dict:
-    """기여자마다 **무엇 위에서 정렬됐는가** → `{(source_table, map_id): 토큰}`.
+def _load_metas_and_basis(db, contributors: list, reference: dict = None) -> tuple:
+    """`({(source_table, map_id): meta}, basis_meta)` — DB 사실 두 종류를 **한 번에** 읽는다.
 
-    🔴 **요청이 실어 오는 값이 아니라 여기서 유도한다.** 클라가 보내면 그것이 같은 사실의
-       두 번째 철자가 되고, 낡은 클라 하나가 이 사실을 통째로 흘린다 — 그런데 이 사실은
-       정확히 「나중에 가정이 거짓이면 어느 결정이 그 위에 있었나」에 답하려고 남기는 것이라
-       흘리면 기록의 존재 이유가 사라진다.
+    두 소비자가 있고(기여자별 기하 근거 판정, 확정 메타 쓰기) 둘이 같은 행을 읽으므로 질의를
+    두 벌 두지 않는다. 질의는 **테이블마다 한 번**이다(맵 하나씩 읽으면 단위의 맵 수만큼
+    왕복이 된다). `_load_metas`가 IN 절을 자기 상한으로 청킹하므로 여기서 다시 자르지 않는다.
 
-    🔴 **재채점이 아니다.** 이미 DB에 있는 두 사실만 읽는다: 그 맵의 메타가 기하를 선언하고
-       있는가, 그리고 이 기여자가 제외됐는가. 판정 규칙 자체는 `map_alignment` 하나에 있다.
-
-    질의는 **테이블마다 한 번**이다(맵 하나씩 읽으면 단위의 맵 수만큼 왕복이 된다).
-    `_load_metas`가 IN 절을 자기 상한으로 청킹하므로 여기서 다시 자르지 않는다.
+    바닥 읽기 실패는 `None`으로 접는다 — 바닥을 못 읽었다고 확정 기록이 통째로 죽으면 안 된다.
     """
     import map_alignment
     import map_overlay
@@ -226,8 +221,7 @@ def _geometry_bases(db, contributors: list, reference: dict = None) -> dict:
                       for m, meta in map_alignment._load_metas(db, table, sorted(ids)).items()})
     # [D6] 바닥의 메타도 읽는다 — 빌림에 축이 둘이 되면서 「무엇 위에 섰나」를 소스 메타만으로
     # 유도할 수 없다. phys를 **선언한** 맵이 격자만 빌렸을 수 있고, 그 사실은 소스 메타가
-    # 아니라 소스와 바닥의 **차이**에만 있다. 질의 한 번이고 실패는 None으로 접는다(바닥을
-    # 못 읽었다고 확정 기록이 통째로 죽으면 안 된다 — 그때는 종전 답으로 퇴화한다).
+    # 아니라 소스와 바닥의 **차이**에만 있다.
     basis_meta = None
     ref = reference or {}
     if ref.get("table") and ref.get("map_id"):
@@ -235,6 +229,22 @@ def _geometry_bases(db, contributors: list, reference: dict = None) -> dict:
             basis_meta = map_overlay.load_map_meta(db, str(ref["table"]), str(ref["map_id"]))
         except Exception:
             basis_meta = None
+    return metas, basis_meta
+
+
+def _geometry_bases(metas: dict, contributors: list, basis_meta: dict = None) -> dict:
+    """기여자마다 **무엇 위에서 정렬됐는가** → `{(source_table, map_id): 토큰}`.
+
+    🔴 **요청이 실어 오는 값이 아니라 여기서 유도한다.** 클라가 보내면 그것이 같은 사실의
+       두 번째 철자가 되고, 낡은 클라 하나가 이 사실을 통째로 흘린다 — 그런데 이 사실은
+       정확히 「나중에 가정이 거짓이면 어느 결정이 그 위에 있었나」에 답하려고 남기는 것이라
+       흘리면 기록의 존재 이유가 사라진다.
+
+    🔴 **재채점이 아니다.** 이미 DB에 있는 두 사실만 읽는다: 그 맵의 메타가 기하를 선언하고
+       있는가, 그리고 이 기여자가 제외됐는가. 판정 규칙 자체는 `map_alignment` 하나에 있다.
+    """
+    import map_alignment
+
     out = {}
     for c in contributors or []:
         key = (str(c.get("source_table") or ""), str(c.get("map_id") or ""))
@@ -242,6 +252,82 @@ def _geometry_bases(db, contributors: list, reference: dict = None) -> dict:
                                                    c.get("excluded_reason"),
                                                    basis_meta)
     return out
+
+
+# ═══ [D7] 확정은 `wafer_map_metadata`까지 간다 (제품 소유자 2026-08-06) ═══════════════════
+#
+# 종전에 사슬은 `frame_confirmation`에서 끊겼다. 제품 소유자가 그것을 목적 사슬의 종점까지
+# 잇게 했다: **확정된 좌표계**를 에디터와 계획이 읽을 수 있는 자리에 두는 것.
+# 뒤집힌 불변식과 그 근거는 `map_overlay`의 [D7] 블록에 있고 여기서 다시 쓰지 않는다.
+#
+# 🔴 **머리 한 행과 메타 행은 같은 트랜잭션이다 — 규율이 아니라 구조로.** `apply_batch_updates`는
+#    무조건 커밋하고 이 세션은 확정 머리·소스 행이 아직 안 커밋된 채 들어 있는 그 세션이므로,
+#    메타 쓰기가 커밋하는 순간 셋이 **한 커밋**으로 나간다. 메타 쓰기가 터지면 머리도 커밋되지
+#    않는다(라우트가 롤백한다). 그래서 `commit=False`로 부르면서 메타를 쓰라는 요청은 그
+#    구조를 깨는 요청이고 — 커밋 시점이 호출자에게 넘어가는데 메타 쓰기는 자기가 커밋한다 —
+#    **조용히 둘로 갈리는 대신 거절한다.**
+#
+# 🔴 **`user` 서열로 쓴다.** 이것은 사람의 결정이고(`confirmed_by`가 그 사람이다), 그리고
+#    그보다 낮은 서열로 쓰면 `custom_script`가 써 둔 `grid_metadata` 셀이 그대로 이겨서
+#    **아무것도 안 바뀐 채 200이 나간다** — `e6fcc92`가 방금 고친 실패의 정확히 같은 형태다.
+META_SOURCE_NAME = "user"
+
+
+def _write_confirmed_meta(db, contributors: list, metas: dict, basis_meta: dict,
+                          reference: dict, frame: str, mark: dict) -> list:
+    """확정된 좌표계를 `wafer_map_metadata`에 남긴다 → 쓴 `(target_table, map_id)` 목록.
+
+    맵마다 한 행이고, **제외된 기여자는 쓰지 않는다** — 제외된 소스는 어디에도 정렬되지
+    않았고 확정된 좌표계를 갖지 않는다(`geometry_basis_of`와 같은 규율).
+    무엇을 쓰고 무엇을 안 쓰는지는 `map_alignment.confirmed_meta_for`가 정한다 — 여기서
+    두 번째 규칙을 만들지 않는다.
+    """
+    import json
+
+    import map_alignment
+    import map_meta_registrar
+    from database import crud, models, schemas
+
+    if models.DYNAMIC_TABLES.get(map_meta_registrar.META_TABLE) is None:
+        # 메타 테이블이 선언돼 있지 않은 사이트에서 확정 자체가 실패하면 안 된다. 기록은
+        # 남고 사슬만 여기서 끝난다 — 그 사실은 로그가 말한다.
+        logger.warning("[frame_confirm] '%s' is not a declared table — the confirmed "
+                       "coordinate system was not stored", map_meta_registrar.META_TABLE)
+        return []
+
+    ref = reference or {}
+    basis = {"table": ref.get("table"), "map_id": ref.get("map_id")}
+    items, written = [], []
+    for c in contributors or []:
+        if c.get("excluded_reason"):
+            continue
+        table = str(c.get("source_table") or "")
+        map_id = str(c.get("map_id") or "")
+        if not table:
+            continue
+        # 프레임은 **그 기여자가 적용한 것**이다. 한 판에 여러 소스가 서로 다른 프레임으로
+        # 정렬될 수 있고, 그때 판의 대표 프레임을 전부에 쓰면 나머지 맵의 기록이 거짓이 된다.
+        applied = c.get("applied_frame") or frame
+        meta = map_alignment.confirmed_meta_for(
+            metas.get((table, map_id)), basis_meta, basis, applied, mark)
+        if meta is None:
+            continue
+        items.append(schemas.GeneralUpdateItem(
+            business_key_val=map_meta_registrar.meta_business_key(table, map_id),
+            updates={"target_table": table, "map_id": map_id,
+                     "grid_metadata": json.dumps(meta)},
+            source_name=META_SOURCE_NAME,
+            updated_by=(mark or {}).get("confirmed_by") or "unknown",
+        ))
+        written.append((table, map_id))
+    if not items:
+        return []
+    batch = schemas.GeneralUpdateBatch(
+        updates=items,
+        transaction_id=(mark or {}).get("confirmation_uid") or None,
+        silent=True)
+    crud.apply_batch_updates(db, map_meta_registrar.META_TABLE, batch)
+    return written
 
 
 def resolve_ruling_state(ruling: dict, state=None) -> str:
@@ -378,7 +464,9 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
     weakest, weakest_pri = weakest_contributor(contributors)
     # [D3] 무엇 위에서 정렬됐는가 — 기여자마다. 머리의 `geometry_assumed`는 이 값들의
     # 롤업이지 두 번째 규칙이 아니다(`weakest_source`와 같은 계급).
-    bases = _geometry_bases(db, contributors, reference)
+    # [D7] 같은 읽기가 확정 메타 쓰기의 입력이기도 하다 — 질의를 두 벌 두지 않는다.
+    metas, basis_meta = _load_metas_and_basis(db, contributors, reference)
+    bases = _geometry_bases(metas, contributors, basis_meta)
     uid = "fc_" + uuid.uuid4().hex
 
     # 판 번호. 경합은 idx_frame_conf_rule_unit_ver UNIQUE가 잡는다 — 애플리케이션 락을 두면
@@ -444,6 +532,32 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
     if prev is not None:
         prev.superseded_by = uid
         header.supersedes_uid = prev.confirmation_uid
+
+    # [D7] 확정된 좌표계를 `wafer_map_metadata`까지 나른다 — **같은 트랜잭션에서**.
+    # `confirmed_at`은 서버 기본값이라 flush 뒤에 읽는다. 표지가 나르는 것이 출처만이
+    # 아니라 **확정의 신원**인 이유는 §_write_confirmed_meta 위 블록에 있다.
+    if frame:
+        if not commit:
+            # 조용히 둘로 갈리는 대신 거절한다(§_write_confirmed_meta).
+            import map_meta_registrar
+            raise ValueError(
+                "record_confirmation(commit=False) cannot also write %s: the metadata "
+                "write commits on its own, so the caller's deferred commit and this write "
+                "would be two transactions claiming to be one"
+                % map_meta_registrar.META_TABLE)
+        db.flush()
+        mark = {"table": (reference or {}).get("table"),
+                "map_id": (reference or {}).get("map_id"),
+                "confirmation_uid": uid,
+                "confirmed_by": header.confirmed_by,
+                "confirmed_at": (header.confirmed_at.isoformat()
+                                 if header.confirmed_at else None)}
+        wrote = _write_confirmed_meta(db, contributors, metas, basis_meta,
+                                      reference, frame, mark)
+        if wrote:
+            logger.info("[frame_confirm] %s stored the confirmed coordinate system for %d "
+                        "map(s): %s", uid, len(wrote),
+                        ", ".join("%s/%s" % p for p in wrote[:5]))
 
     if commit:
         db.commit()

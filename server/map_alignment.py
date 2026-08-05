@@ -433,8 +433,16 @@ def phys_needs_basis(meta: dict | None) -> bool:
 
     판정은 `geometry_declaration` 하나가 하고 여기서는 그 토큰에 질문 하나를 물을 뿐이다
     (`geometry_computable`과 같은 계급 — 몸통을 복사하지 않는다).
+
+    🔴 **[D7] `confirmed`도 빌리지 않는다 — 안 그러면 확정이 자기를 지운다.** 확정이 쓴 행의
+       phys는 **이미 바닥의 값**이고 출처가 표지에 적혀 있다. 그것을 다시 빌리면 계산 결과는
+       바이트 하나 안 바뀌면서 표지만 `phys_assumed_from`으로 덮이고, 그 순간
+       `geometry_declaration`은 `assumed`를 답한다 — 확정 다음 조회가 확정 이전과 **구별되지
+       않는다.** 이 축이 묻는 것은 「빌려야 하는가」이지 「선언인가」가 아니고, 근거가 이미
+       있는 값에 대한 답은 아니오다.
     """
-    return map_overlay.geometry_declaration(meta) != map_overlay.GEOMETRY_DECLARED
+    return map_overlay.geometry_declaration(meta) not in (
+        map_overlay.GEOMETRY_DECLARED, map_overlay.GEOMETRY_CONFIRMED)
 
 
 def grid_needs_basis(meta: dict | None, basis_meta: dict | None) -> bool:
@@ -471,6 +479,80 @@ def borrowed_meta_for(meta: dict, basis_meta: dict, basis: dict = None,
     if need_phys:
         out = map_overlay.assume_phys_from(out, basis_meta, basis)
     return out
+
+
+# ═══ [D7] 확정이 쓰는 메타 — 새 프레임을 짓지 않고 **채점이 선 프레임**을 다시 낸다 ════════
+#
+# 🔴 **격자를 그 맵의 셀에서 다시 유도하지 않는다.** 정렬은 그 맵 자신의 셀에서 유도한 격자
+#    위에서 돌지 **않았다** — 바닥에서 **빌린** 격자 위에서 돌았고, 부분 맵을 살린 판정 전체가
+#    「부분 맵의 자기 셀 범위는 하한이지 격자가 아니다」였다(§`assume_grid_from` [D5]).
+#    새로 합성한 격자를 쓰면 **채점이 한 번도 쓴 적 없는 프레임**을 기록하게 되고, 자기를 낳은
+#    판정과 어긋나는 메타 행은 행이 없느니만 못하다.
+#
+# 🔴 **그래서 채점이 쓴 함수를 그대로 부른다** — `assumed_meta_for_unregistered`(규격 행 없음)
+#    과 `assume_phys_from`(행은 있는데 규격이 없음). 두 번째 구현을 두지 않는다.
+#
+# 🔴 **셀을 다시 읽지 않는 이유는 「비싸서」가 아니라 셀이 결과에 도달할 수 없기 때문이다.**
+#    `assumed_meta_for_unregistered`에서 bbox가 하는 일은 `synthesize_grid_meta`에 들어가는
+#    것뿐인데, 그 출력의 격자는 곧바로 `assume_grid_from`이 **바닥 격자로 덮고**(다르면) 또는
+#    이미 같고(같으면), phys 여섯 키는 `assume_phys_from`이 **바닥 값으로 덮는다.** 남는 필드
+#    (rotation 0 · side front · y반전 False · auto_registered)는 상수다. 그러므로 bbox가
+#    결과에 남기는 흔적은 `grid_assumed_from` 표지의 **유무 하나뿐**이고, 그 표지는 아래에서
+#    명시로 단다 — 새로 만들어지는 행의 격자 출처는 두 갈래 모두 바닥이기 때문이다.
+#    (`test_frame_confirmation_meta.py`가 서로 다른 bbox들이 그 한 키 말고는 같은 행을 낸다는
+#     것을 직접 확인한다 — 산문이 아니라 검사로.)
+#    그래서 여기 넘기는 「셀」은 **바닥 격자 상자의 두 모서리**다: 채점이 실제로 본 bbox와
+#    다르지만, 위 문단이 그 차이가 출력에 도달할 수 없음을 말하고 검사가 그것을 못 박는다.
+def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
+                       frame: str, mark: dict) -> dict | None:
+    """확정 한 건이 맵 하나에 대해 쓰는 `grid_metadata`. 쓸 것이 없으면 None. **순수 함수다.**
+
+    `meta`: 그 맵의 **저장된** 메타(없으면 None). `basis_meta`: 바닥(유효 다이 맵)의 메타.
+    `basis`: `{"table","map_id"}`. `frame`: 확정된 프레임(`rot90_front`).
+    `mark`: 확정의 신원 — `{table, map_id, confirmation_uid, confirmed_by, confirmed_at}`.
+
+    쓰는 것과 안 쓰는 것, 그리고 이 목록이 이 함수의 내용이다:
+      · `rotation`·`side` ← 확정된 프레임. **언제나 쓴다** — 확정된 것이 이것이다.
+      · phys 여섯 키 ← 바닥. **그 맵의 기하가 `declared`가 아닐 때만.** 잰 값을 파생 값으로
+        덮지 않는다(`assume_phys_from`의 거절과 **같은 조건**이고, 그래서 같은 술어를 쓴다).
+      · 격자(치수·시작) ← 채점이 선 프레임. **행을 새로 만들 때만.** 격자는 확정된 두 사실 중
+        어느 쪽도 아니다 — 행이 격자 없이는 읽히지 않아서 싣는 것뿐이라, 이미 있는 행의 격자를
+        고칠 근거가 되지 못한다.
+      · `grid_y_invert` — **손대지 않는다.** 후보 축이 아니라(§`candidate_frames`) 확정된 적이
+        없고, 덮으면 그것에 상대적으로 표현된 회전·면의 뜻까지 바뀐다.
+    """
+    parsed = parse_frame(frame)
+    if parsed is None or not isinstance(basis, dict):
+        # 프레임이 없거나 읽히지 않으면 확정의 **주체**가 없다. 아무것도 쓰지 않는다.
+        return None
+    rot, side = parsed
+    own = map_overlay.geometry_declaration(meta)
+
+    if not meta:
+        box = map_overlay.grid_box(basis_meta)
+        if box is None:
+            return None
+        lo_x, lo_y, hi_x, hi_y = box
+        base = assumed_meta_for_unregistered([(lo_x, lo_y), (hi_x, hi_y)], basis_meta, basis)
+        if base is None:
+            return None
+        # 이 행을 쓴 것은 등록기가 아니라 확정이다. 표지를 물려받으면 「등록기가 썼다」가
+        # 거짓이 되고, 물려받지 않아도 `grid_start_*`가 `declared`로 새지 않는다 — 바로
+        # 아래에서 격자 출처를 명시로 달기 때문이다.
+        base.pop(map_overlay.AUTO_REGISTERED_KEY, None)
+        base[map_overlay.GRID_ASSUMED_KEY] = dict(basis)
+    else:
+        base = dict(meta)
+        if own != map_overlay.GEOMETRY_DECLARED:
+            base = map_overlay.assume_phys_from(base, basis_meta, basis) or base
+
+    # 빌림 표지를 **대체**한다. 저장되는 행에 「가정」이 남으면 확정된 파생과 확정되지 않은
+    # 추측이 구별되지 않고, 그 구별이 이 표지가 존재하는 이유다(§map_overlay [D7]).
+    if base.pop(map_overlay.PHYS_ASSUMED_KEY, None) is not None:
+        base[map_overlay.PHYS_CONFIRMED_KEY] = dict(mark or {})
+    base["rotation"], base["side"] = rot, side
+    base[map_overlay.FRAME_CONFIRMED_KEY] = dict(mark or {})
+    return base
 
 
 def cells_outside_grid(meta: dict, cells) -> str | None:
@@ -1717,7 +1799,12 @@ def geometry_basis_of(meta: dict | None, excluded_reason: str = None,
     token = map_overlay.geometry_declaration(meta)
     if excluded_reason:
         return token
-    if token != map_overlay.GEOMETRY_DECLARED:
+    # 🔴 [D7] `confirmed`는 **자기 기하**다. 「선언 없는 맵이 통과하는 길은 가정뿐」이라는 위
+    #    한 줄은 확정이 생기기 전의 참이고, 지금은 확정된 기하 위에서도 통과한다 —
+    #    `phys_needs_basis`가 그것을 빌리지 않으므로 이 실행은 아무것도 빌리지 않았다.
+    #    여기서 `assumed`라고 답하면 판정(`ruling.geometry_assumed = false`)과 기여자 행이
+    #    한 판 안에서 서로를 부정한다.
+    if token not in (map_overlay.GEOMETRY_DECLARED, map_overlay.GEOMETRY_CONFIRMED):
         return map_overlay.GEOMETRY_ASSUMED
     if basis_meta is not None and grid_needs_basis(meta, basis_meta):
         return map_overlay.GEOMETRY_ASSUMED
@@ -2994,10 +3081,12 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     for u in units:
         ids = per_unit_maps.get(u["_tuple"], set())
         u["map_count"] = len(ids)
+        # 🔴 [D7] 묻는 것은 「선언인가」가 아니라 **「빌리지 않고 채점되는가」**이고, 그 술어의
+        #    철자는 `phys_needs_basis` 하나다. 확정된 기하는 빌릴 필요가 없으므로 여기 든다 —
+        #    안 그러면 목록이 「쓸 수 없는 맵」이라 부르는 단위를 상세가 확정된 기하 위에서
+        #    채점한다(목록이 상세와 갈리는 것은 어느 방향이든 갈리는 것이다).
         usable = [m for m in ids
-                  if metas.get(m) is not None
-                  and map_overlay.geometry_declaration(metas[m])
-                  == map_overlay.GEOMETRY_DECLARED]
+                  if metas.get(m) is not None and not phys_needs_basis(metas[m])]
         u["usable_map_count"] = len(usable)
         # [D3] **가정으로 열릴 수 있는 맵의 수** - 기하 선언은 없지만 격자 치수는 있어서
         # 바닥을 꽂으면 「같은 웨이퍼」 가정 아래 채점되는 맵들이다(스펙 §9ⓐ).
@@ -3015,10 +3104,13 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         #    🔴 그리고 **서버가 메타를 못 읽었으면 하나도 세지 않는다.** 그때 모든 맵이
         #       `metas.get(m) is None`이라 이 식은 「전부 가정 가능」이라고 답하는데, 그것은
         #       읽지 못한 것을 부재로 읽은 결과다 — 잰 적 없는 수를 초대장으로 내보낸다.
+        #    🔴 [D7] 여기도 같은 술어다. 확정된 기하를 「가정으로 열 수 있는 맵」으로 세면
+        #       이미 답이 있는 단위에 초대장을 보내는 것이고, 조작자는 누르고 나서 아무것도
+        #       바뀌지 않는 것을 본다.
         u["assumable_map_count"] = 0 if not meta_readable else sum(
             1 for m in ids
             if metas.get(m) is None
-            or (map_overlay.geometry_declaration(metas[m]) != map_overlay.GEOMETRY_DECLARED
+            or (phys_needs_basis(metas[m])
                 and map_overlay.grid_dims(metas[m]) is not None))
         header = live.get(u["unit_key"])
         u["confirmation"] = (None if header is None else {

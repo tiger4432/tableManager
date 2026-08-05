@@ -153,6 +153,21 @@ def compose_map_id(key_columns, row: dict, table_name: str = None):
     return "_".join(parts)
 
 
+def meta_business_key(target_table: str, map_id: str) -> str:
+    """The `wafer_map_metadata` business key for one map — THE spelling.
+
+    `wafer_map_metadata` declares `composite_key_source = [target_table, map_id]`, so this
+    mirrors crud's composite assembly and reads the separator from the declaration rather
+    than repeating it. Extracted 2026-08-06 because a second writer appeared
+    (`frame_confirmation` records a confirmed coordinate system) and two spellings of an
+    identity is how one writer creates the row the other cannot find.
+    """
+    from database import crud
+    sep = (crud.TABLE_CONFIG.get(META_TABLE) or {}).get("composite_key_separator", "_")
+    return "%s%s%s" % (crud.clean_str_value(target_table), sep,
+                       crud.clean_str_value(map_id))
+
+
 def _to_grid_int(v):
     """Parse a cell coordinate to an integral grid index; None if not integral."""
     if v is None:
@@ -303,9 +318,6 @@ class MapMetaCollector:
                     "Declare it in table_config.json.", META_TABLE)
             return 0
 
-        meta_cfg = (crud.TABLE_CONFIG or {}).get(META_TABLE, {})
-        sep = meta_cfg.get("composite_key_separator", "_")
-
         # 1) Drop keys already verified this run (process-lifetime cache).
         with _known_lock:
             candidates = [mid for mid in self.bboxes if (self.table_name, mid) not in _known_present]
@@ -313,9 +325,9 @@ class MapMetaCollector:
             return 0
 
         # 2) Batched existence check on the indexed business_key_val column.
-        #    bk composition mirrors crud's composite assembly for wafer_map_metadata
-        #    (composite_key_source = [target_table, map_id]).
-        bk_of = {mid: f"{crud.clean_str_value(self.table_name)}{sep}{crud.clean_str_value(mid)}" for mid in candidates}
+        #    bk composition is `meta_business_key` — one spelling, shared with the
+        #    confirmation writer.
+        bk_of = {mid: meta_business_key(self.table_name, mid) for mid in candidates}
         existing = set()
         bk_list = list(bk_of.values())
         for i in range(0, len(bk_list), CHUNK_SIZE):

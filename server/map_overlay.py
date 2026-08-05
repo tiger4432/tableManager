@@ -506,6 +506,46 @@ GEOMETRY_ASSUMED = "assumed"                    # 값은 바닥에서 빌려 왔
 #    한 함수에 두 질문을 담으면 그것이 총괄이 이번 라운드에 없애라고 한 바로 그 모양이다.
 GRID_ASSUMED_KEY = "grid_assumed_from"          # {"table":..., "map_id":...} — 격자를 빌린 곳
 
+# ═══ [D7] 확정된 기하 — 가정보다 세고 선언보다 약하다 (제품 소유자 2026-08-06) ═════════════
+#
+# [D3]은 「빌린 값이 `wafer_map_metadata`에 도달하는 경로는 저장소에 없어야 한다」고 못 박았고,
+# **그때는 옳았다**: 그 시점에 빌림에 붙어 있던 유일한 사건은 **조작자가 화면을 열었다**였고,
+# 그 위에서 나온 값을 저장하면 아무도 주장하지 않은 수치가 선언을 사칭한다(I4).
+#
+# 🔴 제품 소유자가 그 금지를 뒤집었고, **근거가 금지보다 세다**: 유효 다이 맵은 **제품 규격마다
+#    다르다.** 그러므로 어떤 소스 맵이 특정 유효 다이 맵과 **일치한다**는 것은 그 맵이 같은 제품
+#    규격이라는 뜻이고, 같은 제품 규격이면 웨이퍼와 칩 기하가 같다. **일치가 곧 증거다.**
+#    제품별 기준에 대고 맞춰 본 정렬은 가정이 아니라 **파생**이다.
+#
+# 🔴 **다만 그 전부가 「일치가 확정됐다」에 얹혀 있다.** 확정되지 않은 빌림은 여전히 추측이고
+#    (그래서 제안이 존재한다), 기록은 **확정 없이 파생이 일어난 것처럼 읽혀서는 안 된다.**
+#    그래서 표지가 나르는 것은 출처(`table`/`map_id`)만이 아니라 **확정의 신원**이다:
+#      {"table", "map_id", "confirmation_uid", "confirmed_by", "confirmed_at"}
+#    `confirmation_uid` 하나가 이 파생을 다시 검사 가능하게 만들고, 그 키가 없으면 이 값은
+#    표지를 달 자격이 없다.
+#
+# 🔴 **왜 `assumed`가 아니고 `declared`도 아닌가.** 제품별 기준에 대한 일치는 증거이므로
+#    `assumed`(조작자의 주장)보다 세다. 그런데 이 맵을 **잰 사람은 아무도 없으므로**
+#    `declared`(누군가 쟀다)는 거짓이다. 그래서 자기 토큰이고, 서열은 그 사이다.
+#
+# 🔴 **이 토큰이 없으면 확정이 관측 불가능해진다 — 실측이다.** 씨앗 단위의 확정 승자는
+#    `rot0_front`(회전 0·전면·y반전 없음), 즉 **정확히 무증거 삼중항**이다. 표지 없이 방위를
+#    쓰면 나오는 행이 **아무도 손대지 않은 맵의 행과 바이트 동일**하고, 그때 확정은 사라진다.
+#
+# 🔴 **사실이 둘이라 키도 둘이다.** `phys_confirmed_from`(웨이퍼·칩 기하)과
+#    `frame_confirmed_from`(회전·면). 하나로 합치면 phys를 **선언한** 맵의 프레임만 확정한
+#    경우에 「기하도 확정했다」는 거짓말이 된다 — [D6]이 `grid_assumed_from`을 가른 것과 같은
+#    이유이고, 대칭 때문이 아니다.
+#
+# ⚠️ **`frame_confirmed_from`이 덮는 축은 회전과 면 둘뿐이다.** `grid_y_invert`는 후보 축이
+#    아니다(`map_alignment.candidate_frames`: 공간은 4회전 × 2면이고 y반전은 별칭으로 상쇄돼
+#    아무것도 그것을 변주하지 않고 아무것도 그것을 채점하지 않는다). 확정된 프레임은 그 맵에
+#    **이미 적혀 있는 y반전에 대해 상대적으로** 표현된 것이라, y반전을 덮어쓰면 풀리지 않은
+#    사실을 주장하는 데 그치지 않고 **확정된 회전·면의 뜻 자체가 바뀐다.**
+PHYS_CONFIRMED_KEY = "phys_confirmed_from"      # 웨이퍼·칩 기하를 확정 아래 파생한 곳 + 그 확정
+FRAME_CONFIRMED_KEY = "frame_confirmed_from"    # 회전·면을 확정한 곳 + 그 확정
+GEOMETRY_CONFIRMED = "confirmed"                # 확정 아래 파생됐다 — 선언은 아니다
+
 # 사유는 **사람이 읽는 자리에서 한 번만** 사람 말로 옮긴다(클라 `7ea2c2f`와 같은 규율).
 # 판정은 `geometry_declaration`이 이미 끝냈고 여기서는 표시만 한다 — 두 번째 판정이 아니다.
 _GEOMETRY_REFUSAL_TEXT = {
@@ -519,6 +559,9 @@ _GEOMETRY_REFUSAL_TEXT = {
         "물리 규격(phys_*) 값이 수로 읽히지 않습니다"),
     GEOMETRY_ASSUMED: (
         "물리 규격을 기준 맵에서 빌려 온 값입니다 ― 이 맵에 대한 선언이 아닙니다"),
+    GEOMETRY_CONFIRMED: (
+        "물리 규격을 확정된 정렬 아래에서 기준 맵으로부터 파생한 값입니다 ― "
+        "이 맵을 잰 사람은 없습니다"),
 }
 
 
@@ -535,6 +578,12 @@ def geometry_declaration(meta: dict | None) -> str:
     m = meta if isinstance(meta, dict) else {}
     if m.get(PHYS_ASSUMED_KEY):
         return GEOMETRY_ASSUMED
+    # 🔴 [D7] **`assumed`를 먼저 본다 — 순서가 서열이다.** 두 표지가 한 dict에 같이 있는
+    #    사본은 「확정된 값을 다시 빌렸다」는 뜻이고, 합쳐진 것은 가장 약한 기여자를 따라간다
+    #    (스펙 §0.2 ⑨). 저장되는 행에는 둘이 같이 붙지 않는다(확정 쓰기가 빌림 표지를
+    #    **대체**한다) — 이 줄이 지키는 것은 메모리 사본이다.
+    if m.get(PHYS_CONFIRMED_KEY):
+        return GEOMETRY_CONFIRMED
     if m.get(AUTO_REGISTERED_KEY) is True:
         return GEOMETRY_AUTO_REGISTERED
     for k in PHYS_KEYS:
@@ -573,13 +622,15 @@ def geometry_refusal(meta: dict | None) -> str | None:
 def geometry_computable(meta: dict | None) -> str | None:
     """좌표를 계산할 **근거**가 있는가 — 없으면 사유(사람 말), 있으면 None.
 
-    `declared`와 `assumed` 둘 다 근거가 된다. 가정은 조작자가 낸 주장이고 그 주장 아래에서
-    나온 답은 **주장과 함께** 기록되므로(payload·확정 기록), 근거이면서 선언은 아니다.
+    `declared`·`assumed`·`confirmed` 셋 다 근거가 된다. 가정은 조작자가 낸 주장이고 그 주장
+    아래에서 나온 답은 **주장과 함께** 기록되므로(payload·확정 기록), 근거이면서 선언은 아니다.
+    확정([D7])은 그보다 세다 — 제품별 기준과의 일치가 증거이고 그 증거에 신원이 붙어 있다.
+    셋 다 「선언인가」에는 여전히 **아니오**이고, 그 질문의 답은 `geometry_declaration`이다.
 
     🔴 두 번째 판정이 아니다 — 판정은 `geometry_declaration` 하나가 하고 여기서는 그 토큰에
        질문 하나를 더 물을 뿐이다. 몸통을 복사하면 두 답이 갈리는 날이 온다(I6).
     """
-    if geometry_declaration(meta) == GEOMETRY_ASSUMED:
+    if geometry_declaration(meta) in (GEOMETRY_ASSUMED, GEOMETRY_CONFIRMED):
         return None
     return geometry_refusal(meta)
 
@@ -588,9 +639,29 @@ def assume_phys_from(meta: dict | None, basis_meta: dict | None,
                      basis: dict = None) -> dict | None:
     """소스 메타 + **바닥에서 빌린 웨이퍼 규격** → 계산용 사본. 못 빌리면 None.
 
-    🔴 **아무것도 쓰지 않는다.** 반환은 새 dict이고 호출자는 이것을 DB에 넣지 않는다.
-       이 함수가 만든 값이 `wafer_map_metadata`에 도달하는 경로는 저장소에 없어야 한다 —
-       그것이 있으면 가정이 선언으로 승격되고, 나중에 아무도 둘을 구별할 수 없다.
+    🔴 **이 함수는 아무것도 쓰지 않는다.** 반환은 새 dict이고 이 함수의 호출자는 이것을 DB에
+       넣지 않는다.
+
+    🔴 **[정정 2026-08-06] 여기 적혀 있던 문장은 「이 함수가 만든 값이 `wafer_map_metadata`에
+       도달하는 경로는 저장소에 없어야 한다」였고, 이제 그 경로가 하나 있다.** 무엇이 바뀌었는지
+       보다 **왜** 바뀌었는지가 이 정정의 내용이다 — 조용히 문장만 고치면 여섯 달 뒤에 읽는
+       사람은 금지가 착오였다고 읽는다.
+
+       금지가 막던 것은 **표지 없는 빌림**이었다: 빌린 수치가 아무 사건에도 묶이지 않은 채
+       메타 행에 앉으면 그것은 누군가 잰 값처럼 읽히고, 나중에 아무도 그것이 가정이었다는
+       것을 알 수 없다(I4). 그 금지는 지금도 유효하다.
+
+       바뀐 것은 **다른 행위가 하나 생겼다**는 것이다(제품 소유자 2026-08-06, §[D7]):
+       유효 다이 맵은 제품 규격마다 다르므로, 어떤 소스 맵이 특정 유효 다이 맵과 **일치**하면
+       같은 제품 규격이고 따라서 같은 웨이퍼·칩 기하다. 그 일치를 사람이 **확정**하면 그것은
+       가정이 아니라 **파생**이고, 확정의 신원(`confirmation_uid`·누가·언제)이 값과 함께
+       기록되므로 다시 검사할 수 있다. 표지 붙은 확정된 빌림과 표지 없는 빌림은 **다른
+       행위**이며, 금지는 후자에 대한 것이었다.
+
+       그 경로의 철자는 `map_alignment.confirmed_meta_for` 하나이고 그것을 부르는 것은
+       `frame_confirmation.record_confirmation`(층 ⑧) 하나다. 그 경로는 이 함수를 부른 뒤
+       `PHYS_ASSUMED_KEY`를 `PHYS_CONFIRMED_KEY`로 **대체**한다 — 저장되는 행에 「가정」
+       표지가 남으면 확정되지 않은 빌림과 구별되지 않기 때문이다.
 
     `basis`: `{"table":..., "map_id":...}` — 어디서 빌렸는지. 표지 값이 되어 payload와
         확정 기록에 그대로 실린다. 「나중에 이 가정이 거짓으로 밝혀지면 어느 결정이 그
@@ -807,10 +878,18 @@ def orientation_declaration(meta: dict | None) -> dict:
        `value_can_indicate_absence=False`라 읽히기만 하면 무조건 `declared`이기 때문에 값으로
        가릴 방법이 원리적으로 없다. 표지는 값보다 먼저 본다(`geometry_declaration`과 같은
        규율). 나머지 세 축은 빌린 적이 없으므로 표지가 있어도 그대로 채점한다.
+
+    🔴 **[D7] 확정된 프레임도 값으로는 가릴 수 없다 — 그리고 그것이 이 표지의 존재 이유다.**
+       씨앗 단위의 확정 승자가 `rot0_front`, 즉 정확히 무증거 삼중항이라 표지 없이 쓰면
+       `indeterminate`가 그대로 나오고 확정은 관측 불가능해진다(실측 §[D7]).
+    ⚠️ **덮는 축은 `rotation`과 `side` 둘뿐이다.** `grid_y_invert`는 후보 축이 아니라
+       (`candidate_frames`) 확정된 적이 없고, `grid_start_*`는 격자의 성질이라 확정이 아니라
+       빌림이 답한다. 축 셋을 한 표지로 덮으면 확정되지 않은 축이 확정을 사칭한다.
     """
     m = meta if isinstance(meta, dict) else {}
     marked = m.get(AUTO_REGISTERED_KEY) is True
     grid_borrowed = bool(m.get(GRID_ASSUMED_KEY))
+    frame_confirmed = bool(m.get(FRAME_CONFIRMED_KEY))
     out = {}
     for axis, (reader, absent_default, synth_could_write,
                value_can_indicate_absence) in _ORIENTATION_READERS.items():
@@ -818,6 +897,13 @@ def orientation_declaration(meta: dict | None) -> dict:
             value, ok = _read_grid_start(m.get(axis))
             out[axis] = {"value": value if ok else absent_default,
                          "source": GEOMETRY_ASSUMED}
+            continue
+        if frame_confirmed and axis in ("rotation", "side"):
+            value, ok = reader(m.get(axis))
+            # 읽히지 않는 값에는 표지를 얹지 않는다 — 확정이 「읽을 수 없는 값」을 확정으로
+            # 승격시키면 그것이 정확히 이 어휘가 막는 사칭이다.
+            out[axis] = ({"value": value, "source": GEOMETRY_CONFIRMED} if ok
+                         else {"value": absent_default, "source": GEOMETRY_UNPARSABLE})
             continue
         raw = m.get(axis)
         if raw is None or (isinstance(raw, str) and raw.strip() == ""):
@@ -853,6 +939,9 @@ _ORIENTATION_REFUSAL_TEXT = {
     # 문장을 안 적으면 그 자리가 KeyError로 죽는다 — `_GEOMETRY_REFUSAL_TEXT`가 같은 이유로
     # 이미 한 번 500을 냈고, 그쪽은 `.get` 강등으로 고쳤다.
     GEOMETRY_ASSUMED: "기준 맵에서 빌려 온 값입니다 ― 이 맵에 대한 선언이 아닙니다",
+    # [D7] 같은 이유로 여기에도 문장이 있어야 한다 — 위 KeyError는 토큰을 늘리는 라운드마다
+    # 되살아난다.
+    GEOMETRY_CONFIRMED: ("확정된 정렬이 지명한 값입니다 ― 이 맵을 잰 선언은 아닙니다"),
 }
 
 
