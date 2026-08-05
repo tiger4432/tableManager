@@ -35,6 +35,40 @@
   --me2-gap: 14px;
 }
 
+/* ============================================================
+   RULE 4 (added after rules 1-3 above): NO STRING ON SCREEN MAY
+   EXCEED ONE LINE, AND EXPLANATION IS NOT A STRING ON SCREEN.
+   ------------------------------------------------------------
+   The operators here are administrators who read the docs. So
+   explanation belongs in the docs, diagnosis belongs in
+   `console.log`, and this screen carries only what changes the
+   decision in front of them. The test before writing any string:
+   does it change the decision? If not, console. If yes, can it be
+   one line? If not, the wrong thing is being put on screen.
+
+   Enforced structurally, not by asking the wiring to be careful:
+   every text-bearing slot below is nowrap + ellipsis, so an
+   over-long string is TRUNCATED rather than allowed to wrap and
+   push the picture down. The full text is the console's job -
+   the wiring logs it whole. Removed in this pass because their
+   only job was prose: the verdict cause line and the candidate
+   grid's flip footnote.
+   ============================================================ */
+#me2-confirm-sentence,
+#me2-confirm-note,
+#me2-confirm-hint,
+.me2-caption,
+.me2-refusal,
+.me2-notice,
+.me2-cand-legend,
+.me2-wl-empty,
+.panel-meta.is-inline {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -184,6 +218,280 @@ body {
 .ghost-btn svg {
   width: 15px;
   height: 15px;
+}
+
+/* ============================================================
+   Scope bar - the three selectors that COMPOSE ONE REQUEST.
+   ------------------------------------------------------------
+   Placement: between the header and the workbench, mirroring the
+   confirm bar at the foot. It scopes every panel below it, so it
+   sits above all of them; inside any one panel it would claim to
+   scope only that panel. Ask (here) / look (workbench) / write
+   (confirm bar), top to bottom.
+
+   Height budget: ONE 44px band. The picture is the element that
+   must not shrink, and a two-line strip would have taken ~52px off
+   it for no added fact. Labels sit inline-left of their control
+   instead of above it, which is what keeps it to one line.
+   ============================================================ */
+#me2-question-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 6px 18px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+}
+
+/* The dependency is the layout. Three equal dropdowns side by side would
+   say the three are independent; a left-to-right chain with a connector
+   between the links says the table constrains the fields and both
+   constrain the references. The operator reads the ordering off the
+   shape instead of discovering it by getting refused. */
+.me2-scope-chain {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+/* Decorative connector; the glyph lives here so the markup carries no
+   stray character between two controls. */
+.me2-scope-link {
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  line-height: 1;
+  user-select: none;
+}
+
+.me2-scope-link::before {
+  content: '\203A';
+}
+
+.me2-scope-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.me2-scope-label {
+  flex: 0 0 auto;
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Native <select> on purpose. It preserves the platform keyboard flow
+   (tab order, type-ahead, Esc) and needs no popup layer, so it cannot
+   collide with the project z scale. A custom listbox here would be a new
+   interaction mode in everything but name. */
+.me2-scope-select {
+  flex: 0 1 auto;
+  min-width: 96px;
+  max-width: 240px;
+  height: 32px;
+  padding: 0 26px 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg-inset);
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 9px 9px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  /* The value is an identifier the operator has to read exactly, so it
+     sits at the search field's 0.88rem, not at the 0.82rem floor. The
+     label beside it stays at the floor - that is what separates the two
+     without a second colour. */
+  font-size: 0.88rem;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  text-overflow: ellipsis;
+  transition: border-color 0.13s ease;
+}
+
+.me2-scope-select:hover {
+  border-color: var(--accent);
+}
+
+/* The option list is drawn by the platform, so the only way to keep it
+   from flashing a light popup over a dark page is to declare the scheme
+   on the control. Scoped to these three - not to :root, which would
+   restyle every scrollbar and control on the page. */
+:root[data-theme="dark"] .me2-scope-select { color-scheme: dark; }
+:root[data-theme="light"] .me2-scope-select { color-scheme: light; }
+
+/* Caret. Drawn as a background on the control itself, not as a pseudo
+   element on the wrapper, so that removing it needs ONE attribute on ONE
+   element and no `:has()` - the wiring should not have to mark a parent
+   to describe a child. Its ABSENCE is how a one-option control reads as
+   quiet rather than as broken. The stroke is --text-dim's literal value
+   per theme; a data URI cannot resolve a custom property. */
+:root[data-theme="light"] .me2-scope-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1 3.5 5 7.5 9 3.5' fill='none' stroke='%235b6779' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+:root[data-theme="dark"] .me2-scope-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1 3.5 5 7.5 9 3.5' fill='none' stroke='%238b99ae' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* NOTHING TO SWAP IT FOR. Two spellings of the same ordinary situation,
+   because the wiring produces both: `fillSelect` sets `disabled` when the
+   option list is empty, and `data-me2-single` marks a list of exactly one.
+   Either way the control holds a real value and there is nothing to open,
+   so the caret goes and the control goes quiet.
+   No --danger, no --warning, no icon. The reference picker is empty in the
+   COMMON case - 8 declared refs and 0 resolving, 320 of 668 metas
+   auto_registered and refused - and an alarm on the common case teaches
+   the operator that the tool is broken. Disabled here must read as
+   "nothing to choose", never as "something went wrong". */
+:root .me2-scope-select[data-me2-single="true"],
+:root .me2-scope-select:disabled {
+  background-image: none;
+  padding-right: 10px;
+  border-color: var(--border);
+  color: var(--text-muted);
+  cursor: default;
+  /* UA dimming would push this under the contrast floor and make an
+     ordinary state look disabled-as-in-broken. */
+  opacity: 1;
+  -webkit-text-fill-color: var(--text-muted);
+}
+
+.me2-scope-select[data-me2-single="true"]:hover,
+.me2-scope-select:disabled:hover {
+  border-color: var(--border);
+}
+
+/* ---- coordinate columns: x / y / value ---- */
+
+/* The three sit inside one step so the chain still reads as three links
+   (table -> columns -> reference) rather than five. They are one choice
+   about one table, and splitting them into three chain links would have
+   claimed y depends on x. */
+.me2-scope-step.is-columns {
+  gap: 6px;
+  padding: 0 8px 0 0;
+}
+
+.me2-scope-select.is-col {
+  min-width: 78px;
+  max-width: 128px;
+}
+
+/* Per-axis marker. It is a real <label for>, so the control keeps an
+   accessible name; the group's own name comes from role="group". At the
+   0.82rem floor and mono so `x`/`y`/`값` line up with the identifiers
+   they point at. */
+.me2-scope-axis {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* A PROPOSAL IS NOT A CHOICE. A pre-filled control drawn like a picked
+   one is a plausible default impersonating a declaration - the same shape
+   of defect as an absent threshold read as zero. Dashed border says "put
+   here by us, not by you" for as long as that is true.
+   This is also the whole contract a preset needs. Order is primitive ->
+   function -> config -> preset: a named shortcut lives in config, WRITES
+   these primitive controls, marks each `proposed`, and the operator sees
+   and can change every value it wrote. It never replaces them, so a wrong
+   preset costs three clicks instead of blocking. No table name, column
+   name or preset appears in this stylesheet or in the markup - the whole
+   system already declares its primitives in config, and a second copy
+   here is a second place for the fact to be wrong. */
+.me2-scope-select[data-me2-proposed="true"] {
+  border-style: dashed;
+  border-color: var(--warning);
+  color: var(--text-muted);
+}
+
+/* The group's single confirmation. x and y cannot be right separately and
+   a preset writes all three at once, so there is one control, not three.
+   Hidden until a proposal is outstanding; the wiring drops
+   `data-me2-proposed` from every select in the group and hides this. */
+.me2-scope-propose {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--warning);
+  background: var(--warning-weak);
+  color: var(--warning);
+  font-family: var(--font-sans);
+  font-size: var(--me2-fact-min);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.me2-scope-propose:hover {
+  transform: translateY(-1px);
+}
+
+/* WHAT THE VALUE COLUMN COSTS is stated in `.me2-scope-note` on this same
+   band, not in a chip of its own. Measured: with values one production
+   case separates by 374 dies; with occupancy alone the same eight
+   candidates land within 4 points, and one unit has all eight occupying
+   the SAME dies - an 8-way tie on a question values answer outright. That
+   has to be visible while choosing rather than after a wait ending in
+   `구별 안 됨`, which is why the note shares the strip with the picker.
+   A separate chip was built here and removed: the wiring already composes
+   that token into the note, and two renderings of one fact is the defect
+   this project keeps paying for. Only ONE of the two occupancy cases is a
+   caution - a table with no value column at all is an ordinary fact and
+   stays muted - and the note's tone hook is what draws that line. */
+
+/* Upstream changed, downstream list is being rebuilt. Dimming the
+   dependents for the length of the refetch is the second half of making
+   the ordering visible - the operator sees which controls the change
+   reached. opacity only. */
+.me2-scope-step[data-me2-stale="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.13s ease;
+}
+
+/* ---- the row's one-line summary ---- */
+
+/* One slot, written whole by the wiring as tokens joined by a separator
+   (`제안 · 점유만 · 기준 없음`). It is deliberately the ONLY readout on this
+   strip: the same three facts as a chip row would carry, in one place, so
+   there is no second spelling to drift.
+   No numeral reaches this strip - every count lives in the workbench - so
+   the num/unknown/skel switch is not needed here and is not imitated.
+   Sits at the far right of the band; wraps only after the chain has. */
+.me2-scope-note {
+  margin-left: auto;
+  font-size: var(--me2-fact-min);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.me2-scope-note:empty {
+  display: none;
+}
+
+/* Optional tone hook. Absent is the resting state and the common one, so
+   the caution is opt-in: the wiring sets it when the summary carries a
+   consequence the operator chose (e.g. a value column existed and was not
+   taken, which flattens eight candidates into a tie). If it is never set,
+   this degrades to muted rather than breaking. */
+.me2-scope-note[data-me2-note-tone="caution"] {
+  color: var(--warning);
+  font-weight: 500;
 }
 
 /* ============================================================
@@ -520,6 +828,13 @@ body {
   line-height: 1.45;
 }
 
+/* Empty means "no picture yet", so there is no meaning to caption and the
+   slot must not hold open a gap in the reading band. The moment the wiring
+   writes a caption it is back, which is what "never optional" requires. */
+.me2-caption:empty {
+  display: none;
+}
+
 .me2-legend {
   display: flex;
   gap: 6px 16px;
@@ -563,7 +878,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.me2-cause code,
 .me2-notice code {
   font-family: var(--font-mono);
   font-size: 0.95em;
@@ -576,26 +890,22 @@ body {
   color: var(--warning);
 }
 
-.me2-cause {
-  font-size: 0.88rem;
-  color: var(--text-dim);
-  line-height: 1.55;
-}
-
-.me2-cause:empty {
-  display: none;
-}
+/* `.me2-cause` is GONE. It held the reason behind the verdict, and a reason
+   does not change the decision - the headline already carries the verdict,
+   and why it came out that way is the console's and the docs' job. */
 
 /* The server composes this sentence; the client renders it verbatim.
-   A second copy of it in the client is the two-spellings defect. */
+   A second copy of it in the client is the two-spellings defect.
+   One line, truncated if longer. The wiring logs the whole thing - a
+   refusal that wraps into a paragraph pushes the picture down, and the
+   picture is the only thing on this screen the operator can check. */
 .me2-refusal {
   font-size: 0.88rem;
-  line-height: 1.6;
   color: var(--text-muted);
   background: var(--warning-weak);
   border: 1px solid var(--warning);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 7px 12px;
 }
 
 /* ---- Excel form: paste result (aggregate, never per-row) ---- */
@@ -719,13 +1029,50 @@ body {
 
 /* Moved out of the panel header: at a 550px centre column the header could
    not hold title + this line + the export control, and this line carries
-   the exclusion count and the scored denominator. In the reading band it
-   can wrap instead of ellipsising a fact away. */
+   the exclusion count and the scored denominator.
+   It used to be allowed to WRAP here rather than ellipsise a fact away.
+   That is no longer available - nothing on this screen may exceed one line
+   - so it left-aligns and truncates like every other slot, and the wiring
+   logs the full line. If a fact is being cut, the line is carrying more
+   than a decision needs and the fix is upstream of the CSS. */
 .panel-meta.is-inline {
   text-align: left;
-  white-space: normal;
-  overflow: visible;
   line-height: 1.45;
+}
+
+/* N SOURCES, NOT TWO. `#me2-source-rows` is filled from the template by the
+   wiring, one clone per source. Empty is a real state here, not a
+   half-built page, so it must not hold a gap open above the row that
+   follows it. */
+#me2-source-rows:empty {
+  display: none;
+}
+
+/* N=0 IS A NAMED CONDITION, NOT AN EMPTY LIST - and it will not be rare.
+   Same shape as `.me2-wl-empty`, the empty-state primitive this page
+   already has, in warning tone rather than dim: an empty list is a fact
+   about a filter, but no usable source means this unit cannot be answered
+   at all. Still not --danger; nothing here is broken. */
+.me2-src-empty {
+  display: none;
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--warning);
+}
+
+/* One attribute, three cases. `none` is the markup's resting value because
+   nothing has been cloned yet, so it is what is actually true on load. */
+#me2-source-list[data-me2-sources="none"] .me2-src-empty {
+  display: block;
+}
+
+/* With no sources there is no BETWEEN, so the (N+1)th row has nothing to
+   be about. Structural rather than left to the wiring: a cross-source row
+   sitting under `사용 가능한 출처 없음` would be asserting a relation among
+   nothing. */
+#me2-source-list[data-me2-sources="none"] .me2-src.is-cross {
+  display: none;
 }
 
 /* One source alone gives placement, never corroboration. The cross-source
@@ -957,12 +1304,10 @@ body {
   background: var(--bg-surface);
 }
 
-.me2-cand-note {
-  margin-top: 10px;
-  font-size: var(--me2-fact-min);
-  color: var(--text-dim);
-  line-height: 1.5;
-}
+/* `.me2-cand-note` is GONE. It was a two-line footnote explaining that a
+   back-side candidate is a left-right flip and that a top-bottom flip is
+   not a ninth candidate. True, and it never changed which candidate got
+   picked - so it is a docs sentence that had been parked on screen. */
 
 /* ---- counts ---- */
 .me2-counts {
@@ -1184,6 +1529,18 @@ body {
 
   .app-header { padding: 0 14px; gap: 12px; }
   .header-stats { display: none; }
+
+  /* No control and no type size is given up here - every one of these is
+     load-bearing for the request, and a request parameter you cannot see
+     is worse than a taller strip. What IS given up is the one piece of
+     redundancy: the `좌표 컬럼` group heading, whose three members already
+     wear `x` / `y` / `값` beside them. The group keeps its accessible name
+     from role="group" aria-label, so nothing is lost to a screen reader.
+     Measured at 1000x780: this puts the readout back on line 1, taking the
+     strip from 71px to 45px and the picture's cost from 46px to 29px. */
+  #me2-question-bar { padding: 6px 14px; gap: 6px 10px; }
+  .me2-scope-step.is-columns > .me2-scope-label { display: none; }
+  .me2-scope-note { margin-left: 0; }
 
   #me2-confirmbar { gap: 12px; padding: 10px 14px; }
 }

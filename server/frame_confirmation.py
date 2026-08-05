@@ -34,6 +34,13 @@ MIN_CONTRIBUTORS = 1
 # 이름만 붙여 둔다 — 서열의 정본은 crud 하나다.
 UNRANKED = 99
 
+# 확정 한 판이 소비 층(⑨)에 주는 **보증의 세기**. 새 어휘가 아니다 — 두 값 모두 프로젝트가
+# 이미 쓰는 정직한 강등 어휘이고, `not_declared`는 `config_resolve_report.REASON_NOT_DECLARED`
+# 와 같은 단어다(철자는 여기 적되 `test_plan_frame_basis.py`가 정본과 같은지 못 박는다 —
+# `bonding_plan`의 BINDING_* 블록과 같은 규율).
+WARRANT_CONFIRMED = "confirmed"
+WARRANT_NOT_DECLARED = "not_declared"
+
 
 class ConfirmationRefused(Exception):
     """확정을 거절한다. 사유 문장은 서버가 만든다(`map_alignment`와 같은 규율)."""
@@ -93,6 +100,60 @@ def live_confirmation(db, rule_name: str, unit_key: str):
                       models.FrameConfirmation.superseded_by.is_(None))
               .order_by(models.FrameConfirmation.version.desc())
               .first())
+
+
+def live_confirmation_for_maps(db, maps):
+    """이 맵들 중 하나라도 **합의에 실제로 올라간** 현행 판. 없으면 None. **읽기만 한다.**
+
+    층 ⑨(계획)가 「이 계획의 좌표계는 확정돼 있나」를 묻는 길이다. 단위를 (설비, 제품)으로
+    되짚지 않는 이유는 두 개다. ① 계획은 그 두 값을 모른다 — 계획의 신원은 (lot, slot)이다.
+    ② 되짚으려면 계획이 `dt_log`의 컬럼명을 알아야 하는데, 그것은 「결정 단위에 컬럼명을 적지
+    마라」와 정면으로 어긋난다. 대신 확정이 **스스로 적어 둔 사실**로 묻는다: 이 맵이 그
+    합의의 기여자였는가. 추론이 아니라 기록이므로 틀릴 자리가 없다.
+
+    ⚠️ `excluded_reason`이 붙은 행은 답이 되지 않는다. 제외된 소스는 어디에도 정렬되지
+    않았고, 그 판의 기준 프레임을 자기 근거라고 주장할 수 없다. 기록에는 남는다(없었던
+    것인지 거절된 것인지 구별해야 하므로) — 이 질문에만 「아니오」다.
+
+    maps: [(source_table, map_id)]. 계획이 선언한 맵 소스 수만큼이므로 상수 개다.
+    """
+    from sqlalchemy import and_, or_
+
+    from database import models
+
+    pairs = [(str(t), str(m or "")) for (t, m) in (maps or []) if t]
+    if not pairs:
+        return None
+    branches = [and_(models.FrameConfirmationSource.source_table == t,
+                     models.FrameConfirmationSource.map_id == m) for (t, m) in pairs]
+    return (db.query(models.FrameConfirmation)
+              .join(models.FrameConfirmationSource,
+                    models.FrameConfirmationSource.confirmation_uid
+                    == models.FrameConfirmation.confirmation_uid)
+              .filter(models.FrameConfirmation.superseded_by.is_(None),
+                      models.FrameConfirmationSource.excluded_reason.is_(None),
+                      or_(*branches))
+              # 같은 맵이 여러 단위의 합의에 올라갈 수 있다. 최신 판을 고르고 동률은 uid로
+              # 가른다 — 같은 입력이 실행마다 다른 답을 내면 그것은 기준이 아니다.
+              .order_by(models.FrameConfirmation.version.desc(),
+                        models.FrameConfirmation.confirmation_uid)
+              .first())
+
+
+def warrant_of(header) -> str:
+    """확정 한 판이 계획에 주는 보증의 세기 → `WARRANT_CONFIRMED` 또는 `WARRANT_NOT_DECLARED`.
+
+    스펙 §0.2 ⑨: 합쳐진 것은 **가장 약한 기여자**를 따라간다. 최약 기여자가 서열에 등재되지
+    않은 소스면(= `crud.get_source_priority`의 미등재값 `UNRANKED`) 넷 중 셋이 확정이어도 이
+    판은 확정을 보증하지 못한다. **여기서 새 규칙을 만들지 않는다** — 최약 기여자와 그
+    서열은 `record_confirmation`이 쓰기 시점에 이미 굳혀 둔 값이고, 이 함수는 그 값을 읽어
+    문턱 하나를 적용할 뿐이다.
+    """
+    if header is None:
+        return WARRANT_NOT_DECLARED
+    return (WARRANT_NOT_DECLARED
+            if int(header.weakest_priority or 0) >= UNRANKED
+            else WARRANT_CONFIRMED)
 
 
 def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,

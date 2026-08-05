@@ -1214,6 +1214,7 @@ warnings: [{type: "source_degraded", role, status, effect, detail}, ...]
 | 키는 있는데 깨짐(오타·테이블 부재·`null`) | `missing` 등 | `null` | 예 — §6.2 3층 방어 그대로 |
 | `transfer_log: "none"` | `connected(untracked)` | `null` + 상한 | 아니오(§6.2-bis) |
 | **`fail_values`는 선언, `val`은 부재** | **`connected(fail_value_column_absent)`** | `null` + 상한 | **예** — 아래 6.2-ter.0 |
+| **정렬은 됐는데 확정의 근거가 약함** | **`connected(not_declared)`** | **숫자** | 아니오 — 아래 6.2-ter.2 |
 
 #### 6.2-ter.0 🔴 답할 수 없음은 **YES가 아니다** — `fail_value_column_absent` (2026-08-04 `5d35337` · N14)
 
@@ -1250,6 +1251,22 @@ warnings: [{type: "source_degraded", role, status, effect, detail}, ...]
 - ⚠️ **총량에서 유도된 잔여는 빨강으로 칠하지 않습니다**(부족 하이라이트 억제 유지). 클라는 빠진 감산의 **크기**를 모르므로 근거 없는 알람이 됩니다. 그 공백은 색이 아니라 표시와 각주로 메웁니다.
 - ⚠️ **미해결**: `doe_bands.js`의 `rollupToGrid`(②의 엑셀 복사 출력)는 가용을 **맨 숫자**로 그리고 **호출자가 0곳**입니다. 그 복사 경로가 배선되는 날 같은 자격 표시가 함께 가지 않으면, 완화된 숫자가 아무것도 달지 않은 채 스프레드시트로 빠져나갑니다 — 그리고 전달되는 것은 스프레드시트의 숫자입니다.
 - 회귀 그물: `client2/tests/availability_gross_marker_harness.mjs`.
+
+##### 6.2-ter.2 계획이 **무엇 위에 서 있는가** — `frame_basis`와 중간 등급 (2026-08-05)
+
+[맵 정렬 스펙 §0.1](./MAP_ALIGNMENT_SPEC.md)의 사슬(좌표계 확정 → 얼라인 → 다이 맵 → **계획**)에서 계획은 종점입니다. 종전 계획은 기준 프레임 — **다른 모든 소스를 어느 프레임 위로 옮기는가**, 곧 N항 합의 결정 그 자체 — 을 `bonding_plan.CANONICAL_FRAME_ROLES` 튜플의 **선언 순서**로 골랐습니다. 기록도 판도 소스 목록도 없었습니다.
+
+**응답에 `frame_basis`가 추가됩니다(추가 전용 — 기존 키는 한 글자도 바뀌지 않습니다).**
+
+| `kind` | 뜻 | 함께 오는 것 |
+|---|---|---|
+| **`confirmation`** | 층 ⑧의 확정 기록이 기준을 지목했다 | `confirmation_uid` · `version` · `reference{table,map_id}` · `warrant` · `weakest{source_name,priority}` |
+| **`role_order`** | 확정이 없어 **퇴화형**(선언 순서)으로 골랐다 | `reason` · `roles` |
+
+- 🔴 **확정이 있으면 `CANONICAL_FRAME_ROLES`는 상의되지 않습니다.** 「읽기는 하되 튜플이 계속 결정한다」는 아무것도 바꾸지 않은 것과 같으므로, 회귀 그물은 둘을 **일부러 어긋나게** 세우고 정렬 마커가 뒤집히는지를 봅니다(`server/tests/test_plan_frame_basis.py`).
+- 🔴 **퇴화형은 자기 이름을 댑니다.** 확정과 똑같이 보이는 퇴화형이 바로 이 사슬이 없애려는 상태입니다. `reason`은 **새 단어가 아닙니다** — `not_declared`(확정이 없다 / 확정은 있는데 공통 바닥을 선언하지 않았다) · `mapping_unavailable`(바닥은 선언됐는데 그 선언을 읽지 못했다). 둘을 한 단어로 접으면 운영자가 없는 선언을 채우러 갑니다.
+- 🔴 **중간 등급 `connected(not_declared)`.** 종전에는 `connected`와 `connected(align_unavailable)` 둘뿐이라 **「정렬은 됐는데 근거가 약함」**을 어느 한쪽으로 반올림할 수밖에 없었습니다. 합쳐진 것은 **가장 약한 기여자**를 따라가므로(정렬 스펙 §0.2 ⑨) 넷 중 하나가 미확정이면 그 판은 확정을 보증하지 못합니다. **여섯째 토큰을 만들지 않습니다** — 이미 있는 `not_declared`를 마커로 얹으며, 강등이 아니므로 `_status_is_degraded` 대상 밖이고 숫자가 그대로 나갑니다.
+- ⚠️ **`bonding_plan`과 `transfer_plan`은 같은 함수(`bonding_plan.canonical_basis`)를 부릅니다.** 한쪽만 확정을 읽으면 같은 웨이퍼가 M1과 M2에서 다른 수치를 보고합니다.
 
 ### 6.3 클라 `replace` 권한 불변식 (C1) — **M2.6에서 자리를 옮겼습니다**
 

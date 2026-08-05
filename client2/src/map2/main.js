@@ -35,10 +35,13 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { createMapSession, withDecision, withPayload, withError, withSelectedCandidate,
-         withFocusedSource, withArmed, withConfig, PHASE } from './session.js';
+         withFocusedSource, withArmed, withConfig, withCatalog, withQuestion,
+         withWorklistQuery, withWorklist, withWorklistError, withConfirmed,
+         columnKey, isAskable, isUnset, BINDING_DECLARED, PHASE } from './session.js';
 import { computeSeating, compareSeatings, unionBounds } from './seating.js';
 import { layoutFor } from './painter.js';
-import { buildViewModel, VIEW_STATE, CROSS_SOURCE_ROW_ID } from './view_model.js';
+import { buildViewModel, VIEW_STATE, CROSS_SOURCE_ROW_ID, WORDS, CAUSE, ATTRIBUTION,
+         UNKNOWN } from './view_model.js';
 import { decideVerdict } from './verdict_bridge.js';
 import { parseCandidateId } from './candidates.js';
 import { createApiClient } from './api.js';
@@ -53,8 +56,34 @@ export const ELEMENT_IDS = Object.freeze({
   worklistSearch: 'me2-worklist-search',
   worklistEmpty: 'me2-worklist-empty',
   worklistMeta: 'me2-worklist-meta',
+  worklistBoundary: 'me2-worklist-boundary',
+  worklistBoundaryLabel: 'me2-worklist-boundary-label',
   badgeUnscorable: 'me2-badge-unscorable',
   badgeRemaining: 'me2-badge-remaining',
+  badgeSession: 'me2-badge-session',
+  // ── THE SET-UP ROW: 대상 테이블 -> x · y · value -> 기준 ────────────────────
+  // One selection row composing ONE request. Bound here by name BEFORE the markup lane lands
+  // them, because `bindElements` tolerates absence: a missing hook is collected into `missing`
+  // and reported, never thrown. Wiring them when they arrive is nothing -- the values are
+  // already read, already normalised and already in the request.
+  //
+  // 🔴 THE STATE IS THE COLUMN SET, NOT A FRAME NAME. `me2-col-x` / `me2-col-y` / `me2-col-value`
+  //    are the primitives; anything spelled `CORE FRAME` would be a preset that WRITES these
+  //    three, never a thing held instead of them. No preset control is bound yet, on purpose:
+  //    a preset built before the primitives becomes the foundation, and a wrong one then has no
+  //    way around it.
+  tableSelect: 'me2-table-select',
+  colXSelect: 'me2-col-x',
+  colYSelect: 'me2-col-y',
+  colValueSelect: 'me2-col-value',
+  referenceSelect: 'me2-reference-select',
+  questionNote: 'me2-question-note',
+  // 🔴 AGREEING WITH A PROPOSAL NEEDS ITS OWN CONTROL. Provenance is raised to `declared` by a
+  //    select `change`, and re-picking the option ALREADY selected fires no `change` at all --
+  //    so an operator who agrees with a proposed x/y pair had no way to say so, the dashed
+  //    marker never cleared, and the write stayed blocked forever. An agreement is an act; it
+  //    needs a control, not the absence of one.
+  columnsConfirm: 'me2-columns-confirm',
   svg: 'me2-picture-svg',
   layerFloor: 'me2-layer-floor',
   layerMiss: 'me2-layer-miss',
@@ -92,6 +121,44 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // lane's placeholder cells use.
 const STAGE = Object.freeze({ width: 200, height: 200, padding: 1, fillRatio: 0.87, radius: 1.2 });
 
+// Same figure the enrichment queue uses for its reference views. One number, one meaning: a
+// fast typist must not queue a served search per keystroke.
+const SEARCH_DEBOUNCE_MS = 250;
+
+/**
+ * A served worklist response -> what the session stores. TOTALS ARE PASSED THROUGH, NEVER
+ * DERIVED: a page is not a population, and `rows.length` is a fact about this page only. An
+ * absent total stays absent and renders `미상`.
+ */
+export function normaliseWorklist(res) {
+  const body = res || {};
+  // `units`, as the route serves them. A row carries a state and a REASON CODE, never a
+  // sentence: the sentences arrive once, aggregated, in `unscorable_reasons`.
+  const units = Array.isArray(body.units) ? body.units
+    : (Array.isArray(body.rows) ? body.rows : (Array.isArray(body) ? body : []));
+  const totals = body.totals || {};
+  const byState = totals.by_state || {};
+  return {
+    rows: Object.freeze(units.slice()),
+    // 🔴 THE SERVER'S OWN TOTALS, AND NOTHING DERIVED FROM THE PAGE. `matched` is how many the
+    //    query found; `returned` is how many fit in this response. Reporting the second as the
+    //    first is the page-is-not-a-population defect that put `잔여 · 0건` on screen.
+    total: numOrNullish(totals.matched),
+    remaining: numOrNullish(byState.pending),
+    unscorable: numOrNullish(totals.unscorable),
+    // Aggregated reasons, counted once. Never a sentence per row.
+    reasons: Object.freeze(Array.isArray(body.unscorable_reasons) ? body.unscorable_reasons : []),
+    truncated: totals.units_truncated === true,
+    // The route ships the catalog with the page, so the five controls need no separate call.
+    selection: body.selection || null,
+  };
+}
+
+function numOrNullish(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && v !== null && v !== '' ? n : null;
+}
+
 function bindElements(doc) {
   const el = {};
   const missing = [];
@@ -119,7 +186,15 @@ export function bootstrap(deps) {
   // THE one mutable binding, function-scoped. (`loadUnit` beside it is swapped once at startup
   // by the page entry, which is the only place that knows the rule naming the decision unit.)
   let session = createMapSession({});
-  let loadUnit = (decision) => api.loadReferenceView(decision);
+  let loadUnit = (decision, question) => api.loadReferenceView({ ...question, ...decision });
+  let loadRows = null;
+  // What only the page entry knows: the rule naming the decision unit, that rule's DECLARED
+  // target fields (the write's destination, never the picker's input), and who is confirming.
+  const context = { rule: null, targetFields: [], confirmedBy: null,
+                    toDecisionKey: (d) => ({ ...(d || {}) }) };
+  let searchTimer = null;
+  // Last diagnosis logged, so a repaint does not repeat a line nobody asked for twice.
+  let lastDiagnosis = '';
   // Action accounting for the switchover bar: 8 maps, <= 4 actions each, <= 30 s, 0 writes.
   const bar = { actions: 0, fetches: 0, repaints: 0, startedAt: null, lastLoopMs: null };
 
@@ -168,14 +243,145 @@ export function bootstrap(deps) {
     const detail = vm.cause && vm.cause.detail ? vm.cause.detail : '';
     if (el.refusal) text(el.refusal, vm.state === VIEW_STATE.NOT_SCORABLE ? detail : '');
 
+    renderQuestion(vm);
+    renderWorklist(vm);
     renderCounts(vm);
     renderSources(vm);
     renderCandidates(vm);
     renderConfirm(vm);
     renderSecondMetric(vm);
     paint(vm);
+    logDiagnosis(vm);
     bar.repaints++;
     return vm;
+  }
+
+  /**
+   * The set-up row. Five controls, one question. Options are written from the view model's
+   * values; this file chooses no label and composes no clause.
+   */
+  function renderQuestion(vm) {
+    const q = vm.question;
+    fillSelect(el.tableSelect, q.tables);
+    fillSelect(el.colXSelect, q.xOptions);
+    fillSelect(el.colYSelect, q.yOptions);
+    fillSelect(el.colValueSelect, q.valueOptions);
+    fillSelect(el.referenceSelect, q.references);
+    // 🔴 A PROPOSED PAIR IS MARKED WHEREVER IT APPEARS. One attribute, so the stylesheet can
+    //    say it once; the confirm control separately refuses to rest on it, and the two
+    //    guarantees are independent on purpose.
+    for (const node of [el.colXSelect, el.colYSelect]) {
+      if (node) node.setAttribute('data-me2-proposed', q.bindingIsGuess ? 'true' : 'false');
+    }
+    // Hidden unless there is something to agree to. A permanent confirm button beside a
+    // declared pair would train the operator to click it without reading.
+    if (el.columnsConfirm) el.columnsConfirm.hidden = !q.bindingIsGuess;
+    if (el.workbench) {
+      el.workbench.setAttribute('data-me2-evidence', vm.evidence.kind);
+      el.workbench.setAttribute('data-me2-attribution', vm.attribution.state);
+    }
+    // A label joined to a value by a separator. Never a template with a slot.
+    text(el.questionNote, questionNote(vm));
+  }
+
+  function fillSelect(node, options) {
+    if (!node || !Array.isArray(options)) return;
+    // Rebuilt only when the option set actually changed: replacing the children on every
+    // repaint would close an open dropdown mid-choice and lose the operator's place.
+    const signature = options.map(o => o.value).join(' ');
+    if (node.getAttribute('data-me2-options') !== signature) {
+      node.textContent = '';
+      for (const opt of options) {
+        const o = doc.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.label;
+        node.appendChild(o);
+      }
+      node.setAttribute('data-me2-options', signature);
+    }
+    const selected = options.find(o => o.selected);
+    node.value = selected ? selected.value : '';
+    node.disabled = options.length === 0;
+  }
+
+  /** `제안 · 기준 없음`. Tokens and a separator; the words come from the view model. */
+  function questionNote(vm) {
+    const parts = [];
+    if (vm.question.proposalWord) parts.push(vm.question.proposalWord);
+    if (vm.evidence.occupancyOnly) parts.push(CAUSE.reference_no_values);
+    if (vm.attribution.state === ATTRIBUTION.UNSTATED) parts.push(WORDS.columnsUnstated);
+    return parts.join(' · ');
+  }
+
+  /**
+   * The worklist: one SERVED page, above and below a boundary.
+   *
+   * 🔴 THE BADGES REPORT THE SERVER'S TOTALS, NOT THE ROWS ON SCREEN. This used to write
+   *    `rows.length - below`, which turns "the first page held 41 scorable rows" into the claim
+   *    "41 remain". A page is not a population, and the population is not bounded by anything
+   *    this client controls. When the server sent no total the badge says `미상`.
+   *
+   * 🔴 ROWS BELOW THE BOUNDARY GET NO PER-ROW MARK. Roughly half the population lands there --
+   *    320 of 668 metas are auto-registered and refused, and 8 `valid_die_ref` declarations
+   *    resolve zero times. Decorating half a list trains the eye past the decoration, after
+   *    which it also fails on the rows that are real. One badge, one boundary, nothing per row,
+   *    and nothing red.
+   */
+  function renderWorklist(vm) {
+    const wl = vm.worklist;
+    const scorable = el.worklistRows;
+    if (!scorable) return;
+    scorable.textContent = '';
+    if (el.worklistUnscorable) el.worklistUnscorable.textContent = '';
+    for (const row of wl.rows) scorable.appendChild(worklistRow(row));
+    if (el.worklistUnscorable) {
+      for (const row of wl.unscorableRows) el.worklistUnscorable.appendChild(worklistRow(row));
+    }
+    if (el.worklistBoundary) el.worklistBoundary.hidden = !wl.boundaryVisible;
+    if (el.worklistEmpty) el.worklistEmpty.hidden = !wl.empty;
+    // Aggregate, once, in the header. A label joined to a count by a separator.
+    writeBadge(el.badgeRemaining, WORDS.remaining, wl.remaining);
+    writeBadge(el.badgeUnscorable, WORDS.unscorable, wl.unscorable);
+    writeBadge(el.badgeSession, WORDS.thisSession, wl.confirmedThisSession);
+    text(el.worklistMeta, wl.error ? WORDS.unknown : (wl.served ? '' : WORDS.unknown));
+  }
+
+  function worklistRow(row) {
+    const node = doc.createElement('button');
+    node.type = 'button';
+    node.className = 'me2-wl-row';
+    node.setAttribute('role', 'option');
+    node.setAttribute('aria-selected', row.selected ? 'true' : 'false');
+    node.setAttribute('data-me2-row', '');
+    node.setAttribute('data-eqp', row.eqp);
+    node.setAttribute('data-product', row.product);
+    node.setAttribute('data-state', row.state);
+    // The server's composed identity, carried so a click can find the row's own key dict.
+    node.setAttribute('data-me2-row-key', row.unitKey);
+    node.appendChild(span(doc, 'me2-wl-key', row.unitKey || `${row.eqp} · ${row.product}`));
+    // `stateWord` is empty for every row below the boundary. That emptiness is the rule, not a
+    // missing value: no per-row decoration down there, of any kind.
+    const badge = span(doc, 'me2-wl-badge', row.stateWord);
+    badge.setAttribute('data-me2-row-state', '');
+    node.appendChild(badge);
+    const maps = span(doc, 'me2-wl-maps', row.mapCount === null ? '' : `${WORDS.maps} ${row.mapCount}`);
+    maps.setAttribute('data-me2-row-maps', '');
+    node.appendChild(maps);
+    return node;
+  }
+
+  /**
+   * A header badge. Writes into the `.me2-num` slot when the markup publishes one, and into the
+   * badge itself otherwise -- the header badges have no three-sibling pattern today, and asking
+   * for one is in the report rather than being faked here. An unmeasured count says `미상`; it
+   * is never blanked and never given a 0 stand-in.
+   */
+  function writeBadge(node, label, count) {
+    if (!node) return;
+    const value = Number.isFinite(Number(count)) && count !== null ? `${count}건` : UNKNOWN;
+    const slot = node.querySelector ? node.querySelector('[data-me2-badge-num]') : null;
+    if (slot) { slot.textContent = value; return; }
+    node.textContent = `${label} · ${value}`;
   }
 
   /**
@@ -249,12 +455,30 @@ export function bootstrap(deps) {
   }
 
   function renderCandidates(vm) {
-    // One grid per source, already laid out by the page as 2 columns (flip) x 4 rows (turn).
-    // The geometry of the control is the geometry of the operator's two motions, so there is
-    // no mental translation to pay and no rotate button anywhere on this screen: the same
+    // One grid per COLUMN SET, laid out by the page as 2 columns (flip) x 4 rows (turn). The
+    // geometry of the control is the geometry of the operator's two motions, so there is no
+    // mental translation to pay and no rotate button anywhere on this screen: the same
     // transform applied to both compared sets leaves their relation invariant, so a rotate
     // control cannot inform.
-    for (const cell of queryAll(doc, '[data-me2-candidate]')) {
+    //
+    // 🔴 THE GRID IS KEYED ON THE COLUMN SET, NOT ON A FRAME NAME. `[data-me2-candidates-for]`
+    //    is the markup lane's attribute and keeps its spelling; what changed is what goes in
+    //    it. When no grid carries the active key -- which is the case until that lane re-keys
+    //    them -- every candidate control on the page is treated as the one grid, so a
+    //    half-migrated page renders exactly as it did rather than going blank.
+    const activeKey = columnKey(session.question && session.question.columns);
+    const grids = queryAll(doc, '[data-me2-candidates-for]');
+    const keyed = grids.filter(g => g.getAttribute('data-me2-candidates-for') === activeKey);
+    if (activeKey && grids.length > 0) {
+      for (const g of grids) {
+        const mine = g.getAttribute('data-me2-candidates-for') === activeKey;
+        g.hidden = !mine && keyed.length > 0;
+        if (mine && queryAll(g, '[data-me2-candidate]').length === 0) fillGrid(g, vm);
+      }
+    }
+    const scope = keyed.length > 0 ? keyed : [doc];
+    for (const host of scope) {
+    for (const cell of queryAll(host, '[data-me2-candidate]')) {
       const code = cell.getAttribute('data-frame-code');
       const card = vm.candidates.find(c => c.id === code);
       if (!card) continue;
@@ -269,6 +493,35 @@ export function bootstrap(deps) {
           span.textContent = badge;
           tags.appendChild(span);
         }
+      }
+    }
+    }
+  }
+
+  /**
+   * Fill a grid the page provided but left empty. This adds LIST ITEMS INSIDE A CONTAINER THE
+   * PAGE PROVIDED, which is the only markup this file is allowed to make; it invents no
+   * container, no class the stylesheet does not already carry, and no ordering of its own --
+   * the eight and their arrangement come from the view model.
+   */
+  function fillGrid(host, vm) {
+    for (const row of vm.grid) {
+      for (const card of row.cells) {
+        if (!card) continue;
+        const cell = doc.createElement('button');
+        cell.type = 'button';
+        cell.className = 'me2-cand';
+        cell.setAttribute('data-me2-candidate', '');
+        cell.setAttribute('data-rotation', String(card.rotation));
+        cell.setAttribute('data-side', card.side);
+        cell.setAttribute('data-frame-code', card.id);
+        cell.setAttribute('aria-pressed', 'false');
+        cell.appendChild(span(doc, 'me2-cand-deg', card.degLabel));
+        cell.appendChild(span(doc, 'me2-cand-code', card.storedLabel));
+        const tags = span(doc, 'me2-cand-tags', '');
+        tags.setAttribute('data-me2-cand-tags', '');
+        cell.appendChild(tags);
+        host.appendChild(cell);
       }
     }
   }
@@ -293,9 +546,58 @@ export function bootstrap(deps) {
   function renderSecondMetric(vm) {
     // Computed always, shown only when it disagrees. A second metric that agrees changes
     // nothing and doubles the numerals on screen for zero decision value.
+    //
+    // 🔴 THE NODE GETS THE LABEL, THE CONSOLE GETS THE SENTENCE. `지표 불일치` is the fact that
+    //    changes the decision; which candidate each metric chose is diagnosis, and diagnosis
+    //    lives in the console where it can be read whole and never wraps a line on screen.
     if (!el.metricConflict) return;
     el.metricConflict.hidden = !vm.secondMetric;
     if (vm.secondMetric) el.metricConflict.textContent = vm.secondMetric;
+  }
+
+  /**
+   * EVERYTHING THE SCREEN DOES NOT SAY. The audience are administrators; explanation belongs in
+   * the docs and diagnosis in the console, so the full form of every short label goes here --
+   * whole, never truncated. Logged only when it CHANGES, because a repaint is not an event and
+   * a line per repaint is a log nobody reads.
+   */
+  function logDiagnosis(vm) {
+    const view = doc.defaultView;
+    if (!view || !view.console) return;
+    const q = vm.question;
+    const lines = [];
+    // 🔴 THE SCREEN NOW TRUNCATES, SO THIS IS NOT A CONVENIENCE. The frame made the refusal,
+    //    the caption and the inline meta one-line with ellipsis, and deleted the cause node
+    //    outright. Anything not logged here whole is not moved to the console, it is DESTROYED.
+    if (vm.cause && vm.cause.detail) lines.push(vm.cause.detail);
+    if (vm.cause && vm.cause.token) {
+      lines.push(vm.cause.count === null ? vm.cause.token : `${vm.cause.token} (${vm.cause.count})`);
+    }
+    if (vm.meta) lines.push(vm.meta);
+    if (vm.caption) lines.push(vm.caption);
+    if (vm.secondMetricDetail) lines.push(vm.secondMetricDetail);
+    if (q.bindingIsGuess) {
+      lines.push(`coordinate binding for '${q.mapTable}' is a fallback guess `
+        + `(x=${q.xCol}, y=${q.yCol}, val=${q.valCol || 'none'}); `
+        + 'it is served with source="fallback_guess" and must be agreed before confirming.');
+    }
+    // Only once there IS an answer. Before one arrives there is nothing to attribute and
+    // nothing to say about the evidence, and logging it anyway is a line per row selection.
+    const answered = vm.state === VIEW_STATE.SCORED_WINNER
+      || vm.state === VIEW_STATE.SCORED_NO_WINNER || vm.state === VIEW_STATE.NOT_SCORABLE;
+    if (answered && vm.attribution.state === ATTRIBUTION.UNSTATED) {
+      lines.push(`the response does not say which coordinate pair it read, and '${q.mapTable}' `
+        + `offers ${vm.attribution.pairCount}. Counts are withheld rather than shown under a `
+        + 'pair nobody named; the fix is unit.x_col / unit.y_col on the wire.');
+    }
+    if (answered && vm.evidence.occupancyOnly) {
+      lines.push('reference carries no values, so only occupancy could be scored. Occupancy '
+        + 'alone is flat: candidates can occupy identical dies and tie. Name a value column.');
+    }
+    const joined = lines.join(' | ');
+    if (joined === lastDiagnosis) return;
+    lastDiagnosis = joined;
+    if (joined) view.console.log('[map2]', joined);
   }
 
   // ── the picture ──────────────────────────────────────────────────────────────
@@ -375,32 +677,138 @@ export function bootstrap(deps) {
   function selectDecision(decision) {
     bar.actions++;
     bar.startedAt = Date.now();
-    const started = withDecision(session, decision);
-    setSession(started);
-    const seq = started.requestSeq;
+    setSession(withDecision(session, decision));
+    ask();
+  }
+
+  /**
+   * ONE request, carrying the whole primitive tuple: the unit, the table, the columns and the
+   * floor. Reference cells, source cells and all eight candidate scorings come back together --
+   * there is deliberately no per-candidate fetch anywhere in this program, because eight round
+   * trips per row would blow the 30-second bar on their own.
+   *
+   * Changing any part of the question re-asks. That is one fetch, and the sequence guard is
+   * what keeps the previous set-up's answer from being painted under the new labels.
+   */
+  function ask() {
+    const decision = session.decision;
+    if (!decision) return;
+    // Untouched set-up asks as before; a HALF-filled one refuses. See .
+    if (!isUnset(session.question) && !isAskable(session.question)) return;
+    const seq = session.requestSeq;
     bar.fetches++;
-    // ONE request. Reference cells, source cells and all eight candidate scorings together.
-    // There is deliberately no per-candidate fetch anywhere in this program: eight round trips
-    // per row would blow the 30-second bar on their own.
-    Promise.resolve(loadUnit(decision))
+    Promise.resolve(loadUnit(decision, session.question))
       .then(raw => { setSession(withPayload(session, adaptPayload(raw), seq)); markLoop(); })
       .catch(err => setSession(withError(session, err, seq)));
+  }
+
+  /** One of the five set-up controls moved. Normalise, then re-ask if there is a row selected. */
+  function setQuestion(patch) {
+    bar.actions++;
+    const before = session;
+    setSession(withQuestion(session, patch));
+    if (session !== before) ask();
+  }
+
+  /**
+   * 🔴 THE SEARCH IS THE SERVER'S. This sends the text and renders what comes back; it never
+   *    filters a loaded list, and there is no "load them all" call for it to filter over. The
+   *    population is not bounded by anything this client controls. Debounced so a fast typist
+   *    does not queue a request per keystroke, and sequence-guarded so the answer to a query
+   *    the operator already retyped is discarded rather than painted.
+   */
+  function searchWorklist(query) {
+    setSession(withWorklistQuery(session, query));
+    if (searchTimer !== null && doc.defaultView) doc.defaultView.clearTimeout(searchTimer);
+    const run = () => { searchTimer = null; fetchWorklist(); };
+    if (doc.defaultView && doc.defaultView.setTimeout) {
+      searchTimer = doc.defaultView.setTimeout(run, SEARCH_DEBOUNCE_MS);
+    } else {
+      run();
+    }
+  }
+
+  function fetchWorklist() {
+    if (typeof loadRows !== 'function') return;
+    const seq = session.worklistSeq;
+    const q = session.question || {};
+    Promise.resolve(loadRows({
+      q: session.worklist.query,
+      rule: context.rule,
+      mapTable: q.mapTable,
+      // The worklist is a list of UNITS. It is not scoped by the coordinate columns -- those
+      // decide how one unit is READ, not which units exist -- so they are not sent here.
+    })).then(res => setSession(withWorklist(session, normaliseWorklist(res), seq)))
+      .catch(err => setSession(withWorklistError(session, err, seq)));
   }
 
   function markLoop() {
     if (bar.startedAt !== null) bar.lastLoopMs = Date.now() - bar.startedAt;
   }
 
+  /**
+   * 🔴 THIS USED TO CALL `confirmFrame` POSITIONALLY AND THE TRANSPORT TAKES A RECORD. Every
+   *    field the POST body names -- `rule`, `decision_key`, `frames`, `sources`, `ruling`,
+   *    `reference` -- read `undefined` off a `{eqp, product}` object, so the one write on this
+   *    screen was posting an empty record. The record is built here now, from the same values
+   *    the operator was looking at.
+   *
+   * 🔴 THE COLUMNS ARE THE INPUT; THE TARGET FIELD IS THE OUTPUT. `frames` is keyed by the
+   *    rule's DECLARED target fields, because that is what downstream reads. Nothing declares
+   *    which column pair writes which target field, so when the rule declares more than one and
+   *    the operator's pair could map to either, this refuses rather than guessing -- naming
+   *    that ambiguity is the finding, and a guess here would bake a rotation into stored
+   *    coordinates under the wrong label with nothing downstream looking wrong.
+   */
   function onConfirm() {
     bar.actions++;
     const vm = buildViewModel({ session, verdict: currentVerdict() });
     if (!vm.confirm.enabled) return;
     // Reading is frictionless; this write gets exactly one confirmation and it is not a modal.
     if (!session.armed) { setSession(withArmed(session, true)); return; }
-    const sourceIds = (session.payload.sources || []).map(s => s.id);
-    Promise.resolve(api.confirmFrame(session.decision, vm.selectedCandidateId, sourceIds))
-      .then(() => { setSession(withArmed(session, false)); })
+    const payload = session.payload || {};
+    const q = session.question || {};
+    Promise.resolve(api.confirmFrame({
+      rule: context.rule,
+      decisionKey: context.toDecisionKey(session.decision),
+      // The SUBJECT of the confirmation: this pair, in this table, at this frame.
+      mapTable: q.mapTable,
+      columns: { x: q.columns.x, y: q.columns.y, val: q.columns.val },
+      frame: vm.selectedCandidateId,
+      frames: {},
+      sources: (payload.sources || []).map(s => ({
+        role: 'source',
+        source_table: q.mapTable,
+        map_id: s.id,
+        source_name: s.label,
+        applied_frame: vm.selectedCandidateId,
+        shift_dx: 0,
+        shift_dy: 0,
+        agreement: null,
+        discriminating: null,
+        excluded_reason: null,
+      })),
+      ruling: (payload.__decoded && payload.__decoded.ruling) || null,
+      reference: referenceOf(q.reference),
+      confirmedBy: context.confirmedBy,
+    })).then(() => { setSession(withConfirmed(session)); })
       .catch(() => { setSession(withArmed(session, false)); });
+  }
+
+  /**
+   * 🔴 NO TARGET FIELD IS NAMED, BY RULING (2026-08-05). The confirmation records WHICH
+   *    COORDINATES WERE ALIGNED -- the column pair -- because `frame_confirmation` is
+   *    authoritative for what was confirmed and a target field is a name from a different
+   *    system's vocabulary. Nothing declares which pair writes which `target_field`, and the
+   *    resolution is not to add that declaration: it is that this record does not need it.
+   *    Whether the confirmation writes through to the enrichment fields, or those fields become
+   *    a pointer to this record, is open. Until it is decided, we keep refusing to name one.
+   */
+  /** `"table:map_id"` back into the record's `{table, map_id}`. 기준 없음 stays null. */
+  function referenceOf(spec) {
+    if (!spec || String(spec).indexOf(':') < 0) return null;
+    const parts = String(spec).split(':');
+    return { table: parts[0], map_id: parts.slice(1).join(':') };
   }
 
   function onWorklistClick(e) {
@@ -408,11 +816,46 @@ export function bootstrap(deps) {
     if (!row) return;
     for (const other of queryAll(doc, '[data-me2-row]')) other.setAttribute('aria-selected', 'false');
     row.setAttribute('aria-selected', 'true');
-    selectDecision({ eqp: row.getAttribute('data-eqp'), product: row.getAttribute('data-product') });
+    // 🔴 THE REQUEST TAKES THE SERVED KEY DICT, NOT TWO ATTRIBUTES RE-READ OFF THE DOM. The
+    //    rule owns which columns compose a unit, so reconstructing `{dt_eqp, product}` from
+    //    `data-eqp` / `data-product` would hardcode today's rule into the click handler and
+    //    silently answer about the wrong thing the day a rule declares a third key column.
+    const unitKey = row.getAttribute('data-me2-row-key') || '';
+    const served = (session.worklist.rows || []).find(
+      r => String(r.unit_key == null ? '' : r.unit_key) === unitKey) || null;
+    selectDecision({
+      eqp: row.getAttribute('data-eqp'),
+      product: row.getAttribute('data-product'),
+      __unitKey: unitKey,
+      __key: served && served.key && typeof served.key === 'object' ? served.key : null,
+    });
   }
 
   for (const host of [el.worklistRows, el.worklistUnscorable]) {
     if (host) host.addEventListener('click', onWorklistClick);
+  }
+  // The five set-up controls. Each writes ONE primitive field; none of them derives behaviour
+  // from a name. A preset, when one exists, will write these same fields and nothing else.
+  bindSelect(el.tableSelect, v => setQuestion({ mapTable: v }));
+  bindSelect(el.colXSelect, v => setQuestion({
+    columns: { ...session.question.columns, x: v || null }, bindingSource: BINDING_DECLARED }));
+  bindSelect(el.colYSelect, v => setQuestion({
+    columns: { ...session.question.columns, y: v || null }, bindingSource: BINDING_DECLARED }));
+  bindSelect(el.colValueSelect, v => setQuestion({
+    columns: { ...session.question.columns, val: v || null }, bindingSource: BINDING_DECLARED }));
+  bindSelect(el.referenceSelect, v => setQuestion({ reference: v || null }));
+  if (el.columnsConfirm) {
+    el.columnsConfirm.addEventListener('click', () => {
+      // Agreeing changes nothing about the columns, only about who stands behind them, so it
+      // must NOT re-ask: the answer already on screen was computed from this very pair.
+      bar.actions++;
+      setSession(withQuestion(session, { bindingSource: BINDING_DECLARED }));
+    });
+  }
+  if (el.worklistSearch) {
+    el.worklistSearch.addEventListener('input', (e) => {
+      searchWorklist((e.target && e.target.value) || '');
+    });
   }
   if (el.confirmBtn) el.confirmBtn.addEventListener('click', onConfirm);
   if (el.sourceList) {
@@ -434,14 +877,59 @@ export function bootstrap(deps) {
   doc.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && session.armed) setSession(withArmed(session, false));
     // Enter arms, then commits. Arrow keys stay with the worklist -- existing muscle memory.
-    if (e.key === 'Enter' && el.confirmBtn && !el.confirmBtn.disabled) onConfirm();
+    //
+    // 🔴 THIS HANDLER HAD NO TARGET GUARD, AND IT MADE THE ONE WRITE IN THE CHAIN REACHABLE BY
+    //    A KEYSTROKE INSIDE A DROPDOWN. Enter in any of the five set-up selects bubbled to the
+    //    document, armed on the first press and committed on the second -- while the operator
+    //    believed they were choosing a column. A confirmation that a wrong frame bakes an
+    //    unverified rotation into stored coordinates, reachable by accident, is the failure
+    //    this whole arm-then-commit design exists to prevent.
+    //
+    //    The guard is on WHAT KIND OF THING HAS FOCUS, not on one container's id. Keying it to
+    //    `#me2-question-bar` would protect exactly today's markup and silently stop protecting
+    //    anything the day a control is added outside that div -- and the next control to be
+    //    added is the one nobody remembers to re-check. Enter belongs to a focused control
+    //    whenever there is one; only the confirm button itself may turn it into this write.
+    if (e.key === 'Enter' && el.confirmBtn && !el.confirmBtn.disabled && !takesEnter(e.target)) {
+      onConfirm();
+    }
   });
+
+  /**
+   * Does this element own the Enter key? Every form control does -- a select opens or commits
+   * its own choice, an input submits its own value -- and so does anything explicitly opted out
+   * with `data-me2-no-enter`. The confirm button is the ONE exception: Enter on it is this
+   * write by definition.
+   */
+  function takesEnter(target) {
+    if (!target) return false;
+    if (el.confirmBtn && target === el.confirmBtn) return false;
+    if (typeof target.closest === 'function' && el.confirmBtn && target.closest('#me2-confirm-btn')) {
+      return false;
+    }
+    // 🔴 ALLOW-LIST, NOT DENY-LIST, AND THAT IS THE WHOLE POINT. Enumerating the controls that
+    //    own Enter (`SELECT`, `INPUT`, ...) protects exactly the controls somebody remembered,
+    //    and the next control added is the one nobody re-checks -- the same shape of hole as
+    //    keying the guard to one container's id. So Enter reaches this write ONLY from the
+    //    confirm control itself or from a page with nothing focused at all. Anything else
+    //    focused owns its own Enter, whatever it turns out to be.
+    const tag = String(target.tagName || '').toUpperCase();
+    return !(tag === 'BODY' || tag === 'HTML' || tag === '#DOCUMENT' || tag === '');
+  }
   if (el.exportBtn) {
     el.exportBtn.disabled = !artifactImplemented();
-    if (!artifactImplemented()) el.exportBtn.title = '엑셀 양식 내보내기는 아직 연결되지 않았습니다.';
+    // The reason is an explanation, so it goes to the console. The disabled control is what
+    // the screen says; a sentence hanging off a tooltip is neither one line nor a decision.
+    if (!artifactImplemented() && doc.defaultView && doc.defaultView.console) {
+      doc.defaultView.console.log('[map2] excel artifact export is not wired to a control yet.');
+    }
   }
 
   // ── helpers that touch the DOM ───────────────────────────────────────────────
+  function bindSelect(node, onPick) {
+    if (!node) return;
+    node.addEventListener('change', (e) => onPick((e.target && e.target.value) || ''));
+  }
   function text(node, value) { if (node) node.textContent = value; }
   function queryAll(d, sel) {
     return d.querySelectorAll ? Array.from(d.querySelectorAll(sel)) : [];
@@ -455,7 +943,7 @@ export function bootstrap(deps) {
   }
   function setChildTextIn(root, sel, value) { setChildText(root, sel, value); }
   function warn(msg) {
-    if (doc.defaultView && doc.defaultView.console) doc.defaultView.console.warn(`[map2] ${msg}`);
+    if (doc.defaultView && doc.defaultView.console) doc.defaultView.console.log(`[map2] ${msg}`);
   }
 
   function selectedScoring(vm) {
@@ -473,8 +961,33 @@ export function bootstrap(deps) {
     selectDecision,
     /** The page entry supplies the request, because only it knows the rule naming the unit. */
     setLoader(fn) { if (typeof fn === 'function') loadUnit = fn; },
+    /** The worklist loader, same seam. Absent until the route lands; nothing fetches without it. */
+    setWorklistLoader(fn) { if (typeof fn === 'function') loadRows = fn; },
+    /**
+     * The rule, its DECLARED target fields, and who is confirming. Target fields are the WRITE's
+     * destination and never the picker's input -- see `framesToWrite`.
+     */
+    setContext(next) {
+      if (!next) return;
+      if (next.rule) context.rule = String(next.rule);
+      if (Array.isArray(next.targetFields)) context.targetFields = next.targetFields.slice();
+      if (next.confirmedBy) context.confirmedBy = String(next.confirmedBy);
+      if (typeof next.toDecisionKey === 'function') context.toDecisionKey = next.toDecisionKey;
+    },
     setConfig(config) { setSession(withConfig(session, config)); },
-    setWorklist(rows) { renderWorklist(doc, el, rows); },
+    /** What the five controls may offer. Re-normalises the standing question against it. */
+    setCatalog(catalog) { setSession(withCatalog(session, catalog)); },
+    setQuestion,
+    /** Re-runs the served search with the current text. */
+    refreshWorklist() { fetchWorklist(); },
+    searchWorklist,
+    /**
+     * Adopt an already-fetched page. The seam the stub loader hands to, and the same path a
+     * served response takes -- one renderer, so the stub cannot render differently from live.
+     */
+    setWorklist(rows) {
+      setSession(withWorklist(session, normaliseWorklist(rows), session.worklistSeq));
+    },
     /** Paste outcome: an aggregate count, never per-row noise. Fed by the artifact gateway. */
     showArtifactResult(result) {
       if (!el.pasteResult) return;
@@ -487,44 +1000,6 @@ export function bootstrap(deps) {
     // Returns the frozen record, so a caller cannot reach in and mutate the session.
     peek() { return session; },
   });
-}
-
-function renderWorklist(doc, el, rows) {
-  const scorable = el.worklistRows;
-  const unscorable = el.worklistUnscorable;
-  if (!scorable) return;
-  scorable.textContent = '';
-  if (unscorable) unscorable.textContent = '';
-  let below = 0;
-  for (const row of rows || []) {
-    // Unscorable rows sink below a visible boundary and carry NO per-row decoration: roughly
-    // half the population lands there, and decorating half a population trains the eye to
-    // ignore the decoration -- after which it also fails on the cases that are real.
-    const isBelow = row.scorable === false;
-    const host = isBelow && unscorable ? unscorable : scorable;
-    if (isBelow) below++;
-    const node = doc.createElement('button');
-    node.type = 'button';
-    node.className = 'me2-wl-row';
-    node.setAttribute('role', 'option');
-    node.setAttribute('aria-selected', 'false');
-    node.setAttribute('data-me2-row', '');
-    node.setAttribute('data-eqp', row.eqp);
-    node.setAttribute('data-product', row.product);
-    node.setAttribute('data-state', isBelow ? 'unscorable' : (row.state || 'pending'));
-    node.appendChild(span(doc, 'me2-wl-key', `${row.eqp} · ${row.product}`));
-    const badge = span(doc, 'me2-wl-badge', isBelow ? '' : (row.state === 'confirmed' ? '확정' : '미확정'));
-    badge.setAttribute('data-me2-row-state', '');
-    node.appendChild(badge);
-    const maps = span(doc, 'me2-wl-maps', row.map_count != null ? `맵 ${row.map_count}` : '');
-    maps.setAttribute('data-me2-row-maps', '');
-    node.appendChild(maps);
-    host.appendChild(node);
-  }
-  // One badge, one count, never one mark per row.
-  if (el.badgeUnscorable) el.badgeUnscorable.textContent = `기준 없음 ${below}건`;
-  if (el.badgeRemaining) el.badgeRemaining.textContent = `남은 판정 ${Math.max(0, (rows || []).length - below)}건`;
-  if (el.worklistEmpty) el.worklistEmpty.hidden = (rows || []).length > 0;
 }
 
 function span(doc, cls, value) {
@@ -578,8 +1053,45 @@ export function adaptPayload(raw) {
     discriminating_dies: decoded.counts.discriminatingDies,
     elapsed_ms: decoded.counts.elapsedMs,
     refusal_detail: decoded.refusalDetail,
+    // 🔴 WHICH COLUMN PAIR DID THE SERVER ACTUALLY READ. Null today: the route takes no column
+    //    parameter and the `unit` block echoes none (`server/main.py:4160-4168`,
+    //    `server/map_alignment.py:677`). Read here rather than assumed, so the day the server
+    //    echoes it the screen starts attributing instead of refusing -- with no other change.
+    answered_columns: answeredColumns(raw),
+    // Declared on the wire (`reference.kind`), never inferred from the shape of the cells.
+    // This is what tells "we had values" from "we only had occupancy", and those are two
+    // different answers to "why could you not tell them apart".
+    reference_kind: (raw && raw.reference && raw.reference.kind) || null,
     __decoded: decoded,
     __context: verdictContext(decoded),
+  };
+}
+
+/**
+ * WHICH PAIR THE SERVER ACTUALLY READ, and WHO CHOSE IT. The route now answers both:
+ * `unit.columns.{x,y,value} = {column, origin}` with origin `chosen` | `proposed` | `absent`
+ * (`server/map_alignment.py:474-476`, echoed at `:813-818`).
+ *
+ * 🔴 `proposed` IS NOT `chosen`, AND FLATTENING THEM HERE WOULD UNDO THE WHOLE POINT OF THE
+ *    SERVER SENDING TWO WORDS. A proposed column is a preset that filled itself in; a chosen
+ *    one is a name the operator gave. Both identify the pair that was read -- so both make the
+ *    answer ATTRIBUTABLE -- but only the second is an agreement, and the write still refuses to
+ *    rest on the first.
+ */
+function answeredColumns(raw) {
+  const cols = raw && raw.unit && raw.unit.columns ? raw.unit.columns : null;
+  if (!cols) return null;
+  const x = cols.x && cols.x.column ? cols.x.column : null;
+  const y = cols.y && cols.y.column ? cols.y.column : null;
+  if (!x || !y) return null;
+  const chosen = (a) => a && a.origin === 'chosen';
+  return {
+    x, y,
+    val: cols.value && cols.value.column ? cols.value.column : null,
+    // The pair is agreed only when BOTH axes were named by a person.
+    agreed: chosen(cols.x) && chosen(cols.y),
+    // The server's own reason when it could not even propose a value column.
+    valueReason: (cols.value && cols.value.reason) || null,
   };
 }
 

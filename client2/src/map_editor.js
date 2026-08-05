@@ -189,10 +189,9 @@ async function fetchPaintRules(table) {
   const degrade = (why) => {
     // 이전 잠금 값을 그대로 들고 간다 — 모르는 상태에서 여는 것보다 닫아 두는 쪽이 안전하다
     paintLockConfig = { ...paintLockConfig, source: 'stale' };
-    console.warn(`[Map Editor] paint-rules 조회 실패 (${t}): ${why} — 직전 잠금 규칙을 유지합니다.`);
-    showToast(
-      `페인트 잠금 규칙을 확인하지 못했습니다 (${t}) — 직전 규칙을 유지합니다. 잠금이 실제와 다를 수 있습니다.`,
-      'warning', { dedupeKey: 'paint_rules_unconfirmed' });
+    // The toolbar chip (`⚠ 잠금 규칙 미확인`) is the on-screen signal and it PERSISTS; a toast
+    // that fades said the same thing a third time. Diagnosis goes to the console.
+    console.log(`[Map Editor] paint-rules 조회 실패 (${t}): ${why} — 직전 잠금 규칙을 유지합니다.`);
     updatePaintLockIndicator();
   };
   try {
@@ -1406,13 +1405,10 @@ function fillColumnDropdowns() {
   // [F2] "fallback_guess" = the server could not match any value-column candidate and
   // guessed the first data column. The data paths refuse to use a guess, so the user
   // must not trust it silently either — warning-tone hint on the existing control
-  // (dropdown title) + a toast. No new control.
+  // (dropdown title). No new control, and no toast: the title sits ON the guess.
   if (served && served.source === 'fallback_guess') {
-    el.colMapVal.title = `값 컬럼 '${served.val}'은(는) 추측입니다 — map_overlay_config.table_bindings에 선언하십시오.`;
-    showToast(
-      `${selectedTable}: 값 컬럼 '${served.val}'은(는) 후보에 없어 추측으로 선택했습니다 — `
-      + `map_overlay_config.table_bindings에 선언을 권장합니다.`,
-      'warning', { dedupeKey: `binding_guess_${selectedTable}` });
+    el.colMapVal.title = `추측된 값 컬럼 — map_overlay_config.table_bindings에 선언하십시오.`;
+    console.log(`[Map Editor] ${selectedTable}: value column '${served.val}' is a fallback_guess`);
   } else {
     el.colMapVal.title = '';
   }
@@ -2971,11 +2967,11 @@ async function saveCustomPreset() {
       console.debug(`[map] preset saved: ${presetName} (${data.preset_key})`);
     } else {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      alert(`Failed to save custom geometry preset: ${errorData.detail || res.statusText}`);
+      alert(`프리셋 저장 실패 — ${errorData.detail || res.statusText}`);
     }
   } catch (err) {
     console.error('[Map Presets] Error saving preset:', err);
-    alert(`Error saving custom preset to server: ${err.message}`);
+    alert(`프리셋 저장 실패 — ${err.message}`);
   }
 }
 
@@ -2987,7 +2983,7 @@ async function deleteCustomPreset() {
   const preset = serverPresets[val];
   if (!preset || !preset.is_custom) return;
 
-  if (!confirm(`Are you sure you want to delete custom preset '${preset.name}' from server?`)) return;
+  if (!confirm(`프리셋 '${preset.name}'을(를) 서버에서 삭제합니다. 계속하시겠습니까?`)) return;
 
   try {
     const res = await fetch(`${API_BASE}/api/map-presets/${val}`, {
@@ -3002,11 +2998,11 @@ async function deleteCustomPreset() {
       console.debug(`[map] preset deleted: ${preset.name} (${val})`);
     } else {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      alert(`Failed to delete preset from server: ${errorData.detail || res.statusText}`);
+      alert(`프리셋 삭제 실패 — ${errorData.detail || res.statusText}`);
     }
   } catch (err) {
     console.error('[Map Presets] Error deleting preset:', err);
-    alert(`Error deleting preset from server: ${err.message}`);
+    alert(`프리셋 삭제 실패 — ${err.message}`);
   }
 }
 
@@ -4316,12 +4312,13 @@ const LEGEND_SAVE_MESSAGE = {
   //    미완성 계획은 그대로 저장된다(사용자 지시 2026-07-28: "그냥 doe 무효인대로 저장해") —
   //    V1–V5는 행 옆에 사유를 띄우고 서버 `validate`가 보고할 뿐, 저장을 막지 않는다.
   //    문구도 "무효"가 아니라 **무엇이 사라지는지**를 말한다.
-  'zone-columns-missing': '서버 DOE 저장소에 층 구조(STACK·1H·MID·TOP) 컬럼이 아직 없습니다 — 지금 저장하면 그 컬럼들이 버려진 채 계획 전체가 교체되어 **층 구조가 사라집니다.** 그래서 저장하지 않았습니다. 서버가 갱신되면 자동으로 다시 시도합니다.',
-  'legacy-unreadable': '이 계획에는 새 층 구조로 옮길 수 없는 **폐기된 구간 배치**가 남아 있습니다 — 지금 저장하면 그 구간들이 3구역으로 뭉개진 채 서버 원본을 덮어 **지금 남아 있는 정보가 사라집니다.** 그래서 저장하지 않았습니다. 해당 값의 STACK·구역을 직접 채우면 풀립니다.',
-  'unknown-server-state': '서버 DOE 상태를 확인하지 못해 **저장을 보류**했습니다 — 편집은 이 브라우저에만 있습니다. 맵을 다시 열면 재시도합니다.',
-  conflict: '다른 사람이 이 계획을 변경했습니다 — 저장하지 않았습니다. 맵을 다시 불러온 뒤 편집하십시오.',
-  adopted: '서버에 저장된 계획을 불러왔습니다. 그 사이 편집한 내용은 서버에 반영되지 않았습니다.',
-  error: 'DOE·legend 서버 저장 실패 — 이 편집은 팀에 공유되지 않았습니다 (로컬 초안만).',
+  //    한 줄이고, `**`는 쓰지 않는다 — 토스트는 마크다운을 렌더하지 않아 별표가 그대로 나갔다.
+  'zone-columns-missing': '층 구조 컬럼이 서버에 없어 저장 보류 — 서버 갱신 후 자동 재시도합니다.',
+  'legacy-unreadable': '폐기된 구간 배치가 남아 저장 보류 — 해당 값의 STACK·구역을 채우십시오.',
+  'unknown-server-state': '서버 DOE 상태 미확인으로 저장 보류 — 맵을 다시 열면 재시도합니다.',
+  conflict: '다른 사람이 이 계획을 바꿨습니다 — 저장하지 않았습니다. 맵을 다시 불러오십시오.',
+  adopted: '서버 계획을 불러왔습니다 — 그 사이 편집한 내용은 반영되지 않았습니다.',
+  error: 'DOE·legend 저장 실패 — 로컬 초안만 남았습니다.',
 };
 
 function applyLegendSaveResult(r) {
@@ -4463,7 +4460,7 @@ function renderLegendTable() {
       // Check duplicate values
       const exists = legend.some((l, idx) => idx !== index && l.value === newVal);
       if (exists) {
-        showToast('중복된 범례 값이 존재합니다.', 'warning');
+        showToast('중복된 범례 값입니다.', 'warning');
         inputVal.value = oldVal;
         return;
       }
@@ -4495,10 +4492,7 @@ function renderLegendTable() {
       tag.textContent = srcs.length === 1
         ? `오버레이 · ${srcs[0]}`
         : `오버레이 · ${srcs[0]} 외 ${srcs.length - 1}`;
-      tag.title = `이 값은 이 맵이 칠한 값이 아니라 겹쳐 본 오버레이에서 들어왔습니다 — `
-        + `${srcs.join(' / ')}. 목록에 뜨는 이유는 색을 지정할 수 있게 하기 위해서이고, `
-        + `색을 주거나 이 값으로 칠하는 순간 이 맵의 값이 되어 저장 대상이 됩니다. `
-        + `그 전까지는 [⚡ Push]에 포함되지 않습니다.`;
+      tag.title = `오버레이 출처 ${srcs.join(' / ')} — 칠하기 전까지 [⚡ Push] 대상이 아닙니다.`;
       tdVal.appendChild(tag);
     }
 
@@ -4824,8 +4818,8 @@ async function fetchGridMetaFor(table, mapId) {
   if (rows.length === 0) return null;
   if (rows.length > 1) {
     // 쌍으로 걸었는데도 2건 이상이면 서버 데이터가 중복된 것이다 — 조용히 첫 행을 쓰지 않는다
-    console.warn(`[Map Editor] wafer_map_metadata 중복: ${table} · ${mapId} — ${rows.length}건`);
-    showToast(`맵 규격 레코드가 중복되어 있습니다 (${table} · ${mapId}) — 첫 행을 적용합니다.`, 'warning');
+    // 화면에서 고칠 수 없는 서버 데이터 문제다 — 진단은 콘솔로 간다.
+    console.log(`[Map Editor] wafer_map_metadata 중복: ${table} · ${mapId} — ${rows.length}건, 첫 행 적용`);
   }
   const metaStr = rows[0].data?.grid_metadata?.value;
   if (!metaStr) return null;
@@ -4905,8 +4899,8 @@ async function loadExistingMap(opts = {}) {
   const { filterModel, hasFilter } = collectMapKeyFilterModel();   // ①
 
   if (!hasFilter) {
-    if (quiet) showToast('맵 키가 비어 있어 로드할 수 없습니다.', 'warning');
-    else alert('기존 맵 데이터를 로드하기 위해 하나 이상의 메타데이터 필드 값을 입력하십시오.');
+    if (quiet) showToast('맵 키가 비어 있습니다.', 'warning');
+    else alert('맵 키를 하나 이상 입력하십시오.');
     return { count: 0, cancelled: true };
   }
 
@@ -4973,8 +4967,7 @@ async function loadExistingMap(opts = {}) {
       // exist but yielded no parseable coordinate are a column-selection problem and
       // must be said out loud, not folded into "empty map".
       if (fetchedRows > 0) {
-        showToast(
-          `${selectedTable}: ${fetchedRows}행을 받았지만 좌표로 해석된 셀이 0개입니다. x/y 컬럼 선택을 확인하세요.`,
+        showToast(`${selectedTable}: ${fetchedRows}행 중 좌표로 읽힌 셀 0개 — X/Y 컬럼을 확인하십시오.`,
           'warning');
       }
       return { count: 0, empty: true };
@@ -5236,8 +5229,7 @@ async function loadExistingMap(opts = {}) {
         legendSaveState = { status: 'unknown-server-state', at: '', error: read.error || '' };
         renderLegendTable();
         console.warn('[Map Editor] split registry apply skipped:', read.error);
-        showToast('DOE 정의(registry) 조회에 실패했습니다 — 이 맵에서는 서버 저장을 보류합니다'
-          + `${hadDraft ? ' (이 브라우저의 초안을 표시 중)' : ''}. 맵을 다시 열면 재시도합니다 (${read.error || '알 수 없음'})`,
+        showToast(`DOE registry 조회 실패로 서버 저장 보류${hadDraft ? ' (초안 표시 중)' : ''} — 맵을 다시 여십시오.`,
           'warning', { dedupeKey: 'legend_registry_load_failed' });
       }
     }
@@ -5259,9 +5251,8 @@ async function loadExistingMap(opts = {}) {
     // [F4] N rows fetched but 0 cells parsed = the NaN filter dropped everything —
     // warn with the likely cause instead of a green success naming "0셀".
     if (fetchedRows > 0 && count === 0) {
-      showToast(
-        `${selectedTable} · ${loadedMapKey || ''} — ${fetchedRows}행을 받았지만 좌표로 해석된 셀이 0개입니다. `
-        + `x/y 컬럼 선택을 확인하세요.`, 'warning');
+      showToast(`${selectedTable}: ${fetchedRows}행 중 좌표로 읽힌 셀 0개 — X/Y 컬럼을 확인하십시오.`,
+        'warning');
     } else {
       // [1e] A successful load IS the screen: the grid renders, the legend badges and the
       // DOE 「칠함」 column carry the cell counts, and the identity chip names table + map key.
@@ -5272,8 +5263,8 @@ async function loadExistingMap(opts = {}) {
     return { count, mapKey: loadedMapKey };
   } catch (err) {
     console.error(err);
-    if (quiet) showToast('맵 로드 실패 — 테이블/맵 키를 확인하십시오.', 'error');
-    else alert('맵 로드 실패: 해당 테이블 또는 메타데이터 값을 다시 확인하십시오.');
+    if (quiet) showToast('맵 로드 실패 — 테이블·맵 키를 확인하십시오.', 'error');
+    else alert('맵 로드 실패 — 테이블·맵 키를 확인하십시오.');
     return { count: 0, error: true };
   } finally {
     el.btnLoadMap.textContent = '📂 Load Existing Map';
@@ -5362,8 +5353,7 @@ async function resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, 
       + 'unconfirmed declaration must NOT be read as an absent one: the 📐 표준 branch '
       + 'would re-declare grid_start_x/y to the data bounding box and ⚡ Push would '
       + 'persist it.', err || '');
-    showToast(`맵 규격을 확인하지 못해 로드를 중단했습니다 — ${reason}. `
-      + `잠시 후 다시 시도하십시오.`, 'error');
+    showToast(`맵 규격 미확인으로 로드 중단 — ${reason}. 잠시 후 다시 시도하십시오.`, 'error');
     return { count: 0, error: true, metaUnconfirmed: true };
   };
 
@@ -5448,8 +5438,7 @@ function promptCoordinateChoice(el) {
     // 🔴 이 버튼은 좌측 패널의 START X,Y를 **버린다**(`startX = minX`, resolveGridFrame).
     //    그것이 이 선택지의 요점이지 부작용이 아니므로 라벨이 말하게 한다 — 운영자의 선언이
     //    사라지는 유일한 자리이고, 새 컨트롤도 확인창도 늘리지 않는 방법이다.
-    el.btnChoiceStandard.textContent = '📐 표준 — 데이터 전체 사각 격자 '
-      + '(START를 데이터 최소값으로 재선언, 마스크 없음, Rot 0°)';
+    el.btnChoiceStandard.textContent = '📐 표준 — START 재선언 · 마스크 없음 · Rot 0°';
     el.choiceModal.style.display = 'flex';
 
     const onStandard = () => {
@@ -5652,10 +5641,9 @@ function restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, se
     const restoredCells = cellsFresh ? applyDraftCells(draft.cells) : 0;
     if (restoredDoe || restoredCells > 0) {
       restoredUnsavedEdits = true;
-      showToast(`저장되지 않은 편집을 복구했습니다 — ${restoredDoe ? 'DOE' : ''}`
+      showToast(`미저장 초안 복구 — ${restoredDoe ? 'DOE' : ''}`
         + `${restoredDoe && restoredCells ? ' · ' : ''}${restoredCells ? `셀 ${restoredCells}개` : ''}`
-        + ' (이 브라우저의 초안). 아직 서버에 반영되지 않았습니다.', 'warning',
-        { dedupeKey: 'draft_restored' });
+        + ' (서버 미반영)', 'warning', { dedupeKey: 'draft_restored' });
     }
     // 기반이 어긋난 초안이 실제로 내용을 갖고 있을 때만 말한다 — 빈 초안까지 알리면
     // 신호가 죽는다.
@@ -5663,9 +5651,8 @@ function restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, se
     const hasCells = draft.cells && Object.keys(draft.cells).length > 0;
     staleDraftKept = (!doeFresh && hasDoe) || (!cellsFresh && hasCells);
     if (staleDraftKept) {
-      showToast('이 맵이 이 브라우저의 초안 이후에 변경됐습니다 — 초안을 적용하지 않고 '
-        + '서버본을 표시합니다. 초안은 지우지 않았습니다.', 'warning',
-        { dedupeKey: 'draft_stale' });
+      showToast('초안보다 서버본이 최신 — 초안을 적용하지 않았습니다 (지우지도 않았습니다).',
+        'warning', { dedupeKey: 'draft_stale' });
     }
   }
   return { restoredUnsavedEdits, staleDraftKept };
@@ -5687,7 +5674,7 @@ function clearGrid() {
 
 function fillGrid() {
   if (!activeBrush) {
-    alert('페인팅 브러쉬를 먼저 선택하십시오.');
+    alert('페인팅 브러쉬를 먼저 고르십시오.');
     return;
   }
   if (!confirm(`격자 전체를 현재 선택한 값 '${activeBrush}'(으)로 채우시겠습니까?`)) return;
@@ -5736,14 +5723,12 @@ function fillGrid() {
   // 0칸은 반드시 말해야 한다 — 아무 일도 일어나지 않은 것과 구별되지 않으면 사용자는
   // 같은 버튼을 계속 누른다(규격이 없는 맵에서는 원 판정이 전부 false다).
   if (filled === 0) {
-    showToast(`칠할 수 있는 셀이 없습니다 — ${skippedOutside}칸이 모두 유효 다이 밖입니다. `
-      + `물리 규격(직경·칩 크기)이나 유효 다이 맵을 먼저 확인하십시오.`, 'warning');
+    showToast(`칠할 셀이 없습니다 — ${skippedOutside}칸 모두 유효 다이 밖입니다.`, 'warning');
   } else if (skippedOutside > 0) {
     // [1e] This branch is only reached when `skippedOutside > 0`, i.e. the message says
     // "some cells will not be saved" — yet it rendered as a green success. Tone corrected
     // to warning (spotted while auditing toasts this round).
-    showToast(`${filled}칸을 '${activeBrush}'로 칠했습니다 `
-      + `(유효 다이 밖 ${skippedOutside}칸 제외 — 저장되지 않는 셀입니다).`, 'warning');
+    showToast(`${filled}칸 칠함 — 유효 다이 밖 ${skippedOutside}칸 제외(저장 안 됨)`, 'warning');
   }
 }
 
@@ -5938,13 +5923,12 @@ async function pushMapData() {
     strayKeys.forEach(k => { delete gridData[k]; });
     renderGridCanvas();
     scheduleCellDraft();   // 초안에서도 지운다 — 새로고침으로 되살아나면 정리가 아니다
-    showToast(`유효 다이 밖 ${strayKeys.length}칸을 격자에서 정리했습니다 — ⚡ Push를 다시 눌러 주십시오.`,
-      'success');
+    showToast(`유효 다이 밖 ${strayKeys.length}칸 정리 — ⚡ Push를 다시 누르십시오.`, 'success');
     return;
   }
 
   if (updates.length === 0) {
-    alert('적재할 데이터가 격자에 존재하지 않습니다. 먼저 셀들을 칠해 주십시오.');
+    alert('격자에 적재할 셀이 없습니다 — 먼저 칠하십시오.');
     return;
   }
 
@@ -6109,10 +6093,10 @@ async function pushMapData() {
 
       if (metaPushFailed) {
         // 셀은 들어갔지만 **규격이 저장되지 않았다** — 다음 로드/오버레이가 틀린 메타로 계산된다
-        showToast(`셀 ${result.updated_count || result.count || updates.length}건은 적재됐으나 `
-          + `**맵 규격(회전·면) 저장에 실패**했습니다 (${metaPushFailed}) — 다시 Push하십시오.`, 'error');
+        showToast(`셀 ${result.updated_count || result.count || updates.length}건 적재 · 맵 규격 저장 실패 `
+          + `(${metaPushFailed}) — 다시 Push하십시오.`, 'error');
       } else {
-        showToast(`적재 완료 — ${result.updated_count || result.count || updates.length}건 (bk 중복은 자동 병합)`, 'success');
+        showToast(`적재 완료 — ${result.updated_count || result.count || updates.length}건`, 'success');
       }
     } else {
       const errData = await res.json().catch(() => ({}));
@@ -6123,7 +6107,7 @@ async function pushMapData() {
   } catch (err) {
     console.error('❌ [API Error]', err);
     console.groupEnd();
-    alert(`데이터 적재 실패: ${err.message}`);
+    alert(`데이터 적재 실패 — ${err.message}`);
   } finally {
     el.btnPushMap.textContent = '⚡ Push Map Data';
     el.btnPushMap.disabled = false;
@@ -6203,12 +6187,8 @@ function confirmLogShapedPushTarget(tableSchema, el, selectedTable) {
         + `${extraDataCols.length} data column(s) outside the map contract would be `
         + `destroyed by replace_map: ${extraDataCols.join(', ')}`);
       alert(
-        `적재를 중단했습니다 — '${selectedTable}'은(는) 맵 전용 테이블이 아닙니다(로그형 구조).\n\n`
-        + `이 테이블에는 맵 계약(맵 키 + X/Y/값) 밖의 데이터 컬럼이 ${extraDataCols.length}개 있습니다:\n`
-        + `· ${shown}\n\n`
-        + `덮어쓰기 적재(Clean Replace)는 대상 범위의 실제 행을 전부 삭제한 뒤 격자 셀(키·좌표·값)만으로 `
-        + `다시 쓰므로, 위 컬럼의 값이 전부 파괴됩니다.\n`
-        + `이 테이블은 맵 조회(오버레이 소스)로만 사용하십시오. 적재가 필요하면 전용 맵 테이블을 만들어 사용해야 합니다.`
+        `적재 중단 — '${selectedTable}'은(는) 맵 전용 테이블이 아닙니다(로그형).\n\n`
+        + `Clean Replace가 파괴할 맵 계약 밖 컬럼 ${extraDataCols.length}개:\n· ${shown}`
       );
       return false;
     }
@@ -6236,7 +6216,7 @@ function collectMetaFieldValues(tableSchema) {
   });
 
   if (!hasMeta && metaInputs.length > 0) {
-    alert('데이터 적재를 위해 하나 이상의 메타데이터 필드 값을 입력하십시오.');
+    alert('맵 키를 하나 이상 입력하십시오.');
     return { ok: false, metaValues };
   }
   return { ok: true, metaValues };
@@ -6306,9 +6286,8 @@ function confirmMissingSplitDescriptions(updates, valCol, legend) {
   if (missingDescVals.length > 0) {
     const preview = missingDescVals.slice(0, 10).join(', ') + (missingDescVals.length > 10 ? ' …' : '');
     const okMissing = confirm(
-      `split 서술(Description)이 없는 값 ${missingDescVals.length}개 — 그래도 저장하시겠습니까?\n` +
-      `대상 값: [${preview}]\n\n` +
-      `서술은 실험 split 조건의 자연어 기록으로, 팀 공유·검색·온톨로지 승격에 사용됩니다.`
+      `split 서술이 없는 값 ${missingDescVals.length}개 — 그래도 저장하시겠습니까?\n` +
+      `· ${preview}`
     );
     if (!okMissing) return false;
   }
@@ -6447,7 +6426,7 @@ function selectEdgeCells(target) {
   } else {
     selectedEdgeTargetMap = null;
     if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
-    alert(`격자 상에 E${target} 조건에 부합하는 셀이 존재하지 않습니다.`);
+    alert(`E${target} 조건에 맞는 셀이 없습니다.`);
   }
   scheduleRenderGridCanvas();
 }
@@ -6492,7 +6471,7 @@ function autoPaintE1E2() {
   // report goes to the console. But ZERO cells must still be said out loud — the same rule
   // `fillGrid` keeps: if it looks identical to nothing happening, users keep pressing.
   if (e1Count === 0 && e2Count === 0) {
-    showToast('E1/E2로 칠할 셀이 없습니다 — 선택 영역이나 유효 다이 범위를 확인하십시오.', 'warning');
+    showToast('E1/E2로 칠할 셀이 없습니다.', 'warning');
   } else {
     console.debug(`[map] E1/E2 auto-paint — E1 ${e1Count} cells · E2 ${e2Count} cells`);
   }
@@ -6500,7 +6479,7 @@ function autoPaintE1E2() {
 
 function fillSelectedCells() {
   if (!activeBrush) {
-    alert('페인팅 브러쉬를 먼저 선택하십시오.');
+    alert('페인팅 브러쉬를 먼저 고르십시오.');
     return;
   }
   if (!selectedEdgeTargetMap) return;
@@ -6840,7 +6819,7 @@ function copyGridToExcel() {
     ? Object.keys(gridCells2D).reduce((n, r) => n + Object.keys(gridCells2D[r] || {}).length, 0)
     : 0;
   if (cellCount === 0) {
-    showToast('격자가 아직 만들어지지 않았습니다 — 맵을 먼저 불러오거나 격자를 생성하십시오.', 'warning');
+    showToast('격자가 없습니다 — 맵을 먼저 불러오십시오.', 'warning');
     return;
   }
 
@@ -7085,7 +7064,7 @@ function copyGridToExcel() {
     return;
   }
   // 정직한 실패. 조용히 성공한 척하면 사용자는 낡은 클립보드 내용을 엑셀에 붙인다.
-  showToast('클립보드에 쓰지 못했습니다 — 브라우저가 복사를 막았습니다. 표를 클릭한 뒤 다시 시도하십시오.', 'error');
+  showToast('복사 실패 — 표를 클릭한 뒤 다시 시도하십시오.', 'error');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -7203,12 +7182,12 @@ function readCompanyMapBlock(text) {
     // 보조표 머리줄은 **격자 0행에 올라탄다**(`auxFields(0) = auxHead`). 그래서 그 줄이 곧
     // 격자의 첫 줄이고, 그 위 두 줄이 TITLE과 그룹 띠다.
     if (auxLine < 2) {
-      return { ok: false, reason: '표의 윗줄(제목·그룹 머리)이 없습니다 — 표 전체를 복사해 주십시오.' };
+      return { ok: false, reason: '표의 윗줄(제목·그룹 머리)이 없습니다 — 표 전체를 복사하십시오.' };
     }
     gridStart = auxLine;
     gridWidth = aux.positions[0] - HDR_GAP_COLS;
     if (gridWidth <= 0) {
-      return { ok: false, reason: '격자 없이 보조표만 붙여넣었습니다 — DOE 표만 넣으려면 오른쪽 DOE 패널에 붙여넣으십시오.' };
+      return { ok: false, reason: '격자 없이 보조표만 붙여넣었습니다 — DOE 표는 오른쪽 DOE 패널에 붙여넣으십시오.' };
     }
     title = pasteAt(lines[auxLine - 2], 0).trim();
   } else {
@@ -7256,21 +7235,18 @@ function checkPasteAgainstFrame(parsed, frame) {
 
   if (parsed.gridWidth !== frame.visualCols) {
     return {
-      ok: false, reason: `열 수가 다릅니다 — 복사본 ${parsed.gridWidth}열, 현재 화면 ${frame.visualCols}열. `
-        + '복사할 때의 회전·격자 크기로 되돌린 뒤 다시 붙여넣으십시오.'
+      ok: false, reason: `열 수가 다릅니다 — 복사본 ${parsed.gridWidth}열, 현재 화면 ${frame.visualCols}열`
     };
   }
   if (parsed.rows.length < frame.visualRows) {
     return {
-      ok: false, reason: `행 수가 다릅니다 — 복사본 ${parsed.rows.length}행, 현재 화면 ${frame.visualRows}행. `
-        + '복사할 때의 회전·격자 크기로 되돌린 뒤 다시 붙여넣으십시오.'
+      ok: false, reason: `행 수가 다릅니다 — 복사본 ${parsed.rows.length}행, 현재 화면 ${frame.visualRows}행`
     };
   }
   for (let i = frame.visualRows; i < parsed.rows.length; i++) {
     if (parsed.rows[i].some(f => f !== '')) {
       return {
-        ok: false, reason: `복사본의 격자가 현재 화면보다 깁니다 — ${i + 1}번째 행에 값이 있는데 `
-          + `현재 격자는 ${frame.visualRows}행뿐입니다.`
+        ok: false, reason: `복사본이 현재 화면보다 깁니다 — ${i + 1}번째 행에 값이 있는데 격자는 ${frame.visualRows}행입니다`
       };
     }
   }
@@ -7300,10 +7276,7 @@ function checkPasteAgainstFrame(parsed, frame) {
   if (!notchOnGrid) {
     return {
       ok: false, notchVerified: false,
-      reason: '이 화면의 프레임에는 노치 표식(D)이 놓일 자리가 없어 복사본의 회전·면을 대조할 수 '
-        + '없습니다 — 회전·면은 격자 치수를 바꾸지 않으므로, 대조 없이 붙여넣으면 뒤집힌 격자가 '
-        + '그대로 들어갑니다. 웨이퍼 원 규격이 적용된 프레임(노치가 격자 안에 들어오는 규격)으로 '
-        + '맞춘 뒤 다시 붙여넣으십시오.'
+      reason: '노치 표식(D)이 격자 밖이라 복사본의 회전·면을 대조할 수 없습니다'
     };
   }
   return { ok: true, reason: '', notchVerified: true };
@@ -7517,33 +7490,28 @@ function readCoordTableBlock(text) {
   const refuse = (reason) => ({ kind: 'refuse', reason });
 
   if (bottomAnchor === null) {
-    return refuse(`${topAnchor + 1}번째 줄이 X축 눈금 모양인데, 그 아래 첫 열에 Y 좌표가 `
-      + '2개 이상 없습니다 — X축만으로는 셀의 자리를 정할 수 없습니다.');
+    return refuse(`${topAnchor + 1}번째 줄 아래 첫 열에 Y 좌표가 2개 이상 없습니다`);
   }
   if (topAnchor !== bottomAnchor) {
-    return refuse(`X축 줄이 어디인지 두 판정이 엇갈립니다 — 줄 모양은 ${topAnchor + 1}번째 줄`
-      + `(눈금 ${topTicks.map(t => t.v).join(', ')}), 첫 열의 Y 좌표는 ${bottomAnchor + 1}번째 줄을 `
-      + '가리킵니다. 좌표 표 위에 다른 내용이 섞여 있습니다 — 표만 복사해 주십시오.');
+    return refuse(`X축 줄 판정이 엇갈립니다 — 줄 모양은 ${topAnchor + 1}번째, `
+      + `첫 열 Y 좌표는 ${bottomAnchor + 1}번째 줄. 표만 복사하십시오`);
   }
   for (let r = 0; r < topAnchor; r++) {
     if ((lines[r] || []).some(f => !pasteBlank(f))) {
-      return refuse(`좌표 표 위 ${r + 1}번째 줄에 표가 아닌 내용이 있습니다 — 표만 복사해 주십시오.`);
+      return refuse(`좌표 표 위 ${r + 1}번째 줄에 표가 아닌 내용이 있습니다`);
     }
   }
   for (let i = 1; i < yRows.length; i++) {
     if (yRows[i] !== yRows[i - 1] + 1) {
-      return refuse(`${yRows[i - 1] + 2}번째 줄의 첫 칸이 Y 좌표가 아닙니다 — 좌표 표의 모든 줄은 `
-        + '첫 칸에 Y 좌표를 가져야 합니다.');
+      return refuse(`${yRows[i - 1] + 2}번째 줄의 첫 칸이 Y 좌표가 아닙니다`);
     }
   }
   if (yRows[yRows.length - 1] !== lastContent) {
-    return refuse(`좌표 표 아래 ${lastContent + 1}번째 줄에 표가 아닌 내용이 있습니다 — `
-      + '표만 복사해 주십시오.');
+    return refuse(`좌표 표 아래 ${lastContent + 1}번째 줄에 표가 아닌 내용이 있습니다`);
   }
   const yVals = yRows.map(r => coordInt(pasteAt(lines[r], 0)));
   if (!coordMonotonic(yVals)) {
-    return refuse('Y 좌표가 한 방향으로 이어지지 않습니다 — 같은 좌표가 두 번 나오거나 순서가 '
-      + '섞여 있습니다.');
+    return refuse('Y 좌표가 한 방향으로 이어지지 않습니다');
   }
 
   // 눈금이 없는 열에 값이 있으면 그 값은 **놓을 자리가 없다**. 조용히 버리지 않는다.
@@ -7552,8 +7520,7 @@ function readCoordTableBlock(text) {
     const line = lines[yRows[i]] || [];
     for (let c = 1; c < line.length; c++) {
       if (!tickCols.has(c) && !pasteBlank(pasteAt(line, c))) {
-        return refuse(`${yRows[i] + 1}번째 줄 ${c + 1}번째 칸에 값이 있는데 그 열에는 X 좌표가 `
-          + '없습니다 — X축 눈금 줄에 그 열의 좌표를 적어 주십시오.');
+        return refuse(`${yRows[i] + 1}번째 줄 ${c + 1}번째 칸의 열에 X 좌표가 없습니다`);
       }
     }
   }
@@ -7687,18 +7654,16 @@ function onMapGridPaste(e) {
     if (plan.offGrid.length > 0) {
       e.preventDefault();
       const f0 = plan.offGrid[0];
-      showToast(`붙여넣기를 취소했습니다 — 표의 좌표가 현재 격자를 벗어납니다 `
-        + `(값 있는 셀 ${plan.offGrid.length}칸, 예: x=${f0.x} y=${f0.y}). 표의 좌표 구간은 `
-        + `X ${coord.minX}~${coord.maxX} · Y ${coord.minY}~${coord.maxY}입니다 — 격자 크기와 `
-        + `START X/Y를 이 구간에 맞춘 뒤 다시 붙여넣으십시오.`, 'error');
+      showToast(`붙여넣기 취소 — 표의 좌표 X ${coord.minX}~${coord.maxX} · Y ${coord.minY}~${coord.maxY}가 `
+        + `격자를 벗어납니다 (${plan.offGrid.length}칸, 예: x=${f0.x} y=${f0.y})`, 'error');
       return;
     }
     e.preventDefault();
     lines = [
-      '좌표 표를 붙여넣습니다 — 머리줄과 첫 열의 수를 DB 좌표로 읽습니다(화면 위치가 아닙니다).',
-      `X ${coord.minX}~${coord.maxX} · Y ${coord.minY}~${coord.maxY} 구간 ${coord.nx}×${coord.ny}칸만 `
-        + `바꿉니다 (${plan.placed}칸 입력 · ${plan.cleared}칸 비움). 이 구간 밖은 그대로 둡니다.`,
-      '서버에는 아무것도 쓰지 않습니다 — 저장은 [⚡ Push Map Data]로 하십시오.',
+      '좌표 표 붙여넣기 (DB 좌표 기준)',
+      `X ${coord.minX}~${coord.maxX} · Y ${coord.minY}~${coord.maxY} 구간 ${coord.nx}×${coord.ny}칸만 바꿉니다 `
+        + `(${plan.placed}칸 입력 · ${plan.cleared}칸 비움)`,
+      '서버 기록 없음 — 저장은 [⚡ Push Map Data]',
     ];
   } else {
     const verdict = checkPasteAgainstFrame(parsed, frame);
@@ -7716,13 +7681,13 @@ function onMapGridPaste(e) {
     const painted = pastedCellCount(parsed, frame);
     const auxCount = parsed.auxRecords ? parsed.auxRecords.length : 0;
     lines = [
-      parsed.title ? `「${parsed.title}」 복사본을 붙여넣습니다.` : '표 머리글이 없어 어느 맵의 복사본인지 확인하지 못했습니다.',
-      `격자 ${visualCols}×${visualRows} 전체를 복사본으로 교체합니다 (값 있는 셀 ${painted}칸, 나머지는 비웁니다).`,
-      auxCount > 0 ? `DOE ${auxCount}행(VALUE·STACK·DESC)도 함께 적용합니다 — COUNT는 격자에서 다시 셉니다.` : '',
+      parsed.title ? `「${parsed.title}」 복사본 붙여넣기` : '머리글 없음 — 어느 맵의 복사본인지 미상',
+      `격자 ${visualCols}×${visualRows} 전체를 교체합니다 (값 있는 셀 ${painted}칸, 나머지는 비움)`,
+      auxCount > 0 ? `DOE ${auxCount}행(VALUE·STACK·DESC)도 함께 적용` : '',
       // [P0-2] 종전의 「⚠ 회전·면은 대조하지 못했습니다」 줄은 **삭제**했다. 지금은 대조하지
       // 못하면 `checkPasteAgainstFrame`이 거부하므로 여기까지 오는 복사본은 전부 대조를 통과한
       // 것이고, 그 문구는 절대 뜨지 않는 죽은 줄이 된다(살아 보이는 죽은 코드 금지).
-      '서버에는 아무것도 쓰지 않습니다 — 저장은 [⚡ Push Map Data]로 하십시오.',
+      '서버 기록 없음 — 저장은 [⚡ Push Map Data]',
     ].filter(Boolean);
   }
 
@@ -8105,8 +8070,7 @@ function renderBreadcrumb() {
   bar.innerHTML = `<button type="button" class="bc-back" id="btn-frame-back">← 뒤로</button>`
     + trail.map((t, i) => (i === trail.length - 1)
       ? `<span class="bc-cur">${escapeHtmlAttr(t)}</span>`
-      : `<span class="bc-up">${escapeHtmlAttr(t)}</span><span class="bc-sep">›</span>`).join('')
-    + `<span class="bc-why">뒤로가면 편집 상태·오버레이·스크롤이 복원됩니다</span>`;
+      : `<span class="bc-up">${escapeHtmlAttr(t)}</span><span class="bc-sep">›</span>`).join('');
   const back = bar.querySelector('#btn-frame-back');
   if (back) back.addEventListener('click', () => popMapFrame());
 }
@@ -9325,17 +9289,14 @@ function renderValidDieChip() {
   if (basis === 'template') {
     // [M4②] 저작 중. 새 패널·모드 표시가 아니라 이미 있는 이 칩의 네 번째 문구다.
     chip.textContent = `🧩 유효 다이 저작 중 — 격자 전체 ${validDie.keys.size}칸`;
-    chip.title = '유효 다이 맵을 만드는 중입니다: 격자 전체가 후보이고, **칠한 셀이 곧 유효 다이**입니다.\n'
-      + '⚡ Push로 저장한 뒤, 다른 맵의 「유효 다이 맵」 칸에 이 맵 키를 넣으면 그 맵의 판정 근거가 됩니다.\n'
-      + '맵을 다시 불러오거나 테이블을 바꾸면 저작 상태는 해제됩니다.';
+    chip.title = '칠한 셀이 곧 유효 다이입니다 — [⚡ Push]로 저장하십시오.';
   } else if (basis === 'ref') {
     const r = validDie.ref || {};
     chip.textContent = `🎯 유효 다이: ${r.table || ''} · ${r.mapKey || ''} (${validDie.keys.size})`;
-    chip.title = '이 맵의 유효 다이는 참조된 맵이 정합니다 — 웨이퍼 원은 판정에 참여하지 않습니다.';
+    chip.title = '유효 다이 근거: 참조 맵 (웨이퍼 원 아님)';
   } else {
     chip.textContent = '⚠️ 유효 다이 맵 미해석';
-    chip.title = `유효 다이 맵을 해석하지 못했습니다: ${validDie.reason}\n`
-      + '판정 근거를 확인하기 전까지 이 맵의 유효 다이 표시를 믿지 마십시오.';
+    chip.title = `해석 실패: ${validDie.reason}`;
   }
 }
 
@@ -9452,8 +9413,8 @@ async function onValidDieRefChanged() {
   frameTouched = true;
   framePushed = false;
   if (key === '') {
-    showToast('유효 다이 지정을 해제했습니다 — 원 기하로 되돌아갑니다. 📐 규격만 저장 또는 '
-      + '⚡ Push로 저장하십시오.', 'info', { dedupeKey: 'valid_die_cleared' });
+    showToast('유효 다이 지정을 해제했습니다 — 원 기하. [📐 규격만 저장] 또는 [⚡ Push]로 저장하십시오.',
+      'info', { dedupeKey: 'valid_die_cleared' });
   }
 }
 
@@ -9487,7 +9448,7 @@ async function onValidDieRefChanged() {
 async function saveMapSpecOnly() {
   const table = selectedTable;
   if (!table) {
-    showToast('먼저 맵 테이블을 선택하십시오 — 어느 테이블의 규격인지 알 수 없습니다.', 'error');
+    showToast('맵 테이블을 먼저 고르십시오.', 'error');
     return;
   }
   // `getCurrentMapKey`는 맵 키 칸이 비었거나 'default_map'이면 null을 준다. ⚡ Push는 그
@@ -9614,8 +9575,7 @@ async function saveMapSpecOnly() {
     // pre-existing path: it is reachable only from a declaration-only edit.)
     if (!legendDirty) frameTouched = false;
     syncValidDieRefControls();
-    showToast(`${table} · ${mapKey} 의 맵 규격을 ${isNew ? '새로 등록' : '갱신'}했습니다 — `
-      + `셀은 하나도 기록하지 않았습니다.`, 'success');
+    showToast(`${table} · ${mapKey} 맵 규격 ${isNew ? '새로 등록' : '갱신'} — 셀 기록 0건`, 'success');
   } catch (e) {
     // 🔴 **「실패했다」와 「됐는지 모르겠다」는 다른 사실이고, 다르게 읽혀야 한다.**
     //    종전 문구는 어떤 예외에서든 "아무것도 기록되지 않았습니다"라고 단언했다. 응답을
@@ -9807,8 +9767,7 @@ async function populateMapKeyDatalist(table, listEl, input) {
       if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
       // 서버가 답을 주지 못했다. 빈 목록으로 남기면 "이 테이블에는 등록된 맵이 없다"로 읽힌다.
       markSuggestState(input, 'unavailable',
-        `맵 키 목록을 읽지 못했습니다 (HTTP ${res.status}) — 목록이 비어 있는 것은 `
-        + `등록된 맵이 없다는 뜻이 아닙니다. 키를 직접 입력하면 그대로 동작합니다.`);
+        `맵 키 목록을 읽지 못했습니다 (HTTP ${res.status}) — 키는 직접 입력할 수 있습니다.`);
       return;
     }
     const result = await res.json();
@@ -9828,21 +9787,19 @@ async function populateMapKeyDatalist(table, listEl, input) {
   } catch (e) {
     if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
     markSuggestState(input, 'unavailable',
-      `맵 키 목록 조회 실패 — ${(e && e.message) ? e.message : e}. 목록이 비어 있는 것은 `
-      + `등록된 맵이 없다는 뜻이 아닙니다.`);
+      `맵 키 목록 조회 실패 — ${(e && e.message) ? e.message : e}`);
     return;
   }
   if (Number.isFinite(total) && total > rowCount) {
     // 절단은 성공이 아니다(INV-④와 같은 규율): 목록이 모집단인 척하지 못하게 사실을 남긴다.
     markSuggestState(input, 'truncated',
-      `등록된 맵 ${total}개 중 ${items.length}개만 목록에 있습니다 — 없는 키도 직접 입력하면 열립니다.`);
+      `등록된 맵 ${total}개 중 ${items.length}개만 목록에 있습니다 — 없는 키도 직접 입력할 수 있습니다.`);
   } else if (items.length === 0) {
     // [1-a] **성공했는데 0건**이다. 종전에는 이 자리가 `markSuggestState(input, '', '')` —
     // 즉 침묵이었고, 침묵은 「목록이 고장났다」와 구별되지 않는다. 상태는 여전히 완전
     // (`complete`)이므로 캐시도 하고 select도 쓸 수 있지만, **말은 한다**.
     markSuggestState(input, '',
-      `${table}에 등록된 맵이 아직 없습니다 — 목록을 읽는 데는 성공했고, 정말로 0건입니다. `
-      + `키를 직접 입력하면 그대로 동작합니다.`);
+      `${table}에 등록된 맵이 아직 없습니다 — 조회는 성공했고 정말로 0건입니다.`);
     mapKeyListCache.set(table, items);
   } else {
     markSuggestState(input, '', '');
@@ -9928,16 +9885,14 @@ async function populateColumnValueDatalist(table, column, listEl, input, prefix)
     if (!res.ok) {
       if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
       markSuggestState(input, 'unavailable',
-        `값 목록을 읽지 못했습니다 (HTTP ${res.status}) — 목록이 비어 있는 것은 값이 없다는 `
-        + `뜻이 아닙니다. 값을 직접 입력하면 그대로 동작합니다.`);
+        `값 목록을 읽지 못했습니다 (HTTP ${res.status}) — 값은 직접 입력할 수 있습니다.`);
       return;
     }
     body = await res.json();
   } catch (e) {
     if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
     markSuggestState(input, 'unavailable',
-      `값 목록 조회 실패 — ${(e && e.message) ? e.message : e}. 목록이 비어 있는 것은 `
-      + `값이 없다는 뜻이 아닙니다.`);
+      `값 목록 조회 실패 — ${(e && e.message) ? e.message : e}`);
     return;
   }
   if (!isCurrent()) return;   // 이 목록에 대한 더 새로운 질문이 이미 있다
@@ -9949,8 +9904,7 @@ async function populateColumnValueDatalist(table, column, listEl, input, prefix)
     columnValueComplete.delete(key);
     fillDatalist(listEl, []);
     markSuggestState(input, 'unavailable',
-      `값 제안을 사용할 수 없습니다 — ${body.unavailable_reason} (목록이 비어 있는 것은 `
-      + `값이 없다는 뜻이 아닙니다.)`);
+      `값 제안을 사용할 수 없습니다 — ${body.unavailable_reason}`);
     console.debug('[map] value suggest unavailable:', table, column, body.unavailable_reason);
     return;
   }
@@ -9993,13 +9947,12 @@ function enterValidDieAuthoring(shape) {
   //      (컨트롤은 아직 해석되지 않은 사용자의 지정이므로 상태보다 새롭다.)
   const pendingRefKey = (el.validDieRefKey && el.validDieRefKey.value ? el.validDieRefKey.value : '').trim();
   if (pendingRefKey !== '' || (validDie && validDie.raw !== undefined && validDie.raw !== null)) {
-    showToast('이 맵은 이미 다른 유효 다이 맵을 참조합니다 — 유효 다이 맵 자신은 참조를 가질 수 '
-      + '없습니다(체인 1단계). 「유효 다이 맵」 칸을 비운 뒤 다시 시도하십시오.', 'error');
+    showToast('「유효 다이 맵」 칸을 비우십시오 — 참조 체인은 1단계까지입니다.', 'error');
     return;
   }
   const tpl = buildValidDieTemplate(shape);
   if (tpl.keys.size === 0) {
-    showToast('격자 규격을 읽지 못해 템플릿을 만들 수 없습니다 — 물리 규격을 먼저 적용하십시오.', 'error');
+    showToast('격자 규격 미확인 — 물리 규격을 먼저 적용하십시오.', 'error');
     return;
   }
   const painted = Object.keys(gridData).filter(k => (gridData[k] || '') !== '').length;
@@ -10011,14 +9964,13 @@ function enterValidDieAuthoring(shape) {
     validDie = { basis: 'template', keys: tpl.keys, reason: '', ref: null, raw: undefined };
     renderValidDieChip();
     renderGridCanvas();
-    showToast(`유효 다이 저작을 시작했습니다 — 격자 전체 ${tpl.keys.size}칸이 후보입니다 `
-      + `(현재 칠해진 셀 ${painted}개는 그대로 둡니다).`, 'success');
+    showToast(`유효 다이 저작 시작 — 격자 전체 ${tpl.keys.size}칸이 후보 (칠한 ${painted}칸 유지)`, 'success');
     return;
   }
 
   if (!activeBrush) {
     // fillGrid와 **같은 전제, 같은 문구** — 칠하는 연산의 규칙은 하나다.
-    alert('페인팅 브러쉬를 먼저 선택하십시오.');
+    alert('페인팅 브러쉬를 먼저 고르십시오.');
     return;
   }
   // 쓰기(화면 파괴) 1회 확인 — 지울 것이 있을 때만 묻는다. 빈 격자에서는 무마찰이다.
@@ -10044,9 +9996,8 @@ function enterValidDieAuthoring(shape) {
   updateLegendCounts();
   renderGridCanvas();
   scheduleCellDraft();
-  showToast(`유효 다이 템플릿 생성 — ${tpl.filled.length}칸을 '${activeBrush}'로 칠했습니다`
-    + `${tpl.outsideCircle > 0 ? ` (웨이퍼 원 밖 ${tpl.outsideCircle}칸 포함)` : ''}. `
-    + `지울 셀을 우클릭으로 깎아낸 뒤 ⚡ Push로 저장하십시오.`, 'success');
+  showToast(`유효 다이 템플릿 — ${tpl.filled.length}칸 칠함`
+    + `${tpl.outsideCircle > 0 ? ` (원 밖 ${tpl.outsideCircle}칸 포함)` : ''} — 우클릭으로 깎은 뒤 [⚡ Push]`, 'success');
 }
 
 // 실패한 오버레이도 목록에 **행으로 남긴다**. 토스트만 띄우고 끝내면
@@ -10466,11 +10417,11 @@ function reseatOverlayLayer(o) {
   o.dupCollapsed = duplicates;
   o.outside = outside;
   o.seatNote = [
-    outside ? `격자 밖 ${outside}칩 — 웨이퍼/유효 다이 영역 밖이라 [↓ 가져오기]에서 제외됩니다` : '',
-    fanCells ? `타깃 셀이 더 굵어 한 칸이 최대 ${fanout}칩을 받습니다 — ${fanCells}칸이 서로 다른 다이의 값을 받았습니다` : '',
-    conflictCells ? `같은 좌표에 서로 다른 값이 있습니다 — ${conflictCells}칸(소스 중복 행, 셀 크기와 무관)` : '',
-    duplicates ? `완전히 같은 행 ${duplicates}건은 합쳤습니다(버린 값 없음)` : '',
-    multiCells ? `여러 값을 받은 ${multiCells}칸은 대표값을 고르지 않으므로 [↓ 가져오기]에서 제외됩니다 — 값은 화면의 점으로 전부 남아 있습니다` : '',
+    outside ? `격자 밖 ${outside}칩 — [↓ 가져오기] 제외` : '',
+    fanCells ? `타깃 셀이 더 굵어 한 칸이 최대 ${fanout}칩 — ${fanCells}칸이 여러 다이의 값을 받음` : '',
+    conflictCells ? `같은 좌표에 다른 값 ${conflictCells}칸 (소스 중복 행)` : '',
+    duplicates ? `같은 행 ${duplicates}건 병합 (버린 값 없음)` : '',
+    multiCells ? `여러 값을 받은 ${multiCells}칸 — [↓ 가져오기] 제외 (점으로는 남아 있음)` : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -10537,14 +10488,14 @@ function overlayAlignChip(o) {
   // 무엇에 맞춰 정렬했는가 — 등록 규격(wafer_map_metadata)인가, 지금 화면의 격자 설정인가.
   // 후자를 전자처럼 보여주면 "규격대로 맞췄다"는 거짓 진술이 된다(빈 맵 오버레이의 기본 상태).
   const basis = o.align.targetBasis === 'screen'
-    ? '<span class="ov-chip dim" title="타깃 맵의 등록 규격이 없어 **현재 화면의 격자 설정**을 기준으로 겹쳤습니다. 화면 규격을 바꾸면 정렬도 함께 바뀝니다.">화면기준</span>'
+    ? '<span class="ov-chip dim" title="타깃 규격 미등록 — 현재 화면의 격자 설정 기준">화면기준</span>'
     : '';
   if (origin === 'identity') {
-    return `<span class="ov-chip dim" title="${escapeHtmlAttr(note || '좌표 보정 없이 그대로 겹쳤습니다')}">무보정</span>${basis}`;
+    return `<span class="ov-chip dim" title="${escapeHtmlAttr(note || '좌표 보정 없음')}">무보정</span>${basis}`;
   }
   // derived(및 그 외 비-identity) = 보정 적용됨. 회전은 0일 수 있으므로 있을 때만 덧붙인다.
   const label = rot ? `정렬됨 ${rot}°` : '정렬됨';
-  return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || '소스 맵의 좌표계가 달라 소스 메타 프레임으로 해석해 물리 좌표에 맞췄습니다')}">${escapeHtmlAttr(label)}</span>${basis}`;
+  return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || '소스 메타 프레임으로 해석해 물리 좌표에 맞춤')}">${escapeHtmlAttr(label)}</span>${basis}`;
 }
 
 // 한 칸이 값을 여럿 받았을 때의 상태 칩. 🔴 **라벨이 사연을 구별한다** — 소스에 같은 좌표가
@@ -10571,8 +10522,7 @@ function overlayLegendChip(o) {
   const miss = overlayUnlistedValues(o);
   if (miss.length === 0) return '';
   const shown = miss.slice(0, 8).join(', ') + (miss.length > 8 ? ' ...' : '');
-  const tip = `legend에 없는 값이라 색을 지어내지 않고 속이 빈 점으로 그립니다 · ${shown}`
-    + ` · 범례(2. Legend & DOE)에 값을 추가하면 그 색으로 칠해집니다.`;
+  const tip = `범례 미선언 — 속이 빈 점으로 그립니다 · ${shown}`;
   return `<span class="ov-chip warn" title="${escapeHtmlAttr(tip)}">범례 밖 ${miss.length}종</span>`;
 }
 
@@ -10651,7 +10601,7 @@ function importOverlayToGrid(id) {
   // arrive", a reason the user needs. If everything landed, the result is on the canvas and
   // "not saved yet" is already stated by the plan-head chip, so no toast is layered on top.
   if (locked > 0 || outside > 0) {
-    showToast(`${msg} — 건너뛴 셀은 저장되지 않습니다. [⚡ Push]로 적재하십시오.`, 'warning');
+    showToast(`${msg} — 저장은 [⚡ Push]`, 'warning');
   } else {
     console.debug(`[map] overlay imported — ${msg}`);
   }
@@ -10763,7 +10713,7 @@ function renderOverlayList() {
       </span>
       <span class="ov-meta">${o.failed ? '' : `${o.count}칩${(o.fanout > 1) ? `→${o.cellCount}칸 ` : ' '}`}${overlayAlignChip(o)}${overlayFanChip(o)}${overlayLegendChip(o)}${o.truncated ? `<span class="ov-chip warn" title="서버 상한 ${escapeHtmlAttr(String(o.cap || '?'))}">일부만</span>` : ''}</span>
       <span class="ov-btns">
-        ${o.failed ? '' : `<button type="button" class="ov-btn ov-import" data-act="import" title="이 오버레이의 셀을 현재 편집 맵으로 가져옵니다 (잠금 셀 제외 · Push 전까지 서버 반영 없음)">↓</button>`}
+        ${o.failed ? '' : `<button type="button" class="ov-btn ov-import" data-act="import" title="현재 맵으로 가져오기 (잠금 셀 제외 · Push 전까지 서버 반영 없음)">↓</button>`}
         <button type="button" class="ov-btn" data-act="${o.failed ? 'retry' : 'toggle'}" title="${o.failed ? '다시 시도' : '표시/숨김'}">${o.failed ? '↻' : (o.visible ? '👁' : '🚫')}</button>
         <button type="button" class="ov-btn ov-del" data-act="del" title="제거">✕</button>
       </span>

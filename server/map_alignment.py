@@ -401,6 +401,12 @@ _RULING_TEXT = {
     "no_margin": "1-2위 격차 0 - 순위 없음",
 }
 
+# 🔴 목록(`build_alignment_worklist`)과 상세(`build_alignment_view`)가 **같은 사실에 같은
+#    문장을 낸다.** 두 자리에 따로 적으면 그것이 두 번째 철자이고, 한쪽만 고쳐지는 날 같은
+#    단위가 목록과 상세에서 다른 말을 한다. 그래서 낱말은 여기 하나뿐이다.
+TEXT_REFERENCE_ABSENT = "기준 없음 - 유효 다이 맵 미지정"
+TEXT_REFERENCE_REFUSED = "기준 해석 실패"
+
 
 def compose_refusal(state: str, reference: dict, excluded: _Excluded,
                     ruling: dict, source_map_count: int, candidates: list = None) -> str:
@@ -413,9 +419,10 @@ def compose_refusal(state: str, reference: dict, excluded: _Excluded,
         return None
     if state == STATE_NOT_SCORABLE:
         if reference.get("state") == REFERENCE_ABSENT:
-            return "기준 없음 - 유효 다이 맵 미지정"
+            return TEXT_REFERENCE_ABSENT
         if reference.get("state") == REFERENCE_REFUSED:
-            return "기준 해석 실패 - %s" % (reference.get("reason") or "사유 미상")
+            return "%s - %s" % (TEXT_REFERENCE_REFUSED,
+                                reference.get("reason") or "사유 미상")
         if source_map_count == 0:
             return "소스 맵 0건"
         parts = ["%s (%d)" % (e["reason"], e["count"]) for e in excluded.as_list()]
@@ -449,14 +456,131 @@ def _binding_of(cfg: dict, table: str):
     return b
 
 
-def _to_cells(rows):
-    out = []
-    for (x, y) in rows:
+# ---------------------------------------------------------------------------
+# 좌표 삼중항 — **원시 단위**. 선언 바인딩은 그것을 채우는 프리셋이다
+# ---------------------------------------------------------------------------
+# 제품 소유자 지시(2026-08-05): 「가장 원시적인 단위로 일한다 — `CORE FRAME`이라는 **이름**이
+# 아니라 `CORE_X`·`CORE_Y`·`C_BN`. 그 원시값을 받는 단일 상태 함수를 만들고, config로 몰고,
+# **그 다음에** 그것을 덮어쓰는 프리셋 단축을 얹는다.」
+#
+# 🔴 그래서 관계가 뒤집힌다. 예전에는 `_binding_of(cfg, src_table)`이 **정본**이었고 조작자는
+#    좌표 컬럼을 고를 수 없었다 — `dt_log`의 선언 바인딩이 `dt_x`/`dt_y`로 고정돼 있어서,
+#    `map_table=core_wafer_map`으로 열면 **core 맵 ID 아래에 dt 좌표가 모였다.** 화면은
+#    멀쩡하고 값만 틀리는 상태이고(I3), 클라에 컬럼 선택기를 붙이면 **아무것도 하지 않는
+#    컨트롤**이 된다. 지금은 컬럼이 인자이고 선언 바인딩은 **제안**이다.
+#
+# 🔴 그리고 제안과 선택은 응답에서 구별된다. 둘을 같은 모양으로 내보내면 화면이 「누가
+#    골랐다」와 「서버가 채워 넣었다」를 같게 그리고, 그 순간 기본값이 선언을 사칭한다(I4).
+COLUMN_CHOSEN = "chosen"        # 조작자가 이름을 댔다
+COLUMN_PROPOSED = "proposed"    # 선언 바인딩(프리셋)이 채웠다 — 고른 것이 아니다
+COLUMN_ABSENT = "absent"        # 아무것도 대지 않았다
+
+# 값 컬럼이 없는 것은 **결함이 아니라 다른 질문**이다. 값이 없으면 답할 수 있는 것은 점유뿐이고,
+# 점유는 평평하다 — 실측 `core_defect_map LOT-A/05`에서 8후보가 **같은 다이를 차지**했고
+# (점유로는 8자 동점) 값 일치가 **374다이 차이**로 갈랐다. 그래서 이 구별은 장식이 아니다.
+_REFERENCE_KIND_STRENGTH = {REFERENCE_KIND_NONE: 0,
+                            REFERENCE_KIND_OCCUPANCY: 1,
+                            REFERENCE_KIND_VALUES: 2}
+
+_VALUE_GUESS_REASON = ("값 컬럼 제안 없음 - 선언된 후보와 맞는 컬럼이 없어 추측만 가능합니다"
+                       " (추측은 데이터 경로에 쓰지 않습니다)")
+
+
+def resolve_source_columns(cfg: dict, table: str, model, x_col: str = None,
+                           y_col: str = None, value_col: str = None) -> dict:
+    """이 실행이 실제로 읽을 좌표 삼중항과 **그 값이 어디서 왔는가**.
+
+    `x_col`/`y_col`/`value_col`이 오면 그것이 답이고, 안 오면 선언 바인딩이 **제안**한다.
+    컬럼은 테이블의 **실제 스키마**에 대해 검증한다 — `params`를 규칙 자신의 `decision_key`에
+    대해 검증하는 것과 같은 규율이고, 없는 컬럼은 조용한 0건이 아니라 거절이다.
+    """
+    proposal = map_overlay.resolve_binding_info(cfg, table)
+    # [F2] 후보 밖 추측 값 컬럼은 데이터 경로에 나가지 않는다(`derive_table_binding` 규율).
+    # 제안으로도 쓰지 않는다 — 제안은 조작자가 그대로 눌러 확정할 수 있는 값이어야 한다.
+    guessed = bool(proposal) and proposal.get("source") == "fallback_guess"
+
+    def _named(col, role):
+        if getattr(model, col, None) is None:
+            raise ValueError("테이블 '%s'에 컬럼 '%s'이 없습니다 - %s 좌표로 쓸 수 없습니다"
+                             % (table, col, role))
+        return col
+
+    out = {}
+    for role, chosen in (("x", x_col), ("y", y_col)):
+        c = chosen.strip() if isinstance(chosen, str) else chosen
+        if c:
+            out[role] = {"column": _named(c, role), "origin": COLUMN_CHOSEN}
+        elif proposal and proposal.get(role):
+            out[role] = {"column": _named(proposal[role], role), "origin": COLUMN_PROPOSED}
+        else:
+            out[role] = {"column": None, "origin": COLUMN_ABSENT}
+
+    # 🔴 세 가지를 말할 수 있어야 한다: **고른다** · **제안을 받는다** · **없이 간다**.
+    #    생략(None)이 「제안해 달라」를 뜻하므로, 생략만으로는 셋째를 말할 수 없다 — 그러면
+    #    선언이 값 컬럼을 가진 테이블(`dt_log`)에서 조작자는 점유 전용 실행을 요청할 방법이
+    #    없고, 그 실행이야말로 「승자 없음」이 진짜 동점인지 기준이 못 가른 것인지를 재는
+    #    자리다. 그래서 **빈 문자열이 명시적 「없음」**이다(`?value_col=`).
+    v = value_col.strip() if isinstance(value_col, str) else value_col
+    if isinstance(value_col, str) and not v:
+        out["value"] = {"column": None, "origin": COLUMN_ABSENT,
+                        "reason": "값 컬럼 없이 실행 - 점유만으로 대조합니다"}
+    elif v:
+        # 고른 것은 **엄격히** 검증한다 — 조작자가 이름을 댔는데 조용히 없는 것으로 접으면
+        # 오타가 「값 없이 채점」으로 위장한다.
+        out["value"] = {"column": _named(v, "value"), "origin": COLUMN_CHOSEN, "reason": None}
+    elif proposal and proposal.get("val") and not guessed:
+        # 제안은 다르다. `resolve_binding_info`는 선언에 없는 키를 **데이터 경로가 실제로
+        # 쓰는 기본값**(리터럴 `val`)으로 채워 서빙하므로, 값 컬럼을 선언하지 않은 현장의
+        # 제안은 실재하지 않는 컬럼을 가리킨다. 그것은 잘못된 선언이 아니라 **값 컬럼이
+        # 없다는 뜻**이고(데이터 경로 `_cells_of`도 같은 판정을 한다), 거절이 아니라
+        # 점유 전용으로 내려앉는다.
+        col = proposal["val"]
+        if getattr(model, col, None) is None:
+            out["value"] = {"column": None, "origin": COLUMN_ABSENT,
+                            "reason": "제안된 값 컬럼 '%s'이 '%s'에 없습니다 - 점유만으로 "
+                                      "대조합니다" % (col, table)}
+        else:
+            out["value"] = {"column": col, "origin": COLUMN_PROPOSED, "reason": None}
+    else:
+        out["value"] = {"column": None, "origin": COLUMN_ABSENT,
+                        "reason": (_VALUE_GUESS_REASON if guessed else None)}
+    out["proposal"] = proposal
+    return out
+
+
+def comparison_kind(reference_kind: str, source_value_column) -> str:
+    """이 실행이 **실제로 무엇으로 대조할 수 있는가**. 기준과 소스 중 약한 쪽을 따라간다.
+
+    합쳐진 답이 가장 약한 기여자를 따라가는 것은 이 저장소의 기존 규칙이고(스펙 §0.2 ⑨,
+    `frame_confirmation.weakest_contributor`), 여기서도 같은 규칙이다 — 기준이 값을 실어도
+    소스에 값 컬럼이 없으면 값으로 대조할 방법이 없다.
+
+    ⚠️ 이것은 **천장이지 실행 보고가 아니다.** 오늘 `score_candidates`는 점유만 쓴다(스펙 §3의
+       「값 일치」 지표는 아직 없다). 그래서 이 값이 말하는 것은 「값으로 갈릴 수 있었나」이고,
+       「승자 없음」이 진짜 동점인지 **기준이 애초에 구별할 수 없었던 것**인지를 가른다.
+    """
+    if reference_kind == REFERENCE_KIND_NONE:
+        return REFERENCE_KIND_NONE
+    if not source_value_column:
+        return REFERENCE_KIND_OCCUPANCY
+    return reference_kind
+
+
+def _to_cells(rows, values=None):
+    """좌표를 정수로. `values`가 오면 **같은 순서로** 값 목록도 함께 걸러 낸다.
+
+    🔴 값은 좌표와 **같은 인덱스**에 있어야 한다. 좌표가 하나 버려질 때 값을 안 버리면 그
+       뒤의 모든 셀이 옆 셀의 값을 받는다 — 화면은 멀쩡하고 값만 어긋나는 상태(I3)이고,
+       개수로는 절대 안 잡힌다. 그래서 두 목록을 한 루프에서 같이 만든다.
+    """
+    out, vals = [], []
+    for i, (x, y) in enumerate(rows):
         try:
             out.append((int(float(x)), int(float(y))))
         except (TypeError, ValueError):
             continue
-    return out
+        vals.append(None if values is None else values[i])
+    return (out, vals) if values is not None else out
 
 
 def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
@@ -481,7 +605,15 @@ def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
     truncated = len(rows) > cap
     rows = rows[:cap]
     kind = REFERENCE_KIND_VALUES if val_col is not None else REFERENCE_KIND_OCCUPANCY
-    return _to_cells([(r[0], r[1]) for r in rows]), truncated, kind
+    # 🔴 값을 **읽고 버리지 않는다.** 이 함수는 예전에 값 컬럼을 SELECT해 놓고 좌표만
+    #    돌려주었고, 그래서 `reference.kind: "values"`는 아무도 쓰지 않는 선언이었다.
+    #    그러는 동안 채점은 점유만 봤는데, 점유는 평평할 뿐 아니라 **원 마스크 위에서는
+    #    아무 방위 정보도 싣지 않는다**(원은 여덟 프레임 모두에 불변 — 스펙 §1). 그
+    #    상태에서 나온 격차는 신호가 아니라 표본 잡음이고, 잡음으로 만든 자신 있는 1등은
+    #    거절보다 나쁘다.
+    values = [(r[2] if val_col is not None else None) for r in rows]
+    cells, values = _to_cells([(r[0], r[1]) for r in rows], values)
+    return cells, values, truncated, kind
 
 
 def _ref_state(state, **kw):
@@ -492,12 +624,18 @@ def _ref_state(state, **kw):
     return base
 
 
-def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int) -> dict:
+def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int,
+                       cache: dict = None) -> dict:
     """공통 바닥을 정한다 — **꽂아 넣는 것이지 못 박는 것이 아니다**(스펙 §4).
 
     셋 다 정상 상태다: 명시 지정 · 맵이 선언한 유효 다이 참조 · **없음**. 세 번째가 운영에서
     가장 흔하다 — 그래서 「없음」은 0점이 아니라 **자기 상태**로 나간다. 0점으로 내보내면
     화면이 「채점했는데 0점」으로 읽고, 그것은 「잴 것이 없었다」와 정반대의 진술이다.
+
+    `cache`: 요청 경계에서 호출자가 만들어 넘기는 dict. 해석된 `(table, map_id)` 뒤에 오는
+    질의(메타 · 셀)만 memoize한다 — 목록 화면은 같은 기준을 단위마다 다시 묻고, 그 반복은
+    N+1이지 새 정보가 아니다. **어느 기준이 이기는가**는 단위마다 다시 정한다(캐시하지
+    않는다) — 그 판정은 그 단위의 소스 맵 선언에 달려 있다.
     """
     table = map_id = origin = None
     if spec:
@@ -520,23 +658,41 @@ def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int) ->
     if not table or not map_id:
         return _ref_state(REFERENCE_ABSENT)
 
+    if cache is not None:
+        ck = ("ref", table, map_id, origin, cap)
+        if ck in cache:
+            return cache[ck]
+        out = _load_reference(db, cfg, table, map_id, origin, cap)
+        if len(cache) < _REF_CACHE_MAX:
+            cache[ck] = out
+        return out
+    return _load_reference(db, cfg, table, map_id, origin, cap)
+
+
+# 작업 단위 캐시 상한 — 넘치면 그냥 안 담는다(최악이 중복 해석 1회이고 오답은 아니다,
+# `map_overlay._VALID_DIE_CACHE_MAX`와 같은 규율).
+_REF_CACHE_MAX = 256
+
+
+def _load_reference(db, cfg: dict, table: str, map_id: str, origin: str, cap: int) -> dict:
+    """해석된 기준 하나를 실제로 읽는다. `_resolve_reference`의 꼬리 — **여기 하나뿐이다.**"""
+    def _refuse(reason):
+        return _ref_state(REFERENCE_REFUSED, source=origin, table=table, map_id=map_id,
+                          reason=reason)
+
     meta = map_overlay.load_map_meta(db, table, map_id)
     if not meta:
-        return _ref_state(REFERENCE_REFUSED, source=origin, table=table, map_id=map_id,
-                          reason=("기준 맵 '%s · %s'의 규격이 wafer_map_metadata에 "
-                                  "등록되지 않았습니다" % (table, map_id)))
+        return _refuse("기준 맵 '%s · %s'의 규격이 wafer_map_metadata에 등록되지 않았습니다"
+                       % (table, map_id))
     why = map_overlay.geometry_refusal(meta)
     if why is not None:
-        return _ref_state(REFERENCE_REFUSED, source=origin, table=table, map_id=map_id,
-                          reason="기준 맵 '%s · %s': %s" % (table, map_id, why))
+        return _refuse("기준 맵 '%s · %s': %s" % (table, map_id, why))
     try:
         cells, truncated, kind = _cells_of(db, cfg, table, map_id, cap)
     except ValueError as e:
-        return _ref_state(REFERENCE_REFUSED, source=origin, table=table, map_id=map_id,
-                          reason=str(e))
+        return _refuse(str(e))
     if not cells:
-        return _ref_state(REFERENCE_REFUSED, source=origin, table=table, map_id=map_id,
-                          reason="기준 맵 '%s · %s'에 좌표가 없습니다" % (table, map_id))
+        return _refuse("기준 맵 '%s · %s'에 좌표가 없습니다" % (table, map_id))
     out = _ref_state(REFERENCE_RESOLVED, source=origin, table=table, map_id=map_id,
                      cells=cells, count=len(cells), truncated=truncated, kind=kind)
     out["meta"] = meta
@@ -552,13 +708,25 @@ def _map_key_columns(cfg: dict, table: str):
     return list(cols)
 
 
+def compose_map_id(values) -> str:
+    """맵 키 컬럼 값들 → 맵 ID. **목록과 상세가 같은 문자열을 만들어야 한다** — 목록이 센 맵과
+    상세가 여는 맵이 다른 이름을 가지면 개수가 조용히 갈린다. 그래서 철자는 여기 하나다."""
+    return "_".join("" if v is None else str(v) for v in values)
+
+
 def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table: str,
                          reference_spec: str = None, include_cells: bool = True,
-                         cell_cap: int = MAX_PAYLOAD_CELLS) -> dict:
+                         cell_cap: int = MAX_PAYLOAD_CELLS,
+                         x_col: str = None, y_col: str = None,
+                         value_col: str = None) -> dict:
     """한 결정 단위의 정렬 화면 payload **전부**를 한 번에 만든다. 읽기 전용이다.
 
     후보 8개의 채점이 같은 응답에 들어간다. 후보를 바꾸는 것은 네트워크가 아니라 리페인트여야
     하기 때문이고, 그 요구가 이 함수의 모양을 결정했다.
+
+    `x_col`/`y_col`/`value_col`: **읽을 좌표 삼중항**. 이것이 원시 단위이고, 생략하면 선언
+    바인딩이 제안한다(`resolve_source_columns`). 응답 `unit.columns`가 축마다 고른 것인지
+    제안받은 것인지를 말한다.
     """
     from database import models
 
@@ -584,14 +752,18 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     if any(a is None for a in key_attrs):
         raise ValueError("소스 테이블 '%s'이 맵 키 컬럼 %s을 갖고 있지 않습니다"
                          % (src_table, map_key_cols))
-    ids = ["_".join("" if v is None else str(v) for v in r)
+    ids = [compose_map_id(r)
            for r in db.query(*key_attrs).filter(*filters).distinct().all()]
 
-    src_binding = _binding_of(cfg, src_table)
-    x_attr = getattr(src_model, src_binding.get("x", "x"), None)
-    y_attr = getattr(src_model, src_binding.get("y", "y"), None)
-    if x_attr is None or y_attr is None:
-        raise ValueError("소스 테이블 '%s'에 좌표 컬럼이 없습니다" % src_table)
+    # 🔴 좌표 컬럼은 **인자**다. 예전에는 여기서 `_binding_of`가 정본이라 `dt_log`의 선언
+    #    바인딩(`dt_x`/`dt_y`)이 `map_table`과 무관하게 이겼고, `core_wafer_map`으로 열면
+    #    core 맵 ID 아래에 dt 좌표가 모였다.
+    columns = resolve_source_columns(cfg, src_table, src_model, x_col, y_col, value_col)
+    if not columns["x"]["column"] or not columns["y"]["column"]:
+        raise ValueError("소스 테이블 '%s'의 좌표 컬럼을 정할 수 없습니다 - x/y를 "
+                         "지정하십시오" % src_table)
+    x_attr = getattr(src_model, columns["x"]["column"])
+    y_attr = getattr(src_model, columns["y"]["column"])
 
     source_maps = []
     src_truncated = False
@@ -675,13 +847,23 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     return {
         "unit": {"rule": rule.get("name"), "decision_key": dict(key_values or {}),
                  "source_table": src_table, "map_table": map_table,
-                 "map_key_columns": map_key_cols},
+                 "map_key_columns": map_key_cols,
+                 # 무엇을 읽었나, 그리고 **누가 정했나**. 제안(proposed)과 선택(chosen)을
+                 # 같은 모양으로 내보내면 화면이 둘을 같게 그리고 기본값이 선언을 사칭한다.
+                 "columns": columns},
         "state": state,
         "refusal": compose_refusal(state, reference, excluded, ruling, len(source_maps),
                                    candidates),
         "reference": {
             "state": reference["state"],
-            "kind": reference.get("kind", REFERENCE_KIND_NONE),
+            # 이 실행이 **대조에 쓸 수 있는 것**. 소스에 값 컬럼이 없으면 기준이 값을 실어도
+            # 점유뿐이다 — 그리고 점유는 평평하다(실측: 8후보가 같은 다이를 차지). 이 값이
+            # 「승자 없음」의 사유를 가른다.
+            "kind": comparison_kind(reference.get("kind", REFERENCE_KIND_NONE),
+                                    columns["value"]["column"]),
+            # 기준 맵 **자신이** 싣고 있는 것. 위 값과 갈릴 수 있고, 갈린 이유가 소스 쪽이라는
+            # 사실을 여기서만 알 수 있다 — 접으면 조작자가 기준 맵을 의심한다.
+            "map_kind": reference.get("kind", REFERENCE_KIND_NONE),
             "source": reference.get("source"),
             "table": reference.get("table"), "map_id": reference.get("map_id"),
             "count": reference.get("count", 0), "reason": reference.get("reason"),
@@ -716,4 +898,438 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         "excluded": excluded.as_list(),
         "excluded_total": excluded.total(),
         "stats": dict(stats, build_ms=(time.monotonic() - t0) * 1000.0),
+    }
+
+
+# ---------------------------------------------------------------------------
+# 작업 목록 (worklist) — 「어느 단위를 열 것인가」
+# ---------------------------------------------------------------------------
+# 소비자는 `client2/map_editor2.html`의 목록이다. 상세(`build_alignment_view`)의 색인이지
+# 상세의 축소판이 아니다 — 색인이 색인하는 것보다 무거우면 그것은 설계 오류다.
+#
+# 🔴 **이 함수는 프레임 필드를 모른다** (제품 소유자 지시 2026-08-05: primitive → function →
+#    config → preset). `core_frame`/`dt_frame`은 **이름**이고 단위는 좌표 컬럼이다. 목록이
+#    답하는 것은 이름과 무관한 네 가지뿐이다: 어떤 단위가 있는가 · 확정됐는가 · 채점이
+#    가능한가 · 맵 몇 장이 모이는가. 어느 좌표 컬럼을 읽을지는 **상세에서** 고른다.
+#    이름을 여기 실으면 그것이 그 사실이 적히는 두 번째 자리가 된다.
+#
+# 🔴 **골격은 규칙 자신의 `derived_table`이다.** 단위 목록을 소스 테이블에서 GROUP BY로
+#    만들면 1,000만 행 기준으로 요청마다 풀스캔이 된다. 그 표는 이미 규칙이 단위마다 한 행씩
+#    materialize해 둔 것이고(`aggregations`), 인리치먼트 대기열이 보는 것과 **같은 표**라
+#    두 화면이 서로 다른 단위 집합을 말할 수 없다.
+
+STATE_UNIT_PENDING = "pending"
+STATE_UNIT_CONFIRMED = "confirmed"
+STATE_UNIT_UNSCORABLE = "unscorable"
+
+#: 화면이 구별하는 상태는 셋뿐이고 **닫혀 있다**. 약한 순서 — 롤업이 필요한 자리에서
+#: 「가장 약한 것을 따라간다」(스펙 §0.2 ⑨)를 쓰려면 서열이 값이어야 한다.
+UNIT_STATE_STRENGTH = {STATE_UNIT_UNSCORABLE: 0,
+                       STATE_UNIT_PENDING: 1,
+                       STATE_UNIT_CONFIRMED: 2}
+
+REASON_NO_MAPS = "no_maps"
+REASON_MAP_KEYS_UNAVAILABLE = "map_keys_unavailable"
+REASON_REFERENCE_ABSENT = "reference_absent"
+REASON_REFERENCE_REFUSED = "reference_refused"
+
+# 사유 표찰. 나머지 둘(`meta_missing`·`geometry_refused`)은 **상세의 제외 어휘를 그대로
+# 쓴다** — 목록의 「채점 불가」는 상세가 셀 제외 사유로 이미 이름 붙인 것과 같은 사실이고,
+# 여기서 다시 이름 지으면 같은 사실에 낱말이 둘이 된다.
+_WORKLIST_REASON_TEXT = dict(_EXCLUDE_TEXT)
+_WORKLIST_REASON_TEXT.update({
+    REASON_NO_MAPS: "맵 0건",
+    REASON_MAP_KEYS_UNAVAILABLE: "소스 테이블에 맵 키 컬럼 없음",
+    REASON_REFERENCE_ABSENT: TEXT_REFERENCE_ABSENT,
+    REASON_REFERENCE_REFUSED: TEXT_REFERENCE_REFUSED,
+})
+
+MAX_WORKLIST_UNITS = 2_000        # 한 요청이 판정하는 단위 상한 (초과는 truncated로 명시)
+MAX_WORKLIST_MAP_ROWS = 100_000   # (단위, 맵) 쌍 상한 — 맵 모집단 규모에 비례한다
+DEFAULT_WORKLIST_LIMIT = 200      # 응답에 싣는 행 수 기본값
+_META_CHUNK = 1_000               # IN 절 청킹
+
+#: 화면이 이름 붙일 수 있는 정렬 키. 규칙이 `list_columns`를 선언하면 그것도 더해진다
+#: (여기 컬럼명을 적지 않는다).
+_BASE_SORT_KEYS = ("unit_key", "state", "map_count", "usable_map_count", "confirmed_at")
+
+
+def worklist_sort_keys(rule: dict) -> list:
+    out = list(_BASE_SORT_KEYS)
+    for c in (rule.get("list_columns") or []):
+        if c not in out:
+            out.append(c)
+    return out
+
+
+def map_table_catalog(src_model, src_table: str) -> list:
+    """선언된 맵 테이블과 **이 소스가 실제로 그 단위로 모을 수 있는가**.
+
+    지금까지 조작자가 `map_table`을 고를 방법이 없었다. 목록은 어차피 이 표로 요청을
+    검증해야 하므로(선언 없는 테이블은 400) 같은 표를 응답에 싣는 것이 공짜다 — 첫 렌더
+    전에 왕복을 하나 더 두거나, 클라가 목록을 복사해 갖는 것보다 낫다.
+    """
+    from database import crud
+    out = []
+    for table, info in (crud.TABLE_CONFIG or {}).items():
+        cols = (info or {}).get("map_key_columns")
+        if not cols:
+            continue
+        missing = [c for c in cols if getattr(src_model, c, None) is None]
+        out.append({
+            "table": table,
+            "map_key_columns": list(cols),
+            "selectable": not missing,
+            "reason": (None if not missing else
+                       "소스 '%s'에 맵 키 컬럼 없음 - %s" % (src_table, ", ".join(missing))),
+        })
+    return sorted(out, key=lambda r: (not r["selectable"], r["table"]))
+
+
+def coordinate_column_catalog(cfg: dict, src_table: str) -> dict:
+    """좌표로 쓸 수 있는 **실제 컬럼**과, 지금 선언이 가리키는 쌍.
+
+    🔴 컬럼 쌍을 이름 규칙(`*_x`/`*_y`)으로 짝지어 주지 않는다. 그것은 선언이 아니라 추측이고,
+       추측한 짝을 응답에 실으면 그 순간 그것이 선언 행세를 한다(I4). 후보를 나열하고
+       **짝짓기는 조작자에게 남긴다** — 이것이 「원시 단위로 일한다」의 뜻이다.
+    """
+    from database import crud
+    types = (crud.TABLE_CONFIG.get(src_table) or {}).get("column_types") or {}
+    numeric = sorted(c for c, t in types.items()
+                     if str(t).strip().lower() in ("number", "int", "integer", "float",
+                                                   "numeric", "double"))
+    return {
+        "table": src_table,
+        "numeric_columns": numeric,
+        # 오늘 서버가 스스로 고르는 쌍. 상세(`build_alignment_view`)가 **이것만** 읽는다.
+        "declared_binding": map_overlay.resolve_binding_info(cfg, src_table),
+    }
+
+
+def binding_ambiguity(rule: dict, coord: dict) -> list:
+    """확정 대상(무엇에 쓰는가)과 좌표 컬럼(어떻게 읽는가) 사이에 **선언이 없는 자리**.
+
+    둘은 다른 것이다. 그런데 규칙이 확정 대상을 둘 이상 선언하고 소스 테이블에도 좌표 후보가
+    둘 이상 있으면, 어느 대상이 어느 컬럼 쌍에서 나오는지를 **아무 선언도 말하지 않는다.**
+    이름이 닮은 것은 우연이지 선언이 아니다. 여기서 풀지 않고 **사실만 보고한다.**
+    """
+    out = []
+    targets = list(rule.get("target_fields") or [])
+    numeric = list(coord.get("numeric_columns") or [])
+    binding = coord.get("declared_binding") or {}
+    if len(targets) > 1 and len(numeric) > 2:
+        out.append({
+            "code": "target_to_columns_undeclared",
+            "detail": ("확정 대상 %d개, 좌표 후보 컬럼 %d개 - 둘을 잇는 선언 없음. "
+                       "좌표 컬럼은 조작자가 고릅니다" % (len(targets), len(numeric))),
+        })
+    if binding and binding.get("x") and binding.get("y"):
+        rest = [c for c in numeric if c not in (binding.get("x"), binding.get("y"))]
+        if rest:
+            # 이 항목은 **사라지지 않고 참인 상태를 말하도록 바뀌었다.** 예전 이름은
+            # `declared_binding_pins_one_pair`였고 그때는 실제로 고정이었다 — 상세가
+            # `_binding_of`를 정본으로 읽어 나머지 후보가 도달 불가였다. 지금은 제안이라
+            # 이름도 그렇게 바꾼다. 「고정」이라 부르면서 제안을 가리키는 것이 두 번째 철자다.
+            out.append({
+                "code": "declared_binding_proposes_one_pair",
+                "detail": ("선언된 좌표 바인딩이 %s/%s를 제안합니다 - 나머지 후보(%s)는 "
+                           "상세 조회에 x_col/y_col로 지정해야 읽힙니다"
+                           % (binding.get("x"), binding.get("y"), ", ".join(rest))),
+            })
+    return out
+
+
+def _chunks(seq, n):
+    seq = list(seq)
+    for i in range(0, len(seq), n):
+        yield seq[i:i + n]
+
+
+def _load_metas(db, map_table: str, map_ids) -> dict:
+    """맵 규격을 **한 번에** 읽는다. 맵마다 `load_map_meta`를 부르면 N+1이고, 목록의 N은
+    단위가 아니라 **맵 모집단**이다(개발 박스 실측: 단위 4개에 core 맵 544장)."""
+    from database import models
+    import json as _json
+    model = models.DYNAMIC_TABLES.get(map_overlay.META_TABLE)
+    if model is None:
+        return {}
+    out = {}
+    tt, mid = getattr(model, "target_table"), getattr(model, "map_id")
+    gm = getattr(model, "grid_metadata")
+    for part in _chunks(map_ids, _META_CHUNK):
+        for row in db.query(mid, gm).filter(tt == map_table, mid.in_(part)).all():
+            raw = row[1]
+            if not raw:
+                out[row[0]] = None
+                continue
+            try:
+                out[row[0]] = _json.loads(raw) if isinstance(raw, str) else raw
+            except Exception:
+                out[row[0]] = None
+    return out
+
+
+def _live_confirmations(db, rule_name: str, unit_keys) -> dict:
+    """단위별 현행 확정. **읽기만 한다.** 없으면 그 단위에 키가 없다."""
+    from database import models
+    out = {}
+    fc = models.FrameConfirmation
+    for part in _chunks(unit_keys, _META_CHUNK):
+        rows = (db.query(fc)
+                  .filter(fc.rule_name == rule_name, fc.unit_key.in_(part),
+                          fc.superseded_by.is_(None))
+                  .order_by(fc.version.desc()).all())
+        for r in rows:
+            out.setdefault(r.unit_key, r)
+    return out
+
+
+def _unit_maps(db, src_model, decision_key: list, map_key_cols: list,
+               narrow: list, cap: int):
+    """(단위, 맵) 쌍 — **한 질의**. 반환 `{unit_tuple: set(map_id)}`와 truncated.
+
+    행 수는 소스 로그 행 수가 아니라 **서로 다른 맵의 수**에 비례한다(DISTINCT가 DB에서
+    접힌다). 그래도 상한을 두고 넘으면 **조용히 자르지 않고 알린다** — 잘린 맵 집합에서 센
+    개수는 「맞아 보이는 틀린 수」다.
+    """
+    key_attrs = [getattr(src_model, c) for c in decision_key]
+    map_attrs = [getattr(src_model, c) for c in map_key_cols]
+    rows = (db.query(*key_attrs, *map_attrs).filter(*narrow)
+              .distinct().limit(cap + 1).all())
+    truncated = len(rows) > cap
+    rows = rows[:cap]
+    n = len(decision_key)
+    out = {}
+    for r in rows:
+        unit = tuple("" if v is None else str(v) for v in r[:n])
+        out.setdefault(unit, set()).add(compose_map_id(r[n:]))
+    return out, truncated
+
+
+def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
+                             key_values: dict = None, q: str = None,
+                             sort: str = "unit_key", order: str = "asc",
+                             limit: int = DEFAULT_WORKLIST_LIMIT, offset: int = 0,
+                             unit_cap: int = MAX_WORKLIST_UNITS) -> dict:
+    """결정 단위 목록. **읽기 전용이다.**
+
+    한 단위에 대해 답하는 것은 넷뿐이다 — 키 값 · 상태 · 맵 몇 장 · 정렬 재료. 상태 어휘는
+    `pending` / `confirmed` / `unscorable` 셋으로 닫혀 있고, `unscorable`이 **가장 흔한
+    경우**다(개발 박스 실측: 668개 메타 중 320개가 `auto_registered`, `valid_die_ref` 선언
+    8개 중 0개 해석). 그래서 그것은 0도 null도 아닌 **자기 상태**이고 **사유를 달고 나간다**
+    — 0으로 내보내면 화면이 「채점했는데 0점」으로 읽고, 그것은 「잴 것이 없었다」의 정반대다.
+
+    검색·정렬은 **서버가 한다.** 단위 수는 클라가 통제하는 어떤 값에도 묶여 있지 않으므로
+    전량을 내려 브라우저에서 거르는 설계는 규모에서 먼저 깨진다.
+    """
+    from database import models
+    from sqlalchemy import func as _func
+    import frame_confirmation
+
+    t0 = time.monotonic()
+    rule_name = rule.get("name")
+    decision_key = list(rule.get("decision_key") or [])
+    if not decision_key:
+        raise ValueError("규칙 '%s'에 decision_key 선언이 없습니다" % rule_name)
+    src_table = rule["source_table"]
+    derived_table = rule.get("derived_table")
+
+    src_model = models.DYNAMIC_TABLES.get(src_table)
+    if src_model is None:
+        raise ValueError("소스 테이블 '%s'을 찾을 수 없습니다" % src_table)
+    derived_model = models.DYNAMIC_TABLES.get(derived_table)
+    if derived_model is None:
+        raise ValueError("파생 테이블 '%s'을 찾을 수 없습니다" % derived_table)
+    if models.DYNAMIC_TABLES.get(map_table) is None:
+        raise ValueError("맵 테이블 '%s'을 찾을 수 없습니다" % map_table)
+
+    map_key_cols = _map_key_columns(cfg, map_table)
+    missing_key = [c for c in map_key_cols if getattr(src_model, c, None) is None]
+
+    # ---- [1] 골격: 파생 표에서 단위를 읽는다 (행 = 단위) -------------------------------
+    key_attrs = []
+    for c in decision_key:
+        a = getattr(derived_model, c, None)
+        if a is None:
+            raise ValueError("파생 테이블 '%s'에 결정키 컬럼 '%s'이 없습니다"
+                             % (derived_table, c))
+        key_attrs.append(a)
+    list_cols = [c for c in (rule.get("list_columns") or [])
+                 if getattr(derived_model, c, None) is not None]
+    list_attrs = [getattr(derived_model, c) for c in list_cols]
+
+    filters = []
+    for col, val in (key_values or {}).items():
+        a = getattr(derived_model, col, None)
+        if a is None:
+            raise ValueError("파생 테이블 '%s'에 결정키 컬럼 '%s'이 없습니다"
+                             % (derived_table, col))
+        filters.append(a == val)
+    needle = (q or "").strip()
+    if needle:
+        from sqlalchemy import String, cast, or_
+        pattern = "%" + needle + "%"
+        filters.append(or_(*[cast(a, String).ilike(pattern) for a in key_attrs]))
+
+    matched = db.query(_func.count()).select_from(derived_model).filter(*filters).scalar()
+    rows = (db.query(*key_attrs, *list_attrs).filter(*filters)
+              .distinct().limit(unit_cap + 1).all())
+    units_truncated = len(rows) > unit_cap
+    rows = rows[:unit_cap]
+
+    nk = len(decision_key)
+    units = []
+    for r in rows:
+        vals = ["" if v is None else str(v) for v in r[:nk]]
+        units.append({
+            "key": dict(zip(decision_key, vals)),
+            "_tuple": tuple(vals),
+            "extras": {c: r[nk + i] for i, c in enumerate(list_cols)},
+        })
+
+    # ---- [2] 확정 — 「현행 행이 있는가」가 곧 confirmed다 -------------------------------
+    for u in units:
+        u["unit_key"] = frame_confirmation.compose_unit_key(rule, u["key"])
+    live = _live_confirmations(db, rule_name, [u["unit_key"] for u in units])
+
+    # ---- [3] 이 단위들의 맵과 그 규격 (질의 2개) ---------------------------------------
+    maps_truncated = False
+    per_unit_maps = {}
+    if units and not missing_key:
+        narrow = []
+        if filters:
+            # 단위 집합으로 좁힌다. 컬럼별 IN은 과대근사지만 DISTINCT 결과에서 정확히
+            # 걸러지고, 튜플 IN과 달리 모든 백엔드에서 같은 뜻이다.
+            for i, c in enumerate(decision_key):
+                vs = sorted({u["_tuple"][i] for u in units})
+                a = getattr(src_model, c, None)
+                if a is not None and vs:
+                    narrow.append(a.in_(vs))
+        per_unit_maps, maps_truncated = _unit_maps(
+            db, src_model, decision_key, map_key_cols, narrow, MAX_WORKLIST_MAP_ROWS)
+        wanted = {u["_tuple"] for u in units}
+        per_unit_maps = {k: v for k, v in per_unit_maps.items() if k in wanted}
+
+    all_ids = set()
+    for s in per_unit_maps.values():
+        all_ids |= s
+    metas = _load_metas(db, map_table, all_ids) if all_ids else {}
+
+    # ---- [4] 단위마다 판정 -------------------------------------------------------------
+    ref_cache = {}
+    reasons = {}
+    by_state = {STATE_UNIT_PENDING: 0, STATE_UNIT_CONFIRMED: 0, STATE_UNIT_UNSCORABLE: 0}
+    for u in units:
+        ids = per_unit_maps.get(u["_tuple"], set())
+        u["map_count"] = len(ids)
+        usable = [m for m in ids
+                  if metas.get(m) is not None
+                  and map_overlay.geometry_declaration(metas[m])
+                  == map_overlay.GEOMETRY_DECLARED]
+        u["usable_map_count"] = len(usable)
+        header = live.get(u["unit_key"])
+        u["confirmation"] = (None if header is None else {
+            "version": header.version,
+            "confirmed_by": header.confirmed_by,
+            "confirmed_at": (header.confirmed_at.isoformat()
+                             if header.confirmed_at else None),
+        })
+
+        reason = None
+        if header is not None:
+            state = STATE_UNIT_CONFIRMED
+        elif missing_key:
+            state, reason = STATE_UNIT_UNSCORABLE, REASON_MAP_KEYS_UNAVAILABLE
+        elif not ids:
+            state, reason = STATE_UNIT_UNSCORABLE, REASON_NO_MAPS
+        elif not usable:
+            # 남은 것이 전부 제외 — **어느 제외가 지배적인가**를 그대로 말한다. 상세의
+            # 제외 어휘와 같은 코드라 목록과 상세가 같은 낱말을 쓴다.
+            n_missing = sum(1 for m in ids if metas.get(m) is None)
+            state = STATE_UNIT_UNSCORABLE
+            reason = (EXCLUDE_META_MISSING if n_missing * 2 >= len(ids)
+                      else EXCLUDE_GEOMETRY_REFUSED)
+        else:
+            ref = _resolve_reference(
+                db, cfg, None,
+                [{"meta": metas.get(m), "table": map_table} for m in sorted(ids)],
+                1, cache=ref_cache)
+            if ref["state"] == REFERENCE_ABSENT:
+                state, reason = STATE_UNIT_UNSCORABLE, REASON_REFERENCE_ABSENT
+            elif ref["state"] == REFERENCE_REFUSED:
+                state, reason = STATE_UNIT_UNSCORABLE, REASON_REFERENCE_REFUSED
+            else:
+                state = STATE_UNIT_PENDING
+        u["state"], u["reason_code"] = state, reason
+        by_state[state] += 1
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+
+    # ---- [5] 정렬 → 자르기. 집계는 **자르기 전** 전량에서 낸다 --------------------------
+    sort_keys = worklist_sort_keys(rule)
+    key = sort if sort in sort_keys else "unit_key"
+    reverse = str(order or "asc").lower() == "desc"
+
+    def _sk(u):
+        if key == "state":
+            return (UNIT_STATE_STRENGTH.get(u["state"], 0), u["unit_key"])
+        if key == "confirmed_at":
+            return ((u["confirmation"] or {}).get("confirmed_at") or "", u["unit_key"])
+        if key in ("map_count", "usable_map_count"):
+            return (u[key], u["unit_key"])
+        if key in u["extras"]:
+            v = u["extras"][key]
+            return (float(v) if isinstance(v, (int, float)) else 0.0, u["unit_key"])
+        return (u["unit_key"], "")
+
+    units.sort(key=_sk, reverse=reverse)
+    start = max(0, int(offset or 0))
+    page = units[start:start + max(1, int(limit or DEFAULT_WORKLIST_LIMIT))]
+
+    coord = coordinate_column_catalog(cfg, src_table)
+    return {
+        "unit": {
+            "rule": rule_name,
+            "decision_key": decision_key,
+            "source_table": src_table,
+            "derived_table": derived_table,
+            "map_table": map_table,
+            "map_key_columns": map_key_cols,
+        },
+        # 조작자가 고르는 것들. 라우트가 어차피 이 표로 요청을 검증하므로 응답에 싣는 것이
+        # 공짜이고, 클라가 자기 사본을 갖는 것보다 낫다.
+        "selection": {
+            "map_tables": map_table_catalog(src_model, src_table),
+            "coordinates": coord,
+            "ambiguity": binding_ambiguity(rule, coord),
+        },
+        "states": [STATE_UNIT_PENDING, STATE_UNIT_CONFIRMED, STATE_UNIT_UNSCORABLE],
+        "totals": {
+            "matched": int(matched or 0),
+            "judged": len(units),
+            "returned": len(page),
+            "by_state": by_state,
+            # 화면이 경계 아래로 가라앉히고 **한 번만 이름 부르는** 수. 클라가 세지 않는다.
+            "unscorable": by_state[STATE_UNIT_UNSCORABLE],
+            "units_truncated": units_truncated,
+            "maps_truncated": maps_truncated,
+            "unit_cap": unit_cap,
+        },
+        # 사유는 **집계로** 낸다. 행마다 문장을 실으면 목록이 색인하는 것보다 무거워지고,
+        # 늘어난 것은 정보가 아니라 같은 문장의 N회 반복이다. 행은 코드만 갖는다.
+        "unscorable_reasons": [
+            {"reason_code": c, "reason": _WORKLIST_REASON_TEXT.get(c, c), "count": n}
+            for c, n in sorted(reasons.items(), key=lambda kv: -kv[1])
+        ],
+        "sort": {"key": key, "order": "desc" if reverse else "asc",
+                 "available": sort_keys},
+        "query": {"q": needle or None, "params": dict(key_values or {})},
+        "units": [dict({"key": u["key"], "unit_key": u["unit_key"], "state": u["state"],
+                        "reason_code": u["reason_code"], "map_count": u["map_count"],
+                        "usable_map_count": u["usable_map_count"],
+                        "confirmation": u["confirmation"]}, **u["extras"])
+                  for u in page],
+        "stats": {"build_ms": (time.monotonic() - t0) * 1000.0,
+                  "map_pairs": sum(len(s) for s in per_unit_maps.values()),
+                  "metas_read": len(metas)},
     }

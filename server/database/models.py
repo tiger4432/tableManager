@@ -522,6 +522,11 @@ class FrameConfirmationSource(Base):
         Index("idx_frame_conf_src_unique", "confirmation_uid", "role", "source_table",
               "map_id", unique=True),
         Index("idx_frame_conf_src_lookup", "confirmation_uid"),
+        # 층 ⑨(계획)가 「이 맵이 어느 확정의 기여자였나」를 묻는 방향. 위 UNIQUE는 선두가
+        # confirmation_uid라 이 질문에 쓰이지 못한다. ⚠️ 이 선언은 **두 곳**이다 —
+        # migrations/add_frame_confirmation.py도 같이 고쳐야 한다(create_all은 기존 테이블에
+        # 인덱스를 만들지 않는다). `idx_sources_confirmation`과 같은 계급이다.
+        Index("idx_frame_conf_src_map", "source_table", "map_id"),
     )
 
 

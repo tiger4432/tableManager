@@ -88,6 +88,136 @@
       </div>
     </header>
 
+    <!--
+      ── 질문 범위: 이 컨트롤들이 합쳐 한 개의 요청을 만든다 ───────────
+      새 창도, 새 모드도, 모달도 아니다. 헤더와 확정 바 사이의 띠 한 줄이다.
+      아래 워크벤치 전체(워크리스트 · 그림 · 출처 · 확정)가 이 값들로 정해진
+      질문의 답이므로, 자기가 지배하는 것들보다 위에 있어야 한다. 어느 한 패널
+      안에 넣으면 그 패널만 지배한다는 뜻이 되어 거짓말이 된다.
+      위에서 아래로: 묻고(이 띠) · 보고(워크벤치) · 쓴다(확정 바).
+
+      배선 계약. 이름은 배선 레인이 먼저 공표한 것을 그대로 쓴다 - 한 사실의
+      철자는 하나여야 하고, 늦게 도착한 쪽이 맞추는 것이 싸다:
+        · #me2-table-select      -> map_table
+        · #me2-col-x             -> x_column
+        · #me2-col-y             -> y_column
+        · #me2-col-value         -> value_column  (선택 · value="" 는 값 없음)
+        · #me2-reference-select  -> reference "테이블:맵ID" (value="" 는 기준 없음)
+        · #me2-question-note     -> 질문 한 줄 요약. 배선이 textContent 로 쓴다.
+          토큰과 구분자만 들어간다(「제안 · 점유만 · 기준 없음」). 자식 노드를
+          두지 않는다 - 배선이 통째로 덮어쓴다.
+        · #me2-columns-confirm   -> 아직 배선 없음. 아래 🔴 참조.
+        · 무엇이 바뀌든 질문이 새로 서고 페치는 1회다.
+
+        🔴 이 파일에는 테이블 이름도 컬럼 이름도 프리셋도 없다. 하나도.
+           option 값으로도, 기본값으로도, 주석의 예시로도 쓰지 않는다. 이 시스템은
+           이미 인제션 · 체인 · 인리치먼트 · 온톨로지 전부가 config 에 선언된 원시
+           컬럼을 받는 구조다. 여기에 이름을 하나라도 적으면 그 사실이 적힌 두 번째
+           자리가 생기고, 둘이 갈리는 날 화면은 멀쩡해 보인다.
+           아래 select 들은 빈 피커다 - 목록은 런타임에 스키마에서 온다.
+           마크업이 지키는 것은 이름이 아니라 형태뿐이다:
+             · 값 컬럼과 기준 select 는 value="" 인 「없음」 option 을 항상
+               첫 번째로 유지한다. 이 둘은 이름이 아니라 상태다.
+             · 채우기 전 휴지 상태는 「없음」을 말하는 option 하나다.
+               빈 select 는 고장으로 보인다.
+        · 의존 순서: 테이블 -> 좌표 컬럼 -> 기준. 상류가 바뀌면 하류 step 에
+          data-me2-stale="true" 를 걸어 두었다가 새 목록을 채운 뒤 지운다.
+          CSS 가 흐리고 잠근다 - 잘못된 조합을 거절로 배우게 하지 않는다.
+        · 고를 것이 없거나(:disabled · 배선의 fillSelect 가 건다) 하나뿐이면
+          (data-me2-single="true") 꺾쇠가 사라지고 조용한 값 표시가 된다.
+          둘 다 오류 표시가 아니다.
+        · 해석되지 않는 선언은 <option> 으로 넣지 않는다. 고를 수 없는 이름이
+          목록에 있으면 목록 자체를 못 믿게 된다.
+        · 이 띠에 숫자는 없다. 개수는 전부 워크벤치가 나르고, 여기 요약은
+          토큰뿐이라 「숫자는 주장이다」의 3형제 패턴이 필요 없다.
+    -->
+    <div id="me2-question-bar">
+      <div class="me2-scope-chain" role="group" aria-label="질문 범위">
+
+        <div class="me2-scope-step" data-me2-scope-step="table">
+          <label class="me2-scope-label" for="me2-table-select">대상 테이블</label>
+          <select class="me2-scope-select" id="me2-table-select">
+            <option value="">테이블 없음</option>
+          </select>
+        </div>
+
+        <span class="me2-scope-link" aria-hidden="true"></span>
+
+        <!--
+          좌표 컬럼 = 이 화면의 원시 단위. 프레임 필드 이름을 대신한다 - 그 이름은
+          결국 「어느 x/y 쌍을 읽는가」의 별칭이었고, 컬럼을 직접 대면 선언된
+          어휘 없이도 좌표 쌍을 가진 아무 테이블이나 정렬 대상이 된다.
+
+          🔴 순서가 규칙이다: 원시 단위 -> 함수 -> config -> 프리셋.
+             이 셋은 토대이고 항상 손이 닿는 자리에 있다. 프리셋이 실패했을 때
+             쓰는 우회로가 아니다. 편의용 이름이 생긴다면 그것은 config 에 살면서
+             이 컨트롤들에 값을 써 넣는 지름길이지, 이것들을 대신하지 않는다.
+             프리셋을 먼저 만들면 그것이 토대가 되고, 틀린 날 우회로가 없다.
+             나중에 만들면 틀린 프리셋은 클릭 세 번 값이다. 그래서 이번 판에는
+             프리셋을 만들지 않는다 - 다음 판에서 config 조회로 붙는다.
+
+          🔴 제안은 선택이 아니다. 컬럼명 패턴이 채웠든 프리셋이 채웠든, 채운
+             것을 고른 것과 같은 모습으로 그리면 그것이 바로 「그럴듯한 기본값이
+             선언 행세를 하는」 실패다 - 없는 임계값을 0 으로 읽은 것과 아무도
+             안 본 기본 프레임이 통과한 것이 같은 계열이다.
+             배선은 이미 x · y select 에 data-me2-proposed 를 걸고 있고, 아래
+             CSS 가 그것을 점선으로 그린다. 프리셋이 붙어도 계약은 그대로다.
+
+          🔴 그런데 제안을 **받아들일** 길이 아직 없다. 배선의 확인은 select 의
+             change 인데, 이미 선택돼 있는 option 을 다시 고르면 change 는 뜨지
+             않는다. 즉 제안에 동의하는 조작자에게는 동의할 수단이 없고, 제안
+             표시가 영원히 남는다. #me2-columns-confirm 이 그 구멍이다 - 누르면
+             bindingSource 를 declared 로 올려 달라(배선 레인 인계 항목).
+             x 와 y 는 따로 맞을 수 없고 프리셋은 셋을 한꺼번에 쓰므로 버튼은
+             하나이고 그룹 끝에 선다.
+             프리셋 목록 자체는 마크업이 아니라 config 소관이다.
+        -->
+        <div class="me2-scope-step is-columns" data-me2-scope-step="columns" role="group"
+          aria-label="좌표 컬럼">
+          <span class="me2-scope-label" id="me2-scope-columns-label">좌표 컬럼</span>
+
+          <label class="me2-scope-axis" for="me2-col-x">x</label>
+          <select class="me2-scope-select is-col" id="me2-col-x">
+            <option value="">컬럼 없음</option>
+          </select>
+
+          <label class="me2-scope-axis" for="me2-col-y">y</label>
+          <select class="me2-scope-select is-col" id="me2-col-y">
+            <option value="">컬럼 없음</option>
+          </select>
+
+          <label class="me2-scope-axis" for="me2-col-value">값</label>
+          <select class="me2-scope-select is-col" id="me2-col-value">
+            <option value="">값 없음</option>
+          </select>
+
+          <button class="me2-scope-propose" type="button" id="me2-columns-confirm"
+            hidden>제안 확인</button>
+        </div>
+
+        <span class="me2-scope-link" aria-hidden="true"></span>
+
+        <!-- 기준 없음은 운영의 통상 상태다. 선언 8건 중 해석 0건 · 메타 668건 중
+             320건이 auto_registered 로 거절된다. 그래서 이 자리는 오류색을 쓰지
+             않는다 - 값 하나가 비어 있는 게 아니라 「없음」이라는 정상 선택지다. -->
+        <div class="me2-scope-step" data-me2-scope-step="reference">
+          <label class="me2-scope-label" for="me2-reference-select">기준</label>
+          <select class="me2-scope-select" id="me2-reference-select">
+            <option value="">기준 없음</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 질문 한 줄 요약. 배선이 textContent 로 통째로 쓰므로 자식 노드를 두지
+           않는다 - 여기에 span 을 심으면 첫 렌더에 지워진다.
+           값 컬럼을 고르지 않으면 화면이 답할 수 있는 질문 자체가 달라진다는
+           사실도 이 줄이 나른다. 결과를 기다린 뒤 「구별 안 됨」으로 배우게 하지
+           않으려면 고르는 자리와 같은 띠에 있어야 하고, 그래서 여기다.
+           경고 톤이 필요하면 배선이 data-me2-note-tone="caution" 을 건다.
+           안 걸면 muted 로 떨어질 뿐 깨지지 않는다. -->
+      <div class="me2-scope-note" id="me2-question-note"></div>
+    </div>
+
     <!-- ── 3열 워크벤치 · 상태는 data-me2-state 하나로 전환 ── -->
     <main id="me2-workbench" data-me2-state="scored">
 
@@ -428,12 +558,15 @@
 
           <!-- 그림 옆 읽기 띠: 캡션 · 범례 · 판정 · 붙여넣기 결과 -->
           <div class="me2-picture-rail">
-          <div class="me2-caption" id="me2-picture-caption">CORE 맵 · 270° · 뒷면 · 기준 대비</div>
+          <!-- 자리표시자에서도 이름을 뺐다. 캡션은 배선이 고른 컬럼에서 파생해
+               쓴다 - 마크업이 「어느 맵인지」를 미리 적으면 그것이 이름이 적힌
+               또 하나의 자리가 된다. -->
+          <div class="me2-caption" id="me2-picture-caption"></div>
 
           <!-- 이 줄은 제외 맵 수와 채점 분모를 나른다 = 주장이다.
                따라서 계산 중 / 채점 못 함 에서는 숫자가 나오면 안 된다. -->
           <div class="panel-meta is-inline" id="me2-picture-meta">
-            <span class="me2-num" data-me2-picture-meta>맵 12개 중 5개 제외 (규격 미선언) · 채점 528다이 · 340ms</span>
+            <span class="me2-num" data-me2-picture-meta></span>
             <span class="me2-unknown">범위 미상</span>
             <span class="me2-skel"></span>
           </div>
@@ -450,19 +583,28 @@
               <span class="me2-unknown">채점 불가</span>
               <span class="me2-busy">채점 중</span>
             </div>
-            <div class="me2-cause" id="me2-verdict-cause">두 지표 일치</div>
-            <!-- 서버가 만든 거절 문장을 그대로 렌더한다. 클라가 다시 쓰지 않는다. -->
-            <div class="me2-refusal" id="me2-refusal">소스 맵: 물리 규격이 선언되지 않았습니다 - 셀 좌표의 기준인 웨이퍼 바운딩박스를 재현할 수 없어
-              정렬을 보증할 수 없습니다. 해당 맵의 물리 규격(칩 크기 · 웨이퍼 지름)을 선언한 뒤 다시 시도하십시오.</div>
+            <!-- 🔴 원인 줄은 **콘솔 전용으로 확정**했다. 빠진 것이 아니라 정해진
+                 것이다 - 나중에 「잃어버렸나 보다」 하고 되살리지 말 것.
+                 근거: 판정은 바로 위 headline 이 이미 말했고, 그것이 왜 그렇게
+                 나왔는지는 조작자의 다음 행동을 바꾸지 않는다. 이 화면을 쓰는
+                 사람은 문서를 읽는 관리자이고, 진단면은 이제 콘솔이다(대체재가
+                 아니라 그 자리다 - 배선이 refusal · cause · meta 전문을 로그로
+                 보낸다). 되살려야 할 만큼 결정을 바꾸는 원인이 발견되면 그때는
+                 한 줄 슬롯을 새로 정의하고 이 주석을 지운다.
+                 (#me2-verdict-cause 노드 삭제 · main.js ELEMENT_IDS.cause 는
+                  bindElements 가 missing 으로 보고할 뿐 던지지 않는다) -->
+            <!-- 서버가 만든 거절 문장을 그대로 렌더한다. 클라가 다시 쓰지 않는다.
+                 한 줄을 넘겨 도착하면 여기서는 한 줄로 자르고 전문은 콘솔로 간다. -->
+            <div class="me2-refusal" id="me2-refusal">소스 맵: 물리 규격 미선언</div>
           </div>
 
           <!-- 엑셀 양식 붙여넣기 결과: 컨트롤 없음(키보드로 그림에 직접 붙여넣는다).
                결과만 집계 1줄로 말한다 - 셀마다 표시하지 않는다. -->
           <div class="me2-aggregate" id="me2-paste-result" role="status" data-has-rejects="true" hidden>
             <span class="k">붙여넣기</span>
-            <span><b data-me2-paste-applied>1204</b>셀 반영</span>
-            <span><b data-me2-paste-rejected>37</b>셀 제외</span>
-            <span class="reason" data-me2-paste-reason>좌표 범위 밖 22 · 값 해석 불가 15</span>
+            <span><b data-me2-paste-applied></b>셀 반영</span>
+            <span><b data-me2-paste-rejected></b>셀 제외</span>
+            <span class="reason" data-me2-paste-reason></span>
           </div>
           </div><!-- /me2-picture-rail -->
           </div><!-- /me2-picture-main -->
@@ -473,28 +615,96 @@
       <section class="panel" id="me2-sources-panel">
         <div class="panel-header">
           <div class="panel-title">출처 · 후보</div>
-          <div class="panel-meta" id="me2-sources-meta">출처 2개</div>
+          <div class="panel-meta" id="me2-sources-meta"></div>
         </div>
 
         <div class="panel-body">
           <div class="me2-block">
             <div class="me2-block-head">출처별 프레임</div>
 
-            <div id="me2-source-list">
-              <!-- 출처 1 -->
-              <button class="me2-src" type="button" data-me2-source data-source-field="core_frame"
-                aria-expanded="true" aria-controls="me2-cands-core_frame">
-                <span class="me2-src-line1"><span class="me2-src-name">CORE 맵</span><span class="me2-src-value" data-me2-source-value data-declared="yes">270° · 뒷면</span></span>
+            <!--
+              🔴 출처 행의 키는 프레임 필드 이름이 아니라 **좌표 컬럼 쌍**이다.
+                 `data-source-field` 에는 session.js `columnKey(columns)` 의 값
+                 (`x__y`)이 들어간다. 여기서는 빈 문자열로 둔다 - 그것이 곧
+                 columnKey 의 「아직 안 묶임」 값이고, 컬럼 이름을 마크업에 적지
+                 않는 유일한 방법이다. 배선의 renderSources 가 채운다.
+                 `data-me2-candidates-for` 도 같은 키를 쓴다.
+              🔴 보이는 이름도 마크업이 정하지 않는다. `.me2-src-name` 은 스타일
+                 클래스일 뿐이므로 `data-me2-source-name` 훅을 새로 낸다 - 라벨은
+                 고른 컬럼에서 렌더 타임에 파생된다. (배선 인계 항목)
+              🔴 행 id 에서 필드 이름을 뺐다: me2-cands-1 / -2 는 순서일 뿐 이름이
+                 아니다. aria-controls 도 같이 옮겼다.
+            -->
+            <!--
+              🔴 출처는 N개다. 마크업이 개수를 적지 않는다.
+                 이 화면의 사슬은 「좌표계 확정 -> **여러 결함 출처 정렬** -> 다이 맵
+                 확정 -> 본딩 계획」이고, N 이 바로 이 패널의 존재 이유다.
+                 행을 2개 적어 두면 출처가 3개인 단위는 2개만 보이고, 1개인 단위는
+                 빈 행이 「출처가 빠졌다」로 읽힌다. 둘 다 화면이 데이터에 대해
+                 거짓말하는 것이다.
+                 그래서 컨테이너는 비어 있고 모양은 아래 <template> 이 준다.
+                 배선이 출처마다 clone 한다 - 모양은 이쪽, 개수는 그쪽.
+              🔴 (N+1)번째 행인 상호 일치 행만 마크업이 직접 쓴다. 그것은 출처가
+                 아니라 출처들 **사이**의 진술이고 언제나 정확히 하나이기 때문이다.
+                 N=1 에서는 배치만 줄 뿐 상호 확인을 주지 못한다 - 배선이 이미
+                 data-me2-cross-state 와 그 문구를 쥐고 있다.
+              🔴 N=0 은 빈 목록이 아니라 **이름 붙은 상태**다. 드물지도 않다.
+                 #me2-source-list[data-me2-sources] 하나가 셋을 가른다:
+                   none   -> 아래 상태 줄이 뜨고 상호 일치 행은 사라진다
+                             (출처가 없으면 「사이」도 없다)
+                   single -> 행 1개 + 상호 일치 행(배선이 disabled 로 표시)
+                   paired -> 평소
+                 마크업 초기값은 none 이다. 아직 아무것도 clone 되지 않았으므로
+                 그것이 이 순간의 참이다.
+            -->
+            <div id="me2-source-list" data-me2-sources="none">
+              <!-- 배선이 여기에 template clone 을 채운다. 비어 있는 것이 정상이다. -->
+              <div id="me2-source-rows"></div>
+
+              <div class="me2-src-empty" id="me2-source-empty">사용 가능한 출처 없음</div>
+
+              <!-- (N+1)번째 행: 출처 상호 일치. 다른 행과 똑같이 포커스된다.
+                   출처 하나는 배치를 줄 뿐 상호 확인을 주지 못한다. -->
+              <button class="me2-src is-cross" type="button" data-me2-source data-source-field="__cross_source__"
+                aria-expanded="false">
+                <span class="me2-src-line1"><span class="me2-src-name" data-me2-source-name></span><span class="me2-src-value" data-me2-source-value></span></span>
                 <span class="me2-src-score">
-                  <span class="me2-num">일치 <span data-me2-agree>512</span> / 판별 <span
-                      data-me2-discriminating>528</span></span>
+                  <span class="me2-num">일치 <span data-me2-cross-agree></span> · 불일치 <span
+                      data-me2-cross-disagree></span> · 한쪽만 <span data-me2-cross-onlyone></span></span>
                   <span class="me2-unknown">미상</span>
                   <span class="me2-skel"></span>
                 </span>
               </button>
+            </div>
+          </div>
 
-              <!-- 후보 격자: 2열(뒤집기) x 4행(돌리기). 인라인 아코디언, 한 번에 하나만. -->
-              <div class="me2-cands" id="me2-cands-core_frame" data-me2-candidates-for="core_frame">
+          <!--
+            출처 행 한 개의 모양. <template> 안이라 렌더되지 않고 CSS 도 닿지 않는다.
+            배선 계약 - clone 할 때마다 채워야 하는 것:
+              · .me2-src[data-source-field]        = columnKey(columns) 값 (`x__y`)
+              · .me2-src[aria-controls]            = 짝이 되는 격자의 id (clone 마다 고유)
+              · .me2-cands[id]                     = 위와 같은 id
+              · .me2-cands[data-me2-candidates-for]= 같은 columnKey 값
+              · [data-me2-source-name] / [data-me2-source-value] / 점수 슬롯
+            숫자 자리는 전부 비어 있다. 자리표시자 숫자를 template 에 적으면
+            clone 마다 주장이 하나씩 복제된다. aria-pressed 도 전부 false 다 -
+            눌린 후보는 순위에 대한 주장이고, 그것은 채점이 하는 말이지
+            마크업이 미리 해 둘 말이 아니다.
+          -->
+          <template id="me2-source-row-template">
+            <button class="me2-src" type="button" data-me2-source data-source-field=""
+              aria-expanded="false" aria-controls="">
+              <span class="me2-src-line1"><span class="me2-src-name" data-me2-source-name></span><span class="me2-src-value" data-me2-source-value></span></span>
+              <span class="me2-src-score">
+                <span class="me2-num">일치 <span data-me2-agree></span> / 판별 <span
+                    data-me2-discriminating></span></span>
+                <span class="me2-unknown">미상</span>
+                <span class="me2-skel"></span>
+              </span>
+            </button>
+
+            <!-- 후보 격자: 2열(뒤집기) x 4행(돌리기). 인라인 아코디언, 한 번에 하나만. -->
+            <div class="me2-cands" id="" data-me2-candidates-for="" hidden>
                 <div class="me2-cand-legend">숫자 = 일치 / 판별 다이</div>
                 <div class="me2-cand-grid">
                   <div class="me2-cand-colhead">앞면</div>
@@ -502,74 +712,45 @@
 
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="0"
                     data-side="front" data-frame-code="rot0_front">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>331</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="0"
                     data-side="back" data-frame-code="rot0_back">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>402</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
 
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="90"
                     data-side="front" data-frame-code="rot90_front">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>288</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="90"
                     data-side="back" data-frame-code="rot90_back">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>356</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
 
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="180"
                     data-side="front" data-frame-code="rot180_front">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>419</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="180"
                     data-side="back" data-frame-code="rot180_back">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>377</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
 
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="270"
                     data-side="front" data-frame-code="rot270_front">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot270_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>465</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot270_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
-                  <button class="me2-cand" type="button" aria-pressed="true" data-me2-candidate data-rotation="270"
+                  <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="270"
                     data-side="back" data-frame-code="rot270_back">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags>
-                      <span class="me2-tag is-recommended">추천</span>
-                      <span class="me2-tag is-current">현재</span>
-                    </span></span><span class="me2-cand-code">rot270_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>512</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot270_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                 </div>
-                <!-- 영구 각주 1개. 반전은 세 번째 축이 아니다. -->
-                <p class="me2-cand-note">뒷면 = 좌우 뒤집기.<br>상하 뒤집기는 별도 후보 아님 - 180° + 좌우 뒤집기와 같은 격자 변환.</p>
-              </div>
-
-              <!-- 출처 2 -->
-              <button class="me2-src" type="button" data-me2-source data-source-field="dt_frame" aria-expanded="false"
-                aria-controls="me2-cands-dt_frame">
-                <span class="me2-src-line1"><span class="me2-src-name">DT 로그</span><span class="me2-src-value" data-me2-source-value data-declared="yes">0° · 앞면</span></span>
-                <span class="me2-src-score">
-                  <span class="me2-num">일치 <span data-me2-agree>498</span> / 판별 <span
-                      data-me2-discriminating>528</span></span>
-                  <span class="me2-unknown">미상</span>
-                  <span class="me2-skel"></span>
-                </span>
-              </button>
-              <div class="me2-cands" id="me2-cands-dt_frame" data-me2-candidates-for="dt_frame" hidden></div>
-
-              <!-- (N+1)번째 행: 출처 상호 일치. 다른 행과 똑같이 포커스된다.
-                   출처 하나는 배치를 줄 뿐 상호 확인을 주지 못한다. -->
-              <button class="me2-src is-cross" type="button" data-me2-source data-source-field="__cross_source__"
-                aria-expanded="false">
-                <span class="me2-src-line1"><span class="me2-src-name">출처 2개</span><span class="me2-src-value" data-me2-source-value>상호 일치</span></span>
-                <span class="me2-src-score">
-                  <span class="me2-num">일치 <span data-me2-cross-agree>940</span> · 불일치 <span
-                      data-me2-cross-disagree>12</span> · 한쪽만 <span data-me2-cross-onlyone>334</span></span>
-                  <span class="me2-unknown">미상</span>
-                  <span class="me2-skel"></span>
-                </span>
-              </button>
+                <!-- 영구 각주를 뺐다. 「뒷면 = 좌우 뒤집기 / 상하 뒤집기는 별도
+                     후보 아님」은 후보 선택을 바꾸지 않는 설명이고, 이 화면을
+                     쓰는 사람은 문서를 읽는 관리자다. (.me2-cand-note 삭제) -->
             </div>
-          </div>
+          </template>
 
           <!-- 개수. 비율은 이 화면 어디에도 없다 - 분모가 곧 근거다. -->
           <div class="me2-block">
@@ -578,8 +759,8 @@
               <div class="me2-kv">
                 <span class="k">1위 일치 / 판별</span>
                 <span class="v">
-                  <span class="me2-num"><span data-me2-top-agree>512</span> / <span
-                      data-me2-top-discriminating>528</span></span>
+                  <span class="me2-num"><span data-me2-top-agree></span> / <span
+                      data-me2-top-discriminating></span></span>
                   <span class="me2-unknown">미상</span>
                   <span class="me2-skel"></span>
                 </span>
@@ -587,7 +768,7 @@
               <div class="me2-kv">
                 <span class="k">2위와 차이</span>
                 <span class="v">
-                  <span class="me2-num"><span data-me2-margin-dies>47</span>다이</span>
+                  <span class="me2-num"><span data-me2-margin-dies></span>다이</span>
                   <span class="me2-unknown">미상</span>
                   <span class="me2-skel"></span>
                 </span>
@@ -595,8 +776,8 @@
               <div class="me2-kv">
                 <span class="k">제외된 맵</span>
                 <span class="v">
-                  <span class="me2-num"><span data-me2-maps-total>12</span>개 중 <span
-                      data-me2-maps-excluded>5</span>개</span>
+                  <span class="me2-num"><span data-me2-maps-total></span>개 중 <span
+                      data-me2-maps-excluded></span>개</span>
                   <span class="me2-unknown">미상</span>
                   <span class="me2-skel"></span>
                 </span>
@@ -613,7 +794,9 @@
     <!-- ── 확정: 읽기는 무마찰, 쓰기는 확인 1회 (arm -> commit, Esc 취소) ── -->
     <footer id="me2-confirmbar">
       <div class="me2-confirm-text">
-        <div id="me2-confirm-sentence"><b data-me2-confirm-eqp>EQP-DT-04</b> · <b data-me2-confirm-product>PRD-A19</b> 좌표계를 <b data-me2-confirm-frame>CORE rot270_back / DT rot0_front</b> 로 확정.<br>이후 다이 맵 · 본딩 계획이 이 좌표계를 씁니다.</div>
+        <!-- 한 줄. 결과 절(「이후 다이 맵 · 본딩 계획이 …」)은 뺐다 - 값은 결정을
+             바꾸지만 그 설명은 바꾸지 않고, 설명은 문서 소관이다. -->
+        <div id="me2-confirm-sentence"><b data-me2-confirm-eqp></b> · <b data-me2-confirm-product></b> 좌표계를 <b data-me2-confirm-frame></b> 로 확정.</div>
         <div id="me2-confirm-note">현재 선언과 동일 · 사람 확정으로 기록</div>
       </div>
       <div class="me2-confirm-actions">

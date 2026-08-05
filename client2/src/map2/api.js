@@ -63,7 +63,31 @@ export const ROUTES = Object.freeze({
   // would rebuild the reload loop this screen exists to end.
   referenceView: '/api/maps/alignment/view',
   confirm: '/api/maps/alignment/confirm',
-  worklist: null,
+  // The rule declares its own `target_fields`. Those are what the CONFIRMATION writes -- the
+  // decision's destination -- and they are read from the declaration rather than listed here.
+  // Contract as documented at `client2/src/enrichment.js:6-7`, already consumed by admin.
+  rules: '/enrichment/rules',
+  // The table's REAL columns. An existing route, already consumed by admin; reused rather than
+  // reinvented, and it is the reason no column name is written down in this client.
+  schema: '/tables/{table}/schema',
+  // (Kept null: `selection` now rides on the worklist response, so nothing needs this.)
+  // 🔴 THE PRESET ALREADY EXISTS AND IS ALREADY SERVED. A table's coordinate binding is
+  //    declared in `map_overlay_config.json` -> `table_bindings.<table>.columns`
+  //    ({x, y, val, key_columns[]}) and served RESOLVED -- declaration beating derivation --
+  //    by this route as `binding: {x, y, val, key_columns[], source}`. So the x/y/value pickers
+  //    are pre-filled from the repo's own declaration rather than from a shape invented here,
+  //    and `source: "fallback_guess"` is the EXISTING marker for "a guess you must not render
+  //    like a declaration". Nothing about presets is designed in this client.
+  paintRules: '/api/maps/paint-rules',
+  // LANDED 2026-08-05. The route serves the page, the server's own totals, AND the `selection`
+  // catalog (map tables + coordinate columns + the binding ambiguity), so the client no longer
+  // assembles a catalog of its own from three calls.
+  worklist: '/api/maps/alignment/worklist',
+  // What the three set-up controls may offer: map tables, and the references that ACTUALLY
+  // RESOLVE. Null for the same reason as the others -- no route serves it, and a client-side
+  // guess at which references resolve would offer the eight declared `valid_die_ref` values
+  // that resolve zero times.
+  catalog: null,
   config: null,
 });
 
@@ -104,9 +128,68 @@ export function createApiClient(opts) {
   return Object.freeze({
     counters,
 
-    /** NO SERVER ROUTE. Named so the seam is visible; unreachable so it cannot half-work. */
-    loadWorklist() {
-      return Promise.reject(new RouteNotServedError('worklist'));
+    /**
+     * The worklist, ONE PAGE AT A TIME, SEARCHED AND ORDERED BY THE SERVER.
+     *
+     * 🔴 `q` GOES TO THE SERVER. It is not a browser filter over a loaded list, and this
+     *    function is the reason it cannot become one: there is no "load them all" call here to
+     *    filter over. The population is not bounded by anything this client controls -- 668
+     *    metas today -- and a filter that works at 668 is the same code that freezes at 60,000.
+     *
+     * 🔴 STILL UNSERVED. `ROUTES.worklist` is null until the server lane lands the route, so
+     *    this refuses by name rather than fetching a path nobody serves. Wiring it is one line
+     *    in ROUTES; the caller shape below is already the shape the route will take.
+     *
+     * @param {object} [query]
+     * @param {string} [query.q]          search text, applied server-side
+     * @param {string} [query.rule]       the rule naming the decision unit
+     * @param {string} [query.mapTable]   the chosen map table
+     * @param {string} [query.field]      the chosen target field
+     * @param {string} [query.reference]  "table:map_id", omitted for 기준 없음
+     * @param {number} [query.limit]
+     * @param {string} [query.cursor]     opaque; paging is the server's, never an offset here
+     */
+    loadWorklist(query, signal) {
+      if (!ROUTES.worklist) return Promise.reject(new RouteNotServedError('worklist'));
+      return getJson(ROUTES.worklist, worklistParams(query), signal);
+    },
+
+    /**
+     * What the three set-up controls may offer. ALSO UNSERVED, and deliberately so: the only
+     * honest source for "which references resolve" is the side that resolves them.
+     */
+    loadCatalog(query, signal) {
+      if (!ROUTES.catalog) return Promise.reject(new RouteNotServedError('catalog'));
+      return getJson(ROUTES.catalog, worklistParams(query), signal);
+    },
+
+    /**
+     * The enrichment rules, as the meta route already serves them to the queue screen and to
+     * admin. Read for ONE field: `target_fields`. Nothing here derives a frame field.
+     */
+    loadRules(signal) {
+      return getJson(ROUTES.rules, null, signal);
+    },
+
+    /**
+     * One table's real schema. `columns[]` is what the x / y / value pickers offer, and it is
+     * the only source they have -- there is no column list anywhere in this client to fall
+     * back to, which is what keeps a stale hardcoded name from outliving a renamed column.
+     */
+    /**
+     * The RESOLVED coordinate binding for one table, with its provenance. This is where a
+     * pre-filled x/y/val comes from; the client neither declares nor guesses one.
+     */
+    loadBinding(table, signal) {
+      const name = String(table || '');
+      if (!name) return Promise.reject(new Error('loadBinding: a table name is required'));
+      return getJson(ROUTES.paintRules, { table: name }, signal);
+    },
+
+    loadTableSchema(table, signal) {
+      const name = String(table || '');
+      if (!name) return Promise.reject(new Error('loadTableSchema: a table name is required'));
+      return getJson(ROUTES.schema.replace('{table}', encodeURIComponent(name)), null, signal);
     },
 
     /**
@@ -141,7 +224,22 @@ export function createApiClient(opts) {
      * @param {string} req.mapTable      map table the source coordinates live in
      * @param {object} req.params        {decision_key_col: value} -- REQUIRED, non-empty
      * @param {string} [req.reference]   "table:map_id"; omitted means "follow valid_die_ref"
+     * @param {string} [req.xCol]        the column read as x
+     * @param {string} [req.yCol]        the column read as y
+     * @param {string} [req.valCol]    the column read as the die value; OPTIONAL, and its
+     *                                   absence is what makes the run occupancy-only
      * @param {boolean} [req.includeCells]  false drops the cell arrays (list screens)
+     *
+     * 🔴 THE COLUMNS ARE SENT AND ARE NOT YET HONOURED. The server derives the coordinate
+     *    binding from its OWN overlay config -- `_binding_of` -> `map_overlay.resolve_binding`
+     *    (`server/map_alignment.py:445-449`), consumed at `:468-479` and at `:600-604` -- and
+     *    the route takes no column parameter at all (`server/main.py:4160-4168`). So a table
+     *    with two coordinate pairs answers for whichever pair the config names, whatever the
+     *    operator picked. The client sends the primitive tuple anyway, because that is the
+     *    request shape, and it REFUSES TO ATTRIBUTE the answer to the chosen pair until the
+     *    response echoes it (`unit.x_col` / `unit.y_col`). Rendering one measurement under
+     *    whichever pair happens to be selected would be a plausible default impersonating a
+     *    declaration -- and here it would be one on the layer the bonding plan rests on.
      */
     loadReferenceView(req, signal) {
       const r = req || {};
@@ -160,7 +258,14 @@ export function createApiClient(opts) {
         map_table: r.mapTable == null ? '' : String(r.mapTable),
         params: JSON.stringify(r.params),
       };
+      // Omitted, not sent empty. An omitted `reference` means "follow the declaration"; a
+      // 기준 없음 selection is the same wire shape and an ordinary state, not a hole.
       if (r.reference) q.reference = String(r.reference);
+      // The primitive tuple. Omitted when unset rather than sent empty -- `?value_col=` and no
+      // `value_col` at all are different requests, and only one of them means occupancy-only.
+      if (r.xCol) q.x_col = String(r.xCol);
+      if (r.yCol) q.y_col = String(r.yCol);
+      if (r.valCol) q.value_col = String(r.valCol);
       if (r.includeCells === false) q.include_cells = 'false';
       return getJson(ROUTES.referenceView, q, signal);
     },
@@ -180,7 +285,13 @@ export function createApiClient(opts) {
      * @param {object} record
      * @param {string} record.rule
      * @param {object} record.decisionKey  {column: value}, every declared key filled
-     * @param {object} record.frames       {target_field: frame}, e.g. {core_frame:'rot90_front'}
+     * @param {object} record.columns      {x, y, val} -- the pair that was aligned. THIS is
+     *                                     what identifies the confirmation's subject.
+     * @param {string} record.frame        the confirmed frame, e.g. 'rot90_front'
+     * @param {string} record.mapTable     the table those coordinates live in
+     * @param {object} [record.frames]     {target_field: frame}. Deliberately EMPTY: see the
+     *                                     body below. Not a placeholder to be filled in later
+     *                                     without a ruling.
      * @param {Array}  record.sources      [{role, source_table, map_id, source_name,
      *                                      applied_frame, shift_dx, shift_dy,
      *                                      agreement, discriminating, excluded_reason}]
@@ -199,7 +310,18 @@ export function createApiClient(opts) {
         body: JSON.stringify({
           rule: r.rule,
           decision_key: r.decisionKey || {},
+          // 🔴 THE RECORD NAMES THE COLUMN PAIR, NOT A TARGET FIELD (lead ruling 2026-08-05).
+          //    `frame_confirmation` is authoritative for what was confirmed, so what it must
+          //    record is WHICH COORDINATES WERE ALIGNED. Nothing declares which pair writes
+          //    which enrichment `target_field`, and whether the confirmation writes through to
+          //    those fields or they become a pointer is still open -- so this sends `frames`
+          //    EMPTY on purpose rather than guessing `core_x -> core_frame`. The server accepts
+          //    an empty map (`frame_confirmation.py:193`); it only refuses names the rule did
+          //    not declare. An empty map is the honest "we did not name a field".
           frames: r.frames || {},
+          map_table: r.mapTable || null,
+          columns: r.columns || null,
+          frame: r.frame || null,
           sources: Array.isArray(r.sources) ? r.sources : [],
           ruling: r.ruling || null,
           reference: r.reference || null,
@@ -223,4 +345,27 @@ export function createApiClient(opts) {
 
 async function safeText(res) {
   try { return await res.text(); } catch (e) { return ''; }
+}
+
+/**
+ * The list/catalog query, as query STRING parameters the server reads. Empty values are
+ * dropped rather than sent blank: `?reference=` is a different request from no `reference` at
+ * all, and only one of them means 기준 없음.
+ */
+function worklistParams(query) {
+  const q = query || {};
+  const out = {};
+  if (q.q) out.q = String(q.q);
+  if (q.rule) out.rule = String(q.rule);
+  if (q.mapTable) out.map_table = String(q.mapTable);
+  // The unit filter travels as ONE encoded JSON object, exactly as `/view` takes it -- the
+  // decision key's columns belong to the rule, so they are never spelled as query fields here.
+  if (q.params && Object.keys(q.params).length > 0) out.params = JSON.stringify(q.params);
+  if (q.sort) out.sort = String(q.sort);
+  if (q.order) out.order = String(q.order);
+  if (Number.isFinite(Number(q.limit))) out.limit = String(Number(q.limit));
+  // OFFSET, not an opaque cursor: the route paginates by offset and inventing a cursor here
+  // would be a parameter nobody serves.
+  if (Number.isFinite(Number(q.offset))) out.offset = String(Number(q.offset));
+  return out;
 }

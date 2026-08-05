@@ -212,6 +212,15 @@ const FLOORS = new Map([
   //    one of those stopped being scored.
   ['map_editor2_shell_harness.mjs', 276],
   //
+  // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
+  // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
+  // combination; that a `fallback_guess` binding is marked as a guess and refuses to underwrite
+  // the single write; that an answer the wire cannot attribute to a column pair is NOT rendered
+  // under one; that occupancy-only evidence is named with the word the system already has; and
+  // that the worklist's badges report the SERVER'S totals rather than the rows on the page. A
+  // floor drop here means one of those stopped being scored.
+  ['map_editor2_question_harness.mjs', 134],
+  //
   // ⚠️ ITS `H4` NO LONGER PINS THE DECISION UNIT. `api.js` retargeted `loadReferenceView` to a
   //    rule/map_table key, so the assertion that the reference view is keyed by (eqp, product)
   //    was replaced with the weaker "exactly one request" claim, which is what the 30-second
@@ -227,6 +236,22 @@ const FLOORS = new Map([
   // hung response stranded the button on "Saving..." forever while the write had already
   // landed, and the catch block told the operator nothing was recorded.
   ['map_spec_only_save_harness.mjs', 59],
+  // New 2026-08-05 with the Map Editor 2 authoring modules (`brush.js`, `legend.js`,
+  // `authoring.js`), so its floor is the count it reports on the commit that introduces it --
+  // there is no earlier tree to measure it against.
+  //
+  // 🔴 ITS LOAD-BEARING SECTION IS `A`, AND IT SCORES THE FIXTURE RATHER THAN THE CODE. The
+  //    frames it uses must be anisotropic, decentred and y-inverted, because an isotropic chip
+  //    hides a pitch swap and a `minC == 0` box hides a dropped box term ENTIRELY -- a green
+  //    run on such a fixture measures nothing. Section B then compares the brush's enumeration
+  //    against `computeSeating` KEY BY VALUE and reports how many seats a deliberately wrong
+  //    frame moves; if that number were 0 the agreement would be evidence of nothing.
+  //
+  //    A floor drop here means one of those stopped being scored, or that the save gate lost a
+  //    precondition. The gate's preconditions are not preferences: `replace_map` on a partial
+  //    or unknown read deletes what it did not see, and a valid-die map is the floor every
+  //    consumer of that reference reads its coordinates against.
+  ['map2_authoring_harness.mjs', 140],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

@@ -4164,6 +4164,9 @@ def get_map_alignment_view(
     params: str = None,
     reference: str = None,
     include_cells: bool = True,
+    x_col: str = None,
+    y_col: str = None,
+    value_col: str = None,
     db: Session = Depends(get_db),
 ):
     """한 결정 단위의 **정렬 화면 payload 전부**를 한 요청으로 낸다 (읽기 전용).
@@ -4180,6 +4183,27 @@ def get_map_alignment_view(
       `valid_die_ref`를 따르고, 그것도 없으면 `reference.state = "absent"`로 나간다.
       🔴 기준 없음은 오류가 아니라 **가장 흔한 정상 상태**다.
     - `include_cells`: false면 셀 배열을 빼고 개수·채점만 낸다(목록 화면용).
+    - `x_col` / `y_col` / `value_col`: **읽을 좌표 삼중항**. 이것이 원시 단위다(제품 소유자
+      지시 2026-08-05: 「`CORE FRAME`이라는 이름이 아니라 `CORE_X`·`CORE_Y`·`C_BN`」).
+      테이블의 **실제 스키마**에 대해 검증하고 없는 컬럼은 400 — `params`를 규칙 자신의
+      `decision_key`에 대해 검증하는 것과 같은 규율이다.
+      🔴 생략하면 선언 바인딩(`map_overlay_config.table_bindings`)이 **제안**한다. 제안은
+      정본이 아니고, `unit.columns`가 축마다 `chosen`/`proposed`/`absent`를 말한다 — 화면이
+      제안을 선택처럼 그리면 기본값이 선언을 사칭한다(I4).
+      🔴 `value_col`은 셋을 구별한다: **이름을 대면** 그 컬럼, **생략하면** 선언이 제안,
+      **빈 값(`?value_col=`)이면 명시적으로 없이** 간다. 생략만으로는 셋째를 말할 수 없고,
+      그러면 선언이 값 컬럼을 가진 테이블에서 조작자는 점유 전용 실행을 요청할 방법이 없다.
+      🔴 `value_col`의 부재는 **결함이 아니다.** 없으면 이 실행이 답할 수
+      있는 것은 점유뿐이고, 그 사실은 `reference.kind = "occupancy"`로 나간다(기준 맵 자신이
+      싣고 있는 것은 `reference.map_kind`에 그대로 남는다). 점유는 평평하다 — 실측
+      `core_defect_map LOT-A/05`에서 8후보가 **같은 다이를 차지**했고 값 일치가 374다이
+      차이로 갈랐다. 그래서 이 구별은 장식이 아니라 「승자 없음」의 사유를 가르는 값이다.
+
+    [왜 컬럼이 인자인가] 이 경로는 예전에 `_binding_of(cfg, source_table)`을 정본으로 읽었고,
+    `dt_log`의 선언 바인딩이 `dt_x`/`dt_y`로 고정돼 있어서 `map_table=core_wafer_map`으로
+    열어도 **core 맵 ID 아래에 dt 좌표가 모였다.** `core_x`/`core_y`는 아예 도달 불가였다.
+    화면은 완벽히 정렬되고 값만 전부 틀리는 상태이고(스펙 §7 I3), 그 위에 컬럼 선택기를
+    붙이면 아무것도 하지 않는 컨트롤이 된다.
 
     [후보 8개가 같은 응답에 들어간다] 후보 전환이 네트워크 왕복이면 조작 3회·30초 예산이
     상호작용만으로 소진된다. 그래서 채점은 한 번에 전부 하고 전환은 클라 리페인트로 둔다.
@@ -4215,7 +4239,8 @@ def get_map_alignment_view(
     try:
         return map_alignment.build_alignment_view(
             db, config, decl, key_values, map_table,
-            reference_spec=reference, include_cells=include_cells)
+            reference_spec=reference, include_cells=include_cells,
+            x_col=x_col, y_col=y_col, value_col=value_col)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -4302,6 +4327,93 @@ def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_d
         db.rollback()
         logger.error(f"[MapAlignment] confirm failed ({rule_name}): {e}")
         raise HTTPException(status_code=500, detail="Failed to record frame confirmation.")
+
+
+@app.get("/api/maps/alignment/worklist")
+def get_map_alignment_worklist(
+    rule: str,
+    map_table: str,
+    params: str = None,
+    q: str = None,
+    sort: str = "unit_key",
+    order: str = "asc",
+    limit: int = map_alignment.DEFAULT_WORKLIST_LIMIT,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    """결정 단위 **목록** — 조작자가 「어느 단위를 열 것인가」를 고르는 자리 (읽기 전용).
+
+    소비자는 `client2/map_editor2.html`의 작업 목록이다. `/api/maps/alignment/view`의
+    **색인**이고, 그래서 어휘·검증·거절문 규율을 그것과 공유한다:
+
+    - `rule`: 결정 단위를 선언한 인리치먼트 규칙 이름. 단위(`decision_key`)의 정본은 그
+      선언이고 여기에 컬럼명을 하드코딩하지 않는다 — `?eqp=&product=`가 아니라 `?rule=`인
+      이유가 이것이고, 그 판정이 이 경로에도 그대로 적용된다.
+    - `params`: URL 인코딩된 JSON 객체 {decision_key_col: value}. **그 규칙의 decision_key
+      컬럼만** 허용한다(그 외 400, 미지 규칙은 404 — `/view`와 같은 규율).
+    - `map_table`: 맵 단위를 정하는 맵 테이블. 응답 `selection.map_tables`가 고를 수 있는
+      것과 못 고르는 이유를 함께 낸다 — 지금까지 조작자에게 이 선택지가 아예 없었다.
+    - `q`: 결정키 값들에 대한 **부분 문자열** 검색. `sort`/`order`도 서버가 한다. 단위 수는
+      클라가 통제하는 어떤 값에도 묶여 있지 않으므로, 전량을 내려 브라우저에서 거르는
+      설계는 규모에서 먼저 깨진다.
+
+    [상태 셋, 그리고 `unscorable`이 흔한 쪽이다] `pending` / `confirmed` / `unscorable`.
+    개발 박스 실측(운영 아님): `wafer_map_metadata` 668행 중 320행이 `auto_registered`라
+    `make_frame_transform`이 거절하고, `valid_die_ref` 선언 8건 중 **0건**이 해석된다.
+    그래서 `unscorable`은 0도 null도 아닌 **자기 상태**이고 `reason_code`를 달고 나가며,
+    그 총계는 `totals.unscorable`로 **서버가 세어** 보낸다(클라가 세지 않는다).
+
+    [사유 문장은 서버가 만든다] 행에는 `reason_code`만 싣고 사람 말은 `unscorable_reasons`에
+    **사유당 한 번** 싣는다. 클라가 사유를 자기 규칙으로 유도하기 시작하면 그것이 두 번째
+    판정 구현이 되고(`/view`·`/admin/config/resolve`와 같은 규율), 문장을 행마다 반복하면
+    목록이 색인하는 것보다 무거워진다.
+
+    [프레임 필드를 모른다] `core_frame`/`dt_frame`은 **이름**이고 단위는 좌표 컬럼이다.
+    어느 좌표 컬럼을 읽을지는 상세에서 고르며, 이 경로는 이름과 무관한 것만 답한다 —
+    어떤 단위가 있는가 · 확정됐는가 · 채점 가능한가 · 맵 몇 장이 모이는가.
+    """
+    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    decl = next((r for r in rules if r["name"] == rule), None)
+    if decl is None:
+        raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule}' not found")
+
+    key_values = {}
+    if params:
+        try:
+            parsed = json.loads(params)
+            if not isinstance(parsed, dict):
+                raise ValueError("not an object")
+        except Exception:
+            raise HTTPException(status_code=400,
+                                detail="'params' must be a URL-encoded JSON object")
+        allowed = set(decl.get("decision_key", []))
+        invalid = sorted(k for k in parsed.keys() if k not in allowed)
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'params' keys must be decision_key columns only; invalid: {invalid}")
+        key_values = parsed
+
+    if sort and sort not in map_alignment.worklist_sort_keys(decl):
+        raise HTTPException(
+            status_code=400,
+            detail=f"'sort' must be one of {map_alignment.worklist_sort_keys(decl)}")
+    try:
+        limit = max(1, min(int(limit), map_alignment.MAX_WORKLIST_UNITS))
+        offset = max(0, int(offset))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="'limit'/'offset' must be integers")
+
+    config = map_overlay_module.load_overlay_config()
+    try:
+        return map_alignment.build_alignment_worklist(
+            db, config, decl, map_table, key_values=key_values, q=q,
+            sort=sort, order=order, limit=limit, offset=offset)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[MapAlignment] worklist failed ({rule}/{map_table}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to build alignment worklist.")
 
 
 @app.get("/api/maps/paint-rules")

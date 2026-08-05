@@ -97,6 +97,10 @@ DDL_TABLES = [
     "ON frame_confirmation_source (confirmation_uid, role, source_table, map_id)",
     "CREATE INDEX IF NOT EXISTS idx_frame_conf_src_lookup "
     "ON frame_confirmation_source (confirmation_uid)",
+    # 층 ⑨(계획)의 조회 방향 — 「이 맵이 어느 확정의 기여자였나」. 위 UNIQUE는 선두가
+    # confirmation_uid라 이 질문에 쓰이지 못한다. models.py에도 같은 선언이 있다.
+    "CREATE INDEX IF NOT EXISTS idx_frame_conf_src_map "
+    "ON frame_confirmation_source (source_table, map_id)",
 ]
 
 # 파생 셀의 확정 도장. NULL = 확정된 좌표계에서 파생된 것이 아님(기존 행 전부의 상태).

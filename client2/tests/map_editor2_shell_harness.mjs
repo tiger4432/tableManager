@@ -740,6 +740,12 @@ function makeDocument() {
   // Every id the composition root binds. If this list and `ELEMENT_IDS` diverge, G1 says so.
   for (const id of ['me2-workbench', 'me2-worklist-rows', 'me2-worklist-rows-unscorable',
                     'me2-worklist-search', 'me2-worklist-empty', 'me2-worklist-meta',
+                    'me2-worklist-boundary', 'me2-worklist-boundary-label',
+                    // The set-up row: 대상 테이블 -> x · y · value -> 기준. G1 is what forced
+                    // these in here the moment the shell started binding them.
+                    'me2-table-select', 'me2-col-x', 'me2-col-y', 'me2-col-value',
+                    'me2-reference-select', 'me2-question-note', 'me2-columns-confirm',
+                    'me2-badge-session',
                     'me2-badge-unscorable', 'me2-badge-remaining', 'me2-picture-svg',
                     'me2-layer-floor', 'me2-layer-miss', 'me2-layer-onlyone', 'me2-layer-alone',
                     'me2-picture-caption', 'me2-refusal', 'me2-verdict-headline',

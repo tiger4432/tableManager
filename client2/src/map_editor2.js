@@ -16,7 +16,7 @@
 // data at all.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { API_BASE } from './config.js';
+import { API_BASE, CURRENT_USER } from './config.js';
 import { bootstrap } from './map2/main.js';
 import { createApiClient, ROUTES, RouteNotServedError } from './map2/api.js';
 
@@ -45,6 +45,11 @@ function createResilientClient() {
     get usedCapture() { return usedCapture; },
     loadWorklist: (...a) => live.loadWorklist(...a),
     loadAlignConfig: (...a) => live.loadAlignConfig(...a),
+    // Straight through, no fallback: these three hit routes that EXIST, so a failure is a
+    // failure and must stay visible rather than being papered over with a plausible answer.
+    loadRules: (...a) => live.loadRules(...a),
+    loadTableSchema: (...a) => live.loadTableSchema(...a),
+    loadBinding: (...a) => live.loadBinding(...a),
 
     /**
      * 🔴 THE `.catch(capture)` THAT USED TO BE ON THIS LINE WAS THE MORE DANGEROUS HALF OF
@@ -94,56 +99,145 @@ function start() {
   if (app.missing.length > 0) {
     // Named out loud rather than thrown: a partially finished page must still render what it
     // can, and the operator (or the markup lane) needs the list, not a blank screen.
-    console.warn('[map2] markup does not expose:', app.missing.join(', '));
+    console.log('[map2] markup does not expose:', app.missing.join(', '));
   }
 
   // The worklist panel's meta line is where an aggregate fact belongs. Short nominal Korean,
   // no clause: this is a label, not a sentence.
-  const status = document.getElementById('me2-worklist-meta');
-  const say = (msg) => { if (status) status.textContent = msg; };
-
   // Thresholds come from server config and are never defaulted here. `ROUTES.config` is `null`
   // -- the route does not exist yet -- so the absence is named as an absence rather than
   // printed as the string "null", which is what this line used to put on screen.
+  // 🔴 THE SCREEN ALREADY SAYS THIS ONCE. The verdict layer refuses to rank without thresholds
+  //    and the view model renders that as `기준값 없음`, so writing a second copy into the
+  //    worklist's meta line was two spellings of one fact -- and the renderer overwrites that
+  //    node anyway. The reason goes to the console, where diagnosis lives.
   api.loadAlignConfig()
     .then(cfg => app.setConfig(cfg && cfg.align_scoring ? cfg.align_scoring : cfg))
-    .catch(err => {
-      console.warn('[map2] align config unavailable:', err.message);
-      say('기준값 없음 · 순위 없음');
-    });
+    .catch(err => console.log('[map2] align config unavailable:', err.message));
 
   // 🔴 THE REQUEST SHAPE. `loadReferenceView` takes the UNIT, not a map: a rule name, the map
   //    table, and the decision key's values as `params`. The old `{eqp, product}` call was
   //    rejected by the transport before any network traffic happened, and the capture fallback
   //    swallowed the rejection -- which is why a broken request looked like a working screen.
-  app.setLoader(decision => api.loadReferenceView({
+  // THE PRIMITIVE TUPLE, straight through. The loader takes the question as an ARGUMENT rather
+  // than reading it from anywhere: no module state, so a harness can call it twice with two
+  // different questions, which is the whole reason `map2/` is importable instead of sliced.
+  app.setLoader((decision, question) => api.loadReferenceView({
     rule: RULE,
-    mapTable: MAP_TABLE,
-    params: { dt_eqp: decision.eqp, product: decision.product },
+    mapTable: question.mapTable || MAP_TABLE,
+    params: decision.__key || { dt_eqp: decision.eqp, product: decision.product },
+    xCol: question.columns.x,
+    yCol: question.columns.y,
+    valCol: question.columns.val,
+    reference: question.reference || undefined,
     includeCells: true,
   }));
 
-  // The worklist route does not exist yet (`ROUTES.worklist` is null). The decision KEY is
-  // seeded from the capture so the screen has a unit to ask about; the PAYLOAD it renders then
-  // comes from the live route. Those are two different things, and the capture marker tracks
-  // only the second -- seeding a key is not serving captured data.
-  fetch(DEV_CAPTURE_URL, { headers: { Accept: 'application/json' } })
-    .then(res => (res.ok ? res.json() : null))
-    .then(seed => {
-      const rows = seed && seed.eqp
-        ? [{ eqp: seed.eqp, product: seed.product, map_count: seed.map_count, scorable: true }]
-        : [];
-      app.setWorklist(rows);
-      if (rows.length === 0) say('작업 목록 없음');
+  // ── THE SET-UP ROW'S THREE SOURCES ──────────────────────────────────────────
+  // Which tables can be asked about, which columns each has, and which references resolve.
+  // Two of the three come from ROUTES THAT ALREADY EXIST and are already consumed elsewhere in
+  // this client; only the resolvable-reference list has no route, and that one degrades to
+  // `기준 없음` -- which is the commonest correct answer anyway, not an error state.
+  buildCatalog(api).then(({ catalog, degraded }) => {
+    app.setCatalog(catalog);
+    if (degraded.length > 0) console.log('[map2] catalog degraded:', degraded.join(', '));
+    app.render();
+  }).catch(err => console.log('[map2] catalog unavailable:', err.message));
+
+  // The rule's DECLARED target fields. Read for the WRITE's destination, never for a picker.
+  api.loadRules()
+    .then(res => {
+      const rule = ((res && res.rules) || []).find(r => r && r.name === RULE) || null;
+      app.setContext({
+        rule: RULE,
+        targetFields: (rule && rule.target_fields) || [],
+        confirmedBy: CURRENT_USER,
+        // The decision key's COLUMNS come from the rule, so a rule that renames them does not
+        // need an edit here. `{dt_eqp, product}` is not spelled in this file twice.
+        // The served dict wins; `keyFrom` is only the fallback for a decision that
+        // did not come from a worklist row.
+        toDecisionKey: (d) => (d && d.__key) || keyFrom(rule, d),
+      });
     })
-    .catch(err => {
-      console.warn('[map2] worklist seed unavailable:', err.message);
-      say('작업 목록 없음');
-    });
+    .catch(err => console.log('[map2] enrichment rules unavailable:', err.message));
+
+  // 🔴 THE WORKLIST LOADER IS ONE SEAM AND ONE LINE. `ROUTES.worklist` is null, so the live
+  //    call refuses with `RouteNotServedError` and ONLY that class falls through to the stub.
+  //    Every other failure stays visible, for the same reason the reference view's fallback was
+  //    narrowed: a catch-all made a broken request look like a working screen for hours.
+  app.setWorklistLoader((query) => api.loadWorklist(query).catch(err => {
+    if (!(err instanceof RouteNotServedError)) throw err;
+    return stubWorklist(query);
+  }));
+  app.refreshWorklist();
 
   app.render();
   // Handy for the dev console and for the browser check; not read by any module.
   window.__map2 = app;
+}
+
+/**
+ * What the set-up row may offer. Assembled from EXISTING routes:
+ *   · tables   -- the map tables this screen can ask about
+ *   · columns  -- `/tables/{t}/schema`, the route admin already consumes
+ *   · binding  -- `/api/maps/paint-rules?table=`, which serves the RESOLVED declaration from
+ *                 `map_overlay_config.json` together with its provenance
+ * The reference list has no route; it degrades to `기준 없음` alone, which is the ordinary
+ * state for the 320 maps that have no valid-die reference in the first place.
+ */
+async function buildCatalog(api) {
+  const degraded = [];
+  const tables = [{ table: MAP_TABLE, label: MAP_TABLE }];
+  const columns = {};
+  const columnTypes = {};
+  const binding = {};
+  const references = {};
+  for (const t of tables) {
+    try {
+      const schema = await api.loadTableSchema(t.table);
+      columns[t.table] = Array.isArray(schema && schema.columns) ? schema.columns : [];
+      // The DECLARED types, carried through. The coordinate pickers offer declared numbers.
+      columnTypes[t.table] = (schema && schema.column_types) || {};
+    } catch (e) {
+      degraded.push(`schema:${t.table}`);
+      columns[t.table] = [];
+      columnTypes[t.table] = {};
+    }
+    try {
+      const rules = await api.loadBinding(t.table);
+      const b = rules && rules.binding ? rules.binding : null;
+      // Carried WITH its provenance, never flattened. `fallback_guess` is the server's own
+      // marker for a binding a client must not render as a declaration.
+      if (b && b.x && b.y) binding[t.table] = { x: b.x, y: b.y, val: b.val || null, source: b.source };
+    } catch (e) {
+      degraded.push(`binding:${t.table}`);
+    }
+    // No route serves "which references actually resolve". Offering the declared
+    // `valid_die_ref` values would offer eight names that resolve zero times.
+    references[t.table] = [];
+    degraded.push(`references:${t.table}`);
+  }
+  return { catalog: { tables, columns, columnTypes, binding, references }, degraded };
+}
+
+/** The decision key's COLUMNS come from the rule, so this file spells them once. */
+function keyFrom(rule, decision) {
+  const cols = (rule && rule.decision_key) || [];
+  const d = decision || {};
+  if (cols.length === 2) return { [cols[0]]: d.eqp, [cols[1]]: d.product };
+  return { dt_eqp: d.eqp, product: d.product };
+}
+
+/**
+ * THE STUB, BEHIND ONE SEAM. Reached only when `ROUTES.worklist` refuses by name, and it says
+ * so on screen rather than passing itself off as served data. Swapping it out is one line in
+ * `ROUTES` -- nothing else in the program knows this exists.
+ */
+function stubWorklist(query) {
+  const seed = { rows: [], total: null, remaining: null, unscorable: null };
+  const status = document.getElementById('me2-worklist-meta');
+  if (status) status.textContent = '작업 목록 · 미상';
+  return Promise.resolve(seed);
 }
 
 if (document.readyState === 'loading') {

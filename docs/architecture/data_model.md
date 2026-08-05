@@ -196,7 +196,9 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 ⚠️ **이 기록은 재파생을 하지 않습니다.** 어느 줄을 다시 만들지는 이미 `frame_trigger_scope`+`SCOPE_ROW_CAP` · `chain_replay` R1/R2 · `plan_retraction` 셋이 풀어 놓았고 **넷째 철자를 만들지 않습니다**. `derived_cell_scope`는 그 셋이 범위로 쓸 셀 집합을 **질의로만** 돌려주며, 회수는 그대로 `chain_replay.withdraw_source`입니다. `superseded_by`도 삭제가 아니라 포인터입니다 — 지난 판과 그 아래 파생 셀은 남습니다.
 
-⚠️ **지금 운영 중인 퇴화형이 대체 대상입니다** — `bonding_plan.CANONICAL_FRAME_ROLES`가 **설정 순서로 첫 역할**을 골라 기준 프레임을 삼습니다(기록·판·소스 목록 없음). 층 ⑨(`bonding_plan`·다이 맵 파생·온톨로지 조인)를 이 기록에 **연결하는 작업은 아직 없습니다.**
+✅ **층 ⑨(계획)가 이 기록을 읽습니다 (2026-08-05).** 읽는 자리는 `bonding_plan.canonical_basis` **하나**이고 `bonding_plan.get_core_summary`와 `transfer_plan._canonical_origin_meta`가 같은 함수를 부릅니다(한쪽만 읽으면 같은 웨이퍼가 M1·M2에서 다른 수치를 냅니다). 조회는 `frame_confirmation.live_confirmation_for_maps`로, **단위를 `(설비, 제품)`으로 되짚지 않습니다** — 계획의 신원은 `(lot, slot)`이고 되짚으려면 계획이 `dt_log`의 컬럼명을 알아야 하는데 그것은 「결정 단위에 컬럼명을 적지 마라」와 정면으로 어긋납니다. 대신 확정이 **스스로 적어 둔 사실**(어느 맵들을 합쳤는가)로 묻습니다. `excluded_reason`이 붙은 기여자는 답이 되지 않습니다 — 제외된 소스는 어디에도 정렬되지 않았으므로 그 판의 기준을 자기 근거라고 주장할 수 없습니다.
+
+⚠️ **퇴화형은 폴백으로 남습니다** — 확정이 없는 단위는 종전대로 `bonding_plan.CANONICAL_FRAME_ROLES`(설정 순서 첫 역할)로 기준을 고르고, **그 사실을 응답의 `frame_basis`가 말합니다**(조용히 확정과 같아 보이면 안 됩니다). 계약과 중간 등급 `connected(not_declared)`는 [spec/MAP_EDITOR_SPEC §6.2-ter.2](../spec/MAP_EDITOR_SPEC.md)가 정본입니다. 🔴 **인덱스가 하나 더 늘었습니다** — `idx_frame_conf_src_map`(`source_table`, `map_id`)이 층 ⑨의 조회 방향이며, `idx_sources_confirmation`과 같은 계급으로 **`models.py`와 마이그레이션 두 곳**에 선언돼 있습니다.
 
 ⚠️ **인덱스는 두 곳입니다** — `idx_sources_confirmation`은 `models.py`와 `migrations/add_frame_confirmation.py`에 선언돼 있고 **둘 다 고쳐야 합니다**(`create_all`은 기존 테이블에 인덱스를 만들지 않습니다). `idx_sources_by_source`와 같은 계급입니다.
 

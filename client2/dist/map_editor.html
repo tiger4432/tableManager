@@ -12,12 +12,12 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-CffQyIWW.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-D8-4vvYN.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-9qPFNOO-.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CVVbQj5e.js">
   <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
   <link rel="stylesheet" crossorigin href="/assets/config-Bzia583p.css">
-  <link rel="stylesheet" crossorigin href="/assets/map_editor-DTGIA6Qq.css">
+  <link rel="stylesheet" crossorigin href="/assets/map_editor-Ciy5K-Co.css">
   <link rel="stylesheet" crossorigin href="/assets/style-DPiLsrHm.css">
 </head>
 
@@ -75,11 +75,9 @@
             <button type="button" id="btn-load-map" class="glass-btn w-full"
               style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂
               Load Existing Map</button>
-
-
-            <p style="margin: 0; font-size: 0.7rem; color: var(--text-dim); line-height: 1.45;">
-              [📂 Load]는 <b>항상 교체 로드</b>입니다. 겹쳐 보려면 아래 <b>오버레이</b> 블록을 쓰십시오.
-            </p>
+            <!-- The 0.7rem note ("[📂 Load]는 항상 교체 로드입니다 …") was deleted: it sat below the
+                 0.8rem fact floor and restated what the two buttons already say by being two
+                 buttons. The contract lives in docs/map_editor/README.md. -->
           </div>
 
           <!-- 오버레이(겹쳐 보기) — 메인 Load와 **완전히 분리된 전용 블록**.
@@ -104,8 +102,9 @@
                    `.ov-add`는 grid라 datalist를 그 안에 두지 않는다 — 레이아웃 칸을 먹지
                    않게 그리드 밖에 둔다(datalist 자체는 display:none이다). -->
               <datalist id="overlay-src-key-list"></datalist>
-              <p class="ov-note">오버레이는 소스 맵의 등록 규격(메타)으로 좌표를 읽어 <b>현재 캔버스 프레임으로 변환</b>해 겹칩니다. 정렬 근거가 없으면 겹치지 않고 사유를 목록에
-                남깁니다.</p>
+              <!-- The `.ov-note` paragraph was deleted. It explained the alignment contract, which
+                   is documentation (spec/MAP_EDITOR_SPEC §5); what an operator acts on is the
+                   per-layer chip (정렬됨 / 무보정 / 화면기준) that the list below already renders. -->
               <div id="overlay-list"></div>
               <button type="button" id="btn-clear-overlays" class="glass-page-btn ov-clear">모두 해제</button>
             </div>
@@ -240,23 +239,17 @@
                    옮긴 것만으로 기하 메타가 갈아끼워지던 그 동작이 되살아난다. -->
               <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 4px;">
                 <select id="valid-die-ref-select" class="glass-input w-full" style="display: none;"
-                  title="이 맵의 유효 다이를 정하는 valid_die_ref 맵. 비우면(-- 원 기하 --) 웨이퍼 원 기하로 판정합니다.">
+                  title="유효 다이 근거 맵 (비우면 원 기하)">
                   <option value="">-- 원 기하 (지정 없음) --</option>
                 </select>
                 <input type="text" id="valid-die-ref-key" class="glass-input w-full" list="valid-die-ref-list"
                   placeholder="valid_die_ref 맵 키 (비우면 원 기하)" autocomplete="off"
-                  title="이 맵의 유효 다이를 정하는 valid_die_ref 맵의 키. 비우면 웨이퍼 원 기하로 판정합니다. 목록에 없는 키도 직접 입력할 수 있으며, 이 칸에서는 Enter를 눌러야 적용됩니다." />
+                  title="유효 다이 근거 맵 키 — Enter로 적용 (비우면 원 기하)" />
                 <datalist id="valid-die-ref-list"></datalist>
               </div>
-              <p style="margin: 6px 0 0; font-size: 0.75rem; color: var(--text-dim); line-height: 1.5;">
-                유효 다이 맵은 언제나 <b>valid_die_ref</b> 테이블에서 읽습니다. 비워 두면 <b>웨이퍼 원 기하</b>로
-                판정합니다(기본). 등록된 맵 목록을 전부 확인했을 때는 <b>드롭다운</b>이 보이고,
-                <b>고르는 즉시</b> 화면에 적용됩니다. 목록을 다 읽지 못했거나 지금 지정된 키가 목록에 없을 때는
-                <b>입력칸</b>으로 바뀌어 목록에 없는 키도 직접 넣을 수 있으며, 이때는 <b>Enter</b>를 눌러야
-                적용됩니다(타이핑 중이나 다른 칸으로 옮길 때는 바뀌지 않습니다).
-                적용은 화면까지이고, <b>저장</b>은 <b>⚡ Push Map Data</b>(맵 전체) 또는
-                <b>📐 규격만 저장</b>(셀은 그대로)이 함께 기록합니다.
-              </p>
+              <!-- The 0.75rem explanatory paragraph was deleted (below the 0.8rem fact floor, and
+                   seven sentences of contract). Which control is on screen already answers "is this
+                   list the whole population"; the rest is docs/guide/VALID_DIE_MAP_GUIDE.md. -->
             </div>
             <div class="control-group-vertical">
               <label for="phys-wafer-dia">Wafer Diameter (mm)</label>
@@ -381,7 +374,7 @@
                   <input type="checkbox" id="map-copy-header-toggle" class="glass-checkbox" />
                   <label for="map-copy-header-toggle" class="checkbox-label"
                     style="text-transform: none; letter-spacing: normal;"
-                    title="복사에 상단 헤더(Base·1H·MID·TOP)와 우측 보조표(VALUE·COUNT·STACK·DESC)를 함께 싣습니다. COUNT는 실제로 저장되는 셀만 셉니다.">헤더
+                    title="상단 헤더와 우측 보조표를 함께 복사 (COUNT는 저장되는 셀만)">헤더
                     포함 (회사 양식)</label>
                 </div>
               </div>
@@ -398,7 +391,7 @@
                  (`buildPushGridMetadata`)가 만든다. 대상은 지금 화면에 설정된 테이블·맵 키다. -->
             <button id="btn-save-map-spec" class="glass-btn"
               style="border-color: var(--color-secondary); color: var(--color-secondary); padding: 6px 14px;"
-              title="셀은 하나도 쓰지 않고, 지금 화면에 설정된 테이블·맵 키의 규격(격자·시작 좌표·회전·물리 규격·유효 다이 지정)만 wafer_map_metadata에 기록합니다.">📐 규격만 저장</button>
+              title="규격만 기록 — 셀은 하나도 쓰지 않습니다">📐 규격만 저장</button>
           </div>
         </div>
 
@@ -423,7 +416,7 @@
            (종전 네이티브 `resize: horizontal` 그립은 우하단 모서리에 있었고, 끌어도
            폭이 기억되지 않았다). -->
       <div id="plan-split-resizer" class="split-resizer"
-        title="끌어서 「2. Legend &amp; DOE」 폭 조절 (더블클릭 = 기본 폭). 폭은 이 브라우저에 기억됩니다."></div>
+        title="폭 조절 (더블클릭 = 기본 폭)"></div>
 
       <!-- 우측 패널: legend = DOE 편집기 + DOE별 사용 자재 (이동 허브)
            legend 행 하나가 곧 DOE다 — 별도 「전사 계획」 영역도, 별도 「원시 범례」 details도 없다. -->
@@ -448,11 +441,10 @@
   <div id="choice-modal" class="glass-modal-overlay" style="display: none;">
     <div class="glass-modal-panel">
       <div class="glass-modal-header">
-        <h3>🌐 No Grid Metadata Detected</h3>
+        <h3>맵 규격 미등록</h3>
       </div>
       <div class="glass-modal-body">
-        <p>This table does not contain grid metadata layout records.</p>
-        <p>Choose how you would like to load and map the coordinates:</p>
+        <p>어떤 좌표계로 읽을지 고르십시오.</p>
       </div>
       <div class="glass-modal-footer">
         <button id="btn-choice-standard" class="glass-btn success-glow">📐 Standard (Front, Start 0,0, Rot 0°)</button>

@@ -679,12 +679,8 @@
 }
 #overlay-src-table { grid-column: 1 / -1; }
 
-.ov-note {
-  margin: 0;
-  font-size: var(--tp-fs-label);
-  color: var(--text-dim);
-  line-height: 1.55;
-}
+/* `.ov-note` was deleted with its markup — it explained the overlay alignment contract,
+   which is documentation, not a decision the operator makes at that control. */
 
 .ov-clear {
   align-self: flex-start;
@@ -888,23 +884,16 @@
 .bc-up { color: var(--text-muted); }
 .bc-cur { font-weight: 600; }
 .bc-sep { flex: none; color: var(--text-dim); }
-.bc-why {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-left: auto;
-  color: var(--text-muted);
-  font-size: var(--tp-fs-label);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* `.bc-why` (「뒤로가면 … 복원됩니다」) was deleted with its markup: it reassured, it did not
+   change anything the operator does, and it sat below the 0.8rem fact floor. */
 
 /* ── [M2] paint-lock status chip (toolbar) ─────────────── */
 .plock-chip {
   display: inline-flex;
   align-items: center;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  /* carries a fact (lock values / "미확인"), so it sits at the 0.8rem floor, not below it */
+  font-size: 0.8rem;
   padding: 4px 10px;
   border-radius: 20px;
   border: 1px solid var(--border-strong);

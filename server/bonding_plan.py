@@ -59,7 +59,17 @@ MAX_REGION_POINTS = 100_000  # 영역 교차용 내부 좌표 페치 하드캡 (
 
 # canonical(CORE) 프레임 후보 — **좌표를 바인딩한 첫 역할**이 기준 프레임을 정의한다.
 # 코어 웨이퍼 자신의 맵이 앞에 오도록 정렬돼 있다(used_chips의 (cx,cy)가 사는 프레임).
+#
+# 🔴 이것은 **퇴화형이고 폴백이다**(스펙 §0.2 층 ⑧). N항 합의 결정 — 다른 모든 소스를 어느
+# 프레임 위로 옮기는가 — 을 config 선언 순서에 맡기고 기록도 판도 소스 목록도 남기지 않는다.
+# 확정 기록이 있으면 `canonical_basis`가 먼저 답하고 이 튜플은 **상의되지 않는다**. 여기
+# 남아 있는 이유는 확정이 없는 단위가 계속 계획을 낼 수 있어야 하기 때문이며, 그때
+# payload의 `frame_basis`가 「이 길로 왔다」를 말한다.
 CANONICAL_FRAME_ROLES = ("total_chips", "defect", "eds_fail")
+
+# 기준 프레임의 **출처** 이름. 상태 어휘가 아니라 「어느 길로 왔나」다.
+BASIS_CONFIRMATION = "confirmation"   # 층 ⑧의 확정 기록이 기준을 지목했다
+BASIS_ROLE_ORDER = "role_order"       # 확정이 없어 위 튜플 순서로 골랐다 (퇴화형)
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +229,92 @@ def load_grid_meta(db, config: dict, target_table: str, map_id: str,
     """
     import map_overlay
     return map_overlay._grid_of(load_map_meta(db, config, target_table, map_id, cache))
+
+
+# ---------------------------------------------------------------------------
+# 기준(canonical) 프레임의 근거 — 층 ⑧을 읽는 **유일한** 자리
+# ---------------------------------------------------------------------------
+
+def declared_map_pairs(sources_cfg: dict, map_id_for) -> list:
+    """이 계획이 좌표를 바인딩한 소스들의 `(table, map_id)`. 확정 조회의 입력이다.
+
+    좌표를 바인딩한 소스만 담는다 — 좌표가 없는 역할(process_history)은 어떤 프레임에도
+    살지 않으므로 「이 맵이 그 합의에 올라갔나」를 물을 대상이 아니다. 순서는 `ROLES`
+    선언 순서라 실행마다 같다. 개수는 역할 수 이하이므로 상수다.
+    """
+    seen, out = set(), []
+    for role in ROLES:
+        src = (sources_cfg or {}).get(role)
+        if not _valid_source(src):
+            continue
+        cols = src["columns"]
+        if "x" not in cols or "y" not in cols:
+            continue
+        key = (src["table"], map_id_for(src))
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
+
+
+def canonical_basis(db, config: dict, map_pairs, meta_cache: dict = None):
+    """기준 프레임을 **확정 기록에서** 가져온다 → `(meta|None, basis)`.
+
+    🔴 THE 결정 지점이다. 스펙 §0.2의 사슬(좌표계 확정 → 얼라인 → 다이 맵 → 계획)에서 계획이
+    층 ⑧을 읽는 자리는 여기 하나이고, `bonding_plan`·`transfer_plan` 두 경로가 같은 함수를
+    부른다 — 두 경로가 서로 다른 프레임을 기준 삼으면 같은 웨이퍼의 수치가 갈린다.
+
+    `meta`가 None이면 호출자는 **종전 퇴화형**(`CANONICAL_FRAME_ROLES` 선언 순서)으로 간다.
+    그때도 `basis`는 왜 그 길로 갔는지를 담는다. 어휘는 새로 만들지 않는다:
+      `not_declared`        확정이 없다 / 확정은 있는데 기준(공통 바닥)을 선언하지 않았다
+      `mapping_unavailable` 기준은 선언돼 있는데 그 선언을 읽지 못했다
+    둘을 한 단어로 접으면 운영자가 없는 선언을 채우러 간다(`config_resolve_report` §어휘).
+
+    ⚠️ 재파생을 하지 않는다. 확정이 바뀌었을 때 어느 줄을 다시 만들지는
+    `frame_trigger_scope`+`SCOPE_ROW_CAP` · `chain_replay` R1/R2 · `plan_retraction` 셋과
+    `frame_confirmation.derived_cell_scope`가 이미 풀었고, 넷째 철자를 만들지 않는다.
+    이 함수는 **조회 시점에** 무엇이 기준인지 답할 뿐이다.
+    """
+    import frame_confirmation
+
+    roles = list(CANONICAL_FRAME_ROLES)
+    try:
+        header = frame_confirmation.live_confirmation_for_maps(db, map_pairs)
+    except Exception as e:
+        # 확정 표를 못 읽는 것이 계획을 못 내는 것은 아니다 — 물러나되 **말한다**.
+        logger.warning("[BondingPlan] frame confirmation lookup failed: %s", e)
+        return None, {"kind": BASIS_ROLE_ORDER,
+                      "reason": BINDING_MAPPING_UNAVAILABLE, "roles": roles}
+    if header is None:
+        return None, {"kind": BASIS_ROLE_ORDER,
+                      "reason": STATUS_NOT_DECLARED, "roles": roles}
+
+    basis = {"kind": BASIS_ROLE_ORDER, "roles": roles,
+             "confirmation_uid": header.confirmation_uid, "version": header.version}
+    ref_table, ref_map_id = header.reference_table, header.reference_map_id
+    if not ref_table:
+        # 확정은 있는데 **무엇 위에 올려놓고 정했는지**가 비어 있다. 기준 없이 채점한 판은
+        # 계획에 기준을 줄 수 없다 (`map_alignment.REFERENCE_ABSENT`는 흔한 상태다).
+        basis["reason"] = STATUS_NOT_DECLARED
+        return None, basis
+
+    meta = load_map_meta(db, config, ref_table, ref_map_id or "", meta_cache)
+    if meta is None:
+        basis["reason"] = BINDING_MAPPING_UNAVAILABLE
+        basis["reference"] = {"table": ref_table, "map_id": ref_map_id}
+        return None, basis
+
+    return meta, {
+        "kind": BASIS_CONFIRMATION,
+        "confirmation_uid": header.confirmation_uid,
+        "version": header.version,
+        "reference": {"table": ref_table, "map_id": ref_map_id},
+        # 합쳐진 것은 최약 기여자를 따라간다(스펙 §0.2 ⑨). 계산은 층 ⑧이 쓰기 시점에 굳혀
+        # 뒀고 여기서 다시 유도하지 않는다.
+        "warrant": frame_confirmation.warrant_of(header),
+        "weakest": {"source_name": header.weakest_source,
+                    "priority": header.weakest_priority},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -705,14 +801,27 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     # ⚠️ 넘어가면, 회전된 계측 맵이 스스로 기준을 참칭한다. 그러면 소스 == 기준이 되어
     # 변환이 identity로 떨어지고, 상태는 `connected`인 채 좌표가 어긋난 과소 집계가 된다
     # (조용한 오답). 기준을 모르면 모른다고 해야 한다 — 아래에서 align_unavailable이 된다.
-    canonical_meta = None
-    for role in CANONICAL_FRAME_ROLES:
-        src = sources_cfg.get(role)
-        if _valid_source(src) and "x" in src["columns"] and "y" in src["columns"]:
-            canonical_meta = load_map_meta(db, cfg, src["table"], _map_id_for(src),
-                                           meta_cache)
-            break
+    #
+    # [층 ⑧ 2026-08-05] 확정 기록이 있으면 **그것이 답이고** 아래 퇴화형 루프는 상의되지
+    # 않는다. 없으면 종전 경로 그대로다 — 다만 조용히 같아 보이면 안 되므로 어느 길로
+    # 왔는지를 payload의 `frame_basis`가 말한다.
+    canonical_meta, frame_basis = canonical_basis(
+        db, cfg, declared_map_pairs(sources_cfg, _map_id_for), meta_cache)
+    if canonical_meta is None:
+        for role in CANONICAL_FRAME_ROLES:
+            src = sources_cfg.get(role)
+            if _valid_source(src) and "x" in src["columns"] and "y" in src["columns"]:
+                canonical_meta = load_map_meta(db, cfg, src["table"], _map_id_for(src),
+                                               meta_cache)
+                break
     canonical_grid = map_overlay._grid_of(canonical_meta)
+
+    # [중간 등급] 확정 위에 서 있지만 그 판의 최약 기여자가 서열 미등재면 「정렬은 됐는데
+    # 근거가 약함」이다. 종전에는 `connected`와 `connected(align_unavailable)` 둘뿐이라 이
+    # 상태를 어느 한쪽으로 반올림할 수밖에 없었다. **여섯째 토큰을 만들지 않고** 이미 있는
+    # `not_declared`를 마커로 얹는다 — 그 단어의 뜻(선언이 없다) 그대로다.
+    warrant_marker = (STATUS_NOT_DECLARED
+                      if frame_basis.get("warrant") == STATUS_NOT_DECLARED else None)
 
     clamped_rects = clamp_rects(rects, canonical_grid) if rects is not None else None
 
@@ -765,6 +874,10 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
             marker = map_overlay.align_status_label(align)
             if marker:
                 status = f"connected({marker})"
+            # 정렬이 성립한 경우에만 붙인다 — 정렬 자체가 안 됐으면 「정렬됐으나 약함」은
+            # 참이 아니고, 그 상태는 이미 `align_unavailable`이 말한다.
+            if warrant_marker:
+                status = compose_status_marker(status, warrant_marker)
 
         # [7b] pool binds canonicalized by the bound column's declared type
         filters = [cols["lot"] == map_overlay.canonical_role_value(src, "lot", lot),
@@ -923,6 +1036,10 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                 if statuses.get(r) == STATUS_NOT_DECLARED]
     if inactive:
         result["inactive_subtractions"] = inactive
+    # [층 ⑧] 이 계획이 **무엇 위에 서 있는가**. 확정 기록이 지목했는지, 확정이 없어 config
+    # 선언 순서(퇴화형)로 골랐는지. **항상 싣는다** — 퇴화형이 확정과 똑같이 보이는 것이
+    # 바로 이 사슬이 없애려는 상태다. 기존 키는 한 글자도 바뀌지 않는 추가 전용 필드다.
+    result["frame_basis"] = frame_basis
     if region_counts is not None:
         region_counts["remaining"] = (
             region_counts["total"] - region_counts["defect"]

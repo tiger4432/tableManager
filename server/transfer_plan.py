@@ -1542,7 +1542,9 @@ def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
         return cache[(origin_lot, origin_slot)]
 
     import bonding_plan
-    meta = None
+
+    # 프레임을 정의할 수 있는 원천들의 (table, map_id). 아래 두 경로가 **같은 목록**을 본다.
+    origin_maps = []
     for fs in (source_cfg.get("fail_sources") or {}).values():
         if not _valid_binding(fs):
             continue
@@ -1552,9 +1554,18 @@ def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
         if "x" not in cols or "y" not in cols:
             continue      # 좌표가 없는 원천은 프레임을 정의할 수 없다
         # [7b] identity canonicalized per the frame-defining table's declared types
-        map_id = _origin_map_id(source_cfg, origin_lot, origin_slot, binding=fs)
-        meta = bonding_plan.load_map_meta(db, source_cfg, fs["table"], map_id, meta_cache)
-        break
+        origin_maps.append(
+            (fs["table"], _origin_map_id(source_cfg, origin_lot, origin_slot, binding=fs)))
+
+    # [층 ⑧ 2026-08-05] 확정 기록이 있으면 그것이 기준이다. M1 `get_core_summary`와 **같은
+    # 함수**를 부른다 — 위 ⚠️와 같은 계급의 사고이기 때문이다. 두 경로가 서로 다른 프레임을
+    # 기준 삼으면 같은 웨이퍼의 M1 수치와 M2 수치가 조용히 갈린다.
+    meta, _basis = bonding_plan.canonical_basis(db, source_cfg, origin_maps, meta_cache)
+    if meta is None:
+        # 확정 없음 — 종전 퇴화형 그대로: 선언 순서 첫 원천이 기준을 정의한다.
+        for table, map_id in origin_maps:
+            meta = bonding_plan.load_map_meta(db, source_cfg, table, map_id, meta_cache)
+            break
     if cache is not None:
         cache[(origin_lot, origin_slot)] = meta
     return meta
