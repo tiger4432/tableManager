@@ -1026,10 +1026,31 @@ body {
 /* ============================================================
    [C] Sources, candidates, counts
    ============================================================ */
+/* 🔴 `flex-shrink: 0` IS LOAD-BEARING AND `overflow: hidden` IS WHY. These blocks are flex
+   items in `.panel-body`, and `overflow` other than `visible` REMOVES a flex item's automatic
+   minimum size (it is what makes `min-height: auto` resolve to 0 instead of min-content). So
+   the default `flex-shrink: 1` squeezed both blocks to whatever was left, and the `hidden`
+   here — which exists only to clip children to the 10px corner — swallowed the remainder with
+   no scrollbar anywhere. `.panel-body` already has `overflow-y: auto` and never engaged,
+   because after the squeeze its content fitted exactly.
+
+   MEASURED in the live page with the eight thumbnails present, 2026-08-05:
+     1584x1257  sources block clientHeight 839 / scrollHeight 995  -> 156px unreachable
+     1280x800   sources block clientHeight 439 / scrollHeight 995  -> 556px unreachable
+                counts block  clientHeight 62  / scrollHeight 140  ->  78px unreachable
+   Rows three and four of the candidate grid were inside that, and so was part of the counts
+   block nobody had reported yet. With `flex-shrink: 0` both blocks keep their content height,
+   the overflow reaches `.panel-body`, and its existing `auto` does the scrolling — ONE
+   scroller, the panel's own body, and no new scroll container nested inside it.
+
+   NOT FIXED BY SHRINKING THE THUMBNAILS. 96px is the size the pictures are legible at, which
+   is the whole reason they exist; trading it for the absence of a scrollbar gives up the thing
+   that was asked for to avoid the thing that was not. */
 .me2-block {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .me2-block-head {

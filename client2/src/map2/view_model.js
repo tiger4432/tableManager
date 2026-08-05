@@ -260,6 +260,9 @@ export function buildViewModel(input) {
     // FOR THE LOG. The code the sentence was built from, so a reader can tell WHICH of the five
     // pre-threshold refusals fired without parsing prose.
     reasonCode: reasonCodeFor(state, payload),
+    // FOR THE LOG. The axis the ranking was made on. See `rulingMetricFor` -- carried as the
+    // server's own token, never as a Korean word of ours.
+    rulingMetric: rulingMetricFor(payload),
     // The borrowed-geometry offer, and whether this answer stands on one. See `assumptionModel`.
     assumption,
     // Aggregate exclusions, stated once and never shouted, never decorated per row.
@@ -437,15 +440,31 @@ function causeFor(state, verdict, payload, attribution, evidence) {
     return frozenCause(CAUSE.no_reference);
   }
   if (state === VIEW_STATE.SCORED_NO_WINNER) {
+    // 🔴 THE SERVER'S SENTENCE RIDES HERE TOO, AND ITS ABSENCE WAS THE DEFECT. This branch used
+    //    to hand back a bare token, so `causeLine` had nothing but `대칭 기준` to render -- while
+    //    the payload was carrying `기준 발자국 대칭 - 8프레임 구별 불가 · 다른 기준 맵 필요`,
+    //    which NAMES THE REPAIR. Two words cannot say "plug a different reference map"; the
+    //    sentence does, and it is the sentence the operator spent a day not being shown.
+    //    `causeLine` prefers `detail`, so the server's words are what renders and the token
+    //    stays a SUPPLEMENT for the slots that take one word (the console record, the headline's
+    //    count). Same rule as NOT_SCORABLE below and as the occupancy branch above -- there is
+    //    now no state in which this file renders its own Korean over the server's.
     const n = verdict && Number.isFinite(verdict.tiedCount) ? verdict.tiedCount : null;
-    if (reason === REASON.REFERENCE_FOOTPRINT_SYMMETRIC) return frozenCause(CAUSE.symmetric, n);
-    if (reason === REASON.REFERENCE_NO_VALUES) return frozenCause(CAUSE.reference_no_values, n);
-    if (reason === REASON.NO_REFERENCE) return frozenCause(CAUSE.no_reference, n);
+    if (reason === REASON.REFERENCE_FOOTPRINT_SYMMETRIC) {
+      return frozenCause(CAUSE.symmetric, n, serverDetail, measurements);
+    }
+    if (reason === REASON.REFERENCE_NO_VALUES) {
+      return frozenCause(CAUSE.reference_no_values, n, serverDetail, measurements);
+    }
+    if (reason === REASON.NO_REFERENCE) {
+      return frozenCause(CAUSE.no_reference, n, serverDetail, measurements);
+    }
     // MARGIN_TOO_SMALL with no more specific token: the candidates are close and we do not
-    // know WHY. Saying nothing is the honest answer -- the headline already reports the tie,
-    // and naming a cause we did not measure is how the operator gets sent to repair the wrong
-    // thing. A null token renders as an empty cause line, not as a guess.
-    return frozenCause(null, n);
+    // know WHY. Saying nothing OF OUR OWN is the honest answer -- the headline already reports
+    // the tie, and naming a cause we did not measure is how the operator gets sent to repair
+    // the wrong thing. A null token renders as an empty cause line, not as a guess; the
+    // server's sentence, if it sent one, still renders.
+    return frozenCause(null, n, serverDetail, measurements);
   }
   return null;
 }
@@ -480,6 +499,32 @@ function reasonCodeFor(state, payload) {
   if (state !== VIEW_STATE.SCORED_NO_WINNER && state !== VIEW_STATE.NOT_SCORABLE) return '';
   const code = payload && payload.ruling_reason_code;
   return code ? String(code) : '';
+}
+
+/**
+ * WHICH AXIS THE RANKING WAS MADE ON. `occupancy` | `values` | `values_weighted`, in the
+ * server's own spelling.
+ *
+ * 🔴 CARRIED, NOT BRANCHED ON. There is deliberately no table from a metric to a Korean word
+ *    here. The same reason code means a different repair per axis -- `no_discrimination` on
+ *    occupancy is "the footprint is symmetric, plug another reference", on the weighted axis it
+ *    is "the values are identical across all eight and weighting will not break it, so do not
+ *    go raise a weight" -- and the SERVER ALREADY WRITES BOTH SENTENCES
+ *    (`_RULING_TEXT_BY_METRIC`). A word chosen here would be a second spelling of a distinction
+ *    that already has one, on a field that grew a third value this week.
+ *
+ * 🔴 AND IT IS NOT VALIDATED AGAINST A KNOWN SET. An axis this client has never heard of still
+ *    reaches the record intact; refusing an unrecognised one would make the NEXT metric
+ *    invisible exactly where the record is the only witness, which is the same defect one layer
+ *    over (`I11`: an unknown reason code keeps its measurement).
+ *
+ * Unlike `reasonCode` this is NOT gated on the state: a run that produced a winner was still
+ * ranked on an axis, and "which axis said so" is the first thing asked when a winner is
+ * disputed.
+ */
+function rulingMetricFor(payload) {
+  const metric = payload && payload.ruling_metric;
+  return metric ? String(metric) : '';
 }
 
 function frozenCause(token, count, detail, measurements) {

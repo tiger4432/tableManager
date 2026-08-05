@@ -275,7 +275,7 @@ const FLOORS = new Map([
   //      too, because a label of ours would be indistinguishable from a real answer.
   // A drop here means one of those three regressed, and none of them is visible from an exit
   // code -- all three were green builds with an unusable screen.
-  ['map_editor2_shell_harness.mjs', 408],
+  ['map_editor2_shell_harness.mjs', 426],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid

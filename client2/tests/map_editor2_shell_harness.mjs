@@ -1148,6 +1148,143 @@ function throws(fn, what) {
   eq(doc3.querySelector('[data-me2-cand-reason]').hidden, true, 'M12 and it stays hidden');
 }
 
+// ── N. THE NO-WINNER CAUSE CARRIES THE SERVER'S SENTENCE, AND THE TOKEN IS BESIDE IT ────────
+//
+// 🔴 A TWO-WORD TOKEN WAS RENDERED OVER A SENTENCE THAT NAMED THE REPAIR. `causeFor`'s
+//    no-winner branch handed back `대칭 기준` and DROPPED the payload's `refusal`, so every
+//    consumer of `vm.cause` was told "symmetric reference" while the server had said
+//    "the reference footprint is symmetric, the eight frames cannot be told apart, ANOTHER
+//    REFERENCE MAP IS NEEDED". Two words cannot carry that last clause, and that last clause is
+//    the only part of the message that tells the operator what to do. The occupancy branch and
+//    the not-scorable branch already carried the sentence; this one did not, and it is the
+//    branch the stuck unit lands in.
+//
+// 🔴 SUPPLEMENT, NOT REPLACEMENT. The token stays -- `대칭 기준` and `기준 값 없음` are repaired
+//    differently and the one-word surfaces need one word -- but it may never be the only thing
+//    a reader is given. `causeLine` prefers `detail`, so the sentence is what renders.
+//
+// 🔴 AND IT MUST NOT BE JOINED TO. `reasonLine` is asserted byte for byte in M above; the
+//    measurements ride as a separate LIST and the joining happens once, in the renderer.
+{
+  // The server's real sentence for `no_discrimination`, byte for byte from
+  // `server/map_alignment._RULING_TEXT`. Not paraphrased here: a harness that scores "carried
+  // verbatim" against a string of its own invention scores nothing.
+  const SENTENCE = '기준 발자국 대칭 - 8프레임 구별 불가 · 다른 기준 맵 필요';
+  const stuck = {
+    state: 'no_winner', refusal: SENTENCE,
+    reference: { state: 'resolved', kind: 'values', cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+    sources: { map_count: 1, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
+               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+                        declared_frame_source: 'declared' }] },
+    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 2, discriminating: 4 },
+                 { frame: 'rot90_front', state: 'scored', agreement: 2, discriminating: 4 }],
+    declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+    // 🔴 THE THIRD METRIC, ON THE WIRE. `values_weighted` joined `occupancy` and `values` on
+    //    `ruling.metric` and had no carriage at all on this side.
+    ruling: { winner: null, reason_code: 'no_discrimination', metric: 'values_weighted' },
+    excluded_total: 0, stats: { scored_cells: 4, elapsed_ms: 4 },
+  };
+  const doc = makeDocument();
+  const logged = [];
+  doc.defaultView.console = { log: (...a) => logged.push(a.map(String).join(' ')),
+                              warn: () => {}, error: () => {} };
+  const app = bootstrap({
+    document: doc,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve(stuck),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app.setConfig({ min_margin_dies: 20, min_discriminating_dies: 4 });
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm = app.render();
+
+  eq(vm.state, VIEW_STATE.SCORED_NO_WINNER, 'N1 the state the stuck unit lands in');
+  eq(vm.cause.detail, SENTENCE,
+     'N2 THE CAUSE CARRIES THE SERVER SENTENCE BYTE FOR BYTE -- this is the assertion that was '
+     + 'red: the branch used to drop it and hand back a token instead');
+  eq(vm.cause.token, '대칭 기준',
+     'N3 and the token survives BESIDE it -- a supplement, never a replacement');
+  eq(vm.cause.count, 2, 'N4 with the tied count still beside it');
+
+  // 🔴 THE SENTENCE APPEARS ON SCREEN EXACTLY ONCE. Carrying it in `cause` as well as in
+  //    `reasonLine` is two VALUES of one string, which is right; two NODES holding it is a
+  //    screen repeating itself. `#me2-verdict-cause` was deleted from the page and this file's
+  //    stub still authors it, so the count is what proves the renderer stopped writing there
+  //    rather than the page happening not to have the node.
+  const nodes = doc.querySelectorAll('[data-me2-cand-reason]')
+    .concat(doc.getElementById('me2-verdict-cause') ? [doc.getElementById('me2-verdict-cause')] : [])
+    .concat(doc.getElementById('me2-refusal') ? [doc.getElementById('me2-refusal')] : []);
+  const holding = nodes.filter(n => String(n.textContent).includes(SENTENCE));
+  eq(holding.length, 1,
+     'N5 exactly one node on the page holds the sentence -- not the cause slot as well');
+  eq(String(holding[0].getAttribute('data-me2-cand-reason')), '',
+     'N6 and it is the slot beside the eight, which is the one this state shows');
+  eq(holding[0].textContent, SENTENCE,
+     'N7 held byte for byte, with nothing of ours joined to it (the M-block property, kept)');
+
+  // 🔴 AND THE CONSOLE RECORD DOES NOT SAY IT TWICE EITHER. `logDiagnosis` pushes
+  //    `cause.detail` and then the served refusal; the guard between them is the only thing
+  //    stopping a doubled line now that both hold the same string.
+  const record = logged.join(' | ');
+  const occurrences = record.split(SENTENCE).length - 1;
+  eq(occurrences, 1, 'N8 the console record carries the sentence once, not twice');
+  ok(record.includes('ruling.reason_code=no_discrimination'),
+     'N9 the branch that refused is still named beside it');
+  eq(vm.rulingMetric, 'values_weighted',
+     'N10 THE THIRD METRIC IS CARRIED -- it had no display at all before, so the record could '
+     + 'not say which axis the ranking was made on');
+  ok(record.includes('ruling.metric=values_weighted'),
+     'N11 and it reaches the record as the server spelled it');
+  ok(!record.includes('가중') || record.includes(SENTENCE),
+     'N12 no Korean word of ours was invented for the axis -- the server owns that sentence');
+
+  // An axis this client has never heard of still reaches the record. Refusing an unknown one
+  // would make the NEXT metric invisible exactly where the record is the only witness.
+  const alien = adaptPayload({ ...stuck, ruling: { ...stuck.ruling, metric: 'values_ranked' } });
+  eq(alien.ruling_metric, 'values_ranked', 'N13 an unrecognised axis is carried, not dropped');
+  const bare = adaptPayload({ ...stuck, ruling: { winner: null, reason_code: 'tie' } });
+  eq(bare.ruling_metric, null, 'N14 and an absent one is absent, never a plausible default');
+
+  // 🔴 A METRIC MUST NOT SWALLOW THE "NO REASON ON THE WIRE" FINDING. That line is the record's
+  //    only witness to a payload that refused and said nothing about why -- a gap on the wire,
+  //    not a state this screen can repair. Adding the metric push between the `if` and its
+  //    `else if` re-pointed the whole fallback at `rulingMetric`, which is a one-character-class
+  //    mistake that no exit code and no other assertion here can see.
+  const doc4 = makeDocument();
+  const logged4 = [];
+  doc4.defaultView.console = { log: (...a) => logged4.push(a.map(String).join(' ')),
+                               warn: () => {}, error: () => {} };
+  const app4 = bootstrap({
+    document: doc4,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      // A metric, and NOTHING that says why nothing won.
+      loadReferenceView: () => Promise.resolve({ ...stuck, refusal: null,
+        ruling: { winner: null, metric: 'values_weighted' } }),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app4.setConfig({ min_margin_dies: 20, min_discriminating_dies: 4 });
+  app4.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm4 = app4.render();
+  eq(vm4.reasonCode, '', 'N15a the payload named no branch');
+  eq(vm4.reasonLine, '', 'N15b and sent no sentence');
+  const record4 = logged4.join(' | ');
+  ok(record4.includes('the reason is not on the wire'),
+     'N15 the gap is still reported when a metric is present -- the metric line must sit AFTER '
+     + 'that if/else chain, never inside it');
+  ok(record4.includes('ruling.metric=values_weighted'),
+     'N16 and the axis is recorded alongside, not instead');
+}
+
 console.log(`ASSERTIONS ${compared} ${failures.length}`);
 if (failures.length > 0) {
   console.log('\nFAILURES');

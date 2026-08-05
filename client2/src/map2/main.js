@@ -110,7 +110,9 @@ export const ELEMENT_IDS = Object.freeze({
   caption: 'me2-picture-caption',
   refusal: 'me2-refusal',
   headline: 'me2-verdict-headline',
-  cause: 'me2-verdict-cause',
+  // `cause: 'me2-verdict-cause'` IS GONE, and it is gone because the NODE is gone. The markup
+  // deleted it on purpose and says so; a binding that outlives its node is how a slot nobody
+  // can see ends up holding the one string that mattered. See `render`.
   sourceList: 'me2-source-list',
   sourcesMeta: 'me2-sources-meta',
   metricConflict: 'me2-metric-conflict',
@@ -288,9 +290,15 @@ export function bootstrap(deps) {
     //    second spelling, and the two would drift.
     const headText = headlineNum(vm);
     if (headText) setAttrText(doc, '[data-me2-verdict]', headText);
-    // A LABEL joined to a COUNT by a separator, never a clause. The decoder handed over a
-    // token and a number precisely so that no template-plus-slot sentence can form here.
-    text(el.cause, causeLine(vm.cause));
+    // 🔴 THE CAUSE LINE IS NOT WRITTEN TO A NODE, AND THAT IS THE PAGE'S OWN DECISION HONOURED
+    //    RATHER THAN AN OMISSION. `#me2-verdict-cause` was deleted from the markup deliberately
+    //    (`map_editor2.html`, and the comment there says not to revive it by accident); this
+    //    file kept writing to it anyway, which was harmless only while `vm.cause.detail` was
+    //    empty in the no-winner state. Now that the cause carries the SERVER'S SENTENCE there
+    //    too, a page that still had that node would print the same sentence twice IN THE SAME
+    //    PANEL -- here and in `#me2-refusal` directly below, both fed by `causeLine`. The whole
+    //    cause -- token, count and measurements -- still goes to the console record, which is
+    //    the diagnostic surface the markup lane designated when it removed the node.
     text(el.caption, vm.caption);
     setAttrText(doc, '[data-me2-picture-meta]', vm.meta);
 
@@ -981,10 +989,10 @@ export function bootstrap(deps) {
                   row.detail || ''].filter(Boolean).join(' · '));
     }
     // 🔴 THE SERVER'S SENTENCE SURVIVES A SCORED STATE. On a tie `/view` sends both a
-    //    `no_winner` state and a refusal sentence, and the cause line shows the TOKEN there
-    //    because the token names the repair (`대칭 기준` and `기준 값 없음` are repaired
-    //    differently). The sentence is the server's own words about the same run, so it goes
-    //    here whole rather than being dropped: one line on screen, the record in the console.
+    //    `no_winner` state and a refusal sentence, so it goes here whole rather than being
+    //    dropped. The guard is what keeps ONE copy: since the cause now carries that same
+    //    sentence in the no-winner state too (it used to substitute `대칭 기준` for it), the
+    //    unguarded spelling would print the server's words twice in a row.
     const servedRefusal = session.payload && session.payload.refusal_detail
       ? String(session.payload.refusal_detail) : '';
     if (servedRefusal && !(vm.cause && vm.cause.detail === servedRefusal)) lines.push(servedRefusal);
@@ -999,6 +1007,18 @@ export function bootstrap(deps) {
       lines.push('no winner and the payload carried neither `refusal` nor `ruling.reason_code`; '
         + 'the reason is not on the wire, so this screen cannot say which check refused.');
     }
+    // 🔴 THE CODE ALONE DOES NOT SAY WHICH REPAIR. `no_discrimination` on the occupancy axis is
+    //    a symmetric footprint; on `values_weighted` it means the values themselves are
+    //    identical across all eight AND that raising a weight will not break the tie. The
+    //    server's sentence already draws that line -- this puts the axis beside the code so the
+    //    record says which of the two sentences the reader is looking at, without this side
+    //    growing a Korean word per axis.
+    //
+    // 🔴 AFTER THE CHAIN ABOVE, NOT INSIDE IT. Spelled between the `if` and its `else if` this
+    //    silently re-pointed the "the reason is not on the wire" finding at `rulingMetric`, so
+    //    a payload carrying a metric and NO reason at all stopped reporting the gap. Caught in
+    //    review of this round's own diff; `N15` below is what would have caught it.
+    if (vm.rulingMetric) lines.push(`ruling.metric=${vm.rulingMetric}`);
     if (vm.cause && vm.cause.token) {
       lines.push(vm.cause.count === null ? vm.cause.token : `${vm.cause.token} (${vm.cause.count})`);
     }
@@ -1565,6 +1585,14 @@ export function adaptPayload(raw) {
     //    end the operator spent an afternoon in. The SENTENCE goes on screen; this code goes to
     //    the console beside it, because a code is a thing to grep, not a thing to read.
     ruling_reason_code: (decoded.ruling && decoded.ruling.reason_code) || null,
+    // 🔴 WHICH AXIS PRODUCED THE RANKING -- `occupancy` | `values` | `values_weighted`. CARRIED,
+    //    NEVER TRANSLATED. The same reason code means different repairs on different axes, and
+    //    the server ALREADY says so in its own sentence: `_RULING_TEXT_BY_METRIC` sends
+    //    `기준 발자국 대칭 …` on occupancy and `기준 값이 8프레임에 동일 - 가중으로도 구별 불가 …`
+    //    on the weighted one. So this side needs the TOKEN, for the record, and must not grow a
+    //    Korean word per axis -- that would be a second spelling of a distinction the server has
+    //    already drawn, on a field that gained a third value this week and can gain a fourth.
+    ruling_metric: (decoded.ruling && decoded.ruling.metric) || null,
     // 🔴 THE SENTENCE AND ITS MEASUREMENTS TRAVEL SEPARATELY, BECAUSE THE SERVER SENDS THEM
     //    SEPARATELY. `refusal_detail` is the composed sentence and it carries reason LABELS
     //    only; the numbers that say WHICH grid is wrong and BY HOW MUCH are in the tally's
