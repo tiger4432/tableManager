@@ -23,17 +23,26 @@ WHY THE THREE LIVE TOGETHER
     is the mistake `queue_filters` was created to undo (spec §5.1).
 
 THE QUEUE PREDICATE IS NOT REDEFINED HERE
-    `iter_derived_rows` builds its SQL from `to_public_rule(rule)` - the server's
-    single composition of "a queue entry" - and translates it with
-    `column_filter.get_column_filter_condition`, the SAME translator
-    `GET /tables/{t}/data` uses. So the worklist, the badge, the admin count and
-    these reports cannot disagree about which rows are in the queue.
+    `iter_derived_rows` builds its SQL from
+    `enrichment_config.queue_predicate_condition` - the server's single
+    implementation of "which rows still need work" - which is the same function
+    `GET /tables/{t}/data?enrichment_queue=<rule>` runs for the worklist, the
+    badge and the admin count. So those surfaces and these reports cannot
+    disagree about which rows are in the queue.
 
-    WHICH of the two compositions each caller takes is the load-bearing part
-    [2026-08-04]. `queue_filters` is now the WHOLE queue (targets blank), because
-    the progress bar's denominator counts every derived row and the remainder has
-    to count the same population (N36). `keyed_queue_filters` adds "every decision
-    key non-blank".
+    THE QUEUE IS *ANY* TARGET BLANK  [2026-08-05, user ruling]
+    It used to be composed here out of `queue_filters`, one `blank` spec per
+    target field, conjoined - so on a multi-target rule it meant EVERY target
+    blank, and filling one column dropped the row out of the queue while its
+    sibling was still empty. Both live rules declare two targets. The repair
+    needs a cross-column OR, which the public filter DSL cannot express, so the
+    queue stopped being a client-visible filter dict and became a NAMED
+    server-side predicate asked for by name.
+
+    WHICH scope each caller takes is the load-bearing part. `queue` is the whole
+    queue, because the progress bar's denominator counts every derived row and
+    the remainder has to count the same population (N36). `keyed` adds "every
+    decision key non-blank"; `blank_key` is its complement inside the queue.
 
     THE WRITE PATH NO LONGER TAKES THE KEYED COMPOSITION  [2026-08-05, user ruling]
     It did until now, and this docstring said the sweep "may not touch" blank-key
@@ -80,13 +89,14 @@ KEY_CHUNK = 500
 
 SAMPLES_PER_CLASS = 5
 
-# Which composition of the queue predicate a walk uses. See `_queue_condition`.
+# Which scope of the named queue predicate a walk uses. The definitions live in
+# `enrichment_config.QUEUE_SCOPE_*`; `_queue_condition` maps these onto them.
 SCOPE_KEYED = "keyed"
 SCOPE_BLANK_KEY = "blank_key"
-# The whole queue: targets blank, no key predicate at all - `queue_filters`
-# itself, the same object the worklist and the progress remainder consume. This
-# is what the sweep walks, so the population it examines is the population the
-# operator sees.
+# The whole queue: ANY target field blank, no key predicate at all - the same
+# scope the worklist and the progress remainder ask the route for. This is what
+# the sweep walks, so the population it examines is the population the operator
+# sees.
 SCOPE_QUEUE = "queue"
 
 # ④ classes. The first two are the BUG class: a human filling one of these is
@@ -95,6 +105,12 @@ CLS_MAPPING_GAP = "mapping_gap_same_name"
 CLS_BLANK_DECISION_KEY = "blank_decision_key"
 CLS_NO_SOURCE_ROWS = "no_source_rows"
 CLS_RESOLVABLE = "resolvable_from_reference"
+# SOME blank targets resolve to one candidate and some do not [2026-08-05].
+# Split out of CLS_RESOLVABLE, which used to swallow it on `any(single)` - so a
+# row whose second column was ambiguous was reported as needing no human, and the
+# work it still held vanished from the report. It is not CLS_AMBIGUOUS either:
+# part of this row IS mechanically decided and the sweep will fill it.
+CLS_PARTIALLY_RESOLVABLE = "partially_resolvable"
 CLS_AMBIGUOUS = "ambiguous_reference"
 CLS_NO_EVIDENCE = "no_evidence"
 CLS_UNPROBED = "unprobed"
@@ -105,7 +121,11 @@ CLS_UNPROBED = "unprobed"
 # nothing to look up - the row can only be fixed upstream. It became visible on
 # 2026-08-04 when `queue_filters` stopped hiding it (see enrichment_config).
 BUG_CLASSES = (CLS_MAPPING_GAP, CLS_BLANK_DECISION_KEY)
-REAL_WORK_CLASSES = (CLS_AMBIGUOUS, CLS_NO_EVIDENCE)
+# A partially resolvable row STILL NEEDS A HUMAN, for the columns that did not
+# resolve, so it belongs to the work total even though a machine will fill part
+# of it. Counting it under `resolvable` instead (as `any(single)` did) understated
+# the work by exactly the rows the sweep can only half finish.
+REAL_WORK_CLASSES = (CLS_AMBIGUOUS, CLS_NO_EVIDENCE, CLS_PARTIALLY_RESOLVABLE)
 
 
 class AnalysisRefused(Exception):
@@ -120,57 +140,34 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False,
                      scope: str = SCOPE_KEYED):
     """SQL condition for the queue predicate (or its resolved complement).
 
-    Composed from `to_public_rule` and translated by the shared filter DSL - no
-    second definition of blank/notBlank lives here.
+    🔴 THIS IS A LOOKUP, NOT A DEFINITION. The predicate lives in
+    `enrichment_config.queue_predicate_condition` - the same function the route
+    `GET /tables/{t}/data?enrichment_queue=<rule>` runs for the worklist, the
+    badge and the admin count. This wrapper exists only to map this module's
+    scope vocabulary onto it and to raise this module's refusal type.
 
-    `scope` selects WHICH composition (see the module docstring):
-      - SCOPE_KEYED (default): `keyed_queue_filters` - targets blank AND every
-        decision key non-blank. What ② learns from.
-      - SCOPE_QUEUE: `queue_filters` - targets blank, nothing else. The whole
-        queue as the operator sees it, and what the sweep works.
-      - SCOPE_BLANK_KEY: its complement inside the queue - targets blank AND at
-        least ONE decision key blank. Reporting only.
-    `resolved=True` is meaningful for SCOPE_KEYED only.
+    It used to compose the condition here out of `queue_filters`, and that is how
+    the defect reached the reports too: the composition was a CONJUNCTION of
+    per-target `blank` specs, so a partly filled row was outside the queue on
+    every surface at once. `resolved=True` is meaningful for SCOPE_KEYED only.
     """
-    from sqlalchemy import and_, or_
     import enrichment_config
-    import column_filter  # NOT `main` - see the module docstring
 
-    public = enrichment_config.to_public_rule(rule)
-
-    def translate(col, spec):
-        cond = column_filter.get_column_filter_condition(table_model, col, spec)
-        if cond is None:
-            raise AnalysisRefused(
-                f"filter for column '{col}' could not be translated on table "
-                f"'{rule['derived_table']}' - is the column declared in table_config?")
-        return cond
-
-    if scope == SCOPE_BLANK_KEY:
-        # The queue MINUS the keyed queue, spelled positively so it stays one
-        # conjunction of translator output: targets blank, and at least one key
-        # blank. `or_` across key columns is the one shape the public filter DSL
-        # cannot express (it combines specs for a single column), which is why
-        # the client subtracts two totals instead and this branch exists only
-        # here, where SQLAlchemy is available.
-        conds = [translate(col, spec) for col, spec in public["queue_filters"].items()]
-        conds.append(or_(*[translate(k, {"type": "blank"}) for k in rule["decision_key"]]))
-        return and_(*conds)
-
-    if scope == SCOPE_QUEUE:
-        return and_(*[translate(col, spec)
-                      for col, spec in public["queue_filters"].items()])
-
-    filters = public["keyed_queue_filters"]
-    if resolved:
-        # The complement on the TARGET axis only: keys must still be non-blank,
-        # because a row without keys was never resolvable by a human and its
-        # filled target teaches nothing about a repeated judgement.
-        filters = {
-            col: ({"type": "notBlank"} if col in rule["target_fields"] else spec)
-            for col, spec in filters.items()
-        }
-    return and_(*[translate(col, spec) for col, spec in filters.items()])
+    if resolved and scope == SCOPE_KEYED:
+        named = enrichment_config.QUEUE_SCOPE_RESOLVED
+    else:
+        named = {
+            SCOPE_QUEUE: enrichment_config.QUEUE_SCOPE_QUEUE,
+            SCOPE_KEYED: enrichment_config.QUEUE_SCOPE_KEYED,
+            SCOPE_BLANK_KEY: enrichment_config.QUEUE_SCOPE_BLANK_KEY,
+        }.get(scope)
+        if named is None:
+            raise AnalysisRefused(f"unknown queue scope '{scope}'")
+    try:
+        return enrichment_config.queue_predicate_condition(table_model, rule,
+                                                           scope=named)
+    except enrichment_config.QueuePredicateError as e:
+        raise AnalysisRefused(str(e))
 
 
 def iter_derived_rows(db, rule: dict, resolved: bool = False, limit: int = None,
@@ -297,6 +294,16 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
     views leave exactly ONE candidate is mechanically resolvable (that is ①),
     while >=2 candidates is exactly the judgement the queue is for.
 
+    A ROW IS ONE CLASS; A COLUMN IS ONE VERDICT  [2026-08-05]
+    On a multi-target rule those are not the same statement, and this used to
+    pretend they were: `any(single)` filed a row under `resolvable` the moment ONE
+    of its blank columns resolved, so a row that ① can only half finish reported
+    as needing no human at all. The row classes now distinguish fully from
+    `partially_resolvable`, and `target_verdicts` carries the per-COLUMN account
+    beside them - which column was ambiguous, which returned nothing, which no
+    view declares a candidate for. Those are three different instructions to
+    whoever reads the report.
+
     HONEST LIMITS (stated, not hidden):
     - The bug class is detected by COLUMN NAME on the source table. A source
       column carrying the value under a DIFFERENT name cannot be found without a
@@ -311,6 +318,10 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
     counts = {}
     samples = {}
     reason_detail = {}
+    # COLUMN grain, beside the row-grain `counts`: {target_field: {"single"|reason: n}}.
+    # `counts` can only put a row in one class, so on a multi-target rule it cannot
+    # say which COLUMN was ambiguous and which was simply never asked. This can.
+    target_verdicts = {}
 
     target_fields = list(rule["target_fields"])
     src_cfg = crud.TABLE_CONFIG.get(rule["source_table"], {})
@@ -380,12 +391,26 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
             bump(CLS_UNPROBED, r, f"reference probe budget ({probe_limit}) exhausted")
             continue
         probed += 1
+        # ONE VERDICT PER BLANK COLUMN, and the row's class is a function of the
+        # SET of them - not of the first one that happened to succeed.
         verdicts = [enrichment_candidates.resolve_target_candidate(db, rule, r["keys"], t)
                     for t in blanks]
-        if any(v["status"] == enrichment_candidates.STATUS_SINGLE for v in verdicts):
-            single = next(v for v in verdicts if v["status"] == enrichment_candidates.STATUS_SINGLE)
-            bump(CLS_RESOLVABLE, r,
-                 f"{single['target_field']}={single['value']!r} (support {single['support']})")
+        for v in verdicts:
+            name = ("single" if v["status"] == enrichment_candidates.STATUS_SINGLE
+                    else v["reason"])
+            slot = target_verdicts.setdefault(v["target_field"], {})
+            slot[name] = slot.get(name, 0) + 1
+        singles = [v for v in verdicts if v["status"] == enrichment_candidates.STATUS_SINGLE]
+        still_open = [v for v in verdicts if v["status"] != enrichment_candidates.STATUS_SINGLE]
+        decided = ", ".join(f"{v['target_field']}={v['value']!r} (support {v['support']})"
+                            for v in singles[:SAMPLES_PER_CLASS])
+        if singles and not still_open:
+            bump(CLS_RESOLVABLE, r, decided)
+        elif singles:
+            bump(CLS_PARTIALLY_RESOLVABLE, r,
+                 decided + "; still open: " + ", ".join(
+                     f"{v['target_field']}:{v['reason']}"
+                     for v in still_open[:SAMPLES_PER_CLASS]))
         elif any(v["reason"] == enrichment_candidates.REASON_AMBIGUOUS for v in verdicts):
             amb = next(v for v in verdicts
                        if v["reason"] == enrichment_candidates.REASON_AMBIGUOUS)
@@ -408,6 +433,7 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
         "blank_decision_key": len(keyless),
         "counts": counts,
         "samples": samples,
+        "target_verdicts": target_verdicts,
         "no_evidence_reasons": reason_detail,
         "probe_limit": probe_limit,
         "probed": probed,

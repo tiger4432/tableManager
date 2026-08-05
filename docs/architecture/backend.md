@@ -165,7 +165,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | 메서드 · 경로 | 용도 |
 |---|---|
 | `GET /tables` | 구성된 테이블 목록 |
-| `GET /tables/{t}/data` | 페이징/지연 그리드 조회(q 검색, cols, order_by, filters, tx 필터, target_row_id 점프). 카운트 5초 캐시 |
+| `GET /tables/{t}/data` | 페이징/지연 그리드 조회(q 검색, cols, order_by, filters, tx 필터, target_row_id 점프). 카운트 5초 캐시. **[2026-08-05] `enrichment_queue=<규칙명>`(+`enrichment_queue_scope=queue\|keyed\|blank_key\|resolved`)** — 일반 필터가 아니라 **이름 붙은 서버측 술어**(`enrichment_config.queue_predicate_condition`, `main.apply_enrichment_queue_predicate`). 🔴 컬럼 간 OR(「target 중 하나라도 blank」)은 필터 DSL이 표현하지 못하므로 **DSL을 넓히는 대신 질문에 이름을 줬다** — DSL을 넓히면 그 표면을 기존 캘러 전부가 상속한다. 규칙 미존재·테이블 불일치·미지 스코프는 **400**(무필터 200이 「큐를 물었다」처럼 보이는 것을 막는다). count 캐시 키에도 들어간다 |
 | `GET /tables/{t}/schema` | columns, column_types, business_key, composite_key_source, map_key_columns, map_push_ok, **`virtual_columns`**. 아래 §2.2 |
 | `GET /tables/{t}/columns/{c}/values` | **[F3] 고유값 조회 — 입력 제안(드롭다운)의 전제 프리미티브.** `?prefix=&limit=` → `{table, column, prefix, values[], truncated, limit, unavailable_reason}`. 아래 §2.1 |
 | `GET /tables/{t}/{row_id}` | 단건(전 소스 병합 메타 포함) |

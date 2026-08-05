@@ -38,13 +38,16 @@ AN_TABLES = {
         "composite_key_separator": "_",
         "column_types": {
             "wafer_key": "string", "lot": "string", "slot": "string",
-            "wafer_id": "string", "chip_count": "number",
+            # `owner` is the SECOND target used by the per-column tests below. It
+            # is deliberately absent from `enan_test_src`, so it also exercises
+            # `unchecked_targets` (no same-name source column to compare).
+            "wafer_id": "string", "owner": "string", "chip_count": "number",
         },
     },
     "enan_test_hist": {
         "business_key": "hist_id",
         "column_types": {"hist_id": "string", "lot": "string", "slot": "string",
-                         "wafer_id": "string"},
+                         "wafer_id": "string", "owner": "string"},
     },
     # Single-column decision key, to prove ②'s `no_proper_subset` refusal.
     "enan_test_single_src": {
@@ -61,6 +64,13 @@ NARROW = {
     "label": "narrow",
     "query": "SELECT wafer_id FROM enan_test_hist WHERE lot = :lot AND slot = :slot",
     "candidate_for": {"wafer_id": "wafer_id"},
+}
+# Second target, same grain, so the two columns are asked the same question of the
+# same key and only the ANSWERS differ.
+OWNER = {
+    "label": "owner",
+    "query": "SELECT owner FROM enan_test_hist WHERE lot = :lot AND slot = :slot",
+    "candidate_for": {"owner": "owner"},
 }
 
 
@@ -659,3 +669,275 @@ def test_classify_names_blank_key_rows_and_totals_the_whole_queue(an_env):
     assert sum(res["counts"].values()) == 3
     detail = res["samples"][enrichment_analysis.CLS_BLANK_DECISION_KEY][0]["detail"]
     assert "lot" in detail, f"the sample must name WHICH key is missing (got {detail!r})"
+
+
+# ---------------------------------------------------------------------------
+# Ambiguity is per COLUMN, not per row  [2026-08-05 user ruling]
+# ---------------------------------------------------------------------------
+
+def _two_target_rule(tmp_path, **overrides):
+    """Rewrite the ISOLATED rules file with a two-target rule and reload it."""
+    path = tmp_path / "enrichment_rules.json"
+    path.write_text(json.dumps({"enan_rule": _rule(
+        target_fields=["wafer_id", "owner"],
+        reference_views=[dict(NARROW), dict(OWNER)], **overrides),
+        "enan_single": SINGLE_RULE}), encoding="utf-8")
+    return _loaded()
+
+
+def _seed_split_verdict(an_env):
+    """One key whose two history rows disagree on wafer_id and agree on owner."""
+    _seed(an_env, "enan_test_src",
+          [{"log_key": "p1", "lot": "P1", "slot": "S1", "chip_id": "C1"}])
+    _seed(an_env, "enan_test_hist", [
+        {"hist_id": "ph1", "lot": "P1", "slot": "S1", "wafer_id": "WF_A", "owner": "OPS"},
+        {"hist_id": "ph2", "lot": "P1", "slot": "S1", "wafer_id": "WF_B", "owner": "OPS"},
+    ])
+    _seed(an_env, "enan_test_derived", [{"wafer_key": "P1_S1", "lot": "P1", "slot": "S1"}])
+
+
+def test_a_half_decidable_row_is_partially_resolvable_not_resolvable(an_env, tmp_path):
+    """`any(single)` used to file this row under `resolvable` and lose the rest.
+
+    The row is not free: a person still has to settle `wafer_id`. Reporting it as
+    mechanically resolvable understated the remaining work by exactly the rows the
+    sweep can only half finish. `target_verdicts` carries the column-grain account
+    the row class cannot: which column was ambiguous, which was decided.
+    """
+    rule = _two_target_rule(tmp_path)
+    _seed_split_verdict(an_env)
+    res = enrichment_analysis.classify_queue(an_env, rule, log=lambda *_: None)
+
+    assert res["counts"].get(enrichment_analysis.CLS_PARTIALLY_RESOLVABLE) == 1
+    assert res["counts"].get(enrichment_analysis.CLS_RESOLVABLE) is None, \
+        "a row with an undecidable column is not 'needs no human'"
+    assert res["target_verdicts"]["owner"] == {"single": 1}
+    assert res["target_verdicts"]["wafer_id"] == {
+        enrichment_candidates.REASON_AMBIGUOUS: 1}
+    assert sum(res["counts"].get(c, 0)
+               for c in enrichment_analysis.REAL_WORK_CLASSES) == 1, \
+        "the residual judgement must still be counted as work"
+
+
+def test_a_fully_decidable_row_stays_in_the_plain_resolvable_class(an_env, tmp_path):
+    """The control for the test above: without a split verdict the class is unchanged.
+
+    Without this, `partially_resolvable` could be swallowing every multi-target row
+    and the assertion above would pass for the wrong reason.
+    """
+    rule = _two_target_rule(tmp_path)
+    _seed(an_env, "enan_test_src",
+          [{"log_key": "q1", "lot": "Q1", "slot": "S1", "chip_id": "C1"}])
+    _seed(an_env, "enan_test_hist",
+          [{"hist_id": "qh1", "lot": "Q1", "slot": "S1", "wafer_id": "WF_Q", "owner": "OPS"}])
+    _seed(an_env, "enan_test_derived", [{"wafer_key": "Q1_S1", "lot": "Q1", "slot": "S1"}])
+
+    res = enrichment_analysis.classify_queue(an_env, rule, log=lambda *_: None)
+    assert res["counts"].get(enrichment_analysis.CLS_RESOLVABLE) == 1
+    assert res["counts"].get(enrichment_analysis.CLS_PARTIALLY_RESOLVABLE) is None
+
+
+def test_the_sweep_fills_the_decidable_column_and_reports_the_row_as_partly_filled(
+        an_env, tmp_path):
+    """End to end through the sweep: a partial fill is a WRITE and reads as progress.
+
+    The stored values are asserted before the counters - a mutation that trips only
+    a counter would otherwise leave the real question unanswered.
+    """
+    rule = _two_target_rule(tmp_path, auto_confirm=True)
+    _seed_split_verdict(an_env)
+    stats = enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=True,
+                                                       log=lambda *_: None)
+    m = models.DYNAMIC_TABLES["enan_test_derived"]
+    row = an_env.query(m).filter(m.business_key_val == "P1_S1").first()
+    assert crud.clean_str_value(row.owner) == "OPS"
+    assert crud.clean_str_value(row.wafer_id) == ""
+
+    assert stats["rows_partly_confirmed"] == 1 and stats["rows_fully_confirmed"] == 0
+    assert stats["written_cells"] == 1
+    assert stats["per_target"]["wafer_id"]["refused"] == {
+        enrichment_candidates.REASON_AMBIGUOUS: 1}
+
+
+def test_a_partly_filled_row_stays_in_the_queue_predicate_ANY_TARGET_BLANK(an_env, tmp_path):
+    """The defect this test was WRITTEN to document, now asserted repaired.
+
+    WHAT IT SAID WHEN IT WAS RED  (kept verbatim, because the record is the point)
+        "`queue_filters` is `{target: blank}` per target and every consumer ANDs
+        the columns together (`_queue_condition`; `main.apply_column_filters`
+        calls `query.filter` once per column). So on a multi-target rule the queue
+        means EVERY target blank, not ANY - and the moment one column is filled
+        the row stops being in the queue while its sibling is still blank. Same
+        shape as N36: a row with work left, silently counted as answered."
+
+        "Both live rules in `enrichment_rules.json` declare two target fields, so
+        this is not hypothetical, and `confirm_keys` already writes per column -
+        the partial fill above reaches it today."
+
+    THE RULING [2026-08-05]: a row stays in the list while ANY target is still
+    blank. The repair is a NAMED server-side predicate
+    (`enrichment_config.queue_predicate_condition`), not a wider filter DSL - the
+    cross-column OR is a shape `operator`/`conditions` cannot express, and every
+    existing caller would have inherited it.
+
+    `queue_filters` is still emitted and still means what it always meant. It is a
+    general filter, additive and unchanged; it is simply no longer THE queue.
+    """
+    rule = _two_target_rule(tmp_path)
+    public = enrichment_config.to_public_rule(rule)
+    assert public["queue_filters"] == {"wafer_id": {"type": "blank"},
+                                       "owner": {"type": "blank"}}, \
+        "the general filter is unchanged: one blank spec per target"
+    assert public["queue_predicate"]["value"] == rule["name"], \
+        "the queue is asked for BY NAME now, so the name has to be on the wire"
+
+    # `composite_key_source` is [lot, slot], so the business key is composed - the
+    # explicit `wafer_key` does not become the identity.
+    _seed(an_env, "enan_test_derived", [
+        {"wafer_key": "B1_S1", "lot": "B1", "slot": "S1"},
+        {"wafer_key": "H1_S1", "lot": "H1", "slot": "S1", "owner": "OPS"},
+        # The control: BOTH targets filled. Without it "any blank" and "no
+        # predicate at all" would be indistinguishable on this fixture.
+        {"wafer_key": "F1_S1", "lot": "F1", "slot": "S1",
+         "owner": "OPS", "wafer_id": "WF_F"},
+    ])
+    seen = {r["business_key_val"] for r in enrichment_analysis.iter_derived_rows(
+        an_env, rule, scope=enrichment_analysis.SCOPE_QUEUE)}
+    assert "B1_S1" in seen, "fixture is inert if the all-blank row is missing too"
+    assert "H1_S1" in seen, (
+        "a row whose `wafer_id` is still blank left the queue because a DIFFERENT "
+        "target was filled - the row still needs work")
+    assert "F1_S1" not in seen, (
+        "a row with every target filled is not work, and a predicate that keeps it "
+        "is not a predicate")
+
+
+def _mixed_queue_population(an_env):
+    """One row of every kind the queue predicate has to sort out. Returns 4 rows."""
+    _seed(an_env, "enan_test_derived", [
+        {"wafer_key": "B1_S1", "lot": "B1", "slot": "S1"},                    # both blank
+        {"wafer_key": "H1_S1", "lot": "H1", "slot": "S1", "owner": "OPS"},    # half filled
+        {"wafer_key": "F1_S1", "lot": "F1", "slot": "S1",                     # fully filled
+         "owner": "OPS", "wafer_id": "WF_F"},
+        # Blank decision key (`slot` missing) AND work left: in the queue, and in
+        # the blank_key half of it.
+        {"wafer_key": "K1_", "lot": "K1"},
+    ])
+
+
+def test_every_consumer_of_the_queue_reaches_the_one_predicate(an_env, client, tmp_path):
+    """The route, the walk and ④ must return the SAME rows, not merely the same count.
+
+    Two numbers that disagreed about which population they counted is what N36
+    cost a round, and the ruling names this as the first constraint: one
+    definition, every consumer. So this compares row-id SETS - a count-only
+    assertion passes for two predicates that select different rows of equal size.
+    """
+    import main
+
+    rule = _two_target_rule(tmp_path)
+    _mixed_queue_population(an_env)
+
+    walked = {r["row_id"] for r in enrichment_analysis.iter_derived_rows(
+        an_env, rule, scope=enrichment_analysis.SCOPE_QUEUE)}
+    assert len(walked) == 3, f"fixture premise: 3 of the 4 rows still need work ({walked})"
+
+    main.TABLE_COUNT_CACHE.clear()
+    res = client.get("/tables/enan_test_derived/data",
+                     params={"skip": 0, "limit": 50, "order_by": "row_id",
+                             "enrichment_queue": "enan_rule"})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    served = {row["row_id"] for row in body["data"]}
+    assert served == walked, (
+        "the worklist route and the analysis walk disagree about which rows are in "
+        "the queue - they are supposed to be the same function")
+    assert body["total"] == len(walked), (
+        f"the remainder the progress bar subtracts is {body['total']}, but the queue "
+        f"holds {len(walked)} rows")
+
+    res4 = enrichment_analysis.classify_queue(an_env, rule, log=lambda *_: None)
+    assert res4["queue_size"] == len(walked), (
+        "④ accounts for a different number of rows than the operator is shown")
+
+
+def test_the_queue_scopes_partition_it_and_resolved_is_its_exact_complement(
+        an_env, client, tmp_path):
+    """The arithmetic the badge depends on, asserted on rows rather than trusted.
+
+    `keyed` + `blank_key` must partition `queue` (that is what lets the blank-key
+    count be READ rather than subtracted), and `resolved` must be exactly the rows
+    the queue does not hold. Under the old EVERY-target-blank spelling a partly
+    filled row was in NEITHER queue nor resolved, which is where the defect lived.
+    """
+    import main
+
+    rule = _two_target_rule(tmp_path)
+    _mixed_queue_population(an_env)
+
+    def walk(scope, **kw):
+        return {r["row_id"] for r in enrichment_analysis.iter_derived_rows(
+            an_env, rule, scope=scope, **kw)}
+
+    queue = walk(enrichment_analysis.SCOPE_QUEUE)
+    keyed = walk(enrichment_analysis.SCOPE_KEYED)
+    blank_key = walk(enrichment_analysis.SCOPE_BLANK_KEY)
+    resolved = walk(enrichment_analysis.SCOPE_KEYED, resolved=True)
+
+    assert keyed | blank_key == queue and not (keyed & blank_key), (
+        f"keyed({keyed}) and blank_key({blank_key}) do not partition queue({queue})")
+    assert blank_key, "fixture is inert without a blank-key row"
+    assert resolved & queue == set(), "a row cannot be both answered and outstanding"
+    m = models.DYNAMIC_TABLES["enan_test_derived"]
+    every_row = {r[0] for r in an_env.query(m.row_id).all()}
+    assert resolved | queue == every_row, (
+        f"{sorted(every_row - (resolved | queue))} is neither outstanding nor answered - "
+        f"that gap is exactly where the partly filled row used to disappear")
+
+    # And the same four answers through the route, which is where the client asks.
+    for scope, expected in [("queue", queue), ("keyed", keyed),
+                            ("blank_key", blank_key), ("resolved", resolved)]:
+        main.TABLE_COUNT_CACHE.clear()
+        body = client.get("/tables/enan_test_derived/data",
+                          params={"skip": 0, "limit": 50, "order_by": "row_id",
+                                  "enrichment_queue": "enan_rule",
+                                  "enrichment_queue_scope": scope}).json()
+        assert {r["row_id"] for r in body["data"]} == expected, f"scope '{scope}'"
+        assert body["total"] == len(expected), (
+            f"scope '{scope}': total {body['total']} != {len(expected)} rows served")
+
+
+def test_the_route_refuses_a_queue_it_cannot_compose_instead_of_answering_everything(
+        an_env, client, tmp_path):
+    """The refusal, and the count cache that would otherwise leak the wrong total.
+
+    Answering an unfiltered page to a caller who asked for the queue returns MORE
+    rows than were asked for while the response still implies the queue - the
+    silent-200 class this codebase refuses in `?cols=` and in the virtual-join
+    filter path. And the 5s count cache is keyed on the query, so the predicate
+    has to be part of that key or the unfiltered total is served AS the remainder.
+    """
+    import main
+
+    _two_target_rule(tmp_path)
+    _mixed_queue_population(an_env)
+
+    assert client.get("/tables/enan_test_derived/data",
+                      params={"enrichment_queue": "no_such_rule"}).status_code == 400
+    assert client.get("/tables/enan_test_derived/data",
+                      params={"enrichment_queue": "enan_rule",
+                              "enrichment_queue_scope": "everything"}).status_code == 400
+    # A rule whose queue belongs to a different table: its target columns mean
+    # nothing here, so this is a refusal and not an empty page.
+    assert client.get("/tables/enan_test_derived/data",
+                      params={"enrichment_queue": "enan_single"}).status_code == 400
+
+    main.TABLE_COUNT_CACHE.clear()
+    unfiltered = client.get("/tables/enan_test_derived/data",
+                            params={"skip": 0, "limit": 1}).json()["total"]
+    queued = client.get("/tables/enan_test_derived/data",
+                        params={"skip": 0, "limit": 1,
+                                "enrichment_queue": "enan_rule"}).json()["total"]
+    assert unfiltered == 4 and queued == 3, (
+        f"the count cache served the unfiltered total ({unfiltered}) as the queue "
+        f"remainder ({queued}) - the predicate is missing from the cache key")

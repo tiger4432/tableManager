@@ -1268,6 +1268,52 @@ def apply_column_filters(query, table_model, table_name, filters, binder):
     return query
 
 
+def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, scope):
+    """`?enrichment_queue=<rule name>` -> query. THE named queue predicate.
+
+    🔴 THIS IS NOT A FILTER, AND THAT IS THE POINT  [2026-08-05, user ruling]
+        "Which rows still need work" is one specific question the rule already
+        declares the answer to. It used to be shipped to the client as a filter
+        dict (`queue_filters`) and applied through `?filters=`, which put its
+        DEFINITION in the caller: every consumer ANDs the per-column specs, so on
+        a multi-target rule the queue meant EVERY target blank and filling one
+        column dropped the row out of the list while its sibling was still empty.
+        A row leaving the queue with work in it - the same shape as N36.
+
+        The queue needs a cross-column OR. Rather than grow the public filter DSL
+        (a surface every existing caller would inherit) the client now asks for
+        the predicate BY NAME and the server composes it from the rule's own
+        `target_fields`. `?filters=` is untouched and still means what it meant.
+
+    A 400 rather than a silent fallback: answering an unfiltered page to a caller
+    who asked for the queue would return MORE rows than were asked for while the
+    response implied the queue - the same refusal `?cols=` and the virtual-join
+    filter path make.
+    """
+    if not rule_name:
+        return query
+    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rule = next((r for r in rules if r["name"] == rule_name), None)
+    if rule is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"enrichment 규칙 '{rule_name}'을(를) 찾을 수 없습니다. "
+                    f"큐 조건을 만들 수 없으므로 전체를 돌려주지 않습니다."))
+    if rule["derived_table"] != table_name:
+        # The predicate is composed from THIS rule's target fields; against any
+        # other table those columns mean nothing (or do not exist).
+        raise HTTPException(
+            status_code=400,
+            detail=(f"규칙 '{rule_name}'의 큐는 '{rule['derived_table']}' 테이블의 "
+                    f"것입니다 (요청: '{table_name}')."))
+    try:
+        cond = enrichment_config.queue_predicate_condition(
+            table_model, rule, scope=scope or enrichment_config.QUEUE_SCOPE_QUEUE)
+    except enrichment_config.QueuePredicateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return query.filter(cond)
+
+
 def apply_search_filter(query, table_model, table_name, q, cols, binder):
     """`?q=` (+ optional `?cols=` scope) -> query. Shared by the grid and the export.
 
@@ -1345,11 +1391,17 @@ def get_table_data(
     target_row_id: str = None, # [신규] 특정 행 위치 추적 점프 기능
     transaction_id: str = None, # [NEW] 특정 트랜잭션 결과만 필터링
     filters: str = None, # [NEW] AG-Grid 컬럼 필터링 조건
+    enrichment_queue: str = None,       # [2026-08-05] 이름으로 요청하는 큐 술어 (규칙명)
+    enrichment_queue_scope: str = None, # queue(기본) | keyed | blank_key | resolved
     db: Session = Depends(get_db)
 ):
     """
     Lazy Loading을 위한 페이징 엔드포인트
     target_row_id가 있으면 해당 행이 포함된 페이지의 skip을 자동으로 계산합니다.
+
+    `enrichment_queue`는 일반 필터가 아니라 **이름 붙은 서버측 술어**입니다
+    (`apply_enrichment_queue_predicate` 참조). `filters`와 함께 쓸 수 있고 서로
+    AND로 결합됩니다.
     """
     t_total_start = time.time()
     t_target = 0.0
@@ -1375,6 +1427,10 @@ def get_table_data(
 
     # [NEW] AG-Grid 컬럼 필터링
     query = apply_column_filters(query, table_model, table_name, filters, binder)
+
+    # [2026-08-05] 이름 붙은 큐 술어 (일반 필터 DSL이 표현할 수 없는 컬럼 간 OR)
+    query = apply_enrichment_queue_predicate(query, table_model, table_name,
+                                             enrichment_queue, enrichment_queue_scope)
 
     # ── [Step 0] 검색 필터 구성 (실제 컬럼 기준 ilike 다중 OR 검색) ──
     query = apply_search_filter(query, table_model, table_name, q, cols, binder)
@@ -1444,6 +1500,12 @@ def get_table_data(
     if cols: cache_key_parts.append(f"cols:{cols}")
     if transaction_id: cache_key_parts.append(f"tx:{transaction_id}")
     if filters: cache_key_parts.append(f"filters:{filters}")
+    # The named queue predicate narrows the query exactly like `?filters=` does, so
+    # it must narrow the CACHE KEY too. Omitting it would serve the unfiltered
+    # table total as the queue remainder for 5 seconds - a progress bar reading
+    # 0% with everything answered, which is N36 wearing the other face.
+    if enrichment_queue:
+        cache_key_parts.append(f"eq:{enrichment_queue}:{enrichment_queue_scope or ''}")
     cache_key = "|".join(cache_key_parts)
     cache_ttl = 5.0
     

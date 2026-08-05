@@ -360,7 +360,7 @@ def test_enrichment_rules_api_contract_shape(client, enrich_env):
     assert set(rule.keys()) == {
         "name", "source_table", "derived_table", "decision_key",
         "target_fields", "list_columns", "reference_views", "queue_filters",
-        "keyed_queue_filters", "alignment",
+        "keyed_queue_filters", "alignment", "queue_predicate",
     }
     # 이 픽스처 규칙은 정렬을 선언하지 않았다 → false. 키는 **항상** 있다: 없으면 클라가
     # 「서버가 이 필드를 모른다」와 「이 규칙은 정렬 대상이 아니다」를 가르려고 버전 검사를
@@ -380,6 +380,17 @@ def test_enrichment_rules_api_contract_shape(client, enrich_env):
         "equipment": {"type": "notBlank"},
         "event_time": {"type": "notBlank"},
         "wafer_id": {"type": "blank"},
+    }
+    # [2026-08-05 재정] 큐는 **이름으로** 요청한다. 위의 두 필터 dict는 일반 필터로서
+    # 그대로 살아 있지만(가산적), 다중 target 규칙에서 그것들은 큐가 아니다 —
+    # 캘러가 컬럼별 spec을 AND로 묶으므로 「전 target blank」가 되고, 한 컬럼만 채워도
+    # 형제 컬럼이 빈 채로 행이 큐에서 빠진다. 클라는 이 필드의 **부재**로 구버전 서버를
+    # 판정한다(있으면 이름으로 묻고, 없으면 queue_filters로 물러난다).
+    assert rule["queue_predicate"] == {
+        "param": "enrichment_queue",
+        "value": "bonding_wafer_attribution",
+        "scope_param": "enrichment_queue_scope",
+        "scopes": ["queue", "keyed", "blank_key", "resolved"],
     }
     # 참조뷰는 label + candidate_for만 노출 — 쿼리 본문/limit은 절대 노출 금지.
     # `candidate_for`는 2026-07-30 [F9] 총괄 승인으로 추가된 **가산적** 필드다. 노출되는

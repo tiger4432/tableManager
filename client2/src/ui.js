@@ -5,6 +5,8 @@ import { getLocalTimeString } from './utils.js';
 import { updateGridSortState } from './grid.js';
 import { ensureCellObject } from './grid.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
+// 결손 배지가 세는 것은 enrichment 큐다. 그 요청의 유일한 철자.
+import { queueQuery } from './enrichment_queue.js';
 
 export function setupBeforeUnloadWarning() {
   window.onbeforeunload = (e) => {
@@ -363,11 +365,14 @@ export async function updateEnrichmentBadge(options = {}) {
     if (!options.force && cached && (Date.now() - cached.ts) < ENRICHMENT_COUNT_TTL) {
       total = cached.total;
     } else {
-      // 큐 진입 조건은 서버 단일 조성(queue_filters) — 워크리스트/어드민 카운트와 동일 수치 보장
-      const filters = rule.queue_filters
-        || Object.fromEntries((rule.target_fields || []).map(f => [f, { type: 'blank' }]));
+      // 큐를 **이름으로** 요청한다(enrichment_queue.js) — 워크리스트/어드민 카운트와
+      // 같은 서버 술어를 타므로 세 수가 같은 모집단이다. 종전처럼 필터 dict를 실어
+      // 보내면 소비자가 그것을 논리곱해 「target 전부 blank」가 되고, target이 둘인
+      // 규칙에서 배지가 워크리스트보다 적게 센다.
+      const queue = queueQuery(rule);
+      if (!queue) { badge.style.display = 'none'; return; }
       const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
-        `?skip=0&limit=1&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+        `?skip=0&limit=1&${queue}`;
       const res = await fetch(url);
       if (!res.ok) { badge.style.display = 'none'; return; }
       const result = await res.json();

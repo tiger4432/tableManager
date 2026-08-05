@@ -51,6 +51,29 @@ ABSENCE IS NOT ZERO (the refusal rules)
     A refused key stays in the queue, visibly unresolved. Nothing is silently
     turned from unknown into a confident wrong value.
 
+A COLUMN IS DECIDED ON ITS OWN EVIDENCE  [2026-08-05, user ruling]
+    Ambiguity is a property of a COLUMN, not of a row. Two candidates that agree
+    on `target_a` and differ on `target_b` have DETERMINED `target_a`; refusing
+    both would be all-or-nothing where the evidence is not.
+    `resolve_target_candidate` was already per (key, field) - the probe groups a
+    single declared column - and `confirm_keys` already loops the fields
+    independently, so the decision grain needed nothing new. What was missing was
+    the ACCOUNT of it: refusals were tallied in one flat bag, so "column X was
+    ambiguous" and "column Y was never asked" arrived as an undifferentiated
+    total. `per_target` (below) indexes the same events by column.
+
+    THE THREE FACTS A BLANK CAN CARRY, kept apart deliberately:
+      - `ambiguous`      - we compared, and the candidates disagreed. A human
+                           must judge; more evidence will not help.
+      - `no_candidate`   - we asked, and the declared views returned nothing.
+                           Go find evidence.
+      - `not_declared`   - we NEVER ASKED. No reference view declares a candidate
+                           column for this target, so no comparison happened.
+                           This is a config gap, and it used to be invisible
+                           whenever SOME other target on the same rule WAS
+                           declared: the undeclared one was skipped in silence
+                           and its blank read exactly like a judged one.
+
 SAME SHAPE AS M3 (`auto_register_map_meta`, map_meta_registrar.py)
     Absent-only; writes carry `SOURCE_NAME` which is UNREGISTERED in
     `crud.SOURCE_PRIORITY` and therefore resolves to priority 99 - the lowest -
@@ -451,6 +474,26 @@ def find_unresolved_cells(db, derived_table: str, row_ids: list, target_fields: 
     return {(r, c) for r in row_ids for c in target_fields if (r, c) not in taken}
 
 
+def _bump_target(st: dict, field: str, reason=None):
+    """Record ONE target column's outcome, in both grains.
+
+    The flat `refused` bag is the vocabulary every existing reader already
+    consumes (`log_stats`, the CLI, the admin dry-run and `retroactive`), so it
+    keeps counting exactly what it counted - this adds an INDEX, it does not mint
+    a second set of names. `per_target` is the same events keyed by column, which
+    is the grain the decision is actually made at.
+
+    `reason=None` means the column was confirmed. Row-grain refusals
+    (`no_row_identity`) are not routed here: they belong to no column.
+    """
+    slot = st["per_target"].setdefault(field, {"confirmed": 0, "refused": {}})
+    if reason is None:
+        slot["confirmed"] += 1
+        return
+    slot["refused"][reason] = slot["refused"].get(reason, 0) + 1
+    st["refused"][reason] = st["refused"].get(reason, 0) + 1
+
+
 def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                  stats: dict = None, tx_prefix: str = None) -> dict:
     """Resolve + (optionally) write single candidates for a set of derived rows.
@@ -468,6 +511,25 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
     stamped `SOURCE_NAME_PARTIAL_KEY` (see that constant). The stamp is per ITEM
     because partiality is a property of the ROW's key, not of the target field -
     every field on that row was decided from the same surviving columns.
+
+    PARTIAL BY TARGET IS NOT STAMPED, AND THAT IS THE ANSWER, NOT AN OMISSION
+    A partial-KEY decision needs a name because the fact lives on the row and no
+    per-cell record carries it: every cell of that row was decided from a
+    diminished key, and nothing in `cell_sources` says so. A partial-TARGET fill
+    is the opposite - it IS per cell. `cell_sources` has one row per (row_id,
+    column_name), so "which columns did the sweep decide" is already a predicate
+    over `source_name`, and the columns it refused have NO source row at all.
+    Adding a third source name would restate what the table's own grain says.
+
+    THREE GRAINS OF COUNTER, ALL FROM ONE WALK
+      - CELL:   `confirmed` / `written_cells` - already partial-friendly; a
+                2-of-3 fill has always scored two.
+      - COLUMN: `per_target` - which column was decided, and for the rest, WHY.
+      - ROW:    `rows_fully_confirmed` / `rows_partly_confirmed` /
+                `rows_unconfirmed`, which partition `rows_examined`. A sweep that
+                fills 2 of 3 columns on a thousand rows did real work, and
+                without this grain the only row-level number was `queue_size` -
+                so that work reported as a thousand rows still queued.
     """
     from database import crud, schemas
 
@@ -478,11 +540,23 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
     st.setdefault("written_cells", 0)
     st.setdefault("refused", {})
     st.setdefault("samples", [])
+    # ROW grain. These three are a partition of `rows_examined` - asserted in the
+    # tests, because a partition that silently stops adding up is how a progress
+    # number starts lying (N36).
+    st.setdefault("rows_examined", 0)
+    st.setdefault("rows_fully_confirmed", 0)
+    st.setdefault("rows_partly_confirmed", 0)
+    st.setdefault("rows_unconfirmed", 0)
+    # COLUMN grain: {target_field: {"confirmed": n, "refused": {reason: n}}}.
+    st.setdefault("per_target", {})
 
     derived_table = rule["derived_table"]
     target_fields = candidate_target_fields(rule)
+    declared = set(target_fields)
     if not target_fields:
         st["refused"][REASON_NOT_DECLARED] = st["refused"].get(REASON_NOT_DECLARED, 0) + len(keyed_rows)
+        st["rows_examined"] += len(keyed_rows)
+        st["rows_unconfirmed"] += len(keyed_rows)
         return st
 
     # Absent-only gate, batched before any per-key probing: a cell that already
@@ -492,6 +566,7 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
 
     items = []
     for entry in keyed_rows:
+        st["rows_examined"] += 1
         row_id = entry.get("row_id")
         business_key_val = entry.get("business_key_val")
         # Addressability is checked ONCE per row, before any probing, because a
@@ -501,22 +576,34 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
         if not row_id and not crud.clean_str_value(business_key_val):
             st["refused"][REASON_NO_ROW_IDENTITY] = \
                 st["refused"].get(REASON_NO_ROW_IDENTITY, 0) + 1
+            st["rows_unconfirmed"] += 1
             continue
         blanks = set(entry.get("blank_targets") or target_fields)
+        # A blank target that no view declares a candidate column for was NEVER
+        # ASKED. It used to be skipped in silence whenever another target on the
+        # same rule was declared (the `not_declared` tally only fired when NONE
+        # was), so from outside it read identical to a column we compared and
+        # found ambiguous. Those are different facts and only one of them is a
+        # human's to settle.
+        for field in sorted(blanks - declared):
+            _bump_target(st, field, REASON_NOT_DECLARED)
         updates = {}
         partial_key = False
         for field in target_fields:
             if field not in blanks:
                 continue
             if row_id and (row_id, field) not in writable:
-                st["refused"][REASON_CELL_HAS_PROVENANCE] = \
-                    st["refused"].get(REASON_CELL_HAS_PROVENANCE, 0) + 1
+                _bump_target(st, field, REASON_CELL_HAS_PROVENANCE)
                 continue
             st["keys_examined"] += 1
             res = resolve_target_candidate(db, rule, entry.get("keys") or {}, field)
             if res["status"] != STATUS_SINGLE:
-                st["refused"][res["reason"]] = st["refused"].get(res["reason"], 0) + 1
+                # This column stays blank and its reason is recorded AGAINST THE
+                # COLUMN. The row carries on: a sibling column with unanimous
+                # candidates is still determined.
+                _bump_target(st, field, res["reason"])
                 continue
+            _bump_target(st, field, None)
             updates[field] = res["value"]
             partial_key = partial_key or bool(res.get("partial_key"))
             st["confirmed"] += 1
@@ -530,7 +617,15 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                     "blank_key_columns": list(res.get("blank_key_columns") or []),
                 })
         if not updates:
+            st["rows_unconfirmed"] += 1
             continue
+        # "Fully" is measured against THIS row's blank targets, not the rule's -
+        # a row whose only remaining blank was filled is finished, whatever its
+        # already-resolved siblings did earlier.
+        if len(updates) == len(blanks):
+            st["rows_fully_confirmed"] += 1
+        else:
+            st["rows_partly_confirmed"] += 1
         st["written_cells"] += len(updates)
         if apply:
             item = dict(updates)
@@ -557,16 +652,33 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
 
 
 def log_stats(rule_name: str, st: dict, apply: bool):
-    """One line that names every refusal reason with its count."""
+    """One line that names every refusal reason with its count.
+
+    Plus a second line, only when the rule has more than one target column: with
+    one column the per-column breakdown is the first line restated, and a log
+    that repeats itself gets skimmed.
+    """
     refused = st.get("refused") or {}
     detail = ", ".join(f"{k}={v}" for k, v in sorted(refused.items())) or "none"
     logger.info(
         "[Enrichment:%s] auto-confirm %s: %d key-field(s) probed, %d single candidate(s) "
-        "(%d on a partial decision key, source '%s'), %d cell(s) %s; refusals: %s",
+        "(%d on a partial decision key, source '%s'), %d cell(s) %s over %d row(s) "
+        "(%d complete, %d partly filled, %d untouched); refusals: %s",
         rule_name, "APPLY" if apply else "DRY-RUN", st.get("keys_examined", 0),
         st.get("confirmed", 0), st.get("confirmed_partial_key", 0), SOURCE_NAME_PARTIAL_KEY,
         st.get("written_cells", 0),
-        "written" if apply else "would be written", detail)
+        "written" if apply else "would be written",
+        st.get("rows_examined", 0), st.get("rows_fully_confirmed", 0),
+        st.get("rows_partly_confirmed", 0), st.get("rows_unconfirmed", 0), detail)
+    per_target = st.get("per_target") or {}
+    if len(per_target) > 1:
+        logger.info(
+            "[Enrichment:%s] auto-confirm per target column - %s", rule_name,
+            "; ".join(
+                f"{f}: {s['confirmed']} confirmed"
+                + (", " + ", ".join(f"{r}={n}" for r, n in sorted(s["refused"].items()))
+                   if s["refused"] else "")
+                for f, s in sorted(per_target.items())))
 
 
 class AutoConfirmCollector:

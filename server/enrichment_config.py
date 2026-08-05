@@ -656,11 +656,31 @@ def to_public_rule(rule: dict) -> dict:
     그대로 숨겨져 있다. 이 필드가 없으면 클라이언트는 「어느 뷰가 후보 원천인가」를
     **스스로 유도**해야 하고, 유도가 왜 위험한지는 이 모듈 상단 주석의 실 config가 보여준다.
 
-    queue_filters: the ONE server-composed definition of "a queue entry" for
-    the generic /tables/{t}/data filter DSL - EVERY TARGET FIELD BLANK, and
-    nothing else. The worklist, the admin missing-count, the main-grid badge and
-    the progress bar's remainder all consume this same object - one blank rule,
-    not four hand-built copies.
+    queue_predicate: THE queue, asked for BY NAME  [2026-08-05, user ruling]
+        The queue is not an arbitrary filter that happens to be shaped like one.
+        It is one specific question - which rows still need work - and the rule
+        already declares everything needed to answer it. Encoding it as a
+        client-visible filter dict put its definition in the CALLER and made its
+        meaning depend on how many targets a rule happens to declare: every
+        consumer ANDs the per-column specs, so on a multi-target rule
+        `queue_filters` means EVERY target blank, and filling one column dropped
+        the row out of the queue while its sibling was still blank. Same shape as
+        N36 - a row with work left, silently counted as answered - and both live
+        rules declare two targets, so it was reachable the day it was measured.
+
+        The answer is a NAMED server-side predicate, not a wider DSL: the queue
+        needs a cross-column OR, and growing the public filter grammar to express
+        it would hand that surface to every existing caller for the sake of one
+        question. So the client sends `?enrichment_queue=<rule name>` and the
+        server composes the condition from the rule's own `target_fields` -
+        `queue_predicate_condition` below is the single implementation and every
+        consumer reaches it. See that function for the four scopes.
+
+    queue_filters: the pre-existing GENERAL filter, kept working as what it is -
+    one `blank` spec per target field, which the caller conjoins. It is NOT the
+    queue on a multi-target rule (see above), and it is still emitted because
+    anything already asking for targets-blank in this shape must keep getting
+    that answer. New consumers take `queue_predicate`.
 
     WHY THE DECISION-KEY `notBlank` CONDITIONS ARE NO LONGER IN IT
     [2026-08-04, user ruling; boarded as N36]
@@ -721,4 +741,122 @@ def to_public_rule(rule: dict) -> dict:
         ],
         "queue_filters": queue_filters,
         "keyed_queue_filters": keyed_queue_filters,
+        # How to ASK for the queue. The client sends `param=value` (plus an
+        # optional `scope_param`) on `GET /tables/{derived}/data`; it does not
+        # compose the predicate. Its ABSENCE is how a client detects an old
+        # server and falls back to `queue_filters` - which is the old, wrong-on-
+        # multi-target answer, but it is the answer that server can give.
+        "queue_predicate": {
+            "param": QUEUE_PREDICATE_PARAM,
+            "value": rule["name"],
+            "scope_param": QUEUE_SCOPE_PARAM,
+            "scopes": list(QUEUE_SCOPES),
+        },
     }
+
+
+# ---------------------------------------------------------------------------
+# The named queue predicate — "which rows still need work"
+# ---------------------------------------------------------------------------
+
+# Query-parameter spelling on `GET /tables/{t}/data`. Named here, beside the rule
+# that answers it, so the route and the analysis cannot drift apart.
+QUEUE_PREDICATE_PARAM = "enrichment_queue"
+QUEUE_SCOPE_PARAM = "enrichment_queue_scope"
+
+# THE queue: at least one target field still blank. Nothing else.
+QUEUE_SCOPE_QUEUE = "queue"
+# The queue entries a human can actually work: every decision key present.
+QUEUE_SCOPE_KEYED = "keyed"
+# Its complement INSIDE the queue: at least one decision key blank. Together with
+# `keyed` this partitions the queue exactly, which is what keeps ④'s total equal
+# to the worklist remainder and the badge.
+QUEUE_SCOPE_BLANK_KEY = "blank_key"
+# The queue's complement on the target axis: every target filled AND every key
+# present. What ② learns from.
+QUEUE_SCOPE_RESOLVED = "resolved"
+QUEUE_SCOPES = (QUEUE_SCOPE_QUEUE, QUEUE_SCOPE_KEYED,
+                QUEUE_SCOPE_BLANK_KEY, QUEUE_SCOPE_RESOLVED)
+
+
+class QueuePredicateError(Exception):
+    """The named queue predicate could not be built. The message states why."""
+
+
+def _queue_spec_condition(table_model, rule: dict, col: str, spec: dict):
+    """One column's blank/notBlank condition, through the SHARED filter translator.
+
+    `column_filter.get_column_filter_condition` is the same translator
+    `GET /tables/{t}/data` runs, which in turn delegates blank/notBlank to
+    `crud.blank_sql_condition` / `crud.not_blank_sql_condition`. So this composes
+    a new SHAPE out of the existing vocabulary and does not spell "blank" a second
+    time. (`import column_filter`, NOT `main` - see that module's docstring: in
+    the scheduler and watcher processes `main` is not a stable name.)
+    """
+    import column_filter
+
+    cond = column_filter.get_column_filter_condition(table_model, col, spec)
+    if cond is None:
+        raise QueuePredicateError(
+            f"filter for column '{col}' could not be translated on table "
+            f"'{rule['derived_table']}' - is the column declared in table_config?")
+    return cond
+
+
+def queue_predicate_condition(table_model, rule: dict,
+                              scope: str = QUEUE_SCOPE_QUEUE):
+    """SQL condition for the named queue predicate. THE single implementation.
+
+    🔴 THE QUEUE IS *ANY* TARGET BLANK, NOT EVERY TARGET BLANK  [2026-08-05 ruling]
+        A row stays in the list while ANY target field is still blank. The
+        conjunctive spelling (`queue_filters`, one `blank` spec per target, ANDed
+        by whoever applies it) said EVERY, so filling one column of a two-target
+        rule silently removed the row while its sibling was still empty. That is
+        not a filter preference, it is rows leaving the queue with work in them.
+
+    WHY THIS IS NOT AN EXTENSION OF THE FILTER DSL
+        The repair needs a cross-column OR. The public DSL cannot express one -
+        `operator`/`conditions` combine specs for ONE column - and widening it
+        would grow a surface every existing caller inherits, to answer a question
+        only this rule asks. One named question, one implementation.
+
+    EVERY CONSUMER REACHES THIS FUNCTION. The worklist rows, the progress
+    remainder, the main-grid badge and the admin missing-count arrive through
+    `GET /tables/{t}/data?enrichment_queue=<rule>`; `classify_queue`, ②'s walk
+    and ①'s sweep arrive through `enrichment_analysis._queue_condition`. The
+    progress bar's DENOMINATOR stays unfiltered (every derived row) - the same
+    population this predicate is a subset of, which is the N36 invariant.
+
+    Scopes (`QUEUE_SCOPES`), and why `resolved` is now an exact complement:
+      queue     = ANY target blank
+      keyed     = queue AND every decision key non-blank
+      blank_key = queue AND at least one decision key blank
+      resolved  = every target non-blank AND every decision key non-blank
+    `keyed` + `blank_key` partition `queue`. And `resolved`'s target half is now
+    the exact negation of `queue`'s: under the old EVERY-blank spelling a partly
+    filled row was in NEITHER, which is precisely where the defect lived.
+    """
+    from sqlalchemy import and_, or_
+
+    if scope not in QUEUE_SCOPES:
+        raise QueuePredicateError(
+            f"unknown queue scope '{scope}' - expected one of {list(QUEUE_SCOPES)}")
+
+    targets = list(rule["target_fields"])
+    keys = list(rule["decision_key"])
+
+    def cond(col, kind):
+        return _queue_spec_condition(table_model, rule, col, {"type": kind})
+
+    if scope == QUEUE_SCOPE_RESOLVED:
+        return and_(*[cond(t, "notBlank") for t in targets],
+                    *[cond(k, "notBlank") for k in keys])
+
+    # The one shape the public DSL cannot express, and the whole reason this
+    # predicate has a name.
+    any_target_blank = or_(*[cond(t, "blank") for t in targets])
+    if scope == QUEUE_SCOPE_QUEUE:
+        return any_target_blank
+    if scope == QUEUE_SCOPE_KEYED:
+        return and_(any_target_blank, *[cond(k, "notBlank") for k in keys])
+    return and_(any_target_blank, or_(*[cond(k, "blank") for k in keys]))

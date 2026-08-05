@@ -70,8 +70,8 @@
 ```
 
 **클라이언트 소비 계약(확정 방향, 상세는 Server PM 위임 시 명세):**
-- 🆕 `GET /enrichment/rules` — 규칙 메타(derived_table 포함). 배지·페이지가 소비. **[2026-07-28 `1fefd12`] `queue_filters` · [2026-08-04] `keyed_queue_filters`** — 아래 §5.1 참조.
-- ♻️ 워크리스트/결손 카운트/진행률 — 기존 `GET /tables/{derived}/data` + **서버가 조성한 `queue_filters`** 재사용(신규 엔드포인트 없음). 「판단키 없음 N건」도 같은 엔드포인트를 `keyed_queue_filters`로 한 번 더 부른 **차분**이다.
+- 🆕 `GET /enrichment/rules` — 규칙 메타(derived_table 포함). 배지·페이지가 소비. **[2026-07-28 `1fefd12`] `queue_filters` · [2026-08-04] `keyed_queue_filters` · [2026-08-05] `queue_predicate`** — §5.1 / **§5.1-bis**(큐를 이름으로 요청한다) 참조.
+- ♻️ 워크리스트/결손 카운트/진행률 — 기존 `GET /tables/{derived}/data` 재사용(신규 엔드포인트 없음). **[2026-08-05] 큐 조건은 필터 dict가 아니라 라우트 파라미터 `?enrichment_queue=<규칙명>`이다**(§5.1-bis). 「판단키 없음 N건」도 차분이 아니라 `&enrichment_queue_scope=blank_key`의 `total`로 직접 읽는다.
 - 🆕 `GET /enrichment/rules/{rule}/references/{i}?params=...` — 참조뷰 조회(서버측 쿼리 정의·LIMIT).
 - ♻️ 입력 저장 — 기존 `PUT /tables/{derived}/data/updates`(셀 계약 불변).
 
@@ -84,7 +84,8 @@ queue_filters       = { <모든 target 필드>: {type: "blank"} }
 keyed_queue_filters = queue_filters ∪ { <모든 decision_key 컬럼>: {type: "notBlank"} }
 ```
 
-- **`queue_filters` = "큐에 들어오는 행"의 유일한 정의**입니다. 표시 소비처 네 곳(워크리스트 `enrichment.buildBlankFilters` · 어드민 카운트 `admin.fetchEnrichmentStatus` · 메인 배지 `ui.updateEnrichmentBadge` · 진행률 잔여)이 전부 이 객체를 그대로 씁니다.
+- ⚠️ **[2026-08-05] 이 절이 말하는 "유일한 정의"는 §5.1-bis로 옮겨갔습니다.** 아래 서술은 **단일 target 규칙에서만** 참이고, 다중 target 규칙에서 `queue_filters`는 큐가 아니라 「전 target blank」라는 **일반 필터**입니다. 큐 자체는 이제 이름으로 요청합니다 — **§5.1-bis를 먼저 읽으십시오.** 이 절은 그 필터가 여전히 무엇인지, 그리고 판단키 술어가 왜 여기서 빠졌는지(N36)를 남겨 둡니다.
+- **`queue_filters`**의 표시 소비처 네 곳(워크리스트 `enrichment.buildBlankFilters` · 어드민 카운트 `admin.fetchEnrichmentStatus` · 메인 배지 `ui.updateEnrichmentBadge` · 진행률 잔여)이 전부 이 객체를 그대로 씁니다 — **클라가 §5.1-bis로 옮겨가기 전까지는.**
 - 🔴 **왜 판단키 `notBlank`가 여기서 빠졌나 (2026-08-04 사용자 재정 · N36)**: 진행률 **분모**(`enrichment.fetchTotalAll`)는 **필터를 하나도 걸지 않는** 파생 테이블 전체 행 수인데, 잔여만 판단키를 요구하니 **두 수가 다른 모집단**을 셌습니다. 그래서 판단키가 빈 행은 분모에 있고 잔여에서 빠져 **「답한 것」으로 계산**됐습니다. 실측: **데이터 변경 0 · 설정 한 줄로 33% → 100%**, 워크리스트는 0행인데 실제 미답 2건이 테이블에 앉아 있었습니다. 이제 양쪽 다 **행**을 셉니다.
 - 🔴 **빈 판단키 행은 이제 워크리스트에 뜹니다 — 의도된 결과입니다.** 판단키 누락은 **인제션 단계 결함**이고, 보이지 않는 결함은 영영 고쳐지지 않습니다. 다만 그 행은 **판단할 수 없습니다**(참조뷰는 판단키 **값으로** 조회되므로 빈 값은 근거를 못 찾습니다). 그래서:
   - **순서**: 컨베이어는 처리 가능한 행을 먼저 소비하고 판단 불가 행은 **뒤로 내려갑니다**(각 구획 안에서 서버의 `row_id` 순서는 그대로). 컨트롤도 모드도 없습니다 — 순서 **규칙**이 바뀐 것입니다.
@@ -95,6 +96,27 @@ keyed_queue_filters = queue_filters ∪ { <모든 decision_key 컬럼>: {type: "
   - 판단키의 **부분집합**에만 바인드하는 뷰(②가 생성하는 형태이자 실 config의 뷰 #1)에서 살아남은 키로 후보 1개가 나오는 것은 이제 **결함이 아니라 의도**입니다. 회귀 그물은 `test_auto_confirm_sweep_works_a_partial_key_and_stamps_what_it_did`(썼는가 + 무슨 이름으로 썼는가)와 `test_a_wholly_blank_key_is_refused_by_name_and_writes_nothing`(아무것도 안 남았을 때).
   - **부분 판단키로 결정된 셀은 뒤에 구별됩니다** - 새 필드가 아니라 **기존 provenance**로. `cell_sources.source_name`이 `enrichment_auto_confirm_partial_key`(역시 `SOURCE_PRIORITY` **미등재 = 99**, 평범한 자동확정과 **같은 서열**)가 되어, 빠졌던 키 컬럼이 나중에 채워졌을 때 "어느 행이 온전한 키 없이 결정됐나"가 **추정이 아니라 질의**가 됩니다.
   - ②(승격)는 여전히 `keyed_queue_filters`를 걷습니다. 이것은 잔재가 아닙니다 - ②는 **해소된** 행에서 "이 키가 이 값을 정했다"를 배우는데, 키의 일부가 없던 행은 **없던 컬럼에 판단을 귀속**시키게 됩니다.
+### 5.1-bis `queue_predicate` — 큐는 필터 dict이길 그만두고 **이름 붙은 서버측 술어**가 됐다 (2026-08-05 사용자 재정)
+
+**결함(실측)**: target이 2개 이상인 규칙에서 `queue_filters`는 「target이 *하나라도* 비었다」가 아니라 「*전부* 비었다」였습니다. 조성은 컬럼당 `{type:"blank"}` 하나이고 소비처는 전부 그것을 **논리곱**으로 겁니다(`_queue_condition`의 `and_`, `main.apply_column_filters`의 컬럼당 `query.filter`). 그래서 **한 컬럼만 채워지면 나머지가 빈 채로 그 행이 큐에서 빠졌습니다** — N36과 같은 모양(일감이 남았는데 「답한 것」으로 계산됨). 실 config의 **두 규칙 다 target이 2개**이고 `confirm_keys`는 이미 컬럼 단위로 쓰므로(§5.2-ter) **오늘 도달 가능한 상태**였습니다.
+
+**재정**: 큐는 임의의 필터가 아니라 **하나의 질문**(「어느 행에 아직 일감이 있나」)이고, 규칙이 이미 그 답에 필요한 모든 것을 선언합니다. 그것을 클라이언트가 보는 필터 dict로 표현한 것이 **정의를 캘러에 둔** 것이고, 그래서 의미가 「그 규칙이 target을 몇 개 선언했나」에 좌우됐습니다. 그러므로 — **클라가 이름으로 요청하고 서버가 규칙의 `target_fields`에서 계산한다.**
+
+```
+GET /tables/{derived}/data?enrichment_queue=<규칙명>[&enrichment_queue_scope=<스코프>]
+
+queue     = target 중 **하나라도** blank            ← 기본값. 이것이 큐다
+keyed     = queue AND 모든 decision_key notBlank
+blank_key = queue AND decision_key 중 하나라도 blank
+resolved  = 모든 target notBlank AND 모든 key notBlank
+```
+
+- **단일 구현**: `enrichment_config.queue_predicate_condition`. 워크리스트·진행률 잔여·메인 배지·어드민 카운트는 위 라우트로, `classify_queue`·②의 걷기·①의 스윕은 `enrichment_analysis._queue_condition`(이 함수의 **조회 래퍼**)로 도달합니다. **정의가 두 벌이 될 수 없습니다.**
+- **DSL을 넓히지 않은 이유**: 수리에는 **컬럼 간 OR**이 필요한데 공개 필터 DSL은 그것을 표현하지 못합니다(`operator`/`conditions`는 **한 컬럼 안**의 조합). DSL을 넓히면 그 표면을 **기존 캘러 전부가 상속**합니다 — 한 규칙만 묻는 질문 하나를 위해서. 질문 하나, 구현 하나.
+- **`queue_filters`·`keyed_queue_filters`는 그대로 실립니다(가산적)** — 일반 필터로서 종전 의미(전 target blank)를 유지하고, 그 형태로 이미 묻고 있던 곳은 계속 같은 답을 받습니다. 클라는 **`queue_predicate` 필드의 부재**로 구버전 서버를 판정합니다.
+- **`keyed` + `blank_key`가 `queue`를 정확히 분할**하므로 「판단키 없음 N건」은 두 total의 **차분이 아니라 직접 조회**가 될 수 있습니다(같은 술어에서 나오므로 어긋날 수 없습니다). `resolved`는 이제 `queue`의 **정확한 여집합**입니다 — 종전 「전부 blank」 철자에서는 부분 채움 행이 **양쪽 어디에도 없었고**, 결함이 산 자리가 정확히 그 틈입니다.
+- 🚧 **경계 계약 (가산적 · 서버 착지 2026-08-05 · 클라 미착지)**: 라우트 파라미터 2개와 응답 필드 `queue_predicate`가 신설됐습니다. **클라가 바꿔야 하는 것** — ⓐ `enrichment.buildBlankFilters`/`fetchWorklist` · ⓑ `ui.updateEnrichmentBadge` · ⓒ `admin.fetchEnrichmentStatus`: `?filters=<queue_filters>` 대신 `?enrichment_queue=<rule.name>`을 보냅니다(`rule.queue_predicate`가 있을 때만, 없으면 종전 폴백). ⓓ `enrichment.fetchTotalKeyed`의 **차분 계산은 걷어냅니다** — `&enrichment_queue_scope=blank_key`의 `total`이 「판단키 없음 N건」입니다. ⓔ 진행률 **분모(`fetchTotalAll`)는 그대로 무필터**입니다. **클라가 바꾸기 전까지 다중 target 규칙의 워크리스트는 여전히 「전부 blank」를 봅니다.**
+- 회귀 그물: `test_a_partly_filled_row_stays_in_the_queue_predicate_ANY_TARGET_BLANK`(결함을 기록했던 테스트를 **지우지 않고 다시 썼습니다** — 빨갰을 때의 문장을 그대로 인용한 채로) · `test_every_consumer_of_the_queue_reaches_the_one_predicate`(라우트·걷기·④가 **같은 row_id 집합**) · `test_the_queue_scopes_partition_it_and_resolved_is_its_exact_complement` · `test_the_route_refuses_a_queue_it_cannot_compose_instead_of_answering_everything`(400 + **count 캐시 키**).
 - **④ 분류는 유일하게 큐 전체를 걷습니다** — 빈 판단키 행을 **`blank_decision_key`**(신설, `BUG_CLASSES` 소속)로 세어 `queue_size`가 워크리스트 잔여·배지와 계속 일치하게 합니다.
 - **조성 지점은 서버 `enrichment_config.to_public_rule` 하나**입니다 — 소비처가 서로 다른 수를 말할 수 없습니다. (구버전 서버 폴백: 필드 부재 시 클라는 target-blank-only로 동작 — 지금은 서버 조성과 **같은 형태**입니다.)
 - **데이터는 지우지 않습니다.**
@@ -125,6 +147,16 @@ keyed_queue_filters = queue_filters ∪ { <모든 decision_key 컬럼>: {type: "
 **확장성**: 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 작업 단위당 상한(`enrichment_auto_confirm_max_keys`, 기본 200)이 있다. 초과 키는 쓰지 않고 **큐에 남으며** 건수를 로그에 남긴다.
 
 **구현**: `server/enrichment_candidates.py`(술어·노브·`AutoConfirmCollector`) + 체인 워커 훅(M3 훅 직후) + `server/enrichment_analysis.run_auto_confirm_sweep`(소급·dry-run). 설정 절차 정본은 [config/enrichment_rules §7](../guide/config/enrichment_rules.md).
+
+### 5.2-ter 모호함은 **컬럼**의 성질이지 행의 성질이 아니다 (2026-08-05 사용자 재정 · 서버 착지)
+
+후보 2개가 `target_a`에는 **합의**하고 `target_b`에서 **갈리면**, `target_a`는 결정된 것이다. 행 전체를 거절하면 **결정 가능한 컬럼이 다른 컬럼 때문에** 비게 된다 — 근거가 그렇지 않은데 전부 아니면 전무로 굴린 것이다.
+
+- **판정 그레인은 처음부터 컬럼이었다** — `resolve_target_candidate`는 (키, 필드) 단위이고 프로브는 **선언된 그 컬럼 하나**를 GROUP BY 한다. `confirm_keys`도 필드를 독립으로 돌며 결정된 것만 `updates`에 모은다. 그래서 **판정 로직은 바꾸지 않았다**. 없던 것은 **회계**였다: 거절이 납작한 자루 하나에 쌓여 「어느 컬럼이 모호했나」와 「어느 컬럼은 아예 안 물어봤나」가 구별되지 않았다.
+- **한 행이 컬럼 일부만 채워진 채로 끝날 수 있다** — 그리고 남은 컬럼이 비어 있는 한 그 행은 큐에 남아야 한다(✅ **2026-08-05 수리됨** — 큐는 「target 중 하나라도 blank」이고 이제 이름으로 요청한다: §5.1-bis).
+- **빈칸이 나르는 사실 세 가지를 섞지 않는다**: `ambiguous`(물어봤고 답이 갈렸다 — 사람의 판단) · `no_candidate`(물어봤고 아무것도 없었다 — 근거를 찾아라) · **`not_declared`**(**안 물어봤다** — config 공백). 셋째는 종전에 **선언이 하나도 없을 때만** 세어졌으므로, 같은 규칙에 선언된 형제 target이 있으면 미선언 target은 **조용히 건너뛰어져** 판단된 빈칸과 똑같아 보였다. 이제 컬럼별로 이름이 남는다.
+- **부분 진척은 진척으로 보고한다** — 셀 그레인(`confirmed`/`written_cells`)은 원래 부분 채움을 일로 셌지만 **행 그레인이 없었다**. `rows_fully_confirmed` / `rows_partly_confirmed` / `rows_unconfirmed`가 `rows_examined`를 **분할**한다(합이 맞는지 테스트가 단언한다 — 부분합이 조용히 안 맞기 시작하는 것이 진행률이 거짓말을 시작하는 방식이다). 컬럼별 회계는 `per_target = {target: {confirmed, refused:{사유:건수}}}`이고 **사유 어휘는 §5.2의 것을 그대로 쓴다**(새 어휘 0).
+- 🔴 **부분 target 채움에는 새 provenance 이름을 만들지 않았다 — 확인하고 안 만든 것이다.** `cell_sources`는 (row_id, column_name)당 한 행이므로 결정된 컬럼은 `enrichment_auto_confirm`을 달고 거절된 컬럼은 **provenance 행 자체가 없다**. 「이 스윕이 어느 컬럼을 결정했나」는 이미 질의다. (대조: `enrichment_auto_confirm_partial_key`는 **행의 키**에 관한 사실이라 셀 기록이 나를 수 없어서 이름이 필요했다 — §5.1.) 회귀 그물 `test_cell_sources_already_says_which_columns_the_sweep_decided`.
 
 ### 5.2-bis 선언의 효과를 눈으로 본다 (2026-07-30 [F9] · 서버 착지)
 
@@ -158,11 +190,14 @@ keyed_queue_filters = queue_filters ∪ { <모든 decision_key 컬럼>: {type: "
 | 분류 | 뜻 | 성격 |
 |---|---|---|
 | `mapping_gap_same_name` | **소스에 그 값이 있는데** 아무것도 옮기지 않았다 | 🐞 **파이프라인 버그** — 사람이 파서 결함을 대신 갚는 것 |
-| `resolvable_from_reference` | 선언된 참조뷰가 후보 1개를 낸다 | ⚙️ 기계로 해소 가능(= ①) |
+| `resolvable_from_reference` | **빈 target 전부**가 후보 1개를 낸다 | ⚙️ 기계로 해소 가능(= ①) |
+| `partially_resolvable` | **일부** target만 후보 1개를 낸다 (2026-08-05 신설) | ⚙️+👤 ①이 일부를 채우고 **나머지는 사람 몫** — `REAL_WORK_CLASSES` 소속 |
 | `ambiguous_reference` | 후보가 2개 이상 | 👤 **진짜 사람의 판단** |
 | `no_evidence` | 소스에 그 컬럼이 없고 후보도 없다 | 👤 진짜 일감("소스에 원래 없다") |
 | `no_source_rows` | 그 판단키의 원본 행이 없다 | 데이터 출처 이상 |
 | `unprobed` | 참조뷰 탐색 예산 초과 | 미판정(다른 분류로 접어 넣지 않는다) |
+
+🔴 **`partially_resolvable`을 나눈 이유 (2026-08-05)**: 종전 판정은 `any(single)`이라 **빈 target 하나만 풀려도** 그 행을 `resolvable_from_reference`로 올렸다 — 「사람이 전혀 필요 없다」로 보고해 놓고 남은 컬럼의 일감을 지웠다. 행은 분류 **하나**만 가질 수 있으므로 다중 target 규칙에서는 그것만으로 부족하다. 그래서 컬럼 그레인 회계 **`target_verdicts = {target: {"single"|사유: 건수}}`**를 행 분류 옆에 함께 반환한다 — 어느 컬럼이 모호했고 · 어느 컬럼이 근거가 없었고 · 어느 컬럼은 **아예 선언이 없어 안 물어봤는지**는 읽는 사람에게 서로 다른 지시다.
 
 **정직한 한계 2개를 명시한다**: ⓐ 버그 분류는 **소스 테이블의 같은 컬럼명**으로 판정한다 — 다른 이름으로 값을 나르는 소스 컬럼은 선언 없이는 찾을 수 없고, **추측하지 않는다**(오버레이 DECOY 교훈). ⓑ 참조뷰 탐색은 키당 SQL이므로 `probe_limit`으로 유계이며, 예산 초과분은 `unprobed`로 **따로 보고**한다.
 
@@ -179,7 +214,7 @@ keyed_queue_filters = queue_filters ∪ { <모든 decision_key 컬럼>: {type: "
 
 - **판단 개수 압축비** = 유니크 판단키 수 / 원본 행 수 (낮을수록 좋음; 파급 효과).
 - **키당 처리 시간** = 참조뷰 근접 배치 전/후 비교.
-- **잔여 공수** = 미채운 파생 **행** 수(워크리스트 길이 = `queue_filters`의 `total`). 「판단키 없음 N건」 중 **남은 키로 판단 가능한 몫**은 2026-08-05 재정 이후 여기서 해소된다(§5.1) - 사람의 공수로 세도 된다. 판단키가 **전부** 빈 행만 여전히 해소 불가다.
+- **잔여 공수** = 미채운 파생 **행** 수(워크리스트 길이 = `?enrichment_queue=<규칙명>`의 `total` — §5.1-bis). 「판단키 없음 N건」 중 **남은 키로 판단 가능한 몫**은 2026-08-05 재정 이후 여기서 해소된다(§5.1) - 사람의 공수로 세도 된다. 판단키가 **전부** 빈 행만 여전히 해소 불가다.
 - (v2) **자동 제안 채택률** — 아래 범위 밖.
 
 ## 8. 범위

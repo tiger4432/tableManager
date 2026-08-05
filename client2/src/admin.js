@@ -7,6 +7,8 @@ import { initTheme, getTheme } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
 import { showToast } from './utils.js';
+// Enrichment 결손 카운트는 큐를 세는 것이다. 그 요청의 유일한 철자 (ui.js·enrichment.js 공용).
+import { queueQuery } from './enrichment_queue.js';
 // [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
 // surface, not a correction surface, so nothing here carries an `effort` payload. What it
 // must do is count LEAVING: grid -> admin was already counted while admin -> grid was not,
@@ -3530,25 +3532,27 @@ async function fetchEnrichmentStatus(force = false) {
   if (!res.ok) throw new Error('enrichment rules fetch failed');
   const r = await res.json();
   const rules = r.rules || [];
-  // 결손 카운트: 메인 페이지 배지(ui.js updateEnrichmentBadge)와 동일한
-  // blank 필터 total 조회를 규칙별로 재사용 (limit=1 — total만 사용)
+  // 결손 카운트: 메인 페이지 배지(ui.js updateEnrichmentBadge)와 **같은 서버 술어**를
+  // 규칙별로 재사용 (limit=1 — total만 사용). 큐는 이름으로 요청한다.
   const perRule = [];
   let totalMissing = 0;
   for (const rule of rules) {
-    // 큐 진입 조건은 서버 단일 조성(queue_filters) — 워크리스트/배지와 동일 수치 보장
-    const filters = rule.queue_filters
-      || Object.fromEntries((rule.target_fields || []).map(f => [f, { type: 'blank' }]));
+    // 큐 조건을 만들 수 없으면 missing = null(조회 실패 표기). 조건을 떼고 물으면
+    // 파생 테이블 전체 행 수가 「결손」이라는 이름으로 카드에 실린다.
+    const queue = queueQuery(rule);
     let missing = null;
-    try {
-      const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
-        `?skip=0&limit=1&filters=${encodeURIComponent(JSON.stringify(filters))}`;
-      const cres = await fetch(url);
-      if (cres.ok) {
-        const cr = await cres.json();
-        missing = cr.total || 0;
-        totalMissing += missing;
-      }
-    } catch (e) { /* missing = null → 카드/배지에서 조회 실패 표기 */ }
+    if (queue) {
+      try {
+        const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
+          `?skip=0&limit=1&${queue}`;
+        const cres = await fetch(url);
+        if (cres.ok) {
+          const cr = await cres.json();
+          missing = cr.total || 0;
+          totalMissing += missing;
+        }
+      } catch (e) { /* missing = null → 카드/배지에서 조회 실패 표기 */ }
+    }
     perRule.push({ rule, missing });
   }
   const data = { rules, perRule, totalMissing };

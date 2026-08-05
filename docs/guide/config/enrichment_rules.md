@@ -113,7 +113,14 @@
 
 ## 3-bis. 큐 진입 조건 — 빈 판단키 행은 **보이되** 처리 불가로 표시된다 (2026-08-04 재정)
 
-워크리스트·어드민 결손 카운트·메인 그리드 배지·진행률 잔여는 모두 서버가 `/enrichment/rules` 응답에 조성해 주는 **`queue_filters`**(= 모든 `target_fields` blank, **그것뿐**) 하나를 사용합니다 (`enrichment_config.to_public_rule`).
+워크리스트·어드민 결손 카운트·메인 그리드 배지·진행률 잔여는 모두 **큐 술어 하나**를 사용합니다.
+
+🔴 **[2026-08-05 재정] `target_fields`를 2개 이상 선언했다면 이 문단을 읽으십시오.** 종전 술어(`queue_filters`)는 「target이 **전부** 비었다」였습니다. 그래서 **한 컬럼만 채우면 나머지가 빈 채로 그 행이 워크리스트에서 사라졌습니다** — 일감이 남았는데 「답한 것」으로 계산된 것입니다. 지금은 「target 중 **하나라도** 비었다」이고, 클라이언트가 필터를 조립하는 대신 **이름으로 요청**합니다: `GET /tables/{파생}/data?enrichment_queue=<규칙명>`. 정의는 서버 한 곳(`enrichment_config.queue_predicate_condition`)이고 워크리스트·배지·어드민 카운트·`enrichment_insights` 리포트가 **같은 함수**에 도달합니다. 상세는 [ENRICHMENT_QUEUE_SPEC §5.1-bis](../../spec/ENRICHMENT_QUEUE_SPEC.md).
+
+- **운영자가 확인할 것**: `curl "http://<host>:8080/tables/<파생>/data?limit=1&enrichment_queue=<규칙명>"`의 `total`이 워크리스트 잔여와 같은 수여야 합니다. `&enrichment_queue_scope=blank_key`를 붙이면 「판단키 없음 N건」이 됩니다.
+- ⚠️ **서버만 착지했고 화면은 아직 옛 방식으로 묻습니다** — 다중 target 규칙의 워크리스트는 클라가 옮겨가기 전까지 여전히 「전부 blank」를 봅니다.
+
+`queue_filters`(= 모든 `target_fields` blank) 필드는 `/enrichment/rules` 응답에 **그대로 남아 있습니다**(가산적 변경 — 일반 필터로서 종전 의미 유지).
 
 **판단키 notBlank는 2026-08-04에 이 술어에서 빠졌습니다.** 진행률 분모는 **무필터 전체 행 수**인데 잔여만 판단키를 요구하니 두 수가 다른 모집단을 세었고, 그래서 판단키가 빈 행이 **「답한 것」으로 계산**됐습니다(실측: 데이터 변경 0, 설정 한 줄로 33% → 100%). 상세는 [ENRICHMENT_QUEUE_SPEC §5.1](../../spec/ENRICHMENT_QUEUE_SPEC.md).
 
@@ -214,6 +221,10 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `distinct_truncated` | 후보 조회의 **서로 다른 값 개수가 뷰의 `limit`을 넘어** 집계 결과가 잘렸다 | 큐에 남음 |
 
 ⚠️ **평가하지 못한 뷰는 "값 없음"이 아니라 "모름"입니다.** 선언된 뷰 중 하나라도 실패하면, 살아남은 뷰가 값 1개를 냈더라도 **거절**합니다(실패한 뷰가 모순값을 갖고 있었을 수 있음). 미해결 행은 **눈에 보이게 미해결로 남습니다.**
+
+🔴 **[2026-08-05 재정] 위 표의 거절은 전부 「그 컬럼」의 거절이지 행의 거절이 아닙니다.** `target_fields`가 여러 개면 한 컬럼이 `ambiguous`라도 **합의된 다른 컬럼은 채워집니다** — 근거가 전부 아니면 전무가 아닌데 그렇게 굴리지 않습니다. 로그는 컬럼별로 이름을 남기고(`auto-confirm per target column - …`), CLI(`enrichment_insights.py confirm`)는 `target '<컬럼>': N confirmed, refused {…}` 줄로 같은 것을 보여줍니다. 그리고 **`not_declared`는 「안 물어봤다」**이지 판단이 아닙니다 — 그 target에 `candidate_for`를 붙이면 사라지는, **config 공백**입니다.
+
+⚠️ **다만 「큐에 남음」은 target이 **하나**인 규칙에서만 문자 그대로 참입니다.** target이 2개 이상이면 한 컬럼이 채워진 순간 그 행이 워크리스트·배지·잔여에서 빠집니다(빈 컬럼이 남아 있어도). 미해소 결함이며 근거와 수리 경로는 [ENRICHMENT_QUEUE_SPEC §5.1](../../spec/ENRICHMENT_QUEUE_SPEC.md)의 🔴 실측 항목에 있습니다 — **`auto_confirm`을 다중 target 규칙에 켤 때 이 사실을 먼저 보십시오.**
 
 ### 7.2-bis 뷰의 `limit`은 후보 판정을 자르지 않습니다 (2026-07-30 수리)
 

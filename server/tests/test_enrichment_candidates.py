@@ -37,7 +37,9 @@ CAND_TABLES = {
         "composite_key_separator": "_",
         "column_types": {
             "wafer_key": "string", "lot": "string", "slot": "string",
-            "wafer_id": "string", "chip_count": "number",
+            # TWO target columns, so "ambiguity is per column" has somewhere to
+            # be false. With one target the claim is unfalsifiable.
+            "wafer_id": "string", "owner": "string", "chip_count": "number",
         },
     },
     # The reference table the candidate views read. Not part of the rule.
@@ -45,7 +47,7 @@ CAND_TABLES = {
         "business_key": "hist_id",
         "column_types": {
             "hist_id": "string", "lot": "string", "slot": "string",
-            "wafer_id": "string",
+            "wafer_id": "string", "owner": "string",
         },
     },
 }
@@ -60,6 +62,14 @@ NARROW_VIEW = {
 BROAD_VIEW = {
     "label": "broad (lot only)",
     "query": "SELECT wafer_id, slot FROM encand_test_hist WHERE lot = :lot",
+}
+# The SECOND target's declared source, read at the same grain as NARROW_VIEW so
+# both columns are asked the same question of the same key. What differs is the
+# ANSWER: for L2/S1 the two history rows disagree on wafer_id and agree on owner.
+OWNER_VIEW = {
+    "label": "owner (lot+slot)",
+    "query": "SELECT owner FROM encand_test_hist WHERE lot = :lot AND slot = :slot",
+    "candidate_for": {"owner": "owner"},
 }
 
 
@@ -96,11 +106,14 @@ def cand_env(db_session, tmp_path, monkeypatch):
 
     # Reference history: L1/S1 -> WF1, L1/S2 -> WF2. Keyed by lot alone this is
     # two candidates; keyed by lot+slot it is one.
+    # `owner` AGREES on L2/S1 where `wafer_id` disagrees - that pair is the whole
+    # per-column claim: same key, same two rows, one column determined and one not.
     _seed(db_session, "encand_test_hist", [
-        {"hist_id": "H1", "lot": "L1", "slot": "S1", "wafer_id": "WF1"},
-        {"hist_id": "H2", "lot": "L1", "slot": "S2", "wafer_id": "WF2"},
-        {"hist_id": "H3", "lot": "L2", "slot": "S1", "wafer_id": "WF3"},
-        {"hist_id": "H4", "lot": "L2", "slot": "S1", "wafer_id": "WF9"},  # ambiguous even narrow
+        {"hist_id": "H1", "lot": "L1", "slot": "S1", "wafer_id": "WF1", "owner": "ALICE"},
+        {"hist_id": "H2", "lot": "L1", "slot": "S2", "wafer_id": "WF2", "owner": "BOB"},
+        {"hist_id": "H3", "lot": "L2", "slot": "S1", "wafer_id": "WF3", "owner": "OPS"},
+        # ambiguous even narrow - on wafer_id ONLY; owner still says OPS.
+        {"hist_id": "H4", "lot": "L2", "slot": "S1", "wafer_id": "WF9", "owner": "OPS"},
     ])
     import main
     main.TABLE_COUNT_CACHE.clear()
@@ -887,3 +900,135 @@ def test_collector_keeps_a_partial_key_and_drops_only_a_wholly_blank_one(cand_en
         {"business_key_val": "KEYLESS", "updates": {"lot": "", "slot": ""}},
     ])
     assert set(c.entries) == {"FULL", "PARTIAL"}
+
+
+# ---------------------------------------------------------------------------
+# Ambiguity is per COLUMN, not per row  [2026-08-05 user ruling]
+# ---------------------------------------------------------------------------
+
+def _two_target_rule(cand_env, tmp_path, views):
+    """Reload the isolated rules file with a TWO-target rule.
+
+    `server/config/` is never touched - a write there reloads three live processes.
+    """
+    path = tmp_path / "enrichment_rules.json"
+    path.write_text(json.dumps({"encand_rule": _rule(
+        target_fields=["wafer_id", "owner"], reference_views=views)}), encoding="utf-8")
+    return _loaded_rule()
+
+
+def _confirm(db, rule, bks, apply=True):
+    """Run the shared writer over derived rows addressed by business key."""
+    m = models.DYNAMIC_TABLES["encand_test_derived"]
+    keyed = []
+    for bk in bks:
+        row = db.query(m).filter(m.business_key_val == bk).first()
+        assert row is not None, f"fixture did not create {bk}"
+        blanks = [t for t in rule["target_fields"]
+                  if crud.clean_str_value(getattr(row, t)) == ""]
+        keyed.append({"row_id": row.row_id, "business_key_val": bk,
+                      "keys": {"lot": row.lot, "slot": row.slot}, "blank_targets": blanks})
+    return enrichment_candidates.confirm_keys(db, rule, keyed, apply=apply,
+                                              tx_prefix="encand_test")
+
+
+def test_a_determined_column_is_written_while_its_ambiguous_sibling_stays_blank(cand_env,
+                                                                               tmp_path):
+    """THE ruling. Same key, same evidence, two columns, two different verdicts.
+
+    L2/S1 has two history rows. They disagree on `wafer_id` (WF3 vs WF9) and agree
+    on `owner` (OPS). Refusing the row would leave OPS unwritten because a
+    DIFFERENT column could not be decided - all-or-nothing where the evidence is
+    not. L1/S1 is carried alongside as the control: with one history row both
+    columns resolve, so `partly` is a verdict about the evidence and not about
+    the harness failing to write anything.
+    """
+    rule = _two_target_rule(cand_env, tmp_path, [dict(NARROW_VIEW), dict(OWNER_VIEW)])
+    _seed(cand_env, "encand_test_derived", [
+        {"wafer_key": "L2_S1", "lot": "L2", "slot": "S1"},
+        {"wafer_key": "L1_S1", "lot": "L1", "slot": "S1"},
+    ])
+    st = _confirm(cand_env, rule, ["L2_S1", "L1_S1"])
+
+    amb = _derived(cand_env, "L2_S1")
+    assert crud.clean_str_value(amb.owner) == "OPS", \
+        "the column the candidates AGREE on must be filled"
+    assert crud.clean_str_value(amb.wafer_id) == "", \
+        "the column they disagree on must stay blank - that is the human judgement"
+
+    ctl = _derived(cand_env, "L1_S1")
+    assert (crud.clean_str_value(ctl.wafer_id), crud.clean_str_value(ctl.owner)) \
+        == ("WF1", "ALICE"), "control row: both columns are decidable here"
+
+    assert st["rows_fully_confirmed"] == 1 and st["rows_partly_confirmed"] == 1
+    assert st["per_target"]["owner"]["confirmed"] == 2
+    assert st["per_target"]["wafer_id"]["confirmed"] == 1
+    assert st["per_target"]["wafer_id"]["refused"] == {
+        enrichment_candidates.REASON_AMBIGUOUS: 1}
+
+
+def test_never_asked_is_not_the_same_blank_as_asked_and_disagreed(cand_env, tmp_path):
+    """`not_declared` vs `ambiguous`, on two rows of the same rule.
+
+    A target no view declares a candidate column for was NEVER COMPARED. That used
+    to be counted only when NO target was declared, so on a rule with a declared
+    sibling the undeclared one was skipped in silence and its blank was
+    indistinguishable from a judged one. Different facts: one sends a person to
+    fix the config, the other to make a call.
+    """
+    rule = _two_target_rule(cand_env, tmp_path, [dict(NARROW_VIEW)])   # owner undeclared
+    _seed(cand_env, "encand_test_derived", [{"wafer_key": "L2_S1", "lot": "L2", "slot": "S1"}])
+    st = _confirm(cand_env, rule, ["L2_S1"])
+
+    assert st["per_target"]["owner"]["refused"] == {
+        enrichment_candidates.REASON_NOT_DECLARED: 1}
+    assert enrichment_candidates.REASON_AMBIGUOUS not in st["per_target"]["owner"]["refused"]
+    assert st["per_target"]["wafer_id"]["refused"] == {
+        enrichment_candidates.REASON_AMBIGUOUS: 1}, \
+        "the sibling was asked, and its blank means something else entirely"
+    assert crud.clean_str_value(_derived(cand_env, "L2_S1").owner) == ""
+
+
+def test_the_row_outcomes_partition_the_rows_examined(cand_env, tmp_path):
+    """full + partly + none == examined, over a set containing all three.
+
+    A progress number whose parts stop adding up is exactly how the bar read 100%
+    with work left, so the identity is asserted rather than assumed - and the
+    fixture is checked to contain all three outcomes, or the identity would hold
+    vacuously.
+    """
+    rule = _two_target_rule(cand_env, tmp_path, [dict(NARROW_VIEW), dict(OWNER_VIEW)])
+    _seed(cand_env, "encand_test_derived", [
+        {"wafer_key": "L1_S1", "lot": "L1", "slot": "S1"},   # both decidable
+        {"wafer_key": "L2_S1", "lot": "L2", "slot": "S1"},   # owner only
+        {"wafer_key": "L9_S9", "lot": "L9", "slot": "S9"},   # no history at all
+    ])
+    st = _confirm(cand_env, rule, ["L1_S1", "L2_S1", "L9_S9"])
+    assert (st["rows_fully_confirmed"], st["rows_partly_confirmed"],
+            st["rows_unconfirmed"]) == (1, 1, 1), "fixture must produce all three outcomes"
+    assert st["rows_examined"] == (st["rows_fully_confirmed"] + st["rows_partly_confirmed"]
+                                   + st["rows_unconfirmed"])
+    assert st["written_cells"] == 3, "cell grain still counts the partial fill as work"
+
+
+def test_cell_sources_already_says_which_columns_the_sweep_decided(cand_env, tmp_path):
+    """Why a partial-TARGET fill needs no new source name.
+
+    `cell_sources` is one row per (row_id, column_name), so the decided column
+    carries the sweep's name and the refused one has NO provenance row at all.
+    "Which columns did this sweep decide" is therefore already a predicate over
+    the existing table. A third source name would restate the table's own grain.
+    (Contrast `SOURCE_NAME_PARTIAL_KEY`, which names a fact about the ROW's key
+    that no per-cell record could carry.)
+    """
+    rule = _two_target_rule(cand_env, tmp_path, [dict(NARROW_VIEW), dict(OWNER_VIEW)])
+    _seed(cand_env, "encand_test_derived", [{"wafer_key": "L2_S1", "lot": "L2", "slot": "S1"}])
+    _confirm(cand_env, rule, ["L2_S1"])
+
+    row = _derived(cand_env, "L2_S1")
+    got = dict(cand_env.query(models.CellSource.column_name, models.CellSource.source_name)
+               .filter(models.CellSource.table_name == "encand_test_derived",
+                       models.CellSource.row_id == row.row_id,
+                       models.CellSource.column_name.in_(["wafer_id", "owner"])).all())
+    assert got == {"owner": enrichment_candidates.SOURCE_NAME}, \
+        "the decided column is named and the refused one has no provenance row"

@@ -20,10 +20,19 @@ WHY THIS IS NOT IN `main.py`
 
 WHAT USES IT
     `GET /tables/{t}/data` and `GET /tables/{t}/export` (via main's shared query
-    construction), and `enrichment_analysis._queue_condition`, which composes the
-    queue predicate from `to_public_rule(rule)["queue_filters"]`. Those must be the
+    construction), and `enrichment_config.queue_predicate_condition`, which builds
+    the NAMED enrichment queue predicate out of this vocabulary. Those must be the
     SAME translator: the worklist, the badge, the admin count and the retroactive
     sweep cannot be allowed to disagree about which rows are in the queue.
+
+    🔴 THE QUEUE PREDICATE IS COMPOSED FROM THIS, NOT EXPRESSED IN THIS DSL
+    [2026-08-05]. It needs a cross-column OR ("ANY target field still blank") and
+    this grammar has none - `operator`/`conditions` combine specs for ONE column.
+    The queue used to be shipped to the client as a filter dict and applied here,
+    which silently meant EVERY target blank and dropped partly filled rows out of
+    the worklist. The repair was a named server-side predicate, NOT a wider DSL:
+    widening this grammar hands the new surface to every existing caller to answer
+    a question only one rule asks. Resist the same request next time.
 
     The blank / notBlank spellings are NOT defined here - they delegate to
     `crud.blank_sql_condition` / `crud.not_blank_sql_condition`, which is the one

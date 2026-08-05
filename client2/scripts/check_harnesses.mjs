@@ -148,6 +148,25 @@ const FLOORS = new Map([
   //    are the two-spellings class -- a client copy stays green against every server test
   //    while the two drift. A floor drop here means one of them stopped being scored.
   ['enrichment_partial_key_reference_harness.mjs', 26],
+  // Floored 2026-08-05, when the queue became a NAMED server predicate and this harness
+  // gained the request itself as a target. It had been running unfloored since N36, which
+  // the runner had been reporting; the count here is what it reports on the commit that
+  // adopts the predicate.
+  //
+  // 🔴 ITS LOAD-BEARING HALF IS THAT A NUMBER IS READ RATHER THAN COMPUTED. "판단키 없음
+  //    N건" used to be remainder minus a keyed total -- a difference of two totals that
+  //    existed only because the filter DSL could not express a cross-column OR. Under the
+  //    ANY-blank queue those two totals count DIFFERENT populations, which is the N36
+  //    shape exactly. The assertion that catches its return is `P4 the count is the server
+  //    number verbatim`, and it is the reason this floor is worth defending.
+  //
+  //    It also carries a SECOND mutation target, `client2/src/enrichment_queue.js`, which
+  //    it evaluates as text AND imports, refusing to run if the two disagree. Two of the
+  //    other three call sites (`ui.js`, `admin.js`) cannot be imported under bare node at
+  //    all, so "all three share one composer" is what stands in for scoring them directly.
+  //    A drop here means either the shared composer or the read-not-computed count stopped
+  //    being scored.
+  ['enrichment_queue_partition_harness.mjs', 41],
   // New 2026-08-05 with the Excel form gateway (`map2/excel_io.js`). Floor is the count it
   // reports on the commit that introduces it -- there is no earlier tree to measure against.
   //

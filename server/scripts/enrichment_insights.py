@@ -56,10 +56,16 @@ def _report_classify(res):
         f"{res['counts'].get(ea.CLS_BLANK_DECISION_KEY, 0)}"
         f"   (cannot be worked here at all - fix upstream)",
         f"  MECHANICALLY RESOLVABLE (item 1 handles it)   : {auto}",
-        f"      {ea.CLS_RESOLVABLE:<26} {auto}",
+        f"      {ea.CLS_RESOLVABLE:<26} {auto}   (EVERY blank target decided)",
         f"  REAL HUMAN WORK                              : {work}",
         f"      {ea.CLS_AMBIGUOUS:<26} {res['counts'].get(ea.CLS_AMBIGUOUS, 0)}",
         f"      {ea.CLS_NO_EVIDENCE:<26} {res['counts'].get(ea.CLS_NO_EVIDENCE, 0)}",
+        # Counted as work because the columns item 1 cannot decide are still a
+        # person's job - but item 1 does fill the rest, so the row is cheaper
+        # than an ambiguous one and saying so is the point of the split.
+        f"      {ea.CLS_PARTIALLY_RESOLVABLE:<26} "
+        f"{res['counts'].get(ea.CLS_PARTIALLY_RESOLVABLE, 0)}"
+        f"   (item 1 fills SOME columns; the rest still need a person)",
         f"  OTHER                                        : "
         f"{res['counts'].get(ea.CLS_NO_SOURCE_ROWS, 0) + res['counts'].get(ea.CLS_UNPROBED, 0)}",
         f"      {ea.CLS_NO_SOURCE_ROWS:<26} {res['counts'].get(ea.CLS_NO_SOURCE_ROWS, 0)}",
@@ -68,6 +74,11 @@ def _report_classify(res):
     ]
     if res["no_evidence_reasons"]:
         lines.append(f"  no_evidence refusal reasons: {res['no_evidence_reasons']}")
+    # Per COLUMN, because the row classes above cannot say WHICH column is stuck.
+    # `not_declared` in here is a config gap, not a judgement: nobody asked.
+    for field, verdicts in sorted((res.get("target_verdicts") or {}).items()):
+        lines.append(f"  target '{field}': "
+                     + ", ".join(f"{k}={v}" for k, v in sorted(verdicts.items())))
     lines.append(f"  bug-class check covered targets: {res['same_name_targets_checked'] or '[]'}")
     if res["unchecked_targets"]:
         lines.append(
@@ -127,12 +138,22 @@ def _report_confirm(stats):
         f"  single candidates       : {stats.get('confirmed', 0)}",
         f"  cells {'written' if stats['mode'] == 'apply' else 'that would be written'}"
         f"{'':<10}: {stats.get('written_cells', 0)}",
+        # A partly filled row is progress, not a row still queued. Without this
+        # line the only row-grain number was `queue size`, so a sweep that filled
+        # two of three columns everywhere reported as having moved nothing.
+        f"  rows: {stats.get('rows_fully_confirmed', 0)} complete, "
+        f"{stats.get('rows_partly_confirmed', 0)} partly filled, "
+        f"{stats.get('rows_unconfirmed', 0)} untouched "
+        f"(of {stats.get('rows_examined', 0)} examined)",
         "  refusals (each named)   :",
     ]
     for reason, n in sorted((stats.get("refused") or {}).items()):
         lines.append(f"      {reason:<26} {n}")
     if not stats.get("refused"):
         lines.append("      none")
+    for field, slot in sorted((stats.get("per_target") or {}).items()):
+        lines.append(f"    target '{field}': {slot['confirmed']} confirmed"
+                     + (f", refused {slot['refused']}" if slot["refused"] else ""))
     for s in (stats.get("samples") or [])[:5]:
         lines.append(f"    [single] {s['business_key_val']} {s['field']}="
                      f"{s['value']!r} (support {s['support']})")
