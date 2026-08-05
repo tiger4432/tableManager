@@ -1673,17 +1673,10 @@ body {
   transform: none;
 }
 
-/* Two-state label. The wiring flips one attribute; the copy is here. */
-.me2-armed-label { display: none; }
-
-.me2-primary-btn[data-armed="true"] {
-  border-color: var(--warning);
-  background: var(--warning);
-  color: var(--accent-contrast);
-}
-
-.me2-primary-btn[data-armed="true"] .me2-idle-label { display: none; }
-.me2-primary-btn[data-armed="true"] .me2-armed-label { display: inline; }
+/* The two-state label is gone: one action confirms (product owner, 2026-08-06). Nothing sets
+   `data-armed` any more, so these rules would never match -- dead selectors that still read
+   like a feature. Removed rather than left, because the next person to open this file would
+   otherwise implement against a state the wiring no longer has. */
 
 /* ============================================================
    State visibility - one attribute on #me2-workbench drives all three.

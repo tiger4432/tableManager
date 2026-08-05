@@ -307,7 +307,8 @@ export function createApiClient(opts) {
     },
 
     /**
-     * THE ONLY WRITE IN THIS SCREEN. Called once, after the operator has armed and confirmed.
+     * THE ONLY WRITE IN THIS SCREEN. Called once per confirmation -- one operator action, a
+     * click on 확정 or Enter (product owner, 2026-08-06). There is no arming step to precede it.
      *
      * 🔴 THE REQUEST CARRIES THE RULING AND THE PER-SOURCE ROWS. The write path deliberately
      *    does NOT re-score: what has to be recorded is what the operator looked at when they

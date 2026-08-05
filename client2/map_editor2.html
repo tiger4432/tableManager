@@ -812,7 +812,7 @@
       </section>
     </main>
 
-    <!-- ── 확정: 읽기는 무마찰, 쓰기는 확인 1회 (arm -> commit, Esc 취소) ── -->
+    <!-- ── 확정: 읽기는 무마찰, 쓰기는 한 동작 (클릭 또는 Enter) ── -->
     <footer id="me2-confirmbar">
       <div class="me2-confirm-text">
         <!-- 한 줄. 결과 절(「이후 다이 맵 · 본딩 계획이 …」)은 뺐다 - 값은 결정을
@@ -821,11 +821,11 @@
         <div id="me2-confirm-note">현재 선언과 동일 · 사람 확정으로 기록</div>
       </div>
       <div class="me2-confirm-actions">
-        <span id="me2-confirm-hint">Enter 준비 · Esc 취소</span>
-        <button class="me2-primary-btn" type="button" id="me2-confirm-btn" data-me2-confirm data-armed="false">
-          <span class="me2-idle-label">확정</span>
-          <span class="me2-armed-label">다시 Enter로 확정</span>
-        </button>
+        <span id="me2-confirm-hint">Enter 확정</span>
+        <!-- 한 번에 확정한다(제품 소유자 2026-08-06). 두 번째 누름도, `data-armed`도, 두 번째
+             라벨도 없다. 라벨은 확정 하나뿐이므로 스팬으로 감싸지 않는다 -- 감싸 두면 다음
+             사람이 그 자리에 두 번째 상태가 있었다고 읽는다. -->
+        <button class="me2-primary-btn" type="button" id="me2-confirm-btn" data-me2-confirm>확정</button>
       </div>
     </footer>
   </div>

@@ -361,7 +361,24 @@ const FLOORS = new Map([
   //      scored. `setConfig` is deliberately NOT called in that block, because
   //      `loadAlignConfig` rejects unconditionally on every live run -- a drop here means the
   //      screen went back to reaching its own conclusion about someone else's evidence.
-  ['map_editor2_shell_harness.mjs', 456],
+  // 456 -> 463 (2026-08-06, one-action confirm). The arming step was removed by product owner
+  // ruling, and the assertions that pinned it were RE-POINTED rather than deleted -- so this
+  // is not seven new tests, it is the same seam scored where it now lives, plus the guards the
+  // removal made load-bearing.
+  //   🔴 THE FOUR THAT MATTER ARE `G26`, `G26b`, `G26c` AND `G27`, AND THEY EXIST BECAUSE A
+  //      COUNT COULD NOT SEE THE DEFECT. Enter on a focused <button> also fires a native
+  //      `click`, and the shell binds both `click` and a document keydown to `onConfirm`: one
+  //      keystroke, two POSTs. One POST and two POSTs leave an identical session, an identical
+  //      DOM and an identical server row, so every end-state assertion in the file passes
+  //      either way. Worse, MEASURED BY MUTATION: there are THREE overlapping guards
+  //      (`preventDefault`, the in-flight flag, the disable-on-repaint) and deleting any ONE
+  //      of them still leaves the write count at 1, because the other two swallow the native
+  //      click. A single "exactly one write" assertion therefore scores the STACK and would
+  //      keep passing while two thirds of it rotted. Each guard now has its own assertion that
+  //      dies alone. A drop here means one of the three stopped being scored individually.
+  //   `G27` pins `bar.actions === 4` EXACTLY rather than `<= 6`. The bound could not have
+  //      noticed the arming being removed (5 -> 4) and could not notice it coming back.
+  ['map_editor2_shell_harness.mjs', 463],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
@@ -373,7 +390,13 @@ const FLOORS = new Map([
   // 149 -> 191 (2026-08-05). Not this round's work: the floor simply had not been raised since
   // the harness landed, so 42 assertions added by later rounds were running ungated. Raised to
   // what the tree reports so that coverage is protected too.
-  ['map_editor2_question_harness.mjs', 191],
+  // 191 -> 192 (2026-08-06, one-action confirm). One assertion, and it is a PRECONDITION: the
+  // Enter-guard block asserts that a keystroke in a dropdown confirms nothing, and a confirm
+  // earlier in the same block had already set the acknowledgement -- so the check was scoring a
+  // stale state and would have passed, or failed, for reasons unrelated to the dropdowns. The
+  // new line clears it first and says so. A drop here means the guard block went back to
+  // asserting something it had not established.
+  ['map_editor2_question_harness.mjs', 192],
   //
   // ⚠️ ITS `H4` NO LONGER PINS THE DECISION UNIT. `api.js` retargeted `loadReferenceView` to a
   //    rule/map_table key, so the assertion that the reference view is keyed by (eqp, product)
