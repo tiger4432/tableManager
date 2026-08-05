@@ -1437,18 +1437,45 @@ function fillColumnDropdowns() {
 let physFrameOverride = null;
 
 // 기존 규약 `parseFloat(input.value) || 기본값`을 그대로 유지한다(0 → 기본값).
-function physNum(key, domEl, dflt) {
-  if (physFrameOverride && physFrameOverride[key] !== undefined && physFrameOverride[key] !== null) {
-    const ov = parseFloat(physFrameOverride[key]);
+//
+// ═══ [S2.1] THE FRAME IS AN ARGUMENT, NOT MODULE STATE ═══════════════════════════════════
+//
+// These two used to read `physFrameOverride` off the module. A function that reads module
+// state cannot be called twice with different state, which is why every harness that scores
+// them has to cut them out of this file as TEXT and rebuild the module's globals around them.
+// The frame now arrives as the first argument and nothing about the ANSWER changed: the
+// caller passes exactly the value the function used to read, at the same synchronous instant.
+//
+// 🔴 `null` AND `undefined` ARE DIFFERENT ANSWERS, and collapsing them would undo the point.
+//    `null` = "no frame, read the screen" — a deliberate answer, and the main-load case.
+//    `undefined` = the caller forgot. The module binding used to apply the window
+//    AUTOMATICALLY, so forgetting was impossible; an argument makes it possible for the first
+//    time. If a missed call site silently fell back to the screen, the canvas would draw
+//    perfectly and the stored coordinate would be wrong — this file's signature defect, and
+//    the exact reason the frame window exists at all. So it is loud.
+// ⚠️ The throw is a backstop, not the protection. The protection is that every call site was
+//    enumerated and given an explicit argument; the throw only catches a future one.
+function physNum(frame, key, domEl, dflt) {
+  if (frame === undefined) {
+    throw new Error(`physNum('${String(key)}'): frame argument missing. Pass the frame that is `
+      + `in scope, or \`null\` to read the screen controls on purpose.`);
+  }
+  if (frame && frame[key] !== undefined && frame[key] !== null) {
+    const ov = parseFloat(frame[key]);
     if (Number.isFinite(ov)) return ov || dflt;
   }
   const v = domEl ? parseFloat(domEl.value) : NaN;
   return v || dflt;
 }
 
-function gridDimNum(key, domEl, dflt) {
-  if (physFrameOverride && physFrameOverride[key] !== undefined && physFrameOverride[key] !== null) {
-    const ov = parseInt(physFrameOverride[key], 10);
+// `physNum`의 격자 쌍둥이 — 같은 규약, 같은 인자 순서다(§physNum의 `undefined` 대 `null`).
+function gridDimNum(frame, key, domEl, dflt) {
+  if (frame === undefined) {
+    throw new Error(`gridDimNum('${String(key)}'): frame argument missing. Pass the frame that `
+      + `is in scope, or \`null\` to read the screen controls on purpose.`);
+  }
+  if (frame && frame[key] !== undefined && frame[key] !== null) {
+    const ov = parseInt(frame[key], 10);
     if (Number.isFinite(ov)) return ov || dflt;
   }
   const v = parseInt(domEl ? domEl.value : '', 10);
@@ -1761,8 +1788,8 @@ function frameDieLattice(frame) {
     const p = getDieIndex(0, 0, f.cols, f.rows, f.rotation, f.side);
     return {
       ix0: p.x, iy0: p.y, ux0: p.xCells, uy0: p.yCells,
-      chipX: physNum('chipX', el.physChipX, 2.5),
-      chipY: physNum('chipY', el.physChipY, 2.5),
+      chipX: physNum(f, 'chipX', el.physChipX, 2.5),
+      chipY: physNum(f, 'chipY', el.physChipY, 2.5),
     };
   });
 }
@@ -1865,15 +1892,15 @@ function getWaferBoundingBox(rotation, side, opts) {
   }
   // 프레임 창이 열려 있으면 소스 메타 값이, 아니면 화면 컨트롤 값이 읽힌다.
   // 캐시 키를 해석된 실값으로 만들어야 두 프레임의 바운딩박스가 서로를 덮어쓰지 않는다.
-  const dia = physNum('waferDia', el.physWaferDia, 300);
-  const cx = physNum('chipX', el.physChipX, 2.5);
-  const cy = physNum('chipY', el.physChipY, 2.5);
-  const ox = physNum('offsetX', el.physOffsetX, 0.0);
-  const oy = physNum('offsetY', el.physOffsetY, 0.0);
-  const em = physNum('edgeMargin', el.physEdgeMargin, 3.0);
+  const dia = physNum(physFrameOverride, 'waferDia', el.physWaferDia, 300);
+  const cx = physNum(physFrameOverride, 'chipX', el.physChipX, 2.5);
+  const cy = physNum(physFrameOverride, 'chipY', el.physChipY, 2.5);
+  const ox = physNum(physFrameOverride, 'offsetX', el.physOffsetX, 0.0);
+  const oy = physNum(physFrameOverride, 'offsetY', el.physOffsetY, 0.0);
+  const em = physNum(physFrameOverride, 'edgeMargin', el.physEdgeMargin, 3.0);
 
-  const cols = gridDimNum('cols', el.gridCols, 10);
-  const rows = gridDimNum('rows', el.gridRows, 10);
+  const cols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+  const rows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
   const isRotated90or270 = (rotation === 90 || rotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
@@ -1999,19 +2026,19 @@ function seatingSnapshot() {
   // 생기는 날 조용히 틀리는 대신 아무것도 기록하지 않는다.
   if (physFrameOverride) return null;
   return {
-    cols: gridDimNum('cols', el.gridCols, 10),
-    rows: gridDimNum('rows', el.gridRows, 10),
+    cols: gridDimNum(physFrameOverride, 'cols', el.gridCols, 10),
+    rows: gridDimNum(physFrameOverride, 'rows', el.gridRows, 10),
     rotation: currentRotation,
     side: currentSide,
     invertY: !!(el.gridYInvert && el.gridYInvert.checked),
     startX: parseInt(el.gridStartX.value, 10) || 0,
     startY: parseInt(el.gridStartY.value, 10) || 0,
-    waferDia: physNum('waferDia', el.physWaferDia, 300),
-    chipX: physNum('chipX', el.physChipX, 2.5),
-    chipY: physNum('chipY', el.physChipY, 2.5),
-    offsetX: physNum('offsetX', el.physOffsetX, 0.0),
-    offsetY: physNum('offsetY', el.physOffsetY, 0.0),
-    edgeMargin: physNum('edgeMargin', el.physEdgeMargin, 3.0),
+    waferDia: physNum(physFrameOverride, 'waferDia', el.physWaferDia, 300),
+    chipX: physNum(physFrameOverride, 'chipX', el.physChipX, 2.5),
+    chipY: physNum(physFrameOverride, 'chipY', el.physChipY, 2.5),
+    offsetX: physNum(physFrameOverride, 'offsetX', el.physOffsetX, 0.0),
+    offsetY: physNum(physFrameOverride, 'offsetY', el.physOffsetY, 0.0),
+    edgeMargin: physNum(physFrameOverride, 'edgeMargin', el.physEdgeMargin, 3.0),
     box: getWaferBoundingBox(currentRotation, currentSide),
   };
 }
@@ -2100,13 +2127,13 @@ function reseatCellsToStoredCoords(was) {
 }
 
 function getTransformedPhysicalConfig(currentRotation, currentSide) {
-  const waferDia = physNum('waferDia', el.physWaferDia, 300);
-  const edgeMargin = physNum('edgeMargin', el.physEdgeMargin, 3.0);
+  const waferDia = physNum(physFrameOverride, 'waferDia', el.physWaferDia, 300);
+  const edgeMargin = physNum(physFrameOverride, 'edgeMargin', el.physEdgeMargin, 3.0);
   const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
-  const origChipX = physNum('chipX', el.physChipX, 2.5);
-  const origChipY = physNum('chipY', el.physChipY, 2.5);
-  let origOffsetX = physNum('offsetX', el.physOffsetX, 0.0);
-  let origOffsetY = physNum('offsetY', el.physOffsetY, 0.0);
+  const origChipX = physNum(physFrameOverride, 'chipX', el.physChipX, 2.5);
+  const origChipY = physNum(physFrameOverride, 'chipY', el.physChipY, 2.5);
+  let origOffsetX = physNum(physFrameOverride, 'offsetX', el.physOffsetX, 0.0);
+  let origOffsetY = physNum(physFrameOverride, 'offsetY', el.physOffsetY, 0.0);
 
   if (currentSide === 'back') {
     origOffsetX = -origOffsetX;
@@ -2470,8 +2497,8 @@ function isValidDieAt(physX, physY, circleInside, state) {
 //         outsideCircle: number — 그중 원 밖 개수(정직한 확인문에 쓴다) }
 // ═══════════════════════════════════════════════════════════════════════════════
 function buildValidDieTemplate(shape) {
-  const cols = gridDimNum('cols', el.gridCols, 10);
-  const rows = gridDimNum('rows', el.gridRows, 10);
+  const cols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+  const rows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
   const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
@@ -5140,8 +5167,8 @@ async function loadExistingMap(opts = {}) {
     //    옛 치수로 이뤄져 저장 좌표가 조용히 옮겨간다 ― 화면은 멀쩡한데 값이 틀린 그 상태다.
     //    (읽는 지점은 `renderGridCanvas`·`currentFrame`과 같은 컨트롤 하나뿐이다.)
     // ⚠️ START X,Y는 되읽지 않는다 — 아무도 덮어쓰지 않는다(바로 아래 주석).
-    cols = gridDimNum('cols', el.gridCols, 10);
-    rows = gridDimNum('rows', el.gridRows, 10);
+    cols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+    rows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
     // ⚠️ 여기서 START X,Y를 컨트롤에서 되읽지 **않는다.** 되읽는 줄이 잠시 있었는데, 그것은
     //    `resolveValidDie`가 START를 덮어쓰던 (B) 안의 잔재였다. 사용자 확정은 (A)다 ―
     //    「START X,Y는 바뀌면 안됨」. 아무도 덮어쓰지 않으므로 지역 변수 `startX`와 컨트롤은
@@ -6902,8 +6929,8 @@ function computeNotchCell(rotation, side) {
   //    경계는 화면 회전으로 재는 자기모순이 생긴다(하네스 실측: rot 270을 rot-0 화면에서
   //    물었을 때 격자 밖 좌표가 null이 아니라 좌표로 돌아왔다). `getWaferBoundingBox`가
   //    바로 위에서 쓰는 것과 같은 유도식이다.
-  const cols = gridDimNum('cols', el.gridCols, 10);
-  const rows = gridDimNum('rows', el.gridRows, 10);
+  const cols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+  const rows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
   const isRot = (rotation === 90 || rotation === 270);
   const visualCols = isRot ? rows : cols;
   const visualRows = isRot ? cols : rows;
@@ -8612,17 +8639,17 @@ function currentFrame() {
 function resolveFrame(frame) {
   const f = frame || currentFrame();
   return withPhysFrame(f, () => ({
-    cols: gridDimNum('cols', el.gridCols, 10),
-    rows: gridDimNum('rows', el.gridRows, 10),
+    cols: gridDimNum(f, 'cols', el.gridCols, 10),
+    rows: gridDimNum(f, 'rows', el.gridRows, 10),
     startX: f.startX, startY: f.startY,
     invertY: !!f.invertY, rotation: Number(f.rotation) || 0,
     side: f.side === 'back' ? 'back' : 'front',
-    waferDia: physNum('waferDia', el.physWaferDia, 300),
-    chipX: physNum('chipX', el.physChipX, 2.5),
-    chipY: physNum('chipY', el.physChipY, 2.5),
-    offsetX: physNum('offsetX', el.physOffsetX, 0.0),
-    offsetY: physNum('offsetY', el.physOffsetY, 0.0),
-    edgeMargin: physNum('edgeMargin', el.physEdgeMargin, 3.0),
+    waferDia: physNum(f, 'waferDia', el.physWaferDia, 300),
+    chipX: physNum(f, 'chipX', el.physChipX, 2.5),
+    chipY: physNum(f, 'chipY', el.physChipY, 2.5),
+    offsetX: physNum(f, 'offsetX', el.physOffsetX, 0.0),
+    offsetY: physNum(f, 'offsetY', el.physOffsetY, 0.0),
+    edgeMargin: physNum(f, 'edgeMargin', el.physEdgeMargin, 3.0),
   }));
 }
 
@@ -8645,8 +8672,8 @@ function projectCellsToWaferMm(cells, frame) {
   const f = frame || currentFrame();
   const { cols, rows, rotation, side, invertY, startX, startY } = f;
   return withPhysFrame(f, () => {
-    const chipX = physNum('chipX', el.physChipX, 2.5);
-    const chipY = physNum('chipY', el.physChipY, 2.5);
+    const chipX = physNum(f, 'chipX', el.physChipX, 2.5);
+    const chipY = physNum(f, 'chipY', el.physChipY, 2.5);
     const out = [];
     (Array.isArray(cells) ? cells : []).forEach(c => {
       const xn = Number(c.x);
@@ -8815,8 +8842,8 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
   //    거절당한 그 동작이다.
   const set = (basis, keys, reason, ref, physPreset) => {
     if (stale()) return validDie;
-    const fc = gridDimNum('cols', el.gridCols, 10);
-    const fr = gridDimNum('rows', el.gridRows, 10);
+    const fc = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+    const fr = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
     const fsx = parseInt(el.gridStartX.value, 10) || 0;
     const fsy = parseInt(el.gridStartY.value, 10) || 0;
     const fiv = !!(el.gridYInvert && el.gridYInvert.checked);
@@ -8871,8 +8898,8 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     }
     // 재배치가 쓸 치수는 **바뀐 뒤의** 것이다. 위 블록이 격자를 다시 파생시켰을 수 있고,
     // 옛 치수로 앉히면 렌더가 새 치수로 좌표를 되만들어 저장 좌표가 조용히 옮겨간다.
-    const nc = gridDimNum('cols', el.gridCols, 10);
-    const nr = gridDimNum('rows', el.gridRows, 10);
+    const nc = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+    const nr = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
 
     // 🔴 **캐시를 반드시 비운다.** `getWaferBoundingBox`의 캐시 태그는 `V<validDieResolveSeq>`
     //    인데 그 번호는 `resolveValidDie` **진입 시** 한 번 오른다(위 `mySeq`). 그래서 진입과
@@ -9067,8 +9094,8 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     }
     // ⚠️ 이 셋은 **지정 전** 화면이다. 로그 2)는 「현재 메타값」이라는 이름 그대로 그것을
     //    말하고, 지정 뒤의 격자는 아래 로그 블록이 컨트롤에서 다시 읽는다(`postCols/postRows`).
-    const hereCols = gridDimNum('cols', el.gridCols, 10);
-    const hereRows = gridDimNum('rows', el.gridRows, 10);
+    const hereCols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+    const hereRows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
     const hereInvertY = !!(el.gridYInvert && el.gridYInvert.checked);
     const mask = deriveMaskKeys(rawKeys);
     const maskCx = mask.maskCx;
@@ -9215,8 +9242,8 @@ function fitGridToMask(keys, el, currentRotation, currentSide) {
     });
     return { col, row, any: col + row };
   };
-  let gc = gridDimNum('cols', el.gridCols, 10);
-  let gr = gridDimNum('rows', el.gridRows, 10);
+  let gc = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+  let gr = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
   const fromC = gc, fromR = gr;
   let miss = missAt(gc, gr);
   // 한 번에 한 칸. 키가 덮는 범위는 치수에 대해 **중첩 단조**다(치수 +1은 한쪽 끝에
@@ -9356,8 +9383,8 @@ function diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMin
   const box = getWaferBoundingBox(currentRotation, currentSide);
   // 지정이 **끝난 뒤의** 격자. `set`이 참조 규격에서 다시 파생시켰을 수 있으므로 아래
   // 진단은 전부 이 수로 푼다 ― 옛 치수로 푼 진단은 화면과 다른 것을 설명한다.
-  const postCols = gridDimNum('cols', el.gridCols, 10);
-  const postRows = gridDimNum('rows', el.gridRows, 10);
+  const postCols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
+  const postRows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
   // 격자 중심을 **키 공간**으로 읽는다. 물리 키가 웨이퍼 중심 기준이 된 뒤로 그 중점은
   // 곧 패리티 항이다 — `getDieIndex`가 쓰는 바로 그 식이다(홀수 0, 짝수 0.5).
   const gridCx = (Math.abs(Math.round(postCols)) % 2 === 0 ? 0.5 : 0);

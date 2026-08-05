@@ -751,9 +751,44 @@ const MUTATIONS = [
     'physFrameOverride = null;'],
 ];
 
+// ── Anchor validation, BEFORE a single mutant is scored ────────────────────────────────
+// Hoisted out of the sweep, and given the sibling harnesses' verdict (`die` -> exit 2,
+// "nothing was compared") rather than a plain exit 1. Three things were wrong with catching
+// this at the bottom, and only the first one was ever caught at all:
+//
+// 🔴 IT REFUSED LATE. The tally below did stop the build on a vanished anchor, but only after
+//    the whole sweep had run and the `ASSERTIONS` line had already been printed green, with
+//    the reason buried under twenty lines of CAUGHT. And it exited 1, which the runner reads
+//    as "this harness is red" -- indistinguishable from a real assertion failure. A mutant
+//    that was never introduced is neither: the harness is BROKEN, and that is exit 2.
+// 🔴 UNIQUENESS WAS NOT CHECKED AT ALL, and that is the half that bites a refactor.
+//    `String.replace` with a string pattern takes the FIRST match and reports nothing. An
+//    anchor that stops being unique -- which is exactly what threading a new argument
+//    through many similar call sites can do -- lands the mutant somewhere nobody chose, and
+//    it is then "caught" for a reason that has nothing to do with the defect it names. A
+//    fake catch reads identically to a real one.
+// 🔴 AN UNAPPLIED MUTANT IS NOT A CAUGHT MUTANT. Re-point a stale anchor; never delete the
+//    mutant to get the build green. The mutant is the only evidence the check above it can
+//    fail at all.
+//
+// Measured when this guard was added: 21 declared anchors, all present, all unique. It is a
+// no-op on this tree ON PURPOSE -- a guard installed after the round that needs it is a
+// guard that was not there when it mattered.
+for (const [name, from] of MUTATIONS) {
+  const i = SRC0.indexOf(from);
+  if (i < 0) {
+    die(`mutation anchor not found: ${name}\n  pattern: ${from.slice(0, 90)}\n`
+      + `  The source moved under this mutant. Re-point it -- do not drop it.`);
+  }
+  if (SRC0.indexOf(from, i + 1) >= 0) {
+    die(`mutation anchor is not unique: ${name}\n  pattern: ${from.slice(0, 90)}\n`
+      + `  \`replace\` takes the first match, so this mutant would be applied at a site `
+      + `nobody chose and could be "caught" for the wrong reason. Lengthen the anchor.`);
+  }
+}
+
 let applied = 0, caught = 0;
 for (const [name, from, to] of MUTATIONS) {
-  if (!SRC0.includes(from)) { console.log(`  ! NOT APPLIED (pattern gone): ${name}`); continue; }
   applied++;
   const mutated = SRC0.replace(from, to);
   let red = false, why = '';
