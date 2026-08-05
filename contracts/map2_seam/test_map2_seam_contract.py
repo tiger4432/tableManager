@@ -141,6 +141,23 @@ def test_orientation_agreement(case):
 
 
 @pytest.mark.parametrize(
+    "case", VECTORS["geometry_declaration_cases"]["cases"],
+    ids=[c["id"] for c in VECTORS["geometry_declaration_cases"]["cases"]])
+def test_geometry_declaration_agreement(case):
+    """The WHOLE-META physical verdict, one word. A different question from the per-axis
+    orientation cases, and measured to be one they cannot answer: deleting the borrow branch
+    from the client port left every orientation case green.
+
+    Both sides must give THIS answer. The expectation comes from the spec, not from either
+    implementation.
+    """
+    got = _require("geometry_declaration")(case["meta"])
+    assert got == case["expect"], (
+        f"[{case['id']}] expected '{case['expect']}', got '{got}'.\n"
+        f"  why: {case['$why']}\n  kills: {case['$kills']}")
+
+
+@pytest.mark.parametrize(
     "case", VECTORS["orientation_divergence_cases"]["cases"],
     ids=[c["id"] for c in VECTORS["orientation_divergence_cases"]["cases"]])
 def test_orientation_divergence_server_half(case):
@@ -580,6 +597,7 @@ def test_align_origin_client_consumers_are_unscored():
 _CONSUMED_GROUPS = {
     "orientation_agreement_cases", "orientation_divergence_cases", "orientation_census",
     "frame_basis_cases", "scoring_invariants", "excel_form_cases", "align_origin_cases",
+    "geometry_declaration_cases",
 }
 _DECLARED_UNCONSUMED = {"unscored_axes"}
 
@@ -609,6 +627,9 @@ def test_every_case_answers_what_it_kills():
     for case in VECTORS["frame_basis_cases"]["cases"]:
         if not case.get("$kills"):
             naked.append(f"frame_basis_cases/{case['id']}")
+    for case in VECTORS["geometry_declaration_cases"]["cases"]:
+        if not case.get("$kills"):
+            naked.append(f"geometry_declaration_cases/{case['id']}")
     for case in VECTORS["orientation_divergence_cases"]["cases"]:
         if not (case.get("$failure_scenario") or case.get("$kills")):
             naked.append(f"orientation_divergence_cases/{case['id']}")

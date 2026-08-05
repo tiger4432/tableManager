@@ -400,11 +400,19 @@ def geometry_refusal(meta: dict | None) -> str | None:
 
     ⚠️ 「선언인가」와 「계산할 근거가 있는가」는 **다른 질문**이다. 빌린 규격은 선언이
        아니지만 좌표는 만들어 낸다 — 그 질문은 `geometry_computable`이 답한다.
+
+    🔴 **모르는 토큰은 거절로 강등한다 — 예전에는 `KeyError`였다.** 이 사전 조회가
+       `geometry_declaration`의 모든 소비자 중 **유일하게 크래시하는 자리**였고, 그 크래시는
+       토큰을 하나 늘리는 라운드마다 되살아난다(문장을 같이 안 적으면 즉시 발화). 강등 방향은
+       하나뿐이다: 모르는 출처는 **선언이 아니다.** `None`으로 접으면 미지의 출처가 선언을
+       사칭하고(I4), 그것이 이 어휘가 존재하는 이유 그 자체다. 사유는 토큰을 그대로 실어
+       무엇을 못 읽었는지 알 수 있게 한다 — 조용한 강등은 강등된 줄도 모르게 한다.
     """
     token = geometry_declaration(meta)
     if token == GEOMETRY_DECLARED:
         return None
-    return _GEOMETRY_REFUSAL_TEXT[token]
+    return _GEOMETRY_REFUSAL_TEXT.get(
+        token, "물리 규격의 출처를 읽을 수 없습니다(미상 토큰 '%s')" % token)
 
 
 def geometry_computable(meta: dict | None) -> str | None:

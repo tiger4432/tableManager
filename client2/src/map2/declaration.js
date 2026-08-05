@@ -33,12 +33,14 @@
 //    strings, but a stored numeric `0` and a defaulted numeric `0` are the same bytes. The
 //    token is the only place that distinction can live.
 //
-// VOCABULARY IS BORROWED, NOT INVENTED. The tokens below are the SAME FOUR the physical axis
-// already settled on: `server/map_overlay.py:314-317` (`GEOMETRY_DECLARED` /
-// `GEOMETRY_AUTO_REGISTERED` / `GEOMETRY_ABSENT` / `GEOMETRY_UNPARSABLE`), which in turn
-// says out loud that it shares its vocabulary with the client's `physDeclaration:1509`
-// `source`. A second spelling of "declared" would be the exact defect class this round is
-// about, so there is not one here.
+// VOCABULARY IS BORROWED, NOT INVENTED. The tokens below are the ones the physical axis
+// already settled on in `server/map_overlay.py` (`GEOMETRY_DECLARED` /
+// `GEOMETRY_AUTO_REGISTERED` / `GEOMETRY_ABSENT` / `GEOMETRY_UNPARSABLE`, plus
+// `ORIENTATION_INDETERMINATE` and `GEOMETRY_ASSUMED`), which in turn says out loud that it
+// shares its vocabulary with the client's `physDeclaration:1509` `source`. A second spelling
+// of "declared" would be the exact defect class this round is about, so there is not one
+// here. The count is not the invariant -- the SOURCE is: every token here exists on the
+// server first, and none is minted on this side.
 //
 // CONSTRAINTS, ALL LOAD-BEARING:
 //   - NO DOM. No `document`, no `el`, no `window`. Input is a plain `grid_metadata`-shaped
@@ -103,19 +105,39 @@
 //     below takes the frame as an argument for exactly that reason.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── the five tokens ─────────────────────────────────────────────────────────────
-// The first four are byte-identical to `server/map_overlay.py:314-317` and are UNCHANGED by
-// this file. The fifth is `server/map_overlay.py:420 ORIENTATION_INDETERMINATE`, added by the
-// server lane the same day; it exists on the other side of the seam already, so adopting it
-// is copying, not inventing. Do not add a sixth.
+// ── the six tokens ──────────────────────────────────────────────────────────────
+// The first four are byte-identical to `server/map_overlay.py` (`GEOMETRY_DECLARED` /
+// `GEOMETRY_AUTO_REGISTERED` / `GEOMETRY_ABSENT` / `GEOMETRY_UNPARSABLE`) and are UNCHANGED
+// by this file. The fifth is that module's `ORIENTATION_INDETERMINATE`.
+//
+// 🔴 THE SIXTH IS `assumed`, ADDED 2026-08-05 (MAP_ALIGNMENT_SPEC 9.1). The rule was never
+//    "there are five"; it is BORROW, DO NOT INVENT. The server grew a token, so this side
+//    copies it. Adding a seventh that the server does not have is still forbidden.
+//
+//    Why it must be here even though this file can never PRODUCE it: `assumed` marks a meta
+//    whose wafer spec was borrowed from the reference floor for the computation, and that
+//    borrowed copy lives only in server memory -- it is never stored, so no meta this client
+//    reads can carry the marker. But the TOKEN arrives as a string, on
+//    `sources.maps[].geometry` and `.geometry_basis`. A vocabulary missing it does not make
+//    the client silent; it makes the client sort an assumed geometry into some other bucket
+//    while every server test stays green. That is the divergence this seam exists to catch.
 export const DECLARED = 'declared';
 export const AUTO_REGISTERED = 'auto_registered';
 export const ABSENT = 'absent';
 export const UNPARSABLE = 'unparsable';
 export const INDETERMINATE = 'indeterminate';
+export const ASSUMED = 'assumed';
 
 export const DECLARATION_TOKENS = Object.freeze([
-  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE]);
+  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED]);
+
+// 🔴 `assumed` IS NOT `declared`, AND IT IS NOT A REFUSAL EITHER. The server splits the
+//    question in two and this side has to keep them split:
+//      · "is this the map's own declaration?"  -> no  (`geometry_refusal` still refuses it)
+//      · "is there a basis to compute on?"     -> yes (`geometry_computable` accepts it)
+//    Folding it into `declared` re-creates the impersonation this whole vocabulary exists to
+//    stop; folding it into the refusals says a scored map could not be scored.
+export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED]);
 
 // ── THE TAINTING RULE ───────────────────────────────────────────────────────────
 // One sentence:
@@ -179,8 +201,16 @@ export const START_AXES = Object.freeze(['startX', 'startY']);
 export const ORIENTATION_AXES = Object.freeze([
   'rotation', 'side', 'invertY', 'startX', 'startY']);
 
-/** The marker key. `server/map_overlay.py:311 AUTO_REGISTERED_KEY`. */
+/** The marker key. `server/map_overlay.py AUTO_REGISTERED_KEY`. */
 export const AUTO_REGISTERED_KEY = 'auto_registered';
+
+/**
+ * The borrow marker. `server/map_overlay.py PHYS_ASSUMED_KEY` -- present only on the
+ * in-memory copy the alignment scorer builds, and its value is `{table, map_id}`: WHERE the
+ * wafer spec was borrowed from. Never stored, so no meta read here carries it; mirrored so
+ * the port has no missing branch.
+ */
+export const PHYS_ASSUMED_KEY = 'phys_assumed_from';
 
 /** The six physical keys, in the server's order (`map_overlay.py:265-266 PHYS_KEYS`). */
 export const PHYS_KEYS = Object.freeze([
@@ -398,6 +428,13 @@ function boolAxis(name, raw, dflt) {
  */
 export function geometryDeclaration(meta) {
   const m = (meta && typeof meta === 'object') ? meta : {};
+  // 🔴 The borrow marker is read FIRST, before the auto-registration marker, because a
+  //    borrowed copy has already overwritten the six values underneath -- they are no longer
+  //    the registrar's. This client cannot construct such a meta (the copy lives in server
+  //    memory and is never stored), and the branch is here anyway: this function's contract
+  //    is that it is a PORT, in the same order, and a port with a missing branch is a port
+  //    that answers differently the first time the other side hands it one.
+  if (m[PHYS_ASSUMED_KEY]) return ASSUMED;
   if (m[AUTO_REGISTERED_KEY] === true) return AUTO_REGISTERED;
   for (const k of PHYS_KEYS) {
     const v = m[k];

@@ -243,14 +243,33 @@ section('S1  declaration vocabulary -- structural');
   }
   if (clean) ok('no-evidence values are read out of the reader, not restated');
 
+  // The WHOLE-META verdict. A different question from the per-axis cases above, and measured
+  // to be one they cannot answer: deleting the borrow branch from this port left every
+  // orientation case green while the two sides answered differently on the same meta.
+  for (const c of VECTORS.geometry_declaration_cases.cases) {
+    const got = decl.geometryDeclaration(c.meta);
+    if (got === c.expect) {
+      ok(`geometry verdict / ${c.id}`);
+    } else {
+      bad(`geometry verdict / ${c.id}`,
+        `expected '${c.expect}', got '${got}'\nwhy: ${c.$why}\nkills: ${c.$kills}`);
+    }
+  }
+
   const tokens = new Set(decl.DECLARATION_TOKENS);
-  const want = new Set(['declared', 'auto_registered', 'absent', 'unparsable', 'indeterminate']);
+  // `assumed` joined 2026-08-05 (MAP_ALIGNMENT_SPEC 9.1): a source map with no declared wafer
+  // spec is scored on the reference floor's, and the token says the verdict stands on a
+  // borrowed one. The list is pinned rather than counted -- "there are N" is not the
+  // invariant, "these exact words, on both sides" is.
+  const want = new Set(['declared', 'auto_registered', 'absent', 'unparsable', 'indeterminate',
+                        'assumed']);
   if (tokens.size === want.size && [...want].every(t => tokens.has(t))) {
-    ok('token vocabulary is the shared five');
+    ok('token vocabulary is the shared set');
   } else {
     bad('token vocabulary',
-      `client tokens ${JSON.stringify([...tokens])} != the shared five. The server's constants `
-      + 'must change in the same commit, or the two sides need a mapping table -- and a mapping '
+      `client tokens ${JSON.stringify([...tokens])} != the shared set `
+      + `${JSON.stringify([...want])}. The server's constants must change in the same commit, `
+      + 'or the two sides need a mapping table -- and a mapping '
       + 'table is the second spelling this contract exists to prevent.');
   }
 

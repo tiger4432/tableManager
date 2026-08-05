@@ -426,13 +426,20 @@ function run(mod) {
   }
   eq('B. auto_registered production rows', markedRows, 320);
   evidence.push(`B. auto_registered rows: ${markedRows} of ${prodRows}`);
-  // Vocabulary: the server's four, plus the fifth the server lane added the same day.
-  // Pinned as SEPARATE facts so that adding a sixth is a failure, and so that a change to the
-  // shared four is a different failure from a change to the fifth.
-  eq('B. exactly five tokens', TOKENS.length, 5);
-  eq('B. the four shared with map_overlay.py:314-317, in that order',
+  // Vocabulary. Pinned as SEPARATE facts so that a change to the shared four is a different
+  // failure from a change to either of the two that came later.
+  //
+  // 🔴 THE COUNT WAS THE WRONG INVARIANT AND THIS IS THE CORRECTION (2026-08-05). The rule was
+  //    never "there are five" -- it is that every token is COPIED from a server constant and
+  //    none is minted here. Pinning the length made a legitimate server-side addition
+  //    (`GEOMETRY_ASSUMED`, MAP_ALIGNMENT_SPEC 9.1) read as a client defect, which is the
+  //    failure pointing the wrong way: the client was correct and the assertion was stale.
+  //    Each token is pinned by NAME and POSITION instead, so an invented one still fails.
+  eq('B. the four shared with map_overlay.py GEOMETRY_*, in that order',
     TOKENS.slice(0, 4).join(','), 'declared,auto_registered,absent,unparsable');
-  eq('B. the fifth is map_overlay.py:420 ORIENTATION_INDETERMINATE', TOKENS[4], 'indeterminate');
+  eq('B. the fifth is map_overlay.py ORIENTATION_INDETERMINATE', TOKENS[4], 'indeterminate');
+  eq('B. the sixth is map_overlay.py GEOMETRY_ASSUMED', TOKENS[5], 'assumed');
+  eq('B. and nothing beyond the six the server spells', TOKENS.length, 6);
 
   // The 516: it is real, and it is what the module's header now claims. Rotation is stored as
   // 0 on 516 of 668 rows and on none of them did a person choose it -- 320 written by the
