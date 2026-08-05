@@ -33,7 +33,9 @@ import { createMapSession, withQuestion, withCatalog, withSelectedCandidate, wit
 import { buildViewModel, assertNoRatio, countCoordinatePairs, selectAlignmentRules,
          VIEW_STATE, ATTRIBUTION,
          EVIDENCE, WORDS, CAUSE, UNKNOWN } from '../src/map2/view_model.js';
-import { createApiClient, ROUTES, RouteNotServedError } from '../src/map2/api.js';
+import { createApiClient, ROUTES, RouteNotServedError, normaliseReferenceCatalog,
+         REFERENCE_CATALOG_SERVED, REFERENCE_CATALOG_UNAVAILABLE } from '../src/map2/api.js';
+import { referenceOptionLabel, REFERENCE_KIND_WORD } from '../src/map2/view_model.js';
 import { bootstrap, normaliseWorklist } from '../src/map2/main.js';
 import { decideVerdict } from '../src/map2/verdict_bridge.js';
 
@@ -57,7 +59,14 @@ const CATALOG = {
     dt_map: { x: 'dt_x', y: 'dt_y', val: 'c_bn', source: BINDING_DECLARED },
     core_wafer_map: { x: 'core_x', y: 'core_y', val: null, source: BINDING_FALLBACK_GUESS },
   },
-  references: { dt_map: [{ value: 'dt_map:JOB1', label: 'JOB1' }], core_wafer_map: [] },
+  // THE NORMALISED CATALOG ITEM, as `normaliseReferenceCatalog` emits it. No `label` field:
+  // the picker's line is composed from the record, so a fixture cannot smuggle in a label the
+  // production path would never produce.
+  references: {
+    dt_map: [{ value: 'dt_map:JOB1', table: 'dt_map', mapId: 'JOB1',
+               kind: 'values', cellCount: 5024, grid: { cols: 63, rows: 63 } }],
+    core_wafer_map: [],
+  },
 };
 
 // ── A. the question is primitive, and invalid combinations are unexpressible ────
@@ -316,12 +325,13 @@ const CATALOG = {
   ok(!calls[0].url.includes('x_col='), 'F5 the coordinate columns are NOT sent -- they decide '
      + 'how a unit is read, not which units exist');
   ok(calls[0].url.includes('offset=0'), 'F5b paging is by the offset the route serves');
-  // The catalog route stayed unserved, and that is now correct rather than pending: the
-  // worklist response carries `selection`, so nothing needs a second call.
-  eq(ROUTES.catalog, null, 'F5c no separate catalog call exists');
-  let refused = null;
-  await client.loadCatalog({}).catch(e => { refused = e; });
-  ok(refused instanceof RouteNotServedError, 'F5d and asking for one refuses by name');
+  // THE REFERENCE CATALOG ROUTE LANDED, standalone. It rode on `/worklist` before, which needs
+  // both `rule` and `map_table` -- so on a deployment with no alignment-capable rule the picker
+  // could never be filled, which is the production case.
+  eq(ROUTES.referenceCatalog, '/api/maps/alignment/references',
+     'F5c which floors resolve is served on a route of its own');
+  ok(!('catalog' in ROUTES), 'F5d and the old placeholder route is gone, not left beside it');
+  ok(!('loadCatalog' in client), 'F5e nor the loader that refused by name');
 
   // The routes that DO exist are reused, not reinvented.
   eq(ROUTES.schema, '/tables/{table}/schema', 'F6 the existing schema route is reused');
@@ -344,6 +354,13 @@ const CATALOG = {
   ok(!viewUrl.includes('reference='), 'F14 and 기준 없음 is an omission, not an empty parameter');
   eq(calls.length, 4, 'F15 still exactly one request per view');
   ok(!('loadCandidate' in client), 'F16 there is still no per-candidate fetch, by absence');
+
+  // Asked last here so the counts above stay the counts they were measuring.
+  await client.loadReferenceCatalog();
+  ok(calls[4].url.includes('/api/maps/alignment/references'),
+     'F17 the catalog call names the reference route');
+  ok(!calls[4].url.includes('?'), 'F18 and sends NO parameter -- `map_table` does not narrow '
+     + 'the candidate set, and asking WITHOUT a rule is the whole point of the route');
 }
 
 // ── G. the shell: one fetch per set-up change, none per candidate ──────────────
@@ -484,6 +501,148 @@ const CATALOG = {
   eq(vm.question.references[0].label, WORDS.alignUnavailable,
      'G26 기준 없음 leads the reference list as a real option');
   eq(vm.question.references[0].value, '', 'G27 and its value is the omission, not a name');
+}
+
+// ── H. the reference picker: which floors resolve, and what each can answer ─────
+// The gap this closes: the picker was empty in production BY INSTRUCTION. The catalog route
+// had landed and the client was still writing `references[t] = []` beside a `degraded` marker
+// that had been correct only while no route existed.
+{
+  // The DIRECT shape, which is what the standalone route returns.
+  const served = normaliseReferenceCatalog({
+    state: 'served', table: 'dt_valid_die', examined: 9, rejected: 1,
+    rejected_example: '격자 규격 불일치', truncated: false, reason: null,
+    items: [
+      { table: 'dt_valid_die', map_id: 'WMAP1', kind: 'values',
+        cell_count: 5024, grid: { cols: 63, rows: 63 } },
+      { table: 'dt_valid_die', map_id: 'WMAP2', kind: 'occupancy',
+        cell_count: 4, grid: null },
+      // Unnameable: no map id. Cannot be selected, so it is not offered.
+      { table: 'dt_valid_die', map_id: null, kind: 'values', cell_count: 12 },
+    ],
+  });
+  eq(served.items.length, 2, 'H1 an item that cannot be named is not offered');
+  eq(served.items[0].value, 'dt_valid_die:WMAP1',
+     'H2 the value is the wire spelling `table:map_id`, composed once in the transport');
+  eq(served.state, REFERENCE_CATALOG_SERVED, "H3 the server's own state word survives");
+  eq(served.rejectedExample, '격자 규격 불일치',
+     'H4 and its accounting for what it threw away -- a short list with rejections is a '
+     + 'DIFFERENT fact from a short list without');
+
+  // 🔴 THE SAME RECORD ALSO RIDES ON `/worklist` AS `selection.references`. One decoder for
+  //    both, so a second reader cannot grow beside the worklist copy and drift from it.
+  const nested = normaliseReferenceCatalog({ selection: { references: {
+    state: 'served', table: 'dt_valid_die',
+    items: [{ table: 'dt_valid_die', map_id: 'WMAP1', kind: 'values', cell_count: 5024 }],
+  } } });
+  eq(nested.items[0].value, 'dt_valid_die:WMAP1', 'H5 the worklist envelope decodes identically');
+
+  // 🔴 THE VOCABULARY IS THE SERVER'S, ONE SPELLING. `kind` on a catalog item and
+  //    `reference.kind` on `/view` are one word; two spellings would let the picker promise
+  //    what the run denies.
+  eq(served.items[0].kind, EVIDENCE.VALUES, 'H6 `values` is passed through verbatim');
+  eq(served.items[1].kind, EVIDENCE.OCCUPANCY, 'H7 and `occupancy`');
+  ok(!(EVIDENCE.NONE in REFERENCE_KIND_WORD),
+     'H8 there is NO `none` branch -- a catalog item resolves by construction');
+
+  // 🔴 `kind` IS VISIBLE AT SELECTION TIME. This is the whole reason the field exists: a floor
+  //    carrying occupancy alone cannot discriminate, and one production case had all eight
+  //    candidates scoring identically against exactly such a floor. Learning that by running it
+  //    wastes the run.
+  const valuesLine = referenceOptionLabel(served.items[0]);
+  const occLine = referenceOptionLabel(served.items[1]);
+  ok(valuesLine.includes(WORDS.refValues), 'H9 a valued floor says so on its own line');
+  ok(occLine.includes(WORDS.refOccupancy), 'H10 and an occupancy-only floor says so');
+  ok(valuesLine !== occLine, 'H11 so the two are distinguishable BEFORE a run is spent');
+  // 🔴 AND IT LEADS, WHICH IS WHAT MAKES IT SURVIVE. The control is 238px wide (measured live)
+  //    and a <select> truncates from the right, so any ordering that puts identity first
+  //    truncates the kind away exactly when the map id is long.
+  eq(valuesLine.split(' · ')[0], WORDS.refValues, 'H11b kind is the FIRST token, never cut off');
+  eq(occLine.split(' · ')[0], WORDS.refOccupancy, 'H11c for both kinds');
+  const longId = referenceOptionLabel({ mapId: 'WAFERMAP_20260805_A1', kind: 'occupancy',
+                                        cellCount: 4, grid: null });
+  ok(longId.startsWith(WORDS.refOccupancy),
+     'H11d a realistic long map id cannot push the kind off the right edge');
+  ok(!valuesLine.includes('dt_valid_die'), 'H11e the constant table is not spending pixels on '
+     + 'the line -- it lives in `value` and in the console record');
+  ok(occLine.includes(`4${WORDS.cellUnit}`),
+     'H12 the line carries the measured size -- a four-cell floor is not worth choosing');
+  ok(valuesLine.includes('63x63'), 'H13 and the grid when the server measured one');
+  ok(!occLine.includes('null') && !occLine.includes('undefined'),
+     'H14 an absent grid contributes NO token rather than a printed null');
+  eq(valuesLine.split('\n').length, 1, 'H15 ONE line on screen; the record goes to the console');
+  ok(!/%/.test(valuesLine + occLine), 'H16 and no percentage anywhere in it');
+
+  // An unmeasured count says the unknown word. Never a 0: a measured zero-cell floor would be
+  // a very loud fact, and a stand-in makes the two indistinguishable.
+  const unmeasured = normaliseReferenceCatalog({ state: 'served', items: [
+    { table: 'dt_valid_die', map_id: 'WMAP3', kind: 'values', cell_count: null }] });
+  eq(unmeasured.items[0].cellCount, null, 'H17 an unmeasured count stays absent in the record');
+  ok(referenceOptionLabel(unmeasured.items[0]).includes(UNKNOWN),
+     'H18 and reads as the unknown word on screen, never as 0');
+
+  // The server looked and could not answer. Its own word, not a second spelling.
+  const dead = normaliseReferenceCatalog({ state: 'unavailable', reason: '맵 규격 표 미등록' });
+  eq(dead.state, REFERENCE_CATALOG_UNAVAILABLE, 'H19 an unavailable catalog says so');
+  eq(dead.items.length, 0, 'H20 and offers nothing rather than something plausible');
+  // An ABSENT state is not a served one. Defaulting it would let the caller read "the server
+  // looked and found nothing" out of a body that never said so.
+  eq(normaliseReferenceCatalog({ items: [] }).state, null,
+     'H20b an absent state stays absent, and is therefore not `served`');
+
+  // 🔴 `기준 없음` IS A REAL, SELECTABLE VALUE IN EVERY CASE -- with a full list, and with an
+  //    empty one. It is the COMMON case (the maps that need aligning are exactly the ones with
+  //    no reference), so it must never read as a picker's empty state or as an error.
+  const withRefs = withCatalog(createMapSession({}), {
+    ...CATALOG, references: { ...CATALOG.references, dt_map: served.items } });
+  const full = buildViewModel({ session: withRefs, verdict: null }).question.references;
+  eq(full[0].label, WORDS.alignUnavailable, 'H21 기준 없음 leads a POPULATED list too');
+  eq(full.length, 3, 'H22 with every resolving floor beside it');
+  ok(full[1].label.includes(WORDS.refValues), 'H23 each carrying what it can answer');
+  const empty = buildViewModel({
+    session: withCatalog(createMapSession({}), { ...CATALOG, references: { dt_map: [] } }),
+    verdict: null,
+  }).question.references;
+  eq(empty.length, 1, 'H24 an empty catalog still offers 기준 없음, and offers it alone');
+  eq(empty[0].label, WORDS.alignUnavailable, 'H25 which is a value, not an empty state');
+  ok(empty[0].selected, 'H26 and it is what stands selected');
+
+  // There is no "show all" affordance, by absence: what did not resolve is never offered, and
+  // nothing on this side may reveal it into the control.
+  ok(!JSON.stringify(full).includes('valid_die_ref'),
+     'H27 no declared-but-unresolvable pointer reaches the picker');
+
+  // 🔴 `not_offered` IS DIAGNOSIS, NOT AN OFFER. The server names what it refused and why
+  //    (`server/map_alignment.py:1413-1419`) because a reasonless "none" sends the operator to
+  //    a person instead of to a repair -- so it rides in the console record and is kept out of
+  //    `items` and out of the control.
+  const withRefused = normaliseReferenceCatalog({
+    state: 'served', table: 'dt_valid_die',
+    items: [{ table: 'dt_valid_die', map_id: 'OK1', kind: 'values', cell_count: 500 }],
+    not_offered: [{ table: 'dt_valid_die', map_id: 'BAD1', reason_code: 'meta_missing',
+                    reason: '맵 규격 행 없음', cell_count: 4096 }],
+    examined: 2, rejected: 1, rejected_example: '맵 규격 행 없음',
+  });
+  eq(withRefused.items.length, 1, 'H29 only what resolves lands in `items`');
+  eq(withRefused.notOffered.length, 1, 'H30 and what did not is carried separately');
+  eq(withRefused.notOffered[0].reason, '맵 규격 행 없음',
+     "H31 with the server's own sentence verbatim, not a second spelling");
+  eq(withRefused.notOffered[0].cellCount, 4096,
+     'H32 and its cell count -- HAVING cells and still not resolving is a different repair');
+  const offered = buildViewModel({
+    session: withCatalog(createMapSession({}), {
+      ...CATALOG, references: { ...CATALOG.references, dt_map: withRefused.items } }),
+    verdict: null,
+  }).question.references;
+  eq(offered.length, 2, 'H33 the picker offers 기준 없음 and the ONE floor that resolves');
+  ok(!JSON.stringify(offered).includes('BAD1'),
+     'H34 the refused candidate is nowhere in the control -- no "show all" affordance');
+
+  // The config route is still unserved, and still refuses by name.
+  const c = createApiClient({ baseUrl: '', fetchImpl: () => Promise.reject(new Error('no')) });
+  let stillRefused = null;
+  await c.loadAlignConfig().catch(e => { stillRefused = e; });
+  ok(stillRefused instanceof RouteNotServedError, 'H28 the threshold route still refuses by name');
 }
 
 console.log(`ASSERTIONS ${compared} ${failures.length}`);

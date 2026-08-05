@@ -19,7 +19,7 @@
 import { API_BASE, CURRENT_USER } from './config.js';
 import { bootstrap } from './map2/main.js';
 import { selectAlignmentRules } from './map2/view_model.js';
-import { createApiClient, RouteNotServedError } from './map2/api.js';
+import { createApiClient, RouteNotServedError, REFERENCE_CATALOG_SERVED } from './map2/api.js';
 
 const DEV_CAPTURE_URL = '/map2_dev_reference.json';
 
@@ -68,6 +68,9 @@ function createResilientClient() {
     loadTables: (...a) => live.loadTables(...a),
     loadTableSchema: (...a) => live.loadTableSchema(...a),
     loadBinding: (...a) => live.loadBinding(...a),
+    // Straight through too. A captured stand-in for "which floors resolve" would be the worst
+    // possible fallback on this control: the operator would pick a floor that does not exist.
+    loadReferenceCatalog: (...a) => live.loadReferenceCatalog(...a),
 
     /**
      * 🔴 THE `.catch(capture)` THAT USED TO BE ON THIS LINE WAS THE MORE DANGEROUS HALF OF
@@ -279,8 +282,27 @@ async function discover(api) {
  *   · columns  -- `/tables/{t}/schema`, the route admin already consumes
  *   · binding  -- `/api/maps/paint-rules?table=`, which serves the RESOLVED declaration from
  *                 `map_overlay_config.json` together with its provenance
- * The reference list has no route; it degrades to `기준 없음` alone, which is the ordinary state
- * for the maps that have no valid-die reference in the first place.
+ *   · references -- `/api/maps/alignment/references`, WHICH FLOORS ACTUALLY RESOLVE
+ *
+ * 🔴 THE REFERENCE LIST IS ASKED ONCE, FOR THE WHOLE DEPLOYMENT, AND NOT PER TABLE. The server
+ *    does not narrow it by map table (`map_alignment.resolve_reference_catalog`), so one call
+ *    answers for every table in the loop below; asking per table would be N requests for N
+ *    copies of one answer. It is also started BEFORE the loop and awaited after it, so it costs
+ *    no wall clock against the switchover bar.
+ *
+ * 🔴 AND THE CALL CARRIES NO RULE. That is the point of the standalone route: the list used to
+ *    ride on `/worklist`, which requires both `rule` and `map_table`, so it could not be asked
+ *    for at all without one.
+ *
+ *    ⚠️ ONE GATE IS STILL IN FRONT OF IT, AND IT IS NOT THIS ROUTE'S. `buildCatalog` is reached
+ *       only from `adoptRule`, so a deployment where NO rule declares `alignment: true` never
+ *       gets here and the picker stays empty -- measured on the dev box today, whose two
+ *       declared rules are both unmarked. That gate is deliberate and is NOT removed here:
+ *       without a rule `chosen.rule` is null, `loadReferenceView` refuses by construction, and
+ *       a set-up row that filled in anyway would be a control that cannot ask what it offers.
+ *       The honest screen there says `정렬 규칙 없음`. Naming the gate rather than papering over
+ *       it, because "the route is reachable without a rule" and "the picker fills without a
+ *       rule" are two different claims and only the first one is true.
  */
 async function buildCatalog(api, declaration) {
   const degraded = [];
@@ -288,6 +310,19 @@ async function buildCatalog(api, declaration) {
   const columnTypes = {};
   const binding = {};
   const references = {};
+
+  // Started first, awaited last. Nothing in the table loop depends on it.
+  const refCatalog = api.loadReferenceCatalog().then(cat => {
+    // 🔴 ONE LINE ON SCREEN, THE WHOLE RECORD HERE. The picker shows one line per floor; the
+    //    server's accounting for what it examined and threw away is diagnosis, and diagnosis
+    //    lives in the console. A short list with `rejected > 0` is a DIFFERENT fact from a
+    //    short list with nothing rejected, and only this line can tell them apart.
+    console.log('[map2] reference catalog:', cat);
+    return cat;
+  }).catch(err => {
+    console.log('[map2] reference catalog unavailable:', err && err.message);
+    return null;
+  });
 
   let names = [];
   try {
@@ -322,12 +357,27 @@ async function buildCatalog(api, declaration) {
     } catch (e) {
       degraded.push(`binding:${name}`);
     }
-    // No route serves "which references actually resolve". Offering the declared
-    // `valid_die_ref` values would offer names that resolve zero times. The marker STAYS until
-    // that route lands, so the emptiness is attributable rather than looking healthy.
-    references[name] = [];
-    degraded.push(`references:${name}`);
   }
+
+  // 🔴 THE `references:<table>` MARKER IS GONE, AND ONLY THAT ONE. It was written
+  //    unconditionally, so it said "degraded" about a list that is now real -- a marker that
+  //    lies in the other direction is worse than none, because the next reader trusts it. What
+  //    remains is a marker by FACT: the route answering is the ordinary case, and the route
+  //    failing is a genuine degradation, named once rather than once per table.
+  const cat = await refCatalog;
+  if (cat === null) {
+    degraded.push('references');
+  } else if (cat.state !== REFERENCE_CATALOG_SERVED) {
+    // The server looked and could not answer -- its own word for it, not a second spelling.
+    degraded.push('references');
+    console.log('[map2] reference catalog not served:', cat.reason || '(no reason given)');
+  }
+  // The SAME list for every map table: the server does not narrow it, and neither may this.
+  // An empty list is the ordinary `기준 없음` state, not an error -- see `view_model`, which
+  // always carries 기준 없음 as a real first option beside whatever this holds.
+  const refItems = cat ? cat.items : [];
+  for (const t of tables) references[t.table] = refItems;
+
   if (tables.length === 0) {
     console.log('[map2] no table declares map_key_columns; there is nothing to align. '
       + `Rule '${declaration && declaration.name}' has source_table `

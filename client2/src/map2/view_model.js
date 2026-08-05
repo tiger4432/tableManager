@@ -71,6 +71,16 @@ export const WORDS = Object.freeze({
   // One line, and it is a LABEL: the screen says the two metrics disagree, the console says
   // which candidate each one chose. Diagnosis is not a decision.
   metricConflict: '지표 불일치',
+  // 🔴 WHAT A FLOOR CAN ANSWER, SAID BEFORE THE OPERATOR SPENDS A RUN ON IT. `점유만` is the
+  //    word the readout already uses for this condition (`제안 · 점유만 · 기준 없음`), reused
+  //    rather than re-spelled. A floor carrying occupancy alone cannot discriminate -- one
+  //    production case had all eight candidates scoring identically against one -- and finding
+  //    that out by running it wastes the run. That is the whole reason `kind` is on the wire.
+  refValues: '값 있음',
+  refOccupancy: '점유만',
+  // The floor's size, as a unit. A four-cell floor is not worth choosing and the count is the
+  // only thing that says so.
+  cellUnit: '셀',
 });
 
 /**
@@ -110,6 +120,57 @@ export const EVIDENCE = Object.freeze({
   OCCUPANCY: 'occupancy',
   VALUES: 'values',
 });
+
+/**
+ * The reference picker's word for each `kind`, keyed by THE SAME vocabulary the payload uses.
+ *
+ * 🔴 KEYED OFF `EVIDENCE`, NOT OFF TWO NEW STRING LITERALS. `kind` on a catalog item and
+ *    `reference.kind` on `/view` are one server word, so the picker and the readout must not
+ *    grow two spellings of it -- the day they drift, the picker promises what the run denies.
+ * 🔴 NO `NONE` ENTRY, ON PURPOSE. A catalog item resolves by construction, so `none` -- which
+ *    is reachable on `/view`, where a unit may have no reference at all -- cannot appear here.
+ *    An unknown kind therefore yields no word rather than a made-up one.
+ */
+export const REFERENCE_KIND_WORD = Object.freeze({
+  [EVIDENCE.VALUES]: WORDS.refValues,
+  [EVIDENCE.OCCUPANCY]: WORDS.refOccupancy,
+});
+
+/**
+ * ONE LINE PER FLOOR: what it can answer, which floor it is, how big it is, and its grid.
+ * TOKENS JOINED BY A SEPARATOR, never a clause -- the same rule the rest of this file follows,
+ * and the reason no template-plus-slot sentence can form here.
+ *
+ * 🔴 `kind` LEADS, AND THAT IS A MEASUREMENT, NOT A PREFERENCE. The control is 238px wide and
+ *    a `<select>` truncates from the RIGHT: measured in the live page, only ~184px of text
+ *    survives, and a realistic map id (`WAFERMAP_20260805_A1`) spends most of it on its own.
+ *    Any ordering that puts identity first therefore truncates the kind away exactly when the
+ *    id is long -- silently, and per row. Leading with it makes the guarantee structural: the
+ *    operator sees whether a floor can discriminate at all BEFORE spending a run on it, which
+ *    is the whole reason the field is on the wire. One production case had all eight candidates
+ *    scoring identically against an occupancy-only floor.
+ * 🔴 THE REFERENCE'S TABLE IS NOT ON THE LINE. It is in `value` (`table:map_id`, the spelling
+ *    `/view` takes back) and in the console record, and spending 100 of 184 measured pixels
+ *    repeating one constant across every row would push the kind off the right edge -- trading
+ *    a decision-relevant fact for one the operator is not choosing between.
+ * 🔴 AN UNMEASURED CELL COUNT SAYS `미상`, never `0`. A measured zero-cell floor would be a very
+ *    loud fact; an unmeasured one is not a fact at all, and a `0` stand-in makes them one.
+ * An absent grid contributes NO token rather than an empty one -- and it is last precisely
+ * because it is the token that may be truncated without costing a decision.
+ */
+export function referenceOptionLabel(item) {
+  const it = item || {};
+  const parts = [];
+  const kindWord = REFERENCE_KIND_WORD[it.kind];
+  if (kindWord) parts.push(kindWord);
+  parts.push(String(it.mapId || ''));
+  parts.push(Number.isFinite(Number(it.cellCount)) && it.cellCount !== null
+    ? `${Number(it.cellCount)}${WORDS.cellUnit}` : UNKNOWN);
+  if (it.grid && Number.isFinite(Number(it.grid.cols)) && Number.isFinite(Number(it.grid.rows))) {
+    parts.push(`${Number(it.grid.cols)}x${Number(it.grid.rows)}`);
+  }
+  return parts.join(' · ');
+}
 
 /**
  * @param {object} input
@@ -473,8 +534,12 @@ function questionModel(session, attribution) {
     // with a consequence, not an unfilled field.
     valueOptions: Object.freeze([option('', WORDS.notDeclared, !cols.val)].concat(
       names.map(n => option(n, n, n === cols.val)))),
+    // 🔴 `기준 없음` LEADS, AND IT IS A REAL SELECTABLE VALUE -- not the empty state of a
+    //    picker. The maps that need aligning are exactly the ones with no valid-die reference,
+    //    so the commonest correct answer must never read as an error or as an unfilled field.
+    //    It is present whether the list below it has zero entries or twenty.
     references: Object.freeze([option('', WORDS.alignUnavailable, !q.reference)].concat(
-      refList.map(r => option(r.value, r.label || r.value, r.value === q.reference)))),
+      refList.map(r => option(r.value, referenceOptionLabel(r), r.value === q.reference)))),
     askable: !!(q.mapTable && cols.x && cols.y),
     // 🔴 A PROPOSAL IS CARRIED AS A FLAG ALL THE WAY TO THE SCREEN. The view marks it; the
     //    confirm control refuses to rest on it. Flattening this into "the pair is set" is the

@@ -567,6 +567,31 @@ def test_the_offer_list_counts_cells_rather_than_fetching_them(env):
     assert len(ref["cells"]) == 1 and ref["count"] == 1
 
 
+def test_the_worklist_field_and_the_rule_less_route_are_the_same_answer(env):
+    """`selection.references` stays on the worklist so a client that already has a rule
+    needs no second call - but it must be the SAME computation the rule-less route serves,
+    not a second one. The day these are two implementations is the day a floor is offered
+    on one screen and missing on the other. One function, two callers."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    _seed_floor(env, "GOOD", "A", [(3, 3), (4, 3)])
+    auto = dict(_auto_meta())
+    _seed_floor(env, "AUTO", "B", [(5, 5)])
+    env.query(models.DYNAMIC_TABLES[map_overlay.META_TABLE]).filter_by(
+        map_id="AUTO_B").update({"grid_metadata": json.dumps(auto)})
+    env.commit()
+    assert _wl(env)["selection"]["references"] == ma.resolve_reference_catalog(env, {})
+
+
+def test_a_floor_refused_on_the_worklist_is_named_there_too(env):
+    """The worklist's copy carries the same `not_offered` detail, so an operator who never
+    opens the standalone route still learns which map was refused and why."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    _seed_floor(env, "EMPTY", "B", [])
+    cat = _wl(env)["selection"]["references"]
+    assert [n["map_id"] for n in cat["not_offered"]] == ["EMPTY_B"]
+    assert cat["not_offered"][0]["reason_code"] == ma.REF_REFUSAL_NO_CELLS
+
+
 def test_the_map_table_choices_come_from_the_declaration_not_from_a_list_in_code(env):
     _seed_unit(env, "E1", "P1", ["J1"])
     tables = {c["table"] for c in _wl(env)["selection"]["map_tables"]}

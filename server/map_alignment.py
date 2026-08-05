@@ -74,6 +74,10 @@ MAX_SCORED_CELLS = 20_000      # 단위 전체에서 채점에 쓰는 소스 셀
 MAX_PAYLOAD_CELLS = 20_000     # 응답에 실어 보내는 셀 상한 (기준·소스 각각)
 SHIFT_WINDOW = 3               # 후보별 정수 시프트 탐색 반경 (±N, 즉 (2N+1)^2 후보)
 
+#: 맵 키 구분자 — `compose_map_id`가 잇고 `map_overlay.map_key_parts`가 자르는 그 글자.
+#: 두 자리가 같은 글자를 써야 왕복이 성립하므로 철자는 여기 하나다.
+_MAP_KEY_SEPARATOR = "_"
+
 # ---------------------------------------------------------------------------
 # 상태 어휘 — 닫혀 있다
 # ---------------------------------------------------------------------------
@@ -109,6 +113,26 @@ _EXCLUDE_TEXT = {
     EXCLUDE_GEOMETRY_REFUSED: "칩 규격 미선언 - 좌표 변환 불가",
     EXCLUDE_NO_CELLS: "좌표 0건",
 }
+
+# 기준(floor) 거절 사유 코드 — **「제안되지 않았다」에는 언제나 이유가 붙는다.**
+#
+# 🔴 이유 없는 「없음」이 제품 소유자를 수리가 아니라 사람에게 보냈다: 양쪽 반(셀 + 메타 행)이
+#    다 있는 바닥이 목록에 없는데, 응답이 말해 준 것은 거절 **개수**와 익명의 예시 문장 하나
+#    뿐이었다. 어느 맵이 왜 빠졌는지가 응답에 없으면 화면은 「고장」과 「그 맵은 바닥이 될 수
+#    없음」을 구별할 방법이 없다.
+#
+# 세 개는 `EXCLUDE_*`와 **같은 문자열**이다 — 같은 사실에 두 철자를 두지 않는다(상세 화면의
+# 제외 어휘와 목록의 거절 어휘가 갈리면 같은 원인이 두 이름으로 보고된다).
+REF_REFUSAL_META_MISSING = EXCLUDE_META_MISSING          # 메타 **행**이 없다
+REF_REFUSAL_META_UNREADABLE = "meta_unreadable"          # 행은 있는데 grid_metadata가 비었/깨졌다
+REF_REFUSAL_GEOMETRY = EXCLUDE_GEOMETRY_REFUSED          # auto_registered · 키 부재 · 수가 아님
+REF_REFUSAL_BINDING = "binding_unresolved"               # 좌표/값 컬럼 바인딩을 유도 못 함
+REF_REFUSAL_NO_CELLS = EXCLUDE_NO_CELLS                  # 그 키에 행이 없다
+REF_REFUSAL_COORDS_UNREADABLE = "coords_unreadable"      # 행은 있는데 x·y가 수가 아니다
+REF_REFUSAL_KEY_UNSPLIT = "key_unsplit"                  # 맵 키가 키 컬럼 수만큼 쪼개지지 않는다
+REF_REFUSAL_KEY_AMBIGUOUS = "key_ambiguous"              # 구분자가 더 많아 어디서 잘릴지가 갈린다
+REF_REFUSAL_SPEC_MALFORMED = "spec_malformed"            # 명시 지정이 '테이블:맵ID'가 아니다
+REF_REFUSAL_DECLARATION = "declaration_unreadable"       # valid_die_ref 선언 자체를 못 읽는다
 
 
 class _Excluded:
@@ -763,7 +787,11 @@ def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
 
 def _ref_state(state, **kw):
     base = {"state": state, "source": None, "table": None, "map_id": None,
-            "cells": [], "values": [], "count": 0, "reason": None, "truncated": False,
+            "cells": [], "values": [], "count": 0,
+            # 사유는 **코드와 문장 둘 다** 나간다. 코드는 화면이 분기하는 것이고 문장은
+            # 사람이 읽는 것이며, 클라가 문장에서 코드를 유도하기 시작하면 그것이 두 번째
+            # 판정 구현이 된다(`unscorable_reasons`와 같은 규율).
+            "reason_code": None, "reason": None, "truncated": False,
             "kind": REFERENCE_KIND_NONE}
     base.update(kw)
     return base
@@ -786,6 +814,7 @@ def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int,
     if spec:
         if ":" not in spec:
             return _ref_state(REFERENCE_REFUSED,
+                              reason_code=REF_REFUSAL_SPEC_MALFORMED,
                               reason="기준 지정은 '테이블:맵ID' 형식이어야 합니다")
         table, map_id = (p.strip() for p in spec.split(":", 1))
         origin = "explicit"
@@ -796,7 +825,8 @@ def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int,
             ref, err = map_overlay.parse_valid_die_ref(sm["meta"],
                                                       default_table=sm.get("table"))
             if err:
-                return _ref_state(REFERENCE_REFUSED, source="valid_die_ref", reason=err)
+                return _ref_state(REFERENCE_REFUSED, source="valid_die_ref",
+                                  reason_code=REF_REFUSAL_DECLARATION, reason=err)
             if ref:
                 table, map_id, origin = ref["table"], ref["map_id"], "valid_die_ref"
                 break
@@ -820,29 +850,108 @@ _REF_CACHE_MAX = 256
 
 
 def _load_reference(db, cfg: dict, table: str, map_id: str, origin: str, cap: int) -> dict:
-    """해석된 기준 하나를 실제로 읽는다. `_resolve_reference`의 꼬리 — **여기 하나뿐이다.**"""
-    def _refuse(reason):
+    """해석된 기준 하나를 실제로 읽는다. `_resolve_reference`의 꼬리 — **여기 하나뿐이다.**
+
+    거절은 **언제나 사유 코드를 달고** 나간다(`REF_REFUSAL_*`). 이 함수가 목록(카탈로그)과
+    상세(`/view`) 양쪽의 유일한 판정자이므로, 여기서 코드를 붙이면 두 화면이 같은 낱말로
+    같은 원인을 말한다 — 목록에서 「제안 안 됨」을 본 조작자가 상세를 열어 **다른 이유**를
+    듣는 일이 생기지 않는다.
+    """
+    def _refuse(code, reason):
         return _ref_state(REFERENCE_REFUSED, source=origin, table=table, map_id=map_id,
-                          reason=reason)
+                          reason_code=code, reason=reason)
 
     meta = map_overlay.load_map_meta(db, table, map_id)
     if not meta:
-        return _refuse("기준 맵 '%s · %s'의 규격이 wafer_map_metadata에 등록되지 않았습니다"
+        # 🔴 「행이 없다」와 「행은 있는데 grid_metadata가 비었/깨졌다」는 조작자에게
+        #    **정반대의 수리**다(등록하라 vs 다시 재라). `load_map_meta`는 둘 다 None을
+        #    돌려주므로 여기서 갈라 준다 — 갈라 주지 않으면 등록돼 있는 맵을 두고
+        #    「등록되지 않았습니다」라고 말하게 되고, 그 문장은 참이 아니다.
+        if _meta_row_exists(db, table, map_id):
+            return _refuse(REF_REFUSAL_META_UNREADABLE,
+                           "기준 맵 '%s · %s'의 wafer_map_metadata 행은 있으나 "
+                           "grid_metadata가 비어 있거나 읽히지 않습니다" % (table, map_id))
+        return _refuse(REF_REFUSAL_META_MISSING,
+                       "기준 맵 '%s · %s'의 규격이 wafer_map_metadata에 등록되지 않았습니다"
                        % (table, map_id))
     why = map_overlay.geometry_refusal(meta)
     if why is not None:
-        return _refuse("기준 맵 '%s · %s': %s" % (table, map_id, why))
+        return _refuse(REF_REFUSAL_GEOMETRY, "기준 맵 '%s · %s': %s" % (table, map_id, why))
     try:
         cells, values, truncated, kind = _cells_of(db, cfg, table, map_id, cap)
     except ValueError as e:
-        return _refuse(str(e))
+        return _refuse(REF_REFUSAL_BINDING, str(e))
     if not cells:
-        return _refuse("기준 맵 '%s · %s'에 좌표가 없습니다" % (table, map_id))
+        code, reason = _no_cell_refusal(db, cfg, table, map_id)
+        return _refuse(code, reason)
     out = _ref_state(REFERENCE_RESOLVED, source=origin, table=table, map_id=map_id,
                      cells=cells, values=values, count=len(cells),
                      truncated=truncated, kind=kind)
     out["meta"] = meta
     return out
+
+
+def _meta_row_exists(db, table: str, map_id: str) -> bool:
+    """메타 **행**이 있는가. 거절 경로에서만 부른다(정상 경로에는 질의를 하나도 더하지 않는다)."""
+    from database import models
+    model = models.DYNAMIC_TABLES.get(map_overlay.META_TABLE)
+    if model is None:
+        return False
+    try:
+        return (db.query(getattr(model, "map_id"))
+                  .filter(getattr(model, "target_table") == table,
+                          getattr(model, "map_id") == map_id).first()) is not None
+    except Exception:
+        return False
+
+
+def _no_cell_refusal(db, cfg: dict, table: str, map_id: str):
+    """좌표 0건일 때 **무엇이 0건인가**를 가른다. `(reason_code, 문장)`.
+
+    같은 증상에 원인이 셋이고 수리가 셋 다 다르다:
+
+    ⓐ 그 키에 행이 정말 없다 — 셀을 넣어야 한다.
+    ⓑ 행은 있는데 x·y가 수가 아니다 — 데이터를 고쳐야 한다. 개수로는 절대 안 보인다.
+    ⓒ **엉뚱한 곳을 봤다.** `compose_map_id`는 키 값들을 '_'로 잇고 `map_key_parts`는
+      **마지막 컬럼이 나머지를 흡수**하도록 자른다. 그래서 첫 키 컬럼 값에 '_'가 들어가는
+      순간 왕복이 깨진다 — product 'A_B' + type 'C'가 'A_B_C'로 저장되고, 되읽을 때는
+      product 'A' / type 'B_C'로 갈려 아무 셀도 만나지 못한다. 양쪽 반이 다 있는데도
+      제안되지 않는 바닥의 가장 조용한 원인이 이것이다.
+
+    그래서 문장에 **무엇에 바인딩해 조회했는지**를 적는다. 조작자가 'product=A, type=B_C'를
+    보는 순간 ⓒ는 자명해지고, 그 사실은 개수나 코드만으로는 절대 전달되지 않는다.
+    """
+    bound, key_cols, tokens = None, [], 1
+    try:
+        b = _binding_of(cfg, table)
+        key_cols = list(b.get("key_columns") or [])
+        parts = map_overlay.map_key_parts(b, map_id)
+        bound = ", ".join("%s='%s'" % (n, v) for n, v in parts)
+        tokens = len(str(map_id).split(_MAP_KEY_SEPARATOR))
+    except ValueError:
+        key_cols = []
+    where = (" (조회 조건: %s)" % bound) if bound else ""
+    n_rows = _count_cells(db, cfg, table, map_id)
+    if n_rows:
+        return (REF_REFUSAL_COORDS_UNREADABLE,
+                "기준 맵 '%s · %s'의 행에 읽을 수 있는 좌표가 없습니다 — x·y가 수가 "
+                "아닙니다%s" % (table, map_id, where))
+    if key_cols and tokens < len(key_cols):
+        return (REF_REFUSAL_KEY_UNSPLIT,
+                "기준 맵 '%s · %s'의 키가 맵 키 컬럼 %s(으)로 분해되지 않습니다%s"
+                % (table, map_id, key_cols, where))
+    # 🔴 키 컬럼이 하나면 **모호할 수 없다** — 마지막 컬럼이 나머지를 흡수한다는 규칙이 곧
+    #    「전부를 그 하나에 준다」가 되어 왕복이 언제나 성립한다(`dt_job='MID_01'`). 여기에
+    #    상한 검사를 걸면 정상 키를 모호하다고 고발하게 되고, 그 오진은 없는 결함을 세운다.
+    if len(key_cols) >= 2 and tokens > len(key_cols):
+        return (REF_REFUSAL_KEY_AMBIGUOUS,
+                "기준 맵 '%s · %s'의 키에 '%s'가 맵 키 컬럼 수보다 많아 어디서 잘릴지가 "
+                "갈립니다 — 마지막 컬럼이 나머지를 흡수하므로 첫 키 컬럼 값에는 '%s'가 "
+                "들어갈 수 없습니다 (맵 키 컬럼 %s)%s"
+                % (table, map_id, _MAP_KEY_SEPARATOR, _MAP_KEY_SEPARATOR,
+                   key_cols, where))
+    return (REF_REFUSAL_NO_CELLS,
+            "기준 맵 '%s · %s'에 좌표가 없습니다%s" % (table, map_id, where))
 
 
 def _map_key_columns(cfg: dict, table: str):
@@ -856,8 +965,14 @@ def _map_key_columns(cfg: dict, table: str):
 
 def compose_map_id(values) -> str:
     """맵 키 컬럼 값들 → 맵 ID. **목록과 상세가 같은 문자열을 만들어야 한다** — 목록이 센 맵과
-    상세가 여는 맵이 다른 이름을 가지면 개수가 조용히 갈린다. 그래서 철자는 여기 하나다."""
-    return "_".join("" if v is None else str(v) for v in values)
+    상세가 여는 맵이 다른 이름을 가지면 개수가 조용히 갈린다. 그래서 철자는 여기 하나다.
+
+    ⚠️ 이 조인은 **되돌릴 수 없을 수 있다.** `map_overlay.map_key_parts`는 마지막 컬럼이
+       나머지를 흡수하도록 자르므로, 첫 키 컬럼 값에 구분자가 들어가면 왕복이 깨진다
+       (`('A_B','C')` → `'A_B_C'` → `('A','B_C')`). 그 경우 셀 조회는 아무것도 만나지
+       못하고, `_no_cell_refusal`이 `key_ambiguous`로 그 사실을 이름 붙여 내보낸다.
+    """
+    return _MAP_KEY_SEPARATOR.join("" if v is None else str(v) for v in values)
 
 
 def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table: str,
@@ -1222,59 +1337,107 @@ REFERENCE_CATALOG_UNAVAILABLE = "unavailable"  # 조회 자체가 불가 (메타
 MAX_REFERENCE_CANDIDATES = 50
 
 
-def resolve_reference_catalog(db, cfg: dict, cap: int = MAX_REFERENCE_CANDIDATES) -> dict:
+#: 바닥이 저장되는 테이블들. 오늘은 하나이고, 그것이 **고정된 읽기**(1-a 판정)의 결과다.
+def floor_tables() -> list:
+    """바닥 셀이 실제로 저장돼 있는 테이블 목록. 오늘은 `VALID_DIE_TABLE` 하나다.
+
+    선언이 어느 테이블을 이름 붙였든 `parse_valid_die_ref`가 읽기를 여기로 고정한다. 목록을
+    리스트로 두는 이유는 그 고정이 언젠가 풀릴 때 **응답 형태를 바꾸지 않기 위해서**다 —
+    항목은 이미 `table`을 달고 나가므로 여러 테이블이 섞여도 클라는 그대로 읽는다.
+    """
+    return [map_overlay.VALID_DIE_TABLE]
+
+
+def resolve_reference_catalog(db, cfg: dict, table: str = None,
+                              cap: int = MAX_REFERENCE_CANDIDATES) -> dict:
     """지금 이 서버에서 **실제로 바닥이 되는** 맵들.
 
-    후보 집합은 `map_overlay.VALID_DIE_TABLE` 하나다 — 읽기가 그리로 고정돼 있고(1-a 판정,
-    `map_overlay:1242`), 선언이 어느 테이블을 이름 붙였든 조회는 거기서 일어난다. 그래서
-    `map_table`은 이 목록을 좁히지 않는다. 좁히는 것은 격자 규격인데, 그 판정은 단위마다
-    다르므로(`make_frame_transform`은 격자가 다르면 거절한다) 여기서는 **격자를 실어 보내고
-    판정은 하지 않는다**.
+    🔴 **이 답은 규칙(rule)과 무관하다.** 어느 바닥이 풀리는가는 맵 테이블의 성질이지 지금
+       작업 중인 인리치먼트 규칙의 성질이 아니다. 이 목록이 워크리스트 응답에만 실려 있던
+       동안, 정렬 규칙을 아직 선언하지 않은 운영은 양쪽 반이 다 있는 바닥을 **볼 수 없었다** —
+       워크리스트가 아무것도 답하지 못하면서 이 목록까지 같이 데려갔기 때문이다. 그래서
+       `GET /api/maps/alignment/references`가 규칙 없이도 같은 답을 낸다. 계산은 이 함수
+       하나이고 호출자가 둘이다(라우트 · 워크리스트) — **두 번째 해석 경로를 만들지 않는다.**
+
+    `table`: **보고 대상 테이블 필터**다(선택). 없으면 바닥을 담을 수 있는 모든 테이블.
+       ⚠️ 이것은 `map_table` 좁히기가 **아니다** — 어느 맵 테이블을 정렬 중인지는 어느 바닥이
+       풀리는가를 바꾸지 않으므로 후보 집합을 그것으로 좁히지 않는다. 격자가 맞는지는 단위마다
+       다른 판정이라(`make_frame_transform`은 격자가 다르면 거절한다) 여기서는 **격자를 실어
+       보내고 판정은 하지 않는다**.
 
     🔴 판정은 `_load_reference` **하나**가 한다. 여기서 "풀리는가"를 다시 구현하면 목록이
        고를 수 있다고 한 것을 상세가 거절하는 날이 온다.
+
+    [`kind`는 `/view`의 `reference.kind`와 **같은 어휘**다] 같은 사실에 두 철자를 두지 않는다.
+    다만 도달 가능한 값이 다르다 — `/view`에서는 단위에 기준이 아예 없을 수 있어 `none`이
+    나오지만, 이 목록의 항목은 **구성상 전부 풀린 것**이라 `none`은 절대 나오지 않는다.
+
+    [`not_offered`] 제안되지 않은 후보는 **이름과 사유를 달고** 나간다. 개수만 내보내면
+    조작자는 자기 맵이 왜 없는지 알 길이 없고, 그때 조작자가 가는 곳은 수리가 아니라 사람이다.
+    `cell_count`는 여기서도 `COUNT(*)`다 — 셀이 **있는데도** 제안되지 않았다는 사실 자체가
+    가장 중요한 단서이기 때문이다(셀 0건과 「셀은 있는데 좌표가 안 읽힘」은 다른 수리다).
     """
     from database import models
 
     meta_model = models.DYNAMIC_TABLES.get(map_overlay.META_TABLE)
-    table = map_overlay.VALID_DIE_TABLE
-    base = {"state": REFERENCE_CATALOG_SERVED, "table": table, "items": [],
+    tables = floor_tables()
+    if table is not None:
+        tables = [t for t in tables if t == table]
+    base = {"state": REFERENCE_CATALOG_SERVED, "table": map_overlay.VALID_DIE_TABLE,
+            "filter": table, "items": [], "not_offered": [],
             "examined": 0, "rejected": 0, "rejected_example": None,
             "truncated": False, "reason": None}
     if meta_model is None:
         return dict(base, state=REFERENCE_CATALOG_UNAVAILABLE,
                     reason="맵 규격 표(%s) 미등록" % map_overlay.META_TABLE)
+    if not tables:
+        # 봤는데 없다 — 조회 불가가 아니다. 필터가 고정된 바닥 테이블을 지운 것이고, 그
+        # 사실을 말해 준다(빈 배열 하나로는 「고장」과 구별되지 않는다).
+        return dict(base, reason="바닥은 '%s'에서만 읽습니다 — '%s'에는 바닥이 저장되지 "
+                                 "않습니다" % (map_overlay.VALID_DIE_TABLE, table))
 
     tt, mid = getattr(meta_model, "target_table"), getattr(meta_model, "map_id")
-    rows = (db.query(mid).filter(tt == table).order_by(mid).limit(cap + 1).all())
-    truncated = len(rows) > cap
-    rows = rows[:cap]
-
-    items, rejected, first_reason = [], 0, None
-    for (map_id,) in rows:
-        # cap=1: **풀리는가와 어떤 종류인가**만 묻는다. 셀을 다 끌어오면 목록 한 번에
-        # 바닥 수 x 2만 셀을 읽게 되고, 그것은 색인이 색인 대상보다 무거워지는 자리다.
-        ref = _resolve_reference(db, cfg, "%s:%s" % (table, map_id), [], 1)
-        if ref["state"] != REFERENCE_RESOLVED:
-            rejected += 1
-            if first_reason is None:
-                first_reason = ref.get("reason")
-            continue
-        meta = ref.get("meta") or {}
-        grid = map_overlay._grid_of(meta)
-        items.append({
-            "table": table,
-            "map_id": map_id,
-            # 🔴 값을 싣는 바닥과 점유만 있는 바닥은 **다른 제안**이다. 점유는 평평하고,
-            #    기준 발자국이 원이면 방위 정보를 아예 싣지 않는다(스펙 §1). 고르기 전에
-            #    보여야 한다 — 한 판 돌려 보고 알게 되면 그 한 판이 낭비다.
-            "kind": ref.get("kind"),
-            "cell_count": _count_cells(db, cfg, table, map_id),
-            "grid": (None if grid is None
-                     else {"cols": grid["cols"], "rows": grid["rows"]}),
-        })
-    return dict(base, items=items, examined=len(rows), rejected=rejected,
-                rejected_example=first_reason, truncated=truncated)
+    items, not_offered, examined, truncated = [], [], 0, False
+    for ftable in tables:
+        remaining = cap - examined
+        if remaining <= 0:
+            truncated = True
+            break
+        rows = (db.query(mid).filter(tt == ftable).order_by(mid)
+                  .limit(remaining + 1).all())
+        if len(rows) > remaining:
+            truncated, rows = True, rows[:remaining]
+        for (map_id,) in rows:
+            examined += 1
+            # cap=1: **풀리는가와 어떤 종류인가**만 묻는다. 셀을 다 끌어오면 목록 한 번에
+            # 바닥 수 x 2만 셀을 읽게 되고, 그것은 색인이 색인 대상보다 무거워지는 자리다.
+            ref = _resolve_reference(db, cfg, "%s:%s" % (ftable, map_id), [], 1)
+            if ref["state"] != REFERENCE_RESOLVED:
+                not_offered.append({
+                    "table": ftable,
+                    "map_id": map_id,
+                    "reason_code": ref.get("reason_code"),
+                    "reason": ref.get("reason"),
+                    "cell_count": _count_cells(db, cfg, ftable, map_id),
+                })
+                continue
+            meta = ref.get("meta") or {}
+            grid = map_overlay._grid_of(meta)
+            items.append({
+                "table": ftable,
+                "map_id": map_id,
+                # 🔴 값을 싣는 바닥과 점유만 있는 바닥은 **다른 제안**이다. 점유는 평평하고,
+                #    기준 발자국이 원이면 방위 정보를 아예 싣지 않는다(스펙 §1). 고르기 전에
+                #    보여야 한다 — 한 판 돌려 보고 알게 되면 그 한 판이 낭비다.
+                "kind": ref.get("kind"),
+                "cell_count": _count_cells(db, cfg, ftable, map_id),
+                "grid": (None if grid is None
+                         else {"cols": grid["cols"], "rows": grid["rows"]}),
+            })
+    return dict(base, items=items, not_offered=not_offered, examined=examined,
+                rejected=len(not_offered),
+                rejected_example=(not_offered[0]["reason"] if not_offered else None),
+                truncated=truncated)
 
 
 def _count_cells(db, cfg: dict, table: str, map_id: str):

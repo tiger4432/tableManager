@@ -4416,6 +4416,53 @@ def get_map_alignment_worklist(
         raise HTTPException(status_code=500, detail="Failed to build alignment worklist.")
 
 
+@app.get("/api/maps/alignment/references")
+def get_map_alignment_references(
+    table: str = None,
+    cap: int = map_alignment.MAX_REFERENCE_CANDIDATES,
+    db: Session = Depends(get_db),
+):
+    """꽂을 수 있는 **기준 바닥** 목록 — 규칙 없이도 답한다 (읽기 전용).
+
+    [왜 별도 경로인가] 이 목록은 원래 `/worklist`의 `selection.references`에만 실려 있었고,
+    그래서 `?rule=`에 묶여 있었다. **그것이 거짓 의존이었다.** 어느 바닥이 풀리는가는 맵
+    테이블의 성질이지 지금 작업 중인 인리치먼트 규칙의 성질이 아니다. 정렬 규칙을 아직
+    선언하지 않은 운영에서는 워크리스트가 아무것도 답하지 못했고, 양쪽 반(셀 + 메타 행)이
+    다 있는 바닥까지 같이 안 보이게 됐다. 규칙이 없어도 이 질문은 답이 있어야 한다.
+
+    응답은 `selection.references`와 **같은 객체 그대로**다(감싸지 않는다 — 이 경로의 주제가
+    references 하나뿐이라 한 겹 더 씌우면 정보 없는 층이 된다). 워크리스트 쪽은 여러 선택
+    사실 중 하나라 `selection.` 아래 그대로 둔다. 계산은 `resolve_reference_catalog`
+    하나이고 호출자가 둘이다 — **해석 경로를 두 벌 만들지 않는다.**
+
+    - `table`: **보고 대상 테이블 필터**(선택). 없으면 바닥을 담을 수 있는 모든 테이블.
+      ⚠️ `map_table` 좁히기가 아니다 — 어느 맵 테이블을 정렬 중인지는 어느 바닥이 풀리는가를
+      바꾸지 않으므로 후보 집합은 그것으로 좁히지 않는다.
+    - `cap`: 한 요청이 검사할 후보 수 상한. 넘으면 `truncated: true`로 **알린다**.
+
+    [제안되지 않은 것에는 이유가 붙는다] `items`는 **실제로 풀린 것만**이고, 나머지는
+    `not_offered`에 `map_id` · `reason_code` · 사람이 읽는 `reason` · `cell_count`를 달고
+    나간다. 이유 없는 「없음」이 제품 소유자를 수리가 아니라 사람에게 보냈다.
+    """
+    if table is not None:
+        table = table.strip()
+        if not table:
+            table = None
+        elif table not in (crud.TABLE_CONFIG or {}):
+            raise HTTPException(status_code=404, detail=f"Table '{table}' not found")
+    try:
+        cap = max(1, min(int(cap), map_alignment.MAX_REFERENCE_CANDIDATES))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="'cap' must be an integer")
+
+    config = map_overlay_module.load_overlay_config()
+    try:
+        return map_alignment.resolve_reference_catalog(db, config, table=table, cap=cap)
+    except Exception as e:
+        logger.error(f"[MapAlignment] reference catalog failed (table={table}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to build reference catalog.")
+
+
 @app.get("/api/maps/paint-rules")
 def get_map_paint_rules(table: Optional[str] = None):
     """맵 페인트 잠금 선언(정본은 서버 config — 클라는 읽어서 적용, 하드코딩 금지).

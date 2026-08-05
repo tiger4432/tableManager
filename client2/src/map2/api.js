@@ -88,11 +88,14 @@ export const ROUTES = Object.freeze({
   // catalog (map tables + coordinate columns + the binding ambiguity), so the client no longer
   // assembles a catalog of its own from three calls.
   worklist: '/api/maps/alignment/worklist',
-  // What the three set-up controls may offer: map tables, and the references that ACTUALLY
-  // RESOLVE. Null for the same reason as the others -- no route serves it, and a client-side
-  // guess at which references resolve would offer the eight declared `valid_die_ref` values
-  // that resolve zero times.
-  catalog: null,
+  // WHICH REFERENCES ACTUALLY RESOLVE. Served standalone (lead ruling 2026-08-05) precisely
+  // because riding on the worklist response made it UNREACHABLE WITHOUT A RULE -- and a
+  // deployment with no alignment-capable rule is the production case, so the picker was empty
+  // exactly where it was needed. It takes no parameter here: absent `table` means every map
+  // table, which is what lets a rule-less client bootstrap. `map_table` deliberately does NOT
+  // narrow the candidate set (`map_alignment.resolve_reference_catalog`), so sending it would
+  // ask for a narrowing nobody performs.
+  referenceCatalog: '/api/maps/alignment/references',
   config: null,
 });
 
@@ -160,12 +163,19 @@ export function createApiClient(opts) {
     },
 
     /**
-     * What the three set-up controls may offer. ALSO UNSERVED, and deliberately so: the only
-     * honest source for "which references resolve" is the side that resolves them.
+     * THE FLOORS THAT ACTUALLY RESOLVE. The only honest source for "which references resolve"
+     * is the side that resolves them, and it now says so on a route of its own.
+     *
+     * 🔴 NO PARAMETERS. The list is a per-deployment constant: it does not vary by unit, by
+     *    search, by page, or by map table. Asking per table would be a narrowing the server
+     *    does not perform, and asking per unit would put the reload loop back.
+     *
+     * Returns the NORMALISED record (see `normaliseReferenceCatalog`), never the raw body --
+     * so the envelope, the field names and the path are all in this one file.
      */
-    loadCatalog(query, signal) {
-      if (!ROUTES.catalog) return Promise.reject(new RouteNotServedError('catalog'));
-      return getJson(ROUTES.catalog, worklistParams(query), signal);
+    async loadReferenceCatalog(signal) {
+      if (!ROUTES.referenceCatalog) return Promise.reject(new RouteNotServedError('referenceCatalog'));
+      return normaliseReferenceCatalog(await getJson(ROUTES.referenceCatalog, null, signal));
     },
 
     /**
@@ -355,6 +365,103 @@ export function createApiClient(opts) {
 
 async function safeText(res) {
   try { return await res.text(); } catch (e) { return ''; }
+}
+
+/** The catalog's two states, as the server spells them. Not re-spelled on this side. */
+export const REFERENCE_CATALOG_SERVED = 'served';
+export const REFERENCE_CATALOG_UNAVAILABLE = 'unavailable';
+
+/**
+ * THE ONE FUNCTION THAT KNOWS THE REFERENCE CATALOG'S SHAPE.
+ *
+ * 🔴 THE EXPECTED SHAPE IS THE DIRECT ONE. `/api/maps/alignment/references` returns the record
+ *    unwrapped (lead ruling 2026-08-05):
+ *      {state, table, filter, items: [{table, map_id, kind, cell_count, grid:{cols,rows}|null}],
+ *       not_offered: [{table, map_id, reason_code, reason, cell_count}],
+ *       examined, rejected, rejected_example, truncated, reason}
+ *    Verified against `server/main.py:4419` / `server/map_alignment.py:1348-1437`.
+ *    The two nested spellings below are NOT equal alternatives -- they exist because the same
+ *    record ALSO rides on `/worklist` as `selection.references`, where it is one selection fact
+ *    among several. One record, one decoder, rather than a second reader growing beside the
+ *    worklist's copy and drifting from it.
+ *
+ * 🔴 `kind` IS PASSED THROUGH VERBATIM -- `values` | `occupancy`, the same vocabulary as
+ *    `reference.kind` on `/view`. A second client-side spelling of a server word is the exact
+ *    defect this round has been closing. `none` is reachable on `/view` (a unit may have no
+ *    reference at all) but NOT here: a catalog item resolves by construction, so there is
+ *    deliberately no `none` branch to write.
+ *
+ * 🔴 `value` IS THE WIRE SPELLING `table:map_id`, which is what `/view` takes back as its
+ *    `reference` parameter. Composed here, once, so no caller assembles an identifier.
+ *
+ * Absences stay absent: a missing `cell_count` is `null` and NEVER a 0 stand-in, because a
+ * measured zero-cell floor would be a very loud fact and an unmeasured one is not a fact at all.
+ */
+export function normaliseReferenceCatalog(body) {
+  const root = body && typeof body === 'object' ? body : {};
+  // Direct first. The nested reads are the worklist's `selection` envelope, not a guess.
+  const rec = Array.isArray(root.items) ? root
+    : (root.references && typeof root.references === 'object' ? root.references
+      : (root.selection && root.selection.references && typeof root.selection.references === 'object'
+        ? root.selection.references : root));
+  const raw = Array.isArray(rec.items) ? rec.items : [];
+  const items = [];
+  for (const it of raw) {
+    if (!it || typeof it !== 'object') continue;
+    const table = it.table == null ? '' : String(it.table);
+    const mapId = it.map_id == null ? '' : String(it.map_id);
+    // An item that cannot be named cannot be selected, and offering it would be the "name that
+    // resolves zero times" defect wearing new clothes.
+    if (!table || !mapId) continue;
+    const g = it.grid && typeof it.grid === 'object' ? it.grid : null;
+    items.push(Object.freeze({
+      value: `${table}:${mapId}`,
+      table,
+      mapId,
+      kind: it.kind == null ? null : String(it.kind),
+      cellCount: Number.isFinite(Number(it.cell_count)) && it.cell_count !== null
+        ? Number(it.cell_count) : null,
+      grid: (g && Number.isFinite(Number(g.cols)) && Number.isFinite(Number(g.rows)))
+        ? Object.freeze({ cols: Number(g.cols), rows: Number(g.rows) }) : null,
+    }));
+  }
+  return Object.freeze({
+    // 🔴 PASSED THROUGH, NOT DEFAULTED. Defaulting an ABSENT state to `served` would be a
+    //    plausible default impersonating a declaration -- the caller would read "the server
+    //    looked and found nothing" out of a body that never said so. Absent stays `null`, which
+    //    is not `served`, so the caller marks it degraded instead of trusting it.
+    state: rec.state == null ? null : String(rec.state),
+    table: rec.table == null ? null : String(rec.table),
+    items: Object.freeze(items),
+    // The filter that was in force, echoed. We send none, so this is `null` today.
+    filter: rec.filter == null ? null : String(rec.filter),
+    // 🔴 WHAT WAS NOT OFFERED, WITH ITS REASON -- AND IT NEVER REACHES THE PICKER. It is kept
+    //    STRICTLY SEPARATE from `items`: a control that offers a floor which cannot resolve
+    //    teaches the operator that the control lies, and there is deliberately no "show all"
+    //    affordance for it anywhere on this side. But dropping it entirely would recreate the
+    //    defect the server added it for -- a reasonless "none" sends the operator to a person
+    //    instead of to a repair. So it rides in the record, which goes to the console whole.
+    //    `cell_count` is carried for the same reason the server sends it: a candidate that HAS
+    //    cells and still did not resolve is a different repair from one with no cells at all.
+    notOffered: Object.freeze((Array.isArray(rec.not_offered) ? rec.not_offered : [])
+      .filter(n => n && typeof n === 'object')
+      .map(n => Object.freeze({
+        table: n.table == null ? null : String(n.table),
+        mapId: n.map_id == null ? null : String(n.map_id),
+        reasonCode: n.reason_code == null ? null : String(n.reason_code),
+        // The server's own sentence, verbatim. A second spelling here would drift from it.
+        reason: n.reason == null ? null : String(n.reason),
+        cellCount: Number.isFinite(Number(n.cell_count)) && n.cell_count !== null
+          ? Number(n.cell_count) : null,
+      }))),
+    // The server's own accounting for what it looked at and threw away. Carried so the console
+    // can say WHY a served list is short, which an empty list alone cannot.
+    examined: Number.isFinite(Number(rec.examined)) ? Number(rec.examined) : null,
+    rejected: Number.isFinite(Number(rec.rejected)) ? Number(rec.rejected) : null,
+    rejectedExample: rec.rejected_example == null ? null : String(rec.rejected_example),
+    truncated: rec.truncated === true,
+    reason: rec.reason == null ? null : String(rec.reason),
+  });
 }
 
 /**
