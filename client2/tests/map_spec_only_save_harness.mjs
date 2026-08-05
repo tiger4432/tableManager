@@ -183,7 +183,6 @@ function buildEnv(src, opts = {}) {
     selectedTable: opts.table || 'bonding_map',
     currentRotation: ROT,
     currentSide: SIDE,
-    physFrameOverride: null,
     validDie: opts.validDie || { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
     loadedIdentity: opts.loadedIdentity !== undefined
       ? opts.loadedIdentity : { table: 'bonding_map', mapKey: 'LOADED_MAP' },
@@ -615,14 +614,14 @@ async function run(src) {
     //    the screen still carries this session's marker. Provenance is a fact about a MAP.
     const win = buildEnv(src, { answer: answerWith(storedRow()) });
     win.S.markFrameChosen('panel');
-    eq('L/e on screen the START boxes answer', 'panel', win.S.frameChosenFrom());
-    win.S.physFrameOverride = { frame_chosen_from: 'data' };
-    eq('L/f inside a frame window the FRAME answers, not the screen', 'data',
-      win.S.frameChosenFrom());
-    win.S.physFrameOverride = {};
+    // The frame is an ARGUMENT now: `null` asks the screen, an object asks that map.
+    const CHOSEN_FRAME = { frame_chosen_from: 'data' };
+    const SILENT_FRAME = {};
+    eq('L/e on screen the START boxes answer', 'panel', win.S.frameChosenFrom(null));
+    eq('L/f a frame carrying the mark answers for its OWN map, not the screen', 'data',
+      win.S.frameChosenFrom(CHOSEN_FRAME));
     eq('L/g ...and a frame that says nothing is not this session\'s choice', null,
-      win.S.frameChosenFrom());
-    win.S.physFrameOverride = null;
+      win.S.frameChosenFrom(SILENT_FRAME));
     evidence.push('L round trip: data/panel both reach the payload and differ; unmarked gains nothing');
   }
 
@@ -858,12 +857,12 @@ const MUTANTS = {
   // promotes its synthesized geometry to a declaration — irreversibly, because the registrar
   // only ever fills ABSENT rows.
   'auto-registration-is-lost-on-save': (s) => once(s,
-    '  if (geometryIsAutoRegistered(physFrameOverride)) gridMeta.auto_registered = true;',
+    '  if (geometryIsAutoRegistered(null)) gridMeta.auto_registered = true;',
     '  // mark dropped'),
   // ...and the opposite: it is written unconditionally, which changes the payload of every
   // ordinary map in the database (INV-1).
   'auto-registration-is-written-for-everything': (s) => once(s,
-    '  if (geometryIsAutoRegistered(physFrameOverride)) gridMeta.auto_registered = true;',
+    '  if (geometryIsAutoRegistered(null)) gridMeta.auto_registered = true;',
     '  gridMeta.auto_registered = true;'),
   // ── [D4] THE FRAME HALF. The same three failure shapes, one axis over. ─────────────────
   // The marker is dropped on the way out: a frame that came from the modal is written back as
@@ -889,7 +888,7 @@ const MUTANTS = {
   // The screen's marker leaks into a frame window, so an overlaid map's provenance is reported
   // as this session's. Provenance is a fact about a MAP, not about who has the editor open.
   'frame-choice-leaks-across-a-frame-window': (s) => once(s,
-    "  if (physFrameOverride) return physFrameOverride.frame_chosen_from || null;\n  if (!el) return null;",
+    "  if (frame) return frame.frame_chosen_from || null;\n  if (!el) return null;",
     '  if (!el) return null;'),
   // ── [2b] THE BLANK BOX. Today's expression, restored: silence becomes a declared 0. ────
   'a-blank-box-resolves-to-zero': (s) => once(s,

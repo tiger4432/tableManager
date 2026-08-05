@@ -85,7 +85,7 @@ const SYMBOLS = [
   // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
   // question is now shared with the grid-frame reader, so it is one function and it is here.
   'controlIsSilent',
-  'physNum', 'gridDimNum', 'withPhysFrame', 'geometryIsAutoRegistered', 'physDeclaration',
+  'physNum', 'gridDimNum', 'geometryIsAutoRegistered', 'physDeclaration',
   'cellMetrics',                                       // THE function under test (ⓦ)
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex',
@@ -185,7 +185,7 @@ function buildEnv(src, opts = {}) {
     el,
     document: { querySelectorAll: () => [], getElementById: () => null,
                 addEventListener() {}, removeEventListener() {} },
-    setTimeout, physFrameOverride: null, boundingBoxCache: {}, cellsSeatedUnder: null,
+    setTimeout, boundingBoxCache: {}, cellsSeatedUnder: null,
     currentRotation: p.rotation || 0, currentSide: p.side || 'front',
     gridData: opts.gridData || {}, gridCells2D: {},
     legend: MAP_LEGEND.map(r => ({ ...r })),
@@ -706,8 +706,8 @@ const MUTATIONS = [
     repl: `  const sWafer = waferAnchored ? (Math.min(width, height) * 0.94) / (dd.value - 2 * physNum('edgeMargin', el.physEdgeMargin, 3.0)) : Infinity;`,
   }],
   ['ⓦ an undeclared diameter is invented from the defaulted number', {
-    find: `  const dd = physDeclaration(physFrameOverride, 'waferDia', el.physWaferDia);`,
-    repl: `  const dd = { value: physNum(physFrameOverride, 'waferDia', el.physWaferDia, 300) };`,
+    find: `  const dd = physDeclaration(null, 'waferDia', el.physWaferDia);`,
+    repl: `  const dd = { value: physNum(null, 'waferDia', el.physWaferDia, 300) };`,
   }],
   // [D1] The anchor gained a `} ` prefix when the aspect clause above it grew a third case
   // (auto-registered geometry gets its own sentence, because "Chip X/Y 미선언" reads as false

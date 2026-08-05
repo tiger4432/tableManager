@@ -858,13 +858,13 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   //    copy_header_count), 모듈 전역 의존이 하나 늘 때마다 그 둘이 ReferenceError로 죽는다 —
   //    실측: `da8f390`이 이 한 줄로 둘을 죽였고, 같은 커밋의 `getWaferBoundingBox`
   //    주석(§1903)이 정확히 그 이유로 헬퍼 추출을 거부하고 있었다.
-  const zeroBox = getWaferBoundingBox(physFrameOverride, currentRotation, currentSide);
+  const zeroBox = getWaferBoundingBox(null, currentRotation, currentSide);
   const zeroC = 0 - startX + zeroBox.minC;
   const zeroR = invertY ? (zeroBox.maxR - (0 - startY)) : (0 - startY + zeroBox.minR);
   const hasZeroZero = (zeroC >= 0 && zeroC < visualCols) && (zeroR >= 0 && zeroR < visualRows);
 
-  const physical = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
-  const visual = getDbCoords(physFrameOverride, c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+  const physical = getDieIndex(null, c, r, cols, rows, currentRotation, currentSide);
+  const visual = getDbCoords(null, c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const coordKey = `${physical.x}_${physical.y}`;
 
   const isOriginCell = hasZeroZero
@@ -873,7 +873,7 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
 
   // [M4①] 유효 다이 판정. 참조가 없으면 `isValidDieAt`이 원 판정을 그대로 돌려주므로
   // 선언 없는 맵의 동작은 `2a9f6c4`와 한 글자도 다르지 않다.
-  const completelyInside = isValidDieAt(physFrameOverride, physical.x, physical.y,
+  const completelyInside = isValidDieAt(null, physical.x, physical.y,
     isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
 
   return {
@@ -899,7 +899,7 @@ function getGridCellFromMouseEvent(e) {
 
   if (xRel < 0 || xRel > rect.width || yRel < 0 || yRel > rect.height) return null;
 
-  const physConfig = getTransformedPhysicalConfig(physFrameOverride, currentRotation, currentSide);
+  const physConfig = getTransformedPhysicalConfig(null, currentRotation, currentSide);
   // [C1] 렌더와 **같은 함수**로 셀 크기를 얻는다. 마우스가 자기 산술을 가지면 화면과
   //      클릭이 갈리고, 그것은 "화면은 멀쩡한데 값이 틀린" 결함의 정확한 형태다.
   const { cellW, cellH, padX, padY } = cellMetrics(rect.width, rect.height, visualCols, visualRows, physConfig);
@@ -1433,8 +1433,8 @@ function fillColumnDropdowns() {
 // 읽기 지점을 갈아끼운다. 이것이 오버레이 전용 변환식을 새로 쓰지 않기 위한 유일한 장치다 —
 // 변환식은 이 파일에 **하나뿐**이고, 메인 로드는 "프레임 == 현재 화면 컨트롤"인 특수 케이스다.
 //
-// ⚠️ 동기 실행 전용. fn 안에서 await 하면 그 사이 다른 코드가 뒤집힌 프레임을 보게 된다.
-let physFrameOverride = null;
+// ⚠️ 종전의 「동기 실행 전용」 경고는 사라졌다 — 프레임이 모듈 상태였을 때는 `await` 한 번이
+//    다른 코드에 뒤집힌 프레임을 보여 줄 수 있었기 때문인데, 인자는 그럴 수가 없다.
 
 // 기존 규약 `parseFloat(input.value) || 기본값`을 그대로 유지한다(0 → 기본값).
 //
@@ -1625,19 +1625,17 @@ function markFrameChosen(from) {
 // 프레임 표지의 **유일한 독법.** 🔴 프레임 창 안에서는 프레임만 답한다 — 화면 표지를 함께 보면
 // 고른 프레임의 맵을 열어 둔 채 남의 맵을 오버레이할 때 그 **소스**의 출처가 뒤집힌다
 // (§`geometryIsAutoRegistered`와 같은 이유이고, 같은 순서로 묻는다).
-function frameChosenFrom() {
-  if (physFrameOverride) return physFrameOverride.frame_chosen_from || null;
+function frameChosenFrom(frame) {
+  if (frame === undefined) {
+    throw new Error('frameChosenFrom: frame argument missing. Pass the frame that is in scope, '
+      + 'or `null` to read the screen marks on purpose.');
+  }
+  if (frame) return frame.frame_chosen_from || null;
   if (!el) return null;
   const dx = el.gridStartX ? el.gridStartX.dataset : null;
   const dy = el.gridStartY ? el.gridStartY.dataset : null;
   if (!dx || !dy || !dx.frameChosen) return null;
   return dx.frameChosen === dy.frameChosen ? dx.frameChosen : null;
-}
-
-function withPhysFrame(frame, fn) {
-  const prev = physFrameOverride;
-  physFrameOverride = frame || null;
-  try { return fn(); } finally { physFrameOverride = prev; }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1800,14 +1798,14 @@ function getCanvasCellFromDieIndex(frame, xp, yp, cols, rows, rotation, side) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function frameDieLattice(frame) {
   const f = frame || currentFrame();
-  return withPhysFrame(f, () => {
+  {
     const p = getDieIndex(f, 0, 0, f.cols, f.rows, f.rotation, f.side);
     return {
       ix0: p.x, iy0: p.y, ux0: p.xCells, uy0: p.yCells,
       chipX: physNum(f, 'chipX', el.physChipX, 2.5),
       chipY: physNum(f, 'chipY', el.physChipY, 2.5),
     };
-  });
+  }
 }
 
 // 다이 인덱스 → 그 다이 **중심**의 절대 웨이퍼 mm.
@@ -2048,26 +2046,34 @@ function getDbCoords(frame, colVisual, rowVisual, cols, rows, rotation, side, in
 // ═══════════════════════════════════════════════════════════════════════════════
 let cellsSeatedUnder = null;
 
-function seatingSnapshot() {
+function seatingSnapshot(frame) {
+  if (frame === undefined) {
+    throw new Error('seatingSnapshot: frame argument missing. Pass the frame that is in scope, '
+      + 'or `null` to record the screen seating on purpose.');
+  }
   if (!el || !el.gridCols || !el.gridRows || !el.gridStartX || !el.gridStartY) return null;
   // 창 안에서 부르면 소스 맵의 좌석을 이 화면의 좌석으로 기록하게 된다. 그런 호출자는 없지만,
   // 생기는 날 조용히 틀리는 대신 아무것도 기록하지 않는다.
-  if (physFrameOverride) return null;
+  // 프레임을 받으면 소스 맵의 좌석을 이 화면의 좌석으로 기록하게 된다.
+  // ⚠️ **이 가드는 지금 어떤 호출자도 실행하지 않는다** — 전 호출자가 `null`을 넘긴다. 변이로
+  //    지워도 빨개지는 하네스가 없다(측정 2026-08-06). 없는 호출자를 막는 방어라 그것이
+  //    정상이고, 채점되지 않는다는 사실을 여기 적어 둔다.
+  if (frame) return null;
   return {
-    cols: gridDimNum(physFrameOverride, 'cols', el.gridCols, 10),
-    rows: gridDimNum(physFrameOverride, 'rows', el.gridRows, 10),
+    cols: gridDimNum(frame, 'cols', el.gridCols, 10),
+    rows: gridDimNum(null, 'rows', el.gridRows, 10),
     rotation: currentRotation,
     side: currentSide,
     invertY: !!(el.gridYInvert && el.gridYInvert.checked),
     startX: parseInt(el.gridStartX.value, 10) || 0,
     startY: parseInt(el.gridStartY.value, 10) || 0,
-    waferDia: physNum(physFrameOverride, 'waferDia', el.physWaferDia, 300),
-    chipX: physNum(physFrameOverride, 'chipX', el.physChipX, 2.5),
-    chipY: physNum(physFrameOverride, 'chipY', el.physChipY, 2.5),
-    offsetX: physNum(physFrameOverride, 'offsetX', el.physOffsetX, 0.0),
-    offsetY: physNum(physFrameOverride, 'offsetY', el.physOffsetY, 0.0),
-    edgeMargin: physNum(physFrameOverride, 'edgeMargin', el.physEdgeMargin, 3.0),
-    box: getWaferBoundingBox(physFrameOverride, currentRotation, currentSide),
+    waferDia: physNum(null, 'waferDia', el.physWaferDia, 300),
+    chipX: physNum(null, 'chipX', el.physChipX, 2.5),
+    chipY: physNum(null, 'chipY', el.physChipY, 2.5),
+    offsetX: physNum(null, 'offsetX', el.physOffsetX, 0.0),
+    offsetY: physNum(null, 'offsetY', el.physOffsetY, 0.0),
+    edgeMargin: physNum(null, 'edgeMargin', el.physEdgeMargin, 3.0),
+    box: getWaferBoundingBox(null, currentRotation, currentSide),
   };
 }
 
@@ -2102,7 +2108,7 @@ function seatingSnapshot() {
 // 반환: null(반응 없음) | { moved, offGrid, visC, visR, held }
 // ═══════════════════════════════════════════════════════════════════════════════
 function reseatCellsToStoredCoords(was) {
-  const now = seatingSnapshot();
+  const now = seatingSnapshot(null);
   if (now) cellsSeatedUnder = now;
   if (!was || !now) return null;
   if (was.rotation !== now.rotation || was.side !== now.side || was.invertY !== now.invertY
@@ -2114,7 +2120,7 @@ function reseatCellsToStoredCoords(was) {
 
   // (1) 각 셀이 **옛 좌표계에서** 말하던 저장 좌표를 되찾는다.
   const held = new Map();
-  withPhysFrame(was, () => {
+  {
     touched.forEach(k => {
       const [px, py] = String(k).split('_').map(Number);
       if (!Number.isFinite(px) || !Number.isFinite(py)) return;
@@ -2122,7 +2128,7 @@ function reseatCellsToStoredCoords(was) {
       held.set(k, getDbCoords(was, at.c, at.r, was.cols, was.rows, was.rotation, was.side,
         was.invertY, was.startX, was.startY));
     });
-  });
+  }
 
   // (2) 그 저장 좌표가 **새 좌표계에서** 가리키는 칸으로 다시 앉힌다.
   const isRot = (now.rotation === 90 || now.rotation === 270);
@@ -2131,10 +2137,10 @@ function reseatCellsToStoredCoords(was) {
   let offGrid = 0;
   const seatOf = new Map();
   held.forEach((v, k) => {
-    const cell = getCanvasCellFromDb(physFrameOverride, v.x, v.y, now.cols, now.rows, now.rotation, now.side,
+    const cell = getCanvasCellFromDb(null, v.x, v.y, now.cols, now.rows, now.rotation, now.side,
       now.invertY, now.startX, now.startY);
     if (cell.c < 0 || cell.c >= visC || cell.r < 0 || cell.r >= visR) offGrid++;
-    const p = getDieIndex(physFrameOverride, cell.c, cell.r, now.cols, now.rows, now.rotation, now.side);
+    const p = getDieIndex(null, cell.c, cell.r, now.cols, now.rows, now.rotation, now.side);
     seatOf.set(k, `${p.x}_${p.y}`);
   });
   let moved = 0;
@@ -2264,8 +2270,8 @@ function cellMetrics(width, height, visualCols, visualRows, physConfig) {
     padX: 0, padY: 0, isotropic: false, waferAnchored: false,
   };
   if (!(visualCols > 0) || !(visualRows > 0) || !(width > 0) || !(height > 0)) return anisotropicFallback;
-  const dx = physDeclaration(physFrameOverride, 'chipX', el.physChipX);
-  const dy = physDeclaration(physFrameOverride, 'chipY', el.physChipY);
+  const dx = physDeclaration(null, 'chipX', el.physChipX);
+  const dy = physDeclaration(null, 'chipY', el.physChipY);
   if (!(dx.value > 0) || !(dy.value > 0)) return anisotropicFallback;
   // 회전된 규격을 쓴다 — `visualCols`도 회전된 축이라 둘이 같은 방향을 가리켜야 한다.
   const chipX = physConfig ? physConfig.chipX : 0;
@@ -2303,7 +2309,7 @@ function cellMetrics(width, height, visualCols, visualRows, physConfig) {
   //    선언이 없으면 종전 규칙(`sGrid`)으로 그대로 물러나고 화면이 그렇게 말한다
   //    (`waferAnchored: false` → `renderGridCanvas`의 수동 표기).
   const sGrid = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));
-  const dd = physDeclaration(physFrameOverride, 'waferDia', el.physWaferDia);
+  const dd = physDeclaration(null, 'waferDia', el.physWaferDia);
   const waferAnchored = dd.value > 0;
   // 캔버스 짧은 변 대비 웨이퍼 **지름**의 고정 비율. 남는 6%는 원의 선 두께와 격자
   // 외곽선이 앉을 자리다 — 원이 캔버스 가장자리에 닿아 잘려 보이지 않게 한다.
@@ -2359,7 +2365,7 @@ function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width =
 }
 
 function isCellInsideWafer(c, r, visualCols, visualRows) {
-  const physConfig = getTransformedPhysicalConfig(physFrameOverride, currentRotation, currentSide);
+  const physConfig = getTransformedPhysicalConfig(null, currentRotation, currentSide);
   const width = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().width || 700) : 700;
   const height = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().height || 700) : 700;
   return isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
@@ -2550,13 +2556,13 @@ function isValidDieAt(frame, physX, physY, circleInside, state) {
 //         outsideCircle: number — 그중 원 밖 개수(정직한 확인문에 쓴다) }
 // ═══════════════════════════════════════════════════════════════════════════════
 function buildValidDieTemplate(shape) {
-  const cols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-  const rows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+  const cols = gridDimNum(null, 'cols', el.gridCols, 10);
+  const rows = gridDimNum(null, 'rows', el.gridRows, 10);
   const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const physConfig = getTransformedPhysicalConfig(physFrameOverride, currentRotation, currentSide);
+  const physConfig = getTransformedPhysicalConfig(null, currentRotation, currentSide);
   const width = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().width || 700) : 700;
   const height = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().height || 700) : 700;
 
@@ -2566,7 +2572,7 @@ function buildValidDieTemplate(shape) {
 
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      const p = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
+      const p = getDieIndex(null, c, r, cols, rows, currentRotation, currentSide);
       const key = `${p.x}_${p.y}`;
       keys.add(key);
       const circleInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
@@ -3408,14 +3414,14 @@ function renderGridCanvas() {
   //    (`isXMirrored`/`isYMirrored`). 원 bbox가 대칭인 동안만 우연히 같은 답이 나왔고,
   //    마우스 경로(`getGridCellObject`)는 이미 미러 항 없이 계산하고 있어 두 경로가 실제로
   //    갈려 있었다. 원점 상자가 유효 다이 기준이 되면 그 우연은 성립하지 않는다.
-  const zero = getCanvasCellFromDb(physFrameOverride, 0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+  const zero = getCanvasCellFromDb(null, 0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);
 
   // 지금 그리는 이 좌표계가 곧 "셀이 앉은 자리"다(§cellsSeatedUnder). 여기 한 줄이 기록의
   // 유지를 **잊을 수 없게** 만든다: 회전이든 로드든 프레임 복귀든, 좌표계를 바꾸는 모든 경로는
   // 렌더로 끝나므로 다음 기하 편집은 언제나 직전 화면과 대조된다. 상자는 바로 윗줄이 이미
   // 물어 캐시에 얹어 둔 그 상자라 추가 순회가 없다.
-  cellsSeatedUnder = seatingSnapshot() || cellsSeatedUnder;
+  cellsSeatedUnder = seatingSnapshot(null) || cellsSeatedUnder;
 
   gridCells2D = {};
 
@@ -3443,7 +3449,7 @@ function renderGridCanvas() {
 
   const tStart = performance.now();
 
-  const physConfig = getTransformedPhysicalConfig(physFrameOverride, currentRotation, currentSide);
+  const physConfig = getTransformedPhysicalConfig(null, currentRotation, currentSide);
 
   // [C1] 셀 픽셀 크기의 **유일한 계산**. 마우스 경로(`getGridCellFromMouseEvent`)가 같은
   //      함수를 부른다 — 같은 수를 두 곳에서 계산하면 반드시 갈라진다.
@@ -3504,11 +3510,11 @@ function renderGridCanvas() {
 
       // [M4①] 물리 좌표는 아래에서 어차피 만든다. 판정에 필요하므로 여기로 끌어올렸다 —
       // 판정용 좌표를 따로 만들면 같은 좌표의 계산이 둘이 된다.
-      const physical = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
-      const completelyInside = isValidDieAt(physFrameOverride, physical.x, physical.y,
+      const physical = getDieIndex(null, c, r, cols, rows, currentRotation, currentSide);
+      const completelyInside = isValidDieAt(null, physical.x, physical.y,
         isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
 
-      const visual = getDbCoords(physFrameOverride, c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const visual = getDbCoords(null, c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
       const coordKey = `${physical.x}_${physical.y}`;
       const val = gridData[coordKey] || '';
 
@@ -3705,7 +3711,7 @@ function renderGridCanvas() {
   if (el.cellAspectNote) {
     const notes = [];
     if (!isotropic) {
-      notes.push(geometryIsAutoRegistered(physFrameOverride)
+      notes.push(geometryIsAutoRegistered(null)
         ? '기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다'
         : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');
     } else if (!waferAnchored) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');
@@ -3728,7 +3734,7 @@ function handleCellClick(cell, event) {
   }
 
   if (isOriginMode) {
-    const box = getWaferBoundingBox(physFrameOverride, currentRotation, currentSide);
+    const box = getWaferBoundingBox(null, currentRotation, currentSide);
     const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
 
     const newStartX = box.minC - c;
@@ -5220,8 +5226,8 @@ async function loadExistingMap(opts = {}) {
     //    옛 치수로 이뤄져 저장 좌표가 조용히 옮겨간다 ― 화면은 멀쩡한데 값이 틀린 그 상태다.
     //    (읽는 지점은 `renderGridCanvas`·`currentFrame`과 같은 컨트롤 하나뿐이다.)
     // ⚠️ START X,Y는 되읽지 않는다 — 아무도 덮어쓰지 않는다(바로 아래 주석).
-    cols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-    rows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+    cols = gridDimNum(null, 'cols', el.gridCols, 10);
+    rows = gridDimNum(null, 'rows', el.gridRows, 10);
     // ⚠️ 여기서 START X,Y를 컨트롤에서 되읽지 **않는다.** 되읽는 줄이 잠시 있었는데, 그것은
     //    `resolveValidDie`가 START를 덮어쓰던 (B) 안의 잔재였다. 사용자 확정은 (A)다 ―
     //    「START X,Y는 바뀌면 안됨」. 아무도 덮어쓰지 않으므로 지역 변수 `startX`와 컨트롤은
@@ -5252,11 +5258,11 @@ async function loadExistingMap(opts = {}) {
             //    above) carries the offset, and `getCanvasCellFromDb` applies it. The
             //    deleted `xNum -= minX` renumbered the cell instead, which the frame then had
             //    no record of, so Push wrote the renumbered coordinate back.
-            const cell = getCanvasCellFromDb(physFrameOverride, xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);
+            const cell = getCanvasCellFromDb(null, xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);
             const c = cell.c;
             const r = cell.r;
 
-            const physical = getDieIndex(physFrameOverride, c, r, cols, rows, rotation, side);
+            const physical = getDieIndex(null, c, r, cols, rows, rotation, side);
             const gridKey = `${physical.x}_${physical.y}`;
             gridData[gridKey] = strVal;
 
@@ -5911,12 +5917,12 @@ function fillGrid() {
   let skippedOutside = 0;
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      const physical = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
+      const physical = getDieIndex(null, c, r, cols, rows, currentRotation, currentSide);
       const key = `${physical.x}_${physical.y}`;
       const rendered = gridCells2D && gridCells2D[r] ? gridCells2D[r][c] : null;
       const inside = rendered
         ? rendered.inside
-        : isValidDieAt(physFrameOverride, physical.x, physical.y, isCellInsideWafer(c, r, visualCols, visualRows));
+        : isValidDieAt(null, physical.x, physical.y, isCellInsideWafer(c, r, visualCols, visualRows));
       if (!inside) { skippedOutside++; continue; }
       if (isProtectedFCell(key)) continue;
       gridData[key] = activeBrush;
@@ -6464,11 +6470,11 @@ function buildPushGridMetadata(cols, rows, startX, startY, invertY,
   //      그러면 자동 등록 행이 조용히 「사람이 선언한 규격」으로 승격되고, 등록기는 이미
   //      존재하는 행을 다시 쓰지 않으므로(absent-only) 그 사실은 영영 돌아오지 않는다.
   //      🔴 표지가 없는 맵의 payload는 이 줄로 **한 바이트도 바뀌지 않는다**(INV-1).
-  if (geometryIsAutoRegistered(physFrameOverride)) gridMeta.auto_registered = true;
+  if (geometryIsAutoRegistered(null)) gridMeta.auto_registered = true;
   // [D4] 프레임을 **고른** 맵이면 그 사실도 함께 저장한다. `phys_assumed_from`과 같은 형식:
   //      있을 때만 있고, 값이 어디서 왔는지를 말한다. 🔴 표지가 없는 맵의 payload는 이 두 줄로
   //      **한 바이트도 바뀌지 않는다**(INV-1) — 오늘의 모든 선언된 맵이 그 경우다.
-  const chosenFrom = frameChosenFrom();
+  const chosenFrom = frameChosenFrom(null);
   if (chosenFrom) gridMeta.frame_chosen_from = chosenFrom;
   const validDieDecision = validDieRefForPush();
   const gridMetaOut = validDieRefPayload(gridMeta, validDieDecision,
@@ -6534,8 +6540,8 @@ function getEdgeClassification() {
     for (let c = 0; c < visualCols; c++) {
       // [M4①] E1/E2는 "유효 다이의 외곽"이다 — 원의 외곽이 아니다. 판정 근거가 맵으로
       // 바뀌면 침식 기준도 같이 바뀌어야 하고, 안 그러면 마스크와 엣지가 어긋난다.
-      const p = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
-      if (isValidDieAt(physFrameOverride, p.x, p.y, isCellInsideWafer(c, r, visualCols, visualRows))) {
+      const p = getDieIndex(null, c, r, cols, rows, currentRotation, currentSide);
+      if (isValidDieAt(null, p.x, p.y, isCellInsideWafer(c, r, visualCols, visualRows))) {
         isInside[r][c] = true;
       }
     }
@@ -6959,7 +6965,7 @@ function computeNotchCell(rotation, side) {
   //    달라져, 정상적인 붙여넣기가 "회전·면이 다릅니다"라는 무관한 사유로 거절된다.
   //    (지문이 canvas 좌표라는 점은 변하지 않는다 — 원점 상자는 좌표의 **번호 매기기**만
   //     정하므로 노치 칸의 위치와 서로 간섭하지 않는다.)
-  const box = getWaferBoundingBox(physFrameOverride, rotation, side, { circleOnly: true });
+  const box = getWaferBoundingBox(null, rotation, side, { circleOnly: true });
   const centerC = Math.floor((box.minC + box.maxC) / 2);
   const centerR = Math.floor((box.minR + box.maxR) / 2);
   const dx = (side === 'front') ? 1 : -1;
@@ -6982,8 +6988,8 @@ function computeNotchCell(rotation, side) {
   //    경계는 화면 회전으로 재는 자기모순이 생긴다(하네스 실측: rot 270을 rot-0 화면에서
   //    물었을 때 격자 밖 좌표가 null이 아니라 좌표로 돌아왔다). `getWaferBoundingBox`가
   //    바로 위에서 쓰는 것과 같은 유도식이다.
-  const cols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-  const rows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+  const cols = gridDimNum(null, 'cols', el.gridCols, 10);
+  const rows = gridDimNum(null, 'rows', el.gridRows, 10);
   const isRot = (rotation === 90 || rotation === 270);
   const visualCols = isRot ? rows : cols;
   const visualRows = isRot ? cols : rows;
@@ -7786,7 +7792,7 @@ function planCoordPaste(coord, cf) {
   let placed = 0;
   let cleared = 0;
   coord.cells.forEach(t => {
-    const at = getCanvasCellFromDb(physFrameOverride, t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,
+    const at = getCanvasCellFromDb(null, t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,
       cf.invertY, cf.startX, cf.startY);
     const onGrid = at.r >= 0 && at.r < cf.visualRows && at.c >= 0 && at.c < cf.visualCols;
     if (!onGrid) {
@@ -8199,8 +8205,8 @@ function applyCellsToGrid(cells) {
     const yn = Number(cell.y);
     const val = cell.val !== null && cell.val !== undefined ? String(cell.val).trim() : '';
     if (!Number.isFinite(xn) || !Number.isFinite(yn) || val === '') return;
-    const c = getCanvasCellFromDb(physFrameOverride, xn, yn, cols, rows, currentRotation, currentSide, invertY, startX, startY);
-    const physical = getDieIndex(physFrameOverride, c.c, c.r, cols, rows, currentRotation, currentSide);
+    const c = getCanvasCellFromDb(null, xn, yn, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+    const physical = getDieIndex(null, c.c, c.r, cols, rows, currentRotation, currentSide);
     gridData[`${physical.x}_${physical.y}`] = val;
     count++;
   });
@@ -8691,7 +8697,7 @@ function currentFrame() {
 // 프레임의 모든 축을 실값으로 확정한다(undefined → 현재 화면 값). 축 비교의 유일한 근거.
 function resolveFrame(frame) {
   const f = frame || currentFrame();
-  return withPhysFrame(f, () => ({
+  return ({
     cols: gridDimNum(f, 'cols', el.gridCols, 10),
     rows: gridDimNum(f, 'rows', el.gridRows, 10),
     startX: f.startX, startY: f.startY,
@@ -8703,7 +8709,7 @@ function resolveFrame(frame) {
     offsetX: physNum(f, 'offsetX', el.physOffsetX, 0.0),
     offsetY: physNum(f, 'offsetY', el.physOffsetY, 0.0),
     edgeMargin: physNum(f, 'edgeMargin', el.physEdgeMargin, 3.0),
-  }));
+  });
 }
 
 function frameAxesKey(rf) {
@@ -8724,7 +8730,7 @@ function frameAxesKey(rf) {
 function projectCellsToWaferMm(cells, frame) {
   const f = frame || currentFrame();
   const { cols, rows, rotation, side, invertY, startX, startY } = f;
-  return withPhysFrame(f, () => {
+  {
     const chipX = physNum(f, 'chipX', el.physChipX, 2.5);
     const chipY = physNum(f, 'chipY', el.physChipY, 2.5);
     const out = [];
@@ -8745,7 +8751,7 @@ function projectCellsToWaferMm(cells, frame) {
       });
     });
     return out;
-  });
+  }
 }
 
 // 소스 **원본 셀** → 물리 키 Map. 시그니처도 의미도 종전 그대로다(유효 다이 해석의 입력).
@@ -8825,15 +8831,15 @@ function canvasSeatKeys() {
   const rot90 = (f.rotation === 90 || f.rotation === 270);
   const visualCols = rot90 ? f.rows : f.cols;
   const visualRows = rot90 ? f.cols : f.rows;
-  const physConfig = getTransformedPhysicalConfig(physFrameOverride, f.rotation, f.side);
+  const physConfig = getTransformedPhysicalConfig(null, f.rotation, f.side);
   const all = new Set();
   const inside = new Set();
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      const p = getDieIndex(physFrameOverride, c, r, f.cols, f.rows, f.rotation, f.side);
+      const p = getDieIndex(null, c, r, f.cols, f.rows, f.rotation, f.side);
       const k = `${p.x}_${p.y}`;
       all.add(k);
-      if (isValidDieAt(physFrameOverride, p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {
+      if (isValidDieAt(null, p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {
         inside.add(k);
       }
     }
@@ -8895,15 +8901,15 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
   //    거절당한 그 동작이다.
   const set = (basis, keys, reason, ref, physPreset) => {
     if (stale()) return validDie;
-    const fc = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-    const fr = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+    const fc = gridDimNum(null, 'cols', el.gridCols, 10);
+    const fr = gridDimNum(null, 'rows', el.gridRows, 10);
     const fsx = parseInt(el.gridStartX.value, 10) || 0;
     const fsy = parseInt(el.gridStartY.value, 10) || 0;
     const fiv = !!(el.gridYInvert && el.gridYInvert.checked);
     // 좌표 (startX,startY)가 앉는 칸 = 마스크의 시작 칸. 이동량의 근거는 이 한 함수다.
     // ⚠️ 치수를 **인자로** 받는다. 아래에서 격자가 넓어질 수 있으므로 전/후를 같은 치수로
     //    재면 이동량이 거짓이 된다(토스트가 그 수를 사용자에게 보여 준다).
-    const seat0 = (c, r) => getCanvasCellFromDb(physFrameOverride, fsx, fsy, c, r,
+    const seat0 = (c, r) => getCanvasCellFromDb(null, fsx, fsy, c, r,
       currentRotation, currentSide, fiv, fsx, fsy);
 
     // (1) 근거를 바꾸기 **전에** 좌석 기록이 옛 좌표계를 가리키고 있어야 한다. 평소에는 직전
@@ -8915,7 +8921,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     //    이어 붙는다. 넷 이동량은 아래에서 좌석 집합의 차이로 잰다.
     const seatsBefore = new Set([...Object.keys(gridData), ...loadedFCells,
     ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
-    if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot();
+    if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot(null);
     const wasSeat = seat0(fc, fr);
 
     validDie = { basis, keys, reason: reason || '', ref: ref || null, raw };
@@ -8951,8 +8957,8 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     }
     // 재배치가 쓸 치수는 **바뀐 뒤의** 것이다. 위 블록이 격자를 다시 파생시켰을 수 있고,
     // 옛 치수로 앉히면 렌더가 새 치수로 좌표를 되만들어 저장 좌표가 조용히 옮겨간다.
-    const nc = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-    const nr = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+    const nc = gridDimNum(null, 'cols', el.gridCols, 10);
+    const nr = gridDimNum(null, 'rows', el.gridRows, 10);
 
     // 🔴 **캐시를 반드시 비운다.** `getWaferBoundingBox`의 캐시 태그는 `V<validDieResolveSeq>`
     //    인데 그 번호는 `resolveValidDie` **진입 시** 한 번 오른다(위 `mySeq`). 그래서 진입과
@@ -9147,8 +9153,8 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     }
     // ⚠️ 이 셋은 **지정 전** 화면이다. 로그 2)는 「현재 메타값」이라는 이름 그대로 그것을
     //    말하고, 지정 뒤의 격자는 아래 로그 블록이 컨트롤에서 다시 읽는다(`postCols/postRows`).
-    const hereCols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-    const hereRows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+    const hereCols = gridDimNum(null, 'cols', el.gridCols, 10);
+    const hereRows = gridDimNum(null, 'rows', el.gridRows, 10);
     const hereInvertY = !!(el.gridYInvert && el.gridYInvert.checked);
     const mask = deriveMaskKeys(rawKeys);
     const maskCx = mask.maskCx;
@@ -9289,14 +9295,14 @@ function fitGridToMask(keys, el, currentRotation, currentSide) {
     keys.forEach(k => {
       const [px, py] = String(k).split('_').map(Number);
       if (!Number.isFinite(px) || !Number.isFinite(py)) return;
-      const at = getCanvasCellFromDieIndex(physFrameOverride, px, py, c, r, currentRotation, currentSide);
+      const at = getCanvasCellFromDieIndex(null, px, py, c, r, currentRotation, currentSide);
       if (at.c < 0 || at.c >= vC) col++;
       if (at.r < 0 || at.r >= vR) row++;
     });
     return { col, row, any: col + row };
   };
-  let gc = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-  let gr = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+  let gc = gridDimNum(null, 'cols', el.gridCols, 10);
+  let gr = gridDimNum(null, 'rows', el.gridRows, 10);
   const fromC = gc, fromR = gr;
   let miss = missAt(gc, gr);
   // 한 번에 한 칸. 키가 덮는 범위는 치수에 대해 **중첩 단조**다(치수 +1은 한쪽 끝에
@@ -9433,11 +9439,11 @@ function deriveMaskKeys(rawKeys) {
 // at. STATE# 0 — the panel arrives as `el`, the orientation as arguments.
 function diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMinY,
   hereInvertY, el, currentRotation, currentSide) {
-  const box = getWaferBoundingBox(physFrameOverride, currentRotation, currentSide);
+  const box = getWaferBoundingBox(null, currentRotation, currentSide);
   // 지정이 **끝난 뒤의** 격자. `set`이 참조 규격에서 다시 파생시켰을 수 있으므로 아래
   // 진단은 전부 이 수로 푼다 ― 옛 치수로 푼 진단은 화면과 다른 것을 설명한다.
-  const postCols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-  const postRows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+  const postCols = gridDimNum(null, 'cols', el.gridCols, 10);
+  const postRows = gridDimNum(null, 'rows', el.gridRows, 10);
   // 격자 중심을 **키 공간**으로 읽는다. 물리 키가 웨이퍼 중심 기준이 된 뒤로 그 중점은
   // 곧 패리티 항이다 — `getDieIndex`가 쓰는 바로 그 식이다(홀수 0, 짝수 0.5).
   const gridCx = (Math.abs(Math.round(postCols)) % 2 === 0 ? 0.5 : 0);
@@ -9455,7 +9461,7 @@ function diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMin
   //    읽는 값은 참조의 최솟값이 아니라 **이 맵이 선언한 START**이고, 오리진 셀은
   //    `box.minC - startX`에 선다.
   const sx = hereResolved.startX, sy = hereResolved.startY;
-  const zero = getCanvasCellFromDb(physFrameOverride, 0, 0, postCols, postRows,
+  const zero = getCanvasCellFromDb(null, 0, 0, postCols, postRows,
     currentRotation, currentSide, hereInvertY, sx, sy);
   const startRow = hereInvertY ? box.maxR : box.minR;
   // 정렬 차이는 **마스크가 앉은 뒤** 한 번만 잰다. 참조는 자기 최소 다이를
@@ -10417,10 +10423,10 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   // 🔴 **판정은 `resolveFrame`의 출력을 보지 않는다.** 그 값은 `physNum`이 이미 기본값으로
   //    접어 놓은 뒤라 「선언 없음」이 관측 불가능하다(§physDeclaration). 여기서 읽는 것은
   //    **어디서 온 값인가**라는 사실이다.
-  const pitchFacts = (frame) => withPhysFrame(frame, () => ({
+  const pitchFacts = (frame) => ({
     x: physDeclaration(frame, 'chipX', el.physChipX),
     y: physDeclaration(frame, 'chipY', el.physChipY),
-  }));
+  });
   const srcPitch = pitchFacts(srcFrame);
   const seatPitch = pitchFacts(null);          // null = 화면 컨트롤 그대로
   const unusable = (p) => !(p.x.value > 0) || !(p.y.value > 0);
@@ -10607,12 +10613,12 @@ function reseatOverlayLayer(o) {
   // 물리 축 → 화면 축의 2x2 변환. 🔴 **회전식을 새로 쓰지 않는다** — 이미 있는
   // `getCanvasCellFromDieIndex`에 (0,0)/(1,0)/(0,1)을 넣고 그 답의 차분을 읽을 뿐이다.
   // 정수 격자 사상이라 성분은 0/±1이고 패리티 항은 차분에서 상쇄된다.
-  o.seatAxes = withPhysFrame(seat, () => {
+  o.seatAxes = (() => {
     const o0 = getCanvasCellFromDieIndex(seat, 0, 0, seat.cols, seat.rows, seat.rotation, seat.side);
     const oX = getCanvasCellFromDieIndex(seat, 1, 0, seat.cols, seat.rows, seat.rotation, seat.side);
     const oY = getCanvasCellFromDieIndex(seat, 0, 1, seat.cols, seat.rows, seat.rotation, seat.side);
     return { xc: oX.c - o0.c, xr: oX.r - o0.r, yc: oY.c - o0.c, yr: oY.r - o0.r };
-  });
+  })();
   o.seatChip = { x: seat.chipX, y: seat.chipY };
 
   o.items = seated;

@@ -75,8 +75,7 @@ function sliceFunction(source, name) {
 
 // The coordinate path and everything it passes through. A rename here is exit 2, never green.
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame',
-  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  'physNum', 'gridDimNum', // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
   // question is now shared with the grid-frame reader, so it is one function and it is here.
   'controlIsSilent',
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
@@ -202,7 +201,6 @@ function buildEnv(src, opts = {}) {
     },
     setTimeout,
     alert: (m) => log.alerts.push(String(m)),
-    physFrameOverride: null,
     boundingBoxCache: {},
     // Where the cells on screen are currently seated. Module-level in the source; declared
     // here so a read of it is a value, not a ReferenceError.
@@ -640,7 +638,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
 const TAG_LINE = '  const tag = maskDeclaresTheFrame ? `V${validDieResolveSeq}` : \'C\';';
 const TAG_WINDOW = `    && !frame
     && validDieBasis() === 'ref';`;
-const ZERO_CELL = `  const zero = getCanvasCellFromDb(physFrameOverride, 0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+const ZERO_CELL = `  const zero = getCanvasCellFromDb(null, 0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);`;
 // ⚠️ RE-POINTED 2026-08-04 (the valid-die carry ruling). The resolution is now GUARDED: only a
 //    map that carries its own `valid_die_ref` may replace the designation on screen, so the
@@ -702,7 +700,7 @@ const MUTATIONS = [
   // The duplicate derivation this round removed.
   ['D9 renderGridCanvas re-derives the (0,0) cell by hand again (the mirror-term copy)',
    s => once(s, ZERO_CELL,
-                  `  const box = getWaferBoundingBox(physFrameOverride, currentRotation, currentSide);
+                  `  const box = getWaferBoundingBox(null, currentRotation, currentSide);
   const isXMirrored = (currentSide === 'back' && !isRotated90or270);
   const isYMirrored = (currentSide === 'back' && isRotated90or270);
   const c_zero = isXMirrored ? (box.maxC + startX) : (box.minC - startX);

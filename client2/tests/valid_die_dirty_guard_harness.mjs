@@ -250,7 +250,6 @@ function buildEnv(src, opts = {}) {
     selectedTable: 'bonding_map',
     currentRotation: ROT,
     currentSide: SIDE,
-    physFrameOverride: null,
     // ── the state under test ──
     frameTouched: false,
     framePushed: false,

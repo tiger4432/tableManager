@@ -86,8 +86,7 @@ function sliceFunction(source, name) {
 // Superset across commits. Each entry is the list of ACCEPTED SPELLINGS -- 35e84c3 renamed
 // four coordinate functions, and a probe that slices two revisions cannot use one spelling.
 const WANTED = [
-  ['physNum'], ['gridDimNum'], ['withPhysFrame'],
-  ['getScreenShift'], ['getTransformedPhysicalConfig'],
+  ['physNum'], ['gridDimNum'], ['getScreenShift'], ['getTransformedPhysicalConfig'],
   ['getDieIndex', 'getPhysicalCoords'],
   ['getCanvasCellFromDb', 'getCellFromVisualCoords'],
   ['getCanvasCellFromDieIndex', 'getCellFromPhysicalCoords'],
@@ -207,7 +206,6 @@ function buildEnv(src, opts = {}) {
     },
     setTimeout,
     alert: (m) => log.alerts.push(String(m)),
-    physFrameOverride: null,
     boundingBoxCache: {},
     cellsSeatedUnder: null,
     currentRotation: 0, currentSide: 'front',

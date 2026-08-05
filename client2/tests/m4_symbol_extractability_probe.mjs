@@ -73,8 +73,7 @@ function build(mutator) {
   }
   // Same sandbox shape the contract harness uses for these symbols.
   const sandbox = {
-    console, physFrameOverride: null,
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
+    console, validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
   };
   vm.createContext(sandbox);
   try { vm.runInContext(pieces.join('\n'), sandbox); }

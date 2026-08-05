@@ -72,8 +72,7 @@ function sliceFunction(source, name) {
 
 // Every symbol the new branches actually run. A missing one is a rename -> exit 2, never green.
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame',
-  'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb',
+  'physNum', 'gridDimNum', 'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb',
   // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
   // question is now shared with the grid-frame reader, so it is one function and it is here.
   'controlIsSilent',
@@ -191,7 +190,6 @@ function buildEnv(src, opts = {}) {
     // F6/empty-target assertions have been RED — i.e. unscored — since that path landed.
     console: { warn() {}, info() {}, error() {}, log() {}, debug() {} },
     el,
-    physFrameOverride: null,
     boundingBoxCache: {},
     // Where the cells on screen are currently seated. Module-level in the source; declared
     // here so a read of it is a value, not a ReferenceError.

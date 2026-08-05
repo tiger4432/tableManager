@@ -22,6 +22,9 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { frameAdapted } from './oracle/revision_signature_drift.mjs';
+// The pinned baseline blob still reads this module binding; the working tree no longer
+// declares it. The shared sandbox must keep it or the OLD side dies with a ReferenceError
+// and takes the two-revision comparison with it.
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -198,7 +201,6 @@ function buildSandbox(src, label, extraFns = [], extraCode = '') {
   const captured = { html: null, text: null, toasts: [], alerts: [], confirms: [] };
   const ctx = {
     console: Object.assign(Object.create(console), { debug: () => {} }),
-    physFrameOverride: null,
     currentRotation: ROT, currentSide: SIDE,
     validDie: null, boundingBoxCache: {}, el: makeEl(),
     gridData: {}, gridCells2D: {}, legend: [],
@@ -206,6 +208,7 @@ function buildSandbox(src, label, extraFns = [], extraCode = '') {
     selectedTable: 'bonding_map',
     // the served shape for bonding_map (see push_gate_harness fixtures) — `mapKeyGroupLabel`
     // reads this, and a per-table case is asserted separately below.
+    physFrameOverride: null,   // the PINNED BASELINE still reads it; the working tree does not
     tableSchema: { map_key_columns: ['base'] },
     // [F2b] provenance state. Default = "the server sent nothing", which is what a
     // never-loaded map looks like; individual cases set it explicitly.

@@ -86,8 +86,7 @@ function sliceFunction(source, name) {
 // The coordinate stack, plus the wiring that registers the guard. `initDOMElements` is what
 // makes group G an EXECUTION of the shipped listener rather than a re-implementation of it.
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame',
-  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  'physNum', 'gridDimNum', // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
   // question is now shared with the grid-frame reader, so it is one function and it is here.
   'controlIsSilent',
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
@@ -193,7 +192,7 @@ function buildEnv(src, P, opts = {}) {
     pushMapData() {}, copyGridToExcel() {}, onMapGridPaste() {}, selectEdgeCells() {},
     autoPaintE1E2() {}, fillSelectedCells() {}, clearSelectedCells() {},
     fitGridToWorkspace() {}, initPlanSidebarResizer() {}, debounce: (f) => f,
-    physFrameOverride: null, boundingBoxCache: {}, cellsSeatedUnder: null,
+    boundingBoxCache: {}, cellsSeatedUnder: null,
     currentRotation: P.rotation, currentSide: P.side,
     gridData: {}, gridCells2D: {},
     legend: [{ value: 'A', color: '#0a0' }],

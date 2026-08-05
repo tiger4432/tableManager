@@ -73,8 +73,7 @@ function sliceFunction(source, name) {
 }
 
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame',
-  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  'physNum', 'gridDimNum', // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
   // question is now shared with the grid-frame reader, so it is one function and it is here.
   'controlIsSilent',
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'frameFromMeta',
@@ -189,7 +188,7 @@ function buildEnv(src, opts = {}) {
     el,
     document: { querySelectorAll: () => [], getElementById: () => null,
                 addEventListener() {}, removeEventListener() {} },
-    setTimeout, physFrameOverride: null, boundingBoxCache: {}, cellsSeatedUnder: null,
+    setTimeout, boundingBoxCache: {}, cellsSeatedUnder: null,
     currentRotation: p.rotation || 0, currentSide: p.side || 'front',
     gridData: opts.gridData || {}, gridCells2D: {}, legend: opts.legend || [],
     activeBrush: opts.activeBrush === undefined ? 'A' : opts.activeBrush,
@@ -705,7 +704,7 @@ const MUTATIONS = [
   }],
   // The screen keeps the generic wording, which reads as false when the inputs hold numbers.
   ['D1 the note stops naming auto-registration as the reason', {
-    find: `      notes.push(geometryIsAutoRegistered(physFrameOverride)\n        ? '기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다'\n        : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');`,
+    find: `      notes.push(geometryIsAutoRegistered(null)\n        ? '기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다'\n        : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');`,
     repl: `      notes.push('셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');`,
   }],
   // Only one axis is marked. The second write becomes dead, and the two halves can then
@@ -727,8 +726,8 @@ const MUTATIONS = [
     repl: `  if (gridCells2D[r]?.[c]) return gridCells2D[r][c];`,
   }],
   ['undeclared pitch is invented from the defaulted number', {
-    find: `  const dx = physDeclaration(physFrameOverride, 'chipX', el.physChipX);\n  const dy = physDeclaration(physFrameOverride, 'chipY', el.physChipY);`,
-    repl: `  const dx = { value: physNum(physFrameOverride, 'chipX', el.physChipX, 2.5) };\n  const dy = { value: physNum(physFrameOverride, 'chipY', el.physChipY, 2.5) };`,
+    find: `  const dx = physDeclaration(null, 'chipX', el.physChipX);\n  const dy = physDeclaration(null, 'chipY', el.physChipY);`,
+    repl: `  const dx = { value: physNum(null, 'chipX', el.physChipX, 2.5) };\n  const dy = { value: physNum(null, 'chipY', el.physChipY, 2.5) };`,
   }],
 ];
 

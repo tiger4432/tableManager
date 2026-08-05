@@ -79,8 +79,7 @@ function sliceFunction(source, name) {
 }
 
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame',
-  // `physDeclaration` + `cellMetrics`: the cell's pixel size is now derived from the declared
+  'physNum', 'gridDimNum', // `physDeclaration` + `cellMetrics`: the cell's pixel size is now derived from the declared
   // chip pitch (equal mm-per-pixel on both axes) instead of from the canvas rectangle alone.
   // `renderGridCanvas` calls `cellMetrics`, which calls `physDeclaration` — omitting either
   // turns the render into a ReferenceError that reads as a 0-cell screen.
@@ -307,7 +306,6 @@ function buildEnv(src, P, opts = {}) {
     pushMapData() {}, copyGridToExcel() {}, onMapGridPaste() {}, selectEdgeCells() {},
     autoPaintE1E2() {}, fillSelectedCells() {}, clearSelectedCells() {},
     fitGridToWorkspace() {}, initPlanSidebarResizer() {}, debounce: (f) => f,
-    physFrameOverride: null,
     boundingBoxCache: {},
     cellsSeatedUnder: null,
     currentRotation: P.rotation,
@@ -994,8 +992,8 @@ function onceRe(src, re, repl) {
 const MUTANTS = {
   // The defect exactly as 1e4f23c shipped it: nothing reacts to the origin box moving.
   'reaction-is-a-no-op': (s) => once(s,
-    '  const now = seatingSnapshot();\n  if (now) cellsSeatedUnder = now;\n  if (!was || !now) return null;',
-    '  const now = seatingSnapshot();\n  if (now) cellsSeatedUnder = now;\n  if (!was || !now) return null;\n  if (now) return null;'),
+    '  const now = seatingSnapshot(null);\n  if (now) cellsSeatedUnder = now;\n  if (!was || !now) return null;',
+    '  const now = seatingSnapshot(null);\n  if (now) cellsSeatedUnder = now;\n  if (!was || !now) return null;\n  if (now) return null;'),
   // The frame window stops carrying the box, so the pre-edit coordinates are recovered on the
   // wrong basis. Only a declared mask can see this.
   'frame-window-drops-the-box': (s) => once(s,
@@ -1018,8 +1016,8 @@ const MUTANTS = {
   // it at fire time, so the geometry leg gets applied twice.
   'designation-caches-the-record': (s) => once(
     once(s,
-      '    if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot();',
-      '    if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot();\n    const staleRecord = cellsSeatedUnder;'),
+      '    if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot(null);',
+      '    if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot(null);\n    const staleRecord = cellsSeatedUnder;'),
     '    const placed = reseatCellsToStoredCoords(cellsSeatedUnder);',
     '    const placed = reseatCellsToStoredCoords(staleRecord);'),
   // ── THE WIRING ITSELF. These two are the reason the fixtures moved up to the event: with

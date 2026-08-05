@@ -42,7 +42,7 @@ function sliceFunction(source, name) {
 //    had three times. Questions 1 and 2 never touched it, so the probe is retargeted rather
 //    than retired: `coordsByPhysKey` below is the same two-line composition, built from the two
 //    shipped PER-CELL primitives that remain.
-const SYMBOLS = ['physNum', 'gridDimNum', 'withPhysFrame', 'getDieIndex',
+const SYMBOLS = ['physNum', 'gridDimNum', 'getDieIndex',
   'getCanvasCellFromDieIndex', 'getCanvasCellFromDb', 'getTransformedPhysicalConfig',
   'getScreenShift', 'isCellInsideWaferFast', 'getWaferBoundingBox', 'getDbCoords',
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'projectCellsToPhys'];
@@ -54,7 +54,7 @@ function coordsByPhysKey(S, frame) {
   const rf = S.resolveFrame(frame);
   const isRot = (rf.rotation === 90 || rf.rotation === 270);
   const vC = isRot ? rf.rows : rf.cols, vR = isRot ? rf.cols : rf.rows;
-  return S.withPhysFrame(rf, () => {
+  return (() => {
     const out = new Map();
     for (let r = 0; r < vR; r++) {
       for (let c = 0; c < vC; c++) {
@@ -81,7 +81,7 @@ function env(frame) {
     gridCanvas: { getBoundingClientRect: () => ({ width: 700, height: 700 }) },
   };
   const sandbox = {
-    console, el, physFrameOverride: null, boundingBoxCache: {},
+    console, el, boundingBoxCache: {},
     currentRotation: Number(frame.rotation) || 0,
     currentSide: frame.side === 'back' ? 'back' : 'front',
   };
@@ -174,7 +174,7 @@ for (const tgt of names) {
     const r90 = (rot === 90 || rot === 270);
     const vC = r90 ? adopted.rows : adopted.cols, vR = r90 ? adopted.cols : adopted.rows;
     let blockedByCircle = 0;
-    S.withPhysFrame(adopted, () => {
+    (() => {
       const pc = S.getTransformedPhysicalConfig(null, rot, side);
       const cellOf = new Map();
       for (let r = 0; r < vR; r++) for (let c = 0; c < vC; c++) {

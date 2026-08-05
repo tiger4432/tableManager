@@ -112,7 +112,6 @@ function makeCtx(src, opts = {}) {
     // Read by `physNum` (the whole transform chain below goes through it). Never opened
     // here: the push path is the MAIN load, which is the "source meta == current controls"
     // special case of the frame window (SPEC §5.1).
-    physFrameOverride: null,
     // Every `isCellInsideWafer` call ⑤ makes, as (c, r, visualCols, visualRows, inside).
     // The evidence for the outside-circle assertions is this coordinate list, not a boolean.
     insideCalls: [],

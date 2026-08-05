@@ -82,7 +82,7 @@ function sliceBalanced(src, startIdx) {
 //    what lets this oracle keep working across the NEXT rename too, and an oracle that dies
 //    on a rename gets waived rather than fixed.
 const NEEDED = [
-  ['physNum'], ['gridDimNum'], ['withPhysFrame'], ['getScreenShift'],
+  ['physNum'], ['gridDimNum'], ['getScreenShift'],
   ['getTransformedPhysicalConfig'],
   ['getDieIndex', 'getPhysicalCoords'],          // renamed 2026-07-31
   ['isCellInsideWaferFast'], ['getWaferBoundingBox'], ['validDieBasis'], ['isValidDieAt'],
@@ -119,7 +119,12 @@ function buildVerdictFn(src, label) {
     parts.push(out);
   }
   const ctx = {
-    console, physFrameOverride: null, currentRotation: 0, currentSide: 'front',
+    console, currentRotation: 0, currentSide: 'front',
+    // KEPT ON PURPOSE. The working copy no longer has this binding, but the PINNED BASELINE
+    // still reads it -- that is the whole point of a two-revision oracle. Removing it from
+    // the shared sandbox does not clean anything up; it kills the old side with a
+    // ReferenceError and takes the comparison with it.
+    physFrameOverride: null,
     validDie: null, boundingBoxCache: {}, el: {},
   };
   vm.createContext(ctx);
@@ -152,7 +157,6 @@ function setFrame(ctx, f) {
   ctx.currentRotation = f.rot;
   ctx.currentSide = f.side;
   ctx.boundingBoxCache = {};
-  ctx.physFrameOverride = null;
 }
 
 // One frame -> the verdict for every cell of the visual rect, as a flat string.

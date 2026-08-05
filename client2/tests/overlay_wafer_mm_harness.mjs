@@ -74,8 +74,7 @@ function sliceFunction(source, name) {
 
 // The coordinate core plus the rule-6 additions. A rename here is exit 2, never green.
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame',
-  'getTransformedPhysicalConfig', 'getScreenShift',
+  'physNum', 'gridDimNum', 'getTransformedPhysicalConfig', 'getScreenShift',
   'getDieIndex', 'getCanvasCellFromDieIndex',
   'dieIndexToWaferMm', 'waferMmToDieCell', 'frameDieLattice',
   'getCanvasCellFromDb', 'getDbCoords',
@@ -97,7 +96,6 @@ function makeSandbox(src) {
   const body = SYMBOLS.map(n => sliceFunction(src, n)).join('\n\n');
   const ctx = {
     console, Math, Number, String, Array, Object, Map, Set, JSON, parseInt, parseFloat,
-    physFrameOverride: null,
     boundingBoxCache: {},
     // NOT reset by setScreen on purpose: if the cache key were incomplete, a stale key set
     // would survive a frame change and the assertions below would see it.
@@ -653,7 +651,32 @@ function runAll(src) {
     ok(before.size === after.size, 'A10 snapshot size', `${before.size} vs ${after.size}`);
     ok(before.size > 400, 'A10b snapshot actually covers the canvas', `${before.size} cells`);
     ok(moved === 0, 'A10c stored target coordinates unmoved', `${moved} cells moved, e.g. ${firstMove}`);
-    ok(ctx.physFrameOverride === null, 'A10d frame window closed', 'physFrameOverride leaked');
+    // A10d -- REPLACED 2026-08-06, not deleted. It used to read `ctx.physFrameOverride === null`
+    //         and there is no such binding any more. Asserting that a NAME is gone would be
+    //         worthless: it goes green on a codebase that reintroduced the same coupling under
+    //         a different spelling, and it is the absence of a symbol, not a property of the
+    //         code. So it is replaced by the property threading actually buys and a module
+    //         global never could -- TWO CALLS UNDER DIFFERENT FRAMES CANNOT INTERFERE.
+    //
+    // 🔴 Interleaved deliberately: A, then B, then A again. A global made this impossible to
+    //    test at all, because the second call would overwrite the first's state; the old
+    //    assertion could only check the window had been CLOSED afterwards, never that two
+    //    frames could be open in the same expression without touching each other.
+    // ⚠️ The A != B guard is the liveness half. If the two frames answered the same, the
+    //    non-interference claim would hold vacuously and score nothing -- the same trap that
+    //    let M12 hide behind a fixture whose two boxes agreed.
+    {
+      const q = (fr) => ctx.getDbCoords(fr, 3, 4, TGT.cols, TGT.rows, TGT.rotation, TGT.side,
+        TGT.invertY, TGT.startX, TGT.startY);
+      const srcFrame = { ...SRC, invertY: true };
+      const a1 = JSON.stringify(q(srcFrame));
+      const b = JSON.stringify(q(null));
+      const a2 = JSON.stringify(q(srcFrame));
+      ok(a1 !== b, 'A10d the two frames really do answer differently',
+        `both answer ${a1} -- non-interference would be vacuous`);
+      ok(a1 === a2, 'A10d2 a call under another frame did not disturb the first',
+        `${a1} then ${b} then ${a2} -- the second call changed what the first answers`);
+    }
   }
 
   // A18 -- THE FRAME REACHES `getCanvasCellFromDb`, ON THE BRANCH WHERE THAT IS OBSERVABLE.
@@ -763,10 +786,10 @@ const MUTATIONS = [
     'const ck = `${frameAxesKey(f)}|${basis}|${validDieResolveSeq}`;',
     "const ck = 'one-slot-for-every-frame';"],
   ['overlay gate stops calling physDeclaration (reads the defaulted number again)',
-    `const pitchFacts = (frame) => withPhysFrame(frame, () => ({
+    `const pitchFacts = (frame) => ({
     x: physDeclaration(frame, 'chipX', el.physChipX),
     y: physDeclaration(frame, 'chipY', el.physChipY),
-  }));`,
+  });`,
     `const pitchFacts = (frame) => ({
     x: { value: resolveFrame(frame || currentFrame()).chipX, source: 'frame' },
     y: { value: resolveFrame(frame || currentFrame()).chipY, source: 'frame' },
@@ -781,7 +804,7 @@ const MUTATIONS = [
   // is now PASSING a frame, so the mutant passes the source frame where the seat keys must
   // use the screen -- the target's own mask is suspended and lost, exactly as before.
   ['seat keys computed inside a frame window (target mask lost)',
-    'if (isValidDieAt(physFrameOverride, p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {',
+    'if (isValidDieAt(null, p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {',
     'if (isValidDieAt(f, p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {'],
   ['identical duplicate rows no longer collapsed',
     'if (twin && twin.val === entry.val) { duplicates++; return; }',

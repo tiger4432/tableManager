@@ -70,8 +70,7 @@ function sliceFunction(source, name) {
 
 // The load path and everything its coordinates pass through. A rename here is exit 2, never green.
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame',
-  'getScreenShift', 'getTransformedPhysicalConfig',
+  'physNum', 'gridDimNum', 'getScreenShift', 'getTransformedPhysicalConfig',
   'getDieIndex', 'getCanvasCellFromDb', 'getCanvasCellFromDieIndex', 'getDbCoords',
   // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
   // question is now shared with the grid-frame reader, so it is one function and it is here.
@@ -208,7 +207,6 @@ function buildEnv(src, opts = {}) {
     },
     setTimeout,
     alert: (m) => log.alerts.push(String(m)),
-    physFrameOverride: null,
     boundingBoxCache: {},
     // Where the cells on screen are currently seated. Module-level in the source; declared
     // here so a read of it is a value, not a ReferenceError.
@@ -432,7 +430,7 @@ async function scoreAll(src, { verbose = false } = {}) {
 //    so that D0/D2 can keep injecting code that reads `userChoice`, `minX` and `minY`.
 const FIXED_ORIGIN = `    startX = minX;
     startY = minY;`;
-const OLD_SHIFT = `            const cell = getCanvasCellFromDb(physFrameOverride, xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);`;
+const OLD_SHIFT = `            const cell = getCanvasCellFromDb(null, xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);`;
 
 const MUTATIONS = [
   // 🔴 THE DEFECT ITSELF, put back verbatim — the only self-check that is worth anything.
@@ -463,7 +461,7 @@ const MUTATIONS = [
   // invariant-① violation this domain exists to stop.
   ['D6 the load stops applying the frame origin (getCanvasCellFromDb called with 0,0)',
    s => s.replace(OLD_SHIFT,
-                  '            const cell = getCanvasCellFromDb(physFrameOverride, xNum, yNum, cols, rows, rotation, side, invertY, 0, 0);')],
+                  '            const cell = getCanvasCellFromDb(null, xNum, yNum, cols, rows, rotation, side, invertY, 0, 0);')],
 ];
 
 const base = await scoreAll(SRC0, { verbose: true });

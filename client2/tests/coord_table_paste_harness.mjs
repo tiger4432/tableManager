@@ -160,7 +160,6 @@ function buildSandbox(src, label, elOver) {
   const captured = { html: null, text: null, toasts: [], confirms: [], fetches: [] };
   const ctx = {
     console: Object.assign(Object.create(console), { debug: () => {} }),
-    physFrameOverride: null,
     currentRotation: ROT, currentSide: SIDE,
     validDie: null, boundingBoxCache: {}, el: makeEl(elOver),
     gridData: {}, gridCells2D: {}, legend: [],
@@ -680,8 +679,8 @@ const MUTATIONS = [
     once('    r = box.maxR - (dbY - startY);', '    r = dbY - startY + box.minR;')],
   // ── the coordinate addressing ────────────────────────────────────────────────
   ['x and y are swapped on the way in',
-    once('    const at = getCanvasCellFromDb(physFrameOverride, t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,',
-      '    const at = getCanvasCellFromDb(physFrameOverride, t.y, t.x, cf.cols, cf.rows, cf.rotation, cf.side,')],
+    once('    const at = getCanvasCellFromDb(null, t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,',
+      '    const at = getCanvasCellFromDb(null, t.y, t.x, cf.cols, cf.rows, cf.rotation, cf.side,')],
   ['the value is written to the transposed square',
     once('    rows[at.r][at.c] = t.value;', '    rows[at.c] = rows[at.c] || []; rows[at.c][at.r] = t.value;')],
   ['headers are read as screen positions (the round\'s whole point, undone)',

@@ -82,7 +82,6 @@ const P = makeExtractor(SRC_PLAN);
 // point: the real functions must be reading the real module state, not a private copy.
 const ctx = {
   console,
-  physFrameOverride: null,
   currentRotation: 0,
   currentSide: 'front',
   validDie: null,

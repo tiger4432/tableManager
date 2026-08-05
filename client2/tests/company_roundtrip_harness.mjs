@@ -173,7 +173,6 @@ function buildSandbox(src, label, headerOn, elOver, ctxOver) {
   const recorded = { added: [], updates: [] };
   const ctx = {
     console: Object.assign(Object.create(console), { debug: () => {} }),
-    physFrameOverride: null,
     currentRotation: ROT, currentSide: SIDE,
     validDie: null, boundingBoxCache: {}, el: makeEl(headerOn, elOver),
     gridData: {}, gridCells2D: {}, legend: [],

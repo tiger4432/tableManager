@@ -85,7 +85,7 @@ function makeEl(over = {}) {
 
 function buildSandbox(mutator) {
   const parts = [
-    fn('physNum'), fn('gridDimNum'), fn('withPhysFrame'),
+    fn('physNum'), fn('gridDimNum'),
     fn('getScreenShift'), fn('getTransformedPhysicalConfig'),
     fn('getDieIndex'), fn('getCanvasCellFromDb'), fn('getDbCoords'),
     fn('isCellInsideWaferFast'), fn('getWaferBoundingBox'),
@@ -108,7 +108,7 @@ function buildSandbox(mutator) {
     if (code === before) die('a mutation did not apply - its target text no longer exists');
   }
   const ctx = {
-    console, physFrameOverride: null, currentRotation: 0, currentSide: 'front',
+    console, currentRotation: 0, currentSide: 'front',
     validDie: null, boundingBoxCache: {}, el: makeEl(),
     CANON_INT_RE: /^[+-]?\d+$/, CANON_FLOAT_RE: /^[+-]?\d+\.0+$/,
     // [1-a] `syncValidDieRefControls` now also decides the key control's SHAPE (<select> when
