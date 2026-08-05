@@ -69,8 +69,14 @@ function fn(src, name) {
   return body.replace(/^export\s+/, '');
 }
 
+// `cellSource` / `isTargetUntouched` / `markTargetInput` are here because `renderDetail`
+// calls them while drawing the target boxes, not because this harness scores them. What they
+// do -- load a decided column with its stored value and mark whose it is -- belongs to
+// `enrichment_provenance_harness.mjs`; leaving them out here only makes `renderDetail`
+// throw halfway, which is a harness that measures nothing rather than a harness that objects.
 const SLICED = [
-  'cellVal', 'hasDecisionKeys', 'renderDetail', 'loadActiveReference',
+  'cellVal', 'cellSource', 'hasDecisionKeys', 'isTargetUntouched', 'markTargetInput',
+  'renderDetail', 'loadActiveReference',
   'renderRefOutcome', 'renderRefTable', 'showRefStatus', 'hideRefStatus',
   'showRefIdle', 'showRefLoading', 'showRefError',
 ];

@@ -81,6 +81,16 @@ function cellVal(row, col) {
   return c === null || c === undefined ? '' : c;
 }
 
+// The cell contract's `priority_source`: WHO decided this value. It is the fact the screen
+// owes an operator before they overwrite anything -- "deciding again" is only a decision if
+// you can see whose decision you are replacing. A cell that arrived as a bare scalar carries
+// no provenance, and then this says nothing rather than inventing a writer.
+function cellSource(row, col) {
+  const c = row && row.data ? row.data[col] : undefined;
+  if (c && typeof c === 'object' && c.priority_source) return String(c.priority_source);
+  return '';
+}
+
 function newSessionToken() {
   S.sessionToken = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random()}`);
   return S.sessionToken;
@@ -432,6 +442,30 @@ function showConveyorEmpty() {
   clearReferencePanel();
 }
 
+// IS WHAT SITS IN THIS BOX STILL THE STORED VALUE, UNTOUCHED? One spelling, because the
+// screen's mark and `saveCurrent`'s write set must be the SAME sentence. If they drift, the
+// form says "기존값" while the save records a human declaration -- which is the whole defect.
+// Blankness folds the way the queue folds it (trim), so a stored value of whitespace is no
+// value at all and typing over it is a real edit.
+function isTargetUntouched(input) {
+  const baseline = input.dataset.baseline || '';
+  return baseline !== '' && input.value.trim() === baseline;
+}
+
+// The `proposed` shape from the map screen, for the same reason it exists there: what is in
+// this control was not put there by you. Dropped the instant the text differs, restored if the
+// operator types the stored string back -- retyping a machine value character for character is
+// not a decision, and nothing gets written for it either.
+function markTargetInput(input) {
+  const untouched = isTargetUntouched(input);
+  input.dataset.existing = untouched ? 'true' : 'false';
+  const mark = el(input.dataset.markId);
+  if (!mark) return;
+  const src = input.dataset.source || '';
+  mark.textContent = untouched ? (src ? `기존값 · ${src}` : '기존값') : '';
+  mark.style.display = untouched ? 'inline-flex' : 'none';
+}
+
 function renderDetail(row) {
   if (!row || !S.rule) return;
   S.selectedRowId = row.row_id;
@@ -490,29 +524,56 @@ function renderDetail(row) {
   });
 
   // target 입력 필드 (규칙 메타 기반 동적 생성)
+  //
+  // A COLUMN THAT ALREADY HOLDS A VALUE RENDERS WITH IT. Handing over an empty box for a
+  // column that is already decided made the operator retype what was already there, and the
+  // retyped copy landed as `user` (priority 0) -- a machine decision turned into a human one
+  // because the form did not show what it already knew. The value is loaded, marked as
+  // existing, and `saveCurrent` writes only what actually changed.
   const inputsBody = el('target-inputs');
   inputsBody.innerHTML = '';
   (S.rule.target_fields || []).forEach((field, idx) => {
     const wrap = document.createElement('div');
     wrap.className = 'target-field-row';
+    const head = document.createElement('div');
+    head.className = 'target-field-head';
     const label = document.createElement('label');
     label.className = 'target-field-label';
     label.textContent = field;
     label.htmlFor = `target-input-${idx}`;
+    const mark = document.createElement('span');
+    mark.className = 'target-existing-mark';
+    mark.id = `target-existing-${idx}`;
+    head.appendChild(label);
+    head.appendChild(mark);
+
     const input = document.createElement('input');
     input.type = 'text';
     input.id = `target-input-${idx}`;
     input.className = 'glass-input target-input';
     input.dataset.field = field;
-    input.placeholder = `${field} 입력 후 Enter`;
+    input.dataset.markId = mark.id;
+    // The baseline is the comparison the write set is decided against, so it is stored
+    // TRIMMED and the box is loaded with the same string -- otherwise stray whitespace in
+    // storage reads as an edit on every render and rewrites provenance by itself.
+    const stored = String(cellVal(row, field)).trim();
+    input.dataset.baseline = stored;
+    input.dataset.source = cellSource(row, field);
+    input.value = stored;
+    input.placeholder = stored === '' ? `${field} 입력 후 Enter` : '';
     input.autocomplete = 'off';
     input.addEventListener('keydown', onInputKeydown);
-    wrap.appendChild(label);
+    input.addEventListener('input', () => markTargetInput(input));
+    wrap.appendChild(head);
     wrap.appendChild(input);
     inputsBody.appendChild(wrap);
+    markTargetInput(input);
   });
 
-  const first = inputsBody.querySelector('input');
+  // Focus lands on the first EMPTY box. Parking the cursor in a filled one would make
+  // overwriting a stored decision the default gesture; the queue's business is the blanks.
+  const inputs = Array.from(inputsBody.querySelectorAll('input'));
+  const first = inputs.find(i => i.value.trim() === '') || inputs[0];
   if (first) first.focus();
 
   // [C] 참조뷰: 선택 행 기준 비동기 로드 예약 (debounce — 입력·이동을 절대 막지 않음)
@@ -525,8 +586,11 @@ function onInputKeydown(e) {
     saveCurrent();
   } else if (e.key === 'Escape') {
     e.preventDefault();
-    el('target-inputs').querySelectorAll('input').forEach(i => { i.value = ''; });
-    const first = el('target-inputs').querySelector('input');
+    // Back to what is stored, not to blank. Emptying a box that holds an existing value would
+    // stage an erasure the operator never asked for, and the next save would have to refuse it.
+    const inputs = Array.from(el('target-inputs').querySelectorAll('input'));
+    inputs.forEach(i => { i.value = i.dataset.baseline || ''; markTargetInput(i); });
+    const first = inputs.find(i => i.value.trim() === '') || inputs[0];
     if (first) first.focus();
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
@@ -561,7 +625,33 @@ function selectDisplayedIndex(idx) {
   S.gridApi.ensureIndexVisible(clamped, 'middle');
 }
 
+// 방금 쓴 값만 이 행의 셀에 반영한다. **출처는 지어내지 않는다.**
+// The PUT does not return the stored row, so what finally won the priority contest is not
+// known here. The shape of the cell contract is kept and `priority_source` goes to null,
+// which is "unread", not "nobody" -- carrying the OLD source forward would attribute this
+// value to a writer that did not write it, the same impersonation this round is closing.
+function applyWrittenValues(rowData, written) {
+  if (!rowData) return;
+  if (!rowData.data) rowData.data = {};
+  Object.keys(written).forEach(col => {
+    const cell = rowData.data[col];
+    rowData.data[col] = (cell && typeof cell === 'object')
+      ? { ...cell, value: written[col], priority_source: null }
+      : { value: written[col], is_overwrite: false, priority_source: null };
+  });
+}
+
 // ── 저장 → 낙관적 제거 → 다음 항목 (컨베이어 핵심 루프) ────
+//
+// THE WRITE SET IS WHAT THE OPERATOR EDITED, AND NOTHING ELSE. An untouched column keeps its
+// existing value AND its existing provenance (`enrichment_auto_confirm`, or whatever wrote
+// it); only a genuinely edited one becomes `user`. Sending every box -- which is what the
+// all-fields-required guard forced once partly-filled rows started staying in the queue --
+// rewrote machine decisions as human ones with a hand-typed duplicate of themselves.
+//
+// Overwriting a stored machine value on purpose stays possible and needs no control: EDITING
+// THE FIELD IS THE ACT. What it must not be is an accident, and it no longer can be, because
+// leaving the box alone now writes nothing.
 async function saveCurrent() {
   if (S.saving || !S.rule || S.selectedRowId === null || !S.gridApi) return;
 
@@ -569,14 +659,40 @@ async function saveCurrent() {
   if (inputs.length === 0) return;
 
   const updates = {};
+  // The whole record goes to the console: which columns were written, which were held back
+  // and under whose provenance. One line reaches the screen; the audit belongs here.
+  const record = { rule: S.rule.name, row_id: S.selectedRowId, written: {}, withheld: {} };
+  const after = {};   // target state AFTER this save -- decides whether the row leaves the queue
   for (const input of inputs) {
+    const field = input.dataset.field;
+    const baseline = input.dataset.baseline || '';
     const val = input.value.trim();
+    after[field] = val;
+    if (val === baseline) {
+      record.withheld[field] = { value: baseline, priority_source: input.dataset.source || null };
+      continue;
+    }
     if (val === '') {
-      showToast(`'${input.dataset.field}' 값을 입력해 주세요.`, 'warning');
+      // Clearing is not confirming. Writing '' as `user` would erase a machine decision by
+      // hand and sign the empty space with a person's name, so it is refused rather than sent.
+      showToast(`'${field}' 칸이 비었습니다. 값을 되돌리거나 새 값을 입력해 주세요.`, 'warning');
+      console.log('[enrichment] save refused: a target was emptied', { ...record, field, baseline });
       input.focus();
       return;
     }
-    updates[input.dataset.field] = val;
+    updates[field] = val;
+    record.written[field] = { from: baseline || null, to: val,
+                              was: input.dataset.source || null, becomes: 'user' };
+  }
+
+  if (Object.keys(updates).length === 0) {
+    // A REFUSAL, NOT A SILENT NO-OP. A save that writes nothing and reports success teaches
+    // the operator that the button lies, and the next real failure gets read as the same lie.
+    showToast('바뀐 값이 없습니다. 고칠 칸을 수정한 뒤 저장해 주세요.', 'warning');
+    console.log('[enrichment] save refused: nothing edited', record);
+    const first = inputs.find(i => i.value.trim() === '') || inputs[0];
+    if (first) first.focus();
+    return;
   }
 
   const rowId = S.selectedRowId;
@@ -621,19 +737,39 @@ async function saveCurrent() {
     const result = await res.json().catch(() => null);
     effortCommitIfRecorded(result);
 
+    console.log('[enrichment] saved', record);
+
     if (token !== S.sessionToken) return; // 저장 중 규칙 전환 → UI 반영 생략
 
-    // 낙관적 반영: target을 전부 채웠으므로 큐(ANY-blank)에서 이탈 → 버퍼에서 제거
+    // 큐 이탈 판정은 「이 저장 뒤에도 target이 비어 있는가」다. The queue predicate is
+    // OR-of-blank, so a row with one target still empty STAYS in it. A save that fills one of
+    // two is now reachable (it was not while every box was mandatory), and removing the row
+    // for it would drop it off the screen while it is still in the queue and drift the
+    // remainder by one per save -- a count claiming progress that did not happen.
+    const stillBlank = (S.rule.target_fields || []).some(f => (after[f] || '') === '');
+
     const liveNode = S.gridApi.getRowNode(String(rowId));
     // 판단키 보유 여부는 **제거 전에** 읽는다. 판단키가 빈 행을 채웠다면 그 행은
     // blank_key 집계에서도 함께 빠진다 — 잔여만 줄이면 배지가 저장 한 번마다 1씩 부푼다.
     const wasKeyed = liveNode && liveNode.data ? hasDecisionKeys(liveNode.data, S.rule) : true;
-    if (liveNode) S.gridApi.applyTransaction({ remove: [liveNode.data] });
-    S.totalBlank = Math.max(0, S.totalBlank - 1);
-    if (!wasKeyed && typeof S.blankKeyCount === 'number') {
-      S.blankKeyCount = Math.max(0, S.blankKeyCount - 1);
+
+    if (stillBlank) {
+      // The row stays. Only the written columns move, and the form redraws so what was just
+      // stored reads as an existing value and the cursor lands on the box still empty.
+      if (liveNode && liveNode.data) {
+        applyWrittenValues(liveNode.data, updates);
+        S.gridApi.applyTransaction({ update: [liveNode.data] });
+        renderDetail(liveNode.data);
+      }
+    } else {
+      // 낙관적 반영: target이 전부 찼으므로 큐(ANY-blank)에서 이탈 → 버퍼에서 제거
+      if (liveNode) S.gridApi.applyTransaction({ remove: [liveNode.data] });
+      S.totalBlank = Math.max(0, S.totalBlank - 1);
+      if (!wasKeyed && typeof S.blankKeyCount === 'number') {
+        S.blankKeyCount = Math.max(0, S.blankKeyCount - 1);
+      }
+      S.doneCount += 1;
     }
-    S.doneCount += 1;
 
     flashSaved();
     updateHeaderStats();
@@ -642,8 +778,10 @@ async function saveCurrent() {
       `버퍼 ${S.gridApi.getDisplayedRowCount().toLocaleString()}건`;
 
     // 다음 항목 자동 선택 (제거된 자리 승계) + 버퍼 보충
-    selectDisplayedIndex(removedIndex);
-    refillIfNeeded();
+    if (!stillBlank) {
+      selectDisplayedIndex(removedIndex);
+      refillIfNeeded();
+    }
   } catch (e) {
     // 실패: 입력 유지 + 행 잔존
     showToast(`저장 실패: ${e.message}`, 'error');

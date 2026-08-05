@@ -501,6 +501,16 @@
       gap: 5px;
     }
 
+    /* 표식이 레이블 옆에 못 들어가면 **줄을 바꾼다.** 자르지 않는다 — 잘린 출처는
+       (`enrichment_auto_co…`) 누가 썼는지 말하지 않으면서 말한 척한다. */
+    .target-field-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+    }
+
     .target-field-label {
       font-size: 0.75rem;
       font-weight: 600;
@@ -509,11 +519,36 @@
       letter-spacing: 0.5px;
     }
 
+    /* 이미 저장된 값을 들고 있는 칸의 표식 — 지금 화면에 있는 것을 누가 썼는지.
+       맵 화면의 `제안`과 같은 형태를 쓴다: 파선 + 낮춘 명도 = 「여기 있는 것은
+       당신이 넣은 것이 아니다」. 사람이 그 위에 타이핑하는 순간 사라지고, 저장된
+       문자열을 그대로 다시 치면 되돌아온다 — 같은 값을 다시 친 것은 판단이 아니다. */
+    .target-existing-mark {
+      display: none;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      border: 1px dashed var(--warning);
+      border-radius: 999px;
+      padding: 1px 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
     .target-input {
       width: 100%;
       font-family: var(--font-mono);
       font-size: 1rem;
       padding: 10px 14px;
+    }
+
+    .target-input[data-existing="true"] {
+      border-style: dashed;
+      border-color: var(--warning);
+      color: var(--text-muted);
     }
 
     .conveyor-actions {
@@ -842,7 +877,7 @@
               <div class="key-hints">
                 <span><kbd>Enter</kbd> 저장 후 다음</span>
                 <span><kbd>↑</kbd><kbd>↓</kbd> 항목 이동</span>
-                <span><kbd>Esc</kbd> 입력 지우기</span>
+                <span><kbd>Esc</kbd> 저장된 값으로 되돌리기</span>
               </div>
               <button id="save-btn" class="glass-btn save-btn">💾 저장 → 다음</button>
             </div>

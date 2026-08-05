@@ -167,6 +167,20 @@ const FLOORS = new Map([
   //    A drop here means either the shared composer or the read-not-computed count stopped
   //    being scored.
   ['enrichment_queue_partition_harness.mjs', 41],
+  // New 2026-08-05 with the round that made the conveyor's form show what it already knew.
+  // Floor is the count it reports on the commit that introduces it -- there is no earlier
+  // tree to measure it against.
+  //
+  // 🔴 ITS LOAD-BEARING ASSERTIONS ARE ABOUT WHAT IS *NOT* SENT. Once the queue predicate let
+  //    partly-filled rows stay, the form handed over empty boxes and the save demanded all of
+  //    them, so the operator retyped a value already there and the duplicate landed as `user`
+  //    (priority 0) -- a machine decision reissued as a human declaration. The checks that
+  //    catch its return are `P3 the untouched column is absent from the payload` and `P3 a
+  //    hand-typed duplicate of a machine value is NOT written`. `P7` guards the mirror image
+  //    on the way back: a locally reflected write carries `priority_source: null` (unread)
+  //    rather than the previous writer's name. A drop here means one of those stopped being
+  //    scored, and neither failure is visible on screen when it happens.
+  ['enrichment_provenance_harness.mjs', 59],
   // New 2026-08-05 with the Excel form gateway (`map2/excel_io.js`). Floor is the count it
   // reports on the commit that introduces it -- there is no earlier tree to measure against.
   //
