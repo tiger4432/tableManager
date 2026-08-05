@@ -231,9 +231,17 @@ def check(engine):
                 "severity": "TABLE-DOWN", "table": table, "column": col.name,
                 "breaks": (f"EVERY full-entity SELECT and EVERY ORM INSERT on {table} "
                            f"fails, not only code that reads {col.name}"),
+                # The old sentence here told the reader to record the new migration in
+                # MIGRATION_OWNER by hand. That instruction is stale: owners are DERIVED by
+                # scanning server/migrations/ and scripts/setup_*.py, and the hand-maintained
+                # table is only a fallback for what the scan cannot see. Telling someone to
+                # hand-register a migration the scan would have found is how the table went
+                # stale in the first place - it listed nothing for two columns whose migration
+                # was sitting in the tree, and this check then printed "no migration is
+                # recorded" about a migration that existed.
                 "remedy": (f"run {owner}" if owner else
-                           "no migration is recorded for this column - add one, then "
-                           "record it in MIGRATION_OWNER in this script")
+                           "no migration is recorded for this column - add one under "
+                           "server/migrations/ and it will be found here automatically")
                           + "\n        or: " + _add_column_ddl(table, col, dialect),
             })
 
