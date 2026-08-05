@@ -137,6 +137,17 @@ const FLOORS = new Map([
   // because of how it died: silently, while the debt list recorded it as merely red.
   ['effort_instrument_harness.mjs', 71],
   ['effort_meter_harness.mjs', 131],
+  // New 2026-08-05 with the partial-decision-key round (the client asked for NO reference
+  // view when ANY key column was blank, so the sweep could resolve a row whose evidence a
+  // human could not see). Floor is the count it reports on the commit that introduces it --
+  // there is no earlier tree to measure it against.
+  //
+  // 🔴 ITS LOAD-BEARING HALF IS THE PROHIBITION, NOT THE FEATURE: that the client asks
+  //    rather than pre-deciding which views are answerable, and that the refusal text on
+  //    screen is the server's `detail` verbatim rather than a sentence composed here. Both
+  //    are the two-spellings class -- a client copy stays green against every server test
+  //    while the two drift. A floor drop here means one of them stopped being scored.
+  ['enrichment_partial_key_reference_harness.mjs', 26],
   // New 2026-08-05 with the Excel form gateway (`map2/excel_io.js`). Floor is the count it
   // reports on the commit that introduces it -- there is no earlier tree to measure against.
   //

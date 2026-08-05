@@ -8,7 +8,9 @@
 // - 워크리스트: GET /tables/{derived}/data + blank 필터 청크 페칭 (전량 로드 금지)
 // - 저장: PUT /tables/{derived}/data/updates (source_name='user' → priority 0)
 // - 참조뷰(계약 확정): GET /enrichment/rules/{rule}/references/{i}?params=<JSON {decision_key: value}>
-//   → {label, columns[], rows[[]]} (서버 LIMIT 강제 · 400: 비허용 키 · 404: 규칙/인덱스 미존재)
+//   → {label, columns[], rows[[]]} (서버 LIMIT 강제 · 404: 규칙/인덱스 미존재)
+//   → 400: 비허용 키, 또는 **이 뷰가 묶는 판단키가 비어 물을 수 없음**. 어느 뷰가 답할 수
+//     있는지는 서버가 판정하고 사유 문장도 서버가 만든다. 클라는 묻고, 온 것을 렌더한다.
 // ============================================================
 import { createGrid, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
@@ -364,8 +366,9 @@ function updateHeaderStats() {
   if (bkBadge) {
     bkBadge.style.display = S.blankKeyCount > 0 ? 'inline-block' : 'none';
     bkBadge.textContent = `⚠️ 판단키 없음 ${S.blankKeyCount.toLocaleString()}건`;
-    bkBadge.title = '판단키가 비어 있어 참조뷰를 조회할 수 없는 행입니다. 여기서는 '
-      + '해소할 수 없고 인제션 단계에서 고쳐야 합니다 — 워크리스트 맨 뒤로 내려가 있습니다.';
+    // 이 수는 「판단키가 온전하지 않은 행 수」다. 종전 설명은 여기에 「여기서는 해소할 수
+    // 없다」를 덧붙였는데, 남은 키로 답하는 참조뷰가 생긴 지금 그건 틀린 주장이다.
+    bkBadge.title = '판단키가 온전하지 않은 행 수 (워크리스트 맨 뒤).';
   }
 
   if (S.totalAll !== null && S.totalAll > 0) {
@@ -418,14 +421,17 @@ function renderDetail(row) {
   // 판단키 (XSS 안전: textContent만 사용)
   const keyBody = el('decision-key-body');
   keyBody.innerHTML = '';
-  // 판단 불가 행이면 **접촉 지점에서** 그 사실을 이름으로 말한다. 클릭해 보고서야
-  // "근거 데이터 없음"으로 알게 되는 것과, 근거가 진짜 없는 정상 키를 구별할 수 없는
-  // 것이 둘 다 문제다. (컨트롤·모드는 만들지 않는다 — 문장 한 줄이다.)
-  if (!hasDecisionKeys(row, S.rule)) {
+  // 여기서 말하는 것은 **이 행의 사실**뿐이다: 어느 판단키가 비었는가. 종전에는 "여기서는
+  // 판단할 수 없습니다"라고 단언했는데, 2026-08-05 사용자 재정("일부가 비면 남은 것으로
+  // 한다") 이후 그것은 틀린 문장이다. 남은 키만 묶는 참조뷰는 답하고, 스윕도 남은 키로
+  // 해석한다. 무엇을 물을 수 있고 무엇을 물을 수 없는지의 판정과 그 문장은 서버 것이고,
+  // 참조뷰 패널이 뷰마다 그대로 싣는다. 여기서 그걸 다시 지으면 철자가 둘이 된다.
+  const blankKeys = (S.rule.decision_key || [])
+    .filter(col => String(cellVal(row, col)).trim() === '');
+  if (blankKeys.length > 0) {
     const warn = document.createElement('div');
     warn.className = 'blankkey-notice';
-    warn.textContent = '판단키 없음 — 참조뷰를 조회할 수 없어 여기서는 판단할 수 없습니다. '
-      + '인제션 단계에서 판단키가 채워져야 합니다.';
+    warn.textContent = `판단키 공백: ${blankKeys.join(', ')}`;
     keyBody.appendChild(warn);
   }
   (S.rule.decision_key || []).forEach(col => {
@@ -713,18 +719,12 @@ async function loadActiveReference() {
   const idx = S.refActiveIdx;
   const view = S.refViews[idx];
 
-  // 판단키가 비면 참조뷰를 조회하지 않는다. 빈 값으로 조회하면 0행이 돌아오고 그것은
-  // "이 키에 근거가 없다"와 **글자 그대로 같은 화면**이 된다 — 서로 다른 두 사실을
-  // 한 문장으로 뭉개는 것이 이 코드베이스가 금지하는 바로 그 일이다. 이름 붙은 거절로
-  // 바꾸고, 덤으로 의미 없는 질의 1건도 아낀다.
-  if (!hasDecisionKeys(node.data, S.rule)) {
-    S.refSeq += 1;
-    el('reference-meta').textContent = '';
-    showRefStatus('🚧', '판단키 없음 — 조회 불가',
-      '참조뷰는 판단키 값으로 조회됩니다. 이 행은 판단키가 비어 있어 근거를 찾을 수 '
-      + '없습니다(근거가 없는 것이 아니라 물어볼 수가 없습니다). 인제션 단계 결함입니다.');
-    return;
-  }
+  // 판단키가 일부(또는 전부) 비어 있어도 **묻는다.** 어느 뷰가 답할 수 있는지는 서버가
+  // 안다. 남은 키만 묶는 뷰는 답하고, 빈 컬럼을 묶는 뷰는 이름 붙은 거절로 400을 낸다.
+  // 여기서 미리 거르면 서버가 이미 적용하는 규칙의 **두 번째 구현**이 되고 둘은 언젠가
+  // 갈라진다(이번 라운드가 내내 닫아 온 결함 계급). 그래서 사전 게이트가 없다.
+  // 종전 게이트는 뷰 하나가 아니라 **행 전체**를 「조회 불가」로 접었다: 스윕은 같은 행을
+  // 남은 키로 해석하는데 사람은 근거를 볼 수 없다는 뜻이었고, 그 절반이 이 수리다.
 
   // 행 단위 캐시: 같은 행에서 탭을 오가면 재요청하지 않음 (행이 바뀌면 무효)
   if (S.refCacheRowId !== rowId) {
@@ -732,17 +732,18 @@ async function loadActiveReference() {
     S.refCacheRowId = rowId;
   }
   const cached = S.refCache.get(idx);
-  if (cached) { renderRefTable(cached); return; }
+  if (cached) { renderRefOutcome(cached); return; }
 
   const seq = ++S.refSeq;
   const token = S.sessionToken;
   showRefLoading(view.label || `참조뷰 ${idx + 1}`);
 
-  // params = 선택 행의 decision_key 전체 값 (계약: decision_key 외 키 금지 → 400)
+  // params = 선택 행의 decision_key 전체 값 (계약: decision_key 외 키 금지 → 400).
+  // 빈 값도 **거르지 않고 그대로** 보낸다: 빈 값을 「없는 값」으로 접을지는 서버의 규칙이고
+  // (`missing_binds`), 여기서 미리 빼면 그 규칙의 사본이 하나 더 생긴다.
   const paramsObj = {};
   (S.rule.decision_key || []).forEach(col => {
-    const v = cellVal(node.data, col);
-    paramsObj[col] = v === '' ? '' : v;
+    paramsObj[col] = cellVal(node.data, col);
   });
   const url = `${API_BASE}/enrichment/rules/${encodeURIComponent(S.rule.name)}` +
     `/references/${idx}?params=${encodeURIComponent(JSON.stringify(paramsObj))}`;
@@ -754,7 +755,20 @@ async function loadActiveReference() {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       if (seq !== S.refSeq || token !== S.sessionToken) return;
-      showRefError(res.status, typeof err.detail === 'string' ? err.detail : null);
+      const refusal = {
+        refused: true,
+        status: res.status,
+        detail: typeof err.detail === 'string' ? err.detail : null,
+      };
+      // 전문은 콘솔로, 화면은 한 줄. 400은 이 (행, 뷰) 조합에 대해 **결정적**이라 캐시한다.
+      // 탭을 오갈 때마다 같은 거절을 다시 묻지 않는다. 404·네트워크 오류는 캐시하지
+      // 않는다: 「지금 못 물었다」와 「이 키로는 물을 수 없는 뷰다」는 다른 사실이다.
+      console.log('[enrichment] reference view refused', {
+        rule: S.rule.name, index: idx, label: view.label,
+        params: paramsObj, status: res.status, detail: refusal.detail,
+      });
+      if (res.status === 400) S.refCache.set(idx, refusal);
+      renderRefOutcome(refusal);
       return;
     }
     const data = await res.json();
@@ -765,11 +779,24 @@ async function loadActiveReference() {
       ms: (performance.now() - t0).toFixed(0),
     };
     S.refCache.set(idx, payload);
-    renderRefTable(payload);
+    renderRefOutcome(payload);
   } catch (e) {
     if (seq !== S.refSeq || token !== S.sessionToken) return;
-    showRefError(0, null); // 네트워크 오류
+    console.log('[enrichment] reference view request failed', {
+      rule: S.rule.name, index: idx, label: view.label, error: e && e.message,
+    });
+    renderRefOutcome({ refused: true, status: 0, detail: null }); // 네트워크 오류
   }
+}
+
+// 응답 1건을 그린다. 표이거나, 서버가 이름 붙인 거절이거나. 한 행에서 어떤 뷰는 답하고
+// 어떤 뷰는 거절하는 것이 **이제 정상 상태**다: 행을 하나의 판정으로 접지 않는다.
+function renderRefOutcome(outcome) {
+  if (outcome && outcome.refused) {
+    showRefError(outcome.status, outcome.detail);
+    return;
+  }
+  renderRefTable(outcome);
 }
 
 // 서버 LIMIT(기본 200, 최대 1000) 이하 행만 오므로 경량 HTML 테이블로 충분 (읽기 전용)
@@ -852,7 +879,11 @@ function showRefError(status, detail) {
     showRefStatus('🧭', '참조뷰를 찾을 수 없습니다',
       '규칙 설정이 변경되었을 수 있습니다. 새로고침(🔄) 해 주세요.');
   } else if (status === 400) {
-    showRefStatus('⚠️', '참조뷰 조회 실패', detail || '요청 파라미터를 서버가 거부했습니다.');
+    // 거절이지 고장이 아니다. 판단키가 일부만 남은 행에서 이건 정상 상태이므로 오류로
+    // 읽히는 문구를 쓰지 않는다. 머리말은 클라의 분류 라벨이고, **사유 문장은 서버 것을
+    // 그대로** 싣는다(2026-08-05 사용자 재정: 어휘는 공유, 문장은 서버의 것). 서버가
+    // 아무 말도 안 했으면 비운다. 침묵은 정직하고, 지어낸 문장은 그렇지 않다.
+    showRefStatus('🚧', '조회 불가 참조뷰', detail || '');
   } else if (status === 0) {
     showRefStatus('📡', '서버에 연결할 수 없습니다', '네트워크 상태 확인 후 다시 시도해 주세요.');
   } else {

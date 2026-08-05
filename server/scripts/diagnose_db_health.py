@@ -34,6 +34,22 @@ from database.database import SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE   # noqa: E
 LONG_XACT_SEC = 300
 BLOAT_RATIO_FLAG = 0.20          # dead tuples as a fraction of live
 
+# 🔴 AN ABSOLUTE FLOOR, BECAUSE THE RATIO IS BLIND WHERE IT MATTERS MOST.
+#    `dead / live` is undefined when a table has no live rows, and the tables that hurt most
+#    are exactly the ones that churn to empty: a queue or an outbox drains to zero live and
+#    accumulates dead forever, so its ratio is NULL and a ratio-only alarm never fires. It
+#    did not fire. `database_outbox` was measured at 11,734 dead, 0 live, `last_autovacuum`
+#    NEVER - reported clean by this script the day the product owner traced a system-wide
+#    slowdown to dead-tuple bloat.
+#
+#    This is the same shape as the ratio that inverts alignment rankings: a normalised
+#    number discards the denominator, and the denominator was the fact.
+#
+#    1000 is the PRODUCT OWNER'S POLICY (2026-08-05): no table over 1,000 dead tuples. This
+#    constant mirrors that policy so the report and the database agree on what "too many"
+#    means; if the policy moves, both move.
+DEAD_ABSOLUTE_FLAG = 1000
+
 findings = []
 
 
