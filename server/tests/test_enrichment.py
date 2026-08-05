@@ -369,17 +369,52 @@ def test_dedup_idempotent_reingestion(enrich_env):
     assert derived[0].lot_hint == "LOT_NEW"
 
 
-def test_dedup_skips_blank_decision_key(enrich_env):
+def test_dedup_works_a_partial_key_and_skips_only_a_keyless_row(enrich_env):
+    """부분 판단키는 살아남은 키로 일한다 [2026-08-05 재정 — 행 생성에도 착지].
+
+    이 테스트는 종전에 `test_dedup_skips_blank_decision_key`였고 **정반대**를 못박고
+    있었다. 재정은 `enrichment_candidates`(어느 값을 쓸까)에만 닿았고 **행을 만들까**
+    에는 닿지 않아, 부분 키 소스 행은 파생 행 자체가 없어 큐에 나타날 길이 없었다.
+    거절은 이제 하나뿐이다 — 아무것도 남지 않은 키.
+    """
     db = enrich_env
     tx = f"tx_{uuid.uuid4().hex[:8]}"
     _seed_source(db, [
         {"equipment": "EQP1", "event_time": "T1", "chip_id": "C1"},
-        {"equipment": "", "event_time": "T9", "chip_id": "C9"},  # 판단키 blank → 스킵
+        {"equipment": "", "event_time": "T9", "chip_id": "C9"},   # 부분 키 → 일한다
+        {"equipment": "", "event_time": "", "chip_id": "C0"},     # 키 전무 → 스킵
     ], tx)
     _run_chain_for_tx(db, tx)
     rows = _derived_rows(db)
-    assert len(rows) == 1
-    assert rows[0].business_key_val == "EQP1_T1"
+    assert [r.business_key_val for r in rows] == ["EQP1_T1", "_T9"]
+    partial = rows[1]
+    assert crud.clean_str_value(partial.equipment) == ""
+    assert partial.event_time == "T9"
+    # 부분 키의 정체성은 **빈 자리를 실어** 온전한 키와 절대 겹치지 않는다.
+    assert partial.business_key_val != "T9"
+
+
+def test_dedup_partial_key_does_not_swallow_a_complete_key(enrich_env):
+    """부분 키는 **더 넓게** 매치한다 — 그것이 온전한 키 행을 삼키면 안 된다.
+
+    같은 `event_time`을 공유하는 두 정체성: 판단키가 온전한 `EQPX_T9`와, equipment가
+    없는 `_T9`. 후자의 count가 3이 되면(= 전자의 행까지 셌다면) 부분 키가 자기 것이
+    아닌 행을 자기 집계로 끌어온 것이다. 반대로 1이 되면 두 저장 형태(NULL / '')
+    중 하나만 세고 있는 것이다.
+    """
+    db = enrich_env
+    tx = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed_source(db, [
+        {"equipment": "EQPX", "event_time": "T9", "chip_id": "CA"},
+        {"equipment": "", "event_time": "T9", "chip_id": "CB"},
+        {"equipment": "", "event_time": "T9", "chip_id": "CC"},
+    ], tx)
+    _run_chain_for_tx(db, tx)
+
+    rows = {r.business_key_val: r for r in _derived_rows(db)}
+    assert set(rows) == {"EQPX_T9", "_T9"}
+    assert rows["EQPX_T9"].chip_count == 1
+    assert rows["_T9"].chip_count == 2
 
 
 # ---------------------------------------------------------------------------

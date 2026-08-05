@@ -1047,6 +1047,97 @@ def missing_binds(view: dict, bind_params: dict = None) -> list:
     return sorted(needed - have)
 
 
+def blank_key_columns(rule: dict, key_values: dict) -> list:
+    """Which of THIS rule's decision-key columns did not survive.
+
+    `missing_binds` one level up. Same funnel (`crud.is_blank_value`), asked of
+    the RULE's decision key instead of a view's binds, because after the
+    2026-08-05 ruling - a partial decision key is worked on whatever survives -
+    "which parts are gone" stopped being an internal detail of one function and
+    became the question three separate paths ask:
+
+      - `enrichment_mapper.map_enrichment_dedup`  (may this row make a derived
+        identity at all?)
+      - `enrichment_candidates.resolve_target_candidate` (`no_decision_key`, and
+        the `partial_key` stamp that rides on every verdict)
+      - `enrichment_candidates.AutoConfirmCollector.collect` (skip the probe
+        queries for a row that can bind nothing)
+
+    and, through the mapper, `enrichment_backfill`. Those were four spellings of
+    one question, and two of them (mapper, backfill) answered `any blank` while
+    the ruling says `all blank` - so a retroactive sweep and a live increment
+    could not have disagreed only because BOTH were still on the old answer.
+
+    Read from the RULE, not from `key_values`: a caller that omits a column
+    entirely has the same blank key as one that passes "" for it, and only the
+    rule knows the full list.
+    """
+    from database import crud
+
+    return sorted(k for k in (rule.get("decision_key") or [])
+                  if crud.is_blank_value(key_values.get(k)))
+
+
+def key_is_wholly_blank(rule: dict, key_values: dict) -> bool:
+    """Nothing survives - there is nothing to match on.
+
+    THE line between "incomplete" and "empty", and the only blankness that is
+    still a refusal. Arithmetic, not policy: a key with one part in it IS the
+    surviving key and selects real rows; a key with no parts in it selects the
+    same rule-wide everything for every keyless row, which is a statement about
+    no row in particular.
+
+    A rule with no `decision_key` cannot happen (`_validate_rule` rejects it) and
+    is reported as wholly blank rather than as a survivable key, so a malformed
+    rule refuses instead of matching the entire source table.
+    """
+    decision_key = rule.get("decision_key") or []
+    if not decision_key:
+        return True
+    return len(blank_key_columns(rule, key_values)) == len(decision_key)
+
+
+def partial_key_identity_supported(decision_key: list, derived_cfg: dict) -> bool:
+    """Can a derived row whose decision key is only PARTLY present own an identity?
+
+    🔴 THE ENRICHMENT MAPPER DOES NOT DECIDE THIS - `crud` DOES, and it decides it
+    from the DERIVED TABLE's declaration, not from the rule. Measured in
+    `crud.apply_row_update_internal` (§"복합 비즈니스 키 실시간 재계산"), the three
+    key contracts `_validate_rule` accepts behave differently on a blank key part:
+
+      composite_key_source == decision_key  -> SAFE. A blank component makes
+          `all(v != "")` false, and the branch under it falls back to
+          `update_item.business_key_val` on insert - i.e. to the positional
+          identity the mapper supplied. A later refinement never re-derives,
+          because the composite source columns ARE the decision key and therefore
+          never appear in `changed_cols` for an existing row.
+
+      composite_key_source ⊊ decision_key   -> DESTRUCTIVE. The surviving columns
+          are the whole composite source, so `all(v != "")` is TRUE and crud
+          OVERRIDES the mapper with the identity of the COMPLETE key - then finds
+          the complete key's row as a conflict and runs [Silent Merge &
+          Overwrite]: the partial row's values are merged over the complete row's
+          and one row is deleted. No error, no count, whole table.
+
+      business_key ∈ decision_key (no composite) -> DESTRUCTIVE the other way.
+          `_update_row_business_key` copies `updates[business_key]` verbatim, so a
+          partial key whose blank column IS the business key gets the EMPTY
+          identity - and every such row on the table gets the same one.
+
+    So the ruling is honoured where the declaration can carry it and REFUSED BY
+    NAME where it cannot. The refusal is not a policy preference: on those two
+    contracts the write does not mean what it says. The repair is one config line
+    - declare `composite_key_source` = the rule's decision key on the derived
+    table - and the refusal says so.
+
+    (Widening `crud`'s composition to be partial-aware would fix all three, but
+    that is the identity rule for EVERY table and every writer, not an enrichment
+    decision. Named here so the question is answerable rather than rediscovered.)
+    """
+    comp_src = derived_cfg.get("composite_key_source")
+    return bool(comp_src) and set(comp_src) == set(decision_key or [])
+
+
 def execute_reference_view(db, view: dict, bind_params: dict = None,
                            caps: dict = None, *, follow_up: bool = False) -> tuple:
     """참조뷰 1건을 서버측 정의로 실행한다. 반환: (columns, rows).

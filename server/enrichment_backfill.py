@@ -240,9 +240,30 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     full run keeps the whole-table snapshot, because that is what "complete"
     means; a sample resolves only its own keys, because otherwise `scan_limit`
     bounded the source read while the derived read stayed unbounded.
+
+    WHICH ROWS ARE ELIGIBLE IS NOT DECIDED HERE  [2026-08-05, partial-key ruling]
+    It never should have been. This module has one job - find identities the
+    derived table is missing - and "is this key usable" is the mapper's question,
+    asked by the live chain path on every increment. There used to be a copy of
+    that question in the scan loop, and the copy is why the ruling looked like a
+    one-line edit to this file. It is not: relaxing the copy alone leaves the
+    mapper refusing the same rows one call later, so the sweep writes exactly
+    what it wrote before while reporting that it skipped nothing. The gate now
+    lives once, in `map_enrichment_dedup`, and both paths call it.
+
+    DRY-RUN BUCKETS, BEFORE AND AFTER (the operator approves these numbers):
+      before: `skipped_blank`  = source rows with ANY blank decision-key column
+      after:  `skipped_no_key` = source rows with NO decision key at all
+              `partial_key_combinations` = NEW identities built on a partial key
+      A partial-key row therefore moves OUT of the skip bucket and INTO
+      `distinct_combinations`/`new_combinations` - i.e. `affected` on the admin
+      preview can rise for data that did not change. The key was renamed so an
+      un-updated reader breaks loudly instead of reporting the old name with the
+      new meaning.
     """
     from database import crud, models, schemas
-    from enrichment_mapper import map_enrichment_dedup, _cell_value
+    from enrichment_mapper import map_enrichment_dedup
+    import enrichment_config
 
     if limit is not None and limit <= 0:
         raise BackfillRefused(f"--limit must be a positive integer (got {limit})")
@@ -298,8 +319,26 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         "source_table": source_table,
         "derived_table": derived_table,
         "rows_scanned": 0,
-        "skipped_blank": 0,
+        # 🔴 RENAMED, because its MEANING changed and a number whose meaning
+        # changed under an unchanged name is how a dry-run starts lying.
+        # `skipped_blank` (<=2026-08-05) = source rows with ANY blank decision-key
+        # column. `skipped_no_key` = source rows with NO decision key at all -
+        # nothing to match on, still a true fact worth counting. The rows that
+        # moved out of this bucket are PARTIAL keys, and they did not vanish:
+        # they are now in `distinct_combinations` / `new_combinations`, counted
+        # again under `partial_key_combinations` so the operator can see how much
+        # of a preview is new work the ruling admitted rather than work that was
+        # always there. The rename is deliberate: an un-updated consumer gets a
+        # KeyError, not a silently re-pointed number.
+        "skipped_no_key": 0,
+        # The OTHER refusal, kept apart because the repairs are different: this
+        # one is a config gap on the DERIVED table (its key contract cannot give
+        # a partial key its own identity, and forcing one would silently merge
+        # rows), not a fact about the data. `map_enrichment_dedup` logs the exact
+        # table_config line to add.
+        "skipped_unexpressible_key": 0,
         "distinct_combinations": 0,
+        "partial_key_combinations": 0,
         "already_derived": 0,
         "new_combinations": 0,
         "limit_skipped": 0,
@@ -315,6 +354,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     import keyset_scan
 
     combos_seen = set()
+    partial_key_bks = set()  # identities whose decision key is only partly present
     already_bks = set()
     new_bks = set()          # dry-run: all new identities / apply: identities allowed in
     limit_skipped_bks = set()
@@ -329,22 +369,24 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         stats["chunks"] += 1
         stats["rows_scanned"] += len(rows)
 
-        # Synthesize the outbox-payload shape the mapper expects. The blank
-        # check below is composed of the mapper's own primitives (_cell_value +
-        # crud.clean_str_value) - byte-identical semantics, counted here because
-        # the mapper logs but does not return its skip count.
-        payloads = []
-        for r in rows:
-            data = {col: {"value": val} for col, val in zip(payload_cols, r[1:])}
-            if any(crud.clean_str_value(_cell_value(data, k)) == "" for k in decision_key):
-                stats["skipped_blank"] += 1
-                continue
-            payloads.append({"data": data})
-        if not payloads:
-            continue
+        # Synthesize the outbox-payload shape the mapper expects, and hand EVERY
+        # scanned row over. There used to be a blank-key filter here, described
+        # as "the mapper's own primitives, byte-identical semantics" - and that
+        # is exactly what made it dangerous. It was a SECOND SPELLING of the
+        # mapper's eligibility rule, so the partial-key ruling looked like a
+        # one-line edit to this file; measured, relaxing this line alone changed
+        # no row (the mapper dropped the same rows one call later) and turned
+        # `skipped_blank` from a true 1 into a false 0. The rule is asked once
+        # now, where row creation actually happens, and the count comes back
+        # from the same call that made the decision.
+        payloads = [{"data": {col: {"value": val}
+                              for col, val in zip(payload_cols, r[1:])}}
+                    for r in rows]
 
         result = map_enrichment_dedup(db, payloads, rule=mapper_rule)
         items = result.get("updates") or []
+        stats["skipped_no_key"] += result.get("skipped_no_key", 0)
+        stats["skipped_unexpressible_key"] += result.get("skipped_unexpressible_key", 0)
 
         # One existence question per chunk instead of one per item. Keys this run
         # already claimed are excluded rather than re-asked: with the preload that
@@ -369,6 +411,11 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
                     limit_skipped_bks.add(bk)
                     continue
                 new_bks.add(bk)
+                # Accounting only - the SAME shared predicate the mapper used to
+                # let this row through, asked again of the item it produced. Not
+                # a second gate: nothing here can admit or refuse a row.
+                if enrichment_config.blank_key_columns(rule, item["updates"]):
+                    partial_key_bks.add(bk)
                 if len(stats["sample_new_keys"]) < SAMPLE_NEW_KEYS:
                     stats["sample_new_keys"].append(bk)
             if apply:
@@ -405,6 +452,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         db.rollback()
 
     stats["distinct_combinations"] = len(combos_seen)
+    stats["partial_key_combinations"] = len(partial_key_bks)
     stats["already_derived"] = len(already_bks)
     stats["new_combinations"] = len(new_bks)
     stats["limit_skipped"] = len(limit_skipped_bks)

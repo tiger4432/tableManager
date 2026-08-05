@@ -441,13 +441,16 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     if not views:
         return _refused(target_field, REASON_NOT_DECLARED)
 
-    # Which declared key columns did not survive. Read from the RULE, not from
-    # `key_values`: a caller that omits a column entirely has the same blank key
-    # as one that passes "" for it, and only the rule knows the full list.
-    blank_key_cols = sorted(k for k in (rule.get("decision_key") or [])
-                            if crud.clean_str_value(key_values.get(k)) == "")
+    # Which declared key columns did not survive. `enrichment_config
+    # .blank_key_columns` is the ONE spelling of that question - this used to be
+    # an inline copy, and `enrichment_mapper` / `enrichment_backfill` were two
+    # more copies that were still answering `any blank` after this module moved
+    # to `all blank`. That divergence was invisible from here: it meant the row
+    # never reached a writer at all, so the ruling that landed on this function
+    # could not be observed on a partial-key source row.
+    blank_key_cols = enrichment_config.blank_key_columns(rule, key_values)
     partial = {"partial_key": bool(blank_key_cols), "blank_key_columns": blank_key_cols}
-    if blank_key_cols and len(blank_key_cols) == len(rule.get("decision_key") or []):
+    if enrichment_config.key_is_wholly_blank(rule, key_values):
         return _refused(target_field, REASON_NO_DECISION_KEY, **partial)
 
     values = {}      # canonical value -> supporting row count
@@ -862,7 +865,7 @@ class AutoConfirmCollector:
         """
         if not self.active:
             return
-        from database import crud
+        import enrichment_config
 
         decision_key = self.rule["decision_key"]
         for item in items:
@@ -874,12 +877,14 @@ class AutoConfirmCollector:
             if not isinstance(updates, dict):
                 continue
             keys = {k: updates.get(k) for k in decision_key}
-            if all(crud.clean_str_value(v) == "" for v in keys.values()):
+            if enrichment_config.key_is_wholly_blank(self.rule, keys):
                 # NOTHING survives - not "part of the key is missing". A partial
                 # key is worked on what remains [2026-08-05 ruling]; a wholly
                 # blank one has nothing to bind any view to, and
                 # `resolve_target_candidate` would refuse it `no_decision_key`
-                # anyway. Dropping it here only saves the queries.
+                # anyway. Dropping it here only saves the queries. Shared
+                # predicate, so this and the mapper's row-creation gate cannot
+                # answer differently.
                 continue
             if not bk:
                 continue

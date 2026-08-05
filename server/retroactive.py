@@ -246,11 +246,34 @@ def _count_enrichment_backfill(db, params, scan_limit):
             f"소스 테이블 {s['rows_scanned']}행을 표본으로 검사해 "
             f"{s['new_combinations']}개의 새 파생 행을 만듭니다. "
             f"이미 있는 파생 행 {s['already_derived']}개는 건드리지 않습니다."
+            + (f" 그중 {s['partial_key_combinations']}개는 판단키가 **일부만** 있는 "
+               f"행입니다 — 2026-08-05 재정 전에는 만들어지지 않던 행이라, 데이터가 "
+               f"그대로여도 이 수는 올라갑니다."
+               if s["partial_key_combinations"] else "")
+            + (f" 판단키가 일부만 있는 행 {s['skipped_unexpressible_key']}건은 "
+               f"거절했습니다 — 파생 테이블 '{s['derived_table']}'의 키 선언이 그 "
+               f"정체성을 담지 못해, 만들면 다른 행 위에 조용히 병합됩니다. "
+               f"table_config.json에 composite_key_source를 판단키 전체로 선언하면 "
+               f"풀립니다(서버 로그에 그 한 줄이 찍힙니다)."
+               if s["skipped_unexpressible_key"] else "")
         ),
         "extra": {
             "already_derived": s["already_derived"],
             "distinct_combinations": s["distinct_combinations"],
-            "skipped_blank": s["skipped_blank"],
+            # `skipped_blank`에서 개명 — 세는 대상이 바뀌었다(ANY blank → 판단키 전무).
+            # 부분 키 행은 사라진 것이 아니라 `partial_key_combinations`로 옮겨갔다.
+            #
+            # 🔴 세 수에 `_label`을 붙인 이유: 이 화면은 **서버가 라벨을 붙인 수만**
+            # 렌더한다(retroactive_view.buildExtras — "adding one later needs no client
+            # change"). 라벨이 없으면 숫자는 존재하되 조작자에게 **보이지 않는다**.
+            # 종전 dry-run이 정확히 그 상태였고, 사고는 "0으로 보고된 이유를 보고서가
+            # 이름 붙이지 않았다"는 것이었다.
+            "skipped_no_key": s["skipped_no_key"],
+            "skipped_no_key_label": "판단키 없음 (건너뜀)",
+            "partial_key_combinations": s["partial_key_combinations"],
+            "partial_key_combinations_label": "판단키 일부만 있는 새 행",
+            "skipped_unexpressible_key": s["skipped_unexpressible_key"],
+            "skipped_unexpressible_key_label": "부분 판단키 거절 (파생 키 선언)",
             "source_table": s["source_table"],
             "derived_table": s["derived_table"],
             "sample_new_keys": s["sample_new_keys"][:5],

@@ -52,10 +52,27 @@ def format_report(stats: dict, limit: int = None) -> str:
         f"  source table          : {stats['source_table']}",
         f"  derived table         : {stats['derived_table']}",
         f"  source rows scanned   : {stats['rows_scanned']}",
-        f"  skipped (blank key)   : {stats['skipped_blank']}",
+        # Names what it counts, because it no longer counts what it used to.
+        # "blank key" meant ANY blank key column until the 2026-08-05 partial-key
+        # ruling; those rows are now WORKED, so this line would have quietly gone
+        # to zero on an operator's screen with the same label above it.
+        f"  skipped (no key at all): {stats['skipped_no_key']}",
         f"  distinct combinations : {stats['distinct_combinations']}",
         f"  already derived       : {stats['already_derived']}  (NOT touched)",
     ]
+    if stats["partial_key_combinations"]:
+        lines.append(
+            f"  ...on a PARTIAL key   : {stats['partial_key_combinations']} "
+            f"(new identities whose decision key is only partly present - these "
+            f"used to be dropped)"
+        )
+    if stats["skipped_unexpressible_key"]:
+        lines.append(
+            f"  partial keys REFUSED  : {stats['skipped_unexpressible_key']} "
+            f"(the derived table's key declaration cannot give a partial key its "
+            f"own identity - see the log line for the one config change that "
+            f"fixes it; forcing them would merge rows on top of each other)"
+        )
     if stats["mode"] == "apply":
         lines.append(f"  new identities created: {stats['created_rows']}")
         if stats["updated_rows"]:
