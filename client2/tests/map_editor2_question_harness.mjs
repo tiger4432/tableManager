@@ -452,6 +452,9 @@ const CATALOG = {
   await settle();
   app.setContext({ targetFields: ['core_frame', 'dt_frame'] });
   const writesBefore = api.counters.writes;
+  // Two clicks, ONE write -- and since 2026-08-06 that is a different fact than it was. It used
+  // to mean "arm, then commit"; it now means the first click wrote and the in-flight guard
+  // refused the second. Same number, opposite mechanism, so the comment has to say which.
   confirm.dispatchEvent('click');
   confirm.dispatchEvent('click');
   eq(api.counters.writes, writesBefore + 1, 'G22 a write that names no field is not ambiguous');
@@ -462,10 +465,21 @@ const CATALOG = {
   //    keydown handler had no target guard, so Enter inside any of the five set-up selects
   //    armed on the first press and committed on the second, while the operator believed they
   //    were choosing a column.
+  //
+  // 🔴 AND THE GUARD GOT STRICTLY MORE LOAD-BEARING ON 2026-08-06, WHICH IS WHY THIS BLOCK IS
+  //    RE-POINTED RATHER THAN RELAXED. One action now confirms: the arming step is gone, so
+  //    `takesEnter` is no longer the FIRST of two things between a stray keystroke and a POST
+  //    -- it is the ONLY one. A keystroke that used to cost an arming now costs a write.
   await settle();
   app.setContext({ targetFields: ['core_frame'] });
   app.render();
   const writesBeforeEnter = api.counters.writes;
+  // Clear the acknowledgement first. A confirm landed earlier in this block, so asserting
+  // `!confirmed` after the loop without this would be scoring a stale precondition -- it would
+  // pass, or fail, for reasons that have nothing to do with the dropdowns. Re-picking a
+  // candidate is the operator gesture that clears it.
+  doc.querySelectorAll('[data-me2-candidate]')[0].dispatchEvent('click');
+  ok(!app.peek().confirmed, 'G23b precondition: the acknowledgement is clear before the loop');
   for (const id of ['me2-table-select', 'me2-col-x', 'me2-col-y', 'me2-col-value',
                     'me2-reference-select', 'me2-worklist-search']) {
     const control = doc.getElementById(id);
@@ -474,12 +488,20 @@ const CATALOG = {
     control.dispatchEvent('keydown', 'Enter');
   }
   eq(api.counters.writes, writesBeforeEnter, 'G24 Enter inside a set-up control performs NO write');
-  ok(!app.peek().armed, 'G25 and does not even arm the control');
-  // ... while Enter on the confirm control itself is still the write, by definition.
+  ok(!app.peek().confirmed, 'G25 and nothing was confirmed by typing in a dropdown');
+  // ... while Enter on the confirm control itself IS the write, by definition, in one press.
+  //
+  // 🔴 COUNTED, NOT INSPECTED. The stub fires the native `click` that a real focused <button>
+  //    produces on Enter, and the shell binds `click` -> onConfirm as well as this keydown --
+  //    so this number is 2 unless the handled keydown cancels its default. The end state is
+  //    identical either way, which is why the assertion is on the COUNT.
   confirm.dispatchEvent('keydown', 'Enter');
-  ok(app.peek().armed, 'G26 Enter on the confirm control still arms');
+  eq(api.counters.writes, writesBeforeEnter + 1,
+     'G26 one Enter on the confirm control sends exactly ONE write');
+  // And pressing it again while the first is still open does not send a second.
   confirm.dispatchEvent('keydown', 'Enter');
-  eq(api.counters.writes, writesBeforeEnter + 1, 'G27 and the second press commits');
+  eq(api.counters.writes, writesBeforeEnter + 1,
+     'G27 a second Enter during the in-flight write sends nothing');
 
   // ── AGREEING TO A PROPOSAL ──────────────────────────────────────────────────
   // Re-picking the option ALREADY selected fires no `change`, so an operator who agrees with a
@@ -696,10 +718,25 @@ function makeDocument() {
       // `key` carries the KEY for keydown and the type otherwise, which is what the shell's
       // keydown handler reads. `target` is this node, so the Enter guard sees a real tagName.
       dispatchEvent(type, key) {
-        const ev = { target: this, key: key === undefined ? type : key };
+        let defaultPrevented = false;
+        const ev = { target: this, key: key === undefined ? type : key,
+                     preventDefault() { defaultPrevented = true; } };
         let n = this;
         while (n) { for (const fn of n.__listeners[type] || []) fn(ev); n = n.parentNode; }
         for (const fn of (docListeners[type] || [])) fn(ev);
+        // 🔴 NATIVE ACTIVATION, MODELLED ON PURPOSE (2026-08-06). A focused <button> activated
+        //    by Enter ALSO fires a `click` unless the keydown's default was cancelled. The stub
+        //    did not model this, and that omission is exactly why a double confirmation could
+        //    not be seen from here: the shell binds `click` -> onConfirm AND has a document
+        //    keydown -> onConfirm, so one real Enter calls it twice. Under the old two-step the
+        //    second call hit the arming branch and cost nothing; with one-action confirm it is
+        //    a second POST. A stub that under-models the platform reports green on a defect
+        //    that only exists in a real browser -- the failure mode this file exists to avoid.
+        if (type === 'keydown' && ev.key === 'Enter' && this.tagName === 'BUTTON'
+            && !this.disabled && !defaultPrevented) {
+          this.dispatchEvent('click');
+        }
+        return !defaultPrevented;
       },
       closest(sel) {
         if (sel === '#me2-confirm-btn') return this.attrs.id === 'me2-confirm-btn' ? this : null;

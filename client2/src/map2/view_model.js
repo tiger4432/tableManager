@@ -211,7 +211,7 @@ export function buildViewModel(input) {
   //    The round that un-fused `countsShown` left `inert` keyed on `numerals`, so a refusal to
   //    rank still disabled all eight controls -- and the operator was shown eight frames they
   //    could not open. RANKING is the system claiming one candidate is correct: a badge, an
-  //    order, an armed write. CLICKING is the operator choosing which frame to LOOK through,
+  //    order, a write. CLICKING is the operator choosing which frame to LOOK through,
   //    and looking is the only thing left when the scoring cannot discriminate. It costs no
   //    fetch (`withSelectedCandidate` deliberately does not bump `requestSeq`) and it writes
   //    nothing.
@@ -974,7 +974,13 @@ function confirmModel(session, selectedId, storedId, state, attribution, assumpt
     valCol: cols.val || null,
     reference: q.reference || null,
     restsOnGuess,
-    armed: session.armed === true && enabled,
+    // 🔴 NOT `armed`. One action confirms (product owner, 2026-08-06), so there is no
+    //    intermediate state to model -- this says the write LANDED, and it is deliberately not
+    //    `&& enabled`: the old `armed` was gated that way because an armed-but-disabled control
+    //    was incoherent, whereas a confirmation that already landed stays true even if the
+    //    control goes inert underneath it. Gating it would blank the acknowledgement exactly
+    //    when something changed, which is when the operator most needs it.
+    confirmed: session.confirmed === true,
     eqp: decision.eqp || null,
     product: decision.product || null,
     candidateId: selectedId || null,

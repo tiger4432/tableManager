@@ -35,7 +35,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { createMapSession, withDecision, withPayload, withError, withSelectedCandidate,
-         withFocusedSource, withArmed, withConfig, withCatalog, withQuestion,
+         withFocusedSource, withConfig, withCatalog, withQuestion,
          withWorklistQuery, withWorklist, withWorklistError, withConfirmed,
          columnKey, isAskable, isUnset, BINDING_DECLARED, PHASE } from './session.js';
 import { computeSeating, compareSeatings, unionBounds } from './seating.js';
@@ -244,6 +244,10 @@ export function bootstrap(deps) {
   let onRulePick = null;
   // Action accounting for the switchover bar: 8 maps, <= 4 actions each, <= 30 s, 0 writes.
   const bar = { actions: 0, fetches: 0, repaints: 0, startedAt: null, lastLoopMs: null };
+  // 🔴 THE CONFIRM IS IN FLIGHT. Not session state: it belongs to one request, and a session
+  //    field would outlive the request across a row change and wedge the button shut. See
+  //    `onConfirm`; the render reads it to disable the control while the POST is running.
+  let confirmInFlight = false;
 
   function setSession(nextSession) {
     session = nextSession;
@@ -1030,12 +1034,31 @@ export function bootstrap(deps) {
     setChildTextIn(el.confirmSentence, '[data-me2-confirm-product]', vm.confirm.product || '');
     setChildTextIn(el.confirmSentence, '[data-me2-confirm-frame]', vm.confirm.candidateId || '');
     text(el.confirmNote, vm.confirm.note || '');
-    // Enter must never be silently inert: when nothing is marked, the hint says so.
-    text(el.confirmHint, vm.confirm.inertHint || 'Enter 확정 준비 · Esc 취소');
+    // Three states, one slot, no sentences. Inert says WHY it is inert (Enter must never be
+    // silently dead); live names the key; landed says so.
+    //
+    // 🔴 `확정됨` IS THE ONLY THING THAT TELLS THE OPERATOR THE WRITE WORKED, AND IT EXISTS
+    //    BECAUSE THE ARMING WAS REMOVED. Under the two-step, the label flipping back from
+    //    `다시 Enter로 확정` to `확정` was an incidental acknowledgement -- the only pixel on
+    //    the screen that changed when a confirmation landed. Deleting the arming deletes that,
+    //    and a write button that answers a press with nothing at all is the same defect class
+    //    this screen keeps paying for: the system knows something and the screen does not say
+    //    it. It is a word in a slot that already existed, not a new control.
+    // 🔴 THE ACKNOWLEDGEMENT LEADS, and the order is a decision rather than an accident.
+    //    `inertHint` is computed unconditionally, so it is often non-null even while the
+    //    control is live -- putting it first meant `확정됨` could never appear on exactly the
+    //    screens that have a nominal hint. A write that just landed outranks a standing note
+    //    about why the control is nominal; the note returns the moment anything changes,
+    //    because every state change clears `confirmed`.
+    text(el.confirmHint, vm.confirm.confirmed ? '확정됨'
+      : (vm.confirm.inertHint || 'Enter 확정'));
     const btn = el.confirmBtn;
     if (!btn) return;
-    btn.disabled = !vm.confirm.enabled;
-    btn.setAttribute('data-armed', vm.confirm.armed ? 'true' : 'false');
+    // 🔴 DISABLED WHILE THE REQUEST IS IN FLIGHT. One of the three overlapping guards against
+    //    a double confirmation (see the `preventDefault` note in the keydown handler for why
+    //    they are counted as three and scored one by one). This is the only one the OPERATOR
+    //    can see, and it is the one that answers "did my press register" while the POST runs.
+    btn.disabled = !vm.confirm.enabled || confirmInFlight;
   }
 
   function renderSecondMetric(vm) {
@@ -1341,8 +1364,24 @@ export function bootstrap(deps) {
     bar.actions++;
     const vm = buildViewModel({ session, verdict: currentVerdict() });
     if (!vm.confirm.enabled) return;
-    // Reading is frictionless; this write gets exactly one confirmation and it is not a modal.
-    if (!session.armed) { setSession(withArmed(session, true)); return; }
+    // 🔴 ONE ACTION CONFIRMS (product owner, 2026-08-06): 「그냥 엔터든 클릭이든 확정 누르면
+    //    바로 되게해」. The arm-then-commit step is gone -- a click writes, Enter writes.
+    //
+    // 🔴 AND THE IN-FLIGHT GUARD IS NOT OPTIONAL NOW. Under the two-step, a doubled invocation
+    //    landed on the arming branch and cost nothing; with one action it is a SECOND POST.
+    //    The guard is a closure flag rather than session state on purpose: it is a fact about
+    //    one request, not about the unit, and putting it in the session would make it survive
+    //    a row change and wedge the button. It is cleared on BOTH settle paths below --
+    //    a guard with one exit is a guard that eventually latches on.
+    if (confirmInFlight) return;
+    confirmInFlight = true;
+    // 🔴 REPAINT IMMEDIATELY, OR THE GUARD IS INVISIBLE. Setting the flag disables the control
+    //    on the NEXT render, and the next render is the one after the response -- so without
+    //    this line the button stays live and clickable for the whole duration of the write.
+    //    The flag would still refuse the second POST, but the screen would show a control that
+    //    accepts presses and does nothing, which is the complaint this round started from.
+    //    Caught by `G26c`, not by any end-state assertion.
+    render();
     const payload = session.payload || {};
     const q = session.question || {};
     Promise.resolve(api.confirmFrame({
@@ -1368,8 +1407,10 @@ export function bootstrap(deps) {
       ruling: (payload.__decoded && payload.__decoded.ruling) || null,
       reference: referenceOf(q.reference),
       confirmedBy: context.confirmedBy,
-    })).then(() => { setSession(withConfirmed(session)); })
-      .catch(() => { setSession(withArmed(session, false)); });
+    })).then(() => { confirmInFlight = false; setSession(withConfirmed(session)); })
+      // The failure path releases the guard and repaints so the control comes back. The
+      // session is unchanged on purpose: a write that did not land must not leave `확정됨`.
+      .catch(() => { confirmInFlight = false; render(); });
   }
 
   /**
@@ -1468,15 +1509,22 @@ export function bootstrap(deps) {
     setSession(withSelectedCandidate(session, cell.getAttribute('data-frame-code')));
   });
   doc.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && session.armed) setSession(withArmed(session, false));
-    // Enter arms, then commits. Arrow keys stay with the worklist -- existing muscle memory.
+    // Enter confirms. Arrow keys stay with the worklist -- existing muscle memory.
+    //
+    // 🔴 THE ESCAPE BRANCH IS GONE BECAUSE THERE IS NOTHING LEFT TO CANCEL. It disarmed the
+    //    intermediate state; with one-action confirm there is no intermediate state, and a key
+    //    that silently does nothing is worse than a key that is not mentioned -- the operator
+    //    presses it, nothing happens, and they learn the screen ignores them. The copy that
+    //    advertised it is removed with it (`map_editor2.html`, `renderConfirm`).
     //
     // 🔴 THIS HANDLER HAD NO TARGET GUARD, AND IT MADE THE ONE WRITE IN THE CHAIN REACHABLE BY
     //    A KEYSTROKE INSIDE A DROPDOWN. Enter in any of the five set-up selects bubbled to the
     //    document, armed on the first press and committed on the second -- while the operator
     //    believed they were choosing a column. A confirmation that a wrong frame bakes an
     //    unverified rotation into stored coordinates, reachable by accident, is the failure
-    //    this whole arm-then-commit design exists to prevent.
+    //    the arm-then-commit design existed to prevent -- and `takesEnter` is what carries that
+    //    protection now that the arming does not. IT IS LOAD-BEARING: removing the two-step
+    //    made this guard the ONLY thing between a keystroke in a dropdown and a POST.
     //
     //    The guard is on WHAT KIND OF THING HAS FOCUS, not on one container's id. Keying it to
     //    `#me2-question-bar` would protect exactly today's markup and silently stop protecting
@@ -1484,6 +1532,25 @@ export function bootstrap(deps) {
     //    added is the one nobody remembers to re-check. Enter belongs to a focused control
     //    whenever there is one; only the confirm button itself may turn it into this write.
     if (e.key === 'Enter' && el.confirmBtn && !el.confirmBtn.disabled && !takesEnter(e.target)) {
+      // 🔴 `preventDefault` IS THE WHOLE FIX FOR THE DOUBLE POST, AND IT IS EASY TO READ AS
+      //    DECORATION. A focused <button> activated by Enter ALSO fires a native `click`, and
+      //    `el.confirmBtn.addEventListener('click', onConfirm)` is right there -- so without
+      //    this line one keystroke calls `onConfirm` twice. Under the old two-step the second
+      //    call landed on the arming branch and cost nothing, which is why it was survivable
+      //    and therefore invisible; with one action it is a SECOND CONFIRMATION WRITE from a
+      //    single press. Cancelling the default activation is what stops the pair at source.
+      //
+      // ⚠️ AND THE HONEST VERSION, MEASURED RATHER THAN ASSUMED. There are THREE overlapping
+      //    guards here, not two, and they are NOT independent: this `preventDefault`, the
+      //    `confirmInFlight` flag, and the disable-on-repaint in `renderConfirm`. Deleting
+      //    this line alone leaves the write count at 1, because either of the other two
+      //    swallows the native click on its own (mutation-measured 2026-08-06). So a "one
+      //    write" assertion scores the STACK and would keep passing while two thirds of it
+      //    rotted. Each guard is therefore scored by its own assertion --
+      //    `map_editor2_shell_harness` G26 (this cancellation), G26b (the flag), G26c (the
+      //    repaint) -- and this line is kept because the other two only swallow the second
+      //    call AFTER `onConfirm` has already run and already incremented `bar.actions`.
+      e.preventDefault();
       onConfirm();
     }
   });

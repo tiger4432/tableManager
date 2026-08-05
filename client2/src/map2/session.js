@@ -161,8 +161,13 @@ export function createMapSession(init = {}) {
     // Which source row (or the cross-source row) the picture is answering for. A picture that
     // silently changes meaning is worse than no picture, so this drives the caption.
     focusedSourceId: init.focusedSourceId || null,
-    // The one write gets exactly one confirmation, inline. Reading stays frictionless.
-    armed: init.armed === true,
+    // 🔴 ONE ACTION CONFIRMS (product owner, 2026-08-06). There is no arming step: a click on
+    //    확정 writes, and so does Enter. This field is what REPLACED `armed`, and the swap is
+    //    the point -- `armed` recorded a step the operator had to take, this records a fact the
+    //    operator needs to see. Removing the arming removed the only visible acknowledgement
+    //    the write had landed (the label flipping back), so the acknowledgement became a value
+    //    instead of a side effect of a state nobody wanted.
+    confirmed: init.confirmed === true,
     error: init.error || null,
     requestSeq: Number.isFinite(init.requestSeq) ? init.requestSeq : 0,
   });
@@ -198,7 +203,9 @@ export function withDecision(session, decision) {
     // previous unit's answer under the next unit's labels.
     selections: Object.freeze({}),
     focusedSourceId: null,
-    armed: false,
+    // A confirmation was about THIS unit. Carrying the acknowledgement to the next row would
+    // tell the operator they had confirmed a unit they have not looked at yet.
+    confirmed: false,
     error: null,
     requestSeq: session.requestSeq + 1,
   });
@@ -220,7 +227,9 @@ export function withSelectedCandidate(session, candidateId) {
   const selections = key
     ? Object.freeze({ ...session.selections, [key]: candidateId })
     : session.selections;
-  return next(session, { selectedCandidateId: candidateId, selections, armed: false });
+  // The acknowledgement dies with the frame it was about: picking a different candidate after
+  // confirming must not leave `확정됨` sitting under the new pick.
+  return next(session, { selectedCandidateId: candidateId, selections, confirmed: false });
 }
 
 /**
@@ -390,7 +399,9 @@ export function withQuestion(session, patch) {
     // Per-column-set picks survive a switch; the ACTIVE pick follows the new set.
     selectedCandidateId: (key && session.selections[key]) || null,
     payload: null,
-    armed: false,
+    // The confirmation named a column pair, a table and a floor. Change any of them and the
+    // acknowledgement is about a question that is no longer on screen.
+    confirmed: false,
     error: null,
     phase: session.decision ? PHASE.COMPUTING : PHASE.IDLE,
     requestSeq: session.requestSeq + 1,
@@ -421,16 +432,19 @@ export function withWorklistError(session, error, seq) {
 
 /** One confirm landed. The only counter on this screen that a write is allowed to move. */
 export function withConfirmed(session) {
-  return next(session, { armed: false, confirmedCount: session.confirmedCount + 1 });
+  return next(session, { confirmed: true, confirmedCount: session.confirmedCount + 1 });
 }
 
+/**
+ * 🔴 THIS ONE DOES **NOT** CLEAR `confirmed`, AND THAT IS THE ASYMMETRY WORTH STATING. It used
+ *    to clear `armed`, because arming was a half-finished act and looking somewhere else
+ *    abandoned it. A landed confirmation is not abandoned by reading: opening another source
+ *    row is the operator inspecting what they just confirmed, and blanking the acknowledgement
+ *    there would answer "did that write go through?" with silence at the exact moment they
+ *    went looking for the answer.
+ */
 export function withFocusedSource(session, sourceId) {
-  return next(session, { focusedSourceId: sourceId, armed: false });
-}
-
-/** Arm / disarm the single confirmation. Arming is not a write. */
-export function withArmed(session, armed) {
-  return next(session, { armed: armed === true });
+  return next(session, { focusedSourceId: sourceId });
 }
 
 export function withConfig(session, config) {
@@ -439,8 +453,14 @@ export function withConfig(session, config) {
 
 /**
  * True when nothing this session has done could have written to the database.
- * Exploring is GET-only by construction: the only write path is the armed confirm.
+ *
+ * 🔴 IT COUNTS WRITES THAT LANDED, NOT A STATE THAT PRECEDED THEM. This used to read
+ *    `session.armed !== true`, which was a PROXY and a poor one in both directions: arming
+ *    never wrote anything (so it reported a write that had not happened), and the flag was
+ *    cleared again on the way out of `withConfirmed` (so a session that really had written
+ *    went back to answering "exploring only"). With the arming step gone the proxy has no
+ *    referent at all, and the honest question was always the one the counter already answers.
  */
 export function isExploringOnly(session) {
-  return session.armed !== true;
+  return session.confirmedCount === 0;
 }

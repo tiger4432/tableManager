@@ -30,7 +30,8 @@
 import { candidateList, candidateGrid, candidateId, parseCandidateId, SIDE_HEADERS,
          INVERSION_FOOTNOTE } from '../src/map2/candidates.js';
 import { createMapSession, withDecision, withPayload, withError, withSelectedCandidate,
-         withArmed, withConfig, isExploringOnly, PHASE } from '../src/map2/session.js';
+         withConfirmed, withFocusedSource, withConfig, isExploringOnly,
+         PHASE } from '../src/map2/session.js';
 import { computeSeating, compareSeatings, seatOf, unionBounds } from '../src/map2/seating.js';
 import { createRecordingSurface, paintComparison, paintSeating, layoutFor,
          paintSkeleton } from '../src/map2/painter.js';
@@ -107,8 +108,15 @@ function throws(fn, what) {
   const picked = withSelectedCandidate(fresh, 'rot90_back');
   eq(picked.requestSeq, fresh.requestSeq, 'B10 selecting a candidate does NOT bump the sequence');
   eq(picked.selectedCandidateId, 'rot90_back', 'B11 selection is recorded');
-  ok(isExploringOnly(picked), 'B12 exploring, nothing armed');
-  ok(!isExploringOnly(withArmed(picked, true)), 'B13 arming leaves the exploring-only state');
+  // 🔴 EXPLORING-ONLY COUNTS WRITES THAT LANDED, NOT A STATE THAT PRECEDED THEM (2026-08-06).
+  //    This used to pin `withArmed(...)` as the thing that left the exploring-only state, and
+  //    that was wrong in both directions even before the arming was removed: arming never
+  //    wrote anything, and `withConfirmed` cleared the flag again so a session that HAD written
+  //    went back to reporting exploring-only. The predicate is now `confirmedCount === 0`.
+  ok(isExploringOnly(picked), 'B12 exploring: nothing has been written');
+  ok(!isExploringOnly(withConfirmed(picked)), 'B13 a landed confirm leaves the exploring-only state');
+  ok(!isExploringOnly(withFocusedSource(withConfirmed(picked), 's1')),
+     'B13b and reading afterwards does not put it back -- the write still happened');
   eq(withConfig(picked, { min_margin_dies: 20 }).config.min_margin_dies, 20, 'B14 config is carried');
 }
 
@@ -479,17 +487,87 @@ function throws(fn, what) {
   rows[0].dispatchEvent('click');
   eq(fetches.length, before, 'G22 focusing a source row issues no fetch');
 
-  // Arm, then commit. The write happens on the second press and not before.
+  // 🔴 ONE ACTION CONFIRMS (product owner, 2026-08-06). There is no arming step: the FIRST
+  //    click is the write. What used to be scored here -- `armed`, `data-armed="true"`, "the
+  //    second press is the one write" -- describes a design that no longer exists, so the
+  //    assertions are re-pointed at the new behaviour rather than deleted.
   const confirm = doc.getElementById('me2-confirm-btn');
   confirm.dispatchEvent('click');
-  eq(api.counters.writes, 0, 'G23 arming is not a write');
-  ok(app.peek().armed, 'G24 the control is armed');
-  eq(confirm.getAttribute('data-armed'), 'true', 'G25 and the page is told so');
-  confirm.dispatchEvent('click');
-  eq(api.counters.writes, 1, 'G26 the second press is the one write');
+  eq(api.counters.writes, 1, 'G23 one click is one write -- no second press');
+  eq(confirm.getAttribute('data-armed'), null, 'G24 the armed attribute is gone from the page');
+  // The acknowledgement is NOT synchronous with the press, and that is the honest model: it
+  // records that the write LANDED, so it can only appear after the response.
+  ok(!app.peek().confirmed, 'G24b nothing is acknowledged while the request is still open');
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  ok(app.peek().confirmed, 'G25 and the session records that the write landed');
+  eq(doc.getElementById('me2-confirm-hint').textContent, '확정됨',
+     'G25b which is the only thing on screen that says the confirmation worked');
+
+  // ── THE DOUBLE-FIRE, COUNTED ────────────────────────────────────────────────
+  // 🔴 THIS IS COUNTED, NOT INSPECTED, AND THE DISTINCTION IS THE WHOLE POINT. One POST and
+  //    two POSTs leave an identical session, an identical DOM and an identical server row, so
+  //    every end-state assertion in this file passes either way. Only a request COUNT can see
+  //    it. Enter on a focused <button> also produces a native `click` (the stub models this),
+  //    and the shell binds both `click` and a document keydown to `onConfirm` -- so without
+  //    `preventDefault` on the handled keydown this is 2.
+  const docE = makeDocument();
+  const apiE = {
+    counters: { reads: 0, writes: 0 },
+    loadReferenceView: () => { apiE.counters.reads++; return Promise.resolve(payload); },
+    loadWorklist: () => Promise.resolve({ rows: [] }),
+    loadAlignConfig: () => Promise.resolve({}),
+    confirmFrame: () => { apiE.counters.writes++; return Promise.resolve({}); },
+  };
+  const appE = bootstrap({ document: docE, api: apiE });
+  appE.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  appE.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const confirmE = docE.getElementById('me2-confirm-btn');
+  // 🔴 EACH GUARD GETS ITS OWN ASSERTION, BECAUSE THEY OVERLAP AND A COUNT CANNOT TELL THEM
+  //    APART. Measured by mutation 2026-08-06: deleting `preventDefault` alone left the write
+  //    count at 1, because the in-flight flag and the disable-on-repaint each independently
+  //    swallow the native click. A single "one write" assertion therefore scores the STACK,
+  //    not any member of it, and would go on passing while two of the three rotted.
+  //    So: this one scores the cancellation itself (the stub returns `!defaultPrevented`,
+  //    exactly as `EventTarget.dispatchEvent` does), G26b scores the in-flight flag, and
+  //    G26c scores the repaint. Each dies alone when its own guard is removed.
+  eq(confirmE.dispatchEvent('keydown', 'Enter'), false,
+     'G26 the handled Enter cancels its default, so no native click follows it');
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  eq(apiE.counters.writes, 1,
+     'G26a and one Enter keystroke sends exactly ONE confirmation request');
+
+  // And the guard holds for the mouse too: two clicks faster than the response is still one
+  // write, because the in-flight flag is not cleared until the promise settles.
+  const docD = makeDocument();
+  let release = null;
+  const apiD = {
+    counters: { reads: 0, writes: 0 },
+    loadReferenceView: () => Promise.resolve(payload),
+    loadWorklist: () => Promise.resolve({ rows: [] }),
+    loadAlignConfig: () => Promise.resolve({}),
+    confirmFrame: () => { apiD.counters.writes++;
+                          return new Promise((res) => { release = res; }); },
+  };
+  const appD = bootstrap({ document: docD, api: apiD });
+  appD.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  appD.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const confirmD = docD.getElementById('me2-confirm-btn');
+  confirmD.dispatchEvent('click');
+  confirmD.dispatchEvent('click');
+  eq(apiD.counters.writes, 1, 'G26b two impatient clicks during one in-flight write send ONE');
+  ok(confirmD.disabled, 'G26c and the control is visibly inert while the write is running');
+  release({});
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  ok(!confirmD.disabled, 'G26d the control comes back when the write settles');
 
   // Action accounting against the switchover bar.
-  ok(app.bar.actions <= 6, 'G27 the whole loop including the confirm stays in single digits');
+  // 🔴 PINNED EXACTLY, NOT BOUNDED. This came out of a usability round measured in clicks, so
+  //    the number is the finding: candidate click + source-row click + candidate switch + ONE
+  //    confirm = 4. It was 5 before 2026-08-06, because confirming cost two presses. A '<= 6'
+  //    bound could not have noticed the arming being removed, and cannot notice it coming back.
+  eq(app.bar.actions, 4, 'G27 the whole loop including the confirm costs exactly 4 actions');
   eq(app.bar.fetches, 1, 'G28 one fetch for the whole exploration');
 
   // The not-scorable state on the same shell: no numeral may survive into the count slots.
@@ -849,7 +927,7 @@ function throws(fn, what) {
   eq(vm2.candidates.map(c => c.id).join(','),
      candidateList().map(c => c.id).join(','), 'K12 declaration order, never score order');
   ok(!vm2.confirm.enabled, 'K13 the write stays refused');
-  ok(!app.peek().armed, 'K14 and nothing armed itself by being looked at');
+  ok(!app.peek().confirmed, 'K14 and nothing confirmed itself by being looked at');
   eq(vm2.summary.countText, UNKNOWN, 'K15 an unranked run still reports no numerals of its own');
 
   // 🔴 THE OTHER DIRECTION, AND IT IS WHAT MAKES THE ONE ABOVE MEAN ANYTHING. A request that
@@ -1475,14 +1553,27 @@ function makeDocument() {
       // Events BUBBLE in this stub, because the composition root delegates candidate clicks
       // from the document. A stub that did not bubble would let a delegated handler silently
       // never fire and still report a green shell.
-      dispatchEvent(type) {
-        const ev = { target: this, key: type };
+      dispatchEvent(type, key) {
+        let defaultPrevented = false;
+        const ev = { target: this, key: key === undefined ? type : key,
+                     preventDefault() { defaultPrevented = true; } };
         let n = this;
         while (n) {
           for (const fn of n.__listeners[type] || []) fn(ev);
           n = n.parentNode;
         }
         for (const fn of (docListeners[type] || [])) fn(ev);
+        // 🔴 NATIVE ACTIVATION (2026-08-06). Enter on a focused <button> also fires a `click`
+        //    unless the keydown default was cancelled. Without this the stub cannot see a
+        //    double confirmation, because the shell binds BOTH `click` and a document keydown
+        //    to `onConfirm` -- one keystroke, two calls, and with one-action confirm two POSTs.
+        //    See G24-G27 below, which count requests rather than checking the end state: one
+        //    write and two writes leave an identical session and an identical DOM.
+        if (type === 'keydown' && ev.key === 'Enter' && this.tagName === 'BUTTON'
+            && !this.disabled && !defaultPrevented) {
+          this.dispatchEvent('click');
+        }
+        return !defaultPrevented;
       },
       closest(sel) {
         let node = this;
