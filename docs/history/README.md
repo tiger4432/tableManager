@@ -1,13 +1,22 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **363개** 이력. (거버넌스 규칙 #4)
+> 총 **372개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-06 08:23** — [One Press Confirms And The Three Overlapping Guards Now Fail One At A Time](./20260806_082317_one_press_confirms_and_the_three_overlapping_guards_now_fail_one_at_a_time.md)
+- **2026-08-06 08:12** — [The Control Mutant Became Inexpressible And That Is What Ended The Refactor](./20260806_081218_the_control_mutant_became_inexpressible_and_that_is_what_ended_the_refactor.md)
+- **2026-08-06 07:49** — [The Contract Was Red For A Day Because Arguments Shifted One Place Left](./20260806_074904_the_contract_was_red_for_a_day_because_arguments_shifted_one_place_left.md)
+- **2026-08-06 07:17** — [Two Findings Were Over Called And The Evidence That Undid Them Was Not Mine](./20260806_071747_two_findings_were_over_called_and_the_evidence_that_undid_them_was_not_mine.md)
+- **2026-08-06 07:14** — [The Absence Memoisation Was Dead For Eleven Of Fourteen Tables And The Dig Found A Row That Had Moved](./20260806_071402_the_absence_memoisation_was_dead_for_eleven_of_fourteen_tables_and_the_dig_found_a_row_that_had_moved.md)
+- **2026-08-06 07:09** — [The Client Manufactured A Declaration For A Map Nobody Measured](./20260806_070905_the_client_manufactured_a_declaration_for_a_map_nobody_measured.md)
+- **2026-08-06 06:51** — [The Confirmation Reached The Metadata Because Without A Marker The Winner Is A Row Nobody Touched](./20260806_065114_the_confirmation_reached_the_metadata_because_without_a_marker_the_winner_is_a_row_nobody_touched.md)
+- **2026-08-06 06:43** — [Eighteen Findings From A Real Walk And The One That Had Already Aimed A Feature Request Wrong](./20260806_064353_eighteen_findings_from_a_real_walk_and_the_one_that_had_already_aimed_a_feature_request_wrong.md)
+- **2026-08-05 18:21** — [The Refusal Named A Reason And Hid Its Measurement In Three Places](./20260805_182120_the_refusal_named_a_reason_and_hid_its_measurement_in_three_places.md)
 - **2026-08-05 16:58** — [The Offer Had No Control To Accept It](./20260805_165800_the_offer_had_no_control_to_accept_it.md)
 - **2026-08-05 16:55** — [Ask At Boot Whether The Models Still Match The Database](./20260805_165500_ask_at_boot_whether_the_models_still_match_the_database.md)
 - **2026-08-05 16:47** — [An Unreadable Start Is A Question Not A Locked Door](./20260805_164700_an_unreadable_start_is_a_question_not_a_locked_door.md)
@@ -384,4 +393,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-05 by gen_index.py*
+*Last generated: 2026-08-06 by gen_index.py*
