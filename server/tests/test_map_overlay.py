@@ -1128,7 +1128,9 @@ def test_paint_rules_serves_resolved_binding_declared_wins(mov_env, client,
     # 유도 경로: table_config에서 유도 + source=derived
     body = client.get("/api/maps/paint-rules",
                       params={"table": "mov_test_derived_map"}).json()
-    assert body["binding"] == {"x": "x", "y": "y", "val": "leg",
+    # `index`는 언제나 실려 나가고 유도는 그것을 만들지 않는다 — 순번 컬럼에는 이름 관례가
+    # 없어서 유도할 근거가 없다. 없는 키와 None은 받는 쪽에서 같아 보이므로 키로 남긴다.
+    assert body["binding"] == {"x": "x", "y": "y", "val": "leg", "index": None,
                                "key_columns": ["base"], "source": "derived"}
 
     # 선언 경로: 관례 밖 이름(tx/ty)의 선언이 유도를 이긴다 + source=declared
@@ -1136,6 +1138,7 @@ def test_paint_rules_serves_resolved_binding_declared_wins(mov_env, client,
     body = client.get("/api/maps/paint-rules",
                       params={"table": "mov_test_odd_map"}).json()
     assert body["binding"] == {"x": "tx", "y": "ty", "val": "core_lot",
+                               "index": None,
                                "key_columns": ["tape_lot", "tape_slot"],
                                "source": "declared"}
 
@@ -1151,7 +1154,7 @@ def test_resolve_binding_info_normalizes_partial_declaration_unit():
     서빙 값이 실제 효력과 다르면 이 필드는 단일 소스가 못 된다)."""
     cfg = {"table_bindings": {"some_map": {"columns": {"val": "leg"}}}}
     assert map_overlay.resolve_binding_info(cfg, "some_map") == {
-        "x": "x", "y": "y", "val": "leg",
+        "x": "x", "y": "y", "val": "leg", "index": None,
         "key_columns": ["lot", "slot"], "source": "declared"}
 
 
@@ -1163,7 +1166,7 @@ def test_paint_rules_marks_fallback_guess_explicitly(mov_env, client):
     _seed(mov_env)
     body = client.get("/api/maps/paint-rules",
                       params={"table": "mov_test_upper_map"}).json()
-    assert body["binding"] == {"x": "x", "y": "y", "val": "VAL",
+    assert body["binding"] == {"x": "x", "y": "y", "val": "VAL", "index": None,
                                "key_columns": ["lot", "slot"],
                                "source": "fallback_guess"}
     # 추측할 데이터 컬럼조차 없으면 표기할 것도 없다 — null

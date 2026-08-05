@@ -1337,13 +1337,24 @@ def resolve_binding_info(cfg: dict, table: str) -> dict | None:
         key_cols = cols.get("key_columns") or ["lot", "slot"]
         if isinstance(key_cols, str):
             key_cols = [key_cols]
+        # 🔴 `index`는 **기본값으로 채우지 않는다.** x/y/val은 데이터 경로가 실제로 쓰는
+        #    리터럴 기본값이 있어서 미선언을 그 값으로 채워 서빙해도 「효력 그대로」지만,
+        #    순번 컬럼에는 이름 관례가 없다(현장마다 다르다). 없는 키를 관례 이름으로
+        #    채우면 실재하지 않는 컬럼을 「선언됐다」로 서빙하게 되고, 그 축은 조용히
+        #    0건 일치를 내며 「번호가 안 맞았다」로 읽힌다 — 정반대의 진술이다.
+        #    선언이 없으면 None이고, None이 곧 「이 축은 없다」다.
         return {"x": cols.get("x", "x"), "y": cols.get("y", "y"),
                 "val": cols.get("val", "val"),
+                "index": cols.get("index") or None,
                 "key_columns": list(key_cols), "source": "declared"}
     binding, guessed = _derive_table_binding_full(
         table, resolve_value_column_candidates(cfg))
     if binding is None:
         return None
+    # 유도는 순번 컬럼을 **만들지 않는다**(§위 주석: 이름 관례가 없다). 키는 언제나 실어
+    # 보낸다 - 없는 키와 None은 받는 쪽에서 같아 보이고, 그 구별은 화면이 「선언 안 됨」을
+    # 말할 수 있느냐를 가른다.
+    binding["index"] = None
     binding["source"] = "fallback_guess" if guessed else "derived"
     return binding
 
