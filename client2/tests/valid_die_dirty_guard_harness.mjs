@@ -141,8 +141,13 @@ const SYMBOLS = [
   'validDieRefDisplay', 'validDieRefFromControls', 'onValidDieRefChanged',
   // ── the cheaper writer the reworded prompt names, sliced so the end-to-end leg is real ──
   'physNum', 'gridDimNum', 'getScreenShift', 'getTransformedPhysicalConfig', 'getDieIndex',
+  // [2b] the reader and the ONE blank-box predicate it asks (shared with `resolveGridFrame`
+  // and, one layer down, with `physDeclaration`).
+  'controlIsSilent', 'gridFrameControlNum',
   'readGridFrameControls', 'applyValidDieRef', 'validDieRefForPush', 'validDieRefPayload',
   'mergeStoredGridMeta', 'geometryIsAutoRegistered', 'markGeometryAutoRegistered',
+  // [D4] the FRAME half's marker pair, asked by `buildPushGridMetadata` alongside the phys one.
+  'frameChosenFrom', 'markFrameChosen',
   'buildPushGridMetadata', 'serverCellKeySet', 'classifyUnsavableCells', 'fetchGridMetaFor',
   'saveMapSpecOnly',
 ];

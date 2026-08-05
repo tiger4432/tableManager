@@ -30,12 +30,22 @@
  * the declaration says, so a chosen frame would OVERWRITE a real one on Push. F has read the
  * declaration and knows it has no origin; there is nothing to overwrite that was ever there.
  *
- * THE LOAD-SIDE HALF OF PUSH HONESTY. `readGridFrameControls` reads the START boxes with
+ * THE LOAD-SIDE HALF OF PUSH HONESTY. `readGridFrameControls` used to read the START boxes with
  * `parseInt(v, 10) || 0`, and that `|| 0` is the exact expression that persisted the original
  * defect's 0. F/G therefore assert that after the modal the boxes hold a READABLE INTEGER --
- * never '', never 'undefined', never 'null'. That property is what makes the `|| 0` at push
- * time a no-op instead of a fabrication, and it is asserted on the load path rather than
+ * never '', never 'undefined', never 'null' -- because that property is what made the fold at
+ * push time a no-op instead of a fabrication, and it is asserted on the load path rather than
  * assumed from it.
+ *   H  the box was ALREADY empty when the operator answered ⚙️ 현재 패널. F/G cannot reach this:
+ *      they pass a panel that states a start, so the fold has nothing to invent. Measured on
+ *      the shipped source, this case wrote the fabricated 0 BACK INTO THE BOX and loaded 46
+ *      cells under it. The reader now answers `null` for a box that said nothing and all three
+ *      of its consumers refuse (2026-08-05); F/G's "readable integer" assertions and this one
+ *      are the two halves of the same claim.
+ *   A2/A3/B/C  [D4] where the frame CAME FROM, recorded on the START boxes' dataset and
+ *      carried into `wafer_map_metadata` as `frame_chosen_from`. Before it, B's and C's rows
+ *      were byte-identical to A's -- a frame nobody declared, indistinguishable forever from
+ *      one somebody did.
  *
  * Usage: node startxy_probe.mjs [path-to-map_editor.js]   (default: the live src, so the
  * discovery runner can execute it bare; the argument remains for probing other commits.)
@@ -88,6 +98,9 @@ const WANTED = [
   // (synthesized, never measured) before reporting a chip pitch as declared. Same
   // per-entry `missing` tolerance: older revisions this probe slices do not have it.
   ['geometryIsAutoRegistered'], ['markGeometryAutoRegistered'],
+  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  // question is now shared with the grid-frame reader, so it is one function and it is here.
+  ['controlIsSilent'],
   ['physDeclaration'], ['cellMetrics'],
   ['isCellInsideWaferFast'], ['getWaferBoundingBox'],
   ['frameDimBounds'], ['applyPhysicalGeometry'], ['applyPresetObject'],
@@ -102,6 +115,12 @@ const WANTED = [
   // without them. Each takes what it needs as an argument and returns a value (no module
   // state), so nothing new has to be declared in the sandbox.
   ['collectMapKeyFilterModel'], ['scanCoordinateBounds'], ['resolveDeclaredGridMeta'],
+  // [2b/D4] `resolveGridFrame`'s `current` branch no longer re-spells the control read: it calls
+  // the SAME `readGridFrameControls` the two writers call, over the SAME blank-box predicate
+  // (`gridFrameControlNum`), and it records which choice produced the frame (`markFrameChosen`).
+  // Absent from older revisions this probe also slices — the per-entry `missing` tolerance covers
+  // that; present from this round on, where omitting one is a ReferenceError into the catch.
+  ['gridFrameControlNum'], ['readGridFrameControls'], ['markFrameChosen'], ['frameChosenFrom'],
   ['promptCoordinateChoice'], ['resolveGridFrame'], ['deriveLegendFromCellValues'],
   ['restoreDoeDraftWithPrecedence'],
   // The pure predicate the load consults before letting anything replace the valid-die
@@ -111,10 +130,23 @@ const WANTED = [
   ['parseValidDieRef'],
 ];
 
+// `dataset` is REAL here, not a stub, because two provenance markers live in it and a fixture
+// without it turns both writers into silent no-ops — `markGeometryAutoRegistered` and
+// `markFrameChosen` both bail on `!input.dataset`. A harness whose fixture disables the thing
+// it scores reads green while proving nothing.
 function makeInput(v) {
   return { value: String(v), checked: false, textContent: '', disabled: false,
-           querySelector: () => null, appendChild() {} };
+           dataset: {}, querySelector: () => null, appendChild() {} };
 }
+
+/** [D4] What the START boxes say about where this frame came from. `undefined` = the map's own
+ *  declaration (no choice happened). Read off BOTH axes, because the product writes both and a
+ *  one-axis read would let the other axis's write rot unnoticed. */
+const chosenMark = (el) => {
+  const x = el.gridStartX.dataset.frameChosen;
+  const y = el.gridStartY.dataset.frameChosen;
+  return x === y ? x : `SPLIT(${x}/${y})`;
+};
 
 function buildEnv(src, opts = {}) {
   const pieces = [];
@@ -303,6 +335,31 @@ async function run() {
     eq('A every fixture cell loaded', res && res.count, N);
     eq('A every loaded cell is savable', Object.keys(p).length, N);
     eq('A push round-trips every stored coordinate', disagreements(p).length, 0);
+    // [D4] Nobody was asked anything: this map declares its own frame, so no choice happened
+    // and the row must stay indistinguishable from... itself. This is the assertion that makes
+    // the two below MEAN something — without it, marking every frame would also pass.
+    eq('A a declared frame carries NO choice marker', chosenMark(el), undefined);
+  }
+
+  // CASE A2: the marker is BIDIRECTIONAL. A stale 'panel' left on the panel from a previous map
+  // must be cleared by loading a map that declares its own frame — otherwise the previous map's
+  // choice is attributed to this one's declaration, which is the same defect pointed backwards.
+  // (`markGeometryAutoRegistered` learned this the same way; see map_editor.js:5636.)
+  {
+    const { sandbox: S, el } = buildEnv(SRC, { rows, gridMeta: META });
+    el.gridStartX.dataset.frameChosen = 'panel';
+    el.gridStartY.dataset.frameChosen = 'panel';
+    await S.loadExistingMap({ quiet: true });
+    eq('A2 a stale choice marker is CLEARED by a declared frame', chosenMark(el), undefined);
+  }
+
+  // CASE A3: ...and a marker the ROW carries is carried back onto the screen, so that a second
+  // push does not quietly promote a chosen frame to a declared one on its way through.
+  {
+    const { sandbox: S, el } = buildEnv(SRC,
+      { rows, gridMeta: { ...META, frame_chosen_from: 'panel' } });
+    await S.loadExistingMap({ quiet: true });
+    eq('A3 a stored choice marker survives the round trip', chosenMark(el), 'panel');
   }
 
   // CASE B: no metadata, panel says (1,-6), user picks "standard" -- the standard frame is
@@ -321,6 +378,10 @@ async function run() {
     eq('B standard frame derives rows from the data span', String(el.gridRows.value), String(DATA.y1 - DATA.y0 + 1));
     eq('B every fixture cell loaded', res && res.count, N);
     eq('B push round-trips every stored coordinate', disagreements(p).length, 0);
+    // [D4] These numbers came out of the DATA, under a question somebody answered. The phys
+    // marker alone cannot say that — it says "the registrar wrote this", and the registrar was
+    // never here.
+    eq('B a bbox-derived frame is marked as chosen from the data', chosenMark(el), 'data');
   }
 
   // CASE C: no metadata, panel says (1,-6), user keeps the current panel
@@ -336,6 +397,10 @@ async function run() {
     eq('C panel start_y preserved', String(el.gridStartY.value), String(DECL.sy));
     eq('C every fixture cell loaded', res && res.count, N);
     eq('C push round-trips every stored coordinate', disagreements(p).length, 0);
+    // 🔴 [D4] THE ROW THIS ROUND IS ABOUT. Measured before the fix: this payload was
+    //    BYTE-IDENTICAL to case A's — a frame nobody declared, permanently indistinguishable
+    //    from one somebody did, and it accumulates.
+    eq('C a panel frame is marked as chosen from the panel', chosenMark(el), 'panel');
   }
 
   // CASE D: counterfactual sensitivity, measured on the axis that actually moves. The
@@ -482,6 +547,56 @@ async function run() {
       eq(`${k}3 a cancelled load leaves the panel start alone`,
         `${el.gridStartX.value},${el.gridStartY.value}`, `${PANEL_F.startX},${PANEL_F.startY}`);
     }
+  }
+
+  // ── CASE H: A BLANK START BOX IS NOT A ZERO ────────────────────────────────────────────
+  //
+  // 🔴 Measured on the shipped source: with START X cleared and the operator picking ⚙️ 현재 패널,
+  //    `parseInt('') || 0` in `resolveGridFrame`'s `current` branch resolved to 0, the load wrote
+  //    that 0 BACK INTO THE BOX, and ⚡ Push then persisted `grid_start_x: 0`. The screen was
+  //    perfect throughout: the box showed a number, the cells showed coordinates, and every one
+  //    of them was on a different die from the one the row stated.
+  //
+  // The refusal is scored on THREE facts, because any one alone passes on a build that is wrong
+  // in some other way: the load must not proceed (`cancelled`), the box must still be EMPTY (a
+  // build that refuses after writing the 0 back has already fabricated it), and the operator must
+  // be told which box (a silent refusal on the read path is its own defect).
+  //
+  // ⚠️ AND THE COUNTERFACTUAL, so the fixture is not proving something vacuous: the same panel
+  //    with START X = 0 TYPED IN must still load. Otherwise "refuses when blank" would be
+  //    satisfied by a build that simply refuses, and a declared zero is a legitimate origin.
+  {
+    const BLANK = { ...PANEL_F, startX: '' };
+    const { sandbox: S, el, log } = buildEnv(SRC, { rows, gridMeta: UNREADABLE.F.meta,
+                                                    choice: 'current', panel: BLANK });
+    const res = await S.loadExistingMap({ quiet: true });
+    console.log(`H blank-START/current  start_after_load=(${JSON.stringify(el.gridStartX.value)},`
+      + `${el.gridStartY.value}) cells=${res && res.count} cancelled=${res && res.cancelled}`
+      + ` toasts=${log.toasts.length}`);
+    eq('H a blank START box refuses the choice instead of resolving to 0',
+      res && res.cancelled === true, true);
+    eq('H no cell was placed under a fabricated origin', (res && res.count) || 0, 0);
+    eq('H the blank box was NOT back-filled with a fabricated 0',
+      String(el.gridStartX.value), '');
+    // ⚠️ `/START X/` ALONE PASSES ON THE BROKEN BUILD and I measured it doing so: the modal's own
+    //    "맵 규격에 START X,Y가 없습니다" toast contains that substring, so the assertion matched
+    //    a message about something else entirely. The refusal has to be identified by what makes
+    //    it a refusal — the box is EMPTY — not by a word it happens to share with its neighbour.
+    eq('H the operator is told WHICH box is empty and that it is empty',
+      log.toasts.some(t => t.kind === 'error' && /START X/.test(t.msg) && /비어 있/.test(t.msg)),
+      true);
+
+    // the counterfactual — a TYPED zero is a declaration and must still open the map
+    const ZERO = { ...PANEL_F, startX: 0 };
+    const { sandbox: S0, el: el0 } = buildEnv(SRC, { rows, gridMeta: UNREADABLE.F.meta,
+                                                     choice: 'current', panel: ZERO });
+    const res0 = await S0.loadExistingMap({ quiet: true });
+    console.log(`H' typed-zero/current   start_after_load=(${el0.gridStartX.value},`
+      + `${el0.gridStartY.value}) cells=${res0 && res0.count}`);
+    eq(`H' a TYPED zero still opens the map (the refusal is about silence, not about 0)`,
+      res0 && res0.count, N);
+    eq(`H' ...and the typed zero wins verbatim`, String(el0.gridStartX.value), '0');
+    eq(`H' ...and it is still marked as a panel frame`, chosenMark(el0), 'panel');
   }
 
   console.log(`\n${failures.length ? 'FAIL' : 'PASS'} -- ${pass} passed, ${failures.length} failed`);

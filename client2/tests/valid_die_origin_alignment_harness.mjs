@@ -76,6 +76,9 @@ function sliceFunction(source, name) {
 // The coordinate path and everything it passes through. A rename here is exit 2, never green.
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
+  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  // question is now shared with the grid-frame reader, so it is one function and it is here.
+  'controlIsSilent',
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex',
@@ -98,6 +101,10 @@ const SYMBOLS = [
   // as an argument and returns a value — none touches module state — so the sandbox below
   // needs nothing new declared.
   'collectMapKeyFilterModel', 'scanCoordinateBounds', 'resolveDeclaredGridMeta',
+  // [2b/D4] `resolveGridFrame`'s `current` branch now shares the writers' control reader and the
+  // one blank-box predicate, and records which choice produced the frame. Omitting any of the
+  // three is the ReferenceError-into-the-catch failure described above.
+  'gridFrameControlNum', 'readGridFrameControls', 'markFrameChosen',
   'promptCoordinateChoice', 'resolveGridFrame', 'deriveLegendFromCellValues',
   'restoreDoeDraftWithPrecedence',
   // ...plus the pure predicate the load consults before letting anything replace the valid-die

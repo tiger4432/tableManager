@@ -212,6 +212,45 @@ export const AUTO_REGISTERED_KEY = 'auto_registered';
  */
 export const PHYS_ASSUMED_KEY = 'phys_assumed_from';
 
+/**
+ * THE CHOICE MARKER, ADDED 2026-08-05. `map_editor.js buildPushGridMetadata` writes it when the
+ * frame it is serialising came out of the coordinate-choice modal instead of out of the map:
+ * `"data"` (📐 표준 — derived from this map's own cell bbox) or `"panel"` (⚙️ 현재 패널 — the
+ * editor's left panel, which may be the previous map's residue).
+ *
+ * 🔴 IT IS A KEY, NOT A SEVENTH TOKEN, AND THE DISTINCTION IS THE WHOLE POINT. All six tokens
+ *    answer one question -- "what kind of evidence is the VALUE ON THIS AXIS". "A human answered
+ *    a modal" is not an answer to that question; it is a fact about the ROW. Checked one by one:
+ *      · `declared`    -- a person really did choose, so in the strict sense this IS declared.
+ *                         That is exactly why the token cannot carry the distinction: it is
+ *                         already true of both the chosen frame and the map's own declaration.
+ *      · `indeterminate` -- means "cannot be distinguished" (`map_overlay.py:511`), i.e. NO
+ *                         evidence anybody chose. Here there is evidence. It would also make
+ *                         `isFrameUsable` refuse cols/rows, which would shut the modal's own
+ *                         purpose (`98b48e9`: let the map OPEN) back off.
+ *      · `auto_registered` -- says the REGISTRAR wrote it. Stamping it on a panel frame would
+ *                         also flip `geometryDeclaration` for a phys block a person measured,
+ *                         and the server would refuse alignment quoting synthetic chip 1x1.
+ *      · `absent` / `unparsable` -- the value is present and readable; both are false.
+ *      · `assumed`     -- borrowed from the reference floor, server-memory only.
+ *    So no token moves, `isFrameUsable` does not move, `geometryDeclaration` does not move. What
+ *    the row gains is one observation: `frame.chosen`.
+ *
+ * 🔴 THE PRECEDENT IS `PHYS_ASSUMED_KEY`, not a token: present only when it happened, and its
+ *    VALUE says where the numbers came from -- so that "if this assumption later turns out to be
+ *    false, which decisions stood on it" stays answerable (`map_overlay.assume_phys_from:440`).
+ *
+ * ⚠️ NO SERVER TWIN YET, AND THAT IS STATED RATHER THAN HIDDEN. Every TOKEN here is copied from
+ *    a server constant and none is minted on this side; that rule is about the vocabulary, and
+ *    this file mints no token. The key is inert on the server -- `grid_metadata` is a JSON blob
+ *    and no server reader consults unknown keys -- so it creates no divergence today. The
+ *    server half (reading it, and refusing on it where that matters) is boarded, not done.
+ */
+export const FRAME_CHOSEN_KEY = 'frame_chosen_from';
+
+/** The two things `frame_chosen_from` can say, in `resolveGridFrame`'s branch order. */
+export const FRAME_CHOSEN_FROM = Object.freeze(['data', 'panel']);
+
 /** The six physical keys, in the server's order (`map_overlay.py:265-266 PHYS_KEYS`). */
 export const PHYS_KEYS = Object.freeze([
   'phys_wafer_dia', 'phys_chip_x', 'phys_chip_y',
@@ -601,6 +640,14 @@ export function frameFromDeclaration(meta, opts) {
     visualCols: vis.visualCols,
     visualRows: vis.visualRows,
     autoRegistered,
+    // 🔴 WHETHER THE CHOICE HAPPENED -- the frame half's provenance, and the reason it is a
+    //    field next to `autoRegistered` rather than a token inside `axes` (see FRAME_CHOSEN_KEY).
+    //    `null` on every meta that does not carry the marker, which is every meta written before
+    //    2026-08-05 and every genuinely declared one, so no verdict anywhere moves.
+    //    The raw string is exposed, not a boolean: WHICH choice was made is the half that lets a
+    //    later reader tell a bbox-derived frame from a panel frame, and folding it to `true`
+    //    would delete exactly that.
+    chosen: (m && !isSilent(m[FRAME_CHOSEN_KEY])) ? String(m[FRAME_CHOSEN_KEY]) : null,
     geometry: geometryDeclaration(m),
     present: !!m,
     // The invented values this frame was scored against. Exposed so a caller can see WHICH

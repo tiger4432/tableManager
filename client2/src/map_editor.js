@@ -1502,9 +1502,20 @@ function geometryIsAutoRegistered() {
   return !!(dx && dy && dx.autoRegistered === '1' && dy.autoRegistered === '1');
 }
 
+// 「이 컨트롤이 **아무 말도 하지 않았는가**」 — 이 질문의 유일한 철자.
+//
+// 🔴 빈 문자열은 침묵이지 값이 아니다. 서버 `map_overlay.geometry_declaration:387`과
+//    `map2/declaration.js isSilent`가 이미 같은 답을 내고, 여기가 그 클라 절반이다. 종전에는
+//    `physDeclaration` 안의 클로저 하나에만 있었고, 이번 라운드에 **격자 컨트롤 쪽에서 같은
+//    질문이 다시 필요해졌다** — 거기서 두 번째로 적었으면 이 저장소의 재발 결함 계급을 이
+//    라운드가 스스로 한 건 더 만드는 셈이었다.
+function controlIsSilent(raw) {
+  return raw === undefined || raw === null || String(raw).trim() === '';
+}
+
 function physDeclaration(key, domEl) {
   const read = (raw, source) => {
-    if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+    if (controlIsSilent(raw)) return null;
     const n = parseFloat(raw);
     return Number.isFinite(n) ? { value: n, source } : { value: null, source: 'unparsable' };
   };
@@ -1529,6 +1540,54 @@ function markGeometryAutoRegistered(on) {
     if (on) input.dataset.autoRegistered = '1';
     else delete input.dataset.autoRegistered;
   });
+}
+
+// ═══ [D4] 프레임 절반에도 출처가 있어야 한다 (2026-08-05) ══════════════════════════════
+//
+// `auto_registered`가 닫은 구멍의 **격자 쪽 쌍둥이**다. 규격 행이 없거나 START를 못 읽는 맵은
+// 좌표계 선택 모달로 가고(`98b48e9`), 거기서 고른 프레임을 `buildPushGridMetadata`가
+// `wafer_map_metadata`에 **표지 없는 평범한 선언으로** 써 넣었다. 실측 페이로드:
+//   · 선언 없음 + 📐 표준     → `auto_registered: true` (phys 표지만, 격자 축은 그 표지가 덮는다)
+//   · 선언 없음 + ⚙️ 현재 패널 → **표지가 하나도 없다**
+//   · 진짜 선언된 메타         → 위 행과 **바이트 단위로 같다**
+// 그래서 아무도 선언한 적 없는 프레임이 선언과 구별 불가능해지고, 그 상태가 영구히 누적됐다.
+//
+// 🔴 **토큰을 새로 만들지 않았다.** 여섯 토큰(`declared`/`auto_registered`/`absent`/
+//    `unparsable`/`indeterminate`/`assumed`)은 전부 「이 **축의 값**이 어떤 종류의 증거인가」에
+//    답한다. 여기서 없던 것은 축에 대한 답이 아니라 **행에 대한 사실**이다 — 「선택이
+//    일어났는가」. 사람이 고른 프레임은 좁은 뜻에서 정말 `declared`이므로 토큰을 바꾸면 거짓이
+//    되고, `indeterminate`로 접으면 「골랐다는 증거가 없다」는 정반대의 거짓이 된다.
+// 🔴 그래서 형식은 **`phys_assumed_from`과 같다**(`map_overlay.py:351`): 있을 때만 있는 키이고,
+//    값이 **어디서 왔는지**를 말한다. `"data"` = 이 맵의 셀 bbox(📐 표준) · `"panel"` = 에디터
+//    좌측 패널(⚙️ 현재 패널). 판정을 바꾸지 않으므로 `isFrameUsable`도 `geometryDeclaration`도
+//    손대지 않는다 — 늘어난 것은 **관측 가능성**뿐이다.
+//
+// ⚠️ **낡지 않는 사실만 담는다.** 이 표지는 「지금 칸에 든 수를 누가 쳤는가」가 아니라
+//    **「이 맵이 선언을 갖기 전에 프레임이 어디서 왔는가」**다. 조작자가 나중에 칸을 고쳐도
+//    그 사실은 참으로 남으므로 편집 리스너가 필요 없고, 그래서 지우는 자리는 하나뿐이다 —
+//    표지 없는 메타를 불러올 때(§`resolveGridFrame` `meta` 분기, `markGeometryAutoRegistered`와
+//    **같은 양방향 규율**: 안 지우면 직전 맵의 표지가 남아 진짜 선언을 「고른 것」으로 읽는다).
+// ⚠️ 표지가 사는 곳은 값이 사는 곳과 같다 — 프레임의 원점이 START 칸에 있으므로 표지도 거기
+//    붙인다(모듈 상태를 만들지 않는다: `MODULE_STATE` 천장 여유 0). 두 축 모두에 쓰고 두 축
+//    모두를 읽는다: 한 축만 읽으면 나머지 한 축의 쓰기가 조용히 낡는다.
+function markFrameChosen(from) {
+  [el.gridStartX, el.gridStartY].forEach(input => {
+    if (!input || !input.dataset) return;
+    if (from) input.dataset.frameChosen = String(from);
+    else delete input.dataset.frameChosen;
+  });
+}
+
+// 프레임 표지의 **유일한 독법.** 🔴 프레임 창 안에서는 프레임만 답한다 — 화면 표지를 함께 보면
+// 고른 프레임의 맵을 열어 둔 채 남의 맵을 오버레이할 때 그 **소스**의 출처가 뒤집힌다
+// (§`geometryIsAutoRegistered`와 같은 이유이고, 같은 순서로 묻는다).
+function frameChosenFrom() {
+  if (physFrameOverride) return physFrameOverride.frame_chosen_from || null;
+  if (!el) return null;
+  const dx = el.gridStartX ? el.gridStartX.dataset : null;
+  const dy = el.gridStartY ? el.gridStartY.dataset : null;
+  if (!dx || !dy || !dx.frameChosen) return null;
+  return dx.frameChosen === dy.frameChosen ? dx.frameChosen : null;
 }
 
 function withPhysFrame(frame, fn) {
@@ -4989,8 +5048,16 @@ async function loadExistingMap(opts = {}) {
     }
 
     // ⑤ Determine grid properties based on choice
-    let { cols, rows, startX, startY, invertY, rotation, side } =
+    const resolvedFrame =
       resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el, currentRotation, currentSide);
+    // 🔴 `null` = 고를 수 없는 선택지였다(패널의 칸이 비어 있다, §`readGridFrameControls`).
+    //    취소와 **같은 자리**로 접는다: 새 분기도 새 상태도 만들지 않고, 사유는 이미 말했다.
+    if (!resolvedFrame) {
+      el.btnLoadMap.textContent = '📂 Load Existing Map';
+      el.btnLoadMap.disabled = false;
+      return { count: 0, cancelled: true };
+    }
+    let { cols, rows, startX, startY, invertY, rotation, side } = resolvedFrame;
     // ⚠️ `resolveGridFrame` owns no module state, so the `meta` branch's cache
     //    invalidation is issued here — the same statement at the same point in the
     //    sequence (nothing between here and the unconditional invalidate below reads it).
@@ -5570,6 +5637,11 @@ function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el
     //      **반드시 그 뒤**여야 한다. ⚡ Push가 이 표지를 payload에 실어(§buildPushGrid
     //      Metadata) 왕복 후에도 남는다 — 안 그러면 Push 한 번이 합성 규격을 선언으로 승격한다.
     markGeometryAutoRegistered(true);
+    // [D4] 격자·원점도 아무도 선언하지 않았다 — 데이터의 bbox에서 **파생된** 수다(등록기의
+    //      `synthesize_grid_meta`가 하는 것과 같은 계산). phys 표지가 격자 축까지 덮기는
+    //      하지만, 그 표지는 「등록기가 썼다」는 뜻이라 **조작자가 물음에 답했다**는 사실을
+    //      담지 못한다. 어느 결정이 이 프레임 위에 서 있었는지 나중에 물을 수 있어야 한다.
+    markFrameChosen('data');
   } else if (userChoice === 'meta') {
     cols = loadedGridMeta.grid_cols;
     rows = loadedGridMeta.grid_rows;
@@ -5588,15 +5660,33 @@ function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el
     // [D1] 저장된 표지를 화면으로 옮긴다. **양방향이다** — 표지가 없는 메타를 불러오면
     //      직전 맵의 표지가 남아 진짜 선언을 「선언 없음」으로 읽게 되므로 반드시 끈다.
     markGeometryAutoRegistered(loadedGridMeta.auto_registered === true);
+    // [D4] 프레임 표지도 **양방향으로** 옮긴다 — 같은 이유다. 표지 없는(=진짜 선언된) 메타를
+    //      불러왔는데 직전 맵의 표지가 남으면, 아무도 고른 적 없는 선언이 「고른 것」으로 읽힌다.
+    markFrameChosen(loadedGridMeta.frame_chosen_from || null);
   } else {
-    // Use current UI settings
-    cols = parseInt(el.gridCols.value, 10) || 10;
-    rows = parseInt(el.gridRows.value, 10) || 10;
-    startX = parseInt(el.gridStartX.value, 10) || 0;
-    startY = parseInt(el.gridStartY.value, 10) || 0;
-    invertY = el.gridYInvert.checked;
+    // [2] 화면 컨트롤 독법은 `readGridFrameControls` 하나다 — 여기서 다시 파싱하면 같은
+    //     질문의 두 번째 철자가 되고, 종전에는 그 두 철자가 갈리기도 전에 **둘 다** 빈 칸을
+    //     0으로 지어냈다(`parseInt('') || 0`).
+    const panel = readGridFrameControls(el);
+    if (panel.silent.length > 0) {
+      // 🔴 빈 칸은 답이 아니다. 지어낸 0으로 좌표계를 세우면 셀은 전부 다른 다이에 앉고
+      //    화면은 멀쩡하다 — 이 도메인이 존재하는 이유 그 자체다. 새 확인창을 늘리지 않고
+      //    이 선택지 자체를 거절한다(호출부가 취소와 같은 자리로 접는다).
+      showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 좌표계를 정할 수 없습니다 — `
+        + `값을 채우고 다시 불러오십시오.`, 'error');
+      return null;
+    }
+    cols = panel.cols;
+    rows = panel.rows;
+    startX = panel.startX;
+    startY = panel.startY;
+    invertY = panel.invertY;
     rotation = currentRotation;
     side = currentSide;
+    // [D4] 이 프레임은 **이 맵이 선언한 것이 아니다** — 조작자가 좌측 패널을 그대로 쓰라고
+    //      답한 것이고, 패널은 직전 맵의 잔상일 수도 있다. 표지가 없으면 Push 한 번이 그것을
+    //      선언과 바이트 단위로 같게 만들고, 그 사실은 영영 돌아오지 않는다.
+    markFrameChosen('panel');
   }
 
   return { cols, rows, startX, startY, invertY, rotation, side };
@@ -5850,7 +5940,15 @@ async function pushMapData() {
   const valType = tableSchema.column_types[valCol] || 'string';
 
   // [2] 컨트롤 독법은 `readGridFrameControls` 하나다 — 📐 규격만 저장이 같은 함수를 읽는다.
-  const { cols, rows, startX, startY, invertY } = readGridFrameControls();
+  // 🔴 빈 칸은 0이 아니다(§`gridFrameControlNum`). 지어낸 0을 실어 보내면 `replace_map`이
+  //    맵 전량을 그 좌표계로 재기록한다 — 되돌릴 수 없는 자리에서 없는 선언을 만드는 셈이다.
+  const panel = readGridFrameControls(el);
+  if (panel.silent.length > 0) {
+    showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 적재하지 않았습니다 — `
+      + `빈 칸을 0으로 지어내 저장하지 않습니다.`, 'error');
+    return;
+  }
+  const { cols, rows, startX, startY, invertY } = panel;
 
   // The wafer_map_metadata record this push would write — built from the panel controls
   // read just above. See `buildPushGridMetadata` (below) for the M4①→② note on why the
@@ -6266,14 +6364,40 @@ function collectMetaFieldValues(tableSchema) {
 // [2] 격자 프레임 컨트롤의 **유일한 독법.** ⚡ Push와 📐 규격만 저장은 같은 규격 객체를
 // 만들어야 하므로, 두 곳에서 각자 파싱하면 안 된다 — 한쪽이 `|| 10`이고 한쪽이 `|| 1`이면
 // 같은 화면이 두 개의 규격을 저장하고, 저장이 `ceil`·표시가 `round`였던 그 계급이 된다.
-function readGridFrameControls() {
-  return {
-    cols: parseInt(el.gridCols.value, 10) || 10,
-    rows: parseInt(el.gridRows.value, 10) || 10,
-    startX: parseInt(el.gridStartX.value, 10) || 0,
-    startY: parseInt(el.gridStartY.value, 10) || 0,
+// [2b] 「이 칸이 말을 했는가」의 **유일한 철자.**
+//
+// 🔴 빈 칸은 0이 아니다. 아무 말도 하지 않은 것이다. `parseInt('') || 0`은 그 침묵을 **선언된
+//    0으로 승격**시켰고, 실측으로 그 0이 `grid_start_x: 0`으로 DB에 도달했다 — 화면은 멀쩡했다.
+//    빈 칸이었다는 사실이 저장 페이로드 어디에도 남지 않으므로 사후에 알아낼 방법도 없다.
+// 🔴 **관용은 그대로 둔다.** 읽힌 값의 해석은 종전과 바이트 단위로 같다(`parseInt` → `|| dflt`).
+//    여기서 엄격해지면 이미 저장된 선언의 뜻이 바뀌고, 그것은 이 라운드의 질문이 아니다.
+//    바뀌는 것은 **지어내던 자리 하나**뿐이다: 읽히지 않으면 수 대신 `null`을 낸다.
+// ⚠️ `null`이지 기본값이 아니다. 소비자가 검사를 잊으면 `null`은 페이로드에서 그대로 눈에
+//    띄고 서버 `int(None)`이 거절하지만, 0은 조용히 통과해 남의 좌표계를 덮는다.
+function gridFrameControlNum(input, dflt) {
+  const raw = input ? input.value : undefined;
+  if (controlIsSilent(raw)) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? (n || dflt) : null;
+}
+
+// [2] 격자 프레임 컨트롤의 **유일한 독법**은 이 함수 하나다 — ⚡ Push · 📐 규격만 저장 ·
+// 좌표계 선택의 `current` 분기(§`resolveGridFrame`) 셋이 같은 함수를 부른다. 종전에는
+// `current` 분기가 같은 질문을 `parseInt(...) || N`으로 **다시** 물었고, 두 철자가 갈리기도
+// 전에 **둘 다** 빈 칸을 지어냈다.
+// `silent`는 아무 말도 하지 않은 칸의 **이름**이다 — 거절문이 어느 칸인지 말할 수 있어야 한다.
+function readGridFrameControls(el) {
+  const frame = {
+    cols: gridFrameControlNum(el.gridCols, 10),
+    rows: gridFrameControlNum(el.gridRows, 10),
+    startX: gridFrameControlNum(el.gridStartX, 0),
+    startY: gridFrameControlNum(el.gridStartY, 0),
     invertY: el.gridYInvert.checked,
   };
+  frame.silent = [['cols', '격자 COLS'], ['rows', '격자 ROWS'],
+    ['startX', 'START X'], ['startY', 'START Y']]
+    .filter(([k]) => frame[k] === null).map(([, label]) => label);
+  return frame;
 }
 
 function buildPushGridMetadata(cols, rows, startX, startY, invertY,
@@ -6299,6 +6423,11 @@ function buildPushGridMetadata(cols, rows, startX, startY, invertY,
   //      존재하는 행을 다시 쓰지 않으므로(absent-only) 그 사실은 영영 돌아오지 않는다.
   //      🔴 표지가 없는 맵의 payload는 이 줄로 **한 바이트도 바뀌지 않는다**(INV-1).
   if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;
+  // [D4] 프레임을 **고른** 맵이면 그 사실도 함께 저장한다. `phys_assumed_from`과 같은 형식:
+  //      있을 때만 있고, 값이 어디서 왔는지를 말한다. 🔴 표지가 없는 맵의 payload는 이 두 줄로
+  //      **한 바이트도 바뀌지 않는다**(INV-1) — 오늘의 모든 선언된 맵이 그 경우다.
+  const chosenFrom = frameChosenFrom();
+  if (chosenFrom) gridMeta.frame_chosen_from = chosenFrom;
   const validDieDecision = validDieRefForPush();
   const gridMetaOut = validDieRefPayload(gridMeta, validDieDecision,
     validDie ? validDie.raw : undefined);
@@ -9501,7 +9630,16 @@ async function saveMapSpecOnly() {
   }
   const isNew = (stored === null);
 
-  const { cols, rows, startX, startY, invertY } = readGridFrameControls();
+  // 🔴 빈 칸은 0이 아니다(§`gridFrameControlNum`) — ⚡ Push와 **같은** 술어로 묻는다. 이 저장은
+  //    셀을 지우지 않지만 격자·원점을 등록하므로, 지어낸 0은 DB에 그대로 있는 셀에서 주소를
+  //    빼앗는다(아래 `offGrid`가 세는 바로 그 계급을 스스로 만드는 셈이다).
+  const panel = readGridFrameControls(el);
+  if (panel.silent.length > 0) {
+    showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 규격을 저장하지 않았습니다 — `
+      + `빈 칸을 0으로 지어내 등록하지 않습니다.`, 'error');
+    return;
+  }
+  const { cols, rows, startX, startY, invertY } = panel;
   const pushMeta = buildPushGridMetadata(cols, rows, startX, startY, invertY,
     el, currentRotation, currentSide, validDie);
   const next = mergeStoredGridMeta(stored, pushMeta.gridMetaOut);

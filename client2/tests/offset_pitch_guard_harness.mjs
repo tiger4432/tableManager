@@ -87,6 +87,9 @@ function sliceFunction(source, name) {
 // makes group G an EXECUTION of the shipped listener rather than a re-implementation of it.
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
+  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  // question is now shared with the grid-frame reader, so it is one function and it is here.
+  'controlIsSilent',
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb', 'getDbCoords',

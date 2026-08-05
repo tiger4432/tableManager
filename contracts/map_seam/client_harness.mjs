@@ -511,7 +511,10 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
 //     A scorer that sets the module variable is testing its own fixture.
 {
   const G = 'geometry_declaration_cases';
-  if (requireRoles(G, ['phys_declaration', 'geometry_is_auto_registered',
+  // `control_is_silent` is listed for the same reason `geometry_is_auto_registered` is: it is a
+  // CALLEE of `phys_declaration`, and an unlisted callee makes its caller unevaluable — which
+  // shows up as every vector recording a stack trace instead of an answer.
+  if (requireRoles(G, ['phys_declaration', 'geometry_is_auto_registered', 'control_is_silent',
     'frame_from_meta', 'with_phys_frame'], 'D1 — synthetic geometry is not a declaration')) {
     for (const c of cases(G)) {
       // No screen values at all: the map's own meta must be the only source. Leaving DOM

@@ -74,6 +74,9 @@ function sliceFunction(source, name) {
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
   'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb',
+  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  // question is now shared with the grid-frame reader, so it is one function and it is here.
+  'controlIsSilent',
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
   'getTransformedPhysicalConfig', 'getScreenShift', 'isCellInsideWaferFast', 'getWaferBoundingBox',
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'frameAxesKey',

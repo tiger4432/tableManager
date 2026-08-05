@@ -133,7 +133,22 @@ function O_seatingSnapshot(dom) {
   };
 }
 
-/** map_editor.js:6260 readGridFrameControls -- 5 axes. NO rotation, NO side (finding D2). */
+/**
+ * map_editor.js `readGridFrameControls` -- 5 axes. NO rotation, NO side (finding D2).
+ *
+ * 🔴 THIS TRANSCRIPTION WAS NOT EDITED WHEN THE PRODUCT'S READER GREW A REFUSAL (2026-08-05),
+ *    AND THAT IS THE POINT. `readGridFrameControls` now also reports `silent` -- the boxes that
+ *    said nothing -- so that `parseInt('') || 0` stops promoting silence to a declared 0. The
+ *    lenient fold transcribed below is UNCHANGED for every box that is not blank, which is what
+ *    `declaration.js` deliberately preserves as `legacy` ("legacy DOES NOT GET STRICTER").
+ *
+ *    Editing this oracle to match a change in the thing it scores would be a repaired mutation:
+ *    it would turn the parity check green by moving the check. So the honest question is whether
+ *    the transcription still independently expresses what map2 believes over the inputs it is
+ *    scored on -- and section F below MEASURES that instead of asserting it. The answer is that
+ *    the refusal branch has extension ZERO here: a DOM round trip cannot produce a blank string
+ *    (`String(undefined)` is `"undefined"`), so no shape this harness scores can reach it.
+ */
 function O_readGridFrameControls(dom) {
   return {
     cols: pInt(dom.gridCols, 10), rows: pInt(dom.gridRows, 10),
@@ -501,6 +516,83 @@ function run(mod) {
   eq('E. visualRows comes from the value surface', zc.visualRows, 0);
   eq('E. visualDimensionsLegacy comes from the legacy surface', vDimsLegacy(zc).visualRows, 10);
 
+  // ── F. THE ORACLE COUPLING, MEASURED RATHER THAN ASSERTED ────────────────────
+  //
+  // `O_readGridFrameControls` above transcribes a function that changed this round: the product
+  // now refuses a blank box instead of folding it to 0. A transcription edited to match its own
+  // subject proves nothing, so the claim that this one did NOT have to move is a measurement:
+  // over every shape scored here, how many DOM round trips produce a box the product would call
+  // silent? The DOM round trip is lossy in a documented direction -- a text input holds a STRING,
+  // and `String(undefined)` is `"undefined"`, not `""` -- so the answer should be zero, and if it
+  // ever stops being zero the transcription really has become a second implementation.
+  const domBlank = (dom) => ['gridCols', 'gridRows', 'gridStartX', 'gridStartY']
+    .filter(k => dom[k] === undefined || dom[k] === null || String(dom[k]).trim() === '');
+  let blankProdRows = 0;
+  let blankSynthetic = 0;
+  for (const shape of PROD.shapes) {
+    if (domBlank(domFromMeta(shape.meta)).length > 0) blankProdRows += shape.n;
+  }
+  for (const c of SYNTHETIC) {
+    if (domBlank(domFromMeta(c.meta)).length > 0) blankSynthetic++;
+  }
+  evidence.push(`F. oracle coupling: DOM round trips producing a blank frame box -- `
+    + `production ${blankProdRows} of ${prodRows} rows, synthetic ${blankSynthetic} of `
+    + `${SYNTHETIC.length} shapes. The product's refusal branch is unreachable from here, so `
+    + `the transcription still expresses the lenient fold and was not moved to match it.`);
+  eq('F. no production shape can reach the product\'s blank-box refusal', blankProdRows, 0);
+  eq('F. no synthetic shape can either (a missing key round-trips as "undefined")',
+    blankSynthetic, 0);
+  // ...and the counterfactual, so the measurement is not vacuous: a genuinely blank box IS
+  // detected by the same expression. Without this, `domBlank` returning [] always would pass.
+  eq('F. the blank detector is live', domBlank({ gridCols: '10', gridRows: '', gridStartX: '3',
+    gridStartY: '5' }).join(','), 'gridRows');
+
+  // ── G. THE CHOICE MARKER -- provenance for the FRAME half ────────────────────
+  //
+  // The frame half had no provenance channel at all: `auto_registered` is read here for the
+  // measurement axes, but a map whose frame came from ⚙️ 현재 패널 carried no marker of any
+  // kind, so it was byte-identical to a map that declared its own frame. What closes it is NOT
+  // a seventh token (see FRAME_CHOSEN_KEY for why each of the six fails) but a record that the
+  // choice HAPPENED, exposed as one field.
+  const chosenMeta = (from) => ({ ...FULL, [mod.FRAME_CHOSEN_KEY]: from });
+  eq('G. the key is the one map_editor.js writes', mod.FRAME_CHOSEN_KEY, 'frame_chosen_from');
+  eq('G. a declared frame reports no choice', mkFrame(FULL).chosen, null);
+  eq('G. ...and so does a meta with no keys at all', mkFrame({}).chosen, null);
+  eq('G. ...and a null meta', mkFrame(null).chosen, null);
+  for (const from of mod.FRAME_CHOSEN_FROM) {
+    eq(`G. a frame chosen from the ${from} says so`, mkFrame(chosenMeta(from)).chosen, from);
+  }
+  // WHICH choice, not merely THAT one happened: a boolean would delete the difference between a
+  // bbox-derived frame and the previous map's panel residue.
+  ok('G. the two choices are distinguishable from each other',
+    mkFrame(chosenMeta('data')).chosen !== mkFrame(chosenMeta('panel')).chosen);
+  eq('G. FRAME_CHOSEN_FROM is the writer\'s branch order',
+    mod.FRAME_CHOSEN_FROM.join(','), 'data,panel');
+  // An empty string is silence, exactly as it is on every other key this module reads.
+  eq('G. an empty marker is not a choice', mkFrame(chosenMeta('')).chosen, null);
+  //
+  // 🔴 AND THE HALF THAT KEEPS IT HONEST: recording the choice must move NOTHING ELSE. No axis
+  //    token changes, `geometryDeclaration` does not change, and the frame stays usable -- the
+  //    modal exists so that the map OPENS (98b48e9), and a marker that made it un-alignable
+  //    would shut that back off. Scored by comparing the whole record minus `chosen`.
+  const strip = (f) => JSON.stringify(Object.assign({}, f, { chosen: null }));
+  for (const from of mod.FRAME_CHOSEN_FROM) {
+    eq(`G. the ${from} marker changes nothing but \`chosen\``,
+      strip(mkFrame(chosenMeta(from))), strip(mkFrame(FULL)));
+    eq(`G. ...including the geometry verdict`, geoDecl(chosenMeta(from)), geoDecl(FULL));
+    eq(`G. ...and the frame stays usable`, usable(mkFrame(chosenMeta(from))).ok, true);
+  }
+  // The vocabulary did not grow. This is the assertion that fails if somebody later "fixes"
+  // this by minting a seventh token instead.
+  eq('G. no token was minted for this', TOKENS.length, 6);
+  for (const from of mod.FRAME_CHOSEN_FROM) {
+    ok(`G. \`${from}\` is not a token`, !TOKENS.includes(from));
+    for (const a of NAMES) {
+      ok(`G. ${a} keeps its token under a ${from} marker`,
+        mkFrame(chosenMeta(from)).axes[a].source === mkFrame(FULL).axes[a].source);
+    }
+  }
+
   // ── C. VISUAL DIMENSIONS, parametric ─────────────────────────────────────────
   // The reason the existing primitive could not be shared: it reads a module global.
   for (const rot of [0, 90, 180, 270]) {
@@ -637,8 +729,23 @@ if (mutate) {
     swap('M19 floats read leniently again (parseFloat truncates to garbage)',
       '.test(t)) return null;\n    const n = Number(t);',
       '.test(t)) { /* lenient */ }\n    const n = parseFloat(t);'),
+    // ── THE CHOICE MARKER. Each of these is a way of "recording the choice" that loses the
+    //    thing the record was for.
+    swap('M20 the choice marker is never read (a chosen frame is a declared frame again)',
+      "chosen: (m && !isSilent(m[FRAME_CHOSEN_KEY])) ? String(m[FRAME_CHOSEN_KEY]) : null,",
+      'chosen: null,'),
+    swap('M21 the marker is folded to a boolean (WHICH choice is lost)',
+      "chosen: (m && !isSilent(m[FRAME_CHOSEN_KEY])) ? String(m[FRAME_CHOSEN_KEY]) : null,",
+      'chosen: !!(m && m[FRAME_CHOSEN_KEY]),'),
+    swap('M22 the marker is minted as a seventh token instead of a record',
+      "  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED]);",
+      "  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED, 'chosen']);"),
+    // ⚠️ THIS ANCHOR WAS STALE AND THE WHOLE SWEEP DIED ON IT (found 2026-08-05). It still said
+    //    "the five tokens" after `assumed` made the header say six, so `--mutate` exited 2 with
+    //    nothing scored — and the gate never noticed because the gate runs this harness BARE.
+    //    A mutation corpus whose control cannot be applied is a corpus nobody is running.
     swap('CONTROL a comment change must NOT be caught',
-      '// ── the five tokens ', '// ── the 5 tokens '),
+      '// ── the six tokens ', '// ── the 6 tokens '),
   ];
 
   console.log('\n  MUTATION CONTROLS -- a surviving mutant means the check above it is inert.\n');

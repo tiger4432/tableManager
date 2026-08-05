@@ -82,7 +82,9 @@ function sliceFunction(src, name) {
 // A stub for any of these would let the harness grade an answer the product does not give.
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'getScreenShift', 'getTransformedPhysicalConfig', 'getDieIndex',
-  'readGridFrameControls',
+  // [2b] The reader, and the ONE predicate it asks about a blank box (shared with
+  // `resolveGridFrame`'s `current` branch AND with `physDeclaration`). Sliced, never re-typed.
+  'controlIsSilent', 'gridFrameControlNum', 'readGridFrameControls',
   'validDieRefDisplay', 'applyValidDieRef', 'validDieRefFromControls', 'validDieRefForPush',
   'validDieRefPayload',
   // The merge under test. Sliced, never re-typed: a copy here would let this harness score a
@@ -91,6 +93,9 @@ const SYMBOLS = [
   // [D1] `buildPushGridMetadata` asks this before deciding whether the spec it writes is a
   // declaration or a synthesized stand-in.
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered',
+  // [D4] ...and the same pair for the FRAME half: a frame that came out of the coordinate-choice
+  // modal must stay distinguishable from one the map declared, across this writer too.
+  'frameChosenFrom', 'markFrameChosen',
   'buildPushGridMetadata',
   'serverCellKeySet', 'classifyUnsavableCells',
   // The READ. Real, so that "what did this feature ask the server" is a measurement.
@@ -561,6 +566,94 @@ async function run(src) {
     evidence.push('J round trip: marked payload carries auto_registered, unmarked does not');
   }
 
+  // ── L. [D4] A CHOSEN FRAME STAYS DISTINGUISHABLE FROM A DECLARED ONE. ─────────────────
+  //   The frame half's twin of J, and the reason this round exists. A map with no readable
+  //   declaration is routed to the coordinate-choice modal; whatever the operator picks there
+  //   was written back as a PLAIN declaration with no marker at all, so a frame nobody declared
+  //   became byte-identical to one somebody did — permanently, because nothing ever revisits a
+  //   row that already exists. Scored on the payload, because that is the only thing that
+  //   survives the session.
+  {
+    for (const from of ['data', 'panel']) {
+      const env = buildEnv(src, { answer: answerWith(storedRow()) });
+      env.S.markFrameChosen(from);
+      await env.S.saveMapSpecOnly();
+      eq(`L/a a frame chosen from the ${from} says so in the payload`, from,
+        metaPayload(env.requests).frame_chosen_from,
+        'without this the choice is unrecoverable the moment the session ends');
+    }
+    // 🔴 WHICH choice, not merely THAT one happened. Folding both branches to `true` would pass
+    //    a boolean assertion and delete the difference between a bbox-derived frame and the
+    //    previous map's panel residue — the two are not the same claim about the same numbers.
+    const a = buildEnv(src, { answer: answerWith(storedRow()) });
+    a.S.markFrameChosen('data');
+    await a.S.saveMapSpecOnly();
+    const b = buildEnv(src, { answer: answerWith(storedRow()) });
+    b.S.markFrameChosen('panel');
+    await b.S.saveMapSpecOnly();
+    eq('L/b the two choices are DISTINGUISHABLE from each other', true,
+      metaPayload(a.requests).frame_chosen_from !== metaPayload(b.requests).frame_chosen_from);
+
+    // INV-1, the same half J/b protects: an unchosen map must not gain the key. Every declared
+    // map in the database is this case, and its payload must not move by one byte.
+    const plain = buildEnv(src, { answer: answerWith(storedRow()) });
+    await plain.S.saveMapSpecOnly();
+    eq('L/c a declared frame does NOT gain the marker', false,
+      'frame_chosen_from' in metaPayload(plain.requests),
+      'the payload of a normal map must be unchanged by this round');
+    // ...and the marker is a one-axis-read hazard: the product writes BOTH START boxes and reads
+    // both, so a half-written marker must not be reported as a choice.
+    const split = buildEnv(src, { answer: answerWith(storedRow()) });
+    split.S.el.gridStartX.dataset.frameChosen = 'panel';
+    await split.S.saveMapSpecOnly();
+    eq('L/d a marker on only ONE axis is not a choice', false,
+      'frame_chosen_from' in metaPayload(split.requests));
+    // 🔴 INSIDE A FRAME WINDOW THE FRAME ANSWERS ALONE. This branch is the one nothing else in
+    //    the repo executes, and an unexercised branch is an unread write that goes stale in
+    //    silence. The defect it prevents is the phys marker's, one axis over: with a chosen map
+    //    open, overlaying somebody else's map would report the SOURCE's frame as chosen because
+    //    the screen still carries this session's marker. Provenance is a fact about a MAP.
+    const win = buildEnv(src, { answer: answerWith(storedRow()) });
+    win.S.markFrameChosen('panel');
+    eq('L/e on screen the START boxes answer', 'panel', win.S.frameChosenFrom());
+    win.S.physFrameOverride = { frame_chosen_from: 'data' };
+    eq('L/f inside a frame window the FRAME answers, not the screen', 'data',
+      win.S.frameChosenFrom());
+    win.S.physFrameOverride = {};
+    eq('L/g ...and a frame that says nothing is not this session\'s choice', null,
+      win.S.frameChosenFrom());
+    win.S.physFrameOverride = null;
+    evidence.push('L round trip: data/panel both reach the payload and differ; unmarked gains nothing');
+  }
+
+  // ── M. [2b] A BLANK BOX IS NOT A ZERO. ────────────────────────────────────────────────
+  //   `parseInt('') || 0` used to promote silence to a declared 0 here exactly as it did on the
+  //   load path — and this writer REGISTERS the grid, so a fabricated origin takes the address
+  //   away from cells that are still sitting in the database. The predicate is shared with
+  //   `resolveGridFrame`'s `current` branch (`gridFrameControlNum`), which is why there is one
+  //   spelling to score rather than two that agree today.
+  {
+    const blank = buildEnv(src, { answer: answerWith(storedRow()) });
+    blank.S.el.gridStartX.value = '';
+    await blank.S.saveMapSpecOnly();
+    eq('M/a a blank START box writes NOTHING', 0,
+      blank.requests.filter(r => r.method === 'PUT').length,
+      'a fabricated 0 registered here strands every cell the real origin addressed');
+    eq('M/b ...and the operator is told WHICH box', true,
+      blank.toasts.some(t => t.kind === 'error' && /START X/.test(t.msg)));
+    eq('M/c ...and it is not asked as a question first', 0, blank.confirms.length,
+      'a confirm on a value that cannot be saved is friction with no decision behind it');
+
+    // THE COUNTERFACTUAL. A TYPED zero is a legitimate origin and must still save; otherwise
+    // "refuses when blank" is satisfied by a writer that refuses, and the assertion is vacuous.
+    const zero = buildEnv(src, { answer: answerWith(storedRow()) });
+    zero.S.el.gridStartX.value = '0';
+    await zero.S.saveMapSpecOnly();
+    eq('M/d a TYPED zero still saves', 1, zero.requests.filter(r => r.method === 'PUT').length);
+    eq('M/e ...and it reaches the payload as 0', 0, metaPayload(zero.requests).grid_start_x);
+    evidence.push('M blank START: 0 writes, 0 confirms; typed 0: 1 write carrying grid_start_x 0');
+  }
+
   // ── K. THE RESPONSE THAT NEVER COMES. ─────────────────────────────────────────────────
   //   Reported live 2026-08-04: 📐 규격만 저장 sticks on "Saving..." forever WHILE THE SAVE
   //   ACTUALLY SUCCEEDS. The button is restored in a `finally`, so a stuck button means the
@@ -772,6 +865,44 @@ const MUTANTS = {
   'auto-registration-is-written-for-everything': (s) => once(s,
     '  if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;',
     '  gridMeta.auto_registered = true;'),
+  // ── [D4] THE FRAME HALF. The same three failure shapes, one axis over. ─────────────────
+  // The marker is dropped on the way out: a frame that came from the modal is written back as
+  // an ordinary declaration and can never be told apart from one again.
+  'frame-choice-is-lost-on-save': (s) => once(s,
+    '  if (chosenFrom) gridMeta.frame_chosen_from = chosenFrom;',
+    '  // choice dropped'),
+  // It is written for everything, which moves the payload of every declared map (INV-1).
+  'frame-choice-is-written-for-everything': (s) => once(s,
+    '  if (chosenFrom) gridMeta.frame_chosen_from = chosenFrom;',
+    "  gridMeta.frame_chosen_from = chosenFrom || 'panel';"),
+  // 🔴 THE ONE THAT LOOKS HARMLESS. The fact that a choice HAPPENED is recorded, but WHICH
+  //    choice is folded away — so a bbox-derived frame and the previous map's panel residue
+  //    become the same record, which is most of what the marker was for.
+  'frame-choice-forgets-which-choice': (s) => once(s,
+    '  if (chosenFrom) gridMeta.frame_chosen_from = chosenFrom;',
+    '  if (chosenFrom) gridMeta.frame_chosen_from = true;'),
+  // Only one START box is consulted, so a half-written marker reads as a whole one and the
+  // other axis's write rots with nothing to say so.
+  'frame-choice-reads-one-axis-only': (s) => once(s,
+    '  return dx.frameChosen === dy.frameChosen ? dx.frameChosen : null;',
+    '  return dx.frameChosen;'),
+  // The screen's marker leaks into a frame window, so an overlaid map's provenance is reported
+  // as this session's. Provenance is a fact about a MAP, not about who has the editor open.
+  'frame-choice-leaks-across-a-frame-window': (s) => once(s,
+    "  if (physFrameOverride) return physFrameOverride.frame_chosen_from || null;\n  if (!el) return null;",
+    '  if (!el) return null;'),
+  // ── [2b] THE BLANK BOX. Today's expression, restored: silence becomes a declared 0. ────
+  'a-blank-box-resolves-to-zero': (s) => once(s,
+    '  const raw = input ? input.value : undefined;\n  if (controlIsSilent(raw)) return null;',
+    '  const raw = input ? input.value : undefined;\n  if (controlIsSilent(raw)) return dflt;'),
+  // ...and the softer version: the predicate still answers `null`, but the writer stops asking.
+  // This is the shape the codebase actually reaches by accident — the question exists and one
+  // of its two consumers forgets to consult it.
+  'the-writer-stops-asking-about-blanks': (s) => once(s,
+    '  if (panel.silent.length > 0) {\n' +
+    '    showToast(`${panel.silent.join(\' · \')} 칸이 비어 있어 규격을 저장하지 않았습니다 — `',
+    '  if (false) {\n' +
+    '    showToast(`${panel.silent.join(\' · \')} 칸이 비어 있어 규격을 저장하지 않았습니다 — `'),
   // ── K: THE RESPONSE BOUND ──────────────────────────────────────────────────────────────
   // TODAY'S CODE, RESTORED EXACTLY. The request goes out with no signal and no timer, so the
   // promise never settles and the button never comes back. This mutant IS the reported defect,

@@ -382,6 +382,15 @@
       "$why": "THE CLIENT'S SINGLE READER of a declared physical value, and therefore the client half of D1. It answers `{value: null, source: 'auto_registered'}` for the two chip keys when the synthetic mark is present. Scored against the server's `geometry_declaration` on the SAME vectors because the whole defect was that the two sides answered this question differently while both looked correct: the client returned a measured 7 and a synthesized 1 in byte-identical shape, and the server read a synthesized signature as a declaration because it was present and well-formed.",
       "$shape": "`physDeclaration(key, domEl) -> {value, source}`. Reads module state `physFrameOverride` (set through `withPhysFrame`) and, outside a frame window, the DOM control. Not pure, which is why the scorer drives it through `frameFromMeta` + `withPhysFrame` rather than building a frame by hand."
     },
+    "control_is_silent": {
+      "file": "client2/src/map_editor.js",
+      "fn": "controlIsSilent",
+      "status": "live",
+      "$owner": "map-pm (landed 2026-08-05)",
+      "$blocks": "geometry_declaration_cases — `physDeclaration` calls it, so without it the reader THROWS and every vector records a stack trace instead of an answer. Exactly the `geometry_is_auto_registered` case below, and it announced itself the same way: 10 divergences, all of them 'THREW controlIsSilent is not defined'.",
+      "$why": "A CALLEE, and a deliberate one. 'Did this control say anything at all' used to be a closure inside `physDeclaration`; the grid-frame reader needed the same question, so it was lifted to one function instead of being written a second time. NO EXPECTED VALUE IN THIS FILE MOVED when it was added — the answers are byte-identical, which is the point of listing the callee rather than re-typing the predicate.",
+      "$shape": "`controlIsSilent(raw) -> boolean`. Pure. Empty string counts as silence, matching `map_overlay.geometry_declaration` and `map2/declaration.js isSilent`."
+    },
     "geometry_is_auto_registered": {
       "file": "client2/src/map_editor.js",
       "fn": "geometryIsAutoRegistered",

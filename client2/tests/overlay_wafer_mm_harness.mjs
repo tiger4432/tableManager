@@ -84,6 +84,9 @@ const SYMBOLS = [
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'frameAxesKey',
   'projectCellsToWaferMm', 'projectCellsToPhys',
   'seatWaferMmInFrame', 'canvasSeatKeys',
+  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  // question is now shared with the grid-frame reader, so it is one function and it is here.
+  'controlIsSilent',
   'geometryIsAutoRegistered', 'physDeclaration', 'frameDimBounds', 'frameDimError',
   'reseatOverlayLayer',
 ];

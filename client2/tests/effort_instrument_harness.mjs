@@ -56,7 +56,13 @@ function makeCtx(src, opts = {}) {
     ? { session_id: 'sess-TEST', key: 0, mouse: 0, nav: 0 }
     : { session_id: 'sess-TEST', key: 11, mouse: 7, nav: 2 };
 
-  const inputEl = (v) => ({ value: String(v), checked: false, textContent: '', disabled: false });
+  // `dataset` is REAL, not a stub: the two provenance markers live in it and both writers
+  // (`markGeometryAutoRegistered`, `markFrameChosen`) bail on `!input.dataset`, so a fixture
+  // without it would turn the thing G23 scores into a silent no-op and read green.
+  // ⚠️ It does NOT move any existing expectation: nothing on the push path writes a marker,
+  //    so every dataset stays empty and G9's exact-object comparison is unchanged (INV-1).
+  const inputEl = (v) => ({ value: String(v), checked: false, textContent: '', disabled: false,
+    dataset: {} });
   const el = {
     btnPushMap: { textContent: '', disabled: false },
     colMapX: inputEl('x'), colMapY: inputEl('y'), colMapVal: inputEl('val'),
@@ -270,12 +276,23 @@ function makeCtx(src, opts = {}) {
     // `saveMapSpecOnly`, so that the two writers cannot spell the same geometry two ways.
     // Sliced rather than re-typed for the usual reason: a copy here would let this harness
     // score a payload the product does not build.
+    // [2b] ...and that reader now asks ONE question about a blank box, shared with
+    // `resolveGridFrame`'s `current` branch. `parseInt('') || 0` used to promote silence to a
+    // declared 0; sliced rather than re-typed so the refusal this harness's push path meets is
+    // the product's refusal.
+    extractFunction(src, 'controlIsSilent'),
+    extractFunction(src, 'gridFrameControlNum'),
     extractFunction(src, 'readGridFrameControls'),
     // [D1] `buildPushGridMetadata` now asks whether the geometry it is serialising was
     // AUTO-REGISTERED, so that a synthesized spec is not promoted to a declared one by a
     // single push. Sliced, not stubbed: this harness owns the byte-identical payload
     // invariant, and the whole point is that an UNMARKED map's payload is unchanged.
+    // [D4] ...and the same question for the FRAME half (`frame_chosen_from`). Same reason it is
+    // sliced: the byte-identical-payload invariant is exactly the claim that an unmarked map
+    // gains nothing from either of these two reads.
     extractFunction(src, 'geometryIsAutoRegistered'),
+    extractFunction(src, 'frameChosenFrom'),
+    extractFunction(src, 'markFrameChosen'),
     extractFunction(src, 'buildPushGridMetadata'),
     extractFunction(src, 'confirmMissingSplitDescriptions'),
     extractFunction(src, 'outsideCircleNoteForPush'),
@@ -642,6 +659,34 @@ async function groupG(src) {
     r.G17 = api.outsideCircleNoteForPush(11, 9, 90, ctx.gridCells2D, ctx.gridData);
   }
 
+  // ── ⑥ [2b] A BLANK FRAME BOX IS NOT A ZERO ──────────────────────────────────
+  // `⚡ Push` is `replace_map`: it deletes every row of this map key and re-writes it under the
+  // frame in this payload. A blank START box folded to 0 by `parseInt('') || 0` therefore does
+  // not merely record a wrong origin — it re-addresses the whole map to it, irreversibly.
+  // The predicate is shared with `saveMapSpecOnly` and with `resolveGridFrame`'s `current`
+  // branch (`gridFrameControlNum`), so what is scored here is that THIS consumer asks it.
+  {
+    const { log, api } = makeCtx(src, { controls: { gridStartX: '' } });
+    await api.pushMapData();
+    r.G20 = `${log.requests.length}|${log.confirms.length}`;   // nothing sent, nothing asked
+    r.G21 = log.toasts.some(t => t[1] === 'error' && /START X/.test(t[0]) && /비어 있/.test(t[0]));
+  }
+  // 🔴 THE COUNTERFACTUAL IS NOT WRITTEN AGAIN HERE ON PURPOSE. The whole rest of group A and
+  //    group G pushes with `gridStartX: 0` TYPED IN and expects requests to go out (A4 = 2,
+  //    G18 = success), so "a typed zero still pushes" is already the ambient state of this
+  //    file. Restating it would be a second assertion about the same fixture.
+
+  // ── ⑦ [D4] THE FRAME'S OWN PROVENANCE REACHES THE RECORD ────────────────────
+  // G9 already pins that an UNMARKED map's payload carries no such key (it compares the whole
+  // object). This is the other half: a frame that came out of the coordinate-choice modal must
+  // say so in the record the next load and every overlay align through.
+  {
+    const { ctx, log, api } = makeCtx(src, { controls: FRAME, cells2D: CELLS2 });
+    ctx.markFrameChosen('panel');
+    await api.pushMapData();
+    r.G22 = pushedGridMeta(log).frame_chosen_from;
+  }
+
   // ── the epilogue, which nothing scored ──────────────────────────────────────
   // A push that succeeded must TOAST success and ALERT nothing. Every statement after the
   // cell PUT -- the serverCellKeys refresh, framePushed, the map-key cache invalidation,
@@ -760,6 +805,9 @@ const EXPECT_G = {
   G17: '',                  // ⑤ a circle-basis map says nothing extra (INV-1)
   G18: '0|success',         // the epilogue completed: no failure alert, one success toast
   G19: '0|1',               // ① a declared exception, DECLINED, refuses after one question
+  G20: '0|0',               // ⑥ a blank START box: nothing sent, and nothing asked first
+  G21: true,                // ⑥ ...and the operator is told WHICH box, and that it is empty
+  G22: 'panel',             // ⑦ a chosen frame says so in the record it writes
 };
 const EXPECT_K = {
   K1: 'L1_7|L1_7',
@@ -912,6 +960,42 @@ const MUTANTS = [
       '  const gridMetaOut = validDieRefPayload(gridMeta, validDieDecision,\n    validDie ? validDie.raw : undefined);',
       '  const gridMetaOut = validDieRefPayload(gridMeta, validDieDecision,\n    undefined);'),
     group: 'G', breaks: ['G11']
+  },
+  {
+    // [2b] Today's expression, restored: silence folds to the default and `replace_map`
+    // re-addresses the whole map to an origin nobody typed.
+    name: 'I3c ⑥ a blank frame box resolves to the default again',
+    apply: s => s.replace(
+      '  const raw = input ? input.value : undefined;\n  if (controlIsSilent(raw)) return null;',
+      '  const raw = input ? input.value : undefined;\n  if (controlIsSilent(raw)) return dflt;'),
+    group: 'G', breaks: ['G20', 'G21']
+  },
+  {
+    // ...and the shape this codebase actually reaches by accident: the question exists, and
+    // one of its three consumers forgets to consult it.
+    name: 'I3d ⑥ the PUSH writer stops asking about blanks (the other two still ask)',
+    apply: s => s.replace(
+      '  if (panel.silent.length > 0) {\n'
+      + "    showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 적재하지 않았습니다 — `",
+      '  if (false) {\n'
+      + "    showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 적재하지 않았습니다 — `"),
+    group: 'G', breaks: ['G20', 'G21']
+  },
+  {
+    // [D4] The frame's provenance is dropped on the way out, so a frame that came from the
+    // modal is written back as an ordinary declaration and can never be told apart again.
+    name: 'I3e ⑦ the frame choice never reaches the record',
+    apply: s => s.replace('  if (chosenFrom) gridMeta.frame_chosen_from = chosenFrom;',
+                          '  // choice dropped'),
+    group: 'G', breaks: ['G22']
+  },
+  {
+    // ...and the mirror, which moves the payload of every ordinary map (INV-1). G9 is the
+    // assertion that catches it, which is why G9 compares the WHOLE object.
+    name: 'I3f ⑦ the frame choice is written for everything',
+    apply: s => s.replace('  if (chosenFrom) gridMeta.frame_chosen_from = chosenFrom;',
+                          "  gridMeta.frame_chosen_from = chosenFrom || 'panel';"),
+    group: 'G', breaks: ['G9']
   },
   {
     name: 'I4 ④ the split-description gate never refuses',

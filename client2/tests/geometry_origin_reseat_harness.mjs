@@ -84,6 +84,9 @@ const SYMBOLS = [
   // chip pitch (equal mm-per-pixel on both axes) instead of from the canvas rectangle alone.
   // `renderGridCanvas` calls `cellMetrics`, which calls `physDeclaration` — omitting either
   // turns the render into a ReferenceError that reads as a 0-cell screen.
+  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  // question is now shared with the grid-frame reader, so it is one function and it is here.
+  'controlIsSilent',
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb', 'getDbCoords',

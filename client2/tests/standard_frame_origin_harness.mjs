@@ -73,6 +73,9 @@ const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
   'getScreenShift', 'getTransformedPhysicalConfig',
   'getDieIndex', 'getCanvasCellFromDb', 'getCanvasCellFromDieIndex', 'getDbCoords',
+  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  // question is now shared with the grid-frame reader, so it is one function and it is here.
+  'controlIsSilent',
   'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
   'isCellInsideWaferFast', 'getWaferBoundingBox',
   'frameDimBounds', 'applyPhysicalGeometry', 'applyPresetObject',
@@ -92,6 +95,11 @@ const SYMBOLS = [
   // needs as an argument and returns a value — none touches module state — so nothing new
   // has to be declared in the sandbox below.
   'collectMapKeyFilterModel', 'scanCoordinateBounds', 'resolveDeclaredGridMeta',
+  // [2b/D4] `resolveGridFrame`'s `current` branch stopped re-spelling the control read: it now
+  // calls the SAME `readGridFrameControls` the two writers call, over the SAME blank-box
+  // predicate, and it records which choice produced the frame. Omitting any of these three is a
+  // ReferenceError inside `loadExistingMap`'s catch, reported as a 0-cell load.
+  'gridFrameControlNum', 'readGridFrameControls', 'markFrameChosen',
   'promptCoordinateChoice', 'resolveGridFrame', 'deriveLegendFromCellValues',
   'restoreDoeDraftWithPrecedence',
   // ...plus the pure predicate the load consults before it lets anything replace the valid-die

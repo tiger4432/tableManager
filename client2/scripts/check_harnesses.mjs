@@ -135,7 +135,7 @@ const FLOORS = new Map([
   // so for as long as that name was missing, the client's single write path had no
   // executable scorer at all. It gets a floor like any other green harness precisely
   // because of how it died: silently, while the debt list recorded it as merely red.
-  ['effort_instrument_harness.mjs', 71],
+  ['effort_instrument_harness.mjs', 78],
   ['effort_meter_harness.mjs', 131],
   // New 2026-08-05 with the partial-decision-key round (the client asked for NO reference
   // view when ANY key column was blank, so the sweep could resolve a row whose evidence a
@@ -201,7 +201,7 @@ const FLOORS = new Map([
   //    halves of one problem. Most of its assertions are production parity against every
   //    distinct `wafer_map_metadata` shape, so a floor drop here means production coverage
   //    was dropped, not that somebody tidied a test.
-  ['frame_declaration_harness.mjs', 4031],
+  ['frame_declaration_harness.mjs', 4079],
   // 46 -> 62 (2026-08-04). The valid-die COMMIT-GESTURE cases: 🎯 APPLY was deleted because the
   // key control became a real <select>, and the 16 new assertions pin WHICH gesture applies in
   // each of the two controls. The fallback text input (truncated / unavailable / unlisted key)
@@ -279,7 +279,7 @@ const FLOORS = new Map([
   // Raised 36 -> 59 on 2026-08-04 with the response-bound round: the PUT had no timeout, so a
   // hung response stranded the button on "Saving..." forever while the write had already
   // landed, and the catch block told the operator nothing was recorded.
-  ['map_spec_only_save_harness.mjs', 59],
+  ['map_spec_only_save_harness.mjs', 72],
   // New 2026-08-05 with the Map Editor 2 authoring modules (`brush.js`, `legend.js`,
   // `authoring.js`), so its floor is the count it reports on the commit that introduces it --
   // there is no earlier tree to measure it against.
@@ -329,7 +329,7 @@ const FLOORS = new Map([
   // awaited REST calls). Same rule as the other new entries: the floor is the count it reports
   // on the commit that introduces it — there is no earlier tree to measure it against.
   ['startup_socket_gate_harness.mjs', 103],
-  ['startxy_probe.mjs', 29],
+  ['startxy_probe.mjs', 75],
   ['undeclared_identifier_harness.mjs', 10],
   // New 2026-08-04 with the back-guard round. A valid-die selection set `frameTouched`
   // NOWHERE, so applying one left the frame marked clean and the next frame pop discarded it

@@ -82,6 +82,9 @@ function sliceFunction(source, name) {
 }
 
 const SYMBOLS = [
+  // [2b] `physDeclaration` no longer spells "did this control say anything" inline: that
+  // question is now shared with the grid-frame reader, so it is one function and it is here.
+  'controlIsSilent',
   'physNum', 'gridDimNum', 'withPhysFrame', 'geometryIsAutoRegistered', 'physDeclaration',
   'cellMetrics',                                       // THE function under test (ⓦ)
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
