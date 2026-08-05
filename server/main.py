@@ -2420,6 +2420,11 @@ async def apply_batch_updates_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # [adopt] Decided HERE, before the response is built, not inside the background
+    # broadcast - the caller has to be told in the same answer that the id list it is
+    # about to stop receiving was capped rather than empty.
+    delete_ids_omitted = len(deleted_row_ids) if len(deleted_row_ids) > BROADCAST_ITEM_LIMIT else 0
+
     replace_scope = None
     if replace_report is not None:
         replace_scope = {
@@ -2428,6 +2433,18 @@ async def apply_batch_updates_endpoint(
             # Rows newly created by this payload (a scope wipe with an empty payload
             # legitimately reports inserted: 0 - the caller must surface that).
             "inserted": sum(1 for _, is_new in results if is_new),
+            # [adopt] Rows this write updated that were NOT inside the scope it declared
+            # - i.e. cells it took over from another map. Non-zero is only possible for a
+            # table whose map key sits outside its business key (`dt_log` today). It is
+            # reported rather than prevented: see the note in crud.apply_batch_updates for
+            # why scope-local identity would be the corruption, not the fix.
+            "adopted": replace_report.get("adopted", 0),
+            "mode": replace_report.get("mode"),
+            "reason": replace_report.get("reason"),
+            # How many ids the `batch_row_delete` broadcast withheld because the list
+            # exceeded BROADCAST_ITEM_LIMIT. 0 on the normal path. Never omitted
+            # silently - a refresh signal carrying this same count goes out instead.
+            "delete_ids_omitted": delete_ids_omitted,
         }
 
     # A pure scope wipe (deleted > 0, no upserts) must still invalidate the count cache.
@@ -2489,12 +2506,32 @@ async def apply_batch_updates_endpoint(
         
         async def async_broadcast():
             if deleted_row_ids:
-                delete_msg = {
-                    "event": "batch_row_delete",
-                    "table_name": table_name,
-                    "row_ids": deleted_row_ids
-                }
-                await manager.broadcast(json.dumps(delete_msg))
+                if delete_ids_omitted:
+                    # [adopt] Same threshold the upsert arm below already applies, and it
+                    # arrives with the same change that makes this arm reachable at size.
+                    # Until now `deleted_row_ids` only ever carried a handful of
+                    # collision-merge shells, so the missing cap was unreachable; adopted
+                    # rows are bounded only by the payload, so a 20k-cell push could put
+                    # 20k ids in one JSON frame - the payload shape behind the
+                    # 2026-07-25 event-loop freeze.
+                    #
+                    # NOT a silent truncation: the count rides the refresh signal and the
+                    # response's `scope.delete_ids_omitted`. A cap that drops the tail
+                    # without saying so would rebuild, one level up, exactly the silence
+                    # this change exists to remove.
+                    await manager.broadcast(json.dumps({
+                        "event": "batch_refresh_required",
+                        "table_name": table_name,
+                        "change_count": delete_ids_omitted,
+                        "deleted_row_ids_omitted": delete_ids_omitted,
+                    }))
+                else:
+                    delete_msg = {
+                        "event": "batch_row_delete",
+                        "table_name": table_name,
+                        "row_ids": deleted_row_ids
+                    }
+                    await manager.broadcast(json.dumps(delete_msg))
 
             if not broadcast_needs_items:
                 msg = {

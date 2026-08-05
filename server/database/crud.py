@@ -2364,7 +2364,11 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
             raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
-            
+
+        # [adopt] Row ids inside the scope a replace_map write declares. Empty for every
+        # other write path, which is what makes the adoption check below a no-op there.
+        replace_scope_row_ids = set()
+
         if batch.replace_map:
             # [U6] The purge scope comes from ONE shared resolver (also called by the API
             # layer to echo the scope in the response). No resolvable scope = honest 4xx
@@ -2408,9 +2412,24 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
 
                 db.flush()
 
+            # [adopt] The ids this write DECLARED it was operating on. Kept so the code
+            # after the row loop can name the rows it wrote that were NOT in here.
+            replace_scope_row_ids = set(purged_row_ids)
+
             if replace_report is not None:
                 replace_report["filters"] = scope_filters
                 replace_report["deleted"] = len(purged_row_ids)
+                # [adopt] Which resolver produced `filters`. Diagnostic today, and it is
+                # the exact predicate that will decide who may take the scope-diff path
+                # in the next round - the legacy derivation can resolve a scope NARROWER
+                # than the map (it filters on every non-coordinate column of updates[0]),
+                # and a narrower scope is not a safe basis for deciding what disappeared.
+                replace_report["mode"] = "purge"
+                replace_report["reason"] = (
+                    "declared_map_key_columns"
+                    if TABLE_CONFIG.get(table_name, {}).get("map_key_columns")
+                    else "legacy_column_derivation"
+                )
 
             logger.info(
                 f"🔄 [Map Replace Executed] Table: '{table_name}' | TX: {tx_id} | "
@@ -2592,7 +2611,52 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         if logs_to_cache:
             from audit_cache import audit_cache
             audit_cache.add_logs_batch(logs_to_cache)
-            
+
+        # [adopt] A replace_map write can resolve a row that was NOT in the scope it
+        # declared, and until now it said nothing about having done so.
+        #
+        # HOW: the row lookup is by business key alone (`_get_or_create_row` ->
+        # `get_row_by_business_key`, no scope filter, no unique index on the column).
+        # For a table whose map key sits INSIDE its composite business key that cannot
+        # happen - a key names its own map. `dt_log` is the one shipped table where it
+        # can, and deliberately: its key is the physical destination cell
+        # (dt_job, dt_x, dt_y) while (dt_lot, dt_slot) are inference targets kept out of
+        # the identity because "a guess must never sit inside an identity". So a push
+        # into map A can legitimately resolve, and re-attribute, a cell currently
+        # recorded under map B.
+        #
+        # ⚠️ THIS DOES NOT CHANGE WHICH ROW IS WRITTEN, ON PURPOSE. Making identity
+        # scope-local would give one physical tape cell TWO rows and break the
+        # uniqueness the config declares and the data upholds. The defect was never the
+        # write - it was that the write was invisible: `deleted: 0`, no delete event,
+        # and map B's viewers were never told the cell had left.
+        #
+        # WHY `is_new` IS NOT THE TEST: today the purge has already deleted everything in
+        # scope, so "resolved an existing row" and "adopted from outside" happen to be
+        # the same set. They stop being the same set the moment the scope-diff round
+        # lands and in-scope rows survive. The set difference is written out so that this
+        # stays correct then instead of quietly starting to count every surviving cell.
+        adopted_row_ids = []
+        if batch.replace_map:
+            adopted_row_ids = [
+                r_id for r_id, (_row, was_new) in unique_results.items()
+                if not was_new and r_id not in replace_scope_row_ids
+            ]
+            if replace_report is not None:
+                replace_report["adopted"] = len(adopted_row_ids)
+                replace_report["adopted_row_ids"] = adopted_row_ids
+            if adopted_row_ids:
+                logger.warning(
+                    f"⚠️ [Map Replace Adopted] Table: '{table_name}' | TX: {tx_id} | "
+                    f"Filters: {scope_filters} | Rows written from OUTSIDE this scope: "
+                    f"{len(adopted_row_ids)} | first: {adopted_row_ids[:5]}"
+                )
+            # The adopted rows left the map they used to belong to, so they are announced
+            # as departures. They are kept separately in `adopted_row_ids` above as well:
+            # a consumer of this list must be able to tell "gone" from "moved", and once
+            # both classes are in one list that distinction is not recoverable from it.
+            deleted_row_ids = list(deleted_row_ids) + adopted_row_ids
+
         results = list(unique_results.values())
         return results, total_changed_cells, serialized_logs, deleted_row_ids
 

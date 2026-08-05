@@ -137,6 +137,49 @@ def db_session():
                 "y": "number",
                 "val": "string"
             }
+        },
+        # [cross-scope] Two map-shaped tables that differ in ONE property: whether the
+        # map key is inside the composite business key. That property decides whether a
+        # `replace_map` push can reach a row belonging to a DIFFERENT map, so the pair
+        # exists to hold both arms of it. See test_replace_map_cross_scope.py.
+        #
+        # UNSAFE arm - copies `dt_log`'s real shape: the business key is the physical
+        # destination cell (job, cx, cy) and the map key (lot, slot) sits OUTSIDE it,
+        # deliberately, because in dt_log those two columns are inference targets
+        # ("a guess must never sit inside an identity"). Two different maps can
+        # therefore mint the same business key.
+        "xscope_test_map": {
+            "business_key": "cell_key",
+            "composite_key_source": ["job", "cx", "cy"],
+            "composite_key_separator": "_",
+            "map_key_columns": ["lot", "slot"],
+            "column_types": {
+                "cell_key": "string",
+                "job": "string",
+                "lot": "string",
+                "slot": "string",
+                "cx": "number",
+                "cy": "number",
+                "bn": "string"
+            }
+        },
+        # SAFE arm - the map key IS inside the composite key (the shape every other map
+        # table ships with: valid_die_ref, bonding_log, core_wafer_map, ...). A business
+        # key then names its own map, so a cross-map collision is impossible by
+        # construction and the control test below proves that rather than assuming it.
+        "xscope_safe_map": {
+            "business_key": "cell_key",
+            "composite_key_source": ["lot", "slot", "cx", "cy"],
+            "composite_key_separator": "_",
+            "map_key_columns": ["lot", "slot"],
+            "column_types": {
+                "cell_key": "string",
+                "lot": "string",
+                "slot": "string",
+                "cx": "number",
+                "cy": "number",
+                "bn": "string"
+            }
         }
     }
     from database import models, crud
