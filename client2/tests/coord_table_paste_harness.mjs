@@ -465,7 +465,7 @@ let placedRun;
    ['y-invert ignored', { invertY: false }]].forEach(([name, over]) => {
     const m = {};
     coord.cells.forEach(t => {
-      const at = base.H.getCanvasCellFromDb(t.x, t.y, COLS, ROWS, ROT, SIDE,
+      const at = base.H.getCanvasCellFromDb(null, t.x, t.y, COLS, ROWS, ROT, SIDE,
         pick(over, 'invertY', INVERT_Y), pick(over, 'startX', START_X), pick(over, 'startY', START_Y));
       const co = (base.ctx.gridCells2D[at.r] || {})[at.c];
       if (co) m[co.key] = t.value;
@@ -680,8 +680,8 @@ const MUTATIONS = [
     once('    r = box.maxR - (dbY - startY);', '    r = dbY - startY + box.minR;')],
   // ── the coordinate addressing ────────────────────────────────────────────────
   ['x and y are swapped on the way in',
-    once('    const at = getCanvasCellFromDb(t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,',
-      '    const at = getCanvasCellFromDb(t.y, t.x, cf.cols, cf.rows, cf.rotation, cf.side,')],
+    once('    const at = getCanvasCellFromDb(physFrameOverride, t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,',
+      '    const at = getCanvasCellFromDb(physFrameOverride, t.y, t.x, cf.cols, cf.rows, cf.rotation, cf.side,')],
   ['the value is written to the transposed square',
     once('    rows[at.r][at.c] = t.value;', '    rows[at.c] = rows[at.c] || []; rows[at.c][at.r] = t.value;')],
   ['headers are read as screen positions (the round\'s whole point, undone)',

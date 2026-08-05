@@ -640,7 +640,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
 const TAG_LINE = '  const tag = maskDeclaresTheFrame ? `V${validDieResolveSeq}` : \'C\';';
 const TAG_WINDOW = `    && !frame
     && validDieBasis() === 'ref';`;
-const ZERO_CELL = `  const zero = getCanvasCellFromDb(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+const ZERO_CELL = `  const zero = getCanvasCellFromDb(physFrameOverride, 0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);`;
 // ⚠️ RE-POINTED 2026-08-04 (the valid-die carry ruling). The resolution is now GUARDED: only a
 //    map that carries its own `valid_die_ref` may replace the designation on screen, so the

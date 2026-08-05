@@ -373,7 +373,7 @@ function run(src) {
       const out = new Map();
       DIES.forEach(([ix, iy]) => {
         const at = S.getCanvasCellFromDieIndex(null, ix, iy, P.cols, P.rows, P.rotation, P.side);
-        const v = S.getDbCoords(at.c, at.r, P.cols, P.rows, P.rotation, P.side,
+        const v = S.getDbCoords(null, at.c, at.r, P.cols, P.rows, P.rotation, P.side,
           P.invertY, P.startX, P.startY);
         out.set(`${ix}_${iy}`, `${v.x},${v.y}`);
       });
@@ -497,7 +497,7 @@ function run(src) {
     for (let r = 0; r < P0.rows; r++) for (let c = 0; c < P0.cols; c++) {
       const p = n.S.getDieIndex(null, c, r, f0.cols, f0.rows, 0, 'front');
       if (!n.S.isCellInsideWaferFast(c, r, f0.cols, f0.rows, cfg0, 700, 700)) continue;
-      const v = n.S.getDbCoords(c, r, f0.cols, f0.rows, 0, 'front', false, P0.startX, P0.startY);
+      const v = n.S.getDbCoords(null, c, r, f0.cols, f0.rows, 0, 'front', false, P0.startX, P0.startY);
       n.S.gridData[`${p.x}_${p.y}`] = `${v.x},${v.y}`;
       painted.set(`${p.x}_${p.y}`, `${v.x},${v.y}`);
     }
@@ -511,7 +511,7 @@ function run(src) {
       if (cur === null) { lost++; return; }
       const [px, py] = k2.split('_').map(Number);
       const at = n.S.getCanvasCellFromDieIndex(null, px, py, f0.cols, f0.rows, 0, 'front');
-      const v = n.S.getDbCoords(at.c, at.r, f0.cols, f0.rows, 0, 'front', false,
+      const v = n.S.getDbCoords(null, at.c, at.r, f0.cols, f0.rows, 0, 'front', false,
         P0.startX, P0.startY);
       if (`${v.x},${v.y}` !== was) movedCells++;
     });

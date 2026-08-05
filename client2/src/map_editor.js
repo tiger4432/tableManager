@@ -864,7 +864,7 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const hasZeroZero = (zeroC >= 0 && zeroC < visualCols) && (zeroR >= 0 && zeroR < visualRows);
 
   const physical = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
-  const visual = getDbCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+  const visual = getDbCoords(physFrameOverride, c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const coordKey = `${physical.x}_${physical.y}`;
 
   const isOriginCell = hasZeroZero
@@ -1836,8 +1836,12 @@ function waferMmToDieCell(mmX, mmY, L) {
   };
 }
 
-function getCanvasCellFromDb(dbX, dbY, cols, rows, rotation, side, invertY, startX, startY) {
-  const box = getWaferBoundingBox(physFrameOverride, rotation, side);
+function getCanvasCellFromDb(frame, dbX, dbY, cols, rows, rotation, side, invertY, startX, startY) {
+  if (frame === undefined) {
+    throw new Error('getCanvasCellFromDb: frame argument missing. Pass the frame that is in scope, or `null` '
+      + 'to read the screen controls on purpose.');
+  }
+  const box = getWaferBoundingBox(frame, rotation, side);
 
   const c = dbX - startX + box.minC;
 
@@ -2007,8 +2011,12 @@ function getWaferBoundingBox(frame, rotation, side, opts) {
   return box;
 }
 
-function getDbCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
-  const box = getWaferBoundingBox(physFrameOverride, rotation, side);
+function getDbCoords(frame, colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
+  if (frame === undefined) {
+    throw new Error('getDbCoords: frame argument missing. Pass the frame that is in scope, or `null` '
+      + 'to read the screen controls on purpose.');
+  }
+  const box = getWaferBoundingBox(frame, rotation, side);
 
   const dbX = colVisual - box.minC + startX;
 
@@ -2111,7 +2119,7 @@ function reseatCellsToStoredCoords(was) {
       const [px, py] = String(k).split('_').map(Number);
       if (!Number.isFinite(px) || !Number.isFinite(py)) return;
       const at = getCanvasCellFromDieIndex(was, px, py, was.cols, was.rows, was.rotation, was.side);
-      held.set(k, getDbCoords(at.c, at.r, was.cols, was.rows, was.rotation, was.side,
+      held.set(k, getDbCoords(was, at.c, at.r, was.cols, was.rows, was.rotation, was.side,
         was.invertY, was.startX, was.startY));
     });
   });
@@ -2123,7 +2131,7 @@ function reseatCellsToStoredCoords(was) {
   let offGrid = 0;
   const seatOf = new Map();
   held.forEach((v, k) => {
-    const cell = getCanvasCellFromDb(v.x, v.y, now.cols, now.rows, now.rotation, now.side,
+    const cell = getCanvasCellFromDb(physFrameOverride, v.x, v.y, now.cols, now.rows, now.rotation, now.side,
       now.invertY, now.startX, now.startY);
     if (cell.c < 0 || cell.c >= visC || cell.r < 0 || cell.r >= visR) offGrid++;
     const p = getDieIndex(physFrameOverride, cell.c, cell.r, now.cols, now.rows, now.rotation, now.side);
@@ -3400,7 +3408,7 @@ function renderGridCanvas() {
   //    (`isXMirrored`/`isYMirrored`). 원 bbox가 대칭인 동안만 우연히 같은 답이 나왔고,
   //    마우스 경로(`getGridCellObject`)는 이미 미러 항 없이 계산하고 있어 두 경로가 실제로
   //    갈려 있었다. 원점 상자가 유효 다이 기준이 되면 그 우연은 성립하지 않는다.
-  const zero = getCanvasCellFromDb(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+  const zero = getCanvasCellFromDb(physFrameOverride, 0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);
 
   // 지금 그리는 이 좌표계가 곧 "셀이 앉은 자리"다(§cellsSeatedUnder). 여기 한 줄이 기록의
@@ -3500,7 +3508,7 @@ function renderGridCanvas() {
       const completelyInside = isValidDieAt(physFrameOverride, physical.x, physical.y,
         isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
 
-      const visual = getDbCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const visual = getDbCoords(physFrameOverride, c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
       const coordKey = `${physical.x}_${physical.y}`;
       const val = gridData[coordKey] || '';
 
@@ -5244,7 +5252,7 @@ async function loadExistingMap(opts = {}) {
             //    above) carries the offset, and `getCanvasCellFromDb` applies it. The
             //    deleted `xNum -= minX` renumbered the cell instead, which the frame then had
             //    no record of, so Push wrote the renumbered coordinate back.
-            const cell = getCanvasCellFromDb(xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);
+            const cell = getCanvasCellFromDb(physFrameOverride, xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);
             const c = cell.c;
             const r = cell.r;
 
@@ -7778,7 +7786,7 @@ function planCoordPaste(coord, cf) {
   let placed = 0;
   let cleared = 0;
   coord.cells.forEach(t => {
-    const at = getCanvasCellFromDb(t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,
+    const at = getCanvasCellFromDb(physFrameOverride, t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,
       cf.invertY, cf.startX, cf.startY);
     const onGrid = at.r >= 0 && at.r < cf.visualRows && at.c >= 0 && at.c < cf.visualCols;
     if (!onGrid) {
@@ -8191,7 +8199,7 @@ function applyCellsToGrid(cells) {
     const yn = Number(cell.y);
     const val = cell.val !== null && cell.val !== undefined ? String(cell.val).trim() : '';
     if (!Number.isFinite(xn) || !Number.isFinite(yn) || val === '') return;
-    const c = getCanvasCellFromDb(xn, yn, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+    const c = getCanvasCellFromDb(physFrameOverride, xn, yn, cols, rows, currentRotation, currentSide, invertY, startX, startY);
     const physical = getDieIndex(physFrameOverride, c.c, c.r, cols, rows, currentRotation, currentSide);
     gridData[`${physical.x}_${physical.y}`] = val;
     count++;
@@ -8724,7 +8732,7 @@ function projectCellsToWaferMm(cells, frame) {
       const xn = Number(c.x);
       const yn = Number(c.y);
       if (!Number.isFinite(xn) || !Number.isFinite(yn)) return;
-      const cell = getCanvasCellFromDb(xn, yn, cols, rows, rotation, side, invertY, startX, startY);
+      const cell = getCanvasCellFromDb(f, xn, yn, cols, rows, rotation, side, invertY, startX, startY);
       const p = getDieIndex(f, cell.c, cell.r, cols, rows, rotation, side);
       out.push({
         srcX: xn, srcY: yn,
@@ -8895,7 +8903,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     // 좌표 (startX,startY)가 앉는 칸 = 마스크의 시작 칸. 이동량의 근거는 이 한 함수다.
     // ⚠️ 치수를 **인자로** 받는다. 아래에서 격자가 넓어질 수 있으므로 전/후를 같은 치수로
     //    재면 이동량이 거짓이 된다(토스트가 그 수를 사용자에게 보여 준다).
-    const seat0 = (c, r) => getCanvasCellFromDb(fsx, fsy, c, r,
+    const seat0 = (c, r) => getCanvasCellFromDb(physFrameOverride, fsx, fsy, c, r,
       currentRotation, currentSide, fiv, fsx, fsy);
 
     // (1) 근거를 바꾸기 **전에** 좌석 기록이 옛 좌표계를 가리키고 있어야 한다. 평소에는 직전
@@ -9447,7 +9455,7 @@ function diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMin
   //    읽는 값은 참조의 최솟값이 아니라 **이 맵이 선언한 START**이고, 오리진 셀은
   //    `box.minC - startX`에 선다.
   const sx = hereResolved.startX, sy = hereResolved.startY;
-  const zero = getCanvasCellFromDb(0, 0, postCols, postRows,
+  const zero = getCanvasCellFromDb(physFrameOverride, 0, 0, postCols, postRows,
     currentRotation, currentSide, hereInvertY, sx, sy);
   const startRow = hereInvertY ? box.maxR : box.minR;
   // 정렬 차이는 **마스크가 앉은 뒤** 한 번만 잰다. 참조는 자기 최소 다이를

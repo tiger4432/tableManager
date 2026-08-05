@@ -432,7 +432,7 @@ async function scoreAll(src, { verbose = false } = {}) {
 //    so that D0/D2 can keep injecting code that reads `userChoice`, `minX` and `minY`.
 const FIXED_ORIGIN = `    startX = minX;
     startY = minY;`;
-const OLD_SHIFT = `            const cell = getCanvasCellFromDb(xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);`;
+const OLD_SHIFT = `            const cell = getCanvasCellFromDb(physFrameOverride, xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);`;
 
 const MUTATIONS = [
   // 🔴 THE DEFECT ITSELF, put back verbatim — the only self-check that is worth anything.
@@ -463,7 +463,7 @@ const MUTATIONS = [
   // invariant-① violation this domain exists to stop.
   ['D6 the load stops applying the frame origin (getCanvasCellFromDb called with 0,0)',
    s => s.replace(OLD_SHIFT,
-                  '            const cell = getCanvasCellFromDb(xNum, yNum, cols, rows, rotation, side, invertY, 0, 0);')],
+                  '            const cell = getCanvasCellFromDb(physFrameOverride, xNum, yNum, cols, rows, rotation, side, invertY, 0, 0);')],
 ];
 
 const base = await scoreAll(SRC0, { verbose: true });

@@ -405,7 +405,7 @@ function paintOracle(S) {
     const p = S.getDieIndex(null, c, r, f.cols, f.rows, f.rot, f.side);
     const circle = S.isCellInsideWaferFast(c, r, f.vc, f.vr, cfg, 700, 700);
     if (!S.isValidDieAt(null, p.x, p.y, circle)) continue;
-    const v = S.getDbCoords(c, r, f.cols, f.rows, f.rot, f.side, f.inv, f.sx, f.sy);
+    const v = S.getDbCoords(null, c, r, f.cols, f.rows, f.rot, f.side, f.inv, f.sx, f.sy);
     S.gridData[`${p.x}_${p.y}`] = `${v.x},${v.y}`;
   }
   return Object.keys(S.gridData).length;
@@ -418,7 +418,7 @@ function readBack(S) {
   Object.keys(S.gridData).forEach(k => {
     const [px, py] = k.split('_').map(Number);
     const at = S.getCanvasCellFromDieIndex(null, px, py, f.cols, f.rows, f.rot, f.side);
-    const v = S.getDbCoords(at.c, at.r, f.cols, f.rows, f.rot, f.side, f.inv, f.sx, f.sy);
+    const v = S.getDbCoords(null, at.c, at.r, f.cols, f.rows, f.rot, f.side, f.inv, f.sx, f.sy);
     out.set(k, { was: S.gridData[k], now: `${v.x},${v.y}`, seat: `${at.c},${at.r}` });
   });
   return out;

@@ -59,7 +59,7 @@ function coordsByPhysKey(S, frame) {
     for (let r = 0; r < vR; r++) {
       for (let c = 0; c < vC; c++) {
         const p = S.getDieIndex(null, c, r, rf.cols, rf.rows, rf.rotation, rf.side);
-        const v = S.getDbCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
+        const v = S.getDbCoords(null, c, r, rf.cols, rf.rows, rf.rotation, rf.side,
           rf.invertY, rf.startX, rf.startY);
         out.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
       }

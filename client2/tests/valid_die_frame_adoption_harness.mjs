@@ -291,7 +291,7 @@ function coordMapOracle(S, frame) {
     const m = new Map();
     for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
       const p = S.getDieIndex(null, c, r, rf.cols, rf.rows, rf.rotation, rf.side);
-      const v = S.getDbCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
+      const v = S.getDbCoords(null, c, r, rf.cols, rf.rows, rf.rotation, rf.side,
                                   rf.invertY, rf.startX, rf.startY);
       m.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
     }

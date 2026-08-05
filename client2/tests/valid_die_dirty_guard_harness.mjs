@@ -358,7 +358,12 @@ function buildEnv(src, opts = {}) {
     //    function twice (`wasSeat`/`nowSeat`) around the moment it swaps the basis, at the
     //    frame's START coordinate. Those two entries are kept rather than filtered out — they
     //    are the clearest evidence in the list that the swap happened where it claims to.
-    getCanvasCellFromDb: (x, y) => {
+    // [2026-08-06] The recorder is a STUB, so it has to track the real signature by hand: the
+    // frame is now the leading argument. A stub that keeps the old shape does not fail -- it
+    // silently records the frame as the x coordinate, which is why the evidence read
+    // `null,1:ref` instead of `1,1:ref`. `_frame` is unused on purpose: this recorder is about
+    // WHEN the basis swapped relative to seating, not about which frame it swapped under.
+    getCanvasCellFromDb: (_frame, x, y) => {
       seatedUnderBasis.push(`${x},${y}:${sandbox.validDieBasis ? sandbox.validDieBasis() : '?'}`);
       return { c: Number(x) || 0, r: Number(y) || 0 };
     },

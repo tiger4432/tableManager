@@ -637,7 +637,7 @@ function runAll(src) {
       const m = new Map();
       const a = screenAxes(TGT);
       for (let r = 0; r < a.visualRows; r++) for (let c = 0; c < a.visualCols; c++) {
-        const d = ctx.getDbCoords(c, r, TGT.cols, TGT.rows, TGT.rotation, TGT.side, TGT.invertY, TGT.startX, TGT.startY);
+        const d = ctx.getDbCoords(null, c, r, TGT.cols, TGT.rows, TGT.rotation, TGT.side, TGT.invertY, TGT.startX, TGT.startY);
         m.set(`${c}_${r}`, `${d.x},${d.y}`);
       }
       return m;
