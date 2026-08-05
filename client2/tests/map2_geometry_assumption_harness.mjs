@@ -92,7 +92,8 @@ function wire(over) {
       ? { state: ASSUMPTION_AVAILABLE, requested: false, basis: { ...FLOOR },
           map_count: 3, map_ids: ['M2', 'M3', 'M4'], text: OFFER_TEXT }
       : o.assumption,
-    excluded: [], excluded_total: 1,
+    excluded: o.excluded || [],
+    excluded_total: o.excluded_total === undefined ? 1 : o.excluded_total,
     stats: { scored_cells: 528, elapsed_ms: 12 },
   };
 }
@@ -367,6 +368,202 @@ ok(stored.confirm.note.startsWith(WORDS.geometryAssumed),
      'G12 wearing the SAME proposal shape as a guessed column pair -- not a second language');
   ok(own && own.getAttribute('data-me2-proposed') === 'false',
      'G13 and the map that measured its own geometry does not');
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// H. THE OPERATOR'S ORDER -- PICK THE FLOOR BY HAND, THEN ACCEPT
+// ════════════════════════════════════════════════════════════════════════════════
+// G accepts on a question nobody touched. That is not the workflow this control was built for:
+// the operator picks the floor first, and only then accepts a claim ABOUT that floor. The two
+// orders exercise different code, because `withQuestion` deliberately CLEARS the claim when the
+// floor moves -- so an accept that re-entered the reference path would clear itself between the
+// click and the fetch and the feature could never work for its own workflow.
+//
+// 🔴 AND IT MEASURES THE VALUE AT THE TRANSPORT EDGE, NOT MERELY WHETHER IT IS TRUTHY. The api
+//    layer emits the parameter on `=== true` and OMITS it otherwise (B4), which is right --
+//    truthy junk must not unlock a claim -- but it also means a flag arriving as the string
+//    `'true'` or as `1` would vanish with no sound and look exactly like a click that never
+//    registered. So the type is asserted, not just the truth value, and the whole chain runs
+//    through the REAL api client: click -> question -> the page entry's request shape -> URL.
+{
+  const doc = makeDocument();
+  const seenAtLoader = [];   // the RAW value on the question, uncoerced
+  const sentUrls = [];
+  const app = bootstrap({ document: doc, api: { confirmFrame: () => Promise.resolve({}) } });
+  const client = createApiClient({
+    baseUrl: '',
+    fetchImpl: (url) => {
+      sentUrls.push(String(url));
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve(sentUrls.length >= 3 ? appliedWire : wire()),
+      });
+    },
+  });
+  // The page entry's own loader, copied in shape from `map_editor2.js:146-161`. Scoring the
+  // shell against a loader that reads the flag differently would score a request nobody sends.
+  app.setLoader((decision, question) => {
+    seenAtLoader.push(question.assumeReferenceGeometry);
+    return client.loadReferenceView({
+      rule: 'r',
+      mapTable: question.mapTable,
+      params: { dt_eqp: decision.eqp, product: decision.product },
+      xCol: question.columns.x, yCol: question.columns.y, valCol: question.columns.val,
+      reference: question.reference || undefined,
+      assumeReferenceGeometry: question.assumeReferenceGeometry === true,
+      includeCells: true,
+    });
+  });
+  app.setConfig(THRESHOLDS);
+  app.setCatalog(CATALOG);
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await settle();
+
+  // ── the operator's first motion: pick the floor by hand ──
+  const refSelect = doc.getElementById('me2-reference-select');
+  const fetchesBeforePick = app.bar.fetches;
+  refSelect.value = `${FLOOR.table}:${FLOOR.map_id}`;
+  refSelect.dispatchEvent('change');
+  await settle();
+  eq(app.bar.fetches - fetchesBeforePick, 1, 'H1 picking the floor costs exactly one fetch');
+  eq(seenAtLoader[1], false,
+     'H2 and that request assumes nothing -- picking a floor is not asserting anything about it');
+  ok(sentUrls[1].includes('reference=') && sentUrls[1].includes(encodeURIComponent(FLOOR.map_id)),
+     'H3 the picked floor is on the wire');
+  ok(!sentUrls[1].includes('assume_reference_geometry'),
+     'H4 and no claim rides along with it');
+
+  // ── the operator's second motion: accept, WITH a floor already picked ──
+  const accept = doc.getElementById('me2-assume-accept');
+  eq(accept.hidden, false, 'H5 the offer survived the floor being picked, so there is a control');
+  const fetchesBeforeAccept = app.bar.fetches;
+  accept.dispatchEvent('click');
+  await settle();
+  eq(app.bar.fetches - fetchesBeforeAccept, 1,
+     'H6 accepting after a manual pick is still exactly ONE re-ask');
+  eq(seenAtLoader[2], true,
+     'H7 THE CLAIM SURVIVES THE CLICK IN THIS ORDER -- nothing re-enters the reference path '
+     + 'between the click and the fetch and clears it');
+  eq(typeof seenAtLoader[2], 'boolean',
+     'H8 and it is a BOOLEAN at the transport edge, not a truthy string the api would omit');
+  ok(sentUrls[2].includes('assume_reference_geometry=true'),
+     'H9 so the claim reaches the URL');
+  ok(sentUrls[2].includes('reference='),
+     'H10 and the floor it was asserted about is still on the same request');
+
+  // 🔴 THE ONE WAY A CLAIM COULD VANISH SILENTLY IS SHUT AT THE DOOR, NOT AT THE WIRE. A
+  //    non-boolean never reaches the api to be omitted: the question normalises it to false, so
+  //    the screen and the request agree about what was claimed. If this ever regressed, the
+  //    symptom would be indistinguishable from a dead button.
+  for (const junk of ['true', 1, {}, 'yes']) {
+    const j = withQuestion(base, { assumeReferenceGeometry: junk });
+    eq(j.question.assumeReferenceGeometry, false,
+       `H11 a non-boolean claim (${JSON.stringify(junk)}) is refused at the question, not at the api`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// I. THE REFUSAL KEEPS ITS MEASUREMENTS
+// ════════════════════════════════════════════════════════════════════════════════
+// THE DEFECT: the operator read `격자 치수가 기준과 다름 - 같은 잘림이 아님` and could not tell
+// WHICH grid was wrong or BY HOW MUCH -- which is the entire content of that message. The
+// numbers are served: the exclusion tally carries them per reason as `example_detail`
+// (`server/map_alignment.py:654-655` for this one, `:387-389` for `cells_outside_grid`). What
+// the client rendered was `payload.refusal`, and `compose_refusal` builds that sentence out of
+// the reason LABELS only (`:1062-1067`) -- so the measurement was in the payload, one field
+// away, and the decoder read nothing but `excluded_total`.
+//
+// SCORED THROUGH THE SHELL, not against the view model alone: the loss was at the last hop.
+const GRID_LABEL = '격자 치수가 기준과 다름 - 같은 잘림이 아님';
+const GRID_DETAIL = '소스 45x39 · 기준 44x39';
+const OUTSIDE_LABEL = '셀이 빌린 격자 밖 - 같은 격자의 부분집합이 아닙니다';
+const OUTSIDE_DETAIL = '셀 범위 x 0~44 · y 0~40이 빌린 격자의 인덱스 공간 x 0~43 · y 0~38를 '
+  + '벗어납니다 - 같은 격자의 부분집합이 아닙니다';
+const NO_CELLS_LABEL = '좌표 0건';
+// The server's sentence, as `compose_refusal` composes it: labels and counts, no measurements.
+const REFUSAL_SENTENCE = `채점 0건 - 소스 맵 5개 중 5개 제외 · ${GRID_LABEL} (3) · `
+  + `${OUTSIDE_LABEL} (1) · ${NO_CELLS_LABEL} (1)`;
+
+function refusedTallyWire(rows) {
+  return wire({
+    state: 'not_scorable',
+    refusal: REFUSAL_SENTENCE,
+    excluded: rows,
+    excluded_total: rows.reduce((n, r) => n + (r.count || 0), 0),
+  });
+}
+
+const TALLY = [
+  { reason_code: 'grid_dims_differ', reason: GRID_LABEL, count: 3,
+    example_map_id: 'M2', example_detail: GRID_DETAIL },
+  { reason_code: 'cells_outside_grid', reason: OUTSIDE_LABEL, count: 1,
+    example_map_id: 'M3', example_detail: OUTSIDE_DETAIL },
+  // No measurement to carry: `좌표 0건` is complete as a label. It must contribute NO line
+  // rather than an empty one, or every refusal grows a trail of separators.
+  { reason_code: 'no_cells', reason: NO_CELLS_LABEL, count: 1,
+    example_map_id: 'M4', example_detail: null },
+];
+
+{
+  const doc = makeDocument();
+  const logged = [];
+  doc.defaultView.console = { log: (...a) => logged.push(a.map(String).join(' ')) };
+  const app = bootstrap({ document: doc, api: { confirmFrame: () => Promise.resolve({}) } });
+  app.setLoader(() => Promise.resolve(refusedTallyWire(TALLY)));
+  app.setConfig(THRESHOLDS);
+  app.setCatalog(CATALOG);
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await settle();
+
+  const shown = doc.getElementById('me2-refusal').textContent;
+  ok(shown.includes(GRID_DETAIL),
+     'I1 THE MEASUREMENT REACHES THE SCREEN -- the operator can see which grid is wrong and '
+     + 'by how much, not merely that one is');
+  ok(shown.startsWith(REFUSAL_SENTENCE),
+     'I2 and the server\'s sentence still leads, byte for byte -- nothing was re-worded');
+  ok(shown.includes(OUTSIDE_DETAIL),
+     'I3 the other measured reason rides the SAME path -- one renderer, not one per reason');
+  ok(!shown.includes(' ·  ') && !shown.endsWith(' · '),
+     'I4 a reason with nothing to measure contributes no empty line');
+  // The console keeps what the line cannot hold: which map was the example, per reason.
+  //
+  // 🔴 SCORED ON THE TALLY LINE, NOT ON THE MAP ID APPEARING ANYWHERE. `M2`..`M4` are also the
+  //    assumption block's `map_ids`, so `record.includes('M2')` was green before this lane
+  //    touched anything -- an assertion that cannot fail is not a check. The whole composed row
+  //    is matched instead, including the reason that has NO measurement: an unmeasured reason
+  //    must still be recorded with its example map, which is the only place that fact survives.
+  const record = logged.join(' | ');
+  ok(record.includes(`제외 · ${NO_CELLS_LABEL} · 1개 · 예: M4`),
+     'I5 the console records the whole tally row, example map included, even for a reason '
+     + 'that carries no measurement');
+  ok(record.includes(GRID_DETAIL), 'I6 and carries the measurement whole');
+}
+
+// The view model keeps the two apart: `detail` is the server's sentence and nothing is appended
+// INTO it. A harness already scores that field as verbatim, and folding the measurements in
+// would leave that assertion passing while the field stopped being what it claims.
+{
+  const vm = ready(refusedTallyWire(TALLY));
+  eq(vm.state, VIEW_STATE.NOT_SCORABLE, 'I7 the run is refused');
+  eq(vm.cause.detail, REFUSAL_SENTENCE, 'I8 `detail` is the server sentence, unchanged');
+  eq((vm.cause.measurements || []).length, 2,
+     'I9 and the measurements are a separate LIST -- one entry per reason that had one');
+  eq((vm.cause.measurements || [])[0], GRID_DETAIL,
+     'I10 in the order the server ranked them, never re-sorted here');
+
+  // 🔴 NO ALLOW-LIST OF REASON CODES. A reason this client has never heard of still arrives with
+  //    the server's own label and the server's own measurement; keying the render on a known set
+  //    would make the next server reason silently measurement-less, which is this defect again.
+  const alienTally = [{ reason_code: 'wafer_lot_mismatch', reason: '알 수 없는 사유',
+                        count: 2, example_map_id: 'M9', example_detail: '소스 LOT-A · 기준 LOT-B' }];
+  const alien = ready(refusedTallyWire(alienTally));
+  eq((alien.cause.measurements || [])[0], '소스 LOT-A · 기준 LOT-B',
+     'I11 an unknown reason code keeps its measurement');
+
+  const bare = ready(wire({ state: 'not_scorable', refusal: REFUSAL_SENTENCE }));
+  eq((bare.cause.measurements || []).length, 0,
+     'I12 a payload with no tally measures nothing rather than inventing a placeholder');
+  eq(bare.cause.detail, REFUSAL_SENTENCE, 'I13 and the sentence is unaffected');
 }
 
 console.log(`ASSERTIONS ${compared} ${failures.length}`);

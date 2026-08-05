@@ -364,12 +364,20 @@ function headlineFor(state) {
 function causeFor(state, verdict, payload, attribution, evidence) {
   const serverDetail = (verdict && verdict.refusalDetail)
     || (payload && payload.refusal_detail) || null;
+  // 🔴 THE SENTENCE NAMES THE REASONS; THE TALLY HOLDS THE MEASUREMENTS. `compose_refusal`
+  //    builds its sentence out of the exclusion tally's LABELS and drops each row's
+  //    `example_detail` (`server/map_alignment.py:1062-1067`), so the operator was told
+  //    `격자 치수가 기준과 다름` with no dimensions -- which grid is wrong, and by how much, is
+  //    the whole content of that message. The numbers ARE served, one row down. They are
+  //    carried here as VALUES, in the order the server ranked them, and never re-worded: every
+  //    string in this list was composed by the server, exactly like `detail` itself.
+  const measurements = measurementsOf(payload);
   const reason = verdict ? verdict.reason : null;
   // An unattributable answer outranks every scored cause: the counts may be perfect and still
   // belong to a column pair nobody named. Said with a token, never with an invented sentence.
   if (attribution && attribution.state === ATTRIBUTION.UNSTATED
       && state !== VIEW_STATE.COMPUTING && state !== VIEW_STATE.IDLE) {
-    return frozenCause(WORDS.columnsUnstated, attribution.pairCount, serverDetail);
+    return frozenCause(WORDS.columnsUnstated, attribution.pairCount, serverDetail, measurements);
   }
   // 🔴 A TIE WITH NO VALUES IS NOT THE SAME EVENT AS A TIE WITH THEM. Occupancy alone was
   //    measured flat -- one production case has all eight candidates on the SAME dies -- so an
@@ -377,12 +385,14 @@ function causeFor(state, verdict, payload, attribution, evidence) {
   //    of a genuine ambiguity. The repairs differ: name a value column, versus nothing.
   if (evidence && evidence.occupancyOnly && state === VIEW_STATE.SCORED_NO_WINNER) {
     const tied = verdict && Number.isFinite(verdict.tiedCount) ? verdict.tiedCount : null;
-    return frozenCause(CAUSE.reference_no_values, tied, serverDetail);
+    return frozenCause(CAUSE.reference_no_values, tied, serverDetail, measurements);
   }
   if (state === VIEW_STATE.NOT_SCORABLE) {
     // A server sentence always wins. It names which map is at fault and what to declare, and a
-    // local equivalent would be a second spelling of one fact.
-    if (serverDetail) return frozenCause(null, null, serverDetail);
+    // local equivalent would be a second spelling of one fact. Its measurements ride with it:
+    // a label without them sends the operator to look for a difference nobody told them the
+    // size of.
+    if (serverDetail) return frozenCause(null, null, serverDetail, measurements);
     if (reason === REASON.NO_REFERENCE) return frozenCause(CAUSE.no_reference);
     if (reason === REASON.REFERENCE_NO_VALUES) return frozenCause(CAUSE.reference_no_values);
     if (reason === REASON.NO_THRESHOLDS) return frozenCause(CAUSE.no_thresholds);
@@ -406,12 +416,33 @@ function causeFor(state, verdict, payload, attribution, evidence) {
   return null;
 }
 
-function frozenCause(token, count, detail) {
+function frozenCause(token, count, detail, measurements) {
   return Object.freeze({
     token: token || null,
     count: Number.isFinite(count) ? count : null,
     detail: detail || null,
+    // 🔴 A LIST, NOT A SENTENCE, AND NEVER FOLDED INTO `detail`. `detail` is the server's own
+    //    sentence carried byte-for-byte, and a harness scores that it is verbatim; appending to
+    //    it here would make that assertion pass while the field it protects stopped being what
+    //    it says. The joining is the renderer's, once, at the one slot that shows this.
+    measurements: Object.freeze(Array.isArray(measurements) ? measurements.slice() : []),
   });
+}
+
+/**
+ * The measurement each excluded reason carries, in the order the server ranked them.
+ *
+ * 🔴 EMPTY IS THE ORDINARY ANSWER. Most exclusion reasons have nothing to measure -- `좌표 0건`
+ *    is complete as a label -- so a run with no measured reason contributes no line rather than
+ *    a placeholder. Only rows the SERVER attached a detail to appear.
+ */
+function measurementsOf(payload) {
+  const rows = payload && Array.isArray(payload.excluded_reasons) ? payload.excluded_reasons : [];
+  const out = [];
+  for (const row of rows) {
+    if (row && row.detail) out.push(String(row.detail));
+  }
+  return out;
 }
 
 /**

@@ -275,10 +275,18 @@ export function bootstrap(deps) {
     text(el.caption, vm.caption);
     setAttrText(doc, '[data-me2-picture-meta]', vm.meta);
 
-    // The server's own refusal sentence, verbatim. A second copy of it on this side would be
-    // two spellings of one fact, which is the defect class this round exists to close.
-    const detail = vm.cause && vm.cause.detail ? vm.cause.detail : '';
-    if (el.refusal) text(el.refusal, vm.state === VIEW_STATE.NOT_SCORABLE ? detail : '');
+    // The server's own refusal sentence, verbatim, WITH the measurements that sentence left
+    // behind. A second copy of it on this side would be two spellings of one fact, which is the
+    // defect class this round exists to close -- so both halves are the server's strings and
+    // `causeLine` only joins them, in the one place that renders this.
+    //
+    // 🔴 ONE JOINER, NOT TWO. This slot used to read `vm.cause.detail` directly while the cause
+    //    line beside it went through `causeLine`, so a fix to one of them was invisible in the
+    //    other. Whatever the operator reads about why there is no answer now comes from a
+    //    single function, and the console record below quotes that same string.
+    if (el.refusal) {
+      text(el.refusal, vm.state === VIEW_STATE.NOT_SCORABLE ? causeLine(vm.cause) : '');
+    }
 
     renderQuestion(vm);
     renderWorklist(vm);
@@ -713,6 +721,12 @@ export function bootstrap(deps) {
    * whole, never truncated. Logged only when it CHANGES, because a repaint is not an event and
    * a line per repaint is a log nobody reads.
    */
+  /** The served exclusion tally, in the server's own order. Empty when nothing was excluded. */
+  function excludedRows() {
+    const rows = session.payload && session.payload.excluded_reasons;
+    return Array.isArray(rows) ? rows : [];
+  }
+
   function logDiagnosis(vm) {
     const view = doc.defaultView;
     if (!view || !view.console) return;
@@ -722,6 +736,18 @@ export function bootstrap(deps) {
     //    the caption and the inline meta one-line with ellipsis, and deleted the cause node
     //    outright. Anything not logged here whole is not moved to the console, it is DESTROYED.
     if (vm.cause && vm.cause.detail) lines.push(vm.cause.detail);
+    // 🔴 THE WHOLE TALLY, AND IT IS WIDER THAN THE LINE ON SCREEN. The refusal slot shows the
+    //    sentence and each reason's measurement; WHICH map was the example, and how many maps
+    //    each reason took, do not fit beside them and are exactly what answers "what was wrong
+    //    with this unit" months later. Every field here is the server's -- `reason` is its
+    //    label, `detail` its measurement -- so an exclusion reason this client has never heard
+    //    of still logs completely.
+    for (const row of excludedRows()) {
+      lines.push(['제외', row.reason || row.reasonCode || '(no reason)',
+                  row.count === null ? '미상' : `${row.count}개`,
+                  row.exampleMapId ? `예: ${row.exampleMapId}` : '',
+                  row.detail || ''].filter(Boolean).join(' · '));
+    }
     // 🔴 THE SERVER'S SENTENCE SURVIVES A SCORED STATE. On a tie `/view` sends both a
     //    `no_winner` state and a refusal sentence, and the cause line shows the TOKEN there
     //    because the token names the repair (`대칭 기준` and `기준 값 없음` are repaired
@@ -1297,6 +1323,13 @@ export function adaptPayload(raw) {
     discriminating_dies: decoded.counts.discriminatingDies,
     elapsed_ms: decoded.counts.elapsedMs,
     refusal_detail: decoded.refusalDetail,
+    // 🔴 THE SENTENCE AND ITS MEASUREMENTS TRAVEL SEPARATELY, BECAUSE THE SERVER SENDS THEM
+    //    SEPARATELY. `refusal_detail` is the composed sentence and it carries reason LABELS
+    //    only; the numbers that say WHICH grid is wrong and BY HOW MUCH are in the tally's
+    //    `example_detail`. Spelled `excluded_reasons` rather than `excluded` so it cannot be
+    //    confused with the raw wire's own `excluded` block -- this is the adapted shape, with
+    //    the decoder's names, and the raw one is still reachable through `__decoded`.
+    excluded_reasons: decoded.excluded,
     // 🔴 WHICH COLUMN PAIR DID THE SERVER ACTUALLY READ. Null today: the route takes no column
     //    parameter and the `unit` block echoes none (`server/main.py:4160-4168`,
     //    `server/map_alignment.py:677`). Read here rather than assumed, so the day the server
@@ -1410,11 +1443,24 @@ function headlineNum(vm) {
   return vm.summary.hasNumerals ? vm.summary.countText : '';
 }
 
+/**
+ * The one line the operator reads about why there is no answer.
+ *
+ * 🔴 A SENTENCE JOINED TO ITS MEASUREMENTS BY A SEPARATOR, NEVER A CLAUSE. Every part is a
+ *    string the SERVER composed -- the refusal sentence, and each excluded reason's own
+ *    `example_detail` -- and this side contributes only the ` · ` between them, exactly as the
+ *    set-up note already joins served parts. Without the second half the operator is told
+ *    `격자 치수가 기준과 다름` and cannot see which grid is wrong or by how much, which is the
+ *    entire content of that message; with it they read `소스 45x39 · 기준 44x39` beside it.
+ */
 function causeLine(cause) {
   if (!cause) return '';
-  if (cause.detail) return cause.detail;      // the server's sentence, verbatim
+  const measured = (cause.measurements || []).filter(Boolean);
+  // the server's sentence, verbatim, plus the numbers it did not carry
+  if (cause.detail) return [cause.detail].concat(measured).join(' · ');
   if (!cause.token) return '';
-  return cause.count === null ? cause.token : `${cause.token} · 후보 ${cause.count}`;
+  const head = cause.count === null ? cause.token : `${cause.token} · 후보 ${cause.count}`;
+  return [head].concat(measured).join(' · ');
 }
 
 export { VIEW_STATE, createApiClient, spellFrame };

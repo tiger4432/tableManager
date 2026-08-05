@@ -308,7 +308,7 @@ const FLOORS = new Map([
   //    distinct from one reached on a declaration. A drop means the screen regained the ability
   //    to assume silently -- to show a confirmed alignment whose geometry was borrowed without
   //    saying so, which is a manufactured declaration on the layer the bonding plan rests on.
-  ['map2_geometry_assumption_harness.mjs', 74],
+  ['map2_geometry_assumption_harness.mjs', 101],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

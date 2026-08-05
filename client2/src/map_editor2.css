@@ -58,7 +58,6 @@
 #me2-confirm-note,
 #me2-confirm-hint,
 .me2-caption,
-.me2-refusal,
 .me2-notice,
 .me2-cand-legend,
 .me2-wl-empty,
@@ -955,9 +954,21 @@ body {
 
 /* The server composes this sentence; the client renders it verbatim.
    A second copy of it in the client is the two-spellings defect.
-   One line, truncated if longer. The wiring logs the whole thing - a
-   refusal that wraps into a paragraph pushes the picture down, and the
-   picture is the only thing on this screen the operator can check. */
+
+   🔴 THE ONE SLOT ON THIS SCREEN THAT MAY WRAP, AND ONLY THIS FAR. It
+   was in the nowrap+ellipsis group above, which is right for every
+   other slot: those carry a label, and a label that does not fit was
+   too long to be a label. This one carries the ONLY thing on screen
+   when there is no answer - the server's refusal sentence AND the
+   measurements behind it (`소스 45x39 · 기준 44x39`), which arrive
+   after the sentence and so are exactly what an ellipsis eats first.
+   Cutting them leaves the operator told that a grid is wrong without
+   which grid or by how much, and with the picture blank there is
+   nothing else to read instead.
+
+   Bounded at three lines, so the reason the original rule exists still
+   holds: a refusal cannot grow into a paragraph and push the picture
+   down. Past three the console still has it whole. */
 .me2-refusal {
   font-size: 0.88rem;
   color: var(--text-muted);
@@ -965,6 +976,14 @@ body {
   border: 1px solid var(--warning);
   border-radius: 8px;
   padding: 7px 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 
 /* ---- Excel form: paste result (aggregate, never per-row) ---- */
@@ -1510,9 +1529,13 @@ body {
 [data-me2-state="computing"] #me2-picture-skeleton { display: flex; }
 [data-me2-state="computing"] #me2-picture-svg { display: none; }
 
-/* Scored-and-decided hides the two explanatory blocks. */
+/* Scored-and-decided hides the two explanatory blocks.
+   🔴 SHOWN AS `-webkit-box`, NOT AS `block`. The line clamp on `.me2-refusal` is what bounds
+   this slot to three lines, and it only applies to that display type - restoring `block` here
+   would silently un-bound the block and let a long refusal push the picture off screen. The
+   visibility switch must not also change the layout mode. */
 #me2-refusal { display: none; }
-[data-me2-state="unscorable"] #me2-refusal { display: block; }
+[data-me2-state="unscorable"] #me2-refusal { display: -webkit-box; }
 
 /* The floor is the reference. In `unscorable` we genuinely know where the
    source cells are and genuinely do not know how they relate to anything,

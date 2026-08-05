@@ -206,6 +206,24 @@ export function decodeReferenceView(payload) {
     present: !!p,
     state: p && p.state ? String(p.state) : null,
     refusalDetail: p && p.refusal ? String(p.refusal) : null,
+    // 🔴 THE TALLY'S MEASUREMENTS, WHICH THE COMPOSED SENTENCE DOES NOT CARRY. `compose_refusal`
+    //    lifts the reason LABELS out of this same list and joins them
+    //    (`server/map_alignment.py:1062-1067`); it does not lift `example_detail`, and the
+    //    detail is where the numbers are -- `소스 45x39 · 기준 44x39` for `grid_dims_differ`,
+    //    the cell bbox versus the borrowed grid for `cells_outside_grid`. Reading only
+    //    `excluded_total` left the operator a label with no measurement: "the grid differs"
+    //    without which grid or by how much, which is the entire content of the message.
+    //    Decoded as VALUES; the joining happens once, at the one slot that renders it.
+    excluded: Object.freeze(arr(p && p.excluded).map(e => Object.freeze({
+      reasonCode: e && e.reason_code != null ? String(e.reason_code) : null,
+      // The server's own label. Never re-spelled here -- an unknown reason code still arrives
+      // with the sentence that explains it, so a new server reason needs no client release.
+      reason: e && e.reason != null ? String(e.reason) : null,
+      count: intOrNull(e && e.count),
+      exampleMapId: e && e.example_map_id != null ? String(e.example_map_id) : null,
+      detail: e && e.example_detail != null && String(e.example_detail) !== ''
+        ? String(e.example_detail) : null,
+    }))),
     // 🔴 A COUNT PER FRAME, NOT A WINNER. The unit's maps can disagree about what is declared,
     //    and picking a winner among declarations is a JUDGEMENT -- the client must not make
     //    it. The server already counts only DECLARED-provenance maps into `frames`, and counts
