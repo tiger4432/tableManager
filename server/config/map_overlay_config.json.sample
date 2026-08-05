@@ -74,5 +74,10 @@
       "from_overlay": [],
       "message": "이 셀은 잠금 값이라 페인팅할 수 없습니다."
     }
+  },
+  "__alignment_comment": "맵 정렬 채점(GET /api/maps/alignment/view)의 판정 문턱. 이 블록이 없으면 서버는 순위를 내지 않고 ruling.reason_code='no_thresholds'로 거절한다 — 코드에 기본값이 없는 것은 의도다. 미선언을 0으로 접으면 「구별 못 함」이 「자신 있는 1등」이 되고, 그 실패(Number(null)===0)가 이 프로젝트를 세 번 물었다. | 두 문턱은 서로를 대신하지 않는다: min_discriminating_dies는 '결정할 근거가 있나', min_margin_dies는 '1등이 2등보다 충분히 앞서나'. 판별 3다이 위의 큰 격차도, 판별 500다이 위의 1다이 격차도 결정이 아니다. | 단위는 다이 개수다. 백분율이 아니다 — 실측에서 적합도 퍼센트는 순위를 뒤집었다(MAP_ALIGNMENT_SPEC §3). | 값은 기준 맵(유효 다이 floor)의 실제 분해능에서 유도한다: seed_valid_die_ref_floor.py의 verify_discrimination이 이 박스의 floor에 대해 '비항등 7프레임을 최소 20다이로 가른다'고 보고하므로, 20다이 미만의 격차는 floor 자신의 분해능 아래라 방위의 증거가 될 수 없다. 🔴 다른 floor를 쓰면 이 숫자를 다시 유도할 것 — 옮겨 적지 말 것.",
+  "alignment": {
+    "min_margin_dies": 20,
+    "min_discriminating_dies": 20
   }
 }

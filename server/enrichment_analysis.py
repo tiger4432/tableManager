@@ -33,13 +33,25 @@ THE QUEUE PREDICATE IS NOT REDEFINED HERE
     [2026-08-04]. `queue_filters` is now the WHOLE queue (targets blank), because
     the progress bar's denominator counts every derived row and the remainder has
     to count the same population (N36). `keyed_queue_filters` adds "every decision
-    key non-blank", and that is what everything in THIS module walks by default:
-    a reference view is queried WITH the key's value, so on a blank key the probe
-    either finds nothing or - worse - matches whatever else happens to be blank
-    and hands `confirm_keys` a single candidate to WRITE. Display may show those
-    rows; the sweep may not touch them. `classify_queue` is the one caller that
-    walks the whole queue, and it does so to NAME them (`blank_decision_key`),
-    which keeps its total equal to the worklist remainder and the badge.
+    key non-blank".
+
+    THE WRITE PATH NO LONGER TAKES THE KEYED COMPOSITION  [2026-08-05, user ruling]
+    It did until now, and this docstring said the sweep "may not touch" blank-key
+    rows. The ruling is the opposite and its reasoning is that `auto_confirm` IS
+    the consent: it is per-rule, it is off unless declared, and whoever declares
+    it has accepted unattended writes for that rule. A second gate underneath it
+    would be code holding an opinion about operational behaviour that config
+    already decided. So `run_auto_confirm_sweep` walks SCOPE_QUEUE and works
+    whatever survives of each key; what refuses is arithmetic, not policy, and it
+    refuses down in `resolve_target_candidate` where the evidence actually is
+    (`missing_bind` per view, `no_decision_key` when nothing survives at all).
+
+    ② (`propose_rules`) still walks SCOPE_KEYED, and that is not a leftover: it
+    learns "this key determined this value" from RESOLVED rows, and a row missing
+    part of its key cannot teach that - the judgement it records would be
+    attributed to columns that were not there. ④ (`classify_queue`) walks both
+    and names the blank-key rows (`blank_decision_key`), which keeps its total
+    equal to the worklist remainder and the badge.
 
     That translator used to be reached as `main.get_column_filter_condition`, and
     the import was lazy so that a worker would not drag the web app in. The lazy
@@ -71,6 +83,11 @@ SAMPLES_PER_CLASS = 5
 # Which composition of the queue predicate a walk uses. See `_queue_condition`.
 SCOPE_KEYED = "keyed"
 SCOPE_BLANK_KEY = "blank_key"
+# The whole queue: targets blank, no key predicate at all - `queue_filters`
+# itself, the same object the worklist and the progress remainder consume. This
+# is what the sweep walks, so the population it examines is the population the
+# operator sees.
+SCOPE_QUEUE = "queue"
 
 # ④ classes. The first two are the BUG class: a human filling one of these is
 # paying off a pipeline defect.
@@ -108,8 +125,9 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False,
 
     `scope` selects WHICH composition (see the module docstring):
       - SCOPE_KEYED (default): `keyed_queue_filters` - targets blank AND every
-        decision key non-blank. Byte-for-byte the predicate this module has
-        always used, and the only one any write path may see.
+        decision key non-blank. What ② learns from.
+      - SCOPE_QUEUE: `queue_filters` - targets blank, nothing else. The whole
+        queue as the operator sees it, and what the sweep works.
       - SCOPE_BLANK_KEY: its complement inside the queue - targets blank AND at
         least ONE decision key blank. Reporting only.
     `resolved=True` is meaningful for SCOPE_KEYED only.
@@ -138,6 +156,10 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False,
         conds = [translate(col, spec) for col, spec in public["queue_filters"].items()]
         conds.append(or_(*[translate(k, {"type": "blank"}) for k in rule["decision_key"]]))
         return and_(*conds)
+
+    if scope == SCOPE_QUEUE:
+        return and_(*[translate(col, spec)
+                      for col, spec in public["queue_filters"].items()])
 
     filters = public["keyed_queue_filters"]
     if resolved:
@@ -573,6 +595,13 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
     `ignore_knob` lets an operator MEASURE a rule whose `auto_confirm` is off
     (the honest default) - it is refused in apply mode, where the knob is the
     consent.
+
+    THE WALK IS SCOPE_QUEUE, NOT SCOPE_KEYED  [2026-08-05, user ruling]
+    So this examines the same population the operator's worklist shows, including
+    rows whose decision key is only partly present. Those resolve on the columns
+    that survive and are written with `SOURCE_NAME_PARTIAL_KEY`, which is how the
+    decision stays addressable afterwards. A row with NO surviving key refuses in
+    `resolve_target_candidate` and is counted under `no_decision_key`.
     """
     import enrichment_candidates
     from database import crud
@@ -594,7 +623,7 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
             f"candidate - it is never guessed.")
 
     keyed = []
-    for r in iter_derived_rows(db, rule, resolved=False, limit=limit):
+    for r in iter_derived_rows(db, rule, resolved=False, limit=limit, scope=SCOPE_QUEUE):
         blanks = [t for t in rule["target_fields"]
                   if crud.clean_str_value(r["targets"].get(t)) == ""]
         keyed.append({"row_id": r["row_id"], "business_key_val": r["business_key_val"],

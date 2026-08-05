@@ -843,3 +843,47 @@ def test_execute_reference_view_refuses_missing_bind(cand_env):
     view = _loaded_rule()["reference_views"][0]
     with pytest.raises(enrichment_config.ReferenceViewError):
         enrichment_config.execute_reference_view(cand_env, view, {"lot": "L1"})
+
+
+def test_a_blank_bind_value_is_missing_and_not_a_query_that_matches_nothing(cand_env):
+    """Absent and blank read the same from the view's side; only one was named.
+
+    Passing `slot=''` used to build a legal query that returned no rows, and a
+    zero-row read is indistinguishable from "no such evidence exists" at the call
+    site. Now that a partial decision key is workable this distinction carries
+    weight: the views that still bind get asked, and the view that cannot be
+    asked says so. `resolve_target_candidate` has always folded blank into
+    missing - this puts the same funnel where the SQL is built, so the DISPLAY
+    path and the CANDIDATE path refuse the same view for the same reason.
+    """
+    view = _loaded_rule()["reference_views"][0]      # binds lot AND slot
+    with pytest.raises(enrichment_config.ReferenceViewError) as e:
+        enrichment_config.execute_reference_view(cand_env, view, {"lot": "L1", "slot": "  "})
+    assert "slot" in str(e.value)
+    with pytest.raises(enrichment_config.ReferenceViewError):
+        enrichment_config.execute_candidate_probe(
+            cand_env, view, "wafer_id", {"lot": "L1", "slot": ""})
+
+    # The control: the SURVIVING bind still executes, on the same call, so this is
+    # a refusal about one view and not a blanket one about blank-containing keys.
+    subset = _loaded_rule()["reference_views"][1]    # binds lot only
+    columns, rows = enrichment_config.execute_reference_view(
+        cand_env, subset, {"lot": "L1", "slot": ""})
+    assert "wafer_id" in columns and rows
+
+
+def test_collector_keeps_a_partial_key_and_drops_only_a_wholly_blank_one(cand_env):
+    """The chain-worker gate follows the same ruling as the sweep.
+
+    It used to skip a row if ANY key column was blank. Now it skips only when
+    NOTHING survives - and that skip is an optimization, not a second opinion:
+    `resolve_target_candidate` would refuse the same row `no_decision_key`.
+    """
+    c = enrichment_candidates.AutoConfirmCollector("encand_test_derived")
+    assert c.active, "fixture is inert: the collector must be live for this to mean anything"
+    c.collect([
+        {"business_key_val": "FULL", "updates": {"lot": "L1", "slot": "S1"}},
+        {"business_key_val": "PARTIAL", "updates": {"lot": "L1", "slot": ""}},
+        {"business_key_val": "KEYLESS", "updates": {"lot": "", "slot": ""}},
+    ])
+    assert set(c.entries) == {"FULL", "PARTIAL"}

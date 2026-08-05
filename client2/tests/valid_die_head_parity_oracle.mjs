@@ -20,8 +20,34 @@ import vm from 'node:vm';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
+
+// ── THE BASE IS A FIXED ACCEPTANCE ANCHOR, NOT `HEAD` ───────────────────────────
+// 🔴 THE DEFAULT USED TO BE `HEAD`, AND THAT IS INVERTED: it made this oracle green only
+//    on a DIRTY tree and dead on a clean checkout. Once a change to `map_editor.js` is
+//    committed, `HEAD`'s blob IS the working copy, `baseSrc === workSrc` fires, and the run
+//    dies having compared nothing. Measured 2026-08-05: commit `74ce8b1` landed an in-flight
+//    `map_editor.js` and this oracle went from `ASSERTIONS 17498 0` to a hard die on the very
+//    next run, with no line of `map_editor.js` differing from what had just passed.
+// 🔴 THAT IS THE `ASSERTIONS 0 0` CLASS, and it is the same trap `map_spec_only_save_harness`
+//    carries from the other side: a check that locates its subject by matching text (there, a
+//    toast used as a slicer anchor; here, a git rev) stops comparing anything the moment the
+//    text moves, and "nothing was compared" reads exactly like "nothing was wrong". The
+//    `die()` on identical sources below is the guard against that, and it is CORRECT — the
+//    defect was never the guard, it was choosing a base that makes vacuity the normal state.
+// 🔴 SO THE BASE IS THE COMMIT WHERE INV-1 WAS ACCEPTED, and it does not move when HEAD does.
+//    `4d973d6` (M4 phase 2, 2026-07-29) is the commit that introduced this oracle and the
+//    claim it scores, so "unchanged since acceptance" is literally what the run now measures.
+//    It is also the OLDEST anchor that still holds: parity was measured against every
+//    map_editor.js commit from `4d973d6` forward on 2026-08-05 and every one gave 0 differing
+//    cells, so the strongest available claim is the one taken. Anchoring nearer to HEAD would
+//    have been weaker for no gain — it would only protect changes made after that point.
+// ⚠️ WHEN THIS GOES RED, DO NOT RE-BASE IT TO SILENCE IT. Red means the no-declaration verdict
+//    MOVED, which is the one thing INV-1 forbids. Re-base only after the new verdict has been
+//    deliberately blessed, and say so in the commit — an anchor advanced to get a green build
+//    turns this file back into the thing it was written to replace, a restated claim.
+const ACCEPTANCE_BASE = '4d973d6';
 const baseIdx = process.argv.indexOf('--base');
-const BASE = baseIdx > 0 ? process.argv[baseIdx + 1] : 'HEAD';
+const BASE = baseIdx > 0 ? process.argv[baseIdx + 1] : ACCEPTANCE_BASE;
 
 function die(msg) {
   console.error(`ORACLE FAILURE: ${msg}`);
@@ -144,7 +170,14 @@ const baseSrc = (() => {
   } catch (e) { die(`could not read ${BASE}:client2/src/map_editor.js from git`); }
 })();
 const workSrc = readFileSync(SRC_PATH, 'utf8');
-if (baseSrc === workSrc) die('baseline and working copy are identical - nothing to compare');
+// Kept, unweakened: comparing a file with itself yields 0 differing cells for the wrong
+// reason. With a fixed acceptance base this fires only if the tree really is checked out AT
+// that base, and dying is the right answer there. See the base note at the top for why it
+// used to fire on every clean tree instead.
+if (baseSrc === workSrc) {
+  die(`baseline and working copy are identical - nothing to compare `
+    + `(base ${BASE}; pass --base <git-rev> to compare against a different revision)`);
+}
 
 const baseCtx = buildVerdictFn(baseSrc, `${BASE} blob`);
 const workCtx = buildVerdictFn(workSrc, 'working copy');

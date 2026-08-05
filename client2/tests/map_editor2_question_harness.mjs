@@ -30,7 +30,8 @@ import { createMapSession, withQuestion, withCatalog, withSelectedCandidate, wit
          resolveQuestion, columnKey, isAskable, isUnset, columnsOf,
          BINDING_DECLARED, BINDING_DERIVED, BINDING_FALLBACK_GUESS, BINDING_NONE,
          EMPTY_QUESTION } from '../src/map2/session.js';
-import { buildViewModel, assertNoRatio, countCoordinatePairs, VIEW_STATE, ATTRIBUTION,
+import { buildViewModel, assertNoRatio, countCoordinatePairs, selectAlignmentRules,
+         VIEW_STATE, ATTRIBUTION,
          EVIDENCE, WORDS, CAUSE, UNKNOWN } from '../src/map2/view_model.js';
 import { createApiClient, ROUTES, RouteNotServedError } from '../src/map2/api.js';
 import { bootstrap, normaliseWorklist } from '../src/map2/main.js';
@@ -117,6 +118,40 @@ const CATALOG = {
   eq(back.selectedCandidateId, 'rot90_back', 'A23 returning to a pair restores its pick');
   eq(columnKey({ x: 'dt_x', y: 'dt_y', val: 'c_bn' }), 'dt_x__dt_y',
      'A24 the pair key ignores the value column -- value decides scoring, not placement');
+}
+
+// ── A2. only a DECLARED alignment-capable rule may be offered ──────────────────
+{
+  const frame = { name: 'eqp_product_frame_attribution', alignment: true, target_fields: ['core_frame'] };
+  const lot = { name: 'dt_job_lot_slot_attribution', target_fields: ['dt_lot_confirmed'] };
+
+  const one = selectAlignmentRules([lot, frame]);
+  eq(one.capable, 1, 'A25 only the rule carrying the flag is capable');
+  eq(one.rules[0].name, 'eqp_product_frame_attribution', 'A26 and it is the one offered');
+  ok(one.proposed, 'A27 a single candidate is proposed');
+  eq(one.declaration.name, 'eqp_product_frame_attribution', 'A28 and adopted so the screen works');
+
+  // 🔴 THE LIVE DEFECT THIS CLOSES: `rules[0]` proposed the lot/slot rule, which aligns nothing.
+  ok(one.declaration.name !== 'dt_job_lot_slot_attribution',
+     'A29 an unmarked rule is never proposed, whatever its position in the list');
+
+  const many = selectAlignmentRules([frame, { name: 'other', alignment: true }]);
+  eq(many.capable, 2, 'A30 two capable rules are both offered');
+  eq(many.declaration, null, 'A31 and NOTHING is proposed -- there is no order to prefer');
+  ok(!many.proposed, 'A32 so the screen asks rather than guessing');
+
+  // ABSENCE IS A FACT. No fallback to offering everything.
+  const none = selectAlignmentRules([lot, { name: 'x' }]);
+  eq(none.capable, 0, 'A33 no flag means no capable rule');
+  eq(none.rules.length, 0, 'A34 and the offer is EMPTY -- never a fallback to everything');
+  eq(none.declaration, null, 'A35 with nothing proposed');
+  eq(none.declared, 2, 'A36 while still reporting how many were declared, for the log');
+
+  // A config typo must not unlock a capability.
+  eq(selectAlignmentRules([{ name: 'a', alignment: 'true' }]).capable, 0,
+     'A37 the STRING "true" is a typo, not a declaration');
+  eq(selectAlignmentRules([{ name: 'a', alignment: 1 }]).capable, 0, 'A38 nor is 1');
+  eq(selectAlignmentRules(null).capable, 0, 'A39 no rules at all is not a crash');
 }
 
 // ── B. a guess is marked, and may not underwrite the write ─────────────────────
@@ -565,8 +600,8 @@ function makeDocument() {
   // REAL TAG NAMES for the five selects and the two buttons. The Enter guard keys on what kind
   // of control has focus, so a stub that made every node a <div> would score the guard as
   // working while the live page committed a write from inside a dropdown.
-  for (const id of ['me2-table-select', 'me2-col-x', 'me2-col-y', 'me2-col-value',
-                    'me2-reference-select']) {
+  for (const id of ['me2-rule-select', 'me2-table-select', 'me2-col-x', 'me2-col-y',
+                    'me2-col-value', 'me2-reference-select']) {
     body.appendChild(node('select', id));
   }
   for (const id of ['me2-columns-confirm', 'me2-confirm-btn']) body.appendChild(node('button', id));

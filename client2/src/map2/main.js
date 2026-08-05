@@ -72,6 +72,9 @@ export const ELEMENT_IDS = Object.freeze({
   //    three, never a thing held instead of them. No preset control is bound yet, on purpose:
   //    a preset built before the primitives becomes the foundation, and a wrong one then has no
   //    way around it.
+  // The rule names the decision unit, so it is the FIRST thing chosen and sits ahead of the
+  // table. Bound by name before the markup lane lands it -- `bindElements` tolerates absence.
+  ruleSelect: 'me2-rule-select',
   tableSelect: 'me2-table-select',
   colXSelect: 'me2-col-x',
   colYSelect: 'me2-col-y',
@@ -195,6 +198,14 @@ export function bootstrap(deps) {
   let searchTimer = null;
   // Last diagnosis logged, so a repaint does not repeat a line nobody asked for twice.
   let lastDiagnosis = '';
+  // A one-line reason the SHELL can always show, independent of any payload. Bootstrap failures
+  // live here: the page must draw and say why, never draw nothing.
+  let notice = '';
+  // The rules on offer. Held here rather than in the session because a rule is not part of the
+  // QUESTION -- it declares what a unit IS, so changing it replaces the catalog and the
+  // worklist wholesale rather than re-asking the same question a different way.
+  let ruleModel = { options: [], proposed: false };
+  let onRulePick = null;
   // Action accounting for the switchover bar: 8 maps, <= 4 actions each, <= 30 s, 0 writes.
   const bar = { actions: 0, fetches: 0, repaints: 0, startedAt: null, lastLoopMs: null };
 
@@ -262,6 +273,12 @@ export function bootstrap(deps) {
    */
   function renderQuestion(vm) {
     const q = vm.question;
+    fillSelect(el.ruleSelect, ruleModel.options);
+    // 🔴 A PROPOSED RULE IS MARKED, exactly like a proposed column pair. One declared candidate
+    //    makes the screen usable; it is still not an agreement.
+    if (el.ruleSelect) {
+      el.ruleSelect.setAttribute('data-me2-proposed', ruleModel.proposed ? 'true' : 'false');
+    }
     fillSelect(el.tableSelect, q.tables);
     fillSelect(el.colXSelect, q.xOptions);
     fillSelect(el.colYSelect, q.yOptions);
@@ -307,6 +324,9 @@ export function bootstrap(deps) {
   /** `제안 · 기준 없음`. Tokens and a separator; the words come from the view model. */
   function questionNote(vm) {
     const parts = [];
+    // The bootstrap's reason comes first: if the screen could not even find a rule or a table,
+    // that outranks anything it could say about the answer it does not have.
+    if (notice) parts.push(notice);
     if (vm.question.proposalWord) parts.push(vm.question.proposalWord);
     if (vm.evidence.occupancyOnly) parts.push(CAUSE.reference_no_values);
     if (vm.attribution.state === ATTRIBUTION.UNSTATED) parts.push(WORDS.columnsUnstated);
@@ -836,6 +856,7 @@ export function bootstrap(deps) {
   }
   // The five set-up controls. Each writes ONE primitive field; none of them derives behaviour
   // from a name. A preset, when one exists, will write these same fields and nothing else.
+  bindSelect(el.ruleSelect, v => { if (onRulePick) onRulePick(v); });
   bindSelect(el.tableSelect, v => setQuestion({ mapTable: v }));
   bindSelect(el.colXSelect, v => setQuestion({
     columns: { ...session.question.columns, x: v || null }, bindingSource: BINDING_DECLARED }));
@@ -978,6 +999,26 @@ export function bootstrap(deps) {
     /** What the five controls may offer. Re-normalises the standing question against it. */
     setCatalog(catalog) { setSession(withCatalog(session, catalog)); },
     setQuestion,
+    /**
+     * A one-line reason, shown in the set-up row. The WHOLE failure goes to the console; this
+     * is the single line that tells an operator the screen is not merely empty.
+     */
+    setNotice(msg) { notice = msg == null ? '' : String(msg); render(); },
+    /**
+     * The alignment-capable rules on offer, and whether the current one is a PROPOSAL.
+     * `options` are `{value,label,selected}` records; this file chooses no label and ranks
+     * nothing -- the order it is handed is the order the server declared.
+     */
+    setRules(model, onPick) {
+      // `options: null` means "keep the offer, change only the marking" -- picking by hand
+      // clears the proposal without rebuilding the list under an open dropdown.
+      ruleModel = {
+        options: (model && model.options) || ruleModel.options,
+        proposed: !!(model && model.proposed),
+      };
+      if (typeof onPick === 'function') onRulePick = onPick;
+      render();
+    },
     /** Re-runs the served search with the current text. */
     refreshWorklist() { fetchWorklist(); },
     searchWorklist,

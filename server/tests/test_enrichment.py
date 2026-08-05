@@ -360,8 +360,12 @@ def test_enrichment_rules_api_contract_shape(client, enrich_env):
     assert set(rule.keys()) == {
         "name", "source_table", "derived_table", "decision_key",
         "target_fields", "list_columns", "reference_views", "queue_filters",
-        "keyed_queue_filters",
+        "keyed_queue_filters", "alignment",
     }
+    # 이 픽스처 규칙은 정렬을 선언하지 않았다 → false. 키는 **항상** 있다: 없으면 클라가
+    # 「서버가 이 필드를 모른다」와 「이 규칙은 정렬 대상이 아니다」를 가르려고 버전 검사를
+    # 하게 되고, 그 검사는 자기가 대신하려던 서버보다 오래 산다.
+    assert rule["alignment"] is False
     assert rule["name"] == "bonding_wafer_attribution"
     assert rule["derived_table"] == "enrich_test_derived"
     assert rule["decision_key"] == ["equipment", "event_time"]
@@ -612,3 +616,87 @@ def test_rule_without_blank_key_rows_is_unchanged(client, enrich_env):
     b = client.get("/tables/enrich_test_derived/data",
                    params={**args, "filters": json.dumps(rule["keyed_queue_filters"])}).json()
     assert a == b, "no blank-key rows exist, yet the two predicates return different pages"
+
+
+# ---------------------------------------------------------------------------
+# The alignment marker: DECLARED, never inferred
+# ---------------------------------------------------------------------------
+# Nothing used to say which rules the map-alignment screen can work with, so the client
+# listed all of them and proposed the first - which live is `dt_job_lot_slot_attribution`,
+# a rule that cannot align anything. The fix is a marker the site declares, NOT a name
+# pattern: selecting rules whose target fields contain "frame" is exactly the inference this
+# screen refuses everywhere else, and it is I4 (a plausible default impersonating a
+# declaration) with a regex on top.
+
+def _decl(**kw):
+    return _base_rule(**kw)
+
+
+def _one(raw):
+    rules = enrichment_config.validate_enrichment_rules({"r": raw}, known_tables=KNOWN)
+    assert len(rules) == 1, "the fixture rule must be valid apart from the marker"
+    return rules[0]
+
+
+def test_a_rule_that_declares_alignment_is_marked():
+    assert _one(_decl(alignment=True))["alignment"] is True
+
+
+def test_a_rule_that_never_declared_it_is_not_marked():
+    """Absent is not a default; it is the fact that nobody ever claimed this rule aligns."""
+    assert _one(_decl())["alignment"] is False
+
+
+def test_the_marker_is_strict_so_a_config_typo_cannot_claim_it():
+    """Same discipline as `map_push_ok`: only the JSON boolean counts. A truthy string is a
+    typo, and a typo must not enrol a rule into a screen that writes coordinate systems."""
+    for typo in ("true", "True", 1, "yes", [1], {"a": 1}):
+        assert _one(_decl(alignment=typo))["alignment"] is False, typo
+    for falsey in (False, "false", 0, None, ""):
+        assert _one(_decl(alignment=falsey))["alignment"] is False, falsey
+
+
+def test_the_marker_is_not_inferred_from_frame_shaped_target_fields():
+    """The exact inference the ruling forbids. A rule whose targets are named `core_frame`
+    and `dt_frame` - the live alignment rule's own field names - and which declares nothing
+    stays unmarked. Reading the names would be I4 with a regex on top."""
+    import copy
+    known = copy.deepcopy(KNOWN)
+    known["enrich_test_derived"]["column_types"].update(
+        {"core_frame": "string", "dt_frame": "string"})
+    raw = {"r": _base_rule(target_fields=["core_frame", "dt_frame"],
+                           list_columns=[], aggregations={})}
+    rules = enrichment_config.validate_enrichment_rules(raw, known_tables=known)
+    assert len(rules) == 1
+    assert rules[0]["alignment"] is False
+
+
+def test_the_marker_survives_to_the_public_shape():
+    import enrichment_config
+    marked = enrichment_config.to_public_rule(_one(_decl(alignment=True)))
+    unmarked = enrichment_config.to_public_rule(_one(_decl()))
+    assert marked["alignment"] is True
+    assert unmarked["alignment"] is False
+
+
+def test_the_live_declaration_is_read_rather_than_backfilled():
+    """`server/config/` is gitignored, so this asks the REAL files what they say instead of
+    asserting a value into them. Whether any rule is marked is the product owner's decision;
+    what is pinned here is that the served value equals the declared one, per rule.
+
+    🔴 It loads the live table config on purpose. Going through `crud.TABLE_CONFIG` as it
+    stands inside the suite returns the TEST tables, every live rule is then rejected for
+    unknown columns, and the test skips - proving nothing while looking green.
+    """
+    import os
+    if not os.path.exists(enrichment_config.ENRICHMENT_RULES_PATH):
+        pytest.skip("live enrichment_rules.json absent (gitignored; fresh checkout)")
+    with open(enrichment_config.ENRICHMENT_RULES_PATH, encoding="utf-8") as f:
+        declared = json.load(f)
+    live_tables = crud.load_table_config_or_raise()
+    rules = enrichment_config.validate_enrichment_rules(declared, known_tables=live_tables)
+    assert rules, "the live rule file parsed to nothing - the check below would be vacuous"
+    for r in rules:
+        want = declared[r["name"]].get("alignment") is True
+        assert r["alignment"] is want, r["name"]
+        assert enrichment_config.to_public_rule(r)["alignment"] is want, r["name"]

@@ -320,6 +320,44 @@ def test_route_empty_value_col_means_occupancy_only(client, env, monkeypatch):
     assert r.json()["unit"]["columns"]["value"]["column"] is None
 
 
+def test_the_reference_loader_carries_the_values_it_selects(env):
+    """`_cells_of` used to SELECT the value column and return only x/y, so `reference.kind:
+    "values"` was a declaration nothing acted on and the scorer only ever saw occupancy.
+    Defect injection found this gap: the pure scorer tests pass their values in directly, so
+    dropping the value on the DB path left them all green."""
+    _seed(env)
+    _seed_reference(env)
+    cells, values, truncated, kind = ma._cells_of(env, CFG, REFT, "R1", 100)
+    assert kind == ma.REFERENCE_KIND_VALUES
+    assert len(values) == len(cells) > 0
+    assert set(values) == {"1"}, values
+
+    v = _view(env, reference_spec="%s:R1" % REFT, include_cells=False)
+    assert v["reference"]["kind"] == ma.REFERENCE_KIND_VALUES
+    assert v["ruling"]["metric"] == ma.METRIC_VALUES
+    assert all(c["value_agreement"] is not None for c in v["candidates"])
+
+
+def test_the_view_serves_the_declared_thresholds_and_omits_undeclared_ones(env):
+    """A null threshold on the wire becomes 0 in the reader (`Number(null) === 0`), which is
+    "always rank". Absent keys are absent."""
+    _seed(env)
+    _seed_reference(env)
+    spec = "%s:R1" % REFT
+    none = _view(env, reference_spec=spec, include_cells=False)
+    assert none["thresholds"] == {}
+    assert none["ruling"]["reason_code"] in ("no_thresholds", "tie", "no_discrimination")
+
+    cfg = dict(CFG, alignment={"min_margin_dies": 4, "min_discriminating_dies": 2})
+    both = _view(env, cfg=cfg, reference_spec=spec, include_cells=False)
+    assert both["thresholds"] == {"min_margin_dies": 4, "min_discriminating_dies": 2}
+
+    half = _view(env, cfg=dict(CFG, alignment={"min_margin_dies": 4}),
+                 reference_spec=spec, include_cells=False)
+    assert half["thresholds"] == {"min_margin_dies": 4}
+    assert "min_discriminating_dies" not in half["thresholds"]
+
+
 def test_the_reference_map_kind_is_not_folded_into_the_comparison_kind(env):
     """Folding them would send the operator to fix the reference map when the missing
     piece is on the source side."""

@@ -17,6 +17,11 @@ from dt_map_derivation import parse_frame, source_meta_for_frame
 PHYS = {"phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
         "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0}
 
+# Declared for the tests that want a ranked winner. Deliberately NOT a module default in the
+# scorer: a threshold invented in code is a plausible default impersonating a declaration
+# (I4), and here that impersonation turns "we cannot tell" into a confident answer.
+THRESHOLDS = {"min_margin_dies": 1, "min_discriminating_dies": 1}
+
 
 def _meta(rotation=0, side="front", cols=13, rows=13, start_x=1, start_y=1):
     return {"grid_cols": cols, "grid_rows": rows, "rotation": rotation, "side": side,
@@ -118,8 +123,12 @@ def test_the_planted_frame_wins(planted):
     fwd = map_overlay.make_frame_transform(ref_meta, source_meta_for_frame(ref_meta, planted))
     recorded = [fwd(x, y) for (x, y) in ref]
 
+    # Thresholds are PASSED IN. There is no default in the scorer, so a test that wants a
+    # ranked winner has to declare what "far enough ahead" means - which is the same demand
+    # the route makes of server config.
     cands, excluded, ruling, stats = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": recorded}], ref, ref_meta)
+        [{"map_id": "M1", "meta": ref_meta, "cells": recorded}], ref, ref_meta,
+        thresholds=THRESHOLDS)
 
     assert ruling["winner"] == planted, (
         "planted %s, scorer said %s; agreements=%s"
@@ -361,3 +370,275 @@ def test_a_half_declared_frame_follows_its_weakest_axis():
 def test_declared_frame_of_none_is_absent_not_a_frame():
     assert ma.declared_frame_of(None)["frame"] is None
     assert ma.declared_frame_of(None)["source"] == map_overlay.GEOMETRY_ABSENT
+
+
+# ---------------------------------------------------------------------------
+# THE VALUE METRIC - and why occupancy alone was not enough
+# ---------------------------------------------------------------------------
+# Occupancy is not merely "flat" on a symmetric footprint; it carries NO orientation
+# information at all. The circle is invariant under all eight frames (spec section 1), so
+# every candidate covers the same dies and whatever spread appears between them is sampling
+# noise. A ranked winner produced from that is worse than a refusal, and the route WAS
+# producing one: `rot90_front`, margin 7 dies, on a unit whose eight occupancy scores differ
+# only by noise.
+#
+# `test_values_settle_what_occupancy_cannot_see` is the load-bearing test here. Its fixture is
+# occupancy-blind BY CONSTRUCTION and `test_the_value_fixture_is_occupancy_blind` asserts that
+# it is, so a green result cannot come from occupancy leaking back in.
+
+def _symmetric_ref():
+    """A footprint invariant under all eight frames - centred on the 13x13 grid.
+
+    Deliberately the OPPOSITE of `_ref_cells`: there the asymmetry is what lets occupancy
+    decide, here its absence is what makes occupancy useless. Both fixtures are needed
+    because the two metrics fail in different places.
+    """
+    return sorted((x, y) for x in range(3, 10) for y in range(3, 10))
+
+
+def _unique_values(cells):
+    """One distinct value per die. A cell that lands on the wrong die therefore disagrees,
+    which is what makes the value axis able to separate frames the footprint cannot."""
+    return ["v%d_%d" % (x, y) for (x, y) in cells]
+
+
+def _plant(ref_meta, ref, planted):
+    """Re-express `ref` in `planted`'s frame, carrying each die's value with it."""
+    fwd = map_overlay.make_frame_transform(ref_meta, source_meta_for_frame(ref_meta, planted))
+    return [fwd(x, y) for (x, y) in ref]
+
+
+def test_the_value_fixture_is_occupancy_blind():
+    """Guard on the FIXTURE, not on the code. If the footprint ever stops being symmetric,
+    the test below would start passing on occupancy and would no longer be testing values."""
+    ref_meta = _meta()
+    ref = _symmetric_ref()
+    images = _dihedral_images(ref)
+    assert len(set(images)) == 1, "the footprint must be invariant under all eight frames"
+
+    cands, _e, _r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
+        ref, ref_meta, thresholds=THRESHOLDS)
+    occ = {c["agreement"] for c in cands}
+    assert len(occ) == 1, "occupancy separates this fixture, so it is the wrong fixture: %s" % occ
+
+
+@pytest.mark.parametrize("planted", ["rot90_front", "rot180_front", "rot270_front",
+                                     "rot0_back"])
+def test_values_settle_what_occupancy_cannot_see(planted):
+    """The measured case, reproduced: all eight candidates occupy the SAME dies and only the
+    values move. `core_defect_map LOT-A/05` is the real instance - occupancy reported an
+    eight-way tie there while values separated the truth `rot270_back` (1028 of 1028
+    discriminating) from the declared candidate (640) by 374 dies."""
+    ref_meta = _meta()
+    ref = _symmetric_ref()
+    recorded = _plant(ref_meta, ref, planted)
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": recorded,
+          "values": _unique_values(ref)}],
+        ref, ref_meta, reference_values=_unique_values(ref), thresholds=THRESHOLDS)
+
+    assert ruling["metric"] == ma.METRIC_VALUES
+    assert ruling["winner"] == planted, (
+        "planted %s, scorer said %s; values=%s"
+        % (planted, ruling["winner"], {c["frame"]: c["value_agreement"] for c in cands}))
+    top = next(c for c in cands if c["frame"] == planted)
+    assert top["value_agreement"] == len(ref)
+    assert top["value_discriminating"] > 0
+
+
+def test_a_constant_valued_reference_agrees_everywhere_and_discriminates_nothing():
+    """The value axis needs its OWN discriminating subset, for the same reason occupancy does.
+    If every candidate gets the same answer on a cell, that cell excludes no candidate - and a
+    reference whose dies all carry one value is exactly that case for every cell at once.
+    Counting agreement without the mask turns "all eight are equally right" into a winner.
+
+    Defect injection found this gap: dropping `& value_varies` left the suite green."""
+    ref_meta = _meta()
+    ref = _symmetric_ref()
+    flat = ["1"] * len(ref)
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta,
+          "cells": _plant(ref_meta, ref, "rot90_front"), "values": flat}],
+        ref, ref_meta, reference_values=flat, thresholds=THRESHOLDS)
+    assert ruling["metric"] == ma.METRIC_VALUES
+    assert all(c["value_agreement"] == len(ref) for c in cands), \
+        "every candidate should match a constant value everywhere"
+    assert all(c["value_discriminating"] == 0 for c in cands), \
+        "no cell separates the candidates, so none of them discriminates"
+    assert ruling["winner"] is None
+    assert ruling["reason_code"] in ("tie", "no_discrimination")
+
+
+def test_both_metrics_are_reported_and_neither_replaces_the_other():
+    """Occupancy stays the honest answer where the reference carries no values, so it is not
+    removed when values exist. Both are on every candidate."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    cands, _e, _r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref, "values": _unique_values(ref)}],
+        ref, ref_meta, reference_values=_unique_values(ref), thresholds=THRESHOLDS)
+    for c in cands:
+        for k in ("agreement", "discriminating", "value_agreement", "value_discriminating"):
+            assert k in c, k
+        assert c["agreement"] is not None
+
+
+def test_a_reference_without_values_reports_null_not_zero():
+    """Zero would say "we compared the values and none matched". Null says "there were no
+    values to compare" - the opposite claim, and the one that is true."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref}], ref, ref_meta,
+        thresholds=THRESHOLDS)
+    assert ruling["metric"] == ma.METRIC_OCCUPANCY
+    for c in cands:
+        assert c["value_agreement"] is None
+        assert c["value_discriminating"] is None
+        assert c["value_margin"] is None
+
+
+def test_a_source_without_values_leaves_the_value_axis_null():
+    """The weakest side decides. A reference carrying values cannot make a value comparison
+    possible when the source brought none."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref}], ref, ref_meta,
+        reference_values=_unique_values(ref), thresholds=THRESHOLDS)
+    assert ruling["metric"] == ma.METRIC_OCCUPANCY
+    assert all(c["value_agreement"] is None for c in cands)
+
+
+def test_values_stay_aligned_with_their_cells_when_a_coordinate_is_dropped():
+    """A value list that is filtered independently of its coordinates shifts every value
+    after the dropped row onto its neighbour. That is invisible in every count - the totals
+    are identical - and it is exactly the class of defect this module exists to prevent."""
+    rows = [(1, 1), ("bad", 2), (3, 3)]
+    cells, vals = ma._to_cells(rows, ["a", "b", "c"])
+    assert cells == [(1, 1), (3, 3)]
+    assert vals == ["a", "c"], "the dropped coordinate took the wrong value with it"
+
+
+def test_values_are_truncated_with_their_cells_not_separately():
+    ref_meta = _meta()
+    ref = _ref_cells()
+    cands, _e, _r, stats = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref, "values": _unique_values(ref)}],
+        ref, ref_meta, reference_values=_unique_values(ref), cell_cap=5,
+        thresholds=THRESHOLDS)
+    assert stats["truncated"] is True
+    assert stats["scored_cells"] == 5
+    top = max(cands, key=lambda c: c["value_agreement"] or 0)
+    assert top["value_agreement"] <= 5
+
+
+# ---------------------------------------------------------------------------
+# THRESHOLDS - declared, never defaulted
+# ---------------------------------------------------------------------------
+
+def test_an_undeclared_threshold_refuses_to_rank():
+    """`Number(null) === 0` has bitten this project three times. Folding an absent threshold
+    to zero turns "we cannot tell" into "always rank", which is the failure this whole round
+    is closing."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    args = ([{"map_id": "M1", "meta": ref_meta,
+              "cells": _plant(ref_meta, ref, "rot90_front")}], ref, ref_meta)
+    assert ma.score_candidates(*args, thresholds=THRESHOLDS)[2]["winner"] == "rot90_front"
+    for absent in (None, {}, {"min_margin_dies": 1}, {"min_discriminating_dies": 1}):
+        ruling = ma.score_candidates(*args, thresholds=absent)[2]
+        assert ruling["winner"] is None, absent
+        assert ruling["reason_code"] == "no_thresholds", absent
+
+
+def test_an_undeclared_threshold_is_omitted_from_the_payload_not_nulled():
+    assert ma.load_alignment_thresholds({}) == {}
+    assert ma.load_alignment_thresholds({"alignment": {}}) == {}
+    assert ma.load_alignment_thresholds(
+        {"alignment": {"min_margin_dies": 7}}) == {"min_margin_dies": 7}
+    # an unreadable declaration is not a declaration - it must not become 0 either
+    assert ma.load_alignment_thresholds(
+        {"alignment": {"min_margin_dies": "twenty", "min_discriminating_dies": 3}}
+    ) == {"min_discriminating_dies": 3}
+
+
+def test_a_margin_below_the_declared_floor_does_not_win():
+    """The measured case that forced this: eight occupancy scores spread by 7 dies on a
+    circular footprint, which the route was ranking as a confident winner."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    args = ([{"map_id": "M1", "meta": ref_meta,
+              "cells": _plant(ref_meta, ref, "rot90_front")}], ref, ref_meta)
+    tight = {"min_margin_dies": 10_000, "min_discriminating_dies": 1}
+    ruling = ma.score_candidates(*args, thresholds=tight)[2]
+    assert ruling["winner"] is None
+    assert ruling["reason_code"] == "margin_too_small"
+    # the numbers that produced the refusal travel with it - the operator can see both
+    assert ruling["min_margin_dies"] == 10_000
+    assert ruling["margin"] is not None
+
+
+def test_too_few_discriminating_dies_is_a_different_refusal_from_too_small_a_margin():
+    """One asks whether there is evidence at all, the other whether the winner is ahead.
+    Reading either as standing in for the other sends the operator to the wrong repair."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    args = ([{"map_id": "M1", "meta": ref_meta,
+              "cells": _plant(ref_meta, ref, "rot90_front")}], ref, ref_meta)
+    ruling = ma.score_candidates(
+        *args, thresholds={"min_margin_dies": 1, "min_discriminating_dies": 10_000})[2]
+    assert ruling["reason_code"] == "too_few_discriminating"
+    assert ruling["min_discriminating_dies"] == 10_000
+
+
+def test_every_threshold_refusal_has_its_own_sentence():
+    seen = {}
+    for code in ("no_thresholds", "too_few_discriminating", "margin_too_small",
+                 "no_discrimination", "no_margin", "tie", "no_candidate_scored"):
+        text = ma._RULING_TEXT[code]
+        assert text not in seen, "%s and %s share a sentence" % (code, seen.get(text))
+        seen[text] = code
+
+
+def test_a_structural_tie_is_named_before_the_thresholds_are_blamed():
+    """"These eight are indistinguishable" is true whatever the thresholds say. Reporting it
+    as `no_thresholds` sends the operator to edit config, where nothing will change."""
+    ref_meta = _meta()
+    ref = _symmetric_ref()          # invariant under all eight - a REAL tie, not a threshold
+    ruling = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
+        ref, ref_meta, thresholds=None)[2]
+    assert ruling["reason_code"] == "tie"
+    assert len(ruling["tied"]) > 1
+
+
+def test_the_ruling_says_which_metric_it_ranked_on():
+    ref_meta = _meta()
+    ref = _ref_cells()
+    occ = ma.score_candidates([{"map_id": "M1", "meta": ref_meta, "cells": ref}],
+                              ref, ref_meta, thresholds=THRESHOLDS)[2]
+    val = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref, "values": _unique_values(ref)}],
+        ref, ref_meta, reference_values=_unique_values(ref), thresholds=THRESHOLDS)[2]
+    assert occ["metric"] == ma.METRIC_OCCUPANCY
+    assert val["metric"] == ma.METRIC_VALUES
+
+
+def test_no_metric_is_a_ratio():
+    """Fit percentages were measured REVERSING the ranking (spec section 3): a candidate one
+    cell off at 94% ranked below three wrongly-oriented candidates at 95-98%."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref, "values": _unique_values(ref)}],
+        ref, ref_meta, reference_values=_unique_values(ref), thresholds=THRESHOLDS)
+    for c in cands:
+        for k, v in c.items():
+            assert "percent" not in k and "pct" not in k and "ratio" not in k
+            if isinstance(v, float):
+                assert float(v) == int(v), "%s is fractional" % k
+    assert all(not isinstance(v, float) or float(v) == int(v) for v in ruling.values()
+               if isinstance(v, (int, float)))

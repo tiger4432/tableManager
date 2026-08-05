@@ -743,7 +743,7 @@ function makeDocument() {
                     'me2-worklist-boundary', 'me2-worklist-boundary-label',
                     // The set-up row: 대상 테이블 -> x · y · value -> 기준. G1 is what forced
                     // these in here the moment the shell started binding them.
-                    'me2-table-select', 'me2-col-x', 'me2-col-y', 'me2-col-value',
+                    'me2-rule-select', 'me2-table-select', 'me2-col-x', 'me2-col-y', 'me2-col-value',
                     'me2-reference-select', 'me2-question-note', 'me2-columns-confirm',
                     'me2-badge-session',
                     'me2-badge-unscorable', 'me2-badge-remaining', 'me2-picture-svg',

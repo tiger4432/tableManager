@@ -69,6 +69,11 @@ export const ROUTES = Object.freeze({
   rules: '/enrichment/rules',
   // The table's REAL columns. An existing route, already consumed by admin; reused rather than
   // reinvented, and it is the reason no column name is written down in this client.
+  // Every table the server defines. With `/tables/{t}/schema`'s `map_key_columns` this is how
+  // the screen DISCOVERS which tables are map tables -- the same declaration
+  // `map_alignment.map_table_catalog` reads server-side (`crud.TABLE_CONFIG[t].map_key_columns`),
+  // so no table name is written down here.
+  tables: '/tables',
   schema: '/tables/{table}/schema',
   // (Kept null: `selection` now rides on the worklist response, so nothing needs this.)
   // 🔴 THE PRESET ALREADY EXISTS AND IS ALREADY SERVED. A table's coordinate binding is
@@ -169,6 +174,11 @@ export function createApiClient(opts) {
      */
     loadRules(signal) {
       return getJson(ROUTES.rules, null, signal);
+    },
+
+    /** Every defined table. Which of them are MAP tables is decided by their schema. */
+    loadTables(signal) {
+      return getJson(ROUTES.tables, null, signal);
     },
 
     /**

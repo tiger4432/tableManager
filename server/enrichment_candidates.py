@@ -96,6 +96,23 @@ except ImportError:  # imported without server/ on sys.path (same guard as crud.
 # edit that could let it outrank a human.
 SOURCE_NAME = "enrichment_auto_confirm"
 
+# THE PROVENANCE OF A DECISION MADE ON A PARTIAL KEY  [2026-08-05, user ruling]
+# Same writer, same rank, different NAME. Also deliberately unregistered in
+# `crud.SOURCE_PRIORITY` -> 99, byte-for-byte the standing of `SOURCE_NAME`, so
+# this is not a layering change: it cannot outrank a human and it cannot outrank
+# or be outranked by an ordinary auto-confirm.
+#
+# WHY A SOURCE NAME AND NOT A NEW FIELD
+# `cell_sources` is already the per-cell answer to "how did this value come to
+# be", and `source_name` is already how this path separates a human write
+# (`user`) from a sweep (`enrichment_auto_confirm`). A partial-key decision is
+# the same kind of fact, so it gets the same spelling rather than a column that
+# only one writer would ever populate. The consequence is the point: when the
+# missing key column finally arrives, "which cells were decided without a full
+# key" is one predicate over `cell_sources.source_name` - an ANSWER, not a
+# reconstruction. A decision that cannot be addressed cannot be re-derived.
+SOURCE_NAME_PARTIAL_KEY = "enrichment_auto_confirm_partial_key"
+
 # Per-rule knob in enrichment_rules.json. Per-rule rather than global because
 # candidate reliability is a property of the rule's views, not of the server -
 # and enrichment_rules.json is already re-read per work unit, so hot reload is
@@ -129,6 +146,19 @@ STATUS_SINGLE = "single"
 STATUS_REFUSED = "refused"
 
 REASON_NOT_DECLARED = "not_declared"
+# The whole decision key is blank. Not a policy - arithmetic. Every view that
+# binds anything refuses `missing_bind` on its own, but a view that binds NOTHING
+# would run happily and return the same rule-wide constant for every keyless row,
+# which is a value about no row in particular. Named here, before any probe, so
+# the refusal does not depend on which views a rule happens to declare.
+REASON_NO_DECISION_KEY = "no_decision_key"
+# The row carries no `business_key_val`. Reachable only since blank-key rows
+# entered the write path: the business key is usually COMPOSED from the decision
+# key, so the rows most likely to be missing it are exactly these. The writer
+# addresses by `row_id` first (`_get_or_create_row`), so this fires only when
+# neither identifier is present - and then the alternative is an INSERT of a
+# phantom row, not a write to the intended one.
+REASON_NO_ROW_IDENTITY = "no_row_identity"
 REASON_NO_CANDIDATE = "no_candidate"
 REASON_AMBIGUOUS = "ambiguous"
 REASON_VIEW_ERROR = "view_error"
@@ -249,8 +279,12 @@ def candidate_target_fields(rule: dict) -> list:
 
 
 def _refused(target_field, reason, **extra):
+    # `partial_key`/`blank_key_columns` default here so EVERY result carries them
+    # and no reader has to branch on their presence - an absent field and a false
+    # one read the same to a careless caller, and only one of them is true.
     out = {"status": STATUS_REFUSED, "target_field": target_field, "reason": reason,
-           "value": None, "support": 0, "candidates": [], "evidence": [], "errors": []}
+           "value": None, "support": 0, "candidates": [], "evidence": [], "errors": [],
+           "partial_key": False, "blank_key_columns": []}
     out.update(extra)
     return out
 
@@ -299,6 +333,20 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     probe therefore runs `execute_candidate_probe` (GROUP BY over the WHOLE
     result), while the human-facing display path keeps the row-limited wrap.
     One declaration, two execution shapes, because they ask different questions.
+
+    A PARTIAL DECISION KEY IS WORKED, NOT REFUSED  [2026-08-05, user ruling]
+    When part of the key is blank, this resolves on what remains. It already did,
+    mechanically - a view bound to a proper subset of the key never noticed the
+    blank column - and the guard that kept those rows away from writers lived
+    upstream, in the queue predicate. That guard is gone, so the two refusals
+    that remain here carry the whole weight, and both are arithmetic rather than
+    policy:
+      - `missing_bind` (per view, unchanged): this view binds the column that is
+        blank, so it cannot be asked. Since ANY view error poisons the verdict,
+        a rule whose declaring views all need the blank column still refuses.
+      - `no_decision_key` (below): nothing survives at all.
+    `partial_key` rides on the result so the caller can STAMP the write; it never
+    changes `status`. Blocking is not what the fact is for.
     """
     import enrichment_config
     from database import crud
@@ -306,6 +354,15 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     views = declaring_views(rule, target_field)
     if not views:
         return _refused(target_field, REASON_NOT_DECLARED)
+
+    # Which declared key columns did not survive. Read from the RULE, not from
+    # `key_values`: a caller that omits a column entirely has the same blank key
+    # as one that passes "" for it, and only the rule knows the full list.
+    blank_key_cols = sorted(k for k in (rule.get("decision_key") or [])
+                            if crud.clean_str_value(key_values.get(k)) == "")
+    partial = {"partial_key": bool(blank_key_cols), "blank_key_columns": blank_key_cols}
+    if blank_key_cols and len(blank_key_cols) == len(rule.get("decision_key") or []):
+        return _refused(target_field, REASON_NO_DECISION_KEY, **partial)
 
     values = {}      # canonical value -> supporting row count
     evidence = []    # per-view contribution
@@ -356,16 +413,17 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
         return _refused(target_field, errors[0]["reason"],
                         candidates=distinct[:AMBIGUOUS_SAMPLE], evidence=evidence, errors=errors,
                         value=distinct[0] if len(distinct) == 1 else None,
-                        support=values.get(distinct[0], 0) if len(distinct) == 1 else 0)
+                        support=values.get(distinct[0], 0) if len(distinct) == 1 else 0,
+                        **partial)
     if not distinct:
-        return _refused(target_field, REASON_NO_CANDIDATE, evidence=evidence)
+        return _refused(target_field, REASON_NO_CANDIDATE, evidence=evidence, **partial)
     if len(distinct) > 1:
         return _refused(target_field, REASON_AMBIGUOUS,
                         candidates=distinct[:AMBIGUOUS_SAMPLE], evidence=evidence,
-                        distinct_count=len(distinct))
-    return {"status": STATUS_SINGLE, "target_field": target_field, "reason": None,
-            "value": distinct[0], "support": values[distinct[0]],
-            "candidates": distinct, "evidence": evidence, "errors": []}
+                        distinct_count=len(distinct), **partial)
+    return dict({"status": STATUS_SINGLE, "target_field": target_field, "reason": None,
+                 "value": distinct[0], "support": values[distinct[0]],
+                 "candidates": distinct, "evidence": evidence, "errors": []}, **partial)
 
 
 def find_unresolved_cells(db, derived_table: str, row_ids: list, target_fields: list) -> set:
@@ -405,12 +463,18 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
     the chain-worker collector (`AutoConfirmCollector.flush`) and the
     retroactive sweep (`enrichment_analysis.run_auto_confirm_sweep`).
     Dry-run (`apply=False`) performs reads only - that is the measuring mode.
+
+    A row whose decision key is only PARTLY present is written like any other and
+    stamped `SOURCE_NAME_PARTIAL_KEY` (see that constant). The stamp is per ITEM
+    because partiality is a property of the ROW's key, not of the target field -
+    every field on that row was decided from the same surviving columns.
     """
     from database import crud, schemas
 
     st = stats if stats is not None else {}
     st.setdefault("keys_examined", 0)
     st.setdefault("confirmed", 0)
+    st.setdefault("confirmed_partial_key", 0)
     st.setdefault("written_cells", 0)
     st.setdefault("refused", {})
     st.setdefault("samples", [])
@@ -429,8 +493,18 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
     items = []
     for entry in keyed_rows:
         row_id = entry.get("row_id")
+        business_key_val = entry.get("business_key_val")
+        # Addressability is checked ONCE per row, before any probing, because a
+        # row the writer cannot land on is not worth a query. `row_id` alone is
+        # enough (`crud._get_or_create_row` prefers it), and neither present
+        # would make the write CREATE a row rather than fill one.
+        if not row_id and not crud.clean_str_value(business_key_val):
+            st["refused"][REASON_NO_ROW_IDENTITY] = \
+                st["refused"].get(REASON_NO_ROW_IDENTITY, 0) + 1
+            continue
         blanks = set(entry.get("blank_targets") or target_fields)
         updates = {}
+        partial_key = False
         for field in target_fields:
             if field not in blanks:
                 continue
@@ -444,22 +518,32 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                 st["refused"][res["reason"]] = st["refused"].get(res["reason"], 0) + 1
                 continue
             updates[field] = res["value"]
+            partial_key = partial_key or bool(res.get("partial_key"))
             st["confirmed"] += 1
+            st["confirmed_partial_key"] = st.get("confirmed_partial_key", 0) + \
+                (1 if res.get("partial_key") else 0)
             if len(st["samples"]) < 20:
                 st["samples"].append({
-                    "business_key_val": entry.get("business_key_val"),
+                    "business_key_val": business_key_val,
                     "field": field, "value": res["value"], "support": res["support"],
+                    "partial_key": bool(res.get("partial_key")),
+                    "blank_key_columns": list(res.get("blank_key_columns") or []),
                 })
         if not updates:
             continue
         st["written_cells"] += len(updates)
         if apply:
             item = dict(updates)
+            # THE STAMP. Same writer, different name, same rank (both unregistered
+            # -> 99). This is the record that makes the decision addressable when
+            # the missing key column arrives.
+            src = SOURCE_NAME_PARTIAL_KEY if partial_key else SOURCE_NAME
             items.append(schemas.GeneralUpdateItem(
-                business_key_val=entry.get("business_key_val"),
+                row_id=row_id,
+                business_key_val=business_key_val,
                 updates=item,
-                source_name=SOURCE_NAME,
-                updated_by=SOURCE_NAME,
+                source_name=src,
+                updated_by=src,
             ))
 
     if apply and items:
@@ -477,10 +561,11 @@ def log_stats(rule_name: str, st: dict, apply: bool):
     refused = st.get("refused") or {}
     detail = ", ".join(f"{k}={v}" for k, v in sorted(refused.items())) or "none"
     logger.info(
-        "[Enrichment:%s] auto-confirm %s: %d key-field(s) probed, %d single candidate(s), "
-        "%d cell(s) %s; refusals: %s",
+        "[Enrichment:%s] auto-confirm %s: %d key-field(s) probed, %d single candidate(s) "
+        "(%d on a partial decision key, source '%s'), %d cell(s) %s; refusals: %s",
         rule_name, "APPLY" if apply else "DRY-RUN", st.get("keys_examined", 0),
-        st.get("confirmed", 0), st.get("written_cells", 0),
+        st.get("confirmed", 0), st.get("confirmed_partial_key", 0), SOURCE_NAME_PARTIAL_KEY,
+        st.get("written_cells", 0),
         "written" if apply else "would be written", detail)
 
 
@@ -552,9 +637,12 @@ class AutoConfirmCollector:
             if not isinstance(updates, dict):
                 continue
             keys = {k: updates.get(k) for k in decision_key}
-            if any(crud.clean_str_value(v) == "" for v in keys.values()):
-                # A row without its decision keys cannot be resolved by anyone -
-                # the same exclusion queue_filters applies to the worklist.
+            if all(crud.clean_str_value(v) == "" for v in keys.values()):
+                # NOTHING survives - not "part of the key is missing". A partial
+                # key is worked on what remains [2026-08-05 ruling]; a wholly
+                # blank one has nothing to bind any view to, and
+                # `resolve_target_candidate` would refuse it `no_decision_key`
+                # anyway. Dropping it here only saves the queries.
                 continue
             if not bk:
                 continue

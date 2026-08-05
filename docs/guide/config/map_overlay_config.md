@@ -25,6 +25,8 @@
 - **[U6] 레지스트리 행이 없는 맵의 기본 legend를 선언할 때** (`default_legend`) — 미선언이면 기본 의미론 없음(클라는 bare 값을 팔레트 색으로 렌더)
 - **[U6] 값 컬럼 자동 탐지 순서를 바꿀 때** (`value_column_candidates`) — 미선언이면 서버 문서화 기본 적용
 - **[F5] 맵을 열 때 적용될 물리 규격(프리셋)을 자동으로 정하고 싶을 때** (`preset_routing`) → **[§2-bis](#2-bis-f5-로드-시-프리셋-라우팅-선언)**. 미선언이면 종전과 같이 패널에 남아 있던 설정이 쓰입니다
+- **맵 정렬 화면이 「순위 없음」만 낼 때** (`alignment`) — 이 블록이 없으면 서버는 **의도적으로** 순위를 내지 않습니다. 화면 문구는 `판정 기준값 미선언 - 순위 없음`이고, 이것은 고장이 아니라 선언 요청입니다.
+  - 🔴 **여기에 적을 숫자는 옮겨 적는 것이 아니라 유도하는 것입니다.** 기준 맵(유효 다이 floor)이 실제로 프레임을 몇 다이로 가르는지가 상한이고, 그보다 작은 격차는 기준 자신의 분해능 아래라 방위의 증거가 될 수 없습니다. `server/scripts/seed_valid_die_ref_floor.py`(dry-run 기본)가 쓰는 floor에 대해 그 값을 `discriminates: worst N dies`로 보고하므로, 그 N을 출발점으로 삼으십시오. **다른 floor를 쓰면 다시 재십시오.**
 
 ## 2. 세팅 절차
 
@@ -184,6 +186,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore map_ove
 ## 5. 키 참조
 
 ```
+alignment.{min_margin_dies, min_discriminating_dies}
 table_bindings.<table>.columns.{x, y, val, key_columns[]}
 paint_lock."*".{enabled, blocking_values[], from_overlay[], message}
 paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
@@ -197,7 +200,9 @@ preset_routing.<table>.rules[].{name, match, value, preset, enabled}
 
 | 키 | 의미 |
 |---|---|
-| `table_bindings.<table>.columns` | 그 테이블을 맵으로 읽을 때의 좌표/값 컬럼. `key_columns`는 맵 인스턴스 식별 컬럼 |
+| `alignment.min_discriminating_dies` | 맵 정렬 채점(`GET /api/maps/alignment/view`)이 **결정할 근거가 있다**고 볼 최소 판별 다이 수. 🔴 **미선언 = 순위 없음**(`ruling.reason_code = "no_thresholds"`). 코드에 기본값이 없는 것은 의도입니다 — 미선언을 0으로 접으면 「구별 못 함」이 「자신 있는 1등」이 됩니다 |
+| `alignment.min_margin_dies` | 1위가 2위보다 앞서야 할 최소 다이 수. 위 키와 **서로를 대신하지 않습니다** — 판별 3다이 위의 큰 격차도, 판별 500다이 위의 1다이 격차도 결정이 아닙니다. 단위는 **다이 개수**이며 백분율이 아닙니다(적합도 %는 실측에서 순위를 뒤집었습니다 — `MAP_ALIGNMENT_SPEC` §3) |
+| `table_bindings.<table>.columns` | 그 테이블을 맵으로 읽을 때의 좌표/값 컬럼. `key_columns`는 맵 인스턴스 식별 컬럼. 🔴 **정렬 화면에서는 제안(preset)입니다** — `/api/maps/alignment/view`의 `x_col`/`y_col`/`value_col`이 원시 단위이고, 생략했을 때만 이 선언이 채웁니다(응답 `unit.columns`가 `chosen`/`proposed`를 구별) |
 | `default_legend[]` | [U6·선택] 레지스트리 행 없는 맵의 기본 legend 행(선언 그대로 서빙, 미선언 = 응답 `null` = 기본 의미론 없음) |
 | `value_column_candidates[]` | [U6·선택] 값 컬럼 자동 탐지 순서(앞선 것 우선). 미선언 = 문서화 기본. 응답에는 항상 RESOLVED 값 |
 | `paint_lock.<t>.enabled` / `blocking_values[]` | 잠금 on/off · 이 값이 있는 셀은 페인팅 불가 |

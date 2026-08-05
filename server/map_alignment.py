@@ -232,27 +232,53 @@ def _membership(placed_keys, ref_sorted, dx, dy):
 
 
 def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
-                     shift_window: int = SHIFT_WINDOW, cell_cap: int = MAX_SCORED_CELLS):
+                     shift_window: int = SHIFT_WINDOW, cell_cap: int = MAX_SCORED_CELLS,
+                     reference_values=None, thresholds: dict = None):
     """후보 8개를 **한 호출로** 채점한다. DB를 모른다 — 셀과 메타만 받는다.
 
-    `source_maps`: `[{"map_id": str, "meta": dict, "cells": [(x, y), ...]}]`
+    `source_maps`: `[{"map_id": str, "meta": dict, "cells": [(x, y), ...],
+                      "values": [v, ...]}]` — `values`는 있으면 `cells`와 **같은 순서**다.
     `reference_cells`: 기준(공통 바닥)의 점유 좌표 집합 — 기준 맵 자신의 프레임 좌표다.
+    `reference_values`: 기준 셀의 값. `reference_cells`와 같은 순서. 없으면 점유 채점만.
+    `thresholds`: `{min_margin_dies, min_discriminating_dies}`. **기본값이 없다** — 선언되지
+        않으면 순위를 내지 않는다(`_rule_on`).
 
     반환: `(candidates, excluded, ruling, stats)`.
+
+    [지표가 둘이고, 하나가 다른 하나를 대체하지 않는다]
+    **점유**(agreement)는 기준이 값을 싣지 않을 때의 정직한 답이다. 그러나 기준 발자국이
+    원이면 점유는 평평한 정도가 아니라 **아무 정보도 없다** — 원은 여덟 프레임 모두에
+    불변이므로 어느 프레임으로 읽어도 같은 다이를 덮는다(스펙 §1). 그때 후보 사이에 벌어지는
+    격차는 신호가 아니라 표본 잡음이고, 잡음 위에 세운 1등은 거절보다 나쁘다.
+    **값 일치**(value_agreement)가 실측으로 작동한 지표다 — `core_defect_map LOT-A/05`에서
+    점유는 8후보가 **같은 다이를 차지**해 8자 동점이었고, 값이 진실 `rot270_back`을
+    1028/1028로, 선언된 후보를 640으로 갈라 **374다이** 차이를 냈다.
+    둘 다 계산해 둘 다 싣고, 순위에 쓰는 쪽은 `reference.kind`가 정한다.
 
     [판별(discriminating)이 무엇을 세는가 — 이 정의가 §1 정리의 직접 구현이다]
     스펙 §1: 원은 여덟 프레임 모두에 불변이므로 아무것도 기여하지 못하고, **점유 부분집합만이
     동점을 깬다.** 그래서 셀 하나가 후보를 구별하는 것은 그 셀의 「기준 위에 있나」 답이
     후보마다 **같지 않을 때**뿐이다. 후보 k의 판별수 = 그 후보가 맞힌 셀 중 **후보들 사이에서
     답이 갈리는** 셀의 수다. 일치수가 커도 판별수가 0이면 그 점수는 아무 후보도 배제하지
-    못한다 — 그때 순위를 매기면 틀린 것을 맞다고 말하는 것이다(§0.2 ⑦).
+    못한다 — 그때 순위를 매기면 틀린 것을 맞다고 말하는 것이다(§0.2 ⑦). 값 지표도 같은
+    정의를 자기 축에서 갖는다(`value_discriminating`).
     """
     import numpy as np
     t0 = time.monotonic()
     excluded = _Excluded()
 
-    ref_keys = _encode(sorted(reference_cells or ()))
+    ref_pairs = sorted(reference_cells or ())
+    ref_keys = _encode(ref_pairs)
     ref_sorted = np.unique(ref_keys)
+    # 기준 값을 **좌표로** 찾을 수 있게 해 둔다. 같은 좌표가 두 번 오면 먼저 온 것을 남긴다 —
+    # 임의로 고르면 같은 입력이 실행마다 다른 답을 낸다.
+    ref_value_at = {}
+    if reference_values:
+        by_pair = {}
+        for (xy, v) in zip(reference_cells or (), reference_values):
+            by_pair.setdefault(tuple(xy), v)
+        for i, pair in enumerate(ref_pairs):
+            ref_value_at.setdefault(int(ref_keys[i]), by_pair.get(tuple(pair)))
 
     # [1] 기하 거절은 **후보와 무관하다** — 회전·면은 `geometry_declaration`을 바꾸지 않는다.
     #     그래서 후보 루프 밖에서 한 번만 판정한다(8배 비용을 치를 이유가 없다).
@@ -284,12 +310,19 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             sm["_use"] = list(sm["cells"])[:room]
         else:
             sm["_use"] = list(sm["cells"])
+        # 값은 좌표와 **같은 길이로 같이 잘린다**. 따로 자르면 절단 이후의 셀이 옆 셀의
+        # 값을 받고, 그 오답은 개수로 안 잡힌다.
+        vs = sm.get("values") or []
+        sm["_use_values"] = [(vs[i] if i < len(vs) else None)
+                             for i in range(len(sm["_use"]))]
         scored_cells += len(sm["_use"])
 
     # [2] 후보마다 **메타를 통째로 만들어** 변환한다 (모듈 상단 전제).
     per_candidate = []
+    source_values = None
     for frame in CANDIDATE_FRAMES:
         placed = []
+        vals = []
         failed = None
         for sm in usable:
             if not sm.get("_use"):
@@ -303,11 +336,17 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             except ValueError as e:
                 failed = str(e)
                 break
-            for (x, y) in sm["_use"]:
+            for i, (x, y) in enumerate(sm["_use"]):
                 placed.append(tf(x, y))
+                vals.append(sm["_use_values"][i])
         if failed is not None:
             per_candidate.append({"frame": frame, "keys": None, "reason": failed})
             continue
+        # 소스 값은 후보마다 **같은 순서의 같은 셀**이다(좌표만 움직인다). 그래서 한 번만
+        # 붙잡아 둔다 — 후보마다 다시 만들면 그 사본들이 갈릴 수 있고, 갈리면 i번째가 서로
+        # 다른 셀을 가리키게 된다.
+        if source_values is None:
+            source_values = vals
         per_candidate.append({"frame": frame, "keys": _encode(placed), "reason": None})
 
     # [3] 후보별 시프트를 풀고 셀별 진리값을 모은다.
@@ -319,27 +358,62 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         c.update(dx=dx, dy=dy, agreement=int(hit),
                  member=_membership(c["keys"], ref_sorted, dx, dy))
 
+    # [3b] 값 일치: 이 후보가 앉힌 자리의 **기준 값과 소스 값이 같은가**, 셀마다.
+    #      기준이나 소스에 값이 없으면 **None이지 0이 아니다.** 0으로 내보내면 「값으로 재
+    #      보았고 하나도 안 맞았다」가 되어 「값으로 잴 수 없었다」의 정반대를 말한다.
+    scorable_values = bool(ref_value_at) and bool(source_values) and \
+        any(v is not None for v in source_values)
+    for c in per_candidate:
+        if c["keys"] is None or not scorable_values:
+            c["value_member"] = None
+            continue
+        shifted = c["keys"] + c["dx"] * _KEY_STRIDE + c["dy"]
+        hits = np.zeros(c["keys"].size, dtype=bool)
+        member = c["member"]
+        for i in np.flatnonzero(member):
+            rv = ref_value_at.get(int(shifted[i]))
+            sv = source_values[i] if i < len(source_values) else None
+            hits[i] = rv is not None and sv is not None and str(rv) == str(sv)
+        c["value_member"] = hits
+
     # [4] 판별: 셀마다 후보들의 답이 갈리는가. 길이가 같은 후보들끼리만 비교할 수 있고,
     #     실제로 같다 — 같은 소스 셀 목록을 같은 순서로 놓았으므로 i번째가 같은 셀이다.
-    live = [c for c in per_candidate if c["member"] is not None]
-    varies = None
-    if live:
-        n = live[0]["member"].size
-        if all(c["member"].size == n for c in live) and n:
-            stack = np.vstack([c["member"] for c in live])
-            varies = stack.any(axis=0) & ~stack.all(axis=0)
+    #     값 축도 **자기 축에서** 같은 정의를 갖는다: 값이 갈리는 셀만이 값으로 후보를 가른다.
+    def _varies(field):
+        alive = [c for c in per_candidate if c.get(field) is not None]
+        if not alive:
+            return None
+        n = alive[0][field].size
+        if not n or not all(c[field].size == n for c in alive):
+            return None
+        stack = np.vstack([c[field] for c in alive])
+        return stack.any(axis=0) & ~stack.all(axis=0)
+
+    varies = _varies("member")
+    value_varies = _varies("value_member")
     for c in per_candidate:
         if c["member"] is None or varies is None:
             c["discriminating"] = 0
         else:
             c["discriminating"] = int(np.count_nonzero(c["member"] & varies))
+        if c.get("value_member") is None:
+            c["value_agreement"] = None
+            c["value_discriminating"] = None
+        else:
+            c["value_agreement"] = int(np.count_nonzero(c["value_member"]))
+            c["value_discriminating"] = (
+                0 if value_varies is None
+                else int(np.count_nonzero(c["value_member"] & value_varies)))
 
     # [5] 순위와 판정. **개수만** 낸다 — 백분율을 만들지 않는다(모듈 상단).
     agrees = [c["agreement"] for c in per_candidate]
+    vagrees = [c["value_agreement"] for c in per_candidate]
     out = []
-    for c in per_candidate:
-        others = [a for i, a in enumerate(agrees) if per_candidate[i] is not c]
+    for i0, c in enumerate(per_candidate):
+        others = [a for i, a in enumerate(agrees) if i != i0]
         runner = max(others) if others else 0
+        v_others = [a for i, a in enumerate(vagrees) if i != i0 and a is not None]
+        v_runner = max(v_others) if v_others else 0
         rot_side = parse_frame(c["frame"])
         out.append({
             "frame": c["frame"],
@@ -348,41 +422,108 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             "shift": None if c["dx"] is None else {"dx": c["dx"], "dy": c["dy"]},
             "agreement": c["agreement"],
             "discriminating": c["discriminating"],
+            # 값 지표는 **점유를 대체하지 않는다.** 기준이 값을 안 실으면 점유가 정직한 답이고,
+            # 그때 이 셋은 null이다(0이 아니다 — §[3b]).
+            "value_agreement": c["value_agreement"],
+            "value_discriminating": c["value_discriminating"],
+            "value_margin": (None if c["value_agreement"] is None
+                             else int(c["value_agreement"] - v_runner)),
             "placed": 0 if c["keys"] is None else int(c["keys"].size),
             "margin": None if c["keys"] is None else int(c["agreement"] - runner),
             "reason": c["reason"],
         })
 
-    ruling = _rule_on(out)
+    metric = METRIC_VALUES if scorable_values else METRIC_OCCUPANCY
+    ruling = _rule_on(out, thresholds, metric)
     stats = {"scored_cells": scored_cells, "truncated": truncated,
              "cell_cap": cell_cap, "shift_window": shift_window,
              "reference_cells": int(ref_sorted.size),
+             "reference_values": len(ref_value_at),
              "source_maps_usable": len(usable),
              "elapsed_ms": (time.monotonic() - t0) * 1000.0}
     return out, excluded, ruling, stats
 
 
-def _rule_on(candidates: list) -> dict:
+METRIC_OCCUPANCY = "occupancy"
+METRIC_VALUES = "values"
+
+#: 판정 문턱. **코드에 기본값을 두지 않는다.** 여기 숫자를 하나 적으면 그것이 선언을 사칭하는
+#: 그럴듯한 기본값이고(I4), 그 사칭의 대가가 정확히 이 라운드가 닫고 있는 실패다 —
+#: 미선언을 0으로 접으면 「구별 못 함」이 「자신 있는 1등」이 된다(`Number(null) === 0`이
+#: 이 프로젝트를 세 번 물었다). 선언이 없으면 **순위를 내지 않는다.**
+THRESHOLD_KEYS = ("min_margin_dies", "min_discriminating_dies")
+
+
+def load_alignment_thresholds(cfg: dict) -> dict:
+    """선언된 문턱만. 없는 키는 **0이 아니라 없는 키로** 나간다.
+
+    읽히지 않는 선언(수가 아닌 값)도 선언이 아니다 — 조용히 0으로 접으면 오타 하나가
+    「항상 순위를 낸다」로 바뀐다.
+    """
+    raw = (cfg or {}).get("alignment") or {}
+    out = {}
+    for k in THRESHOLD_KEYS:
+        v = raw.get(k)
+        if v is None:
+            continue
+        try:
+            out[k] = int(v)
+        except (TypeError, ValueError):
+            logger.warning("[MapAlignment] threshold '%s' is not a number, ignored: %r", k, v)
+    return out
+
+
+def _rule_on(candidates: list, thresholds: dict = None,
+             metric: str = METRIC_OCCUPANCY) -> dict:
     """이길 후보가 있는가 — 없으면 **없다고 말한다**(스펙 §0.2 ⑦: 억지 1등 금지).
 
-    이기려면 셋 다 필요하다: 단독 최고 일치수 · 차점자보다 1 이상 앞섬 · 판별수 > 0.
-    셋째가 §1 정리다 — 판별이 0이면 그 일치수는 여덟 후보 모두에 똑같이 붙는 값이라
-    아무것도 배제하지 못한다.
+    이기려면 넷 다 필요하다: 단독 최고 · 판별수 > 0 · 판별수 ≥ 선언된 문턱 · 격차 ≥ 선언된
+    문턱. 셋째·넷째가 안전망이고 **config이지 코드가 아니다.**
+
+    🔴 `metric`이 순위 축을 정한다. 기준이 값을 실으면 값으로, 아니면 점유로 매긴다.
+       점유는 기준 발자국이 원일 때 **아무 방위 정보도 싣지 않고**(스펙 §1), 그때 벌어지는
+       격차는 표본 잡음이다. 그래서 문턱은 잡음 위의 1등을 막는 자리이고, 선언이 없으면
+       막을 방법이 없으므로 아예 순위를 내지 않는다.
     """
     live = [c for c in candidates if c["state"] == STATE_SCORED]
     if not live:
-        return {"winner": None, "margin": None, "reason_code": "no_candidate_scored"}
-    best = max(c["agreement"] for c in live)
-    tops = [c for c in live if c["agreement"] == best]
-    if len(tops) > 1:
-        return {"winner": None, "margin": 0, "reason_code": "tie",
-                "tied": [c["frame"] for c in tops]}
+        return {"winner": None, "margin": None, "metric": metric,
+                "reason_code": "no_candidate_scored"}
+
+    a_key = "value_agreement" if metric == METRIC_VALUES else "agreement"
+    d_key = "value_discriminating" if metric == METRIC_VALUES else "discriminating"
+    m_key = "value_margin" if metric == METRIC_VALUES else "margin"
+    scoreable = [c for c in live if c.get(a_key) is not None]
+    if not scoreable:
+        return {"winner": None, "margin": None, "metric": metric,
+                "reason_code": "no_candidate_scored"}
+
+    th = dict(thresholds or {})
+    missing = [k for k in THRESHOLD_KEYS if th.get(k) is None]
+
+    best = max(c[a_key] for c in scoreable)
+    tops = [c for c in scoreable if c[a_key] == best]
     top = tops[0]
-    if top["discriminating"] <= 0:
-        return {"winner": None, "margin": top["margin"], "reason_code": "no_discrimination"}
-    if top["margin"] is None or top["margin"] < 1:
-        return {"winner": None, "margin": top["margin"], "reason_code": "no_margin"}
-    return {"winner": top["frame"], "margin": top["margin"], "reason_code": None}
+    base = {"metric": metric, "margin": top.get(m_key),
+            "discriminating": top.get(d_key),
+            "min_margin_dies": th.get("min_margin_dies"),
+            "min_discriminating_dies": th.get("min_discriminating_dies")}
+
+    if len(tops) > 1:
+        return dict(base, winner=None, margin=0, reason_code="tie",
+                    tied=[c["frame"] for c in tops])
+    # 🔴 **구조적 사실을 문턱보다 먼저 말한다.** 동점과 판별 0은 문턱과 무관하게 참이고
+    #    (§1 정리: 판별이 0이면 그 점수는 여덟 후보 모두에 똑같이 붙는다), 그 사실을
+    #    「기준값 미선언」으로 덮으면 조작자가 config를 고치러 가서 아무것도 달라지지 않는다.
+    if (top.get(d_key) or 0) <= 0:
+        return dict(base, winner=None, reason_code="no_discrimination")
+    if missing:
+        return dict(base, winner=None, reason_code="no_thresholds", missing=missing)
+    if (top.get(d_key) or 0) < th["min_discriminating_dies"]:
+        return dict(base, winner=None, reason_code="too_few_discriminating")
+    if top.get(m_key) is None or top[m_key] < max(1, th["min_margin_dies"]):
+        return dict(base, winner=None, reason_code="margin_too_small")
+    return dict(base, winner=top["frame"], reason_code=None)
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +540,10 @@ _RULING_TEXT = {
     "tie": "동점 - 판별 불가",
     "no_discrimination": "기준 발자국이 대칭 - 8프레임 구별 불가",
     "no_margin": "1-2위 격차 0 - 순위 없음",
+    # 문턱은 **선언**이므로 미선언은 「0」이 아니라 「모름」이다. 문장이 그렇게 말한다.
+    "no_thresholds": "판정 기준값 미선언 - 순위 없음",
+    "too_few_discriminating": "판별 다이 부족 - 순위 없음",
+    "margin_too_small": "1-2위 격차 부족 - 순위 없음",
 }
 
 # 🔴 목록(`build_alignment_worklist`)과 상세(`build_alignment_view`)가 **같은 사실에 같은
@@ -618,7 +763,7 @@ def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
 
 def _ref_state(state, **kw):
     base = {"state": state, "source": None, "table": None, "map_id": None,
-            "cells": [], "count": 0, "reason": None, "truncated": False,
+            "cells": [], "values": [], "count": 0, "reason": None, "truncated": False,
             "kind": REFERENCE_KIND_NONE}
     base.update(kw)
     return base
@@ -688,13 +833,14 @@ def _load_reference(db, cfg: dict, table: str, map_id: str, origin: str, cap: in
     if why is not None:
         return _refuse("기준 맵 '%s · %s': %s" % (table, map_id, why))
     try:
-        cells, truncated, kind = _cells_of(db, cfg, table, map_id, cap)
+        cells, values, truncated, kind = _cells_of(db, cfg, table, map_id, cap)
     except ValueError as e:
         return _refuse(str(e))
     if not cells:
         return _refuse("기준 맵 '%s · %s'에 좌표가 없습니다" % (table, map_id))
     out = _ref_state(REFERENCE_RESOLVED, source=origin, table=table, map_id=map_id,
-                     cells=cells, count=len(cells), truncated=truncated, kind=kind)
+                     cells=cells, values=values, count=len(cells),
+                     truncated=truncated, kind=kind)
     out["meta"] = meta
     return out
 
@@ -765,6 +911,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     x_attr = getattr(src_model, columns["x"]["column"])
     y_attr = getattr(src_model, columns["y"]["column"])
 
+    v_attr = (getattr(src_model, columns["value"]["column"])
+              if columns["value"]["column"] else None)
+
     source_maps = []
     src_truncated = False
     for mid in ids:
@@ -772,20 +921,25 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         for i, c in enumerate(map_key_cols):
             part = mid if len(map_key_cols) == 1 else mid.split("_")[i]
             mfilters.append(getattr(src_model, c) == part)
-        rows = db.query(x_attr, y_attr).filter(*mfilters).limit(cell_cap + 1).all()
+        q_cols = [x_attr, y_attr] + ([v_attr] if v_attr is not None else [])
+        rows = db.query(*q_cols).filter(*mfilters).limit(cell_cap + 1).all()
         if len(rows) > cell_cap:
             src_truncated = True
             rows = rows[:cell_cap]
+        cells, cvals = _to_cells([(r[0], r[1]) for r in rows],
+                                 [(r[2] if v_attr is not None else None) for r in rows])
         source_maps.append({"map_id": mid, "table": map_table,
                             "meta": map_overlay.load_map_meta(db, map_table, mid),
-                            "cells": _to_cells(rows)})
+                            "cells": cells, "values": cvals})
 
     reference = _resolve_reference(db, cfg, reference_spec, source_maps, cell_cap)
+    thresholds = load_alignment_thresholds(cfg)
 
     candidates, excluded, ruling, stats = [], _Excluded(), {"winner": None}, {}
     if reference["state"] == REFERENCE_RESOLVED:
         candidates, excluded, ruling, stats = score_candidates(
-            source_maps, reference["cells"], reference["meta"])
+            source_maps, reference["cells"], reference["meta"],
+            reference_values=reference.get("values"), thresholds=thresholds)
         if ruling.get("winner"):
             state = STATE_SCORED
         elif any(c["state"] == STATE_SCORED for c in candidates):
@@ -895,6 +1049,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             "axis_sources": {ax: dict(c) for ax, c in axis_tally.items()},
         },
         "ruling": ruling,
+        # 문턱은 **서버 config의 선언**이다. 미선언 키는 실리지 않는다 — null로 실으면
+        # 받는 쪽의 `Number(null)`이 0이 되어 「모름」이 「문턱 0」으로 바뀐다.
+        "thresholds": thresholds,
         "excluded": excluded.as_list(),
         "excluded_total": excluded.total(),
         "stats": dict(stats, build_ms=(time.monotonic() - t0) * 1000.0),
@@ -1043,6 +1200,99 @@ def _chunks(seq, n):
     seq = list(seq)
     for i in range(0, len(seq), n):
         yield seq[i:i + n]
+
+
+# ---------------------------------------------------------------------------
+# 꽂을 수 있는 기준(floor) 목록 — **선언된 것이 아니라 실제로 풀리는 것**
+# ---------------------------------------------------------------------------
+# 기준이 파라미터인 이유가 「꽂아 넣는 것이지 못 박는 것이 아니다」(스펙 §4)인데, 무엇을 꽂을
+# 수 있는지 아무도 답하지 않아 화면의 선택기가 비어 있었다.
+#
+# 🔴 **선언된 것을 그대로 나열하면 안 된다.** 실측(개발 박스): `valid_die_ref` 선언 8건 중
+#    **0건**이 풀린다. 그 여덟을 목록에 올리면 고를 수 없는 이름이 여덟 개 뜨고, 조작자는
+#    선택기 자체를 믿지 않게 된다. 그래서 이 목록은 **해석을 실제로 통과한 것만** 담는다.
+#
+# 🔴 **빈 목록은 오류가 아니다.** 맵 모집단의 절반은 애초에 바닥이 될 수 없다(320/668이
+#    `auto_registered`). 그래서 「봤는데 없다」와 「보지 못했다」를 상태로 가른다 — 빈 배열
+#    하나로 두 사실을 같이 말하면 화면이 고장과 정상을 구별할 방법이 없다.
+REFERENCE_CATALOG_SERVED = "served"          # 조회했다. items가 비어도 그건 답이다
+REFERENCE_CATALOG_UNAVAILABLE = "unavailable"  # 조회 자체가 불가 (메타 표 부재 등)
+
+#: 한 요청이 검사하는 후보 바닥 수 상한. 바닥은 제품·타입 단위라 실제로는 훨씬 적다.
+MAX_REFERENCE_CANDIDATES = 50
+
+
+def resolve_reference_catalog(db, cfg: dict, cap: int = MAX_REFERENCE_CANDIDATES) -> dict:
+    """지금 이 서버에서 **실제로 바닥이 되는** 맵들.
+
+    후보 집합은 `map_overlay.VALID_DIE_TABLE` 하나다 — 읽기가 그리로 고정돼 있고(1-a 판정,
+    `map_overlay:1242`), 선언이 어느 테이블을 이름 붙였든 조회는 거기서 일어난다. 그래서
+    `map_table`은 이 목록을 좁히지 않는다. 좁히는 것은 격자 규격인데, 그 판정은 단위마다
+    다르므로(`make_frame_transform`은 격자가 다르면 거절한다) 여기서는 **격자를 실어 보내고
+    판정은 하지 않는다**.
+
+    🔴 판정은 `_load_reference` **하나**가 한다. 여기서 "풀리는가"를 다시 구현하면 목록이
+       고를 수 있다고 한 것을 상세가 거절하는 날이 온다.
+    """
+    from database import models
+
+    meta_model = models.DYNAMIC_TABLES.get(map_overlay.META_TABLE)
+    table = map_overlay.VALID_DIE_TABLE
+    base = {"state": REFERENCE_CATALOG_SERVED, "table": table, "items": [],
+            "examined": 0, "rejected": 0, "rejected_example": None,
+            "truncated": False, "reason": None}
+    if meta_model is None:
+        return dict(base, state=REFERENCE_CATALOG_UNAVAILABLE,
+                    reason="맵 규격 표(%s) 미등록" % map_overlay.META_TABLE)
+
+    tt, mid = getattr(meta_model, "target_table"), getattr(meta_model, "map_id")
+    rows = (db.query(mid).filter(tt == table).order_by(mid).limit(cap + 1).all())
+    truncated = len(rows) > cap
+    rows = rows[:cap]
+
+    items, rejected, first_reason = [], 0, None
+    for (map_id,) in rows:
+        # cap=1: **풀리는가와 어떤 종류인가**만 묻는다. 셀을 다 끌어오면 목록 한 번에
+        # 바닥 수 x 2만 셀을 읽게 되고, 그것은 색인이 색인 대상보다 무거워지는 자리다.
+        ref = _resolve_reference(db, cfg, "%s:%s" % (table, map_id), [], 1)
+        if ref["state"] != REFERENCE_RESOLVED:
+            rejected += 1
+            if first_reason is None:
+                first_reason = ref.get("reason")
+            continue
+        meta = ref.get("meta") or {}
+        grid = map_overlay._grid_of(meta)
+        items.append({
+            "table": table,
+            "map_id": map_id,
+            # 🔴 값을 싣는 바닥과 점유만 있는 바닥은 **다른 제안**이다. 점유는 평평하고,
+            #    기준 발자국이 원이면 방위 정보를 아예 싣지 않는다(스펙 §1). 고르기 전에
+            #    보여야 한다 — 한 판 돌려 보고 알게 되면 그 한 판이 낭비다.
+            "kind": ref.get("kind"),
+            "cell_count": _count_cells(db, cfg, table, map_id),
+            "grid": (None if grid is None
+                     else {"cols": grid["cols"], "rows": grid["rows"]}),
+        })
+    return dict(base, items=items, examined=len(rows), rejected=rejected,
+                rejected_example=first_reason, truncated=truncated)
+
+
+def _count_cells(db, cfg: dict, table: str, map_id: str):
+    """바닥의 크기. 세는 것이지 끌어오는 것이 아니다 — 4셀짜리 바닥은 고를 이유가 없고,
+    그 사실을 알려면 개수만 있으면 된다."""
+    from database import models
+    from sqlalchemy import func as _func
+    model = models.DYNAMIC_TABLES.get(table)
+    if model is None:
+        return None
+    try:
+        b = _binding_of(cfg, table)
+        filters = map_overlay.build_key_filters(model, b, map_id)
+        if filters is None:
+            return None
+        return int(db.query(_func.count()).select_from(model).filter(*filters).scalar() or 0)
+    except Exception:
+        return None
 
 
 def _load_metas(db, map_table: str, map_ids) -> dict:
@@ -1287,6 +1537,7 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     page = units[start:start + max(1, int(limit or DEFAULT_WORKLIST_LIMIT))]
 
     coord = coordinate_column_catalog(cfg, src_table)
+    references = resolve_reference_catalog(db, cfg)
     return {
         "unit": {
             "rule": rule_name,
@@ -1301,6 +1552,10 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         "selection": {
             "map_tables": map_table_catalog(src_model, src_table),
             "coordinates": coord,
+            # 꽂을 수 있는 바닥. `map_tables`와 같은 이유로 여기 탄다 — 첫 렌더 전에 왕복을
+            # 하나 더 두는 것보다 낫고, 이 목록은 단위·검색·페이지와 무관한 상수라 목록
+            # 요청마다 다시 계산해도 같은 답이다.
+            "references": references,
             "ambiguity": binding_ambiguity(rule, coord),
         },
         "states": [STATE_UNIT_PENDING, STATE_UNIT_CONFIRMED, STATE_UNIT_UNSCORABLE],

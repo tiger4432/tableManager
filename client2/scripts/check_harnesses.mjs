@@ -219,7 +219,7 @@ const FLOORS = new Map([
   // under one; that occupancy-only evidence is named with the word the system already has; and
   // that the worklist's badges report the SERVER'S totals rather than the rows on the page. A
   // floor drop here means one of those stopped being scored.
-  ['map_editor2_question_harness.mjs', 134],
+  ['map_editor2_question_harness.mjs', 149],
   //
   // ⚠️ ITS `H4` NO LONGER PINS THE DECISION UNIT. `api.js` retargeted `loadReferenceView` to a
   //    rule/map_table key, so the assertion that the reference view is keyed by (eqp, product)

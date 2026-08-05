@@ -66,6 +66,18 @@ TABLES = {
     # would redefine the shared model, and `Base.metadata` outlives one test: the first
     # run would fail on a column the already-created table does not have and every run
     # after it would pass, which reads as flakiness rather than as the fixture's fault.
+    # The floor store is PINNED to this table name (`map_overlay.VALID_DIE_TABLE`, ruling
+    # 1-a), so a fixture cannot rename it out of the way. Its declaration is therefore
+    # copied verbatim from `table_config.json` for the same reason the metadata table's is:
+    # `Base.metadata` is shared, so a fixture that invents a different shape breaks the
+    # first run and passes every run after it.
+    map_overlay.VALID_DIE_TABLE: {
+        "business_key": "cell_key",
+        "composite_key_source": ["product", "type", "x", "y"],
+        "composite_key_separator": "_",
+        "column_types": {"cell_key": "string", "product": "string", "type": "string",
+                         "x": "number", "y": "number", "val": "string"},
+        "map_key_columns": ["product", "type"]},
     map_overlay.META_TABLE: {"business_key": "map_pk",
                              "composite_key_source": ["target_table", "map_id"],
                              "column_types": {"map_pk": "string",
@@ -448,6 +460,112 @@ def test_the_worklist_writes_nothing(env):
 # ---------------------------------------------------------------------------
 # what the operator selects - the gap this route closes
 # ---------------------------------------------------------------------------
+
+def _seed_floor(db, product, type_, cells, register=True, values=True):
+    """A floor needs BOTH halves: cells under a key that splits, and a metadata row.
+    `register=False` seeds only the cells - the shape that is declared but does not resolve."""
+    v = models.DYNAMIC_TABLES[map_overlay.VALID_DIE_TABLE]
+    meta_model = models.DYNAMIC_TABLES[map_overlay.META_TABLE]
+    for (x, y) in cells:
+        db.add(v(row_id="v_%s_%s_%d_%d" % (product, type_, x, y),
+                 business_key_val="%s_%s_%d_%d" % (product, type_, x, y),
+                 cell_key="%s_%s_%d_%d" % (product, type_, x, y),
+                 product=product, type=type_, x=x, y=y,
+                 val=("1" if values else None)))
+    if register:
+        map_id = "%s_%s" % (product, type_)
+        db.add(meta_model(row_id="mv_" + map_id,
+                          business_key_val="%s|%s" % (map_overlay.VALID_DIE_TABLE, map_id),
+                          target_table=map_overlay.VALID_DIE_TABLE, map_id=map_id,
+                          grid_metadata=json.dumps(_meta())))
+    db.commit()
+
+
+def test_only_references_that_actually_resolve_are_offered(env):
+    """Eight `valid_die_ref` declarations exist on the development box and ZERO of them
+    resolve. Listing what is declared would put eight unselectable names in the picker and
+    teach the operator that the picker lies. The list carries what can be chosen."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    _seed_floor(env, "GOOD", "A", [(3, 3), (4, 3), (3, 4)])
+    _seed_floor(env, "NOMETA", "B", [(5, 5)], register=False)   # cells, no metadata row
+    cat = _wl(env)["selection"]["references"]
+    assert cat["state"] == ma.REFERENCE_CATALOG_SERVED
+    assert [i["map_id"] for i in cat["items"]] == ["GOOD_A"]
+    assert cat["examined"] == 1, "an unregistered floor is not even a candidate"
+
+
+def test_a_registered_floor_with_no_cells_is_counted_as_rejected_with_a_cause(env):
+    """The other half-a-floor: a metadata row pointing at nothing. It must not be offered,
+    and the count alone would leave the operator without a repair."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    _seed_floor(env, "GOOD", "A", [(3, 3), (4, 3)])
+    _seed_floor(env, "EMPTY", "B", [], register=True)
+    cat = _wl(env)["selection"]["references"]
+    assert [i["map_id"] for i in cat["items"]] == ["GOOD_A"]
+    assert (cat["examined"], cat["rejected"]) == (2, 1)
+    assert cat["rejected_example"] and "EMPTY_B" in cat["rejected_example"]
+
+
+def test_each_offer_says_which_kind_it_is(env):
+    """A floor carrying values and one carrying only occupancy are different offers, and the
+    difference decides what the screen can answer at all - occupancy is flat, and on a
+    circular footprint it carries no orientation signal whatever. The operator must see it
+    BEFORE spending a run finding out."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    _seed_floor(env, "GOOD", "A", [(3, 3), (4, 3)])
+    item = _wl(env)["selection"]["references"]["items"][0]
+    assert item["kind"] == ma.REFERENCE_KIND_VALUES
+    assert item["cell_count"] == 2
+    assert item["grid"] == {"cols": 13, "rows": 13}
+
+
+def test_an_empty_offer_list_is_an_answer_and_not_an_error(env):
+    """Half the map population cannot be a floor; that is ordinary. `served` with an empty
+    list and a count of what was looked at says "we looked and nothing qualifies" - which a
+    bare `[]` cannot distinguish from "we could not look"."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    cat = _wl(env)["selection"]["references"]
+    assert cat["state"] == ma.REFERENCE_CATALOG_SERVED
+    assert cat["items"] == []
+    assert cat["examined"] == 0
+    assert cat["reason"] is None
+
+
+def test_an_unservable_catalog_is_a_different_state(env):
+    saved = models.DYNAMIC_TABLES.pop(map_overlay.META_TABLE)
+    try:
+        cat = ma.resolve_reference_catalog(env, {})
+    finally:
+        models.DYNAMIC_TABLES[map_overlay.META_TABLE] = saved
+    assert cat["state"] == ma.REFERENCE_CATALOG_UNAVAILABLE
+    assert cat["items"] == []
+    assert cat["reason"]
+
+
+def test_the_offer_list_and_the_view_agree_on_what_resolves(env):
+    """The list must not promise what the detail refuses. Both go through
+    `_load_reference` - if the catalog re-implemented "does it resolve", the day the two
+    spellings diverge is the day a chosen floor comes back not_scorable."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    _seed_floor(env, "GOOD", "A", [(3, 3), (4, 3), (3, 4)])
+    offered = _wl(env)["selection"]["references"]["items"]
+    for item in offered:
+        spec = "%s:%s" % (item["table"], item["map_id"])
+        ref = ma._resolve_reference(env, {}, spec, [], 1)
+        assert ref["state"] == ma.REFERENCE_RESOLVED, spec
+
+
+def test_the_offer_list_counts_cells_rather_than_fetching_them(env):
+    """A picker showing size must not pull every floor's cells on every keystroke - the
+    worklist is an index and its search re-runs on typing."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    _seed_floor(env, "BIG", "A", [(x, y) for x in range(3, 10) for y in range(3, 10)])
+    item = _wl(env)["selection"]["references"]["items"][0]
+    assert item["cell_count"] == 49
+    # `_load_reference` is asked for existence only; a cap of 1 is what keeps it cheap.
+    ref = ma._resolve_reference(env, {}, "%s:BIG_A" % map_overlay.VALID_DIE_TABLE, [], 1)
+    assert len(ref["cells"]) == 1 and ref["count"] == 1
+
 
 def test_the_map_table_choices_come_from_the_declaration_not_from_a_list_in_code(env):
     _seed_unit(env, "E1", "P1", ["J1"])

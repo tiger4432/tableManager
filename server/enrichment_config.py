@@ -328,6 +328,16 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         # 않는다. `config_resolve_report`가 그 둘을 다른 문장으로 렌더하려면 존재 여부가
         # 필요하다 — 값이 아니라 **선언의 유무**를 나르는 필드다(클라 노출 대상 아님).
         "auto_confirm_declared": isinstance(raw, dict) and "auto_confirm" in raw,
+        # ② 이 규칙이 **맵 정렬 화면이 다룰 수 있는 규칙인가** - 현장이 선언한다.
+        # 🔴 유도하지 않는다. 오늘 이것을 말하는 것이 아무것도 없어서 화면은 규칙을 전부
+        #    늘어놓고 첫 번째를 제안했고, 운영에서 그 첫 번째는 정렬이 불가능한
+        #    `dt_job_lot_slot_attribution`이었다. 「target_field 이름에 frame이 들어 있으면
+        #    정렬 규칙」 같은 유도는 **이 화면이 다른 모든 자리에서 거부하는 바로 그 추론**이다
+        #    (I4: 그럴듯한 기본값이 선언을 사칭한다).
+        # 🔴 `is True`가 엄격한 이유는 `map_push_ok`와 같다: config 오타("true"/1)가 선언으로
+        #    승격되면 안 된다. 미선언은 「정렬 대상 아님」이고 그것은 기본값이 아니라 사실이다
+        #    - 아무도 정렬 가능하다고 주장한 적이 없다는 뜻이므로.
+        "alignment": raw.get("alignment") is True,
         "source_table": source_table.strip(),
         "derived_table": derived_table.strip(),
         "decision_key": list(decision_key),
@@ -518,6 +528,29 @@ def _isolated_execute(db, stmt, params) -> tuple:
     return columns, rows
 
 
+def missing_binds(view: dict, bind_params: dict = None) -> list:
+    """Which required bind params this view cannot be asked with.
+
+    A bind whose value is BLANK is missing, not supplied. The two facts read the
+    same from the view's side - there is no value to put in the WHERE clause -
+    but only one of them used to be named. Passing `slot=''` through produced a
+    legal query that matched nothing, and a zero-row read is indistinguishable
+    from "no such evidence exists" at the call site.
+
+    `enrichment_candidates.resolve_target_candidate` has always folded blank into
+    missing (`clean_str_value(v) != ""`); this is the same funnel, applied where
+    the SQL is actually built, so the DISPLAY path and the CANDIDATE path refuse
+    the same view for the same reason. That matters now that a partial decision
+    key is workable: the views that still bind get asked, and the view that
+    cannot be asked says so instead of returning an empty table.
+    """
+    from database import crud
+
+    needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
+    have = {k for k, v in (bind_params or {}).items() if crud.clean_str_value(v) != ""}
+    return sorted(needed - have)
+
+
 def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
     """참조뷰 1건을 서버측 정의로 실행한다. 반환: (columns, rows).
 
@@ -526,14 +559,14 @@ def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
     구조적으로 불가하다.
 
     바인드는 **SQL이 실제로 요구하는 이름만** 넘긴다: 호출자가 판단키 전체를 넘겨도
-    되고, 요구 바인드가 빠졌으면 실행하지 않고 `ReferenceViewError`를 올린다
-    (드라이버 예외를 삼켜 "후보 없음"으로 위장하지 않는다).
+    되고, 요구 바인드가 빠졌거나 **값이 비었으면** 실행하지 않고 `ReferenceViewError`를
+    올린다(드라이버 예외를 삼켜 "후보 없음"으로 위장하지 않는다 - `missing_binds`).
     """
     from sqlalchemy import text
 
     needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
     supplied = dict(bind_params or {})
-    missing = sorted(needed - set(supplied))
+    missing = missing_binds(view, supplied)
     if missing:
         raise ReferenceViewError(f"missing required bind param(s): {missing}")
 
@@ -583,7 +616,7 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
 
     needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
     supplied = dict(bind_params or {})
-    missing = sorted(needed - set(supplied))
+    missing = missing_binds(view, supplied)
     if missing:
         raise ReferenceViewError(f"missing required bind param(s): {missing}")
 
@@ -645,12 +678,23 @@ def to_public_rule(rule: dict) -> dict:
         decision key is an upstream defect, and an invisible defect is never
         fixed.
 
-    keyed_queue_filters: the queue entries that can actually be ACTED on - the
-    queue AND every decision key non-blank. A reference view is queried WITH the
-    key's value, so a blank key finds no evidence and nothing can be resolved
-    from it. Every path that WRITES or reasons from evidence stays on this one
-    (`enrichment_analysis._queue_condition`); only the display counts the whole
-    queue. `queue_filters.total - keyed_queue_filters.total` is the named
+    keyed_queue_filters: the queue entries whose decision key is COMPLETE - the
+    queue AND every decision key non-blank.
+
+    IT IS NO LONGER THE WRITE PREDICATE  [2026-08-05, user ruling]
+        It was, and the sentence here said so. The ruling is that a partial key
+        is worked on whatever survives, everywhere - human and sweep alike -
+        because `auto_confirm` is itself the consent for unattended writes and a
+        second gate under it would be code re-deciding what config decided.
+        `enrichment_analysis.run_auto_confirm_sweep` therefore walks
+        `queue_filters`, and the refusals that remain are arithmetic rather than
+        predicate: a view that binds the blank column cannot be asked
+        (`missing_bind`), and a wholly blank key has nothing to ask with
+        (`no_decision_key`).
+
+        What this composition is still FOR: the named count below, and ②'s
+        learning walk, which cannot attribute a judgement to key columns that
+        were not present. `queue_filters.total - keyed_queue_filters.total` is the named
     aggregate the client shows as "판단키 없음 N건" - both are conjunctive
     filters the existing DSL already translates, so the count needs no new
     endpoint and no cross-column OR (which the DSL cannot express: `operator`/
@@ -667,6 +711,10 @@ def to_public_rule(rule: dict) -> dict:
         "decision_key": list(rule["decision_key"]),
         "target_fields": list(rule["target_fields"]),
         "list_columns": list(rule["list_columns"]),
+        # 정렬 화면이 고를 수 있는 규칙인가. **선언이지 유도가 아니다** (§_validate_rule ②).
+        # 항상 실린다 - 키가 없으면 클라가 「이 서버는 이 필드를 모른다」와 「이 규칙은 정렬
+        # 대상이 아니다」를 구별하려고 버전 검사를 하게 되고, 그 검사는 자기보다 오래 산다.
+        "alignment": rule.get("alignment") is True,
         "reference_views": [
             {"label": v["label"], "candidate_for": dict(v.get("candidate_for") or {})}
             for v in rule.get("reference_views", [])

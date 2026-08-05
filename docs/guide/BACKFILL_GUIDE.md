@@ -57,6 +57,7 @@
 | ⓑ R2 | (셀 소스를 **쓰지 않고 지웁니다**. 감사 기록만 `chain_replay_withdraw`) | — |
 | ⓒ backfill | `enrichment_backfill` | 미등재 → **99** |
 | ⓓ confirm | `enrichment_auto_confirm` | 미등재 → **99** |
+| ⓓ confirm (부분 판단키) | `enrichment_auto_confirm_partial_key` | 미등재 → **99** (ⓓ와 **같은 서열**, 이름만 다르다 - 판단키가 일부만 있는 채로 결정된 셀을 나중에 골라내기 위한 표식이지 승격이 아니다) |
 | ⓔ 고아 스윕 | (셀이 아니라 **그래프 노드**를 지웁니다) | — |
 
 `SOURCE_PRIORITY`의 실제 값은 `user: 0` · `collision_merge: 1` · `pipeline_parser: 2` · `custom_script: 3` · `chain_ingestion: 4`이고, **등재되지 않은 이름은 전부 99**입니다.

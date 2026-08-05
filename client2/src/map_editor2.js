@@ -18,7 +18,8 @@
 
 import { API_BASE, CURRENT_USER } from './config.js';
 import { bootstrap } from './map2/main.js';
-import { createApiClient, ROUTES, RouteNotServedError } from './map2/api.js';
+import { selectAlignmentRules } from './map2/view_model.js';
+import { createApiClient, RouteNotServedError } from './map2/api.js';
 
 const DEV_CAPTURE_URL = '/map2_dev_reference.json';
 
@@ -26,8 +27,24 @@ const DEV_CAPTURE_URL = '/map2_dev_reference.json';
 // `decision_key: [dt_eqp, product]`, which is why `params` carries those two fields and never
 // a map id: wafers under one eqp+product were measured disagreeing with each other, so the
 // evidence has to be pooled before it is scored.
-const RULE = 'eqp_product_frame_attribution';
-const MAP_TABLE = 'dt_map';
+// 🔴 NO RULE NAME AND NO TABLE NAME ARE WRITTEN DOWN IN THIS PROGRAM. They used to be, as two
+//    consts here, and that is not a default -- it is an ASSUMPTION ABOUT SOMEONE ELSE'S
+//    DATABASE. On a deployment with no rule by that name, or no table by that name, the first
+//    request fails and the operator gets a blank page: the one outcome that tells them nothing
+//    and tells us nothing. `map2/*.js` never contained a name; this file was the hole, and it
+//    survived because it is the last place a reader looks.
+//
+//    Both now come from the server's own declarations, in this order:
+//      1. rules   <- GET /enrichment/rules
+//      2. tables  <- the map tables, discovered from each table's declared `map_key_columns`
+//      3. tables  <- REPLACED by `selection.map_tables` once the worklist answers, which is
+//                    the authoritative list and costs no extra round trip
+//
+//    ⚠️ STEP 3 CANNOT BE STEP 2. `/api/maps/alignment/worklist` requires BOTH `rule` AND
+//       `map_table` (`server/main.py:4332-4334`), so its `selection.map_tables` cannot bootstrap
+//       the first table -- it can only correct it. Step 2 therefore reads the same declaration
+//       the server reads (`map_key_columns`, cf. `map_alignment.map_table_catalog`), which is a
+//       declaration rather than a guess, and is discarded the moment step 3 answers.
 
 function createResilientClient() {
   const live = createApiClient({ baseUrl: API_BASE });
@@ -48,6 +65,7 @@ function createResilientClient() {
     // Straight through, no fallback: these three hit routes that EXIST, so a failure is a
     // failure and must stay visible rather than being papered over with a plausible answer.
     loadRules: (...a) => live.loadRules(...a),
+    loadTables: (...a) => live.loadTables(...a),
     loadTableSchema: (...a) => live.loadTableSchema(...a),
     loadBinding: (...a) => live.loadBinding(...a),
 
@@ -123,9 +141,9 @@ function start() {
   // than reading it from anywhere: no module state, so a harness can call it twice with two
   // different questions, which is the whole reason `map2/` is importable instead of sliced.
   app.setLoader((decision, question) => api.loadReferenceView({
-    rule: RULE,
-    mapTable: question.mapTable || MAP_TABLE,
-    params: decision.__key || { dt_eqp: decision.eqp, product: decision.product },
+    rule: chosen.rule,
+    mapTable: question.mapTable,
+    params: decision.__key || keyFrom(chosen.declaration, decision),
     xCol: question.columns.x,
     yCol: question.columns.y,
     valCol: question.columns.val,
@@ -133,90 +151,189 @@ function start() {
     includeCells: true,
   }));
 
-  // ── THE SET-UP ROW'S THREE SOURCES ──────────────────────────────────────────
-  // Which tables can be asked about, which columns each has, and which references resolve.
-  // Two of the three come from ROUTES THAT ALREADY EXIST and are already consumed elsewhere in
-  // this client; only the resolvable-reference list has no route, and that one degrades to
-  // `기준 없음` -- which is the commonest correct answer anyway, not an error state.
-  buildCatalog(api).then(({ catalog, degraded }) => {
-    app.setCatalog(catalog);
-    if (degraded.length > 0) console.log('[map2] catalog degraded:', degraded.join(', '));
-    app.render();
-  }).catch(err => console.log('[map2] catalog unavailable:', err.message));
+  // 🔴 THE SHELL IS DRAWN BEFORE ANY REQUEST IS MADE, AND EVERY FAILURE BELOW IS CAUGHT. No
+  //    bootstrap step may leave the page blank: whatever breaks, the workbench, the selection
+  //    row and a one-line reason still appear, and the WHOLE failure goes to the console.
+  app.render();
 
-  // The rule's DECLARED target fields. Read for the WRITE's destination, never for a picker.
-  api.loadRules()
-    .then(res => {
-      const rule = ((res && res.rules) || []).find(r => r && r.name === RULE) || null;
-      app.setContext({
-        rule: RULE,
-        targetFields: (rule && rule.target_fields) || [],
-        confirmedBy: CURRENT_USER,
-        // The decision key's COLUMNS come from the rule, so a rule that renames them does not
-        // need an edit here. `{dt_eqp, product}` is not spelled in this file twice.
-        // The served dict wins; `keyFrom` is only the fallback for a decision that
-        // did not come from a worklist row.
-        toDecisionKey: (d) => (d && d.__key) || keyFrom(rule, d),
-      });
-    })
-    .catch(err => console.log('[map2] enrichment rules unavailable:', err.message));
+  app.setWorklistLoader((query) => api.loadWorklist(query));
 
-  // 🔴 THE WORKLIST LOADER IS ONE SEAM AND ONE LINE. `ROUTES.worklist` is null, so the live
-  //    call refuses with `RouteNotServedError` and ONLY that class falls through to the stub.
-  //    Every other failure stays visible, for the same reason the reference view's fallback was
-  //    narrowed: a catch-all made a broken request look like a working screen for hours.
-  app.setWorklistLoader((query) => api.loadWorklist(query).catch(err => {
-    if (!(err instanceof RouteNotServedError)) throw err;
-    return stubWorklist(query);
-  }));
-  app.refreshWorklist();
+  discover(api).then(found => {
+    if (found.reason) app.setNotice(found.reason);
+    // The offer, in the order the server declared it. Nothing here ranks or renames.
+    app.setRules({
+      options: [{ value: '', label: WORDS_PICK_RULE, selected: !found.declaration }].concat(
+        found.rules.map(r => ({
+          value: r.name,
+          label: r.name,
+          selected: !!found.declaration && r.name === found.declaration.name,
+        }))),
+      proposed: !!found.proposed,
+    }, (name) => {
+      const picked = found.rules.find(r => r.name === name) || null;
+      // Picking BY HAND is a choice, so the proposal marker comes off.
+      app.setRules({ options: null, proposed: false });
+      adoptRule(app, api, picked);
+    });
+    // A single declared candidate is adopted so the screen is usable; it stays MARKED as a
+    // proposal, and the write still refuses to rest on a proposed column pair beneath it.
+    if (found.declaration) adoptRule(app, api, found.declaration);
+  }).catch(err => {
+    // The last resort. A rejection that reaches here would otherwise be an unhandled promise
+    // and a blank screen, which is exactly the production symptom being chased.
+    console.log('[map2] bootstrap failed:', err && err.stack ? err.stack : err);
+    app.setNotice(WORDS_SETUP_FAILED);
+  });
 
   app.render();
   // Handy for the dev console and for the browser check; not read by any module.
   window.__map2 = app;
 }
 
+// One-line reasons. Nominal register, and each names a DIFFERENT state: no rule declared at
+// all, versus a rule found but nothing to align it against, versus the bootstrap itself failing.
+// Collapsing them would tell the operator "empty" three times for three different repairs.
+const WORDS_NO_RULE = '정렬 규칙 없음';
+const WORDS_NO_TABLE = '맵 테이블 없음';
+const WORDS_SETUP_FAILED = '초기 설정 실패';
+
+/** The rule in force, filled by `discover`. Nothing else in this file names one. */
+const chosen = { rule: null, declaration: null };
+
+/** Shown when several rules are capable and none may be proposed. */
+const WORDS_PICK_RULE = '규칙 선택';
+
 /**
- * What the set-up row may offer. Assembled from EXISTING routes:
- *   · tables   -- the map tables this screen can ask about
+ * Adopt one rule: it declares what a unit IS, so everything downstream is rebuilt rather than
+ * re-asked -- the catalog it can align against, and the worklist of its units.
+ */
+function adoptRule(app, api, declaration) {
+  chosen.rule = declaration ? declaration.name : null;
+  chosen.declaration = declaration;
+  if (!declaration) return;
+  app.setContext({
+    rule: declaration.name,
+    // The rule's DECLARED target fields. Read for the write's destination, never for a picker.
+    targetFields: declaration.target_fields || [],
+    confirmedBy: CURRENT_USER,
+    toDecisionKey: (d) => (d && d.__key) || keyFrom(declaration, d),
+  });
+  buildCatalog(api, declaration).then(built => {
+    app.setCatalog(built.catalog);
+    if (built.catalog.tables.length === 0) app.setNotice(WORDS_NO_TABLE);
+    app.render();
+    // Now the worklist can be asked, and its `selection` corrects the bootstrap table list.
+    app.refreshWorklist();
+  }).catch(err => {
+    console.log('[map2] catalog failed:', err && err.stack ? err.stack : err);
+    app.setNotice(WORDS_SETUP_FAILED);
+  });
+}
+
+/**
+ * WHAT THIS DEPLOYMENT ACTUALLY HAS. Every answer is a server declaration; nothing here is a
+ * name this program knows in advance, and every step degrades to a stated reason rather than a
+ * throw.
+ *
+ * 🔴 A RULE DECLARES ITSELF ALIGNMENT-CAPABLE: `"alignment": true` in `enrichment_rules.json`,
+ *    served through `GET /enrichment/rules`. ABSENCE MEANS NOT CAPABLE -- a fact, not a
+ *    default: an unmarked rule has never been claimed to align anything. So there is no
+ *    fallback to "offer everything" when nothing is marked. An empty offer is the honest
+ *    answer, and it lets the operator SEE that the config is missing a declaration instead of
+ *    being handed a rule that cannot work.
+ *
+ *    `=== true` STRICTLY, matching `map_push_ok` (`server/main.py:2019`, client `=== true`).
+ *    A config typo -- the string "true", or 1 -- must not unlock a capability.
+ *
+ *    This replaces picking `rules[0]`, which is exactly how `dt_job_lot_slot_attribution` --
+ *    the lot/slot rule, which aligns nothing -- came to be proposed on the live screen.
+ */
+async function discover(api) {
+  let rules = [];
+  try {
+    const res = await api.loadRules();
+    rules = Array.isArray(res && res.rules) ? res.rules : [];
+  } catch (e) {
+    console.log('[map2] enrichment rules unavailable:', e && e.message);
+    return { rules: [], declaration: null, reason: WORDS_NO_RULE };
+  }
+
+  // The predicate lives in a pure module so it is scored by importing, not by driving a page.
+  const picked = selectAlignmentRules(rules);
+  if (picked.capable === 0) {
+    console.log('[map2] no rule declares `alignment: true`; nothing can be aligned. '
+      + `Declared rules: ${rules.map(r => r && r.name).join(', ') || '(none)'}`);
+    return { rules: [], declaration: null, reason: WORDS_NO_RULE };
+  }
+  if (!picked.proposed) {
+    console.log(`[map2] ${picked.capable} alignment-capable rules; offering, proposing none: `
+      + picked.rules.map(r => r.name).join(', '));
+  }
+  return { rules: picked.rules, declaration: picked.declaration,
+           proposed: picked.proposed, reason: '' };
+}
+
+/**
+ * What the set-up row may offer, assembled from EXISTING routes:
+ *   · tables   -- discovered: a table is a MAP table when its schema declares `map_key_columns`
  *   · columns  -- `/tables/{t}/schema`, the route admin already consumes
  *   · binding  -- `/api/maps/paint-rules?table=`, which serves the RESOLVED declaration from
  *                 `map_overlay_config.json` together with its provenance
- * The reference list has no route; it degrades to `기준 없음` alone, which is the ordinary
- * state for the 320 maps that have no valid-die reference in the first place.
+ * The reference list has no route; it degrades to `기준 없음` alone, which is the ordinary state
+ * for the maps that have no valid-die reference in the first place.
  */
-async function buildCatalog(api) {
+async function buildCatalog(api, declaration) {
   const degraded = [];
-  const tables = [{ table: MAP_TABLE, label: MAP_TABLE }];
   const columns = {};
   const columnTypes = {};
   const binding = {};
   const references = {};
-  for (const t of tables) {
+
+  let names = [];
+  try {
+    const res = await api.loadTables();
+    names = Array.isArray(res && res.tables) ? res.tables : [];
+  } catch (e) {
+    degraded.push('tables');
+    console.log('[map2] table list unavailable:', e && e.message);
+  }
+
+  const tables = [];
+  for (const name of names) {
+    let schema = null;
     try {
-      const schema = await api.loadTableSchema(t.table);
-      columns[t.table] = Array.isArray(schema && schema.columns) ? schema.columns : [];
-      // The DECLARED types, carried through. The coordinate pickers offer declared numbers.
-      columnTypes[t.table] = (schema && schema.column_types) || {};
+      schema = await api.loadTableSchema(name);
     } catch (e) {
-      degraded.push(`schema:${t.table}`);
-      columns[t.table] = [];
-      columnTypes[t.table] = {};
+      degraded.push(`schema:${name}`);
+      continue;
     }
+    // THE DECLARATION THAT MAKES A TABLE A MAP TABLE. Same one the server reads.
+    const keyCols = (schema && schema.map_key_columns) || [];
+    if (!Array.isArray(keyCols) || keyCols.length === 0) continue;
+    tables.push({ table: name, label: name });
+    columns[name] = Array.isArray(schema.columns) ? schema.columns : [];
+    columnTypes[name] = schema.column_types || {};
     try {
-      const rules = await api.loadBinding(t.table);
+      const rules = await api.loadBinding(name);
       const b = rules && rules.binding ? rules.binding : null;
       // Carried WITH its provenance, never flattened. `fallback_guess` is the server's own
       // marker for a binding a client must not render as a declaration.
-      if (b && b.x && b.y) binding[t.table] = { x: b.x, y: b.y, val: b.val || null, source: b.source };
+      if (b && b.x && b.y) binding[name] = { x: b.x, y: b.y, val: b.val || null, source: b.source };
     } catch (e) {
-      degraded.push(`binding:${t.table}`);
+      degraded.push(`binding:${name}`);
     }
     // No route serves "which references actually resolve". Offering the declared
-    // `valid_die_ref` values would offer eight names that resolve zero times.
-    references[t.table] = [];
-    degraded.push(`references:${t.table}`);
+    // `valid_die_ref` values would offer names that resolve zero times. The marker STAYS until
+    // that route lands, so the emptiness is attributable rather than looking healthy.
+    references[name] = [];
+    degraded.push(`references:${name}`);
   }
+  if (tables.length === 0) {
+    console.log('[map2] no table declares map_key_columns; there is nothing to align. '
+      + `Rule '${declaration && declaration.name}' has source_table `
+      + `'${declaration && declaration.source_table}'.`);
+  }
+  if (degraded.length > 0) console.log('[map2] catalog degraded:', degraded.join(', '));
   return { catalog: { tables, columns, columnTypes, binding, references }, degraded };
 }
 
@@ -226,18 +343,6 @@ function keyFrom(rule, decision) {
   const d = decision || {};
   if (cols.length === 2) return { [cols[0]]: d.eqp, [cols[1]]: d.product };
   return { dt_eqp: d.eqp, product: d.product };
-}
-
-/**
- * THE STUB, BEHIND ONE SEAM. Reached only when `ROUTES.worklist` refuses by name, and it says
- * so on screen rather than passing itself off as served data. Swapping it out is one line in
- * `ROUTES` -- nothing else in the program knows this exists.
- */
-function stubWorklist(query) {
-  const seed = { rows: [], total: null, remaining: null, unscorable: null };
-  const status = document.getElementById('me2-worklist-meta');
-  if (status) status.textContent = '작업 목록 · 미상';
-  return Promise.resolve(seed);
 }
 
 if (document.readyState === 'loading') {

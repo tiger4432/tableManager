@@ -392,6 +392,36 @@ function captionFor(session, payload, selectedId) {
     : `지금 보는 것: ${name} · 기준 대비`;
 }
 
+/**
+ * WHICH RULES MAY BE OFFERED, and whether one may be PROPOSED. Pure, so it is scorable by
+ * importing rather than by driving a page.
+ *
+ * 🔴 A RULE DECLARES ITSELF CAPABLE: `alignment: true`, served by `GET /enrichment/rules`.
+ *    ABSENCE MEANS NOT CAPABLE -- a fact, not a default, because an unmarked rule has never
+ *    been claimed to align anything. There is deliberately NO fallback to offering everything
+ *    when nothing is marked: an empty offer is the honest answer and shows the operator that
+ *    the config lacks a declaration, where a full offer would hand them a rule that cannot work.
+ *
+ * 🔴 `=== true` STRICTLY, matching `map_push_ok` (`server/main.py:2019`, client `=== true`).
+ *    The string "true", or `1`, is a config typo and must not unlock a capability.
+ *
+ * 🔴 SEVERAL CAPABLE RULES PROPOSE NOTHING. Picking the first is precisely how
+ *    `dt_job_lot_slot_attribution` -- which aligns nothing -- came to be proposed live, and
+ *    there is no declared order that would make one of several the right guess.
+ */
+export function selectAlignmentRules(rules) {
+  const all = Array.isArray(rules) ? rules : [];
+  const capable = all.filter(r => r && r.alignment === true);
+  return Object.freeze({
+    rules: Object.freeze(capable),
+    // Exactly one candidate is adopted so the screen is usable -- and stays marked a proposal.
+    declaration: capable.length === 1 ? capable[0] : null,
+    proposed: capable.length === 1,
+    capable: capable.length,
+    declared: all.length,
+  });
+}
+
 /** The cross-source row is the (N+1)th focusable row, not a new pane. */
 export const CROSS_SOURCE_ROW_ID = '__cross_source__';
 
