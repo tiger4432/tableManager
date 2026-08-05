@@ -76,6 +76,85 @@ function sliceFunction(source, name) {
   die(`unbalanced braces while extracting '${name}'`);
 }
 
+/** The DECLARED parameter list of `function NAME(...)`, in order, read out of the declaration
+ *  text. `null` if the function is absent; a string instead of an array if the list uses a
+ *  spelling this reader cannot split safely (defaults, destructuring, rest) — the caller turns
+ *  that into a named failure rather than mis-splitting on an inner comma and reporting a shape
+ *  nobody wrote. Behaviour cannot substitute for this: a mis-positional call to a function
+ *  whose parameters all accept anything answers WRONG rather than throwing, which is how a
+ *  stale 2-argument call site reported itself as a geometry regression on 2026-08-05. */
+function declaredParams(source, name) {
+  const code = sliceFunction(source, name);
+  if (!code) return null;
+  const open = code.indexOf('(');
+  const close = code.indexOf(')', open);
+  if (open < 0 || close < 0) return null;
+  const inner = code.slice(open + 1, close).trim();
+  if (inner === '') return [];
+  if (/[{}[\]=(]/.test(inner)) return `UNREADABLE: (${inner})`;
+  return inner.split(',').map(s => s.trim());
+}
+
+/** Source with comments and string/template literals blanked, for scanning IDENTIFIER
+ *  references. Plain text search is not usable here: this file documents the frame binding at
+ *  length in its own prose, and forbidding the spelling in comments would force the refactor to
+ *  erase the rationale for its own existence. (A docstring quoting a forbidden spelling has
+ *  produced a false positive in this repository before.)
+ *
+ *  Regex literals are NOT parsed — a `/` in code state is treated as division. A regex
+ *  containing a quote could therefore desync the scanner INTO string state and blank real code,
+ *  which is the dangerous direction for a guard, so `assertStripperIsSane` below proves the
+ *  result still contains the code it must be able to see. */
+function stripCommentsAndStrings(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (c === '/' && d === '/') {
+      while (i < n && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      const q = c;
+      i++;
+      while (i < n && src[i] !== q) {
+        if (src[i] === '\\') i++;
+        i++;
+      }
+      i++;
+      out += '""';
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/** FIXTURE ACTIVITY for the stripper itself. A blanking bug that swallowed real code would make
+ *  every forbidden-identifier check pass for the wrong reason — green because nothing was
+ *  looked at. Anchors are declarations the file certainly has and that live far apart in it. */
+function assertStripperIsSane(stripped, original, anchors) {
+  if (stripped.length < original.length * 0.35) {
+    die(`the comment/string stripper removed ${Math.round(100 - stripped.length / original.length * 100)}% `
+      + `of client2/src/map_editor.js. It has desynced, and every forbidden-identifier check `
+      + `below would pass because nothing was scanned. Nothing was compared.`);
+  }
+  const lost = anchors.filter(a => !stripped.includes(a));
+  if (lost.length) {
+    die(`the comment/string stripper ate code it must be able to see: ${lost.join(', ')}. `
+      + `A guard that cannot see the code passes for the wrong reason. Nothing was compared.`);
+  }
+}
+
 /** Slice a single-line `const NAME = ...;` declaration. */
 function sliceConst(source, name) {
   const re = new RegExp(`(^|\\n)(const\\s+${name}\\s*=[^\\n]*)`);
@@ -115,7 +194,10 @@ for (const c of spec.client_consts || []) {
   pieces.push(`globalThis[${JSON.stringify(c.name)}] = ${c.name};`);
 }
 for (const [role, m] of Object.entries(spec.client_symbols)) {
-  if (role === '$comment') continue;
+  // `$`-prefixed keys are PROSE, not roles — `$comment`, and `$retired` which records where a
+  // retired role's coverage went. `test_seam_contract.py` skips by the same rule; a role name
+  // may not begin with `$`, which is what keeps the two skips from drifting.
+  if (role.startsWith('$')) continue;
   const source = SRC[m.file];
   if (source === undefined) die(`client_symbols.${role} names an unknown file: ${m.file}`);
   const meta = { role, fn: m.fn, file: m.file, why: m.$why || '',
@@ -153,11 +235,24 @@ for (const [role, m] of Object.entries(spec.client_symbols)) {
 
 // Module state the extracted functions read. Everything else is pure.
 //   tableSchema            — served by GET /schema/{table} (map_key_columns + column_types)
-//   el / physFrameOverride — the two metadata sources physNum consults
+//   el                     — the screen controls, and the only metadata source left that is
+//                            module state. The frame is an ARGUMENT now (see `frame_threading`
+//                            in vectors.json); `physNum` and `getTransformedPhysicalConfig`
+//                            already take it and the scorer passes it positionally.
+//   physFrameOverride      — GONE FROM THIS SANDBOX since 2026-08-06, and deliberately not
+//                            replaced. It was here while sliced functions still read the
+//                            binding; none do (`frame_threading.forbidden_module_bindings.
+//                            reads_module_frame` is empty and the scorer proves it every run).
+//                            Removing both routes was MEASURED first — 554 assertions, 12
+//                            pins, identical result — so this is dead weight paid down, not a
+//                            change of behaviour. It is also a TRAP removed: a sandbox global
+//                            named after a forbidden binding is exactly the route the contract
+//                            forbids, sitting pre-built for the next person who needs a frame
+//                            in a hurry. The frame is passed POSITIONALLY or not at all.
 //   S / summaryKeyFor      — transfer_plan module state; the key derivation is not the
 //                            contract, so it is stubbed rather than dragged in.
 const sandbox = {
-  console, tableSchema: {}, el: {}, physFrameOverride: null,
+  console, tableSchema: {}, el: {},
   S: { summaries: new Map(), ctx: {} },
   summaryKeyFor: () => 'K',
   // The M4 branch point's state. `let validDie` (map_editor.js:1870) is not a const, so it is
@@ -502,44 +597,278 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
   rec('valid_die_ref_home_divergence_cases', c.name, 'client_kind', c.expect_client, (got || {}).kind);
 }
 
+// --- The frame is an ARGUMENT (vectors.json `frame_threading`) ---------------------------
+// The contract-keeper ruling of 2026-08-05, scored. The retired `with_phys_frame` role used to
+// carry the sentence 'the scorer must not assign `physFrameOverride` itself'; the INVARIANT it
+// stated — the scorer never supplies the frame by a route the product does not use — survives
+// the refactor, and the MECHANISM it named does not. What replaces the prohibition is not a
+// weaker rule but a checkable one: pass the frame positionally, in the contracted parameter
+// list, and prove there is no module route left for anyone to use instead.
+//
+// NONE OF THIS IS A ROUND TRIP. These are single-implementation assertions about the client
+// alone, and they are here rather than in `client2/tests/` on purpose: a harness there is
+// outside the rename-detection scope, which is how `split_registry_harness.mjs` sat dead from
+// U6 without anyone noticing.
+const FT = spec.frame_threading;
+if (!FT) {
+  die('vectors.json has no `frame_threading` block. The frame-as-argument invariants are '
+    + 'unscoreable without it, and their absence would look exactly like a green run.');
+}
+const shapeOk = {};
+{
+  const G = 'frame_threading';
+  const MAPSRC = SRC['client2/src/map_editor.js'];
+  const STRIPPED = stripCommentsAndStrings(MAPSRC);
+  assertStripperIsSane(STRIPPED, MAPSRC, [
+    'function physNum(', 'function frameFromMeta(', 'function isValidDieAt(',
+  ]);
+
+  // ① THE DECLARED PARAMETER LIST. Ordered, not counted: `physDeclaration(key, domEl, frame)`
+  //    has the right arity and lets every un-migrated 2-argument call site keep compiling
+  //    while reading `undefined` — the one spelling that must never mean 'read the screen'.
+  //    Only the FRAME parameter is named. The rest are pinned by count and nothing else — this
+  //    contract has an opinion about where the frame arrives and none about what the other
+  //    parameters are called. (`getTransformedPhysicalConfig` names its other two
+  //    `currentRotation`/`currentSide`, which shadow module bindings and which its own header
+  //    calls a trap; freezing those spellings here would be mirroring an implementation.)
+  const REQ = FT.required_signatures || {};
+  for (const [role, want] of Object.entries(REQ)) {
+    if (role.startsWith('$')) continue;
+    if (!have.has(role)) { shapeOk[role] = false; continue; }
+    const got = declaredParams(SRC[spec.client_symbols[role].file], spec.client_symbols[role].fn);
+    const shape = Array.isArray(got)
+      ? { frame_param: got[0] === undefined ? null : got[0], arity: got.length }
+      : got;
+    const ok = eq(shape, { frame_param: want.frame_param, arity: want.arity });
+    shapeOk[role] = ok;
+    rec(G, `${spec.client_symbols[role].fn}`, 'frame_is_the_leading_parameter',
+      { frame_param: want.frame_param, arity: want.arity }, shape);
+    if (!ok) {
+      // Print the wait alongside the failure so a reviewer of an unrelated round can see at a
+      // glance that the red is a sequencing state and whose it is, not a defect they caused.
+      unscoredGroups.push({
+        group: `frame_threading.${role}`,
+        invariant: `the frame is a required leading argument — ${want.$lands_with || 'shape change'}`,
+        missing: [`${spec.client_symbols[role].fn} declares (${Array.isArray(got) ? got.join(', ') : got})`
+          + `, owner ${want.$owner || 'unassigned'}`],
+      });
+    }
+  }
+
+  // ② THE MEMBERSHIP OF THE MODULE ROUTE — the members, never the count. A count ceiling on
+  //    module bindings already exists (`check_harnesses.mjs` MODULE_STATE, max 48) and it
+  //    provably cannot do this job: deleting the binding frees a slot, so re-introducing it
+  //    later lands back on 48 and passes. Fails in BOTH directions, and the second direction
+  //    is the load-bearing one — a listed reader that LOSES the reference reddens this and
+  //    asks for the contract to be updated, instead of leaving a stale exemption behind.
+  const FMB = FT.forbidden_module_bindings || {};
+  const NAMES = FMB.names || [];
+  const declaredReaders = Object.keys(FMB.reads_module_frame || {}).filter(k => !k.startsWith('$'));
+  const refersTo = (code) => {
+    const body = stripCommentsAndStrings(code);
+    return NAMES.some(nm => new RegExp(`\\b${nm}\\b`).test(body));
+  };
+  const readsBinding = (role) => {
+    const m = spec.client_symbols[role];
+    if (m.file !== 'client2/src/map_editor.js') return false;
+    const code = sliceFunction(MAPSRC, m.fn);
+    return code ? refersTo(code) : false;
+  };
+  // ②-a THE HALF-THREAD, named. A role whose signature is contracted as THREADED may not still
+  //     reach for the binding in its body — it would take the frame, guard it, and answer from
+  //     module state anyway. Every behavioural vector passes against that, because the scorer
+  //     hands in a frame that AGREES with the state such a reader consults. Measured twice in
+  //     two minutes on 2026-08-05 while this check was being written (see
+  //     `frame_threading.$comment`), so it is not a hypothetical shape.
+  //     Split out of the membership assertion below because a bare set diff does not say WHICH
+  //     wrong implementation it found, and this one has a name.
+  //     GATED ON THE SHAPE, so the two checks chain instead of both shouting about one
+  //     pending stage: while the signature is still the old one the shape failure is the whole
+  //     finding, and this turns on the moment the argument appears.
+  for (const role of Object.keys(REQ).filter(r => !r.startsWith('$') && have.has(r))) {
+    if (!shapeOk[role]) continue;
+    rec(G, spec.client_symbols[role].fn, 'threaded_and_reads_no_module_frame',
+      false, readsBinding(role));
+  }
+  // ②-b THE REGISTRY, over the roles NOT yet contracted as threaded.
+  const measuredReaders = [...have].filter(r => !(r in REQ)).filter(readsBinding);
+  rec(G, 'reads_module_frame', 'membership',
+    declaredReaders.filter(r => !(r in REQ)).sort(), measuredReaders.sort());
+
+  // ③ THE DECLARATION ITSELF, at file scope — the backstop for readers this contract does not
+  //    slice (`frameChosenFrom`, `getWaferBoundingBox`, `seatingSnapshot`). Expected present
+  //    exactly while the registry above is non-empty, so the day the last reader is threaded
+  //    this demands the binding be DELETED rather than left as an unread global.
+  const declaresBinding = NAMES.some(nm =>
+    new RegExp(`(^|\\n)\\s*(let|var|const)\\s+${nm}\\b`).test(STRIPPED)
+    || new RegExp(`(^|\\n)\\s*(export\\s+)?function\\s+${nm}\\b`).test(STRIPPED));
+  //    PINNABLE, because this assertion can be red for a reason that is not a defect. Once the
+  //    last contracted reader is threaded the registry empties and this demands the DELETION —
+  //    which is a separate stage (S2.7) on a separate lane's clock. That is a LATENESS, and a
+  //    lateness that blocks `prebuild` blocks the client `dist`, which puts every unrelated
+  //    client fix behind an unrelated stage. Pinned, it still prints on every run and it still
+  //    expires by itself: when S2.7 lands, `declaresBinding` flips to the CONTRACT value and
+  //    recPinned reports STALE PIN — red in the other direction, asking for its own removal.
+  //    The pin therefore cannot outlive the condition it names, which is the only property
+  //    that makes a named red better than an anonymous one.
+  const fmbPin = FMB.$client_known_defect || null;
+  if (fmbPin && fmbPin.client_actual
+      && fmbPin.client_actual.binding_still_declared !== undefined) {
+    recPinned(G, 'forbidden_module_bindings', 'binding_still_declared_iff_a_reader_remains',
+      declaredReaders.length > 0, declaresBinding, fmbPin,
+      fmbPin.client_actual.binding_still_declared);
+  } else {
+    rec(G, 'forbidden_module_bindings', 'binding_still_declared_iff_a_reader_remains',
+      declaredReaders.length > 0, declaresBinding);
+  }
+}
+
 // --- D1: synthetic geometry is not a declaration ----------------------------------------
-// Through the client's REAL chain — `frameFromMeta` -> `withPhysFrame` -> `physDeclaration`
-// — and not by assigning `physFrameOverride` directly. Two reasons, both measured:
+// Through the client's REAL chain — `frameFromMeta` -> `physDeclaration(frame, ...)` — and
+// never by assigning a module variable. Two reasons, both measured:
 //   · `frameFromMeta`'s key whitelist is where the mark was DROPPED on 2026-08-04, so the
 //     overlay path could never see it. A hand-built frame scores that bug green.
-//   · the frame WINDOW is what makes the mark a fact about a MAP rather than the session.
-//     A scorer that sets the module variable is testing its own fixture.
+//   · the frame must arrive the way the product delivers it. That used to mean 'through the
+//     window'; it now means 'in the contracted parameter position', which is stronger — an
+//     argument cannot leak at all, where a window could only promise not to.
 {
   const G = 'geometry_declaration_cases';
+  const INV = 'D1 — synthetic geometry is not a declaration';
   // `control_is_silent` is listed for the same reason `geometry_is_auto_registered` is: it is a
   // CALLEE of `phys_declaration`, and an unlisted callee makes its caller unevaluable — which
   // shows up as every vector recording a stack trace instead of an answer.
-  if (requireRoles(G, ['phys_declaration', 'geometry_is_auto_registered', 'control_is_silent',
-    'frame_from_meta', 'with_phys_frame'], 'D1 — synthetic geometry is not a declaration')) {
+  const ROLES = ['phys_declaration', 'geometry_is_auto_registered', 'control_is_silent',
+    'frame_from_meta'];
+  const wrongShape = ROLES.filter(r => shapeOk[r] === false);
+  if (requireRoles(G, ROLES, INV)) {
+    if (wrongShape.length) {
+      // WIRED AND BLOCKED, not silently narrowed. Calling the old shape with the contracted
+      // argument list would produce a wall of value diffs that read like a geometry defect —
+      // measured on 2026-08-05, when a stale 2-argument call to `getTransformedPhysicalConfig`
+      // reported itself as `effective_radius_mm` 147 instead of 7 across 43 assertions. The
+      // shape failure above is the finding; this says what it costs.
+      scored.add(G);
+      unscoredGroups.push({ group: G, invariant: INV,
+        missing: wrongShape.map(r => `${spec.client_symbols[r].fn} — declared shape does not `
+          + `match frame_threading.required_signatures, so the chain cannot be called`) });
+    } else {
+    const DOM = { chipX: 'physChipX', chipY: 'physChipY' };
+    // TWO SCREENS, THE SAME EXPECTED VALUES. The silent screen asks 'is the meta the only
+    // source'; the hostile screen asks 'does the FRAME answer alone'. The second question could
+    // not be asked before — the fixture emptied `el`, and an absent mark cannot contradict a
+    // frame, so a reader that unioned the two marks passed the whole group. That hole predates
+    // the refactor; retiring `with_phys_frame` is what made it visible.
+    const SC = FT.screen_contradiction || {};
+    const SCREENS = [
+      { name: 'silent_screen', build: () => ({}) },
+      { name: 'marked_screen', build: () => {
+        const cell = () => ({ value: SC.hostile_screen_value,
+          dataset: { ...(SC.hostile_screen_dataset || {}) } });
+        return { physChipX: cell(), physChipY: cell() };
+      } },
+    ];
+    // The hostile screen carries the MARK and no value, deliberately. A hostile VALUE would
+    // legitimately change `phys_absent`'s answer (a screen reading IS correct when the meta
+    // declares nothing), so the two passes would need different expectations and the fixture
+    // would stop being the same question asked twice.
+    rec(G, 'fixture_active', 'hostile_screen_carries_no_value', true,
+      SC.hostile_screen_value === '' && !!(SC.hostile_screen_dataset || {}).autoRegistered);
+
     for (const c of cases(G)) {
-      // No screen values at all: the map's own meta must be the only source. Leaving DOM
-      // inputs behind would let a stale screen value stand in for the frame's answer.
-      sandbox.el = {};
-      sandbox.physFrameOverride = null;
-      const frame = attempt(() => FN.frame_from_meta(c.meta));
-      if (threw(frame) || frame === null) {
-        rec(G, c.name, 'frame_built', true, threw(frame) ? frame : false);
-        continue;
-      }
-      // BOTH axes. The mark belongs to the spec, so an implementation that reads it for one
-      // axis leaves an unread write on the other, and unread writes go stale unnoticed.
-      for (const key of ['chipX', 'chipY']) {
-        const d = attempt(() => FN.with_phys_frame(frame, () => FN.phys_declaration(key, null)));
-        if (threw(d)) {
-          rec(G, `${c.name}/${key}`, 'declared', c.expect_declared, d);
+      for (const screen of SCREENS) {
+        sandbox.el = screen.build();
+        const frame = attempt(() => FN.frame_from_meta(c.meta));
+        if (threw(frame) || frame === null) {
+          rec(G, `${c.name}/${screen.name}`, 'frame_built', true, threw(frame) ? frame : false);
           continue;
         }
-        rec(G, `${c.name}/${key}`, 'declared', c.expect_declared,
-          typeof d.value === 'number' && Number.isFinite(d.value));
-        rec(G, `${c.name}/${key}`, 'auto_registered', c.expect_auto_registered,
-          d.source === 'auto_registered');
+        // BOTH axes. The mark belongs to the spec, so an implementation that reads it for one
+        // axis leaves an unread write on the other, and unread writes go stale unnoticed.
+        for (const key of ['chipX', 'chipY']) {
+          const d = attempt(() => FN.phys_declaration(frame, key, sandbox.el[DOM[key]] || null));
+          if (threw(d)) {
+            rec(G, `${c.name}/${screen.name}/${key}`, 'declared', c.expect_declared, d);
+            continue;
+          }
+          rec(G, `${c.name}/${screen.name}/${key}`, 'declared', c.expect_declared,
+            typeof d.value === 'number' && Number.isFinite(d.value));
+          rec(G, `${c.name}/${screen.name}/${key}`, 'auto_registered', c.expect_auto_registered,
+            d.source === 'auto_registered');
+        }
       }
     }
+
+    // A MISSING FRAME IS LOUD, and a NULL one is not. Both polarities: throwing on both
+    // satisfies the first half while breaking the main-load case on every call, and
+    // `frame = frame || null` satisfies the second while collapsing the distinction the
+    // argument exists to make. (That falsy collapse is known defect D1's shape, in a new place.)
+    {
+      const MF = FT.missing_frame_is_loud || {};
+      sandbox.el = { physChipX: { value: '7', dataset: {} } };
+      const omitted = attempt(() => FN.phys_declaration(undefined, 'chipX', sandbox.el.physChipX));
+      rec(G, 'missing_frame_is_loud', 'undefined_throws',
+        MF.expect_throw_on_undefined, threw(omitted));
+      const deliberate = attempt(() => FN.phys_declaration(null, 'chipX', sandbox.el.physChipX));
+      rec(G, 'missing_frame_is_loud', 'null_reads_the_screen',
+        MF.expect_screen_on_null, !threw(deliberate) && deliberate
+          && deliberate.value === 7 && deliberate.source === 'screen');
+    }
+
+    // NO RESIDUE — what 'the frame does not outlive its window' becomes once the window is a
+    // call. Under the binding this asserted `withPhysFrame`'s `finally`; it now asserts that
+    // nothing was memoised. Not vacuous: stashing the last frame or caching the resolved
+    // declaration per key is the obvious way to make a threaded reader 'efficient', and either
+    // one is a NEW module binding — the thing this refactor is buying protection from.
+    {
+      const NR = FT.no_residue || {};
+      const marked = cases(G).find(c => c.expect_auto_registered);
+      if (!marked) {
+        rec(G, 'no_residue', 'fixture_has_a_marked_case', true, false);
+      } else {
+        sandbox.el = { physChipX: { value: NR.screen_value, dataset: {} } };
+        const f = attempt(() => FN.frame_from_meta(marked.meta));
+        const first = attempt(() => FN.phys_declaration(f, 'chipX', sandbox.el.physChipX));
+        rec(G, 'no_residue', 'frame_call_reads_the_frame', 'auto_registered',
+          threw(first) ? first : (first || {}).source);
+        const after = attempt(() => FN.phys_declaration(null, 'chipX', sandbox.el.physChipX));
+        rec(G, 'no_residue', 'null_call_afterwards_reads_the_screen',
+          NR.expect_after_frame_call,
+          threw(after) ? after : { value: (after || {}).value, source: (after || {}).source });
+      }
+    }
+
+    // INTERFERENCE — the property ONE GLOBAL made unaskable. Two frames could only be
+    // expressed by nesting two windows, and what that scores is the window's save/restore, not
+    // the reader's freedom from state. Alternating A B A B fails a reader that returns the
+    // first frame's answer or the last one's on the SECOND call rather than never, and it
+    // fails the half-thread (argument accepted, leftover state consulted) because the leftover
+    // cannot be both frames at once.
+    {
+      const IF = FT.interference || {};
+      const cs = cases(G);
+      const declaredCase = cs.find(c => c.expect_declared && !c.expect_auto_registered);
+      const autoCase = cs.find(c => c.expect_auto_registered);
+      // Chosen BY PROPERTY, not by name, and the choice is asserted: adding or renaming
+      // vectors must not be able to quietly empty this.
+      rec(G, 'interference', 'fixture_has_one_frame_of_each_kind', true,
+        !!declaredCase && !!autoCase);
+      if (declaredCase && autoCase) {
+        sandbox.el = {};
+        const fA = attempt(() => FN.frame_from_meta(declaredCase.meta));
+        const fB = attempt(() => FN.frame_from_meta(autoCase.meta));
+        const token = (d) => {
+          if (threw(d) || !d) return String(d);
+          if (d.source === 'auto_registered') return 'auto_registered';
+          return (typeof d.value === 'number' && Number.isFinite(d.value)) ? 'declared' : 'other';
+        };
+        // The D1 vocabulary, reused rather than a third one invented: `declared` and
+        // `auto_registered` are the two claims this group already states.
+        const got = [fA, fB, fA, fB].map(f =>
+          token(attempt(() => FN.phys_declaration(f, 'chipX', null))));
+        rec(G, 'interference', 'A_B_A_B_each_answers_for_its_own_map', IF.sequence, got);
+      }
+    }
+
     // FIXTURE ACTIVITY, asserted here too rather than trusted from the server side: this
     // scorer must fail if the discriminating vectors are ever dropped from the file.
     const cs = cases(G);
@@ -550,9 +879,21 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
       cs.some(c => c.expect_auto_registered && Number(c.meta.phys_chip_x) !== 1));
     rec(G, 'fixture_active', 'has_an_absent_spec', true,
       cs.some(c => !c.expect_declared && !c.expect_auto_registered));
-    sandbox.physFrameOverride = null;
     sandbox.el = {};
+    }
   }
+  // NOT CLAIMED, and listed so the gap is visible in the report rather than invisible in the
+  // count. `geometryIsAutoRegistered(undefined)` — whether a missing frame must be loud in the
+  // CALLEE too, the way it is in `physDeclaration`. `physDeclaration` guards before calling it,
+  // so the seam path can never deliver `undefined` there; its other two callers are DOM-context
+  // and legitimately pass `null`. Requiring a throw would be this harness designing the client.
+  unscoreable.push({ group: G, name: 'geometryIsAutoRegistered', field: 'undefined_frame',
+    why: 'whether the CALLEE must also refuse a missing frame is a client design decision, not '
+      + 'a seam value — no server counterpart has an opinion about it. Referred to the Lead PM '
+      + 'rather than legislated here. The same class of question was open for `valid_die_at` '
+      + 'and is now CLOSED (Lead PM, 2026-08-06): it was decided by the stage landing first, '
+      + 'and the ruling is recorded at frame_threading.required_signatures.valid_die_at.$why. '
+      + 'That is the precedent for how this one gets answered — by a ruling, not by a scorer.' });
 }
 
 // --- M4 baseline (INV-M4-1) ------------------------------------------------------------
@@ -566,11 +907,15 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
   for (const c of cases('mask_baseline_cases')) {
     const [C, R] = (c.rotation === 90 || c.rotation === 270) ? [c.rows, c.cols] : [c.cols, c.rows];
     for (const via of ['frame_override', 'dom_inputs']) {
-      sandbox.physFrameOverride = null;
+      // `frame` is an ARGUMENT, passed positionally into the contracted parameter list — not
+      // assigned onto module state. `dom_inputs` passes `null`, which is the deliberate
+      // 'read the screen' answer and NOT the same as omitting it (see
+      // `frame_threading.missing_frame_is_loud`).
+      let frame = null;
       sandbox.el = {};
       if (via === 'frame_override') {
-        sandbox.physFrameOverride = {};
-        for (const [k, v] of Object.entries(KEYS)) sandbox.physFrameOverride[k] = c.declared[v];
+        frame = {};
+        for (const [k, v] of Object.entries(KEYS)) frame[k] = c.declared[v];
       } else {
         for (const [k, v] of Object.entries(KEYS)) sandbox.el[DOM[k]] = { value: String(c.declared[v]) };
       }
@@ -579,7 +924,7 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
       // contract value — see recPinned. The mask evidence stays in the vector either way, so
       // a reader sees the actual disagreement and not just a label.
       const pin = c.$client_known_defect || null;
-      const pc = FN.phys_config(c.rotation, c.side);
+      const pc = FN.phys_config(frame, c.rotation, c.side);
       const recRadius = (pin && pin.client_actual
         && pin.client_actual.effective_radius_mm !== undefined)
         ? (n, f, exp, act) => recPinned('mask_baseline_cases', n, f, exp, act, pin,
@@ -620,11 +965,11 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
       if (c.$client_known_defect) continue;
       const [C, R] = [c.rows, c.cols];
       const maskFor = (d) => {
-        sandbox.physFrameOverride = {
+        const frame = {
           waferDia: d.wafer_dia, edgeMargin: d.edge_margin, chipX: d.chip_x,
           chipY: d.chip_y, offsetX: d.offset_x, offsetY: d.offset_y,
         };
-        const pc = FN.phys_config(c.rotation, c.side);
+        const pc = FN.phys_config(frame, c.rotation, c.side);
         const out = [];
         for (let r = 0; r < R; r++) {
           let row = '';
@@ -639,7 +984,6 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
     }
   }
 
-  sandbox.physFrameOverride = null;
   sandbox.el = {};
 }
 
@@ -692,7 +1036,22 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
   // ruling: `resolve_valid_die_basis` already returns circle|ref|refused, and one seam may not
   // carry two vocabularies — a mapping table between them would be a second implementation of
   // the answer. A half-done rename therefore fails here, loudly, which is the intent.
-  sandbox.physFrameOverride = null;
+  //
+  // NO FRAME, ON PURPOSE — and passed by the PRODUCT'S ROUTE. Until stage 5 (`f11c56c`) this
+  // read `sandbox.physFrameOverride = null`, which was the only route that existed while the
+  // frame was a module binding. `isValidDieAt` now takes the frame as a REQUIRED LEADING
+  // argument, so assigning the sandbox binding stopped reaching the function and every call
+  // below shifted one position left: `valid_die_at(3, 4, circleInside)` bound `frame = 3`,
+  // hit the truthy-frame short circuit, and returned the FOURTH argument — which was not
+  // passed. That is why 9 assertions here answered `undefined`/`null` rather than throwing;
+  // it is the mis-positional failure mode `declaredParams`' header names, and it is a stale
+  // scorer, NOT a client regression. The rule these vectors score never changed.
+  //
+  // `null` rather than a truthy frame is the contracted spelling for "apply THIS map's mask"
+  // (map_editor.js `isValidDieAt` header: `undefined` = the caller forgot, `null` = an
+  // answer). INV-M4-1 and INV-M4-2 are about the mask being applied, so `null` is the only
+  // frame under which they have anything to say.
+  const NO_FRAME = null;
   for (const c of group) {
     sandbox.validDie = stateFor(c);
     rec('valid_die_basis_cases', c.name, 'source', c.expect_source,
@@ -707,7 +1066,7 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
     sandbox.validDie = stateFor(circleCase);
     for (const circleInside of [true, false]) {
       rec('valid_die_basis_cases', circleCase.name, `passthrough(circle=${circleInside})`,
-        circleInside, attempt(() => FN.valid_die_at(3, 4, circleInside)));
+        circleInside, attempt(() => FN.valid_die_at(NO_FRAME, 3, 4, circleInside)));
     }
   }
 
@@ -724,7 +1083,7 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
     sandbox.validDie = stateFor(refCase);
     for (const [x, y] of refCase.resolver_cells) {
       rec('valid_die_basis_cases', refCase.name, `ref_cell_wins(${x},${y})`, true,
-        attempt(() => FN.valid_die_at(x, y, false)));
+        attempt(() => FN.valid_die_at(NO_FRAME, x, y, false)));
     }
     const declared = new Set(refCase.resolver_cells.map(([x, y]) => KEY(x, y)));
     let probe = null;
@@ -732,7 +1091,7 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
       for (let y = 0; y <= 64 && !probe; y++) if (!declared.has(KEY(x, y))) probe = [x, y];
     }
     rec('valid_die_basis_cases', refCase.name, `circle_cell_loses(${probe[0]},${probe[1]})`,
-      false, attempt(() => FN.valid_die_at(probe[0], probe[1], true)));
+      false, attempt(() => FN.valid_die_at(NO_FRAME, probe[0], probe[1], true)));
   }
 
   // Fixture-inactivity guard. Same discipline as doe_band_rules' paired-case guard: if the
@@ -761,7 +1120,8 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
     // `true` satisfies half of it and blanks nothing.
     rec('valid_die_refused_render_divergence_cases', c.name, 'verdict_passthrough',
       [true, false],
-      [attempt(() => FN.valid_die_at(1, 1, true)), attempt(() => FN.valid_die_at(1, 1, false))]);
+      [attempt(() => FN.valid_die_at(NO_FRAME, 1, 1, true)),
+       attempt(() => FN.valid_die_at(NO_FRAME, 1, 1, false))]);
     // SURFACING, property 1: `renderValidDieChip` hides the chip on exactly one condition,
     // `basis === 'circle'`. A refusal reporting 'circle' would draw a clean wafer with no
     // chip at all — the silent fallback wearing the right answer's face.

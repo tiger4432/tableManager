@@ -186,7 +186,10 @@ def test_symbol_statuses_are_from_the_shared_vocabulary():
     bad = []
     for kind in ("server_symbols", "client_symbols"):
         for role, m in _vectors()[kind].items():
-            if role == "$comment":
+            # `$`-prefixed keys are PROSE, not roles — `$comment` and `$retired`. Both scorers
+            # apply the same rule (`client_harness.mjs`'s manifest loop does too); a role name
+            # may not begin with `$`, which is what keeps the two skips from drifting.
+            if role.startswith("$"):
                 continue
             if m.get("status") not in _VALID_STATUSES:
                 bad.append(f"{kind}.{role}: {m.get('status')!r}")

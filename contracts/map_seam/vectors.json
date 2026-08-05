@@ -185,10 +185,11 @@
     "D1": {
       "title": "physNum substitutes the default for a legitimately declared 0",
       "symbol": "physNum",
-      "site": "client2/src/map_editor.js:1541-1548",
+      "site": "client2/src/map_editor.js `physNum` — the two `|| dflt` returns",
+      "$site_is_a_function_name_on_purpose": "This entry read `:1541-1548` until 2026-08-05. The frame-threading refactor moved `physNum` to :1458 and left those lines pointing at `controlIsSilent`, so the pin named the wrong function while still reading as precise. Line anchors slide; function names do not.",
       "statement": [
-        "`return v || dflt` (line 1547 — DOM arm) and `return ov || dflt` (line 1544 — frame-override",
-        "arm) are FALSY tests, so a declared 0 is indistinguishable from an absent value and is",
+        "`return v || dflt` (the DOM arm) and `return ov || dflt` (the frame arm) are FALSY",
+        "tests, so a declared 0 is indistinguishable from an absent value and is",
         "replaced by the default. Of the six call sites only `edgeMargin` has a non-zero default",
         "(3.0), so it is the one where a legitimate declaration is destroyed: `phys_edge_margin: 0`",
         "silently becomes 3.0mm and every geometry derived from the effective radius moves with it.",
@@ -209,10 +210,54 @@
       ],
       "owner": "map-pm (queued by the Lead PM)",
       "clears_when": "physNum distinguishes 'declared 0' from 'absent'. Then delete `$client_known_defect` from every vector that names D1 and let the contract value stand — the pins will already have gone red to ask for it."
+    },
+    "S27": {
+      "title": "the frame binding outlives its last contracted reader, because S2.7 is late",
+      "symbol": "physFrameOverride",
+      "site": "client2/src/map_editor.js `physFrameOverride` (the file-scope `let`) and `withPhysFrame`",
+      "statement": [
+        "THIS PIN NAMES A LATENESS, NOT A DEFECT. The assertion it stands in for —",
+        "`frame_threading.forbidden_module_bindings.binding_still_declared_iff_a_reader_remains`",
+        "— is true and correct, and it is red for the right reason. It says the binding must be",
+        "DELETED on the day its last contracted reader is threaded, rather than left behind as",
+        "an unread global that a future call site can quietly reach for.",
+        "",
+        "That day was 2026-08-06. `isValidDieAt` was the last member of the",
+        "`reads_module_frame` registry and stage 5 (`f11c56c`) threaded it, so the registry is",
+        "now empty and the contract asks for the deletion. The deletion is stage S2.7 and S2.7",
+        "has not run.",
+        "",
+        "S2.7 IS BLOCKED ON TWO THINGS THAT HAVE NOTHING TO DO WITH THIS SEAM (Lead PM,",
+        "2026-08-06): an `invertY` assertion closing a measured blind spot, and a runner that",
+        "gates `ran` but not `failed` on known-red harnesses. Neither is a map-seam question.",
+        "",
+        "WHY PINNED RATHER THAN LEFT RED. `check:contracts` sits in `prebuild`, so a red here",
+        "blocks `npm run build` and the client `dist` cannot be rebuilt — every client fix",
+        "landed on 2026-08-06 would stay invisible to the operator until an unrelated stage",
+        "cleared. Holding the whole client behind that is the wrong trade. A pin that expires",
+        "loudly is not hiding the result, it is SCHEDULING it."
+      ],
+      "predates": "f11c56c",
+      "predates_evidence": "`git show 5cba0a1:client2/src/map_editor.js` declares `function isValidDieAt(physX, physY, circleInside, state)` — four parameters, no frame. `git show f11c56c:client2/src/map_editor.js` declares `function isValidDieAt(frame, physX, physY, circleInside, state)`. The registry emptied at f11c56c, which is the commit that created this pin's condition; nothing before it is scored for this.",
+      "server_is_correct": "The server has no counterpart and cannot: `frame_threading` is a SINGLE-IMPLEMENTATION group about the client alone, not a round trip. There is no server answer to be wrong, and no server assertion is weakened by this pin — which is also why the server-side pin guards in test_seam_contract.py (`_all_pins`, which walks only `*_cases` lists) do not and need not reach it.",
+      "impact": "None observable. The binding is declared and still passed by call sites that have not been threaded yet; no CONTRACTED role's body reads it (measured: the `reads_module_frame` set is empty). The exposure is future-tense — an unread global is a route a later call site can take without anyone noticing, which is exactly what the registry exists to prevent.",
+      "why_not_fixed_in_this_round": [
+        "Deleting `physFrameOverride` and `withPhysFrame` is S2.7's whole content and it is not",
+        "this contract's to write — the binding lives in `client2/src/map_editor.js`, which",
+        "belongs to the editor lane. contract-keeper does not edit outside `contracts/`.",
+        "",
+        "It is also not a one-line deletion. The two names still have roughly 30 live code",
+        "references in that file (call sites passing `physFrameOverride` as the frame argument,",
+        "plus two `withPhysFrame(...)` windows), and every one of them has to become an explicit",
+        "frame before the declaration can go."
+      ],
+      "owner": "map-pm / editor refactor lane (S2.7)",
+      "clears_when": "S2.7 deletes `physFrameOverride` and `withPhysFrame`. THIS PIN GOES RED ON ITS OWN THAT DAY, in the other direction: `declaresBinding` flips to false, which EQUALS the contract value, so recPinned reports STALE PIN and says the defect looks fixed. Delete `$client_known_defect` from `frame_threading.forbidden_module_bindings` and this entry. Measured 2026-08-06 by simulating the deletion against a mirrored copy: with the registry empty and the declarations gone the harness exits 0.",
+      "$expiry_is_the_point": "A pin nobody sees on a green run is the objection this mechanism exists to answer, so it prints in `PINNED KNOWN DEFECTS` on EVERY run, green or not — including the run that unblocks the build."
     }
   },
   "client_symbols": {
-    "$comment": "role -> {file, fn, status}. The name is part of the contract: a rename must break the harness loudly rather than silently stop covering an axis.",
+    "$comment": "role -> {file, fn, status}. The name is part of the contract: a rename must break the harness loudly rather than silently stop covering an axis. KEYS BEGINNING WITH `$` ARE PROSE, NOT ROLES (`$comment`, `$retired`), and both scorers skip them by the same rule — `client_harness.mjs`'s manifest loop and `test_seam_contract.py::test_symbol_statuses_are_from_the_shared_vocabulary`. A role name may therefore not begin with `$`.",
     "canonical_key_value": {
       "file": "client2/src/map_key.js",
       "fn": "canonicalKeyValue",
@@ -265,7 +310,9 @@
     "phys_config": {
       "file": "client2/src/map_editor.js",
       "fn": "getTransformedPhysicalConfig",
-      "status": "live"
+      "status": "live",
+      "$shape": "`getTransformedPhysicalConfig(frame, rotation, side) -> physConfig`. FRAME FIRST, same convention as `physNum`: `null` reads the screen controls on purpose, `undefined` is the caller's mistake and throws. Its declared parameter list is asserted by `frame_threading.required_signatures` — see the $why there for what a positional scorer cannot notice on its own.",
+      "$why": "The only place the six physical axes become a config object, so it is on the path of every coordinate the editor computes. Scored through the real parse rather than a hand-built config: the parse IS the seam."
     },
     "screen_shift": {
       "file": "client2/src/map_editor.js",
@@ -288,7 +335,7 @@
       "file": "client2/src/map_editor.js",
       "fn": "isValidDieAt",
       "status": "live",
-      "$why": "The single place the judgement forks (`isValidDieAt` at :1923). Scored alongside `validDieBasis` and not in its place: the basis TOKEN being right proves nothing if the consumer still gates on the old spelling — a partial rename leaves `isValidDieAt` returning circle geometry forever while the chip cheerfully reports a resolved reference."
+      "$why": "The single place the judgement forks. Scored alongside `validDieBasis` and not in its place: the basis TOKEN being right proves nothing if the consumer still gates on the old spelling — a partial rename leaves `isValidDieAt` returning circle geometry forever while the chip cheerfully reports a resolved reference."
     },
     "apply_valid_die_ref": {
       "file": "client2/src/map_editor.js",
@@ -380,7 +427,7 @@
       "$owner": "map-pm (landed 2026-08-04, cfc09de)",
       "$blocks": "geometry_declaration_cases — D1 is UNSCORED on the client without it.",
       "$why": "THE CLIENT'S SINGLE READER of a declared physical value, and therefore the client half of D1. It answers `{value: null, source: 'auto_registered'}` for the two chip keys when the synthetic mark is present. Scored against the server's `geometry_declaration` on the SAME vectors because the whole defect was that the two sides answered this question differently while both looked correct: the client returned a measured 7 and a synthesized 1 in byte-identical shape, and the server read a synthesized signature as a declaration because it was present and well-formed.",
-      "$shape": "`physDeclaration(key, domEl) -> {value, source}`. Reads module state `physFrameOverride` (set through `withPhysFrame`) and, outside a frame window, the DOM control. Not pure, which is why the scorer drives it through `frameFromMeta` + `withPhysFrame` rather than building a frame by hand."
+      "$shape": "`physDeclaration(frame, key, domEl) -> {value, source}`. FRAME IN, VALUE OUT — the shape `physNum(frame, ...)`, `getTransformedPhysicalConfig(frame, ...)` and the server's pure `geometry_declaration(meta)` already use. It reads NO module state: the frame is the whole of what it knows about a map other than the one on screen, and `null` means 'read the screen' on purpose while `undefined` is the caller's mistake (see `frame_threading.missing_frame_is_loud`). The scorer still drives it through `frameFromMeta` rather than building a frame by hand, and that has never been about purity — the meta -> frame conversion is part of the seam and is where the mark was measured to be dropped."
     },
     "control_is_silent": {
       "file": "client2/src/map_editor.js",
@@ -398,7 +445,7 @@
       "$owner": "map-pm",
       "$blocks": "geometry_declaration_cases — `physDeclaration` calls it, so without it the reader THROWS and every vector records a stack trace instead of an answer.",
       "$why": "A CALLEE, listed for the reason `validDieRefDisplay` and `validDieRefFromControls` were: an unlisted callee makes its CALLER unevaluable, and the failure is silent unless `threw()` makes it fatal. It is also the mark's only reader on the client, so a rename here would quietly stop covering the axis.",
-      "$shape": "`geometryIsAutoRegistered() -> boolean`. Inside a frame window the FRAME answers alone; on screen the mark lives on the chip inputs' `dataset`."
+      "$shape": "`geometryIsAutoRegistered(frame) -> boolean`. GIVEN A FRAME, THE FRAME ANSWERS ALONE — `frame.autoRegistered === true`, and the screen's `dataset` is not consulted at all, not even as a fallback when the frame says `false`. Given `null` the chip inputs' `dataset` answers. The wrong implementation this rejects is `if (frame && frame.autoRegistered === true) return true;` followed by the dataset read: it passes every vector in `geometry_declaration_cases` under a silent screen and inverts the SOURCE map's answer the moment an auto-registered map is the one on screen — which is the overlay case the mark exists for. Scored by `frame_threading.screen_contradiction`."
     },
     "frame_from_meta": {
       "file": "client2/src/map_editor.js",
@@ -409,14 +456,296 @@
       "$why": "The meta -> frame conversion is part of the seam, not harness plumbing: its key whitelist is where the mark was measured to be DROPPED on 2026-08-04, so the overlay path could never see it. A scorer that hand-built the frame would have scored a whitelist bug green.",
       "$shape": "PURE `frameFromMeta(meta) -> frame|null`. null when the meta declares no grid dimensions."
     },
-    "with_phys_frame": {
+    "$retired": {
+      "$comment": [
+        "Roles this contract USED to name, kept as a record so the coverage they carried can be",
+        "followed to where it went. Not scored — the harness's manifest loop skips any key",
+        "beginning with `$`. A role that simply disappears takes its coverage with it silently,",
+        "and silence is the failure mode this whole file exists to refuse.",
+        "",
+        "with_phys_frame  (`withPhysFrame`, retired with the frame-threading refactor)",
+        "  Was: `withPhysFrame(frame, fn) -> fn()`, saving and restoring `physFrameOverride`.",
+        "  It is deleted from the client because the frame became an argument, so there is no",
+        "  module binding left to save or restore. Its four properties, and where each landed:",
+        "    · 'the scorer must not fake the frame'  -> `frame_threading.required_signatures`.",
+        "      The route is now the parameter itself, and the parameter LIST is asserted.",
+        "    · 'the frame does not outlive its window' -> `frame_threading.no_residue`.",
+        "      The window became the call; the assertion became 'a `null` call afterwards reads",
+        "      the screen'.",
+        "    · 'the mark is a fact about a MAP, not the session' ->",
+        "      `frame_threading.forbidden_module_bindings` (no session-scoped place left for it",
+        "      to live) plus `frame_threading.interference` (two frames, no cross-talk).",
+        "    · 'the FRAME answers alone, the screen is not consulted' ->",
+        "      `frame_threading.screen_contradiction`. THIS ONE WAS NEVER ACTUALLY SCORED. The",
+        "      role's `$blocks` line claimed it, but the D1 fixture empties `el` before every",
+        "      case, and an absent screen mark cannot contradict the frame. A reader that",
+        "      unioned the two marks passed the whole group. Retiring the role is what made the",
+        "      hole visible; it is a pre-existing gap, not one the refactor opened."
+      ]
+    }
+  },
+  "frame_threading": {
+    "$comment": [
+      "THE FRAME IS AN ARGUMENT. Contract-keeper ruling 2026-08-05, on the handoff from the",
+      "refactor that turns `physFrameOverride` (a module binding, set by `withPhysFrame`) into",
+      "a required leading parameter.",
+      "",
+      "══ THE OLD RATIONALE, AND THE RULING ON IT ═════════════════════════════════════════",
+      "The retired `with_phys_frame` role carried this sentence:",
+      "  'the scorer must not assign `physFrameOverride` itself, because a frame window that is",
+      "   entered and left is exactly what makes the mark a fact about a MAP rather than about",
+      "   the session. Setting the module variable directly would test the harness's own",
+      "   fixture.'",
+      "It contains an INVARIANT and a MECHANISM, and only the mechanism is going away.",
+      "",
+      "  THE INVARIANT — the scorer never supplies the frame by a route the product does not",
+      "  use. It survives verbatim, and it is what the rest of this block defends. Under the",
+      "  binding the only such route was `withPhysFrame`, so 'do not assign the module",
+      "  variable' was a faithful statement of it. Once the frame is a parameter the",
+      "  prohibition does not weaken — it becomes VACUOUS, because the thing it prohibited no",
+      "  longer exists. There is no module variable to assign, and the scorer's access is",
+      "  exactly the product's access and no more. What the invariant now asks of the scorer",
+      "  is a different, checkable thing: pass the frame POSITIONALLY, in the contracted",
+      "  parameter list, built by the client's own `frameFromMeta` — never a literal the",
+      "  harness typed, and never a call shape the product does not compile against. That is",
+      "  `required_signatures` below.",
+      "",
+      "  THE MECHANISM — 'entered and left'. Threading satisfies this MORE strongly, not less.",
+      "  A window bounds the frame to a dynamic region and relies on `finally` to close it; an",
+      "  argument bounds it to the call and relies on nothing. Every way a window can leak is",
+      "  unrepresentable once the frame is a parameter: an `await` inside the callback (the",
+      "  client's own header called the window synchronous-only for exactly this reason), a",
+      "  nested window a callee forgets to close, a closure that escapes the window and is",
+      "  invoked later. 'Is this a fact about the map or about the session' therefore goes from",
+      "  'yes, provided everyone respects a convention' to 'yes, by construction'.",
+      "",
+      "  RULING: the rationale survives; the wording does not. The seam does NOT need a",
+      "  window-shaped route kept alive for its benefit, and a contract that demanded one would",
+      "  be pinning a mechanism it was never about.",
+      "",
+      "══ WHAT THIS BUYS THAT THE BINDING COULD NOT ═══════════════════════════════════════",
+      "One global has one value, so 'two frames must not interfere' had no shape that could be",
+      "written down: expressing two frames meant NESTING two windows, and what that scores is",
+      "`withPhysFrame`'s save/restore, not the reader's freedom from state. With the frame as a",
+      "parameter the question is finally askable — see `interference`.",
+      "",
+      "══ THE DEFECT THIS ROUND ACTUALLY HAS TO CATCH ═════════════════════════════════════",
+      "Not 'the refactor was not done'. That is loud. The one to fear is the HALF-THREAD: a",
+      "function that accepts `frame` and still consults leftover state underneath it, or that",
+      "keeps the binding as a fallback (`frame || physFrameOverride`). Every behavioural vector",
+      "in `geometry_declaration_cases` passes against that, because the scorer hands in a frame",
+      "that AGREES with the state such an implementation would read. `forbidden_module_bindings`",
+      "and `no_residue` are what make it fail, and neither is a round-trip assertion — they are",
+      "single-implementation assertions about the client alone.",
+      "",
+      "🔴 THAT IS NOT A HYPOTHETICAL. It was measured TWICE, two minutes apart, in the shared",
+      "working tree while this block was being written (2026-08-05, `getTransformedPhysicalConfig`,",
+      "whose signature had already been threaded):",
+      "  blob 3532ad3 — takes `frame`, guards `frame === undefined`, then calls `physNum(null,",
+      "    ...)` six times. The argument is accepted and discarded, and every caller gets the",
+      "    SCREEN's parameters. Behaviour CHANGED: the overlay path stopped reading the source",
+      "    map's spec.",
+      "  blob f269ccc — takes `frame`, same guard, then calls `physNum(physFrameOverride, ...)`",
+      "    six times. The argument is accepted and discarded, and behaviour is identical to the",
+      "    un-threaded code. Nothing observable is wrong; the parameter is simply dead.",
+      "The second is the dangerous one, because no behavioural suite can see it. It is also the",
+      "one that survives review: the diff looks finished.",
+      "",
+      "🔴 THE TWO KINDS NEED TWO DIFFERENT CHECKS, and neither covers the other. Measured by",
+      "back-injection into a simulated post-threading client (2026-08-05):",
+      "  · binding-consulting (`physNum(physFrameOverride, ...)` inside a threaded function) —",
+      "    caught by `threaded_and_reads_no_module_frame`, which names it, AND by `interference`.",
+      "  · argument-discarding (`physNum(null, ...)`) — 17 behavioural assertions red and ZERO",
+      "    from the identifier scan, because no forbidden identifier appears anywhere. Only the",
+      "    vectors can see this one.",
+      "The identifier scan is therefore not a substitute for the vectors and must never be",
+      "described as one: it catches the half-thread that still names the binding, and nothing",
+      "else. Its real job is the one behaviour cannot do — refusing the binding's RETURN.",
+      "",
+      "🔴 AND NOTHING ELSE WAS MEASURING IT. All 20 harnesses in `client2/tests/` that touch",
+      "this binding SET IT THEMSELVES on their sandbox, so a reader that consults the module",
+      "instead of its argument is green in every one of them BY CONSTRUCTION. That is the",
+      "sharpest available answer to 'does the old rationale survive': the rationale said the",
+      "scorer must not supply the frame by a route the product does not use, and the harnesses",
+      "that do supply it that way are exactly the ones that cannot see this defect."
+    ],
+    "required_signatures": {
+      "$comment": [
+        "role -> the POSITION AND NAME OF THE FRAME PARAMETER, plus the total count. Read out",
+        "of the function's own declaration text, not inferred from behaviour, so the failure",
+        "names the shape instead of printing value diffs from a mis-positional call.",
+        "",
+        "SOURCE OF THESE EXPECTATIONS: the convention `physNum(frame, key, domEl, dflt)`",
+        "declares in its own header (§S2.1) and `getTransformedPhysicalConfig(frame, ...)`",
+        "already implements — frame first, `null` = read the screen deliberately, `undefined` =",
+        "the caller forgot. NOT read off `physDeclaration`, which has not been threaded yet;",
+        "these are written contract-first so the implementer is scored against a shape nobody",
+        "reverse-engineered from their own code.",
+        "",
+        "WHAT A WRONG IMPLEMENTATION LOOKS LIKE, and why POSITION is pinned rather than arity:",
+        "`physDeclaration(key, domEl, frame)` — frame APPENDED. Every un-migrated 2-argument",
+        "call site keeps compiling and silently reads `undefined`, which is the one spelling",
+        "that must never mean 'read the screen'. An arity check alone passes that.",
+        "",
+        "🔴 ONLY THE FRAME PARAMETER IS NAMED. The others are pinned by COUNT and nothing else,",
+        "and that restraint is the rule-1 discipline showing its work: this contract has an",
+        "opinion about where the frame arrives and no opinion whatever about what the remaining",
+        "parameters are called. Pinning the full list was tried first and immediately proved the",
+        "point — `getTransformedPhysicalConfig` names its other two `currentRotation`/",
+        "`currentSide`, which SHADOW two module bindings and which its own header flags as a",
+        "trap for readers. A contract that froze those spellings would have been mirroring an",
+        "implementation detail its author is on record as disliking."
+      ],
+      "phys_config": {
+        "frame_param": "frame",
+        "arity": 3,
+        "$owner": "map-pm (landed in the working tree with the S2.3 slice)",
+        "$why": "Already threaded. It is listed anyway because this contract's `mask_baseline_cases` calls it, and when the third parameter appeared the scorer's 2-argument call started passing `rotation` AS THE FRAME — 43 divergences that read like a geometry regression (`effective_radius_mm` 147 instead of 7) rather than like a stale call. Measured 2026-08-05. This entry is what makes the next such change announce itself by name."
+      },
+      "phys_declaration": {
+        "frame_param": "frame",
+        "arity": 3,
+        "$owner": "map-pm",
+        "$lands_with": "the frame-threading stage that deletes `physFrameOverride`",
+        "$why": "RED UNTIL THAT STAGE LANDS, by design and by the Lead PM's sequencing instruction. While it is red, `geometry_declaration_cases` is reported as BLOCKED rather than scored — one named failure, not fourteen value diffs against a mis-positional call."
+      },
+      "geometry_is_auto_registered": {
+        "frame_param": "frame",
+        "arity": 1,
+        "$owner": "map-pm",
+        "$lands_with": "the frame-threading stage that deletes `physFrameOverride`",
+        "$why": "The mark's only reader on the client. It takes the frame for the same reason `physDeclaration` does — and the parameter is what lets `screen_contradiction` hand it a frame and a CONTRADICTING screen in the same call."
+      },
+      "valid_die_at": {
+        "frame_param": "frame",
+        "arity": 5,
+        "$owner": "map-pm (landed as stage 5, f11c56c, 2026-08-06)",
+        "$why": "GRADUATED FROM `reads_module_frame` BY LEAD PM RULING 2026-08-06. It sat in that registry with a `$decide` note reading 'decide before the stage, then add `valid_die_at` to `required_signatures` and remove it here'. The stage landed first and answered the question by construction: `isValidDieAt(frame, physX, physY, circleInside, state)` puts the frame FIRST and REQUIRED (`undefined` throws) while leaving `state` optional and trailing. That is the shape `required_signatures` already declares, so the seam did not acquire a second vocabulary — which was the whole worry.",
+        "$why_arity_5_and_not_4": "`state` is counted because this contract pins the total, and only the frame is named. The two optional-looking parameters are NOT the same shape and the client's own header says so: `state === undefined` falls back to the module `validDie` and that is correct behaviour; `frame === undefined` is a caller who forgot and throws. Pinning position 0 plus the count is what makes `isValidDieAt(physX, physY, circleInside, state, frame)` — the APPENDED-frame defect — fail by name rather than as value diffs.",
+        "$measured": "Back-injection 2026-08-06 into a mirrored copy: appending the frame instead of leading with it produced 10 behavioural reds across `valid_die_basis_cases` and `valid_die_refused_render_divergence_cases` and ZERO shape failures while this entry was absent. The behavioural vectors do catch it; without this entry they cannot NAME it, and a reader triaging 10 value diffs looks for a broken transform."
+      }
+    },
+    "forbidden_module_bindings": {
       "file": "client2/src/map_editor.js",
-      "fn": "withPhysFrame",
-      "status": "live",
-      "$owner": "map-pm",
-      "$blocks": "geometry_declaration_cases — the frame window is the only legitimate way to make `physDeclaration` read a map OTHER than the one on screen.",
-      "$why": "A CALLEE in the other direction: the scorer must not assign `physFrameOverride` itself, because a frame window that is entered and left is exactly what makes the mark a fact about a MAP rather than about the session. Setting the module variable directly would test the harness's own fixture.",
-      "$shape": "`withPhysFrame(frame, fn) -> fn()`. Saves and restores `physFrameOverride`."
+      "names": ["physFrameOverride", "withPhysFrame"],
+      "reads_module_frame": {
+        "$comment": [
+          "THE MEMBERSHIP REGISTRY, not a count. Roles whose sliced body still references one of",
+          "the names above. The scorer measures the real set and requires it to EQUAL this one,",
+          "so the check fails in BOTH directions: a new reader appearing is red, and a listed",
+          "reader losing the reference is red too — the second kind is the one that asks for the",
+          "contract to be updated on the day the stage lands, instead of leaving a stale",
+          "exemption behind.",
+          "",
+          "TARGET STATE IS THE EMPTY SET. When it is empty the binding is gone and the guard",
+          "becomes what it is really for: the third copy of the frame can never come back.",
+          "",
+          "ROLES LISTED IN `required_signatures` ARE NOT MEMBERS HERE. They are governed by the",
+          "stricter `threaded_and_reads_no_module_frame` assertion instead — for them, reading",
+          "the binding at all is a HALF-THREAD and has its own named failure. This registry",
+          "covers only the roles whose threading has not been contracted yet.",
+          "",
+          "WHY A COUNT CANNOT DO THIS JOB, measured: `client2/scripts/check_harnesses.mjs` holds",
+          "a `MODULE_STATE` ceiling of 48 top-level mutable bindings in this same file. Deleting",
+          "`physFrameOverride` frees a slot, so re-introducing it later lands back on 48 and",
+          "passes. A ceiling is blind to identity; this is the members, not the count."
+        ],
+        "$decided": [
+          "EMPTY SINCE 2026-08-06, and that is the target state, not a gap. `valid_die_at` was",
+          "the last member; it carried a `$decide` note asking the Lead PM to choose the frame's",
+          "shape before the stage landed. The stage (`f11c56c`) landed first and answered by",
+          "construction — frame FIRST and REQUIRED — so the role graduated into",
+          "`required_signatures` per that note's own instruction, where the stricter",
+          "`threaded_and_reads_no_module_frame` assertion governs it.",
+          "",
+          "The registry stays. Empty, it is doing the job it was built for: the day any role's",
+          "body reaches for `physFrameOverride` or `withPhysFrame` again, the measured set stops",
+          "equalling this one and the third copy of the frame announces itself."
+        ]
+      },
+      "$client_known_defect": {
+        "defect": "S27",
+        "client_actual": { "binding_still_declared": true },
+        "$why_here": "`binding_still_declared_iff_a_reader_remains` says the binding must be DELETED once its last contracted reader is threaded. That happened at `f11c56c`. The deletion is S2.7 and S2.7 has not run, so this assertion is correctly red — it is reporting a LATENESS, not a defect. Pinned rather than left red so the build is not held hostage; see known_defects.S27 for the sequencing and the expiry."
+      }
+    },
+    "missing_frame_is_loud": {
+      "$comment": [
+        "`undefined` AND `null` ARE DIFFERENT ANSWERS. This is the failure class the refactor",
+        "CREATES: the binding applied the window automatically, so forgetting was impossible; an",
+        "argument makes forgetting possible for the first time. A missed call site that silently",
+        "fell back to the screen would draw a perfect canvas and store a wrong coordinate — this",
+        "module's signature defect, and the exact reason the frame window existed.",
+        "",
+        "SOURCE: the convention `physNum` and `getTransformedPhysicalConfig` already declare and",
+        "implement, stated in `physNum`'s own header. Not read off `physDeclaration`.",
+        "",
+        "BOTH POLARITIES ARE REQUIRED. `undefined` throws; `null` does NOT throw and reads the",
+        "screen. Asserting only the first is satisfied by a function that throws on both, which",
+        "breaks the main-load case (frame == the screen controls) on every call. Asserting only",
+        "the second is satisfied by `frame = frame || null` — the falsy collapse, the same shape",
+        "as known defect D1, in a new place."
+      ],
+      "expect_throw_on_undefined": true,
+      "expect_screen_on_null": true
+    },
+    "screen_contradiction": {
+      "$comment": [
+        "THE FRAME ANSWERS ALONE. Every case in `geometry_declaration_cases` is scored TWICE,",
+        "under two screens, against THE SAME EXPECTED VALUES — no new expectation is introduced",
+        "here, which is what keeps this from being the contract mirroring an implementation:",
+        "  · silent screen  — `el` empty. The existing pass. The map's own meta is the only",
+        "                     source, and nothing on screen can stand in for it.",
+        "  · hostile screen — the chip inputs carry the auto-registered MARK and no value.",
+        "                     Every expected value in the group is unchanged, because a silent",
+        "                     control is silence whatever its dataset says.",
+        "",
+        "THE MARK ONLY, NEVER A VALUE. A hostile screen VALUE would legitimately change the",
+        "answer for `phys_absent` (`{value: 7, source: 'screen'}` is correct behaviour when the",
+        "meta declares nothing), so the fixture would be scoring a different question and the",
+        "expected values would have to fork. The mark is the one thing the frame must answer",
+        "alone about.",
+        "",
+        "WHAT IT DROPS, in both directions and neither alone is enough:",
+        "  frame unmarked + screen marked -> `declared`. A reader that UNIONS the two marks",
+        "    answers `auto_registered` and refuses a map somebody measured.",
+        "  frame marked + screen unmarked -> `auto_registered`. A reader that lets the screen",
+        "    win, or ANDs the two, answers `declared` and aligns an unmeasured map at 1mm.",
+        "The first direction is the one no fixture in this file has ever exercised."
+      ],
+      "hostile_screen_dataset": { "autoRegistered": "1" },
+      "hostile_screen_value": ""
+    },
+    "no_residue": {
+      "$comment": [
+        "THE FRAME DOES NOT OUTLIVE ITS CALL — what 'does not outlive its window' becomes.",
+        "After a call carrying a marked frame, a `null` call on the same key must read the",
+        "SCREEN. Under the binding this asserted `withPhysFrame`'s `finally`; now it asserts",
+        "that nothing was memoised.",
+        "",
+        "It is not trivially true and that is the point: the natural way to make a threaded",
+        "reader 'efficient' is to stash the last frame or cache the resolved declaration per",
+        "key, and either one is a NEW module binding — the very thing this refactor is buying",
+        "protection from. This assertion is what notices."
+      ],
+      "screen_value": "7",
+      "expect_after_frame_call": { "value": 7, "source": "screen" }
+    },
+    "interference": {
+      "$comment": [
+        "TWO FRAMES DO NOT INTERFERE — the property one global made unaskable.",
+        "Alternate a DECLARED frame and an AUTO-REGISTERED one, A B A B, and each call must",
+        "answer for its own map. Order-independent by construction, so a reader that returns the",
+        "first frame's answer, or the last one's, fails on the second call rather than never.",
+        "",
+        "Drops: any per-key memo; any 'resolve once and stash'; and the half-thread that accepts",
+        "`frame` but reads leftover state, since the leftover cannot be both frames at once.",
+        "",
+        "The two frames are taken from `geometry_declaration_cases` BY THEIR PROPERTY, not by",
+        "name, so adding or renaming vectors cannot quietly empty this assertion — and the",
+        "scorer fails if the group stops containing one of each."
+      ],
+      "sequence": ["declared", "auto_registered", "declared", "auto_registered"]
     }
   },
   "client_consts": [
@@ -1566,7 +1895,15 @@
         "small-pitch maps. Measured on production 2026-08-04, read-only: 668 metadata rows,",
         "320 carry chip 1x1, ALL 320 carry the mark, flagless 1x1 rows = 0. That census is",
         "also why NO legacy sentinel fallback exists on either side — it would be dead code,",
-        "and dead code is an unscored second judgement path."
+        "and dead code is an unscored second judgement path.",
+        "",
+        "🔴 EVERY CASE BELOW IS SCORED UNDER TWO SCREENS (added 2026-08-05 with the frame",
+        "threading, see `frame_threading.screen_contradiction`): once with the screen silent,",
+        "once with the chip inputs carrying the auto-registered MARK and no value. The expected",
+        "values are the same under both — a silent control is silence whatever its dataset says",
+        "— and that is the point: the second pass asks whether the FRAME answers alone, which",
+        "the single silent-screen pass could never ask, because an absent screen mark cannot",
+        "contradict the frame."
       ]
     },
     {
