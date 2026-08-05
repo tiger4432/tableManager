@@ -2379,6 +2379,13 @@ def _validate_effort(effort):
             counts["nav"], counts["nav_preserved"]), None
 
 
+# [P1] Above this many written rows the WS broadcast degrades from per-row items to a
+# single `batch_refresh_required` count, and the client refetches. The value is
+# unchanged (it was the literal 100 inside the branch); it is named here only so the
+# decision can be read BEFORE the items are built instead of after.
+BROADCAST_ITEM_LIMIT = 100
+
+
 @app.put("/tables/{table_name}/data/updates")
 async def apply_batch_updates_endpoint(
     table_name: str,
@@ -2452,7 +2459,19 @@ async def apply_batch_updates_endpoint(
             })
         return items
 
-    msg_items = await run_in_threadpool(_merge_and_build_items)
+    # [P1] The size branch is decided HERE, before the work, not after it. Above the
+    # threshold the broadcast below sends a refresh signal carrying only a count, so
+    # `msg_items` has no consumer at all - and building it costs one `cell_overwrites`
+    # read-back of everything this request just wrote plus an O(rows x columns) merge,
+    # on exactly the saves large enough for that to be felt.
+    #
+    # ⚠️ Same predicate, moved - NOT an approximation of it. `_merge_and_build_items`
+    # appends exactly one item per entry of `results`, unconditionally, so
+    # `len(msg_items) == len(results)` always holds and the branch below fires on
+    # precisely the same inputs as the old `len(msg_items) > 100`. If that loop ever
+    # gains a `continue`, this equality breaks and the branch must move back.
+    broadcast_needs_items = len(results) <= BROADCAST_ITEM_LIMIT
+    msg_items = await run_in_threadpool(_merge_and_build_items) if broadcast_needs_items else []
 
     # WebSocket 브로드캐스트를 백그라운드 태스크로 이관하여 즉시 HTTP 200 반환!
     if not batch.silent:
@@ -2468,11 +2487,12 @@ async def apply_batch_updates_endpoint(
                 }
                 await manager.broadcast(json.dumps(delete_msg))
 
-            if len(msg_items) > 100:
+            if not broadcast_needs_items:
                 msg = {
                     "event": "batch_refresh_required",
                     "table_name": table_name,
-                    "change_count": len(msg_items)
+                    # len(msg_items) on this arm; msg_items is now empty by construction.
+                    "change_count": len(results)
                 }
                 if created_logs and len(created_logs) <= 5000:
                     msg["created_logs"] = created_logs

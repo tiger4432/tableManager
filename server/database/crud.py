@@ -245,7 +245,8 @@ def parse_version_key(raw: Any, col_type: str):
 
 def _same_source_content_differs(db, table_name, row, update_item, config, version_col,
                                  is_new, sources_cache, overwrites_cache,
-                                 cell_sources_to_upsert, cell_overwrites_to_upsert):
+                                 cell_sources_to_upsert, cell_overwrites_to_upsert,
+                                 prefetched_row_ids=None):
     """Columns whose incoming value differs from what THIS SAME SOURCE last wrote.
 
     🔴 Measured against the source's own previous value, not against the displayed cell.
@@ -256,7 +257,10 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
     content, same writer.
 
     Reads come from the batch-preloaded caches (`_load_metadata_row_cell` is cache-first),
-    so this costs a dict lookup per payload cell and issues no query on the batch path. It
+    so on the batch path this costs a dict lookup per payload cell for any row the batch
+    prefetched - including cells with no stored metadata at all, which used to be the one
+    case that fell through to a per-cell SELECT. A row resolved after the prefetch (a
+    composite key assembled mid-batch) is still read from the database, as it must be. It
     only runs on the equal-version arm, which is the re-drop case.
     """
     col_types = config.get("column_types", {})
@@ -272,7 +276,7 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
             continue
         col_srcs, _ow = _load_metadata_row_cell(
             db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache,
-            cell_sources_to_upsert, cell_overwrites_to_upsert)
+            cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids)
         prev = next((s.value for s in col_srcs if s.source_name == update_item.source_name),
                     None)
         # The source has never written this cell: that is a NEW field appearing at an
@@ -1380,86 +1384,115 @@ def get_effort_stats(db: Session, weights: dict,
     }
 
 
-def bulk_upsert_cell_sources(db: Session, mappings: list[dict]):
+#: [P3] Rows per statement for the cell-metadata bulk helpers. Same value and same
+#: loop shape as `graph_materializer.CHUNK_SIZE`, which already chunks the graph
+#: upserts, and the size the charter names.
+#:
+#: 🔴 This is a CORRECTNESS bound on PostgreSQL, not a tuning knob. The wire
+#: protocol carries a statement's parameter count in an int16, so no statement may
+#: bind more than 32,767 values - psycopg2 refuses before sending. A 5,000-die map
+#: save built ONE 690 KB INSERT binding 210,000 parameters, which SQLite (limit
+#: 250,000 on the build the suite runs) executes happily and production rejects
+#: outright. 1,000 rows x the widest of these tables is ~7,000 binds, comfortably
+#: inside the limit. Raising this constant re-opens that failure.
+BULK_CHUNK_SIZE = 1000
+
+
+def _chunks(seq, size=BULK_CHUNK_SIZE):
+    """Successive `size`-long slices of `seq`."""
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
+
+def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
     if not mappings:
         return
-    
+
     # Deduplicate mappings to avoid psycopg2.errors.CardinalityViolation in PostgreSQL.
     # Keep the last (most recent) dictionary for each unique constraint key.
     deduped = {}
     for item in mappings:
         key = (item['table_name'], item['row_id'], item['column_name'], item['source_name'])
         deduped[key] = item
-    
+
     # Sort deterministically by key to prevent Deadlocks in PostgreSQL.
     sorted_keys = sorted(deduped.keys())
     deduped_mappings = [deduped[k] for k in sorted_keys]
-    
+
     is_sqlite = db.bind.dialect.name == "sqlite"
     if is_sqlite:
         from sqlalchemy.dialects.sqlite import insert as upsert_insert
     else:
         from sqlalchemy.dialects.postgresql import insert as upsert_insert
-        
-    stmt = upsert_insert(models.CellSource).values(deduped_mappings)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['table_name', 'row_id', 'column_name', 'source_name'],
-        set_={
-            'value': stmt.excluded.value,
-            'updated_by': stmt.excluded.updated_by,
-            'ingested_at': stmt.excluded.ingested_at
-        }
-    )
-    db.execute(stmt)
 
-def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict]):
+    # Chunked, but still one transaction: nothing is committed here, so the batch
+    # remains all-or-nothing exactly as it was when it was a single statement.
+    # Chunks are cut from the SORTED list, so the deadlock-avoiding lock ordering
+    # is preserved across them.
+    for chunk in _chunks(deduped_mappings, chunk_size):
+        stmt = upsert_insert(models.CellSource).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['table_name', 'row_id', 'column_name', 'source_name'],
+            set_={
+                'value': stmt.excluded.value,
+                'updated_by': stmt.excluded.updated_by,
+                'ingested_at': stmt.excluded.ingested_at
+            }
+        )
+        db.execute(stmt)
+
+def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
     if not mappings:
         return
-    
+
     # Deduplicate mappings to avoid psycopg2.errors.CardinalityViolation in PostgreSQL.
     # Keep the last (most recent) dictionary for each unique constraint key.
     deduped = {}
     for item in mappings:
         key = (item['table_name'], item['row_id'], item['column_name'])
         deduped[key] = item
-    
+
     # Sort deterministically by key to prevent Deadlocks in PostgreSQL.
     sorted_keys = sorted(deduped.keys())
     deduped_mappings = [deduped[k] for k in sorted_keys]
-    
+
     is_sqlite = db.bind.dialect.name == "sqlite"
     if is_sqlite:
         from sqlalchemy.dialects.sqlite import insert as upsert_insert
     else:
         from sqlalchemy.dialects.postgresql import insert as upsert_insert
-        
-    stmt = upsert_insert(models.CellOverwrite).values(deduped_mappings)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['table_name', 'row_id', 'column_name'],
-        set_={
-            'is_overwrite': stmt.excluded.is_overwrite,
-            'updated_by': stmt.excluded.updated_by,
-            'updated_at': stmt.excluded.updated_at,
-            'manual_priority_source': stmt.excluded.manual_priority_source
-        }
-    )
-    db.execute(stmt)
 
-def bulk_delete_cell_overwrites(db: Session, delete_keys: list[tuple[str, str, str]]):
+    for chunk in _chunks(deduped_mappings, chunk_size):
+        stmt = upsert_insert(models.CellOverwrite).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['table_name', 'row_id', 'column_name'],
+            set_={
+                'is_overwrite': stmt.excluded.is_overwrite,
+                'updated_by': stmt.excluded.updated_by,
+                'updated_at': stmt.excluded.updated_at,
+                'manual_priority_source': stmt.excluded.manual_priority_source
+            }
+        )
+        db.execute(stmt)
+
+def bulk_delete_cell_overwrites(db: Session, delete_keys: list[tuple[str, str, str]], chunk_size: int = BULK_CHUNK_SIZE):
     if not delete_keys:
         return
-        
+
     from sqlalchemy import and_, or_
-    conds = []
-    for t_name, r_id, col_name in delete_keys:
-        conds.append(
+    # Sorted for the same reason the upserts above are: a fixed lock order across
+    # chunks. Also makes the chunk boundaries deterministic for a given key set.
+    keys = sorted(delete_keys)
+    for chunk in _chunks(keys, chunk_size):
+        conds = [
             and_(
                 models.CellOverwrite.table_name == t_name,
                 models.CellOverwrite.row_id == r_id,
                 models.CellOverwrite.column_name == col_name
             )
-        )
-    db.query(models.CellOverwrite).filter(or_(*conds)).delete(synchronize_session=False)
+            for t_name, r_id, col_name in chunk
+        ]
+        db.query(models.CellOverwrite).filter(or_(*conds)).delete(synchronize_session=False)
 
 def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.GeneralUpdateItem, row_cache: dict, table_name: str) -> tuple[Any, bool]:
     """대상 행 객체를 캐시 또는 DB에서 획득하고, 존재하지 않으면 신규 생성합니다."""
@@ -1517,14 +1550,35 @@ def _update_row_business_key(row: Any, key_col: str, update_item: schemas.Genera
                 if row_cache is not None:
                     row_cache[str_val] = row
 
-def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name: str, is_new: bool, sources_cache: dict, overwrites_cache: dict, cell_sources_to_upsert: dict, cell_overwrites_to_upsert: dict) -> tuple[list, Any]:
-    """해당 셀의 CellSource 리스트와 CellOverwrite 객체를 캐시 혹은 DB로부터 획득합니다."""
+def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name: str, is_new: bool, sources_cache: dict, overwrites_cache: dict, cell_sources_to_upsert: dict, cell_overwrites_to_upsert: dict, prefetched_row_ids: set = None) -> tuple[list, Any]:
+    """해당 셀의 CellSource 리스트와 CellOverwrite 객체를 캐시 혹은 DB로부터 획득합니다.
+
+    prefetched_row_ids: the row ids `apply_batch_updates` loaded metadata for up front.
+    """
     key = (row_id, col_name)
-    
+
+    # [P2] A cache miss means "this cell has no stored metadata" - but ONLY for a row
+    # the batch prefetched. That prefetch selects every cell_sources/cell_overwrites
+    # row for those ids with NO column filter, so for them "not in the cache" and "not
+    # in the table" are the same statement, and a column being written for the first
+    # time no longer costs two SELECTs per row to be told it is empty.
+    #
+    # 🔴 THE PREDICATE IS MEMBERSHIP IN THE PREFETCHED SET, NOT "the row exists".
+    # Substituting the latter is a data-loss bug, not an optimisation: a row can be
+    # resolved AFTER the prefetch filter was built - `apply_row_update_internal`
+    # assembles a composite business key out of column values and looks the row up, and
+    # a collision merge switches onto a conflict row found the same way. Those rows
+    # exist and were never read, so claiming they have no sources would drop their
+    # stored `user` layer out of the priority computation and delete the overwrite
+    # marker with it. Unknown rows must still be queried; that is what `is not None and
+    # row_id in ...` buys, and why every caller outside the batch path passes None.
+    absence_is_known = is_new or (prefetched_row_ids is not None
+                                  and row_id in prefetched_row_ids)
+
     # CellSource 로드
     if sources_cache is not None:
         if key not in sources_cache:
-            if is_new:
+            if absence_is_known:
                 col_srcs = []
             else:
                 col_srcs = db.query(models.CellSource).filter(
@@ -1539,7 +1593,7 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
         else:
             col_srcs = sources_cache[key]
     else:
-        if is_new:
+        if absence_is_known:
             col_srcs = []
         else:
             col_srcs = db.query(models.CellSource).filter(
@@ -1554,7 +1608,7 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
     # CellOverwrite 로드
     if overwrites_cache is not None:
         if key not in overwrites_cache:
-            if is_new:
+            if absence_is_known:
                 ow = None
             else:
                 ow = db.query(models.CellOverwrite).filter(
@@ -1568,7 +1622,7 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
         else:
             ow = overwrites_cache[key]
     else:
-        if is_new:
+        if absence_is_known:
             ow = None
         else:
             ow = db.query(models.CellOverwrite).filter(
@@ -1594,7 +1648,12 @@ def apply_row_update_internal(
     cell_overwrites_to_upsert: dict = None,
     cell_overwrites_to_delete: set = None,
     deleted_row_ids: list = None,
-    version_stats: dict = None
+    version_stats: dict = None,
+    # [P2] Row ids the caller prefetched cell metadata for, with no column filter.
+    # For these - and only these - a cache miss is a proven absence rather than an
+    # unknown. See `_load_metadata_row_cell` for why "the row exists" is not the
+    # same predicate and must not be substituted.
+    prefetched_row_ids: set = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]
@@ -1636,7 +1695,7 @@ def apply_row_update_internal(
             differing = _same_source_content_differs(
                 db, table_name, row, update_item, config,
                 config.get("version_column"), is_new, sources_cache, overwrites_cache,
-                cell_sources_to_upsert, cell_overwrites_to_upsert)
+                cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids)
             if differing:
                 counts[NOTE_SAME_VERSION_CONTENT_DIFFERS] = \
                     counts.get(NOTE_SAME_VERSION_CONTENT_DIFFERS, 0) + 1
@@ -1664,7 +1723,7 @@ def apply_row_update_internal(
             continue
 
         key = (row.row_id, col_name)
-        col_srcs, ow = _load_metadata_row_cell(db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert)
+        col_srcs, ow = _load_metadata_row_cell(db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids)
 
         # 3. 소스 데이터 upsert
         col_type = col_types.get(col_name, "string")
@@ -1951,17 +2010,23 @@ def apply_row_update_internal(
                                     sources_cache=sources_cache,
                                     overwrites_cache=overwrites_cache,
                                     cell_sources_to_upsert=cell_sources_to_upsert,
-                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert
+                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert,
+                                    prefetched_row_ids=prefetched_row_ids
                                 )
-                                
+
                                 # 대상 행(row)에 이미 등록되어 있거나 upsert 대기 중인 소스명 목록 추출
+                                # [P2] `row` here is the CONFLICT row this merge switched onto,
+                                # found by business key inside this loop. It is routinely absent
+                                # from the prefetched set, and the membership test below is what
+                                # keeps it being read instead of assumed empty.
                                 target_srcs, _ = _load_metadata_row_cell(
                                     db, table_name, row.row_id, col_name,
                                     is_new=False,
                                     sources_cache=sources_cache,
                                     overwrites_cache=overwrites_cache,
                                     cell_sources_to_upsert=cell_sources_to_upsert,
-                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert
+                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert,
+                                    prefetched_row_ids=prefetched_row_ids
                                 )
                                 existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
                                 for (t, r, c, s_name) in (cell_sources_to_upsert or {}).keys():
@@ -2330,10 +2395,18 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 row_cache[r.business_key_val] = r
                 
         all_row_ids = list(set(r.row_id for r in existing_rows_list))
-        
+
+        # [P2] Exactly the ids the two prefetch queries below cover. Handed to
+        # `apply_row_update_internal` so a cache miss on one of THESE rows is read as a
+        # proven absence instead of an unknown. It is a snapshot of the ids, not of the
+        # rows: any row resolved later in the loop (composite key assembled from column
+        # values, collision-merge conflict row) is correctly outside the set and is
+        # still read from the database.
+        prefetched_row_ids = set(all_row_ids)
+
         sources_cache = {}
         overwrites_cache = {}
-        
+
         if all_row_ids:
             all_sources = db.query(
                 models.CellSource.table_name,
@@ -2396,7 +2469,8 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                     cell_overwrites_to_upsert=cell_overwrites_to_upsert,
                     cell_overwrites_to_delete=cell_overwrites_to_delete,
                     deleted_row_ids=deleted_row_ids,
-                    version_stats=version_stats
+                    version_stats=version_stats,
+                    prefetched_row_ids=prefetched_row_ids
                 )
                 prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                 unique_results[row.row_id] = (row, is_new or prev_is_new)
