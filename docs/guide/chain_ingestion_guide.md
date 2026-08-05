@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (**§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-05 (**§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -21,7 +21,9 @@
 
 ### `calculate_shortage.py` (예제 — 저장소에 없는 파일입니다)
 
-> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 `*.sample` 둘뿐(`production_mapper.py.sample` · `dt_map_mapper.py.sample`)이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
+> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 `*.sample`뿐(`production_mapper.py.sample` · `dt_map_mapper.py.sample` · `cross_table_lookup_mapper.py.sample`)이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
+>
+> 📎 **트리거 테이블이 아닌 다른 테이블을 읽어야 한다면** [`cross_table_lookup_mapper.py.sample`](file:///c:/Users/kk980/Developments/assyManager/server/mappers/cross_table_lookup_mapper.py.sample)가 정본 참조 구현입니다. 맨 앞에 **"이 도구가 틀린 경우"** 절이 있습니다 — 다른 테이블의 컬럼을 **그대로 보여 주기만** 하면 되는 경우는 virtual join(선언)이 정답이고 맵퍼 조회는 그것의 열등한 두 번째 철자입니다. 맵퍼가 정당해지는 조건은 값이 **계산**돼야 하거나 파생 시점에 **동결**돼야 할 때입니다(그 밖에 오른쪽이 조인 키로 유일할 수 없거나, 아직 존재하지 않는 행을 만들어야 할 때). 세션·트랜잭션 소유권, SAVEPOINT 격리(실패한 문장이 트랜잭션을 오염시킨다), N+1 회피, 부재 어휘(`not_declared`/`mapping_unavailable`)가 그 파일에 근거와 함께 들어 있고, `server/tests/test_mapper_sample_cross_table_lookup.py`가 그 `.sample`을 실제 워커 진입점(`execute_custom_mapper`)으로 실행해 못박습니다.
 >
 > 🔴 **`.sample`은 씨앗이지 거울이 아니다 — 그리고 룰이 가리키는 모듈이 없어도 아무도 말해 주지 않는다.** `chain_rules.json`의 `mapper_module`은 **로드 시점에 검증되지 않는다**. 유일하게 import를 시도하는 곳은 워커 웜업(`chain_ingestion_worker.py:630-639`)인데 ⓐ `enabled:false` 룰은 **건너뛰고** ⓑ 실패해도 `[Warmup] Mapper pre-import failed` **경고 한 줄 뒤 계속 기동**한다. 그래서 룰이 존재하지 않는 모듈을 가리켜도 활성화 전까지는 완전히 조용하고, 활성화하면 그때부터 해당 트랜잭션 그룹이 통째로 실패한다. 2026-08-02에 `mappers.dt_map_mapper`가 실제로 그 상태였다(`.sample`만 있고 `.py`가 없었다). 그리고 라이브와 `.sample`을 동기화하는 장치는 **없다** — `production_mapper.py`와 그 `.sample`은 이미 서로 다른 파일이다(함수 구성도 다름). 라이브를 고칠 때 샘플을 따라 고칠지는 **사람이 결정**해야 합니다.
 ```python

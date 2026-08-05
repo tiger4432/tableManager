@@ -1,0 +1,561 @@
+"""A chain mapper that READS A TABLE OTHER THAN THE ONE THAT TRIGGERED IT.
+
+This file is a reference implementation. It is meant to be copied, so it carries the
+reasoning with it: every rule below names the failure it prevents, and the ones that
+came from a real incident say so. A sample that showed only the happy path would be
+copied too, and the copy would carry all the defects.
+
+`server/mappers/` is gitignored; only `.sample` files are tracked. Copy this to a real
+`.py` beside it, rename the function, and declare it in `config/chain_rules.json`.
+
+
+WHEN THIS IS THE WRONG TOOL - READ THIS BEFORE THE CODE
+=======================================================
+If what you want is "show a column that lives on another table", STOP. That is a
+VIRTUAL JOIN (`config/virtual_join_rules.json`, executed by `virtual_join_executor`),
+and it is better than this file at that job in every respect:
+
+  * It is a DECLARATION, not code. An operator can add one without a deploy.
+  * It copies nothing, so the announced value follows the right table. Correct the
+    right table and every row that shows the column is correct on the next read.
+  * It is one LEFT JOIN per rule per page, and the loader REFUSES a declaration whose
+    right side lacks a UNIQUE index covering the join key, so it cannot fan out.
+  * Its values are already announced in `GET /tables/{t}/schema`, already filterable
+    and searchable, and already come out of the CSV extract. A virtual column is NOT
+    display-only, so "I need to filter/export it" is not a reason to write a mapper.
+    (Sorting is the one thing it does not do - user ruling, deliberately out of scope.)
+
+A mapper lookup earns its place only when at least one of these is true:
+
+  1. THE VALUE MUST BE COMPUTED. `expose` names a column and hands it over verbatim.
+     There is no expression, and there is no aggregation - the loader's own refusal
+     code `fanout_declared` says the aggregate shape is not implemented. Arithmetic,
+     a coordinate transform, a chosen-among-several: none of that is expressible in a
+     declaration, so it has to be code.
+
+  2. THE VALUE MUST BE FROZEN AT DERIVATION TIME. This is the sharper of the two and
+     it is the reason most such mappers exist. A virtual join is LIVE by construction:
+     it re-reads the right table every time anybody looks. That is usually what you
+     want, and it is exactly what you must not have when the derived row is a RECORD
+     of what was true when it was made. If a later correction on the reference table
+     may not retroactively rewrite a finished record, the value has to be stored, and
+     storing it means writing it, and writing it means a mapper.
+     Note the consequence you are accepting: a frozen value goes stale on purpose, so
+     the derived row must also record WHICH reference value it froze, or nobody can
+     later tell a stale-by-design cell from a wrong one.
+
+  3. THE RIGHT SIDE IS NOT UNIQUE BY THE JOIN KEY AND CANNOT BE MADE SO. The virtual
+     join refuses such a declaration outright rather than fanning out. If the
+     duplicates are real (a history table keyed by time, say) then choosing among them
+     is a decision, and a decision is code.
+
+  4. THE OUTPUT IS ROWS THAT DO NOT EXIST YET. A virtual join can only decorate rows
+     the left table already has. A chain writes into a target table, so it can create
+     rows with no left-hand counterpart at all.
+
+If none of those apply, delete this file and write a declaration.
+
+A correction to a plausible-sounding version of the rule: it is NOT "computed or frozen
+versus merely displayed". Virtual columns are not merely displayed - they filter,
+search and export. The line is verbatim-and-live versus computed-or-frozen.
+
+
+THE CONTRACT, AS THE WORKER ACTUALLY IMPLEMENTS IT
+==================================================
+Verified against `server/chain_ingestion_worker.py` at source.
+
+  CALL          `execute_custom_mapper` imports `mapper_module`, gets
+                `mapper_function`, and calls `f(db, payload, rule=rule)` when the
+                function declares a `rule` parameter (or `**kwargs`), else
+                `f(db, payload)`. Declaring `rule=None` as this file does is therefore
+                compatible with both call paths.
+
+  PAYLOAD       With `is_batch: true` the second argument is a LIST of outbox payload
+                dicts - every CREATE/EDIT event of the trigger table in one
+                transaction group, minus the ones this chain wrote itself
+                (`source_name == "chain_ingestion"`, the circular-loop filter).
+                With `is_batch: false` it is a SINGLE dict and the mapper is called
+                once per event.
+                Each payload is `{"row_id", "business_key", "data", "transaction_id",
+                "updated_by", "source_name", "timestamp"}`, where `data` maps every
+                declared column of the committed row to `{"value", "is_overwrite",
+                "updated_by"}`. `row_id`, `business_key_val` and the timestamps are
+                lifted out of `data` and carried beside it.
+
+  RETURN        A dict. The worker reads `["updates"]` and nothing else, extending its
+                per-target list with it. A falsy return, a non-dict, or a dict without
+                a non-empty `updates` is ignored silently. Each item is a
+                `schemas.GeneralUpdateItem`: `{"business_key_val" | "row_id",
+                "updates": {column: value}, "source_name", "updated_by"}`.
+
+  DISAGREEMENT  The other samples in this directory return `"silent": False` alongside
+                `updates`. THE WORKER DOES NOT READ IT. It builds the
+                `GeneralUpdateBatch` itself and hardcodes `silent=False`, so a mapper
+                that returned `"silent": True` would be broadcast anyway. The key is
+                dead. This file omits it rather than teach a control that does not
+                exist.
+
+  SESSION       The worker owns it. One session is opened per polling batch and closed
+                at the end of that batch; every transaction group in the batch shares
+                it. The worker is the only committer: it commits the outbox bookkeeping
+                after a group succeeds, commits the retry bookkeeping after a group
+                fails, and `crud.apply_batch_updates` commits the target write.
+
+  FAILURE       An exception out of a mapper fails the whole transaction group. The
+                worker rolls back, increments `retry_count` on every event in the
+                group, and quarantines them as FAILED once the retry limit is reached.
+                So raising is a legitimate thing to do - it is how you say "this cannot
+                be derived and should be retried". Returning empty is how you say
+                "nothing to derive here". Do not confuse them: an empty return on a
+                real failure means the group is marked SUCCESS and never looked at
+                again.
+
+
+THE RULES THIS FILE EXISTS TO DEMONSTRATE
+=========================================
+  A. READ, NEVER COMMIT.
+  B. CONTAIN A FAILED READ IN A SAVEPOINT.
+  C. BATCH THE LOOKUP.
+  D. ABSENCE IS A VALUE.
+  E. DO NOT RE-READ THE TRIGGER ROW.
+
+Each is argued at the code that implements it.
+"""
+
+import logging
+
+from sqlalchemy.orm import Session
+
+# The degradation vocabulary is a CLOSED SET and it is defined once. Importing it here
+# rather than retyping the strings is the point: `config_resolve_report.entry` raises
+# on a word outside `REASONS`, so the operator-facing surface cannot drift from what a
+# derived row says. Do not invent a new word for "we did not find it" - there already
+# is one, and a second spelling means the grid and the config report disagree about the
+# same fact.
+import config_resolve_report as vocab
+
+logger = logging.getLogger(__name__)
+
+
+# --- Named outcomes -------------------------------------------------------------
+#
+# `not_declared`        the reference record is not there, or is there and blank.
+# `mapping_unavailable` the reference is declared but could not be read: the statement
+#                       failed, or the value came back in a shape this rule cannot use.
+#
+# The split is not cosmetic. It is the difference between two REPAIRS - "go create the
+# reference row" versus "go look at why the read failed" - and `bonding_plan` records
+# the same reasoning where it picks between the same words: folding them into one sends
+# the operator to fill in a declaration that already exists.
+REASON_ABSENT = vocab.REASON_NOT_DECLARED
+REASON_UNREADABLE = vocab.REASON_MAPPING_UNAVAILABLE
+
+# Refusals abort the whole call instead of degrading a row at a time. They are NAMED
+# because an empty `updates` list is indistinguishable from "nothing to do", and an
+# operator cannot act on a silence. Same posture as `dt_map_derivation.DerivationRefused`.
+REFUSE_LOOKUP_TABLE_UNKNOWN = "lookup_table_unknown"
+REFUSE_LOOKUP_KEY_UNDECLARED = "lookup_key_undeclared"
+REFUSE_TARGET_COLUMN_UNDECLARED = "target_column_undeclared"
+
+# Keys per statement. The same value the rest of the system uses for `IN (...)`
+# chunking (`dt_map_derivation.CHUNK`, `virtual_join_executor.CHUNK_SIZE`,
+# `enrichment_candidates.CHUNK_SIZE`). Same operation, same constant.
+LOOKUP_CHUNK = 1000
+
+
+class LookupRefused(Exception):
+    """Raised with a NAMED code when the call cannot proceed at all."""
+
+    def __init__(self, code: str, detail: str):
+        self.code = code
+        self.detail = detail
+        super().__init__("%s: %s" % (code, detail))
+
+
+# --- Declarations ---------------------------------------------------------------
+#
+# These are DEFAULTS, not constants, and every one of them is overridable per rule.
+# A mapper that reads `unit_weight` because someone typed `unit_weight` is correct in
+# exactly the environment it was typed in - the dev database and production disagree
+# about table shapes here, which is why `dt_map_mapper` takes the same posture.
+DEFAULT_LOOKUP_TABLE = "material_master"
+DEFAULT_LOOKUP_KEY = ({"left": "part_no", "right": "part_no"},)
+DEFAULT_FACTOR_COLUMNS = ("unit_weight", "pack_size")
+DEFAULT_TARGET_KEY_COLUMN = "part_no"
+DEFAULT_COMPUTED_COLUMN = "pack_weight"
+DEFAULT_FROZEN_COLUMNS = ("unit_weight_used", "pack_size_used")
+DEFAULT_STATUS_COLUMN = "lookup_status"
+
+
+def _rule_str(rule, key, default):
+    return str((rule or {}).get(key) or default)
+
+
+def _rule_tuple(rule, key, default):
+    declared = (rule or {}).get(key)
+    return tuple(declared) if declared else tuple(default)
+
+
+def _lookup_pairs(rule) -> list:
+    """[(column on the trigger row, column on the lookup table)].
+
+    Spelled `left`/`right` because that is what a virtual-join `join_key` is spelled,
+    and an operator who has declared one of those should not have to learn a second
+    vocabulary to declare this.
+    """
+    declared = (rule or {}).get("lookup_key") or DEFAULT_LOOKUP_KEY
+    pairs = []
+    for pair in declared:
+        left, right = pair.get("left"), pair.get("right")
+        if left and right:
+            pairs.append((str(left), str(right)))
+    if not pairs:
+        raise LookupRefused(
+            REFUSE_LOOKUP_KEY_UNDECLARED,
+            "rule declares no usable `lookup_key`; without one the reference read "
+            "would either match nothing or match everything, and those two produce "
+            "the same empty-looking result for opposite reasons.")
+    return pairs
+
+
+def _require_declared_target_columns(target_table: str, columns) -> None:
+    """RULE D, first half. An undeclared column is DROPPED, not rejected.
+
+    `crud.apply_batch_updates` drops a column that the target does not declare in
+    `column_types` and warns once per (table, column) per process, and the write still
+    succeeds for the rest. That is fine for a value column and fatal for the STATUS
+    column: the row would land carrying everything the mapper knew and nothing about
+    what it did not, and it would look complete. A derived row that cannot say what it
+    does not know must not be written at all, so this refuses up front rather than
+    discovering it in a log line nobody reads.
+    """
+    from database import crud
+
+    declared = (crud.TABLE_CONFIG.get(target_table) or {}).get("column_types") or {}
+    missing = [c for c in columns if c and c not in declared]
+    if missing:
+        raise LookupRefused(
+            REFUSE_TARGET_COLUMN_UNDECLARED,
+            "target '%s' does not declare %r in column_types, so those cells would be "
+            "silently dropped from the write. Declare them in table_config.json."
+            % (target_table, missing))
+
+
+# --- RULE E: the trigger row is already in your hand ------------------------------
+
+def _flatten(payload: dict) -> dict:
+    """The committed trigger row, taken from the event. NO QUERY.
+
+    The payload's `data` carries EVERY declared column of the row as it was when the
+    write committed, not just the changed ones, so a re-read buys nothing. It also
+    costs something twice over: a statement per row that the batching below exists to
+    avoid, and a chance to read a DIFFERENT version. The event is a snapshot of one
+    committed state; by the time the chain worker wakes, that row may have been edited
+    again. Re-reading mixes two versions of the same row into one derived record and
+    nothing downstream can tell.
+
+    `row_id` and `business_key` are lifted out of `data` by the event writer, so they
+    are read from the top level here. (`mappers.utils.payloads_to_df` keeps `row_id`
+    but not `business_key` - one reason this file stays on plain dicts. The other is
+    that a DataFrame turns an absent cell into NaN, and NaN is not blank to
+    `crud.is_blank_value`: it would be written out as the text "nan".)
+    """
+    flat = {"row_id": payload.get("row_id"), "business_key": payload.get("business_key")}
+    for column, cell in (payload.get("data") or {}).items():
+        if isinstance(cell, dict) and "value" in cell:
+            flat[column] = cell["value"]
+        else:
+            flat[column] = cell
+    return flat
+
+
+# --- RULE B: contain a failed read -------------------------------------------------
+
+def _isolated_fetch(db, query):
+    """Run ONE reference statement inside a SAVEPOINT. Same shape, same reason, as
+    `enrichment_config._isolated_execute`.
+
+    On PostgreSQL a failed statement ABORTS the enclosing transaction. Every later
+    statement on that connection then raises, and - this is what makes it silent -
+    `COMMIT` on an aborted transaction RETURNS NORMALLY while the server converts it to
+    a ROLLBACK. Catching the driver error is therefore NOT containment; the session is
+    already dead and neither the caller nor the log can tell.
+
+    This is a live defect in this codebase, not a hypothetical: `bonding_plan.py`
+    catches a failed confirmation lookup and degrades honestly, but never calls
+    `db.rollback()`, so on PostgreSQL the caller dies one query later with an error
+    that names the wrong statement. Measured 2026-07-30 against the live database:
+    a bad SELECT poisons the session, the next SELECT raises, `db.commit()` returns
+    normally having rolled back, and the same bad SELECT inside a SAVEPOINT leaves the
+    next SELECT working.
+
+    A mapper must never call `db.rollback()` instead: the session belongs to the
+    worker, and a top-level rollback would discard the bookkeeping of every group
+    processed earlier in the same batch. A SAVEPOINT rolls back exactly this read and
+    nothing else. That is the whole reason the containment is scoped here rather than
+    at the caller.
+
+    Cost is an extra round trip to open the savepoint and another to release it. That
+    is noise beside an indexed lookup, and the alternative price was a chain worker
+    that replayed the same group forever because its `processed_chain=True` commit was
+    quietly turned into a rollback.
+
+    Rolls back and RE-RAISES. Containment and degradation are different jobs: this
+    function keeps the session alive, and the caller decides what the row should say.
+    """
+    nested = db.begin_nested()
+    try:
+        rows = query.all()
+    except Exception:
+        nested.rollback()
+        raise
+    nested.commit()
+    return rows
+
+
+# --- RULE C: one statement per chunk, never one per row ---------------------------
+
+def load_reference(db, table: str, key_columns: list, want_columns: list, keys) -> tuple:
+    """(key tuple) -> {column: value}, plus the set of keys whose read FAILED.
+
+    Same shape as `dt_map_derivation.load_attribution`, which is the existing
+    implementation of this operation. It is written out here rather than imported
+    because that module pulls in the dt_map declarations and `map_overlay` with it; if
+    your mapper belongs to that family, import it instead of copying this.
+
+    WHEN THE SHAPE MATTERS. Below one chunk of DISTINCT keys the two shapes cost the
+    same. Above it, a per-row lookup costs one round trip per row while this costs one
+    per chunk, and the gap grows linearly from there. Note DISTINCT: a chain batch is
+    as large as the ingestion transaction that produced it - a whole file, in the
+    watcher's case - and a file's rows usually point at far fewer reference records
+    than there are rows, so the de-duplication below is often the larger win.
+
+    The failed keys come back as a set rather than as an exception because a chunk
+    that fails is a chunk's worth of not-knowing, not a reason to throw away the
+    chunks that succeeded.
+    """
+    from database import models
+
+    model = models.DYNAMIC_TABLES.get(table)
+    if model is None:
+        raise LookupRefused(
+            REFUSE_LOOKUP_TABLE_UNKNOWN,
+            "lookup table '%s' has no dynamic model; it is not declared in "
+            "table_config.json, or the worker has not reloaded since it was."
+            % table)
+
+    key_attrs = [getattr(model, c, None) for c in key_columns]
+    absent_keys = [c for c, a in zip(key_columns, key_attrs) if a is None]
+    if absent_keys:
+        raise LookupRefused(
+            REFUSE_LOOKUP_KEY_UNDECLARED,
+            "lookup table '%s' has no column(s) %r to join on." % (table, absent_keys))
+
+    want_attrs = [(c, getattr(model, c, None)) for c in want_columns]
+    absent_wanted = [c for c, a in want_attrs if a is None]
+    if absent_wanted:
+        raise LookupRefused(
+            REFUSE_LOOKUP_TABLE_UNKNOWN,
+            "lookup table '%s' does not carry %r; a rule that reads a column the "
+            "table does not have is a config error, not a per-row absence."
+            % (table, absent_wanted))
+
+    index, unreadable = {}, set()
+    ordered = [k for k in keys if k is not None]
+    width = len(key_columns)
+
+    for start in range(0, len(ordered), LOOKUP_CHUNK):
+        batch = ordered[start:start + LOOKUP_CHUNK]
+        query = db.query(*(key_attrs + [a for _c, a in want_attrs]))
+        if width == 1:
+            query = query.filter(key_attrs[0].in_([k[0] for k in batch]))
+        else:
+            # Composite key: one OR-of-ANDs per chunk. Still one statement per chunk.
+            from sqlalchemy import and_, or_
+            query = query.filter(or_(*[
+                and_(*[key_attrs[i] == part for i, part in enumerate(k)])
+                for k in batch]))
+
+        try:
+            rows = _isolated_fetch(db, query)
+        except Exception as e:
+            # Named, loud, and scoped. The session is alive because the SAVEPOINT was
+            # rolled back; these keys will say `mapping_unavailable` and the rest of
+            # the batch is unaffected.
+            unreadable.update(batch)
+            logger.error(
+                "[CrossTableLookup] reference read on '%s' failed for a chunk of keys "
+                "(%s: %s); those rows will report %s",
+                table, type(e).__name__, e, REASON_UNREADABLE)
+            continue
+
+        for row in rows:
+            index[tuple(row[:width])] = {
+                c: row[width + i] for i, (c, _a) in enumerate(want_attrs)}
+
+    return index, unreadable
+
+
+def _as_number(value):
+    """A reference value this rule can actually compute with, or None."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+# --- The mapper ------------------------------------------------------------------
+
+def build_pack_weight_batch(db: Session, payloads, rule=None) -> dict:
+    """Derive one target row per trigger row, using values read from ANOTHER table.
+
+    RULE A, stated once and visible everywhere below: THIS FUNCTION NEVER COMMITS, NEVER
+    ROLLS BACK, AND NEVER CLOSES THE SESSION. The worker opens one session per polling
+    batch and shares it across every transaction group in that batch. A `db.commit()`
+    here would end that transaction at an arbitrary point, which means (a) anything the
+    group had pending escapes the failure path's `db.rollback()`, so the group is still
+    retried and the escaped part is applied twice, and (b) `expire_on_commit` invalidates
+    every ORM object the worker is holding, including the outbox rows it is about to
+    stamp, so the stamping reloads them one statement at a time.
+    """
+    # `is_batch: false` hands over a single dict. Accepted, because both shapes are
+    # legal per the worker - but warned about, because that setting makes the N+1 this
+    # file is built to avoid STRUCTURAL: the mapper is called once per event, so the
+    # reference is read once per row no matter how well the read is written.
+    if isinstance(payloads, dict):
+        logger.warning(
+            "[CrossTableLookup] rule '%s' called with a single payload; declare "
+            "`is_batch: true` or the reference is read once per row.",
+            (rule or {}).get("name"))
+        payloads = [payloads]
+    if not payloads:
+        return {"updates": []}
+
+    target_table = _rule_str(rule, "target_table", "")
+    lookup_table = _rule_str(rule, "lookup_table", DEFAULT_LOOKUP_TABLE)
+    factor_columns = _rule_tuple(rule, "lookup_value_columns", DEFAULT_FACTOR_COLUMNS)
+    frozen_columns = _rule_tuple(rule, "frozen_columns", DEFAULT_FROZEN_COLUMNS)
+    computed_column = _rule_str(rule, "computed_column", DEFAULT_COMPUTED_COLUMN)
+    status_column = _rule_str(rule, "status_column", DEFAULT_STATUS_COLUMN)
+    key_column = _rule_str(rule, "target_business_key_column", DEFAULT_TARGET_KEY_COLUMN)
+
+    rows = [_flatten(p) for p in payloads]
+
+    try:
+        pairs = _lookup_pairs(rule)
+        if len(frozen_columns) != len(factor_columns):
+            # They are zipped below, and `zip` truncates in silence. A rule that froze
+            # some of its inputs and not others would produce a row that looks fully
+            # audited and is not.
+            raise LookupRefused(
+                REFUSE_TARGET_COLUMN_UNDECLARED,
+                "`frozen_columns` %r does not pair up with `lookup_value_columns` %r; "
+                "every value this rule computes with has to be recorded next to what "
+                "it produced." % (list(frozen_columns), list(factor_columns)))
+        _require_declared_target_columns(
+            target_table,
+            [computed_column, status_column] + list(frozen_columns))
+
+        # De-duplicate before reading. Many trigger rows usually point at one
+        # reference record, and asking for the same key repeatedly is the per-row
+        # shape wearing a batch's clothes.
+        wanted_keys = set()
+        for row in rows:
+            key = tuple(row.get(left) for left, _right in pairs)
+            if any(k is None or str(k).strip() == "" for k in key):
+                continue      # an incomplete key selects nothing, never everything
+            wanted_keys.add(key)
+
+        index, unreadable = load_reference(
+            db, lookup_table,
+            [right for _left, right in pairs], list(factor_columns), wanted_keys)
+    except LookupRefused as e:
+        # Empty-handed and NAMED. A partially derived batch is not a smaller claim than
+        # a complete one, it is a different claim.
+        #
+        # Returning rather than raising is a decision, and it is the one `dt_map_mapper`
+        # makes too. Every refusal above is a DECLARATION error: it will be identical on
+        # every retry, so raising would burn the group's retry budget and quarantine the
+        # trigger events as FAILED without producing any information the first attempt
+        # did not already have. The error log is the signal. Raise instead when the
+        # cause could plausibly be gone by the next attempt.
+        logger.error("[CrossTableLookup] rule '%s' refused: %s",
+                     (rule or {}).get("name"), e)
+        return {"updates": []}
+
+    from database import crud
+
+    updates = []
+    for row in rows:
+        business_key = row.get(key_column)
+        if crud.is_blank_value(business_key):
+            # Nothing to address the derived row WITH. This one really is a skip: an
+            # update item with no key would either create an unaddressable row or land
+            # on an arbitrary one.
+            logger.warning(
+                "[CrossTableLookup] trigger row %s carries no '%s'; not derived.",
+                row.get("row_id"), key_column)
+            continue
+
+        cells = {key_column: business_key}
+        key = tuple(row.get(left) for left, _right in pairs)
+
+        # RULE D. The row SAYS which outcome it got. Nothing here guesses a value and
+        # nothing drops a row for not knowing one - a derived row that omits both the
+        # value and the reason is indistinguishable from one that was never attempted.
+        #
+        # KNOW THE LIMIT OF ONE STATUS COLUMN: it can carry the answer about one
+        # subject, and here that subject is the REFERENCE. A trigger row that arrived
+        # without a usable key never made it into `wanted_keys`, so it lands here as
+        # not-found and is reported `not_declared` - true (no reference was located)
+        # but pointing at the wrong end of the join. If your rule can fail to know
+        # about more than one subject, give each subject its own status column;
+        # `dt_map_derivation` splits its hold reasons for exactly that reason, because
+        # they are different repairs.
+        found = index.get(key)
+        if key in unreadable:
+            status = REASON_UNREADABLE
+        elif not found:
+            status = REASON_ABSENT
+        else:
+            # A blank reference cell and an unusable one are different repairs, so
+            # they get different words: go fill the value in, versus go look at why
+            # that value is not a number. Unusable is checked first because it is the
+            # louder fact - a blank cell is a normal state of a table being filled in.
+            blank = [c for c in factor_columns if crud.is_blank_value(found.get(c))]
+            unusable = [c for c in factor_columns
+                        if c not in blank and _as_number(found.get(c)) is None]
+            if unusable:
+                status = REASON_UNREADABLE
+            elif blank:
+                status = REASON_ABSENT
+            else:
+                status = None
+                product = 1.0
+                for column in factor_columns:
+                    product *= _as_number(found.get(column))
+                cells[computed_column] = product
+                # RULE 2 of "when this is the right tool": the frozen value is written
+                # NEXT TO what it produced. Without it, a later correction on the
+                # reference table leaves a stored number that nobody can audit - the
+                # cell is stale by design and looks exactly like a cell that is wrong.
+                for column, source_column in zip(frozen_columns, factor_columns):
+                    cells[column] = found.get(source_column)
+
+        if status is not None:
+            cells[status_column] = status
+
+        # `source_name` is what the layering invariant reads. `chain_ingestion` ranks
+        # below `user`, so a human correction on a derived cell survives the next
+        # derivation. Do not invent a source name here - an unregistered one falls to
+        # the bottom rank and stops being comparable with the others.
+        updates.append({
+            "business_key_val": business_key,
+            "updates": cells,
+            "source_name": "chain_ingestion",
+            "updated_by": "chain_worker",
+        })
+
+    # No `silent` key: see DISAGREEMENT in the module docstring. The worker builds the
+    # batch itself and would ignore it.
+    return {"updates": updates}
