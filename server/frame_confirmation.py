@@ -372,6 +372,40 @@ def resolve_ruling_state(ruling: dict, state=None) -> str:
     return STATE_NOT_TRANSPORTED
 
 
+def _reject_unreadable_frame(where: str, value):
+    """이 낱말이 **프레임인가.** 아니면 거절. 읽히면 그대로 통과시킨다(정규화하지 않는다).
+
+    🔴 [D9, 보드 #23 감사 2026-08-06] **어휘 검사가 한쪽에만 있었다.** 메타 행을 쓰는 쪽은
+       `parse_frame`을 통과해야 하는데(`map_alignment.confirmed_meta_for`) 확정 기록 쪽은
+       아무 문자열이나 받았다. 실측: `frame="rot45_front"`인 요청이 200으로 끝났고,
+       `frame_confirmation.confirmed_frame`에 `rot45_front`가 남았으며 메타 행은 **아예 만들어
+       지지 않았다.** 한 요청이 기록 하나에는 답을 남기고 다른 하나에는 안 남기는데 응답은
+       성공이다 — 두 기록이 갈리는 가장 조용한 형태다.
+
+    🔴 **어휘의 정본은 `map_alignment` 하나다**(`accepted_ruling_states`와 같은 규율).
+       여기서 45를 거절하는 표를 만들면 그것이 두 번째 철자이고, 후보 공간이 언젠가 바뀌면
+       둘이 갈린다.
+
+    ⚠️ **`frames`(규칙의 `target_fields`) 값에는 걸지 않는다 — 그것은 프레임이 아니다.**
+       `dt_job_lot_slot_attribution`의 대상은 `dt_lot_confirmed`/`dt_slot_confirmed`이고 거기
+       들어가는 값은 lot·slot이다. 프레임 검사를 거기까지 넓히면 프레임이 아닌 정답을 거절한다.
+    ⚠️ `ruling["winner"]`에도 걸지 않는다. 저것은 **채점기가 무엇을 말했나**의 전사이지
+       확정의 주체가 아니고, 메타 행이 읽는 값도 아니라 갈릴 자리가 없다.
+    """
+    import map_alignment
+
+    from database import crud
+
+    val = crud.clean_str_value(value)
+    if val == "":
+        return None
+    if map_alignment.parse_frame(val) is None:
+        raise ConfirmationRefused(
+            "%s '%s'은 프레임이 아닙니다 - 회전은 0/90/180/270, 면은 front/back이며 "
+            "철자는 'rot<각도>_<면>'입니다" % (where, val))
+    return val
+
+
 def _resolve_frames(rule: dict, frames: dict, frame: str) -> dict:
     """확정된 프레임들 → `{target_field: 프레임}`. **키는 규칙 선언에서 온다.**
 
@@ -455,6 +489,14 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
             "합의에 올린 소스가 없습니다 - 어느 소스들을 합쳤는지가 이 기록의 내용입니다")
 
     frames = _resolve_frames(rule, frames, frame)
+    # [D9] 기록 A가 기록 B가 거절하는 프레임을 담지 못하게 한다 — 두 기록이 갈리는 자리
+    # 하나를 **입구에서** 닫는다(§_reject_unreadable_frame). 제외된 소스는 어디에도
+    # 정렬되지 않았으므로 프레임이 없어도 되고, 그때 값은 비어 있다.
+    _reject_unreadable_frame("확정된 프레임", frame)
+    for c in contributors or []:
+        _reject_unreadable_frame(
+            "소스 '%s'의 적용 프레임" % (c.get("map_id") or c.get("role") or "?"),
+            c.get("applied_frame"))
 
     ruling = ruling or {}
     reference = reference or {}

@@ -515,18 +515,37 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
       · `rotation`·`side` ← 확정된 프레임. **언제나 쓴다** — 확정된 것이 이것이다.
       · phys 여섯 키 ← 바닥. **그 맵의 기하가 `declared`가 아닐 때만.** 잰 값을 파생 값으로
         덮지 않는다(`assume_phys_from`의 거절과 **같은 조건**이고, 그래서 같은 술어를 쓴다).
-      · 격자(치수·시작) ← 채점이 선 프레임. **행을 새로 만들 때만.** 격자는 확정된 두 사실 중
-        어느 쪽도 아니다 — 행이 격자 없이는 읽히지 않아서 싣는 것뿐이라, 이미 있는 행의 격자를
-        고칠 근거가 되지 못한다.
+      · 격자(치수·시작) ← **채점이 선 프레임.** 행을 새로 만들 때, 그리고 **채점이 격자를
+        빌렸을 때**(§[D8] 아래). 격자는 확정된 두 사실 중 어느 쪽도 아니지만, 채점이 빌린
+        격자를 안 적으면 이 행은 **채점이 한 번도 쓴 적 없는 조합**을 기록한다.
       · `grid_y_invert` — **손대지 않는다.** 후보 축이 아니라(§`candidate_frames`) 확정된 적이
         없고, 덮으면 그것에 상대적으로 표현된 회전·면의 뜻까지 바뀐다.
+      · `auto_registered` — phys를 다시 쓰면 **뗀다**(§[D8]).
+
+    ═══ [D8] 기존 행 갈래도 새 행 갈래와 **같은 판정**을 받는다 (2026-08-06, 보드 #23 감사)
+    🔴 종전 이 갈래는 격자를 손대지 않았고, 근거는 「격자는 확정된 사실이 아니다」였다. 그
+       문장은 참인데 결론이 틀렸다 — **부분 맵의 등록기 행은 격자로 그 맵의 셀 bbox를 들고
+       있고**(`MapMetaCollector`), 그것은 스펙 §9.5가 「하한이지 격자가 아니다」라고 못 박은
+       바로 그 값이다. 그래서 채점은 그 맵의 격자를 **빌린다**(`grid_needs_basis` 참). 빌린
+       격자를 안 적으면 이 행은 **바닥의 phys + 등록기의 bbox 격자**를 짝지어 기록하는데,
+       그 조합 위에서는 아무 채점도 돈 적이 없다.
+       실측 2026-08-06(bbox 2,1..6,5 / 바닥 13x13@(0,0)): 채점은 **13x13@(0,0)** 위에서
+       돌았고 이 함수는 **5x5@(2,1)**을 적었다. 새 행 갈래가 피하려고 만들어진 결함을 기존
+       행 갈래가 그대로 갖고 있었다.
+    🔴 그리고 `auto_registered`가 살아남았다. 그 표지는 **phys 여섯 키를 덮는 표지**인데(§D1)
+       이 함수가 그 여섯 개를 바닥 값으로 다시 쓰므로, 남겨 두면 **그 여섯에 대한 거짓
+       진술**이 된다. `geometry_declaration` 안에서는 확정 표지가 먼저 읽혀 가려지지만,
+       표지를 **직접** 읽는 소비자에게는 안 가려진다(`map_editor.js:6459`가 Push마다 그렇게
+       읽어 되쓴다).
+    ⚠️ 다만 **뗄 때 격자 출처를 대신 대야 한다.** `auto_registered`는 `grid_start_*`을
+       설명하던 유일한 표지이기도 해서, 그냥 떼면 start가 `auto_registered`에서 **`declared`로
+       올라선다** — 아무도 선언한 적 없는데. 그래서 「격자 출처를 댈 수 있을 때만」 뗀다.
     """
     parsed = parse_frame(frame)
     if parsed is None or not isinstance(basis, dict):
         # 프레임이 없거나 읽히지 않으면 확정의 **주체**가 없다. 아무것도 쓰지 않는다.
         return None
     rot, side = parsed
-    own = map_overlay.geometry_declaration(meta)
 
     if not meta:
         box = map_overlay.grid_box(basis_meta)
@@ -536,20 +555,42 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
         base = assumed_meta_for_unregistered([(lo_x, lo_y), (hi_x, hi_y)], basis_meta, basis)
         if base is None:
             return None
-        # 이 행을 쓴 것은 등록기가 아니라 확정이다. 표지를 물려받으면 「등록기가 썼다」가
-        # 거짓이 되고, 물려받지 않아도 `grid_start_*`가 `declared`로 새지 않는다 — 바로
-        # 아래에서 격자 출처를 명시로 달기 때문이다.
-        base.pop(map_overlay.AUTO_REGISTERED_KEY, None)
+        # 새로 만들어지는 행의 격자 출처는 두 갈래 모두 바닥이다(§위 블록).
         base[map_overlay.GRID_ASSUMED_KEY] = dict(basis)
     else:
+        # [D8] 채점이 이 맵에 대해 무엇을 빌렸는지 묻고, **채점이 쓰는 그 함수**로 같은
+        # 사본을 만든다. 축이 둘이라 질문도 둘이다(§phys_needs_basis / §grid_needs_basis).
+        # 🔴 phys 쪽만 술어가 다르다: 채점은 「빌려야 하는가」를 묻고(확정된 phys는 아니오),
+        #    쓰기는 「여기에 써도 되는가」를 묻는다(**잰 값 위에만** 아니오). 재확정이 같은
+        #    바닥에서 값을 다시 유도하고 표지를 다시 찍으려면 뒤엣것이어야 한다.
+        need_phys = (map_overlay.geometry_declaration(meta)
+                     != map_overlay.GEOMETRY_DECLARED)
+        need_grid = grid_needs_basis(meta, basis_meta)
         base = dict(meta)
-        if own != map_overlay.GEOMETRY_DECLARED:
-            base = map_overlay.assume_phys_from(base, basis_meta, basis) or base
+        if need_phys or need_grid:
+            borrowed = borrowed_meta_for(base, basis_meta, basis, need_phys, need_grid)
+            # ⚠️ `borrowed_meta_for`의 None은 **「이 맵을 제외하라」**는 채점의 답이다. 쓰기는
+            #    제외할 수 없다 — 조작자는 프레임을 확정했고 그 사실은 남아야 한다. 그래서
+            #    phys를 못 빌리면 격자만이라도 채점과 같게 맞추고, 나머지는 그대로 둔다.
+            if borrowed is None and need_grid:
+                borrowed = borrowed_meta_for(base, basis_meta, basis, False, need_grid)
+            base = borrowed or base
 
+    # ── 두 갈래 공통 ──────────────────────────────────────────────────────────────
     # 빌림 표지를 **대체**한다. 저장되는 행에 「가정」이 남으면 확정된 파생과 확정되지 않은
     # 추측이 구별되지 않고, 그 구별이 이 표지가 존재하는 이유다(§map_overlay [D7]).
     if base.pop(map_overlay.PHYS_ASSUMED_KEY, None) is not None:
         base[map_overlay.PHYS_CONFIRMED_KEY] = dict(mark or {})
+        # [D8] phys를 다시 썼으므로 `auto_registered`는 그 여섯 키에 대해 거짓이 됐다.
+        # 격자 출처를 댈 수 있을 때만 뗀다 — 아니면 `grid_start_*`가 `declared`로 새고,
+        # 그것이 이 어휘가 막으려는 사칭이다(I4). 못 대는 경우는 「바닥이 phys는 선언했는데
+        # 격자는 못 읽히는」 구석 하나뿐이고, 그런 바닥 위에서는 채점 자체가 서지 못한다.
+        if not base.get(map_overlay.GRID_ASSUMED_KEY):
+            g = map_overlay._grid_of(basis_meta)
+            if g is not None and map_overlay._grid_of(base) == g:
+                base[map_overlay.GRID_ASSUMED_KEY] = dict(basis)
+        if base.get(map_overlay.GRID_ASSUMED_KEY):
+            base.pop(map_overlay.AUTO_REGISTERED_KEY, None)
     base["rotation"], base["side"] = rot, side
     base[map_overlay.FRAME_CONFIRMED_KEY] = dict(mark or {})
     return base

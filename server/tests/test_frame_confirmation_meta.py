@@ -339,6 +339,154 @@ def test_an_excluded_contributor_gets_no_confirmed_coordinate_system(env):
     assert _meta(env, MAP_TABLE, "dropped") is None
 
 
+# ---------------------------------------------------------------------------
+# The ingestion registrar and the confirmation write the SAME row from two processes.
+# Board #23 asks whether the two records of a confirmed frame can part; on this axis the
+# answer is no, and these two are the proof rather than the reading of the code.
+# ---------------------------------------------------------------------------
+
+def test_the_registrar_does_not_overwrite_a_confirmed_row(env, monkeypatch):
+    """`MapMetaCollector` is absent-only, and the confirmation's row is not absent. If the
+    existence check ever stopped seeing it, ingestion would put a synthetic `rot0_front`
+    over an operator's confirmed frame and nothing on screen would say so."""
+    import map_meta_registrar as reg
+    monkeypatch.setattr(reg, "INGESTION_SETTINGS_PATH", "/nonexistent/settings.json")
+    reg.reset_known_cache()
+
+    _confirm(env, "J1", "J1", "rot90_front")
+    before = _meta(env, MAP_TABLE, "J1")
+
+    collector = reg.MapMetaCollector(MAP_TABLE, TEST_TABLE_CONFIG[MAP_TABLE])
+    assert collector.active, "fixture lost its axis: an inert collector proves nothing"
+    collector.collect([{"job": "J1", "x": 3, "y": 4, "val": "1"}])
+    created = collector.flush(env)
+
+    assert created == 0
+    assert _meta(env, MAP_TABLE, "J1") == before
+
+
+def _registrar_row(env, monkeypatch, job, coords):
+    import map_meta_registrar as reg
+    monkeypatch.setattr(reg, "INGESTION_SETTINGS_PATH", "/nonexistent/settings.json")
+    reg.reset_known_cache()
+    collector = reg.MapMetaCollector(MAP_TABLE, TEST_TABLE_CONFIG[MAP_TABLE])
+    assert collector.active, "fixture lost its axis: an inert collector proves nothing"
+    collector.collect([{"job": job, "x": x, "y": y, "val": "1"} for x, y in coords])
+    assert collector.flush(env) == 1
+    synthetic = _meta(env, MAP_TABLE, job)
+    assert map_overlay.geometry_declaration(synthetic) == \
+        map_overlay.GEOMETRY_AUTO_REGISTERED, "fixture lost its axis"
+    return synthetic
+
+
+def test_a_confirmation_upgrades_the_registrars_synthetic_row_rather_than_racing_it(
+        env, monkeypatch):
+    """The other order: the registrar gets there first with the mask-neutral synthetic
+    frame, and the confirmation must upgrade that row rather than sit beside it."""
+    _registrar_row(env, monkeypatch, "J1", [(2, 1), (6, 5)])
+
+    _confirm(env, "J1", "J1", "rot90_front")
+
+    stored = _meta(env, MAP_TABLE, "J1")
+    assert (stored["rotation"], stored["side"]) == (90, "front")
+    assert map_overlay.geometry_declaration(stored) == map_overlay.GEOMETRY_CONFIRMED
+    model = models.DYNAMIC_TABLES[META_TABLE]
+    assert env.query(model).filter(model.target_table == MAP_TABLE,
+                                   model.map_id == "J1").count() == 1
+
+
+def test_the_existing_row_branch_records_the_frame_the_scoring_ran_under(env, monkeypatch):
+    """🔴 [D8] THE GAP THE BOARD #23 AUDIT FOUND — the same defect the new-row branch was
+    built to avoid, left open on the other branch and live in `3e96747` for four hours.
+
+    A registrar row for a PARTIAL map stores the map's own cell bbox as the grid — the
+    "lower bound, not a grid" value MAP_ALIGNMENT_SPEC 9.5 forbids using. The scoring
+    therefore BORROWS the floor's grid for that map (`grid_needs_basis` is true: 5x5 vs
+    13x13). The old existing-row branch left the stored grid alone, so the row it wrote
+    paired the floor's phys with the registrar's bbox grid — a combination no scoring ever
+    ran under. Measured 2026-08-06: scoring ran under 13x13@(0,0), the row said 5x5@(2,1).
+
+    Second half: `auto_registered` is a marker over the SIX PHYS KEYS, and this write
+    replaces all six with the floor's. Leaving it is a false statement about them — masked
+    inside `geometry_declaration` (the confirmed marker is read first) but not for anyone
+    reading the flag directly, which `map_editor.js:6459` does on every Push.
+    """
+    synthetic = _registrar_row(env, monkeypatch, "J1", [(2, 1), (6, 5)])
+    assert map_overlay.grid_dims(synthetic) == (5, 5)
+    assert map_alignment.grid_needs_basis(synthetic, FLOOR_META) is True, \
+        "fixture lost its axis: the scoring must actually borrow the grid here"
+
+    _confirm(env, "J1", "J1", "rot90_front")
+
+    stored = _meta(env, MAP_TABLE, "J1")
+    assert map_overlay.grid_dims(stored) == map_overlay.grid_dims(FLOOR_META)
+    assert (stored["grid_start_x"], stored["grid_start_y"]) == (0, 0)
+    assert map_overlay.AUTO_REGISTERED_KEY not in stored
+    # And the anti-impersonation invariant still holds on THIS branch too: dropping the
+    # registrar's marker must not promote `grid_start_*` to `declared`.
+    sources = {a: d["source"] for a, d in
+               map_overlay.orientation_declaration(stored).items()}
+    assert map_overlay.GEOMETRY_DECLARED not in sources.values(), sources
+
+
+def test_the_registrars_marker_is_kept_when_the_grid_origin_cannot_be_named(env,
+                                                                            monkeypatch):
+    """[D8] The guard on dropping `auto_registered`, and the reason it is a guard rather
+    than an unconditional drop.
+
+    That marker is the only thing explaining `grid_start_*` — start is the one axis whose
+    value can never indicate absence, so with no marker it reads `declared` no matter what
+    it holds. Dropping the marker without being able to name the grid's origin therefore
+    trades a false statement about the phys for a false statement about start, and the
+    second one is the impersonation this vocabulary exists to stop.
+
+    The corner: a floor that declares its phys but whose grid is unreadable. Nothing is
+    borrowed on the grid axis, so nothing can vouch for start, so the marker stays.
+    """
+    gridless_floor = {k: FLOOR_META[k] for k in map_overlay.PHYS_KEYS}
+    assert map_overlay.geometry_declaration(gridless_floor) == \
+        map_overlay.GEOMETRY_DECLARED, "fixture lost its axis: the floor must be borrowable"
+    assert map_overlay._grid_of(gridless_floor) is None
+    _write_meta(env, FLOOR_TABLE, "GRIDLESS", gridless_floor, source_name="user")
+    _registrar_row(env, monkeypatch, "J1", [(2, 1), (6, 5)])
+
+    _confirm(env, "J1", "J1", "rot90_front",
+             reference={"table": FLOOR_TABLE, "map_id": "GRIDLESS"})
+
+    stored = _meta(env, MAP_TABLE, "J1")
+    assert map_overlay.PHYS_CONFIRMED_KEY in stored, "fixture lost its axis: no phys written"
+    assert map_overlay.AUTO_REGISTERED_KEY in stored
+    sources = {a: d["source"] for a, d in
+               map_overlay.orientation_declaration(stored).items()}
+    assert map_overlay.GEOMETRY_DECLARED not in sources.values(), sources
+
+
+def test_the_written_row_is_byte_identical_to_the_frame_the_scoring_ran_under(env,
+                                                                              monkeypatch):
+    """The general statement of [D8], asserted against the scoring's own composer rather
+    than against numbers copied into the test. Everything must match except the provenance
+    markers the confirmation replaces and the frame it confirms — those two are the whole
+    content of the write, and anything else differing means the row records a frame nobody
+    scored."""
+    synthetic = _registrar_row(env, monkeypatch, "J1", [(2, 1), (6, 5)])
+    scored_under = map_alignment.borrowed_meta_for(
+        synthetic, FLOOR_META, BASIS,
+        map_alignment.phys_needs_basis(synthetic),
+        map_alignment.grid_needs_basis(synthetic, FLOOR_META))
+
+    _confirm(env, "J1", "J1", "rot90_front")
+    stored = _meta(env, MAP_TABLE, "J1")
+
+    expected_diff = {map_overlay.PHYS_ASSUMED_KEY, map_overlay.PHYS_CONFIRMED_KEY,
+                     map_overlay.FRAME_CONFIRMED_KEY, map_overlay.AUTO_REGISTERED_KEY,
+                     "rotation", "side"}
+    differing = {k for k in set(scored_under) | set(stored)
+                 if scored_under.get(k) != stored.get(k)}
+    assert differing <= expected_diff, \
+        f"the stored row differs from the scoring's frame in {differing - expected_diff}"
+    assert map_overlay.grid_dims(stored) == map_overlay.grid_dims(scored_under)
+
+
 def test_with_no_basis_the_frame_is_still_recorded_but_nothing_is_derived(env):
     """`reference.state = "absent"` is the most common normal state, not a failure. With no
     floor there is nothing to derive a phys FROM — but the operator still named a frame, and
@@ -357,6 +505,51 @@ def test_with_no_basis_the_frame_is_still_recorded_but_nothing_is_derived(env):
     assert map_overlay.FRAME_CONFIRMED_KEY in stored
     assert map_overlay.PHYS_CONFIRMED_KEY not in stored, "derived a phys from no basis"
     assert _meta(env, MAP_TABLE, "no_row") is None
+
+
+# ---------------------------------------------------------------------------
+# [D9] One vocabulary. Record A may not hold a frame record B refuses.
+# ---------------------------------------------------------------------------
+
+def test_a_frame_the_metadata_write_would_refuse_is_refused_at_the_door(env):
+    """🔴 The gate was on one side only. Measured 2026-08-06 before this closed:
+    `frame="rot45_front"` answered 200, left `confirmed_frame='rot45_front'` in record A,
+    and wrote NO metadata row — one request answering for one record and not the other,
+    reported as success. That is the quietest shape a divergence has."""
+    with pytest.raises(fc.ConfirmationRefused, match="rot45_front"):
+        _confirm(env, "J1", "J1", "rot45_front")
+
+    assert env.query(models.FrameConfirmation).filter_by(unit_key="J1").first() is None
+    assert _meta(env, MAP_TABLE, "J1") is None
+
+
+def test_a_contributors_applied_frame_is_held_to_the_same_vocabulary(env):
+    """`applied_frame` is the per-map frame the metadata write actually consumes
+    (`_write_confirmed_meta` prefers it over the unit frame), so it is the field that can
+    diverge map-by-map inside one otherwise-valid confirmation."""
+    with pytest.raises(fc.ConfirmationRefused, match="sideways"):
+        _confirm(env, "J1", "J1", contributors=[
+            _contrib("good", "rot90_front"), _contrib("bad", "sideways")])
+
+    assert _meta(env, MAP_TABLE, "good") is None, "a refusal must write nothing at all"
+
+
+def test_an_excluded_source_may_carry_no_frame_at_all(env):
+    """An excluded source was aligned to nothing, so an absent `applied_frame` is the
+    honest value — the gate must not turn that into a refusal."""
+    h = _confirm(env, "J1", "J1", contributors=[
+        _contrib("kept", "rot90_front"),
+        _contrib("dropped", None, excluded_reason="no_cells")])
+
+    assert h.confirmed_frame == "rot90_front"
+    assert _meta(env, MAP_TABLE, "kept") is not None
+
+
+def test_the_gate_reads_the_candidate_vocabulary_rather_than_a_copy_of_it(env):
+    """One spelling. If this file listed the legal frames, the two would drift the day the
+    candidate space changes — so the assertion is against `candidate_frames()` itself."""
+    for frame in map_alignment.candidate_frames():
+        assert fc._reject_unreadable_frame("x", frame) == frame
 
 
 def test_a_confirmation_without_a_readable_frame_writes_no_coordinate_system(env):
@@ -432,6 +625,34 @@ def test_one_map_keeps_exactly_one_metadata_row_under_the_registrar_s_key(env):
 # ---------------------------------------------------------------------------
 # Idempotence
 # ---------------------------------------------------------------------------
+
+def test_re_confirming_against_a_DIFFERENT_floor_re_derives_the_phys_from_it(env):
+    """🔴 The write asks a different question from the scoring, and this is why.
+
+    The scoring asks "must I borrow?" — and a confirmed phys needs no borrowing, because
+    its values already are the floor's. The WRITE asks "may I write here?", which is false
+    only over a MEASURED phys. Collapsing the two to the scoring's predicate looks harmless
+    and is not: on a re-confirmation against a different floor it leaves the FIRST floor's
+    wafer geometry in the row while `phys_confirmed_from` names the SECOND. The row would
+    then carry one floor's numbers under another floor's badge — the exact shape of
+    divergence this whole audit is about.
+    """
+    other = dict(FLOOR_META, phys_chip_x=11.0, phys_chip_y=13.0, phys_wafer_dia=200.0)
+    _write_meta(env, FLOOR_TABLE, "OTHER", other, source_name="user")
+
+    _confirm(env, "J1", "J1", "rot90_front", by="park")
+    first = _meta(env, MAP_TABLE, "J1")
+    assert first["phys_chip_x"] == FLOOR_META["phys_chip_x"]
+
+    h2 = _confirm(env, "J1", "J1", "rot90_front", by="lee",
+                  reference={"table": FLOOR_TABLE, "map_id": "OTHER"})
+
+    second = _meta(env, MAP_TABLE, "J1")
+    assert (second["phys_chip_x"], second["phys_chip_y"]) == (11.0, 13.0), \
+        "the row kept the first floor's geometry under the second floor's marker"
+    mark = second[map_overlay.PHYS_CONFIRMED_KEY]
+    assert (mark["map_id"], mark["confirmation_uid"]) == ("OTHER", h2.confirmation_uid)
+
 
 def test_re_confirming_the_same_frame_is_not_a_fresh_declaration_by_a_new_author(env):
     """The second pass must not promote anything to `declared`, must not lose the marker,
