@@ -196,7 +196,7 @@ function buildSandbox(src, label, elOver) {
 // the app's own cell factory builds gridCells2D — the harness never hand-rolls a cell
 function buildCells(sb) {
   const { ctx, H } = sb;
-  const pc = H.getTransformedPhysicalConfig(ROT, SIDE);
+  const pc = H.getTransformedPhysicalConfig(null, ROT, SIDE);
   ctx.gridCells2D = {};
   for (let r = 0; r < VR; r++) {
     ctx.gridCells2D[r] = {};

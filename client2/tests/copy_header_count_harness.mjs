@@ -244,6 +244,22 @@ function buildSandbox(src, label, extraFns = [], extraCode = '') {
   return { ctx, H: ctx.__h, captured };
 }
 
+// [2026-08-05] SIGNATURE DRIFT — the sibling of the rename drift handled by `fnFrom`'s
+// spelling lists, and not expressible in them. `getTransformedPhysicalConfig` gained a
+// leading `frame` argument, so the pinned baseline blob takes `(rot, side)` while the working
+// tree takes `(frame, rot, side)`. Neither revision is wrong; they spell the call differently,
+// which is exactly the condition this harness already absorbs at the slicing boundary.
+//
+// 🔴 BOTH SIDES ARE ASKED THE SAME QUESTION, which is the only thing that keeps a two-revision
+//    comparison meaningful: `null` means "no frame — read the screen controls", and reading
+//    the screen unconditionally is precisely what the baseline revision did.
+// 🔴 ARITY IS READ OFF THE FUNCTION, never inferred from which revision we believe we hold.
+//    `>= 3` rather than `=== 3` so a later argument cannot silently route the working tree
+//    back down the two-argument branch and re-open this hole from the other side.
+const physConfig = (H, rot, side) => (H.getTransformedPhysicalConfig.length >= 3
+  ? H.getTransformedPhysicalConfig(null, rot, side)
+  : H.getTransformedPhysicalConfig(rot, side));
+
 // ── the app's own cell factory builds gridCells2D ────────────────────────────────
 // 하네스 규율: 컨트롤 상태를 직접 세팅하지 않는다. `getGridCellObject`는 렌더 루프와
 // `getGridCellFromMouseEvent`가 쓰는 그 팩토리이고, 여기서도 그것만 부른다.
@@ -252,7 +268,7 @@ function buildCells(sb) {
   const rot = ctx.currentRotation;
   const vc = (rot === 90 || rot === 270) ? ROWS : COLS;
   const vr = (rot === 90 || rot === 270) ? COLS : ROWS;
-  const pc = H.getTransformedPhysicalConfig(rot, ctx.currentSide);
+  const pc = physConfig(H, rot, ctx.currentSide);
   ctx.gridCells2D = {};
   for (let r = 0; r < vr; r++) {
     for (let c = 0; c < vc; c++) {
@@ -690,7 +706,7 @@ function layoutProbe(name, { cols, rows, rot = 0, side = 'front', legendRows = L
   sb.ctx.boundingBoxCache = {};
   const isRot = (rot === 90 || rot === 270);
   const vc = isRot ? rows : cols, vr = isRot ? cols : rows;
-  const pc = sb.H.getTransformedPhysicalConfig(rot, side);
+  const pc = physConfig(sb.H, rot, side);
   sb.ctx.gridCells2D = {};
   const data = {};
   for (let r = 0; r < vr; r++) {
@@ -1012,7 +1028,7 @@ function runGate(sb) {
     sb.ctx.boundingBoxCache = {};
     const isRot = (rot === 90 || rot === 270);
     const vc = isRot ? rows : cols, vr = isRot ? cols : rows;
-    const pc = sb.H.getTransformedPhysicalConfig(rot, side);
+    const pc = physConfig(sb.H, rot, side);
     sb.ctx.gridCells2D = {};
     let inside = 0;
     for (let r = 0; r < vr; r++) {

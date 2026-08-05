@@ -105,7 +105,7 @@ for (const [name, f] of Object.entries(frames)) {
   const r90 = (rot === 90 || rot === 270);
   const vC = r90 ? f.grid_rows : f.grid_cols, vR = r90 ? f.grid_cols : f.grid_rows;
   const box = S.getWaferBoundingBox(rot, side);
-  const pc = S.getTransformedPhysicalConfig(rot, side);
+  const pc = S.getTransformedPhysicalConfig(null, rot, side);
   // exact clipping test: would a column one step OUTSIDE the grid still be inside the circle?
   // `isCellInsideWaferFast` is a pure formula, so it answers for c = -1 and c = vC too.
   const anyIn = (c, r) => S.isCellInsideWaferFast(c, r, vC, vR, pc, 700, 700);
@@ -175,7 +175,7 @@ for (const tgt of names) {
     const vC = r90 ? adopted.rows : adopted.cols, vR = r90 ? adopted.cols : adopted.rows;
     let blockedByCircle = 0;
     S.withPhysFrame(adopted, () => {
-      const pc = S.getTransformedPhysicalConfig(rot, side);
+      const pc = S.getTransformedPhysicalConfig(null, rot, side);
       const cellOf = new Map();
       for (let r = 0; r < vR; r++) for (let c = 0; c < vC; c++) {
         const pk = S.getDieIndex(c, r, adopted.cols, adopted.rows, rot, side);

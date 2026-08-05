@@ -274,7 +274,7 @@ function unboundedInsideBox(S, P) {
   const isRot = (P.rotation === 90 || P.rotation === 270);
   const vc = isRot ? P.rows : P.cols;
   const vr = isRot ? P.cols : P.rows;
-  const cfg = S.getTransformedPhysicalConfig(P.rotation, P.side);
+  const cfg = S.getTransformedPhysicalConfig(null, P.rotation, P.side);
   let minC = 1e9, maxC = -1e9, minR = 1e9, maxR = -1e9, n = 0;
   const PAD = 120;
   for (let r = -PAD; r < vr + PAD; r++) {
@@ -310,7 +310,7 @@ function run(src) {
     for (const rot of [0, 90, 180, 270]) {
       for (const side of ['front', 'back']) {
         const { S } = buildEnv(src, { ...P0, rotation: rot, side, offX: OFFX, offY: OFFY });
-        const cfg = S.getTransformedPhysicalConfig(rot, side);
+        const cfg = S.getTransformedPhysicalConfig(null, rot, side);
         const got = S.getScreenShift(cfg, 1.0, 1.0);
         const want = serverFrameShift(rot, side, P0.chipX, P0.chipY, OFFX, OFFY);
         eqf(`S/${rot}/${side}/shiftX`, got.shiftX, want.shiftX);
@@ -491,7 +491,7 @@ function run(src) {
     const n = buildEnv(src, { ...P0, offX: 0 });
     n.S.renderGridCanvas();
     const f0 = { cols: P0.cols, rows: P0.rows, rot: 0, side: 'front' };
-    const cfg0 = n.S.getTransformedPhysicalConfig(0, 'front');
+    const cfg0 = n.S.getTransformedPhysicalConfig(null, 0, 'front');
     n.S.gridData = {};
     const painted = new Map();
     for (let r = 0; r < P0.rows; r++) for (let c = 0; c < P0.cols; c++) {

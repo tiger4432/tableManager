@@ -237,7 +237,7 @@ function buildCells(sb) {
   const rot = ctx.currentRotation;
   const vc = (rot === 90 || rot === 270) ? ROWS : COLS;
   const vr = (rot === 90 || rot === 270) ? COLS : ROWS;
-  const pc = H.getTransformedPhysicalConfig(rot, ctx.currentSide);
+  const pc = H.getTransformedPhysicalConfig(null, rot, ctx.currentSide);
   ctx.gridCells2D = {};
   for (let r = 0; r < vr; r++) {
     for (let c = 0; c < vc; c++) {
@@ -653,7 +653,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
   //    runs at rot 90, which swaps them — an earlier draft hardcoded 29x25 and built the cell
   //    grid transposed against the one `copyGridToExcel` walks.
   const { visualCols: vc, visualRows: vr } = sb.H.getVisualGridDimensions();
-  const pc = sb.H.getTransformedPhysicalConfig(ROT, SIDE);
+  const pc = sb.H.getTransformedPhysicalConfig(null, ROT, SIDE);
   sb.ctx.gridCells2D = {};
   sb.ctx.gridData = {};
   let i = 0;
@@ -739,7 +739,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
     sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
     const vc = (rot === 90 || rot === 270) ? ROWS : COLS;
     const vr = (rot === 90 || rot === 270) ? COLS : ROWS;
-    const pc = sb.H.getTransformedPhysicalConfig(rot, 'front');
+    const pc = sb.H.getTransformedPhysicalConfig(null, rot, 'front');
     sb.ctx.gridCells2D = {};
     for (let r = 0; r < vr; r++) {
       for (let c = 0; c < vc; c++) {

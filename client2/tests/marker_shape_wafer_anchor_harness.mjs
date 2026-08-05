@@ -235,7 +235,7 @@ function render(src, opts) {
 }
 const metricsOf = (S, canvas, vCols, vRows) =>
   S.cellMetrics(Math.floor(canvas.w), Math.floor(canvas.h), vCols, vRows,
-                S.getTransformedPhysicalConfig(S.currentRotation, S.currentSide));
+                S.getTransformedPhysicalConfig(null, S.currentRotation, S.currentSide));
 
 // THE PAYLOAD, not a model of it.
 const payload = (S) => { const out = {}; S.eachSavableCell((co, val) => { out[co.key] = val; }); return out; };

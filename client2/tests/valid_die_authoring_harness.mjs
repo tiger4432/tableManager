@@ -185,7 +185,7 @@ function runSuite(sb, st) {
   };
   const circleKeys = () => {
     const { vc, vr, cells } = visualRect();
-    const pc = H.getTransformedPhysicalConfig(ctx.currentRotation, ctx.currentSide);
+    const pc = H.getTransformedPhysicalConfig(null, ctx.currentRotation, ctx.currentSide);
     const s = new Set();
     cells.forEach(([c, r]) => {
       if (H.isCellInsideWaferFast(c, r, vc, vr, pc, 700, 700)) {

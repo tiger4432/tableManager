@@ -275,7 +275,7 @@ function buildEnv(src, opts = {}) {
 // `projectCellsToPhys` produces in the app. Physical keys are rotation-invariant, so the
 // same Set describes the same dies at every orientation. That is the whole point.
 function buildMask(S) {
-  const cfg = S.getTransformedPhysicalConfig(0, 'front');
+  const cfg = S.getTransformedPhysicalConfig(null, 0, 'front');
   const circle = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {

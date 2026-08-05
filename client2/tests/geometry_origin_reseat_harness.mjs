@@ -399,7 +399,7 @@ function frameNow(S) {
 // Paint every cell the editor calls valid with ITS OWN stored coordinate as the value.
 function paintOracle(S) {
   const f = frameNow(S);
-  const cfg = S.getTransformedPhysicalConfig(f.rot, f.side);
+  const cfg = S.getTransformedPhysicalConfig(null, f.rot, f.side);
   S.gridData = {};
   for (let r = 0; r < f.vr; r++) for (let c = 0; c < f.vc; c++) {
     const p = S.getDieIndex(c, r, f.cols, f.rows, f.rot, f.side);

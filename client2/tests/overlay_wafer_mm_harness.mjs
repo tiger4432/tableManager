@@ -605,7 +605,7 @@ function runAll(src) {
   //        the count above could not promise what import will do.
   {
     setScreen(ctx, TGT);
-    const pc = ctx.getTransformedPhysicalConfig(TGT.rotation, TGT.side);
+    const pc = ctx.getTransformedPhysicalConfig(null, TGT.rotation, TGT.side);
     const at = (w, h) => {
       const v = [];
       for (let r = 0; r < TGT.rows; r++) for (let c = 0; c < TGT.cols; c++)

@@ -899,7 +899,7 @@ function getGridCellFromMouseEvent(e) {
 
   if (xRel < 0 || xRel > rect.width || yRel < 0 || yRel > rect.height) return null;
 
-  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
+  const physConfig = getTransformedPhysicalConfig(physFrameOverride, currentRotation, currentSide);
   // [C1] 렌더와 **같은 함수**로 셀 크기를 얻는다. 마우스가 자기 산술을 가지면 화면과
   //      클릭이 갈리고, 그것은 "화면은 멀쩡한데 값이 틀린" 결함의 정확한 형태다.
   const { cellW, cellH, padX, padY } = cellMetrics(rect.width, rect.height, visualCols, visualRows, physConfig);
@@ -1666,7 +1666,7 @@ function getDieIndex(colVisual, rowVisual, cols, rows, rotation, side) {
   //     four parseFloat calls were pure waste.)
 
   // Get screen-space shift for the current rotation in cell units
-  const physConfig = getTransformedPhysicalConfig(rotation, side);
+  const physConfig = getTransformedPhysicalConfig(physFrameOverride, rotation, side);
   const { shiftX, shiftY } = getScreenShift(physConfig, 1.0, 1.0);
 
   // Screen cell position relative to wafer center
@@ -1745,7 +1745,7 @@ function getCanvasCellFromDieIndex(xp, yp, cols, rows, rotation, side) {
   }
 
   // Get screen-space shift for the current rotation in cell units
-  const physConfig = getTransformedPhysicalConfig(rotation, side);
+  const physConfig = getTransformedPhysicalConfig(physFrameOverride, rotation, side);
   const { shiftX, shiftY } = getScreenShift(physConfig, 1.0, 1.0);
 
   const colVisual = xScreenWafer + (visualCols - 1) / 2.0 - shiftX;
@@ -1926,7 +1926,7 @@ function getWaferBoundingBox(rotation, side, opts) {
     return boundingBoxCache[key];
   }
 
-  const physConfig = getTransformedPhysicalConfig(rotation, side);
+  const physConfig = getTransformedPhysicalConfig(physFrameOverride, rotation, side);
   const width = 700;
   const height = 700;
 
@@ -2126,14 +2126,26 @@ function reseatCellsToStoredCoords(was) {
   return { moved, offGrid, visC, visR, held: held.size };
 }
 
-function getTransformedPhysicalConfig(currentRotation, currentSide) {
-  const waferDia = physNum(physFrameOverride, 'waferDia', el.physWaferDia, 300);
-  const edgeMargin = physNum(physFrameOverride, 'edgeMargin', el.physEdgeMargin, 3.0);
+// [S2.3] `frame` first, same contract as `physNum`: `null` = read the screen deliberately,
+// `undefined` = the caller forgot. This function is the only place the six physical axes are
+// turned into a config object, so it is on the path of every coordinate the editor computes —
+// which is why the frame has to reach it as a value rather than be picked up from the module.
+//
+// ⚠️ `currentRotation`/`currentSide` SHADOW two module bindings of the same name. That is
+//    pre-existing and deliberately left alone this round (behaviour must not change), but it
+//    is a trap for anyone reading the body: inside here those names are the ARGUMENTS.
+function getTransformedPhysicalConfig(frame, currentRotation, currentSide) {
+  if (frame === undefined) {
+    throw new Error('getTransformedPhysicalConfig: frame argument missing. Pass the frame that '
+      + 'is in scope, or `null` to read the screen controls on purpose.');
+  }
+  const waferDia = physNum(frame, 'waferDia', el.physWaferDia, 300);
+  const edgeMargin = physNum(frame, 'edgeMargin', el.physEdgeMargin, 3.0);
   const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
-  const origChipX = physNum(physFrameOverride, 'chipX', el.physChipX, 2.5);
-  const origChipY = physNum(physFrameOverride, 'chipY', el.physChipY, 2.5);
-  let origOffsetX = physNum(physFrameOverride, 'offsetX', el.physOffsetX, 0.0);
-  let origOffsetY = physNum(physFrameOverride, 'offsetY', el.physOffsetY, 0.0);
+  const origChipX = physNum(frame, 'chipX', el.physChipX, 2.5);
+  const origChipY = physNum(frame, 'chipY', el.physChipY, 2.5);
+  let origOffsetX = physNum(frame, 'offsetX', el.physOffsetX, 0.0);
+  let origOffsetY = physNum(frame, 'offsetY', el.physOffsetY, 0.0);
 
   if (currentSide === 'back') {
     origOffsetX = -origOffsetX;
@@ -2319,7 +2331,7 @@ function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width =
 }
 
 function isCellInsideWafer(c, r, visualCols, visualRows) {
-  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
+  const physConfig = getTransformedPhysicalConfig(physFrameOverride, currentRotation, currentSide);
   const width = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().width || 700) : 700;
   const height = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().height || 700) : 700;
   return isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
@@ -2503,7 +2515,7 @@ function buildValidDieTemplate(shape) {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
+  const physConfig = getTransformedPhysicalConfig(physFrameOverride, currentRotation, currentSide);
   const width = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().width || 700) : 700;
   const height = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().height || 700) : 700;
 
@@ -3390,7 +3402,7 @@ function renderGridCanvas() {
 
   const tStart = performance.now();
 
-  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
+  const physConfig = getTransformedPhysicalConfig(physFrameOverride, currentRotation, currentSide);
 
   // [C1] 셀 픽셀 크기의 **유일한 계산**. 마우스 경로(`getGridCellFromMouseEvent`)가 같은
   //      함수를 부른다 — 같은 수를 두 곳에서 계산하면 반드시 갈라진다.
@@ -8772,7 +8784,7 @@ function canvasSeatKeys() {
   const rot90 = (f.rotation === 90 || f.rotation === 270);
   const visualCols = rot90 ? f.rows : f.cols;
   const visualRows = rot90 ? f.cols : f.rows;
-  const physConfig = getTransformedPhysicalConfig(f.rotation, f.side);
+  const physConfig = getTransformedPhysicalConfig(physFrameOverride, f.rotation, f.side);
   const all = new Set();
   const inside = new Set();
   for (let r = 0; r < visualRows; r++) {

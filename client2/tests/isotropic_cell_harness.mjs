@@ -359,8 +359,8 @@ function scoreOffGrid(src, tag, opts) {
   // ④b NOT DRAWN LIKE A DECLARED CELL. Declared cells always get a fill; filler cells get a
   //    lattice stroke and no fill. Compare the two populations by coordinate, not by count.
   const metrics = S.cellMetrics(Math.floor(opts.canvas.w), Math.floor(opts.canvas.h), vCols, vRows,
-    S.getTransformedPhysicalConfig(S.currentRotation, S.currentSide));
-  const shift = S.getScreenShift(S.getTransformedPhysicalConfig(S.currentRotation, S.currentSide),
+    S.getTransformedPhysicalConfig(null, S.currentRotation, S.currentSide));
+  const shift = S.getScreenShift(S.getTransformedPhysicalConfig(null, S.currentRotation, S.currentSide),
     metrics.cellW, metrics.cellH);
   const originX = shift.shiftX + metrics.padX, originY = shift.shiftY + metrics.padY;
   const toCell = (f) => ({ c: Math.round((f.x - originX) / metrics.cellW),
@@ -412,7 +412,7 @@ function scoreOffGridNotWritable(src, tag, opts) {
   const cols = COLS, rows = ROWS;
   const rot90 = (S.currentRotation === 90 || S.currentRotation === 270);
   const vCols = rot90 ? rows : cols, vRows = rot90 ? cols : rows;
-  const cfg = S.getTransformedPhysicalConfig(S.currentRotation, S.currentSide);
+  const cfg = S.getTransformedPhysicalConfig(null, S.currentRotation, S.currentSide);
   const m = S.cellMetrics(Math.floor(opts.canvas.w), Math.floor(opts.canvas.h), vCols, vRows, cfg);
   const sh = S.getScreenShift(cfg, m.cellW, m.cellH);
   const oX = sh.shiftX + m.padX, oY = sh.shiftY + m.padY;
@@ -508,7 +508,7 @@ function scoreUndeclaredPitch(src) {
     const { sandbox: S, el, rec } = render(src, { canvas: { w: 900, h: 380 }, panel });
     const vCols = COLS, vRows = ROWS;
     const m = S.cellMetrics(900, 380, vCols, vRows,
-      S.getTransformedPhysicalConfig(S.currentRotation, S.currentSide));
+      S.getTransformedPhysicalConfig(null, S.currentRotation, S.currentSide));
     eq(`undeclared pitch (${tag}): no aspect is invented`, false, m.isotropic);
     // ...and the fallback is TODAY'S arithmetic, to the bit.
     eq(`undeclared pitch (${tag}): cellW falls back to width/visualCols`, 900 / vCols, m.cellW);
@@ -533,7 +533,7 @@ function fixtureSelfCheck(src) {
      `minC ${box.minC} minR ${box.minR}`);
   // The isotropic branch is actually TAKEN — otherwise every claim below scores the fallback.
   const { sandbox: S } = render(src, { canvas: { w: 900, h: 380 }, panel: {} });
-  const m = S.cellMetrics(900, 380, COLS, ROWS, S.getTransformedPhysicalConfig(0, 'front'));
+  const m = S.cellMetrics(900, 380, COLS, ROWS, S.getTransformedPhysicalConfig(null, 0, 'front'));
   ok(m.isotropic === true, 'fixture: the isotropic branch is the one being executed');
   ok(m.padX > 1 || m.padY > 1, 'fixture: the fixture actually produces a margin to test',
      `padX ${m.padX.toFixed(3)} padY ${m.padY.toFixed(3)}`);
@@ -595,7 +595,7 @@ function scoreAutoRegistered(src) {
   // (d) WHAT THE OPERATOR SEES. `cellMetrics` falls back, and the note says WHY in its own
   //     words — "Chip X/Y 미선언" would be read as false by anyone looking at the inputs.
   const mF = flagged.sandbox.cellMetrics(700, 700, 13, 13,
-    flagged.sandbox.getTransformedPhysicalConfig(0, 'front'));
+    flagged.sandbox.getTransformedPhysicalConfig(null, 0, 'front'));
   eq('D1/d a flagged spec does NOT anchor the canvas to a wafer', false, mF.isotropic);
   eq('D1/d ...and does not claim a wafer anchor either', false, mF.waferAnchored);
   ok(/자동 등록/.test(flagged.el.cellAspectNote.textContent),
@@ -609,7 +609,7 @@ function scoreAutoRegistered(src) {
   //     Before: the synthetic 300mm diameter anchored the scale, so a 13x13 grid at 1mm pitch
   //     rendered as a speck inside a canvas-filling circle. After: the grid fills the canvas.
   const mBare = bare.sandbox.cellMetrics(700, 700, 13, 13,
-    bare.sandbox.getTransformedPhysicalConfig(0, 'front'));
+    bare.sandbox.getTransformedPhysicalConfig(null, 0, 'front'));
   ok(mBare.cellW < 5, 'D1/e fixture: unflagged, the synthetic diameter really does shrink the grid',
      `cellW ${mBare.cellW.toFixed(3)}px`);
   ok(mF.cellW > 40, 'D1/e flagged, the grid fills the canvas instead',
