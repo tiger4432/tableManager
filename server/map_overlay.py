@@ -231,10 +231,54 @@ META_TABLE = "wafer_map_metadata"
 META_ACCESS_OK = "ok"
 META_ACCESS_UNDECLARED = "undeclared"        # ⓐ 모델 자체가 없다
 META_ACCESS_QUERY_FAILED = "query_failed"    # ⓑ SELECT가 실패한다
+# ⓓ 프로브 **자신이** 못 선다. 테이블에 대한 사실이 아니다 — 아래 §_probe_key_fault.
+META_ACCESS_PROBE_BROKEN = "probe_broken"
 
-# 어떤 (target_table, map_id)와도 같을 수 없는 조합. 프로브는 **행을 찾으러 가는 것이 아니라
-# 질의가 서는지 보러** 가므로, 0행이 나오는 것이 정상 결과다.
-_META_PROBE_KEY = "\x00__meta_access_probe__"
+# ═══ 프로브가 바인딩하는 값은 **드라이버가 실어 보낼 수 있는 값**이어야 한다 (2026-08-05) ═══
+#
+# 🔴 첫 철자는 NUL로 시작했다: `"\x00__meta_access_probe__"`. PostgreSQL `text`는 NUL을 담을
+#    수 없고, psycopg2는 그 값을 **문장을 보내기 전에** 로컬에서 거절한다(`ValueError: A
+#    string literal cannot contain NUL (0x00) characters.` — 어댑터 단계라 DB에 도달조차
+#    하지 않는다). 그래서 프로브는 자기 센티널에서 터졌고, `meta_access_state`는 프로브가
+#    도는 모든 요청에 `query_failed`를 돌려주었으며, **멀쩡한 테이블**을 두고 모든 소스 맵이
+#    「wafer_map_metadata 조회 실패」로 제외됐다. 로그는 조용했다 — 경고를 내는 자리는
+#    `load_map_meta`이고 프로브는 거기를 지나지 않는다. 스위트는 초록이었다 — SQLite는
+#    문자열 안의 NUL을 그대로 저장한다.
+#
+# 🔴 **규칙: 프로브의 값은 실제 읽기가 싣는 값과 같은 문자 레퍼토리에서 뽑는다.**
+#    그러면 「실제 읽기를 실어 나를 수 있는 드라이버는 프로브도 실어 나른다」가 성립하고,
+#    「프로브가 실패했다」가 곧 「실제 읽기도 실패한다」가 된다 — 그것이 이 판정이 하는 주장
+#    그 자체다. 실제 읽기보다 **넓은** 레퍼토리를 요구하는 값(NUL·제어문자)은 실제 읽기가
+#    성공할 자리에서 혼자 실패할 수 있고, 그때 프로브는 테이블에 없는 결함을 고발한다.
+#
+# 비충돌은 그대로다 — 오히려 더 셀 수 있게 됐다. `target_table`에 들어가는 값은 **선언
+# 테이블의 이름**이고(등록 경로가 그렇게 쓴다), 공백과 괄호가 든 이 문자열은 테이블 이름이
+# 될 수 없으므로 어떤 행과도 같을 수 없다(`test_the_sentinel_is_carriable_by_construction`이
+# 선언 목록에 대고 직접 확인한다). 애초에 프로브의 판정은 반환 행이 아니라 **질의가 서는가**
+# 이므로 0행이 정상 결과다.
+_META_PROBE_KEY = "__meta_access_probe__ (not a table)"
+
+
+def _probe_key_fault(key: str = None) -> str | None:
+    """센티널이 드라이버가 **실어 보낼 수 있는** 값인가. 보낼 수 있으면 None, 아니면 사유.
+
+    🔴 주석이 아니라 **검사**인 이유: 직전 철자는 실을 수 없는 값이었는데 아무도 눈치채지
+       못했다. 드라이버가 로컬에서 거절한 값은 DB에 **도달조차 하지 않으므로**, 그때 나오는
+       실패는 테이블에 대한 사실이 아니라 **프로브의 결함**이다. 그 둘을 못 가르는 프로브는
+       없느니만 못하다 — 멀쩡한 테이블을 매 요청 고발한다.
+
+    판정 기준은 「인쇄 가능 ASCII인가」다. 필요조건이 아니라 **충분조건**이고, 그래도 되는
+    이유는 센티널을 우리가 고르기 때문이다 — 어떤 드라이버·어떤 client_encoding에서도 실려
+    가는 부분집합 안에 머무르면 이 축의 실패가 원리적으로 사라진다. (거절 방향은 하나뿐이다:
+    실을 수 있는지 확신 못 하는 값은 실을 수 없는 것으로 본다.)
+    """
+    k = _META_PROBE_KEY if key is None else key
+    bad = sorted({c for c in k if not (0x20 <= ord(c) <= 0x7E)})
+    if not bad:
+        return None
+    return ("meta access probe sentinel is not printable ASCII (%s) — a driver may refuse "
+            "it before the statement is sent, and that is a fault in the probe rather than "
+            "in %s" % (", ".join("U+%04X" % ord(c) for c in bad), META_TABLE))
 
 
 def _meta_select(db, model, target_table: str, map_id: str):
@@ -258,11 +302,21 @@ def meta_access_state(db):
     ⚠️ **읽기 경로 전용이다.** 실패한 문장 하나가 트랜잭션을 오염시키면 이후 질의가 전부
        「current transaction is aborted」로 실패하므로, 프로브 앞에서 롤백해 **진짜 원인**을
        읽는다. 롤백이 버릴 것이 있는 자리(쓰기 경로)에서는 부르지 않는다.
+
+    🔴 **자기 결함을 테이블의 결함으로 말하지 않는다.** 센티널을 드라이버가 실어 보낼 수
+       없으면 질의는 서 보지도 못한 것이므로 테이블에 대해 말할 근거가 없다 — 그때는
+       `PROBE_BROKEN`이고, 그 토큰도 (「모른다」이므로) 빌림을 열지 않는다.
     """
     from database import models
     model = models.DYNAMIC_TABLES.get(META_TABLE)
     if model is None:
         return META_ACCESS_UNDECLARED, None
+    fault = _probe_key_fault()
+    if fault:
+        # DB를 건드리기 전에 답한다 — 질의를 던져 봐야 그 실패는 우리 값 탓이고, 그것을
+        # 테이블의 상태로 보고하는 순간 조작자가 멀쩡한 스키마를 뜯으러 간다.
+        logger.error("[MapOverlay] %s", fault)
+        return META_ACCESS_PROBE_BROKEN, fault
     try:
         db.rollback()
     except Exception:
@@ -270,7 +324,7 @@ def meta_access_state(db):
     try:
         _meta_select(db, model, _META_PROBE_KEY, _META_PROBE_KEY)
     except Exception as e:
-        return META_ACCESS_QUERY_FAILED, "%s: %s" % (type(e).__name__, e)
+        return META_ACCESS_QUERY_FAILED, "%s: %s (%s)" % (type(e).__name__, e, META_TABLE)
     return META_ACCESS_OK, None
 
 

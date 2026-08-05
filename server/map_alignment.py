@@ -113,6 +113,12 @@ EXCLUDE_META_MISSING = "meta_missing"
 #    미등록으로 착각해 빌린 규격 위에 올린다. 그래서 이 둘은 빌림 **앞에서** 거절한다.
 EXCLUDE_META_TABLE_UNDECLARED = "meta_table_undeclared"
 EXCLUDE_META_QUERY_FAILED = "meta_query_failed"
+# 🔴 **셋째 원인은 서버 코드다.** 가용성 프로브가 자기 센티널을 드라이버에 실어 보내지
+#    못하면 질의는 서 보지도 못한 것이라 테이블에 대해 말할 근거가 없다
+#    (§map_overlay._probe_key_fault — 2026-08-05에 실제로 이 상태로 배포됐다). 이것을
+#    `meta_query_failed`로 접으면 문장이 조작자를 **멀쩡한 스키마**로 보내고,
+#    `meta_missing`으로 접으면 **빌림이 열린다**. 그래서 자기 이름을 갖는다.
+EXCLUDE_META_PROBE_BROKEN = "meta_probe_broken"
 EXCLUDE_GEOMETRY_REFUSED = "geometry_refused"
 EXCLUDE_NO_CELLS = "no_cells"
 # [D3] **웨이퍼 규격 가정으로도 안 열리는 두 자리.** 격자 치수는 웨이퍼가 아니라 맵의
@@ -146,6 +152,7 @@ _EXCLUDE_TEXT = {
     EXCLUDE_META_MISSING: "맵 규격 미등록 (wafer_map_metadata)",
     EXCLUDE_META_TABLE_UNDECLARED: "wafer_map_metadata 테이블 미선언 - 서버가 규격을 읽지 못함",
     EXCLUDE_META_QUERY_FAILED: "wafer_map_metadata 조회 실패 - 서버가 규격을 읽지 못함",
+    EXCLUDE_META_PROBE_BROKEN: "서버 내부 오류 - 규격 조회 가능 여부를 확인하지 못함",
     EXCLUDE_GEOMETRY_REFUSED: "칩 규격 미선언 - 좌표 변환 불가",
     EXCLUDE_NO_CELLS: "좌표 0건",
     EXCLUDE_GRID_DIMS_MISSING: "격자 치수(grid_cols/grid_rows) 미등록 - 가정 대상 아님",
@@ -166,6 +173,7 @@ _EXCLUDE_TEXT = {
 REF_REFUSAL_META_MISSING = EXCLUDE_META_MISSING          # 메타 **행**이 없다
 REF_REFUSAL_META_TABLE_UNDECLARED = EXCLUDE_META_TABLE_UNDECLARED  # 메타 테이블 미선언
 REF_REFUSAL_META_QUERY_FAILED = EXCLUDE_META_QUERY_FAILED          # 메타 조회 실패
+REF_REFUSAL_META_PROBE_BROKEN = EXCLUDE_META_PROBE_BROKEN          # 프로브 자신이 못 섬
 REF_REFUSAL_META_UNREADABLE = "meta_unreadable"          # 행은 있는데 grid_metadata가 비었/깨졌다
 REF_REFUSAL_GEOMETRY = EXCLUDE_GEOMETRY_REFUSED          # auto_registered · 키 부재 · 수가 아님
 REF_REFUSAL_BINDING = "binding_unresolved"               # 좌표/값 컬럼 바인딩을 유도 못 함
@@ -213,6 +221,7 @@ class _Excluded:
 _META_ACCESS_CODE = {
     map_overlay.META_ACCESS_UNDECLARED: EXCLUDE_META_TABLE_UNDECLARED,
     map_overlay.META_ACCESS_QUERY_FAILED: EXCLUDE_META_QUERY_FAILED,
+    map_overlay.META_ACCESS_PROBE_BROKEN: EXCLUDE_META_PROBE_BROKEN,
 }
 
 #: 요청 단위 캐시 키 — `_resolve_reference`의 캐시 dict를 그대로 쓴다(키 모양이 겹치지 않는다).
@@ -249,6 +258,12 @@ _META_ACCESS_TEXT = {
         "서버가 wafer_map_metadata를 조회하지 못했습니다 - 테이블/컬럼 상태를 확인하십시오. "
         "이번 요청에서는 **모든 맵의 규격 조회가 실패**했으므로, 아래 제외 사유는 데이터가 "
         "아니라 스키마 상태를 가리킵니다."),
+    # 🔴 조작자에게 시킬 일이 **없다.** 데이터도 스키마도 아니고 서버 코드다 — 그렇게
+    #    말하지 않으면 멀쩡한 테이블을 뜯으러 간다(2026-08-05에 실제로 그럴 뻔했다).
+    EXCLUDE_META_PROBE_BROKEN: (
+        "서버가 wafer_map_metadata를 **읽어 보지도 못했습니다** - 가용성 점검 질의 자체가 "
+        "서지 않았습니다(서버 결함). 이번 요청의 규격 조회는 하나도 신뢰할 수 없으나, 이것은 "
+        "데이터나 스키마의 상태가 아닙니다 - 서버 로그를 첨부해 개발자에게 알리십시오."),
 }
 
 

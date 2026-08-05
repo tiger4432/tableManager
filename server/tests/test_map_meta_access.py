@@ -412,3 +412,173 @@ def test_a_target_table_mismatch_is_genuine_absence_not_a_server_fault(env):
     assert view["meta_access"] is None
     assert view["stats"]["assumed_map_ids"] == ["M1"]
     assert map_overlay.load_map_meta(env, MAPT + "_other", "M1") is not None
+
+
+# ---------------------------------------------------------------------------
+# 6. THE PROBE MUST BE ABLE TO SEND ITS OWN VALUE
+#    [2026-08-05] The probe shipped with a sentinel that begins with a NUL byte.
+#    PostgreSQL `text` cannot hold a NUL, and psycopg2 refuses such a value
+#    CLIENT-SIDE, during parameter adaptation - the statement is never sent. So
+#    `meta_access_state` failed on its own sentinel and reported QUERY_FAILED
+#    about a perfectly healthy table, on every request that reached the probe;
+#    every source map was excluded with «wafer_map_metadata 조회 실패». The log
+#    was silent because the warning lives in `load_map_meta`, which the probe
+#    does not go through.
+#
+#    The suite was green at 2,684 because SQLite stores NUL inside a string
+#    happily. That is the same SQLite-cannot-see-it gap that `pg_abort_semantics`
+#    (test_enrichment_candidates.py) was built for, so this section restores the
+#    missing rule the same way: inject it, keep everything else real.
+# ---------------------------------------------------------------------------
+
+class _NulRefused(ValueError):
+    """Stand-in for psycopg2's refusal. It raises a bare `ValueError` with this exact
+    message, and it raises it BEFORE the statement reaches the server - which is why
+    catching a database error is not what distinguishes this case."""
+
+
+@pytest.fixture()
+def pg_text_semantics(env):
+    """Impose PostgreSQL's «text cannot contain NUL» rule on the SQLite test engine.
+
+    WHY A FAULT INJECTION RATHER THAN A POSTGRES-BACKED TEST
+        Identical reasoning to `pg_abort_semantics`: conftest pins the suite to
+        `sqlite:///:memory:` with a hard assignment so an ambient DATABASE_URL cannot
+        aim it at production, so a Postgres-backed test would SKIP by default and a
+        skipped test certifies nothing. What has to be restored is not Postgres, it is
+        one documented RULE that pysqlite does not have:
+
+            a `text` value cannot contain U+0000, and the driver rejects it locally,
+            before the statement is sent.
+
+        Everything else stays real: the real model, the real `_meta_select`, the real
+        session. Only the NUL rule is injected.
+
+    `before_cursor_execute` is the faithful hook - psycopg2 raises inside
+    `cursor.execute` while adapting parameters, i.e. exactly here.
+    """
+    from sqlalchemy import event
+
+    bind = env.get_bind()
+    state = {"refused": 0}
+
+    def _values(params):
+        if isinstance(params, dict):
+            return list(params.values())
+        if isinstance(params, (list, tuple)):
+            return list(params)
+        return [params]
+
+    def _before(conn, cursor, statement, parameters, context, executemany):
+        rows = parameters if executemany else [parameters]
+        for p in rows or []:
+            for v in _values(p):
+                if isinstance(v, str) and "\x00" in v:
+                    state["refused"] += 1
+                    raise _NulRefused(
+                        "A string literal cannot contain NUL (0x00) characters.")
+
+    event.listen(bind, "before_cursor_execute", _before)
+    try:
+        yield state
+    finally:
+        event.remove(bind, "before_cursor_execute", _before)
+        env.rollback()
+
+
+def test_the_nul_injection_actually_bites(env, pg_text_semantics):
+    """Guard on the guard. If the injector silently did nothing, every test below would
+    pass on the defect - which is precisely how this shipped."""
+    _seed(env)
+    with pytest.raises(Exception) as ei:
+        env.execute(text("SELECT :v"), {"v": "\x00nope"}).first()
+    assert "NUL" in str(ei.value)
+    assert pg_text_semantics["refused"] == 1
+    env.rollback()
+    # ... and it does NOT fire on ordinary values, or it would prove nothing below.
+    assert env.execute(text("SELECT :v"), {"v": "plain"}).scalar() == "plain"
+    assert pg_text_semantics["refused"] == 1
+
+
+def test_the_probe_can_send_its_own_sentinel(env, pg_text_semantics):
+    """🔴 THE regression assertion. A healthy, fully seeded meta table, under a driver that
+    refuses NUL: the probe must answer OK.
+
+    Restore `_META_PROBE_KEY = "\\x00__meta_access_probe__"` and this dies - the probe blows
+    up on its own value and accuses the table. That is the whole defect, and it is
+    observable under SQLite because the RULE has been restored, not the database."""
+    _seed(env)
+    state, detail = map_overlay.meta_access_state(env)
+    assert state == map_overlay.META_ACCESS_OK, (
+        "the probe failed on its own sentinel, not on the table: %s" % (detail,))
+    assert pg_text_semantics["refused"] == 0, (
+        "the probe handed the driver a value it refuses to send")
+
+
+def test_the_sentinel_is_carriable_by_construction(env):
+    """The rule that makes the assertion above hold for every driver, not just the one
+    fault we injected: the probe binds values from the SAME character repertoire the real
+    read carries. Then any driver that can carry a real lookup can carry the probe, so
+    «the probe failed» implies «the real read fails too» - which is the entire claim
+    `meta_access_state` makes. A sentinel needing a WIDER repertoire (a NUL, a control
+    byte) can fail where the real read would have succeeded."""
+    assert map_overlay._probe_key_fault() is None
+    assert map_overlay._probe_key_fault("\x00__meta_access_probe__") is not None
+    # and it still cannot name a real row: `target_table` is written from a declared table
+    # name, and this is not a legal one.
+    assert map_overlay._META_PROBE_KEY not in models.DYNAMIC_TABLES
+    assert map_overlay._META_PROBE_KEY not in crud.TABLE_CONFIG
+
+
+def test_a_broken_probe_is_not_reported_as_a_broken_table(env, monkeypatch):
+    """«the driver rejected my own value» and «the table is unreadable» are different facts
+    with different repairs, and a value rejected locally never reached the database at all -
+    so answering QUERY_FAILED about it is an accusation the server has no evidence for.
+
+    It must also never degrade to «genuine absence»: `meta_absence_reason` maps unknown
+    tokens to EXCLUDE_META_MISSING, which is the token that ALLOWS the borrow."""
+    _seed(env)
+    monkeypatch.setattr(map_overlay, "_META_PROBE_KEY", "\x00__meta_access_probe__")
+    state, detail = map_overlay.meta_access_state(env)
+    assert state == map_overlay.META_ACCESS_PROBE_BROKEN
+    assert state != map_overlay.META_ACCESS_QUERY_FAILED
+    assert detail and "U+0000" in detail
+    code, _ = ma.meta_absence_reason(env)
+    assert code == ma.EXCLUDE_META_PROBE_BROKEN
+    assert code != ma.EXCLUDE_META_MISSING, "a broken probe must not open the borrow"
+
+
+def test_the_operators_maps_come_back_when_the_driver_refuses_NUL(env, pg_text_semantics):
+    """🔴 THE production reproduction - the reported symptom, not a scenario of mine.
+
+    The report: every source map excluded with «wafer_map_metadata 조회 실패» while the
+    table is healthy and the legacy editor reads it fine. This is that request: a healthy
+    meta table, a map with genuinely no spec row (the [D5] normal case, which is what makes
+    the probe run at all), a declared floor - under a driver that refuses NUL.
+
+    Before the fix: `meta_access` is a query-failed block and `assumed_map_ids` is empty.
+    After: the map borrows the floor and is scored, exactly as it does on SQLite today."""
+    _seed(env, with_meta=False, floor=True)
+    view = _view(env, reference_spec=FLOOR_SPEC, assume_reference_geometry=True)
+
+    assert view["meta_access"] is None, (
+        "a healthy table was reported as unreadable: %s" % (view["meta_access"],))
+    assert _codes(view) == set() or ma.EXCLUDE_META_QUERY_FAILED not in _codes(view)
+    assert view["stats"]["assumed_map_ids"] == ["M1"]
+    assert view["sources"]["usable_map_count"] == 1
+
+
+def test_the_injection_does_not_blind_the_probe_to_a_genuinely_broken_table(env,
+                                                                           pg_text_semantics):
+    """The negative control. A fix that made the probe answer OK unconditionally would pass
+    every test above - and would re-open the borrow onto a table the server cannot read,
+    which is the expensive failure this vocabulary exists to prevent."""
+    _seed(env, floor=True)
+    _break_the_query(env)
+    state, detail = map_overlay.meta_access_state(env)
+    assert state == map_overlay.META_ACCESS_QUERY_FAILED
+    assert detail and map_overlay.META_TABLE in detail
+
+    view = _view(env, reference_spec=FLOOR_SPEC, assume_reference_geometry=True)
+    assert view["stats"].get("assumed_map_ids", []) == []
+    assert _codes(view) == {ma.EXCLUDE_META_QUERY_FAILED}
