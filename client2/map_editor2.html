@@ -552,7 +552,13 @@
         <rect class="me2-cell-alone" x="83.2" y="189.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="189.0" width="10.2" height="10.2" rx="1.2"/>
         <rect class="me2-cell-alone" x="106.7" y="189.0" width="10.2" height="10.2" rx="1.2"/>
       </g>
-              <circle class="me2-wafer-edge" id="me2-wafer-edge" cx="100" cy="100" r="86" />
+              <!-- 웨이퍼 가장자리는 여기 없다. 종전에는 `r="86"`이 마크업에 박혀 있었고
+                   JS는 이 원을 읽지도 쓰지도 않았다 - 위의 자리표시자 목업에 맞춰 그려진
+                   장식이었다. 실제 데이터가 오면 `layoutFor`가 격자를 스테이지 전체에
+                   채우므로(반폭 ≈99 > 86) 모든 맵이 원 밖으로 나갔다.
+                   웨이퍼를 모르는 도형에 「원 안/밖」을 읽히는 것은 없는 것보다 나쁘다.
+                   진짜 마스크는 선언된 phys에서만 나온다(`seating.js` `insideMask`) -
+                   근거가 생기면 그때 그린다. -->
             </svg>
           </div>
 
