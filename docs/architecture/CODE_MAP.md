@@ -1,20 +1,26 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-05 (**소스 앵커는 `d3ed167`의 커밋된 blob 실측** — 워킹트리 아님) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (**소스 앵커는 `87a944e`의 커밋된 blob 실측** — 워킹트리 아님. HEAD `ce63de8`에서 해당 blob 전건 동일 확인) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
 >
 > 🔴 **표지는 「문서가 커밋된 리비전」이 아니라 「blob을 실제로 읽은 리비전」이다** — 그리고 그 둘이 벌어지는 것이 이 문서의 만성 실패다. 세 패스 전에는 문서 커밋이 `54fc39b`인데 표지가 `8cf9455`(5커밋 전)였다. 한 패스는 표지를 정직하게 `c520012`로 적었는데, **적고 나서 커밋되기까지 4커밋이 들어왔다.** 정직한 표지가 낡음을 막지는 못한다 — **그래서 이번엔 표지에 「무엇이 바뀌었는지」까지 적는다.**
 >
-> 🔴 **[2026-08-05] 이 패스는 §7 `map_editor.js`의 앵커 전건 재측정이다.** 직전 패스가 스스로 예고한 그 작업이다 — 그 패스는 앵커를 `41b17ee` 기준으로 두고 **오프셋 표**를 옆에 붙였는데, 오프셋 표는 그 뒤 다시 밀렸고 **자기가 낡았다는 신호를 내지 못했다.** 그래서 이번엔 오프셋 표를 **없애고** 앵커를 `d3ed167`의 blob으로 다시 깔았다.
-> - **§7 `map_editor.js` 앵커 275개 중 246개가 틀려 있었다. 드리프트 폭은 +37 ~ +1,116줄**(파일 앞 ~300줄만 무이동, 뒤로 갈수록 커진다). 허용 오차가 ±20이므로 **뒤쪽 앵커는 오차의 50배까지 벌어져 있었다.**
-> - 🔴 **살아 있는 앵커가 가리키던 함수 1개가 삭제돼 있었다** — `saveValidDieRefDeclaration`(구 앵커 8560). `5b15c24`가 유효 다이 블록의 APPLY/SAVE 버튼을 없애면서 지웠고, 그 자리는 **`saveMapSpecOnly`(9487)**가 받았다. [§7 유효 다이](#7-client2src--웹-클라이언트) 참조.
+> 🔴 **[2026-08-06] 이 패스는 §7 `map_editor.js`의 전건 재측정 + 오늘 착지한 두 신규 영역(Map Editor 2 · 프레임 확정) 등재다.** 앵커는 **`87a944e`의 blob** 실측이다.
+> - 🔴 **§7 `map_editor.js` 앵커 253개가 *전부* 틀려 있었다 — 예외 0건.** 드리프트 **+8 ~ +185줄**. 직전 패스가 「파일 앞 ~300줄은 무이동」이라 적었는데 **이번엔 최상단(85행대)부터 밀렸다** — 프레임 인자화가 파일 머리에 줄을 넣었기 때문이다. **「앞쪽은 안 움직인다」는 관찰이지 성질이 아니었다.**
+> - 🔴 **살아 있는 앵커 다섯이 없는 것을 가리키고 있었다**: `physFrameOverride`(구 1432)·`withPhysFrame`(구 1538)은 **삭제**, `PUSH_SYSTEM_COLUMNS`(구 5760)·`getUnprotectedPushColumns`(구 5782)·`logShapedPushDecision`(구 5801)은 **`push_columns.js`로 이사**. 다섯 다 「그럴듯한 도착지」가 있어 ±20 오차로는 안 잡힌다.
+> - 🔴 **`map_editor.js`의 시그니처 10개가 인자를 하나 더 받는다**(`frame` 선두). **이것이 이 문서에서 가장 위험한 낡음이다** — 인자가 앞에 끼면 옛 호출은 **던지지 않고 틀린 답을 낸다.** [§7 S2.1 표](#-2026-08-06-92e60ca-s21-프레임은-모듈-상태가-아니라-첫-번째-인자다--이-절의-모든-시그니처가-바뀌었다) 참조.
+> - 🔴 **§5 `map_overlay.py`가 자기 자신과 모순돼 있었다** — 한 블록쿼트는 `apply_valid_die_ref`가 「이제 실재한다」고 적고, 같은 절 아래 문단은 「[M4 phase 2]는 HEAD에 없다」고 적고 있었다. **둘 다 실려 있으면 독자가 고르게 된다.** 소스 실측: 둘 다 실재한다(**1825**·**1875**).
+> - 🆕 **신규 등재**: [§7-A Map Editor 2](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506)(`map_editor2.js` + `map2/` 17모듈) · `push_columns.js` · `enrichment_queue.js` · [`map_alignment.py`](#-servermap_alignmentpy-3272줄-신설--프레임-정렬의-채점자)(3,272줄) · [`frame_confirmation.py`](#-serverframe_confirmationpy-688줄-신설--확정의-기록자) · `migrations/add_frame_confirmation.py`.
 >
-> ✅ **`map_editor.js` = 10,866줄인데 그중 코드는 6,356줄이다**(`d3ed167` 실측: 공백 781 · 비공백 10,085 · **주석 3,729줄 = 비공백의 37.0%**). 🔴 **원시 줄 수를 이 파일의 크기로 인용하면 코드를 약 70% 과대 보고한다.** 이 문서가 파일 옆에 적는 **「N줄」은 전부 원시 줄 수**(`wc -l`)이고 코드 줄 수가 아니다 — 다른 파일에도 같은 규칙이 적용된다.
+> ⚠️ **개수를 적지 않는 규율을 이 패스에서 강화했다.** 「N번째 토큰」·「호출 6곳」·「단계 함수 17종」류는 **다음 라운드가 하나 더하면 조용히 거짓이 되고, 개수만 맞으면 앵커가 전부 틀려도 통과한다.** 그래서 개수를 **구성원 목록으로** 바꿨다(`isValidDieAt` 호출부 표 · 출처 토큰 표 · vite 엔트리 · 어휘 관문 표).
 >
-> 📏 **크기 표기가 낡은 파일 17개를 함께 고쳤다**(전건 `git show HEAD:<path> | wc -l` 실측). 큰 것: `map_editor.js` 9,683 → **10,866** · `contracts/map_seam/vectors.json` 1,477 → **3,613** · `notation_norm.py` 542 → **808** · `map_overlay.py` 1,448 → **1,674** · `virtual_join_config.py` 475 → **687** · `enrichment.js` 788 → **905**.
+> 🔬 **소스가 이 지도를 반박하는 자리 — 코드 소관이라 여기서 못 고친다**: `server/map_overlay.py:572`가 `geometry_declaration`의 반환을 **「다섯 토큰」**이라 적는데 실제로 **여섯**을 낼 수 있고, **`:756`은 「네 토큰」**이라 적는다. 같은 결함 계급이 소스 주석에도 있다.
 >
-> 🔬 **서버 쪽도 함께 훑었다 — 앵커 178개 중 29개가 틀렸고(−2,114 ~ +49), 그중 둘은 「없는 것을 가리키는 살아 있는 앵커」였다**: ① `crud.refuse_notation_derived_columns`(구 앵커 2235) — `8d306a5`가 파생 컬럼 자체를 철회하며 삭제, 지금은 묘비 주석만(`crud.py` **2221–2234**). 그래서 §2의 **「쓰기 가드 둘」도 이제 하나**다. ② CLI **`server/scripts/rederive_notation_norm.py`** — 같은 커밋에서 삭제됐는데 §5-E가 118줄짜리 현행 파일로 등재하고 있었다. 그리고 CLI 6종의 경로가 `scripts/…`로 적혀 있었으나 실제는 **`server/scripts/…`**다.
+> ✅ **`map_editor.js` = 11,031줄인데 그중 코드는 6,391줄이다**(`87a944e` 실측: 공백 782 · 비공백 10,249 · **주석 3,858줄 = 비공백의 37.6%**). 🔴 **원시 줄 수를 이 파일의 크기로 인용하면 코드를 약 73% 과대 보고한다.** 이 문서가 파일 옆에 적는 **「N줄」은 전부 원시 줄 수**(`wc -l`)이고 코드 줄 수가 아니다.
 >
-> ⚠️ **`server/map_overlay.py`는 서버 레인이 이 측정 중에 편집하고 있다.** 여기 적힌 1,674줄과 §5 앵커는 **`d3ed167`의 커밋된 blob** 기준이고 워킹트리가 아니다.
+> ⚠️ **이 측정 중에 HEAD가 두 번 움직였다 — 그리고 그것이 이 표지가 존재하는 이유다.** `cd8bfc9`에서 시작 → `690e869`·`87a944e` 착지(그때 워킹트리에서 더럽던 파일들의 커밋: `map2/api.js`·`map_editor2.html`·`crud.py`·`map_editor2.css` — **그 넷은 `87a944e` 기준으로 다시 쟀다**) → 마지막에 `4dbe36a`·`1573031`·`ce63de8`(문서 레인 3커밋).
+>
+> 🔬 **재대조 결과: 위 앵커가 근거로 삼은 소스 blob은 `ce63de8`에서 전부 동일하다** (`map_editor.js` = `cfa22ce` · `map_overlay.py` · `map_alignment.py` · `frame_confirmation.py` · `crud.py` · `main.py` · `bonding_plan.py` · `map2/*` · `vite.config.js` 전건 대조). 마지막 세 커밋은 `docs/` 전용이라 소스를 건드리지 않았다. **그래서 「`87a944e` 실측」과 「HEAD `ce63de8`」는 이 문서에서 같은 것을 가리킨다.**
+>
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md)
 
 **⚠️ 사용 규칙 — 이 문서가 존재하는 이유:**
@@ -136,11 +142,11 @@
 > #       들여왔다: `frameDieLattice`/`dieIndexToWaferMm`/`waferMmToDieCell`/
 > #       `projectCellsToWaferMm`/`seatWaferMmInFrame`([§7 좌표 코어](#7-client2src--웹-클라이언트)).
 > #       `mm`은 이제 **의미를 가진 이름**이고 `projectCellsToWaferMm`이 항목마다
-> #       `mm: {mmX, mmY}`를 싣는다(map_editor.js **7454**).
+> #       `mm: {mmX, mmY}`를 싣는다(map_editor.js **8749**).
 > #    ⚠️ 검사가 막으려던 것은 여전히 옳다 — **밀리미터가 아닌 양이 이 이름을 쓰는 것**.
 > #       하지만 그것은 grep으로 판정할 수 없고(이름만으로는 단위를 알 수 없다) 이제
 > #       리뷰 규율이다. `isCellInsideWaferFast`가 원을 **700×700 픽셀**에서 시험한다는
-> #       사실은 그대로다(map_editor.js **1924**) — mm 공간과 픽셀 공간은 별개다.
+> #       사실은 그대로다(map_editor.js **2329**) — mm 공간과 픽셀 공간은 별개다.
 > #    🔬 **폐기의 근거는 이 검사가 이미 빨간불이었다는 것이다**: `client2/src/utils.js:8`의
 > #       `const mm = pad(date.getMinutes())`(분(minutes)이지 밀리미터가 아니다)가 이 정규식에
 > #       걸리는데, `1dc761b`에서도 걸렸고 그때 §0은 "선언 0건"이라고 적었다. **아무도
@@ -175,8 +181,25 @@
 > git grep -nE "^def get_column_filter_condition" -- server/main.py
 > # ⑮ [2026-08-04 신설] `validDieRefTableTouched` — **`client2/src` 선언 0건**이어야 한다.
 > #    🔴 이 이름은 **직전 지도가 살아 있는 모듈 상태로 등재하던 것**이다(구 §7 "~2005").
-> #    지금 남은 것은 map_editor.js **~2060의 묘비 주석 1건**뿐이다. **2건 이상이면 부활한 것.**
+> #    지금 남은 것은 map_editor.js **2420의 묘비 주석 1건**뿐이다. **2건 이상이면 부활한 것.**
 > git grep -n "validDieRefTableTouched" -- client2/src
+> # ⑯ [2026-08-06 신설, S2.1] 프레임이 모듈 상태이던 시절의 이름 2종 —
+> #    **`client2/src` 선언 0건**이어야 한다.
+> #    🔴 둘 다 **직전 지도가 살아 있는 앵커로 등재하던 것**이다(구 §7 "1432"·"1538").
+> #       프레임이 인자가 되면서 지웠다. 남은 히트는 전부 **주석**이다
+> #       (map_editor.js 1443·1673·1874·1902·2044·2098·2486, map2/declaration.js 76·78).
+> #    ⚠️ 범위가 `client2/src`인 것이 ⑦·⑩과 같은 이유다 — `client2/tests/`의 하니스 여럿이
+> #       이 이름들을 **묘비 주석으로** 계속 언급하고(그게 옳다), 범위를 넓히면 영원히 빨개진다.
+> git grep -nE "^\s*(let|const|var|function)\s+(physFrameOverride|withPhysFrame)" -- client2/src
+> # ⑯-b 그리고 푸시 컬럼 계약 3종이 `map_editor.js` 안에서 **다시 선언되지 않아야** 한다.
+> #     이사이지 묘비가 아니다 — 이름은 `client2/src/push_columns.js`에 살아 있다(⑬과 같은 계급).
+> #     🔴 종전 지도는 이 셋을 `map_editor.js`의 5760·5782·5801에 등재하고 있었다.
+> git grep -nE "^(export )?(const|function) (PUSH_SYSTEM_COLUMNS|getUnprotectedPushColumns|logShapedPushDecision)" -- client2/src/map_editor.js
+> # ⑰ [2026-08-06 신설] `refuse_notation_derived_columns` — **선언 0건**이어야 한다.
+> #    🔴 이 이름은 **직전 지도가 §2의 표에 살아 있는 앵커(2235)와 살아 있는 호출부(2286)로
+> #       등재하던 것**이고, **바로 아래 행이 "이 함수는 삭제됐다"고 적는 동안** 그랬다.
+> #       남은 것은 crud.py **2374–2384**의 묘비 주석뿐이다.
+> git grep -nE "^\s*def refuse_notation_derived_columns" -- server
 > ```
 >
 > **측정 기준 (라인 앵커가 가리키는 상태)**: **전 절이 `41b17ee`의 커밋된 blob 실측**이다(`git show 41b17ee:<path>` 기준, 2026-08-04 여덟 번째 패스). HEAD(`35b03cc`)와의 차이는 `docs/process/PROJECT_STATUS.md`·`client2/scripts/check_harnesses.mjs`뿐이라 **소스 blob은 하나도 다르지 않다** — 아래 게이트 핀만 HEAD 기준이다.
@@ -260,11 +283,11 @@
 | 파일 | 라인수 | 섹션 |
 |---|---|---|
 | **묘비 목록 (소스에 없는 이름)** | — | [§0](#0-묘비-목록--소스에-존재하지-않는-이름) |
-| `server/main.py` | **5,488** (`ed9cfdb` 5,595 → 🔴 **−107**: 필터 DSL 번역기 **146줄이 파일에서 나갔다**. 신설은 dry-run 라우트 1 + `notation_norm` 핫리로드 훅) | [§1](#1-servermainpy--api--ws-허브) |
+| `server/main.py` | **6,128** (`d3ed167` 5,488 → 🔴 **+640**: 🆕 프레임 정렬·확정 라우트 4종 + `apply_enrichment_queue_predicate` + `serve_map_editor2_page`) | [§1](#1-servermainpy--api--ws-허브) |
 | 🆕 **`server/column_filter.py`** (필터 DSL 번역기 — `main.py`에서 이사) | **181** (신설) | [§1.8](#1-8-servercolumn_filterpy--필터-dsl-번역기가-엔트리포인트-밖으로-나간-자리) |
 | **`server/admin_auth.py`** (어드민 토큰 게이트) | **463** (무변동 — blob 해시 초록) | [§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설) |
 | **`server/internal_event_client.py`** (내부 HTTP 호출의 단일 소유자) | **359** (235 → **+124**: 미배달 통지 마커 + `/health` 응답 *모양* 판별자) | [§1.7](#17-serverinternal_event_clientpy--내부-http-호출의-단일-소유자-23a346d-신설) |
-| `server/database/crud.py` | **3,209** (2,612 → **+597**: 🆕 **버전 게이트 블록 292줄** · 🆕 **컬럼→비교 텍스트 렌더러 가족 208줄** · `refuse_notation_derived_columns`) | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
+| `server/database/crud.py` | **3,526** (`d3ed167` 3,209 → **+317**: 🆕 **[P6] 복합 키 프리페치** · 🆕 **[`87a944e`] `replace_map` 차집합 경로**) | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
 | `server/parsers/directory_watcher.py` | **2,274** (2,180 → **+94**: 드롭된 컬럼 가시화) | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
 | **`server/parsers/advanced_ingester.py`** (선언 검증 + 경로 메타 추출) | **508** (무변동 — blob 해시 초록) | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
 | 🆕 **`server/parsers/html_topology_parser.py`** (HTML 표 → 그래프/행렬) | **768** (638 → **+130**: 격자 원점 이중 유도 + 구조적 헤더 술어. **전부 `parse_matrix_to_records` 본체 안**) | [§3-ter](#-3-ter-serverparsershtml_topology_parserpy-768줄-ed9cfdb-638에서-130--html-표--그래프행렬) |
@@ -276,7 +299,10 @@
 | **[신설] 2026-08-04 서버 모듈** — **`virtual_join_executor.py`**(가상 조인 **실행**, 535 → **554**) · `retroactive.py` · `enrichment_backfill.py` · `trace_fixture/` 패키지 6파일 | **554** + **697** + **411** + **1,356** | [§5-D](#5-d-2026-08-04-신설-서버-모듈) |
 | 🆕 **[신설] 2026-08-04(2차)** — **`server/notation_norm.py`**(표기 정규화 파생 컬럼) · **`server/graph_stale_edges.py`**(낡은 엣지 스윕) + CLI 2종 | **542** + **549** (+ `graph_stale_edge_sweep.py` 193 — 🪦 `rederive_notation_norm.py`는 `8d306a5`에서 삭제됐다) | [§5-E](#5-e-2026-08-042차-신설-서버-모듈-2종--표기-정규화--낡은-엣지-스윕) |
 | 기타 서버 모듈 (한줄 요약) + 설치·개발환경 스크립트 + **교차 구현 계약 `contracts/` (6계약)** + **빌드 게이트 3종** + **런처 `run_decoupled_app.py`(132 → 228)** | — | [§6](#6-기타-서버-모듈-한줄-요약) |
-| `client2/src/*` | **31,301** (js **28,140** + css 3,161 — **+552**: `map_editor.js` **+520**(단계 함수 17종 + 오버레이 색 5종) · `api.js` +29 · `state.js` +3. 그 밖 클라 소스는 **blob 동일**. 2026-08-04 `git ls-tree` 전건 합산) | [§7](#7-client2src--웹-클라이언트) |
+| 🆕 **`server/map_alignment.py`**(프레임 정렬 채점자) + **`server/frame_confirmation.py`**(확정 기록자) + `migrations/add_frame_confirmation.py` | **3,272** + **688** (둘 다 신설) | [§5](#-servermap_alignmentpy-3272줄-신설--프레임-정렬의-채점자) |
+| 🆕 **Map Editor 2** — `client2/src/map_editor2.js` + `client2/src/map2/` 17모듈 (구 에디터를 **대체하지 않고 옆에 선다**) | **408** + **8,378** (신설) | [§7-A](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506) |
+| 🆕 `client2/src/push_columns.js`(푸시 컬럼 계약 — `map_editor.js`에서 이사) + `client2/src/enrichment_queue.js`(큐 술어) | **77** + **94** (신설) | [§7](#7-client2src--웹-클라이언트) |
+| `client2/src/*` | **44,400** (js **39,363** + css 4,983 — `d3ed167` 31,301에서 🔴 **+13,099**. 대부분은 🆕 **Map Editor 2**(`map2/` **8,378** + `map_editor2.js` 408 + `map_editor2.css`)와 `map_editor.js` **+165**) | [§7](#7-client2src--웹-클라이언트) |
 | 주요 호출 흐름 | — | [§8](#8-주요-호출-흐름-요약) |
 
 > **경로의 단일 원천 (2026-07-27):** `server/config/**`·`server/ingestion_workspace/**`·프로세스 로그는 이제 전부 **`server/paths.py`**([§5](#5-소형-서버-모듈))를 경유한다. 소스에서 `os.path.dirname(__file__)`로 config/워크스페이스 경로를 조립하는 코드를 보면 **누락**이다. 이 맵의 경로 표기는 모두 `paths.*` 기준.
@@ -287,11 +313,11 @@
 
 FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outbox + `/internal/events/*`로 통신.
 
-> 🔴 **이 파일은 이번 범위에서 처음으로 *줄었다*: 5,595 → 5,488줄(−107, 39 삽입 / 146 삭제).** 줄어든 이유가 이 절의 머리기사다 — **AG-Grid 필터 DSL 번역기가 파일에서 나갔다.**
+> 🔴 **[2026-08-06] 이 파일은 5,488 → **6,128줄**(+640)이다.** 이 범위의 머리기사는 **프레임 정렬·확정 라우트 4종**(`/api/maps/alignment/{view,confirm,worklist,references}`)과 **큐 술어**(`apply_enrichment_queue_predicate`)의 착지다.
 >
 > 🔴 **`get_column_filter_condition`은 이제 `main.py`에 선언되지 않는다 — [`server/column_filter.py`](#1-8-servercolumn_filterpy--필터-dsl-번역기가-엔트리포인트-밖으로-나간-자리)로 이사했다.** `main.py` **1176–1179**에 남은 것은 **의도적 재export**(`from column_filter import get_column_filter_condition`)이고 주석이 그렇게 못 박아 두었다. **`main.py`에서 이 이름의 `def`를 찾으면 없다.** 사유는 [§1.8](#1-8-servercolumn_filterpy--필터-dsl-번역기가-엔트리포인트-밖으로-나간-자리).
 >
-> 🔢 **라우트 데코레이터 실측 — 파일 최상단 `@app.<verb>(` 기준 `ed9cfdb` 77개 → `41b17ee` **78개**, 신설 1 · 삭제·개명 0.** ⚠️ **구 지도의 "87개"는 어느 철자로도 재현되지 않는다**(라인 중간 히트까지 포함해도 85→86이다). 개수를 주장하는 서술은 목록 표본이 아니라 **전건 계수로** 대조해야 한다는 §0의 규율이 여기서 또 값을 갈랐다.
+> 🔢 **라우트 데코레이터 실측(`87a944e`) — 파일 최상단 `@app.<verb>(` 기준 **82개**.** 구 표기 **78**은 낡았다. ⚠️ **철자가 답을 바꾼다**: 들여쓰기된 것까지 세면 **91**이다 — `if os.path.exists(client2_dist_path):`(**6001**) 블록 안의 정적 라우트 9개가 최상단 기준에서 빠지기 때문이다. 이 문서의 규율(「파일 최상단 기준」)로는 **82**이고, **어느 쪽 수를 인용하든 철자를 함께 적지 않으면 다음 사람이 다른 수를 재고 지도가 틀렸다고 판단한다.**
 >
 > 🆕 **신설 라우트 1종**:
 >
@@ -321,25 +347,26 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 |---|---|---|
 | `script_dir = …` / `logger.info(f"[paths] {paths.describe()}")` | 부팅 첫 줄에 데이터 루트를 찍는다 — 로그만 보고 이 프로세스가 격리 환경인지 라이브인지 판별 가능. **[`2728bd9`] 바로 아래 **~45**에서 `[db] url source={env\|config file\|default} target=…`를 `paths.mask_db_password`로 **마스킹해** 찍는다** — 어느 DB URL 원천이 이겼는지의 부팅 증거([§5 paths.py](#5-소형-서버-모듈)) | **~42/43/45** |
 | **`from admin_auth import require_admin_token, require_admin_token_strict`** | **[`90e284f` 신설]** `/admin/*`·`/internal/*` 게이트 의존성 import([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)). 🆕 그 위 **~35**가 **[`e1ba99e` #16a] `import db_safety`** — "테스트 프로세스는 진짜 DB를 만지지 못한다"를 **결정으로** 들여오는 자리([§5-C](#5-c-2026-07-31-신설-서버-모듈-2종)) | **~40/41** (db_safety **~35**) |
-| `db_context_middleware(request, call_next)` (**~121**) | 요청별 DB 세션 수명 관리 미들웨어. **읽는 헤더는 `X-User`/`X-Transaction-ID`/`X-Source`뿐** — 토큰 헤더명(`X-Admin-Token`)이 여기와 겹치지 않는 것이 감사 행 유출 차단의 근거([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)). ⚠️ **구 지도의 `~65`는 두 세대 낡은 값이었다**(`9ac2083`에서 이미 103) | **~121** |
+| `db_context_middleware(request, call_next)` (**~121**) | 요청별 DB 세션 수명 관리 미들웨어. **읽는 헤더는 `X-User`/`X-Transaction-ID`/`X-Source`뿐** — 토큰 헤더명(`X-Admin-Token`)이 여기와 겹치지 않는 것이 감사 행 유출 차단의 근거([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)). ⚠️ **구 지도의 `~65`는 두 세대 낡은 값이었다**(`9ac2083`에서 이미 103) | **121** |
 | **`bootstrap_database_schema(bind=None)`** | ✅ **[2026-07-30 착지] `create_all`이 함수 안으로 들어왔다.** 종전엔 `models.Base.metadata.create_all(bind=engine)`가 **모듈 import 시점**에 맨몸으로 실행됐다. 이제 이 함수(**~70**) 안 **~109**에 있고 호출은 `startup_event` 안 **~283** 한 곳이다.<br>🆕 **[`e1ba99e` #16a] 시그니처가 `bind=None`을 받고, 본체 첫 문장이 `db_safety.require_test_database(str(target.url), context="boot-time DDL (Base.metadata.create_all)", …)`(**~104–108**)로 바뀌었다.** 🔴 **이 거부는 순수 결정이다** — 커넥션을 열기 **전에** 판정하므로 테스트 프로세스는 DB에 **접촉조차 하지 않고** 돌아선다. pytest 밖에서는 즉시 반환하고 함수는 종전과 글자 그대로 같이 동작한다. **`bind` 인자가 존재하는 이유는 회귀 테스트다** — 프로세스 자신의 엔진을 프로덕션으로 돌리지 않고도 거부를 증명할 수 있어야 한다.<br>**`create_all`은 여전히 의도적으로 무가드**다(소스 주석 **~85·~100**) — DB가 불통이면 웹서버는 **부팅에 실패해야** 하고, 워커 4개는 자기 루프에서 예외를 삼켜 살아남는다([§5 `process_supervisor`](#5-소형-서버-모듈)의 "고립된 자식 1개" 시나리오) | **~70** (거부 **~104**, `create_all` **~109**) |
-| `startup_event()` | 기동: `bootstrap_database_schema()`(호출 **~283**, 선언 **~70**), 워처 스레드, 콜백 배선, 캐시 워밍. **[`90e284f`] `admin_auth.startup_banner()`를 1회만 로깅**(**~264**, `_admin_auth_banner_logged` 가드 — reload마다 재발화하면 배너가 소음이 된다) | **~253** |
+| `startup_event()` | 기동: `bootstrap_database_schema()`(호출 **~283**, 선언 **~70**), 워처 스레드, 콜백 배선, 캐시 워밍. **[`90e284f`] `admin_auth.startup_banner()`를 1회만 로깅**(**~264**, `_admin_auth_banner_logged` 가드 — reload마다 재발화하면 배너가 소음이 된다) | **253** |
 | ├ `trigger_ws_refresh(table_name, count, created_logs, total_log_count)` | (내부·임베디드 모드 전용) 인제션 완료 → WS 갱신 브로드캐스트 콜백 (⚠️ C-5 절단 미적용 레거시 경로 — 드릴 관찰, 저순위) | **~358** |
 | ├ `trigger_ws_file_processed(table_name, filename, status, error_msg)` | (내부) 파일 처리 상태 → WS 통지 콜백 | **~378** |
 | └ `trigger_ingestion_state(state)` | [P1] 비-DECOUPLED 시 HTTP 없이 `ingestion_activity_registry`에 직접 반영, file-processed 시 제거 | **~414** |
-| `shutdown_event()` | 종료 정리 | **~451** |
+| `shutdown_event()` | 종료 정리 | **485** |
 | `class ConnectionManager` — `connect/disconnect/broadcast` | WS 연결 풀 + 전체 브로드캐스트 | **~471** |
-| `invalidate_table_cache(table_name)` | 테이블 count 캐시 무효화 (`TABLE_COUNT_CACHE` **~536**) | **~538** |
-| `inject_system_columns(row)` | 응답 행에 시스템 컬럼 주입 | **~566** |
-| `fetch_and_merge_metadata(db, table_name, rows, user_cols, include_sources=True) -> list` | 행들에 CellSource/Overwrite 메타 병합 → 셀 객체 `{value,is_overwrite,priority_source}` 생성 (조회 응답의 핵심) | **~651** |
-| `get_deleted_row_business_key(db, table_name, row_id)` / `get_deleted_rows_business_keys_bulk(...) -> dict` | 삭제 행의 비즈니스 키 역추적(감사 표시용) | **796/819** |
-| `check_rows_exist(db, row_keys) -> set` | (table,row_id) 존재 일괄 확인 | **~857** |
+| `invalidate_table_cache(table_name)` | 테이블 count 캐시 무효화 (`TABLE_COUNT_CACHE` **~536**) | **572** |
+| `inject_system_columns(row)` | 응답 행에 시스템 컬럼 주입 | **600** |
+| `fetch_and_merge_metadata(db, table_name, rows, user_cols, include_sources=True) -> list` | 행들에 CellSource/Overwrite 메타 병합 → 셀 객체 `{value,is_overwrite,priority_source}` 생성 (조회 응답의 핵심) | **685** |
+| `get_deleted_row_business_key(db, table_name, row_id)` / `get_deleted_rows_business_keys_bulk(...) -> dict` | 삭제 행의 비즈니스 키 역추적(감사 표시용) | **830/853** |
+| `check_rows_exist(db, row_keys) -> set` | (table,row_id) 존재 일괄 확인 | **891** |
 | `from ingestion_activity import registry as ingestion_activity_registry` | [P1] 진행 스냅샷 레지스트리 싱글턴 import([§5](#5-소형-서버-모듈)) | **~859** |
 | 🔴 **`from column_filter import get_column_filter_condition`** | **[신설] 이 파일에 함수 선언이 없다 — *의도적 재export*다.** 번역기는 [`server/column_filter.py`](#1-8-servercolumn_filterpy--필터-dsl-번역기가-엔트리포인트-밖으로-나간-자리)로 이사했고 `main.get_column_filter_condition`은 계속 해석된다. 사유 주석이 바로 위 **1172–1175**에 있다. **`main.py`에서 `def get_column_filter_condition`을 찾으면 없다** | **1176/1179** |
 | **`class VirtualColumnBinder`(**1193**)** | **[`cd3e0f4`] 가상 조인 컬럼을 쿼리에 물리는 자리.** `__init__`에서 `virtual_join_executor.exposed_columns(db, table_name)`을 한 번 물어 들고 있다가, 노출 컬럼이 필터·검색에 등장하면 `resolved_expression`으로 `outerjoin`+`COALESCE` 식을 만들어 준다. 🔴 **`/schema`가 알리는 목록과 검색이 받아들이는 목록이 같은 함수에서 나온다** — 갈리면 화면에 보이는 컬럼으로 검색이 안 되는데 아무 에러도 안 난다 | **1193** |
-| `apply_column_filters(query, table_model, table_name, filters, binder)` / `apply_search_filter(query, table_model, table_name, q, cols, binder)` | 위 바인더의 두 소비자. `get_table_data`·`export_table_csv`가 **같은 이 둘**을 부른다(종전엔 각자 필터를 조립했다) | **1233/1271** |
-| `reload_local_process_cache()` | 웹서버 config 핫리로드 — `models.refresh_dynamic_models(engine)` 위임(싱글턴·ORM·신규 테이블 물리 CREATE, 이슈 #7) + `crud._ontology_cache` 무효화. 🆕 **`notation_norm.reset_cache()`가 같은 모양·같은 사유로 더해졌다**(**3914–3922**) — 파생 스펙은 워커에 TTL이 있지만 어드민에서 편집된 선언은 **여기서 다음 쓰기부터** 먹어야 한다 | **3883** |
-| `load_maps_config() / save_maps_config(data)` | 맵 프리셋 JSON 파일 IO (`MAPS_CONFIG_PATH = paths.config_path("maps.json")` **3985**) | **3986/3995** |
+| 🆕 **`apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, scope)`** | **[신설 — 종전 지도에 없던 심볼]** 「아직 일이 남은 행」을 **이름으로** 묻는 서버측 술어. 클라 짝은 [`enrichment_queue.js`](#-enrichment_queuejs-94줄-신설--어느-행이-아직-일이-남았나의-유일한-철자)의 `queueQuery(rule, scope)`이고 스코프 어휘를 공유한다(`queue`/`keyed`/`blank_key`/`resolved`). ⚠️ **이 함수가 `apply_column_filters`와 `apply_search_filter` 사이에 끼어 들어왔다** — 그래서 뒤쪽 함수만 앵커가 더 밀렸다 | **1305** |
+| `apply_column_filters(query, table_model, table_name, filters, binder)` / `apply_search_filter(query, table_model, table_name, q, cols, binder)` | 위 바인더의 두 소비자. `get_table_data`·`export_table_csv`가 **같은 이 둘**을 부른다(종전엔 각자 필터를 조립했다) | **1267/1351** |
+| `reload_local_process_cache()` | 웹서버 config 핫리로드 — `models.refresh_dynamic_models(engine)` 위임(싱글턴·ORM·신규 테이블 물리 CREATE, 이슈 #7) + `crud._ontology_cache` 무효화. 🆕 **`notation_norm.reset_cache()`가 같은 모양·같은 사유로 더해졌다**(**3914–3922**) — 파생 스펙은 워커에 TTL이 있지만 어드민에서 편집된 선언은 **여기서 다음 쓰기부터** 먹어야 한다 | **4085** |
+| `load_maps_config()` / `save_maps_config(data)` | 맵 프리셋 JSON 파일 IO (`MAPS_CONFIG_PATH = paths.config_path("maps.json")` **4187**) | **4189/4198** |
 | 🆕 **CORS `expose_headers`** | **[`cde3398`] `WWW-Authenticate`가 목록에 추가됐다**(현재 4종: `Content-Disposition` · `X-Estimated-Content-Length` · `X-Total-Rows` · **`WWW-Authenticate`**). 🔴 **없으면 교차 출처에서 게이트를 식별할 수 없다** — 클라의 `isGateRejection`([§7 `admin.js`](#7-client2src--웹-클라이언트))은 401/403에 더해 이 헤더가 `X-Admin-Token`을 지목하는지 보는데, 노출하지 않으면 브라우저가 그 헤더를 지운다. 결과는 **vite dev(:5173)에서 진짜 게이트 거부가 「앞단이 답했다」로 확신 있게 오분류**되는 것이다(2026-07-30 loopback 프록시 인시던트가 그 모양이었다). 같은 출처(:8080/:8081 직접 서빙)에서는 원래 읽혔다. **값은 원하는 헤더의 이름뿐이라 비밀이 없다** | **155** |
 
 ### 1.1-bis 헬스 블록 (`8117456` 신설 — 파일 상단 **174–251**)
@@ -348,7 +375,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `_HEALTH_DB_TIMEOUT_SEC=2.0`(**174**) / `_health_probe_inflight`(**179**) | DB 프로브 시간 상한 / **동시 프로브 1개 제한** — DB가 멎으면 `wait_for`는 요청만 놓아주고 워커 스레드는 못 놓아준다. 10초 폴링 모니터가 행마다 스레드를 쌓지 않도록 하는 플래그(해제는 대기를 포기한 요청이 아니라 **스레드 자신**이 한다) | ~174/179 |
+| `_HEALTH_DB_TIMEOUT_SEC=2.0`(**174**) / `_health_probe_inflight`(**179**) | DB 프로브 시간 상한 / **동시 프로브 1개 제한** — DB가 멎으면 `wait_for`는 요청만 놓아주고 워커 스레드는 못 놓아준다. 10초 폴링 모니터가 행마다 스레드를 쌓지 않도록 하는 플래그(해제는 대기를 포기한 요청이 아니라 **스레드 자신**이 한다) | **174/179** |
 | `_health_probe_db_sync()` / `_health_probe_and_release()` | 동기 DB 프로브(+`health.probe_outbox`) / inflight 해제 래퍼 | **182/195** |
 | GET `/health` → `health_check()` | `heartbeat.read_all()` + `process_supervisor.read_status()` + DB/outbox 프로브를 `health.compute_health`에 넘겨 **JSONResponse + 실제 HTTP 상태**(unhealthy면 503)로 반환. ⚠️ **게이트 없음** — 외부 모니터가 토큰 없이 폴링해야 하므로 의도적으로 열려 있다(`/admin/*`이 아니라 `/health`다) | **203/204** |
 
@@ -358,48 +385,48 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `_get_recorrection_stat(db)` | 재수정률 통계(`crud.get_recorrection_stats`). **F6**: 실패 사유를 이름으로 말한다(구 문구는 원인을 지어냈다). 캐시 `RECORRECTION_CACHE`/`_TTL`(**1005/1006**) · `RECORRECTION_TIMEOUT_MS`(**1010**) | **1013** |
-| `EFFORT_TIMEOUT_MS = 1500` | 대시보드 1카드가 대시보드 전체를 볼모로 잡지 못하게 하는 집계 시간 상한 (`EFFORT_CACHE`/`_TTL` **1058/1059**) | **1060** |
-| **`_get_effort_stat(db) -> schemas.EffortStat`** | 지연 import `effort_metric` → `resolve_weights(load_config())` → `crud.get_effort_stats`. 실패는 **카드를 지우지 않고 사유를 싣는다**(타임아웃이면 `idx_effort_window` 인덱스를 이름으로 지목) | **1063** |
-| GET `/api/effort/config` → `get_effort_config()` | 클라가 소비하는 **공개 config**(`effort_metric.get_public_config`) — 가중치와 컨텍스트 보존 전이 허용목록. 클라에 사본을 두지 않기 위한 단일 원천. ⚠️ **게이트 없음**(`/admin`이 아니다) | **1108/1109** |
-| GET `/dashboard/summary` → `get_dashboard_summary` | `recorrection` + **`effort`**를 한 응답에(`schemas.DashboardSummaryResponse.effort`) | **1124/1125** |
-| **`_validate_effort(effort) -> (counts\|None, error\|None)`** | **계측은 계측 대상을 절대 깨뜨리지 않는다.** `GeneralUpdateBatch.effort`는 `Optional[Any]`라 pydantic이 엔드포인트 **전에** 거부하지 못하고, 여기서 파싱한다. 불량 blob은 **버려지고 이름으로 보고**된다(미지 키·`session_id`·정수/음수) — **교정은 그대로 적용된다**. 부재는 합법(“측정 안 됨”) | **2212** |
+| `_get_recorrection_stat(db)` | 재수정률 통계(`crud.get_recorrection_stats`). **F6**: 실패 사유를 이름으로 말한다(구 문구는 원인을 지어냈다). 캐시 `RECORRECTION_CACHE`/`_TTL`(**1005/1006**) · `RECORRECTION_TIMEOUT_MS`(**1044**) | **1047** |
+| `EFFORT_TIMEOUT_MS = 1500` | 대시보드 1카드가 대시보드 전체를 볼모로 잡지 못하게 하는 집계 시간 상한 (`EFFORT_CACHE`/`_TTL` **1058/1059**) | **1094** |
+| **`_get_effort_stat(db) -> schemas.EffortStat`** | 지연 import `effort_metric` → `resolve_weights(load_config())` → `crud.get_effort_stats`. 실패는 **카드를 지우지 않고 사유를 싣는다**(타임아웃이면 `idx_effort_window` 인덱스를 이름으로 지목) | **1097** |
+| GET `/api/effort/config` → `get_effort_config()` | 클라가 소비하는 **공개 config**(`effort_metric.get_public_config`) — 가중치와 컨텍스트 보존 전이 허용목록. 클라에 사본을 두지 않기 위한 단일 원천. ⚠️ **게이트 없음**(`/admin`이 아니다) | **1142/1143** |
+| GET `/dashboard/summary` → `get_dashboard_summary` | `recorrection` + **`effort`**를 한 응답에(`schemas.DashboardSummaryResponse.effort`) | **1158/1159** |
+| **`_validate_effort(effort) -> (counts\|None, error\|None)`** | **계측은 계측 대상을 절대 깨뜨리지 않는다.** `GeneralUpdateBatch.effort`는 `Optional[Any]`라 pydantic이 엔드포인트 **전에** 거부하지 못하고, 여기서 파싱한다. 불량 blob은 **버려지고 이름으로 보고**된다(미지 키·`session_id`·정수/음수) — **교정은 그대로 적용된다**. 부재는 합법(“측정 안 됨”) | **2308** |
 | (호출부) `apply_batch_updates_endpoint` 내 | `_validate_effort` 호출 → 최상위 미지 키 합성 → `logger.error("[EffortMetric] …")`. 기록은 **교정 커밋 뒤 별도**로 `crud.record_interaction_effort`, 결과가 응답 `effort_recorded`/`effort_error`. 클라는 `effort_recorded === true`일 때만 카운터를 비운다 | 핸들러 **2287** 내부 |
 
 ### 1.2 API 라우트 표 — 데이터 조회/편집
 
 | 메서드 경로 | 핸들러 | 역할 | 라인 |
 |---|---|---|---|
-| GET `/` | `read_root` | index 서빙 | ~500/501 |
-| GET `/api/download/client` | `download_desktop_client` | 데스크톱 셸 배포 | ~513/514 |
-| GET `/tables` | `list_tables` | 테이블 목록 | **789/790** |
-| GET `/tables/{t}/data` | `get_table_data` | **메인 조회** — 페이지네이션+필터+정렬+메타 병합 | **1336/1337** |
-| GET `/tables/{t}/schema` | `get_table_schema` | 스키마 계약(`table_config.json` 기반). **[gate4 `deed6d2`] `map_push_ok` 필드 동봉** — `config.get("map_push_ok") is True` **엄격 판정**: 문자열 `"true"`·1 등 오타는 잠금 유지, JSON boolean true만 유효. 클라 gate 4의 site 선언 서빙 — [§7 map_editor.js](#7-client2src--웹-클라이언트). 테스트: `tests/test_schema_map_push_ok.py` **3건**(`grep -c "def test_" = 3`) | **1923/1924** |
-| **GET `/tables/{t}/columns/{c}/values`** | **`get_column_unique_values`** | **[F3 `4e8e867` 신설] 입력 제안용 유일값 조회** — `value_suggest.suggest_values` 위임([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)), `SuggestValidationError` → 그 안의 `status_code`로 변환. 🔴 **등록 위치가 계약이다**: `/tables/{t}/{row_id}`(**2062**)보다 **위**에 있어야 한다 — 아래에 두면 `columns`가 `{row_id}`로 먹혀 단일 행 조회로 떨어진다 | **2040/2041** |
-| GET `/tables/{t}/{row_id}` | `get_row_data` | 단일 행 조회 | **2062/2063** |
-| GET `/tables/{t}/export` | `export_table_csv` | CSV 스트리밍 export | **1687/1688** |
-| POST `/tables/{t}/rows` | `create_row` | 빈 행 N개 생성(+WS 통지) | **2150/2151** |
-| PUT `/tables/{t}/data/updates` | `apply_batch_updates_endpoint` | **메인 편집** — crud.apply_batch_updates 호출 후 병합·브로드캐스트. 배치의 `replace_map:true`는 **동일 맵 기존 행 클린 삭제 후 재기록** — 맵 Push와 **[M2.6] legend/DOE 저장(`map_split_registry`)**이 이 연산을 쓴다([§7 map_editor.js](#7-client2src--웹-클라이언트)). **[gate4 `deed6d2` 정직한 스코프]** `replace_report` out-param으로 crud가 채운 **실제 purge 필터·삭제 행수**를 받아 응답 `scope: {filters, deleted, inserted}`로 되비춘다(비-replace_map은 null) — 스코프 유도 불가는 crud `ValueError` → **400**(종전의 "아무것도 안 지운 200" 폐지). **순수 스코프 wipe(deleted>0, upsert 0)도 count 캐시를 무효화**. **[V1 `2a9f6c4`] 이 핸들러가 공수 계측의 유일한 기록 지점**이다 — `_validate_effort`(**2212**) → 커밋 후 `crud.record_interaction_effort` → 응답 `effort_recorded`/`effort_error`([§1.1-ter](#11-ter-핵심가치-1-계측--재수정률--상호작용-공수-점수-2a9f6c4-v1-신설)). 테스트: `tests/test_replace_map.py`(**7건** — 재측정 `grep -c "def test_" = 7`) | **2286/2287** |
-| DELETE `/tables/{t}/rows/{row_id}` | `delete_row` | 단일 삭제 | **1521/1522** |
-| POST `/tables/{t}/rows/batch_delete` | `delete_rows_batch_endpoint` | 일괄 삭제(+WS) | **1544/1545** |
-| POST `/tables/{t}/row_ids/target` | `get_target_row_ids` | 필터 조건 → row_id 목록(범위 작업용) | **1599/1600** |
-| POST `/tables/{t}/upload` | `upload_file` | 파일 업로드 → 워크스페이스 투입(`paths.workspace_path(table,"raws")`) | **3306/3307** |
+| GET `/` | `read_root` | index 서빙 | **534/535** |
+| GET `/api/download/client` | `download_desktop_client` | 데스크톱 셸 배포 | **547/548** |
+| GET `/tables` | `list_tables` | 테이블 목록 | **823/824** |
+| GET `/tables/{t}/data` | `get_table_data` | **메인 조회** — 페이지네이션+필터+정렬+메타 병합 | **1416/1417** |
+| GET `/tables/{t}/schema` | `get_table_schema` | 스키마 계약(`table_config.json` 기반). **[gate4 `deed6d2`] `map_push_ok` 필드 동봉** — `config.get("map_push_ok") is True` **엄격 판정**: 문자열 `"true"`·1 등 오타는 잠금 유지, JSON boolean true만 유효. 클라 gate 4의 site 선언 서빙 — [§7 map_editor.js](#7-client2src--웹-클라이언트). 테스트: `tests/test_schema_map_push_ok.py` **3건**(`grep -c "def test_" = 3`) | **2019/2020** |
+| **GET `/tables/{t}/columns/{c}/values`** | **`get_column_unique_values`** | **[F3 `4e8e867` 신설] 입력 제안용 유일값 조회** — `value_suggest.suggest_values` 위임([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)), `SuggestValidationError` → 그 안의 `status_code`로 변환. 🔴 **등록 위치가 계약이다**: `/tables/{t}/{row_id}`(**2062**)보다 **위**에 있어야 한다 — 아래에 두면 `columns`가 `{row_id}`로 먹혀 단일 행 조회로 떨어진다 | **2136/2137** |
+| GET `/tables/{t}/{row_id}` | `get_row_data` | 단일 행 조회 | **2158/2159** |
+| GET `/tables/{t}/export` | `export_table_csv` | CSV 스트리밍 export | **1783/1784** |
+| POST `/tables/{t}/rows` | `create_row` | 빈 행 N개 생성(+WS 통지) | **2246/2247** |
+| PUT `/tables/{t}/data/updates` | `apply_batch_updates_endpoint` | **메인 편집** — crud.apply_batch_updates 호출 후 병합·브로드캐스트. 배치의 `replace_map:true`는 🆕 **[`87a944e`] 이제 *차집합*이다**(선언된 스코프 − 이번에 청구된 행만 삭제. 종전의 「클린 삭제 후 재기록」은 **정반대 서술이 됐다** — [§2 `apply_batch_updates`](#2-serverdatabasecrudpy--레이어링-코어)) — 맵 Push와 **[M2.6] legend/DOE 저장(`map_split_registry`)**이 이 연산을 쓴다([§7 map_editor.js](#7-client2src--웹-클라이언트)). **[gate4 `deed6d2` 정직한 스코프]** `replace_report` out-param으로 crud가 채운 **실제 purge 필터·삭제 행수**를 받아 응답 `scope`로 되비춘다 — 🔴 **나르는 필드 전건 열거**(종전 지도는 셋만 적었다): **`filters` · `deleted` · `inserted` · 🆕 `adopted` · 🆕 `mode`(`"diff"|"purge"`) · 🆕 `reason` · 🆕 `delete_ids_omitted`**(비-replace_map은 null) — 스코프 유도 불가는 crud `ValueError` → **400**(종전의 "아무것도 안 지운 200" 폐지). **순수 스코프 wipe(deleted>0, upsert 0)도 count 캐시를 무효화**. **[V1 `2a9f6c4`] 이 핸들러가 공수 계측의 유일한 기록 지점**이다 — `_validate_effort`(**2308**) → 커밋 후 `crud.record_interaction_effort` → 응답 `effort_recorded`/`effort_error`([§1.1-ter](#11-ter-핵심가치-1-계측--재수정률--상호작용-공수-점수-2a9f6c4-v1-신설)). 테스트: `tests/test_replace_map.py`(**7건** — 재측정 `grep -c "def test_" = 7`) | **2387/2388** |
+| DELETE `/tables/{t}/rows/{row_id}` | `delete_row` | 단일 삭제 | **1617/1618** |
+| POST `/tables/{t}/rows/batch_delete` | `delete_rows_batch_endpoint` | 일괄 삭제(+WS) | **1640/1641** |
+| POST `/tables/{t}/row_ids/target` | `get_target_row_ids` | 필터 조건 → row_id 목록(범위 작업용) | **1695/1696** |
+| POST `/tables/{t}/upload` | `upload_file` | 파일 업로드 → 워크스페이스 투입(`paths.workspace_path(table,"raws")`) | **3487/3488** |
 
 ### 1.3 API 라우트 표 — 이력/레이어링(소스·우선순위)
 
 | 메서드 경로 | 핸들러 | 역할 | 라인 |
 |---|---|---|---|
-| GET `/audit_logs/recent` | `get_recent_audit_logs` | 최근 트랜잭션 그룹 이력 | **878/879** |
-| GET `/audit_logs/transaction/{tx_id}` | `get_transaction_logs` | 트랜잭션 상세 로그 | **923/924** |
-| GET `/dashboard/summary` | `get_dashboard_summary` | 대시보드 통계 — 재수정률 + **[V1 `2a9f6c4`] 상호작용 공수 점수** 2종 동봉([§1.1-ter](#11-ter-핵심가치-1-계측--재수정률--상호작용-공수-점수-2a9f6c4-v1-신설)) | **1124/1125** |
-| GET `/tables/{t}/rows/{r}/history` | `get_row_history` | 행 이력 | **2097/2098** |
-| GET `/tables/{t}/rows/{r}/cells/{c}/history` | `get_cell_history` | 셀 이력 (⚠️ **~3332–3307에 동일 경로·동일 함수명이 중복 정의**돼 있다 — FastAPI는 선등록을 쓰므로 **~1964–1939가 유효**하고 뒤의 것은 사문. 2026-07-30 재측정에서도 그대로) | **2123/2124** |
-| GET `/tables/{t}/{r}/{c}/sources` | `get_cell_sources` | 셀의 레이어(소스) 목록 | **3362/3363** |
-| DELETE `/tables/{t}/{r}/{c}/sources/{s}` | `delete_cell_source` | 단일 소스 삭제(+재계산·WS) | **3406/3407** |
-| PUT `/tables/{t}/{r}/{c}/priority` | `set_cell_priority` | 단일 셀 수동 우선순위(Pin) | **3439/3440** |
-| PUT `/tables/{t}/cells/priority/batch` | `set_cell_priority_batch_endpoint` | Pin 일괄 | **3491/3492** |
-| POST `/tables/{t}/cells/sources/delete/batch` | `delete_cell_source_batch_endpoint` | 소스 삭제 일괄 | **3503/3504** |
-| POST `/tables/{t}/cells/sources/query` | `query_cells_sources` | 셀 범위 소스 일괄 조회 | **3574/3575** |
+| GET `/audit_logs/recent` | `get_recent_audit_logs` | 최근 트랜잭션 그룹 이력 | **912/913** |
+| GET `/audit_logs/transaction/{tx_id}` | `get_transaction_logs` | 트랜잭션 상세 로그 | **957/958** |
+| GET `/dashboard/summary` | `get_dashboard_summary` | 대시보드 통계 — 재수정률 + **[V1 `2a9f6c4`] 상호작용 공수 점수** 2종 동봉([§1.1-ter](#11-ter-핵심가치-1-계측--재수정률--상호작용-공수-점수-2a9f6c4-v1-신설)) | **1158/1159** |
+| GET `/tables/{t}/rows/{r}/history` | `get_row_history` | 행 이력 | **2193/2194** |
+| GET `/tables/{t}/rows/{r}/cells/{c}/history` | `get_cell_history` | 셀 이력 (⚠️ **~3332–3307에 동일 경로·동일 함수명이 중복 정의**돼 있다 — FastAPI는 선등록을 쓰므로 **~1964–1939가 유효**하고 뒤의 것은 사문. 2026-07-30 재측정에서도 그대로) | **2219/2220** |
+| GET `/tables/{t}/{r}/{c}/sources` | `get_cell_sources` | 셀의 레이어(소스) 목록 | **3543/3544** |
+| DELETE `/tables/{t}/{r}/{c}/sources/{s}` | `delete_cell_source` | 단일 소스 삭제(+재계산·WS) | **3587/3588** |
+| PUT `/tables/{t}/{r}/{c}/priority` | `set_cell_priority` | 단일 셀 수동 우선순위(Pin) | **3620/3621** |
+| PUT `/tables/{t}/cells/priority/batch` | `set_cell_priority_batch_endpoint` | Pin 일괄 | **3684/3685** |
+| POST `/tables/{t}/cells/sources/delete/batch` | `delete_cell_source_batch_endpoint` | 소스 삭제 일괄 | **3770/3771** |
+| POST `/tables/{t}/cells/sources/query` | `query_cells_sources` | 셀 범위 소스 일괄 조회 | **3837/3838** |
 
 ### 1.4 API 라우트 표 — 어드민/운영/그래프/맵·인리치먼트
 
@@ -407,45 +434,51 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 | 메서드 경로 | 핸들러 | 역할 | 라인 |
 |---|---|---|---|
-| POST `/api/graph/sync` | `manual_graph_sync` | 그래프 **백필/복구** 트리거(:8090 프록시 — 주 경로는 materializer). ⚠️ `/admin` 접두어가 아니라 **게이트 대상이 아니다** (`class GraphSyncRequest` **2464**). 🔴 **[`23a346d`] `httpx.AsyncClient(trust_env=False)`(**2488**)** — 이것은 워커들의 세션과 **같은 규칙의 네 번째 적용 지점**이고, 종전엔 여기만 빠져 있었다. httpx도 `requests`와 똑같이 기본값이 `HTTP_PROXY`/`ALL_PROXY`를 읽으므로 **한 기계 안의 8080→8090 루프백 홉이 사내 프록시로 나간다**. 증상은 워커가 멀쩡한 채로 "그래프 동기화 서버 에러"이고, 그래서 원인을 그래프 쪽에서 찾게 된다([§1.7](#17-serverinternal_event_clientpy--내부-http-호출의-단일-소유자-23a346d-신설)) | **2468/2469** |
-| 🔒 POST `/admin/outbox/retry-failed` | `retry_failed_outbox_events` | outbox 실패 재시도 | **3719/3720** |
-| 🔒 GET `/admin/outbox/failed` | `get_failed_outbox_events` | outbox 실패 목록(페이징) | **3758/3759** |
-| 🔒 GET `/admin/file-ingestion/logs` · `/failed` | `get_file_ingestion_logs` / `get_failed_file_ingestion_logs` | 파일 인제션 로그/실패 목록 | **3828/3863** |
-| 🔒 GET `/admin/file-ingestion/active` | `get_active_file_ingestions` | **[P1]** 진행 중 인제션 스냅샷(레지스트리 `snapshot()` — 인메모리, TTL 퇴거 포함) — admin File 탭/헬스 스트립 소비 | **3869/3870** |
-| 🔒 POST `/admin/file-ingestion/retry-failed` | `retry_failed_file_ingestion` | 아카이브 파일 재처리(동기 콜백 배선 포함) — 워크스페이스는 `resolve_workspace_root` 역조회(별칭 대응) | **4806/4807** |
-| 🔒 GET `/admin/file-ingestion/workspaces` | `get_ingestion_workspaces` | 워크스페이스 현황 — 표시 table_name에 글로벌 별칭(`find_workspace_alias`) 우선 적용 | **4351/4352** |
-| 🔒 POST `/admin/reload-configs` | `reload_system_configs` | config 핫리로드 — 동기 CREATE(1차 DDL 소유자)가 outbox 발화보다 선행 (+SYSTEM_RELOAD outbox 발화). **[2026-07-30] 그래프 resync도 이제 같은 레버를 쓴다** — `graph_sync_worker.publish_system_reload`([§5](#5-소형-서버-모듈)) | **3935/3936** |
-| 🔒 GET `/admin/chain/rules` · `/admin/mappers/list` | `get_chain_rules` / `get_mappers` | 체인 룰·맵퍼 목록 | **4431/4452** |
-| 🔒 GET `/admin/auto-update/status` | `get_auto_update_status` | 스케줄러 상태 — 항목별 `active` 부가(제어 파일 실시간 계산) | **4915/4916** |
-| 🔒 POST `/admin/auto-update/toggle` | `toggle_auto_update_script` | 수집기 active 토글 — `config/auto_update_control.json` 갱신(핫 반영, 404/400 명시) | **4948/4949** |
-| **🔒! POST `/admin/auto-update/run-now`** | `trigger_auto_update_run_now` | 즉시 실행(**active 무관** — 수동 실행은 명시적 의도). **strict인 이유: 스케줄러에게 임의 파이썬 파일을 실행시킨다**(아래 `scripts/code`와 짝) | **4983/4984** |
-| 🔒 GET `/admin/scripts/list` · GET `/admin/scripts/code` | `list_admin_scripts` / `get_admin_script_code` | Monaco 에디터용 스크립트 조회 (경로 검사 `_resolve_admin_script_path` **5282** — 격리 서버가 라이브 트리에 쓰려 하면 **403**. ⚠️ 이 403은 **게이트가 낸 것이 아니라 핸들러가 낸 것**이라 `WWW-Authenticate`가 없다. 클라가 둘을 구분하는 근거 → [§7 `admin.js` `isGateRejection`](#7-client2src--웹-클라이언트)) | **5173/5276** |
-| **🔒! POST `/admin/scripts/code`** | `save_admin_script_code` | 스크립트 저장. **strict인 이유: `mappers/`·`ingestion_workspace/`에 임의 파이썬 파일을 쓴다** | **5313/5314** |
-| GET/POST/DELETE `/map-presets` (+`/api/` 별칭) | `get_map_presets`(**4020**) / `_save_map_preset_impl`(**4025**) / `_delete_map_preset_impl`(**4058**) + 4개 얇은 래퍼 | 맵 프리셋 CRUD (`class MapPresetItem` **4005**, `MAPS_CONFIG_PATH` **3985**) | **4017–4076** |
-| GET `/api/bonding-plan/core-summary` | `get_bonding_plan_core_summary` | **[본딩 M1]** 코어(lot,slot) 역할별 집계 — `bonding_plan.get_core_summary` 위임([§5](#5-소형-서버-모듈)), `region` 파라미터(rects — 현 클라 미사용), 잘못된 region 400 | **4085/4086** |
-| **GET `/api/maps/preset-routing`** | **`get_map_preset_routing(table, map_key, db)`** | **[F5c `50bddda` 신설] `(table, map_key)` → 이 맵을 **열 때** 쓸 기본 물리 규격**. `map_preset_routing.resolve_preset_routing` 위임([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)) — `map_overlay_config.json`의 `preset_routing` 선언 + `maps.json`의 프리셋 본문을 함께 먹인다. 🔴 **우선순위가 서버에 박혀 있다: 저장된 메타 > 라우팅 > 패널.** `wafer_map_metadata`가 있으면 `status:"meta_present"`로 **프리셋 없이** 답하므로 라우팅이 등록된 규격을 덮을 **구조적** 방법이 없다. 답 못 하면 `preset`은 **null**이고(6종 status) 클라는 종전 동작을 유지한다 — 그럴듯한 추측 금지의 근거는 틀린 규격이 `inside`를 바꾸고 그것이 저장 가능한 셀 집합을 바꾼다는 것 | **4184/4185** |
-| GET `/api/maps/overlay` | `get_map_overlay(target_table, target_key, sources, eqp=None, limit=None)` | **[M2 신설 · 맵 인프라]** 임의의 맵들을 타깃 맵 프레임 좌표로 정렬해 `overlays[]` 반환. `sources`는 `table` 또는 `table:key`의 CSV(키 생략 시 target_key 승계, 최대 8종). `map_overlay.get_overlay` 위임([§5](#5-소형-서버-모듈)), `parse_sources` ValueError → 400, 셀 상한 `MAX_OVERLAY_CELLS=20,000`(초과 시 `truncated:true`). ⚠️ **`eqp` 쿼리 파라미터는 no-op으로 존치** — `map_overlay.get_overlay`의 `eqp` 인자는 `by_eqp` 분기와 함께 삭제됐다(축소는 총괄 승인 사항). **맵 에디터 클라는 이 엔드포인트를 호출하지 않는다** | **4119/4120** |
-| GET `/api/maps/paint-rules` | `get_map_paint_rules(table=None)` | (**4157/4158**) **[M2 신설]** 페인트 잠금 선언 정본(**기존엔 클라 하드코딩 `'F'`**) — `map_overlay.get_paint_rules`. **[U6 `95bf072`] 맵 기본값 2종을 같은 응답에 동봉해 클라가 사본을 갖지 않게 한다**: `value_column_candidates`(해석 **완료** 목록 — 항상 존재, `resolve_value_column_candidates`) · `default_legend`(선언 그대로 \| **null** = 정직한 부재, `get_default_legend`). **[F1 `17f65bd`] `binding` 동봉** — `table` 지정 시 그 테이블의 **해석 완료 좌표 바인딩** `{x, y, val, key_columns[], source: "declared"\|"derived"\|"fallback_guess"}` \| null(`map_overlay.resolve_binding_info` — 클라 재유도 금지의 단일 원천, [F2] `fallback_guess`는 데이터 경로가 거부하는 추측이라 클라가 **경고해야** 한다). 응답 `{table, rules{…}, binding, default_legend, value_column_candidates}` | **4157/4158** |
-| GET `/api/transfer-plan/stages` | `get_transfer_plan_stages` | **[M2 신설]** 선언된 전사 stage 목록 + 역할 연결 상태(config 해석만 — 행 조회 없음). `transfer_plan.list_stages` | **4227/4228** |
-| GET `/api/transfer-plan/source-summary` | `get_transfer_plan_source_summary(stage, lot, slot=None, ref_table=None, map_key=None, bins=None, scope="slot")` | 단계별 소스 가용 집계 — 미선언 stage 404, **칩 좌표 목록은 반환하지 않는다**(집계만). `(ref_table, map_key)` 지정 시 `region_chips` 동봉. **[`269b39e` BIN 축]** `bins=1,2` → `bins` 블록 동봉(맵에 없는 BIN은 `status:"bin_absent"` — **절대 0이 아니다**), `bins=`(빈 값) → 전 BIN 나열, 생략 → 블록 없음(기존 소비자 무영향). **`scope=lot`**(자재 토큰 `MID1:2` = 로트 전체)은 `slot` 동반 시 400, 응답에 `chips` 없음 — `transfer_plan.get_lot_bin_summary` 위임. `scope=slot`은 `get_stage_source_summary` | **4266/4267** |
-| GET `/api/transfer-plan/validate` | `validate_transfer_plan(ref_table, map_key)` | 계획 검증 — **계획 정체성 = 지금 열어 편집 중인 맵**(`plan_id` 폐기). stage는 `stages.*.target_map.table` 역인덱스로 유도, 미선언 맵은 404가 아니라 `stage_unknown` 경고 + `status:"unverified"`. **`plan_store.registry` 미구성만 404**. **[`b35bc9f` zone 모델] validate는 이제 zone 컬럼(`stack`/`mat_*`)을 읽고 `bands`는 레거시 읽기 전용** — [§5 transfer_plan.py](#5-소형-서버-모듈) | **4323/4324** |
-| GET `/enrichment/rules` · `.../references/{index}` | `get_enrichment_rules` / `get_enrichment_reference` | 인리치먼트 규칙 공개본·참조 뷰 조회. **[F9 `f3fd785`] 응답 계약이 가산적으로 넓어졌다** — `reference_views[]`가 `{label}`에서 **`{label, candidate_for}`**가 됐다(`enrichment_config.to_public_rule` **~614**). 노출되는 것은 **뷰 결과 컬럼명**이고 그것은 `.../references/{index}` 응답에 이미 헤더로 나타나므로 **신규 노출 0**이며, 숨겨야 할 것(쿼리 본문·`limit`)은 그대로 숨겨져 있다. 🔴 **`get_enrichment_reference`가 인라인 LIMIT 래핑 사본을 버렸다** — 이제 `enrichment_config.execute_reference_view`가 **유일한 정의**이고 예외도 `ReferenceViewError`로 좁혔다(두 정의가 갈라지면 사람이 보는 표시 행 집합과 후보 해석이 다른 행을 보게 된다) | **4504/4519** |
-| 🆕 **🔒 GET `/admin/config/resolve`** | **`get_config_resolve_report(domain=None)`** | **[F9 `f3fd785` 신설] 「내 config가 먹었는가」의 답** — 등록된 config 도메인의 해석 보고서(`effective`/`ineffective`/`rejected` + `settings` + `vocabulary`). `config_resolve_report.resolve_report(domains)` 위임([§5-B](#5-b-serverconfig_resolve_reportpy--내-config가-먹었는가의-답-f3fd785-신설)). `domain`은 **CSV**(`?domain=enrichment,...`)이고 미지 도메인은 조용히 스킵. 🔴 **DB 질의 0건**(설정 파일만 읽는다)이라 요청 경로에 앉아도 되는 것이 이 라우트가 값싼 이유다. 사유는 **닫힌 어휘**(`REASONS` 4종)이고 사람이 읽을 문장은 **서버가 만든다** — 클라는 `detail`을 그대로 렌더하고 「효과 없음」을 스스로 판정하지 않는다(U6 하드코딩 사본 계급의 재발 방지) | **4576/4577** |
-| 🆕 **🔒 GET `/admin/config/virtual-join/verify`** | **`verify_virtual_join_declarations(db)`** | **[`b6942ec` 신설] 「이 가상 조인 선언이 승인됐는가, 아니면 무엇을 만들어야 하는가」.** `virtual_join_config.verification_report(db, known_tables=crud.TABLE_CONFIG)` 위임([§5-C](#5-c-2026-07-31-신설-서버-모듈-2종)) — **`import`는 함수 안**이다.<br>🔴 **`/admin/config/resolve`가 답하지 못하는 절반이다.** 그 라우트는 **「DB 질의 0건」이 계약**이라 설정 파일만 읽는데, 승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는 `pg_index`가 아는 사실이라 세션이 필요하다.<br>🔴 **비싸지 않다 — 행을 세지 않고 카탈로그만 읽는다.** 비용이 테이블 크기와 무관하므로 1,000만 행 테이블에서도 요청 경로에 앉을 수 있다. ⚠️ **직전 판(`4e06eec`)의 중복 프로브는 전수 스캔이라 그럴 수 없었고, 그래서 `b6942ec`가 그것을 통째로 삭제했다** — `CREATE UNIQUE INDEX`가 같은 것을 더 잘 말하기 때문이다(중복이 있으면 PostgreSQL이 **그 중복 키 값을 지목하며** 인덱스 생성에 실패한다).<br>**거부된 선언에는 `required_index_ddl`과 사람이 읽을 `detail` 문장이 실린다** — 문장은 `/admin/config/resolve`와 **같은 조립기**(`config_resolve_report.virtual_join_detail`)가 만든다. 갈라 두면 같은 거부가 두 화면에서 다른 문장으로 나오고, 그 순간 「서버가 문장의 정본」이라는 계약이 깨진다 | **4589/4590** |
-| 🆕 **🔒 GET `/admin/enrichment/auto-confirm/dry-run`** | **`get_enrichment_auto_confirm_dry_run(rule, limit=200, db)`** | **[F9 `f3fd785` 신설] 「이 규칙은 사람 없이 몇 건을 확정할 수 있는가」 — 쓰기 없는 계기.** `enrichment_analysis.run_auto_confirm_sweep(db, target, apply=False, limit, ignore_knob=True)`를 그대로 노출한다(그 함수가 이미 읽기 전용이고 끝에서 구조적으로 rollback하므로 **새로 만든 계기는 없다** — CLI에만 닿아 있던 것을 어드민에서 닿게 할 뿐). 🔴 **`apply`는 이 경로에 존재하지 않는다** — 쓰기는 CLI(`enrichment_insights.py`)에만 남는다. **`ignore_knob=True`가 의도**다: 「켜면 무슨 일이 일어나는가」는 켜기 **전에** 답해야 하는 질문이고, `run_auto_confirm_sweep`은 `ignore_knob`+`apply` 조합을 스스로 거부한다. `AnalysisRefused`는 500이 아니라 **보고서와 같은 어휘**(`refused_reason: "not_declared"`)로 200을 준다 — 클라가 두 표면에서 같은 단어를 읽는다. 상한 `ENRICHMENT_DRY_RUN_DEFAULT_LIMIT=200`(**4616**, **작업 단위 캡과 같은 수**라 "한 작업 단위가 무엇을 했을까"가 그대로 답이 된다)·`ENRICHMENT_DRY_RUN_MAX_LIMIT=2000`(**4617**), `examined >= limit`이면 `truncated: true` | **4620/4621** |
-| WS `/ws` | `websocket_endpoint` | WS 접속(ConnectionManager). ⚠️ **WS 라우트는 게이트 대상이 아니다** — `Depends`가 HTTP 라우트에만 걸리므로 `test_admin_auth.py`도 WS와 mount는 건너뛴다 | **3294/3295** |
-| 🔒 POST `/internal/events/batch-refresh` · `/broadcast` · `/file-processed` | `internal_event_batch_refresh`(**5088**) / `internal_event_broadcast`(**5125**) / `internal_event_file_processed`(**5167**) | **워커/워처 → 웹서버 브로드캐스트 위임 (경계 계약)** — 수신부는 `total_log_count`(실건수) 우선 + `MAX_NOTIFY_CREATED_LOGS` 방어 절단(인시던트 `cc57b64`, 절단 지점 **~5058·~5106**). [P1] batch-refresh는 msg 재구성 시 `total_log_count` 동봉, broadcast는 `file_ingestion_progress`를 레지스트리에 인터셉트, file-processed는 레지스트리 제거 인터셉트. **[`90e284f`] 게이트 추가 — `/internal`이 `/admin`과 같이 묶인 이유는 `broadcast`가 임의 dict를 전 WS 클라이언트에 중계하고 audit_cache에 주입하기 때문**(읽기 전용 admin은 잠그고 이건 열어 두는 것이 거꾸로였다) | **5038/5039 · 5075/5076 · 5117/5118** |
-| 🔒 POST `/internal/events/ingestion-state` | `internal_event_ingestion_state` | **[P1]** watcher → 진행 스냅샷 push(QUEUED/PROCESSING/FINISHED — heavy 파일만 명시 통지). **WS 브로드캐스트 없음** — 레지스트리 전용 내부 이벤트 | **5159/5160** |
-| 🆕 🔒 GET `/admin/retroactive/operations` | `list_retroactive_operations` | **[소급 적용 인벤토리]** `retroactive.inventory()`의 순수 config 투영 — **DB를 건드리지 않는다** | **4722/4723** |
-| 🆕 🔒 GET `/admin/retroactive/{op}/count` | `get_retroactive_count` | 드라이런 미리보기. 🔴 **응답의 `count_kind`가 세 값(`exact`/`sample`/`upper_bound`)인 것이 이 표면의 정직성 계약이다** — 걷지 않고 답한 수를 "N행 스캔"이라고 말하지 않는다 | **4735/4736** |
-| 🆕 🔒 **POST `/admin/retroactive/{op}/run`** | `trigger_retroactive_run` | 🔴 **`require_admin_token_strict`.** 그리고 **여기서 아무것도 실행하지 않는다** — `retroactive.publish`가 outbox 행 1개 + `NOTIFY`만 하고, 실행은 스케줄러 프로세스의 데몬 스레드가 한다([§5-D](#5-d-2026-08-04-신설-서버-모듈)) | **4777/4778** |
-| GET `/admin`·`/admin.html` | `serve_admin_page` | **어드민 HTML 자체는 게이트 없이 서빙된다** — 페이지가 떠야 토큰을 물어볼 수 있다. `test_admin_auth.PUBLIC_ADMIN_PATHS`가 **이 둘만** 면제로 허용한다(이름으로 고정) | **5392/5393** |
-| GET `/map-editor`·`/enrichment` | `serve_map_editor_page` / `serve_enrichment_page` | 정적 페이지 서빙 | **5409/5426** |
-| GET `/{file_name:path}` | **`serve_static_or_index`** | SPA catch-all. **[`90e284f`] 격리(containment) 경계** — 아래 §1.4-bis. **catch-all이 파일 최하단인 것이 계약** — `/health`가 이보다 위에 등록돼야 한다(§1.1-bis) | **5443/5444** |
+| POST `/api/graph/sync` | `manual_graph_sync` | 그래프 **백필/복구** 트리거(:8090 프록시 — 주 경로는 materializer). ⚠️ `/admin` 접두어가 아니라 **게이트 대상이 아니다** (`class GraphSyncRequest` **2464**). 🔴 **[`23a346d`] `httpx.AsyncClient(trust_env=False)`(**2488**)** — 이것은 워커들의 세션과 **같은 규칙의 네 번째 적용 지점**이고, 종전엔 여기만 빠져 있었다. httpx도 `requests`와 똑같이 기본값이 `HTTP_PROXY`/`ALL_PROXY`를 읽으므로 **한 기계 안의 8080→8090 루프백 홉이 사내 프록시로 나간다**. 증상은 워커가 멀쩡한 채로 "그래프 동기화 서버 에러"이고, 그래서 원인을 그래프 쪽에서 찾게 된다([§1.7](#17-serverinternal_event_clientpy--내부-http-호출의-단일-소유자-23a346d-신설)) | **2649/2650** |
+| 🔒 POST `/admin/outbox/retry-failed` | `retry_failed_outbox_events` | outbox 실패 재시도 | **3921/3922** |
+| 🔒 GET `/admin/outbox/failed` | `get_failed_outbox_events` | outbox 실패 목록(페이징) | **3960/3961** |
+| 🔒 GET `/admin/file-ingestion/logs` · `/failed` | `get_file_ingestion_logs` / `get_failed_file_ingestion_logs` | 파일 인제션 로그/실패 목록 | **4029/4031** |
+| 🔒 GET `/admin/file-ingestion/active` | `get_active_file_ingestions` | **[P1]** 진행 중 인제션 스냅샷(레지스트리 `snapshot()` — 인메모리, TTL 퇴거 포함) — admin File 탭/헬스 스트립 소비 | **4071/4072** |
+| 🔒 POST `/admin/file-ingestion/retry-failed` | `retry_failed_file_ingestion` | 아카이브 파일 재처리(동기 콜백 배선 포함) — 워크스페이스는 `resolve_workspace_root` 역조회(별칭 대응) | **5420/5421** |
+| 🔒 GET `/admin/file-ingestion/workspaces` | `get_ingestion_workspaces` | 워크스페이스 현황 — 표시 table_name에 글로벌 별칭(`find_workspace_alias`) 우선 적용 | **4909/4910** |
+| 🔒 POST `/admin/reload-configs` | `reload_system_configs` | config 핫리로드 — 동기 CREATE(1차 DDL 소유자)가 outbox 발화보다 선행 (+SYSTEM_RELOAD outbox 발화). **[2026-07-30] 그래프 resync도 이제 같은 레버를 쓴다** — `graph_sync_worker.publish_system_reload`([§5](#5-소형-서버-모듈)) | **4138/4139** |
+| 🔒 GET `/admin/chain/rules` · `/admin/mappers/list` | `get_chain_rules` / `get_mappers` | 체인 룰·맵퍼 목록 | **4988/4990** |
+| 🔒 GET `/admin/auto-update/status` | `get_auto_update_status` | 스케줄러 상태 — 항목별 `active` 부가(제어 파일 실시간 계산) | **5529/5530** |
+| 🔒 POST `/admin/auto-update/toggle` | `toggle_auto_update_script` | 수집기 active 토글 — `config/auto_update_control.json` 갱신(핫 반영, 404/400 명시) | **5562/5563** |
+| **🔒! POST `/admin/auto-update/run-now`** | `trigger_auto_update_run_now` | 즉시 실행(**active 무관** — 수동 실행은 명시적 의도). **strict인 이유: 스케줄러에게 임의 파이썬 파일을 실행시킨다**(아래 `scripts/code`와 짝) | **5597/5598** |
+| 🔒 GET `/admin/scripts/list` · GET `/admin/scripts/code` | `list_admin_scripts` / `get_admin_script_code` | Monaco 에디터용 스크립트 조회 (경로 검사 `_resolve_admin_script_path` **5282** — 격리 서버가 라이브 트리에 쓰려 하면 **403**. ⚠️ 이 403은 **게이트가 낸 것이 아니라 핸들러가 낸 것**이라 `WWW-Authenticate`가 없다. 클라가 둘을 구분하는 근거 → [§7 `admin.js` `isGateRejection`](#7-client2src--웹-클라이언트)) | **5786/5788** |
+| **🔒! POST `/admin/scripts/code`** | `save_admin_script_code` | 스크립트 저장. **strict인 이유: `mappers/`·`ingestion_workspace/`에 임의 파이썬 파일을 쓴다** | **5927/5928** |
+| GET/POST/DELETE `/map-presets` (+`/api/` 별칭) | `get_map_presets`(**4222**) / `_save_map_preset_impl`(**4227**) / `_delete_map_preset_impl`(**4260**) + 4개 얇은 래퍼 | 맵 프리셋 CRUD (`class MapPresetItem` **4005**, `MAPS_CONFIG_PATH` **3985**) | **4017–4076** |
+| GET `/api/bonding-plan/core-summary` | `get_bonding_plan_core_summary` | **[본딩 M1]** 코어(lot,slot) 역할별 집계 — `bonding_plan.get_core_summary` 위임([§5](#5-소형-서버-모듈)), `region` 파라미터(rects — 현 클라 미사용), 잘못된 region 400 | **4288/4289** |
+| **GET `/api/maps/preset-routing`** | **`get_map_preset_routing(table, map_key, db)`** | **[F5c `50bddda` 신설] `(table, map_key)` → 이 맵을 **열 때** 쓸 기본 물리 규격**. `map_preset_routing.resolve_preset_routing` 위임([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)) — `map_overlay_config.json`의 `preset_routing` 선언 + `maps.json`의 프리셋 본문을 함께 먹인다. 🔴 **우선순위가 서버에 박혀 있다: 저장된 메타 > 라우팅 > 패널.** `wafer_map_metadata`가 있으면 `status:"meta_present"`로 **프리셋 없이** 답하므로 라우팅이 등록된 규격을 덮을 **구조적** 방법이 없다. 답 못 하면 `preset`은 **null**이고(6종 status) 클라는 종전 동작을 유지한다 — 그럴듯한 추측 금지의 근거는 틀린 규격이 `inside`를 바꾸고 그것이 저장 가능한 셀 집합을 바꾼다는 것 | **4742/4743** |
+| GET `/api/maps/overlay` | `get_map_overlay(target_table, target_key, sources, eqp=None, limit=None)` | **[M2 신설 · 맵 인프라]** 임의의 맵들을 타깃 맵 프레임 좌표로 정렬해 `overlays[]` 반환. `sources`는 `table` 또는 `table:key`의 CSV(키 생략 시 target_key 승계, 최대 8종). `map_overlay.get_overlay` 위임([§5](#5-소형-서버-모듈)), `parse_sources` ValueError → 400, 셀 상한 `MAX_OVERLAY_CELLS=20,000`(초과 시 `truncated:true`). ⚠️ **`eqp` 쿼리 파라미터는 no-op으로 존치** — `map_overlay.get_overlay`의 `eqp` 인자는 `by_eqp` 분기와 함께 삭제됐다(축소는 총괄 승인 사항). **맵 에디터 클라는 이 엔드포인트를 호출하지 않는다** | **4324/4325** |
+| GET `/api/maps/paint-rules` | `get_map_paint_rules(table=None)` | (**4157/4158**) **[M2 신설]** 페인트 잠금 선언 정본(**기존엔 클라 하드코딩 `'F'`**) — `map_overlay.get_paint_rules`. **[U6 `95bf072`] 맵 기본값 2종을 같은 응답에 동봉해 클라가 사본을 갖지 않게 한다**: `value_column_candidates`(해석 **완료** 목록 — 항상 존재, `resolve_value_column_candidates`) · `default_legend`(선언 그대로 \| **null** = 정직한 부재, `get_default_legend`). **[F1 `17f65bd`] `binding` 동봉** — `table` 지정 시 그 테이블의 **해석 완료 좌표 바인딩** `{x, y, val, key_columns[], source: "declared"\|"derived"\|"fallback_guess"}` \| null(`map_overlay.resolve_binding_info` — 클라 재유도 금지의 단일 원천, [F2] `fallback_guess`는 데이터 경로가 거부하는 추측이라 클라가 **경고해야** 한다). 응답 `{table, rules{…}, binding, default_legend, value_column_candidates}` | **4715/4716** |
+| 🆕 GET `/api/maps/alignment/view` | `get_map_alignment_view(rule, map_table, params=None, reference=None, include_cells=True, x_col=None, y_col=None, value_col=None, assume_reference_geometry=True, db)` | **[신설] 프레임 정렬 채점 뷰** — `map_alignment.build_alignment_view`(**4469**) 위임. Map Editor 2가 소비하는 참조 뷰 페이로드다(클라 세관은 [`map2/decode.js`](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506)). 🔴 **백분율을 싣지 않는다** — 클라의 `assertNoRatioInPayload`가 그것을 계약으로 채점한다 | **4362/4363** |
+| 🆕 🔴 **POST `/api/maps/alignment/confirm`** | `confirm_map_alignment(payload: dict = Body(...), db)` | **[신설] 이 사슬에서 유일한 쓰기 경로다 — GET 등가물이 없다.** `frame_confirmation.record_confirmation`(**4562**) → `frame_confirmation.as_payload(db, header)`(**4569**); `except frame_confirmation.ConfirmationRefused`(**4570**)가 어휘 관문 셋의 거절을 표면화한다([§5 `frame_confirmation.py`](#-serverframe_confirmationpy-688줄-신설--확정의-기록자)) | **4481/4482** |
+| 🆕 GET `/api/maps/alignment/worklist` | `get_map_alignment_worklist(rule, map_table, params=None, q=None, sort="unit_key", order="asc", limit=map_alignment.DEFAULT_WORKLIST_LIMIT, offset=0, db)` | **[신설]** 확정 대기 단위 목록. `map_alignment.worklist_sort_keys`(**4646**·**4649**) · `MAX_WORKLIST_UNITS`(**4651**) · `build_alignment_worklist`(**4658**). ⚠️ **`limit` 기본값이 모듈 상수다**(**4589**) — 숫자를 여기 베끼지 마라 | **4581/4582** |
+| 🆕 GET `/api/maps/alignment/references` | `get_map_alignment_references(table=None, cap=map_alignment.MAX_REFERENCE_CANDIDATES, db)` | **[신설]** 기준 맵 후보 카탈로그. `MAX_REFERENCE_CANDIDATES`(**4703**) · `resolve_reference_catalog`(**4709**). 클라는 `REFERENCE_CATALOG_SERVED`/`_UNAVAILABLE`로 서빙 여부를 가른다 | **4668/4669** |
+| GET `/api/transfer-plan/stages` | `get_transfer_plan_stages` | **[M2 신설]** 선언된 전사 stage 목록 + 역할 연결 상태(config 해석만 — 행 조회 없음). `transfer_plan.list_stages` | **4785/4786** |
+| GET `/api/transfer-plan/source-summary` | `get_transfer_plan_source_summary(stage, lot, slot=None, ref_table=None, map_key=None, bins=None, scope="slot")` | 단계별 소스 가용 집계 — 미선언 stage 404, **칩 좌표 목록은 반환하지 않는다**(집계만). `(ref_table, map_key)` 지정 시 `region_chips` 동봉. **[`269b39e` BIN 축]** `bins=1,2` → `bins` 블록 동봉(맵에 없는 BIN은 `status:"bin_absent"` — **절대 0이 아니다**), `bins=`(빈 값) → 전 BIN 나열, 생략 → 블록 없음(기존 소비자 무영향). **`scope=lot`**(자재 토큰 `MID1:2` = 로트 전체)은 `slot` 동반 시 400, 응답에 `chips` 없음 — `transfer_plan.get_lot_bin_summary` 위임. `scope=slot`은 `get_stage_source_summary` | **4824/4825** |
+| GET `/api/transfer-plan/validate` | `validate_transfer_plan(ref_table, map_key)` | 계획 검증 — **계획 정체성 = 지금 열어 편집 중인 맵**(`plan_id` 폐기). stage는 `stages.*.target_map.table` 역인덱스로 유도, 미선언 맵은 404가 아니라 `stage_unknown` 경고 + `status:"unverified"`. **`plan_store.registry` 미구성만 404**. **[`b35bc9f` zone 모델] validate는 이제 zone 컬럼(`stack`/`mat_*`)을 읽고 `bands`는 레거시 읽기 전용** — [§5 transfer_plan.py](#5-소형-서버-모듈) | **4881/4882** |
+| GET `/enrichment/rules` · `.../references/{index}` | `get_enrichment_rules` / `get_enrichment_reference` | 인리치먼트 규칙 공개본·참조 뷰 조회. **[F9 `f3fd785`] 응답 계약이 가산적으로 넓어졌다** — `reference_views[]`가 `{label}`에서 **`{label, candidate_for}`**가 됐다(`enrichment_config.to_public_rule` **~614**). 노출되는 것은 **뷰 결과 컬럼명**이고 그것은 `.../references/{index}` 응답에 이미 헤더로 나타나므로 **신규 노출 0**이며, 숨겨야 할 것(쿼리 본문·`limit`)은 그대로 숨겨져 있다. 🔴 **`get_enrichment_reference`가 인라인 LIMIT 래핑 사본을 버렸다** — 이제 `enrichment_config.execute_reference_view`가 **유일한 정의**이고 예외도 `ReferenceViewError`로 좁혔다(두 정의가 갈라지면 사람이 보는 표시 행 집합과 후보 해석이 다른 행을 보게 된다) | **5062/5063** |
+| 🆕 **🔒 GET `/admin/config/resolve`** | **`get_config_resolve_report(domain=None)`** | **[F9 `f3fd785` 신설] 「내 config가 먹었는가」의 답** — 등록된 config 도메인의 해석 보고서(`effective`/`ineffective`/`rejected` + `settings` + `vocabulary`). `config_resolve_report.resolve_report(domains)` 위임([§5-B](#5-b-serverconfig_resolve_reportpy--내-config가-먹었는가의-답-f3fd785-신설)). `domain`은 **CSV**(`?domain=enrichment,...`)이고 미지 도메인은 조용히 스킵. 🔴 **DB 질의 0건**(설정 파일만 읽는다)이라 요청 경로에 앉아도 되는 것이 이 라우트가 값싼 이유다. 사유는 **닫힌 어휘**(`REASONS` 4종)이고 사람이 읽을 문장은 **서버가 만든다** — 클라는 `detail`을 그대로 렌더하고 「효과 없음」을 스스로 판정하지 않는다(U6 하드코딩 사본 계급의 재발 방지) | **5142/5143** |
+| 🆕 **🔒 GET `/admin/config/virtual-join/verify`** | **`verify_virtual_join_declarations(db)`** | **[`b6942ec` 신설] 「이 가상 조인 선언이 승인됐는가, 아니면 무엇을 만들어야 하는가」.** `virtual_join_config.verification_report(db, known_tables=crud.TABLE_CONFIG)` 위임([§5-C](#5-c-2026-07-31-신설-서버-모듈-2종)) — **`import`는 함수 안**이다.<br>🔴 **`/admin/config/resolve`가 답하지 못하는 절반이다.** 그 라우트는 **「DB 질의 0건」이 계약**이라 설정 파일만 읽는데, 승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는 `pg_index`가 아는 사실이라 세션이 필요하다.<br>🔴 **비싸지 않다 — 행을 세지 않고 카탈로그만 읽는다.** 비용이 테이블 크기와 무관하므로 1,000만 행 테이블에서도 요청 경로에 앉을 수 있다. ⚠️ **직전 판(`4e06eec`)의 중복 프로브는 전수 스캔이라 그럴 수 없었고, 그래서 `b6942ec`가 그것을 통째로 삭제했다** — `CREATE UNIQUE INDEX`가 같은 것을 더 잘 말하기 때문이다(중복이 있으면 PostgreSQL이 **그 중복 키 값을 지목하며** 인덱스 생성에 실패한다).<br>**거부된 선언에는 `required_index_ddl`과 사람이 읽을 `detail` 문장이 실린다** — 문장은 `/admin/config/resolve`와 **같은 조립기**(`config_resolve_report.virtual_join_detail`)가 만든다. 갈라 두면 같은 거부가 두 화면에서 다른 문장으로 나오고, 그 순간 「서버가 문장의 정본」이라는 계약이 깨진다 | **5155/5156** |
+| 🆕 **🔒 GET `/admin/enrichment/auto-confirm/dry-run`** | **`get_enrichment_auto_confirm_dry_run(rule, limit=200, db)`** | **[F9 `f3fd785` 신설] 「이 규칙은 사람 없이 몇 건을 확정할 수 있는가」 — 쓰기 없는 계기.** `enrichment_analysis.run_auto_confirm_sweep(db, target, apply=False, limit, ignore_knob=True)`를 그대로 노출한다(그 함수가 이미 읽기 전용이고 끝에서 구조적으로 rollback하므로 **새로 만든 계기는 없다** — CLI에만 닿아 있던 것을 어드민에서 닿게 할 뿐). 🔴 **`apply`는 이 경로에 존재하지 않는다** — 쓰기는 CLI(`enrichment_insights.py`)에만 남는다. **`ignore_knob=True`가 의도**다: 「켜면 무슨 일이 일어나는가」는 켜기 **전에** 답해야 하는 질문이고, `run_auto_confirm_sweep`은 `ignore_knob`+`apply` 조합을 스스로 거부한다. `AnalysisRefused`는 500이 아니라 **보고서와 같은 어휘**(`refused_reason: "not_declared"`)로 200을 준다 — 클라가 두 표면에서 같은 단어를 읽는다. 상한 `ENRICHMENT_DRY_RUN_DEFAULT_LIMIT=200`(**4616**, **작업 단위 캡과 같은 수**라 "한 작업 단위가 무엇을 했을까"가 그대로 답이 된다)·`ENRICHMENT_DRY_RUN_MAX_LIMIT=2000`(**5231**), `examined >= limit`이면 `truncated: true` | **5234/5235** |
+| WS `/ws` | `websocket_endpoint` | WS 접속(ConnectionManager). ⚠️ **WS 라우트는 게이트 대상이 아니다** — `Depends`가 HTTP 라우트에만 걸리므로 `test_admin_auth.py`도 WS와 mount는 건너뛴다 | **3475/3476** |
+| 🔒 POST `/internal/events/batch-refresh` · `/broadcast` · `/file-processed` | `internal_event_batch_refresh`(**5653**) / `internal_event_broadcast`(**5690**) / `internal_event_file_processed`(**5732**) | **워커/워처 → 웹서버 브로드캐스트 위임 (경계 계약)** — 수신부는 `total_log_count`(실건수) 우선 + `MAX_NOTIFY_CREATED_LOGS` 방어 절단(인시던트 `cc57b64`, 절단 지점 **~5058·~5106**). [P1] batch-refresh는 msg 재구성 시 `total_log_count` 동봉, broadcast는 `file_ingestion_progress`를 레지스트리에 인터셉트, file-processed는 레지스트리 제거 인터셉트. **[`90e284f`] 게이트 추가 — `/internal`이 `/admin`과 같이 묶인 이유는 `broadcast`가 임의 dict를 전 WS 클라이언트에 중계하고 audit_cache에 주입하기 때문**(읽기 전용 admin은 잠그고 이건 열어 두는 것이 거꾸로였다) | **5038/5039 · 5075/5076 · 5117/5118** |
+| 🔒 POST `/internal/events/ingestion-state` | `internal_event_ingestion_state` | **[P1]** watcher → 진행 스냅샷 push(QUEUED/PROCESSING/FINISHED — heavy 파일만 명시 통지). **WS 브로드캐스트 없음** — 레지스트리 전용 내부 이벤트 | **5773/5774** |
+| 🆕 🔒 GET `/admin/retroactive/operations` | `list_retroactive_operations` | **[소급 적용 인벤토리]** `retroactive.inventory()`의 순수 config 투영 — **DB를 건드리지 않는다** | **5336/5337** |
+| 🆕 🔒 GET `/admin/retroactive/{op}/count` | `get_retroactive_count` | 드라이런 미리보기. 🔴 **응답의 `count_kind`가 세 값(`exact`/`sample`/`upper_bound`)인 것이 이 표면의 정직성 계약이다** — 걷지 않고 답한 수를 "N행 스캔"이라고 말하지 않는다 | **5349/5350** |
+| 🆕 🔒 **POST `/admin/retroactive/{op}/run`** | `trigger_retroactive_run` | 🔴 **`require_admin_token_strict`.** 그리고 **여기서 아무것도 실행하지 않는다** — `retroactive.publish`가 outbox 행 1개 + `NOTIFY`만 하고, 실행은 스케줄러 프로세스의 데몬 스레드가 한다([§5-D](#5-d-2026-08-04-신설-서버-모듈)) | **5391/5392** |
+| GET `/admin`·`/admin.html` | `serve_admin_page` | **어드민 HTML 자체는 게이트 없이 서빙된다** — 페이지가 떠야 토큰을 물어볼 수 있다. `test_admin_auth.PUBLIC_ADMIN_PATHS`가 **이 둘만** 면제로 허용한다(이름으로 고정) | **6006–6007/6008** |
+| GET `/map-editor`·`/map_editor.html` | `serve_map_editor_page` | 정적 페이지 서빙 | **6023–6024/6025** |
+| 🆕 GET `/map-editor2`·`/map_editor2.html` | **`serve_map_editor2_page`** | **[신설] Map Editor 2 페이지** — 구 에디터를 **대체하지 않고 옆에 선다**([§7-A](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506)) | **6040–6041/6042** |
+| GET `/enrichment`·`/enrichment.html` | `serve_enrichment_page` | 정적 페이지 서빙 | **6066–6067/6068** |
+| GET `/{file_name:path}` | **`serve_static_or_index`** | SPA catch-all. **[`90e284f`] 격리(containment) 경계** — 아래 §1.4-bis. **catch-all이 파일 최하단인 것이 계약** — `/health`가 이보다 위에 등록돼야 한다(§1.1-bis) | **6083/6084** |
 
-> ⚠️ **위 정적 4라우트는 조건부 등록이다** — `serve_admin_page`·`serve_map_editor_page`·`serve_enrichment_page`·`serve_static_or_index` 전부 **`if os.path.exists(client2_dist_path):`(**5387**) 블록 안에 들여쓰기**돼 있다(`client2_dist_path` 조립 **503–505**, 부재 경고 **5384**, `/assets` mount **5390**). 즉 **빌드 산출물이 없으면 이 네 라우트는 앱에 존재하지 않고** `/admin`은 404가 아니라 **catch-all도 없는 상태**가 된다. 게이트 감사(`test_admin_auth.py`)가 앱의 라우트 목록을 훑는 방식이라, dist 없이 돌린 테스트는 이 넷을 **아예 보지 못한다**.
+> ⚠️ **위 정적 라우트는 조건부 등록이다** — `serve_admin_page`(**6008**)·`serve_map_editor_page`(**6025**)·🆕 **`serve_map_editor2_page`(**6042**)**·`serve_enrichment_page`(**6068**)·`serve_static_or_index`(**6084**) 전부 **`if os.path.exists(client2_dist_path):`(**6001**) 블록 안에 들여쓰기**돼 있다(`/assets` mount **6004**). ⚠️ **구 지도가 `client2_dist_path` 조립 지점으로 적던 `503–505`는 이 블록이 쓰는 그 변수가 아니다** — 정적 블록이 읽는 조립은 **5997–5999**에 있고, 503–505 부근의 것은 함수 지역의 다른 사본이다. 즉 **빌드 산출물이 없으면 이 네 라우트는 앱에 존재하지 않고** `/admin`은 404가 아니라 **catch-all도 없는 상태**가 된다. 게이트 감사(`test_admin_auth.py`)가 앱의 라우트 목록을 훑는 방식이라, dist 없이 돌린 테스트는 이 넷을 **아예 보지 못한다**.
 
-> ✅ 🔴 **게이트 개수 재측정 (2026-08-04 여덟 번째 패스) — 구 표기 "24 + 4 = 28"은 틀렸다.** 실측: 게이트 데코레이터 **27개** = `/admin` **23** + `/internal` **4**(`grep -cE '^@app\..*Depends\(require_admin_token' = 27`, 그중 `"/admin"` 23 · `"/internal"` 4). 게이트 없는 `/admin` 라우트는 **0개**다. 그중 **strict는 3개**다: `POST /admin/auto-update/run-now`(**4983**) · `POST /admin/scripts/code`(**5313**) · **`POST /admin/retroactive/{op}/run`(**~4884**)**. 🔴 **셋의 공통점이 strict의 정의다 — 서버가 코드를 실행하게 만드는 요청**이다. 소급 실행이 여기 들어온 것은 그것이 데이터를 지우거나(`withdraw`·`graph_orphans`) 되쓰기(`chain_replay`) 때문이고, **조회 두 라우트는 평범한 `require_admin_token`이다.**
+> ✅ 🔴 **게이트 개수 재측정 (2026-08-04 여덟 번째 패스) — 구 표기 "24 + 4 = 28"은 틀렸다.** 실측(`87a944e`): 게이트 데코레이터 **28개** = `/admin` **24** + `/internal` **4**. 게이트 없는 `/admin` 라우트는 **0개**다. ⚠️ **구 표기 27 = 23 + 4는 낡았고, 같은 문서의 다른 자리가 「24 + 4 = 28」이라 적어 두 값이 공존하고 있었다** — 지금은 실측이 후자와 일치한다. **strict — 전건 열거**(이름으로 고정, 개수에 기대지 않는다): **`POST /admin/retroactive/{op}/run`(**5391/5392**) · `POST /admin/auto-update/run-now`(**5597/5598**) · `POST /admin/scripts/code`(**5927/5928**)**. 🔴 **셋의 공통점이 strict의 정의다 — 서버가 코드를 실행하게 만드는 요청**이다. 소급 실행이 여기 들어온 것은 그것이 데이터를 지우거나(`withdraw`·`graph_orphans`) 되쓰기(`chain_replay`) 때문이고, **조회 두 라우트는 평범한 `require_admin_token`이다.**
 
 ### 1.4-bis `serve_static_or_index` — SPA catch-all이자 **파일시스템 격리 경계** (`90e284f`)
 
@@ -454,7 +487,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 구간 | 라인 | 내용 |
 |---|---|---|
 | 접두어 목록 (`tables`/`ws`/`audit_logs`/`dashboard`/`admin`/`map-editor`/`map_editor`/`map-presets`/`enrichment/`/`api`) | **5449–5458** | **API 섀도잉 방지장치이지 보안 경계가 아니다** — 소스 주석이 그렇게 명시한다(**5445–5448**). 경로 **시작**만 보므로 `../../server/config/table_config.json`은 `admin`과 조금도 닮지 않아 그대로 통과한다 |
-| **격리 검사** | **5475–5479** | `dist_base = os.path.abspath(client2_dist_path)` → `target_path = os.path.abspath(os.path.join(dist_base, file_name))` → **`target_path`가 `dist_base` 자신이거나 `dist_base + os.sep`로 시작하지 않으면 거부.** `_resolve_admin_script_path`(**5282**)와 **같은 모양**이다(사유 주석 **5461–5096**) |
+| **격리 검사** | **5475–5479** | `dist_base = os.path.abspath(client2_dist_path)` → `target_path = os.path.abspath(os.path.join(dist_base, file_name))` → **`target_path`가 `dist_base` 자신이거나 `dist_base + os.sep`로 시작하지 않으면 거부.** `_resolve_admin_script_path`(**5847**)와 **같은 모양**이다(사유 주석 **5461–5096**) |
 | 서빙/폴백 | **5481–5487** | 통과한 실파일만 `FileResponse`, 그 외 `index.html` |
 
 **이 형태를 "단순화"하지 마라 — 세 가지가 전부 의도다:**
@@ -469,15 +502,15 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 메서드 경로 | 핸들러 | 역할 | 라인 |
 |---|---|---|---|
 | (상수) | `GRAPH_NEIGHBOR_NODE_CAP=500` / `GRAPH_NEIGHBOR_EDGE_FETCH_CAP=2000` / `GRAPH_SEARCH_LIMIT_CAP=50` / `GRAPH_LABEL_LIST_LIMIT_CAP=200` / `GRAPH_TRACE_NODE_CAP=1000` / `GRAPH_TRACE_DEPTH_CAP=3` / `GRAPH_TRACE_DEFAULT_LIMIT=500` | 하드캡(C-7 무제한 로드 금지) | **2525–2531** |
-| (헬퍼) | `_expand_graph_subgraph(db, seed_nodes, depth, node_cap, edge_types=None, time_from=None, time_to=None)` | 뷰어/추적 **공용 BFS 코어** — 방향별 (from,type)/(to,type) 인덱스 2쿼리, 홉·방향당 엣지 페치 캡 2000, 노드 500청크 IN, 캡 절단 시 dangling 엣지 제외 | **2596** |
-| (헬퍼) | **`_serialize_graph_edge(e, include_props=False) -> dict`** | **[2026-07-30 추출] 엣지 직렬화의 단일 정의** — `{from,to,type,source_name,updated_by,event_time}` + `include_props`면 `props`. **직접 호출부는 2곳**(`_expand_graph_subgraph` 내 **2596** · `get_chip_trace` 내 **3123**)인데 **소비 엔드포인트는 3개**다: 앞의 호출이 공용 BFS 코어 안에 있어 `/graph/neighbors`와 `/graph/trace` 둘이 그것을 타고, `/graph/chip-trace`가 직접 부른다. chip-trace만 `include_props=True`인 이유는 `eventtime`·`dt_eqp`가 **답 자체**라서다(없으면 `BONDED_TO` 3건이 재작업 순서가 아니라 순서 없는 집합이 된다) | **2682** |
-| (헬퍼) | `_serialize_graph_nodes(nodes)` | 노드 `{id,label,identity_key,props}` 직렬화 — 위 3엔드포인트 공용 | **2703** |
-| GET `/graph/stats` | `get_graph_stats` | label/edge_type GROUP BY 카운트 + last_sync | **2711/2712** |
-| GET `/graph/neighbors` | `get_graph_neighbors` | k-hop(1\|2) 서브그래프 — `_expand_graph_subgraph([center])` 위임, truncated | **2736/2737** |
-| GET `/graph/nodes/search` | `search_graph_nodes` | identity 시작일치 자동완성(limit 캡 50) + **빈 q + label = 라벨 전체 리스팅**(identity 오름차순, limit/offset, 캡 200. 전 테이블 덤프 금지 유지). 🔴 **[F3 `4e8e867`] 술어가 교체됐다** — 구 `identity_key.ilike(_escape_like_term(term)+'%')`가 **`value_suggest.prefix_conditions(col, value_suggest.db_fold(db, term), is_pg)`**(**2813–2815**)로 바뀌었다. 이유는 인덱스다: `Korean_Korea.949` PG에서 btree는 `LIKE prefix%` 범위를 못 서빙해 전 엔트리를 Filter로 버렸다. 대소문자 무시 의미론은 양쪽에 `lower()`를 적용해 보존. **`_escape_like_term`은 함께 삭제**([§0](#0-묘비-목록--소스에-존재하지-않는-이름)) — 범위 비교에서 `%`·`_`는 그냥 문자다. ⚠️ **이 라우트에는 술어 뒤에 2차 필터가 없다** — 그래서 `prefix_conditions`는 상위집합이 아니라 **정확한 범위**여야 한다 | **2771/2772** |
-| (헬퍼) | `_parse_trace_time(value, field)` | ISO 8601 파싱(`Z` 허용), 실패 시 400 | **2851** |
-| POST `/graph/trace` | `post_graph_trace(req: GraphTraceRequest, db)` | **[G2]** 멀티 시드 BFS 합집합 — 시드 순서보존 dedup→(label,identity) 인덱스 조회→missing_seeds 분리→공용 BFS. depth 1..3, 시간·타입 필터, 의미 검증 400 (`GraphTraceSeed` **2836** · `GraphTraceRequest` **2841**). ⚠️ **POST다**(GET 아님) | **2863/2864** |
-| GET `/graph/mapping-summary` | `get_graph_mapping_summary` | `ontology_config.load_ontology_mappings(known_tables=crud.TABLE_CONFIG)` — materializer와 동일 신호원, 요청 시 디스크 로드. **[2026-07-30] `rejections` 수집기를 넘겨 `rejected`+`rejected_count`를 기존 응답에 **추가**한다**(새 엔드포인트를 만들지 않았다 — [§5 `ontology_config`](#5-소형-서버-모듈)) | **3250/3251** |
+| (헬퍼) | `_expand_graph_subgraph(db, seed_nodes, depth, node_cap, edge_types=None, time_from=None, time_to=None)` | 뷰어/추적 **공용 BFS 코어** — 방향별 (from,type)/(to,type) 인덱스 2쿼리, 홉·방향당 엣지 페치 캡 2000, 노드 500청크 IN, 캡 절단 시 dangling 엣지 제외 | **2777** |
+| (헬퍼) | **`_serialize_graph_edge(e, include_props=False) -> dict`** | **[2026-07-30 추출] 엣지 직렬화의 단일 정의** — `{from,to,type,source_name,updated_by,event_time}` + `include_props`면 `props`. **직접 호출부는 2곳**(`_expand_graph_subgraph` 내 **2596** · `get_chip_trace` 내 **3123**)인데 **소비 엔드포인트는 3개**다: 앞의 호출이 공용 BFS 코어 안에 있어 `/graph/neighbors`와 `/graph/trace` 둘이 그것을 타고, `/graph/chip-trace`가 직접 부른다. chip-trace만 `include_props=True`인 이유는 `eventtime`·`dt_eqp`가 **답 자체**라서다(없으면 `BONDED_TO` 3건이 재작업 순서가 아니라 순서 없는 집합이 된다) | **2863** |
+| (헬퍼) | `_serialize_graph_nodes(nodes)` | 노드 `{id,label,identity_key,props}` 직렬화 — 위 3엔드포인트 공용 | **2884** |
+| GET `/graph/stats` | `get_graph_stats` | label/edge_type GROUP BY 카운트 + last_sync | **2892/2893** |
+| GET `/graph/neighbors` | `get_graph_neighbors` | k-hop(1\|2) 서브그래프 — `_expand_graph_subgraph([center])` 위임, truncated | **2917/2918** |
+| GET `/graph/nodes/search` | `search_graph_nodes` | identity 시작일치 자동완성(limit 캡 50) + **빈 q + label = 라벨 전체 리스팅**(identity 오름차순, limit/offset, 캡 200. 전 테이블 덤프 금지 유지). 🔴 **[F3 `4e8e867`] 술어가 교체됐다** — 구 `identity_key.ilike(_escape_like_term(term)+'%')`가 **`value_suggest.prefix_conditions(col, value_suggest.db_fold(db, term), is_pg)`**(**2813–2815**)로 바뀌었다. 이유는 인덱스다: `Korean_Korea.949` PG에서 btree는 `LIKE prefix%` 범위를 못 서빙해 전 엔트리를 Filter로 버렸다. 대소문자 무시 의미론은 양쪽에 `lower()`를 적용해 보존. **`_escape_like_term`은 함께 삭제**([§0](#0-묘비-목록--소스에-존재하지-않는-이름)) — 범위 비교에서 `%`·`_`는 그냥 문자다. ⚠️ **이 라우트에는 술어 뒤에 2차 필터가 없다** — 그래서 `prefix_conditions`는 상위집합이 아니라 **정확한 범위**여야 한다 | **2952/2953** |
+| (헬퍼) | `_parse_trace_time(value, field)` | ISO 8601 파싱(`Z` 허용), 실패 시 400 | **3032** |
+| POST `/graph/trace` | `post_graph_trace(req: GraphTraceRequest, db)` | **[G2]** 멀티 시드 BFS 합집합 — 시드 순서보존 dedup→(label,identity) 인덱스 조회→missing_seeds 분리→공용 BFS. depth 1..3, 시간·타입 필터, 의미 검증 400 (`GraphTraceSeed` **2836** · `GraphTraceRequest` **2841**). ⚠️ **POST다**(GET 아님) | **3044/3045** |
+| GET `/graph/mapping-summary` | `get_graph_mapping_summary` | `ontology_config.load_ontology_mappings(known_tables=crud.TABLE_CONFIG)` — materializer와 동일 신호원, 요청 시 디스크 로드. **[2026-07-30] `rejections` 수집기를 넘겨 `rejected`+`rejected_count`를 기존 응답에 **추가**한다**(새 엔드포인트를 만들지 않았다 — [§5 `ontology_config`](#5-소형-서버-모듈)) | **3431/3432** |
 
 #### 1.5-bis `GET /graph/chip-trace` — 칩 1개의 이력, **웨이퍼 범위로 한정** (`aea4700`+`8670e3b`+`530fdfd`)
 
@@ -485,13 +518,13 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 | 구간 | 시그니처 / 상수 | 내용 | 라인 |
 |---|---|---|---|
-| 선언 상수 | `GRAPH_CHIP_TRACE_SEED_LABEL="CoreCell"`(**2546**) · `_SCOPE_EDGE=("FROM_CORE","Core")`(**2547**) · `_CHIP_LEGS`(**2551**, `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell`) · `_EVENT_EDGE=("PERFORMED_ON","ProcessEvent")`(**2558**) · `_EVENT_DECLARED=("PERFORMED_ON","Core")`(**2559**) · `_TERMINAL_LEGS`(**2561**, `USED_KNOB`/`USED_RECIPE`/`EXECUTED_BY`) | 형태 선언 | **2546–2564** |
+| 선언 상수 | `GRAPH_CHIP_TRACE_SEED_LABEL="CoreCell"`(**2727**) · `_SCOPE_EDGE=("FROM_CORE","Core")`(**2547**) · `_CHIP_LEGS`(**2551**, `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell`) · `_EVENT_EDGE=("PERFORMED_ON","ProcessEvent")`(**2558**) · `_EVENT_DECLARED=("PERFORMED_ON","Core")`(**2559**) · `_TERMINAL_LEGS`(**2561**, `USED_KNOB`/`USED_RECIPE`/`EXECUTED_BY`) | 형태 선언 | **2546–2564** |
 | 캡 | `_EVENT_CAP=500`(**2566**, 라이브 최대 206) · `_TARGET_CAP=200`(**2567**, 라이브 최대 6) · `_TERMINAL_CAP=4*_EVENT_CAP`(**2574**) · `_ID_CHUNK=500`(**2575**, assert **2583**) | 🔴 **import 시점 `assert _EVENT_CAP <= _ID_CHUNK`** — 문서화된 절단 순서 `(identity_key, edge id)`는 앵커 집합이 IN-list 한 청크에 들어갈 때만 성립한다 | **2566–2575** |
-| status 어휘 | `CHIP_TRACE_RECORDED`(**2945**) · `_NONE="none_recorded"`(**2946**, 선언됐고 0행 — 본딩만 있는 8,493칩) · `_NOT_DECLARED`(**2947**) · `_SCOPE_UNRESOLVED`(**2948**, Core가 0개 또는 2개↑ — **고르지 않는다**) · `_MAPPING_UNAVAILABLE`(**2956**) · `_NOT_REACHED`(**2959**) | "없다"의 다섯 가지를 구분한다 | **2945–2959** |
-| 헬퍼 | `_chip_trace_declaration()` | 반환 `(declared_pairs, report)` — `load_ontology_mappings(..., rejections=[])`를 걷어 `degraded`를 판정하고 `{status, path, exists, rejected}`를 응답 `declaration`에 싣는다. **`degraded`가 바꾸는 status는 정확히 하나**: `not_declared` → `mapping_unavailable`. 그것만이 선언의 **부재**를 주장하는 status이기 때문 — 매핑 파일이 저장 중이라 안 읽히는 순간에 "`BONDED_TO→BaseCell`은 선언되지 않았다"고 200으로 답하던 결함(엣지는 `graph_edges`에 그대로 있었다) | **2962** |
-| 헬퍼 | `_chip_trace_sort_key(pair)` | `event_time` NULL 후순위 → `identity_key` → edge id. **파이썬에서 재정렬하는 이유는 `NULLS LAST`가 SQLite 테스트 경로로 이식되지 않기 때문** | **3021** |
-| 헬퍼 | `_chip_trace_leg(db, anchor_ids, edge_type, other_label, cap, inbound, declared, declared_pair=None, declaration_degraded=False, anchor_leg=None)` | 홉 1개 실행 → `(leg_dict, [(edge,node)…])`. `leg_dict` = `{edge_type,target_label,status,count,node_ids,truncated,capped_at}`(+미도달 시 `blocked_by`). **`anchor_leg`이 핵심**: "앵커가 진짜 0행이었다"(→ `none_recorded`는 건전한 추론)와 "앵커가 `not_declared`라 쿼리가 아예 안 돌았다"(→ `not_reached`)를 가른다 — 이것이 terminal이 "이 웨이퍼는 knob을 안 썼다"고 말하던 것을 막았다. **`count`(엣지 주장 수)와 `node_ids`(구별되는 엔티티 수)는 의도적으로 다르다**: `BONDED_TO` 3건 = 재작업 3회. `limit(cap+1-len)`으로 "정확히 캡"과 "절단"을 구분 | **3031** |
-| 엔드포인트 | `get_chip_trace(identity, db)` | 범위 채택 조건이 엄격하다 — `len(scope_leg["node_ids"]) == 1 and not scope_leg["truncated"]`가 아니면 `wafer.status = scope_unresolved` + `scope_candidates`. 테스트: `server/tests/test_chip_trace_api.py` | **3122/3123** |
+| status 어휘 | `CHIP_TRACE_RECORDED`(**3126**) · `_NONE="none_recorded"`(**2946**, 선언됐고 0행 — 본딩만 있는 8,493칩) · `_NOT_DECLARED`(**2947**) · `_SCOPE_UNRESOLVED`(**2948**, Core가 0개 또는 2개↑ — **고르지 않는다**) · `_MAPPING_UNAVAILABLE`(**2956**) · `_NOT_REACHED`(**2959**) | "없다"의 다섯 가지를 구분한다 | **2945–2959** |
+| 헬퍼 | `_chip_trace_declaration()` | 반환 `(declared_pairs, report)` — `load_ontology_mappings(..., rejections=[])`를 걷어 `degraded`를 판정하고 `{status, path, exists, rejected}`를 응답 `declaration`에 싣는다. **`degraded`가 바꾸는 status는 정확히 하나**: `not_declared` → `mapping_unavailable`. 그것만이 선언의 **부재**를 주장하는 status이기 때문 — 매핑 파일이 저장 중이라 안 읽히는 순간에 "`BONDED_TO→BaseCell`은 선언되지 않았다"고 200으로 답하던 결함(엣지는 `graph_edges`에 그대로 있었다) | **3143** |
+| 헬퍼 | `_chip_trace_sort_key(pair)` | `event_time` NULL 후순위 → `identity_key` → edge id. **파이썬에서 재정렬하는 이유는 `NULLS LAST`가 SQLite 테스트 경로로 이식되지 않기 때문** | **3202** |
+| 헬퍼 | `_chip_trace_leg(db, anchor_ids, edge_type, other_label, cap, inbound, declared, declared_pair=None, declaration_degraded=False, anchor_leg=None)` | 홉 1개 실행 → `(leg_dict, [(edge,node)…])`. `leg_dict` = `{edge_type,target_label,status,count,node_ids,truncated,capped_at}`(+미도달 시 `blocked_by`). **`anchor_leg`이 핵심**: "앵커가 진짜 0행이었다"(→ `none_recorded`는 건전한 추론)와 "앵커가 `not_declared`라 쿼리가 아예 안 돌았다"(→ `not_reached`)를 가른다 — 이것이 terminal이 "이 웨이퍼는 knob을 안 썼다"고 말하던 것을 막았다. **`count`(엣지 주장 수)와 `node_ids`(구별되는 엔티티 수)는 의도적으로 다르다**: `BONDED_TO` 3건 = 재작업 3회. `limit(cap+1-len)`으로 "정확히 캡"과 "절단"을 구분 | **3212** |
+| 엔드포인트 | `get_chip_trace(identity, db)` | 범위 채택 조건이 엄격하다 — `len(scope_leg["node_ids"]) == 1 and not scope_leg["truncated"]`가 아니면 `wafer.status = scope_unresolved` + `scope_candidates`. 테스트: `server/tests/test_chip_trace_api.py` | **3303/3304** |
 
 ---
 
@@ -506,7 +539,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `ADMIN_TOKEN_ENV="ASSY_ADMIN_TOKEN"` / `ADMIN_TOKEN_HEADER="X-Admin-Token"` | 운영자가 세팅하는 환경변수명 / 제시 헤더명. **헤더명이 `X-User`/`X-Transaction-ID`/`X-Source`와 다른 것이 계약** — 컨텍스트 미들웨어가 읽는 이름과 겹치지 않아야 토큰이 `AuditLog` 행에 실려 들어가지 못한다 | ~81/85 |
-| **`GATE_CHALLENGE_HEADER="WWW-Authenticate"`** / `_GATE_HEADERS` | **게이트 자신이 낸 거부에만 붙는 마커.** 상태코드만으로는 부족하다 — `_resolve_admin_script_path`도 403을 내는데(격리 서버가 라이브 트리에 쓰려 할 때) 그건 토큰과 무관하다. 이 헤더가 없던 시절 어드민 페이지는 그 403을 "토큰이 틀렸다"로 읽고 **멀쩡한 저장 토큰을 덮어썼다**. 🆕 **[`23a346d`] 이제 두 번째 소비자가 있다** — 아래 `internal_event_failure_note`가 **같은 헤더로 "우리 게이트 / 앞단의 무언가"를 가른다** | ~100/101 |
+| **`GATE_CHALLENGE_HEADER="WWW-Authenticate"`** / `_GATE_HEADERS` | **게이트 자신이 낸 거부에만 붙는 마커.** 상태코드만으로는 부족하다 — `_resolve_admin_script_path`도 403을 내는데(격리 서버가 라이브 트리에 쓰려 할 때) 그건 토큰과 무관하다. 이 헤더가 없던 시절 어드민 페이지는 그 403을 "토큰이 틀렸다"로 읽고 **멀쩡한 저장 토큰을 덮어썼다**. 🆕 **[`23a346d`] 이제 두 번째 소비자가 있다** — 아래 `internal_event_failure_note`가 **같은 헤더로 "우리 게이트 / 앞단의 무언가"를 가른다** | **5846/5847** |
 | 🆕 **`TOKEN_FINGERPRINT_CHARS=8`** / `FINGERPRINT_NONE="none"` / `FINGERPRINT_UNUSABLE="unusable-non-ascii"` | 지문 길이와 **지문이 없는 두 상태의 대역 문자열**. 둘 다 의도적으로 비-16진이고 **서로 다르다** — 두 로그를 맞춰 보는 운영자가 한쪽에서 아무것도 못 보면 "미설정인가, 줄이 안 돈 건가"를 구분할 수 없고, "설정됐지만 못 쓴다"는 **처방이 다르다**(변수를 추가하는 게 아니라 **교체**해야 한다) | ~119/126/127 |
 | `_raw_token()` / **`token_is_unusable()`** | env 원문(strip) / **토큰이 설정됐지만 절대 인증될 수 없는 상태**(비-ASCII). HTTP 헤더는 latin-1로 디코딩돼 오므로 비-ASCII 비밀은 왕복에서 살아남지 못한다 — 모든 정답 시도가 "틀렸다"로 답해지는데 기동 배너는 "잠겼다"고 안심시킨다. **토큰이 아예 없는 것보다 나쁜 실패**라 요청 시점에 맡기지 않고 명시적으로 탐지한다 | ~130/134 |
 | **`configured_token()`** | 운영자의 비밀 \| **`None`**. import 시점이 아니라 **호출 시점에 읽는다**(테스트가 `main`을 재import하지 않고 env를 monkeypatch할 수 있게). 공백만 있는 값은 미설정 취급 — 빈 문자열을 export한 운영자는 아무것도 설정하지 않은 것이고, 그걸 진짜 토큰으로 치면 **아무 요청이나 맞힐 수 있는 비밀**이 된다. 비-ASCII도 `None`으로 떨어져 **미설정 상태**(코드 실행만 거부, 나머지는 개방)에 착지한다 — 아무도 제시할 수 없는 비밀로 강제하면 **어드민 16개 라우트가 전부 벽돌**이 되고 복구는 변수를 지우고 재시작하는 길뿐이다 | ~147 |
@@ -517,7 +550,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | **`require_admin_token_strict(request)`** | 코드 실행에 닿는 **2 라우트 전용**(`POST /admin/scripts/code` · `POST /admin/auto-update/run-now`). 토큰 미설정이면 **503으로 거부**한다 — 비밀 설정을 잊은 것이 구멍을 열어 두는 결과가 되면 안 된다. **이 둘은 절대 개방되지 않는다** | ~237 |
 | **`ADMIN_GATES = (require_admin_token, require_admin_token_strict)`** | 이 모듈이 제공하는 의존성 전량. `tests/test_admin_auth.py`가 **FastAPI 앱의 라우트를 직접 훑어** 각 `/admin`·`/internal` 라우트가 이 둘 중 하나로 해석되는지 단언한다 — 나중에 추가된 무방비 라우트는 배포되지 않고 스위트에서 깨진다(**손으로 관리하는 목록이 아니다**) | ~249 |
 | **`internal_event_headers()`** | 워커가 `/internal/events/*`를 호출할 때 붙일 헤더 dict. 워커는 `run_decoupled_app.py`의 자식이고 `process_supervisor`가 각 자식 env를 `os.environ.copy()`(~366)로 만들므로 **런처에 한 번 세팅하면 충분**하다. 토큰 미설정 시 빈 dict(게이트가 열려 있는 상태와 대칭) | ~252 |
-| `startup_banner() -> (level, message)` | **API 서버**의 기동 로그 한 줄. **3상태**: 비-ASCII → `error`(가장 시끄럽다 — 운영자가 잠겼다고 **믿고** 있다) / 설정됨 → `info` / 미설정 → `warning`(**무엇이 멈추는지 이름으로 말한다**). 🆕 **세 문구 전부에 지문이 실린다**. `main.py`가 `_admin_auth_banner_logged`(~185)로 1회만 찍는다 | ~265 |
+| `startup_banner() -> (level, message)` | **API 서버**의 기동 로그 한 줄. **3상태**: 비-ASCII → `error`(가장 시끄럽다 — 운영자가 잠겼다고 **믿고** 있다) / 설정됨 → `info` / 미설정 → `warning`(**무엇이 멈추는지 이름으로 말한다**). 🆕 **세 문구 전부에 지문이 실린다**. `main.py`가 `_admin_auth_banner_logged`(~249)로 1회만 찍는다 | **249** |
 | 🆕 **`worker_token_banner(process_label) -> (level, message)`** | **데몬 쪽 배너 — 위 배너의 나머지 반쪽.** 지문 하나는 비교가 아니므로 서버 배너만으로는 운영자가 실제로 가진 질문("양쪽이 같은 토큰인가")에 답할 수 없다. **실패 시에만이 아니라 무조건 찍는 것이 요점**이다: 아무도 토큰을 안 쥔 트리는 `/internal/events/*`에 200을 계속 내주면서 배포 기록만 "잠김"이라고 말하고, **들여다볼 계기가 되는 실패가 영영 오지 않는다**. 소비는 [§1.7 `startup_lines`](#17-serverinternal_event_clientpy--내부-http-호출의-단일-소유자-23a346d-신설) 한 곳 | ~302 |
 | 🆕 `_AUTH_SHAPED_STATUSES=(401,403,407)` / `_UPSTREAM_ID_HEADERS=("Server","Via")` / `_HEADER_ECHO_LIMIT=60` / `_safe_header_echo(value)` | 인증처럼 생긴 상태코드만 주석을 받는다(500·404·502는 무주석 — 평범한 API 실패에 인증 문단이 자라면 안 된다) / 우리가 아닐 때 누가 답했는지 이름 / 에코 상한 / **상류 헤더 값을 인쇄 가능 단일행 ASCII로 접는다** — 자기 `Server` 문자열을 고르는 상류는 개행을 접어 **자기 로그 줄을 쓸 수 있다** | ~343/348/350/353 |
 | 🔴 🆕 **`internal_event_failure_note(status_code, response_headers=None) -> str\|None`** | **`/internal/events/*` POST를 거부한 것이 누구인지 한 줄로 말하고 처방까지 준다.** 인증형 상태가 아니면 `None`.<br>**판별식은 `GATE_CHALLENGE_HEADER`다** — `_enforce`가 자기가 내는 모든 거부에 붙이는 그 헤더. **있으면** 이 애플리케이션이 거부한 것이고 처방은 토큰 이야기다. **4xx인데 없으면 FastAPI 앞단의 무언가가 거부한 것이고, 재기동도 토큰 재발급도 아무것도 고치지 못한다.** 비교는 상수와 **대소문자 무시 완전일치**다(프록시 자신의 `WWW-Authenticate: Basic realm=…`이 우리 것으로 읽히면 안 된다).<br>🔴 **이 판별자는 만들어져서 전송까지 되고 있었는데 쓸 자리에서 버려지고 있었다** — 세 발신자가 상태코드만 로그했다. 게이트는 **헤더 없는 요청에 403을 낼 수 없다**(401을 낸다). 그러니 프로덕션의 반복 403은 처음부터 우리 것이 아니었고, 그것을 확정하는 데 소스 고고학이 들었다 | ~370 |
@@ -605,12 +638,12 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 > | 99– | **+292** | 🆕 **버전 게이트 블록 292줄 삽입**(**99–390**) |
 > | 537– | **+500** | 🆕 **컬럼→비교 텍스트 렌더러 가족 208줄 삽입**(**829–1036**) |
 > | 1096– | **+547** | `apply_row_update_internal` 안 **+47**(버전 게이트 호출 + 그 사유 배선) |
-> | 1688– | **+584** | 🆕 `refuse_notation_derived_columns` **37줄** |
+> | 1688– | 🪦 **무효** | 🆕 ~~`refuse_notation_derived_columns`~~는 삭제됐다 — 이 계단은 성립하지 않는다 |
 > | 1701– | **+597** | `apply_batch_updates` 본체 안 **+13**(가드 2줄 · 버전 요약 로깅) |
 >
-> ⚠️ **직전 패스가 이 절에서 112줄을 놓쳤던 실패는 반복되지 않게 이번엔 끝·경계·최근 변경 구역에서 표본을 뽑았다** — `set_cell_manual_priority_batch`(**2726**) · `check_needs_rollback`(**3136**) · `get_row_cell`(**2558**) 셋이 파일 뒤쪽 표본이고 전부 위 계단표와 일치한다. 🔴 **핀은 "파일이 안 바뀌었다"만 말하지 "지도가 이 파일을 옳게 적었다"를 말하지 않는다.** 앞쪽 절반이 전건 일치하는 표는 뒤쪽 절반도 맞아 보인다.
+> ⚠️ **직전 패스가 이 절에서 112줄을 놓쳤던 실패는 반복되지 않게 이번엔 끝·경계·최근 변경 구역에서 표본을 뽑았다** — `set_cell_manual_priority_batch`(**3079**) · `check_needs_rollback`(**3489**) · `get_row_cell`(**2911**) 셋이 파일 뒤쪽 표본이고 전부 위 계단표와 일치한다. 🔴 **핀은 "파일이 안 바뀌었다"만 말하지 "지도가 이 파일을 옳게 적었다"를 말하지 않는다.** 앞쪽 절반이 전건 일치하는 표는 뒤쪽 절반도 맞아 보인다.
 >
-> 아래 표에 **없는** 실재 심볼: `SOURCE_PRIORITY`(**414**) · `USER_SOURCE`(**431**) · `CONFIG_PATH`(**442**) · `TABLE_CONFIG` 싱글턴(**599**) · 재수정률 블록 `RECORRECTION_WINDOW_DAYS`(**1181**)/`_is_json_null`(**1188**)/**`get_recorrection_stats`(**1199**)** · `EFFORT_WINDOW_DAYS`(**1270**) · `create_empty_row`(**2448**) · `get_row_cell`(**2558**).
+> 아래 표에 **없는** 실재 심볼: `SOURCE_PRIORITY`(**418**) · `USER_SOURCE`(**435**) · `CONFIG_PATH`(**446**) · `TABLE_CONFIG` 싱글턴(**599**) · 재수정률 블록 `RECORRECTION_WINDOW_DAYS`(**1185**)/`_is_json_null`(**1192**)/**`get_recorrection_stats`(**1203**)** · `EFFORT_WINDOW_DAYS`(**1274**) · `create_empty_row`(**2801**) · `get_row_cell`(**2911**).
 
 #### 🆕 2026-08-04 신설 블록 ① — 버전 게이트 (**99–390**) : 「권위는 버전이지 도착 순서가 아니다」
 
@@ -623,13 +656,13 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 시그니처 / 상수 | 역할 | 라인 |
 |---|---|---|
 | `REASON_VERSION_MISSING` · `REASON_VERSION_UNORDERABLE` · `REASON_VERSION_OLDER` · `REASON_VERSION_SAME` | **거부 4종의 이름.** `enrichment_candidates.REASON_*`와 **같은 어휘·같은 모양** — 거부는 이름 아래 세어지고 일반 실패로 뭉개지지 않는다 | **126–129** |
-| `NOTE_ROW_VERSION_ABSENT` / `NOTE_SAME_VERSION_CONTENT_DIFFERS` | 거부가 **아닌** 두 사건. 전자는 저장된 행에 쓸 만한 버전이 없어 들어온 값을 **채택**했다는 뜻(테이블이 게이트를 도입하는 동안만 나야 한다). 후자는 🔴 **진짜 상류 결함**이다 — 버전은 안 움직였는데 같은 소스가 쓰는 **내용은 움직였다**(쓰기는 버려진다) | **132 / 135** |
-| `_version_gate_announced` / `MAX_VERSION_DIFF_COLUMNS_REPORTED = 8` | 테이블→이미 WARNING으로 알린 사유 집합(사유 이름이 유한 집합이라 예산이 필요 없다 — 미선언 컬럼 레지스트리와 다른 점) / 배치 요약에 실리는 **차이 컬럼명 개수 상한**(컬럼명이 페이로드에서 오므로 깨진 파일이 로그 한 줄에 스키마 전체를 밀어 넣지 못하게) | **141 / 145** |
+| `NOTE_ROW_VERSION_ABSENT` / `NOTE_SAME_VERSION_CONTENT_DIFFERS` | 거부가 **아닌** 두 사건. 전자는 저장된 행에 쓸 만한 버전이 없어 들어온 값을 **채택**했다는 뜻(테이블이 게이트를 도입하는 동안만 나야 한다). 후자는 🔴 **진짜 상류 결함**이다 — 버전은 안 움직였는데 같은 소스가 쓰는 **내용은 움직였다**(쓰기는 버려진다) | **132/135** |
+| `_version_gate_announced` / `MAX_VERSION_DIFF_COLUMNS_REPORTED = 8` | 테이블→이미 WARNING으로 알린 사유 집합(사유 이름이 유한 집합이라 예산이 필요 없다 — 미선언 컬럼 레지스트리와 다른 점) / 배치 요약에 실리는 **차이 컬럼명 개수 상한**(컬럼명이 페이로드에서 오므로 깨진 파일이 로그 한 줄에 스키마 전체를 밀어 넣지 못하게) | **141/145** |
 | **`_VERSION_OUTCOME_EXPLANATION`** | **결과 6종이 각각 무슨 뜻인지 한 문장씩.** 🔴 **둘은 행을 적용하고 넷은 거부한다** — 일반 문장 하나로 뭉치면 적용된 것까지 거부로 서술되고, 그것이 진단이 거짓말을 시작하는 방식이다 | **150** |
 | `_naive_utc(value)` / `_parse_temporal_version(text)` / **`parse_version_key(raw, col_type) -> (kind, sortable) \| None`** | 한 순간의 한 철자(aware→UTC, naive는 이미 UTC로 간주 — 두 쪽을 비교 가능하게 만드는 것이 이 함수의 전부다) / ISO-8601 파싱 / **순서를 매길 수 있는 키로의 변환.** 🔴 **비교 종류는 선언이 아니라 *값*에서 고르고, 절대 텍스트 비교가 아니다** — `column_text_sql`/`TEMPORAL_TEXT_FORMAT`을 **의도적으로 쓰지 않는다**(텍스트는 `'10' < '9'`로 버전을 뒤집는 바로 그것이다) | **172 / 187 / 194** |
-| `_same_source_content_differs(...)` | 「버전은 그대로인데 같은 소스가 쓰는 값이 다르다」의 판정 — 위 `NOTE_SAME_VERSION_CONTENT_DIFFERS`의 근거 | **135** |
-| 🔴 **`version_gate_verdict(table_name, config, row, is_new, update_item) -> (applied: bool, reason: str\|None)`** | **행 단위 판정.** 셀 단위로 재지 않는다 — 셀별 검사는 한 행의 일부만 받아들여 **어느 버전에도 존재한 적 없는 행**을 만든다. 호출부는 `apply_row_update_internal` 안 **1584** 한 곳이고, 직접 호출자 6개 + HTTP가 전부 그 관문으로 수렴한다 | **297** |
-| **`log_version_gate_summary(table_name, version_col, source_name, stats)`** | **개별은 침묵, 집계는 이름으로** — 인제션 드롭 리포트와 같은 자세. 행마다 한 줄이면 1000만 행에서 진짜 사건이 전부 묻힌다. 호출부는 `apply_batch_updates` 안 **2411**(버전 컬럼 조회는 **2419**) | **346** |
+| `_same_source_content_differs(...)` | 「버전은 그대로인데 같은 소스가 쓰는 값이 다르다」의 판정 — 위 `NOTE_SAME_VERSION_CONTENT_DIFFERS`의 근거 | **246** |
+| 🔴 **`version_gate_verdict(table_name, config, row, is_new, update_item) -> (applied: bool, reason: str\|None)`** | **행 단위 판정.** 셀 단위로 재지 않는다 — 셀별 검사는 한 행의 일부만 받아들여 **어느 버전에도 존재한 적 없는 행**을 만든다. 호출부는 `apply_row_update_internal` 안 **1584** 한 곳이고, 직접 호출자 6개 + HTTP가 전부 그 관문으로 수렴한다 | **301** |
+| **`log_version_gate_summary(table_name, version_col, source_name, stats)`** | **개별은 침묵, 집계는 이름으로** — 인제션 드롭 리포트와 같은 자세. 행마다 한 줄이면 1000만 행에서 진짜 사건이 전부 묻힌다. 호출부는 `apply_batch_updates` 안 **2411**(버전 컬럼 조회는 **2419**) | **350** |
 
 #### 🆕 2026-08-04 신설 블록 ② — 컬럼→비교 텍스트 렌더러 가족 (**829–1036**) : 「어떤 타입이 캐스팅이 필요한가」가 아니라 「어떤 타입이 *이미* 텍스트인가」
 
@@ -642,55 +675,73 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 시그니처 / 상수 | 역할 | 라인 |
 |---|---|---|
 | **`TEMPORAL_TEXT_FORMAT = "%Y-%m-%d %H:%M:%S.%f"`** / `_PG_TEMPORAL_TEXT_FORMAT` / `_install_temporal_text_construct()` | **정본 시각 텍스트 — UTC · 공백 구분 · 마이크로초 항상 6자리.** 🔴 **방언에서 물려받지 않고 못 박는다**: PG 18.3의 `CAST(timestamptz AS varchar)`는 **세션 TimeZone GUC**로 렌더하고(여기선 `+09`) 소수부가 0이면 **통째로 버린다** — 두 축 다 움직이는 표적이라 같은 행을 든 두 서버가 다른 답을 낸다. 고정폭은 덤을 하나 준다: **사전순 = 시간순**이라 해석된 시각 컬럼의 `lessThan`이 거짓말이 아니다 | **879 / 880 / 883** |
-| `temporal_text_sql(col_expr)` / `temporal_text_value(value)` | DATE/TIME 렌더러 SQL/파이썬 쌍 (NULL 전파) | **922 / 934** |
-| `boolean_text_sql(col_expr)` / `boolean_text_value(value)` | BOOLEAN → `'true'`/`'false'` 쌍. ⚠️ **NULL 가지를 먼저 쓴 것이 의도**다(`CASE WHEN col THEN … ELSE …`는 NULL을 false로 접는다) | **950 / 968** |
-| 🔴 **`column_text_sql(col_expr)`** | **THE 관문 — 임의의 컬럼 식을 정본 비교 텍스트로.** 문자열 계열은 그대로, 그 외는 렌더, 미지 타입은 CAST 폴백 | **975** |
-| `resolved_text_value(value)` / `comparison_text_value(value)` | 행 **페이로드**용 파이썬 쌍둥이 / **필터 값**을 해석된 컬럼의 철자에 맞춰 렌더(`clean_str_value`만으로는 부족하다 — boolean을 `'True'`로 적는데 컬럼은 `'true'`로 적는다). 소비자는 `column_filter.get_column_filter_condition`([§1](#1-servermainpy--api--ws-허브)) | **1005 / 1025** |
+| `temporal_text_sql(col_expr)` / `temporal_text_value(value)` | DATE/TIME 렌더러 SQL/파이썬 쌍 (NULL 전파) | **926/938** |
+| `boolean_text_sql(col_expr)` / `boolean_text_value(value)` | BOOLEAN → `'true'`/`'false'` 쌍. ⚠️ **NULL 가지를 먼저 쓴 것이 의도**다(`CASE WHEN col THEN … ELSE …`는 NULL을 false로 접는다) | **954/972** |
+| 🔴 **`column_text_sql(col_expr)`** | **THE 관문 — 임의의 컬럼 식을 정본 비교 텍스트로.** 문자열 계열은 그대로, 그 외는 렌더, 미지 타입은 CAST 폴백 | **979** |
+| `resolved_text_value(value)` / `comparison_text_value(value)` | 행 **페이로드**용 파이썬 쌍둥이 / **필터 값**을 해석된 컬럼의 철자에 맞춰 렌더(`clean_str_value`만으로는 부족하다 — boolean을 `'True'`로 적는데 컬럼은 `'true'`로 적는다). 소비자는 `column_filter.get_column_filter_condition`([§1](#1-servermainpy--api--ws-허브)) | **1009/1029** |
 
 > 📌 **이 시스템이 실제로 여기 넣을 수 있는 컬럼 타입은 소스 주석(**~846–858**)에 실측으로 열거돼 있다** — `models.init_dynamic_models`가 `column_types`를 SQLAlchemy 타입 **셋**으로만 사상하고(`number`→Float · `datetime`→DateTime(tz) · 그 외→String), 공용 메타 컬럼이 Boolean·DateTime을 더한다. Numeric/Integer/Enum/JSON/ARRAY/UUID는 **모델 빌더가 만들지 않지만** 방어적으로 처리한다 — 「오늘은 안 생긴다」가 정확히 `datetime`을 깨진 채로 남긴 그 추론이기 때문이다.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `transaction_context(user, tx_id, source)` | 컨텍스트매니저 — 감사·outbox용 트랜잭션 식별 주입 | ~8 |
-| `_warn_audit_truncation_once(table_name, col_name)` | [P2] 감사 값 절단 경고 dedup(테이블·컬럼당 1회). 호출부는 `create_audit_log` 내부 | ~45 |
+| `transaction_context(user, tx_id, source)` | 컨텍스트매니저 — 감사·outbox용 트랜잭션 식별 주입 | **8** |
+| `_warn_audit_truncation_once(table_name, col_name)` | [P2] 감사 값 절단 경고 dedup(테이블·컬럼당 1회). 호출부는 `create_audit_log` 내부 | **45** |
 | **`_warn_undeclared_column_once(table_name, col_name)`** | **[`08d2b12` 신설] 미선언 컬럼 드롭의 침묵을 없앤다.** `column_types`에 없는 컬럼은 종전대로 **조용히 버려졌다** — 쓰기는 성공을 반환하므로 호출자는 데이터가 사라진 줄 몰랐다. **드롭 동작 자체는 의도적으로 그대로**(거부하면 뒤처진 config가 장애가 된다) — 고친 것은 침묵뿐. 경고는 (테이블,컬럼)당 **프로세스 1회**. 레지스트리 키가 페이로드에서 오므로(깨진 헤더 행·값을 헤더로 뱉는 파서) 테이블당 `_MAX_UNDECLARED_WARNED_PER_TABLE=64`(**~75**) 상한이 있고, **포화 시 다시 침묵한다는 사실 자체를 1회 경고**한다. 호출부는 `apply_row_update_internal` 내부 **1584** | **78** (상한 **75**) |
-| `class LightCellSource` / `LightCellOverwrite` | ORM 미경유 경량 메타 객체(성능) | **391/402** |
-| `sanitize_to_utf8(data)` | cp949 등 오염 문자열 정화 | **444** |
+| `class LightCellSource` / `LightCellOverwrite` | ORM 미경유 경량 메타 객체(성능) | **405/406** |
+| `sanitize_to_utf8(data)` | cp949 등 오염 문자열 정화 | **448** |
 | **`class TableConfigError(RuntimeError)`** | **[`46a67c7` 신설] 부팅 fail-fast의 예외 타입** — 아래 넷이 한 배치다 | **466** |
-| **`_parse_position(exc) -> str`** | JSON 파싱 실패 위치를 사람이 읽을 문구로 | **476** |
-| **`_decode_config_text(raw: bytes) -> str`** | 🔴 **BOM 부팅 장애의 수리 지점.** 구 코드는 `open(path, "r", encoding="utf-8")`이라 **UTF-8 BOM 한 개가 웹서버를 아예 못 뜨게 했다** — 그리고 윈도우에서 BOM은 예외가 아니라 **기본값**이다(PowerShell 5.1 `Set-Content -Encoding utf8`·`Out-File`이 BOM을 쓰고, 맨 `>` 리다이렉트는 UTF-16 LE + BOM, 메모장은 "UTF-8 with BOM"을 제공). 파일은 어느 편집기에서도 멀쩡해 보인다. 이제 `"rb"`로 읽고 BOM으로 분기: `BOM_UTF8`→`utf-8-sig`, **UTF-32를 UTF-16보다 먼저 검사**(`ff fe 00 00`의 앞 두 바이트가 `ff fe`라, 순서를 뒤집으면 UTF-32 LE 파일이 전부 UTF-16 쓰레기로 디코드된다), 그 외 **strict `utf-8`**. BOM 없는 바이트는 strict라 진짜 cp949 오인코딩은 여전히 raise | **485** |
-| **`load_table_config_or_raise()`** | 부팅 경로용 — 디코드/파싱 실패는 `TableConfigError`로 **시끄럽게** 죽는다. 같은 배치에서 **비-매핑 JSON도 거부**하게 됐다: 종전엔 `[]`가 `init_dynamic_models`까지 가서 `AttributeError`로 죽고 main의 광범위 `except`에 삼켜져 **ERROR 한 줄 뒤에 동적 모델 0개로 부팅**했고, `null`은 더 나빠서 `TABLE_CONFIG`가 프로세스 수명 내내 `None`이었다 | **512** |
-| `load_table_config()` / `update_table_config(new_config)` | table_config.json IO (관용 경로 / 쓰기 — 쓰기는 평범한 `open(w)`라 **원자적이 아니다**, config_watcher의 트레일링 엣지가 그 전제에 걸려 있다) | **567/586** |
-| 🆕 **`normalize_stored_text(value) -> Any`** | **[신설] 텍스트의 쓰기 경계 정규화기 — `str`이면 `.strip()`, 그 외는 그대로.** 🔴 **이것이 아래 SQL 술어가 짧아도 되는 이유다.** 파이썬 `str.strip()`은 유니코드 공백 **29종**을 걷어내고 Postgres `btrim(x)`은 인자 없이 부르면 **U+0020 하나만** 걷어낸다 — 즉 저장소가 `"\t"`를 품는 것이 허용되면 파이썬은 "비었다", SQL은 "안 비었다"고 답한다. **처방은 SQL에 파이썬의 공백표를 가르치는 것이 아니라**(두 번째 철자가 되어 갈라진다) **갈라지는 입력이 저장소에 도달하지 못하게 하는 것**이다. `list`/`dict`(JSON 컬럼 — `mat_*`의 자재 토큰은 "글자 자체가 정체성")는 컨테이너이지 텍스트가 아니라 손대지 않는다 | **602** |
-| `cast_value_by_type(value, col_type, col_name)` / `clean_str_value(val)` | 컬럼 타입 캐스팅 (`clean_str_value`는 trim + 정수형 float 접기 — `enrichment_candidates`의 후보 동일성 판정이 이것을 재사용한다) | **630/676** |
+| **`_parse_position(exc) -> str`** | JSON 파싱 실패 위치를 사람이 읽을 문구로 | **480** |
+| **`_decode_config_text(raw: bytes) -> str`** | 🔴 **BOM 부팅 장애의 수리 지점.** 구 코드는 `open(path, "r", encoding="utf-8")`이라 **UTF-8 BOM 한 개가 웹서버를 아예 못 뜨게 했다** — 그리고 윈도우에서 BOM은 예외가 아니라 **기본값**이다(PowerShell 5.1 `Set-Content -Encoding utf8`·`Out-File`이 BOM을 쓰고, 맨 `>` 리다이렉트는 UTF-16 LE + BOM, 메모장은 "UTF-8 with BOM"을 제공). 파일은 어느 편집기에서도 멀쩡해 보인다. 이제 `"rb"`로 읽고 BOM으로 분기: `BOM_UTF8`→`utf-8-sig`, **UTF-32를 UTF-16보다 먼저 검사**(`ff fe 00 00`의 앞 두 바이트가 `ff fe`라, 순서를 뒤집으면 UTF-32 LE 파일이 전부 UTF-16 쓰레기로 디코드된다), 그 외 **strict `utf-8`**. BOM 없는 바이트는 strict라 진짜 cp949 오인코딩은 여전히 raise | **489** |
+| **`load_table_config_or_raise()`** | 부팅 경로용 — 디코드/파싱 실패는 `TableConfigError`로 **시끄럽게** 죽는다. 같은 배치에서 **비-매핑 JSON도 거부**하게 됐다: 종전엔 `[]`가 `init_dynamic_models`까지 가서 `AttributeError`로 죽고 main의 광범위 `except`에 삼켜져 **ERROR 한 줄 뒤에 동적 모델 0개로 부팅**했고, `null`은 더 나빠서 `TABLE_CONFIG`가 프로세스 수명 내내 `None`이었다 | **516** |
+| `load_table_config()` / `update_table_config(new_config)` | table_config.json IO (관용 경로 / 쓰기 — 쓰기는 평범한 `open(w)`라 **원자적이 아니다**, config_watcher의 트레일링 엣지가 그 전제에 걸려 있다) | **571/590** |
+| 🆕 **`normalize_stored_text(value) -> Any`** | **[신설] 텍스트의 쓰기 경계 정규화기 — `str`이면 `.strip()`, 그 외는 그대로.** 🔴 **이것이 아래 SQL 술어가 짧아도 되는 이유다.** 파이썬 `str.strip()`은 유니코드 공백 **29종**을 걷어내고 Postgres `btrim(x)`은 인자 없이 부르면 **U+0020 하나만** 걷어낸다 — 즉 저장소가 `"\t"`를 품는 것이 허용되면 파이썬은 "비었다", SQL은 "안 비었다"고 답한다. **처방은 SQL에 파이썬의 공백표를 가르치는 것이 아니라**(두 번째 철자가 되어 갈라진다) **갈라지는 입력이 저장소에 도달하지 못하게 하는 것**이다. `list`/`dict`(JSON 컬럼 — `mat_*`의 자재 토큰은 "글자 자체가 정체성")는 컨테이너이지 텍스트가 아니라 손대지 않는다 | **606** |
+| `cast_value_by_type(value, col_type, col_name)` / `clean_str_value(val)` | 컬럼 타입 캐스팅 (`clean_str_value`는 trim + 정수형 float 접기 — `enrichment_candidates`의 후보 동일성 판정이 이것을 재사용한다) | **634/680** |
 | 🆕 **빈 값 술어 4종** — **`is_blank_value(val) -> bool`** / **`blank_sql_condition(col_expr)`** / `blank_to_null(col_expr)` / `not_blank_sql_condition(col_expr)` | **[신설 · `contracts/blank_predicate` 채점 대상] 「비었다」의 파이썬 철자와 SQL 철자, 그리고 그 둘이 같은 답을 내야 한다는 계약.** `is_blank_value`는 종전에 세 곳에 흩어져 있던 `clean_str_value(x) == ""`에 **이름을 준 것**이고(의미 무변경), 이름이 생겨야 SQL 쪽이 무언가를 **가리킬** 수 있다. `blank_sql_condition`은 `col IS NULL OR col = ''` 그 이상을 하지 않는다 — **`btrim`을 의도적으로 넣지 않는다**(위 `normalize_stored_text` 참조). `blank_to_null`은 `NULLIF`가 아니라 `CASE (blank_sql_condition)`로 쓴다: `NULLIF`는 "비었다"의 **세 번째 철자**라 오늘은 구분이 안 되고 내일 갈라진다.<br>⚠️ **선행조건: `col_expr`가 텍스트 타입이어야 한다** — `''`와 비교하므로 PostgreSQL이 `double precision = ''`를 거부한다. 안에서 `CAST`하지 않는 것은 이미 varchar인 컬럼에 `CAST`를 씌우면 플래너가 인덱스를 잃기 때문이다. 그래서 **호출자가 캐스팅해 넘긴다** | **703 / 715 / 745 / 758** |
-| 🆕 **`numeric_text_sql(col_expr)`** + `BIGINT_SAFE_NUMERIC_TEXT_BOUND = 9.2e18` | **[N7 신설] `clean_str_value`의 숫자 갈래의 SQL 쌍둥이 — 정수 표기까지 포함해서**(7.0 → `'7'`, 7.5 → `'7.5'`). 존재 이유는 `virtual_join_executor.resolved_expression`이다: **숫자 expose 컬럼은 `COALESCE(…, '<라벨>')`에 숫자인 채로 앉을 수 없다.** 🔴 **평범한 `cast(col, String)`으로 안 되는 이유가 요점이다** — 방언이 서로 다르게 답한다(PostgreSQL은 float8 7.0을 `'7'`로, SQLite는 `'7.0'`으로 렌더한다). 이 식은 `BIGINT` 왕복 동치 검사를 껍데기로 써서 **모든 방언에서** 정수 표기를 만든다. 상한 `9.2e18 < 2**63`은 `CAST(… AS BIGINT)` 갈래가 "bigint out of range"로 절대 raise하지 않게 하는 보수적 가드다.<br>⚠️ **`blank_to_null`로 감싸지 않는다 — 구조상 옳다**: 숫자는 `''`가 될 수 없으므로 숫자의 빈 값 갈래는 `IS NULL` 하나뿐이고, `CASE`의 모든 가지가 NULL을 전파한다.<br>🔴 **[N8 정정] 이 함수는 더는 `virtual_join_executor`의 직접 호출 대상이 아니다** — `_text_part`(`virtual_join_executor.py` **381**)가 이제 **`crud.column_text_sql`(975) 하나만** 부르고, `numeric_text_sql`은 그 관문 **안에서** 숫자 갈래로만 불린다. 「어떤 타입이 캐스팅이 필요한가」에서 「어떤 타입이 이미 텍스트인가」로 검사가 뒤집힌 결과다(위 신설 블록 ②) | **776 / 773** |
-| `get_row_by_business_key(db, table_name, key_value)` | 비즈니스 키로 행 조회 | **1037** |
-| `resolve_priority_map(table_name=None) -> dict` / `get_source_priority(source_name, table_name=None) -> int` | **소스 서열 단일 원천**(테이블별 오버라이드 포함) — compute_priority_value·graph materializer 공용. `SOURCE_PRIORITY`(**414**)에 `chain_ingestion: 4` 등재. 🔴 **여기 없는 이름은 99(최하위)로 떨어지고, 그것이 2026-07-30 신설 3종의 안전 논거다** — `enrichment_auto_confirm`·`enrichment_backfill`·(R1의) 재생 쓰기가 **의도적으로 미등재**라 `user`(0)를 절대 못 이긴다. 이 표에 그 이름을 등록하는 단 한 줄의 편집이 기계 판단을 사람 위에 올린다 | **1051/1066** |
-| `compute_priority_value(sources, manual_priority_source, table_name)` | **표시값 결정** — user:0 < collision_merge:1 < pipeline_parser:2 < custom_script:3 < chain_ingestion:4 + 수동 Pin. `chain_replay.withdraw_source`(R2)가 소스 1개를 지운 뒤 **생존자들로 이 함수를 다시 돌려** 드러난 값을 계산한다 | **1071** |
-| `create_audit_log(db, ..., transaction_id, business_key, add_to_cache)` | 감사 로그 1건 생성. [P2] `old_val`/`new_val`은 `event_constants.truncate_audit_value`로 **4096자 상한** — 절단본이 DB 저장본과 통지 dict **양쪽에** 동일 적용되고, 절단 사실은 값 내부 마커(`…[truncated: 총 N자]`)로 명시 | **1093** |
-| `bulk_insert_audit_logs(db, logs)` | 감사 로그 벌크 삽입 | **1152** |
-| **`record_interaction_effort(db, transaction_id, session_id, key, mouse, nav, nav_preserved=0) -> bool`** | **[V1 `2a9f6c4`] 원시 카운트 기록 — 점수는 저장하지 않는다.** 교정이 **이미 커밋된 뒤 별도 트랜잭션**으로 호출되고, 실패하면 로그만 남기고 `False`(**1300/1304**). **계측은 계측 대상을 절대 깨뜨리지 않는다** — 공수 한 건을 잃는 것이 사용자의 교정을 잃는 것보다 언제나 낫다. 유일 호출자: `main.apply_batch_updates_endpoint`(**2287** 핸들러) | **1275** |
-| **`get_effort_stats(db, weights, window_days=EFFORT_WINDOW_DAYS) -> dict`** | **집계 = 세션별 평균 → 세션 간 평균**(사용자 지정). tx를 통째로 평균하면 500건 처리한 한 세션이 전체를 지배한다 — 재교정률이 `transaction_id`로 사람 행위를 접는 것과 같은 이유. 반환 `{window_days, avg_score, tx_count, session_count, weights, measured_ratio}`이고 **`measured_ratio`는 필수 동반 값**이다(커버리지 1.0을 가정할 수 없으므로, 비율 없는 평균은 측정 안 된 범위까지 대표하는 것처럼 읽힌다). 점수는 **읽는 시점 계산**이라 가중치 재조정이 과거 tx를 재해석한다 | **1307** |
-| `bulk_upsert_cell_sources(db, mappings)` / `bulk_upsert_cell_overwrites(db, mappings)` | 메타 테이블 벌크 업서트(ON CONFLICT) | **1383/1415** |
-| `bulk_delete_cell_overwrites(db, delete_keys)` | overwrite 벌크 삭제 | **1448** |
-| `_get_or_create_row(db, table_model, update_item, row_cache, table_name) -> (row, is_new)` | row_id/비즈니스키로 행 확보(캐시 활용) | **1464** |
-| `_update_row_business_key(row, key_col, update_item, row_cache)` | 비즈니스 키 갱신 | **1500** |
-| `_load_metadata_row_cell(...) -> (sources_list, overwrite)` | 셀 메타 로드(캐시·업서트 큐 연동) | **1520** |
-| `apply_row_update_internal(db, table_name, update_item, row_cache, sources_cache, overwrites_cache, transaction_id, logs_to_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, cell_overwrites_to_delete, deleted_row_ids) -> (row, is_new, changed_cols)` | **[통합 코어]** 단일 행 업데이트 + 레이어링 재계산. 모든 쓰기 경로가 여기로 수렴. 🆕 **버전 게이트 호출 **1584**(값 루프보다 앞 — 거부되면 셀 레이어링에 아예 들어가지 않는다)** · 미선언 컬럼 드롭 지점 **1584** · 🆕 **표기 정규화 파생 `notation_norm.apply_derivations`는 값 루프가 *끝난 뒤***(우선순위에서 이긴 값을 읽어야 한다, [§5-E](#5-e-2026-08-042차-신설-서버-모듈-2종--표기-정규화--낡은-엣지-스윕)) | **1584** |
-| **`derive_replace_map_scope(table_name, batch) -> dict\|None`** | **[gate4 `deed6d2` 신설] replace_map purge 스코프의 단일 원천(순수 함수)** — DELETE 필터와 응답 echo가 **같은 이 함수**를 불러 어긋날 수 없다. 해석 순서: ① `batch.scope`(명시 — **엄격 검증**: 미선언 컬럼·map-key 계약 밖·물리 부재·빈 값은 전부 `ValueError`. 필터 하나가 조용히 빠지면 DELETE가 **넓어진다**) ② `updates[0]` 유도(`map_key_columns` 선언 우선, 없으면 레거시 폴백 — 비좌표 컬럼 전부). **None 반환은 거부로 취급해야 한다**(빈 필터 = 전 테이블 삭제 또는 역사적 결함인 "아무것도 안 지운 200") | **2114** |
-| 🆕 **`refuse_virtual_join_columns(db, table_name, batch)`** | **[신설] 가상 조인의 유일한 쓰기 가드.** `virtual_join_executor.virtual_only_columns(db, table_name)`을 물어 그 컬럼이 배치에 실려 있으면 `ValueError`(API 계층이 400으로 사상). 🔴 **`virtual_only`가 `None`이면 fail-closed**다 — `table_config` 없이 검증된 규칙은 "충돌 컬럼을 모른다"는 뜻이고, 그때 열어 주면 오른쪽 테이블의 값을 왼쪽 테이블에 쓰게 된다. `apply_batch_updates` 안에서 **replace_map purge보다 앞**에 부른다(나쁜 페이로드가 삭제를 먼저 시키지 못하게, 호출 **2285**) | **2187** |
-| 🆕 **`refuse_notation_derived_columns(table_name, batch)`** | **[신설] 표기 정규화 파생 컬럼의 유일한 쓰기 가드.** 파생 컬럼은 원본의 **순수 함수**다 — 쓰기가 값을 앉히면 그 값은 원본이 다음에 바뀔 때까지 살아남았다가 **아무 설명 없이 사라지고**, 그동안 행은 **자기 원본이 만들어 내지 않는 정규값**을 들고 있게 된다(그 불일치가 이 컬럼이 없애려던 바로 그것이다). 🔴 **`refuse_virtual_join_columns`와 같은 깔때기·같은 논거**이고, 다만 **DB 세션이 필요 없다**(선언이 config다). ⚠️ **읽지 못한 선언은 아무것도 거부하지 않는다** — 로더가 이미 로그했고, config 문제를 쓰기 장애로 바꾸는 것이 더 나쁜 거래다. 호출 **2286** | **2235** |
-| `apply_batch_updates(db, table_name, batch, replace_report=None)` | **배치 진입점** — tx 컨텍스트, 캐시 프리로드, 행별 코어 호출, 벌크 flush, outbox 발화. 반환 `(results, changed_cells, created_logs, deleted_row_ids)`(4-튜플 불변 — 워커/파서/테스트 호출부 보호). [P2] 워처가 이 함수의 commit에 오프셋 갱신을 동승시킨다. **`batch.replace_map`(purge 블록 **2265–2314**)** — `derive_replace_map_scope`(호출 **2271**)가 정한 스코프의 기존 행을 클린 삭제 후 재기록(**차집합 계산 없는 집합 교체** 연산. 소비자: 맵 Push·DOE 저장). **[gate4] 스코프 유도 불가면 `ValueError`로 거부**(**2273–2274**, 침묵 noop 폐지), **`replace_report` out-param**(선언 **2238**, 채움 **2308–2310**)에 `{filters, deleted}`를 채워 API 계층이 정직하게 echo. **명시 `scope` + 빈 `updates` = 그 스코프의 의도적 전량 삭제**(erase-all). 🔴 **쓰기 가드는 이제 하나다** — `refuse_virtual_join_columns`(**2250**). 둘째 `refuse_notation_derived_columns`는 `8d306a5`가 파생 컴럼 자체를 철회하면서 삭제했고, 그 자리에는 묘비 주석만 남았다(**2221–2234**). 구 지도의 「가드 둘」은 낡았다 🆕 **버전 게이트 요약 로깅은 맨 끝**(`version_col` 조회 **2383**, `log_version_gate_summary` 호출 **2411**, 선언 **346**) | **2237** |
-| `create_empty_row(s)_batch(db, table_name, count, user_name)` | 빈 행 생성 | **2484/2489** |
-| `delete_row(db,...)` / `delete_rows_batch(db, table_name, row_ids, user_name)` | 행 삭제(+감사·메타 정리) | **2533/2537** |
-| `delete_cell_source_batch(db, table_name, cells, source_name)` | 소스 레이어 일괄 삭제 + 표시값 재계산 | **2601** |
-| `delete_cell_source(db, ...)` | 단일 소스 삭제(배치 위임) | **2757** |
-| `set_cell_manual_priority_batch(db, table_name, updates, source_name, updated_by)` | 수동 Pin 일괄(§크고 복잡 — 표시값 재계산·감사 포함) | **2726** |
-| `set_cell_manual_priority(db, ...)` | 단일 Pin(배치 위임) | **3121** |
-| `get_ontology_mapping()` / `check_needs_rollback(table_name, modified_cols)` | 그래프 보조 — v2 검증+enrichment 승격 적용 결과 캐시 / v2 매핑 인식 rollback 신호(v1 폴백) | **3130/3172** |
+| 🆕 **`numeric_text_sql(col_expr)`** + `BIGINT_SAFE_NUMERIC_TEXT_BOUND = 9.2e18`(**777**) | **[N7 신설] `clean_str_value`의 숫자 갈래의 SQL 쌍둥이 — 정수 표기까지 포함해서**(7.0 → `'7'`, 7.5 → `'7.5'`). 존재 이유는 `virtual_join_executor.resolved_expression`이다: **숫자 expose 컬럼은 `COALESCE(…, '<라벨>')`에 숫자인 채로 앉을 수 없다.** 🔴 **평범한 `cast(col, String)`으로 안 되는 이유가 요점이다** — 방언이 서로 다르게 답한다(PostgreSQL은 float8 7.0을 `'7'`로, SQLite는 `'7.0'`으로 렌더한다). 이 식은 `BIGINT` 왕복 동치 검사를 껍데기로 써서 **모든 방언에서** 정수 표기를 만든다. 상한 `9.2e18 < 2**63`은 `CAST(… AS BIGINT)` 갈래가 "bigint out of range"로 절대 raise하지 않게 하는 보수적 가드다.<br>⚠️ **`blank_to_null`로 감싸지 않는다 — 구조상 옳다**: 숫자는 `''`가 될 수 없으므로 숫자의 빈 값 갈래는 `IS NULL` 하나뿐이고, `CASE`의 모든 가지가 NULL을 전파한다.<br>🔴 **[N8 정정] 이 함수는 더는 `virtual_join_executor`의 직접 호출 대상이 아니다** — `_text_part`(`virtual_join_executor.py` **381**)가 이제 **`crud.column_text_sql`(975) 하나만** 부르고, `numeric_text_sql`은 그 관문 **안에서** 숫자 갈래로만 불린다. 「어떤 타입이 캐스팅이 필요한가」에서 「어떤 타입이 이미 텍스트인가」로 검사가 뒤집힌 결과다(위 신설 블록 ②) | **780** |
+| `get_row_by_business_key(db, table_name, key_value)` | 비즈니스 키로 행 조회 | **1041** |
+| `resolve_priority_map(table_name=None) -> dict` / `get_source_priority(source_name, table_name=None) -> int` | **소스 서열 단일 원천**(테이블별 오버라이드 포함) — compute_priority_value·graph materializer 공용. `SOURCE_PRIORITY`(**418**)에 `chain_ingestion: 4` 등재. 🔴 **여기 없는 이름은 99(최하위)로 떨어지고, 그것이 2026-07-30 신설 3종의 안전 논거다** — `enrichment_auto_confirm`·`enrichment_backfill`·(R1의) 재생 쓰기가 **의도적으로 미등재**라 `user`(0)를 절대 못 이긴다. 이 표에 그 이름을 등록하는 단 한 줄의 편집이 기계 판단을 사람 위에 올린다 | **1055/1070** |
+| `compute_priority_value(sources, manual_priority_source, table_name)` | **표시값 결정** — user:0 < collision_merge:1 < pipeline_parser:2 < custom_script:3 < chain_ingestion:4 + 수동 Pin. `chain_replay.withdraw_source`(R2)가 소스 1개를 지운 뒤 **생존자들로 이 함수를 다시 돌려** 드러난 값을 계산한다 | **1075** |
+| `create_audit_log(db, ..., transaction_id, business_key, add_to_cache)` | 감사 로그 1건 생성. [P2] `old_val`/`new_val`은 `event_constants.truncate_audit_value`로 **4096자 상한** — 절단본이 DB 저장본과 통지 dict **양쪽에** 동일 적용되고, 절단 사실은 값 내부 마커(`…[truncated: 총 N자]`)로 명시 | **1097** |
+| `bulk_insert_audit_logs(db, logs)` | 감사 로그 벌크 삽입 | **1156** |
+| **`record_interaction_effort(db, transaction_id, session_id, key, mouse, nav, nav_preserved=0) -> bool`** | **[V1 `2a9f6c4`] 원시 카운트 기록 — 점수는 저장하지 않는다.** 교정이 **이미 커밋된 뒤 별도 트랜잭션**으로 호출되고, 실패하면 로그만 남기고 `False`(**1300/1304**). **계측은 계측 대상을 절대 깨뜨리지 않는다** — 공수 한 건을 잃는 것이 사용자의 교정을 잃는 것보다 언제나 낫다. 유일 호출자: `main.apply_batch_updates_endpoint`(**2287** 핸들러) | **1279** |
+| **`get_effort_stats(db, weights, window_days=EFFORT_WINDOW_DAYS) -> dict`** | **집계 = 세션별 평균 → 세션 간 평균**(사용자 지정). tx를 통째로 평균하면 500건 처리한 한 세션이 전체를 지배한다 — 재교정률이 `transaction_id`로 사람 행위를 접는 것과 같은 이유. 반환 `{window_days, avg_score, tx_count, session_count, weights, measured_ratio}`이고 **`measured_ratio`는 필수 동반 값**이다(커버리지 1.0을 가정할 수 없으므로, 비율 없는 평균은 측정 안 된 범위까지 대표하는 것처럼 읽힌다). 점수는 **읽는 시점 계산**이라 가중치 재조정이 과거 tx를 재해석한다 | **1311** |
+| `bulk_upsert_cell_sources(db, mappings)` / `bulk_upsert_cell_overwrites(db, mappings)` | 메타 테이블 벌크 업서트(ON CONFLICT) | **1407/1444** |
+| `bulk_delete_cell_overwrites(db, delete_keys)` | overwrite 벌크 삭제 | **1478** |
+| `_get_or_create_row(db, table_model, update_item, row_cache, table_name) -> (row, is_new)` | row_id/비즈니스키로 행 확보(캐시 활용). ⚠️ **프리페치의 부재 증명을 읽지 않는다** — 그래서 신규 행 삽입은 여전히 행당 `SELECT`를 낸다(아래 예산 테스트가 **일부러 고정한 미수리 항목**) | **1497** |
+| 🆕 **`assemble_composite_business_key(table_name, update_item: schemas.GeneralUpdateItem) -> bool`** | **[신설 — 종전 지도에 없던 심볼]** 선언된 조각들로 복합 비즈니스 키를 조립한다. 🔴 **아래 [P6] 프리페치가 적중하는 이유가 이 함수다** — 키가 배치 진입 시점에 이미 알려지므로 한 번의 `IN (…)` 조회로 전 행을 덮을 수 있다 | **1533** |
+| `_update_row_business_key(row, key_col, update_item, row_cache)` | 비즈니스 키 갱신 | **1577** |
+| `_load_metadata_row_cell(db, table_name, row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids: set = None) -> (sources_list, overwrite)` | 셀 메타 로드(캐시·업서트 큐 연동). 🔴 **[P6] 프리페치의 소비 지점** — 아래 블록 | **1597** |
+| `apply_row_update_internal(db, table_name, update_item, row_cache, sources_cache, overwrites_cache, transaction_id, logs_to_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, cell_overwrites_to_delete, deleted_row_ids) -> (row, is_new, changed_cols)` | **[통합 코어]** 단일 행 업데이트 + 레이어링 재계산. 모든 쓰기 경로가 여기로 수렴. 🆕 **버전 게이트 호출 **1584**(값 루프보다 앞 — 거부되면 셀 레이어링에 아예 들어가지 않는다)** · 미선언 컬럼 드롭 지점 **1584** · 🆕 **표기 정규화 파생 `notation_norm.apply_derivations`는 값 루프가 *끝난 뒤***(우선순위에서 이긴 값을 읽어야 한다, [§5-E](#5-e-2026-08-042차-신설-서버-모듈-2종--표기-정규화--낡은-엣지-스윕)) | **1682** |
+| **`derive_replace_map_scope(table_name, batch) -> dict\|None`** | **[gate4 `deed6d2` 신설] replace_map purge 스코프의 단일 원천(순수 함수)** — DELETE 필터와 응답 echo가 **같은 이 함수**를 불러 어긋날 수 없다. 해석 순서: ① `batch.scope`(명시 — **엄격 검증**: 미선언 컬럼·map-key 계약 밖·물리 부재·빈 값은 전부 `ValueError`. 필터 하나가 조용히 빠지면 DELETE가 **넓어진다**) ② `updates[0]` 유도(`map_key_columns` 선언 우선, 없으면 레거시 폴백 — 비좌표 컬럼 전부). **None 반환은 거부로 취급해야 한다**(빈 필터 = 전 테이블 삭제 또는 역사적 결함인 "아무것도 안 지운 200") | **2253** |
+| 🆕 **`refuse_virtual_join_columns(db, table_name, batch)`** | **[신설] 가상 조인의 유일한 쓰기 가드.** `virtual_join_executor.virtual_only_columns(db, table_name)`을 물어 그 컬럼이 배치에 실려 있으면 `ValueError`(API 계층이 400으로 사상). 🔴 **`virtual_only`가 `None`이면 fail-closed**다 — `table_config` 없이 검증된 규칙은 "충돌 컬럼을 모른다"는 뜻이고, 그때 열어 주면 오른쪽 테이블의 값을 왼쪽 테이블에 쓰게 된다. `apply_batch_updates` 안에서 **replace_map purge보다 앞**에 부른다(나쁜 페이로드가 삭제를 먼저 시키지 못하게, 호출 **2285**) | **2326** |
+| 🪦 ~~`refuse_notation_derived_columns(table_name, batch)`~~ | **[삭제됨 — 이 행은 묘비다]** `8d306a5`가 저장되는 표기-정규화 파생 컬럼 자체를 철회하면서 이 가드를 지웠다. `crud.py`에 **선언 0건**이고 남은 것은 묘비 주석(**2374–2384**)뿐이다. 🔴 **2026-08-06 실측 전까지 이 행은 살아 있는 앵커(구 2235)와 살아 있는 호출부(구 2286)를 달고 표에 앉아 있었다 — 바로 아래 행이 「이 함수는 삭제됐다」고 적는 동안.** 한 절이 자기를 반박하면 독자는 표를 믿는다(표가 더 구체적으로 보이므로). 그래서 지우지 않고 **묘비로 표시**한다 | 🪦 **없음** |
+| `apply_batch_updates(db, table_name, batch, replace_report: Optional[dict] = None)` | **배치 진입점** — tx 컨텍스트, 캐시 프리로드, 행별 코어 호출, 벌크 flush, outbox 발화. 반환 `(results, changed_cells, created_logs, deleted_row_ids)`(4-튜플 불변 — 워커/파서/테스트 호출부 보호). [P2] 워처가 이 함수의 commit에 오프셋 갱신을 동승시킨다. | |
+| | 🔴 🆕 **[`87a944e`] `replace_map`은 더 이상 「지우고 다시 쓴다」가 아니다 — 이제 *차집합*이다.** 종전 지도의 **「차집합 계산 없는 집합 교체」는 이제 정반대의 서술이다.** 관문 `use_diff = bool(_cfg["map_key_columns"]) and bool(_cfg["composite_key_source"])`(**2489**)를 통과하는 테이블(= 배포된 맵 테이블 전부)은 **diff 경로**를 탄다: `replace_scope_row_ids`를 **비우기 전에** 잡고(**2495**), 앞에서 아무것도 지우지 않은 채 쓰기 루프를 돈 뒤, `claimed_row_ids = set(unique_results) \| set(deleted_row_ids)`를 만들어 **`removed = [r for r in replace_scope_row_ids if r not in claimed]`**만 지운다(**2705–2725**). 🔴 **순회의 출처가 *스코프*이지 페이로드가 아닌 것이 요점이다** — 페이로드에서 사라진 셀은 구성상 `스코프 − claimed`에 들어가므로 **부재가 조용히 noop이 될 수 없다** | **2390** |
+| | 🔴 **머리기사는 성능이 아니라 `created_at`이 거짓말을 멈춘 것이다.** 구 purge는 Push마다 모든 행을 재생성했고 그래서 **`created_at`도 재생성**했다 — 그 컬럼은 화면에 보이고 복사·내보내기되며 「최신순 정렬」의 기본 키다. 다시 Push된 셀은 이제 `row_id`를 지키므로 원래 `created_at`을 지킨다. (부수 효과 실측, 2,000셀 무변경 재Push: dead tuple 26,000 → **0** · 문장 ~6,045 → **6** · 감사 행 12,000 → **0** · 12.9s → **0.43s**) | |
+| | 🆕 **무변경 쓰기 생략 2종** — `source_unchanged`(**~1789**)는 값과 `updated_by`가 이미 같은 `cell_sources` 행의 재저장을 막고, `ow_unchanged`(**~1858**)가 `cell_overwrites`에 같은 일을 한다. ⚠️ **후자는 전자를 술어의 일부로 *일부러* 요구한다** — 값이 진짜 바뀐 셀은 `updated_at`이 갱신돼야 하기 때문이다. 내주는 대가는 무변경 쓰기에서 `ingested_at`이 안 움직이는 것이고, **값을 타임스탬프로 해석하는 곳은 없다**(`compute_priority_value`는 우선순위 맵만 본다) | |
+| | **[gate4] 스코프 유도 불가면 `ValueError`로 거부**(침묵 noop 폐지). `derive_replace_map_scope`(**2253**). **명시 `scope` + 빈 `updates` = 그 스코프의 의도적 전량 삭제**(erase-all) | |
+| | 🔴 **`replace_report` out-param이 나르는 키 — 전건 열거**(개수를 적지 않는다. 종전 지도는 `{filters, deleted}` 둘만 적고 있었다): **`filters`(**2507**) · `deleted`(**2511**, diff 경로에서 **2719**에 재기입) · `mode`(**2515** — 🆕 `"diff"\|"purge"`, 종전엔 `"purge"` 고정) · `reason`(**2516** — 🆕 `"unresolvable_row_identity"` 추가: `map_key_columns`는 선언했는데 `composite_key_source`가 없는 테이블) · `adopted`(**2784**) · `adopted_row_ids`(**2785**)**. 선언 **2391** | |
+| | 🆕 ⚠️ **`adopted_row_ids`는 생산되지만 읽는 곳이 없다.** `batch.replace_map`일 때만 채워지며(**2779–2785**), 뜻은 **이 쓰기가 갱신했지만 자기가 선언한 스코프 밖이던 행** — 즉 다른 맵에서 넘겨받은 셀이다(맵 키가 비즈니스 키 밖에 있는 테이블에서만 도달 가능). `deleted_row_ids`에 이탈로 합류한다(**2796**). 🔴 **`main.py`는 스칼라 `adopted`만 읽는다** — 목록 자체의 소비자는 0이다 | |
+| | 🆕 **버전 게이트 요약 로깅은 맨 끝**(`version_col` 조회 **2642** → `log_version_gate_summary` 호출 **2671**, 선언 **350**). ⚠️ **구 지도는 조회 2383 / 호출 2411로 적어 소스와 *순서가 반대*였다** | |
+| `create_empty_row(db, table_name)` / `create_empty_rows_batch(db, table_name, count, user_name)` | 빈 행 생성 | **2801/2806** |
+| `delete_row(db,...)` / `delete_rows_batch(db, table_name, row_ids, user_name)` | 행 삭제(+감사·메타 정리) | **2850/2854** |
+| `delete_cell_source_batch(db, table_name, cells, source_name)` | 소스 레이어 일괄 삭제 + 표시값 재계산 | **2918** |
+| `delete_cell_source(db, ...)` | 단일 소스 삭제(배치 위임) | **3074** |
+| `set_cell_manual_priority_batch(db, table_name, updates, source_name, updated_by)` | 수동 Pin 일괄(§크고 복잡 — 표시값 재계산·감사 포함) | **3079** |
+| `set_cell_manual_priority(db, ...)` | 단일 Pin(배치 위임) | **3438** |
+| `get_ontology_mapping()` / `check_needs_rollback(table_name, modified_cols)` | 그래프 보조 — v2 검증+enrichment 승격 적용 결과 캐시 / v2 매핑 인식 rollback 신호(v1 폴백) | **3447/3489** |
 
 ---
+
+#### 🆕 [P6] 복합 키 프리페치 — 「캐시 미스가 *부재의 증명*이 되는 자리」
+
+**어디서**: `apply_batch_updates`(**2390**)가 조립하고 → `apply_row_update_internal`(**1682**, 인자 **1700**, 전달 **1739**·**1767**·**2102**·**2117**)이 실어 나르고 → `_load_metadata_row_cell`(**1597**)이 소비한다. 적중의 전제는 `assemble_composite_business_key`(**1533**)다.
+
+**무엇을**: 조회 **셋**(**2570–2626**) — ① 데이터 테이블 `SELECT … WHERE row_id IN (…) OR business_key_val IN (…)`(**2570**) ② `cell_sources`(**2596**) ③ `cell_overwrites`(**2614**), 둘 다 그 row_id들에 한정.
+
+🔴 **`prefetched_row_ids = set(all_row_ids)`(**2591**)가 하중을 진다.** 이것은 「어느 id를 조회가 덮었는가」의 스냅샷이고, `_load_metadata_row_cell`은 **그 집합의 원소에 대한 캐시 미스를 「모름」이 아니라 「없음이 증명됨」으로 읽는다**(**1610–1620**). 그래서 저장된 메타가 없는 셀이 더는 셀당 `SELECT`로 떨어지지 않는다. ⚠️ **루프 중간에 해석되는 행**(중간에 조립된 복합 키·충돌 병합 행)은 **정당하게 이 집합 밖**이고 여전히 조회된다 — 이 집합을 「행이 존재한다」로 대체할 수 없는 이유가 그것이다.
+
+**채점자**: `server/tests/test_composite_key_prefetch_budget.py`가 고정하는 것 — ① 복합 키 200행 갱신 배치의 데이터 테이블 `SELECT` **정확히 1** ② `cell_sources`·`cell_overwrites` 각 **정확히 1**, 총 문장 **< 500**(종전 2,604) ③ 🔴 **일부러 안 고친 경우**: 신규 행 삽입은 여전히 `ROWS + 1`회 — `_get_or_create_row`가 부재 증명을 읽지 않는다 ④ 충돌 병합 행은 여전히 읽혀야 한다(`cell_sources` select **≥ 2**). 같은 파일이 `replace_map` 스코프 의미론(`report["filters"] == {"base": "A"}` · `report["deleted"] == 7`)도 고정하고, `87a944e`가 **셀별 행 정체성 생존**을 추가했다. 🆕 **`server/tests/test_replace_map_scope_diff.py`**(신설 280줄)가 diff 경로 전용 채점자다.
 
 ## 3. `server/parsers/directory_watcher.py` — 파일 인제션
 
@@ -952,7 +1003,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `HEARTBEAT_DIRNAME="worker_heartbeats"` / `heartbeat_dir()` / `heartbeat_path(name)` | 저장 위치 — **`paths.config_path("worker_heartbeats")/<name>.json`** | ~79/137/141 |
-| `MIN_WRITE_INTERVAL_SEC=1.0` | 워커당 초당 1회 초과 디스크 접촉 금지(비트 1건 ≈ 200바이트 원자 replace) | ~83 |
+| `MIN_WRITE_INTERVAL_SEC=1.0` | 워커당 초당 1회 초과 디스크 접촉 금지(비트 1건 ≈ 200바이트 원자 replace) | **83** |
 | `DEFAULT_STALE_AFTER_SEC=60.0` | **감으로 고른 숫자가 아니다** — 자연 루프 주기(워처 3.0s · 체인 2.0s · 그래프 2.0s · 스케줄러 5.0s) 기준 **가장 느린 루프로도 연속 12회 이상 결번**. 1회 결번으로 알람이 울리면(GC 정지·느린 디스크) 헬스체크는 음소거되고, 그건 없느니만 못하다 | ~102 |
 | **`DEFAULT_STALL_AFTER_SEC=300.0`** | **[신설] claim된 작업이 진척 없이 버틸 수 있는 상한.** `STALE`보다 의도적으로 훨씬 크다 — **두 수가 다른 것을 재기 때문**이다. 비트 결번은 2–5초 루프가 안 돌았다는 뜻이지만, claim 진척 결번은 **실제 작업 청크가 안 끝났다**는 뜻이고 청크는 균일하지 않다. 라이브 10만 행 heavy 인제션 실측(35MB·893초)에서 청크 간격 p50 9.20s · p95 9.70s · **max 12.50s**(단일청크 구간 42건). 바닥을 정한 건 **계측할 수 없는 쪽**이다 — 커스텀 파이프라인 파서는 파일 하나를 불투명한 한 번의 호출로 읽고 그동안 아무 보고도 하지 않는 사용자 스크립트라, 큰 워크북에서 몇 분이 정당하게 걸리고 그 안에서는 비트를 찍을 수단이 없다. 300s는 실측 청크 케이던스의 24배이면서 진짜 멈춘 인제션은 5분 안에 드러낸다. **편향은 침묵 쪽이고 그것이 의도다** — 이건 운영자 대시보드에 503을 띄우고, 사람들이 가장 신경 쓰는 바로 그 작업 중에 늑대를 외치는 헬스체크는 음소거된다 | ~125 |
 | `_state` / **`_claims` / `_claim_seq`** | 워커별 비트 상태 / claim 레지스트리 — **시간이 아니라 진행 중 작업 수로 유계**(레인당 1개, 모든 claim이 finally에서 제거된다) | ~128/133/134 |
@@ -1026,7 +1077,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 |---|---|---|
 | `_unknown_keys(raw, allowed, where)` | **[신설]** 미지 키 거부 — 허용목록 `_ALLOWED_TABLE_KEYS`(~63)/`_ALLOWED_NODE_KEYS`(~64)/`_ALLOWED_EDGE_KEYS`(~65)/`_ALLOWED_PROP_KEYS`(~69)/`_ALLOWED_SPATIAL_KEYS`(~70)/`_NODE_CLASSES`(~75, `{static,dynamic}`). `__` 접두 키는 어디서나 주석으로 허용 | ~96 |
 | **`_normalize_props(raw_props, where, allow_spatial=True)`** | props → `[{"col": str, "spatial": dict\|None}]` + `(list, error)`. ⚠️ **시그니처에 `allow_spatial`이 붙었다** — 노드는 기본값으로, **엣지는 `allow_spatial=False`**로 부른다 | ~122 |
-| **`_EDGE_SPATIAL_REFUSAL`** (상수) | 🔴 **엣지 prop의 `spatial` 선언을 이름으로 거부하는 메시지.** 근거는 실제 구현이다: `graph_materializer.extract_graph_items`는 `spatial_meta`를 **`node_cfg["props"]`에서만** 만들고 엣지 루프는 `p["col"]` 외에 아무것도 읽지 않는다. 그래서 종전엔 엣지 spatial이 **검증 통과 → 저장 → 조용히 폐기**됐다(선언의 침묵사 — 미지 키 거부가 닫는 것과 같은 계급의 결함). 안내는 "노드를 소유한 테이블의 node prop으로 선언하거나 `spatial` 키를 빼라"이고, 엣지 좌표를 진짜 원하게 되면 **그것을 구현하는 같은 커밋에서 이 거부를 지운다**고 주석이 못박는다 | ~86 |
+| **`_EDGE_SPATIAL_REFUSAL`** (상수) | 🔴 **엣지 prop의 `spatial` 선언을 이름으로 거부하는 메시지.** 근거는 실제 구현이다: `graph_materializer.extract_graph_items`는 `spatial_meta`를 **`node_cfg["props"]`에서만** 만들고 엣지 루프는 `p["col"]` 외에 아무것도 읽지 않는다. 그래서 종전엔 엣지 spatial이 **검증 통과 → 저장 → 조용히 폐기**됐다(선언의 침묵사 — 미지 키 거부가 닫는 것과 같은 계급의 결함). 안내는 "노드를 소유한 테이블의 node prop으로 선언하거나 `spatial` 키를 빼라"이고, 엣지 좌표를 진짜 원하게 되면 **그것을 구현하는 같은 커밋에서 이 거부를 지운다**고 주석이 못박는다 | **86** |
 | `_validate_table_mapping(table_name, raw, known_tables)` | 테이블 1건 검증 — 정규화 노드에 `node_class`, 테이블에 `event_time_column`이 실린다 | ~171 |
 | **`_record(rejections, scope, table, reason)`** | **[신설]** 수집기에 `{scope, table, reason}` 1건 누적 — **`rejections is None`이면 no-op**. scope 어휘: `"file"`(파일 자체가 안 읽힘·객체 아님·v1 키) · `"table"`(테이블 1건 거부) · `"enrichment"`(RESOLVED_AS 승격이 룰 로딩 실패로 안 돌았다) | ~287 |
 | **`validate_ontology_mapping(raw_config, known_tables=None, rejections=None) -> dict`** | v2 검증 — description 필수, 컬럼 존재 검증, 테이블 단위 스킵, 공간 속성 파싱, v1/`__`키 무시. **반환 형태는 수집기 유무와 무관하게 동일**하고 파라미터는 키워드 옵션이라 기존 호출자(`graph_sync_worker._load_graph_mappings`·`graph_materializer`·`crud`)는 호출도 비용도 그대로다 | **~303** |
@@ -1044,7 +1095,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `compose_identity(values) -> str\|None` | identity 조립 — `"\|"` 조인 + 이스케이프(`\`→`\\`, `\|`→`\\\|`) + float 정수 안정화. **`graph_orphans`가 생산 가능성 판정에 이 함수를 재사용한다**(두 번째 identity 구현 방지) | ~54 |
 | `flatten_payload_data(data)` / `extract_graph_items(table_name, rows, mapping, ...)` | 이벤트 행 → 노드/엣지 산출. 엣지 소스 = source_override 또는 식별 컬럼 winner들의 **최저 서열(보수적)**. `spatial_meta`는 **node props에서만** 만든다(위 `_EDGE_SPATIAL_REFUSAL`의 근거) | ~89/100 |
 | `bulk_upsert_nodes(db, node_map, chunk_size=CHUNK_SIZE) -> dict` | 방언별 ON CONFLICT + props shallow-merge(PG `\|\|`) | ~235 |
-| `_retarget_stale_edges(db, rows, chunk_size=CHUNK_SIZE, ...) -> int` | 재교정 시 `(from_node, type, source_row_ref)` 스코프 stale 타깃 삭제. 🔴 **엣지만 지우고 남은 노드는 아무것도 지우지 않는다** — 그것이 `graph_orphans` 스윕이 생긴 이유다([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)) | ~276 |
+| `_retarget_stale_edges(db, rows, chunk_size=CHUNK_SIZE, ...) -> int` | 재교정 시 `(from_node, type, source_row_ref)` 스코프 stale 타깃 삭제. 🔴 **엣지만 지우고 남은 노드는 아무것도 지우지 않는다** — 그것이 `graph_orphans` 스윕이 생긴 이유다([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)) | **276** |
 | `bulk_upsert_edges(db, edges, node_ids, chunk_size=CHUNK_SIZE, ...) -> int` | 엣지 벌크 UPSERT | ~328 |
 | `materialize_rows(...)` / `materialize_events(db, events, mappings, chunk_size) -> stats` | 증분 소비 본체(DELETE 스킵+카운트) | ~385/400 |
 | `_edge_provenance_cols(mapping)` / `_load_best_cell_sources(...)` / `attach_col_sources(db, table_name, rows, mapping)` | provenance 결정 단일 지점 — CellSource winner 로드(crud 서열, row_id IN 청킹). 증분·resync 공용 | ~459/468/500 |
@@ -1118,25 +1169,25 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | ├ `remove(table_name, filename)` | 멱등 제거 | ~115 |
 | └ `_ttl_for(entry)` / `snapshot() -> list` / `clear()` | 상태별 TTL / **조회 스냅샷(+TTL 퇴거)** — `/admin/file-ingestion/active`가 서빙 / 초기화 | ~122/126/143 |
 
-### `server/bonding_plan.py` (**932줄**, `ed9cfdb` 562에서 **+370**) — [본딩 M1] 역할 바인딩 config 로더 + 집계 코어
+### `server/bonding_plan.py` (**1,049줄**, `d3ed167` 932에서 **+117**) — [본딩 M1] 역할 바인딩 config 로더 + 집계 코어
 `paths.config_path("bonding_plan_config.json")`(gitignored, `.sample` tracked) — 역할(process_history/defect/eds_fail/used_chips/total_chips)→실테이블·컬럼 바인딩. 테스트: `tests/test_bonding_plan.py` · 🆕 `tests/test_optional_role_absence.py`(400줄) · 🆕 `tests/test_binding_refusal.py`(339줄) · 🆕 `tests/test_transfer_plan_derivation.py`(423줄).
 
 > 📐 **앵커 이동**: **`_unresolved_roles`(구 246)까지 무이동** · `_demote_for_unresolved` 251 → **271** · 그 아래는 **신설 3축 360줄이 끼어들어** `_resolve_model_columns` 270 → **633**, `_fetch_points` 294 → **662**, `get_core_summary` 305 → **673**.
 
 > 🆕 🔴 **[신설 축 ①] N14 — 「어디서 읽는지 모르면 그 질문은 답할 수 없고, 답할 수 없음은 YES가 아니다」.**
 > `fail_values`는 **어느 값이 fail인가**를 말하고 `val`은 **어디서 읽는가**를 말한다. `val` 없이 세면 **풀 전체가 fail로 표시**되고 상한 불변식이 깨진다(실측: `val` 한 줄을 지우자 fail 칩이 0 → **144**가 됐는데 `remaining_reliable`은 여전히 `true`였다). 그래서 모듈은 **거부하고, 0을 서빙하고, 강등한다.**
-> - **`compose_status_marker(status, marker)`(**251**)** — `connected(...)` 어휘의 **단일 조립기**. 두 번째 강등 사유가 같은 문자열 수술의 두 번째 철자를 키우지 못하게 뽑아냈다.
-> - **`FAIL_VALUE_COLUMN_ABSENT = "fail_value_column_absent"`(**289**)** / 🔴 **`fail_filter_status(src_cfg, cols, status)`(**292**) — 술어 하나, fail을 세는 모든 독자가 이것을 부른다.** `transfer_plan._fail_filter_status`(**370**)는 **호출 시점에 속성을 읽는 얇은 통과**라, 이 함수를 다시 가리키면 모든 독자가 한 번에 무장 해제된다.
+> - **`compose_status_marker(status, marker)`(**347**)** — `connected(...)` 어휘의 **단일 조립기**. 두 번째 강등 사유가 같은 문자열 수술의 두 번째 철자를 키우지 못하게 뽑아냈다.
+> - **`FAIL_VALUE_COLUMN_ABSENT = "fail_value_column_absent"`(**385**)** / 🔴 **`fail_filter_status(src_cfg, cols, status)`(**388**) — 술어 하나, fail을 세는 모든 독자가 이것을 부른다.** `transfer_plan._fail_filter_status`(**370**)는 **호출 시점에 속성을 읽는 얇은 통과**라, 이 함수를 다시 가리키면 모든 독자가 한 번에 무장 해제된다.
 >
 > 🆕 🔴 **[신설 축 ②] 유도 — 같은 사실의 세 번째 철자를 없앤다.**
 > `map_overlay_config.json`이 이미 테이블마다 `x`/`y`/`val`을 선언하는데 계획 config가 운영자에게 **다시 타이핑을 요구**하고 있었다. 2026-08-04의 오타(`dt_x`인 테이블에 `"x": "x"`)가 정확히 거기 떨어졌다.
-> - **`DERIVED_ROLE_OF = {"x":"x","y":"y","val":"val","bin":"val"}`(**398**)** · `DERIVATION_DECLARED`/`DERIVATION_DERIVED`/`DERIVATION_UNAVAILABLE`(**403–405**) · `_OVERLAY_MEMO`(**407**)/`_overlay_config_snapshot()`(**410**, `(path, mtime_ns, size)`로 메모) · **`_map_binding_for(table)`(**432**) — `fallback_guess` 값 컬럼은 value 역할에 대해 *거부*한다.**
-> - 🔴 **`resolve_effective_columns(source_cfg, required)`(**455**) — 명시 선언이 언제나 이긴다.** 전부 선언된 config는 **같은 객체를 그대로** 돌려받는다(무회귀).
+> - **`DERIVED_ROLE_OF = {"x":"x","y":"y","val":"val","bin":"val"}`(**494**)** · `DERIVATION_DECLARED`/`DERIVATION_DERIVED`/`DERIVATION_UNAVAILABLE`(**403–405**) · `_OVERLAY_MEMO`(**503**)/`_overlay_config_snapshot()`(**410**, `(path, mtime_ns, size)`로 메모) · **`_map_binding_for(table)`(**528**) — `fallback_guess` 값 컬럼은 value 역할에 대해 *거부*한다.**
+> - 🔴 **`resolve_effective_columns(source_cfg, required)`(**551**) — 명시 선언이 언제나 이긴다.** 전부 선언된 config는 **같은 객체를 그대로** 돌려받는다(무회귀).
 > - ⚠️ **선택 역할은 절대 유도하지 않는다** — 부재가 곧 거절이 되는 자리에서만 부재를 메운다.
 >
 > 🆕 🔴 **[신설 축 ③] 거절이 자기 원인을 말한다.** *"두 주에 세 번, 멀쩡해 보이는 선언이 조용히 먹지 않았다."* 화면은 언제나 「선언돼 있지 않습니다」였다 — 선언은 있었는데도.
 > - `BINDING_NOT_DECLARED`·`BINDING_MAPPING_UNAVAILABLE`·`BINDING_COLUMN_MISSING`·`BINDING_NOT_REACHED` / `BINDING_REFUSALS`(**340–350**) — 🔴 **각 이름이 `config_resolve_report`/`enrichment_candidates`의 정본과 **같은 값임을 테스트가 핀**한다**(상류 개명이 두 번째 철자를 남기지 못하게).
-> - `_REFUSAL_COLUMN_HINTS = 24`(**356**) · `_model_column_names(model)`(**359**) · **`explain_binding_refusal(src_cfg, required, label, where=None) -> tuple`(**493**)** · `deletion_hints(src_cfg, roles, model)`(**611**, 「이 줄을 지우면 무엇이 유도되는가」).
+> - `_REFUSAL_COLUMN_HINTS = 24`(**452**) · `_model_column_names(model)`(**455**) · **`explain_binding_refusal(src_cfg, required, label, where=None) -> tuple`(**589**)** · `deletion_hints(src_cfg, roles, model)`(**611**, 「이 줄을 지우면 무엇이 유도되는가」).
 
 > 🆕 🔴 **[`2c2a777` 2026-08-04] 이 파일이 「보조 감산은 선언 자체가 선택」 어휘의 정본이다 — `transfer_plan.py`가 여기서 import한다.**
 > - **`STATUS_NOT_DECLARED = "not_declared"`(**~53**)** · **`role_is_declared(block, key) -> bool`(**~94**)** — 본문은 한 줄(`isinstance(block, dict) and key in block`)이고 그 한 줄이 계약 전부다: **키가 진짜로 없을 때만** 미선언이다. 키가 있는데 값이 쓰레기면(오타 바인딩·null) 그것은 **선언이고 종전대로 `missing`으로 강등**된다. 🔴 **이 구분이 요점이다** — 「선언하지 않았다」와 「선언했는데 깨졌다」를 같은 상태로 뭉개면 오타가 조용한 면제가 된다.
@@ -1149,14 +1200,16 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `CONFIG_PATH`(~39) / `ROLES`(~41) / `HISTORY_LIMIT=50` / `MAX_REGION_RECTS=50` / `MAX_REGION_POINTS=100k` | 역할 어휘·이력 상한·region 하드캡 | ~39–58 |
-| `CANONICAL_FRAME_ROLES` (상수) | canonical(CORE) 프레임 후보 순서 `("total_chips","defect","eds_fail")` — **좌표를 바인딩한 첫 역할**이 기준을 정의하며 그 역할에 메타가 없으면 canonical은 None(뒤 역할로 넘어가지 않는다 — 넘어가면 회전된 계측 맵이 기준을 참칭해 조용히 identity가 된다) | ~62 |
-| `load_bonding_plan_config(path=None) -> dict` / `_valid_source(src)` | config 로드·검증(미연결 역할은 부분 가동) | ~69/86 |
+| `CANONICAL_FRAME_ROLES` (상수) | canonical(CORE) 프레임 후보 순서 `("total_chips","defect","eds_fail")` — **좌표를 바인딩한 첫 역할**이 기준을 정의하며 그 역할에 메타가 없으면 canonical은 None(뒤 역할로 넘어가지 않는다 — 넘어가면 회전된 계측 맵이 기준을 참칭해 조용히 identity가 된다) | **68** |
+| `load_bonding_plan_config(path=None) -> dict` / `_valid_source(src)` | config 로드·검증(미연결 역할은 부분 가동) | **79/96** |
 | `parse_region(region_str)` / `clamp_rects(rects, grid)` / `_point_in_rects(x, y, rects)` | region rects 파서(잘못된 형식 → 400 소재) / canonical 메타 치수로 클램프(완전 밖 rect 제거) / 점 포함 판정 | ~111/137/157 |
-| `load_map_meta(db, config, target_table, map_id, cache=None)` | wafer_map_metadata의 **grid_metadata 원본 dict** 조회(config `map_metadata` 바인딩 경유). 정렬 유도의 근거이므로 격자 치수만 잘라 쓰면 안 된다. `cache`는 요청 경계 스냅샷(N+1 금지) | ~168 |
-| `load_grid_meta(db, config, target_table, map_id, cache=None)` | 격자 규격만 필요한 호출자용 축약(region rect 클램프 전용) | ~213 |
+| `load_map_meta(db, config, target_table, map_id, cache=None)` | wafer_map_metadata의 **grid_metadata 원본 dict** 조회(config `map_metadata` 바인딩 경유). 정렬 유도의 근거이므로 격자 치수만 잘라 쓰면 안 된다. `cache`는 요청 경계 스냅샷(N+1 금지) | **178** |
+| `load_grid_meta(db, config, target_table, map_id, cache=None)` | 격자 규격만 필요한 호출자용 축약(region rect 클램프 전용) | **223** |
+| 🆕 `declared_map_pairs(sources_cfg, map_id_for) -> list` | 선언된 `(table, map_id)` 쌍 | **238** |
+| 🆕 **`canonical_basis(db, config, map_pairs, meta_cache: dict = None)`** | **[신설 — 종전 지도에 없던 심볼]** 정준 프레임의 근거를 고른다. 짝 상수 `CANONICAL_FRAME_ROLES`(**68**) · `BASIS_CONFIRMATION`(**71**) · `BASIS_ROLE_ORDER`(**72**) | **260** |
 | **`class _ResolvedColumns(dict)` / `_unresolved_roles(cols)` / `_demote_for_unresolved(status, cols)`** | **[`1fefd12` 신설] 선언-미해석 컬럼의 침묵 제거.** 종전엔 선언됐지만 모델에 없는 **옵션** 컬럼(config 오타)이 조용히 skip돼 집계가 무음으로 오염됐다. `_resolve_model_columns`가 미해석 역할키를 `.unresolved` 튜플로 실어 나르고, 각 status 기록 지점이 `connected` → **`connected(column_unresolved:<roles>)`**로 합성한다(기존 강등 어휘 `connected(area_only)`·`connected(align_unavailable)`와 같은 문법. required 미해석은 종전대로 바인딩 전체 실패). **`transfer_plan.py`도 이 셋을 재사용**(공유 기계장치는 resolver 옆에 산다) | ~228/246/251 |
-| `_resolve_model_columns(source_cfg, required)` / `_fetch_points(db, cols, filters, distinct_pairs=False)` | 바인딩 해석 — **반환 cols는 `_ResolvedColumns`** / 좌표 페치(하드캡 적용) | **633/662** |
-| `get_core_summary(db, lot, slot, rects=None, config=None) -> dict` | **집계 진입점** — 역할별 카운트(맵 모드 fail_values 필터, used_chips distinct), `remaining = total − defect − eds_fail − used`(음수 가능 — 과도기), history 50건+warnings, region 교차(좌표 하드캡 100k, 응답 미포함). 좌표 정렬은 `map_overlay.resolve_map_transform`(**~384**) + `map_overlay.align_status_label`(**~397**) 위임. **[`1fefd12`] `fail_values` 선언 + `val` 미해석이면 필터 없는 카운트를 거부**하고 0 + 강등 status(**~407** — 전 행을 fail로 세는 반대 방향 오염 차단, align_unavailable과 같은 규율) | **673** |
+| `_resolve_model_columns(source_cfg, required)` / `_fetch_points(db, cols, filters, distinct_pairs=False)` | 바인딩 해석 — **반환 cols는 `_ResolvedColumns`** / 좌표 페치(하드캡 적용) | **729/758** |
+| `get_core_summary(db, lot, slot, rects=None, config=None) -> dict` | **집계 진입점** — 역할별 카운트(맵 모드 fail_values 필터, used_chips distinct), `remaining = total − defect − eds_fail − used`(음수 가능 — 과도기), history 50건+warnings, region 교차(좌표 하드캡 100k, 응답 미포함). 좌표 정렬은 `map_overlay.resolve_map_transform`(**~384**) + `map_overlay.align_status_label`(**~397**) 위임. **[`1fefd12`] `fail_values` 선언 + `val` 미해석이면 필터 없는 카운트를 거부**하고 0 + 강등 status(**~407** — 전 행을 fail로 세는 반대 방향 오염 차단, align_unavailable과 같은 규율) | **769** |
 | **[7b `b697d34`] 맵 정체성·조회 키의 정규화 위임** | 이 모듈은 map_id 합성기도 lot/slot 필터 생성기도 **자체 구현하지 않는다**: 합성은 `map_overlay.compose_map_id`(**~324**, "no second implementation" 주석 **~323**), 풀 바인드 필터는 `map_overlay.canonical_role_value`(**~402/403** · **~461/462** · **~496/497**). 근거는 **선언 컬럼 타입**이다 — `slot`이 number 선언이면 `'01'`과 `1`이 같은 키여야 하고, 그 판정은 값이 아니라 `table_config`가 한다([§5 `map_overlay.py`](#5-소형-서버-모듈)) | ~323–324/402/461/496 |
 
 > ✅ **A2 해소 (2026-07-27)** — bbox 항 없는 사본은 삭제됐다. 착수 전제였던 "휴면"은 사실이 아니었다 — `bonding_plan_config.json`·`transfer_plan_config.json` 둘 다 `eds_fail`에 `rotation:180`을 라이브로 선언하고 있었고, 그 값은 `eds_fail_map` 메타의 rotation과 동일했다(선언이 메타의 중복). 라이브 규격(40×40)은 bbox가 0이라 두 구현 결과가 1288셀 전건 일치 → **가용량 수치 변화 없음**. [히스토리](../history/20260727_004500_align_consolidation_meta_single_source.md)
@@ -1175,66 +1228,182 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `record_chunk_progress(db, plan, processed_rows, chunk_index)` | **청크 적재와 같은 세션·같은 트랜잭션**에서 오프셋 Core UPDATE — "커밋된 행 수 == 기록된 오프셋" 원자성의 근거 | ~218 |
 | `mark_done(db, plan, processed_rows=None, note=None)` | 성공 확정(`status=DONE`) — 이후 dedup skip 대상 | ~243 |
 
-### `server/map_overlay.py` (**1,674줄**, `b8307c2` 1,308에서 **+140** — M4②/F5c 라운드) — [M2 신규] 범용 맵 오버레이 (계획 전용 아님 — 맵 인프라)
+### `server/map_overlay.py` (**2,289줄**, `d3ed167` 1,674에서 **+615**) — [M2 신규] 범용 맵 오버레이 (계획 전용 아님 — 맵 인프라)
 
-> ✅ **`apply_valid_die_ref(meta, ref) -> dict`는 이제 실재하고 ~1016이다.** 구 지도 §0이 "워킹트리에서만 참, 커밋된 `b8307c2`에는 **부재**"로 표시하고 **쓰기를 거부한 앵커**이며, 라운드가 착지한 뒤 커밋 기준으로 재니 **값이 1016 그대로**였다(그 패스에서 보류한 5건 중 값이 살아남은 유일한 항목 — [§0](#0-묘비-목록--소스에-존재하지-않는-이름)). 짝: `parse_valid_die_ref`(~971) · **`valid_die_chain_error(ref, ref_meta, home)`(~1066 — [M4② INV-6] 2단 체인 거부: 참조된 맵이 **자기 `valid_die_ref`를 또 갖고 있으면** 조용히 중간 맵의 저장 셀로 해석되는데 그것은 운영자가 선언한 집합이 아니다)** · `resolve_valid_die_basis`(~1196) · `resolve_valid_die_set`(~1245) · `_resolve_valid_die_uncached`(~1307) · `circle_die_mask`(~1133) · `load_map_meta_cached`(~957) · `_valid_die_refused`(~1238). 상수 `VALID_DIE_REF_KEY`(~942) · `MAX_VALID_DIE_CELLS=20_000`(~947) · `STATUS_NOT_DECLARED`(~953, **실패가 아니다**)/`STATUS_REF_UNAVAILABLE`(~954) · `SOURCE_CIRCLE`/`SOURCE_REF`/**`SOURCE_REFUSED`(~1127 — 선언은 있는데 못 풀었다: **원으로 되돌아가지 않는다**)**.
+> 🔴 **[2026-08-06] 이 절의 앵커는 전건 `87a944e` blob 실측으로 다시 깔았다.** 종전 값은 `~NNN`(근사) 표기였고 **최대 −1,000줄 이상 어긋나 있었다**(예: `resolve_align` `~458` → 실제 **1172**, `get_paint_rules` `~1289` → 실제 **2270**). 근사 표기를 없애고 실측값만 남긴다.
+
+> 🆕 🔴 **[D7] 출처 어휘가 확장됐다 — 그리고 이 파일에는 *목록이 없다*.** 토큰은 **개별 모듈 상수**로 선언되며 얼려진 튜플·집합·리스트가 **한 곳도 없다.** 그래서 「N번째 토큰」식 서술은 여기서 검증할 대상이 없다 — **전건 열거만이 검증 가능한 형태다**:
+>
+> | 상수 | 값 | 라인 |
+> |---|---|---|
+> | `GEOMETRY_DECLARED` | `"declared"` — 누군가 쟀다 | **461** |
+> | `GEOMETRY_AUTO_REGISTERED` | `"auto_registered"` — 값은 있지만 선언이 아니다 | **462** |
+> | `GEOMETRY_ABSENT` | `"absent"` — 여섯 phys 키 중 하나 이상이 없다 | **463** |
+> | `GEOMETRY_UNPARSABLE` | `"unparsable"` — 키는 있는데 수가 아니다 | **464** |
+> | `GEOMETRY_ASSUMED` | `"assumed"` — 값은 바닥에서 빌려 왔다 | **489** |
+> | 🆕 **`GEOMETRY_CONFIRMED`** | `"confirmed"` — **확정 아래 파생됐다. 선언은 아니다** | **547** |
+> | `ORIENTATION_INDETERMINATE` | `"indeterminate"` — 값은 있으나 선언의 증거가 없다 | **795** |
+>
+> ⚠️ **두 함수가 서로 다른 부분집합을 낸다** — 이 구분을 접으면 서술이 조용히 거짓이 된다. `geometry_declaration(meta)`(**568**)는 `indeterminate`를 **절대 내지 않고**, `orientation_declaration(meta)`(**867**)만이 축별 `"source"`로 `indeterminate`를 낸다.
+>
+> 🔴 **소스 안의 주석 둘이 이미 거짓이다**(이 지도가 고칠 수 없는 자리 — 코드 소관): **`map_overlay.py:572`가 반환을 「다섯 토큰」이라 적는데 실제로 여섯을 낼 수 있고**, **`:756`은 「`geometry_declaration`의 네 토큰」이라 적는다.** 개수를 적은 서술이 낡는 그 방식 그대로다.
+>
+> 🆕 **확정 마커 키**: **`PHYS_CONFIRMED_KEY`(**545**, `"phys_confirmed_from"`)** · **`FRAME_CONFIRMED_KEY`(**546**, `"frame_confirmed_from"`)**. 둘에 실리는 값은 `{table, map_id, confirmation_uid, confirmed_by, confirmed_at}`이고 **조성 지점은 `frame_confirmation.py`**(**591–595**)다. 클라 짝은 [`map2/declaration.js`](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506)의 동명 키(**275/276**).
+>
+> **메타 접근 상태**: `META_ACCESS_OK`/`_UNDECLARED`/`_QUERY_FAILED`/`_PROBE_BROKEN`(**231–235**) · `meta_access_state(db)`(**296**) · `_probe_key_fault`(**262**) · `_meta_select`(**284**).
+> **기하 판정·차용**: `geometry_declaration`(**568**) · `geometry_refusal`(**600**) · `geometry_computable`(**622**) · `assume_phys_from(meta, basis_meta, basis=None)`(**638**) · `assume_grid_from(meta, basis_meta, basis=None)`(**704**) · `AUTO_REGISTERED_KEY`(**459**)/`PHYS_ASSUMED_KEY`(**488**)/`GRID_ASSUMED_KEY`(**507**).
+> **방위 선언**: `_read_rotation`(**802**)/`_read_side`(**815**)/`_read_y_invert`(**822**)/`_read_grid_start`(**832**) · `orientation_declaration`(**867**) · `orientation_refusal`(**948**) · `ORIENTATION_KEYS`(**799**).
+> **격자 치수**: `grid_dims(meta)`(**380**) · `grid_box(meta)`(**390**).
+
+> ✅ **`apply_valid_die_ref(meta, ref) -> dict`(**1825**)는 실재한다.** 짝: `parse_valid_die_ref`(**1714**) · **`valid_die_chain_error(ref, ref_meta, home)`(**1875** — [M4② INV-6] 2단 체인 거부: 참조된 맵이 **자기 `valid_die_ref`를 또 갖고 있으면** 조용히 중간 맵의 저장 셀로 해석되는데 그것은 운영자가 선언한 집합이 아니다)** · `valid_die_redirect_note`(**1774**) · `valid_die_ref_display`(**1792**) · `resolve_valid_die_basis`(**2013**) · `resolve_valid_die_set`(**2082**) · `_resolve_valid_die_uncached`(**2144**) · `circle_die_mask`(**1942**) · `load_map_meta_cached`(**1700**) · `_valid_die_refused`(**2059**). 상수 `VALID_DIE_REF_KEY`(**1667**) · `VALID_DIE_TABLE`(**1685**) · `MAX_VALID_DIE_CELLS=20_000`(**1690**) · `STATUS_NOT_DECLARED`(**1696**, **실패가 아니다**)/`STATUS_REF_UNAVAILABLE`(**1697**) · `SOURCE_CIRCLE`(**1934**)/`SOURCE_REF`(**1935**)/**`SOURCE_REFUSED`(**1936** — 선언은 있는데 못 풀었다: **원으로 되돌아가지 않는다**)**.
 `paths.config_path("map_overlay_config.json")`(gitignored, `.sample` tracked) — 키 구조만: `table_bindings.{table}.columns{x,y,val,key_columns}`, `paint_lock.{"*"|table}{enabled,blocking_values,from_overlay,message}`, **[U6] `value_column_candidates`(순서 있는 배열 — 선언은 기본값을 **통째로 대체**)** · **[U6] `default_legend`(행 형태 `{value,desc,color,locked}` — 미선언 = 기본 의미론 없음)**. `APIRouter` 없음 — `main.py`가 `@app.get`으로 직접 등록해 위임한다. 테스트: `tests/test_map_overlay.py`.
 
 > **삭제된 선언 레이어 (2026-07-27, `4ba13ae`)** — `align_overrides`(config 선언)·`by_eqp` 분기·`align_override_declared` status·`_frame_grid_of`가 **전부 제거**됐다. 정렬의 근거는 이제 `wafer_map_metadata` 하나뿐이며 `resolve_align`은 **메타만** 받는다. config에 `align_overrides`나 `sources[].align`을 다시 쓰는 코드를 보면 그것은 부활이 아니라 **오류**다.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `MAX_OVERLAY_CELLS=20,000` / `MAX_OVERLAY_SOURCES=8` | 오버레이 1종당 셀 상한(초과 시 `truncated:true`) / 요청당 소스 상한 | ~71/72 |
-| `STATUS_OK` / `STATUS_ALIGN_UNAVAILABLE` / `STATUS_SOURCE_MISSING` / `STATUS_NO_DATA` | 엔트리 status 어휘 | ~74–77 |
-| `ALIGN_ORIGIN_DERIVED` / `ALIGN_ORIGIN_IDENTITY` | align 결정 출처 마커 — **둘뿐이다.** `DECLARED`/`DEFAULT`는 선언 레이어와 함께 삭제됐다 | ~79/80 |
-| `ALIGN_ORIGIN_UNRESOLVABLE` | 구 QA-B3 가드 유물 — **프레임 합성(A1) 도입 후 더 이상 발화하지 않는다**(상수만 잔존) | ~83 |
-| `load_overlay_config(path=None)` | config 로드(부재·손상 시 `{}` — 에러 아님) | ~86 |
-| **[7b `b697d34` 신설] 키 정규화 블록 (~104–205)** — `_CANON_INT_RE` / **`canonical_key_value(value, col_type)`** / **`declared_column_type(table, column)`** / **`canonical_bind_value(table, column, value)`** / `canonical_role_value(src_cfg, role, value)` / **`compose_map_id(identity_cols, values, binding=None)`** | **맵 정체성·조회 키가 "선언된 컬럼 타입"으로 정규화되는 단일 지점.** `col_type == "number"`면 `'01'`·`' 1 '`·`1.0`이 전부 `'1'`이고(프로젝트의 단일 정수 판독기 의미론), 읽을 수 없는 값은 **원문 trim 그대로** 남아 조회가 정직하게 빗나간다(키를 지어내지 않는다). 비-number 선언에서도 **float 값**은 `3.0 → '3'`으로 접는다(repr 산물이지 데이터가 아니다 — `crud.clean_str_value`가 등록 경로에서 이미 고정하던 동작). 타입 조회는 **호출 시점**에 `crud.TABLE_CONFIG`를 읽는다(핫리로드가 dict를 제자리 변조하므로 스냅샷 금지). 소스 주석이 **"Do NOT write a second implementation"**을 명시하고, 실제로 `bonding_plan`·`transfer_plan`·`map_meta_registrar`·`build_key_filters`가 전부 여기로 위임한다 | ~114/117/157/169/175/184 |
-| `load_map_meta(db, target_table, map_id)` | `wafer_map_metadata`(`META_TABLE` ~207)의 `grid_metadata` 조회 | ~210 |
-| `_rotation_of` / `_grid_of` / `_side_of` / `_y_invert_of` / `PHYS_KEYS` / `_phys_signature` | 메타 정규화 헬퍼 — `_grid_of`는 메타 선언 그대로의 **물리(canonical) 격자 규격**, `_phys_signature`는 `phys_*` 6값 튜플(하나라도 없으면 None = bbox 재현 불가) | ~232/239/254/258/262/266 |
-| `frame_axes(meta)` | 프레임 정의 8축 튜플 `(rot, side, y_invert, start_x, start_y, cols, rows, phys_sig)` — identity 지름길 판정·transformer 캐시 키 | ~276 |
-| **`_frame_phys_params(meta)`** | **[A1]** 물리 규격 → **프레임 축 규격**. `is_cell_inside_wafer(c, r, …)`는 프레임 인덱스를 받으므로 rot 90/270에서 **칩 피치를 스왑**하고 back에서 `off_x` 부호를 뒤집는다. 유일 호출자는 `_frame_transformer`. **보정을 이 모듈 안에 가둔 것이 계약** — `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정(`bonding_plan.py`가 같은 클래스를 공유) | ~294 |
-| `_FRAME_TF_CACHE` / `_frame_transformer(meta, grid)` | transformer(+engine) 생성 후 `frame_axes` 키로 캐시(상한 512 초과 시 전체 clear) | ~341/345 |
-| `make_frame_transform(source_meta, target_meta)` | **소스 프레임 → 물리 → 타깃 프레임** 합성 변환기(내부 `to_target(x, y)` ~418). 메타/격자/phys 부재·물리 치수 불일치 시 `ValueError` | ~375 |
-| `_align_summary(rotation, flip)` / `align_status_label(align)` | 표시용 요약 dict(변환에는 안 쓰인다) / 상태 문자열 마커 `aligned:180` 등 — **`bonding_plan`에서 이관**(변환 소유 모듈이 마커도 소유). 소비자: `bonding_plan.get_core_summary` ~361 · `transfer_plan._canonical_fail_set` **~1183** | ~428/439 |
-| `resolve_align(source_meta, target_meta) -> (align\|None, origin, note)` | **align 결정 규율 — 인자는 메타 둘뿐이다.** 메타 델타 유도 > **identity**(메타 부재는 실패가 아니라 등록 누락 신호). origin은 `derived`/`identity` 둘뿐 | ~458 |
-| **`resolve_map_transform(source_meta, target_meta) -> (transform\|None, align, origin, note)`** | **서버의 단일 좌표 변환 진입점.** 오버레이(그리기)와 가용량 산출(`bonding_plan`/`transfer_plan`)이 **같은 이 함수**를 쓴다. transform None = identity, 계산 불가 시 `ValueError`(호출자가 `align_unavailable`로 표면화) | ~498 |
-| `_pure_translation(source_meta, target_meta, origin)` / `align_applied_payload(align, origin, note=None, translation=None)` | derived이고 rot/side/y_invert/격자/phys가 전부 같을 때만 `(dx,dy)` / 클라 표시용 `{rotation, flip, offset, origin, note?}` | ~517/533 |
-| `parse_sources(spec) -> [(table, key\|None)]` | `"table"` / `"table:key"` CSV 파싱 — 8종 초과·빈 값은 `ValueError`(→400) | ~556 |
-| **`DEFAULT_VAL_CANDIDATES`** / **`resolve_value_column_candidates(cfg) -> list`** / **`get_default_legend(cfg)`** | **[U6 `95bf072`]** 구 ~~`VAL_CANDIDATES`~~는 **documented default로 강등** — 튜플을 직접 읽으면 이 기본값이 대체하려던 하드코딩의 재생산이라, 소비는 반드시 `resolve_value_column_candidates(cfg)`(선언 > 기본값, 비어 있거나 불량이면 기본값) 경유 / 선언된 `default_legend` **그대로** \| None — 서버는 사용자가 선언하지 않은 행을 지어내지 않는다 | ~583/586/603 |
-| `_SYSTEM_COLUMNS` / **`_derive_table_binding_full(table, val_candidates=None) -> (binding\|None, guessed)`** / `derive_table_binding(table, val_candidates=None)` / `resolve_binding(cfg, table)` | `table_config`에서 x/y/val·key_columns 자동 유도(후보 순, 시스템 컬럼 제외 — **[U6] 후보 목록은 인자로 받는다**: None이면 `DEFAULT_VAL_CANDIDATES`) / **[F1 `17f65bd` 신설] 유도 코어** — `guessed=True`는 값 컬럼이 후보 매칭이 아니라 **추측**(첫 비-키/비-좌표/비-시스템 컬럼)이라는 표지 / **[F2] 공개 유도는 추측을 거부한다** — 후보 무매칭이면 **None**(과거의 "첫 데이터 컬럼 추측"은 데이터 경로에서 제거) / **선언 우선 + 유도 폴백**(resolve된 후보를 전달). ⚠️ `resolve_binding`은 [M3] `MapMetaCollector`의 **"이 테이블이 맵인가" 게이트**이기도 하다(None = 맵 아님 → 메타 등록 안 함) | ~616/622/662/685 |
-| **`resolve_binding_info(cfg, table) -> dict\|None`** | **[F1 `17f65bd` 신설] 클라 전달용 RESOLVED 바인딩 + 출처** — `GET /api/maps/paint-rules`가 서빙. 우선순위는 데이터 경로와 동일(선언 > 유도), 반환 `{x, y, val, key_columns[], source: "declared"\|"derived"\|"fallback_guess"}`. 선언 바인딩의 누락 키는 데이터 경로의 실제 기본값으로 채워 **효력 그대로** 서빙. [F2] 추측은 여기서만 나가되 **반드시 `fallback_guess`로 표기** — 클라는 경고해야 하고, 데이터 경로는 같은 경우 거부한다 | ~697 |
-| **`map_key_parts(binding, map_key)`** | ⚠️ **구 지도에서 `build_key_filters`의 앵커였던 ~726이 지금은 이 함수다** — 복합 map_key를 key_columns 수만큼 조각내는 순수 분해기(마지막 컬럼이 나머지 흡수). `build_key_filters`·`canonical_map_key`가 공유 | ~726 |
-| `build_key_filters(model, binding, map_key)` | `_` 조인 복합 map_key를 key_columns로 분해해 ORM equality 필터 생성. **[7b] 각 조각은 `canonical_bind_value`를 통과**(~760) — 패딩된 `'01'`이 number 선언 컬럼에서 여전히 찾아진다 | ~746 |
-| **`canonical_map_key(table, binding, map_key) -> str`** | **[7b] 맵 키 문자열 자체의 캐노니컬 형태** — 조각별 `canonical_bind_value`(~780) 후 재조립. 클라 `map_editor.canonicalMapKey`와 **같은 벡터로 채점**된다(`contracts/map_seam`) | ~764 |
-| `get_overlay(db, cfg, target_table, target_key, sources, cell_cap=MAX_OVERLAY_CELLS) -> dict` | **메인 진입점** — 소스별 바인딩·align 해결 → 셀 조회 → 타깃 프레임 좌표 변환 → `{target, overlays[], cell_cap}`. **`eqp` 인자는 `by_eqp` 분기와 함께 삭제됐다**(엔드포인트 쿼리 파라미터만 no-op으로 존치 — 축소는 총괄 승인 사항) | ~785 |
-| `get_paint_rules(cfg, table=None) -> dict` | `paint_lock`의 `"*"` 기본 + 테이블별 선언 머지 → `{enabled, blocking_values, from_overlay, message}`. **[U6] main.py `/api/maps/paint-rules`가 이것과 U6 2종 + [F1] `binding`을 한 응답에 묶는다** | ~1289 |
+| `MAX_OVERLAY_CELLS=20,000` / `MAX_OVERLAY_SOURCES=8` | 오버레이 1종당 셀 상한(초과 시 `truncated:true`) / 요청당 소스 상한 | **74/75** |
+| `STATUS_OK` / `STATUS_ALIGN_UNAVAILABLE` / `STATUS_SOURCE_MISSING` / `STATUS_NO_DATA` | 엔트리 status 어휘 | **77–80** |
+| `ALIGN_ORIGIN_DERIVED` / `ALIGN_ORIGIN_IDENTITY` | align 결정 출처 마커 — **둘뿐이다.** `DECLARED`/`DEFAULT`는 선언 레이어와 함께 삭제됐다 | **82/83** |
+| `ALIGN_ORIGIN_UNRESOLVABLE` | 구 QA-B3 가드 유물 — **프레임 합성(A1) 도입 후 더 이상 발화하지 않는다**(상수만 잔존) | **86** |
+| `load_overlay_config(path=None)` | config 로드(부재·손상 시 `{}` — 에러 아님) | **89** |
+| **[7b `b697d34` 신설] 키 정규화 블록 (**117–187**)** — `_CANON_INT_RE` / **`canonical_key_value(value, col_type)`** / **`declared_column_type(table, column)`** / **`canonical_bind_value(table, column, value)`** / `canonical_role_value(src_cfg, role, value)` / **`compose_map_id(identity_cols, values, binding=None)`** | **맵 정체성·조회 키가 "선언된 컬럼 타입"으로 정규화되는 단일 지점.** `col_type == "number"`면 `'01'`·`' 1 '`·`1.0`이 전부 `'1'`이고(프로젝트의 단일 정수 판독기 의미론), 읽을 수 없는 값은 **원문 trim 그대로** 남아 조회가 정직하게 빗나간다(키를 지어내지 않는다). 비-number 선언에서도 **float 값**은 `3.0 → '3'`으로 접는다(repr 산물이지 데이터가 아니다 — `crud.clean_str_value`가 등록 경로에서 이미 고정하던 동작). 타입 조회는 **호출 시점**에 `crud.TABLE_CONFIG`를 읽는다(핫리로드가 dict를 제자리 변조하므로 스냅샷 금지). 소스 주석이 **"Do NOT write a second implementation"**을 명시하고, 실제로 `bonding_plan`·`transfer_plan`·`map_meta_registrar`·`build_key_filters`가 전부 여기로 위임한다 | **117/120/160/172/178/187** |
+| `load_map_meta(db, target_table, map_id)` | `wafer_map_metadata`(`META_TABLE` **210**)의 `grid_metadata` 조회 | **331** |
+| `_rotation_of` / `_grid_of` / `_side_of` / `_y_invert_of` / `PHYS_KEYS` / `_phys_signature` | 메타 정규화 헬퍼 — `_grid_of`는 메타 선언 그대로의 **물리(canonical) 격자 규격**, `_phys_signature`는 `phys_*` 6값 튜플(하나라도 없으면 None = bbox 재현 불가) | **358/365/404/408/412/416** |
+| `frame_axes(meta)` | 프레임 정의 8축 튜플 `(rot, side, y_invert, start_x, start_y, cols, rows, phys_sig)` — identity 지름길 판정·transformer 캐시 키 | **964** |
+| **`_frame_phys_params(meta)`** | **[A1]** 물리 규격 → **프레임 축 규격**. `is_cell_inside_wafer(c, r, …)`는 프레임 인덱스를 받으므로 rot 90/270에서 **칩 피치를 스왑**하고 back에서 `off_x` 부호를 뒤집는다. 유일 호출자는 `_frame_transformer`. **보정을 이 모듈 안에 가둔 것이 계약** — `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정(`bonding_plan.py`가 같은 클래스를 공유) | **993** |
+| `_FRAME_TF_CACHE` / `_frame_transformer(meta, grid)` | transformer(+engine) 생성 후 `frame_axes` 키로 캐시(상한 512 초과 시 전체 clear) | **1040/1044** |
+| `make_frame_transform(source_meta, target_meta)` | **소스 프레임 → 물리 → 타깃 프레임** 합성 변환기(내부 `to_target(x, y)` **1132**). 메타/격자/phys 부재·물리 치수 불일치 시 `ValueError` | **1074** |
+| `_align_summary(rotation, flip)` / `align_status_label(align)` | 표시용 요약 dict(변환에는 안 쓰인다) / 상태 문자열 마커 `aligned:180` 등 — **`bonding_plan`에서 이관**(변환 소유 모듈이 마커도 소유). 소비자: `bonding_plan.get_core_summary`(**769**) · `transfer_plan._canonical_fail_set` | **1142/1153** |
+| `resolve_align(source_meta, target_meta) -> (align\|None, origin, note)` | **align 결정 규율 — 인자는 메타 둘뿐이다.** 메타 델타 유도 > **identity**(메타 부재는 실패가 아니라 등록 누락 신호). origin은 `derived`/`identity` 둘뿐 | **1172** |
+| **`resolve_map_transform(source_meta, target_meta) -> (transform\|None, align, origin, note)`** | **서버의 단일 좌표 변환 진입점.** 오버레이(그리기)와 가용량 산출(`bonding_plan`/`transfer_plan`)이 **같은 이 함수**를 쓴다. transform None = identity, 계산 불가 시 `ValueError`(호출자가 `align_unavailable`로 표면화) | **1212** |
+| `_pure_translation(source_meta, target_meta, origin)` / `align_applied_payload(align, origin, note=None, translation=None)` | derived이고 rot/side/y_invert/격자/phys가 전부 같을 때만 `(dx,dy)` / 클라 표시용 `{rotation, flip, offset, origin, note?}` | **1231/1247** |
+| `parse_sources(spec) -> [(table, key\|None)]` | `"table"` / `"table:key"` CSV 파싱 — 8종 초과·빈 값은 `ValueError`(→400) | **1270** |
+| **`DEFAULT_VAL_CANDIDATES`** / **`resolve_value_column_candidates(cfg) -> list`** / **`get_default_legend(cfg)`** | **[U6 `95bf072`]** 구 ~~`VAL_CANDIDATES`~~는 **documented default로 강등** — 튜플을 직접 읽으면 이 기본값이 대체하려던 하드코딩의 재생산이라, 소비는 반드시 `resolve_value_column_candidates(cfg)`(선언 > 기본값, 비어 있거나 불량이면 기본값) 경유 / 선언된 `default_legend` **그대로** \| None — 서버는 사용자가 선언하지 않은 행을 지어내지 않는다 | **1297/1300/1317** |
+| `_SYSTEM_COLUMNS` / **`_derive_table_binding_full(table, val_candidates=None) -> (binding\|None, guessed)`** / `derive_table_binding(table, val_candidates=None)` / `resolve_binding(cfg, table)` | `table_config`에서 x/y/val·key_columns 자동 유도(후보 순, 시스템 컬럼 제외 — **[U6] 후보 목록은 인자로 받는다**: None이면 `DEFAULT_VAL_CANDIDATES`) / **[F1 `17f65bd` 신설] 유도 코어** — `guessed=True`는 값 컬럼이 후보 매칭이 아니라 **추측**(첫 비-키/비-좌표/비-시스템 컬럼)이라는 표지 / **[F2] 공개 유도는 추측을 거부한다** — 후보 무매칭이면 **None**(과거의 "첫 데이터 컬럼 추측"은 데이터 경로에서 제거) / **선언 우선 + 유도 폴백**(resolve된 후보를 전달). ⚠️ `resolve_binding`은 [M3] `MapMetaCollector`의 **"이 테이블이 맵인가" 게이트**이기도 하다(None = 맵 아님 → 메타 등록 안 함) | **1330/1336/1376/1399** |
+| **`resolve_binding_info(cfg, table) -> dict\|None`** | **[F1 `17f65bd` 신설] 클라 전달용 RESOLVED 바인딩 + 출처** — `GET /api/maps/paint-rules`가 서빙. 우선순위는 데이터 경로와 동일(선언 > 유도), 반환 `{x, y, val, key_columns[], source: "declared"\|"derived"\|"fallback_guess"}`. 선언 바인딩의 누락 키는 데이터 경로의 실제 기본값으로 채워 **효력 그대로** 서빙. [F2] 추측은 여기서만 나가되 **반드시 `fallback_guess`로 표기** — 클라는 경고해야 하고, 데이터 경로는 같은 경우 거부한다 | **1411** |
+| **`map_key_parts(binding, map_key)`** | 복합 map_key를 key_columns 수만큼 조각내는 순수 분해기(마지막 컬럼이 나머지 흡수). `build_key_filters`·`canonical_map_key`가 공유 | **1451** |
+| `build_key_filters(model, binding, map_key)` | `_` 조인 복합 map_key를 key_columns로 분해해 ORM equality 필터 생성. **[7b] 각 조각은 `canonical_bind_value`를 통과** — 패딩된 `'01'`이 number 선언 컬럼에서 여전히 찾아진다 | **1471** |
+| **`canonical_map_key(table, binding, map_key) -> str`** | **[7b] 맵 키 문자열 자체의 캐노니컬 형태** — 조각별 `canonical_bind_value` 후 재조립. 클라 `map_editor.canonicalMapKey`와 **같은 벡터로 채점**된다(`contracts/map_seam`) | **1489** |
+| `get_overlay(db, cfg, target_table, target_key, sources, cell_cap=MAX_OVERLAY_CELLS) -> dict` | **메인 진입점** — 소스별 바인딩·align 해결 → 셀 조회 → 타깃 프레임 좌표 변환 → `{target, overlays[], cell_cap}`. **`eqp` 인자는 `by_eqp` 분기와 함께 삭제됐다**(엔드포인트 쿼리 파라미터만 no-op으로 존치 — 축소는 총괄 승인 사항) | **1510** |
+| `get_paint_rules(cfg, table=None) -> dict` | `paint_lock`의 `"*"` 기본 + 테이블별 선언 머지 → `{enabled, blocking_values, from_overlay, message}`. **[U6] main.py `/api/maps/paint-rules`가 이것과 U6 2종 + [F1] `binding`을 한 응답에 묶는다** | **2270** |
 
-#### `map_overlay.py` 안의 **[M4 phase 1 `91386f0`] 유효 다이 블록** (~934–1288)
+#### `map_overlay.py` 안의 **[M4] 유효 다이 블록** (**1667–2289**)
 
 **무엇이 유효 다이인가의 근거가 둘이 됐다** — 종전에는 **원 기하**(웨이퍼 마스크) 하나뿐이었고, 이제 `wafer_map_metadata.valid_die_ref`가 선언돼 있으면 **참조된 맵**이 근거다. ⭐ **가산적 공존이 수용 기준이다**: 선언이 없는 맵은 `2a9f6c4` 이전과 **바이트 단위로 같이** 동작해야 한다. 클라 짝은 `map_editor.js`의 `parseValidDieRef`/`validDieBasis`/`isValidDieAt`/`resolveValidDie`([§7](#7-client2src--웹-클라이언트))이고 양쪽은 `contracts/map_seam`의 **M4①** 계열로 같은 벡터에 채점된다. 테스트: **`server/tests/test_valid_die_ref.py`(709줄, 33건 — `grep -c "def test_" = 33`)**.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `VALID_DIE_REF_KEY="valid_die_ref"` / **`MAX_VALID_DIE_CELLS=20,000`** / `_VALID_DIE_CACHE_MAX=64` | 메타 키 이름 / 셀 상한 — **초과 시 자르지 않고 거절한다**: 잘린 유효 다이 집합은 "맞아 보이는 틀린 집합"이라 절단이 곧 오답이다(오버레이의 `truncated:true`와 **다른 처분**) / 작업 단위 캐시 상한(넘치면 비운다 — 최악이 중복 해석 1회) | ~934/939/943 |
-| `STATUS_NOT_DECLARED` / `STATUS_REF_UNAVAILABLE` | **선언이 없다**(실패가 아니다) / **참조는 찾았으나 신뢰할 집합을 못 만들었다**(실패다) — 이 둘을 한 값으로 접으면 "선언 안 함"이 "고장"으로 보고된다 | ~945/946 |
-| `load_map_meta_cached(db, target_table, map_id, cache=None)` | 작업 단위 스냅샷 캐시를 낀 메타 조회(N+1 금지) | ~949 |
-| **`parse_valid_die_ref(meta, default_table=None)`** | 메타의 선언 원문 → `{table, map_id}` \| None \| 거부. **키 자체가 없으면 None(선언 없음)**, 있는데 못 읽으면 사유를 문자열로 — 클라 `parseValidDieRef`(~1880)의 미러 | ~963 |
-| `SOURCE_CIRCLE` / `SOURCE_REF` / **`SOURCE_REFUSED`** | 근거 3상태. **`refused`가 `circle`로 되돌아가지 않는 것이 계약**이다 — 선언이 있는데 못 풀었으면 원 기하는 답이 아니라 **다른 답**이고, 조용히 대체하면 사용자가 선언한 적 없는 마스크로 계획이 계산된다 | ~1012/1013/1014 |
-| **`circle_die_mask(meta)`** | 선언이 없을 때의 근거 — 종전 원 기하 판정을 **이름 붙여 꺼낸 것**(동작 무변경) | ~1020 |
-| `_basis_from_resolver(result)` / **`resolve_valid_die_basis(meta, resolver=None, table=None) -> dict`** | resolver 반환 정규화 / **판정 본체** — `{basis, source, reason}`. `resolver=None`이면 순수 함수로 동작(테스트·계약 하니스가 DB 없이 채점한다) | ~1056/1083 |
-| `_valid_die_refused(ref, status, detail)` / **`resolve_valid_die_set(db, cfg, target_table, target_key, …, cell_cap=MAX_VALID_DIE_CELLS) -> dict`** | 거부 페이로드 조성 / **DB 경로 진입점** — 미선언은 `{declared: False, …, status: not_declared}`(~1168)로 **조용히** 답한다 | ~1125/1132 |
-| `_resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap)` | 실제 해석 — 참조 맵 조회 → 프레임 정렬 → 셀 집합. 상한 초과·정렬 불가·행 부재는 전부 `ref_unavailable`(~1255) | ~1184 |
+| `VALID_DIE_REF_KEY="valid_die_ref"` / **`MAX_VALID_DIE_CELLS=20,000`** / `_VALID_DIE_CACHE_MAX=64` | 메타 키 이름 / 셀 상한 — **초과 시 자르지 않고 거절한다**: 잘린 유효 다이 집합은 "맞아 보이는 틀린 집합"이라 절단이 곧 오답이다(오버레이의 `truncated:true`와 **다른 처분**) / 작업 단위 캐시 상한(넘치면 비운다 — 최악이 중복 해석 1회) | **1667/1690/1694** |
+| `STATUS_NOT_DECLARED` / `STATUS_REF_UNAVAILABLE` | **선언이 없다**(실패가 아니다) / **참조는 찾았으나 신뢰할 집합을 못 만들었다**(실패다) — 이 둘을 한 값으로 접으면 "선언 안 함"이 "고장"으로 보고된다 | **1696/1697** |
+| `load_map_meta_cached(db, target_table, map_id, cache=None)` | 작업 단위 스냅샷 캐시를 낀 메타 조회(N+1 금지) | **1700** |
+| **`parse_valid_die_ref(meta, default_table=None)`** | 메타의 선언 원문 → `{table, map_id}` \| None \| 거부. **키 자체가 없으면 None(선언 없음)**, 있는데 못 읽으면 사유를 문자열로 — 클라 `parseValidDieRef`(`map_editor.js` **2448**)의 미러 | **1714** |
+| `SOURCE_CIRCLE` / `SOURCE_REF` / **`SOURCE_REFUSED`** | 근거 3상태. **`refused`가 `circle`로 되돌아가지 않는 것이 계약**이다 — 선언이 있는데 못 풀었으면 원 기하는 답이 아니라 **다른 답**이고, 조용히 대체하면 사용자가 선언한 적 없는 마스크로 계획이 계산된다 | **1934/1935/1936** |
+| **`circle_die_mask(meta)`** | 선언이 없을 때의 근거 — 종전 원 기하 판정을 **이름 붙여 꺼낸 것**(동작 무변경) | **1942** |
+| `_basis_from_resolver(result)` / **`resolve_valid_die_basis(meta, resolver=None, table=None) -> dict`** | resolver 반환 정규화 / **판정 본체** — `{basis, source, reason}`. `resolver=None`이면 순수 함수로 동작(테스트·계약 하니스가 DB 없이 채점한다) | **1986/2013** |
+| `_valid_die_refused(ref, status, detail)` / **`resolve_valid_die_set(db, cfg, target_table, target_key, …, cell_cap=MAX_VALID_DIE_CELLS) -> dict`** | 거부 페이로드 조성 / **DB 경로 진입점** — 미선언은 `{declared: False, …, status: not_declared}`로 **조용히** 답한다 | **2059/2082** |
+| `_resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap)` | 실제 해석 — 참조 맵 조회 → 프레임 정렬 → 셀 집합. 상한 초과·정렬 불가·행 부재는 전부 `ref_unavailable` | **2144** |
 
 > `resolve_binding`·`build_key_filters`는 **`transfer_plan.py`도 재사용**한다(모듈 간 공용 헬퍼 2개).
 >
-> **[7b] 정규화 소비자 지도 (`b697d34`)** — `canonical_*`/`compose_map_id`를 부르는 곳은 전부 **여기 위임**이고 사본이 없다: `bonding_plan`(~293 합성 · ~366/423/456 풀 바인드) · `transfer_plan`(`_identity_filters` **~340–341** · **~595–597** · **~1039** · `_origin_map_id` → `compose_map_id` **~1107**) · `map_meta_registrar.compose_map_id`(~149) · 이 모듈의 `build_key_filters`(**~760**) / `canonical_map_key`(**~780**). 테스트: **`tests/test_key_canonicalization.py`(351줄, 10건 — `grep -c "def test_" = 10`)**.
+> **[7b] 정규화 소비자 지도 (`b697d34`)** — `canonical_*`/`compose_map_id`를 부르는 곳은 전부 **여기 위임**이고 사본이 없다: `bonding_plan` · `transfer_plan`(`_identity_filters` · `_origin_map_id` → `compose_map_id`) · `map_meta_registrar.compose_map_id` · 이 모듈의 `build_key_filters`(**1471**) / `canonical_map_key`(**1489**). ⚠️ **소비자 쪽 라인은 적지 않는다** — 이 목록의 요점은 「사본이 없다」이지 「몇 번째 줄인가」가 아니고, 종전에 적혀 있던 8개 근사 앵커는 전부 낡아 있었다. 테스트: **`tests/test_key_canonicalization.py`(351줄, 10건 — `grep -c "def test_" = 10`)**.
 >
-> ⚠️ **[M4 phase 2]는 HEAD에 없다.** `apply_valid_die_ref`(선언을 **쓰는** 짝)와 `valid_die_chain_error`(1홉 제한)는 계약 심볼로 **이름은 정해져 있으나** `b8307c2`의 이 모듈에 **존재하지 않는다**(`git grep -c "apply_valid_die_ref\|valid_die_chain_error" HEAD -- server = 0`). `contracts/map_seam/vectors.json`의 해당 벡터는 **`pending`**으로 채점 유예 중이다(착지 즉시 자동 채점, 착지 후에도 pending이면 STALE PENDING 하드 실패 — [§6-2](#6-2-교차-구현-계약-contracts)). **미착지 심볼에 앵커를 달지 마라.**
+> ✅ **[M4 phase 2]는 착지했다 — 종전 지도의 「HEAD에 없다」는 이제 거짓이다.** `apply_valid_die_ref`(**1825**)와 `valid_die_chain_error`(**1875**) 둘 다 실재한다. 🔴 **그 문장은 같은 절 첫 블록쿼트의 「`apply_valid_die_ref`는 이제 실재한다」와 정면으로 모순된 채 함께 실려 있었다** — 한 절이 자기 자신을 반박하고 있으면 **뒤에 오는 문장이 이겼다고 읽히지 않는다.** 두 서술 중 어느 쪽을 믿을지 독자가 고르게 두면 지도가 아니다.
 >
 > **소비자 지도 (2026-07-27 정렬 일원화 이후)**: 이 모듈의 정렬 함수군을 쓰는 것은 ① `/api/maps/overlay` 엔드포인트 ② **`bonding_plan.get_core_summary`** ③ **`transfer_plan._canonical_fail_set`** ④ `test_map_overlay.py`다. ②③이 이번에 배선됐고(구 A2), 그 결과 **정확한 구현이 운영 소비자를 갖게 됐다** — 종전에는 맞는 구현이 엔드포인트에서만 돌고 가용량은 안 고쳐진 사본으로 계산됐다. **맵 에디터 클라는 이 엔드포인트를 더 이상 호출하지 않는다**(변환은 클라 단일 구현 — [§7 `map_editor.js`](#7-client2src--웹-클라이언트)). `transfer_plan.py`는 정렬 함수 외에 바인딩·config 헬퍼 3개(`resolve_binding`/`build_key_filters`/`load_overlay_config`)도 쓴다.
 >
 > **구현 개수**: 서버 1(이 모듈) + 클라 1(렌더) = **2**. 가용량이 서버에서 계산되는 한 이것이 하한이다.
+
+### 🆕 `server/map_alignment.py` (**3,272줄**, 신설) — 프레임 정렬의 **채점자**
+
+> **측정 기준**: `87a944e`의 커밋된 blob. `d3ed167`에는 **이 파일이 없었다.**
+>
+> 🔴 **출처 토큰을 하나도 선언하지 않는다** — 전부 `map_overlay.GEOMETRY_*`를 **한정 참조**로 소비한다(**445**·**683–697**·**1848**). 사본을 만들지 않은 것이 계약이다.
+>
+> `frame_confirmation`은 **지연 import**다(**3019**, `build_alignment_worklist` 안) — 두 모듈이 서로를 부르기 때문.
+
+| 함수 | 시그니처 | 라인 |
+|---|---|---|
+| `frame_text` | `frame_text(rotation: int, side: str) -> str` | **50** |
+| `candidate_frames` | `candidate_frames() -> tuple` | **55** |
+| `load_alignment_sides` | `load_alignment_sides(cfg: dict) -> list \| None` | **74** |
+| `meta_absence_reason` | `meta_absence_reason(db, cache: dict = None)` | **272** |
+| `meta_access_block` | `meta_access_block(code: str, detail: str = None)` | **311** |
+| `stamp_meta_refusal` | `stamp_meta_refusal(db, source_maps, cache: dict = None)` | **323** |
+| `assumed_meta_for_unregistered` | `assumed_meta_for_unregistered(cells, basis_meta: dict, basis: dict = None)` | **395** |
+| 🔴 **`phys_needs_basis`** | **`phys_needs_basis(meta: dict \| None) -> bool`** | **431** |
+| `grid_needs_basis` | `grid_needs_basis(meta: dict \| None, basis_meta: dict \| None) -> bool` | **448** |
+| `borrowed_meta_for` | `borrowed_meta_for(meta, basis_meta, basis=None, need_phys=True, need_grid=True)` | **465** |
+| 🆕 🔴 **`confirmed_meta_for`** | **`confirmed_meta_for(meta: dict \| None, basis_meta: dict \| None, basis: dict, frame: str, mark: dict) -> dict \| None`** | **506** |
+| `cells_outside_grid` | `cells_outside_grid(meta: dict, cells) -> str \| None` | **599** |
+| `compose_basis_refusal` | `compose_basis_refusal(map_ids, basis: dict = None, why: str = None)` | **643** |
+| `declared_frame_of` | `declared_frame_of(meta: dict \| None) -> dict` | **675** |
+| `_solve_shift` / `_membership` | `_solve_shift(placed_keys, ref_sorted, window: int)` / `_membership(placed_keys, ref_sorted, dx, dy)` | **720/743** |
+| 🆕 **`serpentine_index`** | **`serpentine_index(cells, top_is_min_y: bool = True) -> dict`** | **790** |
+| 🔴 **`score_candidates`** | `score_candidates(source_maps, reference_cells, reference_meta, shift_window=SHIFT_WINDOW, cell_cap=MAX_SCORED_CELLS, reference_values=None, thresholds=None, assume_reference_geometry=True, reference_ref=None, value_weights=None, sides=None, index_thresholds=None)` | **821** |
+| `load_alignment_thresholds` / `_read_thresholds` | `(cfg: dict) -> dict` / `(raw: dict, where: str) -> dict` | **1437/1446** |
+| `load_index_thresholds` / `index_thresholds_complete` | `(cfg: dict) -> dict` / `(th: dict) -> bool` | **1485/1495** |
+| `load_alignment_value_weights` / `_fit_weights` | `(cfg: dict) -> dict` / `(vec, n)` | **1505/1542** |
+| `_rule_on` | `_rule_on(candidates, thresholds=None, metric=METRIC_OCCUPANCY, scoring=None) -> dict` | **1557** |
+| `compose_refusal` | `compose_refusal(state, reference, excluded: _Excluded, ruling, source_map_count, candidates=None) -> str` | **1731** |
+| `compose_assumption_offer` | `(state: str, count: int, basis: dict) -> str \| None` | **1792** |
+| `geometry_basis_of` | `geometry_basis_of(meta, excluded_reason=None, basis_meta=None) -> str` | **1814** |
+| `resolve_source_columns` | `resolve_source_columns(cfg, table, model, x_col=None, y_col=None, value_col=None, index_col=None) -> dict` | **1910** |
+| `comparison_kind` | `comparison_kind(reference_kind: str, source_value_column) -> str` | **2016** |
+| `_resolve_reference` / `_load_reference` | `(db, cfg, spec, source_maps, cap, cache=None)` / `(db, cfg, table, map_id, origin, cap, cache=None)` | **2125/2177** |
+| `_no_cell_refusal` / `_meta_row_exists` | `(db, cfg, table, map_id)` / `(db, table, map_id) -> bool` | **2243/2229** |
+| `compose_map_id` | `compose_map_id(values) -> str` | **2301** |
+| 🔴 **`build_alignment_view`** | `build_alignment_view(db, cfg, rule, key_values, map_table, reference_spec=None, include_cells=True, cell_cap=MAX_PAYLOAD_CELLS, x_col=None, y_col=None, value_col=None, assume_reference_geometry=True) -> dict` | **2313** |
+| `worklist_sort_keys` / `map_table_catalog` | `(rule: dict) -> list` / `(src_model, src_table: str) -> list` | **2689/2697** |
+| `coordinate_column_catalog` / `binding_ambiguity` | `(cfg, src_table) -> dict` / `(rule, coord) -> list` | **2721/2741** |
+| `floor_tables` / `resolve_reference_catalog` | `() -> list` / `(db, cfg, table=None, cap=MAX_REFERENCE_CANDIDATES) -> dict` | **2801/2811** |
+| `_live_confirmations` / `_unit_maps` | `(db, rule_name, unit_keys)` / `(db, src_model, decision_key, map_key_cols, narrow, cap)` | **2964/2979** |
+| 🔴 **`build_alignment_worklist`** | `build_alignment_worklist(db, cfg, rule, map_table, key_values=None, q=None, sort="unit_key", order="asc", limit=DEFAULT_WORKLIST_LIMIT, offset=0, unit_cap=MAX_WORKLIST_UNITS) -> dict` | **3001** |
+
+- **후보 프레임 — 전건 열거**(개수를 적지 않는다): `FRAME_ROTATIONS`(**46**, `(0, 90, 180, 270)`) × `FRAME_SIDES`(**47**, `("front", "back")`) → `CANDIDATE_FRAMES`(**68**, 각 항이 `parse_frame`으로 검증된다).
+- **판정 상태**: `STATE_SCORED`/`STATE_NO_WINNER`/`STATE_NOT_SCORABLE`/`STATE_COMPUTING`(**116–119**) · `STATE_NOT_CONSIDERED`(**127**).
+- **지표**: `METRIC_OCCUPANCY`/`METRIC_VALUES`/`METRIC_VALUES_WEIGHTED`/`METRIC_INDEX`(**1397–1409**) · `VALUE_METRICS`(**1404**).
+- **판결 사유**: `RULING_NO_CELLS_SCORED`/`_NO_CANDIDATE_SCORED`/`_NO_OVERLAP`/`_NO_DISCRIMINATION`/`_TIE`(**1424–1428**) · `THRESHOLD_KEYS`(**1434**, `("min_margin_dies", "min_discriminating_dies")`).
+- **상한**: `MAX_SCORED_CELLS`/`MAX_PAYLOAD_CELLS` **20_000**(**105/106**) · `SHIFT_WINDOW` **3**(**107**) · `MAX_WORKLIST_UNITS` **2_000**/`MAX_WORKLIST_MAP_ROWS` **100_000**/`DEFAULT_WORKLIST_LIMIT` **200**(**2679–2681**) · `MAX_REFERENCE_CANDIDATES` **50**(**2797**).
+- 🔴 **`phys_needs_basis`의 술어가 바뀌었다** — 본문(**445–446**)은 `geometry_declaration(meta) not in (GEOMETRY_DECLARED, GEOMETRY_CONFIRMED)`다. 즉 **`confirmed`도 「빌리지 않는다」쪽**이다. 사유: 확정된 행을 다시 빌리면 **숫자는 하나도 안 바뀌면서** `phys_confirmed_from`이 `phys_assumed_from`으로 덮여, 확정 전후를 구분할 수 없게 된다.
+- ⚠️ **의도된 비대칭**(소스 **559–565**가 명시): `confirmed_meta_for`는 이 술어를 **재사용하지 않고** 더 엄격한 `!= GEOMETRY_DECLARED`(**562–563**)를 쓴다. **채점은 「빌려야 하나」를 묻고 쓰기는 「여기 써도 되나」를 묻는다.**
+
+### 🆕 `server/frame_confirmation.py` (**688줄**, 신설) — 확정의 **기록자**
+
+| 함수 | 시그니처 | 라인 |
+|---|---|---|
+| `accepted_ruling_states` | `accepted_ruling_states() -> set` | **62** |
+| `__getattr__` | PEP 562 — `ACCEPTED_RULING_STATES`를 **속성 접근 시점에** 합성한다(모듈 레벨 대입이 **아니다**) | **75** |
+| `class ConfirmationRefused` | `Exception` | **87** |
+| `weakest_contributor` | `weakest_contributor(contributors: list, table_name: str = None) -> tuple` | **91** |
+| `compose_unit_key` | `compose_unit_key(rule: dict, decision_key: dict) -> str` | **112** |
+| `live_confirmation` / `live_confirmation_for_maps` | `(db, rule_name, unit_key)` / `(db, maps)` | **136/147** |
+| `warrant_of` | `warrant_of(header) -> str` | **185** |
+| `_load_metas_and_basis` / `_geometry_bases` | `(db, contributors, reference=None) -> tuple` / `(metas, contributors, basis_meta=None) -> dict` | **201/235** |
+| 🆕 🔴 **`_write_confirmed_meta`** | **`_write_confirmed_meta(db, contributors: list, metas: dict, basis_meta: dict, reference: dict, frame: str, mark: dict) -> list`** | **276** |
+| `resolve_ruling_state` | `resolve_ruling_state(ruling: dict, state=None) -> str` | **333** |
+| 🆕 `_reject_unreadable_frame` | `_reject_unreadable_frame(where: str, value)` | **375** |
+| `_resolve_frames` | `_resolve_frames(rule: dict, frames: dict, frame: str) -> dict` | **409** |
+| 🔴 **`record_confirmation`** | `record_confirmation(db, rule, decision_key, contributors, confirmed_by, frames=None, ruling=None, reference=None, enrichment_row_id=None, commit=True, frame=None, map_table=None, columns=None, state=None)` | **444** |
+| `as_payload` / `derived_cell_scope` | `(db, header) -> dict` / `(db, confirmation_uid: str)` | **615/665** |
+
+- 상수: `MIN_CONTRIBUTORS=1`(**31**) · `UNRANKED=99`(**35**) · `WARRANT_CONFIRMED`(**41**)/`WARRANT_NOT_DECLARED`(**42**) · `_ASSUMED`(**48** — `map_overlay.GEOMETRY_ASSUMED`의 **의도적 두 번째 철자**, `test_map_alignment_assumption.py`가 고정) · `STATE_NOT_TRANSPORTED`(**59**) · `META_SOURCE_NAME`(**273**, `"user"`).
+- **`_write_confirmed_meta`가 하는 일**: 실제로 쓴 `(target_table, map_id)` 쌍의 목록을 돌려준다. `excluded_reason`이 있는 기여자는 건너뛰고, **기여자 자신의 `applied_frame`**(없으면 라운드의 `frame`)을 쓰며, **내용 결정은 통째로 `map_alignment.confirmed_meta_for`(**311**)에 위임**한다. 쓰기는 `crud.apply_batch_updates` → `map_meta_registrar.META_TABLE`, `transaction_id=mark["confirmation_uid"]`. 메타 테이블이 선언된 동적 테이블이 아니면 **경고 후 `[]`**. 호출부는 `record_confirmation`(**597**). ⚠️ **`commit=False`와 `frame`을 함께 주면 `ValueError`**(**583–589**).
+- 🔴 **어휘 관문은 이름이 하나가 아니다 — 셋이고 서로 다른 것을 막는다**:
+
+| 관문 | 무엇을 막나 | 허용 어휘의 정본 | 라인 |
+|---|---|---|---|
+| **`resolve_ruling_state`** | 선언되지 않은 **판정 상태** | `{STATE_SCORED, STATE_NO_WINNER, STATE_NOT_SCORABLE}` — 리터럴이 **70–72**에 있다. ⚠️ **`STATE_NOT_TRANSPORTED`는 일부러 이 집합 밖이다**(폴백 반환일 뿐 입력으로 받지 않는다) | 거절 **361–364** |
+| **`_reject_unreadable_frame`** | 프레임이 아닌 **프레임 문자열** | 🔴 **자기 어휘가 없다** — `map_alignment.parse_frame`(**402**)에 위임한다(소스 docstring: 어휘의 정본은 `map_alignment` 하나다). 축 리터럴은 `map_alignment.py` **46–47** | 거절 **403–405** |
+| **`_resolve_frames`** | 규칙이 선언하지 않은 **확정 대상 키** | 🔴 **리터럴이 아니라 데이터** — `rule["target_fields"]`(**424**) | 거절 **427–429** |
+
+### 🆕 `server/migrations/add_frame_confirmation.py` — 확정 스키마 (append-only)
+
+**안전 계약**: `DROP` 없음 · `ALTER TYPE` 없음 · 기존 데이터를 건드리는 문장 없음. 추가 컬럼은 전부 `NULL` 허용 + 기본값 없음이라 PostgreSQL이 **카탈로그만** 고친다(테이블 재작성 없음). `cell_sources`는 크므로 그 인덱스만 **`CONCURRENTLY`**로 트랜잭션 밖(AUTOCOMMIT 연결)에서 만든다 — 인제션·체인·그래프 라이터를 막지 않기 위해서다.
+
+- **`frame_confirmation`**(헤더, 확정 1버전 = 1행): `confirmation_uid`·`version`·`ruling_state`·`weakest_source`·`weakest_priority`·`confirmed_by`·`confirmed_at`가 `NOT NULL`. 나머지 — `dt_eqp`·`product`(둘 다 나중에 `DROP NOT NULL`로 후퇴)·`core_frame`·`dt_frame`·`reference_table`·`reference_map_id`·`ruling_reason`·`winner_frame`·`margin`·`discriminating`·`superseded_by`·`supersedes_uid`·`rule_name`·`unit_key`·`decision_key JSONB`·`enrichment_row_id`·`geometry_assumed BOOLEAN`([D3] **NULL = 미상, 기본값을 일부러 안 준다**)·`confirmed_frame`·`map_table`·`x_col`·`y_col`·`value_col`·`frames JSONB`.
+- **`frame_confirmation_source`**(기여자별): `confirmation_uid`·`role`·`source_table`·`map_id`(기본 `''`)·`source_name`·`source_priority`가 `NOT NULL`, + `applied_frame`·`shift_dx`·`shift_dy`·`agreement`·`discriminating`·`excluded_reason`·`geometry_basis`.
+- **`cell_sources`**: `confirmation_uid TEXT` 추가(**NULL = 확정된 좌표계에서 파생되지 않았다**) + `idx_sources_confirmation` `CONCURRENTLY` on `(confirmation_uid, table_name, row_id) WHERE confirmation_uid IS NOT NULL`.
 
 ### `server/map_meta_registrar.py` (**367줄**, `b697d34` 신설) — [M3] 인제션 맵의 `wafer_map_metadata` 자동 등록
 **왜 생겼나**: `wafer_map_metadata`는 정렬의 단일 원천인데 **등록하는 곳이 맵 에디터 Push 하나뿐**이었다. 인제션 두 경로(파일 워처·체인 워커)는 맵을 만들면서 메타를 남기지 않았고, 그 맵들은 전부 "화면기준" 폴백으로 그려졌다(**모듈 docstring이 인용하는 실측: `bonding_map`의 서로 다른 맵 키 약 39만 개 대 메타 9행** — 이 수치의 출처는 소스 주석이지 이 지도의 재측정이 아니다). 이 모듈이 그 구멍을 **쓰기 경로에서** 막는다. 테스트: `tests/test_map_meta_registrar.py`(416줄, **12건**).
@@ -1569,7 +1738,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 >
 > 🔴 **`map_overlay.canonical_key_value` **위에** 얹지 옆에 두지 않는다**: `fold_notation(canonical_bind_value(table, column, raw), rules)`. 어휘 하나, 층 둘. `canonical_bind_value` import는 **모듈 최상단**(**98**)인데 의도다 — 재유도가 이것을 1천만 번 돈다.
 >
-> 🔴 **[2026-08-05 재측정] 위 「도달」 목록은 `8d306a5`가 저장되는 파생 컴럼을 철회하면서 반이 사라졌다.** — 쓰기 거부 `crud.refuse_notation_derived_columns`는 **삭제됐고**(묘비 주석만 `crud.py` **2221–2234**), CLI **`server/scripts/rederive_notation_norm.py`도 삭제됐다**(그 파일은 지금 저장소에 없다). 정규화는 이제 **질의 시점의 fold**라 되쓸 것도 거부할 것도 없다. 🔴 **이 절의 Phase 1 · 파생 컴럼 서술은 그만큼 낡았으니 서버 도메인이 재서술해야 한다** — 여기서는 앱커만 실측해 고쳐 둔다.
+> 🔴 **[2026-08-05 재측정] 위 「도달」 목록은 `8d306a5`가 저장되는 파생 컴럼을 철회하면서 반이 사라졌다.** — 쓰기 거부 `crud.refuse_notation_derived_columns`는 **삭제됐고**(묘비 주석만 `crud.py` **2374–2384**), CLI **`server/scripts/rederive_notation_norm.py`도 삭제됐다**(그 파일은 지금 저장소에 없다). 정규화는 이제 **질의 시점의 fold**라 되쓸 것도 거부할 것도 없다. 🔴 **이 절의 Phase 1 · 파생 컴럼 서술은 그만큼 낡았으니 서버 도메인이 재서술해야 한다** — 여기서는 앱커만 실측해 고쳐 둔다.
 > **현존 도달**: 보고서 `config_resolve_report._resolve_notation`(**602**) · 폴드 코어 `notation_norm.fold_notation`(**244**)/`enabled_rule_names`(**269**)/`folds_anything`(**274**) · SQL 폴드 `SQL_FOLD_FUNCTION = 'assy_fold_notation'`(**286**) · 규칙 로더 `_normalize_rules`(**446**).
 >
 > 📌 **`server/config/notation_rules.json.sample`(41줄)의 구조만 기술한다** — `server/config/*`는 gitignored라 라이브 값은 문서화 대상이 아니다. 최상위 키: `__comment` · `__how_to_enable` · **`rules`**(파일 수준 기본 규칙 집합: `separator`/`case`/`zero_pad` boolean) · `__false_merge_check` · **`columns`**(🔴 **의도적으로 빈 객체** — 운영자가 쌍을 선언하기 전까지 기능은 비활성) · `_example_columns`. 🔴 **`_`로 시작하는 키는 로더가 주석으로 취급해 건너뛴다**(`_normalize_rules` **~239**). 컬럼 항목은 **짧은 형태**(`"<raw>": "<derived>"`)와 **긴 형태**(`{"derived": …, "rules": {…}}`) 둘 다 받고, 파생 컬럼은 `table_config.json`에 **미리 `"string"`으로 선언**돼 있어야 하며 `business_key`·`composite_key_source`에 있으면 안 된다.
@@ -1809,19 +1978,21 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 - export: `loadHistory`(~10) DOM 빌더 `createTimelineItemDom`/`createGlobalTimelineItemDom`(~51/104) 증분 렌더 `renderTimeline*`(~272–347) `renderSubDetails`(~363) `appendHistoryLocally`(~446) 로그→셀 점프 `navigateToLog`(~508)+`navigatorStep2/3`/`navigatorFinalScroll`/`releaseNavigationGuard`(~570–713).
 - 소비 API: `/audit_logs/recent`, `/audit_logs/transaction/{tx}`.
 
-### `map_editor.js` (**10,866줄** — `41b17ee` 9,683에서 **+1,183**. 🔴 **코드는 6,356줄이다** — 주석 3,729 + 공백 781) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
+### `map_editor.js` (**11,031줄** — `d3ed167` 10,866에서 **+165**. 🔴 **코드는 6,391줄이다** — 주석 3,858 + 공백 782) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
 
 > 🔴 **이 절에는 구간별 라인 계단표가 없다 — 삭제한 것이 아니라 성립하지 않는다.** 이 파일은 **이음매를 따라 쪼개지는 중**이다. 직전 라운드는 **파일 밖으로** 잘라냈고(`map_key.js`·`split_registry_row.js`), 이번 라운드는 **파일 안에서** 쪼갰다 — 세 거대 함수(`loadExistingMap` R4 · `resolveValidDie` R5 · `pushMapData` R6)의 몸통이 **이름 붙은 단계 함수 17개**로 뽑혀 나왔다. 추출은 함수를 파일 뒤쪽에 앉히므로 **뒤로 갈수록 앵커가 크게 밀린다**(파일 앞 ~300줄은 무이동, 중반 +50~+164, 후반 **+250~+495**).
 >
 > **그래서 이 절의 1차 식별자는 함수명이고 라인은 보조다.** 계단표는 다음 추출에서 **통째로 거짓이 되면서 거짓이 됐다는 신호를 내지 않는다** — 계단표는 자기가 낡았음을 말할 수 없다. 심볼 표는 적어도 Grep 0건으로 낡음을 드러낸다.
 >
-> 🔴 **[2026-08-05] 직전 지도의 오프셋 표는 폐기했다 — 그것이 바로 위 문단이 경고한 실패를 그대로 밟았다.** 직전 패스는 앵커를 `41b17ee`에 고정하고 「`c97b319`에서는 이만큼 더해라」는 표를 붙였는데, **그 뒤로 파일이 또 자라 오프셋 표 자신이 낡았고**, 표는 자기가 낡았다고 말하지 못했다. 아래 앵커는 **전건 `d3ed167` 실측**이고 더할 값은 없다. **직전 앵커 275개 중 246개가 틀려 있었고 드리프트는 +37 ~ +1,116줄이었다.**
+> 🔴 **[2026-08-06] 이 절의 앵커 253개가 *전부* 틀려 있었다 — 예외 0건.** 드리프트는 **+8 ~ +185줄**(파일 앞 ~400줄도 +8~+9로 밀렸다. **「앞쪽은 무이동」이라던 직전 서술은 이제 거짓이다** — 프레임 인자화가 파일 최상단부터 줄을 넣었기 때문이다). 이번 갱신은 **전건 `cfa22ce` blob 실측**이고 더할 값은 없다.
 >
-> **재측정 트리거**: `git rev-parse HEAD:client2/src/map_editor.js`가 **`7ff066d`**(= `d3ed167`의 blob)이 아니면 이 절 전체가 재측정 대상이다. **직전 지도의 트리거 값 `72f2fb7`은 만료됐다.**
+> 🔴 **그리고 살아 있는 앵커 다섯이 없는 것을 가리키고 있었다**: `physFrameOverride`(구 1432) · `withPhysFrame`(구 1538) — S2.1 리팩터로 삭제. `PUSH_SYSTEM_COLUMNS`(구 5760) · `getUnprotectedPushColumns`(구 5782) · `logShapedPushDecision`(구 5801) — **`push_columns.js`로 이사**. 다섯 모두 「그럴듯한 도착지」가 있어 ±20 오차로는 잡히지 않는다.
 >
-> 📐 **실측 규모**(`d3ed167`): 총 **10,866줄** · 공백 **781** · 비공백 **10,085** · **주석 3,729(비공백의 37.0%)** · **코드 6,356**. 톱레벨 함수 선언 **248개**(`function` 215 + `async function` 33) + 톱레벨 `const`에 묶인 함수식 **4개** · 모듈 레벨 `let` **48개**(`var` 0). ⚠️ **「10,866줄짜리 파일」이라고 인용하면 코드 규모를 70% 과대 보고한다.**
+> **재측정 트리거**: `git rev-parse HEAD:client2/src/map_editor.js`가 **`cfa22ce`**(= `cd8bfc9`의 blob)이 아니면 이 절 전체가 재측정 대상이다. **직전 지도의 트리거 값 `7ff066d`은 만료됐다.**
 >
-> 🆕 **좌표표 붙여넣기 4종**: **`coordRulerTicks(line)`(**7447**)** · **`readCoordTableBlock(text)`(**7482**)** · **`currentCoordFrame()`(**7583**)** · **`planCoordPaste(coord, cf)`(**7607**)** — 엑셀 모양의 **2D 좌표표를 화면 위치가 아니라 DB 좌표로** 읽는 붙여넣기 경로(축은 표의 헤더에서 읽는다). 그리고 **`renderValidDieKeyControl()`(**9378**)** — 유효 다이 **읽기**를 `valid_die_ref`에 고정하고 없으면 **이름으로 거절**하는 컨트롤.
+> 📐 **실측 규모**(`cd8bfc9`): 총 **11,031줄** · 공백 **782** · 비공백 **10,249** · **주석 3,858(비공백의 37.6%)** · **코드 6,391**. 톱레벨 함수 선언 **249개**(`function` 216 + `async function` 33) · 모듈 레벨 `let` **47개**(`var` 0 — 직전 48에서 `physFrameOverride` 삭제분 1). ⚠️ **「11,031줄짜리 파일」이라고 인용하면 코드 규모를 73% 과대 보고한다.**
+>
+> 🆕 **좌표표 붙여넣기 4종**: **`coordRulerTicks(line)`(**7626**)** · **`readCoordTableBlock(text)`(**7661**)** · **`currentCoordFrame()`(**7756**)** · **`planCoordPaste(coord, cf)`(**7780**)** — 엑셀 모양의 **2D 좌표표를 화면 위치가 아니라 DB 좌표로** 읽는 붙여넣기 경로(축은 표의 헤더에서 읽는다). 그리고 **`renderValidDieKeyControl()`(**9545**)** — 유효 다이 **읽기**를 `valid_die_ref`에 고정하고 없으면 **이름으로 거절**하는 컨트롤.
 
 
 #### 🆕 2026-08-04 이음매 분해 — 단계 함수 **17종** (R4·R5·R6)
@@ -1830,23 +2001,23 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 
 | 부모 | 단계 함수 | 무엇인가 | 라인 |
 |---|---|---|---|
-| **R4 `loadExistingMap`**(**4853**) | `collectMapKeyFilterModel()` | ① 메타 입력칸 → 조회 필터. 값이 하나도 없으면 `hasFilter === false`이고 **판정은 호출부가 한다** | **5294** |
-| | `scanCoordinateBounds(result, xCol, yCol)` | ② 응답 행 → 저장 좌표 bbox. 🔴 **센티넬(`minX 9999`)이 계약의 일부다** — 파싱된 셀이 0개면 그대로 돌아가고 호출부가 그 값으로 「해석된 셀 0개」를 가른다 | **5317** |
-| | `resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, result)` | ③ `wafer_map_metadata` 해석 → `{ok:true, gridMeta, mapKey}` \| `{ok:false, refusal}`. 🔴 **「확인 못 했다」는 「선언이 없다」가 아니다** — `fetchGridMetaFor`의 404/405-만-null 규율이 여기서 끝나지 않도록 한 자리에 모았다 | **5347** |
-| | `promptCoordinateChoice(el)` | ④ 선언 없는 맵의 좌표계 선택 모달 → `'standard'\|'current'\|'cancel'`. ⚠️ **`el`을 인자로 받는 것이 시그니처의 말이다** — 이 단계가 손대는 유일한 바깥 것 | **5443** |
-| | **`resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el, currentRotation, currentSide)`** | ⑤ 선택 → 격자·원점·회전·면. 🔴 **셋 중 정확히 하나가 프레임을 정한다**가 이 함수의 전부. `boundingBoxCache` 무효화는 **호출부**가 한다 | **5502** |
-| | `deriveLegendFromCellValues(uniqueVals, legend, predefinedColors)` | ⑥ 셀 값 집합 → legend 배열을 **돌려줄 뿐 대입은 호출부**가 한다(「어느 시점에 화면의 legend가 바뀌는가」가 한 줄로 읽혀야 한다) | **5590** |
-| | **`restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp)`** | ⑦ 초안 우선순위. 기반 지문이 같으면 초안이 더 새 것 · 어긋나면 **누가 썼다** → 적용하면 남의 저장을 지운다. 🔴 **적용하지 않고, 버리지도 않고, 사실을 드러낸다**(`restoredUnsavedEdits` → `legendDirty` · `staleDraftKept` → persist 보류) | **5644** |
-| **R6 `pushMapData`**(**5807**) | `confirmLogShapedPushTarget(tableSchema, el, selectedTable)` | 로그형 타깃의 손실 인지 확인창. **어느 모드가 거절하고 무엇을 말하는가는 `logShapedPushDecision`의 답 그대로** | **6184** |
-| | `collectMetaFieldValues(tableSchema)` | 메타 패널을 있는 그대로 읽는다. `ok:false`는 **선언된 메타 필드가 있는데 하나도 안 채웠을 때**뿐 — 필드가 아예 없는 테이블은 막지 않는다(공백 검사에 둘째 항이 있는 이유) | **6223** |
-| | `buildPushGridMetadata(cols, rows, startX, startY, invertY, el, currentRotation, currentSide, validDie)` | 저장될 `grid_metadata` 조립. 🔴 **무엇을 쓸지는 여기서 정하지 않는다** — `validDieRefForPush()`(바꿨는가) + `applyValidDieRef()`(무엇을 쓰는가) + `validDieRefPayload()`(페이로드로), 셋 다 이음매 벡터가 채점한다. 선언 없고 사용자가 안 건드린 맵의 페이로드는 `2a9f6c4`와 **바이트 단위로 같다**(INV-1) | **6270** |
-| | `confirmMissingSplitDescriptions(updates, valCol, legend)` | split 서술이 빈 값에 대한 확인. **판정이 아니라 보고**다 — 예라고 하면 계획은 불완전한 채 저장된다 | **6303** |
-| | `outsideCircleNoteForPush(cols, rows, currentRotation, gridCells2D, gridData)` | [M4②] 원 밖으로 나가는 셀을 **이미 있는 확인문의 한 줄로** 말한다. 🔴 **말할 것이 없으면 `''`를 돌려주므로 확인문이 글자 하나 안 바뀐다**(INV-1) | **6322** |
-| **R5 `resolveValidDie`**(**8693**) | `fitGridToMask(keys, el, currentRotation, currentSide)` | ① 파생 격자가 마스크를 온전히 담는가. `set` 클로저에서 **글자 그대로** 들어냈고 진단 로그 문구를 돌려준다(대입은 호출부) | **9118** |
-| | `summariseReseat(seatsBefore, placed, nc, nr, gridData, loadedFCells, serverCellKeys)` | ② **넷 이동량을 물리 좌석 키의 집합 차이로** 잰다. `netMoved > 0` 분기는 호출부가 그대로 갖고 있어 제어 흐름 무변경 | **9178** |
-| | `resolveReferenceSpec(ref)` | ③ 참조 맵의 키 스펙·좌표 바인딩·메타·프레임. await 사슬 하나, 거절 셋, **모듈 상태 0**. `ref.mapKey`는 종전대로 **제자리에서** 캐노니컬화된다. 🔴 **거절은 취하지 않고 사유로 돌려준다** — `refuse`는 모듈 상태를 쓰므로 오케스트레이터에 남는다 | **9202** |
-| | `deriveMaskKeys(rawKeys)` | ④ 마스크 키 집합과 그 중심. 🔴 **0으로 둔 평행이동 항과 「왜 0이어야 하는가」의 경고가 함께 옮겨졌다** — 수와 사유를 떼어 놓은 것이 그 항을 한 번 되살렸던 경위다 | **9240** |
-| | `diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMinY, hereInvertY, el, currentRotation, currentSide)` | ⑤ 지정 **뒤** 참조 맵과 이 맵이 무엇이 다른가. **두 축(원점·크기)은 독립**이라 각각 재고 성립할 때만 보고한다. 🔴 **지정이 끝난 뒤의 격자로 푼다** — 옛 치수로 푼 진단은 사용자가 보고 있지 않은 화면을 설명한다 | **9270** |
+| **R4 `loadExistingMap`**(**5001**) | `collectMapKeyFilterModel()` | ① 메타 입력칸 → 조회 필터. 값이 하나도 없으면 `hasFilter === false`이고 **판정은 호출부가 한다** | **5447** |
+| | `scanCoordinateBounds(result, xCol, yCol)` | ② 응답 행 → 저장 좌표 bbox. 🔴 **센티넬(`minX 9999`)이 계약의 일부다** — 파싱된 셀이 0개면 그대로 돌아가고 호출부가 그 값으로 「해석된 셀 0개」를 가른다 | **5470** |
+| | `resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, result)` | ③ `wafer_map_metadata` 해석 → `{ok:true, gridMeta, mapKey}` \| `{ok:false, refusal}`. 🔴 **「확인 못 했다」는 「선언이 없다」가 아니다** — `fetchGridMetaFor`의 404/405-만-null 규율이 여기서 끝나지 않도록 한 자리에 모았다 | **5500** |
+| | `promptCoordinateChoice(el)` | ④ 선언 없는 맵의 좌표계 선택 모달 → `'standard'\|'current'\|'cancel'`. ⚠️ **`el`을 인자로 받는 것이 시그니처의 말이다** — 이 단계가 손대는 유일한 바깥 것 | **5624** |
+| | **`resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el, currentRotation, currentSide)`** | ⑤ 선택 → 격자·원점·회전·면. 🔴 **셋 중 정확히 하나가 프레임을 정한다**가 이 함수의 전부. `boundingBoxCache` 무효화는 **호출부**가 한다 | **5682** |
+| | `deriveLegendFromCellValues(uniqueVals, legend, predefinedColors)` | ⑥ 셀 값 집합 → legend 배열을 **돌려줄 뿐 대입은 호출부**가 한다(「어느 시점에 화면의 legend가 바뀌는가」가 한 줄로 읽혀야 한다) | **5793** |
+| | **`restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp)`** | ⑦ 초안 우선순위. 기반 지문이 같으면 초안이 더 새 것 · 어긋나면 **누가 썼다** → 적용하면 남의 저장을 지운다. 🔴 **적용하지 않고, 버리지도 않고, 사실을 드러낸다**(`restoredUnsavedEdits` → `legendDirty` · `staleDraftKept` → persist 보류) | **5847** |
+| **R6 `pushMapData`**(**5959**) | `confirmLogShapedPushTarget(tableSchema, el, selectedTable)` | 로그형 타깃의 손실 인지 확인창. **어느 모드가 거절하고 무엇을 말하는가는 `logShapedPushDecision`의 답 그대로** | **6343** |
+| | `collectMetaFieldValues(tableSchema)` | 메타 패널을 있는 그대로 읽는다. `ok:false`는 **선언된 메타 필드가 있는데 하나도 안 채웠을 때**뿐 — 필드가 아예 없는 테이블은 막지 않는다(공백 검사에 둘째 항이 있는 이유) | **6378** |
+| | `buildPushGridMetadata(cols, rows, startX, startY, invertY, el, currentRotation, currentSide, validDie)` | 저장될 `grid_metadata` 조립. 🔴 **무엇을 쓸지는 여기서 정하지 않는다** — `validDieRefForPush()`(바꿨는가) + `applyValidDieRef()`(무엇을 쓰는가) + `validDieRefPayload()`(페이로드로), 셋 다 이음매 벡터가 채점한다. 선언 없고 사용자가 안 건드린 맵의 페이로드는 `2a9f6c4`와 **바이트 단위로 같다**(INV-1) | **6451** |
+| | `confirmMissingSplitDescriptions(updates, valCol, legend)` | split 서술이 빈 값에 대한 확인. **판정이 아니라 보고**다 — 예라고 하면 계획은 불완전한 채 저장된다 | **6489** |
+| | `outsideCircleNoteForPush(cols, rows, currentRotation, gridCells2D, gridData)` | [M4②] 원 밖으로 나가는 셀을 **이미 있는 확인문의 한 줄로** 말한다. 🔴 **말할 것이 없으면 `''`를 돌려주므로 확인문이 글자 하나 안 바뀐다**(INV-1) | **6507** |
+| **R5 `resolveValidDie`**(**8863**) | `fitGridToMask(keys, el, currentRotation, currentSide)` | ① 파생 격자가 마스크를 온전히 담는가. `set` 클로저에서 **글자 그대로** 들어냈고 진단 로그 문구를 돌려준다(대입은 호출부) | **9288** |
+| | `summariseReseat(seatsBefore, placed, nc, nr, gridData, loadedFCells, serverCellKeys)` | ② **넷 이동량을 물리 좌석 키의 집합 차이로** 잰다. `netMoved > 0` 분기는 호출부가 그대로 갖고 있어 제어 흐름 무변경 | **9348** |
+| | `resolveReferenceSpec(ref)` | ③ 참조 맵의 키 스펙·좌표 바인딩·메타·프레임. await 사슬 하나, 거절 셋, **모듈 상태 0**. `ref.mapKey`는 종전대로 **제자리에서** 캐노니컬화된다. 🔴 **거절은 취하지 않고 사유로 돌려준다** — `refuse`는 모듈 상태를 쓰므로 오케스트레이터에 남는다 | **9372** |
+| | `deriveMaskKeys(rawKeys)` | ④ 마스크 키 집합과 그 중심. 🔴 **0으로 둔 평행이동 항과 「왜 0이어야 하는가」의 경고가 함께 옮겨졌다** — 수와 사유를 떼어 놓은 것이 그 항을 한 번 되살렸던 경위다 | **9410** |
+| | `diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMinY, hereInvertY, el, currentRotation, currentSide)` | ⑤ 지정 **뒤** 참조 맵과 이 맵이 무엇이 다른가. **두 축(원점·크기)은 독립**이라 각각 재고 성립할 때만 보고한다. 🔴 **지정이 끝난 뒤의 격자로 푼다** — 옛 치수로 푼 진단은 사용자가 보고 있지 않은 화면을 설명한다 | **9440** |
 
 #### 이 파일이 더는 소유하지 않는 것 (2026-08-04 추출 2건)
 
@@ -1863,68 +2034,105 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 
 | 이름 | 상태 | 실측 |
 |---|---|---|
-| **`let tables = []`(**56**)** | 🪦 **참조 0건.** 선언 외에 이 식별자를 읽거나 쓰는 곳이 없다 | `git grep -nw tables -- client2/src/map_editor.js`의 나머지 히트는 전부 `data.tables`·URL 문자열·주석이다 |
-| **`let isMouseDown = false`(**62**)** | 🪦 **쓰기 전용.** 대입 2곳(**1011** true · **1085** false)뿐이고 **읽는 곳이 0건** | 조건식·반환·전달 인자 어디에도 등장하지 않는다 |
-| ~~`validDieRefTableTouched`~~ | 🪦 **[신설 묘비] 삭제됐다.** 종전 지도가 모듈 상태로 등재하던 이름이고, 지금 이 파일에 남은 것은 **2283의 묘비 주석 1건**뿐이다 | `git grep -n "validDieRefTableTouched" -- client2/src` → **주석 히트 1건, 선언 0건** |
+| **`let tables = []`(**65**)** | 🪦 **참조 0건.** 선언 외에 이 식별자를 읽거나 쓰는 곳이 없다 | `git grep -nw tables -- client2/src/map_editor.js`의 나머지 히트는 전부 `data.tables`·URL 문자열·주석이다 |
+| **`let isMouseDown = false`(**71**)** | 🪦 **쓰기 전용.** 대입 2곳(**1019** true · **1093** false)뿐이고 **읽는 곳이 0건** | 조건식·반환·전달 인자 어디에도 등장하지 않는다 |
+| ~~`validDieRefTableTouched`~~ | 🪦 **[신설 묘비] 삭제됐다.** 종전 지도가 모듈 상태로 등재하던 이름이고, 지금 이 파일에 남은 것은 **2420의 묘비 주석 1건**뿐이다 | `git grep -n "validDieRefTableTouched" -- client2/src` → **주석 히트 1건, 선언 0건** |
 
 ⚠️ **둘 다 제거가 보드에 올라 있어 남겨 뒀다.** 지우는 것이 옳지만 그 판단은 client/map 도메인 소관이고, **여기서 행을 삭제하면 다음 사람이 "이 지도가 못 봤나 보다"라고 읽는다.** 죽은 것은 지우는 것이 아니라 **죽었다고 표시**한다.
 
+#### 🔴 [2026-08-06 `92e60ca` S2.1] **프레임은 모듈 상태가 아니라 첫 번째 인자다** — 이 절의 모든 시그니처가 바뀌었다
+
+> **`let physFrameOverride`와 `withPhysFrame(frame, fn)`은 삭제됐다.** 종전 지도가 `1432`·`1538`에 **살아 있는 앵커로** 등재하던 두 이름이고, 지금 이 파일에 남은 것은 **주석 히트뿐**이다(`1443`·`1673`·`1874`·`1902`·`2044`·`2098`·`2486`). 모듈 바인딩을 읽던 함수들은 이제 **프레임을 선두 인자로 받는다.**
+>
+> 🔴 **이것이 이 문서에서 가장 위험한 종류의 낡음이다.** 인자가 하나 앞에 끼면 옛 호출은 **던지지 않고 틀린 답을 낸다** — `getDbCoords(colVisual, rowVisual, …)`로 부르면 `colVisual`이 `frame` 자리에 앉고 나머지가 한 칸씩 밀린 채 **캔버스는 멀쩡히 그려지고 저장 좌표만 갈린다.** 이 파일이 존재하는 결함 계급 그대로다.
+>
+> ⚠️ **`null`과 `undefined`는 다른 답이다** — 소스에 명시된 계약이다. `null` = "프레임 없음, 화면 컨트롤을 읽어라"(메인 로드의 경우, **의도된 답**). `undefined` = **호출자가 빠뜨렸다** → `physNum`·`gridDimNum`이 **throw**한다(`1459`·`1473` 부근). 모듈 바인딩 시절엔 창이 자동 적용돼 빠뜨리는 것이 불가능했으므로, 인자화가 그 실수를 처음으로 가능하게 만들었다. **던지는 것은 백스톱이지 보호가 아니다** — 보호는 전 호출부를 열거해 명시 인자를 준 것이다.
+
+| 함수 | 현행 시그니처 (**`cfa22ce`** blob 실측) | 라인 |
+|---|---|---|
+| `physNum` | **`physNum(frame, key, domEl, dflt)`** | **1458** |
+| `gridDimNum` | **`gridDimNum(frame, key, domEl, dflt)`** | **1472** |
+| `geometryIsAutoRegistered` | **`geometryIsAutoRegistered(frame)`** 🆕 | **1533** |
+| `physDeclaration` | **`physDeclaration(frame, key, domEl)`** | **1556** |
+| `frameChosenFrom` | **`frameChosenFrom(frame)`** 🆕 | **1628** |
+| `getDieIndex` | **`getDieIndex(frame, colVisual, rowVisual, cols, rows, rotation, side)`** | **1663** |
+| `getCanvasCellFromDieIndex` | **`getCanvasCellFromDieIndex(frame, xp, yp, cols, rows, rotation, side)`** | **1726** |
+| `getCanvasCellFromDb` | **`getCanvasCellFromDb(frame, dbX, dbY, cols, rows, rotation, side, invertY, startX, startY)`** | **1837** |
+| `getWaferBoundingBox` | **`getWaferBoundingBox(frame, rotation, side, opts)`** | **1896** |
+| `getDbCoords` | **`getDbCoords(frame, colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY)`** | **2012** |
+| `seatingSnapshot` | **`seatingSnapshot(frame)`** | **2049** |
+| `getTransformedPhysicalConfig` | **`getTransformedPhysicalConfig(frame, currentRotation, currentSide)`** | **2171** |
+| `isValidDieAt` | **`isValidDieAt(frame, physX, physY, circleInside, state)`** | **2522** |
+
+- 🔴 **`physNum`의 기지 결함 D1은 살아 있다** — `if (Number.isFinite(ov)) return ov \|\| dflt;`도, 화면 폴백의 `return v \|\| dflt`도 **falsy 검사**라 선언된 `0`이 기본값으로 치환된다. 이 함수가 읽는 키는 **`waferDia`(기본 300) · `chipX`(2.5) · `chipY`(2.5) · `offsetX`(0.0) · `offsetY`(0.0) · `edgeMargin`(3.0)** — 기본값이 0인 `offsetX`/`offsetY`는 0을 0으로 돌려주므로 무해하고, **선언 `0`이 의미를 갖는데 기본값이 0이 아닌 것은 `edgeMargin`**이다. `phys_edge_margin: 0`이 조용히 3.0mm가 되고 유효 반지름에서 유도된 기하 전부가 함께 움직인다. **서버(`map_overlay._frame_phys_params`)는 0을 0으로 읽으므로 이것은 이음매 결함이다.**
+
 #### 좌표 변환 코어 — 변환 구현은 하나다
 
-- **`getDieIndex(colVisual, rowVisual, cols, rows, rotation, side)`(**1566**)** / **`getCanvasCellFromDieIndex(xp, yp, cols, rows, rotation, side)`(**1625**)** — 서로의 **정확한 역함수**. 물리 키의 원점은 **웨이퍼 중심**이지 격자 중심이 아니다. 되기준 항에서 남긴 것은 크기가 아니라 **패리티**다(짝수 격자면 웨이퍼 중심이 칸 경계에, 홀수면 칸 한가운데에 앉는다 — 운영 데이터 214개 맵 중 **163개가 짝수 치수**). ⚠️ **헬퍼로 빼지 않는다** — 이 둘을 슬라이스해 실행하는 하니스가 넷이라 모듈 전역 의존이 하나 늘 때마다 넷이 전부 `ReferenceError`로 죽는다.
-- **`getCanvasCellFromDb(dbX, dbY, cols, rows, rotation, side, invertY, startX, startY)`(**1732**)** / **`getDbCoords(…같은 인자…)`(**1899**)** — 저장 좌표 ↔ 캔버스 칸. **같은 상자에서만** 역함수다.
-- **`getWaferBoundingBox(rotation, side, opts)`(**1787**)** — **좌표계의 원점 상자.** 기준은 **유효 다이 영역**이다(원 bbox는 회전·반전에 거의 불변인데 유효 다이 영역은 아니다 — 「회전할 때마다 origin이 틀어지네」의 정체). 판정을 새로 쓰지 않는다: 원은 `isCellInsideWaferFast`(**2192**), 마스크는 `isValidDieAt`(**2376**), 렌더 루프가 부르는 그 둘을 **같은 순회 안에서** 누적한다(두 번째 전수 순회를 만들지 않기 위해). 캐시 `boundingBoxCache`(**1747**), 캐시 키 첫 항은 **근거 태그**(`'C'` = 원 기하 / `V<validDieResolveSeq>` = 해석된 마스크 — 셀 **개수**로 태그를 만들면 같은 크기의 다른 참조가 서로의 상자를 덮어쓴다). `opts.circleOnly`의 **유일한 소비자는 `computeNotchCell`**(**6777**, 호출 **6783**). ⚠️ **마스크가 격자 안에 한 칸도 없으면 원 상자로 돌아간다** — 빈 상자는 `{0,0,0,0}`으로 무너져 좌표계 전체를 조용히 옮긴다. **미상은 0이 아니다.**
+- **`getDieIndex(frame, colVisual, rowVisual, cols, rows, rotation, side)`(**1663**)** / **`getCanvasCellFromDieIndex(frame, xp, yp, cols, rows, rotation, side)`(**1726**)** — 서로의 **정확한 역함수**. 물리 키의 원점은 **웨이퍼 중심**이지 격자 중심이 아니다. 되기준 항에서 남긴 것은 크기가 아니라 **패리티**다(짝수 격자면 웨이퍼 중심이 칸 경계에, 홀수면 칸 한가운데에 앉는다 — 운영 데이터 214개 맵 중 **163개가 짝수 치수**). ⚠️ **헬퍼로 빼지 않는다** — 이 둘을 슬라이스해 실행하는 하니스가 넷이라 모듈 전역 의존이 하나 늘 때마다 넷이 전부 `ReferenceError`로 죽는다.
+- **`getCanvasCellFromDb(frame, dbX, dbY, cols, rows, rotation, side, invertY, startX, startY)`(**1837**)** / **`getDbCoords(frame, colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY)`(**2012**)** — 저장 좌표 ↔ 캔버스 칸. **같은 상자에서만** 역함수다. ⚠️ **종전 지도의 「…같은 인자…」는 거짓이었다** — 둘은 역함수라 **입력이 서로 반대**다(`dbX, dbY` ↔ `colVisual, rowVisual`). 인자 이름을 생략한 서술이 그 반대를 숨겼다.
+- **`getWaferBoundingBox(frame, rotation, side, opts)`(**1896**)** — **좌표계의 원점 상자.** 기준은 **유효 다이 영역**이다(원 bbox는 회전·반전에 거의 불변인데 유효 다이 영역은 아니다 — 「회전할 때마다 origin이 틀어지네」의 정체). 판정을 새로 쓰지 않는다: 원은 `isCellInsideWaferFast`(**2329**), 마스크는 `isValidDieAt`(**2522**), 렌더 루프가 부르는 그 둘을 **같은 순회 안에서** 누적한다(두 번째 전수 순회를 만들지 않기 위해). 캐시 `boundingBoxCache`(**1856**), 캐시 키 첫 항은 **근거 태그**(`'C'` = 원 기하 / `V<validDieResolveSeq>` = 해석된 마스크 — 셀 **개수**로 태그를 만들면 같은 크기의 다른 참조가 서로의 상자를 덮어쓴다). `opts.circleOnly`의 **유일한 소비자는 `computeNotchCell`**(**6777**, 호출 **6783**). ⚠️ **마스크가 격자 안에 한 칸도 없으면 원 상자로 돌아간다** — 빈 상자는 `{0,0,0,0}`으로 무너져 좌표계 전체를 조용히 옮긴다. **미상은 0이 아니다.**
 - 🆕 🔴 **[`cd3e0f4`] 진짜 밀리미터 공간이 들어왔다 — 「규칙 6」 오버레이의 좌표계다.** 아래 셋이 mm 변환의 전부이고 **회전·반전·오프셋은 한 줄도 없다**(전부 `getDieIndex` 안에서 끝난다 — 여기서 더하는 것은 **단위 환산 하나**뿐):
-  - **`frameDieLattice(frame)`(**1694**)** — 격자 기준점을 `getDieIndex`**에게 묻는다**(캔버스 칸 (0,0) 하나를 그 함수에 넣어 얻은 답). 다이 격자는 간격 1의 정수 격자이므로 **기준점 하나가 격자 전체를 정한다** — 패리티·회전 부호표·오프셋 부호표가 여기 한 줄도 없는 이유가 그것이다. `ix0`는 반올림된 인덱스, **`ux0`는 반올림 전 연속값**.
-  - **`dieIndexToWaferMm(ix, iy, L)`(**1707**)** — 다이 인덱스 → 그 다이 **중심**의 절대 웨이퍼 mm.
-  - **`waferMmToDieCell(mmX, mmY, L)`(**1720**)** — 위의 역함수, **단 나머지를 버리지 않는다**: 몫 = 그 점을 담는 다이 인덱스, 나머지(`rx`/`ry`) = 그 다이 **안에서의** `[0, 피치)` 밀리미터. 🔴 **나머지는 절대 길이라 피치에 의존한다** — 7mm 칩 안의 3mm와 15mm 칩 안의 3mm는 다른 자리다. 그래서 칩 내 좌표는 맵 사이를 그대로 건널 수 없고 **반드시 절대 mm를 거쳐 다시 나눠야** 한다.
+  - **`frameDieLattice(frame)`(**1799**)** — 격자 기준점을 `getDieIndex`**에게 묻는다**(캔버스 칸 (0,0) 하나를 그 함수에 넣어 얻은 답). 다이 격자는 간격 1의 정수 격자이므로 **기준점 하나가 격자 전체를 정한다** — 패리티·회전 부호표·오프셋 부호표가 여기 한 줄도 없는 이유가 그것이다. `ix0`는 반올림된 인덱스, **`ux0`는 반올림 전 연속값**.
+  - **`dieIndexToWaferMm(ix, iy, L)`(**1812**)** — 다이 인덱스 → 그 다이 **중심**의 절대 웨이퍼 mm.
+  - **`waferMmToDieCell(mmX, mmY, L)`(**1825**)** — 위의 역함수, **단 나머지를 버리지 않는다**: 몫 = 그 점을 담는 다이 인덱스, 나머지(`rx`/`ry`) = 그 다이 **안에서의** `[0, 피치)` 밀리미터. 🔴 **나머지는 절대 길이라 피치에 의존한다** — 7mm 칩 안의 3mm와 15mm 칩 안의 3mm는 다른 자리다. 그래서 칩 내 좌표는 맵 사이를 그대로 건널 수 없고 **반드시 절대 mm를 거쳐 다시 나눠야** 한다.
   - ⚠️ **곱하는 피치는 선언된(회전 전) 물리 피치**다. `getTransformedPhysicalConfig`가 90/270에서 스왑한 화면 피치가 **아니다** — `getDieIndex`가 이미 화면을 물리 축으로 되돌려 놓았다.
   - ⚠️ **`isCellInsideWaferFast`는 여전히 700×700 픽셀 공간이다**(**1975**). **mm 공간과 픽셀 공간은 별개**이고 둘을 섞으면 안 된다. ([§0 ⑫](#0-묘비-목록--소스에-존재하지-않는-이름)의 「`mm`은 비어 있는 이름」 검사는 이 블록이 착지하면서 **폐기됐다.**)
-- `getTransformedPhysicalConfig`(**2038**) · `getScreenShift`(**2073**) · `isCellInsideWafer`(**2230**).
-- **프레임 창(frame window)** — `physFrameOverride`(**1432**) + `physNum`(**1435**)/`gridDimNum`(**1444**)/`physDeclaration`(**1509**)/`withPhysFrame(frame, fn)`(**1538**). 변환 함수가 규격을 DOM에서 읽는 지점을 잠깐 갈아끼우는 장치로, **주입 지점은 `getTransformedPhysicalConfig`·`getWaferBoundingBox` 두 곳뿐**이다. `withPhysFrame`은 **동기 전용**(내부 `await` 금지 — `try/finally` 복원이 새면 조용한 오답).
+- `getTransformedPhysicalConfig`(**2171**) · `getScreenShift`(**2210**) · `isCellInsideWafer`(**2367**).
+- **프레임 규격 독법** — `physNum(frame, key, domEl, dflt)`(**1458**)/`gridDimNum(frame, key, domEl, dflt)`(**1472**)/`physDeclaration(frame, key, domEl)`(**1556**). 🪦 **`physFrameOverride`와 `withPhysFrame`은 삭제됐다**(위 S2.1 표) — 「창을 열었다 닫는다」는 서술은 더는 성립하지 않는다. **프레임은 인자로 흐른다**: 규격을 읽어야 하는 함수가 자기 프레임을 받아 그대로 아래로 넘긴다. 종전의 「주입 지점 두 곳」(`getTransformedPhysicalConfig`·`getWaferBoundingBox`)은 이제 **그 둘이 `frame`을 첫 인자로 받는다**는 뜻이다. `withPhysFrame`의 「동기 전용(내부 `await` 금지)」 제약도 함께 사라졌다 — 복원할 전역이 없다.
   - 🔴 **`physNum`은 계약이 이름 붙인 기지 결함 D1의 현장이다** — `return v || dflt`가 **falsy 검사**라 선언된 `0`이 기본값으로 치환된다. 6개 호출부 중 기본값이 0이 아닌 것은 `edgeMargin`(3.0) 하나뿐이라 `phys_edge_margin: 0`이 조용히 3.0mm가 되고 유효 반지름에서 유도된 기하 전부가 함께 움직인다. **서버(`map_overlay._frame_phys_params`)는 0을 0으로 읽으므로 이것은 이음매 결함이다.**
-- 🔴 **`isValidDieAt` 호출은 여전히 6곳이고, 앵커는 전부 이동했다**(2026-08-05 전건 재계수. `grep -c "isValidDieAt"` = **17** = 정의 1(**2376**) + 호출 6 + **주석 10**): 셀 객체 조립 **868**(`getGridCellObject` 안) · `getWaferBoundingBox`의 마스크 누적 루프 **1866** · 캔버스 **3364** · `fillGrid` **5724** · 엣지 분류 **6359** · `canvasSeatKeys` **8672**. **두 번째가 요점이다** — 마스크 판정이 **좌표계 자신**의 입력이다. ⚠️ **개수(6)만 확인하고 통과시키면 여섯 앵커가 전부 틀린 채 남는다.**
+- 🔴 **`isValidDieAt`(정의 **2522**) 호출부 — 전건 열거**(개수를 적지 않는다. 개수는 다음 라운드가 하나 더하면 조용히 거짓이 되고, **개수만 맞으면 앵커가 전부 틀려도 통과한다**):
+
+  | 호출 라인 | 감싸는 함수 | 첫 인자 |
+  |---|---|---|
+  | **876** | `getGridCellObject`(**846**) — 셀 객체 조립 | `null` |
+  | **1979** | `getWaferBoundingBox`(**1896**) — 마스크 누적 루프 | **`frame`** |
+  | **3514** | `renderGridCanvas`(**3399**) — 캔버스 | `null` |
+  | **5925** | `fillGrid`(**5889**) | `null` |
+  | **6544** | `getEdgeClassification`(**6530**) — 엣지 분류 | `null` |
+  | **8842** | `canvasSeatKeys`(**8824**) | `null` |
+
+  🔴 **두 번째가 요점이다** — 마스크 판정이 **좌표계 자신**의 입력이고, **실제 프레임을 넘기는 유일한 호출부**이기도 하다. 나머지 다섯은 `null`(= 「화면을 읽어라」, 의도된 답)이다. ⚠️ **`null`을 빠뜨려 인자를 하나 앞당기면 `physX`가 `frame` 자리에 앉는다 — 던지지 않고 틀린 답을 낸다.**
 
 #### 규칙 ④ — 「원점 상자가 셀 밑에서 움직였을 때」의 유일한 반응
 
 - 🔴 **붙드는 것은 저장 좌표이고 움직이는 것은 캔버스 칸이다**(사용자 확정: 「db 좌표 보존이야」). 셀이 칸을 붙들면 근거가 바뀔 때 읽는 번호가 바뀌고 ⚡ Push가 그 새 번호를 쓴다 — **화면은 한 픽셀도 안 움직인 채 DB의 좌표가 갈리는**, 이 도메인이 존재하는 그 결함이다.
-- **`cellsSeatedUnder`(**1930**, `let … = null`)** — 셀이 **마지막으로 앉은** 좌표계 기록. 🔴 **상자에 대한 두 번째 진실이 아니다**: 상자가 무엇인가는 `getWaferBoundingBox` 하나만 답하고, 여기 담기는 것은 **그 함수가 이미 내놓은 답**이다. 뜻은 "무엇이 옳은가"가 아니라 **"셀이 마지막으로 어디에 앉았는가"**다. 둘을 대조해 화해시켜야 하는 상황이 생기면 **설계가 틀린 것이므로 화해시키지 말고 보고할 것.**
-- **`seatingSnapshot()`(**1932**)** — 그 기록을 만드는 순수 수집기. ⚠️ **키 이름이 `currentFrame`·`frameFromMeta`가 쓰는 그 이름이어야 한다** — 이 객체를 그대로 `withPhysFrame`에 넘겨 **옛 좌표계를 다시 열기** 때문이다. 🔴 **프레임 창 안에서는 `null`을 돌려준다**(소스 맵의 좌석을 이 화면의 좌석으로 기록하지 않기 위해).
-- **`reseatCellsToStoredCoords(was)`(**1985**)** — **반응 그 자체.** 반환 `null`(반응 없음) | `{moved, offGrid, visC, visR, held}`.
+- **`cellsSeatedUnder`(**2047**, `let … = null`)** — 셀이 **마지막으로 앉은** 좌표계 기록. 🔴 **상자에 대한 두 번째 진실이 아니다**: 상자가 무엇인가는 `getWaferBoundingBox` 하나만 답하고, 여기 담기는 것은 **그 함수가 이미 내놓은 답**이다. 뜻은 "무엇이 옳은가"가 아니라 **"셀이 마지막으로 어디에 앉았는가"**다. 둘을 대조해 화해시켜야 하는 상황이 생기면 **설계가 틀린 것이므로 화해시키지 말고 보고할 것.**
+- **`seatingSnapshot(frame)`(**2049**)** — 그 기록을 만드는 순수 수집기. ⚠️ **키 이름이 `currentFrame`·`frameFromMeta`가 쓰는 그 이름이어야 한다** — 이 객체를 그대로 `withPhysFrame`에 넘겨 **옛 좌표계를 다시 열기** 때문이다. 🔴 **프레임 창 안에서는 `null`을 돌려준다**(소스 맵의 좌석을 이 화면의 좌석으로 기록하지 않기 위해).
+- **`reseatCellsToStoredCoords(was)`(**2110**)** — **반응 그 자체.** 반환 `null`(반응 없음) | `{moved, offGrid, visC, visR, held}`.
   - ① 옛 좌표계를 `withPhysFrame(was, …)`로 다시 열어 각 셀이 그때 말하던 저장 좌표를 되찾고 ② 그 좌표가 새 좌표계에서 가리키는 칸으로 다시 앉힌다. 🔴 **새 변환식은 한 줄도 없다** — 도는 것은 로드·렌더가 쓰는 바로 그 함수들이고 되앉히는 것은 그 둘의 역함수다.
   - ③ **`gridData`·`loadedFCells`·`serverCellKeys.keys`를 함께 리키잉한다.** 🔴 **서버 셀 집합을 같이 옮기지 않으면** 서버에서 온 셀이 「보낸 적 없음」으로 읽혀 정리 경로가 **실재하는 행을 지우자고 제안한다.**
   - 🔴 **방향(회전·반전·Y반전)과 START는 반대 연산이다**(규칙 ⑤: 다이를 붙들고 번호를 옮긴다). 그 축이 하나라도 다르면 **이 반응은 아무것도 하지 않는다** — 기하 반응이 회전에서 뜨면 규칙 ④가 규칙 ⑤를 덮어쓴다.
-- 🔴 **호출 지점은 넷 그대로이고 앵커는 전부 이동했다**(2026-08-04 전건 재계수. `grep -c "reseatCellsToStoredCoords"` = **10** = 정의 1 + 호출 4 + **주석 5** — 구 총계 9는 낡았다):
-  1. **격자 치수(cols/rows) 편집 리스너**(**624**, `initDOMElements` 안) — 「격자 치수도 기하 편집이다」. 「격자 치수도 기하 편집이다 — 물리 규격 한 칸을 고치는 것과 같은 연산」. 치수가 바뀌면 ① 원점 상자(원의 반지름은 칸 수로 고정인데 중심이 `visualCols / 2`라 격자가 넓어지면 원 전체가 미끄러진다)와 ② 다이 인덱스 자체가 **함께** 움직이고, 저장 좌표가 갈리는 것은 그 **차이**다. 실측(생산 프레임 3개 × 각 축 ±1~±3): **36건 중 16건이 어긋났고, 어긋난 16건은 예외 없이 셀의 100%였다**(261/261 · 273/273 · 461/461). ⚠️ **"상자가 안 움직였으면 반응할 것도 없다"는 참이 아니다** — QERWER 23→22열은 `box.minC`가 2에서 그대로인데 261칸 전부가 다시 번호를 받았다.
-  2. **`onPhysicalGeometryEdit`**(**767** 선언, 호출 **785**, 리스너 배선 **790–791**) — ⚠️ **`initDOMElements` 안의 지역 화살표 함수이지 모듈 레벨 함수가 아니다.** 모듈 레벨에서 이 이름을 Grep하면 없다. `input`/`change`는 DOM 값이 **이미 바뀐 뒤** 뜨므로 이 리스너는 변경 전 상태를 스스로 잡을 수 없다 — 그래서 직전 렌더가 남긴 `cellsSeatedUnder`가 옛 좌표계다. **이 기록이 필요한 이유가 정확히 이것이다.**
-  3. **`applyPhysicalGeometry`**(**2619** 선언, 호출 **2651**) — 파생 치수가 자리를 잡은 **뒤**, 렌더보다 **앞**. 순서가 전부다: 옛 치수로 앉히면 렌더가 새 치수로 좌표를 되만들어 저장 좌표가 옮겨가고, 렌더 뒤에 물으면 비교할 옛 좌표계가 이미 갱신돼 있다.
-  4. **`resolveValidDie`의 `set()` 안**(**8808**).
+- 🔴 **호출 지점 — 전건 열거**(정의 **2110**. 개수는 적지 않는다):
+  1. **격자 치수(cols/rows) 편집 리스너**(**632**, `initDOMElements` 안) — 「격자 치수도 기하 편집이다」. 「격자 치수도 기하 편집이다 — 물리 규격 한 칸을 고치는 것과 같은 연산」. 치수가 바뀌면 ① 원점 상자(원의 반지름은 칸 수로 고정인데 중심이 `visualCols / 2`라 격자가 넓어지면 원 전체가 미끄러진다)와 ② 다이 인덱스 자체가 **함께** 움직이고, 저장 좌표가 갈리는 것은 그 **차이**다. 실측(생산 프레임 3개 × 각 축 ±1~±3): **36건 중 16건이 어긋났고, 어긋난 16건은 예외 없이 셀의 100%였다**(261/261 · 273/273 · 461/461). ⚠️ **"상자가 안 움직였으면 반응할 것도 없다"는 참이 아니다** — QERWER 23→22열은 `box.minC`가 2에서 그대로인데 261칸 전부가 다시 번호를 받았다.
+  2. **`onPhysicalGeometryEdit`**(**775** 선언, 호출 **793**, 리스너 배선 **798–799**) — ⚠️ **`initDOMElements` 안의 지역 화살표 함수이지 모듈 레벨 함수가 아니다.** 모듈 레벨에서 이 이름을 Grep하면 없다. `input`/`change`는 DOM 값이 **이미 바뀐 뒤** 뜨므로 이 리스너는 변경 전 상태를 스스로 잡을 수 없다 — 그래서 직전 렌더가 남긴 `cellsSeatedUnder`가 옛 좌표계다. **이 기록이 필요한 이유가 정확히 이것이다.**
+  3. **`applyPhysicalGeometry`**(**2769** 선언, `applyPresetObject` 안의 호출 **2986**) — 파생 치수가 자리를 잡은 **뒤**, 렌더보다 **앞**. 순서가 전부다: 옛 치수로 앉히면 렌더가 새 치수로 좌표를 되만들어 저장 좌표가 옮겨가고, 렌더 뒤에 물으면 비교할 옛 좌표계가 이미 갱신돼 있다.
+  4. **`resolveValidDie`의 `set()` 안**(**8978**).
 - ⚠️ **호출자는 기록을 캐시하지 않는다** — 반드시 **부르는 시점에** `cellsSeatedUnder`를 읽어야 한다. 이 함수가 끝날 때마다 기록을 갱신하므로 한 번의 조작이 반응을 두 번 타도 두 걸음이 이어 붙는다. **미리 잡아 둔 옛 기록을 두 번째 걸음에 넘기면 같은 이동을 두 번 적용한다.**
 - 🔴 **근거가 무엇이든 같은 반응이다** — 유효 다이 선언이 없는 맵에서 유효 다이 영역은 곧 웨이퍼 원이므로, **기하 프리셋을 바꾸는 것과 참조를 지정하는 것은 같은 연산이지 닮은 연산이 아니다.** 그래서 함수도 하나다.
 - **채점자**: `client2/tests/geometry_origin_reseat_harness.mjs`, 게이트 배선([§6-2](#6-2-교차-구현-계약-contracts)).
 
 #### 유효 다이(valid die)
 
-- 모듈 상태 `validDie`(**2264**) · **`validDieResolveSeq`(**2295** — 경쟁 해소 세대 카운터이자 `getWaferBoundingBox`의 캐시 태그)**. 🪦 **`validDieRefTableTouched`는 삭제됐다**(위 묘비 표) — 구 지도가 `~2005`에 등재하던 이름이고 **지금 이 파일에는 선언이 없다.**
-- `parseValidDieRef(meta, currentTable)`(**2311**) · `validDieBasis(state)`(**2357**) · **`isValidDieAt(physX, physY, circleInside, state)`(**2376** — 판정이 갈리는 유일한 지점. 참조가 없으면 인자로 받은 원 판정을 그대로 돌려준다)** · `buildValidDieTemplate(shape)`(**2408**) · `validDieRefDisplay`(**2441**) · `applyValidDieRef`(**2470**) · `validDieRefFromControls`(**2515**) · `validDieRefForPush`(**2522**) · `validDieRefPayload`(**2552**) · `validDieChainError`(**2599**). 상수 `VALID_DIE_TEMPLATE_PREFIX`(**2663**) · `VALID_DIE_TEMPLATE_OPTIONS`(**2664**) · `VALID_DIE_LIST_LIMIT=500`(**2670**).
-- 🔴 **`resolveValidDie(meta, targetTable, homeMapKey)`(**8693** — 구 지도의 `7867`은 **+826** 틀려 있었다)** — ⚠️ **시그니처는 3인자 그대로.** 세 번째는 선언 맵 자신의 키이고 **자기참조 체인 관문** 전용이다. 지역 클로저 `set(basis, keys, reason, ref, physPreset)`의 **순서가 계약**이다:
+- 모듈 상태 `validDie`(**2401**) · **`validDieResolveSeq`(**2432** — 경쟁 해소 세대 카운터이자 `getWaferBoundingBox`의 캐시 태그)**. 🪦 **`validDieRefTableTouched`는 삭제됐다**(위 묘비 표) — 구 지도가 `~2005`에 등재하던 이름이고 **지금 이 파일에는 선언이 없다.**
+- `parseValidDieRef(meta, currentTable)`(**2448**) · `validDieBasis(state)`(**2494**) · **`isValidDieAt(frame, physX, physY, circleInside, state)`(**2522** — 판정이 갈리는 유일한 지점. 참조가 없으면 인자로 받은 원 판정을 그대로 돌려준다)** · `buildValidDieTemplate(shape)`(**2558**) · `validDieRefDisplay`(**2591**) · `applyValidDieRef`(**2620**) · `validDieRefFromControls`(**2665**) · `validDieRefForPush`(**2672**) · `validDieRefPayload`(**2702**) · `validDieChainError`(**2749**). 상수 `VALID_DIE_TEMPLATE_PREFIX`(**2813**) · `VALID_DIE_TEMPLATE_OPTIONS`(**2814**) · `VALID_DIE_LIST_LIMIT=500`(**2820**).
+- 🔴 **`resolveValidDie(meta, targetTable, homeMapKey)`(**8863**)** — ⚠️ **시그니처는 3인자 그대로.** 세 번째는 선언 맵 자신의 키이고 **자기참조 체인 관문** 전용이다. 지역 클로저 `set(basis, keys, reason, ref, physPreset)`의 **순서가 계약**이다:
   1. **좌석 기록 확보** — 한 번도 그리지 않았으면 지금 잡는다. ⚠️ **여기서 지역 변수에 캐시하면 안 된다**(아래 `applyPresetObject`가 같은 반응을 먼저 한 걸음 돌린다).
   2. **`validDie` 대입.**
-  3. **[규칙 ①] 기하 재로드** — `applyPresetObject(physPreset)`(호출 **8771**, 선언 **2765**)으로 참조의 **규격**을 갈아끼우고, 그 안의 `applyPhysicalGeometry`가 **새 규격에서 cols/rows를 다시 파생**한다. 🔴 **치수는 인자로 넘기지 않는다 — 규격에서 파생시킨다.** 삭제된 프레임 채택 함수가 거절당한 것은 참조가 **선언한** cols/rows를 베끼면서 셀은 칸에 그대로 둬 **273칸 전부의 좌표를 움직였기** 때문이다. **파생과 재배치는 한 쌍이고 한쪽만 하면 그것이 거절당한 그 동작이다.**
-  4. **마스크 적합 격자 확장** — 파생 격자가 마스크를 온전히 담지 못할 때만, 담을 때까지만 **한 번에 한 칸**. 상한은 편집기의 치수 정의역(`frameDimBounds` **8499**)에서 온다. 상한에 닿으면 **더 넓히지 않고 멈추고 사유를 남긴다.** 🆕 ⚠️ **이 블록은 더는 인라인이 아니다 — `fitGridToMask`(**9118**)로 뽑혀 나왔다.** 슬라이스 하니스가 죽지 않는 이유는 그 함수가 **읽는 모든 바인딩을 인자로 받아 모듈 상태를 0으로** 유지하기 때문이고(본문은 인라인 시절과 바이트 동일), 그것이 이 추출의 성립 조건이었다.
+  3. **[규칙 ①] 기하 재로드** — `applyPresetObject(physPreset)`(호출 **8941**, 선언 **2915**)으로 참조의 **규격**을 갈아끼우고, 그 안의 `applyPhysicalGeometry`가 **새 규격에서 cols/rows를 다시 파생**한다. 🔴 **치수는 인자로 넘기지 않는다 — 규격에서 파생시킨다.** 삭제된 프레임 채택 함수가 거절당한 것은 참조가 **선언한** cols/rows를 베끼면서 셀은 칸에 그대로 둬 **273칸 전부의 좌표를 움직였기** 때문이다. **파생과 재배치는 한 쌍이고 한쪽만 하면 그것이 거절당한 그 동작이다.**
+  4. **마스크 적합 격자 확장** — 파생 격자가 마스크를 온전히 담지 못할 때만, 담을 때까지만 **한 번에 한 칸**. 상한은 편집기의 치수 정의역(`frameDimBounds` **8499**)에서 온다. 상한에 닿으면 **더 넓히지 않고 멈추고 사유를 남긴다.** 🆕 ⚠️ **이 블록은 더는 인라인이 아니다 — `fitGridToMask`(**9288**)로 뽑혀 나왔다.** 슬라이스 하니스가 죽지 않는 이유는 그 함수가 **읽는 모든 바인딩을 인자로 받아 모듈 상태를 0으로** 유지하기 때문이고(본문은 인라인 시절과 바이트 동일), 그것이 이 추출의 성립 조건이었다.
   5. 🔴 **`boundingBoxCache = {}`** — 세대 카운터는 **진입 시** 오르는데 `validDie` 대입은 그 뒤다. **그 사이에 상자를 한 번이라도 물으면 옛 마스크로 만든 상자가 새 번호의 키에 실린다.**
-  6. **`reseatCellsToStoredCoords(cellsSeatedUnder)`(호출 **8808**)** — 기하 프리셋 편집이 타는 것과 **같은 함수**. 🔴 **인자는 지금 읽는다.**
+  6. **`reseatCellsToStoredCoords(cellsSeatedUnder)`(호출 **8978**)** — 기하 프리셋 편집이 타는 것과 **같은 함수**. 🔴 **인자는 지금 읽는다.**
   7. **넷 이동량은 좌석 집합의 차이로 잰다**(🆕 `summariseReseat` **9178**) — 걸음마다 세면 서로 상쇄되는 두 걸음이 「N칸 이동 후 N칸 이동」으로 읽혀 **사용자에게 거짓 수를 준다.**
   - 🔴 **마스크 재중심화(평행이동)는 삭제 상태 그대로다 — 되살리지 마라.** 평행이동은 마스크의 bbox 중점을 격자 중심에 끌어다 놓는데, 웨이퍼 위에서 실제로 치우쳐 앉은 유효 다이 영역은 그 조작으로 자기 다이에서 벗어난다. **실측(`bonding_map/DTWWER ← BASE_4E`, 독립 오라클 대조): 평행이동이 (0,1)을 만들어 262칸 중 21칸이 틀린 다이에 앉았고, 0으로 두면 262칸이 오라클과 정확히 일치한다.**
   - 🔴 **START X,Y는 편집기가 바꾸지 않는다**(사용자 확정: 「START X,Y는 바뀌면 안됨」). 그래서 오리진 셀은 `box.minC − startX`에 선다.
   - 🔴 **토스트가 말하는 두 수는 다른 것을 잰다**: `originDiffer`는 **프레임 정렬의 사실**이고 데이터를 움직이는 양이 **아니다**. `screenShift`는 **이번 지정으로 셀과 마스크가 화면에서 실제로 움직인 칸 수**다. 발화는 `console.info` 1줄 + **토스트 1회**(`dedupeKey:'valid_die_frame_differs'`) — **확인창이 아니라 토스트인 것이 UI 규율**이다.
   - ⚠️ **`[유효다이]` 콘솔 줄에 em dash(U+2014)·이모지를 쓰지 않는다** — 운영 콘솔이 한국어 Windows(cp949)라 한 글자에 로깅 핸들러가 **줄 전체를 버린다**(U+2015 `―`를 쓴다).
   - **`catch`는 예상된 실패의 자리가 아니다** — 조회·데이터·계약 실패는 전부 위에서 `refuse`가 저자의 문구로 거절했다. 여기까지 오는 것은 대개 **프로그래머 오류**이고, `e.message`를 그대로 사유로 흘리면 **"거절은 사유를 가진다"는 계약을 스택 트레이스가 만족시킨다.** 판정은 `e.name`으로 한다(`instanceof`는 realm이 다르면 조용히 거짓이 된다).
-  - `frameDimError`(**8507**) · 저작·표시: `renderValidDieChip`(**9312**) · `syncValidDieRefControls`(**9353**) · `onValidDieRefChanged`(**9430**) · `populateValidDieRefList`(**9859**) · `enterValidDieAuthoring(shape)`(**9986**).
+  - `frameDimError`(**8677**) · 저작·표시: `renderValidDieChip`(**9482**) · `syncValidDieRefControls`(**9520**) · `onValidDieRefChanged`(**9597**) · `populateValidDieRefList`(**10031**) · `enterValidDieAuthoring(shape)`(**10155**).
   - 🪦 **`saveValidDieRefDeclaration()`은 삭제됐다**(`5b15c24` — 유효 다이 블록의 🎯 APPLY·💾 SAVE 버튼과 함께). 구 지도가 **살아 있는 앵커 `8560`으로 등재**하던 이름이고, 지금 이 파일에 **선언도 주석도 0건**이다. 삭제 사유: 그 함수는 `valid_die_ref` **한 필드**만 썼는데 그 필드는 ⚡ Push가 이미 함께 실어 나른다.
-  - 🆕 **그 자리를 받은 것은 `saveMapSpecOnly()`(**9487**) — 「📐 규격만 저장」이고, 한 필드가 아니라 *규격 블록 전체*를 셀 없이 쓴다**(격자·START·회전·면·물리 규격). 배선 `el.btnSaveMapSpec`(**453**, 리스너 **685**).
+  - 🆕 **그 자리를 받은 것은 `saveMapSpecOnly()`(**9654**) — 「📐 규격만 저장」이고, 한 필드가 아니라 *규격 블록 전체*를 셀 없이 쓴다**(격자·START·회전·면·물리 규격). 배선 `el.btnSaveMapSpec`(**461**, 리스너 **693**).
     - 🔴 **새 라우트는 없다** — 구 SAVE가 쓰던 그 PUT(`wafer_map_metadata/data/updates`)이고 `business_key_val` upsert라 **없는 행을 만드는 것도 같은 호출**이다.
-    - 🔴 **규격 객체의 조립기는 하나다**: `buildPushGridMetadata`(**6270**) — ⚡ Push가 부르는 그 함수. 컨트롤 독법도 `readGridFrameControls`(**6260**) 하나를 공유하고, 병합은 순수 함수 `mergeStoredGridMeta(stored, gridMetaOut)`(**2572**)다.
+    - 🔴 **규격 객체의 조립기는 하나다**: `buildPushGridMetadata`(**6451**) — ⚡ Push가 부르는 그 함수. 컨트롤 독법도 `readGridFrameControls`(**6437**) 하나를 공유하고, 병합은 순수 함수 `mergeStoredGridMeta(stored, gridMetaOut)`(**2722**)다.
     - 🔴 **정체성은 `loadedIdentity`가 아니라 *지금 화면의 컨트롤*이다**(사용자 지시 — 맵을 열고 키를 바꿔 새 정체성으로 기하를 등록하는 것이 이 기능의 쓰임이다). ⚠️ **구 지도의 「서버본에서 유래한 화면만 저장 권한을 가진다(`loadedIdentity` 없으면 거절)」는 이제 거짓이다.** 대신 오타 하나가 **없던 맵을 등록**할 수 있으므로 확인문이 대상과 신규/갱신을 이름으로 말하고, 그 신규/갱신은 추정이 아니라 **`fetchGridMetaFor`로 읽어서** 정한다.
     - `getCurrentMapKey()`가 null이면 거절한다 — ⚡ Push는 그 자리에서 `'default_map'`으로 물러서지만 **규격 등록은 자리 표시자 정체성에 행을 만드는 일**이라 물러서지 않는다.
     - **`fetchGridMetaFor`의 「선언 없음(null)」/「확인 못 함(throw)」 구분을 그대로 쓴다**: 확인 못 한 규격 위에 되쓰면 cols/rows/START/회전/물리가 **한 번의 저장으로 사라진다**. **UI 규율 — 읽기는 무마찰, 쓰기는 확인창 정확히 1회.**
@@ -1932,13 +2140,13 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 
 #### 프레임 스택 · 오버레이
 
-- 프레임: `editorFrames`(**7789**) · `snapshotEditorState`(**7843**)/`restoreEditorState`(**7908**) · `openMapFrame(spec)`(**8140**) · `popMapFrame`(**8213**) · `frameFromMeta(meta)`(**8450**) · `frameDimBounds`(**8499**) · `currentFrame`(**8515**) · `resolveFrame`(**8528**) · `frameAxesKey`(**8545**).
-- 🔴 **[`cd3e0f4`] 오버레이 투영이 mm를 경유한다** — **`projectCellsToWaferMm(cells, frame)`(**8560**)**가 실제 계산이고, **`projectCellsToPhys(cells, frame)`(**8590**)는 그 결과에서 키만 옮기는 얇은 래퍼**다(시그니처·의미는 종전 그대로 — 유효 다이 해석의 입력이다). 🔴 **같은 수를 두 번 계산하지 않는다.**
+- 프레임: `editorFrames`(**7960**) · `snapshotEditorState`(**8014**)/`restoreEditorState`(**8079**) · `openMapFrame(spec)`(**8310**) · `popMapFrame`(**8383**) · `frameFromMeta(meta)`(**8620**) · `frameDimBounds`(**8669**) · `currentFrame`(**8685**) · `resolveFrame`(**8698**) · `frameAxesKey`(**8715**).
+- 🔴 **[`cd3e0f4`] 오버레이 투영이 mm를 경유한다** — **`projectCellsToWaferMm(cells, frame)`(**8730**)**가 실제 계산이고, **`projectCellsToPhys(cells, frame)`(**8760**)는 그 결과에서 키만 옮기는 얇은 래퍼**다(시그니처·의미는 종전 그대로 — 유효 다이 해석의 입력이다). 🔴 **같은 수를 두 번 계산하지 않는다.**
   - 🔴 **`mm`은 반올림 전 연속값(`p.xCells`)에서 만든다** — 반올림된 `p.x`에서 되만들면 오프셋의 칸 미만 잔여가 빠져 **모든 셀이 그만큼 밀린다**(실측: 이 fixture에서 1836칸 중 **1789칸**이 틀린 타깃 칸에 앉았다).
   - ⚠️ **피치가 없으면 `mm`이 null인 항목이 나오고 여기서 거절하지 않는다** — 거절 문구를 쓰는 자리는 호출자(오버레이)이고, 유효 다이 해석은 mm를 아예 보지 않는다.
-- **`seatWaferMmInFrame(items, frame)`(**8605**)** — [규칙 6] 물리 mm 항목을 **타깃 프레임의 칸에 앉힌다.** 반환 `Map(다이키 → 항목 **배열**)`. 🔴 **대표값을 고르지 않는다**(사용자 확정 「전부 나열」): 타깃 피치가 소스보다 굵으면 한 칸이 소스 여러 칸을 받는데(실측 최대 6) 대표를 고르면 나머지를 조용히 버리면서 **한 값을 자신 있게** 보여 준다. 단 **같은 물리 위치의 같은 값은 접어 넣는다**(정보가 아니라 소스에 같은 행이 두 번 있을 뿐 — 접지 않으면 피치가 **같은** 맵도 fanout 2가 되어 「여러 값」 가져오기에서 제외된다). 위치가 같은데 값이 다르면 그것은 중복이 아니라 **충돌**이라 둘 다 남긴다. ⚠️ **앉히는 기준은 지금 화면의 프레임이다.**
-- `canvasSeatKeys()`(**8654**, 캐시 `seatKeyCache` **8653**) · `reseatOverlayLayer(o)`(**10422**) · `overlayGeomSig`(**10484**)/`currentGeomSignature()`(**10486**)/**`syncOverlayGeometry()`(**10503**)** — ⚠️ **mm 좌석은 피치의 함수라 화면 규격이 바뀌면 다시 앉혀야 한다**(종전 다이 인덱스 키는 화면에 불변이었다). `overlayAlignChip`(**10527**)/`overlayFanChip`(**10553**).
-- 오버레이 본체: `OVERLAY_COLORS`(**8275**) · `overlayLayers`(**8281**)/`activeOverlayLayers`(**8282**, 렌더 루프에서 재계산 금지용 캐시)/`overlaySeq`(**8283**)/`recomputeActiveOverlays()`(**8285**) · `drawOverlayMarkers`(**8369**) · `pushFailedOverlay`(**10054**) · `OVERLAY_CELL_LIMIT=2000`(**10079**) · `buildKeyFilters`(**10086**) · `addOverlayLayer`(**10100**) · `removeOverlayLayer`(**10392**)/`toggleOverlayLayer`(**10399**)/`clearOverlayLayers`(**10408**).
+- **`seatWaferMmInFrame(items, frame)`(**8775**)** — [규칙 6] 물리 mm 항목을 **타깃 프레임의 칸에 앉힌다.** 반환 `Map(다이키 → 항목 **배열**)`. 🔴 **대표값을 고르지 않는다**(사용자 확정 「전부 나열」): 타깃 피치가 소스보다 굵으면 한 칸이 소스 여러 칸을 받는데(실측 최대 6) 대표를 고르면 나머지를 조용히 버리면서 **한 값을 자신 있게** 보여 준다. 단 **같은 물리 위치의 같은 값은 접어 넣는다**(정보가 아니라 소스에 같은 행이 두 번 있을 뿐 — 접지 않으면 피치가 **같은** 맵도 fanout 2가 되어 「여러 값」 가져오기에서 제외된다). 위치가 같은데 값이 다르면 그것은 중복이 아니라 **충돌**이라 둘 다 남긴다. ⚠️ **앉히는 기준은 지금 화면의 프레임이다.**
+- `canvasSeatKeys()`(**8824**, 캐시 `seatKeyCache` **8823**) · `reseatOverlayLayer(o)`(**10588**) · `overlayGeomSig`(**10650**)/`currentGeomSignature()`(**10652**)/**`syncOverlayGeometry()`(**10669**)** — ⚠️ **mm 좌석은 피치의 함수라 화면 규격이 바뀌면 다시 앉혀야 한다**(종전 다이 인덱스 키는 화면에 불변이었다). `overlayAlignChip`(**10693**)/`overlayFanChip`(**10719**).
+- 오버레이 본체: `OVERLAY_COLORS`(**8445**) · `overlayLayers`(**8451**)/`activeOverlayLayers`(**8452**, 렌더 루프에서 재계산 금지용 캐시)/`overlaySeq`(**8453**)/`recomputeActiveOverlays()`(**8455**) · `drawOverlayMarkers`(**8539**) · `pushFailedOverlay`(**10220**) · `OVERLAY_CELL_LIMIT=2000`(**10245**) · `buildKeyFilters`(**10252**) · `addOverlayLayer`(**10266**) · `removeOverlayLayer`(**10558**)/`toggleOverlayLayer`(**10565**)/`clearOverlayLayers`(**10574**).
 
 #### 🆕 오버레이 점의 색 — **선언된 색이거나 아니면 색이 없다**
 
@@ -1946,47 +2154,146 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 
 | 함수 | 계약 | 라인 |
 |---|---|---|
-| 🔴 **`legendColorForValue(val)`** | 값 → 색. 근거는 둘뿐이다: ① 지금 열린 맵 자신의 `legend` 행(= 화면의 범례표가 지금 보여 주는 그 색) ② 없으면 서빙된 `map_overlay_config.default_legend`(`declaredLegendRow`). 🔴 **둘 다 없으면 `null`이고 그 `null`은 사실이다 — 이 값에 색을 선언한 사람이 없다.** 🔴 **`pickUnusedColor()`를 여기서 절대 부르지 않는다** — 그 함수는 색을 **지어내므로**, 미선언 값에 자신 있는 색을 입혀 **화면은 멀쩡하고 뜻은 틀린** 상태를 만든다. 이 도메인이 존재하는 결함 계급이 정확히 그것이다 | **7528** |
-| **`overlayMarkerFill(list)`** | 점 하나의 채움. 🔴 **답할 값이 정확히 하나일 때만 채운다.** 셀이 소스 칩을 여럿 받았는데 작아서 구분해 보일 수 없을 때 `list[0]`의 색을 쓰는 것은 **사용자가 거부한 그 「대표값」**이다 — 나머지를 버리면서 자신 있어 보인다. 그래서 **속 빈 점은 뜻이 정확히 하나**다: *이 점은 선언된 색 하나를 지목하지 않는다* | **7549** |
-| `paintOverlayDot(ctx, cx, cy, rad, fill, ringColor)` | 점 하나를 그린다. **테두리(ring)가 레이어 색**이라 채움이 무엇이 되든 **어느 오버레이의 점인지는 여전히 읽힌다**(위치는 그것을 나를 수 없다 — 1:1 분기의 슬롯 인덱스는 그 셀에 실제로 그린 레이어만 소비한다). 흰 후광이 둘 사이에 앉아 **자기 값과 같은 색으로 칠해진 셀에 점이 사라지지 않게** 한다 | **7559** |
-| 🔴 **`overlayUnlistedValues(o)`** | **[N2] 속 빈 점 하나로는 두 사유를 구분할 수 없다**(「미선언 값」 vs 「한 셀에 여러 값」). 그래서 **말로** 가른다 — 여러 값 쪽은 `overlayFanChip`이 이미 말하고, 미선언 쪽이 이것이다. 🔴 **추가 시점에 캐시하지 않고 라이브 legend에서 다시 센다** — 사용자가 그 값을 범례에 추가하는 순간 칩이 줄어야 하는데, **잡아 둔 수는 조용히 낡고 낡은 수는 결함과 구분되지 않는다** | **9450** |
-| `overlayLegendChip(o)` | 위 목록을 칩 문구로(최대 8개 + `...`) | **9461** |
+| 🔴 **`legendColorForValue(val)`** | 값 → 색. 근거는 둘뿐이다: ① 지금 열린 맵 자신의 `legend` 행(= 화면의 범례표가 지금 보여 주는 그 색) ② 없으면 서빙된 `map_overlay_config.default_legend`(`declaredLegendRow`). 🔴 **둘 다 없으면 `null`이고 그 `null`은 사실이다 — 이 값에 색을 선언한 사람이 없다.** 🔴 **`pickUnusedColor()`를 여기서 절대 부르지 않는다** — 그 함수는 색을 **지어내므로**, 미선언 값에 자신 있는 색을 입혀 **화면은 멀쩡하고 뜻은 틀린** 상태를 만든다. 이 도메인이 존재하는 결함 계급이 정확히 그것이다 | **8470** |
+| **`overlayMarkerFill(list)`** | 점 하나의 채움. 🔴 **답할 값이 정확히 하나일 때만 채운다.** 셀이 소스 칩을 여럿 받았는데 작아서 구분해 보일 수 없을 때 `list[0]`의 색을 쓰는 것은 **사용자가 거부한 그 「대표값」**이다 — 나머지를 버리면서 자신 있어 보인다. 그래서 **속 빈 점은 뜻이 정확히 하나**다: *이 점은 선언된 색 하나를 지목하지 않는다* | **8491** |
+| `paintOverlayDot(ctx, cx, cy, radX, fill, ringColor, radY)` | 점 하나를 그린다. **테두리(ring)가 레이어 색**이라 채움이 무엇이 되든 **어느 오버레이의 점인지는 여전히 읽힌다**(위치는 그것을 나를 수 없다 — 1:1 분기의 슬롯 인덱스는 그 셀에 실제로 그린 레이어만 소비한다). 흰 후광이 둘 사이에 앉아 **자기 값과 같은 색으로 칠해진 셀에 점이 사라지지 않게** 한다 | **8514** |
+| 🔴 **`overlayUnlistedValues(o)`** | **[N2] 속 빈 점 하나로는 두 사유를 구분할 수 없다**(「미선언 값」 vs 「한 셀에 여러 값」). 그래서 **말로** 가른다 — 여러 값 쪽은 `overlayFanChip`이 이미 말하고, 미선언 쪽이 이것이다. 🔴 **추가 시점에 캐시하지 않고 라이브 legend에서 다시 센다** — 사용자가 그 값을 범례에 추가하는 순간 칩이 줄어야 하는데, **잡아 둔 수는 조용히 낡고 낡은 수는 결함과 구분되지 않는다** | **10732** |
+| `overlayLegendChip(o)` | 위 목록을 칩 문구로(최대 8개 + `...`) | **10736** |
 
 #### 서빙된 선언 — 클라 사본 0
 
-- **[U6] 맵 기본값**: `overlayContract`(**135**) · `EMPTY_DOE_SEED`(**276**) · `defaultLegendRows()`(**280**) · `declaredLegendRow(value)`(**289**) · **`LEGEND_PALETTE`(**3703**)** · `pickUnusedColor`(**3706**) · **`autoAddLegendValue(value, fallbackDesc)`(**3715** — 값이 legend에 자동 추가되는 유일 경로)**. ⚠️ **`pickUnusedColor`는 색을 *지어내는* 함수라 오버레이 점 경로에서 부르면 안 된다**(위 `legendColorForValue` 참조).
-- **[F1/F3] 좌표 바인딩도 서빙받는다 — 클라 매칭기 0**: `servedBindingCache`(**146**) · `normalizeServedBinding`(**150**) · `fetchServedBinding(table)`(**166**) · `fetchPaintRules(table)`(**186**). `fillColumnDropdowns`(**1371**)의 드롭다운 preselect가 소비 지점. **`source:'fallback_guess'`는 경고**. ⚠️ ~~`deriveMapBinding`~~은 묘비이고 이 파일에 **주석 2건**(**142** · **10076**)으로만 남아 있다.
-- **페인트 잠금(config 주입형 — `'F'` 하드코딩 금지)**: `NO_PAINT_LOCK`(**85**)/`paintLockConfig`(**86**)/`isLockedValue`(**89**)/`isOverlayLocked`(**99**)/`paintLockMessage`(**106**)/`isProtectedFCell`(**111**)/`applyPaintLockConfig`(**116**)/`updatePaintLockIndicator`(**235**)/`recomputeLockedCells`(**252**).
+- **[U6] 맵 기본값**: `overlayContract`(**144**) · `EMPTY_DOE_SEED`(**284**) · `defaultLegendRows()`(**288**) · `declaredLegendRow(value)`(**297**) · **`LEGEND_PALETTE`(**3853**)** · `pickUnusedColor`(**3856**) · **`autoAddLegendValue(value, fallbackDesc)`(**3865** — 값이 legend에 자동 추가되는 유일 경로)**. ⚠️ **`pickUnusedColor`는 색을 *지어내는* 함수라 오버레이 점 경로에서 부르면 안 된다**(위 `legendColorForValue` 참조).
+- **[F1/F3] 좌표 바인딩도 서빙받는다 — 클라 매칭기 0**: `servedBindingCache`(**155**) · `normalizeServedBinding`(**159**) · `fetchServedBinding(table)`(**175**) · `fetchPaintRules(table)`(**195**). `fillColumnDropdowns`(**1379**)의 드롭다운 preselect가 소비 지점. **`source:'fallback_guess'`는 경고**. ⚠️ ~~`deriveMapBinding`~~은 묘비이고 이 파일에 **주석 2건**(**151** · **10242**)으로만 남아 있다.
+- **페인트 잠금(config 주입형 — `'F'` 하드코딩 금지)**: `NO_PAINT_LOCK`(**94**)/`paintLockConfig`(**95**)/`isLockedValue`(**98**)/`isOverlayLocked`(**108**)/`paintLockMessage`(**115**)/`isProtectedFCell`(**120**)/`applyPaintLockConfig`(**125**)/`updatePaintLockIndicator`(**243**)/`recomputeLockedCells`(**260**).
 
 #### Split Registry = DOE의 유일한 기록자
 
 ⚠️ **정규화 순수 함수는 전부 [`split_registry_row.js`](#7-client2src--웹-클라이언트)로 나갔다**(위 추출 표). 이 파일에 남은 것은 **상태와 IO**다 — 그것이 추출의 경계선이었다.
 
-- 남은 상태: `SPLIT_REGISTRY_TABLE`(**304**) · `legendMeta`(**306**) · **`legendReplaceScope`(**317**)** · **`legendVocabularySeed`(**321**)** · **`legendConflict`(**325** — M2.6: upsert로 강등하지 않고 거부한다)** · `legendSaveState`(**327**).
-- 서버 IO: `REGISTRY_SCOPES=['map']`(**4011**) · `fetchRegistryRows`(**4012**) · `readRegistryScope`(**4037**) · `reconcileVocabClaims`(**4059**) · `applyRegistryRowsToLegend`(**4084**) · **`saveLegendToServer(mapKeyOverride)`(**4163** — 호출자는 `pushMapData` 하나)** · `zoneColumnsPresent`(**4278**)/`ZONE_COLUMNS`(**4285**)/`probeZoneColumns()`(**4286**) · `LEGEND_SAVE_MESSAGE`(**4314**) · `applyLegendSaveResult`(**4327**) · `legendDirty`(**4351**) · `getPlanSaveState`(**4354**) · `persistLegend`(**4367**) · **`scheduleCellDraft`(**4389**)** · `renderLegendMetaOnly`(**4398**).
-  - 🔢 **`scheduleCellDraft` 호출은 14곳 그대로이고 앵커는 전부 이동했다**(2026-08-05 전건 재계수, `grep -c "scheduleCellDraft"` = **16** = 정의 1(**4389**) + 호출 14 + **주석 1** — 구 총계 15는 낡았다): **1128 · 3627 · 4602 · 4731 · 4793 · 5685 · 5733 · 5940 · 6490 · 6524 · 6546 · 7750 · 10046 · 10641.** ⚠️ **개수만 확인하고 통과시키면 14개가 전부 틀린 채로 남는다.**
-- 로컬 초안: `seedEmptyDoe`(**3732**) · `saveLegendToStorage`(**3746**) · `doeDraftKey`(**3754**) · 🔴 **`DRAFT_VERSION = 4`(**3780**)** · `cellsDigest`(**3784**) · `draftBase`(**3796**) · **`serverCellKeys`(**3806**)/`serverCellKeySet()`(**3810**)** · **`saveDoeDraft`(**3817**)** · `readDoeDraft`(**3854**) · `clearDoeDraft`(**3867**) · `applyDoeDraftRecord`(**3926**) · `applyDraftCells`(**3963**).
-- last-open 복원: `LAST_OPEN_KEY`(**3875**) · `recordLastOpenMap`(**3877**) · `restoreLastOpenMap`(**3896**).
-- 패널 관문: `addLegendRowForPanel`(**4660**) · **`updateLegendRowForPanel(value, patch)`(**4671**)** · `deleteLegendRowForPanel`(**4716**). + `mapKeyColumnCache`(**4736**)/`fetchMapKeySpec`(**4741**)/`fetchMapKeyColumns`(**4762**) · `probeMapExists`(**4767**) · `remapGridValues`(**4784**).
-- 레전드/브러시: `renderLegendTable`(**4415**) · `selectBrush`(**4625**) · `getCurrentMapKey`(**3979** — **로드된 맵이 아니라 현재 메타 입력 필드**를 읽는다) · `computeLegendCounts`(**3103**)/`updateLegendCounts`(**3110**).
+- 남은 상태: `SPLIT_REGISTRY_TABLE`(**312**) · `legendMeta`(**314**) · **`legendReplaceScope`(**325**)** · **`legendVocabularySeed`(**329**)** · **`legendConflict`(**333** — M2.6: upsert로 강등하지 않고 거부한다)** · `legendSaveState`(**335**).
+- 서버 IO: `REGISTRY_SCOPES=['map']`(**4161**) · `fetchRegistryRows`(**4162**) · `readRegistryScope`(**4187**) · `reconcileVocabClaims`(**4209**) · `applyRegistryRowsToLegend`(**4234**) · **`saveLegendToServer(mapKeyOverride)`(**4313** — 호출자는 `pushMapData` 하나)** · `zoneColumnsPresent`(**4428**)/`ZONE_COLUMNS`(**4435**)/`probeZoneColumns()`(**4436**) · `LEGEND_SAVE_MESSAGE`(**4464**) · `applyLegendSaveResult`(**4478**) · `legendDirty`(**4502**) · `getPlanSaveState`(**4505**) · `persistLegend`(**4518**) · **`scheduleCellDraft`(**4540**)** · `renderLegendMetaOnly`(**4549**).
+  - 🔢 **`scheduleCellDraft`(정의 **4540**) 호출부 — 전건 열거**(개수를 적지 않는다): **1136 · 3777 · 4750 · 4879 · 4941 · 5886 · 5934 · 6100 · 6675 · 6709 · 6731 · 7921 · 10213 · 10806.** ⚠️ **개수만 확인하고 통과시키면 앵커가 전부 틀린 채로 남는다** — 2026-08-06 실측에서 정확히 그랬다.
+- 로컬 초안: `seedEmptyDoe`(**3882**) · `saveLegendToStorage`(**3896**) · `doeDraftKey`(**3904**) · 🔴 **`DRAFT_VERSION = 4`(**3930**)** · `cellsDigest`(**3934**) · `draftBase`(**3946**) · **`serverCellKeys`(**3956**)/`serverCellKeySet()`(**3960**)** · **`saveDoeDraft`(**3967**)** · `readDoeDraft`(**4004**) · `clearDoeDraft`(**4017**) · `applyDoeDraftRecord`(**4076**) · `applyDraftCells`(**4113**).
+- last-open 복원: `LAST_OPEN_KEY`(**4025**) · `recordLastOpenMap`(**4027**) · `restoreLastOpenMap`(**4046**).
+- 패널 관문: `addLegendRowForPanel`(**4808**) · **`updateLegendRowForPanel(value, patch)`(**4819**)** · `deleteLegendRowForPanel`(**4864**). + `mapKeyColumnCache`(**4884**)/`fetchMapKeySpec`(**4889**)/`fetchMapKeyColumns`(**4910**) · `probeMapExists`(**4915**) · `remapGridValues`(**4932**).
+- 레전드/브러시: `renderLegendTable`(**4566**) · `selectBrush`(**4773**) · `getCurrentMapKey`(**4129** — **로드된 맵이 아니라 현재 메타 입력 필드**를 읽는다) · `computeLegendCounts`(**3253**)/`updateLegendCounts`(**3260**).
 
 #### 데이터 IO · 렌더 · 편집 도구
 
-- **`loadExistingMap(opts={})`(**4853**)** — 🔴 **「유효 다이맵 → 오리진 → 셀 위치」가 이 함수의 순서 계약이다**(단계 7종은 [분해 표](#7-client2src--웹-클라이언트) 참조): 회전·면·격자 컨트롤 동기화 → **`await resolveValidDie(…)`** → `boundingBoxCache = {}` → **[규칙 ①-b] 치수를 되읽는다**(유효 다이 해석이 참조 규격에서 치수를 다시 파생시켰을 수 있다) → **그다음에** 셀 루프. ⚠️ **여기서 START X,Y는 되읽지 않는다.** 🔴 **로드 경로에서 재배치는 무비용이다** — `gridData`·`loadedFCells`·`serverCellKeys`를 `resolveValidDie`보다 **먼저** 비우므로 순회할 것이 없다. 사용자 취소는 `{count:0, cancelled:true}`.
+- **`loadExistingMap(opts={})`(**5001**)** — 🔴 **「유효 다이맵 → 오리진 → 셀 위치」가 이 함수의 순서 계약이다**(단계 7종은 [분해 표](#7-client2src--웹-클라이언트) 참조): 회전·면·격자 컨트롤 동기화 → **`await resolveValidDie(…)`** → `boundingBoxCache = {}` → **[규칙 ①-b] 치수를 되읽는다**(유효 다이 해석이 참조 규격에서 치수를 다시 파생시켰을 수 있다) → **그다음에** 셀 루프. ⚠️ **여기서 START X,Y는 되읽지 않는다.** 🔴 **로드 경로에서 재배치는 무비용이다** — `gridData`·`loadedFCells`·`serverCellKeys`를 `resolveValidDie`보다 **먼저** 비우므로 순회할 것이 없다. 사용자 취소는 `{count:0, cancelled:true}`.
   - **📐 표준 로드는 데이터의 원점을 선언한다 — 셀 번호를 다시 매기지 않는다**: `startX = minX`/`startY = minY` + 셀 루프의 뺄셈 삭제. `getDbCoords`(⚡ Push가 `cellObj.x`로 직렬화하는 그것)가 `getCanvasCellFromDb`(로드가 배치에 쓰는 그것)의 **정확한 역함수**라서 **두 줄은 한 양(quantity)**이다. 하니스: `standard_frame_origin_harness.mjs`.
-  - `fetchGridMetaFor(table, mapId)`(**4806**)는 **404/405만 "규격 미등록"(null)**로 읽고 그 외 실패는 **throw**한다.
-- **`pushMapData()`(**5807**)** — 저장 본체이자 **legend/DOE 저장의 유일한 트리거**(단계 5종은 [분해 표](#7-client2src--웹-클라이언트) 참조). 관문 본체 `logShapedPushDecision`(**5801**, 모든 다이얼로그보다 앞) · 장치 `PUSH_SYSTEM_COLUMNS`(**5760**)/`getUnprotectedPushColumns`(**5782**). 저장 가능성 술어 3종 `eachSavableCell(fn)`(**3032**)/`classifyUnsavableCells()`(**3065**)/**`pushBlockingCount(u)`(**3098**)** — 🔴 **소비자는 `pushMapData`의 관문 하나다.**
-- 렌더: **`getGridCellObject`(**838**)** · `getGridCellFromMouseEvent`(**877**) · `scheduleRenderGridCanvas`(**3212**) · `updateSideIndicator`(**3223**) · `fitGridToWorkspace`(**3234**) · `renderGridCanvas`(**3249**) · `handleCellClick`(**3576**) · `updateCellStyles`(**3630**) · `updateNotchPosition`(**3644**). 테마·색: `rebuildThemeColorCache`(**3136**)/`getThemeColors`(**3162**)/`UNLISTED_VALUE_FILL`(**3169**)/`cellFillColor`(**3174**)/`parseCssColor`(**3183**)/`toExcelHex`(**3194**).
-  - 🔴 **`getGridCellObject`는 `getCanvasCellFromDb`를 부르지 않는다 — 식을 인라인한다**(`isOriginCell` 판정 **862**). 사유: **이 함수를 슬라이스해 실행하는 하니스가 둘**(`company_roundtrip`·`copy_header_count`)이고 모듈 전역 의존이 하나 늘 때마다 그 둘이 `ReferenceError`로 죽는다. 상자도 같은 `getWaferBoundingBox` 하나이므로 **새 유도가 아니라 같은 식의 특수값**이고 두 갈래로 갈릴 수 없다.
-  - `renderGridCanvas` 쪽은 **호출을 쓴다**(`isOriginCell` **3371**) — 이 함수는 슬라이스 대상이 아니기 때문이다. 🆕 **그리고 이 함수가 좌석 기록의 원천이다**: `cellsSeatedUnder = seatingSnapshot() || cellsSeatedUnder`.
-- 프리셋: **`applyPresetObject(preset)`(**2765**)** — 🔴 **호출자 전부의 관문이고 이번에도 5곳 그대로다**(2026-08-05 재계수): **2894 · 2923 · 5543 · 8189 · 8771**. `declaredRot`/`declaredSide`가 화면과 다르면 **info 토스트 1회**로 "규격만 적용했습니다"라고 말하고 **일치하면 침묵**한다. · `applyRoutedPreset(table, mapKey)`(**2863**) · `fetchAndRenderPresets`(**2692**)/`renderPresetDropdown`(**2709**)/`loadSelectedPreset`(**2905**)/`saveCustomPreset`(**2930**)/`deleteCustomPreset`(**2982**) · `applyPhysicalGeometry`(**2619**) · `updateOrientationUI`(**2672**) · `serverPresets`(**2659**).
-- 편집 도구: `clearGrid`(**5674**) · `fillGrid`(**5688**) · `getEdgeClassification`(**6345**) · `getVisualGridDimensions`(**6418**) · `selectEdgeCells`(**6428**) · `autoPaintE1E2`(**6455**) · **`fillSelectedCells`(**6501**)/`clearSelectedCells`(**6527**)** · `writeClipboardRich`(**6562**) · `copyGridToExcel`(**6835**).
-- **[F1ⓑ] COPY HEADER MODE**: `COPY_HEADER_KEY`(**6629**) · `colHeaderWord`(**6633**) · **`auxHeadWords()`(**6640**)** · `copyHeaderEnabled`(**6644**) · `mapKeyGroupLabel`(**6656**) · `copyHeaderGroups`(**6669**) · 픽셀 상수 `HDR_COL_PX`/`HDR_PAD_PX`/`HDR_CHAR_PX`/`HDR_MIN_SPAN`/`HDR_MAX_SPAN`(**6698–6702**) · **`HDR_GAP_COLS=1`(**6706**)** · `headerSpanFor`(**6709**) · `distributeSpans`(**6719**) · **`auxColumnSpans`(**6735**)** · `copyHeaderAuxRows`(**6743**) · **`copyTitleText()`(**6759**)**.
-- **[MEDIUM-3] 노치 지문 술어 2종**: `computeNotchCell(rotation, side)`(**6777** — bbox를 `circleOnly: true`로 묻는다(**6354**), **이 옵션의 유일한 소비자**) · **`notchMarkCell(rotation, side)`(**6826**)**.
-- **[F1ⓑ] 회사 본딩맵 시트 왕복 붙여넣기**: `pasteBlank`/`pasteAt`(**7125/7126**) · **`auxHeaderInLine(line)`(**7149**)** · **`readCompanyMapBlock(text)`(**7184**)** · **`checkPasteAgainstFrame(parsed, frame)`(**7254**)** · `applyPastedGridRows`(**7320**) · `pastedCellCount`(**7343**) · `applyPastedAuxRows`(**7360**) · **`onMapGridPaste(e)`(**7645**)**. ⚠️ **이것은 `transfer_plan.js`의 패널 붙여넣기와 다른 경로다** — 이쪽은 `e.defaultPrevented`를 먼저 보고 **패널이 이미 처리했으면 양보한다**. 그리고 회사 시트 쪽은 **VALUE로 주소를 매기고**(개명 없음) 패널 쪽은 **위치 기반**이다.
-- **메타 입력칸의 값 제안(datalist) 블록** — `KEY_SUGGEST_DEBOUNCE_MS=120`(**9709**)/`COLUMN_VALUE_LIST_LIMIT=50`(**9712**) · `markSuggestState`(**9716**) · `listFillSeq`(**9732**)/`claimListFill`(**9733**)/`fillDatalist`(**9745**) · `mapKeyListCache`(**9762**)/`populateMapKeyDatalist`(**9796**) · `populateOverlayKeyList`(**9867**) · 캐시 3종 `columnValueComplete`/`columnValueRefused`/`columnValueTruncated`(**9876–9878**) · `colValueKey`(**9880**)/`dropColumnValueCache`(**9884**)/`canReuseComplete`(**9899**)/`populateColumnValueDatalist`(**9904**) · `onMetaInputSuggest`(**9973**, 배선 **659·661**). 하니스: `client2/tests/map_key_datalist_harness.mjs`. ⚠️ **그리드 셀의 값 제안(`value_suggest.js`)과 별개 구현이다** — 이쪽은 네이티브 `<datalist>`이고 저쪽은 AG-Grid 커스텀 에디터다.
-- 프레임·정체성 보조: `loadedIdentity`(**7810**)/`framePushed`(**7811**)/`frameTouched`(**7819**) · `applyGridMetaObject`(**7985**) · `findPresetByKind`(**8005**) · `applyCellsToGrid`(**8025**) · `collectPlanCells`(**8048**) · `currentIdentityMismatch`(**8067**)/`setLoadedIdentity`(**8074**) · `frameTitle`(**8090**)/`currentFrameTitle`(**8095**)/`renderBreadcrumb`(**8099**) · `switchTableQuiet`(**8116**).
-- 진입·테이블: `debounce`(**329**) · `el`(**408**) · `initDOMElements`(**409**) · `initPlanSidebarResizer`(**952**) · `initMouseDragEvents`(**1009**) · `loadTablesList`(**1134**) · `switchTable`(**1202**) · `renderMetadataInputs`(**1286**) · `getBaseColumnName`(**1363**) · `fillColumnDropdowns`(**1371**). 공수 계기: `ROUTE_MAIN`(**7805**)/`ROUTE_MATERIAL`(**7806**)/`effortRoute()`(**7807**).
+  - `fetchGridMetaFor(table, mapId)`(**4954**)는 **404/405만 "규격 미등록"(null)**로 읽고 그 외 실패는 **throw**한다.
+- **`pushMapData()`(**5959**)** — 저장 본체이자 **legend/DOE 저장의 유일한 트리거**(단계 5종은 [분해 표](#7-client2src--웹-클라이언트) 참조). 🆕 🪦 **관문 3종은 이 파일을 떠났다 — `logShapedPushDecision` · `PUSH_SYSTEM_COLUMNS` · `getUnprotectedPushColumns`는 [`push_columns.js`](#-push_columnsjs-77줄-신설--푸시-컬럼-계약)에 있다**(import **~63**). 종전 지도가 `5801`·`5760`·`5782`에 **살아 있는 앵커로** 등재하던 세 이름이고, 지금 이 파일에 **선언 0건**이다(`5953`에 이전 사실을 적은 주석 1건). 저장 가능성 술어 3종 `eachSavableCell(fn)`(**3182**)/`classifyUnsavableCells()`(**3215**)/**`pushBlockingCount(u)`(**3248**)** — 🔴 **소비자는 `pushMapData`의 관문 하나다.**
+- 렌더: **`getGridCellObject`(**846**)** · `getGridCellFromMouseEvent`(**885**) · `scheduleRenderGridCanvas`(**3362**) · `updateSideIndicator`(**3373**) · `fitGridToWorkspace`(**3384**) · `renderGridCanvas`(**3399**) · `handleCellClick`(**3726**) · `updateCellStyles`(**3780**) · `updateNotchPosition`(**3794**). 테마·색: `rebuildThemeColorCache`(**3286**)/`getThemeColors`(**3312**)/`UNLISTED_VALUE_FILL`(**3319**)/`cellFillColor`(**3324**)/`parseCssColor`(**3333**)/`toExcelHex`(**3344**).
+  - 🔴 **`getGridCellObject`는 `getCanvasCellFromDb`를 부르지 않는다 — 식을 인라인한다**(`isOriginCell` 판정 **870**). 사유: **이 함수를 슬라이스해 실행하는 하니스가 둘**(`company_roundtrip`·`copy_header_count`)이고 모듈 전역 의존이 하나 늘 때마다 그 둘이 `ReferenceError`로 죽는다. 상자도 같은 `getWaferBoundingBox` 하나이므로 **새 유도가 아니라 같은 식의 특수값**이고 두 갈래로 갈릴 수 없다.
+  - `renderGridCanvas` 쪽은 **호출을 쓴다**(`isOriginCell` **3521**, 사용 **3551**) — 이 함수는 슬라이스 대상이 아니기 때문이다. 🆕 **그리고 이 함수가 좌석 기록의 원천이다**: `cellsSeatedUnder = seatingSnapshot(null) || cellsSeatedUnder`(**3424**) — 🔴 **`null`은 「화면을 읽어라」라는 의도된 답이지 빠뜨린 인자가 아니다**.
+- 프리셋: **`applyPresetObject(preset)`(**2915**)** — 🔴 **호출자 전부의 관문이고 이번에도 5곳 그대로다**(2026-08-05 재계수): **3044 · 3073 · 5723 · 8359 · 8941**. `declaredRot`/`declaredSide`가 화면과 다르면 **info 토스트 1회**로 "규격만 적용했습니다"라고 말하고 **일치하면 침묵**한다. · `applyRoutedPreset(table, mapKey)`(**3013**) · `fetchAndRenderPresets`(**2842**)/`renderPresetDropdown`(**2859**)/`loadSelectedPreset`(**3055**)/`saveCustomPreset`(**3080**)/`deleteCustomPreset`(**3132**) · `applyPhysicalGeometry`(**2769**) · `updateOrientationUI`(**2822**) · `serverPresets`(**2809**).
+- 편집 도구: `clearGrid`(**5875**) · `fillGrid`(**5889**) · `getEdgeClassification`(**6530**) · `getVisualGridDimensions`(**6603**) · `selectEdgeCells`(**6613**) · `autoPaintE1E2`(**6640**) · **`fillSelectedCells`(**6686**)/`clearSelectedCells`(**6712**)** · `writeClipboardRich`(**6747**) · `copyGridToExcel`(**7020**).
+- **[F1ⓑ] COPY HEADER MODE**: `COPY_HEADER_KEY`(**6814**) · `colHeaderWord`(**6818**) · **`auxHeadWords()`(**6825**)** · `copyHeaderEnabled`(**6829**) · `mapKeyGroupLabel`(**6841**) · `copyHeaderGroups`(**6854**) · 픽셀 상수 `HDR_COL_PX`/`HDR_PAD_PX`/`HDR_CHAR_PX`/`HDR_MIN_SPAN`/`HDR_MAX_SPAN`(**6883–6887**) · **`HDR_GAP_COLS=1`(**6891**)** · `headerSpanFor`(**6894**) · `distributeSpans`(**6904**) · **`auxColumnSpans`(**6920**)** · `copyHeaderAuxRows`(**6928**) · **`copyTitleText()`(**6944**)**.
+- **[MEDIUM-3] 노치 지문 술어 2종**: `computeNotchCell(rotation, side)`(**6962** — bbox를 `circleOnly: true`로 묻는다(**6968**), **이 옵션의 유일한 소비자**) · **`notchMarkCell(rotation, side)`(**7011**)**.
+- **[F1ⓑ] 회사 본딩맵 시트 왕복 붙여넣기**: `pasteBlank`/`pasteAt`(**7310/7311**) · **`auxHeaderInLine(line)`(**7334**)** · **`readCompanyMapBlock(text)`(**7369**)** · **`checkPasteAgainstFrame(parsed, frame)`(**7439**)** · `applyPastedGridRows`(**7499**) · `pastedCellCount`(**7522**) · `applyPastedAuxRows`(**7539**) · **`onMapGridPaste(e)`(**7818**)**. ⚠️ **이것은 `transfer_plan.js`의 패널 붙여넣기와 다른 경로다** — 이쪽은 `e.defaultPrevented`를 먼저 보고 **패널이 이미 처리했으면 양보한다**. 그리고 회사 시트 쪽은 **VALUE로 주소를 매기고**(개명 없음) 패널 쪽은 **위치 기반**이다.
+- **메타 입력칸의 값 제안(datalist) 블록** — `KEY_SUGGEST_DEBOUNCE_MS=120`(**9884**)/`COLUMN_VALUE_LIST_LIMIT=50`(**9887**) · `markSuggestState`(**9891**) · `listFillSeq`(**9907**)/`claimListFill`(**9908**)/`fillDatalist`(**9920**) · `mapKeyListCache`(**9937**)/`populateMapKeyDatalist`(**9971**) · `populateOverlayKeyList`(**10039**) · 캐시 3종 `columnValueComplete`/`columnValueRefused`/`columnValueTruncated`(**10048–10050**) · `colValueKey`(**10052**)/`dropColumnValueCache`(**10056**)/`canReuseComplete`(**10071**)/`populateColumnValueDatalist`(**10076**) · `onMetaInputSuggest`(**10142**, 배선 **667·669**). 하니스: `client2/tests/map_key_datalist_harness.mjs`. ⚠️ **그리드 셀의 값 제안(`value_suggest.js`)과 별개 구현이다** — 이쪽은 네이티브 `<datalist>`이고 저쪽은 AG-Grid 커스텀 에디터다.
+- 프레임·정체성 보조: `loadedIdentity`(**7981**)/`framePushed`(**7982**)/`frameTouched`(**7990**) · `applyGridMetaObject`(**8156**) · `findPresetByKind`(**8176**) · `applyCellsToGrid`(**8196**) · `collectPlanCells`(**8219**) · `currentIdentityMismatch`(**8238**)/`setLoadedIdentity`(**8245**) · `frameTitle`(**8261**)/`currentFrameTitle`(**8266**)/`renderBreadcrumb`(**8270**) · `switchTableQuiet`(**8286**).
+- 진입·테이블: `debounce`(**337**) · `el`(**416**) · `initDOMElements`(**417**) · `initPlanSidebarResizer`(**960**) · `initMouseDragEvents`(**1017**) · `loadTablesList`(**1142**) · `switchTable`(**1210**) · `renderMetadataInputs`(**1294**) · `getBaseColumnName`(**1371**) · `fillColumnDropdowns`(**1379**). 공수 계기: `ROUTE_MAIN`(**7976**)/`ROUTE_MATERIAL`(**7977**)/`effortRoute()`(**7978**).
+
+### 🆕 `push_columns.js` (**77줄**, 신설) — 푸시 컬럼 계약 (데이터 보호 관문 4)
+
+**`map_editor.js`에서 뽑혀 나온 세 심볼.** 종전 지도는 이 셋을 `map_editor.js`의 **5760·5782·5801**에 등재하고 있었고 **그 앵커는 이제 아무것도 가리키지 않는다.**
+
+| export | 시그니처 | 라인 |
+|---|---|---|
+| `PUSH_SYSTEM_COLUMNS` | `const` 배열 — 페이로드가 **절대** 실을 수 없거나 서버가 스스로 관리하는 컬럼 | **32** |
+| `getUnprotectedPushColumns` | **`getUnprotectedPushColumns(schema, xCol, yCol, valCol)`** | **54** |
+| `logShapedPushDecision` | **`logShapedPushDecision(schema, xCol, yCol, valCol)`** | **73** |
+
+- 🔴 **의도적으로 leaf다 — `import`가 한 줄도 없다.** `push_gate_harness`·`virtual_column_render_harness`가 이 모듈의 **텍스트를 `data:` URL로** 불러 변이체를 만드는데, 상대 경로 import는 그 안에서 해석되지 않는다. **여기에 import를 하나 넣으면 모든 변이체가 throw가 되고, throw는 kill로 채점된다** — 아무것도 실행되지 않은 채 완벽한 변이 보고서가 나온다.
+- 추출 사유: 이 셋은 `map_editor.js`에서 **모듈 가변 의존이 0이고 `el`을 읽지 않는** 유일한 그룹으로 측정됐다. 그래서 슬라이스가 아니라 **진짜 모듈 객체를 import**해서 채점할 수 있다(`push_gate`·`virtual_column_render`·`map_key_datalist` 셋이 그렇게 바뀌었다).
+- 소비자: `map_editor.js` import **~63**.
+
+### 🆕 `enrichment_queue.js` (**94줄**, 신설) — 「어느 행이 아직 일이 남았나」의 **유일한 철자**
+
+세 호출부가 각각 필터 dict를 재구성하던 것을 **이름으로 묻는 질문** 하나로 바꾼 모듈([기억: 질문은 이름으로 내보낸다](#7-client2src--웹-클라이언트)).
+
+- 스코프 상수: **`QUEUE_SCOPE_QUEUE`**(`'queue'` — 타깃 중 **아무거나** 비어 있음) · **`QUEUE_SCOPE_KEYED`**(`'keyed'` — queue **그리고** 결정 키 전부 존재) · **`QUEUE_SCOPE_BLANK_KEY`**(`'blank_key'` — queue **그리고** 결정 키 최소 하나 공백) · **`QUEUE_SCOPE_RESOLVED`**(`'resolved'` — 타깃 전부 채워짐 **그리고** 키 전부 존재).
+- `hasQueuePredicate(rule)` · ⚠️ **`queueQuery(rule, scope = QUEUE_SCOPE_QUEUE)` — 기본 인자가 있어 1인자로도 2인자로도 호출된다.**
+- import 없음 (leaf).
+
+---
+
+## 7-A. 🆕 Map Editor 2 — `map_editor2.html` + `client2/src/map2/` (2026-08-05~06 신설)
+
+> 🔴 **구 에디터를 대체하지 않는다 — 옆에 선다.** `map_editor.html`/`src/map_editor.js`는 **그대로 돌아간다**(11,031줄, 여전히 vite 엔트리이자 살아 있는 페이지). `vite.config.js`의 주석이 그 의도를 못박는다: *새 화면이 실제로 프레임을 확정할 수 있게 될 때까지 구 엔트리는 변경 없이 계속 배포된다.*
+>
+> **vite 엔트리 — 전건 열거**(개수를 적지 않는다): `main`(index.html) · `admin` · `map_editor` · **`map_editor2`** · `enrichment` · `graph` · `trace`.
+>
+> ⚠️ **왜 아직 병렬인가**: 이 화면이 모는 것은 **정렬·확정 루프**다. 저작·엑셀 절반은 모듈로 존재하지만(`authoring.js`·`brush.js`·`excel_io.js`), **`artifact_gateway.js`는 선언된 미구현 이음매**라 함수들이 `NOT_IMPLEMENTED`를 던진다 — 구 에디터에서 맵이 바깥에서 들어오는 **유일한 경로**가 아직 안 열려 있다.
+>
+> **측정 기준**: 아래 전부 **`87a944e`의 커밋된 blob** 실측이다.
+
+### `map_editor2.js` (**408줄**) — 페이지 엔트리
+
+**export 0건 — 부수효과 엔트리 모듈.** `map_editor2.html`(**839줄**)이 **836**에서 이것 하나만 로드한다.
+
+- 모듈 내부(비-export): `createResilientClient()` · `isOutage(err)` · `start()` · `adoptRule(app, api, declaration)` · `discover(api)` · `buildCatalog(api, declaration)` · `keyFrom(rule, decision)`.
+- 🔴 **실패를 종류별로 가른다** — 라우트/모양 실패는 **다시 던져 화면에 이름으로** 말하고, **네트워크 장애만** `/map2_dev_reference.json`으로 물러선다(그 폴백은 **화면에 자기를 표시한다**).
+- 🔴 **규칙 이름도 테이블 이름도 하드코딩이 없다**: 규칙은 `GET /enrichment/rules`를 `alignment: true`로 엄격 필터, 맵 테이블은 **선언된 `map_key_columns`로** 발견한다.
+
+### `client2/src/map2/` — 레이어 모듈
+
+⚠️ **arrow-function export가 0건이고 여러 줄 시그니처가 0건이다** — 아래 시그니처는 전부 소스 한 줄과 글자 그대로 같다. `export class`는 `RouteNotServedError`·`RatioInPayloadError` 둘뿐이고, 기본 인자를 가진 시그니처는 `createMapSession`·`queueQuery` 둘뿐이다.
+
+| 모듈 | 줄 | 무엇인가 | 주요 export |
+|---|---|---|---|
+| **`api.js`** | **505** | 전송 계층. **서버와 말하는 유일한 모듈**이고 GET과 쓰기를 타입 수준에서 가르는 유일한 자리 | `ROUTES`(**64**, `Object.freeze`) · `class RouteNotServedError`(**106**) · **`createApiClient(opts)`(**115**)** · `REFERENCE_CATALOG_SERVED`(**388**)/`REFERENCE_CATALOG_UNAVAILABLE`(**389**) · `normaliseReferenceCatalog(body)`(**417**) |
+| **`declaration.js`** | **870** | 레이어 ③ — **「이 맵이 자기 좌표계를 무엇이라 *말하는가*」를 값으로**, 축마다 출처 토큰을 달아서 | 아래 별도 표 |
+| **`seating.js`** | **337** | 레이어 ④ — 선언 + 증거 → 모든 셀의 공통 공간 좌석. **등록만 하고 뷰포트가 스코프에 없어** `continue` 하나가 셀을 흘릴 수 없다 | `seatOf(frame, c, r)` · `seatKey(x, y)` · `physOf(frame)` · `visualExtent(frame)` · `isCellInsideWafer(c, r, cols, rows, phys)` · `boundingBoxOf(frame)` · `localIndex(frame, box, x, y)` · `computeSeating(cells, frame)` · `unionBounds(a, b)` · `compareSeatings(floorSeating, sourceSeating)` |
+| **`verdict.js`** | **335** | 레이어 ⑦ — 점수 in, 결정 out. 🔴 **마진이 작으면 순위를 매기기를 거부한다** | `REF_NONE`/`REF_OCCUPANCY`/`REF_VALUES` · `STATE_SCORED`/`STATE_NO_WINNER` · `VERDICT` · `REASON` · `DEGRADATION` · `degradationFor(verdict)` · **`decideVerdict(scorings, thresholds, context)`** · `decideForSources(scoringResult, thresholds, context)` |
+| **`verdict_bridge.js`** | **32** | 레이어 ⑤↔⑦의 한 줄 이음매 — **판정 구현을 이름으로 부르는 유일한 파일** | `export { decideVerdict, VERDICT, REASON } from './verdict.js'` |
+| **`verdict_placeholder.js`** | **108** | 🪦 **선언된 죽은 코드.** `alignment_verdict_harness.mjs`가 `verdict.js`를 **그것이 대체한 물건과 대조 채점**하기 위해서만 디스크에 남아 있고, **결함(`finiteOrNull` 대신 맨 `Number(v)`)을 의도적으로 보존한다.** `src/` 안에서 이것을 import하는 곳은 0건 | `VERDICT` · `REASON` · `decideVerdict(scorings, thresholds, context)` |
+| **`decode.js`** | **589** | 세관 — 참조 뷰 페이로드가 값 레이어와 뷰모델 읽기가 되는 자리. 🔴 **백분율은 통과하지 못한다** | `ASSUMPTION_APPLIED`/`_AVAILABLE`/`_UNAVAILABLE` · `KIND_DECLARED`/`_INFERRED`/`_ABSENT` · `METRIC_OCCUPANCY`/`_VALUES`/`_VALUES_WEIGHTED`/`_INDEX` · `CAND_SCORED`/`_NOT_CONSIDERED`/`_NOT_SCORABLE` · `scoringKeysFor(metric)` · `class RatioInPayloadError` · `assertNoRatioInPayload(payload)` · `decodeReferenceView(payload)` · `verdictContext(decoded)` · `isAssumedGeometry(source)`/`isDeclaredGeometry(source)`/`isConfirmedGeometry(source)` |
+| **`session.js`** | **466** | 현재 상태를 **만들어 넘기는 레코드**로 — 모듈 전역이 아니다. 🔴 **모든 `with*`가 새 frozen 사본을 돌려준다** | `PHASE` · `EMPTY_COLUMNS`/`EMPTY_QUESTION`/`EMPTY_CATALOG`/`EMPTY_WORKLIST` · `BINDING_DECLARED`/`_DERIVED`/`_FALLBACK_GUESS`/`_NONE` · **`createMapSession(init = {})`** · `withDecision`/`withPayload`/`withError`/`withSelectedCandidate`/`withCatalog`/`withQuestion`/`withWorklistQuery`/`withWorklist`/`withWorklistError`/`withConfirmed`/`withFocusedSource`/`withConfig` · `columnKey`/`resolveQuestion`/`columnsOf`/`isAskable`/`isUnset`/`isExploringOnly` |
+| **`view_model.js`** | **1,073** | 세션+페이로드+판정 → **화면이 보여 줄 문자열과 플래그 정확히 그것**. 순수, DOM 무지 | `VIEW_STATE` · `UNKNOWN`(`'미상'`) · `WORDS`/`ATTRIBUTION`/`EVIDENCE`/`REFERENCE_KIND_WORD` · `referenceOptionLabel(item)` · **`buildViewModel(input)`** · `agreementText(agree, discriminating)` · `marginText(marginDies)` · `HEADLINE`/`CAUSE` · `selectAlignmentRules(rules)` · `CROSS_SOURCE_ROW_ID` · `countCoordinatePairs(columnNames)` · `assertNoRatio(vm)` |
+| **`candidates.js`** | **80** | 후보 집합 — 여덟 방위를 **한 번만** 이름 짓고, 컨트롤과 채점자가 공유하는 2×4 배치까지 | `ROTATIONS`(`[0,90,180,270]`) · `SIDES`(`['front','back']`) · `candidateId(rotation, side)` · `parseCandidateId(id)` · `candidateList()` · `candidateGrid()` · `SIDE_HEADERS` · `INVERSION_FOOTNOTE` · `BADGE_WINNER`(`'추천'`)/`BADGE_STORED`(`'현재 선언'`) |
+| **`main.js`** | **1,975** | **합성 루트 — DOM이 존재한다는 것을 아는 유일한 모듈** | `ELEMENT_IDS` · `normaliseWorklist(res)` · **`bootstrap(deps)`** · `adaptPayload(raw)` · `framesFor(payload, candidateId)` · `paintCandidateThumbs(surfaceFor, payload, source, viewport, palette)` · 재수출 `{ VIEW_STATE, createApiClient, spellFrame }`(**1975**, `spellFrame` 정의 **1913**) |
+| **`painter.js`** | **176** | 레이어 ⑩ — 좌석을 받아 **그리기만** 한다. 만드는 것이 없고 **경계 검사가 없어서 셀을 잃을 수 없다** | `createCanvasSurface(ctx)` · `createRecordingSurface()` · `layoutFor(bounds, viewport)` · `pxPerDie(layout)` · `paintSeating(surface, seating, layout, color, mode)` · `paintComparison(surface, parts, viewport, palette)` · `paintSkeleton(surface, viewport, palette)` |
+| **`legend.js`** | **161** | 값 → 색·라벨. 🔴 **`colorOf`의 `null`은 「아무도 색을 선언하지 않았다」는 사실이지 빠뜨린 반환이 아니다** | `NO_COLOUR_DECLARED`(`'색 선언 없음'`)/`NO_LABEL_DECLARED`(`'설명 없음'`) · `isValue`/`valueKey`/`normalizeLegend`/`resolveLegend`/`rowOf`/`colorOf`/`labelOf`/`legendEntries`/`brushableValues`/`isDeclaredValue` |
+| **`brush.js`** | **316** | 레이어 ④ 좌석 위의 셀 저작. 🔴 **역함수를 다시 유도하지 않고 기존 변환을 정방향으로 돌린다** | `BRUSH_REFUSAL` · `MAX_AUTHORABLE_CELLS`(20000) · `authorableSeats(frame)` · `seatAt(authorable, seatX, seatY)` · `cellKey(x, y)` · `createCellTable(cells)` · `tableCells(table)` · `brushStroke(table, authorable, coords, value)` · `eraseStroke(table, coords)` · `expressible(authorable, x, y)` |
+| **`authoring.js`** | **394** | 유효 다이 맵의 **저장 계약** — 순수. 요청을 만들고 관문을 세우되 **보내지는 않는다** | `FLOOR_TABLE`(`'valid_die_ref'`)/`META_TABLE`(`'wafer_map_metadata'`) · `WRITE_ROUTES` · `SAVE_REFUSAL` · `GEOMETRY_KEYS` · `geometryDelta(storedMeta, nextMeta)` · `decomposeFloorKey(mapKey, keyColumns, columnTypes)` · `checkSaveGate(input)` · `buildSaveRequest(gate, input)` · `writeIntent(gate, opts)` |
+| **`excel_io.js`** | **758** | 문지기 — 운영자의 엑셀 서식을 말하는 **유일한 모듈**. 🔴 **구 에디터에서 베낀 것이 아니라 운영 인제션 포맷에서 다시 썼다** | `SECTION_WIDE_RATIO`(0.7) · `MIN_AXIS_TICKS`(2) · `META_KEY_JOIN`/`META_CHAIN_LEN` · `INGESTION_RENAME`(`{BDIE_LOT:'base', VALUE:'leg'}`) · `UNKNOWN_DISPLAY`(`'미상'`) · `REJECTION_CODES`(`['not_declared','mapping_unavailable']`) · `FORM_SURFACES`(`['rich','plain']`) · `detectFormSurface(source)` · `readMapForm(source, opts)` · `writeMapForm(declaration, cells, opts)` · `ingestionRecords(declaration, cells)` |
+| **`artifact_gateway.js`** | **203** | 🪦 **선언된 미구현 이음매** — 엑셀 서식 in/out의 이름 붙은 자리. **함수들이 일부러 `NOT_IMPLEMENTED`를 던진다** | `NOT_IMPLEMENTED` · `SURFACES`(= `FORM_SURFACES`) · `REJECTED`/`REJECTED_WORDS` · `readArtifact(text, opts)` · `unmappedRejectionCodes()` · `writeArtifact(cells, declaration, opts)` · `isImplemented()` · `rejectionSummary(rejected)` |
+
+**모듈 의존**: leaf(= map2 내부 import 0건)는 **`api.js` · `candidates.js` · `declaration.js` · `legend.js` · `seating.js` · `session.js` · `verdict.js` · `verdict_placeholder.js`**. 나머지 — `brush`→`seating` · `painter`→`seating` · `verdict_bridge`→`verdict` · `decode`→`verdict`·`declaration` · `view_model`→`candidates`·`verdict_bridge`·`session` · `excel_io`→`declaration` · `artifact_gateway`→`excel_io` · `authoring`→`brush`·`legend` · `main`→`session`·`seating`·`painter`·`view_model`·`verdict_bridge`·`candidates`·`api`·`decode`·`declaration`·`artifact_gateway`.
+
+#### `declaration.js` — 출처 토큰의 정본 목록
+
+🔴 **저장소에서 출처 토큰이 *얼려진 목록*으로 존재하는 곳은 여기 하나다.** 서버(`map_overlay.py`)는 같은 어휘를 **개별 상수로** 선언하고 목록을 만들지 않는다 — 그래서 「N번째 토큰」식 서술은 서버 쪽에서 검증할 대상이 없다.
+
+```js
+// declaration.js:152–153  — 전건 열거, 개수를 적지 않는다
+export const DECLARATION_TOKENS = Object.freeze([
+  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED, CONFIRMED]);
+// declaration.js:168
+export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
+```
+
+- 토큰 상수는 **144–150에 연속으로** 앉아 있다: `DECLARED`(**144**) · `AUTO_REGISTERED`(**145**) · `ABSENT`(**146**) · `UNPARSABLE`(**147**) · `INDETERMINATE`(**148**) · `ASSUMED`(**149**) · **`CONFIRMED`(**150**, `'confirmed'`)**.
+- 메타 키: `AUTO_REGISTERED_KEY`(**233**) · `PHYS_ASSUMED_KEY`(**241**) · **`PHYS_CONFIRMED_KEY`(**275**)** · **`FRAME_CONFIRMED_KEY`(**276**)** · `FRAME_CHOSEN_KEY`(**316**) · `FRAME_CHOSEN_FROM`(`['data','panel']`) · `PHYS_KEYS` · `FRAME_DEFAULTS` · `AXIS_META_KEY`/`AXIS_NAMES` · `VALUE_CAN_INDICATE_PROVENANCE`(`['rotation','side','invertY']`) · `START_AXES`(`['startX','startY']`) · `ORIENTATION_AXES`.
+- 함수: `geometryDeclaration(meta)` · `visualDimensions(frame)` · `visualDimensionsLegacy(frame)` · `frameFromDeclaration(meta, opts)` · `noEvidenceValue(axisName, opts)` · `axesWithSource(frame, tokens)` · `frameDimBounds()` · `isFrameUsable(frame)` · `foldedAxes(frame)`.
+- ⚠️ **`markerPresent(raw)`(**397**)는 모듈 private이다 — `export`가 아니다.** 호출부는 파일 안 셋(**572**·**586**·**750**). 진리성만 읽으므로 빈 객체/배열/문자열은 무력하고(파이썬의 `bool({}) is False`와 맞춘 것), **`confirmation_uid` 적격성은 일부러 다시 검사하지 않는다 — 그것은 서버의 규칙이다.**
+
+#### 🪦 `main.js`의 **확정 무장(arming) 상태는 삭제됐다**
+
+**`main.js`에는 모듈 레벨 가변 상태가 0건이다**(`^let `/`^var ` 히트 0). `arm`/`armed`/`arming`/`confirmArm`/`disarm` 식별자도 0건 — 남은 히트는 전부 **삭제를 설명하는 주석**이다. 확정은 이제 **한 동작**이다: 클릭 또는 Enter가 즉시 `api.confirmFrame({...})`(**1387**)로 쓴다. **취소 분기도 함께 사라졌다**(**1514**: 취소할 것이 남아 있지 않다).
+
+그 자리를 받은 것 — 전부 `bootstrap` 안의 함수 스코프다:
+
+| 무엇 | 라인 | 계약 |
+|---|---|---|
+| **`let confirmInFlight = false`** | **250** | 🔴 **세션 필드가 *아닌 것*이 요점이다** — 세션 필드는 행이 바뀌어도 요청보다 오래 살아남아 버튼을 잠가 버린다. true **1377**, 해제 **1410**·**1413**, 렌더가 읽는 곳 **1061**(`btn.disabled = !vm.confirm.enabled \|\| confirmInFlight`) |
+| **`takesEnter(e.target)`** | 정의 **~1561–1574**, 관문 **1534** | 🔴 **무장이 지고 있던 보호를 지금 지는 것이 이것이다 — LOAD-BEARING**(**1525–1526**이 명시). 확정 버튼만이 유일한 예외 |
+| `vm.confirm.enabled` / `vm.confirm.confirmed` | 렌더 **1053–1054** | `'확정됨'` 또는 `vm.confirm.inertHint \|\| 'Enter 확정'` |
+
+⚠️ **`api.confirmFrame`은 레코드로 부른다 — 위치 인자가 아니다**(**1350**이 종전의 위치 호출을 결함으로 표시한다).
 
 ### 🆕 `map_key.js` (**158줄**, `689ebb9` 신설) — 맵 정체성 정규화의 **유일 구현**
 
