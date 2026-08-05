@@ -296,6 +296,19 @@ const FLOORS = new Map([
   //    or unknown read deletes what it did not see, and a valid-die map is the floor every
   //    consumer of that reference reads its coordinates against.
   ['map2_authoring_harness.mjs', 140],
+  // New 2026-08-05 with the borrowed wafer geometry, so its floor is the count it reports on
+  // the commit that introduces it -- there is no earlier tree to measure it against.
+  //
+  // 🔴 WHAT A DROP HERE WOULD MEAN. The server can score a spec-less source map by borrowing the
+  //    reference floor's wafer dimensions, and it defaults that OFF because "these two maps are
+  //    the same wafer" is a claim the OPERATOR is entitled to make. Most of this count is that
+  //    one sentence, scored from four sides: nothing sends the flag by default (truthy junk does
+  //    not unlock it either), accepting is one click and one re-ask, the claim does not latch
+  //    across rows or across a change of floor, and a result reached that way is visibly
+  //    distinct from one reached on a declaration. A drop means the screen regained the ability
+  //    to assume silently -- to show a confirmed alignment whose geometry was borrowed without
+  //    saying so, which is a manufactured declaration on the layer the bonding plan rests on.
+  ['map2_geometry_assumption_harness.mjs', 74],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

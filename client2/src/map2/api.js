@@ -29,11 +29,14 @@
 //     reference: { state, kind: 'none'|'occupancy'|'values', source, table, map_id,
 //                  count, reason, truncated, cells: [[x, y], ...] },
 //     sources:   { map_count, usable_map_count, cell_count, cells, truncated, cell_cap,
-//                  maps: [{ map_id, cell_count, declared_frame, declared_frame_source }] },
+//                  maps: [{ map_id, cell_count, declared_frame, declared_frame_source,
+//                           geometry, geometry_basis }] },
+//     assumption: { state: 'applied'|'available'|'unavailable', requested, map_count, map_ids,
+//                   basis: {table, map_id}|null, text: string|null },
 //     candidates:  [{ frame, rotation, side, state, shift, agreement, discriminating,
 //                     placed, margin, reason, declared_by_maps }],   // ALL EIGHT, no ratios
 //     declaration: { frames, unanimous, frame, attested_maps, unattested_maps, axis_sources },
-//     ruling: { winner, margin, reason_code, tied? },
+//     ruling: { winner, margin, reason_code, tied?, geometry_assumed },
 //     excluded, excluded_total, stats
 //   }
 // 🔴 CELLS ARE `[x, y]` PAIRS, NOT `{x, y}` OBJECTS. Anything indexing `.x` on a reference
@@ -249,6 +252,10 @@ export function createApiClient(opts) {
      * @param {string} [req.valCol]    the column read as the die value; OPTIONAL, and its
      *                                   absence is what makes the run occupancy-only
      * @param {boolean} [req.includeCells]  false drops the cell arrays (list screens)
+     * @param {boolean} [req.assumeReferenceGeometry]  score the maps that declare no physical
+     *                                   spec by BORROWING the reference floor's wafer
+     *                                   dimensions. Defaults false on the server and is sent
+     *                                   ONLY when true -- see below.
      *
      * 🔴 THE COLUMNS ARE SENT AND ARE NOT YET HONOURED. The server derives the coordinate
      *    binding from its OWN overlay config -- `_binding_of` -> `map_overlay.resolve_binding`
@@ -287,6 +294,15 @@ export function createApiClient(opts) {
       if (r.yCol) q.y_col = String(r.yCol);
       if (r.valCol) q.value_col = String(r.valCol);
       if (r.includeCells === false) q.include_cells = 'false';
+      // 🔴 SENT ONLY WHEN TRUE, AND `=== true` STRICTLY. Borrowing the floor's wafer dimensions
+      //    is a CLAIM -- "these two maps are the same wafer" -- and the server defaults it off
+      //    for that reason (`server/main.py:4265-4282`). Omitting the parameter when the claim
+      //    was not made keeps the wire honest in both directions: a request carrying
+      //    `assume_reference_geometry=true` is evidence that somebody asserted it, and a request
+      //    without it cannot be misread as an assertion that happened to be false. A truthy
+      //    coercion here would let `undefined`-adjacent junk from a caller unlock the claim,
+      //    which is the same class as a config typo unlocking a capability (`selectAlignmentRules`).
+      if (r.assumeReferenceGeometry === true) q.assume_reference_geometry = 'true';
       return getJson(ROUTES.referenceView, q, signal);
     },
 

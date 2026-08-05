@@ -81,6 +81,13 @@ export const WORDS = Object.freeze({
   // The floor's size, as a unit. A four-cell floor is not worth choosing and the count is the
   // only thing that says so.
   cellUnit: '셀',
+  // 🔴 THE LABEL FOR "THIS ANSWER STANDS ON A WAFER NOBODY MEASURED". It is a LABEL, and the
+  //    only one this file writes about the assumption: the OFFER's wording is the server's
+  //    (`compose_assumption_offer`), carried verbatim, and a Korean equivalent composed here
+  //    would be a second spelling of one sentence. This word exists because the confirm slot
+  //    takes one line and a sentence there would be truncated -- and the fact that a
+  //    confirmation rests on borrowed geometry is exactly the fact that may not be truncated.
+  geometryAssumed: '기하 가정',
 });
 
 /**
@@ -198,6 +205,7 @@ export function buildViewModel(input) {
     }
   }
 
+  const assumption = assumptionModel(session, payload);
   const storedId = payload && payload.stored_candidate_id ? payload.stored_candidate_id : null;
   const winnerId = state === VIEW_STATE.SCORED_WINNER && verdict ? verdict.winnerId : null;
   const selectedId = session.selectedCandidateId || winnerId || null;
@@ -221,6 +229,8 @@ export function buildViewModel(input) {
     worklist: worklistModel(session),
     headline: headlineFor(state, verdict),
     cause: causeFor(state, verdict, payload, attribution, evidence),
+    // The borrowed-geometry offer, and whether this answer stands on one. See `assumptionModel`.
+    assumption,
     // Aggregate exclusions, stated once and never shouted, never decorated per row.
     meta: metaLine(payload, numerals),
     picture: pictureModeFor(state),
@@ -239,7 +249,7 @@ export function buildViewModel(input) {
     secondMetric: secondMetricLine(payload, winnerId),
     // FOR THE LOG ONLY. Nothing writes this to a node -- see `renderSecondMetric`.
     secondMetricDetail: secondMetricDetail(payload, winnerId),
-    confirm: confirmModel(session, selectedId, storedId, state, attribution),
+    confirm: confirmModel(session, selectedId, storedId, state, attribution, assumption),
     // Told out loud rather than assumed: nothing on the exploring path writes.
     writesSoFar: 0,
   });
@@ -401,6 +411,52 @@ function frozenCause(token, count, detail) {
     token: token || null,
     count: Number.isFinite(count) ? count : null,
     detail: detail || null,
+  });
+}
+
+/**
+ * THE BORROWED-GEOMETRY OFFER, AND WHETHER THIS ANSWER STANDS ON ONE.
+ *
+ * A source map that declares no physical spec cannot be scored -- and the reason the operator
+ * opened this screen is that they do not know that map's spec. The server breaks the circle by
+ * offering to borrow the reference floor's wafer dimensions, on the premise that aligning two
+ * maps of one wafer already assumes they ARE one wafer.
+ *
+ * 🔴 THREE FACTS, HELD APART, AND EVERY ONE OF THEM IS THE SERVER'S ANSWER:
+ *      · `offered` -- it can be taken and has not been. This is what puts a control on screen.
+ *      · `applied` -- the answer in front of the operator was computed on borrowed dimensions.
+ *      · `requested` -- what this client SENT. Kept separate from `applied` on purpose: asking
+ *        on a unit with no resolved floor comes back `unavailable`, and reading the request
+ *        back as the state would report a borrowing that never happened.
+ *
+ * 🔴 THE LINE IS THE SERVER'S SENTENCE, VERBATIM, AND IT NAMES THE FLOOR. `compose_assumption_offer`
+ *    writes it (same discipline as `refusal`), and it says which map the dimensions would come
+ *    from -- which is the whole content of the claim. Summarising it to "가정 가능" would leave
+ *    the operator asserting that two maps are one wafer without being told which two.
+ *
+ * 🔴 `basisLabel` IS `table:map_id` -- THE SPELLING `/view` TAKES BACK, not a display format.
+ *    One vocabulary for a floor across this screen, so nothing has to parse a label to re-ask.
+ */
+function assumptionModel(session, payload) {
+  const a = (payload && payload.assumption) || null;
+  const basis = (a && a.basis) || null;
+  const applied = !!(a && a.applied);
+  return Object.freeze({
+    state: a ? a.state : null,
+    applied,
+    // Only an untaken offer needs a control. Once applied, the act has been performed and a
+    // control still reading "accept" would invite the operator to make a claim twice.
+    offered: !!(a && a.offered) && !applied,
+    // What THIS client sent, which is not the same fact as what the server did with it.
+    requested: session.question ? session.question.assumeReferenceGeometry === true : false,
+    basisTable: basis ? basis.table : null,
+    basisMapId: basis ? basis.mapId : null,
+    basisLabel: basis ? `${basis.table}:${basis.mapId}` : null,
+    mapCount: a ? numOrNull(a.mapCount) : null,
+    // ONE LINE, the server's own. Empty when there is nothing to offer and nothing to disclose.
+    line: a && a.text ? String(a.text) : '',
+    // The LABEL, for the slots that take one word rather than a sentence.
+    word: applied ? WORDS.geometryAssumed : '',
   });
 }
 
@@ -730,7 +786,7 @@ function secondMetricDetail(payload, winnerId) {
  * decoder supplies the eqp, the product and the chosen spelling that sentence names, so a
  * mis-click is visible before it lands without two lanes writing the same clause.
  */
-function confirmModel(session, selectedId, storedId, state, attribution) {
+function confirmModel(session, selectedId, storedId, state, attribution, assumption) {
   const q = session.question || {};
   const cols = q.columns || {};
   // 🔴 THE WRITE MAY NOT REST ON A PROPOSAL OR ON AN UNATTRIBUTED ANSWER. Reading stays
@@ -759,7 +815,18 @@ function confirmModel(session, selectedId, storedId, state, attribution) {
     // Confirming an unchanged value is still a real act -- it is what records that a human
     // established the frame -- so the control must not read as a no-op.
     sameAsStored: !!selectedId && selectedId === storedId,
-    note: selectedId && selectedId === storedId ? '현재 선언 동일' : '',
+    // 🔴 THE WRITE IS NOT BLOCKED BY A BORROWED GEOMETRY -- IT IS DISCLOSED BY IT. Blocking
+    //    would close the circle again and put the operator back at the dead end this whole
+    //    capability exists to open; the assumption is a claim they are entitled to make. What
+    //    may not happen is confirming one without being told, so the note carries it and the
+    //    server records it in `frame_confirmation` -- which is what makes "if this assumption
+    //    turns out false, which decisions stood on it" an answerable question later.
+    //    It leads: which geometry the answer rests on outranks whether the frame is unchanged.
+    note: [assumption && assumption.word ? assumption.word : '',
+           selectedId && selectedId === storedId ? '현재 선언 동일' : '']
+      .filter(Boolean).join(' · '),
+    // Carried as a flag as well as a word, so nothing downstream has to read a label back.
+    geometryAssumed: !!(assumption && assumption.applied),
     // Enter must not be silently inert when nothing is marked. Each reason gets its own words:
     // "pick one" and "agree to the columns first" are different instructions.
     inertHint: hintFor(state, selectedId, q, attribution),

@@ -46,6 +46,9 @@ import { decideVerdict } from './verdict_bridge.js';
 import { parseCandidateId } from './candidates.js';
 import { createApiClient } from './api.js';
 import { decodeReferenceView, verdictContext } from './decode.js';
+// The provenance vocabulary, imported rather than re-spelled. A string literal `'assumed'` here
+// is a second copy of a word the server owns, and the day the two drift nothing says so.
+import { ASSUMED } from './declaration.js';
 import { isImplemented as artifactImplemented, rejectionSummary } from './artifact_gateway.js';
 
 /** The ids the page publishes. Names on the left are this file's vocabulary. */
@@ -87,6 +90,18 @@ export const ELEMENT_IDS = Object.freeze({
   //    marker never cleared, and the write stayed blocked forever. An agreement is an act; it
   //    needs a control, not the absence of one.
   columnsConfirm: 'me2-columns-confirm',
+  // 🔴 ACCEPTING THE BORROWED GEOMETRY IS AN ACT AND NEEDS A CONTROL, exactly like agreeing to a
+  //    proposed column pair. It is bound here BEFORE the markup lane lands it -- `bindElements`
+  //    tolerates absence and reports the id in `missing` -- so the wiring is complete the moment
+  //    the node appears and nothing has to be re-derived then.
+  //
+  //    ASKED FOR BY NAME (markup lane): a `<button id="me2-assume-accept" class="me2-scope-propose"
+  //    type="button" hidden>` at the end of the `기준` scope step, beside the reference select
+  //    the claim is about. Same class as `#me2-columns-confirm`, because it is the same shape of
+  //    act -- agreeing to something the screen proposed -- and the dashed-warning pill already
+  //    reads that way. It must NOT be a default-visible control: a permanent button here would
+  //    train the operator to click through a claim about which wafer they are looking at.
+  assumeAccept: 'me2-assume-accept',
   svg: 'me2-picture-svg',
   layerFloor: 'me2-layer-floor',
   layerMiss: 'me2-layer-miss',
@@ -232,6 +247,17 @@ export function bootstrap(deps) {
     const vm = buildViewModel({ session, verdict: currentVerdict() });
 
     if (el.workbench) el.workbench.setAttribute('data-me2-state', STATE_ATTR[vm.state] || 'computing');
+    // 🔴 AN ANSWER REACHED ON BORROWED GEOMETRY MUST NOT LOOK LIKE ONE REACHED ON A DECLARATION.
+    //    One hook on the workbench, next to the state, so the whole result region can be styled
+    //    from a single place rather than each panel growing its own marker and drifting.
+    //    ASKED FOR BY NAME (markup lane): `#me2-workbench[data-me2-assumed="true"]` should read
+    //    as the existing proposal shape -- dashed and muted, the same treatment
+    //    `.me2-scope-select[data-me2-proposed="true"]` already carries -- because it means the
+    //    same thing: what is here was not measured. The attribute is written whether or not any
+    //    rule matches it yet; a hook nobody styles is inert, a fact nobody carries is lost.
+    if (el.workbench) {
+      el.workbench.setAttribute('data-me2-assumed', vm.assumption.applied ? 'true' : 'false');
+    }
     // 🔴 WRITE INTO `.me2-num`, NEVER INTO THE HEADLINE ELEMENT ITSELF. The page puts three
     //    siblings in every count slot -- `.me2-num` / `.me2-unknown` / `.me2-busy` (or
     //    `.me2-skel`) -- and shows exactly one of them per `data-me2-state`. Writing to the
@@ -293,12 +319,25 @@ export function bootstrap(deps) {
     // Hidden unless there is something to agree to. A permanent confirm button beside a
     // declared pair would train the operator to click it without reading.
     if (el.columnsConfirm) el.columnsConfirm.hidden = !q.bindingIsGuess;
+    // Same rule for the borrowed geometry: the control exists only while there is an untaken
+    // offer. Once the claim has been made it goes away -- a control still reading "accept"
+    // beside an applied assumption invites the operator to assert the same thing twice.
+    if (el.assumeAccept) el.assumeAccept.hidden = !vm.assumption.offered;
     if (el.workbench) {
       el.workbench.setAttribute('data-me2-evidence', vm.evidence.kind);
       el.workbench.setAttribute('data-me2-attribution', vm.attribution.state);
     }
     // A label joined to a value by a separator. Never a template with a slot.
     text(el.questionNote, questionNote(vm));
+    // 🔴 CAUTION IS FOR AN ANSWER STANDING ON A CLAIM, NOT FOR THE OFFER. An offer is an ordinary
+    //    state -- most units on this deployment are undeclared -- and colouring it a warning
+    //    would paint half the worklist yellow and teach the eye past the colour, which is the
+    //    same reason the worklist decorates a boundary rather than every row below it. An
+    //    APPLIED assumption is different: the numbers on screen rest on a wafer nobody measured.
+    if (el.questionNote) {
+      if (vm.assumption.applied) el.questionNote.setAttribute('data-me2-note-tone', 'caution');
+      else el.questionNote.removeAttribute('data-me2-note-tone');
+    }
   }
 
   function fillSelect(node, options) {
@@ -330,6 +369,17 @@ export function bootstrap(deps) {
     if (vm.question.proposalWord) parts.push(vm.question.proposalWord);
     if (vm.evidence.occupancyOnly) parts.push(CAUSE.reference_no_values);
     if (vm.attribution.state === ATTRIBUTION.UNSTATED) parts.push(WORDS.columnsUnstated);
+    // 🔴 THE SERVER'S SENTENCE, VERBATIM, AND IT GOES LAST. Last because the tokens ahead of it
+    //    are about whether the screen can answer at all, and this one is about what the answer
+    //    would rest on. Verbatim because `compose_assumption_offer` composes it for this line --
+    //    the same rule as `refusal` -- and it NAMES THE FLOOR the dimensions come from. A
+    //    shortened form would leave the operator asserting that two maps are one wafer without
+    //    being told which two, which is not a claim anybody can make.
+    //
+    //    Present in BOTH states on purpose: as an offer it is what the operator acts on, and as
+    //    an applied assumption it is the disclosure. `unavailable` carries no sentence at all,
+    //    so nothing is added on the ordinary runs where there is nothing to say.
+    if (vm.assumption.line) parts.push(vm.assumption.line);
     return parts.join(' · ');
   }
 
@@ -505,6 +555,18 @@ export function bootstrap(deps) {
       const src = sources.find(s => s.id === field) || null;
       row.hidden = !src && sources.length > 0;
       if (!src) continue;
+      // 🔴 PER MAP, BECAUSE "SOME MAPS BORROWED" IS NOT AN ANSWER TO "DID THIS ONE?". A unit
+      //    mixes declared and borrowed maps in one list, and a marker only on the aggregate
+      //    would leave every row looking equally measured. Two attributes, because the payload
+      //    carries two facts: what the map declares about itself, and what this run stood on.
+      //
+      //    ASKED FOR BY NAME (markup lane): `[data-me2-source][data-me2-proposed="true"]` should
+      //    carry the same dashed-and-muted treatment as a proposed column pair. The attribute is
+      //    the existing one on purpose -- borrowed geometry and a guessed binding are the same
+      //    claim ("this was not measured") and must not grow two visual languages.
+      row.setAttribute('data-me2-geometry', src.geometry || 'unknown');
+      row.setAttribute('data-me2-geometry-basis', src.geometry_basis || 'unknown');
+      row.setAttribute('data-me2-proposed', src.geometry_basis === ASSUMED ? 'true' : 'false');
       const declared = src.stored_candidate_id || null;
       setChildText(row, '[data-me2-source-value]', declared ? spellFrame(declared) : '고르지 않음');
       // Same rule as the count slots above: write a number or write nothing. The page's
@@ -692,6 +754,26 @@ export function bootstrap(deps) {
       lines.push('reference carries no values, so only occupancy could be scored. Occupancy '
         + 'alone is flat: candidates can occupy identical dies and tie. Name a value column.');
     }
+    // 🔴 ONE LINE ON SCREEN, THE WHOLE RECORD HERE -- and for this one the record is the point.
+    //    The screen carries the server's sentence and a per-row marker; WHICH map ids borrowed,
+    //    from where, and whether this client asked for it are the facts that answer "what did
+    //    this verdict stand on" months later, and none of them fit on a line. Logged in both
+    //    states: an untaken offer is what the operator is being asked to decide about.
+    const asm = session.payload && session.payload.assumption ? session.payload.assumption : null;
+    if (asm && asm.state !== 'unavailable') {
+      lines.push(`geometry assumption ${asm.state} (requested=${vm.assumption.requested}): `
+        + `${asm.mapCount === null ? '미상' : asm.mapCount} map(s) `
+        + `[${asm.mapIds.join(', ') || 'none listed'}] borrow the wafer dimensions of `
+        + `${asm.basis ? `${asm.basis.table}:${asm.basis.mapId}` : '(no basis)'}. `
+        + 'Borrowed dimensions are never stored on the source meta; the ruling carries '
+        + 'geometry_assumed and each map carries geometry vs geometry_basis.');
+    }
+    // A token the two sides do not both know reached the wire. Named loudly: every server test
+    // stays green through this, and the only symptom on screen is a row sorted into the wrong
+    // bucket. This is the seam `declaration.js` grew `assumed` to keep honest.
+    const rejects = (session.payload && session.payload.__decoded
+      && session.payload.__decoded.rejected) || [];
+    if (rejects.length > 0) lines.push(`payload fields refused: ${rejects.join('; ')}`);
     const joined = lines.join(' | ');
     if (joined === lastDiagnosis) return;
     lastDiagnosis = joined;
@@ -971,6 +1053,21 @@ export function bootstrap(deps) {
       setSession(withQuestion(session, { bindingSource: BINDING_DECLARED }));
     });
   }
+  // 🔴 THE ONE PLACE THE CLAIM CAN BE MADE, AND IT IS A CLICK. Nothing else in this program
+  //    sets `assumeReferenceGeometry` true: not the loader, not a default, not a retry. The
+  //    server defaults it off because borrowing is an assertion -- "these are the same wafer" --
+  //    and the operator is the one entitled to make it. A screen that sent it automatically
+  //    would have manufactured a declaration, which is the failure this whole vocabulary exists
+  //    to close. So this handler is the entire write side of the feature, and it re-asks:
+  //    `withQuestion` bumps `requestSeq`, drops the payload, and everything re-scores under the
+  //    borrowed geometry rather than being re-labelled on the client.
+  //    It goes through `setQuestion`, the same door as the five selects, so the sequence guard,
+  //    the payload drop and the single re-ask are the ones already scored -- and NOT through the
+  //    `columnsConfirm` door, which deliberately does not re-ask because agreeing to a column
+  //    pair changes nothing about the request. This one changes the request.
+  if (el.assumeAccept) {
+    el.assumeAccept.addEventListener('click', () => setQuestion({ assumeReferenceGeometry: true }));
+  }
   if (el.worklistSearch) {
     el.worklistSearch.addEventListener('input', (e) => {
       searchWorklist((e.target && e.target.value) || '');
@@ -1181,9 +1278,17 @@ export function adaptPayload(raw) {
           // emits with nobody looking, so a badge keyed on the string alone puts `현재 선언`
           // on maps nobody ever measured.
           stored_candidate_id: s.declaredFrameSource === 'declared' ? s.declaredFrame : null,
+          // 🔴 WHAT THIS MAP SAYS ABOUT ITS OWN GEOMETRY, AND WHAT THIS RUN ACTUALLY STOOD ON.
+          //    Two fields because they can disagree, and the disagreement IS the fact: a map
+          //    whose own geometry is `absent` but whose basis is `assumed` was scored on the
+          //    floor's wafer. Carried per row so the operator can see WHICH maps borrowed,
+          //    rather than only that some did.
+          geometry: s.geometry,
+          geometry_basis: s.geometryBasis,
           cells: i === 0 ? srcCells : [],
         }))
-      : (srcCells.length > 0 ? [{ id: 'source', label: '출처', stored_candidate_id: null, cells: srcCells }] : []),
+      : (srcCells.length > 0 ? [{ id: 'source', label: '출처', stored_candidate_id: null,
+                                  geometry: null, geometry_basis: null, cells: srcCells }] : []),
     floor_cells: refCells,
     per_candidate: decoded.scorings,
     occupancy_winner_id: null,
@@ -1201,6 +1306,9 @@ export function adaptPayload(raw) {
     // This is what tells "we had values" from "we only had occupancy", and those are two
     // different answers to "why could you not tell them apart".
     reference_kind: (raw && raw.reference && raw.reference.kind) || null,
+    // The borrowed-geometry offer, decoded. `null` is impossible -- the decoder always returns
+    // a record, whose `unavailable` state is the ordinary "there is nothing to offer here".
+    assumption: decoded.assumption,
     __decoded: decoded,
     __context: verdictContext(decoded),
   };

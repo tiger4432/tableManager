@@ -763,7 +763,12 @@ function makeDocument() {
                     'me2-col-value', 'me2-reference-select']) {
     body.appendChild(node('select', id));
   }
-  for (const id of ['me2-columns-confirm', 'me2-confirm-btn']) body.appendChild(node('button', id));
+  // `me2-assume-accept` accepts the borrowed wafer geometry. Present here because the shell
+  // binds it (G1 scores the stub against the shell, not against the live page, which does not
+  // carry the node yet); what the control DOES is scored in `map2_geometry_assumption_harness.mjs`.
+  for (const id of ['me2-columns-confirm', 'me2-assume-accept', 'me2-confirm-btn']) {
+    body.appendChild(node('button', id));
+  }
 
   for (const id of ['me2-workbench', 'me2-worklist-rows', 'me2-worklist-rows-unscorable',
                     'me2-worklist-search', 'me2-worklist-empty', 'me2-worklist-meta',

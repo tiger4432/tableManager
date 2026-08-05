@@ -61,12 +61,23 @@ export const PHASE = Object.freeze({
 //    at `map_overlay.py:995`). A `{x, y, value}` of this file's own invention would be a second
 //    spelling of a declaration that exists, which is the defect class this screen keeps meeting.
 export const EMPTY_COLUMNS = Object.freeze({ x: null, y: null, val: null });
+// 🔴 THE BORROWED GEOMETRY IS PART OF THE QUESTION, NOT A DISPLAY TOGGLE. It is a query
+//    parameter on the same request (`assume_reference_geometry`), so it belongs with the other
+//    four: changing it re-asks, and the answer to the previous set-up is dropped rather than
+//    painted under the new labels. Holding it anywhere else would let a screen show a result
+//    scored WITHOUT the assumption while the control says the assumption is in force.
+//
+// 🔴 IT DEFAULTS FALSE AND IT IS AN ACT. "These two maps are the same wafer" is a claim, and the
+//    operator is the one entitled to make it -- which is why the server defaults it off too. A
+//    screen that turned it on by itself would have manufactured a declaration nobody made, on
+//    the layer the bonding plan rests on.
 export const EMPTY_QUESTION = Object.freeze({
   mapTable: null,
   columns: EMPTY_COLUMNS,
   // Provenance, in the SERVED vocabulary. See BINDING_* below.
   bindingSource: 'none',
   reference: null,
+  assumeReferenceGeometry: false,
 });
 
 /**
@@ -175,6 +186,13 @@ export function withDecision(session, decision) {
     decision,
     phase: PHASE.COMPUTING,
     payload: null,
+    // 🔴 THE CLAIM DOES NOT FOLLOW THE OPERATOR DOWN THE WORKLIST. Borrowing is asserted about
+    //    ONE unit's maps; leaving it latched would apply it to every row afterwards without
+    //    anybody asserting anything -- a screen that silently assumes, which is precisely the
+    //    failure the server's off-by-default exists to prevent. The rest of the set-up (table,
+    //    columns, floor) survives a row change on purpose, because it says how to READ a unit.
+    //    This one says something about the unit itself, so it dies with it.
+    question: Object.freeze({ ...session.question, assumeReferenceGeometry: false }),
     selectedCandidateId: null,
     // Per-field picks belong to ONE decision unit. Carrying them across rows would put the
     // previous unit's answer under the next unit's labels.
@@ -273,11 +291,21 @@ export function resolveQuestion(question, catalog) {
     ? cat.references[mapTable] : [];
   const reference = refs.some(r => r.value === q.reference) ? q.reference : null;
 
+  // 🔴 NOT GATED ON `reference`, AND THAT IS MEASURED RATHER THAN ASSUMED. The floor the
+  //    geometry is borrowed from is the RESOLVED one, and it resolves from the source map's own
+  //    `valid_die_ref` when the picker sends nothing (`server/main.py:4245-4247`). Requiring a
+  //    picked reference here would refuse the offer on exactly the units that carry a working
+  //    declaration -- an invalid combination invented on this side, about a state the server
+  //    never refuses. What DOES invalidate the claim is MOVING the floor, and that is a
+  //    transition, not a normalisation: see `withQuestion`.
+  const assume = q.assumeReferenceGeometry === true;
+
   return Object.freeze({
     mapTable,
     columns: Object.freeze({ x: x || null, y: y || null, val: val || null }),
     bindingSource,
     reference,
+    assumeReferenceGeometry: assume,
   });
 }
 
@@ -302,6 +330,12 @@ export function isAskable(question) {
  *    request falls through to whatever the page entry supplies, exactly as it did before a
  *    set-up row existed. A HALF-filled one -- a table chosen whose coordinate columns nobody
  *    named -- is a real refusal, and it must not be papered over by asking anyway.
+ *
+ * ⚠️ `assumeReferenceGeometry` IS DELIBERATELY NOT ON THIS LIST. This predicate asks whether the
+ *    tuple is COMPLETE ENOUGH TO SEND -- table and coordinates -- and the assumption is not an
+ *    axis of that: it qualifies how the maps are scored, not which ones are read. Counting it
+ *    would make an asserted-but-otherwise-untouched question "set up incompletely" and refuse
+ *    to ask at all, which is the collapse the paragraph above is about.
  */
 export function isUnset(question) {
   const q = question || EMPTY_QUESTION;
@@ -333,12 +367,22 @@ export function withQuestion(session, patch) {
   if (patch && (patch.columns || patch.bindingSource)) {
     merged.bindingSource = patch.bindingSource || BINDING_DECLARED;
   }
+  // 🔴 MOVING THE TABLE OR THE FLOOR TAKES THE CLAIM OFF. The assertion is "THESE maps are the
+  //    same wafer as THAT floor" -- it is about the two things being changed, so carrying it
+  //    across would re-assert it about a pair the operator has not looked at. That is the
+  //    silent-assumption failure with an extra step, and it is the one this control exists to
+  //    prevent. An assume patch is exempt, because that patch IS the operator asserting it.
+  if (patch && patch.assumeReferenceGeometry === undefined
+      && (patch.mapTable !== undefined || patch.reference !== undefined)) {
+    merged.assumeReferenceGeometry = false;
+  }
   const question = resolveQuestion(merged, session.catalog);
   const same = question.mapTable === session.question.mapTable
     && columnKey(question.columns) === columnKey(session.question.columns)
     && question.columns.val === session.question.columns.val
     && question.bindingSource === session.question.bindingSource
-    && question.reference === session.question.reference;
+    && question.reference === session.question.reference
+    && question.assumeReferenceGeometry === session.question.assumeReferenceGeometry;
   if (same) return session;
   const key = columnKey(question.columns);
   return next(session, {

@@ -151,6 +151,12 @@ function start() {
     yCol: question.columns.y,
     valCol: question.columns.val,
     reference: question.reference || undefined,
+    // 🔴 READ OFF THE QUESTION, NEVER SET HERE. The borrowed-geometry claim reaches the wire
+    //    only because the operator clicked the control that put it on the question -- this file
+    //    passes it through and has no opinion about it. A default written on this line would be
+    //    the same defect as the rule and table names that used to live here: an assumption about
+    //    somebody else's data, made in the last place a reader looks.
+    assumeReferenceGeometry: question.assumeReferenceGeometry === true,
     includeCells: true,
   }));
 

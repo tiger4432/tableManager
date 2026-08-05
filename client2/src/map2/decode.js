@@ -37,6 +37,19 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { REF_NONE, REF_OCCUPANCY, REF_VALUES } from './verdict.js';
+import { ASSUMED, DECLARED, DECLARATION_TOKENS } from './declaration.js';
+
+/**
+ * The three states of the borrowed-geometry offer, spelled exactly as
+ * `server/map_alignment.py:792-794` spells them. Read off the wire, never derived: "there is
+ * an offer" and "the offer was taken" are the server's answers, and a client that worked them
+ * out from the excluded count would be a second implementation of the same question.
+ */
+export const ASSUMPTION_APPLIED = 'applied';
+export const ASSUMPTION_AVAILABLE = 'available';
+export const ASSUMPTION_UNAVAILABLE = 'unavailable';
+const ASSUMPTION_STATES = new Set(
+  [ASSUMPTION_APPLIED, ASSUMPTION_AVAILABLE, ASSUMPTION_UNAVAILABLE]);
 
 /**
  * Provenance of `referenceKind`. `inferred` is RETIRED: it is still exported so the harness
@@ -176,6 +189,14 @@ export function decodeReferenceView(payload) {
     //    provenance token is the gate, and it travels beside the value.
     declaredFrame: s && s.declared_frame != null ? String(s.declared_frame) : null,
     declaredFrameSource: s && s.declared_frame_source != null ? String(s.declared_frame_source) : null,
+    // 🔴 TWO FIELDS, NOT ONE, AND THE SERVER SPLITS THEM FOR A REASON. `geometry` is what THIS
+    //    MAP SAYS ABOUT ITSELF; `geometry_basis` is what THIS RUN ACTUALLY STOOD ON
+    //    (`map_alignment.geometry_basis_of`). Folding them together makes a borrowed geometry
+    //    read as a declared one -- which is the impersonation this whole vocabulary exists to
+    //    stop -- or makes the borrowing vanish. They travel separately all the way to the row.
+    geometry: token(s && s.geometry, rejected, `sources.maps[].geometry (${s && s.map_id})`),
+    geometryBasis: token(s && s.geometry_basis, rejected,
+      `sources.maps[].geometry_basis (${s && s.map_id})`),
     cellCount: intOrNull(s && s.cell_count),
   }));
 
@@ -203,6 +224,12 @@ export function decodeReferenceView(payload) {
     // back verbatim, and re-deriving it here would be the second scoring implementation.
     ruling: Object.freeze(Object.assign({}, (p && p.ruling) || {})),
     rulingWinnerId: p && p.ruling && p.ruling.winner ? String(p.ruling.winner) : null,
+    // 🔴 THE RULING'S OWN FACT ABOUT ITSELF -- "this verdict stands on a borrowed wafer". It
+    //    lives ON the ruling rather than beside it (`map_alignment.py:547`) precisely so it
+    //    cannot be separated from the answer it qualifies, and it is read `=== true`: a
+    //    verdict may only be marked as assumed because the server said so.
+    geometryAssumed: !!(p && p.ruling && p.ruling.geometry_assumed === true),
+    assumption: decodeAssumption(p, rejected),
     // How many of the candidates the reference can actually tell apart, when the server
     // measured it. NULL when it did not -- an unmeasured count is reported as unmeasured and
     // never as zero, because zero would read as "none are blind", which is a claim.
@@ -230,9 +257,89 @@ export function verdictContext(decoded) {
   const d = decoded || {};
   return Object.freeze({
     refusalDetail: d.refusalDetail || null,
+    // 🔴 WHETHER THE SERVER SCORED IS THE SERVER'S OWN WORD, NOT AN INFERENCE FROM ITS PROSE.
+    //    `/view` attaches a `refusal` sentence to `state: "no_winner"` as well as to a real
+    //    refusal, so without this the verdict layer reads "동점 - 판별 불가" as "I declined"
+    //    and the whole screen empties. Carried verbatim; the verdict layer compares it to the
+    //    payload's own spellings (`verdict.STATE_SCORED` / `STATE_NO_WINNER`).
+    serverState: d.state || null,
     referenceKind: d.referenceKind || REF_NONE,
     distinctSeatings: d.distinctSeatings,
   });
+}
+
+/**
+ * THE OFFER, DECODED. A source map with no physical spec of its own can be scored by borrowing
+ * the reference floor's wafer dimensions; the server emits the offer on every run where that
+ * would help, whether or not anyone asked for it.
+ *
+ * 🔴 `requested` IS NOT `applied`. Asking is not the same as it having been possible: a request
+ *    on a unit with no resolved floor comes back `unavailable`, and a screen that read its own
+ *    request back as the state would report a borrowing that never happened. The state is the
+ *    server's word; `requested` is only the echo of what was sent.
+ * 🔴 THE BASIS IS CARRIED, NOT SUMMARISED. `{table, map_id}` names the floor the geometry would
+ *    come from, and the offer is unusable without it: "borrow from somewhere" is not a claim an
+ *    operator can make. An offer arriving with no basis is reported as such rather than shown as
+ *    a nameless one.
+ * 🔴 THE SENTENCE IS THE SERVER'S. `text` is composed by `compose_assumption_offer`, the same
+ *    discipline as `refusal`, and this side never writes a Korean equivalent beside it.
+ */
+function decodeAssumption(p, rejected) {
+  const a = (p && p.assumption && typeof p.assumption === 'object') ? p.assumption : null;
+  const rawState = a && typeof a.state === 'string' ? a.state : null;
+  if (rawState !== null && !ASSUMPTION_STATES.has(rawState)) {
+    rejected.push(`assumption.state: unknown state '${rawState}'`);
+  }
+  const state = ASSUMPTION_STATES.has(rawState) ? rawState : ASSUMPTION_UNAVAILABLE;
+  const b = (a && a.basis && typeof a.basis === 'object') ? a.basis : null;
+  const basis = (b && b.table != null && b.map_id != null)
+    ? Object.freeze({ table: String(b.table), mapId: String(b.map_id) })
+    : null;
+  if (state !== ASSUMPTION_UNAVAILABLE && !basis) {
+    rejected.push(`assumption: state '${state}' with no basis to borrow from`);
+  }
+  const ids = arr(a && a.map_ids).map(v => String(v));
+  return Object.freeze({
+    state,
+    applied: state === ASSUMPTION_APPLIED,
+    // An OFFER is what an operator can act on: it can be taken, and it has not been.
+    offered: state === ASSUMPTION_AVAILABLE && !!basis,
+    requested: !!(a && a.requested === true),
+    basis,
+    // The server's count, not `map_ids.length`: two spellings of one number drift, and this one
+    // is a claim about how many maps the borrowing touches.
+    mapCount: intOrNull(a && a.map_count),
+    mapIds: Object.freeze(ids),
+    text: a && a.text ? String(a.text) : null,
+  });
+}
+
+/**
+ * A PROVENANCE TOKEN OFF THE WIRE, checked against the vocabulary this client shares with
+ * `server/map_overlay.py`. An unrecognised token is reported and dropped rather than passed on:
+ * silently keeping one lets a word the two sides do not both know reach a badge, and every
+ * server test stays green while the screen sorts it into whatever bucket happens to catch it.
+ * That is the exact divergence `declaration.js` grew `assumed` to prevent.
+ */
+function token(value, rejected, where) {
+  if (value === null || value === undefined || value === '') return null;
+  const s = String(value);
+  if (!DECLARATION_TOKENS.includes(s)) {
+    rejected.push(`${where}: unknown provenance token '${s}'`);
+    return null;
+  }
+  return s;
+}
+
+/** True when this map was scored on geometry it does not itself declare. */
+export function isAssumedGeometry(source) {
+  return !!(source && source.geometryBasis === ASSUMED);
+}
+
+/** True when this map stood on its own declared geometry. Not the negation of the above --
+ *  an excluded map stood on nothing at all and must not read as either. */
+export function isDeclaredGeometry(source) {
+  return !!(source && source.geometryBasis === DECLARED);
 }
 
 /**
