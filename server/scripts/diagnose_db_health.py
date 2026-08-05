@@ -141,20 +141,30 @@ with engine.connect() as conn:
         SELECT relname, n_live_tup, n_dead_tup,
                CASE WHEN n_live_tup > 0
                     THEN round(n_dead_tup::numeric / n_live_tup, 3) ELSE NULL END AS ratio,
-               last_autovacuum, last_autoanalyze
+               last_autovacuum, last_autoanalyze, n_mod_since_analyze
         FROM pg_stat_user_tables
-        WHERE n_dead_tup > 1000
-        ORDER BY n_dead_tup DESC
+        -- 🔴 종전에는 `WHERE n_dead_tup > 1000`이었다. 그 필터가 **한 번도 ANALYZE된 적 없는
+        --    테이블을 구조적으로 안 보이게** 만든다 — 데드가 적어도 통계가 낡으면 플래너가
+        --    존재하지 않는 테이블을 기준으로 비용을 매기고, 그건 데드 튜플 5%가 설명하지
+        --    못하는 크기의 느려짐을 설명한다(플랜이 뒤집힌다). 이 도구는 그 가설을
+        --    **조회해 놓고 출력하지 않아서** 며칠간 확인되지 않은 채로 남았다.
+        WHERE n_dead_tup > 1000 OR last_autoanalyze IS NULL
+        ORDER BY n_mod_since_analyze DESC NULLS LAST, n_dead_tup DESC
         LIMIT 15
     """)).fetchall()
     if not rows:
         say("OK", "no table carries a significant dead-tuple count")
     else:
         worst = []
-        for name, live, dead, ratio, av, aa in rows:
+        for name, live, dead, ratio, av, aa, modsa in rows:
+            # `aa`는 종전에도 조회되고 언팩됐지만 **출력되지 않았다.** 통계가 낡았다는 가설을
+            # 이 도구가 답할 수 있었는데 답을 버리고 있었다. 같이 찍는다 — 그리고
+            # `n_mod_since_analyze`가 `live`에 가까우면 그게 진짜 신호다.
             flag = "  <-- " if (ratio or 0) >= BLOAT_RATIO_FLAG else "      "
             print(f"{flag}{name:34} live {live:>10,}  dead {dead:>10,}  "
                   f"ratio {ratio}  last autovacuum {av or 'never'}")
+            print(f"       {'':34} mod-since-analyze {(modsa or 0):>10,}  "
+                  f"last autoanalyze {aa or 'never'}")
             if (ratio or 0) >= BLOAT_RATIO_FLAG:
                 worst.append(name)
         if worst:
