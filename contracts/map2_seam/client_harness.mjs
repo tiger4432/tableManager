@@ -261,8 +261,20 @@ section('S1  declaration vocabulary -- structural');
   // spec is scored on the reference floor's, and the token says the verdict stands on a
   // borrowed one. The list is pinned rather than counted -- "there are N" is not the
   // invariant, "these exact words, on both sides" is.
+  // `confirmed` joined 2026-08-06 (`map_overlay.py` [D7]): a source map MATCHING a per-product
+  // valid-die map is evidence it shares that product's wafer geometry, so a confirmed match
+  // makes the geometry a DERIVATION rather than an assumption -- ranked above `assumed`, below
+  // `declared`, because nobody measured the map itself.
+  //
+  // 🔴 THIS LITERAL IS THE THIRD PLACE THE VOCABULARY IS WRITTEN DOWN, AND IT IS WHY THIS
+  //    UPDATE IS A HAND EDIT. `declaration.js` holds the list, this line holds a copy, and
+  //    `test_map2_seam_contract.test_token_vocabulary_is_five_and_shared` holds a THIRD copy
+  //    that names five constants one by one -- so the server could grow `assumed` and then
+  //    `confirmed` with nothing anywhere going red. Pinning is right; three independent pins
+  //    are not. Moving the vocabulary into vectors.json and having both runners read it is
+  //    boarded as its own change and is deliberately NOT done here.
   const want = new Set(['declared', 'auto_registered', 'absent', 'unparsable', 'indeterminate',
-                        'assumed']);
+                        'assumed', 'confirmed']);
   if (tokens.size === want.size && [...want].every(t => tokens.has(t))) {
     ok('token vocabulary is the shared set');
   } else {

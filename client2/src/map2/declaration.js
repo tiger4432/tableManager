@@ -105,14 +105,19 @@
 //     below takes the frame as an argument for exactly that reason.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── the six tokens ──────────────────────────────────────────────────────────────
+// ── the tokens ──────────────────────────────────────────────────────────────────
+// NO COUNT IN THIS HEADING, ON PURPOSE. It said "the six tokens" and the server had seven for a
+// day, which is the miniature of the whole defect: a number written next to a list is a second
+// statement of the list, and it goes stale silently. The invariant is the SOURCE, never the
+// size -- every token below exists on the server first and none is minted here.
+//
 // The first four are byte-identical to `server/map_overlay.py` (`GEOMETRY_DECLARED` /
 // `GEOMETRY_AUTO_REGISTERED` / `GEOMETRY_ABSENT` / `GEOMETRY_UNPARSABLE`) and are UNCHANGED
 // by this file. The fifth is that module's `ORIENTATION_INDETERMINATE`.
 //
 // 🔴 THE SIXTH IS `assumed`, ADDED 2026-08-05 (MAP_ALIGNMENT_SPEC 9.1). The rule was never
 //    "there are five"; it is BORROW, DO NOT INVENT. The server grew a token, so this side
-//    copies it. Adding a seventh that the server does not have is still forbidden.
+//    copies it. Adding one the server does not have is still forbidden.
 //
 //    Why it must be here even though this file can never PRODUCE it: `assumed` marks a meta
 //    whose wafer spec was borrowed from the reference floor for the computation, and that
@@ -121,15 +126,31 @@
 //    `sources.maps[].geometry` and `.geometry_basis`. A vocabulary missing it does not make
 //    the client silent; it makes the client sort an assumed geometry into some other bucket
 //    while every server test stays green. That is the divergence this seam exists to catch.
+//
+// 🔴 THE SEVENTH IS `confirmed`, ADDED 2026-08-06 (`map_overlay.py` [D7], product owner).
+//    Same rule, third application: BORROW, DO NOT INVENT. Ranked between `declared` and
+//    `assumed` -- a valid-die map differs per product spec, so a source map MATCHING one is
+//    evidence that it shares that product's wafer and chip geometry, which is stronger than an
+//    operator's claim (`assumed`); but nobody measured THIS map, so `declared` would be false.
+//
+//    ⚠️ AND IT IS NOT LIKE `assumed` IN THE ONE WAY THAT DECIDES HOW MUCH CODE IT NEEDS.
+//       `assumed` is server-memory only, so this file could never MEET the marker and only ever
+//       had to know the WORD. `confirmed` is WRITTEN TO `wafer_map_metadata` -- the path is
+//       `frame_confirmation.record_confirmation` -> `map_alignment.confirmed_meta_for`, and it
+//       REPLACES the borrow marker precisely so a stored row can be told from an unconfirmed
+//       borrow. So this client reads confirmed metas straight out of the database, and a
+//       vocabulary entry alone would not have been enough: `geometryDeclaration` needs the
+//       branch too, or it falls through to `declared` on six values nobody measured. See there.
 export const DECLARED = 'declared';
 export const AUTO_REGISTERED = 'auto_registered';
 export const ABSENT = 'absent';
 export const UNPARSABLE = 'unparsable';
 export const INDETERMINATE = 'indeterminate';
 export const ASSUMED = 'assumed';
+export const CONFIRMED = 'confirmed';
 
 export const DECLARATION_TOKENS = Object.freeze([
-  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED]);
+  DECLARED, AUTO_REGISTERED, ABSENT, UNPARSABLE, INDETERMINATE, ASSUMED, CONFIRMED]);
 
 // 🔴 `assumed` IS NOT `declared`, AND IT IS NOT A REFUSAL EITHER. The server splits the
 //    question in two and this side has to keep them split:
@@ -137,7 +158,14 @@ export const DECLARATION_TOKENS = Object.freeze([
 //      · "is there a basis to compute on?"     -> yes (`geometry_computable` accepts it)
 //    Folding it into `declared` re-creates the impersonation this whole vocabulary exists to
 //    stop; folding it into the refusals says a scored map could not be scored.
-export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED]);
+//
+// 🔴 `confirmed` JOINS FOR THE SAME REASON AND FROM THE SAME LINE. `geometry_computable`
+//    (`map_overlay.py`) reads `if geometry_declaration(meta) in (GEOMETRY_ASSUMED,
+//    GEOMETRY_CONFIRMED): return None` -- both are a basis, neither is a declaration. Leaving
+//    it out here does not make the client refuse anything the server refuses; it makes the
+//    client call NON-COMPUTABLE a map the server has already scored, which is the screen
+//    contradicting a run that succeeded.
+export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 
 // ── THE TAINTING RULE ───────────────────────────────────────────────────────────
 // One sentence:
@@ -213,13 +241,42 @@ export const AUTO_REGISTERED_KEY = 'auto_registered';
 export const PHYS_ASSUMED_KEY = 'phys_assumed_from';
 
 /**
+ * THE CONFIRMATION MARKERS. `server/map_overlay.py PHYS_CONFIRMED_KEY` / `FRAME_CONFIRMED_KEY`.
+ *
+ * 🔴 UNLIKE `PHYS_ASSUMED_KEY`, THESE ARE STORED. `confirmed_meta_for` writes them onto the row
+ *    that goes into `wafer_map_metadata`, replacing the borrow marker, so every meta this
+ *    client reads can carry one. Their value is not a boolean and not a table/map_id pair
+ *    either -- it is `{table, map_id, confirmation_uid, confirmed_by, confirmed_at}`. The
+ *    server's rule is that without `confirmation_uid` the value has no right to the marker;
+ *    this side reads TRUTHINESS only, the same way it reads `PHYS_ASSUMED_KEY`, because
+ *    re-checking the server's admissibility rule here would be a second implementation of it.
+ *
+ * 🔴 TWO KEYS BECAUSE THERE ARE TWO FACTS. `phys_confirmed_from` says the wafer/chip geometry
+ *    was derived under a confirmation; `frame_confirmed_from` says the rotation and side were.
+ *    A map that DECLARES its phys and only had its frame confirmed must not read as "geometry
+ *    confirmed", and one marker could not say that.
+ *
+ * ⚠️ `FRAME_CONFIRMED_KEY` IS EXPORTED AND NOT YET READ BY THIS MODULE, AND THAT IS A KNOWN
+ *    DIVERGENCE RATHER THAN AN OVERSIGHT -- stated here so it is not discovered as a surprise.
+ *    `orientation_declaration` reads it and answers `confirmed` on `rotation`/`side`; the
+ *    tainting rule below has no such branch, so on a confirmed `rot0_front` -- which is exactly
+ *    the no-evidence triple, and the measured confirmation winner -- this side still answers
+ *    `indeterminate`. The two sides disagree on that axis today. Closing it is a behaviour
+ *    change to the per-axis port and is boarded for its own round, not smuggled into this one.
+ *    `grid_y_invert` and `grid_start_*` are NOT covered by the frame marker on either side:
+ *    y-invert is not a candidate axis, and start is a grid property answered by the borrow.
+ */
+export const PHYS_CONFIRMED_KEY = 'phys_confirmed_from';
+export const FRAME_CONFIRMED_KEY = 'frame_confirmed_from';
+
+/**
  * THE CHOICE MARKER, ADDED 2026-08-05. `map_editor.js buildPushGridMetadata` writes it when the
  * frame it is serialising came out of the coordinate-choice modal instead of out of the map:
  * `"data"` (📐 표준 — derived from this map's own cell bbox) or `"panel"` (⚙️ 현재 패널 — the
  * editor's left panel, which may be the previous map's residue).
  *
- * 🔴 IT IS A KEY, NOT A SEVENTH TOKEN, AND THE DISTINCTION IS THE WHOLE POINT. All six tokens
- *    answer one question -- "what kind of evidence is the VALUE ON THIS AXIS". "A human answered
+ * 🔴 IT IS A KEY, NOT A TOKEN, AND THE DISTINCTION IS THE WHOLE POINT. Every token answers one
+ *    question -- "what kind of evidence is the VALUE ON THIS AXIS". "A human answered
  *    a modal" is not an answer to that question; it is a fact about the ROW. Checked one by one:
  *      · `declared`    -- a person really did choose, so in the strict sense this IS declared.
  *                         That is exactly why the token cannot carry the distinction: it is
@@ -233,6 +290,10 @@ export const PHYS_ASSUMED_KEY = 'phys_assumed_from';
  *                         and the server would refuse alignment quoting synthetic chip 1x1.
  *      · `absent` / `unparsable` -- the value is present and readable; both are false.
  *      · `assumed`     -- borrowed from the reference floor, server-memory only.
+ *      · `confirmed`   -- derived under a CONFIRMED match against a per-product valid-die map,
+ *                         and the marker carries that confirmation's identity. Answering a modal
+ *                         confirms nothing and produces no `confirmation_uid`, so the two are
+ *                         not the same event however similar "a human acted" sounds.
  *    So no token moves, `isFrameUsable` does not move, `geometryDeclaration` does not move. What
  *    the row gains is one observation: `frame.chosen`.
  *
@@ -474,6 +535,20 @@ export function geometryDeclaration(meta) {
   //    is that it is a PORT, in the same order, and a port with a missing branch is a port
   //    that answers differently the first time the other side hands it one.
   if (m[PHYS_ASSUMED_KEY]) return ASSUMED;
+  // 🔴 SECOND, AND THE ORDER IS THE RANKING (`map_overlay.geometry_declaration`, [D7]). A copy
+  //    carrying BOTH markers means a confirmed value was then borrowed again, and a combined
+  //    thing follows its weakest contributor (MAP_ALIGNMENT_SPEC 0.2 ⑨) -- so `assumed` wins.
+  //    Stored rows never carry both (the confirm write REPLACES the borrow marker); this line
+  //    guards the in-memory copy.
+  //
+  // 🔴 AND THIS BRANCH IS NOT OPTIONAL THE WAY THE `assumed` ONE WAS. `assumed` never reaches a
+  //    stored row, so a port missing its branch was a latent divergence. `confirmed` IS stored,
+  //    and the six phys values underneath it are the FLOOR'S REAL MEASUREMENTS -- so without
+  //    this line the loop below finds six readable numbers and returns `declared`: the client
+  //    would state that somebody measured this map, on a row whose whole point is that nobody
+  //    did. That is the impersonation (I4) the vocabulary exists to stop, produced by the side
+  //    that is supposed to be following the vocabulary.
+  if (m[PHYS_CONFIRMED_KEY]) return CONFIRMED;
   if (m[AUTO_REGISTERED_KEY] === true) return AUTO_REGISTERED;
   for (const k of PHYS_KEYS) {
     const v = m[k];

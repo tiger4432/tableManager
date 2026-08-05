@@ -37,7 +37,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { REF_NONE, REF_OCCUPANCY, REF_VALUES } from './verdict.js';
-import { ASSUMED, DECLARED, DECLARATION_TOKENS } from './declaration.js';
+import { ASSUMED, CONFIRMED, DECLARED, DECLARATION_TOKENS } from './declaration.js';
 
 /**
  * The three states of the borrowed-geometry offer, spelled exactly as
@@ -332,9 +332,28 @@ export function decodeReferenceView(payload) {
     //    it. The server already counts only DECLARED-provenance maps into `frames`, and counts
     //    everything else in `unattestedMaps`, so a unanimous-looking tally with a nonzero
     //    unattested count still reads as what it is: partly unmeasured.
+    // 🔴 `attested_maps` COUNTS `declared` ONLY, AND IT STAYS THAT WAY (lead PM ruling
+    //    2026-08-06). The server's block is named "what is written down, not a decision", and
+    //    on a confirmed map the count is literally true: nobody declared it. Folding
+    //    `confirmed` in here would make the tally assert a measurement that was never taken,
+    //    which is the same impersonation the token vocabulary exists to stop -- so a confirmed
+    //    map is counted in `unattestedMaps` and these two numbers are carried unchanged.
+    //
+    // ⚠️ THE NUMBER STAYING TRUE IS NOT THE SAME AS THE SCREEN STAYING TRUE, AND THE SECOND
+    //    HALF IS WHERE THE DEFECT WAS. "Unattested" rendered against a map whose frame a human
+    //    confirmed is a false sentence to the operator -- the system knows something and the
+    //    screen does not say it, which is exactly the shape of the dropped token. The fix is
+    //    NOT in these counts: it is a third per-map state at the one place a map's own frame is
+    //    shown (`main.adaptPayload` / `renderSources`). Aggregate honest, row honest, and
+    //    neither borrowing the other's job.
     declaredFrameCounts: Object.freeze(Object.assign({}, (decl && decl.frames) || {})),
     attestedMaps: intOrNull(decl && decl.attested_maps),
     unattestedMaps: intOrNull(decl && decl.unattested_maps),
+    // 🔴 `axis_sources` IS A TALLY KEYED ON THE TOKEN ITSELF (`map_alignment` `axis_tally`), so
+    //    it GROWS A KEY when the vocabulary grows -- a confirmed unit arrives as
+    //    `{rotation: {confirmed: N}}`. Copied wholesale rather than picked over on purpose: a
+    //    decoder that lifted named keys would silently drop the new one, which is the defect
+    //    this file's `token()` was already built to refuse one field over.
     axisSources: Object.freeze(Object.assign({}, (decl && decl.axis_sources) || {})),
     scorings: Object.freeze(scorings),
     referenceKind: kind.kind,
@@ -469,6 +488,13 @@ function decodeThresholds(ruling) {
  * silently keeping one lets a word the two sides do not both know reach a badge, and every
  * server test stays green while the screen sorts it into whatever bucket happens to catch it.
  * That is the exact divergence `declaration.js` grew `assumed` to prevent.
+ *
+ * 🔴 IT HAPPENED ANYWAY, MEASURED 2026-08-06. The server added `confirmed` and this function
+ *    rejected it on `sources.maps[].geometry` and `.geometry_basis`, returning `null` for both
+ *    on every confirmed map. Not a crash, no red anywhere: the client harness pinned the six
+ *    words as a LITERAL and the server's own vocabulary test names FIVE constants one by one,
+ *    so neither could notice a seventh. The vocabulary is fixed above; what this note records
+ *    is that being reported in `rejected` is not the same as anybody reading `rejected`.
  */
 function token(value, rejected, where) {
   if (value === null || value === undefined || value === '') return null;
@@ -489,6 +515,20 @@ export function isAssumedGeometry(source) {
  *  an excluded map stood on nothing at all and must not read as either. */
 export function isDeclaredGeometry(source) {
   return !!(source && source.geometryBasis === DECLARED);
+}
+
+/**
+ * True when this map was scored on geometry DERIVED UNDER A CONFIRMED MATCH.
+ *
+ * 🔴 A THIRD PREDICATE, NOT A WIDENING OF EITHER EXISTING ONE, AND THAT IS THE POINT OF THE
+ *    ROUND. Widening `isDeclaredGeometry` would say somebody measured this map (false).
+ *    Widening `isAssumedGeometry` would say it rests on an operator's unverified claim, when
+ *    what it actually rests on is a match against a per-product valid-die map plus a recorded
+ *    `confirmation_uid` -- re-checkable, which an assumption is not. Three states because the
+ *    server ranks three, and a client with two buckets must round one of them off.
+ */
+export function isConfirmedGeometry(source) {
+  return !!(source && source.geometryBasis === CONFIRMED);
 }
 
 /**

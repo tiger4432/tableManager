@@ -48,7 +48,7 @@ import { createApiClient } from './api.js';
 import { decodeReferenceView, verdictContext } from './decode.js';
 // The provenance vocabulary, imported rather than re-spelled. A string literal `'assumed'` here
 // is a second copy of a word the server owns, and the day the two drift nothing says so.
-import { ASSUMED } from './declaration.js';
+import { ASSUMED, CONFIRMED, DECLARED } from './declaration.js';
 import { isImplemented as artifactImplemented, rejectionSummary } from './artifact_gateway.js';
 
 /** The ids the page publishes. Names on the left are this file's vocabulary. */
@@ -627,9 +627,34 @@ export function bootstrap(deps) {
       //    claim ("this was not measured") and must not grow two visual languages.
       row.setAttribute('data-me2-geometry', src.geometry || 'unknown');
       row.setAttribute('data-me2-geometry-basis', src.geometry_basis || 'unknown');
+      // 🔴 `proposed` STAYS `assumed`-ONLY, AND A CONFIRMED ROW MUST NOT JOIN IT. The attribute
+      //    means "this was not measured -- treat it as a guess", which is true of a borrow and
+      //    false of a confirmation: a confirmation rests on a match against a per-product
+      //    valid-die map and carries a `confirmation_uid` that makes it re-checkable. Putting
+      //    it in the guess bucket understates it exactly as `declared` would overstate it.
       row.setAttribute('data-me2-proposed', src.geometry_basis === ASSUMED ? 'true' : 'false');
       const declared = src.stored_candidate_id || null;
-      setChildText(row, '[data-me2-source-value]', declared ? spellFrame(declared) : '고르지 않음');
+      // 🔴 THE THIRD STATE, AND IT IS A LABEL RATHER THAN ANYTHING LARGER (lead PM ruling
+      //    2026-08-06). `attested_maps` keeps counting `declared` only -- nobody declared a
+      //    confirmed map and the count is literally true -- but the ROW may not therefore read
+      //    `고르지 않음`, because a human did confirm that frame and the screen would be
+      //    stating the opposite. Three visibly distinct answers in the ONE slot the row already
+      //    has: the frame (declared), the frame with a confirm mark (confirmed), and `고르지
+      //    않음` (neither). No new region, no new mode, no new modal, no new control.
+      //
+      // ⚠️ IT IS DELIBERATELY NOT `stored_candidate_id`. That field decides WHAT GETS DRAWN
+      //    (`paint` reads it as the seat to use when nothing is selected, and `view_model`
+      //    falls back to it the same way), so promoting a confirmation into it would
+      //    silently move the picture as well as the
+      //    label. A confirmation is not a selection; this round changes what the row SAYS and
+      //    nothing about what the canvas shows.
+      const confirmed = !declared && src.confirmed_candidate_id ? src.confirmed_candidate_id : null;
+      row.setAttribute('data-me2-attest',
+        declared ? 'declared' : (confirmed ? 'confirmed' : 'none'));
+      setChildText(row, '[data-me2-source-value]',
+        declared ? spellFrame(declared)
+          : confirmed ? `✓ ${spellFrame(confirmed)}`
+            : '고르지 않음');
       // Same rule as the count slots above: write a number or write nothing. The page's
       // three-sibling pattern already shows `미상` in the states where no number was measured.
       const card = declared ? vm.candidates.find(c => c.id === declared) : null;
@@ -1629,7 +1654,16 @@ export function adaptPayload(raw) {
           // The provenance token gates the badge: a raw frame string is what the registrar
           // emits with nobody looking, so a badge keyed on the string alone puts `현재 선언`
           // on maps nobody ever measured.
-          stored_candidate_id: s.declaredFrameSource === 'declared' ? s.declaredFrame : null,
+          stored_candidate_id: s.declaredFrameSource === DECLARED ? s.declaredFrame : null,
+          // 🔴 THE CONFIRMED FRAME, CARRIED SEPARATELY FROM THE DECLARED ONE. `declared_frame`
+          //    arrives populated on a confirmed map -- `declared_frame_of` composes it from
+          //    `orientation_declaration`, which answers `confirmed` on rotation and side once
+          //    the confirm write lands `frame_confirmed_from` -- so the frame string is real
+          //    and only its PROVENANCE differs. Folding it into `stored_candidate_id` would
+          //    move the drawing; dropping it leaves the row saying `고르지 않음` about a frame
+          //    a human confirmed. So: its own field, read only by the label.
+          confirmed_candidate_id:
+            s.declaredFrameSource === CONFIRMED ? s.declaredFrame : null,
           // 🔴 WHAT THIS MAP SAYS ABOUT ITS OWN GEOMETRY, AND WHAT THIS RUN ACTUALLY STOOD ON.
           //    Two fields because they can disagree, and the disagreement IS the fact: a map
           //    whose own geometry is `absent` but whose basis is `assumed` was scored on the
@@ -1640,6 +1674,7 @@ export function adaptPayload(raw) {
           cells: i === 0 ? srcCells : [],
         }))
       : (srcCells.length > 0 ? [{ id: 'source', label: '출처', stored_candidate_id: null,
+                                  confirmed_candidate_id: null,
                                   geometry: null, geometry_basis: null, cells: srcCells }] : []),
     floor_cells: refCells,
     per_candidate: decoded.scorings,

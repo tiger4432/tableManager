@@ -1529,6 +1529,123 @@
           "phys_edge_margin": 3
         },
         "expect": "unparsable"
+      },
+      {
+        "id": "confirmed_marker_is_not_declared",
+        "$why": "확정된 정렬 아래에서 기준 맵으로부터 파생한 기하. 여섯 값은 **바닥의 실측값**이고 형식도 온전하므로 표지를 안 보면 그대로 `declared`가 된다. `assumed`와 결정적으로 다른 점 하나: 이 모양은 **저장된다**(`frame_confirmation.record_confirmation` → `map_alignment.confirmed_meta_for`가 `wafer_map_metadata` 행에 쓴다). 그래서 클라는 이것을 DB에서 직접 읽는다 — 어휘에 낱말만 넣고 분기를 안 넣으면 잠재 어긋남이 아니라 **당장의** 어긋남이다.",
+        "$kills": "A port MISSING THE CONFIRMATION BRANCH. The six values are the floor's real measurements, so it falls through to `declared` and states that somebody measured this map -- on the one row whose entire content is that nobody did. Measured on the client before 2026-08-06: `geometryDeclaration` returned 'declared' here while the server returned 'confirmed', and nothing was red. Also kills a port that maps the token to a refusal: the server scores this map happily (`geometry_computable` returns None), so refusing it makes the screen contradict a run that succeeded.",
+        "meta": {
+          "phys_wafer_dia": 300,
+          "phys_chip_x": 7,
+          "phys_chip_y": 8,
+          "phys_offset_x": 0,
+          "phys_offset_y": 0,
+          "phys_edge_margin": 3,
+          "grid_cols": 45,
+          "grid_rows": 39,
+          "rotation": 0,
+          "side": "front",
+          "grid_y_invert": false,
+          "grid_start_x": 1,
+          "grid_start_y": 1,
+          "phys_confirmed_from": {
+            "table": "valid_die_ref",
+            "map_id": "R1",
+            "confirmation_uid": "cfm-0001",
+            "confirmed_by": "operator",
+            "confirmed_at": "2026-08-06T00:00:00Z"
+          }
+        },
+        "expect": "confirmed"
+      },
+      {
+        "id": "confirmation_outranks_the_registrar_marker",
+        "$why": "확정 표지와 등록기 표지가 함께 있는 행. 등록기 표지는 지워지지 않는다(방위 축의 출처는 여전히 등록기 것이다) — 그런데 기하 여섯 키는 확정 아래 바닥에서 파생된 값이라 더 이상 등록기가 쓴 합성값이 아니다. `borrow_marker_outranks_the_registrar_marker`와 같은 이유, 다른 표지.",
+        "$kills": "A port that checks the registrar marker FIRST. It answers `auto_registered` on a row whose spec is the floor's measured one, so the screen calls a map unscorable on the grounds of a synthetic 1x1 chip -- while the values sitting there are 7x8.",
+        "meta": {
+          "phys_wafer_dia": 300,
+          "phys_chip_x": 7,
+          "phys_chip_y": 8,
+          "phys_offset_x": 0,
+          "phys_offset_y": 0,
+          "phys_edge_margin": 3,
+          "grid_cols": 45,
+          "grid_rows": 39,
+          "rotation": 0,
+          "side": "front",
+          "grid_y_invert": false,
+          "grid_start_x": 1,
+          "grid_start_y": 1,
+          "auto_registered": true,
+          "phys_confirmed_from": {
+            "table": "valid_die_ref",
+            "map_id": "R1",
+            "confirmation_uid": "cfm-0002",
+            "confirmed_by": "operator",
+            "confirmed_at": "2026-08-06T00:00:00Z"
+          }
+        },
+        "expect": "confirmed"
+      },
+      {
+        "id": "borrow_outranks_confirmation",
+        "$why": "두 표지가 한 dict에 같이 있는 **메모리 사본** — 확정된 값을 다시 빌린 경우다. 저장되는 행에는 둘이 같이 붙지 않는다(확정 쓰기가 빌림 표지를 대체한다). 합쳐진 것은 가장 약한 기여자를 따라가므로(스펙 §0.2 ⑨) 빌림이 이긴다. 순서가 곧 서열이라는 것을 고정하는 자리다.",
+        "$kills": "A port that puts the confirmation branch FIRST because `confirmed` sounds stronger than `assumed`. It reports a value that was borrowed again -- on nobody's authority this time -- as one that stands under a recorded confirmation, which is the strongest claim in the vocabulary attached to the weakest evidence.",
+        "meta": {
+          "phys_wafer_dia": 300,
+          "phys_chip_x": 7,
+          "phys_chip_y": 8,
+          "phys_offset_x": 0,
+          "phys_offset_y": 0,
+          "phys_edge_margin": 3,
+          "grid_cols": 45,
+          "grid_rows": 39,
+          "rotation": 0,
+          "side": "front",
+          "grid_y_invert": false,
+          "grid_start_x": 1,
+          "grid_start_y": 1,
+          "phys_confirmed_from": {
+            "table": "valid_die_ref",
+            "map_id": "R1",
+            "confirmation_uid": "cfm-0003",
+            "confirmed_by": "operator",
+            "confirmed_at": "2026-08-06T00:00:00Z"
+          },
+          "phys_assumed_from": {
+            "table": "valid_die_ref",
+            "map_id": "R2"
+          }
+        },
+        "expect": "assumed"
+      },
+      {
+        "id": "frame_confirmation_alone_leaves_geometry_declared",
+        "$why": "회전·면만 확정하고 웨이퍼·칩 기하는 이 맵이 스스로 선언한 경우. 표지가 둘인 이유가 여기 있다 — 사실이 둘이기 때문이지 대칭 때문이 아니다. `geometry_declaration`이 답하는 질문은 「이 맵의 **물리** 기하가 선언인가」 하나뿐이고, 프레임 확정은 그 질문에 대한 답이 아니다.",
+        "$kills": "A port that folds the two confirmation markers into one check. It answers `confirmed` on a spec somebody actually measured, which erases a real declaration -- the mirror image of the impersonation the token was added to stop, and just as invisible. Also kills a port that treats ANY key starting `*_confirmed_from` as the geometry marker.",
+        "meta": {
+          "phys_wafer_dia": 300,
+          "phys_chip_x": 7,
+          "phys_chip_y": 8,
+          "phys_offset_x": 0,
+          "phys_offset_y": 0,
+          "phys_edge_margin": 3,
+          "grid_cols": 45,
+          "grid_rows": 39,
+          "rotation": 90,
+          "side": "back",
+          "grid_y_invert": false,
+          "grid_start_x": 1,
+          "grid_start_y": 1,
+          "frame_confirmed_from": {
+            "table": "valid_die_ref",
+            "map_id": "R1",
+            "confirmation_uid": "cfm-0004",
+            "confirmed_by": "operator",
+            "confirmed_at": "2026-08-06T00:00:00Z"
+          }
+        },
+        "expect": "declared"
       }
     ]
   }
