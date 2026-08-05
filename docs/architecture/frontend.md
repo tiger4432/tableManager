@@ -1,9 +1,14 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-05 | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 >
-> ### 이번 라운드 (2026-08-04)
+> ### 이번 라운드 (2026-08-05)
+> - 🔴 **§2 진입점 표와 §3 모듈 표에 `map_editor2.html` / `src/map2/*`가 없었습니다** — 페이지 하나와 모듈 17개(약 7,700줄)가 **이 문서에 존재하지 않는 채로** 출하됐습니다. §4.2 신설.
+> - 🔴 **「정렬 캔버스에 웨이퍼 테두리가 그려진다」는 거짓입니다**(`d4e0fed`) — 그 원은 **어떤 JS도 읽지 않는 하드코딩 장식**이었고 **모든 맵이 구성상 그것을 넘쳤습니다.** 근거 없이는 아무것도 그리지 않습니다.
+> - **`src/map2/*`에는 파일별 행을 만들지 않았습니다** — 읽어야 할 것은 파일 이름이 아니라 **층 경계**이고, 목록은 이 표의 유지 주기보다 빨리 낡습니다.
+>
+> ### 직전 라운드 (2026-08-04)
 > - 🔴 **「`mm`은 일부러 비어 있다」를 삭제했습니다 — 클라에 mm 공간이 생겼습니다**(`cd3e0f4`, 나흘간 이 문서를 포함해 여러 곳에서 거짓이었습니다). §4의 오버레이 행이 새 좌표 단계를 싣습니다.
 > - **§3 모듈 표에 3행 신설** — `map_key.js`·`split_registry_row.js`(맵 에디터 분할 R1/R2) + 행 없이 굴러가던 `retroactive_view.js`. `map_editor.js`는 **분할 진행 중**이라 행이 그 사실을 적습니다.
 > - **줄 수 전면 재실측** + §2.1의 하네스 **수를 삭제**했습니다(러너가 매 실행마다 찍는 수를 산문이 다시 적을 이유가 없고, 그 사본이 세 번 낡았습니다). `check:contracts`는 **6계약**(`blank_predicate` 추가)입니다.
@@ -64,6 +69,7 @@
 | `index.html` | `src/main.js` | 데이터 그리드(메인) — 「🕸️ 추적」 진입점(`trace_launch.js`) 포함 |
 | `admin.html` | `src/admin.js` | 어드민 — 파이프라인 생애주기 5탭(§5, Monaco CDN) |
 | `map_editor.html` | `src/map_editor.js` | 웨이퍼 맵 에디터 |
+| `map_editor2.html` | `src/map_editor2.js` (+ `src/map2/*`) | **Map Editor 2 — 맵 정렬 화면**(2026-08-05 신설, 개발 중). 🔴 **레거시 에디터를 대체하지 않고 *옆에 선다*** — 위 진입점은 새 화면이 실제로 프레임을 확정할 수 있게 될 때까지 그대로 출하됩니다(`vite.config.js`가 그렇게 적고 있습니다). 서버 라우트는 `39b43ab`에서 붙었습니다 |
 | `enrichment.html` | `src/enrichment.js` | Enrichment Queue 컨베이어(결손 보정 워크리스트) |
 | `graph.html` | `src/graph_viewer.js` | 지식그래프 서브그래프 뷰어(§6) |
 | `trace.html` | `src/trace.js` | 객체 중심 추적 리포트(§6) |
@@ -133,6 +139,7 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 | `map_editor.js` | 9683 | 맵 에디터 + 페인트 잠금 + **오버레이 레이어**(§4) + 유효 다이 참조([MAP_EDITOR_SPEC §5.7/§5.7-bis](../spec/MAP_EDITOR_SPEC.md)). **이 저장소에서 가장 큰 클라 모듈**이고 **분할이 진행 중입니다** — 순수 함수 덩어리가 라운드마다 `client2/src/`의 별도 모듈로 빠져나가므로(아래 두 행), **「맵 에디터는 파일 하나」라고 읽지 마십시오.** 어느 심볼이 어느 파일에 있는지는 [CODE_MAP](./CODE_MAP.md)을 grep해서 확인하십시오. ⚠️ **「프레임 채택·저장 좌표 재배치」는 이 행에서 삭제됐습니다**(F8 `61440e6`+`94b9baa`로 심볼 8종이 소스에서 사라졌습니다 — 찾지 마십시오) |
 | `map_key.js` | 158 | **맵 키의 정준형(§7b)** — `map_editor.js`에서 분리(R1 `689ebb9`). `canonicalKeyValue`(선언 타입으로 키 값을 캐노니컬화) · `composeMapId` · `decomposeMapKey` · `canonicalMapKey` · `getMapIdFromMeta`. 🔴 **서버 `map_overlay.py`와 같은 답을 내야 하는 이음새**이고 양측 채점은 `contracts/map_seam/` + `client2/tests/seam_7b_oracle.py`입니다 — 여기를 고치면 그 둘이 판정합니다. `getMapIdFromMeta`는 분리하면서 `tableSchema`를 **두 번째 인자로** 받게 됐습니다(본문은 바이트 동일 — 하네스가 이 텍스트를 잘라 vm에서 돌립니다) |
 | `split_registry_row.js` | 366 | **`map_split_registry` 행의 정규형** — `map_editor.js`에서 분리(R2 `636f867`). 저장 페이로드(`buildLegendRegistryUpdates`·`LEGEND_PAYLOAD_COLUMNS`) · 응답 파서(`parseLegendRegistryRows`) · 지문/서명(`registryFingerprint`·`legendRowSignature`) · legend 아이템 정규화. 🔴 **모듈 상태를 하나도 읽지 않는 순수 절반이고, 그것이 경계가 여기 있는 이유입니다** — 저장 *오케스트레이션*(`saveLegendToServer`·`persistLegend` 등)은 legend 클러스터 7변수를 쓰므로 `map_editor.js`에 **영구히** 남습니다. 채점: `contracts/legend_map_scope/` · `contracts/band_arithmetic/` · `contracts/doe_band_rules/` · `server/tests/test_install_product_tables.py` |
+| `map_editor2.js` + **`src/map2/*` (17 파일)** | 408 + 7,260 | **Map Editor 2 — 맵 정렬 화면**(§4.2, 개발 중). 🔴 **파일별 행을 여기 만들지 않습니다** — 이 디렉터리는 라운드마다 모듈이 갈라지고 합쳐지는 중이라 목록이 낡는 속도가 이 표의 유지 주기보다 빠릅니다. **읽어야 할 것은 파일 이름이 아니라 층 경계**이고 그 정본은 [MAP_ALIGNMENT_SPEC §0.2](../spec/MAP_ALIGNMENT_SPEC.md)입니다. 🔴 **레거시와 달리 이 층들은 모듈 상태를 갖지 않고, 그래서 하네스가 소스를 자르지 않고 `import`합니다** — 그 성질이 깨지면 이 디렉터리를 만든 이유가 없어집니다 |
 | `transfer_plan.js` | 1875 | **전사 계획 사이드바**(§4.1) — map_editor.html에서 소비. 구 `bonding_plan.js`(M1 Info 패널)를 대체·삭제. **가용 수치의 자격 표시(`*`)가 여기 삽니다** — 서버가 `inactive_subtractions`로 「빼지 않은 감산」을 알리면 가용·잔여 칸에 각주 기호를 붙이고 ②의 각주에 서버의 역할 이름을 **그대로** 인쇄합니다([MAP_EDITOR_SPEC §6.2-ter](../spec/MAP_EDITOR_SPEC.md)가 계약 정본) |
 | `retroactive_view.js` | 446 | **소급(backfill) 어드민 화면의 뷰 모델**(§5) — `GET /admin/retroactive/*` 응답을 렌더 트리로. `config_resolve_view.js`와 같은 이유로 DOM 없는 별도 모듈입니다(node에서 실행 채점 — `client2/tests/retroactive_view_harness.mjs`). 운영자 절차는 [BACKFILL_GUIDE §7](../guide/BACKFILL_GUIDE.md) |
 | `enrichment.js` | 788 | Enrichment 컨베이어: 규칙 선택(`loadRules/selectRule`), 워크리스트(`fetchWorklist`), 입력 흐름(`onInputKeydown/saveCurrent` → PUT `/data/updates`), 참조 패널(`initReferencePanel/loadActiveReference`, stale 가드) |
@@ -361,6 +368,16 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 | 이동 | `openMaterial(id)` — 맵 간 이동의 유일 허브(브레드크럼 + 뒤로가기 프레임 스택). **[`280ebf0`] 분해 안 되는 ID는 `{첫 맵 키 컬럼: 원문}` 폴백으로 LOAD와 같은 라우팅** — 없는 키는 빈 프레임으로 열리고 Push 시 생성. 존재 probe는 여전히 추측하지 않고 `미상`([MAP_EDITOR_SPEC §6.4](../spec/MAP_EDITOR_SPEC.md)) |
 
 상세 규격: [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)(§5 오버레이 정렬 계약 · §6 전사 계획) · [map_editor/](../map_editor/README.md)
+
+### 4.2 Map Editor 2 (`map_editor2.js` + `src/map2/*`) — **정렬 화면, 레거시 옆에 선다** (2026-08-05 신설 · 개발 중)
+
+> ⚠️ **이 절은 라운드가 지나도 살아남을 수준으로만 적습니다.** 화면이 매일 바뀌고 있으므로 **컨트롤 이름·문구·줄 수를 여기에 옮기지 마십시오** — 설계 계약의 정본은 [MAP_ALIGNMENT_SPEC](../spec/MAP_ALIGNMENT_SPEC.md)이고, 이 절이 붙드는 것은 **모듈 경계와 「무엇을 하지 않는가」** 둘입니다.
+
+- **왜 별개 페이지인가**: 레거시 에디터는 **매일 운영 데이터 위에서 돌고 있고 옆에서 사고도 났습니다.** 새 화면이 실제로 프레임을 확정할 수 있게 되기 전까지 **옛것이 삽니다** — `vite.config.js`의 그 자리에 그렇게 적혀 있습니다. **레거시를 여기로 이식하지 마십시오.**
+- **모듈 규율이 이 디렉터리의 존재 이유입니다** — `src/map2/*`의 순수 층은 **인자로 받고 값을 돌려주며 모듈 상태를 갖지 않습니다.** 그래서 하네스가 **소스를 텍스트로 자르지 않고 `import`합니다**(레거시 하네스 41개 전부가 텍스트 슬라이싱이고, 그 기법이 **소스 구조에 거부권**을 갖고 있습니다). 🔴 **새 코드는 모듈이다**가 규칙이고, **기존 하네스는 전환하지 않고 수명이 다하게 둡니다**([MAP_ALIGNMENT_SPEC §0.3](../spec/MAP_ALIGNMENT_SPEC.md)).
+- **층 경계**(같은 문서 §0.2): 신원 · 선언(`declaration.js`) · **좌석**(`seating.js` — **등록만 하고 그릴 수 없습니다**) · 채점/판정(`verdict.js`) · 통신(`api.js`) · 세션(`session.js`) · 조립(`main.js`, **화면을 아는 유일한 층**) · 그리기(`painter.js`, **아무것도 만들지 않습니다**) · 입출력(`excel_io.js`). 🔴 **좌석과 그리기를 다시 합치지 마십시오** — 레거시가 정확히 그 결함이고(화면 밖 `continue`가 등록보다 앞서 선언된 셀이 저장 페이로드에서 사라졌습니다), 분리의 형태는 [PRIMITIVES §4 「좌석은 등록만 한다」](./PRIMITIVES.md)에 있습니다.
+- 🔴 **웨이퍼 테두리·마스크는 이 캔버스에 그려지지 않습니다**(`d4e0fed`). 종전 점선 원은 **하드코딩된 장식**이었고 어떤 JS도 읽거나 쓰지 않았습니다 — 자리표시자 목업에 맞춰진 크기였는데 실제 데이터는 스테이지를 가득 채우므로 **모든 맵이 그 원을 넘쳤고**, 제품 소유자가 그것을 「유효 다이 맵이 웨이퍼 밖으로 흘러넘친다」로 읽었습니다. **웨이퍼처럼 보이면서 웨이퍼를 모르는 도형은 도형이 없는 것보다 나쁩니다** — 조작자에게 안/밖을 그것으로 읽으라고 초대하는데, 그 판정이 정확히 마스크의 일이기 때문입니다. 다시 그려지는 조건은 **그 맵 *자신의* 선언된 phys가 원을 몰 수 있을 때**뿐이고, 근거가 없으면 아무것도 그리지 않습니다. ⚠️ CSS 규칙(`.me2-wafer-edge`)은 **생산자 없는 채로 DORMANT 표시와 함께 남아 있습니다** — 지웠다가 다시 만들면 그날의 규칙이 조용히 달라지기 때문입니다.
+- **서버 절반**: 채점·판정 `server/map_alignment.py`, 기하·어휘 `server/map_overlay.py`, 확정 기록 `server/frame_confirmation.py`. 이음매 채점은 `contracts/map2_seam/`. ⚠️ **클라 `api.js`의 `ROUTES`가 옛 철자(`/map/align/*`)를 들고 있고 서버에 그런 경로는 없습니다** — 총괄 판정 대기([DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md)의 좌표계 확정 기록 행).
 
 ---
 

@@ -1,10 +1,10 @@
 # 🗺️ Wafer Map Editor Documentation Index
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-05 | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`
 >
-> **이번 라운드 (2026-07-31 · `9d7d9a4`)**
-> - 빠른 요약의 **회사 양식** 항목에 **「상단 병합은 맵 격자에서 끝난다」** 추가 — 종전에는 TITLE과 그룹 띠가 인쇄물에서 **DOE 보조표 위를 지나갔습니다**(실측: 23열 맵이 32열, 51열 맵이 60열을 병합). 되붙이기 왕복은 **영향 없음**입니다.
-> - 문서 목록의 `philosophy.md` 항목 — **「치수 변경이 저장 좌표를 옮긴다」는 성질 자체는 그대로**이고, 이제 그 이동을 상쇄하는 반응이 **격자 `COLS`/`ROWS`에도** 걸립니다(`reseatCellsToStoredCoords`의 네 번째 호출 자리).
+> **이번 라운드 (2026-08-05)**
+> - **`architecture_and_management.md` §3.1이 사본에서 포인터로 축약됐습니다** — 좌표계 선택 모달의 정본은 [MAP_EDITOR_SPEC §4-bis.3](../spec/MAP_EDITOR_SPEC.md) 하나입니다.
+> - ⚠️ **이 디렉터리의 남은 소관은 좁습니다** — 필드 규격(`wafer_map_metadata`)·E1/E2 거리 변환·F 셀 보호·사이드바 레이아웃·배치 파이프라인, 그리고 좌표계 설계 철학(`philosophy.md` §2.3). **동선·계약·정렬은 전부 `spec/`이 소유합니다.** 여기에 그 사본을 만들면 이 디렉터리는 조용히 낡는 자리가 됩니다(실제로 두 번 그랬습니다).
 >
 > 🔴 **이 헤더에 라운드를 쌓지 마십시오** — 이전 라운드 기록은 [`docs/history/`](../history/)에 있습니다.
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 현행 계약 정본: [spec/MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
@@ -20,7 +20,8 @@
    * 필수 `map_key_columns` 설정 및 테이블 필터링 규칙
    * Clean Map Replacement (`replace_map: true`) 클린 덮어쓰기 파이프라인 (유령 셀 0% 차단)
    * 4-Neighbor BFS Distance Transform 기반 E1/E2 정밀 외곽 셀 자동 추출 알고리즘
-   * 4단계 기능별 좌측 사이드바 UI 레이아웃 및 복원 옵션 팝업 처리 로직
+   * 4단계 기능별 좌측 사이드바 UI 레이아웃
+   * ⚠️ **좌표계 선택 모달은 이 문서가 소유하지 않습니다**(2026-08-05 축약) — §3.1은 [MAP_EDITOR_SPEC §4-bis.3](../spec/MAP_EDITOR_SPEC.md)을 가리키기만 합니다. 그 사본이 같은 자리에서 두 번 거짓이 됐습니다
 
 2. **[격자 맵 좌표계 설계 철학 (`philosophy.md`)](file:///c:/Users/kk980/Developments/assyManager/docs/map_editor/philosophy.md)**
    * WYSIWYG (What You See Is What You Get) 화면 기준 저장 철학

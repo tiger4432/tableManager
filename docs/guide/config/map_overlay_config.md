@@ -167,7 +167,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_product_master_lot ON product_master
    | `ok` | 라우팅됨. `preset_key`·`preset`(본문)·`matched_by{stage, rule, lot, product_code}` | 없음 |
    | `not_declared` | 이 테이블에 `preset_routing` 선언이 없음(또는 전부 버려짐) | 선언 추가 / 서버 로그에서 버려진 사유 확인 |
    | `no_match` | 선언은 있는데 이 lot에 걸리는 것이 없음 | 규칙 추가. **경고가 아니라 사실 고지입니다** |
-   | `meta_present` | 이 맵은 이미 규격이 등록돼 있음 → 라우팅 미적용(정상) | 라우팅을 검증하려면 **메타가 없는 맵**으로 확인하십시오 |
+   | `meta_present` | 이 맵은 **`wafer_map_metadata`에 행이 있음** → 라우팅 미적용(정상) | 라우팅을 검증하려면 **메타가 없는 맵**으로 확인하십시오. 🔴 **판정은 「행이 있는가」이지 「그 행을 쓸 수 있는가」가 아닙니다**(`map_overlay.load_map_meta(...) is not None`) — 2026-08-05 `98b48e9`부터 **클라는 START X,Y를 읽을 수 없는 행을 통째로 버리고 「선언 없음」으로 흘리므로**, 그런 맵에서는 클라가 라우팅을 부르는데 여기서 `meta_present`가 나옵니다. 에러가 아니라 **침묵**입니다(총괄 판정 대기 → [MAP_EDITOR_SPEC §5.8-bis](../../spec/MAP_EDITOR_SPEC.md)) |
    | `preset_missing` | 규칙은 걸렸는데 그 프리셋이 `maps.json`에 없음 | `matched_by.rule`이 가리키는 규칙의 `preset` 오타 수정 |
    | `unresolvable` | 맵 키를 분해할 수 없음(맵 테이블이 아니거나 `lot_key_part`가 키 컬럼이 아님) | `table_bindings`/`map_key_columns` 확인 |
 

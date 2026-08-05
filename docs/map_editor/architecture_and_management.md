@@ -1,6 +1,12 @@
 # 🗺️ Wafer Map Management & Architecture Guide (`architecture_and_management.md`)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§3.1 📐 표준 분기 정정 + 배지 신설** — ① 종전 §3.1은 `standard` 선택이 *"`(0,0)` 오리진 최적 격자로 자동 튜닝"*한다고 적었고, 실제 코드가 `startX = 0`을 세운 뒤 **모든 저장 좌표에서 `minX`/`minY`를 뺐습니다**(되더하는 곳도 기록도 없었습니다). `019140c`가 이것을 **원점 선언**(`startX = minX`)으로 뒤집었으므로 그 서술은 **폐기된 동작**입니다. ② **이 문서에 Status 배지가 없었습니다** — [MAP_EDITOR_SPEC §5.7](../spec/MAP_EDITOR_SPEC.md)이 필드 규격의 **정본으로 지목**하는 1차 참조인데 신선도를 말하는 줄이 없어 조용히 낡는 경로에 있었습니다) | **Owner:** UI/Map · 좌표 규약의 정본은 [spec/MAP_EDITOR_SPEC §1의 0)](../spec/MAP_EDITOR_SPEC.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-05 | **Owner:** UI/Map · 좌표 규약의 정본은 [spec/MAP_EDITOR_SPEC §1의 0)](../spec/MAP_EDITOR_SPEC.md)
+>
+> 🔴 **이 문서가 소유하는 것은 §2(`wafer_map_metadata` 필드 규격) · §4(E1/E2 거리 변환) · §5(F 셀 보호) · §6(사이드바 레이아웃) · §7(배치 파이프라인)입니다.** 로드 동선·좌표계 모달·정렬 계약은 [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)이 소유합니다 — **여기에 사본을 만들지 마십시오.**
+>
+> **이번 라운드 (2026-08-05)**
+> - **§3.1을 사본에서 포인터로 축약했습니다.** 그 사본은 **같은 자리에서 두 번 거짓이 됐습니다**(`019140c`의 오리진 재번호 · `98b48e9`의 모달 트리거 확대). 두 번 다 정본은 고쳐졌고 사본만 남았습니다.
+> - 🔴 **§2.3-ter의 provenance 토큰 목록(넷)을 삭제했습니다** — `indeterminate`·`assumed`가 들어와 거짓이 됐습니다. **어휘 목록을 이 문서에 다시 인쇄하지 마십시오**(정본은 MAP_EDITOR_SPEC §1-ter.1).
 > 상위: [map_editor/](./README.md) · 개발자 계약: [spec/MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
 
 본 문서는 **AssyManager**의 웨이퍼 맵 에디터(Map Editor) 및 백엔드 서버 간의 **웨이퍼 맵 데이터 관리 아키텍처, 메타데이터 구조, 좌표 변환 공식, 보호 정책, 클린 덮어쓰기 파이프라인 및 UI 레이아웃**을 상세히 다룹니다.
@@ -78,7 +84,7 @@
 
 | 축 | 규칙 |
 |---|---|
-| 판정의 철자 | **하나뿐입니다.** 서버 `map_overlay.geometry_declaration(meta) -> 'declared' \| 'auto_registered' \| 'absent' \| 'unparsable'`, 클라 `physDeclaration(key, el).source`. **토큰 어휘가 같습니다** — 양측 채점은 `contracts/map_seam/` `geometry_declaration_cases` |
+| 판정의 철자 | **하나뿐입니다.** 서버 `map_overlay.geometry_declaration(meta)`, 클라 `physDeclaration(key, el).source`와 거울 `client2/src/map2/declaration.js`. **토큰 어휘가 같습니다** — 양측 채점은 `contracts/map_seam/`와 `contracts/map2_seam/`의 `geometry_declaration_cases`. 🔴 **어휘는 자랍니다 — 여기에 목록을 다시 적지 마십시오.** 종전 이 칸은 `declared / auto_registered / absent / unparsable` **넷**을 인쇄하고 있었고, `indeterminate`와 `assumed`가 들어온 뒤 거짓이 됐습니다. 정본 목록은 [MAP_EDITOR_SPEC §1-ter.1](../spec/MAP_EDITOR_SPEC.md), 미지 토큰의 강등 방향은 [MAP_ALIGNMENT_SPEC §9.2](../spec/MAP_ALIGNMENT_SPEC.md). **개수를 핀으로 박지 마십시오** — 「정확히 다섯」이라는 핀이 정당한 서버 측 추가를 클라 결함으로 읽게 만들었습니다 |
 | 무엇을 보나 | **표지이지 값이 아닙니다.** `chip == 1`을 표지로 쓰면 진짜 1mm 다이를 조용히 삼킵니다. 표지를 **값보다 먼저** 읽습니다(값이 먼저면 표지가 아무 일도 하지 않습니다) |
 | 레거시 폴백 | **없습니다 — 필요 없다는 것을 셌습니다.** 운영 실측 2026-08-04(읽기 전용): 668행 중 chip 1x1이 320행이고 **그 320행이 전부** 표지를 답니다. 표지 없는 1x1 행은 **0건**입니다 |
 | 정렬 | 소스·타깃 어느 쪽이든 합성이면 `make_frame_transform`이 **이름을 대고 거절**합니다 → `align_unavailable` + 한국어 사유(어느 맵을 고쳐야 하는지 포함) |
@@ -144,14 +150,16 @@
 
 ## 3. 맵 로딩 & 좌표계 복원 메커니즘 (`loadExistingMap`)
 
-### 3.1 메타데이터 미존재 시 복원 옵션 팝업
-* **메타데이터 존재하는 맵**: 팝업 없이 이전 저장 당시의 `grid_start_x`, `grid_start_y`, `grid_cols`, `grid_rows`, `rotation`, `side` 규격으로 100% 자동 복원됩니다.
-* **메타데이터 없는 레거시 맵**: 로딩 중 **[맵 좌표계 복원 옵션 팝업]**이 자동으로 표시됩니다:
-  1. 🅰️ **표준 좌표계 자동 맞춤 (`standard`)**: DB `(minX ~ maxX, minY ~ maxY)` 영역을 자동 측정해 그 크기의 격자를 열고, **오리진을 데이터 자신의 최솟값으로 선언**합니다(`startX = minX`, `startY = minY`).
-     > 🔴 **셀 번호를 다시 매기지 않습니다** (`019140c` · 2026-07-30 정정). 종전 이 줄은 *"`(0,0)` 오리진 최적 격자로 자동 튜닝"*이라고 적었고, 실제로 코드가 `startX = 0`을 세운 뒤 **모든 저장 좌표에서 `minX`/`minY`를 뺐습니다** — 되더하는 곳도, 뺐다는 기록도 없었습니다. 표시와 저장은 한 수량이라(`getDbCoords`가 `getCanvasCellFromDb`의 역함수) **재번호된 좌표가 그대로 `⚡ Push`에 실릴 수 있었습니다.** ⚠️ 커밋 메시지는 *"메타 없는 맵 4개, 그려진 셀 1,923개 중 451개가 Push 도달"*이라고 적었으나, **감사 추적 실측(`source_name='user'` 기준 239 에피소드)에서 그 서명을 가진 Push는 발견되지 않았습니다** — 노출은 실재했고 실현은 미확인입니다(대비의 전문은 [MAP_EDITOR_SPEC §4-bis.3-bis](../spec/MAP_EDITOR_SPEC.md)). 지금은 원점을 **선언**하므로 모든 셀이 종전과 같은 캔버스 칸에 앉고, 화면이 말하는 수가 곧 저장된 수입니다. 계약은 [MAP_EDITOR_SPEC §4-bis.3-bis](../spec/MAP_EDITOR_SPEC.md), 좌표 규약은 같은 문서 §1의 0).
-     > ⚠️ 물리 기하는 **마스크가 사실상 없는 값**으로 함께 기입됩니다(§4-bis.3 — 원 마스크가 살아 있으면 모서리 셀이 Push 불가가 됩니다).
-  2. 🅱️ **현재 UI 설정 유지 (`current`)**: 현재 패널 입력값을 유지한 상태로 로딩
-  3. ❌ **취소 (`cancel`)**: 로딩 작업 취소
+### 3.1 좌표계 선택 모달 — **이 문서는 소유자가 아닙니다** (2026-08-05 축약)
+
+> 🔴 **이 절은 계약을 다시 적지 않고 가리키기만 합니다.** 정본은 **[MAP_EDITOR_SPEC §4-bis.3 / §4-bis.3-bis](../spec/MAP_EDITOR_SPEC.md)**입니다.
+>
+> **축약한 이유가 이 절의 이력 그 자체입니다** — 여기 있던 사본이 **같은 자리에서 두 번 거짓이 됐습니다**: ① `019140c` 이전에는 `standard`가 *"`(0,0)` 오리진 최적 격자로 자동 튜닝"*한다고 적혀 있었고 실제로는 **모든 저장 좌표에서 `minX`/`minY`를 빼고 있었습니다** ② 2026-08-05 `98b48e9`까지 트리거를 *"메타데이터 없는 레거시 맵"*이라고 적었고 **그것도 거짓이 됐습니다.** 두 번 다 정본은 고쳐졌고 사본만 남았습니다. **사본을 계속 고치는 대신 사본을 없앱니다.**
+
+이 문서가 여전히 소유하는 것은 **§2의 `wafer_map_metadata` 필드 규격**이고, 로드 동선의 계약은 소유하지 않습니다. 요약만 남깁니다:
+
+* **좌표계가 확정된 맵**: 저장된 `grid_start_x/y`, `grid_cols/rows`, `rotation`, `side`로 묻지 않고 복원합니다.
+* **좌표계가 확정되지 않은 맵** — 🔴 **규격 행이 없는 맵만이 아니라, 행이 있어도 START X,Y를 읽을 수 없는 맵**을 포함합니다(`98b48e9`) — 로드 중 **좌표계 선택 모달**(📐 표준 / ⚙️ 현재 좌측 패널 설정 / ❌ 취소)이 뜹니다. 선택지의 뜻·설계 원칙·읽을 수 없는 행을 **통째로** 버리는 이유는 전부 정본에 있습니다.
 
 ### 3.2 노치 위치 표기 및 Front/Back 미러링 규칙 ('D' Marker)
 웨이퍼 기판의 공간적 정렬 상태를 직관적으로 파악할 수 있도록 V-Notch 위치에 선명한 **'D' 마커 뱃지**가 제공됩니다:
