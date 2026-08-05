@@ -18,8 +18,24 @@
  *   E  metadata EXISTS but this read failed (HTTP 500) -> the load REFUSES (0 cells, a
  *      toast) instead of degrading to "no declaration" (the pre-aee05b1 defect adopted the
  *      bbox and silently rewrote the frame)
- *   F  metadata row exists but carries no start fields -> the panel's start survives (the
- *      pre-fix defect left the inputs as the string "undefined")
+ *   F  metadata row EXISTS but its START is unreadable -> the load does NOT refuse: it routes
+ *      to the SAME coordinate-choice modal a map with no spec row reaches, and the operator's
+ *      pick decides the frame (F1 standard / F2 current / F3 cancel).
+ *   G  the same, spelled `grid_start_x: null` -- the `Number(null) === 0` trap. This is the
+ *      DANGEROUS spelling: it produces no NaN, so the screen looks correct while every cell
+ *      sits on a different die (measured pre-guard: 44 of 44 moved, 0 toasts, and Push
+ *      persisted `grid_start_x: 0`). The key-absent spelling at least collapsed loudly.
+ *
+ * WHY F IS A MODAL AND E IS A REFUSAL -- the two look alike and are not. E does not know what
+ * the declaration says, so a chosen frame would OVERWRITE a real one on Push. F has read the
+ * declaration and knows it has no origin; there is nothing to overwrite that was ever there.
+ *
+ * THE LOAD-SIDE HALF OF PUSH HONESTY. `readGridFrameControls` reads the START boxes with
+ * `parseInt(v, 10) || 0`, and that `|| 0` is the exact expression that persisted the original
+ * defect's 0. F/G therefore assert that after the modal the boxes hold a READABLE INTEGER --
+ * never '', never 'undefined', never 'null'. That property is what makes the `|| 0` at push
+ * time a no-op instead of a fabrication, and it is asserted on the load path rather than
+ * assumed from it.
  *
  * Usage: node startxy_probe.mjs [path-to-map_editor.js]   (default: the live src, so the
  * discovery runner can execute it bare; the argument remains for probing other commits.)
@@ -367,18 +383,105 @@ async function run() {
     eq('E the refusal is told (>= 1 toast)', log.toasts.length >= 1, true);
   }
 
-  // CASE F: metadata row exists but carries no grid_start_x/y (hand-written / older
-  // schema). Pre-fix the inputs ended up as the string "undefined".
-  {
+  // CASES F/G: the metadata row EXISTS but its START is unreadable (hand-written row, older
+  // schema, or the deprecated cell-level `grid_metadata` blob this loader still falls back
+  // to). Lead ruling 2026-08-05: that map goes to the SAME modal as a map with no spec row.
+  //
+  // The panel deliberately carries dims and a start that match NEITHER the metadata row
+  // (21x21 @ 1,-6) NOR the data bbox (8x7 @ 5,-1). Without that the "current" case cannot
+  // tell "the panel won" from "the dropped metadata won" -- a fixture that leaves those
+  // equal proves nothing about which one was read.
+  const UNREADABLE = (() => {
     const { grid_start_x, grid_start_y, ...noStart } = META;
-    const panel = { cols: 10, rows: 10, startX: 7, startY: 7, invertY: false,
+    return {
+      F: { label: 'F key-absent', meta: noStart },
+      G: { label: 'G start=null', meta: { ...META, grid_start_x: null, grid_start_y: null } },
+    };
+  })();
+  const PANEL_F = { cols: 17, rows: 19, startX: 2, startY: -4, invertY: false,
                     dia: 300, chipX: 1, chipY: 1, offX: 0, offY: 0, margin: 3 };
-    const { sandbox: S, el } = buildEnv(SRC, { rows, gridMeta: noStart, panel });
-    const res = await S.loadExistingMap({ quiet: true });
-    console.log(`F meta-no-start    start_after_load=(${el.gridStartX.value},${el.gridStartY.value})`
-      + ` panel_had=(7,7) cells=${res && res.count}`);
-    eq('F panel start_x survives a start-less metadata row', String(el.gridStartX.value), '7');
-    eq('F panel start_y survives a start-less metadata row', String(el.gridStartY.value), '7');
+  const nanKeys = (S) => Object.keys(S.gridData).filter(k => /NaN/.test(k)).length;
+  // The `|| 0` in `readGridFrameControls` turns anything unreadable into a persisted 0.
+  // A box holding a readable integer is what stops it; assert the box, not the intent.
+  const readableInt = (v) => /^-?\d+$/.test(String(v));
+
+  for (const k of ['F', 'G']) {
+    const { label, meta } = UNREADABLE[k];
+
+    // F1/G1 -- the operator picks 📐 표준: the frame is derived from the data, and the
+    // map OPENS. Before the fix this returned a refusal and loaded 0 cells.
+    {
+      const { sandbox: S, el, log } = buildEnv(SRC, { rows, gridMeta: meta,
+                                                      choice: 'standard', panel: PANEL_F });
+      const res = await S.loadExistingMap({ quiet: true });
+      const p = pushPayload(S);
+      console.log(`${label}/standard  start_after_load=(${el.gridStartX.value},${el.gridStartY.value})`
+        + ` grid=${el.gridCols.value}x${el.gridRows.value} cells=${res && res.count}`
+        + ` gridData=${Object.keys(S.gridData).length} nan=${nanKeys(S)} toasts=${log.toasts.length}`);
+      eq(`${k}1 the map OPENS instead of refusing`, res && res.count, N);
+      eq(`${k}1 standard frame derives start_x from the data`, String(el.gridStartX.value), String(DATA.x0));
+      eq(`${k}1 standard frame derives start_y from the data`, String(el.gridStartY.value), String(DATA.y0));
+      eq(`${k}1 standard frame derives cols from the data span`, String(el.gridCols.value), String(DATA.x1 - DATA.x0 + 1));
+      // ⚠️ ONE assertion, not two. `nanKeys === 0` alone passes VACUOUSLY on the refusing
+      //    build (0 cells means 0 NaN keys), so it would have proved nothing. Joined to the
+      //    square count it discriminates in both directions: the refusing build reads 0/0,
+      //    and a fix that opens the map while collapsing cells reads 1/1.
+      eq(`${k}1 all cells landed on N distinct NON-NaN squares`,
+        `${Object.keys(S.gridData).length} squares / ${nanKeys(S)} NaN`, `${N} squares / 0 NaN`);
+      // Same reason the START box check carries its VALUE: `readableInt` alone is true on the
+      // refusing build too, because that build never touches the box.
+      eq(`${k}1 START X,Y readable by Push's parseInt`,
+        `${el.gridStartX.value},${el.gridStartY.value} `
+        + `${readableInt(el.gridStartX.value) && readableInt(el.gridStartY.value) ? 'readable' : 'UNREADABLE'}`,
+        `${DATA.x0},${DATA.y0} readable`);
+      eq(`${k}1 push round-trips every stored coordinate`, disagreements(p).length, 0);
+      // Does NOT discriminate pre/post fix on its own — the refusal toasts too. It is here so
+      // that a future silent modal is caught: being asked without being told why is worse
+      // than the refusal was.
+      eq(`${k}1 the operator is told WHY they are being asked (>= 1 toast)`, log.toasts.length >= 1, true);
+    }
+
+    // F2/G2 -- the operator keeps the panel. The panel wins VERBATIM, and none of the
+    // dropped row's own dims leak in: half a declaration under a chosen origin is a frame
+    // nobody declared and nobody chose.
+    {
+      const { sandbox: S, el } = buildEnv(SRC, { rows, gridMeta: meta,
+                                                 choice: 'current', panel: PANEL_F });
+      const res = await S.loadExistingMap({ quiet: true });
+      console.log(`${label}/current   start_after_load=(${el.gridStartX.value},${el.gridStartY.value})`
+        + ` grid=${el.gridCols.value}x${el.gridRows.value} cells=${res && res.count}`
+        + ` nan=${nanKeys(S)}`);
+      eq(`${k}2 the map OPENS instead of refusing`, res && res.count, N);
+      eq(`${k}2 panel start_x wins verbatim`, String(el.gridStartX.value), String(PANEL_F.startX));
+      eq(`${k}2 panel start_y wins verbatim`, String(el.gridStartY.value), String(PANEL_F.startY));
+      eq(`${k}2 panel cols win — the dropped row's grid_cols does NOT leak in`,
+        String(el.gridCols.value), String(PANEL_F.cols));
+      eq(`${k}2 panel rows win — the dropped row's grid_rows does NOT leak in`,
+        String(el.gridRows.value), String(PANEL_F.rows));
+      eq(`${k}2 all cells landed on N distinct NON-NaN squares`,
+        `${Object.keys(S.gridData).length} squares / ${nanKeys(S)} NaN`, `${N} squares / 0 NaN`);
+      // ⚠️ The four "panel wins" assertions above and this one do NOT discriminate pre/post
+      //    fix: the refusing build also leaves the panel untouched. `${k}2 the map OPENS` is
+      //    this block's discriminator; these pin that opening it did not move the panel.
+      eq(`${k}2 START X,Y readable by Push's parseInt`,
+        `${el.gridStartX.value},${el.gridStartY.value} `
+        + `${readableInt(el.gridStartX.value) && readableInt(el.gridStartY.value) ? 'readable' : 'UNREADABLE'}`,
+        `${PANEL_F.startX},${PANEL_F.startY} readable`);
+    }
+
+    // F3/G3 -- Escape/취소. Proves the MODAL is what was reached: a refusal returns
+    // `{error:true, metaUnconfirmed:true}` and never sets `cancelled`.
+    {
+      const { sandbox: S, el } = buildEnv(SRC, { rows, gridMeta: meta,
+                                                 choice: 'cancel', panel: PANEL_F });
+      const res = await S.loadExistingMap({ quiet: true });
+      console.log(`${label}/cancel    start_after_load=(${el.gridStartX.value},${el.gridStartY.value})`
+        + ` cancelled=${res && res.cancelled} metaUnconfirmed=${res && res.metaUnconfirmed}`);
+      eq(`${k}3 the modal was reached (cancel, not a refusal)`, res && res.cancelled === true, true);
+      eq(`${k}3 the refusal path was NOT taken`, !!(res && res.metaUnconfirmed), false);
+      eq(`${k}3 a cancelled load leaves the panel start alone`,
+        `${el.gridStartX.value},${el.gridStartY.value}`, `${PANEL_F.startX},${PANEL_F.startY}`);
+    }
   }
 
   console.log(`\n${failures.length ? 'FAIL' : 'PASS'} -- ${pass} passed, ${failures.length} failed`);

@@ -5403,23 +5403,52 @@ async function resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, 
     }
   }
 
-  // 🔴 **선언이 있는데 START를 읽을 수 없다** — 이것도 「확인 못 했다」이지 「선언 없음」이
-  //    아니다. 바로 아래 `meta` 분기의 `rotation || 0` · `side || 'front'`과 달리 START에는
-  //    기본값이 **있을 수 없다**: 좌표계의 원점이라 "모르면 0"이 곧 좌표계 이동이다.
-  //    종전에는 `startX = loadedGridMeta.grid_start_x`가 undefined를 그대로 받아
-  //    `getCanvasCellFromDb`에 넘겼고 — 실측: 46셀 전부가 `NaN_NaN` 한 칸으로 접혔다 —
-  //    그 뒤 Push는 `parseInt('') || 0`으로 **0을 영속화**했다. 위와 같은 자리로 보낸다.
+  // 🔴 **선언이 있는데 START를 읽을 수 없다 → 선언이 아예 없는 맵과 같은 곳으로 보낸다**
+  //    (총괄 판정 2026-08-05). 그 자리는 아래 ④ **좌표계 선택 모달**이다.
+  //
+  //    지켜야 하는 것은 「모르면 0」이라는 조용한 번역을 막는 것 하나뿐이고, 모달은 거절과
+  //    **최소한 같은 정도로** 그것을 막으면서 맵을 열어 둔다. 운영자가 에디터를 여는 이유가
+  //    바로 규격을 모르기 때문이므로, 열리지 않는 것은 답이 아니다.
+  //    실측(2026-08-05, `push_after_choice_probe`):
+  //      · `grid_start_x` 키 부재 → 종전 44셀이 `NaN_NaN` **한 칸**으로 접혔다.
+  //      · `grid_start_x: null`  → NaN이 하나도 없이 44셀이 **전부 다른 칸**에 앉았고
+  //        (`Number(null) === 0`), 로드는 성공을 알렸으며 ⚡ Push가 `grid_start_x: 0`을
+  //        `wafer_map_metadata`에 **영속화**했다. 토스트는 0건. 이쪽이 더 위험하다 —
+  //        화면이 멀쩡하다.
+  //    모달 경로에는 그 두 결함이 **원리적으로** 없다: 좌표계를 정하는 것이 선언이 아니라
+  //    운영자의 선택이고, 두 선택지 모두 읽을 수 있는 수를 낸다(📐 표준 = 데이터 bbox,
+  //    현재 설정 = 화면 컨트롤). 그리고 고른 프레임은 로드 직후 좌측 패널에 **그대로 표시**
+  //    되므로 Push 전에 눈에 보인다.
+  //
+  // 🔴 **`refuseUnconfirmedMeta`(조회 실패)와 같은 자리로 보내지 않는다 — 두 사실은 다르다.**
+  //    조회 실패는 선언이 **무엇인지 모르는** 상태라, 고른 프레임을 Push가 쓰면 실재하는
+  //    선언을 덮는다. 여기서는 선언을 **읽었고** 그 선언에 원점이 없다는 것을 안다.
+  //
+  // 🔴 **메타를 반쯤 살려 두지 않는다.** 원점 없는 `grid_cols`/`rotation`을 운영자가 고른
+  //    원점과 섞으면 아무도 선언한 적 없고 아무도 고른 적 없는 프레임이 나온다 — 이 파일이
+  //    도처에서 거절하는 그 상태다. 그래서 `null`을 돌려 **아래 경로가 「선언 없는 맵」과
+  //    한 글자도 다르지 않게** 흐르도록 한다(라우팅 프리셋도 그래서 여기서부터 적용된다 —
+  //    쓸 수 없는 규격 행은 `wafer_map_metadata`의 답이 아니므로 「규격 > 라우팅 > 패널」의
+  //    첫 부등호를 통과한 것이 아니다).
+  //
   // ⚠️ `null`·`''`은 0이 아니다(`Number(null) === 0`). 값의 **부재**와 0을 가르는 것이
-  //    이 술어의 전부이므로 `Number()` 하나로 판정하지 않는다.
+  //    이 술어의 전부이므로 `Number()` 하나로 판정하지 않는다. 이 술어가 없으면 위에 적은
+  //    `grid_start_x: null` 실측이 그대로 돌아온다 — 지우지 말 것.
   if (loadedGridMeta) {
     const declaredNum = (v) => (v === null || v === undefined || v === ''
       ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
     const sx = declaredNum(loadedGridMeta.grid_start_x);
     const sy = declaredNum(loadedGridMeta.grid_start_y);
     if (sx === null || sy === null) {
-      return { ok: false, refusal: refuseUnconfirmedMeta(
-        `규격에 START X,Y가 없습니다 (grid_start_x=${JSON.stringify(loadedGridMeta.grid_start_x)}, `
-        + `grid_start_y=${JSON.stringify(loadedGridMeta.grid_start_y)})`) };
+      console.warn(`[Map Editor] ${selectedTable} · ${loadedMapKey || ''}: the spec row declares `
+        + `no readable origin (grid_start_x=${JSON.stringify(loadedGridMeta.grid_start_x)}, `
+        + `grid_start_y=${JSON.stringify(loadedGridMeta.grid_start_y)}) — routing to the `
+        + 'coordinate-choice modal, exactly as for a map with no spec row at all. The rest of '
+        + 'this row is dropped ON PURPOSE: a declared grid size on a chosen origin is a frame '
+        + 'nobody declared and nobody chose.');
+      // 조회 동선의 확인창은 아니다(모달이 곧 그 자리다) — 왜 묻는지만 말한다.
+      showToast('맵 규격에 START X,Y가 없습니다 — 좌표계를 선택하십시오.', 'warning');
+      return { ok: true, gridMeta: null, mapKey: loadedMapKey };
     }
     loadedGridMeta.grid_start_x = sx;
     loadedGridMeta.grid_start_y = sy;
