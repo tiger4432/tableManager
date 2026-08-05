@@ -61,6 +61,59 @@ export const KIND_INFERRED = 'inferred';
 export const KIND_ABSENT = 'absent';
 
 /**
+ * THE AXIS THE RULING WAS MADE ON, in the server's own spelling
+ * (`server/map_alignment.py:1255-1267`). Declared here because this is the file that branches
+ * on them, the same discipline as the reference kinds in `verdict.js`.
+ */
+export const METRIC_OCCUPANCY = 'occupancy';
+export const METRIC_VALUES = 'values';
+export const METRIC_VALUES_WEIGHTED = 'values_weighted';
+export const METRIC_INDEX = 'index';
+
+/**
+ * A CANDIDATE'S OWN STATE, in the server's own spelling (`server/map_alignment.py:1134-1139`).
+ *
+ * 🔴 THREE WORDS, NOT TWO, AND FOLDING THEM WAS THE BUG. `map_alignment.py:1132` says it from
+ *    the other side: 「안 본 후보는 못 잰 후보가 아니다」. A frame excluded by the side
+ *    declaration was never looked at; a frame whose transform was refused was looked at and
+ *    could not be measured; a frame that scored 0 lost. The server sends all three apart, and
+ *    the client used to read only the placeholder `0` every non-scored candidate carries -- so
+ *    four frames nobody considered rendered as four frames that lost by 88 dies.
+ */
+export const CAND_SCORED = 'scored';
+export const CAND_NOT_CONSIDERED = 'not_considered';
+export const CAND_NOT_SCORABLE = 'not_scorable';
+const CAND_UNMEASURED = new Set([CAND_NOT_CONSIDERED, CAND_NOT_SCORABLE]);
+
+/**
+ * WHICH PAIR OF NUMBERS THE RULING STANDS ON. A MIRROR of `server/map_alignment.py:1473-1478`,
+ * and it must stay one: the server picks the keys there, ranks on them, and names the axis in
+ * `ruling.metric` precisely so this side does not have to guess.
+ *
+ * 🔴 READING `agreement` REGARDLESS OF THE METRIC IS A SECOND SCORING IMPLEMENTATION WEARING
+ *    THE CLOTHES OF A FIELD ACCESS. Measured on the wire (`dt_map` / `SYN-IDX-FULL-R0` against
+ *    `valid_die_ref:PRD-A_DT13`, 2026-08-06): the ruling said `metric: "index"`,
+ *    `winner: "rot0_front"`, margin 87 over `index_agreement` 88/87 against 1/0 for every other
+ *    frame -- while the screen rendered the OCCUPANCY column, 88/43 against 66/21 and 62/17,
+ *    and reached its own conclusion off it. Same numbers, different question, and the screen
+ *    was the only place the two ever disagreed.
+ *
+ * 🔴 AN UNRECOGNISED METRIC FALLS BACK TO OCCUPANCY, WHICH IS WHAT THE SERVER'S OWN `else`
+ *    DOES. The token is still carried to the record verbatim (`ruling_metric`), so a new axis
+ *    shows up in the log as itself rather than as nothing; what it must not do is leave this
+ *    function with no keys at all and empty the eight.
+ */
+export function scoringKeysFor(metric) {
+  if (metric === METRIC_INDEX) {
+    return Object.freeze({ agree: 'index_agreement', discriminating: 'index_discriminating' });
+  }
+  if (metric === METRIC_VALUES || metric === METRIC_VALUES_WEIGHTED) {
+    return Object.freeze({ agree: 'value_agreement', discriminating: 'value_discriminating' });
+  }
+  return Object.freeze({ agree: 'agreement', discriminating: 'discriminating' });
+}
+
+/**
  * Words that mean "a ratio", matched against the JSON path a WORD AT A TIME.
  *
  * 🔴 IT IS WORDS, NOT A SUBSTRING, AND THAT IS A BUG FIX RATHER THAN A REFINEMENT. This was
@@ -109,9 +162,26 @@ const COUNT_FIELDS = new Set([
   // current wire
   'agreement', 'discriminating', 'map_count', 'cell_count', 'excluded_total',
   'scored_cells', 'attested_maps', 'unattested_maps', 'distinct_seatings',
+  // The index axis. Counts of dies by construction on the server side
+  // (`int(np.count_nonzero(...))`, `map_alignment.py:1090-1094`), so a fraction arriving under
+  // one of these names is the same defect `agreement: 0.97` was -- and it must be refused for
+  // the same reason, not dropped as "not an integer" while a server lane believes its field
+  // is in use.
+  'index_agreement', 'index_discriminating', 'index_total', 'index_margin',
   // previous wire, kept so a stale producer is refused rather than silently trimmed
   'agree', 'excluded_map_count', 'discriminating_dies',
 ]);
+
+/**
+ * 🔴 `value_agreement` / `value_discriminating` / `value_margin` ARE DELIBERATELY ABSENT FROM
+ *    THE SET ABOVE, AND THAT IS NOT AN OVERSIGHT. Under `values_weighted` the server emits them
+ *    as FLOATS on purpose -- `float(w[member].sum())`, `map_alignment.py:1109-1112` -- because a
+ *    weighted die count is not a whole number of dies. They are weighted DIES, not a ratio: the
+ *    denominator is never divided out, and `map_alignment.py:1158-1160` refuses to `int()` the
+ *    margin precisely so the threshold comparison keeps its fraction. Listing them here would
+ *    make every weighted payload throw `RatioInPayloadError` on an honest measurement, which is
+ *    how a guard that fires on honest names gets switched off within a week (see `RATIO_WORDS`).
+ */
 
 export class RatioInPayloadError extends Error {
   constructor(paths) {
@@ -155,6 +225,11 @@ export function decodeReferenceView(payload) {
 
   const rejected = [];
   const scorings = [];
+  // THE AXIS FIRST, THEN THE NUMBERS. Read once, outside the loop: the ruling names one axis
+  // for the whole run, and a per-candidate re-read is how eight candidates end up on seven.
+  const rulingMetric = (p && p.ruling && p.ruling.metric != null)
+    ? String(p.ruling.metric) : null;
+  const keys = scoringKeysFor(rulingMetric);
   // 🔴 THE WIRE SAYS `frame`, THE SCREEN SAYS `candidate_id`, AND THEY ARE THE SAME STRING.
   //    `rot90_front` is `candidates.candidateId(90, 'front')` exactly. The rename happens here
   //    and nowhere else -- one vocabulary crosses the customs post, and downstream keeps the
@@ -162,15 +237,43 @@ export function decodeReferenceView(payload) {
   for (const raw of arr(p && p.candidates)) {
     const frame = raw && raw.frame != null ? String(raw.frame) : null;
     if (!frame) { rejected.push('candidates: no frame'); continue; }
-    const agree = intOrNull(raw.agreement);
-    const discriminating = intOrNull(raw.discriminating);
-    if (agree === null || discriminating === null) {
-      // Dropped, and SAID so. A scoring silently missing from the list would shrink the
-      // denominator of "how many candidates tied" without anything on screen changing.
-      rejected.push(`candidates ${frame}: agreement/discriminating not integers`);
+    const state = raw.state != null && String(raw.state) !== '' ? String(raw.state) : null;
+    // The server's own sentence about THIS frame -- `미채점 - 면 선언 제외`. Carried verbatim,
+    // never re-spelled: it is the only thing that tells a frame nobody looked at from a frame
+    // that was looked at and lost, and composing a Korean equivalent here would be the
+    // two-spellings defect the refusal sentence already taught this screen.
+    const reason = raw.reason != null && String(raw.reason) !== '' ? String(raw.reason) : null;
+    // 🔴 A CANDIDATE THE SERVER DID NOT SCORE CARRIES PLACEHOLDER ZEROES, NOT MEASUREMENTS.
+    //    `map_alignment.py:1078` writes `discriminating = 0` for every unscored candidate and
+    //    `agreement` arrives the same way, so reading the numbers without reading the state
+    //    turns "never considered" into "lost 0 to 88". Measured on the wire: the four back
+    //    frames of `SYN-IDX-FULL-R0` arrive `not_considered` with `index_agreement: null` and
+    //    a reason, and the screen drew them as `0 / 0` marked scored.
+    //
+    //    KEPT IN THE LIST, NOT DROPPED. Narrowing the search must not narrow the report: the
+    //    row is carried with NULL counts and its state, so the screen can say what it is.
+    if (state !== null && CAND_UNMEASURED.has(state)) {
+      scorings.push(Object.freeze({
+        candidate_id: frame, agree: null, discriminating: null, state, reason }));
       continue;
     }
-    scorings.push(Object.freeze({ candidate_id: frame, agree, discriminating }));
+    // 🔴 NOT `intOrNull`. Under `values_weighted` the axis this ruling stands on is weighted
+    //    dies and legitimately fractional (`map_alignment.py:1109`); demanding an integer here
+    //    would drop all eight candidates on every weighted payload. The integrality of the
+    //    COUNTING axes is enforced where it belongs -- `assertNoRatioInPayload` above, which
+    //    has already run and thrown on a fractional `agreement` or `index_agreement`.
+    const agree = numOrNull(raw[keys.agree]);
+    const discriminating = numOrNull(raw[keys.discriminating]);
+    if (agree === null || discriminating === null) {
+      // Dropped, and SAID so. A scoring silently missing from the list would shrink the
+      // denominator of "how many candidates tied" without anything on screen changing. The
+      // AXIS is named too: on a four-axis payload "the numbers are missing" does not tell a
+      // server lane which pair of fields it failed to send.
+      rejected.push(`candidates ${frame}: ${keys.agree}/${keys.discriminating} not numbers`);
+      continue;
+    }
+    scorings.push(Object.freeze({
+      candidate_id: frame, agree, discriminating, state: state || CAND_SCORED, reason }));
   }
 
   const ref = (p && p.reference && typeof p.reference === 'object') ? p.reference : null;
@@ -242,6 +345,17 @@ export function decodeReferenceView(payload) {
     // back verbatim, and re-deriving it here would be the second scoring implementation.
     ruling: Object.freeze(Object.assign({}, (p && p.ruling) || {})),
     rulingWinnerId: p && p.ruling && p.ruling.winner ? String(p.ruling.winner) : null,
+    // The axis, and the axis the counts above were actually read from -- one field, read once,
+    // so no downstream consumer re-derives it and picks a different pair of numbers.
+    rulingMetric,
+    rulingScoringKeys: keys,
+    // 🔴 THE THRESHOLDS THE RULING STOOD ON, WHICH ARE PER AXIS. `_rule_on` is handed
+    //    `index_thresholds if metric == METRIC_INDEX else thresholds`
+    //    (`map_alignment.py:1194`) because each axis counts a different thing and a shared
+    //    dict would mean the same name measuring two quantities. So the pair that decided is
+    //    the pair ON the ruling, not the one beside it -- and carrying it is what stops this
+    //    side re-deciding the same evidence against a different bar.
+    rulingThresholds: decodeThresholds(p && p.ruling),
     // 🔴 THE RULING'S OWN FACT ABOUT ITSELF -- "this verdict stands on a borrowed wafer". It
     //    lives ON the ruling rather than beside it (`map_alignment.py:547`) precisely so it
     //    cannot be separated from the answer it qualifies, and it is read `=== true`: a
@@ -333,6 +447,23 @@ function decodeAssumption(p, rejected) {
 }
 
 /**
+ * THE TWO THRESHOLDS AS THE RULING RECORDS THEM, or NULL.
+ *
+ * 🔴 BOTH OR NEITHER, AND NEVER A DEFAULT. `verdict.js` refuses to rank without thresholds on
+ *    purpose -- "a threshold invented in code is a plausible default impersonating a
+ *    declaration" -- so a ruling carrying one of the two is carried as NOTHING rather than as a
+ *    half-declaration the verdict layer would then complete with `Number(undefined)`. This is a
+ *    DECLARATION READ OFF THE WIRE, not a default: the server read it from its own config and
+ *    already applied it, and the numbers it applied it to are the ones decoded above.
+ */
+function decodeThresholds(ruling) {
+  const margin = numOrNull(ruling && ruling.min_margin_dies);
+  const discriminating = numOrNull(ruling && ruling.min_discriminating_dies);
+  if (margin === null || discriminating === null) return null;
+  return Object.freeze({ min_margin_dies: margin, min_discriminating_dies: discriminating });
+}
+
+/**
  * A PROVENANCE TOKEN OFF THE WIRE, checked against the vocabulary this client shares with
  * `server/map_overlay.py`. An unrecognised token is reported and dropped rather than passed on:
  * silently keeping one lets a word the two sides do not both know reach a badge, and every
@@ -385,6 +516,19 @@ function intOrNull(v) {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
   return Number.isInteger(n) ? n : null;
+}
+
+/**
+ * 🔴 `Number(null) === 0`, `Number('') === 0` AND `Number(false) === 0`, so the obvious spelling
+ *    of this function turns THREE ways of saying "nothing was measured" into a measured zero --
+ *    which is the exact defect this round exists to remove, reintroduced inside its own fix.
+ *    Same trap `verdict.finiteOrNull` documents for thresholds and `view_model.numOrNull` for
+ *    the worklist totals; spelled the same way here rather than a fourth way.
+ */
+function numOrNull(v) {
+  if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function walk(node, path, visit, seen) {

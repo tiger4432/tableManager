@@ -1176,8 +1176,20 @@ function throws(fn, what) {
     sources: { map_count: 1, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
                maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
                         declared_frame_source: 'declared' }] },
-    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 2, discriminating: 4 },
-                 { frame: 'rot90_front', state: 'scored', agreement: 2, discriminating: 4 }],
+    // 🔴 THE WEIGHTED PAIR IS HERE BECAUSE THE RULING BELOW NAMES THE WEIGHTED AXIS. This
+    //    fixture used to declare `metric: values_weighted` while carrying ONLY the occupancy
+    //    column -- a payload no server emits: `map_alignment.py:1156-1157` sends `value_*`
+    //    beside `agreement` on every candidate, and `metric` is chosen from what was measured
+    //    (`:1184-1186`). It read as green only because the client read `agreement` no matter
+    //    which axis had ruled, which is exactly the defect this round removes. A fixture
+    //    carrying one axis cannot tell a client that reads the RULED axis from a client that
+    //    reads the first one it finds -- so the fixture now carries the axis it declares.
+    //    (Weighted counts are floats on the real wire; these are whole because this unit's
+    //    weights are 1 and the fixture's point is the SENTENCE, not the arithmetic.)
+    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 2, discriminating: 4,
+                   value_agreement: 2, value_discriminating: 4 },
+                 { frame: 'rot90_front', state: 'scored', agreement: 2, discriminating: 4,
+                   value_agreement: 2, value_discriminating: 4 }],
     declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
     // 🔴 THE THIRD METRIC, ON THE WIRE. `values_weighted` joined `occupancy` and `values` on
     //    `ruling.metric` and had no carriage at all on this side.
@@ -1283,6 +1295,131 @@ function throws(fn, what) {
      + 'that if/else chain, never inside it');
   ok(record4.includes('ruling.metric=values_weighted'),
      'N16 and the axis is recorded alongside, not instead');
+}
+
+// ── P. THE SCREEN CARRIES THE RULING, ON THE RULING'S OWN AXIS ─────────────────
+//
+// 🔴 BOTH HALVES WERE MEASURED ON THE LIVE SERVER, 2026-08-06, `dt_map` /
+//    `SYN-IDX-FULL-R0` against `valid_die_ref:PRD-A_DT13`. The server answered
+//    `ruling.metric = "index"`, `winner = "rot0_front"`, margin 87. The screen said
+//    `채점 불가` and drew `88 / 43`, `66 / 21`, `62 / 17` -- the OCCUPANCY column -- and drew
+//    the four back frames, which the server had marked `not_considered` with a reason, as
+//    `0 / 0` with `data-me2-cand-scored="true"`: indistinguishable from a frame that was
+//    scored and lost.
+//
+// 🔴 AND `setConfig` IS DELIBERATELY NEVER CALLED HERE. `loadAlignConfig` rejects
+//    unconditionally (`api.js`, `ROUTES.config` is null -- the route does not exist), so this
+//    is the live threshold situation exactly: the ONLY thresholds available are the ones the
+//    ruling carries. Calling `setConfig` would hide the second half of defect (1) behind a
+//    value no live run has.
+//
+// THE FIXTURE IS THE WIRE, TRIMMED -- every number below is what the route served.
+{
+  const REASON_SIDE = '미채점 - 면 선언 제외';
+  const indexWire = {
+    state: 'scored', refusal: null,
+    reference: { state: 'resolved', kind: 'values', map_id: 'PRD-A_DT13',
+                 cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+    sources: { map_count: 1, cell_count: 4, cells: [[0, 0], [1, 0], [2, 2]],
+               maps: [{ map_id: 'SYN-IDX-FULL-R0', cell_count: 88 }] },
+    declaration: { frames: {}, attested_maps: 0, unattested_maps: 1, axis_sources: {} },
+    ruling: { metric: 'index', index_axis: 'ranking', winner: 'rot0_front',
+              margin: 87, discriminating: 87,
+              min_margin_dies: 20, min_discriminating_dies: 20,
+              sides_considered: ['front'], sides_narrowed: true, reason_code: null },
+    candidates: [
+      { frame: 'rot0_front', state: 'scored', agreement: 88, discriminating: 43,
+        index_agreement: 88, index_discriminating: 87, reason: null },
+      { frame: 'rot90_front', state: 'scored', agreement: 66, discriminating: 21,
+        index_agreement: 1, index_discriminating: 0, reason: null },
+      { frame: 'rot180_front', state: 'scored', agreement: 62, discriminating: 17,
+        index_agreement: 1, index_discriminating: 0, reason: null },
+      { frame: 'rot270_front', state: 'scored', agreement: 66, discriminating: 21,
+        index_agreement: 1, index_discriminating: 0, reason: null },
+      { frame: 'rot0_back', state: 'not_considered', agreement: 0, discriminating: 0,
+        index_agreement: null, index_discriminating: null, reason: REASON_SIDE },
+      { frame: 'rot90_back', state: 'not_considered', agreement: 0, discriminating: 0,
+        index_agreement: null, index_discriminating: null, reason: REASON_SIDE },
+      { frame: 'rot180_back', state: 'not_considered', agreement: 0, discriminating: 0,
+        index_agreement: null, index_discriminating: null, reason: REASON_SIDE },
+      { frame: 'rot270_back', state: 'not_considered', agreement: 0, discriminating: 0,
+        index_agreement: null, index_discriminating: null, reason: REASON_SIDE },
+    ],
+    excluded_total: 0, stats: { scored_cells: 88, elapsed_ms: 16 },
+  };
+
+  const doc = makeDocument();
+  const logged = [];
+  doc.defaultView.console = { log: (...a) => logged.push(a.map(String).join(' ')),
+                              warn: () => {}, error: () => {} };
+  const app = bootstrap({
+    document: doc,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve(indexWire),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.reject(new Error('route not served')),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm = app.render();
+
+  // P1. THE VERDICT ON SCREEN IS THE ONE THE SERVER SENT.
+  eq(vm.state, VIEW_STATE.SCORED_WINNER,
+     'P1 the screen reaches the server\'s verdict, not a `채점 불가` of its own');
+  eq(doc.getElementById('me2-workbench').getAttribute('data-me2-state'), 'scored',
+     'P1b and the page is told the scored state');
+  eq(vm.headline, '추천 있음', 'P1c the headline is the answer, not a refusal');
+  eq(vm.rulingMetric, 'index', 'P1d the axis is carried as the server spelled it');
+  eq(vm.summary.marginDies, 87,
+     'P1e the margin is the server\'s own 87, not the 22 the occupancy column gives');
+
+  const cells = doc.querySelectorAll('[data-me2-candidate]');
+  const cellOf = (id) => cells.find(c => c.getAttribute('data-frame-code') === id);
+  const numbersOf = (id) => `${cellOf(id).querySelector('[data-me2-cand-agree]').textContent}`
+    + ` / ${cellOf(id).querySelector('[data-me2-cand-discriminating]').textContent}`;
+
+  // P2. THE NUMBERS ARE THE RULED AXIS'S. `88 / 43` is the shipped bug, and both columns are
+  //     in the payload, so this is a WRONG number rather than a missing one.
+  eq(numbersOf('rot0_front'), '88 / 87',
+     'P2 the winner shows the index counts (occupancy would say 88 / 43)');
+  eq(numbersOf('rot90_front'), '1 / 0',
+     'P2b and a losing frame shows 1 / 0, not the 66 / 21 occupancy gives it');
+  eq(numbersOf('rot180_front'), '1 / 0', 'P2c every scored frame, not just the winner');
+  ok(cellOf('rot0_front').querySelector('[data-me2-cand-tags]').textContent.includes('추천'),
+     'P2d and the frame the server named is the one badged');
+
+  // P3. A FRAME NOBODY LOOKED AT READS DIFFERENTLY FROM A FRAME THAT LOST.
+  for (const id of ['rot0_back', 'rot90_back', 'rot180_back', 'rot270_back']) {
+    const cell = cellOf(id);
+    eq(cell.getAttribute('data-me2-cand-scored'), 'false',
+       `P3 ${id} is not marked as carrying real numbers`);
+    eq(cell.getAttribute('data-me2-cand-state'), 'not_considered',
+       `P3b ${id} carries the server's own word for what happened to it`);
+    eq(cell.querySelector('[data-me2-cand-unknown]').textContent, REASON_SIDE,
+       `P3c ${id} says WHY, in the server's sentence -- not \`미상\`, which means something else`);
+    eq(numbersOf(id), ' / ',
+       `P3d ${id} was given no numerals at all -- the placeholder 0 is not a measurement`);
+  }
+  const scoredCell = cellOf('rot0_front');
+  ok(scoredCell.getAttribute('data-me2-cand-scored') === 'true'
+     && scoredCell.getAttribute('data-me2-cand-state') === 'scored',
+     'P3e while a scored frame is marked scored -- the two are distinguishable IN THE DOM, '
+     + 'which is what the styling needs and what a screenshot could not tell apart before');
+  eq(scoredCell.querySelector('[data-me2-cand-unknown]').textContent, 'AUTHORED',
+     'P3f and a scored cell\'s sibling word is left exactly as the page authored it');
+
+  // P4. THE REPORT DID NOT NARROW WITH THE SEARCH. The console record is where the operator
+  //     has been reading the real table; four rows for an eight-frame answer is the same
+  //     defect one layer down.
+  const record = logged.join(' | ');
+  const table = logged.find(l => l.includes('[map2] 후보 8'));
+  ok(!!table, 'P4 all eight frames reach the console record, not just the four that were scored');
+  ok(!!table && table.includes(REASON_SIDE),
+     'P4b with the reason beside the ones that carry no numbers');
+  ok(record.includes('ruling.metric=index'), 'P4c and the axis is named in the record');
 }
 
 console.log(`ASSERTIONS ${compared} ${failures.length}`);

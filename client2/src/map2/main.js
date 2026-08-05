@@ -253,13 +253,32 @@ export function bootstrap(deps) {
   // ── the layers, called with values ───────────────────────────────────────────
   function currentVerdict() {
     if (session.phase !== PHASE.READY || !session.payload) return null;
-    // Thresholds are PASSED IN from server config. There is no literal anywhere on this path:
-    // without them the verdict layer refuses to rank rather than inventing a minimum.
+    // Thresholds are PASSED IN. There is no literal anywhere on this path: without them the
+    // verdict layer refuses to rank rather than inventing a minimum.
+    //
+    // 🔴 THE RULING'S OWN PAIR WINS, AND `session.config` IS THE FALLBACK. Two reasons, and
+    //    both were measured rather than reasoned:
+    //
+    //    (a) THE THRESHOLDS ARE PER AXIS. The server hands `_rule_on` either `index_thresholds`
+    //        or `thresholds` depending on the metric (`map_alignment.py:1194`) because each
+    //        axis counts a different thing. Scoring the index axis against the occupancy bar is
+    //        the same class of error as reading the occupancy numbers under an index ruling --
+    //        the client reaching a different conclusion from the same evidence.
+    //    (b) `loadAlignConfig` REJECTS UNCONDITIONALLY (`api.js`, `ROUTES.config` is null: the
+    //        route does not exist). So `session.config` is null on every live run, and every
+    //        unit on this screen read `채점 불가 · 기준값 없음` no matter what the server ruled.
+    //        MEASURED 2026-08-06 on all three seeded `dt_map` units.
+    //
+    //    This is not a default invented in code -- it is the declaration the server read from
+    //    its own config and already applied, arriving on the wire beside the answer it
+    //    produced. When the ruling carries no thresholds the config still speaks, and when
+    //    neither does the verdict layer still refuses.
+    const thresholds = session.payload.ruling_thresholds || session.config || null;
     // The context is assembled by the decoder, not by hand here. Two call sites building it
     // themselves is how they start disagreeing about what "no reference" meant.
     return verdictFn(
       session.payload.per_candidate,
-      session.config || null,
+      thresholds,
       session.payload.__context || { refusalDetail: session.payload.refusal_detail });
   }
 
@@ -688,12 +707,44 @@ export function bootstrap(deps) {
       //    counts are measurements that survive a refusal to rank. The attribute is per CELL,
       //    not per state, so a cell with nothing measured still says `미상` rather than
       //    showing a bare separator.
+      //
+      // 🔴 AND WHICH KIND OF NOTHING, WHEN THERE IS NOTHING. `scored=false` alone says only
+      //    "no numbers here", which is true of a frame the payload never mentioned AND of a
+      //    frame the side declaration excluded before anything was measured. Those are
+      //    different facts with different repairs -- the second one has a REASON on the wire --
+      //    and the screen drew them identically, marked `scored=true` on a placeholder `0`.
+      //    The state is the server's own token, written as a hook so the styling lane can tell
+      //    them apart without this file inventing a colour or a Korean word for either.
       if (card.agree !== null && card.discriminating !== null) {
         setChildText(cell, '[data-me2-cand-agree]', card.agree);
         setChildText(cell, '[data-me2-cand-discriminating]', card.discriminating);
         cell.setAttribute('data-me2-cand-scored', 'true');
       } else {
         cell.setAttribute('data-me2-cand-scored', 'false');
+      }
+      cell.setAttribute('data-me2-cand-state', card.state || '');
+      // The count slot's OTHER sibling. `.me2-unknown` is authored `미상` and shows whenever the
+      // cell is not scored; when the server said WHY this frame has no numbers, its sentence
+      // goes here instead. Written every pass, so a cell that becomes scored again on the next
+      // payload gets the authored word back rather than keeping a stale reason.
+      // The count slot's OTHER sibling. `[data-me2-cand-unknown]` is authored `미상`, and `미상`
+      // is the right word for a frame the payload never mentioned. A frame the payload DID
+      // mention and marked as never considered is a different fact, and the server sent the
+      // sentence for it -- so that sentence replaces the generic word, in that cell only.
+      //
+      // 🔴 TOUCHED ONLY WHEN THERE IS SOMETHING TO SAY, AND PUT BACK BY THE SAME RULE. The
+      //    three-sibling guarantee is that this renderer does not disturb words it is not
+      //    responsible for, so a cell with no reason is left exactly as the page authored it --
+      //    and a cell that HAD one gets the authored word back when the reason goes away,
+      //    rather than keeping a sentence about a payload that is no longer on screen. The mark
+      //    is an attribute this renderer wrote itself; nothing here parses its own output back.
+      const why = (card.agree === null || card.discriminating === null) ? card.reason : null;
+      if (why) {
+        setChildText(cell, '[data-me2-cand-unknown]', why);
+        cell.setAttribute('data-me2-cand-why', 'true');
+      } else if (cell.getAttribute('data-me2-cand-why') === 'true') {
+        setChildText(cell, '[data-me2-cand-unknown]', UNKNOWN);
+        cell.removeAttribute('data-me2-cand-why');
       }
       const tags = cell.querySelector ? cell.querySelector('[data-me2-cand-tags]') : null;
       if (tags) {
@@ -871,13 +922,25 @@ export function bootstrap(deps) {
   //    where the operator has been reading the real numbers all day, so it gets every candidate
   //    the server scored with both counts, in the same declaration order, winner or not. Logged
   //    once per distinct table -- a render loop that re-logs an unchanged table buries it.
+  //
+  // 🔴 AND THE ONES THAT WERE NOT SCORED ARE IN IT TOO. This used to `filter` them out, so a run
+  //    where the side declaration excluded four frames logged four rows and the console record
+  //    silently agreed with the screen's wrong picture -- narrowing the search narrowed the
+  //    report, which is the whole defect this round is about. A frame with no numbers is logged
+  //    with the server's own word for why, and the count in the line is the count of FRAMES.
   let lastCandLog = null;
   function logCandidateTable(vm) {
-    const rows = vm.candidates
-      .filter(c => c.agree !== null && c.discriminating !== null)
-      .map(c => `${c.id} ${c.agree}/${c.discriminating}`);
-    if (rows.length === 0) return;
-    const line = `[map2] 후보 ${rows.length} · 일치/판별 · 순위 아님 · ${rows.join(' | ')}`;
+    // Silence while there is nothing to say. The eight cards exist before any payload does, so
+    // without this the console fills with eight `미상` rows on every idle repaint -- the early
+    // return this replaces got that right for a different reason and it must keep being right.
+    const known = vm.candidates.some(c =>
+      (c.agree !== null && c.discriminating !== null) || !!c.state || !!c.reason);
+    if (!known) return;
+    const rows = vm.candidates.map(c => (c.agree !== null && c.discriminating !== null)
+      ? `${c.id} ${c.agree}/${c.discriminating}`
+      : `${c.id} ${c.reason || c.state || UNKNOWN}`);
+    const axis = vm.rulingMetric ? ` · ${vm.rulingMetric}` : '';
+    const line = `[map2] 후보 ${rows.length} · 일치/판별${axis} · 순위 아님 · ${rows.join(' | ')}`;
     if (line === lastCandLog) return;
     lastCandLog = line;
     if (doc.defaultView && doc.defaultView.console) doc.defaultView.console.log(line);
@@ -919,7 +982,14 @@ export function bootstrap(deps) {
         num.appendChild(span(doc, '', ' / '));
         num.appendChild(disc);
         score.appendChild(num);
-        score.appendChild(span(doc, 'me2-unknown', UNKNOWN));
+        // The `미상` sibling, WITH A HOOK. It is the slot that also carries the server's reason
+        // when a frame was never considered, and a class name is not addressable from the
+        // wiring's own vocabulary -- every other value slot on this page is reached through a
+        // `data-me2-*` attribute, and reaching for one by class here would be the one exception
+        // that a stub document (and therefore a harness) cannot see.
+        const unknown = span(doc, 'me2-unknown', UNKNOWN);
+        unknown.setAttribute('data-me2-cand-unknown', '');
+        score.appendChild(unknown);
         cell.appendChild(score);
         host.appendChild(cell);
       }
@@ -1592,7 +1662,11 @@ export function adaptPayload(raw) {
     //    on the weighted one. So this side needs the TOKEN, for the record, and must not grow a
     //    Korean word per axis -- that would be a second spelling of a distinction the server has
     //    already drawn, on a field that gained a third value this week and can gain a fourth.
-    ruling_metric: (decoded.ruling && decoded.ruling.metric) || null,
+    ruling_metric: decoded.rulingMetric,
+    // 🔴 THE PAIR THE SERVER ACTUALLY RANKED AGAINST, so this side scores the same evidence
+    //    against the same bar. Per axis (`map_alignment.py:1194`), null when the ruling did not
+    //    carry both -- see `decode.decodeThresholds`, and `currentVerdict` for why it leads.
+    ruling_thresholds: decoded.rulingThresholds,
     // 🔴 THE SENTENCE AND ITS MEASUREMENTS TRAVEL SEPARATELY, BECAUSE THE SERVER SENDS THEM
     //    SEPARATELY. `refusal_detail` is the composed sentence and it carries reason LABELS
     //    only; the numbers that say WHICH grid is wrong and BY HOW MUCH are in the tally's

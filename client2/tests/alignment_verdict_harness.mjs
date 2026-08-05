@@ -513,6 +513,149 @@ function run(V, D, O) {
   eq('E4: an unmeasured blind count stays NULL rather than becoming 0',
     V.decideVerdict(unmeasured.scorings, TH, D.verdictContext(unmeasured)).blindCandidates, null);
 
+  // ══ G. THE AXIS THE RULING NAMES, AND THE FRAMES NOBODY LOOKED AT ═══════════
+  //
+  // MEASURED ON THE WIRE, NOT INVENTED. Every number below is what
+  // `GET /api/maps/alignment/view?rule=dt_job_lot_slot_attribution&map_table=dt_map
+  // &params={"dt_job":"SYN-IDX-FULL-R0"}&reference=valid_die_ref:PRD-A_DT13` served on
+  // 2026-08-06, trimmed to the blocks these assertions read. The two axes DISAGREE in it --
+  // occupancy ranks rot0_front 88/43 over rot90_front 66/21, the index axis ranks it 88/87 over
+  // 1/0 -- which is the only reason this fixture can tell a client that reads the ruled axis
+  // from one that reads the first pair it finds. A fixture carrying occupancy alone cannot.
+  const INDEX_WIRE = {
+    state: 'scored',
+    refusal: null,
+    reference: { state: 'resolved', kind: 'values', cells: [[1, 1], [2, 1]] },
+    sources: { map_count: 1, maps: [{ map_id: 'SYN-IDX-FULL-R0', cell_count: 88 }] },
+    declaration: { frames: {}, attested_maps: 0, unattested_maps: 1, axis_sources: {} },
+    ruling: {
+      metric: 'index', index_axis: 'ranking', winner: 'rot0_front',
+      margin: 87, discriminating: 87,
+      min_margin_dies: 20, min_discriminating_dies: 20,
+      sides_considered: ['front'], sides_narrowed: true, reason_code: null,
+    },
+    candidates: [
+      { frame: 'rot0_front', state: 'scored', agreement: 88, discriminating: 43,
+        index_agreement: 88, index_discriminating: 87, index_total: 88, index_margin: 87,
+        value_agreement: 0, value_discriminating: 0, placed: 88, margin: 22, reason: null },
+      { frame: 'rot0_back', state: 'not_considered', agreement: 0, discriminating: 0,
+        index_agreement: null, index_discriminating: null, index_total: null, index_margin: null,
+        value_agreement: null, value_discriminating: null, placed: 0, margin: null,
+        reason: '미채점 - 면 선언 제외' },
+      { frame: 'rot90_front', state: 'scored', agreement: 66, discriminating: 21,
+        index_agreement: 1, index_discriminating: 0, index_total: 88, index_margin: -87,
+        value_agreement: 0, value_discriminating: 0, placed: 88, margin: -22, reason: null },
+      { frame: 'rot180_front', state: 'scored', agreement: 62, discriminating: 17,
+        index_agreement: 1, index_discriminating: 0, index_total: 88, index_margin: -87,
+        value_agreement: 0, value_discriminating: 0, placed: 88, margin: -26, reason: null },
+      { frame: 'rot270_front', state: 'scored', agreement: 66, discriminating: 21,
+        index_agreement: 1, index_discriminating: 0, index_total: 88, index_margin: -87,
+        value_agreement: 0, value_discriminating: 0, placed: 88, margin: -22, reason: null },
+    ],
+    stats: { scored_cells: 88, elapsed_ms: 16 },
+    excluded_total: 0,
+  };
+  const idx = D.decodeReferenceView(INDEX_WIRE);
+  const byId = new Map(idx.scorings.map(s => [s.candidate_id, s]));
+
+  // G1. WHICH PAIR OF NUMBERS. The occupancy column is still on the wire and is still 88/43;
+  //     reading it here is the shipped bug, and it is a DIFFERENT number, not a missing one.
+  eq('G1: the ruling names the index axis and the decoder reads it',
+    idx.rulingMetric, 'index');
+  eq('G1: so the winner\'s agreement is the INDEX count, not the occupancy count',
+    byId.get('rot0_front').agree, 88);
+  eq('G1: and its discriminating count is the index one (occupancy says 43)',
+    byId.get('rot0_front').discriminating, 87);
+  eq('G1: a losing frame reads 1 on the index axis, not the 66 occupancy gave it',
+    byId.get('rot90_front').agree, 66 - 65);
+  eq('G1: and 0 discriminating, not 21', byId.get('rot90_front').discriminating, 0);
+  eq('G1: the keys are named so a reader can see WHICH pair was taken',
+    idx.rulingScoringKeys.agree, 'index_agreement');
+
+  // The axis table is a mirror of `map_alignment.py:1473-1478`. All four rows, so a metric
+  // that stops mapping is red here rather than on one live unit.
+  for (const [metric, a, d] of [
+    ['index', 'index_agreement', 'index_discriminating'],
+    ['values', 'value_agreement', 'value_discriminating'],
+    ['values_weighted', 'value_agreement', 'value_discriminating'],
+    ['occupancy', 'agreement', 'discriminating'],
+    [null, 'agreement', 'discriminating'],
+    ['values_ranked', 'agreement', 'discriminating'],   // unrecognised -> the server's own else
+  ]) {
+    eq(`G1: metric "${metric}" reads \`${a}\``, D.scoringKeysFor(metric).agree, a);
+    eq(`G1: metric "${metric}" reads \`${d}\``, D.scoringKeysFor(metric).discriminating, d);
+  }
+  // A weighted axis is FRACTIONAL on purpose (`map_alignment.py:1109`), and demanding an
+  // integer there would drop all eight candidates on every weighted payload.
+  const weighted = D.decodeReferenceView(Object.assign({}, INDEX_WIRE, {
+    ruling: Object.assign({}, INDEX_WIRE.ruling, { metric: 'values_weighted' }),
+    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 88, discriminating: 43,
+                   value_agreement: 41.25, value_discriminating: 12.5 }],
+  }));
+  eq('G1: a weighted agreement is carried as the fraction it is, not dropped as a non-integer',
+    weighted.scorings.length === 1 ? weighted.scorings[0].agree : null, 41.25);
+
+  // G2. A FRAME NOBODY LOOKED AT IS NOT A FRAME THAT LOST. The wire marks the four back frames
+  //     `not_considered` and ships placeholder zeroes beside them; reading the zeroes is how
+  //     they rendered as `0 / 0` against a winner's 88.
+  eq('G2: the excluded frame is KEPT in the report -- narrowing the search must not narrow it',
+    idx.scorings.length, 5);
+  const skipped = byId.get('rot0_back');
+  eq('G2: and it is carried with NO count, never with the placeholder zero',
+    skipped.agree, null);
+  eq('G2: neither half of the pair is invented', skipped.discriminating, null);
+  eq('G2: the server\'s own word for what happened to it survives the crossing',
+    skipped.state, D.CAND_NOT_CONSIDERED);
+  eq('G2: and its own sentence rides with it, so the screen need not compose one',
+    skipped.reason, '미채점 - 면 선언 제외');
+  ok('G2: it is NOT reported as a rejected/unusable row -- it is a state, not a decode failure',
+    idx.rejected.length === 0);
+  // A frame that WAS looked at and could not be measured is the third word, kept apart.
+  const refused = D.decodeReferenceView(Object.assign({}, INDEX_WIRE, {
+    candidates: [Object.assign({}, INDEX_WIRE.candidates[0],
+      { state: 'not_scorable', index_agreement: null, index_discriminating: null, reason: null })],
+  }));
+  eq('G2: `not_scorable` is its own state, not folded into `not_considered`',
+    refused.scorings[0].state, D.CAND_NOT_SCORABLE);
+  eq('G2: and it too carries no count', refused.scorings[0].agree, null);
+
+  // G3. THE DECISION USES ONLY WHAT WAS MEASURED. `Number(null) === 0`, so a candidate with no
+  //     count can enter the ranking as a zero and become the runner-up whose score sets the
+  //     winner's margin. The margin below is the server's own: 88 - 1 = 87, NOT 88 - 0 = 88.
+  const idxThresholds = idx.rulingThresholds;
+  eq('G3: the ruling carries the thresholds it applied, per axis',
+    idxThresholds && idxThresholds.min_discriminating_dies, 20);
+  const v = V.decideVerdict(idx.scorings, idxThresholds, D.verdictContext(idx));
+  eq('G3: the client reaches the SERVER\'S verdict on the server\'s own axis',
+    v.kind, V.VERDICT.WINNER);
+  eq('G3: and the same winner', v.winnerId, INDEX_WIRE.ruling.winner);
+  eq('G3: and the same margin in dies -- the unconsidered frames did not enter as zeroes',
+    v.marginDies, INDEX_WIRE.ruling.margin);
+  eq('G3: and the same discriminating count', v.discriminating, INDEX_WIRE.ruling.discriminating);
+  eq('G3: exactly the four frames the server scored are ranked', v.rankedIds.length, 4);
+  ok('G3: and the excluded frame is not one of them',
+    !v.rankedIds.includes('rot0_back'));
+  // A half-declared threshold is NO threshold. `verdict.js` refuses to rank without one on
+  // purpose, and completing it here would be the invented default that rule exists to stop.
+  for (const half of [{ min_margin_dies: 20 }, { min_discriminating_dies: 20 }, {}]) {
+    eq(`G3: a ruling carrying ${JSON.stringify(half)} declares no thresholds at all`,
+      D.decodeReferenceView(Object.assign({}, INDEX_WIRE,
+        { ruling: Object.assign({}, INDEX_WIRE.ruling, {
+          min_margin_dies: undefined, min_discriminating_dies: undefined }, half) }
+      )).rulingThresholds, null);
+  }
+
+  // G4. The integrality guard follows the new names. A fraction under `index_agreement` is the
+  //     same defect `agreement: 0.97` was, and must throw rather than be dropped silently.
+  ok('G4: a fraction under `index_agreement` is refused, not quietly dropped', throws(() =>
+    D.decodeReferenceView(Object.assign({}, INDEX_WIRE, {
+      candidates: [Object.assign({}, INDEX_WIRE.candidates[0], { index_agreement: 0.97 })],
+    }))));
+  ok('G4: but an honest weighted float is NOT refused -- weighted dies are not a ratio',
+    !throws(() => D.decodeReferenceView(Object.assign({}, INDEX_WIRE, {
+      candidates: [Object.assign({}, INDEX_WIRE.candidates[0], { value_agreement: 41.25 })],
+    }))));
+
   // ══ F. NO RATIO ANYWHERE IN THE ORACLE'S OUTPUT ═════════════════════════════
   for (const r of recoveries) {
     let allInt = true;
@@ -657,6 +800,39 @@ if (process.argv.includes('--mutate')) {
           + '      coverage: (agree * 100) / Math.max(1, disc),')(src);
         return swap('  assertIntegerCounts(result);', '  /* guard removed */')(s);
       } },
+    // 🔴 M8..M11 ARE THE FOUR SHIPPED BUGS, PUT BACK. Each was measured on the live server on
+    //    2026-08-06 before it was fixed, so these are not hypotheses about how the code could
+    //    break -- they are the code as it was, and a green run over any of them would mean
+    //    section G is decoration.
+    { name: 'M8 decode: the RULED AXIS is ignored and the occupancy pair is read regardless',
+      target: 'decode',
+      apply: (src) => {
+        let s = swap('  if (metric === METRIC_INDEX) {', '  if (false) {')(src);
+        return swap('  if (metric === METRIC_VALUES || metric === METRIC_VALUES_WEIGHTED) {',
+                    '  if (false) {')(s);
+      } },
+    { name: 'M9 decode: THE SHIPPED PAIR -- the candidate state is ignored AND the axis is, so '
+          + 'a frame nobody considered reads as a frame that scored zero',
+      target: 'decode',
+      apply: (src) => {
+        let s = swap('  if (metric === METRIC_INDEX) {', '  if (false) {')(src);
+        s = swap('  if (metric === METRIC_VALUES || metric === METRIC_VALUES_WEIGHTED) {',
+                 '  if (false) {')(s);
+        return swap('    if (state !== null && CAND_UNMEASURED.has(state)) {',
+                    '    if (false) {')(s);
+      } },
+    { name: 'M10 verdict: `isScorable` regresses to Number(), so an ABSENT count enters the '
+          + 'ranking as a measured zero', target: 'verdict',
+      apply: (src) => {
+        let s = swap('    && finiteOrNull(s.agree) !== null',
+                     '    && Number.isFinite(Number(s.agree))')(src);
+        return swap('    && finiteOrNull(s.discriminating) !== null',
+                    '    && Number.isFinite(Number(s.discriminating))')(s);
+      } },
+    { name: 'M11 decode: the thresholds the ruling applied are dropped, so this side re-decides '
+          + 'against nothing', target: 'decode',
+      apply: swap('    rulingThresholds: decodeThresholds(p && p.ruling),',
+                  '    rulingThresholds: null,') },
     { name: 'CONTROL verdict: a comment is reworded (must SURVIVE)', target: 'verdict',
       apply: swap('// Reason CODES, not sentences.', '// Reason codes, not sentences.') },
   ];

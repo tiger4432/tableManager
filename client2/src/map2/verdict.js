@@ -282,10 +282,20 @@ function blindCandidates(ctx, candidateCount) {
   return Math.max(0, candidateCount - d);
 }
 
+/**
+ * 🔴 `finiteOrNull`, NOT `Number.isFinite(Number(...))`, AND THE DIFFERENCE IS THE WHOLE POINT.
+ *    `Number(null) === 0`, so the obvious spelling calls a candidate with NO measurement a
+ *    candidate that scored zero -- it enters the ranking, it counts towards `usable.length`,
+ *    and it can be the runner-up whose "score" sets the winner's margin. The decoder now hands
+ *    over the four frames the side declaration excluded with `agree: null` rather than dropping
+ *    them (they have to reach the screen so it can say they were never looked at), so this
+ *    predicate is the gate that keeps them out of the DECISION while they stay in the REPORT.
+ *    Exactly the trap `finiteOrNull` was written for one screen down.
+ */
 function isScorable(s) {
   return !!s
-    && Number.isFinite(Number(s.agree))
-    && Number.isFinite(Number(s.discriminating))
+    && finiteOrNull(s.agree) !== null
+    && finiteOrNull(s.discriminating) !== null
     && typeof s.candidate_id === 'string';
 }
 

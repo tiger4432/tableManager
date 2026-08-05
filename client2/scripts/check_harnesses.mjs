@@ -125,7 +125,15 @@ const FLOORS = new Map([
   // of "guess it and mark the guess" the harness pins that the wire value is read straight
   // through, is never promoted by valued-looking cells, is never invented when absent, and
   // that the retired `KIND_INFERRED` token is unreachable from any payload shape.
-  ['alignment_verdict_harness.mjs', 124],
+  //
+  // 124 -> 163 (2026-08-06). Section G: the ruling names an AXIS (`ruling.metric`, which gained
+  // `index` this week) and the per-candidate numbers must be read from the pair that axis names
+  // -- measured on the live wire reading the occupancy column under an index ruling, so the
+  // screen's own conclusion disagreed with the server's on the same payload. The rise also pins
+  // the three candidate STATES apart: a frame the side declaration excluded is carried with NO
+  // counts rather than with the placeholder zeroes the wire ships beside it, which is what
+  // stopped `Number(null) === 0` from entering it into the ranking as a scored zero.
+  ['alignment_verdict_harness.mjs', 163],
   ['availability_gross_marker_harness.mjs', 48],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
@@ -300,7 +308,14 @@ const FLOORS = new Map([
   //      too, because a label of ours would be indistinguishable from a real answer.
   // A drop here means one of those three regressed, and none of them is visible from an exit
   // code -- all three were green builds with an unusable screen.
-  ['map_editor2_shell_harness.mjs', 426],
+  //   P  THE SCREEN CARRIES THE RULING, ON THE RULING'S OWN AXIS. Driven through `bootstrap`
+  //      with the payload the live route served for `dt_map` / `SYN-IDX-FULL-R0`: the server
+  //      ruled a winner on the `index` axis and the screen said `채점 불가` over the OCCUPANCY
+  //      column, while the four frames the side declaration excluded rendered as `0 / 0` marked
+  //      scored. `setConfig` is deliberately NOT called in that block, because
+  //      `loadAlignConfig` rejects unconditionally on every live run -- a drop here means the
+  //      screen went back to reaching its own conclusion about someone else's evidence.
+  ['map_editor2_shell_harness.mjs', 456],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid

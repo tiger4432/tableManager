@@ -1228,6 +1228,26 @@ body {
 .me2-cand[data-me2-cand-scored="true"] .me2-num { display: inline; }
 .me2-cand[data-me2-cand-scored="true"] .me2-unknown { display: none; }
 
+/* AND THE MIRROR, WHICH WAS MISSING AND SHOWED. The rule above only ever turns
+   a numeral ON; nothing turned it off, so in the SCORED state - where the
+   state-level `display: none` does not apply - a cell with no measurement
+   rendered its two empty spans and the separator between them as a bare
+   `/`. Measured on the live screen 2026-08-06: the four frames the side
+   declaration excluded read `rot0_back  /  미채점 - 면 선언 제외`.
+   A separator with nothing on either side of it is the same claim as a `0`:
+   it says a measurement is being shown. */
+.me2-cand[data-me2-cand-scored="false"] .me2-num { display: none; }
+.me2-cand[data-me2-cand-scored="false"] .me2-unknown { display: inline; }
+
+/* COMPUTING OUTRANKS BOTH, and it has to be said again here because the two
+   cell-scoped rules above are more specific than the state rule they would
+   otherwise obey. There is no payload yet, so the cell shows its skeleton and
+   neither a numeral nor a word - the guarantee that a numeral cannot leak
+   from stale text is structural, and a cell-scoped exception must not open a
+   hole in it. */
+[data-me2-state="computing"] .me2-cand .me2-num,
+[data-me2-state="computing"] .me2-cand .me2-unknown { display: none; }
+
 [data-me2-state="unscorable"] .me2-unknown { display: inline; }
 
 [data-me2-state="computing"] .me2-skel { display: inline-block; }
@@ -1469,6 +1489,54 @@ body {
 [data-me2-state="unscorable"] .me2-cand[aria-pressed="true"] {
   border-color: var(--text-dim);
   background: var(--bg-inset);
+}
+
+/* ---- a frame nobody looked at ---- */
+
+/* 🔴 NOT LOOKED AT IS NOT LOOKED AT AND LOST. The server narrows the search
+      when the unit's side is declared, and it reports the frames it skipped
+      as `not_considered` WITH A REASON rather than as zeroes - the exact
+      distinction `map_alignment.py:1132` exists to keep. On screen those
+      four frames were drawn identically to a frame that scored 0 against a
+      winner's 88, which is the strongest possible statement about evidence
+      that was never gathered.
+
+      DASHED AND MUTED, which is already this screen's word for "what is
+      here was not measured" - the same treatment
+      `.me2-scope-select[data-me2-proposed="true"]` and
+      `#me2-workbench[data-me2-assumed="true"]` carry. No new colour, and no
+      danger tone: half the map population cannot be aligned at all, and
+      anything styled as an error across half a population trains the
+      operator to ignore the styling.
+
+      The REASON is the server's own sentence, written into the `.me2-unknown`
+      sibling by the wiring. It is small and it wraps: the cell is ~137px at
+      the narrow breakpoint and the sentence is the whole content of the
+      message, so it is allowed the two lines rather than being clipped into
+      a word that says nothing. */
+.me2-cand[data-me2-cand-state="not_considered"] {
+  border-style: dashed;
+  border-color: var(--border);
+  background: var(--bg-inset);
+}
+
+.me2-cand[data-me2-cand-state="not_considered"] .me2-cand-deg,
+.me2-cand[data-me2-cand-state="not_considered"] .me2-cand-code {
+  color: var(--text-dim);
+}
+
+/* The reason is a sentence, not a label, and it is allowed to wrap. Whether it
+   is SHOWN at all is decided one section up, by `data-me2-cand-scored` - two
+   rules deciding one display would drift. */
+.me2-cand[data-me2-cand-state="not_considered"] .me2-unknown,
+.me2-cand[data-me2-cand-state="not_scorable"] .me2-unknown {
+  font-size: var(--me2-fact-min);
+  line-height: 1.3;
+  white-space: normal;
+  /* Korean breaks anywhere by default, so a 120px cell split `제외` down the
+     middle and left `외` alone on a line. `keep-all` breaks at the spaces the
+     server already put in its sentence. */
+  word-break: keep-all;
 }
 
 /* Nothing is selectable while computing: there is no payload to look

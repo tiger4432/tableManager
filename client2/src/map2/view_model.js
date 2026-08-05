@@ -308,8 +308,19 @@ function buildCandidateCard(a) {
   if (a.storedId && a.candidate.id === a.storedId) badges.push(BADGE_STORED);
   // Shown whenever the server scored THIS candidate and the counts can be attributed -- never
   // gated on whether a winner emerged. See `countsShown` in `buildReferenceView`.
-  const hasCounts = a.countsShown && s
-    && Number.isFinite(Number(s.agree)) && Number.isFinite(Number(s.discriminating));
+  //
+  // 🔴 `numOrNull`, NOT `Number.isFinite(Number(...))`. `Number(null) === 0`, so the obvious
+  //    spelling declares a candidate with NO measurement to have counts and then renders the
+  //    zero it invented. That is rule 2 of this file ("a numeral is a claim") broken by the
+  //    line that implements it, and it is how four frames the server marked `not_considered`
+  //    reached the screen as `0 / 0`.
+  const hasCounts = a.countsShown && !!s
+    && numOrNull(s.agree) !== null && numOrNull(s.discriminating) !== null;
+  // The server's own word for what happened to THIS frame, and its own sentence about it.
+  // Carried, never composed: `미채점 - 면 선언 제외` is the server's, and this side has no
+  // Korean of its own for a state the server already named.
+  const candState = s && s.state ? String(s.state) : null;
+  const reason = s && s.reason ? String(s.reason) : null;
   return Object.freeze({
     id: a.candidate.id,
     rotation: a.candidate.rotation,
@@ -320,7 +331,15 @@ function buildCandidateCard(a) {
     storedLabel: a.candidate.id,
     agree: hasCounts ? Number(s.agree) : null,
     discriminating: hasCounts ? Number(s.discriminating) : null,
-    countText: hasCounts ? agreementText(s.agree, s.discriminating) : UNKNOWN,
+    // 🔴 THE SLOT SAYS WHICH KIND OF NOTHING IT IS. `미상` means "we did not measure this" and
+    //    is the right word for a frame the payload never mentioned. A frame the payload DID
+    //    mention, with a state and a reason, is a different fact -- and rendering the same word
+    //    for both is how "we never looked" became indistinguishable from "we have no data".
+    countText: hasCounts ? agreementText(s.agree, s.discriminating) : (reason || UNKNOWN),
+    // The server's token, for the styling hook and the console record. Null when the payload
+    // carried no state, which is what an older producer sends.
+    state: candState,
+    reason,
     badges: Object.freeze(badges),
     // 🔴 INERT MEANS "THERE IS NOTHING TO LOOK THROUGH", NOT "WE DECLINED TO RANK". Keyed on
     //    `numerals` this disabled all eight the moment the scoring refused -- which is the one
@@ -345,7 +364,12 @@ function summaryFor(selectedId, scoringById, verdict, numerals) {
     return Object.freeze({ countText: UNKNOWN, marginText: UNKNOWN, hasNumerals: false });
   }
   const s = selectedId ? scoringById.get(selectedId) : null;
-  const countText = s ? agreementText(s.agree, s.discriminating) : UNKNOWN;
+  // 🔴 PRESENT IN THE LIST IS NOT THE SAME AS MEASURED. A frame the side declaration excluded
+  //    is in `per_candidate` with null counts, and the operator can select it -- looking is
+  //    what this screen leaves open when it will not rank. Reading `s` as "there are numbers"
+  //    put `일치 0 / 판별 0` in the summary strip for a frame nobody scored.
+  const measured = !!s && numOrNull(s.agree) !== null && numOrNull(s.discriminating) !== null;
+  const countText = measured ? agreementText(s.agree, s.discriminating) : UNKNOWN;
   const margin = verdict && Number.isFinite(verdict.marginDies) ? verdict.marginDies : null;
   return Object.freeze({
     countText,
@@ -1018,7 +1042,14 @@ function walk(node, path, visit, seen) {
   }
 }
 
+/**
+ * 🔴 `Number(null) === 0` AND `Number('') === 0`, SO THE OBVIOUS SPELLING OF THIS FUNCTION
+ *    PRINTS A MEASURED ZERO FOR A COUNT NOBODY TOOK. This is rule 2 of this file's header --
+ *    "a numeral is a claim", and never `0` for an absence -- so the absences are refused here
+ *    rather than at each of the four call sites, one of which had already lost the argument.
+ */
 function fmt(n) {
+  if (n === null || n === undefined || n === '' || typeof n === 'boolean') return UNKNOWN;
   return Number.isFinite(Number(n)) ? String(Number(n)) : UNKNOWN;
 }
 
