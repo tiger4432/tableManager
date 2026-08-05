@@ -172,8 +172,8 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 | 테이블 | 단위 | 내용 |
 |---|---|---|
-| `frame_confirmation` | `(rule_name, unit_key, version)` | 머리 — 확정 프레임, 기준(공통 바닥), `map_alignment` 판정 근거(개수만), 최약 기여자, 누가·언제, `superseded_by`/`supersedes_uid` |
-| `frame_confirmation_source` | 소스 하나에 한 행 | **소스 목록** + 소스별 적용 프레임과 **시프트(dx, dy)** + 근거 개수 + 제외 사유 |
+| `frame_confirmation` | `(rule_name, unit_key, version)` | 머리 — 확정 프레임, 기준(공통 바닥), `map_alignment` 판정 근거(개수만), 최약 기여자, 누가·언제, `superseded_by`/`supersedes_uid`, **`geometry_assumed`** |
+| `frame_confirmation_source` | 소스 하나에 한 행 | **소스 목록** + 소스별 적용 프레임과 **시프트(dx, dy)** + 근거 개수 + 제외 사유 + **`geometry_basis`** |
 | `cell_sources.confirmation_uid` | 셀 | 파생 도장 — 「이 셀은 어느 확정 아래에서 만들어졌나」. NULL이 기존 전 행의 상태 |
 
 **소유자**: `server/frame_confirmation.py`(쓰기는 `record_confirmation` 하나) · 라우트 `POST /api/maps/alignment/confirm` · 모델 `server/database/models.py` · 스키마 `server/migrations/add_frame_confirmation.py` + `server/scripts/setup_db_performance.py` Step 3.10 · 회귀 그물 `server/tests/test_frame_confirmation.py`.
@@ -201,6 +201,15 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 ⚠️ **퇴화형은 폴백으로 남습니다** — 확정이 없는 단위는 종전대로 `bonding_plan.CANONICAL_FRAME_ROLES`(설정 순서 첫 역할)로 기준을 고르고, **그 사실을 응답의 `frame_basis`가 말합니다**(조용히 확정과 같아 보이면 안 됩니다). 계약과 중간 등급 `connected(not_declared)`는 [spec/MAP_EDITOR_SPEC §6.2-ter.2](../spec/MAP_EDITOR_SPEC.md)가 정본입니다. 🔴 **인덱스가 하나 더 늘었습니다** — `idx_frame_conf_src_map`(`source_table`, `map_id`)이 층 ⑨의 조회 방향이며, `idx_sources_confirmation`과 같은 계급으로 **`models.py`와 마이그레이션 두 곳**에 선언돼 있습니다.
 
 ⚠️ **인덱스는 두 곳입니다** — `idx_sources_confirmation`은 `models.py`와 `migrations/add_frame_confirmation.py`에 선언돼 있고 **둘 다 고쳐야 합니다**(`create_all`은 기존 테이블에 인덱스를 만들지 않습니다). `idx_sources_by_source`와 같은 계급입니다.
+
+🔴 **`geometry_assumed` / `geometry_basis` — 「이 판은 무엇을 참이라 치고 나왔나」** (2026-08-05, 맵 정렬 스펙 [§9.1](../spec/MAP_ALIGNMENT_SPEC.md)). 규격 선언이 없는 소스 맵은 이제 **기준 맵의 웨이퍼 치수를 빌려** 채점될 수 있습니다. 빌린 값은 어디에도 저장되지 않지만 **그 위에서 나온 판정은 선언된 기하 위에서 나온 판정과 다른 사실**이고, 확정을 기록하는 이유 자체가 「나중에 그 가정이 거짓으로 밝혀지면 **어느 결정이 그 위에 서 있었나**」에 답하기 위해서입니다 — `cell_sources.confirmation_uid`와 같은 논거입니다.
+
+- 머리의 `geometry_assumed`(BOOLEAN)는 **기여자 행들의 롤업**이고 부분 인덱스 `idx_frame_conf_assumed`가 그 질문 하나를 답합니다(가정 없는 판이 쌓여도 안 자랍니다). `weakest_source`와 같은 계급 — **저장된 계산이지 두 번째 규칙이 아닙니다.**
+- 🔴 **요청이 이 값을 실어 오지 않습니다.** `record_confirmation`이 쓰기 시점에 유도합니다(`map_alignment.geometry_basis_of`). 클라가 보내면 그것이 같은 사실의 두 번째 철자이고, **낡은 클라 하나가 이 기록의 존재 이유를 통째로 흘립니다.** 이것은 「쓰기 경로에서 재채점하지 마라」와 어긋나지 않습니다 — 채점이 아니라 이미 DB에 있는 사실을 읽는 것이고, 질의는 **테이블마다 한 번**(+ 바닥 한 번)입니다.
+- 🔴 **유도 규칙에는 축이 둘입니다** (맵 정렬 스펙 [§9.5-bis](../spec/MAP_ALIGNMENT_SPEC.md), 2026-08-05). 「제외되지 않았는데 자기 기하가 선언이 아니면 빌린 기하 위에 선 것」은 빌림의 입구가 조건 하나이던 시절의 규칙이고, 지금은 **phys를 선언한 맵이 격자만 빌려** 통과할 수 있습니다. 그래서 읽는 사실이 **셋**입니다: 그 맵의 메타 · 제외됐는가 · **바닥의 메타**(격자를 빌렸는지는 소스 메타에 없고 소스와 바닥의 **차이**에만 있습니다). 바닥을 못 읽으면 phys 축만 보는 옛 답으로 퇴화합니다 — 바닥 조회 실패가 확정 기록 전체를 죽이지는 않습니다.
+- ⚠️ **제외된 소스는 `assumed`가 아닙니다.** 어디에도 정렬되지 않았으므로 자기 토큰(`auto_registered`·`absent`…)을 그대로 갖습니다 — 일어나지 않은 일에 근거를 붙이면 이 컬럼이 답해야 할 질문의 답이 부풀려집니다.
+- ⚠️ **두 컬럼 모두 NULL이 「아니오」가 아니라 「모름」입니다.** 이 어휘가 생기기 전에 남은 판은 그 질문을 받은 적이 없습니다. 기본값을 두면 옛 행들이 묻힌 적 없는 질문에 답하게 됩니다.
+- ⚠️ **시스템 테이블 컬럼 추가는 마이그레이션 없이는 그 테이블 전체를 죽입니다** — 두 컬럼은 `migrations/add_frame_confirmation.py`에 있고 `server/tests/test_system_schema_drift.py`의 `SYSTEM_TABLE_COLUMNS`에 마이그레이션 이름과 함께 등재돼 있습니다.
 
 ---
 

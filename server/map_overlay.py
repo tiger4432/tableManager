@@ -488,6 +488,24 @@ GEOMETRY_UNPARSABLE = "unparsable"              # 키는 있는데 수가 아니
 PHYS_ASSUMED_KEY = "phys_assumed_from"          # {"table":..., "map_id":...} — 어디서 빌렸나
 GEOMETRY_ASSUMED = "assumed"                    # 값은 바닥에서 빌려 왔다 — 선언이 아니다
 
+# ═══ [D6] 격자에도 자기 표지가 있다 — 축이 둘로 갈렸기 때문이다 (2026-08-05) ═════════════
+#
+# [D5]는 「격자 절반을 위한 두 번째 표지를 만들지 않는다」고 적어 두었고, **그때는 옳았다**:
+# 격자를 빌리는 자리가 `assumed_meta_for_unregistered` 하나뿐이었고 거기서는 phys도 **언제나**
+# 함께 빌렸으므로, 표지 하나가 두 사실을 다 실을 수 있었다.
+#
+# 🔴 제품 소유자 판정(2026-08-05, 스펙 §9.5) — **「가정이 선언된 격자도 덮어」** — 가 그 묶음을
+#    풀었다. 이제 phys를 **선언한** 맵이 격자만 빌릴 수 있다. 그 경우 `phys_assumed_from`을
+#    쓰면 「웨이퍼 규격을 빌렸다」는 거짓말이 되고(안 빌렸다), 안 쓰면 빌린 격자 위에서 나온
+#    정렬이 **선언 위에서 나온 것처럼** 기록된다(I4). 표지가 둘이어야 하는 이유는 사실이
+#    둘이기 때문이지 대칭 때문이 아니다.
+#
+# ⚠️ **이 표지는 `geometry_declaration`을 바꾸지 않는다.** 저쪽은 「이 맵의 **물리** 기하가
+#    선언인가」에 답하고, 격자만 빌린 맵의 phys는 여전히 누군가 잰 값이다. 「이번 정렬이
+#    무엇 위에 섰나」는 **다른 질문**이고 철자는 `map_alignment.geometry_basis_of`다 —
+#    한 함수에 두 질문을 담으면 그것이 총괄이 이번 라운드에 없애라고 한 바로 그 모양이다.
+GRID_ASSUMED_KEY = "grid_assumed_from"          # {"table":..., "map_id":...} — 격자를 빌린 곳
+
 # 사유는 **사람이 읽는 자리에서 한 번만** 사람 말로 옮긴다(클라 `7ea2c2f`와 같은 규율).
 # 판정은 `geometry_declaration`이 이미 끝냈고 여기서는 표시만 한다 — 두 번째 판정이 아니다.
 _GEOMETRY_REFUSAL_TEXT = {
@@ -579,10 +597,11 @@ def assume_phys_from(meta: dict | None, basis_meta: dict | None,
         위에 서 있었나」가 물어질 수 있어야 하고, 그러려면 출처가 기록에 있어야 한다.
 
     빌리지 **않는** 것 — 이 목록이 이 함수의 내용이다:
-      · `grid_cols`/`grid_rows` — 맵의 성질이지 웨이퍼의 성질이 아니다. 한 웨이퍼의 두 맵이
-        서로 다르게 잘려 있을 수 있으므로 빌리면 없는 사실을 만든다. 없으면 **빌리지 않고
-        거절**한다(호출자가 이름을 대고 거절한다).
-      · `rotation`/`side`/`grid_start_*`/`grid_y_invert` — **풀고 있는 미지 그 자체다.**
+      · `grid_cols`/`grid_rows`/`grid_start_*` — **이 함수의 일이 아니다.** 격자는 축이
+        따로이고 철자도 따로다(`assume_grid_from` — [D6]). 여기서 안 빌리는 이유는 「빌리면
+        안 돼서」가 아니라 **두 축이 서로 다른 질문**이기 때문이다. 격자를 먼저 빌리고 이
+        함수를 부르면 아래 「격자 치수가 없음」 거절은 자연히 지나간다.
+      · `rotation`/`side`/`grid_y_invert` — **풀고 있는 미지 그 자체다.**
         바닥의 프레임을 베끼는 것은 답을 먼저 적어 놓고 그 답이 맞는지 묻는 것이다.
         (실측은 `test_map_alignment_assumption.py`가 들고 있다 — 두 축 모두 채점이 보는
          좌표를 통째로 옮긴다.)
@@ -608,6 +627,44 @@ def assume_phys_from(meta: dict | None, basis_meta: dict | None,
     for k, v in zip(PHYS_KEYS, sig):
         out[k] = v
     out[PHYS_ASSUMED_KEY] = dict(basis or {}) or True
+    return out
+
+
+def assume_grid_from(meta: dict | None, basis_meta: dict | None,
+                     basis: dict = None) -> dict | None:
+    """소스 메타 + **바닥에서 빌린 격자**(치수 + 시작) → 계산용 사본. 빌릴 것이 없으면 None.
+
+    🔴 **`assume_phys_from`과 같은 계급이고 같은 불변식이다** — 아무것도 쓰지 않고, 표지를
+       달고, 출처를 싣는다. 다른 것은 **어느 필드를 덮는가** 하나뿐이다.
+
+    🔴 **치수와 시작을 함께 빌린다.** 하나만 빌리면 부분 맵이 자기 최솟값으로 다시 재어져
+       맵 전체가 평행이동하고, 시프트 풀이(±3)를 넘는 그 오차는 조용히 남는다 — 실측
+       467/467 오답 대 0/467([D5]).
+
+    ⚠️ **`grid_start_*`는 `orientation_declaration`이 채점하는 축이기도 하다.** 그래서 저쪽이
+       이 표지를 읽는다(§`orientation_declaration`) — 안 읽으면 빌린 시작이 `declared`로
+       보고된다. 축 하나가 두 채점기에 걸쳐 있으면 표지도 두 곳에서 읽혀야 한다.
+
+    None을 돌려주는 경우 — **둘은 실패가 아니라 「할 일 없음」이다**:
+      · 바닥에 읽을 격자가 없다 — 빌릴 것이 없다(호출자가 이름을 대고 거절한다).
+      · 소스의 격자가 바닥과 **이미 같다** — 덮어도 값이 안 바뀐다. 그때 표지를 달면
+        일어나지 않은 빌림을 기록하게 되고, 「무엇 위에 섰나」가 과잉 주장이 된다.
+      · 바닥의 격자 자체가 빌려 온 것 — 가정 위에 가정을 쌓지 않는다(`assume_phys_from`의
+        「바닥 기하가 declared가 아님」과 같은 규칙, 이 축의 철자로).
+    """
+    if not isinstance(meta, dict) or not isinstance(basis_meta, dict):
+        return None
+    if basis_meta.get(GRID_ASSUMED_KEY):
+        return None
+    g = _grid_of(basis_meta)
+    if g is None:
+        return None
+    if _grid_of(meta) == g:
+        return None
+    out = dict(meta)
+    out["grid_cols"], out["grid_rows"] = g["cols"], g["rows"]
+    out["grid_start_x"], out["grid_start_y"] = g["start_x"], g["start_y"]
+    out[GRID_ASSUMED_KEY] = dict(basis or {}) or True
     return out
 
 
@@ -744,12 +801,24 @@ def orientation_declaration(meta: dict | None) -> dict:
     무관하게 그대로 쓸 수 있다 — 값과 출처를 한 번에 주는 것이 이 층의 계약이다(스펙 §0.2 ③).
     모양(`{value, source}`)과 토큰 문자열은 클라 `physDeclaration`(`map_editor.js:1509`)과
     같다. 두 채점기가 어휘를 둘 가지면 매핑표가 필요해지고, 매핑표는 답의 두 번째 구현이다.
+
+    🔴 **[D6] 빌린 시작은 선언이 아니다.** `assume_grid_from`이 `grid_start_*`를 바닥 값으로
+       덮으므로, 그 표지를 여기서 읽지 않으면 **빌린 값이 `declared`로 보고된다** — start는
+       `value_can_indicate_absence=False`라 읽히기만 하면 무조건 `declared`이기 때문에 값으로
+       가릴 방법이 원리적으로 없다. 표지는 값보다 먼저 본다(`geometry_declaration`과 같은
+       규율). 나머지 세 축은 빌린 적이 없으므로 표지가 있어도 그대로 채점한다.
     """
     m = meta if isinstance(meta, dict) else {}
     marked = m.get(AUTO_REGISTERED_KEY) is True
+    grid_borrowed = bool(m.get(GRID_ASSUMED_KEY))
     out = {}
     for axis, (reader, absent_default, synth_could_write,
                value_can_indicate_absence) in _ORIENTATION_READERS.items():
+        if grid_borrowed and axis in ("grid_start_x", "grid_start_y"):
+            value, ok = _read_grid_start(m.get(axis))
+            out[axis] = {"value": value if ok else absent_default,
+                         "source": GEOMETRY_ASSUMED}
+            continue
         raw = m.get(axis)
         if raw is None or (isinstance(raw, str) and raw.strip() == ""):
             out[axis] = {"value": absent_default, "source": GEOMETRY_ABSENT}
@@ -780,6 +849,10 @@ _ORIENTATION_REFUSAL_TEXT = {
     ORIENTATION_INDETERMINATE: (
         "값은 있으나 키가 없을 때와 **같은 값**이라, 누가 그렇게 선언한 것인지 "
         "아무도 읽지 않은 것인지 구별할 수 없습니다"),
+    # [D6] 이 표를 **직접 첨자**하는 자리가 있으므로(`orientation_refusal`) 토큰을 늘리면서
+    # 문장을 안 적으면 그 자리가 KeyError로 죽는다 — `_GEOMETRY_REFUSAL_TEXT`가 같은 이유로
+    # 이미 한 번 500을 냈고, 그쪽은 `.get` 강등으로 고쳤다.
+    GEOMETRY_ASSUMED: "기준 맵에서 빌려 온 값입니다 ― 이 맵에 대한 선언이 아닙니다",
 }
 
 

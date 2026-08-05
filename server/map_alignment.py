@@ -364,11 +364,72 @@ def assumed_meta_for_unregistered(cells, basis_meta: dict, basis: dict = None):
     frame = map_meta_registrar.synthesize_grid_meta(*bbox)
     # [D5] 격자는 바닥의 것으로 갈아끼운다 — 치수와 시작을 **함께**. 하나만 빌리면 평행이동이
     # 남고, 그 오차는 시프트 풀이(±3)를 넘어서면 조용한 오답이 된다(위 실측 467/467).
-    g = map_overlay._grid_of(basis_meta)
-    if g is not None:
-        frame["grid_cols"], frame["grid_rows"] = g["cols"], g["rows"]
-        frame["grid_start_x"], frame["grid_start_y"] = g["start_x"], g["start_y"]
+    # [D6] 그 갈아끼우기는 이제 자기 철자를 갖는다(`assume_grid_from`) — 여기서 손으로 쓰던
+    #      네 줄이 그 함수의 몸통이다. 빌릴 것이 없으면 None이므로 합성 프레임을 그대로 쓴다.
+    frame = map_overlay.assume_grid_from(frame, basis_meta, basis) or frame
     return map_overlay.assume_phys_from(frame, basis_meta, basis)
+
+
+# ═══ [D6] 빌림에는 축이 **둘**이고, 서로 다른 질문이다 (제품 소유자 2026-08-05) ═══════════
+#
+# 종전 코드에서 빌림의 입구는 조건 **하나**였다: `geometry_refusal(meta) is not None`. 그래서
+# 규격을 선언한 맵은 빌림을 통째로 건너뛰고 `grid_dims_differ`로 떨어졌다. 그 한 조건이 사실은
+# **두 질문**을 답하고 있었고, 제품 소유자의 판정(스펙 §9.5 — 「가정이 선언된 격자도 덮어」)이
+# 둘을 갈랐다:
+#
+#   ① 이 맵은 **자기 웨이퍼 규격을 쟀는가** → 안 쟀으면 phys를 빌린다.
+#   ② 이 맵의 **격자가 웨이퍼 전체의 증거인가** → 아니면 격자를 빌린다.
+#
+# 🔴 **①이 참이어도 ②는 거짓일 수 있다.** 이 제품의 소스 맵(DT)은 웨이퍼의 **일부만** 덮고,
+#    메타 행에 들어 있는 격자는 손으로 넣었거나 그 부분 범위에서 유도한 값이다 — 즉 **없는
+#    격자와 같은 등급의 불량 수치**(부분집합의 범위를 전체로 착각한 것)다. 선언돼 있다는 것이
+#    잰 적이 있다는 증거가 아니고, 조작자는 이미 가정을 **명시로 수락**했다.
+#
+# 🔴 **그래서 술어가 둘이다.** 한 조건이 두 이유로 참이면 다음 읽는 사람이 반드시 틀린다 —
+#    총괄이 이번 라운드에 없애라고 한 모양이 정확히 그것이다.
+def phys_needs_basis(meta: dict | None) -> bool:
+    """① 이 맵의 **물리 규격**을 바닥에서 빌려야 하는가.
+
+    판정은 `geometry_declaration` 하나가 하고 여기서는 그 토큰에 질문 하나를 물을 뿐이다
+    (`geometry_computable`과 같은 계급 — 몸통을 복사하지 않는다).
+    """
+    return map_overlay.geometry_declaration(meta) != map_overlay.GEOMETRY_DECLARED
+
+
+def grid_needs_basis(meta: dict | None, basis_meta: dict | None) -> bool:
+    """② 이 맵의 **격자**를 바닥에서 빌려야 하는가.
+
+    🔴 「이 맵이 격자를 선언했는가」를 묻지 **않는다.** 이 제품에서 소스 맵의 격자 선언은
+       자기 가시 범위이지 웨이퍼의 치수가 아니므로 선언 여부가 답을 가르지 못한다(위 [D6]).
+       묻는 것은 **「바닥과 다른가」** 하나다 — 같으면 덮어도 값이 안 바뀌므로 빌릴 일이 없고,
+       다르면(없는 경우 포함) 바닥이 참이다.
+
+    바닥에 읽을 격자가 없으면 **False** — 빌릴 것이 없으면 이 축은 열리지 않는다. 그때
+    호출자는 종전대로 `grid_dims_missing`/`grid_dims_differ`로 이름을 대고 거절한다.
+    """
+    b = map_overlay._grid_of(basis_meta)
+    if b is None:
+        return False
+    return map_overlay._grid_of(meta) != b
+
+
+def borrowed_meta_for(meta: dict, basis_meta: dict, basis: dict = None,
+                      need_phys: bool = True, need_grid: bool = True):
+    """두 축을 **각각 필요한 만큼만** 빌린 계산용 사본. phys를 빌려야 하는데 못 빌리면 None.
+
+    🔴 **격자를 먼저 빌린다.** `assume_phys_from`은 격자 치수가 없는 메타를 거절하는데,
+       그 거절은 격자를 빌리기 전 세계의 규칙이다 — 순서를 뒤집으면 「격자도 규격도 없는 맵」이
+       빌릴 수 있는데도 거절된다.
+    ⚠️ 축마다 표지가 따로 붙으므로(`phys_assumed_from` / `grid_assumed_from`) 무엇을 빌렸고
+       무엇을 안 빌렸는지가 사본 자신에 남는다. 총괄 확답(2026-08-05): **phys를 선언한 맵은
+       자기 phys를 그대로 쓴다** — 잰 값을 빌린 값으로 덮을 이유가 없다.
+    """
+    out = meta
+    if need_grid:
+        out = map_overlay.assume_grid_from(out, basis_meta, basis) or out
+    if need_phys:
+        out = map_overlay.assume_phys_from(out, basis_meta, basis)
+    return out
 
 
 def cells_outside_grid(meta: dict, cells) -> str | None:
@@ -638,9 +699,15 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             use_meta = borrowed
             assumed_ids.append(mid)
         else:
-            why = map_overlay.geometry_refusal(meta)
-            if why is not None:
-                borrowed = (map_overlay.assume_phys_from(meta, reference_meta, reference_ref)
+            # [D6] 축이 둘이고 서로 다른 질문이다(§phys_needs_basis / §grid_needs_basis).
+            #      종전에는 ①만 물었고, 그래서 규격을 선언한 맵은 격자가 바닥과 어긋나도
+            #      빌림을 통째로 건너뛰어 `grid_dims_differ`로 죽었다 — 그 맵이 바로 이
+            #      기능이 섬기는 모집단이다(부분 DT 맵).
+            need_phys = phys_needs_basis(meta)
+            need_grid = grid_needs_basis(meta, reference_meta) if basis_ok else False
+            if need_phys or need_grid:
+                borrowed = (borrowed_meta_for(meta, reference_meta, reference_ref,
+                                              need_phys, need_grid)
                             if basis_ok else None)
                 if borrowed is None:
                     # 바닥이 선언돼 있는데도 못 빌리는 경우는 하나뿐이다: 격자 치수가 없다.
@@ -648,11 +715,35 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                     if basis_ok and map_overlay.grid_dims(meta) is None:
                         excluded.add(EXCLUDE_GRID_DIMS_MISSING, mid)
                     else:
-                        excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+                        excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid,
+                                     map_overlay.geometry_refusal(meta))
                     continue
+                # 🔴 [D6] 담김 검사가 **이 모집단까지** 온다. 격자를 덮어쓰는 순간
+                #    `grid_dims_differ`가 하던 「같은 웨이퍼가 아니다」 걸러내기가 사라지고,
+                #    남는 증거는 담김 하나뿐이다 — 없으면 진짜로 다른 맵이 조용히 앉는다.
+                #    격자를 **안** 빌렸으면 빌린 격자가 없으므로 물을 것도 없다.
+                if need_grid:
+                    outside = cells_outside_grid(borrowed, sm.get("cells"))
+                    if outside is not None:
+                        excluded.add(EXCLUDE_CELLS_OUTSIDE_GRID, mid, outside)
+                        continue
+                # 🔴 제안은 **가정을 안 걸어도** 센다. 이 목록이 화면의 버튼이므로, 여기
+                #    안 넣으면 이 판정이 섬기려는 바로 그 모집단에서 버튼이 안 나온다.
                 offerable_ids.append(mid)
                 if not assume_reference_geometry:
-                    excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+                    # 사유는 **어느 축이 열려 있는가**를 말한다. 격자만 어긋난 맵을
+                    # `geometry_refused`로 부르면 조작자가 규격을 재러 가는데, 규격은 이미
+                    # 선언돼 있다. `grid_dims_differ`는 가정을 요청하지 않은 이 자리에서
+                    # 여전히 참이고 여전히 할 일이 있다.
+                    if need_phys:
+                        excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid,
+                                     map_overlay.geometry_refusal(meta))
+                    elif map_overlay.grid_dims(meta) is None:
+                        excluded.add(EXCLUDE_GRID_DIMS_MISSING, mid)
+                    else:
+                        excluded.add(EXCLUDE_GRID_DIMS_DIFFER, mid,
+                                     "소스 %dx%d · 기준 %dx%d"
+                                     % (map_overlay.grid_dims(meta) + ref_grid))
                     continue
                 use_meta = borrowed
                 assumed_ids.append(mid)
@@ -1112,7 +1203,8 @@ def compose_assumption_offer(state: str, count: int, basis: dict) -> str | None:
             "규격으로 저장되지 않음" % (count, where))
 
 
-def geometry_basis_of(meta: dict | None, excluded_reason: str = None) -> str:
+def geometry_basis_of(meta: dict | None, excluded_reason: str = None,
+                      basis_meta: dict | None = None) -> str:
     """이 소스가 **무엇 위에서** 정렬됐는가 → `map_overlay.GEOMETRY_*` 토큰 하나.
 
     🔴 **철자는 여기 하나다.** 확정 기록(층 ⑧)이 이 답을 저장하는데, 그 경로가 자기 규칙을
@@ -1125,13 +1217,26 @@ def geometry_basis_of(meta: dict | None, excluded_reason: str = None) -> str:
 
     제외된 소스는 **어디에도 정렬되지 않았다.** 그때 답은 그 맵이 스스로 말하는 토큰이고,
     `assumed`가 아니다 - 일어나지 않은 일에 근거를 붙이지 않는다.
+
+    🔴 **[D6] 그 한 줄 규칙이 축 하나만 보고 있었다.** 「선언 없는 맵이 채점기를 통과하는
+       경로가 가정 하나뿐」은 빌림의 입구가 조건 하나이던 시절의 참이다. 이제 **phys를 선언한
+       맵이 격자만 빌려** 통과할 수 있고, 그 맵에 대해 이 함수는 `declared`라고 답하게 된다 —
+       빌린 격자 위에서 나온 정렬이 **선언 위에서 나온 것으로 기록**된다는 뜻이고, 하필 이
+       함수의 답이 저장되는 곳이 「나중에 이 가정이 거짓이면 어느 결정이 그 위에 있었나」에
+       답하려고 남기는 확정 기록(층 ⑧)이다.
+
+    `basis_meta`: 이번 정렬의 **바닥** 메타. 주면 격자 축까지 유도한다. 안 주면 종전대로
+        phys 축만 본다 — 빌림이 phys 축에서만 일어나던 호출자(구 기록)와 답이 같다.
+        🔴 요청이 실어 오는 값이 아니라 여기서 **유도한다**(§_geometry_bases의 규율).
     """
     token = map_overlay.geometry_declaration(meta)
     if excluded_reason:
         return token
-    if token == map_overlay.GEOMETRY_DECLARED:
-        return token
-    return map_overlay.GEOMETRY_ASSUMED
+    if token != map_overlay.GEOMETRY_DECLARED:
+        return map_overlay.GEOMETRY_ASSUMED
+    if basis_meta is not None and grid_needs_basis(meta, basis_meta):
+        return map_overlay.GEOMETRY_ASSUMED
+    return token
 
 
 # ---------------------------------------------------------------------------
@@ -1760,9 +1865,12 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                           declared_frame=_df(sm)["frame"],
                           declared_frame_source=_df(sm)["source"],
                           geometry=map_overlay.geometry_declaration(sm.get("meta")),
+                          # [D6] 바닥 메타를 함께 넘긴다 — 격자만 빌린 맵은 phys가 `declared`
+                          # 여서 이 인자 없이는 「선언 위에 섰다」고 답한다.
                           geometry_basis=geometry_basis_of(
                               sm.get("meta"),
-                              None if sm["map_id"] in _aligned else "not_aligned"))
+                              None if sm["map_id"] in _aligned else "not_aligned",
+                              reference.get("meta")))
                      for sm in source_maps],
         },
         "candidates": candidates,

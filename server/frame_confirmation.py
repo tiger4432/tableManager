@@ -162,7 +162,7 @@ def warrant_of(header) -> str:
             else WARRANT_CONFIRMED)
 
 
-def _geometry_bases(db, contributors: list) -> dict:
+def _geometry_bases(db, contributors: list, reference: dict = None) -> dict:
     """기여자마다 **무엇 위에서 정렬됐는가** → `{(source_table, map_id): 토큰}`.
 
     🔴 **요청이 실어 오는 값이 아니라 여기서 유도한다.** 클라가 보내면 그것이 같은 사실의
@@ -177,6 +177,7 @@ def _geometry_bases(db, contributors: list) -> dict:
     `_load_metas`가 IN 절을 자기 상한으로 청킹하므로 여기서 다시 자르지 않는다.
     """
     import map_alignment
+    import map_overlay
 
     by_table = {}
     for c in contributors or []:
@@ -187,11 +188,23 @@ def _geometry_bases(db, contributors: list) -> dict:
     for table, ids in by_table.items():
         metas.update({(table, m): meta
                       for m, meta in map_alignment._load_metas(db, table, sorted(ids)).items()})
+    # [D6] 바닥의 메타도 읽는다 — 빌림에 축이 둘이 되면서 「무엇 위에 섰나」를 소스 메타만으로
+    # 유도할 수 없다. phys를 **선언한** 맵이 격자만 빌렸을 수 있고, 그 사실은 소스 메타가
+    # 아니라 소스와 바닥의 **차이**에만 있다. 질의 한 번이고 실패는 None으로 접는다(바닥을
+    # 못 읽었다고 확정 기록이 통째로 죽으면 안 된다 — 그때는 종전 답으로 퇴화한다).
+    basis_meta = None
+    ref = reference or {}
+    if ref.get("table") and ref.get("map_id"):
+        try:
+            basis_meta = map_overlay.load_map_meta(db, str(ref["table"]), str(ref["map_id"]))
+        except Exception:
+            basis_meta = None
     out = {}
     for c in contributors or []:
         key = (str(c.get("source_table") or ""), str(c.get("map_id") or ""))
         out[key] = map_alignment.geometry_basis_of(metas.get(key),
-                                                   c.get("excluded_reason"))
+                                                   c.get("excluded_reason"),
+                                                   basis_meta)
     return out
 
 
@@ -242,7 +255,7 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
     weakest, weakest_pri = weakest_contributor(contributors)
     # [D3] 무엇 위에서 정렬됐는가 — 기여자마다. 머리의 `geometry_assumed`는 이 값들의
     # 롤업이지 두 번째 규칙이 아니다(`weakest_source`와 같은 계급).
-    bases = _geometry_bases(db, contributors)
+    bases = _geometry_bases(db, contributors, reference)
     uid = "fc_" + uuid.uuid4().hex
 
     # 판 번호. 경합은 idx_frame_conf_rule_unit_ver UNIQUE가 잡는다 — 애플리케이션 락을 두면

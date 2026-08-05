@@ -300,15 +300,34 @@ def test_grid_dims_derived_from_cells_are_a_lower_bound_not_a_value():
     assert max(x for x, _ in cs) - min(x for x, _ in cs) + 1 < COLS
 
 
-def test_grid_dims_are_not_borrowed_and_their_absence_is_named():
-    """Two maps of one wafer can crop differently, so dims are a property of the MAP. When
-    they are missing the answer is to say what is needed, not to invent them."""
+def test_missing_grid_dims_are_borrowed_and_named_only_when_the_FLOOR_has_none():
+    """[D6, 2026-08-05] This test used to assert the opposite, on the reasoning «two maps of
+    one wafer can crop differently, so dims are a property of the MAP». The product owner
+    overturned the RULING, not the mechanism: the mechanism is real, but in this product a
+    source map is normally a SUBSET of one grid, so refusing here guarded the rare case by
+    breaking the normal one. A map missing its dims carries strictly LESS information than one
+    declaring them, and a declared grid is now overridable - so refusing the emptier case while
+    accepting the fuller one is not a position anyone can hold.
+
+    What survives is the half that was always right: when there is nothing to borrow FROM, the
+    absence gets a name instead of an invention."""
     no_dims = {k: v for k, v in _auto_meta().items() if k != "grid_cols"}
+    # the phys primitive still refuses on its own - it does not borrow grids, by construction
     assert map_overlay.assume_phys_from(no_dims, _meta()) is None
+    # ... and composing it AFTER the grid borrow is what makes the map scorable
+    assert ma.borrowed_meta_for(no_dims, _meta(), None, True, True) is not None
 
     ref = _asymmetric_subset()
-    _c, excluded, _r, _s = ma.score_candidates(
+    _c, excluded, _r, stats = ma.score_candidates(
         [{"map_id": "NODIM", "meta": no_dims, "cells": ref}], ref, _meta(),
+        assume_reference_geometry=True)
+    assert excluded.as_list() == []
+    assert stats["assumed_map_ids"] == ["NODIM"]
+
+    # 🔴 the floor has no grid either -> nothing to borrow, and the absence is NAMED.
+    floorless = {k: v for k, v in _meta().items() if k != "grid_cols"}
+    _c, excluded, _r, _s = ma.score_candidates(
+        [{"map_id": "NODIM", "meta": no_dims, "cells": ref}], ref, floorless,
         assume_reference_geometry=True)
     rows = excluded.as_list()
     assert [r["reason_code"] for r in rows] == [ma.EXCLUDE_GRID_DIMS_MISSING]
@@ -593,6 +612,29 @@ def test_the_assumed_token_has_one_spelling_across_the_layers():
     assert ma.geometry_basis_of(_auto_meta(), None) == map_overlay.GEOMETRY_ASSUMED
 
 
+def test_an_unknown_token_degrades_to_a_refusal_rather_than_crashing(monkeypatch):
+    """The audit the ruling asked for: an additive token is only additive if the READERS
+    degrade. Every consumer of `geometry_declaration` compares against `declared` and so
+    refuses an unknown token - except `geometry_refusal`, which subscripted its sentence table
+    directly and raised `KeyError`. That is a 500 on the whole request, and it comes back every
+    time the vocabulary grows if the sentence is not added in the same edit.
+
+    The degrade direction is not a choice: an unreadable provenance is NOT a declaration.
+    Folding it to `None` would let an unknown token impersonate one, which is the defect this
+    entire vocabulary exists to prevent."""
+    monkeypatch.setattr(map_overlay, "geometry_declaration", lambda m: "some_future_token")
+
+    why = map_overlay.geometry_refusal(_meta())
+    assert why is not None, "an unreadable provenance must never read as a declaration"
+    assert "some_future_token" in why, "a silent degrade hides that anything degraded"
+    assert map_overlay.geometry_computable(_meta()) is not None
+
+    # and the transform gate refuses rather than raising something the caller cannot name
+    with pytest.raises(ValueError) as e:
+        map_overlay.make_frame_transform(_meta(), _meta())
+    assert "some_future_token" in str(e.value)
+
+
 def test_the_geometry_vocabulary_is_closed():
     assert {map_overlay.GEOMETRY_DECLARED, map_overlay.GEOMETRY_AUTO_REGISTERED,
             map_overlay.GEOMETRY_ABSENT, map_overlay.GEOMETRY_UNPARSABLE,
@@ -600,3 +642,197 @@ def test_the_geometry_vocabulary_is_closed():
         "declared", "auto_registered", "absent", "unparsable", "assumed"}
     assert {ma.ASSUMPTION_APPLIED, ma.ASSUMPTION_AVAILABLE,
             ma.ASSUMPTION_UNAVAILABLE} == {"applied", "available", "unavailable"}
+
+
+# ---------------------------------------------------------------------------
+# [D6] THE BORROW HAS TWO AXES  (product owner 2026-08-05, spec section 9.5)
+#
+# «가정이 선언된 격자도 덮어» - accepting the assumption overrides a grid the source map
+# DECLARES. Their maps are partial: a DT map covers only part of the wafer, so the grid in
+# that metadata row was hand-entered or derived from a partial extent. It is the same
+# defective quantity as no grid at all - a subset's extent mistaken for the whole - and a
+# declaration is therefore not evidence of measurement HERE.
+#
+# Structurally this splits one branch that was answering two questions. Before this round
+# `score_candidates` entered the borrow only when `geometry_refusal(meta) is not None`, so a
+# map with a readable declaration skipped the borrow entirely and died on `grid_dims_differ` -
+# and that map is exactly the population the feature exists for.
+# ---------------------------------------------------------------------------
+
+REF_R1 = {"table": REFT, "map_id": "R1"}
+
+
+def _partial_grid_meta(**kw):
+    """The population: a map that DECLARES a measured phys spec AND a grid that is only its
+    own visible extent. Its phys is a real measurement; its grid is not evidence of anything.
+    The floor (`_meta()`) is 45x39."""
+    return _meta(cols=30, rows=25, **kw)
+
+
+def _planted_cells(planted="rot90_back"):
+    """Cells written in the FLOOR's frame - i.e. a map whose coordinates span the real grid
+    while its metadata under-declares it. That is the shape the ruling is about."""
+    floor = _meta()
+    return _place(source_meta_for_frame(floor, "rot0_front"),
+                  source_meta_for_frame(floor, planted), _asymmetric_subset())
+
+
+def _score(meta, cells, **kw):
+    """Returns (source_map_dict, excluded_rows, stats). The dict carries `_meta` afterwards,
+    which is the meta the scorer ACTUALLY used - the only place the two axes are observable
+    separately."""
+    sm = {"map_id": "P", "meta": meta, "cells": cells}
+    kw.setdefault("thresholds", THRESHOLDS)
+    kw.setdefault("reference_ref", REF_R1)
+    _c, excluded, _r, stats = ma.score_candidates(
+        [sm], _asymmetric_subset(), _meta(), **kw)
+    return sm, excluded.as_list(), stats
+
+
+def test_the_two_borrow_axes_are_independent_questions():
+    """🔴 The structural claim. Each predicate must be TRUE in a case where the other is
+    FALSE, or they are not two questions and one condition would still do.
+
+    A single widened condition would pass every behavioural test below while re-creating the
+    exact defect: one branch true for two unrelated reasons."""
+    floor = _meta()
+    # measured its wafer, mis-declares its grid
+    assert ma.phys_needs_basis(_partial_grid_meta()) is False
+    assert ma.grid_needs_basis(_partial_grid_meta(), floor) is True
+    # never measured its wafer, grid already agrees with the floor
+    assert ma.phys_needs_basis(_auto_meta()) is True
+    assert ma.grid_needs_basis(_auto_meta(), floor) is False
+    # nothing to borrow FROM closes the grid axis rather than inventing one
+    floorless = {k: v for k, v in floor.items() if k != "grid_cols"}
+    assert ma.grid_needs_basis(_partial_grid_meta(), floorless) is False
+
+
+def test_accepting_overrides_the_declared_grid_and_KEEPS_the_declared_phys():
+    """🔴 The ruling, and the coordinator's explicit expectation about the mixed case: a
+    declared physical spec is a real measurement and there is no reason to discard it, so only
+    the grid moves. Taking both would be the quiet over-reach."""
+    sm, excluded, stats = _score(_partial_grid_meta(), _planted_cells(),
+                                 assume_reference_geometry=True)
+    assert excluded == []
+    assert stats["assumed_map_ids"] == ["P"]
+
+    used = sm["_meta"]
+    assert map_overlay.grid_dims(used) == (45, 39), "the grid was not overridden"
+    assert used[map_overlay.GRID_ASSUMED_KEY] == REF_R1, "a borrow with no recorded basis"
+    # ... and the phys is untouched: same bytes, no marker, still its own declaration
+    assert map_overlay.PHYS_ASSUMED_KEY not in used
+    assert map_overlay._phys_signature(used) == map_overlay._phys_signature(_meta())
+    assert map_overlay.geometry_declaration(used) == map_overlay.GEOMETRY_DECLARED
+
+
+def test_the_borrowed_grid_brings_start_with_it():
+    """Dims alone leaves the map translated by its own re-basing, and the shift solver only
+    reaches +-3 so the error never announces itself - 467 of 467 cells wrong, measured [D5]."""
+    borrowed = map_overlay.assume_grid_from(
+        _partial_grid_meta(start_x=4, start_y=7), _meta(start_x=1, start_y=1), REF_R1)
+    g = map_overlay._grid_of(borrowed)
+    assert (g["cols"], g["rows"]) == (45, 39)
+    assert (g["start_x"], g["start_y"]) == (1, 1), "start stayed behind"
+
+
+def test_nothing_changes_for_a_request_that_did_not_ask():
+    """🔴 Still gated on accepting, AND the mismatch keeps its job: `grid_dims_differ` is a
+    true fact and the operator should be told it. The map must ALSO be offerable, or the
+    button never appears for the exact population this ruling is about - that is the
+    difference between shipping this and shipping the appearance of it."""
+    sm, excluded, stats = _score(_partial_grid_meta(), _planted_cells(),
+                                 assume_reference_geometry=False)
+    assert [r["reason_code"] for r in excluded] == [ma.EXCLUDE_GRID_DIMS_DIFFER]
+    assert excluded[0]["example_detail"] and "45x39" in excluded[0]["example_detail"]
+    assert stats["assumed_map_ids"] == []
+    assert stats["assumable_map_ids"] == ["P"], "the offer never reached the screen"
+    assert "_meta" not in sm, "an unrequested assumption was applied anyway"
+
+
+def test_a_grid_only_mismatch_is_not_reported_as_a_missing_measurement():
+    """The refusal must name the axis that is actually open. Calling this `geometry_refused`
+    sends the operator to measure a chip size that is already declared."""
+    _sm, excluded, _s = _score(_partial_grid_meta(), _planted_cells(),
+                               assume_reference_geometry=False)
+    assert ma.EXCLUDE_GEOMETRY_REFUSED not in [r["reason_code"] for r in excluded]
+
+
+def test_the_containment_guard_covers_the_overridden_population(env):
+    """🔴 The guard is the ONLY thing left distinguishing «a partial map of the same wafer»
+    from «a different map» once the declared grid stops being consulted. It ran only in the
+    no-spec-row branch before this round.
+
+    The fixture's cells EXCEED the borrowed grid on purpose - a fitting source makes the guard
+    a no-op, and a no-op guard is the trap that already cost this round one mutant."""
+    cells = _planted_cells() + [(200, 200)]
+    sm, excluded, stats = _score(_partial_grid_meta(), cells,
+                                 assume_reference_geometry=True)
+    assert [r["reason_code"] for r in excluded] == [ma.EXCLUDE_CELLS_OUTSIDE_GRID]
+    assert stats["assumed_map_ids"] == [], "a mismatched map was seated on a borrowed grid"
+    assert stats["assumable_map_ids"] == [], "a map that cannot fit was still offered"
+    assert "_meta" not in sm
+
+
+def test_the_confirmation_record_does_not_call_a_borrowed_grid_a_declaration():
+    """🔴 `geometry_basis_of` answers «what did this alignment STAND ON», and its answer is
+    persisted in the confirmation record - the thing that exists to answer «if this assumption
+    turns out false, which decisions rested on it». Its old one-line derivation («not excluded
+    and not a declaration => borrowed») was complete only while the borrow had ONE axis. A map
+    that declares phys and borrows the grid makes it say `declared` about a borrowed frame."""
+    floor, partial = _meta(), _partial_grid_meta()
+    assert ma.geometry_basis_of(partial, None, floor) == map_overlay.GEOMETRY_ASSUMED
+    # an excluded contributor stood on nothing - unchanged, and not `assumed`
+    assert ma.geometry_basis_of(partial, "some_reason", floor) == map_overlay.GEOMETRY_DECLARED
+    # a map whose grid already agrees borrowed nothing, and must not claim it did
+    assert ma.geometry_basis_of(_meta(), None, floor) == map_overlay.GEOMETRY_DECLARED
+    # without a basis the answer degrades to the phys axis only (old callers, old records)
+    assert ma.geometry_basis_of(partial, None) == map_overlay.GEOMETRY_DECLARED
+
+
+def test_a_borrowed_start_is_not_reported_as_a_declared_one():
+    """`grid_start_*` is scored by `orientation_declaration` too, and start is the one axis
+    whose value can never indicate absence - so a borrowed start reads as `declared` unless the
+    marker is read there as well. One axis under two scorers needs the marker in both."""
+    borrowed = map_overlay.assume_grid_from(
+        _partial_grid_meta(start_x=4, start_y=7), _meta(), REF_R1)
+    d = map_overlay.orientation_declaration(borrowed)
+    assert d["grid_start_x"]["source"] == map_overlay.GEOMETRY_ASSUMED
+    assert d["grid_start_y"]["source"] == map_overlay.GEOMETRY_ASSUMED
+    assert d["grid_start_x"]["value"] == 1, "the value must be the one the reader will use"
+    # axes nobody borrowed keep answering for themselves
+    assert d["rotation"]["source"] != map_overlay.GEOMETRY_ASSUMED
+    # and the sentence table has a word for the new token - `orientation_refusal` subscripts
+    # it directly, so a missing word is a KeyError on a live request
+    assert map_overlay.orientation_refusal(borrowed) is not None
+
+
+def test_the_grid_borrow_marks_only_what_it_actually_moved():
+    """A marker that appears when nothing was borrowed makes «what did this stand on» an
+    over-claim, and over-claims in a provenance vocabulary are as corrosive as silence."""
+    floor = _meta()
+    assert map_overlay.assume_grid_from(_meta(), floor, REF_R1) is None
+    assert map_overlay.assume_grid_from(_partial_grid_meta(), {}, REF_R1) is None
+    # no assumption stacked on an assumption - the phys axis keeps the same rule
+    once = map_overlay.assume_grid_from(_partial_grid_meta(), floor, REF_R1)
+    assert map_overlay.assume_grid_from(_meta(cols=20, rows=20), once, REF_R1) is None
+
+
+def test_the_offer_and_the_borrow_reach_the_payload_end_to_end(env):
+    """The whole path, through the DB and the real view builder: the button appears for a map
+    whose ONLY problem is its grid, and accepting it scores the unit and labels both layers."""
+    _seed(env, _partial_grid_meta())
+
+    v = _view(env)
+    assert v["assumption"]["state"] == ma.ASSUMPTION_AVAILABLE
+    assert v["assumption"]["map_ids"] == ["J1"]
+    assert v["ruling"]["geometry_assumed"] is False
+
+    v2 = _view(env, assume_reference_geometry=True)
+    assert v2["state"] == ma.STATE_SCORED
+    assert v2["ruling"]["winner"] == "rot90_back"
+    assert v2["assumption"]["state"] == ma.ASSUMPTION_APPLIED
+    m = v2["sources"]["maps"][0]
+    # two facts, and the payload must not fold them: its phys IS a measurement, and this run
+    # nevertheless stood on a borrowed grid
+    assert m["geometry"] == map_overlay.GEOMETRY_DECLARED
+    assert m["geometry_basis"] == map_overlay.GEOMETRY_ASSUMED

@@ -203,11 +203,14 @@ def test_the_frame_is_the_existing_synthesizer_with_only_the_grid_replaced():
         assert got[k] == v, k                       # mask-neutral vocabulary, unchanged
     assert got[map_overlay.AUTO_REGISTERED_KEY] is True
 
-    # and the whole thing is still the two existing primitives composed
+    # and the whole thing is still the existing primitives composed. [D6] the hand-written
+    # grid substitution became its own primitive (`assume_grid_from`), so the composition now
+    # names three - and the borrowed grid carries its own marker, for the same reason the
+    # borrowed phys always did: a value taken from somewhere else must say where.
     expected = map_overlay.assume_phys_from(
-        dict(synth, grid_cols=45, grid_rows=39, grid_start_x=1, grid_start_y=1),
-        floor, REF_REF)
+        map_overlay.assume_grid_from(synth, floor, REF_REF), floor, REF_REF)
     assert json.dumps(got, sort_keys=True) == json.dumps(expected, sort_keys=True)
+    assert got[map_overlay.GRID_ASSUMED_KEY] == REF_REF
 
 
 def test_the_frame_borrows_the_wafer_AND_the_grid():
