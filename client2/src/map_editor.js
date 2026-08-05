@@ -1530,8 +1530,12 @@ function gridDimNum(frame, key, domEl, dflt) {
 //    맵마다의 사실이지 세션의 사실이 아니다.
 // 🔴 **두 축 모두에 표지가 있어야 한다.** 한 축만 보면 나머지 한 축에 쓰는 코드가 아무것도
 //    하지 않게 되고, 안 읽히는 쓰기는 조용히 낡는다(둘이 갈라져도 아무도 모른다).
-function geometryIsAutoRegistered() {
-  if (physFrameOverride) return physFrameOverride.autoRegistered === true;
+function geometryIsAutoRegistered(frame) {
+  if (frame === undefined) {
+    throw new Error('geometryIsAutoRegistered: frame argument missing. Pass the frame that is '
+      + 'in scope, or `null` to read the screen mark on purpose.');
+  }
+  if (frame) return frame.autoRegistered === true;
   if (!el) return false;
   const dx = el.physChipX ? el.physChipX.dataset : null;
   const dy = el.physChipY ? el.physChipY.dataset : null;
@@ -1549,7 +1553,11 @@ function controlIsSilent(raw) {
   return raw === undefined || raw === null || String(raw).trim() === '';
 }
 
-function physDeclaration(key, domEl) {
+function physDeclaration(frame, key, domEl) {
+  if (frame === undefined) {
+    throw new Error('physDeclaration: frame argument missing. Pass the frame that is in scope, '
+      + 'or `null` to read the screen controls on purpose.');
+  }
   const read = (raw, source) => {
     if (controlIsSilent(raw)) return null;
     const n = parseFloat(raw);
@@ -1557,11 +1565,11 @@ function physDeclaration(key, domEl) {
   };
   // 🔴 **여기가 유일한 철자다.** 호출자가 이 질문을 다시 구현하면 「선언인가」의 답이 둘이 되고,
   //    그 둘이 갈리는 날은 화면이 멀쩡한 채로 값만 틀리는 날이다.
-  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered()) {
+  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered(frame)) {
     return { value: null, source: 'auto_registered' };
   }
-  if (physFrameOverride && Object.prototype.hasOwnProperty.call(physFrameOverride, key)) {
-    const fromFrame = read(physFrameOverride[key], 'frame');
+  if (frame && Object.prototype.hasOwnProperty.call(frame, key)) {
+    const fromFrame = read(frame[key], 'frame');
     if (fromFrame) return fromFrame;
   }
   return read(domEl ? domEl.value : null, 'screen') || { value: null, source: 'absent' };
@@ -2248,8 +2256,8 @@ function cellMetrics(width, height, visualCols, visualRows, physConfig) {
     padX: 0, padY: 0, isotropic: false, waferAnchored: false,
   };
   if (!(visualCols > 0) || !(visualRows > 0) || !(width > 0) || !(height > 0)) return anisotropicFallback;
-  const dx = physDeclaration('chipX', el.physChipX);
-  const dy = physDeclaration('chipY', el.physChipY);
+  const dx = physDeclaration(physFrameOverride, 'chipX', el.physChipX);
+  const dy = physDeclaration(physFrameOverride, 'chipY', el.physChipY);
   if (!(dx.value > 0) || !(dy.value > 0)) return anisotropicFallback;
   // 회전된 규격을 쓴다 — `visualCols`도 회전된 축이라 둘이 같은 방향을 가리켜야 한다.
   const chipX = physConfig ? physConfig.chipX : 0;
@@ -2287,7 +2295,7 @@ function cellMetrics(width, height, visualCols, visualRows, physConfig) {
   //    선언이 없으면 종전 규칙(`sGrid`)으로 그대로 물러나고 화면이 그렇게 말한다
   //    (`waferAnchored: false` → `renderGridCanvas`의 수동 표기).
   const sGrid = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));
-  const dd = physDeclaration('waferDia', el.physWaferDia);
+  const dd = physDeclaration(physFrameOverride, 'waferDia', el.physWaferDia);
   const waferAnchored = dd.value > 0;
   // 캔버스 짧은 변 대비 웨이퍼 **지름**의 고정 비율. 남는 6%는 원의 선 두께와 격자
   // 외곽선이 앉을 자리다 — 원이 캔버스 가장자리에 닿아 잘려 보이지 않게 한다.
@@ -3689,7 +3697,7 @@ function renderGridCanvas() {
   if (el.cellAspectNote) {
     const notes = [];
     if (!isotropic) {
-      notes.push(geometryIsAutoRegistered()
+      notes.push(geometryIsAutoRegistered(physFrameOverride)
         ? '기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다'
         : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');
     } else if (!waferAnchored) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');
@@ -6448,7 +6456,7 @@ function buildPushGridMetadata(cols, rows, startX, startY, invertY,
   //      그러면 자동 등록 행이 조용히 「사람이 선언한 규격」으로 승격되고, 등록기는 이미
   //      존재하는 행을 다시 쓰지 않으므로(absent-only) 그 사실은 영영 돌아오지 않는다.
   //      🔴 표지가 없는 맵의 payload는 이 줄로 **한 바이트도 바뀌지 않는다**(INV-1).
-  if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;
+  if (geometryIsAutoRegistered(physFrameOverride)) gridMeta.auto_registered = true;
   // [D4] 프레임을 **고른** 맵이면 그 사실도 함께 저장한다. `phys_assumed_from`과 같은 형식:
   //      있을 때만 있고, 값이 어디서 왔는지를 말한다. 🔴 표지가 없는 맵의 payload는 이 두 줄로
   //      **한 바이트도 바뀌지 않는다**(INV-1) — 오늘의 모든 선언된 맵이 그 경우다.
@@ -10402,8 +10410,8 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   //    접어 놓은 뒤라 「선언 없음」이 관측 불가능하다(§physDeclaration). 여기서 읽는 것은
   //    **어디서 온 값인가**라는 사실이다.
   const pitchFacts = (frame) => withPhysFrame(frame, () => ({
-    x: physDeclaration('chipX', el.physChipX),
-    y: physDeclaration('chipY', el.physChipY),
+    x: physDeclaration(frame, 'chipX', el.physChipX),
+    y: physDeclaration(frame, 'chipY', el.physChipY),
   }));
   const srcPitch = pitchFacts(srcFrame);
   const seatPitch = pitchFacts(null);          // null = 화면 컨트롤 그대로

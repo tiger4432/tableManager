@@ -563,8 +563,8 @@ function scoreAutoRegistered(src) {
 
   // (a) FLAGGED: readable numbers, but they are not a declaration.
   const flagged = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, autoRegistered: true } });
-  const dxF = flagged.sandbox.physDeclaration('chipX', flagged.el.physChipX);
-  const dyF = flagged.sandbox.physDeclaration('chipY', flagged.el.physChipY);
+  const dxF = flagged.sandbox.physDeclaration(null, 'chipX', flagged.el.physChipX);
+  const dyF = flagged.sandbox.physDeclaration(null, 'chipY', flagged.el.physChipY);
   eq('D1/a a flagged chipX is reported as NOT declared',
     { value: null, source: 'auto_registered' }, dxF);
   eq('D1/a ...and chipY the same (the mark covers the whole spec)',
@@ -577,20 +577,20 @@ function scoreAutoRegistered(src) {
   //     that makes (a) mean something: a build keyed on the VALUE passes (a) and fails here.
   const bare = render(src, { canvas: { w: 700, h: 700 }, panel });
   eq('D1/b chip 1x1 with NO flag is still a declaration', 'screen',
-    bare.sandbox.physDeclaration('chipX', bare.el.physChipX).source,
+    bare.sandbox.physDeclaration(null, 'chipX', bare.el.physChipX).source,
     '1 is a legal pitch; only the flag may reclassify it');
   eq('D1/b ...and its value survives', 1,
-    bare.sandbox.physDeclaration('chipX', bare.el.physChipX).value);
+    bare.sandbox.physDeclaration(null, 'chipX', bare.el.physChipX).value);
 
   // (c) A FLAGGED SPEC WITH ANISOTROPIC NUMBERS. The mark is about provenance, not shape —
   //     scored so nobody "optimises" the rule back into a 1x1 value check.
   const aniso = render(src, { canvas: { w: 700, h: 700 },
     panel: { ...panel, chipX: 1, chipY: 8, autoRegistered: true } });
   eq('D1/c the mark reclassifies a 1x8 spec too (provenance, not shape)', 'auto_registered',
-    aniso.sandbox.physDeclaration('chipY', aniso.el.physChipY).source);
+    aniso.sandbox.physDeclaration(null, 'chipY', aniso.el.physChipY).source);
   const anisoBare = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, chipX: 1, chipY: 8 } });
   eq('D1/c ...while an UNFLAGGED 1x8 stays the real anisotropic declaration it is', 'screen',
-    anisoBare.sandbox.physDeclaration('chipY', anisoBare.el.physChipY).source);
+    anisoBare.sandbox.physDeclaration(null, 'chipY', anisoBare.el.physChipY).source);
 
   // (d) WHAT THE OPERATOR SEES. `cellMetrics` falls back, and the note says WHY in its own
   //     words — "Chip X/Y 미선언" would be read as false by anyone looking at the inputs.
@@ -622,22 +622,19 @@ function scoreAutoRegistered(src) {
   //     that marks everything forever would pass every case above.
   flagged.sandbox.markGeometryAutoRegistered(false);
   eq('D1/f clearing the mark makes the same numbers a declaration again', 'screen',
-    flagged.sandbox.physDeclaration('chipX', flagged.el.physChipX).source,
+    flagged.sandbox.physDeclaration(null, 'chipX', flagged.el.physChipX).source,
     'the operator typing a real pitch must not stay reclassified');
 
   // (g) THE FRAME WINDOW. Overlays read the SOURCE map's spec through `physFrameOverride`,
   //     so the mark has to travel on the frame object or the source's synthetic 1mm pitch is
   //     read as real and every marker is placed against it.
-  const inFrame = bare.sandbox.withPhysFrame({ chipX: 1, chipY: 1, autoRegistered: true },
-    () => bare.sandbox.physDeclaration('chipX', bare.el.physChipX));
+  const inFrame = bare.sandbox.physDeclaration({ chipX: 1, chipY: 1, autoRegistered: true }, 'chipX', bare.el.physChipX);
   eq('D1/g a flagged SOURCE FRAME is not declared either', 'auto_registered', inFrame.source);
-  const inFrameBare = bare.sandbox.withPhysFrame({ chipX: 1, chipY: 1 },
-    () => bare.sandbox.physDeclaration('chipX', bare.el.physChipX));
+  const inFrameBare = bare.sandbox.physDeclaration({ chipX: 1, chipY: 1 }, 'chipX', bare.el.physChipX);
   eq('D1/g ...and an unflagged frame still declares', 'frame', inFrameBare.source);
   // The frame window must not be answered by the SCREEN's mark: those are different maps.
   bare.sandbox.markGeometryAutoRegistered(true);
-  const screenMarkedFrameNot = bare.sandbox.withPhysFrame({ chipX: 7, chipY: 9 },
-    () => bare.sandbox.physDeclaration('chipX', bare.el.physChipX));
+  const screenMarkedFrameNot = bare.sandbox.physDeclaration({ chipX: 7, chipY: 9 }, 'chipX', bare.el.physChipX);
   eq('D1/g the SOURCE frame answers for the source, not the screen behind it', 'frame',
     screenMarkedFrameNot.source,
     'reading the screen mark inside a frame window would reclassify a real source spec');
@@ -658,7 +655,7 @@ function scoreAutoRegistered(src) {
   const half = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, autoRegistered: true } });
   delete half.el.physChipY.dataset.autoRegistered;
   eq('D1/i a mark on only one axis does NOT reclassify the spec', 'screen',
-    half.sandbox.physDeclaration('chipX', half.el.physChipX).source,
+    half.sandbox.physDeclaration(null, 'chipX', half.el.physChipX).source,
     'the mark belongs to the spec, so half a mark is not one');
 }
 
@@ -684,7 +681,7 @@ const MUTATIONS = [
   // The rule is not applied at all — the shipped state before this round, in which a
   // synthesized 1mm pitch and a measured one are byte-identical to every reader.
   ['D1 the rule is not applied (synthetic geometry reads as declared)', {
-    find: `  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered()) {\n    return { value: null, source: 'auto_registered' };\n  }`,
+    find: `  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered(frame)) {\n    return { value: null, source: 'auto_registered' };\n  }`,
     repl: `  // rule removed`,
   }],
   // 🔴 THE MOST IMPORTANT ONE. This is the MAGIC-NUMBER version of the same feature — key the
@@ -692,14 +689,14 @@ const MUTATIONS = [
   //    only looks at flagged maps, and it is wrong: 1 is a legal pitch, so it silently
   //    swallows a real 1mm declaration. Only the unflagged-1x1 discrimination catches it.
   ['D1 the rule keys on the VALUE 1x1 instead of the flag (the sentinel that is also a datum)', {
-    find: `  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered()) {`,
+    find: `  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered(frame)) {`,
     repl: `  if ((key === 'chipX' || key === 'chipY') && parseFloat(el.physChipX.value) === 1 && parseFloat(el.physChipY.value) === 1) {`,
   }],
   // The frame window answers with the SCREEN's mark. Opening an auto-registered map would
   // then reclassify every OTHER map overlaid onto it — provenance leaking across maps.
   ['D1 the frame window is answered by the screen mark', {
-    find: `  if (physFrameOverride) return physFrameOverride.autoRegistered === true;`,
-    repl: `  if (physFrameOverride && physFrameOverride.autoRegistered === true) return true;`,
+    find: `  if (frame) return frame.autoRegistered === true;`,
+    repl: `  if (frame && frame.autoRegistered === true) return true;`,
   }],
   // The mark is dropped by the frame builder's whitelist — where it actually was, before.
   ['D1 frameFromMeta drops the mark (the overlay path stops seeing it)', {
@@ -708,7 +705,7 @@ const MUTATIONS = [
   }],
   // The screen keeps the generic wording, which reads as false when the inputs hold numbers.
   ['D1 the note stops naming auto-registration as the reason', {
-    find: `      notes.push(geometryIsAutoRegistered()\n        ? '기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다'\n        : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');`,
+    find: `      notes.push(geometryIsAutoRegistered(physFrameOverride)\n        ? '기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다'\n        : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');`,
     repl: `      notes.push('셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');`,
   }],
   // Only one axis is marked. The second write becomes dead, and the two halves can then
@@ -730,8 +727,8 @@ const MUTATIONS = [
     repl: `  if (gridCells2D[r]?.[c]) return gridCells2D[r][c];`,
   }],
   ['undeclared pitch is invented from the defaulted number', {
-    find: `  const dx = physDeclaration('chipX', el.physChipX);\n  const dy = physDeclaration('chipY', el.physChipY);`,
-    repl: `  const dx = { value: physNum('chipX', el.physChipX, 2.5) };\n  const dy = { value: physNum('chipY', el.physChipY, 2.5) };`,
+    find: `  const dx = physDeclaration(physFrameOverride, 'chipX', el.physChipX);\n  const dy = physDeclaration(physFrameOverride, 'chipY', el.physChipY);`,
+    repl: `  const dx = { value: physNum(physFrameOverride, 'chipX', el.physChipX, 2.5) };\n  const dy = { value: physNum(physFrameOverride, 'chipY', el.physChipY, 2.5) };`,
   }],
 ];
 

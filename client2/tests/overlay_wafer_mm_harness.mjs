@@ -473,10 +473,13 @@ function runAll(src) {
       if (wrongNow > worstDamage) worstDamage = wrongNow;
 
       // (c) THE FIX -- the guard reads where the value came from.
-      const facts = ctx.withPhysFrame(badSrc, () => ({
-        x: ctx.physDeclaration('chipX', ctx.el.physChipX),
-        y: ctx.physDeclaration('chipY', ctx.el.physChipY),
-      }));
+      // The frame is an ARGUMENT now, so the window IS the argument. `withPhysFrame` still
+      // sets the binding, but `physDeclaration` no longer reads it -- wrapping would leave
+      // this driving state nothing consults.
+      const facts = {
+        x: ctx.physDeclaration(badSrc, 'chipX', ctx.el.physChipX),
+        y: ctx.physDeclaration(badSrc, 'chipY', ctx.el.physChipY),
+      };
       const refused = !(facts.x.value > 0) || !(facts.y.value > 0)
         || facts.x.source !== 'frame' || facts.y.source !== 'frame';
       if (refused) newRefused++;
@@ -487,10 +490,10 @@ function runAll(src) {
     ok(newRefused === BAD.length, 'A12c every bad declaration is refused now', `${newRefused}/${BAD.length}`);
     ok(worstDamage > 400, 'A12d the defect was material', `worst case moved only ${worstDamage} cells`);
     // A negative pitch was the ONLY thing the old guard caught -- it must still be caught.
-    const neg = ctx.withPhysFrame({ ...SRC, chipX: -7 }, () => ctx.physDeclaration('chipX', ctx.el.physChipX));
+    const neg = ctx.physDeclaration({ ...SRC, chipX: -7 }, 'chipX', ctx.el.physChipX);
     ok(!(neg.value > 0), 'A12e negative pitch still refused', `${neg.value}`);
     // ...and a properly declared pitch must NOT be refused, or the guard is just "always no".
-    const good = ctx.withPhysFrame(SRC, () => ctx.physDeclaration('chipX', ctx.el.physChipX));
+    const good = ctx.physDeclaration(SRC, 'chipX', ctx.el.physChipX);
     ok(good.value === SRC.chipX && good.source === 'frame', 'A12f a declared pitch passes',
       `value=${good.value} source=${good.source} -- the guard refuses everything`);
     setScreen(ctx, TGT);
@@ -712,8 +715,8 @@ const MUTATIONS = [
     "const ck = 'one-slot-for-every-frame';"],
   ['overlay gate stops calling physDeclaration (reads the defaulted number again)',
     `const pitchFacts = (frame) => withPhysFrame(frame, () => ({
-    x: physDeclaration('chipX', el.physChipX),
-    y: physDeclaration('chipY', el.physChipY),
+    x: physDeclaration(frame, 'chipX', el.physChipX),
+    y: physDeclaration(frame, 'chipY', el.physChipY),
   }));`,
     `const pitchFacts = (frame) => ({
     x: { value: resolveFrame(frame || currentFrame()).chipX, source: 'frame' },
@@ -746,12 +749,22 @@ const MUTATIONS = [
   ['stale grid-membership predicate restored (0 <= px < cols)',
     'if (!seatKeys.inside.has(key)) outside += list.length;',
     'if (!(Number(key.split("_")[0]) >= 0 && Number(key.split("_")[0]) < seat.cols && Number(key.split("_")[1]) >= 0 && Number(key.split("_")[1]) < seat.rows)) outside += list.length;'],
-  // ② The frame window is the ONLY thing that makes the source spec readable. If it never
-  //    opens, every source cell is interpreted with the target's spec -- the canvas still
-  //    draws, which is exactly why this needs a scorer.
-  ['frame window never opens (source read with the target spec)',
-    'physFrameOverride = frame || null;',
-    'physFrameOverride = null;'],
+  // ② The source spec must actually reach the projection. If it does not, every source cell is
+  //    interpreted with the TARGET's spec -- the canvas still draws, which is why this needs a
+  //    scorer rather than an eye.
+  //
+  // 🔴 RE-POINTED 2026-08-06, and the reason matters more than the edit. This mutant used to
+  //    close the frame WINDOW (`physFrameOverride = frame || null` -> `= null`). It went INERT
+  //    the moment the frame stopped being module state: `withPhysFrame` still assigns the
+  //    binding, but nothing this harness scores reads it any more, so nulling it changed
+  //    nothing and the mutant SURVIVED at 20/21. The anchor still applied -- presence and
+  //    uniqueness both passed -- so only the survivor accounting caught it. A mutant can rot
+  //    while its anchor stays perfectly valid, and that is a third failure mode beside "stale"
+  //    and "not unique". The DEFECT it names has not changed at all; its spelling has, from
+  //    "the window never opens" to "the frame never reaches the call".
+  ['frame never reaches the projection (source read with the target spec)',
+    "    const chipX = physNum(f, 'chipX', el.physChipX, 2.5);\n    const chipY = physNum(f, 'chipY', el.physChipY, 2.5);",
+    "    const chipX = physNum(null, 'chipX', el.physChipX, 2.5);\n    const chipY = physNum(null, 'chipY', el.physChipY, 2.5);"],
 ];
 
 // ── Anchor validation, BEFORE a single mutant is scored ────────────────────────────────
