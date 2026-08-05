@@ -41,6 +41,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+// One binding of this harness is IMPORTED rather than sliced. `PUSH_SYSTEM_COLUMNS` left
+// `map_editor.js` for `client2/src/push_columns.js`, which has no module state, so there is
+// nothing to rebuild around it and no reason to re-parse its text. The rest of what this file
+// scores still reads module globals and is still sliced.
+import { PUSH_SYSTEM_COLUMNS } from '../src/push_columns.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
@@ -118,7 +123,13 @@ const CONSTS = [
   // the population it queries — a copy here that drifted would score the wrong table green.
   'VALID_DIE_TABLE',
   'mapKeyListCache', 'columnValueComplete', 'columnValueRefused', 'columnValueTruncated',
-  'PUSH_SYSTEM_COLUMNS',
+  // `PUSH_SYSTEM_COLUMNS` is NOT here any more: it moved to `client2/src/push_columns.js`
+  // and is IMPORTED at the top of this file, then handed to the sandbox as a value. It is
+  // needed because `renderMetadataInputs` filters the search columns with it — the same one
+  // roster the push gate reads, which is the whole point of it being one list. Importing it
+  // rather than re-slicing its text is possible because it is a plain frozen-in-practice
+  // array with no module state around it; re-typing it here would create the second copy the
+  // module exists to prevent.
 ];
 
 // ── DOM model — `getElementById` is a tree walk, on purpose (see the header) ─────
@@ -256,6 +267,17 @@ function build(src, { answers = [], table = 'bonding_map', schema = null } = {})
     el,
     document: makeDocument(roots),
     API_BASE: '/api',
+    // The live export, not a copy. In the product this name is an `import` in
+    // `map_editor.js`, so providing it the way `API_BASE` is provided models exactly what the
+    // sliced code sees at runtime.
+    //
+    // ⚠️ MEASURED 2026-08-05, AND IT IS NOT COVERAGE. Setting this to `[]` — and deleting the
+    //    binding outright — both leave this harness at 83 passed / 0 failed. The only reader
+    //    is `renderMetadataInputs`'s search-column filter, and no fixture here reaches that
+    //    branch. It is kept (rather than deleted) so that the day a fixture does reach it, the
+    //    value is the real roster instead of a stale copy — but nothing below scores the
+    //    roster's contents, and the push gate's own harness is where that is scored.
+    PUSH_SYSTEM_COLUMNS,
     selectedTable: table,
     tableSchema: schema,
     console: { debug() {}, warn() {}, error() {}, log() {}, info() {} },

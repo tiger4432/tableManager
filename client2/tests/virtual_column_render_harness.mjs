@@ -11,9 +11,10 @@
 // Run: node client2/tests/virtual_column_render_harness.mjs   (no node_modules — vm sandbox)
 //
 // WHAT IT SCORES. The REAL `loadSchema` (api.js), the REAL `buildColumnDefs` (grid.js), the
-// REAL `getUnprotectedPushColumns` (map_editor.js) and the REAL per-cell decision blocks of
+// REAL `getUnprotectedPushColumns` (push_columns.js — IMPORTED, not sliced; see `runPushGate`)
+// and the REAL per-cell decision blocks of
 // the four client write funnels (clipboard.js x3, ui.js x1), all lifted verbatim out of the
-// source and evaluated in a vm sandbox — the same technique as `push_gate_harness.mjs` and
+// source and evaluated in a vm sandbox — the same technique as
 // `value_suggest_keys_harness.mjs`, and for the same reason: those modules import `config.js`,
 // which touches `window` at module scope, so they cannot be imported in node.
 //
@@ -49,13 +50,16 @@ function die(msg) {
 }
 
 const read = f => readFileSync(join(SRC, f), 'utf8').replace(/\r\n/g, '\n');
+// `push` replaced `map: read('map_editor.js')`: the only thing this harness ever took from
+// that file was Gate 4, and Gate 4 now lives in its own module. This file therefore no longer
+// reads `map_editor.js` at all -- one fewer harness holding a text anchor into it.
 const PRISTINE = {
   state: read('state.js'),
   api: read('api.js'),
   grid: read('grid.js'),
   clipboard: read('clipboard.js'),
   ui: read('ui.js'),
-  map: read('map_editor.js')
+  push: read('push_columns.js')
 };
 
 // ── extraction ──────────────────────────────────────────────────────────────────
@@ -335,15 +339,25 @@ function runWriteFunnels(sources, schema) {
   };
 }
 
-/** The real Gate-4 push arithmetic, untouched by this round and asserted to stay that way. */
-function runPushGate(sources) {
-  const ctx = vm.createContext(baseGlobals());
-  vm.runInContext([
-    constFrom(sources.map, 'map_editor.js', 'PUSH_SYSTEM_COLUMNS'),
-    fnFrom(sources.map, 'map_editor.js', 'getUnprotectedPushColumns'),
-    'globalThis.__g = getUnprotectedPushColumns;'
-  ].join('\n\n'), ctx, { filename: 'map_editor.js#gate4' });
-  return ctx.__g;
+/**
+ * The real Gate-4 push arithmetic, untouched by this round and asserted to stay that way.
+ *
+ * 🔴 IMPORTED, NOT SLICED. It used to be cut out of `map_editor.js` as text and re-run in a
+ *    `vm` sandbox, which every other extraction here still has to do, because those functions
+ *    read module globals. Gate 4 never did -- it takes a schema and three column names and
+ *    returns a list -- so it now lives in `client2/src/push_columns.js` and is imported.
+ *    What that buys is written down in the module's header; what it costs this file is
+ *    nothing, because the mutant below still reaches it: the module's TEXT is imported as a
+ *    `data:` URL, so `push` behaves exactly like the other entries in `sources`.
+ *
+ * ⚠️ The module must stay import-free for this to work -- a relative specifier cannot resolve
+ *    inside a `data:` URL. If it ever gains one, this stops loading and every mutant becomes a
+ *    throw, which scores as a kill.
+ */
+async function runPushGate(sources) {
+  const url = 'data:text/javascript;base64,' + Buffer.from(sources.push, 'utf8').toString('base64');
+  const mod = await import(url);
+  return mod.getUnprotectedPushColumns;
 }
 
 // ── scoring ─────────────────────────────────────────────────────────────────────
@@ -624,8 +638,8 @@ async function suite(sources) {
   check('9g row copy keeps them too',
     w.copyRows(['row_id', 'core_lot', 'wafer_id', '#']), ['row_id', 'core_lot', 'wafer_id']);
 
-  // [10] map_editor Gate 4 arithmetic is untouched by the new key
-  const gate = runPushGate(sources);
+  // [10] Gate 4 arithmetic is untouched by the new key
+  const gate = await runPushGate(sources);
   const bare = { columns: ['pkg_id', 'base', 'x', 'y', 'leg', 'created_at', 'updated_at'],
     business_key: 'pkg_id', composite_key_source: ['base', 'x', 'y'], map_key_columns: ['base'] };
   const announced = { ...bare, virtual_columns: [VC_WAFER, VC_YIELD] };
@@ -751,7 +765,7 @@ const DEFECTS = [
   ['let the bulk fill target a virtual column', s => ({ ...s,
     ui: sub(s.ui, `    if (isVirtualColumn(colId)) return;`, ``, 'bulk-fill') })],
   ['make the push gate count announced columns', s => ({ ...s,
-    map: sub(s.map, `  const cols = Array.isArray(schema && schema.columns) ? schema.columns : [];`,
+    push: sub(s.push, `  const cols = Array.isArray(schema && schema.columns) ? schema.columns : [];`,
       `  const cols = (Array.isArray(schema && schema.columns) ? schema.columns : [])\n`
       + `    .concat((Array.isArray(schema && schema.virtual_columns) ? schema.virtual_columns : []).map(v => v.name));`,
       'push-gate') })],
@@ -783,11 +797,11 @@ const CONTROLS = [
   ['consistent rename of locals across every sliced module', s => {
     const r = t => RENAMES.reduce((acc, [re, to]) => acc.replace(re, to), t);
     return { state: r(s.state), api: r(s.api), grid: r(s.grid),
-      clipboard: r(s.clipboard), ui: r(s.ui), map: s.map };
+      clipboard: r(s.clipboard), ui: r(s.ui), push: s.push };
   }],
   ['every full-line comment stripped from every sliced module', s => ({
     state: stripComments(s.state), api: stripComments(s.api), grid: stripComments(s.grid),
-    clipboard: stripComments(s.clipboard), ui: stripComments(s.ui), map: stripComments(s.map)
+    clipboard: stripComments(s.clipboard), ui: stripComments(s.ui), push: stripComments(s.push)
   })]
 ];
 

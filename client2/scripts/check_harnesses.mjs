@@ -345,7 +345,22 @@ const FLOORS = new Map([
   // commit that introduces it — there is no earlier tree to measure it against.
   ['overlay_provenance_harness.mjs', 21],
   ['overlay_wafer_mm_harness.mjs', 69],
-  ['push_gate_harness.mjs', 15],
+  // 15 -> 34 (2026-08-05, the first import-not-slice conversion). It stopped reading
+  // `map_editor.js` as text: Gate 4 moved to `client2/src/push_columns.js` and this harness
+  // now `import`s it. Two things happened to the count, and only one of them is new coverage.
+  //
+  // 🔴 18 OF THE 34 ARE MUTATION VERDICTS, AND THEY ARE COUNTED HERE ON PURPOSE. This harness
+  //    had NO mutation corpus at all, so its 15 green assertions had never been shown to be
+  //    capable of failing. The 16 defect mutants and 2 controls are now scored as assertions
+  //    rather than printed as prose, which puts them under this floor -- a corpus that stops
+  //    being applied sinks `ran` and BLOCKS. That is the direct answer to what happened to
+  //    `frame_declaration_harness.mjs` the same week: its corpus sat behind `--mutate`, the
+  //    gate runs every harness BARE, and a stale anchor left it dead with the build green.
+  //    Anything put behind a flag here is a thing this runner does not run.
+  //
+  //    The 16th behaviour assertion is the roster named MEMBER BY MEMBER. A count would stay
+  //    green while a member was swapped, and a member is exactly what protects a column.
+  ['push_gate_harness.mjs', 34],
   ['retroactive_view_harness.mjs', 263],
   ['standard_frame_origin_harness.mjs', 19],
   // New 2026-08-04 with the startup-gate round (the page ran a whole session with no WebSocket
