@@ -454,7 +454,37 @@ function run(mod) {
     TOKENS.slice(0, 4).join(','), 'declared,auto_registered,absent,unparsable');
   eq('B. the fifth is map_overlay.py ORIENTATION_INDETERMINATE', TOKENS[4], 'indeterminate');
   eq('B. the sixth is map_overlay.py GEOMETRY_ASSUMED', TOKENS[5], 'assumed');
-  eq('B. and nothing beyond the six the server spells', TOKENS.length, 6);
+  eq('B. the seventh is map_overlay.py GEOMETRY_CONFIRMED', TOKENS[6], 'confirmed');
+  //
+  // 🔴 THE LENGTH PIN IS GONE, AND IT WAS RE-ADDED TWO LINES BELOW ITS OWN OBITUARY.
+  //    The comment above says the count was the wrong invariant and that each token is pinned
+  //    by NAME AND POSITION instead -- and then the next line pinned `TOKENS.length === 6`
+  //    anyway. It fired on 2026-08-06 when the server grew `confirmed`, for the third time,
+  //    with the client correct and the assertion stale. Knowing the rule clearly is evidently
+  //    not the same as following it, which is why the fix is a DELETION and not a bumped number.
+  //
+  //    The rule this repository keeps relearning: PIN THE MEMBERS, NOT THE COUNT.
+  //
+  // ⚠️ AND THE HONEST HALF, MEASURED RATHER THAN ASSERTED. A first draft of this comment
+  //    claimed the positional pins above already catch an invented token. THEY DO NOT, and the
+  //    mutant said so: appending `'provisional'` at index 7 left this harness at 4079/0. The
+  //    length pin really was covering that, badly -- it caught the invented token and the
+  //    legitimate one with the same useless message ("got 7 want 6").
+  //
+  //    That boundary is NOT re-owned here, because owning it means writing the whole
+  //    vocabulary down a fourth time and this round is about a word being enumerated in too
+  //    many places. It is owned by `contracts/map2_seam/client_harness.mjs`, which compares
+  //    the token SET against the shared contract and, on the same mutant, fails naming the
+  //    extra word. A set pin still needs an edit when the server legitimately grows -- but it
+  //    edits with the new word in the failure text, which is a maintenance step rather than a
+  //    riddle. This file pins the members it can see and points at the owner for the rest.
+  //
+  //    What IS kept here is the invariant a length pin cannot express at all: the vocabulary
+  //    is a SET. A token repeated past the last positional pin is caught by nothing above and
+  //    by nothing in the contract's set comparison either, and unlike a length it stays true
+  //    however many tokens the server adds.
+  eq('B. the vocabulary is a set -- no token appears twice',
+    new Set(TOKENS).size, TOKENS.length);
 
   // The 516: it is real, and it is what the module's header now claims. Rotation is stored as
   // 0 on 516 of 668 rows and on none of them did a person choose it -- 320 written by the
@@ -582,9 +612,12 @@ function run(mod) {
     eq(`G. ...including the geometry verdict`, geoDecl(chosenMeta(from)), geoDecl(FULL));
     eq(`G. ...and the frame stays usable`, usable(mkFrame(chosenMeta(from))).ok, true);
   }
-  // The vocabulary did not grow. This is the assertion that fails if somebody later "fixes"
-  // this by minting a seventh token instead.
-  eq('G. no token was minted for this', TOKENS.length, 6);
+  // No token was minted FOR THIS. The claim is about `frame_chosen_from`, and the assertion
+  // that carries it is the membership one on the next line -- `data`/`panel` must not appear
+  // in the vocabulary. The length pin that used to stand here could not express that: it went
+  // red on 2026-08-06 for `confirmed`, a token the SERVER minted and this side copied, which
+  // is the opposite of what it was written to catch. Deleted rather than bumped, same reason
+  // as at the vocabulary block above -- PIN THE MEMBERS, NOT THE COUNT.
   for (const from of mod.FRAME_CHOSEN_FROM) {
     ok(`G. \`${from}\` is not a token`, !TOKENS.includes(from));
     for (const a of NAMES) {

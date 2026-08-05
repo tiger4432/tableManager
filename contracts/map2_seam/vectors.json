@@ -696,6 +696,104 @@
             "source": "declared"
           }
         }
+      },
+      {
+        "id": "confirmed_identity_frame",
+        "$why": "🔴 **이 케이스 하나가 `frame_confirmed_from`이 존재하는 이유 전부다.** 씨앗 단위의 확정 승자는 `rot0_front`, 즉 **정확히 무증거 쌍**이라, 확정을 표지 없이 쓰면 나오는 행이 아무도 손대지 않은 맵의 행과 **바이트 동일**해진다. 표지가 없으면 규칙 N이 그 위를 덮어써 `indeterminate`(「아무도 고른 증거가 없다」)를 내고 확정은 관측 불가능해진다. y반전과 start는 확정 대상이 아니므로 표지가 있어도 그대로 채점된다 — 축 셋을 한 표지로 덮으면 확정된 적 없는 축이 확정을 사칭한다.",
+        "$kills": "A port with no frame-confirmation branch. Measured on the client before 2026-08-06: rotation and side came back `indeterminate` on a frame a human had just confirmed -- the screen saying nobody decided anything about the one axis somebody did decide. It also kills a port that applies the marker to all five axes: `grid_y_invert` and `grid_start_*` must keep their own tokens here, and a port that overwrote y-invert would change what the confirmed rotation and side MEAN, since they are expressed relative to it.",
+        "meta": {
+          "rotation": 0,
+          "side": "front",
+          "grid_y_invert": false,
+          "grid_start_x": 1,
+          "grid_start_y": 1,
+          "frame_confirmed_from": {
+            "table": "valid_die_ref",
+            "map_id": "R1",
+            "confirmation_uid": "cfm-0005",
+            "confirmed_by": "operator",
+            "confirmed_at": "2026-08-06T00:00:00Z"
+          }
+        },
+        "expect": {
+          "rotation": { "value": 0, "source": "confirmed" },
+          "side": { "value": "front", "source": "confirmed" },
+          "grid_y_invert": { "value": false, "source": "indeterminate" },
+          "grid_start_x": { "value": 1, "source": "declared" },
+          "grid_start_y": { "value": 1, "source": "declared" }
+        }
+      },
+      {
+        "id": "confirmation_outranks_the_registrar_on_the_frame_axes_only",
+        "$why": "확정 표지와 등록기 표지가 함께 있는 행. 확정 쓰기는 방위 축의 등록기 표지를 지우지 않으므로 둘이 공존한다. 회전·면은 확정이 이기고, **나머지 세 축은 등록기 그대로**다 — 확정이 덮은 것은 그 둘뿐이기 때문이지 서열 때문이 아니다.",
+        "$kills": "A port that lets one marker win the whole meta. Answering `auto_registered` on rotation/side erases the confirmation; answering `confirmed` on y-invert and start claims a confirmation that never happened on axes nothing ever scored. Both directions are silent, and the row looks identical either way.",
+        "meta": {
+          "auto_registered": true,
+          "rotation": 0,
+          "side": "front",
+          "grid_y_invert": false,
+          "grid_start_x": 0,
+          "grid_start_y": 0,
+          "frame_confirmed_from": {
+            "table": "valid_die_ref",
+            "map_id": "R1",
+            "confirmation_uid": "cfm-0005",
+            "confirmed_by": "operator",
+            "confirmed_at": "2026-08-06T00:00:00Z"
+          }
+        },
+        "expect": {
+          "rotation": { "value": 0, "source": "confirmed" },
+          "side": { "value": "front", "source": "confirmed" },
+          "grid_y_invert": { "value": false, "source": "auto_registered" },
+          "grid_start_x": { "value": 0, "source": "auto_registered" },
+          "grid_start_y": { "value": 0, "source": "auto_registered" }
+        }
+      },
+      {
+        "id": "confirmation_does_not_promote_an_unreadable_value",
+        "$why": "확정 표지 아래에 **읽히지 않는** 면 값(`\"Back\"`)이 있다. 확정이 「읽을 수 없는 값」을 확정으로 승격시키면 그것이 정확히 이 어휘가 막는 사칭이다. 값도 표지를 얻지 못하고 대체값으로 떨어진다. ⚠️ 회전은 **키가 아예 없는데도** `absent`가 아니라 `unparsable`이 된다 — 확정 분기가 부재와 파싱실패를 한데 접기 때문이고, 같은 어휘의 `absent_key_is_not_unparsable`과 나란히 놓으면 어색하다. 서버의 성질이므로 **그대로 옮긴다**(총괄 보고 대상).",
+        "$kills": "A port that stamps `confirmed` on whatever is in the key. `\"Back\"` would become a confirmed declaration of the back side while the server reads it as front -- every row of the map mirrored between the two answers, with a confirmation record vouching for it. Also kills a port that 'improves' the absent/unparsable collapse: the two sides must answer the same word, and a port that corrects the side it is porting is a second implementation.",
+        "meta": {
+          "side": "Back",
+          "grid_y_invert": false,
+          "grid_start_x": 1,
+          "grid_start_y": 1,
+          "frame_confirmed_from": {
+            "table": "valid_die_ref",
+            "map_id": "R1",
+            "confirmation_uid": "cfm-0005",
+            "confirmed_by": "operator",
+            "confirmed_at": "2026-08-06T00:00:00Z"
+          }
+        },
+        "expect": {
+          "rotation": { "value": 0, "source": "unparsable" },
+          "side": { "value": "front", "source": "unparsable" },
+          "grid_y_invert": { "value": false, "source": "indeterminate" },
+          "grid_start_x": { "value": 1, "source": "declared" },
+          "grid_start_y": { "value": 1, "source": "declared" }
+        }
+      },
+      {
+        "id": "empty_marker_is_inert",
+        "$why": "🔴 **표지가 있는데 비어 있다.** 쓰는 쪽이 실제로 만들 수 있는 모양이다 — `confirmed_meta_for`의 마지막 줄이 `dict(mark or {})`라, 신원 없이 확정을 쓰면 `{}`가 저장된다. 서버는 `bool(m.get(...))`로 읽으므로 **자기 표지를 무시**하고(파이썬 `bool({})`는 거짓), 이는 「`confirmation_uid`가 없으면 표지 자격이 없다」는 서버 규칙과 일관된다. 그런데 자바스크립트 `!!{}`는 **참**이다.",
+        "$kills": "A port that reads markers with `!!`. It answers `confirmed` on precisely the rows the server treats as unmarked -- a divergence manufactured by the fix for a divergence, and invisible because the marker IS there. This was already live for `phys_assumed_from` before the confirmation work; the case pins all three markers to one truthiness rule.",
+        "meta": {
+          "rotation": 0,
+          "side": "front",
+          "grid_y_invert": false,
+          "grid_start_x": 1,
+          "grid_start_y": 1,
+          "frame_confirmed_from": {}
+        },
+        "expect": {
+          "rotation": { "value": 0, "source": "indeterminate" },
+          "side": { "value": "front", "source": "indeterminate" },
+          "grid_y_invert": { "value": false, "source": "indeterminate" },
+          "grid_start_x": { "value": 1, "source": "declared" },
+          "grid_start_y": { "value": 1, "source": "declared" }
+        }
       }
     ]
   },
@@ -1644,6 +1742,21 @@
             "confirmed_by": "operator",
             "confirmed_at": "2026-08-06T00:00:00Z"
           }
+        },
+        "expect": "declared"
+      },
+      {
+        "id": "empty_geometry_marker_is_inert",
+        "$why": "🔴 표지 키는 있는데 값이 비어 있다 — `confirmed_meta_for`의 `dict(mark or {})`가 실제로 만드는 모양이다. 파이썬 `bool({})`는 거짓이라 서버는 자기 표지를 무시하고 여섯 값을 그대로 읽어 `declared`를 낸다. 자바스크립트 `!!{}`는 참이다. `phys_assumed_from`에 대해 이 어긋남은 확정 작업 **이전부터 살아 있었다**(실측 2026-08-06: 서버 `declared`, 클라 `assumed`).",
+        "$kills": "A port that reads markers with `!!` instead of Python's truthiness. It reports a borrowed or confirmed geometry on exactly the rows the server treats as unmarked -- and it is invisible in review because the marker IS present, so the code reads correct. Pins one truthiness rule across all three markers rather than a second rule per marker.",
+        "meta": {
+          "phys_wafer_dia": 300,
+          "phys_chip_x": 7,
+          "phys_chip_y": 8,
+          "phys_offset_x": 0,
+          "phys_offset_y": 0,
+          "phys_edge_margin": 3,
+          "phys_assumed_from": {}
         },
         "expect": "declared"
       }

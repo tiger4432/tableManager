@@ -256,15 +256,21 @@ export const PHYS_ASSUMED_KEY = 'phys_assumed_from';
  *    A map that DECLARES its phys and only had its frame confirmed must not read as "geometry
  *    confirmed", and one marker could not say that.
  *
- * ⚠️ `FRAME_CONFIRMED_KEY` IS EXPORTED AND NOT YET READ BY THIS MODULE, AND THAT IS A KNOWN
- *    DIVERGENCE RATHER THAN AN OVERSIGHT -- stated here so it is not discovered as a surprise.
- *    `orientation_declaration` reads it and answers `confirmed` on `rotation`/`side`; the
- *    tainting rule below has no such branch, so on a confirmed `rot0_front` -- which is exactly
- *    the no-evidence triple, and the measured confirmation winner -- this side still answers
- *    `indeterminate`. The two sides disagree on that axis today. Closing it is a behaviour
- *    change to the per-axis port and is boarded for its own round, not smuggled into this one.
- *    `grid_y_invert` and `grid_start_*` are NOT covered by the frame marker on either side:
- *    y-invert is not a candidate axis, and start is a grid property answered by the borrow.
+ * ⚠️ THEY COVER DIFFERENT AXES AND ARE READ IN DIFFERENT PLACES. `PHYS_CONFIRMED_KEY` is read
+ *    by `geometryDeclaration` (the whole-meta physical verdict); `FRAME_CONFIRMED_KEY` is read
+ *    by `frameFromDeclaration`, on `rotation` and `side` ONLY. `grid_y_invert` and
+ *    `grid_start_*` are covered by neither on either side: y-invert is not a candidate axis, and
+ *    start is a grid property answered by the borrow marker instead.
+ *
+ * 🔴 STILL MISSING ON THIS SIDE, AND STATED RATHER THAN LEFT TO BE DISCOVERED:
+ *    `GRID_ASSUMED_KEY` (`grid_assumed_from`) has no client spelling at all. The server's
+ *    `orientation_declaration` reads it and answers `assumed` on `grid_start_x/y`; this module
+ *    has no branch, and start is marker-only, so a borrowed start comes back `declared` here --
+ *    a borrow impersonating a declaration, which is the same defect class as the two above.
+ *    Measured 2026-08-06: a meta with `grid_assumed_from` and `grid_start_x: 4` answers
+ *    `{4, assumed}` on the server and `{4, declared}` here. Boarded; not fixed in this round,
+ *    because it is a different marker with a different owner and closing it silently alongside
+ *    the confirmation work is how two changes become one unreviewable one.
  */
 export const PHYS_CONFIRMED_KEY = 'phys_confirmed_from';
 export const FRAME_CONFIRMED_KEY = 'frame_confirmed_from';
@@ -364,6 +370,35 @@ export const SIDES = Object.freeze(['front', 'back']);
 function isSilent(raw) {
   return raw === undefined || raw === null
     || (typeof raw === 'string' && raw.trim() === '');
+}
+
+/**
+ * IS A MARKER ACTUALLY THERE. Every marker on both sides is read by TRUTHINESS -- the server
+ * writes `if m.get(PHYS_ASSUMED_KEY):` and `bool(m.get(FRAME_CONFIRMED_KEY))` -- so this side
+ * must mean the same thing by "truthy", and JavaScript and Python do not agree about that.
+ *
+ * 🔴 `bool({})` IS FALSE IN PYTHON AND `!!{}` IS TRUE IN JAVASCRIPT, AND AN EMPTY MARKER IS A
+ *    SHAPE THE WRITER CAN REALLY PRODUCE: `confirmed_meta_for` ends with
+ *    `base[FRAME_CONFIRMED_KEY] = dict(mark or {})`, so a confirm written with no identity
+ *    stores `{}`. The server then IGNORES its own marker (measured: `geometry_declaration` on a
+ *    meta with `phys_confirmed_from: {}` answers `declared`), which is consistent with its rule
+ *    that a value without `confirmation_uid` has no right to the marker.
+ *
+ *    Written with `!!` the client would answer `assumed`/`confirmed` on exactly the rows the
+ *    server treats as unmarked -- a divergence created by the fix for a divergence. This was
+ *    ALREADY live for `phys_assumed_from` before this function existed; it is closed here
+ *    rather than left, because two truthiness rules inside one file is the defect this module
+ *    is about. Scored by `empty_marker_is_inert` in `contracts/map2_seam/vectors.json`.
+ *
+ * ⚠️ IT DOES NOT RE-CHECK ADMISSIBILITY. Whether `confirmation_uid` is present is the server's
+ *    rule and its enforcement point; asking it again here would be a second implementation of
+ *    it, and the two would drift. This asks only the question the server's own `if` asks.
+ */
+function markerPresent(raw) {
+  if (raw === undefined || raw === null || raw === false || raw === 0 || raw === '') return false;
+  if (Array.isArray(raw)) return raw.length > 0;
+  if (typeof raw === 'object') return Object.keys(raw).length > 0;   // Python: bool({}) is False
+  return !!raw;
 }
 
 /**
@@ -534,7 +569,7 @@ export function geometryDeclaration(meta) {
   //    memory and is never stored), and the branch is here anyway: this function's contract
   //    is that it is a PORT, in the same order, and a port with a missing branch is a port
   //    that answers differently the first time the other side hands it one.
-  if (m[PHYS_ASSUMED_KEY]) return ASSUMED;
+  if (markerPresent(m[PHYS_ASSUMED_KEY])) return ASSUMED;
   // 🔴 SECOND, AND THE ORDER IS THE RANKING (`map_overlay.geometry_declaration`, [D7]). A copy
   //    carrying BOTH markers means a confirmed value was then borrowed again, and a combined
   //    thing follows its weakest contributor (MAP_ALIGNMENT_SPEC 0.2 ⑨) -- so `assumed` wins.
@@ -548,7 +583,7 @@ export function geometryDeclaration(meta) {
   //    would state that somebody measured this map, on a row whose whole point is that nobody
   //    did. That is the impersonation (I4) the vocabulary exists to stop, produced by the side
   //    that is supposed to be following the vocabulary.
-  if (m[PHYS_CONFIRMED_KEY]) return CONFIRMED;
+  if (markerPresent(m[PHYS_CONFIRMED_KEY])) return CONFIRMED;
   if (m[AUTO_REGISTERED_KEY] === true) return AUTO_REGISTERED;
   for (const k of PHYS_KEYS) {
     const v = m[k];
@@ -683,8 +718,49 @@ export function frameFromDeclaration(meta, opts) {
   const noEvidence = {};
   for (const name of AXIS_NAMES) noEvidence[name] = d[name];
 
+  // ── [D7] THE CONFIRMED FRAME, READ BEFORE THE TAINTING RULE ───────────────────
+  //
+  // 🔴 WITHOUT THIS THE TAINTING RULE ERASES THE CONFIRMATION, AND THAT IS NOT A CORNER CASE --
+  //    IT IS THE COMMON ONE. The measured confirmation winner on the seed unit is `rot0_front`,
+  //    i.e. EXACTLY the no-evidence pair, so a confirmed frame produces a row byte-identical to
+  //    one nobody ever touched. Rule N then answers `indeterminate` -- "no evidence anybody
+  //    chose this" -- about an axis a human confirmed minutes ago. The marker is the only thing
+  //    that can carry the difference, which is why the server writes one (`map_overlay` [D7]).
+  //
+  // 🔴 IT REPLACES THE READ, IT DOES NOT ADJUST IT -- a straight port of
+  //    `orientation_declaration`'s `if frame_confirmed and axis in ("rotation", "side")`, whose
+  //    body `continue`s past every later branch. Two consequences are the SERVER's and are
+  //    mirrored rather than improved on:
+  //      · an unreadable value is NOT promoted. A confirmation that could turn `side: "Back"`
+  //        into a confirmed declaration is the impersonation this vocabulary exists to stop,
+  //        so the axis answers `unparsable` and the value falls back to the substitute.
+  //      · an ABSENT key under a confirmation also answers `unparsable`, not `absent`. That
+  //        collapse is a real quirk of the server branch (measured: `{side, y_invert, start}`
+  //        with no `rotation` and a frame marker answers `{value: 0, source: 'unparsable'}`),
+  //        and it sits oddly beside `absent_key_is_not_unparsable` elsewhere in this same
+  //        vocabulary. It is reported, not silently corrected here: a port that "fixes" the
+  //        side it is porting is a second implementation wearing the clothes of a bug fix.
+  //
+  // ⚠️ TWO AXES, NOT THREE. `invertY` is not a candidate axis (`candidate_frames` searches 4
+  //    rotations x 2 sides; the y mirror is cancelled by aliasing and nothing scores it), so it
+  //    was never confirmed -- and overwriting it would not merely assert an unresolved fact, it
+  //    would change what the confirmed rotation and side MEAN, because they are expressed
+  //    relative to the y-invert already written on the map. `startX`/`startY` are grid
+  //    properties and are answered by the borrow marker, not by this one.
+  const frameConfirmed = markerPresent(m && m[FRAME_CONFIRMED_KEY]);
+  if (frameConfirmed) {
+    for (const name of ['rotation', 'side']) {
+      const a = axes[name];
+      axes[name] = (a.source === DECLARED)
+        ? axis(name, a.raw, a.value, CONFIRMED, a.legacy)
+        : axis(name, a.raw, d[name], UNPARSABLE, a.legacy);
+    }
+  }
+
   for (const name of AXIS_NAMES) {
     const a = axes[name];
+    // The confirmed axes leave with the token the marker gave them: `continue`ing here is the
+    // same `continue` the server's branch performs, and it is what keeps Rule N off them.
     if (a.source !== DECLARED) continue;              // absent / unparsable are already final
     let source = DECLARED;
     if (!VALUE_CAN_INDICATE_PROVENANCE.includes(name)) {
