@@ -41,6 +41,12 @@ UNRANKED = 99
 WARRANT_CONFIRMED = "confirmed"
 WARRANT_NOT_DECLARED = "not_declared"
 
+# [D3] 「빌린 기하 위에서 정렬됨」 토큰. 어휘의 정본은 `map_overlay.GEOMETRY_ASSUMED`이고
+# 여기 이름을 붙이는 것은 임포트 사이클 없이 롤업 한 줄을 쓰기 위해서다 —
+# `test_map_alignment_assumption.py`가 두 철자가 같은지 못 박는다(`bonding_plan`의
+# BINDING_* 블록과 같은 규율).
+_ASSUMED = "assumed"
+
 
 class ConfirmationRefused(Exception):
     """확정을 거절한다. 사유 문장은 서버가 만든다(`map_alignment`와 같은 규율)."""
@@ -156,6 +162,39 @@ def warrant_of(header) -> str:
             else WARRANT_CONFIRMED)
 
 
+def _geometry_bases(db, contributors: list) -> dict:
+    """기여자마다 **무엇 위에서 정렬됐는가** → `{(source_table, map_id): 토큰}`.
+
+    🔴 **요청이 실어 오는 값이 아니라 여기서 유도한다.** 클라가 보내면 그것이 같은 사실의
+       두 번째 철자가 되고, 낡은 클라 하나가 이 사실을 통째로 흘린다 — 그런데 이 사실은
+       정확히 「나중에 가정이 거짓이면 어느 결정이 그 위에 있었나」에 답하려고 남기는 것이라
+       흘리면 기록의 존재 이유가 사라진다.
+
+    🔴 **재채점이 아니다.** 이미 DB에 있는 두 사실만 읽는다: 그 맵의 메타가 기하를 선언하고
+       있는가, 그리고 이 기여자가 제외됐는가. 판정 규칙 자체는 `map_alignment` 하나에 있다.
+
+    질의는 **테이블마다 한 번**이다(맵 하나씩 읽으면 단위의 맵 수만큼 왕복이 된다).
+    `_load_metas`가 IN 절을 자기 상한으로 청킹하므로 여기서 다시 자르지 않는다.
+    """
+    import map_alignment
+
+    by_table = {}
+    for c in contributors or []:
+        t = c.get("source_table")
+        if t:
+            by_table.setdefault(str(t), set()).add(str(c.get("map_id") or ""))
+    metas = {}
+    for table, ids in by_table.items():
+        metas.update({(table, m): meta
+                      for m, meta in map_alignment._load_metas(db, table, sorted(ids)).items()})
+    out = {}
+    for c in contributors or []:
+        key = (str(c.get("source_table") or ""), str(c.get("map_id") or ""))
+        out[key] = map_alignment.geometry_basis_of(metas.get(key),
+                                                   c.get("excluded_reason"))
+    return out
+
+
 def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
                         confirmed_by: str, frames: dict = None,
                         ruling: dict = None, reference: dict = None,
@@ -201,6 +240,9 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
     reference = reference or {}
 
     weakest, weakest_pri = weakest_contributor(contributors)
+    # [D3] 무엇 위에서 정렬됐는가 — 기여자마다. 머리의 `geometry_assumed`는 이 값들의
+    # 롤업이지 두 번째 규칙이 아니다(`weakest_source`와 같은 계급).
+    bases = _geometry_bases(db, contributors)
     uid = "fc_" + uuid.uuid4().hex
 
     # 판 번호. 경합은 idx_frame_conf_rule_unit_ver UNIQUE가 잡는다 — 애플리케이션 락을 두면
@@ -228,6 +270,7 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
         margin=_as_int(ruling.get("margin")),
         discriminating=_as_int(ruling.get("discriminating")),
         weakest_source=weakest, weakest_priority=weakest_pri,
+        geometry_assumed=any(v == _ASSUMED for v in bases.values()),
         confirmed_by=confirmed_by or "unknown",
         enrichment_row_id=enrichment_row_id,
     )
@@ -237,6 +280,8 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
         name = c.get("source_name") or "unknown"
         db.add(models.FrameConfirmationSource(
             confirmation_uid=uid,
+            geometry_basis=bases.get((str(c.get("source_table") or ""),
+                                      str(c.get("map_id") or ""))),
             role=c.get("role") or "unknown",
             source_table=c.get("source_table") or "unknown",
             map_id=c.get("map_id") or "",
@@ -285,7 +330,11 @@ def as_payload(db, header) -> dict:
         "reference": {"table": header.reference_table, "map_id": header.reference_map_id},
         "ruling": {"state": header.ruling_state, "reason_code": header.ruling_reason,
                    "winner": header.winner_frame, "margin": header.margin,
-                   "discriminating": header.discriminating},
+                   "discriminating": header.discriminating,
+                   # [D3] 가정 위에서 나온 판정은 **다른 사실**이다. 판정 dict 안에 두는
+                   # 이유는 `/view`의 `ruling`이 같은 자리에 같은 낱말을 싣기 때문이다 —
+                   # 화면이 조회와 확정을 같은 코드로 그린다.
+                   "geometry_assumed": header.geometry_assumed},
         # 합쳐진 기록은 최약 기여자를 따라간다(스펙 §0.2 ⑨). 화면이 이 값을 다시 유도하지
         # 않도록 계산 결과를 실어 보낸다.
         "weakest": {"source_name": header.weakest_source,
@@ -299,7 +348,10 @@ def as_payload(db, header) -> dict:
                      "shift": (None if r.shift_dx is None and r.shift_dy is None
                                else {"dx": r.shift_dx, "dy": r.shift_dy}),
                      "agreement": r.agreement, "discriminating": r.discriminating,
-                     "excluded_reason": r.excluded_reason} for r in rows],
+                     "excluded_reason": r.excluded_reason,
+                     # 이 소스가 **무엇 위에서** 정렬됐는가. 제외된 소스는 정렬되지 않았고
+                     # 그 사실은 `excluded_reason`이 이미 말한다.
+                     "geometry_basis": r.geometry_basis} for r in rows],
     }
 
 

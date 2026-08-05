@@ -57,6 +57,12 @@ DDL_TABLES = [
     "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS rule_name TEXT",
     "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS unit_key TEXT",
     "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS decision_key JSONB",
+    # [D3] 이 판이 「같은 웨이퍼」 가정 위에 서 있는가(스펙 §9ⓐ). NULL = 이 어휘가 생기기
+    # 전에 남은 판이고, 「가정 아님」이 아니라 「모름」이다 — 기본값을 두면 옛 행들이 한
+    # 번도 물어진 적 없는 질문에 「아니오」라고 답하게 된다.
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS geometry_assumed BOOLEAN",
+    "ALTER TABLE frame_confirmation_source "
+    "ADD COLUMN IF NOT EXISTS geometry_basis TEXT",
     # 첫 선언의 흔적 컬럼은 **지우지 않고 NULL을 허용**하는 것으로 물러난다(추가 전용 규율).
     # 다른 decision_key를 가진 규칙에서는 둘 다 NULL이 된다.
     "ALTER TABLE frame_confirmation ALTER COLUMN dt_eqp DROP NOT NULL",
@@ -87,6 +93,10 @@ DDL_TABLES = [
     # 「이 단위의 현행 판」 — 지난 판이 쌓여도 이 인덱스는 안 자란다.
     "CREATE INDEX IF NOT EXISTS idx_frame_conf_rule_live "
     "ON frame_confirmation (rule_name, unit_key) WHERE superseded_by IS NULL",
+    # [D3] 「어느 결정이 가정 위에 서 있나」. 부분 인덱스라 가정 없는 판은 안 들어간다.
+    # models.py에도 같은 선언이 있다.
+    "CREATE INDEX IF NOT EXISTS idx_frame_conf_assumed "
+    "ON frame_confirmation (rule_name, unit_key) WHERE geometry_assumed",
     # 첫 선언의 흔적 색인. 다른 규칙에서는 두 컬럼이 NULL이고 UNIQUE는 NULL을 서로 다르게
     # 보므로 아무것도 막지 않는다 - 지우지 않는 것은 추가 전용 규율 때문이다.
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_frame_conf_unit_ver "

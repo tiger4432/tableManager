@@ -254,6 +254,16 @@ def _grid_of(meta: dict | None) -> dict | None:
         return None
 
 
+def grid_dims(meta: dict | None):
+    """(cols, rows) 또는 None. 격자 치수만 묻는 자리의 **공개 철자**.
+
+    `_grid_of`를 다시 구현하지 않고 그대로 부른다 — 치수를 읽는 식이 둘이 되면 그 둘이
+    갈리는 날 좌표 검사와 제외 판정이 서로 다른 격자를 말한다(I6).
+    """
+    g = _grid_of(meta)
+    return None if g is None else (g["cols"], g["rows"])
+
+
 def _side_of(meta: dict | None) -> str:
     return str((meta or {}).get("side", "front") or "front")
 
@@ -316,6 +326,31 @@ GEOMETRY_AUTO_REGISTERED = "auto_registered"    # 값은 있지만 선언이 아
 GEOMETRY_ABSENT = "absent"                      # 여섯 키 중 하나 이상이 없다
 GEOMETRY_UNPARSABLE = "unparsable"              # 키는 있는데 수가 아니다
 
+# ═══ [D3] 빌려 온 웨이퍼 규격 — 선언이 아니고, 선언이 될 수도 없다 (2026-08-05) ═════════
+#
+# 제품 소유자가 지적한 순환: **규격이 선언돼야 채점하는데, 조작자가 정렬을 도는 이유가
+# 바로 그 맵의 규격을 모르기 때문**이다. 답을 먼저 내놓으라고 요구하는 셈이다.
+#
+# 총괄 판정(스펙 §9ⓐ): 소스 맵에 규격 선언이 없고 조작자가 **선언된 바닥**을 골랐으면,
+# 둘이 같은 웨이퍼의 치수를 공유한다고 **가정하고** 채점한다. 「이 둘은 같은 웨이퍼다」는
+# 애초에 두 맵을 정렬하는 전제이므로 조작자가 낼 자격이 있는 주장이다.
+#
+# 🔴 **그 값은 소스 메타에 쓰지 않는다.** 쓰는 순간 그것은 누군가 잰 값처럼 읽히고,
+#    나중에 아무도 그것이 가정이었다는 것을 알 수 없다 — I4가 말하는 사칭의 정확한 형태다.
+#    그래서 여기서 하는 일은 **계산용 사본 하나를 메모리에 만드는 것**뿐이고, 그 사본은
+#    표지를 달고 다니며 `geometry_declaration`에 **`declared`가 아니라고** 대답한다.
+#
+# 🔴 **표지는 값보다 먼저 보고, `auto_registered`보다도 먼저 본다.** 빌린 사본은 여섯 키를
+#    전부 바닥 값으로 덮었으므로 그 아래 값들은 더 이상 등록기가 쓴 것이 아니다. 다만
+#    방위 축(`rotation`/`side`/`grid_y_invert`/`grid_start_*`)의 `auto_registered` 표지는
+#    **그대로 남는다** — 빌린 것은 웨이퍼 규격뿐이고 방위는 손대지 않기 때문이다.
+#
+# ⚠️ 이 토큰은 클라 `physDeclaration`의 어휘에 **없다**. 클라는 빌린 메타를 만들지 않으므로
+#    생성할 수 없고(빌리기는 서버 정렬 경로 안에서만 일어난다), 정렬 payload가 실어 보내는
+#    출처 문자열로만 만난다.
+PHYS_ASSUMED_KEY = "phys_assumed_from"          # {"table":..., "map_id":...} — 어디서 빌렸나
+GEOMETRY_ASSUMED = "assumed"                    # 값은 바닥에서 빌려 왔다 — 선언이 아니다
+
 # 사유는 **사람이 읽는 자리에서 한 번만** 사람 말로 옮긴다(클라 `7ea2c2f`와 같은 규율).
 # 판정은 `geometry_declaration`이 이미 끝냈고 여기서는 표시만 한다 — 두 번째 판정이 아니다.
 _GEOMETRY_REFUSAL_TEXT = {
@@ -327,19 +362,24 @@ _GEOMETRY_REFUSAL_TEXT = {
         "미등록입니다"),
     GEOMETRY_UNPARSABLE: (
         "물리 규격(phys_*) 값이 수로 읽히지 않습니다"),
+    GEOMETRY_ASSUMED: (
+        "물리 규격을 기준 맵에서 빌려 온 값입니다 ― 이 맵에 대한 선언이 아닙니다"),
 }
 
 
 def geometry_declaration(meta: dict | None) -> str:
     """**이 맵의 물리 기하가 「선언」인가** — 그 질문의 유일한 철자.
 
-    반환은 위 네 토큰 중 하나이며 클라 `physDeclaration`의 `source`와 같은 어휘다.
-    `GEOMETRY_DECLARED`가 아니면 그 기하는 정렬의 근거가 되지 못한다.
+    반환은 위 다섯 토큰 중 하나이며 그중 넷은 클라 `physDeclaration`의 `source`와 같은
+    어휘다(`GEOMETRY_ASSUMED`는 서버 정렬 경로에서만 생긴다 — §[D3]).
+    `GEOMETRY_DECLARED`가 아니면 그 기하는 **이 맵의 선언**이 아니다.
 
     ⚠️ 표지를 **값보다 먼저** 본다. 표지의 뜻이 "아래 값들은 증거가 아니다"이므로 값을
        먼저 읽어 통과시키면 표지가 아무것도 하지 않는다.
     """
     m = meta if isinstance(meta, dict) else {}
+    if m.get(PHYS_ASSUMED_KEY):
+        return GEOMETRY_ASSUMED
     if m.get(AUTO_REGISTERED_KEY) is True:
         return GEOMETRY_AUTO_REGISTERED
     for k in PHYS_KEYS:
@@ -357,11 +397,73 @@ def geometry_refusal(meta: dict | None) -> str | None:
     """기하가 선언이 **아닌** 이유(사람 말). 선언이면 None.
 
     판정은 하지 않는다 — `geometry_declaration`을 호출해 그 토큰에 문장을 붙일 뿐이다.
+
+    ⚠️ 「선언인가」와 「계산할 근거가 있는가」는 **다른 질문**이다. 빌린 규격은 선언이
+       아니지만 좌표는 만들어 낸다 — 그 질문은 `geometry_computable`이 답한다.
     """
     token = geometry_declaration(meta)
     if token == GEOMETRY_DECLARED:
         return None
     return _GEOMETRY_REFUSAL_TEXT[token]
+
+
+def geometry_computable(meta: dict | None) -> str | None:
+    """좌표를 계산할 **근거**가 있는가 — 없으면 사유(사람 말), 있으면 None.
+
+    `declared`와 `assumed` 둘 다 근거가 된다. 가정은 조작자가 낸 주장이고 그 주장 아래에서
+    나온 답은 **주장과 함께** 기록되므로(payload·확정 기록), 근거이면서 선언은 아니다.
+
+    🔴 두 번째 판정이 아니다 — 판정은 `geometry_declaration` 하나가 하고 여기서는 그 토큰에
+       질문 하나를 더 물을 뿐이다. 몸통을 복사하면 두 답이 갈리는 날이 온다(I6).
+    """
+    if geometry_declaration(meta) == GEOMETRY_ASSUMED:
+        return None
+    return geometry_refusal(meta)
+
+
+def assume_phys_from(meta: dict | None, basis_meta: dict | None,
+                     basis: dict = None) -> dict | None:
+    """소스 메타 + **바닥에서 빌린 웨이퍼 규격** → 계산용 사본. 못 빌리면 None.
+
+    🔴 **아무것도 쓰지 않는다.** 반환은 새 dict이고 호출자는 이것을 DB에 넣지 않는다.
+       이 함수가 만든 값이 `wafer_map_metadata`에 도달하는 경로는 저장소에 없어야 한다 —
+       그것이 있으면 가정이 선언으로 승격되고, 나중에 아무도 둘을 구별할 수 없다.
+
+    `basis`: `{"table":..., "map_id":...}` — 어디서 빌렸는지. 표지 값이 되어 payload와
+        확정 기록에 그대로 실린다. 「나중에 이 가정이 거짓으로 밝혀지면 어느 결정이 그
+        위에 서 있었나」가 물어질 수 있어야 하고, 그러려면 출처가 기록에 있어야 한다.
+
+    빌리지 **않는** 것 — 이 목록이 이 함수의 내용이다:
+      · `grid_cols`/`grid_rows` — 맵의 성질이지 웨이퍼의 성질이 아니다. 한 웨이퍼의 두 맵이
+        서로 다르게 잘려 있을 수 있으므로 빌리면 없는 사실을 만든다. 없으면 **빌리지 않고
+        거절**한다(호출자가 이름을 대고 거절한다).
+      · `rotation`/`side`/`grid_start_*`/`grid_y_invert` — **풀고 있는 미지 그 자체다.**
+        바닥의 프레임을 베끼는 것은 답을 먼저 적어 놓고 그 답이 맞는지 묻는 것이다.
+        (실측은 `test_map_alignment_assumption.py`가 들고 있다 — 두 축 모두 채점이 보는
+         좌표를 통째로 옮긴다.)
+
+    거절하는 경우:
+      · 소스 기하가 이미 `declared` — 잰 값을 빌린 값으로 덮지 않는다. 가정은 **빈 자리**에만
+        들어간다.
+      · 바닥 기하가 `declared`가 아님 — 가정 위에 가정을 쌓지 않는다.
+      · 소스에 격자 치수가 없음 — 위 목록의 첫 줄.
+    """
+    if not isinstance(meta, dict) or not isinstance(basis_meta, dict):
+        return None
+    if geometry_declaration(meta) == GEOMETRY_DECLARED:
+        return None
+    if geometry_declaration(basis_meta) != GEOMETRY_DECLARED:
+        return None
+    if _grid_of(meta) is None:
+        return None
+    sig = _phys_signature(basis_meta)
+    if sig is None:                                   # 도달 불가 — declared가 이미 보장한다
+        return None
+    out = dict(meta)
+    for k, v in zip(PHYS_KEYS, sig):
+        out[k] = v
+    out[PHYS_ASSUMED_KEY] = dict(basis or {}) or True
+    return out
 
 
 # ═══ [D2] 방위 축에는 출처가 없다 (2026-08-05) ═══════════════════════════════════════════
@@ -564,6 +666,10 @@ def frame_axes(meta: dict | None):
     지름길로 통과해 버리고(변환 경로의 치수 검사를 우회), phys가 빠져 있으면 웨이퍼 원
     크롭(바운딩박스)이 다른 두 맵이 무보정으로 붙는다.
 
+    [D3] 빌린 규격도 **값으로** 들어간다(표지는 안 넣는다). 변환기가 쓰는 것은 값뿐이라
+    같은 바닥에서 빌린 두 맵이 같은 변환기를 공유하는 것이 맞고, 표지를 축으로 넣으면
+    튜플 폭만 늘고 답은 그대로다. 「빌린 값인가」는 좌표가 아니라 기록의 질문이다.
+
     [D1] phys는 **바이트 그대로**(`_phys_signature`) 넣는다 — 여기에 출처 규칙을 섞지
     않는다. 이 튜플이 완전히 같다는 것은 **선언된 모든 축이 일치**한다는 뜻이고, 그때
     변환은 항등이므로 피치가 무엇이든(재었든 합성이든) 답이 달라질 수 없다. "재지 않은
@@ -682,11 +788,14 @@ def make_frame_transform(source_meta: dict, target_meta: dict):
     [명시 실패] 다음은 그리지 않고 ValueError를 낸다(조용한 오답 < 소리 나는 실패):
       - 메타 부재 / 격자 규격 부재
       - 물리 격자 치수 불일치 (같은 웨이퍼 규격이 아님)
-      - **기하가 선언이 아님**(`geometry_declaration != declared`) — 값이 없거나(absent),
+      - **기하를 계산에 쓸 근거가 없음**(`geometry_computable`) — 값이 없거나(absent),
         수가 아니거나(unparsable), **있지만 아무도 재지 않았거나**(auto_registered).
         셋 다 같은 결론이다: 바운딩박스를 재현할 근거가 없으면 좌표를 보증할 수 없다.
         🔴 세 번째가 [D1]이 더한 것이다. 종전 관문은 "서명이 **없으면**"이었고 합성된
            1x1 서명은 존재하며 형식도 온전하므로 그대로 통과했다(§geometry_declaration).
+        🔴 [D3] 관문이 묻는 것은 **선언인가가 아니라 근거가 있는가**다. 바닥에서 빌린
+           규격(`assumed`)은 선언이 아니지만 근거는 된다 — 그 사실은 삼키지 않고 payload와
+           확정 기록이 함께 나른다(`map_alignment`·`frame_confirmation`).
     """
     from utils.coordinate_transformer import WaferMapCoordinateTransformer
 
@@ -700,8 +809,8 @@ def make_frame_transform(source_meta: dict, target_meta: dict):
     # [D1] 양쪽 다 **이름을 대고** 거절한다. 어느 쪽 맵을 고쳐야 하는지가 조작자에게
     # 필요한 유일한 정보이고, 빈 결과나 그럴듯한 결과는 에러보다 나쁘다.
     refusals = [f"{role} 맵: {why}"
-                for role, why in (("소스", geometry_refusal(source_meta)),
-                                  ("타깃", geometry_refusal(target_meta)))
+                for role, why in (("소스", geometry_computable(source_meta)),
+                                  ("타깃", geometry_computable(target_meta)))
                 if why is not None]
     if refusals:
         raise ValueError(

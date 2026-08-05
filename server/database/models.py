@@ -455,6 +455,16 @@ class FrameConfirmation(Base):
     weakest_source = Column(String, nullable=False)
     weakest_priority = Column(Integer, nullable=False)
 
+    # [D3] **이 판이 가정 위에 서 있는가.** 규격 선언이 없는 소스 맵을 기준 맵의 웨이퍼
+    # 치수를 빌려 채점했으면 True다(스펙 §9ⓐ). 가정 위에서 나온 판정은 선언된 기하 위에서
+    # 나온 판정과 **다른 사실**이고, 확정을 기록하는 이유 자체가 「나중에 그 가정이 거짓으로
+    # 밝혀지면 어느 결정이 그 위에 서 있었나」에 답하기 위해서다 — `cell_sources`의
+    # `confirmation_uid`와 같은 논거다. 그 질문이 조인 없이 한 색인으로 풀리도록 머리에 둔다.
+    # ⚠️ 이 값은 요청이 실어 오지 않는다. 기여자 행의 `geometry_basis`에서 **쓰기 시점에
+    #    유도**한다(`weakest_source`와 같은 계급: 저장된 계산이지 두 번째 규칙이 아니다).
+    # NULL = 이 어휘가 생기기 전에 남은 판. 「가정 아님」이 아니라 「모름」이다.
+    geometry_assumed = Column(Boolean, nullable=True)
+
     confirmed_by = Column(String, nullable=False)
     confirmed_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -477,6 +487,12 @@ class FrameConfirmation(Base):
         # 「이 단위의 현행 판」 조회 — 부분 인덱스라 지난 판이 쌓여도 크기가 안 자란다.
         Index("idx_frame_conf_rule_live", "rule_name", "unit_key",
               postgresql_where=text("superseded_by IS NULL")),
+        # [D3] 「어느 결정이 가정 위에 서 있나」 — 가정이 거짓으로 밝혀진 날 물어질 질문
+        # 하나. 부분 인덱스라 가정 없는 판이 아무리 쌓여도 크기가 안 자란다.
+        # ⚠️ 이 선언은 **두 곳**이다 — migrations/add_frame_confirmation.py도 같이 고쳐야
+        # 한다(create_all은 기존 테이블에 인덱스를 만들지 않는다).
+        Index("idx_frame_conf_assumed", "rule_name", "unit_key",
+              postgresql_where=text("geometry_assumed")),
         # ⚠️ 아래 둘은 첫 선언의 흔적이다(위 dt_eqp/product 주석 참조). 다른 규칙에서는 두 값이
         # NULL이고 PostgreSQL의 UNIQUE는 NULL을 서로 다르게 보므로 아무것도 막지 않는다 —
         # 유일성을 실제로 강제하는 것은 위의 (rule_name, unit_key, version)이다.
@@ -517,6 +533,14 @@ class FrameConfirmationSource(Base):
     # 합의에 못 낀 소스도 **기록한다**. 빠진 소스가 조용히 사라지면 나중에 그것이 없었던
     # 것인지 거절된 것인지 구별할 수 없다. 값은 map_alignment.EXCLUDE_*.
     excluded_reason = Column(String, nullable=True)
+
+    # [D3] 이 소스가 **무엇 위에서** 정렬됐는가 — `map_overlay.GEOMETRY_*` 토큰.
+    # `declared`면 이 맵이 스스로 선언한 기하 위에서, `assumed`면 기준 맵에서 빌린 웨이퍼
+    # 치수 위에서 정렬됐다는 뜻이다(스펙 §9ⓐ). 제외된 소스는 어디에도 정렬되지 않았으므로
+    # 자기 토큰(`auto_registered`·`absent`…)을 그대로 갖는다 — 일어나지 않은 일에 근거를
+    # 붙이지 않는다. 판정은 `map_alignment.geometry_basis_of` 하나가 한다.
+    # NULL = 이 어휘가 생기기 전의 행. 「선언 위였다」가 아니라 「모름」이다.
+    geometry_basis = Column(String, nullable=True)
 
     __table_args__ = (
         Index("idx_frame_conf_src_unique", "confirmation_uid", "role", "source_table",
