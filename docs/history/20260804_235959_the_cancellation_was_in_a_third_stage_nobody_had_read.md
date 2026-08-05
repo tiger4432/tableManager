@@ -4,6 +4,7 @@
 > **선행:** [`20260804_232504`](./20260804_232504_the_arithmetic_was_right_and_the_shared_box_was_the_premise_that_was_not.md)(`3898d3e`) · [`20260804_231409`](./20260804_231409_five_lenses_in_one_day_and_a_fixture_the_synthesis_invented.md)(`2961ec3`)
 > **대상:** `docs/spec/MAP_ALIGNMENT_SPEC.md` (**+204 / −35**) · `docs/process/PROJECT_STATUS.md` (**+11 / −6**) ― **2파일, 코드 0줄**
 > **스위트:** 파이썬/JS 스위트는 실행하지 않았다(docs 전용 커밋). 이 커밋이 인용하는 실측은 **전용 하네스**(`server/tests/test_grid_y_invert_aliasing.py`)와 운영 DB 읽기 전용 조회에서 나왔고, **하네스는 이 커밋에 포함되지 않았다** ― 아래 「그때 남아 있던 것」 참조.
+> **후속:** 아래 「그때 남아 있던 것」이 적은 네 항목 중 **셋이 14분 뒤 `90ad4ce`에서 닫혔다**(추적되지 않던 하네스 · §5의 초록 표시 · 보드 앵커 `:187`→`:174`) ― [`20260805_001300`](./20260805_001300_the_cited_fixture_was_not_in_the_repo_and_the_lane_that_read_the_diffs_found_it.md). **마스크 경로 상쇄의 미측정은 그때 닫히지 않았다.**
 
 ## 배경 ― 문서가 두 번 틀렸고, 그 문서가 착수 관문이었다
 

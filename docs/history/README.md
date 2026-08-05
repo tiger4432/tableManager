@@ -1,13 +1,40 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **336개** 이력. (거버넌스 규칙 #4)
+> 총 **363개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-05 16:58** — [The Offer Had No Control To Accept It](./20260805_165800_the_offer_had_no_control_to_accept_it.md)
+- **2026-08-05 16:55** — [Ask At Boot Whether The Models Still Match The Database](./20260805_165500_ask_at_boot_whether_the_models_still_match_the_database.md)
+- **2026-08-05 16:47** — [An Unreadable Start Is A Question Not A Locked Door](./20260805_164700_an_unreadable_start_is_a_question_not_a_locked_door.md)
+- **2026-08-05 16:41** — [The Offer Had No Reader For Two Commits](./20260805_164100_the_offer_had_no_reader_for_two_commits.md)
+- **2026-08-05 16:41** — [The Wafer Edge Knew Nothing About The Wafer](./20260805_164101_the_wafer_edge_knew_nothing_about_the_wafer.md)
+- **2026-08-05 16:15** — [The Contract Pinned The Count So The Failure Pointed At The Wrong Side](./20260805_161500_the_contract_pinned_the_count_so_the_failure_pointed_at_the_wrong_side.md)
+- **2026-08-05 16:11** — [Three Things Were Spelled Limit And One Of Them Was A Display Setting](./20260805_161100_three_things_were_spelled_limit_and_one_of_them_was_a_display_setting.md)
+- **2026-08-05 15:55** — [Requiring The Spec First Asks For The Answer Before The Question](./20260805_155500_requiring_the_spec_first_asks_for_the_answer_before_the_question.md)
+- **2026-08-05 15:54** — [Nothing Scored Was Reported As A Tie And The Right Branch Was Unreachable](./20260805_155400_nothing_scored_was_reported_as_a_tie_and_the_right_branch_was_unreachable.md)
+- **2026-08-05 13:37** — [Retyping A Machine Value Must Not Sign It As Yours](./20260805_133700_retyping_a_machine_value_must_not_sign_it_as_yours.md)
+- **2026-08-05 13:20** — [Where A Mapper Is The Wrong Tool And The Instrument That Would Have Scored It Green](./20260805_132000_where_a_mapper_is_the_wrong_tool_and_the_instrument_that_would_have_scored_it_green.md)
+- **2026-08-05 13:12** — [A Predicate Shipped As Data Is Defined By Whoever Applies It](./20260805_131200_a_predicate_shipped_as_data_is_defined_by_whoever_applies_it.md)
+- **2026-08-05 12:04** — [A Refusal That Names No Cause Sends The Operator To A Person](./20260805_120400_a_refusal_that_names_no_cause_sends_the_operator_to_a_person.md)
+- **2026-08-05 11:05** — [The Drift Check Landed And The Bloat Floor It Announced Has No Reader](./20260805_110500_the_drift_check_landed_and_the_bloat_floor_it_announced_has_no_reader.md)
+- **2026-08-05 10:00** — [The Confident Winner Was Noise Because Occupancy Was The Only Axis](./20260805_100000_the_confident_winner_was_noise_because_occupancy_was_the_only_axis.md)
+- **2026-08-05 09:08** — [The Decision Screen Was Specified And The Setup Was Specified By Nobody](./20260805_090800_the_decision_screen_was_specified_and_the_setup_was_specified_by_nobody.md)
+- **2026-08-05 08:03** — [A Built Artifact Is Not A Reachable One](./20260805_080300_a_built_artifact_is_not_a_reachable_one.md)
+- **2026-08-05 07:56** — [The Client May Name Its Own Refusal Not Rename The Servers](./20260805_075600_the_client_may_name_its_own_refusal_not_rename_the_servers.md)
+- **2026-08-05 07:46** — [A Ratchet That Only Turns One Way Stops Being Trusted](./20260805_074600_a_ratchet_that_only_turns_one_way_stops_being_trusted.md)
+- **2026-08-05 07:41** — [The Modules Landed Without Their Registration And The Fallback Would Have Hidden It](./20260805_074100_the_modules_landed_without_their_registration_and_the_fallback_would_have_hidden_it.md)
+- **2026-08-05 07:40** — [A Stored Coordinate Is Bounding Box Relative And A Catch Turned Every Failure Into A Plausible Wafer](./20260805_074000_a_stored_coordinate_is_bounding_box_relative_and_a_catch_turned_every_failure_into_a_plausible_wafer.md)
+- **2026-08-05 01:18** — [The Founding Measurement Has No Provenance And The Mechanism Reproduced Instead](./20260805_011800_the_founding_measurement_has_no_provenance_and_the_mechanism_reproduced_instead.md)
+- **2026-08-05 00:50** — [Disproving Why Is Not Disproving That](./20260805_005000_disproving_why_is_not_disproving_that.md)
+- **2026-08-05 00:47** — [Rebuild Beside It And The Bar That Was Measuring The Old Codes Death Rate](./20260805_004700_rebuild_beside_it_and_the_bar_that_was_measuring_the_old_codes_death_rate.md)
+- **2026-08-05 00:25** — [An Offset Table Is A Stale Anchor With Extra Steps](./20260805_002500_an_offset_table_is_a_stale_anchor_with_extra_steps.md)
+- **2026-08-05 00:24** — [A Class Name Was Counted As An Extension And It Propagated Into Two Live Briefs](./20260805_002400_a_class_name_was_counted_as_an_extension_and_it_propagated_into_two_live_briefs.md)
+- **2026-08-05 00:13** — [The Cited Fixture Was Not In The Repo And The Lane That Read The Diffs Found It](./20260805_001300_the_cited_fixture_was_not_in_the_repo_and_the_lane_that_read_the_diffs_found_it.md)
 - **2026-08-04 23:59** — [The Cancellation Was In A Third Stage Nobody Had Read](./20260804_235959_the_cancellation_was_in_a_third_stage_nobody_had_read.md)
 - **2026-08-04 23:25** — [The Arithmetic Was Right And The Shared Box Was The Premise That Was Not](./20260804_232504_the_arithmetic_was_right_and_the_shared_box_was_the_premise_that_was_not.md)
 - **2026-08-04 23:14** — [Five Lenses In One Day And A Fixture The Synthesis Invented](./20260804_231409_five_lenses_in_one_day_and_a_fixture_the_synthesis_invented.md)
