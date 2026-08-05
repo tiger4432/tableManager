@@ -379,7 +379,14 @@ def _diagnose_probe_failure(db, view: dict, column: str, key_values: dict) -> st
     """
     import enrichment_config
     try:
-        columns, _ = enrichment_config.execute_reference_view(db, view, key_values)
+        # `follow_up=True`: the caller has ALREADY reported the probe's driver
+        # error. If this read fails too it fails for the same root cause reached
+        # by a second route, so it must not open a second incident or print a
+        # second traceback - that doubling is what made one broken view cost
+        # ~400 tracebacks per work unit. It still answers the question it exists
+        # to answer; it just stops announcing the answer as news.
+        columns, _ = enrichment_config.execute_reference_view(
+            db, view, key_values, follow_up=True)
     except enrichment_config.ReferenceViewError:
         return REASON_VIEW_ERROR      # the view itself does not execute
     return REASON_VIEW_ERROR if column in columns else REASON_CANDIDATE_COLUMN_MISSING
@@ -930,4 +937,13 @@ class AutoConfirmCollector:
                 self.rule.get("name"), over_cap, MAX_KEYS_SETTINGS_KEY, self._max_keys)
         if stats.get("confirmed") or stats.get("refused"):
             log_stats(self.rule.get("name"), stats, apply=True)
+        # THE WORK-UNIT BOUNDARY, and the only place that knows there is one.
+        # The probe path throttles repeated driver errors so a broken view
+        # cannot bury the log; this states the true total for the unit and
+        # clears the state, so the NEXT unit's first failure gets a full
+        # traceback again. Without the clear, a view that broke this morning
+        # would log once and stay silent all day - suppression that hides how
+        # often something happened is how a broken view looks like a one-off.
+        import enrichment_config
+        enrichment_config.drain_driver_error_incidents()
         return stats

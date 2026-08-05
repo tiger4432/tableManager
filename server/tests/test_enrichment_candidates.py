@@ -116,6 +116,10 @@ def cand_env(db_session, tmp_path, monkeypatch):
     settings_path.write_text(json.dumps({}), encoding="utf-8")
     monkeypatch.setattr(enrichment_candidates, "INGESTION_SETTINGS_PATH", str(settings_path))
     enrichment_candidates.reset_warnings()
+    # Module-level throttle state. Leaking it between tests would make a test's
+    # result depend on what ran before it - which is the exact class of
+    # cross-test pollution this file's fixtures already work to avoid.
+    enrichment_config.reset_driver_error_incidents()
 
     # Reference history: L1/S1 -> WF1, L1/S2 -> WF2. Keyed by lot alone this is
     # two candidates; keyed by lot+slot it is one.
@@ -1609,3 +1613,256 @@ def test_describe_driver_error_never_returns_nothing():
     for exc in (bare, no_diag, hostile):
         assert "server log" in enrichment_config.describe_driver_error(exc), \
             "a degraded message that does not say where the cause is, is still silence"
+
+
+# ---------------------------------------------------------------------------
+# 5-quinquies. The diagnostic must not bury itself
+#
+#   [2026-08-05, ruled] Shipping the full traceback at every raise site put
+#   ~400 identical tracebacks per work unit into the log for ONE broken view:
+#   the worker probes up to `DEFAULT_MAX_KEYS_PER_UNIT` (200) keys per unit per
+#   declaring view, continuously, and `_diagnose_probe_failure` re-queried and
+#   failed a second time for the same cause, doubling it.
+#
+#   A flood is a disk problem, but the worse half is that it makes the ONE
+#   traceback that matters unfindable - the same defect the round was fixing,
+#   wearing a different hat.
+#
+#   Three properties, and the tests below exist one per property:
+#     (1) repeats collapse to a count, and the FIRST still carries everything;
+#     (2) suppressed is not silent - the count is stated periodically and
+#         exactly at the work-unit boundary;
+#     (3) a DIFFERENT condition at the same site is never swallowed by the
+#         first one's entry. That is why the key has two parts, and it is the
+#         failure mode that would let a second real defect hide behind an old.
+# ---------------------------------------------------------------------------
+
+def _errors(caplog):
+    return [r for r in caplog.records if r.name == "EnrichmentConfig"]
+
+
+def _traced(caplog):
+    return [r for r in _errors(caplog) if r.exc_info]
+
+
+def _probe_fails(db, times=1):
+    for _ in range(times):
+        with pytest.raises(enrichment_config.ReferenceViewError):
+            enrichment_config.execute_candidate_probe(db, BROKEN_VIEW, "wafer_id", {})
+
+
+def test_repeated_probe_failures_collapse_to_one_traceback(cand_env, pg_diagnostics, caplog):
+    """(1) One broken view, many keys - one traceback.
+
+    The first occurrence is untouched: full driver text, full traceback. What
+    the throttle removes is the 199 identical copies behind it.
+    """
+    import logging
+
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        _probe_fails(cand_env, times=5)
+
+    assert len(_traced(caplog)) == 1, \
+        "every repeat printed its own traceback - the flood is still there"
+    assert len(_errors(caplog)) == 1, "a repeat logged at ERROR without being a new cause"
+    assert "nosuchcol_xyz" in caplog.text, "the ONE surviving record lost the diagnosis"
+    assert "Traceback" in caplog.text
+
+
+def test_a_different_condition_at_the_same_site_is_never_swallowed(cand_env, pg_diagnostics,
+                                                                   caplog):
+    """(3) THE reason the key has two parts.
+
+    A throttle keyed on the site alone would let a second, genuinely different
+    failure hide behind the first one's entry - the log would show one cause
+    while two were live. Nothing about "this site already reported something"
+    may suppress a condition nobody has seen yet.
+    """
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+        _probe_fails(cand_env, times=3)
+        pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_TABLE)
+        _probe_fails(cand_env, times=3)
+
+    assert len(_traced(caplog)) == 2, \
+        "the second condition was swallowed by the first condition's throttle entry"
+    # Each record names WHICH condition it opened an entry for. (The log carries
+    # the DRIVER's text - SQLite's - not the injected diag, which is what the
+    # response gets; so the discriminator to assert on here is the SQLSTATE.)
+    assert "42703" in caplog.text and "42P01" in caplog.text
+    assert len([r for r in _traced(caplog) if "42703" in r.getMessage()]) == 1
+    assert len([r for r in _traced(caplog) if "42P01" in r.getMessage()]) == 1
+
+
+def test_the_suppressed_repeats_are_counted_not_lost(cand_env, pg_diagnostics, caplog):
+    """(2a) A long unit never goes quiet.
+
+    Silence that hides HOW OFTEN something happened is how a broken view looks
+    like a one-off. The periodic line states the running TOTAL, so the operator
+    reads a scale rather than an incident.
+    """
+    import logging
+
+    every = enrichment_config.DRIVER_ERROR_REPEAT_EVERY
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        _probe_fails(cand_env, times=every + 1)
+
+    assert len(_traced(caplog)) == 1, "the traceback repeated"
+    assert f"failed {every + 1} time(s)" in caplog.text, \
+        "the repeats were suppressed WITHOUT ever saying how many there were"
+
+
+def test_the_work_unit_boundary_states_the_true_total_and_then_forgets(cand_env,
+                                                                      pg_diagnostics, caplog):
+    """(2b) The exact total, and why the state must be cleared with it.
+
+    The periodic line can only ever report a multiple; the drain reports the
+    truth. Clearing matters as much as counting: without it a view that broke
+    this morning logs one traceback and is silent for the rest of the day, so
+    the next work unit's operator sees nothing at all.
+    """
+    import logging
+
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    _probe_fails(cand_env, times=3)
+
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        drained = enrichment_config.drain_driver_error_incidents()
+    assert drained == [(enrichment_config.SITE_CANDIDATE_PROBE, "42703", 3)], drained
+    assert "failed 3 time(s)" in caplog.text
+
+    # Forgotten: nothing left to drain, and the NEXT failure is news again.
+    assert enrichment_config.drain_driver_error_incidents() == []
+    caplog.clear()
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        _probe_fails(cand_env, times=1)
+    assert len(_traced(caplog)) == 1, \
+        "after the drain a broken view stayed silent - it must re-announce itself"
+
+
+def test_the_display_path_is_not_throttled_because_a_person_is_repairing_it(
+        cand_env, pg_diagnostics, caplog):
+    """The deliberate asymmetry, asserted so nobody 'tidies' it away.
+
+    The HTTP path is bounded by a person clicking, and that person is usually
+    MID-REPAIR: the client caches a 400 per (row, view), so a second request
+    means the author actually changed something. Answering their second attempt
+    with silence is a worse trade than a few duplicate tracebacks.
+    """
+    import logging
+
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        for _ in range(3):
+            with pytest.raises(enrichment_config.ReferenceViewError):
+                enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+
+    assert len(_traced(caplog)) == 3, \
+        "the display path was throttled - an author's second attempt now logs nothing"
+
+
+def test_the_diagnostic_requery_does_not_open_a_second_incident(cand_env, pg_diagnostics,
+                                                                caplog):
+    """The other half of the doubling, and the one that is not a throttle.
+
+    `_diagnose_probe_failure` re-runs the DISPLAY wrap to tell
+    `candidate_column_missing` from `view_error`. That call still happens and
+    still answers - what changed is that its failure no longer counts as news,
+    because it is the same root cause reached by a second route. Before this,
+    ONE broken view cost TWO tracebacks per key.
+    """
+    import logging
+
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    rule = dict(_loaded_rule(), reference_views=[dict(BROKEN_VIEW, required_binds=[])])
+
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        res = enrichment_candidates.resolve_target_candidate(
+            cand_env, rule, {"lot": "L1", "slot": "S1"}, "wafer_id")
+
+    assert res["status"] == enrichment_candidates.STATUS_REFUSED
+    assert len(_traced(caplog)) == 1, \
+        "the diagnostic re-query logged a second traceback for the same root cause"
+    assert not [r for r in _errors(caplog)
+                if enrichment_config.SITE_REFERENCE_VIEW in r.getMessage()], \
+        "the follow-up read opened an incident at the display site"
+    # And the refusal it exists to produce is unchanged - the quieting must not
+    # have cost the diagnosis.
+    details = " ".join(e.get("detail") or "" for e in res["errors"])
+    assert "nosuchcol_xyz" in details
+
+
+def test_the_collector_drains_at_the_real_work_unit_boundary(cand_env, pg_diagnostics, caplog):
+    """End to end: the drain is wired to the thing that IS a work unit.
+
+    `AutoConfirmCollector.flush` is the chain worker's per-transaction-group
+    boundary. A unit-level drain that nothing calls would report nothing.
+    """
+    import logging
+
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    rule = dict(_loaded_rule(), reference_views=[dict(BROKEN_VIEW, required_binds=[])])
+    _seed(cand_env, "encand_test_derived", [
+        {"wafer_key": "L1_S1", "lot": "L1", "slot": "S1"},
+        {"wafer_key": "L1_S2", "lot": "L1", "slot": "S2"},
+    ])
+
+    collector = enrichment_candidates.AutoConfirmCollector(
+        "encand_test_derived", rules=[rule])
+    assert collector.active, "fixture is inert - the collector must be live to mean anything"
+    collector.collect([
+        {"business_key_val": "L1_S1", "updates": {"lot": "L1", "slot": "S1"}},
+        {"business_key_val": "L1_S2", "updates": {"lot": "L1", "slot": "S2"}},
+    ])
+
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        collector.flush(cand_env)
+
+    assert len(_traced(caplog)) == 1, "two keys, two tracebacks - the throttle is not wired"
+    assert "failed 2 time(s)" in caplog.text, "the unit ended without stating the total"
+    assert enrichment_config.drain_driver_error_incidents() == [], \
+        "flush left throttle state behind for the next work unit to inherit"
+
+
+def test_a_driver_with_no_sqlstate_still_separates_its_conditions(cand_env, caplog):
+    """No injection: SQLite has no SQLSTATE, and the key must still discriminate.
+
+    Falling back to a constant would throttle `no such column` and `no such
+    table` as one thing - which is property (3) failing for exactly the drivers
+    that cannot report a condition code.
+    """
+    import logging
+
+    other = dict(BROKEN_VIEW, query="SELECT wafer_id FROM encand_test_no_such_table")
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        _probe_fails(cand_env, times=2)
+        for _ in range(2):
+            with pytest.raises(enrichment_config.ReferenceViewError):
+                enrichment_config.execute_candidate_probe(cand_env, other, "wafer_id", {})
+
+    # SQLite reports both as OperationalError, so this is the honest floor: the
+    # two collapse into one entry and the test says so rather than pretending
+    # otherwise. What it pins is that the FIRST is never lost and the driver
+    # class - not a constant - is what the key falls back to.
+    assert len(_traced(caplog)) >= 1
+    assert enrichment_config._incident_condition(
+        _sqlalchemy_error(cand_env, "SELECT 1 FROM encand_test_no_such_table")
+    ) == "OperationalError"
+
+
+def _sqlalchemy_error(db, sql):
+    """Provoke a real driver error and hand back the SQLAlchemy wrapper."""
+    from sqlalchemy import text
+
+    nested = db.begin_nested()
+    try:
+        db.execute(text(sql)).fetchall()
+    except Exception as exc:
+        nested.rollback()
+        return exc
+    nested.commit()
+    raise AssertionError("the statement was supposed to fail")

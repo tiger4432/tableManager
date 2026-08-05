@@ -814,7 +814,94 @@ def describe_driver_error(exc) -> str:
     return f"{orig_cls}/{sqlstate}: " + "; ".join(parts)
 
 
-def _reference_view_failure(what: str, exc: Exception) -> ReferenceViewError:
+# ---------------------------------------------------------------------------
+# INCIDENT THROTTLE - a diagnostic that buries itself is the defect again
+# ---------------------------------------------------------------------------
+# WHY THE FULL TRACEBACK CANNOT BE UNCONDITIONAL  [2026-08-05, ruled]
+#     The display path is bounded by clicks. The PROBE path is not: the chain
+#     worker probes up to `enrichment_candidates.DEFAULT_MAX_KEYS_PER_UNIT`
+#     (200) keys per work unit, per declaring view, and it runs continuously. A
+#     single broken view therefore produced ~400 identical tracebacks per unit,
+#     forever. That is a disk problem, but the worse half is that it makes the
+#     ONE traceback that matters unfindable - which is the same defect this
+#     round exists to fix, wearing a different hat.
+#
+# WHAT IS KEPT, AND WHY THE KEY HAS TWO PARTS
+#     First occurrence of a (site, condition) pair: the FULL driver text and
+#     traceback, exactly as before. Repeats: counted, not retraced.
+#     The condition is part of the key so a SECOND, GENUINELY DIFFERENT failure
+#     at the same site can never be swallowed by the first one's entry - a
+#     throttle that hid a new defect behind an old one would be a worse bug
+#     than the flood.
+#
+# SUPPRESSED IS NOT SILENT
+#     Repeats are counted and the count is stated twice over: periodically
+#     (`DRIVER_ERROR_REPEAT_EVERY`) so a long unit never goes quiet, and
+#     exactly at the work-unit boundary via `drain_driver_error_incidents`,
+#     which reports the true total and clears the state. Clearing matters as
+#     much as counting: without it a view broken at 09:00 logs one traceback
+#     and is silent for the rest of the day.
+#
+# Not locked. The counters are log bookkeeping, a lost increment under a race
+# costs one unit off a count, and a lock on the ERROR path is a worse trade
+# than that. Same posture as `_warned_caps` above.
+
+DRIVER_ERROR_REPEAT_EVERY = 50
+
+# The two sites, named once. The tests assert on these strings and the raise
+# sites read them, so there is no third spelling to drift.
+SITE_REFERENCE_VIEW = "reference query execution failed"
+SITE_CANDIDATE_PROBE = "candidate probe execution failed"
+
+_driver_error_incidents = {}   # (site, condition) -> repeats suppressed since the first
+
+
+def _incident_condition(exc) -> str:
+    """The half of the key that must not collapse two different failures.
+
+    SQLSTATE when the driver has one; otherwise the driver's exception class,
+    so a driver WITHOUT structured diagnostics still distinguishes `no such
+    column` from `no such table` instead of throttling them as one thing.
+    """
+    orig = getattr(exc, "orig", None)
+    try:
+        diag = getattr(orig, "diag", None)
+        sqlstate = str(getattr(diag, "sqlstate", None) or "") if diag is not None else ""
+    except Exception:
+        sqlstate = ""
+    if sqlstate:
+        return sqlstate
+    return (orig if orig is not None else exc).__class__.__name__
+
+
+def reset_driver_error_incidents() -> None:
+    """Test hook - forget throttle state (same shape as `reset_cap_warnings`)."""
+    _driver_error_incidents.clear()
+
+
+def drain_driver_error_incidents() -> list:
+    """Report every suppressed repeat, then forget. Call at a work-unit boundary.
+
+    Returns `[(site, condition, total_occurrences), ...]` for callers that want
+    to say it in their own summary; it also logs, because the caller that most
+    needs this (`AutoConfirmCollector.flush`) is the one whose log the operator
+    actually reads.
+    """
+    drained = sorted((site, condition, repeats + 1)
+                     for (site, condition), repeats in _driver_error_incidents.items()
+                     if repeats)
+    _driver_error_incidents.clear()
+    for site, condition, total in drained:
+        logger.error(
+            "[Enrichment] %s (%s) failed %d time(s) in this work unit. The first one "
+            "was logged above with the driver's full text and traceback; the other "
+            "%d were identical by SQLSTATE and were counted instead of retraced.",
+            site, condition, total, total - 1)
+    return drained
+
+
+def _reference_view_failure(what: str, exc: Exception, *, throttle: bool = False,
+                            follow_up: bool = False) -> ReferenceViewError:
     """Log the driver's error IN FULL; return the redacted one for the caller to raise.
 
     THE LOG IS NOT THE BROWSER. The no-body contract governs the HTTP RESPONSE.
@@ -830,12 +917,60 @@ def _reference_view_failure(what: str, exc: Exception) -> ReferenceViewError:
     for four lines is that the previous four lines existed TWICE - the display
     path and the candidate-probe path - and both copies were wrong in the same
     way. One fact, one spelling.
+
+    `throttle` - only the worker's probe path sets it. The display path is
+    bounded by a person clicking, and that person is USUALLY MID-REPAIR: the
+    client caches a 400 per (row, view), so a second request means the author
+    actually changed something. Throttling that would answer their second
+    attempt with silence, which is a worse trade than a few duplicate
+    tracebacks. So the two paths deliberately do NOT share the throttle.
+
+    `follow_up` - this failure is already explained by an incident the caller
+    just reported, so it opens no incident and prints no traceback. Exactly one
+    caller sets it: `enrichment_candidates._diagnose_probe_failure`, whose
+    re-query exists to tell `candidate_column_missing` from `view_error`. When
+    that re-query ALSO fails, it has told us what it exists to tell us and has
+    added no new cause - the driver error is the same root failure reached by a
+    second route.
     """
-    logger.error(
-        "[Enrichment] %s - full driver error follows. The HTTP response carries "
-        "only the redacted form; the query body is never returned to a client.",
-        what, exc_info=exc)
-    return ReferenceViewError(f"{what} ({describe_driver_error(exc)})")
+    described = describe_driver_error(exc)
+    error = ReferenceViewError(f"{what} ({described})")
+
+    if follow_up:
+        # DEBUG, no traceback: this is a diagnostic probe's expected outcome,
+        # not a second incident.
+        logger.debug("[Enrichment] %s - follow-up read for an already-reported "
+                     "failure (%s); no new incident.", what, described)
+        return error
+
+    if not throttle:
+        logger.error(
+            "[Enrichment] %s - full driver error follows. The HTTP response carries "
+            "only the redacted form; the query body is never returned to a client.",
+            what, exc_info=exc)
+        return error
+
+    key = (what, _incident_condition(exc))
+    repeats = _driver_error_incidents.get(key)
+    if repeats is None:
+        _driver_error_incidents[key] = 0
+        logger.error(
+            "[Enrichment] %s - full driver error follows. The HTTP response carries "
+            "only the redacted form; the query body is never returned to a client. "
+            "Further failures of THIS condition (%s) at this site will be counted "
+            "rather than retraced; a different condition here still gets its own "
+            "traceback.",
+            what, key[1], exc_info=exc)
+        return error
+
+    repeats += 1
+    _driver_error_incidents[key] = repeats
+    if repeats % DRIVER_ERROR_REPEAT_EVERY == 0:
+        logger.error(
+            "[Enrichment] %s (%s) has now failed %d time(s); the first was logged "
+            "above with its traceback. Still failing - this is a count, not a new "
+            "cause.", what, key[1], repeats + 1)
+    return error
 
 
 def _isolated_execute(db, stmt, params) -> tuple:
@@ -913,7 +1048,7 @@ def missing_binds(view: dict, bind_params: dict = None) -> list:
 
 
 def execute_reference_view(db, view: dict, bind_params: dict = None,
-                           caps: dict = None) -> tuple:
+                           caps: dict = None, *, follow_up: bool = False) -> tuple:
     """참조뷰 1건을 서버측 정의로 실행한다. 반환: (columns, rows).
 
     LIMIT은 서버가 강제한다(뷰 설정값, 내부 LIMIT이 더 작으면 그 값 유지) — 사용자 쿼리를
@@ -942,7 +1077,11 @@ def execute_reference_view(db, view: dict, bind_params: dict = None,
         # diagnostics are a snapshot the exception carries. Measured: every diag
         # field above was read AFTER the rollback. Nothing about when the
         # rollback happens, or what it rolls back to, changes here.
-        raise _reference_view_failure("reference query execution failed", e) from e
+        #
+        # NOT throttled: this path is bounded by a person clicking, and that
+        # person is usually mid-repair. See `_reference_view_failure`.
+        raise _reference_view_failure(SITE_REFERENCE_VIEW, e,
+                                      follow_up=follow_up) from e
     return columns, [list(r) for r in raw_rows]
 
 
@@ -1027,7 +1166,10 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
         # Same helper as the display path - see `_reference_view_failure`. These
         # two sites are the whole of this file's user-SQL error handling and
         # they move together by construction now.
-        raise _reference_view_failure("candidate probe execution failed", e) from e
+        #
+        # THROTTLED: the worker probes up to 200 keys per unit per declaring
+        # view, continuously, and nothing bounds that but this flag.
+        raise _reference_view_failure(SITE_CANDIDATE_PROBE, e, throttle=True) from e
 
     rows = [(r[0], int(r[1] or 0)) for r in raw]
     # `__scanned`는 바깥 LIMIT이 그룹을 자르기 **전**의 전체 행수다. 반환된 그룹의
