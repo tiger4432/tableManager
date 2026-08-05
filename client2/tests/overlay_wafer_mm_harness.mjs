@@ -259,7 +259,7 @@ function targetKeyIndex(ctx, f) {
   const a = screenAxes(f);
   const byKey = new Map();
   for (let r = 0; r < a.visualRows; r++) for (let c = 0; c < a.visualCols; c++) {
-    const p = ctx.getDieIndex(c, r, f.cols, f.rows, f.rotation, f.side);
+    const p = ctx.getDieIndex(null, c, r, f.cols, f.rows, f.rotation, f.side);
     byKey.set(`${p.x}_${p.y}`, { c, r });
   }
   return byKey;

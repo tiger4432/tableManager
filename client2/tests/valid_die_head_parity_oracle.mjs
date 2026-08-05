@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import vm from 'node:vm';
+import { frameAdaptedSource } from './oracle/revision_signature_drift.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
@@ -90,21 +91,15 @@ const NEEDED = [
 const DIE_INDEX_ALIAS = '__dieIndexFn';
 
 // [2026-08-05] THE SECOND KIND OF DRIFT THIS ORACLE HAS TO ABSORB, and the name list above
-// cannot express it: a SIGNATURE change. `getTransformedPhysicalConfig` gained a leading
-// `frame` argument, so the baseline revision takes `(rot, side)` and the working copy takes
-// `(frame, rot, side)`. This is the same class of event as the 2026-07-31 rename — neither
-// revision is wrong, the two just spell the call differently — so it is resolved the same
-// way and in the same place: an alias bound at the slicing boundary, never a score waiver
-// and never an advanced `ACCEPTANCE_BASE`.
+// cannot express it: a SIGNATURE change. One function after another is gaining a leading
+// `frame` argument, so the baseline takes `(…)` and the working copy takes `(frame, …)`.
+// Same class as the 2026-07-31 rename — neither revision is wrong, they spell the call
+// differently — and resolved in the same place, at the slicing boundary.
 //
-// 🔴 ARITY IS READ OFF THE FUNCTION (`fn.length`), never inferred from which revision we
-//    believe we are holding. The whole point of this file is that it does not get to assume
-//    what the two sides contain.
-// 🔴 THE ADAPTER PASSES `null`, AND THAT IS WHAT KEEPS THE COMPARISON HONEST. Under the new
-//    contract `null` means "no frame — read the screen controls", which is exactly and
-//    unconditionally what the old revision did. Both sides are therefore asked the SAME
-//    question. Passing anything else here would make the two revisions answer different
-//    questions and the parity result would mean nothing.
+// The rule, and above all WHY THE ADAPTER PASSES `null` RATHER THAN OMITTING THE ARGUMENT,
+// live in `oracle/revision_signature_drift.mjs` — shared with `copy_header_count_harness.mjs`,
+// which has exactly the same problem. Read it there; do not restate it here. Two copies of a
+// rule is how the two sides of a comparison start answering different questions.
 const PHYS_CONFIG_ALIAS = '__physConfigFn';
 
 function buildVerdictFn(src, label) {
@@ -130,15 +125,13 @@ function buildVerdictFn(src, label) {
   try { vm.runInContext(parts.join('\n\n'), ctx); } catch (e) {
     die(`sandbox evaluation failed for ${label} - ${e && e.message ? e.message : e}`);
   }
-  // Bind the alias to whichever spelling this revision actually shipped.
-  vm.runInContext(`globalThis.${DIE_INDEX_ALIAS} = ${chosen.getDieIndex};`, ctx);
-  // ...and to whichever SIGNATURE it shipped. `>= 3` rather than `=== 3` so a later argument
-  // does not silently route this revision back down the two-argument branch.
-  const gtpc = chosen.getTransformedPhysicalConfig;
+  // Bind each alias to whichever spelling AND whichever signature this revision shipped.
+  // The rename half is resolved by `chosen.*` above; the signature half is
+  // `oracle/revision_signature_drift.mjs`, shared with `copy_header_count_harness.mjs` so the
+  // rule — and the reason it passes `null` — is written down in exactly one place.
+  vm.runInContext(frameAdaptedSource(DIE_INDEX_ALIAS, chosen.getDieIndex, 6), ctx);
   vm.runInContext(
-    `globalThis.${PHYS_CONFIG_ALIAS} = (${gtpc}.length >= 3)\n`
-    + `  ? ((rot, side) => ${gtpc}(null, rot, side))\n`
-    + `  : ((rot, side) => ${gtpc}(rot, side));`, ctx);
+    frameAdaptedSource(PHYS_CONFIG_ALIAS, chosen.getTransformedPhysicalConfig, 2), ctx);
   return ctx;
 }
 

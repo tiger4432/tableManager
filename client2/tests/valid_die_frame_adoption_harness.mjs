@@ -290,7 +290,7 @@ function coordMapOracle(S, frame) {
   return S.withPhysFrame(rf, () => {
     const m = new Map();
     for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
-      const p = S.getDieIndex(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
+      const p = S.getDieIndex(null, c, r, rf.cols, rf.rows, rf.rotation, rf.side);
       const v = S.getDbCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
                                   rf.invertY, rf.startX, rf.startY);
       m.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
@@ -358,7 +358,7 @@ function targetReachableKeys(S) {
   const vc = r90 ? rows : cols, vr = r90 ? cols : rows;
   const out = new Map();
   for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
-    const p = S.getDieIndex(c, r, cols, rows, rot, side);
+    const p = S.getDieIndex(null, c, r, cols, rows, rot, side);
     out.set(`${p.x}_${p.y}`, `${c},${r}`);
   }
   return out;
@@ -985,7 +985,7 @@ async function scoreAll(src, { verbose = false } = {}) {
       const at = afterReach.get(k);
       if (at === undefined) { roundTripMismatch++; continue; }
       const [c, r] = at.split(',').map(Number);
-      const p = S.getDieIndex(c, r, cols, rows, S.currentRotation, S.currentSide);
+      const p = S.getDieIndex(null, c, r, cols, rows, S.currentRotation, S.currentSide);
       if (`${p.x}_${p.y}` !== k) roundTripMismatch++;
     }
     eq(`F6/empty-${label}/key-to-cell-to-key`, 0, roundTripMismatch);

@@ -326,7 +326,7 @@ function run(src) {
       const { S } = buildEnv(src, { ...P0, offX });
       const L = S.frameDieLattice({ cols: P0.cols, rows: P0.rows, rotation: 0, side: 'front' });
       for (const c of [10, 14, 18]) {
-        const p = S.getDieIndex(c, 12, P0.cols, P0.rows, 0, 'front');
+        const p = S.getDieIndex(null, c, 12, P0.cols, P0.rows, 0, 'front');
         const mm = S.dieIndexToWaferMm(p.x, p.y, L);
         const want = (c - (P0.cols - 1) / 2) * P0.chipX + offX;   // server's get_cell_physical_mm
         eqf(`S/mm/off${offX}/c${c}`, mm.mmX, want);
@@ -343,12 +343,12 @@ function run(src) {
     const mmA = new Set();
     let shifts = new Set();
     for (let c = 0; c < P0.cols; c++) {
-      const pa = a.getDieIndex(c, 12, P0.cols, P0.rows, 0, 'front');
-      const pb = b.getDieIndex(c, 12, P0.cols, P0.rows, 0, 'front');
+      const pa = a.getDieIndex(null, c, 12, P0.cols, P0.rows, 0, 'front');
+      const pb = b.getDieIndex(null, c, 12, P0.cols, P0.rows, 0, 'front');
       shifts.add(pb.x - pa.x);
       mmA.add(a.dieIndexToWaferMm(pa.x, pa.y, La).mmX.toFixed(6));
       // the SAME canvas cell, one pitch later, sits where the NEXT cell used to sit
-      const paNext = a.getDieIndex(c + 1, 12, P0.cols, P0.rows, 0, 'front');
+      const paNext = a.getDieIndex(null, c + 1, 12, P0.cols, P0.rows, 0, 'front');
       eqf(`P/cell${c}/mm-equals-next-cell-before`,
         b.dieIndexToWaferMm(pb.x, pb.y, Lb).mmX,
         a.dieIndexToWaferMm(paNext.x, paNext.y, La).mmX);
@@ -357,7 +357,7 @@ function run(src) {
     // the SET of occupied mm positions is unchanged (bar the one column that falls off each end)
     let overlap = 0;
     for (let c = 0; c < P0.cols; c++) {
-      const pb = b.getDieIndex(c, 12, P0.cols, P0.rows, 0, 'front');
+      const pb = b.getDieIndex(null, c, 12, P0.cols, P0.rows, 0, 'front');
       if (mmA.has(b.dieIndexToWaferMm(pb.x, pb.y, Lb).mmX.toFixed(6))) overlap++;
     }
     eq('P/mm-set-overlap', overlap, P0.cols - 1);
@@ -372,7 +372,7 @@ function run(src) {
     const storedFor = (S, P) => {
       const out = new Map();
       DIES.forEach(([ix, iy]) => {
-        const at = S.getCanvasCellFromDieIndex(ix, iy, P.cols, P.rows, P.rotation, P.side);
+        const at = S.getCanvasCellFromDieIndex(null, ix, iy, P.cols, P.rows, P.rotation, P.side);
         const v = S.getDbCoords(at.c, at.r, P.cols, P.rows, P.rotation, P.side,
           P.invertY, P.startX, P.startY);
         out.set(`${ix}_${iy}`, `${v.x},${v.y}`);
@@ -495,7 +495,7 @@ function run(src) {
     n.S.gridData = {};
     const painted = new Map();
     for (let r = 0; r < P0.rows; r++) for (let c = 0; c < P0.cols; c++) {
-      const p = n.S.getDieIndex(c, r, f0.cols, f0.rows, 0, 'front');
+      const p = n.S.getDieIndex(null, c, r, f0.cols, f0.rows, 0, 'front');
       if (!n.S.isCellInsideWaferFast(c, r, f0.cols, f0.rows, cfg0, 700, 700)) continue;
       const v = n.S.getDbCoords(c, r, f0.cols, f0.rows, 0, 'front', false, P0.startX, P0.startY);
       n.S.gridData[`${p.x}_${p.y}`] = `${v.x},${v.y}`;
@@ -510,7 +510,7 @@ function run(src) {
       const cur = Object.prototype.hasOwnProperty.call(n.S.gridData, k2) ? n.S.gridData[k2] : null;
       if (cur === null) { lost++; return; }
       const [px, py] = k2.split('_').map(Number);
-      const at = n.S.getCanvasCellFromDieIndex(px, py, f0.cols, f0.rows, 0, 'front');
+      const at = n.S.getCanvasCellFromDieIndex(null, px, py, f0.cols, f0.rows, 0, 'front');
       const v = n.S.getDbCoords(at.c, at.r, f0.cols, f0.rows, 0, 'front', false,
         P0.startX, P0.startY);
       if (`${v.x},${v.y}` !== was) movedCells++;

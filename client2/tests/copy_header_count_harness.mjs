@@ -21,6 +21,7 @@
 // because it stopped finding the code is worse than no harness - its green gets cited.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { frameAdapted } from './oracle/revision_signature_drift.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -245,20 +246,12 @@ function buildSandbox(src, label, extraFns = [], extraCode = '') {
 }
 
 // [2026-08-05] SIGNATURE DRIFT — the sibling of the rename drift handled by `fnFrom`'s
-// spelling lists, and not expressible in them. `getTransformedPhysicalConfig` gained a
-// leading `frame` argument, so the pinned baseline blob takes `(rot, side)` while the working
-// tree takes `(frame, rot, side)`. Neither revision is wrong; they spell the call differently,
-// which is exactly the condition this harness already absorbs at the slicing boundary.
-//
-// 🔴 BOTH SIDES ARE ASKED THE SAME QUESTION, which is the only thing that keeps a two-revision
-//    comparison meaningful: `null` means "no frame — read the screen controls", and reading
-//    the screen unconditionally is precisely what the baseline revision did.
-// 🔴 ARITY IS READ OFF THE FUNCTION, never inferred from which revision we believe we hold.
-//    `>= 3` rather than `=== 3` so a later argument cannot silently route the working tree
-//    back down the two-argument branch and re-open this hole from the other side.
-const physConfig = (H, rot, side) => (H.getTransformedPhysicalConfig.length >= 3
-  ? H.getTransformedPhysicalConfig(null, rot, side)
-  : H.getTransformedPhysicalConfig(rot, side));
+// spelling lists, and not expressible in them: the pinned baseline blob takes `(rot, side)`
+// while the working tree takes `(frame, rot, side)`. The rule, and above all why the adapter
+// passes `null` rather than omitting the argument, live in
+// `oracle/revision_signature_drift.mjs` — shared with `valid_die_head_parity_oracle.mjs`,
+// which has the same problem. Read it there; do not restate it here.
+const physConfig = (H, rot, side) => frameAdapted(H.getTransformedPhysicalConfig, 2)(rot, side);
 
 // ── the app's own cell factory builds gridCells2D ────────────────────────────────
 // 하네스 규율: 컨트롤 상태를 직접 세팅하지 않는다. `getGridCellObject`는 렌더 루프와

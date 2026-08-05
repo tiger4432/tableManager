@@ -390,7 +390,7 @@ function scoreNothingLeavesTheCanvas(src, evidence) {
     const seed = (env) => {
       const T = env.sandbox;
       for (let r = 0; r < vRows; r++) for (let c = 0; c < vCols; c++) {
-        const p = T.getDieIndex(c, r, g.cols, g.rows, T.currentRotation, T.currentSide);
+        const p = T.getDieIndex(null, c, r, g.cols, g.rows, T.currentRotation, T.currentSide);
         T.gridData[`${p.x}_${p.y}`] = `${p.x},${p.y}`;
       }
       T.gridCells2D = {}; T.renderGridCanvas();

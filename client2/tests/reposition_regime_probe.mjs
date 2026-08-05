@@ -58,7 +58,7 @@ function coordsByPhysKey(S, frame) {
     const out = new Map();
     for (let r = 0; r < vR; r++) {
       for (let c = 0; c < vC; c++) {
-        const p = S.getDieIndex(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
+        const p = S.getDieIndex(null, c, r, rf.cols, rf.rows, rf.rotation, rf.side);
         const v = S.getDbCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
           rf.invertY, rf.startX, rf.startY);
         out.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
@@ -178,7 +178,7 @@ for (const tgt of names) {
       const pc = S.getTransformedPhysicalConfig(null, rot, side);
       const cellOf = new Map();
       for (let r = 0; r < vR; r++) for (let c = 0; c < vC; c++) {
-        const pk = S.getDieIndex(c, r, adopted.cols, adopted.rows, rot, side);
+        const pk = S.getDieIndex(null, c, r, adopted.cols, adopted.rows, rot, side);
         cellOf.set(`${pk.x}_${pk.y}`, [c, r]);
       }
       p.newKeys.forEach(nk => {

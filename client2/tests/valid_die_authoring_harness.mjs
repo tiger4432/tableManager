@@ -189,7 +189,7 @@ function runSuite(sb, st) {
     const s = new Set();
     cells.forEach(([c, r]) => {
       if (H.isCellInsideWaferFast(c, r, vc, vr, pc, 700, 700)) {
-        const p = H.getDieIndex(c, r, COLS, ROWS, ctx.currentRotation, ctx.currentSide);
+        const p = H.getDieIndex(null, c, r, COLS, ROWS, ctx.currentRotation, ctx.currentSide);
         s.add(`${p.x}_${p.y}`);
       }
     });
@@ -307,7 +307,7 @@ function runSuite(sb, st) {
     if (vc * vr !== COLS * ROWS) die('visual rect size mismatch in fixture');
     cells.forEach(([c, r]) => {
       const v = H.getDbCoords(c, r, COLS, ROWS, 90, 'back', false, 1, 1);
-      const p = H.getDieIndex(c, r, COLS, ROWS, 90, 'back');
+      const p = H.getDieIndex(null, c, r, COLS, ROWS, 90, 'back');
       authoredCells.push({ x: v.x, y: v.y, val: `${p.x}_${p.y}` });
       expectedPhys.set(`${v.x},${v.y}`, `${p.x}_${p.y}`);
     });

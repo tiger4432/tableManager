@@ -290,7 +290,7 @@ function buildMask(S) {
   for (const { c, r } of circle) {
     if (c < cMin + INSET.left || c > cMax - INSET.right) continue;
     if (r < rMin + INSET.top || r > rMax - INSET.bottom) continue;
-    const p = S.getDieIndex(c, r, COLS, ROWS, 0, 'front');
+    const p = S.getDieIndex(null, c, r, COLS, ROWS, 0, 'front');
     keys.add(`${p.x}_${p.y}`);
     kept++;
   }

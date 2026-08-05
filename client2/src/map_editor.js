@@ -863,7 +863,7 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const zeroR = invertY ? (zeroBox.maxR - (0 - startY)) : (0 - startY + zeroBox.minR);
   const hasZeroZero = (zeroC >= 0 && zeroC < visualCols) && (zeroR >= 0 && zeroR < visualRows);
 
-  const physical = getDieIndex(c, r, cols, rows, currentRotation, currentSide);
+  const physical = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
   const visual = getDbCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const coordKey = `${physical.x}_${physical.y}`;
 
@@ -1654,7 +1654,11 @@ function withPhysFrame(frame, fn) {
 //    전역 의존이 하나 늘 때마다 넷이 전부 ReferenceError로 죽는다(§getWaferBoundingBox의
 //    같은 경고 — 이 라운드에서 실제로 한 번 죽였다). 그래서 패리티 항은 인라인이다.
 // ═══════════════════════════════════════════════════════════════════════════════
-function getDieIndex(colVisual, rowVisual, cols, rows, rotation, side) {
+function getDieIndex(frame, colVisual, rowVisual, cols, rows, rotation, side) {
+  if (frame === undefined) {
+    throw new Error('getDieIndex: frame argument missing. Pass the frame that is in '
+      + 'scope, or `null` to read the screen controls on purpose.');
+  }
   const isRotated90or270 = (rotation === 90 || rotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
@@ -1666,7 +1670,7 @@ function getDieIndex(colVisual, rowVisual, cols, rows, rotation, side) {
   //     four parseFloat calls were pure waste.)
 
   // Get screen-space shift for the current rotation in cell units
-  const physConfig = getTransformedPhysicalConfig(physFrameOverride, rotation, side);
+  const physConfig = getTransformedPhysicalConfig(frame, rotation, side);
   const { shiftX, shiftY } = getScreenShift(physConfig, 1.0, 1.0);
 
   // Screen cell position relative to wafer center
@@ -1713,7 +1717,11 @@ function getDieIndex(colVisual, rowVisual, cols, rows, rotation, side) {
   return { x: xp, y: yp, xCells: xRot, yCells: yRot };
 }
 
-function getCanvasCellFromDieIndex(xp, yp, cols, rows, rotation, side) {
+function getCanvasCellFromDieIndex(frame, xp, yp, cols, rows, rotation, side) {
+  if (frame === undefined) {
+    throw new Error('getCanvasCellFromDieIndex: frame argument missing. Pass the frame that is in '
+      + 'scope, or `null` to read the screen controls on purpose.');
+  }
   const isRotated90or270 = (rotation === 90 || rotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
@@ -1745,7 +1753,7 @@ function getCanvasCellFromDieIndex(xp, yp, cols, rows, rotation, side) {
   }
 
   // Get screen-space shift for the current rotation in cell units
-  const physConfig = getTransformedPhysicalConfig(physFrameOverride, rotation, side);
+  const physConfig = getTransformedPhysicalConfig(frame, rotation, side);
   const { shiftX, shiftY } = getScreenShift(physConfig, 1.0, 1.0);
 
   const colVisual = xScreenWafer + (visualCols - 1) / 2.0 - shiftX;
@@ -1785,7 +1793,7 @@ function getCanvasCellFromDieIndex(xp, yp, cols, rows, rotation, side) {
 function frameDieLattice(frame) {
   const f = frame || currentFrame();
   return withPhysFrame(f, () => {
-    const p = getDieIndex(0, 0, f.cols, f.rows, f.rotation, f.side);
+    const p = getDieIndex(f, 0, 0, f.cols, f.rows, f.rotation, f.side);
     return {
       ix0: p.x, iy0: p.y, ux0: p.xCells, uy0: p.yCells,
       chipX: physNum(f, 'chipX', el.physChipX, 2.5),
@@ -1953,7 +1961,7 @@ function getWaferBoundingBox(rotation, side, opts) {
       if (useMask) {
         // 렌더 루프가 쓰는 것과 **같은 두 줄**이다(§renderGridCanvas 5b 위). 물리 좌표를
         // 여기서 따로 만들지 않으면 판정할 수 없고, 따로 만드는 식은 그 함수 하나뿐이다.
-        const p = getDieIndex(c, r, cols, rows, rotation, side);
+        const p = getDieIndex(physFrameOverride, c, r, cols, rows, rotation, side);
         if (isValidDieAt(p.x, p.y, circleInside)) {
           maskCount++;
           if (c < mMinC) mMinC = c;
@@ -2090,7 +2098,7 @@ function reseatCellsToStoredCoords(was) {
     touched.forEach(k => {
       const [px, py] = String(k).split('_').map(Number);
       if (!Number.isFinite(px) || !Number.isFinite(py)) return;
-      const at = getCanvasCellFromDieIndex(px, py, was.cols, was.rows, was.rotation, was.side);
+      const at = getCanvasCellFromDieIndex(was, px, py, was.cols, was.rows, was.rotation, was.side);
       held.set(k, getDbCoords(at.c, at.r, was.cols, was.rows, was.rotation, was.side,
         was.invertY, was.startX, was.startY));
     });
@@ -2106,7 +2114,7 @@ function reseatCellsToStoredCoords(was) {
     const cell = getCanvasCellFromDb(v.x, v.y, now.cols, now.rows, now.rotation, now.side,
       now.invertY, now.startX, now.startY);
     if (cell.c < 0 || cell.c >= visC || cell.r < 0 || cell.r >= visR) offGrid++;
-    const p = getDieIndex(cell.c, cell.r, now.cols, now.rows, now.rotation, now.side);
+    const p = getDieIndex(physFrameOverride, cell.c, cell.r, now.cols, now.rows, now.rotation, now.side);
     seatOf.set(k, `${p.x}_${p.y}`);
   });
   let moved = 0;
@@ -2525,7 +2533,7 @@ function buildValidDieTemplate(shape) {
 
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      const p = getDieIndex(c, r, cols, rows, currentRotation, currentSide);
+      const p = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
       const key = `${p.x}_${p.y}`;
       keys.add(key);
       const circleInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
@@ -3463,7 +3471,7 @@ function renderGridCanvas() {
 
       // [M4①] 물리 좌표는 아래에서 어차피 만든다. 판정에 필요하므로 여기로 끌어올렸다 —
       // 판정용 좌표를 따로 만들면 같은 좌표의 계산이 둘이 된다.
-      const physical = getDieIndex(c, r, cols, rows, currentRotation, currentSide);
+      const physical = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
       const completelyInside = isValidDieAt(physical.x, physical.y,
         isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
 
@@ -5215,7 +5223,7 @@ async function loadExistingMap(opts = {}) {
             const c = cell.c;
             const r = cell.r;
 
-            const physical = getDieIndex(c, r, cols, rows, rotation, side);
+            const physical = getDieIndex(physFrameOverride, c, r, cols, rows, rotation, side);
             const gridKey = `${physical.x}_${physical.y}`;
             gridData[gridKey] = strVal;
 
@@ -5870,7 +5878,7 @@ function fillGrid() {
   let skippedOutside = 0;
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      const physical = getDieIndex(c, r, cols, rows, currentRotation, currentSide);
+      const physical = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
       const key = `${physical.x}_${physical.y}`;
       const rendered = gridCells2D && gridCells2D[r] ? gridCells2D[r][c] : null;
       const inside = rendered
@@ -6493,7 +6501,7 @@ function getEdgeClassification() {
     for (let c = 0; c < visualCols; c++) {
       // [M4①] E1/E2는 "유효 다이의 외곽"이다 — 원의 외곽이 아니다. 판정 근거가 맵으로
       // 바뀌면 침식 기준도 같이 바뀌어야 하고, 안 그러면 마스크와 엣지가 어긋난다.
-      const p = getDieIndex(c, r, cols, rows, currentRotation, currentSide);
+      const p = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
       if (isValidDieAt(p.x, p.y, isCellInsideWafer(c, r, visualCols, visualRows))) {
         isInside[r][c] = true;
       }
@@ -8159,7 +8167,7 @@ function applyCellsToGrid(cells) {
     const val = cell.val !== null && cell.val !== undefined ? String(cell.val).trim() : '';
     if (!Number.isFinite(xn) || !Number.isFinite(yn) || val === '') return;
     const c = getCanvasCellFromDb(xn, yn, cols, rows, currentRotation, currentSide, invertY, startX, startY);
-    const physical = getDieIndex(c.c, c.r, cols, rows, currentRotation, currentSide);
+    const physical = getDieIndex(physFrameOverride, c.c, c.r, cols, rows, currentRotation, currentSide);
     gridData[`${physical.x}_${physical.y}`] = val;
     count++;
   });
@@ -8692,7 +8700,7 @@ function projectCellsToWaferMm(cells, frame) {
       const yn = Number(c.y);
       if (!Number.isFinite(xn) || !Number.isFinite(yn)) return;
       const cell = getCanvasCellFromDb(xn, yn, cols, rows, rotation, side, invertY, startX, startY);
-      const p = getDieIndex(cell.c, cell.r, cols, rows, rotation, side);
+      const p = getDieIndex(f, cell.c, cell.r, cols, rows, rotation, side);
       out.push({
         srcX: xn, srcY: yn,
         ix: p.x, iy: p.y,
@@ -8789,7 +8797,7 @@ function canvasSeatKeys() {
   const inside = new Set();
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      const p = getDieIndex(c, r, f.cols, f.rows, f.rotation, f.side);
+      const p = getDieIndex(physFrameOverride, c, r, f.cols, f.rows, f.rotation, f.side);
       const k = `${p.x}_${p.y}`;
       all.add(k);
       if (isValidDieAt(p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {
@@ -9248,7 +9256,7 @@ function fitGridToMask(keys, el, currentRotation, currentSide) {
     keys.forEach(k => {
       const [px, py] = String(k).split('_').map(Number);
       if (!Number.isFinite(px) || !Number.isFinite(py)) return;
-      const at = getCanvasCellFromDieIndex(px, py, c, r, currentRotation, currentSide);
+      const at = getCanvasCellFromDieIndex(physFrameOverride, px, py, c, r, currentRotation, currentSide);
       if (at.c < 0 || at.c >= vC) col++;
       if (at.r < 0 || at.r >= vR) row++;
     });
@@ -10567,9 +10575,9 @@ function reseatOverlayLayer(o) {
   // `getCanvasCellFromDieIndex`에 (0,0)/(1,0)/(0,1)을 넣고 그 답의 차분을 읽을 뿐이다.
   // 정수 격자 사상이라 성분은 0/±1이고 패리티 항은 차분에서 상쇄된다.
   o.seatAxes = withPhysFrame(seat, () => {
-    const o0 = getCanvasCellFromDieIndex(0, 0, seat.cols, seat.rows, seat.rotation, seat.side);
-    const oX = getCanvasCellFromDieIndex(1, 0, seat.cols, seat.rows, seat.rotation, seat.side);
-    const oY = getCanvasCellFromDieIndex(0, 1, seat.cols, seat.rows, seat.rotation, seat.side);
+    const o0 = getCanvasCellFromDieIndex(seat, 0, 0, seat.cols, seat.rows, seat.rotation, seat.side);
+    const oX = getCanvasCellFromDieIndex(seat, 1, 0, seat.cols, seat.rows, seat.rotation, seat.side);
+    const oY = getCanvasCellFromDieIndex(seat, 0, 1, seat.cols, seat.rows, seat.rotation, seat.side);
     return { xc: oX.c - o0.c, xr: oX.r - o0.r, yc: oY.c - o0.c, yr: oY.r - o0.r };
   });
   o.seatChip = { x: seat.chipX, y: seat.chipY };

@@ -138,7 +138,7 @@ function keysCovered(S, frame) {
   const out = new Map();
   for (let r = 0; r < visR; r++) {
     for (let c = 0; c < visC; c++) {
-      const p = S.getDieIndex(c, r, frame.cols, frame.rows, ROT, SIDE);
+      const p = S.getDieIndex(null, c, r, frame.cols, frame.rows, ROT, SIDE);
       out.set(`${p.x}_${p.y}`, { c, r });
     }
   }

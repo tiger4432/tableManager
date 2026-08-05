@@ -389,11 +389,11 @@ function scoreOffGrid(src, tag, opts) {
   //    off-grid ones — and check the payload holds only declared coordinates.
   const declaredKeys = new Set();
   for (let r = 0; r < vRows; r++) for (let c = 0; c < vCols; c++) {
-    declaredKeys.add(`${S.getDieIndex(c, r, cols, rows, S.currentRotation, S.currentSide).x}_`
-      + `${S.getDieIndex(c, r, cols, rows, S.currentRotation, S.currentSide).y}`);
+    declaredKeys.add(`${S.getDieIndex(null, c, r, cols, rows, S.currentRotation, S.currentSide).x}_`
+      + `${S.getDieIndex(null, c, r, cols, rows, S.currentRotation, S.currentSide).y}`);
   }
   for (let r = -3; r < vRows + 3; r++) for (let c = -3; c < vCols + 3; c++) {
-    const p = S.getDieIndex(c, r, cols, rows, S.currentRotation, S.currentSide);
+    const p = S.getDieIndex(null, c, r, cols, rows, S.currentRotation, S.currentSide);
     S.gridData[`${p.x}_${p.y}`] = 'A';
   }
   S.renderGridCanvas();
