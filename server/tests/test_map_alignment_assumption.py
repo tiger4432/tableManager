@@ -338,7 +338,13 @@ def test_a_map_cropped_differently_from_the_floor_is_excluded_alone_not_the_whol
     """The dims check used to live inside the candidate loop, where one mismatched map killed
     all eight candidates and the unit lost its answer entirely. The assumption opens a
     population whose dims come from a bbox scan, so this path gets walked far more often -
-    a map that does not fit must take itself out, not the unit."""
+    a map that does not fit must take itself out, not the unit.
+
+    🔴 Scored with the assumption OFF, explicitly, since 2026-08-06. With it on, the
+    mismatched map's grid is BORROWED and it no longer excludes itself - which is the
+    intended behaviour and would make this test assert nothing. The isolation property
+    being guarded here is about the exclusion path, so the test has to reach that path
+    on purpose rather than inherit it from a default that has since moved."""
     ref = _asymmetric_subset()
     floor = _meta()
     good = _place(source_meta_for_frame(floor, "rot0_front"),
@@ -346,7 +352,7 @@ def test_a_map_cropped_differently_from_the_floor_is_excluded_alone_not_the_whol
     cands, excluded, ruling, stats = ma.score_candidates(
         [{"map_id": "FITS", "meta": _meta(), "cells": good},
          {"map_id": "CROPPED", "meta": _meta(cols=25, rows=19), "cells": ref}],
-        ref, floor, thresholds=THRESHOLDS)
+        ref, floor, thresholds=THRESHOLDS, assume_reference_geometry=False)
 
     assert [r["reason_code"] for r in excluded.as_list()] == [ma.EXCLUDE_GRID_DIMS_DIFFER]
     assert stats["source_maps_usable"] == 1
@@ -369,10 +375,15 @@ def test_a_planted_frame_is_recovered_under_the_assumption(planted):
     src_cells = _place(source_meta_for_frame(floor, "rot0_front"),
                        source_meta_for_frame(floor, planted), ref)
 
+    # 🔴 `assume_reference_geometry=False` is passed EXPLICITLY. The default flipped to
+    #    True on 2026-08-06, and a control that leans on the default would silently stop
+    #    being a control the moment the default moves - it would score the same run twice
+    #    and assert the two agree. Naming the opt-out also keeps this test honest about
+    #    the property that survived the flip: a caller can still turn the assumption OFF.
     blocked = ma.score_candidates(
         [{"map_id": "M", "meta": _auto_meta(), "cells": src_cells}], ref, floor,
-        thresholds=THRESHOLDS)[2]
-    assert blocked["winner"] is None, "without the assumption this population is a dead end"
+        thresholds=THRESHOLDS, assume_reference_geometry=False)[2]
+    assert blocked["winner"] is None, "with the assumption OFF this population is a dead end"
 
     cands, excluded, ruling, stats = ma.score_candidates(
         [{"map_id": "M", "meta": _auto_meta(), "cells": src_cells}], ref, floor,
@@ -406,18 +417,61 @@ def test_the_verdict_itself_carries_the_assumption_not_only_a_field_beside_it():
     assert on_assumed["assumed_map_count"] == 1
 
 
-def test_the_assumption_is_a_claim_the_operator_makes_not_a_default():
-    """Applying it automatically would put every verdict on ground nobody claimed."""
+def test_the_assumption_applies_by_default_and_says_so():
+    """DEFAULT FLIPPED 2026-08-06, and this test used to assert the opposite.
+
+    It was called `..._is_a_claim_the_operator_makes_not_a_default` and its reason was
+    "applying it automatically would put every verdict on ground nobody claimed." That
+    was TRUE WHEN WRITTEN: the payload could not then say the assumption had been
+    applied, and an assumption nothing can report is in fact one nobody claimed. The
+    button stood in for that silence.
+
+    The premise is gone. `ruling.geometry_assumed`, `ruling.assumed_map_count`,
+    `stats.assumed_map_ids`/`assumable_map_ids` and per-source `geometry_basis` all ship
+    now, and `client2/src/map2/decode.js` reads them. So the honesty the friction was
+    buying is in the payload independently of the friction - while the click was still
+    charged per unit, on a screen the operator opens BECAUSE they do not know the spec.
+    Product owner ruling: scoring is a read, and reads are frictionless.
+
+    The reason changed; it did not vanish. A verdict standing on a borrowed spec is
+    still a different fact, and the second half of this test is that it still says so.
+    """
     ref = _asymmetric_subset()
     _c, excluded, ruling, stats = ma.score_candidates(
         [{"map_id": "M", "meta": _auto_meta(), "cells": ref}], ref, _meta(),
         thresholds=THRESHOLDS)
+    assert ruling["geometry_assumed"] is True, "unspecified now means APPLIED"
+    assert stats["assumed_map_ids"] == ["M"]
+    assert ruling["assumed_map_count"] == 1
+    assert [r["reason_code"] for r in excluded.as_list()] == [], \
+        "the map that used to be a dead end is now scored"
+
+
+def test_the_assumption_can_still_be_turned_off_explicitly():
+    """The parameter survived the flip, and this is the half that proves it.
+
+    A diagnostic wanting the unassumed answer is a real need, so `False` must still
+    mean something. And `assumption.state == 'available'` survived too - but its MEANING
+    narrowed: it used to be "offerable, not yet pressed", a state that can no longer
+    occur automatically because anything offerable is now already applied. What is left
+    is exactly this run: the caller turned it off, and the count says what turning it on
+    would have covered. A reason code that can never fire is a lie in the vocabulary;
+    this one still fires, here.
+    """
+    ref = _asymmetric_subset()
+    _c, excluded, ruling, stats = ma.score_candidates(
+        [{"map_id": "M", "meta": _auto_meta(), "cells": ref}], ref, _meta(),
+        thresholds=THRESHOLDS, assume_reference_geometry=False)
     assert ruling["geometry_assumed"] is False
     assert stats["assumed_map_ids"] == []
-    # but the offer is counted even when it was not taken - otherwise the screen has no
-    # way to show one
-    assert stats["assumable_map_ids"] == ["M"]
+    assert stats["assumable_map_ids"] == ["M"], \
+        "what it would have covered is still counted - that is what 'available' now means"
     assert [r["reason_code"] for r in excluded.as_list()] == [ma.EXCLUDE_GEOMETRY_REFUSED]
+    # And the sentence stops being an offer to press and becomes a statement of the
+    # opt-out, because there is no button to point at any more.
+    text = ma.compose_assumption_offer(ma.ASSUMPTION_AVAILABLE, 1,
+                                       {"table": "t", "map_id": "m"})
+    assert text and text.startswith("가정 끔"), text
 
 
 def test_no_offer_is_made_when_the_floor_itself_has_no_declared_geometry():
@@ -470,19 +524,31 @@ def _view(db, **kw):
                                    include_cells=False, **kw)
 
 
-def test_a_map_excluded_for_missing_geometry_becomes_an_offer_not_a_dead_end(env):
-    """The screen used to show nothing for this case. An unmeasured map is now a proposal
-    the operator can accept, and the proposal names the floor it would borrow from - the
-    sentence is composed server-side, as every other refusal in this module is."""
+def test_a_map_with_no_measured_geometry_is_scored_and_the_payload_says_on_what(env):
+    """THREE RULINGS, in order, and this test has been rewritten by each one.
+
+    1. The screen showed nothing for this case - a dead end.
+    2. It became an OFFER the operator could press (`state == 'available'`).
+    3. 2026-08-06: it is simply SCORED. The press bought no honesty the payload did not
+       already carry, and it charged a click on the screen the operator opens precisely
+       because the spec is unknown.
+
+    What must NOT change across all three is the second half: the answer stands on a
+    borrowed spec, and the payload says so, by name. That is what makes step 3 safe, so
+    it is asserted harder here than the state token is.
+    """
     _seed(env, _auto_meta())
     v = _view(env)
     a = v["assumption"]
-    assert a["state"] == ma.ASSUMPTION_AVAILABLE
-    assert a["requested"] is False
+    assert a["state"] == ma.ASSUMPTION_APPLIED
     assert a["map_ids"] == ["J1"] and a["map_count"] == 1
-    assert a["basis"] == {"table": REFT, "map_id": "R1"}
+    assert a["basis"] == {"table": REFT, "map_id": "R1"}, "and it names WHAT it borrowed"
     assert a["text"] and REFT in a["text"] and "\n" not in a["text"]
-    assert v["ruling"]["geometry_assumed"] is False
+    # The load-bearing half: the verdict itself carries the fact, not a neighbouring
+    # field, because a verdict gets copied to the confirmation record and a neighbour
+    # gets dropped on the way.
+    assert v["ruling"]["geometry_assumed"] is True
+    assert v["ruling"]["assumed_map_count"] == 1
 
 
 def test_taking_the_offer_scores_the_unit_and_the_payload_labels_every_layer(env):
@@ -563,8 +629,11 @@ def test_the_confirmation_records_which_sources_stood_on_a_borrowed_spec(env):
 
 def test_a_confirmation_on_declared_geometry_is_marked_as_such_not_left_null(env):
     _seed(env, _meta())
+    # `frame` named because a confirmation that names none is refused [D-1, 2026-08-06].
+    # The subject here is the geometry basis, which the named frame does not touch.
     h = fc.record_confirmation(env, RULE, {"eqp": "E1", "product": "P2"},
-                               [_contrib("J1")], confirmed_by="tester")
+                               [_contrib("J1")], confirmed_by="tester",
+                               frame="rot0_front")
     env.refresh(h)
     assert h.geometry_assumed is False
     row = (env.query(models.FrameConfirmationSource)
@@ -580,7 +649,7 @@ def test_an_excluded_source_is_not_recorded_as_having_stood_on_an_assumption(env
     h = fc.record_confirmation(
         env, RULE, {"eqp": "E1", "product": "P3"},
         [_contrib("J1", excluded_reason=ma.EXCLUDE_GEOMETRY_REFUSED)],
-        confirmed_by="tester")
+        confirmed_by="tester", frame="rot0_front")
     env.refresh(h)
     row = (env.query(models.FrameConfirmationSource)
            .filter_by(confirmation_uid=h.confirmation_uid).one())
@@ -596,7 +665,7 @@ def test_the_write_path_derives_the_basis_rather_than_trusting_the_request(env):
         env, RULE, {"eqp": "E1", "product": "P4"},
         # the request insists the source stood on a declaration. it did not.
         [_contrib("J1", geometry_basis=map_overlay.GEOMETRY_DECLARED)],
-        confirmed_by="tester")
+        confirmed_by="tester", frame="rot0_front")
     env.refresh(h)
     row = (env.query(models.FrameConfirmationSource)
            .filter_by(confirmation_uid=h.confirmation_uid).one())
@@ -818,14 +887,25 @@ def test_the_grid_borrow_marks_only_what_it_actually_moved():
 
 
 def test_the_offer_and_the_borrow_reach_the_payload_end_to_end(env):
-    """The whole path, through the DB and the real view builder: the button appears for a map
-    whose ONLY problem is its grid, and accepting it scores the unit and labels both layers."""
+    """The whole path, through the DB and the real view builder: a map whose ONLY problem is
+    its grid gets scored, and both layers are labelled.
+
+    🔴 The opt-out leg is driven EXPLICITLY since the default flipped 2026-08-06. It is
+    kept rather than deleted because it is now the only way `state == 'available'` can be
+    reached, and an end-to-end test is exactly where that should be proven - the token is
+    in the client's vocabulary (`client2/src/map2/decode.js` rejects unknown states), so
+    a state the server can never emit would be dead vocabulary on both sides."""
     _seed(env, _partial_grid_meta())
 
-    v = _view(env)
+    v = _view(env, assume_reference_geometry=False)
     assert v["assumption"]["state"] == ma.ASSUMPTION_AVAILABLE
     assert v["assumption"]["map_ids"] == ["J1"]
     assert v["ruling"]["geometry_assumed"] is False
+
+    # And unspecified - what the screen actually sends - scores it with no click.
+    v_default = _view(env)
+    assert v_default["state"] == ma.STATE_SCORED
+    assert v_default["ruling"]["geometry_assumed"] is True
 
     v2 = _view(env, assume_reference_geometry=True)
     assert v2["state"] == ma.STATE_SCORED

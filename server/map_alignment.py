@@ -639,6 +639,22 @@ def _membership(placed_keys, ref_sorted, dx, dy):
 # 후보 프레임을 적용한 뒤 「k번이 계산된 자리에 놓였는가」를 묻고, 여덟이 서로 다른 셀을
 # 그 자리에 놓으므로 구별은 **구성상** 생긴다.
 #
+# 🔴 **「1번은 좌상단」은 DT 맵의 규칙이고, core 보행에 적용하면 틀린다**(제품 소유자 확정
+#    2026-08-05). DT 목적지에는 그런 원점 규칙이 있다 — 장비가 1번 자리부터 채운다. core
+#    웨이퍼에는 없다: 첫 픽은 **bin 1 집합의** 좌상단이지 웨이퍼의 좌상단이 아니고, bin 1의
+#    외연은 웨이퍼의 외연이 아니다. 부분집합의 모서리를 웨이퍼의 원점으로 읽는 것이고,
+#    그 오독은 조용하다 — 좌표는 멀쩡하고 번호만 통째로 밀린다.
+#
+#    합성 실측(2026-08-05)이 그 값을 준다: 같은 순번 컬럼이 DT 보행에서 정답 프레임에
+#    88/88을 주고, bin으로 묶인 core 보행에서 **4/88**을 준다. 4는 잡음이 아니라 **앵커가
+#    틀린 것의 크기**다 — 픽 순서 k와 기준 서펜타인 순위 k가 우연히 겹친 자리의 수다.
+#    그 실행에서 8후보 중 틀린 프레임이 1등으로 나온 조합이 2건 있었다.
+#
+#    그래서 이 축은 **DT 보행 전용**이다. 강제는 두 겹이다: ① `_same_walk`가 선언된 보행
+#    밖으로 순번이 따라가지 못하게 막고, ② `alignment.index` 문턱이 없으면 축이 순위를
+#    가져가지 않는다. core 쪽 원점은 이 규칙이 아니라 **결함 지문 대조**로 푼다(픽이 결함
+#    다이를 건너뛰므로 픽 집합의 구멍이 곧 결함 위치다) — 별개의 기계장치이고 여기 없다.
+#
 # 🔴 좌상단은 **유도된다, 고르지 않는다.** `coordinate_transformer.cell_to_visual`이
 #    `invert_y=False`에서 `yv = r - min_r + start_y`이므로 **가장 작은 y가 맨 위 행**이고,
 #    `invert_y=True`면 `yv = max_r - r + start_y`라 뒤집힌다. x는 반전 축이 없어 언제나
@@ -682,9 +698,9 @@ def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
 def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                      shift_window: int = SHIFT_WINDOW, cell_cap: int = MAX_SCORED_CELLS,
                      reference_values=None, thresholds: dict = None,
-                     assume_reference_geometry: bool = False,
+                     assume_reference_geometry: bool = True,
                      reference_ref: dict = None, value_weights: dict = None,
-                     sides: list = None):
+                     sides: list = None, index_thresholds: dict = None):
     """후보 8개를 **한 호출로** 채점한다. DB를 모른다 — 셀과 메타만 받는다.
 
     `source_maps`: `[{"map_id": str, "meta": dict, "cells": [(x, y), ...],
@@ -696,9 +712,32 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     `reference_values`: 기준 셀의 값. `reference_cells`와 같은 순서. 없으면 점유 채점만.
     `thresholds`: `{min_margin_dies, min_discriminating_dies}`. **기본값이 없다** — 선언되지
         않으면 순위를 내지 않는다(`_rule_on`).
+    `index_thresholds`: 순번 축 **전용** 문턱(`alignment.index`). 없거나 불완전하면 순번
+        수치는 그대로 실려 나가되 **순위를 가져가지 않는다**(§INDEX_THRESHOLD_BLOCK).
+        점유·값 문턱과 키를 공유하지 않는 것이 요점이다 — 저쪽을 낮추는 조작이 이 축의
+        안전망까지 걷어 가면 안 된다.
     `assume_reference_geometry`: 규격 선언이 없는 소스 맵을 **바닥의 웨이퍼 치수를 빌려**
-        채점한다(스펙 §9ⓐ, `map_overlay.assume_phys_from`). 조작자가 내는 주장이므로
-        **기본값은 False**다 - 자동으로 걸면 아무도 주장한 적 없는 가정 위에서 판정이 나온다.
+        채점한다(스펙 §9ⓐ, `map_overlay.assume_phys_from`). **기본값은 True**다.
+        명시로 끌 수 있다(`False`) — 가정 없는 답을 보려는 진단은 실재하는 요구다.
+
+        🔴 [기본값 뒤집힘 2026-08-06 — 종전 근거와 그 근거가 성립을 멈춘 이유]
+        종전 기본값은 False였고 근거는 이랬다: **「가정은 조작자가 내는 주장이므로 자동으로
+        걸면 아무도 주장한 적 없는 가정 위에서 판정이 나온다.」** 그 문장은 **쓰인 시점에
+        참이었다** — 그때 payload는 가정이 걸렸다는 사실을 말할 수 없었고, 말할 수 없는
+        가정은 실제로 아무도 주장하지 않은 가정이었다. 버튼은 그 침묵의 대역이었다.
+
+        그 전제가 사라졌다. 지금 판정과 통계가 **가정의 출처까지** 싣는다:
+        `ruling.geometry_assumed` · `ruling.assumed_map_count` ·
+        `stats.assumed_map_ids` · `stats.assumable_map_ids`, 그리고 소스마다
+        `geometry_basis`(§geometry_basis_of)가 「무엇 위에서 정렬됐나」에 답한다. 버튼이
+        대신 서 있던 정직성이 **버튼과 무관하게 payload 안에 있다.** 그러므로 마찰은
+        아무것도 사지 못하면서, 조작자가 **규격을 모르기 때문에 여는 화면**에서 단위마다
+        클릭 하나를 물린다. 제품 소유자 확정: 채점은 읽기이고 읽기에는 마찰이 없다.
+
+        🔴 뒤집힌 것은 **기본값이지 기록이 아니다.** 가정이 걸린 판정은 여전히 다른
+        사실이고 그 사실은 여전히 판정 dict 자신이 나른다 — 이 파일이 `geometry_assumed`를
+        옆 필드가 아니라 판정 안에 넣은 이유가 그대로 유효하다. 근거가 바뀐 것이지
+        사라진 것이 아니다.
     `reference_ref`: `{"table":..., "map_id":...}` - 빌린 출처를 기록에 남기기 위한 이름표.
     `value_weights`: `{값: 무게}`. **일치 하나가 몇 다이만큼 세는가**이지 셀의 존재값이 아니다
         (§[3c]). 선언이 없으면 빈 dict이고 채점은 종전과 **한 자도 다르지 않다** —
@@ -1151,11 +1190,17 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    자리(확정 기록·목록)가 그것을 흘리고, 무게 아래 뽑힌 1등이 무게 없이 뽑힌 1등과
     #    같아 보인다 - `geometry_assumed`를 판정 dict 안에 넣은 이유와 같은 이유다.
     #
-    # 🔴 순번이 **가장 강한 축이라 있으면 이긴다.** 점유와 값은 둘 다 두 미지 사이의 관계라
+    # 🔴 순번은 **선언이 있을 때만 이긴다.** 점유와 값은 둘 다 두 미지 사이의 관계라
     #    어느 쪽도 방위를 고정하지 못하지만(그래서 부분 맵에서 판별 0이 났다), 순번은 정준
     #    방위에 대한 절대 진술이다. 약한 축이 강한 축을 이기면 순위는 재현되되 틀린다.
+    # 🔴 **컬럼이 있다는 사실은 순위를 가져갈 자격이 아니다.** 종전에는 순번 수치가 하나라도
+    #    있으면 축이 순위를 가져갔다 - 「없음을 0으로 접기」의 거울상이고, 이 파일이 경고하는
+    #    실패의 같은 형태다: 존재가 판정으로 접혔다. 순번이 다른 질문에 답하는 축인 것은
+    #    맞지만, **그 질문이 이 데이터에 성립할 때만** 더 강하다(§INDEX_THRESHOLD_BLOCK).
+    #    성립을 코드가 알 수 없으므로 선언이 답한다.
     scorable_indices = any(c.get("index_agreement") is not None for c in per_candidate)
-    metric = (METRIC_INDEX if scorable_indices
+    index_ranks = scorable_indices and index_thresholds_complete(index_thresholds)
+    metric = (METRIC_INDEX if index_ranks
               else METRIC_VALUES_WEIGHTED if weight_vec is not None
               else METRIC_VALUES if scorable_values else METRIC_OCCUPANCY)
     # 후보들은 **같은 소스 셀을 같은 순서로** 놓으므로 놓인 개수는 후보마다 같다. max는 그 사실에
@@ -1163,7 +1208,10 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     placed_cells = max((int(c["keys"].size) for c in per_candidate
                         if c["keys"] is not None), default=0)
     ex_rows = excluded.as_list()
-    ruling = _rule_on(out, thresholds, metric, scoring={
+    # 순위 축이 자기 문턱을 읽는다. 축마다 세는 단위가 다르므로 문턱도 축을 따라간다 —
+    # 한 dict를 돌려 쓰면 같은 이름의 수가 축마다 다른 것을 세면서 같은 이름으로 불린다.
+    ruling = _rule_on(out, index_thresholds if metric == METRIC_INDEX else thresholds,
+                      metric, scoring={
         "placed_cells": placed_cells,
         # 🔴 **「도달했는가」와 「놓였는가」는 다른 수다.** 놓인 좌표는 여덟 후보가 전부 변환을
         #    거절하면 0이 되는데(`keys is None`이라 max가 default 0을 낸다), 그 0은 좌표가
@@ -1187,6 +1235,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    정규화하는데 여기서 `sorted()`를 쓰면 같은 주장이 `["front","back"]`과
     #    `["back","front"]` 두 철자를 갖는다 - 이 파일이 반복해서 막는 「하나의 사실에 두
     #    철자」이고, 받는 쪽이 목록을 비교하는 순간 같은 선언이 달라 보인다.
+    # 🔴 **쟀는데 순위를 안 냈다**는 것은 조작자에게 필요한 사실이다. 후보 행에는 순번
+    #    수치가 실려 나가므로, 이 사실이 없으면 화면은 그 수치가 판정을 만들었다고 읽는다.
+    #    세 상태를 한 낱말로 접지 않는다: 「잰 것이 없다」·「쟀지만 순위는 안 냈다」·
+    #    「이 축이 순위다」는 서로 다른 수리를 부른다(각각 순번 컬럼 선언 / 문턱 선언 / 없음).
+    ruling["index_axis"] = (INDEX_AXIS_RANKING if index_ranks
+                            else INDEX_AXIS_REPORTED if scorable_indices
+                            else INDEX_AXIS_ABSENT)
     ruling["sides_considered"] = [s for s in FRAME_SIDES if s in considered]
     ruling["sides_narrowed"] = len(considered) < len(FRAME_SIDES)
     ruling["geometry_assumed"] = bool(assumed_ids)
@@ -1225,7 +1280,9 @@ METRIC_VALUES_WEIGHTED = "values_weighted"
 #: `value_*` 필드를 읽고, 그 필드 안의 수가 개수냐 가중 합이냐만 다르다.
 VALUE_METRICS = (METRIC_VALUES, METRIC_VALUES_WEIGHTED)
 #: 순번 축. 점유·값과 **종류가 다르다** — 저 둘은 두 미지 사이의 관계를 재고, 이것은 정준
-#: 방위라는 절대 기준점에 대고 잰다. 그래서 있으면 이긴다(§score_candidates metric).
+#: 방위라는 절대 기준점에 대고 잰다. 그래서 **성립하면** 더 강하지만, 성립 여부는 코드가
+#: 알 수 없다 — 같은 순번 컬럼이 자기 보행에서 88/88, 다른 보행에서 4/88이다. 순위를
+#: 가져가려면 `alignment.index` 문턱을 선언해야 한다(§INDEX_THRESHOLD_BLOCK).
 METRIC_INDEX = "index"
 
 # ---------------------------------------------------------------------------
@@ -1260,8 +1317,13 @@ def load_alignment_thresholds(cfg: dict) -> dict:
     읽히지 않는 선언(수가 아닌 값)도 선언이 아니다 — 조용히 0으로 접으면 오타 하나가
     「항상 순위를 낸다」로 바뀐다.
     """
-    raw = (cfg or {}).get("alignment") or {}
+    return _read_thresholds((cfg or {}).get("alignment") or {}, "alignment")
+
+
+def _read_thresholds(raw: dict, where: str) -> dict:
     out = {}
+    if not isinstance(raw, dict):
+        return out
     for k in THRESHOLD_KEYS:
         v = raw.get(k)
         if v is None:
@@ -1269,8 +1331,47 @@ def load_alignment_thresholds(cfg: dict) -> dict:
         try:
             out[k] = int(v)
         except (TypeError, ValueError):
-            logger.warning("[MapAlignment] threshold '%s' is not a number, ignored: %r", k, v)
+            logger.warning("[MapAlignment] %s threshold '%s' is not a number, ignored: %r",
+                           where, k, v)
     return out
+
+
+#: 순번 축의 문턱은 **자기 블록에 산다**(`alignment.index`). 점유·값과 키를 공유하지 않는다.
+#:
+#: 🔴 이것이 「축 하나가 컬럼이 존재한다는 이유로 나머지를 밀어내지 않는다」의 구현이다.
+#:    순번 축은 점유·값과 **다른 질문에 답한다** — 저 둘은 두 미지 사이의 관계를 재고 이쪽은
+#:    정준 방위에 대고 잰다. 다른 질문에 답하는 축이 더 강한 것은 **그 질문이 이 데이터에
+#:    성립할 때뿐**이고, 성립 여부는 코드가 알 수 없다: 같은 순번 컬럼이 자기가 선언된
+#:    보행에서는 정답을 88/88로 짚고(합성 실측 2026-08-05) 다른 보행에서는 4/88로 떨어지며
+#:    틀린 프레임을 1등으로 낸다. 그래서 순위를 가져가려면 **소리 내어 선언**해야 한다.
+#:
+#: 🔴 그리고 키를 공유하지 않는 것이 요점의 절반이다. 조작자가 점유 문턱을 다른 문제를
+#:    쫓다가 낮추면(실제로 오늘 20 → 1로 낮췄다), 공유 키였다면 그 한 번의 조작이 순번 축의
+#:    안전망까지 같이 걷어 간다. 안전망을 내리는 것과 새 축에 순위를 주는 것은 **다른 결정**
+#:    이고, 다른 결정은 다른 선언이어야 한다.
+INDEX_THRESHOLD_BLOCK = "index"
+
+#: `ruling.index_axis` — 순번 축이 **이 판정에서 무엇을 했는가**. 판정 dict 자신이 나른다:
+#: 후보 행에는 순번 수치가 실려 나가므로, 축이 순위를 안 냈다는 사실이 옆 필드에만 있으면
+#: 화면은 수치를 보고 그것이 결정했다고 읽는다(`geometry_assumed`·`metric`과 같은 이유).
+INDEX_AXIS_ABSENT = "absent"        # 순번을 실은 셀이 없다 — 잰 것이 없다
+INDEX_AXIS_REPORTED = "reported"    # 쟀고 실어 보낸다. **순위는 안 냈다**(문턱 미선언)
+INDEX_AXIS_RANKING = "ranking"      # 이 판정의 순위 축이다
+
+
+def load_index_thresholds(cfg: dict) -> dict:
+    """`alignment.index`의 문턱만. 없거나 불완전하면 순번 축은 **순위를 내지 않는다.**
+
+    불완전을 0으로 접지 않는 것은 이 파일이 세 번 물린 자리와 같은 계열이다 — 여기서는
+    한 걸음 더 간다: 미선언은 「문턱 0」이 아니라 **「이 축은 순위를 가져가지 않는다」**다.
+    """
+    raw = ((cfg or {}).get("alignment") or {}).get(INDEX_THRESHOLD_BLOCK)
+    return _read_thresholds(raw if isinstance(raw, dict) else {}, "alignment.index")
+
+
+def index_thresholds_complete(th: dict) -> bool:
+    """둘 다 있어야 선언이다. 하나만 적은 것은 절반의 안전망이지 선언이 아니다."""
+    return bool(th) and all(th.get(k) is not None for k in THRESHOLD_KEYS)
 
 
 #: 값 가중치 선언 키. 문턱과 **같은 블록**에 산다 - 조작자가 정렬 판정을 조율하는 자리는
@@ -1554,16 +1655,28 @@ def compose_refusal(state: str, reference: dict, excluded: _Excluded,
 # [D3] 가정 - 제안 문장과, 「이 소스는 무엇 위에서 정렬됐나」의 유일한 철자
 # ---------------------------------------------------------------------------
 ASSUMPTION_APPLIED = "applied"          # 걸었다. 판정이 이 가정 위에 서 있다
-ASSUMPTION_AVAILABLE = "available"      # 걸 수 있다. 아직 안 걸었다 - 이것이 제안이다
+#: 🔴 **뜻이 바뀌었다(2026-08-06). 「아직 안 눌렀다」가 아니라 「명시로 껐다」이다.**
+#:    가정이 기본으로 걸리게 된 뒤(§score_candidates 기본값 뒤집힘), 「걸 수 있는데 아직
+#:    요청되지 않았다」는 상태는 **자동으로는 발생할 수 없다** - 걸 수 있으면 이미 걸렸다.
+#:    남은 발생 경로는 하나뿐이다: 호출자가 `assume_reference_geometry=False`를 **명시로**
+#:    넘긴 진단 실행. 그래서 이 토큰은 지워지지 않고 **좁아졌다** - 여전히 참인 문장이 있고
+#:    (「껐고, 켰다면 맵 N장이 채점됐다」) 그 문장은 진단하는 사람에게 필요한 정보다.
+#:    발화할 수 없는 사유 코드는 어휘 안의 거짓말이지만, 이것은 발화한다.
+ASSUMPTION_AVAILABLE = "available"      # 명시로 껐다 - 켰다면 걸렸을 맵이 이만큼 있다
 ASSUMPTION_UNAVAILABLE = "unavailable"  # 걸 자리가 없다 (제외가 없거나 바닥이 미선언)
 
 
 def compose_assumption_offer(state: str, count: int, basis: dict) -> str | None:
-    """제안 한 줄. 걸 자리가 없으면 None.
+    """가정 한 줄. 걸 자리가 없으면 None.
 
-    🔴 **막다른 길 대신 제안이 서는 자리다.** 규격 미선언으로 제외된 맵에 대해 화면이 지금
-       할 수 있는 말은 「규격을 선언하십시오」뿐인데, 조작자가 정렬을 도는 이유가 그 규격을
-       모르기 때문이다. 문장은 서버가 만든다(`compose_refusal`과 같은 규율).
+    🔴 **이 문장은 이제 제안이 아니라 고지다.** 종전에는 제외된 맵 앞에서 「규격을
+       선언하십시오」라는 막다른 길 대신 누를 것을 내놓는 자리였는데, 가정이 기본으로
+       걸리면서 누를 것이 없어졌다 - 이미 걸려 있다. 남은 일은 **무엇을 참이라 치고
+       채점했는지 말하는 것**이고, 그것이 가정을 자동으로 걸어도 되는 이유 그 자체다.
+       문장은 서버가 만든다(`compose_refusal`과 같은 규율).
+
+    `ASSUMPTION_AVAILABLE`의 문장만 여전히 가정법이다 - 그 상태는 호출자가 명시로 끈
+    진단 실행이므로(§ASSUMPTION_AVAILABLE), 「켰다면」이 참인 유일한 자리다.
     """
     if state == ASSUMPTION_UNAVAILABLE or count <= 0:
         return None
@@ -1572,8 +1685,7 @@ def compose_assumption_offer(state: str, count: int, basis: dict) -> str | None:
     if state == ASSUMPTION_APPLIED:
         return ("맵 %d개를 기준(%s)의 웨이퍼 치수를 빌려 채점 - 동일 웨이퍼 가정이며 "
                 "이 맵의 규격 선언이 아님" % (count, where))
-    return ("맵 %d개는 기준(%s)과 같은 웨이퍼로 가정하면 채점 가능 - 가정은 기록에 남고 "
-            "규격으로 저장되지 않음" % (count, where))
+    return ("가정 끔 - 맵 %d개는 기준(%s)과 같은 웨이퍼로 가정하면 채점 가능" % (count, where))
 
 
 def geometry_basis_of(meta: dict | None, excluded_reason: str = None,
@@ -1654,6 +1766,17 @@ _REFERENCE_KIND_STRENGTH = {REFERENCE_KIND_NONE: 0,
 
 _VALUE_GUESS_REASON = ("값 컬럼 제안 없음 - 선언된 후보와 맞는 컬럼이 없어 추측만 가능합니다"
                        " (추측은 데이터 경로에 쓰지 않습니다)")
+
+
+def _same_walk(out: dict, proposal: dict) -> bool:
+    """이 실행이 읽는 x/y가 **선언이 순번을 적어 둔 그 x/y**인가.
+
+    한 낱말로 「보행(walk)」이다. 두 번째 철자를 만들지 않으려고 좌표 이름 비교 하나로
+    답한다 - 보행을 별도 식별자로 선언하게 하면 같은 사실에 두 선언이 생기고, 둘이
+    갈리는 날 순번은 자기가 말한 적 없는 좌표계를 채점한다.
+    """
+    return (out.get("x", {}).get("column") == proposal.get("x")
+            and out.get("y", {}).get("column") == proposal.get("y"))
 
 
 def resolve_source_columns(cfg: dict, table: str, model, x_col: str = None,
@@ -1737,6 +1860,23 @@ def resolve_source_columns(cfg: dict, table: str, model, x_col: str = None,
             out["index"] = {"column": None, "origin": COLUMN_ABSENT,
                             "reason": "제안된 순번 컬럼 '%s'이 '%s'에 없습니다"
                                       % (col, table)}
+        elif not _same_walk(out, proposal):
+            # 🔴 **순번은 자기가 선언된 보행(walk)에만 붙는다.** 선언은 `index`를 x·y와
+            #    **같은 칸에** 적는다 - 그것이 「이 번호는 이 x/y 보행의 순서다」라는 주장
+            #    이고, 다른 보행은 그 주장의 범위 밖이다. `dt_log`는 한 테이블에 두 좌표계를
+            #    (dt_x/dt_y와 core_x/core_y) 들고 있으므로 이 구별이 가상이 아니다.
+            #    실측(2026-08-05, 합성 픽스처): 같은 dt_index를 DT 보행에 걸면 정답 프레임이
+            #    88/88을 받고, 같은 번호를 core 보행에 걸면 정답이 **4/88**을 받으며 후보
+            #    8개 중 5개 조합에서 2건은 **틀린 프레임**이 1등으로 나왔다. 번호가 틀린 것이
+            #    아니라 **그 보행의 순서가 아닌** 것이고, 축이 답하는 질문 자체가 다르다.
+            #    좌표를 덮어쓴 실행(`x_col`/`y_col` 인자)이 바로 그 자리다 - 여기서 막지
+            #    않으면 선언 하나가 자기가 말한 적 없는 보행까지 채점한다.
+            out["index"] = {
+                "column": None, "origin": COLUMN_ABSENT,
+                "reason": "순번 컬럼 '%s'은 %s/%s 보행에 선언됐습니다 - 이 실행은 %s/%s로 "
+                          "읽으므로 순번 축은 돌지 않습니다"
+                          % (col, proposal.get("x"), proposal.get("y"),
+                             out["x"]["column"], out["y"]["column"])}
         else:
             out["index"] = {"column": col, "origin": COLUMN_PROPOSED, "reason": None}
     else:
@@ -1772,12 +1912,41 @@ def _to_cells(rows, values=None):
     """
     out, vals = [], []
     for i, (x, y) in enumerate(rows):
-        try:
-            out.append((int(float(x)), int(float(y))))
-        except (TypeError, ValueError):
+        cell = _readable_cell(x, y)
+        if cell is None:
             continue
+        out.append(cell)
         vals.append(None if values is None else values[i])
     return (out, vals) if values is not None else out
+
+
+def _readable_cell(x, y):
+    """`(x, y)`를 정수 좌표로, 못 읽으면 None. **좌표 채택 규칙의 단일 지점**이다.
+
+    나란한 목록(값·순번)을 거르는 쪽이 이 규칙을 따로 쓰면 두 철자가 생기고, 갈리는 순간
+    i번째 값이 j번째 셀에 붙는다 — 화면은 멀쩡하고 개수로도 안 잡히는 어긋남이다.
+    """
+    try:
+        return (int(float(x)), int(float(y)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _indices_for(rows, at: int):
+    """순번 목록을 **좌표와 같은 규칙으로** 거른다(§_readable_cell). 못 읽는 번호는 None.
+
+    🔴 번호 자체가 수가 아니면 그 자리는 **None이지 0이 아니다**. 0으로 접으면 채점기가
+       「0번을 기대한 자리에 놓였나」를 묻게 되고, 그것은 「번호가 없다」의 정반대다.
+    """
+    out = []
+    for r in rows:
+        if _readable_cell(r[0], r[1]) is None:
+            continue
+        try:
+            out.append(int(float(r[at])))
+        except (TypeError, ValueError):
+            out.append(None)
+    return out
 
 
 def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
@@ -2018,7 +2187,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                          cell_cap: int = MAX_PAYLOAD_CELLS,
                          x_col: str = None, y_col: str = None,
                          value_col: str = None,
-                         assume_reference_geometry: bool = False) -> dict:
+                         assume_reference_geometry: bool = True) -> dict:
     """한 결정 단위의 정렬 화면 payload **전부**를 한 번에 만든다. 읽기 전용이다.
 
     후보 8개의 채점이 같은 응답에 들어간다. 후보를 바꾸는 것은 네트워크가 아니라 리페인트여야
@@ -2029,8 +2198,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     제안받은 것인지를 말한다.
 
     `assume_reference_geometry`: 규격 선언이 없는 소스 맵을 **기준의 웨이퍼 치수를 빌려**
-    채점한다(스펙 §9ⓐ). 조작자가 내는 주장이므로 **켜야 걸린다** - 응답의 `assumption`이
-    걸었는지·걸 수 있는지·무엇에서 빌리는지를 말하고, 켜지 않아도 제안은 실린다.
+    채점한다(스펙 §9ⓐ). **기본이 켜짐**이고 명시로 끌 수 있다 — 근거와 그 근거가 바뀐 이유는
+    §score_candidates에 있다(한 곳에만 쓴다). 응답의 `assumption`이 걸었는지·무엇에서
+    빌리는지를 말하고, 끄면 `state='available'`로 「껐고 이만큼이 걸릴 수 있었다」를 말한다.
     """
     from database import models
 
@@ -2071,6 +2241,10 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
 
     v_attr = (getattr(src_model, columns["value"]["column"])
               if columns["value"]["column"] else None)
+    # 순번 컬럼. `resolve_source_columns`가 **보행 범위까지 판정한 뒤** 넘겨준 것이라
+    # 여기서 다시 묻지 않는다 - 두 번째 판정을 두면 그 둘이 갈리는 날이 온다(§_same_walk).
+    k_attr = (getattr(src_model, columns["index"]["column"])
+              if columns.get("index", {}).get("column") else None)
 
     source_maps = []
     src_truncated = False
@@ -2079,16 +2253,31 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         for i, c in enumerate(map_key_cols):
             part = mid if len(map_key_cols) == 1 else mid.split("_")[i]
             mfilters.append(getattr(src_model, c) == part)
-        q_cols = [x_attr, y_attr] + ([v_attr] if v_attr is not None else [])
+        # 열 순서를 **여기 한 곳에서** 정하고 아래가 그 순서로 읽는다. 조건부 열이 둘이라
+        # 인덱스를 상수로 적으면 값 컬럼이 없는 실행에서 순번이 값 자리를 읽는다.
+        q_cols = [x_attr, y_attr]
+        v_at = k_at = None
+        if v_attr is not None:
+            v_at = len(q_cols)
+            q_cols.append(v_attr)
+        if k_attr is not None:
+            k_at = len(q_cols)
+            q_cols.append(k_attr)
         rows = db.query(*q_cols).filter(*mfilters).limit(cell_cap + 1).all()
         if len(rows) > cell_cap:
             src_truncated = True
             rows = rows[:cell_cap]
         cells, cvals = _to_cells([(r[0], r[1]) for r in rows],
-                                 [(r[2] if v_attr is not None else None) for r in rows])
-        source_maps.append({"map_id": mid, "table": map_table,
-                            "meta": map_overlay.load_map_meta(db, map_table, mid),
-                            "cells": cells, "values": cvals})
+                                 [(r[v_at] if v_at is not None else None) for r in rows])
+        sm = {"map_id": mid, "table": map_table,
+              "meta": map_overlay.load_map_meta(db, map_table, mid),
+              "cells": cells, "values": cvals}
+        if k_at is not None:
+            # 🔴 순번은 좌표와 **같은 순서·같은 길이**여야 한다. `_to_cells`가 좌표를 거르면
+            #    (수가 아닌 x·y) 남은 순번이 옆 셀에 붙고, 그 오답은 개수로 안 잡힌다.
+            #    그래서 좌표와 **함께** 거른다.
+            sm["indices"] = _indices_for(rows, k_at)
+        source_maps.append(sm)
 
     # 🔴 메타가 None인 맵이 하나라도 있으면 **왜 None인지**를 요청 단위로 한 번 가른다.
     #    [D5] 이후 이것은 표찰이 아니라 관문이다 - 표지가 없어야만 아래 채점기가 규격을
@@ -2104,6 +2293,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     # 면도 같은 블록의 같은 규율이다. `None`이면 **둘 다**이고, 좁혀도 후보 여덟은
     # 여덟으로 나간다(§STATE_NOT_CONSIDERED).
     sides = load_alignment_sides(cfg)
+    # 순번 축 문턱은 **자기 블록**에서 읽는다. 점유·값 문턱과 키를 공유하면 저쪽을 낮추는
+    # 조작이 이 축의 안전망까지 걷어 간다(§INDEX_THRESHOLD_BLOCK).
+    index_thresholds = load_index_thresholds(cfg)
 
     candidates, excluded, ruling, stats = [], _Excluded(), {"winner": None}, {}
     if reference["state"] == REFERENCE_RESOLVED:
@@ -2113,7 +2305,8 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             assume_reference_geometry=assume_reference_geometry,
             reference_ref={"table": reference.get("table"),
                            "map_id": reference.get("map_id")},
-            value_weights=value_weights, sides=sides)
+            value_weights=value_weights, sides=sides,
+            index_thresholds=index_thresholds)
         if ruling.get("winner"):
             state = STATE_SCORED
         elif any(c["state"] == STATE_SCORED for c in candidates):

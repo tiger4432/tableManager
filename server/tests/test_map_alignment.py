@@ -242,7 +242,15 @@ def test_scoring_does_not_invent_a_bounding_box_basis(monkeypatch):
 #    the four facts apart, because each names a different repair.
 
 def _refused_map(map_id="M1"):
-    """A source map whose grid spec is auto-registered: the same refusal the live case hit."""
+    """A source map whose grid spec is auto-registered: the same refusal the live case hit.
+
+    🔴 Since 2026-08-06 reaching that refusal takes `assume_reference_geometry=False`,
+    passed EXPLICITLY at every call site below. The assumption now defaults ON, which
+    means this map gets its geometry borrowed and scored instead of excluded - the
+    intended behaviour, and it would quietly empty every test in this section. These
+    tests are about how the scorer reports having scored NOTHING, so they have to reach
+    that state on purpose rather than inherit it from a default that has since moved.
+    """
     return {"map_id": map_id, "meta": _auto_meta(), "cells": _ref_cells()}
 
 
@@ -250,7 +258,8 @@ def test_a_run_where_no_cell_reached_the_scorer_is_not_a_tie():
     """THE REGRESSION. The reference resolves, the only source map is excluded, and the answer
     must say that nothing was scored - never that the candidates were level."""
     cands, excluded, ruling, stats = ma.score_candidates(
-        [_refused_map()], _ref_cells(), _meta(), thresholds=THRESHOLDS)
+        [_refused_map()], _ref_cells(), _meta(), thresholds=THRESHOLDS,
+        assume_reference_geometry=False)
     assert ruling["reason_code"] == ma.RULING_NO_CELLS_SCORED
     assert ruling["reason_code"] != ma.RULING_TIE
     assert "tied" not in ruling, "a run that scored nothing has nobody to tie with"
@@ -325,7 +334,7 @@ def test_a_source_that_never_reached_the_scorer_still_says_so():
     ref = _ref_cells()
     _c, excluded, ruling, stats = ma.score_candidates(
         [{"map_id": "M1", "meta": _meta(cols=23, rows=23), "cells": ref}], ref, ref_meta,
-        thresholds=THRESHOLDS)
+        thresholds=THRESHOLDS, assume_reference_geometry=False)
     assert excluded.total() == 1
     assert stats["scored_cells"] == 0
     assert ruling["reason_code"] == ma.RULING_NO_CELLS_SCORED
@@ -335,7 +344,8 @@ def test_the_verdict_carries_the_exclusion_count_and_its_reason():
     """A verdict that contradicts a fact sitting beside it is worse than one that says less.
     The exclusion tally was in the response and the ruling said something else."""
     _e, excluded, ruling, _s = ma.score_candidates(
-        [_refused_map("M1"), _refused_map("M2")], _ref_cells(), _meta(), thresholds=THRESHOLDS)
+        [_refused_map("M1"), _refused_map("M2")], _ref_cells(), _meta(),
+        thresholds=THRESHOLDS, assume_reference_geometry=False)
     assert ruling["source_map_count"] == 2
     assert ruling["excluded_map_count"] == 2 == excluded.total()
     assert ruling["excluded_reason_code"] == ma.EXCLUDE_GEOMETRY_REFUSED
@@ -346,7 +356,8 @@ def test_the_nothing_scored_sentence_names_what_to_declare():
     """The sentence IS the instruction. It has to carry the count that was only in the console
     AND the word for the thing the operator must declare."""
     _c, excluded, ruling, _s = ma.score_candidates(
-        [_refused_map()], _ref_cells(), _meta(), thresholds=THRESHOLDS)
+        [_refused_map()], _ref_cells(), _meta(), thresholds=THRESHOLDS,
+        assume_reference_geometry=False)
     why = ma.compose_refusal(ma.STATE_NOT_SCORABLE, {"state": ma.REFERENCE_RESOLVED},
                              excluded, ruling, 1)
     assert "동점" not in why, why
@@ -360,7 +371,8 @@ def test_nothing_scored_and_nothing_discriminating_are_different_reasons_and_sen
     """Three facts, three repairs: declare the geometry / plug in a better reference / relax
     the floor. One shared word would send two thirds of the operators to the wrong place."""
     ref_meta, ref = _meta(), _ref_cells()
-    nothing = ma.score_candidates([_refused_map()], ref, ref_meta, thresholds=THRESHOLDS)[2]
+    nothing = ma.score_candidates([_refused_map()], ref, ref_meta, thresholds=THRESHOLDS,
+                                  assume_reference_geometry=False)[2]
     blind = ma.score_candidates(
         [{"map_id": "M1", "meta": ref_meta,
           "cells": _plant(ref_meta, _symmetric_ref(), "rot90_front")}],
@@ -463,11 +475,15 @@ def test_a_transform_that_refuses_every_candidate_says_so_rather_than_blaming_th
 
 
 def test_auto_registered_source_maps_are_excluded_with_a_named_reason_not_silently():
+    """🔴 Opt-out passed explicitly since 2026-08-06: with the assumption ON (the default)
+    an auto-registered map is BORROWED and scored, not excluded. This test is about the
+    exclusion carrying a named reason, so it has to ask for the exclusion."""
     ref_meta = _meta()
     ref = _ref_cells()
     cands, excluded, _r, stats = ma.score_candidates(
         [{"map_id": "GOOD", "meta": ref_meta, "cells": ref},
-         {"map_id": "AUTO", "meta": _auto_meta(), "cells": ref}], ref, ref_meta)
+         {"map_id": "AUTO", "meta": _auto_meta(), "cells": ref}], ref, ref_meta,
+        assume_reference_geometry=False)
     rows = excluded.as_list()
     assert excluded.total() == 1
     assert rows[0]["reason_code"] == ma.EXCLUDE_GEOMETRY_REFUSED
