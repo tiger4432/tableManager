@@ -209,20 +209,89 @@ def compose_map_id(identity_cols, values, binding=None):
 
 META_TABLE = "wafer_map_metadata"
 
+# ═══ 「메타가 없다」에는 원인이 셋이고 둘은 데이터가 아니다 (2026-08-05) ═══════════════════
+#
+# `load_map_meta`는 세 경우에 전부 `None`을 돌려준다:
+#   ⓐ 메타 **모델이 없다** — `wafer_map_metadata`가 선언 테이블 목록에 없다.
+#   ⓑ **질의가 터졌다** — 모델이 매핑한 컬럼이 라이브 DB에 없는 등(스키마 드리프트), 또는
+#      앞선 실패 문장이 트랜잭션을 오염시켰다.
+#   ⓒ 그 (target_table, map_id) 행이 **정말 없다**.
+#
+# 🔴 ⓐ·ⓑ는 **요청 전체가 동시에** 그렇게 되는 사고이고 수리는 데이터가 아니라 설정·스키마에
+#    있다. 셋이 한 답으로 접히면 화면은 언제나 ⓒ를 말한다.
+#
+# 🔴 **[D4/D5] 이후 이 구분은 표찰 문제가 아니라 안전 문제가 됐다.** 규격 행이 없는 맵은 이제
+#    「정상」이고 바닥에서 격자·웨이퍼를 빌려 **채점된다.** 그러므로 메타 테이블을 못 읽는 순간
+#    서버는 **모든 맵을 미등록으로 착각**해 빌린 규격 위에 올려 버린다 — 실제로는 자기 규격을
+#    선언해 둔 맵까지. 화면은 멀쩡하고 값만 전부 틀리는 그 실패다. 그래서 ⓐ·ⓑ는 이름을 달고
+#    **거절**돼야 하고, 빌림은 ⓒ에만 허용된다.
+#
+# 🔴 판정은 여기 하나이고 어휘도 하나다. 이름을 붙이는 자리(`map_alignment._EXCLUDE_TEXT`)는
+#    이 토큰에 문장을 붙일 뿐 두 번째 판정을 하지 않는다.
+META_ACCESS_OK = "ok"
+META_ACCESS_UNDECLARED = "undeclared"        # ⓐ 모델 자체가 없다
+META_ACCESS_QUERY_FAILED = "query_failed"    # ⓑ SELECT가 실패한다
+
+# 어떤 (target_table, map_id)와도 같을 수 없는 조합. 프로브는 **행을 찾으러 가는 것이 아니라
+# 질의가 서는지 보러** 가므로, 0행이 나오는 것이 정상 결과다.
+_META_PROBE_KEY = "\x00__meta_access_probe__"
+
+
+def _meta_select(db, model, target_table: str, map_id: str):
+    """메타 한 행을 읽는 **그 SELECT**. `load_map_meta`와 `meta_access_state`가 공유한다.
+
+    🔴 프로브가 다른 컬럼 집합을 질의하면 「읽을 수 있다」고 답해 놓고 실제 읽기는 터질 수
+       있다 — 그것이 정확히 이 판정이 막으려는 상태다. 그래서 질의의 철자는 하나다.
+    """
+    return (db.query(getattr(model, "grid_metadata"))
+            .filter(getattr(model, "target_table") == target_table,
+                    getattr(model, "map_id") == map_id)
+            .first())
+
+
+def meta_access_state(db):
+    """서버가 `wafer_map_metadata`를 **읽을 수 있는가**. `(토큰, 상세|None)`.
+
+    맵 하나에 대한 질문이 아니다 — 요청 전체에 대한 질문이고, 답이 `OK`가 아니면 그 요청의
+    메타 조회는 **하나도** 믿을 수 없다.
+
+    ⚠️ **읽기 경로 전용이다.** 실패한 문장 하나가 트랜잭션을 오염시키면 이후 질의가 전부
+       「current transaction is aborted」로 실패하므로, 프로브 앞에서 롤백해 **진짜 원인**을
+       읽는다. 롤백이 버릴 것이 있는 자리(쓰기 경로)에서는 부르지 않는다.
+    """
+    from database import models
+    model = models.DYNAMIC_TABLES.get(META_TABLE)
+    if model is None:
+        return META_ACCESS_UNDECLARED, None
+    try:
+        db.rollback()
+    except Exception:
+        pass
+    try:
+        _meta_select(db, model, _META_PROBE_KEY, _META_PROBE_KEY)
+    except Exception as e:
+        return META_ACCESS_QUERY_FAILED, "%s: %s" % (type(e).__name__, e)
+    return META_ACCESS_OK, None
+
 
 def load_map_meta(db, target_table: str, map_id: str) -> dict | None:
-    """(target_table, map_id)의 grid_metadata 원본 dict를 반환한다. 없으면 None."""
+    """(target_table, map_id)의 grid_metadata 원본 dict를 반환한다. 없으면 None.
+
+    ⚠️ `None`은 **세 가지 뜻**을 갖는다(§META_ACCESS_*). 「등록되지 않았다」고 말하거나 그
+       부재를 근거로 규격을 빌리기 전에 `meta_access_state`로 갈라야 한다 — 이 함수는
+       갈라 주지 않는다.
+    """
     from database import models
     model = models.DYNAMIC_TABLES.get(META_TABLE)
     if model is None:
         return None
     try:
-        row = (db.query(getattr(model, "grid_metadata"))
-               .filter(getattr(model, "target_table") == target_table,
-                       getattr(model, "map_id") == map_id)
-               .first())
+        row = _meta_select(db, model, target_table, map_id)
     except Exception as e:
-        logger.warning("[MapOverlay] meta query failed (%s/%s): %s", target_table, map_id, e)
+        # 🔴 error이지 warning이 아니다. 이 실패는 **요청의 모든 맵**을 동시에 못 읽게 만들고
+        #    (오염된 트랜잭션에서 이후 질의도 전부 실패한다), 로그가 그 사실을 warning으로
+        #    말하면 아무도 데이터가 아니라 스키마를 보러 가지 않는다.
+        logger.error("[MapOverlay] meta query failed (%s/%s): %s", target_table, map_id, e)
         return None
     if not row or not row[0]:
         return None
@@ -262,6 +331,20 @@ def grid_dims(meta: dict | None):
     """
     g = _grid_of(meta)
     return None if g is None else (g["cols"], g["rows"])
+
+
+def grid_box(meta: dict | None):
+    """프레임이 **선언하는 인덱스 공간** `(min_x, min_y, max_x, max_y)` 또는 None.
+
+    저장 좌표가 들어가야 하는 상자다(`start`에서 시작해 치수만큼 뻗는다). `grid_dims`와
+    같은 이유로 `_grid_of`를 다시 구현하지 않고 그대로 부른다 — 치수와 시작을 읽는 식이
+    둘이 되면 그 둘이 갈리는 날 담김 검사와 좌표 변환이 서로 다른 격자를 말한다(I6).
+    """
+    g = _grid_of(meta)
+    if g is None:
+        return None
+    return (g["start_x"], g["start_y"],
+            g["start_x"] + g["cols"] - 1, g["start_y"] + g["rows"] - 1)
 
 
 def _side_of(meta: dict | None) -> str:

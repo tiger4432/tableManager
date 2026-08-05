@@ -104,6 +104,15 @@ REFERENCE_KIND_VALUES = "values"       # 점유 + 값
 # 제외 사유 — 코드와 사람 말을 한 자리에서 짝지어 둔다. 화면이 사유 문장을 만들지 않는다
 # (`/admin/config/resolve` 규율: 사람이 읽을 문장은 전부 서버가 만든다).
 EXCLUDE_META_MISSING = "meta_missing"
+# 🔴 「메타가 없다」의 **다른 두 원인**. `map_overlay.load_map_meta`는 셋 다 None으로 접는데
+#    (§map_overlay.META_ACCESS_*), 셋이 한 낱말이면 화면은 언제나 「미등록」을 말한다 —
+#    행이 멀쩡히 있는데도. 그리고 이 둘은 맵 하나의 사고가 아니라 **요청 전체의 사고**다.
+#
+# 🔴 [D5] 이후로는 표찰이 아니라 **안전**의 문제다. 규격 행이 없는 맵은 이제 바닥에서 격자와
+#    웨이퍼를 빌려 채점되므로, 메타 테이블을 못 읽으면 서버가 **자기 규격을 선언해 둔 맵까지**
+#    미등록으로 착각해 빌린 규격 위에 올린다. 그래서 이 둘은 빌림 **앞에서** 거절한다.
+EXCLUDE_META_TABLE_UNDECLARED = "meta_table_undeclared"
+EXCLUDE_META_QUERY_FAILED = "meta_query_failed"
 EXCLUDE_GEOMETRY_REFUSED = "geometry_refused"
 EXCLUDE_NO_CELLS = "no_cells"
 # [D3] **웨이퍼 규격 가정으로도 안 열리는 두 자리.** 격자 치수는 웨이퍼가 아니라 맵의
@@ -126,15 +135,23 @@ EXCLUDE_GRID_DIMS_DIFFER = "grid_dims_differ"
 # 🔴 그래서 이것은 **맵의 사실이 아니라 요청의 사실**이다. 맵마다 세지 않는다 — 응답의
 #    `basis_refusal`이 요청 단위로 한 번 말하고, 제외 집계는 이 사유로 부풀지 않는다.
 EXCLUDE_BASIS_UNDECLARED = "basis_undeclared"
+# [D5] 빌린 격자가 이 맵의 셀을 담지 못한다. **격자를 빌리기 시작한 뒤로 남은 유일한 관문**
+# 이고, 「같은 웨이퍼의 부분집합」과 「아예 다른 맵」을 가르는 것이 이것 하나다
+# (§cells_outside_grid). 치수 불일치(`grid_dims_differ`)와 **다른 사실이다** — 저쪽은 자기
+# 격자를 선언한 맵이 바닥과 어긋난 것이고, 이쪽은 격자를 빌려 놓고 그 안에 안 들어간 것이다.
+EXCLUDE_CELLS_OUTSIDE_GRID = "cells_outside_grid"
 
 # 표찰이지 문장이 아니다(§compose_refusal).
 _EXCLUDE_TEXT = {
     EXCLUDE_META_MISSING: "맵 규격 미등록 (wafer_map_metadata)",
+    EXCLUDE_META_TABLE_UNDECLARED: "wafer_map_metadata 테이블 미선언 - 서버가 규격을 읽지 못함",
+    EXCLUDE_META_QUERY_FAILED: "wafer_map_metadata 조회 실패 - 서버가 규격을 읽지 못함",
     EXCLUDE_GEOMETRY_REFUSED: "칩 규격 미선언 - 좌표 변환 불가",
     EXCLUDE_NO_CELLS: "좌표 0건",
     EXCLUDE_GRID_DIMS_MISSING: "격자 치수(grid_cols/grid_rows) 미등록 - 가정 대상 아님",
     EXCLUDE_GRID_DIMS_DIFFER: "격자 치수가 기준과 다름 - 같은 잘림이 아님",
     EXCLUDE_BASIS_UNDECLARED: "기준 맵 규격 미선언 - 빌려 올 웨이퍼 치수가 없음",
+    EXCLUDE_CELLS_OUTSIDE_GRID: "셀이 빌린 격자 밖 - 같은 격자의 부분집합이 아님",
 }
 
 # 기준(floor) 거절 사유 코드 — **「제안되지 않았다」에는 언제나 이유가 붙는다.**
@@ -147,6 +164,8 @@ _EXCLUDE_TEXT = {
 # 세 개는 `EXCLUDE_*`와 **같은 문자열**이다 — 같은 사실에 두 철자를 두지 않는다(상세 화면의
 # 제외 어휘와 목록의 거절 어휘가 갈리면 같은 원인이 두 이름으로 보고된다).
 REF_REFUSAL_META_MISSING = EXCLUDE_META_MISSING          # 메타 **행**이 없다
+REF_REFUSAL_META_TABLE_UNDECLARED = EXCLUDE_META_TABLE_UNDECLARED  # 메타 테이블 미선언
+REF_REFUSAL_META_QUERY_FAILED = EXCLUDE_META_QUERY_FAILED          # 메타 조회 실패
 REF_REFUSAL_META_UNREADABLE = "meta_unreadable"          # 행은 있는데 grid_metadata가 비었/깨졌다
 REF_REFUSAL_GEOMETRY = EXCLUDE_GEOMETRY_REFUSED          # auto_registered · 키 부재 · 수가 아님
 REF_REFUSAL_BINDING = "binding_unresolved"               # 좌표/값 컬럼 바인딩을 유도 못 함
@@ -187,6 +206,87 @@ class _Excluded:
 
 
 # ---------------------------------------------------------------------------
+# 「메타를 못 읽었다」 — 데이터의 사고인가, 서버의 사고인가
+# ---------------------------------------------------------------------------
+# 판정은 `map_overlay.meta_access_state` 하나가 하고, 여기서는 그 토큰을 이 화면의 제외
+# 어휘로 옮겨 문장을 붙일 뿐이다. **두 번째 판정이 아니다.**
+_META_ACCESS_CODE = {
+    map_overlay.META_ACCESS_UNDECLARED: EXCLUDE_META_TABLE_UNDECLARED,
+    map_overlay.META_ACCESS_QUERY_FAILED: EXCLUDE_META_QUERY_FAILED,
+}
+
+#: 요청 단위 캐시 키 — `_resolve_reference`의 캐시 dict를 그대로 쓴다(키 모양이 겹치지 않는다).
+_META_ACCESS_CK = ("meta_access",)
+
+
+def meta_absence_reason(db, cache: dict = None):
+    """메타가 `None`인 **이유**. `(reason_code, detail|None)`.
+
+    반환이 `EXCLUDE_META_MISSING`이면 그때만 「행이 정말 없다」가 참이고, **그때만 규격을
+    빌려도 된다**(§score_candidates). 나머지 둘은 그 맵의 사실이 아니라 요청 전체의 사실이라
+    호출자가 요청 단위로 한 번 묻고 결과를 모든 맵에 같이 붙인다.
+
+    `cache`: 요청 경계의 dict(`_resolve_reference`와 공유). 없으면 매번 프로브한다.
+    ⚠️ 정상 경로에는 질의를 하나도 더하지 않는다 — **메타가 None인 맵이 있을 때만** 부른다
+       (`_meta_row_exists`와 같은 규율).
+    """
+    if cache is not None and _META_ACCESS_CK in cache:
+        return cache[_META_ACCESS_CK]
+    state, detail = map_overlay.meta_access_state(db)
+    out = (_META_ACCESS_CODE.get(state, EXCLUDE_META_MISSING), detail)
+    if cache is not None:
+        cache[_META_ACCESS_CK] = out
+    return out
+
+
+# 요청 단위 문장. 사람이 읽을 문장은 전부 서버가 만든다(화면은 아무것도 조립하지 않는다).
+_META_ACCESS_TEXT = {
+    EXCLUDE_META_TABLE_UNDECLARED: (
+        "서버가 wafer_map_metadata를 읽지 못했습니다 - 이 테이블이 선언 테이블 목록에 "
+        "없습니다(table_config.json). 이번 요청에서는 **모든 맵의 규격 조회가 실패**했으므로, "
+        "아래 제외 사유는 데이터가 아니라 서버 설정을 가리킵니다."),
+    EXCLUDE_META_QUERY_FAILED: (
+        "서버가 wafer_map_metadata를 조회하지 못했습니다 - 테이블/컬럼 상태를 확인하십시오. "
+        "이번 요청에서는 **모든 맵의 규격 조회가 실패**했으므로, 아래 제외 사유는 데이터가 "
+        "아니라 스키마 상태를 가리킵니다."),
+}
+
+
+def meta_access_block(code: str, detail: str = None):
+    """요청 단위 진술. 사고가 아니면 `None`(= 정상, 화면은 아무것도 그리지 않는다).
+
+    🔴 이것이 없으면 조작자는 맵 N장에 대한 N개의 데이터 이야기를 듣는다 - 진실은
+       「서버가 자기 테이블을 못 읽는다」 하나인데. 그 오독이 사람을 등록 작업으로 보낸다.
+    """
+    if code not in _META_ACCESS_TEXT:
+        return None
+    return {"reason_code": code, "reason": _EXCLUDE_TEXT[code],
+            "detail": detail, "text": _META_ACCESS_TEXT[code]}
+
+
+def stamp_meta_refusal(db, source_maps, cache: dict = None):
+    """메타가 None인 맵들에 **왜 None인지**를 찍는다. 요청 단위 진술을 반환(정상이면 None).
+
+    채점기(`score_candidates`)는 DB를 모른다 - 판정에 필요한 사실을 세션 없이 받아야 하고,
+    그래서 이유는 여기(요청 경계)에서 한 번 정해져 맵 dict에 실려 들어간다.
+
+    🔴 **표지가 없다는 것이 곧 「행이 정말 없다」의 증거다.** 채점기는 표지가 붙은 맵만
+       거절하고 나머지는 빌림으로 보낸다 — 그래서 이 함수를 안 부르면 못 읽은 맵이 조용히
+       빌림을 타고, 그것이 [D5] 이후 가장 비싼 실패다.
+    """
+    if not any(sm.get("meta") is None for sm in source_maps):
+        return None
+    code, detail = meta_absence_reason(db, cache)
+    if code == EXCLUDE_META_MISSING:
+        return None                      # 행이 정말 없다 — 표지를 안 붙인다(빌림 허용)
+    for sm in source_maps:
+        if sm.get("meta") is None:
+            sm["meta_refusal"] = code
+            sm["meta_refusal_detail"] = detail
+    return meta_access_block(code, detail)
+
+
+# ---------------------------------------------------------------------------
 # [D4] 규격 **행이 없는** 맵을 채점 가능한 상태로 만드는 자리
 # ---------------------------------------------------------------------------
 # 이 함수가 하는 일은 **조립뿐이다.** 기존 두 프리미티브를 순서대로 부른다:
@@ -196,11 +296,32 @@ class _Excluded:
 #   ② `map_overlay.assume_phys_from` — 웨이퍼 규격만 바닥에서 빌린다([D3]과 **같은** 규칙·
 #      같은 표지·같은 출처 기록).
 #
-# 🔴 격자 치수는 **빌리지 않는다.** 웨이퍼의 성질이 아니라 맵의 성질이고, 규격 행이 없는
-#    맵에서는 빌릴 필요도 없다 — 그 맵 자신의 셀이 답을 갖고 있다.
+#   ③ 그리고 **격자도 바닥에서 빌린다**(치수 + 시작). 아래 [D5]가 그 판정이고, 종전
+#      판정([D4] 초판·스펙 §9.1)의 **반전**이다.
+#
+# ═══ [D5] 격자도 빌린다 — 스팬은 안전한 쪽이 아니라 **틀린 쪽**이었다 (2026-08-05) ═════════
+#
+# 종전 판정: 격자 치수는 맵의 성질이라 빌리지 않고 그 맵 자신의 셀에서 유도한다. 그 근거는
+# **「한 웨이퍼의 두 맵이 다르게 잘려 있을 수 있다」**였고, 그 걱정 자체는 참이다.
+#
+# 🔴 **틀린 것은 어느 경우가 전형인가였다** (제품 소유자 2026-08-05): 이 제품에서 소스 맵은
+#    보통 같은 격자의 **부분집합**이다 — DT를 일부만 돌리면 격자가 작아진다. 그러므로 셀
+#    스팬은 가끔이 아니라 **체계적으로** 과소평가이고, 바닥이 실제 격자를 들고 있다. 드문
+#    위험을 피하려고 정상 경우를 거절하고 있었다.
+#
+# 🔴 **시작 좌표도 같이 빌린다.** 실측(오라클 대조, 45×39 chip 7×8, 부분 맵 467셀):
+#      · 치수만 빌리고 start를 셀에서 유도 → **467/467 셀 전부 틀림**
+#      · 치수 + start 둘 다 빌림          → **0/467**
+#    이유는 산술이다. 부분 맵의 좌표를 자기 최솟값으로 다시 재면 맵 전체가 평행이동한다
+#    (여기서는 11칸). 시프트 풀이는 ±3까지만 흡수하므로 그 오차는 조용히 남는다.
+#    ⚠️ 그래서 이것은 스펙 §9.1 표의 셋째 줄(「`grid_start_*`는 절대 불가」)에 대한 **두
+#       번째 반전**이다. start는 후보가 푸는 미지가 아니다 — 후보는 회전·면만 훑는다.
+#
+# 🔴 남는 축은 그대로 **절대 불가**다: `rotation`·`side`는 여덟 후보가 푸는 미지 그 자체이고,
+#    베끼면 답을 적어 놓고 그 답이 맞는지 묻는 것이 된다.
 # 🔴 결과는 **가정이다.** `geometry_declaration`은 `assumed`라고 답하고(표지를 값보다 먼저
 #    본다), 이 dict가 `wafer_map_metadata`에 도달하는 경로는 없다 — `assume_phys_from`의
-#    불변식을 그대로 승계한다.
+#    불변식을 그대로 승계한다. **격자 절반을 위한 두 번째 표지를 만들지 않는다.**
 def _cell_bbox(cells):
     """셀 목록 → `(min_x, min_y, max_x, max_y)`. 읽을 수 있는 좌표가 없으면 None."""
     xs, ys = [], []
@@ -226,7 +347,46 @@ def assumed_meta_for_unregistered(cells, basis_meta: dict, basis: dict = None):
         return None
     import map_meta_registrar
     frame = map_meta_registrar.synthesize_grid_meta(*bbox)
+    # [D5] 격자는 바닥의 것으로 갈아끼운다 — 치수와 시작을 **함께**. 하나만 빌리면 평행이동이
+    # 남고, 그 오차는 시프트 풀이(±3)를 넘어서면 조용한 오답이 된다(위 실측 467/467).
+    g = map_overlay._grid_of(basis_meta)
+    if g is not None:
+        frame["grid_cols"], frame["grid_rows"] = g["cols"], g["rows"]
+        frame["grid_start_x"], frame["grid_start_y"] = g["start_x"], g["start_y"]
     return map_overlay.assume_phys_from(frame, basis_meta, basis)
+
+
+def cells_outside_grid(meta: dict, cells) -> str | None:
+    """빌린 격자가 이 맵의 셀을 **담을 수 있는가.** 담으면 None, 아니면 사유(사람 말).
+
+    🔴 **빌리기가 관대한 방향이 된 뒤로 남은 유일한 증거다** ([D5]). 격자를 빌리기 전에는
+       치수 불일치(`grid_dims_differ`)가 「같은 웨이퍼가 아니다」를 걸러 냈는데, 이제 소스는
+       바닥의 격자를 그대로 받으므로 그 관문이 사라진다. 담김은 그 자리를 **의심이 아니라
+       증거로** 대신한다: 셀이 격자 밖에 있다는 것은 두 맵이 같은 격자가 아니라는 **양의
+       증거**이고, 그때 프레임 밖에 셀을 앉히는 대신 이름을 대고 거절한다.
+
+    ⚠️ **회전은 아직 미지라 치수 스왑을 허용한다.** 저장 좌표의 가용 범위는 프레임의 *visual*
+       치수가 정하고, 90/270 프레임에서 그것은 물리 치수의 스왑이다. 스왑을 안 봐주면 회전된
+       **전면(full) 맵**이 거짓 거절된다(실측: 45×39 웨이퍼의 rot90 맵 저장 bbox가 y=41까지
+       가는데 rows=39다). 여덟 후보가 회전을 푸는 중이므로, 여기서 회전을 하나로 고정하는
+       것은 후보 루프보다 먼저 답을 정하는 것이 된다.
+    """
+    box = map_overlay.grid_box(meta)
+    bbox = _cell_bbox(cells)
+    if box is None or bbox is None:
+        return None
+    lo_x, lo_y, hi_x, hi_y = box
+    min_x, min_y, max_x, max_y = bbox
+    dims = map_overlay.grid_dims(meta)
+    if min_x >= lo_x and min_y >= lo_y:
+        if max_x <= hi_x and max_y <= hi_y:
+            return None
+        # 스왑된 프레임(회전 90/270)의 가용 범위
+        if dims and max_x <= lo_x + dims[1] - 1 and max_y <= lo_y + dims[0] - 1:
+            return None
+    return ("셀 범위 x %d~%d · y %d~%d가 빌린 격자의 인덱스 공간 x %d~%d · y %d~%d를 "
+            "벗어납니다 - 같은 격자의 부분집합이 아닙니다"
+            % (min_x, max_x, min_y, max_y, lo_x, hi_x, lo_y, hi_y))
 
 
 #: 규격 행이 없는 맵이 **제안은 되는데 걸리지는 않은** 상태의 사유(사람 말). 제외 표찰
@@ -433,6 +593,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             continue
         use_meta = meta
         if not meta:
+            # 🔴 **빌리기 전에 「행이 정말 없는가」를 묻는다.** 서버가 메타 테이블을 못 읽어서
+            #    None인 것이면 이 맵은 미등록이 아니고, 빌린 규격에 올리는 순간 자기 규격을
+            #    선언해 둔 맵이 남의 프레임 위에서 채점된다 - 화면은 멀쩡하고 값만 틀린다.
+            #    표지는 호출자가 요청 경계에서 한 번 찍는다(§stamp_meta_refusal).
+            if sm.get("meta_refusal"):
+                excluded.add(sm["meta_refusal"], mid, sm.get("meta_refusal_detail"))
+                continue
             # [D4] **규격 행이 없다 = 정상이다.** 조작자가 정렬을 여는 이유 그 자체이고,
             #      [D3]이 「행은 있는데 규격이 없다」에 내린 판정과 같은 판정을 받는다.
             borrowed = assumed_meta_for_unregistered(
@@ -442,6 +609,12 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 #    근거 없이 그린 좌표는 멀쩡해 보이고 전부 틀리다. 그리고 이 사실은
                 #    맵이 아니라 요청의 사실이라 제외 집계에 세지 않는다(§compose_basis_refusal).
                 basis_undeclared_ids.append(mid)
+                continue
+            # 🔴 [D5] 담김 검사는 **제안보다 먼저**다. 안 들어가는 맵을 제안했다가 켠 뒤에
+            #    거절하면 조작자는 한 번 더 눌러 보고 같은 막다른 길에 도착한다.
+            outside = cells_outside_grid(borrowed, sm.get("cells"))
+            if outside is not None:
+                excluded.add(EXCLUDE_CELLS_OUTSIDE_GRID, mid, outside)
                 continue
             offerable_ids.append(mid)
             if not assume_reference_geometry:
@@ -1172,7 +1345,7 @@ def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int,
         ck = ("ref", table, map_id, origin, cap)
         if ck in cache:
             return cache[ck]
-        out = _load_reference(db, cfg, table, map_id, origin, cap)
+        out = _load_reference(db, cfg, table, map_id, origin, cap, cache=cache)
         if len(cache) < _REF_CACHE_MAX:
             cache[ck] = out
         return out
@@ -1184,7 +1357,8 @@ def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int,
 _REF_CACHE_MAX = 256
 
 
-def _load_reference(db, cfg: dict, table: str, map_id: str, origin: str, cap: int) -> dict:
+def _load_reference(db, cfg: dict, table: str, map_id: str, origin: str, cap: int,
+                    cache: dict = None) -> dict:
     """해석된 기준 하나를 실제로 읽는다. `_resolve_reference`의 꼬리 — **여기 하나뿐이다.**
 
     거절은 **언제나 사유 코드를 달고** 나간다(`REF_REFUSAL_*`). 이 함수가 목록(카탈로그)과
@@ -1202,6 +1376,15 @@ def _load_reference(db, cfg: dict, table: str, map_id: str, origin: str, cap: in
         #    **정반대의 수리**다(등록하라 vs 다시 재라). `load_map_meta`는 둘 다 None을
         #    돌려주므로 여기서 갈라 준다 — 갈라 주지 않으면 등록돼 있는 맵을 두고
         #    「등록되지 않았습니다」라고 말하게 되고, 그 문장은 참이 아니다.
+        # 🔴 그 앞에 **서버가 메타 테이블 자체를 못 읽는 경우**가 있다. 그때는
+        #    `_meta_row_exists`도 같은 이유로 False를 돌려주므로(모델 부재·질의 실패를
+        #    False로 접는다) 두 갈래 판정이 통째로 「미등록」쪽으로 넘어간다. [D5] 이후로는
+        #    이 오진이 특히 비싸다 — 바닥이 안 풀리면 소스 맵들이 `basis_undeclared`가 되어
+        #    「기준 맵의 규격을 선언하십시오」라고 말하는데, 그 기준은 이미 선언돼 있다.
+        access_code, access_detail = meta_absence_reason(db, cache)
+        if access_code != EXCLUDE_META_MISSING:
+            return _refuse(access_code, _META_ACCESS_TEXT[access_code]
+                           + ("" if not access_detail else " (%s)" % access_detail))
         if _meta_row_exists(db, table, map_id):
             return _refuse(REF_REFUSAL_META_UNREADABLE,
                            "기준 맵 '%s · %s'의 wafer_map_metadata 행은 있으나 "
@@ -1387,7 +1570,14 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                             "meta": map_overlay.load_map_meta(db, map_table, mid),
                             "cells": cells, "values": cvals})
 
-    reference = _resolve_reference(db, cfg, reference_spec, source_maps, cell_cap)
+    # 🔴 메타가 None인 맵이 하나라도 있으면 **왜 None인지**를 요청 단위로 한 번 가른다.
+    #    [D5] 이후 이것은 표찰이 아니라 관문이다 - 표지가 없어야만 아래 채점기가 규격을
+    #    빌린다(§stamp_meta_refusal).
+    req_cache = {}
+    meta_access = stamp_meta_refusal(db, source_maps, req_cache)
+
+    reference = _resolve_reference(db, cfg, reference_spec, source_maps, cell_cap,
+                                   cache=req_cache)
     thresholds = load_alignment_thresholds(cfg)
 
     candidates, excluded, ruling, stats = [], _Excluded(), {"winner": None}, {}
@@ -1412,6 +1602,10 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         for sm in source_maps:
             if not sm.get("cells"):
                 excluded.add(EXCLUDE_NO_CELLS, sm["map_id"])
+            elif sm.get("meta_refusal"):
+                # 서버가 못 읽은 것이지 이 맵이 미등록인 것이 아니다 — 바닥 이야기로 접으면
+                # 「기준을 선언하라」가 되고, 그것도 참이 아니다.
+                excluded.add(sm["meta_refusal"], sm["map_id"], sm.get("meta_refusal_detail"))
             elif not sm.get("meta"):
                 # 🔴 [D4] **`meta_missing`이 아니다.** 여기서 그 낱말을 쓰면 소스 맵 N장을
                 #    고치러 보내는데, 규격 행이 없는 것은 정상이고 선언이 필요한 것은 조작자가
@@ -1530,6 +1724,10 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             "source": reference.get("source"),
             "table": reference.get("table"), "map_id": reference.get("map_id"),
             "count": reference.get("count", 0), "reason": reference.get("reason"),
+            # 🔴 코드도 같이 낸다. `_ref_state`는 "코드와 문장 둘 다" 내보내기로 돼 있는데
+            #    이 자리가 문장만 실어, 화면이 분기하려면 문장에서 코드를 유도해야 했다 —
+            #    그것이 두 번째 판정 구현이다. 목록(`unscorable_reasons`)은 이미 코드를 낸다.
+            "reason_code": reference.get("reason_code"),
             "truncated": reference.get("truncated", False),
             "cells": ([[x, y] for (x, y) in reference.get("cells") or ()]
                       if include_cells else []),
@@ -1559,6 +1757,10 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         # [D4] 가정을 **걸 수조차 없었던** 이유 — 바닥이 선언이 아니다. `None`이면 해당 없음.
         # 요청 단위의 사실이라 여기 하나뿐이고, 제외 집계는 이 사유로 부풀지 않는다.
         "basis_refusal": basis_refusal,
+        # 🔴 **요청 전체의 사고**를 요청 단위에 한 번 말한다. `None`이면 정상 - 화면은
+        #    아무것도 그리지 않는다. 값이 있으면 아래 제외 집계는 데이터의 이야기가 아니고,
+        #    이번 요청에서는 **아무 맵도 규격을 빌리지 않았다**(§stamp_meta_refusal).
+        "meta_access": meta_access,
         # 적혀 있는 것. **결정이 아니다** (§declared_frame_of).
         "declaration": {
             "frames": dict(tally),
@@ -1811,8 +2013,19 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
         if remaining <= 0:
             truncated = True
             break
-        rows = (db.query(mid).filter(tt == ftable).order_by(mid)
-                  .limit(remaining + 1).all())
+        try:
+            rows = (db.query(mid).filter(tt == ftable).order_by(mid)
+                      .limit(remaining + 1).all())
+        except Exception as e:
+            # 🔴 메타 테이블을 못 읽으면 **카탈로그만 비는 것이 아니라 목록 전체가 500이었다**
+            #    (이 질의가 `build_alignment_worklist`의 꼬리에서 돈다). 그러면 「무엇이 왜
+            #    안 되는가」가 통째로 사라지고, 화면은 정렬 기능 자체가 죽은 것으로 읽는다.
+            #    모델 부재와 **같은 상태**로 접는다 — 둘 다 「바닥 목록을 낼 수 없다」이고,
+            #    원인의 이름은 `meta_access`가 요청 단위로 따로 말한다.
+            logger.error("[MapAlignment] reference catalog query failed (%s): %s", ftable, e)
+            return dict(base, state=REFERENCE_CATALOG_UNAVAILABLE,
+                        reason="맵 규격 표(%s)를 조회하지 못했습니다"
+                               % map_overlay.META_TABLE)
         if len(rows) > remaining:
             truncated, rows = True, rows[:remaining]
         for (map_id,) in rows:
@@ -1878,7 +2091,15 @@ def _load_metas(db, map_table: str, map_ids) -> dict:
     tt, mid = getattr(model, "target_table"), getattr(model, "map_id")
     gm = getattr(model, "grid_metadata")
     for part in _chunks(map_ids, _META_CHUNK):
-        for row in db.query(mid, gm).filter(tt == map_table, mid.in_(part)).all():
+        try:
+            rows = db.query(mid, gm).filter(tt == map_table, mid.in_(part)).all()
+        except Exception as e:
+            # 🔴 조용히 {}로 접지 않는다 — 로그는 error로 남기고, 호출자가
+            #    `meta_absence_reason`으로 **이름을 붙여** 응답에 싣는다. 예외를 그대로
+            #    올리면 목록이 500이 되어 「무엇이 왜 안 되는가」가 통째로 사라진다.
+            logger.error("[MapAlignment] meta batch query failed (%s): %s", map_table, e)
+            return out
+        for row in rows:
             raw = row[1]
             if not raw:
                 out[row[0]] = None
@@ -2038,6 +2259,14 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
 
     # ---- [4] 단위마다 판정 -------------------------------------------------------------
     ref_cache = {}
+    # 🔴 상세 화면과 **같은 갈래**를 목록에서도 낸다. 메타를 못 읽은 맵이 하나라도 있으면
+    #    그 이유를 요청 단위로 한 번 묻고(캐시 공유) 지배적 사유의 낱말로 쓴다 — 목록이
+    #    「미등록」이라 하고 상세가 「테이블 미선언」이라 하면 같은 원인이 두 이름을 갖는다.
+    meta_missing_code, meta_missing_detail = EXCLUDE_META_MISSING, None
+    if any(metas.get(m) is None for m in all_ids):
+        meta_missing_code, meta_missing_detail = meta_absence_reason(db, ref_cache)
+    meta_access = meta_access_block(meta_missing_code, meta_missing_detail)
+    meta_readable = meta_missing_code == EXCLUDE_META_MISSING
     reasons = {}
     by_state = {STATE_UNIT_PENDING: 0, STATE_UNIT_CONFIRMED: 0, STATE_UNIT_UNSCORABLE: 0}
     for u in units:
@@ -2053,11 +2282,22 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         # 🔴 `state`·`reason_code`는 **건드리지 않는다.** 목록은 바닥을 풀지 않은 채로
         #    이 수를 세므로 「가정이 실제로 걸린다」고 말할 수 없다 - 그것은 상세가 바닥을
         #    풀고 나서야 아는 사실이다. 여기서 상태를 바꾸면 목록이 상세보다 많이 주장한다.
-        u["assumable_map_count"] = sum(
+        # 🔴 [D5] **규격 행이 없는 맵도 센다.** [D4]까지는 행 없는 맵이 채점 대상이 아니라
+        #    제외하는 것이 맞았지만, 지금은 그 맵이 바로 이 기능이 섬기는 모집단이다 - 빼면
+        #    목록이 「가망 없음」이라 말하는 단위가 상세에서는 열린다(목록이 상세보다 적게
+        #    주장하는 것도 갈리는 것이다).
+        #    ⚠️ 격자 치수 조건은 **행이 있는 맵에만** 건다. 행이 없으면 격자를 바닥에서
+        #       빌리므로 셀이 답을 갖고 있고, 목록은 셀을 읽지 않는다.
+        #    ⚠️ 담김(§cells_outside_grid)은 여기서 확인할 수 없다 - 셀 bbox가 필요하다.
+        #       그래서 이 수는 여전히 **상한**이고, 상세가 정본이다(기존 규율 그대로).
+        #    🔴 그리고 **서버가 메타를 못 읽었으면 하나도 세지 않는다.** 그때 모든 맵이
+        #       `metas.get(m) is None`이라 이 식은 「전부 가정 가능」이라고 답하는데, 그것은
+        #       읽지 못한 것을 부재로 읽은 결과다 — 잰 적 없는 수를 초대장으로 내보낸다.
+        u["assumable_map_count"] = 0 if not meta_readable else sum(
             1 for m in ids
-            if metas.get(m) is not None
-            and map_overlay.geometry_declaration(metas[m]) != map_overlay.GEOMETRY_DECLARED
-            and map_overlay.grid_dims(metas[m]) is not None)
+            if metas.get(m) is None
+            or (map_overlay.geometry_declaration(metas[m]) != map_overlay.GEOMETRY_DECLARED
+                and map_overlay.grid_dims(metas[m]) is not None))
         header = live.get(u["unit_key"])
         u["confirmation"] = (None if header is None else {
             "version": header.version,
@@ -2078,7 +2318,7 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
             # 제외 어휘와 같은 코드라 목록과 상세가 같은 낱말을 쓴다.
             n_missing = sum(1 for m in ids if metas.get(m) is None)
             state = STATE_UNIT_UNSCORABLE
-            reason = (EXCLUDE_META_MISSING if n_missing * 2 >= len(ids)
+            reason = (meta_missing_code if n_missing * 2 >= len(ids)
                       else EXCLUDE_GEOMETRY_REFUSED)
         else:
             ref = _resolve_reference(
@@ -2139,6 +2379,8 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
             "references": references,
             "ambiguity": binding_ambiguity(rule, coord),
         },
+        # 상세와 **같은 자리·같은 모양**. `None`이면 정상 (§meta_access_block).
+        "meta_access": meta_access,
         "states": [STATE_UNIT_PENDING, STATE_UNIT_CONFIRMED, STATE_UNIT_UNSCORABLE],
         "totals": {
             "matched": int(matched or 0),
@@ -2160,9 +2402,13 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         "sort": {"key": key, "order": "desc" if reverse else "asc",
                  "available": sort_keys},
         "query": {"q": needle or None, "params": dict(key_values or {})},
+        # 🔴 `assumable_map_count`는 [D3]에 계산돼 놓고 **응답에 실리지 않았다** — 저장소
+        #    전체에 소비자가 0건이었고(클라 포함), 그래서 「목록이 조작자를 초대한다」는
+        #    설계가 실제로는 배선된 적이 없다. 세어 놓고 안 보내는 수는 없는 수와 같다.
         "units": [dict({"key": u["key"], "unit_key": u["unit_key"], "state": u["state"],
                         "reason_code": u["reason_code"], "map_count": u["map_count"],
                         "usable_map_count": u["usable_map_count"],
+                        "assumable_map_count": u["assumable_map_count"],
                         "confirmation": u["confirmation"]}, **u["extras"])
                   for u in page],
         "stats": {"build_ms": (time.monotonic() - t0) * 1000.0,

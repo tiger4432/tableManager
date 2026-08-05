@@ -178,42 +178,54 @@ def test_a_planted_frame_is_recovered_for_a_map_that_has_no_meta_row():
 # 2. it is the EXISTING primitive, and the result stays an assumption
 # ---------------------------------------------------------------------------
 
-def test_the_frame_is_the_existing_synthesizer_composed_with_the_existing_borrow():
+def test_the_frame_is_the_existing_synthesizer_with_only_the_grid_replaced():
     """A third frame synthesizer would be a third vocabulary for «mask-neutral frame», and
     the day the three disagree the screen is perfect and every value is wrong. So this
-    asserts composition, not shape: the result must be byte-identical to calling the two
-    primitives in order.
+    asserts composition, not shape: everything except the four grid keys must be
+    byte-identical to what the existing primitive produces.
 
     🔴 The floor is the CROPPED one on purpose. On an uncropped floor the cell span equals
-       the floor's grid, so a fix that quietly borrowed the dims would produce the identical
-       dict and this assertion would pass on a broken build - measured, not supposed: the
-       first version of this test used `_meta()` and survived exactly that mutation."""
+       the floor's grid, so a build that did NOT borrow would produce the identical dict and
+       this assertion would pass on it - measured, not supposed: an earlier version of this
+       test used `_meta()` and survived exactly that mutation."""
     floor = _meta(cols=45, rows=39)
     cells = _cells_of(floor)
-    assert _span(cells) != (45, 39), "fixture must be able to see a borrowed dim"
+    assert _span(cells) != (45, 39), "fixture must be able to see the grid substitution"
     bbox = (min(x for x, _ in cells), min(y for _, y in cells),
             max(x for x, _ in cells), max(y for _, y in cells))
 
-    expected = map_overlay.assume_phys_from(
-        map_meta_registrar.synthesize_grid_meta(*bbox), floor, REF_REF)
+    synth = map_meta_registrar.synthesize_grid_meta(*bbox)
     got = ma.assumed_meta_for_unregistered(cells, floor, REF_REF)
+    GRID = ("grid_cols", "grid_rows", "grid_start_x", "grid_start_y")
+    for k, v in synth.items():
+        if k in GRID or k in map_overlay.PHYS_KEYS:
+            continue
+        assert got[k] == v, k                       # mask-neutral vocabulary, unchanged
+    assert got[map_overlay.AUTO_REGISTERED_KEY] is True
+
+    # and the whole thing is still the two existing primitives composed
+    expected = map_overlay.assume_phys_from(
+        dict(synth, grid_cols=45, grid_rows=39, grid_start_x=1, grid_start_y=1),
+        floor, REF_REF)
     assert json.dumps(got, sort_keys=True) == json.dumps(expected, sort_keys=True)
 
 
-def test_the_frame_borrows_the_wafer_and_derives_the_grid():
-    """The two halves of the ruling, each measured against its source rather than restated:
-    phys comes from the floor, grid dims come from the map's OWN cells. Cropped floor for
-    the same reason as above - the two answers have to be DIFFERENT numbers here."""
+def test_the_frame_borrows_the_wafer_AND_the_grid():
+    """[D5] The reversal. Grid dims AND start come from the floor, not from the cells - a
+    partial map's span is systematically an under-estimate, so the derived answer is the
+    less accurate one, not the safer one. Cropped floor so the two answers are DIFFERENT
+    numbers; otherwise the assertion cannot tell them apart."""
     floor = _meta(cols=45, rows=39)
     cells = _cells_of(floor)
     got = ma.assumed_meta_for_unregistered(cells, floor, REF_REF)
 
     for k in map_overlay.PHYS_KEYS:
         assert got[k] == float(floor[k]), k
-    assert map_overlay.grid_dims(got) == _span(cells)
-    assert map_overlay.grid_dims(got) != map_overlay.grid_dims(floor)
-    assert (got["grid_start_x"], got["grid_start_y"]) == (min(x for x, _ in cells),
-                                                          min(y for _, y in cells))
+    assert map_overlay.grid_dims(got) == map_overlay.grid_dims(floor) == (45, 39)
+    assert map_overlay.grid_dims(got) != _span(cells)          # NOT the span
+    assert (got["grid_start_x"], got["grid_start_y"]) == (floor["grid_start_x"],
+                                                          floor["grid_start_y"])
+    assert map_overlay.grid_box(got) == map_overlay.grid_box(floor)
 
 
 def test_the_result_is_an_assumption_and_says_where_it_came_from():
@@ -310,35 +322,140 @@ def test_a_map_with_neither_cells_nor_a_meta_row_is_named_by_its_coordinates():
 # 5. THE MEASUREMENT - which floors this path can actually serve
 # ---------------------------------------------------------------------------
 
-def test_a_cropped_floor_still_refuses_because_a_cell_span_is_only_a_lower_bound():
-    """MEASURED, not argued. Stored coordinates are bbox-relative, so their span equals the
-    wafer CROP, not the grid - `test_map_alignment_assumption.py` measured that already. So
-    the synthesized grid is a LOWER BOUND on the floor's grid and is tight only when the mask
-    crops nothing. `make_frame_transform` requires the two grids to be EQUAL, so on a cropped
-    floor the borrow happens and the map is still excluded - `grid_dims_differ` instead of
-    `meta_missing`.
-
-    This is the limit of the ruling as written, recorded here so it is a known quantity
-    rather than a surprise: the absent-row borrow serves floors whose mask crops nothing.
-    """
+def test_a_cropped_floor_now_goes_all_the_way_through():
+    """[D5] The reversal, at the outcome level. Under [D4] this exact fixture was excluded
+    `grid_dims_differ`: the synthesized span (41x35) could never equal the floor's declared
+    grid (45x39), and `make_frame_transform` requires equality. Borrowing the grid removes
+    that mismatch by construction - there is only one grid now."""
     cropped = _meta(cols=45, rows=39)
     cells = _cells_of(cropped)
     assert _span(cells) == (41, 35) != (45, 39), "fixture must actually crop"
 
     _c, excluded, _r, stats = _score([_no_row_map(cells)], cells, cropped,
                                      assume_reference_geometry=True)
-    assert stats["assumed_map_ids"] == ["NOROW"]        # the borrow DID happen
-    assert stats["usable_map_ids"] == []                # and it still could not be scored
-    assert list(_reasons(excluded)) == [ma.EXCLUDE_GRID_DIMS_DIFFER]
-
-    # the same fixture with a grid the mask does not crop goes all the way through
-    ok = _meta()
-    ok_cells = _cells_of(ok)
-    assert _span(ok_cells) == (COLS, ROWS)
-    _c, excluded, _r, stats = _score([_no_row_map(ok_cells)], ok_cells, ok,
-                                     assume_reference_geometry=True)
+    assert stats["assumed_map_ids"] == ["NOROW"]
     assert stats["usable_map_ids"] == ["NOROW"]
     assert excluded.as_list() == []
+
+
+# ---------------------------------------------------------------------------
+# 5-bis. THE LOAD-BEARING MEASUREMENT - a PARTIAL map lands where it started
+# ---------------------------------------------------------------------------
+
+def _partial_of(floor):
+    """«DT를 일부만 돌렸다» - a contiguous asymmetric REGION of the wafer, expressed in the
+    floor's coordinates. This is the population the product owner named, and it is the only
+    fixture that can tell the two halves of the grid apart: a full-coverage map has its own
+    min at the floor's start, so deriving start from cells looks correct on it."""
+    return [p for p in _cells_of(floor)
+            if 12 <= p[0] <= 34 and 8 <= p[1] <= 28 and not (p[0] > 30 and p[1] < 12)]
+
+
+@pytest.mark.parametrize("planted", ["rot0_front", "rot90_front", "rot180_front",
+                                     "rot270_back"])
+def test_a_partial_map_is_placed_back_exactly_where_it_came_from(planted):
+    """ORACLE, not a label check: take a partial map whose true frame is known, run the real
+    transform stack under that frame, and require the coordinates we started from - cell for
+    cell, zero tolerance.
+
+    🔴 This is the assertion that distinguishes «borrow the dims» from «borrow the grid».
+       MEASURED on this fixture (467 cells): borrowing dims while DERIVING start from the
+       cells gets 467/467 cells wrong, because re-basing a partial map to its own minimum
+       translates the whole map (11 columns here). The shift solver only reaches +-3, so
+       that error does not announce itself - it is the silent-overlay failure, arriving by
+       the half of the grid nobody was watching.
+    """
+    from dt_map_derivation import source_meta_for_frame
+    floor = _meta(cols=45, rows=39)
+    truth = _partial_of(floor)
+    assert len(truth) > 100
+
+    map_overlay._FRAME_TF_CACHE.clear()
+    to_planted = map_overlay.make_frame_transform(
+        floor, source_meta_for_frame(_meta(cols=45, rows=39), planted))
+    stored = [to_planted(x, y) for (x, y) in truth]
+
+    assumed = ma.assumed_meta_for_unregistered(stored, floor, REF_REF)
+    assert ma.cells_outside_grid(assumed, stored) is None, "a true subset must fit"
+
+    map_overlay._FRAME_TF_CACHE.clear()
+    back = map_overlay.make_frame_transform(
+        source_meta_for_frame(assumed, planted), floor)
+    got = [back(x, y) for (x, y) in stored]
+    wrong = sum(1 for a, b in zip(got, truth) if a != b)
+    assert wrong == 0, "%d/%d cells landed in the wrong place" % (wrong, len(truth))
+
+
+# ---------------------------------------------------------------------------
+# 5-ter. CONTAINMENT - the only guard left once borrowing became permissive
+# ---------------------------------------------------------------------------
+
+def test_cells_that_do_not_fit_the_borrowed_grid_are_refused_by_name():
+    """Borrowing removed `grid_dims_differ` as a gate - the source now takes the floor's
+    grid by construction, so «same wafer?» has nothing left to fail on. Containment replaces
+    it on EVIDENCE: cells outside the borrowed index space are positive evidence that these
+    are not the same grid, and the alternative is seating cells outside their own frame."""
+    floor = _meta(cols=45, rows=39)
+    inside = _partial_of(floor)
+    outside = inside + [(200, 300)]        # one cell that cannot belong to a 45x39 grid
+
+    _c, excluded, _r, stats = _score([_no_row_map(outside)], _cells_of(floor), floor,
+                                     assume_reference_geometry=True)
+    assert stats["usable_map_ids"] == []
+    assert list(_reasons(excluded)) == [ma.EXCLUDE_CELLS_OUTSIDE_GRID]
+    # the detail names BOTH boxes - which cells, and what they had to fit in
+    detail = excluded.as_list()[0]["example_detail"]
+    assert "200" in detail and "45" in detail
+
+
+def test_a_map_that_does_not_fit_is_not_even_offered():
+    """The offer has to be honest. Offering an assumption that will refuse when pressed
+    sends the operator around the loop a second time to reach the same dead end."""
+    floor = _meta(cols=45, rows=39)
+    outside = _partial_of(floor) + [(200, 300)]
+    _c, excluded, _r, stats = _score([_no_row_map(outside)], _cells_of(floor), floor,
+                                     assume_reference_geometry=False)
+    assert stats["assumable_map_ids"] == []
+    assert list(_reasons(excluded)) == [ma.EXCLUDE_CELLS_OUTSIDE_GRID]
+
+
+def test_containment_allows_the_swap_a_rotated_frame_needs():
+    """🔴 The false-refusal this guard could easily have caused. Stored coordinates live in
+    the frame's VISUAL extent, and a 90/270 frame swaps it. A full-coverage map of a 45x39
+    wafer drawn at rot90 stores y up to 41 - past `rows=39` - so a guard that fixed the
+    rotation to 0 would refuse the very maps this feature exists to align, and it would
+    refuse them for a reason that is not true. Rotation is what the eight candidates are
+    still solving; deciding it here would answer the question before the loop asks it."""
+    from dt_map_derivation import source_meta_for_frame
+    floor = _meta(cols=45, rows=39)
+    map_overlay._FRAME_TF_CACHE.clear()
+    to90 = map_overlay.make_frame_transform(
+        floor, source_meta_for_frame(_meta(cols=45, rows=39), "rot90_front"))
+    stored = [to90(x, y) for (x, y) in _cells_of(floor)]
+
+    _mnx, _mny, mxx, mxy = (min(x for x, _ in stored), min(y for _, y in stored),
+                            max(x for x, _ in stored), max(y for _, y in stored))
+    assert mxy > 39, "fixture must exceed `rows` or it cannot see the swap (got %d)" % mxy
+
+    assumed = ma.assumed_meta_for_unregistered(stored, floor, REF_REF)
+    assert ma.cells_outside_grid(assumed, stored) is None
+    _c, excluded, _r, stats = _score([_no_row_map(stored)], _cells_of(floor), floor,
+                                     assume_reference_geometry=True)
+    assert stats["usable_map_ids"] == ["NOROW"], _reasons(excluded)
+
+
+def test_containment_is_asked_of_the_borrowed_grid_not_of_the_span():
+    """The predicate on its own. A span-based check would pass the out-of-range map below
+    (its span is small); the box-based one refuses it because the cells sit outside the
+    frame they were given."""
+    floor = _meta(cols=45, rows=39)
+    assumed = ma.assumed_meta_for_unregistered(_partial_of(floor), floor, REF_REF)
+    assert map_overlay.grid_box(assumed) == (1, 1, 45, 39)
+
+    far = [(60, 5), (64, 9)]                       # span 5x5, but nowhere near the grid
+    assert ma.cells_outside_grid(assumed, far) is not None
+    assert ma.cells_outside_grid(assumed, [(1, 1), (45, 39)]) is None
+    assert ma.cells_outside_grid(assumed, [(0, 1)]) is not None        # below `start`
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +479,10 @@ TABLES = {
         "column_types": {"cell_key": "string", "product": "string", "type": "string",
                          "x": "number", "y": "number", "val": "string"},
         "map_key_columns": ["product", "type"]},
+    "unreg_test_unit": {"business_key": "unit_key",
+                        "composite_key_source": ["eqp"],
+                        "column_types": {"unit_key": "string", "eqp": "string",
+                                         "map_metadata": "string"}},
     map_overlay.META_TABLE: {"business_key": "map_pk",
                              "composite_key_source": ["target_table", "map_id"],
                              "column_types": {"map_pk": "string",
@@ -466,3 +587,23 @@ def test_with_no_floor_the_view_names_the_floor_once_instead_of_every_source_map
     assert ma.EXCLUDE_BASIS_UNDECLARED not in {e["reason_code"] for e in view["excluded"]}
     # a map blocked by the missing floor is not "usable" either
     assert view["sources"]["usable_map_count"] == 0
+
+
+def test_the_worklist_counts_a_map_with_no_spec_row_as_assumable(env):
+    """[D5] The list must not say «가망 없음» about a unit the detail view will open. Under
+    [D4] `assumable_map_count` required a meta row - which excluded exactly the population
+    this feature serves, so the list under-claimed against its own detail screen.
+
+    The count stays an UPPER BOUND (the list reads no cells, so it cannot ask containment)
+    and the detail view remains authoritative - that is the pre-existing discipline, not a
+    new concession."""
+    _seed(env)
+    d = models.DYNAMIC_TABLES["unreg_test_unit"]
+    env.add(d(row_id="u1", business_key_val="E1", unit_key="E1", eqp="E1"))
+    env.commit()
+
+    wl = ma.build_alignment_worklist(env, CFG, RULE, MAPT)
+    unit = next(u for u in wl["units"] if u["unit_key"] == "E1")
+    assert unit["map_count"] == 1
+    assert unit["usable_map_count"] == 0          # no spec row: not scorable as declared
+    assert unit["assumable_map_count"] == 1       # ...but a floor would open it
