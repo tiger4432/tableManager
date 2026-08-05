@@ -195,7 +195,14 @@ SYSTEM_TABLE_COLUMNS = {
     # new table this round - created whole by create_all, no ordering hazard
     # geometry_assumed: migrations/add_frame_confirmation.py (spec MAP_ALIGNMENT 9a - which
     # confirmations rest on a borrowed wafer spec)
-    "frame_confirmation": ('confirmation_uid', 'confirmed_at', 'confirmed_by', 'core_frame', 'decision_key', 'discriminating', 'dt_eqp', 'dt_frame', 'enrichment_row_id', 'geometry_assumed', 'id', 'margin', 'product', 'reference_map_id', 'reference_table', 'rule_name', 'ruling_reason', 'ruling_state', 'superseded_by', 'supersedes_uid', 'unit_key', 'version', 'weakest_priority', 'weakest_source', 'winner_frame'),
+    # frames, confirmed_frame, map_table, x_col, y_col, value_col:
+    #   migrations/add_frame_confirmation.py [D-1, 2026-08-06]. WHAT WAS CONFIRMED had no
+    #   general storage: two columns named after the FIRST rule's target_fields, so any other
+    #   rule's answer was written as NULL and the route still answered 200. `frames` holds it
+    #   keyed by the rule's own declaration (the shape `decision_key` already uses); the other
+    #   five hold the subject the screen has been sending all along - which coordinates were
+    #   aligned - and which the route read none of.
+    "frame_confirmation": ('confirmation_uid', 'confirmed_at', 'confirmed_by', 'confirmed_frame', 'core_frame', 'decision_key', 'discriminating', 'dt_eqp', 'dt_frame', 'enrichment_row_id', 'frames', 'geometry_assumed', 'id', 'map_table', 'margin', 'product', 'reference_map_id', 'reference_table', 'rule_name', 'ruling_reason', 'ruling_state', 'superseded_by', 'supersedes_uid', 'unit_key', 'value_col', 'version', 'weakest_priority', 'weakest_source', 'winner_frame', 'x_col', 'y_col'),
     # new table this round - created whole by create_all, no ordering hazard
     # geometry_basis: migrations/add_frame_confirmation.py (same round - which SOURCE stood
     # on the borrowed spec, since the header flag alone cannot name it)

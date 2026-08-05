@@ -258,10 +258,12 @@ def test_a_superseded_confirmation_alone_does_not_confirm_the_unit(env):
     import frame_confirmation as fc
     from database import models as m
     _seed_unit(env, "E1", "P1", ["J1"])
+    # `frame` named because a confirmation that names none is refused [D-1, 2026-08-06].
+    # The subject here is which record the worklist reads, not what was confirmed.
     h = fc.record_confirmation(env, RULE, {"eqp": "E1", "product": "P1"},
                                [{"role": "r", "source_table": SRC, "map_id": "J1",
                                  "source_name": "user"}],
-                               confirmed_by="tester")
+                               confirmed_by="tester", frame="rot0_front")
     h.superseded_by = "gone"
     env.commit()
     assert _wl(env)["units"][0]["state"] == "unscorable"
@@ -375,7 +377,8 @@ def test_sorting_by_state_orders_on_strength_not_on_the_spelling(env):
     _seed_unit(env, "E2", "P1", ["J2"])
     fc.record_confirmation(env, RULE, {"eqp": "E2", "product": "P1"},
                            [{"role": "r", "source_table": SRC, "map_id": "J2",
-                             "source_name": "user"}], confirmed_by="t")
+                             "source_name": "user"}], confirmed_by="t",
+                           frame="rot0_front")
     states = [u["state"] for u in _wl(env, sort="state", order="desc")["units"]]
     assert states == ["confirmed", "unscorable"]
 

@@ -432,7 +432,30 @@ class FrameConfirmation(Base):
     product = Column(String, nullable=True)
     version = Column(Integer, nullable=False)          # 단위 안에서 1부터
 
-    # 확정된 값 — enrichment 규칙의 target_fields와 같은 어휘(rot<각>_<면>)를 쓴다.
+    # [확정의 주체 — 무엇을 정렬했는가]
+    # 🔴 제품 소유자 판정 2026-08-05: **확정이 기록하는 것은 「어느 좌표를 정렬했나」다.**
+    #    `core_frame`은 이름(프리셋)이고 단위는 좌표 삼중항이다(`map_alignment` §2484,
+    #    `client2/src/map2/api.js:349`). 클라는 이 넷을 이미 보내고 있었고 라우트가 하나도
+    #    읽지 않았다 — 화면으로 만든 확정은 전부 「무엇을 확정했는지」가 빈 채로 남았다.
+    confirmed_frame = Column(String, nullable=True)     # 예 rot90_front
+    map_table = Column(String, nullable=True)           # 그 좌표가 사는 테이블
+    x_col = Column(String, nullable=True)
+    y_col = Column(String, nullable=True)
+    value_col = Column(String, nullable=True)           # 없이 간 실행은 NULL(점유 전용)
+
+    # [확정된 값 — 규칙이 선언한 target_field 그대로]
+    # 🔴 **키가 규칙 선언에서 온다.** `decision_key`가 컬럼명을 박지 않고 dict로 사는 것과
+    #    같은 이유이고 같은 모양이다. 규칙마다 target_fields가 다르므로 컬럼 두 개로는
+    #    첫 규칙 하나밖에 담지 못한다 — 실측 2026-08-06: `dt_job_lot_slot_attribution`의
+    #    답이 통째로 NULL로 들어가고 라우트는 200을 냈다.
+    # 조회는 언제나 (rule_name, unit_key) 색인으로 머리 한 행을 집는 방향이라 프레임 값으로
+    # 되짚는 질의가 없다. 생기면 JSONB + GIN이지 컬럼 추가가 아니다.
+    frames = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+
+    # ⚠️ 아래 둘은 **첫 선언(eqp_product_frame_attribution)의 target_fields 흔적**이고 위
+    # `dt_eqp`/`product`와 정확히 같은 계급이다 — 신규 코드의 단위가 아니다. 그 규칙이 그
+    # 이름을 선언할 때만 채워지고 다른 규칙에서는 NULL이다. 지우지 않는 이유는 추가 전용
+    # 규율이고, 정본은 위 `frames`다.
     core_frame = Column(String, nullable=True)
     dt_frame = Column(String, nullable=True)
 
@@ -442,6 +465,12 @@ class FrameConfirmation(Base):
 
     # 판정 근거 — `map_alignment`가 낸 것을 그대로 옮긴다. 여기서 다시 계산하지 않는다.
     # 백분율을 만들지 않는 규율도 그대로 따라온다(개수만 저장).
+    # 🔴 어휘의 정본은 `map_alignment.STATE_*` 하나다. `/view`는 이 값을 **응답 최상위**
+    #    `state`에 싣고 `ruling` 안에는 넣지 않는다 — 그래서 「`ruling`을 그대로 넘겨라」를
+    #    따른 요청은 상태를 통째로 흘렸고, 이 컬럼은 어휘에 없는 낱말(`unscored`)로
+    #    기본값을 먹었다(실측 2026-08-06: `winner=rot0_front` 옆에 `unscored`).
+    #    전달되지 않았으면 그 사실을 이름으로 말한다(`frame_confirmation.STATE_NOT_TRANSPORTED`)
+    #    — 「채점 안 됨」은 채점이 없었다는 주장이라 거짓이 된다.
     ruling_state = Column(String, nullable=False)       # map_alignment.STATE_*
     ruling_reason = Column(String, nullable=True)       # ruling["reason_code"]
     winner_frame = Column(String, nullable=True)

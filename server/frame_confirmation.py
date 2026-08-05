@@ -47,6 +47,42 @@ WARRANT_NOT_DECLARED = "not_declared"
 # BINDING_* 블록과 같은 규율).
 _ASSUMED = "assumed"
 
+# [D-2] 판정 상태가 **전달되지 않았다**는 사실의 이름.
+#
+# 🔴 왜 `unscored`가 아닌가: 그 낱말은 「채점이 없었다」는 **주장**이고, 이 자리에 오는 실행은
+#    대부분 채점이 있었다. 실측 2026-08-06 — `/view`가 `winner: rot0_front`, `margin: 87`로
+#    답한 단위의 확정 기록이 `ruling_state: unscored`로 남았다. 한 행이 서로를 부정하는 두
+#    문장을 실은 것이고, 그 행을 읽는 층 ⑨는 아무도 보지 않은 것에 대한 진술을 읽는다.
+# 🔴 그리고 이 낱말은 `map_alignment.STATE_*`의 구성원이 **아니다** — 일부러 아니다. 저쪽
+#    어휘는 「채점이 무엇을 말했나」이고 이것은 「그 말이 여기까지 왔나」다. 다른 질문이라
+#    같은 집합에 넣으면 소비자가 판정 하나로 읽는다.
+STATE_NOT_TRANSPORTED = "state_not_transported"
+
+
+def accepted_ruling_states() -> set:
+    """기록할 수 있는 판정 상태 — **어휘의 정본은 `map_alignment` 하나다.**
+
+    여기 철자를 적으면 그것이 두 번째 집합이 되고, 화면이 본 낱말과 기록된 낱말이 갈리는 날
+    양쪽 다 멀쩡해 보인다(`_ASSUMED`·`bonding_plan`의 BINDING_* 블록과 같은 규율).
+    `STATE_NOT_CONSIDERED`는 후보 하나의 상태이지 판정의 상태가 아니라 들어가지 않는다.
+    """
+    import map_alignment
+    return {map_alignment.STATE_SCORED,
+            map_alignment.STATE_NO_WINNER,
+            map_alignment.STATE_NOT_SCORABLE}
+
+
+def __getattr__(name):
+    """`ACCEPTED_RULING_STATES`를 **쓸 때** 푼다 (PEP 562).
+
+    `map_alignment`는 이 모듈을 지연 임포트하므로 최상단 임포트도 돌기는 하지만, 이 모듈의
+    나머지 임포트가 전부 지연이라 여기만 최상단으로 올리면 임포트 무게가 조용히 바뀐다.
+    상수를 여기 복사하는 대신 이 방법을 쓰는 이유는 위 `accepted_ruling_states` 주석과 같다.
+    """
+    if name == "ACCEPTED_RULING_STATES":
+        return accepted_ruling_states()
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))
+
 
 class ConfirmationRefused(Exception):
     """확정을 거절한다. 사유 문장은 서버가 만든다(`map_alignment`와 같은 규율)."""
@@ -208,10 +244,89 @@ def _geometry_bases(db, contributors: list, reference: dict = None) -> dict:
     return out
 
 
+def resolve_ruling_state(ruling: dict, state=None) -> str:
+    """이 판정의 상태 → 기록할 낱말. **채점하지 않는다.**
+
+    🔴 [D-2] `/view`는 상태를 **응답 최상위** `state`에 싣고 `ruling` 안에는 넣지 않는다
+       (`map_alignment.build_alignment_view`). 그래서 「`ruling`을 그대로 넘겨라」는 지시를
+       그대로 따른 요청은 상태를 통째로 흘렸고, 이 자리가 어휘에 없는 낱말로 기본값을 먹었다.
+       고칠 곳은 기본값이 아니라 **전달**이라, 상태는 이제 `state`로 따로 받는다.
+
+    세 갈래이고 그 이상은 만들지 않는다:
+      ① 전달됐다 → 어휘 검사만 하고 **그대로** 적는다.
+      ② 안 왔는데 판정이 승자를 지명했다 → `scored`. **유도가 아니라 전사(轉寫)다** —
+         `build_alignment_view`가 화면의 상태를 정하는 첫 분기가 정확히 `if
+         ruling.get("winner")`이고, 여기서 같은 입력에 같은 식을 쓰므로 두 답이 갈릴 수 없다.
+      ③ 안 왔고 승자도 없다 → **모른다고 말한다.** 판정만으로는 `no_winner`(채점은 됐는데
+         못 갈랐다)와 `not_scorable`(채점 자체가 성립 안 함)이 갈리지 않는다. 실제로
+         `no_candidate_scored` 하나가 양쪽 갈래에서 다 나온다. 여기서 표를 만들어 찍으면
+         그것이 두 번째 판정 구현이고, 둘이 갈리는 날 화면은 멀쩡한 채 기록만 틀린다.
+
+    🔴 그리고 **자기 판정과 어긋나는 상태는 거절한다.** 승자를 지명한 판정은 정의상 채점된
+       판정이다. 「채점 안 됨 + 승자는 rot0_front」는 한 행 안의 모순이고, 그것이 이 결함이
+       기본값으로 만들어 내던 바로 그 행이다 — 명시로 도착한다고 참이 되지 않는다.
+    """
+    import map_alignment
+
+    r = ruling or {}
+    winner = r.get("winner")
+    given = (state or r.get("state") or "").strip()
+    if given:
+        if given not in accepted_ruling_states():
+            raise ConfirmationRefused(
+                "판정 상태 '%s'는 선언된 어휘가 아닙니다. 허용: %s"
+                % (given, ", ".join(sorted(accepted_ruling_states()))))
+        if winner and given != map_alignment.STATE_SCORED:
+            raise ConfirmationRefused(
+                "판정이 승자 '%s'를 지명했는데 상태가 '%s'입니다 - 한 기록이 서로를 "
+                "부정하는 두 문장을 실을 수 없습니다" % (winner, given))
+        return given
+    if winner:
+        return map_alignment.STATE_SCORED
+    return STATE_NOT_TRANSPORTED
+
+
+def _resolve_frames(rule: dict, frames: dict, frame: str) -> dict:
+    """확정된 프레임들 → `{target_field: 프레임}`. **키는 규칙 선언에서 온다.**
+
+    🔴 [D-1] 저장이 `core_frame`/`dt_frame` 두 컬럼이던 시절, 그 두 이름을 선언하지 않은
+       규칙의 답은 통째로 NULL로 들어갔고 라우트는 200을 냈다(실측 2026-08-06:
+       `dt_job_lot_slot_attribution`). 확정 기록에서 **비어도 되는 마지막 필드**가 「무엇을
+       확정했나」다 — 비면 이 기록의 존재 이유가 사라지고, 그런데도 완료로 보인다.
+
+    🔴 **빈 채로 성공하지 않는다.** `frames`도 비고 `frame`도 없으면 거절한다. 화면은
+       `frames`를 일부러 비워 보내고 답을 `frame`에 담으므로(2026-08-05 판정), 둘 중
+       하나라도 있으면 그것이 답이다.
+    """
+    from database import crud
+
+    out = {}
+    allowed = set(rule.get("target_fields") or [])
+    unknown = sorted(k for k in (frames or {}) if k not in allowed)
+    if unknown:
+        raise ConfirmationRefused(
+            "규칙 '%s'이 선언하지 않은 확정 대상입니다: %s"
+            % (rule.get("name"), ", ".join(unknown)))
+    for k, v in (frames or {}).items():
+        val = crud.clean_str_value(v)
+        if val == "":
+            # 필드 이름만 대고 답을 비우는 것은 같은 구멍에 열쇠만 꽂은 것이다.
+            raise ConfirmationRefused(
+                "확정 대상 '%s'의 프레임이 비었습니다 - 이름만으로는 무엇을 확정했는지 "
+                "말하지 못합니다" % k)
+        out[k] = val
+    if not out and crud.clean_str_value(frame) == "":
+        raise ConfirmationRefused(
+            "확정된 프레임이 없습니다 - 무엇을 확정했는지가 이 기록의 내용입니다")
+    return out
+
+
 def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
                         confirmed_by: str, frames: dict = None,
                         ruling: dict = None, reference: dict = None,
-                        enrichment_row_id: str = None, commit: bool = True):
+                        enrichment_row_id: str = None, commit: bool = True,
+                        frame: str = None, map_table: str = None,
+                        columns: dict = None, state: str = None):
     """확정 한 판을 남긴다. **이 모듈에서 쓰는 함수는 이것 하나다.**
 
     `rule`: 인리치먼트 규칙 선언(`enrichment_config.load_enrichment_rules`가 낸 것).
@@ -220,6 +335,17 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
     `decision_key`: {컬럼: 값}. 선언된 결정키를 **전부** 채워야 한다 — 반만 채운 단위의
         확정은 자기가 무엇을 확정했는지 모른다.
     `frames`: {target_field: 프레임 문자열}. 키는 규칙의 `target_fields` 안에 있어야 한다.
+        저장도 **이 모양 그대로**다(`decision_key`와 같은 이유·같은 형태) — 컬럼 두 개로는
+        첫 규칙의 답만 담기고 나머지 규칙의 답은 조용히 사라진다.
+    `frame`·`map_table`·`columns`: **확정의 주체** — 어느 테이블의 어느 좌표 삼중항을 어느
+        프레임으로 정렬했나(제품 소유자 판정 2026-08-05: 「`CORE FRAME`은 이름이고 단위는
+        `CORE_X`/`CORE_Y`/`C_BN`」). 화면이 보내는 것이 이것이고, `frames`는 비어서 온다.
+        `columns`는 `{"x","y","val"}`이며 `val`은 없을 수 있다(점유 전용 실행).
+        🔴 `frames`와 `frame` 둘 다 비면 **거절한다.** 아무것도 기록하지 않은 확정은 거절된
+        확정보다 나쁘다 — 완료로 보이기 때문이다.
+    `state`: `/view` 응답의 **최상위** `state`. 판정 dict 안에 없는 이유는 거기 없기
+        때문이다(§`resolve_ruling_state`). 화면의 전사 규칙은 「`ruling`을 복사하고 `state`를
+        복사한다」 두 줄이다.
     `contributors`: 소스 하나에 dict 하나.
         {"role", "source_table", "map_id", "source_name",
          "applied_frame", "shift_dx", "shift_dy",
@@ -242,15 +368,12 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
         raise ConfirmationRefused(
             "합의에 올린 소스가 없습니다 - 어느 소스들을 합쳤는지가 이 기록의 내용입니다")
 
-    frames = dict(frames or {})
-    allowed = set(rule.get("target_fields") or [])
-    unknown = sorted(k for k in frames if k not in allowed)
-    if unknown:
-        raise ConfirmationRefused(
-            "규칙 '%s'이 선언하지 않은 확정 대상입니다: %s" % (rule_name, ", ".join(unknown)))
+    frames = _resolve_frames(rule, frames, frame)
 
     ruling = ruling or {}
     reference = reference or {}
+    ruling_state = resolve_ruling_state(ruling, state)
+    cols = dict(columns or {})
 
     weakest, weakest_pri = weakest_contributor(contributors)
     # [D3] 무엇 위에서 정렬됐는가 — 기여자마다. 머리의 `geometry_assumed`는 이 값들의
@@ -274,10 +397,17 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
         dt_eqp=(decision_key or {}).get("dt_eqp"),
         product=(decision_key or {}).get("product"),
         version=version,
+        # 확정된 값의 정본 — 규칙이 선언한 이름 그대로.
+        frames=dict(frames),
+        # 첫 선언의 흔적 컬럼. `dt_eqp`/`product`와 같은 계급이고 그 규칙일 때만 채워진다.
         core_frame=frames.get("core_frame"), dt_frame=frames.get("dt_frame"),
+        # 확정의 주체 — 어느 좌표를 정렬했나.
+        confirmed_frame=frame or None, map_table=map_table or None,
+        x_col=cols.get("x") or None, y_col=cols.get("y") or None,
+        value_col=cols.get("val") or None,
         reference_table=reference.get("table"),
         reference_map_id=reference.get("map_id"),
-        ruling_state=ruling.get("state") or "unscored",
+        ruling_state=ruling_state,
         ruling_reason=ruling.get("reason_code"),
         winner_frame=ruling.get("winner"),
         margin=_as_int(ruling.get("margin")),
@@ -339,7 +469,15 @@ def as_payload(db, header) -> dict:
         "version": header.version,
         "unit": {"rule": header.rule_name, "unit_key": header.unit_key,
                  "decision_key": header.decision_key or {}},
-        "frames": {"core_frame": header.core_frame, "dt_frame": header.dt_frame},
+        # 규칙이 선언한 이름 그대로. 종전에는 두 이름을 **항상** 실어서, 그 이름을 선언하지
+        # 않은 규칙의 응답이 「core_frame: null, dt_frame: null」로 나갔다 — 화면이 방금 한
+        # 일을 물었는데 남의 규칙의 빈칸을 돌려받은 것이다.
+        "frames": dict(header.frames or {}),
+        # 확정의 주체. 「무엇을 확정했나」에 답하는 것이 결국 이 넷이다.
+        "confirmed": {"frame": header.confirmed_frame,
+                      "map_table": header.map_table,
+                      "columns": {"x": header.x_col, "y": header.y_col,
+                                  "val": header.value_col}},
         "reference": {"table": header.reference_table, "map_id": header.reference_map_id},
         "ruling": {"state": header.ruling_state, "reason_code": header.ruling_reason,
                    "winner": header.winner_frame, "margin": header.margin,

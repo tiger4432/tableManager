@@ -61,6 +61,16 @@ DDL_TABLES = [
     # 전에 남은 판이고, 「가정 아님」이 아니라 「모름」이다 — 기본값을 두면 옛 행들이 한
     # 번도 물어진 적 없는 질문에 「아니오」라고 답하게 된다.
     "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS geometry_assumed BOOLEAN",
+    # [D-1] 확정의 **주체**: 어느 테이블의 어느 좌표 삼중항을 어느 프레임으로 정렬했나.
+    # 클라(`client2/src/map2/api.js`)는 이 넷을 이미 보내고 있었고 라우트가 읽지 않았다.
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS confirmed_frame TEXT",
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS map_table TEXT",
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS x_col TEXT",
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS y_col TEXT",
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS value_col TEXT",
+    # [D-1] 규칙이 선언한 target_field 그대로의 확정값. `decision_key JSONB`와 같은 이유·모양
+    # 이다 — 컬럼 두 개는 첫 규칙 하나의 답만 담고 나머지 규칙의 답은 NULL로 들어갔다.
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS frames JSONB",
     "ALTER TABLE frame_confirmation_source "
     "ADD COLUMN IF NOT EXISTS geometry_basis TEXT",
     # 첫 선언의 흔적 컬럼은 **지우지 않고 NULL을 허용**하는 것으로 물러난다(추가 전용 규율).

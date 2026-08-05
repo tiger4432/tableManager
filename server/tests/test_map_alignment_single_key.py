@@ -180,10 +180,12 @@ def test_a_confirmation_on_a_one_column_unit_is_found_again_by_the_worklist(env)
     """The whole point of one spelling: write through `record_confirmation`, read through
     the worklist's `_live_confirmations`, and the unit must come back `confirmed`."""
     _seed_unit(env, "J1", ["M1"])
+    # `frame` named because a confirmation that names none is refused [D-1, 2026-08-06].
+    # The subject here is the unit-key spelling round-trip, which it does not touch.
     h = fc.record_confirmation(env, RULE, {"job_id": "J1"},
                                [{"role": "r", "source_table": SRC, "map_id": "M1",
                                  "source_name": "user"}],
-                               confirmed_by="tester", frames={})
+                               confirmed_by="tester", frames={}, frame="rot0_front")
     assert h.unit_key == "J1"
     assert h.decision_key == {"job_id": "J1"}
     assert fc.live_confirmation(env, RULE["name"], "J1") is not None
@@ -256,13 +258,32 @@ def test_the_rule_loader_accepts_a_single_key_and_a_non_frame_target(env):
 
 def test_an_empty_frames_map_is_legal_for_a_non_frame_target(env):
     """The client sends `frames: {}` on purpose. It must stay legal when the declared
-    target is `map_metadata` rather than `core_frame`."""
+    target is `map_metadata` rather than `core_frame`.
+
+    [D-1, 2026-08-06] Still legal - and still legal for the same reason. What the client
+    does is send `frames` EMPTY *and* name the answer in `frame`, so naming no target
+    field is not the same act as naming nothing. The route now reads `frame`, so the
+    screen's own request is the one this test describes."""
     _seed_unit(env, "J1", ["M1"])
     h = fc.record_confirmation(env, RULE, {"job_id": "J1"},
                                [{"role": "r", "source_table": SRC, "map_id": "M1",
                                  "source_name": "user"}],
-                               confirmed_by="tester", frames={})
+                               confirmed_by="tester", frames={}, frame="rot0_front")
     assert h.confirmation_uid
+    assert h.frames == {}
+    assert h.confirmed_frame == "rot0_front"
+
+
+def test_naming_neither_a_target_field_nor_a_frame_is_refused(env):
+    """[D-1] The other half of the sentence above. An empty `frames` map is legal; an empty
+    `frames` map with no `frame` either records NOTHING about what was confirmed, and that
+    record reads as done. The screen never produces this - it always names `frame`."""
+    _seed_unit(env, "J1", ["M1"])
+    with pytest.raises(fc.ConfirmationRefused):
+        fc.record_confirmation(env, RULE, {"job_id": "J1"},
+                               [{"role": "r", "source_table": SRC, "map_id": "M1",
+                                 "source_name": "user"}],
+                               confirmed_by="tester", frames={})
 
 
 def test_an_undeclared_field_is_still_refused_by_name_not_by_shape(env):
@@ -276,40 +297,58 @@ def test_an_undeclared_field_is_still_refused_by_name_not_by_shape(env):
                                confirmed_by="t", frames={"core_frame": "rot0_front"})
 
 
-def test_a_declared_non_frame_value_is_accepted_and_then_silently_dropped(env):
-    """🔴 THE HOLE. `record_confirmation` validates `frames` against the rule's declared
-    `target_fields` (generic), but STORES only two hardcoded columns:
+def test_a_declared_non_frame_value_is_stored_under_the_name_the_rule_declared(env):
+    """✅ THE HOLE, CLOSED - this is the deliberate day the pin asked for [D-1, 2026-08-06].
+
+    What was pinned here: `record_confirmation` validated `frames` against the rule's
+    declared `target_fields` (generic) but STORED two hardcoded columns
 
         core_frame=frames.get("core_frame"), dt_frame=frames.get("dt_frame")
 
-    So a value for a declared non-frame target passes validation and is written nowhere.
-    `as_payload` then echoes `core_frame`/`dt_frame` - two fields this rule never declared
-    - and omits the one it did. Harmless while the client sends `frames: {}`; a silent
-    data loss the first time it does not. This test PINS today's behaviour so the day it
-    is fixed is a deliberate day."""
+    so a value for a declared non-frame target passed validation and was written nowhere,
+    and `as_payload` echoed two fields this rule never declared while omitting the one it
+    did. Measured on the live route 2026-08-06 with the production rule
+    `dt_job_lot_slot_attribution`: the record came back `core_frame=None, dt_frame=None`
+    with HTTP 200.
+
+    Storage is now keyed by the rule's own declaration - the shape `decision_key` already
+    used - so the two columns are vestiges of the FIRST rule rather than the schema."""
     _seed_unit(env, "J1", ["M1"])
     h = fc.record_confirmation(env, RULE, {"job_id": "J1"},
                                [{"role": "r", "source_table": SRC, "map_id": "M1",
                                  "source_name": "user"}],
                                confirmed_by="t", frames={"map_metadata": "BLOB-1"})
-    assert not hasattr(h, "map_metadata")
+    assert h.frames == {"map_metadata": "BLOB-1"}
+    # The vestige columns stay NULL: this rule never declared those names.
     assert h.core_frame is None and h.dt_frame is None
     payload = fc.as_payload(env, h)
-    assert payload["frames"] == {"core_frame": None, "dt_frame": None}
-    assert "map_metadata" not in json.dumps(payload)
+    assert payload["frames"] == {"map_metadata": "BLOB-1"}
+    assert "BLOB-1" in json.dumps(payload)
+    # And it no longer echoes two fields this rule never declared.
+    assert "core_frame" not in payload["frames"]
 
 
-def test_the_confirm_route_accepts_an_empty_frames_map_for_a_non_frame_rule(
+def test_the_confirm_route_records_the_subject_the_screen_sends(
         client, env, monkeypatch):
+    """✅ The second half of the same pin, closed [D-1, 2026-08-06].
+
+    What was pinned: the client posts `map_table`, `columns` and `frame` - by its own
+    comment the thing that "identifies the confirmation's subject" - and the route read
+    NONE of the three. With `frames: {}` the row that came back said who, when, which
+    sources, which floor and what ruling, but not WHAT WAS CONFIRMED."""
     import enrichment_config
     monkeypatch.setattr(enrichment_config, "load_enrichment_rules",
                         lambda *a, **k: [dict(RULE)])
     _seed_unit(env, "J1", ["M1"])
     r = client.post("/api/maps/alignment/confirm", json={
         "rule": RULE["name"], "decision_key": {"job_id": "J1"}, "frames": {},
+        # exactly what `client2/src/map2/api.js:346` posts
+        "map_table": MAPT, "columns": {"x": "dt_x", "y": "dt_y", "val": "c_bn"},
+        "frame": "rot0_front",
         "sources": [{"role": "source", "source_table": SRC, "map_id": "M1",
                      "source_name": "user"}],
-        "ruling": {"state": "no_winner", "reason_code": "no_discrimination"},
+        "ruling": {"reason_code": "no_discrimination"},
+        "state": "no_winner",
         "reference": {"table": MAPT, "map_id": "M1"},
         "confirmed_by": "tester"})
     assert r.status_code == 200, r.text
@@ -317,13 +356,12 @@ def test_the_confirm_route_accepts_an_empty_frames_map_for_a_non_frame_rule(
     assert body["unit"] == {"rule": RULE["name"], "unit_key": "J1",
                             "decision_key": {"job_id": "J1"}}
     assert body["version"] == 1
-    # 🔴 AND THE RECORD HOLDS NO CONFIRMED VALUE. The client also posts `map_table`,
-    # `columns` and `frame` - by its own comment the thing that "identifies the
-    # confirmation's subject" - and the route reads none of the three. With `frames: {}`
-    # the row that comes back says who, when, which sources, which floor and what ruling,
-    # but not WHAT WAS CONFIRMED. Pinned so the gap is a decision, not a discovery.
-    assert body["frames"] == {"core_frame": None, "dt_frame": None}
-    assert "columns" not in body and "frame" not in body
+    # Naming no target field is still legal; naming nothing is not.
+    assert body["frames"] == {}
+    assert body["confirmed"] == {"frame": "rot0_front", "map_table": MAPT,
+                                 "columns": {"x": "dt_x", "y": "dt_y", "val": "c_bn"}}
+    # [D-2] and the ruling state the operator saw survived the trip.
+    assert body["ruling"]["state"] == "no_winner"
 
 
 def test_the_confirm_route_refuses_a_field_the_rule_did_not_declare(client, env, monkeypatch):

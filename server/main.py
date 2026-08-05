@@ -4405,11 +4405,25 @@ def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_d
     요청 본문:
       rule          결정 단위를 선언한 인리치먼트 규칙 이름 (`/view`와 같은 어휘)
       decision_key  {컬럼: 값} — **그 규칙의 decision_key 컬럼만**, 그리고 전부 채워야 한다
-      frames        {target_field: 프레임} — 그 규칙의 target_fields 안에 있어야 한다
+      frame         확정된 프레임(예 `rot90_front`) — **확정의 주체**
+      map_table     그 좌표가 사는 테이블
+      columns       {x, y, val} — 정렬한 좌표 삼중항. `val`은 없을 수 있다(점유 전용 실행)
+      frames        {target_field: 프레임} — 그 규칙의 target_fields 안에 있어야 한다.
+                    화면은 이것을 **일부러 비워** 보내고 답을 `frame`에 담는다(판정 2026-08-05)
       sources       합의에 올린 소스 목록(제외된 것 포함). 비면 거절한다
       ruling        `/view`가 낸 판정 그대로
+      state         `/view` **응답 최상위**의 `state`. 판정 dict 안이 아니다 — 거기 없다
       reference     {table, map_id} — 공통 바닥
       confirmed_by  주체
+
+    🔴 [D-1] `frame`·`map_table`·`columns`는 화면이 예전부터 보내던 것인데 이 라우트가 **하나도
+       읽지 않았다.** 그래서 화면으로 만든 확정은 「무엇을 확정했나」가 전부 빈 채로 남았고,
+       응답은 남의 규칙의 컬럼 두 개를 null로 실어 보냈다(실측 2026-08-06). 무엇도 명명하지
+       않은 확정은 이제 **거절**이다 — 아무것도 기록하지 않은 기록은 완료로 보이기 때문이다.
+    🔴 [D-2] `state`가 여기 따로 있는 이유는 `/view`가 그 값을 `ruling` 안이 아니라 응답
+       최상위에 싣기 때문이다. 「`ruling`을 그대로 넘겨라」만 따르면 상태가 통째로 사라지고,
+       그러면 승자를 지명한 판정이 「채점 안 됨」으로 기록된다. 화면의 전사 규칙은 두 줄이다:
+       `ruling`을 복사하고 `state`를 복사한다.
 
     응답은 만들어진 기록 전체(`confirmation_uid`·`version` 포함)다 — 화면이 방금 무엇을
     했는지 알기 위해 다시 조회할 필요가 없어야 한다.
@@ -4440,6 +4454,9 @@ def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_d
     frames = payload.get("frames") or {}
     if not isinstance(frames, dict):
         raise HTTPException(status_code=400, detail="'frames' must be an object")
+    columns = payload.get("columns") or {}
+    if not isinstance(columns, dict):
+        raise HTTPException(status_code=400, detail="'columns' must be an object")
     sources = payload.get("sources")
     if not isinstance(sources, list):
         raise HTTPException(status_code=400, detail="'sources' must be a list")
@@ -4452,6 +4469,8 @@ def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_d
         header = frame_confirmation.record_confirmation(
             db, decl, key_values, sources,
             confirmed_by=confirmed_by, frames=frames,
+            frame=payload.get("frame"), map_table=payload.get("map_table"),
+            columns=columns, state=payload.get("state"),
             ruling=payload.get("ruling"), reference=payload.get("reference"),
             enrichment_row_id=payload.get("enrichment_row_id"))
         return frame_confirmation.as_payload(db, header)

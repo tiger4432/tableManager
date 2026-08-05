@@ -172,7 +172,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 | 테이블 | 단위 | 내용 |
 |---|---|---|
-| `frame_confirmation` | `(rule_name, unit_key, version)` | 머리 — 확정 프레임, 기준(공통 바닥), `map_alignment` 판정 근거(개수만), 최약 기여자, 누가·언제, `superseded_by`/`supersedes_uid`, **`geometry_assumed`** |
+| `frame_confirmation` | `(rule_name, unit_key, version)` | 머리 — **확정된 프레임(`frames` JSON + 주체 `confirmed_frame`/`map_table`/`x_col`/`y_col`/`value_col`)**, 기준(공통 바닥), `map_alignment` 판정 근거(개수만), 최약 기여자, 누가·언제, `superseded_by`/`supersedes_uid`, **`geometry_assumed`** |
 | `frame_confirmation_source` | 소스 하나에 한 행 | **소스 목록** + 소스별 적용 프레임과 **시프트(dx, dy)** + 근거 개수 + 제외 사유 + **`geometry_basis`** |
 | `cell_sources.confirmation_uid` | 셀 | 파생 도장 — 「이 셀은 어느 확정 아래에서 만들어졌나」. NULL이 기존 전 행의 상태 |
 
@@ -180,9 +180,24 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 🔴 **결정 단위에 컬럼명을 적지 않습니다.** 단위의 정본은 규칙의 `decision_key` 선언이고, 저장은 `rule_name` + `unit_key`(그 규칙 파생 테이블의 `business_key_val`과 **같은 조립**: 선언된 `composite_key_separator`로 join) + `decision_key` JSON입니다. `dt_eqp`·`product` 컬럼은 첫 선언의 흔적으로 남아 있을 뿐 신규 코드의 단위가 아닙니다(추가 전용 규율이라 지우지 않고 NULL 허용으로 물러났습니다). 확정 대상도 마찬가지로 규칙의 `target_fields` 밖이면 거절합니다.
 
+🔴 **확정된 값에도 컬럼명을 적지 않습니다 (2026-08-06, [D-1] 수정).** **결정키 절반만 일반화돼 있었습니다** — 단위는 `decision_key` JSON으로 물러났는데 **확정값은 `core_frame`·`dt_frame` 두 컬럼 그대로**였고, 그 두 이름은 첫 규칙(`eqp_product_frame_attribution`)의 `target_fields`입니다. 다른 이름을 선언한 규칙의 답은 갈 곳이 없어 **NULL로 들어가고 라우트는 200을 냈습니다**(실측 2026-08-06, 라이브 라우트: `dt_job_lot_slot_attribution`(`target_fields = dt_lot_confirmed, dt_slot_confirmed`) 확정이 `core_frame=None, dt_frame=None`으로 기록). 「무엇을 확정했나」가 빈 확정은 **거절된 확정보다 나쁩니다 — 완료로 보이기 때문입니다.**
+
+- **정본은 `frames` JSON**(`{target_field: 프레임}`)입니다. `decision_key`와 **같은 이유·같은 모양**입니다. `core_frame`·`dt_frame`은 `dt_eqp`·`product`와 **같은 계급의 흔적 컬럼**으로 물러났고 그 규칙일 때만 채워집니다(추가 전용 규율이라 지우지 않습니다).
+- 🔴 **확정의 주체는 「어느 좌표를 정렬했나」입니다** (제품 소유자 판정 2026-08-05: 「`CORE FRAME`은 **이름**이고 단위는 `CORE_X`/`CORE_Y`/`C_BN`」). 그래서 `confirmed_frame` + `map_table` + `x_col`/`y_col`/`value_col`이 머리에 있습니다. **클라(`client2/src/map2/api.js`)는 이 넷을 처음부터 보내고 있었고 라우트가 하나도 읽지 않았습니다** — 화면으로 만든 확정은 전부 주체가 빈 채로 남았습니다. `value_col`의 NULL은 결함이 아니라 점유 전용 실행입니다.
+- ⚠️ **아무 프레임도 명명하지 않은 확정은 거절입니다.** `frames`도 비고 `frame`도 없으면 400이고, 선언된 이름에 빈 답을 붙여도 거절입니다(이름만으로는 무엇을 확정했는지 말하지 못합니다).
+- ⚠️ **여섯 컬럼은 기존 테이블 확장이라 마이그레이션 순서 의존이 있습니다** — `migrations/add_frame_confirmation.py`(추가 전용·멱등, `decision_key JSONB`와 같은 방식)를 **조회 프로세스보다 먼저** 돌려야 하고, `server/tests/test_system_schema_drift.py`의 `SYSTEM_TABLE_COLUMNS`에 마이그레이션 이름과 함께 등재돼 있습니다.
+
+🔴 **`ruling_state`는 `/view`가 **응답 최상위**에 싣는 값입니다 (2026-08-06, [D-2] 수정).** `map_alignment.build_alignment_view`는 판정 상태(`scored`/`no_winner`/`not_scorable`)를 응답의 `state`에 싣고 **`ruling` dict 안에는 넣지 않습니다.** 그런데 쓰기 경로는 `ruling["state"]`를 읽었고, 라우트 문서와 클라(`client2/src/map2/decode.js:243`)는 둘 다 「`ruling`을 그대로 넘겨라」였습니다 — 지시대로 하면 상태가 **통째로 사라지고** 어휘에 없는 낱말 `unscored`가 기본값으로 들어갑니다. 실측 2026-08-06: `winner=rot0_front`, `margin=87`인 판정의 기록이 `ruling_state=unscored`. **한 행이 「채점 안 됨」과 「승자는 rot0_front」를 동시에 주장했습니다.**
+
+- 상태는 이제 요청의 **최상위 `state`**로 받습니다(`/view`가 두는 자리와 같은 자리 — 화면의 전사 규칙은 「`ruling`을 복사하고 `state`를 복사한다」 두 줄입니다).
+- 안 왔고 판정이 **승자를 지명했으면** `scored`입니다. **유도가 아니라 전사입니다** — `build_alignment_view`가 화면의 상태를 정하는 첫 분기가 정확히 `if ruling.get("winner")`이고 같은 입력에 같은 식을 씁니다.
+- 안 왔고 승자도 없으면 **모른다고 말합니다**(`frame_confirmation.STATE_NOT_TRANSPORTED`). 판정만으로는 `no_winner`와 `not_scorable`이 갈리지 않습니다(`no_candidate_scored` 하나가 양쪽 갈래에서 다 납니다). 여기서 표를 만들어 찍으면 그것이 **두 번째 판정 구현**입니다. 🔴 이 낱말은 `map_alignment.STATE_*`의 구성원이 **아닙니다** — 저쪽은 「채점이 무엇을 말했나」이고 이것은 「그 말이 여기까지 왔나」라, 다른 질문을 같은 집합에 넣으면 소비자가 판정으로 읽습니다.
+- 🔴 **자기 판정과 어긋나는 상태는 거절합니다.** 승자를 지명한 판정은 정의상 채점된 판정이고, 「채점 안 됨 + 승자 있음」은 명시로 도착한다고 참이 되지 않습니다.
+- ⚠️ **어휘의 정본은 `map_alignment` 하나입니다** — `frame_confirmation.accepted_ruling_states()`가 거기서 읽습니다(`_ASSUMED`·`bonding_plan`의 BINDING_* 블록과 같은 규율). 여기 철자를 복사하면 화면이 본 낱말과 기록된 낱말이 갈리는 날 양쪽 다 멀쩡해 보입니다.
+
 🔴 **`POST /api/maps/alignment/confirm`은 이 사슬에서 데이터베이스에 쓰는 유일한 요청입니다.** 같은 일을 하는 GET이 없고(404), 읽기 경로(`/api/maps/alignment/view`)에는 부작용이 없으며, 화면 쪽 arm-then-commit이 앞에 섭니다. **판정(`ruling`)과 소스 목록은 요청이 명시적으로 실어 옵니다** — 쓰기 경로가 재채점하면 조작자가 보고 결정한 것과 기록된 것이 갈릴 수 있고, 기록해야 하는 것은 조작자가 본 쪽입니다. 응답은 만들어진 기록 전체(`confirmation_uid`·`version` 포함)라 화면이 다시 조회할 필요가 없습니다. **WS 브로드캐스트는 없습니다**(총괄 결정 2026-08-05 — 듣는 쪽이 아직 없고 별도 결정입니다).
 
-⚠️ **거절은 전부 무쓰기 경로입니다** — 결정키 미완·미선언 결정키·미선언 확정 대상·소스 없음·주체 없음·없는 규칙. 소스 목록이 반쯤 들어간 확정은 목록이 있다고 주장하면서 틀린 목록을 주므로 없느니만 못합니다.
+⚠️ **거절은 전부 무쓰기 경로입니다** — 결정키 미완·미선언 결정키·미선언 확정 대상·소스 없음·주체 없음·없는 규칙·**프레임 미명명**·**빈 프레임 값**·**미선언 판정 상태**·**판정과 어긋나는 상태**(뒤 넷은 2026-08-06 [D-1]/[D-2]). 소스 목록이 반쯤 들어간 확정은 목록이 있다고 주장하면서 틀린 목록을 주므로 없느니만 못합니다.
 
 🔴 **enrichment 규칙을 대체하는 것이 아니라 그 위에 얹습니다.** 확정의 **몸짓**은 `enrichment_rules.json`의 `eqp_product_frame_attribution`이 이미 갖고 있고(판단 단위가 정확히 `(dt_eqp, product)`, 사람 확인 경로, `auto_confirm` 스윕과 dry-run, `reference_views`의 후보 제시, `cell_overwrites`가 나르는 누가·언제) 그것을 그대로 씁니다. 그 경로가 **담을 수 없는 셋만** 여기서 담습니다:
 
