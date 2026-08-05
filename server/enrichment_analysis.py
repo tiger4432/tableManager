@@ -277,8 +277,8 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
 # ④ Classify the cause of a gap
 # ---------------------------------------------------------------------------
 
-def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
-                   log=logger.info) -> dict:
+def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
+                   log=logger.info, caps: dict = None, probe_limit: int = None) -> dict:
     """Split the current queue into named cause classes. READ ONLY.
 
     The queue mixes two fundamentally different things and charges a human for
@@ -310,10 +310,27 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
       declaration, and this module will not guess one (the overlay DECOY
       lesson). If a real case appears, declare it rather than infer it.
     - The reference probe costs one query per declaring view per key, so it is
-      bounded by `probe_limit`. Keys past the budget are reported as
+      bounded by `max_keys`. Keys past the budget are reported as
       `unprobed` - never silently folded into another class.
+
+    `max_keys` WAS CALLED `probe_limit`, AND THE NAME COST AN OPERATOR A DAY
+    [2026-08-05]. It bounds HOW MANY KEYS are examined. It does not widen any
+    single read, which is what a truncation refusal is about - those are
+    `enrichment_read_caps.probe_scan_rows` (rows) and `.probe_distinct_values`
+    (distinct values). Told to "raise the limit" after a `distinct_truncated`
+    refusal, an operator raised this one, because it was the only number spelled
+    `limit` that they could reach. It changed nothing. The old keyword is still
+    accepted so nothing breaks mid-flight, and it warns.
     """
     from database import crud
+
+    if probe_limit is not None:
+        logger.warning(
+            "classify_queue(probe_limit=...) is the old name for `max_keys`, the KEY "
+            "BUDGET. It bounds how many keys are examined and widens no read - if you "
+            "are chasing a truncation refusal, the caps are "
+            "enrichment_read_caps.probe_scan_rows / .probe_distinct_values.")
+        max_keys = probe_limit
 
     counts = {}
     samples = {}
@@ -356,6 +373,11 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
 
     # 2) Per row: cheap classes first, reference probe only for what survives.
     import enrichment_candidates
+    import enrichment_config
+    caps = caps if caps is not None else enrichment_config.load_read_caps()
+    # Same shape `confirm_keys` produces, so `classify` and `confirm` report a
+    # clipped read with the same words and the same repair.
+    cap_stats = {"cap_hits": {}}
     probed = 0
 
     def bump(cls, r, detail=None):
@@ -387,15 +409,17 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
             bump(CLS_MAPPING_GAP, r,
                  f"source '{rule['source_table']}' has non-blank {gap} for this key")
             continue
-        if probed >= probe_limit:
-            bump(CLS_UNPROBED, r, f"reference probe budget ({probe_limit}) exhausted")
+        if probed >= max_keys:
+            bump(CLS_UNPROBED, r, f"key budget (max_keys={max_keys}) exhausted")
             continue
         probed += 1
         # ONE VERDICT PER BLANK COLUMN, and the row's class is a function of the
         # SET of them - not of the first one that happened to succeed.
-        verdicts = [enrichment_candidates.resolve_target_candidate(db, rule, r["keys"], t)
+        verdicts = [enrichment_candidates.resolve_target_candidate(db, rule, r["keys"], t,
+                                                                   caps=caps)
                     for t in blanks]
         for v in verdicts:
+            enrichment_candidates._record_cap_hit(cap_stats, v)
             name = ("single" if v["status"] == enrichment_candidates.STATUS_SINGLE
                     else v["reason"])
             slot = target_verdicts.setdefault(v["target_field"], {})
@@ -435,7 +459,11 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
         "samples": samples,
         "target_verdicts": target_verdicts,
         "no_evidence_reasons": reason_detail,
-        "probe_limit": probe_limit,
+        # KEY budget, named for what it bounds. `probe_limit` is kept as an alias
+        # for one release so an existing reader does not KeyError mid-incident.
+        "max_keys": max_keys,
+        "probe_limit": max_keys,
+        "cap_hits": cap_stats["cap_hits"],
         "probed": probed,
         "same_name_targets_checked": same_name_targets,
         "unchecked_targets": [t for t in target_fields if t not in same_name_targets],
@@ -611,7 +639,8 @@ def _proposed_reference_view(rule: dict, antecedent: tuple, target_field: str,
 # ---------------------------------------------------------------------------
 
 def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = None,
-                           ignore_knob: bool = False, log=logger.info) -> dict:
+                           ignore_knob: bool = False, log=logger.info,
+                           caps: dict = None) -> dict:
     """Apply ① to the EXISTING queue (the chain hook only sees new writes).
 
     Dry-run is the default and performs reads only, so this is also the
@@ -628,9 +657,18 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
     that survive and are written with `SOURCE_NAME_PARTIAL_KEY`, which is how the
     decision stays addressable afterwards. A row with NO surviving key refuses in
     `resolve_target_candidate` and is counted under `no_decision_key`.
+
+    `caps` OVERRIDES THE READ CAPS FOR THIS SWEEP, AND IT EXISTS ON BOTH PATHS
+    [2026-08-05]. `classify` could already bound its work and `confirm` could not
+    bound anything, so an operator could MEASURE with one set of ceilings and
+    WRITE with another and never be told the two surfaces disagreed. Whatever the
+    caller declares here is what both the probe and the refusal report.
     """
     import enrichment_candidates
+    import enrichment_config
     from database import crud
+
+    caps = caps if caps is not None else enrichment_config.load_read_caps()
 
     if apply and not ignore_knob and not enrichment_candidates.rule_auto_confirm_enabled(rule):
         raise AnalysisRefused(
@@ -658,7 +696,7 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
         f"{'y' if len(keyed) == 1 else 'ies'} to examine")
 
     stats = enrichment_candidates.confirm_keys(
-        db, rule, keyed, apply=apply, tx_prefix="enrichment_sweep")
+        db, rule, keyed, apply=apply, tx_prefix="enrichment_sweep", caps=caps)
     stats["mode"] = "apply" if apply else "dry-run"
     stats["rule"] = rule["name"]
     stats["queue_size"] = len(keyed)

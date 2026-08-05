@@ -196,10 +196,31 @@ def test_probe_budget_reports_unprobed_rather_than_guessing(an_env):
         {"wafer_key": "P1_S1", "lot": "P1", "slot": "S1"},
         {"wafer_key": "P2_S1", "lot": "P2", "slot": "S1"},
     ])
-    res = enrichment_analysis.classify_queue(an_env, _loaded(), probe_limit=1,
+    res = enrichment_analysis.classify_queue(an_env, _loaded(), max_keys=1,
                                              log=lambda *_: None)
     assert res["counts"].get(enrichment_analysis.CLS_UNPROBED) == 1
     assert res["probed"] == 1
+    assert res["max_keys"] == 1
+
+
+def test_the_key_budget_is_not_a_read_cap_and_the_old_name_still_works(an_env):
+    """[2026-08-05] `probe_limit` sounded like a read cap and is the KEY BUDGET.
+    An operator raised it after a truncation refusal and nothing changed. The old
+    keyword still binds (nothing breaks mid-incident) and the report names the new
+    one, so the next person reads `max_keys` and does not go looking for rows."""
+    _seed(an_env, "enan_test_src", [
+        {"log_key": "c1", "lot": "Q1", "slot": "S1", "chip_id": "C1"},
+        {"log_key": "c2", "lot": "Q2", "slot": "S1", "chip_id": "C1"},
+    ])
+    _seed(an_env, "enan_test_derived", [
+        {"wafer_key": "Q1_S1", "lot": "Q1", "slot": "S1"},
+        {"wafer_key": "Q2_S1", "lot": "Q2", "slot": "S1"},
+    ])
+    res = enrichment_analysis.classify_queue(an_env, _loaded(), probe_limit=1,
+                                             log=lambda *_: None)
+    assert res["probed"] == 1 and res["max_keys"] == 1
+    detail = res["samples"][enrichment_analysis.CLS_UNPROBED][0]["detail"]
+    assert "max_keys" in detail and "budget" in detail
 
 
 def test_classify_is_read_only(an_env):

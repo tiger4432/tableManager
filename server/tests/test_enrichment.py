@@ -162,9 +162,45 @@ def test_loader_valid_rule_normalized():
     assert r["name"] == "r1"
     assert r["decision_key"] == ["equipment", "event_time"]
     assert r["aggregations"] == {"chip_count": "count"}
-    # LIMIT 기본값 200 + 상한 1000 클램프
-    assert r["reference_views"][0]["limit"] == enrichment_config.DEFAULT_REFERENCE_LIMIT
-    assert r["reference_views"][1]["limit"] == enrichment_config.MAX_REFERENCE_LIMIT
+    # 표시용 행 상한: 기본값과 천장이 이제 **선언값**이다(코드 상수 아님).
+    caps = enrichment_config.load_read_caps({})
+    assert r["reference_views"][0]["limit"] == enrichment_config.cap_value(
+        caps, enrichment_config.CAP_REFERENCE_ROWS_DEFAULT)
+    assert r["reference_views"][1]["limit"] == enrichment_config.cap_value(
+        caps, enrichment_config.CAP_REFERENCE_ROWS_MAX)
+
+
+def test_the_reference_row_caps_are_declared_not_hardcoded():
+    """[2026-08-05] An operator whose reference table is wider than someone's guess
+    had no move: the default and the ceiling were module constants. Declaring
+    `reference_rows_max` must actually move the clamp, or the config is decoration.
+    """
+    raw = {"r1": _base_rule(reference_views=[
+        {"label": "v1", "query": "SELECT chip_id FROM enrich_test_src"},
+        {"label": "v2", "query": "SELECT chip_id FROM enrich_test_src", "limit": 5000},
+    ])}
+    caps = enrichment_config.load_read_caps(
+        {enrichment_config.READ_CAPS_SETTINGS_KEY: {
+            "reference_rows_default": 7, "reference_rows_max": 4000}})
+    views = enrichment_config.validate_enrichment_rules(
+        raw, known_tables=KNOWN, caps=caps)[0]["reference_views"]
+    assert views[0]["limit"] == 7, "an undeclared view limit follows the declared default"
+    assert views[1]["limit"] == 4000, "the declared ceiling is what clamps, not 1000"
+
+
+def test_an_unreadable_cap_declaration_is_not_a_declaration():
+    """A typo must not become policy. It falls back to the shipped value AND reports
+    itself as undeclared - otherwise the refusal would tell an operator their broken
+    number is in force."""
+    enrichment_config.reset_cap_warnings()
+    caps = enrichment_config.load_read_caps(
+        {enrichment_config.READ_CAPS_SETTINGS_KEY: {
+            "probe_scan_rows": "lots", "reference_rows_max": 0}})
+    for key in (enrichment_config.CAP_PROBE_SCAN_ROWS,
+                enrichment_config.CAP_REFERENCE_ROWS_MAX):
+        assert enrichment_config.cap_value(caps, key) == \
+            enrichment_config.SHIPPED_READ_CAPS[key]
+        assert enrichment_config.cap_declared(caps, key) is False
 
 
 def test_loader_missing_required_fields_skipped():

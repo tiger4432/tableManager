@@ -746,23 +746,53 @@ def test_scanned_counts_every_row_the_probe_read_not_just_the_returned_groups(ca
         "returned - it is the number `row_truncated` is decided from")
 
 
-def test_row_truncation_is_still_detected_when_the_groups_are_also_clipped(cand_env, monkeypatch):
+def test_row_truncation_is_still_detected_when_the_groups_are_also_clipped(cand_env):
     """The consequence of the LOW: a genuinely truncated READ used to report
     `row_truncated: False` whenever the groups were clipped too, because the
     under-reported `scanned` never reached the bound it is compared against."""
-    monkeypatch.setattr(enrichment_config, "CANDIDATE_PROBE_MAX_ROWS", 3)
     _seed(cand_env, "encand_test_hist", [
         {"hist_id": f"R{i}", "lot": "LR", "slot": "S1", "wafer_id": f"W{i}"}
         for i in range(6)
     ])
     view = dict(_loaded_rule()["reference_views"][0], limit=1)
     probe = enrichment_config.execute_candidate_probe(
-        cand_env, view, "wafer_id", {"lot": "LR", "slot": "S1"})
+        cand_env, view, "wafer_id", {"lot": "LR", "slot": "S1"},
+        caps=_caps(probe_scan_rows=3))
     assert len(probe["pairs"]) == 2 and probe["distinct_truncated"] is True
     assert probe["scanned"] == 3, "the inner scan bound was reached"
     assert probe["row_truncated"] is True, (
-        "the scan hit CANDIDATE_PROBE_MAX_ROWS - clipping the GROUP BY output "
-        "must not hide that")
+        "the scan hit probe_scan_rows - clipping the GROUP BY output must not hide that")
+
+
+def test_the_probe_distinct_cap_can_be_declared_apart_from_the_display_limit(cand_env):
+    """THE conflation, undone. The view's `limit` answers "how many rows should a
+    human read"; it was silently also answering "how many distinct values may the
+    probe see". Declaring `probe_distinct_values` separates them - the display
+    stays narrow, the probe sees enough to reach a verdict.
+
+    Proven RED-able: at the same `limit` with no declared cap the probe truncates.
+    """
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"D{i}", "lot": "LD", "slot": "S1", "wafer_id": f"W{i}"}
+        for i in range(4)
+    ])
+    view = dict(_loaded_rule()["reference_views"][0], limit=1)
+    inherited = enrichment_config.execute_candidate_probe(
+        cand_env, view, "wafer_id", {"lot": "LD", "slot": "S1"}, caps=_caps())
+    assert inherited["distinct_truncated"] is True
+    assert inherited["distinct_values_cap"] == 1
+    assert inherited["distinct_values_cap_declared"] is False
+
+    declared = enrichment_config.execute_candidate_probe(
+        cand_env, view, "wafer_id", {"lot": "LD", "slot": "S1"},
+        caps=_caps(probe_distinct_values=50))
+    assert declared["distinct_truncated"] is False
+    assert declared["distinct_values_cap"] == 50
+    assert declared["distinct_values_cap_declared"] is True
+    # The DISPLAY path is untouched by the probe's cap - that is the separation.
+    _, rows = enrichment_config.execute_reference_view(
+        cand_env, view, {"lot": "LD", "slot": "S1"}, caps=_caps(probe_distinct_values=50))
+    assert len(rows) == 1
 
 
 def test_a_candidate_column_that_is_not_an_identifier_is_rejected_at_load(cand_env):

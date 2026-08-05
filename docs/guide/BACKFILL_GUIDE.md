@@ -172,11 +172,13 @@ conda run -n assy_manager python server/scripts/enrichment_insights.py confirm
 같은 CLI의 나머지 둘은 소급 쓰기가 아니라 **조사 도구**입니다(둘 다 읽기 전용).
 
 ```bash
-conda run -n assy_manager python server/scripts/enrichment_insights.py classify <룰> --probe-limit 200
+conda run -n assy_manager python server/scripts/enrichment_insights.py classify <룰> --max-keys 200
 conda run -n assy_manager python server/scripts/enrichment_insights.py propose  <룰> --min-support 3
 ```
 
 * `classify` — 워크리스트의 결손을 원인별로 분류합니다(**파이프라인 버그** / 기계적으로 해결 가능 / **진짜 사람 일**). 「이 워크리스트 중 사람이 꼭 봐야 하는 건 몇 건인가」에 답합니다.
+* 🔴 **`--max-keys`는 「몇 개의 키를 볼까」이지 「읽기를 얼마나 넓힐까」가 아니다** (구 이름 `--probe-limit`은 별칭으로 남아 있고 경고를 냅니다). 절단(`probe_truncated`/`distinct_truncated`) 거절을 쫓는 중이라면 읽기 상한 쪽입니다: `--probe-scan-rows`(행) · `--probe-distinct-values`(distinct 값). 이 둘은 `classify`와 `confirm` **양쪽에** 있습니다 — 한쪽 상한으로 재고 다른 상한으로 쓰면 두 화면이 어긋납니다. 영구 선언은 `server/config/ingestion_settings.json`의 `enrichment_read_caps`.
+* 🔴 **상한을 올리기 전에 거절 보고의 `raising it -> AMBIGUOUS` 줄을 보십시오.** 그 건수는 이미 서로 다른 값이 둘 이상 읽힌 건이라 상한을 올려도 `ambiguous`로 이름만 바뀝니다(사람이 판단할 몫). 그리고 참조뷰가 키 하나당 수천 행을 돌려준다면 문제는 상한이 아니라 **뷰가 좁혀지지 않는 것**이고, 그건 `missing_bind`와 같은 계급입니다.
 * `propose` — 사람이 반복한 판단을 규칙 후보로 승격 제안합니다. **아무것도 적용하지 않고**, 붙여넣을 `reference_views` 항목을 찍어 줍니다.
 
 ### 4.1 🔴 「confirm을 돌렸는데 아무 일도 안 일어났다」의 세 원인

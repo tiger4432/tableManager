@@ -52,8 +52,71 @@ from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
 ENRICHMENT_RULES_PATH = os.path.join(CONFIG_DIR, "enrichment_rules.json")
 QUERY_REF_DIR = os.path.join(CONFIG_DIR, "enrichment_queries")
 
-DEFAULT_REFERENCE_LIMIT = 200
-MAX_REFERENCE_LIMIT = 1000
+# ---------------------------------------------------------------------------
+# READ CAPS - the numbers that CLIP A READ, each named for what it clips
+# ---------------------------------------------------------------------------
+# THREE DIFFERENT NUMBERS WERE ALL CALLED `limit`, AND AN OPERATOR PAID FOR IT
+# [2026-08-05, live incident]
+#     A sweep refused rows with `distinct_truncated`. The operator was told to
+#     "raise the limit" and raised the only one within reach - the CLI's
+#     `--probe-limit`, which is the KEY BUDGET and touches no read at all. It
+#     changed nothing, because the number doing the clipping was a different one
+#     with the same name. There were three:
+#       1. how many KEYS we examine        - CLI `--probe-limit`, an outer budget
+#       2. how many ROWS one read returns  - the view's `limit`, and, one layer
+#          under it, a module constant no operator could reach
+#       3. how many DISTINCT VALUES the probe's GROUP BY returns - which was
+#          ALSO the view's `limit`, the same declaration wearing a second meaning
+#     Two of them were spelled `limit` in the config, one was spelled `limit` in
+#     the CLI, and the refusal named none of them. So the vocabulary is the fix,
+#     not the size: below, and in the CLI, and in every truncation refusal, a cap
+#     is named for WHAT IT CLIPS and says WHERE IT IS SET. Nothing here may be
+#     called plain `limit` again.
+#
+# WHERE THEY LIVE
+#     `ingestion_settings.json` -> `enrichment_read_caps` block. Not a new file
+#     and not a new section: that file already carries this subsystem's other
+#     operational ceiling (`enrichment_auto_confirm_max_keys`, the per-work-unit
+#     KEY budget) beside its kill switch, so the read caps join their siblings
+#     rather than starting a fourth home for enrichment numbers.
+#
+# AN ABSENT DECLARATION KEEPS TODAY'S VALUE, AND THE REFUSAL SAYS SO
+#     Deliberately NOT the `map_alignment` posture, where an undeclared threshold
+#     refuses to rank. That is right there because the missing number destroys
+#     the MEANING of the answer - without a margin threshold, "winner" is a claim
+#     nobody checked. These caps are not decision thresholds; they are safety
+#     ceilings. A missing one does not make a verdict wrong, it only removes
+#     protection, and refusing on absence would take every operator who has not
+#     edited their config offline on upgrade - a bigger outage than the bug.
+#     Infinity is equally wrong: a bind-less declared view scans the whole table
+#     once per key, and `probe_scan_rows` is the only thing standing between that
+#     and a 10M-row ingestion.
+#     What absence must NOT do is stay invisible, which is what made this
+#     incident expensive. Every truncation refusal reports `cap_declared`, so an
+#     operator who never knew the knob existed is told its name, its value, and
+#     the file it belongs in AT THE MOMENT THEY ARE REFUSED.
+READ_CAPS_SETTINGS_KEY = "enrichment_read_caps"
+
+CAP_REFERENCE_ROWS_DEFAULT = "reference_rows_default"
+CAP_REFERENCE_ROWS_MAX = "reference_rows_max"
+CAP_PROBE_SCAN_ROWS = "probe_scan_rows"
+CAP_PROBE_DISTINCT_VALUES = "probe_distinct_values"
+
+#: The values shipped with the code. These are what an UNDECLARED cap inherits -
+#: never a second opinion about a declared one. `probe_distinct_values` is None
+#: because its shipped behaviour is not a number at all: it inherits the view's
+#: own row `limit`, which is exactly the double duty that caused the incident.
+#: Declaring it is how an operator separates "how many rows a human reads" from
+#: "how many distinct values the probe may see" - two questions that were one
+#: declaration until today.
+SHIPPED_READ_CAPS = {
+    CAP_REFERENCE_ROWS_DEFAULT: 200,
+    CAP_REFERENCE_ROWS_MAX: 1000,
+    CAP_PROBE_SCAN_ROWS: 5000,
+    CAP_PROBE_DISTINCT_VALUES: None,
+}
+
+INGESTION_SETTINGS_PATH = os.path.join(CONFIG_DIR, "ingestion_settings.json")
 
 # SQLAlchemy text()와 동일 계열의 바인드 파라미터 패턴 (`::text` 캐스트는 매치되지 않음)
 _BIND_PARAM_RE = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
@@ -63,6 +126,87 @@ _QUERY_REF_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 # (바인딩 불가 — 식별자다) 로드 시점에 형태를 강제한다. 실행 시 인용부호로 감싸는 것과
 # 이 검증은 **둘 다** 필요하다: 인용부호만으로는 `a" OR "1"="1` 류가 닫히지 않는다.
 _CANDIDATE_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+_warned_caps = set()
+
+
+def _load_ingestion_settings() -> dict:
+    """Read `ingestion_settings.json`, or `{}`.
+
+    Small file, read at a work-unit boundary and passed down as a snapshot - the
+    D1 discipline. Used only when a caller supplies no settings; the auto-confirm
+    paths hand their OWN already-loaded snapshot to `load_read_caps`, so a work
+    unit reads this file once and the knobs and the caps cannot come from two
+    different reads of it.
+    """
+    try:
+        if os.path.exists(INGESTION_SETTINGS_PATH):
+            with open(INGESTION_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                return loaded
+    except Exception as e:
+        logger.warning("Could not load ingestion settings (%s): %s", INGESTION_SETTINGS_PATH, e)
+    return {}
+
+
+def read_cap_home(name: str) -> str:
+    """Where an operator SETS this cap. Carried into refusals verbatim.
+
+    A refusal that names no repair sends someone to a person, and the person they
+    reach may name the wrong number - that is precisely how this incident ran.
+    """
+    return f"ingestion_settings.json -> \"{READ_CAPS_SETTINGS_KEY}\": {{\"{name}\": ...}}"
+
+
+def load_read_caps(settings: dict = None) -> dict:
+    """Snapshot of the four read caps.
+
+    Returns `{name: {"value": int|None, "declared": bool}}`. `declared` is not
+    decoration: it is the difference between "your cap is 5000" and "nobody ever
+    set a cap, and 5000 is what the code shipped with", and only the second one
+    tells an operator there is a knob to turn.
+
+    An unreadable declaration (not a positive integer) is NOT a declaration: it
+    warns once and falls back to the shipped value, the same posture
+    `max_keys_per_unit` already takes. Folding a typo into a number silently is
+    how a config file starts lying about what is in force.
+    """
+    raw = (settings if settings is not None else _load_ingestion_settings()).get(
+        READ_CAPS_SETTINGS_KEY)
+    raw = raw if isinstance(raw, dict) else {}
+    out = {}
+    for name, shipped in SHIPPED_READ_CAPS.items():
+        val = raw.get(name)
+        if val is None:
+            out[name] = {"value": shipped, "declared": False}
+            continue
+        if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
+            key = (name, repr(val))
+            if key not in _warned_caps:
+                _warned_caps.add(key)
+                logger.warning(
+                    "Ignoring '%s.%s' value %r in ingestion_settings.json - expected a "
+                    "positive integer. Falling back to the shipped value %r.",
+                    READ_CAPS_SETTINGS_KEY, name, val, shipped)
+            out[name] = {"value": shipped, "declared": False}
+            continue
+        out[name] = {"value": val, "declared": True}
+    return out
+
+
+def cap_value(caps: dict, name: str):
+    """The number in force for `name`, from a snapshot (or freshly loaded)."""
+    return (caps if caps is not None else load_read_caps())[name]["value"]
+
+
+def cap_declared(caps: dict, name: str) -> bool:
+    return bool((caps if caps is not None else load_read_caps())[name]["declared"])
+
+
+def reset_cap_warnings():
+    """Test hook - forget warn-once state for the read caps."""
+    _warned_caps.clear()
 
 
 def _record(rejections, scope: str, subject, detail: str):
@@ -192,7 +336,8 @@ def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: lis
 
 
 def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
-                               target_fields: list = None, rejections: list = None) -> list:
+                               target_fields: list = None, rejections: list = None,
+                               caps: dict = None) -> list:
     """참조뷰 목록을 정규화한다. 유효하지 않은 뷰는 **목록에서 제외**된다.
 
     주의: 제외는 로드 시점에 일어나므로 `/enrichment/rules`의 label 목록과
@@ -219,12 +364,28 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
             _record(rejections, "reference_view", f"{rule_name}/{raw.get('label')}",
                     f"reference view dropped: {err}")
             continue
-        limit = raw.get("limit", DEFAULT_REFERENCE_LIMIT)
+        # The view's `limit` is a ROW cap for the human-facing display, and it is
+        # kept spelled `limit` because it is the product owner's declaration in
+        # their own file. Its default and its ceiling are no longer code: an
+        # operator whose reference table is wider than someone's guess can move
+        # `reference_rows_max` instead of being clamped without being told.
+        default_rows = cap_value(caps, CAP_REFERENCE_ROWS_DEFAULT)
+        max_rows = cap_value(caps, CAP_REFERENCE_ROWS_MAX)
+        limit = raw.get("limit", default_rows)
         try:
             limit = int(limit)
         except (TypeError, ValueError):
-            limit = DEFAULT_REFERENCE_LIMIT
-        limit = max(1, min(limit, MAX_REFERENCE_LIMIT))
+            limit = default_rows
+        # A declaration ABOVE the ceiling used to be clamped in silence, and
+        # silence is what let "raise the limit" look like it had been tried.
+        if limit > max_rows:
+            logger.warning(
+                "[Enrichment:%s] reference view '%s' declares limit=%s, above the "
+                "'%s.%s' ceiling of %s - clamped. Raise that cap in "
+                "ingestion_settings.json if the view really needs to be wider.",
+                rule_name, raw.get("label"), limit,
+                READ_CAPS_SETTINGS_KEY, CAP_REFERENCE_ROWS_MAX, max_rows)
+        limit = max(1, min(limit, max_rows))
         label = raw["label"].strip()
         body = sql.strip().rstrip(";").strip()
         views.append({
@@ -239,7 +400,8 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
     return views
 
 
-def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = None) -> tuple:
+def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = None,
+                   caps: dict = None) -> tuple:
     """규칙 1건을 검증·정규화한다. 반환: (normalized|None, 실패사유|None)."""
     if not isinstance(raw, dict):
         return None, "rule must be an object"
@@ -346,19 +508,23 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         "aggregations": aggregations,
         "reference_views": _normalize_reference_views(
             name, raw.get("reference_views"), decision_key, target_fields,
-            rejections=rejections),
+            rejections=rejections, caps=caps),
     }
     return normalized, None
 
 
 def validate_enrichment_rules(raw_config: dict, known_tables: dict = None,
-                              rejections: list = None) -> list:
+                              rejections: list = None, caps: dict = None) -> list:
     """설정 dict 전체를 검증한다. 유효 규칙의 정규화 리스트를 반환(무효 규칙은 로깅 후 스킵).
 
     rejections: 선택 수집기 리스트 — 스킵된 선언을 `{scope, subject, detail}`로 누적한다
     (`_record` 참조). 반환값 형태는 수집기 유무와 무관하게 동일하다.
     """
     rules = []
+    # ONE snapshot for the whole file, not one read per view (the D1 discipline:
+    # a work unit that re-reads config mid-walk can normalize two views against
+    # two different ceilings and neither of them is what the file says).
+    caps = caps if caps is not None else load_read_caps()
     if not isinstance(raw_config, dict):
         logger.error("enrichment_rules.json must be an object {rule_name: rule}")
         _record(rejections, "file", None,
@@ -370,7 +536,8 @@ def validate_enrichment_rules(raw_config: dict, known_tables: dict = None,
             logger.warning("[Enrichment] rule with empty name skipped")
             _record(rejections, "rule", name, "rule with an empty name skipped")
             continue
-        normalized, err = _validate_rule(name, raw, known_tables, rejections=rejections)
+        normalized, err = _validate_rule(name, raw, known_tables, rejections=rejections,
+                                         caps=caps)
         if err is not None:
             logger.warning(f"[Enrichment:{name}] rule skipped: {err}")
             _record(rejections, "rule", name, f"rule skipped: {err}")
@@ -381,7 +548,7 @@ def validate_enrichment_rules(raw_config: dict, known_tables: dict = None,
 
 
 def load_enrichment_rules(path: str = None, known_tables: dict = None,
-                          rejections: list = None) -> list:
+                          rejections: list = None, caps: dict = None) -> list:
     """enrichment_rules.json을 읽어 검증된 규칙 리스트를 반환한다(파일 없음 → 빈 목록).
 
     파일 **부재**는 거부가 아니다(선언이 없을 뿐) — 수집기에 남기지 않는다.
@@ -400,7 +567,7 @@ def load_enrichment_rules(path: str = None, known_tables: dict = None,
                 f"NO rule is in effect")
         return []
     return validate_enrichment_rules(raw_config, known_tables=known_tables,
-                                     rejections=rejections)
+                                     rejections=rejections, caps=caps)
 
 
 def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> list:
@@ -465,12 +632,14 @@ CANDIDATE_GROUP_WRAP_SQL = (
     ') AS __enrichment_cand GROUP BY __c LIMIT :__enrichment_limit'
 )
 
-# 프로브가 훑을 **행** 상한. 뷰의 `limit`(표시용)과 별개이고 운영 노브가 아니다.
+# 프로브가 훑을 **행** 상한은 이제 `enrichment_read_caps.probe_scan_rows`다(위 블록).
 # GROUP BY는 상위 LIMIT으로 조기 종료할 수 없으므로, 바인드 없는 뷰
 # (`required_binds == []`)가 선언되면 키마다 전체 테이블을 훑게 된다 — 1,000만 행 규율의
 # 유일한 방어선이다. 상한에 닿으면 결과는 **잘린 읽기**이므로 `single`을 주장하지 않고
-# 이름 있는 거절(`probe_truncated`)이 된다. 실측 최대 217행의 약 23배로 잡았다.
-CANDIDATE_PROBE_MAX_ROWS = 5000
+# 이름 있는 거절(`probe_truncated`)이 된다.
+# 🔴 **이 상수는 사라졌다.** 종전 이름은 `CANDIDATE_PROBE_MAX_ROWS`였고 값이 코드에만
+#    있어 조작자가 닿을 수 없었다 — 2026-08-05 사고에서 「limit을 올려라」가 아무 효과도
+#    없었던 이유의 절반이 이것이다. 나머지 절반은 세 숫자가 같은 이름으로 불린 것이다.
 
 
 class ReferenceViewError(Exception):
@@ -507,7 +676,7 @@ def _isolated_execute(db, stmt, params) -> tuple:
           re-ran it forever and the retry quarantine never advanced.
 
         Cost is two extra round trips (SAVEPOINT + RELEASE) per reference
-        statement - noise next to a GROUP BY over up to CANDIDATE_PROBE_MAX_ROWS
+        statement - noise next to a GROUP BY over up to `probe_scan_rows`
         rows of a user-authored view, and the alternative price was a stuck
         worker.
 
@@ -551,7 +720,8 @@ def missing_binds(view: dict, bind_params: dict = None) -> list:
     return sorted(needed - have)
 
 
-def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
+def execute_reference_view(db, view: dict, bind_params: dict = None,
+                           caps: dict = None) -> tuple:
     """참조뷰 1건을 서버측 정의로 실행한다. 반환: (columns, rows).
 
     LIMIT은 서버가 강제한다(뷰 설정값, 내부 LIMIT이 더 작으면 그 값 유지) — 사용자 쿼리를
@@ -570,7 +740,7 @@ def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
     if missing:
         raise ReferenceViewError(f"missing required bind param(s): {missing}")
 
-    exec_params = _probe_params(view, supplied, needed)
+    exec_params = _probe_params(view, supplied, needed, caps)
     stmt = text(REFERENCE_LIMIT_WRAP_SQL.format(query=view["query"]))
     try:
         columns, raw_rows = _isolated_execute(db, stmt, exec_params)
@@ -579,17 +749,40 @@ def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
     return columns, [list(r) for r in raw_rows]
 
 
-def _probe_params(view: dict, supplied: dict, needed: set) -> dict:
+def _probe_params(view: dict, supplied: dict, needed: set, caps: dict = None) -> dict:
     params = {k: v for k, v in supplied.items() if k in needed}
-    params["__enrichment_limit"] = view.get("limit") or DEFAULT_REFERENCE_LIMIT
+    params["__enrichment_limit"] = (view.get("limit")
+                                    or cap_value(caps, CAP_REFERENCE_ROWS_DEFAULT))
     return params
 
 
-def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = None) -> dict:
+def probe_distinct_cap(view: dict, caps: dict = None) -> tuple:
+    """How many DISTINCT values the probe may see, and whether that was declared.
+
+    Returns `(value, declared)`. Undeclared it is the view's own row `limit`,
+    which is exactly today's behaviour and exactly the double duty that made the
+    incident hard to see: one declaration answering "how many rows should a human
+    read" was silently also answering "how many distinct values may the probe
+    consider". Declaring `probe_distinct_values` separates them.
+    """
+    declared = cap_value(caps, CAP_PROBE_DISTINCT_VALUES)
+    if declared is not None:
+        return declared, True
+    return (view.get("limit") or cap_value(caps, CAP_REFERENCE_ROWS_DEFAULT)), False
+
+
+def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = None,
+                            caps: dict = None) -> dict:
     """후보 프로브 1건 — 뷰 결과 **전체**에 대해 `column`의 distinct 값과 행수를 센다.
 
     반환: `{"pairs": [(value, count), ...], "scanned": int,
-             "row_truncated": bool, "distinct_truncated": bool}`
+             "row_truncated": bool, "distinct_truncated": bool,
+             "scan_rows_cap": int, "scan_rows_cap_declared": bool,
+             "distinct_values_cap": int, "distinct_values_cap_declared": bool}`
+
+    🔴 **절단 사실에는 반드시 「어느 상한이 잘랐는가」가 따라붙는다**(2026-08-05 사고).
+    `row_truncated`만 돌려주면 호출자는 「읽기가 잘렸다」까지만 말할 수 있고, 조작자는
+    세 개의 `limit` 중 무엇을 올려야 하는지 알 수 없다 — 실제로 틀린 것을 올렸다.
 
     `pairs`는 DB의 GROUP BY 결과(정규화 이전)다 — `clean_str_value` 접기는 호출자가
     수행하고 count를 합산한다. 'WF01 '과 'WF01'은 DB에선 두 그룹이지만 접은 뒤 하나다.
@@ -605,7 +798,10 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
         보이지 않는 그룹에 진짜 모순이 있는 채로 `single`이 된다. 실증(`limit: 1`):
         `pairs=[('WF01',1), ('WF01 ',1)]` → 접으면 {WF01} → `single`, 그러나 잘려나간
         곳에 WF02가 있었다. 그래서 절단은 **접기 이전 사실**로서 그 자체가 거절이다.
-      - `row_truncated`: 스캔이 `CANDIDATE_PROBE_MAX_ROWS`에 닿았다. `scanned`는 그룹이
+        🔴 이 상한의 이름은 `enrichment_read_caps.probe_distinct_values`이고, 미선언이면
+        뷰의 표시용 `limit`을 그대로 쓴다 — 「사람이 읽을 행 수」와 「프로브가 볼 distinct
+        수」가 한 선언에 묶여 있던 것이 2026-08-05 사고의 절반이다.
+      - `row_truncated`: 스캔이 `enrichment_read_caps.probe_scan_rows`에 닿았다. `scanned`는 그룹이
         잘리기 전의 전체 행수(`SUM(COUNT(*)) OVER ()`)이므로 그룹 절단과 무관하게 참이다.
     """
     from sqlalchemy import text
@@ -620,11 +816,13 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
     if missing:
         raise ReferenceViewError(f"missing required bind param(s): {missing}")
 
-    limit = view.get("limit") or DEFAULT_REFERENCE_LIMIT
-    exec_params = _probe_params(view, supplied, needed)
-    # limit + 1: (limit+1)번째 distinct 값이 돌아오면 그것이 절단의 증거다.
-    exec_params["__enrichment_limit"] = limit + 1
-    exec_params["__enrichment_scan_rows"] = CANDIDATE_PROBE_MAX_ROWS
+    caps = caps if caps is not None else load_read_caps()
+    distinct_cap, distinct_declared = probe_distinct_cap(view, caps)
+    scan_rows = cap_value(caps, CAP_PROBE_SCAN_ROWS)
+    exec_params = _probe_params(view, supplied, needed, caps)
+    # distinct_cap + 1: (cap+1)번째 distinct 값이 돌아오면 그것이 절단의 증거다.
+    exec_params["__enrichment_limit"] = distinct_cap + 1
+    exec_params["__enrichment_scan_rows"] = scan_rows
     stmt = text(CANDIDATE_GROUP_WRAP_SQL.format(query=view["query"], column=column))
     try:
         _, raw = _isolated_execute(db, stmt, exec_params)
@@ -639,8 +837,16 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
     return {
         "pairs": rows,
         "scanned": scanned,
-        "row_truncated": scanned >= CANDIDATE_PROBE_MAX_ROWS,
-        "distinct_truncated": len(rows) > limit,
+        "row_truncated": scanned >= scan_rows,
+        "distinct_truncated": len(rows) > distinct_cap,
+        # WHICH cap, and whether anyone declared it. The refusal downstream is
+        # only as useful as these four fields: without them it says a read was
+        # clipped and leaves the operator to guess which of three numbers spelled
+        # `limit` was responsible.
+        "scan_rows_cap": scan_rows,
+        "scan_rows_cap_declared": cap_declared(caps, CAP_PROBE_SCAN_ROWS),
+        "distinct_values_cap": distinct_cap,
+        "distinct_values_cap_declared": distinct_declared,
     }
 
 

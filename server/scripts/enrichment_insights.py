@@ -8,6 +8,12 @@ the rule's `auto_confirm` knob is on.
     conda run -n assy_manager python server/scripts/enrichment_insights.py confirm  <rule> [--apply]
     ... any subcommand with no <rule> runs every enabled rule.
 
+THREE NUMBERS THAT ARE NOT THE SAME NUMBER (2026-08-05: they were all `limit`)
+    --max-keys              how many KEYS are examined. Widens no read.
+    --probe-scan-rows       how many ROWS one probe reads   -> probe_truncated
+    --probe-distinct-values how many DISTINCT VALUES it sees -> distinct_truncated
+    A truncation refusal names which one cut it and where that one is set.
+
 Same bootstrap and dry-run-first posture as `backfill_enrichment.py`.
 """
 import argparse
@@ -33,6 +39,47 @@ def _rules(rule_name=None):
             return None
         return [rule]
     return rules
+
+
+def _caps_from_args(args):
+    """Read-cap snapshot for this run: config, then any explicit CLI override.
+
+    Overriding here rather than inside each analysis keeps ONE snapshot for the
+    whole invocation - a run whose caps change mid-walk is a run whose numbers
+    cannot be compared to each other.
+    """
+    import enrichment_config as ec
+
+    caps = ec.load_read_caps()
+    for flag, key in ((getattr(args, "probe_scan_rows", None), ec.CAP_PROBE_SCAN_ROWS),
+                      (getattr(args, "probe_distinct_values", None),
+                       ec.CAP_PROBE_DISTINCT_VALUES)):
+        if flag is not None:
+            caps[key] = {"value": flag, "declared": True}
+    return caps
+
+
+def _cap_lines(res):
+    """One block per cap that actually clipped a read, naming the repair.
+
+    Absent from the output when nothing was clipped: a report that lists every
+    ceiling every time trains people to skim past the one that mattered.
+    """
+    lines = []
+    for cap, s in sorted((res.get("cap_hits") or {}).items()):
+        lines += [
+            "",
+            f"  A READ WAS CLIPPED BY '{cap}' = {s['cap_value']}"
+            + ("" if s["cap_declared"] else "   <- NOT declared; this is the shipped value"),
+            f"      reads clipped                : {s['hits']} (largest read {s['max_read']})",
+            # The two outcomes are different repairs and must not be one number.
+            f"      raising it -> AMBIGUOUS      : {s['ambiguous']}   (>=2 distinct values "
+            f"were ALREADY read - a person decides these, not a knob)",
+            f"      raising it -> unknown        : {s['unknown']}   (the read is too short "
+            f"to tell whether the rest agrees)",
+            f"      set it at                    : {s['cap_home']}",
+        ]
+    return lines
 
 
 def _report_classify(res):
@@ -70,8 +117,10 @@ def _report_classify(res):
         f"{res['counts'].get(ea.CLS_NO_SOURCE_ROWS, 0) + res['counts'].get(ea.CLS_UNPROBED, 0)}",
         f"      {ea.CLS_NO_SOURCE_ROWS:<26} {res['counts'].get(ea.CLS_NO_SOURCE_ROWS, 0)}",
         f"      {ea.CLS_UNPROBED:<26} {res['counts'].get(ea.CLS_UNPROBED, 0)}"
-        f"   (probe budget {res['probe_limit']}, probed {res['probed']})",
+        f"   (KEY budget --max-keys={res['max_keys']}, probed {res['probed']};"
+        f" this bounds keys, not reads)",
     ]
+    lines += _cap_lines(res)
     if res["no_evidence_reasons"]:
         lines.append(f"  no_evidence refusal reasons: {res['no_evidence_reasons']}")
     # Per COLUMN, because the row classes above cannot say WHICH column is stuck.
@@ -154,6 +203,7 @@ def _report_confirm(stats):
     for field, slot in sorted((stats.get("per_target") or {}).items()):
         lines.append(f"    target '{field}': {slot['confirmed']} confirmed"
                      + (f", refused {slot['refused']}" if slot["refused"] else ""))
+    lines += _cap_lines(stats)
     for s in (stats.get("samples") or [])[:5]:
         lines.append(f"    [single] {s['business_key_val']} {s['field']}="
                      f"{s['value']!r} (support {s['support']})")
@@ -172,8 +222,27 @@ def main(argv=None):
         p.add_argument("rule_name", nargs="?", default=None)
         p.add_argument("--limit", type=int, default=None,
                        help="cap the number of rows examined")
-    sub.choices["classify"].add_argument("--probe-limit", type=int, default=200,
-                                         help="max keys probed against reference views")
+    # THREE NUMBERS, THREE NAMES, NONE OF THEM `--limit` [2026-08-05 incident].
+    # `--max-keys` bounds HOW MANY KEYS are examined. The two `--probe-*` caps
+    # bound ONE READ. The old `--probe-limit` was the key budget wearing a name
+    # that sounded like a read cap, and after a `distinct_truncated` refusal an
+    # operator raised it and nothing happened - it is the only one they could
+    # reach. It still works, and it says what it is.
+    sub.choices["classify"].add_argument(
+        "--max-keys", dest="max_keys", type=int, default=200,
+        help="KEY BUDGET: how many keys are probed. Widens no read.")
+    sub.choices["classify"].add_argument(
+        "--probe-limit", dest="max_keys", type=int,
+        help="deprecated alias for --max-keys (it is the KEY BUDGET, not a read cap)")
+    # Available on BOTH classify and confirm: measuring with one ceiling and
+    # writing with another is how two surfaces come to disagree.
+    for name in ("classify", "confirm"):
+        sub.choices[name].add_argument(
+            "--probe-scan-rows", dest="probe_scan_rows", type=int, default=None,
+            help="READ CAP: max rows one candidate probe scans (probe_truncated)")
+        sub.choices[name].add_argument(
+            "--probe-distinct-values", dest="probe_distinct_values", type=int, default=None,
+            help="READ CAP: max distinct values one probe may see (distinct_truncated)")
     sub.choices["propose"].add_argument("--min-support", type=int, default=3,
                                         help="human decisions required before proposing")
     sub.choices["confirm"].add_argument("--apply", action="store_true",
@@ -198,6 +267,7 @@ def main(argv=None):
         print("No enabled enrichment rules found.")
         return 0
 
+    caps = _caps_from_args(args)
     db = SessionLocal()
     rc = 0
     try:
@@ -205,8 +275,8 @@ def main(argv=None):
             try:
                 if args.cmd == "classify":
                     print(_report_classify(ea.classify_queue(
-                        db, rule, probe_limit=args.probe_limit, limit=args.limit,
-                        log=lambda m: print(f"  {m}"))))
+                        db, rule, max_keys=args.max_keys, limit=args.limit,
+                        caps=caps, log=lambda m: print(f"  {m}"))))
                 elif args.cmd == "propose":
                     print(_report_propose(ea.analyze_promotions(
                         db, rule, min_support=args.min_support, limit=args.limit,
@@ -214,7 +284,8 @@ def main(argv=None):
                 else:
                     print(_report_confirm(ea.run_auto_confirm_sweep(
                         db, rule, apply=args.apply, limit=args.limit,
-                        ignore_knob=args.ignore_knob, log=lambda m: print(f"  {m}"))))
+                        ignore_knob=args.ignore_knob, caps=caps,
+                        log=lambda m: print(f"  {m}"))))
             except ea.AnalysisRefused as e:
                 print(f"REFUSED [{rule['name']}]: {e}")
                 rc = 2

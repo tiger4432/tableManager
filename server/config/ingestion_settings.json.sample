@@ -9,5 +9,16 @@
   "_auto_register_map_meta_doc": "[M3] 인제션(파일 워처·체인 워커)이 map_key_columns 선언 테이블에 맵을 적재할 때, 해당 맵 키의 wafer_map_metadata 행이 없으면 자동 등록합니다(기본 true). 등록 내용은 에디터 '표준' 선택과 같은 마스크 중립 합성 규격(배치 x/y bbox 격자, 회전 0) — 실제 웨이퍼 물리 규격은 추측하지 않습니다. 이미 존재하는 메타 행은 절대 덮어쓰지 않습니다(사용자/에디터 등록이 정본). 핫리로드: 다음 파일/트랜잭션 그룹부터 반영.",
   "auto_register_map_meta": true,
   "_flatten_nested_dirs_doc": "raws/에 폴더(다중 층위 포함)가 들어오면 트리가 안정된 뒤 파일만 raws/ 루트로 승격하고 빈 폴더 트리를 제거합니다(기본 true). 이름 충돌 시 상대경로 접두(구분자 ~)로 개명하며 절대 덮어쓰지 않습니다. Thumbs.db/desktop.ini/.DS_Store/._* 는 폴더와 함께 폐기됩니다. false로 두면 폴더를 건드리지 않습니다(종전 동작: 무시). 핫리로드: 다음 폴더 트리거부터 반영.",
-  "flatten_nested_dirs": true
+  "flatten_nested_dirs": true,
+
+  "_enrichment_auto_confirm_doc": "[Enrichment ①] 자동 확정의 전역 킬 스위치와 작업단위 키 예산. enabled=false면 규칙별 auto_confirm이 true라도 전부 멈춥니다(기본 true = 막지 않음, 규칙별 opt-in은 여전히 필요). max_keys는 한 작업단위에서 프로브할 판단키 개수 상한입니다(기본 200) — 🔴 이것은 **키 개수** 예산이고 읽기 하나의 폭과 무관합니다. 절단(truncated) 거절을 쫓고 있다면 이 값이 아니라 아래 enrichment_read_caps를 보세요.",
+  "enrichment_auto_confirm_enabled": true,
+  "enrichment_auto_confirm_max_keys": 200,
+
+  "_enrichment_read_caps_doc": "[Enrichment ①] 참조뷰 읽기를 자르는 상한 4개. 종전엔 코드 상수라 운영에서 손댈 수 없었고, 게다가 **서로 다른 세 숫자가 전부 `limit`으로 불려** 2026-08-05에 조작자가 엉뚱한 것을 올렸습니다(CLI의 키 예산을 올렸는데 읽기를 자른 것은 다른 값이었다). 그래서 이제 각 상한은 **자기가 무엇을 자르는지로** 이름 지어졌고, 절단 거절은 **어느 상한이 잘랐는지·어디서 고치는지**를 스스로 말합니다. | reference_rows_default: 참조뷰가 limit을 선언하지 않았을 때의 표시용 행 상한(미선언 시 200). | reference_rows_max: 참조뷰가 선언할 수 있는 limit의 천장(미선언 시 1000). 이 값을 넘는 선언은 잘리되 이제 경고가 남습니다. | probe_scan_rows: 후보 프로브가 훑는 **행** 상한(미선언 시 5000). 닿으면 probe_truncated. 바인드 없는 선언 뷰가 키마다 전체 테이블을 훑는 것을 막는 유일한 방어선이므로 무한대로 두지 마세요. | probe_distinct_values: 프로브의 GROUP BY가 볼 수 있는 **distinct 값** 상한. 미선언 시 그 뷰의 표시용 limit을 그대로 씁니다 — 「사람이 읽을 행 수」와 「프로브가 볼 distinct 수」가 한 선언에 묶여 있던 것이 사고의 절반이었으므로, 둘을 가르려면 이 값을 선언하세요. | 🔴 **미선언은 0도 무한대도 아니라 위 기본값**입니다: 이 상한들은 판정 문턱이 아니라 안전 천장이라, 미선언에 거절로 답하면 config를 손대지 않은 모두가 업그레이드에서 멈춥니다. 대신 절단 거절이 cap_declared=false로 「이 값은 아무도 선언하지 않은 출하 기본값」이라고 말해 줍니다. | 🔴 상한을 올리기 전에: 거절 보고의 'raising it -> AMBIGUOUS' 줄을 보세요. 그 건수는 이미 서로 다른 값이 2개 이상 읽힌 건이라 상한을 올려도 `ambiguous`로 이름만 바뀝니다(사람이 판단할 몫). 그리고 참조뷰가 키 하나당 수천 행을 돌려준다면 상한이 아니라 **뷰가 좁혀지지 않는 것**이 문제입니다.",
+  "enrichment_read_caps": {
+    "reference_rows_default": 200,
+    "reference_rows_max": 1000,
+    "probe_scan_rows": 5000
+  }
 }
