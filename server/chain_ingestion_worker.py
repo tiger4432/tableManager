@@ -27,7 +27,7 @@ from utils.time_format import to_local_str
 
 # [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
 import event_constants
-from event_constants import MAX_NOTIFY_CREATED_LOGS
+from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 
 # [M3] Auto-registration of wafer_map_metadata for chain-ingested maps — shared
 # with the file watcher (absent-only; knob `auto_register_map_meta`).
@@ -504,8 +504,21 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                     col_types = cfg.get("column_types", {})
                     user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
 
+                    # [P1b] Fourth copy of the discarded item build. Above the threshold the
+                    # message below carries only `change_count`, so every item here is
+                    # thrown away - and building one is not free: `crud.apply_batch_updates`
+                    # commits, `expire_on_commit` is true, and `row.created_at` is the first
+                    # attribute read, so each row is reloaded by its own SELECT before the
+                    # O(cols) wrapping loop even starts. This site has no metadata merge
+                    # (the main.py endpoints do), so its whole bill IS those reloads.
+                    #
+                    # ⚠️ Same predicate, moved. The loop appends exactly one item per entry
+                    # of `results`, unconditionally, so `len(msg_items) == len(results)`.
+                    # A `continue` added to that loop breaks the equality and this must
+                    # move back.
+                    needs_items = len(results) <= BROADCAST_ITEM_LIMIT
                     msg_items = []
-                    for row, is_new in results:
+                    for row, is_new in (results if needs_items else ()):
                         c_at_str = to_local_str(row.created_at)
                         u_at_str = to_local_str(row.updated_at)
                         
@@ -544,11 +557,12 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                                 log_copy["timestamp"] = ts.isoformat()
                             serialized_logs.append(log_copy)
 
-                    if len(msg_items) > 100:
+                    if not needs_items:
                         msg = {
                             "event": "batch_refresh_required",
                             "table_name": target_table,
-                            "change_count": len(msg_items),
+                            # len(msg_items) before; empty by construction on this arm now.
+                            "change_count": len(results),
                             "transaction_id": chain_tx_id,
                             "created_logs": serialized_logs,
                             "total_log_count": total_log_count

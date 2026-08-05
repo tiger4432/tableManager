@@ -9,11 +9,25 @@ trips per row to be told, every time, that there is nothing there.
 🔴 THE GUARD IS PER-ROW MEMBERSHIP IN THE PREFETCHED SET, NOT "the row exists".
 The equivalence is only bought by the prefetch's lack of a column filter, and it
 is only bought for the rows that prefetch actually covered. A row can be resolved
-mid-batch and never have been prefetched - `apply_row_update_internal` assembles a
-composite business key from column values AFTER the prefetch filter was built, so
-the row it then finds (or collides with) was not in `all_row_ids`. Answering
-"empty" for that row would silently discard its stored `user` layer.
-`test_row_resolved_after_the_prefetch_still_reads_its_metadata` is that case.
+mid-batch and never have been prefetched, and answering "empty" for it would
+silently discard its stored `user` layer.
+
+⚠️ AMENDED BY P6 (composite key assembled before the prefetch). When this module
+was written, the example of such a row was "the payload carries the key's SOURCE
+COLUMNS but not the key, so the prefetch filter never saw it" - which was every row
+of every composite-keyed write. P6 moved that assembly ahead of the prefetch
+filter, so those rows are now covered and answering "empty" for them is CORRECT
+rather than dangerous. `test_row_resolved_after_the_prefetch_still_reads_its_
+metadata` below has been amended to say so, and its correctness assertions are
+unchanged - they now hold for a better reason.
+
+The guard is still load-bearing, on a narrower case: the COLLISION-MERGE conflict
+row. Editing a key source column re-derives a row's identity mid-batch, and if the
+new key already belongs to another row, `apply_row_update_internal` finds that row
+with its own query (crud.py, `conflict_row`) and merges onto it. That row's key was
+never in the payload, so it is genuinely outside the prefetched set.
+`test_composite_key_prefetch_budget.py::test_collision_merge_still_reads_the_
+conflict_rows_metadata` is that case, and it is the one that must not be deleted.
 """
 
 import pytest
@@ -109,12 +123,26 @@ def composite_db():
 
 
 def test_row_resolved_after_the_prefetch_still_reads_its_metadata(composite_db):
-    """A human correction must survive a parser write to a row the prefetch missed.
+    """A human correction must survive a parser write to an unkeyed payload row.
 
     If absence were memoised on "the row exists" rather than on "the row was
     prefetched", the parser value below would find an empty source list, become
     the only source, win the priority computation, and take the `is_overwrite`
     marker down with it. Nothing would raise; the correction would just be gone.
+
+    ⚠️ AMENDED BY P6. The name is now half wrong and is kept only so the history is
+    followable: the second item below is no longer resolved AFTER the prefetch.
+    `apply_batch_updates` assembles its composite key before building the prefetch
+    filter, so the row IS covered, its metadata IS loaded in the bulk query, and the
+    cache hit is a real hit rather than a memoised absence.
+
+    The claim the test makes is therefore unchanged and the assertions below are
+    untouched - a human correction survives a parser write to an unkeyed payload -
+    but the BUDGET assertion that used to close it ("a row outside the prefetched
+    set must still be queried", `cell_sources >= 2`) has moved out, because this row
+    is no longer outside that set. It now lives on the case that still is:
+    `test_composite_key_prefetch_budget.py::test_collision_merge_still_reads_the_
+    conflict_rows_metadata`.
     """
     table = "p2meta_test_map"
 
@@ -153,7 +181,19 @@ def test_row_resolved_after_the_prefetch_still_reads_its_metadata(composite_db):
     assert ow is not None and ow.is_overwrite is True, \
         "the overwrite marker is deleted when the user source is not seen"
 
-    # And the read that made it possible really happened: the un-prefetched row
-    # must still cost its SELECTs.
-    assert len(selects_from(recorded, "cell_sources")) >= 2, \
-        "a row outside the prefetched set must still be queried"
+    # [P6] And the read that made it possible really happened - now in the BULK
+    # query rather than in per-row follow-ups, because the unkeyed item's composite
+    # key is assembled before the prefetch filter is built. One `cell_sources`
+    # SELECT covering both rows, where there used to be that one plus two more for
+    # the row it had missed.
+    assert len(selects_from(recorded, "cell_sources")) == 1, \
+        "the prefetch now covers the unkeyed row, so it costs no follow-up reads"
+
+    # The membership set really did include it - that, and not "the row exists", is
+    # what made answering from cache correct.
+    assert composite_db.query(models.CellSource).filter(
+        models.CellSource.table_name == table,
+        models.CellSource.row_id == row_a.row_id,
+        models.CellSource.column_name == "leg",
+        models.CellSource.source_name == "user").count() == 1, \
+        "the user layer this test is about is really stored on the prefetched row"

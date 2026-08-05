@@ -48,6 +48,18 @@ CONTROL_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN,
 # 실제 총 로그 건수는 total_log_count 필드로 별도 전달한다(순수 추가 필드).
 MAX_NOTIFY_CREATED_LOGS = 500
 
+# [P1b] Row count above which a write's broadcast degrades from per-row `batch_row_upsert`
+# items to a single `batch_refresh_required` carrying only a count (the client refetches).
+#
+# The VALUE is unchanged - it was the literal 100 written independently at four decision
+# sites (main.py's batch-update, priority-batch and source-delete-batch endpoints, and the
+# chain worker). It lives here for the same reason MAX_NOTIFY_CREATED_LOGS does: this is a
+# per-SENDER decision that four senders make about the SAME client contract, and the
+# documented failure mode of this codebase is one sender being corrected while the others
+# keep the old literal. Above the threshold `items` has no consumer, so each site must also
+# decide it BEFORE building them - see the comments at each call site.
+BROADCAST_ITEM_LIMIT = 100
+
 # [P2-C9] 단일 감사 로그 값(old_value/new_value)의 문자 길이 상한.
 # 근거: created_logs를 500건으로 절단해도 값 하나가 무제한이면 페이로드가 다시 수십 MB가 될 수
 # 있다(맵 문자열류 대형 텍스트 셀이 체인/워처 대상이 되는 경우 — 2026-07-25 인시던트의 잔여 경로).

@@ -905,7 +905,7 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
     return existing_keys
 
 from audit_cache import audit_cache
-from event_constants import MAX_NOTIFY_CREATED_LOGS
+from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
 from ingestion_activity import registry as ingestion_activity_registry
 
@@ -2379,11 +2379,9 @@ def _validate_effort(effort):
             counts["nav"], counts["nav_preserved"]), None
 
 
-# [P1] Above this many written rows the WS broadcast degrades from per-row items to a
-# single `batch_refresh_required` count, and the client refetches. The value is
-# unchanged (it was the literal 100 inside the branch); it is named here only so the
-# decision can be read BEFORE the items are built instead of after.
-BROADCAST_ITEM_LIMIT = 100
+# [P1b] `BROADCAST_ITEM_LIMIT` moved to `event_constants` (imported above) when the same
+# decision was corrected at the priority-batch, source-delete-batch and chain-worker sites.
+# One definition, four senders - see the rationale there.
 
 
 @app.put("/tables/{table_name}/data/updates")
@@ -2471,7 +2469,18 @@ async def apply_batch_updates_endpoint(
     # precisely the same inputs as the old `len(msg_items) > 100`. If that loop ever
     # gains a `continue`, this equality breaks and the branch must move back.
     broadcast_needs_items = len(results) <= BROADCAST_ITEM_LIMIT
-    msg_items = await run_in_threadpool(_merge_and_build_items) if broadcast_needs_items else []
+    # [P1b] The second consumer test, and the one the size branch alone does not cover:
+    # `msg_items` is read ONLY inside `if not batch.silent:` below, so a silent save under
+    # the threshold built the whole merge for nobody at all. Silent is not a rare path -
+    # it is what a caller passes when it will broadcast for itself.
+    #
+    # Kept as a separate name from `broadcast_needs_items` on purpose. That one is the SIZE
+    # predicate and still selects which broadcast shape the non-silent branch sends; this
+    # one is the CONSUMER predicate. Folding silence into the size flag would make
+    # `not broadcast_needs_items` mean "refresh signal" in one place and "silent" in
+    # another, and the next edit would pick the wrong one.
+    items_have_a_consumer = broadcast_needs_items and not batch.silent
+    msg_items = await run_in_threadpool(_merge_and_build_items) if items_have_a_consumer else []
 
     # WebSocket 브로드캐스트를 백그라운드 태스크로 이관하여 즉시 HTTP 200 반환!
     if not batch.silent:
@@ -2559,7 +2568,26 @@ async def apply_batch_updates_endpoint(
         "updated_count": len(results),
         "change_count": len(changed_cells),
         "deleted_row_ids": deleted_row_ids,
-        "created_logs": created_logs,
+        # [P4] Bounded, not removed. This used to be EVERY audit log the write created -
+        # one dict per changed cell, so a map push returned the whole audit trail it had
+        # just written. Measured on a 200-row x 6-column save: 1,200 dicts, 405 KB of
+        # JSON, built by the encoder on the event loop and parsed on the browser's main
+        # thread. It scales with rows x columns, so a 20,000-die map returns tens of MB.
+        #
+        # No consumer reads it: the only `created_logs` reader in the client
+        # (`client2/src/websocket.js`) takes it off the WEBSOCKET message, which is
+        # untouched below and still carries its own logs on its own rules.
+        #
+        # Same truncate-plus-count contract the internal-event payloads already use
+        # (`MAX_NOTIFY_CREATED_LOGS`, `total_log_count`) rather than a second convention:
+        # the key stays present and stays a list, and the honest total rides alongside so
+        # a caller can detect truncation as `len(created_logs) < total_log_count`.
+        #
+        # ⚠️ Slice HERE, not by rebinding `created_logs` - `async_broadcast` above reads
+        # the same name and its WS payload rules are a separate contract.
+        "created_logs": (created_logs[:MAX_NOTIFY_CREATED_LOGS]
+                         if len(created_logs) > MAX_NOTIFY_CREATED_LOGS else created_logs),
+        "total_log_count": len(created_logs),
         # [V1 instrument] Did THIS request durably store the effort it was sent?
         # The client resets its counters only on true - false means the effort is still
         # unspent human work and must ride the next attempt (F1).
@@ -3631,7 +3659,19 @@ async def set_cell_priority_batch_endpoint(
             db, table_name, req.updates, req.source_name, req.updated_by
         )
         merged = []
-        if changed:
+        # [P1b] Same discarded merge as the batch-update endpoint, and dearer here:
+        # `include_sources=True` costs a `cell_sources` read on top of the
+        # `cell_overwrites` one, and `crud.set_cell_manual_priority_batch` commits - so
+        # every row in `changed` is expired and gets reloaded ONE STATEMENT AT A TIME by
+        # the merge's first act, `[r.row_id for r in rows]`. Measured on a 101-cell pin:
+        # 102 SELECTs against the data table where 1 is the crud lookup that did the work.
+        # Above the threshold the broadcast below sends only a count, so all of it was
+        # computed and thrown away.
+        #
+        # ⚠️ Same predicate, moved - NOT an approximation. `fetch_and_merge_metadata`
+        # appends exactly one entry per input row, and `msg_items` below is a 1:1
+        # comprehension over that, so `len(msg_items) == len(changed)` always holds.
+        if changed and len(changed) <= BROADCAST_ITEM_LIMIT:
             cfg = crud.TABLE_CONFIG.get(table_name, {})
             col_types = cfg.get("column_types", {})
             user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
@@ -3660,12 +3700,15 @@ async def set_cell_priority_batch_endpoint(
             "updated_at": item["updated_at"]
         } for item in merged_items]
         
-        if len(msg_items) > 100:
+        # [P1b] `len(changed_rows)` is what `len(msg_items)` was - see the equality note in
+        # `_apply_and_merge`. It is read here because on this arm `msg_items` is now empty
+        # by construction, exactly as in the batch-update endpoint.
+        if len(changed_rows) > BROADCAST_ITEM_LIMIT:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
             msg = {
                 "event": "batch_refresh_required",
                 "table_name": table_name,
-                "change_count": len(msg_items)
+                "change_count": len(changed_rows)
             }
             if created_logs and len(created_logs) <= 5000:
                 msg["created_logs"] = created_logs
@@ -3684,7 +3727,7 @@ async def set_cell_priority_batch_endpoint(
                     "change_count": len(chunk),
                     "created_logs": chunk_logs
                 }))
-            
+
     return {"status": "success", "count": len(changed_rows), "deleted_row_ids": deleted_row_ids}
 
 @app.post("/tables/{table_name}/cells/sources/delete/batch")
@@ -3700,7 +3743,11 @@ async def delete_cell_source_batch_endpoint(
     def _delete_and_merge():
         changed, logs = crud.delete_cell_source_batch(db, table_name, req.cells, req.source_name)
         merged = []
-        if changed:
+        # [P1b] Third copy of the discarded merge; see `set_cell_priority_batch_endpoint`
+        # above for the full accounting. Same shape, same commit-then-reload bill, same
+        # 1:1 equality `len(msg_items) == len(changed)` that lets the size branch be
+        # decided before the work instead of after it.
+        if changed and len(changed) <= BROADCAST_ITEM_LIMIT:
             cfg = crud.TABLE_CONFIG.get(table_name, {})
             col_types = cfg.get("column_types", {})
             user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
@@ -3721,12 +3768,14 @@ async def delete_cell_source_batch_endpoint(
             "updated_at": item["updated_at"]
         } for item in merged_items]
         
-        if len(msg_items) > 100:
+        # [P1b] `len(changed_rows)` is what `len(msg_items)` was - `msg_items` is empty by
+        # construction on this arm now. See `_delete_and_merge`.
+        if len(changed_rows) > BROADCAST_ITEM_LIMIT:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
             msg = {
                 "event": "batch_refresh_required",
                 "table_name": table_name,
-                "change_count": len(msg_items)
+                "change_count": len(changed_rows)
             }
             if created_logs and len(created_logs) <= 5000:
                 msg["created_logs"] = created_logs
@@ -3745,7 +3794,7 @@ async def delete_cell_source_batch_endpoint(
                     "change_count": len(chunk),
                     "created_logs": chunk_logs
                 }))
-            
+
     return {"status": "success", "count": len(changed_rows)}
 
 @app.post("/tables/{table_name}/cells/sources/query")

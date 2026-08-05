@@ -1530,6 +1530,50 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
             
     return row, is_new
 
+def assemble_composite_business_key(table_name: str, update_item: schemas.GeneralUpdateItem) -> bool:
+    """Fill in `business_key_val` from the payload's own column values, for a table
+    whose business key is a join of other columns (`composite_key_source`).
+
+    Returns True if it set one. Idempotent: an item that already carries a `row_id` or
+    a `business_key_val` is left alone, so calling this twice is a no-op the second
+    time. That is what lets `apply_batch_updates` call it up front while
+    `apply_row_update_internal` keeps calling it for its own protection.
+
+    ⚠️ TWO SIDE EFFECTS, NOT ONE. It sets `update_item.business_key_val` AND writes the
+    key back into `update_item.updates[key_col]` when that column is absent, so the
+    stored row carries its own key as a value. Callers depend on both; dropping the
+    second would leave the key column NULL on every ingested row.
+
+    ⚠️ AND ONE ORDERING CONSTRAINT. Writing `updates[key_col]` is visible to
+    `derive_replace_map_scope`, whose LEGACY (undeclared `map_key_columns`) branch
+    derives the purge filters from every non-coordinate column present in the first
+    payload row - and the business key column is not in its skip list. Running this
+    before that resolver would narrow a whole-map purge down to a single die. The
+    batch path therefore calls it AFTER the replace_map block, which is exactly where
+    it effectively ran before (inside the per-row loop).
+    """
+    if update_item.row_id or update_item.business_key_val:
+        return False
+
+    config = TABLE_CONFIG.get(table_name, {})
+    key_col = config.get("business_key")
+    composite_src = config.get("composite_key_source")
+    if not composite_src or not key_col:
+        return False
+    if not all(col in update_item.updates for col in composite_src):
+        return False
+
+    vals = [clean_str_value(update_item.updates.get(col)) for col in composite_src]
+    if not all(v != "" for v in vals):
+        return False
+
+    computed_key = config.get("composite_key_separator", "_").join(vals)
+    update_item.business_key_val = computed_key
+    if key_col not in update_item.updates:
+        update_item.updates[key_col] = computed_key
+    return True
+
+
 def _update_row_business_key(row: Any, key_col: str, update_item: schemas.GeneralUpdateItem, row_cache: dict):
     """비즈니스 키가 업데이트 항목에 있거나 기존 행에 존재하면 DYNAMIC 테이블의 business_key_val 필드를 최신화합니다."""
     if key_col and key_col in update_item.updates:
@@ -1667,15 +1711,12 @@ def apply_row_update_internal(
     composite_sep = config.get("composite_key_separator", "_")
 
     # 인제션 매칭을 위해 updates 기반 선제 키 조립
-    if not update_item.row_id and not update_item.business_key_val and composite_src and key_col:
-        has_all_srcs = all(col in update_item.updates for col in composite_src)
-        if has_all_srcs:
-            vals = [clean_str_value(update_item.updates.get(col)) for col in composite_src]
-            if all(v != "" for v in vals):
-                computed_key = composite_sep.join(vals)
-                update_item.business_key_val = computed_key
-                if key_col not in update_item.updates:
-                    update_item.updates[key_col] = computed_key
+    # [P6] The batch path now does this for every item BEFORE it builds the prefetch
+    # filter, which is the only way the prefetch can see a key that does not exist yet
+    # in the payload. The call stays here too: it is idempotent (the item already has a
+    # key by now, so this returns immediately) and it keeps this function correct on its
+    # own terms rather than on its caller's.
+    assemble_composite_business_key(table_name, update_item)
 
     row, is_new = _get_or_create_row(db, table_model, update_item, row_cache, table_name)
     changed_cols = []
@@ -2324,9 +2365,6 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         if not table_model:
             raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
             
-        target_ids = [u.row_id for u in batch.updates if u.row_id]
-        target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
-
         if batch.replace_map:
             # [U6] The purge scope comes from ONE shared resolver (also called by the API
             # layer to echo the scope in the response). No resolvable scope = honest 4xx
@@ -2379,6 +2417,45 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 f"Filters: {scope_filters} | Purged Old Rows: {len(purged_row_ids)} | "
                 f"Incoming Active Cells: {len(batch.updates)}"
             )
+
+        # [P6] Assemble the composite business key for every item BEFORE the prefetch
+        # filter is built from it.
+        #
+        # The key of a map row is a join of its own column values (`composite_key_source`
+        # - 11 of the 14 real tables declare one, including every map table). The payload
+        # a map push sends carries neither `row_id` nor `business_key_val`: it carries the
+        # source columns. The assembly used to happen inside `apply_row_update_internal`,
+        # i.e. per row and AFTER `target_bks` had already been collected - so `target_bks`
+        # was empty, the prefetch below matched nothing, `row_cache` stayed empty, and
+        # `_get_or_create_row` fell through to one full-model SELECT per row. Measured on
+        # a 200-cell update: 201 SELECTs on the data table where 1 is enough.
+        #
+        # ⚠️ THIS MOVES WHEN THE KEY IS COMPUTED, NOT WHAT IT IS. Same function, same
+        # guard (only when neither id nor key is supplied), same two side effects.
+        #
+        # ⚠️ AND IT DOES NOTHING FOR A `replace_map` PUSH - which is what the map editor
+        # sends. The purge above already deleted the scope's rows and flushed, so the
+        # prefetch looks up keys whose rows no longer exist, finds nothing, and
+        # `_get_or_create_row` probes for each of them anyway. Measured: 202 SELECTs
+        # before, 202 after, at 200 cells. This helps the paths that UPDATE existing
+        # composite-keyed rows - grid edits, file re-ingestion, chain writes, enrichment
+        # - where the same 200-cell batch goes from 2,604 statements to 406.
+        # Closing the insert case needs a business-key equivalent of
+        # `prefetched_row_ids`: the prefetch PROVES those rows are absent, and
+        # `_get_or_create_row` does not read that proof. That is a separate correctness
+        # argument and is deliberately not made here.
+        #
+        # ⚠️ AND IT MUST STAY BELOW THE replace_map BLOCK. The assembly writes the key
+        # into `updates[key_col]`, and `derive_replace_map_scope`'s legacy branch builds
+        # the purge filters from every non-coordinate column present in the first payload
+        # row - the business key column included. Hoisting this above the purge would turn
+        # "delete this map" into "delete this one die". Here, the resolver sees exactly
+        # the payload it saw before.
+        for item in batch.updates:
+            assemble_composite_business_key(table_name, item)
+
+        target_ids = [u.row_id for u in batch.updates if u.row_id]
+        target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
 
         from sqlalchemy import or_
         existing_rows_list = db.query(table_model).filter(

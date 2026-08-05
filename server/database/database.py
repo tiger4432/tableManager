@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy.orm import (sessionmaker, declarative_base, Session,
+                            SessionTransactionOrigin)
 import os
 import uuid
 from datetime import datetime
@@ -83,6 +84,46 @@ def get_db():
         db.close()
 
 
+# [P5] `session.info` key meaning "this transaction has already told the listeners to
+# wake up". See `stage_event` for why one is enough and `_clear_outbox_notify_latch`
+# for why it must be cleared aggressively.
+_OUTBOX_NOTIFY_SENT = "_outbox_notify_sent"
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _clear_outbox_notify_latch(session, transaction):
+    """Drop the once-per-transaction NOTIFY latch when a transaction scope ends.
+
+    ⚠️ `SUBTRANSACTION` IS EXCLUDED, AND THAT EXCLUSION IS THE WHOLE POINT.
+    SQLAlchemy opens and closes an internal subtransaction around EVERY `flush()`,
+    so this event fires once per flush as well as once per real transaction
+    (measured: `origin=SUBTRANSACTION, nested=False` at each flush;
+    `origin=AUTOBEGIN/BEGIN, parent=None` at commit). Clearing on those would make
+    the latch per-FLUSH, and the budget would silently be "one NOTIFY per flush"
+    while claiming to be one per write.
+
+    How much that costs depends on the caller, and the honest measurement is: a
+    plain `crud.apply_batch_updates` of 200 cells fires `before_flush` exactly ONCE,
+    so per-flush and per-transaction happen to coincide there. They do not coincide
+    when the batch also purges (`replace_map` flushes the DELETE before the upserts)
+    or when any caller flushes mid-transaction, and nothing stops a future one from
+    doing so. `test_one_transaction_with_several_flushes_still_sends_one_notify`
+    is the test that tells the two policies apart.
+
+    Everything else clears, and deliberately so, because the failure directions are
+    not symmetric. An EXTRA notify costs one round trip and PostgreSQL collapses it;
+    a MISSING one means the chain worker does not wake and every downstream write
+    waits for its 2 s poll timeout instead. So commit, rollback, AND the end of a
+    SAVEPOINT scope (`origin=BEGIN_NESTED`) all clear it. The savepoint case is
+    correctness, not tidiness: PostgreSQL discards a NOTIFY issued inside a
+    subtransaction that rolls back, so a latch surviving that rollback would swallow
+    the wake-up for every outbox row staged afterwards.
+    """
+    if transaction.origin is SessionTransactionOrigin.SUBTRANSACTION:
+        return
+    session.info.pop(_OUTBOX_NOTIFY_SENT, None)
+
+
 @event.listens_for(Session, "before_flush")
 def auto_stage_database_outbox(session, flush_context, instances):
     from .models import DYNAMIC_TABLES
@@ -151,11 +192,32 @@ def stage_event(session, event_type, table_name, data_row):
     session.add(event_obj)
     
     # [최적화] PostgreSQL 데이터베이스 환경인 경우, 트랜잭션이 commit될 때 실시간 이벤트를 전파하도록 NOTIFY 실행
+    #
+    # [P5] ONCE PER TRANSACTION, not once per staged row. This is called from
+    # `before_flush` for every created/dirty/deleted dynamic row, so a 200-cell map push
+    # sent 200 NOTIFY statements - one extra round trip per row, growing linearly with
+    # the write.
+    #
+    # 🔴 WHY THIS IS NOT AN APPROXIMATION OF THE OLD BEHAVIOUR. The signal delivered to
+    # listeners is unchanged, and the reason is PostgreSQL's own documented rule rather
+    # than a reading of our code: duplicate notifications on the same channel with the
+    # same (here: empty) payload within one transaction are collapsed to a single
+    # delivered event. The listener - `chain_ingestion_worker.OutboxListener` - drains
+    # `connection.notifies` to empty and treats any wake as "repoll the outbox", so it
+    # could not distinguish 1 from 200 even if PostgreSQL delivered them. What the
+    # listener needs is AT LEAST ONE notify in any transaction that stages an outbox
+    # row, and that is exactly the invariant below.
+    #
+    # The latch is set only AFTER the statement succeeds, so a NOTIFY that failed (dead
+    # connection) does not suppress the next row's attempt.
     try:
+        if session.info.get(_OUTBOX_NOTIFY_SENT):
+            return
         bind = session.bind or session.get_bind()
         if bind and bind.dialect.name == "postgresql":
             from sqlalchemy import text
             session.execute(text("NOTIFY outbox_event;"))
+            session.info[_OUTBOX_NOTIFY_SENT] = True
     except Exception:
         # Fallback: DB 연결 상태 등으로 실패하더라도 메인 트랜잭션에 영향을 주지 않도록 무시
         pass

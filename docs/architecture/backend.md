@@ -41,6 +41,9 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 - **await가 필요 없는 핸들러는 `def`(sync)로 작성** → FastAPI가 threadpool에서 실행.
 - **await(브로드캐스트 등)가 필요한 핸들러의 동기 구간(crud 호출, `fetch_and_merge_metadata`, ORM 속성 접근/직렬화)은 `run_in_threadpool`로 격리**. 적용 지점: PUT `/data/updates`, `batch_delete`(N+1 → `get_deleted_rows_business_keys_bulk` 벌크 IN 조회로 대체), `POST /rows`, `DELETE /rows/{id}`, priority(단건·배치), sources delete(단건·배치), `/internal/events/*`(audit_cache 갱신·json.dumps).
 - 신규 엔드포인트 추가 시 이 원칙을 리뷰 포인트로 명시한다.
+- 🔴 **브로드캐스트 크기 분기는 항목을 만들기 *전에* 판정한다 (`BROADCAST_ITEM_LIMIT`=100, `event_constants.py`, 2026-08-06 P1b).** 쓰기 행 수가 이 값을 넘으면 WS는 행별 `batch_row_upsert` 대신 건수만 실은 `batch_refresh_required`를 보내고 클라가 재조회한다 — 즉 **임계 위에서는 항목에 소비자가 없다**. 네 발신 지점이 모두 `msg_items`를 **다 만든 뒤에** `len(msg_items) > 100`을 물어봤다: `apply_batch_updates_endpoint`(Tier 0에서 해소), `set_cell_priority_batch_endpoint`, `delete_cell_source_batch_endpoint`, `chain_ingestion_worker.process_chain_transaction_group`. **청구서는 쿼리 1회가 아니라 N+1이다** — crud가 커밋하고 `expire_on_commit`이 참이라, 병합의 첫 동작(`[r.row_id for r in rows]`·`row.created_at`)이 행을 **하나씩 리로드**한다. 실측(101셀): priority 배치 108문장 → 5, sources delete 211 → 108, 체인 워커 데이터 테이블 SELECT 102 → 1.
+  - **크기와 별개로 소비자가 없는 네 번째 경우**: `apply_batch_updates_endpoint`의 `msg_items`는 `if not batch.silent:` **안에서만** 읽힌다. 임계 아래의 silent 저장은 병합 전체와 행별 리로드를 아무도 안 보는 리스트를 위해 지불했다(50행 실측 155문장 → 104).
+  - 🔴 **판정을 옮길 수 있는 근거는 등식 하나다** — 항목 구성 루프가 `results`(또는 `changed`) 항목당 **정확히 하나씩 무조건** append하므로 `len(msg_items) == len(results)`가 항상 성립한다. 그 루프에 `continue`가 생기면 등식이 깨지고 판정은 되돌려야 한다. 임계값은 발신자 넷이 **같은** 클라 계약에 대해 내리는 판단이라 `MAX_NOTIFY_CREATED_LOGS`와 같은 이유로 공용 상수다(한 발신자만 고쳐지고 나머지가 옛 리터럴을 유지하는 것이 이 코드베이스의 실제 실패 이력). 그물 `server/tests/test_discarded_merge_budget.py`
 
 ### 1.2 import 경로 불변식 (C-2)
 
@@ -179,7 +182,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `GET /tables/{t}/columns/{c}/values` | **[F3] 고유값 조회 — 입력 제안(드롭다운)의 전제 프리미티브.** `?prefix=&limit=` → `{table, column, prefix, values[], truncated, limit, unavailable_reason}`. 아래 §2.1 |
 | `GET /tables/{t}/{row_id}` | 단건(전 소스 병합 메타 포함) |
 | `POST /tables/{t}/rows` | 빈 행 N개 생성 |
-| `PUT /tables/{t}/data/updates` | **통합 배치 업서트**(`crud.apply_batch_updates` 위임, 백그라운드 브로드캐스트) |
+| `PUT /tables/{t}/data/updates` | **통합 배치 업서트**(`crud.apply_batch_updates` 위임, 백그라운드 브로드캐스트). **[2026-08-06 P4] 응답의 `created_logs`는 `MAX_NOTIFY_CREATED_LOGS`(500)로 절단되고 절단 전 실건수는 `total_log_count`로 함께 온다** — 내부 이벤트 페이로드와 **같은** 절단 계약(`event_constants.py` 공용 상수)이며 새 관례가 아니다. 종전에는 이 쓰기가 만든 감사 로그 **전량**(셀 하나당 1건이므로 크기가 행×컬럼)을 돌려줬다: 200행×6컬럼 실측 1,200건 405KB, 맵 Push 규모면 수십 MB를 이벤트 루프에서 인코딩하고 브라우저 메인 스레드에서 파싱한다. **소비자는 없다** — client2에서 `created_logs`를 읽는 곳은 `websocket.js` 하나이고 그것은 **WS 메시지**에서 읽는다(WS 페이로드는 이 변경과 무관하게 종전 그대로). 키는 계속 존재하고 계속 list다. 그물 `server/tests/test_batch_response_log_budget.py` |
 | `DELETE /tables/{t}/rows/{row_id}` | 단건 삭제 |
 | `POST /tables/{t}/rows/batch_delete` | 일괄 물리 삭제 |
 | `POST /tables/{t}/row_ids/target` | 정렬 오프셋의 row_id 해석(점프 스캐너) |
@@ -343,6 +346,9 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 
 1. `transaction_context`(user/tx/source ContextVar)로 래핑.
 2. **replace_map 모드** — 맵 저장 시 `map_key_columns` 기준으로 기존 행·`CellSource`·`CellOverwrite`를 bulk purge 후 신규 활성 칩만 재적재(유령 셀 0%). purge 범위는 `derive_replace_map_scope()` 단일 리졸버가 결정한다(요청의 명시적 `scope` 필드 우선, 없으면 `updates[0]`에서 파생). **범위를 못 잡으면 `ValueError` → 라우터 400** — 과거의 "아무것도 안 지우고 200" 무음 no-op은 폐기됐다(2026-07-28 U6). 명시적 `scope` + 빈 `updates`는 합법적 전량 소거이며, 응답 `scope: {filters, deleted, inserted}`로 실제 사용된 필터와 건수를 정직하게 알린다(라우터가 같은 리졸버로 echo).
+2-bis. **복합 업무 키 선(先)조립 (`assemble_composite_business_key`, 2026-08-06 P6)** — `composite_key_source`를 선언한 테이블(실 config 14개 중 **11개**, 맵 테이블 전부)의 업무 키는 **자기 컬럼 값들의 조인**이라 페이로드가 들고 오지 않는다(파서·체인·맵 에디터는 `row_id`도 `business_key_val`도 안 싣는다). 종전에는 이 조립이 `apply_row_update_internal` **안**, 즉 3의 프리페치 필터가 만들어진 **뒤에** 행마다 일어났다 → `target_bks`가 비고, 프리페치가 아무것도 못 찾고, `_get_or_create_row`가 **행마다 풀모델 SELECT 1회**로 떨어졌다. 이제 3 직전에 전 항목을 미리 조립한다. **계산 시점만 옮겼고 값·가드·두 부작용(키 설정 + `updates[key_col]` 기록)은 그대로**다.
+  * 🔴 **반드시 2(replace_map)보다 아래에 있어야 한다.** 조립은 `updates[key_col]`에 키를 써 넣고, `derive_replace_map_scope`의 **레거시 분기**(`map_key_columns` 미선언 — `wafer_map_metadata` 등 4개)는 첫 페이로드 행의 **좌표 아닌 모든 컬럼**에서 purge 필터를 만든다(업무 키 컬럼은 skip 목록에 없다). 한 단계만 위로 올리면 **「이 맵을 지운다」가 「이 셀 하나를 지운다」로 조용히 바뀐다**. 그물 `test_composite_key_prefetch_budget.py::test_replace_map_still_purges_the_whole_map_and_not_one_row`(기존 `test_replace_map.py`는 이걸 못 잡는다).
+  * ⚠️ **`replace_map` Push에는 효과가 없다** — purge가 먼저 행을 지우고 flush했으므로 프리페치가 찾을 것이 없고, 여전히 행마다 탐색한다(200셀 실측 202 → 202). 효과는 **기존 행을 갱신하는** 경로(그리드 편집·파일 재인제션·체인·enrichment)에 있고 거기서 200셀 배치가 2,604문장 → 406문장이 된다(프리페치가 행을 잡으면 P2의 메타데이터 부재 memoisation까지 함께 켜진다). 삽입 경로를 마저 닫으려면 `prefetched_row_ids`의 **업무 키 판(版)**이 필요하다(프리페치가 부재를 증명하는데 `_get_or_create_row`가 그 증명을 안 읽는다) — 별도 정합성 논증이라 여기서는 하지 않았다.
 3. 기존 행을 `row_id`/`business_key_val`로 `row_cache`에 적재하고 소스·오버라이트를 bulk 프리로드.
 4. 셀별 `apply_row_update_internal` → `CellSource`에 값 기록 → `compute_priority_value`로 승자 재계산 → 네이티브 컬럼 + `CellOverwrite` 갱신. dialect별 `ON CONFLICT` upsert로 flush.
 5. **collision_merge** — 비즈니스 키 변경 충돌 시 사용자 오버라이트 보존·병합, `manual_priority_source="collision_merge"` 태깅. → [data_preservation 규율](../guide/data_preservation_and_signature_change.md)
