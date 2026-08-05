@@ -470,10 +470,12 @@ function makeDocument() {
                     'me2-col-value', 'me2-reference-select']) {
     body.appendChild(node('select', id));
   }
-  // 🔴 `me2-assume-accept` IS AUTHORED HERE BECAUSE THE MARKUP LANE HAS NOT LANDED IT YET. This
-  //    harness scores the WIRING -- that the control, once present, sends the claim exactly once
-  //    and is hidden the rest of the time. It does not and cannot score that the live page has
-  //    the node; `bootstrap` reports that absence in `app.missing`, which the page entry logs.
+  // 🔴 `me2-assume-accept` IS AUTHORED HERE, and that is not the same claim as the live page
+  //    carrying it (it now does — the markup landed). This harness scores the WIRING: that the
+  //    control sends the claim exactly once and is hidden the rest of the time. It does not and
+  //    cannot score the page's markup; `bootstrap` reports any absence in `app.missing`, which
+  //    the page entry logs. Keep the two apart — a stub that authors its own node will pass
+  //    forever after someone deletes the button.
   for (const id of ['me2-columns-confirm', 'me2-assume-accept', 'me2-confirm-btn']) {
     body.appendChild(node('button', id));
   }

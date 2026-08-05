@@ -411,7 +411,23 @@ body {
    name or preset appears in this stylesheet or in the markup - the whole
    system already declares its primitives in config, and a second copy
    here is a second place for the fact to be wrong. */
-.me2-scope-select[data-me2-proposed="true"] {
+/* BORROWED GEOMETRY IS THE SAME CLAIM, so it is the same rule rather than a
+   second one that drifts. A source map scored on the reference map's wafer
+   carries `data-me2-proposed` too - the wiring sets the SAME attribute on
+   purpose, because "this was not measured" must not grow two visual
+   languages. Extended here instead of duplicated: the row needs no
+   declaration of its own.
+   What the three declarations do to a row: `.me2-src` is `border: 0` with a
+   single `border-bottom`, so the dashed warning edge lands on the separator
+   it already has - no box appears, nothing shifts - and the muted colour
+   reaches the map's name, which is the part of the row the claim is about.
+   `.me2-src-value` keeps its accent: the declared candidate is still
+   declared, and dimming it would say the wrong thing.
+   Deliberately NOT a background tint: `:hover` and `[aria-expanded]` already
+   own that channel on this row, and a marker that disappears under the
+   cursor is not a marker. */
+.me2-scope-select[data-me2-proposed="true"],
+[data-me2-source][data-me2-proposed="true"] {
   border-style: dashed;
   border-color: var(--warning);
   color: var(--text-muted);
@@ -506,6 +522,49 @@ body {
   grid-template-columns: minmax(230px, 0.95fr) minmax(440px, 3.2fr) minmax(340px, 1.2fr);
   gap: var(--me2-gap);
   padding: var(--me2-gap) 16px;
+}
+
+/* AN ANSWER REACHED ON BORROWED GEOMETRY MUST NOT LOOK LIKE ONE REACHED ON A
+   DECLARATION. One hook beside the state, so the whole result region is
+   styled from here rather than from three panels that drift apart.
+   It lands on the CENTRE panel because that panel is the result: the picture
+   and the verdict count both live in it. The worklist is navigation - it is
+   the same list of units either way - and the source panel says it per row,
+   which is the finer truth ("some maps borrowed" does not answer "did this
+   one?"). Marking all three would state one fact three times.
+   Same vocabulary as a proposed column pair, deliberately: dashed edge,
+   warning tone, nothing red. This is a legitimate working state, and the
+   caution sentence is already carried once by `#me2-question-note`. Border
+   width is unchanged, the wafer mark is a stroke and the headline mark is a
+   text decoration - the state costs no reflow and no layout shift. */
+#me2-workbench[data-me2-assumed="true"] #me2-picture-panel {
+  border-style: dashed;
+  border-color: var(--warning);
+}
+
+/* THE WAFER IS THE THING THAT WAS BORROWED, so when the wafer is drawn the
+   marker belongs on it rather than on a chip somewhere.
+   DORMANT TODAY, said plainly rather than discovered later: nothing draws
+   `.me2-wafer-edge` at the moment - the circle came out of the markup because
+   a real mask only follows from a declared phys (see the note in the SVG),
+   and no producer has put it back. This rule is paired with the unscorable
+   one further down, which is dormant for the same reason. Both are kept so
+   that the day the edge returns it arrives already correct in both states,
+   and so the page keeps ONE meaning for a dashed outline: nobody measured
+   this. The live half of the treatment is the panel border above. */
+#me2-workbench[data-me2-assumed="true"] .me2-wafer-edge {
+  stroke: var(--warning);
+  stroke-dasharray: 3 4;
+}
+
+/* The count keeps FULL contrast - it is a real count, and dimming the one
+   figure the operator came for would trade readability for a mood. What it
+   gets instead is the same dashed line the wafer and the panel wear, under
+   the numerals that stand on them. */
+#me2-workbench[data-me2-assumed="true"] .me2-headline .me2-num {
+  text-decoration: underline dashed var(--warning);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
 }
 
 .panel {

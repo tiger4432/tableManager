@@ -205,6 +205,21 @@
           <select class="me2-scope-select" id="me2-reference-select">
             <option value="">기준 없음</option>
           </select>
+
+          <!-- 🔴 가정을 **받아들이는** 것도 행위이고, 행위에는 컨트롤이 필요하다.
+               소스 맵에 형상 선언이 없을 때 서버는 「기준 맵의 웨이퍼로 채점할 수
+               있다」고 제안한다. 그 제안을 승낙할 자리가 없으면 제안은 읽을 수만
+               있는 문장으로 남는다 - #me2-columns-confirm 과 정확히 같은 모양의
+               구멍이다. 그래서 같은 class(점선 경고 pill)를 쓴다.
+               버튼은 행위의 이름만 말한다. 가정이 무엇인지는 서버가 지은 문장이고
+               배선이 #me2-question-note 에 그대로 나른다 - 여기에 설명을 한 줄 더
+               쓰면 한 사실의 철자가 둘이 되고, 갈리는 날 화면은 멀쩡해 보인다.
+               aria-describedby 는 그 문장을 **가리킬** 뿐 베끼지 않는다.
+               hidden 으로 출발한다. 승낙할 것이 없는데 상시 떠 있는 버튼은
+               「지금 보고 있는 웨이퍼가 무엇인가」에 대한 주장을 읽지 않고 누르는
+               습관을 가르친다. 배선이 offered 인 동안에만 연다. -->
+          <button class="me2-scope-propose" type="button" id="me2-assume-accept"
+            aria-describedby="me2-question-note" hidden>가정 적용</button>
         </div>
       </div>
 

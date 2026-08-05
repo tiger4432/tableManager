@@ -884,9 +884,9 @@ function makeDocument() {
                     'me2-rule-select', 'me2-table-select', 'me2-col-x', 'me2-col-y', 'me2-col-value',
                     'me2-reference-select', 'me2-question-note', 'me2-columns-confirm',
                     // Accepting the borrowed wafer geometry. Added the moment the shell started
-                    // binding it; the live page does NOT carry this node yet, which `app.missing`
-                    // reports and the page entry logs. G1 is about the STUB keeping up with the
-                    // shell, and `map2_geometry_assumption_harness.mjs` scores what the control does.
+                    // binding it, and the live page carries it since the markup landed. G1 is about
+                    // the STUB keeping up with the shell — it never scored the live page either way,
+                    // and `map2_geometry_assumption_harness.mjs` scores what the control does.
                     'me2-assume-accept',
                     'me2-badge-session',
                     'me2-badge-unscorable', 'me2-badge-remaining', 'me2-picture-svg',
