@@ -4985,11 +4985,19 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
         columns, rows = enrichment_config.execute_reference_view(db, view, bind_params)
     except enrichment_config.ReferenceViewError as e:
         # 필수 바인드 누락 등 파라미터/실행 오류 — 쿼리 본문은 응답에 노출하지 않는다.
+        # This line names WHICH view failed; the driver's own error and its
+        # traceback were already logged in full at the raise site
+        # (`enrichment_config._reference_view_failure`), so this stays short.
         logger.warning(f"[Enrichment] reference view '{rule_name}'#{index} execution failed: {e}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Reference query execution failed ({e}). Check required params."
-        )
+        # `detail` is the SERVER'S sentence, rendered verbatim by the client
+        # under its own heading (`client2/src/enrichment.js` `showRefError`:
+        # "머리말은 클라의 분류 라벨이고, 사유 문장은 서버 것을 그대로"). The old
+        # wrapper produced "Reference query execution failed (reference query
+        # execution failed (...)). Check required params." under a heading that
+        # already said the same thing a third time - and the trailing advice was
+        # wrong for every cause except a missing bind. The error now says what
+        # it is exactly once.
+        raise HTTPException(status_code=400, detail=str(e))
     return {"label": view["label"], "columns": columns, "rows": rows}
 
 

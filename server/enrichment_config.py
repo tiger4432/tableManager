@@ -646,6 +646,198 @@ class ReferenceViewError(Exception):
     """참조뷰 실행 실패. 메시지에 쿼리 본문을 절대 담지 않는다(경계 계약: 본문 비노출)."""
 
 
+# ---------------------------------------------------------------------------
+# DRIVER DIAGNOSTICS - name the cause WITHOUT quoting the statement
+# ---------------------------------------------------------------------------
+# THE CONTRACT ABOVE IS REAL, AND SO WAS THE BUG UNDER IT  [2026-08-05]
+#     `ReferenceViewError` used to be built from `e.__class__.__name__` alone.
+#     `str(e)` - where PostgreSQL puts `column "foo" does not exist` - was
+#     dropped, and `main.py` logged that same already-stripped message, so an
+#     authoring mistake in a reference view had its cause NOWHERE: not in the
+#     response, not in the server log. The view was undebuggable.
+#
+#     The intent was not paranoia. MEASURED (PostgreSQL 18.0, psycopg2 2.9.11,
+#     SQLAlchemy 2.x, read-only, local instance), the obvious "just include
+#     str(e)" repair ships the ENTIRE statement AND the bind values:
+#
+#       str(sa_exc) == '(psycopg2.errors.UndefinedColumn) ... "nosuchcol" ...
+#                       LINE 1: ...FROM (SELECT nosuchcol AS wafer_id FROM ...
+#                       [SQL: SELECT * FROM (SELECT __enrichment_ref."wafer_id"
+#                             AS __c FROM (SELECT nosuchcol ...) AS ...]
+#                       [parameters: {...}]'
+#
+#     So both halves are true at once: the body must not ship, and the diagnosis
+#     must. PostgreSQL separates them for us - the `LINE n:`/caret echo lives in
+#     the exception's TEXT, while the condition lives in structured fields on
+#     `psycopg2.Error.diag`, and `diag.message_primary` is the one sentence with
+#     no echo in it. Measured over 19 error classes: always single-line, 13..26
+#     characters.
+#
+# 🔴 MEASURED, AND THE OPPOSITE OF WHAT EVERYONE ASSUMES: for `42703
+#    undefined_column`, PostgreSQL does **NOT** populate `diag.column_name`.
+#    Verified on three separate undefined-column statements - the attribute is
+#    simply absent. `column_name` is populated for constraint/not-null
+#    conditions, not for name RESOLUTION. On the flagship case of this defect
+#    the offending column name therefore exists ONLY inside `message_primary`,
+#    which is why that field is load-bearing here rather than a nicety. Anyone
+#    "hardening" this by dropping `message_primary` and keeping only the
+#    structured identifier fields re-creates the original bug exactly.
+#
+# 🔴 MESSAGES ARE LOCALIZED. This server answers in Korean (`lc_messages`), so
+#    `message_primary` and `severity` are Korean while `sqlstate` and the
+#    psycopg2 condition CLASS name are not. That is why both of the
+#    language-independent handles always ship, and why no test may assert on
+#    English message text.
+
+# Diagnostic fields we are willing to put in an HTTP response. Every one is an
+# identifier PostgreSQL RESOLVED, never text it copied out of the statement.
+DIAG_IDENTIFIER_FIELDS = ("schema_name", "table_name", "column_name",
+                          "constraint_name", "datatype_name")
+
+# Deliberately NOT read, each for its own reason:
+#   `internal_query` / `context`  - can carry a PL/pgSQL body, i.e. a statement.
+#   `message_detail`              - carries DATA values (e.g. the key of a
+#                                   unique violation), which the body ban is
+#                                   about just as much as the SQL text.
+#   `statement_position`          - an offset into the WRAPPED statement, not
+#                                   into the author's query. Remapping it by
+#                                   subtracting the wrapper prefix was
+#                                   considered and REJECTED: SQLAlchemy
+#                                   re-renders `:__enrichment_limit` into the
+#                                   driver's own placeholder before PostgreSQL
+#                                   parses the string, so the prefix we would
+#                                   subtract is not the prefix PostgreSQL
+#                                   counted. An offset pointing at the wrong
+#                                   character is worse than no offset.
+
+# The longest `message_primary` measured was 26 characters. This cap is not a
+# tuning knob, it is the second half of the shape guard below.
+DIAG_MESSAGE_MAX_CHARS = 200
+
+# SQLSTATEs whose PRIMARY message quotes STATEMENT TEXT rather than an
+# identifier. Measured, not assumed:
+#   42601 syntax_error            -> 'syntax error at or near "SELCT"'
+#                                    the quoted token is raw statement text.
+#   22xxx data_exception          -> 'invalid input syntax for type integer: "x"'
+#                                    where "x" was copied out of a literal in
+#                                    the statement (measured with a literal the
+#                                    view author wrote, not a bind value).
+# For these, PostgreSQL's prose is withheld but the diagnosis is NOT silent: the
+# psycopg2 condition class name still ships (`SyntaxError`,
+# `InvalidTextRepresentation`, ...). psycopg2 generates those class names from
+# PostgreSQL's own errcodes table, so they are stable, English, and contain no
+# statement text - "your SQL does not parse" is still said out loud, and the
+# message names the log as the place the full text is.
+SQLSTATE_QUOTES_STATEMENT = ("42601",)
+SQLSTATE_CLASS_QUOTES_STATEMENT = ("22",)
+
+_SEE_LOG = "see server log"
+
+
+def _quotes_statement_text(sqlstate: str) -> bool:
+    # `str()` on purpose: an exception raised INSIDE error reporting would
+    # replace the error being reported, which is the failure mode this whole
+    # block exists to end. Nothing here may assume the driver's field types.
+    code = str(sqlstate or "")
+    return code in SQLSTATE_QUOTES_STATEMENT or code[:2] in SQLSTATE_CLASS_QUOTES_STATEMENT
+
+
+def _diag_shape_ok(text_value: str) -> bool:
+    """Is this short enough and single-line enough to be a CONDITION, not an echo?
+
+    The guard exists so the SQLSTATE list above does not have to be complete. A
+    statement echo is structurally multi-line (`LINE n:` plus a caret line) and
+    long; every measured `message_primary` was one line of at most 26
+    characters. A future PostgreSQL condition that pastes statement text into
+    its primary message is caught here without anyone having measured it first.
+    """
+    return ("\n" not in text_value and "\r" not in text_value
+            and 0 < len(text_value) <= DIAG_MESSAGE_MAX_CHARS)
+
+
+def describe_driver_error(exc) -> str:
+    """One line naming WHY a user-authored statement failed - safe for a response.
+
+    NEVER returns an empty or contentless string. Every branch, INCLUDING every
+    way of failing to read the diagnostics, degrades BY NAME: "no driver error
+    attached", "no structured diagnostics from this driver", "diagnostics
+    unreadable". Silence is the defect this function exists to remove, so "I
+    could not read the diagnostics" has to be sayable - otherwise a driver
+    without `.diag` (SQLite, which is what the test suite runs on) quietly falls
+    back to exactly the behaviour being repaired.
+    """
+    exc_cls = exc.__class__.__name__
+    orig = getattr(exc, "orig", None)      # SQLAlchemy keeps the DBAPI error here
+    if orig is None:
+        return f"{exc_cls}; no driver error attached, {_SEE_LOG}"
+
+    orig_cls = orig.__class__.__name__     # psycopg2 names this after PG's condition
+    try:
+        diag = getattr(orig, "diag", None)
+        sqlstate = str(getattr(diag, "sqlstate", None) or "") if diag is not None else ""
+    except Exception:
+        # A driver whose diagnostics object raises on access. Say so; do not
+        # let an exception inside error REPORTING replace the error.
+        return f"{orig_cls}; driver diagnostics unreadable, {_SEE_LOG}"
+
+    if diag is None or not sqlstate:
+        return f"{orig_cls}; no structured diagnostics from this driver, {_SEE_LOG}"
+
+    parts = []
+    if _quotes_statement_text(sqlstate):
+        parts.append(f"message withheld (this condition's text quotes the "
+                     f"statement), {_SEE_LOG}")
+    else:
+        try:
+            message = (getattr(diag, "message_primary", None) or "").strip()
+            hint = (getattr(diag, "message_hint", None) or "").strip()
+        except Exception:
+            message, hint = "", ""
+        if _diag_shape_ok(message):
+            parts.append(message)
+        else:
+            parts.append(f"no usable primary message, {_SEE_LOG}")
+        # The hint is where PostgreSQL says "Perhaps you meant to reference the
+        # column \"tables.table_name\"" - measured, identifier-shaped, and the
+        # single most actionable sentence it can produce for a typo.
+        if _diag_shape_ok(hint):
+            parts.append(f"hint: {hint}")
+
+    for field in DIAG_IDENTIFIER_FIELDS:
+        try:
+            value = (getattr(diag, field, None) or "").strip()
+        except Exception:
+            continue
+        if _diag_shape_ok(value):
+            parts.append(f"{field}={value}")
+
+    return f"{orig_cls}/{sqlstate}: " + "; ".join(parts)
+
+
+def _reference_view_failure(what: str, exc: Exception) -> ReferenceViewError:
+    """Log the driver's error IN FULL; return the redacted one for the caller to raise.
+
+    THE LOG IS NOT THE BROWSER. The no-body contract governs the HTTP RESPONSE.
+    An operator reading the server log must see the driver's own text and its
+    traceback, or the cause exists nowhere - which is precisely the state this
+    replaced: the response carried a class name and `main.py` logged that same
+    stripped message, so the diagnosis had been destroyed before either reader
+    could reach it. (Nothing re-raised either, so the implicit `__context__`
+    chain was never printed. The raise sites now use `raise ... from exc` as
+    well, so a debugger sees the chain explicitly.)
+
+    BOTH RAISE SITES GO THROUGH HERE ON PURPOSE. The reason there is a helper
+    for four lines is that the previous four lines existed TWICE - the display
+    path and the candidate-probe path - and both copies were wrong in the same
+    way. One fact, one spelling.
+    """
+    logger.error(
+        "[Enrichment] %s - full driver error follows. The HTTP response carries "
+        "only the redacted form; the query body is never returned to a client.",
+        what, exc_info=exc)
+    return ReferenceViewError(f"{what} ({describe_driver_error(exc)})")
+
+
 def _isolated_execute(db, stmt, params) -> tuple:
     """Execute ONE user-authored reference statement inside a SAVEPOINT.
 
@@ -745,7 +937,12 @@ def execute_reference_view(db, view: dict, bind_params: dict = None,
     try:
         columns, raw_rows = _isolated_execute(db, stmt, exec_params)
     except Exception as e:
-        raise ReferenceViewError(f"reference query execution failed ({e.__class__.__name__})")
+        # `_isolated_execute` has ALREADY rolled back to its SAVEPOINT by the
+        # time we get here, and reading `.diag` touches no connection - the
+        # diagnostics are a snapshot the exception carries. Measured: every diag
+        # field above was read AFTER the rollback. Nothing about when the
+        # rollback happens, or what it rolls back to, changes here.
+        raise _reference_view_failure("reference query execution failed", e) from e
     return columns, [list(r) for r in raw_rows]
 
 
@@ -827,7 +1024,10 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
     try:
         _, raw = _isolated_execute(db, stmt, exec_params)
     except Exception as e:
-        raise ReferenceViewError(f"candidate probe execution failed ({e.__class__.__name__})")
+        # Same helper as the display path - see `_reference_view_failure`. These
+        # two sites are the whole of this file's user-SQL error handling and
+        # they move together by construction now.
+        raise _reference_view_failure("candidate probe execution failed", e) from e
 
     rows = [(r[0], int(r[1] or 0)) for r in raw]
     # `__scanned`는 바깥 LIMIT이 그룹을 자르기 **전**의 전체 행수다. 반환된 그룹의

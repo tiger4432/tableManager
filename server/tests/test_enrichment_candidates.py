@@ -1193,3 +1193,419 @@ def test_cell_sources_already_says_which_columns_the_sweep_decided(cand_env, tmp
                        models.CellSource.column_name.in_(["wafer_id", "owner"])).all())
     assert got == {"owner": enrichment_candidates.SOURCE_NAME}, \
         "the decided column is named and the refused one has no provenance row"
+
+
+# ---------------------------------------------------------------------------
+# 5-quater. A BROKEN reference view must say WHAT is broken
+#
+#   [2026-08-05, reported live] Running an enrichment reference view's SQL
+#   showed only `ProgrammingError`. `ReferenceViewError` was built from
+#   `e.__class__.__name__` alone, and `main.py` logged that same already-
+#   stripped message, so the cause existed NOWHERE - not in the response, not
+#   in the log. An authoring mistake was undebuggable.
+#
+#   The no-body contract on `ReferenceViewError` is not the bug and is not
+#   relaxed here. It is load-bearing, and MEASURED to be: SQLAlchemy's `str(e)`
+#   appends `[SQL: <the whole wrapped statement>]` and `[parameters: ...]`, and
+#   psycopg2's own text carries a `LINE n: <statement excerpt>` echo. The bug is
+#   that hiding the body was implemented as discarding the DIAGNOSIS, which
+#   PostgreSQL reports separately in `psycopg2.Error.diag`.
+#
+#   WHY THESE TESTS INJECT DIAGNOSTICS (the honest answer to "can SQLite see
+#   this at all")
+#       No. Under SQLite `orig` is a `sqlite3.OperationalError`, which has no
+#       `.diag`, so every un-injected test in this file can only ever exercise
+#       the DEGRADATION branch. A suite that stopped there would certify
+#       "the message says diagnostics are unavailable" and would go green on a
+#       `describe_driver_error` that had never once read a diagnostic field -
+#       the same shape of hole that let `candidate_column_missing` be certified
+#       while being unreachable on PostgreSQL (see `pg_abort_semantics` above).
+#       So `pg_diagnostics` restores ONE missing rule to the SQLite engine, the
+#       way `pg_abort_semantics` restores the transaction-abort rule: driver
+#       errors carry structured diagnostics. Everything else stays real - the
+#       real view, the real wrap SQL, the real SAVEPOINT, the real raise site.
+#
+#   THE INJECTED VALUES ARE MEASURED, NOT INVENTED. Every field below was read
+#   off a live PostgreSQL 18.0 / psycopg2 2.9.11 (read-only, local instance,
+#   `lc_messages = Korean_Korea.949`) and is reproduced verbatim.
+# ---------------------------------------------------------------------------
+
+BROKEN_VIEW = {
+    "label": "broken (authoring mistake)",
+    # No binds, so the refusal under test is the DRIVER's and not `missing_binds`.
+    "query": "SELECT nosuchcol_xyz AS wafer_id FROM encand_test_hist",
+    "limit": 5,
+    "candidate_for": {"wafer_id": "wafer_id"},
+}
+
+
+class _FakeDiag:
+    """Stand-in for psycopg2's `Diagnostics`.
+
+    `__getattr__` returning None matters: the real object exposes EVERY
+    diagnostic field and yields None for the unset ones, so a fake that raised
+    `AttributeError` would let `describe_driver_error` pass for the wrong
+    reason.
+    """
+
+    def __init__(self, **fields):
+        self.__dict__.update(fields)
+
+    def __getattr__(self, name):
+        return None
+
+
+# Measured verbatim. `column_name` is deliberately ABSENT on the 42703 cases -
+# that is not an oversight in the fixture, it is what PostgreSQL does: for
+# undefined_column it populates NO structured identifier field, so the column
+# name exists only inside `message_primary`.
+DIAG_UNDEFINED_COLUMN = dict(
+    sqlstate="42703", message_primary='"nosuchcol_xyz" 이름의 칼럼은 없습니다')
+DIAG_UNDEFINED_COLUMN_HINTED = dict(
+    sqlstate="42703", message_primary='"table_nam" 이름의 칼럼은 없습니다',
+    message_hint='아마 "tables.table_name" 칼럼을 참조하는 것 같습니다.')
+DIAG_SYNTAX_ERROR = dict(
+    sqlstate="42601", message_primary='구문 오류, "SELCT" 부근')
+DIAG_UNDEFINED_TABLE = dict(
+    sqlstate="42P01",
+    message_primary='"no_such_table_xyz" 이름의 릴레이션(relation)이 없습니다')
+
+
+@pytest.fixture()
+def pg_diagnostics(cand_env):
+    """Give this SQLite engine's driver errors PostgreSQL-shaped `.diag`.
+
+    Set `state["diag"]` to a `_FakeDiag` before provoking the error. `attached`
+    counts how many driver errors actually received it, so a test can prove the
+    injection bit rather than assume it.
+    """
+    from sqlalchemy import event
+
+    bind = cand_env.get_bind()
+    state = {"diag": None, "attached": 0}
+
+    def _on_error(ctx):
+        orig = ctx.original_exception
+        if state["diag"] is None or orig is None:
+            return
+        orig.diag = state["diag"]      # the same object SQLAlchemy exposes as `.orig`
+        state["attached"] += 1
+
+    event.listen(bind, "handle_error", _on_error)
+    try:
+        yield state
+    finally:
+        event.remove(bind, "handle_error", _on_error)
+        cand_env.rollback()
+
+
+def test_the_diagnostics_injection_actually_bites(cand_env, pg_diagnostics):
+    """Guard on the guard, same posture as `test_the_abort_injection_actually_bites`.
+
+    If the listener silently did nothing, the tests below would fail rather than
+    pass on a defect - but they would fail for a reason that reads like a
+    product bug, and the tempting repair is to weaken the assertion. So the
+    injection proves itself once, out loud.
+    """
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    assert pg_diagnostics["attached"] >= 1, "the driver error never received a .diag"
+    assert "42703" in str(err.value)
+
+
+def test_a_broken_reference_view_names_the_column_postgres_named(cand_env, pg_diagnostics):
+    """THE repair. The message must carry the identifier that makes the view fixable.
+
+    Before this round the whole message was
+    `reference query execution failed (OperationalError)` - a class name and
+    nothing else. `nosuchcol_xyz` is the one string an author needs.
+    """
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+
+    message = str(err.value)
+    assert "nosuchcol_xyz" in message, "the message does not name the offending column"
+    # SQLSTATE, because `message_primary` is LOCALIZED (this server answers in
+    # Korean) and an operator or a log grep needs something stable to key on.
+    assert "42703" in message, "SQLSTATE missing - the only language-independent handle"
+    # The driver's own class is always named. Under this injection that reads
+    # `OperationalError` (SQLite's class, which no fixture can rename - a static
+    # C type does not accept `__class__` assignment). The psycopg2 half, where
+    # that same slot reads `UndefinedColumn`, is pinned by
+    # `test_describe_driver_error_renders_a_real_psycopg2_shape` below.
+    assert "OperationalError" in message, "the driver's own class is not named"
+
+
+def test_the_candidate_probe_path_says_the_same_thing(cand_env, pg_diagnostics):
+    """The second copy of the defect.
+
+    `execute_reference_view` and `execute_candidate_probe` had the SAME stripped
+    `raise` line. Fixing one and not the other would have produced the next
+    report from the other path, so this pins that both go through the shared
+    helper.
+    """
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_TABLE)
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_candidate_probe(cand_env, BROKEN_VIEW, "wafer_id", {})
+
+    message = str(err.value)
+    assert message.startswith("candidate probe execution failed"), \
+        "the probe path must still name ITSELF - the two sites share a helper, not an identity"
+    assert "no_such_table_xyz" in message
+    assert "42P01" in message
+
+
+def test_the_hint_ships_because_it_names_the_column_the_author_meant(cand_env, pg_diagnostics):
+    """`message_hint` is the single most actionable sentence PostgreSQL produces
+    for a typo, and it is identifier-shaped (measured: it quotes
+    `tables.table_name`). Dropping it would leave the author knowing the name is
+    wrong and not what it should be."""
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN_HINTED)
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    assert "tables.table_name" in str(err.value)
+
+
+def test_a_condition_whose_message_quotes_the_statement_is_withheld_by_name(
+        cand_env, pg_diagnostics):
+    """The bound, and the reason there is one.
+
+    MEASURED: `42601 syntax_error` puts a RAW STATEMENT TOKEN in its primary
+    message (it quotes `SELCT`, the misspelling itself), not an identifier - so
+    this one class cannot ship verbatim under a contract that says the statement
+    does not leave the server. The answer is not to fall back to silence, which
+    is the bug being repaired: the condition NAME and the SQLSTATE still ship,
+    and the message SAYS the text was withheld and where to read it.
+    """
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_SYNTAX_ERROR)
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+
+    message = str(err.value)
+    assert "SELCT" not in message, "a raw statement token reached the response"
+    assert "구문" not in message, "PostgreSQL's prose for this condition reached the response"
+    assert "42601" in message, \
+        "withheld must not mean silent - the condition is still named by SQLSTATE"
+    assert "withheld" in message and "server log" in message, \
+        "a withheld message must say it was withheld and where the full text is"
+
+
+def test_a_shape_that_is_not_a_condition_is_withheld_even_unmeasured(cand_env, pg_diagnostics):
+    """The guard that does not need the SQLSTATE list to be complete.
+
+    A statement echo is structurally multi-line and long; every measured
+    `message_primary` was one line of at most 26 characters. So a future
+    PostgreSQL condition that pastes statement text into its primary message is
+    caught by SHAPE, without anyone having measured that condition first.
+    """
+    pg_diagnostics["diag"] = _FakeDiag(
+        sqlstate="42P01",
+        message_primary='relation does not exist\nLINE 1: SELECT nosuchcol_xyz AS '
+                        'wafer_id FROM encand_test_hist\n               ^')
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+
+    message = str(err.value)
+    assert "encand_test_hist" not in message, "a multi-line echo slipped through by shape"
+    assert "LINE 1" not in message
+    assert "42P01" in message, "the condition is still named"
+
+
+def test_the_query_body_never_reaches_the_message(cand_env, pg_diagnostics):
+    """The contract, as an assertion rather than a comment.
+
+    This one PASSES on the old code too - it guards the repair, it does not
+    witness it. Mutation-checked instead: making `describe_driver_error` return
+    `str(exc)` (the obvious "just include the error" fix) turns it red, because
+    SQLAlchemy's text carries `[SQL: ...]` and `[parameters: ...]`.
+    """
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+
+    message = str(err.value)
+    for leak in ("SELECT", "FROM", "encand_test_hist", "[SQL:", "[parameters:",
+                 "LINE 1", "__enrichment_ref"):
+        assert leak not in message, "the response carries statement text: " + repr(leak)
+
+
+def test_a_driver_without_diagnostics_degrades_by_name(cand_env):
+    """No injection: this is what SQLite - and any driver without PostgreSQL's
+    structured diagnostics - actually produces.
+
+    The failure mode being closed here is a silent fall-back to the old
+    behaviour. "I could not read the diagnostics" must be sayable, or a missing
+    `.diag` is indistinguishable from the defect.
+    """
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+
+    message = str(err.value)
+    assert "no structured diagnostics" in message
+    assert "server log" in message, "a degraded message must point at where the cause is"
+    assert "OperationalError" in message, "the driver's own class is still named"
+
+
+def test_the_full_driver_error_reaches_the_server_log(cand_env, caplog):
+    """Requirement two: the log is not the browser.
+
+    The contract governs the HTTP RESPONSE. An operator reading the log must see
+    the driver's own text and its traceback - previously the raise site logged
+    NOTHING and `main.py` logged the already-stripped message, so the cause was
+    destroyed before either reader could reach it.
+    """
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="EnrichmentConfig"):
+        with pytest.raises(enrichment_config.ReferenceViewError):
+            enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+
+    records = [r for r in caplog.records if r.name == "EnrichmentConfig"]
+    assert records, "the raise site logged nothing at all"
+    assert any(r.exc_info for r in records), "logged without exc_info - no traceback"
+    # SQLite's own words for this mistake. On PostgreSQL the same channel carries
+    # `column "..." does not exist` plus the `LINE n:` echo and the full [SQL: ].
+    assert "nosuchcol_xyz" in caplog.text, "the driver's own text is not in the log"
+    assert "Traceback" in caplog.text
+
+
+def test_reading_diagnostics_does_not_disturb_the_savepoint_discipline(
+        cand_env, pg_abort_semantics, pg_diagnostics):
+    """Both injected rules at once: PostgreSQL's abort semantics AND its diagnostics.
+
+    `_isolated_execute` has already rolled back to its SAVEPOINT by the time the
+    raise site reads `.diag`, and reading it touches no connection (the
+    diagnostics are a snapshot the exception carries - measured: every field was
+    read after the rollback). This pins that the new diagnosis and the old
+    containment hold TOGETHER, because the failure this file exists to prevent
+    is a poisoned session escaping into the chain worker's bookkeeping commit.
+    """
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+
+    with pytest.raises(enrichment_config.ReferenceViewError) as err:
+        enrichment_config.execute_reference_view(cand_env, BROKEN_VIEW, {})
+    assert "nosuchcol_xyz" in str(err.value), "the diagnosis did not survive the rollback"
+
+    assert pg_abort_semantics["aborted"] is False, "the savepoint was not rolled back"
+    survivor = enrichment_candidates.resolve_target_candidate(
+        cand_env, _loaded_rule(), {"lot": "L1", "slot": "S1"}, "wafer_id")
+    assert survivor["status"] == enrichment_candidates.STATUS_SINGLE
+    assert survivor["value"] == "WF1", "the session did not survive the failed read"
+
+
+def test_the_named_refusal_carries_the_diagnosis_to_the_worklist(cand_env, pg_diagnostics):
+    """The message is not only for the HTTP path.
+
+    `resolve_target_candidate` puts `str(e)` into `errors[].detail`, so the same
+    repair reaches the auto-confirm refusals an operator reads in the worklist -
+    which is where a broken `candidate_for` declaration is actually noticed.
+    """
+    pg_diagnostics["diag"] = _FakeDiag(**DIAG_UNDEFINED_COLUMN)
+    rule = dict(_loaded_rule(), reference_views=[dict(BROKEN_VIEW, required_binds=[])])
+
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, rule, {"lot": "L1", "slot": "S1"}, "wafer_id")
+
+    assert res["status"] == enrichment_candidates.STATUS_REFUSED
+    details = " ".join(e.get("detail") or "" for e in res["errors"])
+    assert "nosuchcol_xyz" in details, "the refusal still hides why the view failed"
+
+
+# --- the psycopg2 half, where no database can help -------------------------
+#   `pg_diagnostics` above can lend SQLite's driver error a `.diag`, but it
+#   cannot rename it: `sqlite3.OperationalError` is a static C type and does not
+#   accept `__class__` assignment. So the slot where psycopg2 puts PostgreSQL's
+#   own condition name - `UndefinedColumn`, `SyntaxError`, ... - reads
+#   `OperationalError` in every test above. That name is not decoration: it is
+#   the ENGLISH, statement-free diagnosis that still ships when PostgreSQL's
+#   prose is withheld, so something has to pin it.
+#
+#   These are unit tests on `describe_driver_error` with an exception shaped
+#   exactly like the measured article. No database, no engine, no view - and
+#   therefore no way for a passing DB test to hide a broken renderer.
+
+
+def _psycopg2_shaped(condition_name, **diag_fields):
+    """An exception shaped like SQLAlchemy's wrapper around a psycopg2 error.
+
+    `orig` is an instance of a class NAMED for PostgreSQL's condition, because
+    that is exactly what psycopg2 does - `psycopg2.errors` is generated from
+    PostgreSQL's own errcodes table, which is why the name is stable and
+    English even when the message is not.
+    """
+    orig_cls = type(condition_name, (Exception,), {})
+    orig = orig_cls("... whatever text the driver puts here ...")
+    orig.diag = _FakeDiag(**diag_fields)
+    wrapper = Exception("(psycopg2.errors.%s) ..." % condition_name)
+    wrapper.orig = orig
+    return wrapper
+
+
+def test_describe_driver_error_renders_a_real_psycopg2_shape():
+    """The flagship case, end to end through the renderer.
+
+    Measured values, and the measured ABSENCE: PostgreSQL populates no
+    structured identifier field for `42703`, so the column name lives only in
+    `message_primary`. A renderer that kept only the identifier fields would
+    return a contentless string here and re-create the original defect.
+    """
+    described = enrichment_config.describe_driver_error(
+        _psycopg2_shaped("UndefinedColumn", **DIAG_UNDEFINED_COLUMN))
+
+    assert described.startswith("UndefinedColumn/42703:"), described
+    assert "nosuchcol_xyz" in described
+
+
+def test_describe_driver_error_names_the_condition_even_when_it_withholds():
+    """`42601` is the class that cannot ship its prose. It must still ship a
+    diagnosis: "your SQL does not parse" said in a stable English word."""
+    described = enrichment_config.describe_driver_error(
+        _psycopg2_shaped("SyntaxError", **DIAG_SYNTAX_ERROR))
+
+    assert described.startswith("SyntaxError/42601:"), described
+    assert "SELCT" not in described, "a raw statement token survived the withholding"
+    assert "withheld" in described and "server log" in described
+
+
+def test_describe_driver_error_ships_structured_identifiers_when_there_are_any():
+    """Where PostgreSQL DOES populate them (constraint and not-null conditions),
+    the identifier fields are pure identifiers and are worth carrying."""
+    described = enrichment_config.describe_driver_error(
+        _psycopg2_shaped("NotNullViolation", sqlstate="23502",
+                         message_primary="null value in column violates not-null constraint",
+                         table_name="encand_test_hist", column_name="wafer_id"))
+
+    assert "table_name=encand_test_hist" in described
+    assert "column_name=wafer_id" in described
+
+
+def test_describe_driver_error_never_returns_nothing():
+    """Every way of failing to read diagnostics has a NAME.
+
+    Silence is the defect. An exception with no `.orig`, an `.orig` with no
+    `.diag`, and a diagnostics object that raises on access are three different
+    failures and each says which one it was - a caller must never be handed a
+    message that merely restates that something went wrong.
+    """
+    class _Hostile:
+        @property
+        def diag(self):
+            raise RuntimeError("diagnostics unavailable")
+
+    bare = Exception("no orig at all")
+    assert "no driver error attached" in enrichment_config.describe_driver_error(bare)
+
+    no_diag = Exception("wrapper")
+    no_diag.orig = ValueError("a driver with no structured diagnostics")
+    assert "no structured diagnostics" in enrichment_config.describe_driver_error(no_diag)
+
+    hostile = Exception("wrapper")
+    hostile.orig = _Hostile()
+    described = enrichment_config.describe_driver_error(hostile)
+    assert "unreadable" in described, described
+
+    for exc in (bare, no_diag, hostile):
+        assert "server log" in enrichment_config.describe_driver_error(exc), \
+            "a degraded message that does not say where the cause is, is still silence"
