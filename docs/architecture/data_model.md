@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (**§4-bis 두 문장 정정** — ① 「클라 절반은 아직 없다」가 같은 날 거짓이 됐다: `declaration.js`가 `CONFIRMED`를 싣고 `geometryDeclaration`·`frameFromDeclaration` 두 곳에 분기를 갖는다. **어휘 한 줄로는 부족했고 그 점이 `assumed`와 다르다** — `confirmed`는 **저장되므로** 분기가 없으면 아무도 안 잰 맵이 `declared`로 읽힌다. 아직 안 닫힌 것은 `grid_assumed_from`(클라 철자 0건 — 총괄 판정 대기). ② 「화면 쪽 arm-then-commit이 앞에 선다」가 거짓 — **확정은 한 동작**이고(`02416d4`) 앞에 서는 것은 조작자에게 보이는 절차가 아니라 **중복 전송 가드 셋**이다. 직전 **§2.1-bis 버전 게이트 신설** — `092b83f` `crud.version_gate_verdict`: `table_config`의 `version_column` 선언 시 기계의 기존 행 덮어쓰기를 「버전이 더 클 때만」으로 제한. 🔴 **레이어링 *앞*의 거부권이지 승급권이 아니고**, 그래서 더 높은 버전도 사람의 교정을 밀지 못한다. **선언한 테이블이 아직 없어 전 테이블 무동작**. 직전 **§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (**§2.1-ter 신설 — 「같은 값을 다시 쓰는 것은 사건이 아니다」가 이제 양쪽 계층에서 참이다**(`87a944e`). 값 계층은 처음부터 `has_changed`로 그렇게 판정했고 **소스 계층만 반대로 말하고 있었다** — 같은 사실에 두 계층이 다른 판정을 내리던 것이 결함이다. `CellOverwrite` 스킵이 `source_unchanged`를 조건에 포함하는 이유(오버라이트 행은 값을 담지 않아 진짜 편집에서도 셋이 같다)와, 그 스킵을 보는 엔드포인트가 없어 전용 그물 없이는 무방비라는 사실이 함께 있다. 직전 **§4-bis 두 문장 정정** — ① 「클라 절반은 아직 없다」가 같은 날 거짓이 됐다: `declaration.js`가 `CONFIRMED`를 싣고 `geometryDeclaration`·`frameFromDeclaration` 두 곳에 분기를 갖는다. **어휘 한 줄로는 부족했고 그 점이 `assumed`와 다르다** — `confirmed`는 **저장되므로** 분기가 없으면 아무도 안 잰 맵이 `declared`로 읽힌다. 아직 안 닫힌 것은 `grid_assumed_from`(클라 철자 0건 — 총괄 판정 대기). ② 「화면 쪽 arm-then-commit이 앞에 선다」가 거짓 — **확정은 한 동작**이고(`02416d4`) 앞에 서는 것은 조작자에게 보이는 절차가 아니라 **중복 전송 가드 셋**이다. 직전 **§2.1-bis 버전 게이트 신설** — `092b83f` `crud.version_gate_verdict`: `table_config`의 `version_column` 선언 시 기계의 기존 행 덮어쓰기를 「버전이 더 클 때만」으로 제한. 🔴 **레이어링 *앞*의 거부권이지 승급권이 아니고**, 그래서 더 높은 버전도 사람의 교정을 밀지 못한다. **선언한 테이블이 아직 없어 전 테이블 무동작**. 직전 **§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
 > **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain_replay.py`(레이어 철회), `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -71,6 +71,18 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - **로그는 행마다 찍지 않습니다** — (테이블, 사유)당 프로세스 첫 목격에 WARNING 1회 + 배치당 INFO 1회(사유별 건수). 인제션 드롭 가시화와 같은 모양입니다.
 
 🔴 **파생 쓰기는 버전 컬럼을 들고 오지 않습니다.** 체인 워커·체인 재적용 R1·결손 보정 자동 확정은 자기 매퍼/룰이 만든 컬럼만 쓰므로, **버전 게이트를 건 테이블이 동시에 파생 타깃이면 그 파생 쓰기가 기존 행에 대해 전부 `version_missing`으로 거절**됩니다(부재 행만 만드는 `map_meta_registrar`와 새 신원만 만드는 `enrichment_backfill`은 영향 없음). 운영자 관점의 확인 절차·명령은 [guide/config/table_config §7.2](../guide/config/table_config.md)가 정본입니다.
+
+### 2.1-ter 같은 값을 다시 쓰는 것은 사건이 아니다 — **양쪽 계층에서** · 2026-08-06 `87a944e`
+
+값 계층은 처음부터 이렇게 판정하고 있었습니다. `apply_row_update_internal`의 `has_changed` 가드는 해결된 값이 그대로면 **네이티브 컬럼 쓰기·`AuditLog`·아웃박스 이벤트·`updated_at` 갱신을 모두 억제**합니다(§2.3의 「동일값 재기입」 항목이 그 결과를 세고 있습니다 — 실측 0건).
+
+🔴 **어긋나 있던 것은 소스 계층입니다.** `CellSource`는 `value`·`updated_by`가 완전히 같아도 셀-컬럼마다 무조건 다시 기록했고, `CellOverwrite`도 같았습니다. **같은 사실에 대해 두 계층이 서로 다른 판정을 내리고 있었던 것이 결함이고**, 그 대가는 PostgreSQL이 물었습니다 — `ON CONFLICT DO UPDATE`는 **새 튜플 버전을 씁니다**. 즉 「지우지 말고 upsert하자」는 순진한 수리는 삭제를 갱신으로 바꿀 뿐 dead tuple을 그대로 만듭니다(실측: 2,000셀 무변경 재-Push에서 삭제 24,000 → 갱신 24,000).
+
+지금은 `value`와 `updated_by`가 그대로면 두 계층 모두 건드리지 않습니다.
+
+- ⚠️ **`CellOverwrite` 쪽 스킵 조건에는 소스 쪽 판정(`source_unchanged`)이 **포함**됩니다.** 오버라이트 행은 플래그·작성자·핀만 담고 **값을 담지 않으므로**, 값이 진짜 바뀐 셀에서도 그 셋은 동일합니다. 그것만 보고 스킵하면 **진짜 사용자 편집에서 `updated_at` 갱신이 멈춰**, 다른 코드가 화면에 보여 주는 컬럼의 뜻이 조용히 바뀝니다. 없앨 부담은 어차피 「안 바뀐 셀」에만 있으므로 바뀐 셀은 종전 동작 그대로입니다.
+- **`ingested_at`의 뜻이 정확해졌습니다** — 「누가 마지막으로 저장을 눌렀나」가 아니라 **「이 소스가 이 값을 마지막으로 세운 때」**. 움직이지 않는 timestamp가 아니라, **아무것도 안 바뀌었는데 움직이던 timestamp가 거짓말이었습니다.** 값 결정은 timestamp를 읽지 않으므로(§2.1의 `compute_priority_value`는 우선순위 맵만 정렬) 이 변경으로 승자가 바뀌는 셀은 없습니다.
+- 🔴 **`cell_overwrites.updated_at`을 노출하는 엔드포인트가 없습니다.** 그래서 `/sources`를 보는 기존 단언은 이 스킵을 **볼 수 없고**, 전용 그물(`test_an_unchanged_cell_does_not_rewrite_its_overwrite_marker` — `db_session`으로 직접 조회)이 없으면 이 자리는 무방비입니다. 실제로 그 그물을 쓰기 전, 스킵을 제거하는 변이(mutation)를 스위트 전체가 **한 건도 잡지 못했습니다.**
 
 ### 2.2 오버라이트 & 시각화
 
