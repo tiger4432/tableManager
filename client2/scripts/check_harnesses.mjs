@@ -65,18 +65,64 @@ const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 // so it does not belong here either. If you want to record how a figure moved, that is what
 // git and the round's report are for.
 const KNOWN_RED = new Map([
-  ['reposition_regime_probe.mjs', { ran: 0, failed: 0,
+  ['reposition_regime_probe.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies before asserting; 0 failure lines emitted (measured 2026-08-06)',
     why: 'throws with ERR_INVALID_ARG_TYPE ― DEAD: a path/arg it reads has moved (and it asserts nothing by design; see its ASSERTIONS 0 0)' }],
-  ['split_registry_harness.mjs', { ran: 0, failed: 0,
+  ['split_registry_harness.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies at extraction; 0 failure lines emitted (measured 2026-08-06)',
     why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
   ['valid_die_authoring_harness.mjs', { ran: 100, failed: 1,
+    failures: [
+      "[INV-6] resolveValidDie runs the chain check before projecting the cells",
+    ],
     why: 'ATTRIBUTED 2026-08-04 ― this is a HARNESS defect, not a code defect. The slicer '
        + 'matches `projectCellsToPhys` where it first appears in the file, which is inside a '
        + 'COMMENT at offset 8297, ahead of the chain guard\'s real call at 9564. The code '
        + 'order is correct. Same first-match trap the overlay round hit from the other side '
        + '(a mutation string that is not unique lands on the wrong function). Fix belongs '
        + 'with the slicer, not with map_editor.js' }],
-  ['valid_die_frame_adoption_harness.mjs', { ran: 228, failed: 42,
+  ['valid_die_frame_adoption_harness.mjs', { ran: 228, failed: 41,
+    failures: [
+      "F6/A(stored==derived)/F8/domain-is-not-empty",
+      "F6/A(stored==derived)/F8/frame-untouched",
+      "F6/A(stored==derived)/F8/notice-is-info-not-error",
+      "F6/A(stored==derived)/F8/notice-says-nothing-changed",
+      "F6/A(stored==derived)/F8/notice-shown-exactly-once",
+      "F6/A(stored==derived)/F8/stored-coordinates-preserved-total",
+      "F6/B(stored!=derived)/F8/domain-is-not-empty",
+      "F6/B(stored!=derived)/F8/frame-untouched",
+      "F6/B(stored!=derived)/F8/notice-is-info-not-error",
+      "F6/B(stored!=derived)/F8/notice-says-nothing-changed",
+      "F6/B(stored!=derived)/F8/notice-shown-exactly-once",
+      "F6/B(stored!=derived)/F8/stored-coordinates-preserved-total",
+      "F6/C/F8/grid-NOT-opened-at-reference-size",
+      "F6/C/F8/nothing-became-unaddressable",
+      "F6/C/F8/notice-names-both-grids",
+      "F6/C/F8/notice-says-nothing-changed",
+      "F6/C/F8/offset-notice-announced",
+      "F6/C/F8/offset-notice-is-info",
+      "F6/C/F8/physical-spec-NOT-adopted",
+      "F6/C/F8/screen-position-NOT-re-derived",
+      "F6/C/F8/stored-coordinates-preserved",
+      "F6/E/F8/frame-untouched",
+      "F6/E/F8/no-coordinate-changed",
+      "F6/E/F8/notice-shown-exactly-once",
+      "F6/E/F8/physical-spec-untouched",
+      "F6/E/F8/stored-coordinates-preserved-total",
+      "F6/empty-A/F8/grid-NOT-opened-at-reference-size",
+      "F6/empty-A/F8/phys-NOT-adopted",
+      "F6/empty-A/F8/target-index-space-unmoved",
+      "F6/empty-B/F8/grid-NOT-opened-at-reference-size",
+      "F6/empty-B/F8/phys-NOT-adopted",
+      "F6/empty-B/F8/target-index-space-unmoved",
+      "MEDIUM-1/classification-survives-a-designation",
+      "O/aligned/alarm-tracks-the-actual-misalignment",
+      "O/rot-only/alarm-tracks-the-actual-misalignment",
+      "O/specimen/alarm-fired-exactly-once",
+      "O/specimen/alarm-is-info",
+      "O/specimen/alarm-names-both-origins",
+      "O/specimen/alarm-names-the-measured-offset",
+      "O/specimen/alarm-tracks-the-actual-misalignment",
+      "O/specimen/frame-untouched",
+    ],
     why: 'fixtures holding the pre-da8f390 contract; under triage' }],
 ]);
 
@@ -473,6 +519,67 @@ const CEILINGS = new Map([
     what: 'module-level mutable bindings in client2/src/map_editor.js' }],
 ]);
 
+// ── known-red MEMBERS, not just the count ───────────────────────────────────────
+// WHY THIS EXISTS, MEASURED. `failed <= known.failed` is a count check, and a count is a
+// proxy for the claim "no NEW failure appeared". On 2026-08-06 a refactor added one failure
+// to `valid_die_frame_adoption_harness` (`F6/C/adoption-would-have-moved-every-coordinate`,
+// a negative control that had gone inert) and took the harness 41 -> 42. The recorded debt
+// happened to say 42, so the count check passed and the regression shipped. It was found
+// days later by hand-diffing failure names.
+//
+// 🔴 A DEBT LIST MUST NOT BE A PLACE DEFECTS CAN HIDE. Pin the MEMBERS. A name that is not
+//    on the list blocks, whatever the total is; a name on the list that has gone is reported
+//    so somebody re-baselines. This is the same rule this repository keeps relearning under
+//    other names -- pin the members, not the count.
+//
+// EXTRACTION IS VALIDATED, NOT TRUSTED. The harnesses print failures in two shapes, and this
+// runner never re-scores prose (the harness's own `ASSERTIONS` line is the only scorer). So
+// the extracted name count is CROSS-CHECKED against the harness's own `failed` number: if
+// they disagree, the parse is unreliable and the runner says so and blocks rather than
+// pinning a set it cannot read. That refusal is the honest outcome -- a half-parsed set would
+// silently stop protecting the entries it could not read.
+//
+// ⚠️ TWO ENTRIES CANNOT BE NAME-PINNED AND THAT IS RECORDED, NOT WORKED AROUND.
+//    `reposition_regime_probe` and `split_registry_harness` throw before asserting: measured
+//    2026-08-06, both emit ZERO failure lines. There are no members to pin, `ran: 0` is the
+//    whole of what can be checked, and they are marked `namesUnavailable` so the gap is
+//    visible in the output instead of looking like a pin that passes.
+function failureNamesOf(stdout) {
+  const out = [];
+  for (const line of (stdout || '').split(/\r?\n/)) {
+    let m = /^\s*(?:✗|x)\s+(.+)$/.exec(line);
+    if (!m) m = /^\s*FAIL\s+(.+)$/.exec(line);
+    if (!m) continue;
+    const n = m[1].split(':')[0].trim();
+    if (!n || /^baseline$/i.test(n)) continue;       // the harness's own summary line
+    out.push(n);
+  }
+  return [...new Set(out)];
+}
+
+function knownRedNameVerdict(name, known, run, counts) {
+  if (known.namesUnavailable) return { blocked: false, message: '' };
+  if (!Array.isArray(known.failures)) {
+    return { blocked: true, message: `This entry has no \`failures\` list, so only its count `
+      + `is protected and a swapped failure would pass. Add the member list.` };
+  }
+  const seen = failureNamesOf(run.stdout);
+  if (seen.length !== counts.failed) {
+    return { blocked: true, message: `parsed ${seen.length} failure name(s) but the harness `
+      + `reports ${counts.failed} ― the extraction is unreliable here, so the member pin is `
+      + `NOT protecting this entry. Fix the parse or mark the entry \`namesUnavailable\` with `
+      + `a reason; do not leave it looking pinned.` };
+  }
+  const pinned = new Set(known.failures);
+  const added = seen.filter(n => !pinned.has(n));
+  if (added.length > 0) {
+    return { blocked: true, message: `NEW failure(s) not on the recorded list:\n    ― `
+      + added.join('\n    ― ') + `\n    A new failure inside an existing red count is exactly `
+      + `what this check exists to catch. Fix it, or re-triage the entry deliberately.` };
+  }
+  return { blocked: false, message: '', gone: [...pinned].filter(n => !seen.includes(n)) };
+}
+
 const doubleBooked = [...FLOORS.keys()].filter(n => KNOWN_RED.has(n));
 if (doubleBooked.length > 0) {
   fail(`${doubleBooked.join(', ')} appear(s) in BOTH \`FLOORS\` and \`KNOWN_RED\`. A harness's `
@@ -606,6 +713,11 @@ for (const name of harnesses) {
     blocking.push({ name, run });
     console.log(`✗ ${name}  [BLOCKING] ${said}, but the recorded debt is failed <= `
       + `${known.failed} ― the debt grew; fix the regression or re-triage the entry`);
+  } else if (!ok && known && counts && knownRedNameVerdict(name, known, run, counts).blocked) {
+    const v = knownRedNameVerdict(name, known, run, counts);
+    blocking.push({ name, run });
+    console.log(`✗ ${name}  [BLOCKING] ${said} ― the COUNT is within its recorded debt but the `
+      + `MEMBERS are not. ${v.message}`);
   } else if (!ok && known && !counts && known.ran > 0) {
     blocking.push({ name, run });
     console.log(`✗ ${name}  [BLOCKING] ${said}, but the recorded expectation is ran >= `

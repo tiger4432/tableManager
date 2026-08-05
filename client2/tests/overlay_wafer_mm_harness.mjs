@@ -656,6 +656,55 @@ function runAll(src) {
     ok(ctx.physFrameOverride === null, 'A10d frame window closed', 'physFrameOverride leaked');
   }
 
+  // A18 -- THE FRAME REACHES `getCanvasCellFromDb`, ON THE BRANCH WHERE THAT IS OBSERVABLE.
+  //
+  // 🔴 WHY THIS EXISTS. `getCanvasCellFromDb` reads exactly three terms off the origin box:
+  //    `minC` always, `minR` when `!invertY`, `maxR` when `invertY`. It never reads `maxC`.
+  //    Measured on this fixture, the SOURCE box and the SCREEN box are
+  //        source {minC:1, maxC:57, minR:1, maxR:41}
+  //        screen {minC:1, maxC:28, minR:1, maxR:18}
+  //    -- they differ ONLY in their max terms, and every projection above runs `invertY:false`,
+  //    where the only terms read are `minC` and `minR`, which are 1 on both sides. So a mutant
+  //    that makes this function ignore its frame entirely changed NOTHING anywhere in this file
+  //    and survived. The code was never blind; THE FIXTURE WAS. Same class as `minC == 0`
+  //    killing a bbox axis: an axis that cannot move cannot fail.
+  //
+  // 🔴 SO THE SOURCE FRAME IS INVERTED HERE, which puts `maxR` on the read path -- 41 against
+  //    18, twenty-three rows apart. The claim is scored as a ROUND TRIP through the inverse
+  //    pair under ONE frame while the screen shows another: `getDbCoords` and
+  //    `getCanvasCellFromDb` must agree about WHICH box they are on. If either one silently
+  //    falls back to the screen, the trip does not close.
+  // ⚠️ This is not the symmetric-break blind spot. A symmetric shift of BOTH functions still
+  //    round-trips; that is scored by the absolute-coordinate assertions elsewhere in the
+  //    suite. What this catches is the two of them DISAGREEING about the frame, which is
+  //    precisely what dropping the argument on one side produces.
+  {
+    setScreen(ctx, TGT);
+    const srcInv = { ...SRC, invertY: true };
+    const a = screenAxes(srcInv);
+    // The axis must be live: if the two boxes agreed on the term this branch reads, the
+    // round trip below would close even with the frame dropped, and prove nothing.
+    const boxFrame = ctx.getWaferBoundingBox(srcInv, srcInv.rotation, srcInv.side);
+    const boxScreen = ctx.getWaferBoundingBox(null, srcInv.rotation, srcInv.side);
+    ok(boxFrame.maxR !== boxScreen.maxR, 'A18 fixture activates the axis (maxR differs)',
+      `source maxR=${boxFrame.maxR} screen maxR=${boxScreen.maxR} -- equal means this check is inert`);
+
+    let broke = 0, first = '';
+    for (let r = 0; r < a.visualRows; r++) for (let c = 0; c < a.visualCols; c++) {
+      const db = ctx.getDbCoords(srcInv, c, r, srcInv.cols, srcInv.rows, srcInv.rotation,
+        srcInv.side, true, srcInv.startX, srcInv.startY);
+      const back = ctx.getCanvasCellFromDb(srcInv, db.x, db.y, srcInv.cols, srcInv.rows,
+        srcInv.rotation, srcInv.side, true, srcInv.startX, srcInv.startY);
+      if (back.c !== c || back.r !== r) {
+        broke++;
+        if (!first) first = `(${c},${r}) -> db(${db.x},${db.y}) -> (${back.c},${back.r})`;
+      }
+    }
+    ok(broke === 0, 'A18b the inverted round trip closes under the SOURCE frame',
+      `${broke} of ${a.visualCols * a.visualRows} cells did not return, e.g. ${first} `
+      + `-- the two halves of the inverse pair are reading different origin boxes`);
+  }
+
   return { fails, ran, stats: { rows: rows.length, cells: layer.cellCount, maxFan, dSrcPitch, dSwap, dParity } };
 }
 
@@ -762,6 +811,15 @@ const MUTATIONS = [
   //    while its anchor stays perfectly valid, and that is a third failure mode beside "stale"
   //    and "not unique". The DEFECT it names has not changed at all; its spelling has, from
   //    "the window never opens" to "the frame never reaches the call".
+  // ③ The mutant that found A18's blind spot, kept so the spot cannot re-open. It survived at
+  //    21/21 before A18 existed: `getCanvasCellFromDb` reads only `minC`, plus `minR` or `maxR`
+  //    by branch, and every other check here runs the `!invertY` branch where the source and
+  //    screen boxes agree. The anchor carries the `const c =` line because
+  //    `getWaferBoundingBox(frame, rotation, side)` alone appears in `getDbCoords` too and the
+  //    uniqueness guard would (correctly) refuse it.
+  ['getCanvasCellFromDb drops its frame (origin box taken from the screen)',
+    '  const box = getWaferBoundingBox(frame, rotation, side);\n\n  const c = dbX - startX + box.minC;',
+    '  const box = getWaferBoundingBox(null, rotation, side);\n\n  const c = dbX - startX + box.minC;'],
   ['frame never reaches the projection (source read with the target spec)',
     "    const chipX = physNum(f, 'chipX', el.physChipX, 2.5);\n    const chipY = physNum(f, 'chipY', el.physChipY, 2.5);",
     "    const chipX = physNum(null, 'chipX', el.physChipX, 2.5);\n    const chipY = physNum(null, 'chipY', el.physChipY, 2.5);"],
