@@ -1,7 +1,7 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **372개** 이력. (거버넌스 규칙 #4)
+> 총 **377개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
@@ -16,6 +16,11 @@
 - **2026-08-06 07:09** — [The Client Manufactured A Declaration For A Map Nobody Measured](./20260806_070905_the_client_manufactured_a_declaration_for_a_map_nobody_measured.md)
 - **2026-08-06 06:51** — [The Confirmation Reached The Metadata Because Without A Marker The Winner Is A Row Nobody Touched](./20260806_065114_the_confirmation_reached_the_metadata_because_without_a_marker_the_winner_is_a_row_nobody_touched.md)
 - **2026-08-06 06:43** — [Eighteen Findings From A Real Walk And The One That Had Already Aimed A Feature Request Wrong](./20260806_064353_eighteen_findings_from_a_real_walk_and_the_one_that_had_already_aimed_a_feature_request_wrong.md)
+- **2026-08-06 06:39** — [The Control Was Supposed To Survive And It Killed Instead](./20260806_063900_the_control_was_supposed_to_survive_and_it_killed_instead.md)
+- **2026-08-06 01:19** — [An Absent Index Column Is A Declared Absence And Reading Stopped Asking Permission](./20260806_011956_an_absent_index_column_is_a_declared_absence_and_reading_stopped_asking_permission.md)
+- **2026-08-06 01:17** — [Every Confirmation The Screen Ever Made Recorded No Answer At All](./20260806_011715_every_confirmation_the_screen_ever_made_recorded_no_answer_at_all.md)
+- **2026-08-06 00:58** — [The Screen Said Not Scorable On Every Unit And The Third Cause Explains The Whole Day](./20260806_005827_the_screen_said_not_scorable_on_every_unit_and_the_third_cause_explains_the_whole_day.md)
+- **2026-08-06 00:10** — [The Forwarding Check Sees The Half Thread That Changes Nothing And Therefore Survives Review](./20260806_001049_the_forwarding_check_sees_the_half_thread_that_changes_nothing_and_therefore_survives_review.md)
 - **2026-08-05 18:21** — [The Refusal Named A Reason And Hid Its Measurement In Three Places](./20260805_182120_the_refusal_named_a_reason_and_hid_its_measurement_in_three_places.md)
 - **2026-08-05 16:58** — [The Offer Had No Control To Accept It](./20260805_165800_the_offer_had_no_control_to_accept_it.md)
 - **2026-08-05 16:55** — [Ask At Boot Whether The Models Still Match The Database](./20260805_165500_ask_at_boot_whether_the_models_still_match_the_database.md)

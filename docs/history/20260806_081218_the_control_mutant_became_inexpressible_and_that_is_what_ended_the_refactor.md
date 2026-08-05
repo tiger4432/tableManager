@@ -1,7 +1,7 @@
 # 대조 변이가 표현 불가능해졌고, 그것이 리팩터가 끝났다는 뜻이다
 
 > **커밋:** `b7a348f`(06:58 · S2.2) · `670681b`(06:58 · S2.2 나머지) · `6a11d81`(07:21 · S2.6) · `47c58af`(07:30 · 무력해진 오라클) · `f1b0259`(07:49 · S2.7 선행 둘) · `62520b9`(08:12 · **S2.7 · 마지막 단계**) | **일자:** 2026-08-06 아침~오전
-> **선행:** [`20260805_074000`](./20260805_074000_a_stored_coordinate_is_bounding_box_relative_and_a_catch_turned_every_failure_into_a_plausible_wafer.md)(`cab8ed9` — 「옆에 새로 짓는다」가 서면서 `physFrameOverride`의 독자 여덟이 이관 대상으로 남은 자리)
+> **선행:** [`20260806_001049`](./20260806_001049_the_forwarding_check_sees_the_half_thread_that_changes_nothing_and_therefore_survives_review.md)(`5cba0a1` — stage 4, 포워딩 검사) · [`20260806_063900`](./20260806_063900_the_control_was_supposed_to_survive_and_it_killed_instead.md)(`f11c56c` — stage 5, **대조 변이가 처음으로 죽은 자리**. 아래 「관통선」이 세는 논증이 거기서 시작한다) · [`20260805_074000`](./20260805_074000_a_stored_coordinate_is_bounding_box_relative_and_a_catch_turned_every_failure_into_a_plausible_wafer.md)(`cab8ed9` — 「옆에 새로 짓는다」가 서면서 `physFrameOverride`의 독자 여덟이 이관 대상으로 남은 자리)
 > **담당:** map 구현(에디터)
 > **대상:** `client2/src/map_editor.js`(+141 / −119, 세 단계 합) · 하네스 **21종**(`overlay_wafer_mm` +115 / −22 · `map_spec_only_save` · `marker_shape_wafer_anchor` · `valid_die_frame_adoption` 등) · `client2/scripts/check_harnesses.mjs`(+115 / −3)
 > **스위트:** 각 커밋 메시지 기준 — S2.2 **`MODULE_STATE` 48/48, 게이트 41 전부 초록** · S2.6 **8/9 전환, 포워딩 22/0** · `f1b0259` **변이 코퍼스 22/22** · S2.7 **`MODULE_STATE` 48 → 47, 포워딩 22/0**. ⚠️ **하네스 총수와 초록 여부를 기록한 산출물은 diff에 없다**(러너가 실행 시 계산한다).
