@@ -222,7 +222,21 @@ export function localIndex(frame, box, x, y) {
  * is wrong (or the map has duplicate coordinates); silently keeping the last one would hide
  * that. They are all seated; the duplicates are also listed.
  */
-export function computeSeating(cells, frame) {
+export function computeSeating(cells, frame, shift) {
+  // 🔴 THE OFFSET IS APPLIED **INSIDE** THE LOOP, NOT TO THE RESULT, AND THAT IS THE WHOLE
+  //    REASON IT LIVES HERE RATHER THAN IN A `shiftSeating()` NEXT DOOR. A seat carries `x`,
+  //    `y`, `key`, and the seating carries `bounds` and `byKey` derived from them. Translating
+  //    afterwards would mean rebuilding all four in a second place that knows how a seat is
+  //    constructed -- and the day the two spellings drift, `byKey` says one thing and the
+  //    drawn pixel says another, with membership against the floor silently missing.
+  //
+  // ⚠️ THIS FILE STILL DOES NOT SOLVE FOR AN OFFSET. It is handed one. `_solve_shift` on the
+  //    server chose it, scored against it, and shipped it; deriving one here would be a second
+  //    placement implementation, and the two agreeing only by accident is precisely how the
+  //    missing offset stayed invisible (the old search broke ties toward the origin, so a
+  //    saturated map returned (0,0) and matched a client that applied nothing).
+  const sdx = shift && Number.isInteger(shift.dx) ? shift.dx : 0;
+  const sdy = shift && Number.isInteger(shift.dy) ? shift.dy : 0;
   const list = Array.isArray(cells) ? cells : [];
   const seats = new Array(list.length);
   const byKey = new Map();
@@ -239,15 +253,17 @@ export function computeSeating(cells, frame) {
     const cell = list[i];
     const { c, r } = localIndex(frame, box, cell.x, cell.y);
     const p = seatOf(frame, c, r);
-    const key = seatKey(p.x, p.y);
-    const seat = Object.freeze({ index: i, x: p.x, y: p.y, key, cell });
+    const px = p.x + sdx;
+    const py = p.y + sdy;
+    const key = seatKey(px, py);
+    const seat = Object.freeze({ index: i, x: px, y: py, key, cell });
     seats[i] = seat;
     if (byKey.has(key)) collisions.push(seat);
     else byKey.set(key, seat);
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
   }
 
   if (seats.length !== list.length) {
@@ -271,6 +287,9 @@ export function computeSeating(cells, frame) {
     // Stated, not assumed. A consumer that cares whether these coordinates rest on a real
     // wafer geometry can ask, instead of discovering it from a picture that looks plausible.
     boxKnown,
+    // Likewise for the placement: the seats above are the frame transform PLUS this, and a
+    // caller comparing two seatings can see whether they were placed the same way.
+    shift: Object.freeze({ dx: sdx, dy: sdy }),
   });
 }
 

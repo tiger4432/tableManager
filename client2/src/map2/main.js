@@ -1262,8 +1262,18 @@ export function bootstrap(deps) {
     // same record is how the stage and the thumbnails start disagreeing about what candidate 3
     // means -- and the disagreement would look like a rendering quirk, not like a bug.
     const { frame, floorFrame } = framesFor(payload, candidateId);
+    // 🔴 THE PLACEMENT THE SERVER SCORED WITH, APPLIED TO THE PICTURE. Without it the
+    //    overlay is drawn at (0,0) whatever the server placed it at -- and the counts beside
+    //    it are the counts for a position the operator is not looking at. Read off the CARD for
+    //    the candidate actually being drawn, never off the ruling: the ruling's shift belongs
+    //    to the winner, and the operator may be looking through any of the eight.
+    //
+    // ⚠️ THE FLOOR IS NOT SHIFTED. The offset means "move the SOURCE onto the reference";
+    //    applying it to both would translate the whole stage and change nothing, and applying
+    //    it to the floor alone would move the thing the source is being measured against.
+    const shift = (vm.candidates.find(c => c.id === candidateId) || {}).shift || null;
     const floor = computeSeating(payload.floor_cells || [], floorFrame);
-    const seated = source ? computeSeating(source.cells || [], frame) : null;
+    const seated = source ? computeSeating(source.cells || [], frame, shift) : null;
 
     if (vm.picture === 'alone') {
       // 🔴 THE FLOOR STILL DRAWS HERE, INTO THE LAYER THIS STATE ACTUALLY SHOWS. The stylesheet
@@ -1446,8 +1456,18 @@ export function bootstrap(deps) {
         map_id: s.id,
         source_name: s.label,
         applied_frame: vm.selectedCandidateId,
-        shift_dx: 0,
-        shift_dy: 0,
+        // 🔴 `shift_dx: 0, shift_dy: 0` STOOD HERE AND WERE DELETED (2026-08-06). They posted the
+        //    PLACEMENT AS A CONSTANT: a unit the aligner placed at (4,5) was sent -- and for a
+        //    while persisted and displayed -- as (0,0). The server no longer reads these fields,
+        //    so the record is correct without them; they are removed because a constant in a
+        //    request body that nobody reads is the next person's trap, and this one has already
+        //    cost a day. If a shift ever belongs in this record it is `per_candidate[<frame>]
+        //    .shift`, which is the placement the scoring actually used -- never a literal.
+        //
+        // ⚠️ WHY NOBODY CAUGHT IT: the old shift search broke ties toward the origin, so on a
+        //    saturated partial map it returned (0,0) and the hardcoded zero agreed with the
+        //    scorer BY ACCIDENT. The anchor made placements real and every stale copy of the
+        //    assumption surfaced at once -- including the overlay, which applied no offset at all.
         agreement: null,
         discriminating: null,
         excluded_reason: null,
@@ -1975,7 +1995,12 @@ export function paintCandidateThumbs(surfaceFor, payload, source, viewport, pale
   for (const c of candidateList()) {
     const surface = surfaceFor(c.id);
     if (!surface) continue;
-    const seated = source ? computeSeating(source.cells || [], framesFor(payload, c.id).frame) : null;
+    // Each thumbnail gets ITS OWN candidate's placement -- the eight are eight different
+    // placements, and drawing them all at the winner's (or at none) is what made the small
+    // pictures agree with each other and disagree with the stage.
+    const cShift = shiftFor(payload, c.id);
+    const seated = source
+      ? computeSeating(source.cells || [], framesFor(payload, c.id).frame, cShift) : null;
     const comparison = seated ? compareSeatings(floor, seated) : null;
     out.push(Object.freeze({
       id: c.id,
@@ -1983,6 +2008,19 @@ export function paintCandidateThumbs(surfaceFor, payload, source, viewport, pale
     }));
   }
   return Object.freeze(out);
+}
+
+/**
+ * The placement `map_alignment` solved for ONE candidate, off the adapted payload.
+ *
+ * Kept beside `pickSource` rather than inlined at both call sites: the stage and the eight
+ * thumbnails must read the same field the same way, and two spellings of "which shift belongs
+ * to this frame" is how a stage and its thumbnails start disagreeing about candidate 3.
+ */
+function shiftFor(payload, candidateId) {
+  const list = (payload && payload.per_candidate) || [];
+  const row = list.find(c => c && c.candidate_id === candidateId) || null;
+  return (row && row.shift) || null;
 }
 
 function pickSource(payload, focusedId) {

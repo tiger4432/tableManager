@@ -449,7 +449,19 @@ const FLOORS = new Map([
   // wins. A future round that "hardens" this by disabling the button goes red and has to
   // re-argue it. G52 pins the other half: `WORDS.provisionalRanking` is a TRUNCATION of the
   // server's sentence, admissible only while the full sentence is on the same screen.
-  ['map_editor2_shell_harness.mjs', 493],
+  // 493 -> 501 (2026-08-06). THE OVERLAY'S PLACEMENT. `decode` did not keep
+  // `candidates[].shift`, so the offset never reached `computeSeating` and the picture was
+  // drawn at (0,0) whatever the server placed it at -- the counts beside it measured at one
+  // position, the picture drawn at another.
+  // 🔴 G54/G57 ASSERT THE DRAWING, NOT THE PLUMBING, and that distinction is the reason this
+  // entry exists: a test that checks the field arrived passes a version that receives it and
+  // paints at zero anyway. The fixture offsets the source cells by exactly the shift, so an
+  // applied offset empties the mismatch layers and a dropped one fills them with all four.
+  // G58 is the NEGATIVE CONTROL -- without a placement the same four cells miss, so G54 cannot
+  // pass on a fixture that happened to overlap. That accident is precisely what hid this bug:
+  // the old shift search broke ties toward the origin, returned (0,0) on a saturated map, and
+  // agreed with a client that applied nothing.
+  ['map_editor2_shell_harness.mjs', 501],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid

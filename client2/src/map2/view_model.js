@@ -362,6 +362,12 @@ function buildCandidateCard(a) {
     storedLabel: a.candidate.id,
     agree: hasCounts ? Number(s.agree) : null,
     discriminating: hasCounts ? Number(s.discriminating) : null,
+    // 🔴 THE PLACEMENT THIS CANDIDATE'S COUNTS WERE MEASURED IN. Carried on the CARD and
+    //    not beside it, because the picture is drawn for ONE candidate and it must be this
+    //    one's offset -- a shift read from the ruling or from a neighbour would draw the
+    //    selected frame at the winner's placement, which looks like a rendering quirk rather
+    //    than a wrong answer. `null` when the server did not place this candidate at all.
+    shift: (s && s.shift) ? s.shift : null,
     // 🔴 THE SLOT SAYS WHICH KIND OF NOTHING IT IS. `미상` means "we did not measure this" and
     //    is the right word for a frame the payload never mentioned. A frame the payload DID
     //    mention, with a state and a reason, is a different fact -- and rendering the same word

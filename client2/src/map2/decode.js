@@ -273,7 +273,21 @@ export function decodeReferenceView(payload) {
       continue;
     }
     scorings.push(Object.freeze({
-      candidate_id: frame, agree, discriminating, state: state || CAND_SCORED, reason }));
+      candidate_id: frame, agree, discriminating, state: state || CAND_SCORED, reason,
+      // 🔴 THE PLACEMENT THE SCORING ACTUALLY USED. `_solve_shift` picks the translation
+      //    that maximises overlap for THIS candidate, scores against it, and ships it here --
+      //    so it is not decoration beside the counts, it is the coordinate frame those counts
+      //    were measured in. Dropping it (which this decoder did until 2026-08-06) leaves the
+      //    drawing path with no offset at all, and the overlay is painted at (0,0) whatever
+      //    the server placed it at.
+      //
+      // ⚠️ NEVER RE-DERIVED ON THIS SIDE. Solving for an offset here would be a second
+      //    placement implementation, and the two would agree only while the tie-breaking
+      //    matched -- which is exactly how this bug hid: the old search broke ties toward the
+      //    origin, so on a saturated map it returned (0,0) and the client's missing offset
+      //    agreed with the scorer BY ACCIDENT.
+      shift: decodeShift(raw && raw.shift, rejected, frame),
+    }));
   }
 
   const ref = (p && p.reference && typeof p.reference === 'object') ? p.reference : null;
@@ -504,6 +518,34 @@ function token(value, rejected, where) {
     return null;
   }
   return s;
+}
+
+/**
+ * A CANDIDATE'S PLACEMENT, as integer die counts, or null.
+ *
+ * `null` is a real answer and the common one: `map_alignment` ships `"shift": None` for every
+ * candidate it did not score, and a candidate with no placement must not be drawn as though it
+ * had been placed at the origin.
+ *
+ * 🔴 INTEGERS OR NOTHING. These are counts of dies, and the server produces them as such
+ *    (`_solve_shift` searches an integer window). A fractional dx would seat every cell on a
+ *    half-die and every membership test against the floor would miss, which is the silent
+ *    all-miss failure `start_native_float` already cost this screen once. A malformed shift is
+ *    REPORTED and dropped rather than coerced -- a placement we cannot read is not a placement.
+ */
+function decodeShift(raw, rejected, frame) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== 'object') {
+    rejected.push(`candidates ${frame}: shift is not an object`);
+    return null;
+  }
+  const dx = intOrNull(raw.dx);
+  const dy = intOrNull(raw.dy);
+  if (dx === null || dy === null) {
+    rejected.push(`candidates ${frame}: shift {dx, dy} are not both integers`);
+    return null;
+  }
+  return Object.freeze({ dx, dy });
 }
 
 /** True when this map was scored on geometry it does not itself declare. */

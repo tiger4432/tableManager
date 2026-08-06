@@ -730,6 +730,102 @@ function throws(fn, what) {
   ok(docP.getElementById('me2-question-note').textContent.includes(PROVISIONAL),
      'G52 the SHORT mark and the SERVER SENTENCE are on screen together, never the mark alone');
 
+  // ── THE OVERLAY IS DRAWN AT THE PLACEMENT THE SERVER SCORED ─────────────────
+  // 🔴 THE PICTURE WAS PAINTED AT (0,0) NO MATTER WHERE THE SERVER PLACED IT. `decode` did not
+  //    keep `candidates[].shift`, so the offset never reached the drawing path and
+  //    `computeSeating` applied none -- the counts beside the picture were measured at one
+  //    position and the picture was drawn at another.
+  //
+  //    IT HID BEHIND AN ACCIDENT. The old shift search broke ties toward the origin, so on a
+  //    saturated map it returned (0,0) and the client's missing offset agreed with the scorer
+  //    by coincidence. Once placements became real every stale copy surfaced at once.
+  //
+  // 🔴 THIS ASSERTS THE DRAWING, NOT THE PLUMBING. A test that checks the field arrived passes
+  //    a version that receives it and paints at zero anyway. The fixture puts the source cells
+  //    exactly (-2,-3) from the floor and has the server ship `shift {dx:2, dy:3}`: applied,
+  //    every source cell lands on a floor cell and NOTHING is drawn into the mismatch layer;
+  //    dropped, all four miss. The painted coordinates are read off the rects themselves.
+  const shiftedWire = {
+    ...payload,
+    reference: { state: 'ok', kind: 'values', cells: [[5, 5], [6, 5], [5, 6], [6, 6]] },
+    sources: { map_count: 1, cell_count: 4, cells: [[3, 2], [4, 2], [3, 3], [4, 3]],
+               maps: [{ map_id: 's1', cell_count: 4, declared_frame: 'rot0_front',
+                        declared_frame_source: 'declared' }] },
+    // 🔴 THE WINNER IS DELIBERATELY **NOT** FIRST IN THIS LIST. With it at index 0, "look the
+    //    shift up by candidate id" and "read `per_candidate[0]`" return the same object and a
+    //    port that grabs the first row passes -- measured: that mutant survived the first cut of
+    //    this fixture. The eight are eight different placements, so the list order has to
+    //    disagree with the selection for the lookup to be scored at all.
+    candidates: [
+      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 } },
+      { frame: 'rot0_front', agreement: 4, discriminating: 4, shift: { dx: 2, dy: 3 } },
+    ],
+    ruling: { winner: 'rot0_front', margin: 4 },
+  };
+  const docS = makeDocument();
+  const appS = bootstrap({ document: docS,
+    api: { loadReferenceView: () => Promise.resolve(shiftedWire),
+           loadWorklist: () => Promise.resolve({ rows: [] }),
+           loadAlignConfig: () => Promise.resolve({}),
+           confirmFrame: () => Promise.resolve({}) } });
+  appS.setConfig({ min_margin_dies: 1, min_discriminating_dies: 1 });
+  appS.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vmS = appS.render();
+
+  // Read defensively: when the field is dropped entirely this must go RED, not throw past the
+  // summary line. A harness that dies mid-run reports nothing at all, which is worse than a
+  // failure -- measured on the `decode-drops-field` mutant, which crashed here instead of
+  // failing and took every later assertion's result with it.
+  const cardS = vmS.candidates.find(c => c.id === 'rot0_front') || {};
+  eq(cardS.shift ? cardS.shift.dx : null, 2,
+     'G53 the placement reaches the candidate card (dx)');
+  eq(cardS.shift ? cardS.shift.dy : null, 3,
+     'G53b and dy -- carried per candidate, not off the ruling');
+  const otherS = vmS.candidates.find(c => c.id === 'rot180_back') || {};
+  eq(otherS.shift ? otherS.shift.dx : null, 0,
+     'G53c and a DIFFERENT candidate keeps its OWN placement, not the winner one');
+
+  // THE DRAWING. Applied, the source sits on the floor and the mismatch layer is EMPTY.
+  const missRects = docS.getElementById('me2-layer-miss').children;
+  eq(missRects.length, 0,
+     'G54 THE PAINTED OVERLAY LANDS ON THE FLOOR -- nothing is drawn as a mismatch');
+  const floorRects = docS.getElementById('me2-layer-floor').children;
+  eq(floorRects.length, 4, 'G55 and all four floor cells were drawn');
+  // A cell's painted POSITION, read off the rect. With the offset the source occupies exactly
+  // the floor's box, so the layout window is the floor's and the first floor rect sits at the
+  // stage origin. Without the offset the union box grows and this number changes.
+  const firstFloorX = Number(floorRects[0].getAttribute('x'));
+  const firstFloorY = Number(floorRects[0].getAttribute('y'));
+  ok(Number.isFinite(firstFloorX) && Number.isFinite(firstFloorY),
+     'G56 the painted rect carries real coordinates');
+  eq(docS.getElementById('me2-layer-onlyone').children.length, 0,
+     'G57 and no floor cell is left uncovered either -- the overlap is exact both ways');
+
+  // 🔴 THE NEGATIVE CONTROL. Without it G54/G57 would pass on a fixture where the source
+  //    happened to coincide with the floor anyway, which is EXACTLY the accident that hid this
+  //    bug for a day. Same cells, server says no placement: the four must now miss.
+  const unplacedWire = {
+    ...shiftedWire,
+    candidates: [
+      { frame: 'rot0_front', agreement: 0, discriminating: 4, shift: null },
+      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: null },
+    ],
+  };
+  const docU = makeDocument();
+  const appU = bootstrap({ document: docU,
+    api: { loadReferenceView: () => Promise.resolve(unplacedWire),
+           loadWorklist: () => Promise.resolve({ rows: [] }),
+           loadAlignConfig: () => Promise.resolve({}),
+           confirmFrame: () => Promise.resolve({}) } });
+  appU.setConfig({ min_margin_dies: 1, min_discriminating_dies: 1 });
+  appU.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  appU.render();
+  eq(docU.getElementById('me2-layer-miss').children.length, 4,
+     'G58 NEGATIVE CONTROL: with no placement the same four cells miss -- so G54 measures the '
+     + 'offset and not a fixture that overlapped anyway');
+
   // Action accounting against the switchover bar.
   // 🔴 PINNED EXACTLY, NOT BOUNDED. This came out of a usability round measured in clicks, so
   //    the number is the finding: candidate click + source-row click + candidate switch + ONE
