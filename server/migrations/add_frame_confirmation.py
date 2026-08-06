@@ -71,6 +71,21 @@ DDL_TABLES = [
     # [D-1] 규칙이 선언한 target_field 그대로의 확정값. `decision_key JSONB`와 같은 이유·모양
     # 이다 — 컬럼 두 개는 첫 규칙 하나의 답만 담고 나머지 규칙의 답은 NULL로 들어갔다.
     "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS frames JSONB",
+    # [2026-08-06] Two columns that reached models.py without reaching any database
+    # that already has this table - which is every deployed box, and was this one:
+    # a full-entity SELECT on frame_confirmation died with UndefinedColumn until the
+    # two statements below ran. Same shape as the siblings above, same reason.
+    #   reference_cell_count - the count of reference cells the SCORING actually used,
+    #     so "is that floor still the floor it was" stays answerable. Read as a pair
+    #     with reference_table: both NULL = no reference was used (a normal state);
+    #     reference_table set + this NULL = the ruling did not carry the count. That
+    #     distinction is why there is no default - a default would answer for old rows.
+    #   thresholds_defaulted - WHICH threshold keys fell back to DEFAULT_THRESHOLDS,
+    #     comma-joined, not a boolean. Three states: NULL = not carried, '' = all were
+    #     declared, 'k1,k2' = those keys were defaulted. '' and NULL must stay distinct,
+    #     so again no default.
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS reference_cell_count INTEGER",
+    "ALTER TABLE frame_confirmation ADD COLUMN IF NOT EXISTS thresholds_defaulted TEXT",
     "ALTER TABLE frame_confirmation_source "
     "ADD COLUMN IF NOT EXISTS geometry_basis TEXT",
     # 첫 선언의 흔적 컬럼은 **지우지 않고 NULL을 허용**하는 것으로 물러난다(추가 전용 규율).
@@ -154,6 +169,17 @@ def main():
         for t in ("frame_confirmation", "frame_confirmation_source"):
             n = conn.execute(text("SELECT count(*) FROM " + t)).scalar()
             print("[verify] %s exists, rows=%s" % (t, n))
+        # The columns this table gained after it already existed somewhere. Printed by
+        # name because "the migration ran" is not the same claim as "the column is there"
+        # - a box that ran an older copy of this file gets a clean exit and no column.
+        for col in ("geometry_assumed", "frames", "confirmed_frame", "map_table",
+                    "x_col", "y_col", "value_col", "reference_cell_count",
+                    "thresholds_defaulted"):
+            present = conn.execute(text(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_name='frame_confirmation' AND column_name=:c"
+            ), {"c": col}).scalar()
+            print("[verify] frame_confirmation.%s present: %s" % (col, bool(present)))
         ok = conn.execute(text(
             "SELECT count(*) FROM information_schema.columns "
             "WHERE table_name='cell_sources' AND column_name='confirmation_uid'")).scalar()

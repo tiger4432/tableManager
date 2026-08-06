@@ -202,7 +202,18 @@ SYSTEM_TABLE_COLUMNS = {
     #   keyed by the rule's own declaration (the shape `decision_key` already uses); the other
     #   five hold the subject the screen has been sending all along - which coordinates were
     #   aligned - and which the route read none of.
-    "frame_confirmation": ('confirmation_uid', 'confirmed_at', 'confirmed_by', 'confirmed_frame', 'core_frame', 'decision_key', 'discriminating', 'dt_eqp', 'dt_frame', 'enrichment_row_id', 'frames', 'geometry_assumed', 'id', 'map_table', 'margin', 'product', 'reference_map_id', 'reference_table', 'rule_name', 'ruling_reason', 'ruling_state', 'superseded_by', 'supersedes_uid', 'unit_key', 'value_col', 'version', 'weakest_priority', 'weakest_source', 'winner_frame', 'x_col', 'y_col'),
+    # reference_cell_count, thresholds_defaulted:
+    #   migrations/add_frame_confirmation.py [2026-08-06]. These two reached models.py in
+    #   9cf17ee without a migration, and this box proved what that costs: a full-entity
+    #   SELECT on frame_confirmation raised UndefinedColumn, so the table was down whole
+    #   while the manifest was still green about it. reference_cell_count records how many
+    #   reference cells the SCORING used, so a later reader can ask whether the floor a
+    #   ruling stood on is still that floor; thresholds_defaulted records WHICH threshold
+    #   keys fell back to DEFAULT_THRESHOLDS, comma-joined rather than boolean, because
+    #   "both undeclared" and "one undeclared" are different facts. Both are nullable with
+    #   no default on purpose - NULL means the ruling did not carry the fact, which is not
+    #   the same as zero or as ''.
+    "frame_confirmation": ('confirmation_uid', 'confirmed_at', 'confirmed_by', 'confirmed_frame', 'core_frame', 'decision_key', 'discriminating', 'dt_eqp', 'dt_frame', 'enrichment_row_id', 'frames', 'geometry_assumed', 'id', 'map_table', 'margin', 'product', 'reference_cell_count', 'reference_map_id', 'reference_table', 'rule_name', 'ruling_reason', 'ruling_state', 'superseded_by', 'supersedes_uid', 'thresholds_defaulted', 'unit_key', 'value_col', 'version', 'weakest_priority', 'weakest_source', 'winner_frame', 'x_col', 'y_col'),
     # new table this round - created whole by create_all, no ordering hazard
     # geometry_basis: migrations/add_frame_confirmation.py (same round - which SOURCE stood
     # on the borrowed spec, since the header flag alone cannot name it)
