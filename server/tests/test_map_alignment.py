@@ -1819,6 +1819,117 @@ def test_adjacency_cannot_tell_the_eight_frames_apart():
     assert len(set(walks.values())) == 8, "the walk order is a non-isometric quantity"
 
 
+# ---------------------------------------------------------------------------
+# DIRECTION - the walk's steps, not just its order
+# ---------------------------------------------------------------------------
+# Order agreement only sees ORDER. With few cells several frames produce the same order, and the
+# ruling is an honest `tie` with no winner. The DIRECTION of each step separates them, and the
+# floor is what says which direction is legal.
+
+def _floor_row_probe():
+    """A floor plus a mid-wafer row: (meta, floor, y, sorted xs in that row)."""
+    m = _meta(cols=41, rows=41, start_x=0, start_y=0)
+    floor = _valid_die_floor(m)
+    rows = {}
+    for (x, y) in floor:
+        rows.setdefault(y, set()).add(x)
+    y = sorted(rows)[len(rows) // 2]
+    return m, floor, y, sorted(rows[y])
+
+
+def _score_pair(meta, floor, cells, ks):
+    c, _e, r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": dict(meta), "cells": list(cells), "indices": list(ks)}],
+        floor, meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    top = max(x["index_agreement"] for x in c)
+    on_order = [x["frame"] for x in c if x["index_agreement"] == top]
+    least = min(x["index_violations"] for x in c if x["index_agreement"] == top)
+    after = [x["frame"] for x in c if x["index_agreement"] == top
+             and x["index_violations"] == least]
+    return c, r, on_order, after
+
+
+def test_direction_narrows_a_tie_that_order_alone_cannot():
+    """THE TWO-CELL CASE, BOTH WAYS. Measured before this axis existed: a horizontal pair left
+    FOUR frames tied at 2/2 with `reason=tie` and no winner, because order is all that order
+    agreement can see. Direction halves it."""
+    m, floor, y, xs = _floor_row_probe()
+    x0 = xs[len(xs) // 2]
+
+    _c, r, on_order, after = _score_pair(m, floor, [(x0, y), (x0 + 1, y)], [1, 2])
+    assert on_order == sorted(["rot0_front", "rot180_back", "rot270_front", "rot270_back"]) \
+        or set(on_order) == {"rot0_front", "rot180_back", "rot270_front", "rot270_back"}, on_order
+    assert set(after) == {"rot0_front", "rot180_back"}, (
+        "direction must eliminate the two frames whose step is not rightward: %s" % after)
+
+    # 🔴 AND IT HONESTLY STOPS THERE. `rot0_front` and `rot180_back` are the two frames that
+    #    map a rightward step to a rightward step - a real symmetry of a single horizontal
+    #    step, not a scorer defect. Forcing a winner out of it would be the confident wrong
+    #    answer this module refuses everywhere else.
+    assert r["reason_code"] == ma.RULING_TIE and r["winner"] is None
+
+
+def test_direction_decides_when_the_step_leaves_the_serpentine():
+    """The separation is demonstrably NEW: same floor, three cells, and the wrap happens at the
+    END of the floor's row - which is the only place a downward step is licensed."""
+    m, floor, y, xs = _floor_row_probe()
+    cells = [(xs[-2], y), (xs[-1], y), (xs[-1], y + 1)]
+    c, r, on_order, after = _score_pair(m, floor, cells, [1, 2, 3])
+    assert len(on_order) > 1, "guard: order alone must still tie, or nothing is being shown"
+    assert after == ["rot0_front"]
+    assert r["winner"] == "rot0_front"
+    assert r["decided_by"] == "direction", (
+        "the ruling must say WHICH axis decided - a die-margin winner and a direction winner "
+        "are different claims")
+    win = next(x for x in c if x["frame"] == "rot0_front")
+    assert win["index_violations"] == 0 and win["index_steps"] == 2
+
+
+def test_the_floor_is_the_judge_of_a_wrap_not_the_source():
+    """The source's own extent would say the row ended after one cell. Measured: index 1 sits at
+    x=20 of a floor row spanning x=0..40, so TWENTY dies remain to its right and a downward step
+    there is unlicensed. Judging against the source would license it and the rotated frames
+    would stay indistinguishable."""
+    m, floor, y, xs = _floor_row_probe()
+    x0 = xs[len(xs) // 2]
+    judge = ma.direction_judge([(x, yy) for (x, yy) in
+                                [(a, b) for (a, b) in floor]])
+    rows, dir_of, _next = judge
+    assert len([x for x in rows[y] if x > x0]) > 0, "fixture: the row must continue rightward"
+
+    # a mid-row downward step: the source has two cells and nothing to its right, but the FLOOR
+    # says the row was not finished
+    _c, _r, _order, after = _score_pair(m, floor, [(x0, y), (x0, y + 1)], [1, 2])
+    mid_wrap = next(x for x in _c if x["frame"] == "rot0_front")
+    assert mid_wrap["index_violations"] == 1, (
+        "a wrap with dies still left in the floor's row is a violation")
+
+
+def test_a_gap_in_a_row_is_not_a_violation():
+    """Direction counts, distance does not. Measured: a same-row pair stepping +4 is still
+    rightward. Counting distance would make every partial map a pile of violations, and partial
+    maps are the only population this feature exists for."""
+    m, floor, y, xs = _floor_row_probe()
+    x0 = xs[len(xs) // 2]
+    c, _r, _order, _after = _score_pair(m, floor, [(x0, y), (x0 + 4, y)], [1, 2])
+    straight = next(x for x in c if x["frame"] == "rot0_front")
+    assert straight["index_violations"] == 0, "a gap is not a wrong direction"
+    assert straight["index_steps"] == 1
+
+
+def test_the_violation_count_ships_with_its_denominator():
+    """Zero violations out of zero steps is not the same claim as zero out of forty. The count
+    is the only number in this file where SMALLER is better, so it travels with what it was
+    measured over."""
+    m, floor, y, xs = _floor_row_probe()
+    c, _r, _o, _a = _score_pair(m, floor, [(xs[0], y), (xs[1], y)], [1, 2])
+    for row in c:
+        if row["state"] != ma.STATE_SCORED:
+            continue
+        assert (row["index_violations"] is None) == (row["index_steps"] is None)
+        assert row["index_steps"] == 1
+
+
 def _reproduce_agreement_at(shift, cells, meta, frame, reference):
     """Independently place `cells` under `frame` and count how many land on `reference` when
     moved by `shift`. Used to bind the SHIPPED offset to the SHIPPED agreement.

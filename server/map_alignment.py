@@ -1104,6 +1104,84 @@ def _index_member(phys, cell_owner, idx_k, idx_has):
     return hits
 
 
+def direction_judge(ref_phys):
+    """기준 바닥(정준 좌표) → 서펜타인의 **규칙 자체**: 행 방향과 행 범위.
+
+    🔴 **판사는 기준이지 소스가 아니다**(제품 소유자 2026-08-06). 실측이 그 이유를 준다:
+       가로로 붙은 두 셀만 있는 소스에서, 1번은 바닥 행 y=20의 x=20에 앉고 **그 행에는
+       오른쪽으로 20개가 더 남아 있다**. 소스 자신의 범위로 판정하면 「행이 한 칸 만에
+       끝났다」가 되어 아래로 내려가는 것이 정당해 보이고, 그래서 회전된 프레임이 정답과
+       구별되지 않는다. 바닥에 남은 20개가 그 내려감을 **불법으로** 만든다.
+
+    반환 `(rows, dir_of, next_row)` — 행별 x 집합 · 행별 진행 방향(+1 오른쪽 / -1 왼쪽) ·
+    그 행 다음에 오는 행. 방향은 `serpentine_index`의 ②와 **같은 규칙**(행마다 교대)이고,
+    첫 행이 왼→오인 것도 같다 — 두 곳이 갈리면 훑기와 방향 검사가 서로를 부정한다.
+    """
+    rows = {}
+    for (x, y) in (ref_phys or ()):
+        rows.setdefault(int(y), set()).add(int(x))
+    order = sorted(rows)                       # 정준 좌표계에서 가장 작은 y가 맨 위
+    dir_of = {y: (1 if i % 2 == 0 else -1) for i, y in enumerate(order)}
+    next_row = {y: (order[i + 1] if i + 1 < len(order) else None)
+                for i, y in enumerate(order)}
+    return rows, dir_of, next_row
+
+
+def direction_violations(phys, cell_owner, idx_k, idx_has, judge):
+    """연속한 순번 사이의 걸음 중 **서펜타인을 벗어난 것**의 수 → `(위반수, 잰 걸음수)`.
+
+    ═══ 왜 이 축이 필요한가 (실측 2026-08-06) ═══════════════════════════════════════════
+    훑기 순서 일치(`index_agreement`)는 **순서만** 본다. 셀이 둘뿐이면 여덟 프레임 중 넷이
+    같은 순서를 만들 수 있고, 실제로 그렇다 — 가로 쌍에서 `rot0_front`·`rot180_back`·
+    `rot270_front`·`rot270_back`이 **전부 2/2로 동점**이고 판정은 `tie`, 승자 없음이었다.
+    걸음의 **방향**은 그 넷을 가른다: 1번에서 2번으로 가는 걸음이 오른쪽인지 아래인지는
+    프레임마다 다르고, 바닥이 그중 무엇이 합법인지 안다.
+
+    ═══ 규칙 ══════════════════════════════════════════════════════════════════════════
+    ① **같은 행 안**: 걸음의 부호가 그 행의 방향과 같아야 한다.
+    ② **행을 바꿈(wrap)**: 두 조건이 **둘 다** 참일 때만 합법이다 —
+         · 진행 방향으로 그 행에 **바닥의 다이가 더 남아 있지 않다**(안 남았으면 행이 끝났다), 그리고
+         · 옮겨 간 행이 바닥 기준 **바로 다음 행**이다.
+    ③ **거리는 세지 않는다, 방향만 센다.** 실측: 같은 행에서 `+4` 건너뛴 걸음도 방향은
+       오른쪽이다. 부분 맵의 구멍은 위반이 아니며, 거리를 세면 이 기능이 존재하는 유일한
+       모집단(부분 맵)이 통째로 위반 덩어리가 된다.
+    ④ **바닥 밖 셀은 판정하지 않는다** — 거기서 행 방향을 물을 수 없다. 그 셀의 문제는
+       점유 축이 이미 센다. 세면 같은 사실을 두 축에서 두 번 벌하는 것이다.
+
+    🔴 **작을수록 좋다.** 이 파일의 다른 지표는 전부 클수록 좋으므로, 이 수를 저쪽 문턱에
+       섞으면 같은 이름이 반대 방향을 뜻하게 된다(`map_overlay_config.json`이 이미 그 경고를
+       적어 두었다: 위반 지표는 자기 선언을 따로 갖는다).
+    """
+    rows, dir_of, next_row = judge
+    if not rows or idx_has is None:
+        return None, 0
+    owner = cell_owner or [0] * len(phys)
+    per_map = {}
+    for i in range(len(phys)):
+        if i < idx_has.size and idx_has[i]:
+            per_map.setdefault(owner[i] if i < len(owner) else 0, []).append(
+                (int(idx_k[i]), i))
+    bad = steps = 0
+    for lst in per_map.values():
+        lst.sort()
+        for (_ka, ia), (_kb, ib) in zip(lst, lst[1:]):
+            ax, ay = int(phys[ia][0]), int(phys[ia][1])
+            bx, by = int(phys[ib][0]), int(phys[ib][1])
+            if ay not in dir_of:               # ④ 바닥 밖 - 판정하지 않는다
+                continue
+            steps += 1
+            d = dir_of[ay]
+            if ay == by:                       # ① 같은 행
+                if (bx - ax) * d <= 0:
+                    bad += 1
+                continue
+            # ② 행 바꿈
+            left_in_row = any((x > ax) if d > 0 else (x < ax) for x in rows[ay])
+            if left_in_row or by != next_row.get(ay):
+                bad += 1
+    return bad, steps
+
+
 def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left):
     """후보마다 「최소 순번 다이를 기준 좌상단에 얹는」 평행이동 → `({프레임: (dx,dy)}, 사유)`.
 
@@ -1939,6 +2017,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     # 역변환이 규약을 놓치는 사고를 이 파일이 이미 두 번 겪었다.
     reference_top_left = None
     reference_walk = {}
+    _phys_ref = None            # 방향 판정도 이 좌표를 쓴다([3a-2]) — 없으면 그 축도 없다
     if ref_pairs:
         try:
             _rptf = map_overlay.make_physical_transform(reference_meta)
@@ -2110,6 +2189,17 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             c["index_member"] = None
             continue
         c["index_member"] = _index_member(c["_phys"], cell_owner, idx_k, idx_has)
+
+    # [3a-2] 걸음의 **방향**. 순서 일치가 못 가르는 자리를 가른다(§direction_violations).
+    #        판사는 기준 바닥이고, 그것은 순번 훑기와 **같은 정준 좌표계**에서 읽는다.
+    _judge = direction_judge(_phys_ref) if _phys_ref else None
+    for c in per_candidate:
+        if c.get("index_member") is None or _judge is None:
+            c["index_violations"] = None
+            c["index_steps"] = None
+            continue
+        c["index_violations"], c["index_steps"] = direction_violations(
+            c["_phys"], cell_owner, idx_k, idx_has, _judge)
 
     # [3b] 값 일치: 이 후보가 앉힌 자리의 **기준 값과 소스 값이 같은가**, 셀마다.
     #      기준이나 소스에 값이 없으면 **None이지 0이 아니다.** 0으로 내보내면 「값으로 재
@@ -2285,6 +2375,11 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             "index_agreement": c.get("index_agreement"),
             "index_discriminating": c.get("index_discriminating"),
             "index_total": c.get("index_total"),
+            # 걸음의 방향(§direction_violations). 🔴 **작을수록 좋다** — 이 파일에서 유일하게
+            # 방향이 반대인 수이고, 분모(`index_steps`)를 옆에 실어 「0 위반」이 잰 결과인지
+            # 잴 것이 없었던 것인지 화면이 구별할 수 있게 한다.
+            "index_violations": c.get("index_violations"),
+            "index_steps": c.get("index_steps"),
             "index_margin": (None if c.get("index_agreement") is None or k_runner is None
                              else int(c["index_agreement"] - k_runner)),
             # 값 지표는 **점유를 대체하지 않는다.** 기준이 값을 안 실으면 점유가 정직한 답이고,
@@ -2917,6 +3012,27 @@ def _rule_on(candidates: list, thresholds: dict = None,
 
     best = max(c[a_key] for c in scoreable)
     tops = [c for c in scoreable if c[a_key] == best]
+    # ═══ 순번 축의 **동점은 방향이 가른다** (제품 소유자 2026-08-06) ═══════════════════════
+    # 「index 순서상 방향이 안 맞잖아」. 순서 일치는 순서만 보므로 셀이 적으면 여러 프레임이
+    # 같은 순서를 만든다 — 실측: 가로 쌍에서 넷이 2/2 동점, 판정 `tie`, 승자 없음. 걸음의
+    # 방향은 그 넷을 가른다(§direction_violations).
+    #
+    # 🔴 **대체가 아니라 포섭이다.** 순서를 재현하면서 걸음이 틀린 프레임은 순서도 걸음도
+    #    맞는 프레임보다 나빠야 하므로, 순서가 1차이고 방향이 그 안에서 가른다. 순서가 이미
+    #    갈렸으면 이 갈래는 발화하지 않는다.
+    #
+    # 🔴 **문턱은 여기 안 쓴다.** `min_margin_dies`의 단위는 다이 개수이고 위반은 걸음 수라,
+    #    한 수를 다른 단위의 문턱에 대면 조작자가 안 건드린 선언의 뜻이 조용히 바뀐다
+    #    (`map_overlay_config.json`이 이미 「위반 지표는 자기 선언을 따로 갖는다」고 적어 둠).
+    #    그래서 이 갈래는 **자기 결정을 이름으로 신고**하고(`decided_by`), 다이 단위 격차
+    #    비교를 건너뛴다 — 건너뛴다는 사실 자체가 판정에 실려 나간다.
+    decided_by = None
+    if metric == METRIC_INDEX and len(tops) > 1:
+        vs = [c.get("index_violations") for c in tops]
+        if all(v is not None for v in vs) and len(set(vs)) > 1:
+            least = min(vs)
+            tops = [c for c in tops if c.get("index_violations") == least]
+            decided_by = "direction"
     top = tops[0]
     base = dict(ctx, margin=top.get(m_key),
                 discriminating=top.get(d_key),
@@ -2947,9 +3063,16 @@ def _rule_on(candidates: list, thresholds: dict = None,
     #    선언이 있으면 그 수로, 없으면 1로 - 어느 쪽이든 **같은 코드가 같은 순서로** 잰다.
     if (top.get(d_key) or 0) < th["min_discriminating_dies"]:
         return dict(base, winner=None, reason_code="too_few_discriminating")
-    if top.get(m_key) is None or top[m_key] < max(1, th["min_margin_dies"]):
-        return dict(base, winner=None, reason_code="margin_too_small")
-    return dict(base, winner=top["frame"], reason_code=None)
+    # 🔴 방향이 가른 판정은 **다이 격차 문턱을 밟지 않는다.** 밟으면 언제나 격차 0이라
+    #    `margin_too_small`로 죽는다 - 순서가 동점이었다는 것이 이 갈래의 전제이기 때문이다.
+    #    건너뛰는 대신 **무엇이 갈랐는지 이름으로 신고**한다: 조작자에게 「다이 격차로 뽑은
+    #    1등」과 「걸음 방향으로 뽑은 1등」은 다른 주장이고, 판정 dict가 그것을 나른다.
+    if decided_by is None:
+        if top.get(m_key) is None or top[m_key] < max(1, th["min_margin_dies"]):
+            return dict(base, winner=None, reason_code="margin_too_small")
+    return dict(base, winner=top["frame"], reason_code=None, decided_by=decided_by,
+                index_violations=top.get("index_violations"),
+                index_steps=top.get("index_steps"))
 
 
 # ---------------------------------------------------------------------------
