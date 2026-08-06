@@ -408,11 +408,12 @@ def assumed_meta_for_unregistered(cells, basis_meta: dict, basis: dict = None):
         return None
     import map_meta_registrar
     frame = map_meta_registrar.synthesize_grid_meta(*bbox)
-    # [D5] 격자는 바닥의 것으로 갈아끼운다 — 치수와 시작을 **함께**. 하나만 빌리면 평행이동이
-    # 남고, 그 오차는 시프트 풀이(±3)를 넘어서면 조용한 오답이 된다(위 실측 467/467).
-    # [D6] 그 갈아끼우기는 이제 자기 철자를 갖는다(`assume_grid_from`) — 여기서 손으로 쓰던
-    #      네 줄이 그 함수의 몸통이다. 빌릴 것이 없으면 None이므로 합성 프레임을 그대로 쓴다.
+    # [D6] 치수 갈아끼우기는 자기 철자를 갖는다(`assume_grid_from`). 빌릴 것이 없으면
+    #      None이므로 합성 프레임을 그대로 쓴다.
     frame = map_overlay.assume_grid_from(frame, basis_meta, basis) or frame
+    # [D10-b] 원점 빌리기는 여기서 손으로 하지 않는다 — `synthesize_grid_meta`가 이미
+    # `auto_registered`를 달아 두므로 `assume_grid_from`이 그 표지를 읽고 알아서 빌린다.
+    # 술어가 한 곳에 있어야 등록기 행과 미등록 맵이 **같은 규칙**을 받는다.
     return map_overlay.assume_phys_from(frame, basis_meta, basis)
 
 
@@ -460,11 +461,19 @@ def grid_needs_basis(meta: dict | None, basis_meta: dict | None) -> bool:
 
     바닥에 읽을 격자가 없으면 **False** — 빌릴 것이 없으면 이 축은 열리지 않는다. 그때
     호출자는 종전대로 `grid_dims_missing`/`grid_dims_differ`로 이름을 대고 거절한다.
+
+    🔴 [D10] **치수만 비교한다** (총괄 판정 2026-08-06). 종전에는 `_grid_of` 전체를 견줬고
+       거기에는 `start_x/start_y`가 들어 있었다. 그래서 **치수가 같고 원점만 다른 맵**이
+       빌림을 발동시켰고, 빌림이 그 원점을 바닥의 것으로 덮었다 — 즉 **확정된 원점이 다음
+       채점 읽기에서 지워졌다**(실측 2026-08-06: 41x41 동일, 원점만 (0,0) 대 (1,1)인 맵이
+       `grid_needs_basis=True`로 빌림을 타고 start가 (1,1)로 되돌아왔다). 결정한 사실을
+       다음 패스가 덮어쓰면 아무것도 결정하지 않은 것이다. 원점은 이 맵의 사실이고
+       확정이 알아내는 대상이므로, 빌림의 판정에서 빠진다(§map_overlay.assume_grid_from).
     """
-    b = map_overlay._grid_of(basis_meta)
+    b = map_overlay.grid_dims(basis_meta)
     if b is None:
         return False
-    return map_overlay._grid_of(meta) != b
+    return map_overlay.grid_dims(meta) != b
 
 
 def borrowed_meta_for(meta: dict, basis_meta: dict, basis: dict = None,
@@ -509,7 +518,7 @@ def borrowed_meta_for(meta: dict, basis_meta: dict, basis: dict = None,
 #    그래서 여기 넘기는 「셀」은 **바닥 격자 상자의 두 모서리**다: 채점이 실제로 본 bbox와
 #    다르지만, 위 문단이 그 차이가 출력에 도달할 수 없음을 말하고 검사가 그것을 못 박는다.
 def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
-                       frame: str, mark: dict) -> dict | None:
+                       frame: str, mark: dict, shift: dict = None) -> dict | None:
     """확정 한 건이 맵 하나에 대해 쓰는 `grid_metadata`. 쓸 것이 없으면 None. **순수 함수다.**
 
     `meta`: 그 맵의 **저장된** 메타(없으면 None). `basis_meta`: 바닥(유효 다이 맵)의 메타.
@@ -597,8 +606,86 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
         if base.get(map_overlay.GRID_ASSUMED_KEY):
             base.pop(map_overlay.AUTO_REGISTERED_KEY, None)
     base["rotation"], base["side"] = rot, side
+    # ═══ [D9] **치수는 바닥에서, 원점은 정렬에서** (총괄 판정 2026-08-06) ══════════════
+    # [D8]은 **격자 치수**에 대한 논거이고 그대로 선다: 부분 맵의 등록기 격자는 하한이지
+    # 격자가 아니므로 바닥의 치수를 빌리는 것이 맞다. **원점은 다른 주장이다** — 바닥의
+    # 원점은 *바닥이* 어디서 시작하는지를 말하고, 이 맵의 원점은 **정렬이 알아낸 것**이다.
+    # 둘을 한 값으로 접은 것이 위 실측의 오류 ①(반대 방향 한 시프트)이다.
+    #
+    # 🔴 그리고 이것이 이 화면의 **이름 그대로**다: 좌표계 확정. 원점은 좌표계의 일부이고,
+    #    프레임만 확정되고 원점은 정렬 이전의 추측으로 남은 행은 절반만 확정된 것이며,
+    #    빠진 절반이 **모든 다이를 움직이는** 절반이다. 그래서 별도 필드를 만들지 않는다 —
+    #    「원점은 X인데 X에 이 수를 더해서 읽어라」는 오늘 두 번 값을 치른 바로 그 모양이다.
+    #
+    # ⚠️ **소비자 노출 — 다음 라운드에서 물을 것**: `client2/src/map_editor.js:6459`가 Push
+    #    때마다 `grid_metadata`를 읽어 되쓴다. 확정된 원점을 정렬 이전의 값으로 덮어쓸 수
+    #    있는지는 이 파일에서 답할 수 없다. 총괄에 보고했고 이 주석이 그 자리를 표시한다.
+    if shift:
+        st = start_for_placement(base, basis_meta, shift)
+        if st is not None:
+            base["grid_start_x"], base["grid_start_y"] = st
     base[map_overlay.FRAME_CONFIRMED_KEY] = dict(mark or {})
     return base
+
+
+def start_for_placement(framed_meta: dict, target_meta: dict, shift: dict):
+    """확정된 배치 → 그 배치를 재현하는 **이 맵 자신의 원점** `(start_x, start_y)`. 못 내면 None.
+
+    ═══ 왜 이 함수가 있는가 (실측 2026-08-06) ═══════════════════════════════════════════
+    종전 확정은 **배치를 통째로 버렸다.** 프레임만 적고 원점은 바닥의 것을 그대로 베꼈다.
+    실측(바닥 start (1,1) · 맵 start (0,0) — 이 박스에 실재하는 조합):
+    채점은 `rot90_front`에 **266/266**과 시프트 `(1,-1)`을 냈는데, 확정을 거쳐 다시 읽으면
+    **266개 중 0개**가 채점이 놓은 자리에 앉았고 남은 어긋남은 **일률적으로 `(2,-2)`**,
+    정확히 시프트의 **두 배**였다. 오류가 둘이고 서로 더해졌기 때문이다:
+      ① 맵의 원점을 바닥의 원점으로 덮어써서 **반대 방향으로 한 시프트** 밀었다.
+      ② 채점이 푼 배치를 **한 번도 적용하지 않았다**.
+    바닥과 맵이 둘 다 원점 (0,0)이면 시프트가 (0,0)이라 두 오류가 **동시에 사라진다** —
+    이 저장소의 모든 픽스처가 그 대조군이고, 그래서 이 결함이 안 보였다.
+
+    ═══ 변환 ═══════════════════════════════════════════════════════════════════════════
+    `start = 채점이 쓴 start - L⁻¹(shift)`.
+
+    🔴 **`shift`는 기준의 시각 좌표계에 산다**(회전 이후). 원점은 **맵 자신의 시각 좌표계**에
+       산다(회전 이전). 그래서 그냥 더하거나 빼면 안 되고 후보 프레임으로 **역회전**해야 한다.
+       실측이 그 대가를 준다 — `start ± (dx,dy)`는 여덟 중 **정확히 둘**에서만 맞는다
+       (`rot0_front`에 −, `rot180_front`에 +). 나머지 여섯은 최대 `(10,-8)`까지 어긋나고,
+       `rot90_back`·`rot270_back`에서는 하필 **(1,1)** 어긋나 「한 칸 밀렸다」로 보인다.
+       눈으로 고치는 사람은 `rot0_front`를 시험하고, 맞는 것을 보고, 출하한다.
+
+    🔴 **L을 손으로 쓰지 않는다.** 변환기 계층(`make_frame_transform`)을 그대로 불러 세 점을
+       찍어 선형부를 **읽는다** — bbox·start·y반전 규약이 자동으로 일치한다. 손으로 옮겨 쓰면
+       그 셋 중 하나를 놓치고, 이 파일은 그 사고를 이미 두 번 겪었다(QA O3 · B1).
+       변환은 아핀이므로 세 점이면 선형부가 완전히 정해진다.
+
+    ✅ **검산은 프레임 불변성이다.** 같은 물리 배치에 대해 이 함수가 내는 원점은 **여덟 후보에서
+       모두 같아야 한다** — 원점은 회전 이전의 양이므로 프레임에 의존할 수 없다. 역회전이
+       빠졌거나·부호가 틀렸거나·회전이 어긋나면 여덟이 갈린다. 단언 하나가 셋을 다 잡는다
+       (`test_the_derived_start_is_the_same_under_all_eight_frames`).
+    """
+    if not isinstance(shift, dict):
+        return None
+    dx, dy = shift.get("dx"), shift.get("dy")
+    if dx is None or dy is None:
+        return None
+    g = map_overlay._grid_of(framed_meta)
+    if g is None:
+        return None
+    try:
+        tf = map_overlay.make_frame_transform(framed_meta, target_meta)
+    except ValueError:
+        return None
+    # 아핀 변환의 선형부를 **읽는다**. 평행이동(bbox·start)은 차분에서 상쇄된다.
+    o, ex, ey = tf(0, 0), tf(1, 0), tf(0, 1)
+    a11, a21 = ex[0] - o[0], ex[1] - o[1]
+    a12, a22 = ey[0] - o[0], ey[1] - o[1]
+    det = a11 * a22 - a12 * a21
+    # 여덟 후보의 선형부는 전부 부호 있는 치환행렬이라 행렬식이 ±1이다. 아니면 이 자리의
+    # 전제가 깨진 것이므로 **원점을 지어내지 않고 거절한다** — 조용한 오답보다 낫다.
+    if det not in (1, -1):
+        return None
+    u = (a22 * dx - a12 * dy) // det
+    v = (a11 * dy - a21 * dx) // det
+    return int(g["start_x"]) - u, int(g["start_y"]) - v
 
 
 def cells_outside_grid(meta: dict, cells) -> str | None:

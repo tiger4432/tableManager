@@ -274,7 +274,8 @@ META_SOURCE_NAME = "user"
 
 
 def _write_confirmed_meta(db, contributors: list, metas: dict, basis_meta: dict,
-                          reference: dict, frame: str, mark: dict) -> list:
+                          reference: dict, frame: str, mark: dict,
+                          ruling: dict = None) -> list:
     """확정된 좌표계를 `wafer_map_metadata`에 남긴다 → 쓴 `(target_table, map_id)` 목록.
 
     맵마다 한 행이고, **제외된 기여자는 쓰지 않는다** — 제외된 소스는 어디에도 정렬되지
@@ -308,8 +309,12 @@ def _write_confirmed_meta(db, contributors: list, metas: dict, basis_meta: dict,
         # 프레임은 **그 기여자가 적용한 것**이다. 한 판에 여러 소스가 서로 다른 프레임으로
         # 정렬될 수 있고, 그때 판의 대표 프레임을 전부에 쓰면 나머지 맵의 기록이 거짓이 된다.
         applied = c.get("applied_frame") or frame
+        # 🔴 배치는 소스 행이 쓰는 것과 **같은 함수**에서 온다(§_placement_of). 여기서 다시
+        #    규칙을 쓰면 기록된 시프트와 저장된 원점이 서로 다른 배치를 가리킬 수 있고,
+        #    그 둘이 갈리면 화면과 기록이 서로를 부정한다.
         meta = map_alignment.confirmed_meta_for(
-            metas.get((table, map_id)), basis_meta, basis, applied, mark)
+            metas.get((table, map_id)), basis_meta, basis, applied, mark,
+            _placement_of(c, ruling))
         if meta is None:
             continue
         items.append(schemas.GeneralUpdateItem(
@@ -537,8 +542,15 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
         confirmed_frame=frame or None, map_table=map_table or None,
         x_col=cols.get("x") or None, y_col=cols.get("y") or None,
         value_col=cols.get("val") or None,
+        # 🔴 기준은 **판정이 선 그 기준**이다 — 여기서 다시 찾지 않는다. 쓰기 시점에 다시
+        #    조회하면 그것이 같은 사실의 두 번째 유도이고, 채점과 쓰기 사이에 바닥이 바뀐
+        #    바로 그 순간(이 컬럼이 존재하는 이유가 되는 순간)에 갈린다 — 기록은 조작자가
+        #    보고 결정한 바닥이 아니라 지금의 바닥을 가리키게 된다. `shift`와 같은 규율.
         reference_table=reference.get("table"),
         reference_map_id=reference.get("map_id"),
+        reference_cell_count=_reference_count_of(reference),
+        # 잠정 순위였는가. 판정이 실어 온 목록을 **그대로** 옮긴다(§models 주석: 세 상태).
+        thresholds_defaulted=_defaulted_text(ruling),
         ruling_state=ruling_state,
         ruling_reason=ruling.get("reason_code"),
         winner_frame=ruling.get("winner"),
@@ -567,19 +579,11 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
     #    🔴 **이긴 프레임에 선 기여자만** 이 값을 받는다. 조작자가 다른 프레임으로 덮어썼다면
     #    그 프레임에서 채점된 배치는 존재하지 않으므로 **null이지 0이 아니다** — 0은 「원점에
     #    놓았다」는 주장이고, 그것이 방금 고친 거짓말이다.
-    ruled_shift = (ruling or {}).get("shift") or {}
-    ruled_winner = (ruling or {}).get("winner")
-
-    def _placement_of(c):
-        if not ruled_shift or not ruled_winner:
-            return None, None
-        if c.get("applied_frame") != ruled_winner:
-            return None, None
-        return _as_int(ruled_shift.get("dx")), _as_int(ruled_shift.get("dy"))
-
     for c in contributors:
         name = c.get("source_name") or "unknown"
-        c_dx, c_dy = _placement_of(c)
+        _p = _placement_of(c, ruling)
+        c_dx = None if _p is None else _p["dx"]
+        c_dy = None if _p is None else _p["dy"]
         db.add(models.FrameConfirmationSource(
             confirmation_uid=uid,
             geometry_basis=bases.get((str(c.get("source_table") or ""),
@@ -624,7 +628,7 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
                 "confirmed_at": (header.confirmed_at.isoformat()
                                  if header.confirmed_at else None)}
         wrote = _write_confirmed_meta(db, contributors, metas, basis_meta,
-                                      reference, frame, mark)
+                                      reference, frame, mark, ruling)
         if wrote:
             logger.info("[frame_confirm] %s stored the confirmed coordinate system for %d "
                         "map(s): %s", uid, len(wrote),
@@ -706,6 +710,56 @@ def derived_cell_scope(db, confirmation_uid: str):
 def _priority_of(source_name: str, table_name: str = None) -> int:
     from database import crud
     return crud.get_source_priority(source_name, table_name)
+
+
+def _placement_of(contributor: dict, ruling: dict):
+    """이 기여자의 **채점된 배치** `{"dx","dy"}`. 없으면 None이고 None은 (0,0)이 아니다.
+
+    🔴 **철자는 이것 하나다.** 소스 행(`shift_dx/dy`)과 확정 메타의 원점
+       (`map_alignment.start_for_placement`)이 같은 배치를 써야 하고, 두 곳이 각자 규칙을
+       가지면 갈린다 — 오늘 이 코드베이스가 두 번 값을 치른 모양이다.
+
+    배치는 **채점기가 만든 서버의 사실**이다. 요청 본문의 `shift_dx/dy`는 읽지 않는다
+    (화면은 상수 0을 보내 왔다). 정본은 `ruling.shift`(= 이긴 후보 행의 `shift`)다.
+
+    🔴 **이긴 프레임에 선 기여자만** 배치를 갖는다. 조작자가 다른 프레임으로 덮어썼다면
+       그 프레임에서 채점된 배치는 존재하지 않는다 — null이지 0이 아니다. 0은 「원점에
+       놓았다」는 주장이고 그것이 방금 고친 거짓말이다.
+    """
+    r = ruling or {}
+    sh = r.get("shift") or {}
+    if not sh or not r.get("winner"):
+        return None
+    if (contributor or {}).get("applied_frame") != r.get("winner"):
+        return None
+    dx, dy = _as_int(sh.get("dx")), _as_int(sh.get("dy"))
+    if dx is None or dy is None:
+        return None
+    return {"dx": dx, "dy": dy}
+
+
+def _reference_count_of(reference: dict):
+    """채점이 **실제로 쓴** 기준 셀 수. 없으면 None이고 None은 0이 아니다(§models 주석).
+
+    다시 세지 않는다 — 판정이 실어 온 수를 그대로 옮긴다. 쓰기 시점에 세면 채점과 쓰기
+    사이에 바닥이 바뀐 순간에 두 수가 갈리고, 그 순간이 이 컬럼이 존재하는 이유다.
+    """
+    return _as_int((reference or {}).get("count"))
+
+
+#: 문턱 기본값 목록의 저장 철자. 세 상태를 가른다 — None(안 실려 옴) · ''(전부 선언) ·
+#: 'a,b'(이 키들이 기본값). 「없는 키와 빈 목록은 받는 쪽에서 같아 보인다」는 이 파일과
+#: `map_alignment` 양쪽의 규율이고, 저장에서도 접지 않는다.
+def _defaulted_text(ruling: dict):
+    v = (ruling or {}).get("thresholds_defaulted")
+    if v is None:
+        return None
+    if isinstance(v, str):
+        return v
+    try:
+        return ",".join(str(k) for k in v)
+    except TypeError:
+        return None
 
 
 def _as_int(v):

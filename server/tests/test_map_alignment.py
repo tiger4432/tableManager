@@ -1600,6 +1600,130 @@ def test_the_anchor_places_the_map_and_says_so():
         "the whole point: under the anchor, occupancy is no longer an 8-way tie: %s" % by)
 
 
+# ---------------------------------------------------------------------------
+# THE ORIGIN, AND THE PROPERTY THAT WOULD HAVE CAUGHT ALL FOUR SITES AT ONCE
+# ---------------------------------------------------------------------------
+# 🔴 EVERY OTHER FIXTURE IN THIS REPO PUTS BOTH ORIGINS AT THE SAME PLACE, AND THAT IS WHY
+#    NONE OF THEM COULD SEE THIS. `_meta()` defaults to (1,1) for both sides;
+#    `scripts/seed_valid_die_ref_floor.py`, `trace_fixture/world.py` and `trace_fixture/
+#    frames.py` all use (0,0). When the two origins agree the alignment's translation is
+#    ZERO, and a term that is zero everywhere can be dropped from four separate expressions
+#    without a single test noticing. Measured 2026-08-06: it had been dropped from four.
+#
+# So this section varies the two origins INDEPENDENTLY. A fixture that does not is structurally
+# blind here, no matter how many frames or cells it exercises.
+
+def _confirm_and_rescore(ref_start, src_start, planted, n=180):
+    """Score -> confirm -> score again with what the confirmation wrote.
+
+    Returns `(first_ruling, first_winner_row, confirmed_meta, second_ruling, second_winner_row)`.
+    Nothing about the transform is reimplemented here: both halves go through
+    `score_candidates` and the confirmation goes through `confirmed_meta_for`, which is the
+    function `frame_confirmation._write_confirmed_meta` calls.
+    """
+    ref_meta = _meta(cols=41, rows=41, start_x=ref_start[0], start_y=ref_start[1])
+    floor = _valid_die_floor(ref_meta)
+    cells, ks = _partial_job(ref_meta, floor, n)
+    src_meta = dict(ref_meta, grid_start_x=src_start[0], grid_start_y=src_start[1])
+    d = (src_start[0] - ref_start[0], src_start[1] - ref_start[1])
+    recorded = [(x + d[0], y + d[1]) for (x, y) in _plant(ref_meta, cells, planted)]
+
+    def score(meta):
+        c, _e, r, _s = ma.score_candidates(
+            [{"map_id": "M1", "meta": meta, "cells": recorded, "indices": ks}],
+            floor, ref_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+        return r, next((x for x in c if x["frame"] == r["winner"]), None)
+
+    r1, w1 = score(src_meta)
+    confirmed = ma.confirmed_meta_for(
+        src_meta, ref_meta, {"table": "vd", "map_id": "F"}, r1["winner"], {},
+        (w1 or {}).get("shift"))
+    r2, w2 = score(confirmed)
+    return r1, w1, confirmed, r2, w2
+
+
+@pytest.mark.parametrize("ref_start,src_start", [
+    ((1, 1), (0, 0)), ((0, 0), (1, 1)), ((3, 7), (0, 0)), ((-2, 5), (4, -3)),
+    ((0, 0), (0, 0)), ((1, 1), (1, 1)),
+])
+@pytest.mark.parametrize("planted", list(ma.CANDIDATE_FRAMES))
+def test_a_confirmed_origin_reproduces_the_alignment_it_was_derived_from(
+        ref_start, src_start, planted):
+    """THE ROUND TRIP, and the property the whole origin fix exists to satisfy.
+
+    Confirm the alignment, then score the same cells again using ONLY what the confirmation
+    wrote. If the stored origin really is the origin that reproduces the alignment, the second
+    scoring needs NO residual translation at all.
+
+    🔴 A MISSING TERM AND A DOUBLED TERM BOTH BREAK THIS, which is why it replaces the four
+       separate assertions it would have taken to catch the four sites individually:
+       measured before the fix, the residual was the shift (term missing) or twice the shift
+       (term applied once in the wrong direction and never in the right one).
+    """
+    r1, w1, confirmed, r2, w2 = _confirm_and_rescore(ref_start, src_start, planted)
+    assert r1["winner"] == planted, "guard: the first scoring must find the planted frame"
+    assert w2 is not None and r2["winner"] == planted, (
+        "the confirmed coordinate system must still score to the same frame")
+    assert w2["shift"] == {"dx": 0, "dy": 0}, (
+        "a confirmed origin that still needs a shift has not recorded the alignment: %s"
+        % w2["shift"])
+    assert w2["agreement"] == w1["agreement"]
+
+
+def test_a_confirmed_origin_survives_the_next_read():
+    """SITE 4, asserted directly. `grid_needs_basis` used to compare the whole grid dict, so a
+    map whose dimensions matched the floor and whose origin did not re-entered the borrow on
+    every read and had its origin overwritten with the floor's.
+
+    A system that writes a determined fact and overwrites it on the next pass has determined
+    nothing, so this is asserted on the gate itself and not only through the round trip."""
+    floor = _meta(cols=41, rows=41, start_x=1, start_y=1)
+    same_dims_other_origin = _meta(cols=41, rows=41, start_x=0, start_y=0)
+    assert ma.grid_needs_basis(same_dims_other_origin, floor) is False
+    assert map_overlay.assume_grid_from(
+        same_dims_other_origin, floor, {"table": "vd", "map_id": "F"}) is None
+
+
+def test_the_derived_start_is_the_same_under_all_eight_frames():
+    """THE EIGHT-WAY IDENTITY. The origin is a quantity in the map's OWN visual space, which is
+    before the rotation - so it cannot depend on which candidate frame is being tested.
+
+    One assertion catches three distinct mistakes at once: a missing inverse, a wrong sign, and
+    a rotation applied the wrong way round. Any of them makes the eight disagree; only a correct
+    inverse makes them identical. Measured: `start +/- (dx,dy)` - the expression anyone fixing
+    this by eye reaches for first - agrees with the truth on exactly TWO frames of eight, so a
+    test that checked `rot0_front` alone would pass on a broken conversion.
+
+    🔴 THE INDEX COLUMN IS NOT OPTIONAL HERE. Without it the translation is solved by the +-3
+    search, and this fixture's displacement is (5,-4) - outside the window, so the search
+    returns a clamped value and the eight derived origins legitimately differ. The first
+    version of this test omitted the indices and read that as a failure of the conversion.
+    The anchor is what makes the displacement recoverable at all.
+    """
+    ref_meta = _meta(cols=41, rows=41, start_x=1, start_y=1)
+    floor = _valid_die_floor(ref_meta)
+    cells, ks = _partial_job(ref_meta, floor, 180)
+    src_meta = dict(ref_meta, grid_start_x=1, grid_start_y=1)
+    DISPLACEMENT = (5, -4)
+
+    derived = {}
+    for frame in ma.CANDIDATE_FRAMES:
+        recorded = [(x + DISPLACEMENT[0], y + DISPLACEMENT[1])
+                    for (x, y) in _plant(ref_meta, cells, frame)]
+        c, _e, r, _s = ma.score_candidates(
+            [{"map_id": "M1", "meta": src_meta, "cells": recorded, "indices": ks}],
+            floor, ref_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+        assert r["winner"] == frame, "guard: the planted frame must win before its shift is used"
+        w = next(x for x in c if x["frame"] == frame)
+        derived[frame] = ma.start_for_placement(
+            source_meta_for_frame(src_meta, frame), ref_meta, w["shift"])
+
+    assert len(set(derived.values())) == 1, (
+        "the origin is a pre-rotation quantity and cannot depend on the frame: %s" % derived)
+    assert derived["rot0_front"] == (1 + DISPLACEMENT[0], 1 + DISPLACEMENT[1]), (
+        "and it is the declared origin moved by the displacement, in the map's own space")
+
+
 def _reproduce_agreement_at(shift, cells, meta, frame, reference):
     """Independently place `cells` under `frame` and count how many land on `reference` when
     moved by `shift`. Used to bind the SHIPPED offset to the SHIPPED agreement.

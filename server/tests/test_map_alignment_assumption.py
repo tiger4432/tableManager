@@ -794,14 +794,59 @@ def test_accepting_overrides_the_declared_grid_and_KEEPS_the_declared_phys():
     assert map_overlay.geometry_declaration(used) == map_overlay.GEOMETRY_DECLARED
 
 
-def test_the_borrowed_grid_brings_start_with_it():
-    """Dims alone leaves the map translated by its own re-basing, and the shift solver only
-    reaches +-3 so the error never announces itself - 467 of 467 cells wrong, measured [D5]."""
+def test_the_borrow_takes_the_dimensions_and_leaves_the_origin():
+    """[D10], 2026-08-06. This test used to require the opposite, and the reason it gave was
+    [D5]: dims alone leaves the map translated and the shift solver only reaches +-3, so the
+    error never announces itself - 467 of 467 cells wrong.
+
+    [D5] was true when written and is now a rule about a mechanism that no longer exists for
+    THIS population: the anchor determines the translation outright and never consults that
+    window. Meanwhile borrowing the origin costs four separate defects, the decisive one being
+    that a CONFIRMED origin is erased on the next scoring read - a system that writes a
+    determined fact and overwrites it next pass has determined nothing.
+
+    Dimensions are a fact about the product's die layout; every map of that product shares
+    them, so borrowing is right ([D8] stands). The origin is a fact about THIS map, and it is
+    exactly what the confirmation exists to determine.
+
+    🔴 The split is on DECLARED vs SYNTHESIZED, not on dims vs origin generally - a map with no
+    meta row has no origin to protect and still borrows one
+    (`test_an_unregistered_map_still_borrows_the_origin_it_does_not_have`)."""
     borrowed = map_overlay.assume_grid_from(
         _partial_grid_meta(start_x=4, start_y=7), _meta(start_x=1, start_y=1), REF_R1)
     g = map_overlay._grid_of(borrowed)
-    assert (g["cols"], g["rows"]) == (45, 39)
-    assert (g["start_x"], g["start_y"]) == (1, 1), "start stayed behind"
+    assert (g["cols"], g["rows"]) == (45, 39), "dimensions still come from the basis"
+    assert (g["start_x"], g["start_y"]) == (4, 7), (
+        "the map's own declared origin must survive the borrow - substituting another map's "
+        "origin is impersonation performed in arithmetic")
+
+
+def test_the_borrow_no_longer_fires_for_an_origin_difference_alone():
+    """The gate is dims-only too, and that is the half that erased confirmed origins: a map
+    whose dimensions already match the floor and whose origin differs used to re-enter the
+    borrow on EVERY read and have its origin overwritten."""
+    same_dims = _meta(start_x=9, start_y=9)
+    assert map_overlay.assume_grid_from(same_dims, _meta(start_x=1, start_y=1),
+                                        REF_R1) is None
+    assert ma.grid_needs_basis(same_dims, _meta(start_x=1, start_y=1)) is False, (
+        "an origin difference is not a reason to borrow")
+
+
+def test_an_unregistered_map_still_borrows_the_origin_it_does_not_have():
+    """[D10-b]. The ruling protects an origin the map CHOSE. A map with no meta row chose
+    nothing - `synthesize_grid_meta` derives its start from the bbox of whichever dies this
+    job happened to touch, which spec 9.5 calls a lower bound and not a grid.
+
+    And [D5]'s premise has NOT expired here: these maps often carry no index column either, so
+    the translation is solved by the +-3 search after all. Pushing [D10] into this branch turned
+    the suite red at exactly [D5]'s number, 467 of 467."""
+    floor = _meta(start_x=1, start_y=1)
+    cells = [(4, 7), (9, 12)]
+    assumed = ma.assumed_meta_for_unregistered(cells, floor, REF_R1)
+    g = map_overlay._grid_of(assumed)
+    assert (g["start_x"], g["start_y"]) == (1, 1), (
+        "a synthesized bbox origin is nobody's fact and is replaced by the floor's")
+    assert assumed.get(map_overlay.GRID_ASSUMED_KEY), "and it says so"
 
 
 def test_nothing_changes_for_a_request_that_did_not_ask():
@@ -861,9 +906,14 @@ def test_the_confirmation_record_does_not_call_a_borrowed_grid_a_declaration():
 def test_a_borrowed_start_is_not_reported_as_a_declared_one():
     """`grid_start_*` is scored by `orientation_declaration` too, and start is the one axis
     whose value can never indicate absence - so a borrowed start reads as `declared` unless the
-    marker is read there as well. One axis under two scorers needs the marker in both."""
-    borrowed = map_overlay.assume_grid_from(
-        _partial_grid_meta(start_x=4, start_y=7), _meta(), REF_R1)
+    marker is read there as well. One axis under two scorers needs the marker in both.
+
+    🔴 [D10] MOVED TO THE BRANCH THAT STILL BORROWS AN ORIGIN. `assume_grid_from` no longer
+    touches `grid_start_*` for a map that declared one, so the over-report it guards against
+    cannot arise there any more. It still arises for an UNREGISTERED map, whose origin really
+    is taken from the floor - so the marker still has to be read, and this is now asked of that
+    path. Deleting the test instead would have retired a guard that is still load-bearing."""
+    borrowed = ma.assumed_meta_for_unregistered([(4, 7), (9, 12)], _meta(), REF_R1)
     d = map_overlay.orientation_declaration(borrowed)
     assert d["grid_start_x"]["source"] == map_overlay.GEOMETRY_ASSUMED
     assert d["grid_start_y"]["source"] == map_overlay.GEOMETRY_ASSUMED
