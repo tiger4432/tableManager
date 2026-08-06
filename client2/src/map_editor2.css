@@ -969,13 +969,27 @@ body {
 
 .me2-index-note:empty { display: none; }
 
-/* 번호 없는 다이는 **안 칠한 링**이다. 색을 지어내면 그 다이는 자기가
-   갖지 않은 번호를 가진 척한다 — `legend.colorOf` 가 null 을 사실로 두는 것과
-   같은 규칙이고, 오버레이의 「미선언 값 = 속이 빈 링 점」과 같은 계열이다.
-   채움은 `fill` 속성으로 주입되므로 여기서는 대입조차 하지 않는다. */
+/* 🔴 **이 규칙에 `fill` 을 쓰지 마라. 여기 있던 `fill: none` 한 줄이 무지개를 통째로
+   지웠다.** (실측 2026-08-06, 개발 서버: `me2-cell-rank` 는 `fill` 속성이 `#c94f2a`
+   인데 computed fill 이 `none`. 대조군 `me2-cell-miss` 도 같은 속성을 넣으면
+   `rgb(26,102,208)` 이 이기므로 이 규칙만의 특이사항이 아니라 **캐스케이드**다.)
+
+   이유: **표현 속성(presentation attribute)은 author origin 이면서 특이도가 0**이라
+   클래스 규칙이면 무엇이든 이긴다. 「속성이 없을 때만」을 CSS 로 말하려면 속성 선택자
+   (`:not([fill])`) 가 필요하고, 그 순간 스타일시트가 **렌더러만 아는 사실**에 의존하게
+   된다 — 채움 결정이 두 파일로 쪼개지고 둘이 어긋나는 날 화면은 멀쩡해 보인다.
+
+   그래서 **채움 결정은 `drawSeats` 한 곳에만 둔다**: 번호 없는 다이는 `fill="none"` 을
+   **명시적으로 써서** 보낸다. 「null 은 사실이다」가 *규칙이 안 쓰여서 생기는 결과*가
+   아니라 *쓰여진 값*이 된다.
+   회귀 그물: `map2_index_ramp_harness.mjs` 섹션 J 가 이 파일과 `tokens.css` 를 읽어
+   순번 칸을 칠할 수 있는 `fill` 선언이 하나도 없음을 채점한다. */
 .me2-cell-rank {
-  fill: none;
-  stroke: var(--canvas-line-strong);
+  /* 번호 없는 다이의 **속이 빈 링**. 오버레이의 「미선언 값 = 빈 링 점」과 같은 계열이고,
+     `--canvas-line-strong`(알파 0.16) 이 아니라 `.me2-cell-alone` 과 같은
+     `--canvas-text-out`(0.45) 을 쓴다 — 「보여줄 값이 없는 다이」로 같은 급이고,
+     16% 는 제품 소유자가 「너무 투명한 걸 수도」라고 적은 바로 그 농도다. */
+  stroke: var(--canvas-text-out);
   stroke-width: 0.4;
 }
 

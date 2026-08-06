@@ -41,6 +41,10 @@ import { decodeIndexWalk, decodeReferenceView,
 import { adaptPayload } from '../src/map2/main.js';
 import { computeSeating, boundingBoxOf } from '../src/map2/seating.js';
 import { deltaE00, contrastRatio, over } from './oracle/colour_difference_oracle.mjs';
+// Section J reads the REAL stylesheets. The rest of this file never touches the filesystem.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 let compared = 0;
 const failures = [];
@@ -422,6 +426,94 @@ const walkOf = patch => decodeIndexWalk(wire(patch), []);
   // The decoder's own record carries the walk, so nothing downstream re-inspects the wire.
   eq(decodeReferenceView(raw).indexWalk.state, INDEX_WALK_READY,
     'H7 the walk is decoded at the customs post, once');
+}
+
+// ── J. the stylesheet must not be able to throw the ramp away ───────────────────
+// 🔴 THE DEFECT THIS SECTION EXISTS FOR, AND IT SHIPPED. `drawSeats` wrote the ramp colour as a
+//    `fill` ATTRIBUTE while `.me2-cell-rank { fill: none }` sat in the stylesheet. A
+//    presentation attribute is author-origin with SPECIFICITY 0, so the class rule won every
+//    time: measured live, attribute `#c94f2a`, computed `none`. The entire rainbow was painted
+//    and discarded, and the whole test suite stayed green -- because every assertion read
+//    `getAttribute('fill')` in a DOM stub with NO STYLESHEET. The attribute was a proxy for the
+//    painted pixel and the defect lived precisely in the gap between them.
+//
+// ⚠️ WHAT THIS CHECK SEES: every `fill` declaration in the stylesheets the page actually links,
+//    including inside `@media` blocks, whose SUBJECT (rightmost compound selector) could match a
+//    rank cell -- so `#me2-layer-alone rect { fill: ... }` is caught as well as the class rule.
+// ⚠️ WHAT IT DOES NOT SEE: any stylesheet the page does not link, inline `<style>`, styles set
+//    from JavaScript, `!important`/origin interactions, and the rendered pixel itself. It is a
+//    text check, not a browser. It also ENCODES THE SHAPE THAT WAS CHOSEN -- no CSS `fill` on
+//    rank cells at all. A later round that deliberately moves to `.me2-cell-rank:not([fill])`
+//    must change this assertion on purpose rather than discover it.
+const RANK_CLASS = 'me2-cell-rank';
+
+/** The rightmost compound selector -- the element a rule actually styles. */
+function subjectOf(selector) {
+  const parts = String(selector).split(/\s*[>+~]\s*|\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+/** Could this selector's subject be a rank cell? Conservative: unsure counts as YES. */
+function couldMatchRankCell(selector) {
+  // Pseudo-classes/elements only ever NARROW a match, and a rule that narrows still wins.
+  let s = subjectOf(selector).replace(/::?[a-zA-Z-]+(\([^)]*\))?/g, '');
+  if (s.includes('#')) return false;                       // a rank rect carries no id
+  const classes = (s.match(/\.[A-Za-z0-9_-]+/g) || []).map(c => c.slice(1));
+  if (classes.some(c => c !== RANK_CLASS)) return false;   // some other component's rule
+  const tag = s.replace(/\.[A-Za-z0-9_-]+/g, '').replace(/\[[^\]]*\]/g, '').trim();
+  if (tag && tag !== '*' && tag !== 'rect') return false;
+  return true;
+}
+
+/** Every `fill` declaration whose subject could hit a rank cell. */
+function fillRulesHittingRank(cssText) {
+  // Comments FIRST: this file's own commentary talks about `fill` at length.
+  const css = String(cssText).replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  // Innermost blocks only, so rules nested inside `@media { ... }` are read and the at-rule
+  // prelude itself (which has no declarations of its own) is skipped.
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  let m;
+  while ((m = re.exec(css)) !== null) {
+    const selectorList = m[1].trim();
+    if (selectorList.startsWith('@')) continue;
+    if (!/(^|[;\s])fill\s*:/.test(m[2])) continue;
+    for (const sel of selectorList.split(',')) {
+      const s = sel.trim();
+      if (s && couldMatchRankCell(s)) out.push(s);
+    }
+  }
+  return out;
+}
+
+{
+  const here = dirname(fileURLToPath(import.meta.url));
+  // The stylesheets `map_editor2.html` actually links, read by name so a new one has to be
+  // added here deliberately rather than silently escaping the check.
+  const SHEETS = ['map_editor2.css', 'tokens.css'];
+  for (const name of SHEETS) {
+    const text = readFileSync(join(here, '..', 'src', name), 'utf8');
+    const hits = fillRulesHittingRank(text);
+    eq(hits.length, 0,
+      `J1 ${name} declares no \`fill\` that could override the injected ramp colour `
+      + `(found: ${hits.join(' | ') || 'none'})`);
+  }
+
+  // 🔴 NEGATIVE CONTROLS. Without these, `J1` passes just as well when the checker matches
+  //    nothing at all -- which is the failure mode this whole feature already produced once.
+  eq(fillRulesHittingRank(`.${RANK_CLASS} { fill: none; stroke: red; }`).length, 1,
+    'J2 CONTROL: the exact rule that shipped IS caught');
+  eq(fillRulesHittingRank(`@media (min-width: 1px) { .${RANK_CLASS} { fill: red; } }`).length, 1,
+    'J3 CONTROL: and it is caught inside a media query too');
+  eq(fillRulesHittingRank('#me2-layer-alone rect { fill: red; }').length, 1,
+    'J4 CONTROL: a rule that never names the class is caught as well -- this is not a grep '
+    + 'for the class name, it is a check on what the subject can match');
+  eq(fillRulesHittingRank('.me2-cell-miss { fill: var(--accent); }').length, 0,
+    'J5 CONTROL: another component\'s fill is NOT flagged, so J1 is not "no fill anywhere"');
+  eq(fillRulesHittingRank(`.${RANK_CLASS} { stroke: var(--canvas-text-out); }`).length, 0,
+    'J6 CONTROL: the stroke the rank class DOES declare is not flagged');
+  eq(fillRulesHittingRank(`/* fill: none */ .${RANK_CLASS} { stroke: red; }`).length, 0,
+    'J7 CONTROL: a `fill` inside a comment is not a declaration');
 }
 
 // A small guard on the module's own constants: the harness scores behaviour, but the period

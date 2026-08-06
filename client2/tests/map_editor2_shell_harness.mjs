@@ -1195,10 +1195,12 @@ function throws(fn, what) {
     refusal: '규격이 선언되지 않았습니다.',
     reference: { state: 'resolved', kind: 'values', cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
     sources: {
-      map_count: 1, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
+      map_count: 1, cell_count: 4, cells: [[0, 0], [1, 0], [2, 2], [3, 3]],
       // The serpentine ranks. TWO ADJACENT (1, 2) AND ONE FAR AWAY (40), because a fixture
       // whose ranks are all neighbours cannot tell a working ramp from a constant colour.
-      cell_index: [1, 2, 40], cell_map: [0, 0, 0], truncated: false,
+      // The fourth die carries NO number, so the `fill="none"` path is drawn rather than
+      // assumed -- that branch is the one the stylesheet used to supply, and wrongly.
+      cell_index: [1, 2, 40, null], cell_map: [0, 0, 0, 0], truncated: false,
       maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
                declared_frame_source: 'declared' }],
     },
@@ -1269,12 +1271,29 @@ function throws(fn, what) {
   doc.getElementById('me2-index-colour').checked = true;
   app.render();
   const painted = rankRects();
-  eq(painted.length, 3, 'K19 switching it on repaints the source cells by rank');
+  eq(painted.length, 4, 'K19 switching it on repaints the source cells by rank');
   // 🔴 THE ASSERTION IS ON THE FILLS, NOT ON THE RANKS ARRIVING. A version that receives the
   //    ranks and paints every die one colour passes every plumbing check ever written.
+  //
+  // ⚠️ AND THIS IS STILL A PROXY: there is no stylesheet in this stub, so a `fill` ATTRIBUTE
+  //    here is not proof of a painted pixel. That gap is exactly where the defect lived --
+  //    `.me2-cell-rank { fill: none }` beat every attribute written below, because a
+  //    presentation attribute has specificity 0. The other half of this assertion therefore
+  //    lives in `map2_index_ramp_harness.mjs` section J, which reads the real stylesheets and
+  //    scores that nothing in them can assign `fill` to a rank cell. Neither half is
+  //    sufficient alone and both are named where they are weak.
+  // Each guard gets an assertion that dies on its own: "every die was written" and "the
+  // numbered ones are colours" and "the unnumbered one is `none`" fail separately, so a
+  // regression names which of the three broke instead of reddening all of them.
   const fills = painted.map(r => r.getAttribute('fill'));
-  const usable = fills.length === 3 && fills.every(f => /^#[0-9a-f]{6}$/.test(f || ''));
-  ok(usable, 'K20 every die got a real colour');
+  const usable = fills.slice(0, 3).every(f => /^#[0-9a-f]{6}$/.test(f || ''));
+  ok(fills.length === 4 && fills.every(f => typeof f === 'string' && f !== ''),
+     'K20 every die got an explicit fill, none left for a stylesheet to supply');
+  ok(fills.slice(0, 3).every(f => /^#[0-9a-f]{6}$/.test(f || '')),
+     'K20b the three numbered dies got real colours');
+  eq(fills[3], 'none',
+     'K20c and the UNNUMBERED die is written as `fill="none"` rather than left unwritten -- '
+     + 'an absence the renderer states, not one it implies by staying silent');
   // 🔴 THE COLOUR COMPARISONS ARE GUARDED, AND THE REASON IS MEASURED. Mutating the alone
   //    picture to ignore the toggle left `fills` empty, and the oracle threw on `undefined`
   //    BEFORE the `ASSERTIONS` line was printed -- so the runner saw a harness that died

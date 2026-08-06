@@ -1480,8 +1480,19 @@ export function bootstrap(deps) {
       const rect = doc.createElementNS(SVG_NS, 'rect');
       rect.setAttribute('class', className);
       if (fillFor) {
-        const fill = fillFor(seat);
-        if (fill) rect.setAttribute('fill', fill);
+        // 🔴 THE ABSENCE IS WRITTEN, NOT LEFT FOR THE STYLESHEET TO SUPPLY. A presentation
+        //    attribute is author-origin with SPECIFICITY 0, so any class rule beats it: while
+        //    `.me2-cell-rank { fill: none }` existed, every rank rect carried its ramp colour
+        //    as an attribute and computed to `none` -- measured live, attribute `#c94f2a`,
+        //    computed `none`. The whole rainbow was being painted and thrown away, and what
+        //    survived was the stroke, which is exactly what the product owner reported.
+        //
+        //    CSS cannot say "only when the attribute is absent" without reaching for
+        //    `:not([fill])`, which makes the stylesheet depend on a fact only this function
+        //    knows. So every fill decision stays HERE: a rank with no number is written as
+        //    `fill="none"` rather than left unwritten. `null` is still a fact -- it is now a
+        //    fact the renderer STATES instead of one it implies by staying silent.
+        rect.setAttribute('fill', fillFor(seat) || 'none');
       }
       rect.setAttribute('x', String(round1(layout.originX + (seat.x - layout.minX) * layout.cell + inset)));
       rect.setAttribute('y', String(round1(layout.originY + (seat.y - layout.minY) * layout.cell + inset)));
