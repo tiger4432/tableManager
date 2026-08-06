@@ -1,24 +1,47 @@
 # `transfer_plan_config.json` 세팅 — M2 Universal Transfer Plan
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (§3 dry-run `curl`의 포트를 **8000 → 8080**으로 정정 — 런처가 띄우는 포트는 `ASSY_API_PORT` 기본 8080이고 `:8000`은 `uvicorn` 직접 실행의 기본값입니다. 직전 2026-08-04 `12c1d2e` 거절이 자기 사유를 이름으로 말함 + `8817dde` **좌표/값 컬럼 유도** + `GET /admin/transfer-plan/dry-run`. 이 라운드에 문서를 **재작성**했습니다 — 기존 문서를 읽은 사용자가 그대로 `"x": "x"`를 써서 라이브가 멈췄기 때문입니다) | **Owner:** Backend / UI-Map
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 — **서술·심볼 기준**(🔴 **이 날짜가 무엇을 덮는지 명시합니다.** 2026-08-06 라운드는 ① `curl` 포트 ② 상단 Loader evidence 블록의 **라인 앵커 전면 삭제 + 심볼 전수 재확인**을 했습니다. **라인 번호는 이제 이 문서에 없습니다** — 있던 ~35개가 전부 낡아 있었고 그중 `bonding_plan.py` 계열은 **일률적으로 +156**이었습니다. ⚠️ **직전 헤더는 「anchors re-measured by grep on this tree」라고 적은 채 그 앵커들이 낡아 있었습니다 — 검증했다는 *거짓* 주장은 주장이 없는 것보다 나쁩니다. 다음 독자가 확인을 멈추기 때문입니다.**) (§3 dry-run `curl`의 포트를 **8000 → 8080**으로 정정 — 런처가 띄우는 포트는 `ASSY_API_PORT` 기본 8080이고 `:8000`은 `uvicorn` 직접 실행의 기본값입니다. 직전 2026-08-04 `12c1d2e` 거절이 자기 사유를 이름으로 말함 + `8817dde` **좌표/값 컬럼 유도** + `GET /admin/transfer-plan/dry-run`. 이 라운드에 문서를 **재작성**했습니다 — 기존 문서를 읽은 사용자가 그대로 `"x": "x"`를 써서 라이브가 멈췄기 때문입니다) | **Owner:** Backend / UI-Map
 > 상위: [폴더 인덱스](./README.md) · **의미론(zone 모델·`stack` string·`bin_map`·`bands` 폐기)의 정본은 [CONFIG_GUIDE §5.8](../CONFIG_GUIDE.md)** · 동작 계약은 [MAP_EDITOR_SPEC §6](../../spec/MAP_EDITOR_SPEC.md)
 
-<!-- Loader evidence (2026-08-04, derivation + dry-run round; anchors re-measured by grep on this tree):
-  load: server/transfer_plan.py:265 load_transfer_plan_config (missing/corrupt -> {}) / per-request snapshot: server/main.py:4368/:4393/:4400
-  role tuples (the `required` catalog): transfer_plan.py:166 REGISTRY_ROLES / :175 IDENTITY_ROLES / :176 ORIGIN_LOG_ROLES
-                                       / :178 ORIGIN_AREA_MAP_ROLES / :179 SOURCE_REGION_ROLES / :180 MAP_METADATA_ROLES
-                                       / :181 BIN_AXIS_ROLES / :182 LOT_MEMBERSHIP_ROLES / :517 _STAGE_SOURCE_ROLES
-  derivation: bonding_plan.py:338 DERIVED_ROLE_OF {x,y,val,bin} / :350 _overlay_config_snapshot (memo on mtime_ns,size)
-              / :372 _map_binding_for (fallback_guess val refused) / :395 resolve_effective_columns (absent-only, identity return)
-              / :551 deletion_hints
-  refusal vocabulary: bonding_plan.py:280-291 BINDING_NOT_DECLARED / BINDING_MAPPING_UNAVAILABLE / BINDING_COLUMN_MISSING / BINDING_NOT_REACHED
-  refusal sentences: bonding_plan.py:433 explain_binding_refusal / transfer_plan.py:997 _refusal / :1012 _bin_axis_refusal / :1298 _lot_membership_refusal
-  screen path: transfer_plan.py:1025 _bins_unavailable -> :1122 "BIN별 가용을 계산할 수 없습니다 ― {detail}" -> client2/src/transfer_plan.js:459 (detail 그대로) -> :1253 unknownCellHtml title
-  dry-run: transfer_plan.py:528 _role_dry_run / :592 dry_run / route main.py:4375 GET /admin/transfer-plan/dry-run (require_admin_token)
-  source_config_ref allowed: transfer_plan.py:147 M1_SOURCE_REFS = ("bonding_plan",)
-  degradation engine: :488 _status_is_degraded / :511 _degradation_effect / :525 assess_degradation / chips gate: :564 build_chips_block
-  relaxation (2c2a777 + 101311f): bonding_plan.py:53 STATUS_NOT_DECLARED, :94 role_is_declared (predicate = KEY PRESENCE) / transfer_plan.py:375 _aux_role_status
-  inline summary: :1293 _summarize_inline / bins: :1116 _bins_block / lot rollup: get_lot_source_summary (:2205 _lot_slots) / validate: validate_plan
+<!-- Loader evidence — SYMBOLS, NOT LINE NUMBERS.
+  🔴 2026-08-06: this block used to carry ~35 line anchors and claimed "anchors re-measured by
+     grep on this tree" (2026-08-04). By 2026-08-06 essentially all of them had drifted — the
+     bonding_plan.py anchors uniformly by +156, which is the signature of a block written once
+     while the source grew underneath it. Nobody was careless; a line number is a fact about a
+     file's CURRENT shape and every unrelated edit above it invalidates it silently, with
+     nothing going red. So the numbers are stripped and the symbols kept: a symbol is greppable,
+     survives every edit that does not rename it, and a rename that breaks it is exactly the
+     change a reader needs to notice.
+  ✅ Every symbol below was re-verified present by grep on 2026-08-06 (working tree). The
+     block's CONCLUSIONS were all sound the whole time — only the addresses were wrong, which
+     is the worst combination for a document whose value proposition is measured locations.
+
+  load:                 `load_transfer_plan_config` (missing/corrupt -> {})  [server/transfer_plan.py]
+                        per-request snapshot in `server/main.py`
+  role tuples (the `required` catalog)  [server/transfer_plan.py]:
+                        REGISTRY_ROLES / IDENTITY_ROLES / ORIGIN_LOG_ROLES / ORIGIN_AREA_MAP_ROLES
+                        / SOURCE_REGION_ROLES / MAP_METADATA_ROLES / BIN_AXIS_ROLES
+                        / LOT_MEMBERSHIP_ROLES / _STAGE_SOURCE_ROLES
+  derivation  [server/bonding_plan.py]:
+                        DERIVED_ROLE_OF {x,y,val,bin} / _overlay_config_snapshot (memo on mtime_ns,size)
+                        / _map_binding_for (fallback_guess val refused)
+                        / resolve_effective_columns (absent-only, identity return) / deletion_hints
+  refusal vocabulary  [server/bonding_plan.py]:
+                        BINDING_NOT_DECLARED / BINDING_MAPPING_UNAVAILABLE / BINDING_COLUMN_MISSING
+                        / BINDING_NOT_REACHED
+  refusal sentences:    `explain_binding_refusal` [bonding_plan.py]
+                        / `_refusal` · `_bin_axis_refusal` · `_lot_membership_refusal` [transfer_plan.py]
+  screen path:          `_bins_unavailable` [transfer_plan.py] -> "BIN별 가용을 계산할 수 없습니다 ― {detail}"
+                        -> `client2/src/transfer_plan.js` renders `detail` verbatim -> `unknownCellHtml` title
+  dry-run:              `_role_dry_run` · `dry_run` [transfer_plan.py]
+                        / route GET /admin/transfer-plan/dry-run (require_admin_token) [main.py]
+  source_config_ref allowed:  M1_SOURCE_REFS = ("bonding_plan",)  [transfer_plan.py]
+  degradation engine:   `_status_is_degraded` · `_degradation_effect` · `assess_degradation`
+                        / chips gate `build_chips_block`  [transfer_plan.py]
+  relaxation (2c2a777 + 101311f):  STATUS_NOT_DECLARED · `role_is_declared` (predicate = KEY PRESENCE)
+                        [bonding_plan.py] / `_aux_role_status` [transfer_plan.py]
+  inline summary:       `_summarize_inline` / bins `_bins_block` / lot rollup `get_lot_source_summary`
+                        (`_lot_slots`) / validate `validate_plan`  [transfer_plan.py]
 -->
 
 ---

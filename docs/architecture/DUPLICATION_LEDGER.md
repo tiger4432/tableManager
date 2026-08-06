@@ -1,6 +1,8 @@
 # 🧾 중복 원장 — 이미 두 번 이상 만들어져 있는 것
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 | **Owner:** 전 에이전트 공용 · **유지: doc-keeper** | **Source-of-truth:** 각 항목의 「몇 곳」 — 전부 grep 실측
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 — **D-1 재실측 + 라인 앵커 전면 삭제** | **Owner:** 전 에이전트 공용 · **유지: doc-keeper** | **Source-of-truth:** 각 항목의 「몇 곳」 — 전부 grep 실측(**심볼 기준**)
+> 🔴 **앵커 규율 (2026-08-06 총괄 판정): 이 문서는 심볼을 인용하고 라인 번호를 들지 않는다.** 라인 번호 13개를 지웠다 — D-1에서만 7개가 이미 틀려 있었고, 결론은 전부 옳았다. **「측정된 위치」를 값으로 파는 문서에서 주소만 틀린 것이 가장 나쁜 조합이다.**
+> ⚠️ **`Last-verified` 상향은 주장이지 증거가 아니다.** 직전 라운드가 §2에 한 줄 더하면서 이 날짜를 올렸는데 **2026-07-31 앵커 표는 재지 않았다.** 스탬프를 찍는 모든 파일에 `git log -1 -- <file>`을 헤더 날짜와 대조하라 — 2초짜리 점검이고, 그 라운드 안에서 이 누락을 잡았을 것이다.
 > **2026-08-06**: §2에 **브로드캐스트 크기 임계 리터럴 `100`**(발신 지점 넷이 각자 적고 있던 것 → `event_constants.BROADCAST_ITEM_LIMIT`, `25de4ae`)을 등재했다. 🔴 **판정을 항목 구성 앞으로 옮길 수 있게 한 근거는 등식 하나**이고, 그 등식이 깨지면 판정을 되돌려야 한다는 것을 항목이 적는다.
 > **2026-08-04**: 맵 에디터 분할 R1/R2가 **새 사본을 만들지 않았음을 확인**했다(옮긴 심볼 28종 중 원장에 걸리는 것 0). D-8에 **클라 절반은 사본이 아니라 이음새**라는 배제 근거를 명시했다 — 파일이 갈라진 뒤 세 번째 사본으로 오등재되기 쉬운 자리다.
 >
@@ -34,29 +36,31 @@
 ### D-1. 🔴 「이 컬럼은 시스템 컬럼인가」 — 하드코딩 배열 **10곳**
 
 - **무엇이 중복인가**: "이 컬럼 id는 사용자가 건드리면 안 되는 것인가"라는 **한 질문**에, 리터럴 배열 10개가 각자 답한다. 배열마다 이름 수가 다르다(9·8·6·4·3).
-- **몇 곳 (2026-07-31 실측)**:
+- **몇 곳 (2026-08-06 재실측 — 🔴 라인 앵커를 버리고 *심볼과 파일*로 바꿨다. 이유는 아래 「앵커 규율」)**:
 
   | 이름 수 | 위치 | 성격 |
   |---|---|---|
-  | **9** | `clipboard.js:384`(1×1 붙여넣기) · `clipboard.js:472`(M×N 붙여넣기) · `clipboard.js:713`(선택 삭제) · `ui.js:145`(Ctrl+Enter 일괄 채움) | **쓰기 깔때기** → `apply_batch_updates` |
-  | **9** | `main.js:1171`(`getSelectedCells`) | **다른 쓰기 표면** → 셀 출처 모달의 `PUT …/priority` · `DELETE …/sources/{name}` |
-  | **8** | `grid.js:237`(`buildColumnDefs`) | 편집 가능 판정 |
-  | **6** | `ui.js:25` | 선택 셀 표시 |
-  | **4** | `grid.js:594` | 디버그 로그 |
-  | **3** | `clipboard.js:247` · `clipboard.js:644` | **복사** 서술어 |
+  | **9** | `clipboard.js` — 1×1 붙여넣기 · M×N 붙여넣기 · 선택 삭제(`systemCols`) · `ui.js`의 Ctrl+Enter 일괄 채움(`applyValueToSelectedRange` 안 `isSystem`) | **쓰기 깔때기** → `apply_batch_updates` |
+  | **9** | `main.js` — `getSelectedCells` | **다른 쓰기 표면** → 셀 출처 모달의 `PUT …/priority` · `DELETE …/sources/{name}` |
+  | **8** | `grid.js` — `buildColumnDefs` 안 `isSystem` | 편집 가능 판정 |
+  | **6** | `ui.js` — `updateSelectedCellUI` 안 `isSystem` | 선택 셀 표시 |
+  | **4** | `grid.js` — 디버그 로그의 `debugColId` 가드 | 디버그 로그 |
+  | **3** | `clipboard.js` — 복사 서술어 2곳(`['row_id','created_at','updated_at']`) | **복사** 서술어 |
 
-  - ✅ **9개짜리 다섯은 바이트 동일하다** — 이름도 **순서도** 같다(`['created_at','updated_at','row_id','id','updated_by','#','is_graph_synced','needs_graph_rollback','graph_synced_at']` × 5). **오늘 구멍은 없다.**
-  - ✅ **8개(`grid.js:237`)가 `#`을 빠뜨린 것은 무해하다.** 그 판정은 `state.currentColumns`를 순회하는데, `#`은 행 번호 거터로 **그 순회가 끝난 뒤 `columnDefs.unshift`로 따로 붙는다**(`grid.js:447`, `editable: false` 고정). `currentColumns`에 들어올 경로가 없다.
+  > 🔴 **앵커 규율 (2026-08-06 총괄 판정) — 이 문서는 심볼을 인용하고 라인 번호를 들지 않는다.** 이 표는 `2026-07-31 실측`이라 적은 채 **인용한 주소 13개 중 7개가 이미 틀려 있었다**(`state.js:73`→124 · `grid.js:237`→282 · `grid.js:594`→678 · `main.js:1171`→1188 · `ui.js:25`→27 · `ui.js:145`→147 · `crud.py:1500`→호출은 `apply_batch_updates` 안, 그리고 셀 출처 라우트 넷은 `main.py:3307·3340·3404·3476`→`3587·3620·3684·3770`). **결론은 전부 옳았고 주소만 틀렸는데, 그것이 「측정된 위치」를 값으로 파는 문서에는 최악의 조합이다.** 라인 번호는 파일의 *현재 모양*에 대한 사실이라 위쪽의 무관한 편집 하나가 조용히 무효화하고 아무것도 빨개지지 않는다. 심볼은 grep되고, 개명으로 깨지는 순간은 **독자가 알아야 하는 바로 그 변경**이다. (예외는 `CODE_MAP.md` 하나 — 측정된 blob에 대해 **통째로 재생성**되므로 번호를 유지한다.)
+
+  - ✅ **9개짜리 다섯은 바이트 동일하다** — 이름도 **순서도** 같다(`['created_at','updated_at','row_id','id','updated_by','#','is_graph_synced','needs_graph_rollback','graph_synced_at']` × 5). **2026-08-06 재확인: 오늘도 구멍은 없다.**
+  - ✅ **8개(`grid.js`의 `buildColumnDefs`)가 `#`을 빠뜨린 것은 무해하다.** 그 판정은 `state.currentColumns`를 순회하는데, `#`은 행 번호 거터로 **그 순회가 끝난 뒤 `columnDefs.unshift`로 따로 붙는다**(`editable: false` 고정). `currentColumns`에 들어올 경로가 없다.
   - ✅ **6개·4개·3개는 전부 읽기/표시 경로다** — 축소가 쓰기를 열지 않는다.
 - **어느 것이 정본인가**: **없다.** 9개짜리가 사실상의 기준이지만 **어느 것도 정본으로 선언돼 있지 않고**, 서버에도 대응하는 목록이 없다(서버는 `table_config.column_types` 미선언 컬럼을 조용히 버리는 다른 규칙을 쓴다 — [PRIMITIVES §1 「미선언 컬럼은 조용히 버려진다」](./PRIMITIVES.md#1-데이터-쓰기)).
 - **왜 아직 안 합쳤나** — 🔴 **여기가 이 항목의 요점이다:**
   - **복사 서술어는 쓰기 서술어를 공유하면 안 된다.** 복사는 가상 조인 컬럼을 **받아들여야** 한다. 배제하면 복사한 블록 **중간에서 컬럼 하나가 빠지고 그 오른쪽이 전부 한 칸씩 왼쪽으로 밀려**, 사용자가 선택한 적 없는 사각형이 조용히 돌아온다. 그래서 올바른 통합은 **「전부 하나로」가 아니라 「쓰기 판정만 하나로」**다.
-  - **읽기/표시 축소분도 의도적이다.** `ui.js:25`가 `id`·`updated_by`·`#`을 빼는 것은 선택 셀 정보 표시가 그 셋에 대해 할 말이 없기 때문이지, 빠뜨린 것이 아니다.
+  - **읽기/표시 축소분도 의도적이다.** `ui.js`의 `updateSelectedCellUI`가 `id`·`updated_by`·`#`을 빼는 것은 선택 셀 정보 표시가 그 셋에 대해 할 말이 없기 때문이지, 빠뜨린 것이 아니다.
   - 그리고 **아무도 이 열 곳을 한꺼번에 본 적이 없었다** — 그것이 이 원장이 생긴 이유다.
 - **합칠 때의 함정**:
   - 🔴 **먼저 「무엇을 판정하는가」로 갈라라.** 갈래는 아래와 같고 **수를 적지 않는다**(판정의 종류는 화면이 늘면 늘어난다) — **① `apply_batch_updates`로 가는 쓰기 ② 출처/우선순위 쓰기 ③ 편집 가능 ④ 복사·표시**. ①만 하나로 모으는 것이 안전하고 값도 대부분 거기 있다.
-  - 🔴 **①과 ②는 서버 백스톱이 다르다.** `crud.refuse_virtual_join_columns`의 호출 지점은 **`crud.apply_batch_updates` 하나뿐**이다(실측 `crud.py:1500`). 셀 출처/우선순위 라우트 넷(`main.py:3307`·`3340`·`3404`·`3476`)은 그 깔때기를 지나지 않으므로, **`main.js:1171`이 그 표면의 유일한 판정자**다. ⚠️ 반경은 확인되지 않았다 — 가상 컬럼은 `CellSource` 행이 존재할 수 없어 실제 피해가 없을 수도 있다(**총괄 판단 필요**). 그러나 **「클라 배열 하나를 지우면 서버가 받아 준다」는 가정은 이 표면에서 거짓**이다.
-  - **가상 조인은 이 배열들에 이름을 더해서 풀지 마라.** `4b50135`가 **병렬 서술어** `isVirtualColumn`(`state.js:73` — 정의 1 + **호출 6곳**: `clipboard.js:246·393·479·643·721` · `ui.js:151`)을 만든 것은 옳은 판단이었다 — 열 개의 발산한 배열에 이름을 추가했다면 열 번 틀릴 기회를 만들었다. 다만 그 결과로 **「쓰면 안 되는 컬럼인가」라는 개념이 11곳에 산다**(배열 10 + 서술어 1).
+  - 🔴 **①과 ②는 서버 백스톱이 다르다.** `crud.refuse_virtual_join_columns`의 호출 지점은 **`crud.apply_batch_updates` 하나뿐**이다(2026-08-06 재확인). 셀 출처/우선순위 라우트들(`DELETE …/sources/{source_name}` · `PUT …/priority` · `PUT …/cells/priority/batch` · `POST …/cells/sources/delete/batch`)은 그 깔때기를 지나지 않으므로, **`main.js`의 `getSelectedCells`가 그 표면의 유일한 판정자**다. ⚠️ 반경은 확인되지 않았다 — 가상 컬럼은 `CellSource` 행이 존재할 수 없어 실제 피해가 없을 수도 있다(**총괄 판단 필요**). 그러나 **「클라 배열 하나를 지우면 서버가 받아 준다」는 가정은 이 표면에서 거짓**이다.
+  - **가상 조인은 이 배열들에 이름을 더해서 풀지 마라.** `4b50135`가 **병렬 서술어** `isVirtualColumn`(`state.js`가 정의, 호출은 `clipboard.js` 다섯 곳 + `ui.js` 한 곳 — 2026-08-06 재확인)을 만든 것은 옳은 판단이었다 — 열 개의 발산한 배열에 이름을 추가했다면 열 번 틀릴 기회를 만들었다. 다만 그 결과로 **「쓰면 안 되는 컬럼인가」라는 개념이 11곳에 산다**(배열 10 + 서술어 1).
 - **대비로 기록해 둘 것 — 서버는 같은 날 정반대로 했다.** `crud.apply_batch_updates`는 가상 조인 쓰기를 **첫 문장 하나에서** 거부한다(`d70a33d`), 호출부마다가 아니라. 계약화된 서술은 [PRIMITIVES §1 「가로지르는 거부는 호출부가 아니라 깔때기 하나에」](./PRIMITIVES.md#1-데이터-쓰기). **클라에 같은 깔때기가 없다는 것이 D-1의 실체다.**
 
 ### D-2. 크로스 테이블 조회 — **네 형태**
@@ -78,7 +82,7 @@
 ### D-4. `ingestion_settings.json` 리더 — **3곳**
 
 - **무엇이 중복인가**: 같은 파일을 읽어 dict로 돌려주는 10줄짜리 함수가 셋.
-- **몇 곳 (3, 실측)**: `parsers/directory_watcher.py:152` `load_ingestion_settings`(원형) · `map_meta_registrar.py:96` `_load_ingestion_settings` · `enrichment_candidates.py:161` `_load_ingestion_settings`. 뒤 둘은 본문이 사실상 동일하다.
+- **몇 곳 (3, 실측)**: `parsers/directory_watcher.py` `load_ingestion_settings`(원형) · `map_meta_registrar.py` `_load_ingestion_settings` · `enrichment_candidates.py` `_load_ingestion_settings`. 뒤 둘은 본문이 사실상 동일하다.
 - **어느 것이 정본인가**: `directory_watcher.load_ingestion_settings`. 나머지 둘은 **자기 docstring에 사본임을 명시**하고 있다.
 - **왜 아직 안 합쳤나** — **이유가 적혀 있고 타당하다**: `directory_watcher`를 import하면 **10줄짜리 파일 읽기 하나 때문에 체인 워커가 `watchdog`과 레거시 import shim을 통째로 끌어온다.**
 - **합칠 때의 함정**: 🔴 **정답은 「하나를 부르게 하기」가 아니라 「의존성 없는 모듈로 내리기」다** — `utils/time_format.py`가 정확히 그 이유로 만들어졌다(그 모듈 docstring이 근거의 정본). 사본을 지우고 `directory_watcher`를 import하게 만들면 **부작용을 새 프로세스 셋에 배달한다.** 그리고 **셋이 같은 기본값·같은 비-boolean 처리 자세를 유지해야** 한다 — `auto_register_map_meta` 계열 노브가 프로세스마다 다르게 해석되면 무음 발산이 된다.
@@ -86,7 +90,7 @@
 ### D-5. ⚠️ `to_local_str` — **둘이고, 둘째는 답이 다르며, 아무도 안 부른다**
 
 - **무엇이 중복인가**: UTC datetime → 현지 시각 문자열. 두 구현의 **답이 다르다.**
-- **몇 곳 (2, 실측)**: `utils/time_format.py:29`(정본 — naive는 UTC로 간주해 `astimezone(LOCAL_TIMEZONE)`) · `graph_sync_worker.py:455`(**타임존 변환이 아예 없다** — `dt.strftime(...)` 한 줄).
+- **몇 곳 (2, 실측)**: `utils/time_format.py`(정본 — naive는 UTC로 간주해 `astimezone(LOCAL_TIMEZONE)`) · `graph_sync_worker.py`(**타임존 변환이 아예 없다** — `dt.strftime(...)` 한 줄).
 - **어느 것이 정본인가**: `utils/time_format.to_local_str`. 소비자는 `main.py`(재수출 포함)와 `chain_ingestion_worker.py`.
 - **왜 아직 안 합쳤나**: **이유 없음 — 그냥 안 했다.** `utils/time_format.py`가 분리될 때 이 사본이 함께 걷히지 않았다.
 - **합칠 때의 함정**:
@@ -97,18 +101,18 @@
 ### D-6. `labelToken` + `PALETTE_TOKENS` — **바이트 동일 사본 둘**
 
 - **무엇이 중복인가**: 그래프 label에 색 토큰을 배정하는 3줄 상태기. 팔레트 배열·`Map` 선언·함수 본문이 **문자 단위로 동일**하다.
-- **몇 곳 (2, 실측)**: `graph_viewer.js:83,85,106` · `trace.js:65,66,68`. 같은 온톨로지 그래프 도메인이고, **공용 모듈 `trace_core.js`가 이미 존재하는데 둘 다 그것을 쓰지 않는다.**
+- **몇 곳 (2, 실측)**: `graph_viewer.js,85,106` · `trace.js,66,68`. 같은 온톨로지 그래프 도메인이고, **공용 모듈 `trace_core.js`가 이미 존재하는데 둘 다 그것을 쓰지 않는다.**
 - **어느 것이 정본인가**: **없다.** 자연스러운 자리는 `trace_core.js`(이미 `propsSummary`·`truncateText`·`fmtEventTime`을 export한다).
 - **왜 아직 안 합쳤나**: **이유 없음 — 그냥 안 했다.**
 - **합칠 때의 함정**:
   - 🔴 **합치면 색이 바뀐다.** 인덱스는 **처음 본 순서**로 배정되는데(`labelPaletteIdx.size % …`) 두 화면의 첫 목격 순서가 다르다. 즉 **같은 label이 그래프 뷰어와 추적 리포트에서 이미 다른 색일 수 있고**, 통합은 그 색을 한쪽에서 바꾼다. 사용자에게는 「색이 왜 바뀌었나」로 보인다 — **합치기 전에 그 사실을 먼저 말하라.**
   - 🔴 **진짜 수리는 순서 의존을 없애는 것**이다(label 문자열 해시 → 토큰). 그러면 두 화면이 구조적으로 같은 색을 갖고, 새 화면이 셋째 사본을 만들 유인도 사라진다.
-  - ⚠️ **형제 항목 하나 더**: `propsSummary`도 둘이다(`graph_viewer.js:737` = 앞 2개 `k=v` 공백 결합 · `trace_core.js:211` = 앞 3개 `k: v` ` · ` 결합 + `+N`). 이쪽은 **이미 발산했다** — 같은 노드가 두 화면에서 다른 요약을 보여 준다. 합칠 때 어느 쪽 표기를 남길지는 **표시 결정이라 총괄 판단이 필요하다.**
+  - ⚠️ **형제 항목 하나 더**: `propsSummary`도 둘이다(`graph_viewer.js` = 앞 2개 `k=v` 공백 결합 · `trace_core.js` = 앞 3개 `k: v` ` · ` 결합 + `+N`). 이쪽은 **이미 발산했다** — 같은 노드가 두 화면에서 다른 요약을 보여 준다. 합칠 때 어느 쪽 표기를 남길지는 **표시 결정이라 총괄 판단이 필요하다.**
 
 ### D-7. `load_map_meta` — **둘**
 
 - **무엇이 중복인가**: `(target_table, map_id)`의 `grid_metadata` dict 조회.
-- **몇 곳 (2, 실측)**: `map_overlay.py:210`(테이블·컬럼명 **고정**) · `bonding_plan.py:137`(테이블·컬럼명을 config `map_metadata` 블록에서 **받음**). 둘 다 요청 경계 캐시 인자를 갖는다 — `map_overlay` 쪽은 래퍼 `load_map_meta_cached`(`:957`)로 분리돼 있고, **그 docstring이 「`bonding_plan.load_map_meta`와 같은 규율」이라고 이미 자백한다.**
+- **몇 곳 (2, 실측)**: `map_overlay.py`(테이블·컬럼명 **고정**) · `bonding_plan.py`(테이블·컬럼명을 config `map_metadata` 블록에서 **받음**). 둘 다 요청 경계 캐시 인자를 갖는다 — `map_overlay` 쪽은 래퍼 `load_map_meta_cached`(`:957`)로 분리돼 있고, **그 docstring이 「`bonding_plan.load_map_meta`와 같은 규율」이라고 이미 자백한다.**
 - **어느 것이 정본인가**: `map_overlay.load_map_meta`(+ 캐시 래퍼)가 일반 경로. `bonding_plan` 쪽은 **의도적 변종**이고 그 사실이 docstring에 적혀 있다.
 - **왜 아직 안 합쳤나** — **이유가 적혀 있다**: 본딩 실험계획은 **실운영 테이블명이 사이트마다 다르다는 전제**로 만들어져 하드코딩이 금지돼 있다. `map_overlay` 쪽은 그 config 레이어를 모른다.
 - **합칠 때의 함정**:
@@ -118,7 +122,7 @@
 ### D-8. `compose_map_id` — **둘** (조합 규칙은 공유, 결측 처리는 의도적으로 다름)
 
 - **무엇이 중복인가**: 키 컬럼 값들을 `_`로 이어 `map_id`를 만드는 조합.
-- **몇 곳 (2, 실측)**: `map_overlay.py:184`(**THE 조립기** — `identity_cols, values, binding`) · `map_meta_registrar.py:132`(`key_columns, row, table_name`). ⚠️ **둘 다 서버다.** 클라의 `composeMapId`는 세 번째 사본이 **아니라** 이음새의 반대편이고(2026-08-04부터 `client2/src/map_key.js`, 종전 `map_editor.js`), 같은 답을 내야 하는 서버/클라 쌍은 **§3이 원장 밖으로 명시적으로 배제**한다 — 채점은 `contracts/map_seam/` + `client2/tests/seam_7b_oracle.py`가 한다. 여기에 등재하지 마라.
+- **몇 곳 (2, 실측)**: `map_overlay.py`(**THE 조립기** — `identity_cols, values, binding`) · `map_meta_registrar.py`(`key_columns, row, table_name`). ⚠️ **둘 다 서버다.** 클라의 `composeMapId`는 세 번째 사본이 **아니라** 이음새의 반대편이고(2026-08-04부터 `client2/src/map_key.js`, 종전 `map_editor.js`), 같은 답을 내야 하는 서버/클라 쌍은 **§3이 원장 밖으로 명시적으로 배제**한다 — 채점은 `contracts/map_seam/` + `client2/tests/seam_7b_oracle.py`가 한다. 여기에 등재하지 마라.
 - **어느 것이 정본인가**: `map_overlay.compose_map_id`. **캐노니컬화는 이미 공유된다** — 등록 측도 `map_overlay.canonical_bind_value`를 부른다(`7b`, 2026-07-29). 남은 사본은 **`"_".join(parts)` 조립 루프뿐**이다.
 - **왜 아직 안 합쳤나** — **이유가 적혀 있고, 차이가 계약이다**: 결측 처리가 **일부러 다르다.** 에디터는 빈 키 부분을 **버리고 나머지를 잇지만**, 등록 측은 빈 부분이 있으면 **행 자체를 실격시킨다**(`None` 반환) — 인제션이 부분 정체를 추측해서 그 이름으로 메타를 등록하면 안 되기 때문이다.
 - **합칠 때의 함정**: 🔴 **결측 정책을 인자로 받지 않고 합치면 두 계약 중 하나가 조용히 죽는다.** 등록 측이 에디터 정책을 물려받으면 **부분 키로 메타가 등록되고**, 그 뒤 조회는 영원히 빗나간다([PRIMITIVES §2 「키 값은 선언 타입으로 캐노니컬화」](./PRIMITIVES.md#2-키와-정체)의 실측 사고와 같은 계급). 🔴 **캐노니컬화는 이미 하나다 — 그것을 되돌리지 마라.**
@@ -142,7 +146,8 @@
 
 **등재하지 마라** — 실측해 보고 아니라고 판정한 것들이다. 다음 사람이 같은 조사를 반복하지 않게 남긴다.
 
-- **`BaseMapper.payloads_to_df`** (`mappers/base.py:12`) — 같은 이름이지만 `mappers/utils.py:4`로 **위임한다.** 정확히 원하는 형태다.
+- **`BaseMapper.payloads_to_df`** (`server/mappers/base.py`) — 같은 이름이지만 `server/mappers/utils.py`로 **위임한다.** 정확히 원하는 형태다.
+  - ⚠️ **[2026-08-06] 이 예시가 「HEAD에 그런 파일이 없다」로 잘못 고발됐다 — `server/mappers/*`는 현장 자산이라 gitignore된다**(`.gitignore:46-47`, `.sample`만 추적). 디스크에는 `base.py`·`utils.py`·`inv_man.py`·`production_mapper.py`·`dt_map_mapper.py`가 실재하고 `class BaseMapper`와 위임도 그대로다(재실측). 🔴 **이 저장소에서 `git ls-tree HEAD`만 본 판정은 config·맵퍼·워크스페이스 자산 계급 전체를 「삭제됨」으로 오독한다** — 같은 날 `MAP_ALIGNMENT_SPEC`의 `generate_core_defect.py` 인용이 정확히 같은 이유로 잘못 고발됐다.
 - **`main.to_local_str`** — `utils.time_format`의 **재수출**이다(사본 아님). D-5의 사본은 `graph_sync_worker` 쪽이다.
 - **`transfer_plan._split_material` ↔ 클라 `splitMaterialId`** — 서버·클라가 **같은 답을 내야 하는 이음새**이지 중복이 아니다. 이런 자리의 처방은 사본 제거가 아니라 [PRIMITIVES §6 「벡터 파일 하나에 양쪽을 못박는다」](./PRIMITIVES.md#6-프로세스경계).
 - **`copyHeader`(그리드) ↔ `mapCopyHeader`(맵)** — 표면별 사용자 토글의 **의도된 형제**다([PRIMITIVES §1](./PRIMITIVES.md#1-데이터-쓰기)).

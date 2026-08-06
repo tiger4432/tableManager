@@ -1,5 +1,8 @@
 # Technical Specification: Batch Update Algorithm (N+1 Query Elimination)
 
+> **Status:** 🟠 부분 현행 | **Last-verified:** 2026-08-06 | **Owner:** Backend
+> ⚠️ **[2026-08-06 상태 헤더 신설] 알고리즘의 *형태*를 읽는 문서이지 현재 시그니처의 정본이 아닙니다.** 정본은 언제나 `server/database/crud.py`이고, 서술 정본은 [architecture/backend §3](../architecture/backend.md)입니다 — 그쪽이 `replace_report`의 현재 필드(`filters`·`deleted`·`mode`·`reason`·`adopted`·`adopted_row_ids`)와 2026-08-06 업서트 라운드(프리페치 선조립·NOTIFY 접기·브로드캐스트 항목 상한)를 싣습니다. 🔴 **이 문서의 코드 블록은 축약된 옛 사본입니다**(본문이 이미 그렇게 적고 있습니다).
+
 본 문서는 `assyManager` 시스템의 파일 인제션 및 벌크(배치) 셀 데이터 적재 성능을 극대화하기 위해 설계된 **배치 업데이트 알고리즘(Batch Update Algorithm)**의 설계 구조와 실제 데이터베이스 CRUD 계층의 소스 코드를 설명합니다.
 
 ---

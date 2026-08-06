@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (§8 라우트 수 재실측 **16 → 24** + fail-closed **2 → 3**(`POST /admin/retroactive/{op}/run`) + 계획 dry-run 라우트 등재. 직전 2026-07-27: §8 `/admin/*` + `/internal/events/*` 공유 토큰 게이트) | **Owner:** Lead / Architecture
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (🔴 **정합 감사가 이 문서 하나 때문에 코퍼스를 「신뢰 불가」로 판정했고, 그 판정은 옳았습니다.** §3의 「진입점 **6개**」가 `map_editor2.html`을 빠뜨린 채 6행 표를 들고 있었는데, **이 문서는 「상충하면 이 문서가 우선한다」고 스스로 적는 문서**라 그 규칙이 독자에게 **틀린 사본을 믿으라고 지시하고** 있었습니다. 함께: §2의 `main.py (~3,650줄)` 삭제(실측 6,128 — **산문 속 줄 수는 이 결함의 가장 순수한 형태**라 고치지 않고 지웠습니다) · §3의 「PySide6 참조 문서는 전부 `_archive/`에 있다」 정정(**[CONDA_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md)가 아니었고 §7이 거기로 보내고 있었습니다**) + **「PySide6가 제거됐다」로 읽히지 않도록** 못박음(`desktop_wrapper.py`가 여전히 import합니다) · §8 라우트 기수 삭제. 직전 2026-08-04: §8 라우트 수 재실측 + fail-closed 3종. 직전 2026-07-27: §8 `/admin/*` + `/internal/events/*` 공유 토큰 게이트) | **Owner:** Lead / Architecture
 > **Source-of-truth:** `server/`, `client2/`, `client/desktop_wrapper.py`, `run_decoupled_app.py`
 > 본 문서는 AssyManager의 **현재 아키텍처에 대한 유일한 권위(SSOT)**입니다. 다른 모든 문서는 이 문서를 기준으로 하며, 여기와 상충하면 이 문서가 우선합니다. 세부는 하위 문서로 링크합니다.
 
@@ -72,32 +72,37 @@ graph TD
 
 | 프로세스 | 진입점 | 역할 | 상세 |
 |---|---|---|---|
-| **Web API + WS 허브** | `server/main.py` (~3,650줄) | REST/WebSocket, `127.0.0.1:8080`. 그래프 조회 API(`/graph/*`)는 여기서 직접 서빙 | [architecture/backend.md](../architecture/backend.md) |
+| **Web API + WS 허브** | `server/main.py` | REST/WebSocket, `127.0.0.1:8080`. 그래프 조회 API(`/graph/*`)는 여기서 직접 서빙 | [architecture/backend.md](../architecture/backend.md) |
 | **File Ingestion Watcher** | `run_watcher.py` → `parsers/directory_watcher.py` | `ingestion_workspace/*/raws/` 감시·파싱·적재·아카이빙. 커스텀 스크립트 없으면 **std parser 폴백**(헤더 검증 기반 CSV/TSV/TXT). 크기 임계(기본 10MB) 초과 파일은 **heavy 레인**(전용 큐/워커)으로 격리해 타 테이블 비차단 — 워크스페이스 내 순서는 보존, 진행 상태는 웹서버 push로 admin에 가시화(P1). 파일 전체 sha256 시그니처로 **동일 파일 재투입 skip**과 **오프셋 체크포인트 재개**(재기동 시 전량 재처리 제거) 수행(P2) | [INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) |
 | **Auto-Update Scheduler** | `run_auto_update.py` | `auto_update/*.py` 주석기반 크론 실행 → `raws/`에 CSV 드롭 | [AUTO_UPDATE_GUIDE](../guide/AUTO_UPDATE_GUIDE.md) |
 | **Chain Ingestion Worker** | `run_chain_worker.py` → `chain_ingestion_worker.py` | outbox 소비(LISTEN/NOTIFY), 규칙별 맵퍼로 파생 데이터 생성. SLO 100ms | [chain_ingestion_guide](../guide/chain_ingestion_guide.md) |
 | **Graph Sync Worker (materializer)** | `run_graph_sync.py` → `graph_sync_worker.py` | 독립 FastAPI(:8090). **outbox 증분 소비 → 매핑 config에 따라 PG 엣지 스토어(`graph_nodes/edges`)로 자동 승격**(자체 keyset 커서, SYSTEM_RELOAD 구독). `/api/graph/sync`(수동)는 백필/복구 도구. Neo4j는 청크 훅으로 병행 가능(G3) | [spec/ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [event_driven_backend §4](../architecture/event_driven_backend.md) |
 
-> `DECOUPLED=True` 환경변수는 `main.py`가 워처·체인 워커를 인라인으로 띄우지 않게 하여, 위 5개 프로세스를 완전히 분리 실행합니다(운영 기본값).
+> `DECOUPLED=True` 환경변수는 `main.py`가 워처·체인 워커를 인라인으로 띄우지 않게 하여, **위 표의 프로세스를 완전히 분리 실행**합니다(운영 기본값). **수를 적지 않습니다 — 표가 목록이고 정본은 `run_decoupled_app.py`의 `specs`입니다**(`--server-only`가 아니면 데스크톱 셸이 자식으로 하나 더 붙습니다).
 
 ---
 
 ## 3. 클라이언트 (웹이 메인)
 
-- **`client2/`** — Vite 멀티페이지 앱(Vanilla ESM, 프레임워크 없음, JS ~16,000줄). 진입점 **6개**:
+- **`client2/`** — Vite 멀티페이지 앱(Vanilla ESM, 프레임워크 없음). 진입점은 **아래 표가 정본이고 그 옆에 수를 적지 않습니다** — 정본 중의 정본은 `client2/vite.config.js`의 `rollupOptions.input`입니다:
   | 엔트리 | 모듈 | 페이지 |
   |---|---|---|
   | `index.html` | `main.js` | 데이터 그리드(메인, AG-Grid) — 「🕸️ 추적」 진입점 포함 |
   | `admin.html` | `admin.js` | 어드민 — **파이프라인 생애주기 5탭**(Overview/File/Chain/AutoUpdate/Enrichment) + 코드 에디터 공용 뷰(Monaco CDN, `#editor=<path>` 딥링크) |
   | `map_editor.html` | `map_editor.js` (+ `transfer_plan.js`) | 웨이퍼 맵 에디터(커스텀 캔버스) + **오버레이 레이어** + **전사 계획 사이드바**(계획 = 지금 열어 편집 중인 그 맵) |
+  | `map_editor2.html` | `map_editor2.js` (+ `src/map2/*`) | **맵 정렬 화면(좌표계 확정) — 개발 중.** 🔴 **레거시 에디터를 대체하지 않고 *옆에 섭니다***(`vite.config.js`가 그렇게 적고 있습니다). 켜는 데 필요한 선언은 [CONFIG_GUIDE §3 S9](../guide/CONFIG_GUIDE.md), 층 경계는 [frontend §4.2](../architecture/frontend.md) |
   | `enrichment.html` | `enrichment.js` | Enrichment Queue 컨베이어(결손 보정 워크리스트) |
   | `graph.html` | `graph_viewer.js` | 지식그래프 서브그래프 뷰어(stats·검색·k-hop 캔버스) |
   | `trace.html` | `trace.js` | 객체 중심 추적 리포트(멀티 시드 BFS — 그리드 선택→시드) |
+
+  > 🔴 **[2026-08-06 정정] 종전 이 자리는 「진입점 **6개**」였고 표에는 `map_editor2.html`이 **없었습니다.** 그 페이지는 2026-08-05에 출하됐습니다.** 그리고 이 문서가 SSOT라 「상충하면 이 문서가 우선한다」는 규칙이 **틀린 사본을 믿으라고 지시하고 있었습니다** — 정합 감사가 이 한 줄로 문서 전체를 **신뢰 불가**로 판정한 이유입니다. **수는 다시 적지 않았습니다**([frontend §1](../architecture/frontend.md)이 같은 처방을 이미 갖고 있습니다).
 - **그리드:** AG-Grid Community `^35.3.0` (유일한 런타임 의존성). 맵 에디터·그래프 뷰어는 AG-Grid 미사용 — 커스텀 캔버스 렌더링.
 - **테마:** 듀얼 테마(기본 라이트 + 다크 토글). 토큰 SSOT는 `src/tokens.css`, 전환은 `src/theme.js`.
 - **상태 관리:** `state.js`의 단일 싱글턴 객체를 직접 변조하고 명시적 UI 리프레셔를 호출하는 **수동 반응성**(리액티브 프레임워크 아님).
 - **데스크톱 셸:** `client/desktop_wrapper.py`(514줄)는 `{해석된 서버}/?client=desktop`를 로드하는 **QtWebEngine 래퍼**. OS 드래그앤드롭 업로드, 네이티브 다운로드 다이얼로그, `assymanager://` URI 스킴을 제공. 서버 주소는 하드코딩이 아니라 `--server` > `ASSY_SERVER` > `client/client_settings.json` > `127.0.0.1:8080` 순으로 해석된다([frontend §1.1](../architecture/frontend.md)).
-- ⚠️ **구 PySide6 데스크톱 클라이언트(`client/main.py`, `ui/`, `models/table_model.py`)는 제거되었습니다.** 이를 참조하는 문서는 `_archive/`에 있습니다.
+- ⚠️ **구 PySide6 데스크톱 클라이언트 *애플리케이션*(`client/main.py`, `ui/`, `models/table_model.py`)은 제거되었습니다.**
+- 🔴 **[2026-08-06 정정] 「PySide6가 제거됐다」로 읽지 마십시오 — PySide6는 살아 있는 런타임 의존성입니다.** 바로 위의 `client/desktop_wrapper.py`가 `PySide6.QtWebEngineWidgets`·`QtWidgets`·`QtNetwork`·`QtGui`를 import합니다. 없어진 것은 **Qt 위젯으로 그리던 클라이언트 앱**이고, 남은 것은 **웹앱을 감싸는 QtWebEngine 셸**입니다. 두 문장을 섞으면 `environment.yml`에서 PySide6를 빼는 순간 데스크톱 셸이 죽습니다.
+- 🔴 **[2026-08-06 정정] 종전 이 자리는 「이를 참조하는 문서는 `_archive/`에 있습니다」로 끝났고 그것은 거짓입니다.** [guide/CONDA_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md)가 `_archive/` 밖에서 `client/main.py` 실행을 지시하고 있었고, **아래 §7이 운영자를 바로 그 문서로 보내고 있었습니다.** 이 라운드에 그 가이드를 현행 스택으로 다시 썼습니다.
 
 상세: [architecture/frontend.md](../architecture/frontend.md)
 
@@ -206,7 +211,7 @@ cd client2 && npm run dev    # :5173 → API/WS는 127.0.0.1:8080로 자동 타�
 - `GET /api/maps/overlay`, `/api/maps/paint-rules` — **범용 맵 오버레이**(임의 맵을 타깃 맵 프레임으로 정렬) · 페인트 잠금 선언 정본
 - `GET /api/transfer-plan/{stages,source-summary,validate}`, `/api/bonding-plan/core-summary` — 전사 계획 stage·가용 집계·검증(계획 정체성 = `(ref_table, map_key)`). 🔒 저장 전 반영 확인은 **`GET /admin/transfer-plan/dry-run`**(파라미터 없음 · 행 조회 없음 · 어느 철자가 이겼는지까지 답한다)
 - `/admin/*`, `/internal/events/*`, `/map-presets` — 어드민·프로세스간·맵프리셋
-  - 🔒 **`/admin/*` **24개**(2026-08-04 실측) + `/internal/events/*` 4개 라우트는 공유 토큰 게이트 뒤에 있다**(2026-07-27, `server/admin_auth.py`) — `ASSY_ADMIN_TOKEN` 환경변수 + `X-Admin-Token` 헤더(**ASCII 전용** — 헤더가 latin-1이라 비-ASCII는 인증 불가, 거부되며 기동 배너가 `ERROR`). 로그인 화면·사용자 관리는 **의도적으로 없다**(2~5명 사내 공유). ⚠️ **이 수는 라우트가 늘 때마다 낡는다** — 커버리지의 정본은 수가 아니라 `test_admin_auth.py`가 **FastAPI 라우트 테이블을 열거**해 내는 단언이다. 토큰 미설정 시 **fail closed 3개**(`POST /admin/scripts/code` · `POST /admin/auto-update/run-now` · **`POST /admin/retroactive/{op}/run`** — 정본은 `test_admin_auth.STRICT_ADMIN_ROUTES`)는 **503**, 나머지는 열린다(첫 재기동에 운영자가 어드민 전체에서 잠기지 않게 — 사용자 확정). 소급 실행이 셋째로 들어간 이유는 코드 실행이라서가 아니라 **같은 아웃박스로 같은 스케줄러 프로세스에 닿고 피해 계급이 같기** 때문이다(테이블 전체 재작성 · 소스 주장 회수 · 노드 삭제). `GET /health`는 무인증 유지. 워커는 런처 환경에서 토큰을 상속하므로 별도 설정이 없다. ⚠️ **토큰을 켜기 전에 `client2/dist` 번들 재빌드가 선행되어야 한다**(옛 번들엔 토큰을 묻는 코드가 없어 어드민이 잠긴다). 설정 → [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md)
+  - 🔒 **`/admin/*` 전체 + `/internal/events/*` 전체가 공유 토큰 게이트 뒤에 있다**(🔴 **[2026-08-06] 수를 적지 않는다** — 종전 「24개」·「4개」였고 라우트가 늘 때마다 낡는다. 세는 술어는 `grep -cE '^@app\.(get|post|put|delete|patch)\("/admin' server/main.py`이고, **`^` 앵커를 빼면 함수 안에 조건부로 등록되는 둘까지 세어 다른 답이 나온다**)(2026-07-27, `server/admin_auth.py`) — `ASSY_ADMIN_TOKEN` 환경변수 + `X-Admin-Token` 헤더(**ASCII 전용** — 헤더가 latin-1이라 비-ASCII는 인증 불가, 거부되며 기동 배너가 `ERROR`). 로그인 화면·사용자 관리는 **의도적으로 없다**(2~5명 사내 공유). ⚠️ **이 수는 라우트가 늘 때마다 낡는다** — 커버리지의 정본은 수가 아니라 `test_admin_auth.py`가 **FastAPI 라우트 테이블을 열거**해 내는 단언이다. 토큰 미설정 시 **fail closed 3개**(`POST /admin/scripts/code` · `POST /admin/auto-update/run-now` · **`POST /admin/retroactive/{op}/run`** — 정본은 `test_admin_auth.STRICT_ADMIN_ROUTES`)는 **503**, 나머지는 열린다(첫 재기동에 운영자가 어드민 전체에서 잠기지 않게 — 사용자 확정). 소급 실행이 셋째로 들어간 이유는 코드 실행이라서가 아니라 **같은 아웃박스로 같은 스케줄러 프로세스에 닿고 피해 계급이 같기** 때문이다(테이블 전체 재작성 · 소스 주장 회수 · 노드 삭제). `GET /health`는 무인증 유지. 워커는 런처 환경에서 토큰을 상속하므로 별도 설정이 없다. ⚠️ **토큰을 켜기 전에 `client2/dist` 번들 재빌드가 선행되어야 한다**(옛 번들엔 토큰을 묻는 코드가 없어 어드민이 잠긴다). 설정 → [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md)
 
 ---
 

@@ -1,5 +1,9 @@
 # 🐘 Native PostgreSQL Setup Guide (Windows & Linux)
 
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 | **Owner:** Ops
+> **판정 2026-08-06 — 아카이브하지 않고 §연동만 다시 씁니다.** 설치 절차(Windows MSI · Ubuntu apt · DB 생성)는 **현행이고 낡지 않는 계급**이며 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)·[CONDA_SETUP_GUIDE](./CONDA_SETUP_GUIDE.md)·[CONFIG_GUIDE](./CONFIG_GUIDE.md)·[SERVER_STARTUP_GUIDE](./SERVER_STARTUP_GUIDE.md)·[docs/README](../README.md)가 여기로 보냅니다. 🔴 **거짓이던 것은 연동 절차 하나**였습니다 — 아래 참조.
+> 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 운영은 [POSTGRES_OPERATIONS_GUIDE](./POSTGRES_OPERATIONS_GUIDE.md)
+
 본 문서는 **도커(Docker)를 사용할 수 없는 환경**에서 윈도우와 리눅스 서버에 PostgreSQL을 직접 설치하고, AssyManager와 연동하기 위한 최단 경로 가이드를 제공합니다.
 
 ---
@@ -55,16 +59,17 @@
 
 ## 🔗 AssyManager 연동 설정
 
-PostgreSQL 설치가 완료되면, 서버 코드(`server/database/database.py` 등)의 연결 문자열을 아래와 같이 수정하면 즉시 연동됩니다.
+🔴 **[2026-08-06 정정] 종전 이 절은 「서버 코드(`server/database/database.py`)의 연결 문자열을 수정하면 된다」고 했고, SQLite를 「기존」이라 불렀습니다. 둘 다 거짓입니다** — **코드를 고치지 마십시오.** 접속은 **선언**으로 정해지고 우선순위가 있습니다:
 
-```python
-# SQLite (기존)
-SQLALCHEMY_DATABASE_URL = "sqlite:///./assy_manager.db"
+| 순위 | 원천 | 형태 |
+|---|---|---|
+| 1 | 환경변수 `DATABASE_URL` | `postgresql://postgres:<비밀번호>@localhost:5432/assy_manager` |
+| 2 | `<config>/database.json` | `{"host":..., "port":..., "dbname":..., "user":..., "password":...}` — **사람이 편집하는 자리** |
+| 3 | 코드 기본값 | 위와 같은 형태의 로컬 기본값 |
 
-# PostgreSQL (변경)
-# 형식: postgresql://[사용자]:[비밀번호]@[호스트]:[포트]/[DB명]
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:your_password@localhost:5432/assy_manager"
-```
+- 🔴 **`database.json`은 핫리로드되지 않습니다 — 커넥션 문자열이라 재기동이 필요합니다**([CONFIG_GUIDE §4.1](./CONFIG_GUIDE.md)).
+- ⚠️ **SQLite는 「기존」이 아닙니다.** 이 프로젝트의 저장소는 PostgreSQL이고, SQLite는 테스트 스위트 일부에서만 씁니다. 🔴 **그 둘을 같은 것으로 읽으면 위험합니다** — SQLite는 PostgreSQL이 거절하는 리터럴을 받아 주므로, 스위트는 초록인데 운영만 터지는 실패가 이 저장소에서 이미 여러 번 났습니다.
+- 어느 원천이 실제로 답했는지는 `server/scripts/diagnose_db_health.py`가 출력합니다([spec/DEBUGGING_GUIDE §0](../spec/DEBUGGING_GUIDE.md)).
 
 ---
 
@@ -74,4 +79,4 @@ SQLALCHEMY_DATABASE_URL = "postgresql://postgres:your_password@localhost:5432/as
 - **안정성**: 갑작스러운 전원 차단이나 시스템 오류 시에도 데이터 복구 능력이 월등히 뛰어납니다.
 
 ---
-*AssyManager Scalability Engineering | 2026.04.18*
+> ⚠️ **[2026-08-06] 꼬리에 있던 두 번째 자기 날짜(`2026.04.18`)를 없앴습니다.** 한 문서가 헤더와 꼬리에 서로 다른 날짜를 주장하면 독자는 어느 쪽도 믿을 수 없습니다 — 날짜는 헤더의 `Last-verified` **하나**입니다(같은 결함이 `process/agentic_environment.md`에도 있었습니다).

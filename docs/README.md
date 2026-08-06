@@ -47,9 +47,9 @@
 | DOE 영역 저장 지도 | 🗄️ [spec/DOE_STORAGE_MAP.md](./spec/DOE_STORAGE_MAP.md) — **본문은 폐기된 3테이블 모델**이며 기존 데이터 해석용으로만 보존합니다. M2.6이 양쪽 다 착지해(`cdcddee`+`0f8d35f`) 지금은 `map_split_registry` **한 테이블**입니다 → 현행 계약은 [MAP_EDITOR_SPEC §6](./spec/MAP_EDITOR_SPEC.md)·[CONFIG_GUIDE §5.8](./guide/CONFIG_GUIDE.md) |
 | HTML 토폴로지 파서 | 🟢 [guide/HTML_TOPOLOGY_PARSER_GUIDE.md](./guide/HTML_TOPOLOGY_PARSER_GUIDE.md) |
 | 배치 업서트 | 🟠 [spec/batch_update_technical_specification.md](./spec/batch_update_technical_specification.md) |
-| 실시간 동기화 | 🟢 **현행 정본은 [architecture/frontend §3·§3.1](./architecture/frontend.md)** — 모듈 구조 + **무결성 3문제**(중복 행·늦은 응답 오염·`total` 드리프트). 🗄️ [spec/DATA_SYNC_SPEC.md](./spec/DATA_SYNC_SPEC.md)은 **폐기된 PySide6 클라 기준이고 §3 문제 서술도 2026-07-27 이관 완료** — **남은 유효 내용 0, 아카이브 대기**(SSOT 링크 정리 후 총괄이 이관). 인용하지 말 것 |
+| 실시간 동기화 | 🟢 **현행 정본은 [architecture/frontend §3·§3.1](./architecture/frontend.md)** — 모듈 구조 + **무결성 3문제**(중복 행·늦은 응답 오염·`total` 드리프트). 🗄️ **[2026-08-06 아카이브 완료]** [_archive/DATA_SYNC_SPEC.md](./_archive/DATA_SYNC_SPEC.md) — 폐기된 PySide6 클라 기준이고 §3 문제 서술도 2026-07-27 이관 완료라 **남은 유효 내용 0**. 🔴 **조건은 「SSOT 링크 정리 후」였고 그 조건은 이미 충족돼 있었는데 아무도 안 봤습니다** — 실측 결과 SSOT의 참조는 **0건**이었습니다. **조건부 대기는 조건을 다시 재는 사람이 없으면 영구 대기가 됩니다.** 인용하지 말 것 |
 | 실패 관리/재시도 | 🟢 [spec/FAILURE_MANAGEMENT_SPEC.md](./spec/FAILURE_MANAGEMENT_SPEC.md) |
-| 비즈니스 로직/레이어링 | 🟠 [spec/BUSINESS_LOGIC_SPEC.md](./spec/BUSINESS_LOGIC_SPEC.md) |
+| 비즈니스 로직/레이어링 | 🗄️ **[2026-08-06 아카이브]** [_archive/BUSINESS_LOGIC_SPEC.md](./_archive/BUSINESS_LOGIC_SPEC.md) — 서술의 중심인 `update_cell`·`upsert_row`가 **`server/` 어디에도 없습니다.** 현행 정본은 [architecture/data_model](./architecture/data_model.md)(레이어링)과 [spec/batch_update_technical_specification](./spec/batch_update_technical_specification.md)(쓰기 경로) |
 | Enrichment Queue(결손 보정 워크리스트) | 🟢 [spec/ENRICHMENT_QUEUE_SPEC.md](./spec/ENRICHMENT_QUEUE_SPEC.md) |
 | 온톨로지 지식그래프(LLM 백본) | 🟢 [spec/ONTOLOGY_GRAPH_SPEC.md](./spec/ONTOLOGY_GRAPH_SPEC.md) — **G1+뷰어+G2 라이브 가동으로 §1~§6 실증**(2026-07-25 Living 승격). §7.x는 G3+ 설계(§7.5c 탐색 정책은 G2.5 전제). **§3 매핑 예제는 「셀 체인」이 정본**(2026-07-30 `aea4700` — `CoreCell(core_lot,core_slot,cx,cy)`가 두 로그의 행 노드 · `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell` · `FROM_CORE→Core` · **좌표는 엣지 props가 아니라 identity 안에**. 🗄️ 폐기 형태 `Chip`/`log_id`/`BONDED_FROM→Wafer`/`PLACED_ON→Base`) · **§7.5d 칩 추적 API**(`GET /graph/chip-trace` — depth 없는 고정 형상, **다리별 닫힌 어휘로 빈 홉을 금지**: `mapping_unavailable`("읽지 못했다" ≠ "옮겨갔다")·`not_reached`("묻지 않았다")) · **§7.5e 선언 변경의 전파와 잔여물**(재동기화가 `SYSTEM_RELOAD`를 직접 발행 · 고아 스윕은 **깨끗하지 않은 선언 앞에서 전체를 거절** · `mapping-summary`의 `rejected[]`). 승격 흐름 요약: [event_driven_backend §4](./architecture/event_driven_backend.md) |
 | 추적 시뮬레이션 픽스처(합성 데이터 규격) | 🟠 [spec/TRACE_FIXTURE_SPEC.md](./spec/TRACE_FIXTURE_SPEC.md) — **작성 중이고 채우는 주체가 사용자**다(총괄 검수 → server-pm 생성). 온톨로지 순환의 **④(발견 → 다시 보강)**을 한 바퀴 완주시키기 위한 데이터로, **정체성(§1)·불완전성(§6)·정답(§7)** 셋이 빠지면 그 증명이 성립하지 않는다 — **완벽한 데이터는 교정할 것이 없고**, 정답 없이 만든 trace 결과는 채점할 방법이 없다. ⚠️ 2026-08-04까지 이 표와 [DOC_OWNERSHIP](./process/DOC_OWNERSHIP.md) **양쪽에 행이 없는 고아**였다 |
@@ -78,7 +78,7 @@
 | 🟢 [POSTGRES_OPERATIONS_GUIDE.md](./guide/POSTGRES_OPERATIONS_GUIDE.md) | DB 운영 · **§3.1 인덱스 4계열**(재교정률 · 상호작용 점수 · 값 제안 접두 · **R2 회수 범위 `idx_sources_by_source`** 2026-07-31 신설). 🔴 **`create_all`은 이미 있는 테이블에 인덱스를 추가하지 않는다** — 운영 DB 반영 경로는 `setup_db_performance.py` 하나뿐 |
 | 🟠 [SERVER_STARTUP_GUIDE.md](./guide/SERVER_STARTUP_GUIDE.md) | **성능 튜닝 관점**(인덱스·트라이그램·`work_mem`). 🔴 **기동 절차의 정본이 아니다** — 그쪽은 [SYSTEM_OVERVIEW §7](./overview/SYSTEM_OVERVIEW.md)이다. ⚠️ 2026-08-04까지 **존재하지 않는 명령 셋**을 인쇄하고 있었다(`requirements.txt`·`scripts/setup_db_performance.py`·`uvicorn --port 8000`) — 전부 정정 |
 | 🟢 [data_preservation_and_signature_change.md](./guide/data_preservation_and_signature_change.md) | 시그니처 변경·병합 보존 규율(SOP 필독) |
-| 🟠 [spec/DEBUGGING_GUIDE.md](./spec/DEBUGGING_GUIDE.md) | 트러블슈팅 체크리스트 · **§0 읽기 전용 진단 도구 둘**(2026-08-04 신설) — `diagnose_socket.py`(「소켓이 안 된다」의 **다섯 원인**을 가른다. 검사는 전부 **raw 소켓** — 사내 프록시에 속지도 바꾸지도 않는다) · `diagnose_db_health.py`(「예전보다 느려졌다」 = 긴 트랜잭션 → 블로트 → 스캔 비용. 세션에 `transaction_read_only`를 박고, **앱이 해석한 접속 URL**을 쓴다) |
+| 🟢 [spec/DEBUGGING_GUIDE.md](./spec/DEBUGGING_GUIDE.md) | **[2026-08-06 분할] 이제 §0만 남습니다** — §1–§4(PySide6 시대)는 [_archive/DEBUGGING_GUIDE_pyside6_era.md](./_archive/DEBUGGING_GUIDE_pyside6_era.md)로. **§0 읽기 전용 진단 도구 둘**(2026-08-04 신설) — `diagnose_socket.py`(「소켓이 안 된다」의 **다섯 원인**을 가른다. 검사는 전부 **raw 소켓** — 사내 프록시에 속지도 바꾸지도 않는다) · `diagnose_db_health.py`(「예전보다 느려졌다」 = 긴 트랜잭션 → 블로트 → 스캔 비용. 세션에 `transaction_read_only`를 박고, **앱이 해석한 접속 URL**을 쓴다) |
 
 ## 📜 5. 이력 & 개발 체계
 
@@ -89,7 +89,7 @@
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
-| 🟢 [process/agentic_environment.md](./process/agentic_environment.md) | 멀티 에이전트 협업 체계(총괄 + 2 PM) |
+| 🟢 [process/agentic_environment.md](./process/agentic_environment.md) | 멀티 에이전트 협업 체계 — 총괄 + 도메인/문서/검수 에이전트. **명단의 정본은 `.claude/agents/`이고 여기에 수를 적지 않는다**(종전 「총괄 + 2 PM」이 넉 달간 낡아 있었다) |
 | 🟢 [prompts/starting_prompt.md](./prompts/starting_prompt.md) | 총괄 PM 작업 헌장(SOP) + 조직 구조 |
 | 🟢 [prompts/server_pm.md](./prompts/server_pm.md) | Server(백엔드) 도메인 PM 헌장 |
 | 🟢 [prompts/client_pm.md](./prompts/client_pm.md) | Client(프론트엔드) 도메인 PM 헌장 |

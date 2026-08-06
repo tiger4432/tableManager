@@ -1,20 +1,39 @@
 # 🤖 assyManager 에이전틱 운영 환경 (Agentic Environment)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | 조직 구조(총괄 + 2 PM) 반영. 개발·문서 갱신 규율은 [CONTRIBUTING.md](./CONTRIBUTING.md), 각 PM 헌장은 [server_pm](../prompts/server_pm.md)·[client_pm](../prompts/client_pm.md). 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md).
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 | 🔴 **[2026-08-06 정정] 이 문서는 「총괄 + 도메인 PM 2인」 조직을 설명하면서 `.claude/agents/`에 정의가 훨씬 많은 상태로 **넉 달 가까이** 굴렀습니다.** §1의 명단과 §3의 온보딩 순서를 현행으로 맞췄습니다. ⚠️ **그리고 이 문서는 자기 날짜를 *두 개* 갖고 있었습니다** — 헤더 `Last-verified: 2026-07-26`과 꼬리 `Last Updated: 2026-04-12`. **자기 날짜가 둘인 문서는 어느 쪽도 증거가 아니므로** 꼬리를 없애고 헤더 하나로 통일했습니다. 개발·문서 갱신 규율은 [CONTRIBUTING.md](./CONTRIBUTING.md), 각 PM 헌장은 [server_pm](../prompts/server_pm.md)·[client_pm](../prompts/client_pm.md). 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md).
 
 본 프로젝트는 각 분야의 전문성을 갖춘 AI 에이전트들이 상호 유기적으로 협업하는 **에이전틱 지능형 프로젝트**입니다. 본 문서는 시스템을 관리하고 고도화하는 에이전트들의 구성과 협업 규약을 설명합니다.
 
 ---
 
-## 🏗️ 1. 멀티 에이전트 협업 체계 (총괄 + 2 도메인 PM)
+## 🏗️ 1. 멀티 에이전트 협업 체계
 
-시스템의 복잡도를 관리하기 위해 **총괄 PM(Lead)** 아래 **서버·클라이언트 도메인 PM 2인**을 두고, 각 PM이 필요 시 전문 스킬을 소환하여 작업한다.
+시스템의 복잡도를 관리하기 위해 **총괄 PM(Lead)** 아래 도메인·역할별 에이전트를 두고, 각자 자기 소관 파일만 건드린다.
+
+> 🔴 **정본은 `.claude/agents/*.md`이고 이 절은 그 지도다. 명단 옆에 수를 적지 않는다** — 종전 이 자리는 「총괄 + 2 도메인 PM」이었고 그 사이에 아홉이 더 생겼다. **역할이 늘어날 때 이 문단을 고치는 사람은 없다**는 것이 지난 넉 달의 실측이므로, 세지 말고 `ls .claude/agents/`를 보라.
 
 ```
-총괄 PM (Lead)  — 아키텍처 무결성 · 경계 계약 수호 · 작업 분배 · 문서 총괄
-├── Server PM   →  server/ 전 영역          [헌장: docs/prompts/server_pm.md]
-└── Client PM   →  client2/ + desktop_wrapper.py   [헌장: docs/prompts/client_pm.md]
+총괄 PM (lead-pm)  — 아키텍처 무결성 · 경계 계약 수호 · 작업 분배 · 문서 총괄
+│
+├─ 구현 도메인
+│   ├── server-pm       →  server/ 전 영역                 [헌장: docs/prompts/server_pm.md]
+│   ├── client-pm       →  client2/ + desktop_wrapper.py   [헌장: docs/prompts/client_pm.md]
+│   ├── map-pm          →  맵 에디터·좌표·오버레이·DOE (client-pm이 아니라 이쪽)
+│   └── ontology-pm     →  그래프 머티리얼라이저·온톨로지 매핑·graph/trace 뷰어
+│
+├─ 문서 (🔴 파일이 안 겹쳐서 **동시에** 돈다 — 그것이 분할의 목적이다)
+│   ├── doc-keeper      →  리빙 문서 동기화 · PRIMITIVES
+│   ├── doc-historian   →  docs/history/** + 인덱스 재생성
+│   ├── code-mapper     →  docs/architecture/CODE_MAP.md
+│   └── doc-auditor     →  검수 전담 (**쓰지 않는다** — 쓴 사람은 자기 것을 검수할 수 없다)
+│
+└─ 검수·이음매·표현
+    ├── qa-reviewer     →  적대적 코드 검수 (GO / GO-WITH-FIXES / NO-GO)
+    ├── contract-keeper →  contracts/<name>/ — 두 구현이 같은 답을 내야 하는 자리
+    └── ui-designer     →  로직 안 건드리는 시각·인터랙션 작업
 ```
+
+🔴 **보드(`docs/process/PROJECT_STATUS.md`)는 총괄 전담이다** — 다른 에이전트는 제안만 남기고 직접 고치지 않는다.
 
 ### 🛡️ 총괄 PM (Lead)
 - **책임**: 전체 아키텍처 보호, 작업 분배, **서버-클라이언트 경계 계약(REST·WS·셀 형태·스키마) 수호**, 기술 문서·이력 총괄.
@@ -66,6 +85,8 @@ Conda 환경(`assy_manager`)에서 검증되지 않은 코드는 절대 커밋�
 2. `docs/overview/SYSTEM_OVERVIEW.md`(SSOT)를 통해 전체 아키텍처 이해.
 3. 루트 `task/` 디렉토리와 `docs/process/RELEASE_LOG.md`로 진행/백로그 확인.
 4. `.agents/skills/SubAgentExecution/SKILL.md`를 통해 보고 체계 숙지.
+5. **자기 역할 파일** `.claude/agents/<역할>.md`와 **자기 교훈 파일** `agent_workspace/memory/<역할>.md`를 읽기 — 후자는 **반복 함정 목록**이고, 신규 교훈은 보고서에 *제안*하지 직접 추가하지 않는다.
+6. 문서 규율은 [CONTRIBUTING](./CONTRIBUTING.md), 소유 매핑은 [DOC_OWNERSHIP](./DOC_OWNERSHIP.md).
 
 ---
-**Last Updated: 2026-04-12**
+> ⚠️ **이 문서에 두 번째 날짜를 만들지 마십시오.** 여기 `**Last Updated: 2026-04-12**`가 있었고 헤더는 `2026-07-26`이었습니다 — **3개월 반 어긋난 두 날짜를 한 문서가 동시에 주장**하면 독자는 어느 쪽도 못 믿습니다. 날짜는 헤더의 `Last-verified` **하나**입니다.
