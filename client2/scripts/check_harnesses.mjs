@@ -299,6 +299,36 @@ const FLOORS = new Map([
   // an UNFLAGGED chip 1x1 must stay a real 1mm declaration — because that is the only thing
   // separating this from a magic-number sentinel, and 1 is a legal pitch.
   ['isotropic_cell_harness.mjs', 152],
+  // New 2026-08-06 with `opts.restoreDraft` (e34d57d, 「맵을 로드하면 로드한 맵이 나온다」).
+  // Same rule as the other new entries: the floor is the count it reports on the commit that
+  // introduces it. 13 of its assertions are the mutation corpus itself (11 defects + 2
+  // controls), scored as assertions rather than printed as prose so a corpus that stops being
+  // applied sinks `ran` and BLOCKS.
+  //
+  // 🔴 IT SCORES THE CANVAS, NOT THE FLAG. The change it protects shipped with the gap named
+  //    in its own commit message, and the failure mode is an operator's unsaved edits
+  //    vanishing — which leaves an identical exit code, an identical DOM and an identical
+  //    server row. So `gridData` is compared KEY BY VALUE against a server set and a draft
+  //    set built in the harness and asserted DISJOINT first (section P): a version that
+  //    passes `restoreDraft` and restores anyway satisfies every flag-shaped assertion and
+  //    fails `A1`. Measured against `e34d57d^` the same file reports 11 failures, so it is
+  //    known to be capable of failing on the code it was written for.
+  //
+  // 🔴 ITS HOST WAS CHOSEN BY MEASUREMENT, and that is the property most at risk here. The
+  //    obvious candidate (`valid_die_dirty_guard_harness`) reaches `readRegistryScope` 84
+  //    times and the draft function 0 times, and every leg of it carrying CELLS dies in the
+  //    load's own catch on `LEGEND_PALETTE is not defined`. This harness therefore refuses to
+  //    swallow: any unmodelled global routes to that same catch, and `noSwallowed()` turns it
+  //    into a HARNESS FAILURE instead of a green run that measured an empty screen. A drop in
+  //    this floor most likely means that guard, or the reachability check in section R,
+  //    stopped running — i.e. the file went back to being the thing it was written not to be.
+  //
+  // ⚠️ SECTION D PINS A DEFECT, ON PURPOSE AND LABELLED. A plain load re-persists the loaded
+  //    map's OWN draft slot from the server copy (`if (!staleDraftKept) saveLegendToStorage()`
+  //    with the restore removed), so 편집 → 📂 로드 → 새로고침 recovers nothing. Reported to
+  //    the Lead PM 2026-08-06, not repaired here. Its candidate repair is in the mutation
+  //    corpus, so D2/D3 are known to be capable of noticing the fix when it lands.
+  ['load_shows_loaded_map_harness.mjs', 55],
   ['m4_symbol_extractability_probe.mjs', 15],
   ['map_key_canonical_harness.mjs', 116],
   // New 2026-08-04 with the marker-shape + wafer-anchor round (the overlay marker follows its
