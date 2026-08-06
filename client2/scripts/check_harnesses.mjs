@@ -465,7 +465,7 @@ const FLOORS = new Map([
   // one the operator is actually stuck on, and therefore the one the diagnostic exists for. The
   // rise is the assertion that the toggle has a visible consequence there, scored on the FILLS
   // (ranks 1 and 2 must land close, 1 and 40 far apart) rather than on the ranks arriving.
-  ['map_editor2_shell_harness.mjs', 511],
+  ['map_editor2_shell_harness.mjs', 526],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
@@ -563,7 +563,7 @@ const FLOORS = new Map([
   //    to N (measured: turbo's jump-of-ten falls from 20.24 dE00 at N=88 to 1.26 at N=1313) and
   //    most reference floors in this database are far above where it dies. If B ever passes,
   //    the cyclic period has been removed and nothing else on the screen would say so.
-  ['map2_index_ramp_harness.mjs', 90],
+  ['map2_index_ramp_harness.mjs', 94],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

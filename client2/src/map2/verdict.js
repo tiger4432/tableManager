@@ -86,6 +86,9 @@ export const VERDICT = Object.freeze({
 //
 // The first five are byte-identical to `verdict_placeholder.REASON` and are unchanged. The
 // rest are the section 4 causes and the layer 5 refusals, which had nowhere to go before.
+/** The server's own spelling for "this ruling skipped the die-margin comparison". */
+export const DECIDED_BY_DIRECTION = 'direction';
+
 export const REASON = Object.freeze({
   NO_THRESHOLDS: 'no_thresholds',
   NO_SCORINGS: 'no_scorings',
@@ -199,16 +202,58 @@ export function decideVerdict(scorings, thresholds, context) {
     return frozen(VERDICT.NOT_SCORABLE, REASON.NO_THRESHOLDS, {});
   }
 
-  // Rank by agreement over the discriminating subset. `candidate_id` is the tiebreak so the
-  // order is total and stable -- two candidates on identical counts must not swap places
-  // between two renders of the same payload.
+  // 🔴 THIS SORT ORDERS. IT DOES NOT DECIDE. The distinction is the whole of this block.
+  //
+  //    `rankedIds` is a stable total order over the scorable candidates, and `candidate_id` is
+  //    the tiebreak so two candidates on identical counts cannot swap places between two
+  //    renders of the same payload. It is NOT the card layout -- the screen lays the eight out
+  //    in DECLARATION order (`view_model.js` builds from `candidateList()`, pinned by the shell
+  //    harness as "declaration order, never score order") so that the cards do not rearrange
+  //    themselves under the operator's cursor when a number moves.
+  //
+  // 🔴 WHAT IT MUST NEVER AGAIN DO IS NAME THE WINNER. Ranking by `agree` alone re-decides a
+  //    question the server already answered with more evidence than this side is given: on the
+  //    index axis an agreement tie is broken by STEP DIRECTION (`map_alignment.py:3269`), and
+  //    `index_violations` is not among the numbers ranked here -- it is not even decoded. So
+  //    the server could ship `winner: X, decided_by: "direction"` and this file would answer
+  //    "indistinguishable" on the same payload. A second ranking implementation is a second
+  //    answer, and there it is a different one.
   const ranked = usable.slice().sort((a, b) => (
     b.agree - a.agree || String(a.candidate_id).localeCompare(String(b.candidate_id))
   ));
   const rankedIds = Object.freeze(ranked.map(s => s.candidate_id));
-  const top = ranked[0];
-  const runnerUp = ranked[1] || null;
-  const marginDies = runnerUp ? top.agree - runnerUp.agree : top.agree;
+
+  // The server's decision, and the row it points at.
+  const decidedBy = ctx.decidedBy || null;
+  const served = ctx.rulingWinnerId
+    ? usable.find(s => String(s.candidate_id) === String(ctx.rulingWinnerId)) || null
+    : null;
+  // 🔴 A RULING THAT NAMED NOBODY IS AN ANSWER, NOT A GAP. When the server ruled and declined
+  //    to crown anyone, this side may not crown one either -- that is the same impersonation
+  //    as answering `declared` about a row nobody measured. The local top is used ONLY when no
+  //    ruling was shipped at all (harness fixtures and any payload predating the field), and
+  //    `winnerSource` says which of the two happened so a green run cannot hide the fallback.
+  const winnerSource = served ? 'server' : (ctx.rulingPresent ? 'server_named_none' : 'client_fallback');
+  const top = served || (ctx.rulingPresent ? null : ranked[0]);
+  if (!top) {
+    // Scored, and the server named nobody. Fall through to the tie shape below rather than
+    // inventing a first place: the ABSENCE of a mark is the answer.
+    const cause = ctx.referenceKind === REF_OCCUPANCY
+      ? REASON.REFERENCE_NO_VALUES
+      : REASON.REFERENCE_FOOTPRINT_SYMMETRIC;
+    return frozen(VERDICT.INDISTINGUISHABLE, cause, {
+      rankedIds, discriminating: ranked[0].discriminating, marginDies: 0,
+      minMargin, minDiscriminating, tiedCount: ranked.length,
+      blindCandidates: blindCandidates(ctx, usable.length),
+      reasons: Object.freeze([cause]), winnerSource, decidedBy,
+      refusalDetail: detail || null,
+    });
+  }
+  // The margin is measured AGAINST THE SERVER'S WINNER, not against whoever this side's sort
+  // put first. Measuring the gap around a different candidate than the one being crowned is
+  // how a threshold ends up vetoing an answer it never looked at.
+  const best = ranked.find(s => s.candidate_id !== top.candidate_id) || null;
+  const marginDies = best ? top.agree - best.agree : top.agree;
   const discriminating = top.discriminating;
 
   const blind = blindCandidates(ctx, usable.length);
@@ -217,11 +262,27 @@ export function decideVerdict(scorings, thresholds, context) {
   // cannot mistake one for the other; `reason` is the first, for the single-slot consumers.
   const reasons = [];
   if (discriminating < minDiscriminating) reasons.push(REASON.TOO_FEW_DISCRIMINATING);
-  if (marginDies < minMargin) reasons.push(REASON.MARGIN_TOO_SMALL);
+  // 🔴 THE DIE-MARGIN COMPARISON IS SKIPPED WHEN THE SERVER DECIDED BY DIRECTION, AND THE
+  //    SERVER IS THE ONE THAT SAYS SO. Its own words (`map_alignment.py:3267`): violations are
+  //    counted in STEPS, `min_margin_dies` is declared in DIES, and measuring one against the
+  //    other silently changes the meaning of a declaration nobody edited -- so that branch
+  //    reports its decision by name and skips the die comparison. A direction winner has a die
+  //    margin of ZERO by construction (the tie it broke was a tie ON AGREEMENT), so applying
+  //    the threshold here would veto every direction ruling and the axis would never once
+  //    reach the screen. This is not the client relaxing a threshold; it is the client
+  //    declining to apply a die-unit bar to a decision the server made in another unit.
+  if (decidedBy !== DECIDED_BY_DIRECTION && marginDies < minMargin) {
+    reasons.push(REASON.MARGIN_TOO_SMALL);
+  }
 
   const shared = {
     rankedIds, discriminating, marginDies, minMargin, minDiscriminating,
     blindCandidates: blind, reasons: Object.freeze(reasons.slice()),
+    // WHO decided, and HOW. Carried into every outcome so the screen can say which claim it is
+    // making -- 「won by die margin」 and 「won by step direction」 are different sentences.
+    winnerSource, decidedBy,
+    indexViolations: ctx.indexViolations === undefined ? null : ctx.indexViolations,
+    indexSteps: ctx.indexSteps === undefined ? null : ctx.indexSteps,
     // The server's sentence survives into every scored outcome. It is the only place the
     // operator is told WHY nothing won in the server's own words, and a local re-spelling of
     // it would be the two-spellings defect this file exists to avoid.
@@ -320,6 +381,13 @@ function frozen(kind, reason, extra) {
     kind,
     reason: reason || null,
     winnerId: extra.winnerId || null,
+    // 🔴 WHERE THE WINNER CAME FROM. `server` is the only value a live payload may produce;
+    //    `client_fallback` means no ruling was shipped and this side ordered the candidates
+    //    itself, which a harness pins as never happening on a real payload.
+    winnerSource: extra.winnerSource || null,
+    decidedBy: extra.decidedBy || null,
+    indexViolations: extra.indexViolations === undefined ? null : extra.indexViolations,
+    indexSteps: extra.indexSteps === undefined ? null : extra.indexSteps,
     rankedIds: extra.rankedIds || Object.freeze([]),
     marginDies: Number.isFinite(extra.marginDies) ? extra.marginDies : null,
     discriminating: Number.isFinite(extra.discriminating) ? extra.discriminating : null,

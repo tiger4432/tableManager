@@ -36,6 +36,7 @@ import { computeSeating, compareSeatings, seatOf, unionBounds } from '../src/map
 import { createRecordingSurface, paintComparison, paintSeating, layoutFor,
          paintSkeleton } from '../src/map2/painter.js';
 import { decideVerdict, VERDICT, REASON } from '../src/map2/verdict_bridge.js';
+import { verdictContext, decodeReferenceView } from '../src/map2/decode.js';
 import { buildViewModel, assertNoRatio, VIEW_STATE, UNKNOWN,
          agreementText, marginText, WORDS } from '../src/map2/view_model.js';
 import { createApiClient, ROUTES } from '../src/map2/api.js';
@@ -248,6 +249,65 @@ function throws(fn, what) {
   eq(win.winnerId, 'rot270_back', 'E6 the winner is the top agreement count');
   eq(win.marginDies, 112, 'E7 the margin is a die count');
   eq(win.rankedIds[0], 'rot270_back', 'E8 ranking order');
+
+  // ── E-bis. THE SERVER DECIDES THE WINNER; THIS SIDE RENDERS IT ────────────────
+  // 🔴 THE DEFECT: this file sorted by `agree` alone and named its own winner, while
+  //    `ruling.winner` was decoded and read by NOTHING. On the index axis that is a DIFFERENT
+  //    answer -- an agreement tie is broken by STEP DIRECTION, and `index_violations` is not
+  //    among the numbers ranked here. The server would ship a winner and the screen would say
+  //    "indistinguishable" about the same payload.
+  const dirScorings = [
+    { candidate_id: 'rot90_back', agree: 44, discriminating: 88, state: 'scored' },
+    { candidate_id: 'rot270_front', agree: 44, discriminating: 88, state: 'scored' },
+  ];
+  const dirWire = (ruling) => ({
+    state: 'scored',
+    reference: { state: 'resolved', kind: 'values', cells: [[0, 0]] },
+    sources: { map_count: 1, cell_count: 1, cells: [[0, 0]], maps: [] },
+    candidates: [], ruling, stats: {},
+  });
+  const dirThresholds = { min_margin_dies: 20, min_discriminating_dies: 40 };
+
+  // The server broke the tie by direction and says so.
+  const vDir = decideVerdict(dirScorings, dirThresholds, verdictContext(decodeReferenceView(
+    dirWire({ winner: 'rot90_back', decided_by: 'direction', index_violations: 0, index_steps: 87 }))));
+  eq(vDir.kind, VERDICT.WINNER,
+     'E8a a direction ruling reaches the screen as a WINNER -- the die margin is 0 by '
+     + 'construction (the tie it broke was a tie ON AGREEMENT), so the old code vetoed it');
+  eq(vDir.winnerId, 'rot90_back', "E8b and the winner is the SERVER's, not this side's sort");
+  eq(vDir.winnerSource, 'server', 'E8c recorded as coming from the server');
+  eq(vDir.decidedBy, 'direction', 'E8d carrying HOW it was decided, which is a separate claim');
+  eq(vDir.indexViolations, 0, 'E8e with the evidence behind it');
+  eq(vDir.indexSteps, 87, 'E8f and its denominator, so "0 violations" reads as a measurement');
+
+  // 🔴 CONTROL: the SAME tie without the direction ruling must still refuse. Without this,
+  //    E8a would pass just as well if the margin threshold had simply been deleted.
+  const vTie = decideVerdict(dirScorings, dirThresholds, verdictContext(decodeReferenceView(
+    dirWire({ winner: null, reason_code: 'tie' }))));
+  eq(vTie.kind, VERDICT.INDISTINGUISHABLE,
+     'E8g CONTROL: the same two candidates with NO direction ruling stay indistinguishable -- '
+     + 'the skip is scoped to the decision the server actually made');
+  eq(vTie.winnerId, null, 'E8h and a ruling that named nobody does not get a winner invented for it');
+  eq(vTie.winnerSource, 'server_named_none', 'E8i named apart from a missing ruling');
+
+  // 🔴 AND THE SERVER OVERRIDES THIS SIDE'S ORDER. `rot270_front` would win the local sort on
+  //    a plain `agree` comparison; the server names the other one and that is what shows.
+  // Equal agreement, which is the only shape in which the two can differ: this side ranks on
+  // the same metric the server does, so a server winner with LOWER agreement is not a payload
+  // that can occur. The local tiebreak is alphabetical and would take `aaa_first`; the server
+  // broke the same tie by direction and took the other one.
+  const vOverride = decideVerdict(
+    [{ candidate_id: 'aaa_first', agree: 44, discriminating: 88, state: 'scored' },
+     { candidate_id: 'zzz_second', agree: 44, discriminating: 88, state: 'scored' }],
+    dirThresholds,
+    verdictContext(decodeReferenceView(dirWire(
+      { winner: 'zzz_second', decided_by: 'direction', index_violations: 0, index_steps: 87 }))));
+  eq(vOverride.winnerId, 'zzz_second',
+     "E8j the server's winner wins even when this side's sort would rank it last -- the "
+     + 'screen renders the decision, it does not re-take it');
+  eq(vOverride.rankedIds[0], 'aaa_first',
+     "E8k while the ORDER is still this side's, because ordering and deciding are different "
+     + 'questions and only one of them belongs to the server');
 
   const tight = decideVerdict([
     { candidate_id: 'rot0_front', agree: 500, discriminating: 528 },

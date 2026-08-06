@@ -458,6 +458,26 @@ export function verdictContext(decoded) {
     serverState: d.state || null,
     referenceKind: d.referenceKind || REF_NONE,
     distinctSeatings: d.distinctSeatings,
+    // 🔴 THE SERVER'S DECISION, CARRIED TO THE LAYER THAT RENDERS IT. Without these three the
+    //    screen re-decided the winner from `agree` alone and the server's ruling never arrived
+    //    -- measured: `ruling.winner` was decoded into `rulingWinnerId` and read by NOTHING.
+    //    A second ranking implementation is a second answer, and on the index axis it is a
+    //    DIFFERENT one: the server breaks an agreement tie by step direction, which this side
+    //    cannot see at all because `index_violations` is not in the per-candidate numbers it
+    //    ranks on.
+    rulingPresent: !!(d.ruling && Object.keys(d.ruling).length > 0),
+    rulingWinnerId: d.rulingWinnerId || null,
+    // 🔴 HOW THE SERVER DECIDED, WHICH IS A DIFFERENT CLAIM FROM WHO WON. `direction` means the
+    //    die-margin comparison was DELIBERATELY SKIPPED (`map_alignment.py:3267`): violations
+    //    are counted in STEPS and `min_margin_dies` is declared in DIES, so measuring one
+    //    against the other would quietly change the meaning of a declaration nobody edited.
+    //    The server reports the skip by name so this side can honour it instead of re-imposing
+    //    a threshold in the wrong unit.
+    decidedBy: (d.ruling && d.ruling.decided_by != null) ? String(d.ruling.decided_by) : null,
+    // The evidence behind a direction ruling. `index_steps` is the denominator, so "0
+    // violations" can be read as a measurement rather than as an absence of measuring.
+    indexViolations: intOrNull(d.ruling && d.ruling.index_violations),
+    indexSteps: intOrNull(d.ruling && d.ruling.index_steps),
   });
 }
 

@@ -32,8 +32,8 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe): no emoji, no em-dash.
  */
 
-import { indexColor, rampStops, rampGradientCss,
-         INDEX_RAMP_PERIOD, INDEX_RAMP_CHROMA,
+import { indexColor, rampStops, rampGradientCss, chromaAt,
+         INDEX_RAMP_PERIOD, INDEX_RAMP_CHROMA_CAP, INDEX_RAMP_CHROMA_SLOPE,
          INDEX_RAMP_BAND_FALLBACK } from '../src/map2/index_ramp.js';
 import { decodeIndexWalk, decodeReferenceView,
          INDEX_WALK_READY, INDEX_WALK_ABSENT, INDEX_WALK_TRUNCATED,
@@ -119,7 +119,7 @@ function monotoneColor(rank, rankMax, band) {
   const t = (rank - 1) / Math.max(1, rankMax - 1);
   const L = band.l0 + (band.l1 - band.l0) * t;
   const H = 250 + t * 300;
-  return oklchHex(L, INDEX_RAMP_CHROMA, H);
+  return oklchHex(L, 0.14, H);   // a representative flat chroma; the point is the HUE sweep
 }
 {
   const weakest = n => {
@@ -142,6 +142,64 @@ function monotoneColor(rank, rankMax, band) {
   ok(shipped > JUMP_MIN,
     `B3 CONTROL: the shipped ramp passes at N=1313 (${shipped.toFixed(2)}) where the monotone `
     + 'one fails -- without this the mutation would only prove the threshold is unreachable');
+}
+
+// ── B-bis. THE SEAM MUTATION: raise chroma without doing the gamut work ─────────
+// 🔴 THE CHANGE SOMEBODY WILL MAKE. 「무지개색 좀 더 원색으로」 is a real request, and the
+//    reflex answer is to turn the chroma constant up. Done on its own that reintroduces the
+//    seam: the sRGB boundary collapses around hue 30 deg at these lightnesses, so neighbouring
+//    ranks get very different chroma reductions and one step in the sweep jumps. Measured
+//    before the envelope existed: rank 67 -> 68 went `#ac281d` -> `#ab2b00` at dE00 6.04
+//    against a median of 2.87. This section RUNS that version and requires it to fail, so the
+//    envelope cannot be deleted or bypassed without the build saying so.
+function flatChromaHex(L, C, H) {
+  const lin = (CC) => {
+    const h = (H * Math.PI) / 180, a = CC * Math.cos(h), b = CC * Math.sin(h);
+    const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+    const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+    const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+    const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3;
+    return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+            -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+  };
+  const inG = v => v.every(x => x >= -0.0005 && x <= 1.0005);
+  let rgb = lin(C);
+  if (!inG(rgb)) {
+    let lo = 0, hi = C;
+    for (let i = 0; i < 22; i++) { const mid = (lo + hi) / 2; if (inG(lin(mid))) lo = mid; else hi = mid; }
+    rgb = lin(lo);
+  }
+  return '#' + rgb.map(v => {
+    const c = Math.max(0, Math.min(1, v));
+    const sr = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.round(Math.max(0, Math.min(1, sr)) * 255).toString(16).padStart(2, '0');
+  }).join('');
+}
+{
+  const flat = (k, n, C) => flatChromaHex(
+    LIGHT.l0 + (LIGHT.l1 - LIGHT.l0) * ((k - 1) / (n - 1)),
+    C, ((k - 1) % INDEX_RAMP_PERIOD) / INDEX_RAMP_PERIOD * 360);
+  const worstFlat = (C) => {
+    let w = 0;
+    for (let k = 1; k + 1 <= 266; k++) w = Math.max(w, deltaE00(flat(k, 266, C), flat(k + 1, 266, C)));
+    return w;
+  };
+  ok(worstFlat(0.20) > ADJACENT_MAX,
+    `B4 a FLAT chroma turned up to 0.20 produces the seam (worst adjacent `
+    + `${worstFlat(0.20).toFixed(2)} dE00, over the ${ADJACENT_MAX} allowed) -- raising chroma `
+    + 'without the gamut envelope must go red, and this is what makes it');
+  let worstShipped = 0;
+  for (let k = 1; k + 1 <= 266; k++) {
+    worstShipped = Math.max(worstShipped, deltaE00(indexColor(k, 266, LIGHT), indexColor(k + 1, 266, LIGHT)));
+  }
+  ok(worstShipped < ADJACENT_MAX,
+    `B5 CONTROL: the shipped envelope carries MORE chroma than the old flat 0.12 and still has `
+    + `no seam (worst adjacent ${worstShipped.toFixed(2)}) -- without this, B4 would only be `
+    + 'proving the threshold is unreachable');
+  ok(chromaAt(30, LIGHT) > 0.12 && chromaAt(150, LIGHT) > 0.10,
+    'B6 and the envelope really is above the flat 0.12 it replaced, including at hue 30 where '
+    + 'the gamut collapses -- otherwise "more vivid" would be a claim rather than a measurement');
 }
 
 // ── C. both themes ──────────────────────────────────────────────────────────────
@@ -520,7 +578,9 @@ function fillRulesHittingRank(cssText) {
 // being a fraction of a typical row width would be a silent regression nothing else sees.
 ok(INDEX_RAMP_PERIOD > 32 && INDEX_RAMP_PERIOD % 2 === 1,
   'Z1 the hue period is odd and long enough not to alias with a wafer row width');
-ok(INDEX_RAMP_CHROMA > 0 && INDEX_RAMP_CHROMA < 0.4, 'Z2 chroma is a sane OKLCH chroma');
+ok(INDEX_RAMP_CHROMA_CAP > 0 && INDEX_RAMP_CHROMA_CAP < 0.4, 'Z2 the chroma cap is a sane OKLCH chroma');
+ok(INDEX_RAMP_CHROMA_SLOPE > 0 && INDEX_RAMP_CHROMA_SLOPE < 0.01,
+  'Z3 the envelope slope is a cap, not a licence -- a large slope is a flat chroma in disguise');
 
 console.log(`ASSERTIONS ${compared} ${failures.length}`);
 if (failures.length > 0) {

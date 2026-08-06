@@ -31,6 +31,7 @@
 
 import { candidateGrid, candidateList, BADGE_WINNER, BADGE_STORED, INVERSION_FOOTNOTE } from './candidates.js';
 import { VERDICT, REASON } from './verdict_bridge.js';
+import { DECIDED_BY_DIRECTION } from './verdict.js';
 import { PHASE, BINDING_FALLBACK_GUESS, BINDING_NONE } from './session.js';
 
 /** The four visible states. Three of them are named in the brief; WINNER is the fourth. */
@@ -296,7 +297,7 @@ export function buildViewModel(input) {
     //    the verdict rather than beside it, so the places that copy a ruling cannot drop it.
     provisional,
     // Aggregate exclusions, stated once and never shouted, never decorated per row.
-    meta: metaLine(payload, numerals),
+    meta: metaLine(payload, numerals, verdict),
     picture: pictureModeFor(state),
     caption: captionFor(session, payload, selectedId),
     candidates: Object.freeze(cards),
@@ -695,9 +696,22 @@ function assumptionModel(session, payload) {
 }
 
 /** `맵 12개 중 5개 제외 (규격 미선언) · 채점 528다이 · 340ms` */
-function metaLine(payload, numerals) {
+function metaLine(payload, numerals, verdict) {
   if (!payload) return '';
   const parts = [];
+  // 🔴 「WON BY DIE MARGIN」 AND 「WON BY STEP DIRECTION」 ARE DIFFERENT CLAIMS, and the server
+  //    distinguishes them deliberately -- a direction ruling SKIPPED the die-margin comparison
+  //    because violations are counted in steps. An operator who cannot see which one applied
+  //    has to re-check the answer by hand, which is the day this feature was meant to end.
+  //    The denominator rides along so 「위반 0」 reads as a measurement rather than as an
+  //    absence of measuring.
+  if (verdict && verdict.decidedBy === DECIDED_BY_DIRECTION) {
+    const v = verdict.indexViolations;
+    const n = verdict.indexSteps;
+    parts.push(v !== null && v !== undefined && n !== null && n !== undefined
+      ? `방향 판정 · 위반 ${v}/${n}`
+      : '방향 판정');
+  }
   const total = numOrNull(payload.map_count);
   const excluded = numOrNull(payload.excluded_map_count);
   if (total !== null && excluded !== null) {

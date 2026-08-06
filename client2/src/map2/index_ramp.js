@@ -30,7 +30,8 @@
 //    in this database are 88, 425, 425, 854, 927 and 1313 cells, so a gradient is unreadable
 //    over most of them -- a jump of ten and a jump of one look identical. A period fixed in
 //    INDEX units makes local contrast independent of N: measured on the SHIPPED ramp, the
-//    worst adjacent step is 3.82 dE00 and the weakest jump-of-ten is 19.25, at every size.
+//    worst adjacent step is 4.56 dE00 and the weakest jump-of-ten is 20.10, and both hold at
+//    N=88, 266 and 1313 alike.
 //    `map2_index_ramp_harness.mjs` RUNS a monotone ramp and requires it to FAIL at N >= 512,
 //    so this cannot be "simplified" back into a gradient without the build saying so.
 //
@@ -43,7 +44,7 @@
 // 🔴 THE LIGHTNESS BAND COMES FROM TOKENS AND DIFFERS PER THEME. Light is the default and a
 //    ramp tuned on dark fails it: turbo's minimum WCAG contrast against `--bg-inset` is 1.16
 //    on light, worse than the 1.18 the usability walk already recorded. The shipped bands were
-//    measured against the real tokens -- light 0.46->0.58 gives 3.78 minimum, dark 0.66->0.78
+//    measured against the real tokens -- light 0.46->0.58 gives 3.71 minimum, dark 0.66->0.78
 //    gives 5.02, both clearing 3:1 at every rank. This module never reads a stylesheet; the
 //    composition root resolves the band and passes it in, the same discipline that keeps
 //    `painter.js` importable without a DOM.
@@ -56,22 +57,40 @@
 export const INDEX_RAMP_PERIOD = 61;
 
 /**
- * Constant chroma, one value for both themes.
+ * The most chroma this ramp will ever ask for. A CAP, not the value used: what a hue actually
+ * gets is `min(cap, envelope(hue))` -- see `chromaAt`.
  *
- * 🔴 0.12 RATHER THAN THE 0.17 THE DESIGN PROBE USED, AND THE REASON IS GAMUT CLIPPING, NOT
- *    TASTE. At 0.17 the orange-red arc (hue ~30 deg) falls outside sRGB at these lightnesses,
- *    so consecutive ranks get DIFFERENT chroma reductions and the step between them jumps:
- *    measured, rank 67 -> 68 on the light band went `#ac281d` -> `#ab2b00` at dE00 6.04, more
- *    than twice the median step of 2.87, with the whole difference in the blue channel hitting
- *    zero. A "smooth sweep" with one visible seam in it is a sweep the operator has to learn to
- *    ignore, and a reading you have to learn to ignore is the one you ignore when it matters.
- *
- *    Measured across chroma at N=266 (light band): the worst adjacent step falls 6.04 -> 3.82
- *    going 0.17 -> 0.12, while the weakest jump-of-ten only falls 20.80 -> 19.25. That buys
- *    away the seam for almost nothing, and both numbers stay far apart -- which is the whole
- *    requirement. Minimum contrast is unaffected (3.78 light, 5.16 dark).
+ * 🔴 A BIGGER NUMBER HERE DOES NOT MAKE THE RAMP MORE VIVID, AND ON ITS OWN IT MAKES IT WORSE.
+ *    Raising a flat chroma to 0.20 measures meanC 0.149 with a WORST adjacent step of 7.02
+ *    dE00 -- past the 6 the harness allows -- because the sRGB boundary collapses around hue
+ *    30 deg at these lightnesses and neighbouring ranks then get very different reductions.
+ *    That is the seam. The vividness has to come from the ENVELOPE below, not from here.
  */
-export const INDEX_RAMP_CHROMA = 0.12;
+export const INDEX_RAMP_CHROMA_CAP = 0.30;
+
+/**
+ * How fast the chroma envelope may change, in chroma per DEGREE of hue.
+ *
+ * 🔴 THIS IS THE WHOLE GAMUT FIX, AND IT IS NOT EITHER OF THE TWO OBVIOUS ONES. Measured, all
+ *    three, light band, N=266 (meanC = mean achieved chroma, the vividness number):
+ *
+ *      flat chroma 0.12, clip when outside   meanC 0.114   worst adjacent 3.82   <- shipped before
+ *      flat chroma 0.20, clip when outside   meanC 0.149   worst adjacent 7.02   <- seam returns
+ *      chroma = 0.85 x each hue's maximum    meanC 0.139   worst adjacent 10.07  <- WORSE
+ *      chroma = 0.95 x each hue's maximum    meanC 0.156   worst adjacent 11.59  <- WORSE STILL
+ *      gradient-limited envelope (this)      meanC 0.133   worst adjacent 4.56
+ *
+ *    "Fit the chroma to the hue" is the intuitive answer and it is measurably the worst one:
+ *    riding the gamut boundary means inheriting every kink IN that boundary at full amplitude.
+ *    The seam is a HIGH-FREQUENCY feature of the boundary, so the repair is to low-pass it --
+ *    take the largest envelope that stays under the boundary everywhere AND whose slope is
+ *    capped. Nothing is ever clipped, so there is no discontinuity to see, and the envelope
+ *    sits as high as smoothness allows rather than as high as the gamut allows.
+ */
+export const INDEX_RAMP_CHROMA_SLOPE = 0.0015;
+
+/** Kept for callers that only want "roughly how saturated is this ramp". */
+export const INDEX_RAMP_CHROMA = INDEX_RAMP_CHROMA_CAP;
 
 /**
  * The fallback band. Used ONLY when a document stub answers every token with an empty string,
@@ -108,7 +127,7 @@ export function indexColor(rank, rankMax, band) {
   const t = Math.min(1, Math.max(0, (rank - 1) / span));
   const L = b.l0 + (b.l1 - b.l0) * t;
   const H = ((rank - 1) % INDEX_RAMP_PERIOD) / INDEX_RAMP_PERIOD * 360;
-  return oklchToHex(L, INDEX_RAMP_CHROMA, H);
+  return oklchToHex(L, chromaAt(H, b), H);
 }
 
 /**
@@ -138,6 +157,64 @@ export function rampGradientCss(rankMax, band, count) {
     .map(s => `${s.color} ${(s.offset * 100).toFixed(2)}%`)
     .join(', ');
   return `linear-gradient(90deg, ${stops})`;
+}
+
+// ── THE CHROMA ENVELOPE ─────────────────────────────────────────────────────────
+// The largest chroma this band can use at each hue WITHOUT ever being clipped, smoothed so
+// that neighbouring hues get neighbouring chroma. Memoised per band: it costs a few thousand
+// binary searches to build and the band changes only when the theme does.
+
+const envelopeCache = new Map();
+
+/** Largest in-gamut chroma at this lightness and hue. */
+function maxChromaAt(L, hueDeg) {
+  let lo = 0, hi = 0.45;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (inGamut(oklchToLinear(L, mid, hueDeg))) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+
+function envelopeFor(band) {
+  const key = `${band.l0}:${band.l1}`;
+  const hit = envelopeCache.get(key);
+  if (hit) return hit;
+
+  // The ceiling is the WORST lightness in the band at each hue -- the ramp tilts through the
+  // whole band, so a chroma that only fits at one end would clip at the other.
+  const ceiling = new Array(360);
+  for (let h = 0; h < 360; h++) {
+    let worst = Infinity;
+    for (let i = 0; i <= 6; i++) {
+      worst = Math.min(worst, maxChromaAt(band.l0 + (band.l1 - band.l0) * (i / 6), h));
+    }
+    ceiling[h] = worst;
+  }
+  // Slope-capped erosion on the hue circle: the largest function under the ceiling whose
+  // derivative never exceeds INDEX_RAMP_CHROMA_SLOPE. This is what removes the seam -- the
+  // ceiling's sharp dips are widened into gentle valleys instead of being ridden into.
+  const env = new Array(360);
+  for (let h = 0; h < 360; h++) {
+    let best = INDEX_RAMP_CHROMA_CAP;
+    for (let d = -180; d <= 180; d++) {
+      const j = ((h + d) % 360 + 360) % 360;
+      const bound = ceiling[j] + Math.abs(d) * INDEX_RAMP_CHROMA_SLOPE;
+      if (bound < best) best = bound;
+    }
+    env[h] = best;
+  }
+  const frozen = Object.freeze(env);
+  envelopeCache.set(key, frozen);
+  return frozen;
+}
+
+/** The chroma this hue gets under this band. Never above the gamut, never a sudden step. */
+export function chromaAt(hueDeg, band) {
+  const b = band && Number.isFinite(band.l0) && Number.isFinite(band.l1)
+    ? band : INDEX_RAMP_BAND_FALLBACK;
+  const h = ((Math.round(hueDeg) % 360) + 360) % 360;
+  return envelopeFor(b)[h];
 }
 
 // ── OKLCH -> sRGB ───────────────────────────────────────────────────────────────
