@@ -625,6 +625,33 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
         if st is not None:
             base["grid_start_x"], base["grid_start_y"] = st
     base[map_overlay.FRAME_CONFIRMED_KEY] = dict(mark or {})
+    # ═══ 확정은 **유효 다이 영역도 확정한다** (제품 소유자 2026-08-06) ═══════════════════
+    # 「클라 확정 시 메타에 valid die ref 현재 가정한 유효다이영역으로 넣어줘」 ·
+    # 「맵 불러올때 유효 맵 안맞잖아」 — 두 문장은 같은 구멍의 쓰기 쪽과 읽기 쪽이다.
+    #
+    # 🔴 **읽기 경로는 틀린 것이 아니라 몰랐다.** 정렬 화면(`_resolve_reference`)과 맵
+    #    에디터(`map_editor.js parseValidDieRef`)는 **둘 다** 이 맵 자신의
+    #    `grid_metadata.valid_die_ref`를 읽는다 — 유도가 하나뿐이고 양쪽이 같은 계약 벡터로
+    #    채점된다(`contracts/map_seam` · 사용자 지시 2026-08-04 「불러오기는 무조건
+    #    valid_die_ref 를 이용하게」). 확정이 그 키를 **안 썼을 뿐**이다. 그래서 고칠 것은
+    #    읽기의 해석이 아니라 **기록을 건네주는 것**이고, 읽기 경로는 한 줄도 바뀌지 않는다.
+    #
+    # 🔴 **쓰기는 기존 계약 심볼로 한다**(`apply_valid_die_ref`). 여기서 키에 직접 대입하면
+    #    그것이 두 번째 철자가 되고, 클라의 `applyValidDieRef`와 같은 벡터로 채점되던 규칙
+    #    (빈 키는 해제 · 테이블 없는 반쪽 객체 금지 · 나머지 키 보존)이 이쪽에서만 사라진다.
+    #
+    # 🔴 **없으면 안 쓴다.** 기준 없이 채점된 판(소스가 자기 선언을 따라간 경우)은 실재하는
+    #    정상 상태이고, 그때 추측을 적으면 아무도 확정한 적 없는 바닥을 확정으로 만든다.
+    #
+    # ⚠️ **선례 규칙은 쓰기가 정한다.** 읽기와 쓰기가 같은 키를 쓰므로 확정이 선언을 덮고,
+    #    「확정이 선언을 이긴다」가 읽기 시점 분기 없이 성립한다. 덮인 선언의 이력은 확정
+    #    기록(`frame_confirmation.reference_table/map_id`)이 보관한다. 종전 선언을 메타 안에
+    #    따로 남길지는 총괄 판정 대상이고 여기서 정하지 않았다.
+    _ref_id = (basis or {}).get("map_id")
+    if _ref_id:
+        base = map_overlay.apply_valid_die_ref(
+            base, {"table": (basis or {}).get("table") or map_overlay.VALID_DIE_TABLE,
+                   "map_id": _ref_id})
     return base
 
 
@@ -1886,9 +1913,45 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    0점을 낸 원인이었다. 지금 이 표에서 쓰는 것은 **1번 자리 하나**다 - 「소스의 최소
     #    순번 다이가 유효 다이 영역의 좌상단」이라는 제품 소유자의 규칙이 가리키는 자리.
     #    기준이 없거나 셀이 없으면 앵커도 없고, 그때는 종전 시프트 탐색이 그대로 돈다.
-    reference_walk = serpentine_index(
-        ref_pairs, top_is_min_y=not bool((reference_meta or {}).get("grid_y_invert")))
-    reference_top_left = reference_walk.get(1)
+    # 🔴🔴 [2026-08-06] **앵커의 과녁은 「기준 그림의 좌상단」이 아니라 「웨이퍼의 좌상단
+    #    다이」다.** 종전에는 기준의 **시각 좌표**를 훑어 1번을 골랐다. 기준이 rot0/front를
+    #    선언하면 그 둘이 우연히 같아서 안 보였고, 기준이 회전·면을 선언하는 순간 갈렸다.
+    #
+    #    실측 2026-08-06(소스 한 장 고정, 바닥만 한 필드씩 바꿔 대조):
+    #      바닥 rot0/front  → 과녁 (16,0),  정준 좌상단 (16,0)  · 일치 **200/200**
+    #      바닥 rot90       → 과녁 (16,0),  정준 좌상단 (40,16) · 일치 **118/200**
+    #      바닥 rot180      → 과녁 (16,0),  정준 좌상단 (24,40)
+    #      바닥 rot270      → 과녁 (16,0),  정준 좌상단 (0,24)
+    #      바닥 side=back   → 과녁 (16,0),  정준 좌상단 (24,0)  · 일치 **136/200**
+    #      바닥 y_invert    → 과녁 (16,40), 정준 좌상단 (16,40) · 일치 200/200 (이 축은 이미 맞다)
+    #    제품 소유자: 「특정 유효다이맵으로 하면 밀림」 — 갈리는 필드는 **기준의 rotation·side**다.
+    #
+    #    🔴 이것은 순번 훑기에서 이미 고친 결함의 **같은 형태**다(§순번 주석: 기준의 시각
+    #       공간에서 훑으면 기준 자신의 프레임만큼 조용히 틀린다). 그때는 훑기를 물리 좌표로
+    #       옮겼고, **앵커의 과녁은 옮기지 않았다.** 한 파일 안에서 같은 실수를 두 번 했다.
+    #
+    #    🔴 그리고 **잔차는 이 결함을 못 본다.** 확정→재채점 왕복은 틀린 배치를 그대로
+    #       재현하므로 잔차가 (0,0)으로 깨끗하게 나온다 — 48조합 속성 테스트가 초록인 채로
+    #       118/200을 통과시켰다. 배치가 옳은지는 **일치 개수**가 답한다(테스트에 추가).
+    #
+    # 물리 좌표로 훑어 1번을 고르고, **그 셀의 기준 시각 좌표**를 과녁으로 쓴다(놓인 좌표가
+    # 그 공간에 살기 때문이다). 역변환을 새로 쓰지 않고 짝을 그대로 되짚는다 — 손으로 쓴
+    # 역변환이 규약을 놓치는 사고를 이 파일이 이미 두 번 겪었다.
+    reference_top_left = None
+    reference_walk = {}
+    if ref_pairs:
+        try:
+            _rptf = map_overlay.make_physical_transform(reference_meta)
+        except ValueError:
+            _rptf = None
+        if _rptf is not None:
+            _phys_ref = [_rptf(x, y) for (x, y) in ref_pairs]
+            reference_walk = serpentine_index(_phys_ref, top_is_min_y=True)
+            _first = reference_walk.get(1)
+            _back = {}
+            for _p, _v in zip(_phys_ref, ref_pairs):
+                _back.setdefault(_p, _v)
+            reference_top_left = _back.get(_first)
 
     # [2] 후보마다 **메타를 통째로 만들어** 변환한다 (모듈 상단 전제).
     #

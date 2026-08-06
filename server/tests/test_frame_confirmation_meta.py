@@ -178,6 +178,56 @@ def test_the_grid_written_is_the_one_the_scoring_ran_under_not_the_maps_own_cell
     assert map_overlay.grid_dims(stored) != map_overlay.grid_dims(own_cells_grid)
 
 
+def test_the_confirmation_records_the_valid_die_area_it_was_scored_against():
+    """WRITE AND READ, and neither is complete alone. Product owner 2026-08-06:
+    「확정 저장시 valid die ref도 저장해줘」 and then 「맵 불러올때 유효 맵 안맞잖아」.
+
+    The load paths were never wrong - they were unaware. The aligner
+    (`map_alignment._resolve_reference`) and the map editor (`map_editor.js
+    parseValidDieRef`) BOTH read this map's own `grid_metadata.valid_die_ref`, one derivation,
+    both scored against the same contract vectors. The confirmation simply never wrote that
+    key, so confirming against floor X left loading to apply whatever was there before.
+
+    🔴 THE MUTATION IS THE OLD BEHAVIOUR: drop the write and this goes red, because the read
+       side resolves to None. A test that only checked the field was populated would pass a
+       version that stored X and loaded Y - so this asserts the value ROUND TRIPS through the
+       real reader, not that a key exists."""
+    floor_meta = {
+        "grid_cols": 13, "grid_rows": 13, "rotation": 0, "side": "front",
+        "grid_y_invert": False, "grid_start_x": 0, "grid_start_y": 0,
+        "phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
+        "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0}
+    src_meta = dict(floor_meta)
+    basis = {"table": "valid_die_ref", "map_id": "CORE_1X"}
+
+    written = map_alignment.confirmed_meta_for(
+        src_meta, floor_meta, basis, "rot90_front",
+        {"confirmation_uid": "fc_x", "confirmed_by": "tester"})
+
+    # read it back with the SAME parser both load paths use
+    ref, err = map_overlay.parse_valid_die_ref(written, default_table="dt_map")
+    assert err is None, err
+    assert ref is not None, (
+        "loading resolves the valid-die area from this key; an unwritten key is why the "
+        "wrong floor was applied")
+    assert (ref["table"], ref["map_id"]) == ("valid_die_ref", "CORE_1X"), (
+        "whatever the confirmation was scored against is what loading must apply: %s" % ref)
+
+
+def test_a_confirmation_with_no_reference_writes_no_valid_die_ref():
+    """Scoring without a reference is a real state - the source follows its own declaration.
+    Writing a guess there would invent a floor nobody confirmed against."""
+    floor_meta = {
+        "grid_cols": 13, "grid_rows": 13, "rotation": 0, "side": "front",
+        "grid_y_invert": False, "grid_start_x": 0, "grid_start_y": 0,
+        "phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
+        "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0}
+    written = map_alignment.confirmed_meta_for(
+        dict(floor_meta), floor_meta, {"table": None, "map_id": None}, "rot0_front",
+        {"confirmation_uid": "fc_y"})
+    assert map_overlay.VALID_DIE_REF_KEY not in written
+
+
 def test_the_maps_own_cell_bbox_cannot_reach_the_written_row(env):
     """The write reuses the scoring's own composer instead of reading cells again, and this
     is the reason that is sound rather than convenient: the bbox is overwritten twice on the
@@ -477,8 +527,15 @@ def test_the_written_row_is_byte_identical_to_the_frame_the_scoring_ran_under(en
     _confirm(env, "J1", "J1", "rot90_front")
     stored = _meta(env, MAP_TABLE, "J1")
 
+    # 🔴 THE SET IS THE POINT: every entry is a key the confirmation is ENTITLED to change, and
+    #    anything else appearing here means the write moved something it had no business
+    #    moving. `valid_die_ref` joined it 2026-08-06 - a confirmation determines the valid-die
+    #    area as well as the frame, and until it wrote that key, loading a confirmed map
+    #    applied whichever floor happened to be declared before
+    #    (`test_the_confirmation_records_the_valid_die_area_it_was_scored_against`).
     expected_diff = {map_overlay.PHYS_ASSUMED_KEY, map_overlay.PHYS_CONFIRMED_KEY,
                      map_overlay.FRAME_CONFIRMED_KEY, map_overlay.AUTO_REGISTERED_KEY,
+                     map_overlay.VALID_DIE_REF_KEY,
                      "rotation", "side"}
     differing = {k for k in set(scored_under) | set(stored)
                  if scored_under.get(k) != stored.get(k)}

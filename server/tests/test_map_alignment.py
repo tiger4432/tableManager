@@ -1613,7 +1613,53 @@ def test_the_anchor_places_the_map_and_says_so():
 # So this section varies the two origins INDEPENDENTLY. A fixture that does not is structurally
 # blind here, no matter how many frames or cells it exercises.
 
-def _confirm_and_rescore(ref_start, src_start, planted, n=180):
+@pytest.mark.parametrize("ref_frame", [
+    {}, {"rotation": 90}, {"rotation": 180}, {"rotation": 270},
+    {"side": "back"}, {"grid_y_invert": True}, {"rotation": 270, "side": "back"},
+])
+@pytest.mark.parametrize("planted", ["rot0_front", "rot90_front", "rot270_back"])
+def test_the_floors_own_frame_does_not_displace_the_placement(ref_frame, planted):
+    """THE AXIS THE 48-COMBINATION TEST DOES NOT VARY, added because a defect walked through it.
+
+    Product owner 2026-08-06: 「특정 유효다이맵으로 하면 밀림」 - it depends on WHICH reference
+    map, so the missing term is derived from the reference. Controlled comparison, one source
+    map held constant against floors differing in ONE field each:
+
+        floor rot0/front  -> 200/200      floor rot90     -> 118/200
+        floor y_invert    -> 200/200      floor side=back -> 136/200
+
+    The field is the floor's `rotation`/`side`. The anchor was aiming at the top-left of the
+    floor's RENDERING instead of the wafer's canonical top-left die, and those coincide only at
+    rot0/front - the same mistake, in the same file, that the index walk had already been moved
+    to physical coordinates to escape. `grid_y_invert` was already correct, which is why varying
+    only that axis would have kept the suite green too.
+
+    🔴 The origin property test varies the two ORIGINS and cannot see this: a wrong placement
+       round-trips to residual (0,0) quite happily. Only the agreement count catches it."""
+    ref_meta = _meta(cols=41, rows=41, start_x=0, start_y=0)
+    ref_meta.update(ref_frame)
+    floor = _valid_die_floor(ref_meta)
+    cells, ks = _partial_job(ref_meta, floor, 200)
+    recorded = _plant(ref_meta, cells, planted)
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": dict(ref_meta), "cells": recorded, "indices": ks}],
+        floor, ref_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    assert ruling["winner"] == planted, (
+        "floor frame %s changed which frame wins: %s" % (ref_frame, ruling["winner"]))
+    win = next(c for c in cands if c["frame"] == planted)
+    assert win["agreement"] == 200, (
+        "the placement is displaced by the floor's own frame %s: %d of 200 cells landed on "
+        "valid dies" % (ref_frame, win["agreement"]))
+    assert ruling["placement"] == ma.PLACEMENT_ANCHOR
+
+
+#: Cell count for the round-trip fixture. Named because the agreement assertion below compares
+#: against it - a literal in both places is two spellings of one number, and they drift.
+_ROUNDTRIP_CELLS = 180
+
+
+def _confirm_and_rescore(ref_start, src_start, planted, n=_ROUNDTRIP_CELLS):
     """Score -> confirm -> score again with what the confirmation wrote.
 
     Returns `(first_ruling, first_winner_row, confirmed_meta, second_ruling, second_winner_row)`.
@@ -1662,6 +1708,14 @@ def test_a_confirmed_origin_reproduces_the_alignment_it_was_derived_from(
     """
     r1, w1, confirmed, r2, w2 = _confirm_and_rescore(ref_start, src_start, planted)
     assert r1["winner"] == planted, "guard: the first scoring must find the planted frame"
+    # 🔴 RESIDUAL ZERO IS NOT ENOUGH, and this line is here because its absence let a real
+    #    defect through. The round trip reproduces whatever the first scoring did - including a
+    #    WRONG placement - so a misplaced map round-trips to residual (0,0) perfectly. Measured
+    #    2026-08-06: a floor declaring rot90 scored 118 of 200 cells onto valid dies and this
+    #    test stayed green. The placement is only right if every cell lands.
+    assert w1["agreement"] == _ROUNDTRIP_CELLS, (
+        "a planted map is a true subset of the floor, so every cell must land on a valid die; "
+        "%s of %s did not" % (w1["agreement"], _ROUNDTRIP_CELLS))
     assert w2 is not None and r2["winner"] == planted, (
         "the confirmed coordinate system must still score to the same frame")
     assert w2["shift"] == {"dx": 0, "dy": 0}, (
