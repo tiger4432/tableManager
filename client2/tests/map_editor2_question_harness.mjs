@@ -817,7 +817,10 @@ function makeDocument() {
                     'me2-picture-caption', 'me2-refusal', 'me2-verdict-headline',
                     'me2-verdict-cause', 'me2-source-list', 'me2-sources-meta',
                     'me2-metric-conflict', 'me2-confirm-sentence',
-                    'me2-confirm-note', 'me2-confirm-hint', 'me2-export-btn', 'me2-paste-result']) {
+                    'me2-confirm-note', 'me2-confirm-hint',
+                    // The footer, bound since 2026-08-06 to carry the refusal state attribute.
+                    'me2-confirmbar',
+                    'me2-export-btn', 'me2-paste-result']) {
     body.appendChild(node('div', id));
   }
   for (const attr of ['data-me2-picture-meta', 'data-me2-top-agree', 'data-me2-top-discriminating',

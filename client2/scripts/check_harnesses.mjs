@@ -378,7 +378,12 @@ const FLOORS = new Map([
   //      dies alone. A drop here means one of the three stopped being scored individually.
   //   `G27` pins `bar.actions === 4` EXACTLY rather than `<= 6`. The bound could not have
   //      noticed the arming being removed (5 -> 4) and could not notice it coming back.
-  ['map_editor2_shell_harness.mjs', 463],
+  // 463 -> 476 (2026-08-06). The refused-confirmation path: ten server refusals used to be
+  // discarded by the confirm's `.catch`. G29-G35 score that the SERVER'S sentence reaches the
+  // screen byte for byte, H9-H10 that the write carries the top-level `state`, H11-H14 that the
+  // transport lifts the sentence out of FastAPI's envelope. A drop here means a confirmation
+  // can fail silently again, which is the state this round found it in.
+  ['map_editor2_shell_harness.mjs', 476],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid

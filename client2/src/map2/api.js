@@ -53,13 +53,15 @@
  * Routes. These are the seam with the server lane and are the ONE place a path is written.
  * They are not thresholds -- tuning knobs live in server config and are passed in.
  *
- * 🔴 TWO OF THESE ARE `null` ON PURPOSE. No server route exists for a worklist or for a
- *    threshold config, and inventing a path here would produce a 404 that reads to the next
- *    reader as a server bug rather than as an absent feature. A threshold route written in a
- *    hurry is exactly how the `Number(null) === 0` class of defect gets RE-CREATED rather
- *    than avoided: a config endpoint that answers `{}` hands the verdict layer an absent
- *    threshold wearing the clothes of a declared one. Named and unreachable is the honest
- *    state, and the two loaders below refuse loudly rather than fetching nothing.
+ * 🔴 ONE OF THESE IS `null` ON PURPOSE -- the THRESHOLD CONFIG, and only that one. (The
+ *    worklist was the second until 2026-08-05; the route landed and this sentence did not
+ *    follow it for a day. Counts in prose go stale exactly like counts in code.) No server
+ *    route exists for a threshold config, and inventing a path here would produce a 404 that
+ *    reads to the next reader as a server bug rather than as an absent feature. A threshold
+ *    route written in a hurry is exactly how the `Number(null) === 0` class of defect gets
+ *    RE-CREATED rather than avoided: a config endpoint that answers `{}` hands the verdict
+ *    layer an absent threshold wearing the clothes of a declared one. Named and unreachable is
+ *    the honest state, and the loader below refuses loudly rather than fetching nothing.
  */
 export const ROUTES = Object.freeze({
   // The decision unit is declared by an enrichment rule, never by one map. A per-map route
@@ -147,9 +149,12 @@ export function createApiClient(opts) {
      *    filter over. The population is not bounded by anything this client controls -- 668
      *    metas today -- and a filter that works at 668 is the same code that freezes at 60,000.
      *
-     * 🔴 STILL UNSERVED. `ROUTES.worklist` is null until the server lane lands the route, so
-     *    this refuses by name rather than fetching a path nobody serves. Wiring it is one line
-     *    in ROUTES; the caller shape below is already the shape the route will take.
+     * ✅ SERVED. `GET /api/maps/alignment/worklist` landed 2026-08-05 and `ROUTES.worklist`
+     *    points at it. This used to say "STILL UNSERVED", which stayed on the page after the
+     *    route arrived -- a comment describing a defect that no longer exists sends the next
+     *    reader hunting for it, and costs more than saying nothing. The guard below is KEPT on
+     *    purpose: it is not dead code, it is what makes a route being un-wired refuse by name
+     *    instead of fetching `undefined`.
      *
      * @param {object} [query]
      * @param {string} [query.q]          search text, applied server-side
@@ -294,14 +299,23 @@ export function createApiClient(opts) {
       if (r.yCol) q.y_col = String(r.yCol);
       if (r.valCol) q.value_col = String(r.valCol);
       if (r.includeCells === false) q.include_cells = 'false';
-      // 🔴 SENT ONLY WHEN TRUE, AND `=== true` STRICTLY. Borrowing the floor's wafer dimensions
-      //    is a CLAIM -- "these two maps are the same wafer" -- and the server defaults it off
-      //    for that reason (`server/main.py:4265-4282`). Omitting the parameter when the claim
-      //    was not made keeps the wire honest in both directions: a request carrying
-      //    `assume_reference_geometry=true` is evidence that somebody asserted it, and a request
-      //    without it cannot be misread as an assertion that happened to be false. A truthy
-      //    coercion here would let `undefined`-adjacent junk from a caller unlock the claim,
-      //    which is the same class as a config typo unlocking a capability (`selectAlignmentRules`).
+      // 🔴 THE SERVER DEFAULTS THIS **ON**, AND THE SENTENCE HERE USED TO SAY THE OPPOSITE.
+      //    `get_map_alignment_view(..., assume_reference_geometry: bool = True, ...)` --
+      //    measured 2026-08-06, `server/main.py`. This comment claimed "the server defaults it
+      //    off for that reason", which was the design intent at one time and is not the served
+      //    behaviour; product owner has since ruled that the assumption applies automatically
+      //    (「가정 적용은 자동으로 되게」), and the server matches the ruling.
+      //
+      // ⚠️ CONSEQUENCE, STATED HERE BECAUSE IT IS NOT VISIBLE FROM THIS LINE. Sending the
+      //    parameter only when TRUE means this client never sends `false` -- so the server's
+      //    default stands on every request, the assumption is always applied where it helps,
+      //    and the `available` state (the one that would put an accept control on screen) can
+      //    never occur. The behaviour is what was asked for; what is left over is a control for
+      //    an act nobody performs. Reported to the lead PM 2026-08-06, not resolved here.
+      //
+      //    `=== true` STRICTLY is kept regardless: a truthy coercion would let
+      //    `undefined`-adjacent junk from a caller unlock the claim, which is the same class as
+      //    a config typo unlocking a capability (`selectAlignmentRules`).
       if (r.assumeReferenceGeometry === true) q.assume_reference_geometry = 'true';
       return getJson(ROUTES.referenceView, q, signal);
     },
@@ -361,6 +375,15 @@ export function createApiClient(opts) {
           frame: r.frame || null,
           sources: Array.isArray(r.sources) ? r.sources : [],
           ruling: r.ruling || null,
+          // 🔴 `state` IS A SECOND FIELD BECAUSE `/view` PUTS IT AT THE RESPONSE TOP LEVEL,
+          //    NOT INSIDE `ruling`. The confirm route's own docstring states the transcription
+          //    rule as two lines for exactly this reason -- copy `ruling`, AND copy `state` --
+          //    and following only the first loses the state entirely. Measured 2026-08-06:
+          //    without this field a unit the server could not rank (`no_winner`) and an
+          //    operator resolved by hand was recorded as `STATE_NOT_TRANSPORTED`, so the record
+          //    could not say that a human broke a tie the machine refused to break. That is
+          //    the whole content of those records.
+          state: r.state || null,
           reference: r.reference || null,
           confirmed_by: r.confirmedBy,
         }),
@@ -370,6 +393,17 @@ export function createApiClient(opts) {
         const err = new Error(`POST ${ROUTES.confirm} -> ${res.status}`);
         err.status = res.status;
         err.detail = await safeText(res);
+        // 🔴 THE SERVER'S OWN SENTENCE, LIFTED OUT OF THE ENVELOPE AND NOT RE-SPELLED.
+        //    `frame_confirmation` raises TEN distinct `ConfirmationRefused` messages, each
+        //    written in Korean for a person to read, and the route hands every one of them
+        //    back as a 400 with the sentence in `detail`. Parsing the envelope belongs HERE,
+        //    at the transport, because the envelope is FastAPI's shape -- a caller that had to
+        //    know about `{"detail": ...}` would be a second place that knows the wire format.
+        //    What callers get is the sentence, and it is the SERVER'S: composing an equivalent
+        //    on this side is the second-judgement defect this screen already pays for with
+        //    `refusal`, and a generic "확정 실패" would delete the one thing the operator needs
+        //    -- WHICH of the ten refusals happened.
+        err.serverMessage = serverMessage(err.detail);
         throw err;
       }
       return res.json();
@@ -382,6 +416,35 @@ export function createApiClient(opts) {
 
 async function safeText(res) {
   try { return await res.text(); } catch (e) { return ''; }
+}
+
+/**
+ * The human sentence out of an error body, or null.
+ *
+ * FastAPI wraps `HTTPException(detail=...)` as `{"detail": "<sentence>"}`. A body that is not
+ * that shape is returned AS IT CAME rather than dropped: an unrecognised envelope still carries
+ * whatever the server said, and silently discarding it is the behaviour this function exists to
+ * end. Only genuinely empty bodies answer null, because null is what lets a caller say "the
+ * server gave no reason" instead of showing an empty line that reads as no reason at all.
+ *
+ * ⚠️ NO CLASSIFICATION HAPPENS HERE. No mapping of status codes to categories, no matching
+ *    against known messages, no default sentence. Ten refusals exist on the server precisely
+ *    so the operator can tell them apart, and any grouping performed on this side would be a
+ *    second judgement about evidence the server has already judged.
+ */
+function serverMessage(body) {
+  const raw = typeof body === 'string' ? body.trim() : '';
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.detail === 'string' && parsed.detail.trim() !== '') {
+      return parsed.detail.trim();
+    }
+    // Parsed, but not the shape we know. The body is still evidence; hand it over unchanged.
+    return raw;
+  } catch (e) {
+    return raw;
+  }
 }
 
 /** The catalog's two states, as the server spells them. Not re-spelled on this side. */

@@ -35,7 +35,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { createMapSession, withDecision, withPayload, withError, withSelectedCandidate,
-         withFocusedSource, withConfig, withCatalog, withQuestion,
+         withFocusedSource, withConfig, withCatalog, withQuestion, withConfirmFailed,
          withWorklistQuery, withWorklist, withWorklistError, withConfirmed,
          columnKey, isAskable, isUnset, BINDING_DECLARED, PHASE } from './session.js';
 import { computeSeating, compareSeatings, unionBounds } from './seating.js';
@@ -120,6 +120,9 @@ export const ELEMENT_IDS = Object.freeze({
   confirmSentence: 'me2-confirm-sentence',
   confirmNote: 'me2-confirm-note',
   confirmHint: 'me2-confirm-hint',
+  // The footer itself, bound only to carry the refusal state attribute. It is the smallest
+  // node that contains both the sentence and the control the refusal is about.
+  confirmBar: 'me2-confirmbar',
   exportBtn: 'me2-export-btn',
   pasteResult: 'me2-paste-result',
 });
@@ -1033,7 +1036,26 @@ export function bootstrap(deps) {
     setChildTextIn(el.confirmSentence, '[data-me2-confirm-eqp]', vm.confirm.eqp || '');
     setChildTextIn(el.confirmSentence, '[data-me2-confirm-product]', vm.confirm.product || '');
     setChildTextIn(el.confirmSentence, '[data-me2-confirm-frame]', vm.confirm.candidateId || '');
-    text(el.confirmNote, vm.confirm.note || '');
+    // 🔴 THE REFUSAL TAKES THIS SLOT WHILE IT IS LIVE, AND IT IS THE SAME SLOT ON PURPOSE.
+    //    `note` describes the BASIS of a write that has not happened; a refusal describes why
+    //    it did not happen. Both are about the one act, only one can be the current truth, and
+    //    a screen showing "현재 선언 동일" beside a write the server just rejected is the screen
+    //    contradicting itself. The note returns as soon as anything changes, because every
+    //    state change clears `confirmError`.
+    //
+    //    THIS SLOT AND NOT THE HINT: the refusals are full sentences (「결정 단위가 덜
+    //    채워졌습니다 - ... 빠진 결정키: ...」), and the hint is a small span sharing a flex row
+    //    with the button. `#me2-confirm-note` is the wide line in the text column and already
+    //    carries a sentence-shaped value. NOT a toast either -- a transient the operator can
+    //    miss puts the failure back where it was, invisible.
+    const failure = vm.confirm.failure;
+    text(el.confirmNote, failure || vm.confirm.note || '');
+    // One attribute for the CSS lane, no new element. Asked for by name:
+    // `#me2-confirmbar[data-me2-confirm-state="failed"]` should read as a refusal, not as a note.
+    if (el.confirmBar) {
+      if (failure) el.confirmBar.setAttribute('data-me2-confirm-state', 'failed');
+      else el.confirmBar.removeAttribute('data-me2-confirm-state');
+    }
     // Three states, one slot, no sentences. Inert says WHY it is inert (Enter must never be
     // silently dead); live names the key; landed says so.
     //
@@ -1405,12 +1427,31 @@ export function bootstrap(deps) {
         excluded_reason: null,
       })),
       ruling: (payload.__decoded && payload.__decoded.ruling) || null,
+      // 🔴 `state` IS COPIED SEPARATELY BECAUSE `/view` PUTS IT AT THE TOP LEVEL, NOT INSIDE
+      //    `ruling`. The confirm route's docstring states the rule in two lines for exactly
+      //    this reason, and obeying only the first line loses it: a `no_winner` unit that the
+      //    operator resolved by hand recorded `STATE_NOT_TRANSPORTED`, which erases the one
+      //    fact that record exists to hold -- that a human settled what the machine would not.
+      state: (payload.__decoded && payload.__decoded.state) || null,
       reference: referenceOf(q.reference),
       confirmedBy: context.confirmedBy,
     })).then(() => { confirmInFlight = false; setSession(withConfirmed(session)); })
-      // The failure path releases the guard and repaints so the control comes back. The
-      // session is unchanged on purpose: a write that did not land must not leave `확정됨`.
-      .catch(() => { confirmInFlight = false; render(); });
+      // 🔴 THE FAILURE PATH SAYS WHAT HAPPENED. It used to be `.catch(() => { ...; render(); })`
+      //    -- ten distinct server refusals, every one discarded, and the operator saw the button
+      //    become clickable again and nothing else. That is 「결과를 숨기지 않는다」 broken on the
+      //    one control that writes durable provenance, and removing the arming step made it
+      //    worse rather than better: a failed confirm used to leave the operator mid-gesture,
+      //    which was at least a signal.
+      //
+      //    The sentence is the SERVER'S, lifted from the envelope by `api.serverMessage` and
+      //    not re-worded here. `err.message` is the fallback ONLY when the server said nothing
+      //    at all -- a transport failure has no refusal to quote, and inventing a Korean
+      //    sentence for it would be exactly the classification this must not do.
+      .catch((err) => {
+        confirmInFlight = false;
+        const said = err && err.serverMessage ? err.serverMessage : null;
+        setSession(withConfirmFailed(session, said || (err && err.message) || ''));
+      });
   }
 
   /**

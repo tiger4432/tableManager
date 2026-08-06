@@ -981,6 +981,12 @@ function confirmModel(session, selectedId, storedId, state, attribution, assumpt
     //    control goes inert underneath it. Gating it would blank the acknowledgement exactly
     //    when something changed, which is when the operator most needs it.
     confirmed: session.confirmed === true,
+    // 🔴 THE SERVER'S REFUSAL, CARRIED VERBATIM AND NEVER CLASSIFIED. Same discipline as
+    //    `refusalDetail` on the read path: the server composed a sentence for a person, so this
+    //    layer moves it and does not re-word it, group it, or replace it with a category of its
+    //    own. Ten distinct refusals exist so the operator can tell them apart, and any bucketing
+    //    performed here would be a second judgement about evidence already judged.
+    failure: session.confirmError || null,
     eqp: decision.eqp || null,
     product: decision.product || null,
     candidateId: selectedId || null,

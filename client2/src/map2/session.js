@@ -168,6 +168,13 @@ export function createMapSession(init = {}) {
     //    the write had landed (the label flipping back), so the acknowledgement became a value
     //    instead of a side effect of a state nobody wanted.
     confirmed: init.confirmed === true,
+    // 🔴 THE SERVER'S REFUSAL SENTENCE, VERBATIM, OR NULL. `frame_confirmation` raises ten
+    //    distinct Korean refusals and the route returns each as a 400; before 2026-08-06 the
+    //    confirm's `.catch` discarded all ten and the operator saw the button become clickable
+    //    again and nothing else. Held as session state rather than as a transient so it cannot
+    //    scroll away unread -- a failure the operator missed is a failure that did not happen,
+    //    as far as the screen is concerned.
+    confirmError: init.confirmError || null,
     error: init.error || null,
     requestSeq: Number.isFinite(init.requestSeq) ? init.requestSeq : 0,
   });
@@ -204,8 +211,10 @@ export function withDecision(session, decision) {
     selections: Object.freeze({}),
     focusedSourceId: null,
     // A confirmation was about THIS unit. Carrying the acknowledgement to the next row would
-    // tell the operator they had confirmed a unit they have not looked at yet.
+    // tell the operator they had confirmed a unit they have not looked at yet. The refusal
+    // travels with it for the same reason: it names why THIS unit was refused.
     confirmed: false,
+    confirmError: null,
     error: null,
     requestSeq: session.requestSeq + 1,
   });
@@ -228,8 +237,10 @@ export function withSelectedCandidate(session, candidateId) {
     ? Object.freeze({ ...session.selections, [key]: candidateId })
     : session.selections;
   // The acknowledgement dies with the frame it was about: picking a different candidate after
-  // confirming must not leave `확정됨` sitting under the new pick.
-  return next(session, { selectedCandidateId: candidateId, selections, confirmed: false });
+  // confirming must not leave `확정됨` sitting under the new pick. Nor a refusal, which named
+  // the frame that was refused.
+  return next(session, {
+    selectedCandidateId: candidateId, selections, confirmed: false, confirmError: null });
 }
 
 /**
@@ -400,8 +411,9 @@ export function withQuestion(session, patch) {
     selectedCandidateId: (key && session.selections[key]) || null,
     payload: null,
     // The confirmation named a column pair, a table and a floor. Change any of them and the
-    // acknowledgement is about a question that is no longer on screen.
+    // acknowledgement -- or the refusal -- is about a question that is no longer on screen.
     confirmed: false,
+    confirmError: null,
     error: null,
     phase: session.decision ? PHASE.COMPUTING : PHASE.IDLE,
     requestSeq: session.requestSeq + 1,
@@ -432,7 +444,23 @@ export function withWorklistError(session, error, seq) {
 
 /** One confirm landed. The only counter on this screen that a write is allowed to move. */
 export function withConfirmed(session) {
-  return next(session, { confirmed: true, confirmedCount: session.confirmedCount + 1 });
+  // Clearing the refusal here is not tidiness: a stale refusal beside a landed confirmation is
+  // the screen contradicting itself about the same act.
+  return next(session, {
+    confirmed: true, confirmError: null, confirmedCount: session.confirmedCount + 1 });
+}
+
+/**
+ * One confirm was REFUSED, carrying the server's own sentence.
+ *
+ * 🔴 IT CLEARS `confirmed` AS WELL AS SETTING THE MESSAGE. The two are mutually exclusive
+ *    claims about the same act, and a session that says both would put `확정됨` and a refusal
+ *    on screen together. The counter is deliberately NOT moved: nothing was written, and
+ *    `confirmedCount` is what `isExploringOnly` answers from.
+ */
+export function withConfirmFailed(session, message) {
+  const text = message == null ? '' : String(message).trim();
+  return next(session, { confirmed: false, confirmError: text === '' ? null : text });
 }
 
 /**

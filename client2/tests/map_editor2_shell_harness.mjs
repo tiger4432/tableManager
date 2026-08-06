@@ -562,6 +562,56 @@ function throws(fn, what) {
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
   ok(!confirmD.disabled, 'G26d the control comes back when the write settles');
 
+  // ── A REFUSED CONFIRMATION SAYS WHY ─────────────────────────────────────────
+  // 🔴 `frame_confirmation` RAISES TEN DISTINCT KOREAN REFUSALS AND THE ROUTE RETURNS EACH AS
+  //    A 400 WITH THE SENTENCE IN `detail`. Until 2026-08-06 the confirm's `.catch` discarded
+  //    all ten: the button became clickable again and nothing else changed, so the operator
+  //    could not tell a refusal from a press that did not register. Removing the arming step
+  //    made that worse, not better -- a failed confirm used to leave them mid-gesture.
+  //
+  //    The assertion is on the SENTENCE, BYTE FOR BYTE. A "some error is shown" check would
+  //    pass on a generic 「확정 실패」, and a generic is precisely the defect: ten refusals exist
+  //    so the operator knows WHICH one, and the repair differs for each.
+  const REFUSAL = '결정 단위가 덜 채워졌습니다 - 확정은 단위 전체에 대해서만 성립합니다. '
+    + '빠진 결정키: product';
+  const docR = makeDocument();
+  const apiR = {
+    counters: { reads: 0, writes: 0 },
+    loadReferenceView: () => Promise.resolve(payload),
+    loadWorklist: () => Promise.resolve({ rows: [] }),
+    loadAlignConfig: () => Promise.resolve({}),
+    confirmFrame: () => {
+      apiR.counters.writes++;
+      // Shaped exactly as `api.confirmFrame` shapes it: the transport has already lifted the
+      // sentence out of FastAPI's `{"detail": ...}` envelope into `serverMessage`.
+      const e = new Error('POST /api/maps/alignment/confirm -> 400');
+      e.status = 400;
+      e.detail = JSON.stringify({ detail: REFUSAL });
+      e.serverMessage = REFUSAL;
+      return Promise.reject(e);
+    },
+  };
+  const appR = bootstrap({ document: docR, api: apiR });
+  appR.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  appR.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const confirmR = docR.getElementById('me2-confirm-btn');
+  confirmR.dispatchEvent('click');
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  eq(apiR.counters.writes, 1, 'G29 the refused confirmation was attempted exactly once');
+  eq(docR.getElementById('me2-confirm-note').textContent, REFUSAL,
+     'G30 and the SERVER\'S OWN SENTENCE is on screen, verbatim, not a category of ours');
+  eq(docR.getElementById('me2-confirmbar').getAttribute('data-me2-confirm-state'), 'failed',
+     'G31 with a state hook so it does not read as an ordinary note');
+  ok(!appR.peek().confirmed, 'G32 and nothing claims the write landed');
+  eq(docR.getElementById('me2-confirm-hint').textContent === '확정됨', false,
+     'G33 in particular the acknowledgement slot does NOT say 확정됨');
+  ok(!confirmR.disabled, 'G34 the control is live again so the operator can act on the reason');
+  // 🔴 AND IT CLEARS ON THE NEXT ACT, or a stale refusal outlives the question it was about.
+  docR.querySelectorAll('[data-me2-candidate]')[0].dispatchEvent('click');
+  eq(docR.getElementById('me2-confirmbar').getAttribute('data-me2-confirm-state'), null,
+     'G35 picking a different frame clears the refusal it was about');
+
   // Action accounting against the switchover bar.
   // 🔴 PINNED EXACTLY, NOT BOUNDED. This came out of a usability round measured in clicks, so
   //    the number is the finding: candidate click + source-row click + candidate switch + ONE
@@ -687,6 +737,61 @@ function throws(fn, what) {
   await client.confirmFrame({ eqp: 'E', product: 'P' }, 'rot0_front', ['s1']);
   eq(client.counters.writes, 1, 'H7 the confirm is the only write');
   eq(calls[1].method, 'POST', 'H8 and it is the only POST');
+
+  // ── H9-H10. THE WRITE CARRIES `state`, WHICH IS A SECOND FIELD FOR A REASON ──
+  // 🔴 `/view` PUTS `state` AT THE RESPONSE TOP LEVEL, NOT INSIDE `ruling`. The confirm route's
+  //    docstring states the transcription rule as two lines -- copy `ruling`, AND copy `state`
+  //    -- and obeying only the first silently drops it. Measured 2026-08-06: a `no_winner` unit
+  //    an operator resolved by hand recorded `STATE_NOT_TRANSPORTED`, so the record could not
+  //    say that a human settled what the machine refused to settle, which is the entire content
+  //    of that record. Asserted on the BODY, because that is the only place the omission shows.
+  const bodies = [];
+  const client2 = createApiClient({
+    baseUrl: 'http://127.0.0.1:8080',
+    fetchImpl: (url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    },
+  });
+  await client2.confirmFrame({ rule: 'r', confirmedBy: 'tester',
+                               ruling: { winner: null, reason_code: 'tie' },
+                               state: 'no_winner' });
+  eq(bodies[0].state, 'no_winner',
+     'H9 the confirmation body carries the top-level `state` the view served');
+  eq(JSON.stringify(bodies[0].ruling), '{"winner":null,"reason_code":"tie"}',
+     'H10 alongside the ruling, which is a different field and not a substitute for it');
+
+  // ── H11-H13. THE SERVER'S REFUSAL SENTENCE SURVIVES THE TRANSPORT ────────────
+  // 🔴 TEN DISTINCT KOREAN REFUSALS EXIST IN `frame_confirmation`, each returned as a 400 with
+  //    the sentence inside FastAPI's `{"detail": ...}`. Lifting it out belongs at the transport
+  //    -- a caller that had to know the envelope would be a second place that knows the wire
+  //    format -- and the callers get the sentence, never a category of ours.
+  const REF = '확정된 프레임이 없습니다 - 무엇을 확정했는지가 이 기록의 내용입니다';
+  const failing = createApiClient({
+    baseUrl: 'http://127.0.0.1:8080',
+    fetchImpl: () => Promise.resolve({
+      ok: false, status: 400,
+      text: () => Promise.resolve(JSON.stringify({ detail: REF })),
+    }),
+  });
+  let caught = null;
+  try { await failing.confirmFrame({ rule: 'r', confirmedBy: 't' }); } catch (e) { caught = e; }
+  ok(caught, 'H11 a refused confirmation rejects rather than resolving quietly');
+  eq(caught.serverMessage, REF,
+     'H12 and the SERVER\'S sentence is lifted out of the envelope, verbatim');
+  eq(caught.status, 400, 'H13 with the status beside it');
+
+  // A body that is not the envelope is still evidence -- handed over unchanged, never dropped.
+  const odd = createApiClient({
+    baseUrl: 'http://127.0.0.1:8080',
+    fetchImpl: () => Promise.resolve({
+      ok: false, status: 502, text: () => Promise.resolve('upstream closed the connection'),
+    }),
+  });
+  let caught2 = null;
+  try { await odd.confirmFrame({ rule: 'r', confirmedBy: 't' }); } catch (e) { caught2 = e; }
+  eq(caught2.serverMessage, 'upstream closed the connection',
+     'H14 an unrecognised error body is carried as it came, not discarded');
 }
 
 // ── I. the artifact gateway is a named seam ─────────────────────────────────────
@@ -1675,7 +1780,10 @@ function makeDocument() {
                     'me2-picture-caption', 'me2-refusal', 'me2-verdict-headline',
                     'me2-verdict-cause', 'me2-source-list', 'me2-sources-meta',
                     'me2-metric-conflict', 'me2-confirm-btn', 'me2-confirm-sentence',
-                    'me2-confirm-note', 'me2-confirm-hint', 'me2-export-btn', 'me2-paste-result']) {
+                    'me2-confirm-note', 'me2-confirm-hint',
+                    // The footer, bound since 2026-08-06 to carry the refusal state attribute.
+                    'me2-confirmbar',
+                    'me2-export-btn', 'me2-paste-result']) {
     body.appendChild(node('div', id));
   }
   if (registry.get('me2-worklist-search')) registry.get('me2-worklist-search').value = '';
