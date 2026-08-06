@@ -904,6 +904,126 @@ def _solve_shift(placed_keys, ref_sorted, window: int):
     return best
 
 
+#: 잔차 탐색이 훑을 **자리 수**의 상한. 자리 하나가 소스 셀 수만큼의 비교이므로 곱이 비용이고,
+#: 바닥이 클수록 소스도 크다 - 상한 없이 두면 이 자리가 채점 시간을 지배한다. 넘치면 그때까지
+#: 최선을 쓰되 **사유를 이름으로 낸다**(§ANCHOR_RESIDUAL_CAPPED): 조용히 포기하면 「앵커가
+#: 옳았다」와 「다 못 봤다」가 화면에서 같아진다.
+_RESIDUAL_SEAT_CAP = 4096
+
+
+def _residual_shift(placed_keys, ref_sorted, seats, at, walk_rank=None):
+    """앵커가 앉힌 배치 위에 **남은 평행이동**을 푼다 → `(dx, dy, 일치수)`.
+
+    ═══ 왜 이 함수가 필요한가 (실측 2026-08-06) ═══════════════════════════════════════════
+    앵커는 주장을 하나 산다: **이 작업이 웨이퍼의 좌상단 유효 다이부터 돌았다.** 그 주장이
+    참인 작업에서는 여기서 (0,0)이 나오고 아무것도 달라지지 않는다. 거짓인 작업 - 웨이퍼
+    중간부터 도는 부분 DT 맵 - 에서는 맵이 통째로 밀려 앉는데, 종전에는 그 밀림을 **볼 수
+    있는 자리가 없었다**: `_anchor_shift`가 내는 시프트가 항등적으로 (0,0)이라
+    「앵커가 맞았다」와 「앵커가 틀렸고 아무도 안 고쳤다」가 한 글자도 다르지 않았다.
+
+    실측(바닥 1313다이 · 소스 266셀 · 심은 프레임 `rot90_front`):
+        작업이 훑기 1번부터   → 잔차 (0,0)     점유 266/266   (종전과 같다)
+        작업이 훑기 43번부터  → 잔차 (13,2)    점유 140→266   판정이 뒤집힌 셀 126
+        작업이 훑기 101번부터 → 잔차 (-9,5)    점유 149→266   판정이 뒤집힌 셀 117
+        작업이 훑기 401번부터 → 잔차 (-9,14)   점유 141→266   판정이 뒤집힌 셀 125
+    그리고 **순번 축은 넷 다 266/266이다** - 훑기가 평행이동에 불변이므로 밀린 맵에서도
+    만점이 나온다. 제품 소유자가 본 화면이 정확히 그것이다: 「index로는 잘 되는데
+    shift를 무조건 0,0으로 계산함」.
+
+    🔴 **±window 탐색으로는 못 잡는다.** 잔차는 웨이퍼 반지름만큼 클 수 있고, 실측에서
+       기본 창(±3)은 셋 다 **창 끝에 붙은 값**을 골랐다((-3,3)·(3,3) 191~206점) - 답이
+       창 밖에 있을 때 나오는 그 지문이다. 창을 그만큼 넓히면 (2w+1)²이라 비용이 제곱으로
+       는다.
+
+    🔴 그래서 훑는 것은 창이 아니라 **자리**다: 앵커 다이가 앉을 수 있는 곳은 기준의 다이
+       뿐이므로 후보 평행이동은 `기준다이 - 지금앉은자리`로 **기준 셀 수만큼**이고, 제곱이
+       아니라 일차다.
+
+    ═══ 🔴 점유만으로는 자리를 못 고른다 — 실측이 그 수를 준다 ══════════════════════════
+    「전 셀이 바닥 위」를 만족하는 자리가 **하나가 아니다.** 같은 실측(바닥 1313다이 · 소스
+    266셀)에서 완전 적중 자리의 수는:
+
+        훑기 1번부터 → **105자리**   43번부터 → **83자리**   101번부터 → **46자리**
+        401번부터 → **5자리**        701번부터 → **6자리**
+
+    다섯 경우 모두 참 자리가 그 안에 있지만, 점유는 그중 하나를 고르지 못한다. 여기서
+    동점 규칙(원점에 가까운 쪽)으로 넘기면 **데이터가 아니라 규칙이 맵을 놓는 것**이고,
+    그것이 이 파일이 [3-0]에서 시프트 탐색을 물러나게 한 바로 그 이유다.
+
+    가르는 것은 **작업의 물리**다: DT 장비는 다이를 훑기 순서대로 **건너뛰지 않고** 짚으므로,
+    참 자리에서는 소스가 덮은 다이들의 **기준 훑기 번호가 끊기지 않은 한 구간**이다. 실측 —
+    이 판정은 다섯 경우 **전부에서 자리를 정확히 하나로** 좁혔다(`[(0,0)]`). 함께 잰 다른
+    후보 판정(「소스 자신의 훑기 순서가 기준의 순서와 일치」)은 23~53자리를 남겨 **가르지
+    못했다** - 그래서 그것이 아니라 이것이다.
+
+    ═══ 🔴 그래서 연속성은 **동점 규칙이 아니라 자격**이다 ═══════════════════════════════
+    처음에는 순위(점유 → 연속 → 원점근접)로 짰고, 그것이 **점유 축을 통째로 죽였다.** 후보
+    프레임마다 완전 적중 자리 수를 세어 보면 이유가 한눈에 보인다(같은 실측, 프레임 8개):
+
+        작업 훑기   완전적중 자리(모든 프레임 동일)   그중 **연속**인 자리
+          1번부터            105                    심은 프레임 1 · rot270_front 1 · 나머지 여섯 0
+        101번부터             46                    심은 프레임 1 · rot270_front 1 · 나머지 여섯 0
+        401번부터              5                    심은 프레임 1 · rot270_front 1 · 나머지 여섯 0
+
+    **완전 적중 자리 수는 여덟 프레임이 전부 같다** - 부분 맵은 어떤 프레임으로 놓아도 같은
+    수의 자리에 들어맞기 때문이다. 그러니 점유를 1순위로 두면 여덟이 전부 266으로 올라가
+    동점이 되고, 이 파일이 [3-0]에서 시프트 탐색을 물러나게 한 그 포화를 **내가 다시 만든다**
+    (실측: 수리 1차 시안에서 여덟 후보 전부 agreement 266).
+
+    연속을 **자격**으로 두면 여섯 프레임은 앵커 자리에 그대로 남아 종전 점유를 유지하고
+    (215·225·90·48·38·9), 움직이는 것은 둘뿐이다. 남는 둘은 순번 축이 가른다 - 심은 프레임
+    266/266·위반 0 대 `rot270_front` 0/266·위반 265. `rot270_front`가 함께 걸리는 것은
+    결함이 아니라 **뒤집힌 훑기도 끊기지 않은 구간**이기 때문이고, 그 겹침을 가르라고
+    §[3a-2] 방향 축이 있다.
+
+    ═══ 🔴 그리고 자격 자리가 **유일할 때만** 옮긴다 ═══════════════════════════════════════
+    자격을 「만족하는 첫 자리」로 읽었더니 **작은 소스에서 방향 축이 죽었다**(실측: 셀 2개짜리
+    소스에서 `test_direction_narrows_a_tie_that_order_alone_cannot`·
+    `test_the_floor_is_the_judge_of_a_wrap_not_the_source` 2건 빨강). 이유는 셈으로 나온다 -
+    자격은 **소스가 클수록 강하다**: 266셀에서는 자격 자리가 프레임당 정확히 1개인데, 2셀
+    짜리 소스에서는 「전 셀이 바닥 위 · 훑기에서 연속」이 바닥 거의 전역에서 성립한다.
+    그 상태에서 첫 자리를 고르면 **증거가 아니라 순회 순서가 맵을 옮기는 것**이다.
+
+    그래서 판정은 개수다: 자격 자리가 **정확히 하나면** 데이터가 자리를 정한 것이므로 옮기고,
+    **0개거나 2개 이상이면 움직이지 않는다**(0,0). 이 파일이 순위에 대해 지키는 규율
+    (판별이 0이면 1등을 뽑지 않는다)을 배치에 대해 그대로 적용한 것이다. 둘째 자격 자리를
+    찾는 순간 멈춘다 - 「유일하지 않다」를 알기 위해 나머지를 다 셀 필요가 없다.
+
+    🔴 자격 자리가 없거나 여럿이면 종전 동작과 **한 자도 다르지 않다**. 이 함수는 증거가
+       있을 때만 고친다.
+
+    `walk_rank`: `ref_sorted`와 **같은 순서로 정렬된** 기준 다이의 훑기 번호. None이면
+        연속성을 물을 수 없으므로 **아무것도 움직이지 않는다**(종전 동작).
+    """
+    import numpy as np
+    n = int(placed_keys.size)
+    if n == 0 or ref_sorted.size == 0 or walk_rank is None:
+        return 0, 0, 0
+    ax, ay = int(at[0]), int(at[1])
+    best = None
+    tried = 0
+    # 지금 앉은 자리를 **먼저** 본다: 앵커의 주장이 참이면 여기서 끝난다.
+    for (sx, sy) in [(ax, ay)] + list(seats or ()):
+        dx, dy = int(sx) - ax, int(sy) - ay
+        if tried and (dx, dy) == (0, 0):
+            continue
+        tried += 1
+        if tried > _RESIDUAL_SEAT_CAP:
+            break
+        shifted = placed_keys + dx * _KEY_STRIDE + dy
+        idx = np.searchsorted(ref_sorted, shifted)
+        idx[idx >= ref_sorted.size] = 0
+        if int(np.count_nonzero(ref_sorted[idx] == shifted)) != n:
+            continue                      # 자격 ①: 전 셀이 유효 다이 위에 앉아야 한다
+        r = walk_rank[idx]
+        if int(r.max()) - int(r.min()) + 1 != n:
+            continue                      # 자격 ②: 그 다이들이 훑기의 끊기지 않은 한 구간
+        if best is not None:
+            return 0, 0, 0                # 자격 ③: 유일해야 한다 - 둘째를 봤으니 안 옮긴다
+        best = (dx, dy, n)
+    return best if best else (0, 0, 0)
+
+
 def _membership(placed_keys, ref_sorted, dx, dy):
     """이 후보가 푼 시프트에서 셀마다 「기준 위에 놓였는가」 진리값 벡터."""
     import numpy as np
@@ -1072,6 +1192,12 @@ ANCHOR_NO_REFERENCE = "no_reference_cells"     # 기준에 좌상단이라 부�
 ANCHOR_MULTI_MAP = "multiple_source_maps"      # 맵마다 자기 1번이 있어 앵커가 여럿이다
 ANCHOR_MIN_NOT_UNIQUE = "minimum_index_not_unique"   # 최소 순번이 두 셀 이상에 있다
 ANCHOR_DISABLED = "disabled"                   # 스위치가 꺼져 있다(§ANCHOR_PLACEMENT_ENABLED)
+
+#: 앵커가 **걸리기는 했는데 과녁이 틀렸다**. 앵커의 전제(「이 작업은 웨이퍼 좌상단 다이부터
+#: 돌았다」)가 거짓인 작업에서 잔차가 0이 아니고, 그 사실은 위 사유 다섯 중 어느 것도 아니다 -
+#: 앵커는 정상적으로 걸렸다. 이름이 없으면 조작자는 「밀렸다」를 눈으로 알아내야 하고,
+#: 실제로 그렇게 알아냈다(제품 소유자 2026-08-06: 「shift를 무조건 0,0으로 계산함」).
+ANCHOR_SEAT_CORRECTED = "anchor_seat_corrected"
 
 #: `ruling.placement` — 평행이동을 **누가 정했는가**. 판정 dict 자신이 나른다:
 #: 앵커로 놓인 배치와 탐색으로 놓인 배치는 다른 주장이고, 판정을 옮겨 적는 자리(확정
@@ -2011,6 +2137,25 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     excluded = _Excluded()
     _dg = diag if diag is not None else None
 
+    # ═══ [D14] 유효 다이 영역을 **자기 최솟값으로 정규화한다 — 이 한 곳에서만** ═══════════
+    # 제품 소유자 확정 2026-08-06: 「유효 다이맵 메타의 start x,y는 무의미함. 유효다이맵 min
+    # 값으로 정규화 하면 됨」. 앞선 관측이 그 이유를 준다 - 「유효다이영역 만들 때 오리진을
+    # 중심으로 찍어 놓으면 −10~10 이렇게 분포함」이고, 그러면서도 「항상 그런 건 아니고
+    # 랜덤이야」. 저장 좌표의 원점이 맵마다 제각각이고 선언이 그것을 말해 주지 않으므로,
+    # **어떤 독자도 원점에 대해 아무것도 가정할 수 없다.** 그래서 정규화는 청소가 아니라
+    # 이 좌표들이 뜻을 갖는 유일한 방법이다.
+    #
+    # 🔴 **스펙 §1-0의 「좌표계는 선언되는 것이지 데이터에 맞춰 재계산되는 것이 아니다」를
+    #    어기는 것이 아니다** (다음 독자가 반드시 이 반론을 든다 - 총괄 지시로 여기 남긴다).
+    #    그 규칙은 **에디터의** 좌표계를 다스린다. 거기서 화면을 맞추려고 좌표를 옮기면
+    #    「표시 = 오리진 + DB 값」이 깨진다. 여기서 유효 다이 영역은 그리는 대상이 아니라
+    #    **비교의 바닥**이고, 최솟값 정규화는 그 바닥의 정준 대표를 고르는 것이다. 저장된
+    #    좌표는 한 자도 바뀌지 않고, 소스의 원 좌표도 그대로이며, 답이 **차분**이므로 선언이
+    #    무엇이든 결과가 불변이다 - 선언이 뜻을 잃은 이 데이터에서 사려는 성질이 그것이다.
+    #
+    # 🔴 **두 번 하지 않는다.** 정규화가 두 곳에 살면 그것이 같은 병의 새 이름이다. 로더
+    #    (`_cells_of` → `_to_cells`)는 좌표에 아무 산술도 하지 않고(§_readable_cell: 형변환
+    #    하나뿐), 채점이 바닥을 바닥으로 쓰는 자리는 여기 하나다.
     ref_pairs = sorted(reference_cells or ())
     ref_keys = _encode(ref_pairs)
     ref_sorted = np.unique(ref_keys)
@@ -2205,6 +2350,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    사상**을 타므로 둘은 같은 상수만큼 움직이고, 그래서 서로에 대해 정합한다.
     reference_top_left = None
     reference_walk = {}
+    reference_walk_rank = None
     _canon_ref = None           # 기준 셀의 정준 좌표. 방향 판정도 이것을 쓴다([3a-2])
     _lc_ref = None              # 기준 시각 → 정준. 소스의 놓인 좌표도 이걸로 정준화한다
     if ref_pairs:
@@ -2219,6 +2365,15 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         for _p, _v in zip(_canon_ref, ref_pairs):
             _back.setdefault(_p, _v)
         reference_top_left = _back.get(_first)
+        # [D13] 기준 다이마다 **훑기 번호**. `_residual_shift`가 「이 자리에 앉히면 소스가
+        # 덮는 다이들이 훑기의 끊기지 않은 한 구간인가」를 묻는 데 쓴다(§_residual_shift).
+        # `ref_sorted`와 **같은 순서로** 늘어놓는다 - 저쪽이 searchsorted 첨자로 읽는다.
+        _rank_by_canon = {_c: _k for _k, _c in reference_walk.items()}
+        _rank_of_key = {}
+        for _i, _c in enumerate(_canon_ref):
+            _rank_of_key.setdefault(int(ref_keys[_i]), _rank_by_canon.get(_c, 0))
+        reference_walk_rank = np.array(
+            [_rank_of_key.get(int(_k), 0) for _k in ref_sorted], dtype="int64")
 
     # [2] 후보마다 **메타를 통째로 만들어** 변환한다 (모듈 상단 전제).
     #
@@ -2384,7 +2539,16 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             c.update(dx=None, dy=None, agreement=0, member=None, scored=False)
             continue
         if anchor_dxy is not None:
-            dx, dy = anchor_dxy[c["frame"]]
+            # 🔴 [D13] 앵커는 **자리를 잡아 주지, 평행이동을 풀지 않는다.** `_anchor_shift`가
+            #    내는 값은 항등적으로 (0,0)이다 - [2]가 앵커 다이를 이미 `reference_top_left`에
+            #    앉혀 놓았으므로 `reference_top_left - placed[i_min]`는 뺄 것이 없다. 그래서
+            #    그 값을 시프트로 쓰면 **잔차를 볼 기회가 영영 없다**(§_residual_shift).
+            bx, by = anchor_dxy[c["frame"]]
+            rdx, rdy, _hit = _residual_shift(
+                c["keys"] + bx * _KEY_STRIDE + by, ref_sorted, ref_pairs,
+                (reference_top_left[0] + bx, reference_top_left[1] + by),
+                reference_walk_rank)
+            dx, dy = bx + rdx, by + rdy
         else:
             dx, dy, _hit = _solve_shift(c["keys"], ref_sorted, shift_window)
         mem = _membership(c["keys"], ref_sorted, dx, dy)
@@ -2657,10 +2821,15 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             #     🔴 `grid_start`는 **여기 없다**(제품 소유자: 「화면에 표시하지는 않되 저장은
             #        하기」). 앵커 쌍 옆에 파생값을 같이 보이면 조작자가 「어느 쪽이 정본인가」를
             #        중재하게 되는데, 둘은 같은 사실의 두 철자다 — 레거시 독자용과 재구성용.
+            # 🔴 [D13] 실어 보내는 자리는 **채점이 앉힌 자리**다 — 선언된 과녁이 아니라.
+            #    화면은 `anchor_ref + linear·(cell − anchor_src)`로 그리므로, 잔차를 여기
+            #    안 더하면 서버는 옮겨서 채점하고 화면은 안 옮겨서 그린다. 그 갈림은 조용하다:
+            #    두 그림이 다 그럴듯하고 개수만 안 맞는다(§_residual_shift).
             "placement": (None if c.get("_linear") is None or anchor_cell is None else {
                 "linear": [list(c["_linear"][0]), list(c["_linear"][1])],
                 "anchor_src": list(anchor_cell),
-                "anchor_ref": list(reference_top_left)}),
+                "anchor_ref": [reference_top_left[0] + (c.get("dx") or 0),
+                               reference_top_left[1] + (c.get("dy") or 0)]}),
             "index_margin": (None if c.get("index_agreement") is None or k_runner is None
                              else int(c["index_agreement"] - k_runner)),
             # 값 지표는 **점유를 대체하지 않는다.** 기준이 값을 안 실으면 점유가 정직한 답이고,
@@ -2869,6 +3038,15 @@ def _diag_index_block(per_candidate, out, ruling, source_indices, cell_owner,
              if anchor_reason is None
              else "NOT APPLIED (%s) -> placement=%s" % (anchor_reason,
                                                         ruling.get("placement")))]
+    # 🔴 [D13] 잔차는 **소리를 낸다.** 0이 아니라는 것은 「이 작업은 웨이퍼 좌상단부터 돌지
+    #    않았다」는 뜻이고, 종전에는 그 사실이 어디에도 안 남아 시프트가 언제나 0,0으로 찍혔다.
+    _resid = {o["frame"]: (o.get("shift") or {}) for o in out}
+    _moved = {f: (s.get("dx"), s.get("dy")) for f, s in _resid.items()
+              if (s.get("dx"), s.get("dy")) not in ((0, 0), (None, None))}
+    if anchor_reason is None and _moved:
+        L.append("  %s: the anchor's premise (job started at the wafer's top-left valid die) "
+                 "is FALSE here - the seat was moved by %s. shift is the residual, not zero."
+                 % (ANCHOR_SEAT_CORRECTED, _moved))
     for c, o in zip(per_candidate, out):
         if c.get("index_member") is None:
             continue

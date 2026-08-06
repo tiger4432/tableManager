@@ -1577,6 +1577,197 @@ def test_each_source_map_is_numbered_over_its_own_die_set():
     assert stats["index_bases"] == {"0": 1, "1": 1}
 
 
+def _job_from(floor_meta, floor, start, count, base=1):
+    """A job that touched dies `[start, start+count)` of the WAFER's walk.
+
+    `_partial_job` is this with `start=0`, and that zero is why nothing in this file could
+    see the defect below: at `start=0` the job's die #1 IS the wafer's top-left valid die,
+    so the anchor's premise is true by construction and the residual is zero no matter what
+    the code does. The defect axis is `start`, and only a non-zero `start` activates it.
+    """
+    grid = map_overlay._grid_of(floor_meta)
+    tf = map_overlay._frame_transformer(floor_meta, grid)
+    walk = ma.serpentine_index([tf.visual_to_physical(x, y) for (x, y) in floor],
+                               top_is_min_y=True)
+    picked = [walk[k] for k in sorted(walk)[start:start + count]]
+    own = ma.serpentine_index(picked, top_is_min_y=True)
+    k_of = {xy: k for k, xy in own.items()}
+    return ([tf.physical_to_visual(*p) for p in picked],
+            [k_of[p] - 1 + base for p in picked])
+
+
+@pytest.mark.parametrize("start,residual", [(42, (13, 2)), (100, (-9, 5)), (400, (-9, 14))])
+def test_a_job_that_did_not_start_at_the_wafers_top_left_is_still_placed_on_the_floor(
+        start, residual):
+    """THE MEASURED PRODUCTION SYMPTOM: 「index로는 잘 되는데 shift를 무조건 0,0으로 계산함」.
+
+    `_anchor_shift` cannot return anything but (0,0) in the anchor path, and that is
+    arithmetic rather than a bug in the data: `[2]` places every cell as
+    `reference_top_left + L·(cell − anchor_cell)`, so `placed[i_min]` IS `reference_top_left`
+    and `reference_top_left − placed[i_min]` has nothing to subtract. Measured at two
+    different reference top-lefts ((17,1) and (40,16)), all eight frames, every run.
+
+    That zero is harmless exactly when the anchor's premise holds. When the job started
+    somewhere other than the wafer's top-left valid die - the ordinary partial DT map - the
+    whole map is seated wrong and the structurally-zero shift means NOTHING corrects it.
+    Measured on this fixture before the repair: 140/266, 149/266, 141/266 dies on the floor
+    for the planted frame, against 266/266 once the residual is applied.
+
+    🔴 The index axis reports 266/266 in every one of those runs, because the walk is
+       translation-invariant. That is why the operator's report says the index is fine - the
+       one axis that could have caught the displacement is the one axis blind to it.
+    """
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _job_from(floor_meta, floor, start, 266)
+    planted = "rot90_front"
+    recorded = _plant(floor_meta, cells, planted)
+
+    # THE FIXTURE MUST ACTIVATE THE DEFECT AXIS. If the job's min-index die happens to land on
+    # the wafer's top-left valid die, the anchor is right by accident and this proves nothing.
+    walk1 = ma.serpentine_index(
+        [map_overlay._frame_transformer(floor_meta, map_overlay._grid_of(floor_meta))
+         .visual_to_physical(x, y) for (x, y) in floor], top_is_min_y=True)[1]
+    tfm = map_overlay._frame_transformer(floor_meta, map_overlay._grid_of(floor_meta))
+    assert cells[0] != tfm.physical_to_visual(*walk1), (
+        "the job's first die sits on the wafer's first die, so the anchor is right by "
+        "accident and this fixture is worthless")
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    win = next(c for c in cands if c["frame"] == planted)
+
+    assert ruling["placement"] == ma.PLACEMENT_ANCHOR
+    assert win["index_agreement"] == 266, (
+        "the index axis must be perfect here - it is what makes the displacement invisible")
+    assert (win["shift"]["dx"], win["shift"]["dy"]) == residual, (
+        "the shift must carry the translation the anchor did not account for, not 0,0: %s"
+        % (win["shift"],))
+    assert win["agreement"] == 266, (
+        "the map is seated off the valid dies and nothing corrected it: %d of 266"
+        % win["agreement"])
+    # 🔴 AND THE REPAIR MUST NOT SATURATE OCCUPANCY. The first attempt at this ranked seats by
+    #    occupancy and moved every candidate to a full-fit seat - all eight reached 266 and the
+    #    occupancy axis died, which is exactly the saturation [3-0] withdrew the shift search
+    #    over. Measured: every frame has the SAME number of full-fit seats (105/46/5), so
+    #    occupancy cannot choose; only "the dies form an unbroken run of the floor's walk" can,
+    #    and it admits 1 seat for the planted frame, 1 for rot270_front (a reversed run is still
+    #    a run) and 0 for the other six.
+    agreements = sorted(c["agreement"] for c in cands)
+    assert agreements.count(266) <= 2, (
+        "the residual moved candidates that had no evidence to move: %s"
+        % [(c["frame"], c["agreement"]) for c in cands])
+
+
+#: Origins to sweep on each side. Includes the default so the sweep contains its own control.
+_ORIGINS = [(1, 1), (0, 0), (7, -4), (-6, 9), (3, -2)]
+
+
+@pytest.mark.parametrize("job_start", [0, 400])
+def test_no_per_map_origin_reaches_anything_the_scorer_reports(job_start):
+    """「유효 다이영역은 자신의 x,y 시작을 0으로 다 맞춰두고 그 위에서 소스맵 shift 계산해야함」.
+
+    The checkable form of that ruling: once the reference is a frame in its own right, moving
+    ANY map's declared origin must not move a single number the scorer reports. This sweeps the
+    two origins INDEPENDENTLY - the asymmetric case is the one that matters, because if the
+    reference is rebased and the source is not, the anchor absorbs the difference and produces a
+    shift that is arithmetically consistent and geometrically wrong.
+
+    🔴 THE CONDITION IS PART OF THE ASSERTION, not an excuse dropped from it. This holds on the
+       ANCHOR path, where placement is `reference_top_left + L·(cell − anchor_cell)`: the
+       source's origin cancels inside the difference and the reference's origin is simply the
+       space both sides are expressed in, so neither survives into a verdict. It does NOT hold
+       on the `shift_search` fallback, which goes through `make_frame_transform` /
+       `make_physical_transform` and reads phys and the bounding box by construction. So the
+       sweep asserts `placement == anchor` first - if that ever flips, this test is measuring
+       the other path and must fail rather than quietly pass.
+
+    Measured: 25 origin pairs x 2 job shapes, 0 reported outputs moved.
+    """
+    ref_probe = _meta(cols=41, rows=41)
+    planted = "rot90_front"
+
+    def score(ref_start, src_start):
+        ref_meta = _meta(cols=41, rows=41, start_x=ref_start[0], start_y=ref_start[1])
+        floor = _valid_die_floor(ref_meta)
+        cells, ks = _job_from(ref_meta, floor, job_start, 266)
+        src_meta = dict(source_meta_for_frame(ref_meta, planted))
+        fwd = map_overlay.make_frame_transform(ref_meta, src_meta)
+        ox = src_start[0] - src_meta["grid_start_x"]
+        oy = src_start[1] - src_meta["grid_start_y"]
+        recorded = [(fwd(x, y)[0] + ox, fwd(x, y)[1] + oy) for (x, y) in cells]
+        src_meta["grid_start_x"], src_meta["grid_start_y"] = src_start
+        cands, _e, ruling, _s = ma.score_candidates(
+            [{"map_id": "M1", "meta": src_meta, "cells": recorded, "indices": ks}],
+            floor, ref_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+        assert ruling["placement"] == ma.PLACEMENT_ANCHOR, (
+            "this assertion is scoped to the anchor path and the run took the other one (%s)"
+            % ruling["anchor_reason"])
+        return (ruling["winner"],
+                tuple((c["frame"], c["agreement"], c["index_agreement"],
+                       c["index_violations"], (c["shift"] or {}).get("dx"),
+                       (c["shift"] or {}).get("dy")) for c in cands))
+
+    base = score((1, 1), (1, 1))
+    moved = [(r, s) for r in _ORIGINS for s in _ORIGINS if score(r, s) != base]
+    assert moved == [], (
+        "a declared origin reached the verdict; the reference is not a frame in its own "
+        "right yet. Origin pairs that moved a reported number: %s" % moved[:4])
+    assert len(_ORIGINS) ** 2 == 25
+
+
+def test_the_anchor_aims_at_the_first_valid_die_not_the_bounding_box_corner():
+    """On a round wafer the valid-die area's bounding-box corner is NOT a valid die, so the two
+    readings of "the area's top-left" are different coordinates. The min-index die is the first
+    die the equipment touched - a die - so the anchor must read the walk's position 1.
+
+    Measured on the 41x41 / 300mm floor: first valid die (17,1), bounding-box minimum (1,1).
+    Normalizing the area to its own origin would make the bounding-box minimum (0,0); it would
+    NOT make the anchor's target (0,0), and a normalization that moved the target to the corner
+    would seat every job on a die that does not exist."""
+    ref_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(ref_meta)
+    cells, ks = _job_from(ref_meta, floor, 0, 266)
+    cands, _e, _r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta,
+          "cells": _plant(ref_meta, cells, "rot90_front"), "indices": ks}],
+        floor, ref_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    seat = next(c for c in cands if c["frame"] == "rot90_front")["placement"]["anchor_ref"]
+    bbox_min = [min(p[0] for p in floor), min(p[1] for p in floor)]
+    assert tuple(seat) in {tuple(p) for p in floor}, (
+        "the anchor seated the map on %s, which is not a valid die" % (seat,))
+    assert seat != bbox_min, (
+        "the fixture cannot tell the two readings apart - pick a floor whose corner is empty")
+
+
+def test_the_shipped_seat_is_where_the_scorer_put_the_map():
+    """The screen draws `anchor_ref + linear·(cell − anchor_src)`. If the residual moves the
+    scorer's placement but not `anchor_ref`, the server scores one position and the client
+    draws another - and both pictures look plausible, so only the counts disagree."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _job_from(floor_meta, floor, 400, 266)
+    planted = "rot90_front"
+
+    cands, _e, _r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta, "cells": _plant(floor_meta, cells, planted),
+          "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    win = next(c for c in cands if c["frame"] == planted)
+    pl = win["placement"]
+    floor_set = set(floor)
+    drawn = [(pl["anchor_ref"][0]
+              + pl["linear"][0][0] * (x - pl["anchor_src"][0])
+              + pl["linear"][0][1] * (y - pl["anchor_src"][1]),
+              pl["anchor_ref"][1]
+              + pl["linear"][1][0] * (x - pl["anchor_src"][0])
+              + pl["linear"][1][1] * (y - pl["anchor_src"][1]))
+             for (x, y) in _plant(floor_meta, cells, planted)]
+    assert sum(1 for p in drawn if p in floor_set) == win["agreement"] == 266, (
+        "what ships must reproduce what was scored")
+
+
 def test_the_anchor_places_the_map_and_says_so():
     """「소스 조각 좌상단이 기준맵 좌상단 되게 하는게 어려움?」 - the minimum-index die is the
     first die the tool touched and the tool starts at the valid area's top-left, so the
