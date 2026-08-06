@@ -80,7 +80,39 @@ FROM pg_indexes
 WHERE tablename = 'data_rows';
 ```
 
-> ⚠️ **`create_all`은 이미 존재하는 테이블에 인덱스를 추가하지 않는다.** 운영 DB에 인덱스를 반영하는 경로는 `python server/scripts/setup_db_performance.py` **하나뿐**이다(`CREATE INDEX CONCURRENTLY IF NOT EXISTS` — 멱등·무중단). 새 인덱스를 `models.py`에만 선언하고 이 스크립트를 돌리지 않으면, 신규 설치에서만 빠르고 **기존 운영 DB에서는 조용히 Seq Scan으로 떨어진다.**
+> ⚠️ **`create_all`은 이미 존재하는 테이블에 인덱스를 추가하지 않는다.** 새 인덱스를 `models.py`에만 선언하고 아래 스크립트를 돌리지 않으면, 신규 설치에서만 빠르고 **기존 운영 DB에서는 조용히 Seq Scan으로 떨어진다.** 운영 DB에 인덱스를 반영하는 경로는 **둘**이다(둘 다 `CONCURRENTLY` · 멱등 · 무중단):
+> - `python server/scripts/setup_db_performance.py` — 성능 인덱스 일체
+> - `python server/migrations/add_business_key_unique_index.py --apply` — 업무 키 UNIQUE 인덱스(§3.1-bis)
+
+#### 업무 키 UNIQUE 인덱스 (`uq_bk_<table>`) — 2026-08-07 D3
+
+`business_key_val`의 유일성을 **데이터베이스가 강제**하게 한다(배경·의미는 [data_model §3.1](../architecture/data_model.md)). 없으면 프로세스 둘이 같은 키를 동시에 쓸 때 **한 업무 키에 두 행이 조용히** 생긴다(재현된 창 2.4초).
+
+🔴 **먼저 읽기 전용 사전점검부터 돌린다. 운영에 중복이 하나라도 있으면 `CREATE UNIQUE INDEX`는 실패한다.**
+
+```bash
+# ① 사전점검 — 아무것도 쓰지 않는다(세션을 read-only로 고정한 뒤 조회만 한다)
+conda run -n assy_manager python server/migrations/add_business_key_unique_index.py
+
+# ② 반영
+conda run -n assy_manager python server/migrations/add_business_key_unique_index.py --apply
+```
+
+- **테이블마다 먼저 세고 나서 만든다.** 중복이 있는 테이블은 **이름·중복 키 수·잉여 행 수·문제 키 예시**와 함께 거부되고 **나머지 테이블은 계속 진행한다** — 전체 중단도, 조용한 건너뛰기도 아니다. 거부된 테이블은 중복을 정리한 뒤 재실행한다(재실행은 무해하다 — 이미 만들어진 것은 `already_enforced`로 지나간다).
+- **업무 키가 NULL인 행은 여러 개여도 된다**(빈 행 추가 기능이 그런 행을 만든다). 막히지 않는 것이 정상이다.
+- ⚠️ **취소된 CONCURRENTLY 빌드의 INVALID 잔해가 이름을 잡고 있으면 `IF NOT EXISTS`가 영원히 건너뛴다.** 이 스크립트는 그 상태를 `refused_invalid_index`로 **따로 이름 붙여** 보고하고 `DROP INDEX CONCURRENTLY <이름>;`을 제시한다. 아무것도 스스로 드롭하지 않는다.
+
+#### PK를 그대로 복제한 인덱스 정리 (`--drop-redundant`) — 2026-08-07 D3
+
+`Column(..., primary_key=True, index=True)`가 만들던 **PK 인덱스의 사본**을 회수한다. 이 워크스테이션 실측 **29개·382.3MB**(최대 `ix_cell_sources_id` 314MB). 읽는 곳이 없고 쓰기마다 유지된다.
+
+```bash
+conda run -n assy_manager python server/migrations/add_business_key_unique_index.py                    # 목록만
+conda run -n assy_manager python server/migrations/add_business_key_unique_index.py --drop-redundant   # 회수
+```
+
+- 대상은 **하드코딩 목록이 아니라 매번 `pg_index`로 다시 증명**한다 — 키 컬럼·opclass·collation·access method가 PK 인덱스와 **모두** 같고, 부분/표현식/INVALID가 아닌 것만. 여기에 더해 이름이 SQLAlchemy 자동 생성형(`ix_*`)이어야 하며, **사람이 이름 붙인 인덱스는 구조가 같아도 보고만 하고 드롭하지 않는다.**
+- 두 절은 서로 독립이다 — 한쪽만 실행해도 된다.
 
 #### 재교정률 인덱스 (`idx_audit_user_recorrection`)
 어드민 Overview의 재교정률([data_model §2.3](../architecture/data_model.md))이 쓰는 부분 커버링 인덱스. **없으면 `/dashboard/summary`가 `audit_logs` 전량을 훑는다**(2026-07-27 실측: 2,628,453행/1.6GB에서 512ms).

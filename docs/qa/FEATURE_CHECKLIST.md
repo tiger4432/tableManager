@@ -209,6 +209,7 @@
 | 헬스 엔드포인트 | **항상 JSON**, 정상 200 / `unhealthy` 503. `checks{database, workers, outbox, supervisor}` + 사람이 읽는 `problems[]`. DB 프로브 2초 타임아웃·중복 프로브 차단 | `GET /health` | `server/health.py` · `main.py` |
 | outbox 적체 판정 | **크기가 아니라 나이**(5분 degraded / 15분 unhealthy). 정상적인 10만 행 적재가 outbox 11.6만 행을 만들기 때문에 크기 임계는 큰 파일마다 오경보한다 | 위 응답의 `checks.outbox` | `health.probe_outbox` |
 | 격리 개발/검증 환경 | 스냅샷 DB(`assy_qa`) + 별도 포트(:8081/:8091) + 별도 데이터 루트(`dev_env/`). `up`은 워처·스케줄러를 **일부러 안 띄운다**. 드릴용 워처는 별도 동사이며 **운영을 향하면 기동을 거부** | `python server/scripts/dev_env/devenv.py {snapshot,up,status,env,down,watcher-up,watcher-down}` | `server/scripts/dev_env/devenv.py` · `iso_watcher.py` · `server/paths.py` · [DEPLOY_SETUP §5](../guide/DEPLOY_SETUP.md) |
+| **업무 키 유일성 강제 (D3, 2026-08-07)** | `business_key_val`에 테이블별 `uq_bk_<table>` UNIQUE 인덱스를 만들어 「업무 키 하나에 행 하나」를 **데이터베이스가 강제**하게 한다. 종전에는 아무 제약도 없었고(실측: 그 컬럼을 언급하는 인덱스 50개 중 unique **0개**) 쓰기 경로가 먼저 조회했기 때문에 우연히 성립했을 뿐이라, **프로세스 둘이 같은 키를 동시에 쓰면 한 업무 키에 두 행이 조용히** 생겼다(실측 재현: 5,000건 배치·실제 프로세스 둘 → 인덱스 없이 **2행**, 인덱스와 함께 **1행 + 회복 로그 1줄**, 3회 반복 동일). 인덱스가 있으면 `apply_batch_updates`가 `IntegrityError`를 잡아 롤백 후 배치를 재실행하고, 새 스냅샷의 프리페치가 상대가 커밋한 행을 봐서 **거기에 병합**한다. 🔴 **테이블별로 먼저 세고 나서 만든다** — 중복이 있는 테이블은 이름·건수·문제 키와 함께 거부되고 **나머지는 계속 진행**한다. 업무 키가 NULL인 행은 여러 개여도 된다(빈 행 추가 기능이 그런 행을 만든다). ⚠️ **신규 생성 DB는 마이그레이션을 돌리기 전까지 무방비**다(`create_all`은 기존 테이블에 인덱스를 안 만들어서 `models.py` 선언이 답이 아니다) | `python server/migrations/add_business_key_unique_index.py` (인수 없으면 읽기 전용 사전점검) | `server/migrations/add_business_key_unique_index.py` · `crud.apply_batch_updates`/`_is_business_key_unique_violation`(§5) · 회귀 그물 `server/tests/test_business_key_conflict_retry.py` + `test_business_key_unique_migration.py` · [POSTGRES_OPERATIONS §3.1](../guide/POSTGRES_OPERATIONS_GUIDE.md) · [data_model §3.1](../architecture/data_model.md) |
 | 제품 소유 테이블 설치 | 제품이 정의하는 4종을 사이트 `table_config.json`에 **바이트 스플라이스 병합**(현장 항목 무접촉, dry run 기본, 백업, 드리프트는 보고만) | `python server/scripts/install_product_tables.py [--apply]` | `server/product_tables.py` · `server/scripts/install_product_tables.py` · [CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md) |
 
 ### 1.12 접근 통제 (어드민 토큰 · 내부 IPC · 정적 서빙 봉쇄) — 2026-07-27 신설 (`90e284f`)
@@ -418,6 +419,15 @@
 - [ ] **멱등성 — 체인 재실행**: 동일 원본 재드롭 → 파생 테이블 행 수 불변, count류 집계값 정확(중복 가산 없음).
 - [ ] **실패 격리 에지**: 맵퍼 예외를 유발하는 그룹 발생 시 해당 그룹만 실패(어드민 Chain 탭 outbox FAILED)하고 이후 정상 그룹은 계속 처리됨.
 - [ ] **대형 tx 통지 비동결(인시던트 `cc57b64` 회귀)**: 수만 행 파일 재인제션 등 대형 tx 발생 시 :8080이 동결되지 않고(`[Latency] notify=` 정상), 히스토리 패널 트랜잭션 총계는 실건수(`total_log_count`) 표기 — 로그 항목 자체는 500건까지만 보존(부분 보존이 정상). ⚠️ 알려진 잔여: 멀티 target-table tx 총계 과소(이슈 #10, D-1).
+
+**축약 아웃박스 (2026-08-07 OUTBOX-④)** — 대량 인제션 이벤트가 값을 싣지 않고 `row_ids`를 지목한다. 상세는 [architecture/event_driven_backend §2.4](../architecture/event_driven_backend.md).
+
+- [ ] 🎯 **파일 인제션은 축약된다**: 1,000행 파일 드롭 → `database_outbox`에 그 tx의 행이 **1건**(`payload`에 `row_ids`/`row_count`가 있고 `data`가 **없다**). 🔴 1,000건이면 회귀다(opt-in이 안 걸린 것).
+- [ ] 🎯 **사람 경로는 축약되지 않는다**: 그리드 셀 편집·맵 Push → 그 tx의 outbox 행이 **행마다 1건**이고 `data`를 나른다. 🔴 **여기가 축약되면 즉시 NO-GO다** — 기본값이 `per_row`인 이유이고, 화면에 못 닿는 교정은 교정 루프를 끊는다(핵심가치 #3).
+- [ ] **파생은 그대로 난다**: 축약된 원본 인제션 뒤에도 파생 테이블이 규칙대로 채워진다(체인 워커가 본 테이블을 다시 읽어 매퍼에 같은 중첩 payload를 준다). 사용자 맵퍼(`server/mappers/`)를 고치지 않았는데 값이 비면 회귀다.
+- [ ] **그래프도 그대로 승격된다**: 축약 이벤트로 들어온 행들이 `graph_nodes`/`graph_edges`에 나타나고, 엣지의 `updated_by`가 **그 행을 쓴 주체**다. 🔴 서로 다른 두 주체(워처/체인)가 같은 테이블에 연달아 쓴 뒤 **뒤쪽 행들이 앞쪽 주체 이름을 달고 있으면 회귀다**(조용한 결함 — 아무것도 실패하지 않는다).
+- [ ] **실패는 청크째 격리되지 않는다**: 맵퍼 예외를 유발하는 행 하나를 포함한 축약 청크 → 3회 재시도 후 부모가 FAILED가 되고 `error_log.reexpanded_into`가 행 수를 적으며, `<tx>#row#` id를 가진 per-row 이벤트들이 PENDING으로 생긴다. 이어서 **문제 행 하나만** FAILED로 남고 나머지는 성공한다.
+- [ ] **재시도 버튼이 outbox를 불리지 않는다**: 이미 재확장된 FAILED 부모에 `/admin/outbox/retry-failed`를 눌러도 `skipped_reexpanded`가 응답에 오고 **outbox 행 수가 늘지 않는다.** 🔴 늘면 클릭마다 1,000배다.
 
 **브로드캐스트 복구 (2026-08-04 `2aab7e2`)** — 허브가 몇 초 깜박이는 것만으로 통지가 영구 유실되던 자리.
 

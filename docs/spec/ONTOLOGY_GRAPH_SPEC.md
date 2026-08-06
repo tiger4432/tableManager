@@ -94,6 +94,17 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - C-7(전체 재동기화 무제한 로드) 해소를 G1 전제 조건으로 승격
 - SLO: 배치 인제션 완료 → 그래프 반영 지연 목표 정의(제안: 배치당 10초 이내, `[GraphLatency]` 계측 상시)
 
+### 5.1 축약 아웃박스 이벤트의 승격 (2026-08-07 OUTBOX-④)
+
+대량 인제션의 outbox 이벤트는 값을 싣지 않고 `row_ids`를 지목한다([event_driven_backend §2.4](../architecture/event_driven_backend.md)). 그래프 승격은 **새 경로를 만들지 않고** 이미 있던 포인터형 경로 `graph_materializer.resync_table(..., row_ids=[...])`로 보낸다.
+
+- **`resync_table`이 인자 셋을 얻었다** — 재동기화 전용이던 함수가 **증분 경로와 공유**되기 때문이다.
+  - `updated_by` (기본 `"graph_resync"`) · `event_time` (기본 로우의 `updated_at`): 증분 이벤트는 **누가·언제** 썼는지를 알고 있으므로, 하드코딩된 재동기화 값으로 덮으면 `event_time_column`을 선언하지 않은 테이블의 엣지 provenance와 시각이 **조용히** 바뀐다.
+  - `commit_chunks` (기본 `True`): 증분 호출자는 「머티리얼라이즈 + 커서 전진」을 **한 커밋으로** 묶어야 크래시 재생이 안전하다.
+- 🔴 **`commit_chunks=False`는 C-7을 뒤집지 않는다 — 크기로 유계이기 때문이다.** C-7이 겨냥한 것은 `resync_table`의 **전체 테이블 모드**(한 호출이 테이블 전량을 훑는다)다. 증분 팔은 호출자 예산으로 묶여 있고, 그 예산은 **그래프 워커 자신의 변경 전 상한**이다 — `GRAPH_BATCH_LIMIT` = 1,000 **행** = `CHUNK_SIZE` 하나. 🔴 **여기에 체인 워커의 `OUTBOX_GROUP_MAX_ROWS`(20,000)를 청구하면 안 된다**: 배치가 20배가 되고, 하필 커밋 없이 도는 팔이다. 예산은 소비자마다 **자기 이전 값**으로 재유도한다.
+- 🔴 **축약 이벤트를 묶는 키는 `(table, updated_by, event_time)`이다.** 테이블만으로 묶고 첫 이벤트의 신원을 쓰면 뒤 이벤트 행들이 앞 이벤트의 provenance·시각으로 적재되고, `resync_table`은 멀쩡한 문자열을 받으므로 **아무것도 실패하지 않는다.** 경로 동등성(§증분 vs 재동기화)이 축약에서도 유지되려면 이 키가 필요하다.
+- 이벤트가 지목했지만 **이미 삭제된 행**은 로드에 잡히지 않아 승격되지 않는다 — `resync_table`이 늘 그랬던 동작이고, `chain_replay`가 같은 답을 낸다.
+
 ## 6. LLM 액세스 계층 (G2.5) — 백본의 소비 인터페이스
 
 - **도구 API** (REST + MCP 서버 노출): `entity_lookup(label, identity)` · `neighbors(node, depth≤N, types?, time_range?)` · `path(a, b, max_hops)` · `schema_card()` (매핑 config의 label/type/description 요약)

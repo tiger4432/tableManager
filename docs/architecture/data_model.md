@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (**§2.1-ter 신설 — 「같은 값을 다시 쓰는 것은 사건이 아니다」가 이제 양쪽 계층에서 참이다**(`87a944e`). 값 계층은 처음부터 `has_changed`로 그렇게 판정했고 **소스 계층만 반대로 말하고 있었다** — 같은 사실에 두 계층이 다른 판정을 내리던 것이 결함이다. `CellOverwrite` 스킵이 `source_unchanged`를 조건에 포함하는 이유(오버라이트 행은 값을 담지 않아 진짜 편집에서도 셋이 같다)와, 그 스킵을 보는 엔드포인트가 없어 전용 그물 없이는 무방비라는 사실이 함께 있다. 직전 **§4-bis 두 문장 정정** — ① 「클라 절반은 아직 없다」가 같은 날 거짓이 됐다: `declaration.js`가 `CONFIRMED`를 싣고 `geometryDeclaration`·`frameFromDeclaration` 두 곳에 분기를 갖는다. **어휘 한 줄로는 부족했고 그 점이 `assumed`와 다르다** — `confirmed`는 **저장되므로** 분기가 없으면 아무도 안 잰 맵이 `declared`로 읽힌다. 아직 안 닫힌 것은 `grid_assumed_from`(클라 철자 0건 — 총괄 판정 대기). ② 「화면 쪽 arm-then-commit이 앞에 선다」가 거짓 — **확정은 한 동작**이고(`02416d4`) 앞에 서는 것은 조작자에게 보이는 절차가 아니라 **중복 전송 가드 셋**이다. 직전 **§2.1-bis 버전 게이트 신설** — `092b83f` `crud.version_gate_verdict`: `table_config`의 `version_column` 선언 시 기계의 기존 행 덮어쓰기를 「버전이 더 클 때만」으로 제한. 🔴 **레이어링 *앞*의 거부권이지 승급권이 아니고**, 그래서 더 높은 버전도 사람의 교정을 밀지 못한다. **선언한 테이블이 아직 없어 전 테이블 무동작**. 직전 **§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-07 (**§2.1-quater 신설 — 집합 기반 쓰기 경로(P3). 우선순위 판정은 한 줄도 바뀌지 않았고, 바뀐 것은 배치 경로에서 새 소스 층을 담는 객체가 `LightCellSource`가 됐다는 것 하나다(세션에 안 들어가고 우선순위 계산에만 참여하므로). 문장 301,100 → 1,200, 건수는 전부 동일**). 직전 **§2.1-ter 신설 — 「같은 값을 다시 쓰는 것은 사건이 아니다」가 이제 양쪽 계층에서 참이다**(`87a944e`). 값 계층은 처음부터 `has_changed`로 그렇게 판정했고 **소스 계층만 반대로 말하고 있었다** — 같은 사실에 두 계층이 다른 판정을 내리던 것이 결함이다. `CellOverwrite` 스킵이 `source_unchanged`를 조건에 포함하는 이유(오버라이트 행은 값을 담지 않아 진짜 편집에서도 셋이 같다)와, 그 스킵을 보는 엔드포인트가 없어 전용 그물 없이는 무방비라는 사실이 함께 있다. 직전 **§4-bis 두 문장 정정** — ① 「클라 절반은 아직 없다」가 같은 날 거짓이 됐다: `declaration.js`가 `CONFIRMED`를 싣고 `geometryDeclaration`·`frameFromDeclaration` 두 곳에 분기를 갖는다. **어휘 한 줄로는 부족했고 그 점이 `assumed`와 다르다** — `confirmed`는 **저장되므로** 분기가 없으면 아무도 안 잰 맵이 `declared`로 읽힌다. 아직 안 닫힌 것은 `grid_assumed_from`(클라 철자 0건 — 총괄 판정 대기). ② 「화면 쪽 arm-then-commit이 앞에 선다」가 거짓 — **확정은 한 동작**이고(`02416d4`) 앞에 서는 것은 조작자에게 보이는 절차가 아니라 **중복 전송 가드 셋**이다. 직전 **§2.1-bis 버전 게이트 신설** — `092b83f` `crud.version_gate_verdict`: `table_config`의 `version_column` 선언 시 기계의 기존 행 덮어쓰기를 「버전이 더 클 때만」으로 제한. 🔴 **레이어링 *앞*의 거부권이지 승급권이 아니고**, 그래서 더 높은 버전도 사람의 교정을 밀지 못한다. **선언한 테이블이 아직 없어 전 테이블 무동작**. 직전 **§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
 > **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain_replay.py`(레이어 철회), `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -84,6 +84,16 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - **`ingested_at`의 뜻이 정확해졌습니다** — 「누가 마지막으로 저장을 눌렀나」가 아니라 **「이 소스가 이 값을 마지막으로 세운 때」**. 움직이지 않는 timestamp가 아니라, **아무것도 안 바뀌었는데 움직이던 timestamp가 거짓말이었습니다.** 값 결정은 timestamp를 읽지 않으므로(§2.1의 `compute_priority_value`는 우선순위 맵만 정렬) 이 변경으로 승자가 바뀌는 셀은 없습니다.
 - 🔴 **`cell_overwrites.updated_at`을 노출하는 엔드포인트가 없습니다.** 그래서 `/sources`를 보는 기존 단언은 이 스킵을 **볼 수 없고**, 전용 그물(`test_an_unchanged_cell_does_not_rewrite_its_overwrite_marker` — `db_session`으로 직접 조회)이 없으면 이 자리는 무방비입니다. 실제로 그 그물을 쓰기 전, 스킵을 제거하는 변이(mutation)를 스위트 전체가 **한 건도 잡지 못했습니다.**
 
+### 2.1-quater 집합 기반 쓰기 경로 — 레이어링은 그대로, 문장만 사라진다 · 2026-08-07 P3
+
+대용량 인제션에서 배치 쓰기가 **행마다 3문장**(신원 SELECT 둘 + 데이터 INSERT 하나)을 내던 것을 **청크 단위**로 접었다. 실측(격리 `assy_qa`, 100,000행 맵 파일 — **이 워크스테이션이며 운영이 아니다**): 문장 **301,100 → 1,200**, 벽시계 **796.2s → 375.8s**. 절차는 [architecture/backend §3 2-ter](./backend.md)가 정본이고, 여기 적는 것은 **레이어링에 무엇이 바뀌었고 무엇이 안 바뀌었나**다.
+
+- **우선순위 판정은 한 줄도 바뀌지 않았다.** `compute_priority_value`도 `resolve_priority_map`도 `SOURCE_PRIORITY`도 그대로다. 바뀐 것은 **그 판정에 들어가는 소스 목록을 어떻게 얻는가**뿐이다.
+- 🔴 **바뀐 것: 배치 경로에서 새 소스 층을 담는 객체가 매핑 인스턴스가 아니라 `LightCellSource`다.** 그 객체는 **세션에 들어가지 않는다** — 실제 쓰기는 `cell_sources_to_upsert` 누산기에서 나가고, 이 객체는 `col_srcs`에 끼어 `compute_priority_value`에 참여하려고만 존재한다. 프리페치가 채우는 `sources_cache`는 **원래부터** `LightCellSource`였으므로 오히려 한 목록에 두 종류가 섞이던 것이 정리됐다. `CellOverwrite`도 같다(`LightCellOverwrite`).
+  ⚠️ **누산기가 없는 호출자(비배치 경로)에서는 여전히 매핑 인스턴스다** — 거기서는 그 객체가 **곧 쓰기**이기 때문이다. 조건은 `cell_sources_to_upsert is None` 하나이고, 그 조건을 지우면 비배치 쓰기가 조용히 아무것도 저장하지 않는다.
+- **`cell_sources` 업서트의 문장 모양은 같고 보내는 방식만 다르다** — 문장을 한 번 컴파일하고 파라미터 목록을 넘긴다. `BULK_CHUNK_SIZE` 청킹은 그대로다(그것은 튜닝값이 아니라 int16 파라미터 한계다). 균일하지 않은 키 집합이나 값에 든 SQL 식은 `_is_executemany_safe`가 걸러 **종전 경로로 되돌린다**.
+- **감사·아웃박스·오버라이트 마커의 건수는 동일하다** — 10만 행 실측에서 `cell_sources` 700,000 / `audit_logs` 100,000 / `database_outbox` 100,000이 변경 전후 같다. 아웃박스는 `session.new`에서 나오므로 **ORM을 우회하는 벌크 삽입은 이 경로에서 금지**이고, 그것이 데이터 행을 끝까지 ORM으로 만드는 이유다.
+
 ### 2.2 오버라이트 & 시각화
 
 - `CellOverwrite.is_overwrite=True` → 그리드에서 강조(수동 수정 표시).
@@ -163,6 +173,28 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - `composite_key_source` + `composite_key_separator` — 여러 컬럼을 합쳐 복합 비즈니스 키 생성.
   - 예: `bonding_map` = `base_x_y`, `wafer_map_metadata` = `target_table_map_id`.
 - `map_key_columns` — 맵 저장(`replace_map`) 시 어떤 행 집합을 purge할지 범위 결정.
+
+### 3.1 「업무 키 하나에 행 하나」는 **데이터베이스가 강제한다** · 2026-08-07 D3
+
+종전에는 아무것도 강제하지 않았다. 2026-08-07 실측: `business_key_val`을 가진 25개 테이블에 그 컬럼을 언급하는 인덱스가 **50개인데 `indisunique`는 0개**였고, 유니크/PK 제약도 0개였다. 유일성은 **쓰기 경로가 먼저 조회했기 때문에** 우연히 성립하고 있었을 뿐이다.
+
+그 우연이 깨지는 자리는 측정됐다 — `apply_batch_updates`의 프리페치는 **자기 세션의 루프에 대해서만** 부재를 증명하므로, 다른 OS 프로세스가 그 창 안에서 같은 키를 커밋하면 **한 업무 키에 두 행이 조용히** 생긴다(실제 프로세스 둘·운영 청크 1,000건·창 2.4초로 재현. 근거: `agent_workspace/reports/Server_M2_race_reachability.md`). 프로세스 간 락은 없다 — `grep -rn "pg_advisory" server/`가 0건이다.
+
+- **인덱스**: `server/migrations/add_business_key_unique_index.py`가 테이블별 `uq_bk_<table>` UNIQUE 인덱스를 `CONCURRENTLY`로 만든다. **`models.py`에 선언하지 않는다** — `create_all`은 이미 있는 테이블에 인덱스를 추가하지 않으므로, 중복이 쌓일 수 있는 바로 그 데이터베이스들에서 조용한 무동작이 된다(`idx_sources_by_source`와 같은 계급의 함정).
+- **NULL은 그대로 여러 개 허용된다.** PostgreSQL의 평범한 UNIQUE 인덱스는 NULL을 서로 다르게 보고, `create_empty_rows_batch`는 업무 키 없는 행을 만든다. `NULLS NOT DISTINCT`로 바꾸면 「빈 행 추가」가 두 번째 클릭부터 실패한다.
+- **회복**: `crud.apply_batch_updates`가 이제 `IntegrityError`를 잡는다(`_is_business_key_unique_violation` — SQLSTATE 23505 + 제약 이름이 `uq_bk_` 접두일 때만). 롤백 후 배치를 재실행하면 **새 READ COMMITTED 스냅샷의 프리페치가 상대가 커밋한 행을 보므로** 그 행에 병합된다. 별도의 병합 코드는 없다 — **재실행 자체가 병합**이고, 신원 해석기는 여전히 하나다.
+  🔴 **회복은 이름이 붙고 로그에 남는다**(`[BK Conflict Recovered]`). 조용한 재시도는 보이지 않는 실패를 다른 보이지 않는 실패로 바꾼다. 상한(`BK_CONFLICT_MAX_RETRIES`)을 넘기면 `[BK Conflict Unresolved]`로 **거절한다** — 진짜 중복 신원은 영원히 재시도할 대상이 아니다.
+  ⚠️ **롤백의 대가 하나**: `ingestion_checkpoint.record_chunk_progress`가 같은 세션에서 미리 낸 오프셋 UPDATE도 함께 사라진다. 결과는 그 모듈이 이미 문서화한 열화(다음 크래시 시 그 청크 재처리, 업서트가 멱등이라 유실 아님)다.
+
+### 3.2 PK 컬럼에 `index=True`를 붙이지 않는다 · 2026-08-07 D3
+
+`Column(..., primary_key=True, index=True)`는 PK가 이미 만드는 UNIQUE btree와 **키·opclass·collation이 같은 두 번째 인덱스**를 만든다. 쓰기마다 유지되고 읽는 곳은 없다. 2026-08-07 실측: **29개, 382.3MB**(최대 `ix_cell_sources_id` 314MB vs `cell_sources_pkey` 314MB).
+
+선언은 **다섯**이었고 그중 하나가 26개를 만들었다 — `AuditLog.id` · `FileIngestionLog.id` · `CellOverwrite.id` · `CellSource.id`, 그리고 동적 테이블 공용 `Column("row_id", String, primary_key=True)`. ⚠️ **이 수는 세 번 틀렸다가 맞았다**(처음 셋 → 넷 → 실측 다섯/29개). **클래스를 하나씩 읽는 방식으로는 이 외연이 안 나온다** — 카탈로그에 술어를 먹여 세어야 한다. 구성원을 이름으로 적는 이유도 같다: 기수는 목록의 사본이라 낡는다.
+
+정리는 같은 마이그레이션의 `--drop-redundant`가 한다. 대상은 하드코딩 목록이 아니라 `pg_index` 질의로 **매번 다시 증명**한다 — `indkey`·`indclass`·`indcollation`·**`indoption`**(정렬 방향·NULLS 위치)·access method가 PK 인덱스와 **전부** 같고, 부분·표현식·INVALID가 아닐 것. 🔴 **`indoption`을 빼면 `(a, b DESC)` 인덱스가 평범한 `(a, b)` PK의 사본으로 판정된다** — 역방향 스캔은 키 전체를 뒤집으므로 혼합 정렬을 대신하지 못하고, 이것이 이 스크립트에서 **재실행으로 되돌릴 수 없는 유일한 결과**(운영에서 멀쩡한 인덱스를 지움)다. 그 위에 이름 관문이 하나 더 있다 — SQLAlchemy 자동 생성형 `ix_*`가 아니면 **보고만 하고 두고 간다**.
+
+**`setup_db_performance.py` Step 3.5와의 경계**: 저쪽은 `database_outbox` 인덱스 **넷을 이름으로** 지운다. 그중 PK 사본은 `ix_database_outbox_id` **하나뿐**이고 나머지 셋(`event_uuid`·`status`·`processed_chain`)은 **부분 인덱스로 대체됐거나 조회처가 없어서** 지우는 것이라 이 절의 판정식에 걸리지 않는다. 즉 **계급의 정본은 이쪽(D3)**이고 Step 3.5는 그 계급 밖의 셋을 마저 처리하는 자리다. 겹치는 하나는 어느 쪽이 먼저 돌아도 무해하다(둘 다 `IF EXISTS`·멱등).
 
 ---
 

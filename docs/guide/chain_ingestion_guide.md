@@ -219,6 +219,10 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay-all  
 
 맵퍼는 **payload의 순수 함수**입니다 — `mappers/base.py`는 `payloads_to_df`만 제공하고, 실 맵퍼 진입점(`reserve_materials_from_plan(db, payload)` / `reserve_materials_batch_df(db, payloads)`)에 **파일 경로 인자도, `open()`도, `pd.read_*`도 없습니다.** 그래서 원본 파일 없이 재적용이 성립합니다. 새 맵퍼를 쓸 때 이 성질을 깨지 마십시오(payload 밖의 파일·전역 상태를 읽으면 재적용 결과가 라이브와 갈립니다).
 
+> **[OUTBOX-④ 2026-08-07] 맵퍼가 받는 payload의 모양은 그대로이고, 그 payload가 **어디서 오는지**가 바뀌었다.**
+> 대량 인제션의 outbox 이벤트는 값을 나르지 않고 `row_ids`를 지목한다(축약 — [event_driven_backend §2.4](../architecture/event_driven_backend.md)). 체인 워커는 매퍼를 부르기 **전에** `outbox_expand.expand_events`로 **본 테이블을 다시 읽어** 종전과 같은 중첩 payload를 합성한다. 즉 **라이브 경로가 R1(replay)과 같은 방식으로 파생하게 됐고**, 위 문단의 「payload의 순수 함수」 전제는 그래서 더 강해진다(같은 합성 함수, 같은 모양).
+> 🔴 **대신 payload는 이제 사건 시점의 스냅샷이 아니라 소비 시점의 현재 상태다.** 같은 행이 빠르게 두 번 바뀌면 두 이벤트가 모두 최종 상태에서 파생한다(멱등). 소비 전에 행이 삭제되면 **아무것도 파생하지 않고**, 그 사실은 WARNING으로 남는다(조용한 스킵 아님). 맵퍼가 "이 행의 그 순간 값"에 의존하도록 쓰면 안 된다.
+
 ### 5.2 세 겹의 루프 가드 (자기 트리거 룰이 있으므로 필수)
 
 현 `chain_rules.json`은 `production_plan → inventory_master`와 **`inventory_master → inventory_master`(트리거 = 타깃)** 를 갖습니다. 자기 트리거가 실재하므로 가드는 선택이 아닙니다.

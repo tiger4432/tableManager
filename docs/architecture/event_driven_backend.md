@@ -53,6 +53,7 @@ graph TD
   * `request_user`: 수정자 ID (기본값: `"system"`)
   * `request_transaction_id`: 논리적 트랜잭션 그룹 ID
   * `request_source`: 호출 근원 (예: `"user"`, `"pipeline_parser"`, `"chain_ingestion"`)
+  * `request_outbox_mode`: outbox 적재 형태 — `"per_row"`(기본) / `"collapsed"`. §2.4 참조.
 * **미들웨어 바인딩**: `server/main.py` 내 `db_context_middleware`가 매 API 요청 시 헤더 또는 쿼리 파라미터를 읽어 ContextVars에 값을 격리 주입하며, 요청 종료 시 안전하게 리셋(reset)합니다.
 
 ### 2.3 Outbox 보관 정책 (7일) · 주기 Purge · 인덱스 구성 (C-3, 2026-07-25)
@@ -65,6 +66,44 @@ outbox는 이벤트당 행 버전 3개(INSERT → 처리 UPDATE → broadcast_at
 * **FAILED 격리 행 주의**: 3회 실패로 격리된(`status='FAILED'`, `processed_chain=true`) 행도 7일 후 삭제된다 → **수동 재시도(`/admin/outbox/retry-failed`)는 7일 이내에 수행**해야 한다. 관리 API 조회용 부분 인덱스: `idx_outbox_failed` — `(status, id) WHERE status = 'FAILED'`.
 * **레거시 인덱스 정리**: 비부분 인덱스 4종(`ix_database_outbox_id`(pkey 중복)·`ix_database_outbox_event_uuid`(미사용)·`ix_database_outbox_status`(부분 인덱스로 대체)·`ix_database_outbox_processed_chain`(부분 인덱스로 대체), 실측 합계 429MB)은 models.py 선언에서 제거되었고 기존 운영 DB는 `scripts/setup_db_performance.py`의 멱등 DROP으로 정리한다.
 * **기존 백로그 정리**: 라이브 프로세스가 건드리지 않는 수동 스크립트 `scripts/purge_outbox_backlog.py`(dry-run 지원, 청킹 DELETE) — 실행 순서는 스크립트 docstring 참조.
+
+### 2.4 대량 인제션의 Outbox 축약 (Collapsed events, OUTBOX-④ 2026-08-07)
+
+**한 flush가 건드린 행들을 행마다 한 줄로 적지 않고, 그 `row_ids`를 지목하는 한 줄로 적는다.** 이벤트가 **스냅샷이 아니라 포인터**가 되고, 소비자는 본 테이블을 **다시 읽어** 파생한다.
+
+* **왜 크기가 아니라 배수(drain ceiling)가 근거인가**: purge는 시간당 50,000행(`OUTBOX_PURGE_CHUNK 1000 × OUTBOX_PURGE_MAX_CHUNKS 50`) = **하루 1,200,000행**이 상한이다. 인제션이 그 위면 outbox는 **정상 상태가 아예 없다**(무한 증가). 축약하면 1,000만 행 파일이 outbox 10,000행 — **단일 purge 사이클(50,000) 하나의 1/5**이다. purge 노브는 이 라운드에서 **하나도 건드리지 않았다**: 이 이벤트율에서는 바꿀 필요가 없다는 것이 요점이다.
+* **실측(이 워크스테이션 = 시뮬레이션, 세션 고유 격리 PostgreSQL, 종료 시 드롭)** — dt_log 모양(16컬럼) 20,000행을 **실제 쓰기 경로**로 두 모드에 각각 적재:
+
+  | | per-row (종전) | collapsed |
+  |---|---:|---:|
+  | outbox 행 | 20,000 | **20** |
+  | 행/인제션행 | 1.0 | **0.001** |
+  | 총 바이트/인제션행(인덱스 포함) | 2,113.5 | **36.0** |
+  | 1,000만 행 환산 | 19.7 GiB | **343 MiB** |
+
+  **1,000배 적은 행, 58.6배 적은 바이트.**
+* **소비자 비용은 늘지 않았다 — 오히려 줄었다**(20,000행 기준, 각 팔이 자기 로드를 포함한 3회 반복): per-row `load+decode` **1,993~2,705 ms** vs collapsed `load+re-read` **1,725~1,769 ms**(0.65~0.87배). ⚠️ **첫 측정은 계기가 틀렸다** — per-row 팔의 JSONB 디코드가 타이머 **밖**(`.all()`)에서 일어나 149 ms로 읽혔고, 그대로 보고했으면 "재읽기가 13.7배 비싸다"는 **없는 결함**을 세울 뻔했다.
+* **모드 선택은 명시적 opt-in이고 기본은 `per_row`다**(`request_outbox_mode`, §2.2). 추론하지 않는 이유: `request_source`는 인제션 경로에서 **파일명**이지 채널이 아니고, 행 수로도 가를 수 없다(**사람의 맵 Push가 수천 행**이라 추론하면 per-row로 남아야 할 바로 그 경로가 축약된다). 사람 교정이 화면에 못 닿으면 교정 루프가 끊긴다(핵심가치 #3).
+  * 축약을 켜는 곳은 **둘뿐**: `parsers/directory_watcher._upsert_to_local_db`(파일 인제션), `chain_ingestion_worker`의 파생 쓰기.
+* 🔴 **DELETE는 어느 모드에서도 축약하지 않는다** — 지워진 행은 다시 읽을 수 없으므로 포인터가 가리킬 대상이 없다.
+* 🔴 **트랜잭션 아웃박스 보장은 그대로다.** `row_id`가 SERIAL이 아니라 **파이썬에서 발급**되므로(`crud._get_or_create_row`의 `uuid6.uuid7()`) id 목록이 `before_flush` 시점에 이미 완결이고, 축약 이벤트는 종전과 **같은 세션·같은 flush**에 `session.add`된다 → 행과 **한 트랜잭션에 원자 커밋**.
+* **소비자별 대응**(`server/outbox_expand.py`가 단일 지점):
+  * 매퍼(사용자 소유 `server/mappers/` 포함): `expand_events`가 **본 테이블을 다시 읽어** 종전과 **같은 중첩 페이로드**(`{row_id, data:{col:{value,is_overwrite,updated_by}}}`)를 합성한다. 이 합성은 새 발명이 아니라 **`chain_replay._to_payloads`가 이미 하던 것**이다(파생 구현을 셋으로 늘리지 않고 둘을 하나로 접는다). 컬럼 집합은 생산자와 **공유 상수** `OUTBOX_PAYLOAD_EXCLUDED_COLUMNS`로 묶여 있다.
+  * 그래프: **이미 있던 포인터형 경로** `graph_materializer.resync_table(..., row_ids=[...])`로 보낸다(두 번째 구현 금지). 증분 경로의 provenance/event_time을 잃지 않도록 `updated_by`/`event_time`/`commit_chunks` 인자가 추가됐다.
+  * `_group_target_tables`·순환 필터·미전달 스윕·WS 3경로·health·admin: **변경 없음**. 축약 이벤트도 `event_type`은 CREATE/EDIT 그대로이고 `transaction_id`/`source_name`/`table_name`을 top-level에 그대로 나른다.
+* 🔴 **스냅샷 → 현재 상태로 의미가 바뀐다. 이건 발견이 아니라 선언이다.**
+  * **같은 행이 빠르게 두 번 바뀌면** 두 이벤트가 **모두 최종 상태**에서 파생한다(멱등이고, 소스가 더는 갖지 않는 값을 잠깐 들고 있지 않는다). 대신 체인은 트리거 행의 **중간 상태를 관측하지 않는다**.
+  * **소비 전에 행이 삭제되면 파생할 것이 없다.** 판정: **아무것도 파생하지 않되 절대 조용히 넘기지 않는다** — `expand_events`가 미해결 `row_id`를 세어 테이블·tx·샘플과 함께 WARNING으로 남긴다. (chain replay가 현재 내용을 순회하므로 이미 같은 답을 낸다.)
+* 🔴 **행 단위로 세던 상한을 이벤트 단위로 두면 작업집합이 커진다 — 그리고 상한은 소비자마다 다르다.** 체인 워커의 tx 보완 `LIMIT 20000`과 그래프의 `GRAPH_BATCH_LIMIT`은 둘 다 **이벤트**를 셌고, 이벤트가 1,000행이 된 뒤에도 그대로 두면 체인은 한 배치에 2,000만 행을 한 매퍼 호출로 밀어 넣는다. 둘 다 **행으로** 다시 청구하되, **각자의 변경 전 값으로** 청구한다:
+  * 체인 워커 → `event_constants.OUTBOX_GROUP_MAX_ROWS`(20,000행 = 종전 `LIMIT 20000`).
+  * 그래프 워커 → **`GRAPH_BATCH_LIMIT`(1,000행)**. 종전 값이 1,000 **이벤트 = 1,000행**이었으므로 여기에 20,000을 청구하면 의미 보존이 아니라 **배치를 20배로 키우는 것**이다.
+  * 🔴 **하나의 심볼로 둘을 재유도한 것이 결함이었다(QA 지적, 2026-08-07).** 재유도된 상한은 **소비자별로 각자의 변경 전 값과 대조**한다.
+  * 자르는 것은 **접두사**라 꼬리는 순서 그대로 다음 반복에 온다(커서/큐 순서 불변).
+* **C-7(수십만 행 단일 커밋 금지)은 뒤집히지 않았다** — 축약 팔은 `commit_chunks=False`로 돌지만, 그래프 워커의 예산이 `GRAPH_BATCH_LIMIT` = 1,000행 = **`CHUNK_SIZE` 하나**라 한 청크를 넘겨 들고 있을 수 없다. `materialize_events`는 per-row 팔에서도 **원래 배치 중간에 커밋한 적이 없고**, 커밋을 미루는 것이 「머티리얼라이즈 + 커서 전진」을 원자로 묶어 크래시 재생을 안전하게 만드는 성질이다. 호출자 규율에 기대는 부분이라 **가정하지 않고 검사**한다 — 예산을 적용하지 않은 호출자는 조용한 다중 청크 트랜잭션 대신 경고를 받는다.
+* 🔴 **축약 이벤트의 그래프 그룹 키는 `(table, updated_by, event_time)`이다.** 테이블만으로 묶고 **첫 이벤트의** 신원을 쓰면 뒤 이벤트의 행들이 앞 이벤트의 provenance·시각으로 적재된다(워처 10:00 + 체인 10:05 → 2,000행 전부 워처 10:00). `resync_table`이 멀쩡한 문자열을 받으므로 **아무것도 실패하지 않는다** — per-row 팔은 행마다 자기 것을 주므로 이는 축약이 만든 경로 불일치다. 회귀 그물은 **이벤트 두 개·`updated_by` 두 개**여야 한다(이벤트 하나면 「첫」과 「각각」이 같은 뜻이라 결함을 볼 수 없다).
+* 🔴 **격리(quarantine)는 성긴 채로 두지 않는다 — 실패했을 때만 잘게 쪼갠다**(총괄 판정). 축약 이벤트가 3회 실패하면 **청크째 격리하는 대신** `outbox_expand.reexpand_collapsed_event`가 행마다 per-row 이벤트를 쓰고, **각각에 서로 다른 `transaction_id`(`<tx>#row#<row_id>`)를 준다.** 워커의 실패 단위는 이벤트가 아니라 **그룹**이므로, 원래 tx로 되돌려 놓으면 1,000행이 다시 한 그룹에서 함께 실패해 재확장이 아무것도 사지 못한다. 서로 다른 tx면 999개가 통과하고 **문제의 행 하나만 단독 격리**된다 — 축약이 잃었다고 지목된 바로 그 입도다. 재확장된 이벤트는 per-row라 **다시 확장될 수 없다**(구조적 종료). 값싼 청크 재시도가 **먼저**이므로 일시적 장애는 per-row 비용을 한 번도 치르지 않는다.
+  * 🔴 **재확장은 전부-아니면-전무다.** 루프 안에서 `db.add`를 하면 도중 실패 시 이미 add된 자식들이 세션에 남고, 호출자는 **격리를 남기려고 어차피 커밋**하므로 「통째 격리」라고 적힌 부모 옆에 고아 PENDING 자식 수백 개가 함께 쓰인다. 자식은 **전부 만든 뒤에** add한다.
+  * 🔴 **재확장은 멱등이어야 한다 — 재시도 버튼이 그것을 다시 부른다.** `POST /admin/outbox/retry-failed`는 FAILED 부모를 PENDING으로 되돌리므로, 가드가 없으면 **클릭 한 번마다 outbox가 1,000배**로 불어난다(이 라운드가 없애려는 바로 그 증가를 UI 버튼으로 재현). ① `reexpand_collapsed_event`는 `error_log.reexpanded_into`가 있는 페이로드를 거부하고 ② 라우트는 그런 부모를 **건너뛰고 그 사실을 응답에 적는다**(`skipped_reexpanded`) — 자식은 `<tx>#row#` id로 개별 재시도한다.
 
 ---
 
