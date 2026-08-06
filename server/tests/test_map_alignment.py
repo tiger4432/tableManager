@@ -1724,6 +1724,47 @@ def test_the_derived_start_is_the_same_under_all_eight_frames():
         "and it is the declared origin moved by the displacement, in the map's own space")
 
 
+def test_adjacency_cannot_tell_the_eight_frames_apart():
+    """A FACT ABOUT THE PROBLEM, pinned so no future diagnostic re-learns it the hard way.
+
+    The eight candidates are isometries of the stored-coordinate lattice - four rotations times
+    two mirrors - and an isometry preserves distance by definition. So EVERY statistic derived
+    from distances between cells is identical across all eight: neighbour distance, adjacency
+    counts, clustering, perimeter.
+
+    Measured by the client lane 2026-08-06 across all eight: mean neighbour distance identical
+    to three decimals, one value; orientation signatures 8 of 8 distinct on the same data. Their
+    first oracle scored adjacency and only a negative control caught that it was scoring nothing.
+
+    An assertion here costs nothing and makes the trap loud on the server side too."""
+    ref_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(ref_meta)
+    cells, _ks = _partial_job(ref_meta, floor, 200)
+
+    def mean_neighbour_distance(pts):
+        s = set(pts)
+        # distance to the nearest other cell, averaged - the cheapest adjacency statistic
+        # and representative of the whole family
+        import math
+        tot = 0.0
+        for (x, y) in pts:
+            best = min((math.hypot(x - a, y - b) for (a, b) in s if (a, b) != (x, y)),
+                       default=0.0)
+            tot += best
+        return round(tot / max(1, len(pts)), 3)
+
+    seen = {mean_neighbour_distance(_plant(ref_meta, cells, f))
+            for f in ma.CANDIDATE_FRAMES}
+    assert len(seen) == 1, (
+        "if adjacency ever separates the eight, the isometry argument is wrong and every "
+        "diagnostic resting on it needs revisiting: %s" % seen)
+
+    # and the axis that IS built for this separates them completely, on the same data
+    walks = {f: tuple(ma.serpentine_index(_plant(ref_meta, cells, f)).items())
+             for f in ma.CANDIDATE_FRAMES}
+    assert len(set(walks.values())) == 8, "the walk order is a non-isometric quantity"
+
+
 def _reproduce_agreement_at(shift, cells, meta, frame, reference):
     """Independently place `cells` under `frame` and count how many land on `reference` when
     moved by `shift`. Used to bind the SHIPPED offset to the SHIPPED agreement.

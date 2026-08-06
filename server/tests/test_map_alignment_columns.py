@@ -351,6 +351,57 @@ def test_the_reference_loader_carries_the_values_it_selects(env):
     assert v["ruling"]["metric"] == ma.METRIC_OCCUPANCY
 
 
+def test_the_cell_arrays_stay_parallel_on_the_wire(env):
+    """The index-painting field, 2026-08-06. The product owner asked for the aligner's cells
+    coloured by index so a wrong frame is visible at a glance; per-cell index was fetched by
+    the loader and dropped by the pooling loop, so it never reached the client.
+
+    Three parallel arrays rather than fattening a cell to `[x, y, k]`, because every consumer
+    of `sources.cells` already reads pairs.
+
+    🔴 `cell_index` is null PER ELEMENT when that row carried no number - never 0, which would
+       paint the die as index 1. This fixture has no index column at all, so every element is
+       null and the arrays must still be parallel: a short array is worse than an absent one."""
+    _seed(env)
+    _seed_reference(env)
+    v = _view(env, reference_spec="%s:R1" % REFT)
+    src = v["sources"]
+    n = len(src["cells"])
+    assert n > 0
+    assert len(src["cell_index"]) == n, "cell_index must be parallel to cells"
+    assert len(src["cell_map"]) == n, "cell_map must be parallel to cells"
+    assert all(k is None for k in src["cell_index"]), (
+        "no index column here - null, never 0; a zero would be painted as index 1")
+    assert set(src["cell_map"]) <= set(range(len(src["maps"]))), (
+        "cell_map indexes sources.maps[], so a value outside it points nowhere")
+
+
+def test_the_cell_arrays_are_empty_when_cells_were_not_requested(env):
+    """`include_cells=False` drops the coordinates, and the parallel arrays go with them -
+    an array of nulls beside an empty `cells` would be three arrays of different lengths."""
+    _seed(env)
+    _seed_reference(env)
+    src = _view(env, reference_spec="%s:R1" % REFT, include_cells=False)["sources"]
+    assert src["cells"] == []
+    assert src["cell_index"] == [] and src["cell_map"] == []
+
+
+def test_the_index_ranks_restart_per_map_and_skip_unnumbered_rows():
+    """Constraint 1 and 2 at the helper the payload uses, so the wire and the scorer cannot
+    disagree about what rank a cell has.
+
+    Bases genuinely differ in production - `0..255` against `1..266` - so the NORMALISED rank
+    ships and the client never renormalises. And the base is per map, because the numbering
+    restarts per map; one global minimum would silently shift one of them."""
+    raw = [10, 11, None, 12, 100, 101]
+    owner = [0, 0, 0, 0, 1, 1]
+    k, has, bases = ma._normalised_indices(raw, owner)
+    assert bases == {0: 10, 1: 100}, "each map is normalised by its OWN observed minimum"
+    ranks = [(int(k[i]) if has[i] else None) for i in range(len(raw))]
+    assert ranks == [1, 2, None, 3, 1, 2]
+    assert ma._normalised_indices([None, None], [0, 0]) == (None, None, {})
+
+
 def test_the_view_serves_the_declared_thresholds_and_omits_undeclared_ones(env):
     """A null threshold on the wire becomes 0 in the reader (`Number(null) === 0`), which is
     "always rank". Absent keys are absent."""

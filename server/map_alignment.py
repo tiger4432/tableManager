@@ -883,6 +883,21 @@ def _membership(placed_keys, ref_sorted, dx, dy):
 #       옮겨 맞춘다 — 절대값은 아무것도 나르지 않고 **순서가 신호 전부**다. 어느 base였는지는
 #       진단이 말한다(§_diag_index_block).
 #
+# ═══ ⚠️ 인접성을 세는 검사는 프레임에 대해 **구조적으로 눈이 멀었다** (2026-08-06) ═════════
+# 여덟 후보는 **저장 좌표 격자의 등거리사상(isometry)**이다 — 회전 넷 × 거울 둘. 등거리사상은
+# 정의상 거리를 보존하므로, **셀 사이의 거리에서 유도되는 모든 통계는 여덟 후보에서 같은 값**
+# 이다. 이웃 거리·인접 개수·군집도·둘레 — 전부.
+#
+# 실측(클라 레인 2026-08-06, 여덟 후보 전부): 이웃 거리 평균이 **소수점 셋째 자리까지 동일한
+# 값 하나**. 같은 데이터에서 방위 서명은 **8/8 서로 다름**.
+#
+# 🔴 그러므로 **인접성을 채점하는 검사는 프레임에 대해 아무것도 채점하지 않는다.** 그것은
+#    픽스처의 사정이 아니라 문제 자체의 성질이고, 앞으로 만들 모든 진단에 걸린다. 클라의
+#    첫 오라클이 정확히 여기 빠졌고 음성 대조군 하나가 겨우 잡아냈다 — 서버 쪽 검사도 같은
+#    함정에 똑같이 걸릴 수 있으므로 채점이 사는 이 파일에 적어 둔다.
+#    방위를 가르려면 **비등거리 양**이어야 한다: 순번 보행 순서(§serpentine_index) · 값 일치
+#    (좌표에 값을 묶는다) · 점유 부분집합의 비대칭(스펙 §1이 원은 여덟에 불변이라 말하는 이유).
+#
 # 점유도 값도 상대적이다: 「이 셀이 유효 다이 위에 있나」·「이 값이 저기 값과 같나」는 둘 다
 # **두 미지 사이의 관계**라 어느 쪽도 고정하지 못한다. 순번은 다르다 — 장비가 번호를 매길 때
 # 1번은 **정준 방위의 좌상단**이었고, 그 규칙이 이 데이터에서 유일하게 절대적인 것에 걸린
@@ -3818,17 +3833,52 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                         % (row["reason_code"], row["count"],
                            _d(row["example_map_id"], 32)))
 
+    # ═══ 셀 배열은 **평행 배열 셋**이다 — 좌표 / 순번 / 소유 맵 ══════════════════════════
+    # 제품 소유자 요청 2026-08-06: 정렬 화면의 셀을 **순번으로 칠한다**(서펜타인 위의 무지개).
+    # 틀린 프레임은 보행 순서가 통째로 갈리므로 한눈에 보인다 — 이 축이 만들 가치가 있었던
+    # 바로 그 성질을 그림으로 옮기는 것이다.
+    #
+    # 🔴 **`cells`의 계약은 건드리지 않는다.** 셀 하나를 `[x, y, k]`로 늘리면 이미 그 배열을
+    #    읽는 자리가 전부 깨진다. 같은 순서·같은 길이의 **별도 배열**로 실어 보낸다.
+    #
+    # 🔴 **정규화된 순위를 싣는다, 원본 컬럼 값이 아니라.** base가 실제로 갈린다(`0..255` 대
+    #    `1..266`). 클라가 다시 정규화하면 **같은 수를 두 번 계산**하는 것이고, 이 프로젝트는
+    #    그 형태로 이미 값을 치렀다. 철자는 `_normalised_indices` 하나이고 채점기가 쓰는 그
+    #    함수를 그대로 부른다 — 여기서 base를 다시 구하지 않는다.
+    #
+    # 🔴 **번호 없는 행은 `null`이지 `0`이 아니다.** 0은 「1번 다이」로 칠해진다. 번호가 없는
+    #    다이도 보행에는 들어가지만 색은 없다(§_index_member의 같은 구분).
+    #
+    # 🔴 **`cell_map`은 선택 사항이 아니다.** `pooled`는 맵들을 이어 붙이는데 순번은 맵마다
+    #    1부터 다시 시작한다(제품 소유자: 「소스별로 index 매기는거잖아」). 소유 정보 없이 한
+    #    배열에 담으면 **독립된 두 보행 위에 램프 하나**를 그리게 되고, 그 그림은 자신 있게
+    #    틀린다 — 이 라운드가 채점에서 없앤 결함과 정확히 같은 것을 색으로 재현하는 셈이다.
     pooled = []
+    pooled_raw_k = []
+    pooled_map = []
     if include_cells:
-        for sm in source_maps:
+        for mi, sm in enumerate(source_maps):
             if len(pooled) >= cell_cap:
                 src_truncated = True
                 break
-            for xy in sm["cells"]:
+            ks = sm.get("indices") or []
+            for j, xy in enumerate(sm["cells"]):
                 if len(pooled) >= cell_cap:
                     src_truncated = True
                     break
                 pooled.append([xy[0], xy[1]])
+                pooled_raw_k.append(ks[j] if j < len(ks) else None)
+                pooled_map.append(mi)
+
+    # base 정규화는 **맵마다** 돈다(`pooled_map`이 소유를 나른다). 채점기와 같은 함수다.
+    _pk, _phas, _pbases = _normalised_indices(pooled_raw_k, pooled_map)
+    # 🔴 **절단된 풀은 완전한 보행이 아니다.** 그때 이 필드는 **통째로 null**이다 — 원소가
+    #    null인 것(「이 다이는 번호가 없다」)과 필드가 null인 것(「완전한 보행을 못 준다」)은
+    #    받는 쪽에서 다른 사실이고, 접으면 잘린 램프가 완전한 램프처럼 그려진다.
+    if src_truncated or _phas is None:
+        pooled_index = None if src_truncated else [None] * len(pooled)
+    else:
+        pooled_index = [(int(_pk[i]) if _phas[i] else None) for i in range(len(pooled))]
 
     # 단위 안에서 맵들이 **서로 다른 프레임을 적어 두고 있을 수 있다** — 그 어긋남이 이 화면이
     # 맵 하나가 아니라 단위로 도는 이유다. 그래서 하나로 접지 않고 프레임별 개수로 낸다.
@@ -3930,6 +3980,13 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             "usable_map_count": stats.get("source_maps_usable", 0),
             "cell_count": sum(len(sm["cells"]) for sm in source_maps),
             "cells": pooled, "truncated": src_truncated, "cell_cap": cell_cap,
+            # 순번 페인팅용 평행 배열(§pooled 위 블록). `cells`와 **같은 순서·같은 길이**다.
+            #   · `cell_index` — 맵 안에서 1부터인 **정규화된 순위**. 원소 null = 그 행에
+            #     번호가 없었다. **필드 자체가 null** = 풀이 잘려 완전한 보행이 아니다.
+            #   · `cell_map` — `sources.maps[]`의 첨자. 순번이 맵마다 다시 시작하므로 이것
+            #     없이는 이어 붙인 배열에 램프를 그릴 수 없다.
+            "cell_index": pooled_index,
+            "cell_map": pooled_map,
             # `geometry`는 **이 맵이 스스로 말하는 기하 출처**이고 `geometry_basis`는
             # **이번 실행이 실제로 무엇 위에 올렸나**다. 둘을 한 필드로 접으면 가정이
             # 선언처럼 보이거나(I4) 가정이 사라진다. 뒤엣것의 철자는 `geometry_basis_of`
