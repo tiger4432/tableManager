@@ -162,12 +162,60 @@
 
 | 순 | 주제 | 상태 |
 | --- | --- | --- |
-| **1** | **`dt_log` → 코어 맵 변환.** 지시(2026-08-06): 「dt log 코어 맵 변환 찾을 때 **인덱스로 그룹 구분**해서 **원래 코어 bin map과 비교**하는 거 논의했었잖아」. `c_bn`·`core_x`/`core_y`가 재료. 기존 task #36 「Core-frame direction from the joint violations-groups scorer」가 같은 실이거나 인접 | 논의 기록 탐색 중 |
+| **1** | **`dt_log` → 코어 맵 변환.** ⬇ 알고리즘 전문은 바로 아래 절. 기존 task #36 「Core-frame direction from the joint violations-groups scorer」가 같은 실이거나 인접 | 설계 확정, 착수 대기 |
 | **2** | **대형 파일 인제션 P3.** 지시(2026-08-06): 「개발 필요함」. **이전 판정을 뒤집는다** — `PRODUCTION_READINESS.md:195`는 「수십 MB는 P1/P2로 충분, P3는 백로그 유지」, `:225`는 「파일 규모가 커지면 재평가」였다. 범위 5종([BACKLOG_ARCHIVE:162](BACKLOG_ARCHIVE.md)): 후단 backpressure(C-4와 통합) · **PG COPY 벌크 경로(프로파일링 선행이 이미 조건으로 적혀 있음)** · `batch_row_upsert` 행 데이터 상한 · audit `old/new_value` 길이 상한(`crud.py:224-236`) · heavy 워커 수 설정화. **착수 전에 알아야 할 것: 무엇이 커졌고 무엇이 터졌나** — 다섯 중 어느 것이 급한지가 거기서 갈린다 | 대기 |
 | 3 | **J** 좌석 키 정의역 — ⚖️ **판정: 접음** (「어차피 맞으면 100% 맞아」) | ✖ |
 | 4 | **K** 점유율 하한 — ⚖️ **판정: 접음** (동상) | ✖ |
 | 5 | 거짓 불변식 정정 (스펙 2곳 · `map_alignment.py` 주석 · 테스트 독스트링) — 「거절은 여전히 이름을 댄다」는 실측상 거짓 | 대기 |
 | 6 | **L** `PRIMITIVES.md` 은퇴 게이트 — ✅ `a8182a3`에서 처리 | ✅ |
+
+#### 🧩 `dt_log` → 코어 맵 변환 ― 제품 소유자 구술 설계 (2026-08-06)
+
+> ⚠️ **이 설계는 코드에도 다른 문서에도 없었다.** 사용자 구술이 유일한 출처이므로 원문을 함께 남긴다.
+> 「dt가 코어의 bin 순 그 안에서는 좌상부터 지그재그로 뽑아가. 그래서 dt index를 cx,cy로 얹으면 dt index가 커지는데 y가 작아지는 순간이 나타나거 이게 그룹이야. 그룹을 최소화히는 변환이 맞는 코어 회전 변환. 근데 여기 일부 bin만 쓰면 앵커가 wf좌상이 아닐수도 있어서 지문으로 bin을 써서 매칭하여 shift도 구하는것」 / 「그래서 최소화 + 지문으로 bin map을 쓰는거야」
+
+**뽑기 순서** — DT는 **코어 bin 순**으로 뽑고, **한 bin 안에서는 좌상부터 지그재그**(serpentine).
+
+**회전 — 그룹 수 최소화.** dt index를 코어 좌표 `(cx, cy)`에 후보 변환으로 얹는다. **index는 커지는데 y가 작아지는 순간**이 그룹 경계다(걷기가 다시 시작된 자리). 틀린 회전은 지그재그를 흐트러뜨려 그 사건을 양산한다 → **그룹을 최소화하는 변환이 맞는 회전.**
+
+**shift — bin 지문.** 일부 bin만 쓰면 앵커가 웨이퍼 좌상이 아닐 수 있다. **원래 코어 bin map을 지문 삼아** `c_bn` 배열을 대조해 평행이동을 구한다.
+
+**⚖️ 판정 (사용자, 2026-08-06)**: 총괄이 「최소화는 퇴화에 약하니 `그룹 수 == 서로 다른 c_bn 개수`라는 정확한 술어로 바꾸자」고 제안했고, 답은 **「최소화 + 지문으로 bin map을 쓰는 것」**. 즉 **최소화를 유지하고, 동점·앵커 문제는 지문이 받는다.** 정확한 술어로 바꾸지 않는다.
+
+#### 📦 P3 착수 전 밑조사 ― 인제션 경로 실측 지도 (2026-08-06, 프로파일링 전에 세움)
+
+> 목표 규모는 **거의 천만 행**. 아래는 코드를 읽어 세운 경로이고 **아직 잰 것이 아니다** — 프로파일링이 1순위인 이유가 여기 있다.
+
+**단계 순서** (`directory_watcher._process_with_retry:1110`): 1초 debounce → config 스냅샷 → **전체 파일 sha256**(`ingestion_checkpoint.py:61`) → dedup → 파싱 → 체크포인트 계획 → 청크 업서트 → 아카이브 → finalize.
+
+**청크·트랜잭션 경계** — **파일 단위가 아니라 1000행 단위**다. 청크마다 새 세션(`:1876`), 체크포인트 UPDATE(`:1890`), `apply_batch_updates`(내부 커밋 `crud.py:2746`), 그리고 중복 `db.commit()`(`:1896`).
+
+**🔴 `batch_size = 1000`이 하드코딩** — `directory_watcher.py:1786`. 설정 키도 환경변수도 없다. (`crud.BULK_CHUNK_SIZE`는 별개이고 int16 파라미터 한계라는 **정확성 경계**이지 튜닝 손잡이가 아니다 — `crud.py:1387-1397`.)
+
+**비용이 클 것으로 보이는 자리, 순서대로:**
+
+| # | 자리 | 왜 |
+| --- | --- | --- |
+| 1 | `pipeline_base.py:37/39`·`:60-71` | `pd.read_csv`/`read_excel`가 파일 전체를 올리고, `to_dict` + 셀마다 `pd.isna` 파이썬 루프 → **RAM에 파일 3벌**. 표준 파서(`std_parser.py:155`)는 스트리밍인데 **커스텀 스크립트가 매칭되면 그쪽으로 안 간다** |
+| 2 | `crud.py:1508`·`:1510` (`_get_or_create_row`) | 신규 파일은 프리페치가 전부 미스 → **행마다 SELECT 1~2회**. `crud.py:2545-2555`에 미해결이라고 이미 적혀 있다 |
+| 3 | `database.py:128-156`·`:177-192` | `before_flush` 리스너가 **데이터 행 하나당 `database_outbox` INSERT 하나**를 심고, payload는 **전 컬럼 덤프**. 청크 flush마다 최대 1000건 → 쓰기 증폭의 본체 |
+| 4 | `directory_watcher.py:1844-1846` | 셀마다 양쪽 `.lower()` — O(컬럼수 × 선언컬럼수), 컬럼 맵 미리 안 만듦 |
+| 5 | `ingestion_checkpoint.py:66-75` | 파싱 **전에** 전체 파일 sha256 → 큰 파일을 매 시도마다 **두 번 읽는다** |
+| 6 | `directory_watcher.py:1588-1595` | 파일마다 `scripts/`의 **모든** `.py`를 `exec_module` |
+| 7 | `directory_watcher.py:346-394` | **heavy 레인이 데몬 스레드 하나**(`watcher-heavy-lane`). 별도 프로세스도 DB 큐도 아니고, **전 워크스페이스의 대형 파일이 이 한 스레드에 직렬화**된다 — 대형 파일 처리량의 천장 |
+
+**heavy 판정**: `_classify_lane:964`, 기본 **10 MB**(`DEFAULT_HEAVY_FILE_MB:209`), `ingestion_settings.json`의 `heavy_file_mb`로 설정 가능. 다만 `load_ingestion_settings`가 **파일 이벤트마다 JSON을 새로 읽는다**(`:214`, 캐시 없음).
+
+**재개**: 이미 커밋된 행은 **다시 파싱한 뒤 `islice`로 버린다**(`:1799-1801`) — 재개가 아끼는 것은 DB 시간이지 파싱 시간이 아니다.
+
+**⚖️ 규모 감각 — 천만 행은 지금 존재하는 무엇보다 크다.** 운영 DB 14 GB, 격리 스냅샷(`assy_qa`) 1820 MB. 가장 큰 테이블이 `cell_sources` **47만 행**(1204 MB)이고 그다음이 `eds_fail_map`·`core_defect_map` 각 95,312행. **천만 행은 현존 최대의 약 20배**다 — 「지금 잘 돌던 것」이 근거가 되지 않는 구간.
+
+**프로파일링 손잡이** (레인 두 개가 이걸 찾느라 돌았으니 다음 세션은 바로 쓸 것):
+- **파일 하나를 워처 없이 적재하는 CLI는 없다.** 대신 `IngestionHandler(workspace_path, config_path, archives_path, default_table_name, heavy_lane=None)` 을 만들고 `process_with_retry(path, delay=0)` — `heavy_lane=None`이면 라우팅이 **전부 인라인 동기**(`directory_watcher.py:993-996`). 실사용 예: `server/tests/test_heavy_lane.py:34-35`
+- ⚠️ `_process_with_retry`는 `time.sleep(delay)`로 시작한다(`:1112`) — `delay=0`을 주거나 측정치에서 1초를 빼라
+- **파싱 비용만 떼어 재려면** `AdvancedIngester.process_file`(`advanced_ingester.py:416`) — DB를 안 건드린다
+- 격리 환경: `devenv.py up`(api :8081 · assy_qa · 워처/스케줄러 없음), 사전 점검 `iso_watcher.py --check-only`(0=격리, 9=거절)
+- ⚠️ `conda run`은 **줄바꿈 있는 `-c` 스크립트를 거부한다** — 한 줄로 쓰거나 스크립트 파일로
 
 ### 📌 다음 세션이 알아야 할 사실
 
