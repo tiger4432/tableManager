@@ -1,25 +1,51 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (**소스 앵커는 `87a944e`의 커밋된 blob 실측** — 워킹트리 아님. HEAD `ce63de8`에서 해당 blob 전건 동일 확인) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **Status:** 🟡 **부분 검증(PARTIALLY VERIFIED)** | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
 >
-> 🔴 **표지는 「문서가 커밋된 리비전」이 아니라 「blob을 실제로 읽은 리비전」이다** — 그리고 그 둘이 벌어지는 것이 이 문서의 만성 실패다. 세 패스 전에는 문서 커밋이 `54fc39b`인데 표지가 `8cf9455`(5커밋 전)였다. 한 패스는 표지를 정직하게 `c520012`로 적었는데, **적고 나서 커밋되기까지 4커밋이 들어왔다.** 정직한 표지가 낡음을 막지는 못한다 — **그래서 이번엔 표지에 「무엇이 바뀌었는지」까지 적는다.**
+> 🔴 **이 문서에는 문서 전체에 걸친 `Last-verified`가 없다 — 없앤 것이 아니라 *가질 자격이 없다*.** 아래 표에 적힌 절만 실측됐고 **나머지는 미검증**이다. 독립 감사(2026-08-06) 실측: **문서 전체 앵커의 약 55%만 정확하다.**
 >
-> 🔴 **[2026-08-06] 이 패스는 §7 `map_editor.js`의 전건 재측정 + 오늘 착지한 두 신규 영역(Map Editor 2 · 프레임 확정) 등재다.** 앵커는 **`87a944e`의 blob** 실측이다.
-> - 🔴 **§7 `map_editor.js` 앵커 253개가 *전부* 틀려 있었다 — 예외 0건.** 드리프트 **+8 ~ +185줄**. 직전 패스가 「파일 앞 ~300줄은 무이동」이라 적었는데 **이번엔 최상단(85행대)부터 밀렸다** — 프레임 인자화가 파일 머리에 줄을 넣었기 때문이다. **「앞쪽은 안 움직인다」는 관찰이지 성질이 아니었다.**
+> 🔴 **직전 표지는 거짓이었고, 그 거짓이 이 문서가 고치려는 결함과 같은 계급이었다.** 표지는 「소스 앵커는 `87a944e`의 커밋된 blob 실측」이라 적었지만 그 패스가 실제로 잰 것은 **네 절뿐**이다. 나머지 파일은 **열지도 않은 채** 그 문장이 덮었다. 🔴 **`main.py`·`crud.py`·`admin.js`·`transfer_plan.py`·`map_overlay.py`는 `87a944e`와 HEAD 사이에 바이트 동일한데도 드리프트가 가득하다** — 즉 낡음은 그 측정보다 **앞선다**. **검증 주장이 검증 범위보다 넓으면, 그 주장은 다음 독자가 확인하는 것을 막는다. 그래서 아무 주장도 없느니만 못하다.**
+
+**📍 절별 검증 상태 — 이 표가 이 문서의 유일한 신뢰 기준이다.**
+
+| 절 / 파일 | 상태 | 기준 리비전 | 비고 |
+|---|---|---|---|
+| §7 `client2/src/map_editor.js` | 🟠 **재측정 필요** | 앵커는 blob `cfa22ce`(=`87a944e`) 전건 실측 | 🔴 **그 뒤 `067f312`가 파일을 바꿨다**(blob 지금 `62502fc`). 알려진 이동: **한 지점 이후 +17줄 × 앵커 143개**. 아래 「보정」 항목 참조 |
+| §5 `server/map_overlay.py` | 🟢 **실측** | `87a944e` (HEAD와 blob 동일) | 근사(`~NNN`) 표기를 전부 실측값으로 교체 |
+| §5 `server/map_alignment.py` · `frame_confirmation.py` · `migrations/add_frame_confirmation.py` | 🟢 **실측(신규 등재)** | `87a944e` (HEAD와 blob 동일) | |
+| §1 `server/main.py` — 라우트·헬퍼 표 | 🟢 **실측** | `87a944e` (HEAD와 blob 동일) | 표 앵커 76개 기계 대조 통과 |
+| §2 `server/database/crud.py` | 🟢 **실측** | `87a944e` (HEAD와 blob 동일) | 〃 |
+| §5 `server/bonding_plan.py` | 🟢 **실측** | `87a944e` (HEAD와 blob 동일) | 〃 |
+| §7-A Map Editor 2 (`map_editor2.js` + `map2/` 17모듈) | 🟢 **실측(신규 등재)** | `87a944e` | ⚠️ `map2/api.js`·`main.js`·`session.js`·`view_model.js`는 그 시점 **워킹트리가 더러웠고**, 등재값은 **커밋본** 기준이다 |
+| §7 `push_columns.js` · `enrichment_queue.js` | 🟢 **실측(신규 등재)** | `87a944e` | |
+| §5-E `server/notation_norm.py` | 🟢 **실측 + 정리** | `5609ff0` | 철회된 API 행을 **삭제**하고 현행 API를 전건 실측으로 다시 깔았다. 이 모듈은 이제 **저장하지 않는다** — 접기는 질의 시점 SQL이다 |
+| §1.6 `server/admin_auth.py` | 🟠 **부분** | — | **EOF 밖 앵커 1쌍**(`GATE_CHALLENGE_HEADER`/`_GATE_HEADERS`가 463줄 파일에 **5846/5847**로 적혀 있었다 → **100/101**)과 지문 상수 행만 고쳤다. **나머지 미검증** |
+| §5 `server/retroactive.py` · `process_supervisor.py` · §3 `parsers/directory_watcher.py` | 🟢 **심볼별 실측** | `5609ff0` | ⚠️ **오프셋은 균일하지 않았다** — 「전건 +23 / +92 / +62」는 틀린 모델이다. 각 절은 **앞부분이 이미 맞고 어느 지점부터 밀린 조각(piecewise)** 이었다(예: `retroactive.py` 16개 중 6개는 이미 정확). 그래서 오프셋을 더하지 않고 **심볼마다 실측값으로 다시 적었다**(54개 정정). 남은 미검증: 표 밖 산문 앵커 |
+| 🔴 **그 밖 전부** — `admin.js` · `enrichment_config.py` · `enrichment_candidates.py` · `transfer_plan.py` · `graph_*` · `contracts/*` · 나머지 클라 모듈 | 🔴 **미검증** | — | 감사 실측: `admin.js` 앵커 61개 중 **정확 0** · `enrichment_candidates.py` 36개 중 **0** · `enrichment_config.py` 37개 중 **0** · `directory_watcher.py` 142개 중 **16**. **이 절들의 라인 번호를 믿지 말고 함수명으로 Grep하라** |
+
+> ⚠️ **위 🔴 행의 절을 읽을 때의 규율**: 라인 번호는 **길잡이도 못 된다**(0/61 같은 분포에서는 ±20 오차가 의미 없다). **함수명·시그니처만 1차 식별자로 쓰고 위치는 `git grep -n`으로 직접 확정하라.**
+>
+> 🔴 **이 문서를 손으로 재측정하지 마라.** 손 패스는 방금 55%에서 끝났고, 그 패스가 스스로를 100%라고 적었다. **재생성이 성립하지 않으면 「CODE_MAP은 라인을 인용해도 된다」는 예외 자체가 성립하지 않는다** — 그 판단은 총괄 소관이다. 재생성기를 쓸 경우 **반드시 알아야 하는 표기 충돌 2종**은 아래 「표기 규약」에 적어 둔다.
+
+**📐 표기 규약 — 재생성기가 반드시 구분해야 하는 것 (2026-08-06 감사 발견)**
+
+- 🔴 **굵은 3자리 숫자가 전부 라인 앵커는 아니다.** HTTP 상태코드(`**503**` · `**401**` · `**400**` · `**404**`)가 **앵커와 글자 모양이 같다.** 상태코드를 앵커로 읽고 "고치면" 그 서술이 파괴된다.
+- 🔴 **`` `SYM` **VALUE**(**ANCHOR**) `` 꼴에서 첫 굵은 값은 *상수의 값*이고 라인이 아니다**(예: `` `MAX_VALID_DIE_CELLS` **20_000**(**1690**) ``). 라인처럼 보이는 자리에 값이 앉는다.
+- 앵커는 **`**NNNN**`** 또는 **`**A/B**`**(데코레이터/핸들러) 꼴이고, `**A/B**`는 **「심볼 둘」과 뜻이 다르다** — 후자에 `real-1/real`을 적용하면 조용히 틀린다(이 패스에서 21행이 그렇게 깨졌다가 복구됐다).
+
+> 🔴 **[2026-08-06 이 패스가 실제로 고친 것]**
+> - **§7 `map_editor.js` 앵커 253개가 *전부* 틀려 있었다 — 예외 0건.** 드리프트 **+8 ~ +185줄**. 직전 패스의 「파일 앞 ~300줄은 무이동」은 **관찰이지 성질이 아니었다.**
 > - 🔴 **살아 있는 앵커 다섯이 없는 것을 가리키고 있었다**: `physFrameOverride`(구 1432)·`withPhysFrame`(구 1538)은 **삭제**, `PUSH_SYSTEM_COLUMNS`(구 5760)·`getUnprotectedPushColumns`(구 5782)·`logShapedPushDecision`(구 5801)은 **`push_columns.js`로 이사**. 다섯 다 「그럴듯한 도착지」가 있어 ±20 오차로는 안 잡힌다.
-> - 🔴 **`map_editor.js`의 시그니처 10개가 인자를 하나 더 받는다**(`frame` 선두). **이것이 이 문서에서 가장 위험한 낡음이다** — 인자가 앞에 끼면 옛 호출은 **던지지 않고 틀린 답을 낸다.** [§7 S2.1 표](#-2026-08-06-92e60ca-s21-프레임은-모듈-상태가-아니라-첫-번째-인자다--이-절의-모든-시그니처가-바뀌었다) 참조.
-> - 🔴 **§5 `map_overlay.py`가 자기 자신과 모순돼 있었다** — 한 블록쿼트는 `apply_valid_die_ref`가 「이제 실재한다」고 적고, 같은 절 아래 문단은 「[M4 phase 2]는 HEAD에 없다」고 적고 있었다. **둘 다 실려 있으면 독자가 고르게 된다.** 소스 실측: 둘 다 실재한다(**1825**·**1875**).
-> - 🆕 **신규 등재**: [§7-A Map Editor 2](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506)(`map_editor2.js` + `map2/` 17모듈) · `push_columns.js` · `enrichment_queue.js` · [`map_alignment.py`](#-servermap_alignmentpy-3272줄-신설--프레임-정렬의-채점자)(3,272줄) · [`frame_confirmation.py`](#-serverframe_confirmationpy-688줄-신설--확정의-기록자) · `migrations/add_frame_confirmation.py`.
+> - 🔴 **`map_editor.js`의 시그니처 10개가 인자를 하나 더 받는다**(`frame` 선두). **이것이 이 문서에서 가장 위험한 낡음이다** — 인자가 앞에 끼면 옛 호출은 **던지지 않고 틀린 답을 낸다.**
+> - 🔴 **두 절이 자기 자신과 모순돼 있었다.** ① §5 `map_overlay.py` — 한 블록쿼트는 `apply_valid_die_ref`가 「실재한다」, 아래 문단은 「HEAD에 없다」(실측: 둘 다 실재, **1825**·**1875**). ② §2 `crud.py` — 표 한 행이 `refuse_notation_derived_columns`를 **살아 있는 앵커와 살아 있는 호출부로** 등재하는 동안 바로 아래 행이 「삭제됐다」고 적고 있었다. **독자는 표를 믿는다.**
+> - 🔴 **§5-E가 존재하지 않는 API를 등재하고 있었다** — `8d306a5`가 철회한 `apply_derivations`·`rederive`·`derivations_for` 등이 **시그니처 표에 라인 번호를 달고** 앉아 있었고, 같은 절의 각주가 철회 사실을 적고 있었다. **각주는 표를 이기지 못한다. 그래서 주석이 아니라 삭제했다.**
+> - 🆕 **신규 등재**: [§7-A Map Editor 2](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506) · `push_columns.js` · `enrichment_queue.js` · [`map_alignment.py`](#-servermap_alignmentpy-3272줄-신설--프레임-정렬의-채점자) · [`frame_confirmation.py`](#-serverframe_confirmationpy-688줄-신설--확정의-기록자) · `migrations/add_frame_confirmation.py`.
 >
-> ⚠️ **개수를 적지 않는 규율을 이 패스에서 강화했다.** 「N번째 토큰」·「호출 6곳」·「단계 함수 17종」류는 **다음 라운드가 하나 더하면 조용히 거짓이 되고, 개수만 맞으면 앵커가 전부 틀려도 통과한다.** 그래서 개수를 **구성원 목록으로** 바꿨다(`isValidDieAt` 호출부 표 · 출처 토큰 표 · vite 엔트리 · 어휘 관문 표).
+> ⚠️ **개수를 적지 않는 규율.** 「N번째 토큰」·「호출 6곳」류는 **다음 라운드가 하나 더하면 조용히 거짓이 되고, 개수만 맞으면 앵커가 전부 틀려도 통과한다.** 그래서 개수를 **구성원 목록으로** 바꿨다.
 >
-> 🔬 **소스가 이 지도를 반박하는 자리 — 코드 소관이라 여기서 못 고친다**: `server/map_overlay.py:572`가 `geometry_declaration`의 반환을 **「다섯 토큰」**이라 적는데 실제로 **여섯**을 낼 수 있고, **`:756`은 「네 토큰」**이라 적는다. 같은 결함 계급이 소스 주석에도 있다.
+> 🔬 **소스가 이 지도를 반박하는 자리 — 코드 소관이라 여기서 못 고친다**: `server/map_overlay.py:572`가 `geometry_declaration`의 반환을 **「다섯 토큰」**이라 적는데 실제로 **여섯**을 낼 수 있고, **`:756`은 「네 토큰」**이라 적는다.
 >
-> ✅ **`map_editor.js` = 11,031줄인데 그중 코드는 6,391줄이다**(`87a944e` 실측: 공백 782 · 비공백 10,249 · **주석 3,858줄 = 비공백의 37.6%**). 🔴 **원시 줄 수를 이 파일의 크기로 인용하면 코드를 약 73% 과대 보고한다.** 이 문서가 파일 옆에 적는 **「N줄」은 전부 원시 줄 수**(`wc -l`)이고 코드 줄 수가 아니다.
->
-> ⚠️ **이 측정 중에 HEAD가 두 번 움직였다 — 그리고 그것이 이 표지가 존재하는 이유다.** `cd8bfc9`에서 시작 → `690e869`·`87a944e` 착지(그때 워킹트리에서 더럽던 파일들의 커밋: `map2/api.js`·`map_editor2.html`·`crud.py`·`map_editor2.css` — **그 넷은 `87a944e` 기준으로 다시 쟀다**) → 마지막에 `4dbe36a`·`1573031`·`ce63de8`(문서 레인 3커밋).
->
-> 🔬 **재대조 결과: 위 앵커가 근거로 삼은 소스 blob은 `ce63de8`에서 전부 동일하다** (`map_editor.js` = `cfa22ce` · `map_overlay.py` · `map_alignment.py` · `frame_confirmation.py` · `crud.py` · `main.py` · `bonding_plan.py` · `map2/*` · `vite.config.js` 전건 대조). 마지막 세 커밋은 `docs/` 전용이라 소스를 건드리지 않았다. **그래서 「`87a944e` 실측」과 「HEAD `ce63de8`」는 이 문서에서 같은 것을 가리킨다.**
+> ✅ **`map_editor.js` = 11,031줄인데 그중 코드는 6,391줄이다**(`87a944e` 실측: 공백 782 · 주석 3,858 = 비공백의 37.6%). 🔴 **원시 줄 수를 크기로 인용하면 코드를 약 73% 과대 보고한다.** 이 문서의 **「N줄」은 전부 원시 줄 수**(`wc -l`)다.
 >
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md)
 
@@ -487,7 +513,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 구간 | 라인 | 내용 |
 |---|---|---|
 | 접두어 목록 (`tables`/`ws`/`audit_logs`/`dashboard`/`admin`/`map-editor`/`map_editor`/`map-presets`/`enrichment/`/`api`) | **5449–5458** | **API 섀도잉 방지장치이지 보안 경계가 아니다** — 소스 주석이 그렇게 명시한다(**5445–5448**). 경로 **시작**만 보므로 `../../server/config/table_config.json`은 `admin`과 조금도 닮지 않아 그대로 통과한다 |
-| **격리 검사** | **5475–5479** | `dist_base = os.path.abspath(client2_dist_path)` → `target_path = os.path.abspath(os.path.join(dist_base, file_name))` → **`target_path`가 `dist_base` 자신이거나 `dist_base + os.sep`로 시작하지 않으면 거부.** `_resolve_admin_script_path`(**5847**)와 **같은 모양**이다(사유 주석 **5461–5096**) |
+| **격리 검사** | **6115–6117** | `dist_base = os.path.abspath(client2_dist_path)` → `target_path = os.path.abspath(os.path.join(dist_base, file_name))` → **`target_path`가 `dist_base` 자신이거나 `dist_base + os.sep`로 시작하지 않으면 거부.** `_resolve_admin_script_path`(**5847**)와 **같은 모양**이다(사유 주석 **6111–6114**) |
 | 서빙/폴백 | **5481–5487** | 통과한 실파일만 `FileResponse`, 그 외 `index.html` |
 
 **이 형태를 "단순화"하지 마라 — 세 가지가 전부 의도다:**
@@ -539,8 +565,8 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `ADMIN_TOKEN_ENV="ASSY_ADMIN_TOKEN"` / `ADMIN_TOKEN_HEADER="X-Admin-Token"` | 운영자가 세팅하는 환경변수명 / 제시 헤더명. **헤더명이 `X-User`/`X-Transaction-ID`/`X-Source`와 다른 것이 계약** — 컨텍스트 미들웨어가 읽는 이름과 겹치지 않아야 토큰이 `AuditLog` 행에 실려 들어가지 못한다 | ~81/85 |
-| **`GATE_CHALLENGE_HEADER="WWW-Authenticate"`** / `_GATE_HEADERS` | **게이트 자신이 낸 거부에만 붙는 마커.** 상태코드만으로는 부족하다 — `_resolve_admin_script_path`도 403을 내는데(격리 서버가 라이브 트리에 쓰려 할 때) 그건 토큰과 무관하다. 이 헤더가 없던 시절 어드민 페이지는 그 403을 "토큰이 틀렸다"로 읽고 **멀쩡한 저장 토큰을 덮어썼다**. 🆕 **[`23a346d`] 이제 두 번째 소비자가 있다** — 아래 `internal_event_failure_note`가 **같은 헤더로 "우리 게이트 / 앞단의 무언가"를 가른다** | **5846/5847** |
-| 🆕 **`TOKEN_FINGERPRINT_CHARS=8`** / `FINGERPRINT_NONE="none"` / `FINGERPRINT_UNUSABLE="unusable-non-ascii"` | 지문 길이와 **지문이 없는 두 상태의 대역 문자열**. 둘 다 의도적으로 비-16진이고 **서로 다르다** — 두 로그를 맞춰 보는 운영자가 한쪽에서 아무것도 못 보면 "미설정인가, 줄이 안 돈 건가"를 구분할 수 없고, "설정됐지만 못 쓴다"는 **처방이 다르다**(변수를 추가하는 게 아니라 **교체**해야 한다) | ~119/126/127 |
+| **`GATE_CHALLENGE_HEADER="WWW-Authenticate"`** / `_GATE_HEADERS` | **게이트 자신이 낸 거부에만 붙는 마커.** 상태코드만으로는 부족하다 — `_resolve_admin_script_path`도 403을 내는데(격리 서버가 라이브 트리에 쓰려 할 때) 그건 토큰과 무관하다. 이 헤더가 없던 시절 어드민 페이지는 그 403을 "토큰이 틀렸다"로 읽고 **멀쩡한 저장 토큰을 덮어썼다**. 🆕 **[`23a346d`] 이제 두 번째 소비자가 있다** — 아래 `internal_event_failure_note`가 **같은 헤더로 "우리 게이트 / 앞단의 무언가"를 가른다** | **100/101** — 🔴 **종전 값 `5846/5847`은 463줄짜리 파일의 **EOF 밖**이었다(`main.py`의 `_resolve_admin_script_path` 줄 번호가 이 심볼 위에 올라암었다). **EOF 밖 앵커는 독자가 스스로 복구할 수 없는 유일한 계급이다** |
+| 🆕 **`TOKEN_FINGERPRINT_CHARS=8`** / `FINGERPRINT_NONE="none"` / `FINGERPRINT_UNUSABLE="unusable-non-ascii"` | 지문 길이와 **지문이 없는 두 상태의 대역 문자열**. 둘 다 의도적으로 비-16진이고 **서로 다르다** — 두 로그를 맞춰 보는 운영자가 한쪽에서 아무것도 못 보면 "미설정인가, 줄이 안 돈 건가"를 구분할 수 없고, "설정됐지만 못 쓴다"는 **처방이 다르다**(변수를 추가하는 게 아니라 **교체**해야 한다) | **119/126/127** |
 | `_raw_token()` / **`token_is_unusable()`** | env 원문(strip) / **토큰이 설정됐지만 절대 인증될 수 없는 상태**(비-ASCII). HTTP 헤더는 latin-1로 디코딩돼 오므로 비-ASCII 비밀은 왕복에서 살아남지 못한다 — 모든 정답 시도가 "틀렸다"로 답해지는데 기동 배너는 "잠겼다"고 안심시킨다. **토큰이 아예 없는 것보다 나쁜 실패**라 요청 시점에 맡기지 않고 명시적으로 탐지한다 | ~130/134 |
 | **`configured_token()`** | 운영자의 비밀 \| **`None`**. import 시점이 아니라 **호출 시점에 읽는다**(테스트가 `main`을 재import하지 않고 env를 monkeypatch할 수 있게). 공백만 있는 값은 미설정 취급 — 빈 문자열을 export한 운영자는 아무것도 설정하지 않은 것이고, 그걸 진짜 토큰으로 치면 **아무 요청이나 맞힐 수 있는 비밀**이 된다. 비-ASCII도 `None`으로 떨어져 **미설정 상태**(코드 실행만 거부, 나머지는 개방)에 착지한다 — 아무도 제시할 수 없는 비밀로 강제하면 **어드민 16개 라우트가 전부 벽돌**이 되고 복구는 변수를 지우고 재시작하는 길뿐이다 | ~147 |
 | 🆕 **`token_fingerprint() -> str`** | **로그에 안전한 토큰의 이름** — `sha256(token)`의 앞 8자, 또는 위 두 대역 문자열. 같은 지문 = 같은 토큰이고, **이 게이트의 403이 뜻할 수 있는 유일한 것이 "두 프로세스가 다른 환경에서 떴다"**이므로 이것 하나면 판정이 끝난다.<br>🔴 **소금도 후추도 없는 맨 `sha256`이 의도**다: 운영자가 비밀번호 관리자의 값으로 `python -c "import hashlib;print(hashlib.sha256(b'<token>').hexdigest()[:8])"`를 돌려 **로그에 손대지 않고 재현**할 수 있어야 하고, 인시던트 한복판에서 **독립 검증할 수 없는 진단은 신뢰받지 못한다**. 도메인 분리 다이제스트는 공짜지만 이 성질을 죽인다.<br>🔴 **길이는 보안 다이얼이 아니다 — 직관이 거꾸로 돈다.** 로그 한 줄을 읽을 수 있는 사람은 **어떤 길이의** 다이제스트에도 오프라인으로 후보를 대조할 수 있고, 짧은 접두는 적중을 **모호하게** 만들 뿐(8자면 2³² 후보당 오탐 1건)이라 64자 전문보다 **약한 오라클**이다. 실제 상한은 토큰 자신의 엔트로피다. 8자인 이유는 사람 쪽이다 — 이 저장소가 하루 종일 읽는 커밋 접두 길이이고, 한 배포가 동시에 쥘 만한 토큰 서너 개 사이 충돌은 ~1e-8 | ~169 |
@@ -711,7 +737,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 🆕 **`assemble_composite_business_key(table_name, update_item: schemas.GeneralUpdateItem) -> bool`** | **[신설 — 종전 지도에 없던 심볼]** 선언된 조각들로 복합 비즈니스 키를 조립한다. 🔴 **아래 [P6] 프리페치가 적중하는 이유가 이 함수다** — 키가 배치 진입 시점에 이미 알려지므로 한 번의 `IN (…)` 조회로 전 행을 덮을 수 있다 | **1533** |
 | `_update_row_business_key(row, key_col, update_item, row_cache)` | 비즈니스 키 갱신 | **1577** |
 | `_load_metadata_row_cell(db, table_name, row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids: set = None) -> (sources_list, overwrite)` | 셀 메타 로드(캐시·업서트 큐 연동). 🔴 **[P6] 프리페치의 소비 지점** — 아래 블록 | **1597** |
-| `apply_row_update_internal(db, table_name, update_item, row_cache, sources_cache, overwrites_cache, transaction_id, logs_to_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, cell_overwrites_to_delete, deleted_row_ids) -> (row, is_new, changed_cols)` | **[통합 코어]** 단일 행 업데이트 + 레이어링 재계산. 모든 쓰기 경로가 여기로 수렴. 🆕 **버전 게이트 호출 **1584**(값 루프보다 앞 — 거부되면 셀 레이어링에 아예 들어가지 않는다)** · 미선언 컬럼 드롭 지점 **1584** · 🆕 **표기 정규화 파생 `notation_norm.apply_derivations`는 값 루프가 *끝난 뒤***(우선순위에서 이긴 값을 읽어야 한다, [§5-E](#5-e-2026-08-042차-신설-서버-모듈-2종--표기-정규화--낡은-엣지-스윕)) | **1682** |
+| `apply_row_update_internal(db, table_name, update_item, row_cache, sources_cache, overwrites_cache, transaction_id, logs_to_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, cell_overwrites_to_delete, deleted_row_ids) -> (row, is_new, changed_cols)` | **[통합 코어]** 단일 행 업데이트 + 레이어링 재계산. 모든 쓰기 경로가 여기로 수렴. 🆕 **버전 게이트 `version_gate_verdict` 호출 **1730**(값 루프보다 앞 — 거부되면 셀 레이어링에 아예 들어가지 않는다)** · 미선언 컬럼 경고 `_warn_undeclared_column_once` **1763** · 🪦 🔴 **표기 정규화 파생은 이 함수에서 사라졌다 — 종전 지도가 등재하던 `notation_norm.apply_derivations` 호출은 없다.** `8d306a5`가 저장되는 파생 컬럼을 철회하면서 **쓰기 경로는 원본만 저장하고**(사유 주석 **1969–1974**), 접기는 **질의 시점 SQL**로 옮겨갔다(`notation_norm.fold_notation_sql` — §5-E) | **1682** |
 | **`derive_replace_map_scope(table_name, batch) -> dict\|None`** | **[gate4 `deed6d2` 신설] replace_map purge 스코프의 단일 원천(순수 함수)** — DELETE 필터와 응답 echo가 **같은 이 함수**를 불러 어긋날 수 없다. 해석 순서: ① `batch.scope`(명시 — **엄격 검증**: 미선언 컬럼·map-key 계약 밖·물리 부재·빈 값은 전부 `ValueError`. 필터 하나가 조용히 빠지면 DELETE가 **넓어진다**) ② `updates[0]` 유도(`map_key_columns` 선언 우선, 없으면 레거시 폴백 — 비좌표 컬럼 전부). **None 반환은 거부로 취급해야 한다**(빈 필터 = 전 테이블 삭제 또는 역사적 결함인 "아무것도 안 지운 200") | **2253** |
 | 🆕 **`refuse_virtual_join_columns(db, table_name, batch)`** | **[신설] 가상 조인의 유일한 쓰기 가드.** `virtual_join_executor.virtual_only_columns(db, table_name)`을 물어 그 컬럼이 배치에 실려 있으면 `ValueError`(API 계층이 400으로 사상). 🔴 **`virtual_only`가 `None`이면 fail-closed**다 — `table_config` 없이 검증된 규칙은 "충돌 컬럼을 모른다"는 뜻이고, 그때 열어 주면 오른쪽 테이블의 값을 왼쪽 테이블에 쓰게 된다. `apply_batch_updates` 안에서 **replace_map purge보다 앞**에 부른다(나쁜 페이로드가 삭제를 먼저 시키지 못하게, 호출 **2285**) | **2326** |
 | 🪦 ~~`refuse_notation_derived_columns(table_name, batch)`~~ | **[삭제됨 — 이 행은 묘비다]** `8d306a5`가 저장되는 표기-정규화 파생 컬럼 자체를 철회하면서 이 가드를 지웠다. `crud.py`에 **선언 0건**이고 남은 것은 묘비 주석(**2374–2384**)뿐이다. 🔴 **2026-08-06 실측 전까지 이 행은 살아 있는 앵커(구 2235)와 살아 있는 호출부(구 2286)를 달고 표에 앉아 있었다 — 바로 아래 행이 「이 함수는 삭제됐다」고 적는 동안.** 한 절이 자기를 반박하면 독자는 표를 믿는다(표가 더 구체적으로 보이므로). 그래서 지우지 않고 **묘비로 표시**한다 | 🪦 **없음** |
@@ -780,58 +806,58 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `load_global_table_config() -> dict` | table_config.json 로드 (`paths.config_path` ~84) | ~79 |
-| `warn_legacy_workspace_config(config_path)` | 레거시 config.json 발견 시 경로당 1회 deprecation WARNING | ~97 |
+| `load_global_table_config() -> dict` | table_config.json 로드 (`paths.config_path` ~84) | **141** |
+| `warn_legacy_workspace_config(config_path)` | 레거시 config.json 발견 시 경로당 1회 deprecation WARNING | **159** |
 | `_log_alias_conflict_once` / `warn_invalid_std_parse_once` | 별칭 충돌·std_parse 비-bool 경고 dedup(키별 1회 — QA D5/D6) | ~121/129 |
-| **`AUTO_PROVISION_EXCLUDED_TABLES = {"wafer_map_metadata"}`** | 워크스페이스 **자동 스캐폴딩 제외** 목록 — 소비는 `_provision_workspaces`(~1890) 한 곳. 메타 테이블은 사람이 파일을 떨구는 대상이 아니라 [M3]이 코드로 채우는 저장소라, 빈 raws/ 폴더가 생기면 운영자를 오도한다 | ~67 |
+| **`AUTO_PROVISION_EXCLUDED_TABLES = {"wafer_map_metadata"}`** | 워크스페이스 **자동 스캐폴딩 제외** 목록 — 소비는 `_provision_workspaces`(~1984) 한 곳. 메타 테이블은 사람이 파일을 떨구는 대상이 아니라 [M3]이 코드로 채우는 저장소라, 빈 raws/ 폴더가 생기면 운영자를 오도한다 | **129** |
 | `DEFAULT_HEAVY_FILE_MB=10` / `INGESTION_SETTINGS_PATH` | [P1] heavy 임계 기본값·설정 파일 경로 — `paths.config_path("ingestion_settings.json")`(`.sample` tracked) | ~147/149 |
 | `load_ingestion_settings()` / `warn_invalid_heavy_threshold_once` / `get_heavy_threshold_bytes()` | [P1] 임계 로더 — **파일 이벤트(라우팅 결정)당 1회 디스크 읽기**(파일 경계 핫리로드), 양수만 유효·그 외 기본 10MB+1회 경고 | ~152/166/178 |
 | `DEFAULT_DEDUP_BY_SIGNATURE=True` / `DEFAULT_RESUME_FROM_CHECKPOINT=True` / `_bool_setting(key, default)` | [P2] dedup·재개 기본값과 설정 판독기(같은 `ingestion_settings.json`) | ~192/193/196 |
 | `dedup_by_signature_enabled()` / `resume_from_checkpoint_enabled()` | [P2] 게이트 — `dedup_by_signature: false`가 **전역 강제 재처리 스위치**(파일명 `__force__`와 관리자 재시도가 나머지 2경로) | ~211/219 |
 | **`DEFAULT_FLATTEN_NESTED_DIRS=True` / `FLATTEN_STABILITY_INTERVAL_SECONDS=1.0` / `FLATTEN_STABILITY_MAX_WAIT_SECONDS=600` / `FLATTEN_DISCARD_NAMES`** | **[Tree Ingest `600b49d`]** 상수군 — **`FLATTEN_SEP`은 삭제**됐다([§0](#0-묘비-목록--소스에-존재하지-않는-이름)): 승격이 없으니 발명한 구분자도 없고 `__force__` 토큰 조작 차단도 필요 없다. 남은 셋의 의미는 그대로 — 정온 폴 1s·최대 대기 600s(초과 시 존치+스윕 재시도)·잡파일 3종+`._*`. ⚠️ **상수 4개가 `FLATTEN_`/`_FLATTEN_` 접두어를 유지하는 것은 개명 비용을 안 낸 것**이고(config 키와 같은 이유) 그래서 접두어 grep은 여전히 히트한다 — 삭제 검사는 [§0 ⑥](#0-묘비-목록--소스에-존재하지-않는-이름)처럼 **이름 전건**으로 하라 | ~241/247/250/254 |
-| **`nested_dirs_enabled()`** | [Tree Ingest] 토글 판독(기본 true) — 트리거(디렉토리 이벤트/스윕)당 1회 읽기, 핫리로드는 "다음 폴더부터". ⚠️ **읽는 config 키는 여전히 `flatten_nested_dirs`**다(개명이 운영자의 off 스위치를 무력화하지 않게 — 소스 주석 ~239–240·~261). 구 이름 ~~`flatten_nested_dirs_enabled`~~ | ~257 |
-| `get_workspace_serial_lock(workspace_path) -> Lock` | [P1] **워크스페이스 직렬화 락 — 모듈 레벨 경로 키 레지스트리**(핸들러 복수여도 공유). heavy 워커/인라인/run_watcher 재처리 폴러가 공용 | ~274 |
+| **`nested_dirs_enabled()`** | [Tree Ingest] 토글 판독(기본 true) — 트리거(디렉토리 이벤트/스윕)당 1회 읽기, 핫리로드는 "다음 폴더부터". ⚠️ **읽는 config 키는 여전히 `flatten_nested_dirs`**다(개명이 운영자의 off 스위치를 무력화하지 않게 — 소스 주석 ~239–240·~261). 구 이름 ~~`flatten_nested_dirs_enabled`~~ | **319** |
+| `get_workspace_serial_lock(workspace_path) -> Lock` | [P1] **워크스페이스 직렬화 락 — 모듈 레벨 경로 키 레지스트리**(핸들러 복수여도 공유). heavy 워커/인라인/run_watcher 재처리 폴러가 공용 | **336** |
 | `class HeavyIngestionLane` — `submit/_ensure_running/_worker_loop/stop` | [P1] FIFO `queue.Queue` + 데몬 워커 스레드 `watcher-heavy-lane` **1개**(첫 제출 시 지연 기동). WorkspaceWatcher가 1개 생성해 전 핸들러 주입. heavy끼리는 직렬(escalation §6-3) | ~284–337 |
-| `find_workspace_alias(folder_name, table_config) -> str\|None` | 폴더명↔`workspace_name` 명시 별칭 매칭 — 섀도잉·중복 선언 별칭은 무효+ERROR 1회(QA D3) | ~338 |
-| `resolve_workspace_root(base_dir, table_name, table_config) -> str` | 테이블→워크스페이스 루트 **역조회 공용 함수**(별칭 포함) — 결과 기반 경로 검사(base 직속 자식만, 드라이브 상대경로 탈출 차단, QA D2). main.py `retry-failed`·run_watcher 폴러가 사용 | ~379 |
-| `resolve_workspace_table(folder_name, table_config) -> str\|None` | 폴더→테이블 해석: 별칭 > 폴더명 규약 | ~412 |
-| `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | ~426 |
-| `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** — 생성자(~504) 말단 kwargs `on_ingestion_state_callback`/`heavy_lane`(기본 None=종전 인라인 경로, 하위호환). **[Tree Ingest] `_ingesting_dirs` 집합(~533, `_processing_lock` 보호)** — 같은 트리에 이벤트+스윕이 겹쳐도 인제션 1회. 구 이름 ~~`_flattening_dirs`~~ | ~500 |
-| ├ `_load_legacy_config()` | [deprecated] 레거시 워크스페이스 config.json 파싱(이것만 캐시) | ~535 |
-| ├ `_resolve_table_name(global_cfg)` | 테이블명 해석: 글로벌 `workspace_name` 별칭 > 레거시 `table_name` > 폴더명 규약 | ~557 |
-| ├ `_snapshot_table_context() -> (t_name, table_info)` | **파일당 1회 config 스냅샷**(QA D1) | ~572 |
-| ├ `_std_parse_enabled_for(t_name, table_info) -> bool` | std_parse 게이트: 글로벌(JSON bool만 유효) > 레거시 폴백 > 기본 true | ~583 |
+| `find_workspace_alias(folder_name, table_config) -> str\|None` | 폴더명↔`workspace_name` 명시 별칭 매칭 — 섀도잉·중복 선언 별칭은 무효+ERROR 1회(QA D3) | **400** |
+| `resolve_workspace_root(base_dir, table_name, table_config) -> str` | 테이블→워크스페이스 루트 **역조회 공용 함수**(별칭 포함) — 결과 기반 경로 검사(base 직속 자식만, 드라이브 상대경로 탈출 차단, QA D2). main.py `retry-failed`·run_watcher 폴러가 사용 | **441** |
+| `resolve_workspace_table(folder_name, table_config) -> str\|None` | 폴더→테이블 해석: 별칭 > 폴더명 규약 | **474** |
+| `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | **488** |
+| `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** — 생성자(~504) 말단 kwargs `on_ingestion_state_callback`/`heavy_lane`(기본 None=종전 인라인 경로, 하위호환). **[Tree Ingest] `_ingesting_dirs` 집합(~533, `_processing_lock` 보호)** — 같은 트리에 이벤트+스윕이 겹쳐도 인제션 1회. 구 이름 ~~`_flattening_dirs`~~ | **562** |
+| ├ `_load_legacy_config()` | [deprecated] 레거시 워크스페이스 config.json 파싱(이것만 캐시) | **597** |
+| ├ `_resolve_table_name(global_cfg)` | 테이블명 해석: 글로벌 `workspace_name` 별칭 > 레거시 `table_name` > 폴더명 규약 | **619** |
+| ├ `_snapshot_table_context() -> (t_name, table_info)` | **파일당 1회 config 스냅샷**(QA D1) | **634** |
+| ├ `_std_parse_enabled_for(t_name, table_info) -> bool` | std_parse 게이트: 글로벌(JSON bool만 유효) > 레거시 폴백 > 기본 true | **645** |
 | ├ `table_name` / `std_parse_enabled` / `errors_path` (property) | 즉석 해석 래퍼 — **글로벌 조회 비캐시**(핫리로드 반영) | ~603–615 |
 | ├ `on_created/on_moved` | 이벤트 수신 — **[Tree Ingest] `is_directory`면 `request_tree_ingest`로 분기**(observer `recursive=False`라 raws/ 직속 자식만 발화), 파일이면 `_handle_event` | ~618/627 |
-| ├ `_handle_event(file_path)` | 파일 처리 진입(processing_files check-then-add 락 원자화) → [P1] `_route_and_process` 위임 | ~635 |
+| ├ `_handle_event(file_path)` | 파일 처리 진입(processing_files check-then-add 락 원자화) → [P1] `_route_and_process` 위임 | **697** |
 | ├ **`raws_path` (property) / `request_tree_ingest(dir_path)`** | **[Tree Ingest] 진입점** — raws/ 직속 자식만(결과 기반 경로 검사), `nested_dirs_enabled()` 게이트, `_ingesting_dirs` 멱등 가드 후 **전용 단명 데몬 스레드**(`tree-ingest-<dir>`)로 정온 대기(observer 디스패치 스레드 비차단 — P1 HOL 규율과 동일). **반환은 시작했으면 Thread, 아니면 None** — 테스트가 join할 수 있게 | ~666/669 |
-| ├ `_tree_ingest_worker(abs_dir, key)` | 예외 격리 래퍼 — 실패 시 폴더 존치 + ERROR(주기 스윕이 재시도), finally에서 가드 해제. ✅ **`152d058` 이전에는 이 except가 `_ingest_directory_tree` 말미의 `NameError`를 매번 삼켰다**(위 [Tree Ingest] 항목의 ✅). 격리 래퍼의 값과 대가가 같은 자리에 있다 — 워커를 살렸고, **그 대가로 결함을 8시간 감췄다** | ~705 |
+| ├ `_tree_ingest_worker(abs_dir, key)` | 예외 격리 래퍼 — 실패 시 폴더 존치 + ERROR(주기 스윕이 재시도), finally에서 가드 해제. ✅ **`152d058` 이전에는 이 except가 `_ingest_directory_tree` 말미의 `NameError`를 매번 삼켰다**(위 [Tree Ingest] 항목의 ✅). 격리 래퍼의 값과 대가가 같은 자리에 있다 — 워커를 살렸고, **그 대가로 결함을 8시간 감췄다** | **767** |
 | ├ `_snapshot_tree(abs_dir)` (static) / `_wait_tree_quiescent(abs_dir)` | 트리 스냅샷 `{(kind, relpath): (size, mtime)}` — 스윕의 (mtime,size) 시그니처를 트리로 일반화, stat 불가 파일은 never-equal 마커 / **1s 간격 동일 스냅샷 2회 = 정온**(복사 중 폴더를 반쯤 인제션하지 않는 근거), 최대 600s 초과·소멸 시 False | ~719/744 |
-| ├ `_is_discardable_system_file(name)` | OS 잡파일 판정(Thumbs.db/desktop.ini/.DS_Store/`._*`). 짝이던 ~~`_sanitize_flatten_component`~~는 삭제 — 정화할 파일명 성분 자체가 없어졌다 | ~771 |
-| ├ **`relative_source_path(abs_path, root) -> str\|None`** (static) | **[Tree Ingest] 선언이 보는 문자열의 단일 정의** — `root` 기준 상대경로, **전 플랫폼 `/` 구분자**. `None`이면 `root` 밖(정션·심링크·다른 드라이브). 두 결정이 docstring에 박혀 있다: **절대경로가 아닌 이유**(선언에 개발 머신의 디렉터리 배치가 섞여 환경 간 매칭이 깨진다) · **`/`로 정규화하는 이유**(Windows `os.sep`는 역슬래시라 JSON 정규식에 4자로 써야 한다). 격리는 **결과 기반**(rejoin해서 같은 파일이어야 통과 — 문자 블랙리스트는 `C:foo`를 놓치고 `..foo`를 과도 거부한다). 소비 3곳: `_ingest_directory_tree`의 walk 필터(~841) · `_send_to_upsert`의 `rel_path` 동봉(~1084) · `is_managed_source`(~1418) | ~778 |
-| ├ **`_ingest_directory_tree(abs_dir)`** | **[Tree Ingest] 본체** — 정온 대기 → walk 수집(mtime 오름차순, 스윕과 같은 순서 규칙 / 잡파일 별도 / `relative_source_path is None`이면 **거부·무접촉**) → 잡파일 먼저 `os.remove`(Thumbs.db만 남은 폴더도 비워질 수 있게) → **파일을 원 위치 그대로 `_handle_event`로 디스패치**(승격 없음) → 빈 폴더 bottom-up **`os.rmdir`만** → 완료/미완 로그. ✅ **말미의 사문 디스패치 루프는 `152d058`에서 삭제**(자리에 사유 주석 ~895–898) | ~809 |
+| ├ `_is_discardable_system_file(name)` | OS 잡파일 판정(Thumbs.db/desktop.ini/.DS_Store/`._*`). 짝이던 ~~`_sanitize_flatten_component`~~는 삭제 — 정화할 파일명 성분 자체가 없어졌다 | **833** |
+| ├ **`relative_source_path(abs_path, root) -> str\|None`** (static) | **[Tree Ingest] 선언이 보는 문자열의 단일 정의** — `root` 기준 상대경로, **전 플랫폼 `/` 구분자**. `None`이면 `root` 밖(정션·심링크·다른 드라이브). 두 결정이 docstring에 박혀 있다: **절대경로가 아닌 이유**(선언에 개발 머신의 디렉터리 배치가 섞여 환경 간 매칭이 깨진다) · **`/`로 정규화하는 이유**(Windows `os.sep`는 역슬래시라 JSON 정규식에 4자로 써야 한다). 격리는 **결과 기반**(rejoin해서 같은 파일이어야 통과 — 문자 블랙리스트는 `C:foo`를 놓치고 `..foo`를 과도 거부한다). 소비 3곳: `_ingest_directory_tree`의 walk 필터(~841) · `_send_to_upsert`의 `rel_path` 동봉(~1084) · `is_managed_source`(~1476) | **840** |
+| ├ **`_ingest_directory_tree(abs_dir)`** | **[Tree Ingest] 본체** — 정온 대기 → walk 수집(mtime 오름차순, 스윕과 같은 순서 규칙 / 잡파일 별도 / `relative_source_path is None`이면 **거부·무접촉**) → 잡파일 먼저 `os.remove`(Thumbs.db만 남은 폴더도 비워질 수 있게) → **파일을 원 위치 그대로 `_handle_event`로 디스패치**(승격 없음) → 빈 폴더 bottom-up **`os.rmdir`만** → 완료/미완 로그. ✅ **말미의 사문 디스패치 루프는 `152d058`에서 삭제**(자리에 사유 주석 ~895–898) | **871** |
 | ├ `_classify_lane(abs_path)` / `_heavy_backlog_nonzero()` | [P1] 이벤트 시점 `os.stat` 1회 크기 분류 / 워크스페이스 heavy backlog 잔여 확인 | ~902/916 |
-| ├ `_route_and_process(abs_path, uploader) -> bool` | [P1] **레인 라우팅 본체** — heavy(크기)·backlog(>0이면 크기 무관 큐 후미=FIFO 보존)·인라인은 직렬화 락 **논블로킹 try-acquire**(실패 시 큐 후미 재라우팅 — HOL 방지+순서 보존 동시 만족) | ~920 |
-| ├ `_submit_to_heavy_lane(abs_path, uploader, lane, size_bytes)` | [P1] 큐 제출 — QUEUED 통지를 **submit 이전 선발신**(드릴 결함1: 즉시 픽업 역전 경합 제거), submit 실패 시 FINISHED 정리 통지 후 인라인 폴백. `lane`은 분류 실값(재라우팅 소형은 "normal" — QA F4) | ~954 |
+| ├ `_route_and_process(abs_path, uploader) -> bool` | [P1] **레인 라우팅 본체** — heavy(크기)·backlog(>0이면 크기 무관 큐 후미=FIFO 보존)·인라인은 직렬화 락 **논블로킹 try-acquire**(실패 시 큐 후미 재라우팅 — HOL 방지+순서 보존 동시 만족) | **982** |
+| ├ `_submit_to_heavy_lane(abs_path, uploader, lane, size_bytes)` | [P1] 큐 제출 — QUEUED 통지를 **submit 이전 선발신**(드릴 결함1: 즉시 픽업 역전 경합 제거), submit 실패 시 FINISHED 정리 통지 후 인라인 폴백. `lane`은 분류 실값(재라우팅 소형은 "normal" — QA F4) | **1016** |
 | ├ `_run_lane_job(...)` / `_notify_ingestion_state(state)` | [P1] heavy 워커 잡 본체(직렬화 락 획득→`process_with_retry`→finally 정리) / 상태 push 콜백 래퍼 | ~992/1022 |
-| ├ **`process_with_retry(file_path, uploader, retries=3, delay=1.0)`** | **`heartbeat.work_claim`(~1044) 래퍼일 뿐** — 실제 처리는 `_process_with_retry`(~1048) | ~1033 |
-| ├ `_process_with_retry(...)` | 처리 본체 — 스냅샷→파싱→[P2] 시그니처 계산→dedup skip→`_plan_checkpoint`→`_send_to_upsert`→`_finalize_checkpoint`→아카이브/에러 이동, 재시도 | ~1048 |
-| ├ `_compose_detail(skipped_no_key, plan)` (staticmethod) | [P2] 완료 통지 `detail` 조립 — 키 결측 스킵 수 + 재개/재시작 사유 | ~1151 |
-| ├ `_try_dedup_skip(file_path, basename, t_name, signature) -> bool` | [P2] 동일 시그니처 `DONE`이면 skip — **무음 skip 금지**: WARNING + archive + `FileIngestionLog(status="SKIPPED")` + 콜백 status는 `"SUCCESS"`(수신부가 비-SUCCESS를 실패로 렌더링하므로 오표기 방지) + 사유 detail | ~1160 |
+| ├ **`process_with_retry(file_path, uploader, retries=3, delay=1.0)`** | **`heartbeat.work_claim`(~1044) 래퍼일 뿐** — 실제 처리는 `_process_with_retry`(~1110) | **1095** |
+| ├ `_process_with_retry(...)` | 처리 본체 — 스냅샷→파싱→[P2] 시그니처 계산→dedup skip→`_plan_checkpoint`→`_send_to_upsert`→`_finalize_checkpoint`→아카이브/에러 이동, 재시도 | **1110** |
+| ├ `_compose_detail(skipped_no_key, plan)` (staticmethod) | [P2] 완료 통지 `detail` 조립 — 키 결측 스킵 수 + 재개/재시작 사유 | **1213** |
+| ├ `_try_dedup_skip(file_path, basename, t_name, signature) -> bool` | [P2] 동일 시그니처 `DONE`이면 skip — **무음 skip 금지**: WARNING + archive + `FileIngestionLog(status="SKIPPED")` + 콜백 status는 `"SUCCESS"`(수신부가 비-SUCCESS를 실패로 렌더링하므로 오표기 방지) + 사유 detail | **1234** |
 | ├ `_plan_checkpoint(...)` / `_finalize_checkpoint(plan, processed_rows)` | [P2] `ingestion_checkpoint.plan_ingestion` 게이트 래퍼(실패 시 `CheckpointPlan.disabled(note=...)`) / `mark_done` — 실패 시 "dedup will not apply" 경고 | ~1223/1249 |
 | ├ `_log_ingestion_record(...)` / `_log_ingestion_failure/success(..., t_name=None)` | FileIngestionLog 기록(직접 DB, 스냅샷 테이블명). `error_message`는 SUCCESS/SKIPPED에서 **detail 슬롯**으로 겸용 | ~1262/1287/1292 |
-| ├ `_retry_should_restart(t_name, signature) -> bool` | [P2] 재시도 시 완료 체크포인트가 있으면 처음부터 재시작 판정 | ~1300 |
-| ├ **`process_archived_file_sync(log_entry, db, uploader)`** | 어드민 재처리 경로. **이것도 `work_claim` 래퍼**이고 본체는 `_process_archived_file_sync`(~1333) — 스냅샷 진입점, 내부에서 락 안 잡음. [P2] 체크포인트는 태우되 **dedup skip은 미적용**(재시도는 명시적 의도) | ~1316 |
-| ├ **`_unique_dest(dest_dir, filename, limit=1000)`** (static) | **[Tree Ingest 신설] 무덮어쓰기 목적지 선정의 단일 구현** — 원명 우선, 충돌 시 접미 번호, `limit` 초과면 `None`. 구 ~~`_resolve_flatten_dest`~~의 역할 중 **살아남은 절반**이고(상대경로 접두 조립은 승격이 없어져 사라졌다) 소비는 `_move_to_err_folder`(~1443)·`_archive_file`(~1469) 둘 — **같은 basename이 두 폴더에서 올라와도 archives/에서 서로를 덮지 않는 근거** | ~1377 |
+| ├ `_retry_should_restart(t_name, signature) -> bool` | [P2] 재시도 시 완료 체크포인트가 있으면 처음부터 재시작 판정 | **1374** |
+| ├ **`process_archived_file_sync(log_entry, db, uploader)`** | 어드민 재처리 경로. **이것도 `work_claim` 래퍼**이고 본체는 `_process_archived_file_sync`(~1407) — 스냅샷 진입점, 내부에서 락 안 잡음. [P2] 체크포인트는 태우되 **dedup skip은 미적용**(재시도는 명시적 의도) | **1390** |
+| ├ **`_unique_dest(dest_dir, filename, limit=1000)`** (static) | **[Tree Ingest 신설] 무덮어쓰기 목적지 선정의 단일 구현** — 원명 우선, 충돌 시 접미 번호, `limit` 초과면 `None`. 구 ~~`_resolve_flatten_dest`~~의 역할 중 **살아남은 절반**이고(상대경로 접두 조립은 승격이 없어져 사라졌다) 소비는 `_move_to_err_folder`(~1506)·`_archive_file`(~1533) 둘 — **같은 basename이 두 폴더에서 올라와도 archives/에서 서로를 덮지 않는 근거** | **1451** |
 | ├ **`is_managed_source(file_path)` / `_refuse_move_of_foreign_source(file_path, action)`** | **[Tree Ingest 신설] 워크스페이스 소유 파일과 외부 파일을 가른다** — `relative_source_path(file_path, raws_root) is not None`이 소유 판정이고, 외부 소스는 **인제션은 되지만 절대 이동되지 않는다**(archives//err/로 옮기면 남의 트리를 건드린다). 실패도 마찬가지라 재인제션은 dedup이 조용히 흡수한다 | ~1402/1420 |
 | ├ `_move_to_err_folder` / `_archive_file` | 파일 이동 — 둘 다 `_unique_dest` 경유, 외부 소스는 `_refuse_move_of_foreign_source`가 먼저 막는다 | ~1432/1459 |
-| ├ `_discover_and_execute_pipeline(file_path, meta=None) -> list[dict]\|None` | 사용자 파이프라인 스크립트(pipeline_*.py) 탐색·실행 | ~1485 |
-| ├ `_resolve_rows(file_path, t_name=None, table_info=None, ...)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백(스냅샷 인자 전파). `source_kind`(`"std"` / `"pipeline:<Class>"`)의 산출처 | ~1590 |
+| ├ `_discover_and_execute_pipeline(file_path, meta=None) -> list[dict]\|None` | 사용자 파이프라인 스크립트(pipeline_*.py) 탐색·실행 | **1559** |
+| ├ `_resolve_rows(file_path, t_name=None, table_info=None, ...)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백(스냅샷 인자 전파). `source_kind`(`"std"` / `"pipeline:<Class>"`)의 산출처 | **1664** |
 | ├ `_try_std_parse(file_path, t_name, table_info)` / `_extract_user_from_filename(filename)` | std_parser 호출 래퍼(게이트·에러 처리) / 파일명에서 업로더 유도 | ~1628/1658 |
-| └ `_send_to_upsert(rows, uploader, filename, total_rows, t_name=None, table_info=None, checkpoint=None)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백. [P2] `checkpoint`로 `resume_from` 스킵·오프셋 초과 경고·**청크마다 `record_chunk_progress`(같은 트랜잭션)**, created_logs는 `MAX_NOTIFY_CREATED_LOGS` 잔여분만 누적. **[Tree Ingest] 파이프라인 meta에 `rel_path`(=`relative_source_path`)를 실어 보낸다(~1084)** — 그래서 `filename_rules`가 폴더명을 본다. **[M3] `MapMetaCollector` 생성 → 청크별 `collect` → 커밋 후 별도 세션 `flush`** | ~1669 |
-| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 — [P1] `HeavyIngestionLane` 1개 생성·전 핸들러 주입(생성자 kwargs) + `on_ingestion_state_callback` 배선 | ~1862 |
-| ├ `_provision_workspaces()` | 폴더 스캐폴딩 — **config.json 신설 중단**(폴더만 보충), `workspace_name` 별칭 폴더명 지원(unsafe 별칭 무시), `AUTO_PROVISION_EXCLUDED_TABLES` 제외 | ~1890 |
-| ├ `_register_workspace(raws_root, table_config)` | 핸들러 등록(+`handlers_by_raw_path` 레지스트리, `heavy_lane` 주입) — 레거시 config 발견 시 1회 경고(QA D4) | ~1919 |
+| └ `_send_to_upsert(rows, uploader, filename, total_rows, t_name=None, table_info=None, checkpoint=None)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백. [P2] `checkpoint`로 `resume_from` 스킵·오프셋 초과 경고·**청크마다 `record_chunk_progress`(같은 트랜잭션)**, created_logs는 `MAX_NOTIFY_CREATED_LOGS` 잔여분만 누적. **[Tree Ingest] 파이프라인 meta에 `rel_path`(=`relative_source_path`)를 실어 보낸다(~1084)** — 그래서 `filename_rules`가 폴더명을 본다. **[M3] `MapMetaCollector` 생성 → 청크별 `collect` → 커밋 후 별도 세션 `flush`** | **1743** |
+| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 — [P1] `HeavyIngestionLane` 1개 생성·전 핸들러 주입(생성자 kwargs) + `on_ingestion_state_callback` 배선 | **1956** |
+| ├ `_provision_workspaces()` | 폴더 스캐폴딩 — **config.json 신설 중단**(폴더만 보충), `workspace_name` 별칭 폴더명 지원(unsafe 별칭 무시), `AUTO_PROVISION_EXCLUDED_TABLES` 제외 | **1984** |
+| ├ `_register_workspace(raws_root, table_config)` | 핸들러 등록(+`handlers_by_raw_path` 레지스트리, `heavy_lane` 주입) — 레거시 config 발견 시 1회 경고(QA D4) | **2013** |
 | ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화(신규 raws는 등록 직후 스윕) | ~1978/1994 |
 | ├ `sweep_existing_files(raw_paths)` / `_sweep_safely` / `sweep_existing_files_async(...)` | **[Startup Sweep]** raws/ 직속 기존 파일을 mtime 오름차순으로 `_handle_event` 경로 재사용 처리 — [P1] 스윕도 자동으로 heavy 라우팅을 탐. (mtime,size) 시그니처로 무한 재시도 차단, err/ 형제 폴더 제외. **[Tree Ingest] raws/ 직속 디렉토리는 스윕 후보가 아니라 트리 인제션 트리거** — `handler.request_tree_ingest(fp)`(~2069)로 넘긴다(다운타임 중 떨어진 폴더·유실 이벤트의 안전망) | ~2024/2099/2105 |
 | ├ `_periodic_sweep_loop()` / `_ensure_periodic_sweep_running()` | 이벤트 유실 안전망 — 300s 주기 잔류 재스캔 데몬(**트리 인제션 재시도 경로이기도 하다** — 잠긴 파일·미정온 트리) | ~2114/2118 |
@@ -960,14 +986,14 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `class _ChildState(spec)` | 자식 1개의 런타임 상태(상태·연속 실패수·시작시각·이벤트). 🆕 `terminal_verdict` · `log_pump` 필드 추가 | **466 / `__init__` 467** |
 | `class Supervisor(specs, status_file, log, spawn, clock, sleep, environment_probe=None, port_probe=None)` | `spawn`/`clock`/`sleep` 주입 가능 — **실제 프로세스를 띄우지 않고 실제 초를 기다리지 않고** 재시작 정책을 결정론적으로 테스트하기 위함(프로덕션은 아무것도 넘기지 않는다). `environment_probe` 기본값 `shared_dependency_down`, 🆕 **`port_probe` 기본값 `port_conflict`** | **490 / `__init__` 498** |
 | ├ `_default_spawn` / 🆕 **`_attach_log_pump(child)`** / `_find` / `_record(child, event, **fields)` / `_backoff_for(n)` | 기본 spawn(자식 env를 `os.environ.copy()`로 만든다 — 런처의 `ASSY_ADMIN_TOKEN` 상속 근거) / 🆕 **자식의 병합 stdout을 `sys.stdout.buffer`**와** `spec.log_file` 양쪽에 티(tee)하고 `CHILD_LOG_MAX_BYTES`에서 회전** / 이름 조회 / 이벤트 링버퍼 기록 / 백오프 계산 | **539 / 555 / 630 / 636 / 643** |
-| ├ **`_peers_failed_recently(child, now)`** | 창 안에서 **다른** 자식이 몇이나 실패했는지 — 상관 판정의 계수기 | **646** |
+| ├ **`_peers_failed_recently(child, now)`** | 창 안에서 **다른** 자식이 몇이나 실패했는지 — 상관 판정의 계수기 | **738** |
 | ├ `start_all()` / `_start(child)` | 순차 기동(+`start_delay`). **spawn 예외도 즉사와 동일한 실패로 계산**한다 — 아니면 잘못된 커맨드라인에서 영원히 돈다 | **663 / 670** |
-| ├ 🔴 **`_register_failure(child, exit_code, reason=None)`** | **정책 본체 — 판정 순서가 계약이다.** 🆕 **포트 프로브가 맨 앞이다**(**716–736**): 동료 규칙보다도, DB 프로브보다도 먼저. 점유된 포트는 재시도가 못 고치므로 **즉시 종단 `VERDICT_PORT_CONFLICT`**. 그다음이 종전 정책 — uptime ≥ `healthy_uptime`이면 연속 카운터 리셋, 아니면 +1, 예산 초과 시 **혼자면 `_fail_permanently`, 아니면(동료 실패 ∨ 환경 프로브 down) `_enter_correlated`**. ⚠️ **프로브가 raise하면 아무것도 판정하지 않는다**(`tests/test_duplicate_launcher.py`가 그것을 단언한다) | **689** |
+| ├ 🔴 **`_register_failure(child, exit_code, reason=None)`** | **정책 본체 — 판정 순서가 계약이다.** 🆕 **포트 프로브가 맨 앞이다**(**812–829**): 동료 규칙보다도, DB 프로브보다도 먼저. 점유된 포트는 재시도가 못 고치므로 **즉시 종단 `VERDICT_PORT_CONFLICT`**. 그다음이 종전 정책 — uptime ≥ `healthy_uptime`이면 연속 카운터 리셋, 아니면 +1, 예산 초과 시 **혼자면 `_fail_permanently`, 아니면(동료 실패 ∨ 환경 프로브 down) `_enter_correlated`**. ⚠️ **프로브가 raise하면 아무것도 판정하지 않는다**(`tests/test_duplicate_launcher.py`가 그것을 단언한다) | **781** |
 | ├ `_fail_permanently(child, exit_code, reason, verdict=VERDICT_BROKEN_CHILD, detail=None)` / **`_enter_correlated(child, now, peers, exit_code, env_detail=None)`** | 영구 정지(🆕 `verdict`·`detail` 인자) / **`STATE_RETRYING_CORRELATED`로 진입해 `CORRELATED_BACKOFF_SEC` 간격으로 계속 재시도** — 이미 힘든 DB를 두들기지 않을 만큼 길고, 원인이 걷히면 1분 안에 자동 복구될 만큼 짧다 | **767 / 818** |
 | ├ `poll_once()` / `run()` | 1틱 점검(종료 감지·백오프 만료 재기동·상태 파일 갱신) / **`run_decoupled_app.py`의 sleep 루프를 대체한 메인 루프** | **865 / 905** |
 | ├ `stop_all(timeout=3.0)` / `snapshot()` | 종료(자손 포함) / `/health`가 읽는 상태 dict(🆕 `terminal_verdict` **977**) | **914 / 958** |
-| └ `write_status(force=False)` | `supervisor_status.json` 기록. **`updated_at`이 감독자 자신의 생존 신호** — 감독자가 죽으면 자식들은 계속 비트를 찍지만 이 타임스탬프가 멈추고 `/health`가 그걸 말한다 | **999** |
-| `read_status(path=None)` | 상태 파일 판독(`main.py` 헬스가 소비) | **1017** |
+| └ `write_status(force=False)` | `supervisor_status.json` 기록. **`updated_at`이 감독자 자신의 생존 신호** — 감독자가 죽으면 자식들은 계속 비트를 찍지만 이 타임스탬프가 멈추고 `/health`가 그걸 말한다 | **1091** |
+| `read_status(path=None)` | 상태 파일 판독(`main.py` 헬스가 소비) | **1109** |
 
 > 미드-인제션 워처를 재시작해도 안전하다는 것이 이 설계의 전제다 — P2 체크포인트 재개가 10만 행 중 3만 행 지점 `taskkill /F` 하에서 드릴됐고 커밋된 오프셋이 실제 행수와 정확히 일치했다(`agent_workspace/reports/QA_p2_drills_isolated.md` §2). **자동 재시작이 허용되는 근거는 그것 하나다.**
 
@@ -1669,12 +1695,12 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 > 🔴 **이 파일은 아무것도 계산하지 않는다 — 이미 있는 다섯 개의 조작에 공통 표면을 씌운다.** 각 op는 `count`(드라이런 미리보기)와 `run`(실행)의 **함수 쌍**이고, 둘 다 기존 모듈을 부른다. **여기에 여섯 번째 집계 구현이 생기면 그것이 이 파일의 실패다.**
 
 - 상수: `RUN_EVENT_TYPE = event_constants.EVENT_RETROACTIVE_RUN`(~124) · `RUN_EVENT_TABLE = "__retroactive__"`(~128) · `COUNT_EXACT`/`COUNT_SAMPLE`/`COUNT_UPPER_BOUND`(~130–132) · `DEFAULT_SCAN_LIMIT=200`/`MAX_SCAN_LIMIT=2000`(~136/137) · `class RetroactiveRefused(Exception)`(~140).
-- **`OPERATIONS`(~425) — 5종**: `chain_replay` · `withdraw` · `enrichment_backfill` · `enrichment_confirm` · `graph_orphans`. 항목마다 `label`·`what_is_missing`·`params`·`count`·`run`·`cli`·`deletes`·`restartable`·`commit_granularity`를 든다. **`graph_orphans`만 `restartable: False`**(끝에 한 번 커밋 — 중단되면 통째로 롤백).
+- **`OPERATIONS`(~448) — 5종**: `chain_replay` · `withdraw` · `enrichment_backfill` · `enrichment_confirm` · `graph_orphans`. 항목마다 `label`·`what_is_missing`·`params`·`count`·`run`·`cli`·`deletes`·`restartable`·`commit_granularity`를 든다. **`graph_orphans`만 `restartable: False`**(끝에 한 번 커밋 — 중단되면 통째로 롤백).
 - 🔴 **`count_kind`가 세 값인 것이 이 표면의 정직성 계약이다**: `exact` / `sample`(스캔 상한까지만 봤다) / `upper_bound`(집계 두 개로 답했고 행을 걷지 않았다). `_count_withdraw`(~191)는 `scan_limit`을 **의도적으로 무시**하고 `scanned=None`을 돌려준다 — 걷지 않은 것을 "N행 스캔"이라고 말하지 않기 위해서다.
-- 카운터 5종: `_count_chain_replay`(~157) · `_count_withdraw`(~191) · `_count_enrichment_backfill`(~227) · `_count_enrichment_confirm`(~261 — **노브가 꺼져 있어도 측정은 되게** `ignore_knob=True`로 드라이런하고 `blocked_reason="auto_confirm_off"`를 세운다) · `_count_graph_orphans`(~301).
-- 실행기 5종: `_run_chain_replay`(~335) · `_run_withdraw`(~345) · `_run_enrichment_backfill`(~354) · `_run_enrichment_confirm`(~364 — **여기서는 노브가 동의 게이트라 `ignore_knob=False`**) · `_run_graph_orphans`(~375).
+- 카운터 5종: `_count_chain_replay`(~157) · `_count_withdraw`(~191) · `_count_enrichment_backfill`(~227) · `_count_enrichment_confirm`(~261 — **노브가 꺼져 있어도 측정은 되게** `ignore_knob=True`로 드라이런하고 `blocked_reason="auto_confirm_off"`를 세운다) · `_count_graph_orphans`(~324).
+- 실행기 5종: `_run_chain_replay`(~358) · `_run_withdraw`(~368) · `_run_enrichment_backfill`(~377) · `_run_enrichment_confirm`(~364 — **여기서는 노브가 동의 게이트라 `ignore_knob=False`**) · `_run_graph_orphans`(~398).
   - ⚠️ **`_run_chain_replay`는 `limit`을 넘기지 않는다** — 카운트는 표본이고 실행은 무제한이다. 미리보기의 수가 실행의 수와 같다고 읽으면 안 된다.
-- 표면: `operation(op)`(~502) · **`inventory()`(~511 — 순수 config 투영, DB 접근 0. 그래서 요청 경로에서 안전하다)** · `validate(op, params)`(~533 — 미선언 param 이름을 **먼저** 거부, `withdraw`의 `source`가 `chain_replay.PROTECTED_SOURCES`면 거부. 🔴 **리터럴을 베끼지 않고 그 상수를 읽는다**) · `clamp_scan_limit(limit)`(~577) · **`count(db, op, params, scan_limit)`(~585 — `finally: db.rollback()`)** · **`publish(db, op, params, requested_by=None)`(~611)** · **`execute(payload, log)`(~652)**.
+- 표면: `operation(op)`(~525) · **`inventory()`(~511 — 순수 config 투영, DB 접근 0. 그래서 요청 경로에서 안전하다)** · `validate(op, params)`(~533 — 미선언 param 이름을 **먼저** 거부, `withdraw`의 `source`가 `chain_replay.PROTECTED_SOURCES`면 거부. 🔴 **리터럴을 베끼지 않고 그 상수를 읽는다**) · `clamp_scan_limit(limit)`(~600) · **`count(db, op, params, scan_limit)`(~585 — `finally: db.rollback()`)** · **`publish(db, op, params, requested_by=None)`(~634)** · **`execute(payload, log)`(~675)**.
 - 🔴 **`publish`와 `execute`가 갈린 것이 토폴로지 계약이다**: 웹 프로세스는 outbox 행 하나를 쓰고 `NOTIFY`만 한다(**아무것도 실행하지 않는다**), 실제 실행은 스케줄러 프로세스가 자기 데몬 스레드에서 한다([§6 `run_auto_update.py`](#6-기타-서버-모듈-한줄-요약)). `execute`는 **어떤 예외도 raise하지 않고** `status="error"`로 접는다 — 소급 실행 하나가 스케줄러 데몬을 죽이면 안 된다.
 - **호출자**: `main.py`의 라우트 3종(**~4829/4842/4884**) · `run_auto_update.MultiDiscoveryScheduler.start_retroactive_run`(**~733/744**). ⚠️ **실행 라우트만 `require_admin_token_strict`이고 조회 둘은 `require_admin_token`이다.**
 
@@ -1710,38 +1736,41 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 **계보가 무관한 둘이 한 범위에 들어왔다.** 하나는 **쓰기 경로의 파생 컬럼**(`notation_norm`), 하나는 **재유도가 지우지 못하는 그래프 엣지**(`graph_stale_edges`). 공통점은 하나뿐이다 — **둘 다 「원본을 고치지 않고 파생물로 답한다」**.
 
-### 🆕 `server/notation_norm.py` (**808줄**, 신설) — WF/lot/slot 표기 정규화, **파생 컬럼이지 덮어쓰기가 아니다**
+### 🆕 `server/notation_norm.py` (**808줄**) — WF/lot/slot 표기 정규화 — 🔴 **읽기 시점의 접기이지 저장되는 파생 컬럼이 아니다**
 
-🔴 **보고된 통증은 철자 혼재(`WF.01`/`WF-01`)였지만, 실측된 더 날카로운 사례는 맵이 통째로 안 그려지는 것이다**: `map_overlay.map_key_parts`가 복합 맵 키를 `_`로 쪼개므로 `core_lot` 값 자체에 `_`가 있으면(`CL_2601_001_09`) `lot='CL'` + `slot='2601_001_09'`로 찢어져 **셀 0개**가 렌더된다. 시뮬레이션 행 **766건**이 그 모양이다. 🔴 **`_` 구분자 관례를 바꾸지 않는다** — 이 모듈은 **키를 구성하는 값에서 `_`를 몰아내서 관례가 성립하게** 만든다.
-
-🔴 **안전 성질: 원본 컬럼은 절대 손대지 않는다.** 정규값은 별도 선언된 `<col>_norm`에 앉는다. 폴딩 규칙이 틀렸으면 **규칙을 고치고 다시 유도**하면 된다. 이 성질은 주석이 아니라 **세 자리에서 강제**된다 — `_validate_column`이 `derived == raw`를 거부 · 같은 함수가 파생 컬럼이 비즈니스 키이거나 `composite_key_source`에 있으면 거부 · **`crud.refuse_notation_derived_columns`(`crud.py:2235`)가 파생 컬럼을 겨눈 쓰기 자체를 거부.**
+> 🔴 **[2026-08-06] 이 절은 존재하지 않는 API를 등재하고 있었다 — 각주가 아니라 시그니처 표에서.** `8d306a5`가 **저장되는 파생 컬럼 자체를 철회**했는데, 이 절의 표는 `apply_derivations`·`rederive`·`derivations_for`·`derivations_by_table`·`derived_columns_for`·`normalized_value`와 상수 `REDERIVE_CHUNK_SIZE`/`REDERIVE_SAMPLES`를 **살아 있는 라인 번호를 달고** 계속 나열하고 있었다. 같은 절의 각주가 철회 사실을 적고 있었지만 **각주는 표를 이기지 못한다 — 독자는 표를 믿는다.** 그래서 주석이 아니라 **삭제**했다. 묘비가 필요하면 자리는 [§0](#0-묘비-목록--소스에-존재하지-않는-이름)이다.
+>
+> 🔴 **이 절이 서술하던 아키텍처 자체가 틀려 있었다.** 「원본은 안 건드리고 `<col>_norm`에 정규값을 앉힌다」는 **더 이상 이 모듈이 하는 일이 아니다.** 지금 이 모듈은 **아무것도 저장하지 않는다** — 접기는 **질의 시점에 SQL에서** 일어난다(`fold_sql_text`·`fold_notation_sql`, 조인이 쓰는 바로 그 식). 그래서 「폴딩 규칙이 틀렸으면 다시 유도하면 된다」는 문장도 대상이 없다: 다시 유도할 저장분이 없다.
+>
+> **측정 기준**: 아래 표는 `5609ff0`의 커밋된 blob 전건 실측이다.
 
 | 시그니처 / 상수 | 역할 | 라인 |
 |---|---|---|
-| `NOTATION_RULES_PATH = paths.config_path("notation_rules.json")` | 선언 파일 경로(`paths` 경유 — `__file__`로 조립하지 않는다) | **100** |
-| `RULE_SEPARATOR`·`RULE_CASE`·`RULE_ZERO_PAD` / `KNOWN_RULES` / **`IMPLEMENTED_RULES`** / `DEFAULT_RULES` | 규칙 이름 3종 / 아는 것 / **실제로 구현된 것 2종** / 기본값(`separator` on · `case` on · **`zero_pad` off**) | **104–106 / 108 / 114 / 116** |
-| **`SEPARATOR_TARGET = "-"`** / `_SEPARATOR_RUN_RE` | 🔴 **`_`가 아니라 `-`인 것이 요점이다** — `_`는 복합 맵 키를 잇는 글자다. `.`·`_`·`-`·공백의 연속을 `-` 하나로 | **121 / 128** |
-| `CODE_SHAPE`·**`CODE_ZERO_PAD_UNIMPLEMENTED`**·`CODE_UNKNOWN_RULE`·`CODE_UNDECLARED`·`CODE_WOULD_REWRITE_RAW`·`CODE_KEY_COLUMN` | **거절 어휘 6종.** `config_resolve_report._NOTATION_CODE_TO_REASON`(**531**)이 닫힌 어휘로 사상한다([§5-B](#5-b-serverconfig_resolve_reportpy--내-config가-먹었는가의-답-f3fd785-신설)) | **132–137** |
-| `RULES_CACHE_TTL = 5.0` / `reset_cache()` | `virtual_join_executor`와 **같은 규율**의 TTL / 웹서버 config 핫리로드 훅(`main.reload_local_process_cache` 안 **3914–3922**) | **149 / 153** |
-| **`fold_notation(text, rules)`** | **규칙마다 독립 분기다** — `{}`를 주면 입력이 그대로 나온다. 그 성질이 「각 규칙이 혼자 켜지고 꺼지는가」를 **진짜 테스트로** 만든다. 비-문자열은 통과 | **163** |
-| **`normalized_value(table, column, value, rules)`** | None/공백은 None 그대로 — **부재하는 값에는 표기가 없다** | **183** |
-| `_record(rejections, scope, subject, detail, code)` / `_normalize_rules(raw, subject, rejections)` | `enrichment_config._record`와 같은 자세(데몬 로그에만 사는 스킵은 아무도 못 보는 스킵이다) / 🔴 **미지 규칙명과 `zero_pad: true`는 조용히 버려지지 않고 *거절*된다**(`zero_pad: false`는 거절이 아니다) | **203 / 215** |
-| 🔴 **`_validate_column(table, raw_col, spec, table_rules, table_cfg, rejections)`** | **거부 3종이 사는 자리** — 파생==원본 · 미선언 컬럼 · 파생이 키 컬럼 | **258** |
-| `validate_notation_rules(raw_config, known_tables=None, rejections=None)` / `load_notation_rules(path=None, …)` | `{table: {raw_col: {derived, rules, …}}}`. `known_tables`는 `crud.TABLE_CONFIG` / **파일 부재는 거절이 아니다** | **326 / 381** |
-| **`derivations_by_table()`** / `derivations_for(table)` / **`derived_columns_for(table) -> set`** | TTL 캐시 — **쓰기 경로의 유일한 입구** / 테이블별 / **쓰기 거부의 입력.** 🔴 **읽지 못한 선언은 「파생 없음」이지 장애가 아니다** | **400 / 423 / 428** |
-| **`apply_derivations(table_name, row, changed_cols, is_new, specs=None)`** | 🔴 **`apply_row_update_internal`의 값 루프가 *끝난 뒤* 호출된다** — 우선순위 계산에서 **이긴 값**을 읽어야 하기 때문이다 | **437** |
-| `REDERIVE_CHUNK_SIZE=1000` / `REDERIVE_SAMPLES=10` / **`rederive(db, table_name, spec, chunk_size=…, apply=False, progress=None)`** | **기본이 드라이런.** `row_id` 키셋 페이지네이션(OFFSET 없음), `bulk_update_mappings`가 `{row_id, <derived>}`만 나른다. 🔴 **`apply_batch_updates`를 의도적으로 경유하지 않는다** — 그 경로는 이 컬럼을 **거부**하고, 통과시켜도 `CellSource` 1천만 행을 찍는다 | **475 / 479 / 482** |
+| `NOTATION_RULES_PATH = paths.config_path("notation_rules.json")` | 선언 파일 경로(`paths` 경유 — `__file__`로 조립하지 않는다) | **135** |
+| `RULE_SEPARATOR`(**139**)·`RULE_CASE`(**140**)·`RULE_ZERO_PAD`(**141**) / `KNOWN_RULES`(**143**) / **`IMPLEMENTED_RULES`(**149**)** / `DEFAULT_RULES`(**151**) | 규칙 이름 / 아는 것 / **실제로 구현된 것(`separator`·`case`)** / 기본값(`separator` on · `case` on · **`zero_pad` off**) | **139–151** |
+| **`SEPARATOR_TARGET = "-"`**(**154**) / `SEPARATOR_CODEPOINTS`(**163**) / `SEPARATOR_PATTERN`(**181**) / `_SEPARATOR_RUN_RE`(**212**) | 🔴 **`_`가 아니라 `-`인 것이 요점이다** — `_`는 복합 맵 키를 잇는 글자다. `.`·`_`·`-`·공백의 연속을 `-` 하나로 | **154–212** |
+| `CASE_SOURCE_ALPHABET`(**185**)/`CASE_TARGET_ALPHABET`(**186**)/`_CASE_TABLE`(**213**) · `_check_pattern_shape()`(**189**) | 대소문자 접기 테이블 / 패턴 모양 자체 검사(import 시점) | **185–213** |
+| 🔴 **거절 어휘 — 전건 열거**(개수를 적지 않는다): `CODE_SHAPE`(**217**) · `CODE_ZERO_PAD_UNIMPLEMENTED`(**218**) · `CODE_UNKNOWN_RULE`(**219**) · `CODE_UNDECLARED`(**220**) · `CODE_NOT_TEXT`(**221**) | ⚠️ **종전 지도는 이 목록을 「6종」이라 적으면서 `CODE_WOULD_REWRITE_RAW`·`CODE_KEY_COLUMN`을 들었는데 둘 다 소스에 없고, 실재하는 `CODE_NOT_TEXT`는 빠져 있었다.** 개수도 구성원도 틀린 전형이다. `config_resolve_report._NOTATION_CODE_TO_REASON`(**533**)이 이 어휘를 닫힌 집합으로 받는다 | **217–221** |
+| `SCOPE_FILE`·`SCOPE_TABLE`·`SCOPE_COLUMN` | 거절의 스코프 | **223–225** |
+| `RULES_CACHE_TTL = 5.0`(**230**) / `_RULES_CACHE`(**231**) / `reset_cache()`(**234**) | `virtual_join_executor`와 **같은 규율**의 TTL / 웹서버 config 핫리로드 훅(`main.py` **4121–4122**) | **230–234** |
+| **`fold_notation(text, rules: dict)`** | **규칙마다 독립 분기다** — `{}`를 주면 입력이 그대로 나온다. 그 성질이 「각 규칙이 혼자 켜지고 꺼지는가」를 **진짜 테스트로** 만든다. 비-문자열은 통과 | **244** |
+| `enabled_rule_names(rules) -> list` / `folds_anything(rules) -> bool` | 켜진 규칙 이름 / 이 규칙 집합이 무언가를 실제로 바꾸는가 | **269 / 274** |
+| 🔴 **`SQL_FOLD_FUNCTION = "assy_fold_notation"`**(**286**) / **`fold_sql_text(inner_sql, rules) -> str`**(**289**) / `_install_notation_fold_construct()`(**317**) / **`fold_notation_sql(text_expr, rules)`**(**375**) | **접기가 실제로 일어나는 자리 — 질의 시점의 SQL이다.** 저장된 파생 컬럼이 아니라 **조인·비교가 쓰는 바로 그 식**이 접는다 | **286–375** |
+| `_SQLITE_FOLD_INSTALLED`(**395**) / `install_sqlite_fold()`(**398**) | SQLite에 같은 함수를 심는다 — ⚠️ **PG와 SQLite가 같은 답을 내야 하는 자리**(테스트가 PG가 거절하는 것을 받으면 운영만 터진다) | **395–398** |
+| `_record(rejections, scope, subject, detail, code=CODE_SHAPE)` / `_normalize_rules(raw, subject, rejections=None)` | `enrichment_config._record`와 같은 자세(데몬 로그에만 사는 스킵은 아무도 못 보는 스킵이다) / 🔴 **미지 규칙명과 `zero_pad: true`는 조용히 버려지지 않고 거절로 보고된다** | **434 / 446** |
+| 🔴 **`_validate_column(table, column, spec, table_rules, …)`** | 컬럼 선언 검증 | **489** |
+| `validate_notation_rules(raw_config, known_tables=None, …)` / `load_notation_rules(path=None, known_tables=None, …)` | `known_tables`는 `crud.TABLE_CONFIG` / **파일 부재는 거절이 아니다** | **556 / 609** |
+| **`normalized_by_table() -> dict`**(**628**) / `rules_for_column(table, column)`(**652**) / `is_normalized(table, column) -> bool`(**658**) | TTL 캐시를 낀 조회 3종 — **읽기 경로의 입구**. 🔴 **읽지 못한 선언은 「정규화 없음」이지 장애가 아니다** | **628–658** |
+| 🔴 **`join_pair_rules(left_table, left_column, …)`** | 조인 양쪽의 규칙이 **같을 때만** 접는다 — 한쪽만 접으면 조인이 조용히 어긋난다 | **663** |
+| `PREVIEW_GROUP_LIMIT=500`(**706**)/`PREVIEW_VARIANT_LIMIT=20`(**707**) / **`fold_preview(db, table, column, rules=None, …)`**(**710**) / `declared_previews(db, limit=PREVIEW_GROUP_LIMIT)`(**790**) | 「이 규칙을 켜면 무엇이 합쳐지는가」의 미리보기. ⚠️ **요청 경로에 상주하는 종류의 질의가 아니다**(`main.py` **5196–5202**가 그 사유를 적는다) | **706–790** |
 
-> ⚠️ **Phase 1 — 아직 아무도 파생값을 소비하지 않는다.** 맵 키·필터·조인을 이 컬럼으로 돌리는 것은 **별도의 opt-in 결정**이고, `config_resolve_report._resolve_notation`이 그 사실을 선언마다 문장으로 붙여 보고한다.
+> ⚠️ **Phase 1 — 파생값을 소비하는 저장 컬럼은 없다.** 맵 키·필터·조인을 접힌 값으로 돌리는 것은 **별도의 opt-in 결정**이고, `config_resolve_report._resolve_notation`(**602**)이 그 사실을 선언마다 문장으로 붙여 보고한다.
 >
-> 🔴 **`zero_pad`는 선언돼 있으면서 거절된다 — 조용히 무시되는 노브가 아니다.** `WF010`/`WF10`의 오합병 위험이 있고 그 인구 조사(census)가 아직 돌지 않았다. 켜면 `GET /admin/config/resolve`에 **`zero_pad_unimplemented`**가 이름으로 뜬다. 소스 주석은 「slot은 항상 int」 판정이 이 질문을 은퇴시키지만 그것은 **컬럼이 `number`로 선언된 뒤**의 일이라고 적고, `dt_log.core_slot`·`dt_log.dt_slot`·`core_wafer_map.core_slot`·`bonding_log.bond_slot`이 **아직 전부 `string` 선언**임을 지목한다 — **판정은 있고 선언이 따라오지 않았다.**
+> 🔴 **`zero_pad`는 선언돼 있으면서 거절된다 — 조용히 무시되는 노브가 아니다.** `WF010`/`WF10`의 오합병 위험이 있고 그 인구 조사(census)가 아직 돌지 않았다. 켜면 `GET /admin/config/resolve`에 **`zero_pad_unimplemented`**가 이름으로 뜬다.
 >
-> 🔴 **`map_overlay.canonical_key_value` **위에** 얹지 옆에 두지 않는다**: `fold_notation(canonical_bind_value(table, column, raw), rules)`. 어휘 하나, 층 둘. `canonical_bind_value` import는 **모듈 최상단**(**98**)인데 의도다 — 재유도가 이것을 1천만 번 돈다.
+> 🪦 **철회된 것들** — 되살리려 하기 전에 이 줄을 읽을 것: 쓰기 거부 `crud.refuse_notation_derived_columns`(묘비 주석 `crud.py` **2374–2384**) · CLI `server/scripts/rederive_notation_norm.py` · 이 모듈의 파생 API 일습. ⚠️ **종전 지도가 적던 「`canonical_bind_value`를 모듈 최상단에서 import한다」도 거짓이다 — 지금 이 파일에 그 import가 없다.**
 >
-> 🔴 **[2026-08-05 재측정] 위 「도달」 목록은 `8d306a5`가 저장되는 파생 컴럼을 철회하면서 반이 사라졌다.** — 쓰기 거부 `crud.refuse_notation_derived_columns`는 **삭제됐고**(묘비 주석만 `crud.py` **2374–2384**), CLI **`server/scripts/rederive_notation_norm.py`도 삭제됐다**(그 파일은 지금 저장소에 없다). 정규화는 이제 **질의 시점의 fold**라 되쓸 것도 거부할 것도 없다. 🔴 **이 절의 Phase 1 · 파생 컴럼 서술은 그만큼 낡았으니 서버 도메인이 재서술해야 한다** — 여기서는 앱커만 실측해 고쳐 둔다.
-> **현존 도달**: 보고서 `config_resolve_report._resolve_notation`(**602**) · 폴드 코어 `notation_norm.fold_notation`(**244**)/`enabled_rule_names`(**269**)/`folds_anything`(**274**) · SQL 폴드 `SQL_FOLD_FUNCTION = 'assy_fold_notation'`(**286**) · 규칙 로더 `_normalize_rules`(**446**).
->
-> 📌 **`server/config/notation_rules.json.sample`(41줄)의 구조만 기술한다** — `server/config/*`는 gitignored라 라이브 값은 문서화 대상이 아니다. 최상위 키: `__comment` · `__how_to_enable` · **`rules`**(파일 수준 기본 규칙 집합: `separator`/`case`/`zero_pad` boolean) · `__false_merge_check` · **`columns`**(🔴 **의도적으로 빈 객체** — 운영자가 쌍을 선언하기 전까지 기능은 비활성) · `_example_columns`. 🔴 **`_`로 시작하는 키는 로더가 주석으로 취급해 건너뛴다**(`_normalize_rules` **~239**). 컬럼 항목은 **짧은 형태**(`"<raw>": "<derived>"`)와 **긴 형태**(`{"derived": …, "rules": {…}}`) 둘 다 받고, 파생 컬럼은 `table_config.json`에 **미리 `"string"`으로 선언**돼 있어야 하며 `business_key`·`composite_key_source`에 있으면 안 된다.
+> 📌 **`server/config/notation_rules.json.sample`(**48줄**)의 구조만 기술한다** — `server/config/*`는 gitignored라 라이브 값은 문서화 대상이 아니다. 최상위 키: `__comment` · `__how_to_enable` · **`rules`**(파일 수준 기본 규칙 집합) · **`tables`**(테이블별 override + 컬럼 선언).
 
 ### 🆕 `server/graph_stale_edges.py` (**549줄**, 신설) — 재유도의 **지울 수 있는 절반**
 
