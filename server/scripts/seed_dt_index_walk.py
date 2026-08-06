@@ -148,8 +148,10 @@ JOBS = [
     # 🔴 dt_frame is a FRONT frame on every job on purpose. `alignment.sides` is
     #    declared ["front"] on this box, and a back-framed job would have its true
     #    answer excluded from the search - correct behaviour that reads exactly like
-    #    a defect. The four jobs plant the four FRONT rotations, one each, so the
-    #    demonstration is complete inside the declared search space.
+    #    a defect. FULL-R0/FULL-R90/PART-R270/NEAR-R180 plant rot0/rot90/rot270/rot180
+    #    FRONT respectively, one each, so the demonstration is complete inside the
+    #    declared search space. (`core_frame` was NOT front-complete - see the CORE jobs
+    #    at the end of this list.)
     {"name": "PART-R270", "dt_frame": "rot270_front", "core_frame": "rot90_front",
      "bins": 4, "coverage": 0.38, "ref_shift": 0,
      "why": "PARTIAL map with interior gaps - the normal case, not the happy one"},
@@ -159,6 +161,29 @@ JOBS = [
     {"name": "NEAR-R180", "dt_frame": "rot180_front", "core_frame": "rot0_back",
      "bins": 2, "coverage": 1.0, "ref_shift": 3,
      "why": "reference is CLOSE but not identical - expect high, not perfect"},
+    # ══ The CORE axis, added 2026-08-06 ═════════════════════════════════════════════
+    # 🔴 THE FOUR JOBS ABOVE WERE DESIGNED FRONT-COMPLETE FOR THE **DT** AXIS AND ARE
+    #    NOT FRONT-COMPLETE FOR THE **CORE** AXIS. `core_frame` is a BACK frame on two of
+    #    them (FULL-R90 -> rot180_back, NEAR-R180 -> rot0_back). `alignment.sides` is
+    #    declared ["front"] on this box (`server/config/map_overlay_config.json`), so on
+    #    those two the true core frame is not in the search space at all - and because
+    #    `index_group_count`'s minimum is held by the truth AND ITS FRONT/BACK MIRROR,
+    #    removing the truth leaves the mirror alone at the minimum. The scorer then
+    #    returns a UNIQUE, CONFIDENT, WRONG core frame instead of "no winner". That is a
+    #    gap in the fixture, not a defect in the scorer, and these two jobs close it.
+    #
+    #    Between them the four jobs' `core_frame` values now cover ALL FOUR FRONT
+    #    rotations - rot0_front (FULL-R0), rot90_front (PART-R270), rot180_front and
+    #    rot270_front (here) - which is the whole declared search space. Before this,
+    #    truth across every run was only ever {rot0_front, rot0_back, rot90_front,
+    #    rot180_back}: 4 of the 8 candidates, and a systematic bias against the 270 pair
+    #    would have left the headline count fully green (QA-1 F6).
+    {"name": "CORE-R180", "dt_frame": "rot0_front", "core_frame": "rot180_front",
+     "bins": 3, "coverage": 1.0, "ref_shift": 0,
+     "why": "CORE axis: truth is rot180_front - a front core frame the DT jobs never plant"},
+    {"name": "CORE-R270", "dt_frame": "rot90_front", "core_frame": "rot270_front",
+     "bins": 2, "coverage": 0.55, "ref_shift": 0,
+     "why": "CORE axis: truth is rot270_front, PARTIAL - the 270 pair was never the answer"},
 ]
 
 

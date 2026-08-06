@@ -1476,6 +1476,40 @@ def direction_judge(ref_phys):
     return rows, dir_of, next_row
 
 
+def _walk_by_index(phys, cell_owner, idx_k, idx_has):
+    """The indexed cells of each map, in WALK ORDER → `{owner: [(k, y, x, i), ...]}`.
+
+    🔴 **The order is a property of the MAP, not of the array.** Duplicate `dt_index`
+       values are broken by canonical position `(y, x)` and only then by array position,
+       so the same map answers the same way when the query returns its rows in another
+       order. This is the rule `bin_fingerprint_shift`'s anchor already states for
+       itself; it was written for one function and violated by the other two until
+       2026-08-06 (QA-1 F3, measured: one map, two row orders → `groups` 2 vs 1).
+
+    🔴 **One helper, because the two readers must not order the walk differently.**
+       `index_group_count` and `direction_violations` are read together as a joint
+       ordering, so a second spelling of "walk order" would make the pair describe two
+       different walks of the same map. `index_group_count` is a MINIMISED score and the
+       group count is its primary discriminator, so an order-dependent tiebreak there can
+       move the minimum set rather than only break a tie.
+
+    Behaviour is unchanged wherever the indices within a map are unique, which is every
+    fixture in this tree: sorting by `(k, y, x, i)` equals sorting by `(k, i)` when `k`
+    already separates every pair.
+    """
+    if idx_has is None:
+        return {}
+    owner = cell_owner or [0] * len(phys)
+    per_map = {}
+    for i in range(len(phys)):
+        if i < idx_has.size and idx_has[i]:
+            per_map.setdefault(owner[i] if i < len(owner) else 0, []).append(
+                (int(idx_k[i]), int(phys[i][1]), int(phys[i][0]), i))
+    for lst in per_map.values():
+        lst.sort()
+    return per_map
+
+
 def direction_violations(phys, cell_owner, idx_k, idx_has, judge):
     """연속한 순번 사이의 걸음 중 **서펜타인을 벗어난 것**의 수 → `(위반수, 잰 걸음수)`.
 
@@ -1504,16 +1538,12 @@ def direction_violations(phys, cell_owner, idx_k, idx_has, judge):
     rows, dir_of, next_row = judge
     if not rows or idx_has is None:
         return None, 0
-    owner = cell_owner or [0] * len(phys)
-    per_map = {}
-    for i in range(len(phys)):
-        if i < idx_has.size and idx_has[i]:
-            per_map.setdefault(owner[i] if i < len(owner) else 0, []).append(
-                (int(idx_k[i]), i))
+    #: 훑기 순서는 `index_group_count`와 **같은 헬퍼**에서 온다(§_walk_by_index) — 두 수를
+    #: 함께 읽으므로 순서를 따로 정하면 같은 맵의 서로 다른 두 걸음을 재게 된다.
+    per_map = _walk_by_index(phys, cell_owner, idx_k, idx_has)
     bad = steps = 0
     for lst in per_map.values():
-        lst.sort()
-        for (_ka, ia), (_kb, ib) in zip(lst, lst[1:]):
+        for (_ka, _ya, _xa, ia), (_kb, _yb, _xb, ib) in zip(lst, lst[1:]):
             ax, ay = int(phys[ia][0]), int(phys[ia][1])
             bx, by = int(phys[ib][0]), int(phys[ib][1])
             if ay not in dir_of:               # ④ 바닥 밖 - 판정하지 않는다
@@ -1529,6 +1559,251 @@ def direction_violations(phys, cell_owner, idx_k, idx_has, judge):
             if left_in_row or by != next_row.get(ay):
                 bad += 1
     return bad, steps
+
+
+# ═══ The CORE walk: dt_index laid on (core_x, core_y) ═══════════════════════════════
+#
+# Dictated by the product owner, 2026-08-06, and this transcript is the only source:
+#   "dt가 코어의 bin 순 그 안에서는 좌상부터 지그재그로 뽑아가. 그래서 dt index를 cx,cy로
+#    얹으면 dt index가 커지는데 y가 작아지는 순간이 나타나거 이게 그룹이야. 그룹을
+#    최소화히는 변환이 맞는 코어 회전 변환. 근데 여기 일부 bin만 쓰면 앵커가 wf좌상이
+#    아닐수도 있어서 지문으로 bin을 써서 매칭하여 shift도 구하는것"
+#
+# 🔴 THIS IS A DIFFERENT QUESTION FROM `_index_member`, NOT A SECOND SPELLING OF IT.
+#    `_index_member` asks "is this cell the k-th cell of a GLOBAL serpentine over this
+#    walk". On the core walk that is false BY CONSTRUCTION - the pick order is
+#    bin-major, so every bin boundary throws the global rank off - and the file already
+#    records the size of it (§`resolve_source_columns`, 88/88 on the DT walk vs 4/88 on
+#    the core walk). Measured again here (adjudication 2026-08-06, the same synthetic
+#    fixture, `server/scripts/seed_dt_index_walk.py`, rank agreement under the TRUE core
+#    frame): FULL-R90 1/88 · PART-R270 1/34 · NEAR-R180 0/85, and on FULL-R90 a WRONG
+#    frame (`rot180_front`, 2/88) outscores the truth. That number is a statement about
+#    the PREDICATE, not about the coordinates: the order is there, it is simply not the
+#    global rank.
+#
+#    What is there is monotonicity WITHIN a run. Inside one bin the picker walks the
+#    serpentine, so y never falls; it falls only where the walk restarts, i.e. at a bin
+#    boundary. A wrong rotation maps the serpentine onto the other axis and the falls
+#    become dense. Measured on the same fixture, group count under the eight candidates:
+#      FULL-R0    (1 bin)  truth 1  · wrong frames 11 / 40 / 44
+#      FULL-R90   (3 bins) truth 3  · wrong frames 31 / 43 / 46
+#      PART-R270  (4 bins) truth 4  · wrong frames 16 / 19 / 22
+#      NEAR-R180  (2 bins) truth 2  · wrong frames 21 / 41 / 45
+#    In all four the minimum is held by exactly the truth and its FRONT/BACK MIRROR -
+#    the mirror leaves y alone, so no y-based count can ever separate the pair. That is
+#    why this number ships WITH `direction_violations` and not instead of it (open task
+#    #36, "the two numbers each miss one mirror image"). Joint ordering
+#    (groups, then violations) named the true core frame in 128 of 128 runs across the
+#    full 32-combination degeneracy sweep (chip_x != chip_y · non-zero start ·
+#    grid_y_invert · non-zero phys offset · a second wafer diameter) x 4 jobs.
+#    Violations ALONE is not enough: on PART-R270 it prefers `rot270_back` (20) over the
+#    truth (22).
+#
+# ⚠️ The exact predicate "group count == distinct c_bn count" was proposed by the lead PM
+#    and REFUSED by the product owner (2026-08-06): minimisation stays, and ties and
+#    anchoring are what the bin fingerprint absorbs. So this returns the COUNT and does
+#    not compare it to anything - the comparison would be a second, unauthorised ruling.
+
+
+def index_group_count(phys, cell_owner, idx_k, idx_has):
+    """Steps where the index rises while y falls -> `(groups, measured_steps)`.
+
+    `groups = boundaries + 1` per map, summed over maps. Arguments are the four the
+    scorer already carries for `direction_violations`, in the same order and with the
+    same meaning, because the two are read together.
+
+    🔴 **Smaller is better**, like `direction_violations` and unlike every other metric
+       in this file. Do not feed this into the agreement thresholds.
+
+    🔴 Returns `(None, 0)` when no cell carries an index - absence is not zero. A zero
+       here would read as "one group", i.e. a perfect score, for a walk nobody numbered.
+
+    Equal y is NOT a boundary: inside a serpentine row y is constant, and counting that
+    would make every row change of every candidate a group.
+
+    🔴 The walk order comes from `_walk_by_index`, which orders by the INDEX and breaks
+       duplicate indices on canonical position. Array order is not a property of the map,
+       and this number is minimised, so an order-dependent tiebreak here can move the
+       minimum set rather than only break a tie.
+    """
+    if idx_has is None or not len(phys):
+        return None, 0
+    per_map = _walk_by_index(phys, cell_owner, idx_k, idx_has)
+    if not per_map:
+        return None, 0
+    groups = steps = 0
+    for lst in per_map.values():
+        groups += 1                      # a walk that never falls is one group
+        for (_ka, _ya, _xa, ia), (_kb, _yb, _xb, ib) in zip(lst, lst[1:]):
+            steps += 1
+            if int(phys[ib][1]) < int(phys[ia][1]):
+                groups += 1
+    return groups, steps
+
+
+#: Why the bin fingerprint could not place the map. Named for the same reason the
+#: residual reasons are (§RESIDUAL_*): "it did not move" has four causes and an operator
+#: fixes each of them differently.
+BINFP_NO_SOURCE_BINS = "no_source_bin_values"       # the source carries no c_bn
+BINFP_NO_REFERENCE_BINS = "no_reference_bin_map"    # there is no original bin map to match
+#: The two outcomes below mean exactly what the residual search means by them, so they
+#: reuse its vocabulary rather than minting synonyms - the screen branches on the
+#: outcome, and two spellings of one outcome is two branches for one fact.
+BINFP_NO_SEAT = RESIDUAL_NO_QUALIFYING_SEAT
+BINFP_NOT_UNIQUE = RESIDUAL_NOT_UNIQUE
+#: ⑤ 상한. **`RESIDUAL_SEAT_CAP`의 별칭이 아니라 자기 이름을 갖는다**(총괄 판정 2026-08-06).
+#: 이 함수의 상한은 자리를 하나도 보지 않고 **먼저 거절**하는 반면, 잔차 탐색의 상한은
+#: 「거기까지 훑었다」는 진행 사실이다 — 두 함수의 자리 개념도 반환 형태도 다르므로, 한 철자에
+#: 두 계약을 얹으면 문자열로 분기하는 호출자가 절반의 경우에 틀린 계약을 읽는다. 그리고 **어떤
+#: 테스트도 그것을 잡을 수 없다**(양쪽 다 자기 기준으로는 옳다).
+#: ⚠️ 별칭을 끊는 근거는 「저쪽이 값을 준다」가 **아니다**. 실측(2026-08-06): `RESIDUAL_SEAT_CAP`의
+#:    발화 지점은 `_residual_shift`에 **하나뿐이고**(:1166) 그것은 `if best is None:` 안이라
+#:    반환이 `0, 0, 0, obs`다 — 저쪽도 이 토큰을 낼 때는 `(0,0)`이다. 최선을 돌려주는 것처럼
+#:    읽히는 것은 §_RESIDUAL_SEAT_CAP의 **주석**(:1024-1028)이고 코드가 그 주석을 그 가지에서
+#:    구현하지 않는다(상한에 걸렸는데 자격 자리를 이미 찾은 경우에는 짝을 주지만 그때는 이
+#:    토큰을 내지 않는다 - 「다 못 봤다」는 사실이 조용히 사라진다). 그 어긋남은 이 함수가 고칠
+#:    것이 아니므로 총괄에 보고했다.
+BINFP_SEAT_CAP = "bin_seat_cap_refused"
+#: ⑥ 자리는 유일했지만 **그 자리를 지지하는 다이가 바닥보다 적었다.** 위 다섯과 달리 이건
+#: 「못 골랐다」가 아니라 「골랐는데 근거가 모자란다」이므로 이름이 따로 있어야 한다 —
+#: 조작자의 수리도 다르다(기준 맵의 리비전을 의심하라).
+BINFP_LOW_SUPPORT = "match_support_below_floor"
+
+#: 평행이동 하나를 **몇 개의 다이가 받쳐야 답이라고 부르는가.** 1이면 우연 하나로 웨이퍼
+#: 반경만큼 밀린 맵이 `reason=None`("정해졌다")으로 나간다 — 기준 맵이 엉뚱한 리비전으로
+#: 풀렸을 때 실제로 도달하는 자리다(QA-1 F1 실측: 40다이 중 1 일치가 `(9, 9, 1, 1, None)`).
+#: 🔴 절대 수인 것은 의도다. 비율 바닥은 소스가 클수록 요구가 커져, 이 함수가 존재하는 이유인
+#:    **부분 맵**에서 가장 먼저 거절된다. 배선 라운드에서 config로 뽑아 올릴 것
+#:    (§config-over-hardcode) — 그때까지 호출자는 인자로 올려 쓴다.
+_BINFP_MIN_SUPPORT = 3
+
+
+def bin_fingerprint_shift(phys, bin_labels, reference_bins,
+                          seat_cap: int = _RESIDUAL_SEAT_CAP,
+                          min_support: int = _BINFP_MIN_SUPPORT):
+    """The translation the ORIGINAL core bin map implies -> `(dx, dy, matched, seats, reason)`.
+
+    ═══ Why a fingerprint and not the anchor ═════════════════════════════════════════
+    "여기 일부 bin만 쓰면 앵커가 wf좌상이 아닐수도 있어서" - when a job uses only some of
+    the bins, the first pick is the top-left of THAT SUBSET, not of the wafer, so the
+    anchor rule (`_anchor_shift`: lowest index -> reference top-left) states something
+    false and the whole map lands shifted. The bin labels are the way out because they
+    are a PATTERN rather than a corner: `c_bn` values vary die to die across the wafer,
+    so laying the source's label array over the reference's has one good fit and the
+    rest are noise.
+
+    ═══ Seats, not a window ══════════════════════════════════════════════════════════
+    Same reasoning as `_residual_shift`: the offset can be as large as a wafer radius, so
+    a +-window search either misses it or costs `(2w+1)^2`. Candidate translations are
+    enumerated from the data - one source die can only sit on a reference die CARRYING
+    THE SAME LABEL - which is linear in the reference, not quadratic in a radius.
+
+    🔴 The anchor die is the one whose label is RAREST in the reference, not the first in
+       the array. Two reasons and both matter: the rarest label yields the fewest seats
+       (this is the whole cost of the function), and array order is not a property of the
+       map, so anchoring on it would make the same input answer differently when the
+       query returns rows in another order.
+
+    Arguments
+    ---------
+    `phys` : source cells in canonical coordinates under the candidate frame - the same
+        array `direction_violations` and `index_group_count` read. The shift is therefore
+        expressed in that space and composes with them.
+    `bin_labels` : the source's `c_bn` per cell, parallel to `phys`, `None` where absent.
+    `reference_bins` : `{(x, y): label}` for the original core bin map, canonical coords.
+    `seat_cap` : REFUSE when the anchor label has more than this many seats
+        (§BINFP_SEAT_CAP). A silent truncation is indistinguishable from "the answer was
+        found", and truncating by `sorted()[:cap]` truncates by an arbitrary geometric
+        CORNER - so the survivors' best fit is not the map's best fit.
+        🔴 `BINFP_SEAT_CAP` has its OWN spelling and is not `RESIDUAL_SEAT_CAP` (lead PM
+        ruling 2026-08-06). The two caps are different events - this one refuses before
+        scoring a single seat, the residual one records how far a scan got - and one
+        string carrying two contracts cannot be caught by any test, because each side is
+        correct on its own terms. Here the contract is the one this docstring states:
+        the pair is `(0, 0)` and the reason is the whole answer. (QA-1 F2 measured the
+        old behaviour: uncapped `(22, 22, 3, 4, None)` vs `seat_cap=3` →
+        `(-3, -3, 2, 3, 'seat_cap_reached')` - wrong, non-zero, and plausible.)
+    `min_support` : the fewest source dies that may hold up a translation
+        (§_BINFP_MIN_SUPPORT). Below it the answer is `BINFP_LOW_SUPPORT`, not a pair.
+
+    Returns `(dx, dy, matched, seats_considered, reason)`. `reason is None` means the
+    translation was determined; on any refusal `(dx, dy)` is `(0, 0)` and **that zero is
+    not a measurement** - read the reason, never the pair. `matched` and
+    `seats_considered` ARE measurements on every path, including the refusals: they are
+    what tells an operator whether the fingerprint was close or nowhere.
+    """
+    if bin_labels is None:
+        return 0, 0, 0, 0, BINFP_NO_SOURCE_BINS
+    # 🔴 `len(bin_labels or ())` was here and raises on an ndarray ("truth value of an
+    #    array ... is ambiguous"). `c_bn` is a DB column this will plausibly arrive as a
+    #    Series or an ndarray - `idx_k` already does - so the container's truthiness is
+    #    not askable (QA-1 F7). `cell_owner`/`idx_has` keep the list+bool-array
+    #    convention they inherited; this parameter is new and has no such precedent.
+    labelled = [(i, str(bin_labels[i])) for i in range(min(len(phys), len(bin_labels)))
+                if bin_labels[i] is not None and str(bin_labels[i]) != ""]
+    if not labelled:
+        return 0, 0, 0, 0, BINFP_NO_SOURCE_BINS
+    if not reference_bins:
+        return 0, 0, 0, 0, BINFP_NO_REFERENCE_BINS
+
+    ref_by_label = {}
+    for xy, lab in reference_bins.items():
+        if lab is None:
+            continue
+        ref_by_label.setdefault(str(lab), []).append((int(xy[0]), int(xy[1])))
+
+    # The anchor: the labelled source die whose label is rarest in the reference. Ties
+    # are broken by canonical position so the choice is a property of the data.
+    def _seat_cost(item):
+        i, lab = item
+        return (len(ref_by_label.get(lab, ())) or 1 << 30,
+                int(phys[i][1]), int(phys[i][0]))
+
+    anchor_i, anchor_lab = min(labelled, key=_seat_cost)
+    seats = ref_by_label.get(anchor_lab) or []
+    if not seats:
+        return 0, 0, 0, 0, BINFP_NO_SEAT
+    if len(seats) > seat_cap:
+        # 🔴 REFUSE, do not truncate. `sorted(seats)[:cap]` drops by ascending `(x, y)`,
+        #    an arbitrary corner of the wafer, and the best of the SURVIVORS then leaves
+        #    here as an ordinary-looking pair. The seat count is still reported, because
+        #    「상한에 걸렸다」와 「얼마나 넘었나」는 다른 사실이다.
+        return 0, 0, 0, len(seats), BINFP_SEAT_CAP
+    seats = sorted(seats)
+
+    ax, ay = int(phys[anchor_i][0]), int(phys[anchor_i][1])
+    ref = {(int(k[0]), int(k[1])): str(v)
+           for k, v in reference_bins.items() if v is not None}
+    best = []           # (matched, dx, dy) for every seat that ties the maximum
+    top = -1
+    for (sx, sy) in seats:
+        dx, dy = sx - ax, sy - ay
+        hit = 0
+        for i, lab in labelled:
+            if ref.get((int(phys[i][0]) + dx, int(phys[i][1]) + dy)) == lab:
+                hit += 1
+        if hit > top:
+            top, best = hit, [(dx, dy)]
+        elif hit == top:
+            best.append((dx, dy))
+    # 🔴 The support floor, and it comes BEFORE uniqueness on purpose. When the reference
+    #    resolves to the wrong map both are true at once, and the two name different
+    #    repairs: LOW_SUPPORT says "the evidence is too thin to believe any of this",
+    #    NOT_UNIQUE says "the bin pattern genuinely does not name a translation". The
+    #    thin-evidence fact is the one that comes first and the one that is actionable.
+    #    This also subsumes the former `top <= 0` guard, which was unreachable - every
+    #    seat carries the anchor's own label, so `top >= 1` whenever `seats` is non-empty
+    #    (QA-1 F8). Two branches for one fact is what §RESIDUAL_* exists to prevent.
+    if top < max(1, int(min_support)):
+        return 0, 0, top, len(seats), BINFP_LOW_SUPPORT
+    if len(best) != 1:
+        # 🔴 Not a tie-break. A degenerate bin map (one label everywhere, or a pattern
+        #    periodic under this translation) genuinely does not name a translation, and
+        #    picking the origin-nearest here would let the RULE place the map - the exact
+        #    move [3-0] retired the shift search for.
+        return 0, 0, top, len(seats), BINFP_NOT_UNIQUE
+    dx, dy = best[0]
+    return dx, dy, top, len(seats), None
 
 
 #: 정준 방위를 정의하는 축 셋. `frame_linear_part`는 축만 읽으므로 이 세 키면 충분하다 —
