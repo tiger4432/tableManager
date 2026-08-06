@@ -4063,7 +4063,8 @@ async function restoreLastOpenMap() {
       const input = document.getElementById(`meta-input-${col}`);
       if (input) input.value = val === null || val === undefined ? '' : String(val);
     });
-    await loadExistingMap({ quiet: true });
+    // 부팅 복원만이 초안을 되살린다 — 새로고침은 「하던 것을 돌려달라」가 맞다.
+    await loadExistingMap({ quiet: true, restoreDraft: true });
   } catch (e) {
     console.warn('[Map Editor] last-open restore failed — staying on the initial screen:', e);
   } finally {
@@ -4984,6 +4985,17 @@ async function fetchGridMetaFor(table, mapId) {
 }
 // opts.quiet     — 완료/실패 alert 대신 토스트 (프레임 진입 등 자동 로드용)
 // opts.allowEmpty — 0건이어도 실패로 보지 않고 빈 격자로 남긴다 (미구축 자재 맵)
+// opts.restoreDraft — 미저장 초안을 화면에 되살린다. **기본값은 false: 맵을 로드하면
+//                   로드한 맵이 나온다.** 사용자 신고(2026-08-06): 「맵 로딩하면 미저장
+//                   초안 복구하지 말고 그냥 로딩한 걸로 다시 띄워, 초안 복구는
+//                   새로고침할 때만」. 켜는 곳은 `restoreLastOpenMap`(부팅 복원) 하나뿐이다.
+//
+// 🔴 **`quiet`에 얹지 않는다.** `quiet`는 「차단형 대화상자를 띄우지 않는다」는 표시 결정이고,
+//    복구는 데이터 결정이다. 얹으면 복구가 표시 플래그의 부작용이 되고, 다음에 조용한
+//    호출부를 추가하는 사람이 자기가 내린 적 없는 복구 결정을 물려받는다. 호출부가
+//    **의도를 말하게** 한다.
+// 🔴 **적용하지 않는 것과 지우는 것은 다르다.** 초안은 `(table, mapKey)`로 키가 잡혀
+//    그대로 남는다 — 맵 A를 편집하고 맵 B를 로드해도 A의 초안은 A의 키 아래 그대로다.
 //
 // ── The steps of a load ────────────────────────────────────────────────────────────────
 // The seven `stepName()` calls below are module-scope functions defined immediately AFTER
@@ -5000,6 +5012,7 @@ async function fetchGridMetaFor(table, mapId) {
 // Three blocks resisted and stayed inline; each says why where it sits.
 async function loadExistingMap(opts = {}) {
   const quiet = !!opts.quiet;
+  const restoreDraft = !!opts.restoreDraft;
   // ── [fix E-3] 미저장 편집 가드 — **이 함수가 무엇이든 하기 전에** 묻는다 ─────────────
   //
   // 사용자 신고(2026-08-04): 유효 다이를 지정한 뒤 📂 Load Existing Map을 누르면 지정이
@@ -5355,8 +5368,12 @@ async function loadExistingMap(opts = {}) {
         // ⑦ 초안 우선순위 — 기반 지문 대조와 두 개의 토스트는
         //    `restoreDoeDraftWithPrecedence` 안에 있다. 여기서는 그 답이 두 개의
         //    모듈 상태(legendDirty · 아래 persist)에 어떻게 닿는지만 읽으면 된다.
-        const restored = restoreDoeDraftWithPrecedence(
-          selectedTable, loadedMapKey, serverFp, serverCellsFp);
+        // 🔴 초안 복구는 **부팅 복원에서만** 일어난다(§opts.restoreDraft). 평범한 로드는
+        //    방금 읽은 서버본을 그대로 보여 준다 — 「로드한 맵이 나온다」가 계약이다.
+        //    초안은 지우지 않는다: 이 맵의 키 아래 그대로 남아 다음 새로고침이 되살린다.
+        const restored = restoreDraft
+          ? restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp)
+          : { restoredUnsavedEdits: false, staleDraftKept: false };
         // Restored edits are still unsaved edits - they exist only in this browser
         // until [⚡ Push]. Without this the chip reads "saved" after the very refresh
         // the draft just survived.
