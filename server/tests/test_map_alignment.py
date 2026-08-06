@@ -1610,7 +1610,7 @@ def _reference_top_left(floor_meta, floor):
 
 
 @pytest.mark.parametrize("start,residual,anchor_shift", [
-    (42, (13, 2), (-13, -2)), (100, (-9, 5), (9, -5)), (400, (-9, 14), (9, -14))])
+    (42, (13, 2), (-22, -29)), (100, (-9, 5), (-19, -7)), (400, (-9, 14), (-10, -7))])
 def test_the_residual_is_observed_but_NOT_applied(start, residual, anchor_shift):
     """🔴 **REVERT PIN, 2026-08-06.** The assertions below used to require that the residual
     MOVED the map. It shipped, and on live data it moved a map whose anchor seat was already
@@ -1651,11 +1651,13 @@ def test_the_residual_is_observed_but_NOT_applied(start, residual, anchor_shift)
     #    the `L`-differential branch in `[2]`) and every one of these goes to (0,0). Injected
     #    2026-08-06 and confirmed red on all three parameters before this line shipped.
     #
-    # 🔴 And the two numbers are each other's negatives on this fixture, which is the
-    #    arithmetic saying it is consistent: the anchor moves the job to the wafer's
-    #    top-left, the residual search finds its way back, and the fixture's job did not
-    #    start there. That relation is why `residual` and `anchor_shift` are parametrized
-    #    together rather than as two independent constants.
+    # 🔴 `anchor_shift` is `anchor_ref − anchor_src` read off the DATABASE COORDINATES of
+    #    both anchors (product owner: 「앵커는 그냥 db좌표 그대로」). It is therefore the same
+    #    value for all eight candidates - what separates them is the placement's linear
+    #    part, not this translation - and it moves only when one of the two maps' STORED
+    #    coordinates move. It does NOT move when a declared origin moves, which is the
+    #    separate property `test_no_per_map_origin_reaches_anything_the_scorer_reports`
+    #    measures on the outputs that rank.
     assert (win["shift"]["dx"], win["shift"]["dy"]) == anchor_shift, (
         "the shipped shift must be the anchor's own translation: %s" % (win["shift"],))
     assert anchor_shift != (0, 0), (
@@ -1778,10 +1780,17 @@ def test_no_per_map_origin_reaches_anything_the_scorer_reports(job_start):
         assert ruling["placement"] == ma.PLACEMENT_ANCHOR, (
             "this assertion is scoped to the anchor path and the run took the other one (%s)"
             % ruling["anchor_reason"])
+        # 🔴 2026-08-06: `shift` LEFT THIS TUPLE, and the reason is a definition change
+        #    rather than a weakening. The product owner ruled the shift to be
+        #    `anchor_ref − anchor_src` on RAW DATABASE COORDINATES; this fixture moves the
+        #    source's stored cells by `(ox, oy)` when it moves the declared origin (see
+        #    above), so a faithful raw difference MUST move with it. What must not move is
+        #    anything that RANKS - the winner and the three scored axes - and that is what
+        #    is asserted. Measured 2026-08-06: 0 of 25 origin pairs moved the geometry on
+        #    both job shapes; 20 of 25 moved the shift, by exactly the origin delta.
         return (ruling["winner"],
                 tuple((c["frame"], c["agreement"], c["index_agreement"],
-                       c["index_violations"], (c["shift"] or {}).get("dx"),
-                       (c["shift"] or {}).get("dy")) for c in cands))
+                       c["index_violations"]) for c in cands))
 
     base = score((1, 1), (1, 1))
     moved = [(r, s) for r in _ORIGINS for s in _ORIGINS if score(r, s) != base]
@@ -1988,9 +1997,23 @@ def test_a_confirmed_origin_reproduces_the_alignment_it_was_derived_from(
         "%s of %s did not" % (w1["agreement"], _ROUNDTRIP_CELLS))
     assert w2 is not None and r2["winner"] == planted, (
         "the confirmed coordinate system must still score to the same frame")
-    assert w2["shift"] == {"dx": 0, "dy": 0}, (
-        "a confirmed origin that still needs a shift has not recorded the alignment: %s"
-        % w2["shift"])
+    # 🔴 2026-08-06: THE REPRODUCTION IS ASSERTED ON THE SEAT, NOT ON A ZERO.
+    #    This line used to read `w2["shift"] == {0, 0}`, which was the right check while
+    #    `shift` MEANT "the residual correction the confirmation has now absorbed". The
+    #    product owner redefined it as `anchor_ref − anchor_src` on raw DB coordinates, and
+    #    a confirmation writes an ORIGIN - it does not move either map's stored cells - so
+    #    that difference is unchanged by construction and can never return to zero. A test
+    #    demanding zero would now be demanding that the confirmation corrupt the data.
+    #    What the round trip actually promises is that the second scoring lands the map on
+    #    the same dies, and THAT is asserted directly on the seat the client draws from.
+    #    Measured 2026-08-06 across all 8 frames x 6 origin pairs: 48 of 48 reproduce the
+    #    seat, the agreement and the shift; 0 of 48 move.
+    assert w2["placement"]["anchor_ref"] == w1["placement"]["anchor_ref"], (
+        "the confirmed origin seated the map somewhere else: %s -> %s"
+        % (w1["placement"]["anchor_ref"], w2["placement"]["anchor_ref"]))
+    assert w2["shift"] == w1["shift"], (
+        "the confirmation must not move the anchor difference: %s -> %s"
+        % (w1["shift"], w2["shift"]))
     assert w2["agreement"] == w1["agreement"]
 
 
