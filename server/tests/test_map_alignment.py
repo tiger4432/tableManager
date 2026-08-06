@@ -17,9 +17,17 @@ from dt_map_derivation import parse_frame, source_meta_for_frame
 PHYS = {"phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
         "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0}
 
-# Declared for the tests that want a ranked winner. Deliberately NOT a module default in the
-# scorer: a threshold invented in code is a plausible default impersonating a declaration
-# (I4), and here that impersonation turns "we cannot tell" into a confident answer.
+# Declared for the tests that want a ranked winner.
+#
+# 🔴 THIS IS THE SAME PAIR THE SCORER NOW FALLS BACK TO (`ma.DEFAULT_THRESHOLDS`), AND THAT IS
+#    THE POINT RATHER THAN A COINCIDENCE. `{1, 1}` is the weakest thing an operator could
+#    declare: the margin comparison already floors at 1 (`max(1, ...)`) and `discriminating > 0`
+#    is a structural check that runs earlier, so a defaulted run and a run declared `{1, 1}`
+#    rank the eight identically. What separates them is not the ORDER but the PROVENANCE, which
+#    is why the undeclared case is asserted on two axes - the ranking AND the marker
+#    (`test_an_undeclared_threshold_ranks_and_says_it_was_defaulted`). A default of 0 would be
+#    the old impersonation (I4) and is still refused: it would turn "cannot tell" into a
+#    confident winner.
 THRESHOLDS = {"min_margin_dies": 1, "min_discriminating_dies": 1}
 
 
@@ -913,19 +921,94 @@ def test_weights_cannot_rescue_a_reference_that_answers_the_same_everywhere():
 # THRESHOLDS - declared, never defaulted
 # ---------------------------------------------------------------------------
 
-def test_an_undeclared_threshold_refuses_to_rank():
-    """`Number(null) === 0` has bitten this project three times. Folding an absent threshold
-    to zero turns "we cannot tell" into "always rank", which is the failure this whole round
-    is closing."""
+def test_an_undeclared_threshold_ranks_and_says_it_was_defaulted():
+    """PRODUCT OWNER RULING 2026-08-06: build the core behaviour, prove it runs, then add the
+    refusals. An undeclared threshold used to mean NO RANKING AT ALL, and that single refusal
+    is why the operator went a full day without ever seeing a ranked candidate list.
+
+    🔴 TWO ASSERTIONS, NOT ONE, AND THE SECOND IS THE LOAD-BEARING ONE. A version that ranks
+       and forgets to mark the ranking passes any test that only checks a winner appeared -
+       and a defaulted winner that looks declared is exactly the thing that gets CONFIRMED into
+       stored coordinates, after which nothing downstream looks wrong. So the marker is
+       asserted on its own: which keys were defaulted, and the sentence that says so.
+
+    🔴 AND THE MARKER IS ASSERTED ABSENT ON THE DECLARED RUN. Marking every ruling would be the
+       same defect wearing the other hat - if `thresholds_defaulted` is never empty, it stops
+       distinguishing anything and the screen learns to ignore it.
+    """
     ref_meta = _meta()
     ref = _ref_cells()
     args = ([{"map_id": "M1", "meta": ref_meta,
               "cells": _plant(ref_meta, ref, "rot90_front")}], ref, ref_meta)
-    assert ma.score_candidates(*args, thresholds=THRESHOLDS)[2]["winner"] == "rot90_front"
-    for absent in (None, {}, {"min_margin_dies": 1}, {"min_discriminating_dies": 1}):
+
+    declared = ma.score_candidates(*args, thresholds=THRESHOLDS)[2]
+    assert declared["winner"] == "rot90_front"
+    # unchanged behaviour: a declared run carries no marker and no sentence
+    assert declared["thresholds_defaulted"] == []
+    assert declared["provisional_text"] is None
+
+    for absent, keys in ((None, ["min_margin_dies", "min_discriminating_dies"]),
+                         ({}, ["min_margin_dies", "min_discriminating_dies"]),
+                         ({"min_margin_dies": 1}, ["min_discriminating_dies"]),
+                         ({"min_discriminating_dies": 1}, ["min_margin_dies"])):
         ruling = ma.score_candidates(*args, thresholds=absent)[2]
-        assert ruling["winner"] is None, absent
-        assert ruling["reason_code"] == "no_thresholds", absent
+        # ① it ranks - the same frame the declared run named
+        assert ruling["winner"] == "rot90_front", absent
+        assert ruling["reason_code"] is None, absent
+        # ② and it says the ranking is provisional, naming which keys were invented
+        assert ruling["thresholds_defaulted"] == keys, absent
+        assert ruling["provisional_text"] == ma.TEXT_PROVISIONAL_RANKING, absent
+        # the numbers the ruling actually stood on travel with it, defaulted or not
+        assert ruling["min_margin_dies"] == 1, absent
+        assert ruling["min_discriminating_dies"] == 1, absent
+
+
+def test_the_default_threshold_is_not_zero():
+    """The guard that stays. Folding an undeclared threshold to 0 is `Number(null) === 0`,
+    which has bitten this project three times, and it turns "we cannot tell these apart" into
+    "confident winner". 1 is not a compromise: it is the floor the margin comparison already
+    enforces (`max(1, ...)`), so it changes what may be CLAIMED, never what wins."""
+    assert set(ma.DEFAULT_THRESHOLDS) == set(ma.THRESHOLD_KEYS)
+    assert all(v >= 1 for v in ma.DEFAULT_THRESHOLDS.values())
+
+
+def test_a_defaulted_ranking_still_loses_to_a_structural_refusal():
+    """Defaulting the thresholds must not reach past the facts that are true whatever the
+    thresholds say. A symmetric footprint cannot tell the eight apart, and answering that with
+    a provisional WINNER would be precisely the confident-wrong-winner this round guards."""
+    ref_meta = _meta()
+    ruling = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta,
+          "cells": _plant(ref_meta, _symmetric_ref(), "rot90_front")}],
+        _symmetric_ref(), ref_meta, thresholds=None)[2]
+    assert ruling["winner"] is None
+    assert ruling["reason_code"] == ma.RULING_NO_DISCRIMINATION
+    # the marker is still carried - the run WAS defaulted, and a reader of the refusal has to
+    # be able to tell that raising a declared threshold was never the missing piece
+    assert ruling["thresholds_defaulted"] == list(ma.THRESHOLD_KEYS)
+
+
+def test_the_marker_survives_on_every_branch_the_ruling_can_take():
+    """`geometry_assumed`'s rule, applied here: carried ALWAYS, not only when true. An absent
+    key and an empty list look the same to the receiver, and that sameness is what folds
+    "ranked on a declaration" and "ranked on a default" into one word."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    planted = _plant(ref_meta, ref, "rot90_front")
+    runs = [
+        # nothing scored at all
+        ma.score_candidates([], ref, ref_meta, thresholds=None)[2],
+        # scored, and a winner
+        ma.score_candidates([{"map_id": "M1", "meta": ref_meta, "cells": planted}],
+                            ref, ref_meta, thresholds=None)[2],
+        # scored, declared, no marker
+        ma.score_candidates([{"map_id": "M1", "meta": ref_meta, "cells": planted}],
+                            ref, ref_meta, thresholds=THRESHOLDS)[2],
+    ]
+    for r in runs:
+        assert "thresholds_defaulted" in r, r.get("reason_code")
+        assert isinstance(r["thresholds_defaulted"], list)
+        assert "provisional_text" in r, r.get("reason_code")
 
 
 def test_an_undeclared_threshold_is_omitted_from_the_payload_not_nulled():
@@ -970,11 +1053,55 @@ def test_too_few_discriminating_dies_is_a_different_refusal_from_too_small_a_mar
 
 def test_every_threshold_refusal_has_its_own_sentence():
     seen = {}
-    for code in ("no_thresholds", "too_few_discriminating", "margin_too_small",
-                 "no_discrimination", "no_margin", "tie", "no_candidate_scored"):
+    for code in ("too_few_discriminating", "margin_too_small",
+                 "no_discrimination", "tie", "no_candidate_scored"):
         text = ma._RULING_TEXT[code]
         assert text not in seen, "%s and %s share a sentence" % (code, seen.get(text))
         seen[text] = code
+
+
+def test_the_sentence_table_holds_no_code_the_scorer_cannot_emit():
+    """A reason code with a sentence and no branch is a lie inside the vocabulary - this
+    module says so itself (see `ASSUMPTION_AVAILABLE`). `no_margin` never had a branch, and
+    `no_thresholds` lost its one when an undeclared threshold became a default plus a marker.
+
+    Read from the SOURCE rather than from a list here: a list would be a second spelling of
+    the branch set and would go stale the next time a branch is added. BOTH DIRECTIONS are
+    checked - a branch with no sentence is the mirror defect and degrades silently to the
+    catch-all 「순위 근거 부족」, which names nothing at all."""
+    import inspect
+    import re
+    src = inspect.getsource(ma._rule_on)
+    # the codes `_rule_on` can actually put on a ruling: string literals plus the constants
+    literals = set(re.findall(r'reason_code=["\']([a-z_]+)["\']', src))
+    named = {getattr(ma, n) for n in re.findall(r'reason_code=\(?(RULING_[A-Z_]+)', src)}
+    named |= {getattr(ma, n)
+              for n in re.findall(r'else (RULING_[A-Z_]+)\)', src)}
+    emitted = literals | named
+    assert emitted, "the branch scan found nothing - the regex went stale, not the code"
+
+    for code in emitted:
+        assert code in ma._RULING_TEXT, "%r is emitted but has no sentence" % code
+    for code in ma._RULING_TEXT:
+        assert code in emitted, "%r has a sentence but no branch in _rule_on" % code
+    assert "no_thresholds" not in ma._RULING_TEXT
+    assert "no_margin" not in ma._RULING_TEXT
+
+
+def test_the_index_refusal_does_not_name_a_remedy_that_cannot_exist():
+    """MEASURED 2026-08-06: 「순번 일치 0건 - 번호가 매겨진 기준 맵 필요」 read as "obtain a
+    reference map that carries numbers", and the product owner went to build one. There is no
+    place in the schema or the code to put numbers ON a reference - the numbering is assigned
+    AGAINST a valid-die map, and zero matches means the plugged-in reference is not that map.
+    A message naming a remedy that cannot exist is worse than no message."""
+    text = ma._RULING_TEXT_BY_METRIC[(ma.RULING_NO_OVERLAP, ma.METRIC_INDEX)]
+    assert "번호가 매겨진 기준 맵 필요" not in text
+    # it must point at the reference being the WRONG map, which is the repair that exists
+    assert "기준" in text and "다름" in text
+    # and it stays distinct from the generic "plug another reference" sentence, which sends the
+    # operator somewhere else entirely
+    assert text != ma._RULING_TEXT[ma.RULING_NO_OVERLAP]
+    assert "다른 기준 맵 필요" not in text
 
 
 def _half_symmetric_ref():
@@ -993,7 +1120,7 @@ def _half_symmetric_ref():
 
 def test_a_structural_refusal_is_named_before_the_thresholds_are_blamed():
     """"These eight are indistinguishable" is true whatever the thresholds say. Reporting it
-    as `no_thresholds` sends the operator to edit config, where nothing will change.
+    as a threshold problem sends the operator to edit config, where nothing will change.
 
     🔴 THIS FIXTURE IS SYMMETRIC UNDER ALL EIGHT, AND THAT IS `no_discrimination`, NOT `tie`.
        The assertion used to read `tie`, which contradicted this module's own documented rule

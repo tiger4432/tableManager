@@ -1427,11 +1427,38 @@ RULING_NO_OVERLAP = "no_overlap"                      # 좌표는 놓였는데 �
 RULING_NO_DISCRIMINATION = "no_discrimination"        # 대조는 됐는데 후보가 안 갈린다
 RULING_TIE = "tie"                                    # 갈리는데 1위가 둘 이상
 
-#: 판정 문턱. **코드에 기본값을 두지 않는다.** 여기 숫자를 하나 적으면 그것이 선언을 사칭하는
-#: 그럴듯한 기본값이고(I4), 그 사칭의 대가가 정확히 이 라운드가 닫고 있는 실패다 —
-#: 미선언을 0으로 접으면 「구별 못 함」이 「자신 있는 1등」이 된다(`Number(null) === 0`이
-#: 이 프로젝트를 세 번 물었다). 선언이 없으면 **순위를 내지 않는다.**
+#: 판정 문턱. 선언이 정본이다. 선언이 없으면 **개발 기본값으로 순위를 내되, 그 사실을 판정이
+#: 나른다**(제품 소유자 지시 2026-08-06: 「가드 제거하고 일단 핵심 기능 구현 확인 1순위,
+#: 가드는 구현 확인 후 추가」). 종전에는 미선언이 곧 「순위 없음」이었고, 그 거절 하나로
+#: 조작자는 하루 동안 후보 순위를 **한 번도** 본 적이 없다 — 개별로는 옳은 거절 여럿이
+#: 모여서 기계가 자기 사용자를 위해 한 번도 돌지 않았다.
+#:
+#: 🔴 **그래도 0으로 접지는 않는다.** 미선언을 0으로 접으면 「구별 못 함」이 「자신 있는 1등」이
+#:    되고(`Number(null) === 0`이 이 프로젝트를 세 번 물었다), 그 1등이 확정되면 저장된
+#:    좌표가 상한다 — 그 뒤로는 아래 어디를 봐도 이상해 보이지 않는다. 기본값이 **1**인 것은
+#:    타협이 아니라 이 성질 때문이다: 격차 비교는 이미 `max(1, ...)`으로 1을 바닥에 깔고
+#:    판별수 > 0은 구조 검사가 이미 세우므로, `{1, 1}`은 조작자가 config에 그렇게 적었을 때와
+#:    **한 후보도 다르게 판정하지 않는다.** 즉 기본값은 「무엇이 이기는가」를 바꾸지 않고
+#:    「이겼다고 말해도 되는가」만 바꾼다. 20/20 같은 실측 문턱을 코드에 적는 것이야말로
+#:    선언 사칭이다(I4) — 그 수는 데이터에서 유도되는 것이고 코드는 그 데이터를 모른다.
+#:
+#: 🔴 그래서 **사칭을 막는 것은 값이 아니라 표찰이다.** 기본값으로 매긴 순위는 선언으로 매긴
+#:    순위와 **다른 사실**이고, 그 사실은 판정 dict 자신이 나른다
+#:    (`ruling.thresholds_defaulted` — `geometry_assumed`·`metric`과 같은 계급). 옆 필드에
+#:    두면 판정을 옮겨 적는 자리(확정 기록·목록)가 흘린다.
 THRESHOLD_KEYS = ("min_margin_dies", "min_discriminating_dies")
+
+#: 미선언 문턱의 **개발 기본값**. 스위치가 아니다 — 켜고 끄는 config 키를 만들면 그것이 두
+#: 번째 표면이 되고, 한쪽만 배포되는 날이 반드시 온다(§VALUE_WEIGHTS_KEY와 같은 이유).
+#: 한 동작이고, 언제나 같으며, 출처가 붙어서 나간다.
+DEFAULT_THRESHOLDS = {"min_margin_dies": 1, "min_discriminating_dies": 1}
+
+#: `ruling.provisional_text` — 기본값으로 매겼다는 **사람이 읽을 한 줄**. 코드가 아니라 문장을
+#: 서버가 만드는 것은 `compose_refusal`과 같은 규율이고, 여기서는 이유가 하나 더 있다:
+#: 이 사실은 **승자가 났을 때도 참**인데 그때 `compose_refusal`은 아무 문장도 내지 않는다
+#: (`state == STATE_SCORED` → None). 즉 화면이 문장을 가장 필요로 하는 경우에 종전의 문장
+#: 슬롯은 비어 있다. 그래서 판정 자신이 자기 문장을 들고 다닌다.
+TEXT_PROVISIONAL_RANKING = "잠정 순위 - 판정 기준값 미선언 · 기본값 1"
 
 
 def load_alignment_thresholds(cfg: dict) -> dict:
@@ -1576,11 +1603,25 @@ def _rule_on(candidates: list, thresholds: dict = None,
         말을 아끼는 카드보다 나쁘다. 그래서 개수와 지배 사유가 **모든** 판정에 실린다.
     """
     sc = dict(scoring or {})
+    # 🔴 문턱 해석을 **맨 위에서** 한다. 「기본값을 썼다」는 승자가 났을 때도 참인데, 승자가
+    #    나면 `compose_refusal`은 아무 문장도 내지 않는다(§TEXT_PROVISIONAL_RANKING) - 이
+    #    사실이 아래 갈래에만 붙어 있으면 화면이 그것을 가장 필요로 하는 경우에 사라진다.
+    th = dict(thresholds or {})
+    defaulted = [k for k in THRESHOLD_KEYS if th.get(k) is None]
+    for k in defaulted:
+        th[k] = DEFAULT_THRESHOLDS[k]
     ctx = {"metric": metric,
            "placed_cells": sc.get("placed_cells"),
            "source_map_count": sc.get("source_map_count"),
            "excluded_map_count": sc.get("excluded_map_count"),
-           "excluded_reason_code": sc.get("excluded_reason_code")}
+           "excluded_reason_code": sc.get("excluded_reason_code"),
+           # 🔴 **언제나 실린다**(빈 목록으로라도). 없는 키와 빈 목록은 받는 쪽에서 같아
+           #    보이고, 그 같음이 「선언으로 매긴 순위」와 「기본값으로 매긴 순위」를 한
+           #    낱말로 접는다 - `geometry_assumed`를 참일 때만 싣지 않는 것과 같은 이유.
+           #    응답 최상위의 `thresholds`는 **config가 말한 것**이고(미선언 키는 없다),
+           #    `ruling.min_*`는 **이 판정이 실제로 밟은 바**이며, 이 목록이 둘의 차다.
+           "thresholds_defaulted": list(defaulted),
+           "provisional_text": (TEXT_PROVISIONAL_RANKING if defaulted else None)}
 
     live = [c for c in candidates if c["state"] == STATE_SCORED]
     if not live:
@@ -1623,9 +1664,6 @@ def _rule_on(candidates: list, thresholds: dict = None,
         return dict(ctx, winner=None, margin=None,
                     reason_code=RULING_NO_CANDIDATE_SCORED)
 
-    th = dict(thresholds or {})
-    missing = [k for k in THRESHOLD_KEYS if th.get(k) is None]
-
     best = max(c[a_key] for c in scoreable)
     tops = [c for c in scoreable if c[a_key] == best]
     top = tops[0]
@@ -1653,8 +1691,9 @@ def _rule_on(candidates: list, thresholds: dict = None,
     if len(tops) > 1:
         return dict(base, winner=None, margin=0, reason_code=RULING_TIE,
                     tied=[c["frame"] for c in tops])
-    if missing:
-        return dict(base, winner=None, reason_code="no_thresholds", missing=missing)
+    # 🔴 여기 있던 `if missing: no_thresholds` 갈래가 사라졌다. 미선언은 이제 거절이 아니라
+    #    **기본값 + 표찰**이고(§THRESHOLD_KEYS), 그래서 이 아래 두 비교는 언제나 수행된다.
+    #    선언이 있으면 그 수로, 없으면 1로 - 어느 쪽이든 **같은 코드가 같은 순서로** 잰다.
     if (top.get(d_key) or 0) < th["min_discriminating_dies"]:
         return dict(base, winner=None, reason_code="too_few_discriminating")
     if top.get(m_key) is None or top[m_key] < max(1, th["min_margin_dies"]):
@@ -1683,9 +1722,13 @@ _RULING_TEXT = {
     #    키운다). 그래서 수리는 문턱도 무게도 아니고 **다른 기준을 꽂는 것**이며, 문장이
     #    그 자리를 가리켜야 한다. 안 가리키면 조작자는 config를 세 번 고치고 돌아온다.
     RULING_NO_DISCRIMINATION: "기준 발자국 대칭 - 8프레임 구별 불가 · 다른 기준 맵 필요",
-    "no_margin": "1-2위 격차 0 - 순위 없음",
-    # 문턱은 **선언**이므로 미선언은 「0」이 아니라 「모름」이다. 문장이 그렇게 말한다.
-    "no_thresholds": "판정 기준값 미선언 - 순위 없음",
+    # 🔴 `no_margin`·`no_thresholds`가 여기서 빠졌다. **어느 갈래도 그 코드를 내지 않는다** -
+    #    `no_margin`은 처음부터 `_rule_on`에 발화 지점이 없었고(격차 0은 `RULING_TIE`나
+    #    `margin_too_small`로 나간다), `no_thresholds`는 미선언이 기본값으로 바뀌면서
+    #    도달 불가가 됐다(§THRESHOLD_KEYS). **발화할 수 없는 사유 코드는 어휘 안의 거짓말이고**
+    #    (§ASSUMPTION_AVAILABLE에 이미 같은 문장이 있다), 표를 읽는 사람에게 있지도 않은
+    #    갈래를 있다고 말한다. 클라의 `verdict.js`는 자기 층에서 `no_thresholds`를 여전히
+    #    낼 수 있고 그쪽 어휘는 그쪽 것이다 - 서버가 못 내는 코드를 서버 표에 두지 않을 뿐.
     "too_few_discriminating": "판별 다이 부족 - 순위 없음",
     "margin_too_small": "1-2위 격차 부족 - 순위 없음",
 }
@@ -1708,10 +1751,21 @@ _RULING_TEXT_BY_METRIC = {
     # 🔴 순번 축의 「일치 0건」은 **기준을 갈아 끼우라는 말이 아니다.** 번호는 어떤 유효 다이
     #    지도에 대해 매겨졌고, 0건은 대개 그 지도가 지금 꽂힌 기준이 아니라는 뜻이다 -
     #    수리는 「다른 기준」이 아니라 「번호가 매겨진 그 기준」이고, 둘은 다른 문장이다.
-    (RULING_NO_OVERLAP, METRIC_INDEX): "순번 일치 0건 - 번호가 매겨진 기준 맵 필요",
-    # 순번이 모든 후보에 같은 답을 주는 경우: 번호가 실린 셀이 너무 적어 갈릴 자리가 없다.
+    #
+    # 🔴 그런데 **문장이 그 뜻을 말하지 못했다**(제품 소유자 실측 2026-08-06). 종전 문구
+    #    「번호가 매겨진 기준 맵 필요」는 「번호를 싣고 있는 기준 맵을 구해 오라」로 읽히고,
+    #    조작자는 실제로 그것을 만들러 갔다 - **스키마에도 코드에도 기준에 번호를 얹을 자리는
+    #    없다.** 있지도 않은 수리를 이름으로 대는 문장은 아무 문장도 없는 것보다 나쁘다:
+    #    조작자는 없는 것을 찾느라 시간을 쓰고, 그동안 진짜 수리(기준 교체)는 손도 못 댄다.
+    #    바로 위 주석이 저자의 뜻을 이미 정확히 적어 두었으므로 문장을 그 뜻으로 되돌린다.
+    (RULING_NO_OVERLAP, METRIC_INDEX):
+        "순번 일치 0건 - 기준이 번호를 매긴 그 유효 다이 맵과 다름",
+    # 순번이 모든 후보에 같은 답을 주는 경우. 🔴 「번호 실린 셀 부족」은 **잰 사실이 아니라
+    # 추측**이었다 - 판별 0은 「좌석을 바꿔도 기대 순번이 안 변한다」는 뜻이고, 셀이 적어서
+    # 그럴 수도 있지만 번호가 대칭이어서 그럴 수도 있다. 잰 것만 말하고, 셀 개수는 옆에
+    # 이미 있다(`stats.source_indices_usable` · `reference_indices`).
     (RULING_NO_DISCRIMINATION, METRIC_INDEX):
-        "순번이 8프레임에 동일 - 번호 실린 셀 부족",
+        "순번이 8프레임에 동일 - 구별 불가",
 }
 
 
