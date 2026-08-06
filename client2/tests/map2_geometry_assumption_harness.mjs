@@ -721,7 +721,10 @@ function makeDocument() {
                     'me2-metric-conflict', 'me2-confirm-sentence', 'me2-confirm-note',
                     // The footer, bound since 2026-08-06 to carry the refusal state.
                     'me2-confirmbar',
-                    'me2-confirm-hint', 'me2-export-btn', 'me2-paste-result']) {
+                    'me2-confirm-hint', 'me2-export-btn', 'me2-paste-result',
+                    // The rank picture, bound since 2026-08-06 (third census: the stub).
+                    'me2-index-control', 'me2-index-colour', 'me2-index-legend',
+                    'me2-index-bar', 'me2-index-min', 'me2-index-max', 'me2-index-note']) {
     body.appendChild(node('div', id));
   }
   for (const attr of ['data-me2-picture-meta', 'data-me2-top-agree', 'data-me2-top-discriminating',

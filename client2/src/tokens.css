@@ -60,6 +60,14 @@
   --canvas-line: rgba(31, 39, 51, 0.10);
   --canvas-line-strong: rgba(31, 39, 51, 0.16);
   --canvas-inside-empty: rgba(23, 114, 69, 0.06);
+  /* 정렬기 순번 램프의 명도 대역 (OKLCH L). `client2/src/map2/index_ramp.js` 가 이 두 값과
+     고정 채도로 색을 만든다 — 램프 자체는 순수 함수이고 스타일시트를 읽지 않는다.
+     🔴 테마마다 다른 것이 요구사항이다. 라이트가 기본이고 지면이 거의 흰색이라, 다크에
+        맞춘 대역은 라이트에서 그냥 죽는다(실측: turbo 는 `--bg-inset` 대비 최소 1.16 —
+        이미 결함으로 기록된 1.18 보다 나쁘다). 아래 값은 실측으로 골랐다:
+        라이트 최소 대비 3.78 · 다크 5.02, 둘 다 모든 순번에서 3:1 위. */
+  --me2-index-l0: 0.46;
+  --me2-index-l1: 0.58;
   --canvas-text-empty: rgba(71, 83, 107, 0.8);
   --canvas-text-out: rgba(91, 103, 121, 0.45);
   --canvas-wafer-edge: rgba(31, 39, 51, 0.7);
@@ -122,6 +130,10 @@
   --canvas-line: rgba(255, 255, 255, 0.06);
   --canvas-line-strong: rgba(255, 255, 255, 0.09);
   --canvas-inside-empty: rgba(51, 214, 143, 0.08);
+  /* 순번 램프 명도 대역 — 다크. 지면이 어두우므로 라이트보다 밝은 쪽으로 민다.
+     실측 최소 대비 5.02 (`--bg-inset` 기준), 바닥 워시 기준 4.33. */
+  --me2-index-l0: 0.66;
+  --me2-index-l1: 0.78;
   --canvas-text-empty: rgba(168, 181, 201, 0.8);
   --canvas-text-out: rgba(139, 153, 174, 0.45);
   --canvas-wafer-edge: rgba(255, 255, 255, 0.85);

@@ -86,6 +86,30 @@ export const CAND_NOT_SCORABLE = 'not_scorable';
 const CAND_UNMEASURED = new Set([CAND_NOT_CONSIDERED, CAND_NOT_SCORABLE]);
 
 /**
+ * WHETHER THE SERPENTINE WALK CAN BE PAINTED, AND WHEN IT CANNOT, WHY.
+ *
+ * 🔴 `cell_index` HAS TWO KINDS OF `null` AND THEY ARE NOT THE SAME FACT. An ELEMENT null says
+ *    that row carried no number -- the die is in the walk and has no colour. The WHOLE FIELD
+ *    null says the pool was clipped (`sources.truncated` says why), and a clipped pool is NOT
+ *    a complete walk. The server split them deliberately; folding them lets a ramp that stops
+ *    two thirds of the way across render as if it were the whole job, which is the picture an
+ *    operator would confirm.
+ *
+ * 🔴 `pooled` IS A REFUSAL, NOT A DEGRADED PICTURE. Rank restarts at 1 per map, so two maps in
+ *    one array are two independent walks; one ramp over both is confidently wrong in exactly
+ *    the way this screen exists to stop. The server refuses the placement anchor for the same
+ *    reason (`ANCHOR_MULTI_MAP`).
+ *
+ * `absent` mirrors the server's own `ruling.index_axis` token (`map_alignment.py:2680`): no row
+ * carries a number, so there is nothing to offer and the control is not rendered at all.
+ */
+export const INDEX_WALK_READY = 'ready';
+export const INDEX_WALK_ABSENT = 'absent';
+export const INDEX_WALK_TRUNCATED = 'truncated';
+export const INDEX_WALK_POOLED = 'pooled';
+export const INDEX_WALK_INCONSISTENT = 'inconsistent';
+
+/**
  * WHICH PAIR OF NUMBERS THE RULING STANDS ON. A MIRROR of `server/map_alignment.py:1473-1478`,
  * and it must stay one: the server picks the keys there, ranks on them, and names the axis in
  * `ruling.metric` precisely so this side does not have to guess.
@@ -400,6 +424,10 @@ export function decodeReferenceView(payload) {
     // never as zero, because zero would read as "none are blind", which is a claim.
     distinctSeatings: intOrNull(p && p.distinct_seatings),
     sources: Object.freeze(sources),
+    // 🔴 THE WALK'S STATE, DECIDED HERE AND NOWHERE ELSE. Evaluated before `rejected` is
+    //    frozen below, because a refusal appends its reason to that list -- a walk refused
+    //    silently would leave the console saying the payload was clean.
+    indexWalk: decodeIndexWalk(p, rejected),
     counts: Object.freeze({
       mapCount: intOrNull(srcBlock && srcBlock.map_count),
       excludedMapCount: intOrNull(p && p.excluded_total),
@@ -584,6 +612,122 @@ function resolveReferenceKind(ref) {
     return { kind: declared, source: KIND_DECLARED };
   }
   return { kind: REF_NONE, source: KIND_ABSENT };
+}
+
+/**
+ * The serpentine walk, decoded once at the customs post. Returns a frozen record whose `state`
+ * is ALREADY DECIDED -- no consumer re-inspects the raw fields, and no consumer paints without
+ * reading `state` first.
+ *
+ * 🔴 THE PRECEDENCE IS PART OF THE CONTRACT, NOT AN IMPLEMENTATION DETAIL. `truncated` is
+ *    tested before the shape checks and before `pooled`, because a clipped pool must refuse
+ *    for the reason it was clipped rather than for whatever the clipping happened to break
+ *    downstream. `map2_index_ramp_harness.mjs` pins the order.
+ *
+ * 🔴 RANKS ARE CARRIED VERBATIM. The server normalised each map's base to 1 with the same
+ *    function the scorer used. This side does not shift, re-rank or densify them -- and it
+ *    must not, because the shift is min->1 rather than a dense re-rank, so a sparse numbering
+ *    stays sparse ON PURPOSE. The gaps are a finding (a renumbering, a skipped die), and
+ *    closing them here would erase the one thing this picture can say that no number can.
+ *
+ * @param {object} payload  the raw served payload
+ * @param {Array<string>} rejected  the decoder's soft-reject list, appended to in place
+ */
+export function decodeIndexWalk(payload, rejected) {
+  const rej = Array.isArray(rejected) ? rejected : [];
+  const p = (payload && typeof payload === 'object') ? payload : null;
+  const src = (p && p.sources && typeof p.sources === 'object') ? p.sources : null;
+  const axis = (p && p.ruling && p.ruling.index_axis != null)
+    ? String(p.ruling.index_axis) : null;
+  const cells = arr(src && src.cells);
+  const truncated = !!(src && src.truncated === true);
+  const numbered = intOrNull(p && p.stats && p.stats.source_indices_usable);
+
+  const refuse = (state, reason) => {
+    // 🔴 ONLY A SELF-CONTRADICTING PAYLOAD IS A REFUSED FIELD. `rejected` is rendered to the
+    //    operator as `payload fields refused: ...`, so putting the ordinary absences in it
+    //    makes every older server and every multi-map unit read as a broken wire. Measured on
+    //    the shell harness the moment this was written the other way: a payload that simply
+    //    predates the field printed `payload fields refused: sources.cell_index:
+    //    field_not_served` on a screen where nothing was wrong. An unnumbered unit, a clipped
+    //    pool and a pooled unit are all facts the payload states elsewhere and the legend says
+    //    in its own words -- they are not defects, and a warning that fires on honest payloads
+    //    is one nobody reads by the end of the week.
+    if (reason && state === INDEX_WALK_INCONSISTENT) {
+      rej.push(`sources.cell_index: ${reason}`);
+    }
+    return Object.freeze({
+      state, reason: reason || null, axis, truncated, numbered,
+      cellCount: cells.length,
+      ranks: Object.freeze([]), mapOf: Object.freeze([]), rankMax: null,
+    });
+  };
+
+  // The server's own word for "no row carries a number". Nothing to offer, so no control.
+  if (axis === INDEX_WALK_ABSENT) return refuse(INDEX_WALK_ABSENT, null);
+
+  const rawIdx = src ? src.cell_index : undefined;
+  // A THIRD case, and it is not one of the two nulls: the field was never served at all (an
+  // older server). Unpaintable like `absent` and named apart from it, because "nobody numbered
+  // these dies" and "this build does not ship the numbers" are different repairs.
+  if (rawIdx === undefined) return refuse(INDEX_WALK_ABSENT, 'field_not_served');
+
+  // 🔴 WHOLE-FIELD null == THE POOL WAS CLIPPED. Not a walk. Never painted.
+  if (rawIdx === null) {
+    if (!truncated) {
+      return refuse(INDEX_WALK_INCONSISTENT,
+        'whole field null but sources.truncated is false -- the wire contradicts itself');
+    }
+    return refuse(INDEX_WALK_TRUNCATED, null);
+  }
+
+  if (!Array.isArray(rawIdx) || rawIdx.length !== cells.length) {
+    return refuse(INDEX_WALK_INCONSISTENT,
+      `length ${Array.isArray(rawIdx) ? rawIdx.length : 'n/a'} against ${cells.length} cells`);
+  }
+  const rawMap = src ? src.cell_map : undefined;
+  if (!Array.isArray(rawMap) || rawMap.length !== cells.length) {
+    return refuse(INDEX_WALK_INCONSISTENT,
+      `cell_map length ${Array.isArray(rawMap) ? rawMap.length : 'n/a'} against ${cells.length} cells`);
+  }
+
+  // 🔴 TWO MAPS IN ONE ARRAY ARE TWO WALKS. One ramp over both is the confidently-wrong
+  //    picture; rank restarts at 1 per map, so the second map's colours would repeat the
+  //    first's while sitting somewhere else entirely.
+  const owners = new Set();
+  for (const m of rawMap) owners.add(Number(m));
+  if (owners.size > 1) {
+    return refuse(INDEX_WALK_POOLED, `${owners.size} maps pooled into one walk`);
+  }
+
+  const ranks = new Array(rawIdx.length);
+  let rankMax = null;
+  for (let i = 0; i < rawIdx.length; i++) {
+    const v = rawIdx[i];
+    // ELEMENT null: this die is in the walk and carries no number. Kept as null, never zero --
+    // `Number(null) === 0` would paint it as rank 1, which is a number the row never held.
+    if (v === null || v === undefined) { ranks[i] = null; continue; }
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1) {
+      return refuse(INDEX_WALK_INCONSISTENT, `rank ${JSON.stringify(v)} at cell ${i} is not a rank`);
+    }
+    ranks[i] = n;
+    if (rankMax === null || n > rankMax) rankMax = n;
+  }
+  // Every element null with the axis not saying `absent`: still nothing to paint, and the
+  // absence is the fact rather than an empty ramp.
+  if (rankMax === null) return refuse(INDEX_WALK_ABSENT, 'no cell carries a rank');
+
+  return Object.freeze({
+    state: INDEX_WALK_READY, reason: null, axis, truncated, numbered,
+    cellCount: cells.length,
+    ranks: Object.freeze(ranks),
+    mapOf: Object.freeze(rawMap.map(Number)),
+    // The ramp's DOMAIN. Not a re-derivation of the rank and not the same number as
+    // `numbered`: the numbering may be sparse, so the largest rank and the count of numbered
+    // dies legitimately differ, and neither is computed from the other.
+    rankMax,
+  });
 }
 
 function arr(v) { return Array.isArray(v) ? v : []; }

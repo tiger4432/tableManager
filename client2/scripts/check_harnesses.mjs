@@ -461,7 +461,11 @@ const FLOORS = new Map([
   // pass on a fixture that happened to overlap. That accident is precisely what hid this bug:
   // the old shift search broke ties toward the origin, returned (0,0) on a saturated map, and
   // agreed with a client that applied nothing.
-  ['map_editor2_shell_harness.mjs', 501],
+  // 501 -> 509 (2026-08-06). Section K gained the rank picture on the UNSCORABLE screen -- the
+  // one the operator is actually stuck on, and therefore the one the diagnostic exists for. The
+  // rise is the assertion that the toggle has a visible consequence there, scored on the FILLS
+  // (ranks 1 and 2 must land close, 1 and 40 far apart) rather than on the ranks arriving.
+  ['map_editor2_shell_harness.mjs', 509],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
@@ -543,6 +547,23 @@ const FLOORS = new Map([
   // ANYTHING. A drop below this floor most likely means one of those went, which is the change
   // that turns "automatic" into "silent".
   ['map2_geometry_assumption_harness.mjs', 87],
+  // New 2026-08-06 with the rank picture (the serpentine index painted as a spectrum). Floor is
+  // the count it reports on the commit that introduces it -- there is no earlier tree.
+  //
+  // 🔴 THE ASSERTION IN HERE THAT MUST NEVER BE DELETED IS THE NEGATIVE CONTROL (`D1`): the
+  //    eight candidate frames must produce eight DISTINCT orientation signatures. The first
+  //    oracle written for this feature scored one value for all eight and looked green, because
+  //    the eight frames are ISOMETRIES of the stored lattice and every adjacency-based statistic
+  //    is invariant under them. `D3` pins that blindness deliberately, so a later round cannot
+  //    quietly start reading a local colour break as a frame fault -- a break is a statement
+  //    about the DATA (a renumbering, a gap, a clipped pool), never about the frame.
+  //
+  // 🔴 SECTION B RUNS A MONOTONE RAMP AND REQUIRES IT TO FAIL. That is what stops this being
+  //    "simplified" back into a gradient: a gradient's local contrast is inversely proportional
+  //    to N (measured: turbo's jump-of-ten falls from 20.24 dE00 at N=88 to 1.26 at N=1313) and
+  //    most reference floors in this database are far above where it dies. If B ever passes,
+  //    the cyclic period has been removed and nothing else on the screen would say so.
+  ['map2_index_ramp_harness.mjs', 82],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

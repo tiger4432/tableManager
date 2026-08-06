@@ -45,7 +45,11 @@ import { buildViewModel, VIEW_STATE, CROSS_SOURCE_ROW_ID, WORDS, CAUSE, ATTRIBUT
 import { decideVerdict } from './verdict_bridge.js';
 import { parseCandidateId, candidateList } from './candidates.js';
 import { createApiClient } from './api.js';
-import { decodeReferenceView, verdictContext } from './decode.js';
+import { decodeReferenceView, verdictContext, INDEX_WALK_READY, INDEX_WALK_ABSENT,
+         INDEX_WALK_TRUNCATED, INDEX_WALK_POOLED, INDEX_WALK_INCONSISTENT } from './decode.js';
+// The rank ramp. Imported, never re-spelled: a colour computed a second time in the shell is
+// how a legend ends up explaining a picture that is not on screen.
+import { indexColor, rampGradientCss, INDEX_RAMP_BAND_FALLBACK } from './index_ramp.js';
 // The provenance vocabulary, imported rather than re-spelled. A string literal `'assumed'` here
 // is a second copy of a word the server owns, and the day the two drift nothing says so.
 import { ASSUMED, CONFIRMED, DECLARED } from './declaration.js';
@@ -95,6 +99,18 @@ export const ELEMENT_IDS = Object.freeze({
   //    tolerates absence and reports the id in `missing` -- so the wiring is complete the moment
   //    the node appears and nothing has to be re-derived then.
   //
+  // ── THE RANK PICTURE ────────────────────────────────────────────────────────
+  // One checkbox, inside the legend strip that already exists. NOT a mode: it changes the
+  // source layer's FILL and nothing else -- the floor, the coverage rings, the verdict and
+  // every number stay exactly where they were, and the control stays visible while it is on,
+  // so there is no state to be stuck in. Bound by name; `bindElements` tolerates absence.
+  indexControl: 'me2-index-control',
+  indexToggle: 'me2-index-colour',
+  indexLegend: 'me2-index-legend',
+  indexBar: 'me2-index-bar',
+  indexMin: 'me2-index-min',
+  indexMax: 'me2-index-max',
+  indexNote: 'me2-index-note',
   svg: 'me2-picture-svg',
   layerFloor: 'me2-layer-floor',
   layerMiss: 'me2-layer-miss',
@@ -341,6 +357,10 @@ export function bootstrap(deps) {
     renderCandidates(vm);
     renderConfirm(vm);
     renderSecondMetric(vm);
+    // BEFORE the picture: this settles whether the box is allowed to be on, and `paint` reads
+    // that same control. Rendering it after would paint one frame from a checkbox the legend
+    // was about to force off.
+    renderIndexLegend();
     paint(vm);
     logDiagnosis(vm);
     // LAST, AND GUARDED. See `renderCandidateThumbs`: nothing above may be taken down by a
@@ -957,6 +977,114 @@ export function bootstrap(deps) {
     });
   }
 
+  /**
+   * The rank ramp's lightness band, resolved HERE from the stylesheet's own tokens -- the same
+   * composition-root rule that keeps `painter.js` and `index_ramp.js` importable without a DOM.
+   *
+   * 🔴 TWO BANDS, ONE PER THEME, AND THAT IS NOT A REFINEMENT. Light is the default and the
+   *    background it has to sit on is near-white, so a band tuned for dark fails it outright:
+   *    turbo's minimum contrast against `--bg-inset` measures 1.16 on light. The shipped values
+   *    were measured against the real tokens -- 3.78 minimum on light, 5.02 on dark, both above
+   *    the 3:1 non-text bar at EVERY rank -- and they live in `tokens.css` beside every other
+   *    dual-valued token rather than as two literals in here.
+   */
+  function indexBand() {
+    const view = doc.defaultView;
+    const root = doc.documentElement;
+    const num = (name, dflt) => {
+      if (!view || typeof view.getComputedStyle !== 'function' || !root) return dflt;
+      try {
+        const v = Number(String(view.getComputedStyle(root).getPropertyValue(name)).trim());
+        return Number.isFinite(v) && v > 0 && v < 1 ? v : dflt;
+      } catch (e) {
+        return dflt;
+      }
+    };
+    return Object.freeze({
+      l0: num('--me2-index-l0', INDEX_RAMP_BAND_FALLBACK.l0),
+      l1: num('--me2-index-l1', INDEX_RAMP_BAND_FALLBACK.l1),
+    });
+  }
+
+  /**
+   * Is the rank picture on?
+   *
+   * 🔴 THE CONTROL IS THE STATE. There is no session field mirroring this checkbox, on purpose:
+   *    a mirrored flag is a second spelling that can outlive the control, and this screen has
+   *    already paid for a binding that outlived its node. Reading `.checked` also makes the
+   *    stuck case unreachable -- the way out is the same widget as the way in.
+   *
+   * 🔴 THE WALK'S STATE GATES IT, NOT THE CHECKBOX ALONE. A checked box over a clipped or
+   *    pooled walk would paint a partial walk as a whole one, which is the exact fold the
+   *    server split its two nulls to prevent.
+   */
+  function indexColouringActive(payload) {
+    const walk = payload && payload.index_walk;
+    if (!walk || walk.state !== INDEX_WALK_READY) return false;
+    return !!(el.indexToggle && el.indexToggle.checked);
+  }
+
+  /**
+   * The per-seat fill for the rank picture. ONE spelling, shared by the comparison picture and
+   * the unscorable one -- two constructions of it is how the two stages start disagreeing about
+   * what rank 40 looks like, and the disagreement would read as a rendering quirk.
+   */
+  function rankFillFor(payload) {
+    const band = indexBand();
+    const rankMax = payload.index_walk.rankMax;
+    return seat => indexColor(seat.cell && seat.cell.rank, rankMax, band);
+  }
+
+  /** The refusal's own words. Terse and nominal -- the reason, not a sentence about the reason. */
+  const INDEX_NOTE = Object.freeze({
+    [INDEX_WALK_TRUNCATED]: '목록 잘림 · 순번 색 없음',
+    [INDEX_WALK_POOLED]: '맵 여럿 · 순번 색 없음',
+    [INDEX_WALK_INCONSISTENT]: '순번 어긋남 · 순번 색 없음',
+  });
+
+  /**
+   * The legend strip's rank block.
+   *
+   * 🔴 NOT RENDERED AT ALL WHEN THE AXIS IS `absent`. A greyed control painting grey cells is
+   *    a feature pretending to be unavailable; an absent control is the absence itself. This is
+   *    the same rule the geometry vocabulary holds everywhere else on this screen.
+   *
+   * 🔴 THE BOX IS FORCED OFF WHENEVER THE WALK IS NOT READY. Without that, an operator who
+   *    turned it on over a good unit and moved to a clipped one would keep a checked box over a
+   *    picture that had silently stopped meaning what it meant -- and the screen would be
+   *    lying while the control said it was not.
+   */
+  function renderIndexLegend() {
+    const payload = session.payload;
+    const walk = payload && payload.index_walk;
+    const ready = !!walk && walk.state === INDEX_WALK_READY;
+    if (!ready && el.indexToggle) el.indexToggle.checked = false;
+
+    const offer = !!walk && walk.state !== INDEX_WALK_ABSENT;
+    if (el.indexControl) el.indexControl.hidden = !offer;
+    if (el.indexToggle) el.indexToggle.disabled = !ready;
+    if (el.indexNote) text(el.indexNote, ready ? '' : (INDEX_NOTE[walk && walk.state] || ''));
+
+    const on = indexColouringActive(payload);
+    if (el.indexLegend) el.indexLegend.hidden = !on;
+    if (!on) return;
+
+    // The ends of the ramp ARE the scale. A spectrum with no endpoints is a pretty picture.
+    if (el.indexMin) text(el.indexMin, '1');
+    if (el.indexMax) text(el.indexMax, String(walk.rankMax));
+    // 🔴 THE BAR IS THE RAMP, not a gradient spelled a second time in the stylesheet.
+    if (el.indexBar && el.indexBar.style) {
+      el.indexBar.style.background = rampGradientCss(walk.rankMax, indexBand());
+    }
+    // Coverage, stated. `numbered` and `rankMax` are DIFFERENT numbers and neither is derived
+    // from the other: the server's normalisation shifts each map's base to 1 rather than
+    // re-ranking densely, so a numbering with gaps has a largest rank above its own count.
+    if (el.indexNote) {
+      text(el.indexNote, walk.numbered === null ? ''
+        : `번호 ${walk.numbered} / 셀 ${walk.cellCount}`);
+    }
+  }
+
   // 🔴 THE WHOLE TABLE, WHOLE. The screen has one line per cell and a legend; the console is
   //    where the operator has been reading the real numbers all day, so it gets every candidate
   //    the server scored with both counts, in the same declaration order, winner or not. Logged
@@ -1285,7 +1413,17 @@ export function bootstrap(deps) {
       //    picture uses.
       const layout = layoutFor(unionBounds(floor.bounds, seated ? seated.bounds : null), STAGE);
       let drawnAlone = drawSeats(el.layerAlone, floor.seats, layout, 'me2-cell-floor');
-      if (seated) drawnAlone += drawSeats(el.layerAlone, seated.seats, layout, 'me2-cell-alone');
+      // 🔴 THE RANK PICTURE WORKS HERE TOO, AND THAT IS NOT A NICETY. This is the UNSCORABLE
+      //    state -- the operator is looking at it precisely because nothing else told them
+      //    anything, which is the exact situation this diagnostic was asked for. A checkbox
+      //    that is offered and then changes nothing on the one screen where the operator is
+      //    stuck is worse than no checkbox: it reads as "the numbering says nothing" when
+      //    nobody drew it. Same fill provider as the comparison picture, one spelling.
+      if (seated) {
+        drawnAlone += indexColouringActive(payload)
+          ? drawSeats(el.layerAlone, seated.seats, layout, 'me2-cell-rank', rankFillFor(payload))
+          : drawSeats(el.layerAlone, seated.seats, layout, 'me2-cell-alone');
+      }
       return { pxPerDie: layout.cell, drawn: drawnAlone };
     }
 
@@ -1304,15 +1442,36 @@ export function bootstrap(deps) {
     // operator which way to shift.
     drawSeats(el.layerFloor, floor.seats, layout, 'me2-cell-floor');
     drawSeats(el.layerOnlyOne, comparison.floorOnly, layout, 'me2-cell-onlyone');
-    drawSeats(el.layerMiss, comparison.sourceOnly, layout, 'me2-cell-miss');
 
-    const drawn = floor.seats.length + comparison.floorOnly.length + comparison.sourceOnly.length;
-    const expected = floor.seatCount + comparison.floorOnly.length + comparison.sourceOnly.length;
+    // 🔴 THE RANK PICTURE REPLACES THE SOURCE'S FILL AND NOTHING ELSE. The floor still draws,
+    //    the coverage gap still rings (a floor-only seat has no source die under it, so the
+    //    two can never contend for one rect), and not one number on the screen moves. It is a
+    //    repaint of data already in hand -- no second request, no scoring, no write.
+    //
+    // ⚠️ THE FLOOR UNDERNEATH IS LOAD-BEARING, NOT DECORATION. The ramp alone carries only
+    //    orientation: the eight candidates are isometries of the stored lattice, so the rank
+    //    picture ROTATES between them and never breaks. It is the ramp AGAINST the stationary
+    //    reference that locates it. Do not add a state that hides the floor here.
+    if (indexColouringActive(payload)) {
+      drawSeats(el.layerMiss, seated.seats, layout, 'me2-cell-rank', rankFillFor(payload));
+    } else {
+      drawSeats(el.layerMiss, comparison.sourceOnly, layout, 'me2-cell-miss');
+    }
+
+    const shown = indexColouringActive(payload) ? seated.seats.length : comparison.sourceOnly.length;
+    const drawn = floor.seats.length + comparison.floorOnly.length + shown;
+    const expected = floor.seatCount + comparison.floorOnly.length + shown;
     if (drawn !== expected) warn(`picture accounting mismatch: ${drawn} of ${expected}`);
     return { pxPerDie: layout.cell, drawn };
   }
 
-  function drawSeats(g, seats, layout, className) {
+  /**
+   * @param {(seat:object)=>string|null} [fillFor]  per-seat fill. When it answers `null` the
+   *        rect keeps the class's own styling and NO `fill` attribute is written -- the
+   *        unnumbered-die case is drawn as the absence it is, never as a substituted colour.
+   *        This mirrors `legend.colorOf`: a null is a fact, not a missing return value.
+   */
+  function drawSeats(g, seats, layout, className, fillFor) {
     if (!g || layout.empty) return 0;
     const size = layout.cell * STAGE.fillRatio;
     const inset = (layout.cell - size) / 2;
@@ -1320,6 +1479,10 @@ export function bootstrap(deps) {
     for (const seat of seats) {
       const rect = doc.createElementNS(SVG_NS, 'rect');
       rect.setAttribute('class', className);
+      if (fillFor) {
+        const fill = fillFor(seat);
+        if (fill) rect.setAttribute('fill', fill);
+      }
       rect.setAttribute('x', String(round1(layout.originX + (seat.x - layout.minX) * layout.cell + inset)));
       rect.setAttribute('y', String(round1(layout.originY + (seat.y - layout.minY) * layout.cell + inset)));
       rect.setAttribute('width', String(round1(size)));
@@ -1574,6 +1737,11 @@ export function bootstrap(deps) {
       searchWorklist((e.target && e.target.value) || '');
     });
   }
+  // 🔴 A REPAINT, AND IT DOES NOT TOUCH THE SWITCHOVER BAR. `bar.actions` measures the steps
+  //    on the path to a confirmation; counting a diagnostic that reads data already in hand
+  //    would make the bar report a cost the switchover does not pay. No fetch, no write, and
+  //    nothing in the session changes -- `render` reads the control on its way through.
+  if (el.indexToggle) el.indexToggle.addEventListener('change', () => render());
   if (el.confirmBtn) el.confirmBtn.addEventListener('click', onConfirm);
   if (el.sourceList) {
     el.sourceList.addEventListener('click', (e) => {
@@ -1787,7 +1955,13 @@ function span(doc, cls, value) {
 export function adaptPayload(raw) {
   const decoded = decodeReferenceView(raw);
   const refCells = toCells(raw && raw.reference && raw.reference.cells);
-  const srcCells = toCells(raw && raw.sources && raw.sources.cells);
+  // 🔴 RANKS ARE HANDED OVER ONLY WHEN THE DECODER SAID THE WALK IS WHOLE. A clipped pool, a
+  //    pool spanning two maps and a self-contradicting payload all arrive here with `ranks`
+  //    empty and a NAMED state, so there is no path by which a partial walk reaches the ramp
+  //    and gets drawn as a complete one.
+  const walk = decoded.indexWalk;
+  const srcCells = toCells(raw && raw.sources && raw.sources.cells,
+    walk && walk.state === INDEX_WALK_READY ? walk.ranks : null);
   // The unit's maps can disagree about what is declared, and picking a winner among
   // declarations is a JUDGEMENT the client must not make. A single frame is adopted as "what
   // is currently declared" only when the tally has exactly one entry AND nothing is
@@ -1827,6 +2001,9 @@ export function adaptPayload(raw) {
                                   confirmed_candidate_id: null,
                                   geometry: null, geometry_basis: null, cells: srcCells }] : []),
     floor_cells: refCells,
+    // The walk's STATE and its tallies. The ranks themselves are not repeated here -- they are
+    // on the cells above, and a second copy is a second thing to keep aligned.
+    index_walk: walk,
     per_candidate: decoded.scorings,
     occupancy_winner_id: null,
     map_count: decoded.counts.mapCount,
@@ -1927,16 +2104,36 @@ function answeredColumns(raw) {
 }
 
 /** `[[x, y], ...]` -> `[{x, y}, ...]`. Objects are passed through so a capture still renders. */
-function toCells(list) {
+/**
+ * @param {Array} list  the wire's cells
+ * @param {Array<number|null>|null} ranks  the serpentine rank per cell, SAME ORDER, or null
+ *
+ * 🔴 THE RANK RIDES ON THE CELL. IT IS NOT A PARALLEL ARRAY, AND THAT IS THE WHOLE REASON IT
+ *    IS ATTACHED HERE. This function FILTERS -- a cell whose coordinates are not finite is
+ *    dropped -- so a ranks array carried alongside would shift by one at the first bad row and
+ *    every die after it would be painted with its neighbour's number. The coordinates would
+ *    still be right and the picture would still look like a wafer, which is the failure mode
+ *    this domain exists to stop. The server guards the same seam from the other side and says
+ *    so in its own words (`map_alignment.py:3721`: 좌표와 **함께** 거른다).
+ *
+ *    Riding on the cell also means the rank needs no further plumbing: `computeSeating` stores
+ *    the cell verbatim on the seat, so the painter reads `seat.cell.rank`. Same road `shift`
+ *    took, and nothing downstream re-derives it.
+ */
+function toCells(list, ranks) {
   if (!Array.isArray(list)) return [];
+  const withRank = Array.isArray(ranks) && ranks.length === list.length;
   const out = [];
-  for (const c of list) {
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    // `null` is a fact here too: the die is in the walk and carries no number. Never 0.
+    const rank = withRank && Number.isInteger(ranks[i]) ? ranks[i] : null;
     if (Array.isArray(c)) {
       const x = Number(c[0]);
       const y = Number(c[1]);
-      if (Number.isFinite(x) && Number.isFinite(y)) out.push({ x, y });
+      if (Number.isFinite(x) && Number.isFinite(y)) out.push({ x, y, rank });
     } else if (c && typeof c === 'object' && Number.isFinite(Number(c.x))) {
-      out.push({ x: Number(c.x), y: Number(c.y) });
+      out.push({ x: Number(c.x), y: Number(c.y), rank });
     }
   }
   return out;

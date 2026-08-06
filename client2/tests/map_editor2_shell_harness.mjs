@@ -39,6 +39,9 @@ import { decideVerdict, VERDICT, REASON } from '../src/map2/verdict_bridge.js';
 import { buildViewModel, assertNoRatio, VIEW_STATE, UNKNOWN,
          agreementText, marginText, WORDS } from '../src/map2/view_model.js';
 import { createApiClient, ROUTES } from '../src/map2/api.js';
+// An INDEPENDENT colour oracle, so section K scores what was painted rather than re-running the
+// ramp's own arithmetic against itself.
+import { deltaE00 } from './oracle/colour_difference_oracle.mjs';
 import { readArtifact, isImplemented, rejectionSummary, unmappedRejectionCodes,
          REJECTED } from '../src/map2/artifact_gateway.js';
 import { bootstrap, ELEMENT_IDS, framesFor, paintCandidateThumbs,
@@ -1193,14 +1196,17 @@ function throws(fn, what) {
     reference: { state: 'resolved', kind: 'values', cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
     sources: {
       map_count: 1, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
+      // The serpentine ranks. TWO ADJACENT (1, 2) AND ONE FAR AWAY (40), because a fixture
+      // whose ranks are all neighbours cannot tell a working ramp from a constant colour.
+      cell_index: [1, 2, 40], cell_map: [0, 0, 0], truncated: false,
       maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
                declared_frame_source: 'declared' }],
     },
     candidates: [],
     declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
-    ruling: { winner: null },
+    ruling: { winner: null, index_axis: 'ranking' },
     excluded_total: 0,
-    stats: { scored_cells: 0, elapsed_ms: 3 },
+    stats: { scored_cells: 0, elapsed_ms: 3, source_indices_usable: 3 },
   };
   const app = bootstrap({
     document: doc,
@@ -1248,6 +1254,45 @@ function throws(fn, what) {
   ok(!vm2.confirm.enabled, 'K13 the write stays refused');
   ok(!app.peek().confirmed, 'K14 and nothing confirmed itself by being looked at');
   eq(vm2.summary.countText, UNKNOWN, 'K15 an unranked run still reports no numerals of its own');
+
+  // ── THE RANK PICTURE ON THE ONE SCREEN THE OPERATOR IS STUCK ON ───────────────
+  // 🔴 THIS IS THE UNSCORABLE STATE, WHICH IS EXACTLY WHY THE RANK PICTURE HAS TO WORK HERE.
+  //    The diagnostic was asked for by someone who had spent a day unable to see why the
+  //    aligner disagreed with them -- this is that screen. A checkbox that is offered here and
+  //    then changes nothing reads as "the numbering says nothing", when in fact nobody drew it.
+  const rankRects = () => doc.getElementById('me2-layer-alone').children
+    .filter(c => c.getAttribute('class') === 'me2-cell-rank');
+  eq(doc.getElementById('me2-index-control').hidden, false,
+     'K17 the control is offered when the walk is whole');
+  eq(rankRects().length, 0, 'K18 and nothing is rank-coloured until it is switched on');
+
+  doc.getElementById('me2-index-colour').checked = true;
+  app.render();
+  const painted = rankRects();
+  eq(painted.length, 3, 'K19 switching it on repaints the source cells by rank');
+  // 🔴 THE ASSERTION IS ON THE FILLS, NOT ON THE RANKS ARRIVING. A version that receives the
+  //    ranks and paints every die one colour passes every plumbing check ever written.
+  const fills = painted.map(r => r.getAttribute('fill'));
+  const usable = fills.length === 3 && fills.every(f => /^#[0-9a-f]{6}$/.test(f || ''));
+  ok(usable, 'K20 every die got a real colour');
+  // 🔴 THE COLOUR COMPARISONS ARE GUARDED, AND THE REASON IS MEASURED. Mutating the alone
+  //    picture to ignore the toggle left `fills` empty, and the oracle threw on `undefined`
+  //    BEFORE the `ASSERTIONS` line was printed -- so the runner saw a harness that died
+  //    rather than one that named a failure, which is exactly the disguise the debt list
+  //    exists to strip. A mutation must go red BY NAME.
+  const dAdj = usable ? deltaE00(fills[0], fills[1]) : NaN;
+  const dFar = usable ? deltaE00(fills[0], fills[2]) : NaN;
+  ok(dAdj < 6, `K21 ranks 1 and 2 are ADJACENT colours (dE00 ${dAdj.toFixed(2)})`);
+  ok(dFar > 15,
+     `K22 ranks 1 and 40 are plainly different (dE00 ${dFar.toFixed(2)}) `
+     + '-- this pair is what a constant-colour renderer fails');
+  eq(doc.getElementById('me2-index-max').textContent, '40',
+     'K23 the legend names the far end, so the spectrum has a scale');
+
+  // And it switches back off, which is the whole of "no state to get stuck in".
+  doc.getElementById('me2-index-colour').checked = false;
+  app.render();
+  eq(rankRects().length, 0, 'K24 switching it off restores the ordinary picture');
 
   // 🔴 THE OTHER DIRECTION, AND IT IS WHAT MAKES THE ONE ABOVE MEAN ANYTHING. A request that
   //    FAILED has no cells, so there is nothing to look through and the controls close again.
@@ -1997,7 +2042,12 @@ function makeDocument() {
                     'me2-confirm-note', 'me2-confirm-hint',
                     // The footer, bound since 2026-08-06 to carry the refusal state attribute.
                     'me2-confirmbar',
-                    'me2-export-btn', 'me2-paste-result']) {
+                    'me2-export-btn', 'me2-paste-result',
+                    // The rank picture, bound since 2026-08-06. 🔴 THE STUB IS A THIRD CENSUS:
+                    // neither the call-shape sweep nor the mutation anchors can see it, and an
+                    // id the shell binds but no stub exposes shows up only as `missing`.
+                    'me2-index-control', 'me2-index-colour', 'me2-index-legend',
+                    'me2-index-bar', 'me2-index-min', 'me2-index-max', 'me2-index-note']) {
     body.appendChild(node('div', id));
   }
   if (registry.get('me2-worklist-search')) registry.get('me2-worklist-search').value = '';
