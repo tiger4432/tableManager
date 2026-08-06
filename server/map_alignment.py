@@ -33,6 +33,7 @@
 import logging
 import logging.handlers
 import os
+import re
 import sys
 import time
 import uuid
@@ -759,12 +760,48 @@ def _membership(placed_keys, ref_sorted, dx, dy):
 # ---------------------------------------------------------------------------
 # 순번(serpentine index) — **절대 기준점**
 # ---------------------------------------------------------------------------
+# 🔴🔴 [2026-08-06 — 이 축은 틀린 전제 위에 세워져 있었고, 아래가 그 정정이다]
+#
+#    종전 구현은 **기준 맵의 셀을 훑어** 1..N 정답표를 만들고, 소스에 저장된 순번을 그 표와
+#    대조했다. 운영 데이터는 그렇게 매겨지지 않는다 — 제품 소유자 확정:
+#
+#        「dt index는 1~266 또는 0~255 등이지」 · 「당연히 소스별로 index 매기는거잖아」
+#
+#    **순번은 그 작업(job)이 실제로 건드린 다이 집합에 대해 매겨진다.** 기준(웨이퍼 전체
+#    유효 다이 지도)에 대해서가 아니다. 제품 소유자 단위 실측: 기준 512셀 · 소스 266셀 ·
+#    `metric=index` · `reason=no_overlap` — 1..266 수열을 1..512 정답표에 대면 **첫 셀부터
+#    끝까지 전부** 어긋난다. 데이터 문제도 config 문제도 아니고 **질문이 틀렸다.**
+#
+#    올바른 계산: 후보 프레임마다 **소스 자신의 셀을** 그 프레임으로 놓고, **그 셀들을**
+#    서펜타인으로 훑어 1..N을 매긴 뒤 저장된 순번과 대조한다. 여덟 후보에서 「어느 행이
+#    맨 위인가」와 「그 행의 왼쪽 끝이 어디인가」가 함께 바뀌므로 번호는 통째로 갈린다 —
+#    이 축이 만들 가치가 있었던 바로 그 성질이 여기서 나온다.
+#
+#    합성 실측 2026-08-06 (부분 맵, 이 축이 한 번도 작동한 적 없던 경우):
+#    기준 1313셀 · 소스 266셀(52%) · 심은 프레임 `rot90_front` → **정답 266/266, 나머지
+#    일곱은 0~22.** 종전 구현이 합성 전체 맵에서 88/87을 냈던 것과 같은 급의 분리를 부분
+#    맵에서 재현한다.
+#
+#    ✅ 그래서 **이 축은 기준을 필요로 하지 않는다.** 종전 주석이 요구하던 「번호는 네가
+#       기준으로 꽂은 그 유효 다이 지도에 대해 매겨졌어야 한다」는 데이터의 성질이 아니라
+#       **틀린 구현의 결과**였다. 부분 맵은 더 이상 특수한 경우가 아니다.
+#
+#    ✅ 그리고 **평행이동에 불변이다.** 훑기는 행을 y로 묶고 행 안을 x로 정렬할 뿐이라
+#       모든 셀을 (dx,dy)만큼 옮겨도 순서가 한 자도 안 바뀐다(실측: ±1000 오프셋에서
+#       266/266 유지). 즉 이 축은 시프트를 **쓰지 않는 것이 아니라 쓸 수가 없다** — 시프트가
+#       답을 바꿀 수 없다. 앵커(§_anchor_shift)는 이 축의 부품이 **아니고**, 점유·값 축의
+#       평행이동을 정하는 별개의 장치다.
+#
+#    ✅ 원점은 정규화한다. `0..255`와 `1..266`이 둘 다 실재하므로 **관측된 최솟값을 1로**
+#       옮겨 맞춘다 — 절대값은 아무것도 나르지 않고 **순서가 신호 전부**다. 어느 base였는지는
+#       진단이 말한다(§_diag_index_block).
+#
 # 점유도 값도 상대적이다: 「이 셀이 유효 다이 위에 있나」·「이 값이 저기 값과 같나」는 둘 다
 # **두 미지 사이의 관계**라 어느 쪽도 고정하지 못한다. 순번은 다르다 — 장비가 번호를 매길 때
 # 1번은 **정준 방위의 좌상단**이었고, 그 규칙이 이 데이터에서 유일하게 절대적인 것에 걸린
 # 진술이다. 그래서 순번은 맞춰 넣을 자유 매개변수가 아니라 **후보를 거는 시험**이다:
-# 후보 프레임을 적용한 뒤 「k번이 계산된 자리에 놓였는가」를 묻고, 여덟이 서로 다른 셀을
-# 그 자리에 놓으므로 구별은 **구성상** 생긴다.
+# 후보 프레임을 적용한 뒤 「이 셀이 몇 번째로 훑히는가」를 묻고, 여덟이 서로 다른 순서를
+# 만들므로 구별은 **구성상** 생긴다.
 #
 # 🔴 **「1번은 좌상단」은 DT 맵의 규칙이고, core 보행에 적용하면 틀린다**(제품 소유자 확정
 #    2026-08-05). DT 목적지에는 그런 원점 규칙이 있다 — 장비가 1번 자리부터 채운다. core
@@ -782,13 +819,26 @@ def _membership(placed_keys, ref_sorted, dx, dy):
 #    가져가지 않는다. core 쪽 원점은 이 규칙이 아니라 **결함 지문 대조**로 푼다(픽이 결함
 #    다이를 건너뛰므로 픽 집합의 구멍이 곧 결함 위치다) — 별개의 기계장치이고 여기 없다.
 #
-# 🔴 좌상단은 **유도된다, 고르지 않는다.** `coordinate_transformer.cell_to_visual`이
-#    `invert_y=False`에서 `yv = r - min_r + start_y`이므로 **가장 작은 y가 맨 위 행**이고,
-#    `invert_y=True`면 `yv = max_r - r + start_y`라 뒤집힌다. x는 반전 축이 없어 언제나
-#    가장 작은 x가 왼쪽이다. 그래서 「위」는 기준 맵 자신의 `grid_y_invert`가 답하고,
-#    실측(2026-08-05) 이 DB의 `wafer_map_metadata` 60여 행은 전부 `grid_y_invert: False`다.
-#    이 유도를 건너뛰고 상수로 적으면 두 읽기가 40행 떨어진다(`CORE/1X`: 1번이 (14,0) 대
-#    (16,40)) — 조용히 정확하게 틀리는 축이다.
+# 🔴 좌상단은 **유도된다, 고르지 않는다** — 그리고 2026-08-06에 그 유도가 바뀌었다.
+#    종전에는 훑기가 **기준의 시각 좌표계**에서 돌았고, 그 공간의 「위」는 기준 자신의
+#    `grid_y_invert`가 답했다. 지금은 훑기가 **물리(표준) 좌표계**에서 돈다
+#    (`map_overlay.make_physical_transform` → `to_standard_coords`: front · rot0 ·
+#    start=0 · invert_y=False). 그 좌표계에서는 `cell_to_visual`의 `invert_y=False` 가지가
+#    정의상 적용되므로 **가장 작은 y가 맨 위 행이고, 이것은 설정이 아니라 좌표계의 성질**이다.
+#    그래서 채점기가 넘기는 `top_is_min_y`는 상수 True다.
+#
+#    후보 프레임은 **플래그가 아니라 좌표를 통해** 들어온다: 회전·면은 소스 셀을 물리
+#    좌표로 보내는 사상 자체를 바꾸므로, 어느 행이 맨 위인지는 이미 좌표에 반영돼 있다.
+#    (총괄 가설은 「`top_is_min_y`가 후보 프레임에서 나와야 한다」였는데, 후보 축은
+#    회전·면 둘뿐이고 `grid_y_invert`는 후보 축이 **아니다**(§candidate_frames). 그래서
+#    그 플래그가 가리킬 후보 값은 존재하지 않는다 — 프레임의 영향은 좌표로 들어온다.)
+#
+#    🔴 **기준의 시각 좌표계에서 훑으면 조용히 틀린다.** 실측 2026-08-06: 기준이
+#    `rotation=90`을 선언한 맵에서 심은 정답이 `rot180_front`인데, 기준 시각 좌표로 훑으면
+#    `rot270_front`가 682점으로 1등이고 정답은 3점이다. 물리 좌표로 훑으면 정답이 682다.
+#    기준이 `side=back`을 선언한 맵도 같다(`rot270_back` 682 대 정답 22). 어긋남의 크기는
+#    정확히 **기준 자신의 프레임**이다. 순번은 기준에 대한 진술이 아니라 정준 방위에 대한
+#    진술이므로, 기준의 프레임이 답에 섞이면 안 된다.
 
 
 def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
@@ -796,7 +846,8 @@ def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
 
     규칙은 셋이고 **셋 다 명시적으로 고정한다** — 하나라도 암묵이면 그 축에서 조용히 틀린다:
 
-    ① **행 순서**: 맨 위 행부터. `top_is_min_y`면 y가 작은 행이 먼저다(§위 주석: 유도값).
+    ① **행 순서**: 맨 위 행부터. `top_is_min_y`면 y가 작은 행이 먼저다. 채점기는 물리
+       좌표계에서 훑으므로 언제나 True를 넘긴다(§위 주석: 좌표계의 성질이지 설정이 아니다).
     ② **방향 교대**: 첫 행은 왼→오, 다음 행은 오→왼. 교대는 **셀이 있는 행에서만** 일어난다
        (통째로 빈 행은 방문하지 않았으므로 방향을 뒤집지 않는다). 실측(2026-08-05) 이 DB의
        유효 다이 바닥 다섯 장(`CORE/YINV` 927 · `CORE/1X` 854 · `TEST/TEST` 425 ·
@@ -807,7 +858,8 @@ def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
        매겨졌다. 이 규칙은 ②와 달리 **실제로 문다**: 같은 실측에서 `TEST/TEST` 바닥은 행
        안쪽에 구멍이 있는 행을 2개 갖는다. 구멍이 번호를 먹게 두면 그 행 이후 전부가 밀린다.
 
-    반환은 `{index: (x, y)}`다 — 채점이 「k번이 어디여야 하나」를 묻지 그 역을 묻지 않는다.
+    반환은 `{index: (x, y)}`다 — 앵커가 「1번이 어디여야 하나」를 그대로 묻는다.
+    역방향(좌표→순번)이 필요한 자리는 `serpentine_rank`가 답한다.
     """
     present = {}
     for (x, y) in (cells or ()):
@@ -820,6 +872,216 @@ def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
             out[i] = (x, y)
             i += 1
     return out
+
+
+def serpentine_rank(cells, top_is_min_y: bool = True) -> dict:
+    """같은 훑기의 **역**: `{(x, y): 순번}`. 새 채점이 묻는 방향이 이쪽이다.
+
+    🔴 훑기를 두 번 구현하지 않는다 — `serpentine_index`를 뒤집는다. 순서 규칙이 두 곳에
+       살면 둘이 갈리는 날 화면은 멀쩡하고 번호만 틀린다(이 파일이 반복해서 막는 「하나의
+       사실에 두 철자」의 계열).
+
+    좌표가 중복되면 **먼저 훑힌 번호가 남는다** — 같은 자리에 두 번 서는 일은 훑기에
+    없으므로 중복은 입력의 사실이고, 임의로 고르면 같은 입력이 실행마다 다른 답을 낸다.
+    """
+    out = {}
+    for k, xy in serpentine_index(cells, top_is_min_y=top_is_min_y).items():
+        out.setdefault(xy, k)
+    return out
+
+
+#: 앵커가 **왜 안 걸렸는가**. 「안 걸렸다」 하나로 접으면 조작자가 고칠 곳을 못 찾는다 —
+#: 순번 컬럼을 선언하는 것과, 단위를 맵 하나로 좁히는 것과, 중복 번호를 고치는 것은
+#: 서로 다른 수리다. `None`이면 걸렸다는 뜻이다.
+ANCHOR_NO_INDEX = "no_index_values"            # 번호를 실은 셀이 없다
+ANCHOR_NO_REFERENCE = "no_reference_cells"     # 기준에 좌상단이라 부를 셀이 없다
+ANCHOR_MULTI_MAP = "multiple_source_maps"      # 맵마다 자기 1번이 있어 앵커가 여럿이다
+ANCHOR_MIN_NOT_UNIQUE = "minimum_index_not_unique"   # 최소 순번이 두 셀 이상에 있다
+ANCHOR_DISABLED = "disabled"                   # 스위치가 꺼져 있다(§ANCHOR_PLACEMENT_ENABLED)
+
+#: `ruling.placement` — 평행이동을 **누가 정했는가**. 판정 dict 자신이 나른다:
+#: 앵커로 놓인 배치와 탐색으로 놓인 배치는 다른 주장이고, 판정을 옮겨 적는 자리(확정
+#: 기록·목록)가 옆 필드를 흘리면 그 구별이 사라진다 — `geometry_assumed`·`metric`과 같은 이유.
+PLACEMENT_ANCHOR = "anchor"      # 최소 순번 다이 → 기준 좌상단. 데이터가 정했다
+PLACEMENT_SEARCH = "shift_search"  # 겹침 최대화 탐색. 포화하면 동점 규칙이 정한다
+
+#: 🔴 앵커를 통째로 끄는 **단 하나의 스위치**. 총괄이 「점유·값 축까지 앵커로 바꾸는 것은
+#:    더 큰 변경이니 몰래 접지 말라」고 못 박았으므로, 되돌림이 한 줄이어야 한다.
+#:    False로 두면 순번이 있든 없든 종전 시프트 탐색만 돈다(순번 축은 영향 없음 — 그 축은
+#:    평행이동에 불변이다).
+ANCHOR_PLACEMENT_ENABLED = True
+
+
+def _normalised_indices(source_indices, cell_owner):
+    """저장된 순번 → **맵마다 1부터 다시 시작하는** 정수 배열 + 「번호가 있는가」 진리값.
+
+    `0..255`와 `1..266`이 둘 다 실재하므로 **관측된 최솟값을 1로** 옮긴다 — 절대값은
+    아무것도 나르지 않고 순서가 신호 전부다(제품 소유자 확정 2026-08-06).
+
+    base는 **맵마다** 잡는다. 한 단위에 base가 다른 두 맵이 있으면 전역 최솟값으로
+    맞추는 순간 한쪽이 통째로 밀리고, 그 오답은 개수로 안 잡힌다.
+
+    반환 `(idx_k, idx_has, bases)`. 번호를 실은 셀이 하나도 없으면 `(None, None, {})` -
+    **없음을 0으로 접지 않는다**(§[3a]).
+    """
+    import numpy as np
+    if not source_indices or not any(k is not None for k in source_indices):
+        return None, None, {}
+    owner = cell_owner or [0] * len(source_indices)
+    raw, flags = [], []
+    for k in source_indices:
+        try:
+            raw.append(None if k is None else int(k))
+        except (TypeError, ValueError):
+            raw.append(None)
+        flags.append(raw[-1] is not None)
+    bases = {}
+    for i, k in enumerate(raw):
+        if k is None:
+            continue
+        m = owner[i] if i < len(owner) else 0
+        bases[m] = k if m not in bases else min(bases[m], k)
+    out = [0] * len(raw)
+    for i, k in enumerate(raw):
+        if k is None:
+            continue
+        m = owner[i] if i < len(owner) else 0
+        out[i] = k - bases[m] + 1
+    return np.array(out, dtype="int64"), np.array(flags, dtype=bool), bases
+
+
+def _index_member(phys, cell_owner, idx_k, idx_has):
+    """셀마다 「이 셀이 훑기에서 몇 번째인가 == 저장된 순번인가」.
+
+    훑기는 **맵 단위**로, **그 맵의 셀 전부**를 대상으로 돈다.
+
+    🔴 번호가 없는 셀도 **훑기에는 들어간다.** 순번은 작업이 건드린 다이 집합에 매겨졌고,
+       번호 칸이 빈 행도 그 작업이 건드린 다이다 - 빼면 그 뒤 셀이 전부 한 칸씩 당겨져
+       번호가 통째로 밀린다(§serpentine_index ③이 격자 구멍에 대해 말하는 것과 같은 계열,
+       한 층 위). 채점은 번호가 있는 셀에서만 한다.
+    """
+    import numpy as np
+    hits = np.zeros(len(phys), dtype=bool)
+    owner = cell_owner or [0] * len(phys)
+    by_map = {}
+    for i in range(len(phys)):
+        by_map.setdefault(owner[i] if i < len(owner) else 0, []).append(i)
+    for rows in by_map.values():
+        # 물리(정준) 좌표계에서 훑는다 → 맨 위는 언제나 가장 작은 y(§순번 주석).
+        rank = serpentine_rank([phys[i] for i in rows], top_is_min_y=True)
+        for i in rows:
+            if idx_has[i] and rank.get(tuple(phys[i])) == int(idx_k[i]):
+                hits[i] = True
+    return hits
+
+
+def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left):
+    """후보마다 「최소 순번 다이를 기준 좌상단에 얹는」 평행이동 → `({프레임: (dx,dy)}, 사유)`.
+
+    제품 소유자 확정 2026-08-06: 「소스 조각 좌상단이 기준맵 좌상단 되게 하는게 어려움?」 —
+    최소 순번 다이는 DT 장비가 **처음 건드린** 다이이고 장비는 유효 다이 영역의 좌상단부터
+    시작한다. 그래서 평행이동은 **푸는 값이 아니라 읽는 값**이다.
+
+    🔴 걸리지 않는 경우를 **이름으로** 낸다. 앵커가 없다는 사실은 화면이 「탐색으로 놓았다」를
+       말하기 위해 필요하고, 사유마다 수리가 다르다(§ANCHOR_*).
+
+    🔴 **맵이 둘 이상이면 걸지 않는다.** 순번은 맵마다 1부터 다시 시작하므로 최소 순번 다이가
+       맵 수만큼 있고, 그중 하나를 고르는 규칙은 데이터에 없다 — 지어내면 그것이 두 번째
+       임의 배치이고, 이 변경이 없애려는 바로 그것이다.
+    """
+    if not ANCHOR_PLACEMENT_ENABLED:
+        return None, ANCHOR_DISABLED
+    if reference_top_left is None:
+        return None, ANCHOR_NO_REFERENCE
+    if not source_indices or not any(k is not None for k in source_indices):
+        return None, ANCHOR_NO_INDEX
+    owner = cell_owner or [0] * len(source_indices)
+    if len({owner[i] for i in range(len(source_indices))
+            if source_indices[i] is not None}) > 1:
+        return None, ANCHOR_MULTI_MAP
+    numbered = []
+    for i, k in enumerate(source_indices):
+        if k is None:
+            continue
+        try:
+            numbered.append((int(k), i))
+        except (TypeError, ValueError):
+            continue
+    if not numbered:
+        return None, ANCHOR_NO_INDEX
+    lowest = min(k for k, _ in numbered)
+    at = [i for k, i in numbered if k == lowest]
+    if len(at) != 1:
+        return None, ANCHOR_MIN_NOT_UNIQUE
+    i_min = at[0]
+    out = {}
+    for c in per_candidate:
+        placed = c.get("_placed")
+        if not placed or i_min >= len(placed):
+            # 이 후보는 좌표를 못 놓았다 - 아래 루프가 `scored=False`로 걸러낸다.
+            out[c["frame"]] = (0, 0)
+            continue
+        out[c["frame"]] = (int(reference_top_left[0]) - int(placed[i_min][0]),
+                           int(reference_top_left[1]) - int(placed[i_min][1]))
+    return out, None
+
+
+# ---------------------------------------------------------------------------
+# 값 비교 — **철자가 아니라 값을 견준다**
+# ---------------------------------------------------------------------------
+# 🔴 종전 규칙은 `str(rv) == str(sv)`였고, 라이브에서 그 엄격함이 통째로 물었다(제품 소유자
+#    데이터 2026-08-06: 진단 추적이 `compare 2.0 vs '1'`을 찍었다 — 소스 값은 **float**로,
+#    기준 값은 문자열로 도착한다). 그러면 **같은 뜻인데 철자가 다른** 자리가 전부 MISS이고,
+#    화면에는 「값 일치 0건」이 뜬다. 기하가 멀쩡한데 기하 실패로 읽히는 그 증상이다.
+#
+# 규칙은 둘이고 **어느 쪽이 발화했는지 진단이 말한다**(§_diag_compare_probe):
+#   ① 양쪽이 **평범한 십진수**로 읽히면 수로 견준다 → `2.0` == `'2'` == `2` == `'02'`.
+#   ② 아니면 **양끝 공백을 떼고 대소문자를 접어** 문자열로 견준다 → `'B1 '` == `'b1'`.
+#
+# 🔴 「평범한 십진수」는 `float()`가 받는 것보다 **좁다**. `float('1E1')`은 10.0이고
+#    `float('nan')`은 NaN인데, `1E1`은 bin 코드로 실재할 수 있는 철자이고 NaN은 자기 자신과
+#    같지 않다. `float()`를 그대로 쓰면 값 어휘가 조용히 넓어져 **다음 라운드의 미스터리**가
+#    된다 — 총괄 지시: 「말없이 넓히지 말 것」. 그래서 수용기는 정규식이고, 지수 표기·
+#    `nan`·`inf`는 문자열로 남는다.
+_PLAIN_NUMBER = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)$")
+
+#: `ruling.value_axis` — 값 축이 **이 판정에서 무엇을 했는가**. `index_axis`와 같은 어휘이고
+#: 같은 이유로 판정 dict 자신이 나른다. 「쟀는데 순위를 안 냈다」는 조작자에게 필요한 사실이다:
+#: 후보 행에는 값 수치가 실려 나가므로, 이 사실이 없으면 화면은 그 수치가 판정을 만들었다고 읽는다.
+VALUE_AXIS_RANKING = "ranking"
+VALUE_AXIS_REPORTED = "reported"
+VALUE_AXIS_ABSENT = "absent"
+
+#: 값 축이 **순위를 못 가져간 이유**. 둘 다 종전에는 `no_overlap`이라는 같은 낱말로 나왔고,
+#: 그 낱말은 조작자를 좌표를 고치러 보낸다 — 고칠 것은 값 컬럼 쪽이었다.
+VALUE_AXIS_REF_ALL_NULL = "reference_values_all_null"
+VALUE_AXIS_DISJOINT = "vocabularies_disjoint"
+
+_VALUE_AXIS_REASON_TEXT = {
+    VALUE_AXIS_REF_ALL_NULL: "기준 값 컬럼 전부 NULL - 값 축 순위 제외, 점유로 판정",
+    VALUE_AXIS_DISJOINT: "기준·소스 값 어휘 교집합 0 - 값 축 순위 제외, 점유로 판정",
+}
+
+
+def _value_key(v):
+    """비교용 정규화 키. `None`은 키가 없다 — 비교 자체가 성립하지 않는다(§values_equal)."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if _PLAIN_NUMBER.match(s):
+        return ("n", float(s))
+    return ("t", s.casefold())
+
+
+def values_equal(a, b) -> bool:
+    """기준 값과 소스 값이 **같은 것을 뜻하는가**. `None`은 어느 쪽도 못 맞힌다.
+
+    🔴 `None == None`을 참으로 두지 않는다. 「양쪽 다 값이 없다」는 일치가 아니라 **잴 것이
+       없었다**이고, 참으로 세면 값이 비어 있는 맵이 여덟 후보에서 만점을 받는다.
+    """
+    if a is None or b is None:
+        return False
+    return _value_key(a) == _value_key(b)
 
 
 # ---------------------------------------------------------------------------
@@ -1160,40 +1422,34 @@ def _diag_compare_probe(ref_vc: dict, src_vc: dict) -> list:
     Nothing here feeds scoring. These are probes, printed and discarded.
     """
     a, b = ref_vc["compared"], src_vc["compared"]
-    strict = a & b
-
-    def _num(s):
-        try:
-            return repr(float(s))
-        except (TypeError, ValueError):
-            return None
-
-    trim = {s.strip().casefold() for s in a} & {s.strip().casefold() for s in b}
-    na = {n for n in (_num(s) for s in a) if n is not None}
-    nb = {n for n in (_num(s) for s in b) if n is not None}
-    num = na & nb
+    legacy = a & b                                   # 종전 규칙: `str()` 후 정확 일치
+    # 지금 채점기가 실제로 쓰는 키. 이 줄이 **채점기와 같은 함수를 부른다** - 진단이 자기
+    # 규칙을 따로 구현하면 둘이 갈리는 날 로그가 코드를 설명하지 못한다.
+    shared = {_value_key(s) for s in a} & {_value_key(s) for s in b}
+    numeric = {k for k in shared if k[0] == "n"}
     lines = [
-        "  compare rule      : str(reference) == str(source)   [exact, after str()]",
-        "  shared, as compared        : %d  %s"
-        % (len(strict), sorted(strict)[:_DIAG_SAMPLE_VALUES] if strict else "<none>"),
-        "  shared, if trimmed+casefold: %d" % len(trim),
-        "  shared, if numeric         : %d" % len(num),
+        "  compare rule      : plain decimals -> NUMERIC  (2.0 == '2' == '02');",
+        "                      everything else -> strip() + casefold() TEXT ('B1 ' == 'b1').",
+        "                      Scientific notation, nan and inf stay TEXT on purpose - "
+        "'1E1' is a spellable bin code.",
+        "  shared, old rule (exact str) : %d  %s"
+        % (len(legacy), sorted(legacy)[:_DIAG_SAMPLE_VALUES] if legacy else "<none>"),
+        "  shared, rule now in force    : %d  (%d numeric, %d text)  %s"
+        % (len(shared), len(numeric), len(shared) - len(numeric),
+           sorted(str(k[1]) for k in shared)[:_DIAG_SAMPLE_VALUES]
+           if shared else "<none>"),
     ]
-    if not strict and (trim or num):
-        which = []
-        if trim:
-            which.append("whitespace/case")
-        if num:
-            which.append("numeric formatting (e.g. '3' vs '3.0')")
+    if shared and not legacy:
         lines.append(
-            "  >> STRICTNESS FINDING: the two vocabularies share NOTHING as compared, "
-            "but DO overlap once %s is normalised. The comparison being exact is then "
-            "the whole cause. NOT changed by this round." % " and ".join(which))
-    elif not strict:
+            "  >> THE NORMALISATION IS LOAD-BEARING HERE: the two vocabularies shared "
+            "NOTHING under the old exact-string rule and share %d under the rule now in "
+            "force. Every one of those was a MISS before 2026-08-06." % len(shared))
+    elif not shared:
         lines.append(
-            "  >> The two vocabularies are DISJOINT under every probe above: no value "
-            "of the source can equal any value of the reference at any coordinate "
-            "under any frame. This is not a geometry problem.")
+            "  >> The two vocabularies are DISJOINT even after normalisation: no value "
+            "of the source can equal any value of the reference at any coordinate under "
+            "any frame. This is NOT a geometry problem, and the value axis is demoted "
+            "rather than allowed to rank on zeros.")
     return lines
 
 
@@ -1510,11 +1766,14 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                               for i in range(len(sm["_use"]))]
         scored_cells += len(sm["_use"])
 
-    # 🔴 순번의 기대 자리는 **기준 맵 하나에서** 나오고 후보와 무관하다 - 후보가 바꾸는 것은
-    #    소스 좌표가 어디로 가느냐지, k번이 어디여야 하느냐가 아니다. 그래서 한 번만 만든다.
-    #    「위」는 기준의 `grid_y_invert`가 답한다(§serpentine_index: 유도지 선택이 아니다).
-    expected_by_index = serpentine_index(
+    # 🔴 기준의 훑기는 이제 **정답표가 아니라 앵커 하나**를 준다(§순번 주석 2026-08-06).
+    #    종전에는 이 표가 소스의 k번을 채점하는 정답이었고, 그것이 이 축이 부분 맵에서
+    #    0점을 낸 원인이었다. 지금 이 표에서 쓰는 것은 **1번 자리 하나**다 - 「소스의 최소
+    #    순번 다이가 유효 다이 영역의 좌상단」이라는 제품 소유자의 규칙이 가리키는 자리.
+    #    기준이 없거나 셀이 없으면 앵커도 없고, 그때는 종전 시프트 탐색이 그대로 돈다.
+    reference_walk = serpentine_index(
         ref_pairs, top_is_min_y=not bool((reference_meta or {}).get("grid_y_invert")))
+    reference_top_left = reference_walk.get(1)
 
     # [2] 후보마다 **메타를 통째로 만들어** 변환한다 (모듈 상단 전제).
     #
@@ -1524,6 +1783,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     per_candidate = []
     source_values = None
     source_indices = None
+    cell_owner = None
     for frame in CANDIDATE_FRAMES:
         if parse_frame(frame)[1] not in considered:
             per_candidate.append({"frame": frame, "keys": None, "reason": None,
@@ -1532,11 +1792,18 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         placed = []
         vals = []
         ks = []
+        # 순번 훑기가 도는 좌표. **놓인 좌표가 아니라 물리(정준) 좌표**다 - 기준의 프레임이
+        # 답에 섞이면 안 되기 때문이고, 실측이 그 크기를 준다(§순번 주석 2026-08-06).
+        phys = []
+        # 셀이 **어느 맵의 것인가**. 순번은 맵마다 자기 1..N을 다시 시작하므로(제품 소유자:
+        # 「소스별로 index 매기는거잖아」) 여러 장을 한 훑기에 담으면 두 작업의 번호가 한
+        # 수열로 섞여 둘 다 틀린다. 그래서 훑기는 **맵 단위**로 돈다.
+        owner = []
         failed = None
         # Worked-example capture. Rows are taken **at the line the scorer places
         # the cell**, so the printed arithmetic is the arithmetic that ran.
         trace = []
-        for sm in usable:
+        for mi, sm in enumerate(usable):
             if not sm.get("_use"):
                 continue
             # 🔴 `_meta`이지 `meta`가 아니다. 가정이 걸린 맵은 **빌린 사본** 위에서 후보를
@@ -1548,6 +1815,9 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 break
             try:
                 tf = map_overlay.make_frame_transform(src_meta, reference_meta)
+                # 순번 축은 기준을 **모른다**. 같은 `src_meta`에서 물리 좌표만 뽑는
+                # 별도 사상이고, 거절 규약은 같다(§map_overlay.make_physical_transform).
+                ptf = map_overlay.make_physical_transform(src_meta)
             except ValueError as e:
                 failed = str(e)
                 break
@@ -1562,6 +1832,8 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                         "src_axes": map_overlay.frame_axes(src_meta),
                         "src_phys": _d_frame_phys(src_meta)})
                 placed.append(p)
+                phys.append(ptf(x, y))
+                owner.append(mi)
                 vals.append(sm["_use_values"][i])
                 ks.append(sm["_use_indices"][i])
         if failed is not None:
@@ -1575,8 +1847,16 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             source_values = vals
         if source_indices is None:
             source_indices = ks
+        if cell_owner is None:
+            cell_owner = owner
         per_candidate.append({"frame": frame, "keys": _encode(placed), "reason": None,
                               "_trace": trace,
+                              # 순번 훑기의 입력. 후보마다 **다르다** - 회전·면이 바꾸는
+                              # 것이 바로 이 좌표이고, 그래서 여덟이 서로 다른 순서를 만든다.
+                              "_phys": phys,
+                              # 앵커 자리. 놓인 좌표계(기준 시각)에서 잰다 - 앵커가 정하는
+                              # 것은 점유·값 축의 **평행이동**이고 그 축들은 그 좌표계에 산다.
+                              "_placed": placed,
                               # Post-transform extent. Taken from `placed` before
                               # it is encoded away, so it is the coordinates that
                               # were actually laid on the reference.
@@ -1592,59 +1872,96 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    변환기가 거절했는가만 말하고, 잰 것이 있었는가는 말하지 않는다.
     #    빈 배열과 None은 조작자에게 다른 사실이므로 여기서 접지 않고 `scored` 하나로 합류시킨
     #    뒤 `_rule_on`이 `placed_cells`로 다시 가른다.
+    # 🔴 [3-0] **순번이 있으면 평행이동은 푸는 값이 아니라 읽는 값이다.**
+    #    제품 소유자 확정 2026-08-06: 「소스 조각 좌상단이 기준맵 좌상단 되게」 -
+    #    최소 순번 다이가 유효 다이 영역의 좌상단이고, 그 한 쌍이 평행이동을 정한다.
+    #
+    #    시프트 탐색이 왜 이 자리에서 답을 못 내는가는 잰 값이 있다(합성 실측 2026-08-06,
+    #    기준 1313셀 · 소스 266셀): **여덟 후보 전부 일치 266/266, 시프트 (0,0), 그리고
+    #    답이 갈리는 셀 0개.** 부분 맵은 어떤 프레임 어떤 평행이동에서도 유효 다이 위에
+    #    앉으므로 탐색이 최대화하는 목적함수가 **포화**한다. 포화한 목적함수에서 고른
+    #    1등은 데이터가 고른 것이 아니라 동점 처리 규칙(원점에 가까운 쪽)이 고른 것이고,
+    #    (0,0)이 맞는 것은 운일 뿐이다. 제품 소유자가 본 것이 정확히 그것이다 -
+    #    「화면 보면 어긋나 있는데 오버랩 266이래」.
+    #
+    #    좌표에 낯선 원점이 섞인 경우(같은 실측, 소스를 (5,-4)만큼 옮겨 둠)는 더 분명하다:
+    #    탐색은 여덟 후보 전부 196으로 포화하고 창 끝(±3)에 붙은 시프트를 고르는데,
+    #    앵커는 정답 프레임에 266을, 나머지 일곱에 1~186을 준다. **앵커는 포화하지 않는다.**
+    #
+    #    🔴 그러나 앵커는 **주장을 하나 산다**: 이 작업이 웨이퍼의 좌상단 유효 다이부터
+    #    시작했다는 주장. 그 주장이 거짓인 작업(아래쪽 절반만 도는 부분 맵 등)에서는
+    #    앵커가 틀린 자리에 맵을 놓는다. 그래서 ⓐ 순번이 있을 때만 걸고, ⓑ 어느 쪽이
+    #    돌았는지를 판정이 직접 나르며(`ruling.placement`), ⓒ 되돌리는 스위치를 하나로 둔다.
+    anchor_dxy, anchor_reason = _anchor_shift(
+        per_candidate, source_indices, cell_owner, reference_top_left)
     for c in per_candidate:
         if c["keys"] is None or c["keys"].size == 0:
             c.update(dx=None, dy=None, agreement=0, member=None, scored=False)
             continue
-        dx, dy, hit = _solve_shift(c["keys"], ref_sorted, shift_window)
-        c.update(dx=dx, dy=dy, agreement=int(hit), scored=True,
-                 member=_membership(c["keys"], ref_sorted, dx, dy))
+        if anchor_dxy is not None:
+            dx, dy = anchor_dxy[c["frame"]]
+        else:
+            dx, dy, _hit = _solve_shift(c["keys"], ref_sorted, shift_window)
+        mem = _membership(c["keys"], ref_sorted, dx, dy)
+        c.update(dx=dx, dy=dy, agreement=int(np.count_nonzero(mem)), scored=True,
+                 member=mem)
 
-    # [3a] 순번 일치: **k번 셀이 계산된 자리에 놓였는가**, 셀마다.
+    # [3a] 순번 일치: **이 셀이 몇 번째로 훑히는가 == 저장된 순번인가**, 셀마다.
     #
-    # 🔴 **시프트를 쓰지 않는다.** 이것이 이 축의 전부다. 점유·값은 두 미지 사이의 관계라
-    #    평행이동을 풀어 줘야 말이 되지만, 순번은 정준 방위의 절대 좌표를 주장한다 - 여기에
-    #    맞춰 넣는 평행이동을 허용하면 방금 없앤 자유 매개변수를 되살리는 것이고, 「거의 맞는
-    #    기준」에서 시프트가 점유를 조금 올리려고 맵을 밀면 순번은 통째로 무너진다(그 경우가
-    #    바로 근사 일치를 근사 일치로 읽어야 하는 자리다). 그래서 `c["keys"]` 원본과 겨룬다.
+    # 🔴 **시프트를 쓰지 않는다 — 쓸 수가 없다.** 훑기는 행을 y로 묶고 행 안을 x로 정렬할
+    #    뿐이라 모든 셀을 (dx,dy)만큼 옮겨도 순서가 한 자도 안 바뀐다(실측 2026-08-06:
+    #    ±1000 오프셋에서 266/266 유지). 그래서 이 축은 평행이동에 **불변**이고, 앵커가
+    #    맞든 틀리든 이 축의 답은 같다. 앵커는 점유·값 축의 장치다.
     #
-    # 기대 자리는 후보와 무관하므로 **한 번 만들어 여덟이 나눠 쓴다** — 후보마다 다시 만들면
-    # 그 사본이 갈릴 수 있고, 갈리면 여덟이 서로 다른 정답표를 채점한다.
+    # 🔴 **훑기는 맵 단위로 돈다.** 순번은 작업마다 자기 1..N을 다시 시작하므로(제품 소유자:
+    #    「소스별로 index 매기는거잖아」) 단위에 맵이 둘이면 두 수열을 한 훑기에 담는 순간
+    #    둘 다 틀린다. `cell_owner`가 셀마다 어느 맵인지를 나르고, base도 맵마다 따로 잡는다.
+    #
+    # 🔴 **원점은 관측된 최솟값으로 정규화한다.** `0..255`와 `1..266`이 둘 다 실재하고
+    #    절대값은 아무것도 나르지 않는다 - 순서가 신호 전부다. 어느 base였는지는 진단이 말한다.
+    #
     # 🔴 **번호를 안 실은 실행과 번호가 다 틀린 실행은 다른 사실이다.** `_use_indices`는 셀
     #    개수만큼 None을 채우므로 「순번 컬럼이 없다」도 비지 않은 리스트로 도착한다 - 그것을
     #    「순번이 있다」로 읽으면 여덟이 일치 0을 받고, 이 축이 가장 강한 축이라 **점유·값
     #    판정을 통째로 밀어내고** 0으로 순위를 낸다. 이 파일이 세 번 경고한 「없음을 0으로
     #    접기」가 새 축에서 재발한 자리이고, 기존 스위트가 이 형태로 25건 빨개져서 잡혔다.
-    idx_expected, idx_has = None, None
-    if (source_indices and expected_by_index
-            and any(k is not None for k in source_indices)):
-        pairs, flags = [], []
-        for k in source_indices:
-            pos = None
-            if k is not None:
-                try:
-                    pos = expected_by_index.get(int(k))
-                except (TypeError, ValueError):
-                    pos = None
-            # 🔴 순번이 없거나 기준의 범위 밖이면 **분모에서도 빠진다.** 0으로 세면
-            #    「번호가 있었는데 틀렸다」가 되어 정반대를 말하고, 부분 맵에서 분모가
-            #    통째로 커져 어떤 후보도 문턱을 못 넘는다(순번이 희소한 것이 정상이다).
-            flags.append(pos is not None)
-            pairs.append(pos if pos is not None else (0, 0))
-        idx_has = np.array(flags, dtype=bool)
-        idx_expected = _encode(pairs)
+    idx_k, idx_has, index_bases = _normalised_indices(source_indices, cell_owner)
     for c in per_candidate:
-        if (not c["scored"] or idx_expected is None
-                or c["keys"].size != idx_expected.size):
+        if (not c["scored"] or idx_has is None
+                or len(c.get("_phys") or ()) != idx_has.size):
             c["index_member"] = None
             continue
-        c["index_member"] = idx_has & (c["keys"] == idx_expected)
+        c["index_member"] = _index_member(c["_phys"], cell_owner, idx_k, idx_has)
 
     # [3b] 값 일치: 이 후보가 앉힌 자리의 **기준 값과 소스 값이 같은가**, 셀마다.
     #      기준이나 소스에 값이 없으면 **None이지 0이 아니다.** 0으로 내보내면 「값으로 재
     #      보았고 하나도 안 맞았다」가 되어 「값으로 잴 수 없었다」의 정반대를 말한다.
-    scorable_values = bool(ref_value_at) and bool(source_values) and \
+    #
+    # 🔴 [2026-08-06] **「값을 실었다」는 「값을 견줄 수 있다」가 아니다.** `reference.kind`가
+    #    `values`인 것은 양쪽에 값 컬럼이 있다는 뜻일 뿐이다. 여기서 갈리는 두 가지를
+    #    종전에는 둘 다 못 봤고, 둘 다 **같은 증상**으로 나왔다 - 일치 0 → `no_overlap` →
+    #    화면은 기하 실패로 읽는다. 조작자가 하루를 앉아 있던 이유가 그것이다.
+    #      ⓐ 기준 값 컬럼이 통째로 NULL이다. `ref_value_at`은 좌표마다 키가 있으므로
+    #         **비어 있지 않고**, 값만 전부 None이다 → 종전 관문을 그대로 통과했다.
+    #      ⓑ 두 어휘가 하나도 안 겹친다. 유효 다이 바닥의 낱말(`'1'`·`'E1'`)은 bin 코드
+    #         (`'B1'`·`'0'`·`'2'`)가 아니다. 어느 프레임 어느 좌표에서도 같을 수 없다.
+    #    둘 다 **거절이 아니라 강등**이다(제품 소유자 판정: 기능은 일단 돈다) - 값 축은
+    #    수치를 그대로 싣되 순위를 가져가지 않고, 점유로 내려앉으며, 사유를 이름으로 낸다.
+    ref_has_value = any(v is not None for v in ref_value_at.values())
+    scorable_values = bool(ref_value_at) and ref_has_value and bool(source_values) and \
         any(v is not None for v in source_values)
+    # 🔴 어휘 교집합은 **⑴의 정규화를 거친 뒤에** 잰다. 정규화 전 교집합으로 판정하면
+    #    `2.0`/`'2'`만 공유하는 실제 데이터를 「겹치는 것 없음」이라 부르고 강등해 버린다 -
+    #    방금 고친 결함으로 다음 결함을 만드는 꼴이다.
+    value_vocab_shared = None
+    if scorable_values:
+        ref_keys_v = {_value_key(v) for v in ref_value_at.values() if v is not None}
+        src_keys_v = {_value_key(v) for v in source_values if v is not None}
+        value_vocab_shared = ref_keys_v & src_keys_v
+    value_axis_reason = (
+        None if scorable_values and value_vocab_shared
+        else VALUE_AXIS_REF_ALL_NULL if bool(ref_value_at) and not ref_has_value
+        else VALUE_AXIS_DISJOINT if scorable_values else None)
     for c in per_candidate:
         if not c["scored"] or not scorable_values:
             c["value_member"] = None
@@ -1661,7 +1978,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         for i in np.flatnonzero(member):
             rv = ref_value_at.get(int(shifted[i]))
             sv = source_values[i] if i < len(source_values) else None
-            hits[i] = rv is not None and sv is not None and str(rv) == str(sv)
+            hits[i] = values_equal(rv, sv)
             if t_at is not None and int(i) in t_at:
                 key = int(shifted[i])
                 t_at[int(i)].update(
@@ -1682,9 +1999,14 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     # 무게는 **소스 셀의 값**으로 찾는다. 일치한 자리에서는 기준 값과 소스 값이 같으므로
     # 둘 중 무엇으로 찾아도 같은 수가 나오고, 안 맞은 자리는 애초에 세지 않는다.
     # 선언 없는 값은 1이다. 선언된 0은 0이고, 그 둘은 다른 주장이다(§load_alignment_value_weights).
+    #
+    # 🔴 값 축이 순위를 못 가져가면 **무게도 걸지 않는다.** 무게는 값 일치를 배로 키우는
+    #    장치인데 그 일치가 순위에 안 쓰이면 배수만 늘고 판정은 그대로다 - 그리고 축 이름이
+    #    `values_weighted`가 되어 화면이 「무게로 뽑은 1등」이라고 말한다. 안 쓴 축의 이름을
+    #    판정에 다는 것은 이 파일이 반복해서 막는 「없는 것을 있다고 말하기」다.
     weights = value_weights or {}
     weight_vec = None
-    if weights and scorable_values:
+    if weights and scorable_values and value_axis_reason is None:
         weight_vec = np.array(
             [(float(weights.get(str(v), 1.0)) if v is not None else 1.0)
              for v in (source_values or [])], dtype=float)
@@ -1817,9 +2139,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    성립을 코드가 알 수 없으므로 선언이 답한다.
     scorable_indices = any(c.get("index_agreement") is not None for c in per_candidate)
     index_ranks = scorable_indices and index_thresholds_complete(index_thresholds)
+    # 🔴 **잰 것과 순위를 낸 것은 다르다** — 값 축도 순번 축과 같은 규율을 받는다.
+    #    `scorable_values`는 「비교를 돌렸다」이고, `value_ranks`는 「그 비교가 뜻이 있다」이다.
+    #    둘을 한 낱말로 접었던 것이 이 라운드의 결함 ⓐ·ⓑ였다(§[3b]).
+    value_ranks = scorable_values and value_axis_reason is None
     metric = (METRIC_INDEX if index_ranks
               else METRIC_VALUES_WEIGHTED if weight_vec is not None
-              else METRIC_VALUES if scorable_values else METRIC_OCCUPANCY)
+              else METRIC_VALUES if value_ranks else METRIC_OCCUPANCY)
     # 후보들은 **같은 소스 셀을 같은 순서로** 놓으므로 놓인 개수는 후보마다 같다. max는 그 사실에
     # 기대지 않고도 「무엇이든 놓였는가」를 답한다.
     placed_cells = max((int(c["keys"].size) for c in per_candidate
@@ -1859,6 +2185,18 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     ruling["index_axis"] = (INDEX_AXIS_RANKING if index_ranks
                             else INDEX_AXIS_REPORTED if scorable_indices
                             else INDEX_AXIS_ABSENT)
+    # 값 축도 자기 상태를 나른다. 세 상태가 서로 다른 수리를 부른다: 값 컬럼 선언 /
+    # 값 컬럼 내용 수리(NULL·어휘) / 없음.
+    ruling["value_axis"] = (VALUE_AXIS_RANKING if metric in VALUE_METRICS
+                            else VALUE_AXIS_REPORTED if scorable_values
+                            else VALUE_AXIS_ABSENT)
+    ruling["value_axis_reason"] = value_axis_reason
+    # 🔴 **평행이동을 누가 정했는가**는 판정의 사실이다(§PLACEMENT_ANCHOR). 앵커로 놓인
+    #    배치와 포화한 탐색이 동점 규칙으로 놓은 배치를 한 모양으로 내보내면, 화면은
+    #    「266 일치」를 같은 뜻으로 그린다 - 하나는 데이터가 놓은 것이고 하나는 아니다.
+    ruling["placement"] = (PLACEMENT_ANCHOR if anchor_dxy is not None
+                           else PLACEMENT_SEARCH)
+    ruling["anchor_reason"] = anchor_reason if anchor_dxy is None else None
     ruling["sides_considered"] = [s for s in FRAME_SIDES if s in considered]
     ruling["sides_narrowed"] = len(considered) < len(FRAME_SIDES)
     ruling["geometry_assumed"] = bool(assumed_ids)
@@ -1867,10 +2205,20 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
              "cell_cap": cell_cap, "shift_window": shift_window,
              "reference_cells": int(ref_sorted.size),
              "reference_values": len(ref_value_at),
-             # 순번 채점의 재료. 「기준에 번호가 몇 개 매겨졌나」와 「소스가 그 중 몇 개를
-             # 들고 왔나」는 다른 수이고, 부분 맵에서는 뒤엣것이 훨씬 작은 것이 정상이다.
-             "reference_indices": len(expected_by_index),
+             # 순번 채점의 재료. 🔴 `reference_indices`는 이제 **채점에 안 쓰인다** —
+             # 훑기가 소스 자신의 셀 위에서 돌기 때문이다. 남겨 두는 이유는 앵커가 이
+             # 훑기의 1번 자리를 쓰기 때문이고, 그 사실이 이 수의 유일한 뜻이다.
+             "reference_indices": len(reference_walk),
              "source_indices_usable": index_total,
+             # 관측된 순번 base(맵마다). `0..255`인지 `1..266`인지를 화면과 로그가 같이 본다.
+             "index_bases": {str(k): v for k, v in (index_bases or {}).items()},
+             # 값 축이 순위를 못 가져갔으면 **왜인지**가 stats에도 있다 - 판정만 보는 자리와
+             # 통계만 보는 자리가 서로 다른 이야기를 하지 않게.
+             "value_axis_reason": value_axis_reason,
+             "value_vocab_shared": (None if value_vocab_shared is None
+                                    else len(value_vocab_shared)),
+             "placement": ruling.get("placement"),
+             "anchor_reason": ruling.get("anchor_reason"),
              "source_maps_usable": len(usable),
              "placed_cells": placed_cells,
              # 「가정을 걸었다」와 「가정을 걸 수 있었다」는 다른 수다. 뒤엣것이 없으면 화면은
@@ -1892,7 +2240,85 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             reference_meta, reference_values, source_values, weight_vec,
             scored_cells, truncated, cell_cap, shift_window, len(ref_sorted),
             len(source_maps), len(usable))
+        _dg += _diag_index_block(per_candidate, out, ruling, source_indices,
+                                 cell_owner, idx_k, idx_has, index_bases,
+                                 reference_top_left, anchor_reason, usable)
     return out, excluded, ruling, stats
+
+
+#: 진단이 찍어 보이는 순번 표본 개수. 「처음 몇 개」면 충분하다 — 어긋남은 첫 셀부터 난다.
+_DIAG_INDEX_CELLS = 8
+
+
+def _diag_index_block(per_candidate, out, ruling, source_indices, cell_owner,
+                      idx_k, idx_has, index_bases, reference_top_left,
+                      anchor_reason, usable) -> list:
+    """순번 축의 계산을 **그대로 보여 준다** — 훑기가 매긴 번호 대 저장된 번호.
+
+    제품 소유자가 이 파일을 읽어 이 축을 이해하고 있으므로(총괄 지시 2026-08-06), 새 계산은
+    말로 설명하지 않고 **숫자로** 보인다: 후보마다 처음 몇 셀의 물리 좌표 · 훑기가 매긴
+    번호 · 저장된 번호(정규화 전/후) · 일치 여부.
+
+    관측 전용이다. 여기서 다시 훑는 것은 **채점기가 훑은 그 좌표 배열**(`_phys`)이므로 두
+    번째 구현이 아니라 같은 입력의 재출력이고, 값을 하나도 만들지 않는다.
+    """
+    L = ["", "-- index axis (serpentine over the SOURCE's own dies) --------------------",
+         "  computation: place the source's cells under the candidate frame -> canonical",
+         "               (physical) coords -> walk them serpentine, top row first, first",
+         "               row left-to-right -> that walk position IS the expected index.",
+         "               The reference is NOT consulted (changed 2026-08-06); the walk is",
+         "               translation-invariant, so no shift enters this axis."]
+    if idx_has is None:
+        L.append("  no cell carries an index -> axis dark (null, not zero). "
+                 "ruling.index_axis=%s" % ruling.get("index_axis"))
+        return L
+    import numpy as np
+    n_num = int(np.count_nonzero(idx_has))
+    raw = [k for k in (source_indices or ()) if k is not None]
+    L += ["  cells carrying an index: %d of %d   stored range: %s..%s"
+          % (n_num, idx_has.size, min(raw) if raw else "-", max(raw) if raw else "-"),
+          "  origin normalised by the OBSERVED MINIMUM, per source map: %s"
+          % ({("map[%d] %s" % (m, _d((usable[m] or {}).get("map_id"), 20)
+                               if m < len(usable) else "?")): "base %s -> 1" % b
+              for m, b in sorted((index_bases or {}).items())} or "-"),
+          "  contiguity: %s"
+          % ("1..%d with no gaps" % len(set(raw))
+             if raw and len(set(raw)) == (max(raw) - min(raw) + 1)
+             else "GAPPED - %d distinct values spanning %d; a walk numbers 1..N with no "
+                  "gaps, so a gapped column cannot fully agree under ANY frame"
+                  % (len(set(raw)), (max(raw) - min(raw) + 1) if raw else 0)),
+          "  anchor (min-index die -> reference top-left valid die): %s"
+          % ("reference top-left = %s, placement=%s" % (reference_top_left,
+                                                        ruling.get("placement"))
+             if anchor_reason is None
+             else "NOT APPLIED (%s) -> placement=%s" % (anchor_reason,
+                                                        ruling.get("placement")))]
+    for c, o in zip(per_candidate, out):
+        if c.get("index_member") is None:
+            continue
+        phys = c.get("_phys") or []
+        rank_by_map = {}
+        owner = cell_owner or [0] * len(phys)
+        for i in range(len(phys)):
+            rank_by_map.setdefault(owner[i] if i < len(owner) else 0, []).append(i)
+        ranks = {}
+        for m, rows in rank_by_map.items():
+            ranks.update({i: serpentine_rank([phys[j] for j in rows],
+                                             top_is_min_y=True).get(tuple(phys[i]))
+                          for i in rows})
+        shown = [i for i in range(len(phys)) if idx_has[i]][:_DIAG_INDEX_CELLS]
+        L.append("  %-14s agreement=%s/%s  discrim=%s%s"
+                 % (o["frame"], o.get("index_agreement"), o.get("index_total"),
+                    o.get("index_discriminating"),
+                    "   <== winner" if ruling.get("winner") == o["frame"] else ""))
+        L.append("      %-22s %8s %8s %8s  %s"
+                 % ("canonical (x,y)", "walk#", "stored", "norm", "verdict"))
+        for i in shown:
+            L.append("      %-22s %8s %8s %8s  %s"
+                     % (str(tuple(phys[i])), ranks.get(i),
+                        source_indices[i], int(idx_k[i]),
+                        "MATCH" if c["index_member"][i] else "MISS"))
+    return L
 
 
 def _diag_scoring_block(per_candidate, out, ruling, stats, excluded, metric,
@@ -1933,6 +2359,18 @@ def _diag_scoring_block(per_candidate, out, ruling, stats, excluded, metric,
     L += _diag_compare_probe(ref_vc, src_vc)
     L.append("  value axis scorable=%s  (needs reference values AND source values)"
              % scorable_values)
+    # 🔴 「쟀다」와 「순위를 냈다」를 한 줄에 같이 둔다. 종전에는 값 수치가 표에 실리는데
+    #    그것이 순위를 만들었는지 아닌지를 이 블록이 말하지 않았고, 그래서 어휘가 하나도
+    #    안 겹치는 실행이 「기하 실패」로 읽혔다.
+    L.append("  value axis in this ruling: %s%s"
+             % (ruling.get("value_axis"),
+                "" if not ruling.get("value_axis_reason")
+                else "  -> DEMOTED: %s (%s). Ranking fell back to %s."
+                     % (ruling["value_axis_reason"],
+                        _VALUE_AXIS_REASON_TEXT.get(ruling["value_axis_reason"], "?"),
+                        ruling.get("metric"))))
+    L.append("  shared vocabulary after the scorer's own normalisation: %s"
+             % stats.get("value_vocab_shared"))
     if weight_vec is not None:
         L.append("  NOTE value_agreement below is a WEIGHTED sum, not a die count "
                  "(alignment.value_weights is declared).")
@@ -2366,22 +2804,19 @@ _RULING_TEXT_BY_METRIC = {
         "기준 값이 8프레임에 동일 - 구별 불가 · 다른 기준 맵 필요",
     (RULING_NO_DISCRIMINATION, METRIC_VALUES_WEIGHTED):
         "기준 값이 8프레임에 동일 - 가중으로도 구별 불가 · 다른 기준 맵 필요",
-    # 🔴 순번 축의 「일치 0건」은 **기준을 갈아 끼우라는 말이 아니다.** 번호는 어떤 유효 다이
-    #    지도에 대해 매겨졌고, 0건은 대개 그 지도가 지금 꽂힌 기준이 아니라는 뜻이다 -
-    #    수리는 「다른 기준」이 아니라 「번호가 매겨진 그 기준」이고, 둘은 다른 문장이다.
-    #
-    # 🔴 그런데 **문장이 그 뜻을 말하지 못했다**(제품 소유자 실측 2026-08-06). 종전 문구
-    #    「번호가 매겨진 기준 맵 필요」는 「번호를 싣고 있는 기준 맵을 구해 오라」로 읽히고,
-    #    조작자는 실제로 그것을 만들러 갔다 - **스키마에도 코드에도 기준에 번호를 얹을 자리는
-    #    없다.** 있지도 않은 수리를 이름으로 대는 문장은 아무 문장도 없는 것보다 나쁘다:
-    #    조작자는 없는 것을 찾느라 시간을 쓰고, 그동안 진짜 수리(기준 교체)는 손도 못 댄다.
-    #    바로 위 주석이 저자의 뜻을 이미 정확히 적어 두었으므로 문장을 그 뜻으로 되돌린다.
+    # 🔴 [2026-08-06] 이 문장이 **두 번 틀렸다.** 종전 「번호가 매겨진 기준 맵 필요」는 있지도
+    #    않은 수리를 이름으로 댔고, 그다음 「기준이 번호를 매긴 그 유효 다이 맵과 다름」은
+    #    기준을 갈아 끼우라고 말했다 — 그런데 **순번 축은 이제 기준을 아예 안 읽는다**
+    #    (§순번 주석 2026-08-06: 훑기는 소스 자신의 셀 위에서 돈다). 기준을 바꿔도 이 수치는
+    #    한 자도 안 움직인다. 0건이 실제로 뜻하는 것은 **여덟 프레임 어디에서도 소스의 훑기
+    #    순서가 저장된 번호를 재현하지 못했다**는 것이고, 볼 곳은 순번 컬럼 자신이다 —
+    #    번호가 이 다이 집합에 대해 매겨진 것이 맞는지, 빠진 행이 있는지.
     (RULING_NO_OVERLAP, METRIC_INDEX):
-        "순번 일치 0건 - 기준이 번호를 매긴 그 유효 다이 맵과 다름",
+        "순번 일치 0건 - 8프레임 어디서도 훑기 순서가 저장 번호와 안 맞음 · 순번 컬럼 확인",
     # 순번이 모든 후보에 같은 답을 주는 경우. 🔴 「번호 실린 셀 부족」은 **잰 사실이 아니라
-    # 추측**이었다 - 판별 0은 「좌석을 바꿔도 기대 순번이 안 변한다」는 뜻이고, 셀이 적어서
-    # 그럴 수도 있지만 번호가 대칭이어서 그럴 수도 있다. 잰 것만 말하고, 셀 개수는 옆에
-    # 이미 있다(`stats.source_indices_usable` · `reference_indices`).
+    # 추측**이었다 - 판별 0은 「프레임을 바꿔도 훑기 순서가 안 변한다」는 뜻이고, 셀이 적어서
+    # 그럴 수도 있지만 다이 집합이 여덟 프레임에 대칭이어서 그럴 수도 있다. 잰 것만 말하고,
+    # 셀 개수는 옆에 이미 있다(`stats.source_indices_usable`).
     (RULING_NO_DISCRIMINATION, METRIC_INDEX):
         "순번이 8프레임에 동일 - 구별 불가",
 }

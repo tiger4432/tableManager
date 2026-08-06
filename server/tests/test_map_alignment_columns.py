@@ -334,8 +334,21 @@ def test_the_reference_loader_carries_the_values_it_selects(env):
 
     v = _view(env, reference_spec="%s:R1" % REFT, include_cells=False)
     assert v["reference"]["kind"] == ma.REFERENCE_KIND_VALUES
-    assert v["ruling"]["metric"] == ma.METRIC_VALUES
     assert all(c["value_agreement"] is not None for c in v["candidates"])
+    # 🔴 CHANGED 2026-08-06, and the replacement is a SHARPER test of the same thing.
+    #    This used to require `metric == values`. It cannot any more, and it should never have
+    #    been the check: this fixture's reference says 'rv=1' and its source says 'c_bn=A', so
+    #    the two vocabularies share nothing and value mode can only ever score zero. Ranking on
+    #    that produced `no_overlap`, which reads as a geometry failure - the exact confusion
+    #    that cost the operator a day. The axis is now demoted, by name, and ranking falls back.
+    #
+    #    What this test is FOR is that `_cells_of` carries the values through, and the new
+    #    assertion proves it harder: if the loader dropped them the scorer would see no source
+    #    vocabulary at all, `value_axis` would be `absent`, and the reason would be null.
+    assert v["ruling"]["value_axis"] == ma.VALUE_AXIS_REPORTED
+    assert v["ruling"]["value_axis_reason"] == ma.VALUE_AXIS_DISJOINT
+    assert v["stats"]["value_vocab_shared"] == 0
+    assert v["ruling"]["metric"] == ma.METRIC_OCCUPANCY
 
 
 def test_the_view_serves_the_declared_thresholds_and_omits_undeclared_ones(env):
@@ -346,13 +359,18 @@ def test_the_view_serves_the_declared_thresholds_and_omits_undeclared_ones(env):
     spec = "%s:R1" % REFT
     none = _view(env, reference_spec=spec, include_cells=False)
     assert none["thresholds"] == {}
-    # 🔴 THE STRUCTURAL SET, AND `tie` IS NOT IN IT. This fixture's source cells land nowhere
-    #    near the reference, so every candidate agrees on ZERO dies. Eight zeros used to be
-    #    read as an eight-way tie, which claims the evidence was real and level; the honest
-    #    fact is that nothing overlapped. Whichever structural reason fires, it must be one
-    #    that is true of a run where no candidate placed a cell on the floor.
-    assert none["ruling"]["reason_code"] == ma.RULING_NO_OVERLAP
-    assert none["ruling"]["placed_cells"] > 0, "cells reached the scorer; none of them landed"
+    # 🔴 CHANGED 2026-08-06. The old assertion here was `reason_code == no_overlap`, and the
+    #    comment explained it as "this fixture's source cells land nowhere near the reference".
+    #    That reading was wrong about its own fixture: the ZERO was the VALUE axis (rv='1' vs
+    #    c_bn='A' share no word), not the footprint - occupancy does find an overlap under the
+    #    solved shift. Now that a disjoint vocabulary demotes the value axis instead of ranking
+    #    on its zeros, the run ranks on occupancy and names a frame.
+    #
+    #    This test is about THRESHOLDS, so what it needs to pin here is that the run got far
+    #    enough to consult them, and that the demotion is visible rather than silent.
+    assert none["ruling"]["placed_cells"] > 0, "cells reached the scorer"
+    assert none["ruling"]["metric"] == ma.METRIC_OCCUPANCY
+    assert none["ruling"]["value_axis_reason"] == ma.VALUE_AXIS_DISJOINT
 
     cfg = dict(CFG, alignment={"min_margin_dies": 4, "min_discriminating_dies": 2})
     both = _view(env, cfg=cfg, reference_spec=spec, include_cells=False)

@@ -1135,6 +1135,39 @@ def make_frame_transform(source_meta: dict, target_meta: dict):
     return to_target
 
 
+def make_physical_transform(source_meta: dict):
+    """소스 프레임 좌표 → **물리(정준) 좌표**. `make_frame_transform`의 앞 절반이다.
+
+    타깃이 없다 — 그것이 이 함수가 존재하는 이유다. 순번(serpentine index) 채점은 「이 다이
+    집합을 정준 방위에서 훑으면 몇 번인가」를 묻고, 그 질문에는 기준 맵이 등장하지 않는다.
+    `make_frame_transform`으로 물리 좌표를 얻으려면 타깃을 하나 지어내야 하고, 지어낸 타깃의
+    프레임이 답에 섞인다(실측 2026-08-06: 기준이 `rot90`을 선언한 맵에서 기준 시각 좌표로
+    훑으면 정답 `rot180_front` 대신 `rot270_front`가 682점으로 1등을 했다 — 조용히, 정확히,
+    기준의 회전만큼 틀렸다).
+
+    반환 좌표계는 `WaferMapCoordinateTransformer.to_standard_coords`가 정의하는 표준계다
+    (front · rot0 · start=0 · invert_y=False). 그래서 **가장 작은 y가 맨 위 행**이고 이것은
+    설정이 아니라 좌표계의 성질이다 — 훑기의 `top_is_min_y`가 여기서 상수 True인 이유.
+
+    거절 규약은 `make_frame_transform`과 **같은 이유로 같다**: 저장 좌표가 바운딩박스 상대값
+    이므로 물리 규격을 재현할 수 없으면 좌표를 보증할 수 없다. 소스 한쪽만 묻는다.
+    """
+    s_phys = _grid_of(source_meta)
+    if not s_phys:
+        raise ValueError("physical transform requires a map grid meta")
+    why = geometry_computable(source_meta)
+    if why is not None:
+        raise ValueError(
+            "소스 맵: %s ― 셀 좌표의 기준인 웨이퍼 바운딩박스를 재현할 수 없어 순번을 "
+            "보증할 수 없습니다." % why)
+    src_tf = _frame_transformer(source_meta, s_phys)
+
+    def to_physical(x, y):
+        return src_tf.visual_to_physical(int(x), int(y))
+
+    return to_physical
+
+
 # ---------------------------------------------------------------------------
 # align 결정 (메타 유도 → identity) — 선언 레이어는 없다
 # ---------------------------------------------------------------------------

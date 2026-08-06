@@ -664,6 +664,119 @@ def test_values_settle_what_occupancy_cannot_see(planted):
     assert top["value_discriminating"] > 0
 
 
+# ---------------------------------------------------------------------------
+# VALUE COMPARISON, FIXED 2026-08-06 - three defects, all with the SAME symptom
+# ---------------------------------------------------------------------------
+# `str(rv) == str(sv)` / `reference.kind == 'values'` / a value column that is all NULL each
+# produce "value agreement 0" -> `no_overlap` -> a screen that reads as a geometry failure. That
+# ambiguity is what cost the operator a day.
+
+@pytest.mark.parametrize("ref_value,src_value,expect,why", [
+    (2.0, "2", True, "the live trace showed exactly this: a float source against a string ref"),
+    ("2", 2, True, "and the mirror image"),
+    ("02", "2", True, "leading zeros are formatting, not a different bin"),
+    ("2.0", "2.00", True, None),
+    ("B1 ", "b1", True, "whitespace and case are rendering, not meaning"),
+    ("B1", "B2", False, "different bins must stay different"),
+    ("1E1", "10", False, "scientific notation stays TEXT - '1E1' is a spellable bin code"),
+    ("nan", "nan", True, "as TEXT they are equal; as floats NaN != NaN, which is why the "
+                         "acceptor is a regex and not float()"),
+    (None, "1", False, "absent is not a match"),
+    (None, None, False, "and two absents are not a match either - nothing was measured"),
+])
+def test_the_value_comparison_rule(ref_value, src_value, expect, why):
+    assert ma.values_equal(ref_value, src_value) is expect, why
+
+
+def test_the_numeric_rule_does_not_widen_silently():
+    """The rule was allowed to get looser; it was NOT allowed to get looser than stated. float()
+    accepts spellings that are real bin codes, and a comparison that widened without saying so
+    is the next round's mystery."""
+    assert ma._value_key("1E1") == ("t", "1e1"), "exponent form must not become a number"
+    assert ma._value_key("inf")[0] == "t"
+    assert ma._value_key("nan")[0] == "t"
+    assert ma._value_key(" 2 ") == ma._value_key("2.0") == ("n", 2.0)
+
+
+def test_a_float_source_now_matches_a_string_reference_end_to_end():
+    """The unit-level fix is not the point; the point is that it reaches the ranking. Same
+    fixture as `test_values_settle_what_occupancy_cannot_see`, with the source's values arriving
+    as floats the way they do live."""
+    ref_meta = _meta()
+    ref = _symmetric_ref()
+    planted = "rot180_front"
+    ref_vals = [str(i % 7) for i in range(len(ref))]
+    src_vals = [float(v) for v in ref_vals]
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, planted),
+          "values": src_vals}],
+        ref, ref_meta, reference_values=ref_vals, thresholds=THRESHOLDS)
+    assert ruling["value_axis"] == ma.VALUE_AXIS_RANKING
+    assert ruling["value_axis_reason"] is None
+    assert max(c["value_agreement"] for c in cands) == len(ref), (
+        "every die matched by meaning; under the old str() rule this was zero")
+
+
+def test_disjoint_value_vocabularies_demote_the_axis_and_name_it():
+    """`reference.kind='values'` means both sides HAVE a value column, not that the words mean
+    the same things. A valid-die floor's words ('1', 'E1') are not bin codes ('B1', 'B2') - the
+    intersection is empty at every coordinate under every frame, so ranking on it produces
+    `no_overlap` and sends the operator to check geometry that was never wrong."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    ref_vals = ["1" if i % 3 else "E1" for i in range(len(ref))]
+    src_vals = ["B%d" % (i % 4 + 1) for i in range(len(ref))]
+
+    cands, _e, ruling, stats = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front"),
+          "values": src_vals}],
+        ref, ref_meta, reference_values=ref_vals, thresholds=THRESHOLDS)
+
+    assert ruling["metric"] == ma.METRIC_OCCUPANCY, "the ranking must fall back, not refuse"
+    assert ruling["value_axis"] == ma.VALUE_AXIS_REPORTED, "measured, but not ranking"
+    assert ruling["value_axis_reason"] == ma.VALUE_AXIS_DISJOINT
+    assert stats["value_vocab_shared"] == 0
+    assert ruling["winner"] == "rot90_front", (
+        "and the feature still runs - the product owner's ruling is that it runs first")
+    assert all(c["value_agreement"] is not None for c in cands if c["state"] == ma.STATE_SCORED), (
+        "the numbers stay on the rows; what changed is that they do not rank")
+
+
+def test_an_all_null_reference_value_column_demotes_by_its_own_name():
+    """The identical symptom by another route: `ref_value_at` is NOT empty (it has a key per
+    coordinate), the values behind those keys are all None, every comparison misses, and the
+    ruling is `no_overlap`. The old gate `bool(ref_value_at)` passed it straight through."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front"),
+          "values": _unique_values(ref)}],
+        ref, ref_meta, reference_values=[None] * len(ref), thresholds=THRESHOLDS)
+    assert ruling["metric"] == ma.METRIC_OCCUPANCY
+    assert ruling["value_axis_reason"] == ma.VALUE_AXIS_REF_ALL_NULL
+    assert ruling["reason_code"] != ma.RULING_NO_OVERLAP, (
+        "this is the whole point: it must no longer look like a geometry failure")
+    assert all(c["value_agreement"] is None for c in cands), (
+        "null, not zero - nothing was compared")
+
+
+def test_a_demoted_value_axis_does_not_get_called_weighted():
+    """Weights multiply value hits. If the value axis is not ranking, weighting it changes no
+    ranking and only renames the metric - and then the screen says 'winner chosen under weights'
+    about a verdict weights never touched."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    _c, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front"),
+          "values": ["B1"] * len(ref)}],
+        ref, ref_meta, reference_values=["1"] * len(ref), thresholds=THRESHOLDS,
+        value_weights={"B1": 5.0})
+    assert ruling["metric"] == ma.METRIC_OCCUPANCY
+    assert ruling["metric"] != ma.METRIC_VALUES_WEIGHTED
+    assert ruling["value_axis_reason"] == ma.VALUE_AXIS_DISJOINT
+
+
 def test_a_constant_valued_reference_agrees_everywhere_and_discriminates_nothing():
     """The value axis needs its OWN discriminating subset, for the same reason occupancy does.
     If every candidate gets the same answer on a cell, that cell excludes no candidate - and a
@@ -1089,17 +1202,29 @@ def test_the_sentence_table_holds_no_code_the_scorer_cannot_emit():
 
 
 def test_the_index_refusal_does_not_name_a_remedy_that_cannot_exist():
-    """MEASURED 2026-08-06: 「순번 일치 0건 - 번호가 매겨진 기준 맵 필요」 read as "obtain a
-    reference map that carries numbers", and the product owner went to build one. There is no
-    place in the schema or the code to put numbers ON a reference - the numbering is assigned
-    AGAINST a valid-die map, and zero matches means the plugged-in reference is not that map.
-    A message naming a remedy that cannot exist is worse than no message."""
+    """This sentence has now been WRONG TWICE, in two different directions, and this test was
+    complicit in the second one.
+
+    First it said 「번호가 매겨진 기준 맵 필요」 - read as "obtain a reference map that carries
+    numbers", and the product owner went to build one. There is no place in the schema to put
+    numbers ON a reference.
+
+    Then it said the reference was the wrong valid-die map, and THIS TEST PINNED THAT (it
+    required the words 「기준」 and 「다름」). That was true only of the old implementation, which
+    numbered the REFERENCE's cells and compared the source's stored index against that table.
+    Since 2026-08-06 the walk runs over the SOURCE's own dies in canonical coordinates and never
+    reads the reference at all - so swapping the reference cannot move this number by one, and a
+    sentence sending the operator to do that is the same failure a second time.
+
+    What zero actually means now: under none of the eight frames did the source's own walk order
+    reproduce its stored numbers. The thing to look at is the index column."""
     text = ma._RULING_TEXT_BY_METRIC[(ma.RULING_NO_OVERLAP, ma.METRIC_INDEX)]
     assert "번호가 매겨진 기준 맵 필요" not in text
-    # it must point at the reference being the WRONG map, which is the repair that exists
-    assert "기준" in text and "다름" in text
-    # and it stays distinct from the generic "plug another reference" sentence, which sends the
-    # operator somewhere else entirely
+    # it must NOT send the operator to the reference - that axis no longer reads one
+    assert "기준" not in text, (
+        "the index axis does not consult the reference; naming it sends the operator to change "
+        "something that cannot change this number: %r" % text)
+    assert "순번 컬럼" in text, "the repair that exists is to look at the index column"
     assert text != ma._RULING_TEXT[ma.RULING_NO_OVERLAP]
     assert "다른 기준 맵 필요" not in text
 
@@ -1240,6 +1365,278 @@ def test_an_empty_row_does_not_flip_the_direction():
     m = ma.serpentine_index(cells)
     assert m[3] == (1, 2), "row y=2 is the SECOND visited row, so it runs right to left"
     assert m[4] == (0, 2)
+
+
+# ---------------------------------------------------------------------------
+# THE INDEX AXIS, REBUILT 2026-08-06 - numbered over the SOURCE's own die set
+# ---------------------------------------------------------------------------
+# The old implementation walked the REFERENCE's cells to build a 1..N answer table and scored the
+# source's stored index against it. Production data is not numbered that way (product owner:
+# 「dt index는 1~266 또는 0~255 등이지」 · 「당연히 소스별로 index 매기는거잖아」). On their unit -
+# reference 512 cells, source 266 - a 1..266 sequence compared against a 1..512 table disagrees at
+# the first cell and at every cell after it. That is what `metric=index` / `reason=no_overlap`
+# was: not a data problem, a wrong question.
+#
+# Everything below is SYNTHETIC and authored by the server agent; this box still has no index
+# column anywhere. None of these numbers is a production measurement.
+
+def _valid_die_floor(m):
+    """Every die inside the wafer, in `m`'s own visual coordinates - i.e. what a reference IS in
+    production: the whole valid-die map, not a job's subset. Reaches into map_overlay's private
+    transformer on purpose: building the disc a second way here would be a second implementation
+    of the very bounding-box rule the scorer depends on."""
+    grid = map_overlay._grid_of(m)
+    tf = map_overlay._frame_transformer(m, grid)
+    return sorted({tf.cell_to_visual(c, r)
+                   for r in range(tf.visual_rows) for c in range(tf.visual_cols)
+                   if tf.is_inside_wafer(c, r)})
+
+
+def _partial_job(floor_meta, floor, count, base=1):
+    """A job that touched the first `count` dies of the wafer's walk, numbered over ITS OWN die
+    set from `base`. Returns `(cells in the floor's frame, stored indices)`.
+
+    This is the production shape and the case that has never worked: a strict subset of the
+    floor, carrying a dense 1..count (or 0..count-1) of its own."""
+    grid = map_overlay._grid_of(floor_meta)
+    tf = map_overlay._frame_transformer(floor_meta, grid)
+    walk = ma.serpentine_index([tf.visual_to_physical(x, y) for (x, y) in floor],
+                               top_is_min_y=True)
+    picked = [walk[k] for k in sorted(walk)[:count]]
+    own = ma.serpentine_index(picked, top_is_min_y=True)
+    k_of = {xy: k for k, xy in own.items()}
+    return ([tf.physical_to_visual(*p) for p in picked],
+            [k_of[p] - 1 + base for p in picked])
+
+
+@pytest.mark.parametrize("planted", list(ma.CANDIDATE_FRAMES))
+def test_the_index_axis_separates_the_frames_on_a_partial_map(planted):
+    """THE LOAD-BEARING ONE. A partial map is the case the axis was built for and the only case
+    it has never handled: occupancy saturates there (every subset of the valid dies sits on valid
+    dies under every frame), so the index is the only axis with anything to say.
+
+    Measured on this fixture: the planted frame scores 266/266 and no other candidate exceeds a
+    couple of dozen."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 266)
+    assert len(cells) == 266 < len(floor), "the job must be a STRICT subset of the floor"
+
+    cands, _e, ruling, stats = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta, "cells": _plant(floor_meta, cells, planted),
+          "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+
+    assert ruling["metric"] == ma.METRIC_INDEX
+    assert ruling["index_axis"] == ma.INDEX_AXIS_RANKING
+    assert ruling["winner"] == planted, [
+        (c["frame"], c["index_agreement"]) for c in cands]
+    by = {c["frame"]: c["index_agreement"] for c in cands}
+    assert by[planted] == 266, by
+    runner_up = max(v for f, v in by.items() if f != planted)
+    assert runner_up < 266 / 4, (
+        "the correct frame must not merely win, it must be in a different class: %s" % by)
+
+
+def test_occupancy_is_saturated_on_that_same_partial_map():
+    """The FIXTURE guard for the test above, and the product owner's own symptom:
+    「화면 보면 어긋나 있는데 오버랩 266이래」. If occupancy could separate these eight, the index
+    test would be passing on something other than the index."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, _ks = _partial_job(floor_meta, floor, 266)
+    cands, _e, _r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta,
+          "cells": _plant(floor_meta, cells, "rot90_front")}],
+        floor, floor_meta, thresholds=THRESHOLDS)
+    assert {c["agreement"] for c in cands} == {266}, "occupancy must be an 8-way tie here"
+    assert {c["discriminating"] for c in cands} == {0}, "and nothing may discriminate"
+
+
+def test_the_walk_order_is_what_is_being_asserted():
+    """THE MUTANT. This axis is an ORDERING claim, so an assertion that survives a reordered walk
+    is asserting nothing. Break rule (2) - make every row run left-to-right instead of
+    alternating - and require the partial-map test's winner to collapse.
+
+    A serpentine and a boustrophedon-free raster agree on the first row and diverge on every row
+    after it, so a scorer that had quietly stopped depending on the order would still pass."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 266)
+    planted = "rot90_front"
+    payload = [{"map_id": "M1", "meta": floor_meta,
+                "cells": _plant(floor_meta, cells, planted), "indices": ks}]
+
+    h_cands, _he, healthy, _hs = ma.score_candidates(
+        payload, floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    assert healthy["winner"] == planted, "guard: the mutant must start from a green run"
+    h_hit = {c["frame"]: c["index_agreement"] for c in h_cands}
+    h_margin = h_hit[planted] - max(v for f, v in h_hit.items() if f != planted)
+
+    original = ma.serpentine_index
+
+    def raster(cells_, top_is_min_y=True):
+        present = {}
+        for (x, y) in (cells_ or ()):
+            present.setdefault(int(y), set()).add(int(x))
+        out, i = {}, 1
+        for y in sorted(present, reverse=not top_is_min_y):
+            for x in sorted(present[y]):          # never reverses - THIS is the mutation
+                out[i] = (x, y)
+                i += 1
+        return out
+
+    ma.serpentine_index = raster
+    try:
+        mutated = ma.score_candidates(payload, floor, floor_meta, thresholds=THRESHOLDS,
+                                      index_thresholds=THRESHOLDS)
+    finally:
+        ma.serpentine_index = original
+
+    cands, _e, ruling, _s = mutated
+    hit = {c["frame"]: c["index_agreement"] for c in cands}
+    assert hit[planted] < 266, (
+        "the walk order does not reach the score - a raster scan produced the same agreement as "
+        "a serpentine, so this axis is not asserting an ordering at all: %s" % hit)
+    # And the SEPARATION is what the axis sells, so that is what the mutant must destroy. A
+    # raster keeps the rank of every cell in an even-numbered row (both scans run those rows
+    # left to right), so about half the dies still agree under EVERY frame - which is exactly
+    # how a wrong frame closes the gap.
+    m_margin = hit[planted] - max(v for f, v in hit.items() if f != planted)
+    assert m_margin * 10 < h_margin, (
+        "breaking the walk left the frames just as separable (healthy margin %d, mutated %d), "
+        "so the separation is not coming from the ordering: %s" % (h_margin, m_margin, hit))
+
+
+@pytest.mark.parametrize("base", [0, 1, 1000])
+def test_the_index_origin_is_normalised_by_the_observed_minimum(base):
+    """`0..255` and `1..266` are both real (product owner 2026-08-06). The absolute value carries
+    nothing; the ORDERING is the entire signal. A scorer that trusted the literal number would
+    score one of these bases at zero."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 120, base=base)
+    assert min(ks) == base
+    cands, _e, ruling, stats = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta,
+          "cells": _plant(floor_meta, cells, "rot180_front"), "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    assert ruling["winner"] == "rot180_front"
+    assert max(c["index_agreement"] for c in cands) == 120
+    assert stats["index_bases"] == {"0": base}, "the base that was seen must be reported"
+
+
+def test_the_index_axis_does_not_consult_the_reference():
+    """The constraint the previous round imposed - 「the numbering must have been assigned against
+    the same valid-die map you load as the reference」 - was a consequence of the wrong
+    implementation, not a property of the data. Score the same source against two DIFFERENT
+    references and require the index numbers to be identical.
+
+    Reference B is a strict sub-region of the floor, so it is emphatically not the map the
+    numbering was assigned against. Under the old code every index agreement would move."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 200)
+    recorded = _plant(floor_meta, cells, "rot270_front")
+    payload = lambda: [{"map_id": "M1", "meta": floor_meta, "cells": list(recorded),
+                        "indices": list(ks)}]
+
+    a = ma.score_candidates(payload(), floor, floor_meta, thresholds=THRESHOLDS,
+                            index_thresholds=THRESHOLDS)[0]
+    trimmed = [xy for xy in floor if xy[1] % 2 == 0]
+    b = ma.score_candidates(payload(), trimmed, floor_meta, thresholds=THRESHOLDS,
+                            index_thresholds=THRESHOLDS)[0]
+    assert len(trimmed) < len(floor)
+    assert [c["index_agreement"] for c in a] == [c["index_agreement"] for c in b], (
+        "the walk runs over the source's own dies; changing the reference must not move it")
+
+
+def test_each_source_map_is_numbered_over_its_own_die_set():
+    """「소스별로 index 매기는거잖아」. Two jobs in one unit each restart at 1. Pooling them into a
+    single walk makes one long sequence and BOTH maps score wrong - and the failure is silent,
+    because the pooled walk is still a perfectly well-formed 1..N."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 180)
+    half = len(cells) // 2
+    # split into two jobs, the second RENUMBERED from 1 - which is what the equipment does
+    a_cells, a_ks = cells[:half], ks[:half]
+    b_cells = cells[half:]
+    b_ks = list(range(1, len(b_cells) + 1))
+    planted = "rot0_back"
+    cands, _e, _r, stats = ma.score_candidates(
+        [{"map_id": "A", "meta": floor_meta, "cells": _plant(floor_meta, a_cells, planted),
+          "indices": a_ks},
+         {"map_id": "B", "meta": floor_meta, "cells": _plant(floor_meta, b_cells, planted),
+          "indices": b_ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    best = max(c["index_agreement"] for c in cands)
+    assert best == len(cells), (
+        "both maps must score under their OWN numbering: %s of %d"
+        % (best, len(cells)))
+    assert stats["index_bases"] == {"0": 1, "1": 1}
+
+
+def test_the_anchor_places_the_map_and_says_so():
+    """「소스 조각 좌상단이 기준맵 좌상단 되게 하는게 어려움?」 - the minimum-index die is the
+    first die the tool touched and the tool starts at the valid area's top-left, so the
+    translation is READ rather than solved. Displace the stored coordinates by a foreign origin
+    and require the anchor to recover it; the shift search cannot, because its objective is
+    saturated (see `test_occupancy_is_saturated_on_that_same_partial_map`)."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 266)
+    planted = "rot90_front"
+    recorded = [(x + 5, y - 4) for (x, y) in _plant(floor_meta, cells, planted)]
+
+    cands, _e, ruling, stats = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    assert ruling["placement"] == ma.PLACEMENT_ANCHOR
+    assert ruling["anchor_reason"] is None
+    by = {c["frame"]: c["agreement"] for c in cands}
+    assert by[planted] == 266, by
+    assert len(set(by.values())) > 1, (
+        "the whole point: under the anchor, occupancy is no longer an 8-way tie: %s" % by)
+
+
+@pytest.mark.parametrize("mutate,reason", [
+    (lambda ks: [None] * len(ks), ma.ANCHOR_NO_INDEX),
+    # 🔴 the mutation must actually DUPLICATE the minimum. `[1] + ks[1:]` looks like a mutation
+    #    and is a no-op, because `_partial_job` already numbers from 1 - the first version of
+    #    this parametrisation asserted nothing and passed for the wrong reason.
+    (lambda ks: [ks[0], ks[0]] + ks[2:], ma.ANCHOR_MIN_NOT_UNIQUE),
+])
+def test_an_unusable_anchor_falls_back_and_names_which(mutate, reason):
+    """An absent or ambiguous anchor is a legitimate refusal AS LONG AS IT SAYS WHICH - the
+    repairs differ (declare an index column / fix duplicate numbers / narrow the unit)."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 80)
+    _c, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta,
+          "cells": _plant(floor_meta, cells, "rot90_front"), "indices": mutate(ks)}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    assert ruling["placement"] == ma.PLACEMENT_SEARCH
+    assert ruling["anchor_reason"] == reason
+
+
+def test_two_source_maps_leave_the_anchor_ambiguous_rather_than_picking_one():
+    """Each map restarts at 1, so 'the minimum-index die' names as many dies as there are maps.
+    Choosing among them would be a second arbitrary placement - the thing this change removes."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 100)
+    h = len(cells) // 2
+    _c, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "A", "meta": floor_meta,
+          "cells": _plant(floor_meta, cells[:h], "rot0_front"), "indices": ks[:h]},
+         {"map_id": "B", "meta": floor_meta,
+          "cells": _plant(floor_meta, cells[h:], "rot0_front"),
+          "indices": list(range(1, len(cells) - h + 1))}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    assert ruling["anchor_reason"] == ma.ANCHOR_MULTI_MAP
+    assert ruling["placement"] == ma.PLACEMENT_SEARCH
 
 
 def test_the_index_axis_stays_dark_when_no_cell_carries_a_number():
