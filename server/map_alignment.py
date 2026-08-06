@@ -1351,6 +1351,111 @@ _DIAG_CHARS_LONG = 900          # one rendered structure never exceeds this
 
 _DIAG_RULE = "=" * 78
 
+#: 이 프로세스가 살아난 시각의 대리값. 모듈 import는 프로세스 기동 직후에 일어나므로,
+#: 「지금 도는 코드가 언제 올라왔나」에 답하기엔 충분하고 추가 의존성이 없다.
+_PROCESS_UP_SINCE = time.time()
+_BUILD_IDENTITY_CACHE = None
+
+
+def _git_sha() -> str | None:
+    """배포가 체크아웃을 기록해 두었으면 그 sha. 아니면 None.
+
+    🔴 **없으면 지어내지 않는다.** 틀린 sha는 없는 sha보다 나쁘다 — 읽는 사람이 그것을
+       changelog에 대조하고, 맞는 것처럼 보이는 답을 얻는다. `.git`이 없는 배포는 실재하고
+       (아카이브 추출·컨테이너 COPY), 그때는 이 함수가 None을 돌려주고 아래 문장이
+       「기록되지 않은 체크아웃」이라고 **사실대로** 말한다.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(4):                       # server/ → repo root 정도까지만 올라간다
+        head = os.path.join(here, ".git", "HEAD")
+        try:
+            with open(head, "r", encoding="utf-8") as f:
+                ref = f.read().strip()
+        except OSError:
+            here = os.path.dirname(here)
+            continue
+        if ref.startswith("ref:"):
+            path = os.path.join(here, ".git", *ref[4:].strip().split("/"))
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read().strip()[:12]
+            except OSError:
+                return None
+        return ref[:12] if ref else None
+    return None
+
+
+def _feature_tokens() -> list:
+    """이 빌드가 **실제로 가진** 기능의 이름들.
+
+    🔴 손으로 관리하는 버전 문자열을 만들지 않는다 — 올릴 것을 잊는 순간 거짓말이 되고,
+       거짓말하는 버전 문자열은 없는 것보다 나쁘다. 대신 **그 기능을 구현하는 심볼이
+       존재하는가**를 묻는다. 심볼이 곧 기능이므로 잊을 수가 없다: 기능을 지우면 토큰이
+       같이 사라지고, 기능을 넣으면 토큰이 같이 생긴다.
+    """
+    out = []
+    g = globals()
+    if "serpentine_rank" in g and hasattr(map_overlay, "make_physical_transform"):
+        out.append("canonical-walk")          # 훑기가 정준 좌표계에서 돈다
+    if "_anchor_shift" in g:
+        out.append("anchor")                  # 최소 순번 다이로 배치를 결정한다
+    if "direction_violations" in g:
+        out.append("direction")               # 걸음의 방향으로 동점을 가른다
+    if "start_for_placement" in g:
+        out.append("confirmed-origin")        # 확정이 원점을 기록한다
+    if hasattr(map_overlay, "frame_linear_part"):
+        out.append("linear-part")             # 배치의 선형부를 phys 없이 만든다
+    # 🔴 상수는 **중첩돼 있다.** dict 리터럴의 키들은 CPython에서 개별 문자열이 아니라
+    #    **키 튜플 하나**로 접혀 들어가는 경우가 있어서, 평평하게 `in co_consts`로 물으면
+    #    있는 기능을 없다고 답한다(첫 구현이 정확히 그랬다 — 기능은 있는데 토큰이 안 찍혔다).
+    #    거짓 음성도 거짓 양성만큼 나쁘다: 읽는 사람이 없는 결함을 찾으러 간다.
+    def _has_const(code, needle, depth=0):
+        if depth > 3:
+            return False
+        for k in getattr(code, "co_consts", ()):
+            if k == needle:
+                return True
+            if isinstance(k, tuple) and needle in k:
+                return True
+            if hasattr(k, "co_consts") and _has_const(k, needle, depth + 1):
+                return True
+        return False
+
+    try:
+        if _has_const(build_alignment_view.__code__, "cell_index"):
+            out.append("cell-index-field")    # payload가 셀별 순번을 싣는다
+    except Exception:
+        pass
+    return out
+
+
+def build_identity() -> str:
+    """이 프로세스가 **무엇인지** 한 줄로. 증상에서 유추하지 않아도 되게 한다.
+
+    ═══ 왜 이것이 있는가 (2026-08-06) ═══════════════════════════════════════════════════
+    「이 서버에 그 코드가 들어 있나」가 이 스레드에서 여러 라운드를 먹었고, 증상으로
+    유추한 답은 **매번 틀렸다**. 그리고 오늘 두 레인이 각각 **커밋보다 여섯 시간 오래된
+    프로세스**를 읽고 배포된 코드의 결함이라고 판단했다. 프로세스가 자기 신원을 말하면
+    그 질문이 영구히 사라진다 — 지금 읽는 사람에게도, 다음 달에 디버깅할 사람에게도.
+
+    sha를 모르면 **모른다고 적는다**(§_git_sha).
+    """
+    global _BUILD_IDENTITY_CACHE
+    if _BUILD_IDENTITY_CACHE is None:
+        sha = _git_sha()
+        try:
+            mtime = time.strftime("%Y-%m-%d %H:%M:%S",
+                                  time.localtime(os.path.getmtime(os.path.abspath(__file__))))
+        except OSError:
+            mtime = "unknown"
+        up = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(_PROCESS_UP_SINCE))
+        who = ("commit %s" % sha if sha
+               else "built from an unrecorded checkout (no .git reachable)")
+        _BUILD_IDENTITY_CACHE = (
+            "build: %s | map_alignment.py modified %s | process up since %s | features: %s"
+            % (who, mtime, up, ",".join(_feature_tokens()) or "<none>"))
+    return _BUILD_IDENTITY_CACHE
+
 
 def _d(v, cap: int = _DIAG_CHARS) -> str:
     """One value, rendered and length-capped.
@@ -2183,9 +2288,19 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    판정을 통째로 밀어내고** 0으로 순위를 낸다. 이 파일이 세 번 경고한 「없음을 0으로
     #    접기」가 새 축에서 재발한 자리이고, 기존 스위트가 이 형태로 25건 빨개져서 잡혔다.
     idx_k, idx_has, index_bases = _normalised_indices(source_indices, cell_owner)
+    # 🔴 [2026-08-06] **「일어날 수 없다」와 「일어나면 아무 말도 안 한다」의 조합이 하루를
+    #    쓰게 한다.** 아래 크기 가드는 순번 배열과 좌표 배열의 길이가 어긋나면 축을 통째로
+    #    끄는데, 종전에는 그 사실이 어디에도 안 남아 `index_axis=absent`만 나갔다 —
+    #    「순번 컬럼을 선언 안 했다」와 겉모습이 같다. 사유가 없으면 조작자는 config를
+    #    고치러 가고, 고칠 것은 config가 아니다.
+    index_size_mismatch = None
     for c in per_candidate:
         if (not c["scored"] or idx_has is None
                 or len(c.get("_phys") or ()) != idx_has.size):
+            if (c["scored"] and idx_has is not None
+                    and len(c.get("_phys") or ()) != idx_has.size):
+                index_size_mismatch = (c["frame"], len(c.get("_phys") or ()),
+                                       int(idx_has.size))
             c["index_member"] = None
             continue
         c["index_member"] = _index_member(c["_phys"], cell_owner, idx_k, idx_has)
@@ -2528,7 +2643,8 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             len(source_maps), len(usable))
         _dg += _diag_index_block(per_candidate, out, ruling, source_indices,
                                  cell_owner, idx_k, idx_has, index_bases,
-                                 reference_top_left, anchor_reason, usable)
+                                 reference_top_left, anchor_reason, usable,
+                                 index_size_mismatch)
     return out, excluded, ruling, stats
 
 
@@ -2538,7 +2654,7 @@ _DIAG_INDEX_CELLS = 8
 
 def _diag_index_block(per_candidate, out, ruling, source_indices, cell_owner,
                       idx_k, idx_has, index_bases, reference_top_left,
-                      anchor_reason, usable) -> list:
+                      anchor_reason, usable, index_size_mismatch=None) -> list:
     """순번 축의 계산을 **그대로 보여 준다** — 훑기가 매긴 번호 대 저장된 번호.
 
     제품 소유자가 이 파일을 읽어 이 축을 이해하고 있으므로(총괄 지시 2026-08-06), 새 계산은
@@ -2554,6 +2670,14 @@ def _diag_index_block(per_candidate, out, ruling, source_indices, cell_owner,
          "               row left-to-right -> that walk position IS the expected index.",
          "               The reference is NOT consulted (changed 2026-08-06); the walk is",
          "               translation-invariant, so no shift enters this axis."]
+    # 🔴 크기 어긋남은 **소리를 낸다.** 이 갈래는 config 문제가 아니라 내부 정합 문제이고,
+    #    사유 없이 `absent`만 나가면 조작자가 선언을 고치러 간다 - 고칠 것이 거기 없다.
+    if index_size_mismatch is not None:
+        L.append("  🔴 INTERNAL: the index array and the coordinate array disagree in length "
+                 "(frame=%s, cells=%d, indices=%d). The axis was switched off for that "
+                 "reason, NOT because an index column is undeclared. This is a server-side "
+                 "defect - report it; changing config will not move it."
+                 % index_size_mismatch)
     if idx_has is None:
         L.append("  no cell carries an index -> axis dark (null, not zero). "
                  "ruling.index_axis=%s" % ruling.get("index_axis"))
@@ -3433,7 +3557,27 @@ def resolve_source_columns(cfg: dict, table: str, model, x_col: str = None,
         else:
             out["index"] = {"column": col, "origin": COLUMN_PROPOSED, "reason": None}
     else:
-        out["index"] = {"column": None, "origin": COLUMN_ABSENT, "reason": None}
+        # 🔴 [2026-08-06] **여기 세 갈래가 한 줄로 나갔다.** 종전에는 셋 다 `reason: None`이라
+        #    로그에 `origin=absent`와 빈 사유만 찍혔고, 그래서 「바인딩이 없다」·「index 키가
+        #    없다」·「선언이 아니라 유도다」가 화면에서 **구별 불가능**했다. 제품 소유자는 그
+        #    빈 줄을 몇 시간 들여다봤고 총괄이 제안한 원인 셋이 전부 그럴듯한 채로 남았다 —
+        #    자기 케이스를 구별 못 하는 진단이 config가 아니라 **결함**이다.
+        #    사유 문장은 조작자가 코드를 안 읽고 고칠 수 있어야 하므로 **무엇이 · 어디에**
+        #    없는지를 이름으로 댄다.
+        if not proposal:
+            reason = ("순번 축 없음 - table_bindings에 '%s' 항목이 없습니다. "
+                      "이 실행이 찾는 키는 rule.source_table 즉 '%s'이고, "
+                      "맵 테이블 이름 아래 선언한 바인딩은 읽지 않습니다." % (table, table))
+        elif proposal.get("source") != "declared":
+            reason = ("순번 축 없음 - '%s' 바인딩이 선언이 아니라 유도값입니다(source=%s). "
+                      "유도 바인딩에는 columns 블록이 없어 index를 적을 자리가 없습니다 - "
+                      "table_bindings['%s'].columns를 직접 선언하십시오."
+                      % (table, proposal.get("source"), table))
+        else:
+            reason = ("순번 축 없음 - table_bindings['%s'].columns에 index 키가 없습니다. "
+                      "x/y/val은 선언돼 있으므로 같은 칸에 index를 더하면 됩니다."
+                      % table)
+        out["index"] = {"column": None, "origin": COLUMN_ABSENT, "reason": reason}
     out["proposal"] = proposal
     return out
 
@@ -3746,6 +3890,9 @@ def _diag_request_block(req_id, rule, key_values, map_table, src_table, map_key_
     half of this week's defects and only the two lines together show it.
     """
     L = [_DIAG_RULE,
+         # 🔴 신원이 **맨 위**에 온다. 이 줄을 찾으려고 블록을 스크롤해야 하면, 「그 코드가
+         #    들어 있나」를 묻는 사람이 여전히 증상부터 읽게 된다.
+         build_identity(),
          "MAP ALIGNMENT SCORING   req=%s   %s"
          % (req_id, time.strftime("%Y-%m-%d %H:%M:%S")),
          "unit: rule=%s  key=%s  map_table=%s  source_table=%s  map_key_columns=%s"
@@ -3832,7 +3979,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                          reference_spec: str = None, include_cells: bool = True,
                          cell_cap: int = MAX_PAYLOAD_CELLS,
                          x_col: str = None, y_col: str = None,
-                         value_col: str = None,
+                         value_col: str = None, index_col: str = None,
                          assume_reference_geometry: bool = True) -> dict:
     """한 결정 단위의 정렬 화면 payload **전부**를 한 번에 만든다. 읽기 전용이다.
 
@@ -3878,7 +4025,14 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     # 🔴 좌표 컬럼은 **인자**다. 예전에는 여기서 `_binding_of`가 정본이라 `dt_log`의 선언
     #    바인딩(`dt_x`/`dt_y`)이 `map_table`과 무관하게 이겼고, `core_wafer_map`으로 열면
     #    core 맵 ID 아래에 dt 좌표가 모였다.
-    columns = resolve_source_columns(cfg, src_table, src_model, x_col, y_col, value_col)
+    # 🔴 `index_col`을 **넘긴다.** 2026-08-06까지 이 호출은 인자 넷이었고, 그래서
+    #    `resolve_source_columns`가 받아서 검증까지 하는 `index_col`이 운영 경로에서
+    #    **죽어 있었다** - 순번 컬럼을 댈 방법이 선언 바인딩 하나뿐이었고, 조작자가
+    #    「이 컬럼이 번호다」라고 말할 자리가 없었다. `_same_walk`의 주석은 그 덮어쓰기
+    #    경로가 있다고 **가정하고** 쓰여 있다(「좌표를 덮어쓴 실행이 바로 그 자리다」) —
+    #    가정만 있고 배선이 없었다.
+    columns = resolve_source_columns(cfg, src_table, src_model, x_col, y_col, value_col,
+                                     index_col)
     if not columns["x"]["column"] or not columns["y"]["column"]:
         raise ValueError("소스 테이블 '%s'의 좌표 컬럼을 정할 수 없습니다 - x/y를 "
                          "지정하십시오" % src_table)
