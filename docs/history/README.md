@@ -1,13 +1,18 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **418개** 이력. (거버넌스 규칙 #4)
+> 총 **423개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-07 04:05** — [Four Wrong Anchors In One Day All Copied From Prose And Two Contaminated Suite Runs](./20260807_040500_four_wrong_anchors_in_one_day_all_copied_from_prose_and_two_contaminated_suite_runs.md)
+- **2026-08-07 03:58** — [The 4 Of 88 Was A True Number Under A False Label And The Ruling Flipped Three Times](./20260807_035805_the_4_of_88_was_a_true_number_under_a_false_label_and_the_ruling_flipped_three_times.md)
+- **2026-08-07 03:58** — [The Table Select Changed The Question And The Worklist Was Never Re Asked](./20260807_035823_the_table_select_changed_the_question_and_the_worklist_was_never_re_asked.md)
+- **2026-08-07 00:30** — [The Prefetch Already Proved The Row Was Absent And Two Per Row Selects Asked Anyway](./20260807_003000_the_prefetch_already_proved_the_row_was_absent_and_two_per_row_selects_asked_anyway.md)
+- **2026-08-06 22:48** — [The Missing Column Was Not A Red Test It Was A Live 500 On The Worklist](./20260806_224801_the_missing_column_was_not_a_red_test_it_was_a_live_500_on_the_worklist.md)
 - **2026-08-06 21:50** — [A Full Disc Fixture Cannot Exercise A Branch That Only A Strict Subset Creates](./20260806_215000_a_full_disc_fixture_cannot_exercise_a_branch_that_only_a_strict_subset_creates.md)
 - **2026-08-06 20:46** — [The Containment Gate Only Ever Measured The Stored Origin And Its Commit Message Shipped A False Claim](./20260806_204600_the_containment_gate_only_ever_measured_the_stored_origin_and_its_commit_message_shipped_a_false_claim.md)
 - **2026-08-06 19:21** — [The Second Regression The Anchor Was Routed Through The One Transform That Reads The Start](./20260806_192100_the_second_regression_the_anchor_was_routed_through_the_one_transform_that_reads_the_start.md)
@@ -439,4 +444,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-06 by gen_index.py*
+*Last generated: 2026-08-07 by gen_index.py*

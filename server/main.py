@@ -16,14 +16,22 @@ from fastapi.staticfiles import StaticFiles
 
 # Setup Unified Logger & Hook Uvicorn Loggers
 import logging
-from utils.logger import get_process_logger, ColoredProcessFormatter
+from utils.logger import (get_process_logger, ColoredProcessFormatter,
+                          make_console_safe)
 from utils.payload_helper import get_payload_dict
 logger = get_process_logger("Server", "server.log")
 
+# uvicorn installs its own console handlers on these loggers with propagate=False,
+# so they never reach the root handler get_process_logger just made safe. They are
+# the second console in this process and need the same rescue - a request path or
+# an exception message can carry a character cp949 cannot encode just as easily as
+# our own lines can. make_console_safe leaves uvicorn's handler object (and the
+# formatter set right below) in place; it only replaces how the write is done.
 for uv_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
     uv_logger = logging.getLogger(uv_name)
     for handler in uv_logger.handlers:
         if isinstance(handler, logging.StreamHandler):
+            make_console_safe(handler)
             handler.setFormatter(ColoredProcessFormatter(
                 '[%(name)s] [%(asctime)s] %(levelname)s - %(message)s',
                 process_name="Server"

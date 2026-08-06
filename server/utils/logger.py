@@ -1,5 +1,6 @@
 import os
 import sys
+import types
 import logging
 
 # Log files follow the data root, never this module's location. utils/ can be
@@ -11,6 +12,78 @@ try:
 except ImportError:  # pragma: no cover - defensive fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     import paths
+
+
+class ConsoleSafeHandler(logging.StreamHandler):
+    """Console handler that survives a terminal codec it cannot render.
+
+    The console here is cp949 and the messages carry Korean server-authored
+    sentences plus the occasional typographic character (em dash, ellipsis,
+    emoji) that cp949 has no code point for. Stock `logging` reacts to that by
+    losing **the whole line** and printing a `--- Logging error ---` traceback in
+    its place: the operator loses the message they needed and gains noise they
+    cannot act on. Measured on this box, cp949 stream, one U+2014 in a
+    deprecation warning: 0 bytes to the console, 819 characters of traceback to
+    stderr.
+
+    Re-encoding with `errors="replace"` costs the one character the terminal
+    cannot draw and keeps the sentence. The stream's OWN encoding is used on
+    purpose - forcing utf-8 bytes at a cp949 console would trade one lost line
+    for mojibake on every Korean sentence in the log. The file half of the log
+    is opened `encoding='utf-8'` and is not touched by any of this.
+
+    WHY THIS DOES NOT CALL `super().emit()`
+    --------------------------------------
+    An earlier spelling of this class (server/map_alignment.py) wrapped
+    `super().emit(record)` in `except UnicodeEncodeError`. That branch is
+    unreachable: `logging.StreamHandler.emit` catches the error itself and routes
+    it to `handleError`, so nothing ever propagates to the caller. It looked like
+    a fix and did nothing - verified by emitting U+2014 through it against a cp949
+    stream and getting the same 0 bytes as the stock handler. The write is
+    therefore performed here, with the rescue around the write itself.
+
+    `emit` deliberately depends on nothing but the standard `StreamHandler`
+    surface (`format`/`stream`/`terminator`/`flush`/`handleError`) so that
+    `make_console_safe()` can bind it onto handlers this module did not create.
+    """
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            try:
+                stream.write(msg + self.terminator)
+            except UnicodeEncodeError:
+                # TextIOWrapper encodes the whole string before it writes any of
+                # it, so nothing landed and re-writing cannot duplicate output.
+                enc = getattr(stream, "encoding", None) or "ascii"
+                stream.write(
+                    msg.encode(enc, "replace").decode(enc, "replace")
+                    + self.terminator)
+            self.flush()
+        except RecursionError:  # see CPython issue 36272
+            raise
+        except Exception:
+            self.handleError(record)
+
+
+def make_console_safe(handler):
+    """Give an existing console handler `ConsoleSafeHandler`'s emit. Returns it.
+
+    For handlers created by somebody else - uvicorn installs its own pair before
+    it ever imports `main:app` - where replacing the object would also throw away
+    whatever formatter and filters that owner attached.
+
+    File handlers are left alone on purpose: `logging.FileHandler` is a subclass
+    of `StreamHandler`, so an `isinstance` check at a call site will offer them
+    up, and their utf-8 stream has nothing to be rescued from.
+    """
+    if not isinstance(handler, logging.StreamHandler):
+        return handler
+    if isinstance(handler, (logging.FileHandler, ConsoleSafeHandler)):
+        return handler
+    handler.emit = types.MethodType(ConsoleSafeHandler.emit, handler)
+    return handler
 
 
 class ColoredProcessFormatter(logging.Formatter):
@@ -114,7 +187,10 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     root_logger.setLevel(logging.INFO)
 
     # 1. 콘솔 핸들러 (동적 컬러 Formatter 장착)
-    console_handler = logging.StreamHandler(sys.stdout)
+    # ConsoleSafeHandler, not StreamHandler: this one line covers every process
+    # the launcher starts, because all six of them get their console handler from
+    # right here. See the class for what it rescues and why it keeps cp949.
+    console_handler = ConsoleSafeHandler(sys.stdout)
     console_handler.setFormatter(ColoredProcessFormatter(log_format, process_name=process_name))
     root_logger.addHandler(console_handler)
 

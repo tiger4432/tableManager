@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 from . import models, schemas
 from contextlib import contextmanager
 
@@ -1404,6 +1404,40 @@ def _chunks(seq, size=BULK_CHUNK_SIZE):
         yield seq[i:i + size]
 
 
+def _is_executemany_safe(mappings: list[dict]) -> bool:
+    """Can this mapping list be sent as ONE compiled statement + N parameter sets?
+
+    [P3] `.values(chunk)` builds a fresh multi-row VALUES clause - one BindParameter
+    object per cell - and compiles it per chunk. Measured on a 100,000-row map file:
+    `bulk_upsert_cell_sources` cost 223.2 s, of which only 60.2 s was SQL and 163 s
+    was that construction. Handing the driver a parameter LIST instead compiles the
+    statement once and lets it batch, which is what this predicate gates.
+
+    Two properties are required and neither is guaranteed by the type annotation:
+
+    1. **Every mapping carries the same keys.** A ragged list is REFUSED either way -
+       measured: SQLAlchemy 2.0's `.values(ragged_list)` raises `CompileError` - so
+       this test is not buying tolerance, it is keeping the refusal in the shape
+       callers already get instead of a driver-level error from the batched path.
+    2. **No value is a SQL expression.** The collision-merge path used to put
+       `func.now()` into these dicts; a `ClauseElement` cannot be bound as a
+       parameter. Those sites now emit real datetimes, but an outside caller is free
+       to hand one in and must get the old shape rather than an exception.
+
+    Anything that fails either test falls back to the historical per-chunk VALUES
+    path, so this is a pure fast path: it can be slow, it cannot be wrong.
+    """
+    from sqlalchemy.sql.elements import ClauseElement
+    first_keys = mappings[0].keys()
+    for m in mappings:
+        if m.keys() != first_keys:
+            return False
+        for v in m.values():
+            if isinstance(v, ClauseElement):
+                return False
+    return True
+
+
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
     if not mappings:
         return
@@ -1429,6 +1463,28 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
     # remains all-or-nothing exactly as it was when it was a single statement.
     # Chunks are cut from the SORTED list, so the deadlock-avoiding lock ordering
     # is preserved across them.
+    #
+    # 🔴 THE CHUNKING IS NOT OPTIONAL AND IT DOES NOT MOVE. `BULK_CHUNK_SIZE` is the
+    # int16 parameter-count bound documented at its definition, and the fast path
+    # below keeps handing the driver `chunk_size` rows at a time for exactly that
+    # reason: what changes is HOW those rows are sent, never how many go per call.
+    if _is_executemany_safe(deduped_mappings):
+        # One compiled statement, one parameter set per row. psycopg2's `values_only`
+        # executemany rewrites each call into a multi-row INSERT with the values
+        # rendered as literals, so the per-chunk VALUES construction disappears.
+        stmt = upsert_insert(models.CellSource)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['table_name', 'row_id', 'column_name', 'source_name'],
+            set_={
+                'value': stmt.excluded.value,
+                'updated_by': stmt.excluded.updated_by,
+                'ingested_at': stmt.excluded.ingested_at
+            }
+        )
+        for chunk in _chunks(deduped_mappings, chunk_size):
+            db.execute(stmt, chunk)
+        return
+
     for chunk in _chunks(deduped_mappings, chunk_size):
         stmt = upsert_insert(models.CellSource).values(chunk)
         stmt = stmt.on_conflict_do_update(
@@ -1462,6 +1518,22 @@ def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict], chunk_size: i
     else:
         from sqlalchemy.dialects.postgresql import insert as upsert_insert
 
+    # Same fast path, same fallback, same chunk size - see `bulk_upsert_cell_sources`.
+    if _is_executemany_safe(deduped_mappings):
+        stmt = upsert_insert(models.CellOverwrite)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['table_name', 'row_id', 'column_name'],
+            set_={
+                'is_overwrite': stmt.excluded.is_overwrite,
+                'updated_by': stmt.excluded.updated_by,
+                'updated_at': stmt.excluded.updated_at,
+                'manual_priority_source': stmt.excluded.manual_priority_source
+            }
+        )
+        for chunk in _chunks(deduped_mappings, chunk_size):
+            db.execute(stmt, chunk)
+        return
+
     for chunk in _chunks(deduped_mappings, chunk_size):
         stmt = upsert_insert(models.CellOverwrite).values(chunk)
         stmt = stmt.on_conflict_do_update(
@@ -1494,7 +1566,49 @@ def bulk_delete_cell_overwrites(db: Session, delete_keys: list[tuple[str, str, s
         ]
         db.query(models.CellOverwrite).filter(or_(*conds)).delete(synchronize_session=False)
 
-def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.GeneralUpdateItem, row_cache: dict, table_name: str) -> tuple[Any, bool]:
+class ProbedIdentity(NamedTuple):
+    """Identity values the batch prefetch ASKED about and got NOTHING back for.
+
+    Membership therefore means **this table holds no such row**, established by a
+    query that already ran. That proof is what lets `_get_or_create_row` and the
+    composite-key collision probe stop issuing one SELECT per row to be told, at
+    0.03-0.10 ms of execution and more than that of planning, that a freshly ingested
+    row is new. Measured on a 100,000-row map file: 200,000 of the run's 301,222
+    statements were those two probes.
+
+    🔴 THIS IS NOT `prefetched_row_ids`, and confusing the two is a data-loss bug
+    rather than a slow path. That set is the ids that came BACK (rows that exist, and
+    whose cell metadata is consequently in the caches). This one is the values that
+    came back EMPTY. They are complements, and each is only sound for its own question.
+
+    🔴 IT IS ALSO NOT "the values we asked about". `apply_batch_updates` subtracts the
+    rows the prefetch returned before building this; see the comment there for the
+    rename-inside-one-batch case that makes the subtraction load-bearing rather than
+    tidy.
+
+    ⚠️ ROW IDS AND BUSINESS KEYS ARE SEPARATE SETS ON PURPOSE. The prefetch is
+    `row_id IN (ids) OR business_key_val IN (keys)`; a string covered as a business
+    key proves nothing about whether some row carries it as a `row_id`. One merged set
+    would silently answer the wrong question for any value that appears in both roles.
+
+    ⚠️ ONLY VALID INSIDE THE BATCH'S `no_autoflush` LOOP. Nothing the loop creates is
+    flushed, so no row can appear in the table behind the proof; rows the loop creates
+    are tracked in `row_cache`, which every consumer probes FIRST. A row resolved by a
+    route the prefetch did not cover (a composite key assembled from column values
+    that differs from the payload's, a collision-merge conflict row) is simply not in
+    these sets and is still queried.
+    """
+    row_ids: frozenset
+    business_keys: frozenset
+
+
+def _absence_is_proven(value: Any, probed: frozenset) -> bool:
+    """True when the batch prefetch asked about `value` and brought no row back."""
+    return probed is not None and value in probed
+
+
+def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.GeneralUpdateItem, row_cache: dict, table_name: str,
+                       probed_identity: "ProbedIdentity" = None) -> tuple[Any, bool]:
     """대상 행 객체를 캐시 또는 DB에서 획득하고, 존재하지 않으면 신규 생성합니다."""
     row = None
     if row_cache is not None:
@@ -1502,13 +1616,25 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
             row = row_cache[update_item.row_id]
         elif update_item.business_key_val and update_item.business_key_val in row_cache:
             row = row_cache[update_item.business_key_val]
-            
+
     if not row:
-        if update_item.row_id:
+        # [P3] Both lookups below are skipped ONLY when the batch's prefetch already
+        # asked about this exact value and got nothing. Every other caller passes
+        # `probed_identity=None` and keeps today's two queries.
+        probed_ids = probed_identity.row_ids if probed_identity else None
+        probed_bks = probed_identity.business_keys if probed_identity else None
+        if update_item.row_id and not _absence_is_proven(update_item.row_id, probed_ids):
             row = db.query(table_model).filter(table_model.row_id == update_item.row_id).first()
         if not row and update_item.business_key_val:
-            row = get_row_by_business_key(db, table_name, update_item.business_key_val)
-            
+            # STRIPPED, because that is the only spelling the proof is about:
+            # `get_row_by_business_key` strips before comparing and the prefetch filter
+            # was built from stripped values. Testing the RAW value here would leave a
+            # padded key permanently unproven - slower, never wrong - while testing the
+            # stripped one is exactly the question the prefetch answered.
+            probe_bk = str(update_item.business_key_val).strip()
+            if not _absence_is_proven(probe_bk, probed_bks):
+                row = get_row_by_business_key(db, table_name, update_item.business_key_val)
+
         if row and row_cache is not None:
             row_cache[row.row_id] = row
             if row.business_key_val:
@@ -1516,10 +1642,20 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
     
     is_new = False
     if not row:
-        from sqlalchemy.sql import func
+        # [P3] `updated_at` is deliberately NOT set here. The column carries
+        # `server_default=func.now()` (models.init_dynamic_models), so an INSERT that
+        # omits it stores the same transaction timestamp `func.now()` produced - the
+        # value is identical, it is still the DATABASE's clock, and nothing downstream
+        # can tell the difference.
+        #
+        # What changes is that the INSERT no longer carries a SQL EXPRESSION in its
+        # parameter set. SQLAlchemy cannot fold rows whose values are expressions into
+        # one `insertmanyvalues` batch, so every new row was emitted as its own
+        # `INSERT ... RETURNING` statement: 100,000 statements and 49.3 s of client
+        # time on a 100,000-row file, while the outbox rows written in the SAME flush -
+        # plain values, batchable - cost 8.2 s for the same count.
         row = table_model(
-            row_id=update_item.row_id or str(uuid6.uuid7()),
-            updated_at=func.now()
+            row_id=update_item.row_id or str(uuid6.uuid7())
         )
         db.add(row)
         is_new = True
@@ -1529,6 +1665,38 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
                 row_cache[row.business_key_val] = row
             
     return row, is_new
+
+def _find_business_key_conflict(db: Session, table_model: Any, new_bk_val: str, row: Any,
+                                row_cache: dict, probed_identity: "ProbedIdentity" = None):
+    """The OTHER row already carrying `new_bk_val`, or None.
+
+    [P3] This is the SECOND per-row identity gate, and it is the one nobody had
+    listed. It fires for every row of every map file whose payload carries the key
+    column empty - the key is then assembled from the row's own values, so it never
+    matches the `business_key_val` the row was created with, and this probe runs. At
+    100,000 rows that was 100,000 index scans costing 0.032 ms each to execute and
+    0.17 ms each to PLAN. Closing only `_get_or_create_row` would have removed one of
+    three round trips and left this one standing.
+
+    The skip is taken only when the batch prefetch asked about this exact key and
+    NOTHING came back for it - not even this row. Any cache entry at all sends the
+    call to the database unchanged, which is deliberately conservative: a table with
+    duplicate business keys (there is no unique index on the column) can have a second
+    holder that `row_cache` overwrote, and a merge that fails to see it would leave two
+    rows where the collision-merge policy says there must be one.
+    """
+    if row_cache is not None and new_bk_val in row_cache:
+        return db.query(table_model).filter(
+            table_model.business_key_val == new_bk_val,
+            table_model.row_id != row.row_id
+        ).first()
+    if probed_identity is not None and new_bk_val in probed_identity.business_keys:
+        return None
+    return db.query(table_model).filter(
+        table_model.business_key_val == new_bk_val,
+        table_model.row_id != row.row_id
+    ).first()
+
 
 def assemble_composite_business_key(table_name: str, update_item: schemas.GeneralUpdateItem) -> bool:
     """Fill in `business_key_val` from the payload's own column values, for a table
@@ -1697,7 +1865,11 @@ def apply_row_update_internal(
     # For these - and only these - a cache miss is a proven absence rather than an
     # unknown. See `_load_metadata_row_cell` for why "the row exists" is not the
     # same predicate and must not be substituted.
-    prefetched_row_ids: set = None
+    prefetched_row_ids: set = None,
+    # [P3] The identity values the caller's prefetch ASKED about - see `ProbedIdentity`.
+    # Distinct from `prefetched_row_ids` (the ids that came back). None everywhere
+    # outside the batch path, which keeps every other caller's query count unchanged.
+    probed_identity: "ProbedIdentity" = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]
@@ -1718,7 +1890,8 @@ def apply_row_update_internal(
     # own terms rather than on its caller's.
     assemble_composite_business_key(table_name, update_item)
 
-    row, is_new = _get_or_create_row(db, table_model, update_item, row_cache, table_name)
+    row, is_new = _get_or_create_row(db, table_model, update_item, row_cache, table_name,
+                                     probed_identity=probed_identity)
     changed_cols = []
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
@@ -1796,14 +1969,30 @@ def apply_row_update_internal(
         )
 
         if not src_obj:
-            src_obj = models.CellSource(
-                table_name=table_name,
-                row_id=row.row_id,
-                column_name=col_name,
-                source_name=update_item.source_name
-            )
             if cell_sources_to_upsert is None:
+                # No bulk accumulator: this object IS the write, so it has to be the
+                # mapped one.
+                src_obj = models.CellSource(
+                    table_name=table_name,
+                    row_id=row.row_id,
+                    column_name=col_name,
+                    source_name=update_item.source_name
+                )
                 db.add(src_obj)
+            else:
+                # [P3] With an accumulator, this object is never persisted - the row is
+                # written from `cell_sources_to_upsert` below. It exists only to join
+                # `col_srcs` for the priority computation, which reads exactly the four
+                # attributes `LightCellSource` carries, and which is ALREADY handed
+                # `LightCellSource` instances by the batch prefetch. Constructing a
+                # mapped instance instead costs an InstanceState plus an attribute
+                # event per assignment: measured 9 ORM constructions per ingested row
+                # (7 of them here) and 45,000 `_initialize_instance` calls per 5,000
+                # rows, 2.8 s of a 28.5 s run.
+                src_obj = LightCellSource(
+                    table_name, row.row_id, col_name, update_item.source_name,
+                    None, None, None
+                )
             col_srcs.append(src_obj)
 
         if not source_unchanged:
@@ -1864,13 +2053,20 @@ def apply_row_update_internal(
                 and ow.manual_priority_source == manual_pin
             )
             if not ow:
-                ow = models.CellOverwrite(
-                    table_name=table_name,
-                    row_id=row.row_id,
-                    column_name=col_name
-                )
+                # [P3] Same argument as the CellSource above: with an accumulator this
+                # marker is written from `cell_overwrites_to_upsert`, never from this
+                # object, and `overwrites_cache` is already populated with
+                # `LightCellOverwrite` by the batch prefetch.
                 if cell_overwrites_to_upsert is None:
+                    ow = models.CellOverwrite(
+                        table_name=table_name,
+                        row_id=row.row_id,
+                        column_name=col_name
+                    )
                     db.add(ow)
+                else:
+                    ow = LightCellOverwrite(
+                        table_name, row.row_id, col_name, None, None, None, None)
                 if overwrites_cache is not None:
                     overwrites_cache[key] = ow
             if not ow_unchanged:
@@ -1987,10 +2183,8 @@ def apply_row_update_internal(
             current_bk = getattr(row, "business_key_val", None)
             if current_bk != new_bk_val:
                 if new_bk_val is not None:
-                    conflict_row = db.query(table_model).filter(
-                        table_model.business_key_val == new_bk_val,
-                        table_model.row_id != row.row_id
-                    ).first()
+                    conflict_row = _find_business_key_conflict(
+                        db, table_model, new_bk_val, row, row_cache, probed_identity)
                     if conflict_row:
                         # -------------------------------------------------------------
                         # [대안 B: Silent Merge & Overwrite]
@@ -2066,7 +2260,12 @@ def apply_row_update_internal(
 
                                 # 중복키 충돌 병합이 발생했음을 가벼운 Overwrite 테이블에도 기록하여 그리드 성능 최적화 지원
                                 if cell_overwrites_to_upsert is not None:
-                                    from sqlalchemy.sql import func
+                                    # [P3] A real datetime, not `func.now()`. Every other
+                                    # producer of these dicts already writes
+                                    # `datetime.now()` (see the source/overwrite blocks
+                                    # above), and a SQL expression in ONE mapping forces
+                                    # the whole bulk upsert off its batched path -
+                                    # `_is_executemany_safe` refuses a `ClauseElement`.
                                     ow_key = (table_name, row.row_id, col_name)
                                     cell_overwrites_to_upsert[ow_key] = {
                                         "table_name": table_name,
@@ -2074,7 +2273,7 @@ def apply_row_update_internal(
                                         "column_name": col_name,
                                         "is_overwrite": True,
                                         "updated_by": "collision_merge",
-                                        "updated_at": func.now(),
+                                        "updated_at": datetime.now(),
                                         "manual_priority_source": "collision_merge"
                                     }
                                     if cell_overwrites_to_delete is not None:
@@ -2090,7 +2289,6 @@ def apply_row_update_internal(
 
                             # [소스 이력 적재] 값 덮어쓰기 보호 여부와 상관없이, 껍데기 행이 가졌던 오리지널 소스 목록은 무조건 적재(Append)
                             if cell_sources_to_upsert is not None:
-                                from sqlalchemy.sql import func
                                 # 껍데기 행이 원래 가졌던 소스 명칭 추적 계승
                                 old_srcs, _ = _load_metadata_row_cell(
                                     db, table_name, row_to_delete.row_id, col_name,
@@ -2140,7 +2338,10 @@ def apply_row_update_internal(
                                             "source_name": backup_src_name,
                                             "value": clean_str_value(old_val_to_backup),
                                             "updated_by": old_by_to_backup,
-                                            "ingested_at": func.now()
+                                            # [P3] see the collision-merge overwrite dict
+                                            # above: a real datetime keeps the bulk upsert
+                                            # on its batched path.
+                                            "ingested_at": datetime.now()
                                         }
 
                                 src_list = []
@@ -2168,7 +2369,8 @@ def apply_row_update_internal(
                                         "source_name": effective_src_name,
                                         "value": clean_str_value(s_val),
                                         "updated_by": s_by or "system",
-                                        "ingested_at": func.now()
+                                        # [P3] real datetime - see above.
+                                        "ingested_at": datetime.now()
                                     }
 
                         # 4. 캐시 맵 마이그레이션 (row_to_delete.row_id ➡️ conflict_row.row_id)
@@ -2240,7 +2442,11 @@ def apply_row_update_internal(
 
     if changed_cols or is_new:
         from sqlalchemy.sql import func
-        row.updated_at = func.now()
+        if not is_new:
+            # [P3] Only an UPDATE needs this. On an INSERT the column's server default
+            # is the same `now()` in the same transaction, and setting it explicitly is
+            # what forced one statement per row (see `_get_or_create_row`).
+            row.updated_at = func.now()
         row.is_graph_synced = False
         if is_new:
             row.needs_graph_rollback = False
@@ -2590,6 +2796,30 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         # still read from the database.
         prefetched_row_ids = set(all_row_ids)
 
+        # [P3] The identity values the prefetch ASKED about MINUS the ones it brought
+        # back - i.e. exactly the values PROVEN not to exist in the table.
+        #
+        # 🔴 THE SUBTRACTION IS THE WHOLE CORRECTNESS ARGUMENT, and the first draft of
+        # this did not have it. Without it the sets say "we asked", and the loop then
+        # has to lean on `row_cache` to know whether an answer came back - but
+        # `row_cache` is MUTATED by the loop. `apply_row_update_internal` deletes the
+        # old key when it renames a row's business key (see the composite block), so a
+        # later item naming that same old key would find the cache empty, read "we
+        # asked" as "nothing exists", and mint a duplicate row where today's code
+        # resolves onto the renamed one. With the subtraction the sets are a statement
+        # about the DATABASE at prefetch time, which nothing in the loop can change:
+        # no row is flushed inside `no_autoflush`.
+        #
+        # The prefetch filters on equality, so every returned row's `row_id` /
+        # `business_key_val` IS one of these strings exactly - the difference is exact,
+        # not approximate.
+        _found_ids = {r.row_id for r in existing_rows_list}
+        _found_bks = {r.business_key_val for r in existing_rows_list if r.business_key_val}
+        probed_identity = ProbedIdentity(
+            row_ids=frozenset(target_ids) - _found_ids,
+            business_keys=frozenset(target_bks) - _found_bks,
+        )
+
         sources_cache = {}
         overwrites_cache = {}
 
@@ -2656,7 +2886,8 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                     cell_overwrites_to_delete=cell_overwrites_to_delete,
                     deleted_row_ids=deleted_row_ids,
                     version_stats=version_stats,
-                    prefetched_row_ids=prefetched_row_ids
+                    prefetched_row_ids=prefetched_row_ids,
+                    probed_identity=probed_identity
                 )
                 prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                 unique_results[row.row_id] = (row, is_new or prev_is_new)

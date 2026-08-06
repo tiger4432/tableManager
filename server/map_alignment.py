@@ -40,6 +40,7 @@ import uuid
 
 import map_overlay
 from dt_map_derivation import parse_frame, source_meta_for_frame
+from utils.logger import ConsoleSafeHandler
 
 logger = logging.getLogger(__name__)
 
@@ -2324,30 +2325,14 @@ class _RollNoticeHandler(logging.handlers.RotatingFileHandler):
             pass
 
 
-class _ConsoleSafeHandler(logging.StreamHandler):
-    """Console handler that survives a terminal codec it cannot render.
-
-    The console here is cp949 and the block carries Korean server-authored
-    sentences. Stock `logging` would swallow the `UnicodeEncodeError` through
-    `handleError` and the operator would lose **the whole block** from the half
-    they are watching live. Re-encoding with replacement keeps the block; the
-    file half (utf-8) is unaffected either way.
-    """
-
-    def emit(self, record):
-        try:
-            super().emit(record)
-        except UnicodeEncodeError:
-            try:
-                enc = getattr(self.stream, "encoding", None) or "ascii"
-                self.stream.write(
-                    self.format(record).encode(enc, "replace").decode(enc)
-                    + self.terminator)
-                self.flush()
-            except Exception:
-                self.handleError(record)
-        except Exception:
-            self.handleError(record)
+# The console handler this module's diagnostics logger uses. It used to be
+# declared here; it now lives in utils/logger.py, where every process's console
+# handler is built, because the defect it addresses is not specific to alignment
+# diagnostics - it is any log line carrying a character cp949 cannot encode. The
+# name is kept so the two references below and the docstring at the top of the
+# scoring block still read the same. (The version that lived here never actually
+# worked; see the class docstring.)
+_ConsoleSafeHandler = ConsoleSafeHandler
 
 
 _DIAG_LOGGER = None
