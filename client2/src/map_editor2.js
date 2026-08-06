@@ -165,7 +165,11 @@ function start() {
   //    row and a one-line reason still appear, and the WHOLE failure goes to the console.
   app.render();
 
-  app.setWorklistLoader((query) => api.loadWorklist(query));
+  // 🔴 THE SIGNAL IS PASSED THROUGH, AND THAT IS WHAT MAKES SUPERSESSION POSSIBLE AT ALL. The
+  //    shell aborts the previous worklist request when the set-up row asks a new question; a
+  //    loader that dropped the second argument would leave the shell holding a controller that
+  //    cancels nothing, and two answers to two different tables would race to the same list.
+  app.setWorklistLoader((query, signal) => api.loadWorklist(query, signal));
 
   discover(api).then(found => {
     if (found.reason) app.setNotice(found.reason);

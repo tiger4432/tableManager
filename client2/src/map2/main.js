@@ -249,6 +249,9 @@ export function bootstrap(deps) {
   const context = { rule: null, targetFields: [], confirmedBy: null,
                     toDecisionKey: (d) => ({ ...(d || {}) }) };
   let searchTimer = null;
+  // The worklist request in flight, so a newer question can cancel an older one. Function-scoped
+  // like `confirmInFlight`: it is a fact about ONE request, not about the session.
+  let worklistInflight = null;
   // Last diagnosis logged, so a repaint does not repeat a line nobody asked for twice.
   let lastDiagnosis = '';
   // A one-line reason the SHELL can always show, independent of any payload. Bootstrap failures
@@ -1590,18 +1593,51 @@ export function bootstrap(deps) {
     }
   }
 
+  /**
+   * 🔴 THE WORKLIST IS ASKED PER TABLE, AND THE TABLE IS PART OF THE QUESTION. `map_table` is
+   *    REQUIRED by the route (`server/main.py:4645`), so every worklist on screen belongs to
+   *    exactly one table. Whoever changes that field must come back through here -- see the
+   *    `tableSelect` binding. The measured failure of not doing so is not a stale list, it is
+   *    TWO TABLES ON ONE SCREEN: the column pickers repopulate from `/tables/{t}/schema`
+   *    immediately while the rows and their map counts still belong to the previous table
+   *    (measured 2026-08-06 on :8080 -- counts 191/160/97/96/1 for `core_wafer_map` against
+   *    40/40/20/20/6 for `dt_log`, i.e. genuinely different populations under the same labels).
+   *
+   * 🔴 SUPERSESSION IS AN ABORT, IN THE ONE SHAPE THIS PROJECT ALREADY USES
+   *    (`value_suggest.js:400`). Switching table twice quickly starts two requests, and without
+   *    this the older answer can land last and paint the wrong table's rows under the newer
+   *    table's labels -- the same defect as before, only intermittent. ONE mechanism, not two:
+   *    an aborted request cannot resolve, so there is nothing left for a second guard to catch,
+   *    and a second overlapping guard would make any "one list" assertion score the pair rather
+   *    than either of them.
+   *
+   * ⚠️ AN ABORT IS NOT A FAILURE. It is routed away from `withWorklistError` on purpose: the
+   *    operator superseded their own question, and painting `미상` for the request they
+   *    themselves replaced would report an outage that did not happen.
+   */
   function fetchWorklist() {
     if (typeof loadRows !== 'function') return;
+    if (worklistInflight) worklistInflight.abort();
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    worklistInflight = controller;
     const seq = session.worklistSeq;
     const q = session.question || {};
+    const settle = () => { if (worklistInflight === controller) worklistInflight = null; };
     Promise.resolve(loadRows({
       q: session.worklist.query,
       rule: context.rule,
       mapTable: q.mapTable,
       // The worklist is a list of UNITS. It is not scoped by the coordinate columns -- those
-      // decide how one unit is READ, not which units exist -- so they are not sent here.
-    })).then(res => setSession(withWorklist(session, normaliseWorklist(res), seq)))
-      .catch(err => setSession(withWorklistError(session, err, seq)));
+      // decide how one unit is READ, not which units exist -- so they are not sent here. Nor by
+      // the reference: the route takes no `reference` parameter at all, so the 기준 control
+      // changes how ONE unit is scored and not which units exist.
+    }, controller ? controller.signal : undefined))
+      .then(res => { settle(); setSession(withWorklist(session, normaliseWorklist(res), seq)); })
+      .catch(err => {
+        settle();
+        if (err && err.name === 'AbortError') return;
+        setSession(withWorklistError(session, err, seq));
+      });
   }
 
   function markLoop() {
@@ -1746,7 +1782,24 @@ export function bootstrap(deps) {
   // The five set-up controls. Each writes ONE primitive field; none of them derives behaviour
   // from a name. A preset, when one exists, will write these same fields and nothing else.
   bindSelect(el.ruleSelect, v => { if (onRulePick) onRulePick(v); });
-  bindSelect(el.tableSelect, v => setQuestion({ mapTable: v }));
+  // 🔴 THE TABLE IS THE ONE SET-UP FIELD THE WORKLIST REQUEST CARRIES, so it is the one control
+  //    that must re-ask the LIST as well as the unit. `map_table` is required by
+  //    `/api/maps/alignment/worklist`; `q`, `params`, `sort`, `order`, `limit`, `offset` are the
+  //    rest of its contract and NONE of them is a column or a reference. That is the whole
+  //    reason the other three set-up controls below do not appear here: x / y / value change how
+  //    one unit is READ and the reference changes what it is scored against, and neither can
+  //    change which units exist. Re-asking on those would be four requests for one answer.
+  //
+  //    NO SECOND CONTROL, AND NOTHING TO PRESS. A control that changes the question re-asks it;
+  //    a 새로고침 button beside it would be an admission that the first control does not count.
+  bindSelect(el.tableSelect, v => {
+    // Compared AFTER normalisation on both sides, never against the raw control value:
+    // `resolveQuestion` may refuse a table the catalog does not carry, and a request issued on
+    // an unchanged question is a request for the answer already on screen.
+    const before = session.question.mapTable;
+    setQuestion({ mapTable: v });
+    if (session.question.mapTable !== before) fetchWorklist();
+  });
   bindSelect(el.colXSelect, v => setQuestion({
     columns: { ...session.question.columns, x: v || null }, bindingSource: BINDING_DECLARED }));
   bindSelect(el.colYSelect, v => setQuestion({

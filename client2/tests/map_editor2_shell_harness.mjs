@@ -2228,6 +2228,158 @@ function throws(fn, what) {
   ok(!JSON.stringify(vm).includes('%'), 'Q6b and no percent sign reached the screen');
 }
 
+// ── R. THE SET-UP ROW RE-ASKS THE REQUEST IT CHANGES ───────────────────────────
+//
+// 🔴 THE DEFECT, MEASURED IN A REAL BROWSER AGAINST :8080 (2026-08-06): the 대상 테이블 control
+//    changed the column pickers and NEVER re-issued the worklist. The network log for a whole
+//    session held three `worklist?rule=...&map_table=core_wafer_map` and not one
+//    `map_table=dt_log`, while `dt_log` sat selected in the control.
+//
+//    THE CONSEQUENCE IS NOT A STALE LIST, IT IS TWO TABLES ON ONE SCREEN. The pickers repopulate
+//    from `/tables/{t}/schema` at once, so `dt_x` / `dt_y` appear correctly, while the rows and
+//    their map counts still belong to the previous table. Nothing on screen says which is which.
+//
+// THE FIXTURE ACTIVATES THE DEFECT AXIS, and R0 is the control that says so: the two tables'
+// populations must render DIFFERENTLY, or this section verifies nothing (map-pm lesson,
+// 2026-07-30). The numbers are the ones the lead PM measured server-side.
+{
+  const CORE = 'core_wafer_map';
+  const DT = 'dt_log';
+  const catalog = {
+    tables: [{ table: CORE, label: CORE }, { table: DT, label: DT }],
+    columns: { [CORE]: ['core_x', 'core_y', 'c_bn'], [DT]: ['dt_x', 'dt_y', 'c_bn', 'dt_index'] },
+    columnTypes: {},
+    // The DECLARED binding per table, exactly the shape `/api/maps/paint-rules?table=` serves.
+    binding: { [CORE]: { x: 'core_x', y: 'core_y', val: 'c_bn', source: 'declared' },
+               [DT]: { x: 'dt_x', y: 'dt_y', val: 'c_bn', source: 'declared' } },
+    references: { [CORE]: [{ value: `${CORE}:REF_A` }], [DT]: [{ value: `${DT}:REF_B` }] },
+  };
+  // Two genuinely different populations under the same unit keys -- which is what makes the
+  // wrong list PLAUSIBLE rather than visibly broken.
+  const POPULATION = { [CORE]: [['EQP1|PRD-A', 191], ['EQP1|PRD-B', 1]],
+                       [DT]: [['EQP1|PRD-A', 40], ['EQP1|PRD-B', 6]] };
+  const pageFor = (t) => ({
+    units: POPULATION[t].map(([unit_key, map_count]) => ({
+      unit_key, key: { dt_eqp: 'EQP1', product: unit_key.split('|')[1] },
+      state: 'pending', map_count })),
+    totals: { matched: 2, by_state: { pending: 2 } },
+  });
+  /** The map counts ON SCREEN, keyed by unit. Key->value, never a count of rows. */
+  const shown = (d) => d.querySelectorAll('[data-me2-row]')
+    .map(r => `${r.getAttribute('data-me2-row-key')}=`
+      + `${(r.querySelector('[data-me2-row-maps]') || { textContent: '' }).textContent}`)
+    .join(' ');
+  const paint = (t) => POPULATION[t].map(([k, n]) => `${k}=${WORDS.maps} ${n}`).join(' ');
+
+  eq(paint(CORE) === paint(DT), false,
+     'R0 CONTROL: the two tables paint DIFFERENT map counts, so a wrong list is detectable here');
+
+  const doc = makeDocument();
+  const asked = [];
+  const app = bootstrap({
+    document: doc,
+    api: { counters: { reads: 0, writes: 0 },
+           loadReferenceView: () => Promise.resolve({}),
+           confirmFrame: () => Promise.resolve({}) },
+  });
+  app.setWorklistLoader((query) => { asked.push(query); return Promise.resolve(pageFor(query.mapTable)); });
+  app.setContext({ rule: 'eqp_product_frame_attribution' });
+  app.setCatalog(catalog);
+  app.refreshWorklist();
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  app.render();
+
+  eq(asked.length, 1, 'R1 adopting a rule asks the worklist once');
+  eq(asked[0].mapTable, CORE, 'R1b and it carries the table the catalog put in force');
+  eq(shown(doc), paint(CORE), 'R1c the screen shows that table\'s population');
+
+  // ── THE DEFECT ITSELF ───────────────────────────────────────────────────────
+  const tableSelect = doc.getElementById('me2-table-select');
+  tableSelect.value = DT;
+  tableSelect.dispatchEvent('change');
+  eq(asked.length, 2, 'R2 changing the table RE-ISSUES the worklist -- the control that changes '
+     + 'the question asks it again, with no second control to press');
+  // `(asked[1] || {})`: under the defect there IS no second request, and a harness that throws
+  // on it reports a crash instead of a measurement -- the rest of the section then goes unscored.
+  eq((asked[1] || {}).mapTable, DT, 'R2b and the new request names the table that was picked');
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  app.render();
+  eq(shown(doc), paint(DT), 'R2c and the rows on screen are the NEW table\'s population -- '
+     + '191/1 gave way to 40/6, so the screen is not showing two tables at once');
+  eq(app.peek().question.columns.x + '/' + app.peek().question.columns.y, 'dt_x/dt_y',
+     'R2d and the new table\'s DECLARED binding is in force beside its rows');
+
+  // ── WHAT MUST NOT RE-ASK. Decided from the route\'s contract, not from symmetry:
+  //    `/api/maps/alignment/worklist` takes rule, map_table, params, q, sort, order, limit,
+  //    offset -- and no column, and no reference. Those controls change how ONE unit is read or
+  //    what it is scored against; they cannot change which units exist.
+  const before = asked.length;
+  doc.getElementById('me2-reference-select').value = `${DT}:REF_B`;
+  doc.getElementById('me2-reference-select').dispatchEvent('change');
+  eq(asked.length, before, 'R3 the 기준 control does NOT re-ask the worklist -- the route takes '
+     + 'no reference parameter, so a request for it would be a narrowing nobody performs');
+  doc.getElementById('me2-col-value').value = 'dt_index';
+  doc.getElementById('me2-col-value').dispatchEvent('change');
+  doc.getElementById('me2-col-x').value = 'dt_index';
+  doc.getElementById('me2-col-x').dispatchEvent('change');
+  eq(asked.length, before, 'R3b nor do the column pickers -- the worklist is a list of UNITS');
+
+  // Re-picking the table already in force asks nothing: the answer is already on screen.
+  tableSelect.value = DT;
+  tableSelect.dispatchEvent('change');
+  eq(asked.length, before, 'R4 re-picking the SAME table issues no request');
+
+  // ── SUPERSESSION. Two switches in flight; the older answer must never be painted. ──
+  const docS = makeDocument();
+  const open = [];
+  const appS = bootstrap({
+    document: docS,
+    api: { counters: { reads: 0, writes: 0 },
+           loadReferenceView: () => Promise.resolve({}),
+           confirmFrame: () => Promise.resolve({}) },
+  });
+  // A loader that behaves like the transport: an aborted signal rejects with `AbortError` and
+  // the response never arrives. A stub that ignored the signal could not tell a cancelled
+  // request from a slow one, and would score the fix green with no cancellation at all.
+  appS.setWorklistLoader((query, signal) => new Promise((resolve, reject) => {
+    const rec = { query, aborted: false, resolve };
+    open.push(rec);
+    if (signal && typeof signal.addEventListener === 'function') {
+      signal.addEventListener('abort', () => {
+        rec.aborted = true;
+        const err = new Error('aborted'); err.name = 'AbortError'; reject(err);
+      });
+    }
+  }));
+  appS.setContext({ rule: 'eqp_product_frame_attribution' });
+  appS.setCatalog(catalog);
+  appS.refreshWorklist();
+  const sel = docS.getElementById('me2-table-select');
+  sel.value = DT;
+  sel.dispatchEvent('change');
+  eq(open.length, 2, 'R5 the switch opened a second request while the first was still in flight');
+  eq((open[0] || {}).aborted, true, 'R5b and the first was ABORTED -- superseded at the transport, in '
+     + 'the one shape this project already uses (value_suggest.js:400)');
+  // 🔴 THE NEWER ANSWER IS SETTLED FIRST, AND THE ORDER IS THE WHOLE MEASUREMENT. The older
+  //    request is already settled by its abort, so its `resolve` is inert -- that is the claim.
+  //    Settling them in this order is what makes the assertion fail when the abort is removed:
+  //    then both answers land, the CORE one lands LAST, and the screen shows the table nobody
+  //    selected. Resolving the older one first would leave R5c green either way.
+  //    (Guarded: with the re-issue gone there is no second request, and a crash here would
+  //    leave the rest of the section unscored.)
+  if (open[1]) open[1].resolve(pageFor(DT));
+  if (open[0]) open[0].resolve(pageFor(CORE));
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  appS.render();
+  eq(shown(docS), paint(DT),
+     'R5c the newer table\'s rows stand -- an older answer cannot overwrite a newer one');
+  eq(appS.peek().worklist.error, null,
+     'R6 and a superseded request is NOT an error: the operator replaced their own question, '
+     + 'so reporting an outage would be a failure that did not happen');
+  ok(appS.peek().worklist.served === true, 'R6b the list is served, not degraded');
+}
+
 console.log(`ASSERTIONS ${compared} ${failures.length}`);
 if (failures.length > 0) {
   console.log('\nFAILURES');

@@ -469,7 +469,14 @@ const FLOORS = new Map([
   // predated `placement` and modelled a wire that no longer exists; G58 had become a green proxy
   // -- with nothing drawn, "0 misses" passed vacuously -- and now varies the SEAT instead of
   // stripping it.
-  ['map_editor2_shell_harness.mjs', 544],
+  // 544 -> 560 (2026-08-07). Section R: THE SET-UP ROW RE-ASKS THE REQUEST IT CHANGES. The 대상
+  // 테이블 control changed the column pickers and never re-issued `/worklist`, so the rows and
+  // their map counts still belonged to the previous table -- two tables on one screen, with
+  // nothing saying which was which. R0 is the worthlessness check (the two fixtures must paint
+  // different counts), R2c is the symptom itself (191/1 giving way to 40/6), and R5b scores the
+  // supersession as an ABORT rather than as an end state. R3/R3b are the negative controls: the
+  // 기준 and column controls must NOT re-ask, which is the route's contract and not symmetry.
+  ['map_editor2_shell_harness.mjs', 560],
   //
   // THE SEAT ITSELF. Scores that the screen draws where the server says it seated the map,
   // rather than recomposing `seatOf(frame) + shift` from a frame it built out of absent fields.
