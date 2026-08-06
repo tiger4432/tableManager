@@ -1170,6 +1170,77 @@ def make_frame_transform(source_meta: dict, target_meta: dict):
     return to_target
 
 
+def _mat_mul(a, b):
+    """2x2 정수 행렬 곱. 항목이 전부 {-1,0,1}이라 오버플로도 반올림도 없다."""
+    return ((a[0][0] * b[0][0] + a[0][1] * b[1][0], a[0][0] * b[0][1] + a[0][1] * b[1][1]),
+            (a[1][0] * b[0][0] + a[1][1] * b[1][0], a[1][0] * b[0][1] + a[1][1] * b[1][1]))
+
+
+#: `cell_to_physical`의 회전 선형부. 코드의 네 갈래를 그대로 옮긴 것이고, 상수항
+#: (`visual_cols - 1` 등)은 **평행이동이라 여기 없다** — 이 표는 선형부만 나른다.
+_ROT_FWD = {0: ((1, 0), (0, 1)), 90: ((0, 1), (-1, 0)),
+            180: ((-1, 0), (0, -1)), 270: ((0, -1), (1, 0))}
+#: `physical_to_cell`의 회전 선형부(위의 역).
+_ROT_INV = {0: ((1, 0), (0, 1)), 90: ((0, -1), (1, 0)),
+            180: ((-1, 0), (0, -1)), 270: ((0, 1), (-1, 0))}
+
+
+def _side_matrix(side: str, rotated: bool):
+    """면 반전의 선형부. `cell_to_physical`은 회전 **전에** (c,r)에 이것을 건다 —
+    90/270에서는 r을, 아니면 c를 뒤집는다(코드의 `is_rotated_90_or_270` 분기 그대로)."""
+    if str(side).lower() != "back":
+        return ((1, 0), (0, 1))
+    return ((1, 0), (0, -1)) if rotated else ((-1, 0), (0, 1))
+
+
+def frame_linear_part(source_meta: dict, target_meta: dict):
+    """소스 프레임 → 타깃 프레임 사상의 **선형부만**. `phys`를 한 글자도 읽지 않는다.
+
+    ═══ 왜 이것으로 충분한가 (실측 2026-08-06) ═══════════════════════════════════════════
+    제품 소유자: 「얼라인은 mm 안 쓰기로 해놓고 box minC 왜 하는지 모르겠네 · 그냥 유효다이
+    좌표계에 올리면 되는데」. 앵커가 있으면 **절대 좌표가 필요 없고 차분만 필요하다**:
+
+        c₂ − c₁ = (xv₂ − start_x + minC) − (xv₁ − start_x + minC) = xv₂ − xv₁
+
+    바운딩박스도 start도 격자 치수도 전부 **평행이동**이라 차분에서 소거된다. 실측으로
+    확인했다 — 소스의 물리 규격을 칩 피치 5x5·7x11, 웨이퍼 지름 200/300, edge margin 3/20,
+    오프셋 (3.5,−2.5), start (0,0)/(3,−4)로 흔들어도 **여덟 프레임 전부에서 앵커 기준 차분이
+    한 자도 안 움직였다(0/8)**. 그리고 그 차분은 정확히 이 선형부를 저장 좌표 차분에 먹인
+    값과 같다 — 근사가 아니라 항등이다.
+
+    반환은 2x2 정수 행렬 `((a11,a12),(a21,a22))`이고, 여덟 후보에서 부호 있는 치환행렬이다.
+
+    🔴 **손으로 쓴 대수이므로 오라클이 있다.** `make_frame_transform`을 세 점에 먹여 얻은
+       선형부와 **모든 축 조합에서** 일치해야 한다(`test_the_linear_part_matches_the_transform`).
+       이 파일은 좌표 규약을 손으로 옮겨 쓰다 두 번 틀렸다(QA O3·B1) — 그래서 옮겨 쓰되
+       독립 정답과 대조한다.
+
+    합성 순서는 파이프라인 그대로다:
+        visual_src ─M1→ cell_src ─M2→ physical ─M3→ cell_dst ─M4→ visual_dst
+    """
+    def _axes(meta):
+        rot = _rotation_of(meta)
+        return rot, _side_of(meta), bool(_y_invert_of(meta)), rot in (90, 270)
+
+    s_rot, s_side, s_inv, s_rotated = _axes(source_meta)
+    t_rot, t_side, t_inv, t_rotated = _axes(target_meta)
+
+    # M1: visual_to_cell — y반전만 선형부에 남는다(start·minC는 평행이동).
+    m1 = ((1, 0), (0, -1 if s_inv else 1))
+    # M2: cell_to_physical — 면 반전을 먼저, 그다음 회전.
+    m2 = _mat_mul(_ROT_FWD[s_rot], _side_matrix(s_side, s_rotated))
+    # M3: physical_to_cell — 회전 역을 먼저, 그다음 면 반전(코드의 순서 그대로).
+    m3 = _mat_mul(_side_matrix(t_side, t_rotated), _ROT_INV[t_rot])
+    # M4: cell_to_visual.
+    m4 = ((1, 0), (0, -1 if t_inv else 1))
+    return _mat_mul(m4, _mat_mul(m3, _mat_mul(m2, m1)))
+
+
+def apply_linear(mat, dx, dy):
+    """선형부를 저장 좌표 **차분**에 먹인다 → 타깃 프레임에서의 차분."""
+    return (mat[0][0] * dx + mat[0][1] * dy, mat[1][0] * dx + mat[1][1] * dy)
+
+
 def make_physical_transform(source_meta: dict):
     """소스 프레임 좌표 → **물리(정준) 좌표**. `make_frame_transform`의 앞 절반이다.
 

@@ -1738,44 +1738,128 @@ def test_a_confirmed_origin_survives_the_next_read():
         same_dims_other_origin, floor, {"table": "vd", "map_id": "F"}) is None
 
 
-def test_the_derived_start_is_the_same_under_all_eight_frames():
-    """THE EIGHT-WAY IDENTITY. The origin is a quantity in the map's OWN visual space, which is
-    before the rotation - so it cannot depend on which candidate frame is being tested.
+def test_the_stored_start_reconstructs_the_placement():
+    """`grid_start_x/y` is a COMPATIBILITY field, not a display value.
 
-    One assertion catches three distinct mistakes at once: a missing inverse, a wrong sign, and
-    a rotation applied the wrong way round. Any of them makes the eight disagree; only a correct
-    inverse makes them identical. Measured: `start +/- (dx,dy)` - the expression anyone fixing
-    this by eye reaches for first - agrees with the truth on exactly TWO frames of eight, so a
-    test that checked `rot0_front` alone would pass on a broken conversion.
+    Product owner 2026-08-06: 「start xy는 레거시 호환 위해 저장 필요해」 and 「화면에 표시하지는
+    않되 저장은 하기」. The legacy editor reads `grid_start_x/y` out of the metadata, so the
+    field has a real downstream consumer and is not dead - what retired is the DERIVATION that
+    asked "which origin reproduces the alignment", a question a difference-based placement does
+    not answer. The formula that replaces it is the product owner's own:
 
-    🔴 THE INDEX COLUMN IS NOT OPTIONAL HERE. Without it the translation is solved by the +-3
-    search, and this fixture's displacement is (5,-4) - outside the window, so the search
-    returns a clamped value and the eight derived origins legitimately differ. The first
-    version of this test omitted the indices and read that as a failure of the conversion.
-    The anchor is what makes the displacement recoverable at all.
-    """
-    ref_meta = _meta(cols=41, rows=41, start_x=1, start_y=1)
-    floor = _valid_die_floor(ref_meta)
-    cells, ks = _partial_job(ref_meta, floor, 180)
-    src_meta = dict(ref_meta, grid_start_x=1, grid_start_y=1)
-    DISPLACEMENT = (5, -4)
+        source_start = floor_start + displacement,   displacement = anchor_ref - L * anchor_src
 
-    derived = {}
+    and the displacement is already inside what ships, so there is no second derivation and no
+    phys. This asserts the property that makes the field useful: a reader holding only the
+    stored start and `L` puts every cell exactly where the scoring put it."""
+    floor_meta = _meta(cols=41, rows=41, start_x=3, start_y=-2)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 120)
+    planted = "rot90_front"
+    recorded = [(x + 5, y - 4) for (x, y) in _plant(floor_meta, cells, planted)]
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": dict(floor_meta), "cells": recorded, "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    win = next(c for c in cands if c["frame"] == ruling["winner"])
+    pl = win["placement"]
+    L = pl["linear"]
+
+    start = ma.start_from_anchor(floor_meta, L, pl["anchor_src"], pl["anchor_ref"])
+    assert start is not None
+    # the translation the stored start encodes, relative to the floor's own origin
+    tx = start[0] - floor_meta["grid_start_x"]
+    ty = start[1] - floor_meta["grid_start_y"]
+    for (x, y) in recorded:
+        from_start = (L[0][0] * x + L[0][1] * y + tx, L[1][0] * x + L[1][1] * y + ty)
+        from_anchor = (pl["anchor_ref"][0]
+                       + L[0][0] * (x - pl["anchor_src"][0])
+                       + L[0][1] * (y - pl["anchor_src"][1]),
+                       pl["anchor_ref"][1]
+                       + L[1][0] * (x - pl["anchor_src"][0])
+                       + L[1][1] * (y - pl["anchor_src"][1]))
+        assert from_start == from_anchor, (
+            "the stored start and the anchor pair must be the same fact in two spellings")
+
+
+def test_the_stored_start_is_not_on_the_wire():
+    """「화면에 표시하지는 않되 저장은 하기」. A derived number sitting beside the anchor pair
+    would make an operator arbitrate between two correct values, which is worse than showing
+    neither. It is written to the metadata and the record; it does not ship for display."""
+    floor_meta = _meta(cols=41, rows=41, start_x=3, start_y=-2)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 80)
+    cands, _e, _r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": dict(floor_meta),
+          "cells": _plant(floor_meta, cells, "rot90_front"), "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    for c in cands:
+        assert set((c.get("placement") or {})) <= {"linear", "anchor_src", "anchor_ref"}, (
+            "the placement carries what reconstructs it and nothing derived from that")
+        assert "grid_start_x" not in c and "start_x" not in c
+
+
+# 🔴 RETIRED 2026-08-06 with its reason on the record, the way [D5] was.
+#    `test_the_derived_start_is_the_same_under_all_eight_frames` asserted that the
+#    derived origin is identical under all eight frames - true of a placement that
+#    solved a shift against the map's own origin, and meaningless once placement became
+#    anchor-plus-differences and stopped reading that origin at all. The rule was not
+#    wrong; it described a mechanism that no longer exists, so it is retired rather than
+#    patched, and `test_the_stored_start_reconstructs_the_placement` states what is true
+#    now. Kept as a comment so the argument can be re-derived if the mechanism returns.
+
+@pytest.mark.parametrize("src_inv", [False, True])
+@pytest.mark.parametrize("dst_inv", [False, True])
+def test_the_linear_part_matches_the_transform(src_inv, dst_inv):
+    """THE ORACLE FOR HAND-WRITTEN ALGEBRA. `frame_linear_part` composes the linear map from
+    declared axes alone; `make_frame_transform` derives it through the whole phys/box stack.
+    They must agree on every axis combination.
+
+    🔴 `grid_y_invert = True` IS THE CASE THAT MATTERS AND EVERY OTHER FIXTURE HERE HAS IT
+       FALSE. It inverts WHICH FRAMES ARE MIRRORS - with src invert on, `rot0_front` becomes a
+       reflection and `rot0_back` becomes rotation-only. A suite that only ever ran it false is
+       the same control that hid this: it cannot tell a correct composition from one that drops
+       the reflection entirely."""
+    CELLS = [(5, 7), (6, 7), (9, 7), (9, 8), (2, 11), (20, 3), (33, 26)]
+    src = _meta(cols=41, rows=41, start_x=0, start_y=0)
+    src["grid_y_invert"] = src_inv
+    tgt = _meta(cols=41, rows=41, start_x=0, start_y=0)
+    tgt["grid_y_invert"] = dst_inv
+
     for frame in ma.CANDIDATE_FRAMES:
-        recorded = [(x + DISPLACEMENT[0], y + DISPLACEMENT[1])
-                    for (x, y) in _plant(ref_meta, cells, frame)]
-        c, _e, r, _s = ma.score_candidates(
-            [{"map_id": "M1", "meta": src_meta, "cells": recorded, "indices": ks}],
-            floor, ref_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
-        assert r["winner"] == frame, "guard: the planted frame must win before its shift is used"
-        w = next(x for x in c if x["frame"] == frame)
-        derived[frame] = ma.start_for_placement(
-            source_meta_for_frame(src_meta, frame), ref_meta, w["shift"])
+        sm = source_meta_for_frame(src, frame)
+        L = map_overlay.frame_linear_part(sm, tgt)
+        tf = map_overlay.make_frame_transform(sm, tgt)
+        a = tf(*CELLS[0])
+        for (x, y) in CELLS:
+            want = tf(x, y)
+            got = (a[0] + L[0][0] * (x - CELLS[0][0]) + L[0][1] * (y - CELLS[0][1]),
+                   a[1] + L[1][0] * (x - CELLS[0][0]) + L[1][1] * (y - CELLS[0][1]))
+            assert want == got, (
+                "%s srcInv=%s dstInv=%s cell=%s: the declared-axis composition and the "
+                "transform disagree" % (frame, src_inv, dst_inv, (x, y)))
 
-    assert len(set(derived.values())) == 1, (
-        "the origin is a pre-rotation quantity and cannot depend on the frame: %s" % derived)
-    assert derived["rot0_front"] == (1 + DISPLACEMENT[0], 1 + DISPLACEMENT[1]), (
-        "and it is the declared origin moved by the displacement, in the map's own space")
+
+def test_y_invert_inverts_which_frames_are_mirrors():
+    """The finding itself, pinned. A client that suppresses `invertY` does not lose a flag - it
+    gets the mirror SET backwards, which is why `front` reads correct and `back` displaced on a
+    symmetric map, and why the error grows with distance from the mirror axis while cells on the
+    anchor's own row look fine."""
+    def mirrors(inv):
+        out = set()
+        src = _meta(cols=41, rows=41, start_x=0, start_y=0)
+        src["grid_y_invert"] = inv
+        tgt = _meta(cols=41, rows=41, start_x=0, start_y=0)
+        for frame in ma.CANDIDATE_FRAMES:
+            L = map_overlay.frame_linear_part(source_meta_for_frame(src, frame), tgt)
+            if L[0][0] * L[1][1] - L[0][1] * L[1][0] == -1:
+                out.add(frame)
+        return out
+
+    a, b = mirrors(False), mirrors(True)
+    assert a and b and a.isdisjoint(b), (
+        "y-invert must swap the mirror set entirely, not merely alter it: %s vs %s" % (a, b))
+    assert "rot0_front" in b and "rot0_back" in a
 
 
 def test_adjacency_cannot_tell_the_eight_frames_apart():
@@ -1870,11 +1954,24 @@ def test_direction_narrows_a_tie_that_order_alone_cannot():
 
 
 def test_direction_decides_when_the_step_leaves_the_serpentine():
-    """The separation is demonstrably NEW: same floor, three cells, and the wrap happens at the
-    END of the floor's row - which is the only place a downward step is licensed."""
-    m, floor, y, xs = _floor_row_probe()
-    cells = [(xs[-2], y), (xs[-1], y), (xs[-1], y + 1)]
-    c, r, on_order, after = _score_pair(m, floor, cells, [1, 2, 3])
+    """The separation is demonstrably NEW: the wrap happens at the END of the floor's row,
+    which is the only place a downward step is licensed.
+
+    🔴 THE FIXTURE MUST OBEY THE ANCHOR'S PREMISE. An earlier version put index 1 in the middle
+    of a middle row, and it passed only because the direction judge used to read the source's
+    UN-anchored coordinates. Once the judge reads the placement - which is where the anchor says
+    those dies actually sit - a map whose index 1 is not the floor's first valid die is not a
+    map the anchor can place, and the fixture was asserting against a state production cannot
+    reach. So this walks the floor's real first row and wraps into the second."""
+    m, floor, _y, _xs = _floor_row_probe()
+    rows = {}
+    for (x, yy) in floor:
+        rows.setdefault(yy, set()).add(x)
+    y0, y1 = sorted(rows)[0], sorted(rows)[1]
+    row0 = sorted(rows[y0])
+    row1 = sorted(rows[y1], reverse=True)      # serpentine reverses on the second row
+    cells = [(x, y0) for x in row0] + [(row1[0], y1)]
+    c, r, on_order, after = _score_pair(m, floor, cells, list(range(1, len(cells) + 1)))
     assert len(on_order) > 1, "guard: order alone must still tie, or nothing is being shown"
     assert after == ["rot0_front"]
     assert r["winner"] == "rot0_front"
@@ -1882,7 +1979,8 @@ def test_direction_decides_when_the_step_leaves_the_serpentine():
         "the ruling must say WHICH axis decided - a die-margin winner and a direction winner "
         "are different claims")
     win = next(x for x in c if x["frame"] == "rot0_front")
-    assert win["index_violations"] == 0 and win["index_steps"] == 2
+    assert win["index_violations"] == 0, "the true frame walks the floor's own serpentine"
+    assert win["index_steps"] == len(cells) - 1, "every consecutive pair is a step"
 
 
 def test_the_floor_is_the_judge_of_a_wrap_not_the_source():
@@ -1930,20 +2028,28 @@ def test_the_violation_count_ships_with_its_denominator():
         assert row["index_steps"] == 1
 
 
-def _reproduce_agreement_at(shift, cells, meta, frame, reference):
-    """Independently place `cells` under `frame` and count how many land on `reference` when
-    moved by `shift`. Used to bind the SHIPPED offset to the SHIPPED agreement.
+def _reproduce_agreement_from_wire(placement, cells, reference):
+    """Rebuild the placement from ONLY what crosses the wire and count what lands on the floor.
 
-    Deliberately does not call the scorer: an assertion that asked the scorer to confirm its
-    own number would pass under any offset it chose to ship."""
+    🔴 THE ORACLE IS THE SHIPPED VALUES, and that is MORE independent than the old one, not
+       less. It touches no scorer internals at all - just `linear`, `anchor_src`, `anchor_ref`
+       and the reference cells - so it asserts precisely the contract the client draws from.
+       If the scorer and the shipped values ever part, this is what notices, and that parting
+       is the failure that was invisible all day.
+
+       The previous version replayed through `make_frame_transform`, which stopped being the
+       scorer's method the moment placement became anchor-plus-differences."""
     import numpy as np
-    tf = map_overlay.make_frame_transform(source_meta_for_frame(meta, frame), meta)
-    placed = [tf(x, y) for (x, y) in cells]
-    moved = ma._encode([(x + shift["dx"], y + shift["dy"]) for (x, y) in placed])
+    L = placement["linear"]
+    ax, ay = placement["anchor_src"]
+    rx, ry = placement["anchor_ref"]
+    placed = [(rx + L[0][0] * (x - ax) + L[0][1] * (y - ay),
+               ry + L[1][0] * (x - ax) + L[1][1] * (y - ay)) for (x, y) in cells]
+    got = ma._encode(placed)
     ref = np.unique(ma._encode(sorted(reference)))
-    idx = np.searchsorted(ref, moved)
+    idx = np.searchsorted(ref, got)
     idx[idx >= ref.size] = 0
-    return int(np.count_nonzero(ref[idx] == moved))
+    return int(np.count_nonzero(ref[idx] == got))
 
 
 def test_the_shipped_placement_is_the_scored_placement():
@@ -1971,18 +2077,21 @@ def test_the_shipped_placement_is_the_scored_placement():
     for c in cands:
         if c["state"] != ma.STATE_SCORED:
             continue
-        assert c["shift"] is not None
-        assert _reproduce_agreement_at(c["shift"], recorded, floor_meta, c["frame"],
-                                       floor) == c["agreement"], (
-            "candidate %s ships offset %s and agreement %d, and those two do not describe the "
-            "same placement" % (c["frame"], c["shift"], c["agreement"]))
+        assert c["placement"] is not None, "the drawing contract must ship for every candidate"
+        assert _reproduce_agreement_from_wire(c["placement"], recorded, floor) == c["agreement"], (
+            "candidate %s ships placement %s and agreement %d, and those two do not describe "
+            "the same placement" % (c["frame"], c["placement"], c["agreement"]))
 
     # And the ruling's copy POINTS AT the winning row rather than re-deriving it.
     win = next(c for c in cands if c["frame"] == ruling["winner"])
     assert ruling["shift"] == win["shift"]
-    assert ruling["shift"] != {"dx": 0, "dy": 0}, (
-        "guard: on this fixture the anchor moves the map, so a consumer that drops the offset "
-        "draws somewhere else - which is the whole defect")
+    # 🔴 THE GUARD MOVED WITH THE MECHANISM. Under anchor-plus-differences the residual shift
+    #    is (0,0) BY CONSTRUCTION - the translation lives in `anchor_ref`, not in `shift`. So
+    #    the thing to prove is still "this fixture actually moves the map", and the number that
+    #    now says so is the anchor pair.
+    assert win["placement"]["anchor_ref"] != win["placement"]["anchor_src"], (
+        "guard: the anchor must actually displace this fixture, or a consumer that drops the "
+        "placement would coincidentally draw correctly and prove nothing")
 
 
 def test_a_shipped_offset_that_is_not_the_scored_one_is_caught():
@@ -2012,10 +2121,12 @@ def test_a_shipped_offset_that_is_not_the_scored_one_is_caught():
         "guard: the mutation must actually change the number, or it proves nothing - the "
         "search and the anchor have to disagree on this fixture")
 
-    assert _reproduce_agreement_at(stale, recorded, floor_meta, win["frame"],
-                                   floor) != win["agreement"], (
-        "shipping the search's offset while scoring by the anchor must not reproduce the "
-        "shipped agreement; if it does, the assertion above cannot catch this bug")
+    bad = dict(win["placement"])
+    bad["anchor_ref"] = [win["placement"]["anchor_ref"][0] + stale["dx"],
+                         win["placement"]["anchor_ref"][1] + stale["dy"]]
+    assert _reproduce_agreement_from_wire(bad, recorded, floor) != win["agreement"], (
+        "shipping a placement that is not the scored one must not reproduce the shipped "
+        "agreement; if it does, the assertion above cannot catch this bug")
 
 
 @pytest.mark.parametrize("mutate,reason", [

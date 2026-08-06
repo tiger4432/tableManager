@@ -548,9 +548,6 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
         #    보고 결정한 바닥이 아니라 지금의 바닥을 가리키게 된다. `shift`와 같은 규율.
         reference_table=reference.get("table"),
         reference_map_id=reference.get("map_id"),
-        reference_cell_count=_reference_count_of(reference),
-        # 잠정 순위였는가. 판정이 실어 온 목록을 **그대로** 옮긴다(§models 주석: 세 상태).
-        thresholds_defaulted=_defaulted_text(ruling),
         ruling_state=ruling_state,
         ruling_reason=ruling.get("reason_code"),
         winner_frame=ruling.get("winner"),
@@ -738,28 +735,6 @@ def _placement_of(contributor: dict, ruling: dict):
     return {"dx": dx, "dy": dy}
 
 
-def _reference_count_of(reference: dict):
-    """채점이 **실제로 쓴** 기준 셀 수. 없으면 None이고 None은 0이 아니다(§models 주석).
-
-    다시 세지 않는다 — 판정이 실어 온 수를 그대로 옮긴다. 쓰기 시점에 세면 채점과 쓰기
-    사이에 바닥이 바뀐 순간에 두 수가 갈리고, 그 순간이 이 컬럼이 존재하는 이유다.
-    """
-    return _as_int((reference or {}).get("count"))
-
-
-#: 문턱 기본값 목록의 저장 철자. 세 상태를 가른다 — None(안 실려 옴) · ''(전부 선언) ·
-#: 'a,b'(이 키들이 기본값). 「없는 키와 빈 목록은 받는 쪽에서 같아 보인다」는 이 파일과
-#: `map_alignment` 양쪽의 규율이고, 저장에서도 접지 않는다.
-def _defaulted_text(ruling: dict):
-    v = (ruling or {}).get("thresholds_defaulted")
-    if v is None:
-        return None
-    if isinstance(v, str):
-        return v
-    try:
-        return ",".join(str(k) for k in v)
-    except TypeError:
-        return None
 
 
 def _as_int(v):

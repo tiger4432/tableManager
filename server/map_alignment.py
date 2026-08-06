@@ -518,7 +518,8 @@ def borrowed_meta_for(meta: dict, basis_meta: dict, basis: dict = None,
 #    그래서 여기 넘기는 「셀」은 **바닥 격자 상자의 두 모서리**다: 채점이 실제로 본 bbox와
 #    다르지만, 위 문단이 그 차이가 출력에 도달할 수 없음을 말하고 검사가 그것을 못 박는다.
 def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
-                       frame: str, mark: dict, shift: dict = None) -> dict | None:
+                       frame: str, mark: dict, shift: dict = None,
+                       placement: dict = None) -> dict | None:
     """확정 한 건이 맵 하나에 대해 쓰는 `grid_metadata`. 쓸 것이 없으면 None. **순수 함수다.**
 
     `meta`: 그 맵의 **저장된** 메타(없으면 None). `basis_meta`: 바닥(유효 다이 맵)의 메타.
@@ -620,7 +621,16 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
     # ⚠️ **소비자 노출 — 다음 라운드에서 물을 것**: `client2/src/map_editor.js:6459`가 Push
     #    때마다 `grid_metadata`를 읽어 되쓴다. 확정된 원점을 정렬 이전의 값으로 덮어쓸 수
     #    있는지는 이 파일에서 답할 수 없다. 총괄에 보고했고 이 주석이 그 자리를 표시한다.
-    if shift:
+    # 🔴 **계산은 하나, 목적지는 둘.** 확정 메타의 `grid_start_x/y`와 확정 기록의 같은 값이
+    #    `start_from_anchor` **한 번의 반환값**을 나눠 쓴다 — 두 자리가 각자 계산하면 언젠가
+    #    갈리고, 그 갈림이 오늘 아침 시프트를 깨뜨린 모양 그대로다(총괄 지시 2026-08-06).
+    #    앵커 쌍이 오면 그것이 정본이고, 안 오면 종전 유도(은퇴 예정)가 남은 호출자를 받는다.
+    if placement:
+        st = start_from_anchor(basis_meta, placement.get("linear"),
+                               placement.get("anchor_src"), placement.get("anchor_ref"))
+        if st is not None:
+            base["grid_start_x"], base["grid_start_y"] = st
+    elif shift:
         st = start_for_placement(base, basis_meta, shift)
         if st is not None:
             base["grid_start_x"], base["grid_start_y"] = st
@@ -713,6 +723,41 @@ def start_for_placement(framed_meta: dict, target_meta: dict, shift: dict):
     u = (a22 * dx - a12 * dy) // det
     v = (a11 * dy - a21 * dx) // det
     return int(g["start_x"]) - u, int(g["start_y"]) - v
+
+
+def start_from_anchor(floor_meta: dict, linear, anchor_src, anchor_ref):
+    """확정이 메타에 적을 **소스 맵의 원점** `(start_x, start_y)`. 못 내면 None.
+
+    ═══ 제품 소유자 공식 (2026-08-06) ═══════════════════════════════════════════════════
+    「유효다이맵의 startxy로부터 소스맵 계산 shift 적용해서 소스맵 start xy 계산해서
+      메타에 넣으면 됨」 →  **source_start = floor_start + displacement**
+
+    변위는 **이미 실어 보내는 것 안에 있다.** 배치가 `placed = anchor_ref + L·(cell − anchor_src)`
+    이므로 평행이동 항은
+
+        t = anchor_ref − L · anchor_src
+
+    이고, 그래서 별도 유도가 없다 — phys도 박스도 안 읽는다. `start_for_placement`가 하던
+    「배치를 재현하는 원점」 유도는 은퇴한다(그 배치가 더 이상 원점을 읽지 않으므로 성립하지
+    않는 양이다). **은퇴하는 것은 유도이지 필드가 아니다** — 총괄 판정 2026-08-06: 레거시
+    에디터가 `grid_start_x/y`를 읽으므로 이 필드는 죽은 값이 아니라 **호환 계약**이다.
+
+    🔴 **화면에는 안 나간다**(제품 소유자: 「화면에 표시하지는 않되 저장은 하기」). 앵커 쌍
+       옆에 파생된 수를 같이 보이면 조작자가 「어느 쪽이 정본인가」를 중재하게 되는데, 둘은
+       같은 사실의 두 철자다 — 하나는 레거시 독자용, 하나는 재구성용. 그래서 저장만 한다.
+
+    🔴 **계산은 하나이고 목적지가 둘이다.** 이 함수가 그 하나이고, 확정 메타(`grid_start_x/y`)와
+       확정 기록이 **같은 반환값**을 쓴다. 두 자리가 각자 계산하면 언젠가 갈리고, 그 갈림이
+       오늘 아침 시프트를 깨뜨린 바로 그 모양이다.
+    """
+    g = map_overlay._grid_of(floor_meta)
+    if g is None or not linear or anchor_src is None or anchor_ref is None:
+        return None
+    tx = int(anchor_ref[0]) - (linear[0][0] * int(anchor_src[0])
+                               + linear[0][1] * int(anchor_src[1]))
+    ty = int(anchor_ref[1]) - (linear[1][0] * int(anchor_src[0])
+                               + linear[1][1] * int(anchor_src[1]))
+    return int(g["start_x"]) + tx, int(g["start_y"]) + ty
 
 
 def cells_outside_grid(meta: dict, cells) -> str | None:
@@ -1180,6 +1225,39 @@ def direction_violations(phys, cell_owner, idx_k, idx_has, judge):
             if left_in_row or by != next_row.get(ay):
                 bad += 1
     return bad, steps
+
+
+#: 정준 방위를 정의하는 축 셋. `frame_linear_part`는 축만 읽으므로 이 세 키면 충분하다 —
+#: phys도 격자도 필요 없다는 것이 [D11]의 요점이다.
+_CANONICAL_AXES = {"rotation": 0, "side": "front", "grid_y_invert": False}
+
+
+def anchor_cell_of(usable):
+    """배치의 기준점이 될 **소스 셀 하나** → `(맵 첨자, (x, y))`. 없으면 None.
+
+    최소 순번을 가진 셀이고, 규칙은 `_anchor_shift`와 **같다**(맵 하나 · 최소가 유일).
+    다른 점은 시점뿐이다: 저쪽은 배치가 끝난 뒤 평행이동을 재고, 이쪽은 배치가 **시작되기
+    전에** 기준점을 고른다 — 차분으로 놓으려면 기준점이 먼저 있어야 하기 때문이다.
+    """
+    best = None
+    maps_seen = set()
+    for mi, sm in enumerate(usable or ()):
+        ks = sm.get("_use_indices") or []
+        for i, k in enumerate(ks):
+            if k is None:
+                continue
+            try:
+                kv = int(k)
+            except (TypeError, ValueError):
+                continue
+            maps_seen.add(mi)
+            if best is None or kv < best[0]:
+                best = (kv, mi, i, tuple(sm["_use"][i]))
+            elif kv == best[0]:
+                best = (kv, None, None, None)      # 최소가 유일하지 않다
+    if best is None or best[1] is None or len(maps_seen) > 1:
+        return None
+    return best[1], best[3]
 
 
 def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left):
@@ -2117,25 +2195,30 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #       재현하므로 잔차가 (0,0)으로 깨끗하게 나온다 — 48조합 속성 테스트가 초록인 채로
     #       118/200을 통과시켰다. 배치가 옳은지는 **일치 개수**가 답한다(테스트에 추가).
     #
-    # 물리 좌표로 훑어 1번을 고르고, **그 셀의 기준 시각 좌표**를 과녁으로 쓴다(놓인 좌표가
-    # 그 공간에 살기 때문이다). 역변환을 새로 쓰지 않고 짝을 그대로 되짚는다 — 손으로 쓴
-    # 역변환이 규약을 놓치는 사고를 이 파일이 이미 두 번 겪었다.
+    # ═══ [D11] 정준 좌표는 **선언된 축만으로** 만든다 — mm도 박스도 안 읽는다 ═══════════
+    # 기준의 시각 좌표 → 정준 좌표는 **선형 사상 하나**이고, 그 사상은 기준이 선언한
+    # 회전·면·y반전에서 전부 나온다(§map_overlay.frame_linear_part). 웨이퍼 원도 칩 피치도
+    # 필요 없다 — 그것들은 이 셀 목록을 **만들 때** 이미 제 일을 했다.
+    #
+    # 🔴 평행이동 상수는 안 만든다. 훑기도 행 묶기도 평행이동에 불변이므로 상수는 답을
+    #    바꾸지 못하고, 상수를 구하려는 순간 박스가 다시 들어온다. 소스와 기준이 **같은
+    #    사상**을 타므로 둘은 같은 상수만큼 움직이고, 그래서 서로에 대해 정합한다.
     reference_top_left = None
     reference_walk = {}
-    _phys_ref = None            # 방향 판정도 이 좌표를 쓴다([3a-2]) — 없으면 그 축도 없다
+    _canon_ref = None           # 기준 셀의 정준 좌표. 방향 판정도 이것을 쓴다([3a-2])
+    _lc_ref = None              # 기준 시각 → 정준. 소스의 놓인 좌표도 이걸로 정준화한다
     if ref_pairs:
-        try:
-            _rptf = map_overlay.make_physical_transform(reference_meta)
-        except ValueError:
-            _rptf = None
-        if _rptf is not None:
-            _phys_ref = [_rptf(x, y) for (x, y) in ref_pairs]
-            reference_walk = serpentine_index(_phys_ref, top_is_min_y=True)
-            _first = reference_walk.get(1)
-            _back = {}
-            for _p, _v in zip(_phys_ref, ref_pairs):
-                _back.setdefault(_p, _v)
-            reference_top_left = _back.get(_first)
+        _lc_ref = map_overlay.frame_linear_part(reference_meta, _CANONICAL_AXES)
+        _canon_ref = [map_overlay.apply_linear(_lc_ref, x, y) for (x, y) in ref_pairs]
+        reference_walk = serpentine_index(_canon_ref, top_is_min_y=True)
+        _first = reference_walk.get(1)
+        # 과녁은 **기준의 시각 좌표**로 돌려준다 — 놓인 좌표가 그 공간에 살기 때문이다.
+        # 역변환을 새로 쓰지 않고 짝을 되짚는다(손으로 쓴 역변환이 규약을 놓치는 사고를
+        # 이 파일이 이미 두 번 겪었다).
+        _back = {}
+        for _p, _v in zip(_canon_ref, ref_pairs):
+            _back.setdefault(_p, _v)
+        reference_top_left = _back.get(_first)
 
     # [2] 후보마다 **메타를 통째로 만들어** 변환한다 (모듈 상단 전제).
     #
@@ -2146,6 +2229,12 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     source_values = None
     source_indices = None
     cell_owner = None
+    # [D11] 차분 배치의 기준점. **배치보다 먼저** 정해져야 한다 — 차분은 기준점이 있어야
+    # 뜻이 생긴다. 앵커가 안 서면 None이고, 그때는 종전 변환 경로가 돈다(박스를 읽는
+    # 유일한 갈래이고, 그 갈래에서는 ±3 탐색이 평행이동을 풀므로 출발점이 필요하다).
+    _anchor = anchor_cell_of(usable) if reference_top_left is not None else None
+    anchor_map_index = _anchor[0] if _anchor else None
+    anchor_cell = _anchor[1] if _anchor else None
     for frame in CANDIDATE_FRAMES:
         if parse_frame(frame)[1] not in considered:
             per_candidate.append({"frame": frame, "keys": None, "reason": None,
@@ -2161,6 +2250,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         # 「소스별로 index 매기는거잖아」) 여러 장을 한 훑기에 담으면 두 작업의 번호가 한
         # 수열로 섞여 둘 다 틀린다. 그래서 훑기는 **맵 단위**로 돈다.
         owner = []
+        frame_linear = None
         failed = None
         # Worked-example capture. Rows are taken **at the line the scorer places
         # the cell**, so the printed arithmetic is the arithmetic that ran.
@@ -2175,16 +2265,42 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             if src_meta is None:
                 failed = "프레임 '%s'을 이 맵의 규격에 적용할 수 없습니다" % frame
                 break
-            try:
-                tf = map_overlay.make_frame_transform(src_meta, reference_meta)
-                # 순번 축은 기준을 **모른다**. 같은 `src_meta`에서 물리 좌표만 뽑는
-                # 별도 사상이고, 거절 규약은 같다(§map_overlay.make_physical_transform).
-                ptf = map_overlay.make_physical_transform(src_meta)
-            except ValueError as e:
-                failed = str(e)
-                break
+            # ═══ [D11] **앵커가 있으면 mm도 박스도 읽지 않는다** (제품 소유자 2026-08-06) ═══
+            # 「얼라인은 mm 안 쓰기로 해놓고 box minC 왜 하는지 모르겠네 · 그냥 유효다이
+            # 좌표계에 올리면 되는데」. 앵커가 절대 좌표의 필요를 없애므로 배치는 **차분**이다:
+            #     c₂ − c₁ = (xv₂ − start_x + minC) − (xv₁ − start_x + minC) = xv₂ − xv₁
+            # 박스도 start도 격자 치수도 평행이동이라 소거된다. 실측 2026-08-06: 소스의
+            # phys를 칩 피치·지름·edge margin·오프셋·start까지 흔들어도 앵커 기준 차분이
+            # **여덟 프레임 전부에서 한 자도 안 움직였다(0/8)**, 그리고 그 차분은 선형부를
+            # 저장 좌표 차분에 먹인 값과 **항등**이다(32조합 × 7셀, 불일치 0).
+            #
+            # 🔴 선형부는 **반사까지 나른다**. `grid_y_invert`는 어느 프레임이 거울인지를
+            #    뒤집는다 — srcInv=True에서 `rot0_front`가 거울이 되고 `rot0_back`이 회전
+            #    전용이 된다. 회전·면·y반전을 따로 넘기면 받는 쪽이 합성 순서를 틀릴 수 있고
+            #    실제로 틀렸다(클라가 거울 집합을 거꾸로 잡았다). 합성된 결과 하나만 넘기면
+            #    **틀릴 것이 남지 않는다**.
+            L = None
+            if anchor_cell is not None:
+                L = map_overlay.frame_linear_part(src_meta, reference_meta)
+                # 실어 보낼 선형부는 **앵커가 선 맵의 것**이다 - 앵커 쌍이 그 맵의 셀이므로
+                # 재구성도 그 맵의 사상이라야 짝이 맞는다.
+                if mi == anchor_map_index:
+                    frame_linear = L
+            else:
+                try:
+                    tf = map_overlay.make_frame_transform(src_meta, reference_meta)
+                    ptf = map_overlay.make_physical_transform(src_meta)
+                except ValueError as e:
+                    failed = str(e)
+                    break
             for i, (x, y) in enumerate(sm["_use"]):
-                p = tf(x, y)
+                if L is not None:
+                    p = (reference_top_left[0]
+                         + L[0][0] * (x - anchor_cell[0]) + L[0][1] * (y - anchor_cell[1]),
+                         reference_top_left[1]
+                         + L[1][0] * (x - anchor_cell[0]) + L[1][1] * (y - anchor_cell[1]))
+                else:
+                    p = tf(x, y)
                 if _dg is not None and len(trace) < _DIAG_TRACE_CELLS:
                     trace.append({
                         "map_id": sm.get("map_id"), "at": len(placed),
@@ -2194,7 +2310,11 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                         "src_axes": map_overlay.frame_axes(src_meta),
                         "src_phys": _d_frame_phys(src_meta)})
                 placed.append(p)
-                phys.append(ptf(x, y))
+                # 정준 좌표는 **놓인 좌표를 기준의 사상으로** 돌린다 — 소스와 기준이 같은
+                # 사상을 타므로 같은 상수만큼 움직이고, 그래서 방향 판정이 두 집합의 행을
+                # 같은 자로 잰다(§[3a-2]). 앵커가 없으면 종전대로 물리 변환을 쓴다.
+                phys.append(map_overlay.apply_linear(_lc_ref, p[0], p[1])
+                            if L is not None else ptf(x, y))
                 owner.append(mi)
                 vals.append(sm["_use_values"][i])
                 ks.append(sm["_use_indices"][i])
@@ -2213,8 +2333,11 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             cell_owner = owner
         per_candidate.append({"frame": frame, "keys": _encode(placed), "reason": None,
                               "_trace": trace,
+                              # 실어 보낼 배치의 선형부(§payload `placement`).
+                              "_linear": frame_linear,
                               # 순번 훑기의 입력. 후보마다 **다르다** - 회전·면이 바꾸는
                               # 것이 바로 이 좌표이고, 그래서 여덟이 서로 다른 순서를 만든다.
+                              # 🔴 앵커가 있으면 [3-0]이 **앉힌 좌표로 덮어쓴다**(§[D12]).
                               "_phys": phys,
                               # 앵커 자리. 놓인 좌표계(기준 시각)에서 잰다 - 앵커가 정하는
                               # 것은 점유·값 축의 **평행이동**이고 그 축들은 그 좌표계에 산다.
@@ -2267,13 +2390,34 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         mem = _membership(c["keys"], ref_sorted, dx, dy)
         c.update(dx=dx, dy=dy, agreement=int(np.count_nonzero(mem)), scored=True,
                  member=mem)
+        # ═══ [D12] 정준 좌표는 **앉힌 자리**에서 만든다, 선언된 자리가 아니라 ═══════════════
+        # 적대 검수 실측 2026-08-06: 방향 판정이 `_phys`(앵커 이전 좌표)를 읽는 동안 판사는
+        # 기준의 행으로 서 있었다. 앵커는 최소 순번 다이를 바닥 좌상단으로 옮기는데 그 이동이
+        # 판정에 안 보였고, 판사의 행 방향은 **행 서수로 교대**하므로 홀수 서수 행에 선언된
+        # 소스는 「왼쪽」이 합법이 되어 오른쪽 걸음이 전부 위반으로 세어졌다:
+        #     행 20(짝수): rot0_front 위반 0 · rot270_front 1 → 좁혀짐
+        #     행 21(홀수): rot0_front 위반 1 · rot270_front 1 → **넷 다 1** → 안 좁혀짐
+        # 제품 소유자: 「오른쪽 진행이 1등이어야 하는데 270도랑 공동 1등」. 위치의 절반에서
+        # 터졌고, 픽스처가 중앙 행(41행 중 20, 짝수)을 골라서 초록이었다.
+        #
+        # 🔴 그래서 시프트가 **풀린 뒤에** 정준화한다. 놓인 좌표는 기준의 시각 공간에 살므로
+        #    기준의 사상(`_lc_ref`)을 한 번 더 태워 정준으로 돌린다 — 두 공간을 섞어 수를
+        #    맞추지 않는다. 그 섞기가 오늘 하루를 만든 함정이다.
+        if _lc_ref is not None and c.get("_placed") is not None:
+            c["_phys"] = [map_overlay.apply_linear(_lc_ref, x + dx, y + dy)
+                          for (x, y) in c["_placed"]]
 
     # [3a] 순번 일치: **이 셀이 몇 번째로 훑히는가 == 저장된 순번인가**, 셀마다.
     #
-    # 🔴 **시프트를 쓰지 않는다 — 쓸 수가 없다.** 훑기는 행을 y로 묶고 행 안을 x로 정렬할
-    #    뿐이라 모든 셀을 (dx,dy)만큼 옮겨도 순서가 한 자도 안 바뀐다(실측 2026-08-06:
-    #    ±1000 오프셋에서 266/266 유지). 그래서 이 축은 평행이동에 **불변**이고, 앵커가
-    #    맞든 틀리든 이 축의 답은 같다. 앵커는 점유·값 축의 장치다.
+    # 🔴 **순서 일치는 시프트를 쓰지 않는다 — 쓸 수가 없다.** 훑기는 행을 y로 묶고 행 안을
+    #    x로 정렬할 뿐이라 모든 셀을 (dx,dy)만큼 옮겨도 순서가 한 자도 안 바뀐다(실측
+    #    2026-08-06: ±1000 오프셋에서 266/266 유지).
+    #
+    # ⚠️ **이 불변성은 `serpentine_rank`/`_index_member`에만 해당한다.** 방향 판정
+    #    (`direction_violations`)은 후보의 행을 **기준의 행**에 대고 그 행의 교대 방향을
+    #    읽으므로 평행이동에 **불변이 아니다** — 옮기면 어느 행에 앉는지가 바뀌고 합법
+    #    방향도 같이 바뀐다. 새 함수가 이웃의 논거를 물려받았고 그 논거는 따라오지 않았다
+    #    (적대 검수 2026-08-06, §[D12]). 그래서 방향 판정은 **앉힌 좌표**를 받는다.
     #
     # 🔴 **훑기는 맵 단위로 돈다.** 순번은 작업마다 자기 1..N을 다시 시작하므로(제품 소유자:
     #    「소스별로 index 매기는거잖아」) 단위에 맵이 둘이면 두 수열을 한 훑기에 담는 순간
@@ -2307,7 +2451,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
 
     # [3a-2] 걸음의 **방향**. 순서 일치가 못 가르는 자리를 가른다(§direction_violations).
     #        판사는 기준 바닥이고, 그것은 순번 훑기와 **같은 정준 좌표계**에서 읽는다.
-    _judge = direction_judge(_phys_ref) if _phys_ref else None
+    # 🔴 판사는 **기준의 셀 목록**에서 나온다, phys가 아니라(총괄 판정 2026-08-06 Ruling 1).
+    #    묻는 것은 「이 다이 오른쪽에 기준의 다이가 더 있었나」이고, 그것은 셀 집합의 사실이지
+    #    밀리미터의 사실이 아니다. 행으로 묶어 min/max x를 잡으면 끝이고, 소스와 기준이 같은
+    #    사상(`_lc_ref`)을 타므로 어느 공간이든 **행은 행으로 묶인다** — 절대냐 상대냐가
+    #    문제가 되지 않는다. 판사가 phys를 찾아간 것은 셀 목록이 이미 답하는 질문을 물으러
+    #    간 것이고, 그것이 이 라운드 전체와 같은 모양이다.
+    _judge = direction_judge(_canon_ref) if _canon_ref else None
     for c in per_candidate:
         if c.get("index_member") is None or _judge is None:
             c["index_violations"] = None
@@ -2495,6 +2645,22 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             # 잴 것이 없었던 것인지 화면이 구별할 수 있게 한다.
             "index_violations": c.get("index_violations"),
             "index_steps": c.get("index_steps"),
+            # ═══ [D11] 화면이 그리는 재료. **서버가 이미 계산한 배치**이지, 클라가 그것을
+            #     다시 유도할 파라미터가 아니다. 이 구분이 이 필드의 전부다:
+            #       · `rotation`/`side`/`grid_y_invert`/`phys`/`dims`/`start`를 보내면 받는
+            #         쪽이 **합성을 다시** 해야 하고, 실제로 틀렸다 — `grid_y_invert`가 어느
+            #         프레임이 거울인지를 뒤집는데 클라는 그 순서를 거꾸로 잡았다.
+            #       · `linear`는 그 합성의 **결과**다. 다시 할 것이 없으므로 틀릴 것도 없다.
+            #     그리기: `placed = anchor_ref + linear · (cell − anchor_src)`.
+            #     🔴 거울 여부는 `det(linear) == -1`이고 **따로 싣지 않는다** — 유도되는
+            #        사실을 유도원 옆에 두면 언젠가 갈린다.
+            #     🔴 `grid_start`는 **여기 없다**(제품 소유자: 「화면에 표시하지는 않되 저장은
+            #        하기」). 앵커 쌍 옆에 파생값을 같이 보이면 조작자가 「어느 쪽이 정본인가」를
+            #        중재하게 되는데, 둘은 같은 사실의 두 철자다 — 레거시 독자용과 재구성용.
+            "placement": (None if c.get("_linear") is None or anchor_cell is None else {
+                "linear": [list(c["_linear"][0]), list(c["_linear"][1])],
+                "anchor_src": list(anchor_cell),
+                "anchor_ref": list(reference_top_left)}),
             "index_margin": (None if c.get("index_agreement") is None or k_runner is None
                              else int(c["index_agreement"] - k_runner)),
             # 값 지표는 **점유를 대체하지 않는다.** 기준이 값을 안 실으면 점유가 정직한 답이고,
