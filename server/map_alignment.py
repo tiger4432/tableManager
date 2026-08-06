@@ -545,7 +545,7 @@ def borrowed_meta_for(meta: dict, basis_meta: dict, basis: dict = None,
 #    다르지만, 위 문단이 그 차이가 출력에 도달할 수 없음을 말하고 검사가 그것을 못 박는다.
 def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
                        frame: str, mark: dict, shift: dict = None,
-                       placement: dict = None) -> dict | None:
+                       placement: dict = None, basis_cells=None) -> dict | None:
     """확정 한 건이 맵 하나에 대해 쓰는 `grid_metadata`. 쓸 것이 없으면 None. **순수 함수다.**
 
     `meta`: 그 맵의 **저장된** 메타(없으면 None). `basis_meta`: 바닥(유효 다이 맵)의 메타.
@@ -581,6 +581,25 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
     ⚠️ 다만 **뗄 때 격자 출처를 대신 대야 한다.** `auto_registered`는 `grid_start_*`을
        설명하던 유일한 표지이기도 해서, 그냥 떼면 start가 `auto_registered`에서 **`declared`로
        올라선다** — 아무도 선언한 적 없는데. 그래서 「격자 출처를 댈 수 있을 때만」 뗀다.
+
+    ═══ `basis_cells` — 확정이 **어느 상자 위에서** 원점을 계산하는가 (2026-08-06) ═════════
+    이 함수는 아래에서 `apply_valid_die_ref`로 이 맵에 `valid_die_ref`를 **적는다**. 그 한 줄
+    때문에 편집기가 이 맵을 다시 열 때 원점 상자가 **원에서 유효 다이 마스크로 갈린다**
+    (`map_editor.js:1942-1945`). 원점은 그 상자의 함수이므로, 상자가 갈리면 원점도 갈린다 —
+    적어 놓고 그 사실을 모르는 척하면 확정이 자기가 만든 좌표계에서 틀린 원점을 적는다.
+
+    🔴 **판정은 클라와 같은 술어다.** 클라 `validDieBasis() === 'ref'` ↔ 서버
+       `resolve_valid_die_basis(...)["source"] == SOURCE_REF`. 여기서 그 술어가 참인 조건은
+       ① 아래 `apply_valid_die_ref`가 실제로 쓸 참조가 있고(`basis["map_id"]`),
+       ② 그 참조가 셀로 풀린다(`basis_cells`가 비지 않았다) — 클라의 「셀 0개로 해석된
+       참조는 해석된 것이 아니다」와 같은 문장이다.
+    🔴 **`basis_cells`가 없으면 원이다.** 이것은 조용한 폴백이 아니라 **호출자가 참조를 풀지
+       않았다**는 사실 그대로다(순수 함수는 DB를 못 본다). 확정 경로는 `frame_confirmation.
+       _write_confirmed_meta`가 풀어서 넘기고, 못 풀면 거기서 이름을 대고 로그에 남긴다.
+    ⚠️ 바닥(유효 다이 맵) 쪽 상자는 **원 그대로**다. `anchor_ref`는 채점이 바닥의 원 상자
+       좌표계에서 만든 값이라(§`frame_linear_part`), 그 값을 다른 상자로 읽으면 원점이 아니라
+       **기준점**이 움직인다. 바닥 자신이 `valid_die_ref`를 선언한 경우는 2단 사슬이고 이
+       라운드의 사거리 밖이다 — 총괄에 보고했다.
     """
     parsed = parse_frame(frame)
     if parsed is None or not isinstance(basis, dict):
@@ -656,9 +675,17 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
     #    유도는 나머지 평행이동을 통째로 놓친다. 앵커가 없으면(탐색 배치) `shift`가 평행이동
     #    전부이고, 그때 `start_for_placement`는 옳다 — 은퇴하는 것은 그 함수가 아니라
     #    「앵커 배치에도 그것을 쓰던 배선」이다.
+    # 🔴 상자를 **원점보다 먼저** 정한다(§`basis_cells` 블록). 상자는 셀 공간의 사각형이라
+    #    `grid_start_*`을 읽지 않으므로 순환은 없다 — 방향은 상자 → 원점 한 쪽뿐이다.
+    src_box = None
+    if (basis or {}).get("map_id") and basis_cells:
+        mask = map_overlay.die_mask_from_reference(basis_meta, basis_cells)
+        if mask:
+            src_box = map_overlay.origin_box(base, mask)
     if placement and placement.get("anchor_src") and placement.get("anchor_ref"):
         st = start_from_placement(base, basis_meta,
-                                  placement.get("anchor_src"), placement.get("anchor_ref"))
+                                  placement.get("anchor_src"), placement.get("anchor_ref"),
+                                  source_box=src_box)
         if st is not None:
             base["grid_start_x"], base["grid_start_y"] = st
     elif shift:
@@ -756,7 +783,8 @@ def start_for_placement(framed_meta: dict, target_meta: dict, shift: dict):
     return int(g["start_x"]) - u, int(g["start_y"]) - v
 
 
-def start_from_placement(framed_meta: dict, floor_meta: dict, anchor_src, anchor_ref):
+def start_from_placement(framed_meta: dict, floor_meta: dict, anchor_src, anchor_ref,
+                         source_box=None, floor_box=None):
     """확정이 메타에 적을 **소스 맵의 원점** `(start_x, start_y)`. 못 내면 None.
 
     ═══ WHAT THIS FIELD IS FOR, AND WHY THE PREVIOUS TWO DERIVATIONS WERE WRONG ═══════
@@ -822,12 +850,37 @@ def start_from_placement(framed_meta: dict, floor_meta: dict, anchor_src, anchor
        the handoff needs it. It arrives through `make_frame_transform(_, floor_meta)`,
        and it cancels against `anchor_ref` (which carries the same origin), which is why
        the invariant above holds. Two layers, not a contradiction.
+
+    ═══ THE BOX BRANCH (2026-08-06) — `source_box` / `floor_box` ══════════════════════
+    The editor picks its origin box CONDITIONALLY (`map_editor.js:1942-1945`): the
+    valid-die mask box when the map's `valid_die_ref` resolves, the wafer circle
+    otherwise. That branch used to be unreachable for confirmed maps; it stopped being
+    unreachable when confirmation began writing `valid_die_ref` onto every source map,
+    which is the write four lines below this call site (`apply_valid_die_ref`).
+
+    🔴 **THE FIX IS NOT "USE THE MASK BOX".** A map with no reference, one drawn
+       circle-only, one whose reference refuses — all still draw from the circle, and a
+       server that switched unconditionally would repair the reachable frames and break
+       the rest. So the boxes arrive as ARGUMENTS, decided by whoever knows what the
+       editor will actually read (`confirmed_meta_for`), against the same predicate the
+       editor uses (`resolve_valid_die_basis(...) == SOURCE_REF` ~ `validDieBasis() ===
+       'ref'`, one vocabulary, both sides scored on `contracts/map_seam`).
+    🔴 **THE BOXES ARE NOT DERIVED HERE AND NOT SUBTRACTED FROM EACH OTHER.** They ride
+       into `make_frame_transform`, which seats each one on the map it belongs to, and the
+       existing `L⁻¹` arithmetic is unchanged. Every attempt to fold the two boxes into a
+       correction term is the fifth transcription of this algebra; the first four shipped.
+    ✅ Measured 2026-08-06 against an oracle sliced out of `map_editor.js` itself
+       (`server/tests/oracle/editor_origin_box_oracle.mjs`, a partial mask of 578 of the
+       677 dies): the server's circle box matched the editor's in **32 of 32**
+       combinations and its mask box in **32 of 32**, and the two boxes DIFFERED in
+       **32 of 32** — so neither number came from the branches agreeing.
     """
     g = map_overlay._grid_of(framed_meta)
     if g is None or anchor_src is None or anchor_ref is None:
         return None
     try:
-        tf = map_overlay.make_frame_transform(framed_meta, floor_meta)
+        tf = map_overlay.make_frame_transform(framed_meta, floor_meta,
+                                              source_box=source_box, target_box=floor_box)
     except ValueError:
         return None
     o, ex, ey = tf(0, 0), tf(1, 0), tf(0, 1)

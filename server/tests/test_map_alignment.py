@@ -2146,14 +2146,70 @@ def _editor_cell(meta, box, x, y):
     return c, r
 
 
-def _editor_die(meta, x, y):
-    """The die the legacy editor draws stored (x, y) on, under `meta`."""
+def _oracle_origin_box(meta, die_mask=None):
+    """The origin box `map_editor.js:1896-2010` produces, WALKED THE OTHER WAY ROUND.
+
+    Production (`map_overlay.origin_box`) walks the grid forward and asks each cell whether its
+    die is in the mask (`cell_to_physical`, which is what the editor's loop does). This oracle
+    walks the MASK and asks where each die lands (`physical_to_cell`), then clips to the grid.
+    Same box, opposite direction, so a transposed axis or a dropped `back` flip in one of the
+    two shows up as a disagreement instead of cancelling.
+
+    🔴 THE STRONGER CHECK IS NOT IN PYTHON AT ALL. Both of these are still readings of the
+       editor rather than the editor. `server/tests/oracle/editor_origin_box_oracle.mjs` slices
+       `getWaferBoundingBox` out of the shipped `map_editor.js` and runs it; measured 2026-08-06
+       over 32 combinations (8 frames x invertY x two origins, mask 578 of 677 dies) the server
+       agreed with the editor on the CIRCLE box in 32 of 32 and on the MASK box in 32 of 32,
+       while the two boxes themselves differed in 32 of 32 - so neither count came from the
+       branches quietly agreeing. Re-run it before trusting this transcription again.
+    """
     tf = map_overlay._frame_transformer(meta, map_overlay._grid_of(meta))
-    return tf.cell_to_physical(*_editor_cell(meta, tf.get_wafer_bounding_box(), x, y))
+    if not die_mask:
+        return tf.get_wafer_bounding_box()
+    seats = [tf.physical_to_cell(px, py) for (px, py) in die_mask]
+    seats = [(c, r) for (c, r) in seats
+             if 0 <= c < tf.visual_cols and 0 <= r < tf.visual_rows]
+    if not seats:                       # the editor's `maskCount === 0` branch
+        return tf.get_wafer_bounding_box()
+    return (min(c for c, _ in seats), max(c for c, _ in seats),
+            min(r for _, r in seats), max(r for _, r in seats))
+
+
+def _editor_die(meta, x, y, die_mask=None):
+    """The die the legacy editor draws stored (x, y) on, under `meta`.
+
+    `die_mask` is the valid-die set this map's `valid_die_ref` resolves to, or None when it
+    declares none - i.e. the two branches of `maskDeclaresTheFrame` (`map_editor.js:1942`),
+    which is the ONE thing that decides which box the arithmetic above stands on.
+    """
+    tf = map_overlay._frame_transformer(meta, map_overlay._grid_of(meta))
+    return tf.cell_to_physical(*_editor_cell(meta, _oracle_origin_box(meta, die_mask), x, y))
+
+
+def _partial_floor(floor_meta, floor):
+    """A valid-die reference that is a STRICT, ASYMMETRIC subset of its own wafer circle.
+
+    🔴 THE FULL DISC CANNOT SEE THIS ROUND'S DEFECT AND `_valid_die_floor` IS A FULL DISC.
+       Measured 2026-08-06: with the whole circle as the reference, the mask box equals the
+       circle box on all eight frames, so the branch under test is a no-op and a test built on
+       it is green whichever box the server picks. Two bands are bitten out on DIFFERENT axes
+       so the two boxes disagree on both, and asymmetrically enough that rotating the frame
+       moves the disagreement rather than carrying it along.
+    """
+    tf = map_overlay._frame_transformer(floor_meta, map_overlay._grid_of(floor_meta))
+    out = []
+    for (x, y) in floor:
+        px, py = tf.visual_to_physical(x, y)
+        if px <= 8 or py <= 5:
+            continue
+        out.append((x, y))
+    return sorted(out)
 
 
 @pytest.mark.parametrize("planted", list(ma.CANDIDATE_FRAMES))
-def test_the_written_start_is_where_the_editor_redraws_it(planted):
+@pytest.mark.parametrize("src_inv", [False, True])
+@pytest.mark.parametrize("floor_kind", ["disc", "partial"])
+def test_the_written_start_is_where_the_editor_redraws_it(planted, src_inv, floor_kind):
     """THE OPERATOR'S CRITERION, AND THE ONLY ONE. 「서버에서 만점이라고 한 거 저장하고
     편집기 띄워 보면 틀어져 있는데」 · 「x, y 다 틀어지는데」.
 
@@ -2177,29 +2233,46 @@ def test_the_written_start_is_where_the_editor_redraws_it(planted):
        both axes. Measured before the repair: **240 of 240 cells on the wrong die, displaced a
        uniform (4, 3)** - both axes, the invisible kind.
 
-    ⚠️ **SCOPE.** The editor's origin box becomes the valid-die MASK box when the map's
-       `valid_die_ref` resolves (`MAP_EDITOR_SPEC` section 5.7, `map_editor.js:1942-2006`),
-       while `get_wafer_bounding_box` here is still the circle - spec section 5.7 calls that
-       phase 3 and it is open. This test pins the circle-box reading. The residual is measured
-       and reported separately; it is not in this assertion's reach.
+    🔴 **THE BOX BRANCH IS INSIDE THIS ASSERTION NOW** (2026-08-06). It used not to be, and
+       the note that stood here said so: the editor's origin box becomes the valid-die MASK box
+       when the map's `valid_die_ref` resolves, and confirmation then began writing
+       `valid_die_ref` onto every source map - which turned that branch on for exactly the maps
+       this test is about. `floor_kind` is that axis:
+         · `disc`    - the reference is the whole wafer circle. The mask box and the circle box
+                       are then THE SAME BOX on all eight frames, so this leg pins the circle
+                       reading and proves the repair changed nothing where nothing should change.
+         · `partial` - the reference is a strict subset (`_partial_floor`), the two boxes differ,
+                       and the origin has to follow the mask. Measured before the repair: the
+                       written origin moved on **12 of 16** frame/invertY combinations and
+                       **1,440 of 1,920** cells opened on the wrong die. `_the_defect_is_reachable`
+                       below re-measures that on every run rather than restating it.
+    ⚠️ Still out of reach here: a reference that itself declares a `valid_die_ref` (a two-step
+       chain), and the `elif shift` branch of `confirmed_meta_for`, whose derivation reads only
+       the linear part and so cannot carry a box correction at all. Both reported, neither fixed.
     """
     floor_meta = dict(_meta(cols=45, rows=30, start_x=3, start_y=5), **PHYS_XY)
     floor = _valid_die_floor(floor_meta)
+    if floor_kind == "partial":
+        floor = _partial_floor(floor_meta, floor)
     cells, ks = _partial_job(floor_meta, floor, 120)
+    # The mask the EDITOR will hold once this confirmation writes `valid_die_ref`: the
+    # reference's dies, in the frame-independent physical space `isValidDieAt` keys on.
+    ftf = map_overlay._frame_transformer(floor_meta, map_overlay._grid_of(floor_meta))
+    die_mask = frozenset(ftf.visual_to_physical(x, y) for (x, y) in floor)
 
-    # The physical truth nobody has declared: the job ran in `planted`, with y inverted and
-    # its own origin. `+5,-4` on stored coordinates IS an origin difference (the origin is a
+    # The physical truth nobody has declared: the job ran in `planted`, with its own y-invert
+    # and its own origin. `+5,-4` on stored coordinates IS an origin difference (the origin is a
     # pure translation of stored coordinates), and it is the term the retired derivations lost.
     src_true = dict(floor_meta)
     src_true.update(dict(zip(("rotation", "side"), parse_frame(planted))),
-                    grid_y_invert=True,
+                    grid_y_invert=src_inv,
                     grid_start_x=floor_meta["grid_start_x"] + 5,
                     grid_start_y=floor_meta["grid_start_y"] - 4)
     fwd = map_overlay.make_frame_transform(floor_meta, src_true)
     recorded = [fwd(x, y) for (x, y) in cells]
 
-    # What the database actually holds for this map: no frame, the floor's origin, y inverted.
-    stored = dict(floor_meta, grid_y_invert=True)
+    # What the database actually holds for this map: no frame, the floor's origin.
+    stored = dict(floor_meta, grid_y_invert=src_inv)
 
     cands, _e, ruling, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": dict(stored), "cells": recorded, "indices": ks}],
@@ -2215,27 +2288,161 @@ def test_the_written_start_is_where_the_editor_redraws_it(planted):
     written = ma.confirmed_meta_for(
         dict(stored), floor_meta, {"table": "valid_die_ref", "map_id": "F"},
         ruling["winner"], {"confirmation_uid": "U", "confirmed_by": "t"},
-        ruling.get("shift"), placement=ruling.get("anchor"))
+        ruling.get("shift"), placement=ruling.get("anchor"), basis_cells=floor)
     assert written is not None
+    assert map_overlay.parse_valid_die_ref(written)[0] is not None, (
+        "this test's whole premise is that confirmation hands the editor a valid-die "
+        "reference; if it stops writing one, the mask branch is unreachable and the `partial` "
+        "leg is asserting nothing")
 
     L, a_src, a_ref = (win["placement"]["linear"], win["placement"]["anchor_src"],
                        win["placement"]["anchor_ref"])
-    displaced = []
-    for (x, y) in recorded:
-        placed = (a_ref[0] + L[0][0] * (x - a_src[0]) + L[0][1] * (y - a_src[1]),
-                  a_ref[1] + L[1][0] * (x - a_src[0]) + L[1][1] * (y - a_src[1]))
-        seat_src = _editor_die(written, x, y)
-        seat_ref = _editor_die(floor_meta, *placed)
-        if seat_src != seat_ref:
-            displaced.append(((x, y), seat_src, seat_ref))
+
+    def _placed(x, y):
+        return (a_ref[0] + L[0][0] * (x - a_src[0]) + L[0][1] * (y - a_src[1]),
+                a_ref[1] + L[1][0] * (x - a_src[0]) + L[1][1] * (y - a_src[1]))
+
+    def _displaced(meta, mask):
+        # The reference is read on its CIRCLE box on both sides: `anchor_ref` was produced in
+        # that coordinate system by the scorer, and a valid-die map declares no reference of
+        # its own. Moving it here would move the yardstick, not the measurement.
+        return [((x, y), _editor_die(meta, x, y, mask), _editor_die(floor_meta, *_placed(x, y)))
+                for (x, y) in recorded
+                if _editor_die(meta, x, y, mask) != _editor_die(floor_meta, *_placed(x, y))]
+
+    displaced = _displaced(written, die_mask)
     assert not displaced, (
         "%d of %d cells open in the editor on a different die than the alignment put them on "
         "(dx=%d, dy=%d on the first one). written start=(%s, %s), the source actually ran at "
-        "(%s, %s)."
+        "(%s, %s). floor=%s, box=%s vs circle %s."
         % (len(displaced), len(recorded),
            displaced[0][2][0] - displaced[0][1][0], displaced[0][2][1] - displaced[0][1][1],
            written["grid_start_x"], written["grid_start_y"],
-           src_true["grid_start_x"], src_true["grid_start_y"]))
+           src_true["grid_start_x"], src_true["grid_start_y"], floor_kind,
+           _oracle_origin_box(written, die_mask), _oracle_origin_box(written)))
+
+    # ── THE ALARM, RUNG WHERE IT CAN RING ───────────────────────────────────────────
+    # A green result above means nothing unless the same fixture can produce a red one, so the
+    # PRE-REPAIR computation is run on the same inputs and scored.
+    #
+    # 🔴 IT CANNOT RING ON EVERY COMBINATION, AND SAYING OTHERWISE WOULD BE THE SAME MISTAKE
+    #    THE RETIRED DERIVATIONS MADE. Measured: on 4 of the 16 frame/invertY combinations the
+    #    box difference cancels in the origin and the circle-box answer is already right. An
+    #    assertion that demanded a red on all 16 would have been asserting something false -
+    #    which is exactly how `floor_start - t` came to be believed on the strength of the 4 of
+    #    32 where it happened to work. So the alarm is asserted CONDITIONALLY here, and the
+    #    census - which combinations move, and that the set is not empty - is a separate
+    #    assertion over the whole space (`test_the_mask_box_defect_is_reachable`).
+    blind = ma.confirmed_meta_for(
+        dict(stored), floor_meta, {"table": "valid_die_ref", "map_id": "F"},
+        ruling["winner"], {"confirmation_uid": "U", "confirmed_by": "t"},
+        ruling.get("shift"), placement=ruling.get("anchor"), basis_cells=None)
+    boxes_differ = _oracle_origin_box(written, die_mask) != _oracle_origin_box(written)
+    moved = ((blind["grid_start_x"], blind["grid_start_y"])
+             != (written["grid_start_x"], written["grid_start_y"]))
+    if floor_kind == "disc":
+        assert not boxes_differ, (
+            "a full-disc reference must give the same box on both branches; if it stops "
+            "doing so this leg is no longer the control it claims to be")
+        assert not moved, (
+            "the repair moved an origin on the circle branch, which is the half of this "
+            "change that must be a no-op")
+    else:
+        assert boxes_differ, (
+            "the `partial` fixture stopped separating the two boxes on %s/inv=%s, so this leg "
+            "is exercising nothing: %s" % (planted, src_inv, _oracle_origin_box(written)))
+        if moved:
+            assert _displaced(blind, die_mask), (
+                "the origin moved on %s/inv=%s, so the old one must be visibly wrong under the "
+                "box the editor actually uses; if it is not, the two are not the same claim"
+                % (planted, src_inv))
+
+
+#: The combinations on which the valid-die mask box moves the confirmed origin, on the fixture
+#: `test_the_mask_box_defect_is_reachable` builds. MEASURED 2026-08-06, not reasoned.
+#:
+#: 🔴 THE MEMBERS ARE PINNED, NOT THE COUNT. "12 of 16" is a number a fixture change can keep
+#:    while swapping WHICH twelve, and the four that do NOT move are the whole reason this
+#:    census exists: on those four the circle-box answer is already right, so a test that only
+#:    ever sampled one of them would call the defect fixed before it was.
+MASK_BOX_MOVES_THE_ORIGIN = frozenset({
+    ("rot0_front", False), ("rot0_front", True), ("rot0_back", False),
+    ("rot90_front", False), ("rot90_back", True),
+    ("rot180_front", True), ("rot180_back", False), ("rot180_back", True),
+    ("rot270_front", False), ("rot270_front", True),
+    ("rot270_back", False), ("rot270_back", True),
+})
+
+
+def test_the_mask_box_defect_is_reachable():
+    """THE CENSUS. Sweeps the whole combination space once and states, in one place, what the
+    box branch is worth: which combinations the origin moves on, that the set is not empty, and
+    that after the repair NO cell is displaced anywhere in the space.
+
+    🔴 WITHOUT THIS, THE PARAMETRISED TEST ABOVE COULD BE GREEN ON A DEAD AXIS. Each of its
+       cases can only see its own combination, so none of them can notice that the fixture
+       stopped separating the two boxes everywhere at once. This one can, and it is the
+       assertion that would go red if `_partial_floor` were ever softened back towards the disc.
+    ⚠️ EVERY NUMBER HERE IS SYNTHETIC and authored by the server agent; the reference shape is
+       a fixture, not a production measurement. What is measured is the RELATION between two
+       server computations and an editor-derived box, which is what this round is about.
+    """
+    floor_meta = dict(_meta(cols=45, rows=30, start_x=3, start_y=5), **PHYS_XY)
+    floor = _partial_floor(floor_meta, _valid_die_floor(floor_meta))
+    cells, ks = _partial_job(floor_meta, floor, 120)
+    ftf = map_overlay._frame_transformer(floor_meta, map_overlay._grid_of(floor_meta))
+    die_mask = frozenset(ftf.visual_to_physical(x, y) for (x, y) in floor)
+
+    moved, before, after, total = set(), 0, 0, 0
+    for planted in ma.CANDIDATE_FRAMES:
+        for inv in (False, True):
+            src_true = dict(floor_meta)
+            src_true.update(dict(zip(("rotation", "side"), parse_frame(planted))),
+                            grid_y_invert=inv,
+                            grid_start_x=floor_meta["grid_start_x"] + 5,
+                            grid_start_y=floor_meta["grid_start_y"] - 4)
+            recorded = [map_overlay.make_frame_transform(floor_meta, src_true)(x, y)
+                        for (x, y) in cells]
+            stored = dict(floor_meta, grid_y_invert=inv)
+            cands, _e, ruling, _s = ma.score_candidates(
+                [{"map_id": "M1", "meta": dict(stored), "cells": recorded, "indices": ks}],
+                floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+            win = next(c for c in cands if c["frame"] == ruling["winner"])
+            args = (dict(stored), floor_meta, {"table": "valid_die_ref", "map_id": "F"},
+                    ruling["winner"], {"confirmation_uid": "U", "confirmed_by": "t"},
+                    ruling.get("shift"))
+            new = ma.confirmed_meta_for(*args, placement=ruling.get("anchor"),
+                                        basis_cells=floor)
+            old = ma.confirmed_meta_for(*args, placement=ruling.get("anchor"),
+                                        basis_cells=None)
+            if (old["grid_start_x"], old["grid_start_y"]) != (new["grid_start_x"],
+                                                              new["grid_start_y"]):
+                moved.add((ruling["winner"], inv))
+
+            L, a_src, a_ref = (win["placement"]["linear"], win["placement"]["anchor_src"],
+                               win["placement"]["anchor_ref"])
+            for (x, y) in recorded:
+                placed = (a_ref[0] + L[0][0] * (x - a_src[0]) + L[0][1] * (y - a_src[1]),
+                          a_ref[1] + L[1][0] * (x - a_src[0]) + L[1][1] * (y - a_src[1]))
+                seat_ref = _editor_die(floor_meta, *placed)
+                total += 1
+                if _editor_die(old, x, y, die_mask) != seat_ref:
+                    before += 1
+                if _editor_die(new, x, y, die_mask) != seat_ref:
+                    after += 1
+
+    assert moved == MASK_BOX_MOVES_THE_ORIGIN, (
+        "the set of combinations the mask box moves the origin on changed. Gained %s, lost %s. "
+        "If that is intended, re-measure and update the constant; if it is not, the fixture or "
+        "the box branch moved under this test."
+        % (sorted(moved - MASK_BOX_MOVES_THE_ORIGIN),
+           sorted(MASK_BOX_MOVES_THE_ORIGIN - moved)))
+    assert before > 0, (
+        "the circle-box origin drew every cell correctly on all 16 combinations, so this "
+        "fixture no longer contains the defect and nothing below it means anything")
+    assert after == 0, (
+        "%d of %d cells still open on the wrong die after the repair (was %d)"
+        % (after, total, before))
 
 
 def test_the_stored_start_is_not_on_the_wire():

@@ -1074,18 +1074,28 @@ def _frame_phys_params(meta: dict):
 
 _FRAME_TF_CACHE = {}
 _FRAME_TF_CACHE_MAX = 512
+_ORIGIN_BOX_CACHE = {}
+_ORIGIN_BOX_CACHE_MAX = 256
 
 
-def _frame_transformer(meta: dict, grid: dict):
+def _frame_transformer(meta: dict, grid: dict, box=None):
     """메타 → 좌표 변환기(웨이퍼 엔진 포함). 프레임 서명 단위로 캐시한다.
 
     바운딩박스 계산이 격자 전 셀을 훑으므로(`get_wafer_bounding_box`) 요청마다 재계산하면
     소스 8종 × 왕복에서 비용이 쌓인다. 서명이 같으면 결과가 같으므로 안전하게 재사용된다.
+
+    `box` — 이 프레임의 **원점 상자**를 밖에서 정한다(`(minC, maxC, minR, maxR)`).
+    None이면 종전대로 웨이퍼 원에서 계산한다. 상자는 프레임 축의 함수가 **아니라서**
+    (근거가 유효 다이 마스크일 수 있다 — §`origin_box`) 캐시 키에 함께 들어간다.
+
+    🔴 **두 번째 상자 정의가 아니다.** 상자가 무엇인가는 `origin_box` 하나만 답하고, 여기서는
+       그 답을 변환기에 **앉힐** 뿐이다. 클라도 정확히 이 모양이다: `getWaferBoundingBox`가
+       상자를 정하고 프레임 창(`frame.box`)은 그때 그 답을 다시 제시한다(map_editor.js:1912).
     """
     from utils.coordinate_transformer import WaferMapCoordinateTransformer
     from utils.physical_wafer_engine import PhysicalWaferEngine
 
-    key = frame_axes(meta)
+    key = frame_axes(meta) if box is None else (frame_axes(meta), tuple(box))
     tf = _FRAME_TF_CACHE.get(key)
     if tf is not None:
         return tf
@@ -1099,15 +1109,103 @@ def _frame_transformer(meta: dict, grid: dict):
         start_x=grid["start_x"], start_y=grid["start_y"],
         rotation=_rotation_of(meta), side=_side_of(meta),
         invert_y=_y_invert_of(meta), physical_engine=engine)
-    tf.get_wafer_bounding_box()          # 캐시에 넣기 전에 bbox를 확정해 둔다
+    if box is None:
+        tf.get_wafer_bounding_box()      # 캐시에 넣기 전에 bbox를 확정해 둔다
+    else:
+        tf._cached_bbox = tuple(int(v) for v in box)
     if len(_FRAME_TF_CACHE) >= _FRAME_TF_CACHE_MAX:
         _FRAME_TF_CACHE.clear()
     _FRAME_TF_CACHE[key] = tf
     return tf
 
 
-def make_frame_transform(source_meta: dict, target_meta: dict):
+def die_mask_from_reference(ref_meta: dict, ref_cells) -> frozenset:
+    """참조(유효 다이) 맵의 저장 좌표 → **물리 다이 인덱스 집합**. 못 풀면 빈 집합.
+
+    클라의 `projectCellsToPhys(cells, refFrame)`와 같은 연산이고, 같은 이유로 참조를
+    **참조 자신의 프레임**으로 읽는다. 프레임 창 안에서는 `isValidDieAt`이 원으로 답하므로
+    (map_editor.js §isValidDieAt) 참조는 자기 자신을 마스크로 재단하지 않는다 — 여기서
+    `make_physical_transform`이 원 상자 변환기를 쓰는 것이 그 사실의 서버 쪽 철자다.
+
+    🔴 **물리 공간이어야 한다.** 저장 공간(시각 좌표)은 상자와 start의 함수이고, 상자야말로
+       지금 구하려는 것이라 그 공간에 마스크를 두면 순환한다. 물리 인덱스는 상자에 독립이다.
+    """
+    if not ref_cells:
+        return frozenset()
+    try:
+        to_phys = make_physical_transform(ref_meta)
+    except ValueError:
+        return frozenset()
+    out = set()
+    for cell in ref_cells:
+        try:
+            out.add(to_phys(int(cell[0]), int(cell[1])))
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+    return frozenset(out)
+
+
+def origin_box(meta: dict, die_mask=None):
+    """이 맵의 **원점 상자** — 저장 좌표가 상대적으로 표현되는 그 사각형.
+
+    `client2/src/map_editor.js:1896-2010`(`getWaferBoundingBox`)의 답이고, 근거가 둘인 것도
+    거기와 같다. 클라의 판정식은
+
+        maskDeclaresTheFrame = !circleOnly && !frame && validDieBasis() === 'ref'
+
+    이고 서버의 같은 술어는 `resolve_valid_die_basis(...)["source"] == SOURCE_REF`다(어휘가
+    하나이고 두 구현이 `contracts/map_seam`의 `valid_die_basis_cases`로 함께 채점된다).
+    이 함수는 그 판정의 **결과**를 받는다 — `die_mask`가 있으면 마스크가 프레임을 선언한
+    것이고, 없으면(=`circle`/`refused`/저작 캔버스/프레임 창 안) 원이 정한다.
+
+    🔴 **왜 이 갈래가 필요한가** (실측 2026-08-06, 이 파일의 오라클로 32/32 채점):
+       확정이 모든 소스 맵에 `valid_die_ref`를 적기 시작하면서 클라의 마스크 갈래가 **실데이터
+       에서 켜졌다.** 같은 웨이퍼·같은 다이인데도 두 상자는 갈린다 — 부분 마스크(578/677칸)
+       기준으로 여덟 프레임 **전부**에서 달랐고(`rot270_front`: 원 `(3,26,4,40)` vs 마스크
+       `(6,26,4,35)`), 그 차이가 그대로 `grid_start_x/y`의 오차가 된다.
+    🔴 **무조건 마스크로 바꾸면 안 된다.** 참조가 없거나·안 풀리거나·저작 중이거나·프레임 창
+       안이면 클라는 여전히 원으로 그린다. 한쪽으로 접으면 열두 프레임을 고치고 나머지를 깬다.
+    ⚠️ **마스크가 이 격자에 한 칸도 앉지 않으면 원으로 되돌아간다** — 클라의 `maskCount === 0`
+       분기와 같은 판단이다. 빈 상자는 `(0,0,0,0)`으로 무너져 좌표계 전체를 조용히 옮긴다:
+       미상은 0이 아니다.
+    """
+    grid = _grid_of(meta)
+    if grid is None:
+        return None
+    tf = _frame_transformer(meta, grid)
+    if not die_mask:
+        return tf.get_wafer_bounding_box()
+    # [스케일] 격자 전 셀 1회 훑기(실 격자는 최대 100x100 안팎)이고, 한 판의 여러 소스 맵이
+    # 같은 마스크를 공유하므로 (프레임 축, 마스크) 단위로 캐시한다. 셀 단위 반복 호출로
+    # 떨어지는 경로는 없다 — `circle_die_mask`와 같은 규율이다.
+    key = (frame_axes(meta), die_mask)
+    hit = _ORIGIN_BOX_CACHE.get(key)
+    if hit is not None:
+        return hit
+    cells = [(c, r)
+             for r in range(tf.visual_rows) for c in range(tf.visual_cols)
+             if tf.cell_to_physical(c, r) in die_mask]
+    if not cells:
+        logger.warning("[OriginBox] the valid-die mask has no cell inside this grid — "
+                       "the origin box falls back to the wafer circle (coordinates unchanged)")
+        return tf.get_wafer_bounding_box()
+    box = (min(c for c, _ in cells), max(c for c, _ in cells),
+           min(r for _, r in cells), max(r for _, r in cells))
+    if len(_ORIGIN_BOX_CACHE) >= _ORIGIN_BOX_CACHE_MAX:
+        _ORIGIN_BOX_CACHE.clear()
+    _ORIGIN_BOX_CACHE[key] = box
+    return box
+
+
+def make_frame_transform(source_meta: dict, target_meta: dict,
+                         source_box=None, target_box=None):
     """소스 프레임 좌표 → 타깃 프레임 좌표 (**각 맵을 물리 좌표 경유로 합성**).
+
+    `source_box`/`target_box` — 각 맵의 **원점 상자**를 밖에서 준다(§`origin_box`). 둘 다
+    None이면 종전과 한 글자도 다르지 않다(원 기하). 상자를 주는 자리는 「이 맵을 편집기가
+    지금 어느 상자로 그리는가」를 아는 자리뿐이다 — 지금은 확정 경로 하나다
+    (`map_alignment.start_from_placement`). 채점은 앵커 차분만 쓰므로 상자가 소거되고
+    (§`frame_linear_part`), 그래서 채점 경로는 이 인자를 쓰지 않는다.
 
     모든 축을 **하나의 파이프라인**에서 처리한다 — 축마다 별도 분기를 두면 조합에서 새고,
     실제로 두 번 샜다(회전/면만 처리하다 y반전·start 누락 → QA O3, 그다음 바운딩박스
@@ -1161,8 +1259,8 @@ def make_frame_transform(source_meta: dict, target_meta: dict):
               "없습니다. 해당 맵의 물리 규격(칩 크기·웨이퍼 지름)을 선언한 뒤 다시 "
               "시도하십시오.")
 
-    src_tf = _frame_transformer(source_meta, s_phys)
-    dst_tf = _frame_transformer(target_meta, t_phys)
+    src_tf = _frame_transformer(source_meta, s_phys, box=source_box)
+    dst_tf = _frame_transformer(target_meta, t_phys, box=target_box)
 
     def to_target(x, y):
         return dst_tf.physical_to_visual(*src_tf.visual_to_physical(int(x), int(y)))
