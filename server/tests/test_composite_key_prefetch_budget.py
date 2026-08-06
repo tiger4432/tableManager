@@ -222,7 +222,13 @@ def test_the_guard_assembles_when_and_only_when_it_should(key_db):
 
 
 def test_an_incomplete_composite_source_still_writes_the_row_unkeyed(key_db):
-    """End to end: refusing to assemble is not refusing to write."""
+    """End to end: refusing to assemble is not refusing to write.
+
+    🔴 `None` here is load-bearing and `''` would not do (2026-08-07). Empty string is a
+    VALUE, so every keyless row in the table would share one identity and collide under
+    `uq_bk_<table>`; NULL is treated as distinct by PostgreSQL and any number may
+    coexist. See `crud._update_row_business_key` and `data_model.md` §3.1-bis.
+    """
     crud.apply_batch_updates(key_db, DECLARED, _batch([
         {"updates": {"base": "A", "x": "1", "leg": "L"}, "source_name": "user"}]))
 

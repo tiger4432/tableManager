@@ -46,9 +46,32 @@ NULLs ARE DELIBERATELY STILL ALLOWED
 A plain PostgreSQL UNIQUE index treats NULLs as distinct, so any number of rows may carry
 `business_key_val IS NULL`. That is required, not tolerated: `crud.create_empty_rows_batch`
 inserts rows with a `row_id` and no business key, and `NULLS NOT DISTINCT` (PG15+) would
-break the "add empty row" button on the second click. Empty STRING is a different matter -
-`''` is a value and two of them would collide - but no path writes it today (census: zero
-rows with a non-null empty key), and if one appears the collision is the correct answer.
+break the "add empty row" button on the second click.
+
+⚠️ EMPTY STRING WAS A DIFFERENT MATTER, AND THIS FILE USED TO GET IT WRONG. It said no
+path wrote `''` (true of the dev census: zero such rows) and that if one appeared "the
+collision is the correct answer". Both halves were wrong.
+
+A path did write it: any payload whose key column arrived blank went through
+`crud._update_row_business_key`, which stored the stripped value however empty it was.
+And the collision was NOT the correct answer, because `''` is the shared identity of
+every KEYLESS row rather than a duplicate of one real identity. Measured on this
+workstation against real PostgreSQL with this index installed: five such rows in one
+batch collide with EACH OTHER, the `IntegrityError` recovery below cannot help - it
+re-reads a database in which none of them was ever committed, so the replay reproduces
+the identical collision - and after `BK_CONFLICT_MAX_RETRIES` the whole batch is
+refused. **0 rows written, on each of three pushes.** One source file with a blank key
+column would stop that table's ingestion outright: loud, but stopped.
+
+`crud._update_row_business_key` now stores **NULL** for a blank key column, which the
+paragraph above already establishes is safe here - a plain UNIQUE index treats NULLs as
+distinct, so any number of keyless rows may coexist. That is deliberately the whole fix.
+No synthetic identity is minted for such rows: they arise only from manual grid work,
+never from ingestion (product owner ruling 2026-08-07), and manual work addresses rows
+by `row_id`, so nothing needs a handle in `business_key_val`. The live database already
+holds them - measured 2026-08-07: 11 rows in `wafer_map_metadata` and 10 in
+`production_plan`, all from manual merges, and none of them can block this index.
+See `data_model.md` §3.1-bis and `server/tests/test_blank_business_key_is_null.py`.
 
 SECTION 2 - INDEXES THAT DUPLICATE THEIR OWN PRIMARY KEY (independent of section 1)
 ----------------------------------------------------------------------------------

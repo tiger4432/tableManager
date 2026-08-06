@@ -161,6 +161,11 @@ def test_composite_business_key_draft_state(sqlite_db):
     assert len(records) == 2
     
     # 둘 다 business_key_val 및 pkg_id가 None 상태인지 확인
+    #
+    # 🔴 `''`가 아니라 **None**인 것이 요점이다(2026-08-07). 빈 문자열은 값이라
+    # 키 없는 행 전부가 같은 신원을 지고, `uq_bk_<table>` UNIQUE 인덱스 아래서는
+    # 한 배치 안의 그런 행들이 **서로** 충돌해 배치가 통째로 거절된다. NULL은
+    # PostgreSQL이 서로 다르게 보므로 몇 개든 공존한다. data_model.md §3.1-bis.
     for r in records:
         assert r.business_key_val is None
         assert r.pkg_id is None

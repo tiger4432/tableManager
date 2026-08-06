@@ -1743,24 +1743,70 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
 
 
 def _update_row_business_key(row: Any, key_col: str, update_item: schemas.GeneralUpdateItem, row_cache: dict):
-    """비즈니스 키가 업데이트 항목에 있거나 기존 행에 존재하면 DYNAMIC 테이블의 business_key_val 필드를 최신화합니다."""
+    """비즈니스 키가 업데이트 항목에 있거나 기존 행에 존재하면 DYNAMIC 테이블의 business_key_val 필드를 최신화합니다.
+
+    🔴 A BLANK KEY COLUMN NEVER PRODUCES `''`. A new row is left with the **NULL** it
+    was created with. The two spellings are not interchangeable and the difference is
+    the whole reason this branch exists.
+
+    `''` is a VALUE, so every keyless row in a table carries the SAME identity. With
+    the UNIQUE index from `migrations/add_business_key_unique_index.py` in place, five
+    such rows in one batch collide WITH EACH OTHER - and `apply_batch_updates`'
+    `IntegrityError` recovery cannot fix that, because its recovery is "roll back,
+    re-read the database, resolve onto the row the winner committed" and none of the
+    colliding rows was ever committed. The replay reproduces the same collision and
+    after `BK_CONFLICT_MAX_RETRIES` the batch is REFUSED. Measured on this workstation
+    against real PostgreSQL with the index installed, three pushes of a 5-row payload
+    whose key column arrived blank: **0 rows written each time**, not five duplicates.
+    One source file with a blank key column would stop that table's ingestion outright.
+
+    NULL is PostgreSQL's "unknown" and a plain UNIQUE index treats NULLs as distinct,
+    so any number of rows may hold it. That is also the shape a keyless row already
+    has everywhere else - `create_empty_rows_batch` writes it, the grid addresses such
+    rows by `row_id`, and the live database carries them today (measured 2026-08-07:
+    11 in `wafer_map_metadata`, 10 in `production_plan`, all from manual merges).
+
+    🔴 A BLANK VALUE WRITES NOTHING AT ALL - it does not clear an existing key either.
+    A new row therefore keeps its NULL, and a row that already has a key keeps it. The
+    first draft of this cleared to NULL on blank, which is what the old `''` write
+    effectively did too, and it was WRONG for the reason the old code never had to
+    face because its own bug hid it:
+
+      A map CSV carries its key column PRESENT AND BLANK, and that column is DERIVED -
+      `map_pk` is assembled from `map_id`+`die_no`. Blank there means "the file did not
+      supply it", not "this row has no key". On a re-push of an unchanged map the
+      composite recomputation below is skipped (`is_src_changed` is False and the row
+      is not new), so nothing puts the key back. Measured against real PostgreSQL: the
+      second push of an unchanged 4-row map left all four rows with NULL keys, and the
+      third push then created four MORE rows. The old `''` code produced the same
+      destruction but collided on the way out, so the batch was refused and the damage
+      was never committed - a bug masking a bug.
+
+    Blanking a displayed key cell therefore leaves `business_key_val` stale rather than
+    destroying it. That is the deliberate trade: a stale-but-unique handle is
+    recoverable by typing a new key, whereas dropping the identity of a live row
+    orphans everything keyed to it (`FrameConfirmation.unit_key`, `GraphNode.identity_key`)
+    and `''` additionally collides. Re-keying happens through the routes that KNOW a new
+    key - a non-blank value here, or the composite reassembly below.
+    """
+    def _apply(raw):
+        if raw is None:
+            return
+        str_val = str(raw).strip()
+        if str_val == "":
+            # Blank -> write nothing. Never `''` (a shared identity that collides), and
+            # never a clear (it destroys a map row's key on re-push). See the docstring.
+            return
+        if row.business_key_val != str_val:
+            row.business_key_val = str_val
+            if row_cache is not None:
+                row_cache[str_val] = row
+
     if key_col and key_col in update_item.updates:
-        new_bk_val = update_item.updates[key_col]
-        if new_bk_val is not None:
-            str_val = str(new_bk_val).strip()
-            if row.business_key_val != str_val:
-                row.business_key_val = str_val
-                if row_cache is not None:
-                    row_cache[str_val] = row
+        _apply(update_item.updates[key_col])
     elif key_col and hasattr(row, key_col):
         existing_val = getattr(row, key_col)
-        new_bk_val = existing_val.get("value") if isinstance(existing_val, dict) else existing_val
-        if new_bk_val is not None:
-            str_val = str(new_bk_val).strip()
-            if row.business_key_val != str_val:
-                row.business_key_val = str_val
-                if row_cache is not None:
-                    row_cache[str_val] = row
+        _apply(existing_val.get("value") if isinstance(existing_val, dict) else existing_val)
 
 def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name: str, is_new: bool, sources_cache: dict, overwrites_cache: dict, cell_sources_to_upsert: dict, cell_overwrites_to_upsert: dict, prefetched_row_ids: set = None) -> tuple[list, Any]:
     """해당 셀의 CellSource 리스트와 CellOverwrite 객체를 캐시 혹은 DB로부터 획득합니다.
@@ -3817,7 +3863,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
             
         if row not in changed_rows:
             changed_rows.append(row)
-            
+
     for r in changed_rows:
         r.is_graph_synced = False
         r.needs_graph_rollback = True

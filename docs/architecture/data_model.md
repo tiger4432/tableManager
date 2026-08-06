@@ -186,6 +186,24 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
   🔴 **회복은 이름이 붙고 로그에 남는다**(`[BK Conflict Recovered]`). 조용한 재시도는 보이지 않는 실패를 다른 보이지 않는 실패로 바꾼다. 상한(`BK_CONFLICT_MAX_RETRIES`)을 넘기면 `[BK Conflict Unresolved]`로 **거절한다** — 진짜 중복 신원은 영원히 재시도할 대상이 아니다.
   ⚠️ **롤백의 대가 하나**: `ingestion_checkpoint.record_chunk_progress`가 같은 세션에서 미리 낸 오프셋 UPDATE도 함께 사라진다. 결과는 그 모듈이 이미 문서화한 열화(다음 크래시 시 그 청크 재처리, 업서트가 멱등이라 유실 아님)다.
 
+### 3.1-bis 업무 키를 못 구한 행은 **빈 문자열이 아니라 NULL을 받는다** · 2026-08-07
+
+`business_key_val`은 모든 쓰기 경로가 **「전에 본 행인가」를 판정하는 유일한 수단**이다. 종전에는 키 컬럼이 비어 온 행이 전부 **같은** 신원(`''`)을 지고 저장됐다. 🔴 **빈 문자열은 NULL과 달리 「값」이다** — 그래서 이것은 중복 행 문제가 아니라 **충돌** 문제이고, 3.1의 UNIQUE 인덱스는 그 충돌을 **장애**로 바꾼다.
+
+이 워크스테이션에서 실 PostgreSQL로 실측(2026-08-07 — **시뮬레이션이지 운영이 아니다**). 키 컬럼이 비어 온 5행을 3회 push:
+
+| | UNIQUE 인덱스 없음 | UNIQUE 인덱스 있음(3.1 적용 후) |
+|---|---|---|
+| 종전 (`''`) | 5 → 10 → 15행, 전부 키 `''` 하나 | **0 → 0 → 0행. 매 push가 `IntegrityError`로 거절된다** |
+| 현재 (NULL) | 5 → 10 → 15행 | 5 → 10 → 15행 (NULL은 서로 다르므로 충돌 없음) |
+
+🔴 **인덱스 있음 칸의 0행이 이 절이 존재하는 이유다.** `''` 다섯 개는 **한 트랜잭션 안에서 서로** 충돌하고, 3.1의 `IntegrityError` 회복은 「롤백 → 새 스냅샷으로 재조회 → 상대가 커밋한 행에 병합」이라 **아무도 커밋한 적 없는 충돌**을 풀 수 없다. 재실행이 같은 충돌을 재생산하고 `BK_CONFLICT_MAX_RETRIES` 소진 후 배치가 통째로 거절된다. **키 컬럼이 빈 파일 하나가 그 테이블의 인제션을 통째로 멈춘다** — 시끄럽게, 그러나 멈춘다.
+
+- **수정 위치는 한 곳**: `crud._update_row_business_key`. 키 컬럼이 공백이면 `''` 대신 **NULL**을 쓴다(기존 키가 있었다면 함께 지운다 — 종전 `''` 동작과 같고 철자만 바뀐다). 복합 키 경로는 원래부터 NULL을 썼다.
+- **NULL이 옳은 표적인 이유**: 평범한 UNIQUE 인덱스에서 PostgreSQL은 NULL을 서로 다르게 본다(3.1이 `NULLS NOT DISTINCT`를 **쓰지 않는** 이유가 이것이다). 게다가 키 없는 행이 이미 다른 곳에서 갖는 모양이다 — `create_empty_rows_batch`가 NULL을 쓰고, 그리드는 그런 행을 `row_id`로 다룬다. 실 DB에도 이미 있다(2026-08-07 실측: 수동 병합이 만든 `wafer_map_metadata` 11행 · `production_plan` 10행). 이 행들은 인덱스를 막지 못한다.
+- 🔴 **자리표(placeholder)를 만들지 않는다.** 이 라운드의 초안은 그런 행에 `UNKEYED::<row_id>`를 찍었고 **제품 소유자가 기각했다** — *「키 없는 행은 인제션 될 일 없고 손으로만 다룸」*. 자리표의 값어치는 **나중의 인제션이 그 행을 알아보게** 하는 것인데, 여기서는 그 값을 걷어 갈 사람이 없다. 수동 작업은 행을 `row_id`로 지목하므로 `business_key_val`에 손잡이가 필요 없다. ⚠️ **다음에 여기에 합성 신원을 넣고 싶어지면 먼저 답할 질문은 「그걸 누가 읽는가」다.**
+- 회귀 그물: `server/tests/test_blank_business_key_is_null.py`.
+
 ### 3.2 PK 컬럼에 `index=True`를 붙이지 않는다 · 2026-08-07 D3
 
 `Column(..., primary_key=True, index=True)`는 PK가 이미 만드는 UNIQUE btree와 **키·opclass·collation이 같은 두 번째 인덱스**를 만든다. 쓰기마다 유지되고 읽는 곳은 없다. 2026-08-07 실측: **29개, 382.3MB**(최대 `ix_cell_sources_id` 314MB vs `cell_sources_pkey` 314MB).
