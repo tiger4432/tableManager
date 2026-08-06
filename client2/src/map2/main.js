@@ -1204,6 +1204,25 @@ export function bootstrap(deps) {
         + 'Borrowed dimensions are never stored on the source meta; the ruling carries '
         + 'geometry_assumed and each map carries geometry vs geometry_basis.');
     }
+    // 🔴 THE THIRD STATE, WHICH THE SCREEN CANNOT SHOW AND THE RECORD MUST NOT LOSE.
+    //    `provisional` has three answers -- ranked on substituted thresholds / ranked on
+    //    declared ones / this server does not carry the field. The first gets a sentence and a
+    //    caution; the other two both render as nothing, because a caveat we cannot support is
+    //    a claim and silence is not. But `unknown` and `declared` are NOT the same fact, and
+    //    the difference is exactly what a stale deployment looks like -- so it is written here,
+    //    where a code is a thing to grep rather than a thing to read. Without this line the
+    //    distinction exists only inside the view model and nothing can observe it.
+    if (!vm.provisional.known) {
+      lines.push('ruling carries no thresholds_defaulted field: this server predates the '
+        + 'provisional-ranking marker, so "ranked on declared thresholds" is UNVERIFIED here '
+        + 'rather than true. Do not read the absent caveat as a declared one.');
+    } else if (vm.provisional.active) {
+      lines.push(`ruling is provisional: [${vm.provisional.axes.join(', ')}] were undeclared and `
+        + 'the server substituted its development default of 1. The default does not change '
+        + 'WHICH candidate wins -- only whether anyone may say so. NOT carried into '
+        + 'frame_confirmation: that row stores ruling_state/reason/winner/margin/discriminating '
+        + 'and nothing else, so this caveat ends at the write.');
+    }
     // A token the two sides do not both know reached the wire. Named loudly: every server test
     // stays green through this, and the only symptom on screen is a row sorted into the wrong
     // bucket. This is the seam `declaration.js` grew `assumed` to keep honest.

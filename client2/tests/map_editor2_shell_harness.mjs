@@ -37,7 +37,7 @@ import { createRecordingSurface, paintComparison, paintSeating, layoutFor,
          paintSkeleton } from '../src/map2/painter.js';
 import { decideVerdict, VERDICT, REASON } from '../src/map2/verdict_bridge.js';
 import { buildViewModel, assertNoRatio, VIEW_STATE, UNKNOWN,
-         agreementText, marginText } from '../src/map2/view_model.js';
+         agreementText, marginText, WORDS } from '../src/map2/view_model.js';
 import { createApiClient, ROUTES } from '../src/map2/api.js';
 import { readArtifact, isImplemented, rejectionSummary, unmappedRejectionCodes,
          REJECTED } from '../src/map2/artifact_gateway.js';
@@ -625,10 +625,19 @@ function throws(fn, what) {
   //    than the server does. Scored on the RENDERED SENTENCE, byte for byte: a "some caveat is
   //    shown" check would pass on a word of ours, and the server wrote this one on purpose.
   const PROVISIONAL = '잠정 순위 - 판정 기준값 미선언 · 기본값 1';
+  // 🔴 THE FIXTURE CARRIES **BOTH** CAVEATS, AND THAT IS NOT DECORATION. With only the
+  //    provisional mark present, `note` has one entry and any ordering assertion passes
+  //    whatever the order -- measured: the `mark-does-not-lead` mutant survived a fixture that
+  //    left `assumption.word` empty. An applied assumption is added so the ORDER axis is
+  //    actually alive and G49 can discriminate. Same rule as an anisotropic chip on a rotation
+  //    fixture: a case that cannot express the defect cannot score it.
   const provisionalWire = {
     ...payload,
+    assumption: { state: 'applied', requested: false,
+                  basis: { table: 'core_wafer_map', map_id: 'LOT-A_05' },
+                  map_count: 1, map_ids: ['s1'], text: '가정 적용됨' },
     ruling: { winner: 'rot0_front', margin: 110, min_margin_dies: 1,
-              min_discriminating_dies: 1,
+              min_discriminating_dies: 1, geometry_assumed: true,
               thresholds_defaulted: ['min_margin_dies', 'min_discriminating_dies'],
               provisional_text: PROVISIONAL },
   };
@@ -690,6 +699,36 @@ function throws(fn, what) {
   eq(vmR2.provisional.known, false,
      'G44 a server that does not carry the field is reported as UNKNOWN, never as declared');
   eq(vmR2.provisional.active, false, 'G45 and unknown is not treated as provisional either');
+
+  // ── THE DISCLOSURE AT THE WRITE ─────────────────────────────────────────────
+  // 🔴 THIS IS THE LAST PLACE THE CAVEAT CAN BE SAID, AND THAT IS WHY IT IS SCORED SEPARATELY
+  //    FROM THE QUESTION NOTE. `FrameConfirmation` stores ruling_state / ruling_reason /
+  //    winner_frame / margin / discriminating and NOTHING carrying the caveat (measured,
+  //    `server/database/models.py:474-478`), so a confirmation made on substituted thresholds
+  //    is byte-identical in storage to one made on declared ones. The button stays enabled --
+  //    refusing on the client what the server accepts would be a second scoring implementation
+  //    wearing the clothes of a safety feature -- so the disclosure IS the repair.
+  eq(docP.getElementById('me2-confirm-note').textContent.includes(WORDS.provisionalRanking), true,
+     'G46 the write discloses that the ranking it records was provisional');
+  eq(vmP.confirm.provisional, true,
+     'G47 and carries it as a FLAG beside the word, so nothing downstream matches on Korean');
+  ok(vmP.confirm.enabled,
+     'G48 the control stays ENABLED -- the client does not refuse what the server accepts');
+  // The mark LEADS, and the order is a ranking of durability rather than of severity: the
+  // record cannot hold this one, and can hold the geometry caveat.
+  ok(vmP.confirm.note.indexOf(WORDS.provisionalRanking) === 0,
+     'G49 and it leads the note -- the fact the record cannot keep goes first');
+  eq(docQ.getElementById('me2-confirm-note').textContent.includes(WORDS.provisionalRanking), false,
+     'G50 a ranking on declared thresholds discloses nothing -- no caveat where none is due');
+  eq(vmR2.confirm.provisional, false,
+     'G51 and an unknown server does not manufacture one either');
+  // 🔴 THE SHORT MARK IS ONLY ADMISSIBLE BECAUSE THE FULL SENTENCE IS ON THE SAME SCREEN.
+  //    `WORDS.provisionalRanking` is a TRUNCATION of the server's sentence -- a composition,
+  //    declared as one at its definition. What makes it honest rather than a summary with no
+  //    source is that the question note carries the server's words verbatim at the same moment.
+  //    If that ever stops being true this assertion fails, and the mark must not survive alone.
+  ok(docP.getElementById('me2-question-note').textContent.includes(PROVISIONAL),
+     'G52 the SHORT mark and the SERVER SENTENCE are on screen together, never the mark alone');
 
   // Action accounting against the switchover bar.
   // 🔴 PINNED EXACTLY, NOT BOUNDED. This came out of a usability round measured in clicks, so

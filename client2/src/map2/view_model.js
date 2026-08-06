@@ -88,6 +88,28 @@ export const WORDS = Object.freeze({
   //    takes one line and a sentence there would be truncated -- and the fact that a
   //    confirmation rests on borrowed geometry is exactly the fact that may not be truncated.
   geometryAssumed: '기하 가정',
+  /**
+   * 🔴 THIS IS A COMPOSITION AND IT IS DECLARED AS ONE. The server has words -- `잠정 순위 -
+   *    판정 기준값 미선언 · 기본값 1` -- and this is not them; it is their first noun phrase.
+   *    A truncation is a composition, so it is named here rather than performed silently at a
+   *    render site. Two measured reasons, and the first is not "it is long":
+   *
+   *      1. THE SERVER'S SENTENCE CONTAINS ` · `, WHICH IS THIS NOTE'S OWN JOIN SEPARATOR.
+   *         Dropped into `confirm.note` whole it would fragment into three phantom items --
+   *         `잠정 순위 - 판정 기준값 미선언`, `기본값 1`, `기하 가정` -- and the reader could
+   *         not tell which of them were separate facts. The sentence would be damaged by the
+   *         slot, which is worse than being shortened by a decision.
+   *      2. The slot takes one line and already resolves this exact tension the same way for
+   *         `geometryAssumed` above. A second rule for a neighbouring fact in one slot is how
+   *         one line starts reading as two vocabularies.
+   *
+   * ⚠️ THE FULL SENTENCE IS NOT LOST AND THAT IS WHAT MAKES THE SHORTENING ADMISSIBLE. It is
+   *    rendered VERBATIM in `#me2-question-note` at the same time, on the same screen, by
+   *    `provisionalModel`. This mark says WHICH fact; that line says the whole of it. If the
+   *    question note ever stops carrying it, this word becomes a summary with no source and
+   *    must not survive alone.
+   */
+  provisionalRanking: '잠정 순위',
 });
 
 /**
@@ -232,6 +254,10 @@ export function buildViewModel(input) {
   }
 
   const assumption = assumptionModel(session, payload);
+  // Hoisted beside `assumption` because BOTH the top-level block and `confirmModel` read
+  // it, and the two must never be able to disagree about whether this ranking is
+  // provisional -- one call, one answer.
+  const provisional = provisionalModel(payload);
   const storedId = payload && payload.stored_candidate_id ? payload.stored_candidate_id : null;
   const winnerId = state === VIEW_STATE.SCORED_WINNER && verdict ? verdict.winnerId : null;
   const selectedId = session.selectedCandidateId || winnerId || null;
@@ -268,7 +294,7 @@ export function buildViewModel(input) {
     // 🔴 WHETHER THIS RANKING STANDS ON THRESHOLDS NOBODY DECLARED. Same class of fact as
     //    `assumption` and carried the same way: a caveat about the verdict, travelling INSIDE
     //    the verdict rather than beside it, so the places that copy a ruling cannot drop it.
-    provisional: provisionalModel(payload),
+    provisional,
     // Aggregate exclusions, stated once and never shouted, never decorated per row.
     meta: metaLine(payload, numerals),
     picture: pictureModeFor(state),
@@ -287,7 +313,8 @@ export function buildViewModel(input) {
     secondMetric: secondMetricLine(payload, winnerId),
     // FOR THE LOG ONLY. Nothing writes this to a node -- see `renderSecondMetric`.
     secondMetricDetail: secondMetricDetail(payload, winnerId),
-    confirm: confirmModel(session, selectedId, storedId, state, attribution, assumption),
+    confirm: confirmModel(session, selectedId, storedId, state, attribution, assumption,
+                          provisional),
     // Told out loud rather than assumed: nothing on the exploring path writes.
     writesSoFar: 0,
   });
@@ -987,7 +1014,8 @@ function secondMetricDetail(payload, winnerId) {
  * decoder supplies the eqp, the product and the chosen spelling that sentence names, so a
  * mis-click is visible before it lands without two lanes writing the same clause.
  */
-function confirmModel(session, selectedId, storedId, state, attribution, assumption) {
+function confirmModel(session, selectedId, storedId, state, attribution, assumption,
+                     provisional) {
   const q = session.question || {};
   const cols = q.columns || {};
   // 🔴 THE WRITE MAY NOT REST ON A PROPOSAL OR ON AN UNATTRIBUTED ANSWER. Reading stays
@@ -1035,11 +1063,29 @@ function confirmModel(session, selectedId, storedId, state, attribution, assumpt
     //    server records it in `frame_confirmation` -- which is what makes "if this assumption
     //    turns out false, which decisions stood on it" an answerable question later.
     //    It leads: which geometry the answer rests on outranks whether the frame is unchanged.
-    note: [assumption && assumption.word ? assumption.word : '',
+    //
+    // 🔴 AND THE PROVISIONAL MARK LEADS EVEN THAT, BECAUSE THE PROVENANCE DIES AT THIS WRITE.
+    //    `FrameConfirmation` stores `ruling_state` / `ruling_reason` / `winner_frame` /
+    //    `margin` / `discriminating` and nothing that carries the caveat (measured
+    //    `server/database/models.py`), so a confirmation made on substituted thresholds is
+    //    byte-identical in storage to one made on declared ones. The operator is ONE PRESS from
+    //    a record that will not remember this, and this slot is the last place it can be said.
+    //    Nothing here blocks the write -- refusing on the client what the server accepts would
+    //    be a second scoring implementation wearing the clothes of a safety feature -- so
+    //    saying it is the whole of the repair available on this side.
+    //
+    // ⚠️ THE ORDER IS DELIBERATE AND IT IS A RANKING OF DURABILITY, not of severity.
+    //    provisional (the record cannot hold it) > geometry (the record CAN hold it, via
+    //    `phys_assumed_from` and the confirmation payload) > sameAsStored (a convenience).
+    note: [provisional && provisional.active ? WORDS.provisionalRanking : '',
+           assumption && assumption.word ? assumption.word : '',
            selectedId && selectedId === storedId ? '현재 선언 동일' : '']
       .filter(Boolean).join(' · '),
     // Carried as a flag as well as a word, so nothing downstream has to read a label back.
     geometryAssumed: !!(assumption && assumption.applied),
+    // Same rule for the ranking's caveat: the flag travels beside the word, so a consumer that
+    // needs the FACT never has to match on a Korean label to recover it.
+    provisional: !!(provisional && provisional.active),
     // Enter must not be silently inert when nothing is marked. Each reason gets its own words:
     // "pick one" and "agree to the columns first" are different instructions.
     inertHint: hintFor(state, selectedId, q, attribution),

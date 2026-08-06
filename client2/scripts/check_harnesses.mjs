@@ -441,7 +441,15 @@ const FLOORS = new Map([
   // G36-G45 score the sentence BYTE FOR BYTE (a word of ours would pass a looser check), the
   // caution tone, and the three-state absent/empty/non-empty distinction. A drop here means the
   // screen can claim more authority than the server does.
-  ['map_editor2_shell_harness.mjs', 486],
+  // 486 -> 493 (2026-08-06). THE DISCLOSURE AT THE WRITE. G46-G52: the confirm note carries the
+  // provisional mark, leading, with the flag beside the word -- and the control stays ENABLED.
+  // 🔴 G48 PINS AN ARGUMENT, NOT A BEHAVIOUR, AND THAT IS WHY IT IS HERE. Refusing on the
+  // client what the server accepts would be a second scoring implementation wearing the clothes
+  // of a safety feature; the default changes WHICH ranking may be claimed, not which candidate
+  // wins. A future round that "hardens" this by disabling the button goes red and has to
+  // re-argue it. G52 pins the other half: `WORDS.provisionalRanking` is a TRUNCATION of the
+  // server's sentence, admissible only while the full sentence is on the same screen.
+  ['map_editor2_shell_harness.mjs', 493],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
