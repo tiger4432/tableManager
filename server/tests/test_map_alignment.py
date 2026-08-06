@@ -1609,8 +1609,9 @@ def _reference_top_left(floor_meta, floor):
     return back[ma.serpentine_index(canon, top_is_min_y=True)[1]]
 
 
-@pytest.mark.parametrize("start,residual", [(42, (13, 2)), (100, (-9, 5)), (400, (-9, 14))])
-def test_the_residual_is_observed_but_NOT_applied(start, residual):
+@pytest.mark.parametrize("start,residual,anchor_shift", [
+    (42, (13, 2), (-13, -2)), (100, (-9, 5), (9, -5)), (400, (-9, 14), (9, -14))])
+def test_the_residual_is_observed_but_NOT_applied(start, residual, anchor_shift):
     """🔴 **REVERT PIN, 2026-08-06.** The assertions below used to require that the residual
     MOVED the map. It shipped, and on live data it moved a map whose anchor seat was already
     correct - the operator bisected to `ec8c0e7` (before `17d8d00`/`fac206c`/`4947a65`) and
@@ -1638,9 +1639,28 @@ def test_the_residual_is_observed_but_NOT_applied(start, residual):
         floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
     win = next(c for c in cands if c["frame"] == planted)
     assert ruling["placement"] == ma.PLACEMENT_ANCHOR
-    assert (win["shift"]["dx"], win["shift"]["dy"]) == (0, 0), (
-        "the seat must be the anchor's; the residual is reverted and must not move it: %s"
-        % (win["shift"],))
+    # ═══ 🔴 THE REDDENING ASSERTION (2026-08-06) — 「shift 0,0 고정」이 여기서 죽는다 ══════
+    # The operator's whole report was that this field never moves. It could not: while the
+    # placement pre-applied the anchor (`p = reference_top_left + L·(cell − anchor_cell)`),
+    # `_anchor_shift`'s `reference_top_left − placed[i_min]` had nothing left to subtract
+    # and was **(0,0) by construction** - a value that is structurally correct and
+    # semantically empty. The placement is transform-only again, so the anchor's
+    # translation is a real quantity and lands here.
+    #
+    # ⚠️ THE MUTATION THIS CATCHES, BY NAME: re-bake the anchor into the placement (restore
+    #    the `L`-differential branch in `[2]`) and every one of these goes to (0,0). Injected
+    #    2026-08-06 and confirmed red on all three parameters before this line shipped.
+    #
+    # 🔴 And the two numbers are each other's negatives on this fixture, which is the
+    #    arithmetic saying it is consistent: the anchor moves the job to the wafer's
+    #    top-left, the residual search finds its way back, and the fixture's job did not
+    #    start there. That relation is why `residual` and `anchor_shift` are parametrized
+    #    together rather than as two independent constants.
+    assert (win["shift"]["dx"], win["shift"]["dy"]) == anchor_shift, (
+        "the shipped shift must be the anchor's own translation: %s" % (win["shift"],))
+    assert anchor_shift != (0, 0), (
+        "the parameter itself must activate the defect axis - a zero here would make the "
+        "assertion above pass on the very code it exists to reject")
     assert win["residual"]["applied"] is False
     assert tuple(win["residual"]["would_move"]) == residual, (
         "the search must still REPORT what it would have chosen - that is the evidence the "
@@ -2023,8 +2043,15 @@ def test_a_zero_shift_says_WHICH_zero_it_is():
         # the gates are reported one at a time, and they nest
         assert r["gate2_unbroken_run"] <= r["gate1_on_valid_dies"] <= r["seats_scanned"]
 
-    zeros = [c for c in scored if (c["shift"]["dx"], c["shift"]["dy"]) == (0, 0)]
-    assert zeros, "guard: this fixture must produce at least one zero shift to name"
+    # 🔴 REVERTED 2026-08-06: **the zero being named is the RESIDUAL's, not the shipped
+    #    shift's.** With the placement transform-only again, the shipped shift carries the
+    #    anchor's real translation and is non-zero on this fixture - which is the repair,
+    #    not a regression. The four-way ambiguity this vocabulary exists for was always
+    #    `_residual_shift`'s own `(0,0)`; it was only ever readable on `shift` because the
+    #    anchor's value was structurally zero and the two coincided.
+    zeros = [c for c in scored
+             if tuple(c["residual"].get("would_move") or (0, 0)) == (0, 0)]
+    assert zeros, "guard: this fixture must produce at least one zero residual to name"
     named = {c["residual"]["state"] for c in zeros}
     # ⚠️ `ANCHOR_SEAT_CORRECTED` belongs in this set SINCE THE REVERT: the search still finds
     #    a seat and still says so, but the seat is not applied, so that state now coexists

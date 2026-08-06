@@ -1509,12 +1509,47 @@ def anchor_cell_of(usable):
     return best[1], best[3]
 
 
-def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left):
-    """후보마다 「최소 순번 다이를 기준 좌상단에 얹는」 평행이동 → `({프레임: (dx,dy)}, 사유)`.
+# ═══ 🔴 앵커 평행이동의 두 철자 — 재 봤고, 한쪽은 못 쓴다 (실측 2026-08-06) ══════════════
+# 소유자 문언: 「점수 내기 시에는 shift는 t = (anchor_ref − anchor_src), 앵커는 그냥 db좌표
+# 그대로」. 이 문장은 두 가지로 읽히고 **둘은 같은 수가 아니다**:
+#
+#   RAW    `t = anchor_ref − anchor_src`  — 소스 앵커를 **소스 자신의 저장 좌표**로 읽어 뺀다.
+#   SEATED `t = anchor_ref − tf(anchor_src)` — 소스 앵커가 **기준 공간에 놓인 자리**를 뺀다.
+#          `tf`의 값도 mm가 아니라 저장 좌표이므로 이쪽도 「db좌표 그대로」다. `ec8c0e7`의 식.
+#
+# 실측(바닥 41x41/300mm 유효다이 · 작업 266셀 · 심은 프레임을 정답으로):
+#                                   RAW                      SEATED
+#   ① 작업이 웨이퍼 좌상단부터   정답 프레임 점유 **0**      정답 266, 차점 186
+#      (심은 rot90_front)        오답이 147·162로 이긴다      여덟이 8개 값으로 갈린다
+#   ② 작업이 웨이퍼 중간부터     정답 184, 오답 최고 219     정답 141, 오답 최고 225
+#      (start=400)              (정답이 최하위)              (점수가 나빠질 수 있고 축이 어긋난다)
+#   ③ 심은 프레임 = rot0_front   **여덟 전부 266 — 동점**    266 대 186, 여덟이 다 다르다
+#
+# 🔴 RAW는 **공간을 섞는다**: 소스의 저장 공간에서 잰 평행이동을 회전이 끝난 기준 공간의
+#    좌표에 더한다. 이 파일은 같은 형태의 식을 이미 한 번 재고 폐기했다 —
+#    `start_from_placement` §②(`t = anchor_ref − L·anchor_src`, 32조합 중 0). 그리고 ③은
+#    앵커를 도입해 없앤 바로 그 포화다. 그래서 기본값은 SEATED이고, RAW는 총괄이 다시
+#    판정할 때 한 줄로 켤 수 있게 스위치로 남긴다.
+_ANCHOR_SHIFT_RAW = False
+
+
+def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left,
+                  anchor_cell=None):
+    """앵커 쌍이 정하는 평행이동 → `({프레임: (dx,dy)}, 사유)`.
 
     제품 소유자 확정 2026-08-06: 「소스 조각 좌상단이 기준맵 좌상단 되게 하는게 어려움?」 —
     최소 순번 다이는 DT 장비가 **처음 건드린** 다이이고 장비는 유효 다이 영역의 좌상단부터
     시작한다. 그래서 평행이동은 **푸는 값이 아니라 읽는 값**이다.
+
+    ═══ 🔴 값의 정의 (제품 소유자 확정 2026-08-06) ═══════════════════════════════════════════
+    「점수 내기 시에는 shift는 t = (anchor_ref − anchor_src), 앵커는 그냥 db좌표 그대로」.
+    **두 앵커를 저장 좌표 그대로 읽어 뺀다** — 변환도 mm도 박스도 타지 않는다. 그래서 이 값은
+    후보 프레임에 의존하지 않고 여덟이 같은 평행이동을 받는다. 가르는 일은 배치(`tf`)가 한다.
+
+    🔴 종전 식은 `reference_top_left − placed[i_min]`이었고, 배치가 앵커를 미리 구워
+       넣은 뒤로 그 뺄셈에는 **뺄 것이 남지 않았다**(항등적으로 `(0,0)`). 그것이 조작자가
+       본 「shift 0,0 고정」이고, 동시에 「앵커가 앉힌 자리를 채점해서 늘 만점」이었다.
+       배치를 변환 전용으로 되돌리면서 이 식도 소유자의 정의로 되돌린다.
 
     🔴 걸리지 않는 경우를 **이름으로** 낸다. 앵커가 없다는 사실은 화면이 「탐색으로 놓았다」를
        말하기 위해 필요하고, 사유마다 수리가 다르다(§ANCHOR_*).
@@ -1548,6 +1583,12 @@ def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left)
     if len(at) != 1:
         return None, ANCHOR_MIN_NOT_UNIQUE
     i_min = at[0]
+    # 앵커 셀의 **저장 좌표**. 호출자가 `anchor_cell_of`로 이미 고른 것을 넘겨 주고, 규칙이
+    # 같으므로 여기 `i_min`과 같은 셀이다 — 그래도 넘어오지 않으면 걸지 않는다(§ANCHOR_*).
+    if anchor_cell is None:
+        return None, ANCHOR_NO_INDEX
+    raw_t = (int(reference_top_left[0]) - int(anchor_cell[0]),
+             int(reference_top_left[1]) - int(anchor_cell[1]))
     out = {}
     for c in per_candidate:
         placed = c.get("_placed")
@@ -1555,8 +1596,9 @@ def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left)
             # 이 후보는 좌표를 못 놓았다 - 아래 루프가 `scored=False`로 걸러낸다.
             out[c["frame"]] = (0, 0)
             continue
-        out[c["frame"]] = (int(reference_top_left[0]) - int(placed[i_min][0]),
-                           int(reference_top_left[1]) - int(placed[i_min][1]))
+        out[c["frame"]] = (raw_t if _ANCHOR_SHIFT_RAW else
+                           (int(reference_top_left[0]) - int(placed[i_min][0]),
+                            int(reference_top_left[1]) - int(placed[i_min][1])))
     return out, None
 
 
@@ -2529,6 +2571,8 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         # 수열로 섞여 둘 다 틀린다. 그래서 훑기는 **맵 단위**로 돈다.
         owner = []
         frame_linear = None
+        # 앵커 셀이 **변환만으로** 앉은 자리(시프트 이전). 아래 payload와 잔차가 읽는다.
+        anchor_placed = None
         failed = None
         # Worked-example capture. Rows are taken **at the line the scorer places
         # the cell**, so the printed arithmetic is the arithmetic that ran.
@@ -2543,42 +2587,34 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             if src_meta is None:
                 failed = "프레임 '%s'을 이 맵의 규격에 적용할 수 없습니다" % frame
                 break
-            # ═══ [D11] **앵커가 있으면 mm도 박스도 읽지 않는다** (제품 소유자 2026-08-06) ═══
-            # 「얼라인은 mm 안 쓰기로 해놓고 box minC 왜 하는지 모르겠네 · 그냥 유효다이
-            # 좌표계에 올리면 되는데」. 앵커가 절대 좌표의 필요를 없애므로 배치는 **차분**이다:
-            #     c₂ − c₁ = (xv₂ − start_x + minC) − (xv₁ − start_x + minC) = xv₂ − xv₁
-            # 박스도 start도 격자 치수도 평행이동이라 소거된다. 실측 2026-08-06: 소스의
-            # phys를 칩 피치·지름·edge margin·오프셋·start까지 흔들어도 앵커 기준 차분이
-            # **여덟 프레임 전부에서 한 자도 안 움직였다(0/8)**, 그리고 그 차분은 선형부를
-            # 저장 좌표 차분에 먹인 값과 **항등**이다(32조합 × 7셀, 불일치 0).
-            #
-            # 🔴 선형부는 **반사까지 나른다**. `grid_y_invert`는 어느 프레임이 거울인지를
-            #    뒤집는다 — srcInv=True에서 `rot0_front`가 거울이 되고 `rot0_back`이 회전
-            #    전용이 된다. 회전·면·y반전을 따로 넘기면 받는 쪽이 합성 순서를 틀릴 수 있고
-            #    실제로 틀렸다(클라가 거울 집합을 거꾸로 잡았다). 합성된 결과 하나만 넘기면
-            #    **틀릴 것이 남지 않는다**.
-            L = None
-            if anchor_cell is not None:
-                L = map_overlay.frame_linear_part(src_meta, reference_meta)
-                # 실어 보낼 선형부는 **앵커가 선 맵의 것**이다 - 앵커 쌍이 그 맵의 셀이므로
-                # 재구성도 그 맵의 사상이라야 짝이 맞는다.
-                if mi == anchor_map_index:
-                    frame_linear = L
-            else:
-                try:
-                    tf = map_overlay.make_frame_transform(src_meta, reference_meta)
-                    ptf = map_overlay.make_physical_transform(src_meta)
-                except ValueError as e:
-                    failed = str(e)
-                    break
+            # ═══ 🔴 REVERTED 2026-08-06 — 배치는 **변환뿐**이다, 앵커를 미리 굽지 않는다 ═══
+            # `ec8c0e7`의 배치를 그대로 되돌린다. `fac206c` 이후의 차분 배치
+            #     p = reference_top_left + L·(cell − anchor_cell)
+            # 는 앵커를 **배치에 미리 먹였고**, 그 한 줄이 두 가지를 동시에 무너뜨렸다:
+            #   ① `_anchor_shift`의 `reference_top_left − placed[i_min]`에 뺄 것이 남지
+            #      않아 시프트가 **항등적으로 (0,0)**이다 — 조작자가 본 「shift 0,0 고정」.
+            #      `4947a65`가 이 항등식을 정확히 진단하고도 원인을 지우는 대신 잔차를
+            #      얹었고, 잔차를 되돌리자 항등식만 남았다.
+            #   ② 제품 소유자 2026-08-06: 「미리 앵커를 먹여놓으니 시프트 0이어도
+            #      만점이구만」 — 앵커가 앉힌 자리를 그대로 채점하므로 **점수가 나빠질 수
+            #      없다.** 만점은 프레임이 옳다는 증거가 아니라 앵커가 그렇게 앉혔다는 뜻이다.
+            # 그래서 배치는 변환만 하고, 평행이동은 [3-0]에서 **별도의 값**으로 붙는다.
+            try:
+                tf = map_overlay.make_frame_transform(src_meta, reference_meta)
+                # 순번 축은 기준을 **모른다**. 같은 `src_meta`에서 물리 좌표만 뽑는
+                # 별도 사상이고, 거절 규약은 같다(§map_overlay.make_physical_transform).
+                ptf = map_overlay.make_physical_transform(src_meta)
+            except ValueError as e:
+                failed = str(e)
+                break
+            # 🔴 선형부는 **배치에 쓰이지 않는다 — 화면이 그릴 재료로만 실려 나간다**
+            #    (§payload `placement`). 앵커가 선 맵의 것이라야 앵커 쌍과 짝이 맞는다.
+            #    `frame_linear_part`가 `tf`의 선형부와 항등인 것은 독립 오라클이 지킨다
+            #    (`test_the_linear_part_matches_the_transform`).
+            if anchor_cell is not None and mi == anchor_map_index:
+                frame_linear = map_overlay.frame_linear_part(src_meta, reference_meta)
             for i, (x, y) in enumerate(sm["_use"]):
-                if L is not None:
-                    p = (reference_top_left[0]
-                         + L[0][0] * (x - anchor_cell[0]) + L[0][1] * (y - anchor_cell[1]),
-                         reference_top_left[1]
-                         + L[1][0] * (x - anchor_cell[0]) + L[1][1] * (y - anchor_cell[1]))
-                else:
-                    p = tf(x, y)
+                p = tf(x, y)
                 if _dg is not None and len(trace) < _DIAG_TRACE_CELLS:
                     trace.append({
                         "map_id": sm.get("map_id"), "at": len(placed),
@@ -2588,11 +2624,16 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                         "src_axes": map_overlay.frame_axes(src_meta),
                         "src_phys": _d_frame_phys(src_meta)})
                 placed.append(p)
-                # 정준 좌표는 **놓인 좌표를 기준의 사상으로** 돌린다 — 소스와 기준이 같은
-                # 사상을 타므로 같은 상수만큼 움직이고, 그래서 방향 판정이 두 집합의 행을
-                # 같은 자로 잰다(§[3a-2]). 앵커가 없으면 종전대로 물리 변환을 쓴다.
-                phys.append(map_overlay.apply_linear(_lc_ref, p[0], p[1])
-                            if L is not None else ptf(x, y))
+                # 🔴 앵커 셀이 **변환만으로** 어디 앉는가. `placement.anchor_ref`(화면이
+                #    그리는 원점)와 잔차의 기준점이 둘 다 여기서 나온다 — 둘 다 「실제로
+                #    앉은 자리」여야 하고, 앵커를 배치에 굽지 않게 된 뒤로 그 자리는
+                #    `reference_top_left`가 **아니다**. 종전 두 식은 그 항등식을 전제로
+                #    쓰여 있었으므로 여기서 값을 붙잡아 두고 아래에서 다시 유도한다.
+                if (anchor_cell is not None and mi == anchor_map_index
+                        and (x, y) == tuple(anchor_cell)):
+                    anchor_placed = p
+                # 순번 훑기의 입력. [D12]가 시프트를 푼 뒤 **앉힌 좌표로 덮어쓴다**.
+                phys.append(ptf(x, y))
                 owner.append(mi)
                 vals.append(sm["_use_values"][i])
                 ks.append(sm["_use_indices"][i])
@@ -2613,6 +2654,9 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                               "_trace": trace,
                               # 실어 보낼 배치의 선형부(§payload `placement`).
                               "_linear": frame_linear,
+                              # 앵커 셀의 **변환 후·시프트 전** 자리. payload의
+                              # `anchor_ref`와 잔차의 기준점이 여기에 시프트를 더해 나온다.
+                              "_anchor_placed": anchor_placed,
                               # 순번 훑기의 입력. 후보마다 **다르다** - 회전·면이 바꾸는
                               # 것이 바로 이 좌표이고, 그래서 여덟이 서로 다른 순서를 만든다.
                               # 🔴 앵커가 있으면 [3-0]이 **앉힌 좌표로 덮어쓴다**(§[D12]).
@@ -2656,23 +2700,28 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    앵커가 틀린 자리에 맵을 놓는다. 그래서 ⓐ 순번이 있을 때만 걸고, ⓑ 어느 쪽이
     #    돌았는지를 판정이 직접 나르며(`ruling.placement`), ⓒ 되돌리는 스위치를 하나로 둔다.
     anchor_dxy, anchor_reason = _anchor_shift(
-        per_candidate, source_indices, cell_owner, reference_top_left)
+        per_candidate, source_indices, cell_owner, reference_top_left, anchor_cell)
     for c in per_candidate:
         if c["keys"] is None or c["keys"].size == 0:
             c.update(dx=None, dy=None, agreement=0, member=None, scored=False)
             continue
         if anchor_dxy is not None:
-            # 🔴 [D13] 앵커는 **자리를 잡아 주지, 평행이동을 풀지 않는다.** `_anchor_shift`가
-            #    내는 값은 항등적으로 (0,0)이다 - [2]가 앵커 다이를 이미 `reference_top_left`에
-            #    앉혀 놓았으므로 `reference_top_left - placed[i_min]`는 뺄 것이 없다. 그래서
-            #    그 값을 시프트로 쓰면 **잔차를 볼 기회가 영영 없다**(§_residual_shift).
+            # 🔴 [D13→REVERTED 2026-08-06] **여기 오는 값은 이제 진짜 수다.** 배치가 앵커를
+            #    미리 굽지 않으므로(§[2]) `_anchor_shift`는 소유자가 정의한
+            #    `anchor_ref − anchor_src`를 저장 좌표 그대로 낸다 — 두 앵커가 다르면 0이
+            #    아니다. 종전 주석이 「항등적으로 (0,0)」이라 적혀 있던 자리이고, 그 항등식이
+            #    조작자의 「shift 0,0 고정」이었다.
             bx, by = anchor_dxy[c["frame"]]
+            # 앵커 셀이 **실제로 앉은 자리**. `reference_top_left`가 아니다 — 그것은
+            # 과녁이고, 이 값은 결과다. 둘이 같았던 것은 배치가 앵커를 구울 때뿐이다.
+            _seat = c.get("_anchor_placed")
+            _at = ((reference_top_left[0] + bx, reference_top_left[1] + by)
+                   if _seat is None else (_seat[0] + bx, _seat[1] + by))
             # 🔴 네 번째 반환값을 **버리지 않는다.** 종전에는 `_hit`을 버렸고, 그것이
             #    「앵커가 옳았다」와 「자격 자리가 없어 포기했다」를 구별하는 유일한 값이었다
             #    (§RESIDUAL_* 어휘). 버린 결과 두 상태가 화면에서 같은 `shift: 0,0`이 됐다.
             rdx, rdy, _hit, c["_residual"] = _residual_shift(
-                c["keys"] + bx * _KEY_STRIDE + by, ref_sorted, ref_pairs,
-                (reference_top_left[0] + bx, reference_top_left[1] + by),
+                c["keys"] + bx * _KEY_STRIDE + by, ref_sorted, ref_pairs, _at,
                 reference_walk_rank)
             # ═══ 🔴 REVERTED 2026-08-06 — 같은 날 회귀, 조작자 bisect가 증거 ══════════════
             # 「깃 헤드를 ec8c0e 로 옮기니까 잘되는데」. `ec8c0e7`은 오늘 서버 커밋 셋
@@ -2972,14 +3021,20 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             #        하기」). 앵커 쌍 옆에 파생값을 같이 보이면 조작자가 「어느 쪽이 정본인가」를
             #        중재하게 되는데, 둘은 같은 사실의 두 철자다 — 레거시 독자용과 재구성용.
             # 🔴 [D13] 실어 보내는 자리는 **채점이 앉힌 자리**다 — 선언된 과녁이 아니라.
-            #    화면은 `anchor_ref + linear·(cell − anchor_src)`로 그리므로, 잔차를 여기
+            #    화면은 `anchor_ref + linear·(cell − anchor_src)`로 그리므로, 시프트를 여기
             #    안 더하면 서버는 옮겨서 채점하고 화면은 안 옮겨서 그린다. 그 갈림은 조용하다:
             #    두 그림이 다 그럴듯하고 개수만 안 맞는다(§_residual_shift).
-            "placement": (None if c.get("_linear") is None or anchor_cell is None else {
+            # 🔴 REVERTED 2026-08-06: 종전 식은 `reference_top_left + (dx,dy)`였고, 그것이
+            #    맞았던 것은 배치가 앵커를 구워 `placed[i_min] ≡ reference_top_left`였을
+            #    때뿐이다. 배치가 변환 전용으로 돌아온 지금 앵커가 앉는 자리는 **변환이 놓은
+            #    자리에 시프트를 더한 값**이고, 과녁(`reference_top_left`)과 다르다. 그래서
+            #    유도원을 바꾼다 — 그리는 쪽이 읽는 것은 과녁이 아니라 결과여야 한다.
+            "placement": (None if c.get("_linear") is None or anchor_cell is None
+                          or c.get("_anchor_placed") is None else {
                 "linear": [list(c["_linear"][0]), list(c["_linear"][1])],
                 "anchor_src": list(anchor_cell),
-                "anchor_ref": [reference_top_left[0] + (c.get("dx") or 0),
-                               reference_top_left[1] + (c.get("dy") or 0)]}),
+                "anchor_ref": [c["_anchor_placed"][0] + (c.get("dx") or 0),
+                               c["_anchor_placed"][1] + (c.get("dy") or 0)]}),
             "index_margin": (None if c.get("index_agreement") is None or k_runner is None
                              else int(c["index_agreement"] - k_runner)),
             # 값 지표는 **점유를 대체하지 않는다.** 기준이 값을 안 실으면 점유가 정직한 답이고,
