@@ -257,10 +257,15 @@ export function createApiClient(opts) {
      * @param {string} [req.valCol]    the column read as the die value; OPTIONAL, and its
      *                                   absence is what makes the run occupancy-only
      * @param {boolean} [req.includeCells]  false drops the cell arrays (list screens)
-     * @param {boolean} [req.assumeReferenceGeometry]  score the maps that declare no physical
-     *                                   spec by BORROWING the reference floor's wafer
-     *                                   dimensions. Defaults false on the server and is sent
-     *                                   ONLY when true -- see below.
+     *
+     * 🔴 THERE IS NO `assumeReferenceGeometry` PARAMETER, AND ITS ABSENCE IS DELIBERATE.
+     *    `assume_reference_geometry` exists on the route and DEFAULTS TO TRUE
+     *    (`get_map_alignment_view(..., assume_reference_geometry: bool = True, ...)`), so
+     *    omitting it is how the automatic behaviour the product owner asked for
+     *    (「가정 적용은 자동으로 되게」) reaches the wire. This client sends it in NEITHER
+     *    direction: there is no control to turn it on, and none to decline it either.
+     *    Restoring this line is what a round that wants to let an operator DECLINE would do --
+     *    written down here so that possibility is not lost with the code.
      *
      * 🔴 THE COLUMNS ARE SENT AND ARE NOT YET HONOURED. The server derives the coordinate
      *    binding from its OWN overlay config -- `_binding_of` -> `map_overlay.resolve_binding`
@@ -316,7 +321,6 @@ export function createApiClient(opts) {
       //    `=== true` STRICTLY is kept regardless: a truthy coercion would let
       //    `undefined`-adjacent junk from a caller unlock the claim, which is the same class as
       //    a config typo unlocking a capability (`selectAlignmentRules`).
-      if (r.assumeReferenceGeometry === true) q.assume_reference_geometry = 'true';
       return getJson(ROUTES.referenceView, q, signal);
     },
 

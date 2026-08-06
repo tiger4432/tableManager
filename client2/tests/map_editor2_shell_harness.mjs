@@ -1773,7 +1773,7 @@ function makeDocument() {
                     // binding it, and the live page carries it since the markup landed. G1 is about
                     // the STUB keeping up with the shell — it never scored the live page either way,
                     // and `map2_geometry_assumption_harness.mjs` scores what the control does.
-                    'me2-assume-accept',
+                    // (`me2-assume-accept` deleted from the page 2026-08-06.)
                     'me2-badge-session',
                     'me2-badge-unscorable', 'me2-badge-remaining', 'me2-picture-svg',
                     'me2-layer-floor', 'me2-layer-miss', 'me2-layer-onlyone', 'me2-layer-alone',

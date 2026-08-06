@@ -61,23 +61,27 @@ export const PHASE = Object.freeze({
 //    at `map_overlay.py:995`). A `{x, y, value}` of this file's own invention would be a second
 //    spelling of a declaration that exists, which is the defect class this screen keeps meeting.
 export const EMPTY_COLUMNS = Object.freeze({ x: null, y: null, val: null });
-// 🔴 THE BORROWED GEOMETRY IS PART OF THE QUESTION, NOT A DISPLAY TOGGLE. It is a query
-//    parameter on the same request (`assume_reference_geometry`), so it belongs with the other
-//    four: changing it re-asks, and the answer to the previous set-up is dropped rather than
-//    painted under the new labels. Holding it anywhere else would let a screen show a result
-//    scored WITHOUT the assumption while the control says the assumption is in force.
+// 🔴 `assumeReferenceGeometry` WAS THE FIFTH MEMBER AND IT IS GONE (product owner 2026-08-06,
+//    「가정 적용은 자동으로 되게」). It was held here because it was an ACT the operator
+//    performed -- a claim that "these maps are the same wafer" -- so it re-asked like any other
+//    part of the question. It is no longer an act: the server applies the assumption by default
+//    (`get_map_alignment_view(..., assume_reference_geometry: bool = True, ...)`), this client
+//    never sends the parameter in either direction, and there is nothing for the operator to
+//    turn on or off.
 //
-// 🔴 IT DEFAULTS FALSE AND IT IS AN ACT. "These two maps are the same wafer" is a claim, and the
-//    operator is the one entitled to make it -- which is why the server defaults it off too. A
-//    screen that turned it on by itself would have manufactured a declaration nobody made, on
-//    the layer the bonding plan rests on.
+// ⚠️ AUTOMATIC IS A DECISION ABOUT CONSENT, NOT ABOUT VISIBILITY, AND THE DIFFERENCE IS THE
+//    WHOLE POINT OF THE REMOVAL. Nothing about the DISCLOSURE moved: the server's offer
+//    sentence, `assumption.applied`, `data-me2-assumed` on the workbench, the caution tone and
+//    `WORDS.geometryAssumed` on the write all stay exactly where they were. They matter MORE
+//    now than when a human pressed something, because nobody consents per unit any more and
+//    the answer still rests on a borrowed wafer. A round that shrinks any of them turns
+//    "automatic" into "silent", which is a different and worse thing.
 export const EMPTY_QUESTION = Object.freeze({
   mapTable: null,
   columns: EMPTY_COLUMNS,
   // Provenance, in the SERVED vocabulary. See BINDING_* below.
   bindingSource: 'none',
   reference: null,
-  assumeReferenceGeometry: false,
 });
 
 /**
@@ -204,7 +208,7 @@ export function withDecision(session, decision) {
     //    failure the server's off-by-default exists to prevent. The rest of the set-up (table,
     //    columns, floor) survives a row change on purpose, because it says how to READ a unit.
     //    This one says something about the unit itself, so it dies with it.
-    question: Object.freeze({ ...session.question, assumeReferenceGeometry: false }),
+    question: Object.freeze({ ...session.question }),
     selectedCandidateId: null,
     // Per-field picks belong to ONE decision unit. Carrying them across rows would put the
     // previous unit's answer under the next unit's labels.
@@ -318,14 +322,11 @@ export function resolveQuestion(question, catalog) {
   //    declaration -- an invalid combination invented on this side, about a state the server
   //    never refuses. What DOES invalidate the claim is MOVING the floor, and that is a
   //    transition, not a normalisation: see `withQuestion`.
-  const assume = q.assumeReferenceGeometry === true;
-
   return Object.freeze({
     mapTable,
     columns: Object.freeze({ x: x || null, y: y || null, val: val || null }),
     bindingSource,
     reference,
-    assumeReferenceGeometry: assume,
   });
 }
 
@@ -351,11 +352,9 @@ export function isAskable(question) {
  *    set-up row existed. A HALF-filled one -- a table chosen whose coordinate columns nobody
  *    named -- is a real refusal, and it must not be papered over by asking anyway.
  *
- * ⚠️ `assumeReferenceGeometry` IS DELIBERATELY NOT ON THIS LIST. This predicate asks whether the
- *    tuple is COMPLETE ENOUGH TO SEND -- table and coordinates -- and the assumption is not an
- *    axis of that: it qualifies how the maps are scored, not which ones are read. Counting it
- *    would make an asserted-but-otherwise-untouched question "set up incompletely" and refuse
- *    to ask at all, which is the collapse the paragraph above is about.
+ * (`assumeReferenceGeometry` used to carry a carve-out here, for the reason that it qualified
+ *  how maps are scored rather than which ones are read. The field is gone -- the assumption is
+ *  automatic -- so the carve-out has nothing to except.)
  */
 export function isUnset(question) {
   const q = question || EMPTY_QUESTION;
@@ -387,22 +386,14 @@ export function withQuestion(session, patch) {
   if (patch && (patch.columns || patch.bindingSource)) {
     merged.bindingSource = patch.bindingSource || BINDING_DECLARED;
   }
-  // 🔴 MOVING THE TABLE OR THE FLOOR TAKES THE CLAIM OFF. The assertion is "THESE maps are the
-  //    same wafer as THAT floor" -- it is about the two things being changed, so carrying it
-  //    across would re-assert it about a pair the operator has not looked at. That is the
-  //    silent-assumption failure with an extra step, and it is the one this control exists to
-  //    prevent. An assume patch is exempt, because that patch IS the operator asserting it.
-  if (patch && patch.assumeReferenceGeometry === undefined
-      && (patch.mapTable !== undefined || patch.reference !== undefined)) {
-    merged.assumeReferenceGeometry = false;
-  }
+  // (The claim-clearing branch that stood here died with the claim -- see EMPTY_QUESTION.
+  //  Moving the table or the floor still re-asks, because the tuple below compares them.)
   const question = resolveQuestion(merged, session.catalog);
   const same = question.mapTable === session.question.mapTable
     && columnKey(question.columns) === columnKey(session.question.columns)
     && question.columns.val === session.question.columns.val
     && question.bindingSource === session.question.bindingSource
-    && question.reference === session.question.reference
-    && question.assumeReferenceGeometry === session.question.assumeReferenceGeometry;
+    && question.reference === session.question.reference;
   if (same) return session;
   const key = columnKey(question.columns);
   return next(session, {

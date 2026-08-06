@@ -800,10 +800,10 @@ function makeDocument() {
                     'me2-col-value', 'me2-reference-select']) {
     body.appendChild(node('select', id));
   }
-  // `me2-assume-accept` accepts the borrowed wafer geometry. Present here because the shell
-  // binds it (G1 scores the stub against the shell, never the live page — which does carry the
-  // node); what the control DOES is scored in `map2_geometry_assumption_harness.mjs`.
-  for (const id of ['me2-columns-confirm', 'me2-assume-accept', 'me2-confirm-btn']) {
+  // `me2-assume-accept` used to be authored here because the shell bound it. Both are gone
+  // (2026-08-06): the borrowing is automatic, so there is no act to accept, and a stub that
+  // kept the node would hand `getElementById` something the real document does not have.
+  for (const id of ['me2-columns-confirm', 'me2-confirm-btn']) {
     body.appendChild(node('button', id));
   }
 

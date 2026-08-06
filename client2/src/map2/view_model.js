@@ -588,12 +588,16 @@ function measurementsOf(payload) {
  * offering to borrow the reference floor's wafer dimensions, on the premise that aligning two
  * maps of one wafer already assumes they ARE one wafer.
  *
- * 🔴 THREE FACTS, HELD APART, AND EVERY ONE OF THEM IS THE SERVER'S ANSWER:
- *      · `offered` -- it can be taken and has not been. This is what puts a control on screen.
- *      · `applied` -- the answer in front of the operator was computed on borrowed dimensions.
- *      · `requested` -- what this client SENT. Kept separate from `applied` on purpose: asking
- *        on a unit with no resolved floor comes back `unavailable`, and reading the request
- *        back as the state would report a borrowing that never happened.
+ * 🔴 `applied` IS THE FACT THIS LAYER CARRIES: the answer in front of the operator was
+ *    computed on borrowed dimensions, and the screen has to say so.
+ *
+ * 🔴 `offered` AND `requested` ARE GONE FROM **THIS** LAYER, AND THE LAYERING IS THE REASON.
+ *    `offered` existed to put an accept control on screen and there is no accept control
+ *    (product owner 2026-08-06 -- the borrowing is automatic); `requested` echoed what this
+ *    client sent, and it sends nothing. `decode.assumption.offered` KEEPS both, because that
+ *    layer describes THE WIRE and the server can still emit `available` -- pruning a decoder
+ *    because the local caller went away is how a word the two sides share stops being shared.
+ *    The split is: decode says what arrived, this layer says what the screen shows.
  *
  * 🔴 THE LINE IS THE SERVER'S SENTENCE, VERBATIM, AND IT NAMES THE FLOOR. `compose_assumption_offer`
  *    writes it (same discipline as `refusal`), and it says which map the dimensions would come
@@ -610,11 +614,6 @@ function assumptionModel(session, payload) {
   return Object.freeze({
     state: a ? a.state : null,
     applied,
-    // Only an untaken offer needs a control. Once applied, the act has been performed and a
-    // control still reading "accept" would invite the operator to make a claim twice.
-    offered: !!(a && a.offered) && !applied,
-    // What THIS client sent, which is not the same fact as what the server did with it.
-    requested: session.question ? session.question.assumeReferenceGeometry === true : false,
     basisTable: basis ? basis.table : null,
     basisMapId: basis ? basis.mapId : null,
     basisLabel: basis ? `${basis.table}:${basis.mapId}` : null,

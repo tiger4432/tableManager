@@ -446,7 +446,25 @@ const FLOORS = new Map([
   //    distinct from one reached on a declaration. A drop means the screen regained the ability
   //    to assume silently -- to show a confirmed alignment whose geometry was borrowed without
   //    saying so, which is a manufactured declaration on the layer the bonding plan rests on.
-  ['map2_geometry_assumption_harness.mjs', 101],
+  // 101 -> 87 (2026-08-06). A FLOOR DROP THAT IS NOT A COVERAGE DROP, and the distinction is
+  // the whole reason this line carries prose. The product owner ruled that the borrowed-wafer
+  // assumption applies automatically, so the accept control was removed -- and 15 assertions
+  // that scored THE ACT have no successor because the act no longer exists. They are named one
+  // by one in the harness itself rather than absorbed here:
+  //   C1 C2 C3  accepting sets the claim / re-asks / drops the previous answer
+  //   D5        a value column does not clear the claim
+  //   G4        an offer is not painted as a warning (the `available` state cannot occur)
+  //   G5 G6 G9  accepting costs one fetch / the request carries it / the control then hides
+  //   H5..H11   the whole "pick the floor, then accept" second motion
+  // 4 replaced them (D1a G3b G7b G7c), and two are STRICTER than what they replaced: G7b/G7c
+  // pin the server's sentence BYTE FOR BYTE where G2 only checked it contained the floor id.
+  //
+  // 🔴 WHAT MUST NOT DROP FURTHER IS THE DISCLOSURE HALF. Removing consent did not remove
+  // notice: `data-me2-assumed`, the verbatim server sentence, the caution tone and the write's
+  // own disclosure are all still scored, and they are now reached WITH NOBODY PRESSING
+  // ANYTHING. A drop below this floor most likely means one of those went, which is the change
+  // that turns "automatic" into "silent".
+  ['map2_geometry_assumption_harness.mjs', 87],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

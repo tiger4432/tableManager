@@ -4,27 +4,35 @@
  * THIS HARNESS DOES NOT SLICE SOURCE. It `import`s every module it scores.
  *
  * THE DEFECT IT EXISTS FOR: the server can score a source map that declares no physical spec by
- * borrowing the reference floor's wafer dimensions, it emits that offer on every run where the
- * offer would help, and the client never asked for it. The offer was emitted into nothing and
- * the screen stayed a dead end. Every assertion below is about one of the four halves of the
- * repair -- the offer is SEEN, accepting is an ACT, the act reaches the WIRE, and a result
- * reached that way is MARKED.
+ * borrowing the reference floor's wafer dimensions, and the client could not name what had
+ * happened. The offer was emitted into nothing and the screen stayed a dead end.
+ *
+ * 🔴 THE ACT WAS REMOVED ON 2026-08-06 (product owner: 「가정 적용은 자동으로 되게해」).
+ *    The server applies the borrowing by default, this client sends the parameter in neither
+ *    direction, and the accept control is gone -- it was a control for an act nobody performed,
+ *    because the `available` state that would have shown it can no longer occur.
+ *
+ * ⚠️ SO THIS FILE NOW SCORES ONE THING ABOVE ALL: **THAT REMOVING CONSENT DID NOT REMOVE
+ *    NOTICE.** Automatic is a decision about who agrees, not about who is told. Nobody consents
+ *    per unit any more and the answer still rests on a borrowed wafer, so every disclosure has
+ *    to arrive with nobody having pressed anything -- which makes sections E-G stricter than
+ *    they were, not looser. If a later round shrinks one of them, that turns 「automatic」 into
+ *    「silent」, and this file is where it should go red.
  *
  * WHAT IS SCORED
  *   A. THE VOCABULARY -- `assumed` is a token both sides know. A borrowed geometry that the
  *      client cannot name is sorted into some other bucket while every server test stays green.
- *   B. NOTHING ASSUMES BY DEFAULT -- a fresh question sends no `assume_reference_geometry` at
- *      all, and only `=== true` unlocks it. The server defaults it off because borrowing is a
- *      claim; a client that sent it for convenience would manufacture a declaration.
- *   C. ACCEPTING IS ONE ACT, ONE RE-ASK -- the flag rides the same question the five set-up
- *      controls ride, so the sequence guard and the payload drop are the ones already scored.
- *   D. THE CLAIM DOES NOT LATCH -- it dies with the row, the table and the floor it was made
- *      about. A claim that followed the operator down the worklist is a silent assumption with
- *      an extra step.
- *   E. `requested` IS NOT `applied` -- asking on a unit with no resolvable floor is not a
- *      borrowing that happened.
+ *   B. THE ASSUMPTION IS AUTOMATIC AND THIS CLIENT NEVER ASKS -- no question field, no query
+ *      parameter, in either direction. (Was 「NOTHING ASSUMES BY DEFAULT」; re-pointed rather
+ *      than deleted, because a removed false claim leaves no record that the default moved.)
+ *   C+D. NOTHING LATCHES -- a borrowing does not follow the operator to the next unit, floor or
+ *      table. The worry outlived the feature: it is now about the server's answer rather than
+ *      the client's claim, and five assertions about the ACT have no successor, named in place.
+ *   E. `requested` IS NOT `applied` -- decoded from the wire, where the distinction still lives.
  *   F. THE MARK -- one line (the server's own sentence, naming the floor), a per-map basis, a
  *      workbench hook, and a disclosure on the one write.
+ *   G. END TO END WITH NO CLICK -- every mark above, reached on first paint.
+ *   H. PICKING THE FLOOR BY HAND -- still one fetch, still no claim on the wire.
  *
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe): no emoji, no em-dash.
  */
@@ -116,10 +124,20 @@ ok(!COMPUTABLE_TOKENS.includes(ABSENT),
    'A4 and computability did not become "anything that is not absent"');
 
 // ════════════════════════════════════════════════════════════════════════════════
-// B. NOTHING ASSUMES BY DEFAULT
+// B. THE ASSUMPTION IS AUTOMATIC -- AND THIS CLIENT NEVER ASKS
 // ════════════════════════════════════════════════════════════════════════════════
-eq(EMPTY_QUESTION.assumeReferenceGeometry, false,
-   'B1 the empty question does not assume');
+// 🔴 THIS SECTION SAID 「NOTHING ASSUMES BY DEFAULT」 AND THAT BECAME FALSE ON 2026-08-06.
+//    It is RE-POINTED rather than deleted: a false claim removed leaves nothing behind, while a
+//    false claim re-pointed records that the default changed and when. What changed is the
+//    server -- `get_map_alignment_view(..., assume_reference_geometry: bool = True, ...)` -- on
+//    a product owner ruling that the borrowing apply automatically. The client half followed by
+//    LOSING ITS KNOB ENTIRELY: no accept control, no question field, no query parameter.
+//
+// ⚠️ WHAT IS SCORED HERE IS CONSENT, NOT NOTICE. That the borrowing happens without anyone
+//    pressing anything is this section; that the operator is TOLD it happened is sections E-G,
+//    and those got stricter, not looser. Automatic is a decision about consent.
+ok(!('assumeReferenceGeometry' in EMPTY_QUESTION),
+   'B1 the question tuple has no assume field at all -- there is nothing to set');
 
 const sent = [];
 function recordingClient() {
@@ -137,17 +155,25 @@ await recordingClient().loadReferenceView({ ...REQ });
 ok(!sent[0].includes('assume_reference_geometry'),
    'B2 an ordinary view request carries no assume parameter at all -- omitted, not sent false');
 
+// 🔴 INVERTED ON 2026-08-06, AND THE INVERSION IS THE PIN. This used to read 「B3 the claim,
+//    once made, is on the wire」. There is no way to make the claim any more: the transport
+//    dropped the parameter, so even a caller that passes `true` sends nothing. That is what
+//    makes the server's default the only thing in force, in ONE place, rather than two halves
+//    that can disagree.
 sent.length = 0;
 await recordingClient().loadReferenceView({ ...REQ, assumeReferenceGeometry: true });
-ok(sent[0].includes('assume_reference_geometry=true'),
-   'B3 the claim, once made, is on the wire');
+ok(!sent[0].includes('assume_reference_geometry'),
+   'B3 even a caller that passes `true` puts NO parameter on the wire -- the knob is gone');
 
-// A config typo, a stray string, a truthy object: none of them may unlock a claim.
-for (const junk of ['true', 1, {}, 'yes']) {
+// The old loop guarded a `=== true` branch against truthy junk unlocking a claim. The branch is
+// gone, so these can no longer discriminate between a strict check and a sloppy one -- they now
+// pin the simpler fact that NO input shape reaches the wire. Kept rather than dropped: someone
+// re-adding a coercion here is exactly the regression worth catching, and it costs nothing.
+for (const junk of ['true', 1, {}, 'yes', false]) {
   sent.length = 0;
   await recordingClient().loadReferenceView({ ...REQ, assumeReferenceGeometry: junk });
   ok(!sent[0].includes('assume_reference_geometry'),
-     `B4 truthy junk (${JSON.stringify(junk)}) does not unlock the claim -- === true strictly`);
+     `B4 no caller input (${JSON.stringify(junk)}) can put the parameter back on the wire`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -167,41 +193,59 @@ const CATALOG = {
                 core_wafer_map: [] },
 };
 
+// 🔴 THE ACT IS GONE, SO FIVE OF THESE TEN HAVE NO SUCCESSOR. Named rather than absorbed
+//    into the floor, because 「the count went down」 and 「the coverage went down」 are different
+//    facts and only one of them is true here:
+//      C1  accepting sets the claim                 -- nothing accepts.
+//      C2  accepting RE-ASKS                        -- nothing accepts.
+//      C3  the previous answer is dropped, not re-labelled -- nothing accepts.
+//      D5  a VALUE column does not clear the claim  -- there is no claim to keep.
+//    (C5 IS re-pointed rather than lost: it asked whether the claim survived a null picker, and
+//     it now asks whether the field is absent from a resolved question at all.)
+//    What they scored was the ACT. The act was removed on a product owner ruling, so the
+//    assertions are not stale, they are about a feature that no longer exists.
+//
+//    D1 / D3 / D4 DO have successors and they are below, because the WORRY survives the
+//    feature: 「a borrowing must not silently follow the operator to the next unit」 is now
+//    about the server's answer instead of the client's claim, and it is if anything more
+//    urgent -- nobody consents per unit any more.
 const base = withCatalog(createMapSession({ config: THRESHOLDS }), CATALOG);
-const accepted = withQuestion(base, { assumeReferenceGeometry: true });
-eq(accepted.question.assumeReferenceGeometry, true, 'C1 accepting sets the claim');
-ok(accepted.requestSeq > base.requestSeq,
-   'C2 accepting RE-ASKS -- the answer already on screen was scored without the assumption');
-eq(accepted.payload, null, 'C3 and the previous answer is dropped rather than re-labelled');
 
-// 🔴 THE FLOOR MAY RESOLVE FROM THE MAP'S OWN DECLARATION, so an accepted claim must NOT be
-//    normalised away just because the picker sent nothing. This was a real defect in the first
-//    cut of `resolveQuestion` and it would have refused the offer on exactly the units that
-//    carry a working `valid_die_ref`.
+// C4 stands unchanged: it is about `resolveQuestion` and never was about the claim.
 const noPicker = resolveQuestion({ ...EMPTY_QUESTION, mapTable: 'dt_map',
-                                   columns: { x: 'dt_x', y: 'dt_y', val: null },
-                                   assumeReferenceGeometry: true }, CATALOG);
+                                   columns: { x: 'dt_x', y: 'dt_y', val: null } }, CATALOG);
 eq(noPicker.reference, null, 'C4 no floor is picked (the ordinary state)');
-eq(noPicker.assumeReferenceGeometry, true,
-   'C5 and the claim survives it -- the floor resolves server-side from valid_die_ref');
+ok(!('assumeReferenceGeometry' in noPicker),
+   'C5 and a resolved question carries no assume field -- the tuple lost the axis, not the value');
 
-const nextRow = withDecision(accepted, { eqp: 'E2', product: 'P2' });
-eq(nextRow.question.assumeReferenceGeometry, false,
-   'D1 the claim dies with the row -- it is asserted about ONE unit, not latched');
-eq(nextRow.question.mapTable, accepted.question.mapTable,
+// D1's SUCCESSOR. The claim used to die with the row; now it is the APPLIED state that must,
+// and it dies for a stronger reason -- `withDecision` drops the payload, so the borrowing
+// cannot be re-rendered under the next unit's labels at all.
+const askedWithFloor = withQuestion(base, { mapTable: 'dt_map',
+                                            reference: `${FLOOR.table}:${FLOOR.map_id}` });
+// Built here rather than reusing `appliedWire` below: that constant is declared later in the
+// file, and a `const` referenced before its line throws at run time rather than hoisting.
+const borrowedAnswer = wire({ geometry_assumed: true,
+  assumption: { state: ASSUMPTION_APPLIED, requested: false, basis: { ...FLOOR },
+                map_count: 3, map_ids: ['M2'], text: APPLIED_TEXT } });
+const seeded = withPayload(askedWithFloor, borrowedAnswer, askedWithFloor.requestSeq);
+ok(seeded.payload, 'D1a a unit scored on a borrowed wafer has its answer in hand');
+const nextRow = withDecision(seeded, { eqp: 'E2', product: 'P2' });
+eq(nextRow.payload, null,
+   'D1 the borrowing does not follow the operator to the next row -- the answer it rode on is '
+   + 'dropped, not re-labelled');
+eq(nextRow.question.mapTable, seeded.question.mapTable,
    'D2 and the rest of the set-up survives the row change, as before');
 
-const movedFloor = withQuestion(accepted, { reference: 'core_wafer_map:OTHER' });
-eq(movedFloor.question.assumeReferenceGeometry, false,
-   'D3 moving the floor takes the claim off -- it was about THAT floor');
-const movedTable = withQuestion(accepted, { mapTable: 'core_wafer_map' });
-eq(movedTable.question.assumeReferenceGeometry, false,
-   'D4 moving the table takes the claim off -- it was about THOSE maps');
-const pickedColumn = withQuestion(accepted, {
-  columns: { ...accepted.question.columns, val: 'c_bn' } });
-eq(pickedColumn.question.assumeReferenceGeometry, true,
-   'D5 but naming a VALUE column does not -- it changes how the same maps are read, '
-   + 'not which wafer they are claimed to be');
+// D3 / D4's SUCCESSORS. Moving the floor or the table still RE-ASKS. That was the mechanism
+// that took the claim off; the mechanism is what mattered and it is still here.
+const movedFloor = withQuestion(seeded, { reference: 'core_wafer_map:OTHER' });
+ok(movedFloor.requestSeq > seeded.requestSeq && movedFloor.payload === null,
+   'D3 moving the floor re-asks and drops the answer -- a borrowing from THAT floor cannot be '
+   + 'shown under this one');
+const movedTable = withQuestion(seeded, { mapTable: 'core_wafer_map' });
+ok(movedTable.requestSeq > seeded.requestSeq && movedTable.payload === null,
+   'D4 moving the table re-asks and drops the answer -- likewise for THOSE maps');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // E + F. THE DECODE AND THE MARK
@@ -292,7 +336,12 @@ const vmOffer = ready(wire());
 eq(vmOffer.assumption.line, OFFER_TEXT, 'F12 the offer is ONE line and it is the server\'s');
 ok(vmOffer.assumption.line.includes(FLOOR.map_id),
    'F13 which names the floor -- not summarised away');
-ok(vmOffer.assumption.offered, 'F14 so a control may be shown');
+// 🔴 THE VIEW MODEL NO LONGER EXPOSES `offered`, AND THE DECODER STILL DOES. That split is
+//    the assertion: `decode` describes THE WIRE (the server can still emit `available`, and a
+//    client that did not know the word would push it to `rejected`), while this layer describes
+//    THE SCREEN -- and the screen has no accept control. E2 above still pins the decoded half.
+ok(!('offered' in vmOffer.assumption),
+   'F14 the view model offers no control affordance -- there is nothing to accept');
 eq(vmOffer.assumption.word, '', 'F15 an untaken offer is not a mark on the answer');
 eq(vmOffer.confirm.geometryAssumed, false, 'F16 and the write discloses nothing');
 
@@ -302,7 +351,8 @@ eq(vmApplied.assumption.line, APPLIED_TEXT,
 eq(vmApplied.assumption.word, WORDS.geometryAssumed, 'F18 plus a one-word mark for tight slots');
 eq(vmApplied.assumption.basisLabel, `${FLOOR.table}:${FLOOR.map_id}`,
    'F19 the basis is spelled the way /view takes it back');
-ok(!vmApplied.assumption.offered, 'F20 and there is nothing left to accept');
+ok(!('offered' in vmApplied.assumption),
+   'F20 and an applied borrowing exposes none either -- same field, gone in both states');
 ok(vmApplied.confirm.geometryAssumed && vmApplied.confirm.note.includes(WORDS.geometryAssumed),
    'F21 the ONE write discloses that its geometry was borrowed');
 ok(vmApplied.confirm.enabled,
@@ -319,8 +369,21 @@ ok(stored.confirm.note.startsWith(WORDS.geometryAssumed),
    'F24 which geometry the answer rests on leads the confirm note');
 
 // ════════════════════════════════════════════════════════════════════════════════
-// G. END TO END THROUGH THE SHELL -- one click, one fetch, the flag on the wire
+// G. END TO END THROUGH THE SHELL -- NOBODY PRESSES ANYTHING, AND THE SCREEN STILL SAYS SO
 // ════════════════════════════════════════════════════════════════════════════════
+// 🔴 THIS SECTION USED TO BE 「one click, one fetch, the flag on the wire」. There is no
+//    click (product owner 2026-08-06), so FOUR assertions have no successor and are named
+//    rather than absorbed:
+//      G4  an offer is not painted as a warning  -- the un-warned `available` state cannot
+//                                                   occur, so there is no offer to under-paint.
+//      G5  accepting costs exactly ONE fetch     -- nothing accepts.
+//      G6  that request carries the claim        -- no request carries it; B3 pins that.
+//      G9  the control is gone after the act     -- the control is gone before the act.
+//    And G2 is REPLACED, not lost: it checked that the sentence merely `includes` the floor id;
+//    G7b/G7c now pin the server's sentence BYTE FOR BYTE, which is strictly stronger and is the
+//    assertion that matters once nobody has agreed to anything.
+//    Everything else got STRICTER, because the disclosures now have to arrive with nobody
+//    having done anything: what used to be reached by a click must now be true on first paint.
 {
   const doc = makeDocument();
   const asked = [];
@@ -329,8 +392,10 @@ ok(stored.confirm.note.startsWith(WORDS.geometryAssumed),
     api: { confirmFrame: () => Promise.resolve({}) },
   });
   app.setLoader((decision, question) => {
-    asked.push(question.assumeReferenceGeometry === true);
-    return Promise.resolve(asked.length === 1 ? wire() : appliedWire);
+    // The question is recorded WHOLE, so a field creeping back in is visible here and not only
+    // at the transport.
+    asked.push(question);
+    return Promise.resolve(appliedWire);
   });
   app.setConfig(THRESHOLDS);
   app.setCatalog(CATALOG);
@@ -338,24 +403,24 @@ ok(stored.confirm.note.startsWith(WORDS.geometryAssumed),
   await settle();
 
   const note = doc.getElementById('me2-question-note');
-  const accept = doc.getElementById('me2-assume-accept');
-  eq(asked[0], false, 'G1 the first request assumed nothing');
-  ok(note.textContent.includes(FLOOR.map_id),
-     'G2 the offer is on screen, naming the floor, without anyone asking for it');
-  eq(accept.hidden, false, 'G3 and there is a control to accept it');
-  eq(note.getAttribute('data-me2-note-tone'), null,
-     'G4 an offer is an ordinary state and is not painted as a warning');
+  ok(!('assumeReferenceGeometry' in asked[0]),
+     'G1 the request carries no assume field -- the server default is the only thing in force');
+  ok(doc.getElementById('me2-assume-accept') === null,
+     'G3 THERE IS NO ACCEPT CONTROL -- a control for an act nobody performs');
+  eq(app.missing.length, 0,
+     'G3b and the shell does not bind one either -- removed from both halves, not orphaned');
 
-  const before = app.bar.fetches;
-  accept.dispatchEvent('click');
-  await settle();
-  eq(app.bar.fetches - before, 1, 'G5 accepting costs exactly ONE fetch');
-  eq(asked[1], true, 'G6 and that request carries the claim');
+  // 🔴 EVERY DISCLOSURE BELOW IS REACHED WITHOUT A CLICK, AND THAT IS THE POINT OF THE
+  //    ROUND. Removing consent must not remove notice: nobody agreed to this borrowing per
+  //    unit, so the screen carries the whole weight of saying it happened.
   eq(doc.getElementById('me2-workbench').getAttribute('data-me2-assumed'), 'true',
      'G7 the result region is marked as standing on a borrowed wafer');
+  ok(note.textContent.includes(FLOOR.map_id),
+     'G7b the SERVER sentence is on screen and NAMES THE FLOOR the dimensions came from');
+  eq(note.textContent, APPLIED_TEXT,
+     'G7c verbatim -- not summarised to 가정 적용, which would drop which two maps');
   eq(note.getAttribute('data-me2-note-tone'), 'caution',
-     'G8 and NOW the line is a warning, because numbers rest on it');
-  eq(accept.hidden, true, 'G9 the control is gone -- the act was performed once');
+     'G8 and the line is a warning, because numbers rest on it');
   eq(doc.getElementById('me2-confirm-note').textContent.includes(WORDS.geometryAssumed), true,
      'G10 the write discloses it');
 
@@ -371,23 +436,22 @@ ok(stored.confirm.note.startsWith(WORDS.geometryAssumed),
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// H. THE OPERATOR'S ORDER -- PICK THE FLOOR BY HAND, THEN ACCEPT
+// H. PICKING THE FLOOR BY HAND -- STILL ONE FETCH, STILL NO CLAIM ON THE WIRE
 // ════════════════════════════════════════════════════════════════════════════════
-// G accepts on a question nobody touched. That is not the workflow this control was built for:
-// the operator picks the floor first, and only then accepts a claim ABOUT that floor. The two
-// orders exercise different code, because `withQuestion` deliberately CLEARS the claim when the
-// floor moves -- so an accept that re-entered the reference path would clear itself between the
-// click and the fetch and the feature could never work for its own workflow.
-//
-// 🔴 AND IT MEASURES THE VALUE AT THE TRANSPORT EDGE, NOT MERELY WHETHER IT IS TRUTHY. The api
-//    layer emits the parameter on `=== true` and OMITS it otherwise (B4), which is right --
-//    truthy junk must not unlock a claim -- but it also means a flag arriving as the string
-//    `'true'` or as `1` would vanish with no sound and look exactly like a click that never
-//    registered. So the type is asserted, not just the truth value, and the whole chain runs
-//    through the REAL api client: click -> question -> the page entry's request shape -> URL.
+// 🔴 THIS SECTION WAS 「PICK THE FLOOR BY HAND, THEN ACCEPT」. The second motion no longer
+//    exists, so SEVEN assertions have no successor -- named, not absorbed:
+//      H5  the offer survived the pick, so there is a control    -- there is no control.
+//      H6  accepting after a manual pick is ONE re-ask           -- nothing accepts.
+//      H7  the claim survives the click in this order            -- no click, no claim.
+//      H8  it is a BOOLEAN at the transport edge                 -- nothing crosses the edge.
+//      H9  the claim reaches the URL                             -- B3 pins that it cannot.
+//      H10 the floor is still on the same request                -- H3 pins the floor alone.
+//      H11 non-boolean junk is refused at the question           -- the question has no field.
+//    The FIRST motion survives whole, and it is what this file still has to score: picking a
+//    floor is a real operator act with a real cost, and it must not smuggle a claim along.
 {
   const doc = makeDocument();
-  const seenAtLoader = [];   // the RAW value on the question, uncoerced
+  const seenAtLoader = [];
   const sentUrls = [];
   const app = bootstrap({ document: doc, api: { confirmFrame: () => Promise.resolve({}) } });
   const client = createApiClient({
@@ -396,21 +460,20 @@ ok(stored.confirm.note.startsWith(WORDS.geometryAssumed),
       sentUrls.push(String(url));
       return Promise.resolve({
         ok: true, status: 200,
-        json: () => Promise.resolve(sentUrls.length >= 3 ? appliedWire : wire()),
+        json: () => Promise.resolve(sentUrls.length >= 2 ? appliedWire : wire()),
       });
     },
   });
-  // The page entry's own loader, copied in shape from `map_editor2.js:146-161`. Scoring the
-  // shell against a loader that reads the flag differently would score a request nobody sends.
+  // The page entry's own loader, copied in shape from `map_editor2.js`. It no longer forwards
+  // any assume flag, because the question no longer has one to forward.
   app.setLoader((decision, question) => {
-    seenAtLoader.push(question.assumeReferenceGeometry);
+    seenAtLoader.push(question);
     return client.loadReferenceView({
       rule: 'r',
       mapTable: question.mapTable,
       params: { dt_eqp: decision.eqp, product: decision.product },
       xCol: question.columns.x, yCol: question.columns.y, valCol: question.columns.val,
       reference: question.reference || undefined,
-      assumeReferenceGeometry: question.assumeReferenceGeometry === true,
       includeCells: true,
     });
   });
@@ -419,47 +482,18 @@ ok(stored.confirm.note.startsWith(WORDS.geometryAssumed),
   app.selectDecision({ eqp: 'E', product: 'P' });
   await settle();
 
-  // ── the operator's first motion: pick the floor by hand ──
   const refSelect = doc.getElementById('me2-reference-select');
   const fetchesBeforePick = app.bar.fetches;
   refSelect.value = `${FLOOR.table}:${FLOOR.map_id}`;
   refSelect.dispatchEvent('change');
   await settle();
   eq(app.bar.fetches - fetchesBeforePick, 1, 'H1 picking the floor costs exactly one fetch');
-  eq(seenAtLoader[1], false,
-     'H2 and that request assumes nothing -- picking a floor is not asserting anything about it');
+  ok(!('assumeReferenceGeometry' in seenAtLoader[1]),
+     'H2 and the question it asks with carries no assume field');
   ok(sentUrls[1].includes('reference=') && sentUrls[1].includes(encodeURIComponent(FLOOR.map_id)),
      'H3 the picked floor is on the wire');
   ok(!sentUrls[1].includes('assume_reference_geometry'),
-     'H4 and no claim rides along with it');
-
-  // ── the operator's second motion: accept, WITH a floor already picked ──
-  const accept = doc.getElementById('me2-assume-accept');
-  eq(accept.hidden, false, 'H5 the offer survived the floor being picked, so there is a control');
-  const fetchesBeforeAccept = app.bar.fetches;
-  accept.dispatchEvent('click');
-  await settle();
-  eq(app.bar.fetches - fetchesBeforeAccept, 1,
-     'H6 accepting after a manual pick is still exactly ONE re-ask');
-  eq(seenAtLoader[2], true,
-     'H7 THE CLAIM SURVIVES THE CLICK IN THIS ORDER -- nothing re-enters the reference path '
-     + 'between the click and the fetch and clears it');
-  eq(typeof seenAtLoader[2], 'boolean',
-     'H8 and it is a BOOLEAN at the transport edge, not a truthy string the api would omit');
-  ok(sentUrls[2].includes('assume_reference_geometry=true'),
-     'H9 so the claim reaches the URL');
-  ok(sentUrls[2].includes('reference='),
-     'H10 and the floor it was asserted about is still on the same request');
-
-  // 🔴 THE ONE WAY A CLAIM COULD VANISH SILENTLY IS SHUT AT THE DOOR, NOT AT THE WIRE. A
-  //    non-boolean never reaches the api to be omitted: the question normalises it to false, so
-  //    the screen and the request agree about what was claimed. If this ever regressed, the
-  //    symptom would be indistinguishable from a dead button.
-  for (const junk of ['true', 1, {}, 'yes']) {
-    const j = withQuestion(base, { assumeReferenceGeometry: junk });
-    eq(j.question.assumeReferenceGeometry, false,
-       `H11 a non-boolean claim (${JSON.stringify(junk)}) is refused at the question, not at the api`);
-  }
+     'H4 and no claim rides along with it -- in EITHER direction, so the server default stands');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -667,13 +701,14 @@ function makeDocument() {
                     'me2-col-value', 'me2-reference-select']) {
     body.appendChild(node('select', id));
   }
-  // 🔴 `me2-assume-accept` IS AUTHORED HERE, and that is not the same claim as the live page
-  //    carrying it (it now does — the markup landed). This harness scores the WIRING: that the
-  //    control sends the claim exactly once and is hidden the rest of the time. It does not and
-  //    cannot score the page's markup; `bootstrap` reports any absence in `app.missing`, which
-  //    the page entry logs. Keep the two apart — a stub that authors its own node will pass
-  //    forever after someone deletes the button.
-  for (const id of ['me2-columns-confirm', 'me2-assume-accept', 'me2-confirm-btn']) {
+  // 🔴 `me2-assume-accept` IS NO LONGER AUTHORED HERE, and its removal from this list is
+  //    part of the change rather than tidying. The button was deleted from the page on
+  //    2026-08-06; a stub that kept authoring it would hand `getElementById` a node the real
+  //    document does not have, and G3 -- 「there is no accept control」 -- would fail against a
+  //    node this file invented. The older note here warned about the mirror image of exactly
+  //    this: a stub that authors its own node passes forever after someone deletes the button.
+  //    It is the same rule read the other way, and it bit within the hour.
+  for (const id of ['me2-columns-confirm', 'me2-confirm-btn']) {
     body.appendChild(node('button', id));
   }
   for (const id of ['me2-workbench', 'me2-worklist-rows', 'me2-worklist-rows-unscorable',
@@ -684,6 +719,8 @@ function makeDocument() {
                     'me2-layer-alone', 'me2-picture-caption', 'me2-refusal',
                     'me2-verdict-headline', 'me2-source-list', 'me2-sources-meta',
                     'me2-metric-conflict', 'me2-confirm-sentence', 'me2-confirm-note',
+                    // The footer, bound since 2026-08-06 to carry the refusal state.
+                    'me2-confirmbar',
                     'me2-confirm-hint', 'me2-export-btn', 'me2-paste-result']) {
     body.appendChild(node('div', id));
   }

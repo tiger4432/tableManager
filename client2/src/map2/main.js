@@ -95,13 +95,6 @@ export const ELEMENT_IDS = Object.freeze({
   //    tolerates absence and reports the id in `missing` -- so the wiring is complete the moment
   //    the node appears and nothing has to be re-derived then.
   //
-  //    ASKED FOR BY NAME (markup lane): a `<button id="me2-assume-accept" class="me2-scope-propose"
-  //    type="button" hidden>` at the end of the `기준` scope step, beside the reference select
-  //    the claim is about. Same class as `#me2-columns-confirm`, because it is the same shape of
-  //    act -- agreeing to something the screen proposed -- and the dashed-warning pill already
-  //    reads that way. It must NOT be a default-visible control: a permanent button here would
-  //    train the operator to click through a claim about which wafer they are looking at.
-  assumeAccept: 'me2-assume-accept',
   svg: 'me2-picture-svg',
   layerFloor: 'me2-layer-floor',
   layerMiss: 'me2-layer-miss',
@@ -390,7 +383,6 @@ export function bootstrap(deps) {
     // Same rule for the borrowed geometry: the control exists only while there is an untaken
     // offer. Once the claim has been made it goes away -- a control still reading "accept"
     // beside an applied assumption invites the operator to assert the same thing twice.
-    if (el.assumeAccept) el.assumeAccept.hidden = !vm.assumption.offered;
     if (el.workbench) {
       el.workbench.setAttribute('data-me2-evidence', vm.evidence.kind);
       el.workbench.setAttribute('data-me2-attribution', vm.attribution.state);
@@ -1190,7 +1182,7 @@ export function bootstrap(deps) {
     //    states: an untaken offer is what the operator is being asked to decide about.
     const asm = session.payload && session.payload.assumption ? session.payload.assumption : null;
     if (asm && asm.state !== 'unavailable') {
-      lines.push(`geometry assumption ${asm.state} (requested=${vm.assumption.requested}): `
+      lines.push(`geometry assumption ${asm.state}: `
         + `${asm.mapCount === null ? '미상' : asm.mapCount} map(s) `
         + `[${asm.mapIds.join(', ') || 'none listed'}] borrow the wafer dimensions of `
         + `${asm.basis ? `${asm.basis.table}:${asm.basis.mapId}` : '(no basis)'}. `
@@ -1512,21 +1504,17 @@ export function bootstrap(deps) {
       setSession(withQuestion(session, { bindingSource: BINDING_DECLARED }));
     });
   }
-  // 🔴 THE ONE PLACE THE CLAIM CAN BE MADE, AND IT IS A CLICK. Nothing else in this program
-  //    sets `assumeReferenceGeometry` true: not the loader, not a default, not a retry. The
-  //    server defaults it off because borrowing is an assertion -- "these are the same wafer" --
-  //    and the operator is the one entitled to make it. A screen that sent it automatically
-  //    would have manufactured a declaration, which is the failure this whole vocabulary exists
-  //    to close. So this handler is the entire write side of the feature, and it re-asks:
-  //    `withQuestion` bumps `requestSeq`, drops the payload, and everything re-scores under the
-  //    borrowed geometry rather than being re-labelled on the client.
-  //    It goes through `setQuestion`, the same door as the five selects, so the sequence guard,
-  //    the payload drop and the single re-ask are the ones already scored -- and NOT through the
-  //    `columnsConfirm` door, which deliberately does not re-ask because agreeing to a column
-  //    pair changes nothing about the request. This one changes the request.
-  if (el.assumeAccept) {
-    el.assumeAccept.addEventListener('click', () => setQuestion({ assumeReferenceGeometry: true }));
-  }
+  // 🔴 THERE IS NO ACCEPT CONTROL, AND ITS ABSENCE IS THE ENFORCEMENT. Borrowing the
+  //    floor's wafer dimensions is automatic now (product owner 2026-08-06); the server applies
+  //    it by default and this client never sends the parameter, so the `available` state that
+  //    used to put a button here cannot occur. The handler that stood at this spot was the
+  //    entire write side of the feature and it is gone with it.
+  //
+  // ⚠️ WHAT DID NOT GO: every disclosure. The server's offer sentence still reaches
+  //    `#me2-question-note`, `data-me2-assumed` still marks the workbench, the note still turns
+  //    `caution` once numbers rest on the borrowing, and the write still discloses it through
+  //    `WORDS.geometryAssumed`. Removing consent is not removing notice -- if a later round
+  //    finds one of those missing, this comment is the record that it was not meant to go.
   if (el.worklistSearch) {
     el.worklistSearch.addEventListener('input', (e) => {
       searchWorklist((e.target && e.target.value) || '');
