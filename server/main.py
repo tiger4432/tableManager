@@ -166,6 +166,9 @@ app.add_middleware(
 # re-shadows this route fails the suite instead of failing silently in production.
 import asyncio as _health_asyncio
 from fastapi.responses import JSONResponse
+# Used only by `_table_data_response`'s fallback branch - see its docstring. Importing
+# it here keeps the fallback on the exact code path FastAPI would have taken anyway.
+from fastapi.encoders import jsonable_encoder
 import health as health_mod
 import process_supervisor as _supervisor_mod
 from utils import heartbeat as _heartbeat_mod
@@ -1412,6 +1415,65 @@ def apply_search_filter(query, table_model, table_name, q, cols, binder):
     return query
 
 
+# ── [perf 2026-08-06] Response serialization for the grid/map read path ──────────
+#
+# Counts how many times this route has had to fall back to the slow encoder, keyed by
+# table. Read it from the log line below; it exists so the fallback is COUNTABLE and
+# not just a one-off warning that scrolls past.
+SLOW_JSON_FALLBACKS: dict[str, int] = {}
+
+
+def _table_data_response(payload, table_name: str):
+    """Serialize the grid payload without FastAPI's `jsonable_encoder` pass.
+
+    FastAPI serializes a handler's return value by running `jsonable_encoder` over it
+    and then `json.dumps`-ing the result. Returning a `Response` skips that entirely
+    (`fastapi.routing.get_request_handler`: `if isinstance(raw_response, Response):
+    response = raw_response`).
+
+    This route's payload is built out of plain primitives - `fetch_and_merge_metadata`
+    emits str/bool/None/float/int and nothing else - so that encoder pass converts an
+    already-JSON-native dict into an identical one. Measured against the development
+    database over all 14 declared tables: encoder 1,831 ms vs a direct dumps 129 ms
+    (9.6x-17.5x), with BYTE-IDENTICAL output every time. On `dt_log` (1,000 rows /
+    4.4 MB) that was 548 ms of a 763 ms request, against 5.4 ms of actual SQL
+    execution. This is the continuation of the Phase 73.12 note below: that change
+    dropped the Pydantic validation pass, this one drops the encoder pass.
+
+    THE RISK IS THE DAY THE PAYLOAD STOPS BEING NATIVE. `jsonable_encoder` copes with
+    Decimal/datetime/UUID; `json.dumps` raises TypeError. A new column type or a config
+    change could introduce one, and this route is the operator's main screen - a 500
+    here is the whole grid, empty.
+
+    So the fast path is TRIED, not assumed, and the fallback is the exact path this
+    route uses today. The bytes on the wire are therefore unchanged in BOTH branches.
+    `default=str` was considered and rejected: it keeps the request alive but SILENTLY
+    changes the encoding of a datetime (`str()` gives "2026-08-06 09:00:00" where
+    `jsonable_encoder` gives the isoformat), which is a boundary-contract change
+    discovered by the client rather than by us.
+
+    ValueError is caught alongside TypeError so that "the fallback is today's
+    behaviour" holds without exception: NaN/Infinity already raise under
+    `allow_nan=False` on today's path too, so the retry re-raises and the request fails
+    exactly as it does now, rather than failing differently on the way to the encoder.
+
+    The fallback is LOUD on purpose. A slow path nobody notices is how this gets
+    un-fixed - the encoder cost would quietly return and the next profile would
+    rediscover it from scratch.
+    """
+    try:
+        return JSONResponse(content=payload)
+    except (TypeError, ValueError) as exc:
+        SLOW_JSON_FALLBACKS[table_name] = SLOW_JSON_FALLBACKS.get(table_name, 0) + 1
+        logger.warning(
+            "[get_table_data] '%s': payload is NOT JSON-native, falling back to "
+            "jsonable_encoder (%d time(s) for this table since boot). This costs "
+            "roughly 10x the serialization time - find the column that emits it. "
+            "Cause: %s",
+            table_name, SLOW_JSON_FALLBACKS[table_name], exc)
+        return JSONResponse(content=jsonable_encoder(payload))
+
+
 # [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
 @app.get("/tables/{table_name}/data")
 def get_table_data(
@@ -1479,14 +1541,16 @@ def get_table_data(
             # 무거운 count() 연산과 무의미한 데이터 페칭을 즉시 스킵하고 Fast-fail 응답을 반환합니다.
             # 이로 인해 클라이언트가 10초간 Nav Lock에 걸리는 현상을 방지합니다.
             print(f"[Server] Target {target_row_id} not found in query. Fast returning.")
-            return {
+            # Same serializer as the main return below - both exits of this route hand
+            # back a Response, so neither can be re-routed through the encoder by accident.
+            return _table_data_response({
                 "total": 0,
                 "data": [],
                 "skip": skip,
                 "limit": limit,
                 "calculated_skip": skip,
                 "target_offset": -1
-            }
+            }, table_name)
         
         if target_row:
             from sqlalchemy import func, or_, and_
@@ -1606,10 +1670,10 @@ def get_table_data(
     
     logger.debug(f"[get_table_data] Total: {t_total:.3f}s | Target: {t_target:.3f}s | Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | Entity Fetch: {t_row_scan:.3f}s | Dict Conv: {t_dict:.3f}s | skip={skip}, limit={limit}, order={order_by}, q={q}")
     
-    return {
+    return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset
-    }
+    }, table_name)
 
 import json
 from fastapi import HTTPException
