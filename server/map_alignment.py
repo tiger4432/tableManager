@@ -31,7 +31,11 @@
 두 개수로 만들고, 그 책임을 화면에 남긴다.
 """
 import logging
+import logging.handlers
+import os
+import sys
 import time
+import uuid
 
 import map_overlay
 from dt_map_derivation import parse_frame, source_meta_for_frame
@@ -818,12 +822,465 @@ def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Scoring diagnostics — one block per scoring run, console **and** align.log
+# ---------------------------------------------------------------------------
+# This whole section is observability. It reads what the scorer used and prints
+# it; it decides nothing. Every value below is either read out of a structure the
+# scorer built, or captured at the exact line the scorer used it. Nothing here
+# re-derives a scoring answer — a logging path that recomputes can disagree with
+# the code it describes, and then there are two implementations to debug.
+#
+# [why this exists] The operator sat for a day on `metric=values` /
+# `reason=no_overlap` / rank: none, and the payload could not tell apart the two
+# causes that produce it:
+#
+#   POSITIONAL  — source cells and reference cells never land on the same
+#                 coordinate under any of the eight frames. Geometry is wrong.
+#   VOCABULARY  — the cells DO overlap and **no value is equal**, because the
+#                 reference's values and the source's are different vocabularies
+#                 (a valid-die floor carrying 1/0 against bin codes 3/7). The
+#                 geometry is fine and nothing about it needs touching.
+#
+# Both print as "no overlap". Separating them is the first job of this block:
+# every candidate reports positional overlap and value agreement as two
+# independent counts, and a single DIAGNOSIS line names which one is at work.
+#
+# [both destinations, always] Console so the operator can watch a run live;
+# `align.log` so they can scroll back after the terminal has scrolled. No flag,
+# no config key, no environment variable — one behaviour.
+#
+# [never fatal] Every entry point here swallows its own failures. A diagnostic
+# that can take down the feature it diagnoses is worse than no diagnostic.
+
+#: Next to the process logs (`server/server.log`, `server/watcher.log`), through
+#: the same single override point, so an isolated stack cannot append to the
+#: user's live file. That directory is where a person already looks for logs, and
+#: the web server has proven it writable by keeping its own log there.
+_DIAG_LOG_FILENAME = "align.log"
+#: 🔴 A test process must not append to the operator's live file. `paths.log_path`
+#: already states the discipline for the process logs ("the file a reviewer reads
+#: to reconstruct an incident must not carry a drill's lines") and the suite calls
+#: `build_alignment_view` directly, so without this the first thing the operator
+#: would open contains dozens of synthetic blocks. Detection reuses the existing
+#: primitive (`db_safety.under_pytest`) rather than adding a second spelling —
+#: and the handler is still exercised, just against a different name.
+_DIAG_LOG_FILENAME_TEST = "align_test.log"
+#: Bounded on purpose, and the file says at the cut what it dropped
+#: (`_RollNoticeHandler`). Two generations survive: the live file and one backup,
+#: i.e. at most ~16 MB. Anything older than the backup is gone for good.
+_DIAG_MAX_BYTES = 8 * 1024 * 1024
+_DIAG_BACKUPS = 1
+
+_DIAG_SAMPLE_VALUES = 10        # distinct values shown per vocabulary
+_DIAG_VOCAB_DISTINCT_CAP = 500  # distinct values tracked before we stop counting
+_DIAG_VOCAB_SCAN_CAP = 50_000   # values scanned when taking a census
+_DIAG_TRACE_CELLS = 5           # worked-example cells per traced candidate
+_DIAG_MAP_LINES = 10            # per-map lines before the tail is summarised
+_DIAG_CHARS = 48                # one rendered value never exceeds this
+_DIAG_CHARS_LONG = 900          # one rendered structure never exceeds this
+
+_DIAG_RULE = "=" * 78
+
+
+def _d(v, cap: int = _DIAG_CHARS) -> str:
+    """One value, rendered and length-capped.
+
+    `repr()` and not `str()`, deliberately: **the vocabulary question turns on
+    type and whitespace, and `str()` erases both.** `3`, `'3'`, `' 3 '` and
+    `'3\\n'` all print as `3` under `str()` — exactly the class of mismatch this
+    log exists to make visible. `repr()` keeps the quotes, so a string is
+    distinguishable from a number and a trailing space is visible inside them,
+    and it escapes control characters.
+
+    Not `ascii()`: it escapes Korean to `\\uXXXX` and the operator-facing halves
+    of this block (refusals, config comments, refusal reasons) become unreadable.
+    Printable non-ASCII therefore survives as itself; where that could hide a
+    difference — a full-width space in a *value* — `_d_vocab_text` prints the
+    escaped spelling alongside. The console half survives a cp949 terminal
+    through `_ConsoleSafeHandler`, not through escaping everything.
+    """
+    try:
+        s = repr(v)
+    except Exception:
+        try:
+            s = ascii(v)
+        except Exception:
+            s = "<unrenderable %s>" % type(v).__name__
+    return s if len(s) <= cap else s[:cap - 3] + "..."
+
+
+def _d_config(v, cap: int = _DIAG_CHARS_LONG) -> str:
+    """A config block as found in the file, with `__`-prefixed comment keys
+    elided. The convention is the file's own (`load_alignment_value_weights`
+    skips them); eliding them here keeps the *declarations* inside the character
+    budget instead of letting one long comment push them past the cut."""
+    if isinstance(v, dict):
+        kept = {k: (_strip_comments(x) if isinstance(x, dict) else x)
+                for k, x in v.items() if not str(k).startswith("__")}
+        note = "" if len(kept) == len(v) else "   (__comment keys elided)"
+        return _d(kept, cap) + note
+    return _d(v, cap)
+
+
+def _strip_comments(d: dict) -> dict:
+    return {k: x for k, x in d.items() if not str(k).startswith("__")}
+
+
+def _d_arg(v) -> str:
+    """A request argument. **Absent is a value here** — half of this week's
+    defects were an undeclared thing folding silently into a default, so `None`
+    prints as `<absent>` and an empty string prints as the explicit "none" that
+    `resolve_source_columns` treats it as."""
+    if v is None:
+        return "<absent>"
+    if isinstance(v, str) and not v.strip():
+        return "'' <explicit none>"
+    return _d(v)
+
+
+def _d_vocab(values) -> dict:
+    """Census of one side's values: what is there, and **in what form**.
+
+    `compared` is the set the scorer actually intersects — `str(v)`, because
+    [3b] compares `str(rv) == str(sv)`. Keeping the raw values *and* their
+    compared forms side by side is what lets the diagnosis say whether a
+    mismatch is a real difference or only a rendering difference.
+    """
+    raw, compared, types = [], set(), {}
+    seen = set()
+    nulls = scanned = 0
+    truncated = capped = False
+    for v in (values or ()):
+        scanned += 1
+        if scanned > _DIAG_VOCAB_SCAN_CAP:
+            truncated = True
+            break
+        if v is None:
+            nulls += 1
+            continue
+        tn = type(v).__name__
+        types[tn] = types.get(tn, 0) + 1
+        try:
+            k = (tn, v)
+            hash(k)
+        except TypeError:
+            k = (tn, _d(v))
+        if k in seen:
+            continue
+        if len(seen) >= _DIAG_VOCAB_DISTINCT_CAP:
+            capped = True
+            continue
+        seen.add(k)
+        raw.append(v)
+        compared.add(str(v))
+    return {"n": len(raw), "sample": raw[:_DIAG_SAMPLE_VALUES], "compared": compared,
+            "nulls": nulls, "types": types, "truncated": truncated or capped}
+
+
+def _d_vocab_text(vc: dict) -> str:
+    types = " ".join("%s x%d" % (k, n) for k, n in sorted(vc["types"].items()))
+    sample = ", ".join(_d(v) for v in vc["sample"])
+    # A value carrying printable non-ASCII (a full-width space, an NBSP, a Korean
+    # bin code) reads identically to its plain cousin. Where that is possible the
+    # escaped spelling goes next to it, because "these two look the same and are
+    # not equal" is precisely the question this block answers.
+    esc = ""
+    try:
+        # `ascii()` and `repr()` agree exactly when the value is pure ASCII. They
+        # differing is the signal, and it is also the reason to print both.
+        if any(ascii(v) != repr(v) for v in vc["sample"]):
+            esc = "  escaped=[%s]" % ", ".join(ascii(v) for v in vc["sample"])
+    except Exception:
+        pass
+    return ("distinct=%d%s nulls=%d types=[%s] sample=[%s]%s%s"
+            % (vc["n"], "+" if vc["truncated"] else "", vc["nulls"], types or "-",
+               sample, " (sample capped)" if vc["n"] > len(vc["sample"]) else "", esc))
+
+
+def _d_range(cells) -> str:
+    """`x=[min,max] y=[min,max] n=N` over a coordinate list. Ranges, never dumps."""
+    if not cells:
+        return "n=0"
+    xs = [c[0] for c in cells]
+    ys = [c[1] for c in cells]
+    return "n=%d x=[%d,%d] y=[%d,%d]" % (len(cells), min(xs), max(xs), min(ys), max(ys))
+
+
+def _d_meta(meta: dict | None) -> list:
+    """The metadata row **as it really is**, plus the axes the transform reads.
+
+    Two lines on purpose. The raw dict shows absent keys by their absence; the
+    axes tuple shows what the code read in their place — which is where an
+    absent `grid_y_invert` silently becomes `False` and nobody sees it.
+    """
+    if not meta:
+        return ["raw=<none> (no wafer_map_metadata row, or grid_metadata unreadable)"]
+    try:
+        axes = map_overlay.frame_axes(meta)
+        axes_t = ("rotation=%s side=%s grid_y_invert=%s start=(%s,%s) grid=%sx%s "
+                  "phys(dia,chip_x,chip_y,off_x,off_y,margin)=%s"
+                  % (axes[0], _d(axes[1]), axes[2], axes[3], axes[4], axes[5],
+                     axes[6], _d(axes[7], 90)))
+    except Exception as e:
+        axes_t = "<frame_axes failed: %s: %s>" % (type(e).__name__, e)
+    return ["raw=%s" % _d(meta, _DIAG_CHARS_LONG),
+            "axes(as read by map_overlay.frame_axes)= %s" % axes_t,
+            "declaration=%s" % map_overlay.geometry_declaration(meta)]
+
+
+def _d_frame_phys(meta: dict | None) -> str:
+    """The frame-axis phys parameters the wafer engine is actually constructed
+    with — the rotation/side sign-and-swap table applied. Called, not copied:
+    this is `map_overlay._frame_phys_params`, the same function
+    `_frame_transformer` calls with the same meta. If it ever stops being
+    reachable, this says so instead of reimplementing the table."""
+    try:
+        return _d(map_overlay._frame_phys_params(meta), 90)
+    except Exception as e:
+        return "<unavailable: %s: %s>" % (type(e).__name__, e)
+
+
+class _RollNoticeHandler(logging.handlers.RotatingFileHandler):
+    """Rotating file handler that says **in the file** what it discarded.
+
+    A log that silently drops its beginning is the same defect as a report that
+    silently truncates, and this codebase has paid for that shape more than once.
+    After every rollover the fresh file opens with a line naming what moved to
+    the backup and what is gone for good.
+    """
+
+    def doRollover(self):
+        super().doRollover()
+        try:
+            self.stream.write(
+                "%s\n=== %s ROLLED OVER at %s: the previous %d bytes are now in "
+                "'%s.1'. Anything older than that one backup has been DISCARDED. ===\n"
+                % (_DIAG_RULE, os.path.basename(self.baseFilename),
+                   time.strftime("%Y-%m-%d %H:%M:%S"), self.maxBytes,
+                   os.path.basename(self.baseFilename)))
+            self.stream.flush()
+        except Exception:
+            pass
+
+
+class _ConsoleSafeHandler(logging.StreamHandler):
+    """Console handler that survives a terminal codec it cannot render.
+
+    The console here is cp949 and the block carries Korean server-authored
+    sentences. Stock `logging` would swallow the `UnicodeEncodeError` through
+    `handleError` and the operator would lose **the whole block** from the half
+    they are watching live. Re-encoding with replacement keeps the block; the
+    file half (utf-8) is unaffected either way.
+    """
+
+    def emit(self, record):
+        try:
+            super().emit(record)
+        except UnicodeEncodeError:
+            try:
+                enc = getattr(self.stream, "encoding", None) or "ascii"
+                self.stream.write(
+                    self.format(record).encode(enc, "replace").decode(enc)
+                    + self.terminator)
+                self.flush()
+            except Exception:
+                self.handleError(record)
+        except Exception:
+            self.handleError(record)
+
+
+_DIAG_LOGGER = None
+_DIAG_FILE_PATH = None
+_DIAG_FILE_ERROR = None
+
+
+def _diag_logger():
+    """The diagnostics logger: console + `align.log`, and **not** `server.log`.
+
+    `propagate=False` is the reason for the second point. Forty lines per click
+    propagated to root would bury the file a reviewer reads to reconstruct an
+    incident. Two destinations were asked for and two are wired.
+
+    If the file cannot be opened the console half still runs — production may
+    mount things this box does not.
+    """
+    global _DIAG_LOGGER, _DIAG_FILE_PATH, _DIAG_FILE_ERROR
+    if _DIAG_LOGGER is not None:
+        return _DIAG_LOGGER
+    lg = logging.getLogger("map_alignment.diag")
+    lg.setLevel(logging.INFO)
+    lg.propagate = False
+    for h in list(lg.handlers):
+        lg.removeHandler(h)
+    # The block formats itself; a per-line prefix would break the worked example
+    # a person is meant to check with a pencil.
+    fmt = logging.Formatter("%(message)s")
+    # `sys.stdout` is None under pythonw / a console-less service host. Falling
+    # back to stderr keeps the "console" half alive there instead of turning
+    # every emit into a swallowed AttributeError.
+    con = _ConsoleSafeHandler(sys.stdout if sys.stdout is not None else sys.stderr)
+    con.setFormatter(fmt)
+    lg.addHandler(con)
+    name = _DIAG_LOG_FILENAME
+    try:
+        import db_safety
+        if db_safety.under_pytest():
+            name = _DIAG_LOG_FILENAME_TEST
+    except Exception:
+        pass
+    try:
+        import paths
+        _DIAG_FILE_PATH = paths.log_path(name)
+        fh = _RollNoticeHandler(_DIAG_FILE_PATH, maxBytes=_DIAG_MAX_BYTES,
+                                backupCount=_DIAG_BACKUPS, encoding="utf-8")
+        fh.setFormatter(fmt)
+        lg.addHandler(fh)
+    except Exception as e:
+        _DIAG_FILE_ERROR = "%s: %s" % (type(e).__name__, e)
+        _DIAG_FILE_PATH = None
+        logger.warning("[MapAlignment] %s unavailable (%s) - scoring diagnostics go to "
+                       "the console only", name, _DIAG_FILE_ERROR)
+    _DIAG_LOGGER = lg
+    return lg
+
+
+def _diag_compare_probe(ref_vc: dict, src_vc: dict) -> list:
+    """Is the value mismatch a real difference, or only a rendering difference?
+
+    The scorer compares `str(rv) == str(sv)` — exact, after `str()`. That makes
+    `3` and `'3'` equal, and leaves `3.0` vs `'3'`, `'3 '` vs `'3'` and `'A'` vs
+    `'a'` **unequal**. Whether that strictness is the whole answer is a question
+    about this run's data, so it is answered against this run's data: intersect
+    the two vocabularies the way the scorer does, then again under normalisations
+    the scorer does **not** do. A looser probe finding matches the strict one did
+    not is the finding, and it gets named here rather than left for the reader to
+    spot in a sample.
+
+    Nothing here feeds scoring. These are probes, printed and discarded.
+    """
+    a, b = ref_vc["compared"], src_vc["compared"]
+    strict = a & b
+
+    def _num(s):
+        try:
+            return repr(float(s))
+        except (TypeError, ValueError):
+            return None
+
+    trim = {s.strip().casefold() for s in a} & {s.strip().casefold() for s in b}
+    na = {n for n in (_num(s) for s in a) if n is not None}
+    nb = {n for n in (_num(s) for s in b) if n is not None}
+    num = na & nb
+    lines = [
+        "  compare rule      : str(reference) == str(source)   [exact, after str()]",
+        "  shared, as compared        : %d  %s"
+        % (len(strict), sorted(strict)[:_DIAG_SAMPLE_VALUES] if strict else "<none>"),
+        "  shared, if trimmed+casefold: %d" % len(trim),
+        "  shared, if numeric         : %d" % len(num),
+    ]
+    if not strict and (trim or num):
+        which = []
+        if trim:
+            which.append("whitespace/case")
+        if num:
+            which.append("numeric formatting (e.g. '3' vs '3.0')")
+        lines.append(
+            "  >> STRICTNESS FINDING: the two vocabularies share NOTHING as compared, "
+            "but DO overlap once %s is normalised. The comparison being exact is then "
+            "the whole cause. NOT changed by this round." % " and ".join(which))
+    elif not strict:
+        lines.append(
+            "  >> The two vocabularies are DISJOINT under every probe above: no value "
+            "of the source can equal any value of the reference at any coordinate "
+            "under any frame. This is not a geometry problem.")
+    return lines
+
+
+def _diag_trace_lines(c: dict, label: str, reference_meta: dict) -> list:
+    """One candidate's worked example: five cells, arithmetic visible.
+
+    Every number is a value the scorer used — the raw coordinate as read, the
+    transform's own inputs, the placed coordinate the transform returned, the
+    membership answer out of `_membership`'s array, and the two values [3b]
+    compared. The one term that is **not** printed is the wafer bounding box:
+    it lives inside `WaferMapCoordinateTransformer` and is not reachable here,
+    and saying so beats recomputing it into a second implementation.
+    """
+    rows = c.get("_trace") or []
+    lines = ["", "-- worked example (sample of %d cells) : %s  [%s] %s"
+             % (len(rows), c["frame"], label, "-" * 12)]
+    if not rows:
+        lines.append("   <no cells were placed under this candidate - nothing to trace>")
+        return lines
+    a = rows[0].get("src_axes")
+    lines += [
+        "   transform in : source axes = %s" % _d(a, 120),
+        "                  source frame phys (map_overlay._frame_phys_params) = %s"
+        % rows[0].get("src_phys"),
+        "                  target axes = %s"
+        % _d(map_overlay.frame_axes(reference_meta) if reference_meta else None, 120),
+        "                  target frame phys = %s" % _d_frame_phys(reference_meta),
+        "                  axes tuple = (rotation, side, grid_y_invert, start_x, "
+        "start_y, cols, rows, phys)",
+        "                  NOT printed: the wafer bounding-box term, computed inside "
+        "WaferMapCoordinateTransformer and not reachable from here.",
+        "   shift solved for this candidate: (dx=%s, dy=%s)" % (c.get("dx"), c.get("dy")),
+    ]
+    member = c.get("member")
+    for n, r in enumerate(rows, 1):
+        i = r["at"]
+        on_ref = None if member is None else bool(member[i])
+        probe = r.get("probe")
+        if probe is None and c.get("dx") is not None:
+            probe = (r["placed"][0] + c["dx"], r["placed"][1] + c["dy"])
+        lines.append(
+            "   cell #%d  map=%s  src(x=%s, y=%s) val=%s"
+            % (n, _d(r["map_id"], 24), r["src"][0], r["src"][1], _d(r["val"])))
+        lines.append(
+            "            -> after transform (x=%s, y=%s)   + shift -> probe (%s, %s)"
+            % (r["placed"][0], r["placed"][1],
+               "?" if probe is None else probe[0], "?" if probe is None else probe[1]))
+        if on_ref is None:
+            lines.append("            reference cell at probe? <candidate not scored>")
+        elif not on_ref:
+            lines.append("            reference cell at probe? NO   -> no value compared")
+        elif not r.get("compared"):
+            lines.append("            reference cell at probe? YES  -> occupancy only "
+                         "(no value axis in this run)")
+        else:
+            rv, sv = r.get("ref_value"), r.get("src_value")
+            lines.append("            reference cell at probe? YES  ref val=%s" % _d(rv))
+            lines.append(
+                "            compare %s vs %s  ->  %s"
+                % (_d(sv), _d(rv), "MATCH" if r.get("verdict") else "MISS"))
+    return lines
+
+
+def _emit_diag(lines):
+    """Emit the block as **one** record — one request, one contiguous block.
+
+    One record and not many: `logging` serialises a record per handler, so two
+    operators clicking two units cannot braid their runs into each other. And it
+    never raises: scoring is a read and a read must not fail because a log did.
+    """
+    try:
+        _diag_logger().info("%s", "\n".join(lines))
+    except Exception:
+        try:
+            logger.warning("[MapAlignment] scoring diagnostics could not be emitted",
+                           exc_info=True)
+        except Exception:
+            pass
+
+
 def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                      shift_window: int = SHIFT_WINDOW, cell_cap: int = MAX_SCORED_CELLS,
                      reference_values=None, thresholds: dict = None,
                      assume_reference_geometry: bool = True,
                      reference_ref: dict = None, value_weights: dict = None,
-                     sides: list = None, index_thresholds: dict = None):
+                     sides: list = None, index_thresholds: dict = None,
+                     diag: list = None):
     """후보 8개를 **한 호출로** 채점한다. DB를 모른다 — 셀과 메타만 받는다.
 
     `source_maps`: `[{"map_id": str, "meta": dict, "cells": [(x, y), ...],
@@ -885,10 +1342,15 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     답이 갈리는** 셀의 수다. 일치수가 커도 판별수가 0이면 그 점수는 아무 후보도 배제하지
     못한다 — 그때 순위를 매기면 틀린 것을 맞다고 말하는 것이다(§0.2 ⑦). 값 지표도 같은
     정의를 자기 축에서 갖는다(`value_discriminating`).
+
+    `diag`: **관측 전용** 라인 수집기(§Scoring diagnostics). `None`이면 이 함수는 한 줄도
+        만들지 않고 채점은 한 자도 다르지 않다. 리스트를 주면 호출자가 시작한 블록에
+        이어 붙인다 — 요청 하나가 기록 하나여야 하므로 여기서 직접 내보내지 않는다.
     """
     import numpy as np
     t0 = time.monotonic()
     excluded = _Excluded()
+    _dg = diag if diag is not None else None
 
     ref_pairs = sorted(reference_cells or ())
     ref_keys = _encode(ref_pairs)
@@ -1071,6 +1533,9 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         vals = []
         ks = []
         failed = None
+        # Worked-example capture. Rows are taken **at the line the scorer places
+        # the cell**, so the printed arithmetic is the arithmetic that ran.
+        trace = []
         for sm in usable:
             if not sm.get("_use"):
                 continue
@@ -1087,11 +1552,21 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 failed = str(e)
                 break
             for i, (x, y) in enumerate(sm["_use"]):
-                placed.append(tf(x, y))
+                p = tf(x, y)
+                if _dg is not None and len(trace) < _DIAG_TRACE_CELLS:
+                    trace.append({
+                        "map_id": sm.get("map_id"), "at": len(placed),
+                        "src": (x, y), "val": sm["_use_values"][i], "placed": p,
+                        # The frame-applied source meta is what the transform was
+                        # built from; both readings come from that same dict.
+                        "src_axes": map_overlay.frame_axes(src_meta),
+                        "src_phys": _d_frame_phys(src_meta)})
+                placed.append(p)
                 vals.append(sm["_use_values"][i])
                 ks.append(sm["_use_indices"][i])
         if failed is not None:
-            per_candidate.append({"frame": frame, "keys": None, "reason": failed})
+            per_candidate.append({"frame": frame, "keys": None, "reason": failed,
+                                  "_trace": trace})
             continue
         # 소스 값은 후보마다 **같은 순서의 같은 셀**이다(좌표만 움직인다). 그래서 한 번만
         # 붙잡아 둔다 — 후보마다 다시 만들면 그 사본들이 갈릴 수 있고, 갈리면 i번째가 서로
@@ -1100,7 +1575,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             source_values = vals
         if source_indices is None:
             source_indices = ks
-        per_candidate.append({"frame": frame, "keys": _encode(placed), "reason": None})
+        per_candidate.append({"frame": frame, "keys": _encode(placed), "reason": None,
+                              "_trace": trace,
+                              # Post-transform extent. Taken from `placed` before
+                              # it is encoded away, so it is the coordinates that
+                              # were actually laid on the reference.
+                              "_placed_range": (_d_range(placed) if _dg is not None
+                                                else None)})
 
     # [3] 후보별 시프트를 풀고 셀별 진리값을 모은다.
     #
@@ -1171,10 +1652,23 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         shifted = c["keys"] + c["dx"] * _KEY_STRIDE + c["dy"]
         hits = np.zeros(c["keys"].size, dtype=bool)
         member = c["member"]
+        # Worked-example rows for this candidate, by cell index. Only the traced
+        # indices are picked up, and only where a comparison actually happened —
+        # a cell that is not on the reference is never compared, and the log says
+        # that rather than inventing a verdict for it.
+        t_at = ({r["at"]: r for r in (c.get("_trace") or ())}
+                if _dg is not None else None)
         for i in np.flatnonzero(member):
             rv = ref_value_at.get(int(shifted[i]))
             sv = source_values[i] if i < len(source_values) else None
             hits[i] = rv is not None and sv is not None and str(rv) == str(sv)
+            if t_at is not None and int(i) in t_at:
+                key = int(shifted[i])
+                t_at[int(i)].update(
+                    ref_value=rv, src_value=sv, verdict=bool(hits[i]), compared=True,
+                    # Decoded from the very key the lookup used (inverse of
+                    # `_encode`), not re-derived from the candidate's shift.
+                    probe=(key // _KEY_STRIDE - _KEY_BIAS, key % _KEY_STRIDE - _KEY_BIAS))
         c["value_member"] = hits
 
     # [3c] 값 가중치 - **일치에 걸리지, 셀의 존재에 걸리지 않는다.**
@@ -1391,7 +1885,131 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
              # 화면과 확정 기록이 같은 집합을 본다.
              "usable_map_ids": [sm.get("map_id") for sm in usable],
              "elapsed_ms": (time.monotonic() - t0) * 1000.0}
+
+    if _dg is not None:
+        _dg += _diag_scoring_block(
+            per_candidate, out, ruling, stats, excluded, metric, scorable_values,
+            reference_meta, reference_values, source_values, weight_vec,
+            scored_cells, truncated, cell_cap, shift_window, len(ref_sorted),
+            len(source_maps), len(usable))
     return out, excluded, ruling, stats
+
+
+def _diag_scoring_block(per_candidate, out, ruling, stats, excluded, metric,
+                        scorable_values, reference_meta, reference_values,
+                        source_values, weight_vec, scored_cells, truncated,
+                        cell_cap, shift_window, ref_cell_count, source_map_count,
+                        usable_count) -> list:
+    """The scorer's half of the block. Reads what the run produced; decides nothing.
+
+    Kept out of `score_candidates` so the scorer stays the scorer. Every argument
+    is a structure the run already built — this function computes no score, no
+    ranking and no reason code, and if it were deleted the numbers would not move.
+    """
+    L = ["", "-- scorer input ------------------------------------------------------------",
+         "  source maps: in=%d usable=%d excluded=%d"
+         % (source_map_count, usable_count, excluded.total()),
+         "  cells reaching the scorer=%d (cap=%d, truncated=%s)  shift_window=+/-%d"
+         % (scored_cells, cell_cap, truncated, shift_window),
+         "  reference cells (deduped)=%d   reference values indexed=%d"
+         % (ref_cell_count, stats.get("reference_values", 0)),
+         "  sides considered=%s narrowed=%s   geometry assumed on %d map(s)"
+         % (ruling.get("sides_considered"), ruling.get("sides_narrowed"),
+            ruling.get("assumed_map_count", 0))]
+    for row in excluded.as_list():
+        L.append("  EXCLUDED %s x%d (e.g. %s%s)"
+                 % (row["reason_code"], row["count"], _d(row["example_map_id"], 32),
+                    "" if not row["example_detail"]
+                    else ": " + _d(row["example_detail"], 120)))
+    for k in ("basis_undeclared_map_ids", "assumed_map_ids", "assumable_map_ids"):
+        if stats.get(k):
+            L.append("  %s=%s" % (k, _d(stats[k], 160)))
+
+    ref_vc = _d_vocab(reference_values)
+    src_vc = _d_vocab(source_values)
+    L += ["", "-- value vocabularies ------------------------------------------------------",
+          "  reference : %s" % _d_vocab_text(ref_vc),
+          "  source    : %s" % _d_vocab_text(src_vc)]
+    L += _diag_compare_probe(ref_vc, src_vc)
+    L.append("  value axis scorable=%s  (needs reference values AND source values)"
+             % scorable_values)
+    if weight_vec is not None:
+        L.append("  NOTE value_agreement below is a WEIGHTED sum, not a die count "
+                 "(alignment.value_weights is declared).")
+
+    L += ["", "-- candidates (%d) ---------------------------------------------------------"
+          % len(out),
+          "  %-14s %-16s %-30s %-9s %8s %10s %8s %10s"
+          % ("frame", "state", "placed coords (post-transform)", "shift",
+             "overlap", "value_hit", "discrim", "v_discrim")]
+    import numpy as np
+    for c, o in zip(per_candidate, out):
+        raw_vh = "-"
+        if c.get("value_member") is not None:
+            raw_vh = str(int(np.count_nonzero(c["value_member"])))
+        sh = ("-" if o.get("shift") is None
+              else "(%s,%s)" % (o["shift"]["dx"], o["shift"]["dy"]))
+        L.append("  %-14s %-16s %-30s %-9s %8s %10s %8s %10s"
+                 % (o["frame"], o["state"],
+                    (c.get("_placed_range") or "n=0"), sh,
+                    o.get("agreement"), raw_vh, o.get("discriminating"),
+                    o.get("value_discriminating")))
+        if o.get("reason"):
+            L.append("      reason: %s" % _d(o["reason"], 200))
+
+    # Worked example: the top-ranked candidate and one that lost, because a
+    # single trace shows what happened and two show what differed.
+    a_key = ("index_agreement" if metric == METRIC_INDEX
+             else "value_agreement" if metric in VALUE_METRICS else "agreement")
+    scored = [(c, o) for c, o in zip(per_candidate, out) if o["state"] == STATE_SCORED]
+    if scored:
+        win = ruling.get("winner")
+        top = next((p for p in scored if p[1]["frame"] == win), None)
+        if top is None:
+            top = max(scored, key=lambda p: (p[1].get(a_key) or 0, ))
+        rest = [p for p in scored if p is not top]
+        contrast = max(rest, key=lambda p: (p[1].get("agreement") or 0, )) if rest else None
+        L += _diag_trace_lines(top[0], "winner" if win else "top by " + metric,
+                               reference_meta)
+        if contrast is not None:
+            L += _diag_trace_lines(contrast[0], "a loser, for contrast", reference_meta)
+
+    # ---- the ruling, and WHY it is what it is -------------------------------
+    pos_max = max((o.get("agreement") or 0 for c, o in scored), default=0)
+    val_max = max((int(np.count_nonzero(c["value_member"]))
+                   for c, o in scored if c.get("value_member") is not None), default=None)
+    L += ["", "-- DIAGNOSIS ---------------------------------------------------------------",
+          "  metric=%s  reason_code=%s  winner=%s  index_axis=%s"
+          % (metric, ruling.get("reason_code"), ruling.get("winner"),
+             ruling.get("index_axis")),
+          "  thresholds actually applied: min_margin_dies=%s min_discriminating_dies=%s "
+          "(defaulted: %s)"
+          % (ruling.get("min_margin_dies"), ruling.get("min_discriminating_dies"),
+             ruling.get("thresholds_defaulted") or "none - declared")]
+    if not scored:
+        L.append("  CAUSE: NOT SCORED - no candidate placed a single cell. Nothing was "
+                 "measured; see the exclusion rows above, not the reference.")
+    elif pos_max == 0:
+        L.append("  CAUSE: **POSITIONAL**. Best positional overlap across all %d "
+                 "candidates is 0 - no source cell lands on any reference cell under "
+                 "any frame. Values were never reached. Compare the placed-coordinate "
+                 "ranges above against the reference range: this is geometry."
+                 % len(scored))
+    elif metric in VALUE_METRICS and val_max == 0:
+        L.append("  CAUSE: **VOCABULARY**. Cells DO overlap positionally (best=%d of "
+                 "%d placed) and value agreement is 0 on every candidate. The geometry "
+                 "is landing; the two sides do not speak the same value vocabulary. "
+                 "See the vocabulary block above - the answer is there, not in the "
+                 "frames." % (pos_max, stats.get("placed_cells", 0)))
+    elif val_max is None and metric in VALUE_METRICS:
+        L.append("  CAUSE: value axis was selected but no candidate carries a value "
+                 "verdict - see 'value axis scorable' above.")
+    else:
+        L.append("  CAUSE: ranked on %s; best positional overlap=%d, best value "
+                 "agreement=%s. If there is no winner the reason_code above names "
+                 "which of tie / discrimination / margin stopped it."
+                 % (metric, pos_max, val_max))
+    return L
 
 
 METRIC_OCCUPANCY = "occupancy"
@@ -2364,6 +2982,99 @@ def compose_map_id(values) -> str:
     return _MAP_KEY_SEPARATOR.join("" if v is None else str(v) for v in values)
 
 
+def _diag_request_block(req_id, rule, key_values, map_table, src_table, map_key_cols,
+                        args: dict, cfg: dict, columns: dict, thresholds, sides,
+                        value_weights, index_thresholds, reference, source_maps) -> list:
+    """The request's half of the block: **what arrived and what was read**.
+
+    Inputs before interpretation, then the interpretation next to them on
+    adjacent lines. The config blocks print as found in the file *and* as parsed,
+    because an undeclared key folding silently into a default is the shape of
+    half of this week's defects and only the two lines together show it.
+    """
+    L = [_DIAG_RULE,
+         "MAP ALIGNMENT SCORING   req=%s   %s"
+         % (req_id, time.strftime("%Y-%m-%d %H:%M:%S")),
+         "unit: rule=%s  key=%s  map_table=%s  source_table=%s  map_key_columns=%s"
+         % (_d(rule.get("name")), _d(key_values, 200), _d(map_table), _d(src_table),
+            _d(map_key_cols, 120)),
+         _DIAG_RULE,
+         "-- request, as it reached the scorer ---------------------------------------",
+         "  (the HTTP query layer lives in server/main.py and is not visible from here;",
+         "   these are the argument values build_alignment_view was called with)"]
+    for k in ("reference_spec", "x_col", "y_col", "value_col", "include_cells",
+              "cell_cap", "assume_reference_geometry"):
+        L.append("  %-26s = %s" % (k, _d_arg(args.get(k))))
+
+    raw_align = (cfg or {}).get("alignment")
+    all_binds = (cfg or {}).get("table_bindings") or {}
+    raw_bind = all_binds.get(src_table)
+    L += ["", "-- config, as found in the file --------------------------------------------",
+          "  alignment block            = %s" % _d_config(raw_align),
+          # 🔴 The binding that is read is the **rule's source_table** one, and
+          #    nothing else. A binding declared under the map table (`dt_map`) is
+          #    never read by anything: an operator can populate the column,
+          #    declare the binding and see no change at all. Printing the keys
+          #    that exist next to the key that is used makes that mistake visible
+          #    instead of invisible.
+          "  table_bindings keys in config = %s" % _d(sorted(all_binds.keys()), 200),
+          "  table_bindings key READ       = %s  (= rule.source_table; a binding "
+          "under any other key is not read)" % _d(src_table),
+          "  table_bindings[%s] = %s" % (_d(src_table, 20), _d_config(raw_bind)),
+          "  alignment.index declared? %s"
+          % ("no - the index axis was not asked for"
+             if not isinstance((raw_align or {}).get(INDEX_THRESHOLD_BLOCK), dict)
+             else "yes - so 'index_axis' at the DIAGNOSIS says whether it could stand"),
+          "", "-- config, as parsed -------------------------------------------------------",
+          "  thresholds      = %s   (missing keys are absent, NOT zero; what the ruling "
+          "actually applied is printed at the DIAGNOSIS)" % _d(thresholds, 120),
+          "  sides           = %s   (None = score both)" % _d(sides, 60),
+          "  value_weights   = %s   ({} = no weighting)" % _d(value_weights, 200),
+          "  index block     = %s   (incomplete = the index axis reports but does not "
+          "rank)" % _d(index_thresholds, 120),
+          "", "-- columns this run reads --------------------------------------------------",
+          "  binding proposal (map_overlay.resolve_binding_info) = %s"
+          % _d(columns.get("proposal"), 200)]
+    for role in ("x", "y", "value", "index"):
+        c = columns.get(role) or {}
+        L.append("  %-6s column=%-18s origin=%-9s %s"
+                 % (role, _d(c.get("column"), 18), c.get("origin"),
+                    "" if not c.get("reason") else "reason: " + _d(c["reason"], 160)))
+
+    L += ["", "-- reference (the common floor) --------------------------------------------",
+          "  state=%s source=%s table=%s map_id=%s"
+          % (reference.get("state"), _d(reference.get("source")),
+             _d(reference.get("table")), _d(reference.get("map_id"))),
+          "  reason_code=%s  reason=%s"
+          % (reference.get("reason_code"), _d(reference.get("reason"), 300)),
+          "  cells: %s   truncated=%s"
+          % (_d_range(reference.get("cells")), reference.get("truncated")),
+          "  carries values: kind=%s  (values list len=%d)"
+          % (reference.get("kind"), len(reference.get("values") or ())),
+          "  grid box=%s" % _d(map_overlay.grid_dims(reference.get("meta")))]
+    L += ["  meta " + t for t in _d_meta(reference.get("meta"))]
+    L.append("  values: %s" % _d_vocab_text(_d_vocab(reference.get("values"))))
+
+    L += ["", "-- source maps -------------------------------------------------------------",
+          "  maps=%d  cells(total)=%d"
+          % (len(source_maps), sum(len(sm["cells"]) for sm in source_maps))]
+    for sm in source_maps[:_DIAG_MAP_LINES]:
+        L.append("  map=%s  %s" % (_d(sm["map_id"], 32), _d_range(sm["cells"])))
+        L.append("       values: %s" % _d_vocab_text(_d_vocab(sm.get("values"))))
+        if sm.get("indices"):
+            L.append("       indices: %d carried, %d readable"
+                     % (len(sm["indices"]),
+                        sum(1 for k in sm["indices"] if k is not None)))
+        L += ["       meta " + t for t in _d_meta(sm.get("meta"))]
+        if sm.get("meta_refusal"):
+            L.append("       meta_refusal=%s %s" % (sm["meta_refusal"],
+                                                    _d(sm.get("meta_refusal_detail"), 160)))
+    if len(source_maps) > _DIAG_MAP_LINES:
+        L.append("  ... and %d more map(s) not printed (per-map lines are capped at %d)"
+                 % (len(source_maps) - _DIAG_MAP_LINES, _DIAG_MAP_LINES))
+    return L
+
+
 def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table: str,
                          reference_spec: str = None, include_cells: bool = True,
                          cell_cap: int = MAX_PAYLOAD_CELLS,
@@ -2479,6 +3190,22 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     # 조작이 이 축의 안전망까지 걷어 간다(§INDEX_THRESHOLD_BLOCK).
     index_thresholds = load_index_thresholds(cfg)
 
+    # Scoring diagnostics. Built as one list and emitted as one record at the end
+    # so a request is a block: operators click several units in a row and the runs
+    # must not braid. Costs nothing anybody notices - this is an operator screen,
+    # one request per click, not a hot path.
+    _diag_logger()                      # so the header can name the file it writes to
+    req_id = uuid.uuid4().hex[:8]
+    diag = _diag_request_block(
+        req_id, rule, key_values, map_table, src_table, map_key_cols,
+        {"reference_spec": reference_spec, "x_col": x_col, "y_col": y_col,
+         "value_col": value_col, "include_cells": include_cells, "cell_cap": cell_cap,
+         "assume_reference_geometry": assume_reference_geometry},
+        cfg, columns, thresholds, sides, value_weights, index_thresholds,
+        reference, source_maps)
+    if meta_access:
+        diag.append("  META ACCESS INCIDENT: %s" % _d(meta_access, 300))
+
     candidates, excluded, ruling, stats = [], _Excluded(), {"winner": None}, {}
     if reference["state"] == REFERENCE_RESOLVED:
         candidates, excluded, ruling, stats = score_candidates(
@@ -2488,7 +3215,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             reference_ref={"table": reference.get("table"),
                            "map_id": reference.get("map_id")},
             value_weights=value_weights, sides=sides,
-            index_thresholds=index_thresholds)
+            index_thresholds=index_thresholds, diag=diag)
         if ruling.get("winner"):
             state = STATE_SCORED
         elif any(c["state"] == STATE_SCORED for c in candidates):
@@ -2525,6 +3252,19 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         # 「쓸 수 있다」에 못 채점한 맵이 섞인다.
         stats["source_maps_usable"] = (len(source_maps) - excluded.total()
                                        - len(basis_undeclared))
+        diag += ["", "-- DIAGNOSIS --------------------------------------------------------"
+                     "-------",
+                 "  CAUSE: NOT SCORABLE - the scorer never ran. The reference did not "
+                 "resolve (state=%s, reason_code=%s), so there was no common floor to "
+                 "lay the source cells on. Fix the reference; the frames were never "
+                 "compared." % (reference["state"], reference.get("reason_code")),
+                 "  reference reason: %s" % _d(reference.get("reason"), 400),
+                 "  would-be-usable source maps if a reference were declared: %d"
+                 % stats["source_maps_usable"]]
+        for row in excluded.as_list():
+            diag.append("  EXCLUDED %s x%d (e.g. %s)"
+                        % (row["reason_code"], row["count"],
+                           _d(row["example_map_id"], 32)))
 
     pooled = []
     if include_cells:
@@ -2602,7 +3342,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         "text": compose_assumption_offer(a_state, len(a_ids), a_basis),
     }
 
-    return {
+    payload = {
         "unit": {"rule": rule.get("name"), "decision_key": dict(key_values or {}),
                  "source_table": src_table, "map_table": map_table,
                  "map_key_columns": map_key_cols,
@@ -2685,6 +3425,19 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         "excluded_total": excluded.total(),
         "stats": dict(stats, build_ms=(time.monotonic() - t0) * 1000.0),
     }
+    diag += ["",
+             "-- what the screen will show -----------------------------------------------",
+             "  state=%s  refusal=%s" % (payload["state"], _d(payload["refusal"], 300)),
+             "  reference.kind=%s (what this run can compare)   reference.map_kind=%s "
+             "(what the reference map itself carries)"
+             % (payload["reference"]["kind"], payload["reference"]["map_kind"]),
+             _DIAG_RULE,
+             "END req=%s   build=%.1fms   diagnostics file: %s"
+             % (req_id, payload["stats"]["build_ms"],
+                _DIAG_FILE_PATH or ("<console only: %s>" % _DIAG_FILE_ERROR)),
+             _DIAG_RULE, ""]
+    _emit_diag(diag)
+    return payload
 
 
 # ---------------------------------------------------------------------------
