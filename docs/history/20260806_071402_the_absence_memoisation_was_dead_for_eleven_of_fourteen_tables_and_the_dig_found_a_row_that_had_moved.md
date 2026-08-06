@@ -1,7 +1,7 @@
 # 부재 메모이제이션이 14개 테이블 중 11개에서 죽어 있었다 — 그리고 성능 발굴이 스코프를 넘어 채택된 행을 찾아냈다
 
 > **커밋:** `25de4ae`(2026-08-06 07:14 · Tier 1 성능) → `2fc4f00`(07:52 · 크로스스코프 채택 보고) | **일자:** 2026-08-06 아침
-> **선행:** [`20260805_110500`](./20260805_110500_the_drift_check_landed_and_the_bloat_floor_it_announced_has_no_reader.md)(`4b1b3ba`)
+> **선행:** [`20260805_235200`](./20260805_235200_a_production_only_failure_that_sqlite_masks_and_a_floor_that_was_a_claim_about_one_axis.md)(`bde0f5b` — **같은 분석의 Tier 0.** 여기서 켜지는 부재 메모이제이션을 만든 커밋이고, 여기서 닫는 「폐기 병합 네 자리」를 **찾아 놓고 일부러 출하하지 않은** 커밋이다) · [`20260805_110500`](./20260805_110500_the_drift_check_landed_and_the_bloat_floor_it_announced_has_no_reader.md)(`4b1b3ba`)
 > **담당:** server 구현 · 총괄(등급 판정 — 나중에 자기가 정정)
 > **대상:** `server/database/crud.py`(+155 / −14) · `server/main.py`(+108 / −22) · `server/database/database.py`(+63 / −1) · `server/chain_ingestion_worker.py`(+18 / −4) · **신규** `server/event_constants.py`(+12) · 예산 테스트 5종(**+1,181 / −10**) · **신규** `server/tests/test_replace_map_cross_scope.py`(+195) · `conftest.py`(+43) · 아키텍처 문서 2종
 > **스위트:** `25de4ae` 메시지 기준 **2,821 passed / 1 failed / 9 skipped.** 그 1건은 기존부터 있던 `run_decoupled_app` 임포트 실패이고 **호출 디렉터리에 의존**한다(이 라운드가 만든 것이 아니다). 각 항목은 커서에서 `sql_budget.record_statements`로 **수리 전 빨강 / 수리 후 초록**을 짝지어 확인했고, 안 변해야 하는 쌍은 불변으로 박았다.

@@ -1,7 +1,7 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **377개** 이력. (거버넌스 규칙 #4)
+> 총 **392개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
@@ -9,6 +9,7 @@
 ## 2026-08 (August 2026)
 
 - **2026-08-06 08:23** — [One Press Confirms And The Three Overlapping Guards Now Fail One At A Time](./20260806_082317_one_press_confirms_and_the_three_overlapping_guards_now_fail_one_at_a_time.md)
+- **2026-08-06 08:15** — [The Map Editor Was Deleting Every Cell To Write It Back Unchanged And Created At Paid For It](./20260806_081500_the_map_editor_was_deleting_every_cell_to_write_it_back_unchanged_and_created_at_paid_for_it.md)
 - **2026-08-06 08:12** — [The Control Mutant Became Inexpressible And That Is What Ended The Refactor](./20260806_081218_the_control_mutant_became_inexpressible_and_that_is_what_ended_the_refactor.md)
 - **2026-08-06 07:49** — [The Contract Was Red For A Day Because Arguments Shifted One Place Left](./20260806_074904_the_contract_was_red_for_a_day_because_arguments_shifted_one_place_left.md)
 - **2026-08-06 07:17** — [Two Findings Were Over Called And The Evidence That Undid Them Was Not Mine](./20260806_071747_two_findings_were_over_called_and_the_evidence_that_undid_them_was_not_mine.md)
@@ -21,7 +22,21 @@
 - **2026-08-06 01:17** — [Every Confirmation The Screen Ever Made Recorded No Answer At All](./20260806_011715_every_confirmation_the_screen_ever_made_recorded_no_answer_at_all.md)
 - **2026-08-06 00:58** — [The Screen Said Not Scorable On Every Unit And The Third Cause Explains The Whole Day](./20260806_005827_the_screen_said_not_scorable_on_every_unit_and_the_third_cause_explains_the_whole_day.md)
 - **2026-08-06 00:10** — [The Forwarding Check Sees The Half Thread That Changes Nothing And Therefore Survives Review](./20260806_001049_the_forwarding_check_sees_the_half_thread_that_changes_nothing_and_therefore_survives_review.md)
+- **2026-08-05 23:52** — [A Production Only Failure That Sqlite Masks And A Floor That Was A Claim About One Axis](./20260805_235200_a_production_only_failure_that_sqlite_masks_and_a_floor_that_was_a_claim_about_one_axis.md)
+- **2026-08-05 23:24** — [The Frame Becomes An Argument And A Green Mutation Score Contained A Fake Catch](./20260805_232400_the_frame_becomes_an_argument_and_a_green_mutation_score_contained_a_fake_catch.md)
+- **2026-08-05 22:53** — [A Displayed Index Fed To An Api That Indexes Data Was Identical Until Sorting Existed](./20260805_225300_a_displayed_index_fed_to_an_api_that_indexes_data_was_identical_until_sorting_existed.md)
+- **2026-08-05 22:40** — [Purity Is Necessary Not Sufficient And The Rule Was The Deliverable](./20260805_224000_purity_is_necessary_not_sufficient_and_the_rule_was_the_deliverable.md)
+- **2026-08-05 22:35** — [The One Query That Could Settle The Argument Excluded The Evidence And Discarded The Rest](./20260805_223500_the_one_query_that_could_settle_the_argument_excluded_the_evidence_and_discarded_the_rest.md)
+- **2026-08-05 22:33** — [The Serpentine Machinery And The Column It Needs Does Not Exist Here](./20260805_223300_the_serpentine_machinery_and_the_column_it_needs_does_not_exist_here.md)
+- **2026-08-05 20:24** — [The Ruling Was Unreachable And The Theorem Says Weights Can Never Break It](./20260805_202400_the_ruling_was_unreachable_and_the_theorem_says_weights_can_never_break_it.md)
+- **2026-08-05 19:51** — [The Screen Had Every Answer And Displayed None Of Them](./20260805_195100_the_screen_had_every_answer_and_displayed_none_of_them.md)
+- **2026-08-05 19:45** — [A Duplicated Predicate Is The Second Spelling Not A Safe Copy](./20260805_194500_a_duplicated_predicate_is_the_second_spelling_not_a_safe_copy.md)
+- **2026-08-05 18:35** — [The Probe Failed On Its Own Sentinel And Blamed The Table](./20260805_183500_the_probe_failed_on_its_own_sentinel_and_blamed_the_table.md)
+- **2026-08-05 18:25** — [Hiding The Query Body Was Implemented As Discarding The Diagnosis And Then The Fix Buried Itself](./20260805_182500_hiding_the_query_body_was_implemented_as_discarding_the_diagnosis_and_then_the_fix_buried_itself.md)
 - **2026-08-05 18:21** — [The Refusal Named A Reason And Hid Its Measurement In Three Places](./20260805_182120_the_refusal_named_a_reason_and_hid_its_measurement_in_three_places.md)
+- **2026-08-05 17:33** — [A Chosen Frame Is A Fact About The Row Not A Token On An Axis](./20260805_173300_a_chosen_frame_is_a_fact_about_the_row_not_a_token_on_an_axis.md)
+- **2026-08-05 17:25** — [The Claim Had Nine Homes And The Catalog Was Indexed By The Wrong Question](./20260805_172500_the_claim_had_nine_homes_and_the_catalog_was_indexed_by_the_wrong_question.md)
+- **2026-08-05 17:19** — [Three Rulings That Each Reversed The Line Before Them And The Two Predicates They Left Behind](./20260805_171900_three_rulings_that_each_reversed_the_line_before_them_and_the_two_predicates_they_left_behind.md)
 - **2026-08-05 16:58** — [The Offer Had No Control To Accept It](./20260805_165800_the_offer_had_no_control_to_accept_it.md)
 - **2026-08-05 16:55** — [Ask At Boot Whether The Models Still Match The Database](./20260805_165500_ask_at_boot_whether_the_models_still_match_the_database.md)
 - **2026-08-05 16:47** — [An Unreadable Start Is A Question Not A Locked Door](./20260805_164700_an_unreadable_start_is_a_question_not_a_locked_door.md)
