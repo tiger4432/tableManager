@@ -16,7 +16,7 @@
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
   <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
-  <script type="module" crossorigin src="/assets/map_editor2-B8wetMtb.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor2-Dr9ODV9n.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-9qPFNOO-.js">
   <link rel="stylesheet" crossorigin href="/assets/config-Bzia583p.css">
   <link rel="stylesheet" crossorigin href="/assets/map_editor2-Cua1P6Tr.css">
@@ -208,20 +208,17 @@
             <option value="">기준 없음</option>
           </select>
 
-          <!-- 🔴 가정을 **받아들이는** 것도 행위이고, 행위에는 컨트롤이 필요하다.
-               소스 맵에 형상 선언이 없을 때 서버는 「기준 맵의 웨이퍼로 채점할 수
-               있다」고 제안한다. 그 제안을 승낙할 자리가 없으면 제안은 읽을 수만
-               있는 문장으로 남는다 - #me2-columns-confirm 과 정확히 같은 모양의
-               구멍이다. 그래서 같은 class(점선 경고 pill)를 쓴다.
-               버튼은 행위의 이름만 말한다. 가정이 무엇인지는 서버가 지은 문장이고
-               배선이 #me2-question-note 에 그대로 나른다 - 여기에 설명을 한 줄 더
-               쓰면 한 사실의 철자가 둘이 되고, 갈리는 날 화면은 멀쩡해 보인다.
-               aria-describedby 는 그 문장을 **가리킬** 뿐 베끼지 않는다.
-               hidden 으로 출발한다. 승낙할 것이 없는데 상시 떠 있는 버튼은
-               「지금 보고 있는 웨이퍼가 무엇인가」에 대한 주장을 읽지 않고 누르는
-               습관을 가르친다. 배선이 offered 인 동안에만 연다. -->
-          <button class="me2-scope-propose" type="button" id="me2-assume-accept"
-            aria-describedby="me2-question-note" hidden>가정 적용</button>
+          <!-- 🔴 여기 있던 `가정 적용`(#me2-assume-accept) 버튼은 삭제됐다
+               (제품 소유자 2026-08-06 「가정 적용은 자동으로 되게」). 서버가 기본으로
+               적용하고(`assume_reference_geometry` 기본값 True) 클라는 그 파라미터를
+               어느 방향으로도 보내지 않으므로, 버튼을 띄우던 `available` 상태는
+               **발생할 수 없었다** - 아무도 수행하지 않는 행위의 컨트롤이었다.
+               ⚠️ 없어진 것은 **승낙**이지 **고지**가 아니다. 서버가 지은 제안 문장은
+               지금도 #me2-question-note 로 그대로 가고, 빌린 웨이퍼 위에서 나온 답에는
+               #me2-workbench 의 data-me2-assumed 와 data-me2-note-tone="caution" 이
+               붙고, 확정 문구도 그 사실을 싣는다. 자동이라는 것은 **동의**에 대한
+               결정이지 **보이기**에 대한 결정이 아니다 - 저 고지 중 하나라도 지우면
+               「자동」이 「조용히」로 바뀐다. -->
         </div>
       </div>
 
