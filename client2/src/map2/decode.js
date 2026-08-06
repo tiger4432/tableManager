@@ -306,8 +306,15 @@ export function decodeReferenceView(payload) {
     //    KEPT IN THE LIST, NOT DROPPED. Narrowing the search must not narrow the report: the
     //    row is carried with NULL counts and its state, so the screen can say what it is.
     if (state !== null && CAND_UNMEASURED.has(state)) {
+      // 🔴 THE PLACEMENT SURVIVES THE MISSING COUNTS, AND IT HAS TO. A refusal is about the
+      //    SCORE; the server places every row whose anchor stood regardless of whether it could
+      //    rank it (`map_alignment.py` `_candidate_rows`'s `placement`, and `:2380` keeps narrowed sides in the list on
+      //    purpose). Dropping the seat here emptied the picture on the ONE screen where the
+      //    operator has no counts to fall back on and the picture is the whole diagnostic --
+      //    measured: 0 of 4 source dies drawn in the `not_scorable` fixture.
       scorings.push(Object.freeze({
-        candidate_id: frame, agree: null, discriminating: null, total: null, state, reason }));
+        candidate_id: frame, agree: null, discriminating: null, total: null, state, reason,
+        placement: decodePlacement(raw && raw.placement, rejected, frame) }));
       continue;
     }
     // 🔴 NOT `intOrNull`. Under `values_weighted` the axis this ruling stands on is weighted
@@ -345,6 +352,17 @@ export function decodeReferenceView(payload) {
       //    origin, so on a saturated map it returned (0,0) and the client's missing offset
       //    agreed with the scorer BY ACCIDENT.
       shift: decodeShift(raw && raw.shift, rejected, frame),
+      // 🔴 THE SEAT ITSELF, NOT THE PARAMETERS TO REBUILD IT. `shift` above is only the
+      //    translation the scorer solved; it says nothing about which way the map was turned,
+      //    and the screen used to answer that second question by RECOMPOSING the frame from
+      //    rotation/side/dims/start. That recomposition was wrong -- `grid_y_invert` inverts
+      //    WHICH frames are mirrors (a source declaring it makes `rot0_front` a reflection and
+      //    `rot0_back` rotation-only), and the client had the mirror set backwards, which is
+      //    exactly the "symmetric map, only the back is displaced" report.
+      //
+      //    `placement` is the composition's RESULT (`map_alignment.py` `_candidate_rows`, the `placement` block). There is
+      //    nothing left to compose, so there is nothing left to get wrong.
+      placement: decodePlacement(raw && raw.placement, rejected, frame),
     }));
   }
 
@@ -628,6 +646,72 @@ function decodeShift(raw, rejected, frame) {
     return null;
   }
   return Object.freeze({ dx, dy });
+}
+
+/**
+ * A CANDIDATE'S SEAT, as the server shipped it, or null.
+ *
+ *     placed = anchorRef + linear * (cell - anchorSrc)
+ *
+ * transcribed from the producer's own sentence (`server/map_alignment.py` `_candidate_rows`, the `placement` block) rather than
+ * re-derived. `linear` is a signed permutation matrix -- the composed rotation, side flip and
+ * y-inversion of BOTH maps, already multiplied out -- so the reader has no composition order to
+ * get wrong. Mirror-ness is `det(linear) === -1` and is deliberately NOT carried separately.
+ *
+ * 🔴 `anchorRef` ALREADY CARRIES THE SOLVED SHIFT (`map_alignment.py` `_candidate_rows`, `anchor_ref = reference_top_left + (dx, dy)` adds `(dx, dy)` to
+ *    `reference_top_left`). Adding `shift` on top of a placement is a DOUBLE APPLICATION -- the
+ *    same arithmetic mistake `4947a65` fixed on the server, where an anchor was applied twice
+ *    and the shift it solved was zero by construction. `placeCells` takes no shift argument.
+ *
+ * ⚠️ ABSENT IS NOT THE IDENTITY. `null` means this server did not place this candidate -- the
+ *    anchor declined, or this producer predates the field. A reader that substituted the
+ *    identity here would draw the source unturned and unmoved on top of the floor, which is a
+ *    plausible picture of a claim nobody made. The screen names the state instead (`배치 없음`).
+ */
+function decodePlacement(raw, rejected, frame) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== 'object') {
+    rejected.push(`candidates ${frame}: placement is not an object`);
+    return null;
+  }
+  const linear = intPair2x2(raw.linear);
+  const anchorSrc = intPair(raw.anchor_src);
+  const anchorRef = intPair(raw.anchor_ref);
+  if (!linear || !anchorSrc || !anchorRef) {
+    rejected.push(`candidates ${frame}: placement {linear, anchor_src, anchor_ref} are not all integers`);
+    return null;
+  }
+  // 🔴 THE DETERMINANT IS CHECKED, NOT ASSUMED. The eight candidates are signed permutation
+  //    matrices, so |det| is 1. Anything else is not a frame of this lattice, and seating cells
+  //    under it would spread or fold the map -- the server refuses the same shape for the same
+  //    reason (`map_alignment.py` `start_for_placement`'s determinant refusal: 원점을 지어내지 않고 거절한다).
+  const det = linear[0][0] * linear[1][1] - linear[0][1] * linear[1][0];
+  if (det !== 1 && det !== -1) {
+    rejected.push(`candidates ${frame}: placement.linear det ${det}, not a frame of the lattice`);
+    return null;
+  }
+  return Object.freeze({
+    linear: Object.freeze([Object.freeze(linear[0]), Object.freeze(linear[1])]),
+    anchorSrc: Object.freeze(anchorSrc),
+    anchorRef: Object.freeze(anchorRef),
+    det,
+  });
+}
+
+/** `[a, b]` of integers, or null. `intOrNull` already refuses a declared-looking `"3.5"`. */
+function intPair(v) {
+  if (!Array.isArray(v) || v.length !== 2) return null;
+  const a = intOrNull(v[0]);
+  const b = intOrNull(v[1]);
+  return (a === null || b === null) ? null : [a, b];
+}
+
+/** `[[a11, a12], [a21, a22]]` of integers, or null. */
+function intPair2x2(v) {
+  if (!Array.isArray(v) || v.length !== 2) return null;
+  const r0 = intPair(v[0]);
+  const r1 = intPair(v[1]);
+  return (r0 && r1) ? [r0, r1] : null;
 }
 
 /** True when this map was scored on geometry it does not itself declare. */

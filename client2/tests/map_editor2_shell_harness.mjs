@@ -59,6 +59,61 @@ function eq(actual, expected, what) {
   compared++;
   if (actual !== expected) failures.push(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 }
+
+// ── THE WIRE'S `placement` BLOCK ────────────────────────────────────────────────
+// 🔴 THE SCREEN SEATS CELLS FROM THE SEAT THE SERVER SHIPPED, so a fixture without a
+//    `placement` is not "a payload with one field missing" -- it is a payload that says the
+//    server placed nothing, and the honest screen for that draws no source at all. Every
+//    candidate row below therefore carries one, exactly as `map_alignment.py` `_candidate_rows`, the `placement` block emits
+//    it for every row whose anchor stood (including on a REFUSED run: narrowed sides stay in
+//    the list, `:2380`, and a refusal is about the SCORE, not about the placement).
+//
+// The matrices are `map_overlay.frame_linear_part` transcribed, so the eight ids
+// carry the eight matrices a real server would send for them rather than eight of my own
+// choosing. Both maps are read as un-inverted here; `grid_y_invert` is exercised where it
+// belongs, in `map2_placement_seat_harness.mjs`.
+const _ROT_FWD = { 0: [[1, 0], [0, 1]], 90: [[0, 1], [-1, 0]],
+                   180: [[-1, 0], [0, -1]], 270: [[0, -1], [1, 0]] };
+function _linearFor(id) {
+  const m = /^rot(\d+)_(front|back)$/.exec(id);
+  const rot = Number(m[1]);
+  const quarter = rot === 90 || rot === 270;
+  const side = m[2] === 'back'
+    ? (quarter ? [[1, 0], [0, -1]] : [[-1, 0], [0, 1]])
+    : [[1, 0], [0, 1]];
+  const a = _ROT_FWD[rot];
+  return [[a[0][0] * side[0][0] + a[0][1] * side[1][0], a[0][0] * side[0][1] + a[0][1] * side[1][1]],
+          [a[1][0] * side[0][0] + a[1][1] * side[1][0], a[1][0] * side[0][1] + a[1][1] * side[1][1]]];
+}
+/** One candidate's placement, as the wire carries it. */
+function placementOf(id, anchorSrc, anchorRef) {
+  return { linear: _linearFor(id), anchor_src: anchorSrc, anchor_ref: anchorRef };
+}
+/** Attach a placement to each of a fixture's candidate rows, keyed on its own frame. */
+function withPlacements(candidates, anchorSrc, anchorRef) {
+  return candidates.map(c => ({ ...c, placement: placementOf(c.frame, anchorSrc, anchorRef) }));
+}
+
+/**
+ * Eight placements that each seat the source's own extent AT THE ORIGIN of the reference box.
+ *
+ * 🔴 THE PER-CANDIDATE `anchor_ref` IS NOT DECORATION, it is what a solved residual does. Turn a
+ *    map about a fixed anchor and half the frames send it off the grid; the scorer's residual
+ *    puts it back, and `anchor_ref` is `reference_top_left + (dx, dy)` for exactly that reason
+ *    (`map_alignment.py` `_candidate_rows`, `anchor_ref = reference_top_left + (dx, dy)`). A fixture with ONE `anchor_ref` for all eight would model a
+ *    server that never corrected, and the eight pictures would then differ in their BOUNDING
+ *    BOX rather than in their shape -- which silently turns "the eight pictures differ" into a
+ *    statement about the layout window instead of about the geometry.
+ */
+function fittedPlacements(candidates, srcCells) {
+  return candidates.map(c => {
+    const L = _linearFor(c.frame);
+    const img = srcCells.map(([x, y]) => [L[0][0] * x + L[0][1] * y, L[1][0] * x + L[1][1] * y]);
+    const minX = Math.min(...img.map(p => p[0]));
+    const minY = Math.min(...img.map(p => p[1]));
+    return { ...c, placement: { linear: L, anchor_src: [0, 0], anchor_ref: [-minX, -minY] } };
+  });
+}
 function throws(fn, what) {
   compared++;
   try { fn(); failures.push(`${what}: expected a throw, none happened`); }
@@ -496,8 +551,10 @@ function throws(fn, what) {
     //    is how a denominator that is a SUBSET of its numerator went unnoticed. `placed` is the
     //    occupancy axis's population (`:2800`), which is what the denominator must be.
     candidates: [
-      { frame: 'rot0_front', agreement: 200, discriminating: 180, placed: 300 },
-      { frame: 'rot180_back', agreement: 90, discriminating: 85, placed: 300 },
+      { frame: 'rot0_front', agreement: 200, discriminating: 180, placed: 300,
+        placement: placementOf('rot0_front', [0, 0], [0, 0]) },
+      { frame: 'rot180_back', agreement: 90, discriminating: 85, placed: 300,
+        placement: placementOf('rot180_back', [0, 0], [0, 0]) },
     ],
     declaration: { frames: { rot0_front: 3 }, attested_maps: 3, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: 'rot0_front' },
@@ -827,9 +884,14 @@ function throws(fn, what) {
     //    port that grabs the first row passes -- measured: that mutant survived the first cut of
     //    this fixture. The eight are eight different placements, so the list order has to
     //    disagree with the selection for the lookup to be scored at all.
+    // The seat, as the server ships it: the source's first die (3,2) is anchored onto the
+    // floor's first die (5,5), which is the same (+2,+3) the `shift` above spells -- the two are
+    // two spellings of one placement and the drawing reads only the second.
     candidates: [
-      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 } },
-      { frame: 'rot0_front', agreement: 4, discriminating: 4, shift: { dx: 2, dy: 3 } },
+      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
+        placement: placementOf('rot180_back', [3, 2], [3, 2]) },
+      { frame: 'rot0_front', agreement: 4, discriminating: 4, shift: { dx: 2, dy: 3 },
+        placement: placementOf('rot0_front', [3, 2], [5, 5]) },
     ],
     ruling: { winner: 'rot0_front', margin: 4 },
   };
@@ -875,12 +937,21 @@ function throws(fn, what) {
 
   // 🔴 THE NEGATIVE CONTROL. Without it G54/G57 would pass on a fixture where the source
   //    happened to coincide with the floor anyway, which is EXACTLY the accident that hid this
-  //    bug for a day. Same cells, server says no placement: the four must now miss.
+  //    bug for a day. Same cells, and now a placement that seats them somewhere ELSE: the four
+  //    must miss.
+  //
+  //    IT USED TO STRIP THE PLACEMENT INSTEAD, and that stopped being a control the moment the
+  //    screen began refusing to draw an unplaced source -- G54 would then read 0 misses because
+  //    nothing was drawn at all, which is the "green proxy" this control exists to refuse. The
+  //    control now varies the SEAT and holds everything else still, so it measures the same
+  //    thing it always claimed to. The refusal itself is scored separately, at G58b.
   const unplacedWire = {
     ...shiftedWire,
     candidates: [
-      { frame: 'rot0_front', agreement: 0, discriminating: 4, shift: null },
-      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: null },
+      { frame: 'rot0_front', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
+        placement: placementOf('rot0_front', [3, 2], [40, 40]) },
+      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
+        placement: placementOf('rot180_back', [3, 2], [40, 40]) },
     ],
   };
   const docU = makeDocument();
@@ -894,8 +965,42 @@ function throws(fn, what) {
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
   appU.render();
   eq(docU.getElementById('me2-layer-miss').children.length, 4,
-     'G58 NEGATIVE CONTROL: with no placement the same four cells miss -- so G54 measures the '
-     + 'offset and not a fixture that overlapped anyway');
+     'G58 NEGATIVE CONTROL: seated elsewhere, the same four cells miss -- so G54 measures the '
+     + 'placement and not a fixture that overlapped anyway');
+
+  // 🔴 AND THE REFUSAL, SCORED SEPARATELY. A candidate the server did not place is not drawn at
+  //    the origin, at the identity, or anywhere else "plausible" -- it is not drawn. This is the
+  //    assertion that keeps `numOr(p.start_x, 0)`'s whole defect class out: an absent field must
+  //    not read as a default, because a confident wrong picture is worse than no picture.
+  const noPlacementWire = {
+    ...shiftedWire,
+    candidates: [
+      { frame: 'rot0_front', agreement: 0, discriminating: 4, shift: { dx: 2, dy: 3 } },
+      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 } },
+    ],
+  };
+  const docN = makeDocument();
+  const appN = bootstrap({ document: docN,
+    api: { loadReferenceView: () => Promise.resolve(noPlacementWire),
+           loadWorklist: () => Promise.resolve({ rows: [] }),
+           loadAlignConfig: () => Promise.resolve({}),
+           confirmFrame: () => Promise.resolve({}) } });
+  appN.setConfig({ min_margin_dies: 1, min_discriminating_dies: 1 });
+  appN.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  appN.render();
+  eq(docN.getElementById('me2-layer-miss').children.length, 0,
+     'G58b with NO placement on the wire the source is not drawn at all');
+  eq(docN.getElementById('me2-layer-floor').children.length, 4,
+     'G58c and the floor still draws -- the reference resolving is a fact no refusal may hide');
+  // The coverage ring is NOT drawn, and that is the honest picture rather than an oversight:
+  // "uncovered" is a claim about a comparison, and with nothing seated there was no comparison
+  // to make. The floor is drawn plain and the caption carries the reason.
+  eq(docN.getElementById('me2-layer-onlyone').children.length, 0,
+     'G58d and no coverage ring either -- an uncovered floor cell is a claim about a comparison '
+     + 'that did not happen, so the screen makes none');
+  ok((docN.getElementById('me2-picture-caption').textContent || '').includes('배치 없음'),
+     'G58e and the screen says so in words rather than showing an empty layer silently');
 
   // Action accounting against the switchover bar.
   // 🔴 PINNED EXACTLY, NOT BOUNDED. This came out of a usability round measured in clicks, so
@@ -1275,7 +1380,11 @@ function throws(fn, what) {
       maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
                declared_frame_source: 'declared' }],
     },
-    candidates: [],
+    // Refused on the SCORE, placed all the same -- so the operator can still look through a
+    // frame, which is what section K is about. `map_alignment.py` `_candidate_rows`'s `placement` places every row whose
+    // anchor stood, regardless of whether the ranking refused.
+    candidates: fittedPlacements(candidateList().map(c => ({ frame: c.id, state: 'not_scorable' })),
+                                 [[0, 0], [1, 0], [2, 2], [3, 3]]),
     declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: null, index_axis: 'ranking' },
     excluded_total: 0,
@@ -1357,7 +1466,11 @@ function throws(fn, what) {
   // numbered ones are colours" and "the unnumbered one is `none`" fail separately, so a
   // regression names which of the three broke instead of reddening all of them.
   const fills = painted.map(r => r.getAttribute('fill'));
-  const usable = fills.slice(0, 3).every(f => /^#[0-9a-f]{6}$/.test(f || ''));
+  // 🔴 LENGTH FIRST. `[].every()` is TRUE, so an empty `fills` used to read as usable and the
+  //    colour oracle threw on `undefined` BEFORE the ASSERTIONS line -- the harness died
+  //    instead of naming a failure, which is the exact disguise the runner's debt list
+  //    exists to strip. Measured: that is how this file reported a crash rather than K19.
+  const usable = fills.length >= 3 && fills.slice(0, 3).every(f => /^#[0-9a-f]{6}$/.test(f || ''));
   ok(fills.length === 4 && fills.every(f => typeof f === 'string' && f !== ''),
      'K20 every die got an explicit fill, none left for a stylesheet to supply');
   ok(fills.slice(0, 3).every(f => /^#[0-9a-f]{6}$/.test(f || '')),
@@ -1434,7 +1547,10 @@ function throws(fn, what) {
     sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
                maps: [{ map_id: 's1', cell_count: srcCells.length,
                         declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
-    candidates: [],
+    // Eight rows, eight seats. A refusal is about the SCORE; the placements are shipped anyway
+    // (`map_alignment.py` `score_candidates`, the `not_considered` branch), which is what lets the operator look through all eight.
+    candidates: fittedPlacements(candidateList().map(c => ({
+      frame: c.id, state: 'scored', agreement: 3, discriminating: 6 })), srcCells),
     declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: null, reason_code: 'no_discrimination' },
     excluded_total: 0,
@@ -1507,8 +1623,8 @@ function throws(fn, what) {
         sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
                    maps: [{ map_id: 's1', cell_count: srcCells.length,
                             declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
-        candidates: candidateList().map(c => ({ frame: c.id, state: 'scored',
-                                                agreement: 4, discriminating: 6 })),
+        candidates: fittedPlacements(candidateList().map(c => ({ frame: c.id, state: 'scored',
+                                                agreement: 4, discriminating: 6 })), srcCells),
         declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
         ruling: { winner: null, reason_code: 'no_discrimination' },
         excluded_total: 0, stats: { scored_cells: 6, elapsed_ms: 4 },
@@ -1551,7 +1667,10 @@ function throws(fn, what) {
         sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
                    maps: [{ map_id: 's1', cell_count: srcCells.length,
                             declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
-        candidates: [],
+        // Refused on the SCORE, placed all the same -- which is why there are still eight
+        // different pictures to look through on the one screen with no counts on it.
+        candidates: fittedPlacements(candidateList().map(c => ({
+          frame: c.id, state: 'not_scorable' })), srcCells),
         declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
         ruling: { winner: null, reason_code: 'no_cells_scored' },
         excluded_total: 0, stats: { scored_cells: 0, elapsed_ms: 4 },

@@ -293,6 +293,118 @@ export function computeSeating(cells, frame, shift) {
   });
 }
 
+// ── THE SEAT THE SERVER SHIPPED ─────────────────────────────────────────────────
+// 🔴 THE SCREEN DRAWS WHERE THE SERVER SAYS IT SEATED THE MAP. It does not re-derive the
+//    placement from a frame, a bounding box, or an origin. `computeSeating` above is the OLD
+//    rule and it is retained only for `brush.js`, which authors the valid-die map itself and
+//    genuinely owns a box; NOTHING on the alignment canvas may use it, because every input it
+//    needs is a second copy of a decision the scorer already made.
+//
+//    Measured cost of the old rule (harness `map2_placement_seat_harness.mjs`): the client
+//    recomposed the placement as `seatOf(frame, x, y) + shift`, whose difference from the
+//    server's seat is the constant
+//
+//        T = b_frame - anchorRef + linear * anchorSrc + shift
+//
+//    where `b_frame` is a grid-dimension constant `seatOf` builds out of `visualCols - 1`.
+//    On the front frames the terms cancel whenever the source's anchor die and the reference's
+//    top-left die share a stored coordinate -- the ordinary full-map case, which is why the
+//    operator saw the front draw correctly. On the back frames the mirror flips the SIGN of the
+//    anchor term while `b_frame` is added unmirrored, so they cannot cancel, and the whole
+//    overlay is translated. That is the entire content of 「front은 안 틀어지고 back은 틀어져
+//    있음」, and the displacement is on BOTH axes in general (x only on rot0_back, y only on
+//    rot180_back, both on the quarter turns).
+//
+// 🔴 NO ORIGIN AND NO BOX ARE READ HERE, AND THAT IS THE FIX, NOT AN OMISSION. Placement is a
+//    DIFFERENCE from the anchor, and in a difference `start` and `box.minC` cancel identically:
+//        c2 - c1 = (xv2 - start_x + minC) - (xv1 - start_x + minC) = xv2 - xv1
+//    The server proved the same thing from its side by measurement (25 origin pairs x 2 job
+//    shapes, 0 outputs moved) and the product owner ruled the valid-die map's declared start
+//    meaningless on this path. A screen that applied a start the score ignored would be wrong by
+//    exactly that start -- so the term is REMOVED, never supplied.
+
+/**
+ * Seat EVERY cell at the placement the scorer shipped. Same record shape as `computeSeating`,
+ * so `compareSeatings`, `unionBounds` and the painter read it without knowing which produced it.
+ *
+ * @param {Array<{x:number,y:number}>} cells  stored coordinates, verbatim off the wire
+ * @param {{linear:Array,anchorSrc:Array,anchorRef:Array}} placement  decoded, never raw
+ *
+ * 🔴 THERE IS NO `shift` PARAMETER AND THERE MUST NOT BE. `anchorRef` is already
+ *    `reference_top_left + (dx, dy)` (`map_alignment.py` `_candidate_rows`, `anchor_ref = reference_top_left + (dx, dy)`); adding the shipped `shift` on
+ *    top would place the map at twice the correction. The absence of the parameter is the
+ *    guard -- a caller cannot pass what the signature does not accept.
+ */
+export function placeCells(cells, placement) {
+  if (!placement) {
+    throw new Error('placeCells: no placement. An absent placement is a state the screen names, '
+                    + 'not a default it substitutes.');
+  }
+  const L = placement.linear;
+  const [ax, ay] = placement.anchorSrc;
+  const [rx, ry] = placement.anchorRef;
+  const list = Array.isArray(cells) ? cells : [];
+  const seats = new Array(list.length);
+  const byKey = new Map();
+  const collisions = [];
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+  for (let i = 0; i < list.length; i++) {
+    const cell = list[i];
+    const dx = numOr(cell.x, 0) - ax;
+    const dy = numOr(cell.y, 0) - ay;
+    // The producer's own line, term for term: `placed = anchor_ref + L * (cell - anchor_src)`.
+    const px = rx + L[0][0] * dx + L[0][1] * dy;
+    const py = ry + L[1][0] * dx + L[1][1] * dy;
+    const key = seatKey(px, py);
+    const seat = Object.freeze({ index: i, x: px, y: py, key, cell });
+    seats[i] = seat;
+    if (byKey.has(key)) collisions.push(seat);
+    else byKey.set(key, seat);
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+
+  const bounds = list.length === 0
+    ? Object.freeze({ minX: 0, maxX: -1, minY: 0, maxY: -1, empty: true })
+    : Object.freeze({ minX, maxX, minY, maxY, empty: false });
+
+  return Object.freeze({
+    seats: Object.freeze(seats),
+    seatCount: seats.length,
+    bounds,
+    byKey,
+    collisions: Object.freeze(collisions),
+    placement,
+    // Stated so a consumer can tell a placed seating from a box-derived one without inspecting
+    // the arithmetic. `boxKnown` is meaningless here: no box was consulted.
+    placed: true,
+  });
+}
+
+/**
+ * The reference's own cells sit at their STORED coordinates, untouched.
+ *
+ * 🔴 THIS IS A CLAIM ABOUT THE SERVER, NOT A CONVENIENCE. `map_alignment` scores in the
+ *    reference's raw stored space -- the read path applies no arithmetic to any coordinate
+ *    (`map_alignment.py` `score_candidates`, `ref_pairs = sorted(reference_cells)`, `_readable_cell`'s only operation is `int(float(x))`), and
+ *    `anchor_ref` is a coordinate OUT OF THAT SET. So the floor must be drawn there and nowhere
+ *    else, or the source lands in a space the floor does not occupy.
+ *
+ *    It used to be drawn there BY ACCIDENT: `computeSeating(floor, floorFrame)` reduced to the
+ *    identity only because every term it read was missing and defaulted to zero. Written down,
+ *    it is a statement that can be checked; defaulted, it was a coincidence that would have
+ *    broken the moment anyone supplied one of those fields.
+ */
+export const FLOOR_PLACEMENT = Object.freeze({
+  linear: Object.freeze([Object.freeze([1, 0]), Object.freeze([0, 1])]),
+  anchorSrc: Object.freeze([0, 0]),
+  anchorRef: Object.freeze([0, 0]),
+  det: 1,
+});
+
 /** Union of two seatings' bounds, so a floor and a source share one coordinate window. */
 export function unionBounds(a, b) {
   if (!a || a.empty) return b || Object.freeze({ minX: 0, maxX: -1, minY: 0, maxY: -1, empty: true });

@@ -38,7 +38,7 @@ import { createMapSession, withDecision, withPayload, withError, withSelectedCan
          withFocusedSource, withConfig, withCatalog, withQuestion, withConfirmFailed,
          withWorklistQuery, withWorklist, withWorklistError, withConfirmed,
          columnKey, isAskable, isUnset, BINDING_DECLARED, PHASE } from './session.js';
-import { computeSeating, compareSeatings, unionBounds } from './seating.js';
+import { placeCells, FLOOR_PLACEMENT, compareSeatings, unionBounds } from './seating.js';
 import { layoutFor, paintComparison, createCanvasSurface } from './painter.js';
 import { buildViewModel, VIEW_STATE, CROSS_SOURCE_ROW_ID, WORDS, CAUSE, ATTRIBUTION,
          UNKNOWN } from './view_model.js';
@@ -1406,19 +1406,32 @@ export function bootstrap(deps) {
     // ONE spelling of the frame, shared with the eight small pictures. Two constructions of the
     // same record is how the stage and the thumbnails start disagreeing about what candidate 3
     // means -- and the disagreement would look like a rendering quirk, not like a bug.
-    const { frame, floorFrame } = framesFor(payload, candidateId);
-    // 🔴 THE PLACEMENT THE SERVER SCORED WITH, APPLIED TO THE PICTURE. Without it the
-    //    overlay is drawn at (0,0) whatever the server placed it at -- and the counts beside
-    //    it are the counts for a position the operator is not looking at. Read off the CARD for
-    //    the candidate actually being drawn, never off the ruling: the ruling's shift belongs
-    //    to the winner, and the operator may be looking through any of the eight.
+    // 🔴 THE SEAT THE SERVER SHIPPED, NOT A FRAME THE SCREEN RECOMPOSES. Read off the CARD for
+    //    the candidate actually being drawn, never off the ruling: the ruling belongs to the
+    //    winner, and the operator may be looking through any of the eight.
     //
-    // ⚠️ THE FLOOR IS NOT SHIFTED. The offset means "move the SOURCE onto the reference";
-    //    applying it to both would translate the whole stage and change nothing, and applying
-    //    it to the floor alone would move the thing the source is being measured against.
-    const shift = (vm.candidates.find(c => c.id === candidateId) || {}).shift || null;
-    const floor = computeSeating(payload.floor_cells || [], floorFrame);
-    const seated = source ? computeSeating(source.cells || [], frame, shift) : null;
+    //    What stood here recomposed the placement from rotation, side, grid dimensions and an
+    //    origin -- and got it wrong in a way no count on this screen could show, because both
+    //    the right and the wrong picture look like a wafer. The front frames happened to cancel
+    //    and the back frames did not, which is 「front은 안 틀어지고 back은 틀어져 있음」.
+    //
+    // ⚠️ THE FLOOR IS NOT PLACED. It IS the space -- the reference's stored coordinates are what
+    //    `anchor_ref` is measured in. Placing it would move the thing the source is measured
+    //    against.
+    const floor = floorSeating(payload);
+
+    // ONE RULE FOR BOTH PICTURES. The refused state is not an exception: a refusal is about the
+    // SCORE, and the server places its candidates anyway (`map_alignment.py` `score_candidates`, the `not_considered` branch keeps narrowed
+    // sides in the list, and `_candidate_rows` places every row whose anchor stood). So the operator can look
+    // through all eight there too -- which is the screen where that matters most -- and the one
+    // case where nothing is drawn is the one where the server genuinely placed nothing.
+    const placed = source ? seatingFor(payload, candidateId, source.cells) : null;
+    const seated = placed ? placed.seating : null;
+    // The absence has a name and the name is printed. `el.caption` is written by `render` just
+    // above, so this appends to a slot that already exists -- no new control, no new panel.
+    if (placed && !placed.seating && el.caption) {
+      el.caption.textContent = [el.caption.textContent, placed.reason].filter(Boolean).join(' · ');
+    }
 
     if (vm.picture === 'alone') {
       // 🔴 THE FLOOR STILL DRAWS HERE, INTO THE LAYER THIS STATE ACTUALLY SHOWS. The stylesheet
@@ -2182,16 +2195,55 @@ function toCells(list, ranks) {
 export function framesFor(payload, candidateId) {
   const p = payload || {};
   const axes = parseCandidateId(candidateId) || { rotation: 0, side: 'front' };
-  const dims = p.dims || { cols: gridSpan(p, 'x'), rows: gridSpan(p, 'y') };
+  // 🔴 `startX`/`startY` ARE GONE FROM THIS RECORD, AND THEIR ABSENCE IS THE REPAIR.
+  //    They read `numOr(p.start_x, 0)` and `numOr(p.start_y, 0)`. Neither field has ever been on
+  //    the payload -- `adaptPayload` does not write them and the wire does not carry them -- so
+  //    every run took the fallback and a MISSING DECLARATION became a SILENT ZERO. The same
+  //    sentence covered `p.dims`: absent, so `gridSpan` measured the floor's observed extent and
+  //    a measurement stood in for a declaration.
+  //
+  //    Supplying the fields would have been the wrong repair, and it is worth saying why, because
+  //    it is the first thing anyone reaches for. The scorer applies NO origin: placement is a
+  //    difference from an anchor, in which `start` and `box.minC` cancel identically
+  //    (`map_alignment.py` `score_candidates`, the [D11] anchor-difference note), and the product owner has ruled the valid-die map's declared
+  //    start meaningless on this path. A screen that applied a start the score ignored would be
+  //    displaced by exactly that start. So the term is removed, not filled in.
+  //
+  // ⚠️ THIS IS NO LONGER THE DRAWING PATH. Seating comes from `seatingFor` below, off the
+  //    placement the server shipped. What is left here is the AXES -- which rotation and which
+  //    side a candidate id names -- plus the floor's measured span, which is a fact about the
+  //    cells in hand and is labelled as measured rather than declared.
   const frame = Object.freeze({
     rotation: axes.rotation, side: axes.side,
-    cols: dims.cols, rows: dims.rows,
-    startX: numOr(p.start_x, 0), startY: numOr(p.start_y, 0),
+    cols: gridSpan(p, 'x'), rows: gridSpan(p, 'y'),
   });
   return Object.freeze({
     frame,
     floorFrame: Object.freeze({ ...frame, rotation: 0, side: 'front' }),
   });
+}
+
+/**
+ * THE ONE PLACE A CANDIDATE'S CELLS ARE SEATED. Stage and thumbnails both come through here.
+ *
+ * @returns {{seating:object|null, reason:string|null}}  `seating` null means the screen has no
+ *          seat for this candidate and must not draw one. `reason` is the operator's word for
+ *          why, already in Korean, and it is never empty when `seating` is null.
+ *
+ * 🔴 NO FALLBACK BRANCH. The old path could always produce SOMETHING -- it composed a frame out
+ *    of whatever it found and drew the result -- so there was no state in which the screen said
+ *    it did not know. That is what made the defect silent: the picture was confident and wrong.
+ *    Here a missing placement is a named absence, and the caller prints the name.
+ */
+export function seatingFor(payload, candidateId, cells) {
+  const placement = placementFor(payload, candidateId);
+  if (!placement) return { seating: null, reason: '배치 없음' };
+  return { seating: placeCells(cells || [], placement), reason: null };
+}
+
+/** The floor, at its stored coordinates -- the space the server scored in. Never shifted. */
+export function floorSeating(payload) {
+  return placeCells((payload && payload.floor_cells) || [], FLOOR_PLACEMENT);
 }
 
 /**
@@ -2216,16 +2268,15 @@ export function framesFor(payload, candidateId) {
 export function paintCandidateThumbs(surfaceFor, payload, source, viewport, palette) {
   const out = [];
   if (!payload || typeof surfaceFor !== 'function') return Object.freeze(out);
-  const floor = computeSeating(payload.floor_cells || [], framesFor(payload, null).floorFrame);
+  const floor = floorSeating(payload);
   for (const c of candidateList()) {
     const surface = surfaceFor(c.id);
     if (!surface) continue;
     // Each thumbnail gets ITS OWN candidate's placement -- the eight are eight different
     // placements, and drawing them all at the winner's (or at none) is what made the small
-    // pictures agree with each other and disagree with the stage.
-    const cShift = shiftFor(payload, c.id);
-    const seated = source
-      ? computeSeating(source.cells || [], framesFor(payload, c.id).frame, cShift) : null;
+    // pictures agree with each other and disagree with the stage. Same function the stage uses,
+    // so the two cannot disagree about candidate 3 again.
+    const seated = source ? seatingFor(payload, c.id, source.cells).seating : null;
     const comparison = seated ? compareSeatings(floor, seated) : null;
     out.push(Object.freeze({
       id: c.id,
@@ -2242,10 +2293,20 @@ export function paintCandidateThumbs(surfaceFor, payload, source, viewport, pale
  * thumbnails must read the same field the same way, and two spellings of "which shift belongs
  * to this frame" is how a stage and its thumbnails start disagreeing about candidate 3.
  */
-function shiftFor(payload, candidateId) {
+/**
+ * The placement `map_alignment` shipped for ONE candidate. One row, read the same way by the
+ * stage and by the eight thumbnails.
+ *
+ * 🔴 THE CANDIDATE'S `shift` IS NOT READ ALONGSIDE IT, AND THAT IS THE GUARD. `anchor_ref`
+ *    already contains `(dx, dy)` (`map_alignment.py` `_candidate_rows`, `anchor_ref = reference_top_left + (dx, dy)`), so a caller taking both would place
+ *    the map at twice the correction -- the double application `4947a65` fixed on the server
+ *    side, arriving here as its mirror image. `placeCells` accepts no shift parameter at all,
+ *    so this cannot be reintroduced by an edit at the call site.
+ */
+function placementFor(payload, candidateId) {
   const list = (payload && payload.per_candidate) || [];
   const row = list.find(c => c && c.candidate_id === candidateId) || null;
-  return (row && row.shift) || null;
+  return (row && row.placement) || null;
 }
 
 function pickSource(payload, focusedId) {

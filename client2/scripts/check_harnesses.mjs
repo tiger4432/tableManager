@@ -465,7 +465,25 @@ const FLOORS = new Map([
   // one the operator is actually stuck on, and therefore the one the diagnostic exists for. The
   // rise is the assertion that the toggle has a visible consequence there, scored on the FILLS
   // (ranks 1 and 2 must land close, 1 and 40 far apart) rather than on the ranks arriving.
-  ['map_editor2_shell_harness.mjs', 540],
+  // 540 -> 544 (2026-08-06). The seat is the server's, not a recomposition. Three fixtures here
+  // predated `placement` and modelled a wire that no longer exists; G58 had become a green proxy
+  // -- with nothing drawn, "0 misses" passed vacuously -- and now varies the SEAT instead of
+  // stripping it.
+  ['map_editor2_shell_harness.mjs', 544],
+  //
+  // THE SEAT ITSELF. Scores that the screen draws where the server says it seated the map,
+  // rather than recomposing `seatOf(frame) + shift` from a frame it built out of absent fields.
+  // The old rule displaced 232 of 312 rendered cells: front frames cancelled by accident
+  // (`b = (0,0)`, `linear = I`, so the error is `anchor_src - reference_top_left`, zero on a full
+  // map) while the mirrors flipped the sign of the anchor term against an unmirrored `b`, and the
+  // quarter turns were not translations at all.
+  // 🔴 C1 IS THE WORTHLESSNESS CHECK -- it requires the fixture to move a non-zero number of cells
+  // between the defective and repaired seats, so a fixture that stops activating the defect goes
+  // RED rather than passing vacuously. The condition that makes the FRONT correct
+  // (`anchor_src == reference_top_left`) is part of the fixture on purpose: without it every frame
+  // is displaced, the front/back split the operator reported vanishes, and the harness measures a
+  // different defect than the one that was filed.
+  ['map2_placement_seat_harness.mjs', 42],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
