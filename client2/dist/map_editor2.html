@@ -16,10 +16,10 @@
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
   <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
-  <script type="module" crossorigin src="/assets/map_editor2-DZdm3jOf.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/config-9qPFNOO-.js">
-  <link rel="stylesheet" crossorigin href="/assets/config-Bzia583p.css">
-  <link rel="stylesheet" crossorigin href="/assets/map_editor2-Cua1P6Tr.css">
+  <script type="module" crossorigin src="/assets/map_editor2-E6qBFx8x.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/config-Dy5qGBed.js">
+  <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
+  <link rel="stylesheet" crossorigin href="/assets/map_editor2-BmjXFBP4.css">
 </head>
 
 <!--
@@ -595,6 +595,36 @@
             <span><i class="sw-agree"></i>일치 (바닥)</span>
             <span><i class="sw-miss"></i>불일치</span>
             <span><i class="sw-only"></i>한쪽만</span>
+          </div>
+
+          <!-- 순번(dt index) 색칠. 새 영역도 모드도 모달도 아니다 — 이미 있는 범례 띠 안의
+               체크박스 하나이고, 켜면 **출처 셀의 채움만** 바뀐다. 바닥·「한쪽만」 링·판정
+               숫자는 그대로고, 아무것도 요청하지 않고 아무것도 쓰지 않는다.
+               🔴 `ruling.index_axis === 'absent'` 면 이 블록은 **아예 렌더되지 않는다**
+                  (`main.js renderIndexLegend`) — 회색 컨트롤이 회색 셀을 칠하는 것보다
+                  없는 것이 낫다. 끌 수 없는 상태도 없다: 켜는 위젯이 끄는 위젯이다. -->
+          <div class="me2-index" id="me2-index-control" hidden>
+            <label class="me2-index-toggle">
+              <input type="checkbox" id="me2-index-colour"> 순번 색
+            </label>
+            <!-- 한 칸에 두 가지 사실이 번갈아 든다(동시에 들지 않는다):
+                 꺼짐/거절이면 **왜 못 칠하는가**, 켜짐이면 **번호가 몇 칸에 있는가**. -->
+            <span class="me2-index-note" id="me2-index-note"></span>
+            <div class="me2-index-legend" id="me2-index-legend" hidden>
+              <span class="me2-index-end" id="me2-index-min">1</span>
+              <!-- 🔴 `background` 를 여기에 적지 마라. 그라디언트는 `index_ramp.rampGradientCss`
+                   가 만들어 넣는다 — 스타일시트에 적는 순간 램프의 두 번째 사본이 되고,
+                   둘이 갈리는 날 범례가 화면에 없는 그림을 설명한다. -->
+              <i class="me2-index-bar" id="me2-index-bar"></i>
+              <span class="me2-index-end" id="me2-index-max"></span>
+              <!-- 🔴 **이 한 줄이 진단이고 색은 그것을 읽히게 만들 뿐이다.** 후보 여덟은 저장
+                   좌표 격자의 등거리 변환이라(회전+반사) 순번 그림은 프레임마다 **회전할 뿐
+                   끊기지 않는다** — 인접성에 기대는 읽기는 원리적으로 프레임을 못 가른다.
+                   구별되는 것은 방위뿐이고, (1번이 있는 모서리)x(행이냐 열이냐) = 4x2 = 8 로
+                   후보 공간을 정확히 채운다. 실측: 여덟 후보 → 여덟 개의 서로 다른 서명,
+                   정답은 「1번 좌상단 · 행 방향」 하나. -->
+              <span class="me2-index-rule">정상: 1번 좌상단 · 행 방향</span>
+            </div>
           </div>
 
           <div class="me2-verdict">
