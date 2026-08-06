@@ -1600,6 +1600,94 @@ def test_the_anchor_places_the_map_and_says_so():
         "the whole point: under the anchor, occupancy is no longer an 8-way tie: %s" % by)
 
 
+def _reproduce_agreement_at(shift, cells, meta, frame, reference):
+    """Independently place `cells` under `frame` and count how many land on `reference` when
+    moved by `shift`. Used to bind the SHIPPED offset to the SHIPPED agreement.
+
+    Deliberately does not call the scorer: an assertion that asked the scorer to confirm its
+    own number would pass under any offset it chose to ship."""
+    import numpy as np
+    tf = map_overlay.make_frame_transform(source_meta_for_frame(meta, frame), meta)
+    placed = [tf(x, y) for (x, y) in cells]
+    moved = ma._encode([(x + shift["dx"], y + shift["dy"]) for (x, y) in placed])
+    ref = np.unique(ma._encode(sorted(reference)))
+    idx = np.searchsorted(ref, moved)
+    idx[idx >= ref.size] = 0
+    return int(np.count_nonzero(ref[idx] == moved))
+
+
+def test_the_shipped_placement_is_the_scored_placement():
+    """THE SCREEN DRAWS WHAT WAS SCORED. Product owner 2026-08-06, after the index axis started
+    ranking: 「되긴 하는데 화면에 다른 shift가 뜨는 듯, 계산에 사용된 거 말고」.
+
+    Before the anchor this could not be seen: `_solve_shift` breaks ties toward the origin, so
+    on a saturated partial map it returned (0,0) and any consumer that forgot the offset agreed
+    with the scorer by accident. The anchor makes the offset real, and every place that carries
+    a second copy of it became visible at once.
+
+    This binds the two facts that must not part: take the offset as SHIPPED, replay the placement
+    independently, and require it to reproduce the agreement as SHIPPED."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 266)
+    planted = "rot90_front"
+    recorded = [(x + 5, y - 4) for (x, y) in _plant(floor_meta, cells, planted)]
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+
+    assert ruling["placement"] == ma.PLACEMENT_ANCHOR
+    for c in cands:
+        if c["state"] != ma.STATE_SCORED:
+            continue
+        assert c["shift"] is not None
+        assert _reproduce_agreement_at(c["shift"], recorded, floor_meta, c["frame"],
+                                       floor) == c["agreement"], (
+            "candidate %s ships offset %s and agreement %d, and those two do not describe the "
+            "same placement" % (c["frame"], c["shift"], c["agreement"]))
+
+    # And the ruling's copy POINTS AT the winning row rather than re-deriving it.
+    win = next(c for c in cands if c["frame"] == ruling["winner"])
+    assert ruling["shift"] == win["shift"]
+    assert ruling["shift"] != {"dx": 0, "dy": 0}, (
+        "guard: on this fixture the anchor moves the map, so a consumer that drops the offset "
+        "draws somewhere else - which is the whole defect")
+
+
+def test_a_shipped_offset_that_is_not_the_scored_one_is_caught():
+    """THE MUTATION, and it is exactly today's bug: score by the anchor, ship the shift search's
+    number. If `test_the_shipped_placement_is_the_scored_placement` survived this, it would be
+    asserting nothing."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _partial_job(floor_meta, floor, 266)
+    planted = "rot90_front"
+    recorded = [(x + 5, y - 4) for (x, y) in _plant(floor_meta, cells, planted)]
+    payload = [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "indices": ks}]
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        payload, floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    win = next(c for c in cands if c["frame"] == ruling["winner"])
+
+    # The search's answer for the same candidate - the value that used to ship.
+    import numpy as np
+    tf = map_overlay.make_frame_transform(
+        source_meta_for_frame(floor_meta, win["frame"]), floor_meta)
+    keys = ma._encode([tf(x, y) for (x, y) in recorded])
+    sdx, sdy, _hit = ma._solve_shift(keys, np.unique(ma._encode(sorted(floor))),
+                                     ma.SHIFT_WINDOW)
+    stale = {"dx": sdx, "dy": sdy}
+    assert stale != win["shift"], (
+        "guard: the mutation must actually change the number, or it proves nothing - the "
+        "search and the anchor have to disagree on this fixture")
+
+    assert _reproduce_agreement_at(stale, recorded, floor_meta, win["frame"],
+                                   floor) != win["agreement"], (
+        "shipping the search's offset while scoring by the anchor must not reproduce the "
+        "shipped agreement; if it does, the assertion above cannot catch this bug")
+
+
 @pytest.mark.parametrize("mutate,reason", [
     (lambda ks: [None] * len(ks), ma.ANCHOR_NO_INDEX),
     # 🔴 the mutation must actually DUPLICATE the minimum. `[1] + ks[1:]` looks like a mutation

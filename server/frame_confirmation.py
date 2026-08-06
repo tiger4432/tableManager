@@ -468,9 +468,11 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
         복사한다」 두 줄이다.
     `contributors`: 소스 하나에 dict 하나.
         {"role", "source_table", "map_id", "source_name",
-         "applied_frame", "shift_dx", "shift_dy",
-         "agreement", "discriminating", "excluded_reason"}
+         "applied_frame", "agreement", "discriminating", "excluded_reason"}
         제외된 소스도 넣는다 — 빠뜨리면 없었던 것인지 거절된 것인지 나중에 구별되지 않는다.
+        🔴 `shift_dx`/`shift_dy`는 **더 이상 읽지 않는다**(2026-08-06). 배치는 채점기가
+        만든 서버의 사실이라 화면이 알 수 없고, 화면은 실제로 상수 0을 보내고 있었다.
+        정본은 `ruling.shift`이고 아래 `_placement_of`가 거기서 가져온다.
 
     `ruling`·`reference`: `map_alignment`가 낸 것을 그대로 넘긴다. **여기서 채점하지 않는다** —
         쓰기 경로가 다시 채점하면 조작자가 보고 결정한 것과 기록된 것이 갈릴 수 있고,
@@ -549,8 +551,35 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
     )
     db.add(header)
 
+    # 🔴 [2026-08-06] **배치는 요청 본문에서 읽지 않는다.** 제품 소유자가 본 것이 이것이다:
+    #    「되긴 하는데 화면에 다른 shift가 뜨는 듯, 계산에 사용된 거 말고」.
+    #
+    #    화면은 `shift_dx: 0, shift_dy: 0`을 **상수로** 보내 왔고(`client2/src/map2/main.js`),
+    #    이 함수는 그것을 그대로 적었으며, 조회(§`live_confirmation` 응답의 `sources[].shift`)가
+    #    그것을 되돌려 줬다. 그래서 앵커가 (4,5)로 놓은 판이 기록과 화면에서 (0,0)으로 보였다.
+    #    두 필드가 같은 사실을 나르면 갈리고, 갈린 쪽이 화면에 뜬다.
+    #
+    #    배치는 **채점기가 만든 서버의 사실**이고 화면이 알 수 없는 값이다. 그러므로 정본은
+    #    `ruling.shift`(= `candidates[이긴 행].shift`, §map_alignment)이고 이 자리는 그것을
+    #    **가리킨다**. 여기서 다시 채점하는 것이 아니다 — 위 docstring의 「쓰기 경로가 다시
+    #    채점하지 않는다」는 그대로 지켜진다. 조작자가 본 판정을 그대로 옮겨 적을 뿐이다.
+    #
+    #    🔴 **이긴 프레임에 선 기여자만** 이 값을 받는다. 조작자가 다른 프레임으로 덮어썼다면
+    #    그 프레임에서 채점된 배치는 존재하지 않으므로 **null이지 0이 아니다** — 0은 「원점에
+    #    놓았다」는 주장이고, 그것이 방금 고친 거짓말이다.
+    ruled_shift = (ruling or {}).get("shift") or {}
+    ruled_winner = (ruling or {}).get("winner")
+
+    def _placement_of(c):
+        if not ruled_shift or not ruled_winner:
+            return None, None
+        if c.get("applied_frame") != ruled_winner:
+            return None, None
+        return _as_int(ruled_shift.get("dx")), _as_int(ruled_shift.get("dy"))
+
     for c in contributors:
         name = c.get("source_name") or "unknown"
+        c_dx, c_dy = _placement_of(c)
         db.add(models.FrameConfirmationSource(
             confirmation_uid=uid,
             geometry_basis=bases.get((str(c.get("source_table") or ""),
@@ -561,8 +590,8 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
             source_name=name,
             source_priority=_priority_of(name),
             applied_frame=c.get("applied_frame"),
-            shift_dx=_as_int(c.get("shift_dx")),
-            shift_dy=_as_int(c.get("shift_dy")),
+            shift_dx=c_dx,
+            shift_dy=c_dy,
             agreement=_as_int(c.get("agreement")),
             discriminating=_as_int(c.get("discriminating")),
             excluded_reason=c.get("excluded_reason"),

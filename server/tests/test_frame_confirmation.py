@@ -60,21 +60,65 @@ def test_the_record_carries_the_source_list_one_row_per_contributor(db_session):
 
 
 def test_each_source_keeps_its_own_alignment_including_the_shift(db_session):
-    """The frame alone is not the alignment. A dropped shift moves every die."""
+    """The frame alone is not the alignment. A dropped shift moves every die - still true, and
+    still the subject here. What CHANGED 2026-08-06 is where the shift comes from.
+
+    It used to be read off the request body, and the screen was sending a hardcoded
+    `shift_dx: 0, shift_dy: 0` (`client2/src/map2/main.js`). So the record - and the screen
+    reading it back through `sources[].shift` - said the map was placed at the origin while the
+    scoring had placed it somewhere else. Product owner: 「화면에 다른 shift가 뜨는 듯, 계산에
+    사용된 거 말고」. The placement is a server fact the screen cannot know, so the record now
+    points at `ruling.shift` and the body's copy is not read.
+
+    A contributor on a frame OTHER than the winner has no scored placement, and that is null
+    rather than zero - zero is the claim 'placed at the origin', which is the lie just removed."""
     h = fc.record_confirmation(
         db_session, RULE, _unit("EQP-A", "P2"),
+        # Both post the old hardcoded zeros. Neither may be believed.
         [_contrib("total_chips", "core_wafer_map", "user"),
-         _contrib("defect", "dt_log", "pipeline_parser", "rot90_front", -1, 2)],
-        # Named because a confirmation that names no frame is now refused (D-1). The subject
-        # of this test is the per-source shift, which is unchanged by naming the answer.
-        confirmed_by="tester", frame="rot0_front")
+         _contrib("defect", "dt_log", "pipeline_parser", "rot90_front", 0, 0)],
+        confirmed_by="tester", frame="rot0_front",
+        ruling={"winner": "rot90_front", "shift": {"dx": -1, "dy": 2},
+                "placement": "anchor", "reason_code": None})
 
     by_role = {r.role: r for r in db_session.query(models.FrameConfirmationSource)
                .filter_by(confirmation_uid=h.confirmation_uid)}
     assert (by_role["defect"].applied_frame, by_role["defect"].shift_dx,
-            by_role["defect"].shift_dy) == ("rot90_front", -1, 2)
+            by_role["defect"].shift_dy) == ("rot90_front", -1, 2), (
+        "the contributor on the winning frame records the placement the SCORING used, not the "
+        "zeros the screen posted")
     assert (by_role["total_chips"].applied_frame, by_role["total_chips"].shift_dx,
-            by_role["total_chips"].shift_dy) == ("rot0_front", 0, 0)
+            by_role["total_chips"].shift_dy) == ("rot0_front", None, None), (
+        "a contributor on another frame has no scored placement - null, never 0")
+
+
+def test_the_record_refuses_a_placement_the_screen_invented(db_session):
+    """THE MUTATION for the record half: post a placement that contradicts the ruling and
+    require it not to survive. If the body could still win, the field is a second copy again and
+    it will drift again."""
+    h = fc.record_confirmation(
+        db_session, RULE, _unit("EQP-A", "P9"),
+        [_contrib("defect", "dt_log", "pipeline_parser", "rot90_front", 999, -999)],
+        confirmed_by="tester", frame="rot90_front",
+        ruling={"winner": "rot90_front", "shift": {"dx": 4, "dy": 5},
+                "placement": "anchor", "reason_code": None})
+    row = (db_session.query(models.FrameConfirmationSource)
+           .filter_by(confirmation_uid=h.confirmation_uid).one())
+    assert (row.shift_dx, row.shift_dy) == (4, 5), (
+        "the body said (999,-999); only the ruling's placement may be recorded")
+
+
+def test_a_ruling_with_no_placement_records_no_placement(db_session):
+    """Absence stays absence. A run whose ruling carries no shift (no winner, or an older
+    payload) must not have zeros written under it - the whole defect was a fabricated origin."""
+    h = fc.record_confirmation(
+        db_session, RULE, _unit("EQP-A", "P8"),
+        [_contrib("defect", "dt_log", "pipeline_parser", "rot90_front", 0, 0)],
+        confirmed_by="tester", frame="rot90_front",
+        ruling={"winner": None, "reason_code": "tie"})
+    row = (db_session.query(models.FrameConfirmationSource)
+           .filter_by(confirmation_uid=h.confirmation_uid).one())
+    assert (row.shift_dx, row.shift_dy) == (None, None)
 
 
 def test_a_re_confirmation_is_a_new_version_and_the_old_one_survives(db_session):

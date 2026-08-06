@@ -1453,7 +1453,7 @@ def _diag_compare_probe(ref_vc: dict, src_vc: dict) -> list:
     return lines
 
 
-def _diag_trace_lines(c: dict, label: str, reference_meta: dict) -> list:
+def _diag_trace_lines(c: dict, label: str, reference_meta: dict, shipped: dict = None) -> list:
     """One candidate's worked example: five cells, arithmetic visible.
 
     Every number is a value the scorer used — the raw coordinate as read, the
@@ -1481,14 +1481,27 @@ def _diag_trace_lines(c: dict, label: str, reference_meta: dict) -> list:
         "start_y, cols, rows, phys)",
         "                  NOT printed: the wafer bounding-box term, computed inside "
         "WaferMapCoordinateTransformer and not reachable from here.",
-        "   shift solved for this candidate: (dx=%s, dy=%s)" % (c.get("dx"), c.get("dy")),
+        # 🔴 **실린 값을 찍는다, 채점기가 들고 있던 값이 아니라.** 둘이 갈리면 로그는 맞는
+        #    수를 보여 주고 화면은 다른 수를 그리는데, 그 조합이 두 기록을 다 읽는 사람에게
+        #    가장 나쁘다 - 로그가 화면을 부정하므로 어느 쪽도 못 믿게 된다. 그래서 이 줄은
+        #    `c["dx"]`가 아니라 **payload에 실제로 들어간 행**(`out`)에서 읽는다.
+        "   placement SHIPPED for this candidate: %s   [%s]"
+        % ("-" if shipped is None or shipped.get("shift") is None
+           else "(dx=%s, dy=%s)" % (shipped["shift"]["dx"], shipped["shift"]["dy"]),
+           "the screen must draw at this offset; it is the offset the scoring used"),
     ]
     member = c.get("member")
     for n, r in enumerate(rows, 1):
         i = r["at"]
         on_ref = None if member is None else bool(member[i])
         probe = r.get("probe")
-        if probe is None and c.get("dx") is not None:
+        # The fallback offset comes from the SHIPPED row when there is one, for the same
+        # reason the header line does. `c["dx"]` is the same number today and this line is
+        # what would notice the day it stops being.
+        sh = (shipped or {}).get("shift") if shipped else None
+        if probe is None and sh is not None:
+            probe = (r["placed"][0] + sh["dx"], r["placed"][1] + sh["dy"])
+        elif probe is None and c.get("dx") is not None:
             probe = (r["placed"][0] + c["dx"], r["placed"][1] + c["dy"])
         lines.append(
             "   cell #%d  map=%s  src(x=%s, y=%s) val=%s"
@@ -2197,6 +2210,19 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     ruling["placement"] = (PLACEMENT_ANCHOR if anchor_dxy is not None
                            else PLACEMENT_SEARCH)
     ruling["anchor_reason"] = anchor_reason if anchor_dxy is None else None
+    # 🔴 **화면이 그리는 자리는 채점이 쓴 자리여야 한다** (제품 소유자 2026-08-06:
+    #    「되긴 하는데 화면에 다른 shift가 뜨는 듯, 계산에 사용된 거 말고」).
+    #
+    #    이 값은 **다시 계산하지 않는다** — 이긴 후보 행에서 **읽는다**. 같은 사실을 두 번
+    #    유도하면 그 둘은 갈리고, 이 코드베이스는 오늘 하루에 그 형태로 세 번 물렸다. 그래서
+    #    철자는 `candidates[].shift` 하나이고 이것은 그 중 이긴 행을 **가리키는** 사본이다.
+    #    관계는 테스트가 단언한다(`test_the_shipped_placement_is_the_scored_placement`):
+    #    실린 오프셋으로 멤버십을 다시 재면 실린 `agreement`가 그대로 나와야 한다.
+    #
+    #    🔴 앵커가 (0,0)을 낼 수도 있고 그것은 **탐색이 아무것도 못 찾아 원점으로 떨어진 것과
+    #    다른 사실**이다. 그래서 `placement`가 옆에 함께 실린다 - 수만 보면 두 경우가 같다.
+    _win_row = next((o for o in out if o["frame"] == ruling.get("winner")), None)
+    ruling["shift"] = (_win_row or {}).get("shift")
     ruling["sides_considered"] = [s for s in FRAME_SIDES if s in considered]
     ruling["sides_narrowed"] = len(considered) < len(FRAME_SIDES)
     ruling["geometry_assumed"] = bool(assumed_ids)
@@ -2407,10 +2433,14 @@ def _diag_scoring_block(per_candidate, out, ruling, stats, excluded, metric,
             top = max(scored, key=lambda p: (p[1].get(a_key) or 0, ))
         rest = [p for p in scored if p is not top]
         contrast = max(rest, key=lambda p: (p[1].get("agreement") or 0, )) if rest else None
+        # `top[1]` / `contrast[1]` are the SHIPPED rows (`out`), paired with the scorer's own
+        # record by `zip` above. Passing them is what lets the trace print the offset that
+        # leaves the building rather than the one the scorer happened to hold.
         L += _diag_trace_lines(top[0], "winner" if win else "top by " + metric,
-                               reference_meta)
+                               reference_meta, top[1])
         if contrast is not None:
-            L += _diag_trace_lines(contrast[0], "a loser, for contrast", reference_meta)
+            L += _diag_trace_lines(contrast[0], "a loser, for contrast", reference_meta,
+                                   contrast[1])
 
     # ---- the ruling, and WHY it is what it is -------------------------------
     pos_max = max((o.get("agreement") or 0 for c, o in scored), default=0)
