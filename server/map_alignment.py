@@ -622,12 +622,17 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
     #    때마다 `grid_metadata`를 읽어 되쓴다. 확정된 원점을 정렬 이전의 값으로 덮어쓸 수
     #    있는지는 이 파일에서 답할 수 없다. 총괄에 보고했고 이 주석이 그 자리를 표시한다.
     # 🔴 **계산은 하나, 목적지는 둘.** 확정 메타의 `grid_start_x/y`와 확정 기록의 같은 값이
-    #    `start_from_anchor` **한 번의 반환값**을 나눠 쓴다 — 두 자리가 각자 계산하면 언젠가
+    #    `start_from_placement` **한 번의 반환값**을 나눠 쓴다 — 두 자리가 각자 계산하면 언젠가
     #    갈리고, 그 갈림이 오늘 아침 시프트를 깨뜨린 모양 그대로다(총괄 지시 2026-08-06).
-    #    앵커 쌍이 오면 그것이 정본이고, 안 오면 종전 유도(은퇴 예정)가 남은 호출자를 받는다.
-    if placement:
-        st = start_from_anchor(basis_meta, placement.get("linear"),
-                               placement.get("anchor_src"), placement.get("anchor_ref"))
+    #    앵커 쌍이 오면 그것이 정본이고, 안 오면 탐색 배치용 유도가 남은 호출자를 받는다.
+    # 🔴 **갈래가 둘인 이유는 배치의 종류가 둘이기 때문이다**(§`start_from_placement` ①).
+    #    앵커 쌍이 오면 평행이동의 정본은 그 쌍이고 `shift`는 잔차일 뿐이라, `shift`만 읽는
+    #    유도는 나머지 평행이동을 통째로 놓친다. 앵커가 없으면(탐색 배치) `shift`가 평행이동
+    #    전부이고, 그때 `start_for_placement`는 옳다 — 은퇴하는 것은 그 함수가 아니라
+    #    「앵커 배치에도 그것을 쓰던 배선」이다.
+    if placement and placement.get("anchor_src") and placement.get("anchor_ref"):
+        st = start_from_placement(base, basis_meta,
+                                  placement.get("anchor_src"), placement.get("anchor_ref"))
         if st is not None:
             base["grid_start_x"], base["grid_start_y"] = st
     elif shift:
@@ -725,39 +730,99 @@ def start_for_placement(framed_meta: dict, target_meta: dict, shift: dict):
     return int(g["start_x"]) - u, int(g["start_y"]) - v
 
 
-def start_from_anchor(floor_meta: dict, linear, anchor_src, anchor_ref):
+def start_from_placement(framed_meta: dict, floor_meta: dict, anchor_src, anchor_ref):
     """확정이 메타에 적을 **소스 맵의 원점** `(start_x, start_y)`. 못 내면 None.
 
-    ═══ 제품 소유자 공식 (2026-08-06) ═══════════════════════════════════════════════════
-    「유효다이맵의 startxy로부터 소스맵 계산 shift 적용해서 소스맵 start xy 계산해서
-      메타에 넣으면 됨」 →  **source_start = floor_start + displacement**
+    ═══ WHAT THIS FIELD IS FOR, AND WHY THE PREVIOUS TWO DERIVATIONS WERE WRONG ═══════
+    `grid_start_x/y` is read by the LEGACY MAP EDITOR to redraw the map. Its defining
+    relation is that editor's own, `client2/src/map_editor.js:2012-2029`:
 
-    변위는 **이미 실어 보내는 것 안에 있다.** 배치가 `placed = anchor_ref + L·(cell − anchor_src)`
-    이므로 평행이동 항은
+        db_x = col − box.minC + start_x
+        db_y = row − box.minR + start_y          (plain)
+        db_y = box.maxR − row + start_y          (invertY)
 
-        t = anchor_ref − L · anchor_src
+    So the origin this function returns is **the number that makes the editor's own
+    arithmetic put the anchor cell on the anchor die.** Solve those three lines for
+    `start` and that is the whole specification. Two earlier derivations answered a
+    different question and both shipped displaced maps:
 
-    이고, 그래서 별도 유도가 없다 — phys도 박스도 안 읽는다. `start_for_placement`가 하던
-    「배치를 재현하는 원점」 유도는 은퇴한다(그 배치가 더 이상 원점을 읽지 않으므로 성립하지
-    않는 양이다). **은퇴하는 것은 유도이지 필드가 아니다** — 총괄 판정 2026-08-06: 레거시
-    에디터가 `grid_start_x/y`를 읽으므로 이 필드는 죽은 값이 아니라 **호환 계약**이다.
+      ① `start_for_placement` (still live, still correct — for the OTHER caller) asks
+         "which origin reproduces this placement", and its answer `start − L⁻¹(shift)`
+         is right **when the placement is the geometric transform plus `shift`**. Under
+         the anchor placement it is not: `shift` there is a RESIDUAL, and the rest of
+         the translation comes from the anchor pair, which this formula never reads.
+         Measured 2026-08-06 (floor 45x30 @(3,5) · chip 5x8 · src rot270_back invertY
+         @(6,9), 240 cells, scored 240/240 with value agreement 240/240): it wrote the
+         **floor's origin verbatim, (3,5)**, and **240 of 240 cells drew on the wrong
+         die**, displaced by a uniform **(4, 3) — both axes**.
+      ② `start_from_anchor` (retired here) computed `floor_start + t` with
+         `t = anchor_ref − L·anchor_src`. It adds a translation that lives in the
+         REFERENCE's stored space to the REFERENCE's origin and calls the sum the
+         SOURCE's origin — three different spaces in one expression. Swept over all
+         eight source frames × both invertY × two floor frames (32 combinations): it
+         put every cell in the right seat in **0 of 32**.
+         `floor_start − t`, proposed the same day, scored **4 of 32** — right only where
+         `L` degenerates and the two maps' boxes coincide, which is exactly the shape a
+         hand-checked example takes.
+      This function: **32 of 32.**
 
-    🔴 **화면에는 안 나간다**(제품 소유자: 「화면에 표시하지는 않되 저장은 하기」). 앵커 쌍
-       옆에 파생된 수를 같이 보이면 조작자가 「어느 쪽이 정본인가」를 중재하게 되는데, 둘은
-       같은 사실의 두 철자다 — 하나는 레거시 독자용, 하나는 재구성용. 그래서 저장만 한다.
+    🔴 **`box.minC`/`box.minR` DO NOT CANCEL.** The tempting derivation subtracts one
+       `box.min` from another and cancels them. They are not the same number — one is
+       the source frame's box and the other the reference frame's, and a rotation of
+       90/270 between the two maps exchanges the axes they sit on. Measured: making the
+       editor's origin box the valid-die mask box instead of the circle box (same wafer,
+       same dies) moved the required origin from (6,9) to (8,11) — **both axes** — in
+       the rot270 case, and left it at (6,9) in the rot90 one. A term that moves on one
+       frame and not another is not a term that cancels.
 
-    🔴 **계산은 하나이고 목적지가 둘이다.** 이 함수가 그 하나이고, 확정 메타(`grid_start_x/y`)와
-       확정 기록이 **같은 반환값**을 쓴다. 두 자리가 각자 계산하면 언젠가 갈리고, 그 갈림이
-       오늘 아침 시프트를 깨뜨린 바로 그 모양이다.
+    🔴 **DO NOT HAND-WRITE `L`.** It is read off `make_frame_transform` at three points,
+       the same discipline `start_for_placement` and `frame_linear_part` already carry.
+       This file has transcribed coordinate algebra wrong twice (QA O3 · B1) and the two
+       retired derivations above are the third and fourth.
+
+    ✅ **THE INVARIANT THAT CATCHES A REGRESSION**: the answer does not depend on
+       `framed_meta`'s own current origin. Moving it by `D` moves `mft(anchor_src)` by
+       `−L·D`, and `L⁻¹` turns that back into `−D`, which cancels the `+D` in the first
+       term. Measured across floor origins (3,5) and (0,0) — whose `anchor_ref` differ
+       by (3,5) — the returned origin was **(6,9) both times**. If a future edit drops
+       the `L⁻¹`, or reads a different meta's grid than the one it fed the transform,
+       that invariant breaks and `test_the_written_start_is_where_the_editor_redraws_it`
+       goes red.
+
+    ⚠️ **THE FLOOR'S DECLARED ORIGIN IS READ HERE AND NOWHERE IN THE SCORER.** The
+       product owner ruled `grid_start_x/y` of the valid-die map meaningless — that
+       ruling is about SCORING, where the origin cancels in a difference (measured: 0
+       outputs move when it changes). The editor draws the reference WITH that value, so
+       the handoff needs it. It arrives through `make_frame_transform(_, floor_meta)`,
+       and it cancels against `anchor_ref` (which carries the same origin), which is why
+       the invariant above holds. Two layers, not a contradiction.
     """
-    g = map_overlay._grid_of(floor_meta)
-    if g is None or not linear or anchor_src is None or anchor_ref is None:
+    g = map_overlay._grid_of(framed_meta)
+    if g is None or anchor_src is None or anchor_ref is None:
         return None
-    tx = int(anchor_ref[0]) - (linear[0][0] * int(anchor_src[0])
-                               + linear[0][1] * int(anchor_src[1]))
-    ty = int(anchor_ref[1]) - (linear[1][0] * int(anchor_src[0])
-                               + linear[1][1] * int(anchor_src[1]))
-    return int(g["start_x"]) + tx, int(g["start_y"]) + ty
+    try:
+        tf = map_overlay.make_frame_transform(framed_meta, floor_meta)
+    except ValueError:
+        return None
+    o, ex, ey = tf(0, 0), tf(1, 0), tf(0, 1)
+    a11, a21 = ex[0] - o[0], ex[1] - o[1]
+    a12, a22 = ey[0] - o[0], ey[1] - o[1]
+    det = a11 * a22 - a12 * a21
+    # 여덟 후보의 선형부는 전부 부호 있는 치환행렬이라 행렬식이 ±1이다. 아니면 이 자리의
+    # 전제가 깨진 것이므로 **원점을 지어내지 않고 거절한다** — 조용한 오답보다 낫다.
+    if det not in (1, -1):
+        return None
+    # How far this map's OWN reading of the anchor cell sits from where the alignment
+    # seated it. Zero means the declared origin already agrees and nothing moves.
+    try:
+        here = tf(int(anchor_src[0]), int(anchor_src[1]))
+        vx = here[0] - int(anchor_ref[0])
+        vy = here[1] - int(anchor_ref[1])
+    except (TypeError, ValueError, IndexError):
+        return None
+    u = (a22 * vx - a12 * vy) // det
+    v = (a11 * vy - a21 * vx) // det
+    return int(g["start_x"]) + u, int(g["start_y"]) + v
 
 
 def cells_outside_grid(meta: dict, cells) -> str | None:
@@ -997,11 +1062,19 @@ def _residual_shift(placed_keys, ref_sorted, seats, at, walk_rank=None):
     """
     import numpy as np
     n = int(placed_keys.size)
+    # 관측 전용 장부. **판정에 안 쓰인다** - 자격 셋이 각각 몇 자리를 통과시켰는지를
+    # 화면과 로그가 볼 수 있게 할 뿐이다. 합집합만 보면 「전부 떨어뜨린 관문」과
+    # 「한 번도 안 돈 관문」이 밖에서 똑같이 생겼다(제품 소유자 진단 요청 2026-08-06).
+    obs = {"state": None, "seats_scanned": 0, "gate1_on_valid_dies": 0,
+           "gate2_unbroken_run": 0, "qualifying": 0, "hit": 0,
+           "best_hit": 0, "best_tied": 0}
     if n == 0 or ref_sorted.size == 0 or walk_rank is None:
-        return 0, 0, 0
+        obs["state"] = RESIDUAL_NO_WALK_RANKS
+        return 0, 0, 0, obs
     ax, ay = int(at[0]), int(at[1])
     best = None
     tried = 0
+    capped = False
     # 지금 앉은 자리를 **먼저** 본다: 앵커의 주장이 참이면 여기서 끝난다.
     for (sx, sy) in [(ax, ay)] + list(seats or ()):
         dx, dy = int(sx) - ax, int(sy) - ay
@@ -1009,19 +1082,43 @@ def _residual_shift(placed_keys, ref_sorted, seats, at, walk_rank=None):
             continue
         tried += 1
         if tried > _RESIDUAL_SEAT_CAP:
+            capped = True
             break
         shifted = placed_keys + dx * _KEY_STRIDE + dy
         idx = np.searchsorted(ref_sorted, shifted)
         idx[idx >= ref_sorted.size] = 0
-        if int(np.count_nonzero(ref_sorted[idx] == shifted)) != n:
+        hit = int(np.count_nonzero(ref_sorted[idx] == shifted))
+        # 🔴 **점유 최고점은 자리를 고르지 못한다 - 포화한다.** 그래서 최고점 하나가 아니라
+        #    **최고점에 몇 자리가 묶였는지**를 센다. 실측(바닥 677다이 · 240셀): 최고점
+        #    240/240에 후보마다 4~11자리가 묶였다. 「최적 자리」를 하나 지목하는 보고는
+        #    그 동점의 임의의 한 원소를 지목하는 것이다.
+        if hit > obs["best_hit"]:
+            obs["best_hit"], obs["best_tied"] = hit, 1
+        elif hit == obs["best_hit"]:
+            obs["best_tied"] += 1
+        if hit != n:
             continue                      # 자격 ①: 전 셀이 유효 다이 위에 앉아야 한다
+        obs["gate1_on_valid_dies"] += 1
         r = walk_rank[idx]
         if int(r.max()) - int(r.min()) + 1 != n:
             continue                      # 자격 ②: 그 다이들이 훑기의 끊기지 않은 한 구간
+        obs["gate2_unbroken_run"] += 1
         if best is not None:
-            return 0, 0, 0                # 자격 ③: 유일해야 한다 - 둘째를 봤으니 안 옮긴다
+            # 자격 ③: 유일해야 한다 - 둘째를 봤으니 안 옮긴다
+            obs.update(state=RESIDUAL_NOT_UNIQUE, seats_scanned=tried, qualifying=2)
+            return 0, 0, 0, obs
         best = (dx, dy, n)
-    return best if best else (0, 0, 0)
+    obs["seats_scanned"] = tried
+    obs["qualifying"] = obs["gate2_unbroken_run"]
+    if best is None:
+        obs["state"] = RESIDUAL_SEAT_CAP if capped else RESIDUAL_NO_QUALIFYING_SEAT
+        return 0, 0, 0, obs
+    obs["hit"] = best[2]
+    # ①과 ②를 **반환값이 아니라 이름으로** 가른다. 둘 다 `(0,0)`을 내지만 하나는 「앵커가
+    # 옳았다」이고 하나는 「고칠 근거가 없었다」다.
+    obs["state"] = (RESIDUAL_ANCHOR_HELD if (best[0], best[1]) == (0, 0)
+                    else ANCHOR_SEAT_CORRECTED)
+    return best[0], best[1], best[2], obs
 
 
 def _membership(placed_keys, ref_sorted, dx, dy):
@@ -1198,6 +1295,32 @@ ANCHOR_DISABLED = "disabled"                   # 스위치가 꺼져 있다(§AN
 #: 앵커는 정상적으로 걸렸다. 이름이 없으면 조작자는 「밀렸다」를 눈으로 알아내야 하고,
 #: 실제로 그렇게 알아냈다(제품 소유자 2026-08-06: 「shift를 무조건 0,0으로 계산함」).
 ANCHOR_SEAT_CORRECTED = "anchor_seat_corrected"
+
+# ═══ 잔차 탐색의 **결과 상태** — `(0,0)`이 네 가지 뜻을 갖고 있었다 (2026-08-06) ═══════════
+#
+# 🔴 제품 소유자: 「근본적으로 서버가 잘못된 계산을 하고 있음 (shift 0,0 또는 최적이 아닌 값)」.
+#    「시프트가 0,0이다」는 **조작자가 행동할 수 있는 증상이 아니었다** — `_residual_shift`가
+#    `(0,0)`을 내는 경로가 넷이고 로그가 그 넷을 구별하지 못했기 때문이다:
+#      ① 앵커 자리가 **유일하게 자격을 얻었다** — 앵커의 전제가 참이고 옮길 것이 없다(정상)
+#      ② 자격 자리가 **하나도 없다** — 옮길 근거가 없어 포기했다
+#      ③ 자격 자리가 **둘 이상**이라 데이터가 고르지 못했다
+#      ④ 훑기 번호가 없어 **물을 수조차 없었다**
+#    ①과 ②는 반환값이 `(0,0,n)` vs `(0,0,0)`로 달랐지만 **호출자가 세 번째 값을 버렸다**
+#    (`rdx, rdy, _hit = _residual_shift(...)`), 그리고 진단 줄은 잔차가 **움직였을 때만**
+#    찍혔다(§_diag_scoring_block) — 그래서 포기는 아무 소리도 내지 않았다.
+#
+# 🔴 실측이 그 침묵의 크기를 준다(바닥 677다이 · 부분 작업 240셀 · 훑기 #43부터):
+#    후보 `rot90_back`은 **점유 240/240을 내는 자리가 5개** 있는데 자격 ②가 그 다섯을 전부
+#    떨어뜨려 `(0,0)`에 남았고, 거기서의 점유는 **134/240**이었다. 화면에는 「시프트 0,0」만
+#    나갔다.
+#
+# ⚠️ **이름을 붙이는 것이지 판정을 바꾸는 것이 아니다.** 자격 셋은 한 글자도 안 바뀐다 —
+#    무엇이 일어났는지 말할 수 있게 된 것뿐이고, 그것이 이 라운드가 산 전부다.
+RESIDUAL_ANCHOR_HELD = "anchor_seat_held"              # ① 앵커 자리가 유일한 자격 자리였다
+RESIDUAL_NO_QUALIFYING_SEAT = "no_qualifying_seat"     # ② 자격 자리 0개 - 근거 없어 안 옮김
+RESIDUAL_NOT_UNIQUE = "qualifying_seat_not_unique"     # ③ 자격 자리 2개 이상 - 안 옮김
+RESIDUAL_NO_WALK_RANKS = "no_walk_ranks"               # ④ 물을 수 없었다
+RESIDUAL_SEAT_CAP = "seat_cap_reached"                 # 상한에 걸려 다 못 봤다(§_RESIDUAL_SEAT_CAP)
 
 #: `ruling.placement` — 평행이동을 **누가 정했는가**. 판정 dict 자신이 나른다:
 #: 앵커로 놓인 배치와 탐색으로 놓인 배치는 다른 주장이고, 판정을 옮겨 적는 자리(확정
@@ -2544,13 +2667,40 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             #    앉혀 놓았으므로 `reference_top_left - placed[i_min]`는 뺄 것이 없다. 그래서
             #    그 값을 시프트로 쓰면 **잔차를 볼 기회가 영영 없다**(§_residual_shift).
             bx, by = anchor_dxy[c["frame"]]
-            rdx, rdy, _hit = _residual_shift(
+            # 🔴 네 번째 반환값을 **버리지 않는다.** 종전에는 `_hit`을 버렸고, 그것이
+            #    「앵커가 옳았다」와 「자격 자리가 없어 포기했다」를 구별하는 유일한 값이었다
+            #    (§RESIDUAL_* 어휘). 버린 결과 두 상태가 화면에서 같은 `shift: 0,0`이 됐다.
+            rdx, rdy, _hit, c["_residual"] = _residual_shift(
                 c["keys"] + bx * _KEY_STRIDE + by, ref_sorted, ref_pairs,
                 (reference_top_left[0] + bx, reference_top_left[1] + by),
                 reference_walk_rank)
-            dx, dy = bx + rdx, by + rdy
+            # ═══ 🔴 REVERTED 2026-08-06 — 같은 날 회귀, 조작자 bisect가 증거 ══════════════
+            # 「깃 헤드를 ec8c0e 로 옮기니까 잘되는데」. `ec8c0e7`은 오늘 서버 커밋 셋
+            # (`17d8d00`·`fac206c`·`4947a65`) **이전**이다. 그리고 코드가 그 bisect를 좁힌다:
+            # `4947a65` 이전의 앵커 갈래는 `dx, dy = anchor_dxy[c["frame"]]`였고 그 값은
+            # **항등적으로 (0,0)**이다(그 커밋 자신의 실측). 그러므로 앵커 갈래에서 0이 아닌
+            # 시프트를 낼 수 있는 생산자는 `_residual_shift` **하나뿐**이고, 조작자가 본
+            # `(5,26)`은 여기서 나왔다.
+            #
+            # 🔴 **잔차는 내가 구성한 경우(웨이퍼 중간부터 도는 부분 맵)를 잡으려고 넣었고,
+            #    실재하는 경우를 깨뜨렸다.** 조작자의 데이터에서는 앵커의 전제가 참이다 —
+            #    작업이 웨이퍼 첫 유효 다이부터 시작하므로 앵커 자리가 이미 옳았고, 잔차가
+            #    옳게 앉은 맵을 **옮겼다**.
+            #
+            # ⚠️ **함수와 그 논거 100줄은 지운다 그것을 다시 벌어들이는 라운드가 쓴다.**
+            #    지금 바뀌는 것은 **적용하느냐**뿐이다: 관찰은 계속하고(`_residual`가 그대로
+            #    실려 나간다) 자리는 앵커의 것을 쓴다. 「다른 자리가 더 맞았을 것」을 조작자가
+            #    **보는** 것은 쓸모가 있고, 기계가 **조용히 가져가는** 것이 방금 일어난 일이다.
+            if isinstance(c.get("_residual"), dict):
+                c["_residual"]["would_move"] = (rdx, rdy)
+                c["_residual"]["applied"] = False
+            dx, dy = bx, by
         else:
             dx, dy, _hit = _solve_shift(c["keys"], ref_sorted, shift_window)
+            # 탐색 갈래에도 이름을 준다 — 창의 크기가 답을 가둘 수 있고(옛 ±3 실패의 지문은
+            # **창 끝에 붙은 값**이었다), 그 사실은 수치가 아니라 상태로 읽혀야 한다.
+            c["_residual"] = {"state": PLACEMENT_SEARCH, "window": shift_window,
+                              "at_window_edge": max(abs(dx), abs(dy)) >= shift_window}
         mem = _membership(c["keys"], ref_sorted, dx, dy)
         c.update(dx=dx, dy=dy, agreement=int(np.count_nonzero(mem)), scored=True,
                  member=mem)
@@ -2841,6 +2991,12 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             # 문턱 비교가 실제보다 후하게 통과한다.
             "value_margin": (None if c["value_agreement"] is None or v_runner is None
                              else (c["value_agreement"] - v_runner)),
+            # 🔴 **`shift`가 무엇을 뜻하는지는 `shift`가 말하지 못한다.** `(0,0)`은 「앵커가
+            #    옳았다」·「자격 자리가 없었다」·「둘 이상이라 못 골랐다」·「물을 수 없었다」
+            #    넷 중 하나이고, 넷은 서로 다른 수리를 가리킨다(§RESIDUAL_*). 관측 전용이고
+            #    판정에 안 쓰인다 — 화면이 「0,0인데 왜 0,0인가」에 답할 수 있게 하는 것이
+            #    이 필드의 전부다.
+            "residual": c.get("_residual"),
             "placed": 0 if c["keys"] is None else int(c["keys"].size),
             "margin": (None if not c["scored"] or runner is None
                        else int(c["agreement"] - runner)),
@@ -2933,6 +3089,15 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    다른 사실**이다. 그래서 `placement`가 옆에 함께 실린다 - 수만 보면 두 경우가 같다.
     _win_row = next((o for o in out if o["frame"] == ruling.get("winner")), None)
     ruling["shift"] = (_win_row or {}).get("shift")
+    # 🔴 **확정이 원점을 적으려면 앵커 쌍이 있어야 하고, 앵커 쌍은 이 경로로만 그리 간다.**
+    #    `/api/maps/alignment/confirm`은 판정을 다시 내지 않는다 — 화면이 `ruling`을 **통째로**
+    #    전사해 되돌려 보내는 것이 계약이고(라우트 docstring [D-2] · `map2/decode.js:448`이
+    #    키를 가리지 않고 얕은 복사한다), 그래서 여기 붙는 키는 클라를 한 줄도 안 고치고
+    #    확정 경로에 도착한다. 승자 행에서 **읽는다** — `shift`와 같은 규율이고, 두 번째
+    #    유도를 만들면 그 둘이 갈리는 날 기록된 시프트와 저장된 원점이 다른 배치를 가리킨다.
+    #    ⚠️ 이름이 `placement`가 아닌 이유: `ruling["placement"]`는 이미 **낱말**
+    #    (`anchor`/`shift_search`)이라 같은 키에 dict을 실으면 그 어휘가 조용히 깨진다.
+    ruling["anchor"] = (_win_row or {}).get("placement")
     ruling["sides_considered"] = [s for s in FRAME_SIDES if s in considered]
     ruling["sides_narrowed"] = len(considered) < len(FRAME_SIDES)
     ruling["geometry_assumed"] = bool(assumed_ids)
@@ -3043,10 +3208,41 @@ def _diag_index_block(per_candidate, out, ruling, source_indices, cell_owner,
     _resid = {o["frame"]: (o.get("shift") or {}) for o in out}
     _moved = {f: (s.get("dx"), s.get("dy")) for f, s in _resid.items()
               if (s.get("dx"), s.get("dy")) not in ((0, 0), (None, None))}
-    if anchor_reason is None and _moved:
-        L.append("  %s: the anchor's premise (job started at the wafer's top-left valid die) "
-                 "is FALSE here - the seat was moved by %s. shift is the residual, not zero."
-                 % (ANCHOR_SEAT_CORRECTED, _moved))
+    _would = {f: r["would_move"] for f, r in
+              ((c["frame"], c.get("_residual")) for c in per_candidate)
+              if isinstance(r, dict) and r.get("would_move") not in (None, (0, 0))}
+    if anchor_reason is None and _would:
+        # 🔴 REVERTED: 관찰은 하되 적용하지 않는다(§callsite). 이 줄이 「기계가 옮겼다」에서
+        #    「기계가 다른 자리를 봤지만 안 옮겼다」로 바뀐 것이 이 라운드의 전부다.
+        L.append("  %s: a different seat would have fit (%s) but was NOT applied - the seat "
+                 "is the anchor's. Reverted 2026-08-06 after this moved a correctly seated "
+                 "map on live data (operator bisect to ec8c0e7)."
+                 % (ANCHOR_SEAT_CORRECTED, _would))
+    # 🔴 **움직이지 않은 후보도 소리를 낸다.** 종전에는 위 한 줄이 전부라 잔차가 0이면 로그가
+    #    조용했고, 그래서 「앵커가 옳았다」와 「자격 자리가 하나도 없어 포기했다」가 운영자에게
+    #    같은 침묵이었다. 그 침묵이 「shift 0,0」 신고가 진단으로 바뀌지 못한 이유다.
+    #    관문은 **하나씩** 낸다 — 합집합만 보면 전부 떨어뜨린 관문과 안 돈 관문이 똑같이 생겼다.
+    _res_rows = [(c["frame"], c.get("_residual")) for c in per_candidate
+                 if isinstance(c.get("_residual"), dict)]
+    if _res_rows:
+        L.append("  residual seat search, per candidate "
+                 "(state | seats scanned | gate1 all-cells-on-valid-dies | "
+                 "gate2 unbroken-walk-run | best occupancy and how many seats tie there):")
+        for frame, r in _res_rows:
+            if r.get("state") == PLACEMENT_SEARCH:
+                L.append("    %-14s %-26s window=+/-%s%s"
+                         % (frame, r["state"], r.get("window"),
+                            "  AT WINDOW EDGE - the answer may lie outside the window"
+                            if r.get("at_window_edge") else ""))
+                continue
+            L.append("    %-14s %-26s seats=%-5s gate1=%-5s gate2=%-5s best=%s/%s tied=%s%s"
+                     % (frame, r.get("state"), r.get("seats_scanned"),
+                        r.get("gate1_on_valid_dies"), r.get("gate2_unbroken_run"),
+                        r.get("best_hit"), (out[0]["placed"] if out else "?"),
+                        r.get("best_tied"),
+                        "   <-- seats scored the maximum but NONE qualified"
+                        if (r.get("state") == RESIDUAL_NO_QUALIFYING_SEAT
+                            and r.get("gate1_on_valid_dies")) else ""))
     for c, o in zip(per_candidate, out):
         if c.get("index_member") is None:
             continue

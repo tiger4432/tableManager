@@ -312,9 +312,14 @@ def _write_confirmed_meta(db, contributors: list, metas: dict, basis_meta: dict,
         # 🔴 배치는 소스 행이 쓰는 것과 **같은 함수**에서 온다(§_placement_of). 여기서 다시
         #    규칙을 쓰면 기록된 시프트와 저장된 원점이 서로 다른 배치를 가리킬 수 있고,
         #    그 둘이 갈리면 화면과 기록이 서로를 부정한다.
+        # 🔴 **한 dict을 두 인자로 넘긴다.** `confirmed_meta_for`가 두 배치 종류를 갈라서
+        #    받는데(앵커 쌍이 있으면 그 쌍, 없으면 시프트 — §`start_from_placement` ①),
+        #    갈래를 여기서 미리 고르면 판정이 두 곳에 살게 된다. `_placement_of`가 실어 온
+        #    것을 그대로 주고 어느 갈래인지는 저쪽 한 곳이 정한다.
+        _p = _placement_of(c, ruling)
         meta = map_alignment.confirmed_meta_for(
             metas.get((table, map_id)), basis_meta, basis, applied, mark,
-            _placement_of(c, ruling))
+            _p, placement=_p)
         if meta is None:
             continue
         items.append(schemas.GeneralUpdateItem(
@@ -732,7 +737,19 @@ def _placement_of(contributor: dict, ruling: dict):
     dx, dy = _as_int(sh.get("dx")), _as_int(sh.get("dy"))
     if dx is None or dy is None:
         return None
-    return {"dx": dx, "dy": dy}
+    out = {"dx": dx, "dy": dy}
+    # 🔴 **앵커 쌍은 시프트와 한 몸으로 다닌다.** 앵커 배치에서 `shift`는 평행이동의 **잔차**
+    #    이고 나머지는 이 쌍 안에 있다 — 둘을 따로 나르면 원점을 적는 쪽이 잔차만 보고
+    #    나머지를 0으로 가정하게 되며, 그것이 실측 240/240 어긋남의 모양이다
+    #    (§`map_alignment.start_from_placement` ①). 여기서 유도하지 않고 판정이 실어 온 것을
+    #    **그대로** 옮긴다 — 서버가 만든 사실이고 화면은 전사만 했다.
+    anchor = r.get("anchor")
+    if isinstance(anchor, dict):
+        a_src, a_ref = anchor.get("anchor_src"), anchor.get("anchor_ref")
+        if a_src is not None and a_ref is not None:
+            out["anchor_src"], out["anchor_ref"] = a_src, a_ref
+            out["linear"] = anchor.get("linear")
+    return out
 
 
 

@@ -1596,8 +1596,62 @@ def _job_from(floor_meta, floor, start, count, base=1):
             [k_of[p] - 1 + base for p in picked])
 
 
+def _reference_top_left(floor_meta, floor):
+    """The reference's first walked valid die, in the reference's OWN stored coordinates.
+    Rebuilt the way `score_candidates` builds it (canonical walk, then back through the
+    pairing) rather than guessed, so this helper cannot drift from the thing it checks."""
+    lc = map_overlay.frame_linear_part(floor_meta, ma._CANONICAL_AXES)
+    pairs = sorted(floor)
+    canon = [map_overlay.apply_linear(lc, x, y) for (x, y) in pairs]
+    back = {}
+    for p, v in zip(canon, pairs):
+        back.setdefault(p, v)
+    return back[ma.serpentine_index(canon, top_is_min_y=True)[1]]
+
+
 @pytest.mark.parametrize("start,residual", [(42, (13, 2)), (100, (-9, 5)), (400, (-9, 14))])
-def test_a_job_that_did_not_start_at_the_wafers_top_left_is_still_placed_on_the_floor(
+def test_the_residual_is_observed_but_NOT_applied(start, residual):
+    """🔴 **REVERT PIN, 2026-08-06.** The assertions below used to require that the residual
+    MOVED the map. It shipped, and on live data it moved a map whose anchor seat was already
+    correct - the operator bisected to `ec8c0e7` (before `17d8d00`/`fac206c`/`4947a65`) and
+    reported the screen correct there. The code narrows the bisect to one producer: before
+    `4947a65` the anchor path used `dx, dy = anchor_dxy[frame]`, which is identically (0,0),
+    so `_residual_shift` is the ONLY thing on that path that can emit a non-zero shift, and
+    therefore the only thing that can have produced the operator's `(5,26)`.
+
+    So the shipped shift is the anchor's seat again. What survives is the OBSERVATION: the
+    search still runs and still reports what it would have chosen, because an operator seeing
+    "a different seat would have fit" is useful and a machine silently taking it is what just
+    happened.
+
+    ⚠️ **The `residual` values in the parameters are still the measured ones and still
+       correct** - they are what the search finds. The change is that finding is no longer
+       doing. When a future round re-earns the movement, this test is where it argues.
+    """
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, ks = _job_from(floor_meta, floor, start, 266)
+    planted = "rot90_front"
+    recorded = _plant(floor_meta, cells, planted)
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    win = next(c for c in cands if c["frame"] == planted)
+    assert ruling["placement"] == ma.PLACEMENT_ANCHOR
+    assert (win["shift"]["dx"], win["shift"]["dy"]) == (0, 0), (
+        "the seat must be the anchor's; the residual is reverted and must not move it: %s"
+        % (win["shift"],))
+    assert win["residual"]["applied"] is False
+    assert tuple(win["residual"]["would_move"]) == residual, (
+        "the search must still REPORT what it would have chosen - that is the evidence the "
+        "round which re-earns this will need: %s" % (win["residual"],))
+
+
+@pytest.mark.skip(reason="RETIRED by the revert above (2026-08-06). Kept, not deleted, so the "
+                         "round that re-earns the residual has its argument and its measured "
+                         "numbers rather than re-deriving them from scratch.")
+@pytest.mark.parametrize("start,residual", [(42, (13, 2)), (100, (-9, 5)), (400, (-9, 14))])
+def test_RETIRED_a_job_that_did_not_start_at_the_wafers_top_left_is_still_placed_on_the_floor(
         start, residual):
     """THE MEASURED PRODUCTION SYMPTOM: 「index로는 잘 되는데 shift를 무조건 0,0으로 계산함」.
 
@@ -1764,8 +1818,13 @@ def test_the_shipped_seat_is_where_the_scorer_put_the_map():
               + pl["linear"][1][0] * (x - pl["anchor_src"][0])
               + pl["linear"][1][1] * (y - pl["anchor_src"][1]))
              for (x, y) in _plant(floor_meta, cells, planted)]
-    assert sum(1 for p in drawn if p in floor_set) == win["agreement"] == 266, (
+    assert sum(1 for p in drawn if p in floor_set) == win["agreement"], (
         "what ships must reproduce what was scored")
+    # 🔴 REVERT PIN (2026-08-06): with the residual inert, `anchor_ref` IS the anchor seat.
+    #    The client draws from this field since `f894a0c`, so if a future round re-enables
+    #    the residual it must move this field too or the two pictures split again.
+    assert tuple(pl["anchor_ref"]) == tuple(_reference_top_left(floor_meta, floor)), (
+        "anchor_ref must be the reference's top-left valid die once nothing moves the seat")
 
 
 def test_the_anchor_places_the_map_and_says_so():
@@ -1915,6 +1974,89 @@ def test_a_confirmed_origin_reproduces_the_alignment_it_was_derived_from(
     assert w2["agreement"] == w1["agreement"]
 
 
+def test_a_zero_shift_says_WHICH_zero_it_is():
+    """「shift 0,0」 was not a symptom anyone could act on, and this pins why it now is.
+
+    `_residual_shift` reaches `(0,0)` down four different paths and they call for four
+    different repairs: the anchor seat qualified uniquely (nothing to fix); no seat
+    qualified (the gates rejected everything); more than one qualified (the data could not
+    choose); there were no walk ranks to ask with. The caller used to unpack three values
+    and drop the third, which was the ONLY thing separating the first two, and the
+    diagnostic line printed only when the residual MOVED - so giving up was silent.
+
+    🔴 **A GATE THAT REJECTS EVERYTHING AND A GATE THAT NEVER RAN LOOK THE SAME FROM
+       OUTSIDE.** That is why the counts are asserted per gate rather than as their
+       conjunction. Measured on this fixture before the naming: candidates reached
+       `(0,0)` with 5 seats scoring full occupancy and 0 surviving gate 2, and nothing on
+       the wire or in `align.log` said so.
+
+    ⚠️ This asserts the OBSERVABILITY, not the choice. The three qualifications are
+       unchanged by this round; whether they are the right qualifications is a separate
+       question with its own measurement.
+    """
+    floor_meta = _meta(cols=45, rows=30, start_x=3, start_y=5)
+    floor = _valid_die_floor(floor_meta)
+    # A job that begins well down the wafer - the case the residual search exists for.
+    grid = map_overlay._grid_of(floor_meta)
+    tf = map_overlay._frame_transformer(floor_meta, grid)
+    w = ma.serpentine_index([tf.visual_to_physical(x, y) for (x, y) in floor],
+                            top_is_min_y=True)
+    job = [w[k] for k in sorted(w)[42:242]]
+    planted = "rot90_front"
+    stf = map_overlay._frame_transformer(
+        ma.source_meta_for_frame(dict(floor_meta), planted), grid)
+    cells = [stf.physical_to_visual(*p) for p in job]
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": dict(floor_meta), "cells": cells,
+          "indices": list(range(1, len(job) + 1))}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    assert ruling["placement"] == ma.PLACEMENT_ANCHOR, "guard: the anchor path must be live"
+
+    scored = [c for c in cands if c["state"] == "scored"]
+    assert scored, "guard: something must have been scored"
+    for c in scored:
+        r = c["residual"]
+        assert isinstance(r, dict) and r.get("state"), (
+            "%s shipped no residual state, so `shift: %s` is unreadable again"
+            % (c["frame"], c["shift"]))
+        # the gates are reported one at a time, and they nest
+        assert r["gate2_unbroken_run"] <= r["gate1_on_valid_dies"] <= r["seats_scanned"]
+
+    zeros = [c for c in scored if (c["shift"]["dx"], c["shift"]["dy"]) == (0, 0)]
+    assert zeros, "guard: this fixture must produce at least one zero shift to name"
+    named = {c["residual"]["state"] for c in zeros}
+    # ⚠️ `ANCHOR_SEAT_CORRECTED` belongs in this set SINCE THE REVERT: the search still finds
+    #    a seat and still says so, but the seat is not applied, so that state now coexists
+    #    with a zero shift. Before the revert it could not.
+    assert named <= {ma.RESIDUAL_ANCHOR_HELD, ma.RESIDUAL_NO_QUALIFYING_SEAT,
+                     ma.RESIDUAL_NOT_UNIQUE, ma.RESIDUAL_NO_WALK_RANKS,
+                     ma.RESIDUAL_SEAT_CAP, ma.ANCHOR_SEAT_CORRECTED}, named
+    assert all(c["residual"]["applied"] is False for c in scored), (
+        "the revert: observed, never applied")
+    # 🔴 THE LOAD-BEARING ONE. A zero that means "gave up" must not be spelled the same as
+    #    a zero that means "the anchor was right". Both occur on this fixture.
+    gave_up = [c for c in zeros if c["residual"]["state"] == ma.RESIDUAL_NO_QUALIFYING_SEAT]
+    assert gave_up, (
+        "this fixture is supposed to contain a candidate whose seats all failed the gates; "
+        "if it no longer does, the fixture stopped exercising the silent path: %s"
+        % {c["frame"]: c["residual"]["state"] for c in zeros})
+    # and that giving-up is distinguishable from the anchor holding
+    held = [c for c in scored if c["residual"]["state"] == ma.RESIDUAL_ANCHOR_HELD]
+    moved = [c for c in scored if c["residual"]["state"] == ma.ANCHOR_SEAT_CORRECTED]
+    assert held or moved, (
+        "no candidate held or moved; the vocabulary would be untested on its positive side")
+    # the one that gave up must show WHERE it died: seats reached gate1 and none survived gate2
+    worst = max(gave_up, key=lambda c: c["residual"]["gate1_on_valid_dies"])
+    assert worst["residual"]["gate1_on_valid_dies"] > 0, (
+        "a candidate that gave up with zero seats even reaching gate 1 cannot tell an "
+        "operator whether gate 2 is too strict or the placement is simply wrong")
+    assert worst["residual"]["gate2_unbroken_run"] == 0
+    assert worst["residual"]["best_tied"] >= 1, (
+        "occupancy saturates here, so the report must carry HOW MANY seats tie at the best "
+        "score - naming one 'best seat' names an arbitrary member of a tie")
+
+
 def test_a_confirmed_origin_survives_the_next_read():
     """SITE 4, asserted directly. `grid_needs_basis` used to compare the whole grid dict, so a
     map whose dimensions matched the floor and whose origin did not re-entered the borrow on
@@ -1929,48 +2071,121 @@ def test_a_confirmed_origin_survives_the_next_read():
         same_dims_other_origin, floor, {"table": "vd", "map_id": "F"}) is None
 
 
-def test_the_stored_start_reconstructs_the_placement():
-    """`grid_start_x/y` is a COMPATIBILITY field, not a display value.
+#: The editor's origin box is NOT square and NOT centred once the two chip pitches differ,
+#: which is what makes `box.minC` and `box.minR` different numbers. A fixture with
+#: `chip_x == chip_y` kills that axis, and this repository has already shipped a swap defect
+#: under exactly that fixture (memory 2026-07-26). The wafer is also smaller than the grid so
+#: `box.minC`/`box.minR` are both non-zero - a box that starts at 0 makes a dropped box term
+#: invisible.
+PHYS_XY = {"phys_wafer_dia": 200.0, "phys_chip_x": 5.0, "phys_chip_y": 8.0,
+           "phys_offset_x": 0.5, "phys_offset_y": -0.3, "phys_edge_margin": 3.0}
 
-    Product owner 2026-08-06: 「start xy는 레거시 호환 위해 저장 필요해」 and 「화면에 표시하지는
-    않되 저장은 하기」. The legacy editor reads `grid_start_x/y` out of the metadata, so the
-    field has a real downstream consumer and is not dead - what retired is the DERIVATION that
-    asked "which origin reproduces the alignment", a question a difference-based placement does
-    not answer. The formula that replaces it is the product owner's own:
 
-        source_start = floor_start + displacement,   displacement = anchor_ref - L * anchor_src
+def _editor_cell(meta, box, x, y):
+    """`client2/src/map_editor.js:2012-2029` READ LITERALLY, inverted for (col, row).
 
-    and the displacement is already inside what ships, so there is no second derivation and no
-    phys. This asserts the property that makes the field useful: a reader holding only the
-    stored start and `L` puts every cell exactly where the scoring put it."""
-    floor_meta = _meta(cols=41, rows=41, start_x=3, start_y=-2)
+    🔴 This is an ORACLE, so it must not call anything the code under test calls. It does not
+       use `visual_to_cell`, `make_frame_transform`, or any server helper that could carry the
+       same mistake - it is the three lines from the other side of the seam and nothing else.
+    ⚠️ The `invertY` branch reads `box.maxR` where the plain branch reads `box.minR`. The y
+       half is NOT the x half mirrored, so it is written out rather than derived.
+    """
+    c = x - meta["grid_start_x"] + box[0]                       # box = (minC, maxC, minR, maxR)
+    r = (box[3] - (y - meta["grid_start_y"]) if meta.get("grid_y_invert")
+         else y - meta["grid_start_y"] + box[2])
+    return c, r
+
+
+def _editor_die(meta, x, y):
+    """The die the legacy editor draws stored (x, y) on, under `meta`."""
+    tf = map_overlay._frame_transformer(meta, map_overlay._grid_of(meta))
+    return tf.cell_to_physical(*_editor_cell(meta, tf.get_wafer_bounding_box(), x, y))
+
+
+@pytest.mark.parametrize("planted", list(ma.CANDIDATE_FRAMES))
+def test_the_written_start_is_where_the_editor_redraws_it(planted):
+    """THE OPERATOR'S CRITERION, AND THE ONLY ONE. 「서버에서 만점이라고 한 거 저장하고
+    편집기 띄워 보면 틀어져 있는데」 · 「x, y 다 틀어지는데」.
+
+    A run the scorer calls perfect must open in the legacy editor with every cell on the die
+    the scorer put it on. `grid_start_x/y` is the entire handoff, so this asserts the handoff
+    and not the algebra behind it.
+
+    🔴 **NOT A ROUND TRIP.** The test this replaces asserted that the written start and the
+       anchor pair agree - but it rebuilt the translation out of the written start itself
+       (`tx = start - floor_start`), so it reduced to `t == t` and passed for ANY start. It was
+       green while every cell drew displaced. Round trips prove nothing on this path:
+       `getDbCoords` and its inverse are exact inverses under any box, including a wrong one.
+       The oracle here comes from the OTHER side of the seam (`_editor_die`), so a mistake
+       shared by both server derivations cannot hide in it.
+
+    🔴 **THE FIXTURE ACTIVATES EVERY AXIS THE DEFECT NEEDS**, and the parametrisation covers
+       rotation 90/270 and `back` rather than sampling one frame that happens to work:
+       `chip_x != chip_y` · wafer smaller than the grid so `box.minC`/`box.minR` are non-zero
+       and unequal · `grid_y_invert` on the source so the `box.maxR` branch runs · the floor's
+       origin non-zero on both axes · the source's own origin different from the floor's on
+       both axes. Measured before the repair: **240 of 240 cells on the wrong die, displaced a
+       uniform (4, 3)** - both axes, the invisible kind.
+
+    ⚠️ **SCOPE.** The editor's origin box becomes the valid-die MASK box when the map's
+       `valid_die_ref` resolves (`MAP_EDITOR_SPEC` section 5.7, `map_editor.js:1942-2006`),
+       while `get_wafer_bounding_box` here is still the circle - spec section 5.7 calls that
+       phase 3 and it is open. This test pins the circle-box reading. The residual is measured
+       and reported separately; it is not in this assertion's reach.
+    """
+    floor_meta = dict(_meta(cols=45, rows=30, start_x=3, start_y=5), **PHYS_XY)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _partial_job(floor_meta, floor, 120)
-    planted = "rot90_front"
-    recorded = [(x + 5, y - 4) for (x, y) in _plant(floor_meta, cells, planted)]
+
+    # The physical truth nobody has declared: the job ran in `planted`, with y inverted and
+    # its own origin. `+5,-4` on stored coordinates IS an origin difference (the origin is a
+    # pure translation of stored coordinates), and it is the term the retired derivations lost.
+    src_true = dict(floor_meta)
+    src_true.update(dict(zip(("rotation", "side"), parse_frame(planted))),
+                    grid_y_invert=True,
+                    grid_start_x=floor_meta["grid_start_x"] + 5,
+                    grid_start_y=floor_meta["grid_start_y"] - 4)
+    fwd = map_overlay.make_frame_transform(floor_meta, src_true)
+    recorded = [fwd(x, y) for (x, y) in cells]
+
+    # What the database actually holds for this map: no frame, the floor's origin, y inverted.
+    stored = dict(floor_meta, grid_y_invert=True)
 
     cands, _e, ruling, _s = ma.score_candidates(
-        [{"map_id": "M1", "meta": dict(floor_meta), "cells": recorded, "indices": ks}],
+        [{"map_id": "M1", "meta": dict(stored), "cells": recorded, "indices": ks}],
         floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
     win = next(c for c in cands if c["frame"] == ruling["winner"])
-    pl = win["placement"]
-    L = pl["linear"]
+    assert win["agreement"] == len(recorded), (
+        "the fixture must be a run the server calls PERFECT before the handoff is judged; "
+        "got %d/%d on %s" % (win["agreement"], len(recorded), ruling["winner"]))
+    assert ruling.get("anchor") == win["placement"], (
+        "the anchor pair reaches confirm by riding `ruling`, which the screen transcribes "
+        "whole; if it stops being attached the write silently falls back to the shift branch")
 
-    start = ma.start_from_anchor(floor_meta, L, pl["anchor_src"], pl["anchor_ref"])
-    assert start is not None
-    # the translation the stored start encodes, relative to the floor's own origin
-    tx = start[0] - floor_meta["grid_start_x"]
-    ty = start[1] - floor_meta["grid_start_y"]
+    written = ma.confirmed_meta_for(
+        dict(stored), floor_meta, {"table": "valid_die_ref", "map_id": "F"},
+        ruling["winner"], {"confirmation_uid": "U", "confirmed_by": "t"},
+        ruling.get("shift"), placement=ruling.get("anchor"))
+    assert written is not None
+
+    L, a_src, a_ref = (win["placement"]["linear"], win["placement"]["anchor_src"],
+                       win["placement"]["anchor_ref"])
+    displaced = []
     for (x, y) in recorded:
-        from_start = (L[0][0] * x + L[0][1] * y + tx, L[1][0] * x + L[1][1] * y + ty)
-        from_anchor = (pl["anchor_ref"][0]
-                       + L[0][0] * (x - pl["anchor_src"][0])
-                       + L[0][1] * (y - pl["anchor_src"][1]),
-                       pl["anchor_ref"][1]
-                       + L[1][0] * (x - pl["anchor_src"][0])
-                       + L[1][1] * (y - pl["anchor_src"][1]))
-        assert from_start == from_anchor, (
-            "the stored start and the anchor pair must be the same fact in two spellings")
+        placed = (a_ref[0] + L[0][0] * (x - a_src[0]) + L[0][1] * (y - a_src[1]),
+                  a_ref[1] + L[1][0] * (x - a_src[0]) + L[1][1] * (y - a_src[1]))
+        seat_src = _editor_die(written, x, y)
+        seat_ref = _editor_die(floor_meta, *placed)
+        if seat_src != seat_ref:
+            displaced.append(((x, y), seat_src, seat_ref))
+    assert not displaced, (
+        "%d of %d cells open in the editor on a different die than the alignment put them on "
+        "(dx=%d, dy=%d on the first one). written start=(%s, %s), the source actually ran at "
+        "(%s, %s)."
+        % (len(displaced), len(recorded),
+           displaced[0][2][0] - displaced[0][1][0], displaced[0][2][1] - displaced[0][1][1],
+           written["grid_start_x"], written["grid_start_y"],
+           src_true["grid_start_x"], src_true["grid_start_y"]))
 
 
 def test_the_stored_start_is_not_on_the_wire():
