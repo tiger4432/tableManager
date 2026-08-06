@@ -9,6 +9,7 @@ from datetime import datetime
 from utils.logger import get_process_logger
 from utils.payload_helper import get_payload_dict
 from utils import heartbeat
+import event_constants
 
 logger = get_process_logger("GraphSync", "graph_sync.log")
 
@@ -680,6 +681,22 @@ async def run_graph_materializer_loop():
 
             if not events:
                 return True, current_mappings
+
+            # [OUTBOX-4] GRAPH_BATCH_LIMIT counts EVENTS, and after the collapse one
+            # event can name 1,000 rows - so this batch could reach 1,000,000 rows in
+            # a single transaction, against the 1,000 the constant was written for.
+            # Re-charge it in ROWS. A prefix is kept, so the cursor still advances
+            # monotonically over the id order and nothing is skipped.
+            #
+            # 🔴 THE BUDGET IS **THIS** WORKER'S OWN PRE-CHANGE VALUE, NOT THE CHAIN
+            # WORKER'S. `OUTBOX_GROUP_MAX_ROWS` (20,000) is the chain worker's
+            # `LIMIT 20000` re-expressed in rows; this worker's cap was
+            # GRAPH_BATCH_LIMIT = 1,000 events = 1,000 rows. Charging the chain
+            # worker's number here does not preserve a meaning - it MULTIPLIES this
+            # batch by 20, and it does so on the arm that runs without per-chunk
+            # commits (see `materialize_events`). Two workers, two caps: a re-derived
+            # limit is checked against each consumer's own prior value, separately.
+            events = event_constants.trim_events_to_row_budget(events, GRAPH_BATCH_LIMIT)
 
             # [이슈 #8] 배치 내 SYSTEM_RELOAD 감지 → 모델/매핑 리로드 후 배치 처리 계속.
             # (커서가 스캔한 범위만 전진하므로 리로드 이벤트를 놓치는 경로가 없다.)

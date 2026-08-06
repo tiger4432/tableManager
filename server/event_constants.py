@@ -69,6 +69,131 @@ BROADCAST_ITEM_LIMIT = 100
 MAX_AUDIT_VALUE_CHARS = 4096
 
 
+# ---------------------------------------------------------------------------
+# [OUTBOX-4] Collapsed outbox events - the SHARED symbols of the shape contract.
+#
+# WHY THIS LIVES HERE AND NOT AT EACH SITE. The producer (`database.stage_event`)
+# and four consumer families (chain worker, graph materializer, admin view,
+# undelivered sweep) have to agree on what a payload MEANS. The documented
+# failure mode of this table is a contract held by convention alone: the
+# undelivered marker is written by `internal_event_client` as
+# `processed_chain=True / status='SUCCESS' / broadcast_at=NULL` and collected by
+# `chain_ingestion_worker.sweep_undelivered_broadcasts` filtering on exactly
+# that, with NO shared symbol binding the two - change either side and nothing
+# fails a test while markers stop being recovered forever. This block exists so
+# the collapse contract does not repeat that.
+#
+# WHAT THE COLLAPSE IS. In `collapsed` mode one outbox row names the row_ids
+# written by one flush instead of one outbox row carrying one row's values.
+#
+# WHY. Measured on this workstation (a simulation) against a real PostgreSQL
+# `database_outbox` with all seven indexes: a per-row `dt_log` event costs
+# 2,108 B/row all-in, i.e. 19.6 GiB at 10,000,000 ingested rows. Collapsed at
+# 1,000 row_ids per event the same 10M rows cost 27.2 B/row - 10,000 outbox rows,
+# 260 MiB. 1,000x fewer rows, 45x fewer bytes.
+#
+# 🔴 THE FRAMING THAT MATTERS IS NOT THE SIZE, IT IS THE DRAIN CEILING. The purge
+# removes OUTBOX_PURGE_CHUNK(1000) x OUTBOX_PURGE_MAX_CHUNKS(50) = 50,000 rows per
+# hourly cycle = 1,200,000 rows/day. That is the drain's SUSTAINED CEILING: at any
+# ingestion rate above 1.2M rows/day the per-row outbox has no steady state and
+# grows without bound. Collapsed, 10M ingested rows produce 10,000 outbox rows -
+# one FIFTH of a single purge cycle. The purge knobs are untouched by this change
+# precisely because at this event rate they no longer need to change.
+#
+# WHAT IT COSTS. The event stops being a SNAPSHOT and becomes a POINTER: a
+# consumer that drains late re-reads the row's CURRENT value, not its value at
+# event time. DELETE therefore cannot collapse (a deleted row cannot be re-read)
+# and stays per-row - see `database.auto_stage_database_outbox`.
+# ---------------------------------------------------------------------------
+
+#: Per-row outbox events - one row per changed row, payload carries its values.
+#: THE DEFAULT, so every caller that does not opt in keeps today's behaviour and
+#: the safe direction needs no edit. The human/correction path must stay here:
+#: a correction that reaches the DB but not the screen stops the correction loop.
+OUTBOX_MODE_PER_ROW = "per_row"
+
+#: Collapsed events - one row per (table, event_type) per flush, naming row_ids.
+#: Bulk ingestion only, opted into explicitly. NOT inferred from `request_source`
+#: (that is a FILENAME on the ingestion path, not a channel) and NOT inferred
+#: from row count (a human map push is thousands of rows and must stay per-row).
+OUTBOX_MODE_COLLAPSED = "collapsed"
+
+#: Max row_ids carried by ONE collapsed event. Also the project-wide 1,000-row
+#: chunking discipline. Keeps the payload ~40 KB, and bounds the blast radius of
+#: the failure path: a poison row re-expands at most this many per-row retries.
+OUTBOX_COLLAPSE_CHUNK_ROWS = 1000
+
+#: Max INGESTED ROWS a chain/graph worker pulls into one processing batch.
+#:
+#: 🔴 THIS IS THE OLD `LIMIT 20000` KEEPING ITS MEANING, NOT A NEW KNOB. That cap
+#: bounded the chain worker's completion-guard fetch at 20,000 EVENTS, which
+#: while events were per-row meant 20,000 ROWS. Counting events after the
+#: collapse would let one batch pull 20,000 chunks = 20,000,000 rows into a
+#: single mapper call - a 1,000x amplification of the working set, in the one
+#: place the codebase is most careful about (`bulk_*`, 1,000-row chunking). The
+#: budget below is charged in ROWS (a per-row event costs 1, a collapsed event
+#: costs its `row_count`), so the working set after the collapse is the same size
+#: it was before it.
+OUTBOX_GROUP_MAX_ROWS = 20000
+
+#: Columns `stage_event` never puts in a payload (identity + housekeeping).
+#: Shared so the expander rebuilds EXACTLY the columns the producer would have
+#: written - a divergence here is a mapper silently seeing a column appear or
+#: vanish, with nothing to fail.
+OUTBOX_PAYLOAD_EXCLUDED_COLUMNS = frozenset({
+    "row_id", "business_key_val", "created_at", "updated_at",
+    "is_graph_synced", "needs_graph_rollback", "graph_synced_at",
+})
+
+
+def is_collapsed_payload(payload) -> bool:
+    """True if this outbox payload NAMES rows instead of CARRYING one row's values.
+
+    Membership test on the discriminating key, not on `event_type`: the collapse
+    deliberately keeps `event_type` as CREATE/EDIT so that every consumer which
+    only asks "is this a data change on table T" (`_group_target_tables`, the
+    circular-loop filter, `materialize_events`, the admin view, health) keeps
+    working untouched. Only the consumers that actually READ `payload['data']`
+    need to branch, and they branch here.
+    """
+    return isinstance(payload, dict) and isinstance(payload.get("row_ids"), list)
+
+
+def payload_row_count(payload) -> int:
+    """How many ingested rows one outbox event stands for (per-row events: 1)."""
+    if is_collapsed_payload(payload):
+        rc = payload.get("row_count")
+        if isinstance(rc, int) and rc >= 0:
+            return rc
+        return len(payload.get("row_ids") or ())
+    return 1
+
+
+def trim_events_to_row_budget(events, budget: int = OUTBOX_GROUP_MAX_ROWS,
+                              payload_of=None):
+    """Keep the id-ordered PREFIX of `events` whose ingested-row total fits `budget`.
+
+    A prefix, never a filter: the tail is left `processed_chain=False` and is
+    picked up by the next iteration in the same order, so nothing is skipped and
+    no ordering is inverted. At least one event is always returned - a single
+    chunk larger than the budget must still make progress rather than wedge the
+    drain forever.
+    """
+    if not events:
+        return events
+    if payload_of is None:
+        from utils.payload_helper import get_payload_dict as payload_of
+    kept = []
+    total = 0
+    for ev in events:
+        cost = payload_row_count(payload_of(ev))
+        if kept and total + cost > budget:
+            break
+        kept.append(ev)
+        total += cost
+    return kept
+
+
 def truncate_audit_value(value, max_chars: int = MAX_AUDIT_VALUE_CHARS):
     """감사 로그 값 1건을 상한 길이로 절단한다(절단 시 명시 마커 부착).
 

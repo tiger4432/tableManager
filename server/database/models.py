@@ -11,7 +11,16 @@ from sqlalchemy.dialects.postgresql import JSONB
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    id = Column(Integer, primary_key=True, index=True)
+    # [D3] NO `index=True` HERE, and the same applies to every `primary_key=True` column
+    # in this file. PostgreSQL builds the primary key's own UNIQUE btree regardless, so
+    # `index=True` emits a SECOND, identical, non-unique btree that is maintained on
+    # every write and that the planner never needs - it can always use the PK index
+    # instead. Measured on the dev catalogue 2026-08-07: 29 such duplicates, 382.3 MB,
+    # of which `ix_cell_sources_id` alone was 314 MB against a 314 MB
+    # `cell_sources_pkey`. `create_all` never drops an index, so removing the flag only
+    # stops NEW databases from growing them; existing ones are cleaned by
+    # `server/migrations/add_business_key_unique_index.py --drop-redundant`.
+    id = Column(Integer, primary_key=True)
     table_name = Column(String, index=True)
     row_id = Column(String, index=True)
     column_name = Column(String)
@@ -186,7 +195,7 @@ class DatabaseOutbox(Base):
 class FileIngestionLog(Base):
     __tablename__ = "file_ingestion_logs"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)  # [D3] see AuditLog.id - no index=True on a PK
     filename = Column(String, index=True)
     filepath = Column(String)
     table_name = Column(String, index=True)
@@ -247,7 +256,8 @@ class FileIngestionCheckpoint(Base):
 class CellOverwrite(Base):
     __tablename__ = "cell_overwrites"
 
-    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    # [D3] no index=True on a PK column - see AuditLog.id
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
     table_name = Column(String, nullable=False, index=True)
     row_id = Column(String, nullable=False, index=True)
     column_name = Column(String, nullable=False, index=True)
@@ -264,7 +274,8 @@ class CellOverwrite(Base):
 class CellSource(Base):
     __tablename__ = "cell_sources"
 
-    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    # [D3] no index=True on a PK column - see AuditLog.id
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
     table_name = Column(String, nullable=False, index=True)
     row_id = Column(String, nullable=False, index=True)
     column_name = Column(String, nullable=False, index=True)
@@ -660,7 +671,20 @@ def init_dynamic_models(config_dict: dict):
             
         # 1. 모든 동적 물리 테이블이 공유할 메타데이터 컬럼들
         columns = [
-            Column("row_id", String, primary_key=True, index=True),
+            # [D3] no index=True on a PK column - see AuditLog.id. This one declaration
+            # produced 26 of the 29 duplicates measured, one per dynamic table
+            # (`ix_<table>_row_id` beside `<table>_pkey`), which is why reading the four
+            # named model classes and stopping there misses most of the extension.
+            Column("row_id", String, primary_key=True),
+            # NOTE: `business_key_val` keeps its NON-unique index here, and the UNIQUE
+            # index that makes it an enforced identity is built by
+            # `server/migrations/add_business_key_unique_index.py` instead. Declaring
+            # `unique=True` here would not remove the need for that migration -
+            # `create_all` does not add indexes to tables that already exist, so it
+            # would be a no-op on exactly the databases where duplicates can already
+            # have accumulated. ⚠️ The honest cost of that choice: a FRESHLY created
+            # database is unprotected until the migration is run, so the migration
+            # belongs in the setup sequence and not only in the upgrade one.
             Column("business_key_val", String, index=True, nullable=True),
             Column("created_at", DateTime(timezone=True), server_default=func.now(), index=True),
             Column("updated_at", DateTime(timezone=True), server_default=func.now(), index=True),

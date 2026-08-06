@@ -2593,8 +2593,185 @@ def refuse_virtual_join_columns(db: Session, table_name: str, batch: schemas.Gen
 # the argument for it was never wrong, only its subject was withdrawn.
 
 
+# [D3] Index name prefix written by `migrations/add_business_key_unique_index.py`.
+# Duplicated as a literal rather than imported: `crud` is imported from contexts where
+# `server/migrations` is not on `sys.path` (plugin shims, the watcher's own path setup),
+# and an ImportError here would take down every write path to save one constant.
+BK_UNIQUE_INDEX_PREFIX = "uq_bk_"
+
+# How many times a batch may be replayed after losing a race. One is enough for the
+# mechanism - the retry re-reads the row the winner committed, so the second attempt
+# resolves onto it instead of inserting - and a second attempt is kept only for the case
+# where two writers both lose to a third. Beyond that a bounded failure is the honest
+# outcome: an unbounded retry against a genuinely conflicting key is a hang, not a fix.
+BK_CONFLICT_MAX_RETRIES = 2
+
+
+def _replay_sensitive_key_column(table_name: str, batch) -> Optional[str]:
+    """The payload column a replay must un-write first, or None when there is none.
+
+    🔴 THE REPLAY CANNOT REUSE THE PAYLOAD ATTEMPT 1 LEFT BEHIND, and this is the whole
+    reason this function exists. `assemble_composite_business_key` writes the assembled
+    key back into `update_item.updates[key_col]` IN PLACE. For a `replace_map` write,
+    `derive_replace_map_scope`'s legacy branch (no declared `map_key_columns`) builds the
+    purge filters from every non-coordinate column present in the FIRST payload row - and
+    the business key column is not in its skip list. So attempt 1 leaves a column in the
+    payload that attempt 2's resolver then reads as another filter:
+
+        attempt 1 scope : {'target_table': 'bonding_map', 'map_id': 'LOT1_01'}
+        attempt 2 scope : {'map_pk': 'bonding_map_LOT1_01', 'target_table': ..., ...}
+
+    which narrows a whole-map purge to a single row while the route still answers 200.
+    `assemble_composite_business_key`'s own docstring calls this an ORDERING CONSTRAINT
+    and asserts "the resolver sees exactly the payload it saw before" - true for a single
+    pass, false by construction once a replay exists. This restores that sentence.
+
+    Returns None - and therefore costs nothing at all - unless BOTH are true:
+      * the write is a `replace_map` (nothing else derives a decision from the payload)
+      * the table assembles its key from its own columns (nothing else mutates it)
+    Tables that hit it today: the four with `composite_key_source` and no
+    `map_key_columns` (`lot_event`, `wafer_id_status`, `eqp_frame_attribution`,
+    `wafer_map_metadata`). The seven shipped map tables declare `map_key_columns` and
+    take the declared branch, so they are safe either way - but that is a fact about
+    today's config, not an invariant, which is why the fix is here and not in a comment.
+
+    ⚠️ IF A FUTURE DECISION IS DERIVED FROM THE PAYLOAD OUTSIDE `replace_map`, WIDEN THIS.
+    """
+    if not getattr(batch, "replace_map", None):
+        return None
+    cfg = TABLE_CONFIG.get(table_name, {})
+    if not cfg.get("composite_key_source"):
+        return None
+    return cfg.get("business_key") or None
+
+
+def _snapshot_payload_identity(batch, key_col: str) -> list:
+    """Exactly the two fields `assemble_composite_business_key` writes, per item.
+
+    Not a deep copy. A `replace_map` push can carry tens of thousands of cells and this
+    runs on every one of them before the first attempt, so it holds three references per
+    item, not a duplicated object graph.
+    """
+    return [(it, it.business_key_val, key_col in it.updates) for it in batch.updates]
+
+
+def _restore_payload_identity(snapshot: list, key_col: str):
+    """Put the payload back the way the caller handed it over."""
+    for item, business_key_val, had_key_col in snapshot:
+        item.business_key_val = business_key_val
+        if not had_key_col:
+            item.updates.pop(key_col, None)
+
+
+def _is_business_key_unique_violation(exc) -> bool:
+    """True only for "another writer already has this business key".
+
+    🔴 THE NARROWNESS IS THE POINT. Retrying on any `IntegrityError` would swallow a
+    genuine constraint failure - a NOT NULL breach, a `cell_sources` unique collision, a
+    real key conflict inside one payload - and replay it until it gave up, replacing one
+    invisible failure with another. Only the constraint this lane created is recoverable
+    here, because only for that one is "read what the other process wrote and merge into
+    it" a correct answer.
+
+    Two dialects are recognised on purpose. PostgreSQL is the production answer:
+    SQLSTATE 23505 plus the constraint name, which is authoritative. SQLite is what the
+    test suite runs, and it reports the same event as
+    `UNIQUE constraint failed: <table>.business_key_val` with no code and no constraint
+    name - so the column name in the message is the only signal available there. A
+    detector that only understood PostgreSQL could never be exercised by a test, which
+    is how untested recovery paths get shipped.
+    """
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        if getattr(orig, "pgcode", None) == "23505":
+            diag = getattr(orig, "diag", None)
+            name = getattr(diag, "constraint_name", None) or ""
+            return name.startswith(BK_UNIQUE_INDEX_PREFIX)
+        # No pgcode: not PostgreSQL. Fall through to the message test.
+    text = str(getattr(exc, "orig", exc) or exc).lower()
+    return "unique" in text and "business_key_val" in text
+
+
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
                         replace_report: Optional[dict] = None):
+    """Batch write, with one recovery: losing a cross-process race on a business key.
+
+    [D3] `_apply_batch_updates_once` decides identity from a prefetch whose proof of
+    absence (`ProbedIdentity`) is sound against this session's loop and against nothing
+    else. Another OS process committing the same business key inside the window used to
+    produce two rows carrying one business key, silently - reproduced with two real
+    processes at the production chunk size of 1,000 items, window 2.4 s
+    (`Server_M2_race_reachability.md`). With the UNIQUE index from
+    `migrations/add_business_key_unique_index.py` in place, that outcome is an
+    `IntegrityError` instead, and this wrapper turns the error into the correct result.
+
+    HOW THE RETRY MERGES rather than merely retrying: the rollback ends the failed
+    transaction, so the replay's prefetch runs in a NEW READ COMMITTED snapshot and now
+    SEES the row the winner committed. `row_cache` is populated with it,
+    `_get_or_create_row` resolves onto it, and the batch updates that row instead of
+    inserting a second one. There is no separate merge code to keep in step - the replay
+    IS the merge, through the one identity resolver that exists.
+
+    ⚠️ THE RECOVERY IS NAMED AND LOGGED AT WARNING, ALWAYS. A silent retry would hide
+    the race it recovered from, and a race that never shows up in a log is a race nobody
+    ever measures. If it exhausts its attempts the error is re-raised unchanged.
+
+    ⚠️ Replay safety: `assemble_composite_business_key` is guarded on "neither id nor key
+    supplied", so a second pass over the same `batch.updates` recomputes nothing and the
+    keys are identical. `audit_cache.add_logs_batch` runs only AFTER `db.commit()`
+    returns, so a failed attempt contributes no cached logs. `db.rollback()` discards the
+    pending rows of the failed attempt, and the outbox rows staged by `before_flush` go
+    with them - the replay stages them again.
+
+    ⚠️ ONE THING THE ROLLBACK DOES COST, stated rather than left to be discovered.
+    `ingestion_checkpoint.record_chunk_progress` deliberately issues its offset UPDATE in
+    THIS session immediately before this call, so that "rows committed == offset
+    recorded" holds atomically (its own docstring is the contract). A rollback here
+    discards that UPDATE, and the replay commits the chunk with the offset unadvanced.
+    The consequence is exactly the degraded mode that module already documents and
+    accepts - a later crash re-processes this chunk, and the upserts are idempotent, so
+    it is re-ingestion, not loss. Restoring full atomicity needs the caller to re-issue
+    its pre-write statements on replay, which this wrapper cannot do from here.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    # [D3-F1] Captured BEFORE attempt 1, because by the time the conflict is raised the
+    # payload has already been written into. See `_replay_sensitive_key_column`.
+    replay_key_col = _replay_sensitive_key_column(table_name, batch)
+    pristine_payload = (_snapshot_payload_identity(batch, replay_key_col)
+                        if replay_key_col else None)
+
+    for attempt in range(BK_CONFLICT_MAX_RETRIES + 1):
+        if attempt and pristine_payload is not None:
+            _restore_payload_identity(pristine_payload, replay_key_col)
+        try:
+            return _apply_batch_updates_once(db, table_name, batch, replace_report)
+        except IntegrityError as exc:
+            if not _is_business_key_unique_violation(exc):
+                raise
+            db.rollback()
+            if attempt >= BK_CONFLICT_MAX_RETRIES:
+                logger.error(
+                    f"🔴 [BK Conflict Unresolved] Table: '{table_name}' | "
+                    f"TX: {batch.transaction_id} | Rows: {len(batch.updates)} | "
+                    f"attempts: {attempt + 1} | A business key kept colliding after "
+                    f"re-reading. This is NOT a lost race - it is a genuine duplicate "
+                    f"identity, and the batch is refused rather than replayed forever."
+                )
+                raise
+            logger.warning(
+                f"⚠️ [BK Conflict Recovered] Table: '{table_name}' | "
+                f"TX: {batch.transaction_id} | Rows: {len(batch.updates)} | "
+                f"attempt {attempt + 1} lost a business_key_val race to another writer; "
+                f"re-prefetching identity and merging into the committed row. "
+                f"({exc.__class__.__name__}: "
+                f"{str(getattr(exc, 'orig', exc)).strip().splitlines()[0]})"
+            )
+
+
+def _apply_batch_updates_once(db: Session, table_name: str,
+                              batch: schemas.GeneralUpdateBatch,
+                              replace_report: Optional[dict] = None):
     """통합 업데이트를 배치로 처리합니다.
 
     replace_report: optional out-param (dict). When batch.replace_map is set and a dict

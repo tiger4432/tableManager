@@ -1,4 +1,5 @@
 from sqlalchemy import desc
+from sqlalchemy.exc import IntegrityError  # [D3] business-key conflict -> 409, not 500
 from sqlalchemy.orm import Session
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
@@ -2491,6 +2492,22 @@ async def apply_batch_updates_endpoint(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except IntegrityError as e:
+        # [D3] A business-key conflict that survived `apply_batch_updates`' replays is
+        # NOT a server fault, and 500 says it is. The write path already re-read the
+        # committed row and still could not merge, which means two different identities
+        # are claiming one business key - the caller has to change what it sent.
+        # Anything else that raises IntegrityError keeps its 500: this branch refuses to
+        # widen, for exactly the reason the retry itself refuses to (see
+        # `crud._is_business_key_unique_violation`).
+        if not crud._is_business_key_unique_violation(e):
+            raise
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{table_name}'에 이미 같은 업무 키를 쓰는 행이 있습니다. "
+                   f"다른 프로세스가 방금 같은 키를 저장했을 수 있습니다 — "
+                   f"새로고침 후 다시 시도하세요."
+        )
 
     # [adopt] Decided HERE, before the response is built, not inside the background
     # broadcast - the caller has to be told in the same answer that the id list it is
@@ -4011,9 +4028,33 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
                (f"single_{e.event_uuid}" == transaction_id)
         ]
         
+    # [OUTBOX-4] A collapsed chunk that already re-expanded is NOT retryable as a
+    # chunk. Its rows are already back in the queue as per-row children under
+    # `<tx>#row#<row_id>` transaction ids; resetting the parent would send the same
+    # 1,000 rows through the mapper a second time, and - without the idempotence
+    # guard in `outbox_expand.reexpand_collapsed_event` - would have multiplied
+    # outbox rows by 1,000 on every press of this button. It is skipped, and the
+    # response SAYS SO with where its rows went, rather than reporting a reset that
+    # would have been a no-op at best.
+    already_expanded = [
+        e for e in failed_events
+        if (get_payload_dict(e).get("error_log") or {}).get("reexpanded_into")
+    ]
+    if already_expanded:
+        skipped_uuids = {e.event_uuid for e in already_expanded}
+        failed_events = [e for e in failed_events if e.event_uuid not in skipped_uuids]
+
     if not failed_events:
-        return {"status": "success", "message": "No matching failed outbox events found."}
-        
+        msg = "No matching failed outbox events found."
+        if already_expanded:
+            msg = (
+                f"{len(already_expanded)} matching event(s) are collapsed chunks that "
+                f"were already re-expanded into per-row events; retry those children "
+                f"by their '<transaction_id>#row#' ids instead. Nothing was reset."
+            )
+        return {"status": "success", "message": msg,
+                "skipped_reexpanded": len(already_expanded)}
+
     for event in failed_events:
         event.status = "PENDING"
         event.retry_count = 0
@@ -4027,7 +4068,12 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
             event.payload = payload_copy
             
     db.commit()
-    return {"status": "success", "message": f"Successfully reset {len(failed_events)} failed events to PENDING."}
+    msg = f"Successfully reset {len(failed_events)} failed events to PENDING."
+    if already_expanded:
+        msg += (f" Skipped {len(already_expanded)} already-re-expanded collapsed "
+                f"chunk(s); their rows are queued individually.")
+    return {"status": "success", "message": msg,
+            "skipped_reexpanded": len(already_expanded)}
 
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):

@@ -405,8 +405,23 @@ def materialize_events(db, events: list, mappings: dict,
     - DELETE → G1에서는 스킵(노드/엣지 정리 정책은 스펙 §8 미결 — 카운트만 집계).
     """
     from utils.payload_helper import get_payload_dict
+    from event_constants import is_collapsed_payload
 
     rows_by_table = {}
+    # [OUTBOX-4] Collapsed events do NOT carry values, they name rows - and the
+    # pointer-shaped materialization for exactly that already exists as
+    # `resync_table(row_ids=...)`, so this arm routes to it rather than building a
+    # second one.
+    #
+    # 🔴 THE KEY INCLUDES `updated_by` AND `event_time`, NOT JUST THE TABLE. Grouping
+    # by table alone and taking the FIRST event's identity would materialize every
+    # later event's rows under that first event's provenance and time: a watcher
+    # ingest at 10:00 and a chain write at 10:05 on the same table would give all
+    # 2,000 rows `updated_by="watcher_ingest"` at 10:00. Nothing would fail -
+    # `resync_table` receives a perfectly valid string - and the per-row arm ten
+    # lines below gives EACH row its own. That is exactly the silent path
+    # inequivalence the `updated_by`/`event_time` parameters were added to prevent.
+    collapsed_groups = {}   # (table_name, updated_by, event_time) -> [row_id, ...]
     skipped_deletes = 0
     for event in events:
         if event.event_type == "DELETE":
@@ -422,6 +437,10 @@ def materialize_events(db, events: list, mappings: dict,
             continue
         payload = get_payload_dict(event)
         if not isinstance(payload, dict):
+            continue
+        if is_collapsed_payload(payload):
+            key = (event.table_name, payload.get("updated_by"), payload.get("timestamp"))
+            collapsed_groups.setdefault(key, []).extend(payload.get("row_ids") or ())
             continue
         rows_by_table.setdefault(event.table_name, []).append({
             "row_id": payload.get("row_id"),
@@ -446,12 +465,52 @@ def materialize_events(db, events: list, mappings: dict,
     node_ids = bulk_upsert_nodes(db, node_map, chunk_size=chunk_size)
     edge_count = bulk_upsert_edges(db, edges, node_ids, chunk_size=chunk_size,
                                    processed_refs=processed_refs)
-    return {
+    stats = {
         "rows": total_rows,
         "nodes": len(node_map),
         "edges": edge_count,
         "skipped_deletes": skipped_deletes,
     }
+
+    # [OUTBOX-4] Collapsed events, through the existing row_ids materializer.
+    # `stamp_synced=False` because these rows are reached by the outbox cursor, not
+    # by the is_graph_synced backlog sweep. Rows named by the event but since deleted
+    # are simply not returned by the load - the same outcome `chain_replay` gives
+    # them, and the same one `resync_table` has always given.
+    #
+    # 🔴 WHY `commit_chunks=False` DOES NOT REVERSE C-7. C-7 ("수십만 행 단일 커밋
+    # 금지") is about `resync_table`'s FULL-TABLE mode, which walks an entire table in
+    # one call. This arm is bounded by the caller's batch budget, and that budget is
+    # this consumer's own pre-change cap: `graph_sync_worker` trims to
+    # GRAPH_BATCH_LIMIT = 1,000 ROWS, which is one CHUNK_SIZE. So the collapsed arm
+    # holds at most one chunk before its caller commits - the same amount the per-row
+    # arm above has always held, since `materialize_events` has never committed
+    # mid-batch either. Disabling the per-chunk commit here is what keeps the graph
+    # worker's "materialize + advance cursor" atomic, which is the property that makes
+    # a crash replay-safe.
+    #
+    # It is bounded by a CALLER's discipline, so it is checked rather than assumed:
+    # a caller that skips the budget gets a named warning instead of a silent
+    # multi-chunk transaction.
+    collapsed_total = sum(len(v) for v in collapsed_groups.values())
+    if collapsed_total > chunk_size:
+        logger.warning(
+            "[Graph][OUTBOX-4] collapsed batch names %d rows, more than one chunk "
+            "(%d), and this path runs without per-chunk commits. The caller did not "
+            "apply a row budget (graph_sync_worker trims to GRAPH_BATCH_LIMIT rows).",
+            collapsed_total, chunk_size)
+
+    for (table_name, updated_by, event_time), row_ids in collapsed_groups.items():
+        sub = resync_table(
+            db, table_name, mappings, chunk_size=chunk_size,
+            row_ids=row_ids, stamp_synced=False, commit_chunks=False,
+            updated_by=updated_by, event_time=event_time,
+        )
+        stats["rows"] += sub["rows"]
+        stats["nodes"] += sub["nodes"]
+        stats["edges"] += sub["edges"]
+
+    return stats
 
 
 # ----------------- 전체/부분 재동기화 (C-7 해소: 키셋 페이지네이션 청킹) -----------------
@@ -516,7 +575,9 @@ def attach_col_sources(db, table_name: str, rows: list, mapping: dict):
 
 
 def resync_table(db, table_name: str, mappings: dict, chunk_size: int = CHUNK_SIZE,
-                 row_ids: list = None, chunk_hook=None, stamp_synced: bool = True) -> dict:
+                 row_ids: list = None, chunk_hook=None, stamp_synced: bool = True,
+                 updated_by: str = "graph_resync", event_time=None,
+                 commit_chunks: bool = True) -> dict:
     """테이블 로우를 키셋 페이지네이션(row_id asc) 청크로 그래프에 재동기화한다.
 
     [C-7 해소] 무제한 `.all()` 로드 금지 — 청크 로드→materialize→(스탬프)→commit 반복.
@@ -524,6 +585,16 @@ def resync_table(db, table_name: str, mappings: dict, chunk_size: int = CHUNK_SI
     - 엣지 provenance는 셀 레이어(CellSource)의 최우선 소스로 복원한다(user 최우선).
     - chunk_hook(rows): 저장소 중립(§4) 확장점 — Neo4j 등 병행 타깃이 청크 단위로 동승.
     - stamp_synced: 청크마다 is_graph_synced/graph_synced_at 벌크 스탬프(+ per-chunk commit).
+
+    [OUTBOX-4] `updated_by` / `event_time` / `commit_chunks` exist so the INCREMENTAL
+    path can reuse this function instead of growing a second row_ids materializer.
+    A collapsed outbox event names rows, which is precisely this function's
+    `row_ids` mode - but it also knows WHO wrote them and WHEN, and hardcoding
+    "graph_resync"/`updated_at` would have silently changed the provenance and the
+    event time of every incrementally materialized edge on tables that do not
+    declare `event_time_column`. `commit_chunks=False` keeps the caller's
+    transaction whole: the graph worker commits materialization AND its cursor
+    advance together, and a commit in here would split that pair.
     """
     from database.models import DYNAMIC_TABLES
 
@@ -543,8 +614,8 @@ def resync_table(db, table_name: str, mappings: dict, chunk_size: int = CHUNK_SI
             {
                 "row_id": r.row_id,
                 "values": {c: getattr(r, c, None) for c in data_columns},
-                "updated_by": "graph_resync",
-                "event_time": getattr(r, "updated_at", None),
+                "updated_by": updated_by,
+                "event_time": event_time if event_time is not None else getattr(r, "updated_at", None),
             }
             for r in chunk
         ]
@@ -567,7 +638,8 @@ def resync_table(db, table_name: str, mappings: dict, chunk_size: int = CHUNK_SI
                 },
                 synchronize_session=False,
             )
-        db.commit()  # 청크 단위 커밋 — 수십만 행 단일 커밋 금지(C-7)
+        if commit_chunks:
+            db.commit()  # 청크 단위 커밋 — 수십만 행 단일 커밋 금지(C-7)
 
         stats["rows"] += chunk_stats["rows"]
         stats["nodes"] += chunk_stats["nodes"]

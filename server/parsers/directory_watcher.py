@@ -1827,6 +1827,21 @@ class IngestionHandler(FileSystemEventHandler):
         # going nowhere is not. See _announce_dropped_columns for the reporting shape.
         dropped_value_counts = {}
 
+        # [OUTBOX-4] THE ONE PLACE THAT OPTS INTO COLLAPSED OUTBOX EVENTS.
+        # File ingestion is where the 10,000,000 rows are: per-row outbox events cost
+        # 2,108 B/row on `dt_log` (19.6 GiB at 10M) and, more decisively, the purge
+        # drains only 1.2M rows/day - so above that ingestion rate the outbox has no
+        # steady state at all. Collapsed, the same file writes one event per 1,000-row
+        # chunk: 10,000 rows, 260 MiB, one fifth of a SINGLE purge cycle.
+        #
+        # Set HERE, around the whole file loop, and nowhere else: it nests outside
+        # `crud.transaction_context` (which sets user/tx/source and does not touch this
+        # var), so every chunk of this file stages collapsed while every other writer in
+        # the process - and every human correction anywhere - keeps the per_row default.
+        from database.context import request_outbox_mode
+        from event_constants import OUTBOX_MODE_COLLAPSED
+        _outbox_token = request_outbox_mode.set(OUTBOX_MODE_COLLAPSED)
+
         try:
             while True:
                 chunk = list(islice(row_iter, batch_size))
@@ -1952,6 +1967,10 @@ class IngestionHandler(FileSystemEventHandler):
         except Exception as outer_e:
             logger.error(f"[{t_name}] Outer error during batch injection loop: {outer_e}")
             raise outer_e
+        finally:
+            # [OUTBOX-4] Restore per_row for whatever this thread does next. A leaked
+            # token would make the NEXT writer on this thread collapse silently.
+            request_outbox_mode.reset(_outbox_token)
 
 class WorkspaceWatcher:
     """

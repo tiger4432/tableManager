@@ -127,15 +127,36 @@ def _clear_outbox_notify_latch(session, transaction):
 @event.listens_for(Session, "before_flush")
 def auto_stage_database_outbox(session, flush_context, instances):
     from .models import DYNAMIC_TABLES
+    from .context import request_outbox_mode
     from sqlalchemy import inspect
     dynamic_classes = tuple(DYNAMIC_TABLES.values())
+    if not dynamic_classes:
+        return
+
+    try:
+        from event_constants import OUTBOX_MODE_COLLAPSED
+    except ImportError:  # pragma: no cover - same sys.path guard as crud.py
+        import sys as _sys
+        _sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        from event_constants import OUTBOX_MODE_COLLAPSED
+
+    collapsed = request_outbox_mode.get() == OUTBOX_MODE_COLLAPSED
+    # [OUTBOX-4] (table_name, event_type) -> [row_id, ...] for the collapsed path.
+    # Insertion-ordered so the events this flush stages come out in a stable order.
+    pending_chunks = {}
+
+    def _emit(event_type, obj):
+        if collapsed:
+            pending_chunks.setdefault((obj.__table__.name, event_type), []).append(obj.row_id)
+        else:
+            stage_event(session, event_type, obj.__table__.name, obj)
 
     for obj in session.new:
-        if dynamic_classes and isinstance(obj, dynamic_classes):
-            stage_event(session, "CREATE", obj.__table__.name, obj)
+        if isinstance(obj, dynamic_classes):
+            _emit("CREATE", obj)
 
     for obj in session.dirty:
-        if dynamic_classes and isinstance(obj, dynamic_classes):
+        if isinstance(obj, dynamic_classes):
             # 변경된 속성 컬럼 목록 검출
             try:
                 insp = inspect(obj)
@@ -149,24 +170,109 @@ def auto_stage_database_outbox(session, flush_context, instances):
                 if all(col in graph_meta_cols for col in dirty_cols):
                     continue
 
-            stage_event(session, "EDIT", obj.__table__.name, obj)
+            _emit("EDIT", obj)
 
     for obj in session.deleted:
-        if dynamic_classes and isinstance(obj, dynamic_classes):
+        if isinstance(obj, dynamic_classes):
+            # 🔴 DELETE NEVER COLLAPSES, in either mode. A collapsed event is a
+            # POINTER and a deleted row cannot be re-read, so a collapsed DELETE
+            # would name rows nobody can ever resolve. The volume this round
+            # exists for is CREATE/EDIT (an ingested file is upserts); DELETEs are
+            # shell-row cleanups, orders of magnitude fewer.
             stage_event(session, "DELETE", obj.__table__.name, obj)
+
+    for (table_name, event_type), row_ids in pending_chunks.items():
+        stage_collapsed_event(session, event_type, table_name, row_ids)
+
+
+def _outbox_envelope():
+    """The (tx_id, user, source, timestamp) every outbox payload carries.
+
+    One place, so the collapsed event and the per-row event cannot drift on the
+    fields every consumer greps for (`transaction_id` drives grouping, and
+    `source_name == 'chain_ingestion'` is the circular-loop filter - a collapsed
+    event that lost either would be read as a foreign transaction, or would loop).
+    """
+    from .context import request_user, request_transaction_id, request_source
+    return (
+        request_transaction_id.get() or str(uuid.uuid4()),
+        request_user.get(),
+        request_source.get(),
+        datetime.now().isoformat(),
+    )
+
+
+def stage_collapsed_event(session, event_type, table_name, row_ids):
+    """[OUTBOX-4] Stage ONE outbox event naming `row_ids` instead of N events.
+
+    🔴 THE TRANSACTIONAL-OUTBOX GUARANTEE IS PRESERVED, AND HERE IS WHY IT SURVIVES
+    THE COLLAPSE. The event must commit atomically with the rows it names; an
+    event staged outside their transaction re-opens the exact failure this pattern
+    exists to prevent (rows durable, nobody ever told). Two facts make that hold:
+
+      1. `row_id` is minted in PYTHON (`crud._get_or_create_row`:
+         `row_id=update_item.row_id or str(uuid6.uuid7())`), not by a SERIAL, so
+         the complete id list is already known at `before_flush` time. No round
+         trip is needed to learn what to name, so nothing has to happen after the
+         flush.
+      2. This is `session.add`-ed on the SAME session inside `before_flush`,
+         exactly as `stage_event` is, so SQLAlchemy includes it in the very flush
+         that writes the rows - one transaction, one commit, all or nothing.
+
+    `event_type` stays CREATE/EDIT rather than becoming BATCH_*: every consumer
+    that only asks "did table T change" keeps working unmodified. The payload's
+    `row_ids` key is the discriminator (`event_constants.is_collapsed_payload`).
+    """
+    from .models import DatabaseOutbox
+    try:
+        from event_constants import OUTBOX_COLLAPSE_CHUNK_ROWS
+    except ImportError:  # pragma: no cover
+        OUTBOX_COLLAPSE_CHUNK_ROWS = 1000
+
+    tx_id, user, source, ts = _outbox_envelope()
+
+    # Split a huge flush into 1,000-id chunks: bounds the JSONB payload (~40 KB),
+    # keeps the project's chunking discipline, and bounds the failure path (a
+    # poison row re-expands at most one chunk into per-row retries).
+    for i in range(0, len(row_ids), OUTBOX_COLLAPSE_CHUNK_ROWS):
+        id_chunk = row_ids[i:i + OUTBOX_COLLAPSE_CHUNK_ROWS]
+        session.add(DatabaseOutbox(
+            event_uuid=str(uuid.uuid4()),
+            event_type=event_type,
+            table_name=table_name or "unknown",
+            payload={
+                # An explicit LIST, not a (lo, hi) range. uuid7 row_ids are
+                # time-ordered so NEW rows would range cleanly - but an upsert
+                # chunk also touches EXISTING rows whose ids were minted long ago,
+                # so the ids in one chunk are not contiguous and a range would
+                # silently over- or under-select.
+                "row_ids": id_chunk,
+                "row_count": len(id_chunk),
+                "table_name": table_name or "unknown",
+                "transaction_id": tx_id,
+                "updated_by": user,
+                "source_name": source,
+                "timestamp": ts,
+            },
+            status="PENDING",
+        ))
+
+    _notify_outbox_once(session)
 
 
 def stage_event(session, event_type, table_name, data_row):
     from .models import DatabaseOutbox
-    from .context import request_user, request_transaction_id, request_source
-    
-    tx_id = request_transaction_id.get() or str(uuid.uuid4())
-    user = request_user.get()
-    source = request_source.get()
-    
+    try:
+        from event_constants import OUTBOX_PAYLOAD_EXCLUDED_COLUMNS as _EXCLUDED
+    except ImportError:  # pragma: no cover
+        _EXCLUDED = frozenset({"row_id", "business_key_val", "created_at", "updated_at",
+                               "is_graph_synced", "needs_graph_rollback", "graph_synced_at"})
+
+    tx_id, user, source, ts = _outbox_envelope()
+
     data_dict = {}
     for col in data_row.__table__.columns:
-        if col.name not in ["row_id", "business_key_val", "created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]:
+        if col.name not in _EXCLUDED:
             val = getattr(data_row, col.name, None)
             data_dict[col.name] = {
                 "value": val,
@@ -185,12 +291,16 @@ def stage_event(session, event_type, table_name, data_row):
             "transaction_id": tx_id,
             "updated_by": user,
             "source_name": source,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": ts
         },
         status="PENDING"
     )
     session.add(event_obj)
-    
+
+    _notify_outbox_once(session)
+
+
+def _notify_outbox_once(session):
     # [최적화] PostgreSQL 데이터베이스 환경인 경우, 트랜잭션이 commit될 때 실시간 이벤트를 전파하도록 NOTIFY 실행
     #
     # [P5] ONCE PER TRANSACTION, not once per staged row. This is called from

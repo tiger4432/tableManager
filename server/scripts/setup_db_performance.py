@@ -264,6 +264,12 @@ def setup_performance():
                 print(f"   Failed to create {idx_name}: {e}")
 
         # 3.5 [C-3] 레거시 중복 outbox 인덱스 제거 (실측 합계 429MB — 전량 역할 중복/미사용)
+        #   🔴 [2026-08-07 D3] 이 넷 중 `ix_database_outbox_id`만 「PK 인덱스의 사본」 계급이고,
+        #   그 계급의 정본은 `migrations/add_business_key_unique_index.py --drop-redundant`다
+        #   (하드코딩 목록이 아니라 pg_index 질의로 매번 다시 증명한다 — 이름을 손으로 적는
+        #   방식이 놓친 것이 26개였다). 나머지 셋은 그 계급이 아니라 **대체됐거나 조회처가
+        #   없어서** 지우는 것이므로 저쪽 판정식에 걸리지 않고, 여기 남는 것이 맞다.
+        #   겹치는 하나는 어느 쪽이 먼저 돌아도 무해하다(양쪽 다 IF EXISTS·CONCURRENTLY·멱등).
         #   - ix_database_outbox_id            : pkey와 완전 중복 (124MB)
         #   - ix_database_outbox_event_uuid    : 조회처 전무, uuid4 유일성은 통계적 보장 (224MB)
         #   - ix_database_outbox_status        : 부분 인덱스 idx_outbox_pending/idx_outbox_failed로 대체 (44MB)
