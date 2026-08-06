@@ -301,7 +301,7 @@ const FLOORS = new Map([
   ['isotropic_cell_harness.mjs', 152],
   // New 2026-08-06 with `opts.restoreDraft` (e34d57d, 「맵을 로드하면 로드한 맵이 나온다」).
   // Same rule as the other new entries: the floor is the count it reports on the commit that
-  // introduces it. 13 of its assertions are the mutation corpus itself (11 defects + 2
+  // introduces it. 14 of its assertions are the mutation corpus itself (12 defects + 2
   // controls), scored as assertions rather than printed as prose so a corpus that stops being
   // applied sinks `ran` and BLOCKS.
   //
@@ -323,12 +323,31 @@ const FLOORS = new Map([
   //    this floor most likely means that guard, or the reachability check in section R,
   //    stopped running — i.e. the file went back to being the thing it was written not to be.
   //
-  // ⚠️ SECTION D PINS A DEFECT, ON PURPOSE AND LABELLED. A plain load re-persists the loaded
-  //    map's OWN draft slot from the server copy (`if (!staleDraftKept) saveLegendToStorage()`
-  //    with the restore removed), so 편집 → 📂 로드 → 새로고침 recovers nothing. Reported to
-  //    the Lead PM 2026-08-06, not repaired here. Its candidate repair is in the mutation
-  //    corpus, so D2/D3 are known to be capable of noticing the fix when it lands.
-  ['load_shows_loaded_map_harness.mjs', 55],
+  // ⚠️ SECTION D PINNED A DEFECT AND NOW PINS ITS REPAIR. A plain load used to re-persist the
+  //    loaded map's OWN draft slot from the server copy (`if (!staleDraftKept)
+  //    saveLegendToStorage()` reached with `staleDraftKept` hard-wired false once the restore
+  //    was gated), so 편집 → 📂 로드 → 새로고침 recovered nothing. Repaired 2026-08-06; D1-D3
+  //    were INVERTED rather than deleted and the defect is now the mutant
+  //    `skipped-restore-reports-not-stale`, so the corpus still carries it.
+  //
+  // 55 -> 57 (2026-08-06, same day). TWO rises and only ONE is a new assertion.
+  //   +1  the repair round added the 12th defect mutant (the persist's removal), which had
+  //       been sitting in the corpus as the CANDIDATE repair and became a defect the moment
+  //       the repair landed. The floor was never raised for it.
+  //   +1  `R4b`, and it exists because that mutant SURVIVED. Deleting the persist on EVERY
+  //       path passed this file: `S3` only forbids it on a plain load, and a prohibition with
+  //       no matching obligation scores "never" exactly like "only where it is wrong". `R4b`
+  //       is S3's positive twin — on the boot-restore path `staleDraftKept` is legitimately
+  //       false and the persist is CORRECT, because the draft just replayed onto the canvas
+  //       must be re-baselined against the fingerprints THIS load established or the next
+  //       refresh rejects the operator's own edits as stale.
+  //       🔴 IT ASSERTS THE DRAFT KEY, NOT "a write happened". `map_editor_last_open` is not
+  //          a draft slot and must still be written on every load — the same distinction S3
+  //          was re-derived to make. Measured: a boot restore writes
+  //          `map_doe_draft::bonding_map::LOT_A` AND `map_editor_last_open`; a plain load
+  //          writes only the latter. A drop below 57 most likely means one side of that pair
+  //          stopped being scored, and neither direction is visible from an exit code.
+  ['load_shows_loaded_map_harness.mjs', 57],
   ['m4_symbol_extractability_probe.mjs', 15],
   ['map_key_canonical_harness.mjs', 116],
   // New 2026-08-04 with the marker-shape + wafer-anchor round (the overlay marker follows its

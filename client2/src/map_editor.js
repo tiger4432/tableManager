@@ -5371,9 +5371,21 @@ async function loadExistingMap(opts = {}) {
         // 🔴 초안 복구는 **부팅 복원에서만** 일어난다(§opts.restoreDraft). 평범한 로드는
         //    방금 읽은 서버본을 그대로 보여 준다 — 「로드한 맵이 나온다」가 계약이다.
         //    초안은 지우지 않는다: 이 맵의 키 아래 그대로 남아 다음 새로고침이 되살린다.
+          //   🔴 `staleDraftKept: true` — AND IT IS LOAD-BEARING, NOT COSMETIC.
+          //      `staleDraftKept` reads like a description ("a stale draft was kept") but the
+          //      ONLY thing it does is `if (!staleDraftKept) saveLegendToStorage()` below, and
+          //      that persist RE-BASELINES this map's draft slot to the server state just read.
+          //      Skipping the restore puts us in exactly the situation the flag exists for:
+          //      a draft may hold content and we did NOT apply it. Reporting `false` here let
+          //      the persist run and **overwrite the operator's unsaved edits with the server
+          //      copy** — deleting the very draft this change promised to keep, and closing the
+          //      refresh that was supposed to recover it (measured 2026-08-06: slot A lost
+          //      `9_1`, `10_2` on a plain load).
+          //   ⚠️ Gating a step does not gate what its RETURN VALUE feeds. This value reaches a
+          //      persist, not just a toast.
         const restored = restoreDraft
           ? restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp)
-          : { restoredUnsavedEdits: false, staleDraftKept: false };
+          : { restoredUnsavedEdits: false, staleDraftKept: true };
         // Restored edits are still unsaved edits - they exist only in this browser
         // until [⚡ Push]. Without this the chip reads "saved" after the very refresh
         // the draft just survived.

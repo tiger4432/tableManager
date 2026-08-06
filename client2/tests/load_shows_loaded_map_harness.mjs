@@ -460,6 +460,27 @@ async function run(src, isBaseline = false) {
       env.S.cellsDigest(SERVER_CELLS_A), call.serverCellsFp,
       'the precedence check is only meaningful if arg 4 is the baseline this load just read');
     eq('R4/…and the registry fingerprint is the read answer', 'REGFP:[]', call.serverFp);
+    // ── R4b: THE POSITIVE TWIN OF S3, ADDED TO CLOSE A SURVIVING MUTANT ──────────────────
+    // 🔴 S3 says the persist must NOT happen on a plain load. Nothing said it MUST happen
+    //    anywhere, so deleting `if (!staleDraftKept) saveLegendToStorage()` on EVERY path was
+    //    invisible to this file (mutant `the-persist-that-eats-the-draft-is-removed` survived
+    //    the round that repaired the defect). A prohibition with no matching obligation scores
+    //    "never" the same as "only where it is wrong".
+    //    On THIS path `staleDraftKept` is legitimately `false` and the persist is correct and
+    //    necessary: the boot restore has just replayed the operator's draft onto a canvas whose
+    //    baseline fingerprints were established by THIS load, so the slot must be rewritten
+    //    against that baseline — otherwise the next refresh reads a draft whose `cellsFp`
+    //    predates the load and the precedence check rejects the operator's own edits as stale.
+    // ⚠️ THE DRAFT KEY SPECIFICALLY, the same distinction S3 makes: `map_editor_last_open` is
+    //    NOT a draft slot, it records WHICH map was open, and it must still be written here.
+    //    Read from the SAME write log section S reads; nothing is inferred from the store's
+    //    contents (a rewrite with identical bytes is a write, and a seed is not).
+    eq('R4b/…and the boot restore DOES re-persist map A\'s own draft slot',
+      [env.S.doeDraftKey(TABLE, MAPKEY_A)],
+      [...new Set(env.writeLog)].filter(k => k.includes('draft')),
+      'S3 forbids this persist on a plain load; without this twin, removing it EVERYWHERE '
+      + 'also passes — and then a restored draft is never re-baselined');
+    evidence.push(`R4b/ writes during the boot restore: ${JSON.stringify([...new Set(env.writeLog)])}`);
   }
   {
     const env = buildEnv(src, { sentinelDraft: true });
@@ -613,9 +634,17 @@ async function run(src, isBaseline = false) {
       env.store.get(slotA),
       'THE FAILURE MODE IS AN OPERATOR\'S UNSAVED WORK VANISHING; the slot is keyed by map');
     const slotB = env.S.doeDraftKey(TABLE, MAPKEY_B);
-    eq('S3/NEGATIVE CONTROL — map B\'s slot WAS written during that same load', true,
-      env.writeLog.includes(slotB),
-      'if nothing was written, S2 would pass on a key shape that had lost the map component');
+    // S3 RE-DERIVED 2026-08-06. It used to require map B's slot to be WRITTEN during the load,
+    // as a control proving S2 was not passing on a key shape that had lost its map component.
+    // That write WAS the re-baseline persist, and the repair removes it: re-persisting a slot
+    // from the server copy just read is exactly what destroyed map A's unsaved edits. So the
+    // control has to buy its protection another way — S4 compares the two keys directly, and
+    // D1-D3 below prove the slot still reads back as the operator's edits.
+    eq('S3/NEGATIVE CONTROL — a plain load re-persists no draft slot at all', [],
+      [...new Set(env.writeLog)].filter(k => k.startsWith('doe_draft') || k.includes('draft')),
+      'a plain load must not re-baseline ANY draft slot; that persist is the deletion. '
+      + '(`map_editor_last_open` is not a draft — it records WHICH map was open and must '
+      + 'still be written, or a refresh forgets the map that was just loaded.)');
     eq('S4/…and the two slots are different strings', true, slotA !== slotB);
     evidence.push(`S/ writes during the load of B: ${JSON.stringify([...new Set(env.writeLog)])}`);
   }
@@ -672,13 +701,16 @@ async function run(src, isBaseline = false) {
 
     const after = env.S.readDoeDraft(TABLE, MAPKEY_A).cells;
     const dropped = Object.keys(MERGED_A).filter(k => !(k in after));
-    eq('D1/the load writes map A\'s own draft slot (true before AND after the change)', false,
-      env.store.get(slotA) === snapshotA);
-    eq('D2/⚠ DEFECT, characterized: the load DROPS these unsaved cells from map A\'s own slot',
-      Object.keys(DRAFT_CELLS_A), dropped,
-      'expected [] once repaired; the commit says the slot is untouched, measured it is '
-      + 're-persisted from the server copy');
-    eq('D3/…so the next refresh finds only what the server already had', SERVER_CELLS_A,
+    // D1-D3 INVERTED 2026-08-06: written to characterize the defect, now asserting the repair.
+    // The defect was that a plain load re-persisted this map's own draft slot from the server
+    // copy it had just read, deleting the operator's unsaved cells — and closing the very
+    // refresh the change named as its safety net.
+    eq('D1/a plain load leaves map A\'s own draft slot BYTE-IDENTICAL', true,
+      env.store.get(slotA) === snapshotA,
+      'the load re-persisted the slot, and that write is an operator\'s unsaved work');
+    eq('D2/…so it drops none of the unsaved cells', [], dropped,
+      'these cells existed only in the draft and the load overwrote them');
+    eq('D3/…and the next refresh still finds them', MERGED_A,
       (() => {
         const env2 = buildEnv(src, { store: env.store });
         return JSON.parse(env2.store.get(slotA)).cells;
@@ -698,8 +730,13 @@ async function run(src, isBaseline = false) {
 //    valid while the code it targeted moves out from under it).
 const MUTANTS = [
   { name: 'restore-runs-unconditionally-again (THE PRE-CHANGE CODE)',
-    from: `const restored = restoreDraft\n          ? restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp)\n          : { restoredUnsavedEdits: false, staleDraftKept: false };`,
+    from: `const restored = restoreDraft\n          ? restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp)\n          : { restoredUnsavedEdits: false, staleDraftKept: true };`,
     to: `const restored = restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp);` },
+  // THE REPAIR ITSELF. `staleDraftKept: false` let the re-baseline persist run and delete
+  // the operator's unsaved cells. This is the shipped defect of 2026-08-06 put back.
+  { name: 'skipped-restore-reports-not-stale (the persist runs and eats the draft)',
+    from: `          : { restoredUnsavedEdits: false, staleDraftKept: true };`,
+    to: `          : { restoredUnsavedEdits: false, staleDraftKept: false };` },
   { name: 'restoreDraft-defaults-to-true',
     from: `  const restoreDraft = !!opts.restoreDraft;`,
     to: `  const restoreDraft = opts.restoreDraft !== false;` },
