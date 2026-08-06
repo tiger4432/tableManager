@@ -465,7 +465,7 @@ const FLOORS = new Map([
   // one the operator is actually stuck on, and therefore the one the diagnostic exists for. The
   // rise is the assertion that the toggle has a visible consequence there, scored on the FILLS
   // (ranks 1 and 2 must land close, 1 and 40 far apart) rather than on the ranks arriving.
-  ['map_editor2_shell_harness.mjs', 526],
+  ['map_editor2_shell_harness.mjs', 540],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid

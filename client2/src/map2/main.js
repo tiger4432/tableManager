@@ -136,8 +136,13 @@ export const ELEMENT_IDS = Object.freeze({
   pasteResult: 'me2-paste-result',
 });
 
-/** The legend the authored grid already carries, so the two spellings cannot drift apart. */
-const CAND_LEGEND = '숫자 = 일치 / 판별 다이';
+/**
+ * The legend the authored grid already carries, so the two spellings cannot drift apart.
+ * 🔴 `대상`, not `판별`: the second number is the population the agreement was measured against
+ *    (see `decode.scoringKeysFor`), and the old word named a quantity that is a SUBSET of the
+ *    first one -- which is what let `N / N` read as full marks.
+ */
+const CAND_LEGEND = '숫자 = 일치 / 대상 다이';
 
 /** The page's four state words. This file speaks the view model's words and translates once. */
 const STATE_ATTR = Object.freeze({
@@ -560,7 +565,10 @@ export function bootstrap(deps) {
     const scoring = selectedScoring(vm);
     if (vm.numerals && scoring) {
       writeNum('[data-me2-top-agree]', scoring.agree);
-      writeNum('[data-me2-top-discriminating]', scoring.discriminating);
+      // 🔴 THE POPULATION, matching the eight cards and the headline. `scoring` is the RAW
+      //    decoded record rather than the card, so this call site had to be changed too --
+      //    two readers of one pair is how the strip and the grid could disagree.
+      writeNum('[data-me2-top-discriminating]', scoring.total);
     }
     if (vm.numerals) writeNum('[data-me2-margin-dies]', vm.summary.marginDies);
     if (payload) {
@@ -694,7 +702,11 @@ export function bootstrap(deps) {
       const card = declared ? vm.candidates.find(c => c.id === declared) : null;
       if (vm.numerals && card && card.agree != null) {
         setChildText(row, '[data-me2-agree]', card.agree);
-        setChildText(row, '[data-me2-discriminating]', card.discriminating);
+        // 🔴 THE POPULATION, NOT THE DISCRIMINATING COUNT. See `view_model.agreementText`.
+        //    The slot's ATTRIBUTE still spells `discriminating` because the markup lane owns
+        //    that name; what it holds is `total`, and the rename is in the report.
+        setChildText(row, '[data-me2-discriminating]',
+                     card.total === null ? UNKNOWN : card.total);
       }
       row.setAttribute('aria-expanded', String(session.focusedSourceId === field));
     }
@@ -776,7 +788,12 @@ export function bootstrap(deps) {
       //    them apart without this file inventing a colour or a Korean word for either.
       if (card.agree !== null && card.discriminating !== null) {
         setChildText(cell, '[data-me2-cand-agree]', card.agree);
-        setChildText(cell, '[data-me2-cand-discriminating]', card.discriminating);
+        // 🔴 THE DENOMINATOR IS THE POPULATION. This slot used to take `card.discriminating`,
+        //    which the server computes as a SUBSET of `agree` -- so the eight read `N / N` and
+        //    the operator read full marks on a run the server logged as short. The attribute
+        //    keeps the markup lane's spelling; the rename is in the report.
+        setChildText(cell, '[data-me2-cand-discriminating]',
+                     card.total === null ? UNKNOWN : card.total);
         cell.setAttribute('data-me2-cand-scored', 'true');
       } else {
         cell.setAttribute('data-me2-cand-scored', 'false');
@@ -2269,7 +2286,7 @@ function round1(n) { return Math.round(n * 10) / 10; }
  */
 /**
  * The headline's `.me2-num` slot.
- *   scored    -> `일치 512 / 판별 528`   the counts, denominator kept
+ *   scored    -> `일치 300 / 대상 512`   the count over the population it was measured against
  *   no-winner -> `구별 안 됨 · 후보 3개`  a label, a separator and a count
  * The computing and unscorable states are not handled here at all: their siblings
  * (`.me2-busy`, `.me2-unknown`) carry those words and CSS chooses between them, so writing

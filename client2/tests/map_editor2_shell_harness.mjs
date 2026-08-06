@@ -345,9 +345,11 @@ function throws(fn, what) {
     stored_candidate_id: 'rot0_front',
     sources: [{ id: 's1', label: 'CORE 맵', cells: [] }, { id: 's2', label: 'DT 로그', cells: [] }],
     floor_cells: [],
+    // `total` is the population the agreement was measured against; `discriminating` is the
+    // evidence gate and is a SUBSET of `agree` on every axis (`map_alignment.py:2691`).
     per_candidate: [
-      { candidate_id: 'rot0_front', agree: 400, discriminating: 528 },
-      { candidate_id: 'rot270_back', agree: 512, discriminating: 528 },
+      { candidate_id: 'rot0_front', agree: 400, discriminating: 380, total: 528 },
+      { candidate_id: 'rot270_back', agree: 512, discriminating: 500, total: 528 },
     ],
     map_count: 12, excluded_map_count: 5, discriminating_dies: 528, elapsed_ms: 340,
   };
@@ -358,7 +360,7 @@ function throws(fn, what) {
   const winner = buildViewModel({ session: ready, verdict: decideVerdict(payload.per_candidate, thresholds) });
   eq(winner.state, VIEW_STATE.SCORED_WINNER, 'F1 a winner state');
   ok(winner.numerals, 'F2 numerals are allowed here');
-  eq(winner.summary.countText, '일치 512 / 판별 528', 'F3 two absolute counts, denominator kept');
+  eq(winner.summary.countText, '일치 512 / 대상 528', 'F3 two absolute counts, denominator kept');
   eq(winner.summary.marginText, 'Δ 112', 'F4 the margin is a die count, written as a delta');
   ok(winner.candidates.find(c => c.id === 'rot270_back').badges.includes('추천'), 'F5 the winner is badged');
   ok(winner.candidates.find(c => c.id === 'rot0_front').badges.includes('현재 선언'), 'F6 the stored declaration is marked');
@@ -423,9 +425,9 @@ function throws(fn, what) {
   //    of the eight and look: hiding the first left `미상` eight times, and disabling the second
   //    left eight frames nobody could open. A zeroed score lands in exactly this state.
   const listedNW = notScorable.candidates.find(c => c.id === 'rot270_back');
-  eq(listedNW.countText, '일치 512 / 판별 528',
+  eq(listedNW.countText, '일치 512 / 대상 528',
      'F23d the eight are LISTED with their measured counts even though nothing won');
-  eq(notScorable.candidates.find(c => c.id === 'rot0_front').countText, '일치 400 / 판별 528',
+  eq(notScorable.candidates.find(c => c.id === 'rot0_front').countText, '일치 400 / 대상 528',
      'F23e every candidate the server scored, not just one');
   eq(notScorable.candidates.map(c => c.id).join(','),
      'rot0_front,rot90_front,rot180_front,rot270_front,rot0_back,rot90_back,rot180_back,rot270_back',
@@ -461,7 +463,7 @@ function throws(fn, what) {
   throws(() => assertNoRatio({ headline: '적합도 94%' }), 'F31 a percentage would be caught');
   throws(() => assertNoRatio({ coverage_pct: 0.94 }), 'F32 a ratio-shaped field name would be caught');
 
-  eq(agreementText(38, 40), '일치 38 / 판별 40', 'F33 the small-evidence case keeps its denominator');
+  eq(agreementText(38, 40), '일치 38 / 대상 40', 'F33 the small-evidence case keeps its denominator');
   eq(marginText(47), 'Δ 47', 'F34 margin phrasing');
   eq(winner.grid.length, 4, 'F35 the view model carries the 4x2 control');
   eq(winner.grid[0].cells.length, 2, 'F36 two columns');
@@ -487,9 +489,15 @@ function throws(fn, what) {
       map_count: 3, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
       maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front', declared_frame_source: 'declared' }],
     },
+    // 🔴 `discriminating <= agreement`, AND A `placed` BESIDE THEM. The server computes the
+    //    discriminating count as `count_nonzero(member & varies)` over the agreement vector
+    //    itself (`map_alignment.py:2691`), so `agreement: 200, discriminating: 300` is a shape
+    //    no server can emit -- and this harness scored the screen against it for weeks, which
+    //    is how a denominator that is a SUBSET of its numerator went unnoticed. `placed` is the
+    //    occupancy axis's population (`:2800`), which is what the denominator must be.
     candidates: [
-      { frame: 'rot0_front', agreement: 200, discriminating: 300 },
-      { frame: 'rot180_back', agreement: 90, discriminating: 300 },
+      { frame: 'rot0_front', agreement: 200, discriminating: 180, placed: 300 },
+      { frame: 'rot180_back', agreement: 90, discriminating: 85, placed: 300 },
     ],
     declaration: { frames: { rot0_front: 3 }, attested_maps: 3, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: 'rot0_front' },
@@ -520,7 +528,7 @@ function throws(fn, what) {
   eq(doc.getElementById('me2-workbench').getAttribute('data-me2-state'), 'scored',
      'G6 state is switched through the one attribute the page publishes');
   ok(doc.getElementById('me2-verdict-headline').textContent.length > 0, 'G7 the headline is written');
-  eq(doc.querySelector('[data-me2-verdict]').textContent, '일치 200 / 판별 300',
+  eq(doc.querySelector('[data-me2-verdict]').textContent, '일치 200 / 대상 300',
      'G7b the headline num slot carries the counts, and the slot itself survives the write');
   eq(doc.getElementById('me2-verdict-headline').children.length, 3,
      'G7c the three-sibling count pattern was not destroyed by writing to the parent');
@@ -1128,7 +1136,10 @@ function throws(fn, what) {
     },
     // Every one of the eight on the SAME two figures. That is what a tie looks like, and it is
     // the picture that lets an operator decide the reference is too symmetric to settle this.
-    candidates: TIED.map(frame => ({ frame, state: 'scored', agreement: 312, discriminating: 374 })),
+    // `placed` is the population; `discriminating` is a subset of `agreement` (see the note on
+    // the G payload). The shape was `agreement: 312, discriminating: 374`, which no server emits.
+    candidates: TIED.map(frame => ({ frame, state: 'scored', agreement: 312,
+                                     discriminating: 300, placed: 374 })),
     declaration: { frames: { rot0_front: 3 }, attested_maps: 3, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: null, margin: 0, reason_code: 'tie', tied: TIED.slice() },
     excluded_total: 0,
@@ -1848,25 +1859,32 @@ function throws(fn, what) {
               margin: 87, discriminating: 87,
               min_margin_dies: 20, min_discriminating_dies: 20,
               sides_considered: ['front'], sides_narrowed: true, reason_code: null },
+    // 🔴 `index_total` WAS MISSING FROM THIS TRANSCRIPTION AND THE SERVER DOES SHIP IT
+    //    (`map_alignment.py:2762`, value from `:2686`). Its absence is why the harness could not
+    //    see the denominator defect: with no population field the only second number available
+    //    was `index_discriminating`, which is a SUBSET of `index_agreement`. 88 is this run's
+    //    own figure -- `SYN-IDX-FULL-R0` carries a number on all 88 of its cells, and
+    //    `align.log` records `cells reaching the scorer=88`.
     candidates: [
-      { frame: 'rot0_front', state: 'scored', agreement: 88, discriminating: 43,
-        index_agreement: 88, index_discriminating: 87, reason: null },
-      { frame: 'rot90_front', state: 'scored', agreement: 66, discriminating: 21,
-        index_agreement: 1, index_discriminating: 0, reason: null },
-      { frame: 'rot180_front', state: 'scored', agreement: 62, discriminating: 17,
-        index_agreement: 1, index_discriminating: 0, reason: null },
-      { frame: 'rot270_front', state: 'scored', agreement: 66, discriminating: 21,
-        index_agreement: 1, index_discriminating: 0, reason: null },
-      { frame: 'rot0_back', state: 'not_considered', agreement: 0, discriminating: 0,
-        index_agreement: null, index_discriminating: null, reason: REASON_SIDE },
-      { frame: 'rot90_back', state: 'not_considered', agreement: 0, discriminating: 0,
-        index_agreement: null, index_discriminating: null, reason: REASON_SIDE },
-      { frame: 'rot180_back', state: 'not_considered', agreement: 0, discriminating: 0,
-        index_agreement: null, index_discriminating: null, reason: REASON_SIDE },
-      { frame: 'rot270_back', state: 'not_considered', agreement: 0, discriminating: 0,
-        index_agreement: null, index_discriminating: null, reason: REASON_SIDE },
+      { frame: 'rot0_front', state: 'scored', agreement: 88, discriminating: 43, placed: 88,
+        index_agreement: 88, index_discriminating: 87, index_total: 88, reason: null },
+      { frame: 'rot90_front', state: 'scored', agreement: 66, discriminating: 21, placed: 88,
+        index_agreement: 1, index_discriminating: 0, index_total: 88, reason: null },
+      { frame: 'rot180_front', state: 'scored', agreement: 62, discriminating: 17, placed: 88,
+        index_agreement: 1, index_discriminating: 0, index_total: 88, reason: null },
+      { frame: 'rot270_front', state: 'scored', agreement: 66, discriminating: 21, placed: 88,
+        index_agreement: 1, index_discriminating: 0, index_total: 88, reason: null },
+      { frame: 'rot0_back', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
+        index_agreement: null, index_discriminating: null, index_total: null, reason: REASON_SIDE },
+      { frame: 'rot90_back', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
+        index_agreement: null, index_discriminating: null, index_total: null, reason: REASON_SIDE },
+      { frame: 'rot180_back', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
+        index_agreement: null, index_discriminating: null, index_total: null, reason: REASON_SIDE },
+      { frame: 'rot270_back', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
+        index_agreement: null, index_discriminating: null, index_total: null, reason: REASON_SIDE },
     ],
-    excluded_total: 0, stats: { scored_cells: 88, elapsed_ms: 16 },
+    excluded_total: 0,
+    stats: { scored_cells: 88, source_indices_usable: 88, elapsed_ms: 16 },
   };
 
   const doc = makeDocument();
@@ -1904,11 +1922,11 @@ function throws(fn, what) {
 
   // P2. THE NUMBERS ARE THE RULED AXIS'S. `88 / 43` is the shipped bug, and both columns are
   //     in the payload, so this is a WRONG number rather than a missing one.
-  eq(numbersOf('rot0_front'), '88 / 87',
-     'P2 the winner shows the index counts (occupancy would say 88 / 43)');
-  eq(numbersOf('rot90_front'), '1 / 0',
-     'P2b and a losing frame shows 1 / 0, not the 66 / 21 occupancy gives it');
-  eq(numbersOf('rot180_front'), '1 / 0', 'P2c every scored frame, not just the winner');
+  eq(numbersOf('rot0_front'), '88 / 88',
+     'P2 the winner shows the index counts over the index population');
+  eq(numbersOf('rot90_front'), '1 / 88',
+     'P2b and a losing frame shows 1 of 88, not the 66 the occupancy column gives it');
+  eq(numbersOf('rot180_front'), '1 / 88', 'P2c every scored frame, not just the winner');
   ok(cellOf('rot0_front').querySelector('[data-me2-cand-tags]').textContent.includes('추천'),
      'P2d and the frame the server named is the one badged');
 
@@ -1941,6 +1959,154 @@ function throws(fn, what) {
   ok(!!table && table.includes(REASON_SIDE),
      'P4b with the reason beside the ones that carry no numbers');
   ok(record.includes('ruling.metric=index'), 'P4c and the axis is named in the record');
+}
+
+// ── Q. THE DENOMINATOR IS THE POPULATION, NEVER THE DISCRIMINATING SUBSET ───────
+//
+// 🔴 THE DEFECT, REPORTED FROM PRODUCTION 2026-08-06: 「로그상 만점이 아닌데 화면에는 만점으로
+//    뜸」. `server/align.log` prints `agreement=<hits>/<index_total>` (`map_alignment.py:3020`);
+//    the screen rendered `일치 <hits> / 판별 <index_discriminating>`. Those are not the same
+//    fraction. The server computes the discriminating count as `count_nonzero(member & varies)`
+//    OVER THE AGREEMENT VECTOR (`:2691` occupancy, `:2702` index, `:2711` values), so it is a
+//    SUBSET of the numerator -- and on the index axis the two are equal for every candidate
+//    unless some single cell is matched by all eight frames, which does not happen on a real
+//    map. Result: every row read `N / N`, i.e. full marks, whatever the server had measured.
+//
+// THE FIXTURE ACTIVATES THE DEFECT AXIS, and Q0 is the control that says so: the screen under
+// the DEFECT reading and the screen under the REPAIRED one must differ on every scored row. A
+// fixture where that count is 0 has verified nothing (map-pm lesson, 2026-07-30).
+{
+  const N_TOTAL = 512;          // cells carrying a stored number -- `index_total`
+  const N_WINNER = 300;         // the winner agreed on 300 of them: 212 dies SHORT of perfect
+  const LOSERS = { rot90_front: 7, rot180_front: 4, rot270_front: 6,
+                   rot0_back: 3, rot90_back: 2, rot180_back: 5, rot270_back: 1 };
+  const shortWire = {
+    state: 'scored', refusal: null,
+    reference: { state: 'resolved', kind: 'values', map_id: 'PRD-A_DT13',
+                 cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+    sources: { map_count: 1, cell_count: 640, cells: [[0, 0], [1, 0], [2, 2]],
+               maps: [{ map_id: 'PRD-A_DT13', cell_count: 640 }] },
+    declaration: { frames: {}, attested_maps: 0, unattested_maps: 1, axis_sources: {} },
+    ruling: { metric: 'index', index_axis: 'ranking', winner: 'rot0_front',
+              min_margin_dies: 20, min_discriminating_dies: 20, reason_code: null },
+    // 🔴 `index_discriminating === index_agreement` ON EVERY ROW, which is not a contrivance:
+    //    it is what the server's own arithmetic produces whenever no cell is matched by all
+    //    eight frames. That equality is precisely the thing that used to read as full marks.
+    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 600, discriminating: 420,
+                   placed: 600, index_agreement: N_WINNER, index_discriminating: N_WINNER,
+                   index_total: N_TOTAL, reason: null }]
+      .concat(Object.keys(LOSERS).map(frame => ({
+        frame, state: 'scored', agreement: 310, discriminating: 200, placed: 600,
+        index_agreement: LOSERS[frame], index_discriminating: LOSERS[frame],
+        index_total: N_TOTAL, reason: null }))),
+    excluded_total: 0,
+    stats: { scored_cells: 600, cell_cap: 20000, truncated: false,
+             source_indices_usable: N_TOTAL, elapsed_ms: 21 },
+  };
+
+  const doc = makeDocument();
+  const app = bootstrap({
+    document: doc,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve(shortWire),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.reject(new Error('route not served')),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm = app.render();
+
+  const cells = doc.querySelectorAll('[data-me2-candidate]');
+  const cellOf = (id) => cells.find(c => c.getAttribute('data-frame-code') === id);
+  const numeratorOf = (id) => cellOf(id).querySelector('[data-me2-cand-agree]').textContent;
+  const denominatorOf = (id) =>
+    cellOf(id).querySelector('[data-me2-cand-discriminating]').textContent;
+  const FRAMES = ['rot0_front'].concat(Object.keys(LOSERS));
+
+  // ── Q0. THE CONTROL. What the defect painted vs what this paints, row by row. ──
+  // The "defect reading" is computed HERE from the payload, not imported: it is an oracle of
+  // the retired behaviour, and if it agreed with the shipping code on this payload the rest of
+  // this section would be decoration.
+  const defectReading = FRAMES.map(f => {
+    const c = shortWire.candidates.find(x => x.frame === f);
+    return `${c.index_agreement} / ${c.index_discriminating}`;
+  });
+  const shownReading = FRAMES.map(f => `${numeratorOf(f)} / ${denominatorOf(f)}`);
+  const movedRows = FRAMES.filter((_f, i) => defectReading[i] !== shownReading[i]).length;
+  eq(movedRows, 8,
+     'Q0 CONTROL: all eight rendered rows differ from what the discriminating-as-denominator '
+     + 'reading painted -- if this were 0 the fixture would prove nothing');
+  // Characters that actually change between the two renderings of the eight rows. A row-count
+  // of 8 could still be 8 one-digit nudges; this says how much of the screen moves.
+  const movedChars = (() => {
+    const a = defectReading.join('|'), b = shownReading.join('|');
+    let same = 0;
+    for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] === b[i]) same++;
+    return Math.max(a.length, b.length) - same;
+  })();
+  ok(movedChars >= 16,
+     `Q0b and ${movedChars} rendered characters change across the eight rows `
+     + `(defect "${defectReading[0]}" vs shown "${shownReading[0]}")`);
+
+  // ── Q1..Q3. THE SCREEN MUST NOT READ AS FULL MARKS ON A RUN THE SERVER SCORED SHORT ──
+  eq(denominatorOf('rot0_front'), String(N_TOTAL),
+     'Q1 the denominator is the population the server scored (index_total), not the '
+     + 'discriminating subset');
+  eq(numeratorOf('rot0_front'), String(N_WINNER), 'Q1b and the numerator is untouched');
+  ok(numeratorOf('rot0_front') !== denominatorOf('rot0_front'),
+     'Q2 THE REPORTED DEFECT: a candidate the server scored 300/512 must not read as full '
+     + 'marks -- the two rendered numbers must differ');
+  eq(vm.summary.countText, `일치 ${N_WINNER} / 대상 ${N_TOTAL}`,
+     'Q2b and the headline says the same fraction the server logged (agreement=300/512)');
+  eq(doc.querySelector('[data-me2-top-discriminating]').textContent, String(N_TOTAL),
+     'Q2c including the summary strip, which reads the raw scoring rather than the card');
+  // 🔴 CONTROL FOR Q2: a run that IS at full marks must STILL read as full marks. Without this,
+  //    Q2 would pass just as well if the denominator had been made unequal by construction --
+  //    e.g. by rendering `total + 1`, or by dropping the numerator's own axis.
+  const fullMarks = buildViewModel({
+    session: withPayload(withDecision(createMapSession({
+      config: { min_margin_dies: 20, min_discriminating_dies: 20 } }), { eqp: 'E', product: 'P' }),
+      { sources: [], floor_cells: [], per_candidate: [
+        { candidate_id: 'rot0_front', agree: 512, discriminating: 512, total: 512 },
+        { candidate_id: 'rot90_front', agree: 7, discriminating: 7, total: 512 }] }, 1),
+    verdict: decideVerdict([{ candidate_id: 'rot0_front', agree: 512, discriminating: 512 },
+                            { candidate_id: 'rot90_front', agree: 7, discriminating: 7 }],
+                           { min_margin_dies: 20, min_discriminating_dies: 20 }) });
+  eq(fullMarks.candidates.find(c => c.id === 'rot0_front').countText, '일치 512 / 대상 512',
+     'Q3 CONTROL: a run the server DID score at full marks still reads as full marks -- the '
+     + 'repair changes which field the denominator comes from, not whether 만점 can be shown');
+
+  // ── Q4. THE DENOMINATOR IS CANDIDATE-INDEPENDENT, which is the server's own rule
+  //        (`map_alignment.py:2683`: eight candidates must not report eight different
+  //        fractions). Under the defect the denominators were 300,7,4,6,3,2,5,1.
+  eq(FRAMES.map(denominatorOf).join(','), new Array(8).fill(String(N_TOTAL)).join(','),
+     'Q4 all eight rows share one denominator, so the eight fractions are comparable');
+  eq(FRAMES.map(numeratorOf).join(','),
+     [N_WINNER].concat(Object.keys(LOSERS).map(f => LOSERS[f])).join(','),
+     'Q4b while the numerators still separate the eight');
+
+  // ── Q5. A PRODUCER THAT SHIPS NO POPULATION SAYS SO. Absent is not zero and not a leftover.
+  const noTotal = buildViewModel({
+    session: withPayload(withDecision(createMapSession({
+      config: { min_margin_dies: 20, min_discriminating_dies: 20 } }), { eqp: 'E', product: 'P' }),
+      { sources: [], floor_cells: [], per_candidate: [
+        { candidate_id: 'rot0_front', agree: 300, discriminating: 300 },
+        { candidate_id: 'rot90_front', agree: 7, discriminating: 7 }] }, 1),
+    verdict: decideVerdict([{ candidate_id: 'rot0_front', agree: 300, discriminating: 300 },
+                            { candidate_id: 'rot90_front', agree: 7, discriminating: 7 }],
+                           { min_margin_dies: 20, min_discriminating_dies: 20 }) });
+  eq(noTotal.candidates.find(c => c.id === 'rot0_front').countText, `일치 300 / 대상 ${UNKNOWN}`,
+     'Q5 an older producer with no population field renders 미상 for the denominator -- never '
+     + 'the discriminating count, and never a 0 stand-in');
+  eq(noTotal.candidates.find(c => c.id === 'rot0_front').total, null,
+     'Q5b and the card says the population is unmeasured rather than carrying a number nobody sent');
+
+  // ── Q6. NO RATIO WAS INTRODUCED. The repair is two counts, still. ──
+  ok(assertNoRatio(vm), 'Q6 the repaired view model carries no ratio');
+  ok(!JSON.stringify(vm).includes('%'), 'Q6b and no percent sign reached the screen');
 }
 
 console.log(`ASSERTIONS ${compared} ${failures.length}`);

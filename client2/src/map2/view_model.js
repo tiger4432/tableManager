@@ -363,6 +363,13 @@ function buildCandidateCard(a) {
     storedLabel: a.candidate.id,
     agree: hasCounts ? Number(s.agree) : null,
     discriminating: hasCounts ? Number(s.discriminating) : null,
+    // 🔴 THE POPULATION THE NUMERATOR WAS MEASURED AGAINST -- see `decode.scoringKeysFor`. It is
+    //    a SEPARATE field from `discriminating` because they are separate quantities: this one
+    //    is the denominator, that one is the evidence gate, and rendering the gate as the
+    //    denominator is what made every candidate read as full marks. Carried even when
+    //    `hasCounts` is true and the population is absent -- an old producer gets `미상` on the
+    //    denominator rather than a number nobody sent.
+    total: hasCounts ? numOrNull(s.total) : null,
     // 🔴 THE PLACEMENT THIS CANDIDATE'S COUNTS WERE MEASURED IN. Carried on the CARD and
     //    not beside it, because the picture is drawn for ONE candidate and it must be this
     //    one's offset -- a shift read from the ruling or from a neighbour would draw the
@@ -373,7 +380,7 @@ function buildCandidateCard(a) {
     //    is the right word for a frame the payload never mentioned. A frame the payload DID
     //    mention, with a state and a reason, is a different fact -- and rendering the same word
     //    for both is how "we never looked" became indistinguishable from "we have no data".
-    countText: hasCounts ? agreementText(s.agree, s.discriminating) : (reason || UNKNOWN),
+    countText: hasCounts ? agreementText(s.agree, numOrNull(s.total)) : (reason || UNKNOWN),
     // The server's token, for the styling hook and the console record. Null when the payload
     // carried no state, which is what an older producer sends.
     state: candState,
@@ -387,9 +394,19 @@ function buildCandidateCard(a) {
   });
 }
 
-/** `일치 512 / 판별 528`. The denominator is not decoration; it is the evidence. */
-export function agreementText(agree, discriminating) {
-  return `일치 ${fmt(agree)} / 판별 ${fmt(discriminating)}`;
+/**
+ * `일치 300 / 대상 512`. The denominator is not decoration; it is the evidence.
+ *
+ * 🔴 THE SECOND NUMBER IS THE POPULATION, NEVER THE DISCRIMINATING COUNT. It used to be
+ *    `판별 <discriminating>`, and on every axis the server computes that as a subset of the
+ *    numerator (`map_alignment.py:2691`, `:2702`, `:2711`) -- so the pair `A / D` had `D <= A`
+ *    and, on the index axis, `D == A` for every candidate in the ordinary case. The screen read
+ *    `일치 300 / 판별 300` about a run the server's own log recorded as `agreement=300/512`:
+ *    the operator saw full marks, eight times, on a run that was 212 dies short.
+ *    (Reported from production 2026-08-06; reproduced key-by-key before this line changed.)
+ */
+export function agreementText(agree, total) {
+  return `일치 ${fmt(agree)} / 대상 ${fmt(total)}`;
 }
 
 /** `Δ 47`. A die count is a physical quantity to a die engineer; a percentage point is not. */
@@ -407,7 +424,7 @@ function summaryFor(selectedId, scoringById, verdict, numerals) {
   //    what this screen leaves open when it will not rank. Reading `s` as "there are numbers"
   //    put `일치 0 / 판별 0` in the summary strip for a frame nobody scored.
   const measured = !!s && numOrNull(s.agree) !== null && numOrNull(s.discriminating) !== null;
-  const countText = measured ? agreementText(s.agree, s.discriminating) : UNKNOWN;
+  const countText = measured ? agreementText(s.agree, numOrNull(s.total)) : UNKNOWN;
   const margin = verdict && Number.isFinite(verdict.marginDies) ? verdict.marginDies : null;
   return Object.freeze({
     countText,

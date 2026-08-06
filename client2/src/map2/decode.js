@@ -127,14 +127,43 @@ export const INDEX_WALK_INCONSISTENT = 'inconsistent';
  *    shows up in the log as itself rather than as nothing; what it must not do is leave this
  *    function with no keys at all and empty the eight.
  */
+/**
+ * 🔴 `total` IS THE DENOMINATOR AND `discriminating` IS NOT. This is the field that was missing,
+ *    and its absence is what put full marks on screen for a candidate the server scored short.
+ *
+ *    On EVERY axis the server computes the discriminating count as a SUBSET OF THE NUMERATOR --
+ *    `count_nonzero(member & varies)` (`map_alignment.py:2691`, `:2702-2704`, `:2711-2713`), where
+ *    `member` is the agreement vector itself. So `discriminating <= agree` by construction, and
+ *    the pair can never be read as "hits out of population". On the index axis the two are EQUAL
+ *    whenever no single cell is matched by all eight frames, which is the ordinary case: measured
+ *    on a 512-cell payload where the winner agreed on 300, all eight candidates rendered
+ *    `일치 N / 판별 N`, i.e. full marks, eight times over.
+ *
+ *    The population each axis actually scored against, as the server ships it per candidate:
+ *      · index      `index_total`   cells carrying a stored number (`map_alignment.py:2686`,
+ *                                   candidate-independent BY DESIGN -- the server's own comment
+ *                                   at :2683 says a per-candidate denominator makes the eight
+ *                                   report eight different fractions)
+ *      · values     `agreement`     the positional overlap, because a value is compared only
+ *                                   where a cell landed on the reference (`:2631`)
+ *      · occupancy  `placed`        the cells this candidate placed (`:2800`); `agreement` is
+ *                                   `count_nonzero(member)` over exactly that array (`:2511`)
+ *
+ *    `discriminating` STAYS -- it is what `min_discriminating_dies` gates on and dropping it
+ *    would silently change which runs rank. It is simply not a denominator and is no longer
+ *    rendered as one.
+ */
 export function scoringKeysFor(metric) {
   if (metric === METRIC_INDEX) {
-    return Object.freeze({ agree: 'index_agreement', discriminating: 'index_discriminating' });
+    return Object.freeze({ agree: 'index_agreement', discriminating: 'index_discriminating',
+                           total: 'index_total' });
   }
   if (metric === METRIC_VALUES || metric === METRIC_VALUES_WEIGHTED) {
-    return Object.freeze({ agree: 'value_agreement', discriminating: 'value_discriminating' });
+    return Object.freeze({ agree: 'value_agreement', discriminating: 'value_discriminating',
+                           total: 'agreement' });
   }
-  return Object.freeze({ agree: 'agreement', discriminating: 'discriminating' });
+  return Object.freeze({ agree: 'agreement', discriminating: 'discriminating',
+                         total: 'placed' });
 }
 
 /**
@@ -278,7 +307,7 @@ export function decodeReferenceView(payload) {
     //    row is carried with NULL counts and its state, so the screen can say what it is.
     if (state !== null && CAND_UNMEASURED.has(state)) {
       scorings.push(Object.freeze({
-        candidate_id: frame, agree: null, discriminating: null, state, reason }));
+        candidate_id: frame, agree: null, discriminating: null, total: null, state, reason }));
       continue;
     }
     // 🔴 NOT `intOrNull`. Under `values_weighted` the axis this ruling stands on is weighted
@@ -296,8 +325,13 @@ export function decodeReferenceView(payload) {
       rejected.push(`candidates ${frame}: ${keys.agree}/${keys.discriminating} not numbers`);
       continue;
     }
+    // 🔴 ABSENT, NOT ZERO, AND NOT A REASON TO DROP THE ROW. A producer that predates this
+    //    field ships counts without a population, and the honest screen for that is `미상` on
+    //    the denominator -- not a rejected candidate (which would shrink the tie count) and not
+    //    a `0` (which would read as "nothing was there to match", a claim nobody measured).
+    const total = numOrNull(raw[keys.total]);
     scorings.push(Object.freeze({
-      candidate_id: frame, agree, discriminating, state: state || CAND_SCORED, reason,
+      candidate_id: frame, agree, discriminating, total, state: state || CAND_SCORED, reason,
       // 🔴 THE PLACEMENT THE SCORING ACTUALLY USED. `_solve_shift` picks the translation
       //    that maximises overlap for THIS candidate, scores against it, and ships it here --
       //    so it is not decoration beside the counts, it is the coordinate frame those counts
