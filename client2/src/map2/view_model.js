@@ -265,6 +265,10 @@ export function buildViewModel(input) {
     rulingMetric: rulingMetricFor(payload),
     // The borrowed-geometry offer, and whether this answer stands on one. See `assumptionModel`.
     assumption,
+    // 🔴 WHETHER THIS RANKING STANDS ON THRESHOLDS NOBODY DECLARED. Same class of fact as
+    //    `assumption` and carried the same way: a caveat about the verdict, travelling INSIDE
+    //    the verdict rather than beside it, so the places that copy a ruling cannot drop it.
+    provisional: provisionalModel(payload),
     // Aggregate exclusions, stated once and never shouted, never decorated per row.
     meta: metaLine(payload, numerals),
     picture: pictureModeFor(state),
@@ -607,6 +611,38 @@ function measurementsOf(payload) {
  * 🔴 `basisLabel` IS `table:map_id` -- THE SPELLING `/view` TAKES BACK, not a display format.
  *    One vocabulary for a floor across this screen, so nothing has to parse a label to re-ask.
  */
+/**
+ * IS THIS RANKING PROVISIONAL -- did it stand on thresholds nobody declared?
+ *
+ * 🔴 THE LINE IS THE SERVER'S SENTENCE AND THIS FILE DOES NOT COMPOSE ONE. Same discipline as
+ *    `refusal` and the assumption offer: the server wrote 「잠정 순위 - 판정 기준값 미선언 ·
+ *    기본값 1」 for a person to read, and it wrote it ON the ruling precisely because on a
+ *    SCORED run `compose_refusal` returns nothing -- the sentence slot the screen would
+ *    otherwise use is empty exactly when this caveat is needed. A Korean equivalent invented
+ *    here would be a second spelling of a fact the server has already spelled.
+ *
+ * 🔴 THE DEFAULT DOES NOT CHANGE WHO WINS, ONLY WHETHER WE MAY SAY SO. `{1, 1}` ranks the same
+ *    candidates in the same order as any declared pair would (the structural checks already
+ *    require a positive discriminating count), so this is not a caveat about the ARITHMETIC --
+ *    it is a caveat about the AUTHORITY. That is why it is a sentence next to the answer and
+ *    not a refusal to give one.
+ *
+ * ⚠️ THREE STATES, NOT TWO. `active` false with `known` true means the server checked and the
+ *    thresholds were declared; `known` false means this server does not carry the field, and
+ *    the screen must not read that silence as a declaration.
+ */
+function provisionalModel(payload) {
+  const list = payload && payload.ruling_thresholds_defaulted;
+  const known = Array.isArray(list);
+  const axes = known ? list : [];
+  return Object.freeze({
+    known,
+    active: axes.length > 0,
+    axes: Object.freeze(axes.slice()),
+    line: (payload && payload.ruling_provisional_text) || null,
+  });
+}
+
 function assumptionModel(session, payload) {
   const a = (payload && payload.assumption) || null;
   const basis = (a && a.basis) || null;

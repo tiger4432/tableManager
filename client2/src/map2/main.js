@@ -395,8 +395,12 @@ export function bootstrap(deps) {
     //    same reason the worklist decorates a boundary rather than every row below it. An
     //    APPLIED assumption is different: the numbers on screen rest on a wafer nobody measured.
     if (el.questionNote) {
-      if (vm.assumption.applied) el.questionNote.setAttribute('data-me2-note-tone', 'caution');
-      else el.questionNote.removeAttribute('data-me2-note-tone');
+      // Caution once NUMBERS REST ON SOMETHING NOBODY DECLARED -- a borrowed wafer, or a bar
+      // the server substituted. The two are different facts with the same consequence for the
+      // reader, so they drive one tone rather than growing a second visual language.
+      if (vm.assumption.applied || vm.provisional.active) {
+        el.questionNote.setAttribute('data-me2-note-tone', 'caution');
+      } else el.questionNote.removeAttribute('data-me2-note-tone');
     }
   }
 
@@ -440,6 +444,17 @@ export function bootstrap(deps) {
     //    an applied assumption it is the disclosure. `unavailable` carries no sentence at all,
     //    so nothing is added on the ordinary runs where there is nothing to say.
     if (vm.assumption.line) parts.push(vm.assumption.line);
+    // 🔴 THE PROVISIONAL CAVEAT RIDES THE SAME SLOT, AND IT LEADS. Both are one sentence about
+    //    what the answer on screen rests on, so they belong in one place -- but this one
+    //    qualifies the RANKING itself, while the assumption qualifies the geometry the ranking
+    //    was computed over. A reader who takes only the first clause should get the stronger
+    //    caveat, and "this winner was chosen against a bar nobody set" outranks "the wafer
+    //    dimensions were borrowed".
+    //
+    //    THE SENTENCE IS THE SERVER'S, VERBATIM. It exists because on a SCORED run
+    //    `compose_refusal` composes nothing, so `#me2-refusal` is empty exactly when this has
+    //    to be said -- which is why the caveat travels on the ruling and lands here instead.
+    if (vm.provisional.line) parts.unshift(vm.provisional.line);
     return parts.join(' · ');
   }
 
@@ -1798,6 +1813,28 @@ export function adaptPayload(raw) {
     //    against the same bar. Per axis (`map_alignment.py:1194`), null when the ruling did not
     //    carry both -- see `decode.decodeThresholds`, and `currentVerdict` for why it leads.
     ruling_thresholds: decoded.rulingThresholds,
+    // 🔴 THE RANKING'S OWN CAVEAT ABOUT ITSELF, AND WITHOUT THESE TWO LINES IT DOES NOT EXIST.
+    //    The server now RANKS when the thresholds are undeclared instead of refusing (product
+    //    owner: the feature runs before the guards go on), substituting 1/1 and saying so on
+    //    the ruling. `decode` already carries the whole `ruling` through -- but this literal is
+    //    hand-written, and a field not named here is a field that does not exist downstream.
+    //    So the client's own verdict layer reproduced the same winner from `ruling.min_*`
+    //    (which are now non-null) and drew a confident badge, while the one fact that says the
+    //    bar was invented never left the payload. That is precisely the impersonation the
+    //    no-default design existed to stop, relocated one layer up: the server stopped claiming
+    //    more than it knows and the client started.
+    //
+    // ⚠️ ABSENT IS NOT EMPTY. `[]` means the server checked and the thresholds WERE declared;
+    //    `null` means this server does not carry the field at all. Defaulting an absent field
+    //    to `[]` would make a stale server read as "declared", which is the same collapse the
+    //    server's own comment refuses when it insists on sending the list even when empty.
+    ruling_thresholds_defaulted: Array.isArray(decoded.ruling && decoded.ruling.thresholds_defaulted)
+      ? Object.freeze(decoded.ruling.thresholds_defaulted.map(String)) : null,
+    // The SERVER'S sentence, verbatim. `null` when the ranking stood on declared thresholds --
+    // it composes this because on a scored run `compose_refusal` returns nothing at all, so the
+    // slot the screen would otherwise use is empty exactly when the caveat is needed.
+    ruling_provisional_text: (decoded.ruling && decoded.ruling.provisional_text)
+      ? String(decoded.ruling.provisional_text) : null,
     // 🔴 THE SENTENCE AND ITS MEASUREMENTS TRAVEL SEPARATELY, BECAUSE THE SERVER SENDS THEM
     //    SEPARATELY. `refusal_detail` is the composed sentence and it carries reason LABELS
     //    only; the numbers that say WHICH grid is wrong and BY HOW MUCH are in the tally's

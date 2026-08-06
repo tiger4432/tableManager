@@ -612,6 +612,85 @@ function throws(fn, what) {
   eq(docR.getElementById('me2-confirmbar').getAttribute('data-me2-confirm-state'), null,
      'G35 picking a different frame clears the refusal it was about');
 
+  // ── A PROVISIONAL RANKING SAYS SO ───────────────────────────────────────────
+  // 🔴 THE SERVER NOW RANKS WHEN THE THRESHOLDS ARE UNDECLARED INSTEAD OF REFUSING (product
+  //    owner: the feature runs before the guards go on). It substitutes 1/1, ranks, and says so
+  //    on the ruling -- `thresholds_defaulted` plus a sentence it composed itself.
+  //
+  //    THE DANGER IS THAT THIS COSTS THE CLIENT NOTHING TO GET WRONG. `ruling.min_*` arrive
+  //    NON-NULL, so the client's own verdict layer reproduces the same winner and draws the
+  //    same confident badge with zero client work -- while the one field that says the bar was
+  //    invented sits in a payload nobody forwarded. `adaptPayload` is a hand-written literal,
+  //    so a field not named there does not exist downstream, and the screen would claim more
+  //    than the server does. Scored on the RENDERED SENTENCE, byte for byte: a "some caveat is
+  //    shown" check would pass on a word of ours, and the server wrote this one on purpose.
+  const PROVISIONAL = '잠정 순위 - 판정 기준값 미선언 · 기본값 1';
+  const provisionalWire = {
+    ...payload,
+    ruling: { winner: 'rot0_front', margin: 110, min_margin_dies: 1,
+              min_discriminating_dies: 1,
+              thresholds_defaulted: ['min_margin_dies', 'min_discriminating_dies'],
+              provisional_text: PROVISIONAL },
+  };
+  const docP = makeDocument();
+  const appP = bootstrap({ document: docP,
+    api: { counters: { reads: 0, writes: 0 },
+           loadReferenceView: () => Promise.resolve(provisionalWire),
+           loadWorklist: () => Promise.resolve({ rows: [] }),
+           loadAlignConfig: () => Promise.resolve({}),
+           confirmFrame: () => Promise.resolve({}) } });
+  appP.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  appP.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vmP = appP.render();
+  eq(vmP.state, VIEW_STATE.SCORED_WINNER,
+     'G36 a provisional ranking still produces a winner -- the caveat is not a refusal');
+  ok(docP.getElementById('me2-question-note').textContent.includes(PROVISIONAL),
+     'G37 and the SERVER SENTENCE is on screen, verbatim, beside that winner');
+  eq(docP.getElementById('me2-question-note').getAttribute('data-me2-note-tone'), 'caution',
+     'G38 painted as a caution, because numbers rest on a bar nobody set');
+  eq(vmP.provisional.active, true, 'G39 the view model carries the fact, not only the sentence');
+  eq(vmP.provisional.axes.join(','), 'min_margin_dies,min_discriminating_dies',
+     'G40 naming WHICH thresholds were substituted');
+
+  // 🔴 ABSENT IS NOT EMPTY, AND COLLAPSING THEM IS THE SAME DEFECT ONE STEP QUIETER. `[]` means
+  //    the server checked and the thresholds WERE declared. A missing field means this server
+  //    does not carry the fact at all -- and defaulting that to `[]` would make a stale server
+  //    read as "declared", which is exactly the claim nobody is entitled to make.
+  const declaredWire = {
+    ...payload,
+    ruling: { winner: 'rot0_front', margin: 110, min_margin_dies: 20,
+              min_discriminating_dies: 40, thresholds_defaulted: [], provisional_text: null },
+  };
+  const docQ = makeDocument();
+  const appQ = bootstrap({ document: docQ,
+    api: { loadReferenceView: () => Promise.resolve(declaredWire),
+           loadWorklist: () => Promise.resolve({ rows: [] }),
+           loadAlignConfig: () => Promise.resolve({}),
+           confirmFrame: () => Promise.resolve({}) } });
+  appQ.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  appQ.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vmQ = appQ.render();
+  eq(vmQ.provisional.active, false, 'G41 declared thresholds are not provisional');
+  eq(vmQ.provisional.known, true, 'G42 and the server is KNOWN to have checked -- empty, not absent');
+  eq(docQ.getElementById('me2-question-note').getAttribute('data-me2-note-tone'), null,
+     'G43 so no caution is painted');
+
+  const docR2 = makeDocument();
+  const appR2 = bootstrap({ document: docR2,
+    api: { loadReferenceView: () => Promise.resolve(payload),   // no ruling caveat fields at all
+           loadWorklist: () => Promise.resolve({ rows: [] }),
+           loadAlignConfig: () => Promise.resolve({}),
+           confirmFrame: () => Promise.resolve({}) } });
+  appR2.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  appR2.selectDecision({ eqp: 'EQP1', product: 'PRD1' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vmR2 = appR2.render();
+  eq(vmR2.provisional.known, false,
+     'G44 a server that does not carry the field is reported as UNKNOWN, never as declared');
+  eq(vmR2.provisional.active, false, 'G45 and unknown is not treated as provisional either');
+
   // Action accounting against the switchover bar.
   // 🔴 PINNED EXACTLY, NOT BOUNDED. This came out of a usability round measured in clicks, so
   //    the number is the finding: candidate click + source-row click + candidate switch + ONE

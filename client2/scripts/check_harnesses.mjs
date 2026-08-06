@@ -432,7 +432,16 @@ const FLOORS = new Map([
   // screen byte for byte, H9-H10 that the write carries the top-level `state`, H11-H14 that the
   // transport lifts the sentence out of FastAPI's envelope. A drop here means a confirmation
   // can fail silently again, which is the state this round found it in.
-  ['map_editor2_shell_harness.mjs', 476],
+  // 476 -> 486 (2026-08-06). The PROVISIONAL RANKING marker. The server now ranks when the
+  // thresholds are undeclared instead of refusing, substituting 1/1 and saying so on the ruling.
+  // 🔴 THE DANGER IS THAT IT COSTS THE CLIENT NOTHING TO GET WRONG: `ruling.min_*` arrive
+  // non-null, so the client's verdict layer reproduces the same winner and draws the same
+  // confident badge with no client work at all -- while the field that says the bar was invented
+  // sits in a payload nobody forwarded, because `adaptPayload` is a hand-written literal.
+  // G36-G45 score the sentence BYTE FOR BYTE (a word of ours would pass a looser check), the
+  // caution tone, and the three-state absent/empty/non-empty distinction. A drop here means the
+  // screen can claim more authority than the server does.
+  ['map_editor2_shell_harness.mjs', 486],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
