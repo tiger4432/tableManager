@@ -1372,7 +1372,6 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `grid_needs_basis` | `grid_needs_basis(meta: dict \| None, basis_meta: dict \| None) -> bool` |
 | `borrowed_meta_for` | `borrowed_meta_for(meta, basis_meta, basis=None, need_phys=True, need_grid=True)` |
 | 🆕 🔴 **`confirmed_meta_for`** | **`confirmed_meta_for(meta: dict \| None, basis_meta: dict \| None, basis: dict, frame: str, mark: dict) -> dict \| None`** |
-| `cells_outside_grid` | `cells_outside_grid(meta: dict, cells) -> str \| None` |
 | `compose_basis_refusal` | `compose_basis_refusal(map_ids, basis: dict = None, why: str = None)` |
 | `declared_frame_of` | `declared_frame_of(meta: dict \| None) -> dict` |
 | `_solve_shift` / `_membership` | `_solve_shift(placed_keys, ref_sorted, window: int)` / `_membership(placed_keys, ref_sorted, dx, dy)` |

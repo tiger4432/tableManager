@@ -871,20 +871,28 @@ def test_a_grid_only_mismatch_is_not_reported_as_a_missing_measurement():
     assert ma.EXCLUDE_GEOMETRY_REFUSED not in [r["reason_code"] for r in excluded]
 
 
-def test_the_containment_guard_covers_the_overridden_population(env):
-    """🔴 The guard is the ONLY thing left distinguishing «a partial map of the same wafer»
-    from «a different map» once the declared grid stops being consulted. It ran only in the
-    no-spec-row branch before this round.
+def test_the_overridden_population_is_not_refused_for_its_stored_origin(env):
+    """🔴 [D16] This test pinned the containment guard on the grid-override population, and
+    the guard is RETIRED. On this population it was the worse of its two call sites: these
+    maps DECLARE their own spec, and the guard deleted them for having written their cells
+    down under their own origin rather than the floor's.
 
-    The fixture's cells EXCEED the borrowed grid on purpose - a fitting source makes the guard
-    a no-op, and a no-op guard is the trap that already cost this round one mutant."""
+    What the operator reported, verbatim: 「셀 범위 2~28이 빌린 격자 −4~26을 벗어나서 점수
+    못 낸다는데, 당연히 shift가 있으니 범위가 다를 수 있는 거 아니야?」 - and the widths
+    agree with them: 27 wide against a 31-wide grid FITS. The guard compared the source's raw
+    stored bbox against the floor's index box, two different origins, before any placement
+    existed to bring them into one space.
+
+    So a map with an out-of-box coordinate now REACHES the scorer, and the assumption is
+    offered rather than withheld. What refuses a genuine mismatch is scoring - see
+    `test_map_alignment_unregistered.py` §5-ter for the measurement."""
     cells = _planted_cells() + [(200, 200)]
     sm, excluded, stats = _score(_partial_grid_meta(), cells,
                                  assume_reference_geometry=True)
-    assert [r["reason_code"] for r in excluded] == [ma.EXCLUDE_CELLS_OUTSIDE_GRID]
-    assert stats["assumed_map_ids"] == [], "a mismatched map was seated on a borrowed grid"
-    assert stats["assumable_map_ids"] == [], "a map that cannot fit was still offered"
-    assert "_meta" not in sm
+    assert [r["reason_code"] for r in excluded] == []
+    assert stats["assumed_map_ids"] == ["P"]
+    assert stats["assumable_map_ids"] == ["P"]
+    assert "_meta" in sm, "the borrow never reached the map"
 
 
 def test_the_confirmation_record_does_not_call_a_borrowed_grid_a_declaration():

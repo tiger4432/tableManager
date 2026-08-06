@@ -187,11 +187,38 @@ EXCLUDE_GRID_DIMS_DIFFER = "grid_dims_differ"
 # 🔴 그래서 이것은 **맵의 사실이 아니라 요청의 사실**이다. 맵마다 세지 않는다 — 응답의
 #    `basis_refusal`이 요청 단위로 한 번 말하고, 제외 집계는 이 사유로 부풀지 않는다.
 EXCLUDE_BASIS_UNDECLARED = "basis_undeclared"
-# [D5] 빌린 격자가 이 맵의 셀을 담지 못한다. **격자를 빌리기 시작한 뒤로 남은 유일한 관문**
-# 이고, 「같은 웨이퍼의 부분집합」과 「아예 다른 맵」을 가르는 것이 이것 하나다
-# (§cells_outside_grid). 치수 불일치(`grid_dims_differ`)와 **다른 사실이다** — 저쪽은 자기
-# 격자를 선언한 맵이 바닥과 어긋난 것이고, 이쪽은 격자를 빌려 놓고 그 안에 안 들어간 것이다.
-EXCLUDE_CELLS_OUTSIDE_GRID = "cells_outside_grid"
+
+# ═══ [D16] `cells_outside_grid` — **은퇴** (제품 소유자 2026-08-06) ═══════════════════════
+#
+# 여기에 사유 코드 하나가 더 있었다: [D5]의 담김 관문. 「빌린 격자가 이 맵의 셀을 담는가」를
+# 묻고, 안 담으면 그 맵을 채점 전에 제외했다. 조작자의 문장이 그것을 무너뜨렸다 —
+# 「셀 범위 2~28이 빌린 격자 −4~26을 벗어나서 점수 못 낸다는데, 당연히 shift가 있으니 범위가
+# 다를 수 있는 거 아니야? 불합리한 설계로 보임」. 조작자가 옳고, 수가 그것을 증명한다:
+# 소스는 폭 27이고 격자는 폭 31이다. **소스가 더 작다 — 담긴다.** 어긋난 것은 크기가 아니라
+# 원점이고, 원점을 맞추는 것이 정렬이 푸는 그 일이다.
+#
+# 🔴 **두 상자가 서로 다른 공간에 살았다.** 소스의 bbox는 그 맵의 **날 저장 좌표**이고
+#    빌린 격자 상자는 **바닥의 좌표**인데, 제품 소유자가 오늘 확정한 대로 저장 원점은 맵마다
+#    「랜덤이야」다. 공간이 다른 두 상자의 포함 관계는 아무것도 재지 않는다 — 오늘 수리한
+#    다른 결함들과 **같은 계급**이다(한 공간으로 데려오지 않고 견준 두 값).
+# 🔴 그리고 **배치보다 먼저** 물었다. 아직 놓지 않은 자리에 안 들어간다는 이유로 거절했다.
+#
+# 🔴 은퇴의 근거는 산문이 아니라 실측이다(2026-08-06, 바닥 31×31 start(−4,−4) · 소스는 같은
+#    웨이퍼의 부분 맵 706셀을 원점 +6만큼 옮겨 둔 것 = 조작자의 모양 그대로):
+#      · 관문 유지 → **8후보 전부 not_scorable**, 판정 없음. (관문은 후보 루프 **밖**에
+#        있으므로 후보를 고르는 것이 아니라 맵을 통째로 지운다.)
+#      · 관문 제거 → rot0_front **706/706**, 2등 549, **margin 157 · 판별 705**,
+#        배치는 `anchor`. **정답이 만점으로 나온다.**
+#    그리고 관문이 무엇을 걸렀는지도 쟀다: 웨이퍼가 **아닌** 20×20 꽉 찬 사각형(누가 봐도
+#    「다른 맵」)은 원점을 −4에 둬도 +7에 둬도 **관문을 그냥 통과**하고, 채점이 400 대 400
+#    동점 → **margin 0으로 판정을 거절**한다. 즉 관문은 「같은 격자인가」를 가르지 못했다.
+#    가른 것은 **원점이 우연히 가까운가**뿐이고, 진짜 답은 점유가 이미 갖고 있었다.
+#
+# 🔴 그래서 대체물을 짓지 않는다. 담김을 물을 수 있는 유일한 공간은 **앉힌 뒤**
+#    (`seat = anchor_ref + L·(cell − anchor_src)`)인데, 거기서 틀린 후보는 이미 점유 0으로
+#    답한다 — 같은 정보에 거절만 하나 더 얹는 셈이다(총괄 판정: 「가드는 기능이 돈 다음에」).
+#    실제로 안 맞는 맵은 **이름을 잃지 않는다**: 판정이 `margin`/`discriminating`으로
+#    거절하고, 그 거절도 사유가 붙은 문장이다(§_rule_on / §compose_refusal).
 
 # 표찰이지 문장이 아니다(§compose_refusal).
 _EXCLUDE_TEXT = {
@@ -204,7 +231,6 @@ _EXCLUDE_TEXT = {
     EXCLUDE_GRID_DIMS_MISSING: "격자 치수(grid_cols/grid_rows) 미등록 - 가정 대상 아님",
     EXCLUDE_GRID_DIMS_DIFFER: "격자 치수가 기준과 다름 - 같은 잘림이 아님",
     EXCLUDE_BASIS_UNDECLARED: "기준 맵 규격 미선언 - 빌려 올 웨이퍼 치수가 없음",
-    EXCLUDE_CELLS_OUTSIDE_GRID: "셀이 빌린 격자 밖 - 같은 격자의 부분집합이 아님",
 }
 
 # 기준(floor) 거절 사유 코드 — **「제안되지 않았다」에는 언제나 이유가 붙는다.**
@@ -825,37 +851,10 @@ def start_from_placement(framed_meta: dict, floor_meta: dict, anchor_src, anchor
     return int(g["start_x"]) + u, int(g["start_y"]) + v
 
 
-def cells_outside_grid(meta: dict, cells) -> str | None:
-    """빌린 격자가 이 맵의 셀을 **담을 수 있는가.** 담으면 None, 아니면 사유(사람 말).
-
-    🔴 **빌리기가 관대한 방향이 된 뒤로 남은 유일한 증거다** ([D5]). 격자를 빌리기 전에는
-       치수 불일치(`grid_dims_differ`)가 「같은 웨이퍼가 아니다」를 걸러 냈는데, 이제 소스는
-       바닥의 격자를 그대로 받으므로 그 관문이 사라진다. 담김은 그 자리를 **의심이 아니라
-       증거로** 대신한다: 셀이 격자 밖에 있다는 것은 두 맵이 같은 격자가 아니라는 **양의
-       증거**이고, 그때 프레임 밖에 셀을 앉히는 대신 이름을 대고 거절한다.
-
-    ⚠️ **회전은 아직 미지라 치수 스왑을 허용한다.** 저장 좌표의 가용 범위는 프레임의 *visual*
-       치수가 정하고, 90/270 프레임에서 그것은 물리 치수의 스왑이다. 스왑을 안 봐주면 회전된
-       **전면(full) 맵**이 거짓 거절된다(실측: 45×39 웨이퍼의 rot90 맵 저장 bbox가 y=41까지
-       가는데 rows=39다). 여덟 후보가 회전을 푸는 중이므로, 여기서 회전을 하나로 고정하는
-       것은 후보 루프보다 먼저 답을 정하는 것이 된다.
-    """
-    box = map_overlay.grid_box(meta)
-    bbox = _cell_bbox(cells)
-    if box is None or bbox is None:
-        return None
-    lo_x, lo_y, hi_x, hi_y = box
-    min_x, min_y, max_x, max_y = bbox
-    dims = map_overlay.grid_dims(meta)
-    if min_x >= lo_x and min_y >= lo_y:
-        if max_x <= hi_x and max_y <= hi_y:
-            return None
-        # 스왑된 프레임(회전 90/270)의 가용 범위
-        if dims and max_x <= lo_x + dims[1] - 1 and max_y <= lo_y + dims[0] - 1:
-            return None
-    return ("셀 범위 x %d~%d · y %d~%d가 빌린 격자의 인덱스 공간 x %d~%d · y %d~%d를 "
-            "벗어납니다 - 같은 격자의 부분집합이 아닙니다"
-            % (min_x, max_x, min_y, max_y, lo_x, hi_x, lo_y, hi_y))
+# [D16] `cells_outside_grid`는 여기 있었다. 은퇴 근거와 실측은 §EXCLUDE_BASIS_UNDECLARED
+# 아래 [D16] 블록에 있다 — 요약하면 **날 저장 좌표의 상자와 빌린 격자의 상자는 서로 다른
+# 공간에 살아서** 그 둘의 포함 관계가 아무것도 재지 않았고, 그러면서 조작자의 정상적인 맵을
+# 지웠다. 다시 넣고 싶어지면 그 블록의 세 실측을 먼저 읽을 것.
 
 
 #: 규격 행이 없는 맵이 **제안은 되는데 걸리지는 않은** 상태의 사유(사람 말). 제외 표찰
@@ -2367,12 +2366,10 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 #    맵이 아니라 요청의 사실이라 제외 집계에 세지 않는다(§compose_basis_refusal).
                 basis_undeclared_ids.append(mid)
                 continue
-            # 🔴 [D5] 담김 검사는 **제안보다 먼저**다. 안 들어가는 맵을 제안했다가 켠 뒤에
-            #    거절하면 조작자는 한 번 더 눌러 보고 같은 막다른 길에 도착한다.
-            outside = cells_outside_grid(borrowed, sm.get("cells"))
-            if outside is not None:
-                excluded.add(EXCLUDE_CELLS_OUTSIDE_GRID, mid, outside)
-                continue
+            # 🔴 [D16] 담김 검사가 여기 있었고 **은퇴했다**(§[D16]). 날 저장 좌표를 빌린
+            #    격자 상자에 견주는 검사였는데 두 상자가 다른 공간에 살아서 재는 것이 없었고,
+            #    조작자의 정상적인 맵(폭 27이 폭 31 격자에 「안 들어간다」)을 채점 전에
+            #    지웠다. 안 맞는 맵은 점유가 답한다 — 실측은 [D16] 블록에.
             offerable_ids.append(mid)
             if not assume_reference_geometry:
                 excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, TEXT_NO_META_ROW)
@@ -2399,15 +2396,9 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                         excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid,
                                      map_overlay.geometry_refusal(meta))
                     continue
-                # 🔴 [D6] 담김 검사가 **이 모집단까지** 온다. 격자를 덮어쓰는 순간
-                #    `grid_dims_differ`가 하던 「같은 웨이퍼가 아니다」 걸러내기가 사라지고,
-                #    남는 증거는 담김 하나뿐이다 — 없으면 진짜로 다른 맵이 조용히 앉는다.
-                #    격자를 **안** 빌렸으면 빌린 격자가 없으므로 물을 것도 없다.
-                if need_grid:
-                    outside = cells_outside_grid(borrowed, sm.get("cells"))
-                    if outside is not None:
-                        excluded.add(EXCLUDE_CELLS_OUTSIDE_GRID, mid, outside)
-                        continue
+                # 🔴 [D16] 담김 검사가 이 모집단에도 걸려 있었고 같이 은퇴했다. 여기가 더
+                #    나빴다 — 이 맵들은 **자기 규격을 선언해 둔** 맵인데도, 자기 원점으로 쓴
+                #    좌표가 남의 원점 상자 밖이라는 이유로 지워졌다.
                 # 🔴 제안은 **가정을 안 걸어도** 센다. 이 목록이 화면의 버튼이므로, 여기
                 #    안 넣으면 이 판정이 섬기려는 바로 그 모집단에서 버튼이 안 나온다.
                 offerable_ids.append(mid)
@@ -5510,8 +5501,8 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         #    주장하는 것도 갈리는 것이다).
         #    ⚠️ 격자 치수 조건은 **행이 있는 맵에만** 건다. 행이 없으면 격자를 바닥에서
         #       빌리므로 셀이 답을 갖고 있고, 목록은 셀을 읽지 않는다.
-        #    ⚠️ 담김(§cells_outside_grid)은 여기서 확인할 수 없다 - 셀 bbox가 필요하다.
-        #       그래서 이 수는 여전히 **상한**이고, 상세가 정본이다(기존 규율 그대로).
+        #    ⚠️ 이 수는 여전히 **상한**이고, 상세가 정본이다(기존 규율 그대로). 담김 관문이
+        #       [D16]에서 은퇴하면서 상한과 실제의 차이는 그만큼 줄었다.
         #    🔴 그리고 **서버가 메타를 못 읽었으면 하나도 세지 않는다.** 그때 모든 맵이
         #       `metas.get(m) is None`이라 이 식은 「전부 가정 가능」이라고 답하는데, 그것은
         #       읽지 못한 것을 부재로 읽은 결과다 — 잰 적 없는 수를 초대장으로 내보낸다.

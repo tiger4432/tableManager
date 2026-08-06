@@ -382,7 +382,6 @@ def test_a_partial_map_is_placed_back_exactly_where_it_came_from(planted):
     stored = [to_planted(x, y) for (x, y) in truth]
 
     assumed = ma.assumed_meta_for_unregistered(stored, floor, REF_REF)
-    assert ma.cells_outside_grid(assumed, stored) is None, "a true subset must fit"
 
     map_overlay._FRAME_TF_CACHE.clear()
     back = map_overlay.make_frame_transform(
@@ -393,75 +392,138 @@ def test_a_partial_map_is_placed_back_exactly_where_it_came_from(planted):
 
 
 # ---------------------------------------------------------------------------
-# 5-ter. CONTAINMENT - the only guard left once borrowing became permissive
+# 5-ter. [D16] A DIFFERENT STORED ORIGIN IS NOT A DIFFERENT GRID
 # ---------------------------------------------------------------------------
+# WHAT THE OPERATOR REPORTED, verbatim: 「셀 범위 2~28이 빌린 격자 −4~26을 벗어나서 점수
+# 못 낸다는데, 당연히 shift가 있으니 범위가 다를 수 있는 거 아니야? 불합리한 설계로 보임」.
+#
+# They are right and the widths prove it: the source spans 2..28 (width 27), the borrowed
+# grid spans -4..26 (width 31). THE SOURCE IS SMALLER THAN THE GRID - it fits. What does not
+# line up is the origin, and closing that gap is exactly what the shift the aligner solves
+# is for.
+#
+# WHERE THE LINE WAS DRAWN WRONG. The retired guard (`cells_outside_grid`) compared the
+# source's RAW STORED bbox against the floor's index box. Those are two different origins -
+# the product owner ruled a map's stored origin arbitrary from map to map (「랜덤이야」) - so
+# the containment it computed was not a test of anything. And it ran BEFORE the placement:
+# it refused a map on the grounds that it did not fit where it had not yet been put.
+#
+# The guard did not even separate the population it claimed to. MEASURED 2026-08-06: a solid
+# 20x20 block - not a wafer at all, unambiguously «a different map» - passes the guard at
+# stored origin -4 AND at +7, and scoring is what refuses it (400 vs 400, margin 0, TIE).
+# Meanwhile the operator's honest partial map of the SAME wafer was deleted for being at +6.
+# The only input the guard discriminated on was the arbitrary origin.
 
-def test_cells_that_do_not_fit_the_borrowed_grid_are_refused_by_name():
-    """Borrowing removed `grid_dims_differ` as a gate - the source now takes the floor's
-    grid by construction, so «same wafer?» has nothing left to fail on. Containment replaces
-    it on EVIDENCE: cells outside the borrowed index space are positive evidence that these
-    are not the same grid, and the alternative is seating cells outside their own frame."""
-    floor = _meta(cols=45, rows=39)
-    inside = _partial_of(floor)
-    outside = inside + [(200, 300)]        # one cell that cannot belong to a 45x39 grid
-
-    _c, excluded, _r, stats = _score([_no_row_map(outside)], _cells_of(floor), floor,
-                                     assume_reference_geometry=True)
-    assert stats["usable_map_ids"] == []
-    assert list(_reasons(excluded)) == [ma.EXCLUDE_CELLS_OUTSIDE_GRID]
-    # the detail names BOTH boxes - which cells, and what they had to fit in
-    detail = excluded.as_list()[0]["example_detail"]
-    assert "200" in detail and "45" in detail
-
-
-def test_a_map_that_does_not_fit_is_not_even_offered():
-    """The offer has to be honest. Offering an assumption that will refuse when pressed
-    sends the operator around the loop a second time to reach the same dead end."""
-    floor = _meta(cols=45, rows=39)
-    outside = _partial_of(floor) + [(200, 300)]
-    _c, excluded, _r, stats = _score([_no_row_map(outside)], _cells_of(floor), floor,
-                                     assume_reference_geometry=False)
-    assert stats["assumable_map_ids"] == []
-    assert list(_reasons(excluded)) == [ma.EXCLUDE_CELLS_OUTSIDE_GRID]
+_ORIGIN_FLOOR = dict(cols=31, rows=31, grid_start_x=-4, grid_start_y=-4)
 
 
-def test_containment_allows_the_swap_a_rotated_frame_needs():
-    """🔴 The false-refusal this guard could easily have caused. Stored coordinates live in
-    the frame's VISUAL extent, and a 90/270 frame swaps it. A full-coverage map of a 45x39
-    wafer drawn at rot90 stores y up to 41 - past `rows=39` - so a guard that fixed the
-    rotation to 0 would refuse the very maps this feature exists to align, and it would
-    refuse them for a reason that is not true. Rotation is what the eight candidates are
-    still solving; deciding it here would answer the question before the loop asks it."""
+def _origin_shifted_source(floor, off):
+    """A partial DT map of THIS wafer, written down under its own arbitrary stored origin.
+
+    Returns `(truth_in_floor_coords, stored, indices)`. The indices are the DT walk order
+    over the map's own cells - production carries them in a column, and they are what lets
+    the anchor read the translation instead of searching a +-3 window for it."""
+    truth = [p for p in _cells_of(floor)
+             if p[0] <= 22 and p[1] <= 22 and not (p[0] > 18 and p[1] < -1)]
+    stored = [(x + off, y + off) for (x, y) in truth]
+    walk = ma.serpentine_index(stored, top_is_min_y=True)
+    rank = {xy: k for k, xy in walk.items()}
+    return truth, stored, [rank.get(tuple(p)) for p in stored]
+
+
+def test_a_source_offset_from_the_floors_origin_is_still_scorable():
+    """🔴 THE OPERATOR'S SHAPE, to the number. A source spanning 2..28 against a borrowed
+    grid spanning -4..26 must be SCORABLE - and on this fixture the answer it yields is not
+    marginal, it is exact.
+
+    MEASURED with the guard still in place: 8/8 candidates `not_scorable`, no ruling at all.
+    The guard sat OUTSIDE the candidate loop, so it did not pick among the eight - it erased
+    the map before the loop began. With it gone: rot0_front 706/706, runner-up 549,
+    margin 157, 705 discriminating dies, placement `anchor`."""
+    floor = _meta(**_ORIGIN_FLOOR)
+    truth, stored, indices = _origin_shifted_source(floor, off=6)
+
+    # The fixture must ACTUALLY carry the reported shape, or this test stops exercising the
+    # axis the day the wafer mask changes and nobody notices.
+    assert map_overlay.grid_box(floor) == (-4, -4, 26, 26)
+    assert (min(x for x, _ in stored), max(x for x, _ in stored)) == (2, 28)
+    assert (min(y for _, y in stored), max(y for _, y in stored)) == (2, 28)
+    src_w = 28 - 2 + 1
+    assert src_w < 26 - (-4) + 1, "the source must be SMALLER than the grid it is refused by"
+
+    src = {"map_id": "NOROW", "meta": None, "cells": stored, "indices": indices}
+    cands, excluded, ruling, stats = _score([src], _cells_of(floor), floor,
+                                            assume_reference_geometry=True)
+    assert stats["usable_map_ids"] == ["NOROW"], list(_reasons(excluded))
+    assert list(_reasons(excluded)) == []
+
+    scored = [c for c in cands if c.get("state") == "scored"]
+    assert len(scored) == 8, [(c["frame"], c.get("state")) for c in cands]
+
+    # Not merely scorable - RIGHT. The map came from rot0_front, and every one of its dies
+    # lands back on the floor.
+    best = max(scored, key=lambda c: c["agreement"])
+    assert best["frame"] == "rot0_front", [(c["frame"], c["agreement"]) for c in scored]
+    assert best["agreement"] == len(truth) == 706
+    assert ruling["margin"] and ruling["margin"] > 0
+    assert ruling.get("placement") == "anchor"
+
+
+def test_the_origin_offset_does_not_have_to_be_small():
+    """The operator's own words - 「당연히 shift가 있으니 범위가 다를 수 있는 거 아니야」.
+    The offset is a property of how the map was written down, not a tolerance, so there is
+    no size at which it becomes a defect. Same map, three origins, same answer."""
+    floor = _meta(**_ORIGIN_FLOOR)
+    got = []
+    for off in (6, 40, 100000):
+        truth, stored, indices = _origin_shifted_source(floor, off=off)
+        src = {"map_id": "NOROW", "meta": None, "cells": stored, "indices": indices}
+        cands, excluded, _r, stats = _score([src], _cells_of(floor), floor,
+                                           assume_reference_geometry=True)
+        assert stats["usable_map_ids"] == ["NOROW"], (off, list(_reasons(excluded)))
+        got.append(tuple(sorted((c["frame"], c.get("agreement")) for c in cands)))
+    assert got[0] == got[1] == got[2], "the stored origin leaked into the score"
+
+
+def test_a_map_that_is_not_this_wafer_is_refused_by_the_RULING_not_before_it():
+    """🔴 The vocabulary must not go silent. Retiring the guard does not mean a mismatched
+    map now passes - it means the refusal moves to the place that can actually see it.
+
+    A solid 20x20 block is not this wafer's footprint. It reaches the scorer (no exclusion),
+    and scoring refuses it BY NAME: two frames tie at 400, so there is no sole best and the
+    ruling reports `tie` with no winner. That is the same information the guard claimed to
+    carry, arrived at by measurement instead of by an origin coincidence."""
+    floor = _meta(**_ORIGIN_FLOOR)
+    block = [(x, y) for x in range(-4, 16) for y in range(-4, 16)]
+    walk = ma.serpentine_index(block, top_is_min_y=True)
+    rank = {xy: k for k, xy in walk.items()}
+    src = {"map_id": "NOROW", "meta": None, "cells": block,
+           "indices": [rank.get(tuple(p)) for p in block]}
+
+    _c, excluded, ruling, stats = _score([src], _cells_of(floor), floor,
+                                         assume_reference_geometry=True)
+    assert stats["usable_map_ids"] == ["NOROW"], list(_reasons(excluded))
+    assert ruling.get("winner") is None, ruling
+    assert ruling.get("reason_code") == ma.RULING_TIE, ruling
+
+
+def test_a_rotated_full_map_reaches_the_scorer():
+    """Kept from the retired containment section, because the population is still real.
+    Stored coordinates live in the frame's VISUAL extent and a 90/270 frame swaps it: a
+    full-coverage map of a 45x39 wafer drawn at rot90 stores y up to 41, past `rows=39`.
+    Any future gate that reads a bbox must not refuse these - rotation is what the eight
+    candidates are solving, and deciding it before the loop answers the question first."""
     from dt_map_derivation import source_meta_for_frame
     floor = _meta(cols=45, rows=39)
     map_overlay._FRAME_TF_CACHE.clear()
     to90 = map_overlay.make_frame_transform(
         floor, source_meta_for_frame(_meta(cols=45, rows=39), "rot90_front"))
     stored = [to90(x, y) for (x, y) in _cells_of(floor)]
+    assert max(y for _, y in stored) > 39, "fixture must exceed `rows` or it sees nothing"
 
-    _mnx, _mny, mxx, mxy = (min(x for x, _ in stored), min(y for _, y in stored),
-                            max(x for x, _ in stored), max(y for _, y in stored))
-    assert mxy > 39, "fixture must exceed `rows` or it cannot see the swap (got %d)" % mxy
-
-    assumed = ma.assumed_meta_for_unregistered(stored, floor, REF_REF)
-    assert ma.cells_outside_grid(assumed, stored) is None
     _c, excluded, _r, stats = _score([_no_row_map(stored)], _cells_of(floor), floor,
                                      assume_reference_geometry=True)
     assert stats["usable_map_ids"] == ["NOROW"], _reasons(excluded)
-
-
-def test_containment_is_asked_of_the_borrowed_grid_not_of_the_span():
-    """The predicate on its own. A span-based check would pass the out-of-range map below
-    (its span is small); the box-based one refuses it because the cells sit outside the
-    frame they were given."""
-    floor = _meta(cols=45, rows=39)
-    assumed = ma.assumed_meta_for_unregistered(_partial_of(floor), floor, REF_REF)
-    assert map_overlay.grid_box(assumed) == (1, 1, 45, 39)
-
-    far = [(60, 5), (64, 9)]                       # span 5x5, but nowhere near the grid
-    assert ma.cells_outside_grid(assumed, far) is not None
-    assert ma.cells_outside_grid(assumed, [(1, 1), (45, 39)]) is None
-    assert ma.cells_outside_grid(assumed, [(0, 1)]) is not None        # below `start`
 
 
 # ---------------------------------------------------------------------------
