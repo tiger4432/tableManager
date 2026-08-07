@@ -2375,11 +2375,23 @@ function pickSource(payload, focusedId) {
   return payload.sources[0];
 }
 
-/** `rot270_back` -> `270° · 뒷면`. The stored spelling stays visible beside it in the markup. */
+/** `rot270_back` -> `270° · 우상단 시작`. The stored spelling stays visible beside it.
+ *
+ * 🔴 NOT 뒷면/앞면 (2026-08-07). On the index axis `rotθ_back` and `rotθ_front` differ by
+ *    exactly which corner the serpentine starts from - measured: walking a mirrored die set
+ *    left-to-right is the same ranking as walking the original right-to-left, with no rotation
+ *    shift - so the mirror half of the search space IS the top-right half. Equipment that
+ *    numbers from the top-right exists (product owner, 2026-08-07), and while
+ *    `alignment.sides` was narrowed to front its answers were simply absent from the search.
+ *    Saying 뒷면 here told the operator a physical wafer side had been chosen, which the map
+ *    editor one click away genuinely has and this screen does not decide.
+ *    The stored id (`rot270_back`) is still rendered in mono beside this: the rule is that the
+ *    screen may not HIDE what the database holds, not that it may never say what it means.
+ */
 function spellFrame(candidateId) {
   const axes = parseCandidateId(candidateId);
   if (!axes) return candidateId;
-  return `${axes.rotation}° · ${axes.side === 'back' ? '뒷면' : '앞면'}`;
+  return `${axes.rotation}° · ${axes.side === 'back' ? '우상단 시작' : '좌상단 시작'}`;
 }
 
 function gridSpan(payload, axis) {
