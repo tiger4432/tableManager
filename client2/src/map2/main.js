@@ -1153,6 +1153,10 @@ export function bootstrap(deps) {
         cell.setAttribute('aria-pressed', 'false');
         cell.appendChild(span(doc, 'me2-cand-deg', card.degLabel));
         cell.appendChild(span(doc, 'me2-cand-code', card.storedLabel));
+        // `back` on this screen means the mirror half -- "numbers from the top-right" -- and
+        // NOT a physical back side, which the map editor one click away genuinely has. The
+        // stored spelling stays above it; this only says what it means.
+        cell.appendChild(span(doc, 'me2-cand-start', card.startLabel));
         const tags = span(doc, 'me2-cand-tags', '');
         tags.setAttribute('data-me2-cand-tags', '');
         cell.appendChild(tags);

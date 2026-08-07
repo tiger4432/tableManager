@@ -652,7 +652,17 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
                 base[map_overlay.GRID_ASSUMED_KEY] = dict(basis)
         if base.get(map_overlay.GRID_ASSUMED_KEY):
             base.pop(map_overlay.AUTO_REGISTERED_KEY, None)
-    base["rotation"], base["side"] = rot, side
+    # 🔴 [2026-08-07] **`side`는 언제나 `front`로 적는다. 채점은 거울로 하고 기록은 안 한다.**
+    #    이 축의 `back`은 **거울**(`x → −x`)이고, 그것이 표현하는 설비 사실은 「이 장비는
+    #    우상단부터 번호를 매긴다」다 — 물리적으로 뒤집힌 웨이퍼가 아니다(사용자 확인).
+    #    그리고 거울은 **이미 `grid_start_*`에 흡수돼 있다**: 원점은 [D9]대로 정렬이 알아낸
+    #    값이고 그 정렬이 거울 프레임 아래서 돌았으므로, `front`로 읽어도 같은 자리에 앉는다.
+    #    제품 소유자가 저장된 `back` 행의 메타만 `front`로 바꿔 **실주행으로 확인**했다.
+    #    ⚠️ 반대로 `back`을 그대로 적으면 이 표를 읽는 사람과 코드가 **「뒷면 측정」이라는
+    #    거짓**을 받는다. 맵 에디터에는 **진짜 물리 뒷면이 따로 존재**하므로 그 혼동은
+    #    실재하고, 같은 칸에 두 뜻을 담는 것이 이 프로젝트가 반복해 대가를 치른 모양이다.
+    #    ⚠️ 이것은 **정렬기 한정 단순화**다. 편집기의 `side`는 여전히 물리 뒷면을 뜻한다.
+    base["rotation"], base["side"] = rot, "front"
     # ═══ [D9] **치수는 바닥에서, 원점은 정렬에서** (총괄 판정 2026-08-06) ══════════════
     # [D8]은 **격자 치수**에 대한 논거이고 그대로 선다: 부분 맵의 등록기 격자는 하한이지
     # 격자가 아니므로 바닥의 치수를 빌리는 것이 맞다. **원점은 다른 주장이다** — 바닥의
