@@ -1475,13 +1475,19 @@ def test_the_walk_order_is_what_is_being_asserted():
 
     original = ma.serpentine_index
 
-    def raster(cells_, top_is_min_y=True):
+    # `left_to_right` is accepted and DELIBERATELY IGNORED. The mutation being injected is
+    # "every row runs the same way", and a raster that honoured the start corner would still
+    # alternate nothing - so the parameter changes which corner it starts from and not whether
+    # it alternates, which is the axis this test is not about. Accepting it keeps the mutant
+    # callable from `serpentine_index`'s current signature; ignoring it keeps the mutation the
+    # one the docstring names. (Added 2026-08-07 with the start-corner axis.)
+    def raster(cells_, top_is_min_y=True, left_to_right=True):
         present = {}
         for (x, y) in (cells_ or ()):
             present.setdefault(int(y), set()).add(int(x))
         out, i = {}, 1
         for y in sorted(present, reverse=not top_is_min_y):
-            for x in sorted(present[y]):          # never reverses - THIS is the mutation
+            for x in sorted(present[y], reverse=not left_to_right):  # never ALTERNATES - the mutation
                 out[i] = (x, y)
                 i += 1
         return out

@@ -1306,10 +1306,11 @@ def _membership(placed_keys, ref_sorted, dx, dy):
 #    진술이므로, 기준의 프레임이 답에 섞이면 안 된다.
 
 
-def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
+def serpentine_index(cells, top_is_min_y: bool = True,
+                     left_to_right: bool = True) -> dict:
     """유효 다이 집합 → `{순번: (x, y)}`. 1부터. **phys도 메타도 안 읽는다.**
 
-    규칙은 셋이고 **셋 다 명시적으로 고정한다** — 하나라도 암묵이면 그 축에서 조용히 틀린다:
+    규칙은 **넷**이고 **넷 다 명시적으로 고정한다** — 하나라도 암묵이면 그 축에서 조용히 틀린다:
 
     ① **행 순서**: 맨 위 행부터. `top_is_min_y`면 y가 작은 행이 먼저다. 채점기는 물리
        좌표계에서 훑으므로 언제나 True를 넘긴다(§위 주석: 좌표계의 성질이지 설정이 아니다).
@@ -1323,6 +1324,16 @@ def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
        매겨졌다. 이 규칙은 ②와 달리 **실제로 문다**: 같은 실측에서 `TEST/TEST` 바닥은 행
        안쪽에 구멍이 있는 행을 2개 갖는다. 구멍이 번호를 먹게 두면 그 행 이후 전부가 밀린다.
 
+    ④ **시작 모서리** (2026-08-07 신설): `left_to_right`면 첫 행이 왼→오, 아니면 오른쪽부터
+       시작한다. **우상단부터 뽑는 설비가 실재한다**(제품 소유자 2026-08-07). 그 전에는 이
+       축이 상수로 박혀 있었고, 우상단 설비는 **거울 프레임(`_back`)으로 대신 표현**되고
+       있었다 — 좌표는 맞지만 뜻이 틀린 표현이라(그 낱말은 물리 뒷면도 가리킨다) 저장·화면·
+       에디터에 걸쳐 혼동을 낳았다. **여기서 직접 매칭하는 것이 정공법**이고, 그러면 메타도
+       에디터도 손댈 것이 없다.
+       ⚠️ 교대 규칙(②)은 **바뀌지 않는다.** 위상만 반 칸 밀리므로 `reverse` 판정이
+       `(r % 2 == 1) == left_to_right`가 된다 — `left_to_right`면 짝수 행이 왼→오,
+       아니면 홀수 행이 왼→오다.
+
     반환은 `{index: (x, y)}`다 — 앵커가 「1번이 어디여야 하나」를 그대로 묻는다.
     역방향(좌표→순번)이 필요한 자리는 `serpentine_rank`가 답한다.
     """
@@ -1333,13 +1344,16 @@ def serpentine_index(cells, top_is_min_y: bool = True) -> dict:
     out, i = {}, 1
     for r, y in enumerate(rows):
         # ③ 이 행에 **있는** x만. 없는 칸은 목록에 없으므로 번호를 받지 않는다.
-        for x in sorted(present[y], reverse=(r % 2 == 1)):
+        # ④ 시작 모서리. `left_to_right`면 첫 행이 왼→오, 아니면 오른쪽부터 시작한다.
+        #    교대 규칙(②)은 그대로이고 **위상만 반 칸 밀린다**.
+        for x in sorted(present[y], reverse=((r % 2 == 1) == left_to_right)):
             out[i] = (x, y)
             i += 1
     return out
 
 
-def serpentine_rank(cells, top_is_min_y: bool = True) -> dict:
+def serpentine_rank(cells, top_is_min_y: bool = True,
+                    left_to_right: bool = True) -> dict:
     """같은 훑기의 **역**: `{(x, y): 순번}`. 새 채점이 묻는 방향이 이쪽이다.
 
     🔴 훑기를 두 번 구현하지 않는다 — `serpentine_index`를 뒤집는다. 순서 규칙이 두 곳에
@@ -1350,7 +1364,8 @@ def serpentine_rank(cells, top_is_min_y: bool = True) -> dict:
     없으므로 중복은 입력의 사실이고, 임의로 고르면 같은 입력이 실행마다 다른 답을 낸다.
     """
     out = {}
-    for k, xy in serpentine_index(cells, top_is_min_y=top_is_min_y).items():
+    for k, xy in serpentine_index(cells, top_is_min_y=top_is_min_y,
+                                  left_to_right=left_to_right).items():
         out.setdefault(xy, k)
     return out
 

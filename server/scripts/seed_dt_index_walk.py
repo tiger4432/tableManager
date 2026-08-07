@@ -179,9 +179,9 @@ JOBS = [
     # so it is the unit that goes missing the moment `alignment.sides` narrows to front -
     # which is exactly what happened until 2026-08-07. Nothing else in this list can fail
     # that way, because everything else is front.
-    {"name": "MIRROR-R0", "dt_frame": "rot0_back", "core_frame": "rot0_front",
-     "bins": 1, "coverage": 1.0, "ref_shift": 0,
-     "why": "top-right numbering - the mirror half of the search space, reachable at all"},
+    {"name": "MIRROR-R0", "dt_frame": "rot0_front", "core_frame": "rot0_front",
+     "bins": 1, "coverage": 1.0, "ref_shift": 0, "left_to_right": False,
+     "why": "the tool numbers from the TOP-RIGHT - a FRONT frame walked the other way, not a mirror"},
     # ══ The CORE axis, added 2026-08-06 ═════════════════════════════════════════════
     # 🔴 THE FOUR JOBS ABOVE WERE DESIGNED FRONT-COMPLETE FOR THE **DT** AXIS AND ARE
     #    NOT FRONT-COMPLETE FOR THE **CORE** AXIS. `core_frame` is a BACK frame on two of
@@ -257,9 +257,16 @@ def plan_job(job, field, ref_meta):
                            or i >= job["ref_shift"] * (len(field) // job["ref_shift"])]
         numbering_field = numbering_field[:len(field) - job["ref_shift"]]
 
+    # [2026-08-07] `left_to_right=False` = the tool numbers from the TOP-RIGHT. Before this
+    # axis existed such a tool was seeded as a MIRROR frame (`dt_frame: rot0_back`), which put
+    # the equipment fact in a word that also means "physical back side". The walk direction is
+    # what actually differs, so it is declared here directly.
+    l2r = job.get("left_to_right", True)
     core_rank = {pos: k for k, pos in
-                 ma.serpentine_index(numbering_field, top_is_min_y=top_is_min_y).items()}
-    dt_slots = ma.serpentine_index(numbering_field, top_is_min_y=top_is_min_y)
+                 ma.serpentine_index(numbering_field, top_is_min_y=top_is_min_y,
+                                     left_to_right=l2r).items()}
+    dt_slots = ma.serpentine_index(numbering_field, top_is_min_y=top_is_min_y,
+                                   left_to_right=l2r)
 
     # Which dies this job actually picked. Deterministic and spread across rows so a
     # partial map gets holes INSIDE rows, not just missing rows.
