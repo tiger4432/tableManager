@@ -110,9 +110,23 @@ const GRID_SORT_FILTER_DEFAULTS = {
 // `suppressNoRowsOverlay`로 끌 수 있지만 후자(`NoMatchingRowsOverlayDef`)에는 억제 옵션이
 // 아예 없다 — 그래서 끄는 대신 **문구를 바꾼다.** 두 표 모두 여기 한 문장을 쓰므로, 필터가
 // 전부 가린 상태를 한 화면에서 두 가지 말로 알리는 일이 없다.
+// 셀 복사 (2026-08-07). 조작자가 값 하나를 집어 다른 화면에 옮기는 일이 이 페이지의 상시
+// 동작인데, AG-Grid는 기본적으로 셀 텍스트 선택을 막아 드래그 자체가 안 됐다.
+//
+// 🔴 `clipboard.js`를 쓰지 않는 이유는 위 `grid.js` 블록과 **같다, 그리고 한 겹 더 나쁘다**:
+//    그 모듈은 `grid.js`·`state.js`·`dom.js`·`ui.js`를 직접 import하므로, 여기서 부르면
+//    이 파일이 피하려고 통째로 다시 쓴 그 모듈 그래프가 그대로 딸려 온다. 엑셀형 **범위**
+//    복사가 필요해지면 그때 그 모듈에서 순수 부분을 떼어내는 것이 순서이고, 한 셀 복사를
+//    위해 그 값을 치를 이유는 없다.
+// ⚠️ 그래서 이것은 브라우저 기본 복사다 — 범위 선택 복사가 아니다. AG-Grid의 범위 복사는
+//    Enterprise 기능이고 이 페이지는 Community로 돈다.
 const GRID_SHARED_OPTIONS = {
   theme: 'legacy',
   localeText: { noMatchingRows: '필터 결과 없음' },
+  enableCellTextSelection: true,
+  // 여러 셀에 걸쳐 드래그했을 때 복사 순서가 화면 순서와 같도록. 한 셀에는 무관하지만
+  // 없으면 가상 스크롤이 DOM을 재배치한 순서로 붙어 나간다.
+  ensureDomOrder: true,
 };
 
 // 숫자로 읽히면 숫자로, 아니면 문자열로. 빈 값은 오름차순에서 항상 뒤.
