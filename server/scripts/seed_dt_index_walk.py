@@ -145,13 +145,27 @@ JOBS = [
      "why": "whole map, ROTATED - the DT answer must not be the identity"},
     # The population this feature exists to serve: most indices absent, and gaps
     # inside rows (rule 3 of the serpentine: a hole consumes no index).
-    # 🔴 dt_frame is a FRONT frame on every job on purpose. `alignment.sides` is
-    #    declared ["front"] on this box, and a back-framed job would have its true
-    #    answer excluded from the search - correct behaviour that reads exactly like
-    #    a defect. FULL-R0/FULL-R90/PART-R270/NEAR-R180 plant rot0/rot90/rot270/rot180
-    #    FRONT respectively, one each, so the demonstration is complete inside the
-    #    declared search space. (`core_frame` was NOT front-complete - see the CORE jobs
-    #    at the end of this list.)
+    # 🔴 [2026-08-07] THIS BLOCK USED TO SAY dt_frame IS FRONT ON EVERY JOB ON PURPOSE,
+    #    because `alignment.sides` was declared ["front"]. That declaration has been
+    #    WITHDRAWN and the reason it existed was a misreading:
+    #
+    #    IN THE ALIGNER, `back` MEANS **MIRROR**, NOT A PHYSICAL WAFER BACK SIDE.
+    #    It is the `x -> -x` half of the candidate space, and the equipment fact it
+    #    expresses is "this tool numbers from the TOP-RIGHT" - the serpentine's start
+    #    corner (`serpentine_index` fixes the walk as first row left-to-right, so a
+    #    top-right walk is its mirror). Such equipment exists (product owner,
+    #    2026-08-07), so narrowing to front removed REAL answers from the search, and a
+    #    unit whose tool numbers from the right came out as "no winner" - or, on the
+    #    group-minimisation axis, as a confident WRONG frame.
+    #
+    #    ⚠️ THE MAP EDITOR IS A DIFFERENT DOMAIN. A genuine physical back side exists
+    #    there. The two use the same word for different facts, and this simplification
+    #    is scoped to the aligner deliberately (product owner: 구현 단순화 위함).
+    #
+    #    MIRROR-R0 below is the demonstration that the mirror half is reachable. The
+    #    minimisation axis ties 2-way on the mirror pair by construction - a flip is
+    #    x -> -x and a group boundary is a y event, so no y-based count can see it - and
+    #    the bin fingerprint is what separates them (measured: truth 88/88, mirror 67/88).
     {"name": "PART-R270", "dt_frame": "rot270_front", "core_frame": "rot90_front",
      "bins": 4, "coverage": 0.38, "ref_shift": 0,
      "why": "PARTIAL map with interior gaps - the normal case, not the happy one"},
@@ -161,6 +175,13 @@ JOBS = [
     {"name": "NEAR-R180", "dt_frame": "rot180_front", "core_frame": "rot0_back",
      "bins": 2, "coverage": 1.0, "ref_shift": 3,
      "why": "reference is CLOSE but not identical - expect high, not perfect"},
+    # The equipment that numbers from the TOP-RIGHT. Its true dt_frame is a MIRROR one,
+    # so it is the unit that goes missing the moment `alignment.sides` narrows to front -
+    # which is exactly what happened until 2026-08-07. Nothing else in this list can fail
+    # that way, because everything else is front.
+    {"name": "MIRROR-R0", "dt_frame": "rot0_back", "core_frame": "rot0_front",
+     "bins": 1, "coverage": 1.0, "ref_shift": 0,
+     "why": "top-right numbering - the mirror half of the search space, reachable at all"},
     # ══ The CORE axis, added 2026-08-06 ═════════════════════════════════════════════
     # 🔴 THE FOUR JOBS ABOVE WERE DESIGNED FRONT-COMPLETE FOR THE **DT** AXIS AND ARE
     #    NOT FRONT-COMPLETE FOR THE **CORE** AXIS. `core_frame` is a BACK frame on two of
