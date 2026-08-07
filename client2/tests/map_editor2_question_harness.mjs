@@ -179,7 +179,12 @@ const CATALOG = {
   const vmGuess = buildViewModel({ session: scored.session, verdict: scored.verdict });
   ok(vmGuess.question.bindingIsGuess, 'B4 the view model marks the pair as a guess');
   eq(vmGuess.question.proposalWord, WORDS.proposed, 'B5 with a word the view can show');
-  ok(!vmGuess.confirm.enabled, 'B6 and the ONE write refuses to rest on it');
+  // CONTRACT CHANGED 2026-08-07 (product owner: 「어차피 사람이 검수하고 누르는거라 막을
+  // 이유없음」). A guessed pair no longer HOLDS the write -- it DISCLOSES it. The assertion
+  // therefore moves rather than disappearing: what must stay true is that the operator is told
+  // before pressing, which B7/B8 already pin. Deleting B6 outright would have left "the guess
+  // is surfaced at all" resting on nothing.
+  ok(vmGuess.confirm.enabled, 'B6 the write is available -- a guess is disclosed, not blocked');
   ok(vmGuess.confirm.restsOnGuess, 'B7 saying so as a value, not by being silently inert');
   ok(vmGuess.confirm.inertHint.length > 0, 'B8 and Enter is never silently inert');
   // Reading is still frictionless: a guess does not blank the screen.
@@ -212,7 +217,10 @@ const CATALOG = {
   eq(vm.summary.countText, UNKNOWN, 'C7 the count slot says the unknown word');
   eq(vm.cause.token, WORDS.columnsUnstated, 'C8 and the cause names the absence as a token');
   eq(vm.cause.count, 2, 'C9 with how many pairs it could have been');
-  ok(!vm.confirm.enabled, 'C10 an unattributed answer may not be confirmed');
+  // CONTRACT CHANGED 2026-08-07 (same ruling as B6). An unattributed answer is confirmable;
+  // the absence is carried by `cause` (C8/C9) and by `restsOnGuess`, not by an inert button.
+  ok(vm.confirm.enabled, 'C10 an unattributed answer is confirmable -- the absence is named, not enforced');
+  ok(vm.confirm.restsOnGuess, 'C10-bis and the record of WHY it was doubtful survives the opening');
 
   // The one-line server fix: echo the columns in `unit`, and the screen starts attributing.
   const echoed = buildViewModel(readySession(two, { unit: { x_col: 'dt_x', y_col: 'dt_y' } }));

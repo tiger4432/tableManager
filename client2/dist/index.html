@@ -1,242 +1,568 @@
 <!doctype html>
 <html lang="ko" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          document.documentElement.setAttribute(
+            "data-theme",
+            t === "dark" ? "dark" : "light",
+          );
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <title>AssyManager Enterprise - AG-Grid Client</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" crossorigin src="/assets/main-DLFe0R11.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/config-Dy5qGBed.js">
+    <link rel="modulepreload" crossorigin href="/assets/effort_meter-xn_vq-uO.js">
+    <link rel="modulepreload" crossorigin href="/assets/enrichment_queue-B5O9NT-F.js">
+    <link rel="modulepreload" crossorigin href="/assets/admin-Cp6p08ty.js">
+    <link rel="modulepreload" crossorigin href="/assets/ag-theme-quartz-D1qBHEfr.js">
+    <link rel="modulepreload" crossorigin href="/assets/trace_core-CpTaLBRA.js">
+    <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
+    <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
+    <link rel="stylesheet" crossorigin href="/assets/ag-theme-quartz-NphWruxx.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-DPiLsrHm.css">
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
-  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
-  <title>AssyManager Enterprise - AG-Grid Client</title>
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet">
-  <script type="module" crossorigin src="/assets/main-DLFe0R11.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/config-Dy5qGBed.js">
-  <link rel="modulepreload" crossorigin href="/assets/effort_meter-xn_vq-uO.js">
-  <link rel="modulepreload" crossorigin href="/assets/enrichment_queue-B5O9NT-F.js">
-  <link rel="modulepreload" crossorigin href="/assets/admin-Cp6p08ty.js">
-  <link rel="modulepreload" crossorigin href="/assets/ag-theme-quartz-D1qBHEfr.js">
-  <link rel="modulepreload" crossorigin href="/assets/trace_core-CpTaLBRA.js">
-  <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
-  <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
-  <link rel="stylesheet" crossorigin href="/assets/ag-theme-quartz-NphWruxx.css">
-  <link rel="stylesheet" crossorigin href="/assets/style-DPiLsrHm.css">
-</head>
+  <body>
+    <div id="app">
+      <!-- 헤더 툴바 -->
+      <header class="app-header">
+        <div class="logo-area">
+          <span class="pulse-indicator status-ws"></span>
+          <h1>AssyManager</h1>
+        </div>
 
-<body>
-  <div id="app">
-    <!-- 헤더 툴바 -->
-    <header class="app-header">
-      <div class="logo-area">
-        <span class="pulse-indicator status-ws"></span>
-        <h1>AssyManager</h1>
+        <div class="controls-area">
+          <div
+            class="log-indicator-area"
+            style="display: flex; align-items: center; gap: 8px"
+          >
+            <span id="performance-log" class="glass-log-badge">Ready</span>
+            <!-- Dynamic Unsaved Tx State Indicator -->
+            <span
+              id="tx-pending-badge"
+              class="glass-log-badge"
+              style="
+                display: none;
+                background: var(--warning-weak);
+                border-color: var(--warning);
+                color: var(--warning);
+                font-weight: bold;
+              "
+              >⚡ Unsaved: 0</span
+            >
+            <!-- Enrichment Queue missing-value counter (hidden unless rules API is live & count > 0) -->
+            <span
+              id="enrichment-badge"
+              class="glass-log-badge"
+              style="display: none; width: 100px"
+              >🧩 결손 0건</span
+            >
+            <button
+              id="tx-apply-btn"
+              class="glass-btn success-glow"
+              style="
+                display: none;
+                padding: 4px 12px;
+                font-size: 0.8rem;
+                font-weight: bold;
+                border-radius: 6px;
+              "
+            >
+              Apply
+            </button>
+            <button
+              id="tx-discard-btn"
+              class="glass-btn hover-danger"
+              style="
+                display: none;
+                padding: 4px 12px;
+                font-size: 0.8rem;
+                border-radius: 6px;
+              "
+            >
+              Discard
+            </button>
+          </div>
+          <div class="control-group">
+            <label for="table-select">Table</label>
+            <select id="table-select" class="glass-input">
+              <option value="">Loading Tables...</option>
+            </select>
+          </div>
+          <div class="control-group glass-btn-group">
+            <button
+              id="refresh-grid-btn"
+              class="glass-btn"
+              title="Refresh Grid Data"
+            >
+              🔄 Refresh
+            </button>
+            <button id="add-row-btn" class="glass-btn" title="Add Row">
+              ➕ Row
+            </button>
+            <button
+              id="delete-row-btn"
+              class="glass-btn hover-danger"
+              title="Delete Selected Rows"
+            >
+              🗑️ Row
+            </button>
+            <button
+              id="graph-sync-btn"
+              class="glass-btn"
+              style="
+                display: none;
+                background: var(--accent-weak);
+                border-color: var(--accent);
+                color: var(--accent);
+                font-weight: bold;
+              "
+            >
+              ⚡ Graph Sync
+            </button>
+            <button
+              id="trace-btn"
+              class="glass-btn"
+              style="display: none"
+              title="선택 행을 시드로 온톨로지 추적 리포트 열기"
+            >
+              🕸️ 추적
+            </button>
+          </div>
+          <div class="control-group">
+            <input
+              type="file"
+              id="toolbar-file-input"
+              multiple
+              style="display: none"
+            />
+          </div>
+
+          <!-- Settings Dropdown -->
+          <div class="control-group relative-menu">
+            <button id="settings-menu-btn" class="glass-btn">⚙️ Options</button>
+            <div
+              id="settings-dropdown"
+              class="glass-dropdown-panel"
+              style="display: none"
+            >
+              <button id="column-selector-btn" class="dropdown-item">
+                👁️ Toggle Columns
+              </button>
+              <div class="dropdown-item checkbox-item">
+                <input
+                  type="checkbox"
+                  id="sort-latest-toggle"
+                  class="glass-checkbox"
+                  checked
+                />
+                <label
+                  for="sort-latest-toggle"
+                  class="checkbox-label"
+                  style="text-transform: none; letter-spacing: normal"
+                  >Sort Latest</label
+                >
+              </div>
+              <div class="dropdown-item checkbox-item">
+                <input
+                  type="checkbox"
+                  id="copy-header-toggle"
+                  class="glass-checkbox"
+                />
+                <label
+                  for="copy-header-toggle"
+                  class="checkbox-label"
+                  style="text-transform: none; letter-spacing: normal"
+                  >Copy Header</label
+                >
+              </div>
+              <div
+                class="dropdown-item checkbox-item"
+                style="
+                  border-top: 1px solid var(--border-color);
+                  padding-top: 8px;
+                  margin-top: 4px;
+                "
+              >
+                <input
+                  type="checkbox"
+                  id="tx-mode-toggle"
+                  class="glass-checkbox"
+                  checked
+                />
+                <label
+                  for="tx-mode-toggle"
+                  class="checkbox-label"
+                  style="
+                    color: var(--color-warning);
+                    font-weight: bold;
+                    text-transform: none;
+                    letter-spacing: normal;
+                  "
+                  >Tx Mode</label
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- Navigation Menu Dropdown -->
+          <div
+            class="control-group relative-menu"
+            style="
+              border-left: 1px solid var(--border-color);
+              padding-left: 15px;
+            "
+          >
+            <button
+              id="nav-menu-btn"
+              class="glass-btn"
+              style="
+                color: var(--color-secondary);
+                border-color: var(--color-secondary);
+              "
+            >
+              🧭 Menu
+            </button>
+            <div
+              id="nav-dropdown"
+              class="glass-dropdown-panel"
+              style="display: none"
+            >
+              <a href="/map_editor.html" class="dropdown-item nav-link"
+                >🗺️ Wafer Map Editor</a
+              >
+              <a href="/enrichment.html" class="dropdown-item nav-link"
+                >🧩 Enrichment Queue</a
+              >
+              <a href="/graph.html" class="dropdown-item nav-link"
+                >🕸️ Knowledge Graph</a
+              >
+              <a href="/admin.html" class="dropdown-item nav-link"
+                >⚙️ Admin Dashboard</a
+              >
+              <a
+                href="/api/download/client"
+                class="dropdown-item nav-link"
+                download
+                style="color: var(--color-success)"
+                >📥 Download Desktop</a
+              >
+            </div>
+          </div>
+          <button
+            class="theme-toggle-btn"
+            data-theme-toggle
+            type="button"
+            title="테마 전환"
+            aria-label="테마 전환"
+          >
+            <svg
+              class="icon-moon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+            <svg
+              class="icon-sun"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path
+                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+              />
+            </svg>
+          </button>
+          <div class="status-indicators">
+            <span class="status-badge" id="server-status">API: Loading</span>
+            <span class="status-badge" id="ws-status">WS: Connecting</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- 메인 레이아웃: 그리드 + 히스토리 패널 -->
+      <main class="main-layout">
+        <section class="grid-section">
+          <!-- Active Transaction Filter Banner -->
+          <div
+            id="tx-filter-banner"
+            class="tx-filter-banner"
+            style="display: none"
+          >
+            <span class="banner-icon">⚡</span>
+            <span class="banner-text"
+              >Showing rows modified in Transaction:<code id="banner-tx-id"
+                >tx_id</code
+              ></span
+            >
+            <button id="clear-tx-filter-btn" class="clear-banner-btn">
+              &times;
+            </button>
+          </div>
+          <div
+            id="myGrid"
+            class="ag-theme-quartz-dark"
+            style="height: 100%; width: 100%"
+          ></div>
+          <!-- 상태 바 (PyQt의 Zero-Lag Sync 디자인 반영) -->
+          <footer class="grid-footer">
+            <div class="status-left">
+              <span id="exposed-rows">Loaded: 0</span>
+              <span class="divider">/</span>
+              <span id="total-rows">Matches: 0</span>
+            </div>
+            <div class="status-center pagination-controls">
+              <button id="prev-page-btn" class="glass-page-btn" disabled>
+                &lsaquo; Prev
+              </button>
+              <span id="page-info">
+                Page
+                <input
+                  type="number"
+                  id="page-input"
+                  class="page-input"
+                  min="1"
+                  value="1"
+                />
+                of <span id="total-pages">1</span>
+              </span>
+              <button id="next-page-btn" class="glass-page-btn" disabled>
+                Next &rsaquo;
+              </button>
+            </div>
+            <div class="status-right">
+              <div class="footer-control-group">
+                <label for="view-mode-select" class="footer-label">View</label>
+                <select id="view-mode-select" class="footer-select">
+                  <option value="pagination">📄 Paging</option>
+                  <option value="infinite">♾️ Scroll</option>
+                </select>
+                <button id="load-all-btn" class="glass-page-btn">
+                  📥 Load All
+                </button>
+                <button id="load-csv-btn" class="glass-page-btn">
+                  📄 Load CSV
+                </button>
+              </div>
+            </div>
+          </footer>
+        </section>
+
+        <!-- Main Layout Split Resizer -->
+        <div id="main-split-resizer" class="split-resizer"></div>
+
+        <!-- 히스토리 사이드바 -->
+        <aside class="history-sidebar glass-panel">
+          <div class="sidebar-header">
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+              "
+            >
+              <h2 style="margin: 0">Audit History</h2>
+              <button
+                id="refresh-history-btn"
+                class="glass-page-btn"
+                style="padding: 2px 8px; font-size: 0.8rem; margin: 0"
+                title="Refresh history from server"
+              >
+                🔄 Sync
+              </button>
+            </div>
+            <div class="history-tabs">
+              <button id="tab-global" class="tab-btn active">
+                Global History
+              </button>
+              <button id="tab-cell" class="tab-btn">Cell History</button>
+              <button id="tab-row" class="tab-btn">Row History</button>
+            </div>
+          </div>
+          <div class="sidebar-content">
+            <div id="selected-cell-info" class="meta-info">
+              Select a cell to view history
+            </div>
+            <div class="timeline-container">
+              <ul id="timeline" class="timeline">
+                <li class="timeline-empty">No history loaded.</li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <!-- 컬럼 선택 드롭다운 -->
+      <div
+        id="column-selector-dropdown"
+        class="context-menu glass-panel"
+        style="
+          display: none;
+          position: absolute;
+          z-index: 1000;
+          max-height: 400px;
+          overflow-y: auto;
+          padding: 12px;
+          min-width: 200px;
+        "
+      >
+        <div
+          style="
+            font-weight: bold;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            margin-bottom: 6px;
+          "
+        >
+          Show/Hide Columns
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+          "
+        >
+          <button
+            id="col-select-all-btn"
+            style="
+              background: var(--accent-weak);
+              border: 1px solid var(--accent);
+              color: var(--accent);
+              cursor: pointer;
+              font-size: 0.75rem;
+              padding: 3px 8px;
+              font-weight: bold;
+              border-radius: 4px;
+              transition: all 0.2s;
+            "
+          >
+            All
+          </button>
+          <button
+            id="col-select-none-btn"
+            style="
+              background: var(--danger-weak);
+              border: 1px solid var(--danger);
+              color: var(--danger);
+              cursor: pointer;
+              font-size: 0.75rem;
+              padding: 3px 8px;
+              font-weight: bold;
+              border-radius: 4px;
+              transition: all 0.2s;
+            "
+          >
+            Clear
+          </button>
+        </div>
+        <ul
+          id="column-list-container"
+          style="
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          "
+        >
+          <!-- Dynamic Checkboxes -->
+        </ul>
       </div>
 
-      <div class="controls-area">
-        <div class="log-indicator-area" style="display: flex; align-items: center; gap: 8px;">
-          <span id="performance-log" class="glass-log-badge">Ready</span>
-          <!-- Dynamic Unsaved Tx State Indicator -->
-          <span id="tx-pending-badge" class="glass-log-badge" style="display: none; background: var(--warning-weak); border-color: var(--warning); color: var(--warning); font-weight: bold;">⚡ Unsaved: 0</span>
-          <!-- Enrichment Queue missing-value counter (hidden unless rules API is live & count > 0) -->
-          <span id="enrichment-badge" class="glass-log-badge" style="display: none;">🧩 결손 0건</span>
-          <button id="tx-apply-btn" class="glass-btn success-glow" style="display: none; padding: 4px 12px; font-size: 0.8rem; font-weight: bold; border-radius: 6px;">Apply</button>
-          <button id="tx-discard-btn" class="glass-btn hover-danger" style="display: none; padding: 4px 12px; font-size: 0.8rem; border-radius: 6px;">Discard</button>
-        </div>
-        <div class="control-group">
-          <label for="table-select">Table</label>
-          <select id="table-select" class="glass-input">
-            <option value="">Loading Tables...</option>
-          </select>
-        </div>
-        <div class="control-group glass-btn-group">
-          <button id="refresh-grid-btn" class="glass-btn" title="Refresh Grid Data">🔄 Refresh</button>
-          <button id="add-row-btn" class="glass-btn" title="Add Row">➕ Row</button>
-          <button id="delete-row-btn" class="glass-btn hover-danger" title="Delete Selected Rows">🗑️ Row</button>
-          <button id="graph-sync-btn" class="glass-btn" style="display: none; background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold;">⚡ Graph Sync</button>
-          <button id="trace-btn" class="glass-btn" style="display: none;" title="선택 행을 시드로 온톨로지 추적 리포트 열기">🕸️ 추적</button>
-        </div>
-        <div class="control-group">
-          <input type="file" id="toolbar-file-input" multiple style="display: none;" />
-        </div>
-        
-        <!-- Settings Dropdown -->
-        <div class="control-group relative-menu">
-          <button id="settings-menu-btn" class="glass-btn">⚙️ Options</button>
-          <div id="settings-dropdown" class="glass-dropdown-panel" style="display: none;">
-            <button id="column-selector-btn" class="dropdown-item">👁️ Toggle Columns</button>
-            <div class="dropdown-item checkbox-item">
-              <input type="checkbox" id="sort-latest-toggle" class="glass-checkbox" checked />
-              <label for="sort-latest-toggle" class="checkbox-label" style="text-transform: none; letter-spacing: normal;">Sort Latest</label>
-            </div>
-            <div class="dropdown-item checkbox-item">
-              <input type="checkbox" id="copy-header-toggle" class="glass-checkbox" />
-              <label for="copy-header-toggle" class="checkbox-label" style="text-transform: none; letter-spacing: normal;">Copy Header</label>
-            </div>
-            <div class="dropdown-item checkbox-item" style="border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 4px;">
-              <input type="checkbox" id="tx-mode-toggle" class="glass-checkbox" checked />
-              <label for="tx-mode-toggle" class="checkbox-label" style="color: var(--color-warning); font-weight: bold; text-transform: none; letter-spacing: normal;">Tx Mode</label>
-            </div>
-          </div>
-        </div>
-
-        <!-- Navigation Menu Dropdown -->
-        <div class="control-group relative-menu" style="border-left: 1px solid var(--border-color); padding-left: 15px;">
-          <button id="nav-menu-btn" class="glass-btn" style="color: var(--color-secondary); border-color: var(--color-secondary);">🧭 Menu</button>
-          <div id="nav-dropdown" class="glass-dropdown-panel" style="display: none;">
-            <a href="/map_editor.html" class="dropdown-item nav-link">🗺️ Wafer Map Editor</a>
-            <a href="/enrichment.html" class="dropdown-item nav-link">🧩 Enrichment Queue</a>
-            <a href="/graph.html" class="dropdown-item nav-link">🕸️ Knowledge Graph</a>
-            <a href="/admin.html" class="dropdown-item nav-link">⚙️ Admin Dashboard</a>
-            <a href="/api/download/client" class="dropdown-item nav-link" download style="color: var(--color-success);">📥 Download Desktop</a>
-          </div>
-        </div>
-        <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
-          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-        </button>
-        <div class="status-indicators">
-          <span class="status-badge" id="server-status">API: Loading</span>
-          <span class="status-badge" id="ws-status">WS: Connecting</span>
-
-        </div>
-      </div>
-    </header>
-
-    <!-- 메인 레이아웃: 그리드 + 히스토리 패널 -->
-    <main class="main-layout">
-      <section class="grid-section">
-        <!-- Active Transaction Filter Banner -->
-        <div id="tx-filter-banner" class="tx-filter-banner" style="display: none;">
-          <span class="banner-icon">⚡</span>
-          <span class="banner-text">Showing rows modified in Transaction:<code id="banner-tx-id">tx_id</code></span>
-          <button id="clear-tx-filter-btn" class="clear-banner-btn">&times;</button>
-        </div>
-        <div id="myGrid" class="ag-theme-quartz-dark" style="height: 100%; width: 100%;"></div>
-        <!-- 상태 바 (PyQt의 Zero-Lag Sync 디자인 반영) -->
-        <footer class="grid-footer">
-          <div class="status-left">
-            <span id="exposed-rows">Loaded: 0</span>
-            <span class="divider">/</span>
-            <span id="total-rows">Matches: 0</span>
-          </div>
-          <div class="status-center pagination-controls">
-            <button id="prev-page-btn" class="glass-page-btn" disabled>&lsaquo; Prev</button>
-            <span id="page-info">
-              Page <input type="number" id="page-input" class="page-input" min="1" value="1"> of <span
-                id="total-pages">1</span>
-            </span>
-            <button id="next-page-btn" class="glass-page-btn" disabled>Next &rsaquo;</button>
-          </div>
-          <div class="status-right">
-            <div class="footer-control-group">
-              <label for="view-mode-select" class="footer-label">View</label>
-              <select id="view-mode-select" class="footer-select">
-                <option value="pagination">📄 Paging</option>
-                <option value="infinite">♾️ Scroll</option>
-              </select>
-              <button id="load-all-btn" class="glass-page-btn">📥 Load All</button>
-              <button id="load-csv-btn" class="glass-page-btn">📄 Load CSV</button>
-            </div>
-          </div>
-        </footer>
-      </section>
-
-      <!-- Main Layout Split Resizer -->
-      <div id="main-split-resizer" class="split-resizer"></div>
-
-      <!-- 히스토리 사이드바 -->
-      <aside class="history-sidebar glass-panel">
-        <div class="sidebar-header">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h2 style="margin: 0;">Audit History</h2>
-            <button id="refresh-history-btn" class="glass-page-btn" style="padding: 2px 8px; font-size: 0.8rem; margin: 0;" title="Refresh history from server">🔄 Sync</button>
-          </div>
-          <div class="history-tabs">
-            <button id="tab-global" class="tab-btn active">Global History</button>
-            <button id="tab-cell" class="tab-btn">Cell History</button>
-            <button id="tab-row" class="tab-btn">Row History</button>
-          </div>
-        </div>
-        <div class="sidebar-content">
-          <div id="selected-cell-info" class="meta-info">
-            Select a cell to view history
-          </div>
-          <div class="timeline-container">
-            <ul id="timeline" class="timeline">
-              <li class="timeline-empty">No history loaded.</li>
-            </ul>
-          </div>
-        </div>
-      </aside>
-    </main>
-
-    <!-- 컬럼 선택 드롭다운 -->
-    <div id="column-selector-dropdown" class="context-menu glass-panel" style="display: none; position: absolute; z-index: 1000; max-height: 400px; overflow-y: auto; padding: 12px; min-width: 200px;">
-      <div style="font-weight: bold; font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px;">
-        Show/Hide Columns
-      </div>
-      <div style="display: flex; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-        <button id="col-select-all-btn" style="background: var(--accent-weak); border: 1px solid var(--accent); color: var(--accent); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">All</button>
-        <button id="col-select-none-btn" style="background: var(--danger-weak); border: 1px solid var(--danger); color: var(--danger); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">Clear</button>
-      </div>
-      <ul id="column-list-container" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px;">
-        <!-- Dynamic Checkboxes -->
-      </ul>
-    </div>
-
-    <!-- 커스텀 우클릭 컨텍스트 메뉴 -->
-    <div id="custom-context-menu" class="context-menu glass-panel"
-      style="display: none; position: absolute; z-index: 1000;">
-      <ul>
-        <li id="menu-sources">📚 데이터 원천(Sources) 관리</li>
-        <li id="menu-delete">🗑️ 선택된 행 삭제</li>
-        <!-- 키를 라벨에 적어둔다: 평문 HTTP에서는 클릭만으로 클립보드를 읽을 수 없어
+      <!-- 커스텀 우클릭 컨텍스트 메뉴 -->
+      <div
+        id="custom-context-menu"
+        class="context-menu glass-panel"
+        style="display: none; position: absolute; z-index: 1000"
+      >
+        <ul>
+          <li id="menu-sources">📚 데이터 원천(Sources) 관리</li>
+          <li id="menu-delete">🗑️ 선택된 행 삭제</li>
+          <!-- 키를 라벨에 적어둔다: 평문 HTTP에서는 클릭만으로 클립보드를 읽을 수 없어
              이 항목은 다음 붙여넣기를 예약할 뿐이다. 단축키가 곧 본동선이다. -->
-        <li id="menu-smart-paste">📋 파서로 붙여넣기 (Smart Paste) &nbsp;<span style="opacity:.6">Ctrl+Shift+V</span></li>
-        <li id="menu-trace" style="display: none;">🕸️ 선택 행 추적 (Trace)</li>
-      </ul>
-    </div>
+          <li id="menu-smart-paste">
+            📋 파서로 붙여넣기 (Smart Paste) &nbsp;<span style="opacity: 0.6"
+              >Ctrl+Shift+V</span
+            >
+          </li>
+          <li id="menu-trace" style="display: none">🕸️ 선택 행 추적 (Trace)</li>
+        </ul>
+      </div>
 
-    <!-- 데이터 원천(Sources) 관리 모달 -->
-    <div id="sources-modal" class="modal-overlay" style="display: none;">
-      <div class="modal-content glass-panel">
-        <div class="modal-header">
-          <h3>📚 데이터 원천(Sources) 관리</h3>
-          <button id="modal-close-btn" class="modal-close">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div id="modal-meta-info" class="meta-info" style="margin-bottom: 15px;"></div>
-          <div class="table-container">
-            <table class="sources-table">
-              <thead>
-                <tr>
-                  <th>Source Name</th>
-                  <th>Value</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="sources-list">
-                <!-- Dynamic content -->
-              </tbody>
-            </table>
+      <!-- 데이터 원천(Sources) 관리 모달 -->
+      <div id="sources-modal" class="modal-overlay" style="display: none">
+        <div class="modal-content glass-panel">
+          <div class="modal-header">
+            <h3>📚 데이터 원천(Sources) 관리</h3>
+            <button id="modal-close-btn" class="modal-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div
+              id="modal-meta-info"
+              class="meta-info"
+              style="margin-bottom: 15px"
+            ></div>
+            <div class="table-container">
+              <table class="sources-table">
+                <thead>
+                  <tr>
+                    <th>Source Name</th>
+                    <th>Value</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sources-list">
+                  <!-- Dynamic content -->
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Drag and Drop Overlay -->
-    <div id="drop-overlay" class="drop-overlay" style="display: none;">
-      <div class="drop-zone glass-panel">
-        <div class="drop-icon">📤</div>
-        <h2>Drop Log Files Here</h2>
-        <p>Files will be automatically ingested into <span id="drop-table-name">current table</span></p>
+      <!-- Drag and Drop Overlay -->
+      <div id="drop-overlay" class="drop-overlay" style="display: none">
+        <div class="drop-zone glass-panel">
+          <div class="drop-icon">📤</div>
+          <h2>Drop Log Files Here</h2>
+          <p>
+            Files will be automatically ingested into
+            <span id="drop-table-name">current table</span>
+          </p>
+        </div>
       </div>
-    </div>
-
-  </div>
-</body>
-
+    </div>
+  </body>
 </html>

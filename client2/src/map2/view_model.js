@@ -1062,8 +1062,24 @@ function confirmModel(session, selectedId, storedId, state, attribution, assumpt
   //    act that requires the pair to have been agreed and the answer to have an owner.
   const restsOnGuess = q.bindingSource === BINDING_FALLBACK_GUESS
     || (attribution && attribution.state === ATTRIBUTION.UNSTATED);
-  const enabled = (state === VIEW_STATE.SCORED_WINNER || state === VIEW_STATE.SCORED_NO_WINNER)
-    && !!selectedId && !restsOnGuess;
+  // 🔴 THE ONLY GATE IS "SOMETHING IS SELECTED" (product owner, 2026-08-07: 「어차피 사람이
+  //    검수하고 누르는거라 막을 이유없음」). A confirmation IS the human's claim, so the scorer
+  //    failing to reach one is a reason to ASK, never a reason to refuse the answer. That is
+  //    the same rule the borrowed-geometry note below already states in full, applied to the
+  //    rest of the gate rather than to one case of it.
+  //
+  //    Removed from this expression, and each one is now DISCLOSED rather than enforced:
+  //      · `not_scorable` — the scorer could not score it. That is precisely when a person is
+  //        the only available answer, and the server has always accepted the state
+  //        (`frame_confirmation.accepted_ruling_states` returns scored / no_winner /
+  //        not_scorable). Blocking it here meant the one state that most needed a human was
+  //        the one state a human could not answer.
+  //      · `restsOnGuess` — a guessed x/y binding or an unstated attribution. Still surfaced
+  //        in the note, because "you are answering on a guessed pair" is a fact the operator
+  //        must have BEFORE pressing, and this write is not takeable back.
+  //
+  //    `selectedId` stays: confirming nothing is not an act, it is an empty write.
+  const enabled = !!selectedId;
   const decision = session.decision || {};
   return Object.freeze({
     enabled,

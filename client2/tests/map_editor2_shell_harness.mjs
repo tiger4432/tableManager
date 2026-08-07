@@ -1433,7 +1433,12 @@ function throws(fn, what) {
   eq(vm2.candidates.filter(c => c.badges.includes('추천')).length, 0, 'K11 no winner badge');
   eq(vm2.candidates.map(c => c.id).join(','),
      candidateList().map(c => c.id).join(','), 'K12 declaration order, never score order');
-  ok(!vm2.confirm.enabled, 'K13 the write stays refused');
+  // CONTRACT CHANGED 2026-08-07 (product owner: 「어차피 사람이 검수하고 누르는거라 막을
+  // 이유없음」). RANKING is still refused -- K11/K12/K15 above are untouched and still score
+  // each refusal separately. What changed is only that refusing to RANK no longer refuses to
+  // RECORD: the run that cannot be scored is exactly the run where a person is the only
+  // available answer. The write's own precondition is still scored below.
+  ok(vm2.confirm.enabled, 'K13 an unranked run is still confirmable -- ranking and recording are different acts');
   ok(!app.peek().confirmed, 'K14 and nothing confirmed itself by being looked at');
   eq(vm2.summary.countText, UNKNOWN, 'K15 an unranked run still reports no numerals of its own');
 
