@@ -1876,6 +1876,70 @@ def anchor_cell_of(usable):
     return best[1], best[3]
 
 
+def search_pivot_of(usable):
+    """The pivot for the DRAWABLE form when there is no index anchor.
+    -> `(map index, cell index, (x, y))`, or None.
+
+    Read this together with `anchor_cell_of` above: both answer "which source cell is
+    the pivot", and they are the ONLY two places that answer it. The difference is what
+    the pivot is FOR, and that difference is the whole reason a second rule is allowed
+    to exist:
+
+      · `anchor_cell_of` picks a pivot that CARRIES A CLAIM - the minimum index die is
+        the first die the equipment touched, so pairing it with the reference top-left
+        DECIDES the translation. Get it wrong and the map is seated wrong.
+      · this one carries NO claim. On the search path the seat is already fixed
+        (`placed = tf(cell)`, plus the searched shift) and the pivot is only the point
+        the client's reconstruction formula pivots on. The algebra is
+            tf(cell) = tf(pivot) + L*(cell - pivot)
+        for ANY pivot, because `tf` is affine with linear part `L` - the identity the
+        oracle `test_the_linear_part_matches_the_transform` asserts on all eight frames.
+        So this choice cannot move the map. It only has to be DETERMINISTIC, so that
+        two runs on the same payload hand the screen the same three numbers.
+
+    🔴 The pivot alone is not what the screen draws with. `anchor_ref` must be WHERE
+       SCORING ACTUALLY SEATED THIS CELL - captured off the scoring loop's own `placed`
+       (§[D13]) - never re-derived here. This function returns the identity of a cell and
+       nothing about coordinates in the reference frame.
+
+    🔴 One map only, the same restriction `anchor_cell_of` carries and for a harder
+       reason: a placement is one `{linear, anchor_src, anchor_ref}` triple, and two
+       source maps have their own metas, hence their own `L` and their own affine offset.
+       One triple cannot describe both, so with more than one contributing map the honest
+       answer is no placement rather than a placement that draws one map and lies about
+       the other. Maps with no usable cells do not count - the scoring loop skips them
+       (`if not sm.get("_use"): continue`), so neither does this.
+
+    Rule: the cell with minimum `(y, x)` in STORED source coordinates. Stored, so the
+    pivot is the same cell for all eight candidates (only the seat moves), and the first
+    index wins if a coordinate somehow repeats - identity travels as the index, so a
+    duplicate cannot make the capture below ambiguous.
+    """
+    contributing = [mi for mi, sm in enumerate(usable or ()) if sm.get("_use")]
+    if len(contributing) != 1:
+        return None
+    mi = contributing[0]
+    cells = usable[mi]["_use"]
+    best_i = min(range(len(cells)), key=lambda i: (cells[i][1], cells[i][0]))
+    return mi, best_i, tuple(cells[best_i])
+
+
+def _placement_payload(linear, anchor_src, anchor_placed, dx, dy):
+    """The drawable form, spelled ONCE: `placed = anchor_ref + linear*(cell - anchor_src)`.
+
+    Both paths (index anchor, shift search) emit through here, so the arithmetic that the
+    screen inverts exists in one place. `anchor_placed` is where the scoring loop put the
+    pivot BEFORE the shift; the shift is added here and exactly once - the divergence this
+    guards against is silent (§[D13] and the payload comment at `placement`): server scores
+    at A, screen draws at B, both pictures look plausible and only the counts disagree.
+    """
+    if linear is None or anchor_src is None or anchor_placed is None:
+        return None
+    return {"linear": [list(linear[0]), list(linear[1])],
+            "anchor_src": list(anchor_src),
+            "anchor_ref": [anchor_placed[0] + (dx or 0), anchor_placed[1] + (dy or 0)]}
+
+
 def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left,
                   anchor_cell=None):
     """앵커 쌍이 정하는 평행이동 → `({프레임: (dx,dy)}, 사유)`.
@@ -2885,6 +2949,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     _anchor = anchor_cell_of(usable) if reference_top_left is not None else None
     anchor_map_index = _anchor[0] if _anchor else None
     anchor_cell = _anchor[1] if _anchor else None
+    # The pivot for the search path's drawable form. Computed only when the anchor is
+    # absent, so it can never shadow the anchor branch, and it feeds `placement` alone -
+    # no score, no shift, no ruling reads it (§`search_pivot_of`).
+    _pivot = search_pivot_of(usable) if anchor_cell is None else None
+    pivot_map_index = _pivot[0] if _pivot else None
+    pivot_i = _pivot[1] if _pivot else None
+    pivot_cell = _pivot[2] if _pivot else None
     for frame in CANDIDATE_FRAMES:
         if parse_frame(frame)[1] not in considered:
             per_candidate.append({"frame": frame, "keys": None, "reason": None,
@@ -2903,6 +2974,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         frame_linear = None
         # 앵커 셀이 **변환만으로** 앉은 자리(시프트 이전). 아래 payload와 잔차가 읽는다.
         anchor_placed = None
+        # The same two values for the search path: the linear part of the transform this
+        # candidate actually ran, and where that transform put the pivot cell. They are
+        # SEPARATE NAMES on purpose - the index path's `_linear`/`_anchor_placed` must
+        # stay byte-identical, and sharing a slot is how "unchanged" quietly stops being
+        # true. Both stay None whenever there is an index anchor.
+        search_linear = None
+        search_placed = None
         failed = None
         # Worked-example capture. Rows are taken **at the line the scorer places
         # the cell**, so the printed arithmetic is the arithmetic that ran.
@@ -2962,6 +3040,14 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 except ValueError as e:
                     failed = str(e)
                     break
+                # 🔴 The linear part of THE TRANSFORM THAT JUST RAN, for the payload only.
+                #    Nothing below reads it - `p` is still `tf(x, y)`, so scores, shift and
+                #    ruling are untouched. It is safe to take it from the declared axes
+                #    rather than from `tf` because the two are identical by oracle
+                #    (`test_the_linear_part_matches_the_transform`), and that identity is
+                #    exactly what makes `tf(cell) = tf(pivot) + L*(cell - pivot)` exact.
+                if mi == pivot_map_index:
+                    search_linear = map_overlay.frame_linear_part(src_meta, reference_meta)
             for i, (x, y) in enumerate(sm["_use"]):
                 if L is not None:
                     p = (anchor_cell[0] + L[0][0] * (x - anchor_cell[0])
@@ -2987,6 +3073,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 if (anchor_cell is not None and mi == anchor_map_index
                         and (x, y) == tuple(anchor_cell)):
                     anchor_placed = p
+                # 🔴 Same capture, same reason, for the search path: WHERE SCORING SEATED
+                #    THE PIVOT, pre-shift. Taken here, at the line that places the cell,
+                #    so the payload cannot drift from what was scored. Matched by cell
+                #    INDEX, not by coordinate - a repeated coordinate would otherwise make
+                #    "which cell is this" ambiguous at the one place it must not be.
+                if mi == pivot_map_index and i == pivot_i:
+                    search_placed = p
                 # 정준 좌표는 **놓인 좌표를 기준의 사상으로** 돌린다 — 소스와 기준이 같은
                 # 사상을 타므로 같은 상수만큼 움직이고, 그래서 방향 판정이 두 집합의 행을
                 # 같은 자로 잰다(§[3a-2]). 앵커가 없으면 종전대로 물리 변환을 쓴다.
@@ -3016,6 +3109,10 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                               # 앵커 셀의 **변환 후·시프트 전** 자리. payload의
                               # `anchor_ref`와 잔차의 기준점이 여기에 시프트를 더해 나온다.
                               "_anchor_placed": anchor_placed,
+                              # 배치를 그릴 재료, 앵커가 없는 갈래의 것(§`search_pivot_of`).
+                              # 점수·시프트·판정은 이 둘을 읽지 않는다.
+                              "_search_linear": search_linear,
+                              "_search_placed": search_placed,
                               # 순번 훑기의 입력. 후보마다 **다르다** - 회전·면이 바꾸는
                               # 것이 바로 이 좌표이고, 그래서 여덟이 서로 다른 순서를 만든다.
                               # 🔴 앵커가 있으면 [3-0]이 **앉힌 좌표로 덮어쓴다**(§[D12]).
@@ -3388,12 +3485,21 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             #    때뿐이다. 배치가 변환 전용으로 돌아온 지금 앵커가 앉는 자리는 **변환이 놓은
             #    자리에 시프트를 더한 값**이고, 과녁(`reference_top_left`)과 다르다. 그래서
             #    유도원을 바꾼다 — 그리는 쪽이 읽는 것은 과녁이 아니라 결과여야 한다.
-            "placement": (None if c.get("_linear") is None or anchor_cell is None
-                          or c.get("_anchor_placed") is None else {
-                "linear": [list(c["_linear"][0]), list(c["_linear"][1])],
-                "anchor_src": list(anchor_cell),
-                "anchor_ref": [c["_anchor_placed"][0] + (c.get("dx") or 0),
-                               c["_anchor_placed"][1] + (c.get("dy") or 0)]}),
+            # 🔴 [2026-08-08] **두 갈래가 다 그릴 수 있다.** 종전 관문은 `anchor_cell`에
+            #    걸려 있었고, 순번이 하나도 없는 단위에서는 여덟 후보 전부 `placement: null`
+            #    이 나갔다 - 값 축으로 채점을 끝내고 점수를 실어 보낸 바로 그 응답에서.
+            #    화면은 배치가 없으면 소스를 안 그리므로(의도된 규칙: 없는 배치를 지어내는
+            #    종전 경로가 자신 있게 틀렸다), 조작자는 「값으로 쟀다면서 소스맵이 안 뜬다」를
+            #    본다. 그리기에 필요한 것은 앵커가 아니라 **선형부와 기준점 하나**이고,
+            #    탐색 갈래는 `tf`가 아핀이라 둘 다 가지고 있었다 - 버리고 있었을 뿐이다.
+            # 🔴 두 갈래는 **배타적**이다(`_pivot`은 앵커가 없을 때만 선다). 그래서 순번이
+            #    있는 단위에서 이 값은 종전과 한 바이트도 다르지 않다.
+            "placement": (
+                _placement_payload(c.get("_linear"), anchor_cell,
+                                   c.get("_anchor_placed"), c.get("dx"), c.get("dy"))
+                if anchor_cell is not None else
+                _placement_payload(c.get("_search_linear"), pivot_cell,
+                                   c.get("_search_placed"), c.get("dx"), c.get("dy"))),
             "index_margin": (None if c.get("index_agreement") is None or k_runner is None
                              else int(c["index_agreement"] - k_runner)),
             # 값 지표는 **점유를 대체하지 않는다.** 기준이 값을 안 실으면 점유가 정직한 답이고,
@@ -3511,7 +3617,15 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    유도를 만들면 그 둘이 갈리는 날 기록된 시프트와 저장된 원점이 다른 배치를 가리킨다.
     #    ⚠️ 이름이 `placement`가 아닌 이유: `ruling["placement"]`는 이미 **낱말**
     #    (`anchor`/`shift_search`)이라 같은 키에 dict을 실으면 그 어휘가 조용히 깨진다.
-    ruling["anchor"] = (_win_row or {}).get("placement")
+    # 🔴 [2026-08-08] **앵커 갈래에서만** 읽는다. 이 키는 그리기용이 아니라 **확정용**이다 -
+    #    `frame_confirmation._placement_of`가 여기서 앵커 쌍을 꺼내 `start_from_placement`에
+    #    넘기고, 그 함수는 「평행이동의 나머지가 앵커 쌍 안에 있다」를 전제로 원점을 푼다.
+    #    탐색 갈래의 배치에는 그런 쌍이 없다(기준점은 그리기 형식의 지렛대일 뿐이고 평행이동은
+    #    `shift`가 전부 나른다). 그것을 앵커라 부르며 실어 보내면 확정이 ①의 실측 - 240셀
+    #    전부가 (4,3)만큼 밀려 그려진 그 형태 - 를 다시 산다. 그래서 후보 행이 그릴 재료를
+    #    갖게 된 뒤에도 이 키의 조건은 **종전 그대로**다: 앵커가 섰을 때만 앵커가 있다.
+    ruling["anchor"] = ((_win_row or {}).get("placement")
+                        if anchor_cell is not None else None)
     ruling["sides_considered"] = [s for s in FRAME_SIDES if s in considered]
     ruling["sides_narrowed"] = len(considered) < len(FRAME_SIDES)
     ruling["geometry_assumed"] = bool(assumed_ids)

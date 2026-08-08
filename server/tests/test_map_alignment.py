@@ -2495,6 +2495,146 @@ def test_the_stored_start_is_not_on_the_wire():
         assert "grid_start_x" not in c and "start_x" not in c
 
 
+# ---------------------------------------------------------------------------
+# PLACEMENT ON THE SEARCH PATH - the screen could not draw what the scorer scored
+# ---------------------------------------------------------------------------
+# Live payload 2026-08-08 (`dt_frame_confrimation`, DT-EQP-02_20260512T0000_T09 against
+# `valid_die_ref/QA_MAP2`): 72 source cells on the wire, `dt_index` resolved as a column,
+# every value NULL -> `index_axis: absent`, `anchor: null`, `placement: shift_search`. All
+# eight candidates carried a shift and a value_agreement of 51..72, and all eight carried
+# `placement: null`. The product owner: "값축으로 계산했으니 소스맵이 뜨긴해야하는거 아니야?"
+# The material existed; the gate was on the anchor rather than on the drawable form.
+#
+# The reconstruction below is the CLIENT'S formula (`main.js` `placementFor`/`seatingFor`),
+# written out here rather than imported, because the assertion is that the server's numbers
+# survive the trip through that formula. Presence of a placement proves nothing - one that
+# draws the map in the wrong place is worse than none - so every assertion here is a COUNT.
+
+def _seats_from_placement(placement, cells):
+    """`placed = anchor_ref + linear*(cell - anchor_src)`, applied the way the screen does."""
+    L = placement["linear"]
+    ax, ay = placement["anchor_src"]
+    rx, ry = placement["anchor_ref"]
+    return [(rx + L[0][0] * (x - ax) + L[0][1] * (y - ay),
+             ry + L[1][0] * (x - ax) + L[1][1] * (y - ay)) for (x, y) in cells]
+
+
+# 🔴 THE OFFSET IS NOT DECORATION. At offset (0,0) the search saturates and settles on
+#    `(0,0)` for all eight candidates - measured - so a placement that DROPPED the shift
+#    entirely would reproduce every count and this test would certify it. The offset fixture
+#    is the one where the shift is a real number (measured: dx,dy in {-3,+3}, occupancy 196
+#    of 266), and it is the only reason the "plus the shift exactly as scoring applied it"
+#    half of the contract is under test at all.
+@pytest.mark.parametrize("offset", [(0, 0), (5, -4)])
+@pytest.mark.parametrize("planted", list(ma.CANDIDATE_FRAMES))
+def test_the_screen_can_draw_when_no_die_carries_an_index(planted, offset):
+    """THE REPORTED CASE. No index anywhere, so the anchor never stands and the shift is
+    searched - and that is exactly the run where the screen was handed nothing to draw with.
+
+    The real assertion is the last two: the client's own formula, fed the server's three
+    numbers, must reproduce the candidate's OWN occupancy and value counts. If the pivot or
+    the shift were re-derived rather than taken from where scoring seated the cell, the
+    picture would still look plausible and only these counts would disagree."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    floor_set = set(floor)
+    cells, _ks = _partial_job(floor_meta, floor, 266)
+    src_vals = _unique_values(cells)
+    recorded = [(x + offset[0], y + offset[1])
+                for (x, y) in _plant(floor_meta, cells, planted)]
+    ref_val_at = dict(zip(floor, _unique_values(floor)))
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "values": src_vals}],
+        floor, floor_meta, reference_values=_unique_values(floor),
+        thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+
+    # ⓐ The fixture must actually be on the branch under test. Without this the test can go
+    #    green by taking the anchor path and never touching a line that was written today.
+    assert ruling["anchor"] is None and ruling["placement"] == ma.PLACEMENT_SEARCH, ruling
+    assert ruling["index_axis"] == ma.INDEX_AXIS_ABSENT, ruling
+    # ⓑ And the shift term must be live on the offset fixture, or the "plus the shift" half
+    #    of the contract is not being tested here (see the note above the parametrize).
+    if offset != (0, 0):
+        assert any(c["shift"] != {"dx": 0, "dy": 0} for c in cands), (
+            "every candidate settled on a zero shift, so this fixture no longer exercises "
+            "the shift term: %s" % [c["shift"] for c in cands])
+
+    for c in cands:
+        p = c["placement"]
+        assert p is not None, (
+            "%s scored %s dies and told the screen nothing to draw with"
+            % (c["frame"], c["placed"]))
+        assert sorted(p) == ["anchor_ref", "anchor_src", "linear"]
+        seats = _seats_from_placement(p, recorded)
+        assert len(seats) == c["placed"]
+        assert sum(1 for s in seats if s in floor_set) == c["agreement"], (
+            "%s: the drawn map does not sit where the scorer scored it" % c["frame"])
+        assert sum(1 for s, v in zip(seats, src_vals)
+                   if s in floor_set and ma.values_equal(ref_val_at.get(s), v)) \
+            == c["value_agreement"], (
+            "%s: value agreement %s is not reproducible from the shipped placement"
+            % (c["frame"], c["value_agreement"]))
+
+
+# 🔴 `rot0_front` is NOT in this list and its absence is the point: there the walk's first die
+#    IS the minimum-(y, x) die, so the two pivot rules coincide and the fixture guard below
+#    fails rather than pass vacuously. The frames kept here are the ones where they disagree.
+@pytest.mark.parametrize("planted", ["rot90_front", "rot180_front", "rot270_back"])
+def test_the_index_path_still_pivots_on_the_minimum_index_die(planted):
+    """THE THING THAT MUST NOT MOVE. Two rules now answer "which cell is the pivot", and only
+    one of them may run when an index exists - the minimum-index die, because on that path the
+    pivot DECIDES the translation (`anchor_ref - anchor_src`) instead of merely naming a point
+    the reconstruction hangs off.
+
+    🔴 The fixture asserts the two rules DISAGREE here. If minimum-index and minimum-(y,x)
+       happened to be the same cell, this test would pass against a version that had wired the
+       search pivot into the index path, which is the one regression it exists to catch."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    floor_set = set(floor)
+    cells, ks = _partial_job(floor_meta, floor, 266)
+    recorded = _plant(floor_meta, cells, planted)
+
+    i_min = min(range(len(ks)), key=lambda i: ks[i])
+    by_index = tuple(recorded[i_min])
+    by_yx = min(recorded, key=lambda c: (c[1], c[0]))
+    assert by_index != by_yx, (
+        "%s: the two pivot rules agree on this fixture, so it cannot tell them apart"
+        % planted)
+
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "indices": ks}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+
+    assert ruling["anchor"] is not None, ruling
+    for c in cands:
+        p = c["placement"]
+        assert p is not None
+        assert tuple(p["anchor_src"]) == by_index, (
+            "%s: the index path pivoted on %s, not on the minimum-index die %s"
+            % (c["frame"], p["anchor_src"], list(by_index)))
+        seats = _seats_from_placement(p, recorded)
+        assert sum(1 for s in seats if s in floor_set) == c["agreement"]
+
+
+def test_the_search_pivot_refuses_two_maps():
+    """One placement is one triple, and two source maps have their own metas - hence their own
+    linear part and their own affine offset. A triple that describes one of them draws the other
+    in the wrong place, silently, so the rule refuses rather than picks. `anchor_cell_of` carries
+    the same restriction; this is the point where BOTH would have to be relaxed together."""
+    one = {"_use": [(3, 4), (5, 6)]}
+    two = {"_use": [(7, 8)]}
+    assert ma.search_pivot_of([one]) == (0, 0, (3, 4))
+    assert ma.search_pivot_of([one, two]) is None
+    assert ma.search_pivot_of([one, {"_use": []}]) == (0, 0, (3, 4)), (
+        "a map with no usable cells is skipped by the scoring loop and must not count here")
+    assert ma.search_pivot_of([]) is None
+    # Minimum (y, x): the top row wins first, and x breaks the tie within it - so (2, 1)
+    # beats both (9, 1) on its row and (0, 2) on the row below, despite the smaller x.
+    assert ma.search_pivot_of([{"_use": [(9, 1), (0, 2), (2, 1)]}]) == (0, 2, (2, 1))
+
+
 # 🔴 RETIRED 2026-08-06 with its reason on the record, the way [D5] was.
 #    `test_the_derived_start_is_the_same_under_all_eight_frames` asserted that the
 #    derived origin is identical under all eight frames - true of a placement that
