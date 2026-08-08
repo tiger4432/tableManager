@@ -1,13 +1,24 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **423개** 이력. (거버넌스 규칙 #4)
+> 총 **434개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-08 21:33** — [The Refusal Named The Margin When No Row Carried An Index](./20260808_213310_the_refusal_named_the_margin_when_no_row_carried_an_index.md)
+- **2026-08-08 15:30** — [Alignment Missing Index Refusal](./20260808_153000_alignment_missing_index_refusal.md)
+- **2026-08-08 07:46** — [The Absent Log Line Was The Load Bearing Fact](./20260808_074639_the_absent_log_line_was_the_load_bearing_fact.md)
+- **2026-08-07 13:35** — [A Write Needs Three Answers First So The Preflight Only Answers Them](./20260807_133500_a_write_needs_three_answers_first_so_the_preflight_only_answers_them.md)
+- **2026-08-07 13:00** — [Ag Grid Suppresses Cell Text Selection Until It Is Told Otherwise](./20260807_130054_ag_grid_suppresses_cell_text_selection_until_it_is_told_otherwise.md)
+- **2026-08-07 12:06** — [The Mirror Half Is The Top Right Half And The Walk Axis Replaces It](./20260807_120619_the_mirror_half_is_the_top_right_half_and_the_walk_axis_replaces_it.md)
+- **2026-08-07 10:04** — [Back Meant Mirror And Two Attempts To Stop Storing It Were Refused](./20260807_100446_back_meant_mirror_and_two_attempts_to_stop_storing_it_were_refused.md)
+- **2026-08-07 09:46** — [The State That Most Needed A Person Was The One A Person Could Not Answer](./20260807_094604_the_state_that_most_needed_a_person_was_the_one_a_person_could_not_answer.md)
+- **2026-08-07 08:59** — [A Blank Key Column Writes Nothing Because Two Bugs Were Hiding Each Other](./20260807_085943_a_blank_key_column_writes_nothing_because_two_bugs_were_hiding_each_other.md)
+- **2026-08-07 06:46** — [The Outbox Carried The Row And One Row Per Key Was Only An Assumption](./20260807_064625_the_outbox_carried_the_row_and_one_row_per_key_was_only_an_assumption.md)
+- **2026-08-07 04:23** — [The Per Row Select Was The Last Accidental Guard And The Race It Hid](./20260807_042352_the_per_row_select_was_the_last_accidental_guard_and_the_race_it_hid.md)
 - **2026-08-07 04:05** — [Four Wrong Anchors In One Day All Copied From Prose And Two Contaminated Suite Runs](./20260807_040500_four_wrong_anchors_in_one_day_all_copied_from_prose_and_two_contaminated_suite_runs.md)
 - **2026-08-07 03:58** — [The 4 Of 88 Was A True Number Under A False Label And The Ruling Flipped Three Times](./20260807_035805_the_4_of_88_was_a_true_number_under_a_false_label_and_the_ruling_flipped_three_times.md)
 - **2026-08-07 03:58** — [The Table Select Changed The Question And The Worklist Was Never Re Asked](./20260807_035823_the_table_select_changed_the_question_and_the_worklist_was_never_re_asked.md)
@@ -444,4 +455,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-07 by gen_index.py*
+*Last generated: 2026-08-08 by gen_index.py*
