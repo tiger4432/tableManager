@@ -3713,15 +3713,24 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    유도를 만들면 그 둘이 갈리는 날 기록된 시프트와 저장된 원점이 다른 배치를 가리킨다.
     #    ⚠️ 이름이 `placement`가 아닌 이유: `ruling["placement"]`는 이미 **낱말**
     #    (`anchor`/`shift_search`)이라 같은 키에 dict을 실으면 그 어휘가 조용히 깨진다.
-    # 🔴 [2026-08-08] **앵커 갈래에서만** 읽는다. 이 키는 그리기용이 아니라 **확정용**이다 -
-    #    `frame_confirmation._placement_of`가 여기서 앵커 쌍을 꺼내 `start_from_placement`에
-    #    넘기고, 그 함수는 「평행이동의 나머지가 앵커 쌍 안에 있다」를 전제로 원점을 푼다.
-    #    탐색 갈래의 배치에는 그런 쌍이 없다(기준점은 그리기 형식의 지렛대일 뿐이고 평행이동은
-    #    `shift`가 전부 나른다). 그것을 앵커라 부르며 실어 보내면 확정이 ①의 실측 - 240셀
-    #    전부가 (4,3)만큼 밀려 그려진 그 형태 - 를 다시 산다. 그래서 후보 행이 그릴 재료를
-    #    갖게 된 뒤에도 이 키의 조건은 **종전 그대로**다: 앵커가 섰을 때만 앵커가 있다.
-    ruling["anchor"] = ((_win_row or {}).get("placement")
-                        if anchor_cell is not None else None)
+    # 🔴 [2026-08-08 · 게이트 철회] **탐색 갈래도 싣는다.** 몇 시간 전 이 자리는 앵커 갈래로
+    #    좁혀져 있었고 논거는 「탐색 배치엔 쌍이 없다, 평행이동은 `shift`가 전부 나른다」였다.
+    #    **그 논거가 거꾸로다** — `_placement_payload`의 `anchor_ref`는
+    #    `anchor_placed + (dx, dy)`, 즉 **시프트를 이미 더한 자리**다. 그러므로 쌍
+    #    `(pivot, tf(pivot) + shift)`은 「이 소스 셀이 저 기준 자리에 앉는다」를 통째로 말하고,
+    #    `start_from_placement`가 요구하는 것이 정확히 그것이다. 240/240 실측은 **반대 경우**
+    #    였다 — 앵커 배치에 `shift`만 읽는 유도(`start_for_placement`)를 쓴 것.
+    # 🔴 그리고 이 철회가 고치는 것은 원점의 **좌표계**다(제품 소유자 2026-08-08:
+    #    「SRC_START = REF_START − SHIFT」). `start_for_placement`는 `start − L⁻¹(shift)`라
+    #    **상자 항이 없어** 맵 자신의 종전 원점 위에서 시프트만 고치고, 그래서 확정된 원점이
+    #    편집기의 상자(`db_x = col − box.minC + start_x`)와 어긋났다 — 화면에서 소스가 왼쪽
+    #    으로 밀려 보인 것이 그것이고, 어긋난 양은 상자 모서리와 첫 다이의 차(실측 3칸)다.
+    #    `start_from_placement`는 편집기의 그 식을 직접 풀고 `source_box`를 받으므로
+    #    **상자를 아는 원점**을 낸다. 여기서 상자 항을 손으로 더하지 않는 이유이기도 하다 —
+    #    이 파일이 좌표 대수를 옮겨 적다 값을 치른 것이 이미 넷이다.
+    # ⚠️ 앵커 갈래와 탐색 갈래는 여전히 **다른 사실**이고, 그 구별은 `placement_basis`가
+    #    나른다. 이 키가 둘 다 싣는 것은 「둘이 같다」가 아니라 「둘 다 원점을 풀 재료가 된다」다.
+    ruling["anchor"] = (_win_row or {}).get("placement")
     # 🔴 **승자 행에서 읽는다, 다시 유도하지 않는다.** `ruling["placement"]`는 `anchor_dxy`를
     #    게이트로 쓰고 이 값은 실제로 실린 배치의 근거라, 둘이 갈리는 경우가 바로 조작자가
     #    알아야 하는 경우다(§`placement_basis`). 같은 사실을 두 번 유도하지 않는 규율은
