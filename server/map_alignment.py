@@ -4273,6 +4273,17 @@ def compose_refusal(state: str, reference: dict, excluded: _Excluded,
                     % (source_map_count, excluded.total(), " · ".join(parts)))
         return "소스 좌표 0건"
     if state == STATE_NO_WINNER:
+        # A declared index column and index VALUES are distinct facts.  When every source
+        # value is NULL, the index axis never ran and placement fell back to the value/shift
+        # path; reporting only the margin sends the operator toward the unsafe fix (lowering
+        # the threshold).  Keep the ordinary margin sentence for every other no-winner case.
+        if (ruling.get("index_axis") == INDEX_AXIS_ABSENT
+                and ruling.get("anchor_reason") == ANCHOR_NO_INDEX):
+            # 🔴 컬럼 **이름을 대지 않는다.** 이 함수는 `columns["index"]["column"]`을 받지
+            #    않으므로 이름을 적으면 그것은 이 표에 대한 추측이고, `core_*` 표에서 없는
+            #    컬럼을 대며 조작자를 엉뚱한 곳으로 보낸다. 이름이 필요해지면 인자로 받는다.
+            return ("순번 컬럼에 값이 없어 값 축으로 채점했습니다 - "
+                    "순번을 채우면 정확 채점이 가능합니다")
         return _ruling_text(ruling)
     return None
 

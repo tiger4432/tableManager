@@ -514,6 +514,33 @@ def test_scored_state_has_no_refusal_sentence():
                               ma._Excluded(), {"winner": "rot0_front"}, 1) is None
 
 
+def test_no_winner_names_missing_index_values_before_margin():
+    """A proposed `dt_index` column is not evidence that any row has a value.
+
+    The live DT-EQP-02 case had all source values NULL.  The scorer correctly darkened the
+    index axis and searched shifts, but its old margin-only sentence prescribed the unsafe
+    repair: lowering the margin threshold.  This sentence must win only for that exact causal
+    pair; ordinary low-margin verdicts retain their existing ruling text.
+    """
+    missing_index = {
+        "reason_code": "margin_too_small",
+        "index_axis": ma.INDEX_AXIS_ABSENT,
+        "anchor_reason": ma.ANCHOR_NO_INDEX,
+    }
+    why = ma.compose_refusal(ma.STATE_NO_WINNER, {"state": ma.REFERENCE_RESOLVED},
+                             ma._Excluded(), missing_index, 1)
+    # 🔴 컬럼 이름은 문장에 없다 — `compose_refusal`은 어느 컬럼이 순번인지 모르고, 적으면
+    #    `core_*` 표에서 없는 이름을 대게 된다(총괄 병합 수정 2026-08-08).
+    assert why == ("순번 컬럼에 값이 없어 값 축으로 채점했습니다 - "
+                   "순번을 채우면 정확 채점이 가능합니다")
+
+    ordinary_margin = dict(missing_index, index_axis=ma.INDEX_AXIS_RANKING,
+                           anchor_reason=None)
+    assert ma.compose_refusal(ma.STATE_NO_WINNER, {"state": ma.REFERENCE_RESOLVED},
+                              ma._Excluded(), ordinary_margin, 1) == \
+        ma._ruling_text(ordinary_margin)
+
+
 def test_the_state_vocabulary_is_closed():
     assert {ma.STATE_SCORED, ma.STATE_NO_WINNER, ma.STATE_NOT_SCORABLE,
             ma.STATE_COMPUTING} == {"scored", "no_winner", "not_scorable", "computing"}
