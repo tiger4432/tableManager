@@ -1,6 +1,6 @@
 # 🐘 PostgreSQL & pgAdmin4 운영 관리 가이드 (AssyManager)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (§3.1에 **R2 회수 범위 인덱스 `idx_sources_by_source`** 항목 신설 — `1948338`) | **Owner:** Ops
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-08 (§3.1에 **업무 키가 안 조립된 행의 읽기 전용 사전점검** 항목 신설 — `b2ceb55`. ⚠️ **이 배지는 낡아 있었습니다**: `cc602ed`가 D3 두 절(`uq_bk_<table>` · `--drop-redundant`)을 이미 넣었는데 날짜가 2026-07-31에 멈춰 있었습니다 — **본문이 앞서고 배지가 뒤처지면 독자는 본문을 안 읽습니다.** 직전 2026-07-31: §3.1에 R2 회수 범위 인덱스 `idx_sources_by_source` — `1948338`) | **Owner:** Ops
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 AssyManager의 백엔드 데이터베이스인 PostgreSQL을 운영하고 pgAdmin4를 통해 데이터를 직접 관리하는 방법을 안내합니다.
@@ -101,6 +101,20 @@ conda run -n assy_manager python server/migrations/add_business_key_unique_index
 - **테이블마다 먼저 세고 나서 만든다.** 중복이 있는 테이블은 **이름·중복 키 수·잉여 행 수·문제 키 예시**와 함께 거부되고 **나머지 테이블은 계속 진행한다** — 전체 중단도, 조용한 건너뛰기도 아니다. 거부된 테이블은 중복을 정리한 뒤 재실행한다(재실행은 무해하다 — 이미 만들어진 것은 `already_enforced`로 지나간다).
 - **업무 키가 NULL인 행은 여러 개여도 된다**(빈 행 추가 기능이 그런 행을 만든다). 막히지 않는 것이 정상이다.
 - ⚠️ **취소된 CONCURRENTLY 빌드의 INVALID 잔해가 이름을 잡고 있으면 `IF NOT EXISTS`가 영원히 건너뛴다.** 이 스크립트는 그 상태를 `refused_invalid_index`로 **따로 이름 붙여** 보고하고 `DROP INDEX CONCURRENTLY <이름>;`을 제시한다. 아무것도 스스로 드롭하지 않는다.
+
+#### 업무 키가 **안 조립된** 행 — 읽기 전용 사전점검 (2026-08-07 `b2ceb55`)
+
+위 유니크 인덱스가 막는 것은 **키가 겹치는** 행이고, 이것은 **키가 아예 없는** 행이다. 대량 인제션에서 원본 `composite_key_source` 컬럼은 다 찼는데 `business_key_val`만 빈 행이 보고됐다(제품 소유자 2026-08-07).
+
+```bash
+conda run -n assy_manager python server/scripts/check_missing_business_key.py
+conda run -n assy_manager python server/scripts/check_missing_business_key.py --table dt_log
+```
+
+- 🔴 **아무것도 쓰지 않는다 — 세션이 `default_transaction_read_only = on`으로 고정돼 구조적으로 못 쓴다.** 채우는 일은 **별개 라운드**다.
+- 답하는 것은 셋이다: **① 몇 행인가**(규모) **② 재료가 있는가**(키 컬럼이 비어 있으면 어떤 스크립트도 못 만든다 — 사람이 값을 넣어야 한다) **③ 채우면 기존 행과 충돌하는가**(같은 재료를 가진 행이 이미 키를 갖고 있으면 그 둘은 중복이다).
+- ⚠️ **③이 잡히면 유니크 인덱스는 그것을 거절하고, 인덱스가 없으면 조용히 둘이 된다. 어느 행이 사는지는 사람이 정한다** — `audit_logs`·`cell_sources` 귀속이 그 선택을 따라간다.
+- 🔴 **이 스크립트는 키를 조합하지 않는다.** 조합의 정본은 `crud.assemble_composite_business_key`이고, 여기서 문자열을 이어 붙이면 그것이 **두 번째 철자**가 되어 조합 규칙이 바뀌는 날 이 스크립트만 옛 규칙으로 남는다. 그래서 「재료가 있는가」와 「같은 재료가 이미 키를 갖는가」만 센다 — **그 둘은 조합 규칙과 무관하게 참**이다.
 
 #### PK를 그대로 복제한 인덱스 정리 (`--drop-redundant`) — 2026-08-07 D3
 
