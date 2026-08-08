@@ -781,10 +781,32 @@ def _placement_of(contributor: dict, ruling: dict):
        놓았다」는 주장이고 그것이 방금 고친 거짓말이다.
     """
     r = ruling or {}
+    applied = (contributor or {}).get("applied_frame")
+    # 🔴 [2026-08-09] **확정한 프레임 자신의 행을 먼저 본다.** 아래 승자 스코프 갈래는
+    #    「이긴 프레임에 선 기여자만 배치를 갖는다」고 적었고 그 근거는 「다른 프레임에서
+    #    채점된 배치는 존재하지 않는다」였다 - **그 문장이 거짓이었다.** 채점기는 여덟 후보
+    #    전부에 시프트와 배치를 푼다(`map_alignment` `ruling["by_frame"]`). 없었던 것은 배치가
+    #    아니라 **그것을 여기까지 나르는 키**다.
+    #    증상: 추천이 아닌 후보를 확정하면 배치가 None이라 `confirmed_meta_for`가 원점을 손대지
+    #    않고, 같은 맵의 확정 셋이 `rotation`만 0/90/180으로 다르고 `grid_start`는 전부 같았다
+    #    (제품 소유자 실측 2026-08-08). 편집기는 그 메타대로 같은 맵을 각도만 돌려 그렸다.
+    by_frame = r.get("by_frame")
+    if isinstance(by_frame, dict) and applied in by_frame:
+        row = by_frame.get(applied) or {}
+        _sh = row.get("shift") or {}
+        _dx, _dy = _as_int(_sh.get("dx")), _as_int(_sh.get("dy"))
+        if _dx is None or _dy is None:
+            return None
+        out = {"dx": _dx, "dy": _dy}
+        _a = row.get("anchor")
+        if isinstance(_a, dict) and _a.get("anchor_src") and _a.get("anchor_ref"):
+            out["anchor_src"], out["anchor_ref"] = _a["anchor_src"], _a["anchor_ref"]
+            out["linear"] = _a.get("linear")
+        return out
     sh = r.get("shift") or {}
     if not sh or not r.get("winner"):
         return None
-    if (contributor or {}).get("applied_frame") != r.get("winner"):
+    if applied != r.get("winner"):
         return None
     dx, dy = _as_int(sh.get("dx")), _as_int(sh.get("dy"))
     if dx is None or dy is None:

@@ -3831,6 +3831,21 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    알아야 하는 경우다(§`placement_basis`). 같은 사실을 두 번 유도하지 않는 규율은
     #    `shift`·`anchor`와 같다.
     ruling["placement_basis"] = (_win_row or {}).get("placement_basis")
+    # 🔴 [2026-08-09] **후보마다의 배치.** 조작자는 추천이 아닌 후보를 확정할 수 있고
+    #    (`21209d7`이 그 문을 일부러 열었다), 그때 확정 경로는 배치를 못 찾아 원점을 손대지
+    #    않았다 - 세 번 확정한 같은 맵이 `rotation`만 0/90/180으로 다르고 `grid_start`가
+    #    전부 같게 나왔고(제품 소유자 실측 2026-08-08), 편집기는 그 메타대로 **같은 맵을 각도만
+    #    돌려** 그렸다. 정렬기가 보여 준 그림과 무관해진다.
+    #    `frame_confirmation._placement_of`의 주석은 그 이유를 「그 프레임에서 채점된 배치는
+    #    존재하지 않는다」라고 적었는데 **그 문장이 거짓이다**: 채점기는 여덟 후보 **전부**에
+    #    대해 시프트와 배치를 푼다. 없는 것이 아니라 `ruling`이 **승자 스코프**였을 뿐이다.
+    #    ⚠️ 클라는 `ruling`을 키를 가리지 않고 얕은 복사하므로(§`ruling["anchor"]`) 이 키는
+    #    **클라를 한 줄도 안 고치고** 확정 경로에 도착한다. 그리고 값은 전부 **채점기가 만든
+    #    사실**이다 - 화면이 보낸 수를 믿지 않는다는 규율은 그대로다.
+    ruling["by_frame"] = {
+        r["frame"]: {"shift": r.get("shift"), "anchor": r.get("placement"),
+                     "placement_basis": r.get("placement_basis")}
+        for r in out if r.get("state") == STATE_SCORED}
     # 🔴 **탐색 공간은 이제 좁혀지지 않는다** — 면은 후보 축이 아니고(§CANDIDATE_STARTS)
     #    `alignment.sides` 선언은 은퇴했다. 두 키는 **언제나** 나간다: 없는 키와 「안 좁혔다」는
     #    받는 쪽에서 같아 보이고, 판정을 옮겨 적는 자리가 그 구별을 잃으면 안 된다.
