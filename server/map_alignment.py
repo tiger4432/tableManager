@@ -1082,7 +1082,27 @@ def _encode(pairs):
     return (arr[:, 0] + _KEY_BIAS) * _KEY_STRIDE + (arr[:, 1] + _KEY_BIAS)
 
 
-def _solve_shift(placed_keys, ref_sorted, window: int):
+def first_die_of(cells, left_to_right: bool = True):
+    """훑기가 **1번을 매기는 셀** → `(x, y)`. 없으면 None. 규칙은 `serpentine_index`와 같다.
+
+    맨 위 행(y 최소)을 고르고, 그 행에서 `left_to_right`면 **왼쪽 끝**, 아니면 **오른쪽 끝**.
+    좌표만 읽는다 — 순번 컬럼도 메타도 안 본다.
+
+    🔴 **이 함수가 있는 이유: 우상 시작이 앵커를 안 바꾸면 아무 일도 안 한다.** 실측
+       2026-08-08(라이브 `DT-EQP-02_20260512T0000_T09` · 기준 `valid_die_ref/QA_MAP2`):
+       `rot0_tl`과 `rot0_tr`이 **시프트도 배치도 완전히 같았다** — `(1,3)` · `anchor_src
+       [6,0]` · `anchor_ref [7,3]`. 기준점을 양쪽 다 좌상단으로 고르고 있었기 때문이다.
+       보행 순서만 바꾸고 기준점을 안 바꾸면 두 후보는 **정의상 쌍둥이**이고, 판정은 동점이
+       된다(제품 소유자: 「좌상 우상 소스맵 시프트 똑같이 나오네」).
+    """
+    if not cells:
+        return None
+    top = min(int(y) for (x, y) in cells)
+    row = [int(x) for (x, y) in cells if int(y) == top]
+    return ((min(row) if left_to_right else max(row)), top)
+
+
+def _solve_shift(placed_keys, ref_sorted, window: int, base=(0, 0)):
     """후보 하나의 정수 시프트를 푼다 → (dx, dy, 일치수, 후보별 일치 벡터).
 
     겹침을 최대화하는 (dx, dy)를 ±window 안에서 고른다. 동점이면 **원점에 가까운 쪽**을
@@ -1090,17 +1110,24 @@ def _solve_shift(placed_keys, ref_sorted, window: int):
     먼저 신뢰를 깎는다.
     """
     import numpy as np
-    best = (0, 0, -1)
+    bx, by = int(base[0]), int(base[1])
+    best = (bx, by, -1)
     if placed_keys.size == 0 or ref_sorted.size == 0:
-        return 0, 0, 0
-    for dy in range(-window, window + 1):
-        for dx in range(-window, window + 1):
+        return bx, by, 0
+    # 🔴 창은 **기준점 대응 주위**를 훑는다, 원점 주위가 아니라. 실측 2026-08-08: 소스 첫
+    #    다이 (6,0)이 기준 첫 다이 (3,6)에 앉으려면 `(-3, +6)`이 필요한데 창이 ±3이라
+    #    **닿을 수가 없었고**, 솔버는 갈 수 있는 가장 먼 `(1,3)`에 앉았다 — 여덟 후보가 전부
+    #    `at_window_edge`였던 것이 그 지문이다. 창은 잔차용이지 평행이동 전체용이 아니다.
+    for dy in range(by - window, by + window + 1):
+        for dx in range(bx - window, bx + window + 1):
             shifted = placed_keys + dx * _KEY_STRIDE + dy
             idx = np.searchsorted(ref_sorted, shifted)
             idx[idx >= ref_sorted.size] = 0
             hit = int(np.count_nonzero(ref_sorted[idx] == shifted))
+            # 동점이면 **기준점 대응에 가까운 쪽**. 원점이 아니라 base가 중심이다.
             if hit > best[2] or (hit == best[2]
-                                 and abs(dx) + abs(dy) < abs(best[0]) + abs(best[1])):
+                                 and abs(dx - bx) + abs(dy - by)
+                                 < abs(best[0] - bx) + abs(best[1] - by)):
                 best = (dx, dy, hit)
     return best
 
@@ -3274,11 +3301,24 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 c["_residual"]["applied"] = False
             dx, dy = bx, by
         else:
-            dx, dy, _hit = _solve_shift(c["keys"], ref_sorted, shift_window)
+            # 🔴 **기준점을 후보의 시작 모서리에서 고른다.** 좌상 시작이면 1번 다이가 맨 윗행의
+            #    왼쪽, 우상 시작이면 오른쪽이고, 그것이 기준의 같은 쪽 모서리에 앉는다. 양쪽을
+            #    다 좌상으로 고르면 `tl`과 `tr`이 **정의상 쌍둥이**가 되어 시프트도 배치도 같은
+            #    값이 나온다 - 라이브에서 실제로 그랬다(§`first_die_of`).
+            _ltr = left_to_right_of(c["frame"])
+            _sf = first_die_of(c.get("_placed") or (), _ltr)
+            _rf = first_die_of(ref_pairs, _ltr)
+            _base = ((_rf[0] - _sf[0], _rf[1] - _sf[1])
+                     if _sf is not None and _rf is not None else (0, 0))
+            dx, dy, _hit = _solve_shift(c["keys"], ref_sorted, shift_window, base=_base)
             # 탐색 갈래에도 이름을 준다 — 창의 크기가 답을 가둘 수 있고(옛 ±3 실패의 지문은
             # **창 끝에 붙은 값**이었다), 그 사실은 수치가 아니라 상태로 읽혀야 한다.
             c["_residual"] = {"state": PLACEMENT_SEARCH, "window": shift_window,
-                              "at_window_edge": max(abs(dx), abs(dy)) >= shift_window}
+                              "base": [_base[0], _base[1]],
+                              # 창 끝 판정도 **base 기준**이다 - 절대값으로 재면 평행이동이
+                              # 큰 단위가 언제나 「창 끝」이라고 보고한다.
+                              "at_window_edge": max(abs(dx - _base[0]),
+                                                    abs(dy - _base[1])) >= shift_window}
         mem = _membership(c["keys"], ref_sorted, dx, dy)
         c.update(dx=dx, dy=dy, agreement=int(np.count_nonzero(mem)), scored=True,
                  member=mem)
