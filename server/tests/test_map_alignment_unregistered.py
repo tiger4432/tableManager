@@ -164,7 +164,7 @@ def test_a_planted_frame_is_recovered_for_a_map_that_has_no_meta_row():
     planted frame; the scorer must name that frame back."""
     floor = _meta()
     ref = _asymmetric_subset(floor)
-    for planted in ("rot90_front", "rot180_front", "rot270_back"):
+    for planted in ("rot90_tl", "rot180_tl", "rot90_tr"):
         from dt_map_derivation import source_meta_for_frame
         map_overlay._FRAME_TF_CACHE.clear()
         planted_meta = source_meta_for_frame(_meta(), planted)
@@ -357,8 +357,8 @@ def _partial_of(floor):
             if 12 <= p[0] <= 34 and 8 <= p[1] <= 28 and not (p[0] > 30 and p[1] < 12)]
 
 
-@pytest.mark.parametrize("planted", ["rot0_front", "rot90_front", "rot180_front",
-                                     "rot270_back"])
+@pytest.mark.parametrize("planted", ["rot0_tl", "rot90_tl", "rot180_tl",
+                                     "rot90_tr"])
 def test_a_partial_map_is_placed_back_exactly_where_it_came_from(planted):
     """ORACLE, not a label check: take a partial map whose true frame is known, run the real
     transform stack under that frame, and require the coordinates we started from - cell for
@@ -438,7 +438,7 @@ def test_a_source_offset_from_the_floors_origin_is_still_scorable():
 
     MEASURED with the guard still in place: 8/8 candidates `not_scorable`, no ruling at all.
     The guard sat OUTSIDE the candidate loop, so it did not pick among the eight - it erased
-    the map before the loop began. With it gone: rot0_front 706/706, runner-up 549,
+    the map before the loop began. With it gone: rot0_tl 706/706, runner-up 549,
     margin 157, 705 discriminating dies, placement `anchor`."""
     floor = _meta(**_ORIGIN_FLOOR)
     truth, stored, indices = _origin_shifted_source(floor, off=6)
@@ -460,10 +460,10 @@ def test_a_source_offset_from_the_floors_origin_is_still_scorable():
     scored = [c for c in cands if c.get("state") == "scored"]
     assert len(scored) == 8, [(c["frame"], c.get("state")) for c in cands]
 
-    # Not merely scorable - RIGHT. The map came from rot0_front, and every one of its dies
+    # Not merely scorable - RIGHT. The map came from rot0_tl, and every one of its dies
     # lands back on the floor.
     best = max(scored, key=lambda c: c["agreement"])
-    assert best["frame"] == "rot0_front", [(c["frame"], c["agreement"]) for c in scored]
+    assert best["frame"] == "rot0_tl", [(c["frame"], c["agreement"]) for c in scored]
     assert best["agreement"] == len(truth) == 706
     assert ruling["margin"] and ruling["margin"] > 0
     assert ruling.get("placement") == "anchor"
@@ -517,7 +517,7 @@ def test_a_rotated_full_map_reaches_the_scorer():
     floor = _meta(cols=45, rows=39)
     map_overlay._FRAME_TF_CACHE.clear()
     to90 = map_overlay.make_frame_transform(
-        floor, source_meta_for_frame(_meta(cols=45, rows=39), "rot90_front"))
+        floor, source_meta_for_frame(_meta(cols=45, rows=39), "rot90_tl"))
     stored = [to90(x, y) for (x, y) in _cells_of(floor)]
     assert max(y for _, y in stored) > 39, "fixture must exceed `rows` or it sees nothing"
 

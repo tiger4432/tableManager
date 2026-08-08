@@ -53,14 +53,30 @@ def test_the_eight_candidates_are_exactly_what_the_existing_acceptor_accepts():
     assert len(set(ma.CANDIDATE_FRAMES)) == 8
     for f in ma.CANDIDATE_FRAMES:
         assert parse_frame(f) is not None, f
+    # THE SECOND AXIS IS THE WALK START CORNER, NOT THE MIRROR (2026-08-08). Every candidate
+    # names the FRONT: which corner the equipment numbered from is not a claim that the wafer
+    # was flipped, and a mirror moves where cells LAND, which is the wrong answer for a wafer
+    # that is not physically flipped.
     assert {parse_frame(f) for f in ma.CANDIDATE_FRAMES} == {
-        (r, s) for r in (0, 90, 180, 270) for s in ("front", "back")}
+        (r, "front") for r in (0, 90, 180, 270)}
+    assert {ma.parse_candidate(f) for f in ma.CANDIDATE_FRAMES} == {
+        (r, s) for r in (0, 90, 180, 270) for s in ma.CANDIDATE_STARTS}
 
 
-def test_frame_text_is_the_inverse_of_parse_frame():
+def test_candidate_text_is_the_inverse_of_parse_candidate():
     for f in ma.CANDIDATE_FRAMES:
-        rot, side = parse_frame(f)
-        assert ma.frame_text(rot, side) == f
+        rot, start = ma.parse_candidate(f)
+        assert ma.candidate_text(rot, start) == f
+
+
+def test_the_legacy_spellings_still_parse():
+    """Rows confirmed before the walk axis hold `rot90_front` / `rot90_back`, and
+    `confirmed_meta_for` reads them to write `rotation`/`side`. Refusing them would strand
+    every stored confirmation."""
+    assert parse_frame("rot90_back") == (90, "back")
+    assert parse_frame("rot90_front") == (90, "front")
+    assert ma.parse_candidate("rot90_front") == (90, ma.START_TOP_LEFT)
+    assert ma.parse_candidate("rot90_back") is None, "the mirror is not a candidate any more"
 
 
 def test_grid_y_invert_is_not_a_candidate_axis():
@@ -116,8 +132,8 @@ def test_the_fixture_has_no_symmetry():
         % (8 - len(set(images)) + 1))
 
 
-@pytest.mark.parametrize("planted", ["rot90_front", "rot180_front", "rot270_front",
-                                     "rot0_back"])
+@pytest.mark.parametrize("planted", ["rot90_tl", "rot180_tl", "rot270_tl",
+                                     "rot0_tr"])
 def test_the_planted_frame_wins(planted):
     """Express the reference in a known frame, then require the scorer to name that frame.
 
@@ -191,9 +207,9 @@ def test_high_agreement_with_zero_discrimination_never_wins():
     """Spec section 1, stated as an assertion: agreement earned only on cells where every
     candidate answers the same way excludes nothing."""
     ruling = ma._rule_on([
-        {"frame": "rot0_front", "state": ma.STATE_SCORED, "agreement": 900,
+        {"frame": "rot0_tl", "state": ma.STATE_SCORED, "agreement": 900,
          "discriminating": 0, "margin": 900},
-        {"frame": "rot90_front", "state": ma.STATE_SCORED, "agreement": 0,
+        {"frame": "rot90_tl", "state": ma.STATE_SCORED, "agreement": 0,
          "discriminating": 0, "margin": -900},
     ])
     assert ruling["winner"] is None
@@ -383,10 +399,10 @@ def test_nothing_scored_and_nothing_discriminating_are_different_reasons_and_sen
                                   assume_reference_geometry=False)[2]
     blind = ma.score_candidates(
         [{"map_id": "M1", "meta": ref_meta,
-          "cells": _plant(ref_meta, _symmetric_ref(), "rot90_front")}],
+          "cells": _plant(ref_meta, _symmetric_ref(), "rot90_tl")}],
         _symmetric_ref(), ref_meta, thresholds=THRESHOLDS)[2]
     tight = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_tl")}],
         ref, ref_meta, thresholds={"min_margin_dies": 10_000,
                                    "min_discriminating_dies": 1})[2]
     codes = [nothing["reason_code"], blind["reason_code"], tight["reason_code"]]
@@ -400,9 +416,9 @@ def test_the_scored_and_separable_case_still_reaches_the_thresholds():
     new structural checks did not swallow the ordinary path."""
     ref_meta, ref = _meta(), _ref_cells()
     ruling = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_tl")}],
         ref, ref_meta, thresholds=THRESHOLDS)[2]
-    assert ruling["winner"] == "rot90_front"
+    assert ruling["winner"] == "rot90_tl"
     assert ruling["discriminating"] > 0 and ruling["margin"] >= 1
 
 
@@ -417,7 +433,7 @@ def test_a_margin_is_never_measured_against_a_candidate_that_was_not_scored(monk
        made to refuse and the real `score_candidates` does the picking.
     """
     real = map_overlay.make_frame_transform
-    survivor = "rot0_front"
+    survivor = "rot0_tl"
 
     def only_one_frame(src, tgt):
         if (map_overlay._rotation_of(src), map_overlay._side_of(src)) != parse_frame(survivor):
@@ -475,7 +491,7 @@ def test_a_transform_that_refuses_every_candidate_says_so_rather_than_blaming_th
     """Found by exercising the real endpoint: reference and sources both present, but their grid
     specs differ, so all 8 candidates refuse. Answering 'there are no coordinates to score' sends
     the operator to inspect data that is fine."""
-    cands = [{"frame": "rot0_front", "reason": "physical grid dims differ: 13x13 vs 23x23"}]
+    cands = [{"frame": "rot0_tl", "reason": "physical grid dims differ: 13x13 vs 23x23"}]
     why = ma.compose_refusal(ma.STATE_NOT_SCORABLE, {"state": ma.REFERENCE_RESOLVED},
                              ma._Excluded(), {}, 40, cands)
     assert "13x13" in why and "23x23" in why
@@ -511,7 +527,7 @@ def test_exclusions_are_aggregated_by_reason_not_emitted_per_row():
 
 def test_scored_state_has_no_refusal_sentence():
     assert ma.compose_refusal(ma.STATE_SCORED, {"state": ma.REFERENCE_RESOLVED},
-                              ma._Excluded(), {"winner": "rot0_front"}, 1) is None
+                              ma._Excluded(), {"winner": "rot0_tl"}, 1) is None
 
 
 def test_no_winner_names_missing_index_values_before_margin():
@@ -573,7 +589,7 @@ def test_a_defaulted_frame_does_not_earn_the_current_badge():
     """
     auto = _auto_meta()
     info = ma.declared_frame_of(auto)
-    assert info["frame"] == "rot0_front", "still reports what the transform will use"
+    assert info["frame"] == "rot0_tl", "still reports what the transform will use"
     assert info["source"] == map_overlay.GEOMETRY_AUTO_REGISTERED
 
     silent = _meta(rotation=0, side="front")          # unmarked, but 0/front
@@ -581,14 +597,14 @@ def test_a_defaulted_frame_does_not_earn_the_current_badge():
 
     real = _meta(rotation=90, side="back")
     info = ma.declared_frame_of(real)
-    assert info["frame"] == "rot90_back"
+    assert info["frame"] == "rot270_tr"
     assert info["source"] == map_overlay.GEOMETRY_DECLARED
     assert info["axes"] == {"rotation": map_overlay.GEOMETRY_DECLARED,
                             "side": map_overlay.GEOMETRY_DECLARED}
 
 
 def test_a_half_declared_frame_still_reports_the_declared_axis():
-    """Measured on the only live unit: 40 of 40 maps write `rot90_front`, where rotation 90 IS a
+    """Measured on the only live unit: 40 of 40 maps write `rot90_tl`, where rotation 90 IS a
     declaration (no default path emits it) and `side: "front"` is not. The combined answer is
     honestly 'not a declaration', but collapsing to that alone would throw away a real rotation
     declaration that on its own narrows 8 candidates to 2. The verdict uses the combined token;
@@ -606,7 +622,7 @@ def test_a_half_declared_frame_follows_its_weakest_axis():
     follows its weakest contributor (spec section 0.2 layer 9)."""
     half = _meta(rotation=270, side="front")
     info = ma.declared_frame_of(half)
-    assert info["frame"] == "rot270_front"
+    assert info["frame"] == "rot270_tl"
     assert info["source"] == map_overlay.ORIENTATION_INDETERMINATE
 
 
@@ -622,7 +638,7 @@ def test_declared_frame_of_none_is_absent_not_a_frame():
 # information at all. The circle is invariant under all eight frames (spec section 1), so
 # every candidate covers the same dies and whatever spread appears between them is sampling
 # noise. A ranked winner produced from that is worse than a refusal, and the route WAS
-# producing one: `rot90_front`, margin 7 dies, on a unit whose eight occupancy scores differ
+# producing one: `rot90_tl`, margin 7 dies, on a unit whose eight occupancy scores differ
 # only by noise.
 #
 # `test_values_settle_what_occupancy_cannot_see` is the load-bearing test here. Its fixture is
@@ -660,18 +676,18 @@ def test_the_value_fixture_is_occupancy_blind():
     assert len(set(images)) == 1, "the footprint must be invariant under all eight frames"
 
     cands, _e, _r, _s = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_tl")}],
         ref, ref_meta, thresholds=THRESHOLDS)
     occ = {c["agreement"] for c in cands}
     assert len(occ) == 1, "occupancy separates this fixture, so it is the wrong fixture: %s" % occ
 
 
-@pytest.mark.parametrize("planted", ["rot90_front", "rot180_front", "rot270_front",
-                                     "rot0_back"])
+@pytest.mark.parametrize("planted", ["rot90_tl", "rot180_tl", "rot270_tl",
+                                     "rot0_tr"])
 def test_values_settle_what_occupancy_cannot_see(planted):
     """The measured case, reproduced: all eight candidates occupy the SAME dies and only the
     values move. `core_defect_map LOT-A/05` is the real instance - occupancy reported an
-    eight-way tie there while values separated the truth `rot270_back` (1028 of 1028
+    eight-way tie there while values separated the truth `rot90_tr` (1028 of 1028
     discriminating) from the declared candidate (640) by 374 dies."""
     ref_meta = _meta()
     ref = _symmetric_ref()
@@ -731,7 +747,7 @@ def test_a_float_source_now_matches_a_string_reference_end_to_end():
     as floats the way they do live."""
     ref_meta = _meta()
     ref = _symmetric_ref()
-    planted = "rot180_front"
+    planted = "rot180_tl"
     ref_vals = [str(i % 7) for i in range(len(ref))]
     src_vals = [float(v) for v in ref_vals]
 
@@ -756,7 +772,7 @@ def test_disjoint_value_vocabularies_demote_the_axis_and_name_it():
     src_vals = ["B%d" % (i % 4 + 1) for i in range(len(ref))]
 
     cands, _e, ruling, stats = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front"),
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_tl"),
           "values": src_vals}],
         ref, ref_meta, reference_values=ref_vals, thresholds=THRESHOLDS)
 
@@ -764,7 +780,7 @@ def test_disjoint_value_vocabularies_demote_the_axis_and_name_it():
     assert ruling["value_axis"] == ma.VALUE_AXIS_REPORTED, "measured, but not ranking"
     assert ruling["value_axis_reason"] == ma.VALUE_AXIS_DISJOINT
     assert stats["value_vocab_shared"] == 0
-    assert ruling["winner"] == "rot90_front", (
+    assert ruling["winner"] == "rot90_tl", (
         "and the feature still runs - the product owner's ruling is that it runs first")
     assert all(c["value_agreement"] is not None for c in cands if c["state"] == ma.STATE_SCORED), (
         "the numbers stay on the rows; what changed is that they do not rank")
@@ -777,7 +793,7 @@ def test_an_all_null_reference_value_column_demotes_by_its_own_name():
     ref_meta = _meta()
     ref = _ref_cells()
     cands, _e, ruling, _s = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front"),
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_tl"),
           "values": _unique_values(ref)}],
         ref, ref_meta, reference_values=[None] * len(ref), thresholds=THRESHOLDS)
     assert ruling["metric"] == ma.METRIC_OCCUPANCY
@@ -795,7 +811,7 @@ def test_a_demoted_value_axis_does_not_get_called_weighted():
     ref_meta = _meta()
     ref = _ref_cells()
     _c, _e, ruling, _s = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front"),
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_tl"),
           "values": ["B1"] * len(ref)}],
         ref, ref_meta, reference_values=["1"] * len(ref), thresholds=THRESHOLDS,
         value_weights={"B1": 5.0})
@@ -816,7 +832,7 @@ def test_a_constant_valued_reference_agrees_everywhere_and_discriminates_nothing
     flat = ["1"] * len(ref)
     cands, _e, ruling, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": ref_meta,
-          "cells": _plant(ref_meta, ref, "rot90_front"), "values": flat}],
+          "cells": _plant(ref_meta, ref, "rot90_tl"), "values": flat}],
         ref, ref_meta, reference_values=flat, thresholds=THRESHOLDS)
     assert ruling["metric"] == ma.METRIC_VALUES
     assert all(c["value_agreement"] == len(ref) for c in cands), \
@@ -904,7 +920,7 @@ def test_values_are_truncated_with_their_cells_not_separately():
 # one contains the distinctive value, the other does not. That is the smallest shape where a
 # weight can change the ranking and an unweighted run genuinely cannot.
 
-_W_HEAVY, _W_PLAIN = "rot90_front", "rot180_front"
+_W_HEAVY, _W_PLAIN = "rot90_tl", "rot180_tl"
 
 
 def _block_permutation(ref_meta, block, frame):
@@ -1045,7 +1061,7 @@ def test_weights_cannot_rescue_a_reference_that_answers_the_same_everywhere():
     ref = _symmetric_ref()
     flat = ["1"] * len(ref)
     args = ([{"map_id": "M1", "meta": ref_meta,
-              "cells": _plant(ref_meta, ref, "rot90_front"), "values": flat}], ref, ref_meta)
+              "cells": _plant(ref_meta, ref, "rot90_tl"), "values": flat}], ref, ref_meta)
     heavy = ma.score_candidates(*args, reference_values=flat, thresholds=THRESHOLDS,
                                 value_weights={"1": 1000})
     assert heavy[2]["winner"] is None
@@ -1079,10 +1095,10 @@ def test_an_undeclared_threshold_ranks_and_says_it_was_defaulted():
     ref_meta = _meta()
     ref = _ref_cells()
     args = ([{"map_id": "M1", "meta": ref_meta,
-              "cells": _plant(ref_meta, ref, "rot90_front")}], ref, ref_meta)
+              "cells": _plant(ref_meta, ref, "rot90_tl")}], ref, ref_meta)
 
     declared = ma.score_candidates(*args, thresholds=THRESHOLDS)[2]
-    assert declared["winner"] == "rot90_front"
+    assert declared["winner"] == "rot90_tl"
     # unchanged behaviour: a declared run carries no marker and no sentence
     assert declared["thresholds_defaulted"] == []
     assert declared["provisional_text"] is None
@@ -1093,7 +1109,7 @@ def test_an_undeclared_threshold_ranks_and_says_it_was_defaulted():
                          ({"min_discriminating_dies": 1}, ["min_margin_dies"])):
         ruling = ma.score_candidates(*args, thresholds=absent)[2]
         # ① it ranks - the same frame the declared run named
-        assert ruling["winner"] == "rot90_front", absent
+        assert ruling["winner"] == "rot90_tl", absent
         assert ruling["reason_code"] is None, absent
         # ② and it says the ranking is provisional, naming which keys were invented
         assert ruling["thresholds_defaulted"] == keys, absent
@@ -1119,7 +1135,7 @@ def test_a_defaulted_ranking_still_loses_to_a_structural_refusal():
     ref_meta = _meta()
     ruling = ma.score_candidates(
         [{"map_id": "M1", "meta": ref_meta,
-          "cells": _plant(ref_meta, _symmetric_ref(), "rot90_front")}],
+          "cells": _plant(ref_meta, _symmetric_ref(), "rot90_tl")}],
         _symmetric_ref(), ref_meta, thresholds=None)[2]
     assert ruling["winner"] is None
     assert ruling["reason_code"] == ma.RULING_NO_DISCRIMINATION
@@ -1134,7 +1150,7 @@ def test_the_marker_survives_on_every_branch_the_ruling_can_take():
     "ranked on a declaration" and "ranked on a default" into one word."""
     ref_meta = _meta()
     ref = _ref_cells()
-    planted = _plant(ref_meta, ref, "rot90_front")
+    planted = _plant(ref_meta, ref, "rot90_tl")
     runs = [
         # nothing scored at all
         ma.score_candidates([], ref, ref_meta, thresholds=None)[2],
@@ -1168,7 +1184,7 @@ def test_a_margin_below_the_declared_floor_does_not_win():
     ref_meta = _meta()
     ref = _ref_cells()
     args = ([{"map_id": "M1", "meta": ref_meta,
-              "cells": _plant(ref_meta, ref, "rot90_front")}], ref, ref_meta)
+              "cells": _plant(ref_meta, ref, "rot90_tl")}], ref, ref_meta)
     tight = {"min_margin_dies": 10_000, "min_discriminating_dies": 1}
     ruling = ma.score_candidates(*args, thresholds=tight)[2]
     assert ruling["winner"] is None
@@ -1184,7 +1200,7 @@ def test_too_few_discriminating_dies_is_a_different_refusal_from_too_small_a_mar
     ref_meta = _meta()
     ref = _ref_cells()
     args = ([{"map_id": "M1", "meta": ref_meta,
-              "cells": _plant(ref_meta, ref, "rot90_front")}], ref, ref_meta)
+              "cells": _plant(ref_meta, ref, "rot90_tl")}], ref, ref_meta)
     ruling = ma.score_candidates(
         *args, thresholds={"min_margin_dies": 1, "min_discriminating_dies": 10_000})[2]
     assert ruling["reason_code"] == "too_few_discriminating"
@@ -1284,7 +1300,7 @@ def test_a_structural_refusal_is_named_before_the_thresholds_are_blamed():
     ref_meta = _meta()
     ref = _symmetric_ref()          # invariant under all eight: the reference cannot choose
     ruling = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_front")}],
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot90_tl")}],
         ref, ref_meta, thresholds=None)[2]
     assert ruling["reason_code"] == ma.RULING_NO_DISCRIMINATION
     assert ruling["discriminating"] == 0
@@ -1298,7 +1314,7 @@ def test_a_tie_is_reported_only_when_the_evidence_separates_something():
     ref_meta = _meta()
     ref = _half_symmetric_ref()
     cands, _e, ruling, _s = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot0_front")}],
+        [{"map_id": "M1", "meta": ref_meta, "cells": _plant(ref_meta, ref, "rot0_tl")}],
         ref, ref_meta, thresholds=THRESHOLDS)
     assert ruling["reason_code"] == ma.RULING_TIE
     assert len(ruling["tied"]) == 2, ruling["tied"]
@@ -1474,7 +1490,7 @@ def test_occupancy_is_saturated_on_that_same_partial_map():
     cells, _ks = _partial_job(floor_meta, floor, 266)
     cands, _e, _r, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": floor_meta,
-          "cells": _plant(floor_meta, cells, "rot90_front")}],
+          "cells": _plant(floor_meta, cells, "rot90_tl")}],
         floor, floor_meta, thresholds=THRESHOLDS)
     assert {c["agreement"] for c in cands} == {266}, "occupancy must be an 8-way tie here"
     assert {c["discriminating"] for c in cands} == {0}, "and nothing may discriminate"
@@ -1490,7 +1506,7 @@ def test_the_walk_order_is_what_is_being_asserted():
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _partial_job(floor_meta, floor, 266)
-    planted = "rot90_front"
+    planted = "rot90_tl"
     payload = [{"map_id": "M1", "meta": floor_meta,
                 "cells": _plant(floor_meta, cells, planted), "indices": ks}]
 
@@ -1552,9 +1568,9 @@ def test_the_index_origin_is_normalised_by_the_observed_minimum(base):
     assert min(ks) == base
     cands, _e, ruling, stats = ma.score_candidates(
         [{"map_id": "M1", "meta": floor_meta,
-          "cells": _plant(floor_meta, cells, "rot180_front"), "indices": ks}],
+          "cells": _plant(floor_meta, cells, "rot180_tl"), "indices": ks}],
         floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
-    assert ruling["winner"] == "rot180_front"
+    assert ruling["winner"] == "rot180_tl"
     assert max(c["index_agreement"] for c in cands) == 120
     assert stats["index_bases"] == {"0": base}, "the base that was seen must be reported"
 
@@ -1570,7 +1586,7 @@ def test_the_index_axis_does_not_consult_the_reference():
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _partial_job(floor_meta, floor, 200)
-    recorded = _plant(floor_meta, cells, "rot270_front")
+    recorded = _plant(floor_meta, cells, "rot270_tl")
     payload = lambda: [{"map_id": "M1", "meta": floor_meta, "cells": list(recorded),
                         "indices": list(ks)}]
 
@@ -1596,7 +1612,7 @@ def test_each_source_map_is_numbered_over_its_own_die_set():
     a_cells, a_ks = cells[:half], ks[:half]
     b_cells = cells[half:]
     b_ks = list(range(1, len(b_cells) + 1))
-    planted = "rot0_back"
+    planted = "rot0_tr"
     cands, _e, _r, stats = ma.score_candidates(
         [{"map_id": "A", "meta": floor_meta, "cells": _plant(floor_meta, a_cells, planted),
           "indices": a_ks},
@@ -1665,7 +1681,7 @@ def test_the_residual_is_observed_but_NOT_applied(start, residual, anchor_shift)
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _job_from(floor_meta, floor, start, 266)
-    planted = "rot90_front"
+    planted = "rot90_tl"
     recorded = _plant(floor_meta, cells, planted)
     cands, _e, ruling, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "indices": ks}],
@@ -1729,7 +1745,7 @@ def test_RETIRED_a_job_that_did_not_start_at_the_wafers_top_left_is_still_placed
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _job_from(floor_meta, floor, start, 266)
-    planted = "rot90_front"
+    planted = "rot90_tl"
     recorded = _plant(floor_meta, cells, planted)
 
     # THE FIXTURE MUST ACTIVATE THE DEFECT AXIS. If the job's min-index die happens to land on
@@ -1761,7 +1777,7 @@ def test_RETIRED_a_job_that_did_not_start_at_the_wafers_top_left_is_still_placed
     #    occupancy axis died, which is exactly the saturation [3-0] withdrew the shift search
     #    over. Measured: every frame has the SAME number of full-fit seats (105/46/5), so
     #    occupancy cannot choose; only "the dies form an unbroken run of the floor's walk" can,
-    #    and it admits 1 seat for the planted frame, 1 for rot270_front (a reversed run is still
+    #    and it admits 1 seat for the planted frame, 1 for rot270_tl (a reversed run is still
     #    a run) and 0 for the other six.
     agreements = sorted(c["agreement"] for c in cands)
     assert agreements.count(266) <= 2, (
@@ -1795,7 +1811,7 @@ def test_no_per_map_origin_reaches_anything_the_scorer_reports(job_start):
     Measured: 25 origin pairs x 2 job shapes, 0 reported outputs moved.
     """
     ref_probe = _meta(cols=41, rows=41)
-    planted = "rot90_front"
+    planted = "rot90_tl"
 
     def score(ref_start, src_start):
         ref_meta = _meta(cols=41, rows=41, start_x=ref_start[0], start_y=ref_start[1])
@@ -1847,9 +1863,9 @@ def test_the_anchor_aims_at_the_first_valid_die_not_the_bounding_box_corner():
     cells, ks = _job_from(ref_meta, floor, 0, 266)
     cands, _e, _r, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": ref_meta,
-          "cells": _plant(ref_meta, cells, "rot90_front"), "indices": ks}],
+          "cells": _plant(ref_meta, cells, "rot90_tl"), "indices": ks}],
         floor, ref_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
-    seat = next(c for c in cands if c["frame"] == "rot90_front")["placement"]["anchor_ref"]
+    seat = next(c for c in cands if c["frame"] == "rot90_tl")["placement"]["anchor_ref"]
     bbox_min = [min(p[0] for p in floor), min(p[1] for p in floor)]
     assert tuple(seat) in {tuple(p) for p in floor}, (
         "the anchor seated the map on %s, which is not a valid die" % (seat,))
@@ -1864,7 +1880,7 @@ def test_the_shipped_seat_is_where_the_scorer_put_the_map():
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _job_from(floor_meta, floor, 400, 266)
-    planted = "rot90_front"
+    planted = "rot90_tl"
 
     cands, _e, _r, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": floor_meta, "cells": _plant(floor_meta, cells, planted),
@@ -1898,7 +1914,7 @@ def test_the_anchor_places_the_map_and_says_so():
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _partial_job(floor_meta, floor, 266)
-    planted = "rot90_front"
+    planted = "rot90_tl"
     recorded = [(x + 5, y - 4) for (x, y) in _plant(floor_meta, cells, planted)]
 
     cands, _e, ruling, stats = ma.score_candidates(
@@ -1929,7 +1945,7 @@ def test_the_anchor_places_the_map_and_says_so():
     {}, {"rotation": 90}, {"rotation": 180}, {"rotation": 270},
     {"side": "back"}, {"grid_y_invert": True}, {"rotation": 270, "side": "back"},
 ])
-@pytest.mark.parametrize("planted", ["rot0_front", "rot90_front", "rot270_back"])
+@pytest.mark.parametrize("planted", ["rot0_tl", "rot90_tl", "rot90_tr"])
 def test_the_floors_own_frame_does_not_displace_the_placement(ref_frame, planted):
     """THE AXIS THE 48-COMBINATION TEST DOES NOT VARY, added because a defect walked through it.
 
@@ -2078,7 +2094,7 @@ def test_a_zero_shift_says_WHICH_zero_it_is():
     w = ma.serpentine_index([tf.visual_to_physical(x, y) for (x, y) in floor],
                             top_is_min_y=True)
     job = [w[k] for k in sorted(w)[42:242]]
-    planted = "rot90_front"
+    planted = "rot90_tl"
     stf = map_overlay._frame_transformer(
         ma.source_meta_for_frame(dict(floor_meta), planted), grid)
     cells = [stf.physical_to_visual(*p) for p in job]
@@ -2399,11 +2415,11 @@ def test_the_written_start_is_where_the_editor_redraws_it(planted, src_inv, floo
 #:    census exists: on those four the circle-box answer is already right, so a test that only
 #:    ever sampled one of them would call the defect fixed before it was.
 MASK_BOX_MOVES_THE_ORIGIN = frozenset({
-    ("rot0_front", False), ("rot0_front", True), ("rot0_back", False),
-    ("rot90_front", False), ("rot90_back", True),
-    ("rot180_front", True), ("rot180_back", False), ("rot180_back", True),
-    ("rot270_front", False), ("rot270_front", True),
-    ("rot270_back", False), ("rot270_back", True),
+    ("rot0_tl", False), ("rot0_tl", True), ("rot0_tr", False),
+    ("rot90_tl", False), ("rot270_tr", True),
+    ("rot180_tl", True), ("rot180_tr", False), ("rot180_tr", True),
+    ("rot270_tl", False), ("rot270_tl", True),
+    ("rot90_tr", False), ("rot90_tr", True),
 })
 
 
@@ -2487,7 +2503,7 @@ def test_the_stored_start_is_not_on_the_wire():
     cells, ks = _partial_job(floor_meta, floor, 80)
     cands, _e, _r, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": dict(floor_meta),
-          "cells": _plant(floor_meta, cells, "rot90_front"), "indices": ks}],
+          "cells": _plant(floor_meta, cells, "rot90_tl"), "indices": ks}],
         floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
     for c in cands:
         assert set((c.get("placement") or {})) <= {"linear", "anchor_src", "anchor_ref"}, (
@@ -2577,10 +2593,10 @@ def test_the_screen_can_draw_when_no_die_carries_an_index(planted, offset):
             % (c["frame"], c["value_agreement"]))
 
 
-# 🔴 `rot0_front` is NOT in this list and its absence is the point: there the walk's first die
+# 🔴 `rot0_tl` is NOT in this list and its absence is the point: there the walk's first die
 #    IS the minimum-(y, x) die, so the two pivot rules coincide and the fixture guard below
 #    fails rather than pass vacuously. The frames kept here are the ones where they disagree.
-@pytest.mark.parametrize("planted", ["rot90_front", "rot180_front", "rot270_back"])
+@pytest.mark.parametrize("planted", ["rot90_tl", "rot180_tl", "rot90_tr"])
 def test_the_index_path_still_pivots_on_the_minimum_index_die(planted):
     """THE THING THAT MUST NOT MOVE. Two rules now answer "which cell is the pivot", and only
     one of them may run when an index exists - the minimum-index die, because on that path the
@@ -2652,8 +2668,8 @@ def test_the_linear_part_matches_the_transform(src_inv, dst_inv):
     They must agree on every axis combination.
 
     🔴 `grid_y_invert = True` IS THE CASE THAT MATTERS AND EVERY OTHER FIXTURE HERE HAS IT
-       FALSE. It inverts WHICH FRAMES ARE MIRRORS - with src invert on, `rot0_front` becomes a
-       reflection and `rot0_back` becomes rotation-only. A suite that only ever ran it false is
+       FALSE. It inverts WHICH FRAMES ARE MIRRORS - with src invert on, `rot0_tl` becomes a
+       reflection and `rot0_tr` becomes rotation-only. A suite that only ever ran it false is
        the same control that hid this: it cannot tell a correct composition from one that drops
        the reflection entirely."""
     CELLS = [(5, 7), (6, 7), (9, 7), (9, 8), (2, 11), (20, 3), (33, 26)]
@@ -2695,7 +2711,7 @@ def test_y_invert_inverts_which_frames_are_mirrors():
     a, b = mirrors(False), mirrors(True)
     assert a and b and a.isdisjoint(b), (
         "y-invert must swap the mirror set entirely, not merely alter it: %s vs %s" % (a, b))
-    assert "rot0_front" in b and "rot0_back" in a
+    assert "rot0_tl" in b and "rot0_tr" in a
 
 
 def test_adjacency_cannot_tell_the_eight_frames_apart():
@@ -2777,12 +2793,12 @@ def test_direction_narrows_a_tie_that_order_alone_cannot():
     x0 = xs[len(xs) // 2]
 
     _c, r, on_order, after = _score_pair(m, floor, [(x0, y), (x0 + 1, y)], [1, 2])
-    assert on_order == sorted(["rot0_front", "rot180_back", "rot270_front", "rot270_back"]) \
-        or set(on_order) == {"rot0_front", "rot180_back", "rot270_front", "rot270_back"}, on_order
-    assert set(after) == {"rot0_front", "rot180_back"}, (
+    assert on_order == sorted(["rot0_tl", "rot180_tr", "rot270_tl", "rot90_tr"]) \
+        or set(on_order) == {"rot0_tl", "rot180_tr", "rot270_tl", "rot90_tr"}, on_order
+    assert set(after) == {"rot0_tl", "rot180_tr"}, (
         "direction must eliminate the two frames whose step is not rightward: %s" % after)
 
-    # 🔴 AND IT HONESTLY STOPS THERE. `rot0_front` and `rot180_back` are the two frames that
+    # 🔴 AND IT HONESTLY STOPS THERE. `rot0_tl` and `rot180_tr` are the two frames that
     #    map a rightward step to a rightward step - a real symmetry of a single horizontal
     #    step, not a scorer defect. Forcing a winner out of it would be the confident wrong
     #    answer this module refuses everywhere else.
@@ -2809,12 +2825,12 @@ def test_direction_decides_when_the_step_leaves_the_serpentine():
     cells = [(x, y0) for x in row0] + [(row1[0], y1)]
     c, r, on_order, after = _score_pair(m, floor, cells, list(range(1, len(cells) + 1)))
     assert len(on_order) > 1, "guard: order alone must still tie, or nothing is being shown"
-    assert after == ["rot0_front"]
-    assert r["winner"] == "rot0_front"
+    assert after == ["rot0_tl"]
+    assert r["winner"] == "rot0_tl"
     assert r["decided_by"] == "direction", (
         "the ruling must say WHICH axis decided - a die-margin winner and a direction winner "
         "are different claims")
-    win = next(x for x in c if x["frame"] == "rot0_front")
+    win = next(x for x in c if x["frame"] == "rot0_tl")
     assert win["index_violations"] == 0, "the true frame walks the floor's own serpentine"
     assert win["index_steps"] == len(cells) - 1, "every consecutive pair is a step"
 
@@ -2834,7 +2850,7 @@ def test_the_floor_is_the_judge_of_a_wrap_not_the_source():
     # a mid-row downward step: the source has two cells and nothing to its right, but the FLOOR
     # says the row was not finished
     _c, _r, _order, after = _score_pair(m, floor, [(x0, y), (x0, y + 1)], [1, 2])
-    mid_wrap = next(x for x in _c if x["frame"] == "rot0_front")
+    mid_wrap = next(x for x in _c if x["frame"] == "rot0_tl")
     assert mid_wrap["index_violations"] == 1, (
         "a wrap with dies still left in the floor's row is a violation")
 
@@ -2846,7 +2862,7 @@ def test_a_gap_in_a_row_is_not_a_violation():
     m, floor, y, xs = _floor_row_probe()
     x0 = xs[len(xs) // 2]
     c, _r, _order, _after = _score_pair(m, floor, [(x0, y), (x0 + 4, y)], [1, 2])
-    straight = next(x for x in c if x["frame"] == "rot0_front")
+    straight = next(x for x in c if x["frame"] == "rot0_tl")
     assert straight["index_violations"] == 0, "a gap is not a wrong direction"
     assert straight["index_steps"] == 1
 
@@ -2902,7 +2918,7 @@ def test_the_shipped_placement_is_the_scored_placement():
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _partial_job(floor_meta, floor, 266)
-    planted = "rot90_front"
+    planted = "rot90_tl"
     recorded = [(x + 5, y - 4) for (x, y) in _plant(floor_meta, cells, planted)]
 
     cands, _e, ruling, _s = ma.score_candidates(
@@ -2937,7 +2953,7 @@ def test_a_shipped_offset_that_is_not_the_scored_one_is_caught():
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _partial_job(floor_meta, floor, 266)
-    planted = "rot90_front"
+    planted = "rot90_tl"
     recorded = [(x + 5, y - 4) for (x, y) in _plant(floor_meta, cells, planted)]
     payload = [{"map_id": "M1", "meta": floor_meta, "cells": recorded, "indices": ks}]
 
@@ -2980,7 +2996,7 @@ def test_an_unusable_anchor_falls_back_and_names_which(mutate, reason):
     cells, ks = _partial_job(floor_meta, floor, 80)
     _c, _e, ruling, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": floor_meta,
-          "cells": _plant(floor_meta, cells, "rot90_front"), "indices": mutate(ks)}],
+          "cells": _plant(floor_meta, cells, "rot90_tl"), "indices": mutate(ks)}],
         floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
     assert ruling["placement"] == ma.PLACEMENT_SEARCH
     assert ruling["anchor_reason"] == reason
@@ -2995,9 +3011,9 @@ def test_two_source_maps_leave_the_anchor_ambiguous_rather_than_picking_one():
     h = len(cells) // 2
     _c, _e, ruling, _s = ma.score_candidates(
         [{"map_id": "A", "meta": floor_meta,
-          "cells": _plant(floor_meta, cells[:h], "rot0_front"), "indices": ks[:h]},
+          "cells": _plant(floor_meta, cells[:h], "rot0_tl"), "indices": ks[:h]},
          {"map_id": "B", "meta": floor_meta,
-          "cells": _plant(floor_meta, cells[h:], "rot0_front"),
+          "cells": _plant(floor_meta, cells[h:], "rot0_tl"),
           "indices": list(range(1, len(cells) - h + 1))}],
         floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
     assert ruling["anchor_reason"] == ma.ANCHOR_MULTI_MAP
@@ -3015,89 +3031,29 @@ def test_the_index_axis_stays_dark_when_no_cell_carries_a_number():
     """
     ref_meta = _meta()
     ref = _ref_cells()
-    planted = _plant(ref_meta, ref, "rot90_front")
+    planted = _plant(ref_meta, ref, "rot90_tl")
     cands, _e, ruling, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": ref_meta, "cells": planted}], ref, ref_meta,
         thresholds=THRESHOLDS)
     assert ruling["metric"] == ma.METRIC_OCCUPANCY, "a dark axis must not claim the ranking"
-    assert ruling["winner"] == "rot90_front", "the existing verdict must survive untouched"
+    assert ruling["winner"] == "rot90_tl", "the existing verdict must survive untouched"
     for c in cands:
         assert c["index_agreement"] is None, "null, not 0 - nothing was measured"
         assert c["index_total"] is None
 
 
 # ---------------------------------------------------------------------------
-# DECLARED SIDES - narrowing the search is a claim, and never a default
+# DECLARED SIDES - RETIRED 2026-08-08
 # ---------------------------------------------------------------------------
-
-def test_undeclared_sides_score_both():
-    """Same discipline as the thresholds: an absent declaration must not fold to one side.
-    Narrowing is a claim about the equipment and has to be made out loud."""
-    assert ma.load_alignment_sides({}) is None
-    assert ma.load_alignment_sides({"alignment": {}}) is None
-    assert ma.load_alignment_sides({"alignment": {"sides": ["front"]}}) == ["front"]
-    assert ma.load_alignment_sides({"alignment": {"sides": ["back", "front"]}}) == \
-        ["front", "back"], "normalised to vocabulary order, so one claim has one spelling"
-    for junk in ("front", [], ["sideways"], 3):
-        assert ma.load_alignment_sides({"alignment": {"sides": junk}}) is None, junk
-
-
-def test_a_narrowed_side_is_reported_as_unconsidered_not_as_a_loser():
-    """The whole point. If the operator narrows to front and the truth is a back frame, the
-    screen must be able to say the answer was never looked at. Dropping the four rows - or
-    marking them `not_scorable` - makes 'we did not look' indistinguishable from 'we looked and
-    it lost', which is the shape of a confident wrong answer."""
-    ref_meta = _meta()
-    ref = _ref_cells()
-    planted = _plant(ref_meta, ref, "rot90_front")
-    cands, _e, ruling, _s = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": planted}], ref, ref_meta,
-        thresholds=THRESHOLDS, sides=["front"])
-
-    assert len(cands) == 8, "the search narrows; the REPORT does not"
-    backs = [c for c in cands if c["side"] == "back"]
-    fronts = [c for c in cands if c["side"] == "front"]
-    assert len(backs) == 4 and len(fronts) == 4
-    assert all(c["state"] == ma.STATE_NOT_CONSIDERED for c in backs)
-    assert all(c["state"] != ma.STATE_NOT_CONSIDERED for c in fronts)
-    assert all(c["reason"] == ma.TEXT_SIDE_NOT_CONSIDERED for c in backs), \
-        "and each one says WHY it was not looked at"
-    assert all(c["shift"] is None and c["agreement"] == 0 for c in backs)
-
-    assert ruling["sides_considered"] == ["front"]
-    assert ruling["sides_narrowed"] is True
-    assert ruling["winner"] == "rot90_front"
-
-
-def test_an_unconsidered_candidate_cannot_win():
-    """A frame that was never scored must not enter the ranking through the back door."""
-    ref_meta = _meta()
-    ref = _ref_cells()
-    planted = _plant(ref_meta, ref, "rot0_back")
-    cands, _e, ruling, _s = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": planted}], ref, ref_meta,
-        thresholds=THRESHOLDS, sides=["front"])
-    assert ruling["winner"] != "rot0_back", "the true frame was excluded, so it cannot win"
-    scored = [c for c in cands if c["state"] == ma.STATE_SCORED]
-    assert len(scored) == 4
-    top = max(scored, key=lambda c: c["agreement"])
-    others = [c["agreement"] for c in scored if c is not top]
-    assert top["margin"] == top["agreement"] - max(others), \
-        "the runner-up came from the scored four, not from an unconsidered zero"
-
-
-def test_undeclared_sides_leave_the_candidate_list_exactly_as_it_was():
-    """The switch-on-for-one-rule property: declaring nothing must be byte-identical."""
-    ref_meta = _meta()
-    ref = _ref_cells()
-    planted = _plant(ref_meta, ref, "rot90_front")
-    args = ([{"map_id": "M1", "meta": ref_meta, "cells": planted}], ref, ref_meta)
-    base_c, _e, base_r, _s = ma.score_candidates(*args, thresholds=THRESHOLDS)
-    for absent in (None, []):
-        cands, _e2, ruling, _s2 = ma.score_candidates(*args, thresholds=THRESHOLDS,
-                                                      sides=absent)
-        assert cands == base_c, absent
-        assert ruling == base_r, absent
-    assert base_r["sides_considered"] == ["front", "back"]
-    assert base_r["sides_narrowed"] is False
-    assert all(c["state"] != ma.STATE_NOT_CONSIDERED for c in base_c)
+# The four tests that stood here (`test_undeclared_sides_score_both`,
+# `test_a_narrowed_side_is_reported_as_unconsidered_not_as_a_loser`,
+# `test_an_unconsidered_candidate_cannot_win`,
+# `test_undeclared_sides_leave_the_candidate_list_exactly_as_it_was`) all had
+# `alignment.sides` as their subject, and the key is gone: the second candidate axis is the
+# walk's start corner and the side is fixed to `front`. They are DELETED rather than adapted
+# because nothing narrows the search any more, so there is no narrowing to assert.
+#
+# ⚠️ What they were protecting is NOT deleted. `STATE_NOT_CONSIDERED` /
+# `TEXT_SIDE_NOT_CONSIDERED` and the row wiring that carries them stay in `map_alignment`
+# with no producer, so the next declaration that narrows an axis does not have to reinvent
+# "we looked and it lost" vs "we never looked".

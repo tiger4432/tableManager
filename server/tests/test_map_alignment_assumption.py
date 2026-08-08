@@ -245,14 +245,14 @@ def test_borrowing_the_orientation_axes_would_move_every_cell():
 
     own_start = _meta(start_x=4, start_y=7)
     cells = _cells_of(own_start)
-    kept = _place(source_meta_for_frame(own_start, "rot90_back"), floor, cells)
-    lent = _place(source_meta_for_frame(_meta(start_x=1, start_y=1), "rot90_back"),
+    kept = _place(source_meta_for_frame(own_start, "rot270_tr"), floor, cells)
+    lent = _place(source_meta_for_frame(_meta(start_x=1, start_y=1), "rot270_tr"),
                   floor, cells)
     assert _moved(kept, lent) == len(cells), "start is not a wafer property"
 
     cells = _cells_of(_meta())
-    kept = _place(source_meta_for_frame(_meta(y_invert=True), "rot90_back"), floor, cells)
-    lent = _place(source_meta_for_frame(_meta(y_invert=False), "rot90_back"), floor, cells)
+    kept = _place(source_meta_for_frame(_meta(y_invert=True), "rot270_tr"), floor, cells)
+    lent = _place(source_meta_for_frame(_meta(y_invert=False), "rot270_tr"), floor, cells)
     assert _moved(kept, lent) > len(cells) * 0.9, "y-invert is not a wafer property"
 
 
@@ -275,7 +275,7 @@ def test_the_shared_wafer_spec_is_not_a_no_op_which_is_why_it_is_labelled():
         moved_by_candidate[cand] = len(cells) - int(hit)
 
     unaffected = [f for f, n in moved_by_candidate.items() if n == 0]
-    assert sorted(unaffected) == ["rot0_front", "rot270_back"], moved_by_candidate
+    assert sorted(unaffected) == ["rot0_tl", "rot90_tr"], moved_by_candidate
     assert all(moved_by_candidate[f] > 0 for f in ma.CANDIDATE_FRAMES
                if f not in unaffected), moved_by_candidate
 
@@ -347,8 +347,8 @@ def test_a_map_cropped_differently_from_the_floor_is_excluded_alone_not_the_whol
     on purpose rather than inherit it from a default that has since moved."""
     ref = _asymmetric_subset()
     floor = _meta()
-    good = _place(source_meta_for_frame(floor, "rot0_front"),
-                  source_meta_for_frame(floor, "rot90_back"), ref)
+    good = _place(source_meta_for_frame(floor, "rot0_tl"),
+                  source_meta_for_frame(floor, "rot270_tr"), ref)
     cands, excluded, ruling, stats = ma.score_candidates(
         [{"map_id": "FITS", "meta": _meta(), "cells": good},
          {"map_id": "CROPPED", "meta": _meta(cols=25, rows=19), "cells": ref}],
@@ -356,7 +356,7 @@ def test_a_map_cropped_differently_from_the_floor_is_excluded_alone_not_the_whol
 
     assert [r["reason_code"] for r in excluded.as_list()] == [ma.EXCLUDE_GRID_DIMS_DIFFER]
     assert stats["source_maps_usable"] == 1
-    assert ruling["winner"] == "rot90_back", "the fitting map still gets its answer"
+    assert ruling["winner"] == "rot270_tr", "the fitting map still gets its answer"
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +372,7 @@ def test_a_planted_frame_is_recovered_under_the_assumption(planted):
     test in this file and fail this one."""
     ref = _asymmetric_subset()
     floor = _meta()
-    src_cells = _place(source_meta_for_frame(floor, "rot0_front"),
+    src_cells = _place(source_meta_for_frame(floor, "rot0_tl"),
                        source_meta_for_frame(floor, planted), ref)
 
     # 🔴 `assume_reference_geometry=False` is passed EXPLICITLY. The default flipped to
@@ -400,8 +400,8 @@ def test_the_verdict_itself_carries_the_assumption_not_only_a_field_beside_it():
     the confirmation record, the worklist - drops it."""
     ref = _asymmetric_subset()
     floor = _meta()
-    src = _place(source_meta_for_frame(floor, "rot0_front"),
-                 source_meta_for_frame(floor, "rot90_back"), ref)
+    src = _place(source_meta_for_frame(floor, "rot0_tl"),
+                 source_meta_for_frame(floor, "rot270_tr"), ref)
 
     on_declared = ma.score_candidates(
         [{"map_id": "M", "meta": _meta(), "cells": src}], ref, floor,
@@ -497,13 +497,13 @@ def env(db_session):
     return db_session
 
 
-def _seed(db, src_meta, planted="rot90_back"):
+def _seed(db, src_meta, planted="rot270_tr"):
     s = models.DYNAMIC_TABLES[SRC]
     r = models.DYNAMIC_TABLES[REFT]
     mm = models.DYNAMIC_TABLES[map_overlay.META_TABLE]
     ref = _asymmetric_subset()
     floor = _meta()
-    src_cells = _place(source_meta_for_frame(floor, "rot0_front"),
+    src_cells = _place(source_meta_for_frame(floor, "rot0_tl"),
                        source_meta_for_frame(floor, planted), ref)
     for i, (x, y) in enumerate(src_cells):
         db.add(s(row_id="s%d" % i, business_key_val="s%d" % i, cell_key="s%d" % i,
@@ -556,7 +556,7 @@ def test_taking_the_offer_scores_the_unit_and_the_payload_labels_every_layer(env
     v = _view(env, assume_reference_geometry=True)
 
     assert v["state"] == ma.STATE_SCORED
-    assert v["ruling"]["winner"] == "rot90_back"
+    assert v["ruling"]["winner"] == "rot270_tr"
     assert v["ruling"]["geometry_assumed"] is True
     assert v["assumption"]["state"] == ma.ASSUMPTION_APPLIED
     assert v["assumption"]["requested"] is True
@@ -602,7 +602,7 @@ def test_the_stored_meta_is_byte_identical_after_a_run_under_the_assumption(env)
 
 def _contrib(map_id, table=MAPT, **kw):
     d = {"role": "defect", "source_table": table, "map_id": map_id,
-         "source_name": "user", "applied_frame": "rot90_back", "shift_dx": 0,
+         "source_name": "user", "applied_frame": "rot270_tr", "shift_dx": 0,
          "shift_dy": 0}
     d.update(kw)
     return d
@@ -614,7 +614,7 @@ def test_the_confirmation_records_which_sources_stood_on_a_borrowed_spec(env):
     _seed(env, _auto_meta())
     h = fc.record_confirmation(env, RULE, {"eqp": "E1", "product": "P1"},
                                [_contrib("J1")], confirmed_by="tester",
-                               frames={"dt_frame": "rot90_back"})
+                               frames={"dt_frame": "rot270_tr"})
     env.refresh(h)
     assert h.geometry_assumed is True
 
@@ -633,7 +633,7 @@ def test_a_confirmation_on_declared_geometry_is_marked_as_such_not_left_null(env
     # The subject here is the geometry basis, which the named frame does not touch.
     h = fc.record_confirmation(env, RULE, {"eqp": "E1", "product": "P2"},
                                [_contrib("J1")], confirmed_by="tester",
-                               frame="rot0_front")
+                               frame="rot0_tl")
     env.refresh(h)
     assert h.geometry_assumed is False
     row = (env.query(models.FrameConfirmationSource)
@@ -649,7 +649,7 @@ def test_an_excluded_source_is_not_recorded_as_having_stood_on_an_assumption(env
     h = fc.record_confirmation(
         env, RULE, {"eqp": "E1", "product": "P3"},
         [_contrib("J1", excluded_reason=ma.EXCLUDE_GEOMETRY_REFUSED)],
-        confirmed_by="tester", frame="rot0_front")
+        confirmed_by="tester", frame="rot0_tl")
     env.refresh(h)
     row = (env.query(models.FrameConfirmationSource)
            .filter_by(confirmation_uid=h.confirmation_uid).one())
@@ -665,7 +665,7 @@ def test_the_write_path_derives_the_basis_rather_than_trusting_the_request(env):
         env, RULE, {"eqp": "E1", "product": "P4"},
         # the request insists the source stood on a declaration. it did not.
         [_contrib("J1", geometry_basis=map_overlay.GEOMETRY_DECLARED)],
-        confirmed_by="tester", frame="rot0_front")
+        confirmed_by="tester", frame="rot0_tl")
     env.refresh(h)
     row = (env.query(models.FrameConfirmationSource)
            .filter_by(confirmation_uid=h.confirmation_uid).one())
@@ -738,11 +738,11 @@ def _partial_grid_meta(**kw):
     return _meta(cols=30, rows=25, **kw)
 
 
-def _planted_cells(planted="rot90_back"):
+def _planted_cells(planted="rot270_tr"):
     """Cells written in the FLOOR's frame - i.e. a map whose coordinates span the real grid
     while its metadata under-declares it. That is the shape the ruling is about."""
     floor = _meta()
-    return _place(source_meta_for_frame(floor, "rot0_front"),
+    return _place(source_meta_for_frame(floor, "rot0_tl"),
                   source_meta_for_frame(floor, planted), _asymmetric_subset())
 
 
@@ -967,7 +967,7 @@ def test_the_offer_and_the_borrow_reach_the_payload_end_to_end(env):
 
     v2 = _view(env, assume_reference_geometry=True)
     assert v2["state"] == ma.STATE_SCORED
-    assert v2["ruling"]["winner"] == "rot90_back"
+    assert v2["ruling"]["winner"] == "rot270_tr"
     assert v2["assumption"]["state"] == ma.ASSUMPTION_APPLIED
     m = v2["sources"]["maps"][0]
     # two facts, and the payload must not fold them: its phys IS a measurement, and this run

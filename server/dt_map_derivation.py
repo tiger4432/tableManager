@@ -310,8 +310,20 @@ def _forbidden_fallback_columns(target_table: str, identity_sources: dict) -> se
 # The frame
 # ---------------------------------------------------------------------------
 
+#: The second token, and the PHYSICAL SIDE it names.
+#:
+#: 🔴 `tl`/`tr` are the CANDIDATE spellings (`map_alignment.candidate_text`): the corner the
+#:    equipment numbered its walk from. Both name the FRONT, because a numbering corner is not
+#:    a claim that the wafer was flipped - that was the confusion the walk axis replaced
+#:    (2026-08-08). The corner itself is not a side and is read by `parse_candidate`, not here.
+#: 🔴 `front`/`back` stay accepted and MUST: rows confirmed before the walk axis existed hold
+#:    those spellings, and `confirmed_meta_for` reads them to write `rotation`/`side`.
+_SIDE_OF_TOKEN = {"front": "front", "back": "back", "tl": "front", "tr": "front"}
+
+
 def parse_frame(text):
-    """'rot90_back' -> (90, 'back'). Unreadable -> None (the caller holds the row back).
+    """'rot90_back' -> (90, 'back'), 'rot90_tr' -> (90, 'front'). Unreadable -> None
+    (the caller holds the row back).
 
     Deliberately strict. A frame spelled in a way this does not recognise is not a
     frame to be guessed at; it is a declaration to be fixed.
@@ -331,9 +343,9 @@ def parse_frame(text):
         return None
     if rot not in (0, 90, 180, 270):
         return None
-    if side not in ("front", "back"):
+    if side not in _SIDE_OF_TOKEN:
         return None
-    return rot, side
+    return rot, _SIDE_OF_TOKEN[side]
 
 
 def source_meta_for_frame(target_meta: dict, frame_text: str):

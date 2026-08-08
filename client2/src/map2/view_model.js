@@ -301,7 +301,8 @@ export function buildViewModel(input) {
     picture: pictureModeFor(state),
     caption: captionFor(session, payload, selectedId),
     candidates: Object.freeze(cards),
-    // Same eight, arranged as the operator's two motions: down is turning, across is flipping.
+    // Same eight, arranged as the operator's two motions: down is turning, across is which
+    // corner the numbering started from.
     grid: Object.freeze(candidateGrid().map(row => Object.freeze({
       rotation: row.rotation,
       degLabel: row.degLabel,
@@ -357,23 +358,20 @@ function buildCandidateCard(a) {
     id: a.candidate.id,
     rotation: a.candidate.rotation,
     side: a.candidate.side,
+    start: a.candidate.start,
     degLabel: a.candidate.degLabel,
     // Shown always, in mono: it is what the database holds and what every other screen
     // displays. Hiding it would make this screen speak a private language.
     storedLabel: a.candidate.id,
-    // 🔴 WHAT `back` MEANS **ON THIS SCREEN**, in words, beside the stored spelling.
-    //    In the aligner `back` is the `x -> -x` half of the candidate space and the equipment
-    //    fact it expresses is "this tool numbers from the TOP-RIGHT" -- it is NOT a physical
-    //    back side. The map editor is a different domain where a physical back side genuinely
-    //    exists, so an operator reading `rot270_back` here reasonably concludes the wrong
-    //    thing, and the two screens sit one click apart.
+    // 🔴 WHICH CORNER THE EQUIPMENT NUMBERED FROM, in words, beside the stored spelling.
+    //    This is now the candidate's OWN second axis (`start`), not something inferred from
+    //    `side`. Until 2026-08-08 the screen read `back` and called it 우상단, which was wrong
+    //    on the quarter turns -- the mirror flips the ROW axis there, so `rot90_back` is
+    //    `rot270` walked from the top-right, not `rot90`. The axis is scored directly now and
+    //    every candidate is `side: front`, so nothing here is inferred.
     //    This does not replace `storedLabel` and does not translate the stored value away:
-    //    the rule this file states is that the screen must not HIDE what the database holds,
-    //    not that it may never say what it means. Both are rendered.
-    //    Confirmation writes `side: "front"` regardless (`map_alignment.confirmed_meta_for`),
-    //    because the mirror is already absorbed into `grid_start_*` -- so this word describes
-    //    the SCORING axis, not what will be stored.
-    startLabel: a.candidate.side === 'back' ? '우상단 시작' : '좌상단 시작',
+    //    the rule this file states is that the screen must not HIDE what the database holds.
+    startLabel: a.candidate.start === 'top_right' ? '우상단 시작' : '좌상단 시작',
     agree: hasCounts ? Number(s.agree) : null,
     discriminating: hasCounts ? Number(s.discriminating) : null,
     // 🔴 THE POPULATION THE NUMERATOR WAS MEASURED AGAINST -- see `decode.scoringKeysFor`. It is

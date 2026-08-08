@@ -458,12 +458,18 @@ section('S3  scoring -- the client does not score (ruling, 2026-08-05)');
   else bad('candidate id round trip', `these do not parse: ${unparseable.join(', ')}`);
 
   // Compare against the server's set WITHOUT importing python: the server's spelling is
-  // `rot<deg>_<side>` and the contract states the expected shape. The pytest half asserts the
-  // server's CANDIDATE_FRAMES equals its own 8; this half asserts the client's equals the same
-  // strings. Two halves, one expectation -- which is what makes it a seam assertion.
+  // `rot<deg>_<walk start>` and the contract states the expected shape. The pytest half asserts
+  // the server's CANDIDATE_FRAMES equals its own 8; this half asserts the client's equals the
+  // same strings. Two halves, one expectation -- which is what makes it a seam assertion.
+  //
+  // 🔴 UPDATED 2026-08-08 with the axis, not to make a red bar green. The second axis stopped
+  //    being the mirror (`front`/`back`) and became the corner the equipment numbered its walk
+  //    from (`tl`/`tr`), server-side in `map_alignment.candidate_frames`. The mirror spellings
+  //    stay READABLE on both halves (`parse_frame` / `parseCandidateId`) because stored
+  //    confirmations hold them -- they are simply no longer candidates.
   const expected = [];
-  for (const side of ['front', 'back']) for (const rot of [0, 90, 180, 270])
-    expected.push(`rot${rot}_${side}`);
+  for (const rot of [0, 90, 180, 270]) for (const start of ['tl', 'tr'])
+    expected.push(`rot${rot}_${start}`);
   const same = ids.length === expected.length && expected.every(e => ids.includes(e));
   if (same) ok('client candidate ids equal the stored spelling the server scores');
   else bad('candidate id vocabulary',

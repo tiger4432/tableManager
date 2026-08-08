@@ -50,21 +50,71 @@ logger = logging.getLogger(__name__)
 # 8개를 여기서 문자열 리터럴로 나열하면 그 목록이 두 번째 철자가 된다. 대신 축에서 조립하고
 # **기존 수용기에 통과시켜** 만든다 — 수용기가 거부하는 철자는 후보가 될 수 없다.
 FRAME_ROTATIONS = (0, 90, 180, 270)
+#: 물리 면의 어휘. **후보 축이 아니다**(아래 §candidate_frames) — 저장된 메타가 쓰는 낱말이고
+#: `declared_frame_of`가 그 낱말로 「이 맵이 적어 둔 것」을 철자한다.
 FRAME_SIDES = ("front", "back")
+
+# ═══ 두 번째 축은 **거울이 아니라 걸음의 시작 모서리**다 (2026-08-08) ═══════════════════════
+# 🔴 종전 두 번째 축은 `side`였고, 그래서 **우상단부터 번호를 매기는 설비**(실재한다, 제품
+#    소유자 2026-08-07)는 거울 프레임(`rot*_back`)으로 이겨야만 했다. 거울은 셀이 **놓이는
+#    자리**를 바꾸므로, 물리적으로 뒤집히지 않은 웨이퍼에 그 답을 주면 좌표가 틀린다.
+#    채점기는 `serpentine_index(left_to_right=...)`를 한 번도 흔든 적이 없었다 — 그 축이
+#    비어 있는 동안 거울이 그 자리를 대신 서 있었던 것이다.
+# ⚠️ **더한 것이 아니라 바꾼 것이다.** 거울 넷 위에 걸음 축을 얹으면 후보가 16이 되고 모든
+#    후보가 자기 쌍둥이와 동점이 된다(측정됨). 여기서 나오는 수는 언제나 **8**이다.
+# ⚠️ 그리고 「`_back` → 우상단, 회전 그대로」인 개명표는 **4분의 1 회전에서 틀린다**:
+#    거울은 90°/270°에서 **행 축**을 뒤집으므로(`client2/src/map2/seating.js:38-40`)
+#    `rot90_back` ≡ `rot270`@우상단, `rot270_back` ≡ `rot90`@우상단이다. 반바퀴만 회전이
+#    그대로다. 그래서 이 축은 개명이 아니라 **다시 채점되는 축**이다.
+START_TOP_LEFT = "top_left"
+START_TOP_RIGHT = "top_right"
+CANDIDATE_STARTS = (START_TOP_LEFT, START_TOP_RIGHT)
+#: 후보 철자의 두 번째 토큰. `parse_frame`이 이 둘을 받고 **둘 다 면은 `front`**다 —
+#: 시작 모서리는 웨이퍼가 뒤집혔다는 주장이 아니기 때문이다.
+START_TOKEN = {START_TOP_LEFT: "tl", START_TOP_RIGHT: "tr"}
+_START_OF_TOKEN = {v: k for k, v in START_TOKEN.items()}
+#: 후보의 면은 **언제나 front**다. 후보 축에서 빠졌지 값이 없어진 것이 아니다.
+CANDIDATE_SIDE = "front"
 
 
 def frame_text(rotation: int, side: str) -> str:
-    """(회전, 면) → 프레임 문자열. `parse_frame`의 역이다."""
+    """(회전, 면) → 프레임 문자열. `parse_frame`의 역이다. **메타의 어휘**이지 후보의
+    어휘가 아니다 — 후보는 `candidate_text`가 철자한다."""
     return "rot%d_%s" % (int(rotation) % 360, side)
 
 
+def candidate_text(rotation: int, start: str) -> str:
+    """(회전, 시작 모서리) → 후보 문자열 (`rot90_tr`). `parse_candidate`의 역이다."""
+    return "rot%d_%s" % (int(rotation) % 360, START_TOKEN[start])
+
+
+def parse_candidate(text):
+    """후보 문자열 → `(회전, 시작 모서리)`. 못 읽으면 None.
+
+    레거시 수용: 저장된 `rot90_front`는 좌상단 시작으로 읽는다(같은 기하·같은 걸음).
+    `rot90_back`은 **후보가 아니다** — 거울은 탐색 공간에서 빠졌고, 저장된 그 값은 여전히
+    `parse_frame`이 면으로 읽는다(§`confirmed_meta_for`).
+    """
+    parsed = parse_frame(text)
+    if parsed is None:
+        return None
+    rot, _side = parsed
+    token = str(text).strip().lower().split("_", 1)[-1]
+    if token in _START_OF_TOKEN:
+        return rot, _START_OF_TOKEN[token]
+    if token == "front":                       # 레거시 철자 = 좌상단
+        return rot, START_TOP_LEFT
+    return None
+
+
 def candidate_frames() -> tuple:
-    """탐색 공간 전체. 스펙 §2 실측: 운영 경로에서 **정확히 8개**이고 `grid_y_invert`는
-    후보 축이 아니다(상쇄되어 별칭이 된다). 단, 그 상쇄는 위 「전제」를 지킬 때만 성립한다."""
+    """탐색 공간 전체. **정확히 8개** = 회전 4 × 시작 모서리 2, 면은 전부 `front`다.
+    `grid_y_invert`는 후보 축이 아니다(상쇄되어 별칭이 된다) — 단, 그 상쇄는 위 「전제」를
+    지킬 때만 성립한다."""
     out = []
     for rot in FRAME_ROTATIONS:
-        for side in FRAME_SIDES:
-            text = frame_text(rot, side)
+        for start in CANDIDATE_STARTS:
+            text = candidate_text(rot, start)
             if parse_frame(text) is None:          # 수용기가 정본이다
                 raise ValueError("candidate frame '%s' is not accepted by parse_frame" % text)
             out.append(text)
@@ -73,36 +123,19 @@ def candidate_frames() -> tuple:
 
 CANDIDATE_FRAMES = candidate_frames()
 
-#: 면(side) 선언 키. 문턱·무게와 **같은 블록**이다 — 이 화면의 판정을 조율하는 자리는 하나다.
-SIDES_KEY = "sides"
+
+def candidate_start(frame: str) -> str:
+    """후보 문자열 → 시작 모서리. 후보 목록 안의 값만 들어온다."""
+    parsed = parse_candidate(frame)
+    if parsed is None:
+        raise ValueError("'%s' is not a candidate spelling" % frame)
+    return parsed[1]
 
 
-def load_alignment_sides(cfg: dict) -> list | None:
-    """선언된 면만. **선언이 없으면 None이고 그것이 「둘 다」**다.
-
-    🔴 **미선언은 한쪽을 뜻하지 않는다.** 탐색 공간을 좁히는 것은 장비에 대한 주장이고,
-       주장은 선언에서 나와야지 기본값에서 상속되면 안 된다 — 문턱이 미선언을 0으로 접지
-       않는 것과 **같은 규율**이다(§load_alignment_thresholds). 여기 `("front",)`를 적으면
-       그것이 선언을 사칭하는 그럴듯한 기본값이고, 뒷면 웨이퍼가 조용히 후보에서 사라진다.
-
-    읽히지 않는 선언(리스트 아님·빈 리스트·모르는 면)은 선언이 아니다 → None.
-    """
-    raw = ((cfg or {}).get("alignment") or {}).get(SIDES_KEY)
-    if raw is None:
-        return None
-    if not isinstance(raw, (list, tuple)):
-        logger.warning("[MapAlignment] '%s' is not a list, ignored: %r", SIDES_KEY, raw)
-        return None
-    out = [s for s in (str(v) for v in raw) if s in FRAME_SIDES]
-    unknown = [v for v in raw if str(v) not in FRAME_SIDES]
-    if unknown:
-        logger.warning("[MapAlignment] unknown side(s) ignored: %r", unknown)
-    if not out:
-        logger.warning("[MapAlignment] '%s' declared nothing usable, scoring both: %r",
-                       SIDES_KEY, raw)
-        return None
-    # 선언 순서가 아니라 **어휘 순서**로 정규화한다 - 같은 주장이 두 철자를 갖지 않게.
-    return [s for s in FRAME_SIDES if s in out]
+def left_to_right_of(frame: str) -> bool:
+    """후보 문자열 → `serpentine_index`의 `left_to_right`. **철자는 여기 하나다** —
+    두 곳에서 이 대응을 적으면 채점과 진단이 다른 걸음을 잰다."""
+    return candidate_start(frame) == START_TOP_LEFT
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +163,11 @@ STATE_COMPUTING = "computing"          # 예약 — 이 엔드포인트는 동�
 #:    조작자는 그것이 고려조차 안 됐다는 사실을 알 방법이 없다 — 「없음을 0으로 접기」와
 #:    같은 계열이고 이 프로젝트를 이미 여러 번 물었다. 그래서 **여덟은 언제나 여덟으로
 #:    나가고**, 좁혀진 넷은 이 상태와 사유를 달고 나간다(탐색 공간은 좁아지되 보고는 안 좁는다).
+#:
+#: ⚠️ [2026-08-08] **지금은 발화하지 않는다** — `alignment.sides`가 은퇴하면서 탐색 공간을
+#:    좁히는 선언이 하나도 없어졌기 때문이지, 이 구별이 필요 없어졌기 때문이 아니다. 상태·
+#:    사유·행 배선을 **그대로 남긴다**: 다음에 축을 좁히는 선언이 생길 때 「봤는데 졌다」와
+#:    「아예 안 봤다」를 다시 발명하게 되면 그 사이에 화면은 안 본 후보를 0점으로 그린다.
 STATE_NOT_CONSIDERED = "not_considered"
 TEXT_SIDE_NOT_CONSIDERED = "미채점 - 면 선언 제외"
 
@@ -704,13 +742,22 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
         mask = map_overlay.die_mask_from_reference(basis_meta, basis_cells)
         if mask:
             src_box = map_overlay.origin_box(base, mask)
+    #: 적은 원점이 **상자를 알고 계산된 것인가.** 아래 `valid_die_ref` 도장이 이 사실을 읽는다.
+    box_aware_origin = False
     if placement and placement.get("anchor_src") and placement.get("anchor_ref"):
         st = start_from_placement(base, basis_meta,
                                   placement.get("anchor_src"), placement.get("anchor_ref"),
                                   source_box=src_box)
         if st is not None:
             base["grid_start_x"], base["grid_start_y"] = st
+            box_aware_origin = src_box is not None
     elif shift:
+        # 🔴 [2026-08-08] **이 갈래는 상자를 모른다.** `start_for_placement`는
+        #    `start - L⁻¹(shift)`이고 그 식에 상자 항이 없다 — 지금 그려지는 자리가 옳다는
+        #    전제 위에서 시프트만큼만 고친다. 아래 도장이 그 전제를 깨뜨린다(편집기의 원점
+        #    상자가 원 → 유효 다이 마스크로 갈린다, `map_editor.js:1942-1945`). 그래서 여기서
+        #    나온 원점은 **상자를 아는 원점이 아니다**. 상자 항을 여기 손으로 더하는 것은 이
+        #    파일이 네 번 값을 치른 「좌표 대수 옮겨 적기」의 다섯 번째다 — 도장을 안 찍는다.
         st = start_for_placement(base, basis_meta, shift)
         if st is not None:
             base["grid_start_x"], base["grid_start_y"] = st
@@ -737,11 +784,26 @@ def confirmed_meta_for(meta: dict | None, basis_meta: dict | None, basis: dict,
     #    「확정이 선언을 이긴다」가 읽기 시점 분기 없이 성립한다. 덮인 선언의 이력은 확정
     #    기록(`frame_confirmation.reference_table/map_id`)이 보관한다. 종전 선언을 메타 안에
     #    따로 남길지는 총괄 판정 대상이고 여기서 정하지 않았다.
+    #
+    # 🔴 [2026-08-08] **상자를 아는 원점 위에서만 찍는다.** 이 도장은 편집기가 다음에 이 맵을
+    #    열 때 원점 상자를 갈아 끼운다. 앵커 갈래는 그 갈린 상자를 `source_box`로 받아 원점을
+    #    거기에 맞춰 풀지만, 탐색 갈래(`elif shift`)와 원점을 못 쓴 갈래는 그러지 못한다 —
+    #    거기에 찍으면 확정이 **자기가 만든 좌표계에서 틀린 원점**을 남긴다. 실측된 크기가
+    #    작지 않다(스펙 §:880 — 상자가 갈리면 3,840셀 중 2,880이 다른 다이, 16조합 중 12).
+    #    스펙 §:887이 2026-08-06부터 「앵커 없는 확정이 이 키를 함께 적는 경로가 실재하는지」를
+    #    열어 두고 있었고, 순번 없는 단위가 그려지게 되면서 실재하게 됐다.
+    # ⚠️ **확정 버튼을 다시 닫는 것이 아니다.** 프레임·회전·면·원점은 종전대로 쓰인다. 안
+    #    쓰이는 것은 이 한 키뿐이고, 안 쓰였다는 사실은 로그가 말한다.
     _ref_id = (basis or {}).get("map_id")
-    if _ref_id:
+    if _ref_id and box_aware_origin:
         base = map_overlay.apply_valid_die_ref(
             base, {"table": (basis or {}).get("table") or map_overlay.VALID_DIE_TABLE,
                    "map_id": _ref_id})
+    elif _ref_id:
+        logger.info("[MapAlignment] valid_die_ref NOT stamped on this confirmation - the "
+                    "origin was not solved against the reference's own box (anchor=%s "
+                    "basis_cells=%s). The frame and origin are still written.",
+                    bool(placement and placement.get("anchor_src")), bool(basis_cells))
     return base
 
 
@@ -1465,8 +1527,12 @@ def _normalised_indices(source_indices, cell_owner):
     return np.array(out, dtype="int64"), np.array(flags, dtype=bool), bases
 
 
-def _index_member(phys, cell_owner, idx_k, idx_has):
+def _index_member(phys, cell_owner, idx_k, idx_has, left_to_right: bool = True):
     """셀마다 「이 셀이 훑기에서 몇 번째인가 == 저장된 순번인가」.
+
+    `left_to_right`: 후보가 주장하는 **시작 모서리**(§CANDIDATE_STARTS). 이 축이 후보마다
+    달라지는 것이 순번 채점의 두 번째 축이고, 그래서 여기 상수가 있으면 우상단부터 번호를
+    매기는 설비는 어느 후보로도 못 이긴다.
 
     훑기는 **맵 단위**로, **그 맵의 셀 전부**를 대상으로 돈다.
 
@@ -1483,15 +1549,19 @@ def _index_member(phys, cell_owner, idx_k, idx_has):
         by_map.setdefault(owner[i] if i < len(owner) else 0, []).append(i)
     for rows in by_map.values():
         # 물리(정준) 좌표계에서 훑는다 → 맨 위는 언제나 가장 작은 y(§순번 주석).
-        rank = serpentine_rank([phys[i] for i in rows], top_is_min_y=True)
+        rank = serpentine_rank([phys[i] for i in rows], top_is_min_y=True,
+                               left_to_right=left_to_right)
         for i in rows:
             if idx_has[i] and rank.get(tuple(phys[i])) == int(idx_k[i]):
                 hits[i] = True
     return hits
 
 
-def direction_judge(ref_phys):
+def direction_judge(ref_phys, left_to_right: bool = True):
     """기준 바닥(정준 좌표) → 서펜타인의 **규칙 자체**: 행 방향과 행 범위.
+
+    `left_to_right`: 후보의 시작 모서리. `serpentine_index` ④와 **같은 위상 규칙**이다 —
+    두 곳이 갈리면 훑기와 방향 검사가 서로를 부정한다(아래 ② 각주와 같은 이유).
 
     🔴 **판사는 기준이지 소스가 아니다**(제품 소유자 2026-08-06). 실측이 그 이유를 준다:
        가로로 붙은 두 셀만 있는 소스에서, 1번은 바닥 행 y=20의 x=20에 앉고 **그 행에는
@@ -1507,7 +1577,8 @@ def direction_judge(ref_phys):
     for (x, y) in (ref_phys or ()):
         rows.setdefault(int(y), set()).add(int(x))
     order = sorted(rows)                       # 정준 좌표계에서 가장 작은 y가 맨 위
-    dir_of = {y: (1 if i % 2 == 0 else -1) for i, y in enumerate(order)}
+    dir_of = {y: (1 if (i % 2 == 0) == left_to_right else -1)
+              for i, y in enumerate(order)}
     next_row = {y: (order[i + 1] if i + 1 < len(order) else None)
                 for i, y in enumerate(order)}
     return rows, dir_of, next_row
@@ -2631,15 +2702,16 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                      reference_values=None, thresholds: dict = None,
                      assume_reference_geometry: bool = True,
                      reference_ref: dict = None, value_weights: dict = None,
-                     sides: list = None, index_thresholds: dict = None,
+                     index_thresholds: dict = None,
                      diag: list = None):
     """후보 8개를 **한 호출로** 채점한다. DB를 모른다 — 셀과 메타만 받는다.
 
     `source_maps`: `[{"map_id": str, "meta": dict, "cells": [(x, y), ...],
                       "values": [v, ...], "indices": [k, ...]}]` — `values`·`indices`는
         있으면 `cells`와 **같은 순서**다.
-    `sides`: 채점할 면 목록. `None`이면 **둘 다**(§load_alignment_sides). 좁히면 나머지
-        후보는 목록에서 사라지지 않고 `STATE_NOT_CONSIDERED`를 달고 나간다.
+    후보 여덟은 **회전 4 × 시작 모서리 2**이고 면은 전부 `front`다(§candidate_frames).
+        탐색 공간을 좁히는 선언은 지금 없다 — 있었을 때의 규율(안 본 후보는 목록에서
+        빠지지 않고 `STATE_NOT_CONSIDERED`를 달고 나간다)은 그대로 살아 있다.
     `reference_cells`: 기준(공통 바닥)의 점유 좌표 집합 — 기준 맵 자신의 프레임 좌표다.
     `reference_values`: 기준 셀의 값. `reference_cells`와 같은 순서. 없으면 점유 채점만.
     `thresholds`: `{min_margin_dies, min_discriminating_dies}`. **기본값이 없다** — 선언되지
@@ -2936,9 +3008,9 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
 
     # [2] 후보마다 **메타를 통째로 만들어** 변환한다 (모듈 상단 전제).
     #
-    # 🔴 좁혀진 면은 **목록에서 빠지지 않는다** — 안 본 후보와 져서 밀린 후보를 한 모양으로
+    # 🔴 안 본 후보는 **목록에서 빠지지 않는다** — 안 본 후보와 져서 밀린 후보를 한 모양으로
     #    내보내면 화면이 「우리는 이걸 고려하지 않았다」를 말할 수 없다(§STATE_NOT_CONSIDERED).
-    considered = set(sides) if sides else set(FRAME_SIDES)
+    #    2026-08-08 현재 좁히는 선언은 없지만 그 규율과 배선은 자리에 남아 있다.
     per_candidate = []
     source_values = None
     source_indices = None
@@ -2957,10 +3029,9 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     pivot_i = _pivot[1] if _pivot else None
     pivot_cell = _pivot[2] if _pivot else None
     for frame in CANDIDATE_FRAMES:
-        if parse_frame(frame)[1] not in considered:
-            per_candidate.append({"frame": frame, "keys": None, "reason": None,
-                                  "not_considered": True})
-            continue
+        # 이 후보가 주장하는 **걸음의 시작 모서리**. 기하가 아니라 순번 축에만 걸린다 —
+        # `source_meta_for_frame`은 아래에서 면(`front`)만 읽는다.
+        cand_l2r = left_to_right_of(frame)
         placed = []
         vals = []
         ks = []
@@ -3091,7 +3162,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 ks.append(sm["_use_indices"][i])
         if failed is not None:
             per_candidate.append({"frame": frame, "keys": None, "reason": failed,
-                                  "_trace": trace})
+                                  "_l2r": cand_l2r, "_trace": trace})
             continue
         # 소스 값은 후보마다 **같은 순서의 같은 셀**이다(좌표만 움직인다). 그래서 한 번만
         # 붙잡아 둔다 — 후보마다 다시 만들면 그 사본들이 갈릴 수 있고, 갈리면 i번째가 서로
@@ -3103,6 +3174,8 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         if cell_owner is None:
             cell_owner = owner
         per_candidate.append({"frame": frame, "keys": _encode(placed), "reason": None,
+                              # 이 후보의 걸음 방향. 순번·방향 축이 **이 값으로** 돈다.
+                              "_l2r": cand_l2r,
                               "_trace": trace,
                               # 실어 보낼 배치의 선형부(§payload `placement`).
                               "_linear": frame_linear,
@@ -3266,7 +3339,8 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                                        int(idx_has.size))
             c["index_member"] = None
             continue
-        c["index_member"] = _index_member(c["_phys"], cell_owner, idx_k, idx_has)
+        c["index_member"] = _index_member(c["_phys"], cell_owner, idx_k, idx_has,
+                                          left_to_right=c.get("_l2r", True))
 
     # [3a-2] 걸음의 **방향**. 순서 일치가 못 가르는 자리를 가른다(§direction_violations).
     #        판사는 기준 바닥이고, 그것은 순번 훑기와 **같은 정준 좌표계**에서 읽는다.
@@ -3276,8 +3350,14 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    사상(`_lc_ref`)을 타므로 어느 공간이든 **행은 행으로 묶인다** — 절대냐 상대냐가
     #    문제가 되지 않는다. 판사가 phys를 찾아간 것은 셀 목록이 이미 답하는 질문을 물으러
     #    간 것이고, 그것이 이 라운드 전체와 같은 모양이다.
-    _judge = direction_judge(_canon_ref) if _canon_ref else None
+    # 🔴 판사는 **후보마다** 다르다. 행 방향의 위상은 시작 모서리가 정하고(§direction_judge),
+    #    상수로 두면 우상단 후보의 모든 걸음이 위반으로 세어진다 - 새 축이 자기 자신을
+    #    벌하는 모양이다. 바닥은 하나이므로 판사는 **둘만** 만들어 나눠 쓴다.
+    _judges = ({True: direction_judge(_canon_ref, left_to_right=True),
+                False: direction_judge(_canon_ref, left_to_right=False)}
+               if _canon_ref else {})
     for c in per_candidate:
+        _judge = _judges.get(bool(c.get("_l2r", True)))
         if c.get("index_member") is None or _judge is None:
             c["index_violations"] = None
             c["index_steps"] = None
@@ -3449,7 +3529,12 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             state = STATE_NOT_SCORABLE
         out.append({
             "frame": c["frame"],
+            # 🔴 **회전과 시작 모서리는 따로 나간다.** 한 문자열에서 화면이 다시 쪼개게
+            #    하면 그 쪼개기가 두 번째 철자가 되고, 이 라운드가 고친 결함이 정확히
+            #    「두 번째 축을 문자열에서 추론하기」였다. `side`는 언제나 `front`다 -
+            #    시작 모서리는 웨이퍼가 뒤집혔다는 주장이 아니다(§CANDIDATE_STARTS).
             "rotation": rot_side[0], "side": rot_side[1],
+            "start_corner": candidate_start(c["frame"]),
             "state": state,
             "shift": None if not c["scored"] else {"dx": c["dx"], "dy": c["dy"]},
             "agreement": c["agreement"],
@@ -3500,6 +3585,17 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                 if anchor_cell is not None else
                 _placement_payload(c.get("_search_linear"), pivot_cell,
                                    c.get("_search_placed"), c.get("dx"), c.get("dy"))),
+            # 🔴 **이 배치가 무엇 위에 서 있는가** (2026-08-08). 앵커 배치와 탐색 배치는
+            #    `linear`/`anchor_src`/`anchor_ref`를 **같은 모양으로** 싣는데, 탐색 쪽의
+            #    기준점은 자기 docstring이 말하듯 아무 주장도 나르지 않는 지렛대다. 옆에
+            #    `ruling["placement"]`가 있지만 그것은 `anchor_dxy` 게이트라 이 행의 게이트
+            #    (`anchor_cell`)와 **갈린다** — `ANCHOR_PLACEMENT_ENABLED=False`에서 실제로
+            #    갈린다. 그래서 행이 자기 근거를 자기가 나른다: 가정은 가정으로 보여야 한다는
+            #    `geometry_basis`·`assumption`과 같은 규율이다.
+            # ⚠️ 확정 기록에 **아직 저장되지 않는다**(총괄 판정 2026-08-08: 배선만, 스키마는
+            #    다음 라운드). 지금은 화면과 로그가 답할 수 있게 된 것까지다.
+            "placement_basis": (PLACEMENT_ANCHOR if anchor_cell is not None
+                                else PLACEMENT_SEARCH),
             "index_margin": (None if c.get("index_agreement") is None or k_runner is None
                              else int(c["index_agreement"] - k_runner)),
             # 값 지표는 **점유를 대체하지 않는다.** 기준이 값을 안 실으면 점유가 정직한 답이고,
@@ -3573,10 +3669,10 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    판정을 옮겨 적는 자리(확정 기록·목록)가 옆 필드를 흘리면 그 구별이 사라진다 -
     #    `geometry_assumed`·`metric`을 판정 dict 안에 넣은 것과 같은 이유다. 참일 때만 싣는
     #    것이 아니라 **언제나** 싣는다: 없는 키와 「둘 다」는 받는 쪽에서 같아 보인다.
-    # 🔴 **어휘 순서**로 낸다, 알파벳순이 아니라. `load_alignment_sides`가 이미 어휘 순서로
-    #    정규화하는데 여기서 `sorted()`를 쓰면 같은 주장이 `["front","back"]`과
-    #    `["back","front"]` 두 철자를 갖는다 - 이 파일이 반복해서 막는 「하나의 사실에 두
-    #    철자」이고, 받는 쪽이 목록을 비교하는 순간 같은 선언이 달라 보인다.
+    # 🔴 **어휘 순서**로 낸다, 알파벳순이 아니라. 여기서 `sorted()`를 쓰면 같은 주장이 두
+    #    철자를 갖는다 - 이 파일이 반복해서 막는 「하나의 사실에 두 철자」이고, 받는 쪽이
+    #    목록을 비교하는 순간 같은 선언이 달라 보인다. (2026-08-08: 면은 더 이상 좁혀지지
+    #    않으므로 목록은 상수이고, 규율만 남는다.)
     # 🔴 **쟀는데 순위를 안 냈다**는 것은 조작자에게 필요한 사실이다. 후보 행에는 순번
     #    수치가 실려 나가므로, 이 사실이 없으면 화면은 그 수치가 판정을 만들었다고 읽는다.
     #    세 상태를 한 낱말로 접지 않는다: 「잰 것이 없다」·「쟀지만 순위는 안 냈다」·
@@ -3626,8 +3722,18 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    갖게 된 뒤에도 이 키의 조건은 **종전 그대로**다: 앵커가 섰을 때만 앵커가 있다.
     ruling["anchor"] = ((_win_row or {}).get("placement")
                         if anchor_cell is not None else None)
-    ruling["sides_considered"] = [s for s in FRAME_SIDES if s in considered]
-    ruling["sides_narrowed"] = len(considered) < len(FRAME_SIDES)
+    # 🔴 **승자 행에서 읽는다, 다시 유도하지 않는다.** `ruling["placement"]`는 `anchor_dxy`를
+    #    게이트로 쓰고 이 값은 실제로 실린 배치의 근거라, 둘이 갈리는 경우가 바로 조작자가
+    #    알아야 하는 경우다(§`placement_basis`). 같은 사실을 두 번 유도하지 않는 규율은
+    #    `shift`·`anchor`와 같다.
+    ruling["placement_basis"] = (_win_row or {}).get("placement_basis")
+    # 🔴 **탐색 공간은 이제 좁혀지지 않는다** — 면은 후보 축이 아니고(§CANDIDATE_STARTS)
+    #    `alignment.sides` 선언은 은퇴했다. 두 키는 **언제나** 나간다: 없는 키와 「안 좁혔다」는
+    #    받는 쪽에서 같아 보이고, 판정을 옮겨 적는 자리가 그 구별을 잃으면 안 된다.
+    ruling["sides_considered"] = [CANDIDATE_SIDE]
+    ruling["sides_narrowed"] = False
+    #: 좁혀지지 않은 축이 **무엇인가**. 후보 여덟은 이 둘을 다 본다.
+    ruling["starts_considered"] = list(CANDIDATE_STARTS)
     ruling["geometry_assumed"] = bool(assumed_ids)
     ruling["assumed_map_count"] = len(assumed_ids)
     stats = {"scored_cells": scored_cells, "truncated": truncated,
@@ -3781,9 +3887,10 @@ def _diag_index_block(per_candidate, out, ruling, source_indices, cell_owner,
             rank_by_map.setdefault(owner[i] if i < len(owner) else 0, []).append(i)
         ranks = {}
         for m, rows in rank_by_map.items():
-            ranks.update({i: serpentine_rank([phys[j] for j in rows],
-                                             top_is_min_y=True).get(tuple(phys[i]))
-                          for i in rows})
+            ranks.update({i: serpentine_rank(
+                [phys[j] for j in rows], top_is_min_y=True,
+                left_to_right=c.get("_l2r", True)).get(tuple(phys[i]))
+                for i in rows})
         shown = [i for i in range(len(phys)) if idx_has[i]][:_DIAG_INDEX_CELLS]
         L.append("  %-14s agreement=%s/%s  discrim=%s%s"
                  % (o["frame"], o.get("index_agreement"), o.get("index_total"),
@@ -3817,8 +3924,8 @@ def _diag_scoring_block(per_candidate, out, ruling, stats, excluded, metric,
          % (scored_cells, cell_cap, truncated, shift_window),
          "  reference cells (deduped)=%d   reference values indexed=%d"
          % (ref_cell_count, stats.get("reference_values", 0)),
-         "  sides considered=%s narrowed=%s   geometry assumed on %d map(s)"
-         % (ruling.get("sides_considered"), ruling.get("sides_narrowed"),
+         "  side=%s (fixed) starts considered=%s   geometry assumed on %d map(s)"
+         % (ruling.get("sides_considered"), ruling.get("starts_considered"),
             ruling.get("assumed_map_count", 0))]
     for row in excluded.as_list():
         L.append("  EXCLUDED %s x%d (e.g. %s%s)"
@@ -4959,7 +5066,7 @@ def compose_map_id(values) -> str:
 
 
 def _diag_request_block(req_id, rule, key_values, map_table, src_table, map_key_cols,
-                        args: dict, cfg: dict, columns: dict, thresholds, sides,
+                        args: dict, cfg: dict, columns: dict, thresholds,
                         value_weights, index_thresholds, reference, source_maps) -> list:
     """The request's half of the block: **what arrived and what was read**.
 
@@ -5007,7 +5114,8 @@ def _diag_request_block(req_id, rule, key_values, map_table, src_table, map_key_
           "", "-- config, as parsed -------------------------------------------------------",
           "  thresholds      = %s   (missing keys are absent, NOT zero; what the ruling "
           "actually applied is printed at the DIAGNOSIS)" % _d(thresholds, 120),
-          "  sides           = %s   (None = score both)" % _d(sides, 60),
+          "  candidates      = %s   (side fixed to '%s'; the second axis is the walk "
+          "start corner)" % (_d(list(CANDIDATE_FRAMES), 90), CANDIDATE_SIDE),
           "  value_weights   = %s   ({} = no weighting)" % _d(value_weights, 200),
           "  index block     = %s   (incomplete = the index axis reports but does not "
           "rank)" % _d(index_thresholds, 120),
@@ -5169,9 +5277,6 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     thresholds = load_alignment_thresholds(cfg)
     # 무게도 **문턱과 같은 선언**이다 - 같은 블록에서 같이 읽고, 없으면 없는 채로 내려간다.
     value_weights = load_alignment_value_weights(cfg)
-    # 면도 같은 블록의 같은 규율이다. `None`이면 **둘 다**이고, 좁혀도 후보 여덟은
-    # 여덟으로 나간다(§STATE_NOT_CONSIDERED).
-    sides = load_alignment_sides(cfg)
     # 순번 축 문턱은 **자기 블록**에서 읽는다. 점유·값 문턱과 키를 공유하면 저쪽을 낮추는
     # 조작이 이 축의 안전망까지 걷어 간다(§INDEX_THRESHOLD_BLOCK).
     index_thresholds = load_index_thresholds(cfg)
@@ -5187,7 +5292,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         {"reference_spec": reference_spec, "x_col": x_col, "y_col": y_col,
          "value_col": value_col, "include_cells": include_cells, "cell_cap": cell_cap,
          "assume_reference_geometry": assume_reference_geometry},
-        cfg, columns, thresholds, sides, value_weights, index_thresholds,
+        cfg, columns, thresholds, value_weights, index_thresholds,
         reference, source_maps)
     if meta_access:
         diag.append("  META ACCESS INCIDENT: %s" % _d(meta_access, 300))
@@ -5200,7 +5305,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             assume_reference_geometry=assume_reference_geometry,
             reference_ref={"table": reference.get("table"),
                            "map_id": reference.get("map_id")},
-            value_weights=value_weights, sides=sides,
+            value_weights=value_weights,
             index_thresholds=index_thresholds, diag=diag)
         if ruling.get("winner"):
             state = STATE_SCORED

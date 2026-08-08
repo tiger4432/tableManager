@@ -1149,13 +1149,14 @@ export function bootstrap(deps) {
         cell.setAttribute('data-me2-candidate', '');
         cell.setAttribute('data-rotation', String(card.rotation));
         cell.setAttribute('data-side', card.side);
+        cell.setAttribute('data-start', card.start || '');
         cell.setAttribute('data-frame-code', card.id);
         cell.setAttribute('aria-pressed', 'false');
         cell.appendChild(span(doc, 'me2-cand-deg', card.degLabel));
         cell.appendChild(span(doc, 'me2-cand-code', card.storedLabel));
-        // `back` on this screen means the mirror half -- "numbers from the top-right" -- and
-        // NOT a physical back side, which the map editor one click away genuinely has. The
-        // stored spelling stays above it; this only says what it means.
+        // WHICH CORNER THE EQUIPMENT NUMBERED FROM -- the candidate's own second axis, not a
+        // physical side. The map editor one click away is where a physical back side lives.
+        // The stored spelling stays above it; this only says what it means.
         cell.appendChild(span(doc, 'me2-cand-start', card.startLabel));
         const tags = span(doc, 'me2-cand-tags', '');
         tags.setAttribute('data-me2-cand-tags', '');
@@ -2251,7 +2252,7 @@ function toCells(list, ranks) {
  */
 export function framesFor(payload, candidateId) {
   const p = payload || {};
-  const axes = parseCandidateId(candidateId) || { rotation: 0, side: 'front' };
+  const axes = parseCandidateId(candidateId) || { rotation: 0, side: 'front', start: 'top_left' };
   // 🔴 `startX`/`startY` ARE GONE FROM THIS RECORD, AND THEIR ABSENCE IS THE REPAIR.
   //    They read `numOr(p.start_x, 0)` and `numOr(p.start_y, 0)`. Neither field has ever been on
   //    the payload -- `adaptPayload` does not write them and the wire does not carry them -- so
@@ -2375,23 +2376,23 @@ function pickSource(payload, focusedId) {
   return payload.sources[0];
 }
 
-/** `rot270_back` -> `270° · 우상단 시작`. The stored spelling stays visible beside it.
+/** `rot270_tr` -> `270° · 우상단 시작`. The stored spelling stays visible beside it.
  *
- * 🔴 NOT 뒷면/앞면 (2026-08-07). On the index axis `rotθ_back` and `rotθ_front` differ by
- *    exactly which corner the serpentine starts from - measured: walking a mirrored die set
- *    left-to-right is the same ranking as walking the original right-to-left, with no rotation
- *    shift - so the mirror half of the search space IS the top-right half. Equipment that
- *    numbers from the top-right exists (product owner, 2026-08-07), and while
- *    `alignment.sides` was narrowed to front its answers were simply absent from the search.
- *    Saying 뒷면 here told the operator a physical wafer side had been chosen, which the map
- *    editor one click away genuinely has and this screen does not decide.
- *    The stored id (`rot270_back`) is still rendered in mono beside this: the rule is that the
- *    screen may not HIDE what the database holds, not that it may never say what it means.
+ * 🔴 THE CORNER IS READ, NOT INFERRED (2026-08-08). It used to be derived from `side === 'back'`,
+ *    and that equivalence is wrong on the quarter turns: the mirror flips the ROW axis
+ *    (`seating.js:38-40`), so `rot90_back` is `rot270` walked from the top-right and
+ *    `rot270_back` is `rot90` from it. The walk start is a scored axis of its own now and
+ *    arrives in the id, so nothing here guesses.
+ *
+ * 🔴 LEGACY `_back` IS STILL SPELLED, AND AS 뒷면. A row confirmed before the walk axis holds a
+ *    real mirror declaration; calling it 우상단 here would restate the wrong equivalence on the
+ *    one screen that shows what the database holds.
  */
 function spellFrame(candidateId) {
   const axes = parseCandidateId(candidateId);
   if (!axes) return candidateId;
-  return `${axes.rotation}° · ${axes.side === 'back' ? '우상단 시작' : '좌상단 시작'}`;
+  if (axes.side === 'back') return `${axes.rotation}° · 뒷면`;
+  return `${axes.rotation}° · ${axes.start === 'top_right' ? '우상단 시작' : '좌상단 시작'}`;
 }
 
 function gridSpan(payload, axis) {

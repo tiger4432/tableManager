@@ -15,8 +15,8 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
-  <script type="module" crossorigin src="/assets/map_editor2-BtVYbYe9.js"></script>
+  <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
+  <script type="module" crossorigin src="/assets/map_editor2-DNiEpMwb.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-Dy5qGBed.js">
   <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
   <link rel="stylesheet" crossorigin href="/assets/map_editor2-D8G-E8uM.css">
@@ -753,47 +753,47 @@
               </span>
             </button>
 
-            <!-- 후보 격자: 2열(뒤집기) x 4행(돌리기). 인라인 아코디언, 한 번에 하나만. -->
+            <!-- 후보 격자: 2열(번호 시작 모서리) x 4행(돌리기). 인라인 아코디언, 한 번에 하나만. -->
             <div class="me2-cands" id="" data-me2-candidates-for="" hidden>
                 <div class="me2-cand-legend">숫자 = 일치 / 판별 다이</div>
                 <div class="me2-cand-grid">
-                  <div class="me2-cand-colhead">앞면</div>
-                  <div class="me2-cand-colhead">뒷면</div>
+                  <div class="me2-cand-colhead">좌상단 시작</div>
+                  <div class="me2-cand-colhead">우상단 시작</div>
 
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="0"
-                    data-side="front" data-frame-code="rot0_front">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
+                    data-side="front" data-start="top_left" data-frame-code="rot0_tl">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_tl</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="0"
-                    data-side="back" data-frame-code="rot0_back">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
+                    data-side="front" data-start="top_right" data-frame-code="rot0_tr">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_tr</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
 
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="90"
-                    data-side="front" data-frame-code="rot90_front">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
+                    data-side="front" data-start="top_left" data-frame-code="rot90_tl">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_tl</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="90"
-                    data-side="back" data-frame-code="rot90_back">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
+                    data-side="front" data-start="top_right" data-frame-code="rot90_tr">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_tr</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
 
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="180"
-                    data-side="front" data-frame-code="rot180_front">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
+                    data-side="front" data-start="top_left" data-frame-code="rot180_tl">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_tl</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="180"
-                    data-side="back" data-frame-code="rot180_back">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
+                    data-side="front" data-start="top_right" data-frame-code="rot180_tr">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_tr</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
 
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="270"
-                    data-side="front" data-frame-code="rot270_front">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot270_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
+                    data-side="front" data-start="top_left" data-frame-code="rot270_tl">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot270_tl</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                   <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="270"
-                    data-side="back" data-frame-code="rot270_back">
-                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot270_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
+                    data-side="front" data-start="top_right" data-frame-code="rot270_tr">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot270_tr</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree></span> / <span data-me2-cand-discriminating></span></span><span class="me2-unknown" data-me2-cand-unknown>미상</span><span class="me2-skel is-sm"></span></span>
                   </button>
                 </div>
                 <!-- 영구 각주를 뺐다. 「뒷면 = 좌우 뒤집기 / 상하 뒤집기는 별도
@@ -861,7 +861,7 @@
 
   <div id="toast-container"></div>
 
-  <!-- MODULE-ENTRY: 배선 레인이 붙였다. 이 파일에서 배선이 건드리는 유일한 줄이다. -->
+  <!-- MODULE-ENTRY: 배선 레인이 붙였다. 이 파일에서 배선이 건드리는 유일한 줄이다. -->
 </body>
 
 </html>

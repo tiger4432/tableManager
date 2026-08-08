@@ -284,7 +284,7 @@ export function decodeReferenceView(payload) {
     ? String(p.ruling.metric) : null;
   const keys = scoringKeysFor(rulingMetric);
   // 🔴 THE WIRE SAYS `frame`, THE SCREEN SAYS `candidate_id`, AND THEY ARE THE SAME STRING.
-  //    `rot90_front` is `candidates.candidateId(90, 'front')` exactly. The rename happens here
+  //    `rot90_tr` is `candidates.candidateId(90, 'top_right')` exactly. The rename happens here
   //    and nowhere else -- one vocabulary crosses the customs post, and downstream keeps the
   //    spelling the database and every other screen already show.
   for (const raw of arr(p && p.candidates)) {
@@ -303,13 +303,15 @@ export function decodeReferenceView(payload) {
     //    frames of `SYN-IDX-FULL-R0` arrive `not_considered` with `index_agreement: null` and
     //    a reason, and the screen drew them as `0 / 0` marked scored.
     //
-    //    KEPT IN THE LIST, NOT DROPPED. Narrowing the search must not narrow the report: the
-    //    row is carried with NULL counts and its state, so the screen can say what it is.
+    //    KEPT IN THE LIST, NOT DROPPED. A row nobody could score is carried with NULL counts
+    //    and its state, so the screen can say what it is. (`alignment.sides` retired 2026-08-08,
+    //    so nothing narrows the search today -- the discipline outlives its first producer.)
     if (state !== null && CAND_UNMEASURED.has(state)) {
       // 🔴 THE PLACEMENT SURVIVES THE MISSING COUNTS, AND IT HAS TO. A refusal is about the
-      //    SCORE; the server places every row whose anchor stood regardless of whether it could
-      //    rank it (`map_alignment.py` `_candidate_rows`'s `placement`, and `:2380` keeps narrowed sides in the list on
-      //    purpose). Dropping the seat here emptied the picture on the ONE screen where the
+      //    SCORE; the server places every row it could seat regardless of whether it could rank
+      //    it (`map_alignment.py` `_candidate_rows`'s `placement`, which since 2026-08-08 also
+      //    seats the ANCHOR-LESS rows off the search pivot and says so in `placement_basis`).
+      //    Dropping the seat here emptied the picture on the ONE screen where the
       //    operator has no counts to fall back on and the picture is the whole diagnostic --
       //    measured: 0 of 4 source dies drawn in the `not_scorable` fixture.
       scorings.push(Object.freeze({
@@ -658,13 +660,17 @@ function decodeShift(raw, rejected, frame) {
  * y-inversion of BOTH maps, already multiplied out -- so the reader has no composition order to
  * get wrong. Mirror-ness is `det(linear) === -1` and is deliberately NOT carried separately.
  *
- * 🔴 `anchorRef` ALREADY CARRIES THE SOLVED SHIFT (`map_alignment.py` `_candidate_rows`, `anchor_ref = reference_top_left + (dx, dy)` adds `(dx, dy)` to
- *    `reference_top_left`). Adding `shift` on top of a placement is a DOUBLE APPLICATION -- the
+ * 🔴 `anchorRef` ALREADY CARRIES THE SOLVED SHIFT (`map_alignment.py` `_candidate_rows`, the
+ *    `placement` block, which adds the solved `(dx, dy)` into the seat it ships -- do not
+ *    transcribe the retired closed form for it here, that is what a second copy is for).
+ *    Adding `shift` on top of a placement is a DOUBLE APPLICATION -- the
  *    same arithmetic mistake `4947a65` fixed on the server, where an anchor was applied twice
  *    and the shift it solved was zero by construction. `placeCells` takes no shift argument.
  *
  * ⚠️ ABSENT IS NOT THE IDENTITY. `null` means this server did not place this candidate -- the
- *    anchor declined, or this producer predates the field. A reader that substituted the
+ *    transform refused this frame, or this producer predates the field. It NO LONGER means "the
+ *    anchor declined": since 2026-08-08 an anchor-less unit is seated off the search pivot and
+ *    carries `placement_basis: 'shift_search'`. A reader that substituted the
  *    identity here would draw the source unturned and unmoved on top of the floor, which is a
  *    plausible picture of a claim nobody made. The screen names the state instead (`배치 없음`).
  */

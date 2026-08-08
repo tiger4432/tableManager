@@ -36,7 +36,7 @@ from dt_map_derivation import source_meta_for_frame          # noqa: E402
 import seed_valid_die_ref_floor as floor                     # noqa: E402
 import seed_dt_index_walk as seed                            # noqa: E402
 
-FRONT_FRAMES = ["rot0_front", "rot90_front", "rot180_front", "rot270_front"]
+FRONT_FRAMES = ["rot0_tl", "rot90_tl", "rot180_tl", "rot270_tl"]
 
 
 @pytest.fixture(scope="module")
@@ -83,8 +83,8 @@ def _back_core_jobs():
 
 def test_the_core_truths_cover_every_front_rotation():
     """Before the CORE jobs were added, truth across every run was only ever
-    `{rot0_front, rot0_back, rot90_front, rot180_back}` - 4 of 8 candidates, with the
-    270 pair and `rot90_back`/`rot180_front` never the answer anywhere. A systematic bias
+    `{rot0_tl, rot0_tr, rot90_tl, rot180_tr}` - 4 of 8 candidates, with the
+    270 pair and `rot270_tr`/`rot180_tl` never the answer anywhere. A systematic bias
     against a frame nobody plants leaves any pass count fully green."""
     assert set(FRONT_FRAMES) <= {j["core_frame"] for j in seed.JOBS}
 
