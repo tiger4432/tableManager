@@ -2,7 +2,7 @@
 
 > 🎯 **새 세션이면 [`LEAD_PM_HANDOFF.md`](LEAD_PM_HANDOFF.md)를 먼저 읽어라** — 역할·절대 규율·핵심 가치·되풀이되는 함정.
 >
-> **Status:** 🟢 Living | **Last-updated:** 2026-08-06 (HEAD `c973dce` · 미푸시 0 · 8/5 하루 커밋 56건)
+> **Status:** 🟢 Living | **Last-updated:** 2026-08-08 (HEAD `714e77b` · `origin/main` 동기화 · 다른 세션의 보고서가 staged, 미추적 보고서·환경 파일도 별도 관리)
 > 🔴 **이 보드는 「지금 열린 것」만 담는다.** 2026-08-01에 679줄에서 쪼갰다 — 낡은 한 줄이 총괄의 위험 판정을 반대로 뒤집은 사고가 실제로 났기 때문이다(P1).
 
 | 무엇이 궁금할 때                  | 어디                                                                                   |
@@ -147,24 +147,9 @@
 - **①③ `cell_sources`·감사 축소** ― 설계 완료(`Server_layer_reduction_design.md`). ③은 **행을 남기고 `new_value`를 줄이는 반대 제안 채택**(2.9 GB, 소비자 0 파손 / 지우면 6.4 GB에 넷 파손, 하나는 조용히). ①은 조건 넷 붙음: 별도 테이블 · 쓰기 트랜잭션 안 insert-then-narrow · **승격을 실제로 태우는 테스트**(맵 테이블은 다중 출처 살아있는 셀이 **0개**라 평상시 안 탄다) · `user` 불가침
 - **거짓 라벨 정정(대기열 5)** ― 🔴 **숫자 4는 참이니 건드리지 말 것.** 8후보 최고점을 **틀린 프레임**이 쥔 값이고, `map_overlay_config.json:92`의 **문턱 20 유도가 그 4를 바르게 쓴다.** 고칠 것은 라벨뿐, 사이트 **9곳**(둘은 gitignore 안이라 추적 소스 grep에 안 걸린다)
 
-### 🔴🔴 미해결 · 세션 끝 시점에 열려 있음 ― 인제션에서 컬럼이 파싱되고도 안 써진다
+### 🔴 미해결 · 다단 헤더 Excel이 튜플 컬럼명으로 인제션을 죽인다
 
-**증상(사용자, 2026-08-07 세션 말미)**: 대량 인제션 중 **일부 컬럼이 파싱은 되는데 값이 안 들어간다.** `display_columns` 선언은 되어 있고, **`Dropped ... undeclared column` 로그 줄이 없다.**
-
-🔴 **로그 줄이 없다는 것이 결정적이다.** 매칭(`directory_watcher.py:1856-1872`, `key.lower() == d_col.lower()` 완전 일치)에서 떨어진 컬럼은 **이름을 대고 세어서** `_announce_dropped_columns`(`:79`)가 찍는다. 줄이 없으면 **매칭은 통과했고 쓰기 쪽**이다.
-
-**⇒ 오늘 변경이 용의선상에 있다.** `apply_row_update_internal`이 `4738d84`(P3)에서 **열두 군데** 바뀌었다. 반면 `directory_watcher.py`는 아웃박스 토큰 **3+2줄뿐**이고 컬럼 경로는 한 줄도 안 바뀌었다. ⚠️ QA가 P3에 대해 5개 시나리오에서 `cell_sources`·`audit_logs`·아웃박스까지 **바이트 동일**을 확인했으므로 **가능성은 낮다** ― 그러나 「낮다」이지 「아니다」가 아니다.
-
-**다음 세션이 할 것 ― 순서대로. 논쟁하지 말고 가른다.**
-1. **층이 증인이다(30초).** 표시값은 「썼는가」를 말하지 않는다:
-   ```sql
-   SELECT source_name, value, updated_by, ingested_at FROM cell_sources
-   WHERE table_name='<표>' AND column_name='<그 컬럼>' ORDER BY ingested_at DESC LIMIT 5;
-   ```
-   **행이 있고 값이 맞으면** 쓰기는 됐고 **우선순위에서 진 것**이다(코드 문제 아님). **행이 없으면** 진짜 안 써진 것이고 그때 2번이 뜻을 갖는다.
-2. **A/B ― `crud.py` 한 파일만 되돌려 같은 입력을 태운다.** `git show 4738d84~1:server/database/crud.py > /tmp/old.py` → 교체 → **재기동**(파이썬은 import 시점에 읽는다) → 인제션. 들어가면 P3, 똑같이 안 들어가면 무관. 오늘 QA가 P3를 검증한 방식 그대로다.
-
-**🔴 같은 라운드에서 나온 별건 ― 튜플 컬럼명으로 인제션이 죽는다.** `key.lower()`가 `AttributeError: 'tuple'`로 터진 사례. 원인은 **pandas가 여러 줄 헤더/병합 셀을 `MultiIndex`로 읽어** 컬럼 이름이 `('상위','하위')` 튜플이 되는 것이고, 그게 `pipeline_base.py:60`의 `df.to_dict(orient='records')`를 그대로 통과해 `directory_watcher.py:1858`에 닿는다. **오늘 변경과 무관한 기존 결함**이고, 보드의 「병합 제목 행이 헤더를 데이터로 만든다」와 **같은 뿌리**다(그쪽은 조용히 틀리고 이쪽은 시끄럽게 터진다). 즉효는 헤더를 한 줄로 정리하는 것. 수리는 `read_file`/`clean_for_postgres`에서 MultiIndex를 평탄화하는 것인데 **어느 레벨이 진짜 컬럼명인지는 파일마다 달라 추측 금지** ― 「상단 헤더가 구성된 표도 유연하게 읽기」 요청과 같은 자리다.
+`key.lower()`가 `AttributeError: 'tuple'`로 터진 사례. 원인은 **pandas가 여러 줄 헤더/병합 셀을 `MultiIndex`로 읽어** 컬럼 이름이 `('상위','하위')` 튜플이 되는 것이고, 그게 `pipeline_base.py:60`의 `df.to_dict(orient='records')`를 그대로 통과해 `directory_watcher.py:1858`에 닿는다. **P3와 무관한 기존 결함**이고, 보드의 「병합 제목 행이 헤더를 데이터로 만든다」와 **같은 뿌리**다(그쪽은 조용히 틀리고 이쪽은 시끄럽게 터진다). 즉효는 헤더를 한 줄로 정리하는 것. 수리는 `read_file`/`clean_for_postgres`에서 MultiIndex를 평탄화하는 것인데 **어느 레벨이 진짜 컬럼명인지는 파일마다 달라 추측 금지** ― 「상단 헤더가 구성된 표도 유연하게 읽기」 요청과 같은 자리다.
 
 **📌 이름이 눈으로 같은데 안 맞는 부류**(1번이 「매칭 실패」로 나올 때): 앞뒤 공백 · 전각/반각 · en dash vs 하이픈 · 비단절 공백(U+00A0) · **BOM(`﻿`)이 첫 컬럼에 붙는 경우**. 화면으로 구별 불가이므로 **바이트를 떠서** 본다.
 
@@ -173,6 +158,8 @@
 📌 **표기 정규화는 체인으로 만들지 말 것** ― `server/notation_norm.py`가 정본이고 **선언 한 줄**(`"columns": {"<표>": {"<컬럼>": true}}`)로 끝난다. **아무것도 저장하지 않고** 비교 양쪽에 같은 접기를 질의 시점 SQL로 건다. 물리 `<col>_norm` 컬럼 방식은 `92b8d6f`에서 만들었다가 **사용자 판정 2026-08-04로 철회**됐다(켜는 데 층 셋 + 그 사이 조용한 실패 · 쓰기 거절 컬럼이 CSV에 딸려 나감 · `display_columns`에 들어가는 순간 헤더 맞는 파일이 배치 전체를 실패시킴). ⚠️ 현재 소비자는 가상 조인 키 해석 하나뿐.
 
 📌 **enrichment 그리드에서 `clipboard.js`는 재사용 불가** ― 그 모듈이 `grid.js`·`state.js`·`dom.js`·`ui.js`를 직접 import해서, 부르는 순간 `enrichment.js`가 자기 기본값을 다시 써 가며 피한 메인 앱 모듈 그래프가 그대로 딸려 온다. 한 셀 복사는 `enableCellTextSelection`으로 해결(`15a2b39`). **엑셀형 범위 복사가 필요해지면 `clipboard.js`에서 순수 부분을 떼어내는 것이 선행**이다(AG-Grid 범위 클립보드는 Enterprise).
+
+📌 **정렬기 `no_winner`는 config 결함으로 오진하기 쉽다 ― 실제 원인은 `dt_index`가 NULL이었다 (총괄+사용자 실측 2026-08-08, `dt_frame_confrimation`/`DT-EQP-02_20260512T0000_T09`).** 라이브 payload: 소스 셀 **72**(리턴은 정상, `truncated: false`), 기준 `valid_die_ref/QA_MAP2` **337**, `columns.index = dt_index (proposed)`인데 **`source_indices_usable: 0` → `index_axis: "absent"`** ⇒ 88/88을 만든 순번 축이 **발화조차 못 하고** 값 `shift_search`로 강등, 8후보 **전부** `at_window_edge: true`(창 ±3), `margin 1` vs 문턱 20. **`dt_index`를 채우니 돌았다.** ⚠️ **문턱을 내리는 것이 오답이다** ― `margin 1`은 「거의 맞다」가 아니라 「창 안에서 8개가 다 비슷하게 틀렸다」. 🔴 **거절 문구가 진짜 사유를 안 말한다**: 화면은 「1-2위 격차 부족」이라 했지만 실제 사유는 「순번 값이 없어 값 축으로 강등」이고, **컬럼 선언과 값 존재를 구별하는 문장이 없다**(`origin: proposed`는 컬럼이 잡혔다는 뜻일 뿐) ― 대기열.
 
 ### ✅ 정렬기 ― 우상단 설비가 돌아간다 (2026-08-07 마감, `c4eaffa`·`c959368`)
 
