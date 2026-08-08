@@ -2039,7 +2039,7 @@ def _placement_payload(linear, anchor_src, anchor_placed, dx, dy):
 
 
 def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left,
-                  anchor_cell=None):
+                  anchor_cell=None, reference_top_right=None):
     """앵커 쌍이 정하는 평행이동 → `({프레임: (dx,dy)}, 사유)`.
 
     제품 소유자 확정 2026-08-06: 「소스 조각 좌상단이 기준맵 좌상단 되게 하는게 어려움?」 —
@@ -2096,8 +2096,19 @@ def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left,
     # 같으므로 여기 `i_min`과 같은 셀이다 — 그래도 넘어오지 않으면 걸지 않는다(§ANCHOR_*).
     if anchor_cell is None:
         return None, ANCHOR_NO_INDEX
-    t = (int(reference_top_left[0]) - int(anchor_cell[0]),
-         int(reference_top_left[1]) - int(anchor_cell[1]))
+    # 🔴 **기준점은 후보의 시작 모서리를 따라간다** (제품 소유자 2026-08-08). 좌상 시작이면
+    #    소스의 1번 다이가 기준의 **좌상단**에, 우상 시작이면 **우상단**에 앉는다. 종전에는
+    #    `t`를 이 자리에서 **한 번** 계산해 여덟에 모두 나눠 줬고 기준점은 언제나 좌상단이었다
+    #    - 그래서 `tl`과 `tr`이 **같은 시프트**를 받았고 우상 시작은 보행 순서만 바꾸는 빈
+    #    축이었다. 라이브 실측: 여덟 후보 시프트가 전부 `(-13,-11)`로 동일.
+    #    ⚠️ 소스 쪽 앵커(`anchor_cell`)는 **바뀌지 않는다.** 1번 다이가 어느 것인지는 설비의
+    #    번호가 정하는 데이터의 사실이지 후보의 선택이 아니다. 후보가 정하는 것은 그 다이가
+    #    기준의 **어느 모서리**에 앉느냐뿐이다.
+    def _t_for(frame):
+        corner = (reference_top_left if left_to_right_of(frame)
+                  else (reference_top_right or reference_top_left))
+        return (int(corner[0]) - int(anchor_cell[0]),
+                int(corner[1]) - int(anchor_cell[1]))
     out = {}
     with_placement = 0
     for c in per_candidate:
@@ -2107,7 +2118,7 @@ def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left,
             out[c["frame"]] = (0, 0)
             continue
         with_placement += 1
-        out[c["frame"]] = t
+        out[c["frame"]] = _t_for(c["frame"])
     # 🔴 **이 갈래는 조용하면 안 된다** (제품 소유자 관측 2026-08-06: 「애초에 anchor shift
     #    함수에서 `c.get("_placed")`가 None인데」). 한 후보도 좌표를 못 놓았으면 위 루프는
     #    여덟 개의 `(0,0)`을 내고 사유는 `None`으로 나가는데, 하류는 사유 `None`을 **앵커가
@@ -3007,6 +3018,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    바꾸지 못하고, 상수를 구하려는 순간 박스가 다시 들어온다. 소스와 기준이 **같은
     #    사상**을 타므로 둘은 같은 상수만큼 움직이고, 그래서 서로에 대해 정합한다.
     reference_top_left = None
+    reference_top_right = None
     reference_walk = {}
     reference_walk_rank = None
     _canon_ref = None           # 기준 셀의 정준 좌표. 방향 판정도 이것을 쓴다([3a-2])
@@ -3023,6 +3035,12 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         for _p, _v in zip(_canon_ref, ref_pairs):
             _back.setdefault(_p, _v)
         reference_top_left = _back.get(_first)
+        # 🔴 **우상 시작 후보가 앉을 자리.** 같은 훑기를 `left_to_right=False`로 한 번 더 돌려
+        #    1번을 얻는다 — 모서리 규칙이 `serpentine_index` 안에 하나뿐이므로 여기서 「맨 윗행의
+        #    오른쪽」을 손으로 쓰지 않는다(그 철자가 둘이 되는 날 두 모서리가 갈린다). 되짚기도
+        #    위와 **같은 `_back`**을 쓴다.
+        reference_top_right = _back.get(
+            serpentine_index(_canon_ref, top_is_min_y=True, left_to_right=False).get(1))
         # [D13] 기준 다이마다 **훑기 번호**. `_residual_shift`가 「이 자리에 앉히면 소스가
         # 덮는 다이들이 훑기의 끊기지 않은 한 구간인가」를 묻는 데 쓴다(§_residual_shift).
         # `ref_sorted`와 **같은 순서로** 늘어놓는다 - 저쪽이 searchsorted 첨자로 읽는다.
@@ -3256,7 +3274,8 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    앵커가 틀린 자리에 맵을 놓는다. 그래서 ⓐ 순번이 있을 때만 걸고, ⓑ 어느 쪽이
     #    돌았는지를 판정이 직접 나르며(`ruling.placement`), ⓒ 되돌리는 스위치를 하나로 둔다.
     anchor_dxy, anchor_reason = _anchor_shift(
-        per_candidate, source_indices, cell_owner, reference_top_left, anchor_cell)
+        per_candidate, source_indices, cell_owner, reference_top_left, anchor_cell,
+        reference_top_right=reference_top_right)
     for c in per_candidate:
         if c["keys"] is None or c["keys"].size == 0:
             c.update(dx=None, dy=None, agreement=0, member=None, scored=False)
