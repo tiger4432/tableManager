@@ -2119,6 +2119,13 @@ def _anchor_shift(per_candidate, source_indices, cell_owner, reference_top_left,
             continue
         with_placement += 1
         out[c["frame"]] = _t_for(c["frame"])
+        # 후보마다 **어느 모서리에 무엇을 앉혔나**. 시프트가 여덟에서 같으면 이 줄이 그 이유를
+        # 바로 말한다(제품 소유자 요청 2026-08-08).
+        logger.info("[Align] %-12s ltr=%-5s | SRC#1=%s -> REF corner=%s | t=%s",
+                    c["frame"], left_to_right_of(c["frame"]), tuple(anchor_cell),
+                    (reference_top_left if left_to_right_of(c["frame"])
+                     else (reference_top_right or reference_top_left)),
+                    out[c["frame"]])
     # 🔴 **이 갈래는 조용하면 안 된다** (제품 소유자 관측 2026-08-06: 「애초에 anchor shift
     #    함수에서 `c.get("_placed")`가 None인데」). 한 후보도 좌표를 못 놓았으면 위 루프는
     #    여덟 개의 `(0,0)`을 내고 사유는 `None`으로 나가는데, 하류는 사유 `None`을 **앵커가
@@ -3041,6 +3048,20 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         #    위와 **같은 `_back`**을 쓴다.
         reference_top_right = _back.get(
             serpentine_index(_canon_ref, top_is_min_y=True, left_to_right=False).get(1))
+        # 🔴 제품 소유자 요청 2026-08-08. 이 셋이 갈리면 앵커가 엉뚱한 모서리에 앉는다:
+        #    상자 모서리는 원형 웨이퍼에서 **다이가 아니고**(CORE_DT 실측 `(-3,-3)`,
+        #    맨 윗행은 x 5..7 세 칸뿐이라 **8칸** 어긋난다), 정준 변환이 걸리면 훑기 1번이
+        #    저장 좌표의 좌상단과 다를 수 있다. 요청당 한 줄.
+        try:
+            _bx = min(x for (x, y) in ref_pairs)
+            _by = min(y for (x, y) in ref_pairs)
+            logger.info("[Align] REF n=%d box=(%d,%d) | stored top-row-left=%s"
+                        " top-row-right=%s | walk#1 tl=%s tr=%s | canon_linear=%s",
+                        len(ref_pairs), _bx, _by,
+                        first_die_of(ref_pairs, True), first_die_of(ref_pairs, False),
+                        reference_top_left, reference_top_right, _lc_ref)
+        except Exception as _e:
+            logger.info("[Align] REF diag unavailable: %s", _e)
         # [D13] 기준 다이마다 **훑기 번호**. `_residual_shift`가 「이 자리에 앉히면 소스가
         # 덮는 다이들이 훑기의 끊기지 않은 한 구간인가」를 묻는 데 쓴다(§_residual_shift).
         # `ref_sorted`와 **같은 순서로** 늘어놓는다 - 저쪽이 searchsorted 첨자로 읽는다.
