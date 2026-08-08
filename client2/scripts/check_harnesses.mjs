@@ -179,7 +179,14 @@ const FLOORS = new Map([
   // the three candidate STATES apart: a frame the side declaration excluded is carried with NO
   // counts rather than with the placeholder zeroes the wire ships beside it, which is what
   // stopped `Number(null) === 0` from entering it into the ranking as a scored zero.
-  ['alignment_verdict_harness.mjs', 163],
+  // 🔴 OFF THE BUILD GATE 2026-08-08 (product owner: 「하네스 무시해」). `db1ee42` replaced the
+  //    mirror half of the candidate space with the walk axis, so 8 of the 16 production frame
+  //    tuples are no longer reachable BY RULING, and this harness reports that honestly: 6 of
+  //    its 163 assertions fail, including a recorded unit whose truth was a reflection. Those
+  //    failures are TRUE -- the harness is not broken and its vectors were not edited. It is
+  //    off the gate so `npm run build` stops needing `npx vite build` to bypass it, not because
+  //    the numbers were dismissed. Run it by hand: `node tests/alignment_verdict_harness.mjs`.
+  // ['alignment_verdict_harness.mjs', 163],
   ['availability_gross_marker_harness.mjs', 48],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],

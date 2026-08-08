@@ -710,11 +710,15 @@ function countMoved(rc, declaredFrame, truthId, declaredId) {
 }
 
 function seatUnder(cells, frame, candId) {
-  const m = /^rot(0|90|180|270)_(front|back)$/.exec(candId);
+  // The second axis is the WALK now (`tl`/`tr`), not the mirror. A walk moves no cell, so
+  // both seat as `front`; `front`/`back` stay accepted because recorded vectors and stored
+  // confirmations still spell it that way (`parse_frame` carries the same legacy).
+  const m = /^rot(0|90|180|270)_(front|back|tl|tr)$/.exec(candId);
+  if (!m) throw new Error(`seatUnder: '${candId}' is not a frame token`);
   const f = Object.assign({}, {
     cols: frame.cols, rows: frame.rows, startX: frame.startX, startY: frame.startY,
     invertY: !!frame.invertY,
-  }, { rotation: Number(m[1]), side: m[2] });
+  }, { rotation: Number(m[1]), side: m[2] === 'back' ? 'back' : 'front' });
   return computeSeatingRef(cells.map(([x, y, value]) => ({ x, y, value })), f).seats;
 }
 
