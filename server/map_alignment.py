@@ -3311,6 +3311,21 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             _base = ((_rf[0] - _sf[0], _rf[1] - _sf[1])
                      if _sf is not None and _rf is not None else (0, 0))
             dx, dy, _hit = _solve_shift(c["keys"], ref_sorted, shift_window, base=_base)
+            # 🔴 제품 소유자 요청 2026-08-08: 「유효다이맵 맨윗줄 왼쪽, 맨왼쪽줄 위쪽 두 개
+            #    다이 좌표랑 소스맵 1번 좌표, 그래서 계산한 시프트 로그 뿌려」. 화면만 보고
+            #    원인을 유도하다 여러 번 틀렸다 - 이 네 수가 있으면 어느 쌍이 짝지어졌는지가
+            #    즉시 갈린다. 후보마다 한 줄.
+            try:
+                _rx = min(x for (x, y) in ref_pairs)
+                _rleft = (_rx, min(y for (x, y) in ref_pairs if x == _rx))
+                logger.info(
+                    "[Align] %-12s ltr=%-5s | REF top-row-left=%s  REF left-col-top=%s"
+                    " | SRC#1 stored=%s placed=%s | base=%s -> shift=(%d,%d) hit=%d",
+                    c["frame"], _ltr, first_die_of(ref_pairs, True), _rleft,
+                    first_die_of(sum([sm.get("_use") or [] for sm in usable], []), _ltr),
+                    _sf, _base, dx, dy, _hit)
+            except Exception as _e:                     # 진단이 채점을 막지 않는다
+                logger.info("[Align] %s diag unavailable: %s", c["frame"], _e)
             # 탐색 갈래에도 이름을 준다 — 창의 크기가 답을 가둘 수 있고(옛 ±3 실패의 지문은
             # **창 끝에 붙은 값**이었다), 그 사실은 수치가 아니라 상태로 읽혀야 한다.
             c["_residual"] = {"state": PLACEMENT_SEARCH, "window": shift_window,
