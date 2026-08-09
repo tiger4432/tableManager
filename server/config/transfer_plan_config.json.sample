@@ -1,5 +1,5 @@
 {
-  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다. [2026-08-04 완화] 보조 역할 선언(transfer_log·origin_log·fail_sources·process_history)은 전부 **선택**이다: 그런 테이블이 없는 사이트는 키를 아예 쓰지 마라 — 상태 not_declared로 표기되고 그 감산항 없이 가용이 숫자로 나오며, 빠진 종류는 응답의 inactive_subtractions가 명시한다. 키를 **선언해 놓고 깨뜨리면**(오타·테이블 부재) 종전대로 missing 강등이다. total_chips는 분모라 계속 필수. [N14 2026-08-04] `fail_values`를 선언했으면 그 값을 읽을 `val` 역할도 반드시 함께 선언하라 ― `val`이 없으면 fail 판정 자체를 내릴 수 없으므로 그 감산은 0으로 거절되고 소스가 connected(fail_value_column_absent)로 강등한다(remaining은 상한만 나간다). 선택 역할은 유도되지 않으므로 지우면 그 기능이 조용히 사라진다 ― 지우기 전에 `GET /admin/transfer-plan/dry-run`이 부재를 `origin: \"absent\"` 행으로 보여준다.",
+  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다.",
   "stages": {
     "dt": {
       "description": "DT(Die Transfer): 코어 웨이퍼의 칩을 테이프에 전사하는 단계. 소스 가용 = M1 core-summary(코어 total − defect − eds_fail − 기전사).",
@@ -8,29 +8,27 @@
       "source_config_ref": "bonding_plan",
       "target_map": {
         "preset": "TAPE",
-        "table": "dt_map"
+        "table": "dt_log"
       }
     },
     "bonding": {
       "description": "Bonding: 테이프 위의 칩을 base에 본딩하는 단계. 테이프에는 여러 코어 칩이 혼재하고 불량도 섞여 있다 — 코어 fail은 dt_log 조인으로 테이프 좌표에 투영된다.",
       "source_kind": "tape",
       "target_kind": "base",
+
       "bin_map": {
-        "table": "dt_map",
+        "table": "dt_log",
         "columns": {
-          "lot": "lot",
-          "slot": "slot",
+          "lot": "dt_lot",
+          "slot": "dt_slot",
           "x": "x",
           "y": "y",
-          "bin": "val"
+          "bin": "c_bn"
         }
       },
       "source": {
         "identity": {
-          "compose": [
-            "lot",
-            "slot"
-          ]
+          "compose": ["lot", "slot"]
         },
         "map_metadata": {
           "table": "wafer_map_metadata",
@@ -41,7 +39,7 @@
           }
         },
         "total_chips": {
-          "table": "dt_map",
+          "table": "dt_log",
           "columns": {
             "lot": "lot",
             "slot": "slot",
@@ -49,75 +47,9 @@
             "y": "y"
           }
         },
-        "transfer_log": {
-          "table": "bonding_log",
-          "columns": {
-            "lot": "core_lot",
-            "slot": "core_slot",
-            "x": "cx",
-            "y": "cy"
-          }
-        },
-        "origin_log": {
-          "table": "dt_log",
-          "columns": {
-            "lot": "tape_lot",
-            "slot": "tape_slot",
-            "x": "tx",
-            "y": "ty",
-            "origin_lot": "core_lot",
-            "origin_slot": "core_slot",
-            "origin_x": "cx",
-            "origin_y": "cy"
-          }
-        },
-        "process_history": {
-          "table": "wafer_process",
-          "columns": {
-            "step": "step",
-            "eqp": "eqp_id",
-            "result": "result",
-            "time": "start_time",
-            "recipe": "recipe_id",
-            "knobs": "knobs",
-            "lot": "lot",
-            "slot": "slot"
-          }
-        },
-        "fail_sources": {
-          "defect": {
-            "frame": "origin",
-            "table": "core_defect_map",
-            "columns": {
-              "lot": "lot",
-              "slot": "slot",
-              "x": "x",
-              "y": "y",
-              "val": "val"
-            },
-            "fail_values": [
-              "D"
-            ]
-          },
-          "eds_fail": {
-            "frame": "origin",
-            "table": "eds_fail_map",
-            "columns": {
-              "lot": "lot",
-              "slot": "slot",
-              "x": "x",
-              "y": "y",
-              "val": "val"
-            },
-            "fail_values": [
-              "F"
-            ]
-          }
-        },
+
         "warnings": {
-          "result_fail_values": [
-            "FAIL"
-          ]
+          "result_fail_values": ["FAIL"]
         }
       },
       "target_map": {
@@ -142,10 +74,7 @@
       }
     },
     "material_identity": {
-      "compose": [
-        "lot",
-        "slot"
-      ],
+      "compose": ["lot", "slot"],
       "separator": "_"
     }
   }

@@ -12,6 +12,115 @@
       "enabled": false
     },
     {
+      "__comment": "DT frame metadata: the source map is dt_log itself, one metadata row per dt_job. The mapper calls the same read-only alignment-view service as the UI, accepts only a declared index-axis winner, and writes the full projected grid_metadata through normal chain priority (so user metadata remains higher priority). dt_job ingestion is one transaction, hence this batch trigger sees the completed job; incomplete decision keys are intentionally a no-op. dt_map is NOT the target here: it is the later standardized projection.",
+      "name": "dt_log_to_dt_alignment_metadata",
+      "trigger_table": "dt_log",
+      "target_table": "wafer_map_metadata",
+      "mapper_module": "mappers.dt_alignment_metadata_mapper",
+      "mapper_function": "build_dt_alignment_metadata_batch",
+      "is_batch": true,
+      "alignment_rule": "dt_frame_confrimation",
+      "map_table": "dt_log",
+      "metadata_target_table": "dt_log",
+      "reference_job_column": "dt_job",
+      "geometry_bootstrap": "reference_only",
+      "reference_by_job_pattern": [
+        {
+          "contains": "SYN",
+          "reference_spec": "valid_die_ref:PRD-A_DT13"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "__comment": "S2 identity projection. This is the explicitly allowed second hop of dt_log -> wafer_map_metadata -> dt_inventory. The worker keeps all other chain-created events blocked; allow_chain_trigger is safe only because the loader rejects cycles among such edges.",
+      "name": "dt_metadata_to_dt_inventory",
+      "trigger_table": "wafer_map_metadata",
+      "target_table": "dt_inventory",
+      "mapper_module": "mappers.dt_inventory_metadata_mapper",
+      "mapper_function": "copy_dt_metadata_to_inventory_batch",
+      "is_batch": true,
+      "metadata_target_table": "dt_log",
+      "allow_chain_trigger": true,
+      "enabled": true
+    },
+    {
+      "__comment": "S3: dt_inventory carries the confirmed dt_frame and its derived portable X/Y/sign/offset equation. Project matching dt_log rows into the standard-coordinate dt_map. Each batch replaces exactly one dt_job map, never an inferred lot/slot map.",
+      "name": "dt_inventory_to_standard_dt_map",
+      "trigger_table": "dt_inventory",
+      "target_table": "dt_map",
+      "source_table": "dt_log",
+      "mapper_module": "mappers.dt_standard_map_mapper",
+      "mapper_function": "build_standard_dt_map_batches",
+      "is_batch": true,
+      "allow_chain_trigger": true,
+      "allow_map_metadata_upsert": true,
+      "allow_replace_map": true,
+      "enabled": true
+    },
+    {
+      "__comment": "Core automatic frame: dt_core_view is review-only and is intentionally NOT in this chain. The mapper reads one completed dt_log job, selects the primary core by the earliest dt_index (stable lot/slot/wafer tie breakers), filters the same raw rows in the shared alignment engine, then atomically writes dt_inventory.core_frame plus core_x/y base/sign/offset equations. All material-specific policy lives below: change reference.table/map_id_template/fields when the physical defect map becomes wafer-id keyed; change accepted_metrics and alignment_thresholds without editing Python. The configured empty index_col forces defect/bin value scoring instead of transfer-order scoring.",
+      "name": "dt_log_to_primary_core_frame",
+      "trigger_table": "dt_log",
+      "target_table": "dt_inventory",
+      "source_table": "dt_log",
+      "map_table": "dt_log",
+      "mapper_module": "mappers.core_alignment_mapper",
+      "mapper_function": "build_core_frame_confirmation_batch",
+      "is_batch": true,
+      "alignment_rule": "core_frame_review",
+      "target_field": "core_frame",
+      "job_column": "dt_job",
+      "primary_selector": {
+        "group_columns": ["core_lot", "core_slot", "core_wafer"],
+        "order_columns": ["dt_index", "core_lot", "core_slot", "core_wafer"]
+      },
+      "reference": {
+        "table": "core_wafer_map",
+        "map_id_template": "{core_lot}_{core_slot}",
+        "fields": ["core_lot", "core_slot"]
+      },
+      "x_col": "core_x",
+      "y_col": "core_y",
+      "value_col": "c_bn",
+      "index_col": "",
+      "accepted_metrics": ["values", "occupancy"],
+      "assume_reference_geometry": true,
+      "allow_assumed_geometry": true,
+      "alignment_thresholds": {
+        "min_margin_dies": 5,
+        "min_discriminating_dies": 10
+      },
+      "enabled": true
+    },
+    {
+      "__comment": "Usage overlay refresh after a core frame/equation update. The output is its own derived table and replaces exactly one enriched core_wafer map. This is the allowed second hop from the automatic core-frame chain.",
+      "name": "dt_inventory_to_core_usage_map",
+      "trigger_table": "dt_inventory",
+      "target_table": "core_usage_map",
+      "source_table": "dt_log",
+      "inventory_table": "dt_inventory",
+      "mapper_module": "mappers.core_usage_mapper",
+      "mapper_function": "build_core_usage_map_batches",
+      "is_batch": true,
+      "allow_chain_trigger": true,
+      "allow_replace_map": true,
+      "enabled": true
+    },
+    {
+      "__comment": "Usage overlay revisit after raw ingest or enrichment fills core_wafer. lot/slot-only rows are intentionally a no-op; when enrichment writes core_wafer the same rule rebuilds that wafer's complete usage footprint.",
+      "name": "dt_log_to_core_usage_map",
+      "trigger_table": "dt_log",
+      "target_table": "core_usage_map",
+      "source_table": "dt_log",
+      "inventory_table": "dt_inventory",
+      "mapper_module": "mappers.core_usage_mapper",
+      "mapper_function": "build_core_usage_map_batches",
+      "is_batch": true,
+      "allow_replace_map": true,
+      "enabled": true
+    },
+    {
       "__comment": "[NOT fixture data -- DO NOT DELETE AS DEAD] This table is not referenced by any fixture, so it looks unused. It is not. It exists because it is the only live exercise of the CHAIN path: test_api.py::test_chained_ingestion asserts on the outbox events the production_plan -> inventory_master chain produces, and removing these declarations silently removes that coverage. The dt_log_to_dt_map fixture chain cannot replace it -- that rule ships enabled:false on purpose (a chain can upsert map cells but cannot purge them), and turning an unsafe rule on to keep a test green is the same mistake as deleting the test. Its auto-update collector is disabled, so the table is declared but never grows. | The rule stays ENABLED so the test exercises the real worker path rather than a mock.",
       "name": "production_to_inventory_reservation_batch",
       "trigger_table": "production_plan",

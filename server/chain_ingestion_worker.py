@@ -436,6 +436,16 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
     # 2. Map of updates grouped by target table
     # target_table -> list of GeneralUpdateItem dicts
     table_updates = defaultdict(list)
+    # A mapper may request one or more isolated scoped replacements.  They are
+    # deliberately separate from the normal per-target aggregation: one batch
+    # has one replace scope, and merging two DT jobs would make a purge broader
+    # than either mapper decision.
+    scoped_batches = []
+    # A map projection may need to register/update its own map metadata before
+    # writing cells. This is deliberately an ancillary write of the same rule,
+    # not a third chain hop: the mapper remains read-only and the worker owns
+    # all persistence and outbox semantics.
+    map_metadata_updates = []
     
     # 3. Evaluate rules for this transaction
     # To support batch rules, we group rules by trigger table to execute them efficiently.
@@ -469,6 +479,35 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                     target_payload = execute_custom_mapper(module_name, func_name, db, payloads, rule=rule)
                     if target_payload and isinstance(target_payload, dict) and target_payload.get("updates"):
                         table_updates[target_table].extend(target_payload.get("updates"))
+                    if target_payload and isinstance(target_payload, dict) and target_payload.get("map_metadata_updates"):
+                        if not rule.get("allow_map_metadata_upsert", False):
+                            raise ValueError(
+                                f"rule '{rule.get('name')}' returned map metadata without allow_map_metadata_upsert")
+                        for requested in target_payload.get("map_metadata_updates") or []:
+                            updates = requested.get("updates") if isinstance(requested, dict) else None
+                            if not isinstance(updates, dict):
+                                raise ValueError("chain map metadata update requires an updates object")
+                            if updates.get("target_table") != target_table:
+                                raise ValueError(
+                                    f"rule '{rule.get('name')}' cannot register metadata for '{updates.get('target_table')}'")
+                            if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
+                                raise ValueError("chain map metadata update requires a non-empty map_id")
+                            map_metadata_updates.append(requested)
+                    if target_payload and isinstance(target_payload, dict) and target_payload.get("batches"):
+                        if not rule.get("allow_replace_map", False):
+                            raise ValueError(
+                                f"rule '{rule.get('name')}' returned scoped batches without allow_replace_map")
+                        for requested in target_payload.get("batches") or []:
+                            if not isinstance(requested, dict) or not requested.get("replace_map"):
+                                raise ValueError("chain scoped batch must explicitly set replace_map=true")
+                            requested_target = requested.get("target_table") or target_table
+                            if requested_target != target_table:
+                                raise ValueError(
+                                    f"rule '{rule.get('name')}' cannot redirect scoped batch to '{requested_target}'")
+                            if not isinstance(requested.get("scope"), dict) or not requested["scope"]:
+                                raise ValueError("chain scoped batch requires a non-empty scope")
+                            scoped_batches.append((requested_target, requested.get("updates") or [],
+                                                   requested["scope"]))
                 else:
                     # Single event execution - one call per ROW, which for a per-row
                     # event is one call per event exactly as before.
@@ -487,7 +526,7 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 return False, error_msg, []
 
     # 4. Perform chained batch updates by target table
-    if table_updates:
+    if table_updates or map_metadata_updates or scoped_batches:
         from database import schemas, crud
         from database.context import (request_user, request_transaction_id, request_source,
                                       outbox_mode)
@@ -498,13 +537,29 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
         token_src = request_source.set("chain_ingestion")
 
         try:
-            for target_table, updates_list in table_updates.items():
+            # Map metadata goes first. Its fixed standard frame and
+            # valid_die_ref must be visible before the job's dt_map cells are
+            # created; otherwise the absent-only auto registrar could preserve
+            # a synthetic bbox frame for this map.
+            write_batches = []
+            if map_metadata_updates:
+                write_batches.append((map_meta_registrar.META_TABLE,
+                                      map_metadata_updates, False, None))
+            write_batches.extend((target, updates, False, None)
+                                 for target, updates in table_updates.items())
+            write_batches.extend((target, updates, True, scope)
+                                 for target, updates, scope in scoped_batches)
+            for target_table, updates_list, replace_map, scope in write_batches:
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
                     transaction_id=chain_tx_id,
-                    silent=False
+                    silent=False,
+                    replace_map=replace_map,
+                    scope=scope,
                 )
-                logger.info(f"Executing chained batch updates to '{target_table}' under tx '{chain_tx_id}' (size: {len(updates_list)})")
+                logger.info(
+                    f"Executing chained batch updates to '{target_table}' under tx '{chain_tx_id}' "
+                    f"(size: {len(updates_list)}, replace_map={replace_map}, scope={scope})")
                 
                 # Apply updates
                 #

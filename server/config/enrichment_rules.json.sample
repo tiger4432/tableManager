@@ -3,16 +3,9 @@
     "__comment": "Every bind param in a reference view MUST be a decision_key column -- the loader rejects anything else (enrichment_config.py:126-129) and drops just that view. A view that binds only PART of the decision key is legal but gets flagged scope_unresolved, because one confirmed value would then be stamped onto every member of the wider scope; both rules in this file bind the FULL key. | candidate_for is {target_field: view_result_column}. Without it declaring_views is empty, resolve_target_candidate refuses before running any SQL (enrichment_candidates.py:306-308), and the probe emits ZERO log lines -- which is indistinguishable from 'the feature is off'. That silent state is what this config exists to avoid. | INFERENCE #1 -- confirm which DT lot and slot a DT job's wafer ended up as. This cannot be done with a SQL join: bonding_log's (dt_lot, dt_slot) is the value AS OF BONDING and dt_log's is the value AS OF DT, and split/merge moved the wafer in between, so a naive join does not error -- it matches the wrong wafer plausibly. | auto_confirm is ON here: the candidate is a RECORDED FACT (an equipment track-in event) plus an assignment fixed by the monotonic constraint, not a guess, and a single distinct answer is the only thing that confirms. Anything else -- zero candidates, two candidates, a failed view -- stays in the queue for a human.",
     "source_table": "dt_log",
     "derived_table": "dt_job_attribution",
-    "decision_key": [
-      "dt_job"
-    ],
-    "target_fields": [
-      "dt_lot_confirmed",
-      "dt_slot_confirmed"
-    ],
-    "list_columns": [
-      "cell_count"
-    ],
+    "decision_key": ["dt_job"],
+    "target_fields": ["dt_lot_confirmed", "dt_slot_confirmed"],
+    "list_columns": ["cell_count"],
     "aggregations": {
       "cell_count": "count"
     },
@@ -52,53 +45,29 @@
       }
     ]
   },
-  "eqp_product_frame_attribution": {
-    "__comment": "INFERENCE #2 -- which of the 8 frames (4 rotations x 2 flips) were these coordinates recorded in. Fixed per equipment and product in principle, but the declaration never reaches us, so a human checks it against the configured map (user 2026-08-01). | TWO independent targets: core_frame and dt_frame are separate unknowns. Knowing a corresponding pair narrows 64 combinations to 8 -- it does not pick one. Only an anchor against the CONFIGURED map fixes either. | auto_confirm is DECLARED false, not left undeclared. Both spellings default to OFF, but 'undeclared' is the state the board recorded as silent; an explicit false is a decision on the record. The reason it is false: a wrong frame bakes an unverified rotation into stored coordinates, and unlike a wrong lot attribution nothing downstream looks wrong afterwards. The dry-run route passes ignore_knob=True, so this rule is still fully MEASURABLE with the knob off.",
+  "dt_frame_confrimation": {
     "source_table": "dt_log",
-    "derived_table": "eqp_frame_attribution",
-    "decision_key": [
-      "dt_eqp",
-      "product"
-    ],
-    "target_fields": [
-      "core_frame",
-      "dt_frame"
-    ],
-    "list_columns": [
-      "cell_count"
-    ],
-    "aggregations": {
-      "cell_count": "count"
-    },
+    "derived_table": "dt_inventory",
+    "decision_key": ["dt_job"],
+    "target_fields": ["dt_frame"],
+    "list_columns": [],
+    "aggregations": {},
     "enabled": true,
     "auto_confirm": false,
-    "reference_views": [
-      {
-        "label": "이 설비/제품의 DT job",
-        "query": "SELECT dt_job, COUNT(*) AS cells, MIN(event_time) AS at_time FROM dt_log WHERE dt_eqp = :dt_eqp AND product = :product GROUP BY dt_job ORDER BY at_time",
-        "limit": 200
-      },
-      {
-        "label": "좌표 범위 - 비대칭이면 갈리고 대칭이면 안 갈린다",
-        "query": "SELECT MIN(dt_x) AS dt_min_x, MAX(dt_x) AS dt_max_x, MIN(dt_y) AS dt_min_y, MAX(dt_y) AS dt_max_y, MIN(core_x) AS core_min_x, MAX(core_x) AS core_max_x, MIN(core_y) AS core_min_y, MAX(core_y) AS core_max_y, COUNT(*) AS cells, COUNT(DISTINCT dt_job) AS jobs FROM dt_log WHERE dt_eqp = :dt_eqp AND product = :product",
-        "limit": 1
-      },
-      {
-        "label": "설정된 DT 맵의 규약",
-        "query": "WITH ids AS (  SELECT DISTINCT dt_job AS map_id FROM dt_log  WHERE dt_eqp = :dt_eqp AND product = :product) SELECT DISTINCT 'rot' || COALESCE(NULLIF(CAST(m.grid_metadata AS jsonb) ->> 'rotation', ''), '0') || '_' || COALESCE(NULLIF(CAST(m.grid_metadata AS jsonb) ->> 'side', ''), 'front') AS dt_frame FROM wafer_map_metadata m, ids WHERE m.target_table = 'dt_map' AND m.map_id = ids.map_id",
-        "limit": 50,
-        "candidate_for": {
-          "dt_frame": "dt_frame"
-        }
-      },
-      {
-        "label": "설정된 CORE 맵의 규약",
-        "query": "WITH ids AS (  SELECT DISTINCT d.core_lot || '_' || d.core_slot AS map_id FROM dt_log d  WHERE d.dt_eqp = :dt_eqp AND d.product = :product    AND COALESCE(d.core_lot, '') <> '' AND COALESCE(d.core_slot, '') <> '') SELECT DISTINCT 'rot' || COALESCE(NULLIF(CAST(m.grid_metadata AS jsonb) ->> 'rotation', ''), '0') || '_' || COALESCE(NULLIF(CAST(m.grid_metadata AS jsonb) ->> 'side', ''), 'front') AS core_frame FROM wafer_map_metadata m, ids WHERE m.target_table = 'core_wafer_map' AND m.map_id = ids.map_id",
-        "limit": 50,
-        "candidate_for": {
-          "core_frame": "core_frame"
-        }
-      }
-    ]
+    "reference_views": [],
+    "alignment": true
+  },
+  "core_frame_review": {
+    "__comment": "Manual visual review only. dt_core_view is a separate raw core-coordinate map namespace for each DT job; its source is deliberately not dt_log because dt_log/dt_job already owns the DT-frame wafer_map_metadata record. This rule proposes no automatic conclusion and must remain auto_confirm=false until core bin-fingerprint/topology evidence has an agreed acceptance policy.",
+    "source_table": "dt_core_view",
+    "derived_table": "dt_inventory",
+    "decision_key": ["dt_job"],
+    "target_fields": ["core_frame"],
+    "list_columns": [],
+    "aggregations": {},
+    "enabled": true,
+    "auto_confirm": false,
+    "reference_views": [],
+    "alignment": true
   }
 }

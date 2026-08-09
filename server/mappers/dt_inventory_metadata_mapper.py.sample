@@ -3,16 +3,64 @@ from __future__ import annotations
 
 import json
 
+import dt_frame_transform
+import frame_confirmation
+import map_overlay
+
 
 def _value(payload, key):
     cell = (payload.get("data") or {}).get(key)
     return cell.get("value") if isinstance(cell, dict) else None
 
 
-def copy_dt_metadata_to_inventory_batch(_db, payloads, rule=None):
+def _reference_geometry(db, metadata, cache):
+    """Resolve the declared valid-die reference via the confirmation loader."""
+    reference = metadata.get(map_overlay.VALID_DIE_REF_KEY) if isinstance(metadata, dict) else None
+    if not isinstance(reference, dict):
+        return None, None
+    table, map_id = reference.get("table"), reference.get("map_id")
+    if not table or not map_id:
+        return None, None
+    key = str(table), str(map_id)
+    if key not in cache:
+        cache[key] = (
+            map_overlay.load_map_meta(db, *key) if db is not None else None,
+            frame_confirmation._basis_cells_for(db, reference) if db is not None else None,
+        )
+    return cache[key]
+
+
+def _core_wafer_lists(db, source_table, job_ids):
+    """One bounded grouped read for all jobs in this chain batch."""
+    if db is None or not job_ids:
+        return {}
+    from database import models
+
+    source = models.DYNAMIC_TABLES.get(source_table)
+    required = ("dt_job", "core_wafer", "core_lot", "core_slot")
+    if source is None or any(not hasattr(source, col) for col in required):
+        return {}
+    grouped = {}
+    rows = db.query(source.dt_job, source.core_wafer, source.core_lot, source.core_slot).filter(
+        source.dt_job.in_(list(job_ids))).all()
+    for job_id, wafer, lot, slot in rows:
+        key = (str(wafer or ""), str(lot or ""), str(slot or ""))
+        grouped.setdefault(str(job_id), {}).setdefault(key, 0)
+        grouped[str(job_id)][key] += 1
+    return {
+        job_id: [
+            {"core_wafer": wafer or None, "core_lot": lot or None, "core_slot": slot or None,
+             "die_count": count}
+            for (wafer, lot, slot), count in sorted(values.items())
+        ]
+        for job_id, values in grouped.items()
+    }
+
+
+def copy_dt_metadata_to_inventory_batch(db, payloads, rule=None):
     rule = rule or {}
     source_table = rule.get("metadata_target_table", "dt_log")
-    updates, seen = [], set()
+    updates, seen, reference_cache, candidates = [], set(), {}, []
     for payload in payloads or ():
         if _value(payload, "target_table") != source_table:
             continue
@@ -25,10 +73,24 @@ def copy_dt_metadata_to_inventory_batch(_db, payloads, rule=None):
                 continue
         except (TypeError, ValueError):
             continue
+        try:
+            basis_meta, basis_cells = _reference_geometry(db, metadata, reference_cache)
+            equations = dt_frame_transform.dt_equations(metadata, basis_meta, basis_cells)
+        except ValueError:
+            # S2 still carries the confirmed metadata. S3 waits until its
+            # physical/grid declaration is sufficient to prove a coordinate
+            # equation instead of inventing one.
+            equations = {}
         seen.add(job_id)
+        candidates.append((job_id, metadata, equations))
+    core_lists = _core_wafer_lists(db, source_table, seen)
+    for job_id, metadata, equations in candidates:
         updates.append({"business_key_val": job_id, "updates": {
             "dt_job": job_id,
             "dt_frame": json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+            "core_wafer_list": json.dumps(core_lists.get(job_id, []), ensure_ascii=False,
+                                           sort_keys=True),
+            **equations,
         },
                         "source_name": "chain_ingestion", "updated_by": "chain_metadata_identity"})
     return {"updates": updates}

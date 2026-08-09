@@ -21,7 +21,8 @@ def test_copies_dt_log_metadata_to_matching_inventory_job():
     assert result == {
         "updates": [{
             "business_key_val": "SYN-001",
-            "updates": {"dt_job": "SYN-001", "dt_frame": '{"ncols": 12}'},
+            "updates": {"dt_job": "SYN-001", "dt_frame": '{"ncols": 12}',
+                        "core_wafer_list": "[]"},
             "source_name": "chain_ingestion",
             "updated_by": "chain_metadata_identity",
         }]

@@ -85,7 +85,7 @@ silently replace a user value.
 
 | Path                             | Can do                                                                                                                                                                          | Cannot do                                                                                                        | Notes                                                                                                                                              |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Custom chain mapper              | Upsert the updates it returns; read any declared/current DB state through`db`; intentionally return no updates                                                                | Set`replace_map`; purge rows; commit directly; write raw target rows outside the worker batch                  | Worker constructs`GeneralUpdateBatch` itself with `replace_map=False`. A chain mapper therefore never has authority to delete stale map cells. |
+| Custom chain mapper              | Upsert returned updates; read declared/current DB state through `db`; intentionally return no updates | Commit directly; write raw target rows outside the worker batch; request an unapproved purge | Normal returns are upserts. Scoped replacement requires the batch envelope and `allow_replace_map: true`. A rule may explicitly authorize metadata for its own target map with `allow_map_metadata_upsert: true`. |
 | Enrichment dedup                 | Upsert**one derived decision row per declared `decision_key`**                                                                                                          | Fill`target_fields` itself; arbitrarily update source rows; delete a decision row                              | `enrichment_mapper` deliberately projects only the identity/list fields. It does not assert a candidate result.                                  |
 | Enrichment auto-confirm          | Fill a declared, currently unresolved`target_field` when the configured reference views yield exactly one candidate and both global and per-rule `auto_confirm` are enabled | Overwrite any cell that already has provenance; choose among multiple/no candidates; retract a past auto-confirm | Writes with source`enrichment_auto_confirm`; ambiguity and refusal stay visible in the queue/logs.                                               |
 | Chain replay R1                  | Re-run a chosen enabled rule over current trigger-table rows, dry-run by default; apply the mapper's nonblank upserts                                                           | Reconstruct deleted trigger rows; cause a live cascade; treat mapper absence as a blank write                    | Replay sends the same canonical payload shape. Its`chain_ingestion` writes are not recursively consumed by the live worker.                      |
@@ -94,17 +94,42 @@ silently replace a user value.
 
 ### `replace_map` boundary
 
-`replace_map=True` belongs to a direct `GeneralUpdateBatch`, not to a chain
-rule or mapper return value. It first validates that the replacement scope is a
-whole map according to the target table's declared map-key contract, then
-deletes the existing rows in that scope before writing the batch.
+`replace_map=True` validates that the replacement scope is a whole map according
+to the target table's map-key contract, then deletes that scope before writing.
 
-This is intentionally unavailable to chains. A chain can see one source job
-while a target map may contain rows owned by another job; giving the chain a
-map purge would let an incremental correction delete unrelated derived cells.
-For stale derived contributions, use positive ownership plus R2/source
-retraction (or a separately reviewed map-replacement operation), never an
-implicit chain purge.
+For a chain, it is an explicit opt-in batch envelope:
+
+```python
+return {"batches": [{"target_table": "dt_map", "replace_map": True,
+                      "scope": {"dt_job": job_id}, "updates": cells}]}
+```
+
+The worker accepts it only when the matching rule declares
+`allow_replace_map: true`; target redirection, empty scope, and non-replace
+batches are refused. One envelope entry becomes one `GeneralUpdateBatch`, so
+two maps cannot be combined. `dt_inventory_to_standard_dt_map` uses declared
+scope `dt_map.map_key_columns=["dt_job"]`; other chains remain upserts.
+
+### Target-map metadata within a chain
+
+A mapper must not write `wafer_map_metadata` directly. A rule may instead return
+`map_metadata_updates` and declare `allow_map_metadata_upsert: true`:
+
+```python
+return {
+  "map_metadata_updates": [{
+    "business_key_val": "dt_map_JOB-1",
+    "updates": {"target_table": "dt_map", "map_id": "JOB-1",
+                "grid_metadata": "<JSON>"},
+    "source_name": "chain_ingestion", "updated_by": "mapper_name",
+  }],
+  "batches": [...],
+}
+```
+
+The worker validates that the metadata target equals the rule's target table and
+writes it before that rule's map cells. This is an ancillary write inside the
+same chain rule, not a third chain hop.
 
 ## 💡 실전 예시 시나리오: 생산 부족 수량 자동 계산
 

@@ -8,29 +8,27 @@
       "source_config_ref": "bonding_plan",
       "target_map": {
         "preset": "TAPE",
-        "table": "dt_map"
+        "table": "dt_log"
       }
     },
     "bonding": {
       "description": "Bonding: 테이프 위의 칩을 base에 본딩하는 단계. 테이프에는 여러 코어 칩이 혼재하고 불량도 섞여 있다 — 코어 fail은 dt_log 조인으로 테이프 좌표에 투영된다.",
       "source_kind": "tape",
       "target_kind": "base",
+
       "bin_map": {
-        "table": "dt_map",
+        "table": "dt_log",
         "columns": {
-          "lot": "lot",
-          "slot": "slot",
+          "lot": "dt_lot",
+          "slot": "dt_slot",
           "x": "x",
           "y": "y",
-          "bin": "val"
+          "bin": "c_bn"
         }
       },
       "source": {
         "identity": {
-          "compose": [
-            "lot",
-            "slot"
-          ]
+          "compose": ["lot", "slot"]
         },
         "map_metadata": {
           "table": "wafer_map_metadata",
@@ -41,7 +39,7 @@
           }
         },
         "total_chips": {
-          "table": "dt_map",
+          "table": "dt_log",
           "columns": {
             "lot": "lot",
             "slot": "slot",
@@ -49,75 +47,9 @@
             "y": "y"
           }
         },
-        "transfer_log": {
-          "table": "bonding_log",
-          "columns": {
-            "lot": "core_lot",
-            "slot": "core_slot",
-            "x": "cx",
-            "y": "cy"
-          }
-        },
-        "origin_log": {
-          "table": "dt_log",
-          "columns": {
-            "lot": "tape_lot",
-            "slot": "tape_slot",
-            "x": "tx",
-            "y": "ty",
-            "origin_lot": "core_lot",
-            "origin_slot": "core_slot",
-            "origin_x": "cx",
-            "origin_y": "cy"
-          }
-        },
-        "process_history": {
-          "table": "wafer_process",
-          "columns": {
-            "step": "step",
-            "eqp": "eqp_id",
-            "result": "result",
-            "time": "start_time",
-            "recipe": "recipe_id",
-            "knobs": "knobs",
-            "lot": "lot",
-            "slot": "slot"
-          }
-        },
-        "fail_sources": {
-          "defect": {
-            "frame": "origin",
-            "table": "core_defect_map",
-            "columns": {
-              "lot": "lot",
-              "slot": "slot",
-              "x": "x",
-              "y": "y",
-              "val": "val"
-            },
-            "fail_values": [
-              "D"
-            ]
-          },
-          "eds_fail": {
-            "frame": "origin",
-            "table": "eds_fail_map",
-            "columns": {
-              "lot": "lot",
-              "slot": "slot",
-              "x": "x",
-              "y": "y",
-              "val": "val"
-            },
-            "fail_values": [
-              "F"
-            ]
-          }
-        },
+
         "warnings": {
-          "result_fail_values": [
-            "FAIL"
-          ]
+          "result_fail_values": ["FAIL"]
         }
       },
       "target_map": {
@@ -142,10 +74,7 @@
       }
     },
     "material_identity": {
-      "compose": [
-        "lot",
-        "slot"
-      ],
+      "compose": ["lot", "slot"],
       "separator": "_"
     }
   }

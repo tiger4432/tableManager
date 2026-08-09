@@ -34,7 +34,11 @@ def resolve_alignment_view(db, rule_name: str, key_values: dict[str, Any] | None
                            include_cells: bool = True, x_col: str | None = None,
                            y_col: str | None = None, value_col: str | None = None,
                            index_col: str | None = None,
-                           assume_reference_geometry: bool = True) -> dict:
+                           assume_reference_geometry: bool = True,
+                           alignment_thresholds: dict | None = None,
+                           source_filters: dict[str, Any] | None = None,
+                           source_table: str | None = None,
+                           ignore_source_metadata: bool = False) -> dict:
     """Return the same payload contract as ``GET /api/maps/alignment/view``.
 
     This deliberately performs no write and accepts already-parsed decision-key
@@ -51,11 +55,31 @@ def resolve_alignment_view(db, rule_name: str, key_values: dict[str, Any] | None
     if invalid:
         raise AlignmentViewRequestError(
             "'params' keys must be decision_key columns only; invalid: %s" % invalid)
+    if source_table is not None:
+        if not isinstance(source_table, str) or not source_table:
+            raise AlignmentViewRequestError("'source_table' must be a non-empty string")
+        # The alignment declaration remains the UI's review contract. A chain
+        # may deliberately score the same decision key from its raw source,
+        # avoiding a persistent review-only projection table.
+        decl = dict(decl)
+        decl["source_table"] = source_table
 
     config = map_overlay.load_overlay_config()
+    # A chain may have a narrower, declared acceptance policy than the editor's
+    # general worklist.  Keep the override local to this invocation: it is not a
+    # reload, does not mutate the shared config cache, and cannot affect a UI
+    # review made concurrently in the same process.
+    if alignment_thresholds is not None:
+        if not isinstance(alignment_thresholds, dict):
+            raise AlignmentViewRequestError("'alignment_thresholds' must be an object")
+        config = dict(config or {})
+        config["alignment"] = dict((config or {}).get("alignment") or {})
+        config["alignment"].update(alignment_thresholds)
     return map_alignment.build_alignment_view(
         db, config, decl, dict(key_values), map_table,
         reference_spec=reference_spec, include_cells=include_cells,
         x_col=x_col, y_col=y_col, value_col=value_col, index_col=index_col,
         assume_reference_geometry=assume_reference_geometry,
+        source_filters=source_filters,
+        ignore_source_metadata=ignore_source_metadata,
     )

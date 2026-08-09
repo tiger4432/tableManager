@@ -208,6 +208,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     and idempotent - re-running recomputes the same values.
     """
     from database import crud, models, schemas
+    import map_meta_registrar
     from chain_ingestion_worker import execute_custom_mapper
 
     trigger_table = rule.get("trigger_table")
@@ -244,6 +245,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         "cells_proposed": 0, "cells_written": 0,
         "skipped_blank_cells": 0, "user_protected_cells": 0,
         "rows_created": 0, "rows_updated": 0,
+        "map_metadata_items": 0, "scoped_batches": 0, "maps_replaced": 0,
         "withdrawal_candidates": [], "samples": [],
     }
 
@@ -264,11 +266,11 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             results = [execute_custom_mapper(module_name, func_name, db, p, rule=rule)
                        for p in payloads]
 
-        items = []
+        items, metadata_items, scoped_batches = [], [], []
         for res in results:
-            if not (res and isinstance(res, dict) and res.get("updates")):
+            if not isinstance(res, dict):
                 continue
-            for raw in res["updates"]:
+            for raw in res.get("updates") or ():
                 stats["mapper_items"] += 1
                 item = _normalize_mapper_item(raw)
                 updates = item.get("updates") or {}
@@ -301,20 +303,50 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                     updated_by=f"chain_replay_{run_id}",
                 ))
 
-        if apply and items:
+            # Replay is the same mapper contract as live chain ingestion.  S3
+            # returns these two envelopes instead of ordinary `updates`; the
+            # old replay loop silently discarded both, so an Admin replay could
+            # report success while replacing zero DT-map cells.
+            for raw in _map_metadata_outputs(res, rule, target_table):
+                stats["mapper_items"] += 1
+                item = _normalize_mapper_item(raw)
+                updates = item["updates"]
+                stats["cells_proposed"] += len(updates)
+                stats["map_metadata_items"] += 1
+                metadata_items.append(schemas.GeneralUpdateItem(
+                    business_key_val=item.get("business_key_val"), updates=updates,
+                    source_name=R1_SOURCE_NAME, updated_by=f"chain_replay_{run_id}"))
+
+            for scope, raws in _scoped_batch_outputs(res, rule, target_table):
+                batch_items = []
+                for raw in raws:
+                    stats["mapper_items"] += 1
+                    item = _normalize_mapper_item(raw)
+                    updates = item["updates"] or {}
+                    if not updates:
+                        continue
+                    stats["cells_proposed"] += len(updates)
+                    batch_items.append(schemas.GeneralUpdateItem(
+                        business_key_val=item.get("business_key_val"), updates=updates,
+                        source_name=R1_SOURCE_NAME, updated_by=f"chain_replay_{run_id}"))
+                if batch_items:
+                    stats["scoped_batches"] += 1
+                    scoped_batches.append((scope, batch_items))
+
+        if apply and (items or metadata_items or scoped_batches):
+            # Metadata first is the live worker's ordering too: absent-only map
+            # registration must not synthesize a frame before the explicit
+            # standard frame and valid_die_ref arrive.
+            if metadata_items:
+                _apply_replay_batch(db, schemas, crud, map_meta_registrar.META_TABLE,
+                                    metadata_items, run_id, stats, stats["pages"])
             for i in range(0, len(items), WRITE_CHUNK):
-                batch = schemas.GeneralUpdateBatch(
-                    updates=items[i:i + WRITE_CHUNK],
-                    transaction_id=f"chain_replay_{run_id}_{stats['pages']:06d}",
-                    silent=False)
-                results_rows, changed_cells, _logs, _deleted = crud.apply_batch_updates(
-                    db, target_table, batch)
-                stats["cells_written"] += len(changed_cells or [])
-                for _row, is_new in results_rows:
-                    if is_new:
-                        stats["rows_created"] += 1
-                    else:
-                        stats["rows_updated"] += 1
+                _apply_replay_batch(db, schemas, crud, target_table, items[i:i + WRITE_CHUNK],
+                                    run_id, stats, stats["pages"])
+            for scope, batch_items in scoped_batches:
+                _apply_replay_batch(db, schemas, crud, target_table, batch_items,
+                                    run_id, stats, stats["pages"], replace_map=True, scope=scope)
+                stats["maps_replaced"] += 1
         elif items:
             # Dry-run: count the cells a human's value would keep protected. This
             # is the number that makes "the user layer is safe" observable rather
@@ -332,6 +364,51 @@ def _normalize_mapper_item(raw) -> dict:
         return raw
     return {"business_key_val": getattr(raw, "business_key_val", None),
             "updates": getattr(raw, "updates", None) or {}}
+
+
+def _map_metadata_outputs(result: dict, rule: dict, target_table: str):
+    """Validate the explicit map-metadata envelope shared with the live worker."""
+    outputs = result.get("map_metadata_updates") or ()
+    if outputs and not rule.get("allow_map_metadata_upsert", False):
+        raise ReplayRefused(f"rule '{rule.get('name')}' returned map metadata without allow_map_metadata_upsert")
+    for raw in outputs:
+        item = _normalize_mapper_item(raw)
+        updates = item.get("updates")
+        if not isinstance(updates, dict) or updates.get("target_table") != target_table:
+            raise ReplayRefused("chain map metadata update must name this rule's target table")
+        if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
+            raise ReplayRefused("chain map metadata update requires a non-empty map_id")
+        yield item
+
+
+def _scoped_batch_outputs(result: dict, rule: dict, target_table: str):
+    """Validate and expose replace-map batches without broadening their scope."""
+    outputs = result.get("batches") or ()
+    if outputs and not rule.get("allow_replace_map", False):
+        raise ReplayRefused(f"rule '{rule.get('name')}' returned scoped batches without allow_replace_map")
+    for raw in outputs:
+        if not isinstance(raw, dict) or not raw.get("replace_map"):
+            raise ReplayRefused("chain scoped batch must explicitly set replace_map=true")
+        if (raw.get("target_table") or target_table) != target_table:
+            raise ReplayRefused("chain scoped batch cannot redirect to another target table")
+        scope = raw.get("scope")
+        if not isinstance(scope, dict) or not scope:
+            raise ReplayRefused("chain scoped batch requires a non-empty scope")
+        yield scope, raw.get("updates") or ()
+
+
+def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, page,
+                        replace_map=False, scope=None):
+    batch = schemas.GeneralUpdateBatch(
+        updates=items, transaction_id=f"chain_replay_{run_id}_{page:06d}", silent=False,
+        replace_map=replace_map, scope=scope)
+    results_rows, changed_cells, _logs, _deleted = crud.apply_batch_updates(db, table_name, batch)
+    stats["cells_written"] += len(changed_cells or [])
+    for _row, is_new in results_rows:
+        if is_new:
+            stats["rows_created"] += 1
+        else:
+            stats["rows_updated"] += 1
 
 
 def _count_user_protected(db, target_table: str, items: list) -> int:

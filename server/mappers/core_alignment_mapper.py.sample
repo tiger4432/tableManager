@@ -1,0 +1,219 @@
+"""Config-driven primary-core automatic core-frame confirmation.
+
+The mapper selects one stable primary core wafer in memory, then applies that
+identity as an equality-only source filter to the same alignment service the
+editor uses. ``dt_core_view`` remains a visual-review projection only; this
+production chain never persists an intermediate map.
+
+Nothing in this module names a product, a wafer-id convention, or a defect-map
+table.  Those are rule configuration so the operating team can change the
+reference source without changing mapper code.
+"""
+from __future__ import annotations
+
+import json
+from collections import OrderedDict
+
+import alignment_view_service
+import dt_frame_transform
+import map_alignment
+import map_overlay
+
+
+SOURCE_NAME = "chain_ingestion"
+UPDATED_BY = "chain_core_alignment"
+
+
+def _value(payload: dict, key: str):
+    cell = (payload.get("data") or {}).get(key)
+    return cell.get("value") if isinstance(cell, dict) else None
+
+
+def _nonblank(value) -> bool:
+    return value is not None and str(value).strip() != ""
+
+
+def _jobs_from_payloads(payloads, job_column: str) -> list[str]:
+    jobs = OrderedDict()
+    for payload in payloads or ():
+        job_id = _value(payload, job_column)
+        if _nonblank(job_id):
+            jobs.setdefault(str(job_id), None)
+    return list(jobs)
+
+
+def _row_value(row, column: str):
+    return getattr(row, column, None)
+
+
+def _sortable(value):
+    """A deterministic ordering key which puts absent primary keys last."""
+    if value is None:
+        return (1, "")
+    if isinstance(value, (int, float)):
+        return (0, value)
+    text = str(value).strip()
+    if not text:
+        return (1, "")
+    try:
+        return (0, float(text))
+    except ValueError:
+        return (0, text)
+
+
+def _primary_group(rows, selector: dict):
+    """Return the configured stable primary core group, or ``None``.
+
+    The group's rank is its earliest row by ``order_columns``.  With the
+    shipped rule that is ``dt_index`` followed by lot/slot/wafer tie breakers.
+    A job therefore keeps the same primary core when later rows are appended.
+    """
+    group_columns = list(selector.get("group_columns") or ())
+    order_columns = list(selector.get("order_columns") or ())
+    if not group_columns or not order_columns:
+        raise ValueError("primary_selector requires group_columns and order_columns")
+    groups = {}
+    for row in rows:
+        key_values = tuple(_row_value(row, column) for column in group_columns)
+        if not all(_nonblank(value) for value in key_values):
+            continue
+        rank = tuple(_sortable(_row_value(row, column)) for column in order_columns)
+        bucket = groups.setdefault(key_values, {"rank": rank, "rows": []})
+        if rank < bucket["rank"]:
+            bucket["rank"] = rank
+        bucket["rows"].append(row)
+    if not groups:
+        return None
+    key, chosen = min(groups.items(), key=lambda item: (item[1]["rank"],
+                                                         tuple(map(str, item[0]))))
+    return {"key": key, "rows": chosen["rows"],
+            "identity": dict(zip(group_columns, key)), "rank": chosen["rank"]}
+
+
+def _reference_spec(rule: dict, identity: dict) -> str | None:
+    """Build ``table:map_id`` from the selected primary core identity."""
+    reference = rule.get("reference") or {}
+    table = reference.get("table")
+    template = reference.get("map_id_template")
+    if not isinstance(table, str) or not table or not isinstance(template, str) or not template:
+        raise ValueError("core reference requires table and map_id_template")
+    fields = {column: identity.get(column) for column in reference.get("fields") or ()}
+    if not fields or not all(_nonblank(value) for value in fields.values()):
+        return None
+    try:
+        map_id = template.format(**fields)
+    except (KeyError, ValueError):
+        raise ValueError("core reference map_id_template uses undeclared fields")
+    return "%s:%s" % (table, map_id)
+
+
+def _automatic_gate(view: dict, rule: dict) -> bool:
+    """Accept only declared metrics and complete, non-truncated winners."""
+    ruling, stats = view.get("ruling") or {}, view.get("stats") or {}
+    reference, sources = view.get("reference") or {}, view.get("sources") or {}
+    accepted = set(rule.get("accepted_metrics") or ())
+    geometry_ok = (not ruling.get("geometry_assumed") or
+                   bool(rule.get("allow_assumed_geometry", False)))
+    return (
+        view.get("state") == map_alignment.STATE_SCORED
+        and bool(ruling.get("winner"))
+        and ruling.get("metric") in accepted
+        and geometry_ok
+        and not ruling.get("thresholds_defaulted")
+        and not stats.get("truncated")
+        and not sources.get("truncated")
+        and not reference.get("truncated")
+        and reference.get("table") and reference.get("map_id")
+    )
+
+
+def _placement(ruling: dict, winner: str):
+    candidate = (ruling.get("by_frame") or {}).get(winner) or {}
+    shift = candidate.get("shift")
+    if not isinstance(shift, dict) or shift.get("dx") is None or shift.get("dy") is None:
+        return None
+    return {"dx": shift["dx"], "dy": shift["dy"]}
+
+
+def build_core_frame_confirmation_batch(db, payloads, rule=None):
+    """Write config-approved core-frame metadata onto ``dt_inventory``."""
+    rule = rule or {}
+    rule_name = rule.get("alignment_rule", "core_frame_review")
+    map_table = rule.get("map_table", "dt_log")
+    target_field = rule.get("target_field", "core_frame")
+    target_table = rule.get("target_table", "dt_inventory")
+    job_column = rule.get("job_column", "dt_job")
+    source_table = rule.get("source_table", "dt_log")
+    decl = alignment_view_service.declared_alignment_rule(rule_name)
+    if list(decl.get("decision_key") or ()) != [job_column]:
+        raise ValueError("core alignment rule decision key must be [%s]" % job_column)
+    from database import models
+    source = models.DYNAMIC_TABLES.get(source_table)
+    jobs = _jobs_from_payloads(payloads, job_column)
+    if source is None or not hasattr(source, job_column):
+        raise ValueError("core alignment source table '%s' is not initialized" % source_table)
+    rows_by_job = {job: [] for job in jobs}
+    for row in db.query(source).filter(getattr(source, job_column).in_(jobs)).all():
+        rows_by_job[str(_row_value(row, job_column))].append(row)
+
+    updates = []
+    selector = rule.get("primary_selector") or {}
+    for job_id in jobs:
+        selected = _primary_group(rows_by_job.get(job_id, ()), selector)
+        if selected is None:
+            continue
+        reference_spec = _reference_spec(rule, selected["identity"])
+        if reference_spec is None:
+            continue
+        view = alignment_view_service.resolve_alignment_view(
+            db, rule_name, {job_column: job_id}, map_table,
+            reference_spec=reference_spec, include_cells=False,
+            x_col=rule.get("x_col"), y_col=rule.get("y_col"),
+            value_col=rule.get("value_col"), index_col=rule.get("index_col"),
+            assume_reference_geometry=bool(rule.get("assume_reference_geometry", True)),
+            alignment_thresholds=rule.get("alignment_thresholds"),
+            source_filters=selected["identity"],
+            source_table=source_table,
+            ignore_source_metadata=True,
+        )
+        if not _automatic_gate(view, rule):
+            continue
+        winner = view["ruling"]["winner"]
+        placement = _placement(view["ruling"], winner)
+        if placement is None:
+            continue
+        reference = view["reference"]
+        basis = {"table": reference["table"], "map_id": reference["map_id"]}
+        basis_meta = map_overlay.load_map_meta(db, basis["table"], basis["map_id"])
+        basis_cells, _values, truncated, _kind = map_alignment._cells_of(
+            db, map_overlay.load_overlay_config(), basis["table"], basis["map_id"],
+            map_overlay.MAX_VALID_DIE_CELLS)
+        if basis_meta is None or truncated or not basis_cells:
+            continue
+        mark = {"source": UPDATED_BY, "rule": rule_name, "winner": winner,
+                "reference": basis, "primary_core": selected["identity"],
+                "primary_reference_spec": reference_spec}
+        metadata = map_alignment.confirmed_meta_for(
+            None, basis_meta, basis, winner, mark, placement,
+            placement=placement, basis_cells=basis_cells)
+        if metadata is None:
+            continue
+        # Reuse the physical core map's declared valid-die basis.  The core
+        # map identifies the wafer/bin fingerprint; its valid_die_ref is the
+        # product die-domain authority carried into the confirmed core frame.
+        core_valid_die_ref = basis_meta.get(map_overlay.VALID_DIE_REF_KEY)
+        if isinstance(core_valid_die_ref, dict):
+            metadata = map_overlay.apply_valid_die_ref(metadata, core_valid_die_ref)
+        try:
+            equations = dt_frame_transform.core_equations(metadata, basis_meta, basis_cells)
+        except ValueError:
+            # One confirmation is one transform authority. Do not store a
+            # frame without the equations required to use it.
+            continue
+        updates.append({"business_key_val": job_id,
+                        "updates": {job_column: job_id,
+                                    target_field: json.dumps(metadata, ensure_ascii=False,
+                                                             sort_keys=True),
+                                    **equations},
+                        "source_name": SOURCE_NAME, "updated_by": UPDATED_BY})
+    return {"updates": updates}

@@ -1,5 +1,4 @@
 {
-  "__comment": "M1 bonding plan 역할 바인딩. [2026-08-04 완화] 보조 역할(process_history·defect·eds_fail·used_chips)은 전부 **선택**이다 — 그런 테이블이 없는 사이트는 키를 아예 선언하지 마라(상태 not_declared, 그 감산항 없이 집계, 빠진 종류는 응답 inactive_subtractions가 명시). 선언해 놓고 깨뜨리면(오타·테이블 부재) 종전대로 missing 강등. total_chips는 분모라 계속 필수. [N14 2026-08-04] `fail_values`를 선언했으면 그 값을 읽을 `val` 역할도 반드시 함께 선언하라 ― `val`이 없으면 fail 판정 자체를 내릴 수 없으므로 그 감산은 0으로 거절되고 소스가 connected(fail_value_column_absent)로 강등한다(remaining은 상한만 나간다). 선택 역할은 유도되지 않으므로 지우면 그 기능이 조용히 사라진다 ― 지우기 전에 `GET /admin/transfer-plan/dry-run`이 부재를 `origin: \"absent\"` 행으로 보여준다.",
   "core_identity": {
     "compose": [
       "lot",

@@ -3099,7 +3099,25 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     pivot_map_index = _pivot[0] if _pivot else None
     pivot_i = _pivot[1] if _pivot else None
     pivot_cell = _pivot[2] if _pivot else None
-    for frame in CANDIDATE_FRAMES:
+    # Start corner is a walk/index assertion, not an occupancy or bin-value
+    # assertion.  Without an actual index value, scoring TR would only change
+    # the shift-search anchor and create a false second geometric candidate.
+    # Keep the canonical top-left anchor in that case; retain both starts only
+    # when the source carries at least one usable index.
+    has_source_index = any(
+        value is not None
+        for sm in usable
+        for value in (sm.get("_use_indices") or ())
+    )
+    # A populated index column alone is not index *mode*: its own thresholds
+    # must also be complete before it can rank a result. Value/occupancy mode
+    # deliberately has no start corner and no anchor-derived shift base.
+    index_mode = has_source_index and index_thresholds_complete(index_thresholds)
+    frames_for_run = (CANDIDATE_FRAMES if index_mode else tuple(
+        candidate_text(rotation, START_TOP_LEFT) for rotation in FRAME_ROTATIONS
+    ))
+
+    for frame in frames_for_run:
         # 이 후보가 주장하는 **걸음의 시작 모서리**. 기하가 아니라 순번 축에만 걸린다 —
         # `source_meta_for_frame`은 아래에서 면(`front`)만 읽는다.
         cand_l2r = left_to_right_of(frame)
@@ -3299,9 +3317,15 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     #    시작했다는 주장. 그 주장이 거짓인 작업(아래쪽 절반만 도는 부분 맵 등)에서는
     #    앵커가 틀린 자리에 맵을 놓는다. 그래서 ⓐ 순번이 있을 때만 걸고, ⓑ 어느 쪽이
     #    돌았는지를 판정이 직접 나르며(`ruling.placement`), ⓒ 되돌리는 스위치를 하나로 둔다.
-    anchor_dxy, anchor_reason = _anchor_shift(
-        per_candidate, source_indices, cell_owner, reference_top_left, anchor_cell,
-        reference_top_right=reference_top_right)
+    if index_mode:
+        anchor_dxy, anchor_reason = _anchor_shift(
+            per_candidate, source_indices, cell_owner, reference_top_left, anchor_cell,
+            reference_top_right=reference_top_right)
+    else:
+        # Values/occupancy compare coordinate placement, not a walk.  A partial
+        # map may already carry absolute coordinates, so its first die must not
+        # be forced onto the reference's first die before free shift search.
+        anchor_dxy, anchor_reason = None, None
     for c in per_candidate:
         if c["keys"] is None or c["keys"].size == 0:
             c.update(dx=None, dy=None, agreement=0, member=None, scored=False)
@@ -3354,7 +3378,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             _sf = first_die_of(c.get("_placed") or (), _ltr)
             _rf = first_die_of(ref_pairs, _ltr)
             _base = ((_rf[0] - _sf[0], _rf[1] - _sf[1])
-                     if _sf is not None and _rf is not None else (0, 0))
+                     if index_mode and _sf is not None and _rf is not None else (0, 0))
             dx, dy, _hit = _solve_shift(c["keys"], ref_sorted, shift_window, base=_base)
             # 🔴 제품 소유자 요청 2026-08-08: 「유효다이맵 맨윗줄 왼쪽, 맨왼쪽줄 위쪽 두 개
             #    다이 좌표랑 소스맵 1번 좌표, 그래서 계산한 시프트 로그 뿌려」. 화면만 보고
@@ -3857,7 +3881,8 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     ruling["sides_considered"] = [CANDIDATE_SIDE]
     ruling["sides_narrowed"] = False
     #: 좁혀지지 않은 축이 **무엇인가**. 후보 여덟은 이 둘을 다 본다.
-    ruling["starts_considered"] = list(CANDIDATE_STARTS)
+    ruling["starts_considered"] = ([START_TOP_LEFT, START_TOP_RIGHT]
+                                    if index_mode else [START_TOP_LEFT])
     ruling["geometry_assumed"] = bool(assumed_ids)
     ruling["assumed_map_count"] = len(assumed_ids)
     stats = {"scored_cells": scored_cells, "truncated": truncated,
@@ -5089,7 +5114,7 @@ def _load_reference(db, cfg: dict, table: str, map_id: str, origin: str, cap: in
                        "기준 맵 '%s · %s'의 규격이 wafer_map_metadata에 등록되지 않았습니다"
                        % (table, map_id))
     why = map_overlay.geometry_refusal(meta)
-    if why is not None:
+    if why is not None and not _allows_synthetic_reference_geometry(table):
         return _refuse(REF_REFUSAL_GEOMETRY, "기준 맵 '%s · %s': %s" % (table, map_id, why))
     try:
         cells, values, truncated, kind = _cells_of(db, cfg, table, map_id, cap)
@@ -5291,7 +5316,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                          cell_cap: int = MAX_PAYLOAD_CELLS,
                          x_col: str = None, y_col: str = None,
                          value_col: str = None, index_col: str = None,
-                         assume_reference_geometry: bool = True) -> dict:
+                         assume_reference_geometry: bool = True,
+                         source_filters: dict | None = None,
+                         ignore_source_metadata: bool = False) -> dict:
     """한 결정 단위의 정렬 화면 payload **전부**를 한 번에 만든다. 읽기 전용이다.
 
     후보 8개의 채점이 같은 응답에 들어간다. 후보를 바꾸는 것은 네트워크가 아니라 리페인트여야
@@ -5325,6 +5352,17 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         if attr is None:
             raise ValueError("소스 테이블 '%s'에 결정키 컬럼 '%s'이 없습니다" % (src_table, col))
         filters.append(attr == val)
+    # A chain can score one material subset of a decision unit without storing
+    # an extra derived map.  Restrict this to validated equality predicates;
+    # this is not an ad-hoc query language for the HTTP endpoint.
+    if source_filters is not None:
+        if not isinstance(source_filters, dict):
+            raise ValueError("source_filters must be an object")
+        for col, val in source_filters.items():
+            attr = getattr(src_model, col, None)
+            if attr is None:
+                raise ValueError("source table '%s' has no filter column '%s'" % (src_table, col))
+            filters.append(attr == val)
 
     key_attrs = [getattr(src_model, c, None) for c in map_key_cols]
     if any(a is None for a in key_attrs):
@@ -5381,7 +5419,11 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         cells, cvals = _to_cells([(r[0], r[1]) for r in rows],
                                  [(r[v_at] if v_at is not None else None) for r in rows])
         sm = {"map_id": mid, "table": map_table,
-              "meta": map_overlay.load_map_meta(db, map_table, mid),
+              # dt_log's metadata describes its DT coordinates.  A core-frame
+              # chain can reuse the raw rows with core_x/core_y, but must not
+              # accidentally treat that DT declaration as core geometry.
+              "meta": (None if ignore_source_metadata
+                       else map_overlay.load_map_meta(db, map_table, mid)),
               "cells": cells, "values": cvals}
         if k_at is not None:
             # 🔴 순번은 좌표와 **같은 순서·같은 길이**여야 한다. `_to_cells`가 좌표를 거르면
@@ -5857,19 +5899,36 @@ def _chunks(seq, n):
 REFERENCE_CATALOG_SERVED = "served"          # 조회했다. items가 비어도 그건 답이다
 REFERENCE_CATALOG_UNAVAILABLE = "unavailable"  # 조회 자체가 불가 (메타 표 부재 등)
 
-#: 한 요청이 검사하는 후보 바닥 수 상한. 바닥은 제품·타입 단위라 실제로는 훨씬 적다.
-MAX_REFERENCE_CANDIDATES = 50
+#: 한 요청이 검사하는 기준 맵 후보 수 상한. Core defect/bin 맵은 wafer-id 단위로
+#: 수백 장이 동시에 존재하므로, Map Editor의 수동 기준 선택에서 50개로 자르면 실제
+#: wafer를 고를 수 없다. 후보당 메타와 최대 한 셀만 읽어 가용성만 확인한다.
+MAX_REFERENCE_CANDIDATES = 500
+
+# A physical core defect/bin map is a coordinate fingerprint. Its
+# auto-registered 1x1 physical geometry is not used for this comparison;
+# grid, occupied cells, and bin values are. This exemption is deliberately
+# table-scoped so synthetic product valid-die metadata remains refused.
+_SYNTHETIC_GEOMETRY_REFERENCE_TABLES = frozenset({"core_wafer_map"})
 
 
-#: 바닥이 저장되는 테이블들. 오늘은 하나이고, 그것이 **고정된 읽기**(1-a 판정)의 결과다.
+def _allows_synthetic_reference_geometry(table: str) -> bool:
+    return str(table or "") in _SYNTHETIC_GEOMETRY_REFERENCE_TABLES
+
+
+#: 정렬 기준으로 실제 해석 가능한 물리 맵 테이블들.
+#:
+#: ``valid_die_ref``는 제품의 유효 다이 바닥이고, ``core_wafer_map``은 wafer-id 단위로
+#: 도착하는 실제 core defect/bin 맵이다. 후자는 core-frame 검토에서 기준으로 직접 골라
+#: 보아야 하므로 카탈로그에 포함한다. 이 목록은 *읽기/채점 후보*만 정하며, 어떤 frame을
+#: 확정하거나 자동 적용하지는 않는다.
 def floor_tables() -> list:
-    """바닥 셀이 실제로 저장돼 있는 테이블 목록. 오늘은 `VALID_DIE_TABLE` 하나다.
+    """바닥 셀이 실제로 저장돼 있는 테이블 목록.
 
     선언이 어느 테이블을 이름 붙였든 `parse_valid_die_ref`가 읽기를 여기로 고정한다. 목록을
     리스트로 두는 이유는 그 고정이 언젠가 풀릴 때 **응답 형태를 바꾸지 않기 위해서**다 —
     항목은 이미 `table`을 달고 나가므로 여러 테이블이 섞여도 클라는 그대로 읽는다.
     """
-    return [map_overlay.VALID_DIE_TABLE]
+    return [map_overlay.VALID_DIE_TABLE, "core_wafer_map"]
 
 
 def resolve_reference_catalog(db, cfg: dict, table: str = None,

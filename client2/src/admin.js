@@ -1194,9 +1194,37 @@ function renderWorkspaceTable() {
 }
 
 // Chain 탭 §현황: Chain Rules
+function chainRuleIsActive(rule) {
+  return rule && rule.enabled !== false && rule.active !== false;
+}
+
+function chainRuleCapabilities(rule) {
+  const badges = [];
+  badges.push(`<span class="badge badge-muted">${rule.is_batch ? 'BATCH' : 'ROW'}</span>`);
+  if (rule.allow_chain_trigger) badges.push('<span class="badge badge-warning">CASCADE</span>');
+  if (rule.allow_map_metadata_upsert) badges.push('<span class="badge badge-warning">MAP META</span>');
+  if (rule.allow_replace_map) badges.push('<span class="badge badge-danger">REPLACE MAP</span>');
+  return badges.join('');
+}
+
+function chainRuleNarrative(rule) {
+  const lines = [];
+  lines.push(`Trigger: ${rule.trigger_table || '-'} → ${rule.target_table || '-'}`);
+  lines.push(rule.is_batch ? 'Batch mapper: one transaction group at a time.' : 'Row mapper: one event at a time.');
+  if (rule.source_table && rule.source_table !== rule.trigger_table) {
+    lines.push(`Reads source rows from ${rule.source_table}.`);
+  }
+  if (rule.allow_chain_trigger) lines.push('Consumes chain-created events (cycle-checked at config load).');
+  if (rule.allow_map_metadata_upsert) lines.push('May register metadata only for its own target map before cells are written.');
+  if (rule.allow_replace_map) lines.push('May replace a mapper-declared, validated map scope.');
+  if (!chainRuleIsActive(rule)) lines.push('Disabled: this rule is not evaluated by the worker.');
+  return lines.join('\n');
+}
+
 function renderChainTable() {
   chainListBody.innerHTML = '';
-  setSectionCount('chain-rule-count', chainData.length, null);
+  const activeCount = chainData.filter(chainRuleIsActive).length;
+  setSectionCount('chain-rule-count', `${activeCount}/${chainData.length}`, activeCount ? 'ok' : 'danger');
 
   if (chainData.length === 0) {
     chainEmptyState.style.display = 'flex';
@@ -1211,16 +1239,26 @@ function renderChainTable() {
     row.className = `table-row ${selectedChainName === rule.name ? 'active' : ''}`;
     row.dataset.name = rule.name;
 
-    const isActive = rule.active !== false;
+    const isActive = chainRuleIsActive(rule);
     const activeBadge = isActive
       ? `<span class="badge badge-success">ACTIVE</span>`
       : `<span class="badge badge-danger">DISABLED</span>`;
+    const mapper = [rule.mapper_module, rule.mapper_function].filter(Boolean).join('.');
+    const source = rule.trigger_table || '-';
+    const target = rule.target_table || '-';
+    const sourceNote = rule.source_table && rule.source_table !== source
+      ? `reads ${rule.source_table}` : 'uses trigger rows';
 
     row.innerHTML = `
-      <td style="font-weight: bold; color: var(--color-primary);">${rule.name}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${rule.trigger_table}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${rule.target_table}</td>
-      <td style="text-align: center;">${activeBadge}</td>
+      <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div></td>
+      <td><div class="chain-flow"><span>${source}</span><span class="chain-flow-arrow">→</span><span>${target}</span></div><div class="chain-flow-note">${sourceNote}</div></td>
+      <td><div class="chain-capabilities">${chainRuleCapabilities(rule)}</div></td>
+      <td><div class="chain-capabilities">${[
+        rule.allow_map_metadata_upsert ? '<span class="badge badge-warning">META UPSERT</span>' : '',
+        rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
+        !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
+      ].join('')}</div></td>
+      <td><div class="chain-state">${activeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span></div></td>
     `;
 
     row.addEventListener('click', () => {
@@ -2963,13 +3001,14 @@ function selectChainRow(rule) {
 
   diagnosticsTitle.textContent = '🔍 Chained Ingestion Rule Details';
   tracebackTitle.textContent = 'Rule Description';
-  tracebackSeverity.textContent = rule.active !== false ? 'ACTIVE' : 'DISABLED';
-  tracebackSeverity.className = rule.active !== false ? 'badge badge-success' : 'badge badge-danger';
+  tracebackSeverity.textContent = chainRuleIsActive(rule) ? 'ACTIVE' : 'DISABLED';
+  tracebackSeverity.className = chainRuleIsActive(rule) ? 'badge badge-success' : 'badge badge-danger';
   tracebackSeverity.style.display = 'inline';
   payloadTitle.innerHTML = `Raw Chain Ingestion Rule Configuration
     <button id="inline-edit-mapper-btn" class="glass-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Mapper Code</button>`;
 
-  tracebackViewer.textContent = rule.description || 'No description provided for this chain rule.';
+  tracebackViewer.textContent = chainRuleNarrative(rule) +
+    (rule.description ? `\n\n${rule.description}` : '');
   payloadViewer.textContent = JSON.stringify(rule, null, 2);
 
   const inlineEditBtn = byId('inline-edit-mapper-btn');

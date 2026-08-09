@@ -103,6 +103,13 @@ def _not_offered(cat, map_id):
     return next(n for n in cat["not_offered"] if n["map_id"] == map_id)
 
 
+def test_only_physical_core_maps_may_use_synthetic_reference_geometry():
+    """Core bin/defect comparison consumes its grid and fingerprint, not chip size."""
+    assert ma._allows_synthetic_reference_geometry("core_wafer_map") is True
+    assert ma._allows_synthetic_reference_geometry(map_overlay.VALID_DIE_TABLE) is False
+    assert ma._allows_synthetic_reference_geometry("core_defect_map") is False
+
+
 # ---------------------------------------------------------------------------
 # the question is answerable without a rule - the whole point of the decoupling
 # ---------------------------------------------------------------------------

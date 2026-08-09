@@ -1,0 +1,87 @@
+"""dt_inventory equations -> one scoped standard-coordinate dt_map replacement."""
+from __future__ import annotations
+
+import json
+
+import dt_frame_transform
+import map_meta_registrar
+import map_overlay
+
+
+def _value(payload, key):
+    cell = (payload.get("data") or {}).get(key)
+    return cell.get("value") if isinstance(cell, dict) else None
+
+
+_EQUATION_FIELDS = (
+    "dt_x_base", "dt_x_sign", "dt_x_offset",
+    "dt_y_base", "dt_y_sign", "dt_y_offset",
+)
+
+
+def build_standard_dt_map_batches(db, payloads, rule=None):
+    """Project each changed DT job from dt_log using its persisted equation."""
+    from database import models
+
+    jobs = {}
+    for payload in payloads or ():
+        job_id = _value(payload, "dt_job")
+        equation = {field: _value(payload, field) for field in _EQUATION_FIELDS}
+        frame = _value(payload, "dt_frame")
+        if not (isinstance(job_id, str) and job_id and
+                all(v is not None for v in equation.values()) and frame):
+            continue
+        try:
+            frame_meta = frame if isinstance(frame, dict) else json.loads(frame)
+            standard_meta = dt_frame_transform.standard_meta(frame_meta)
+        except (TypeError, ValueError):
+            continue
+        jobs[job_id] = {"equation": equation, "standard_meta": standard_meta}
+    if not jobs:
+        return {"batches": []}
+
+    source = models.DYNAMIC_TABLES.get((rule or {}).get("source_table", "dt_log"))
+    if source is None:
+        raise ValueError("dt_log model is not initialized")
+
+    batches, metadata_updates = [], []
+    for job_id, job in jobs.items():
+        equation = job["equation"]
+        # dt_frame is the transform authority, but valid_die_ref is the source
+        # map declaration. Re-read it from dt_log metadata so a frame confirmed
+        # before the declaration was stamped cannot silently drop the reference
+        # on the derived standard map.
+        source_meta = map_overlay.load_map_meta(db, (rule or {}).get("source_table", "dt_log"), job_id)
+        if isinstance(source_meta, dict):
+            standard_meta = map_overlay.apply_valid_die_ref(
+                job["standard_meta"], source_meta.get(map_overlay.VALID_DIE_REF_KEY))
+        else:
+            standard_meta = job["standard_meta"]
+        metadata_updates.append({
+            "business_key_val": map_meta_registrar.meta_business_key("dt_map", job_id),
+            "updates": {
+                "target_table": "dt_map",
+                "map_id": job_id,
+                "grid_metadata": json.dumps(standard_meta, ensure_ascii=False, sort_keys=True),
+            },
+            "source_name": "chain_ingestion",
+            "updated_by": "dt_standard_map_metadata",
+        })
+        rows = db.query(source).filter(source.dt_job == job_id).all()
+        updates = []
+        for row in rows:
+            try:
+                x, y = dt_frame_transform.apply_dt_equations(row.dt_x, row.dt_y, equation)
+            except ValueError:
+                continue
+            updates.append({"updates": {
+                "dt_job": job_id, "dt_x": x, "dt_y": y,
+                "dt_index": row.dt_index, "c_bn": row.c_bn,
+            }, "source_name": "chain_ingestion", "updated_by": "dt_standard_map"})
+        batches.append({
+            "target_table": (rule or {}).get("target_table", "dt_map"),
+            "replace_map": True,
+            "scope": {"dt_job": job_id},
+            "updates": updates,
+        })
+    return {"map_metadata_updates": metadata_updates, "batches": batches}

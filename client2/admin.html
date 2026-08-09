@@ -336,6 +336,21 @@
       border: 1px solid var(--border-strong);
     }
 
+    /* Chain rules are a directed graph, not merely a source/target list. */
+    .chain-rule-name { font-weight: 650; color: var(--color-primary); }
+    .chain-rule-mapper, .chain-flow, .chain-flow-note {
+      font-family: var(--font-mono);
+      font-size: 0.77rem;
+    }
+    .chain-rule-mapper, .chain-flow-note { color: var(--text-muted); margin-top: 4px; }
+    .chain-flow { display: flex; align-items: center; gap: 7px; font-weight: 500; }
+    .chain-flow-arrow { color: var(--accent); font-family: var(--font-sans); }
+    .chain-capabilities { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chain-capabilities .badge { padding: 3px 6px; font-size: 0.68rem; }
+    .chain-state { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .chain-state-note { color: var(--text-dim); font-size: 0.7rem; white-space: nowrap; }
+    .table-row.row-inactive td { opacity: 0.56; }
+
     /* ── Auto Update 수집기 active 토글 스위치 ── */
     .au-switch {
       position: relative;
@@ -1318,10 +1333,11 @@
               <table class="table-container">
                 <thead class="table-header">
                   <tr>
-                    <th>Rule Name</th>
-                    <th style="width: 180px;">Source Table</th>
-                    <th style="width: 180px;">Target Table</th>
-                    <th style="width: 110px; text-align: center;">Active</th>
+                    <th>Rule / Mapper</th>
+                    <th style="width: 240px;">Data Flow</th>
+                    <th style="width: 135px;">Execution</th>
+                    <th style="width: 190px;">Write Policy</th>
+                    <th style="width: 105px; text-align: center;">State</th>
                   </tr>
                 </thead>
                 <tbody id="chain-list-body"></tbody>

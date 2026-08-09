@@ -2,37 +2,40 @@
   "__comment": "범용 맵 오버레이 config (S1'/S2). align은 기본적으로 각 맵의 wafer_map_metadata(rotation/side) 차이에서 자동 유도되므로 여기 선언은 '예외 보정용'이다 — 메타로 표현 못 하는 offset이나 장비별 편차만 적는다. paint_lock은 어떤 값이 페인팅을 막는지의 정본 선언이며 클라는 GET /api/maps/paint-rules로 읽어 적용한다(하드코딩 금지).",
   "__table_bindings_comment": "좌표 바인딩도 '예외 보정용'이다 — 기본적으로 table_config의 map_key_columns + x/y 컬럼 + val 후보에서 자동 유도된다(선언 없는 맵도 겹칠 수 있어야 한다). 여기에는 좌표 컬럼명이 관례(x/y)와 다른 로그성 테이블만 남긴다.",
   "table_bindings": {
-    "__index_comment": "index: 순번 컬럼(예 dt_index). x/y와 **같은 칸에** 적는 것이 「이 번호는 이 x/y 보행의 순서다」라는 주장이고, 다른 좌표계로 열린 실행에는 따라가지 않는다(map_alignment._same_walk가 막고 사유를 낸다). 한 테이블이 두 좌표계를 들고 있으면(dt_log의 dt_x/dt_y와 core_x/core_y) 이 구별이 가상이 아니다. | 🔴 순번 축은 **DT 보행 전용**이다: 「1번은 좌상단」은 DT 맵의 규칙이고 core 웨이퍼에는 그런 원점 규칙이 없다 — 첫 픽은 bin 1 집합의 좌상단이지 웨이퍼의 좌상단이 아니다. core 쪽 원점은 결함 지문 대조로 푸는 별개 기계장치다. | 이 키를 안 적으면 순번 축은 없다 — 컬럼 이름을 추측하지 않는다(현장마다 철자가 다르다).",
     "__derived_note": "Declare a binding ONLY where the coordinate columns depart from the x/y/val convention -- every fixture table does, because its columns are namespaced (core_x, dt_x, bond_x). bonding_map / core_defect_map / eds_fail_map are omitted on purpose: table_config derives the identical binding for them, and a duplicate declaration only hides whether the derivation path still works.",
     "core_wafer_map": {
       "columns": {
         "x": "core_x",
         "y": "core_y",
         "val": "c_bn",
-        "key_columns": [
-          "core_lot",
-          "core_slot"
-        ]
+        "key_columns": ["core_lot", "core_slot"]
       }
     },
+    "__index_comment": "index: 순번 컬럼. x/y와 **같은 칸에** 적는 것이 곧 「이 번호는 이 x/y 보행의 순서다」라는 주장이다 — 다른 좌표계로 열린 실행에는 따라가지 않는다(map_alignment._same_walk가 막고, 그때 사유를 낸다). dt_log는 한 테이블에 dt_x/dt_y와 core_x/core_y 두 좌표계를 들고 있어서 이 구별이 가상이 아니다. 🔴 순번 축은 **DT 보행 전용**이다: 「1번은 좌상단」은 DT 맵의 규칙이고 core 웨이퍼에는 그런 원점 규칙이 없다(첫 픽은 bin 1 집합의 좌상단이지 웨이퍼의 좌상단이 아니다). 합성 실측 2026-08-05 — 같은 컬럼이 DT 보행에서 88/88, core 보행에서 4/88. core 쪽 원점은 결함 지문 대조로 푸는 별개 기계장치다.",
     "dt_map": {
       "columns": {
         "x": "dt_x",
         "y": "dt_y",
         "val": "c_bn",
-        "key_columns": [
-          "dt_job"
-        ]
+        "index": "dt_index",
+        "key_columns": ["dt_job"]
       }
     },
     "dt_log": {
       "columns": {
         "x": "dt_x",
         "y": "dt_y",
+        "val": "dt_index",
+        "index": "dt_index",
+        "key_columns": ["dt_job"]
+      }
+    },
+    "dt_core_view": {
+      "columns": {
+        "x": "core_x",
+        "y": "core_y",
         "val": "c_bn",
-        "key_columns": [
-          "dt_job"
-        ]
+        "key_columns": ["dt_job"]
       }
     },
     "bonding_log": {
@@ -40,10 +43,7 @@
         "x": "bond_x",
         "y": "bond_y",
         "val": "b_bn",
-        "key_columns": [
-          "bond_lot",
-          "bond_slot"
-        ]
+        "key_columns": ["bond_lot", "bond_slot"]
       }
     }
   },
@@ -69,19 +69,22 @@
   "paint_lock": {
     "*": {
       "enabled": true,
-      "blocking_values": [
-        "F"
-      ],
+      "blocking_values": ["F"],
       "from_overlay": [],
       "message": "이 셀은 잠금 값이라 페인팅할 수 없습니다."
     }
   },
   "__alignment_comment": "맵 정렬 채점(GET /api/maps/alignment/view)의 판정 문턱. 이 블록이 없으면 서버는 순위를 내지 않고 ruling.reason_code='no_thresholds'로 거절한다 — 코드에 기본값이 없는 것은 의도다. 미선언을 0으로 접으면 「구별 못 함」이 「자신 있는 1등」이 되고, 그 실패(Number(null)===0)가 이 프로젝트를 세 번 물었다. | 두 문턱은 서로를 대신하지 않는다: min_discriminating_dies는 '결정할 근거가 있나', min_margin_dies는 '1등이 2등보다 충분히 앞서나'. 판별 3다이 위의 큰 격차도, 판별 500다이 위의 1다이 격차도 결정이 아니다. | 단위는 다이 개수다. 백분율이 아니다 — 실측에서 적합도 퍼센트는 순위를 뒤집었다(MAP_ALIGNMENT_SPEC §3). | 값은 기준 맵(유효 다이 floor)의 실제 분해능에서 유도한다: seed_valid_die_ref_floor.py의 verify_discrimination이 이 박스의 floor에 대해 '비항등 7프레임을 최소 20다이로 가른다'고 보고하므로, 20다이 미만의 격차는 floor 자신의 분해능 아래라 방위의 증거가 될 수 없다. 🔴 다른 floor를 쓰면 이 숫자를 다시 유도할 것 — 옮겨 적지 말 것.",
   "__alignment_value_weights_comment": "alignment.value_weights: 값별 가중치 {값: 무게}. 선언하지 않으면 채점은 종전과 한 자도 다르지 않다(가중 없음이 기본이고, 규칙 하나에만 켤 수 있어야 하므로 이것이 계약이다). 예: {\"E1\": 5} = E1이 맞은 자리 하나를 보통 다이 5개만큼 센다. | 🔴 무게는 '셀이 있다'가 아니라 '값이 그 자리에서 맞았다'에 걸린다 — 부분 맵의 모든 셀은 여덟 프레임 모두에서 유효 다이 위에 놓이므로(실측 2026-08-05: 일치 467·판별 0·8후보 동일) 존재에 무게를 주면 여덟이 같은 배수로 커지고 순위는 안 움직인다. 그래서 값을 싣지 않는 기준(유효 다이 원판)에서는 이 선언이 아무 일도 하지 않는다 — 그때 필요한 것은 무게가 아니라 값을 싣는 기준 맵이다. | 0은 선언이다: {\"1\": 0}은 '이 값은 세지 말라'이고, 키를 안 적은 값은 '아무 말 안 함'이라 1을 받는다. 둘은 다른 주장이다. 음수·무한·비숫자는 읽히지 않는 선언이라 무시된다. | 🔴 무게를 걸면 min_discriminating_dies와 min_margin_dies의 단위가 '다이 개수'에서 '가중 다이'로 바뀐다(분자와 판별수가 같이 가중된다). 무게를 켜면 두 문턱을 다시 유도할 것 — 옮겨 적지 말 것. | 가중이 걸린 판정은 ruling.metric='values_weighted'로 나간다(무가중은 'values', 값 없는 기준은 'occupancy').",
-  "__alignment_sides_comment": "alignment.sides: 채점할 면 목록(예 [\"front\"]). 선언하면 탐색이 좁아지고 **보고는 안 좁아진다** — 여덟 후보는 여덟으로 나가고 빠진 넷은 state='not_considered'로 「안 봤다」를 말한다(져서 밀린 것과 구별되어야 한다). 미선언은 「둘 다」이지 「front」가 아니다. 🔴 좁히면 그 면이 정답인 단위는 승자 없이 나온다 — 결함이 아니라 이 선언의 의미다.",
-  "__alignment_index_comment": "alignment.index: 순번 축 **전용** 문턱 블록 {min_margin_dies, min_discriminating_dies}. 🔴 **일부러 비워 두고 배포한다.** 이 블록이 없거나 불완전하면 순번 축은 수치를 실어 보내되 **순위를 가져가지 않는다**(ruling.index_axis='reported') — 새 설치의 안전한 기본값이 그쪽이기 때문이다. 여기에 수를 하나 적어 두면 그것이 선언을 사칭하는 그럴듯한 기본값이 되고, 이 프로젝트는 그 사칭에 세 번 물렸다. | 위의 min_margin_dies/min_discriminating_dies와 **키를 공유하지 않는 것이 요점**이다: 점유·값 문턱을 다른 문제 쫓다가 낮추는 조작이 순번 축의 안전망까지 걷어 가면 안 된다. | 켤 때는 **자기 데이터에서 유도**할 것 — 순번이 그 보행의 서펜타인 순위인 단위에서 정답 프레임의 판별수·격차를 재고, 그 축이 성립하지 않는 실행(예 bin으로 묶인 픽 순서를 core 좌표로 읽은 경우)의 격차도 재서, 두 수 사이에 문턱을 놓는다. 단위는 다이 개수이고 클수록 좋다. | 🔴 violations/groups 지표는 이 키를 쓰지 않는다 — 위반을 세고 작을수록 좋아 단위가 다르다.",
+  "__alignment_sides_comment": "alignment.sides: 채점할 면 목록. 선언하면 탐색이 좁아지고 **보고는 안 좁아진다** — 여덟 후보는 여덟으로 나가고 빠진 넷은 state='not_considered'를 달아 「안 봤다」를 말한다(져서 밀린 것과 구별되어야 한다). 미선언은 「둘 다」이지 「front」가 아니다. 🔴 좁히면 그 면의 진짜 답이 탐색에서 빠진다 — back 프레임이 정답인 단위는 승자 없이 나오고, 그것은 결함이 아니라 이 선언의 의미다.",
   "alignment": {
     "min_margin_dies": 20,
-    "min_discriminating_dies": 20
+    "min_discriminating_dies": 20,
+    "index": {
+      "__comment": "순번 축 **전용** 문턱. 점유·값 문턱(위 두 키)과 **일부러 키를 공유하지 않는다** — 저쪽을 다른 문제 쫓다가 낮추는 조작이 이 축의 안전망까지 걷어 가면 안 되기 때문이다(2026-08-05 실제로 20 → 1로 내려간 적이 있다). 이 블록이 없거나 불완전하면 순번 축은 수치를 실어 보내되 **순위를 가져가지 않는다**(ruling.index_axis='reported'). 미선언을 0으로 접지 않는다. | 단위는 다이 개수이고 **클수록 좋다**(index_agreement). 🔴 violations/groups 지표는 이 키를 쓰지 않는다 — 그쪽은 위반을 세고 작을수록 좋아서 단위가 다르다. 그 채점기가 생기면 자기 선언을 따로 갖는다.",
+      "__derivation": "🔴 이 박스의 **합성** 데이터에서 유도했다(server/scripts/seed_dt_index_walk.py가 심은 dt_job 'SYN-IDX-*' 4단위). **운영 측정이 아니다.** 운영으로 옮기기 전에 그 데이터에서 반드시 다시 유도할 것 — 옮겨 적지 말 것. | 실측 2026-08-05, 기준은 valid_die_ref PRD-A/DT13(88다이): ① SYN-IDX-FULL-R0 일치 88/88 판별 87 격차 87 → rot0_front. ② SYN-IDX-FULL-R90 88/88 판별 87 격차 87 → rot90_front. ③ SYN-IDX-PART-R270(34다이 부분 맵) 34/34 판별 34 격차 34 → rot270_front. ④ SYN-IDX-NEAR-R180(번호가 3다이 다른 바닥에 매겨진 경우) 9/85 판별 9 → **거절**. ⑤ core 보행(같은 컬럼을 bin으로 묶인 픽 순서로 읽은 경우) 4/88 격차 2~3. | 20은 두 경계 사이에 있다: **아래로는** ⑤의 3과 ④의 9를 거절하고, **위로는** ③의 34(정직한 부분 맵)를 통과시킨다. ④가 이 수의 진짜 근거다 — 기준이 3다이만 어긋나도 서펜타인 번호는 그 뒤 전부가 밀리므로 점수가 우아하게 낮아지지 않고 무너진다. 그 무너짐을 통과시키면 「거의 맞는 기준」이 「자신 있는 1등」이 된다. | 🔴 낮추지 말 것. 20 미만이면 ⑤의 4/88이 순위를 받고, 실측에서 그 1등은 8후보 중 2건에서 **틀린 프레임**이었다. 낮추고 싶어지는 순간이 바로 이 주석이 막으려는 순간이다.",
+      "min_margin_dies": 20,
+      "min_discriminating_dies": 20
+    }
   }
 }
