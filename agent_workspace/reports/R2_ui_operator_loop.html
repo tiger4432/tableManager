@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>R2 - 정렬 판정 화면 시안 (static mockup)</title>
+<style>
+:root{
+  --bg-app:#121a29; --bg-header:#182134; --bg-surface:#1b2537; --bg-inset:#141c2c;
+  --border:#36425f; --border-strong:#4a5980;
+  --text:#e9edf4; --text-muted:#a8b5c9; --text-dim:#8b99ae;
+  --accent:#54c2f5; --accent-weak:rgba(84,194,245,.14); --accent-contrast:#0c1926;
+  --accent-2:#b39cf7;
+  --success:#4ade80; --success-weak:rgba(74,222,128,.14);
+  --warning:#fbbf24; --warning-weak:rgba(251,191,36,.14);
+  --danger:#f87171; --danger-weak:rgba(248,113,113,.14);
+  --orange:#fb923c;
+  --font-mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  --shadow-card:0 1px 3px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-app);color:var(--text);
+  font-family:Outfit,system-ui,'Malgun Gothic',sans-serif;font-size:15px;line-height:1.55}
+.wrap{max-width:1500px;margin:0 auto;padding:28px 24px 60px}
+h1{font-size:1.35rem;margin:0 0 4px}
+.lede{color:var(--text-dim);font-size:.9rem;margin:0 0 26px}
+h2{font-size:1rem;margin:34px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.note{font-size:.85rem;color:var(--text-dim);margin:8px 0 18px}
+
+/* ---- workbench ---- */
+.workbench{display:flex;gap:16px;align-items:stretch}
+.panel{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;
+  box-shadow:var(--shadow-card);display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.p-work{flex:3}.p-conv{flex:2;min-width:320px}.p-ref{flex:2;min-width:260px}
+.panel-header{padding:13px 18px;border-bottom:1px solid var(--border);background:var(--bg-header);
+  display:flex;justify-content:space-between;align-items:center;gap:10px}
+.panel-title{font-size:.95rem;font-weight:600}
+/* meta line raised from 0.72rem -> 0.82rem: it now carries a fact */
+.panel-meta{font-family:var(--font-mono);font-size:.82rem;color:var(--text-dim)}
+.panel-body{padding:14px 16px;display:flex;flex-direction:column;gap:14px;min-height:0}
+
+/* ---- worklist ---- */
+.wl-row{display:flex;gap:10px;padding:9px 12px;border-radius:8px;font-size:.9rem;
+  border:1px solid transparent}
+.wl-row.sel{background:var(--accent-weak);border-color:var(--accent)}
+.wl-row span:first-child{flex:1;font-family:var(--font-mono)}
+.wl-row .st{color:var(--text-dim);font-size:.85rem}
+.wl-boundary{display:flex;align-items:center;gap:10px;margin:10px 2px 4px;
+  font-size:.82rem;color:var(--warning)}
+.wl-boundary::before,.wl-boundary::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ---- badges ---- */
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:2px}
+.stat-badge{font-size:.82rem;padding:3px 11px;border-radius:999px;border:1px solid var(--border);
+  color:var(--text-muted);background:var(--bg-inset);white-space:nowrap}
+.b-warn{border-color:var(--warning);color:var(--warning);background:var(--warning-weak)}
+.b-danger{border-color:var(--danger);color:var(--danger);background:var(--danger-weak)}
+
+/* ---- conveyor blocks ---- */
+.block{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.block-h{padding:8px 13px;background:var(--bg-inset);font-size:.85rem;color:var(--text-muted);
+  border-bottom:1px solid var(--border)}
+.block-b{padding:11px 13px}
+.kv{display:flex;justify-content:space-between;font-size:.9rem;padding:3px 0}
+.kv .k{color:var(--text-dim);font-family:var(--font-mono);font-size:.85rem}
+.kv .v{font-family:var(--font-mono)}
+
+/* ---- source rows ---- */
+.src{display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer;
+  border-bottom:1px solid var(--border);transition:background .15s ease}
+.src:last-of-type{border-bottom:0}
+.src:hover{background:rgba(255,255,255,.03)}
+.src.open{background:var(--accent-weak)}
+.src .name{flex:0 0 92px;font-size:.95rem;font-weight:600}
+.src .val{flex:1;font-size:.95rem;font-family:var(--font-mono);color:var(--accent)}
+.src .val.none{color:var(--warning);font-family:inherit}
+.src .score{font-family:var(--font-mono);font-size:.95rem;color:var(--text-muted);white-space:nowrap}
+.src .score.unknown{color:var(--text-dim)}
+.src-l2{border-top:2px solid var(--border-strong)}
+.src-l2 .name{color:var(--accent-2)}
+
+/* ---- candidate grid (inline accordion) ---- */
+.cands{padding:12px 13px 13px;background:var(--bg-inset);border-bottom:1px solid var(--border)}
+.cand-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.cand-head{font-size:.85rem;color:var(--text-muted);padding-bottom:6px;
+  border-bottom:1px solid var(--border);margin-bottom:4px}
+.cand{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;
+  border:1px solid var(--border);background:var(--bg-surface);cursor:pointer;
+  transition:transform .12s ease,border-color .12s ease}
+.cand:hover{transform:translateY(-1px);border-color:var(--accent)}
+.cand .deg{font-family:var(--font-mono);font-size:1.05rem;font-weight:600;flex:0 0 46px}
+.cand .code{font-family:var(--font-mono);font-size:.8rem;color:var(--text-dim);flex:1;text-align:right}
+.cand.win{border-color:var(--accent);background:var(--accent-weak)}
+.cand.inert{opacity:.55;cursor:default}
+.cand.inert:hover{transform:none;border-color:var(--border)}
+.tag{font-size:.75rem;padding:1px 7px;border-radius:999px;border:1px solid var(--accent);
+  color:var(--accent);background:var(--bg-surface)}
+.tag-cur{border-color:var(--text-dim);color:var(--text-dim)}
+.foot{font-size:.82rem;color:var(--text-dim);margin-top:11px;line-height:1.5}
+
+/* ---- confirm ---- */
+.confirm{display:flex;flex-direction:column;gap:9px}
+.confirm-sentence{font-size:.9rem;line-height:1.6;color:var(--text-muted);
+  background:var(--bg-inset);border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:8px;padding:11px 13px}
+.btn{padding:10px 16px;border-radius:9px;border:1px solid var(--accent);background:var(--accent);
+  color:var(--accent-contrast);font-size:.95rem;font-weight:600;cursor:pointer;
+  transition:transform .12s ease}
+.btn:hover{transform:translateY(-1px)}
+.hint{font-size:.82rem;color:var(--text-dim)}
+
+/* ---- reference panel ---- */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);
+  font-size:.85rem;color:var(--text-muted);cursor:pointer;white-space:nowrap}
+.tab.active{border-color:var(--accent);color:var(--accent);background:var(--accent-weak)}
+.pic{background:var(--bg-inset);border:1px solid var(--border);border-radius:10px;padding:10px;
+  display:flex;justify-content:center}
+.cap{font-size:.85rem;color:var(--text-muted);text-align:center}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;color:var(--text-dim);
+  justify-content:center}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;
+  vertical-align:-1px}
+.headline{font-size:1rem;font-weight:600}
+.headline.warn{color:var(--warning)}
+.cause{font-size:.87rem;color:var(--text-dim);line-height:1.55}
+.refusal{font-size:.87rem;color:var(--text-muted);line-height:1.6;background:var(--warning-weak);
+  border:1px solid var(--warning);border-radius:8px;padding:10px 12px}
+
+/* ---- state cards ---- */
+.states{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.spinner{width:26px;height:26px;border-radius:50%;border:3px solid var(--border);
+  border-top-color:var(--accent);animation:sp 1s linear infinite;margin:26px auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.skel{width:190px;height:190px;border-radius:10px;border:1px dashed var(--border)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>R2 시안 - 좌표계 확정 화면 (기존 인리치먼트 워크벤치 안)</h1>
+<p class="lede">새 화면 · 새 모드 · 모달 없음. 패널 3개는 그대로, 바뀌는 것은 [B]의 입력 형태와 [C]의 탭 하나.
+정적 시안 파일이며 동작하지 않습니다.</p>
+
+<div class="badges">
+  <span class="stat-badge">잔여 41건</span>
+  <span class="stat-badge b-warn">기준 없음 N건</span>
+  <span class="stat-badge b-danger">판단키 없음 3건</span>
+  <span class="stat-badge">이번 세션 6건</span>
+</div>
+
+<div class="workbench">
+
+  <!-- [A] -->
+  <section class="panel p-work">
+    <div class="panel-header"><div class="panel-title">워크리스트</div>
+      <div class="panel-meta">41 / 320</div></div>
+    <div class="panel-body">
+      <div class="wl-row sel"><span>EQP-DT-04 · PRD-A19</span><span class="st">맵 12</span></div>
+      <div class="wl-row"><span>EQP-DT-04 · PRD-B02</span><span class="st">맵 7</span></div>
+      <div class="wl-row"><span>EQP-DT-11 · PRD-A19</span><span class="st">맵 9</span></div>
+      <div class="wl-boundary">여기부터 기준 없음</div>
+      <div class="wl-row"><span>EQP-DT-22 · PRD-C08</span><span class="st">맵 4</span></div>
+      <div class="wl-row"><span>EQP-DT-22 · PRD-C09</span><span class="st">맵 6</span></div>
+    </div>
+  </section>
+
+  <!-- [B] -->
+  <section class="panel p-conv">
+    <div class="panel-header"><div class="panel-title">판단 · 입력</div></div>
+    <div class="panel-body">
+
+      <div class="block">
+        <div class="block-h">판단키 (Decision Key)</div>
+        <div class="block-b">
+          <div class="kv"><span class="k">dt_eqp</span><span class="v">EQP-DT-04</span></div>
+          <div class="kv"><span class="k">product</span><span class="v">PRD-A19</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-h">출처 · 프레임 (Target)</div>
+
+        <div class="src open">
+          <span class="name">CORE 맵</span>
+          <span class="val">270° · 뒷면</span>
+          <span class="score">일치 512 / 판별 528</span>
+        </div>
+
+        <!-- inline accordion: 2 columns = flip, 4 rows = turn -->
+        <div class="cands">
+          <div class="cand-cols">
+            <div class="cand-head">앞면 (좌우 그대로)</div>
+            <div class="cand-head">뒷면 (좌우 뒤집음)</div>
+
+            <div class="cand"><span class="deg">0°</span><span class="code">rot0_front</span></div>
+            <div class="cand"><span class="deg">0°</span><span class="code">rot0_back</span></div>
+
+            <div class="cand"><span class="deg">90°</span><span class="code">rot90_front</span></div>
+            <div class="cand"><span class="deg">90°</span><span class="code">rot90_back</span></div>
+
+            <div class="cand"><span class="deg">180°</span><span class="code">rot180_front</span></div>
+            <div class="cand"><span class="deg">180°</span><span class="code">rot180_back</span></div>
+
+            <div class="cand"><span class="deg">270°</span><span class="code">rot270_front</span></div>
+            <div class="cand win"><span class="deg">270°</span><span class="tag">추천</span>
+              <span class="code">rot270_back</span></div>
+          </div>
+          <div class="foot">2위와 47다이 차이 · 판별 528다이<br>
+            상하 뒤집기는 별도 후보가 아닙니다 - 180° 더 돌린 뒤 좌우 뒤집기와 같은 격자 변환입니다.</div>
+        </div>
+
+        <div class="src">
+          <span class="name">DT 로그</span>
+          <span class="val">0° · 앞면</span>
+          <span class="score">일치 498 / 판별 528</span>
+        </div>
+
+        <div class="src src-l2">
+          <span class="name">출처 2개</span>
+          <span class="val" style="color:var(--accent-2)">상호 일치</span>
+          <span class="score">일치 940 · 불일치 12 · 한쪽만 334</span>
+        </div>
+      </div>
+
+      <div class="confirm">
+        <div class="confirm-sentence">
+          CORE 맵 <b>270°·뒷면</b>, DT 로그 <b>0°·앞면</b>으로 이 설비·제품의 좌표계를 확정합니다.<br>
+          이후 이 설비·제품의 다이 맵과 본딩 계획이 이 좌표계 위에 세워집니다.
+        </div>
+        <button class="btn">확정하시겠습니까? 다시 Enter</button>
+        <div class="hint">Esc 취소 · 읽기는 무마찰, 쓰기는 확인 1회</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- [C] -->
+  <section class="panel p-ref">
+    <div class="panel-header"><div class="panel-title">참조뷰</div>
+      <div class="panel-meta">맵 12개 중 5개 제외 · 채점 528다이 · 340ms</div></div>
+    <div class="panel-body">
+      <div class="tabs">
+        <span class="tab active">정렬</span>
+        <span class="tab">DT job</span>
+        <span class="tab">좌표 범위</span>
+        <span class="tab">DT 맵 규약</span>
+        <span class="tab">CORE 맵 규약</span>
+      </div>
+
+      <div class="pic">
+        <svg viewBox="0 0 200 200" width="100%" style="max-width:280px" aria-label="정렬 그림">
+          <g id="floor"></g>
+          <g id="miss"></g>
+          <circle cx="100" cy="100" r="86" fill="none" stroke="var(--border-strong)" stroke-width="1"/>
+        </svg>
+      </div>
+      <div class="cap">지금 보는 것: CORE 맵 · 270° · 뒷면 · 기준 대비</div>
+      <div class="legend">
+        <span><i style="background:rgba(84,194,245,.13)"></i>일치 (바닥)</span>
+        <span><i style="background:#54c2f5"></i>불일치</span>
+        <span><i style="border:2px solid #fb923c;background:transparent"></i>한쪽만</span>
+      </div>
+      <div class="cause">두 지표가 같은 후보를 가리킵니다.</div>
+    </div>
+  </section>
+</div>
+
+<h2>구별되지 않을 때 - 순위를 매기지 않는다</h2>
+<p class="note">승자 배지 없음. 퍼센트 없음. 원인을 「기준이 부족」과 「후보가 진짜 비슷」으로 갈라 말한다.</p>
+<div class="panel" style="max-width:520px">
+  <div class="panel-header"><div class="panel-title">참조뷰 - 정렬</div>
+    <div class="panel-meta">채점 61다이 · 210ms</div></div>
+  <div class="panel-body">
+    <div class="headline warn">이 기준으로는 구별되지 않습니다 - 후보 3개</div>
+    <div class="cause">(원인) 기준 발자국이 대칭입니다 - 후보 3개가 같은 다이를 차지합니다.<br>
+      판별 61다이 · 1위와 2위 차이 4다이 (기준 20다이 미만)</div>
+    <div class="cause">두 지표가 다른 후보를 가리킵니다 - 값 일치는 270°·뒷면, 점유는 90°·앞면</div>
+  </div>
+</div>
+
+<h2>세 상태 - 「계산 중」 · 「답이 없음」 · 「채점 못 함」</h2>
+<p class="note">숫자는 주장이다. 1번과 3번 상태는 일치 칸에 숫자를 절대 쓰지 않는다 - 0도 -도 아니고 「미상」이다.</p>
+<div class="states">
+
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">1. 계산 중</div><div class="panel-meta">-</div></div>
+    <div class="panel-body">
+      <div class="pic"><div class="skel"><div class="spinner"></div></div></div>
+      <div class="headline">후보 8개 채점 중...</div>
+      <div class="src" style="border:1px solid var(--border);border-radius:8px">
+        <span class="name">CORE 맵</span><span class="val none">-</span>
+        <span class="score unknown">미상</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">2. 채점함, 승자 없음</div>
+      <div class="panel-meta">채점 61다이</div></div>
+    <div class="panel-body">
+      <div class="pic">
+        <svg viewBox="0 0 200 200" width="100%" style="max-width:190px">
+          <g id="floor2"></g><g id="miss2"></g>
+          <circle cx="100" cy="100" r="86" fill="none" stroke="var(--border-strong)"/>
+        </svg>
+      </div>
+      <div class="headline warn">이 기준으로는 구별되지 않습니다 - 후보 3개</div>
+      <div class="cause">(원인) 기준 발자국이 대칭입니다.</div>
+      <div class="src" style="border:1px solid var(--border);border-radius:8px">
+        <span class="name">CORE 맵</span><span class="val none">고르지 않음</span>
+        <span class="score">일치 58 / 판별 61</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">3. 채점 못 함</div><div class="panel-meta">-</div></div>
+    <div class="panel-body">
+      <div class="pic">
+        <svg viewBox="0 0 200 200" width="100%" style="max-width:190px">
+          <g id="alone"></g>
+          <circle cx="100" cy="100" r="86" fill="none" stroke="var(--border)" stroke-dasharray="3 4"/>
+        </svg>
+      </div>
+      <div class="headline warn">기준이 없습니다 - 채점하지 않았습니다</div>
+      <div class="refusal">소스 맵: 물리 규격이 선언되지 않았습니다 ― 셀 좌표의 기준인 웨이퍼
+        바운딩박스를 재현할 수 없어 정렬을 보증할 수 없습니다. 해당 맵의 물리 규격(칩 크기·웨이퍼
+        지름)을 선언한 뒤 다시 시도하십시오.
+        <div style="font-size:.8rem;color:var(--text-dim);margin-top:6px">(서버가 만든 문장 그대로 - 클라가 다시 쓰지 않는다)</div>
+      </div>
+      <div class="src" style="border:1px solid var(--border);border-radius:8px">
+        <span class="name">CORE 맵</span><span class="val none">비교 불가</span>
+        <span class="score unknown">미상</span></div>
+      <button class="btn" style="align-self:flex-start">기준 선택</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// static illustration only - draws a wafer footprint and a crescent-shaped miss set
+function grid(gid, mode){
+  const g = document.getElementById(gid); if(!g) return;
+  const N=17, cell=200/N, r=8.2, cx=(N-1)/2, cy=(N-1)/2;
+  let out='';
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+    const d=Math.hypot(x-cx,y-cy); if(d>r) continue;
+    const px=x*cell+.8, py=y*cell+.8, s=cell-1.6;
+    let fill='rgba(84,194,245,.13)', stroke='rgba(84,194,245,.18)', sw=.4;
+    if(mode==='crescent'){
+      // crescent along the right edge: the direction vector round 1 asked for
+      if(d>r-2.1 && x>cx+1.5){ fill='#54c2f5'; stroke='#54c2f5'; }
+      else if(d>r-1.2 && x<cx-3){ fill='transparent'; stroke='#fb923c'; sw=1.4; }
+    } else if(mode==='scatter'){
+      if((x*7+y*13)%23===0){ fill='#54c2f5'; stroke='#54c2f5'; }
+    } else if(mode==='alone'){
+      fill='rgba(168,181,201,.16)'; stroke='rgba(168,181,201,.28)';
+    }
+    out+=`<rect x="${px}" y="${py}" width="${s}" height="${s}" rx="1.2" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+  }
+  g.innerHTML=out;
+}
+grid('floor','crescent'); grid('floor2','scatter'); grid('alone','alone');
+</script>
+</div>
+</body>
+</html>

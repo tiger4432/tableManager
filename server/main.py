@@ -4436,6 +4436,7 @@ def get_bonding_plan_core_summary(
 # -----------------------------------------------------------------------------
 import map_overlay as map_overlay_module
 import map_alignment
+import alignment_view_service
 import frame_confirmation
 import map_preset_routing as map_preset_routing_module
 
@@ -4560,11 +4561,6 @@ def get_map_alignment_view(
     판정 구현이 되고, 두 판정이 갈리는 날 화면은 멀쩡한 채 값만 틀린다
     (`/admin/config/resolve`와 같은 규율).
     """
-    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
-    decl = next((r for r in rules if r["name"] == rule), None)
-    if decl is None:
-        raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule}' not found")
-
     key_values = {}
     if params:
         try:
@@ -4574,21 +4570,18 @@ def get_map_alignment_view(
         except Exception:
             raise HTTPException(status_code=400,
                                 detail="'params' must be a URL-encoded JSON object")
-        allowed = set(decl.get("decision_key", []))
-        invalid = sorted(k for k in parsed.keys() if k not in allowed)
-        if invalid:
-            raise HTTPException(
-                status_code=400,
-                detail=f"'params' keys must be decision_key columns only; invalid: {invalid}")
         key_values = parsed
 
-    config = map_overlay_module.load_overlay_config()
     try:
-        return map_alignment.build_alignment_view(
-            db, config, decl, key_values, map_table,
+        return alignment_view_service.resolve_alignment_view(
+            db, rule, key_values, map_table,
             reference_spec=reference, include_cells=include_cells,
             x_col=x_col, y_col=y_col, value_col=value_col,
             assume_reference_geometry=assume_reference_geometry)
+    except alignment_view_service.AlignmentViewRequestError as e:
+        message = str(e)
+        raise HTTPException(status_code=404 if message.startswith("Enrichment rule '")
+                            and message.endswith(" not found") else 400, detail=message)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

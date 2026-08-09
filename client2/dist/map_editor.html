@@ -12,13 +12,13 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-BlBQvgig.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-DJdOPOq6.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-Dy5qGBed.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-xn_vq-uO.js">
   <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
   <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
   <link rel="stylesheet" crossorigin href="/assets/map_editor-Ciy5K-Co.css">
-  <link rel="stylesheet" crossorigin href="/assets/style-DPiLsrHm.css">
+  <link rel="stylesheet" crossorigin href="/assets/style-it_kFC0g.css">
 </head>
 
 <body>
@@ -317,9 +317,8 @@
       <section class="grid-section" style="display: flex; flex-direction: column;">
         <!-- [편집 스택] 자재 맵을 연 동안에만 등장하는 브레드크럼 한 줄 + 뒤로가기 버튼 하나 -->
         <div id="map-breadcrumb" class="map-breadcrumb" style="display: none;"></div>
-        <div class="grid-toolbar"
-          style="display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border); background: var(--bg-header);">
-          <div style="display: flex; gap: 15px; align-items: center;">
+        <div class="grid-toolbar map-editor-toolbar">
+          <div class="map-editor-toolbar__status">
             <!-- 관찰면(FRONT/BACK) 표기: 그리드 바깥(툴바)에 색상 구분 칩으로 표시 -->
             <div id="side-indicator" class="side-indicator side-front">FRONT · 앞면</div>
             <span class="glass-log-badge">Active Brush: <strong id="active-brush-val"
@@ -341,7 +340,7 @@
                 style="padding: 4px 12px; font-size: 0.8rem;">🧹 Clear Selected</button>
             </div>
           </div>
-          <div style="display: flex; gap: 10px;">
+          <div class="map-editor-toolbar__actions">
             <!-- Selection & Edge Tools Dropdown -->
             <div class="control-group relative-menu">
               <button id="btn-select-menu" class="glass-btn">🔍 Select Tools</button>

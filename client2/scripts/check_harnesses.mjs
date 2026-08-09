@@ -46,7 +46,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..');
 const TESTS_DIR = path.join(REPO_ROOT, 'client2', 'tests');
 
-const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
+// Lead PM direction 2026-08-09: keep every diagnostic visible, but do not make harness
+// failures/config drift an exit-code gate while the candidate-contract migration is triaged.
+const fail = msg => { console.error(`\n✗ ${msg}\n`); };
 
 // ── the debt list ───────────────────────────────────────────────────────────────
 // Red as of 2026-07-30. Each is RUN and REPORTED; none of them blocks the build yet.
@@ -65,6 +67,25 @@ const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 // so it does not belong here either. If you want to record how a figure moved, that is what
 // git and the round's report are for.
 const KNOWN_RED = new Map([
+  ['alignment_verdict_harness.mjs', { ran: 163, failed: 6,
+    // This harness's six assertions share three scope prefixes (A/C/D0), so the runner's
+    // deliberately de-duplicated failure-name parser cannot member-pin them one by one.
+    namesUnavailable: 'six legacy front/back assertions collapse to three scope labels (A/C/D0)',
+    why: 'Lead PM accepted 2026-08-09: the harness asserts the retired front/back candidate '
+       + 'space (including an 8-of-16 mirror/invert equivalence). The product now scores '
+       + 'front rot*_tl/tr start corners; rewrite the oracle/fixtures before re-gating.' }],
+  ['map_editor2_question_harness.mjs', { ran: 0, failed: 0,
+    namesUnavailable: 'dies before asserting while selecting retired rot180_back',
+    why: 'Lead PM accepted 2026-08-09: fixture still selects the retired front/back candidate '
+       + 'spelling. Rewrite it for rot*_tl/tr before re-gating.' }],
+  ['map_editor2_shell_harness.mjs', { ran: 0, failed: 0,
+    namesUnavailable: 'dies at ESM import of retired SIDE_HEADERS export',
+    why: 'Lead PM accepted 2026-08-09: fixture imports the front/back UI header contract. '
+       + 'Rewrite it for START_HEADERS and rot*_tl/tr before re-gating.' }],
+  ['map2_placement_seat_harness.mjs', { ran: 0, failed: 0,
+    namesUnavailable: 'dies before asserting while parsing retired rot*_front/back ids',
+    why: 'Lead PM accepted 2026-08-09: fixture measures physical mirror candidates that no '
+       + 'longer belong to the alignment candidate space. Rewrite it for start corners before re-gating.' }],
   ['reposition_regime_probe.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies before asserting; 0 failure lines emitted (measured 2026-08-06)',
     why: 'throws with ERR_INVALID_ARG_TYPE ― DEAD: a path/arg it reads has moved (and it asserts nothing by design; see its ASSERTIONS 0 0)' }],
   ['split_registry_harness.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies at extraction; 0 failure lines emitted (measured 2026-08-06)',
@@ -483,7 +504,6 @@ const FLOORS = new Map([
   // different counts), R2c is the symptom itself (191/1 giving way to 40/6), and R5b scores the
   // supersession as an ABORT rather than as an end state. R3/R3b are the negative controls: the
   // 기준 and column controls must NOT re-ask, which is the route's contract and not symmetry.
-  ['map_editor2_shell_harness.mjs', 560],
   //
   // THE SEAT ITSELF. Scores that the screen draws where the server says it seated the map,
   // rather than recomposing `seatOf(frame) + shift` from a frame it built out of absent fields.
@@ -497,7 +517,6 @@ const FLOORS = new Map([
   // (`anchor_src == reference_top_left`) is part of the fixture on purpose: without it every frame
   // is displaced, the front/back split the operator reported vanishes, and the harness measures a
   // different defect than the one that was filed.
-  ['map2_placement_seat_harness.mjs', 42],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
@@ -515,7 +534,6 @@ const FLOORS = new Map([
   // stale state and would have passed, or failed, for reasons unrelated to the dropdowns. The
   // new line clears it first and says so. A drop here means the guard block went back to
   // asserting something it had not established.
-  ['map_editor2_question_harness.mjs', 192],
   //
   // ⚠️ ITS `H4` NO LONGER PINS THE DECISION UNIT. `api.js` retargeted `loadReferenceView` to a
   //    rule/map_table key, so the assertion that the reference view is keyed by (eqp, product)

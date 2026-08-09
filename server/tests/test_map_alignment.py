@@ -1452,6 +1452,21 @@ def _partial_job(floor_meta, floor, count, base=1):
             [k_of[p] - 1 + base for p in picked])
 
 
+def _indices_for_frame(floor_meta, source_cells, frame, base=1):
+    """Stored indices for ``source_cells`` when ``frame`` is the declared walk.
+
+    The cells are already expressed in that source frame.  Index topology is
+    candidate-relative, so this fixture must number the source walk after its
+    declared rotation and start corner have been applied.
+    """
+    source_meta = source_meta_for_frame(floor_meta, frame)
+    to_phys = map_overlay.make_physical_transform(source_meta)
+    phys = [to_phys(x, y) for (x, y) in source_cells]
+    rank = ma.serpentine_rank(phys, top_is_min_y=True,
+                              left_to_right=ma.left_to_right_of(frame))
+    return [rank[p] - 1 + base for p in phys]
+
+
 @pytest.mark.parametrize("planted", list(ma.CANDIDATE_FRAMES))
 def test_the_index_axis_separates_the_frames_on_a_partial_map(planted):
     """THE LOAD-BEARING ONE. A partial map is the case the axis was built for and the only case
@@ -1462,11 +1477,13 @@ def test_the_index_axis_separates_the_frames_on_a_partial_map(planted):
     couple of dozen."""
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
-    cells, ks = _partial_job(floor_meta, floor, 266)
+    cells, _unused_legacy_indices = _partial_job(floor_meta, floor, 266)
     assert len(cells) == 266 < len(floor), "the job must be a STRICT subset of the floor"
+    source_cells = _plant(floor_meta, cells, planted)
+    ks = _indices_for_frame(floor_meta, source_cells, planted)
 
     cands, _e, ruling, stats = ma.score_candidates(
-        [{"map_id": "M1", "meta": floor_meta, "cells": _plant(floor_meta, cells, planted),
+        [{"map_id": "M1", "meta": floor_meta, "cells": source_cells,
           "indices": ks}],
         floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
 
@@ -1479,6 +1496,37 @@ def test_the_index_axis_separates_the_frames_on_a_partial_map(planted):
     runner_up = max(v for f, v in by.items() if f != planted)
     assert runner_up < 266 / 4, (
         "the correct frame must not merely win, it must be in a different class: %s" % by)
+
+
+def test_index_axis_accepts_gapped_monotone_source_indices():
+    """A source walk may omit recorded index numbers without changing its topology."""
+    floor_meta = _meta(cols=41, rows=41)
+    floor = _valid_die_floor(floor_meta)
+    cells, indices = _partial_job(floor_meta, floor, 120)
+    kept = [i for i in range(len(cells)) if i == 0 or (i + 1) % 5]
+    sparse_cells = [cells[i] for i in kept]
+    sparse_indices = [indices[i] for i in kept]
+    planted = "rot180_tl"
+
+    cands, _e, ruling, _stats = ma.score_candidates(
+        [{"map_id": "M1", "meta": floor_meta,
+          "cells": _plant(floor_meta, sparse_cells, planted), "indices": sparse_indices}],
+        floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+
+    by = {c["frame"]: c["index_agreement"] for c in cands}
+    assert by[planted] == len(sparse_cells), by
+    assert ruling["winner"] == planted, by
+
+
+def test_index_axis_rejects_an_index_inversion_or_duplicate():
+    import numpy as np
+
+    phys = [(0, 0), (1, 0), (2, 0), (3, 0)]
+    owner = [0, 0, 0, 0]
+    has = np.array([True, True, True, True])
+    assert ma._index_member(phys, owner, np.array([1, 2, 4, 7]), has).all()
+    assert not ma._index_member(phys, owner, np.array([1, 4, 2, 7]), has).any()
+    assert not ma._index_member(phys, owner, np.array([1, 2, 2, 7]), has).any()
 
 
 def test_occupancy_is_saturated_on_that_same_partial_map():

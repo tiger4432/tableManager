@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "c=$(jq -r '.tool_input.command // \"\"'); if echo \"$c\" | grep -qE '(^|[;&|(]|&&)[[:space:]]*git[[:space:]]+commit'; then f=\".claude/doc_sync_pending\"; n=$(( $(cat \"$f\" 2>/dev/null || echo 0) + 1 )); echo \"$n\" > \"$f\"; if [ \"$n\" -ge 3 ]; then printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[doc-keeper 트리거] 마지막 문서 정비 이후 커밋 %s건 누적. 작업이 일단락되면 doc-keeper 정비 사이클(CODE_MAP·히스토리·체크리스트·가이드)을 계획하라. PROJECT_STATUS 보드는 총괄 전담이므로 직접 갱신할 것. 정비 완료 후 .claude/doc_sync_pending 을 삭제해 카운터를 리셋할 것.\"}}' \"$n\"; fi; fi; exit 0",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

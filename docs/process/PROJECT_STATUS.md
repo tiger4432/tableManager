@@ -3,10 +3,10 @@
 > ## 🔴 2026-08-09 사용자 결정 — 프레임 확정 정본 전환
 >
 > `frame_confirmation`/`frame_confirmation_source`는 복잡성 때문에 폐기 예정이며, 새
-> 기능은 이 이력에 쓰지 않는다. `dt_inventory`가 `dt_log`의 `dt_job` 단위 DT/Core frame,
-> lot/slot, 좌표 변환 메타의 통합 정본이다.
+> 기능은 이 이력에 쓰지 않는다. DT frame의 정본은 먼저 `wafer_map_metadata(target_table=dt_log, map_id=dt_job)`에 쓰고,
+> `dt_inventory`가 `dt_log`의 `dt_job` 단위 DT/Core frame, lot/slot, 좌표 변환 메타의 통합 정본이다.
 >
-> 일반 enrichment 또는 chain이 `dt_inventory`를 upsert하고, 후속
+> 정렬 chain은 `dt_log → wafer_map_metadata`를 먼저 upsert하고, S2 항등 chain이 `dt_inventory.dt_frame`으로 같은 JSON metadata를 복제한다. 일반 enrichment가 나머지 inventory 필드를 upsert하고, 후속
 > `dt_log + dt_inventory → dt_map` 체인이 표준 좌표 파생뷰를 `replace_map`으로 교체한다.
 > DT와 Core의 채점 축은 독립적이며, Core 자동 연결은 D1 및 결합 채점기 검증 뒤에만 연다.
 > 상세 전환 기록: `docs/process/DESIGN_FRAME_AUTOCONFIRM.md` 최상단.

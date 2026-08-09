@@ -1,17 +1,20 @@
 # 🧭 DT · CORE 프레임 자동 확정 체인 — 개발 계획서
 
-> **Status:** 🟡 Plan (착수 전) | **개정:** 2026-08-09 (정본 전환 반영) | **Owner:** 총괄
+> **Status:** ✅ S1/S2 구현됨 · S3 Plan | **개정:** 2026-08-09 | **Owner:** 총괄
 >
-> ⚖️ **사용자 결정 2026-08-09 — 확정 정본은 `dt_inventory`다.**
+> ⚖️ **사용자 결정 2026-08-09 — DT frame 정본은 `dt_log/dt_job`의 map metadata이고, 업무 통합 정본은 `dt_inventory`다.**
 > `frame_confirmation` / `frame_confirmation_source` 기반 별도 확정 이력은 **폐기 예정**이고
-> 새 기능은 그 경로에 쓰지 않는다. `dt_inventory`가 `dt_job` 단위로 **DT/Core 프레임 ·
-> lot/slot · 좌표 변환 메타**를 함께 들고, 갱신은 **일반 enrichment 또는 일반 chain의
+> 새 기능은 그 경로에 쓰지 않는다. `wafer_map_metadata(target_table=dt_log, map_id=dt_job)`가 DT frame을 먼저 받고,
+> `dt_inventory`가 `dt_job` 단위로 **DT/Core 프레임 · lot/slot · 좌표 변환 메타**를 함께 들고, 갱신은 **일반 enrichment 또는 일반 chain의
 > upsert**로 한다. 이 문서의 초판(§`frame_confirmation` 기록 · 수동 우선 · 전파 S3)은
 > **구현 대상이 아니다.**
 
 ```text
-dt_log ──(정렬 채점 · 게이트)──> dt_inventory
-        frame · lot/slot · 변환 메타 upsert
+dt_log ──(정렬 채점 · 게이트)──> wafer_map_metadata(dt_log/dt_job)
+        DT grid_metadata upsert
+
+wafer_map_metadata ──(S2: 항등 chain)──> dt_inventory
+        dt_frame(JSON metadata) · lot/slot · 변환 메타 통합
 
 dt_log + dt_inventory ──(확정 메타 적용)──> dt_map
         표준 좌표 파생뷰 replace_map
@@ -21,7 +24,7 @@ dt_log + dt_inventory ──(확정 메타 적용)──> dt_map
 
 ## 0. 한 문장
 
-**정렬기가 이미 「어느 프레임인가」에 답한다. 이 트랙이 하는 일은 그 답을 `dt_inventory` 한 행으로 쓰는 것과, 그 행이 있을 때 `dt_map`을 표준 좌표로 다시 만드는 것 둘뿐이다.**
+**정렬기가 이미 「어느 프레임인가」에 답한다. S1은 그 답을 `dt_log/dt_job`의 `wafer_map_metadata`에 쓰며, S2가 이를 `dt_inventory` 한 행으로 옮기고 S3가 `dt_map`을 표준 좌표로 다시 만든다.**
 
 새 채점기도 새 스키마도 없다. 위험은 「어떻게 판정하나」가 아니라 **「언제 판정하지 않나」**, 그리고 **「파생뷰를 얼마나 자주 갈아엎나」**에 있다.
 
@@ -35,8 +38,9 @@ dt_log + dt_inventory ──(확정 메타 적용)──> dt_map
 | 신뢰도 문턱 | `map_overlay_config.alignment.min_margin_dies` / `min_discriminating_dies` (20/20) | ✅ 유도 근거 있음 |
 | 판정 어휘 | `ruling.reason_code` · `state` · `metric` · `geometry_assumed` | ✅ |
 | 후보별 배치 | `ruling.by_frame` | ✅ 2026-08-09 |
-| **정본 표** | `dt_inventory` — `dt_job`(업무키) · `dt_lot` · `dt_slot` · `dt_frame` · `core_frame` · `dt_x_base/sign/offset` · `dt_y_…` · `core_x_…` · `core_y_…` | ✅ **컬럼 17개 전부 선언돼 있다** |
-| 파생 체인 | `chain_rules.json` → **`dt_log_to_dt_map`** | ✅ **이미 존재** |
+| **DT frame 정본** | `wafer_map_metadata` — `target_table=dt_log`, `map_id=dt_job`, `grid_metadata` | ✅ S1 `dt_log_to_dt_alignment_metadata` |
+| 업무 통합 표 | `dt_inventory` — `dt_job`(업무키) · `dt_lot` · `dt_slot` · `dt_frame(JSON)` · `core_frame` · `dt_x_base/sign/offset` · `dt_y_…` · `core_x_…` · `core_y_…` | ✅ S2 `dt_metadata_to_dt_inventory` |
+| 파생 체인 | `chain_rules.json` → `dt_log_to_dt_map` | ⏳ S3 대기 (`replace_map` 필요) |
 | 체인 실행기 | `chain_ingestion_worker` + 매퍼 | ✅ |
 | upsert 경로 | `crud.apply_batch_updates` (업무키 `dt_job`) | ✅ |
 

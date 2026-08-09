@@ -1,0 +1,214 @@
+"""dt_log -> wafer_map_metadata automatic DT-frame chain mapper.
+
+This mapper does not score or transform coordinates.  It consumes the same
+alignment-view payload used by the UI, gates automatic writes, then delegates
+the complete metadata projection to ``map_alignment.confirmed_meta_for``.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from collections import OrderedDict
+
+import alignment_view_service
+import map_alignment
+import map_meta_registrar
+import map_overlay
+
+
+SOURCE_NAME = "chain_ingestion"
+UPDATED_BY = "chain_alignment"
+
+
+def _nonblank(value) -> bool:
+    return value is not None and str(value).strip() != ""
+
+
+def _payload_value(payload: dict, column: str):
+    """Read the one canonical durable-outbox payload shape."""
+    nested = (payload.get("data") or {}).get(column)
+    return nested.get("value") if isinstance(nested, dict) else None
+
+
+def _decision_units(payloads, decision_key):
+    """Stable, deduplicated declared decision-key values from a batch payload."""
+    units = OrderedDict()
+    for payload in payloads or ():
+        if not isinstance(payload, dict):
+            continue
+        # Live ingestion, collapsed-event expansion, and replay all use the
+        # durable outbox ``data.{column}.value`` contract.
+        values = {key: _payload_value(payload, key) for key in decision_key}
+        # A partial key can expand a rule to an unrelated historical population.
+        # DT-job ingestion supplies a complete key in one transaction; without it
+        # this automatic writer has no bounded identity and must wait.
+        if not decision_key or not all(_nonblank(v) for v in values.values()):
+            continue
+        token = tuple((key, str(values[key])) for key in decision_key)
+        units.setdefault(token, values)
+    return list(units.values())
+
+
+def _reference_geometry_bootstrap_allowed(view: dict, rule: dict, reference_spec: str | None) -> bool:
+    """Allow one declared reference geometry to bootstrap wholly absent source meta.
+
+    This is deliberately narrower than relaxing the normal geometry gate: a
+    partial or already-declared source map must never be overwritten by an
+    inferred frame, and a reference selected implicitly is not authority to
+    construct a first source metadata row.
+    """
+    if rule.get("geometry_bootstrap") != "reference_only" or not reference_spec:
+        return False
+    reference = view.get("reference") or {}
+    maps = (view.get("sources") or {}).get("maps") or []
+    return (
+        reference.get("state") == "resolved"
+        and bool(maps)
+        and all(map_row.get("geometry") == "absent" for map_row in maps if isinstance(map_row, dict))
+        and all(isinstance(map_row, dict) for map_row in maps)
+    )
+
+
+def _automatic_gate(view: dict, rule: dict | None = None,
+                    reference_spec: str | None = None) -> bool:
+    rule = rule or {}
+    ruling = view.get("ruling") or {}
+    stats = view.get("stats") or {}
+    reference = view.get("reference") or {}
+    sources = view.get("sources") or {}
+    return (
+        view.get("state") == map_alignment.STATE_SCORED
+        and bool(ruling.get("winner"))
+        and ruling.get("metric") == map_alignment.METRIC_INDEX
+        and ruling.get("index_axis") == map_alignment.INDEX_AXIS_RANKING
+        and (not ruling.get("geometry_assumed")
+             or _reference_geometry_bootstrap_allowed(view, rule, reference_spec))
+        and not ruling.get("thresholds_defaulted")
+        and not stats.get("truncated")
+        and not sources.get("truncated")
+        and not reference.get("truncated")
+        and reference.get("table")
+        and reference.get("map_id")
+    )
+
+
+def _basis_cells_for(db, cfg: dict, reference: dict):
+    """Read the complete valid-die basis once; a truncated mask is unusable."""
+    table, map_id = reference.get("table"), reference.get("map_id")
+    if not table or not map_id:
+        return None
+    cells, _values, truncated, _kind = map_alignment._cells_of(
+        db, cfg, str(table), str(map_id), map_overlay.MAX_VALID_DIE_CELLS)
+    return None if truncated or not cells else cells
+
+
+def _placement_for(ruling: dict, winner: str):
+    row = (ruling.get("by_frame") or {}).get(winner) or {}
+    shift = row.get("shift")
+    if not isinstance(shift, dict) or shift.get("dx") is None or shift.get("dy") is None:
+        return None
+    out = {"dx": shift["dx"], "dy": shift["dy"]}
+    anchor = row.get("anchor")
+    if isinstance(anchor, dict) and anchor.get("anchor_src") and anchor.get("anchor_ref"):
+        out.update(anchor_src=anchor["anchor_src"], anchor_ref=anchor["anchor_ref"],
+                   linear=anchor.get("linear"))
+    return out
+
+
+def _fingerprint(rule_name: str, key_values: dict, view: dict, winner: str, placement: dict) -> str:
+    reference = view.get("reference") or {}
+    material = {
+        "rule": rule_name,
+        "decision_key": key_values,
+        "reference": {"table": reference.get("table"), "map_id": reference.get("map_id")},
+        "winner": winner,
+        "placement": placement,
+        "source_maps": [m.get("map_id") for m in (view.get("sources") or {}).get("maps", [])],
+    }
+    encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _reference_spec_for(rule: dict, key_values: dict) -> str | None:
+    """Resolve a declared DT-job string rule; unmatched jobs are not guessed."""
+    job_id = str(key_values.get(rule.get("reference_job_column", "dt_job")) or "")
+    for candidate in rule.get("reference_by_job_pattern", []) or []:
+        if not isinstance(candidate, dict):
+            continue
+        needle = candidate.get("contains")
+        reference_spec = candidate.get("reference_spec")
+        if isinstance(needle, str) and needle and needle in job_id \
+                and isinstance(reference_spec, str) and reference_spec:
+            return reference_spec
+    fallback = rule.get("reference_spec")
+    return fallback if isinstance(fallback, str) and fallback else None
+
+
+def build_dt_alignment_metadata_batch(db, payloads, rule=None):
+    """Return ``wafer_map_metadata`` upserts for automatically confirmed DT maps."""
+    
+    print('------------------- AUTO ALIGNMENT IS RUNNING------------------')
+    print(payloads)
+    rule = rule or {}
+    rule_name = rule.get("alignment_rule")
+    map_table = rule.get("map_table")
+    target_table = rule.get("metadata_target_table")
+    if not all(isinstance(v, str) and v for v in (rule_name, map_table, target_table)):
+        raise ValueError("DT alignment metadata chain requires alignment_rule, map_table, and metadata_target_table")
+
+    decl = alignment_view_service.declared_alignment_rule(rule_name)
+    decision_key = list(decl.get("decision_key") or ())
+    cfg = map_overlay.load_overlay_config()
+    updates = []
+
+    for key_values in _decision_units(payloads, decision_key):
+        reference_spec = _reference_spec_for(rule, key_values)
+        view = alignment_view_service.resolve_alignment_view(
+            db, rule_name, key_values, map_table,
+            reference_spec=reference_spec, include_cells=False,
+            x_col=rule.get("x_col"), y_col=rule.get("y_col"),
+            value_col=rule.get("value_col"), index_col=rule.get("index_col"),
+            assume_reference_geometry=bool(rule.get("assume_reference_geometry", True)),
+        )
+        if not _automatic_gate(view, rule, reference_spec):
+            continue
+
+        ruling = view["ruling"]
+        winner = ruling["winner"]
+        placement = _placement_for(ruling, winner)
+        if placement is None:
+            continue
+        reference = view["reference"]
+        basis = {"table": reference["table"], "map_id": reference["map_id"]}
+        basis_meta = map_overlay.load_map_meta(db, basis["table"], basis["map_id"])
+        basis_cells = _basis_cells_for(db, cfg, reference)
+        if basis_meta is None or basis_cells is None:
+            continue
+
+        map_ids = [str(m.get("map_id")) for m in (view.get("sources") or {}).get("maps", [])
+                   if _nonblank(m.get("map_id"))]
+        existing = map_alignment._load_metas(db, target_table, map_ids)
+        fingerprint = _fingerprint(rule_name, key_values, view, winner, placement)
+        mark = {
+            "source": UPDATED_BY,
+            "rule": rule_name,
+            "decision_key": key_values,
+            "winner": winner,
+            "input_fingerprint": fingerprint,
+        }
+        for map_id in map_ids:
+            meta = map_alignment.confirmed_meta_for(
+                existing.get(map_id), basis_meta, basis, winner, mark,
+                placement, placement=placement, basis_cells=basis_cells)
+            if meta is None:
+                continue
+            if existing.get(map_id) == meta:
+                continue
+            updates.append({
+                "business_key_val": map_meta_registrar.meta_business_key(target_table, map_id),
+                "updates": {"target_table": target_table, "map_id": map_id,
+                            "grid_metadata": json.dumps(meta, ensure_ascii=False, sort_keys=True)},
+                "source_name": SOURCE_NAME,
+                "updated_by": UPDATED_BY,
+            })
+    return {"updates": updates}

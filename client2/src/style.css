@@ -1440,6 +1440,81 @@ body.resizing-active .history-sidebar {
 .side-indicator.side-front { background: #38bdf8; }
 .side-indicator.side-back  { background: #f59e0b; }
 
+/* Map editor toolbar: status text may change on every cursor move, but that must
+   never change the action row's height or move the canvas below it. */
+.map-editor-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 112px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-header);
+  overflow: hidden;
+}
+
+.map-editor-toolbar__status,
+.map-editor-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.map-editor-toolbar__status {
+  flex: 0 0 40px;
+  min-width: 0;
+  gap: 15px;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.map-editor-toolbar__status > .glass-log-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.map-editor-toolbar__status > .side-indicator,
+.map-editor-toolbar__status > .plock-chip,
+.map-editor-toolbar__status > #selection-actions-container {
+  flex: 0 0 auto;
+}
+
+.map-editor-toolbar__actions {
+  flex: 0 0 40px;
+  width: 100%;
+  justify-content: flex-end;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.map-editor-toolbar__actions .control-group {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.map-editor-toolbar__actions .glass-btn {
+  box-sizing: border-box;
+  height: 40px;
+  white-space: nowrap;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.map-editor-toolbar__status,
+.map-editor-toolbar__actions {
+  scrollbar-width: none;
+}
+
+.map-editor-toolbar__status::-webkit-scrollbar,
+.map-editor-toolbar__actions::-webkit-scrollbar {
+  display: none;
+}
+
 /* 2D Interactive Grid & Notch Wrapper */
 .map-grid-wrapper {
   position: relative;

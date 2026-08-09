@@ -1,0 +1,34 @@
+"""wafer_map_metadata(dt_log/dt_job) -> dt_inventory.dt_frame identity mapper."""
+from __future__ import annotations
+
+import json
+
+
+def _value(payload, key):
+    cell = (payload.get("data") or {}).get(key)
+    return cell.get("value") if isinstance(cell, dict) else None
+
+
+def copy_dt_metadata_to_inventory_batch(_db, payloads, rule=None):
+    rule = rule or {}
+    source_table = rule.get("metadata_target_table", "dt_log")
+    updates, seen = [], set()
+    for payload in payloads or ():
+        if _value(payload, "target_table") != source_table:
+            continue
+        job_id, grid = _value(payload, "map_id"), _value(payload, "grid_metadata")
+        if not isinstance(job_id, str) or not job_id or not grid or job_id in seen:
+            continue
+        try:
+            metadata = grid if isinstance(grid, dict) else json.loads(grid)
+            if not isinstance(metadata, dict):
+                continue
+        except (TypeError, ValueError):
+            continue
+        seen.add(job_id)
+        updates.append({"business_key_val": job_id, "updates": {
+            "dt_job": job_id,
+            "dt_frame": json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+        },
+                        "source_name": "chain_ingestion", "updated_by": "chain_metadata_identity"})
+    return {"updates": updates}

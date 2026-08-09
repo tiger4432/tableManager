@@ -356,7 +356,7 @@ rot270/front/inv=False        (0, −1)              (+1, 0)
 ### 배선 (2026-08-08 착지)
 
 - `candidate_frames()`가 회전 × 시작 모서리를 돈다. `left_to_right_of(frame)`가 그 대응의 **유일한 철자**다.
-- 그 값이 `_index_member` → `serpentine_rank`, 그리고 `direction_judge(left_to_right=)`로 들어간다. 방향 판사는 **후보마다** 골라야 한다 ― 상수로 두면 우상단 후보의 모든 걸음이 위반으로 세어진다.
+- 그 값이 `_index_member` → `serpentine_rank`, 그리고 `direction_judge(left_to_right=)`로 들어간다. `_index_member`는 후보 serpentine 순서에서 저장 `dt_index`가 **엄격 증가**하는지 판정한다. 따라서 부분 맵과 중간 index 결번은 허용하되 역전·중복은 거절한다. 방향 판사는 **후보마다** 골라야 한다 ― 상수로 두면 우상단 후보의 모든 걸음이 위반으로 세어진다.
 - `alignment.sides` 선언은 **은퇴**했다. `STATE_NOT_CONSIDERED` / `TEXT_SIDE_NOT_CONSIDERED`와 그 행 배선은 **생산자 없이 남겨 둔다** ― 다음에 축을 좁히는 선언이 「봤는데 졌다 ≠ 아예 안 봤다」를 다시 발명하지 않도록.
 
 ### 받아들인 대가 (제품 소유자 확정 ― 재론 대상 아님)

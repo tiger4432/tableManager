@@ -1555,13 +1555,15 @@ def _normalised_indices(source_indices, cell_owner):
 
 
 def _index_member(phys, cell_owner, idx_k, idx_has, left_to_right: bool = True):
-    """셀마다 「이 셀이 훑기에서 몇 번째인가 == 저장된 순번인가」.
+    """셀마다 후보 serpentine topology에서 저장 순번이 엄격 증가하는가.
 
     `left_to_right`: 후보가 주장하는 **시작 모서리**(§CANDIDATE_STARTS). 이 축이 후보마다
     달라지는 것이 순번 채점의 두 번째 축이고, 그래서 여기 상수가 있으면 우상단부터 번호를
     매기는 설비는 어느 후보로도 못 이긴다.
 
-    훑기는 **맵 단위**로, **그 맵의 셀 전부**를 대상으로 돈다.
+    훑기는 **맵 단위**로, **그 맵의 셀 전부**를 대상으로 돈다. 후보 순서로
+    읽은 indexed-cell 값이 엄격히 증가하면 그 map의 모든 indexed cell이 맞는다.
+    따라서 ``1,2,3,6,7`` 같은 중간 결번은 유효하지만 역전이나 중복은 아니다.
 
     🔴 번호가 없는 셀도 **훑기에는 들어간다.** 순번은 작업이 건드린 다이 집합에 매겨졌고,
        번호 칸이 빈 행도 그 작업이 건드린 다이다 - 빼면 그 뒤 셀이 전부 한 칸씩 당겨져
@@ -1578,8 +1580,11 @@ def _index_member(phys, cell_owner, idx_k, idx_has, left_to_right: bool = True):
         # 물리(정준) 좌표계에서 훑는다 → 맨 위는 언제나 가장 작은 y(§순번 주석).
         rank = serpentine_rank([phys[i] for i in rows], top_is_min_y=True,
                                left_to_right=left_to_right)
-        for i in rows:
-            if idx_has[i] and rank.get(tuple(phys[i])) == int(idx_k[i]):
+        indexed = [(rank.get(tuple(phys[i])), int(idx_k[i]), i)
+                   for i in rows if idx_has[i]]
+        indexed.sort(key=lambda item: item[0])
+        if all(later[1] > earlier[1] for earlier, later in zip(indexed, indexed[1:])):
+            for _rank, _index, i in indexed:
                 hits[i] = True
     return hits
 
@@ -3947,8 +3952,8 @@ def _diag_index_block(per_candidate, out, ruling, source_indices, cell_owner,
           "  contiguity: %s"
           % ("1..%d with no gaps" % len(set(raw))
              if raw and len(set(raw)) == (max(raw) - min(raw) + 1)
-             else "GAPPED - %d distinct values spanning %d; a walk numbers 1..N with no "
-                  "gaps, so a gapped column cannot fully agree under ANY frame"
+             else "GAPPED - %d distinct values spanning %d; topology scoring permits "
+                  "gaps when their observed order remains strictly increasing"
                   % (len(set(raw)), (max(raw) - min(raw) + 1) if raw else 0)),
           "  anchor (min-index die -> reference top-left valid die): %s"
           % ("reference top-left = %s, placement=%s" % (reference_top_left,

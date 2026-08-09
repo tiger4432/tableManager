@@ -13,6 +13,39 @@
       "enabled": false
     },
     {
+      "__comment": "DT frame metadata: source map and metadata target are dt_log/dt_job. The mapper uses the same read-only alignment-view service as the UI and writes only an index-axis winner with declared thresholds and no geometry/payload uncertainty. reference_by_job_pattern is an ordered, declared selector; unmatched jobs do not guess a valid-die reference and remain a no-op. Add site-specific patterns here rather than changing mapper code.",
+      "name": "dt_log_to_dt_alignment_metadata",
+      "trigger_table": "dt_log",
+      "target_table": "wafer_map_metadata",
+      "mapper_module": "mappers.dt_alignment_metadata_mapper",
+      "mapper_function": "build_dt_alignment_metadata_batch",
+      "is_batch": true,
+      "alignment_rule": "dt_frame_confrimation",
+      "map_table": "dt_log",
+      "metadata_target_table": "dt_log",
+      "reference_job_column": "dt_job",
+      "geometry_bootstrap": "reference_only",
+      "reference_by_job_pattern": [
+        {
+          "contains": "SYN",
+          "reference_spec": "valid_die_ref:PRD-A_DT13"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "__comment": "S2 identity projection. This is the explicitly allowed second hop of dt_log -> wafer_map_metadata -> dt_inventory. The worker keeps all other chain-created events blocked; allow_chain_trigger is safe only because the loader rejects cycles among such edges.",
+      "name": "dt_metadata_to_dt_inventory",
+      "trigger_table": "wafer_map_metadata",
+      "target_table": "dt_inventory",
+      "mapper_module": "mappers.dt_inventory_metadata_mapper",
+      "mapper_function": "copy_dt_metadata_to_inventory_batch",
+      "is_batch": true,
+      "metadata_target_table": "dt_log",
+      "allow_chain_trigger": true,
+      "enabled": true
+    },
+    {
       "__comment": "REVISIT RULE 1 of 2. dt_log alone is not enough. The gate needs a CONFIRMED lot and slot, and those arrive on their own schedule -- so a dt_log row that lands before its attribution is held back at dt_log time and, without this rule, is NEVER LOOKED AT AGAIN. That is how the absent 40% would be lost permanently rather than temporarily. | A chain rule has exactly ONE trigger_table (chain_ingestion_worker.py:394 matches r['trigger_table'] == table_name; it does not accept a list), so three triggers means three rules sharing one mapper_module/mapper_function and one target_table. The worker passes the matched rule into the mapper (execute_custom_mapper(..., rule=rule) when the mapper declares a `rule` parameter), which is how one mapper tells the three apart. This is the mechanism's own answer -- a scheduler or a periodic sweep would have turned 'when does it run' into 'at some point'. | derivation_source_table is required here because the trigger table is NOT the source: the payload is an attribution row and the dt_log rows it covers have to be fetched. The scope comes from the virtual join rule's own join_key, so the revisit covers exactly the rows the gate consults. | Fan-out is bounded: one dt_job covered at most 77 dt_log rows on the dev fixture (2026-08-04).",
       "name": "dt_job_attribution_to_dt_map",
       "trigger_table": "dt_job_attribution",
