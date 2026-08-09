@@ -4,6 +4,10 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
+import dt_frame_transform
+import map_meta_registrar
+import notation_norm
+
 
 SOURCE_NAME = "chain_ingestion"
 UPDATED_BY = "chain_core_usage"
@@ -20,6 +24,13 @@ def _nonblank(value):
     return value is not None and str(value).strip() != ""
 
 
+def _canonical_wafer(value):
+    """Read equivalent wafer-ID spellings as one physical usage-map identity."""
+    if not _nonblank(value):
+        return None
+    return notation_norm.fold_notation(str(value).strip(), notation_norm.DEFAULT_RULES)
+
+
 def _apply_core_equations(x, y, equation):
     raw = {"X": int(x), "Y": int(y)}
     return (
@@ -34,7 +45,7 @@ def _usage_batches(rows, equations_by_job, target_table="core_usage_map"):
     for row in rows:
         job_id = getattr(row, "dt_job", None)
         equation = equations_by_job.get(str(job_id))
-        wafer = getattr(row, "core_wafer", None)
+        wafer = _canonical_wafer(getattr(row, "core_wafer", None))
         if not equation or not _nonblank(wafer):
             continue
         try:
@@ -63,6 +74,40 @@ def _usage_batches(rows, equations_by_job, target_table="core_usage_map"):
             for wafer, updates in by_map.items()]
 
 
+def _standard_frame(value):
+    """Return the standard core-map metadata encoded on an inventory row."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return None
+    try:
+        return dt_frame_transform.standard_meta(value)
+    except ValueError:
+        return None
+
+
+def _usage_metadata_updates(wafers, frames_by_job, target_table):
+    """Register one fixed-standard metadata record per physical wafer."""
+    updates = []
+    for wafer, job_ids in sorted(wafers.items()):
+        metadata = next((frames_by_job[job_id] for job_id in sorted(job_ids)
+                         if job_id in frames_by_job), None)
+        if metadata is None:
+            continue
+        updates.append({
+            "business_key_val": map_meta_registrar.meta_business_key(target_table, wafer),
+            "updates": {
+                "target_table": target_table,
+                "map_id": wafer,
+                "grid_metadata": json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+            },
+            "source_name": SOURCE_NAME,
+            "updated_by": "core_usage_map_metadata",
+        })
+    return updates
+
+
 def build_core_usage_map_batches(db, payloads, rule=None):
     """Refresh all physical-core maps touched by jobs whose core equation changed."""
     from database import models
@@ -77,14 +122,37 @@ def build_core_usage_map_batches(db, payloads, rule=None):
     if not jobs:
         return {"batches": []}
     touched = db.query(source).filter(source.dt_job.in_(jobs)).all()
-    wafers = sorted({str(row.core_wafer) for row in touched if _nonblank(row.core_wafer)})
+    wafers = sorted({_canonical_wafer(row.core_wafer) for row in touched
+                     if _canonical_wafer(row.core_wafer)})
     if not wafers:
         return {"batches": []}
-    all_rows = db.query(source).filter(source.core_wafer.in_(wafers)).all()
+    folded_wafer = notation_norm.fold_notation_sql(source.core_wafer,
+                                                    notation_norm.DEFAULT_RULES)
+    all_rows = db.query(source).filter(folded_wafer.in_(wafers)).all()
     all_jobs = {str(row.dt_job) for row in all_rows if _nonblank(row.dt_job)}
-    equations = {}
+    equations, frames = {}, {}
     for item in db.query(inventory).filter(inventory.dt_job.in_(all_jobs)).all():
         equation = {field: getattr(item, field, None) for field in _EQUATION_FIELDS}
+        frame = _standard_frame(getattr(item, "core_frame", None))
+        job_id = str(item.dt_job)
         if all(value is not None for value in equation.values()):
-            equations[str(item.dt_job)] = equation
-    return {"batches": _usage_batches(all_rows, equations, rule.get("target_table", "core_usage_map"))}
+            equations[job_id] = equation
+        if frame is not None:
+            frames[job_id] = frame
+
+    jobs_by_wafer = defaultdict(set)
+    for row in all_rows:
+        wafer = _canonical_wafer(row.core_wafer)
+        if wafer and _nonblank(row.dt_job):
+            jobs_by_wafer[wafer].add(str(row.dt_job))
+    approved = {
+        wafer: jobs for wafer, jobs in jobs_by_wafer.items()
+        if jobs and jobs.issubset(equations)
+    }
+    approved_rows = [row for row in all_rows
+                     if _canonical_wafer(getattr(row, "core_wafer", None)) in approved]
+    target_table = rule.get("target_table", "core_usage_map")
+    return {
+        "map_metadata_updates": _usage_metadata_updates(approved, frames, target_table),
+        "batches": _usage_batches(approved_rows, equations, target_table),
+    }

@@ -8,7 +8,7 @@
         "x": "core_x",
         "y": "core_y",
         "val": "c_bn",
-        "key_columns": ["core_lot", "core_slot"]
+        "key_columns": ["wafer_id"]
       }
     },
     "__index_comment": "index: 순번 컬럼. x/y와 **같은 칸에** 적는 것이 곧 「이 번호는 이 x/y 보행의 순서다」라는 주장이다 — 다른 좌표계로 열린 실행에는 따라가지 않는다(map_alignment._same_walk가 막고, 그때 사유를 낸다). dt_log는 한 테이블에 dt_x/dt_y와 core_x/core_y 두 좌표계를 들고 있어서 이 구별이 가상이 아니다. 🔴 순번 축은 **DT 보행 전용**이다: 「1번은 좌상단」은 DT 맵의 규칙이고 core 웨이퍼에는 그런 원점 규칙이 없다(첫 픽은 bin 1 집합의 좌상단이지 웨이퍼의 좌상단이 아니다). 합성 실측 2026-08-05 — 같은 컬럼이 DT 보행에서 88/88, core 보행에서 4/88. core 쪽 원점은 결함 지문 대조로 푸는 별개 기계장치다.",

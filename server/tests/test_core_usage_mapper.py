@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 from mappers import core_usage_mapper as mapper
@@ -26,6 +27,33 @@ def test_usage_map_is_keyed_by_enriched_wafer_and_replaces_only_that_map():
 
 def test_lot_slot_only_rows_wait_for_wafer_enrichment():
     assert mapper._usage_batches([_row("J1", None, 1, 2)], {"J1": EQUATION}) == []
+
+
+def test_wafer_separator_variants_share_one_usage_map():
+    rows = [_row("J1", "wf.01", 1, 2), _row("J2", "WF-01", 2, 2)]
+    batches = mapper._usage_batches(rows, {"J1": EQUATION, "J2": EQUATION})
+    assert len(batches) == 1
+    assert batches[0]["scope"] == {"core_wafer": "WF-01"}
+
+
+def test_usage_metadata_is_always_the_standard_front_zero_origin(monkeypatch):
+    monkeypatch.setattr(mapper.map_meta_registrar, "meta_business_key",
+                        lambda table, map_id: f"{table}_{map_id}")
+    frame = {
+        "grid_cols": 13, "grid_rows": 9,
+        "grid_start_x": 7, "grid_start_y": 5,
+        "grid_y_invert": True, "rotation": 180, "side": "back",
+        "valid_die_ref": {"table": "valid_die_ref", "map_id": "CORE_DT"},
+    }
+    updates = mapper._usage_metadata_updates({"W1": {"J2", "J1"}},
+                                              {"J1": mapper._standard_frame(frame)},
+                                              "core_usage_map")
+    assert len(updates) == 1
+    metadata = json.loads(updates[0]["updates"]["grid_metadata"])
+    assert metadata["side"] == "front"
+    assert metadata["rotation"] == 0
+    assert metadata["grid_start_x"] == metadata["grid_start_y"] == 1
+    assert metadata["valid_die_ref"]["map_id"] == "CORE_DT"
 
 
 def test_live_mapper_and_tracked_sample_are_byte_identical():

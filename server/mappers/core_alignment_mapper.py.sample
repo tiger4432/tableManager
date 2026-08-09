@@ -135,6 +135,20 @@ def _placement(ruling: dict, winner: str):
     return {"dx": shift["dx"], "dy": shift["dy"]}
 
 
+def _equation_basis(ruling: dict, basis_meta: dict, basis_cells):
+    """Return the geometry authority that produced the stored placement.
+
+    ``shift_search`` scores and confirms against the source/reference grid
+    origins; it does not use the valid-die mask bounding box.  Passing that
+    mask only later to ``core_equations`` would therefore derive a different
+    affine offset from the one that was scored.  Anchor placement, on the
+    other hand, is explicitly tied to the valid-die floor and must retain it.
+    """
+    if ruling.get("placement") == map_alignment.PLACEMENT_ANCHOR:
+        return basis_meta, basis_cells
+    return None, None
+
+
 def build_core_frame_confirmation_batch(db, payloads, rule=None):
     """Write config-approved core-frame metadata onto ``dt_inventory``."""
     rule = rule or {}
@@ -205,7 +219,10 @@ def build_core_frame_confirmation_batch(db, payloads, rule=None):
         if isinstance(core_valid_die_ref, dict):
             metadata = map_overlay.apply_valid_die_ref(metadata, core_valid_die_ref)
         try:
-            equations = dt_frame_transform.core_equations(metadata, basis_meta, basis_cells)
+            equation_basis_meta, equation_basis_cells = _equation_basis(
+                view["ruling"], basis_meta, basis_cells)
+            equations = dt_frame_transform.core_equations(
+                metadata, equation_basis_meta, equation_basis_cells)
         except ValueError:
             # One confirmation is one transform authority. Do not store a
             # frame without the equations required to use it.

@@ -925,6 +925,10 @@ from ingestion_activity import registry as ingestion_activity_registry
 def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)):
     # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
     audit_cache.load_initial(db, limit_groups)
+    # Chain replay is written by a separate worker process. Its committed audit
+    # rows cannot mutate this process-local cache, so reconcile before Admin
+    # renders the recent transaction list.
+    audit_cache.refresh_if_stale(db, limit_groups)
     
     # 2. 캐시된 그룹을 경량화하여 반환
     result = []

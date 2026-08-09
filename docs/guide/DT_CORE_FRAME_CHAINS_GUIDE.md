@@ -57,6 +57,11 @@ DT job이 들어온 뒤 아래 순서로 확인한다.
 4. `core_wafer` enrichment가 끝난 뒤 `core_usage_map`에 해당 wafer의 표준 Core
    좌표, `used_count`, `used_dt_jobs`가 있는지 확인한다.
 
+`core_usage_map`이 생성될 때는 같은 `core_wafer`를 `map_id`로 하여
+`wafer_map_metadata`도 함께 갱신한다. 이 메타의 좌표 규약은 항상
+`front`, 회전 `0`, 시작 `(1,1)`이다. 격자·물리 치수와 `valid_die_ref`만
+대표 `core_frame`에서 이어받는다.
+
 과거 데이터는 Admin에서 체인 소유 규칙을 재생한다. 반드시 좁은 job/wafer 범위를
 선택하고 미리보기/건수 확인을 먼저 실행한다. frame이 없는데 맵 규칙만 재생해도
 복구되지 않는다. DT는 alignment → inventory → standard DT map 순서, Core는

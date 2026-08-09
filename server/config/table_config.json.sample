@@ -52,7 +52,7 @@
       "wafer_id",
       "event_time"
     ],
-    "map_key_columns": ["core_lot", "core_slot"]
+    "map_key_columns": ["wafer_id"]
   },
   "core_usage_map": {
     "__comment": "DERIVED usage overlay keyed only by enriched core_wafer. dt_log remains the usage record and core_wafer_map remains physical defect/bin truth. Rows with lot/slot only are deliberately held until enrichment supplies wafer ID; otherwise the same physical wafer would split into two replace scopes. core_lot_slots is display provenance, not identity.",

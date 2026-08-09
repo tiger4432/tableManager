@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib
 from types import SimpleNamespace
 
+import map_alignment
+
 
 mapper = importlib.import_module("mappers.core_alignment_mapper")
 
@@ -44,6 +46,24 @@ def test_gate_only_accepts_configured_metric_and_complete_winner():
     assert not mapper._automatic_gate(view, {"accepted_metrics": ["occupancy"],
                                              "allow_assumed_geometry": True})
     assert not mapper._automatic_gate(view, {"accepted_metrics": ["values"]})
+
+
+def test_shift_search_derives_equations_without_a_later_mask_bbox():
+    """The equation must use the same geometry authority that scored it.
+
+    A shift-search result is relative to grid origins.  Feeding a valid-die
+    mask only into the later equation step changes the affine offset for some
+    rotations (observed on SYN-CORE-WAFER-01/P3).
+    """
+    meta, cells = {"grid_start_x": -3}, [(-3, -3), (0, 0)]
+    assert mapper._equation_basis(
+        {"placement": map_alignment.PLACEMENT_SEARCH}, meta, cells) == (None, None)
+
+
+def test_anchor_placement_keeps_the_valid_die_geometry_for_equations():
+    meta, cells = {"grid_start_x": -3}, [(-3, -3), (0, 0)]
+    assert mapper._equation_basis(
+        {"placement": map_alignment.PLACEMENT_ANCHOR}, meta, cells) == (meta, cells)
 
 
 def test_live_mapper_and_tracked_sample_are_byte_identical():

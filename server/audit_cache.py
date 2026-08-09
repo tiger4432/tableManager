@@ -1,7 +1,7 @@
 import threading
 from typing import List, Dict
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, func, or_
 
 from database import models
 from database import schemas
@@ -16,13 +16,14 @@ class AuditLogCache:
         self.groups: List[Dict] = []
         self.is_loaded = False
         self._lock = threading.Lock()
+        self._db_max_id = None
         # [P2 #10] 다중 tx 혼재 배치 경고 1회 게이트 (핫패스 로그 홍수 방지)
         self._multi_tx_warned = False
 
-    def load_initial(self, db: Session, limit_groups: int = 100):
+    def load_initial(self, db: Session, limit_groups: int = 100, force: bool = False):
         """서버 기동 후 최초 1회만 DB에서 청크 단위로 조회하여 캐시를 로드합니다."""
         with self._lock:
-            if self.is_loaded: 
+            if self.is_loaded and not force:
                 return
             
             groups_dict = {}
@@ -63,6 +64,57 @@ class AuditLogCache:
             self.groups = groups_order
                 
             self.is_loaded = True
+            self._db_max_id = db.query(func.max(models.AuditLog.id)).scalar() or 0
+
+    def refresh_if_stale(self, db: Session, limit_groups: int = 100) -> bool:
+        """Merge audit rows committed by a separate worker.
+
+        The audit cache belongs to the API process, while chain replay writes
+        happen in a worker.  A primary-key MAX probe keeps the common read path
+        cheap; when it advances, only the new rows are merged.  Rebuilding the
+        full 100-transaction projection here made a small replay wait on old,
+        unrelated audit history.
+        """
+        latest_id = db.query(func.max(models.AuditLog.id)).scalar() or 0
+        with self._lock:
+            if not self.is_loaded or latest_id <= (self._db_max_id or 0):
+                return False
+            previous_id = self._db_max_id or 0
+
+        # Ascending id order preserves each transaction's newest log at the
+        # top as it is merged, and the primary-key range is independent of the
+        # total size of historic audit data.
+        rows = db.query(models.AuditLog)\
+                 .filter(models.AuditLog.id > previous_id,
+                         models.AuditLog.id <= latest_id)\
+                 .order_by(models.AuditLog.id.asc()).all()
+        with self._lock:
+            for log_obj in rows:
+                log_dict = log_obj.__dict__.copy()
+                log_dict["business_key"] = log_obj.business_key
+                log_model = schemas.AuditLogResponse.model_validate(log_dict)
+                tid = log_obj.transaction_id or "no_tid"
+                for group in self.groups:
+                    if group["transaction_id"] == tid:
+                        group["total_count"] += 1
+                        if len(group["logs"]) < 500:
+                            group["logs"].insert(0, log_model)
+                        if self.groups.index(group) > 0:
+                            self.groups.remove(group)
+                            self.groups.insert(0, group)
+                        break
+                else:
+                    self.groups.insert(0, {
+                        "transaction_id": tid,
+                        "logs": [log_model],
+                        "total_count": 1,
+                    })
+            while len(self.groups) > limit_groups:
+                self.groups.pop()
+            # A row committed between the MAX probe and range query is left
+            # above this watermark and is safely picked up by the next read.
+            self._db_max_id = latest_id
+        return bool(rows)
 
     def prepend_transaction(self, tx_id: str, logs: List[schemas.AuditLogResponse]):
         """새로운 트랜잭션 그룹을 캐시 최상단에 추가합니다."""

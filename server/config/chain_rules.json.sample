@@ -77,8 +77,8 @@
       },
       "reference": {
         "table": "core_wafer_map",
-        "map_id_template": "{core_lot}_{core_slot}",
-        "fields": ["core_lot", "core_slot"]
+        "map_id_template": "{core_wafer}",
+        "fields": ["core_wafer"]
       },
       "x_col": "core_x",
       "y_col": "core_y",
@@ -104,6 +104,7 @@
       "mapper_function": "build_core_usage_map_batches",
       "is_batch": true,
       "allow_chain_trigger": true,
+      "allow_map_metadata_upsert": true,
       "allow_replace_map": true,
       "enabled": true
     },
@@ -117,6 +118,7 @@
       "mapper_module": "mappers.core_usage_mapper",
       "mapper_function": "build_core_usage_map_batches",
       "is_batch": true,
+      "allow_map_metadata_upsert": true,
       "allow_replace_map": true,
       "enabled": true
     },

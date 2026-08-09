@@ -9,15 +9,18 @@ defect/bin fingerprint; no derived core map is written here.
 Usage:
     python server/scripts/seed_syn_core_defect_jobs.py          # dry run
     python server/scripts/seed_syn_core_defect_jobs.py --apply  # additive upsert
+    python server/scripts/seed_syn_core_defect_jobs.py --apply --core-lot SYN-CORE-CLUSTER-B --core-wafer SYN-CORE-WAFER-02
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
 import random
 import sys
+from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -27,6 +30,13 @@ CORE_LOT, CORE_SLOT, CORE_WAFER = "SYN-CORE-CLUSTER", "S01", "SYN-CORE-WAFER-01"
 JOB_PREFIX = "SYN-CORE-CLUSTER-"
 CORE_YIELD = 0.70
 SOURCE_NAME, UPDATED_BY = "custom_script", "seed_syn_core_defect_jobs"
+EVENT_TIME = "2026-08-09T00:00:00Z"
+DT_LOG_COLUMNS = (
+    "dt_job", "dt_eqp", "product", "dt_lot", "dt_slot",
+    "dt_x", "dt_y", "dt_index",
+    "core_lot", "core_slot", "core_wafer", "core_x", "core_y",
+    "c_bn", "event_time",
+)
 
 
 def _map_id(product, type_name):
@@ -190,7 +200,7 @@ def build_plans(core_cells, core_meta, dt_cells, dt_meta, seed=20260809, job_cou
                 "core_lot": CORE_LOT, "core_slot": CORE_SLOT, "core_wafer": CORE_WAFER,
                 "core_x": core_xy[0], "core_y": core_xy[1],
                 "c_bn": bins[core],
-                "event_time": "2026-08-09T00:00:00Z",
+                "event_time": EVENT_TIME,
             })
         plans.append({"job_id": job_id, "dt_frame": dt_frame, "core_frame": core_frame,
                       "core_start": core_column_start(portion, core_meta, starts_at_right),
@@ -222,9 +232,54 @@ def core_view_rows(plans):
     } for plan in plans for row in plan["rows"]]
 
 
+def write_csv_files(directory, plans):
+    """Write one UTF-8 ``dt_log`` ingestion CSV per synthetic job.
+
+    This path has no database write side effect.  Supplying a later
+    ``--event-time`` makes the eventual file ingestion a deliberate changed
+    source event, so the normal outbox/chain route is exercised.
+    """
+    output_dir = Path(directory)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for plan in plans:
+        path = output_dir / (plan["job_id"] + ".csv")
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=DT_LOG_COLUMNS,
+                                    extrasaction="raise")
+            writer.writeheader()
+            writer.writerows(plan["rows"])
+        paths.append(path)
+    return paths
+
+
+def apply_physical_core_seed(db, core_meta, bins):
+    """Replace exactly one physical core-wafer map and register its metadata."""
+    from database import crud
+    import map_overlay
+    # ``bins`` contains only the physically present cells. ``replace_map`` below
+    # removes every previous synthetic cell in this exact core wafer scope, so
+    # omitted keys become visible missing dies rather than stale rows.
+    core_rows = [{"core_lot": CORE_LOT, "core_slot": CORE_SLOT, "wafer_id": CORE_WAFER,
+                  "core_x": x, "core_y": y, "c_bn": bins[(x, y)],
+                  "event_time": EVENT_TIME} for x, y in sorted(bins)]
+    _, core_changed, _, _ = crud.apply_batch_updates(
+        db, "core_wafer_map", _batch(core_rows, replace_map=True,
+                                     scope={"wafer_id": CORE_WAFER}))
+    # ``core_wafer_map`` declares wafer_id as its only map key.  Metadata must
+    # use the same identity or the core alignment rule cannot resolve it.
+    core_map_id = CORE_WAFER
+    core_map_meta = map_overlay.apply_valid_die_ref(
+        dict(core_meta), {"table": "valid_die_ref", "map_id": _map_id(*CORE_REF)})
+    _, meta_changed, _, _ = crud.apply_batch_updates(db, "wafer_map_metadata", _batch([{
+        "target_table": "core_wafer_map", "map_id": core_map_id,
+        "grid_metadata": json.dumps(core_map_meta, ensure_ascii=False, sort_keys=True),
+    }]))
+    return len(core_changed or ()), len(meta_changed or ())
+
+
 def apply_seed(db, core_cells, core_meta, bins, plans):
     from database import crud, models
-    import map_overlay
     current_jobs = {plan["job_id"] for plan in plans}
     # The job id has a fixture-content hash. Changing yield legitimately changes
     # that hash, so replace the old synthetic job scopes before writing the new
@@ -236,22 +291,7 @@ def apply_seed(db, core_cells, core_meta, bins, plans):
         for job_id in stale_jobs:
             crud.apply_batch_updates(
                 db, table_name, _batch([], replace_map=True, scope={"dt_job": job_id}))
-    # ``bins`` contains only the physically present cells. ``replace_map`` below
-    # removes every previous synthetic cell in this exact core wafer scope, so
-    # omitted keys become visible missing dies rather than stale rows.
-    core_rows = [{"core_lot": CORE_LOT, "core_slot": CORE_SLOT, "wafer_id": CORE_WAFER,
-                  "core_x": x, "core_y": y, "c_bn": bins[(x, y)],
-                  "event_time": "2026-08-09T00:00:00Z"} for x, y in sorted(bins)]
-    _, core_changed, _, _ = crud.apply_batch_updates(
-        db, "core_wafer_map", _batch(core_rows, replace_map=True,
-                                     scope={"core_lot": CORE_LOT, "core_slot": CORE_SLOT}))
-    core_map_id = "%s_%s" % (CORE_LOT, CORE_SLOT)
-    core_map_meta = map_overlay.apply_valid_die_ref(
-        dict(core_meta), {"table": "valid_die_ref", "map_id": _map_id(*CORE_REF)})
-    _, meta_changed, _, _ = crud.apply_batch_updates(db, "wafer_map_metadata", _batch([{
-        "target_table": "core_wafer_map", "map_id": core_map_id,
-        "grid_metadata": json.dumps(core_map_meta, ensure_ascii=False, sort_keys=True),
-    }]))
+    core_changed, meta_changed = apply_physical_core_seed(db, core_meta, bins)
     dt_changed = 0
     for plan in plans:
         _, changed, _, _ = crud.apply_batch_updates(
@@ -270,11 +310,33 @@ def apply_seed(db, core_cells, core_meta, bins, plans):
 
 
 def main():
+    global CORE_LOT, CORE_SLOT, CORE_WAFER, JOB_PREFIX, EVENT_TIME
     parser = argparse.ArgumentParser(description="Seed clustered CORE_DT defects split over synthetic DT jobs.")
     parser.add_argument("--apply", action="store_true", help="write additive synthetic rows")
     parser.add_argument("--seed", type=int, default=20260809)
     parser.add_argument("--jobs", type=int, choices=(2, 3), default=3)
+    parser.add_argument("--core-lot", default=CORE_LOT,
+                        help="fixture core lot; also namespaces its synthetic DT jobs")
+    parser.add_argument("--core-slot", default=CORE_SLOT,
+                        help="fixture core slot used by the physical reference map")
+    parser.add_argument("--core-wafer", default=CORE_WAFER,
+                        help="enriched core wafer identity copied into dt_log")
+    parser.add_argument("--event-time", default=EVENT_TIME,
+                        help="source timestamp; changing it emits a deliberate dt_log replay event")
+    parser.add_argument("--csv-dir", metavar="PATH",
+                        help="write one UTF-8-SIG dt_log CSV per job into PATH without requiring --apply")
+    parser.add_argument("--physical-core-only", action="store_true",
+                        help="with --apply, write only core_wafer_map and its metadata (never dt_log)")
     args = parser.parse_args()
+    if args.physical_core_only and not args.apply:
+        parser.error("--physical-core-only requires --apply")
+
+    # One invocation owns only its lot/slot map scope and job prefix.  This
+    # makes an additional synthetic wafer additive instead of replacing the
+    # original SYN-CORE-CLUSTER sample on its stale-job cleanup pass.
+    CORE_LOT, CORE_SLOT, CORE_WAFER = args.core_lot, args.core_slot, args.core_wafer
+    JOB_PREFIX = CORE_LOT + "-"
+    EVENT_TIME = args.event_time
 
     from database.database import SessionLocal
     from database import crud, models
@@ -294,13 +356,20 @@ def main():
             print("%s dies=%d defects=%d dt=%s core_truth=%s core_%s=%s" % (
                 plan["job_id"], len(plan["rows"]), defects, plan["dt_frame"], plan["core_frame"],
                 plan["core_start_side"], plan["core_start"]))
-        if args.apply:
+        csv_paths = write_csv_files(args.csv_dir, plans) if args.csv_dir else []
+        if args.apply and args.physical_core_only:
+            core_changed, meta_changed = apply_physical_core_seed(db, core_meta, bins)
+            print("WROTE core_wafer_map cells=%d, core metadata=%d; dt_log untouched" % (
+                core_changed, meta_changed))
+        elif args.apply:
             core_changed, meta_changed, dt_changed, view_changed = apply_seed(
                 db, core_cells, core_meta, bins, plans)
             print("WROTE core_wafer_map cells=%d, core metadata=%d, dt_log cells=%d, "
                   "dt_core_view cells=%d" % (core_changed, meta_changed, dt_changed, view_changed))
         else:
-            print("DRY RUN: no rows written. Re-run with --apply.")
+            print("DRY RUN: no rows written. Re-run with --apply to write directly.")
+        for path in csv_paths:
+            print("csv: %s" % path)
     finally:
         db.close()
 

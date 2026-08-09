@@ -1,5 +1,22 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 2026-08-10 — 맵 바인딩 단일 정본화 제안 (열린 설계 결정)
+>
+> **문제:** 맵 identity/좌표 바인딩이 `table_config.json`,
+> `map_overlay_config.json`, `chain_rules.json`에 중복 선언된다. 실제로
+> `core_wafer_map`의 identity를 `core_lot/core_slot`에서 `wafer_id`로 바꾼 뒤
+> overlay 바인딩이 남아 자동 Core-frame 체인이 `binding_unresolved`로 거절됐다.
+>
+> **제안:** `map_contracts`를 신설해 surface 단위로 `identity`, `x/y/value/index`,
+> metadata 대상을 단일 선언한다. `dt_log:dt`, `dt_log:core`처럼 한 테이블의 서로
+> 다른 좌표계를 별도 surface로 표현한다. chain은 `source_surface`와
+> `reference_surface`, 그리고 명시적 identity 필드 매핑만 선언하며,
+> `map_id_template`/중복 `key_columns`는 제거한다.
+>
+> **상태:** 제안 단계. 아직 제품 spec이 아니며, 승인 전에는 현 설정을 동작 정본으로
+> 유지한다. 우선 현재 `core_wafer_map`의 overlay key를 `wafer_id`로 바로잡아
+> 자동 Core-frame 샘플 검증을 재개한다.
+
 > ## 🔴 2026-08-09 사용자 결정 — 프레임 확정 정본 전환
 >
 > `frame_confirmation`/`frame_confirmation_source`는 복잡성 때문에 폐기 예정이며, 새
