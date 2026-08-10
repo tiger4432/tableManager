@@ -56,6 +56,7 @@ import {
   updatePageCacheOnDelete
 } from './ui.js';
 import { initTraceEntry } from './trace_launch.js';
+import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
   startSession,
   installGlobalListeners,
@@ -121,6 +122,7 @@ async function init() {
   installGlobalListeners();
   installNavLinkCounting(ROUTES.GRID); // covers the nav dropdown anchors in index.html
   setupEventListeners();
+  installReferenceKeyboardIsolation();
   initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
   setupClipboardHandlers();
   // The `paste` listener in clipboard.js owns the only readable clipboard on plain HTTP;
@@ -260,22 +262,6 @@ function setupEventListeners() {
     });
   }
 
-  // Enrichment 결손 배지 클릭 → 해당 규칙의 Enrichment Queue 페이지로 이동 (계획서: 현재 탭)
-  if (elements.enrichmentBadge) {
-    elements.enrichmentBadge.addEventListener('click', () => {
-      const ruleName = elements.enrichmentBadge.dataset.rule;
-      // V1 instrument: count before navigating — the "from" context is gone afterwards.
-      // Two destinations on purpose (Lead PM 2026-07-29): with a rule the badge lands the
-      // user exactly on the thing they clicked (targeted continuation, exempt); without
-      // one it drops them on the generic queue, which is a real context-losing move.
-      // A single id would force us to be wrong in one direction or the other.
-      countNav(ROUTES.GRID, ruleName ? `${ROUTES.ENRICHMENT}:rule` : ROUTES.ENRICHMENT);
-      window.location.href = ruleName
-        ? `/enrichment.html?rule=${encodeURIComponent(ruleName)}`
-        : '/enrichment.html';
-    });
-  }
-
   elements.tableSelect.addEventListener('change', async (e) => {
     const table = e.target.value;
     if (table) {
@@ -346,6 +332,7 @@ function setupEventListeners() {
 
   // History Tabs
   elements.tabGlobalBtn.addEventListener('click', () => {
+    hideReferenceView();
     elements.tabGlobalBtn.classList.add('active');
     elements.tabCellBtn.classList.remove('active');
     elements.tabRowBtn.classList.remove('active');
@@ -354,6 +341,7 @@ function setupEventListeners() {
   });
 
   elements.tabCellBtn.addEventListener('click', () => {
+    hideReferenceView();
     elements.tabCellBtn.classList.add('active');
     elements.tabGlobalBtn.classList.remove('active');
     elements.tabRowBtn.classList.remove('active');
@@ -362,12 +350,17 @@ function setupEventListeners() {
   });
 
   elements.tabRowBtn.addEventListener('click', () => {
+    hideReferenceView();
     elements.tabRowBtn.classList.add('active');
     elements.tabGlobalBtn.classList.remove('active');
     elements.tabCellBtn.classList.remove('active');
     state.activeHistoryTab = 'row';
     loadHistory();
   });
+
+  if (elements.tabReferenceBtn) {
+    elements.tabReferenceBtn.addEventListener('click', () => showReferenceView());
+  }
 
   // Transaction Mode listeners
   if (elements.txModeToggle) {

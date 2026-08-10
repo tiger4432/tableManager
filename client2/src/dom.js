@@ -18,8 +18,12 @@ export const elements = {
   get tabGlobalBtn() { return document.getElementById('tab-global'); },
   get tabCellBtn() { return document.getElementById('tab-cell'); },
   get tabRowBtn() { return document.getElementById('tab-row'); },
+  get tabReferenceBtn() { return document.getElementById('tab-reference'); },
   get selectedCellInfo() { return document.getElementById('selected-cell-info'); },
   get timeline() { return document.getElementById('timeline'); },
+  get timelineContainer() { return document.getElementById('timeline-container'); },
+  get referenceView() { return document.getElementById('reference-view'); },
+  get referenceViewContent() { return document.getElementById('reference-view-content'); },
   get refreshHistoryBtn() { return document.getElementById('refresh-history-btn'); },
   get contextMenu() { return document.getElementById('custom-context-menu'); },
   get sourcesModal() { return document.getElementById('sources-modal'); },
@@ -52,6 +56,5 @@ export const elements = {
   get settingsDropdown() { return document.getElementById('settings-dropdown'); },
   get navMenuBtn() { return document.getElementById('nav-menu-btn'); },
   get navDropdown() { return document.getElementById('nav-dropdown'); },
-  get txPendingBadge() { return document.getElementById('tx-pending-badge'); },
-  get enrichmentBadge() { return document.getElementById('enrichment-badge'); }
+  get txPendingBadge() { return document.getElementById('tx-pending-badge'); }
 };

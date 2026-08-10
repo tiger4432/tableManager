@@ -6,7 +6,7 @@ import { state } from './state.js';
 import { elements } from './dom.js';
 import { checkServerHealth, loadTables, fetchData } from './api.js';
 import { showIngestionProgress, finishIngestionProgress, showToast, getLocalTimeString } from './utils.js';
-import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete, notifyEnrichmentTableEvent } from './ui.js';
+import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
 import { triggerHistoryReloadDebounced, appendHistoryLocally } from './timeline.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 
@@ -329,8 +329,10 @@ export function handleWebSocketMessage(msg) {
     finishIngestionProgress(msg.table_name, msg.filename, status, msg.error_msg);
 
     if (msg.table_name === state.currentTable) {
+      // Keep the currently inspected grid stable.  Row-level broadcast events
+      // already merge their deltas below; an ingestion-complete notification
+      // must not replace the whole page and steal the operator's context.
       state.pageCache.clear();
-      fetchData(true);
       triggerHistoryReloadDebounced();
     }
     return;
@@ -357,10 +359,6 @@ export function handleWebSocketMessage(msg) {
 
   // Enrichment 결손 배지: derived 테이블 이벤트는 source 테이블을 보는 중에도 도착하므로
   // currentTable 가드보다 앞에서 훅 (내부에서 관련 규칙 여부 판정, fire-and-forget)
-  if (msg.event && msg.event.startsWith('batch_')) {
-    notifyEnrichmentTableEvent(msg.table_name);
-  }
-
   // 2. Perform table-specific data/grid updates
   if (msg.table_name !== state.currentTable) return;
   if (!state.gridApi) return;
@@ -481,8 +479,10 @@ export function handleWebSocketMessage(msg) {
       elements.timeline.innerHTML = '<li class="timeline-empty">Selected row deleted.</li>';
     }
   } else if (event === 'batch_refresh_required') {
+    // This event has no row payload.  Invalidate the pagination cache so the
+    // next explicit refresh reads current data, but do not auto-replace the
+    // on-screen grid merely because another actor changed the table.
     state.pageCache.clear();
-    fetchData(true);
     if (window.triggerHistoryReloadDebounced) window.triggerHistoryReloadDebounced();
   }
 }

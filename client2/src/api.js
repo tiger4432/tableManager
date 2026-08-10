@@ -2,13 +2,14 @@ import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
-import { updateSelectedCellUI, updateTxModeUI, updateEnrichmentBadge } from './ui.js';
+import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
 import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject } from './grid.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString } from './utils.js';
 import { refreshTraceEntry } from './trace_launch.js';
 import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
+import { syncReferenceViewRule } from './enrichment_reference_view.js';
 
 /**
  * Write a status badge WITHOUT trusting the handle to exist.
@@ -140,7 +141,7 @@ export async function switchTable(tableName) {
   await loadHistory();
 
   // Enrichment 결손 배지: fire-and-forget (테이블 전환을 블로킹하지 않음, 실패 무음)
-  updateEnrichmentBadge();
+  syncReferenceViewRule();
 
   // G2 추적 진입점: 현재 테이블의 그래프 매핑 여부 재판정 (fire-and-forget, 실패 무음)
   refreshTraceEntry();

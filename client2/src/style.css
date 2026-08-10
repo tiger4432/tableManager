@@ -441,6 +441,17 @@ body.resizing-active .history-sidebar {
   flex: 1;
 }
 
+.reference-view { flex: 1; min-width: 0; }
+.reference-view-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; }
+.reference-view-tab { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--bg-inset); color: var(--text-muted); cursor: pointer; font: inherit; font-size: .76rem; }
+.reference-view-tab.active { color: var(--accent); border-color: var(--accent); background: var(--bg-surface); }
+.reference-view-section { margin-bottom: 16px; }
+.reference-view-section h3 { font-size: .85rem; margin: 0 0 8px; color: var(--accent); }
+.reference-view-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.reference-view-table th, .reference-view-table td { padding: 7px; border: 1px solid var(--border); text-align: left; vertical-align: top; word-break: break-word; }
+.reference-view-table th { color: var(--text-muted); background: var(--bg-inset); }
+.reference-view-empty { color: var(--text-dim); font-size: .82rem; }
+
 .timeline {
   list-style: none;
   position: relative;

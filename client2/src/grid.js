@@ -13,6 +13,7 @@ import {
 } from './clipboard.js';
 import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
+import { refreshReferenceForSelection } from './enrichment_reference_view.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
 // The bulk-fill engine already existed: `applyValueToSelectedRange` (ui.js) does the
@@ -701,6 +702,7 @@ export function renderGrid(initialRows) {
 
       state.selectedCell = { rowId, colId, value: val, rowIndex: event.rowIndex };
       updateSelectedCellUI();
+      refreshReferenceForSelection();
       if (state.activeHistoryTab !== 'global') {
         loadHistory();
       }

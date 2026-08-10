@@ -615,6 +615,13 @@ export function setupClipboardHandlers() {
   document.addEventListener('copy', (e) => {
     if (!state.gridApi) return;
 
+    // The enrichment reference sidebar is intentionally a browser-native copy
+    // surface.  Its text selection must not be replaced by the grid's stale
+    // range/row TSV merely because a grid selection still exists underneath.
+    if (e.target instanceof Element && e.target.closest('#reference-view')) {
+      return;
+    }
+
     const activeEl = document.activeElement;
     if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input'))) {
       return;

@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-DsVY9V-M.js"></script>
+    <script type="module" crossorigin src="/assets/main-BW4a1zS3.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/config-Dy5qGBed.js">
     <link rel="modulepreload" crossorigin href="/assets/effort_meter-xn_vq-uO.js">
     <link rel="modulepreload" crossorigin href="/assets/enrichment_queue-B5O9NT-F.js">
@@ -35,7 +35,7 @@
     <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
     <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
     <link rel="stylesheet" crossorigin href="/assets/ag-theme-quartz-NphWruxx.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-it_kFC0g.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-8s5Ut0Az.css">
   </head>
 
   <body>
@@ -65,13 +65,6 @@
                 font-weight: bold;
               "
               >⚡ Unsaved: 0</span
-            >
-            <!-- Enrichment Queue missing-value counter (hidden unless rules API is live & count > 0) -->
-            <span
-              id="enrichment-badge"
-              class="glass-log-badge"
-              style="display: none; width: 100px"
-              >🧩 결손 0건</span
             >
             <button
               id="tx-apply-btn"
@@ -247,9 +240,6 @@
               <a href="/map_editor.html" class="dropdown-item nav-link"
                 >🗺️ Wafer Map Editor</a
               >
-              <a href="/enrichment.html" class="dropdown-item nav-link"
-                >🧩 Enrichment Queue</a
-              >
               <a href="/graph.html" class="dropdown-item nav-link"
                 >🕸️ Knowledge Graph</a
               >
@@ -405,16 +395,20 @@
               </button>
               <button id="tab-cell" class="tab-btn">Cell History</button>
               <button id="tab-row" class="tab-btn">Row History</button>
+              <button id="tab-reference" class="tab-btn" style="display: none">참조뷰</button>
             </div>
           </div>
           <div class="sidebar-content">
             <div id="selected-cell-info" class="meta-info">
               Select a cell to view history
             </div>
-            <div class="timeline-container">
+            <div id="timeline-container" class="timeline-container">
               <ul id="timeline" class="timeline">
                 <li class="timeline-empty">No history loaded.</li>
               </ul>
+            </div>
+            <div id="reference-view" class="reference-view" style="display: none">
+              <div id="reference-view-content" class="reference-view-content"></div>
             </div>
           </div>
         </aside>
