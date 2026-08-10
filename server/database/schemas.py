@@ -46,6 +46,30 @@ class AuditLogResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class AuditHistoryPage(BaseModel):
+    """One page of a row's or a cell's audit history.
+
+    An ENVELOPE, not a bare list, and that is the whole point of it. These two
+    endpoints used to return every audit row a cell had ever accumulated, so the
+    client had no way to distinguish "this is the complete history" from "this is
+    as much of it as the server was willing to send" - and a capped list that
+    looks complete is a wrong answer, not a slow one.
+
+    `truncated` is the same word (and the same invariant) `value_suggest` uses
+    for the same situation. See server/audit_history.py.
+    """
+    logs: list[AuditLogResponse]
+    #: True == there is older history past this page. Show the 더 보기 affordance.
+    truncated: bool = False
+    #: Feed back as `?cursor=`. Non-null exactly when `truncated` is true.
+    next_cursor: Optional[str] = None
+    #: Page size actually in force (config `default_limit`, or the caller's
+    #: `limit` clamped to `max_limit`). Present so a client can tell "I asked for
+    #: 5,000 and got 1,000" without knowing the server's config.
+    limit: int
+    #: len(logs), so no caller has to count to decide whether to render.
+    returned: int = 0
+
 class AuditLogGroupResponse(BaseModel):
     transaction_id: Optional[str] = None
     total_count: int = 0

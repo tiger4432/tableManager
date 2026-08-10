@@ -1,4 +1,3 @@
-from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError  # [D3] business-key conflict -> 409, not 500
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -43,6 +42,7 @@ import json
 import paths  # single override point for config/ + ingestion_workspace/ (ASSY_DATA_ROOT)
 import db_safety  # [#16a] "a test process may not touch a real database", as a decision
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
+import audit_history  # keyset paging + config ceiling for row/cell /history
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
 # enumerates the app's routes and fails if a new one ever misses.
@@ -2267,58 +2267,75 @@ def get_row_data(table_name: str, row_id: str, db: Session = Depends(get_db)):
     }
 
 
-@app.get("/tables/{table_name}/rows/{row_id}/history", response_model=list[schemas.AuditLogResponse])
-def get_row_history(table_name: str, row_id: str, db: Session = Depends(get_db)):
+def _history_page(db: Session, table_name: str, row_id: str, base_query,
+                  limit, cursor) -> schemas.AuditHistoryPage:
+    """One keyset page of audit history + the row-level enrichment both tabs need.
+
+    Shared by the row and the cell endpoint because everything except the
+    `column_name` filter is identical between them, and the pair has already
+    drifted once: a SECOND `get_cell_history` was defined further down this file
+    on the same path, never reachable (FastAPI serves the first registration) and
+    missing this enrichment entirely. One body is one place to be wrong.
+
+    Ceiling lives in server/audit_history.py - read its docstring before changing
+    the sort key, the cursor form, or the predicate. All three are measured.
     """
-    특정 행의 모든 변경 이력을 가져옵니다.
-    """
-    logs = db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == table_name,
-        models.AuditLog.row_id == row_id
-    ).order_by(models.AuditLog.timestamp.desc()).all()
-    
+    settings = audit_history.resolve_settings(audit_history.load_config())
+    page_size = audit_history.resolve_limit(limit, settings)
+    try:
+        logs, truncated, next_cursor = audit_history.fetch_page(
+            base_query, models.AuditLog, page_size, cursor)
+    except audit_history.CursorError as e:
+        # 400, never a silent restart from page 1 - see CursorError.
+        raise HTTPException(status_code=400, detail=f"Invalid history cursor: {e}")
+
     table_model = models.DYNAMIC_TABLES.get(table_name)
     row_obj = None
     if table_model:
         row_obj = db.query(table_model).filter(table_model.row_id == row_id).first()
-        
+
     row_exists = row_obj is not None
     bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
-    
+
     result = []
     for log in logs:
         log_res = schemas.AuditLogResponse.model_validate(log)
         log_res.is_row_deleted = not row_exists
         log_res.business_key = log.business_key or bk_val
         result.append(log_res)
-    return result
+    return schemas.AuditHistoryPage(
+        logs=result, truncated=truncated, next_cursor=next_cursor,
+        limit=page_size, returned=len(result),
+    )
 
-@app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history", response_model=list[schemas.AuditLogResponse])
-def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
+
+@app.get("/tables/{table_name}/rows/{row_id}/history", response_model=schemas.AuditHistoryPage)
+def get_row_history(table_name: str, row_id: str,
+                    limit: Optional[int] = None, cursor: Optional[str] = None,
+                    db: Session = Depends(get_db)):
+    """특정 행의 변경 이력 한 페이지 (최신순). `cursor`로 다음 페이지를 잇습니다.
+
+    ⚠️ 응답은 배열이 아니라 봉투(`{logs, truncated, next_cursor, limit, returned}`)
+    입니다. 잘린 목록이 완전한 목록과 똑같이 생기면 그건 느린 응답이 아니라 **틀린
+    응답**이므로, 절단은 언제나 응답 자신이 말합니다.
     """
-    특정 셀의 변경 이력을 가져옵니다.
-    """
-    logs = db.query(models.AuditLog).filter(
+    q = db.query(models.AuditLog).filter(
+        models.AuditLog.table_name == table_name,
+        models.AuditLog.row_id == row_id
+    )
+    return _history_page(db, table_name, row_id, q, limit, cursor)
+
+@app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history", response_model=schemas.AuditHistoryPage)
+def get_cell_history(table_name: str, row_id: str, col_name: str,
+                     limit: Optional[int] = None, cursor: Optional[str] = None,
+                     db: Session = Depends(get_db)):
+    """특정 셀의 변경 이력 한 페이지 (최신순). 응답 모양은 행 이력과 동일합니다."""
+    q = db.query(models.AuditLog).filter(
         models.AuditLog.table_name == table_name,
         models.AuditLog.row_id == row_id,
         models.AuditLog.column_name == col_name
-    ).order_by(models.AuditLog.timestamp.desc()).all()
-    
-    table_model = models.DYNAMIC_TABLES.get(table_name)
-    row_obj = None
-    if table_model:
-        row_obj = db.query(table_model).filter(table_model.row_id == row_id).first()
-        
-    row_exists = row_obj is not None
-    bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
-    
-    result = []
-    for log in logs:
-        log_res = schemas.AuditLogResponse.model_validate(log)
-        log_res.is_row_deleted = not row_exists
-        log_res.business_key = log.business_key or bk_val
-        result.append(log_res)
-    return result
+    )
+    return _history_page(db, table_name, row_id, q, limit, cursor)
 
 @app.post("/tables/{table_name}/rows")
 async def create_row(table_name: str, count: int = 1, user_name: str = "system", db: Session = Depends(get_db)):
@@ -3762,17 +3779,16 @@ async def set_cell_priority(
     }))
     return {"status": "success", "row_id": row_id, "deleted_row_ids": deleted_row_ids}
 
-@app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history")
-def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
-    # [C-1 Fix] await가 없는 순수 동기 핸들러 — def로 전환해 threadpool 실행(루프 비블로킹)
-    """특정 셀의 변경 이력(AuditLog)을 조회합니다."""
-    logs = db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == table_name,
-        models.AuditLog.row_id == row_id,
-        models.AuditLog.column_name == col_name
-    ).order_by(desc(models.AuditLog.timestamp)).all()
-    
-    return logs
+# [2026-08-11] A SECOND `get_cell_history` used to sit here, registered on the
+# same path as the one above. It was unreachable: Starlette returns the FIRST
+# route whose path matches, so this one had never run since the day it was added.
+# Verified by resolving the path against `app.routes` before deleting it.
+#
+# It was also a strict subset - no `response_model`, so no `is_row_deleted` and
+# no `business_key` fallback for a deleted row, and it returned raw ORM objects.
+# Nothing it did is missing from the live handler. Deleted rather than left as a
+# decoy: the ONE thing a duplicate route reliably produces is a fix applied to
+# the dead copy, which passes review and changes nothing.
 
 @app.put("/tables/{table_name}/cells/priority/batch")
 async def set_cell_priority_batch_endpoint(

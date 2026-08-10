@@ -78,6 +78,31 @@ export const state = {
   isDraggingRange: false,
   globalHistoryData: [],
   cellRowHistoryData: [],
+  // [History paging] The `/history` envelope's fields, held BESIDE the list and never on it.
+  //
+  // 🔴 `cellRowHistoryData` MUST STAY A PLAIN ARRAY. `renderTimelineIncremental` and
+  //    `appendHistoryLocally` (timeline.js) `unshift`/`some` straight into it when a WebSocket
+  //    log arrives, so the moment it becomes an envelope object every live update on the
+  //    sidebar throws. The server answers `{logs, truncated, next_cursor, limit, returned}`;
+  //    `logs` is what lands here and the rest lands in the three fields below.
+  //
+  // The cursor is OPAQUE (base64url of a `(timestamp, id)` keyset position). It is never
+  // parsed, never constructed here, and only ever handed back verbatim as `?cursor=`.
+  cellRowHistoryCursor: null,
+  // True == the server said there is older history past what is on screen. This is the ONLY
+  // thing that distinguishes a capped list from a complete one, and the 더 보기 control is how
+  // it reaches the operator — a list that just ends where the page ended is a wrong answer,
+  // not a slow one.
+  cellRowHistoryTruncated: false,
+  // Rows PAGED IN from the server, across all pages of the current session. Deliberately not
+  // `cellRowHistoryData.length`: that array also collects live WebSocket appends, which are not
+  // part of what the pager fetched and would make the control's count drift upward on its own.
+  cellRowHistoryLoaded: 0,
+  // The paging session token. Bumped by every fresh `loadHistory()`, so a 더 보기 still in
+  // flight when the operator clicks another cell can tell that its page belongs to a list that
+  // is no longer on screen — appending the previous row's page 2 onto this row's page 1 is the
+  // defect this counter exists to prevent, and those rows would all be real.
+  cellRowHistorySession: 0,
   expandedTransactions: new Set(),
   fetchingTransactions: new Set(),
   currentTransactionId: null,

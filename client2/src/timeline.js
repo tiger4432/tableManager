@@ -23,28 +23,84 @@ export async function loadHistory() {
   }
 
   if (!state.selectedCell) {
+    // No target, so no position to page from. Retiring the session here too keeps a cursor from
+    // outliving the list it names.
+    beginHistorySession();
     elements.timeline.innerHTML = '<li class="timeline-empty">Select a cell to view history</li>';
     return;
   }
 
   elements.timeline.innerHTML = '<li class="timeline-empty">Loading history...</li>';
 
-  const { rowId, colId } = state.selectedCell;
-  let url = `${API_BASE}/tables/${state.currentTable}/rows/${rowId}/history`;
+  // A FRESH LOAD OPENS A NEW PAGING SESSION. Everything below is reset BEFORE the request goes
+  // out, not after it lands: between the two, a 더 보기 from the previous cell can still be in
+  // flight, and the stale cursor it would append against belongs to another row's history.
+  const session = beginHistorySession();
 
-  if (state.activeHistoryTab === 'cell') {
-    url = `${API_BASE}/tables/${state.currentTable}/rows/${rowId}/cells/${colId}/history`;
-  }
+  const { rowId, colId } = state.selectedCell;
+  const url = historyUrl(rowId, colId);
 
   try {
     const res = await fetch(url);
-    const logs = await res.json();
-    state.cellRowHistoryData = logs || [];
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const page = readHistoryPage(await res.json());
+    // Superseded while in flight — the operator is looking at a different list now.
+    if (session !== state.cellRowHistorySession) return;
+    state.cellRowHistoryData = page.logs;
+    state.cellRowHistoryCursor = page.nextCursor;
+    state.cellRowHistoryTruncated = page.truncated;
+    state.cellRowHistoryLoaded = page.logs.length;
     renderTimeline(state.cellRowHistoryData);
   } catch (err) {
+    if (session !== state.cellRowHistorySession) return;
     console.error('Failed to load history', err);
     elements.timeline.innerHTML = '<li class="timeline-empty" style="color:var(--color-danger)">Failed to load history log</li>';
   }
+}
+
+// The row-history or cell-history endpoint for the active tab. One spelling, because the pager
+// has to rebuild the SAME url `loadHistory` used — a second copy that drifts would page the row
+// endpoint while the sidebar shows the cell tab, and every appended row would look plausible.
+function historyUrl(rowId, colId, cursor = null) {
+  let url = state.activeHistoryTab === 'cell'
+    ? `${API_BASE}/tables/${state.currentTable}/rows/${rowId}/cells/${colId}/history`
+    : `${API_BASE}/tables/${state.currentTable}/rows/${rowId}/history`;
+  if (cursor) url += `?cursor=${encodeURIComponent(cursor)}`;
+  return url;
+}
+
+// Open a new paging session and return its token. Callers compare the token back after every
+// await; anything that does not match belongs to a list that has been replaced.
+function beginHistorySession() {
+  state.cellRowHistoryCursor = null;
+  state.cellRowHistoryTruncated = false;
+  state.cellRowHistoryLoaded = 0;
+  state.cellRowHistorySession += 1;
+  return state.cellRowHistorySession;
+}
+
+// [History paging] Read one `/history` response into the three things the timeline needs.
+//
+// 🔴 THE RESPONSE IS AN ENVELOPE, NOT THE LIST. Both endpoints used to answer with a bare array
+//    of every audit row the target had ever accumulated — measured at 300,019 rows / 119 MB /
+//    18.9 s on a deep fixture, on every single click. They now answer
+//    `{logs, truncated, next_cursor, limit, returned}`. Assigning that object where an array
+//    used to go is what breaks the sidebar outright, so this is the ONE place that opens it.
+//
+// A BARE ARRAY IS STILL READ, AND READ AS A COMPLETE HISTORY — which is exactly what it is. An
+// unpaged server returns everything, so "not truncated, no cursor" is the true description of
+// its answer, not a fallback that hides a cap.
+//
+// `truncated` REQUIRES THE CURSOR. The server's contract is that `next_cursor` is non-null
+// exactly when `truncated` is true; requiring both here means a `truncated: true` that arrives
+// without a usable position can never paint a control that has nowhere to go. That state is the
+// "looks clickable, does nothing" failure, and it is cheaper to make it unrepresentable.
+export function readHistoryPage(body) {
+  if (Array.isArray(body)) return { logs: body, truncated: false, nextCursor: null };
+  const logs = body && Array.isArray(body.logs) ? body.logs : [];
+  const raw = body ? body.next_cursor : null;
+  const nextCursor = (typeof raw === 'string' && raw) ? raw : null;
+  return { logs, truncated: !!(body && body.truncated) && !!nextCursor, nextCursor };
 }
 
 // Create single timeline list item DOM element
@@ -341,6 +397,127 @@ export function renderTimeline(logs) {
     const li = createTimelineItemDom(log);
     elements.timeline.appendChild(li);
   });
+
+  renderHistoryMore();
+}
+
+// [History paging] The one control at the end of a capped list, and the only thing on this
+// screen that says the list IS capped. Appended last, so `renderTimelineIncremental` — which
+// prepends live logs at `firstChild` — keeps it at the bottom without knowing it exists.
+//
+// A COMPLETE LIST CARRIES NO CONTROL. That is the whole affordance: its presence is the fact.
+function renderHistoryMore() {
+  if (!state.cellRowHistoryTruncated || !state.cellRowHistoryCursor) return;
+  elements.timeline.appendChild(createHistoryMoreDom());
+}
+
+// The label the operator reads. `일부만` is this client's existing word for a server-truncated
+// list (map_editor.js puts it on a truncated overlay) and `더 보기` its existing pager — one
+// spelling each, not a third invented here.
+//
+// 🔴 THE FACT LEADS, THE ACTION FOLLOWS. `더 보기` on its own reads as "there is more if you
+//    feel like it"; the question an operator actually has in front of a history list is "is
+//    this the whole thing?". A trailing row that only offers to fetch answers that question by
+//    implication, and by implication is how a capped list passes for a complete one.
+function historyMoreLabel() {
+  return `일부만 (${state.cellRowHistoryLoaded}건) · 더 보기`;
+}
+
+export function createHistoryMoreDom() {
+  const li = document.createElement('li');
+  li.className = 'timeline-more';
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'timeline-more-btn';
+  btn.textContent = historyMoreLabel();
+
+  btn.addEventListener('click', () => {
+    // After a 400 the cursor names a position the server cannot decode, so the same token can
+    // only fail again. The control stops being a pager and becomes the one move that recovers.
+    if (btn.dataset.mode === 'reload') {
+      loadHistory();
+      return;
+    }
+    loadMoreHistory(btn);
+  });
+
+  li.appendChild(btn);
+  return li;
+}
+
+// A page that did not arrive. The rows already on screen are untouched — losing them would cost
+// the operator more than the page they asked for — and the control stays live, because the
+// cursor is still good: a transport failure says nothing about the position.
+function markMoreFailed(btn) {
+  delete btn.dataset.mode;
+  btn.classList.add('is-error');
+  btn.disabled = false;
+  btn.textContent = '조회 실패 · 재시도';
+}
+
+// The position itself is unusable (400). Retrying it forever is the trap; a reload from the top
+// is the only thing that can produce a valid cursor again.
+function markMoreLost(btn) {
+  btn.dataset.mode = 'reload';
+  btn.classList.add('is-error');
+  btn.disabled = false;
+  btn.textContent = '위치 만료 · 새로고침';
+}
+
+// [History paging] Fetch the next page and APPEND it. Never replaces what is on screen.
+export async function loadMoreHistory(btn) {
+  if (!btn || btn.disabled) return;
+  const cursor = state.cellRowHistoryCursor;
+  if (!cursor || !state.selectedCell) return;
+
+  const session = state.cellRowHistorySession;
+  const { rowId, colId } = state.selectedCell;
+  const url = historyUrl(rowId, colId, cursor);
+
+  btn.disabled = true;
+  btn.classList.remove('is-error');
+  delete btn.dataset.mode;
+  btn.textContent = '조회 중…';
+
+  let page;
+  try {
+    const res = await fetch(url);
+    if (session !== state.cellRowHistorySession) return;
+    if (res.status === 400) {
+      markMoreLost(btn);
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    page = readHistoryPage(await res.json());
+  } catch (err) {
+    if (session !== state.cellRowHistorySession) return;
+    console.error('Failed to load more history', err);
+    markMoreFailed(btn);
+    return;
+  }
+
+  // The session moved on while this was in flight (another cell, another tab, a refresh). These
+  // rows are real and they belong to a list that is no longer on screen.
+  if (session !== state.cellRowHistorySession) return;
+
+  page.logs.forEach(log => {
+    state.cellRowHistoryData.push(log);
+    elements.timeline.insertBefore(createTimelineItemDom(log), btn.parentElement);
+  });
+  state.cellRowHistoryLoaded += page.logs.length;
+  state.cellRowHistoryCursor = page.nextCursor;
+  state.cellRowHistoryTruncated = page.truncated;
+
+  if (!page.truncated) {
+    // Nothing further to page toward: the list is complete now, and a complete list says so by
+    // carrying no control at all.
+    btn.parentElement.remove();
+    return;
+  }
+
+  btn.disabled = false;
+  btn.textContent = historyMoreLabel();
 }
 
 // Render overall table audit history logs (recent transactions)

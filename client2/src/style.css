@@ -466,6 +466,62 @@ body.resizing-active .history-sidebar {
   display: none !important;
 }
 
+/* [History paging] The 더 보기 control that closes a truncated history list.
+   Deliberately a full-width control rather than a faint trailing note: it is the only thing
+   telling the reader that the list above it is a page and not the whole history, and a note
+   nobody reads makes a capped list look complete. The dashed edge is the "continues below"
+   cue; the `.timeline` rail's dot (`.timeline-item::before`) is suppressed because this row
+   is not an event. */
+.timeline-more {
+  position: relative;
+  list-style: none;
+  margin: 2px 0 24px;
+}
+
+.timeline-more::before {
+  display: none !important;
+}
+
+/* 🔴 SIZED AND WEIGHTED LIKE `.timeline-user` (0.8rem/600), NOT like a footnote. Measured at
+   0.78rem/500 in `--text-muted` this control was the SMALLEST and quietest thing in a panel
+   whose cards run 0.8–0.85rem — the one element that has to be noticed, rendered as the one
+   easiest to skip. Contrast is not the issue either way (7.08:1 light, 8.21:1 dark); visual
+   weight was. */
+.timeline-more-btn {
+  width: 100%;
+  background: var(--bg-inset);
+  border: 1px dashed var(--border-strong);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: var(--transition-smooth);
+}
+
+.timeline-more-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.timeline-more-btn:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+/* A control that failed still has to look like it does something — the retry and the reload
+   are both real actions, so this is a state, not a disabled row. */
+.timeline-more-btn.is-error {
+  border-style: solid;
+  border-color: var(--danger);
+  background: var(--danger-weak);
+  color: var(--danger);
+}
+
 .timeline-item {
   position: relative;
   margin-bottom: 24px;

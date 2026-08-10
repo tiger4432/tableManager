@@ -54,6 +54,41 @@ class AuditLog(Base):
             postgresql_include=["table_name", "row_id", "column_name", "transaction_id"],
             postgresql_where=text("source_name = 'user'"),
         ),
+
+        # [history keyset] The two indexes that make a row click cost O(page)
+        # instead of O(everything ever written to that row).
+        #
+        # WITHOUT THEM, `LIMIT` DOES NOT HELP THE DATABASE AT ALL. Measured on
+        # `assy_qa` 2026-08-11, one row inflated to 300,019 audit entries inside
+        # 1,131,008 rows, `LIMIT 201` already applied:
+        #     no index : Parallel Bitmap Heap Scan + top-N sort of all 300,019
+        #                -> 9,421 buffers, 121.6 ms
+        #     with this: Index Scan, stops at 201
+        #                ->   207 buffers,   0.4 ms
+        # The LIMIT only removed the 54 MB of rows crossing the wire; the scan
+        # was still proportional to the row's whole history until this existed.
+        #
+        # WHY THE SECOND ONE, WITH `column_name`. The first index makes
+        # column_name a Filter inside the row's range, so the cell tab costs
+        # "walk until 201 matches are found" - fine for a dense column, unbounded
+        # for a SPARSE one, which is exactly the human-edit case this feature is
+        # for. Measured on a column with ONE entry inside that 300,019-deep row:
+        #     row index only : 9,421 buffers, 117.7 ms (planner abandons it entirely)
+        #     this index     :     5 buffers,   0.09 ms
+        #
+        # WHY PLAIN ASC when the query sorts `timestamp DESC, id DESC`: a btree
+        # is scanned backwards just as cheaply. Measured both ways - same plan
+        # shape (`Index Scan Backward`), same `Index Cond` including the
+        # row-value keyset bound, same buffer counts, same 91 MB. ASC is chosen
+        # because it needs no raw SQL here and so applies to SQLite too.
+        #
+        # ⚠️ `create_all` NEVER adds an index to a table that already exists, so
+        # this declaration only reaches NEW databases. Existing ones (production
+        # included) get them from
+        # `server/migrations/add_audit_history_keyset_indexes.sql`.
+        Index("idx_audit_row_history", "table_name", "row_id", "timestamp", "id"),
+        Index("idx_audit_cell_history", "table_name", "row_id", "column_name",
+              "timestamp", "id"),
     )
 
 

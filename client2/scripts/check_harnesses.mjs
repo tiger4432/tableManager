@@ -315,6 +315,33 @@ const FLOORS = new Map([
   // is the reason they exist — typing lives there, and `change` on that input also fires on
   // BLUR, so committing there would restore the exact complaint the deletion answered.
   ['geometry_origin_reseat_harness.mjs', 62],
+  // New 2026-08-11 with the paged `/history` envelope. Same rule as the other new entries: the
+  // floor is the count it reports on the commit that introduces it -- there is no earlier tree
+  // to measure it against. 12 of its 98 are the mutation corpus itself (10 defects + 2 controls),
+  // scored as assertions rather than printed as prose so a corpus that stops being applied sinks
+  // `ran` and BLOCKS.
+  //
+  // 🔴 IT IS THE FIRST EXECUTABLE SCORER `timeline.js` HAS EVER HAD, and the two things it
+  //    protects are both invisible to an exit code and to the screen:
+  //
+  //    · `state.cellRowHistoryData` MUST STAY A PLAIN ARRAY. The endpoint stopped answering with
+  //      a bare list, so `state.cellRowHistoryData = await res.json()` now assigns an OBJECT
+  //      where `renderTimelineIncremental` and `appendHistoryLocally` call `.unshift()`/`.some()`.
+  //      The page renders fine and then every live WebSocket update on the sidebar throws.
+  //      Section F pins it by RUNNING those two against the state a real load leaves behind.
+  //
+  //    · A CAPPED LIST MUST NOT PASS FOR A COMPLETE ONE. `truncated` reaching the screen is the
+  //      difference between a slow answer and a wrong one, and `truncated: true` arriving with no
+  //      cursor must not paint a control with nowhere to go (A4 makes that state unrepresentable).
+  //
+  //    Section D drives the paging-reset defect directly -- a 더 보기 issued on row A and resolved
+  //    after the operator clicked row B -- across BOTH awaits. D6 exists because deleting the
+  //    second session check (after `res.json()`) passes every other case in the file: the status
+  //    line has already arrived by then, so the first check cannot see it.
+  //
+  //    A drop here most likely means one of those stopped being scored, and none of the three
+  //    failures is visible from a green build.
+  ['history_paging_harness.mjs', 98],
   // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to

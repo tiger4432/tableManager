@@ -58,7 +58,14 @@ def verify_upsert_scenario():
     print(f"\n[Step 3] Verifying history for RowID: {row_id}")
     history_resp = httpx.get(f"{SERVER_URL}/tables/{TABLE_NAME}/rows/{row_id}/history")
     if history_resp.status_code == 200:
-        logs = history_resp.json()
+        # The endpoint answers with a PAGE envelope, not a bare list - see
+        # schemas.AuditHistoryPage. This scenario writes a handful of rows, so
+        # the first page holds all of them; `truncated` would say otherwise.
+        page = history_resp.json()
+        logs = page["logs"]
+        if page.get("truncated"):
+            print(f"Note: history was truncated at {page['limit']} - "
+                  f"the counts below are the first page only.")
         print(f"Total history logs found: {len(logs)}")
         p_a_logs = [l for l in logs if l['source_name'] == 'parser_a']
         print(f"Logs from 'parser_a': {len(p_a_logs)}")

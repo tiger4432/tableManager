@@ -1,0 +1,9 @@
+{
+  "_comment": "행/셀 감사 이력 조회(GET /tables/{t}/rows/{id}/history, .../cells/{col}/history)의 페이지 상한. 실제 적용하려면 이 파일을 audit_history_config.json으로 복사하세요. 파일이 없으면 아래 값이 그대로 기본값으로 동작합니다. 핫리로드: 다음 요청부터 반영(요청당 1회 스냅샷). 자세한 내용은 docs/guide/config/audit_history_config.md.",
+
+  "_default_limit_doc": "클라이언트가 limit을 지정하지 않았을 때의 한 페이지 행 수(기본 200). 응답은 잘렸을 때 반드시 truncated=true와 next_cursor를 함께 돌려주므로, 이 값을 줄여도 이력이 조용히 사라지지 않습니다.",
+  "default_limit": 200,
+
+  "_max_limit_doc": "클라이언트가 요청할 수 있는 limit의 천장(기본 1000). 초과 요청은 거절하지 않고 이 값으로 잘라서 응답하며 truncated=true로 알립니다. 무한대로 두면 ?limit=1000000 한 번으로 상한이 없던 시절의 전량 조회가 그대로 돌아옵니다.",
+  "max_limit": 1000
+}
