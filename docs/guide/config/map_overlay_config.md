@@ -1,6 +1,6 @@
 # `map_overlay_config.json` 세팅 — 맵 오버레이 바인딩 + 페인트 잠금 + 프리셋 라우팅
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-08 (🔴 **`alignment` 블록의 키 셋이 이 문서에 없었습니다** — `alignment.index.*`·`alignment.value_weights`·`alignment.sides[]`. 셋 다 로더와 경고 경로와 **실제 동작 결과**를 갖고 있고, 특히 `sides`는 잘못 좁히면 정답을 후보에서 지웁니다. §5에 등재) | **Owner:** Backend / UI-Map
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (🔴 **`alignment.sides[]`가 은퇴했습니다** — `db1ee42`가 후보의 두 번째 축을 면에서 **걸음의 시작 모서리**로 바꾸면서 그 키를 읽는 코드가 사라졌습니다. **선언해도 아무 일도 안 일어나고 경고도 안 납니다.** 직전 등재는 2026-08-08로 **사흘 만에** 낡았습니다 — §5의 그 행 참조. 직전 라운드에 함께 등재된 `alignment.index.*`·`alignment.value_weights`는 **그대로 유효**합니다) | **Owner:** Backend / UI-Map
 > 상위: [폴더 인덱스](./README.md) · 정렬 계약의 정본은 [MAP_EDITOR_SPEC §5](../../spec/MAP_EDITOR_SPEC.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -190,7 +190,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore map_ove
 alignment.{min_margin_dies, min_discriminating_dies}
 alignment.index.{min_margin_dies, min_discriminating_dies}
 alignment.value_weights.<값> = <무게>
-alignment.sides[]
+alignment.sides[]                       # 🗄️ 2026-08-11 은퇴 — 읽는 코드 0건
 table_bindings.<table>.columns.{x, y, val, key_columns[]}
 paint_lock."*".{enabled, blocking_values[], from_overlay[], message}
 paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
@@ -208,7 +208,7 @@ preset_routing.<table>.rules[].{name, match, value, preset, enabled}
 | `alignment.min_margin_dies` | 1위가 2위보다 앞서야 할 최소 다이 수. 위 키와 **서로를 대신하지 않습니다** — 판별 3다이 위의 큰 격차도, 판별 500다이 위의 1다이 격차도 결정이 아닙니다. 단위는 **다이 개수**이며 백분율이 아닙니다(적합도 %는 실측에서 순위를 뒤집었습니다 — `MAP_ALIGNMENT_SPEC` §3) |
 | `alignment.index.*` | [2026-08-08 등재] 순번(`dt_index`) 축의 문턱. 🔴 **위 두 키와 일부러 키를 공유하지 않습니다** — 조작자가 다른 문제를 쫓다 점유 문턱을 낮추면(실제로 2026-08-05에 20→1로 내려간 적이 있습니다) 공유 키였다면 그 한 번의 조작이 **순번 축의 안전망까지 같이 걷어 갑니다.** 🔴 **미선언 또는 반쪽 선언 = 이 축은 순위를 가져가지 않습니다**(`ruling.index_axis='reported'` — 수치는 실어 보내되 순위는 안 냅니다). **둘 다 있어야 선언**이고 하나만 적은 것은 절반의 안전망이지 선언이 아닙니다. 판정이 `absent`면 순번을 실은 셀이 아예 없다는 뜻이고, 그때 거절 문구는 마진이 아니라 **값 부재**를 말합니다([MAP_ALIGNMENT_SPEC §6](../../spec/MAP_ALIGNMENT_SPEC.md)). ⚠️ **출하 config는 20/20을 선언하고 있고, 그 20은 이 박스의 *합성* 시드에서 유도됐습니다**(`server/scripts/seed_dt_index_walk.py`의 `SYN-IDX-*`). **운영 측정이 아닙니다** — 운영으로 옮기기 전에 그 데이터에서 **다시 유도**하십시오. 🔴 **낮추지 마십시오**: 20 미만이면 core 보행의 4/88이 순위를 받고, 실측에서 그 1등은 8후보 중 2건에서 **틀린 프레임**이었습니다 |
 | `alignment.value_weights` | [2026-08-08 등재] `{값: 무게}`. **선언된 값만** 담고 미선언 값은 기본 1을 받습니다. 🔴 **`0`은 선언이고 없는 키는 선언이 아닙니다** — `{"1": 0}`은 「이 값은 세지 말라」는 주장이고, 둘을 한 낱말로 접으면(`or 1`) 「무시하라」가 조용히 「보통 무게」가 됩니다. 음수·무한·NaN은 선언으로 받지 않습니다(음수는 「맞은 것이 반증」이 되어 합계를 음수로 만듭니다). **문턱과 같은 블록에 사는 것이 설계**입니다 — 정렬 판정을 조율하는 자리가 둘이면 한쪽만 배포되는 날이 옵니다 |
-| `alignment.sides[]` | [2026-08-08 등재] 채점할 **면**만 좁힙니다(어휘 `front`/`back`). 🔴 **미선언은 한쪽을 뜻하지 않습니다 — 미선언 = 둘 다**입니다. 탐색 공간을 좁히는 것은 **장비에 대한 주장**이고 주장은 선언에서 나와야지 기본값에서 상속되면 안 됩니다. ⚠️ **이 축의 `back`은 「거울」이지 물리 뒷면이 아닙니다** — 순번 축에서 `rotθ_back`은 「우상단부터 번호를 매기는 설비」와 같은 뜻이라, `["front"]`로 좁히면 **그 설비의 정답이 후보에서 통째로 사라집니다**(실제로 그랬습니다 — [MAP_ALIGNMENT_SPEC §2.4](../../spec/MAP_ALIGNMENT_SPEC.md)). 읽히지 않는 선언(리스트 아님·빈 배열·모르는 면)은 선언이 아니라 **미선언으로 강등**되고 경고가 남습니다. HEAD 실측: 실 config에 **선언 0건** |
+| ~~`alignment.sides[]`~~ | 🗄️ **[2026-08-11 은퇴 — 세팅하지 마십시오]** `db1ee42`가 후보의 두 번째 축을 **면에서 걸음의 시작 모서리로** 바꾸면서 이 키를 읽는 코드가 사라졌습니다(HEAD 실측: `server/`에 `load_alignment_sides` **0건**). 선언해도 **아무 일도 안 일어나고 경고도 안 납니다** — 「썼는데 조용하다」의 전형이라 행을 지우지 않고 여기 남깁니다. ⚠️ **실 config에 남아 있는 `__alignment_sides_comment` 주석 키도 낡았습니다**(총괄 보고 대상 — config는 이 문서의 소관이 아닙니다). 지금 후보는 **4회전 × {좌상단, 우상단} 시작, 면은 전부 `front`**이고 거울은 후보 집합에 없습니다 → [MAP_ALIGNMENT_SPEC §2.4](../../spec/MAP_ALIGNMENT_SPEC.md).<br>🔴 **왜 이 행을 남기는가**: 이 키가 살아 있던 동안의 교훈은 **키와 함께 죽지 않았습니다** — 「탐색을 좁히는 것은 장비에 대한 주장이고, 좁혀도 **보고는 좁히면 안 된다**」(`STATE_NOT_CONSIDERED`는 생산자 없이 코드에 그대로 남아 있습니다). 다음에 축을 좁히는 선언을 만들 때 「봤는데 졌다 ≠ 아예 안 봤다」를 **다시 발명하지 마십시오.** |
 | `table_bindings.<table>.columns` | 그 테이블을 맵으로 읽을 때의 좌표/값 컬럼. `key_columns`는 맵 인스턴스 식별 컬럼. 🔴 **정렬 화면에서는 제안(preset)입니다** — `/api/maps/alignment/view`의 `x_col`/`y_col`/`value_col`이 원시 단위이고, 생략했을 때만 이 선언이 채웁니다(응답 `unit.columns`가 `chosen`/`proposed`를 구별) |
 | `default_legend[]` | [U6·선택] 레지스트리 행 없는 맵의 기본 legend 행(선언 그대로 서빙, 미선언 = 응답 `null` = 기본 의미론 없음) |
 | `value_column_candidates[]` | [U6·선택] 값 컬럼 자동 탐지 순서(앞선 것 우선). 미선언 = 문서화 기본. 응답에는 항상 RESOLVED 값 |

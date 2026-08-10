@@ -1,8 +1,11 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 | **Owner:** Lead / Backend
 >
-> ### 이번 라운드 (2026-08-06 · 리빙 문서 동기화)
+> ### 이번 라운드 (2026-08-11 · 리빙 문서 동기화)
+> - 🗄️ 🔴 **§S9의 4행이 *은퇴한 키*의 세팅 절차를 가르치고 있었습니다 — `alignment.sides`.** `db1ee42`가 후보의 두 번째 축을 **면에서 걸음의 시작 모서리로** 바꾸면서 그 키를 읽는 코드가 사라졌습니다(HEAD 실측 `load_alignment_sides` 0건). **선언하면 조용히 무시되고 경고도 없습니다** — 「썼는데 아무 일도 안 일어난다」의 전형이라 **행을 지우지 않고 은퇴 표시**했습니다. 키 상세는 [config/map_overlay_config](./config/map_overlay_config.md), 후보 공간의 정본은 [spec/MAP_ALIGNMENT_SPEC §2.4](../spec/MAP_ALIGNMENT_SPEC.md).
+>
+> ### 직전 라운드 (2026-08-06 · 리빙 문서 동기화)
 > - **§3에 시나리오 S9 신설 — 「맵 정렬 화면(좌표계 확정)을 켤 때」.** 그 화면을 켜는 선언이 **config 파일 셋에 흩어져** 있었고 어느 문서도 한자리에 모으지 않았습니다. 하나만 빠져도 화면은 **에러를 내지 않고** 비거나 「순위 없음」만 냅니다. ⚠️ **선언만 다룹니다** — 조작 절차는 화면이 매일 바뀌는 중이라 일부러 안 적었습니다. 🔴 **실측 결과 이 저장소의 `alignment: true`가 정렬하지 않는 규칙에 붙어 있습니다**(총괄 판정 대상).
 > - 🔴 **§4.2-bis의 「`enrichment` 도메인 *하나*가 등록돼 있습니다」가 거짓이 됐습니다** — `enrichment` · `virtual_join` · `notation` 셋이고, **고치면서 수를 다시 적지 않았습니다**(그 자리가 낡은 방식이 정확히 그것이었습니다).
 > - 🔴 **운영자가 복사해 붙이는 `curl`의 포트가 `8000`이었습니다** — 런처가 띄우는 포트는 **8080**입니다. 같은 오타가 [config/enrichment_rules](./config/enrichment_rules.md)·[config/transfer_plan_config](./config/transfer_plan_config.md)에도 있었고 함께 고쳤습니다. `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값이라 **선언 문제로 오독되기 딱 좋은 실패**입니다.
@@ -290,7 +293,7 @@ S1을 전부 수행한 뒤 추가로:
 | 1 | `enrichment_rules.json` → `<규칙>.alignment: true` (**JSON boolean만**, `"true"`·`1`은 선언이 아님 — `map_push_ok`와 같은 규율) | **화면이 아무 규칙도 고르지 못해 통째로 빕니다.** 🔴 **이 표시가 붙어야 하는 규칙은 「무엇을 확정하는가」로 고릅니다** — `target_fields`가 **프레임**인 규칙입니다. 이름에 `frame`이 들어간다는 것은 근거가 아니고, 서버는 이 값을 **유도하지 않습니다**(§5.3 · [config/enrichment_rules](./config/enrichment_rules.md)) |
 | 2 | 같은 규칙의 `decision_key` · `target_fields` · `source_table` | 결정 단위와 쓰는 자리가 정해지지 않습니다. 확정은 **단위 전체에 대해서만** 성립하므로 `decision_key`가 덜 채워진 요청은 400으로 거절됩니다 |
 | 3 | `map_overlay_config.json` → `alignment.min_margin_dies` · `alignment.min_discriminating_dies` | **순위는 나옵니다 — 다만 「잠정」이라는 표를 달고 나옵니다**(2026-08-06 제품 소유자 지시로 뒤집힘). 미선언이면 서버가 **개발 기본값 1/1**로 매기고, 판정에 `ruling.thresholds_defaulted`(사칭된 키 목록)와 `ruling.provisional_text`(`잠정 순위 - 판정 기준값 미선언 · 기본값 1`)를 싣습니다. 🔴 **여전히 0으로 접지는 않습니다** — 0이면 「구별 못 함」이 「자신 있는 1등」이 되고, 1은 격차 비교가 이미 `max(1, ...)`으로 깔고 있는 바닥이라 **선언 `{1,1}`과 한 후보도 다르게 판정하지 않습니다**. 즉 미선언이 바꾸는 것은 「무엇이 이기는가」가 아니라 「이겼다고 말해도 되는가」뿐입니다. 🔴 **잠정 순위를 그대로 확정하지 마십시오** — 값은 **쓰는 기준 맵의 실제 분해능에서 다시 유도**하십시오(옮겨 적지 마십시오). 종전 사유 코드 `no_thresholds`는 **서버가 더 이상 내지 않습니다** |
-| 4 | (선택) `map_overlay_config.json` → `alignment.sides` | **미선언이 「양면 다」이고 기본값 `front`가 아닙니다.** 좁히면 그 면의 진짜 답이 탐색에서 빠져 **승자 없이** 나오는데, 그것은 결함이 아니라 이 선언의 뜻입니다. 좁혀도 후보 보고는 안 좁아집니다(빠진 쪽은 `not_considered`를 달고 나갑니다 — 「져서 밀린 것」과 구별돼야 하므로) |
+| ~~4~~ | 🗄️ **[2026-08-11 은퇴] ~~`map_overlay_config.json` → `alignment.sides`~~** | **선언하지 마십시오 — 읽는 코드가 0건입니다**(`db1ee42`). 후보의 두 번째 축이 **면에서 걸음의 시작 모서리로** 바뀌면서 이 키와 그 로더가 함께 사라졌습니다. 선언하면 **조용히 무시**됩니다(경고도 없습니다). 지금 후보는 **4회전 × {좌상단, 우상단} 시작 · 면은 전부 `front`** → [spec/MAP_ALIGNMENT_SPEC §2.4](../spec/MAP_ALIGNMENT_SPEC.md) · 행 상세 [config/map_overlay_config](./config/map_overlay_config.md) |
 | 5 | (선택) `map_overlay_config.json` → `alignment.index.*` | 순번 축이 **수치는 실어 보내되 순위를 가져가지 않습니다**(`ruling.index_axis='reported'`). 🔴 **위 3의 키와 일부러 공유하지 않습니다** — 다른 문제를 쫓다가 저쪽을 낮추는 조작이 이 축의 안전망까지 걷어 가면 안 되기 때문입니다(2026-08-05에 실제로 20→1로 내려간 적이 있습니다) |
 | 6 | `map_overlay_config.json` → `table_bindings.<맵테이블>.columns.{x,y,val,key_columns}` | 좌표 컬럼 드롭다운에 제안이 안 뜹니다. ⚠️ **정렬 화면에서 이 값은 *제안*입니다** — 조작자가 확인하거나 바꿔야 「선언」으로 올라갑니다(§5.8-bis) |
 | 7 | `table_config.json` → `<맵테이블>.map_key_columns` | 그 테이블이 **「맵이다」로 인정되지 않아** 대상 테이블 목록에 없습니다. `table_bindings`에 좌표를 적어도 이 줄을 대신하지 못합니다(§5.1의 그 행) |
