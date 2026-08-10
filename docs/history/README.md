@@ -1,17 +1,21 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **445개** 이력. (거버넌스 규칙 #4)
+> 총 **453개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-10 07:56** — [The Map Identity Was Re Keyed And The Second Declaration Of It Refused The Chain](./20260810_075619_the_map_identity_was_re_keyed_and_the_second_declaration_of_it_refused_the_chain.md)
+- **2026-08-10 07:30** — [Replay Audit Cache Sync](./20260810_073000_replay_audit_cache_sync.md)
+- **2026-08-10 06:34** — [Four Chains Landed And The Documents That Described The Retired Ones Stayed Behind](./20260810_063424_four_chains_landed_and_the_documents_that_described_the_retired_ones_stayed_behind.md)
 - **2026-08-10 03:00** — [Dt Core Frame Chain Docs And Config Snapshots](./20260810_030000_dt_core_frame_chain_docs_and_config_snapshots.md)
 - **2026-08-10 02:00** — [Core Usage Map](./20260810_020000_core_usage_map.md)
 - **2026-08-10 01:30** — [Primary Core Auto Frame Chain](./20260810_013000_primary_core_auto_frame_chain.md)
 - **2026-08-10 00:00** — [Core Wafer Alignment Catalog](./20260810_000000_core_wafer_alignment_catalog.md)
+- **2026-08-09 19:03** — [The Automation Landed With An Empty Commit Body And The Harness Stopped Being A Gate](./20260809_190335_the_automation_landed_with_an_empty_commit_body_and_the_harness_stopped_being_a_gate.md)
 - **2026-08-09 19:00** — [Dt Standard Map Chain](./20260809_190000_dt_standard_map_chain.md)
 - **2026-08-09 18:30** — [Dt Alignment Replay Payload](./20260809_183000_dt_alignment_replay_payload.md)
 - **2026-08-09 18:00** — [Map2 Retired Candidate Harness Debt](./20260809_180000_map2_retired_candidate_harness_debt.md)
@@ -19,6 +23,10 @@
 - **2026-08-09 16:00** — [Syn Dt Alignment Samples](./20260809_160000_syn_dt_alignment_samples.md)
 - **2026-08-09 15:30** — [Dt Metadata Inventory Cascade](./20260809_153000_dt_metadata_inventory_cascade.md)
 - **2026-08-09 15:00** — [Dt Alignment Metadata Chain](./20260809_150000_dt_alignment_metadata_chain.md)
+- **2026-08-09 00:02** — [The Placement Existed All Along And What Was Missing Was A Key To Carry It](./20260809_000222_the_placement_existed_all_along_and_what_was_missing_was_a_key_to_carry_it.md)
+- **2026-08-08 23:26** — [One Symptom Two Causes Two Branches And The Diagnostic Lit Only One Of Them](./20260808_232608_one_symptom_two_causes_two_branches_and_the_diagnostic_lit_only_one_of_them.md)
+- **2026-08-08 23:00** — [The Candidate Space Stopped Being A Mirror And Became A Walk And The Build Gate Was The Price](./20260808_230024_the_candidate_space_stopped_being_a_mirror_and_became_a_walk_and_the_build_gate_was_the_price.md)
+- **2026-08-08 22:08** — [The Scorer Ranked Eight Maps And Handed The Screen No Way To Draw Any Of Them](./20260808_220841_the_scorer_ranked_eight_maps_and_handed_the_screen_no_way_to_draw_any_of_them.md)
 - **2026-08-08 21:33** — [The Refusal Named The Margin When No Row Carried An Index](./20260808_213310_the_refusal_named_the_margin_when_no_row_carried_an_index.md)
 - **2026-08-08 15:30** — [Alignment Missing Index Refusal](./20260808_153000_alignment_missing_index_refusal.md)
 - **2026-08-08 07:46** — [The Absent Log Line Was The Load Bearing Fact](./20260808_074639_the_absent_log_line_was_the_load_bearing_fact.md)
@@ -466,4 +474,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-10 by gen_index.py*
+*Last generated: 2026-08-11 by gen_index.py*
