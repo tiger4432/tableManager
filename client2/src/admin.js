@@ -269,7 +269,6 @@ const reloadConfigsBtn = byId('reload-configs-btn');
 const pageSizeSelect = byId('page-size-select');
 const retryAllOutboxBtn = byId('retry-all-outbox-btn');
 const retryAllFileBtn = byId('retry-all-file-btn');
-const openEnrichmentBtn = byId('open-enrichment-btn');
 
 const diagnosticsContent = byId('diagnostics-content');
 const diagnosticsEmpty = byId('diagnostics-empty');
@@ -609,12 +608,6 @@ function setupEventListeners() {
       if (confirm('실패 상태인 모든 파일 인제션 건을 재실행하시겠습니까?')) {
         await retryAllFailed('file');
       }
-    });
-  }
-
-  if (openEnrichmentBtn) {
-    openEnrichmentBtn.addEventListener('click', () => {
-      window.location.href = '/enrichment.html';
     });
   }
 
@@ -1466,17 +1459,10 @@ function renderEnrichmentTable(status) {
       <td style="font-family: var(--font-mono); font-size: 0.82rem;">${rule.source_table || '-'} → ${rule.derived_table}</td>
       <td style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-muted);">${(rule.target_fields || []).join(', ') || '-'}</td>
       <td style="text-align: center;">${missingBadge}</td>
-      <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="glass-btn btn-primary btn-open-queue" style="padding: 4px 10px; font-size: 0.75rem;">🧩 Queue</button>
-      </td>
     `;
 
     row.addEventListener('click', () => {
       selectEnrichmentRow(rule, missing);
-    });
-
-    row.querySelector('.btn-open-queue').addEventListener('click', () => {
-      window.location.href = `/enrichment.html?rule=${encodeURIComponent(rule.name)}`;
     });
 
     enrichmentListBody.appendChild(row);
@@ -2665,8 +2651,7 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
       ],
       events,
       emptyText: enrich == null ? '상태 조회 실패' : '활성 규칙 없음',
-      onOpen: () => switchTab('enrichment'),
-      extraButtons: [{ label: '🧩 Queue', onClick: () => { window.location.href = '/enrichment.html'; } }]
+      onOpen: () => switchTab('enrichment')
     }));
   }
 }
@@ -3088,22 +3073,14 @@ function selectEnrichmentRow(rule, missing) {
     missing == null
       ? '결손 카운트 조회에 실패했습니다 (파생 테이블 blank 필터 조회 오류).'
       : missing > 0
-        ? `대상 필드가 비어 있는 행이 ${missing}건 있습니다 — Queue에서 채우세요.`
+        ? `대상 필드가 비어 있는 행이 ${missing}건 있습니다 — 메인 그리드에서 직접 입력.`
         : '대상 필드가 모두 채워져 있습니다.'
   ];
   tracebackViewer.innerHTML = `<div style="color: var(--text-muted); line-height: 1.7; white-space: pre;">${lines.join('\n')}</div>` +
     `<div style="margin-top: 12px; color: var(--text-dim); line-height: 1.6;">✏️ 규칙 편집(read-only): 서버 <span style="font-family: var(--font-mono); color: var(--text);">server/config/enrichment_rules.json</span> 수기 편집 후 Reload Configs &amp; Code로 반영.<br>규칙 CRUD UI는 온보딩 위저드(대안 단계)로 이관.</div>`;
 
-  payloadTitle.innerHTML = `Rule Configuration (read-only)
-    <button id="enrichment-open-queue-btn" class="glass-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🧩 Queue 열기</button>`;
+  payloadTitle.textContent = 'Rule Configuration (read-only)';
   payloadViewer.textContent = JSON.stringify(rule, null, 2);
-
-  const queueBtn = byId('enrichment-open-queue-btn');
-  if (queueBtn) {
-    queueBtn.addEventListener('click', () => {
-      window.location.href = `/enrichment.html?rule=${encodeURIComponent(rule.name)}`;
-    });
-  }
 }
 
 // Render error log traceback and payloads of Outbox Event (+ mapper 편집 딥링크)
@@ -3571,8 +3548,11 @@ async function fetchEnrichmentStatus(force = false) {
   if (!res.ok) throw new Error('enrichment rules fetch failed');
   const r = await res.json();
   const rules = r.rules || [];
-  // 결손 카운트: 메인 페이지 배지(ui.js updateEnrichmentBadge)와 **같은 서버 술어**를
-  // 규칙별로 재사용 (limit=1 — total만 사용). 큐는 이름으로 요청한다.
+  // Missing count: composed by `queueQuery` (enrichment_queue.js), the SAME named server
+  // queue predicate the worklist itself is fetched with, re-asked per rule with limit=1 so
+  // only `total` is read. The shared predicate is what makes this number and the worklist's
+  // count the same population; a filter dict spelled here instead would be AND-ed by the
+  // consumer into "every target blank" and undercount any rule with two targets.
   const perRule = [];
   let totalMissing = 0;
   for (const rule of rules) {

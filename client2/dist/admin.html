@@ -1103,7 +1103,7 @@
       pointer-events: none !important;
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-hTYOtpag.js"></script>
+  <script type="module" crossorigin src="/assets/admin-B6XR-opz.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-Dy5qGBed.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-xn_vq-uO.js">
   <link rel="modulepreload" crossorigin href="/assets/enrichment_queue-B5O9NT-F.js">
@@ -1477,7 +1477,7 @@
           </div>
         </div>
 
-        <!-- ═══ Enrichment 탭: 현황(Rules + 결손) → 실행(Queue 딥링크) / 수정은 read-only 안내 ═══ -->
+        <!-- ═══ Enrichment 탭: 현황(Rules + 결손) 조회 전용 / 실행은 메인 그리드, 수정은 read-only 안내 ═══ -->
         <div id="enrichment-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
           <div class="stage-section" id="sec-enrichment-rules">
             <div class="section-header" data-section="sec-enrichment-rules">
@@ -1486,9 +1486,6 @@
               <span class="section-count" id="enrichment-rule-count">0</span>
               <span class="section-count" id="enrichment-missing-count" style="display: none;">결손 0</span>
               <span class="section-summary"></span>
-              <span class="section-actions">
-                <button id="open-enrichment-btn" class="glass-btn btn-primary" style="padding: 5px 12px; font-size: 0.8rem;">🧩 Enrichment Queue 열기</button>
-              </span>
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body">
@@ -1499,7 +1496,6 @@
                     <th style="width: 170px;">Source → Derived</th>
                     <th>Target Fields</th>
                     <th style="width: 110px; text-align: center;">결손</th>
-                    <th style="width: 110px; text-align: center;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="enrichment-list-body"></tbody>
@@ -1511,7 +1507,7 @@
               <div class="section-note">
                 ✏️ 규칙 <strong>편집</strong>은 현재 서버의 <code>server/config/enrichment_rules.json</code> 수기 편집 후
                 상단 <em>Reload Configs &amp; Code</em>로 반영합니다. 규칙 CRUD UI는 파이프라인 온보딩 위저드(대안 단계)로 이관되어 있습니다.
-                결손 값 <strong>입력(실행)</strong>은 규칙별 <em>Queue</em> 버튼으로 Enrichment 페이지에서 진행합니다.
+                결손 값 <strong>입력(실행)</strong>은 메인 그리드에서 직접 — 참조 데이터는 사이드바 <em>참조뷰</em> 탭.
               </div>
             </div>
           </div>

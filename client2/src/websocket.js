@@ -357,8 +357,6 @@ export function handleWebSocketMessage(msg) {
     });
   }
 
-  // Enrichment 결손 배지: derived 테이블 이벤트는 source 테이블을 보는 중에도 도착하므로
-  // currentTable 가드보다 앞에서 훅 (내부에서 관련 규칙 여부 판정, fire-and-forget)
   // 2. Perform table-specific data/grid updates
   if (msg.table_name !== state.currentTable) return;
   if (!state.gridApi) return;

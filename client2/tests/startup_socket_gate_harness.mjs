@@ -245,11 +245,14 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
     ROUTES: { GRID: 'grid' }, setupEventListeners: noop, initTraceEntry: noop,
     setupClipboardHandlers: noop, registerSmartPasteHandler: noop, smartPasteFromPasteEvent: noop,
     setupDragAndDrop: noop, clearRangeSelection: noop, updateSelectedCellUI: noop,
-    updateTxModeUI: noop, updateEnrichmentBadge: noop, renderGrid: noop, refreshTraceEntry: noop,
+    updateTxModeUI: noop, renderGrid: noop, refreshTraceEntry: noop,
+    // `init` installs the reference panel's keyboard isolation (main.js). Outside the question
+    // scored here, but its absence made every `init` slice die with a ReferenceError.
+    installReferenceKeyboardIsolation: noop,
     resetSuggestLearning: noop, loadSchema: async () => {}, loadHistory: async () => {},
     showIngestionProgress: noop, finishIngestionProgress: noop, showToast: noop,
     getLocalTimeString: () => '', updatePageCacheOnUpsert: noop, updatePageCacheOnDelete: noop,
-    notifyEnrichmentTableEvent: noop, triggerHistoryReloadDebounced: noop, appendHistoryLocally: noop,
+    triggerHistoryReloadDebounced: noop, appendHistoryLocally: noop,
     updateGridSortState: noop, updateLoadedCount: noop, updatePaginationUI: noop,
   };
   vm.createContext(sandbox);

@@ -103,20 +103,6 @@ body {
   transition: var(--transition-smooth);
 }
 
-/* Enrichment Queue 결손 배지: warning 톤 + 클릭 유도 호버 */
-#enrichment-badge {
-  cursor: pointer;
-  background: var(--warning-weak);
-  border-color: var(--warning);
-  color: var(--warning);
-  font-weight: bold;
-}
-
-#enrichment-badge:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-card);
-}
-
 .logo-area {
   display: flex;
   align-items: center;

@@ -44,12 +44,15 @@
 //       a queue that cannot be composed produces NO request - dropping the condition
 //       would return the whole table under the queue's name.
 //
-// NOT SCORED HERE, and deliberately: `ui.js updateEnrichmentBadge` and
-//   `admin.js fetchEnrichmentStatus`, the other two call sites. Both are unavoidably
-//   bound to the bundler and the DOM singletons (`ui.js` -> `grid.js` -> ag-grid +
-//   its CSS; `admin.js` -> `./tokens.css`), so neither can be imported under bare
-//   node. What IS scored is that all three now share ONE composer, which is the half
-//   that could drift.
+// NOT SCORED HERE, and deliberately: `admin.js fetchEnrichmentStatus`, the ONE remaining
+//   call site outside this file's reach. It is unavoidably bound to the bundler and the
+//   DOM singletons (`admin.js` -> `./tokens.css`), so it cannot be imported under bare
+//   node. What IS scored is that both surviving sites share ONE composer, which is the
+//   half that could drift.
+//
+//   THERE WERE THREE. `ui.js updateEnrichmentBadge` was the third until the enrichment
+//   page was retired from navigation (2026-08-11) and the dead badge went with it; the
+//   two scored sites (`src/enrichment.js` worklist + blank-key count) are unchanged.
 //
 // EVERY CHECK IS PAIRED WITH A MUTANT, and the suite FAILS if a defect still passes -
 // a check that cannot fail proves nothing. Controls must ESCAPE; if a control is
