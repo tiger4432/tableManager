@@ -84,7 +84,7 @@
 | `admin.html` | `src/admin.js` | 어드민 — 파이프라인 생애주기 5탭(§5, Monaco CDN) |
 | `map_editor.html` | `src/map_editor.js` | 웨이퍼 맵 에디터 |
 | `map_editor2.html` | `src/map_editor2.js` (+ `src/map2/*`) | **Map Editor 2 — 맵 정렬 화면**(2026-08-05 신설, 개발 중). 🔴 **레거시 에디터를 대체하지 않고 *옆에 선다*** — 위 진입점은 새 화면이 실제로 프레임을 확정할 수 있게 될 때까지 그대로 출하됩니다(`vite.config.js`가 그렇게 적고 있습니다). 서버 라우트는 `39b43ab`에서 붙었습니다 |
-| `enrichment.html` | `src/enrichment.js` | Enrichment Queue 컨베이어(결손 보정 워크리스트) |
+| ~~`enrichment.html`~~ | ~~`src/enrichment.js`~~ | 🗄️ **[2026-08-11 `ab36fab`] 삭제됨** — 파일도 vite `rollupOptions.input` 진입점도 없다. `1e29078`이 배지·nav 링크를 먼저 걷었고(product-owner ruling — "correction happens in the grid"), 이 커밋이 페이지 자체를 지웠다. `src/enrichment.js`는 소스에 남아 있으나 **어떤 HTML도 그것을 로드하지 않는 죽은 모듈**이다(`effort_meter.js`가 그 사실을 주석으로 명시하고 정리를 별도 결정으로 미룬다). 조회 절반(참조뷰)은 아래 §3 모듈 표의 `enrichment_reference_view.js`로 이식됐다. **[`fde424c`] `/enrichment.html`을 직접 열면 404 본문이 "Enrichment 페이지 폐지됨 · 참조뷰 → 메인 화면 이력 사이드바 탭"**이라고 답한다 — 종전 문구("Please build frontend first")는 존재할 수 없는 파일을 빌드하라고 운영자를 보내는 거짓 처방이었다. 라우트 자체는 살려 뒀다(북마크가 SPA 캐치올의 `index.html`로 떨어지지 않고 명확한 답을 받도록) |
 | `graph.html` | `src/graph_viewer.js` | 지식그래프 서브그래프 뷰어(§6) |
 | `trace.html` | `src/trace.js` | 객체 중심 추적 리포트(§6) |
 
@@ -144,8 +144,9 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 | `clipboard.js` | 858 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells`, `registerSmartPasteHandler`(**§2.1-ter** — paste 핸들러의 스마트 페이스트 걸쇠 분기). **쓰기 세 경로(붙여넣기·delete 비우기·행 복사 술어)는 `isVirtualColumn`으로, 읽기 두 경로(복사 술어)는 그 반대로** 갈립니다 — §3.4 |
 | `tsv.js` | 121 | TSV 직렬화/파싱 순수 함수 — 클립보드 경로와 회사 양식 왕복이 공유하는 유일한 구현 |
 | `doe_bands.js` | 753 | **DOE zone 모델의 순수 구현**(§4.1) — 구간 소요·자재당 분배 산식의 정본. 계약 벡터 `contracts/doe_band_rules/vectors.json`으로 서버와 같은 기댓값에 채점 |
-| `timeline.js` | 722 | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터 |
-| `ui.js` | 431 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`(**Ctrl+Enter 일괄 채우기 — 사각형이 뒤쪽 가상 컬럼까지 닿으므로 `isVirtualColumn` 가드 필요**), Enrichment 배지(`updateEnrichmentBadge`), 페이지캐시 유지, unload 경고 |
+| `timeline.js` | 899 (2026-08-11 재실측 — 종전 722는 낡음) | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터. **[2026-08-11 `dab9152`] `readHistoryPage`**(엔벨로프 `{logs,truncated,next_cursor,limit,returned}`와 구버전 bare-list 응답 양쪽을 받는 관용 파서) + 목록 끝 `일부만 (N건) · 더 보기` 페이징(§7) |
+| `ui.js` | 431 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`(**Ctrl+Enter 일괄 채우기 — 사각형이 뒤쪽 가상 컬럼까지 닿으므로 `isVirtualColumn` 가드 필요**), 페이지캐시 유지, unload 경고. ⚠️ **[2026-08-11] Enrichment 배지(`updateEnrichmentBadge`)는 삭제됐다**(`5116f67` — 호출자 0건이던 죽은 함수) |
+| `enrichment_reference_view.js` | 119 (2026-08-11 신설 `1e29078`) | **메인 그리드 History 패널의 참조뷰 탭** — 옛 `enrichment.html` 컨베이어의 조회 절반을 그리드 사이드바로 이식. `syncReferenceViewRule`(테이블 전환 시 그 테이블에 해당 규칙이 있으면 탭 노출) · `refreshReferenceForSelection`(셀 클릭 시 자동 갱신) · `installReferenceKeyboardIsolation`(패널 안 텍스트 선택·복사가 그리드 클립보드 핸들러에 가로채이지 않게 격리 — 그리드 핸들러는 선택이 남아 있으면 **항상** 자기 TSV로 덮어썼다). 같은 백엔드 라우트(`GET /enrichment/rules/{r}/references/{i}`)를 재사용, 새 엔드포인트 없음 |
 | `utils.js` | 347 | `getLocalTimeString`, **전역 토스트**(`showToast` — window 부착), 인제션 진행 위젯. 토스트는 **벽시계 `expireAt` 기준 만료**(백그라운드 탭 setTimeout 스로틀링으로 무한 누적되던 원인 제거) · 상한 4(퇴거는 비-에러 오래된 것 우선, 방금 삽입분 면제) · TTL info/success 5s·warning 9s·**error 15s** · `visibilitychange`/`focus` 스윕 · `dedupeKey` 합치기(**에러 제외** — 건별 원인이 중요) · `dismissToasts(dedupeKey)`로 **회수**(지시형 토스트는 그 지시가 참이 아니게 된 순간 사라져야 한다 — §2.1-ter) |
 | `theme.js` | 92 | 듀얼 테마 전환(`initTheme`/`toggleTheme`/`syncAgGridThemeClasses`) — 토큰 SSOT는 `tokens.css` |
 | `config.js` | 113 | 환경 설정: `API_BASE`/`WS_URL`(5173→8080), `CURRENT_USER`, `pageLimit=1000` |
@@ -207,7 +208,7 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 
 **문제 ②: 늦게 도착한 응답이 현재 화면을 오염시킨다** — 필터·검색·페이지를 빠르게 바꾸면 먼저 떠난 요청의 응답이 **나중에** 도착해 이미 바뀐 화면을 덮는다.
 - **올바른 형태**: 요청마다 **세대(시퀀스/세션 id)**를 부여하고, **현재 세대가 아닌 응답은 전량 폐기**한다. "마지막에 도착한 것이 최신"이라는 가정이 이 부류의 원인이다.
-- **현행**: 이 형태가 실제로 있는 곳은 `trace.js`(`runTrace` seq 가드)와 `enrichment.js`(참조 패널 stale 가드)다. ⚠️ **메인 그리드 `api.fetchData` 경로에서는 대응 장치를 찾지 못했다**(2026-07-27 확인) — `state.pageCache`는 캐시일 뿐 세대 가드가 아니다. **미검증 항목**이며 판정은 [doc-auditor 소관](../process/DOC_OWNERSHIP.md).
+- **현행**: 이 형태가 실제로 있는 곳은 `trace.js`(`runTrace` seq 가드)와 **`enrichment_reference_view.js`**(2026-08-11 — `requestSequence`, 렌더 직전 `sequence === requestSequence` 대조. ⚠️ 이 형태가 예전에는 죽은 `enrichment.js`의 참조 패널에 있었고 그 파일은 지금 어떤 HTML도 로드하지 않는다 — 인용 대상을 이 파일로 옮겼다)다. ⚠️ **메인 그리드 `api.fetchData` 경로에서는 대응 장치를 찾지 못했다**(2026-07-27 확인) — `state.pageCache`는 캐시일 뿐 세대 가드가 아니다. **미검증 항목**이며 판정은 [doc-auditor 소관](../process/DOC_OWNERSHIP.md).
 
 **문제 ③: `total`이 외부 삭제 후 드리프트한다** — 다른 클라이언트나 인제션이 행을 지우면, 클라가 로컬로 카운트를 가감하는 순간 **현재 필터에 매칭되던 행이었는지**를 알 수 없어 총계가 틀어진다.
 - **올바른 형태**: 총계를 **로컬에서 계산하지 말고**, 현재 필터를 실어 **서버에 다시 묻는다.** 이 값은 클라가 알 수 있는 종류의 값이 아니다.
@@ -247,11 +248,11 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 | 페이지 | 쓰기 경로 |
 |---|---|
 | 메인 그리드 | `api.js`(단건 편집) · `main.js`(Tx 일괄 적용) · `ui.js`(범위 값 채우기) · `clipboard.js`(붙여넣기, 셀 비우기) — **5경로** |
-| Enrichment 컨베이어 | `enrichment.js` `saveCurrent` — **1경로**(2026-07-29 추가. 결손 보정도 교정 쓰기이므로 범위 안이며, 여기가 제품에서 **가장 공수가 적은 교정 표면**일 가능성이 높은데 미계측이면 그걸 증명할 수단이 없습니다) |
+| ~~Enrichment 컨베이어~~ | ~~`enrichment.js` `saveCurrent` — **1경로**~~(2026-07-29 추가). 🔴 **[2026-08-11] 이 경로에 UI가 없다** — `enrichment.html`이 삭제돼(`ab36fab`) `saveCurrent`를 부를 화면이 없다. `effort_meter.js`의 `ROUTES.ENRICHMENT`/`'enrichment:rule'`은 **의도적으로 남아 있다**(허용목록 검증기이지 라이브 내비게이션 집계가 아니라서, 지우면 오히려 알 수 없는 항목이 됨) — 그러나 계측 자체는 죽었다. 결손 보정은 지금 그리드 직접 편집(F3 값 제안 셀 에디터)의 **5경로 계측에 흡수**된다 |
 | 맵 에디터 | `map_editor.js` Push — **1경로**(map-pm 소관) |
 | 읽기 전용 화면 (2026-07-29 추가) | `admin.js` · `graph_viewer.js` · `trace.js` — **교정 쓰기 0경로**이므로 `effort` 페이로드를 싣는 곳이 없습니다. 대신 `startSession`+`installGlobalListeners`+`installNavLinkCounting`만 배선합니다. 이유는 **대칭**입니다: 종전에는 `grid → graph`는 세고 `graph → grid`는 안 세서, 읽기 화면으로 나갔다 돌아오는 왕복이 **실제 비용의 절반만** 기록됐습니다(실측: `/graph.html`에서 🏠 Main 클릭 → 카운터 바이트 단위로 동일). 미화 방향이고, 다시 모을 수 없는 기준선에서 그건 불변식 3이 금지하는 방향입니다 |
 
-**이동 계측:** 그리드 — 내비 앵커 4건(위임) + Enrichment 배지 + 테이블 전환 + 뷰모드 전환 + `navigateToLog` + 추적 새 탭. Enrichment — 「메인으로」 앵커 2건(위임) + 규칙 전환. 어드민·그래프·추적 — 내비 앵커(위임) 전량.
+**이동 계측:** 그리드 — 내비 앵커 4건(위임) + 테이블 전환 + 뷰모드 전환 + `navigateToLog` + 추적 새 탭. ⚠️ **[2026-08-11] "Enrichment 배지"·"Enrichment 페이지의 「메인으로」 앵커 2건 + 규칙 전환"은 둘 다 죽었다** — 배지는 삭제됐고(`5116f67`) 페이지 자체가 없다(`ab36fab`). 그리드 사이드바 참조뷰(`enrichment_reference_view.js`)는 읽기 전용 조회이고 effort 계측을 새로 배선하지 않았다(교정 쓰기가 아니므로 SSOT §1 계기의 범위 밖). 어드민·그래프·추적 — 내비 앵커(위임) 전량.
 
 > ⚠️ **테이블/규칙 전환은 `switchTable()`·`selectRule()` 안이 아니라 사용자 핸들러에서 셉니다.** 두 함수는 부팅 자동선택·딥링크·`navigateToLog`에서도 호출되는데 그건 사용자가 이동한 것이 아니라서, 함수 안에서 세면 오계수가 납니다. (새로고침 버튼처럼 같은 대상을 다시 읽는 것도 이동이 아니므로 세지 않습니다.)
 
@@ -414,7 +415,7 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 | **File Ingestion** | 인제션 로그(필터/정렬/페이지) + Workspaces(기본 접힘·요약) + 실패 진단→커스텀 파서 편집 딥링크 |
 | **Chain** | Rules 현황 + **Chain 실패(Outbox Transactions)** 재시도 + Mappers(행별 🛠️ Edit) + 실패 진단→맵퍼 편집 딥링크 |
 | **Auto Update** | 상태/Run Now + **산출물 인제션 실패 연계**(auto-update 대상 ∩ 파일 실패 교집합) |
-| **Enrichment** | 규칙 표 + 결손 카운트 배지 + Queue 딥링크(`enrichment.html?rule=`) — 규칙 편집은 read-only 안내(CRUD API는 백로그) |
+| **Enrichment** | 규칙 표 + 결손 카운트 — 규칙 편집은 read-only 안내(CRUD API는 백로그). ⚠️ **[2026-08-11 `5116f67`] Queue 딥링크(`enrichment.html?rule=`) 4건 삭제** — 대상 페이지 자체가 없어졌다. 규칙 포커스는 행 클릭 핸들러로 생존하지만, **특정 규칙의 결손 입력 워크리스트를 여는 경로는 대체되지 않았다** |
 
 - **핵심가치 #1 계기 두 줄 (Overview 상단, `renderRecorrection` + `renderEffort`, 갱신은 `refreshCoreValueLines` 하나)**: 두 줄은 **같은 `/dashboard/summary` 응답 한 번**에서 나온다.
   - **재교정률**: 사람이 같은 셀을 두 번 이상 고친 비율 — **보조 계기**([backend](./backend.md#재교정률-dashboardsummary--recorrection) · 2026-07-29 강등).

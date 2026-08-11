@@ -1,7 +1,7 @@
 # `ontology_mapping.json` 세팅 — 그래프 노드/엣지 매핑 (v2)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** Sync / 총괄
-> 상위: [폴더 인덱스](./README.md) · 트랙 스펙은 [ONTOLOGY_GRAPH_SPEC §3](../../spec/ONTOLOGY_GRAPH_SPEC.md) · 온보딩 절차는 [CONFIG_GUIDE §3-S4](../CONFIG_GUIDE.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**`node.identity`가 맵 정체성을 상속할 수 있다** — `68db020` 신설 `@map_key_columns` 토큰 + 「생략하면 전체 상속」, §5 참조) | **Owner:** Sync / 총괄
+> 상위: [폴더 인덱스](./README.md) · 트랙 스펙은 [ONTOLOGY_GRAPH_SPEC §3](../../spec/ONTOLOGY_GRAPH_SPEC.md) · 온보딩 절차는 [CONFIG_GUIDE §3-S4](../CONFIG_GUIDE.md) · 상속 메커니즘은 [data_model §5.0-bis](../../architecture/data_model.md) · [PRIMITIVES §3](../../architecture/PRIMITIVES.md#-키를-지우면-상속한다--관례-폴백이-아니라-파생-리졸버로-2026-08-11-등록--68db020)가 정본
 
 <!-- Loader evidence (2026-07-28):
   validate: server/ontology_config.py:99 _validate_table_mapping (description required :104-106,
@@ -73,11 +73,35 @@ conda run -n assy_manager python server/scripts/backup_config.py restore ontolog
 | 키 | 의미 |
 |---|---|
 | `description` | **필수** — 테이블 의미 서술(LLM 그라운딩). 엣지에도 각각 필수 |
-| `node.label` / `node.identity` | 라벨(식별자 규칙) · 단일 컬럼명 또는 복합 리스트 |
+| `node.label` / `node.identity` | 라벨(식별자 규칙) · 단일 컬럼명 또는 복합 리스트. **생략하면 그 테이블의 맵 정체성을 그대로 상속**(아래 §5-bis) |
 | `node.props` | 컬럼명 문자열 또는 `{"col": "bx", "spatial": {"coord_system": "...", "axis": "x"}}` |
-| `edges[].type` / `target_label` / `target_identity_from` | 엣지 타입 · 타깃 라벨 · 타깃 정체성 컬럼(들) |
+| `edges[].type` / `target_label` / `target_identity_from` | 엣지 타입 · 타깃 라벨 · 타깃 정체성 컬럼(들). **`target_identity_from`는 부재가 계속 오류다** — 다른 테이블의 노드를 가리키므로 "그" 정체성이 하나로 정해지지 않는다 |
 | `edges[].props` / `description` | 엣지 속성(형식은 node.props와 동일) · **필수** 서술 |
 | `edges[].source_override` | provenance 고정(enrichment 승격 엣지가 씀 — 사용자 파일에서도 가능) |
 
 - 구 v1 형식(`default`/`tables` 래퍼)은 v2 로더가 무시.
 - `RESOLVED_AS`는 자동 승격 — 중복 선언 금지.
+
+### 5-bis. 맵 정체성 상속 — `@map_key_columns`와 「생략하면 전체 상속」 (2026-08-11 `68db020`)
+
+이 그래프는 "무엇이 웨이퍼 하나를 정하는가"를 말하는 **다섯 번째 자리**였다(`table_config.map_key_columns`가 정본이고 나머지 넷이 이미 그것을 따르는데, 그래프만 따로 철자하고 있었다). 지금은 두 형태로 상속을 표현한다:
+
+- **`node.identity`를 통째로 생략** → "이 테이블의 맵 정체성을 그대로 쓴다"는 뜻. 노드가 곧 맵과 1:1이면 이 형태를 쓴다.
+- **`node.identity` 리스트 안에 `"@map_key_columns"` 토큰을 끼워 넣는다** → 그 자리에 맵 정체성 컬럼들이 스플라이스된다. 노드 정체성이 "맵 정체성 + 무언가"(예: 셀 = 맵 + 좌표)일 때 쓴다 — 생략만으로는 이 합성을 표현할 수 없어서 토큰이 명시적이다.
+
+```json
+"core_wafer_map": {
+  "description": "...",
+  "node": { "label": "CoreWafer" }
+}
+```
+```json
+"core_wafer_map": {
+  "description": "...",
+  "node": { "label": "CoreCell", "identity": ["@map_key_columns", "cx", "cy"] }
+}
+```
+
+- **소비자는 `map_overlay.derive_binding_parts`이지 두 번째 리더가 아니다** — 그래프가 자기 유도 로직을 갖지 않으므로 맵과 그래프가 "구조적으로" 같은 답을 낸다(우연히 일치하는 것이 아니라 같은 함수를 부른다).
+- **상속할 것이 없으면 거절이다.** `table_config`에 그 테이블의 `map_key_columns` 선언이 없으면(그리고 `lot`/`slot`이 둘 다 있는 것도 아니면) `@map_key_columns`는 풀리지 않고 **이름을 대며 거절**한다 — 조용히 빈 리스트로 접히지 않는다.
+- ⚠️ **`CoreCell`은 `wafer_id`로 키잉되지 않는다** — `assy_qa` 실측 `core_wafer_map`의 24,200행 중 9,674행(40.0%)이 `wafer_id`가 비어 있고 200개 lot/slot 그룹 전부가 그런 행을 최소 하나씩 갖는다. `compose_identity`는 컴포넌트가 null이면 `None`을 반환하므로, `wafer_id`로 키잉했다면 9,674개 다이가 **조용히 그래프에서 빠졌을 것**이다(반증됨, 실행 전 되돌려짐). `RECORDED_AS_WAFER`가 이미 "이 엣지는 의도적으로 성기다(결손이 곧 보정 워크리스트)"고 선언하므로, 성긴 것은 결함이 아니다.

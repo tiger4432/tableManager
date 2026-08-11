@@ -528,6 +528,16 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    - ⚠️ **8의 `--preflight-only`는 이것을 못 잡는다** — 드리프트 점검이 보는 것은 **컬럼**이고 인덱스가 아니다(`server/schema_drift.py`에 인덱스 검사 0건). 「사전점검이 초록이었다」는 이 인덱스에 대해 아무 말도 하지 않는다.
    - **중복이 하나라도 있으면 `CREATE UNIQUE INDEX`가 실패한다.** 사전점검이 테이블별로 먼저 세고, 거부된 테이블은 **이름·중복 키 수·잉여 행 수·예시**와 함께 보고되며 **나머지 테이블은 계속 진행**한다. 절차·함정은 [POSTGRES_OPERATIONS §3.1](POSTGRES_OPERATIONS_GUIDE.md).
    - **키가 아예 안 조립된 행**은 다른 문제이고 다른 도구다 — `server/scripts/check_missing_business_key.py`(읽기 전용, 같은 절).
+8-ter. 🔴 **감사 이력 인덱스 세 종을 반영한다 — 없으면 오늘(2026-08-11)의 성능 수리 전부가 무효다** (`dab9152`+`2630790`)
+   ```bash
+   psql "$DATABASE_URL" -f server/migrations/add_audit_history_keyset_indexes.sql   # idx_audit_row_history, idx_audit_cell_history
+   psql "$DATABASE_URL" -f server/migrations/add_audit_recent_groups_index.sql      # idx_audit_recent_groups
+   ```
+   **왜 배포 순서에 들어왔는가**: 이 두 파일이 만드는 **인덱스 셋**이 없으면, `audit_history_config.json`의 상한(`recent_max_scan_rows` 등)을 아무리 낮춰도 각 청크는 여전히 **순차 스캔 + 디스크 정렬**이다(실측 2,900,000행 픽스처에서 청크 하나 3.6초 · 300,019행짜리 감사 이력 하나 121.6ms). 즉 **config만 배포하고 인덱스를 건너뛴 프로덕션 박스는 상한이 낮아진 것 말고는 아무것도 빨라지지 않는다** — 코드가 바뀌었다는 사실이 성능이 바뀌었다는 증거가 아니다.
+   - `models.py`(`AuditLog.__table_args__`)에 이미 선언돼 있어 **신규** 설치는 `create_all`이 자동으로 만든다. `create_all`은 **기존** 테이블에 인덱스를 추가하지 않으므로(`idx_sources_by_source`와 같은 계급), 이미 떠 있는 프로덕션 DB는 이 단계가 유일한 반영 경로다.
+   - `CONCURRENTLY`라 쓰기 락 없이 라이브 스택에 돌릴 수 있지만, **트랜잭션 블록 안에서 부를 수 없다** — `psql -f`(자동커밋)로 실행하고 래핑 `BEGIN`을 쓰지 말 것. 중단되면 `INVALID` 인덱스가 남아 쓰기 비용만 지불하고 아무 읽기도 못 받으므로, 각 파일 하단의 확인 SQL로 `indisvalid`를 재확인한다.
+   - ⚠️ **8의 `--preflight-only`는 이것도 못 잡는다** — 드리프트 점검은 컬럼만 보고 인덱스는 보지 않는다(위 8-bis와 같은 사각).
+   - 예상 소요·크기: `idx_audit_recent_groups` 166 MB(2,900,000행 기준, 4.2초) · `idx_audit_row_history`+`idx_audit_cell_history` 합계 실측 두 벌(운영 규모 210,196행에서 19+20 MB · 1,131,008행 픽스처에서 91+101 MB, ~170-195 B/행) — 프로덕션 `audit_logs` 행 수에 선형 비례한다.
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
    - ⚠️ 런처와 웹서버가 **각자** 드리프트 배너를 한 번씩 찍습니다(약 14 ms). 8을 건너뛰었어도 기동 로그에 남으니 거기서 읽으십시오.
 

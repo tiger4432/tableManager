@@ -373,7 +373,7 @@ GET /                          -> 200 text/html
 
 - **API 계약을 바꾸는 롤백이라면** 사용자에게 **새로고침(Ctrl+Shift+R)을 반드시 알려라.** 옛 번들은 새(=옛) 서버 계약과 맞지 않는다.
 - 진행 중이던 편집은 **새로고침으로 날아간다.** 롤백을 알리고 잠깐 기다리는 편이 낫다.
-- `admin.html`·`map_editor.html`·`enrichment.html`은 `no-store`로 서빙되므로 새로고침 한 번이면 새 해시를 집는다. **루트 `index.html`에는 그 헤더가 없다** — 강제 새로고침이 필요할 수 있다.
+- `admin.html`·`map_editor.html`은 `no-store`로 서빙되므로 새로고침 한 번이면 새 해시를 집는다. **루트 `index.html`에는 그 헤더가 없다** — 강제 새로고침이 필요할 수 있다. (⚠️ **[2026-08-11] `enrichment.html`은 삭제됐다** — 이 목록에서 제외. 남은 정적 페이지: `admin.html`·`map_editor.html`·`map_editor2.html`·`graph.html`·`trace.html`.)
 
 ---
 

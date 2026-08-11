@@ -62,6 +62,22 @@
 |---|---|
 | 🟢 [qa/FEATURE_CHECKLIST.md](./qa/FEATURE_CHECKLIST.md) | **기능 인벤토리 + QA 수동 점검 체크리스트** — 서브시스템별 기능 지도·진입 경로·릴리스 전 회귀 점검 절차(SLO·멱등성 포함). **§2.0 자동 게이트**(pytest + `npm run build` — 손으로 점검하기 전에 통과시킬 것) · **§1.11/§2.15 운영 감시**(감시자·`/health`·격리 환경) 포함. **2026-07-31 신설 2행** — §1.1 **가상 조인 컬럼이 화면에 뜬다**(+ §2.2-bis B파트 · 🔴 **그리는 순간 쓰기 대상**이므로 붙여넣기·delete·일괄채우기가 각자 가드를 갖고 **복사는 반대**) · §1.8 **소급 적용 어드민 API**(+ §2.8-quinquies · ⚠️ **화면은 없다 — `curl` 점검**). **2026-07-30 신설 6행** — §1.1 **값 제안 셀 에디터**(+ §2.1에 F3 점검 11건 · ⚠️ `switchTable`이 `txModeActive`를 되켠다는 절차 경고) · §1.7 유효 다이 맵(M4) · §1.9 **칩 추적**·재동기화 알림·**고아 스윕** · §1.10 **셸의 서버 주소 해석**. 새 기능 병합 시 doc-keeper가 갱신 |
 
+## 💡 3.6 제안·연구 (proposal/) — 미확정, 제품 스펙 아님
+
+🔴 **이 표가 이 라운드(2026-08-11)까지 없었다** — `docs/proposal/`가 이미 7개 문서를 담고 있었는데 이 문서에도 [DOC_OWNERSHIP](./process/DOC_OWNERSHIP.md)에도 등재 행이 없어, 결정되지 않은 설계가 조용히 실행된 것으로 오독될 위험이 있었다. **이 폴더의 문서는 전부 "제안"이지 "정본"이 아니다** — 채택 여부는 총괄이 정하고, 채택되면 해당 서브시스템의 리빙 문서(architecture/guide/spec)로 내용이 옮겨간다. 이 폴더 자체가 SSOT가 되는 일은 없다.
+
+| 문서 | 상태(문서 자체 표기) | 다룬다 |
+|---|---|---|
+| [proposal/FETCH_AND_AUDIT_HISTORY_PERFORMANCE_PROPOSAL.md](./proposal/FETCH_AND_AUDIT_HISTORY_PERFORMANCE_PROPOSAL.md) | 제안(미확정) | `CellSource` 쓰기 증폭 축소(제안 A/B, **미구현**) + 조회 경로 성능(제안 C). 🔴 **제안 C(행/셀 이력 keyset 페이징 + 전역 감사 화면 bounded scan)는 2026-08-11 `dab9152`+`2630790`+`fde424c`로 이미 구현·착지했다** — 이 문서는 그 실행의 설계 근거로만 남고, A/B는 여전히 미착수 |
+| [proposal/UPSERT_THROUGHPUT_NEXT_STEP_PROPOSAL.md](./proposal/UPSERT_THROUGHPUT_NEXT_STEP_PROPOSAL.md) | 제안(미확정) | 대형 파일 인제션 `apply_batch_updates` 처리량 다음 단계. 검증됨: 미구현 |
+| [proposal/SCHEMA_AND_ONTOLOGY_TRANSPORT_RESEARCH.md](./proposal/SCHEMA_AND_ONTOLOGY_TRANSPORT_RESEARCH.md) | 연구·제안(미확정) | 환경 간 스키마·온톨로지 정의 이행. 결론: 정의는 이미 사실상 버전 관리되고 있고(8/10 config가 `.sample`과 바이트 동일), 없는 것은 방향(어느 쪽이 상류인가)과 병합 규칙. `server/schema_drift.py`를 리포트에서 기대상태 계산기로 승격 권고 |
+| [proposal/DT_ALIGNMENT_METADATA_CHAIN_PROPOSAL.md](./proposal/DT_ALIGNMENT_METADATA_CHAIN_PROPOSAL.md) | S1/S2 구현됨 · S3 제안 | DT 정렬 결과를 metadata로 적재하는 체인의 첫 단계. S1/S2는 [DT/Core 프레임 파생 체인](./architecture/DT_CORE_FRAME_CHAINS.md)으로 착지(DOC_OWNERSHIP 행 참조) |
+| [proposal/DT_STANDARD_MAP_CHAIN_PROPOSAL.md](./proposal/DT_STANDARD_MAP_CHAIN_PROPOSAL.md) | 승인된 구현 방향(운영 검증 전까지 proposal 유지) | DT frame → 표준 DT map 체인. 같은 파생 체인 행 참조 |
+| [proposal/DT_TRANSFORMATION_CHAIN_PROPOSAL.md](./proposal/DT_TRANSFORMATION_CHAIN_PROPOSAL.md) | 제안 | DT–Core 표준 좌표 변환 체인 — 원본 행을 바꾸는 권한은 이 제안이 주지 않는다는 전제를 못박음 |
+| [proposal/CORE_ALIGNMENT_FINGERPRINT_PROPOSAL.md](./proposal/CORE_ALIGNMENT_FINGERPRINT_PROPOSAL.md) | 제안 | Core 정렬 지문 — 이 문서가 프로덕션 core-frame 확정이나 canonical core-map 쓰기를 켜지 않는다고 스스로 명시 |
+
+> **DT 관련 넷(맨 아래 넷)은 [DT/Core 프레임 파생 체인 행](./process/DOC_OWNERSHIP.md)의 설계 배경 문서다** — 구현이 착지한 뒤에도 "왜 이렇게 설계했나"의 기록으로 남기고, 최신 상태 서술은 옮기지 않는다(정본은 architecture/guide/spec 셋).
+
 ## 🛠️ 4. 운영 & 셋업 (guide/)
 
 | 문서 | 내용 |

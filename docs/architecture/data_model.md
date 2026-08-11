@@ -165,6 +165,21 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 **스케일**: 전용 인덱스 2종 `uq_effort_transaction`(tx당 1행 불변식) + `idx_effort_window`(창 집계 커버링)이 `models.InteractionEffortLog.__table_args__` + `scripts/setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**. `measured_ratio`의 분모는 **§2.3의 `idx_audit_user_recorrection`을 그대로 재사용**한다(`timestamp` + `INCLUDE transaction_id WHERE source_name='user'`) — 새 감사 인덱스는 필요 없다.
 
+### 2.5 감사 이력(Audit History) 인덱스 — 최근 패널 discovery + 행/셀 페이징 · 2026-08-11 `dab9152`+`2630790`
+
+`AuditLog`(§1.1)는 셀 단위 변경 이력을 무제한으로 쌓는 테이블이고, 그것을 훑는 세 경로(전역 최근 패널·행 이력·셀 이력)를 상한 짓는 인덱스 셋이 이 라운드에서 새로 생겼다. 셋 다 `models.py`의 `AuditLog.__table_args__`에 선언돼 있어 **신규** 데이터베이스는 `create_all`로 자동으로 받지만, `create_all`은 **기존** 테이블에 인덱스를 추가하지 않으므로 이미 떠 있는 배포는 마이그레이션을 손으로 한 번 돌려야 한다 → [DEPLOY_SETUP §6 8-ter](../guide/DEPLOY_SETUP.md) · 게이트 판정 [PRODUCTION_READINESS C4](../process/PRODUCTION_READINESS.md).
+
+| 인덱스 | 정의 | 파일 | 크기(실측) | 무엇을 지키는가 |
+|---|---|---|---|---|
+| `idx_audit_recent_groups` | `("timestamp", id) INCLUDE (transaction_id)` | `add_audit_recent_groups_index.sql` | 166 MB / 60.1 B/행 (2,900,000행 픽스처, `CONCURRENTLY` 4.2초 빌드) | `/audit_logs/recent`의 discovery 걸음 — `transaction_id`를 leaf에만 실어 세 컬럼 조회를 **Index Only Scan**으로 만든다(200,000행 걸어도 heap 방문 0) |
+| `idx_audit_row_history` | `(table_name, row_id, "timestamp", id)` | `add_audit_history_keyset_indexes.sql` | 19–91 MB(운영 규모 210,196행 대 픽스처 1,131,008행, ~170–195 B/행 — 폭은 `row_id` UUID 36자가 두 인덱스 각각에 반복되는 데서 온다) | 행 이력 페이지 — 이게 없으면 300,019행짜리 행 이력 조회가 `LIMIT 201`을 걸어도 전량 bitmap scan + top-N 정렬(9,421 buffers/121.6ms) |
+| `idx_audit_cell_history` | `(table_name, row_id, column_name, "timestamp", id)` | `add_audit_history_keyset_indexes.sql` | (위와 합산 실측) | 셀 이력 페이지 — 행 인덱스만 있으면 `column_name`이 행 범위 안의 **Filter**로 남아, 300,019행짜리 행 안의 1건짜리 컬럼도 "페이지가 찰 때까지 걷기"가 된다(9,421 buffers/117.7ms → 5 buffers/0.09ms) |
+
+- **셋 다 ASC로 선언한다** — 조회는 `timestamp DESC, id DESC`이지만 btree는 역방향 스캔 비용이 같고, ASC라야 `models.py`가 raw SQL 없이 선언할 수 있어 PostgreSQL과 테스트용 SQLite 양쪽을 한 선언으로 덮는다.
+- **셋 다 `CONCURRENTLY`** — 라이브 스택에 쓰기 락 없이 반영 가능하지만 트랜잭션 블록 안에서 부를 수 없다(`psql -f` 자동커밋으로 실행). 중단되면 `INVALID` 인덱스가 쓰기 비용만 남기고 아무 읽기도 못 받으므로, 각 마이그레이션 파일 하단의 확인 SQL로 `indisvalid`를 재대조한다.
+- 🔴 **인덱스 온리 스캔은 visibility map을 전제한다** — 대량 인제션 직후 새 페이지가 아직 all-visible이 아니면 `idx_audit_recent_groups`도 `Heap Fetches: N`을 내며 느려진다(같은 최초 콜이 이 인덱스를 만든 이유이므로 결함이 아니라 **VACUUM 전 정상 상태**다. 실측 1,956ms → VACUUM 후 612ms, 같은 인덱스·같은 상한).
+- 행값(row-value) 비교 `(timestamp, id) < (ts, id)`를 `OR` 전개(`timestamp < ts OR (timestamp = ts AND id < id)`)로 "단순화"하지 말 것 — 논리는 같지만 플랜이 갈린다. PostgreSQL이 `OR` 전개에서는 경계를 btree에 밀어넣지 못해 **Filter**로 떨어지고 이미 본 행을 처음부터 다시 걷는다(같은 페이지 실측: Index Cond 18 buffers/0.114ms 대 Filter 2,311 buffers/4.949ms).
+
 ---
 
 ## 3. 비즈니스 키 & 복합 키
@@ -311,6 +326,14 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 ## 5. 설정 주도 스키마
 
 `table_config.json`(테이블별): `business_key`, `column_types`, `display_columns`, `composite_key_source`/`separator`, `map_key_columns`, 선택적 `source_priority`. 변경은 `config_watcher.py` + `SYSTEM_RELOAD`로 무중단 반영.
+
+### 5.0-bis 다른 config가 좌표/키 컬럼을 생략하면 `table_config`에서 상속한다 · 2026-08-11 `68db020`
+
+`map_overlay_config.json`의 `table_bindings`와 `ontology_mapping.json`의 `node.identity`는 둘 다 이 파일의 `map_key_columns`/좌표 선언을 **또 요구할 필요가 없다** — 키를 생략하면 **키마다** `local declaration > table_config에서 파생 > 이름을 대며 거절` 순서로 판정된다(관례 상수로 조용히 대체하던 것은 삭제). `ontology_config`는 자체 좌표 유도 로직을 갖지 않고 `map_overlay.derive_binding_parts`를 그대로 호출하므로, **그래프와 맵이 구조적으로 같은 답**을 낸다(둘이 따로 계산해서 우연히 같은 답이 아니다). `ontology_mapping.json`은 신규 키 `@map_key_columns`를 얻었고, `node.identity`를 아예 생략하면 그 자체가 "상속하라"는 뜻이다.
+
+- **예외**: `val`(값 컬럼)은 상속하지 않는다 — 좌표가 선언된 맵에서 `val`을 생략하는 것은 "이 맵은 값이 없다"는 적극적 선언이라, 상속하면 occupancy 맵이 조용히 value 맵으로 뒤집힌다.
+- **검증**: 이미 완전히 선언된 19/19 라이브 테이블은 `resolve_binding`/`resolve_binding_info` 응답이 이 변경으로 한 글자도 안 움직인다.
+- 상세 메커니즘·함정은 [PRIMITIVES §3](./PRIMITIVES.md)의 「키를 지우면 상속한다」 항목 · 엔드포인트 계약은 [backend §2](./backend.md) `GET /api/maps/paint-rules`의 `binding` 필드 · 세팅 절차는 [CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)의 `map_overlay_config.json`/`ontology_mapping.json` 행.
 
 > **watcher가 처리하는 저장 형태**(🔴 **수를 적지 않습니다 — 아래 목록이 정본입니다**) (2026-07-29 #9/H2/H3). `on_modified`(제자리 쓰기) · `on_moved`(같은 디렉터리 temp + rename) · `on_created`(**다른** 디렉터리 temp + rename — 이 경우 `moved`가 아예 없고 `deleted`+`created`만 옵니다. `tempfile.mkstemp()`의 기본이 시스템 temp 디렉터리라 흔한 형태입니다). 측정 기준 watchdog 6.0.0/Windows.
 >

@@ -57,12 +57,13 @@ server/database/virtual_graph.json
 | **`chain_rules.json`** | 체인 인제션 룰(trigger→target→mapper) | 사용자 | ignored (`.sample` 有) | `POST /admin/reload-configs` | chain_ingestion_worker, web(조회) |
 | **`auto_update_control.json`** | 수집기 비활성 목록(= active 토글) | 사용자 (**API로 쓰기 권장**) | ignored (`.sample` 有) | 즉시(매 사이클 재조회) | run_auto_update, web |
 | **`ingestion_settings.json`** | 인제션 런타임 노브 — `heavy_file_mb`(P1 heavy 레인 임계, 기본 10) · `dedup_by_signature`(P2 동일 파일 skip, 기본 true) · `resume_from_checkpoint`(P2 오프셋 재개, 기본 true) · `flatten_nested_dirs`(폴더 드롭 처리, 기본 true — 🔴 **`600b49d`에서 이름은 그대로 뜻만 바뀜**: 승격 → **제자리 적재**. §5.6) · `auto_register_map_meta` · `enrichment_auto_confirm_*` | 사용자 | ignored (`.sample` 有) | 즉시(**다음 파일 / 다음 폴더 트리거부터**) | watcher |
-| **`map_overlay_config.json`** | **범용 맵 오버레이** — `table_bindings`(맵 좌표 컬럼, 미선언 시 `table_config`에서 자동 유도) · `paint_lock`(페인트 잠금 **정본**) · [U6] `default_legend`(레지스트리 무행 맵의 기본 legend, 미선언=없음) · `value_column_candidates`(값 컬럼 탐지 순서, 미선언=문서화 기본) — 뒤 둘은 `GET /api/maps/paint-rules`로 서빙(클라 하드코딩 금지) · **[F5] `preset_routing`**(로드 시 프리셋 라우팅 — `GET /api/maps/preset-routing`로 서빙, 미선언=라우팅 없음). ~~`align_overrides`~~는 **2026-07-27 폐지**(§5.8-bis) | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
+| **`map_overlay_config.json`** | **범용 맵 오버레이** — `table_bindings`(맵 좌표 컬럼, 미선언 시 `table_config`에서 **키마다** 유도 — 2026-08-11 `68db020`부터 관례 상수 폴백 삭제, 생략한 키는 이름을 대며 거절하거나 파생된 값으로 상속) · `paint_lock`(페인트 잠금 **정본**) · [U6] `default_legend`(레지스트리 무행 맵의 기본 legend, 미선언=없음) · `value_column_candidates`(값 컬럼 탐지 순서, 미선언=문서화 기본) — 뒤 둘은 `GET /api/maps/paint-rules`로 서빙(클라 하드코딩 금지) · **[F5] `preset_routing`**(로드 시 프리셋 라우팅 — `GET /api/maps/preset-routing`로 서빙, 미선언=라우팅 없음). ~~`align_overrides`~~는 **2026-07-27 폐지**(§5.8-bis) | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`maps.json`** | 웨이퍼 물리 규격/오프셋 **프리셋** | 사용자 (**API로 쓰기**) | ignored (`.sample` 有) | 즉시(요청마다 디스크 읽기) | web |
 | **`bonding_plan_config.json`** | M1 본딩 실험계획 — 역할(role)→실테이블 바인딩 | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`transfer_plan_config.json`** | M2 Universal Transfer Plan — stage 선언 + plan_store | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`effort_metric.json`** | **V1 정본 계기** — 상호작용 점수 배점(`weights.key/mouse/nav/nav_preserved`, 기본 1/3/5/**0**) + `context_preserving_transitions`(유지 전이 허용목록, **기본 빈 배열 = 모든 이동이 상실로 계산됨**, 정확 일치·**와일드카드 거절**). `GET /api/effort/config`로 서빙(클라 하드코딩 금지) | 사용자 | ignored (`.sample` 有) | 즉시(다음 조회부터, 집계는 60초 캐시) | web |
 | **`suggest_config.json`** | **입력 제안(고유값 조회) 노브** — 목록 길이(`default_limit`/`max_limit`)·최소 접두 길이·프로브 예산·타임아웃·**느린 응답 경보(`slow_warn_ms`)** + **접두 인덱스 대상 선정**(`index_min_rows`/`index_columns`/`index_exclude`). 조회 노브는 즉시, `index_*`는 **`setup_db_performance.py` 재실행이 유일한 반영 경로** | 사용자 | ignored (`.sample` 有) | 조회 노브 = 즉시(**요청당 1회 스냅샷**) / `index_*` = 스크립트 재실행 | web + `scripts/setup_db_performance.py` |
+| **`audit_history_config.json`** (2026-08-11 신설) | **감사 이력 조회 상한** — 행/셀 이력 페이지 크기(`default_limit`/`max_limit`) + **전역 「최근」 패널 discovery 걸음의 하드 천장**(`recent_max_scan_rows`/`recent_scan_chunk_rows`/`recent_logs_per_group`/`recent_refresh_max_delta_rows`). `audit_cache`가 `audit_history.load_config()`를 재사용 — 두 번째 로더가 아니다. 🔴 **인덱스 없이는 이 config만으로 아무것도 안 빨라진다** — §5.6-quinquies 참조 | 사용자 | ignored (`.sample` 有 — ⚠️ **`recent_*` 넷이 아직 안 실려 있다**, §5.6-quinquies) | 즉시(**요청당 1회 스냅샷**) | web |
 | `scheduler_status.json` | 스케줄러→UI 텔레메트리 | **시스템(자동 생성)** | ignored | — | run_auto_update가 씀, web이 읽음 |
 | `supervisor_status.json` | **[운영]** 자식 프로세스 감시 상태(자식별 state·재시작 횟수·실패 사유, `updated_at`=감시자 생존 신호) | **시스템(자동 생성)** | ignored | — | `run_decoupled_app`이 씀, `/health`가 읽음 |
 | `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동(`watcher`·`chain`·`graph`·`scheduler` — **수를 적지 않습니다**) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
@@ -424,6 +425,8 @@ psql -U postgres -d assy_manager -c "\d <table>"
 
 세팅 절차(리로드 필수·재동기화)와 키 사전(`description` 필수·`node`·`edges`·spatial props) → [**config/ontology_mapping.md**](./config/ontology_mapping.md)
 
+> 🔴 **[2026-08-11 `68db020`] `node.identity`는 이제 생략(전체 상속)하거나 `@map_key_columns` 토큰으로 부분 상속할 수 있다** — `table_config.map_key_columns`를 두 번째로 철자하지 마라. 상세는 위 링크 §5-bis.
+
 ### 5.3 `enrichment_rules.json`
 
 세팅 절차(키 계약·리로드 두 갈래)와 키 사전(`decision_key`·`target_fields`·`reference_views`·**`candidate_for`/`auto_confirm`** 등) → [**config/enrichment_rules.md**](./config/enrichment_rules.md)
@@ -459,6 +462,14 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 ⚠️ **운영 수칙(2026-07-30 F7)**: 테이블이 `index_min_rows`(기본 10,000)를 넘어간 뒤 `setup_db_performance.py`를 다시 돌리지 않으면 그 테이블의 제안 조회는 **정답을·완전한 모양으로·느리게** 답합니다. 데이터가 늘어나는 테이블이 있으면 적재 후 스크립트 재실행을 절차에 넣으십시오.
 
 > ⚠️ **이 파일은 인덱스를 만들지 않습니다.** `index_min_rows`/`index_columns`/`index_exclude`는 **선언**이고, 실제 생성은 `server/scripts/setup_db_performance.py`(Step 3.8)가 합니다 — 값을 바꾸고 스크립트를 돌리지 않으면 **아무 일도 일어나지 않습니다.** 반대로 인덱스가 없는 컬럼은 조용히 느려지지 않고 `unavailable_reason`으로 꺼집니다(사유가 인덱스 이름과 실행할 명령을 지목합니다).
+
+### 5.6-quinquies `audit_history_config.json` (2026-08-11 신설 · `dab9152`+`2630790`)
+
+감사 이력 조회 상한 — 행/셀 이력 페이지 크기 + 전역 「최근」 패널 discovery 걸음의 천장 → [**config/audit_history_config.md**](./config/audit_history_config.md)
+
+> 🔴 **이 config는 인덱스 없이는 아무것도 안 빨라집니다 — `suggest_config.json`과 같은 계급의 함정입니다.** `default_limit`/`max_limit`을 아무리 낮춰도, DB가 이미 조회를 마친 뒤에 잘라내는 것이 아니라 **스캔 자체가 테이블 전체에 비례해 자랍니다.** 실제로 빠르게 만드는 것은 **세 인덱스**(`idx_audit_recent_groups` · `idx_audit_row_history` · `idx_audit_cell_history`)이고, `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로** 기존 배포는 두 마이그레이션 파일을 손으로 한 번 돌려야 합니다 — **[DEPLOY_SETUP §6 단계 8-ter](./DEPLOY_SETUP.md)** 참조.
+>
+> ⚠️ **`.sample`이 `recent_*` 넷을 아직 안 적고 있습니다** — 코드(`server/audit_cache.py`의 `RECENT_DEFAULTS`)는 이미 이 파일을 읽도록 배선돼 있고, [config/audit_history_config.md](./config/audit_history_config.md)가 그 코드 사실의 정본입니다. `.sample`을 보고 "이 키는 없다"고 판단하지 마십시오 — 코드가 갖고 있다면 그 키는 유효합니다.
 
 ### 5.6-quater `notation_rules.json` (2026-08-04 `92b8d6f` 신설 → **`8d306a5` 전면 재설계**)
 
