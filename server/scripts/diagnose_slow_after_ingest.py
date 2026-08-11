@@ -45,6 +45,11 @@ Each section separates a cause that the others cannot rank:
   2. 오토배큠            - dead tuples and whether autovacuum is mid-storm
   3. OUTBOX 적체         - backlog depth, age, size, and WHICH PAYLOAD SHAPE
   4. 크기                - heap/index/toast per table + index scan counts
+  4b. 1초는 어디서 오는가 - THE DISCRIMINATOR. A ladder of endpoints where each
+                           rung adds exactly one cost to the rung below it, so a
+                           jump between two rungs names its own cause: thread
+                           token / database connection / the query itself.
+                           Needs --http. Read its section G first.
   5. 페이지 로드         - the actual page-load work, timed
   5b. 감사 이력 첫 호출  - the one that reproduced the report (see its docstring)
   6. pg_stat_statements  - top queries, or a plain statement that it is absent
@@ -806,6 +811,439 @@ def section_sizes(p, limit=20):
 
 
 # ---------------------------------------------------------------------------
+# 4b. WHERE DOES THE SECOND GO? - the ladder that separates three causes
+# ---------------------------------------------------------------------------
+# The report this answers: "every fetch takes over a second, uniformly, and the
+# browser says >90% of it is Waiting (TTFB)". TTFB is server think-time, so the
+# second is spent inside the process. Three things can spend it, and until they
+# are separated any fix is a guess:
+#
+#   (1) waiting for an anyio THREAD TOKEN   - every `def` handler needs one, and
+#       so does every 64 KB chunk of every static file. The limiter is 40.
+#   (2) waiting for a DATABASE CONNECTION   - pool_size 20 + max_overflow 10 = 30.
+#       Taken INSIDE the thread, so a handler blocked here is holding a token.
+#   (3) the QUERY itself being slow         - bloat, a plan flip, cold cache.
+#
+# The discrimination is structural rather than statistical: each rung of the
+# ladder adds exactly ONE of those costs to the rung below it, so a jump between
+# two adjacent rungs names its own cause.
+#
+#   R0  GET /health          async def  -> NO token. Takes a pooled connection on
+#                            the asyncio executor and reports its own DB latency
+#                            in the response body.
+#   S1  small static asset   no handler code, no DB, ~2 token acquisitions.
+#   S2  large static asset   no handler code, no DB, 2 + size/64KB acquisitions.
+#                            S2 - S1 is therefore an almost pure measurement of
+#                            what ONE token acquisition costs right now.
+#   R1  sync def, no get_db  + one token + handler code, still no connection.
+#   R2  sync def + get_db,   + one connection checkout + a one-row indexed read.
+#       limit=1
+#   R3/R4 same, limit=200 /  + query work only. The endpoint, the token and the
+#       limit=1000             connection are identical to R2 by construction.
+#
+# Read it as differences, not as absolutes:
+#   S2 - S1 large    -> (1). Tokens are contended. Nothing else is in that path.
+#   R1 - S1 large    -> a fixed cost inside handler code (config file I/O, path
+#                       resolution on a slow share). NOT any of the three above,
+#                       and worth naming because it is invisible to all of them.
+#   R2 - R1 large    -> (2). Connection checkout.
+#   R4 - R2 large    -> (3). Query work, and it should track the direct-SQL row
+#                       opposite it.
+#   All rungs equally slow, R0 fast -> a per-request constant that lands after the
+#                       async path and before the handler body.
+#
+# 🔴 R0 IS THE LOAD-BEARING CONTROL, and it is a control precisely because
+#    `/health` is `async def` yet still opens a pooled connection. Fast /health
+#    therefore falsifies (2) on its own: if the pool were exhausted, the health
+#    probe would block on it and the handler would report `db.status = timeout`
+#    after its own 2 s bound. This script prints that field verbatim instead of
+#    inferring it.
+_LADDER_REPS = 7
+_LADDER_CONCURRENCY = 4
+
+
+def _get(base, path, timeout=60, headers=None):
+    """One GET on a FRESH connection. Returns (ms, status, nbytes, body).
+
+    Fresh connection per call on purpose: a shared keep-alive session serialises
+    requests client-side, and the concurrency probe below would then measure its
+    own queue instead of the server's.
+    """
+    import urllib.request
+    import urllib.error
+    h = {"X-Source": "slow_probe"}
+    if headers:
+        h.update(headers)
+    t0 = time.perf_counter()
+    try:
+        req = urllib.request.Request(base + path, method="GET", headers=h)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read()
+            return (time.perf_counter() - t0) * 1000, r.status, len(body), body
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read()
+        except Exception:
+            body = b""
+        return (time.perf_counter() - t0) * 1000, e.code, len(body), body
+    except Exception as e:
+        return ((time.perf_counter() - t0) * 1000,
+                f"ERR {type(e).__name__}", 0, b"")
+
+
+def _stat(samples):
+    """min / p50 / max / flatness for a list of latencies."""
+    if not samples:
+        return None
+    s = sorted(samples)
+    lo, mid, hi = s[0], s[len(s) // 2], s[-1]
+    # Spread relative to the median. A queue that is genuinely contended is
+    # bursty; a fixed per-request cost is not. The operator is asked for a
+    # UNIFORM slowness, so this number is evidence in its own right.
+    spread = (hi - lo) / mid if mid > 0 else 0.0
+    return {"min": lo, "p50": mid, "max": hi, "spread": spread, "n": len(s)}
+
+
+def _fmt(st):
+    if not st:
+        return "         -"
+    return (f"{st['min']:8.1f} /{st['p50']:8.1f} /{st['max']:8.1f} ms"
+            f"   퍼짐 {st['spread']:4.2f}")
+
+
+def _flag_tail(label, st):
+    """Raise a note when a rung's WORST sample dwarfs its median.
+
+    🔴 A median hides the thing being hunted. Under an injected token saturation
+    this ladder printed `/api/effort/config  3.9 / 27.7 / 60016.0 ms` - a request
+    that waited a full minute for a thread token, sitting invisibly behind a
+    healthy-looking p50. Queueing is exactly the failure that shows up in the tail
+    first, so the tail gets its own alarm rather than being left for the reader.
+    """
+    if not st or st["p50"] <= 0:
+        return
+    if st["max"] >= 1000 and st["max"] / st["p50"] >= 10:
+        note(f"{label}: 중간값은 {st['p50']:.0f}ms인데 최악은 {st['max']:,.0f}ms다 "
+             f"({st['max'] / st['p50']:.0f}배). 같은 요청이 대부분 빠르고 이따금 "
+             f"통째로 멈춘다면 그것은 «느린 쿼리»가 아니라 «줄서기»다 — 자원 하나를 "
+             f"기다렸다는 뜻이고, 어느 자원인지는 이 칸이 무엇을 더했는지가 말한다.")
+
+
+def _rung(base, path, reps=_LADDER_REPS, timeout=60):
+    out, status, nbytes, body = [], None, 0, b""
+    for _ in range(reps):
+        ms, st, n, b = _get(base, path, timeout=timeout)
+        out.append(ms)
+        status, nbytes, body = st, n, b
+    return _stat(out), status, nbytes, body
+
+
+def _discover_assets(base):
+    """Find the smallest and largest /assets/* the document actually pulls.
+
+    Discovered rather than hardcoded: the filenames carry a build hash and change
+    on every client build, and a probe that 404s would report a fast static path
+    while measuring nothing.
+
+    🔴 THE TIMEOUT HERE IS LOAD-BEARING, AND THIS IS WHY IT IS 600 SECONDS.
+    An earlier version used the 60 s default. Under an injected thread-token
+    saturation - the exact condition the static rung exists to detect - `GET /`
+    exceeded 60 s, this function returned "nothing found", and the whole S1/S2
+    rung was skipped with the message "the client is not built". The instrument
+    went blind at precisely the moment it mattered AND handed the operator a false
+    reason. Measured: 45 held tokens, limiter pinned at 40/40 for 4 minutes,
+    static rung absent from the report.
+
+    Returns (small, large, sizes, why) - `why` is a human-readable failure reason
+    so a missing rung can never again be reported as a missing client build.
+    """
+    import re
+    ms, status, _n, body = _get(base, "/", timeout=600)
+    if not isinstance(status, int) or status != 200 or not body:
+        return None, None, {}, (f"GET / 가 {ms:.0f}ms 만에 [{status}] 로 끝났다 "
+                                f"(본문 {_n}B). 문서 자체를 못 받았으므로 자산 목록을 "
+                                f"얻을 수 없다 — 이것 자체가 «정적 경로가 막혀 있다»는 "
+                                f"1차 증거다.")
+    html = body.decode("utf-8", "replace")
+    paths_found = sorted(set(re.findall(r'["\'](/assets/[A-Za-z0-9_.\-]+)["\']', html)))
+    if not paths_found:
+        return None, None, {}, (f"GET / 는 {ms:.0f}ms 에 200으로 왔지만 본문에 "
+                                f"/assets/ 링크가 없다 (클라이언트 빌드 산출물이 "
+                                f"아니거나 다른 문서가 서빙되고 있다).")
+    sizes, failures = {}, []
+    for pth in paths_found:
+        ms2, st2, n2, _b2 = _get(base, pth, timeout=600)
+        if isinstance(st2, int) and st2 == 200 and n2 > 0:
+            sizes[pth] = n2
+        else:
+            failures.append(f"{pth} -> [{st2}] {ms2:.0f}ms")
+    if not sizes:
+        return None, None, {}, ("문서에서 찾은 자산을 하나도 받지 못했다: "
+                                + "; ".join(failures[:3]))
+    small = min(sizes, key=lambda k: sizes[k])
+    large = max(sizes, key=lambda k: sizes[k])
+    return small, large, sizes, None
+
+
+def section_where_the_second_goes(p, http_base, tables):
+    head("4b", "1초는 어디서 오는가 — 계층 분해 (WHERE DOES THE SECOND GO)")
+    if not http_base:
+        print("  --http BASE_URL 을 주지 않아 이 절은 건너뛴다. 이 절이 세 후보")
+        print("  (스레드 토큰 / DB 커넥션 / 쿼리 자체)를 가르는 유일한 절이므로,")
+        print("  «모든 요청이 1초» 증상을 조사 중이라면 반드시 --http 와 함께 다시 돌릴 것.")
+        print("    예) --http http://127.0.0.1:8080")
+        return
+
+    base = http_base.rstrip("/")
+    print("  브라우저가 «Waiting(TTFB)»라고 부르는 시간은 서버가 생각한 시간이다.")
+    print("  아래 사다리는 한 칸 오를 때마다 비용을 «정확히 하나씩» 더한다.")
+    print("  그래서 어느 칸에서 뛰는지가 곧 원인의 이름이다.")
+    print(f"  각 칸을 {_LADDER_REPS}회씩 잰다 (연결은 매번 새로 연다).")
+
+    lad = {}
+
+    # ---- R0: async def, no thread token. The control. -----------------------
+    sub("A. R0 — GET /health  (async def · 스레드 토큰 불필요 · 풀 커넥션은 사용)")
+    st0, status0, _n0, body0 = _rung(base, "/health")
+    print(f"     R0 /health                    {_fmt(st0)}  [{status0}]")
+    lad["R0_health"] = st0
+    _flag_tail("R0 /health", st0)
+    health_db = None
+    try:
+        hj = json.loads(body0.decode("utf-8", "replace"))
+        # `health.compute_health` nests it: checks.database.{status,latency_ms}.
+        # NOT the top-level `status` - that one also goes 503 for a stale heartbeat
+        # or an old config backup, neither of which says anything about the pool.
+        health_db = ((hj.get("checks") or {}).get("database") or {}) \
+            if isinstance(hj, dict) else {}
+        print(f"     └ 응답 본문의 checks.database: status={health_db.get('status')} "
+              f"latency_ms={health_db.get('latency_ms')}")
+        print(f"       (전체 status={hj.get('status')} — 이것은 하트비트·백업 나이로도 "
+              f"503이 되므로 풀 상태의 근거가 아니다)")
+        snapshot.setdefault("ladder", {})["health_db"] = health_db
+    except Exception:
+        print("     └ 본문을 JSON으로 읽지 못했다 (정적 catch-all이 HTML을 200으로 "
+              "돌려준 것은 아닌지 확인 — /health 라우트가 그늘에 가려졌을 수 있다).")
+
+    if health_db and health_db.get("status") == "ok":
+        print("     ⇒ /health 가 커넥션을 «얻어서» 왕복을 마쳤다. 이 한 줄이 «풀 고갈»을")
+        print("       반증한다 — 풀이 비었다면 여기서 막혀 status=timeout 이 찍힌다.")
+    elif health_db and health_db.get("status") == "timeout":
+        note("/health 의 DB 프로브가 2초 안에 답하지 못했다(status=timeout). "
+             "커넥션 풀 또는 DB 자체가 막혀 있다는 뜻이다 — 후보 (2)/(3) 쪽이다.")
+
+    # ---- S1/S2: static. No handler code, no DB. Pure token amplifier. -------
+    sub("B. S1/S2 — 정적 파일  (핸들러 코드 없음 · DB 없음 · 토큰만 소비)")
+    print("     정적 응답은 64KB 청크마다 스레드 토큰을 한 번씩 빌린다(starlette FileResponse).")
+    print("     그래서 큰 파일과 작은 파일의 «차이»가 곧 토큰 한 번의 값이다.")
+    small, large, sizes, why = _discover_assets(base)
+    if not small:
+        print(f"     정적 칸을 재지 못했다 — 이유: {why}")
+        note("정적(S1/S2) 칸을 재지 못했다. 이 칸은 «토큰 경합»을 가리는 유일한 칸이므로, "
+             "빠진 채로는 후보 (1)을 긍정도 부정도 할 수 없다. 위에 적힌 이유를 먼저 볼 것.")
+    else:
+        n_small, n_large = sizes[small], sizes[large]
+        st1, sts1, _a, _b = _rung(base, small)
+        st2, sts2, _c, _d = _rung(base, large, timeout=180)
+        chunks_small = 2 + max(0, -(-n_small // 65536))
+        chunks_large = 2 + max(0, -(-n_large // 65536))
+        print(f"     S1 {small[-38:]:38} {_fmt(st1)}  [{sts1}] {human(n_small)}"
+              f"  토큰~{chunks_small}회")
+        print(f"     S2 {large[-38:]:38} {_fmt(st2)}  [{sts2}] {human(n_large)}"
+              f"  토큰~{chunks_large}회")
+        lad["S1_small_static"], lad["S2_large_static"] = st1, st2
+        _flag_tail(f"S1 {small}", st1)
+        _flag_tail(f"S2 {large}", st2)
+        if st1 and st2 and chunks_large > chunks_small:
+            per_token = (st2["p50"] - st1["p50"]) / (chunks_large - chunks_small)
+            print(f"     ⇒ 토큰 1회 획득에 드는 시간 ≈ {per_token:.2f} ms"
+                  f"   (S2−S1 를 청크 수 차이로 나눈 값)")
+            snapshot.setdefault("ladder", {})["per_token_ms"] = per_token
+            if per_token > 5.0:
+                note(f"정적 파일의 토큰 1회 획득이 {per_token:.1f}ms다. 정적 경로에는 "
+                     f"핸들러 코드도 DB도 없으므로 이 값은 «스레드풀 토큰 경합» 말고는 "
+                     f"설명이 없다 — 후보 (1)이 살아 있다.")
+            else:
+                note(f"정적 파일의 토큰 1회 획득이 {per_token:.2f}ms다(사실상 0). "
+                     f"스레드풀 토큰은 «지금» 경합하고 있지 않다 — 후보 (1)은 이 측정에서 "
+                     f"살아남지 못한다. 느림은 토큰 대기 이후 구간에 있다.")
+
+        # ---- The same static file, CONCURRENTLY. ------------------------------
+        # 🔴 THIS PROBE EXISTS BECAUSE THE SEQUENTIAL ONE ABOVE MISSED A REAL STALL.
+        # Measured here on 2026-08-11: with the thread limiter pinned at 40/40 and
+        # 6-11 tasks queued for four minutes straight, the SEQUENTIAL large-asset
+        # fetch above returned in 14.9 ms - no contention visible at all. The same
+        # asset fetched by several clients AT ONCE, under the same injected fault,
+        # took 11,021 ms. One arrival at a time can slip through a queue that
+        # several simultaneous arrivals cannot, so a ladder that only ever probes
+        # sequentially can report a healthy static path while the users' browsers -
+        # which open six connections at once - are stalled. Two measurements of
+        # mine disagreed on this point; rather than pick one, the script now takes
+        # both and prints them side by side.
+        if large:
+            import threading as _th0
+            got0 = []
+            _lk0 = _th0.Lock()
+
+            def _one_asset():
+                ms_a, _st, _n, _b = _get(base, large, timeout=600)
+                with _lk0:
+                    got0.append(ms_a)
+
+            ths0 = [_th0.Thread(target=_one_asset, daemon=True)
+                    for _ in range(_LADDER_CONCURRENCY)]
+            for t in ths0:
+                t.start()
+            for t in ths0:
+                t.join()
+            conc_static = _stat(got0)
+            print(f"     S2 를 동시 {_LADDER_CONCURRENCY}개            {_fmt(conc_static)}"
+                  f"   ← 브라우저는 한 번에 6개를 연다")
+            lad["S2_concurrent"] = conc_static
+            snapshot.setdefault("ladder", {})["static_concurrent_p50_ms"] = \
+                conc_static["p50"] if conc_static else None
+            if st2 and conc_static and st2["p50"] > 0:
+                ratio_s = conc_static["p50"] / st2["p50"]
+                print(f"     ⇒ 동시/순차 = {ratio_s:.2f}배")
+                if ratio_s > 3.0:
+                    note(f"큰 정적 파일이 순차 {st2['p50']:.0f}ms → 동시 "
+                         f"{_LADDER_CONCURRENCY}개일 때 {conc_static['p50']:,.0f}ms로 "
+                         f"{ratio_s:.1f}배가 됐다. 정적 경로에는 핸들러도 DB도 없다 — "
+                         f"동시 도착만으로 이렇게 늘어나는 자원은 스레드풀 토큰뿐이다. "
+                         f"후보 (1)이 살아 있고, 순차 측정만으로는 보이지 않는다.")
+
+    # ---- R1: sync def, no get_db. Token + handler code, no connection. ------
+    sub("C. R1 — sync def · Depends(get_db) 없음  (토큰 1회 + 핸들러 코드, 커넥션 없음)")
+    print("     선언 근거: server/main.py 의 라우트 중 sync def 이면서 get_db 를 받지 않는 것.")
+    r1_candidates = [
+        ("/api/effort/config", "get_effort_config"),
+        ("/api/maps/paint-rules", "get_map_paint_rules"),
+        ("/map-presets", "get_map_presets"),
+        ("/tables", "list_tables"),
+    ]
+    best_r1 = None
+    for pth, fname in r1_candidates:
+        st, sts, n, _b = _rung(base, pth)
+        ok = isinstance(sts, int) and sts == 200
+        print(f"     R1 {pth:34} {_fmt(st)}  [{sts}] {human(n)}  ({fname})")
+        if ok:
+            _flag_tail(f"R1 {pth}", st)
+        if ok and st and (best_r1 is None or st["p50"] < best_r1[1]["p50"]):
+            best_r1 = (pth, st)
+    if best_r1:
+        lad["R1_sync_nodb"] = best_r1[1]
+
+    # ---- R2/R3/R4: sync def + get_db, identical except row count. -----------
+    sub("D. R2/R3/R4 — sync def + Depends(get_db)  (+커넥션, 그리고 행 수만 다르다)")
+    print("     같은 라우트를 limit 만 바꿔 세 번 부른다. 토큰도 커넥션도 동일하므로,")
+    print("     세 값의 «차이»는 오직 쿼리·직렬화 작업량이다.")
+    tbl = tables[0] if tables else None
+    if not tbl:
+        print("     테이블 목록이 없어 이 칸은 건너뛴다.")
+    else:
+        for t in tables[:6]:
+            st, sts, n, _b = _rung(base, f"/tables/{t}/data?limit=1", reps=3)
+            if isinstance(sts, int) and sts == 200 and n > 0:
+                tbl = t
+                break
+        print(f"     대상 테이블: {tbl}")
+        for label, lim in (("R2", 1), ("R3", 200), ("R4", 1000)):
+            st, sts, n, _b = _rung(base, f"/tables/{tbl}/data?limit={lim}",
+                                   reps=max(3, _LADDER_REPS // 2), timeout=180)
+            print(f"     {label} /tables/{tbl[:18]}/data?limit={lim:<5} {_fmt(st)}"
+                  f"  [{sts}] {human(n)}")
+            lad[f"{label}_sync_db_limit{lim}"] = st
+            _flag_tail(f"{label} /tables/{tbl}/data?limit={lim}", st)
+
+    # ---- Direct SQL: the same work, with no server in the way ---------------
+    sub("E. 같은 일을 스크립트 자신의 커넥션으로 — 서버를 빼고 잰 값")
+    print("     여기가 빠른데 위(D)가 느리면, 느린 것은 «쿼리»가 아니다.")
+    if tbl:
+        for lim in (1, 200, 1000):
+            t0 = time.perf_counter()
+            rows, timed_out = p.bounded(
+                f'SELECT * FROM "{tbl}" ORDER BY row_id LIMIT :lim', ms=20000, lim=lim)
+            ms = (time.perf_counter() - t0) * 1000
+            print(f"     직접 SQL  LIMIT {lim:<5}            {ms:8.1f} ms"
+                  f"   {len(rows)}행{'  (시간초과)' if timed_out else ''}")
+            snapshot.setdefault("ladder", {})[f"direct_sql_limit{lim}_ms"] = ms
+
+    # ---- Contention: does concurrency multiply the wait? ---------------------
+    sub(f"F. 동시성 — 같은 요청을 {_LADDER_CONCURRENCY}개 동시에")
+    print("     줄을 서고 있다면 동시 요청은 서로를 기다려 «배수»로 늘어난다.")
+    print("     고정 비용이라면 거의 그대로다. 증상이 «균일»하다니, 이 구분이 중요하다.")
+    if tbl:
+        import threading as _th
+        got = []
+        _lk = _th.Lock()
+
+        def _one():
+            ms, sts, n, _b = _get(base, f"/tables/{tbl}/data?limit=1", timeout=180)
+            with _lk:
+                got.append(ms)
+
+        solo, _s, _n, _b = _rung(base, f"/tables/{tbl}/data?limit=1", reps=3)
+        ths = [_th.Thread(target=_one, daemon=True) for _ in range(_LADDER_CONCURRENCY)]
+        for t in ths:
+            t.start()
+        for t in ths:
+            t.join()
+        conc = _stat(got)
+        print(f"     단독 1개                       {_fmt(solo)}")
+        print(f"     동시 {_LADDER_CONCURRENCY}개                       {_fmt(conc)}")
+        if solo and conc and solo["p50"] > 0:
+            ratio = conc["p50"] / solo["p50"]
+            print(f"     ⇒ 동시/단독 = {ratio:.2f}배")
+            snapshot.setdefault("ladder", {})["concurrency_ratio"] = ratio
+            if ratio > 2.0:
+                note(f"동시 {_LADDER_CONCURRENCY}개가 단독의 {ratio:.1f}배로 늘었다. "
+                     f"요청들이 서로를 기다린다 — 어딘가에서 직렬화되고 있다.")
+            else:
+                note(f"동시 {_LADDER_CONCURRENCY}개가 단독의 {ratio:.1f}배다. 이 부하에서는 "
+                     f"직렬화가 보이지 않는다 — 1초가 «대기»라면 이 스크립트가 만든 부하보다 "
+                     f"훨씬 큰 동시성이 이미 밖에서 걸려 있다는 뜻이다.")
+
+    snapshot.setdefault("ladder", {})["rungs"] = {
+        k: v for k, v in lad.items() if v}
+
+    # ---- The reading guide, printed with the numbers it refers to -----------
+    sub("G. 읽는 법 — 어느 칸에서 뛰었나")
+    r0 = lad.get("R0_health")
+    s1 = lad.get("S1_small_static")
+    s2 = lad.get("S2_large_static")
+    r1 = lad.get("R1_sync_nodb")
+    r2 = lad.get("R2_sync_db_limit1")
+    r4 = lad.get("R4_sync_db_limit1000")
+
+    def d(a, b):
+        if not a or not b:
+            return None
+        return b["p50"] - a["p50"]
+
+    steps = [
+        ("R0 → S1  (토큰 획득이 생김)", d(r0, s1),
+         "여기서 뛰면 = 스레드 토큰 대기 (후보 1)"),
+        ("S1 → S2  (토큰 획득이 여러 번)", d(s1, s2),
+         "여기서 뛰면 = 스레드 토큰 대기 (후보 1) — 배수로 확인"),
+        ("S1 → R1  (핸들러 코드가 생김)", d(s1, r1),
+         "여기서 뛰면 = 핸들러 안의 고정 비용 (설정 파일 I/O 등). 세 후보 어디도 아니다"),
+        ("R1 → R2  (커넥션 체크아웃이 생김)", d(r1, r2),
+         "여기서 뛰면 = DB 커넥션 대기 (후보 2)"),
+        ("R2 → R4  (행 1개 → 1000개)", d(r2, r4),
+         "여기서 뛰면 = 쿼리·직렬화 작업량 (후보 3)"),
+    ]
+    for label, delta, meaning in steps:
+        if delta is None:
+            print(f"     {label:34} {'측정 안 됨':>12}   {meaning}")
+        else:
+            print(f"     {label:34} {delta:+10.1f} ms   {meaning}")
+    print()
+    print("     🔴 이 표는 «판정»이 아니라 «어느 칸에서 뛰었나»다. 가장 큰 양수 한 칸이")
+    print("        원인의 이름이고, 모든 칸이 작은데 R0부터 이미 1초라면 원인은 이 사다리")
+    print("        바깥(프로세스 앞단)에 있다.")
+
+
+# ---------------------------------------------------------------------------
 # 5. Are the page-load queries the slow ones?
 # ---------------------------------------------------------------------------
 def _table_names():
@@ -1276,6 +1714,11 @@ def main():
         section_autovacuum(p)
         section_outbox(p)
         section_sizes(p)
+        # Runs BEFORE section 5 on purpose: section 5 ends by calling
+        # /audit_logs/recent, which builds the server's in-memory audit cache and
+        # therefore changes the process it is measuring. The ladder must see the
+        # box in the state the operator found it.
+        section_where_the_second_goes(p, args.http, _table_names()[0])
         section_page_load(p, args.tables, args.http)
         section_audit_first_call(p)
         section_statements(p)
