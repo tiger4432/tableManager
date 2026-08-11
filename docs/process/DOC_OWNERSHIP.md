@@ -123,6 +123,7 @@
 | 서브시스템 | 코드(진실 원천) | 리빙 문서 | Owner 역할 |
 |---|---|---|---|
 | 시스템 전체 | `run_decoupled_app.py`, `server/main.py` | [overview/SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) | Lead |
+| **정준 원장·온톨로지 설계** | (착수 문서 — append-only 원장 + 3분할 + 어휘 성장) | [architecture/CANONICAL_LEDGER_DESIGN](../architecture/CANONICAL_LEDGER_DESIGN.md) — **총괄 + ontology-pm 공동 소유.** 🔴 설계 문서라 리빙 동기화 대상이 아니다 — 구현이 착지하기 시작하면 그때 서술과 설계를 가른다. 어휘 등재는 §4.3의 3문 검사를 통과한 판정으로만 | 총괄 · ontology-pm |
 | **근본 결함 전담 트랙** | (증상이 아니라 설계 결정 — 뿌리 넷: 「거절 못 함」·「대조 안 함」·「박제」·「표식이 열쇠로」. 🔴 **번호 금지** — `R1`~`R3`는 `chain_replay`의 수리 연산 이름이다) | [architecture/ROOT_DEFECTS](../architecture/ROOT_DEFECTS.md) — **총괄(lead-pm) 전담. doc-keeper 위임 금지** (보드와 같은 이유: 여기 적히는 것은 서술이 아니라 **판정**이다). 증상 표의 상태 넷(`측정·수리`/`측정·열림`/`주장·미측정`/`기각`)은 **측정이 바꾸지 산문이 바꾸지 않는다**. 🔴 **뿌리 진술을 판정한 것보다 넓게 쓰지 마라** — 2026-08-11에 실제로 그 사고가 있었다 | 총괄 전담 |
 | **재사용 가능한 연산·패턴 카탈로그** | (전 모듈에서 추출한 개념) | [architecture/PRIMITIVES](../architecture/PRIMITIVES.md) — **유지 doc-keeper 전담**. 정비 사이클마다 신규 프리미티브 추가·소멸분 삭제 | 전 에이전트 공용 |
 | **제안·연구 (미확정 설계)** (2026-08-11 신설 행) | (해당 없음 — 결정되지 않은 설계는 코드가 아니다) | `docs/proposal/` 전 문서, 인덱스는 [docs/README §3.6](../README.md) — **7개 문서가 이 행 없이 굴러가고 있었다**(등재 누락의 네 번째 사례). 🔴 **이 폴더 자체는 SSOT가 될 수 없다** — 채택된 설계는 내용을 해당 서브시스템의 리빙 문서로 옮기고, 이 폴더에는 "왜 이렇게 설계했나"의 기록만 남긴다. 새 제안 문서를 추가하면 **그 자리에서 §3.6 표에 행을 만들 것** | 총괄 |
