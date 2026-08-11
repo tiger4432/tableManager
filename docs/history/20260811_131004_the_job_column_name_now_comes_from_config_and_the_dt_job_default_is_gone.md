@@ -1,6 +1,8 @@
 # The job column name now comes from config, and the `dt_job` default is gone
 
-**Date:** 2026-08-11 13:10 · **Domain:** Server (chain ingestion) · **Status:** implemented, not committed
+**Date:** 2026-08-11 13:10 · **Domain:** Server (chain ingestion) · **Status:** 착지 `5b09d69`
+
+> 커밋 전에 쓰여 해시가 없었다. 총괄이 착지 후 찍었다 — **해시 없는 이력 항목은 그 커밋에서 도달 불가**이고, 오늘 그런 항목이 둘이었다.
 
 ---
 

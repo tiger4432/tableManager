@@ -1,13 +1,22 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **467개** 이력. (거버넌스 규칙 #4)
+> 총 **476개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-11 18:25** — [The Write Path Can Now Say What It Threw Away And Stops Fabricating The Row](./20260811_182500_the_write_path_can_now_say_what_it_threw_away_and_stops_fabricating_the_row.md)
+- **2026-08-11 18:23** — [The Bytes Were In The Key And The Roots Traded Their Numbers For Names](./20260811_182334_the_bytes_were_in_the_key_and_the_roots_traded_their_numbers_for_names.md)
+- **2026-08-11 18:05** — [A Repair Pass Was Wearing A Humans Label On The Outbox](./20260811_180549_a_repair_pass_was_wearing_a_humans_label_on_the_outbox.md)
+- **2026-08-11 17:48** — [The Roots Get A Track And A Write Path Lane Stops Passing On Unit Tests](./20260811_174817_the_roots_get_a_track_and_a_write_path_lane_stops_passing_on_unit_tests.md)
+- **2026-08-11 16:52** — [Four Surveys Landed And One Shipped Repair Was Running Backwards](./20260811_165247_four_surveys_landed_and_one_shipped_repair_was_running_backwards.md)
+- **2026-08-11 16:46** — [The Measurement Refuted My Own Commit Message About R3](./20260811_164632_the_measurement_refuted_my_own_commit_message_about_r3.md)
+- **2026-08-11 16:40** — [The Confirmation Sentence Stops Assuming Two Key Values](./20260811_164012_the_confirmation_sentence_stops_assuming_two_key_values.md)
+- **2026-08-11 16:39** — [The Tiebreak The Ssot Never Stated And The Map That Held Two Copies Of It](./20260811_163955_the_tiebreak_the_ssot_never_stated_and_the_map_that_held_two_copies_of_it.md)
+- **2026-08-11 14:55** — [One Row With A Blank Decision Key Took The Whole Worklist Down](./20260811_145532_one_row_with_a_blank_decision_key_took_the_whole_worklist_down.md)
 - **2026-08-11 13:10** — [The Job Column Name Now Comes From Config And The Dt Job Default Is Gone](./20260811_131004_the_job_column_name_now_comes_from_config_and_the_dt_job_default_is_gone.md)
 - **2026-08-11 09:37** — [The Recent Panel Stopped Resorting The Table And Stopped Double Counting Changes](./20260811_093706_the_recent_panel_stopped_resorting_the_table_and_stopped_double_counting_changes.md)
 - **2026-08-11 09:28** — [A Deleted Config Key Now Inherits Instead Of Resolving To A Retired Identity](./20260811_092859_a_deleted_config_key_now_inherits_instead_of_resolving_to_a_retired_identity.md)
