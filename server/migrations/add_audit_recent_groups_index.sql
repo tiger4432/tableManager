@@ -1,0 +1,67 @@
+-- The index `/audit_logs/recent` needs to stop sorting the whole table.
+--
+-- Declared in `server/database/models.py` (AuditLog.__table_args__) so NEW
+-- databases get it from `create_all`. `create_all` never adds an index to a
+-- table that already exists, so every EXISTING database - production included -
+-- needs this file run once.
+--
+-- WHAT IT REPAIRS. The global history scan is `ORDER BY timestamp DESC, id DESC`
+-- with no WHERE clause, and `audit_logs` had no unconditional `timestamp`-leading
+-- index (the one that exists, `idx_audit_user_recorrection`, is partial on
+-- `source_name = 'user'` and cannot serve it). So every chunk of the scan was a
+-- parallel sequential scan of the whole table plus a full sort that spilled to
+-- disk. Measured on a 2,900,000-row fixture built from production's own measured
+-- column widths, 2026-08-11, for ONE 5,000-row chunk:
+--
+--   Parallel Seq Scan on audit_logs
+--     -> Sort  Sort Key: "timestamp" DESC, id DESC
+--              Sort Method: external merge  Disk: 400,848 kB
+--   OFFSET 0        3,658 ms   153,307 buffers   287,412 temp blocks written
+--   OFFSET 100,000  3,698 ms   153,307 buffers   287,408 temp blocks written
+--   OFFSET 200,000  7,167 ms   153,307 buffers   287,408 temp blocks written
+--
+-- and the projection needed ~41 such chunks, because an ingestion writes ONE
+-- transaction_id per FILE: the newest 200,000 rows of that fixture belong to two
+-- transactions, and the scan is looking for a hundred. Cold first call before:
+-- 212,634 ms. After (with this index and the bounded keyset walk that replaced
+-- the growing OFFSET): see the report for the paired figure.
+--
+-- WHY `INCLUDE (transaction_id)`. The walk never orders or ranges by
+-- transaction_id - it only reads it to tell one group from the next. As an
+-- INCLUDE column it lives in the leaf tuples only, keeping the tree shallower
+-- than a three-key index while still making the walk an Index Only Scan, so a
+-- 200,000-row walk visits the heap zero times.
+--
+-- ASC, although the query sorts DESC: a btree is scanned backwards at the same
+-- cost, and ASC is what `models.py` can declare without raw SQL, so one
+-- declaration covers PostgreSQL and the SQLite test database. Same reasoning as
+-- `add_audit_history_keyset_indexes.sql`.
+--
+-- SIZE. Measured on the 2,900,000-row fixture: see the report. Budget ~60 B per
+-- audit row (timestamp 8 + id 4 + a ~39 B transaction_id in the leaf + tuple
+-- overhead).
+--
+-- ⚠️ AN INDEX ONLY SCAN NEEDS THE VISIBILITY MAP. Immediately after a bulk load
+-- the newest pages are not yet all-visible, so the walk falls back to heap
+-- fetches until autovacuum reaches them. That is the SAME first call this file
+-- exists to fix, so do not read a post-ingest plan showing `Heap Fetches: N` as
+-- a failure of the index - the scan is still an index scan, and it is still
+-- bounded, which the sort never was.
+--
+-- CONCURRENTLY so this can run against the live stack without taking a write
+-- lock. It cannot run inside a transaction block: invoke it on its own (psql
+-- runs each top-level statement in its own transaction only with autocommit on -
+-- `psql -f` does, a wrapping BEGIN does not).
+--
+--   psql "$DATABASE_URL" -f server/migrations/add_audit_recent_groups_index.sql
+--
+-- If a CREATE INDEX CONCURRENTLY is interrupted it leaves an INVALID index
+-- behind that costs writes and serves no reads. Check afterwards:
+--
+--   SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+--   WHERE NOT i.indisvalid AND c.relname = 'idx_audit_recent_groups';
+--
+-- and DROP + re-run if it returns the row.
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_recent_groups
+    ON audit_logs ("timestamp", id) INCLUDE (transaction_id);

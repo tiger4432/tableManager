@@ -89,6 +89,40 @@ class AuditLog(Base):
         Index("idx_audit_row_history", "table_name", "row_id", "timestamp", "id"),
         Index("idx_audit_cell_history", "table_name", "row_id", "column_name",
               "timestamp", "id"),
+
+        # [recent groups] The ONLY index whose leading column is `timestamp`
+        # without a predicate, and therefore the only one that can serve the
+        # global history scan `/audit_logs/recent` runs
+        # (`ORDER BY timestamp DESC, id DESC`, no WHERE).
+        #
+        # WITHOUT IT THE SCAN IS A SORT OF THE WHOLE TABLE, ONCE PER CHUNK.
+        # Measured on a 2,900,000-row fixture built from production's own column
+        # widths, 2026-08-11, for ONE 5,000-row chunk:
+        #     Parallel Seq Scan -> Sort (timestamp DESC, id DESC)
+        #     Sort Method: external merge  Disk: 400,848 kB
+        #     153,307 buffers read, 287,412 temp blocks written, 3,658 ms
+        # and `load_initial` issued ~41 of those, because the newest 200,000
+        # rows of that fixture carry TWO transaction_ids (one ingestion writes
+        # one transaction_id per file). Cold first call: 212,634 ms.
+        #
+        # WHY `INCLUDE (transaction_id)` AND NOT A THIRD KEY COLUMN. The walk
+        # never orders or ranges by `transaction_id`; it only needs to READ it
+        # to tell one group from the next. An INCLUDE column rides in the leaf
+        # tuples only - it is absent from the internal pages, so the tree stays
+        # shallower than a three-key index while still making the walk an Index
+        # Only Scan (no heap visit for 200,000 rows).
+        #
+        # WHY ASC when the query sorts DESC: identical cost scanned backwards,
+        # and ASC is what `__table_args__` can declare without raw SQL, so one
+        # declaration covers PostgreSQL and the SQLite test database. The same
+        # reasoning as the two history indexes above.
+        #
+        # ⚠️ `create_all` NEVER adds an index to a table that already exists, so
+        # this declaration only reaches NEW databases. Existing ones (production
+        # included) get it from
+        # `server/migrations/add_audit_recent_groups_index.sql`.
+        Index("idx_audit_recent_groups", "timestamp", "id",
+              postgresql_include=["transaction_id"]),
     )
 
 

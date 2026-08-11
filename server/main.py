@@ -10,7 +10,7 @@ import os
 import io
 import csv
 import time
-from fastapi import UploadFile, File, Body, HTTPException, BackgroundTasks
+from fastapi import UploadFile, File, Body, HTTPException, BackgroundTasks, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -922,14 +922,41 @@ from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 from ingestion_activity import registry as ingestion_activity_registry
 
 @app.get("/audit_logs/recent", response_model=list[schemas.AuditLogGroupResponse])
-def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)):
+def get_recent_audit_logs(response: Response, limit_groups: int = 100,
+                          db: Session = Depends(get_db)):
+    """The newest `limit_groups` transaction groups.
+
+    TRUNCATION IS SPOKEN, AND IT TRAVELS IN HEADERS.
+
+    The projection's scan is bounded (`audit_cache.RECENT_DEFAULTS`), so it can
+    return FEWER than `limit_groups` groups - and a short list is
+    indistinguishable from a complete one, which is the silent-failure class
+    this project keeps paying for. The two facts are the same two
+    `audit_history.fetch_page` returns and carry the same meaning:
+
+        X-Audit-Truncated    "there is more history below the last group"
+        X-Audit-Next-Cursor  where to resume, same opaque token as /history
+
+    🚧 THEY ARE HEADERS AND NOT AN ENVELOPE ONLY BECAUSE OF THE CLIENT. The
+    row/cell history endpoints answer with `{logs, truncated, next_cursor}`, and
+    this route should end there too. It cannot move on its own: client2 reads
+    this one with `state.globalHistoryData = await res.json()` and then iterates
+    it (`timeline.js` loadHistory -> renderGlobalTimeline), so a body envelope
+    breaks the history panel outright. Flipping it is a boundary-contract change
+    that needs the client's tolerant read - `readHistoryPage` already has
+    exactly that shape - landed in the same commit.
+    """
     # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
     audit_cache.load_initial(db, limit_groups)
     # Chain replay is written by a separate worker process. Its committed audit
     # rows cannot mutate this process-local cache, so reconcile before Admin
     # renders the recent transaction list.
     audit_cache.refresh_if_stale(db, limit_groups)
-    
+
+    response.headers["X-Audit-Truncated"] = "true" if audit_cache.truncated else "false"
+    if audit_cache.next_cursor:
+        response.headers["X-Audit-Next-Cursor"] = audit_cache.next_cursor
+
     # 2. 캐시된 그룹을 경량화하여 반환
     result = []
     # Collect keys to check existence
