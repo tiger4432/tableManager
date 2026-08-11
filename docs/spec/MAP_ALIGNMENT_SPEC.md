@@ -2,7 +2,11 @@
 
 > **Status:** 🟢 Living | **작성:** 2026-08-04 | **Last-verified:** 2026-08-11 | **소유:** 총괄(lead-pm)
 >
-> **이번 라운드 (2026-08-11 2차 · `3d43a6c`)**: 🔴 **§5가 한 룰의 선언을 스키마처럼 인용하고 있었다.** `decision_key: ['dt_eqp', 'product']`은 계약이 아니라 `eqp_frame_attribution` 룰 **하나**의 값이었는데, 그것을 그대로 옮긴 클라 `keyFrom`이 arity 2에서만 선언을 따르고 다른 모든 arity(1, 3…)에서 `{dt_eqp, product}`를 하드코딩했다. 제품 소유자의 운영 룰은 컬럼을 **하나**만 선언하므로 그 룰의 프레임 확정은 **한 번도 성립한 적이 없었다** — `3d43a6c`의 커밋 본문이 그렇게 지목했다. §5를 다시 써서 계약을 명시했다: **컬럼 개수·이름은 룰이 정하고, 선언된 컬럼 전부가 채워져야 그 단위가 확정 가능하다.** 아래 예시 블록에는 「이 룰 하나의 선언」이라는 표시를 달았다.
+> **이번 라운드 (2026-08-11 3차 · doc-keeper · `c4a3159` + §606 좁힘)**: 둘.
+> - 🔴 **§9.1의 「목록의 `state`·`reason_code`는 안 바뀐다」가 판정한 것보다 넓게 읽혔다.** 그 총괄 확정(2026-08-05)의 주어는 **`state`**였다 — 새 상태를 승격하지 않는다는 판정이었지, `reason_code`를 얼린 적이 없다. `c4a3159`가 기존 `unscorable` 상태 옆에 `unit_key_incomplete`를 더했고, 그 레인은 이 문장을 다시 쓰지 않고 멈춰 물었다 — 옳았다. 문장을 좁혀 **`state`는 닫힌 3종, `reason_code`는 원인이 생길 때마다 늘어난다**로 정정(2026-08-05 판정은 그대로 인용, 2026-08-11 좁힘을 표시).
+> - **§9.11 신설 — 목록 사유 어휘 전수 + `c4a3159`의 living-doc 결과.** `unscorable_reasons`가 실제로 낼 수 있는 코드 다섯을 처음으로 표로 낸다(전에는 어디에도 없었다 — 서베이 실측: `docs/` 전체에서 `unscorable_reasons`·`map_keys_unavailable`·`reference_absent` 0건). 그리고 감사 리포트(`agent_workspace/reports/Alignment_confirmation_flow_and_config_audit.md`)가 코드 읽기로만 짚은, **아직 측정되지 않은** 위험 넷을 발견으로만 기록한다(수리 아님).
+>
+> **직전 라운드 (2026-08-11 2차 · `3d43a6c`)**: 🔴 **§5가 한 룰의 선언을 스키마처럼 인용하고 있었다.** `decision_key: ['dt_eqp', 'product']`은 계약이 아니라 `eqp_frame_attribution` 룰 **하나**의 값이었는데, 그것을 그대로 옮긴 클라 `keyFrom`이 arity 2에서만 선언을 따르고 다른 모든 arity(1, 3…)에서 `{dt_eqp, product}`를 하드코딩했다. 제품 소유자의 운영 룰은 컬럼을 **하나**만 선언하므로 그 룰의 프레임 확정은 **한 번도 성립한 적이 없었다** — `3d43a6c`의 커밋 본문이 그렇게 지목했다. §5를 다시 써서 계약을 명시했다: **컬럼 개수·이름은 룰이 정하고, 선언된 컬럼 전부가 채워져야 그 단위가 확정 가능하다.** 아래 예시 블록에는 「이 룰 하나의 선언」이라는 표시를 달았다.
 >
 > **직전 라운드 (2026-08-11 1차 · 리빙 동기화 ― 정렬 아크 `db1ee42..7097a67`)**: **거짓이 된 문장 넷을 고쳤다.**
 > - 🔴 **후보 공간이 바뀌었다**(`db1ee42`) — **4회전 × {좌상단, 우상단} 시작, 면은 전부 `front`.** 거울(`side: back`)은 **후보 집합에서 나갔다.** §2.4는 이미 교체돼 있었으나 **§9.7의 「4회전 × 2면」 사본이 남아 있었다**(이 라운드에 정정). **「8후보 = 회전 × 면」이라 적힌 문장은 어디에 있든 낡은 것이다.**
@@ -603,7 +607,8 @@ auto_confirm: False
 
 ### 남는 것
 
-- **목록(`build_alignment_worklist`)의 `state`·`reason_code`는 안 바뀐다 — 총괄 확정 2026-08-05.** 추가된 것은 `assumable_map_count` 하나다. **목록은 바닥을 풀지 않으므로 그 단위에 가정이 실제로 가능한지 확인한 적이 없고**, 상태를 승격하면 확인하지 않은 것을 주장하게 된다 — 이 라운드가 닫고 있는 실패 그 자체다. 목록이 할 수 있는 정직한 말은 「오늘은 채점 못 함, 그중 N장은 바닥을 빌릴 수 있는 모양」이고, 그것이 곧 초대다. 조작자가 그 수에서 경로를 못 찾으면 **고칠 곳은 상태가 아니라 화면**이다.
+- **목록(`build_alignment_worklist`)의 `state`는 안 바뀐다 — 총괄 확정 2026-08-05.** 그 판정의 주어는 **상태**였다: `pending`/`confirmed`/`unscorable` 3종을 승격하지 않는다는 것이었고, 근거는 아래와 같다 — **목록은 바닥을 풀지 않으므로 그 단위에 가정이 실제로 가능한지 확인한 적이 없고**, 상태를 승격하면 확인하지 않은 것을 주장하게 된다 — 이 라운드가 닫고 있는 실패 그 자체다. 목록이 할 수 있는 정직한 말은 「오늘은 채점 못 함, 그중 N장은 바닥을 빌릴 수 있는 모양」이고, 그것이 곧 초대다. 조작자가 그 수에서 경로를 못 찾으면 **고칠 곳은 상태가 아니라 화면**이다. 추가된 것은 `assumable_map_count` 하나다.
+  ⚠️ **2026-08-11 좁힘 — `reason_code`는 이 금지 밖이다.** 문장이 `state`·`reason_code`를 한 구절에 묶어 적었던 탓에 **판정이 실제보다 넓게 읽혔다.** 이미 다루던 원인에 이름이 없던 것을 새로 붙이는 것은 상태 승격이 아니라 **어휘 채움**이고, `c4a3159`가 `unscorable` 상태 옆에 `REASON_UNIT_KEY_INCOMPLETE`를 더한 것이 그 사례다(그 레인은 이 문장을 다시 쓰지 않고 멈춰 물었다 — 옳았다). `state`는 여전히 닫힌 3종이고, `reason_code`의 전수는 §9.11이 정본이며 새 원인이 생기면 그 표에 행을 더한다.
 
 ### 9.2 어휘를 늘렸을 때 읽는 쪽은 어떻게 무너지는가 (2026-08-05 감사)
 
@@ -1094,3 +1099,38 @@ db_y = box.maxR − row + start_y      (invertY)
 > 코드 수리가 아니다**). 채점기는 기준의 좌상단을 **정준 좌표에서** 훑어 고르므로, 기준 자신에
 > 회전이 걸려 있으면 훑기 1번이 저장 좌표의 좌상단과 달라지고 앵커가 조작자가 기대하는 모서리에
 > 안 앉는다. **코드는 맞게 돌고 있다.**
+
+---
+
+## 9.11 목록(worklist)의 판정 어휘 전수 — `state`·`reason_code` (2026-08-11, `c4a3159`)
+
+`build_alignment_worklist`가 단위마다 매기는 `state`는 **닫힌 3종**(§9.1 좁힘 참조): `pending` / `confirmed` / `unscorable`. `reason_code`는 `state == unscorable`일 때만 붙고, `state`와 달리 원인이 늘면 함께 는다. **이 어휘가 문서 어디에도 전수로 없었다** — grep 실측(2026-08-11): `docs/` 전체에서 `unscorable_reasons`·`map_keys_unavailable`·`reference_absent` 0건. 아래가 정본이다(코드 쪽 정본은 `server/map_alignment.py:5842-5868`).
+
+### 목록 고유 사유 다섯
+
+| `reason_code` | 문구 | 언제 |
+|---|---|---|
+| `unit_key_incomplete` | `결정키 빈 값 - 단위 이름 없음: <컬럼[, 컬럼…]>` | **(신규, `c4a3159`)** 파생 테이블 행의 결정키 컬럼이 하나라도 비어 `compose_unit_key`가 이름을 못 짓는다. 붙는 것은 컬럼 **이름**이지 두 번째 어휘가 아니다(`map_table_catalog`와 같은 관례) |
+| `map_keys_unavailable` | 소스 테이블에 맵 키 컬럼 없음 | 소스 테이블이 `map_key_columns`를 선언하지 않음 |
+| `no_maps` | 맵 0건 | 이 단위에 걸리는 맵이 하나도 없음 |
+| `reference_absent` | 기준 없음 - 유효 다이 맵 미지정 | `valid_die_ref` 미지정 — 문서화된 「가장 흔한 정상 상태」(§9.4) |
+| `reference_refused` | 기준 해석 실패 | 지정된 기준을 못 읽음 |
+
+### 상세와 공유하는 사유 둘 — 다시 이름 짓지 않는다
+
+`meta_missing`·`geometry_refused`는 목록이 새로 만든 어휘가 아니라 **상세(`build_alignment_view`)의 셀 제외 어휘를 그대로 빌린다**(`_WORKLIST_REASON_TEXT = dict(_EXCLUDE_TEXT)`) — 목록의 「채점 불가」와 상세의 셀 제외가 같은 사실이면 같은 낱말을 써야 목록과 상세가 갈리지 않는다. 세분화(`meta_table_undeclared`/`meta_query_failed`/`meta_probe_broken`/`basis_undeclared` 등)는 상세의 제외 어휘가 정본이고(`map_alignment.py:191-273`), 여기서 다시 옮겨 적지 않는다.
+
+### `unit_key_incomplete`는 다섯 번째가 아니라 **빠져 있던 다섯 번째**다
+
+결정키가 빈 페이로드를 건너뛰는 가드는 자동 경로 세 곳에 이미 있었다 — `dt_alignment_metadata_mapper.py:46` · `core_alignment_mapper.py:41` · `dt_inventory_metadata_mapper.py:96`. 목록에만 그 가드가 없어서, 파생 테이블(주로 `dt_inventory`)의 결정키 빈 행 **하나**가 `compose_unit_key`에서 `ConfirmationRefused`를 던졌다. 그 예외가 `ValueError`가 아니라서 라우트의 `except ValueError`를 피해 **요청 전체**가 500이었다 — 건강한 단위 다섯이 나쁜 행 하나에 함께 사라졌다. 재사용 가능한 형태의 교훈은 [architecture/PRIMITIVES §7](../architecture/PRIMITIVES.md)의 새 항목에 있다.
+
+### 남아 있는 것 — 이 판정의 범위 밖 (발견으로만 기록, 수리 아님)
+
+`c4a3159`는 목록이 죽지 않게 만들었을 뿐, **왜 결정키가 빈 파생 행이 생기는가**는 열어 둔 채였다. 감사(`agent_workspace/reports/Alignment_confirmation_flow_and_config_audit.md`)가 코드 읽기로 짚었고 **측정하지 않은** 위험 넷:
+
+- 🔴 **`crud.apply_batch_updates`는 `updates`의 모든 키가 미선언으로 드롭돼도 행을 INSERT한다.** `dt_inventory`에 결정키 컬럼 없이 만들어진 행이, 이 목록이 만나는 빈-이름 행의 유력한 출처다(가설, 미측정 — 정착 질의는 감사 리포트 §4.4에 있다).
+- 🔴 **`dt_standard_map_mapper.py:104-105`가 좌표 키(`dt_x`/`dt_y`/`dt_index`/`c_bn`)를 `replace_map: True`(`:109`) 아래 쓴다.** 그 키들이 미선언이면 조용히 드롭되고 200이 나가는데, **퍼지는 이미 성공**했으므로 옛 맵이 지워지고 좌표 없는 행으로 대체된다.
+- 🔴 **확정된 프레임의 저장소는 셋이지 둘이 아니다**: `frame_confirmation.*` · `wafer_map_metadata.grid_metadata` · **`dt_inventory.dt_frame`**. 셋째는 타입이 모호하다 — 체인은 그 컬럼에 JSON `grid_metadata` 블롭을 쓰는데, 같은 컬럼이 인리치먼트 규칙 `dt_frame_confrimation`의 `target_field`이기도 해서 사람이 그리드/큐에서 프레임 **문자열**을 채울 수 있다(`source_name="user"`, priority 0 — 이긴다). 그러면 `dt_standard_map_mapper.py:59`의 `json.loads(frame)`가 그 문자열에서 실패해 **S3가 조용히 `continue`한다.**
+- 🔴 **자동 경로는 `FrameConfirmation` 행을 쓰지 않는다.** `_live_confirmations`가 그 단위에 대해 아무것도 못 찾으므로, 체인이 이미 확정하고 메타까지 쓴 단위가 수동 목록에서는 여전히 `pending`(또는 `unscorable`)으로 뜬다 — 이미 결정된 것을 조작자에게 다시 묻는 셈이다.
+
+이 넷은 **판정이 아니라 발견**이다. 수리 방향(R1~R5)은 감사 리포트 §4.5에 있고, 어느 것도 이 라운드에서 구현되지 않았다.

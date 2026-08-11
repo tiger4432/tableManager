@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (🔴 **정합 감사가 이 문서 하나 때문에 코퍼스를 「신뢰 불가」로 판정했고, 그 판정은 옳았습니다.** §3의 「진입점 **6개**」가 `map_editor2.html`을 빠뜨린 채 6행 표를 들고 있었는데, **이 문서는 「상충하면 이 문서가 우선한다」고 스스로 적는 문서**라 그 규칙이 독자에게 **틀린 사본을 믿으라고 지시하고** 있었습니다. 함께: §2의 `main.py (~3,650줄)` 삭제(실측 6,128 — **산문 속 줄 수는 이 결함의 가장 순수한 형태**라 고치지 않고 지웠습니다) · §3의 「PySide6 참조 문서는 전부 `_archive/`에 있다」 정정(**[CONDA_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md)가 아니었고 §7이 거기로 보내고 있었습니다**) + **「PySide6가 제거됐다」로 읽히지 않도록** 못박음(`desktop_wrapper.py`가 여전히 import합니다) · §8 라우트 기수 삭제. 직전 2026-08-04: §8 라우트 수 재실측 + fail-closed 3종. 직전 2026-07-27: §8 `/admin/*` + `/internal/events/*` 공유 토큰 게이트) | **Owner:** Lead / Architecture
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (제품 소유자 승인 — §4 「우선순위 결정」이 서열을 **두 층**으로만 적고 있었는데 `347de78`이 세 번째 층(동점 규칙)을 코드에 심었다. 서열만 적고 동점을 안 적은 문장이 정확히 그 결함의 유래였다 — `sorted()`의 안정성이 동점을 dict 삽입 순서로 갈랐고 200/200 동점 셀이 항상 기존 값을 표시했다. 세 층 + 「2·3층은 계층을 못 넘는다」로 정정. 직전 2026-08-06: 🔴 **정합 감사가 이 문서 하나 때문에 코퍼스를 「신뢰 불가」로 판정했고, 그 판정은 옳았습니다.** §3의 「진입점 **6개**」가 `map_editor2.html`을 빠뜨린 채 6행 표를 들고 있었는데, **이 문서는 「상충하면 이 문서가 우선한다」고 스스로 적는 문서**라 그 규칙이 독자에게 **틀린 사본을 믿으라고 지시하고** 있었습니다. 함께: §2의 `main.py (~3,650줄)` 삭제(실측 6,128 — **산문 속 줄 수는 이 결함의 가장 순수한 형태**라 고치지 않고 지웠습니다) · §3의 「PySide6 참조 문서는 전부 `_archive/`에 있다」 정정(**[CONDA_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md)가 아니었고 §7이 거기로 보내고 있었습니다**) + **「PySide6가 제거됐다」로 읽히지 않도록** 못박음(`desktop_wrapper.py`가 여전히 import합니다) · §8 라우트 기수 삭제. 직전 2026-08-04: §8 라우트 수 재실측 + fail-closed 3종. 직전 2026-07-27: §8 `/admin/*` + `/internal/events/*` 공유 토큰 게이트) | **Owner:** Lead / Architecture
 > **Source-of-truth:** `server/`, `client2/`, `client/desktop_wrapper.py`, `run_decoupled_app.py`
 > 본 문서는 AssyManager의 **현재 아키텍처에 대한 유일한 권위(SSOT)**입니다. 다른 모든 문서는 이 문서를 기준으로 하며, 여기와 상충하면 이 문서가 우선합니다. 세부는 하위 문서로 링크합니다.
 
@@ -124,7 +124,9 @@ graph TD
 | `InteractionEffortLog` | **핵심가치 #1 정본 계기** — 교정 tx당 사람의 상호작용 원시 카운트(`interaction_effort_logs`, `UNIQUE(transaction_id)`) |
 | `DataRow` | 레거시 JSON blob 저장(동적 테이블로 대체됨) |
 
-**우선순위 결정** (`crud.compute_priority_value`): 수동 핀 우선 → `SOURCE_PRIORITY {user:0, collision_merge:1, pipeline_parser:2, custom_script:3, chain_ingestion:4}`(낮을수록 우선) → 표시값 확정. 테이블별 `source_priority` 오버라이드 지원. 서열의 단일 원천은 `crud.resolve_priority_map`(그래프 엣지 provenance도 동일 서열 사용).
+**우선순위 결정** (`crud.compute_priority_value`): 수동 핀 우선 → `SOURCE_PRIORITY {user:0, collision_merge:1, pipeline_parser:2, custom_script:3, chain_ingestion:4}`(낮을수록 우선) → 같은 우선순위 안에서는 `ingested_at` 내림차순 → `source_name` 오름차순의 전순서. **2·3층은 계층을 넘지 못한다**(동점만 가르고, 낮은 서열을 승격시키지 않는다). 테이블별 `source_priority` 오버라이드 지원. 서열의 단일 원천은 `crud.resolve_priority_map`(그래프 엣지 provenance도 동일 서열 사용).
+
+🔴 **동점 규칙 없이 서열만 적힌 문장은 다음 구현자가 규칙을 지어내게 만든다.** `347de78`이 고친 결함이 정확히 이것이었다 — 코드가 `sorted(sources.keys(), key=priority_map.get)`뿐이던 시절 미등재 소스(파일명 유래는 전부 그렇다)는 모두 99로 동점이었고, `sorted()`가 안정 정렬이라 승자는 **호출부가 조립한 dict의 삽입 순서**로 갈렸다 — 그 순서는 기존 값을 먼저, 새 값을 나중에 넣으므로 **동점은 언제나 기존 값이 이겼다**(운영 실측 200/200). 같은 계급의 실패가 [`spec/MAP_ALIGNMENT_SPEC.md` §5](../spec/MAP_ALIGNMENT_SPEC.md)의 하드코딩에도 있었다(한 룰의 선언값을 스키마로 인용한 문장 — `2fb1c44`가 정정).
 
 상세: [architecture/data_model.md](../architecture/data_model.md)
 
