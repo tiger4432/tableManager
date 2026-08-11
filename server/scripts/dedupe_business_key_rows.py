@@ -58,22 +58,22 @@ def _norm(v):
     return v
 
 
-def _write_dump(path: str, table: str, cols: list, diff: list, same: list):
+def _write_dump(path: str, table: str, cols: list, diff: list):
     """🔴 JSON 이지 TSV 가 아니다. 이 시스템에서 `None` 과 `''` 는 서로 다른 뜻인데
     (`818c9c0`), TSV 는 둘 다 빈 칸으로 찍어 **그 차이를 지운다** — 이 파일을 보는
     이유가 바로 그 차이일 수 있다. 인코딩도 명시한다(cp949 로 문서를 한 번 잃었다)."""
     import json
     payload = {"table": table, "columns": cols,
                "keep_rule": "cell_sources 최다 -> row_id 최소(uuid7 시간순)",
-               "differing_groups": diff, "identical_groups": same}
+               "differing_groups": diff}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
-    print(f"\n덤프: {path}  (differing {len(diff)}군 / identical {len(same)}군)")
+    print(f"\n덤프: {path}  (differing {len(diff)}군)")
     print("  `_keep: true` 가 남길 행이다. null 과 \"\" 는 파일에서 구분된다.")
 
 
 def run(table: str, apply: bool, allow_differing: bool,
-        dump_path: str = None, dump_groups: int = 20) -> dict:
+        dump_path: str = None, dump_groups: int = 20, show_diff: int = 5) -> dict:
     cfg = crud.TABLE_CONFIG.get(table) or {}
     cols = list((cfg.get("column_types") or {}).keys())
     if not cols:
@@ -140,7 +140,7 @@ def run(table: str, apply: bool, allow_differing: bool,
                 "identical": 0, "differing": 0, "system_only": 0,
                 "deletable": 0, "deleted": 0}
         diff_by_col, sys_by_col, diff_sample, victims = {}, {}, [], []
-        dump_diff, dump_same = [], []
+        dump_diff = []
 
         for key, g in groups.items():
             base = g[0]
@@ -158,8 +158,19 @@ def run(table: str, apply: bool, allow_differing: bool,
                 stat["differing"] += 1
                 for c in differing_cols:
                     diff_by_col[c] = diff_by_col.get(c, 0) + 1
-                if len(diff_sample) < SAMPLE:
-                    diff_sample.append((len(g), differing_cols[:4]))
+                if len(diff_sample) < show_diff:
+                    # 🔴 컬럼 «이름»만 모으면 「무엇이 다른가」에 답이 안 된다.
+                    #    행별 실제 값을 나란히 담는다 - 이 목록을 보는 이유가 그것이다.
+                    diff_sample.append({
+                        "size": len(g),
+                        "cols": differing_cols,
+                        "rows": [{"row_id": r["row_id"][-8:],
+                                  "keep": r["row_id"] == min(
+                                      (x["row_id"] for x in g),
+                                      key=lambda i: (-srccount.get(i, 0), i)),
+                                  "vals": [r[c] for c in differing_cols]}
+                                 for r in g],
+                    })
                 if not allow_differing:
                     continue
             else:
@@ -169,9 +180,10 @@ def run(table: str, apply: bool, allow_differing: bool,
             victims.extend(drop)
             stat["deletable"] += len(drop)
 
-            bucket = dump_diff if differing_cols else dump_same
-            if dump_path and len(bucket) < dump_groups:
-                bucket.append({
+            # 덤프는 **differing 만** 담는다. identical 은 볼 이유가 없고, 섞으면
+            # 파일을 여는 사람이 먼저 골라내야 한다.
+            if dump_path and differing_cols and len(dump_diff) < dump_groups:
+                dump_diff.append({
                     "business_key_val": key,
                     "verdict": "differing" if differing_cols else "identical",
                     "differing_columns": differing_cols,
@@ -213,7 +225,17 @@ def run(table: str, apply: bool, allow_differing: bool,
                   f" 어느 컬럼이 다른가:")
             for c, n in sorted(diff_by_col.items(), key=lambda x: -x[1]):
                 print(f"     {c:24s} {n:10d}")
-            print(f"   예시(그룹 크기, 다른 컬럼): {diff_sample}")
+            for i, s in enumerate(diff_sample, 1):
+                print(f"\n   [differing {i}/{len(diff_sample)}] 행 {s['size']}개")
+                w = max([10] + [len(c) for c in s["cols"]])
+                head = "   " + " ".ljust(11) + " ".join(c.ljust(w) for c in s["cols"])
+                print(head[:200])
+                for r in s["rows"]:
+                    mark = "keep>" if r["keep"] else "     "
+                    # None 과 '' 를 눈으로 구분할 수 있게 repr 로 찍는다.
+                    line = (f"   {mark}{r['row_id']} "
+                            + " ".join(repr(v).ljust(w) for v in r["vals"]))
+                    print(line[:200])
             if not allow_differing:
                 print("   이 그룹들을 접으려면 위 컬럼 목록을 보고 판단한 뒤"
                       " --allow-differing 을 붙인다. 붙이면 위 규칙이 고른 행만 남고"
@@ -225,7 +247,7 @@ def run(table: str, apply: bool, allow_differing: bool,
                 print(f"     {c:24s} {n:10d}")
 
         if dump_path:
-            _write_dump(dump_path, table, declared + system, dump_diff, dump_same)
+            _write_dump(dump_path, table, declared + system, dump_diff)
 
         if not apply and stat["deletable"]:
             print(f"\n실제로 지우려면 --apply. 삭제는 crud.delete_rows_batch 를 통하므로"
@@ -244,13 +266,14 @@ def main(argv=None) -> int:
     p.add_argument("--allow-differing", action="store_true", dest="allow_differing",
                    help="값이 다른 그룹도 접는다. 남는 행이 가진 값만 남는다.")
     p.add_argument("--dump", dest="dump_path",
-                   help="중복 그룹 실물을 JSON 으로 쓴다(로컬 파일). 값이 다른 그룹을 "
-                        "먼저 담고, 없으면 같은 그룹을 담는다.")
+                   help="값이 «다른» 그룹의 실물만 JSON 으로 쓴다(로컬 파일).")
     p.add_argument("--dump-groups", type=int, default=20, dest="dump_groups",
-                   help="각 부류에서 담을 그룹 수 (기본 20)")
+                   help="담을 differing 그룹 수 (기본 20)")
+    p.add_argument("--show-diff", type=int, default=5, dest="show_diff",
+                   help="콘솔에 값을 나란히 찍을 differing 그룹 수 (기본 5)")
     args = p.parse_args(argv)
     out = run(args.table, args.apply, args.allow_differing,
-              args.dump_path, args.dump_groups)
+              args.dump_path, args.dump_groups, args.show_diff)
     return 1 if out.get("differing") and not args.allow_differing else 0
 
 
