@@ -1,13 +1,26 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **453개** 이력. (거버넌스 규칙 #4)
+> 총 **466개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-11 09:37** — [The Recent Panel Stopped Resorting The Table And Stopped Double Counting Changes](./20260811_093706_the_recent_panel_stopped_resorting_the_table_and_stopped_double_counting_changes.md)
+- **2026-08-11 09:28** — [A Deleted Config Key Now Inherits Instead Of Resolving To A Retired Identity](./20260811_092859_a_deleted_config_key_now_inherits_instead_of_resolving_to_a_retired_identity.md)
+- **2026-08-11 09:07** — [A Clean Exit Proved Nothing And The Largest Client Harness Had Been Scoring Zero](./20260811_090714_a_clean_exit_proved_nothing_and_the_largest_client_harness_had_been_scoring_zero.md)
+- **2026-08-11 08:43** — [The Board Moves 894 Lines To 537 By Relocating Closed Status Not Deleting It](./20260811_084321_the_board_moves_894_lines_to_537_by_relocating_closed_status_not_deleting_it.md)
+- **2026-08-11 08:39** — [The Board Gets A Name For The 30 Second Load And Three Corrections](./20260811_083951_the_board_gets_a_name_for_the_30_second_load_and_three_corrections.md)
+- **2026-08-11 08:37** — [Config Is Already Versioned By Accident And What Is Missing Is Direction](./20260811_083713_config_is_already_versioned_by_accident_and_what_is_missing_is_direction.md)
+- **2026-08-11 08:23** — [A Row Click Fetched Its Whole History And Limit Alone Would Not Have Fixed It](./20260811_082334_a_row_click_fetched_its_whole_history_and_limit_alone_would_not_have_fixed_it.md)
+- **2026-08-11 07:47** — [The Enrichment Queue Page Loses Its Links And A Harness Gets Its Teeth Back](./20260811_074742_the_enrichment_queue_page_loses_its_links_and_a_harness_gets_its_teeth_back.md)
+- **2026-08-11 07:43** — [Code Map Re Anchored Five Dead Symbols And A Walk Axis It Called Unconsumed](./20260811_074336_code_map_re_anchored_five_dead_symbols_and_a_walk_axis_it_called_unconsumed.md)
+- **2026-08-11 07:35** — [Living Docs Catch Up To The Walk Axis And A Primitive Pointing At A Deleted Symbol](./20260811_073550_living_docs_catch_up_to_the_walk_axis_and_a_primitive_pointing_at_a_deleted_symbol.md)
+- **2026-08-11 07:34** — [Two Lessons About Branches And Empty Bodies Land In The Memory File](./20260811_073435_two_lessons_about_branches_and_empty_bodies_land_in_the_memory_file.md)
+- **2026-08-11 07:32** — [Doc Historian Closes Three Commits That Had No Hash To Reach Them From](./20260811_073235_doc_historian_closes_three_commits_that_had_no_hash_to_reach_them_from.md)
+- **2026-08-11 07:18** — [The Reference View Folds Enrichment Into The Sidebar That Was Already Open](./20260811_071828_the_reference_view_folds_enrichment_into_the_sidebar_that_was_already_open.md)
 - **2026-08-10 07:56** — [The Map Identity Was Re Keyed And The Second Declaration Of It Refused The Chain](./20260810_075619_the_map_identity_was_re_keyed_and_the_second_declaration_of_it_refused_the_chain.md)
 - **2026-08-10 07:30** — [Replay Audit Cache Sync](./20260810_073000_replay_audit_cache_sync.md)
 - **2026-08-10 06:34** — [Four Chains Landed And The Documents That Described The Retired Ones Stayed Behind](./20260810_063424_four_chains_landed_and_the_documents_that_described_the_retired_ones_stayed_behind.md)
