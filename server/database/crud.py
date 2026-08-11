@@ -166,6 +166,138 @@ def _warn_undeclared_column_once(table_name: str, col_name: str):
 
 
 # ---------------------------------------------------------------------------
+# [Drop report] The CALLER learns what its own write discarded.
+# ---------------------------------------------------------------------------
+# `undeclared_column_drops()` above answers "is this PROCESS still losing a column?" for
+# an operator reading /health. It cannot answer "did MY batch land?", because it is a
+# process-lifetime counter with no batch, no row and no transaction in it. So a caller
+# that issued a 1,000-key write still had exactly two possible outcomes - an exception,
+# or silence that means success - and a partial discard had to pick one of them. It
+# picked silence, and that is the whole of the 2026-08-11 incident: a misspelled key
+# column was dropped, 200 SUCCESS came back, and the row landed with no identity.
+#
+# `apply_batch_updates(..., drop_report={})` is the third answer. It is an OUT-PARAMETER
+# for exactly the reason `replace_report` is one (see that docstring): the 4-tuple return
+# is unpacked at ~10 production call sites and dozens of tests, and a caller that does not
+# want the detail must not have to change a line. Both are filled in place by the attempt
+# that COMMITS.
+#
+# Reason names, not a generic count: "the config does not declare this column" and "this
+# is a system column no payload may write" need different fixes by different people.
+
+#: A column the payload named that `column_types` does not declare. Today's incident.
+DROP_UNDECLARED_COLUMN = "undeclared_column"
+#: A column the write path owns (`row_id`, `updated_at`, graph-sync flags ...). A payload
+#: may name it; it is never taken from one.
+DROP_SYSTEM_COLUMN = "system_column"
+
+# Both caps exist for the same reason the undeclared-column registry has a budget: every
+# name and every row id in this report comes from the PAYLOAD, so a malformed file must
+# not be able to grow it without limit. Counts are never capped - only the named detail
+# is - and the report always says how much it withheld.
+MAX_DROP_REPORT_ROWS = 20
+MAX_DROP_REPORT_COLUMNS = 64
+
+
+def _new_drop_stats() -> dict:
+    """Per-batch accumulator for discarded update keys.
+
+    Allocated unconditionally by `_apply_batch_updates_once` (one dict per batch) because
+    it feeds TWO consumers with different lifetimes: the optional `drop_report` the caller
+    asked for, and the phantom-row guard, which must work whether or not anyone asked for
+    a report. Nothing touches it on a batch that discards nothing.
+    """
+    return {
+        "cells": 0,
+        "by_reason": {},
+        "by_column": {},
+        "columns_omitted": 0,
+        # row ids that lost at least one key. Bounded by the batch size (the same order
+        # as `unique_results`, which this function already holds), NOT by the table.
+        "rows_with_drops": set(),
+        # capped detail sample: [{row_id, business_key_val, columns: {col: reason}}]
+        "sample": [],
+        "sample_index": {},
+    }
+
+
+def _record_dropped_cell(drop_stats: dict, row_id: str, business_key_val: Any,
+                         col_name: str, reason: str):
+    """One discarded (row, column) pair. Called only from a branch that already decided
+    to discard, so the healthy write path never reaches it."""
+    drop_stats["cells"] += 1
+    by_reason = drop_stats["by_reason"]
+    by_reason[reason] = by_reason.get(reason, 0) + 1
+
+    by_column = drop_stats["by_column"]
+    if col_name in by_column:
+        by_column[col_name] += 1
+    elif len(by_column) < MAX_DROP_REPORT_COLUMNS:
+        by_column[col_name] = 1
+    else:
+        drop_stats["columns_omitted"] += 1
+
+    drop_stats["rows_with_drops"].add(row_id)
+
+    entry = drop_stats["sample_index"].get(row_id)
+    if entry is None:
+        if len(drop_stats["sample"]) >= MAX_DROP_REPORT_ROWS:
+            return
+        entry = {
+            "row_id": row_id,
+            # The caller's OWN handle on this record, not the stored one. At the moment a
+            # key column is dropped the row has no stored identity yet - that is the
+            # defect - so the stored value would be `None` for exactly the rows an
+            # operator most needs to find.
+            "business_key_val": business_key_val,
+            "columns": {},
+        }
+        drop_stats["sample"].append(entry)
+        drop_stats["sample_index"][row_id] = entry
+    if len(entry["columns"]) < MAX_DROP_REPORT_COLUMNS:
+        entry["columns"][col_name] = reason
+
+
+def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
+                        version_stats: Optional[dict], suppressed_row_ids: list):
+    """Fill the caller's dict in place. Shape is stable whether or not anything dropped:
+    a caller must be able to read `dropped_cells` without first testing for the key."""
+    rows_affected = len(drop_stats["rows_with_drops"])
+    drop_report.update({
+        "table": table_name,
+        # Total discarded (row, column) pairs. Never capped.
+        "dropped_cells": drop_stats["cells"],
+        "by_reason": dict(drop_stats["by_reason"]),
+        "by_column": dict(drop_stats["by_column"]),
+        "columns_omitted": drop_stats["columns_omitted"],
+        "rows_affected": rows_affected,
+        "rows": list(drop_stats["sample"]),
+        "rows_omitted": max(0, rows_affected - len(drop_stats["sample"])),
+        # Whole ROWS refused before a single cell was read, by name. The version gate is
+        # the only such refusal today and it already counts itself per batch; this puts
+        # its verdict where the caller can reach it instead of only in the log.
+        #
+        # ⚠️ DO NOT SUM THESE VALUES. `NOTE_SAME_VERSION_CONTENT_DIFFERS` is counted IN
+        # ADDITION TO `REASON_VERSION_SAME` for the same row - it is an annotation on
+        # that refusal ("and the content actually changed, so check the upstream version
+        # management"), not a separate one. `NOTE_ROW_VERSION_ABSENT` is excluded outright
+        # because it names rows the gate APPLIED, and a refusal count that includes
+        # accepted rows is worse than no count.
+        "rows_refused": {k: v for k, v in (version_stats or {}).get("counts", {}).items()
+                         if v and k not in (NOTE_ROW_VERSION_ABSENT,)},
+        # Rows that were NOT inserted because every key the payload carried for them was
+        # discarded - see the guard in `_apply_batch_updates_once`.
+        "empty_rows_suppressed": len(suppressed_row_ids),
+        "empty_rows": [
+            {"row_id": r_id,
+             "business_key_val": (drop_stats["sample_index"].get(r_id) or {}).get(
+                 "business_key_val")}
+            for r_id in suppressed_row_ids[:MAX_DROP_REPORT_ROWS]
+        ],
+    })
+
+
+# ---------------------------------------------------------------------------
 # [Version gate] Version is the authority, arrival order is not.
 # ---------------------------------------------------------------------------
 # A table whose single business key must always hold the LATEST row declares
@@ -2078,7 +2210,11 @@ def apply_row_update_internal(
     # [P3] The identity values the caller's prefetch ASKED about - see `ProbedIdentity`.
     # Distinct from `prefetched_row_ids` (the ids that came back). None everywhere
     # outside the batch path, which keeps every other caller's query count unchanged.
-    probed_identity: "ProbedIdentity" = None
+    probed_identity: "ProbedIdentity" = None,
+    # [Drop report] Per-batch accumulator for update keys this row DISCARDED
+    # (`_new_drop_stats`). Written only from a branch that has already decided to drop,
+    # so a batch that discards nothing never touches it. None = do not account.
+    drop_stats: dict = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]
@@ -2136,8 +2272,16 @@ def apply_row_update_internal(
         old_values_snapshot[col_name] = getattr(row, col_name, None)
 
     for col_name, val in update_item.updates.items():
-        if col_name in system_cols: continue
-            
+        if col_name in system_cols:
+            # [Drop report] A discard too, and it was the ONE silent branch nobody had
+            # even counted. The write path owns these columns, so refusing the value is
+            # right - but "we own that column" and "we never saw it" are different
+            # answers and the caller could not tell them apart.
+            if drop_stats is not None:
+                _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
+                                     col_name, DROP_SYSTEM_COLUMN)
+            continue
+
         col_types = config.get("column_types", {})
         if col_name not in col_types:
             # Drop behaviour is deliberately unchanged: rejecting the write would turn a
@@ -2146,6 +2290,11 @@ def apply_row_update_internal(
             # of ten; `undeclared_column_drops()` reads the counts. Warning once per
             # process is what made a fixed deployment and a broken one look identical.
             _warn_undeclared_column_once(table_name, col_name)
+            # [Drop report] The process-lifetime counter above cannot say WHICH batch or
+            # WHICH row, so it can never answer "did my write land?". This can.
+            if drop_stats is not None:
+                _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
+                                     col_name, DROP_UNDECLARED_COLUMN)
             continue
 
         key = (row.row_id, col_name)
@@ -2927,8 +3076,20 @@ def _is_business_key_unique_violation(exc) -> bool:
 
 
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
-                        replace_report: Optional[dict] = None):
+                        replace_report: Optional[dict] = None,
+                        drop_report: Optional[dict] = None):
     """Batch write, with one recovery: losing a cross-process race on a business key.
+
+    drop_report: optional out-param (dict), the same shape of contract `replace_report`
+    already has and for the same reason - the 4-tuple return is unpacked at ~10 production
+    call sites and dozens of tests, so the detail cannot ride on the return value without
+    changing every one of them. Pass a dict to learn WHAT THIS BATCH DISCARDED: which
+    update keys, on which rows, and under which reason name. See `_render_drop_report`
+    for the shape and `DROP_UNDECLARED_COLUMN` / `DROP_SYSTEM_COLUMN` for the vocabulary.
+    Pass nothing and behaviour is byte-identical to before.
+
+    ⚠️ ONE DICT PER CALL. It is CLEARED at the start of every attempt, so what a caller
+    reads describes the attempt that COMMITTED and never a rolled-back one.
 
     [D3] `_apply_batch_updates_once` decides identity from a prefetch whose proof of
     absence (`ProbedIdentity`) is sound against this session's loop and against nothing
@@ -2978,8 +3139,13 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     for attempt in range(BK_CONFLICT_MAX_RETRIES + 1):
         if attempt and pristine_payload is not None:
             _restore_payload_identity(pristine_payload, replay_key_col)
+        if drop_report is not None:
+            # A rolled-back attempt wrote nothing, so its drops describe a transaction
+            # that never happened. Only the committing attempt may be reported.
+            drop_report.clear()
         try:
-            return _apply_batch_updates_once(db, table_name, batch, replace_report)
+            return _apply_batch_updates_once(db, table_name, batch, replace_report,
+                                             drop_report)
         except IntegrityError as exc:
             if not _is_business_key_unique_violation(exc):
                 raise
@@ -3005,13 +3171,17 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
 
 def _apply_batch_updates_once(db: Session, table_name: str,
                               batch: schemas.GeneralUpdateBatch,
-                              replace_report: Optional[dict] = None):
+                              replace_report: Optional[dict] = None,
+                              drop_report: Optional[dict] = None):
     """통합 업데이트를 배치로 처리합니다.
 
     replace_report: optional out-param (dict). When batch.replace_map is set and a dict
     is passed, it is filled with {"filters": <scope dict>, "deleted": <purged row count>}
     so the API layer can report the exact purge honestly without changing this
     function's widely-unpacked 4-tuple return signature (worker/parser/test call sites).
+
+    drop_report: optional out-param (dict) with the same contract - see
+    `apply_batch_updates`, which owns it and clears it per attempt.
     """
     # Before anything is opened or purged: a batch aimed at a virtual-join column is
     # refused whole. Placed ahead of transaction_context so the refusal cannot leave a
@@ -3283,6 +3453,17 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         version_col = TABLE_CONFIG.get(table_name, {}).get("version_column")
         version_stats = {"rows": len(batch.updates)} if version_col else None
 
+        # [Drop report] Allocated for EVERY batch, not only when a report was requested,
+        # because the phantom-row guard below reads it and that guard is not optional.
+        # A batch that discards nothing never writes into it.
+        drop_stats = _new_drop_stats()
+
+        # [phantom row] Row ids that ended the loop having received CONTENT. A row is in
+        # here iff some item resolved onto it and produced at least one changed column,
+        # so it is per ROW and not per item: item 1 can drop every key of a row that
+        # item 2 then fills, and that row is not a phantom.
+        rows_with_content = set()
+
         with db.no_autoflush:
             for item in batch.updates:
                 row, is_new, changed_cols = apply_row_update_internal(
@@ -3298,19 +3479,77 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     deleted_row_ids=deleted_row_ids,
                     version_stats=version_stats,
                     prefetched_row_ids=prefetched_row_ids,
-                    probed_identity=probed_identity
+                    probed_identity=probed_identity,
+                    drop_stats=drop_stats
                 )
                 prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                 unique_results[row.row_id] = (row, is_new or prev_is_new)
-                
+
+                if changed_cols:
+                    rows_with_content.add(row.row_id)
+
                 for col in changed_cols:
                     total_changed_cells.append((row.row_id, col))
+
+        # [phantom row] A row that exists ONLY because we threw away what the caller sent
+        # is a FABRICATED RECORD, and it is worse than a refusal: downstream now has a row
+        # to trust. Measured before this guard (2026-08-11, sqlite harness): a payload
+        # whose every key was undeclared INSERTed a row carrying nothing but a `row_id` -
+        # `business_key_val` NULL, every column NULL - returned it as `is_new=True`, and
+        # staged a CREATE outbox event for it. The alignment worklist then met exactly
+        # that shape (`test_map_alignment_worklist._seed_unnamed_unit`) and 500'd.
+        #
+        # 🔴 THE PREDICATE IS "THE DISCARD IS THE ONLY REASON THIS ROW EXISTS", not
+        # "the row is empty". Three conditions, all required:
+        #   * the row is NEW - an existing row is never touched here. Nothing is deleted
+        #     by this guard, ever.
+        #   * it received no content - `has_changed` is unconditionally True on an insert,
+        #     so a new row with an empty `changed_cols` provably took no value from any
+        #     item, and therefore accumulated no `cell_sources`, no `cell_overwrites` and
+        #     no audit log either (they are all written inside `if has_changed`).
+        #   * at least one of its keys WAS discarded. An item that deliberately sends
+        #     `updates={}` keeps today's behaviour exactly - that is the caller's own
+        #     statement, not something we mangled - and widening this into "refuse every
+        #     contentless insert" is a POLICY change that is not this lane's to make.
+        #
+        # `expunge` and not `delete`: the object is pending (the loop runs inside
+        # `no_autoflush` and nothing has flushed yet), so this removes it from
+        # `session.new` before any INSERT is emitted and before `auto_stage_database_outbox`
+        # can see it. No DELETE statement, no DELETE event, no row that ever existed.
+        suppressed_row_ids = []
+        if drop_stats["rows_with_drops"]:
+            for r_id, (r_obj, was_new) in list(unique_results.items()):
+                if (was_new and r_id not in rows_with_content
+                        and r_id in drop_stats["rows_with_drops"]):
+                    db.expunge(r_obj)
+                    del unique_results[r_id]
+                    row_cache.pop(r_id, None)
+                    if r_obj.business_key_val:
+                        row_cache.pop(r_obj.business_key_val, None)
+                    suppressed_row_ids.append(r_id)
+        if suppressed_row_ids:
+            # WARNING, always, and not gated on `drop_report`: most callers do not ask for
+            # a report, and a write that silently produced nothing is the failure mode
+            # this whole change exists to end.
+            logger.warning(
+                f"[Schema] Table: '{table_name}' | TX: {tx_id} | "
+                f"{len(suppressed_row_ids)} row(s) were NOT created because every update "
+                f"key they carried was dropped - the columns are not declared in "
+                f"column_types (or are write-path system columns). Nothing was written "
+                f"for them and no CREATE was announced. Dropped column(s): "
+                f"{sorted(drop_stats['by_column'])[:8]}. Fix "
+                f"config/table_config.json or the sender's column names."
+            )
 
         # Reported before the flush so a later failure cannot swallow the reason a batch
         # wrote nothing - "the file did not take" with no explanation is the exact class
         # of silence this gate exists to end.
         if version_stats is not None:
             log_version_gate_summary(table_name, version_col, source_val, version_stats)
+
+        if drop_report is not None:
+            _render_drop_report(drop_report, table_name, drop_stats, version_stats,
+                                suppressed_row_ids)
 
         # Execute Bulk Upserts, Bulk Inserts, and Deletes
         if logs_to_cache:

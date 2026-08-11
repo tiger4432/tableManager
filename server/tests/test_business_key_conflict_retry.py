@@ -85,7 +85,7 @@ def _script(monkeypatch, *outcomes):
     """Replace the inner write with a scripted sequence; return the attempt log."""
     calls = []
 
-    def fake_once(db, table_name, batch, replace_report=None):
+    def fake_once(db, table_name, batch, replace_report=None, drop_report=None):
         outcome = outcomes[len(calls)] if len(calls) < len(outcomes) else outcomes[-1]
         calls.append(table_name)
         if isinstance(outcome, Exception):
@@ -248,7 +248,7 @@ def test_the_replay_sees_the_payload_the_caller_handed_over(monkeypatch):
     batch = MapBatch([item])
     seen = []
 
-    def fake_once(db, table_name, b, replace_report=None):
+    def fake_once(db, table_name, b, replace_report=None, drop_report=None):
         # what the scope resolver would see on this attempt
         seen.append(dict(b.updates[0].updates))
         crud.assemble_composite_business_key(table_name, b.updates[0])
@@ -273,7 +273,7 @@ def test_the_replay_also_clears_the_assembled_business_key(monkeypatch):
     batch = MapBatch([item])
     keys = []
 
-    def fake_once(db, table_name, b, replace_report=None):
+    def fake_once(db, table_name, b, replace_report=None, drop_report=None):
         keys.append(b.updates[0].business_key_val)
         crud.assemble_composite_business_key(table_name, b.updates[0])
         if len(keys) == 1:
@@ -297,7 +297,7 @@ def test_a_key_the_caller_supplied_is_not_stripped_by_the_restore(monkeypatch):
     batch = MapBatch([item])
     seen = []
 
-    def fake_once(db, table_name, b, replace_report=None):
+    def fake_once(db, table_name, b, replace_report=None, drop_report=None):
         seen.append((dict(b.updates[0].updates), b.updates[0].business_key_val))
         if len(seen) == 1:
             raise _pg_error("uq_bk_d3_map")
@@ -335,7 +335,7 @@ def test_replace_report_out_param_survives_a_replay(monkeypatch):
     """
     seen = {}
 
-    def fake_once(db, table_name, batch, replace_report=None):
+    def fake_once(db, table_name, batch, replace_report=None, drop_report=None):
         if not seen:
             seen["first"] = True
             raise _pg_error("uq_bk_dt_log")
