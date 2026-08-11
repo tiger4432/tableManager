@@ -98,22 +98,30 @@ def run(table: str, apply: bool) -> dict:
         conn.execute(text(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}"))
 
         cols = ", ".join(f'"{c}"' for c in ["row_id", "business_key_val"] + sources)
-        rows = conn.execute(text(
-            f'SELECT {cols} FROM public."{table}" WHERE business_key_val IS NOT NULL'
-        )).mappings().all()
+        # 🔴 NULL 키도 대상이다. 처음엔 `WHERE business_key_val IS NOT NULL` 로 걸렀는데
+        #    그것이 정확히 고쳐야 할 행들을 빼고 있었다 — 제품 소유자가 운영에서 확인.
+        #    NULL 은 유니크 인덱스를 막지도 않으므로 「중복 키」와는 **다른 결함**이고,
+        #    둘 다 같은 연산(원본 컬럼에서 재조립)으로 풀린다.
+        rows = conn.execute(text(f'SELECT {cols} FROM public."{table}"')).mappings().all()
 
         # 살아 있는 키 전부. 새 키가 이 안에 있고 주인이 내가 아니면 그것이 충돌이다.
-        owner = {r["business_key_val"]: r["row_id"] for r in rows}
+        # NULL 은 넣지 않는다 - 여러 행이 공유하므로 주인을 정할 수 없고, 애초에
+        # 유니크 제약의 대상이 아니다.
+        owner = {r["business_key_val"]: r["row_id"]
+                 for r in rows if r["business_key_val"] is not None}
 
-        stat = {"scanned": len(rows), "blank_shape": 0, "no_material": 0,
-                "unchanged": 0, "collides": 0, "rebuilt": 0, "failed": 0}
+        stat = {"scanned": len(rows), "null_key": 0, "blank_shape": 0,
+                "no_material": 0, "unchanged": 0, "collides": 0,
+                "rebuilt": 0, "failed": 0}
         collide_sample, pending, empty_by_col = [], [], {}
 
         for r in rows:
             # 🔴 관문 없이 전부 재조립한다. 손상의 모양을 미리 맞히려 들면
             #    (예: "빈 컴포넌트가 남았을 것") 그 모양이 아닌 손상을 통째로 놓친다.
-            if _blank_parts(r["business_key_val"], sep):
-                stat["blank_shape"] += 1          # 참고용 표시일 뿐 관문이 아니다
+            if r["business_key_val"] is None:
+                stat["null_key"] += 1             # 표시일 뿐 관문이 아니다
+            elif _blank_parts(r["business_key_val"], sep):
+                stat["blank_shape"] += 1          # 이것도 마찬가지
             new = _compose(table, r, sources)
             if new is None:
                 stat["no_material"] += 1          # ② 사람이 값을 넣어야 한다
@@ -152,7 +160,8 @@ def run(table: str, apply: bool) -> dict:
             stat["rebuilt"] = 0
 
         print(f"\n{'항목':22s} {'건수':>10s}")
-        for k in ("scanned", "blank_shape", "no_material", "unchanged", "collides"):
+        for k in ("scanned", "null_key", "blank_shape", "no_material",
+                  "unchanged", "collides"):
             print(f"{k:22s} {stat[k]:10d}")
         print(f"{'rebuildable' if not apply else 'rebuilt':22s} "
               f"{len(pending) if not apply else stat['rebuilt']:10d}")
