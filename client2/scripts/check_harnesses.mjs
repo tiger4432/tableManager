@@ -560,7 +560,24 @@ const FLOORS = new Map([
   // deleted, and L14 was re-pointed rather than dropped -- the eight thumbnails no longer share
   // one bounding box, because the normalisation that made them share one also cancelled the
   // start-corner term, so the floor is scored on the floor POPULATION instead of on its pixels.
-  ['map_editor2_shell_harness.mjs', 577],
+  // 577 -> 594 (2026-08-11). THE CONFIRM SENTENCE AT ANY ARITY. `3d43a6c` opened arities 1 and 3
+  // on the decision key and left the one full sentence on this screen assuming exactly two
+  // values; F8b/F8c had PINNED that two-value shape as a contract, so the pin itself was wrong.
+  //   F8b-F8l  the unit is a LIST whose length is the rule's, scored at arity 1 / 2 / 3 off a
+  //            served `__key`. F8h is the negative control -- three arities must render three
+  //            different strings, or the block is scoring one state three times.
+  //   S1-S8    the SENTENCE, read off the DOM the shell wrote, plus a hook census on
+  //            `map_editor2.html` itself. Both halves are needed: `unitLabel` being right while
+  //            the sentence is wrong is a renamed hook, and a stub authoring hooks the page does
+  //            not is the third-census trap this tree has paid for twice.
+  // 🔴 THE ARITY-2 ASSERTIONS CANNOT DEFEND THIS FLOOR ON THEIR OWN, and that is measured, not
+  //    argued: a mutant truncating the unit to two values leaves F8b/F8c/S5 GREEN and is caught
+  //    only by the arity-3 and negative-control lines. Same shape as `3d43a6c`'s J41. Seven
+  //    defect mutants were applied to the real source (truncate-to-two, ignore the served dict,
+  //    prefix the column names, a second separator, a blank rendered as an empty slot, the
+  //    markup regrowing an axis hook, the shell not writing the slot) and all seven died with
+  //    their ASSERTIONS line printed; a comment-only control stayed green.
+  ['map_editor2_shell_harness.mjs', 594],
   //
   // THE SEAT ITSELF. Scores that the screen draws where the server says it seated the map,
   // rather than recomposing `seatOf(frame) + shift` from a frame it built out of absent fields.

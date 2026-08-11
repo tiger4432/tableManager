@@ -962,6 +962,58 @@ export function decisionKeyRefusal(result) {
 }
 
 /**
+ * THE SEPARATOR THIS SCREEN ALREADY JOINS TOKENS WITH. `note`, `metaLine`,
+ * `referenceOptionLabel` and the worklist's own fallback label all spell it, so the confirm
+ * sentence borrows it rather than introducing a second one -- a screen with two join characters
+ * teaches the reader that they mean different things.
+ */
+export const UNIT_SEPARATOR = ' · ';
+
+/**
+ * THE UNIT'S VALUES, IN THE RULE'S DECLARED ORDER, AT ANY ARITY.
+ *
+ * 🔴 VALUES ONLY, NO COLUMN NAMES (ruling 2026-08-11). The confirm sentence answers ONE question
+ *    -- "which unit am I confirming?" -- and the values already identify the unit uniquely.
+ *    `dt_job_id=` in front of one would add a label, not identification, and the axis names are
+ *    already on screen in the panel beside it. This is a write confirmation, so it appears
+ *    exactly once, and that one appearance is short and unmistakable rather than complete.
+ *
+ * 🔴 DRIVEN BY THE DECLARATION, NEVER BY A COUNT. `__key` is the SERVER'S own dict, built by
+ *    zipping the rule's `decision_key` against the worklist row (`map_alignment.py:6273`), so
+ *    its key ORDER is the declaration and its length is the arity. Nothing here asks how many
+ *    columns there are: an arity-1 rule yields one value, an arity-3 rule three, and no branch
+ *    in this function can tell them apart. Until 2026-08-11 the sentence had two fixed slots,
+ *    which was unreachable-but-wrong at arity 1 and 3 -- `3d43a6c` opened those arities.
+ *
+ * 🔴 A BLANK CONTRIBUTES NOTHING, NOT AN EMPTY SLOT. `firstStated` is the same filter
+ *    `decisionKeyOf` uses, so the sentence cannot render a dangling separator for a column the
+ *    client never had a value for. What is missing is said ONCE, by `decisionKeyRefusal`, in the
+ *    note slot -- this line does not repeat it and does not invent a placeholder for it.
+ *
+ * THE LEGACY POSITIONAL BRIDGE, when no served dict is present: `decision.eqp` / `decision.product`
+ * are slots of this program's own making (see `decisionKeyOf` source 3), read at index 0 and 1
+ * and never named. There is no third slot, so an arity-3 rule with no served dict shows what it
+ * has and `decisionKeyOf` refuses the write over the column it could not fill -- the same limit,
+ * stated in the same place, rather than two answers to one question.
+ */
+export function unitValuesOf(decision) {
+  const d = decision && typeof decision === 'object' ? decision : {};
+  const served = d.__key && typeof d.__key === 'object' ? d.__key : null;
+  const source = served ? Object.keys(served).map(col => own(served, col)) : [d.eqp, d.product];
+  const out = [];
+  for (const raw of source) {
+    const value = firstStated(raw);
+    if (value !== null) out.push(value);
+  }
+  return out;
+}
+
+/** The same values as the one string the sentence names. Joined ONCE, here. */
+export function unitLabelOf(decision) {
+  return unitValuesOf(decision).join(UNIT_SEPARATOR);
+}
+
+/**
  * An OWN property only. A declared column named `constructor` or `toString` would otherwise
  * resolve to a function off the prototype and be stringified into the request.
  */
@@ -1230,7 +1282,7 @@ function secondMetricDetail(payload, winnerId) {
 /**
  * The single write, as STRUCTURED VALUES rather than a composed sentence. The one full
  * sentence on this screen lives in the markup and the markup lane owns its wording; this
- * decoder supplies the eqp, the product and the chosen spelling that sentence names, so a
+ * decoder supplies the unit's VALUES and the chosen spelling that sentence names, so a
  * mis-click is visible before it lands without two lanes writing the same clause.
  */
 function confirmModel(session, selectedId, storedId, state, attribution, assumption,
@@ -1285,8 +1337,13 @@ function confirmModel(session, selectedId, storedId, state, attribution, assumpt
     //    own. Ten distinct refusals exist so the operator can tell them apart, and any bucketing
     //    performed here would be a second judgement about evidence already judged.
     failure: session.confirmError || null,
-    eqp: decision.eqp || null,
-    product: decision.product || null,
+    // 🔴 `eqp` / `product` ARE GONE FROM THIS RECORD, AND THAT IS THE POINT OF THE CHANGE. Two
+    //    named fields ARE the two-value shape: an arity-1 rule left `product` empty and the
+    //    sentence rendered a dangling separator, an arity-3 rule lost its third value with
+    //    nothing on screen saying so. The values travel as a LIST and as the one string the
+    //    sentence names, and neither of them can be read as an axis.
+    unitValues: Object.freeze(unitValuesOf(decision)),
+    unitLabel: unitLabelOf(decision),
     candidateId: selectedId || null,
     // Confirming an unchanged value is still a real act -- it is what records that a human
     // established the frame -- so the control must not read as a no-op.

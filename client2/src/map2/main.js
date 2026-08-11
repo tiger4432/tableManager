@@ -1198,8 +1198,11 @@ export function bootstrap(deps) {
     // and the markup lane owns its wording; this file fills the values it names through the
     // hooks that sentence exposes. Until those hooks exist the sentence stays as authored --
     // asked for by name rather than patched in from two places at once.
-    setChildTextIn(el.confirmSentence, '[data-me2-confirm-eqp]', vm.confirm.eqp || '');
-    setChildTextIn(el.confirmSentence, '[data-me2-confirm-product]', vm.confirm.product || '');
+    // 🔴 ONE SLOT FOR THE UNIT, AT EVERY ARITY. Two slots WERE the two-value assumption: the
+    //    sentence could not describe a rule declaring one column (a separator with nothing after
+    //    it) or three (the third value dropped silently). `unitLabel` is the rule's declared
+    //    values joined once in the view model; nothing here counts them or names a column.
+    setChildTextIn(el.confirmSentence, '[data-me2-confirm-unit]', vm.confirm.unitLabel);
     setChildTextIn(el.confirmSentence, '[data-me2-confirm-frame]', vm.confirm.candidateId || '');
     // 🔴 THE REFUSAL TAKES THIS SLOT WHILE IT IS LIVE, AND IT IS THE SAME SLOT ON PURPOSE.
     //    `note` describes the BASIS of a write that has not happened; a refusal describes why

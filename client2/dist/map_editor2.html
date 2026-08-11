@@ -16,7 +16,7 @@
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
   <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
-  <script type="module" crossorigin src="/assets/map_editor2-BFBu_lze.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor2-C1lS--ok.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-Dy5qGBed.js">
   <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
   <link rel="stylesheet" crossorigin href="/assets/map_editor2-D8G-E8uM.css">
@@ -854,8 +854,13 @@
     <footer id="me2-confirmbar">
       <div class="me2-confirm-text">
         <!-- 한 줄. 결과 절(「이후 다이 맵 · 본딩 계획이 …」)은 뺐다 - 값은 결정을
-             바꾸지만 그 설명은 바꾸지 않고, 설명은 문서 소관이다. -->
-        <div id="me2-confirm-sentence"><b data-me2-confirm-eqp></b> · <b data-me2-confirm-product></b> 좌표계를 <b data-me2-confirm-frame></b> 로 확정.</div>
+             바꾸지만 그 설명은 바꾸지 않고, 설명은 문서 소관이다.
+             주어는 슬롯 하나다(확정 2026-08-11). 값만 쓰고 컬럼 이름은 안 쓴다 - 이 문장은
+             「지금 무엇을 확정하는가」 하나에 답하고 값만으로 단위가 정해지며, 축 이름은
+             옆 패널에 이미 있다. 슬롯 둘은 곧 결정키가 둘이라는 가정이었고, 규칙이 한 컬럼만
+             선언하면 구분자가 허공에 남고 세 컬럼이면 셋째 값이 말없이 사라졌다.
+             값 사이 구분자는 이 화면이 이미 쓰는 ` · `이고, 조립은 `unitLabelOf` 한 곳뿐이다. -->
+        <div id="me2-confirm-sentence"><b data-me2-confirm-unit></b> 좌표계를 <b data-me2-confirm-frame></b> 로 확정.</div>
         <div id="me2-confirm-note">현재 선언과 동일 · 사람 확정으로 기록</div>
       </div>
       <div class="me2-confirm-actions">

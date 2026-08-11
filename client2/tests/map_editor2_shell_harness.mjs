@@ -8,6 +8,11 @@
  * harnesses cut functions out of `map_editor.js` as text and re-declare its globals around
  * them. Construction, not cleanup, is what buys this.
  *
+ * ⚠️ ONE FILE IS READ AS TEXT, AND IT IS NOT A `.js`: `map_editor2.html` (section S). The page
+ *    cannot be imported and it is the only place the confirm sentence's hooks are authored, so
+ *    the alternative is a document stub scoring itself. Nothing is sliced or evaluated out of
+ *    it -- it is asked which hooks it publishes, by name.
+ *
  * WHAT IS SCORED
  *   A. CANDIDATES -- eight, not sixteen; the control's geometry is the operator's two motions.
  *   B. SESSION -- a factory, not a singleton; two sessions cannot see each other; stale
@@ -27,6 +32,8 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe): no emoji, no em-dash.
  */
 
+// The page's markup, for section S's hook census only. See the header's exception note.
+import { readFileSync } from 'node:fs';
 import { candidateList, candidateGrid, candidateId, parseCandidateId, START_HEADERS,
          INVERSION_FOOTNOTE } from '../src/map2/candidates.js';
 import { createMapSession, withDecision, withPayload, withError, withSelectedCandidate,
@@ -38,7 +45,7 @@ import { createRecordingSurface, paintComparison, paintSeating, layoutFor,
 import { decideVerdict, VERDICT, REASON } from '../src/map2/verdict_bridge.js';
 import { verdictContext, decodeReferenceView } from '../src/map2/decode.js';
 import { buildViewModel, assertNoRatio, VIEW_STATE, UNKNOWN,
-         agreementText, marginText, WORDS } from '../src/map2/view_model.js';
+         agreementText, marginText, WORDS, UNIT_SEPARATOR } from '../src/map2/view_model.js';
 import { createApiClient, ROUTES } from '../src/map2/api.js';
 // An INDEPENDENT colour oracle, so section K scores what was painted rather than re-running the
 // ramp's own arithmetic against itself.
@@ -480,9 +487,48 @@ function throws(fn, what) {
   // The confirm's one full sentence belongs to the markup lane. The decoder hands over the
   // VALUES that sentence names, so a mis-click is visible without two lanes writing one clause.
   eq(winner.confirm.candidateId, 'rot270_tr', 'F8a the confirm carries the chosen spelling');
-  eq(winner.confirm.eqp, 'E1', 'F8b and the equipment');
-  eq(winner.confirm.product, 'P1', 'F8c and the product');
+  // 🔴 F8b/F8c USED TO BE `confirm.eqp === 'E1'` AND `confirm.product === 'P1'`, AND THAT PAIR
+  //    WAS THE TWO-VALUE SHAPE PINNED AS A CONTRACT. Two named fields cannot describe a rule
+  //    declaring one key column or three, and `3d43a6c` made both arities reachable. Replaced,
+  //    not deleted: the unit is still scored, as a LIST whose length is the rule's and never
+  //    this file's. Everything below is driven by a served `__key` -- the server's own zip of
+  //    `decision_key` (`map_alignment.py:6273`) -- so no assertion here counts columns.
+  eq(winner.confirm.unitLabel, 'E1 · P1', 'F8b the unit is its VALUES, joined once');
+  eq(winner.confirm.unitValues.join('|'), 'E1|P1', 'F8c and carried as a list beside the label');
+  ok(!('eqp' in winner.confirm) && !('product' in winner.confirm),
+     'F8b2 no field on the confirm names an axis');
   ok(!('sentence' in winner.confirm), 'F8d and composes no sentence of its own');
+  // ── THE UNIT AT ARITY 1, 2 AND 3 ──────────────────────────────────────────────
+  // 🔴 ARITY 2 ALONE PROVES NOTHING HERE, WHICH IS THE WHOLE LESSON OF `3d43a6c`'s `J41`: the
+  //    defective and the repaired spellings AGREE at arity 2. So the three probes below are one
+  //    fixture family with a different declared arity each, and `F8h` is the negative control --
+  //    if the three labels were ever equal, this block would be scoring nothing.
+  const arityOf = (keyDict) => buildViewModel({
+    session: withPayload(withDecision(createMapSession({ config: thresholds }),
+      { __key: keyDict }), payload, 1),
+    verdict: decideVerdict(payload.per_candidate, thresholds),
+  }).confirm;
+  const one = arityOf({ dt_job_id: 'SYN-TR-R90-N013' });
+  const two = arityOf({ dt_eqp: 'EQP-A', product: 'PRD-1' });
+  const three = arityOf({ dt_eqp: 'EQP-A', product: 'PRD-1', core_lot: 'LOT-7' });
+  eq(one.unitLabel, 'SYN-TR-R90-N013', 'F8e arity 1: one value, no separator left hanging');
+  eq(two.unitLabel, 'EQP-A · PRD-1', 'F8f arity 2: two values, one separator');
+  eq(three.unitLabel, 'EQP-A · PRD-1 · LOT-7', 'F8g arity 3: the third value is not dropped');
+  eq(new Set([one.unitLabel, two.unitLabel, three.unitLabel]).size, 3,
+     'F8h NEGATIVE CONTROL: the three arities must not render the same string');
+  eq(`${one.unitValues.length}${two.unitValues.length}${three.unitValues.length}`, '123',
+     'F8i the list length is the rule\'s arity, never a constant');
+  // The separator is the one this screen already joins tokens with, taken from the module
+  // rather than re-spelled -- a second spelling is how one screen grows two join characters.
+  eq(two.unitLabel, ['EQP-A', 'PRD-1'].join(UNIT_SEPARATOR), 'F8j and it is the shared separator');
+  // A column the client never had a value for contributes NOTHING, not an empty slot. The
+  // dangling ` · ` this replaces was visible on every arity-1 deployment.
+  eq(arityOf({ dt_eqp: 'EQP-A', product: '' }).unitLabel, 'EQP-A',
+     'F8k a blank column leaves no separator behind');
+  // No served dict: the legacy positional bridge, and it still names no axis.
+  eq(buildViewModel({ session: withDecision(createMapSession({ config: thresholds }),
+       { eqp: 'E9' }), verdict: null }).confirm.unitLabel, 'E9',
+     'F8l the positional bridge is arity-agnostic too');
   eq(winner.writesSoFar, 0, 'F9 exploring wrote nothing');
 
   const computing = buildViewModel({ session: withDecision(createMapSession({ config: thresholds }), { eqp: 'E', product: 'P' }), verdict: null });
@@ -2497,6 +2543,91 @@ function throws(fn, what) {
   ok(appS.peek().worklist.served === true, 'R6b the list is served, not degraded');
 }
 
+// ── S. THE CONFIRM SENTENCE, RENDERED, AT ARITY 1 / 2 / 3 ──────────────────────
+// The one full sentence on this screen, read off the DOM the shell wrote -- not off the view
+// model. `confirm.unitLabel` being right and the sentence being wrong are different failures
+// (a hook renamed on one side only), and only this block can tell them apart.
+//
+// 🔴 EVERY READ HERE GOES THROUGH A TOLERANT ACCESSOR, ON PURPOSE. A renamed hook leaves the
+//    node absent, and a harness that throws before printing its ASSERTIONS line reports to
+//    `check_harnesses.mjs` as DEAD rather than as RED -- the disguise `ab36fab` was written to
+//    strip, which has now reappeared twice in one week. `sentenceText` returns a string in
+//    every state, so a missing node fails an assertion instead of killing the file.
+{
+  const read = (doc, id) => {
+    const n = doc.getElementById(id);
+    return n && typeof n.textContent === 'string' ? n.textContent : '(no node)';
+  };
+
+  // 🔴 THE MARKUP IS THE THIRD CENSUS, AND WITHOUT IT THIS SECTION SCORES THE STUB. The page is
+  //    read as TEXT (it cannot be imported), and what is pinned is the hook set -- MEMBERS, not
+  //    a count: `data-me2-confirm-unit` present, and neither retired axis hook anywhere in it.
+  //    If `map_editor2.html` and `makeDocument` stop agreeing, S1-S3 go red here rather than in
+  //    production, which is where the two-slot sentence spent its whole life.
+  const pageHtml = readFileSync(
+    new URL('../map_editor2.html', import.meta.url), 'utf8');
+  ok(pageHtml.includes('data-me2-confirm-unit'), 'S1 the page authors ONE unit hook');
+  ok(!pageHtml.includes('data-me2-confirm-eqp') && !pageHtml.includes('data-me2-confirm-product'),
+     'S2 and no hook on it names an axis');
+  ok(pageHtml.includes('data-me2-confirm-frame'), 'S3 the frame hook is untouched');
+
+  // A minimal scored payload, so the frame slot carries a real spelling rather than a blank.
+  const payload = {
+    state: 'scored',
+    refusal: null,
+    reference: { state: 'ok', kind: 'values', cells: [[0, 0], [1, 0]] },
+    sources: { map_count: 1, cell_count: 2, cells: [[0, 0], [1, 0]],
+               maps: [{ map_id: 's1', cell_count: 2 }] },
+    candidates: [
+      { frame: 'rot90_tl', agreement: 200, discriminating: 180, placed: 300,
+        placement: placementOf('rot90_tl', [0, 0], [0, 0]) },
+      { frame: 'rot180_tr', agreement: 40, discriminating: 35, placed: 300,
+        placement: placementOf('rot180_tr', [0, 0], [0, 0]) },
+    ],
+    declaration: { frames: {}, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+    ruling: { winner: 'rot90_tl' },
+    excluded_total: 0,
+    stats: { scored_cells: 300, elapsed_ms: 7 },
+  };
+
+  async function sentenceFor(keyDict) {
+    const doc = makeDocument();
+    const app = bootstrap({
+      document: doc,
+      api: { counters: { reads: 0, writes: 0 },
+             loadReferenceView: () => Promise.resolve(payload),
+             loadWorklist: () => Promise.resolve({ rows: [] }),
+             confirmFrame: () => Promise.resolve({}) },
+    });
+    app.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+    // The decision as `onWorklistClick` composes it: the SERVER'S key dict, whose order is the
+    // rule's `decision_key`. Nothing in this call says how long it is.
+    app.selectDecision({ __key: keyDict });
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    app.render();
+    return read(doc, 'me2-confirm-sentence');
+  }
+
+  const s1 = await sentenceFor({ dt_job_id: 'SYN-TR-R90-N013' });
+  const s2 = await sentenceFor({ dt_eqp: 'EQP-A', product: 'PRD-1' });
+  const s3 = await sentenceFor({ dt_eqp: 'EQP-A', product: 'PRD-1', core_lot: 'LOT-7' });
+  eq(s1, 'SYN-TR-R90-N013 좌표계를 rot90_tl 로 확정.',
+     'S4 arity 1 renders one value and no orphan separator');
+  eq(s2, 'EQP-A · PRD-1 좌표계를 rot90_tl 로 확정.',
+     'S5 arity 2 renders the shape that already worked');
+  eq(s3, 'EQP-A · PRD-1 · LOT-7 좌표계를 rot90_tl 로 확정.',
+     'S6 arity 3 renders the third value the two-slot sentence dropped');
+  // 🔴 THE NEGATIVE CONTROL. Three arities, three DIFFERENT strings: if a later change made the
+  //    sentence ignore the declaration again, these three would collapse and S4-S6 would be
+  //    scoring one state three times. A fixture that cannot tell the arities apart is exactly
+  //    the fixture that let the two-slot sentence ship (`3d43a6c`'s J41, same shape).
+  eq(new Set([s1, s2, s3]).size, 3, 'S7 NEGATIVE CONTROL: the three arities render differently');
+  // No column name reaches the screen. The axis names are in the panel beside it; repeating them
+  // here would be a label, not identification (ruling 2026-08-11).
+  ok(![s1, s2, s3].some(s => /dt_job_id|dt_eqp|product|core_lot|=/.test(s)),
+     'S8 values only -- no column name and no `=` in the sentence');
+}
+
 console.log(`ASSERTIONS ${compared} ${failures.length}`);
 if (failures.length > 0) {
   console.log('\nFAILURES');
@@ -2705,6 +2836,19 @@ function makeDocument() {
   head.appendChild(num);
   head.appendChild(node('span', null, { 'data-me2-verdict-unknown': '' }));
   head.appendChild(node('span', null, { 'data-me2-verdict-busy': '' }));
+
+  // The confirm sentence, authored EXACTLY as `map_editor2.html` authors it: ONE unit slot at
+  // any arity, then the frame. Two slots would be the retired two-value shape, and a stub that
+  // kept them would score a screen the operator never sees -- so section S reads the page and
+  // pins the hook set on the markup side too. This stub has no text nodes, so the static words
+  // ride on inert spans; `textContent` concatenates children, which makes the joined result
+  // byte-identical to what the real element renders.
+  const sentence = registry.get('me2-confirm-sentence');
+  const said = (t) => { const n = node('span'); n.textContent = t; return n; };
+  sentence.appendChild(node('b', null, { 'data-me2-confirm-unit': '' }));
+  sentence.appendChild(said(' 좌표계를 '));
+  sentence.appendChild(node('b', null, { 'data-me2-confirm-frame': '' }));
+  sentence.appendChild(said(' 로 확정.'));
 
   // Two source rows plus the cross-source row, each carrying its own value and count slots.
   const list = registry.get('me2-source-list');
