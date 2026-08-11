@@ -296,6 +296,121 @@ def test_a_superseded_confirmation_alone_does_not_confirm_the_unit(env):
 
 
 # ---------------------------------------------------------------------------
+# a unit that cannot name itself
+#
+# THE REPRODUCTION THIS SECTION IS BUILT FROM (survey, 2026-08-11)
+#     5 healthy units        -> OK, returned 5
+#     +1 NULL-key row        -> RAISED, all five lost
+# `compose_unit_key` refuses a blank decision key, `ConfirmationRefused` is NOT a
+# `ValueError`, so the route's `except ValueError` misses it and `except Exception` turns
+# ONE dirty derived row into a 500 for the WHOLE request. The guard that skips a blank
+# decision key already exists in all three automatic writers
+# (`dt_alignment_metadata_mapper.py:46`, `core_alignment_mapper.py:41`,
+# `dt_inventory_metadata_mapper.py:96`); the worklist was the fourth place and had none.
+# ---------------------------------------------------------------------------
+
+def _seed_unnamed_unit(db, product="P1", cells=1):
+    """A derived-table row that cannot name itself: a decision-key column is NULL.
+
+    This is the shape production holds. `crud._get_or_create_row` INSERTs a row carrying
+    `row_id` + `business_key_val` and `apply_batch_updates` drops a decision column the box
+    spells differently, so the row exists with its key column never set. No source rows and
+    no metadata: the unit is unbuildable before anything asks how many maps it has.
+    """
+    d = models.DYNAMIC_TABLES[DERIVED]
+    db.add(d(row_id="d_unnamed_" + product, business_key_val="|" + product,
+             eqp=None, product=product, cell_count=cells))
+    db.commit()
+
+
+def test_one_unbuildable_unit_does_not_take_the_healthy_ones_with_it(env):
+    """The survey's reproduction, as an assertion. Before the guard this call RAISED."""
+    for i in range(1, 6):
+        _seed_unit(env, "E%d" % i, "P1", ["J%d" % i])
+    _seed_unnamed_unit(env)
+
+    w = _wl(env)
+
+    assert w["totals"]["judged"] == 6
+    named = [u for u in w["units"] if u["unit_key"]]
+    assert sorted(u["unit_key"] for u in named) == \
+        ["E1|P1", "E2|P1", "E3|P1", "E4|P1", "E5|P1"], \
+        "the healthy units were lost with the unbuildable one"
+    assert all(u["reason_code"] != ma.REASON_UNIT_KEY_INCOMPLETE for u in named)
+
+
+def test_the_unbuildable_unit_is_visible_with_its_reason_not_absent(env):
+    """A unit that silently disappears is the failure mode this project keeps paying for.
+    The operator has to be able to see WHICH row is unbuildable to go and fix it."""
+    for i in range(1, 6):
+        _seed_unit(env, "E%d" % i, "P1", ["J%d" % i])
+    _seed_unnamed_unit(env)
+
+    w = _wl(env)
+    bad = [u for u in w["units"] if u["reason_code"] == ma.REASON_UNIT_KEY_INCOMPLETE]
+    assert len(bad) == 1, "the unbuildable unit vanished instead of being reported"
+    assert bad[0]["state"] == "unscorable"
+    assert bad[0]["unit_key"] is None
+    # The row still carries its readable half, which is how the operator finds it.
+    assert bad[0]["key"] == {"eqp": "", "product": "P1"}
+    assert w["totals"]["by_state"]["unscorable"] >= 1
+
+
+def test_the_reason_names_the_column_that_is_missing(env):
+    """A reason that does not say WHICH key is blank sends the operator nowhere - the
+    whole derived table becomes the search space. The label stays one per cause; what is
+    appended is a column NAME, not a second word for the same fact."""
+    _seed_unit(env, "E1", "P1", ["J1"])
+    _seed_unnamed_unit(env)
+
+    entry = [r for r in _wl(env)["unscorable_reasons"]
+             if r["reason_code"] == ma.REASON_UNIT_KEY_INCOMPLETE]
+    assert len(entry) == 1 and entry[0]["count"] == 1
+    assert entry[0]["reason"].startswith(
+        ma._WORKLIST_REASON_TEXT[ma.REASON_UNIT_KEY_INCOMPLETE])
+    assert "eqp" in entry[0]["reason"], \
+        "the reason does not name the blank decision key: %r" % entry[0]["reason"]
+    # `product` is populated on that row, so naming it would send the operator to the
+    # wrong column - the detail is the columns actually blank, not the decision key list.
+    assert "product" not in entry[0]["reason"]
+
+
+def test_every_sort_key_survives_a_unit_with_no_name(env):
+    """The second way this dies. Every branch of `_sk` returns `unit_key` as its tiebreak,
+    and `None < str` is a `TypeError` - so a guard in the composition loop alone would
+    still 500 the request, one line further down."""
+    for i in range(1, 6):
+        _seed_unit(env, "E%d" % i, "P1", ["J%d" % i], cells=i)
+    _seed_unnamed_unit(env)
+
+    for key in ma.worklist_sort_keys(RULE):
+        for order in ("asc", "desc"):
+            w = _wl(env, sort=key, order=order)
+            assert len(w["units"]) == 6, "sort=%s/%s lost rows" % (key, order)
+
+
+def test_the_route_answers_two_hundred_rather_than_five_hundred(env, client, monkeypatch):
+    """The production symptom, at the seam it was reported from. `ConfirmationRefused` is
+    not a `ValueError`, so widening `main.py`'s handler would only have turned a 500 into a
+    400 - blaming the request for a row in the derived table."""
+    import frame_confirmation as fc
+    assert not issubclass(fc.ConfirmationRefused, ValueError), \
+        "the route's `except ValueError` would catch this and the 500 story changes"
+    _rules_patch(monkeypatch)
+    for i in range(1, 6):
+        _seed_unit(env, "E%d" % i, "P1", ["J%d" % i])
+    _seed_unnamed_unit(env)
+
+    r = client.get("/api/maps/alignment/worklist",
+                   params={"rule": RULE["name"], "map_table": MAPT})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["units"]) == 6
+    assert sum(1 for u in body["units"]
+               if u["reason_code"] == ma.REASON_UNIT_KEY_INCOMPLETE) == 1
+
+
+# ---------------------------------------------------------------------------
 # the aggregate the client is told not to compute
 # ---------------------------------------------------------------------------
 

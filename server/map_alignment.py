@@ -5844,6 +5844,17 @@ REASON_MAP_KEYS_UNAVAILABLE = "map_keys_unavailable"
 REASON_REFERENCE_ABSENT = "reference_absent"
 REASON_REFERENCE_REFUSED = "reference_refused"
 
+#: 파생 표의 그 행이 **자기 이름을 만들지 못한다** — 결정키 컬럼이 비어 있어
+#: `compose_unit_key`가 거절한다. 다른 넷과 같은 계급의 사유다: 단위는 실재하고, 채점만
+#: 불가능하며, 이유가 붙어 나간다.
+#
+# 🔴 이것이 다섯 번째 사유가 아니라 **빠져 있던 다섯 번째**인 이유: 결정키가 빈 페이로드를
+#    건너뛰는 가드는 자동 경로 세 곳에 이미 있다(`dt_alignment_metadata_mapper.py:46`,
+#    `core_alignment_mapper.py:41`, `dt_inventory_metadata_mapper.py:96`). 넷 중 셋에 있는
+#    가드는 정책이 아니라 누락이고, 목록만 그것을 예외로 던져 **요청 전체**를 500으로
+#    만들었다 — 건강한 단위 다섯이 나쁜 행 하나에 같이 사라졌다.
+REASON_UNIT_KEY_INCOMPLETE = "unit_key_incomplete"
+
 # 사유 표찰. 나머지 둘(`meta_missing`·`geometry_refused`)은 **상세의 제외 어휘를 그대로
 # 쓴다** — 목록의 「채점 불가」는 상세가 셀 제외 사유로 이미 이름 붙인 것과 같은 사실이고,
 # 여기서 다시 이름 지으면 같은 사실에 낱말이 둘이 된다.
@@ -5853,7 +5864,21 @@ _WORKLIST_REASON_TEXT.update({
     REASON_MAP_KEYS_UNAVAILABLE: "소스 테이블에 맵 키 컬럼 없음",
     REASON_REFERENCE_ABSENT: TEXT_REFERENCE_ABSENT,
     REASON_REFERENCE_REFUSED: TEXT_REFERENCE_REFUSED,
+    REASON_UNIT_KEY_INCOMPLETE: "결정키 빈 값 - 단위 이름 없음",
 })
+
+
+def _worklist_reason_text(code: str, detail: str = None) -> str:
+    """표찰, 그리고 있으면 **그 표찰이 가리키는 이름**.
+
+    🔴 붙는 것은 낱말이 아니라 **컬럼 이름**이다 — 두 번째 어휘가 아니다. 어느 컬럼이
+       비었는지 말하지 않는 사유는 조작자를 아무 데도 보내지 못한다(다음 행동이 「그 행을
+       열어 본다」인데, 열어서 볼 컬럼을 안 알려 주면 파생 표 전체가 후보가 된다).
+       표찰 자체는 `_WORKLIST_REASON_TEXT` 하나뿐이고 여기서 만들지 않는다.
+    """
+    text = _WORKLIST_REASON_TEXT.get(code, code)
+    return text if not detail else "%s: %s" % (text, detail)
+
 
 MAX_WORKLIST_UNITS = 2_000        # 한 요청이 판정하는 단위 상한 (초과는 truncated로 명시)
 MAX_WORKLIST_MAP_ROWS = 100_000   # (단위, 맵) 쌍 상한 — 맵 모집단 규모에 비례한다
@@ -6210,7 +6235,7 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     검색·정렬은 **서버가 한다.** 단위 수는 클라가 통제하는 어떤 값에도 묶여 있지 않으므로
     전량을 내려 브라우저에서 거르는 설계는 규모에서 먼저 깨진다.
     """
-    from database import models
+    from database import crud, models
     from sqlalchemy import func as _func
     import frame_confirmation
 
@@ -6276,9 +6301,28 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         })
 
     # ---- [2] 확정 — 「현행 행이 있는가」가 곧 confirmed다 -------------------------------
+    #
+    # 🔴 이름을 못 만드는 행은 **그 행 하나만** 채점 불가다. 여기가 맨몸 루프였을 때
+    #    `ConfirmationRefused`는 라우트까지 올라갔고(그 예외는 `ValueError`가 아니라
+    #    `main.py`의 `except ValueError`도 못 잡는다) 목록 **전체**가 500이 됐다 — 나쁜 행
+    #    하나가 건강한 단위 전부를 데려갔다. 조용히 사라지는 단위는 이 프로젝트가 반복해서
+    #    값을 치른 실패 모양이므로 **빼지 않고 사유를 달아 남긴다**: 조작자는 어느 행이
+    #    못 쓰는 행인지 볼 수 있어야 고치러 간다.
+    unit_key_blank_cols = set()
     for u in units:
-        u["unit_key"] = frame_confirmation.compose_unit_key(rule, u["key"])
-    live = _live_confirmations(db, rule_name, [u["unit_key"] for u in units])
+        try:
+            u["unit_key"] = frame_confirmation.compose_unit_key(rule, u["key"])
+        except frame_confirmation.ConfirmationRefused:
+            # 어느 컬럼이 비었는지는 **거절한 쪽과 같은 술어**로 묻는다
+            # (`compose_unit_key:126`의 `clean_str_value(x) == ""`와 등가임이
+            # `contracts/blank_predicate`로 고정돼 있다). 여기서 「비었다」를 다시
+            # 정의하면 목록과 확정이 서로 다른 행을 빈 행이라 부를 수 있다.
+            u["unit_key"] = None
+            unit_key_blank_cols.update(
+                c for c in decision_key if crud.is_blank_value(u["key"].get(c)))
+    # 이름이 없는 단위는 조회할 열쇠도 없다 — `None`을 IN 절에 실으면 묻는 것이 없는 질문이다.
+    live = _live_confirmations(
+        db, rule_name, [u["unit_key"] for u in units if u["unit_key"] is not None])
 
     # ---- [3] 이 단위들의 맵과 그 규격 (질의 2개) ---------------------------------------
     maps_truncated = False
@@ -6358,7 +6402,12 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         })
 
         reason = None
-        if header is not None:
+        if u["unit_key"] is None:
+            # 🔴 `header`보다 **먼저**다. 이름이 없으면 「확정됐는가」를 물을 열쇠가 없고,
+            #    `live.get(None)`이 언제나 `None`이라 아래 갈래를 그대로 태우면 이 행은
+            #    맵이 없다거나 기준이 없다는, 재 본 적 없는 사유를 달고 나간다.
+            state, reason = STATE_UNIT_UNSCORABLE, REASON_UNIT_KEY_INCOMPLETE
+        elif header is not None:
             state = STATE_UNIT_CONFIRMED
         elif missing_key:
             state, reason = STATE_UNIT_UNSCORABLE, REASON_MAP_KEYS_UNAVAILABLE
@@ -6387,22 +6436,32 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         if reason:
             reasons[reason] = reasons.get(reason, 0) + 1
 
+    # 사유에 붙는 **이름**. 집계는 사유마다 한 줄이므로 여기 실리는 것도 컬럼 이름의
+    # 합집합 하나뿐이고, 그 크기는 `decision_key`의 길이로 닫혀 있다(행 수와 무관).
+    reason_detail = {}
+    if unit_key_blank_cols:
+        reason_detail[REASON_UNIT_KEY_INCOMPLETE] = ", ".join(sorted(unit_key_blank_cols))
+
     # ---- [5] 정렬 → 자르기. 집계는 **자르기 전** 전량에서 낸다 --------------------------
     sort_keys = worklist_sort_keys(rule)
     key = sort if sort in sort_keys else "unit_key"
     reverse = str(order or "asc").lower() == "desc"
 
     def _sk(u):
+        # 🔴 정렬은 `unit_key`가 문자열이라고 가정한다 — 모든 갈래의 두 번째 키가 그것이다.
+        #    이름 없는 단위([2])가 하나라도 섞이면 `None < str` 비교가 `TypeError`로 터져
+        #    목록이 **다시** 500이 된다. [2]의 가드만 두고 여기를 두지 않으면 가드는 반쪽이다.
+        uk = u["unit_key"] or ""
         if key == "state":
-            return (UNIT_STATE_STRENGTH.get(u["state"], 0), u["unit_key"])
+            return (UNIT_STATE_STRENGTH.get(u["state"], 0), uk)
         if key == "confirmed_at":
-            return ((u["confirmation"] or {}).get("confirmed_at") or "", u["unit_key"])
+            return ((u["confirmation"] or {}).get("confirmed_at") or "", uk)
         if key in ("map_count", "usable_map_count"):
-            return (u[key], u["unit_key"])
+            return (u[key], uk)
         if key in u["extras"]:
             v = u["extras"][key]
-            return (float(v) if isinstance(v, (int, float)) else 0.0, u["unit_key"])
-        return (u["unit_key"], "")
+            return (float(v) if isinstance(v, (int, float)) else 0.0, uk)
+        return (uk, "")
 
     units.sort(key=_sk, reverse=reverse)
     start = max(0, int(offset or 0))
@@ -6447,7 +6506,8 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         # 사유는 **집계로** 낸다. 행마다 문장을 실으면 목록이 색인하는 것보다 무거워지고,
         # 늘어난 것은 정보가 아니라 같은 문장의 N회 반복이다. 행은 코드만 갖는다.
         "unscorable_reasons": [
-            {"reason_code": c, "reason": _WORKLIST_REASON_TEXT.get(c, c), "count": n}
+            {"reason_code": c, "reason": _worklist_reason_text(c, reason_detail.get(c)),
+             "count": n}
             for c, n in sorted(reasons.items(), key=lambda kv: -kv[1])
         ],
         "sort": {"key": key, "order": "desc" if reverse else "asc",
