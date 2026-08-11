@@ -1636,16 +1636,24 @@ def section_page_load(p, max_tables, http_base):
     # -----------------------------------------------------------------------
     # The call the brief did not name and the access log hides among the others.
     # `switchTable` (client2/src/api.js:130-141) runs schema -> DATA -> history,
-    # and it is the middle one that scales with the table: main.py:1627 issues an
-    # exact `query.count()`, cached for 2 s in TABLE_COUNT_CACHE - and every
-    # ingestion completion calls `invalidate_table_cache`, so the first page load
-    # after a bulk load always pays the full count.
+    # and it is the middle one that scales with the table: `get_table_data` issues
+    # an exact `query.count()`, cached for `main.COUNT_CACHE_TTL` (5.0 s) in
+    # TABLE_COUNT_CACHE.
+    #
+    # ⚠️ CORRECTED 2026-08-11. This comment used to say "2 s", and it said that
+    # ingestion completion clears the cache. Neither was true when it was written:
+    # the TTL has been 5.0, and `invalidate_table_cache` selected keys with a
+    # separator the writer never used, so ALL EIGHT of its call sites removed zero
+    # keys. The invalidation is real as of the same date, so "the first page load
+    # after a bulk load pays the full count" is true NOW and was not true then -
+    # before the fix that first load was served a STALE count for 5 s instead.
     # -----------------------------------------------------------------------
     sub("B-2. /tables/{t}/data 의 진짜 비용 — 캐시가 비워진 직후의 count(*)")
     print("     그리드는 스키마 다음에 /tables/{t}/data 를 부르고, 그 라우트는 총 행수를")
-    print("     정확히 센다(server/main.py:1627). 결과는 2초만 캐시되며, 인제션이 끝날 때마다")
-    print("     invalidate_table_cache가 그 캐시를 비운다 — 즉 «대량 적재 직후 첫 페이지 로드»는")
-    print("     반드시 전량 count를 낸다. 가장 큰 테이블에서 그 비용을 잰다.")
+    print("     정확히 센다(server/main.py get_table_data). 결과는 5초(main.COUNT_CACHE_TTL)")
+    print("     캐시되며, 인제션이 끝날 때마다 invalidate_table_cache가 그 캐시를 비운다")
+    print("     — 즉 «대량 적재 직후 첫 페이지 로드»는 반드시 전량 count를 낸다.")
+    print("     가장 큰 테이블에서 그 비용을 잰다.")
     big = p.rows("""
         SELECT c.relname, c.reltuples::bigint
         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace

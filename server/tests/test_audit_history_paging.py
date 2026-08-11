@@ -202,6 +202,100 @@ def test_cell_history_is_capped_and_scoped_to_the_column(client, db_session, mon
     assert {log["column_name"] for log in page["logs"]} == {"EQP_ID"}
 
 
+# --------------------------------------------------------------------------
+# An empty cell tab is NOT "no history"
+#
+# Machine writes (parser, chain, custom script) store ONE audit row per ROW, under
+# the literal column name `ROW_UPDATE`, so `column_name == col` NEVER matches them.
+# Measured on the isolated `assy_qa` copy 2026-08-11 (this workstation, not
+# production): 225,586 of 239,786 audit rows carry `ROW_UPDATE`, and 225,101
+# distinct rows have machine history and not one per-column entry. For every one of
+# those the cell tab is empty for EVERY column while the row tab is full - which is
+# why this was never reported as missing history.
+#
+# The fix is a disclosure, not a recovery: `row_history_total` is the one fact that
+# tells "this row has no history" apart from "this screen cannot show it".
+# --------------------------------------------------------------------------
+
+def test_a_machine_written_row_reports_the_history_the_cell_tab_cannot_show(
+        client, db_session):
+    row_id = _seed(db_session, 6, column="ROW_UPDATE")
+
+    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/EQP_ID/history")
+    assert page["returned"] == 0, "fixture wrote per-column rows; the defect axis is off"
+    assert page["row_history_total"] == 6, \
+        "the empty page did not say the row has history elsewhere"
+    assert page["row_history_truncated"] is False
+
+
+def test_a_row_with_no_history_at_all_reports_zero(client, db_session):
+    """The other arm, and the whole reason the field is a COUNT and not a flag.
+
+    Without this, a disclosure hardcoded to any non-zero number would pass the
+    test above while telling every empty tab that records exist somewhere.
+    """
+    page = _page(client, f"/tables/{TABLE}/rows/{uuid.uuid4()}/cells/EQP_ID/history")
+    assert page["returned"] == 0
+    assert page["row_history_total"] == 0
+
+
+def test_the_row_route_does_not_carry_the_disclosure(client, db_session):
+    """It would be a redundant second answer to what `returned`/`truncated` say."""
+    row_id = _seed(db_session, 6, column="ROW_UPDATE")
+    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/history")
+    assert page["returned"] == 6
+    assert page["row_history_total"] is None
+
+
+def test_the_row_total_is_a_capped_probe(client, db_session, monkeypatch):
+    """An honest number must not cost an O(depth) scan.
+
+    A single row inflated to 300,019 audit entries has already been measured here,
+    so past the cap the disclosure is a FLOOR and says so. A cap that reported an
+    exact-looking number would be the same silent wrong answer in a new place.
+    """
+    monkeypatch.setattr(audit_history, "ROW_TOTAL_PROBE_CAP", 4)
+    row_id = _seed(db_session, 9, column="ROW_UPDATE")
+
+    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/EQP_ID/history")
+    assert page["row_history_total"] == 4
+    assert page["row_history_truncated"] is True, \
+        "a floor was reported as an exact count"
+
+
+def test_the_machine_summary_is_never_parsed_back_into_a_column(client, db_session):
+    """🔴 The trap this fix deliberately does NOT spring.
+
+    The machine row stores a RENDERED SENTENCE, not data: `f"{col}: {val}"` joined
+    on ", ", with NULL written as the Korean word 비어있음 and integer 0
+    indistinguishable from the string "0". Worse, a value can itself be JSON with
+    its own commas and colons - the literal below is the shape a live
+    `wafer_map_metadata` row carries. Splitting it on ", " to recover per-cell
+    history invents a column named `grid_rows`, and inventing a column is how a
+    fix produces confidently wrong history instead of no history.
+
+    So: the summary text mentions `grid_rows`, and the endpoint still answers
+    that this cell has no per-cell record. That is the correct answer.
+    """
+    row_id = str(uuid.uuid4())
+    db_session.add(models.AuditLog(
+        table_name=TABLE, row_id=row_id, column_name="ROW_UPDATE",
+        old_value=None,
+        new_value=('신규 데이터 생성: target_table: dt_log, '
+                   'grid_metadata: {"grid_cols": 2, "grid_rows": 2, "rotation": 0}, '
+                   'dt_slot: 비어있음, dt_x: 2'),
+        source_name="auto_map_meta", updated_by="system",
+        timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+    db_session.commit()
+
+    for invented in ("grid_rows", "grid_cols", "rotation", "dt_slot", "dt_x"):
+        page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/{invented}/history")
+        assert page["returned"] == 0, \
+            f"the summary string was parsed: '{invented}' grew a per-cell history"
+        assert page["row_history_total"] == 1, \
+            "the disclosure went missing on the one row that needs it most"
+
+
 def test_only_one_route_serves_each_history_path():
     """A second `get_cell_history` was registered on this path and had never run.
     A duplicate route's reliable product is a fix applied to the dead copy."""

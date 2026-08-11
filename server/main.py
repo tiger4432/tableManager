@@ -578,23 +578,77 @@ def download_desktop_client():
     )
 
 import time
-# [성능 최적화] 테이블별 전체 개수 캐시 (2초간 유효)
-TABLE_COUNT_CACHE = {} # {table_name: (count, timestamp)}
+
+# [성능 최적화] 테이블별 count 캐시. 키는 `build_count_cache_key`가 만들고
+# `invalidate_table_cache`가 같은 함수로 되읽는다 - 아래 주석 참고.
+TABLE_COUNT_CACHE = {}  # {cache_key: (count, timestamp)}
+
+#: Count 캐시 TTL. 읽는 쪽(`get_table_data`)과 이 파일의 설명이 갈라지지 않도록
+#: 여기 한 번만 선언한다. (오래된 주석은 2초라고 적혀 있었고 실제 값은 5초였다.)
+COUNT_CACHE_TTL = 5.0
+
+#: 캐시 키의 구분자. 🔴 이 파일 어디에도 두 번째 사본을 만들지 말 것 - 이 상수와
+#: 무효화 쪽 판정이 갈라진 것이 바로 아래 주석의 사고다.
+COUNT_CACHE_KEY_SEP = "|"
+
+#: 캐시 엔트리 상한. 키에 사용자가 타이핑한 `?q=`/`?filters=`가 그대로 들어가므로
+#: 상한이 없으면 **서로 다른 검색어 하나당 한 칸씩 프로세스 수명 내내** 자란다.
+COUNT_CACHE_MAX_ENTRIES = 2000
+
+
+def build_count_cache_key(table_name: str, *parts) -> str:
+    """Count 캐시 키의 유일한 철자.
+
+    🔴 구분자는 여기에만 있다. `invalidate_table_cache`는 이 함수가 만든 키를
+    같은 구분자로 되갈라 테이블을 읽는다. 두 철자가 갈라져 있던 동안(무효화 쪽은
+    `"_"`, 쓰기 쪽은 `"|"`) **여덟 개 호출 지점 전부가 키를 0개 지웠고**, 그래서
+    ① 무효화된 줄 알았던 stale count가 그대로 살아남았고 ② 이 dict이 검색어마다
+    한 칸씩 영원히 자랐다. 키 생성과 키 해석을 한 모듈 안에 붙여 둔 이유다.
+    """
+    return COUNT_CACHE_KEY_SEP.join([table_name, *parts])
+
+
+def count_cache_table_of(cache_key: str) -> str:
+    """캐시 키가 가리키는 테이블명. `build_count_cache_key`의 역연산."""
+    return cache_key.split(COUNT_CACHE_KEY_SEP, 1)[0]
+
+
+def store_table_count(cache_key: str, count: int) -> None:
+    """count 하나를 캐시에 넣되 캐시를 **유한하게** 유지한다.
+
+    TTL이 지난 엔트리는 정의상 죽은 값이므로(다시 읽히면 무조건 미스) 그것부터
+    버린다. 그것으로도 상한 아래로 못 내려가면 - 즉 상한만큼의 엔트리가 전부 5초
+    안에 만들어졌으면 - 가장 오래된 쪽을 버린다. 어느 쪽이든 버려진 키는 다음 요청에서
+    count를 한 번 더 셀 뿐이고 **틀린 값을 주지는 않는다.**
+    """
+    now = time.time()
+    if len(TABLE_COUNT_CACHE) >= COUNT_CACHE_MAX_ENTRIES:
+        for k, (_, at) in list(TABLE_COUNT_CACHE.items()):
+            if now - at >= COUNT_CACHE_TTL:
+                TABLE_COUNT_CACHE.pop(k, None)
+        if len(TABLE_COUNT_CACHE) >= COUNT_CACHE_MAX_ENTRIES:
+            oldest = sorted(TABLE_COUNT_CACHE.items(), key=lambda kv: kv[1][1])
+            for k, _ in oldest[:max(1, COUNT_CACHE_MAX_ENTRIES // 4)]:
+                TABLE_COUNT_CACHE.pop(k, None)
+    TABLE_COUNT_CACHE[cache_key] = (count, now)
+
 
 def invalidate_table_cache(table_name: str):
     """
     해당 테이블과 관련된 모든 카운트 캐시(전체 개수, 검색 결과 개수 등)를 무효화합니다.
+
+    판정은 `count_cache_table_of` 하나로 한다 - 키의 첫 구획이 곧 테이블명이므로
+    `startswith` 같은 접두 비교와 달리 이름이 겹치는 테이블을 오탐/누락하지 않는다.
     """
     if not table_name: return
-    
+
     # dictionary size changed error 방지를 위해 list로 변환하여 순회
     all_keys = list(TABLE_COUNT_CACHE.keys())
-    # 1. 테이블명과 정확히 일치하거나, 2. 테이블명_ 으로 시작하는 모든 키 제거
-    targets = [k for k in all_keys if k == table_name or k.startswith(f"{table_name}_")]
-    
+    targets = [k for k in all_keys if count_cache_table_of(k) == table_name]
+
     for k in targets:
         TABLE_COUNT_CACHE.pop(k, None)
-        
+
     if targets:
         print(f"[Cache] Invalidated {len(targets)} keys for table: {table_name}")
 
@@ -918,6 +972,35 @@ def get_deleted_rows_business_keys_bulk(db: Session, table_name: str, row_ids: l
                         result[r_id] = str(nv)
     return result
 
+def resolve_missing_business_keys(db: Session, log_models: list) -> None:
+    """`business_key`가 빈 삭제 행 로그들을 **한 번에** 채운다. (in-place)
+
+    행별 `get_deleted_row_business_key`와 의미론이 같고 - 그 함수의 벌크 쌍둥이인
+    `get_deleted_rows_business_keys_bulk`를 테이블별로 부르는 것이 전부다 - 다른
+    것은 쿼리 수뿐이다. 로그마다 2문장이던 것이 **테이블당** 2문장이 된다.
+
+    이 함수가 있는 이유: `/audit_logs/transaction/{tx}`의 기본 `limit`이 20,000이라
+    로그별 호출은 클릭 한 번에 최대 40,000 왕복이었다. 한 트랜잭션의 로그는 여러
+    테이블에 걸칠 수 있으므로(체인 인제션) 테이블별로 묶어서 부른다.
+    """
+    if not log_models:
+        return
+    from collections import defaultdict
+    by_table = defaultdict(list)
+    for lm in log_models:
+        if lm.table_name and lm.row_id and lm.row_id != "_BATCH_":
+            by_table[lm.table_name].append(lm.row_id)
+    resolved = {}
+    for t_name, r_ids in by_table.items():
+        # dict.fromkeys: 같은 행을 두 번 싣지 않는다(IN 목록만 부풀린다).
+        resolved[t_name] = get_deleted_rows_business_keys_bulk(
+            db, t_name, list(dict.fromkeys(r_ids)))
+    for lm in log_models:
+        bk = resolved.get(lm.table_name, {}).get(lm.row_id)
+        if bk:
+            lm.business_key = bk
+
+
 def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[str, str]]:
     from collections import defaultdict
     by_table = defaultdict(list)
@@ -1048,6 +1131,9 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                     existing_keys = check_rows_exist(db, keys_to_check)
                     
                     cloned_logs = []
+                    # 키가 필요한 로그를 모아 두었다가 루프 밖에서 한 번에 채운다.
+                    # 루프 안에서 부르면 로그 1건당 쿼리 2개다 - 아래 DB 분기와 같은 결함.
+                    needs_bk = []
                     for l in logs[:limit]:
                         c = l.column_name
                         if c and c not in cols: cols.append(c)
@@ -1055,8 +1141,9 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                         is_deleted = cloned_log.row_id != "_BATCH_" and (cloned_log.table_name, cloned_log.row_id) not in existing_keys
                         cloned_log.is_row_deleted = is_deleted
                         if is_deleted and not cloned_log.business_key:
-                            cloned_log.business_key = get_deleted_row_business_key(db, cloned_log.table_name, cloned_log.row_id)
+                            needs_bk.append(cloned_log)
                         cloned_logs.append(cloned_log)
+                    resolve_missing_business_keys(db, needs_bk)
                     return {
                         "transaction_id": tx_id,
                         "total_count": total_count,
@@ -1085,17 +1172,22 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
     
     logs = []
     cols = []
+    # 키가 필요한 로그를 모아 두었다가 루프 밖에서 한 번에 채운다. 이 루프의 상한은
+    # `limit`(기본 20,000)이라 로그별 호출은 클릭 한 번에 최대 40,000 왕복이었다.
+    needs_bk = []
     for log_obj in db_logs:
         log_dict = log_obj.__dict__.copy()
         log_model = schemas.AuditLogResponse.model_validate(log_dict)
         is_deleted = log_model.row_id != "_BATCH_" and (log_model.table_name, log_model.row_id) not in existing_keys
         log_model.is_row_deleted = is_deleted
         if is_deleted and not log_model.business_key:
-            log_model.business_key = get_deleted_row_business_key(db, log_model.table_name, log_model.row_id)
+            needs_bk.append(log_model)
         logs.append(log_model)
         c = log_model.column_name
         if c and c not in cols: cols.append(c)
-        
+
+    resolve_missing_business_keys(db, needs_bk)
+
     return {
         "transaction_id": tx_id,
         "total_count": total_count,
@@ -1661,7 +1753,7 @@ def get_table_data(
     
     # ── [Step 2] 데이터 페칭 및 개수 산출 (Optimization) ──
     # [Fix] transaction_id 필터링 시에도 캐시 정합성을 보장하기 위해 키에 포함
-    cache_key_parts = [table_name, "total_count"]
+    cache_key_parts = ["total_count"]
     if q: cache_key_parts.append(f"q:{q}")
     if cols: cache_key_parts.append(f"cols:{cols}")
     if transaction_id: cache_key_parts.append(f"tx:{transaction_id}")
@@ -1672,16 +1764,17 @@ def get_table_data(
     # 0% with everything answered, which is N36 wearing the other face.
     if enrichment_queue:
         cache_key_parts.append(f"eq:{enrichment_queue}:{enrichment_queue_scope or ''}")
-    cache_key = "|".join(cache_key_parts)
-    cache_ttl = 5.0
-    
-    if cache_key in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[cache_key][1] < cache_ttl):
+    # 🔴 키 철자는 `build_count_cache_key` 하나뿐이다. 여기서 `"|".join(...)`을 다시
+    #    쓰면 무효화 쪽 판정과 갈라져 여덟 개 호출 지점이 전부 죽는다(그 사고의 재발).
+    cache_key = build_count_cache_key(table_name, *cache_key_parts)
+
+    if cache_key in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[cache_key][1] < COUNT_CACHE_TTL):
         total_count = TABLE_COUNT_CACHE[cache_key][0]
     else:
         t_tmp = time.time()
         total_count = query.count()
         t_count = time.time() - t_tmp
-        TABLE_COUNT_CACHE[cache_key] = (total_count, time.time())
+        store_table_count(cache_key, total_count)
     
     from sqlalchemy.sql import func
     if order_by == "updated_at":
@@ -1912,10 +2005,20 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, trans
     return {"row_ids": matched_ids}
 
 
+#: 한 번의 CSV 추출이 내보낼 수 있는 최대 행 수. **이 선언이 유일본이다** -
+#: 헤더 추산(`X-Total-Rows`)과 실제 거절 판정이 같은 값을 읽는다.
+#:
+#: 🔴 이 상한은 오래도록 **헤더에만** 적용돼 있었다. `total_count = min(total_count,
+#:    1000000)`이 추산치만 깎았고 스트리밍 쿼리엔 `.limit()`이 없어서, 200만 행 테이블은
+#:    「최대 100만 행」이라고 광고하면서 200만 행을 다 내보냈다. 광고된 상한과 집행되는
+#:    상한이 다른 것은 상한이 없는 것보다 나쁘다.
+EXPORT_MAX_ROWS = 1_000_000
+
+
 @app.get("/tables/{table_name}/export")
 def export_table_csv(
-    table_name: str, 
-    q: str = None, 
+    table_name: str,
+    q: str = None,
     cols: str = None,
     order_by: str = "row_id",
     order_desc: bool = False,
@@ -1924,7 +2027,13 @@ def export_table_csv(
     db: Session = Depends(get_db)
 ):
     """
-    현재 검색/정렬 조건에 맞는 데이터를 최대 100만 행까지 CSV로 스트리밍 추출합니다.
+    현재 검색/정렬 조건에 맞는 데이터를 CSV로 스트리밍 추출합니다.
+
+    상한은 `EXPORT_MAX_ROWS`이며 **자르지 않고 거절**합니다(413). 잘린 CSV는
+    멀쩡하게 열리고 숫자만 모자란 파일이라, 받은 사람이 그것을 전체라고 믿는 것을
+    막을 방법이 파일 안에 없습니다. 거절은 첫 바이트를 보내기 전에 일어나므로
+    반쯤 쓰인 파일도 남지 않습니다. (같은 이유로 이 라우트는 컬럼이 밀린 CSV도
+    내보내지 않고 500으로 거절합니다.)
     """
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
@@ -2078,7 +2187,20 @@ def export_table_csv(
     
     # [Performance Optimization] 빠른 카운트(SELECT COUNT(*))만 실행하여 헤더 준비 속도 극대화
     total_count = query.count()
-    total_count = min(total_count, 1000000)
+
+    # 🔴 상한 집행. 여기가 **스트리밍 시작 전**이라는 점이 이 위치의 전부다 -
+    #    StreamingResponse가 나가고 나면 브라우저는 이미 파일을 만들었고, 그 뒤에
+    #    「사실 잘렸습니다」를 말할 채널이 CSV 본문밖에 없다. 본문에 적은 경고는
+    #    엑셀에서 그냥 마지막 데이터 행처럼 보인다.
+    #    자르지 않고 거절하는 이유는 docstring 참고.
+    if total_count > EXPORT_MAX_ROWS:
+        raise HTTPException(
+            status_code=413,
+            detail=(f"추출 상한 {EXPORT_MAX_ROWS:,}행을 넘습니다 (현재 조건 {total_count:,}행). "
+                    f"잘린 CSV를 내보내지 않습니다 - 검색어나 필터로 범위를 좁혀 주십시오."))
+
+    # 여기 도달하면 total_count <= EXPORT_MAX_ROWS이므로 추산치는 실제 송신량과 같다.
+    # (예전의 `min(total_count, 1000000)`은 이 수를 깎아 진행률이 100%를 넘게 만들었다.)
     estimated_total_size = int(header_size + (avg_row_size * total_count))
 
     def generate():
@@ -2323,7 +2445,7 @@ def get_row_data(table_name: str, row_id: str, db: Session = Depends(get_db)):
 
 
 def _history_page(db: Session, table_name: str, row_id: str, base_query,
-                  limit, cursor) -> schemas.AuditHistoryPage:
+                  limit, cursor, disclose_row_total: bool = False) -> schemas.AuditHistoryPage:
     """One keyset page of audit history + the row-level enrichment both tabs need.
 
     Shared by the row and the cell endpoint because everything except the
@@ -2334,6 +2456,10 @@ def _history_page(db: Session, table_name: str, row_id: str, base_query,
 
     Ceiling lives in server/audit_history.py - read its docstring before changing
     the sort key, the cursor form, or the predicate. All three are measured.
+
+    `disclose_row_total` is the CELL route's, and only the cell route's: it adds
+    the count of audit entries on the ROW, which is the one fact that tells an
+    empty cell page apart from a row with no history. See `AuditHistoryPage`.
     """
     settings = audit_history.resolve_settings(audit_history.load_config())
     page_size = audit_history.resolve_limit(limit, settings)
@@ -2358,9 +2484,18 @@ def _history_page(db: Session, table_name: str, row_id: str, base_query,
         log_res.is_row_deleted = not row_exists
         log_res.business_key = log.business_key or bk_val
         result.append(log_res)
+
+    row_total, row_total_capped = None, False
+    if disclose_row_total:
+        row_total, row_total_capped = audit_history.count_row_history(
+            db.query(models.AuditLog).filter(
+                models.AuditLog.table_name == table_name,
+                models.AuditLog.row_id == row_id))
+
     return schemas.AuditHistoryPage(
         logs=result, truncated=truncated, next_cursor=next_cursor,
         limit=page_size, returned=len(result),
+        row_history_total=row_total, row_history_truncated=row_total_capped,
     )
 
 
@@ -2384,13 +2519,31 @@ def get_row_history(table_name: str, row_id: str,
 def get_cell_history(table_name: str, row_id: str, col_name: str,
                      limit: Optional[int] = None, cursor: Optional[str] = None,
                      db: Session = Depends(get_db)):
-    """특정 셀의 변경 이력 한 페이지 (최신순). 응답 모양은 행 이력과 동일합니다."""
+    """특정 셀의 변경 이력 한 페이지 (최신순). 응답 모양은 행 이력과 같습니다.
+
+    ⚠️ **빈 페이지는 「이력 없음」이 아닙니다.** 기계 쓰기(파서·체인·스크립트)는 셀마다가
+    아니라 **행마다 한 줄**을, 컬럼명 자리에 리터럴 `ROW_UPDATE`를 넣어 적습니다. 그래서
+    아래 `column_name == col_name` 필터에는 **영원히 걸리지 않습니다.** 격리 `assy_qa`
+    실측(2026-08-11, 이 워크스테이션이며 운영 수치가 아님): 감사 239,786행 중 225,586행
+    (94.08%)이 `ROW_UPDATE`이고, **225,101개 행은 기계 이력만 있고 컬럼별 기록이 하나도
+    없습니다** - 그 행들에서는 모든 셀 탭이 비고 행 탭은 차 있습니다.
+
+    응답은 그래서 `row_history_total`을 함께 싣습니다. 이것이 「이 행엔 정말 이력이
+    없다」와 「기록은 있는데 이 화면이 못 보여준다」를 가르는 유일한 사실입니다.
+
+    🔴 요약 문자열을 파싱해 셀 이력을 복원하지 마십시오. 그 문자열은 데이터가 아니라
+       **렌더된 문장**이고(NULL은 한국어 `비어있음`으로 적힙니다), 값 자체가 쉼표·콜론을
+       가진 JSON인 경우가 실재합니다 - `grid_metadata: {"grid_cols": 2, "grid_rows": 2,
+       ...}`를 ", "로 자르면 `"grid_rows"`라는 없는 컬럼이 생깁니다. 표현을 데이터로
+       되돌리면 **자신 있게 틀린 이력**이 나옵니다. 고칠 곳은 쓰기 경로입니다.
+    """
     q = db.query(models.AuditLog).filter(
         models.AuditLog.table_name == table_name,
         models.AuditLog.row_id == row_id,
         models.AuditLog.column_name == col_name
     )
-    return _history_page(db, table_name, row_id, q, limit, cursor)
+    return _history_page(db, table_name, row_id, q, limit, cursor,
+                         disclose_row_total=True)
 
 @app.post("/tables/{table_name}/rows")
 async def create_row(table_name: str, count: int = 1, user_name: str = "system", db: Session = Depends(get_db)):

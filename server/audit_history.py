@@ -239,3 +239,33 @@ def fetch_page(query, model, limit: int, cursor: str = None):
     rows = rows[:limit]
     next_cursor = encode_cursor(rows[-1].timestamp, rows[-1].id) if (truncated and rows) else None
     return rows, truncated, next_cursor
+
+
+#: Ceiling on the row-total probe below. A MODULE CONSTANT and not a config knob
+#: on purpose: it changes nothing an operator tunes - only whether a disclosure
+#: reads "15건" or "1,000건 이상" - and every config key is a surface someone has
+#: to be told about. `default_limit`/`max_limit` are policy; this is a safety bound.
+ROW_TOTAL_PROBE_CAP = 1000
+
+
+def count_row_history(query, cap: int = None):
+    """How many audit entries a row has, as `(count, is_floor)`.
+
+    Same trick `fetch_page` uses for `truncated`: ask for `cap + 1` and let the
+    answer's own size say whether it is exact. An honest disclosure must not cost
+    an O(depth) scan - this project has already measured a single row inflated to
+    300,019 audit entries - so past the cap the caller is told "at least `cap`"
+    and `is_floor` is True. Bounded either way.
+
+    Measured on the isolated `assy_qa` copy 2026-08-11 against `idx_audit_row_history`
+    `(table_name, row_id, timestamp DESC, id DESC)`: the capped probe is an Index
+    Only Scan costing the SAME as the exact count on a real row (0.32 ms vs
+    0.39 ms over 5 calls), so the bound buys safety at no measurable price.
+
+    `cap` is read from the module at CALL time, not bound as a default argument -
+    a default is frozen at def time and would make the constant untestable.
+    """
+    cap = ROW_TOTAL_PROBE_CAP if cap is None else cap
+    rows = query.with_entities(sa.literal(1)).limit(cap + 1).all()
+    n = len(rows)
+    return (cap, True) if n > cap else (n, False)

@@ -57,6 +57,15 @@ class AuditHistoryPage(BaseModel):
 
     `truncated` is the same word (and the same invariant) `value_suggest` uses
     for the same situation. See server/audit_history.py.
+
+    `row_history_total` EXISTS BECAUSE AN EMPTY CELL PAGE IS NOT "NO HISTORY".
+    Machine writes store ONE audit row per ROW, under the literal column name
+    `ROW_UPDATE` (crud.py), so `column_name == col` never matches them. Measured
+    on the isolated `assy_qa` copy 2026-08-11: 225,586 of 239,786 audit rows
+    (94.08%) carry `ROW_UPDATE`, and 225,101 distinct rows have machine history
+    and NOT ONE per-column entry - for every one of those, every cell tab is
+    empty while the row tab is full. The records were never missing; they were
+    missing ON ONE SCREEN, which is why nobody reported it.
     """
     logs: list[AuditLogResponse]
     #: True == there is older history past this page. Show the 더 보기 affordance.
@@ -69,6 +78,28 @@ class AuditHistoryPage(BaseModel):
     limit: int
     #: len(logs), so no caller has to count to decide whether to render.
     returned: int = 0
+    #: Audit entries on the ROW this cell belongs to - i.e. what the row tab
+    #: would page through. Cell route only; `None` on the row route, where
+    #: `returned`/`truncated` already describe the same population.
+    #:
+    #: 🔴 THE ONE FACT THAT DISTINGUISHES THE TWO EMPTY TABS. `returned == 0`
+    #:    with `row_history_total == 0` means this row genuinely has no history.
+    #:    `returned == 0` with `row_history_total > 0` means the records exist and
+    #:    THIS SCREEN CANNOT SHOW THEM. Rendering both as "기록 없음" is the
+    #:    silent wrong answer this envelope exists to prevent.
+    #:
+    #:    Deliberately NOT derived by parsing the machine summary string. That
+    #:    string is a RENDERED SENTENCE (`f"{col}: {val}"` joined on ", ", NULL
+    #:    written as the Korean word 비어있음) and one of its values is itself
+    #:    JSON with its own commas and colons - a live `wafer_map_metadata` row
+    #:    reads `grid_metadata: {"grid_cols": 2, "grid_rows": 2, ...}`, so
+    #:    splitting on ", " invents a column named `"grid_rows"`. Presentation
+    #:    parsed back into data is confidently wrong history.
+    row_history_total: Optional[int] = None
+    #: True == `row_history_total` is a FLOOR ("N개 이상"), not the exact count.
+    #: The count is a capped probe (`audit_history.ROW_TOTAL_PROBE_CAP`) so that a
+    #: pathologically deep row cannot turn a disclosure into an O(depth) scan.
+    row_history_truncated: bool = False
 
 class AuditLogGroupResponse(BaseModel):
     transaction_id: Optional[str] = None
