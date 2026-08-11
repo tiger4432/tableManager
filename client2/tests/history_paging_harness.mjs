@@ -26,6 +26,13 @@
 //      correctly formatted, and about a different row entirely. Section D drives exactly that
 //      interleaving — a 더 보기 issued on row A, resolved after the operator has clicked row B.
 //
+//   4. THE GLOBAL TAB'S OWN COPY OF (1), WHICH REPORTS ITSELF AS A NETWORK ERROR.
+//      `/audit_logs/recent` learned the same envelope on 2026-08-11 (`{groups, truncated,
+//      next_cursor, …}`), so `state.globalHistoryData = await res.json()` stores an object where
+//      `renderGlobalTimeline` calls `.forEach`. The TypeError is raised inside `loadHistory`'s
+//      own try/catch, so the panel says "Failed to load global history log" — a working server
+//      misreported as a dead one. Section H runs the real renderer against a real envelope.
+//
 // WHY IT EXECUTES RATHER THAN READS. Every claim above is about what happens ACROSS an await,
 // and "the state is reset before the fetch" and "after it" are the same source shape. So the
 // real `loadHistory`, `loadMoreHistory`, `readHistoryPage`, `renderTimeline`,
@@ -94,6 +101,11 @@ const WANTED = [
   'renderTimeline', 'renderHistoryMore', 'historyMoreLabel', 'createHistoryMoreDom',
   'markMoreFailed', 'markMoreLost', 'loadMoreHistory',
   'renderTimelineIncremental', 'createTimelineItemDom', 'appendHistoryLocally', 'formatVal',
+  // The global tab, sliced for section H. `renderGlobalTimeline` is the function that dies when
+  // the envelope is assigned where the array belongs, and `createGlobalTimelineItemDom` is what
+  // actually paints an entry — stubbing the second would leave "the panel renders" asserted
+  // against a stand-in rather than against the code that renders it.
+  'renderGlobalTimeline', 'createGlobalTimelineItemDom',
 ];
 
 function applyOnce(src, find, replace, label) {
@@ -165,7 +177,14 @@ function makeEl(tag) {
       if (p) { const i = p.children.indexOf(el); if (i >= 0) p.children.splice(i, 1); }
       el.parentElement = null;
     },
-    querySelector: (sel) => descend(el).find(n => matches(n, sel)) || null,
+    // This document does NOT parse `innerHTML` — it stores the string. Code that builds its
+    // markup as a template and then reaches back into it to wire handlers
+    // (`createGlobalTimelineItemDom` does exactly that) would get `null` and throw, which would
+    // make the global panel untestable here for a reason that has nothing to do with the panel.
+    // So a CLASS selector naming something present in this element's own markup yields a
+    // detached stub node, memoised so two lookups of one selector are one node. It is a wiring
+    // surface and nothing more: no assertion in this file reads a child that was never parsed.
+    querySelector: (sel) => descend(el).find(n => matches(n, sel)) || markupStub(el, sel),
     querySelectorAll: (sel) => descend(el).filter(n => matches(n, sel)),
     click: () => (el._listeners.click || []).forEach(f => f({ target: el, stopPropagation() {}, closest: () => null })),
   };
@@ -180,6 +199,18 @@ function descend(root) {
 function matches(node, sel) {
   if (sel.startsWith('.')) return node.classList.contains(sel.slice(1));
   return false;
+}
+// See `querySelector` above. Only class selectors, only against this element's OWN markup, and
+// only when nothing real matched — a lookup that would have found a parsed node never reaches it.
+function markupStub(el, sel) {
+  if (!sel.startsWith('.') || !el._html.includes(sel.slice(1))) return null;
+  el._stubs = el._stubs || {};
+  if (!el._stubs[sel]) {
+    const stub = makeEl('div');
+    stub.className = sel.slice(1);
+    el._stubs[sel] = stub;
+  }
+  return el._stubs[sel];
 }
 
 // ── The driver ──────────────────────────────────────────────────────────────────
@@ -227,11 +258,14 @@ function buildSandbox(src = UNDER_TEST) {
     encodeURIComponent,
     console: { error() {}, warn() {}, log() {} },
     // Reached only by branches these cases do not drive; declared so an accidental reach is a
-    // loud throw rather than a silent global.
-    renderGlobalTimeline: () => { throw new Error('global tab not under test'); },
-    renderGlobalTimelineIncremental: () => { throw new Error('global tab not under test'); },
+    // loud throw rather than a silent global. (`renderGlobalTimeline` used to be one of these
+    // and is now sliced from source — see WANTED. The function declaration overrides this
+    // object's property, so nothing here can shadow the real one.)
+    renderGlobalTimelineIncremental: () => { throw new Error('global incremental not under test'); },
     setTransactionFilter: () => {},
     navigateToLog: () => {},
+    // Only reached from a group's expand handler, which no case here clicks.
+    renderSubDetails: () => {},
   };
   vm.createContext(ctx);
   vm.runInContext(WANTED.map(n => fn(src, n)).join('\n\n'), ctx);
@@ -258,6 +292,16 @@ const log = (i, row = 'ROW-A', col = 'COL-A') => ({
 });
 const page = (logs, cursor) => ({
   logs, truncated: cursor !== null, next_cursor: cursor, limit: 200, returned: logs.length,
+});
+// `/audit_logs/recent`. Its list is `groups`, not `logs`, because each group carries a `logs`
+// of its own — and `total_count` is the transaction's real size while `logs` holds only the
+// representative the route ships, which is why a group is not just a list of rows.
+const group = (txId, logs, total = logs.length, cols = ['COL-A']) => ({
+  transaction_id: txId, total_count: total, summary_columns: cols, logs,
+});
+const recentPage = (groups, cursor = null) => ({
+  groups, truncated: cursor !== null, next_cursor: cursor,
+  limit_groups: 100, returned: groups.length,
 });
 
 const items = (tl) => tl.children.filter(c => c.classList.contains('timeline-item'));
@@ -624,6 +668,122 @@ async function sectionF() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// H — the GLOBAL tab, after `/audit_logs/recent` learned the envelope
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// 🔴 THIS IS THE SAME DEFECT AS SECTION B'S, ON THE OTHER TAB, AND IT FAILS MORE QUIETLY. The
+//    route answered with a bare array until 2026-08-11; `state.globalHistoryData = await
+//    res.json()` now stores an OBJECT, and `renderGlobalTimeline` calls `.forEach` on it. That
+//    TypeError is thrown INSIDE `loadHistory`'s own try/catch, so the screen does not crash —
+//    it says "Failed to load global history log", exactly as it would for a dead server. An
+//    exit code sees nothing and an operator sees a network problem that is not there.
+//
+// A HALF-FLIPPED READ FAILS DIFFERENTLY AND JUST AS QUIETLY: opening `logs` instead of `groups`
+// yields an empty array, so the panel renders "No database history recorded." over a database
+// full of history. H2b is what tells those two apart from a working read, and neither is
+// distinguishable from success by a count of assertions or by an exit code.
+//
+// H5 IS DELIBERATELY NOT ENOUGH ON ITS OWN. A bare array still renders, and a client that never
+// learned the envelope passes that case — which is why the flip is scored on H2/H3, against a
+// body only the flipped server sends.
+//
+// ⚠️ NOTHING BELOW MAY ASSUME THE THING IS A LIST. The defect this section exists for replaces
+//    that array with an object, so a bare `.map`/`.find`/`items()[0]` here would throw before the
+//    summary line printed — and a harness that dies without `ASSERTIONS` reports to the build gate
+//    as DEAD, which is the disguise that gate was written to strip. A regression must arrive as a
+//    clean red naming every assertion it broke. `txIds` and `entryHtml` exist only for that.
+const txIds = (v) => Array.isArray(v) ? v.map(g => g.transaction_id) : `NOT AN ARRAY: ${typeof v}`;
+const entryHtml = (tl, i) => { const el = items(tl)[i]; return el ? el.innerHTML : '(nothing rendered)'; };
+
+async function sectionH() {
+  let S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([
+    group('TX-1', [log(1)], 5),      // a bulk transaction: 5 rows, 1 representative log
+    group('TX-2', [log(2)]),         // a single-cell edit
+  ], 'RCUR1') });
+  await S.ctx.loadHistory();
+
+  check('H1 the flip did not move the request',
+    S.requests[0], `${API_BASE}/audit_logs/recent?limit_groups=100`);
+  checkFn('H2 state.globalHistoryData is a plain Array after a global load',
+    state.globalHistoryData, v => Array.isArray(v), 'Array.isArray === true');
+  check('H2b ... and holds the GROUPS, in the order they arrived',
+    txIds(state.globalHistoryData), ['TX-1', 'TX-2']);
+  check('H2c ... and carries no envelope field of its own',
+    [state.globalHistoryData.truncated, state.globalHistoryData.next_cursor,
+     state.globalHistoryData.groups, state.globalHistoryData.returned],
+    [undefined, undefined, undefined, undefined]);
+
+  // THE PANEL, RENDERED — by the real `renderGlobalTimeline` and the real item factory. "It
+  // still renders" is the claim this whole change has to survive, and it is not a type check.
+  check('H3 the panel painted one entry per group', items(S.timeline).length, 2);
+  check('H3b ... reading the GROUP, not just its representative log',
+    entryHtml(S.timeline, 0).includes('5건 변경'), true);
+  check('H3c ... and the single-log group renders its column',
+    entryHtml(S.timeline, 1).includes('COL-A'), true);
+  check('H3d ... each tagged with its transaction',
+    items(S.timeline).map(li => li.dataset.txId), ['TX-1', 'TX-2']);
+
+  // The array contract, RUN. `appendHistoryLocally` is the WebSocket path, and on this tab it
+  // calls `.find` and `.unshift` on `globalHistoryData` — so it is the second thing an envelope
+  // assigned here would break, minutes after the load, with nobody looking at the code.
+  let liveErr = null;
+  try {
+    S.ctx.appendHistoryLocally({ ...log(7), transaction_id: 'TX-3' }, true);
+    S.ctx.appendHistoryLocally({ ...log(8), transaction_id: 'TX-1' }, true);
+  } catch (e) { liveErr = String((e && e.message) || e); }
+  check('H4 a live WebSocket log does not throw against the loaded list', liveErr, null);
+  check('H4b ... one with no group on screen becomes a group, at the top',
+    txIds(state.globalHistoryData), ['TX-3', 'TX-1', 'TX-2']);
+  const tx1 = Array.isArray(state.globalHistoryData)
+    ? state.globalHistoryData.find(g => g.transaction_id === 'TX-1') : null;
+  check('H4c ... one for a known group joins it, newest first',
+    tx1 ? tx1.logs.map(l => l.id) : null, [8, 1]);
+  check('H4d ... and that group\'s count grows with it', tx1 ? tx1.total_count : null, 6);
+
+  // -- a server that has NOT flipped still renders --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: [group('TX-9', [log(9)])] });
+  await S.ctx.loadHistory();
+  check('H5 a bare array is still read, and still painted',
+    [txIds(state.globalHistoryData), items(S.timeline).length], [['TX-9'], 1]);
+
+  // -- an empty projection states itself --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([]) });
+  await S.ctx.loadHistory();
+  check('H6 an empty projection says so',
+    S.timeline.innerHTML.includes('No database history recorded'), true);
+  checkFn('H6b ... and still leaves an Array behind', state.globalHistoryData,
+    v => Array.isArray(v) && v.length === 0, 'an empty Array');
+
+  // -- a body whose list is under some OTHER name is empty, never an object --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: { logs: [group('TX-X', [log(1)])], truncated: false, next_cursor: null } });
+  await S.ctx.loadHistory();
+  checkFn('H7 an unrecognised list name yields an Array, not a throw and not an object',
+    state.globalHistoryData, v => Array.isArray(v) && v.length === 0, 'an empty Array');
+
+  // -- and a genuinely failed load still reports as one --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ throws: true });
+  await S.ctx.loadHistory();
+  check('H8 a failed global load says it failed',
+    S.timeline.innerHTML.includes('Failed to load global history'), true);
+  resetState();
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // G — the mutation corpus. Every defect must be CAUGHT; the controls must not fire.
 // ════════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
@@ -659,6 +819,18 @@ const MUTANTS = [
   { name: 'the cursor is dropped from the page request', defect: true,
     find: "  if (cursor) url += `?cursor=${encodeURIComponent(cursor)}`;",
     repl: '  if (false) url += cursor;' },
+  // THE FLIP, UNDONE — this is verbatim the code that shipped before the envelope landed. It
+  // must be caught, and the reason it is worth a mutant of its own is that it does NOT crash:
+  // the TypeError lands in `loadHistory`'s catch and the panel reports a failed fetch.
+  { name: 'the global panel assigns the envelope where the array belongs', defect: true,
+    find: "      const { logs: groups } = readHistoryPage(await res.json(), 'groups');\n"
+        + '      state.globalHistoryData = groups;',
+    repl: '      state.globalHistoryData = await res.json();' },
+  // Half-flipped: the envelope is opened, under the wrong list name. The panel then declares an
+  // empty history over a full database, which is a wrong answer wearing an empty state.
+  { name: 'the global read opens the wrong list of the envelope', defect: true,
+    find: "readHistoryPage(await res.json(), 'groups')",
+    repl: 'readHistoryPage(await res.json())' },
   // Controls: real edits that change nothing observable. If either of these "fails", the
   // sections above are keyed on something other than the behaviour they claim to score.
   { name: 'CONTROL: a comment is reworded', defect: false,
@@ -683,6 +855,7 @@ async function sectionG() {
       await sectionD();
       await sectionE();
       await sectionF();
+      await sectionH();
     } catch (e) {
       // A mutant that throws (a slice that no longer parses, a DOM operation that cannot apply)
       // is caught just as surely as one that fails an assertion.
@@ -706,6 +879,7 @@ await sectionC();
 await sectionD();
 await sectionE();
 await sectionF();
+await sectionH();
 const beforeG = { pass, fail };
 await sectionG();
 

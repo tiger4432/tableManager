@@ -921,12 +921,12 @@ from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
 from ingestion_activity import registry as ingestion_activity_registry
 
-@app.get("/audit_logs/recent", response_model=list[schemas.AuditLogGroupResponse])
+@app.get("/audit_logs/recent", response_model=schemas.AuditLogGroupPage)
 def get_recent_audit_logs(response: Response, limit_groups: int = 100,
                           db: Session = Depends(get_db)):
-    """The newest `limit_groups` transaction groups.
+    """The newest `limit_groups` transaction groups, as an envelope.
 
-    TRUNCATION IS SPOKEN, AND IT TRAVELS IN HEADERS.
+    TRUNCATION IS SPOKEN, IN THE BODY AND IN THE HEADERS.
 
     The projection's scan is bounded (`audit_cache.RECENT_DEFAULTS`), so it can
     return FEWER than `limit_groups` groups - and a short list is
@@ -934,17 +934,21 @@ def get_recent_audit_logs(response: Response, limit_groups: int = 100,
     this project keeps paying for. The two facts are the same two
     `audit_history.fetch_page` returns and carry the same meaning:
 
-        X-Audit-Truncated    "there is more history below the last group"
-        X-Audit-Next-Cursor  where to resume, same opaque token as /history
+        truncated    "there is more history below the last group"
+        next_cursor  where to resume, same opaque token as /history
 
-    🚧 THEY ARE HEADERS AND NOT AN ENVELOPE ONLY BECAUSE OF THE CLIENT. The
-    row/cell history endpoints answer with `{logs, truncated, next_cursor}`, and
-    this route should end there too. It cannot move on its own: client2 reads
-    this one with `state.globalHistoryData = await res.json()` and then iterates
-    it (`timeline.js` loadHistory -> renderGlobalTimeline), so a body envelope
-    breaks the history panel outright. Flipping it is a boundary-contract change
-    that needs the client's tolerant read - `readHistoryPage` already has
-    exactly that shape - landed in the same commit.
+    THE BODY IS `{groups, truncated, next_cursor, limit_groups, returned}`, the
+    same envelope the row/cell history routes answer with. It was a bare list
+    until 2026-08-11 and the headers below were the whole channel, because
+    client2 read this one with `state.globalHistoryData = await res.json()` and
+    then iterated it - so an envelope broke the history panel outright. The
+    client now opens it with the tolerant reader it already had
+    (`timeline.js readHistoryPage`, which still reads a bare array as a complete
+    list), and the two sides landed together.
+
+    THE HEADERS STAY. They cost one line each, they are already tested, and any
+    caller that reads them keeps working. Removing them is a separate decision
+    from flipping the body, and this is not it.
     """
     # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
     audit_cache.load_initial(db, limit_groups)
@@ -958,7 +962,7 @@ def get_recent_audit_logs(response: Response, limit_groups: int = 100,
         response.headers["X-Audit-Next-Cursor"] = audit_cache.next_cursor
 
     # 2. 캐시된 그룹을 경량화하여 반환
-    result = []
+    groups = []
     # Collect keys to check existence
     keys_to_check = []
     for g in audit_cache.groups:
@@ -989,13 +993,19 @@ def get_recent_audit_logs(response: Response, limit_groups: int = 100,
         if is_deleted and not repr_log.business_key:
             repr_log.business_key = get_deleted_row_business_key(db, repr_log.table_name, repr_log.row_id)
                 
-        result.append({
+        groups.append({
             "transaction_id": g.get("transaction_id"),
             "total_count": g.get("total_count", len(logs)),
             "summary_columns": cols,
             "logs": [repr_log] # 대표 로그 1건만 포함
         })
-    return result
+    return {
+        "groups": groups,
+        "truncated": audit_cache.truncated,
+        "next_cursor": audit_cache.next_cursor,
+        "limit_groups": limit_groups,
+        "returned": len(groups),
+    }
 
 @app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
 def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int = 20000):
@@ -6236,7 +6246,12 @@ if os.path.exists(client2_dist_path):
         dev_page_file = os.path.abspath(os.path.join(script_dir, "..", "client2", "enrichment.html"))
         if os.path.exists(dev_page_file):
             return FileResponse(dev_page_file, headers=no_cache_headers)
-        raise HTTPException(status_code=404, detail="Enrichment page not found. Please build frontend first.")
+        # The page was RETIRED (ab36fab), not left unbuilt. The old text here said
+        # "Please build frontend first", which sends an operator to run a build that
+        # can never produce this file. The route stays so a bookmark gets an answer
+        # instead of the static catch-all's index.html.
+        raise HTTPException(status_code=404,
+                            detail="Enrichment 페이지 폐지됨 · 참조뷰 → 메인 화면 이력 사이드바 탭")
 
     @app.get("/{file_name:path}")
     async def serve_static_or_index(file_name: str):

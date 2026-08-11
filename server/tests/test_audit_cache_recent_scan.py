@@ -151,11 +151,18 @@ def test_d_the_kept_logs_are_capped_but_the_count_is_not(db_session, knobs):
 
 
 def test_e_the_route_publishes_the_two_words(client, db_session, knobs):
-    """ALARM FOR: the fact never reaching the wire.
+    """ALARM FOR: the fact never reaching the wire, in either channel.
 
     The projection can know perfectly well that it gave up and still leave the
     caller believing it received all of history. The route is where that stops
     being an internal detail.
+
+    THE BODY IS AN ENVELOPE, AND THE HEADERS ARE STILL PUBLISHED. The body was a
+    bare list until 2026-08-11 - not because that was the right shape, but
+    because client2 iterated it directly and a body envelope broke the history
+    panel outright, so the headers were the whole channel. Both are asserted
+    here: dropping the envelope silently un-does the flip, and dropping the
+    headers silently breaks whatever already reads them.
     """
     seed(db_session, [("hdr-tx-c", 8), ("hdr-tx-b", 8), ("hdr-tx-a", 8)])
     knobs(recent_max_scan_rows=10, recent_scan_chunk_rows=5)
@@ -166,8 +173,45 @@ def test_e_the_route_publishes_the_two_words(client, db_session, knobs):
     assert response.status_code == 200
     assert response.headers["x-audit-truncated"] == "true"
     assert response.headers.get("x-audit-next-cursor")
-    assert isinstance(response.json(), list), \
-        "the body is still a bare list - client2 iterates it directly"
+
+    body = response.json()
+    assert isinstance(body, dict), \
+        "the body is an envelope, not a bare list - see schemas.AuditLogGroupPage"
+    assert body["truncated"] is True
+    assert body["next_cursor"] == response.headers["x-audit-next-cursor"], \
+        "the two channels must name the SAME position, or one of them is lying"
+    # The list is `groups`, NOT `logs`: this route returns transaction groups and
+    # each of them carries a `logs` of its own.
+    assert "logs" not in body
+    assert isinstance(body["groups"], list) and body["groups"]
+    assert body["returned"] == len(body["groups"])
+    assert body["limit_groups"] == 3
+    # The envelope WRAPS the groups; it does not reshape them. A client reading
+    # `body.groups` must find exactly what it used to find in the bare list.
+    for g in body["groups"]:
+        assert {"transaction_id", "total_count", "summary_columns", "logs"} <= set(g)
+
+
+def test_e2_an_exhausted_projection_says_so_in_both_channels(client, db_session, knobs):
+    """ALARM FOR: `truncated` hard-wired on in the envelope.
+
+    `test_b` pins this on the projection; this pins it on the WIRE, because the
+    route composes the envelope by hand and a flag that is always true carries
+    no information at all. It is also the only place `next_cursor: null` is
+    scored - a header simply goes missing, so its absence proves nothing about
+    the body.
+    """
+    seed(db_session, [("full-tx-b", 3), ("full-tx-a", 4)])
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=5)
+    audit_cache.audit_cache.__init__()
+
+    body = client.get("/audit_logs/recent?limit_groups=50").json()
+
+    assert [g["transaction_id"] for g in body["groups"]] == ["full-tx-a", "full-tx-b"]
+    assert body["truncated"] is False
+    assert body["next_cursor"] is None
+    assert body["returned"] == 2
+    assert body["limit_groups"] == 50
 
 
 def test_g_a_row_with_no_timestamp_stops_the_walk_instead_of_restarting_it(

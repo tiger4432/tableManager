@@ -343,7 +343,11 @@ const FLOORS = new Map([
   //
   //    A drop here most likely means one of those stopped being scored, and none of the three
   //    failures is visible from a green build.
-  ['history_paging_harness.mjs', 98],
+  // 98 -> 117 on 2026-08-11 when `/audit_logs/recent` moved from headers to a body envelope.
+  // The +19 is section H: the real renderer driven against the envelope, plus the two mutation
+  // verdicts. Raised HERE rather than in the lane that earned it, because a floor left at 98
+  // leaves the new assertions unprotected — the gate would stay green through their removal.
+  ['history_paging_harness.mjs', 117],
   // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to

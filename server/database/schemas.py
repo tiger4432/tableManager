@@ -76,6 +76,44 @@ class AuditLogGroupResponse(BaseModel):
     summary_columns: list[str] = []
     logs: list[AuditLogResponse]
 
+class AuditLogGroupPage(BaseModel):
+    """One page of the recent-transactions projection behind `/audit_logs/recent`.
+
+    THE SAME ENVELOPE AS `AuditHistoryPage`, AND DELIBERATELY NOT THE SAME LIST
+    NAME. That route returns audit rows and calls them `logs`; this one returns
+    TRANSACTION GROUPS, each of which carries a `logs` field of its own. Spelling
+    both lists `logs` would put two different populations behind one word and
+    make the shape read `body.logs[0].logs`, so the list here is `groups` - what
+    it actually holds.
+
+    `truncated` and `next_cursor` are the words `audit_history.fetch_page`
+    returns, with the same meaning: "there is more history below the last group"
+    and "where to resume". They also still travel as `X-Audit-Truncated` /
+    `X-Audit-Next-Cursor` response headers, because a caller that already reads
+    those keeps working; see the route.
+    """
+    groups: list[AuditLogGroupResponse]
+    #: True == the bounded scan gave up before reaching `limit_groups`.
+    truncated: bool = False
+    #: Feed back as `?cursor=`.
+    #:
+    #: ⚠️ THE PAIRING IS WEAKER HERE THAN ON `AuditHistoryPage`, ON PURPOSE. There,
+    #: `next_cursor` is non-null exactly when `truncated` is true. Here `truncated`
+    #: can be true with a NULL cursor, and that third state is a real answer, not an
+    #: oversight: when a live merge grows the projection past `limit_groups` it drops
+    #: the tail, so the recorded resume position now sits behind the new end of the
+    #: list and naming it would hand back groups the caller already has
+    #: (`audit_cache.add_logs_batch`). "There is more, and the position is gone" is
+    #: the honest answer; a client that wants the rest reloads from the top.
+    next_cursor: Optional[str] = None
+    #: The caller's `limit_groups` as it was applied. Unlike `AuditHistoryPage.limit`
+    #: this is NOT clamped - what bounds the cost here is the scan ceiling
+    #: (`audit_cache.RECENT_DEFAULTS["recent_max_scan_rows"]`), not the group cap,
+    #: so asking for more groups buys a shorter walk per group, never a longer walk.
+    limit_groups: int
+    #: len(groups), so no caller has to count to decide whether to render.
+    returned: int = 0
+
 class CellUpdateBatch(BaseModel):
     updates: list[CellUpdate]
 

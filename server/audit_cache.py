@@ -51,10 +51,12 @@ WHY A CEILING NEEDS A WORD, AND WHY IT IS `truncated`
     entry", `next_cursor` is where to resume. Exactness comes from the same
     trick too: ask for one row more than the chunk needs.
 
-    ⚠️ `/audit_logs/recent`'s BODY is still a bare list, because client2 reads
-    it with `state.globalHistoryData = await res.json()` and iterates it. The
-    two facts therefore travel as response headers until the client learns the
-    envelope; see the route in `main.py`.
+    Both facts reach the wire twice: in `/audit_logs/recent`'s body, which is the
+    envelope `{groups, truncated, next_cursor, limit_groups, returned}` since
+    2026-08-11, and in the `X-Audit-Truncated` / `X-Audit-Next-Cursor` response
+    headers, which were the whole channel before the body could move (client2
+    iterated the bare list) and are kept because callers read them. See the route
+    in `main.py`.
 
 THE WATERMARK, AND THE COUNT IT WAS DOUBLING
 

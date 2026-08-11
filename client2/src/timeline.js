@@ -12,8 +12,15 @@ export async function loadHistory() {
     elements.timeline.innerHTML = '<li class="timeline-empty">Loading global history...</li>';
     try {
       const res = await fetch(`${API_BASE}/audit_logs/recent?limit_groups=100`);
-      const logs = await res.json();
-      state.globalHistoryData = logs;
+      // THE SAME ENVELOPE, OPENED BY THE SAME READER. This route answered with a bare array
+      // until 2026-08-11 and now answers `{groups, truncated, next_cursor, ...}` — the shape the
+      // row/cell history routes already used. `state.globalHistoryData = await res.json()` would
+      // put that OBJECT where `renderGlobalTimeline` calls `.forEach` and `appendHistoryLocally`
+      // calls `.find`, so the panel dies on load and every live WebSocket update after it.
+      // The list key is `groups`, not `logs`, because that is what this route returns — each
+      // group carries a `logs` of its own. A bare array is still read as a complete list.
+      const { logs: groups } = readHistoryPage(await res.json(), 'groups');
+      state.globalHistoryData = groups;
       renderGlobalTimeline();
     } catch (err) {
       console.error('Failed to load global history', err);
@@ -79,25 +86,36 @@ function beginHistorySession() {
   return state.cellRowHistorySession;
 }
 
-// [History paging] Read one `/history` response into the three things the timeline needs.
+// [History paging] Read one history response into the three things the timeline needs.
 //
-// 🔴 THE RESPONSE IS AN ENVELOPE, NOT THE LIST. Both endpoints used to answer with a bare array
-//    of every audit row the target had ever accumulated — measured at 300,019 rows / 119 MB /
-//    18.9 s on a deep fixture, on every single click. They now answer
-//    `{logs, truncated, next_cursor, limit, returned}`. Assigning that object where an array
+// 🔴 THE RESPONSE IS AN ENVELOPE, NOT THE LIST. All three history routes used to answer with a
+//    bare array — for `/history` that was every audit row the target had ever accumulated,
+//    measured at 300,019 rows / 119 MB / 18.9 s on a deep fixture, on every single click. They
+//    now answer `{<list>, truncated, next_cursor, ...}`. Assigning that object where an array
 //    used to go is what breaks the sidebar outright, so this is the ONE place that opens it.
 //
-// A BARE ARRAY IS STILL READ, AND READ AS A COMPLETE HISTORY — which is exactly what it is. An
+// ONE READER, TWO LIST NAMES. `/history` calls its list `logs` because it returns audit rows;
+// `/audit_logs/recent` calls its list `groups` because it returns transaction groups, each with
+// a `logs` of its own. `listKey` is which of the two to open — NOT a second reader, because a
+// parallel copy is how the two shapes start drifting apart. The RESULT field stays `logs` in
+// both cases: it is "this page's list", and the caller names it (`const { logs: groups } = …`).
+//
+// A BARE ARRAY IS STILL READ, AND READ AS A COMPLETE LIST — which is exactly what it is. An
 // unpaged server returns everything, so "not truncated, no cursor" is the true description of
 // its answer, not a fallback that hides a cap.
 //
-// `truncated` REQUIRES THE CURSOR. The server's contract is that `next_cursor` is non-null
-// exactly when `truncated` is true; requiring both here means a `truncated: true` that arrives
-// without a usable position can never paint a control that has nowhere to go. That state is the
-// "looks clickable, does nothing" failure, and it is cheaper to make it unrepresentable.
-export function readHistoryPage(body) {
+// `truncated` REQUIRES THE CURSOR. On `/history` the server's contract is that `next_cursor` is
+// non-null exactly when `truncated` is true; requiring both here means a `truncated: true` that
+// arrives without a usable position can never paint a control that has nowhere to go. That state
+// is the "looks clickable, does nothing" failure, and it is cheaper to make it unrepresentable.
+// ⚠️ `/audit_logs/recent` CAN legitimately send `truncated` with a null cursor (a live merge that
+// trims the projection loses its resume position), and the sidebar reads that as "not truncated"
+// — correct today only because the global tab paints no pager at all. Anything that gives it one
+// must read that third state from the body, not from this collapse.
+export function readHistoryPage(body, listKey = 'logs') {
   if (Array.isArray(body)) return { logs: body, truncated: false, nextCursor: null };
-  const logs = body && Array.isArray(body.logs) ? body.logs : [];
+  const list = body ? body[listKey] : null;
+  const logs = Array.isArray(list) ? list : [];
   const raw = body ? body.next_cursor : null;
   const nextCursor = (typeof raw === 'string' && raw) ? raw : null;
   return { logs, truncated: !!(body && body.truncated) && !!nextCursor, nextCursor };
