@@ -858,85 +858,130 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     condition = model.row_id.in_(list(row_ids)) if row_ids else None
     tx_id = f"{R3_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
 
-    for page in keyset_scan.iter_pages(db, model, condition=condition,
-                                       chunk_size=chunk_size, limit=limit):
-        stats["pages"] += 1
-        stats["rows_scanned"] += len(page)
-        page_ids = [r.row_id for r in page]
-        by_id = {r.row_id: r for r in page}
-        cell_sources, pins = _load_cell_state(db, table_name, page_ids)
+    # 🔴 THE OUTBOX LABEL, AND WHY IT IS NOT THE `cell_sources` LAYER.
+    #
+    # R3 repairs a display column with a bare `setattr`, so the ONLY thing that
+    # tells the rest of the system a row moved is the outbox row that
+    # `database.auto_stage_database_outbox` stages from `session.dirty`. That
+    # staging reads its `source_name`/`updated_by`/`transaction_id` from the
+    # context vars via `database._outbox_envelope`, and R3 used to set NONE of
+    # them - so every repaired row emitted an event whose payload said
+    # `source_name="user"`, `updated_by="system"` and a FRESH uuid4 per event
+    # (measured on assy_qa: 5 repaired rows -> 5 events, 5 distinct tx ids).
+    # Downstream that is indistinguishable from a human typing in the grid:
+    # `chain_ingestion_worker._rule_accepts_event` lets it through, so repairing
+    # one cell on a trigger table re-ran every mapper hanging off that table, and
+    # one-uuid-per-event made N repaired rows into N serialised worker groups.
+    #
+    # ⚠️ THE LABEL AND THE LAYER ARE DIFFERENT FIELDS FROM DIFFERENT SOURCES, and
+    # conflating them would be a far worse defect than the one this fixes.
+    #   * the LAYER is `cell_sources.source_name`, written from
+    #     `update_item.source_name` (crud.py, `apply_row_update_internal`),
+    #   * the LABEL is the outbox payload's `source_name`, read from the
+    #     `request_source` context var and NOWHERE ELSE - `_outbox_envelope` is
+    #     its only reader in the whole server tree.
+    # They coincide only on the batch path, because `_apply_batch_updates_once`
+    # COPIES `batch.updates[0].source_name` into the context var. R3 never calls
+    # it: R3 creates, alters and deletes ZERO `cell_sources` rows, which is its
+    # defining property (see the docstring), so setting the context var here
+    # cannot add a layer. Verified by measurement, not by reading - the sha256 of
+    # the full `cell_sources` snapshot for the repaired rows is identical before
+    # and after, with and without this block
+    # (`test_recompute_creates_no_cell_sources_layer`).
+    #
+    # The provenance a human reads is NOT lost to the relabel: it lives in the
+    # AuditLog rows below, which keep `source_name=R3_AUDIT_SOURCE`. The outbox
+    # `source_name` is the loop-filter CHANNEL, not the provenance record.
+    #
+    # `R1_SOURCE_NAME` rather than a new literal, because the filter tests that
+    # exact string; a second spelling would silently opt R3 back into every
+    # downstream rule. This is OPT-IN, not suppression: a rule that declares
+    # `allow_chain_trigger` still fires, exactly as it does for R1.
+    #
+    # One `tx_id` for the whole run (the same one the AuditLog rows carry, so the
+    # two can be joined) collapses N serialised worker groups into one, and the
+    # scope is the whole loop rather than the commit because an autoflush on any
+    # query inside it - the next page's keyset query - is enough to stage.
+    with crud.transaction_context(R3_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):
+        for page in keyset_scan.iter_pages(db, model, condition=condition,
+                                           chunk_size=chunk_size, limit=limit):
+            stats["pages"] += 1
+            stats["rows_scanned"] += len(page)
+            page_ids = [r.row_id for r in page]
+            by_id = {r.row_id: r for r in page}
+            cell_sources, pins = _load_cell_state(db, table_name, page_ids)
 
-        page_changed = False
-        for cell, srcs in cell_sources.items():
-            row_id, col = cell
-            if wanted_cols is not None and col not in wanted_cols:
-                continue
-            if col not in col_types:
-                continue
-            row = by_id.get(row_id)
-            if row is None:
-                continue
-            # The safety gate. See the docstring: one layer has no tie, zero layers
-            # would blank the column.
-            if len(srcs) < 2:
-                continue
+            page_changed = False
+            for cell, srcs in cell_sources.items():
+                row_id, col = cell
+                if wanted_cols is not None and col not in wanted_cols:
+                    continue
+                if col not in col_types:
+                    continue
+                row = by_id.get(row_id)
+                if row is None:
+                    continue
+                # The safety gate. See the docstring: one layer has no tie, zero layers
+                # would blank the column.
+                if len(srcs) < 2:
+                    continue
 
-            stats["cells_examined"] += 1
-            pin = pins.get(cell)
-            if pin is not None:
-                stats["pinned_examined"] += 1
-            decision = _resolve_cell(table_name, col_types, row, col, srcs, pin)
-            if not decision["changed"]:
-                continue
+                stats["cells_examined"] += 1
+                pin = pins.get(cell)
+                if pin is not None:
+                    stats["pinned_examined"] += 1
+                decision = _resolve_cell(table_name, col_types, row, col, srcs, pin)
+                if not decision["changed"]:
+                    continue
 
-            # WHY the change happened, so the report separates "this repair did it"
-            # from "this cell was already out of step with its own layers". A tie is
-            # the defect's signature: two or more layers sharing the winning rank,
-            # which is where the old code fell through to dict order.
-            top_rank = priority_map.get(decision["top_source"], 99)
-            tied = sum(1 for s in srcs if priority_map.get(s, 99) == top_rank)
-            reason = "tiebreak" if tied > 1 else "stale_materialisation"
+                # WHY the change happened, so the report separates "this repair did it"
+                # from "this cell was already out of step with its own layers". A tie is
+                # the defect's signature: two or more layers sharing the winning rank,
+                # which is where the old code fell through to dict order.
+                top_rank = priority_map.get(decision["top_source"], 99)
+                tied = sum(1 for s in srcs if priority_map.get(s, 99) == top_rank)
+                reason = "tiebreak" if tied > 1 else "stale_materialisation"
 
-            stats["cells_changed"] += 1
-            if reason == "tiebreak":
-                stats["changed_by_tiebreak"] += 1
-            else:
-                stats["changed_by_stale_materialisation"] += 1
-            # A PINNED cell that still moves is worth its own counter and it is not a
-            # contradiction: the pin decides WHICH LAYER wins (`compute_priority_value`
-            # short-circuits on it), it does not freeze the materialised column. So this
-            # counts cells where the display had drifted away from the layer a human
-            # explicitly chose - the pin is being honoured here, not overridden. It was
-            # previously called `pinned_unchanged` while being incremented on exactly the
-            # cells that DID change, which read as the opposite of what it measured.
-            if pin is not None:
-                stats["pinned_changed"] += 1
+                stats["cells_changed"] += 1
+                if reason == "tiebreak":
+                    stats["changed_by_tiebreak"] += 1
+                else:
+                    stats["changed_by_stale_materialisation"] += 1
+                # A PINNED cell that still moves is worth its own counter and it is not a
+                # contradiction: the pin decides WHICH LAYER wins (`compute_priority_value`
+                # short-circuits on it), it does not freeze the materialised column. So this
+                # counts cells where the display had drifted away from the layer a human
+                # explicitly chose - the pin is being honoured here, not overridden. It was
+                # previously called `pinned_unchanged` while being incremented on exactly the
+                # cells that DID change, which read as the opposite of what it measured.
+                if pin is not None:
+                    stats["pinned_changed"] += 1
 
-            if len(stats["changes"]) < max_report:
-                stats["changes"].append({
-                    "row_id": row_id, "column": col,
-                    "business_key_val": getattr(row, "business_key_val", None),
-                    "old_value": decision["old_value"],
-                    "new_value": decision["new_value"],
-                    "winning_source": decision["top_source"],
-                    "reason": reason,
-                    "sources": sorted(srcs),
-                })
-            else:
-                stats["changes_truncated"] = True
+                if len(stats["changes"]) < max_report:
+                    stats["changes"].append({
+                        "row_id": row_id, "column": col,
+                        "business_key_val": getattr(row, "business_key_val", None),
+                        "old_value": decision["old_value"],
+                        "new_value": decision["new_value"],
+                        "winning_source": decision["top_source"],
+                        "reason": reason,
+                        "sources": sorted(srcs),
+                    })
+                else:
+                    stats["changes_truncated"] = True
 
-            if apply:
-                setattr(row, col, decision["new_value"])
-                crud.create_audit_log(
-                    db, table_name, row_id, col,
-                    decision["old_value"], decision["new_value"],
-                    R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}",
-                    transaction_id=tx_id,
-                    business_key=getattr(row, "business_key_val", None))
-                page_changed = True
+                if apply:
+                    setattr(row, col, decision["new_value"])
+                    crud.create_audit_log(
+                        db, table_name, row_id, col,
+                        decision["old_value"], decision["new_value"],
+                        R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}",
+                        transaction_id=tx_id,
+                        business_key=getattr(row, "business_key_val", None))
+                    page_changed = True
 
-        if apply and page_changed:
-            db.commit()
+            if apply and page_changed:
+                db.commit()
 
     if not apply:
         db.rollback()

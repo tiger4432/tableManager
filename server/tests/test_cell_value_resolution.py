@@ -448,3 +448,163 @@ def test_recompute_refuses_an_undeclared_column(res_env):
         chain_replay.recompute_display_values(res_env, "cvres_test_map",
                                               columns=["no_such_col"],
                                               log=lambda *_: None)
+
+
+# ---------------------------------------------------------------------------
+# D. R3's OUTBOX LABEL - the loop filter
+#
+# R3 repairs a display column with a bare `setattr`, so the outbox row that
+# `database.auto_stage_database_outbox` stages off `session.dirty` is the only
+# thing that tells the rest of the system anything happened. It used to be
+# staged with the CONTEXT DEFAULTS - `source_name="user"`, `updated_by="system"`
+# and a fresh uuid4 per event - which made a repair indistinguishable from a
+# human grid edit. Measured on assy_qa: repairing 5 cells on `dt_log` staged 5
+# events with 5 distinct transaction ids, and the real rule set accepted all of
+# them, so both enrichment mappers plus the core-frame and usage-map chains ran
+# and wrote into 4 downstream tables.
+#
+# These four guards test four INDEPENDENT properties, and each is killed by its
+# own mutation (see the report): the label, the opt-in (not suppression), the
+# single transaction id, and the layering invariant.
+# ---------------------------------------------------------------------------
+
+import chain_ingestion_worker as chain_worker  # noqa: E402
+
+BLOCKED_RULE = {"name": "blocked", "trigger_table": "cvres_test_map",
+                "target_table": "cvres_blocked_target", "enabled": True}
+OPTED_IN_RULE = {"name": "opted_in", "trigger_table": "cvres_test_map",
+                 "target_table": "cvres_optin_target", "enabled": True,
+                 "allow_chain_trigger": True}
+
+
+def _outbox_marker(db):
+    return db.query(models.DatabaseOutbox.id).order_by(
+        models.DatabaseOutbox.id.desc()).limit(1).scalar() or 0
+
+
+def _outbox_since(db, marker):
+    return db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.id > marker).order_by(models.DatabaseOutbox.id).all()
+
+
+def _all_layers(db):
+    """Every stored layer in the table, as a comparable snapshot.
+
+    The whole set rather than one cell's dict: the hazard this guards against is a
+    relabel that ADDS a layer, and an assertion scoped to one cell of one row would
+    not see a layer appearing anywhere else.
+    """
+    return sorted(
+        (s.row_id, s.column_name, s.source_name, str(s.value), str(s.updated_by))
+        for s in db.query(models.CellSource).filter(
+            models.CellSource.table_name == "cvres_test_map").all())
+
+
+def _make_stale_rows(db, monkeypatch, parts):
+    """`_make_stale_cell` for N rows, so a run spans several pages and commits."""
+    monkeypatch.setattr(crud, "compute_priority_value", _legacy_compute_priority_value)
+    _seed(db, [{"part_no": p, "pitch": "1"} for p in parts],
+          source_name="aaa_old.csv", tx_id="m1")
+    _backdate(db, "aaa_old.csv", OLD_TS)
+    _seed(db, [{"part_no": p, "pitch": "7"} for p in parts],
+          source_name="zzz_new.csv", tx_id="m2")
+    _backdate(db, "zzz_new.csv", NEW_TS)
+    monkeypatch.undo()
+    rows = []
+    for p in parts:
+        row = _row(db, p)
+        db.refresh(row)
+        assert row.pitch == "1", "the fixture must be stale before it is repaired"
+        rows.append(row)
+    return rows
+
+
+def _recompute(db, **kw):
+    return chain_replay.recompute_display_values(db, "cvres_test_map", apply=True,
+                                                 log=lambda *_: None, **kw)
+
+
+def test_recompute_events_are_labelled_so_the_loop_filter_can_see_them(res_env, monkeypatch):
+    """GUARD 1 - THE LABEL. Not "the payload says chain_ingestion" as a string
+    assertion, but the REAL filter (`_rule_accepts_event`) refusing the REAL staged
+    event for a rule that never opted in."""
+    _make_stale_cell(res_env, monkeypatch)
+    marker = _outbox_marker(res_env)
+    assert _recompute(res_env)["cells_changed"] == 1
+
+    events = _outbox_since(res_env, marker)
+    assert len(events) == 1, "one repaired row stages exactly one EDIT event"
+    payload = chain_worker.get_payload_dict(events[0])
+    assert payload["source_name"] == "chain_ingestion"
+    assert payload["updated_by"] == chain_replay.R3_AUDIT_SOURCE
+    assert not chain_worker._rule_accepts_event(BLOCKED_RULE, events[0]), \
+        "a rule that never opted in must not be re-triggered by a display repair"
+    assert chain_worker._group_target_tables(events, [BLOCKED_RULE]) == set(), \
+        "no downstream table may be written because a materialised value was repaired"
+
+
+def test_a_rule_that_opted_in_still_consumes_a_recompute_event(res_env, monkeypatch):
+    """GUARD 2 - OPT-IN, NOT SUPPRESSION.
+
+    The distinction this pins: a "fix" that dropped R3's events, or that stopped
+    staging them at all, would make GUARD 1 green and this one red. The filter is
+    a per-rule opt-in and `allow_chain_trigger` must still mean yes.
+    """
+    _make_stale_cell(res_env, monkeypatch)
+    marker = _outbox_marker(res_env)
+    _recompute(res_env)
+
+    events = _outbox_since(res_env, marker)
+    assert events, "the repair must still emit an event for anyone who wants it"
+    assert chain_worker._rule_accepts_event(OPTED_IN_RULE, events[0])
+    assert chain_worker._group_target_tables(events, [BLOCKED_RULE, OPTED_IN_RULE]) == \
+        {"cvres_optin_target"}
+
+
+def test_recompute_stages_one_transaction_id_for_the_whole_run(res_env, monkeypatch):
+    """GUARD 3 - THE GROUPING. The worker groups by transaction id, so one uuid4 per
+    event turned N repaired rows into N SERIALISED groups (measured: ~86 s for 200
+    rows on assy_qa). `chunk_size=1` forces one page and one commit per row, which is
+    the shape that would expose a context scoped to a single page instead of the run.
+    """
+    rows = _make_stale_rows(res_env, monkeypatch, ["P1", "P2", "P3"])
+    marker = _outbox_marker(res_env)
+    stats = _recompute(res_env, chunk_size=1)
+    assert stats["cells_changed"] == len(rows)
+    assert stats["pages"] >= len(rows), "chunk_size=1 must really produce several pages"
+
+    events = _outbox_since(res_env, marker)
+    assert len(events) == len(rows)
+    tx_ids = {chain_worker.get_payload_dict(e)["transaction_id"] for e in events}
+    assert len(tx_ids) == 1, f"one group per run, got {len(tx_ids)}: {sorted(tx_ids)}"
+
+    # ... and it is the SAME id the history carries, so the two can be joined.
+    audit_tx = {lg.transaction_id for r in rows for lg in _audit(res_env, r.row_id, "pitch")}
+    assert audit_tx == tx_ids
+    assert tx_ids.pop().startswith(chain_replay.R3_AUDIT_SOURCE)
+
+
+def test_recompute_creates_no_cell_sources_layer(res_env, monkeypatch):
+    """GUARD 4 - THE LAYERING INVARIANT, and the reason this change is safe at all.
+
+    `cell_sources.source_name` is what CREATES A LAYER, and it is written from
+    `update_item.source_name` on the batch path - a different field from a different
+    place than the outbox label, which comes from the `request_source` context var
+    (`database._outbox_envelope` is its only reader in the server tree). R3 never
+    calls the batch path, so labelling its events cannot add a layer. A relabel that
+    silently gave every repaired cell a `chain_ingestion` layer would be a worse
+    defect than the one being fixed AND would be invisible in the three guards above.
+    """
+    rows = _make_stale_rows(res_env, monkeypatch, ["P1", "P2", "P3"])
+    before = _all_layers(res_env)
+    assert before, "the snapshot must not be trivially empty"
+
+    _recompute(res_env)
+
+    assert _all_layers(res_env) == before, \
+        "R3 must create, alter and delete ZERO cell_sources rows"
+    for row in rows:
+        res_env.refresh(row)
+        assert row.pitch == "7", "the display must still be repaired"
+        assert _layers(res_env, row.row_id, "pitch") == {"aaa_old.csv": "1",
+                                                         "zzz_new.csv": "7"}
