@@ -171,14 +171,15 @@ def run(table: str, apply: bool, allow_differing: bool,
                                   "vals": [r[c] for c in differing_cols]}
                                  for r in g],
                     })
-                if not allow_differing:
-                    continue
             else:
                 stat["identical"] += 1
+
+            # 🔴 `keep` 계산과 덤프 수집은 **삭제 여부를 정하기 «전»**이다.
+            #    처음엔 이 아래에 있었고, `not allow_differing` 의 `continue` 가 그 위에서
+            #    빠져나가는 바람에 **콘솔에는 differing 이 뜨는데 파일은 0건**이었다.
+            #    「보여준 것」과 「저장한 것」이 다른 경로를 타면 언젠가 갈린다.
             keep = sorted(g, key=lambda r: (-srccount.get(r["row_id"], 0), r["row_id"]))[0]
             drop = [r["row_id"] for r in g if r["row_id"] != keep["row_id"]]
-            victims.extend(drop)
-            stat["deletable"] += len(drop)
 
             # 덤프는 **differing 만** 담는다. identical 은 볼 이유가 없고, 섞으면
             # 파일을 여는 사람이 먼저 골라내야 한다.
@@ -198,6 +199,13 @@ def run(table: str, apply: bool, allow_differing: bool,
                                   **{c: r[c] for c in declared + system})
                              for r in g],
                 })
+
+            # 삭제 대상에 넣는 것은 **여기서** 정한다. 덤프·콘솔은 위에서 이미 담았으므로
+            # 「안 지우기로 한 그룹」도 보고에는 남는다 - 그것이 보고의 목적이다.
+            if differing_cols and not allow_differing:
+                continue
+            victims.extend(drop)
+            stat["deletable"] += len(drop)
 
         if apply:
             for i in range(0, len(victims), CHUNK):
