@@ -33,7 +33,21 @@ class AuditLog(Base):
     transaction_id = Column(String, index=True, nullable=True) # [Phase 2] 배치 작업 그룹화용 ID
     
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    business_key = Column(String, nullable=True, index=True)
+    # [index retirement 2026-08-11] NO `index=True`. Nothing filters on this column.
+    # Census over server/**, config and tests: zero equality/IN predicates on
+    # `business_key`; the only two predicates that name it are `IS NOT NULL` guards
+    # (main.py:862, main.py:899), and both carry (table_name, row_id) as well, which
+    # `idx_audit_row_history` serves - measured with `ix_audit_logs_business_key`
+    # present and absent, the plan is `Index Scan using idx_audit_row_history` both
+    # ways with the same 8 buffers. Every other appearance reads the column off a row
+    # that was already located, which an index cannot help. 10.3 MB on assy_qa, 0 scans.
+    #
+    # ⚠️ Same caveat as `idx_sources_lookup` above: `create_all` does not drop, so this
+    # only stops NEW databases from growing it. Existing ones are cleaned by
+    # `server/migrations/drop_redundant_layering_indexes.py --apply`. Rollback:
+    #   CREATE INDEX CONCURRENTLY ix_audit_logs_business_key
+    #       ON public.audit_logs USING btree (business_key);
+    business_key = Column(String, nullable=True)
 
     __table_args__ = (
         # [재교정률] 대시보드가 매 로드마다 감사 테이블을 훑지 않게 하는 유일한 수단.
@@ -371,7 +385,25 @@ class CellSource(Base):
     confirmation_uid = Column(String, nullable=True)
 
     __table_args__ = (
-        Index("idx_sources_lookup", "table_name", "row_id", "column_name"),
+        # [index retirement 2026-08-11] `idx_sources_lookup` (table_name, row_id,
+        # column_name) USED TO BE DECLARED HERE and is deliberately gone. It was a
+        # strict LEFT PREFIX of the unique index below - same three columns, same
+        # order, same opclass, same collation, same sort direction, read straight out
+        # of `pg_index` rather than off this file - so every query it could serve, the
+        # unique one serves too. Measured on a copy of assy_qa: 267.4 MB, and the only
+        # reader that ever chose it was the 1,000-id batch prefetch, which falls to
+        # `idx_sources_lookup_source` with the same plan SHAPE (Bitmap Index Scan ->
+        # Bitmap Heap Scan) at 1.27x the index buffers and no latency regression.
+        #
+        # ⚠️ REMOVING IT HERE DOES NOT REMOVE IT ANYWHERE. `create_all` never drops an
+        # index, and never adds one to a table that already exists, so this edit only
+        # stops a BRAND NEW database from growing it. Existing databases - production
+        # included - are cleaned by
+        # `server/migrations/drop_redundant_layering_indexes.py --apply`, which
+        # re-proves the prefix relationship against the live catalogue before it drops
+        # anything. Rollback, if it is ever needed:
+        #   CREATE INDEX CONCURRENTLY idx_sources_lookup
+        #       ON public.cell_sources USING btree (table_name, row_id, column_name);
         Index("idx_sources_lookup_source", "table_name", "row_id", "column_name", "source_name", unique=True),
         # [R2 withdraw] The ONLY index that can bound "which cells does this source
         # claim". `idx_sources_lookup_source` cannot: `source_name` is its LAST key,
