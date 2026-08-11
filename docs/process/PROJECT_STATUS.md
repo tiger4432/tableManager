@@ -4,21 +4,31 @@
 >
 > 📘 **포크 세션 결산이 착지했다**: [architecture/CANONICAL_LEDGER_DESIGN](../architecture/CANONICAL_LEDGER_DESIGN.md) — 정준 원장·온톨로지 설계 확정(구현 0). 제품 소유자와의 논의 결과이고, 첫 레인 셋(§13: SEMI 대조 조사 · lot_event 백필 번역기 · 병행 대조 하네스)이 이관 대기다. **착수 시점은 본 세션 판단** — 미커밋 트리 정리와 확정 시스템 마무리가 선행이고, 오늘 목표(§1·§2)를 밀어내지 않는다.
 >
-> ### 0. 🔴 트리가 «커밋 안 된 채» 남아 있다 — 두 레인이 섞여 있다
+> ### 0. ✅ 섞인 트리 정리 완료 (08-12 오전)
 >
-> 종료 시점에 **의도적으로 아무것도 커밋하지 않았다.** `crud.py`에 저자가 둘이고 한쪽은 **미완성**이라, 반쪽을 커밋하면 내일 누구 것인지 못 가린다.
+> **미확인 3건의 주인은 둘 다 아니었다.** `backend.md`·`FEATURE_CHECKLIST.md`·`history/README.md`+신규 이력의 내용은 count 캐시·export 413·`row_history_total` — **`721b175`로 이미 착지한 작업의 사후 문서**다. 소스와 안 겹쳐 단독 커밋(`333297c`). 이력 항목의 `Status: 구현 완료, 커밋 전`은 코드가 착지하기 전에 쓰여 낡아 있었다 → 커밋 해시로 교체.
 >
-> | 파일 | 주인 | 상태 |
-> |---|---|---|
-> | `chain_key_gate.py` (신규) · `tests/test_chain_key_gate.py` (신규) | **키 게이트** | ✅ 완료·측정됨 |
-> | `chain_ingestion_worker.py` · `chain_replay.py` · `tests/test_chain_created_logs_truncation.py` | **키 게이트** | ✅ |
-> | `docs/architecture/data_model.md`(§3.1-ter) · `docs/guide/chain_ingestion_guide.md` | **키 게이트** | ✅ |
-> | `audit_changeset.py` (신규) · `tests/test_audit_changeset.py` (신규) | **감사** | ⚠️ **중간에 세움 — 미완성** |
-> | `main.py` · `database/schemas.py` | **감사** | ⚠️ 미완성 |
-> | `docs/architecture/backend.md` · `docs/qa/FEATURE_CHECKLIST.md` · `docs/history/README.md` + 신규 이력 1건 | **미확인** | 둘 중 누구인지 확인 필요 |
-> | **`database/crud.py`** | 🔴 **둘 다** | 키 게이트의 `unfilled_key_columns`·`_unfilled_composite_parts` + 감사의 hunk |
+> **`crud.py`는 hunk의 «옛 파일 줄 범위»로 갈랐다** — 우연이 아니라 두 저자가 공유하는 유일한 좌표라서. 키 게이트 2개(`assemble_composite_business_key` 주변) / 감사 4개(import · `create_audit_log` · `get_recorrection_stats` · `apply_row_update_internal`). 겹치는 hunk **0개**.
 >
-> **내일 순서**: 감사 쪽 변경을 되돌려 키 게이트를 먼저 온전히 커밋하고, 감사는 깨끗한 베이스에서 다시 돌린다. 감사 레인 지시서는 §판정 2건에 그대로 있으므로 잃은 것은 진행분뿐이다.
+> | 결과 | |
+> |---|---|
+> | `333297c` | 문서 레인 4파일 |
+> | `e9fd8a6` | **키 게이트 온전히** — 소스 6 + 문서 2, `crud.py`는 +71/−4만 |
+> | 감사 4 hunk + `main.py`·`schemas.py` | HEAD로 되돌림, **패치로 백업** (스크래치패드) — 깨끗한 베이스에서 재시작 |
+> | `audit_changeset.py`·`test_audit_changeset.py` | 미추적으로 트리에 남김 (`crud.py`가 더는 import 안 함) |
+>
+> 🔴 **분리한 트리에서 키 게이트 테스트 29건 재실행 → 전부 초록.** 레인이 잰 트리가 아니라 **내가 자른 트리**에서 다시 쟀다 — 자르는 행위 자체가 결함을 만들 수 있다.
+>
+> ### 0-ter. 🔄 도는 레인 4 (08-12 오전 투입)
+>
+> | 레인 | 소관 | `crud.py` | 등급 |
+> |---|---|---|---|
+> | **W 쓰기 성능** | `execute_values` + 인덱스 회수 | 🔴 **단독 쓰기** | **T1** |
+> | **C 셀 이력 클라** | `timeline.js` 두 빈 상태 분리 | — | T2 |
+> | **M dt_map 키** | 전수 버킷 측정 → 초록이면 진행 | 읽기만 | T2 |
+> | **I 인제션 출처** | 17만 행을 «만든» 갈래 특정 | 읽기만 | T2 |
+>
+> **W만 쓴다.** M·I는 읽되 **줄 번호 금지·술어로 보고**하도록 지시했다 — 같은 파일이 동시에 바뀌고 있다.
 >
 > ### 0-bis. 키 게이트가 물고 온 것 — **체인은 닫혔고 인제션은 안 닫혔다**
 >
