@@ -150,9 +150,16 @@ silently replace a user value.
 A mapper that cannot resolve an identity for a row **returns nothing for it**. Do not
 emit the row and let the write path sort it out: a blank key column writes nothing
 (`818c9c0`), so the row lands with `business_key_val` NULL, no upsert can ever address
-it, and every re-delivery of the same data creates another one. Production measured
-~170,000 such rows in one table, and one of them made
-`GET /api/maps/alignment/worklist` answer 500 for the whole request (`c4a3159`).
+it, and every re-delivery of the same data creates another one. One such row made
+`GET /api/maps/alignment/worklist` answer 500 for the whole request (`c4a3159`) — a single
+row was enough.
+
+> 🔴 **여기 있던 「운영 실측 ~170,000행」은 술어가 반대였다.** 그 수는
+> `add_business_key_unique_index.py`의 `duplicate_census` **`surplus`**이고
+> (`dup_rows − groups`, **양쪽 다 `WHERE business_key_val IS NOT NULL`**), 곧
+> **키가 «있는데» 중복된** 행의 수다. 키 «없는» 행 수는 같은 census의 **다른 필드**
+> (`null_keys`/`nullbk`)이고 그 운영 값은 추적되는 산출물 어디에도 없다.
+> 바꿔 넣을 수가 없으므로 **수를 빼고 메커니즘만 남긴다** — 논증은 원래 수가 필요 없었다.
 
 **You do not have to write this guard.** It is enforced centrally in
 [`server/chain_key_gate.py`](file:///c:/Users/kk980/Developments/assyManager/server/chain_key_gate.py),

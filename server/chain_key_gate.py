@@ -6,9 +6,19 @@ A mapper that cannot resolve an identity for a row used to emit the row anyway. 
 write path then behaved exactly as designed and that was the problem: a blank key column
 writes nothing (``818c9c0``), so the row landed with ``business_key_val`` NULL. Nothing
 can address it - not a re-push, not an upsert, not an operator - so the next delivery of
-the same data created ANOTHER one, and the table grew a population of unreachable rows
-(measured 2026-08-11: ~170,000 in one table). One such row later made
-``GET /api/maps/alignment/worklist`` answer 500 for an entire request (``c4a3159``).
+the same data created ANOTHER one, and the table grew a population of unreachable rows.
+One such row later made ``GET /api/maps/alignment/worklist`` answer 500 for an entire
+request (``c4a3159``).
+
+🔴 DO NOT ATTACH THE FIGURE "~170,000" TO THIS PARAGRAPH. It was here and it was wrong.
+That number is ``duplicate_census``'s ``surplus`` in ``add_business_key_unique_index.py``:
+``rows_in_duplicate_groups - number_of_groups``, and BOTH terms are computed
+``WHERE business_key_val IS NOT NULL``. It counts rows that were KEYED AND DUPLICATED -
+the opposite predicate to the one this paragraph is about. The keyless count is a separate
+field of the same census (``null_keys`` / ``nullbk``) and its production value is not
+recorded in any tracked artifact, so there is no substitute number to swap in. The
+argument does not need one: it rests on a mechanism, and ``c4a3159`` is a demonstrated
+consequence of a single such row.
 
 Three of the four places that compose a unit key already guarded against this by hand -
 ``dt_alignment_metadata_mapper``, ``core_alignment_mapper``, ``dt_inventory_metadata_mapper``.

@@ -5,9 +5,13 @@ WHAT THIS PINS
 A mapper that cannot resolve an identity for a row used to emit the row anyway. The write
 path then did exactly what `818c9c0` ruled it must — a blank key column writes nothing —
 so the row landed with `business_key_val` NULL. Nothing can address such a row, so the
-next delivery of the same data created ANOTHER one (~170,000 in one production table,
-measured 2026-08-11), and one of them made the alignment worklist answer 500 for a whole
-request (`c4a3159`).
+next delivery of the same data created ANOTHER one, and one of them made the alignment
+worklist answer 500 for a whole request (`c4a3159`).
+
+🔴 A figure of "~170,000" used to sit in this paragraph and it was the wrong predicate —
+that is `duplicate_census`'s `surplus`, counted `WHERE business_key_val IS NOT NULL`, i.e.
+rows that were KEYED and duplicated. The keyless count is a different field and its
+production value is not recorded anywhere tracked. Do not re-add a number here.
 
 Three of the four places that compose a unit key already guarded this by hand. The gate
 under test is deliberately NOT a fourth copy: `server/mappers/*.py` is gitignored by
