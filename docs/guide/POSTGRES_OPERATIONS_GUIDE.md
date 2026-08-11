@@ -1,6 +1,6 @@
 # 🐘 PostgreSQL & pgAdmin4 운영 관리 가이드 (AssyManager)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-08 (§3.1에 **업무 키가 안 조립된 행의 읽기 전용 사전점검** 항목 신설 — `b2ceb55`. ⚠️ **이 배지는 낡아 있었습니다**: `cc602ed`가 D3 두 절(`uq_bk_<table>` · `--drop-redundant`)을 이미 넣었는데 날짜가 2026-07-31에 멈춰 있었습니다 — **본문이 앞서고 배지가 뒤처지면 독자는 본문을 안 읽습니다.** 직전 2026-07-31: §3.1에 R2 회수 범위 인덱스 `idx_sources_by_source` — `1948338`) | **Owner:** Ops
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (§3.1에 **접두 중복·미사용 인덱스 회수** 항목 신설 + `--drop-redundant`가 드라이런이 아니라는 경고 추가 — 준비만 됐고 **아직 아무 DB에도 적용하지 않았다**. 직전 2026-08-08: §3.1에 **업무 키가 안 조립된 행의 읽기 전용 사전점검** 항목 신설 — `b2ceb55`. ⚠️ **이 배지는 낡아 있었습니다**: `cc602ed`가 D3 두 절(`uq_bk_<table>` · `--drop-redundant`)을 이미 넣었는데 날짜가 2026-07-31에 멈춰 있었습니다 — **본문이 앞서고 배지가 뒤처지면 독자는 본문을 안 읽습니다.** 직전 2026-07-31: §3.1에 R2 회수 범위 인덱스 `idx_sources_by_source` — `1948338`) | **Owner:** Ops
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 AssyManager의 백엔드 데이터베이스인 PostgreSQL을 운영하고 pgAdmin4를 통해 데이터를 직접 관리하는 방법을 안내합니다.
@@ -127,6 +127,21 @@ conda run -n assy_manager python server/migrations/add_business_key_unique_index
 
 - 대상은 **하드코딩 목록이 아니라 매번 `pg_index`로 다시 증명**한다 — 키 컬럼·opclass·collation·access method가 PK 인덱스와 **모두** 같고, 부분/표현식/INVALID가 아닌 것만. 여기에 더해 이름이 SQLAlchemy 자동 생성형(`ix_*`)이어야 하며, **사람이 이름 붙인 인덱스는 구조가 같아도 보고만 하고 드롭하지 않는다.**
 - 두 절은 서로 독립이다 — 한쪽만 실행해도 된다.
+- 🔴 **`--drop-redundant`는 드라이런이 아니라 실제로 드롭한다.** 읽기 전용 사전점검은 **플래그 없는** 호출이다(위 첫 줄). 이름이 「redundant를 드롭한다」이므로 `--apply`가 따로 필요할 것처럼 읽히지만 아니다.
+
+#### 접두 중복·미사용 인덱스 회수 (`drop_redundant_layering_indexes.py`) — 2026-08-11
+
+위 `--drop-redundant`의 **자매 스크립트**이고 대상 계급이 다르다. 저쪽은 「PK 인덱스의 사본」만, 이쪽은 `cell_sources`/`cell_overwrites`/`audit_logs`의 **① 넓은 인덱스의 진짜 왼쪽 접두사** ② **읽는 곳이 없는 인덱스**다.
+
+```bash
+conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py           # 사전점검(세션 read-only 고정)
+conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py --apply   # 회수
+```
+
+- 🔴 **접두 관계는 「같은 컬럼을 갖는다」가 아니라 「같은 순서로 갖는다」이다.** `(a,b,c)`는 `(a,b,c,d)`가 대신 서 주지만 `(b,a,c,d)`는 절대 아니다. 그래서 `pg_index`의 **indkey·indclass·indcollation·indoption(정렬 방향)** 네 축을 전부 대조한다 — `indoption`을 빼면 `(a, b DESC)`를 `(a, b)`의 중복으로 잘못 드롭한다.
+- 🔴 **구조적 중복성은 플래너 행동을 예측하지 못한다.** 2026-08-11 실측: `idx_overwrites_lookup`은 UNIQUE `idx_overwrites_lookup_col`의 **진짜 접두사인데도**, 숨기자 플래너는 넓은 쪽이 아니라 `ix_cell_overwrites_row_id`를 골랐고 **1.81배 느려졌다**(45→113 버퍼). 그래서 이 스크립트는 **접두사라는 이유만으로 드롭하지 않는다** — 사람이 판정한 목록만 드롭하고, **드롭하지 않는 접두 중복 인덱스도 전부 이름으로 출력**한다(숨지 못하게).
+- **「읽는 곳이 없다」는 카탈로그가 답할 수 없다** — 코드 전수 조사가 근거이고 `idx_scan`은 **거절 게이트**로만 쓴다. 게다가 갓 복원한 DB에서는 PK를 포함해 **모든** 카운터가 0이므로, 같은 테이블의 다른 인덱스 스캔 합이 0이면 **증거 없음으로 판정하고 거절**한다.
+- 되돌리는 `CREATE INDEX CONCURRENTLY` 문을 **드롭하기 전에** 출력한다.
 
 #### 재교정률 인덱스 (`idx_audit_user_recorrection`)
 어드민 Overview의 재교정률([data_model §2.3](../architecture/data_model.md))이 쓰는 부분 커버링 인덱스. **없으면 `/dashboard/summary`가 `audit_logs` 전량을 훑는다**(2026-07-27 실측: 2,628,453행/1.6GB에서 512ms).
