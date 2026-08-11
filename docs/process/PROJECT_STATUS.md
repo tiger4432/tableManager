@@ -62,7 +62,7 @@
 > |---|---|---|
 > | R3 아웃박스 **측정** | `R3_outbox_measurement.md` | 측정만. 운영 실행 가부 판정이 여기 달림 |
 > | 확정 문구 (arity 1·2·3) | `Confirmation_sentence_any_arity.md` | `client2/**` + `dist/` |
-> | SSOT 타이브레이크 + 스펙 §606 좁히기 | — | `docs/**` (보드·CODE_MAP 제외) |
+> | ~~SSOT 타이브레이크 + 스펙 §606 좁히기~~ **✅ `32da009`** | — | `docs/**` 5파일 (보드·CODE_MAP 제외 — 지시대로 안 건드렸다) |
 > | 코드맵 (거짓 문장 3번째 사본) | — | `docs/architecture/CODE_MAP.md` |
 > | 성능조사 **읽기** | `Perf_survey_read.md` | 읽기 전용 |
 > | 성능조사 **쓰기·레이어링** | `Perf_survey_write.md` | 읽기 전용 |
