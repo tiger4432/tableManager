@@ -41,7 +41,7 @@ import { createMapSession, withDecision, withPayload, withError, withSelectedCan
 import { placeCells, FLOOR_PLACEMENT, compareSeatings, unionBounds } from './seating.js';
 import { layoutFor, paintComparison, createCanvasSurface } from './painter.js';
 import { buildViewModel, VIEW_STATE, CROSS_SOURCE_ROW_ID, WORDS, CAUSE, ATTRIBUTION,
-         UNKNOWN } from './view_model.js';
+         decisionKeyRefusal, DECISION_KEY, UNKNOWN } from './view_model.js';
 import { decideVerdict } from './verdict_bridge.js';
 import { parseCandidateId, candidateList } from './candidates.js';
 import { createApiClient } from './api.js';
@@ -246,7 +246,12 @@ export function bootstrap(deps) {
   let loadRows = null;
   // What only the page entry knows: the rule naming the decision unit, that rule's DECLARED
   // target fields (the write's destination, never the picker's input), and who is confirming.
-  const context = { rule: null, targetFields: [], confirmedBy: null,
+  // 🔴 `decisionKeyColumns` IS `null`, NOT `[]`, AND THE DIFFERENCE IS LOAD-BEARING. `null`
+  //    means NO PAGE ENTRY HAS SAID which columns compose a unit -- the state a harness driving
+  //    `bootstrap` bare is in, and one in which this file has no standing to refuse a write.
+  //    `[]` would be a DECLARATION that the rule names no key column, which is a refusal.
+  //    Collapsing the two would make an unwired shell indistinguishable from a broken rule.
+  const context = { rule: null, targetFields: [], confirmedBy: null, decisionKeyColumns: null,
                     toDecisionKey: (d) => ({ ...(d || {}) }) };
   let searchTimer = null;
   // The worklist request in flight, so a newer question can cancel an older one. Function-scoped
@@ -1677,6 +1682,30 @@ export function bootstrap(deps) {
     //    a row change and wedge the button. It is cleared on BOTH settle paths below --
     //    a guard with one exit is a guard that eventually latches on.
     if (confirmInFlight) return;
+    // 🔴 THE KEY IS STATED BEFORE THE GUARD IS TAKEN, OR NOTHING IS POSTED. `confirmFrame`
+    //    spells `decision_key: r.decisionKey || {}`, so a key the page entry could not compose
+    //    would leave here as `{}` and come back as 「빠진 결정키: …」 -- the SERVER naming a
+    //    column the CLIENT never had a value for. That sentence is true about the payload and
+    //    wrong about the cause, and it is the sentence this whole round was spent chasing.
+    //    Refusing here costs one round trip nobody wanted and names the columns out loud.
+    //
+    //    The refusal takes the same slot every server refusal takes (`vm.confirm.failure` ->
+    //    `#me2-confirm-note`, `data-me2-confirm-state="failed"`). No new panel, no new control,
+    //    no modal: the write already had a place to say why it did not happen.
+    const declaredKeyColumns = context.decisionKeyColumns;
+    const stated = context.toDecisionKey(session.decision);
+    if (Array.isArray(declaredKeyColumns)) {
+      const dict = stated && typeof stated === 'object' ? stated : {};
+      const missing = declaredKeyColumns.filter(
+        c => !Object.prototype.hasOwnProperty.call(dict, c) || String(dict[c]).trim() === '');
+      if (declaredKeyColumns.length === 0 || missing.length > 0) {
+        setSession(withConfirmFailed(session, decisionKeyRefusal({
+          state: declaredKeyColumns.length === 0 ? DECISION_KEY.UNDECLARED : DECISION_KEY.INCOMPLETE,
+          missing,
+        })));
+        return;
+      }
+    }
     confirmInFlight = true;
     // 🔴 REPAINT IMMEDIATELY, OR THE GUARD IS INVISIBLE. Setting the flag disables the control
     //    on the NEXT render, and the next render is the one after the response -- so without
@@ -1689,7 +1718,8 @@ export function bootstrap(deps) {
     const q = session.question || {};
     Promise.resolve(api.confirmFrame({
       rule: context.rule,
-      decisionKey: context.toDecisionKey(session.decision),
+      // Composed ABOVE, before the in-flight guard, so the unstatable case never reaches here.
+      decisionKey: stated,
       // The SUBJECT of the confirmation: this pair, in this table, at this frame.
       mapTable: q.mapTable,
       columns: { x: q.columns.x, y: q.columns.y, val: q.columns.val },
@@ -1982,6 +2012,11 @@ export function bootstrap(deps) {
       if (next.rule) context.rule = String(next.rule);
       if (Array.isArray(next.targetFields)) context.targetFields = next.targetFields.slice();
       if (next.confirmedBy) context.confirmedBy = String(next.confirmedBy);
+      // An ARRAY is a declaration (possibly of nothing); absence leaves the `null` "unwired".
+      if (Array.isArray(next.decisionKeyColumns)) {
+        context.decisionKeyColumns = next.decisionKeyColumns
+          .filter(c => typeof c === 'string' && c.trim() !== '').map(c => c.trim());
+      }
       if (typeof next.toDecisionKey === 'function') context.toDecisionKey = next.toDecisionKey;
     },
     setConfig(config) { setSession(withConfig(session, config)); },

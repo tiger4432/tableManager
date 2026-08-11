@@ -286,9 +286,11 @@ export function createApiClient(opts) {
       }
       if (!r.params || typeof r.params !== 'object' || Object.keys(r.params).length === 0) {
         return Promise.reject(new Error(
-          "loadReferenceView: 'params' is required and must carry the decision key's values "
-          + '(e.g. {dt_eqp, product}). Refused here rather than sent, because a unit-less view '
-          + 'answers a different question and still renders.'));
+          "loadReferenceView: 'params' is required and must carry the decision key's values -- "
+          + "one entry per column the RULE declares in `decision_key`, at whatever arity that is. "
+          + 'Refused here rather than sent, because a unit-less view answers a different question '
+          + 'and still renders. (An example pair used to stand on this line; it was the last '
+          + 'decision-key column name in this program and it read as a default.)'));
       }
       const q = {
         rule: String(r.rule),

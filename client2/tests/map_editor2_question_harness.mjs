@@ -1,9 +1,16 @@
 /**
  * MAP EDITOR 2 -- THE SET-UP QUESTION, THE SERVED WORKLIST, AND WHAT MAY NOT BE CLAIMED.
  *
- * THIS HARNESS DOES NOT SLICE SOURCE. It `import`s every module it scores: no `readFileSync` of
- * a `.js`, no `node:vm`, no `node_modules`. That is possible because these modules take
- * arguments and return values.
+ * THIS HARNESS DOES NOT SLICE SOURCE. It `import`s every module it scores: no `node:vm`, no
+ * `node_modules`. That is possible because these modules take arguments and return values.
+ *
+ * ⚠️ ONE EXCEPTION, AND IT IS A CENSUS RATHER THAN A SLICE (section L). `client2/src/map_editor2.js`
+ *    is a page ENTRY -- it touches `document` at module scope and exports nothing -- so it cannot
+ *    be imported under bare node and its two seams are closures. It is READ as text and asked
+ *    four yes/no questions about what it contains. Nothing is evaluated and no symbol is cut out,
+ *    so the "a new module global kills the harness" fragility that the slicing harnesses have
+ *    does not apply. It exists because a pure function with zero consumers is the failure this
+ *    project keeps paying for, and no import can score a file that cannot be imported.
  *
  * WHAT IS SCORED
  *   A. THE QUESTION IS PRIMITIVE -- {table, x, y, val, reference}, never a frame name. An
@@ -31,6 +38,7 @@ import { createMapSession, withQuestion, withCatalog, withSelectedCandidate, wit
          BINDING_DECLARED, BINDING_DERIVED, BINDING_FALLBACK_GUESS, BINDING_NONE,
          EMPTY_QUESTION } from '../src/map2/session.js';
 import { buildViewModel, assertNoRatio, countCoordinatePairs, selectAlignmentRules,
+         decisionKeyOf, declaredKeyColumns, decisionKeyRefusal, DECISION_KEY, RULE_ADOPTION,
          VIEW_STATE, ATTRIBUTION,
          EVIDENCE, WORDS, CAUSE, UNKNOWN } from '../src/map2/view_model.js';
 import { createApiClient, ROUTES, RouteNotServedError, normaliseReferenceCatalog,
@@ -38,6 +46,9 @@ import { createApiClient, ROUTES, RouteNotServedError, normaliseReferenceCatalog
 import { referenceOptionLabel, REFERENCE_KIND_WORD } from '../src/map2/view_model.js';
 import { bootstrap, normaliseWorklist } from '../src/map2/main.js';
 import { decideVerdict } from '../src/map2/verdict_bridge.js';
+// The ONE file read as text rather than imported: `map_editor2.js` is a page entry that touches
+// `document` at module scope and exports nothing. See section L for why the census exists at all.
+import { readFileSync } from 'node:fs';
 
 let compared = 0;
 const failures = [];
@@ -673,6 +684,323 @@ const CATALOG = {
   let stillRefused = null;
   await c.loadAlignConfig().catch(e => { stillRefused = e; });
   ok(stillRefused instanceof RouteNotServedError, 'H28 the threshold route still refuses by name');
+}
+
+// ── J. the decision key follows the DECLARATION, at every arity ────────────────
+//
+// 🔴 THE DEFECT THIS SCORES NEVER WORKED FOR A ONE-COLUMN RULE, EVER. `map_editor2.js:405`
+//    honoured `decision_key` at arity 2 and emitted a hardcoded `{dt_eqp, product}` at every
+//    other arity, so a deployment whose rule declares a single column sent two names that rule
+//    never declared. It is not a regression: the confirmation could not have succeeded on such
+//    a deployment at any point in that feature's life.
+//
+// 🔴 ARITY 2 IS THE CONTROL, NOT THE TEST, AND IT IS DELIBERATELY NOT SPELLED `dt_eqp`. The
+//    defective version is CORRECT at arity 2, so a fixture declaring `[dt_eqp, product]` scores
+//    both versions green and proves nothing. J10-J12 therefore declare two columns nobody's
+//    fallback would guess, and J1-J6 / J20-J27 carry the arities where the two versions differ.
+//
+// 🔴 EVERY READ GOES THROUGH `keyOf` / `colsOf`, WHICH DO NOT ASSUME THE RETURN TYPE. The
+//    mutation this section exists to catch changes the SHAPE of the return (a bare dict instead
+//    of a record), and a harness that throws on `res.key` before printing its ASSERTIONS line
+//    reports to the gate as DEAD rather than RED -- the disguise `ab36fab` was written to strip.
+{
+  const keyOf = (res) => (res && typeof res === 'object' && 'key' in res) ? res.key : res;
+  const colsOf = (res) => { const k = keyOf(res); return (k && typeof k === 'object') ? Object.keys(k) : []; };
+  const missingOf = (res) => (res && Array.isArray(res.missing)) ? res.missing : [];
+
+  // ARITY 1 -- the product owner's rule. A served row carries `key` as a dict; the DOM pair
+  // beside it carries the same value in slot 0 and a blank in slot 1.
+  const one = { name: 'dt_job_frame_attribution', alignment: true, decision_key: ['dt_job'] };
+  const served1 = decisionKeyOf(one, { eqp: 'J-1', product: '', __key: { dt_job: 'J-1' } });
+  eq(JSON.stringify(keyOf(served1)), '{"dt_job":"J-1"}',
+     'J1 arity 1: the served dict fills the ONE declared column');
+  eq(colsOf(served1).join('|'), 'dt_job', 'J2 and NOTHING else is in the payload');
+  const fallback1 = decisionKeyOf(one, { eqp: 'J-1', product: '' });
+  eq(JSON.stringify(keyOf(fallback1)), '{"dt_job":"J-1"}',
+     'J3 arity 1 with no served dict: slot 0 lands under the DECLARED name');
+  ok(colsOf(fallback1).indexOf('dt_eqp') < 0,
+     'J4 and `dt_eqp` -- a name this rule never declared -- is nowhere in it');
+  ok(colsOf(fallback1).indexOf('product') < 0,
+     'J5 nor `product`; the route rejects undeclared keys before it reads a value');
+  eq(missingOf(fallback1).length, 0, 'J6 nothing is missing, so nothing is refused');
+
+  // A BLANK IS A REFUSAL, NOT A VALUE. `{dt_job: ""}` comes back from the server as
+  // 「빠진 결정키: dt_job」 -- true about the payload, misleading about the cause.
+  const blank1 = decisionKeyOf(one, { eqp: '', product: 'P' });
+  eq(keyOf(blank1), null, 'J7 a declared column with no value yields NO payload at all');
+  eq(missingOf(blank1).join('|'), 'dt_job', 'J8 and the refusal NAMES the column it is short of');
+  eq(blank1.state, DECISION_KEY.INCOMPLETE, 'J9 in its own state, distinct from undeclared');
+
+  // ARITY 2, with names no fallback would guess. The old code was right here; this is the
+  // control that keeps "the names come from the declaration" from resting on arity 1 alone.
+  const two = { name: 'lot_slot_rule', alignment: true, decision_key: ['core_lot', 'core_slot'] };
+  const got2 = decisionKeyOf(two, { eqp: 'LOT9', product: 'S3' });
+  eq(JSON.stringify(keyOf(got2)), '{"core_lot":"LOT9","core_slot":"S3"}',
+     'J10 arity 2: both columns take the DECLARED spellings');
+  eq(colsOf(got2).join('|'), 'core_lot|core_slot', 'J11 in the declared order, and only those two');
+  eq(missingOf(decisionKeyOf(two, { eqp: 'LOT9', product: '' })).join('|'), 'core_slot',
+     'J12 half a pair refuses and names the half it is short of');
+
+  // ARITY 3 -- served, and unserved.
+  const three = { name: 'three_rule', alignment: true,
+                  decision_key: ['dt_eqp', 'product', 'dt_job'] };
+  const served3 = decisionKeyOf(three, { eqp: 'E1', product: 'P1',
+    __key: { dt_eqp: 'E1', product: 'P1', dt_job: 'J-9' } });
+  eq(JSON.stringify(keyOf(served3)), '{"dt_eqp":"E1","product":"P1","dt_job":"J-9"}',
+     'J20 arity 3: every declared column is filled from the served dict');
+  eq(colsOf(served3).length, 3, 'J21 three columns, not two');
+  const fallback3 = decisionKeyOf(three, { eqp: 'E1', product: 'P1' });
+  eq(keyOf(fallback3), null,
+     'J22 arity 3 with only two positional slots REFUSES rather than sending two of three');
+  eq(missingOf(fallback3).join('|'), 'dt_job', 'J23 naming the third column it could not state');
+  // The value may also arrive under the column's OWN name, which is the arity-agnostic path.
+  const named3 = decisionKeyOf(three, { eqp: 'E1', product: 'P1', dt_job: 'J-9' });
+  eq(JSON.stringify(keyOf(named3)), '{"dt_eqp":"E1","product":"P1","dt_job":"J-9"}',
+     'J24 a value carried under the declared column name completes the key');
+
+  // THE SERVED DICT IS READ COLUMN BY COLUMN, NOT PASSED THROUGH. A key composed under a
+  // previously-adopted rule must not ride along under the current one: the route 400s on
+  // undeclared keys (`server/main.py:4708-4713`) and names them, which is a different bug
+  // report than the one the operator would actually be looking at.
+  const stale = decisionKeyOf(one, { eqp: '', product: '',
+    __key: { dt_eqp: 'E1', product: 'P1', dt_job: 'J-1' } });
+  eq(colsOf(stale).join('|'), 'dt_job', 'J25 extra columns in the served dict are DROPPED');
+  const short = decisionKeyOf(three, { eqp: '', product: '', __key: { dt_eqp: 'E1' } });
+  eq(keyOf(short), null, 'J26 a served dict short of a declared column does not pass through');
+  eq(missingOf(short).join('|'), 'product|dt_job', 'J27 and both absences are named');
+
+  // NO DECLARATION IS ITS OWN STATE. "The rule names no key" and "the values are missing" are
+  // two different repairs and must not collapse into one word.
+  const none = decisionKeyOf({ name: 'x', alignment: true }, { eqp: 'E', product: 'P' });
+  eq(none.state, DECISION_KEY.UNDECLARED, 'J30 a rule with no `decision_key` is UNDECLARED');
+  eq(keyOf(none), null, 'J31 and states no key -- not `{dt_eqp, product}`, not `{}`');
+  eq(decisionKeyOf(null, { eqp: 'E' }).state, DECISION_KEY.UNDECLARED,
+     'J32 no rule at all is the same state, not a crash');
+  eq(colsOf(decisionKeyOf(undefined, undefined)).length, 0, 'J33 and neither argument is required');
+
+  // The declaration is CLEANED, because the positional bridge reads an INDEX: a duplicate or a
+  // blank would silently shift what index 1 means.
+  eq(declaredKeyColumns({ decision_key: ['a', 'a', '', ' b ', 7] }).join('|'), 'a|b',
+     'J34 duplicates, blanks and non-strings are dropped from the declared list');
+
+  // A DECLARED COLUMN NAMED AFTER A PROTOTYPE MEMBER MUST NOT RESOLVE TO ONE. `d['constructor']`
+  // is a function on any object literal, and `String(fn)` is a plausible-looking value.
+  const proto = decisionKeyOf({ decision_key: ['constructor'] }, { eqp: '', product: '' });
+  eq(keyOf(proto), null, 'J35 `constructor` resolves to nothing, not to a stringified function');
+  eq(keyOf(decisionKeyOf({ decision_key: ['dt_job'] }, { dt_job: {} })), null,
+     'J36 nor does a non-scalar reach the wire as `[object Object]`');
+  eq(JSON.stringify(keyOf(decisionKeyOf({ decision_key: ['dt_job'] }, { dt_job: 0 }))),
+     '{"dt_job":"0"}', 'J37 while a real zero IS a value and is stated');
+
+  // THE WORTHLESSNESS CHECK. If the defective spelling and the repaired one agree on this
+  // section's fixtures, the section scores nothing. Measured here rather than asserted in prose.
+  const defective = (rule, d) => {
+    const cols = (rule && rule.decision_key) || [];
+    if (cols.length === 2) return { [cols[0]]: d.eqp, [cols[1]]: d.product };
+    return { dt_eqp: d.eqp, product: d.product };
+  };
+  const probes = [
+    [one, { eqp: 'J-1', product: '' }],
+    [three, { eqp: 'E1', product: 'P1', dt_job: 'J-9' }],
+    [{ decision_key: [] }, { eqp: 'E', product: 'P' }],
+  ];
+  let diverged = 0;
+  for (const [rule, d] of probes) {
+    if (JSON.stringify(keyOf(decisionKeyOf(rule, d))) !== JSON.stringify(defective(rule, d))) diverged++;
+  }
+  eq(diverged, probes.length,
+     'J40 NEGATIVE CONTROL: the defective spelling disagrees with the repair on EVERY probe '
+     + 'here -- if this drops, the fixtures stopped activating the defect and J1-J37 are inert');
+  eq(JSON.stringify(defective(two, { eqp: 'LOT9', product: 'S3' })),
+     JSON.stringify(keyOf(got2)),
+     'J41 and it AGREES at arity 2, which is why arity 2 alone could never have caught this');
+}
+
+// ── K. adoption that declines says how many, and how many are required ─────────
+//
+// 🔴 SILENCE READS AS LOADING. `adoptRule` returns before `refreshWorklist()`, so zero or two
+//    capable rules issue NO worklist request at all -- not a 400, not a 500, no network traffic.
+//    The operator sees an empty list and reports that loading is broken. This box's live
+//    `enrichment_rules.json` and the shipped `.sample` both declare TWO, so the default a fresh
+//    deployment inherits is exactly the silent case.
+{
+  const frame = { name: 'eqp_product_frame_attribution', alignment: true };
+  const other = { name: 'other', alignment: true };
+  const lot = { name: 'dt_job_lot_slot_attribution' };
+
+  const adopted = selectAlignmentRules([lot, frame]);
+  eq(adopted.state, RULE_ADOPTION.ADOPTED, 'K1 exactly one capable rule is ADOPTED');
+  eq(adopted.reason, '', 'K2 and an adopted rule states no reason -- there is nothing to explain');
+
+  const several = selectAlignmentRules([frame, other]);
+  eq(several.state, RULE_ADOPTION.SEVERAL_CAPABLE, 'K3 two capable rules is its own state');
+  ok(several.reason.length > 0, 'K4 and it is NOT silent -- silence is what reads as loading');
+  ok(several.reason.indexOf('2') >= 0, 'K5 the line carries HOW MANY declared alignment');
+  ok(several.reason.indexOf('1') >= 0, 'K6 and that exactly one is what gets adopted');
+  ok(several.reason.indexOf('alignment') >= 0,
+     'K7 naming the CONFIG KEY in English -- it is what an administrator searches the file for');
+
+  const nothing = selectAlignmentRules([lot, { name: 'x' }]);
+  eq(nothing.state, RULE_ADOPTION.NONE_CAPABLE, 'K8 zero capable rules is a third state');
+  ok(nothing.reason.length > 0, 'K9 also named rather than left blank');
+  ok(nothing.reason.indexOf('0/2') >= 0,
+     'K10 carrying both numbers: none capable OUT OF how many were declared');
+  ok(nothing.reason !== several.reason,
+     'K11 the two refusals differ, because the two repairs differ -- 0 cannot be picked past');
+  ok(selectAlignmentRules([]).reason.indexOf('0/0') >= 0,
+     'K12 an empty rules list says so with its own arithmetic, not with the 0/2 case`s');
+  // The three states are three distinct tokens; a screen keyed on them cannot collapse two.
+  eq(new Set([RULE_ADOPTION.ADOPTED, RULE_ADOPTION.NONE_CAPABLE,
+              RULE_ADOPTION.SEVERAL_CAPABLE]).size, 3, 'K13 three states, three tokens');
+
+  // The refusal sentence for an unstatable key is spelled ONCE, and it says which columns.
+  ok(decisionKeyRefusal({ state: DECISION_KEY.INCOMPLETE, missing: ['dt_job'] }).indexOf('dt_job') >= 0,
+     'K20 the key refusal NAMES the column it could not state');
+  ok(decisionKeyRefusal({ state: DECISION_KEY.UNDECLARED, missing: [] })
+       !== decisionKeyRefusal({ state: DECISION_KEY.INCOMPLETE, missing: ['dt_job'] }),
+     'K21 and "the rule declares none" is a different sentence from "the value is missing"');
+}
+
+// ── L. the wiring: `map_editor2.js` names no decision-key column ───────────────
+//
+// 🔴 THIS ONE FILE IS READ AS TEXT, AND THE HEADER'S "DOES NOT SLICE SOURCE" HOLDS FOR
+//    EVERYTHING ELSE. `client2/src/map_editor2.js` is a page ENTRY: it touches `document` at
+//    module scope, so it cannot be imported under bare node, and its two seams
+//    (`setLoader`, `setContext.toDecisionKey`) are closures with no export. Nothing is
+//    evaluated here and no symbol is sliced out -- the file is read and four claims are made
+//    about what it does and does not contain. Without this, `decisionKeyOf` could be perfect
+//    and unused: a landed axis with zero consumers is the failure this project keeps paying for.
+{
+  const entry = readFileSync(new URL('../src/map_editor2.js', import.meta.url), 'utf8');
+  ok(/import \{[^}]*decisionKeyOf[^}]*\} from '\.\/map2\/view_model\.js'/.test(entry),
+     'L1 the entry imports the declaration-driven composer from the pure module');
+  const calls = (entry.match(/decisionKeyOf\(/g) || []).length;
+  ok(calls >= 2, `L2 and CALLS it at both seams -- the read and the write (found ${calls})`);
+  ok(!/keyFrom/.test(entry), 'L3 the hardcoding fallback is gone, not merely bypassed');
+  // The literal itself. The old comment header asserted `decision_key: [dt_eqp, product]` as if
+  // it were universal, which is the same assumption in prose; both are gone.
+  ok(!/dt_eqp/.test(entry),
+     'L4 and NO decision-key column name is written down in this file, in code or in prose');
+  ok(/setNotice\(found\.reason\)/.test(entry),
+     'L5 the adoption reason reaches the screen rather than only the console');
+  ok(/decisionKeyColumns/.test(entry),
+     'L6 and the declared columns travel to the shell, so a refused write can name them');
+}
+
+// ── M. end to end: an arity-1 unit reads, writes, and refuses by name ──────────
+//
+// Drives the real `bootstrap` with the loader wired the way the page entry wires it, so the
+// arity-1 payload is scored where it actually goes: onto the request, and into the write.
+{
+  const doc = makeDocument();
+  const declaration = { name: 'dt_job_frame_attribution', alignment: true,
+                        decision_key: ['dt_job'], target_fields: ['core_frame'] };
+  const fetches = [];
+  const payload = {
+    state: 'scored', refusal: null,
+    unit: { rule: declaration.name, map_table: 'dt_map',
+            columns: { x: { column: 'dt_x', origin: 'chosen' },
+                       y: { column: 'dt_y', origin: 'chosen' },
+                       value: { column: 'c_bn', origin: 'proposed', reason: null } } },
+    reference: { state: 'ok', kind: 'values', cells: [[0, 0], [1, 0], [0, 1]] },
+    sources: { map_count: 2, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
+               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_tl',
+                        declared_frame_source: 'declared' }] },
+    candidates: [{ frame: 'rot0_tl', agreement: 200, discriminating: 300 },
+                 { frame: 'rot180_tr', agreement: 90, discriminating: 300 }],
+    declaration: { frames: { rot0_tl: 2 }, attested_maps: 2, unattested_maps: 0, axis_sources: {} },
+    ruling: { winner: 'rot0_tl' }, excluded_total: 0, stats: { scored_cells: 300, elapsed_ms: 9 },
+  };
+  const api = {
+    counters: { reads: 0, writes: 0 },
+    loadReferenceView: (r) => { fetches.push(r); return Promise.resolve(payload); },
+    loadWorklist: () => Promise.resolve({ rows: [] }),
+    loadAlignConfig: () => Promise.resolve({}),
+    confirmFrame: (rec) => { api.counters.writes++; api.lastRecord = rec; return Promise.resolve({}); },
+  };
+  const app = bootstrap({ document: doc, api });
+  app.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  app.setCatalog(CATALOG);
+  // EXACTLY what `map_editor2.js` hands the shell. Kept in step by section L, which pins that
+  // the entry composes its key the same way.
+  app.setContext({ rule: declaration.name, targetFields: declaration.target_fields,
+                   confirmedBy: 'tester', decisionKeyColumns: declaration.decision_key,
+                   toDecisionKey: (d) => decisionKeyOf(declaration, d).key });
+  app.setLoader((decision, question) => {
+    const unit = decisionKeyOf(declaration, decision);
+    if (!unit.key) return Promise.reject(new Error('decision key not stated'));
+    return api.loadReferenceView({ rule: declaration.name, mapTable: question.mapTable,
+                                   params: unit.key, columns: question.columns });
+  });
+
+  // 🔴 EVERY READ BELOW GOES THROUGH A TOLERANT ACCESSOR, AND THAT IS NOT DEFENSIVE STYLE --
+  //    it is what keeps a killed mutant reporting RED instead of DEAD. The defect this section
+  //    exists to catch stops the request and the write from happening at all, so `fetches[0]`
+  //    and `api.lastRecord` are absent on exactly the runs that must be scored; a bare
+  //    `api.lastRecord.decisionKey` throws before the ASSERTIONS line and the gate reads the
+  //    harness as dead debt rather than as a failure. Measured: MUT-1 and MUT-2 did exactly
+  //    that before these accessors existed.
+  const at = (arr, i) => (Array.isArray(arr) && arr[i]) ? arr[i] : {};
+  const rec = () => api.lastRecord || {};
+  const show = (v) => JSON.stringify(v === undefined ? null : v);
+
+  // A served worklist row for a one-column rule: `key` is the dict the server composed.
+  app.selectDecision({ eqp: 'J-1', product: '', __unitKey: 'J-1', __key: { dt_job: 'J-1' } });
+  eq(fetches.length, 1, 'M1 an arity-1 unit costs exactly one read, like any other');
+  eq(show(at(fetches, 0).params), '{"dt_job":"J-1"}',
+     'M2 and the request carries the ONE declared column -- the payload production never saw');
+  await settle();
+
+  const cells = doc.querySelectorAll('[data-me2-candidate]');
+  const pick = cells.find(c => c.getAttribute('data-frame-code') === 'rot0_tl') || null;
+  ok(!!pick, 'M2b the eight candidates are on screen, so the confirm below has something to say');
+  if (pick) pick.dispatchEvent('click');
+  doc.getElementById('me2-confirm-btn').dispatchEvent('click');
+  eq(api.counters.writes, 1, 'M3 and the write happens -- this is the act that never worked');
+  eq(show(rec().decisionKey), '{"dt_job":"J-1"}',
+     'M4 posting the declared column, not the two-column pair the rule never declared');
+  await settle();
+
+  // THE REFUSAL LEG. A unit whose key cannot be stated must not post a blank and let the server
+  // answer 「빠진 결정키」 -- the client is the one that never had the value.
+  //
+  // 🔴 THE SAME SCREEN, THE SAME SELECTED CANDIDATE, ONLY THE DECLARATION CHANGES. Selecting a
+  //    key-less ROW instead would have refused for a second reason -- no payload, so no
+  //    candidate, so a disabled control -- and the write count would have stayed at 1 whether or
+  //    not this guard existed. That is a green proxy, not a measurement. Here M3 immediately
+  //    above is the positive control: the identical click wrote a moment ago.
+  const writesBefore = api.counters.writes;
+  app.setContext({
+    decisionKeyColumns: ['dt_job', 'dt_lot'],
+    toDecisionKey: (d) => decisionKeyOf({ decision_key: ['dt_job', 'dt_lot'] }, d).key });
+  doc.getElementById('me2-confirm-btn').dispatchEvent('click');
+  eq(api.counters.writes, writesBefore, 'M5 a key short of a declared column posts NOTHING');
+  const note = doc.getElementById('me2-confirm-note').textContent;
+  ok(note.indexOf('dt_lot') >= 0,
+     'M6 and the confirm slot NAMES the column it is short of, in the slot server refusals use');
+  eq(doc.getElementById('me2-confirmbar').getAttribute('data-me2-confirm-state'), 'failed',
+     'M7 marked as a refusal, not as a note -- one slot, the existing surface, no new control');
+  eq(doc.getElementById('me2-confirm-btn').disabled, false,
+     'M8 the control is still LIVE, so M5 measured the guard rather than a dead button');
+  // 🔴 THE SHELL NAMES THE WHOLE DECLARED KEY, AND THAT IS THE HONEST LIMIT OF WHAT IT KNOWS.
+  //    `toDecisionKey` is a seam returning a dict or null, so when the composer refuses, the
+  //    shell sees "no key" rather than "one of two columns". 결정키 미확보 is a statement about
+  //    the KEY, and the key -- not one column of it -- is what was not secured. The per-column
+  //    `missing` set is not lost: the READ path holds the composer's own record and logs it.
+  ok(note.indexOf('dt_job') >= 0,
+     'M9 the operator is told the rule`s WHOLE key, so they can see what the unit is made of');
+
+  // THE LAST LINK. `selectAlignmentRules` composes the adoption refusal, the page entry hands it
+  // to `setNotice` (section L pins that call), and it has to arrive on the ONE line the set-up
+  // row already publishes. Scored here so the chain has no unmeasured segment: a reason composed
+  // and never rendered is the same silence it was written to replace.
+  const declined = selectAlignmentRules([{ name: 'a', alignment: true }, { name: 'b', alignment: true }]);
+  app.setNotice(declined.reason);
+  const line = doc.getElementById('me2-question-note').textContent;
+  ok(line.indexOf(declined.reason) >= 0,
+     'M10 the adoption refusal reaches the set-up row`s existing note line');
+  ok(line.indexOf(declined.reason) === 0,
+     'M11 and LEADS it -- whether the screen can answer at all outranks what an answer rests on');
 }
 
 console.log(`ASSERTIONS ${compared} ${failures.length}`);

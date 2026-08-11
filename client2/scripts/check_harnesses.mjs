@@ -624,7 +624,36 @@ const FLOORS = new Map([
   //    switchover bar actually rests on. That is a deliberate, reported downgrade awaiting a
   //    seam judgement -- not a coverage loss to be baselined away. If the unit is restored,
   //    restore the stronger assertion and raise this floor.
-  ['map_editor2_question_harness.mjs', 193],
+  //
+  // 193 -> 256 (2026-08-11). THE DECISION KEY FOLLOWS THE DECLARATION, AT EVERY ARITY. Sections
+  // J/K/L/M, and the defect they close had never worked for anybody: `map_editor2.js` honoured
+  // `decision_key` at arity 2 and emitted a hardcoded two-column pair at every other arity, so a
+  // deployment whose rule declares ONE column could not confirm a frame at any point in that
+  // feature's life. The server's answer to it -- 「빠진 결정키: …」 -- is a true statement about
+  // the payload and a misleading one about the cause, which is what made it expensive to find.
+  //   J  the composer, at arities 1 / 2 / 3, plus refusal-instead-of-blank and the served dict
+  //      read column by column. `J40` is the WORTHLESSNESS CHECK: the defective spelling must
+  //      disagree with the repair on every probe here, and `J41` records WHY arity 2 alone could
+  //      never have caught this -- the two versions AGREE there. A fixture spelled
+  //      `[dt_eqp, product]` scores both versions green.
+  //   K  a refusal that declines in SILENCE is indistinguishable from loading. Zero or two
+  //      capable rules issue no worklist request at all, and the operator has been reading that
+  //      as a broken load; the line now carries how many declared `alignment` and that one is
+  //      required.
+  //   L  the WIRING census. `map_editor2.js` is a page entry that cannot be imported under bare
+  //      node, so it is read as text and asked whether it imports the composer, calls it at both
+  //      seams, and names no decision-key column in code OR in prose. Without it the composer
+  //      could be perfect and unused.
+  //   M  end to end through `bootstrap`: the arity-1 key on the request AND in the write record,
+  //      and a key short of a declared column refusing in the confirm slot instead of posting a
+  //      blank. `M2b`/`M8` are the non-vacuity guards -- a refusal measured against a dead
+  //      button is a green proxy.
+  // 🔴 EVERY READ IN M GOES THROUGH A TOLERANT ACCESSOR ON PURPOSE. The defect stops the request
+  //    and the write from happening, so `fetches[0]` and `api.lastRecord` are absent on exactly
+  //    the runs that must be scored -- and a throw before the ASSERTIONS line reports to this
+  //    runner as DEAD, not red. Measured: two of the five mutants did exactly that before the
+  //    accessors existed. All five now report `ASSERTIONS 256 <n>` with n > 0.
+  ['map_editor2_question_harness.mjs', 256],
   // New 2026-08-04 with 📐 규격만 저장 (`saveMapSpecOnly`), the metadata-only write path, so its
   // floor is the count it reports on the commit that introduces it. It is the only scorer of
   // a write that must touch NO cells: its central assertions name the ENTIRE request list, and

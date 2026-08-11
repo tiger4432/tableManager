@@ -18,15 +18,20 @@
 
 import { API_BASE, CURRENT_USER } from './config.js';
 import { bootstrap } from './map2/main.js';
-import { selectAlignmentRules } from './map2/view_model.js';
+import { selectAlignmentRules, decisionKeyOf, declaredKeyColumns,
+         decisionKeyRefusal } from './map2/view_model.js';
 import { createApiClient, RouteNotServedError, REFERENCE_CATALOG_SERVED } from './map2/api.js';
 
 const DEV_CAPTURE_URL = '/map2_dev_reference.json';
 
-// The decision unit is named by an enrichment rule, not assembled here. That rule declares
-// `decision_key: [dt_eqp, product]`, which is why `params` carries those two fields and never
-// a map id: wafers under one eqp+product were measured disagreeing with each other, so the
-// evidence has to be pooled before it is scored.
+// The decision unit is named by an enrichment rule, not assembled here. The rule declares
+// `decision_key`, which is why `params` carries THOSE columns and never a map id: wafers under
+// one decision unit were measured disagreeing with each other, so the evidence has to be pooled
+// before it is scored.
+// 🔴 THE ARITY IS THE RULE'S, NOT THIS FILE'S. A sentence naming one deployment's two key
+//    columns stood here, and it was not a description -- it was the assumption the composer at
+//    the foot of this file acted on. `decisionKeyOf` reads the declaration at every arity;
+//    nothing in this file names a decision-key column, in code or in prose.
 // 🔴 NO RULE NAME AND NO TABLE NAME ARE WRITTEN DOWN IN THIS PROGRAM. They used to be, as two
 //    consts here, and that is not a default -- it is an ASSUMPTION ABOUT SOMEONE ELSE'S
 //    DATABASE. On a deployment with no rule by that name, or no table by that name, the first
@@ -143,22 +148,42 @@ function start() {
   // THE PRIMITIVE TUPLE, straight through. The loader takes the question as an ARGUMENT rather
   // than reading it from anywhere: no module state, so a harness can call it twice with two
   // different questions, which is the whole reason `map2/` is importable instead of sliced.
-  app.setLoader((decision, question) => api.loadReferenceView({
-    rule: chosen.rule,
-    mapTable: question.mapTable,
-    params: decision.__key || keyFrom(chosen.declaration, decision),
-    xCol: question.columns.x,
-    yCol: question.columns.y,
-    valCol: question.columns.val,
-    reference: question.reference || undefined,
-    // 🔴 READ OFF THE QUESTION, NEVER SET HERE. The borrowed-geometry claim reaches the wire
-    //    only because the operator clicked the control that put it on the question -- this file
-    //    passes it through and has no opinion about it. A default written on this line would be
-    //    the same defect as the rule and table names that used to live here: an assumption about
-    //    somebody else's data, made in the last place a reader looks.
-    assumeReferenceGeometry: question.assumeReferenceGeometry === true,
-    includeCells: true,
-  }));
+  app.setLoader((decision, question) => {
+    // 🔴 THE UNIT IS STATED OR THE REQUEST IS NOT MADE. A key short of a declared column comes
+    //    back from the server as 「빠진 결정키」 -- a true statement about the payload and a
+    //    misleading one about the cause, because the client is the one that never had the
+    //    value. So the refusal is raised HERE, with the column named, and no request is sent.
+    //    It goes to the console rather than to the set-up row's notice line: that line carries
+    //    facts about the whole deployment (no rule, no table) and is not cleared per row, so a
+    //    per-unit refusal parked there would keep accusing the NEXT row of it.
+    const unit = decisionKeyOf(chosen.declaration, decision);
+    if (!unit.key) {
+      console.error('[map2]', decisionKeyRefusal(unit),
+        '| declared:', unit.columns.join(', ') || '(none)',
+        '| missing:', unit.missing.join(', ') || '(none)',
+        '| decision:', decision);
+      return Promise.reject(new Error(
+        `decision key not stated for rule '${chosen.rule}': declared [${unit.columns.join(', ')}], `
+        + `missing [${unit.missing.join(', ')}]. Refused here rather than sent -- a blank column `
+        + 'returns as "under-filled", which describes the payload and not the cause.'));
+    }
+    return api.loadReferenceView({
+      rule: chosen.rule,
+      mapTable: question.mapTable,
+      params: unit.key,
+      xCol: question.columns.x,
+      yCol: question.columns.y,
+      valCol: question.columns.val,
+      reference: question.reference || undefined,
+      // 🔴 READ OFF THE QUESTION, NEVER SET HERE. The borrowed-geometry claim reaches the wire
+      //    only because the operator clicked the control that put it on the question -- this
+      //    file passes it through and has no opinion about it. A default written on this line
+      //    would be the same defect as the rule and table names that used to live here: an
+      //    assumption about somebody else's data, in the last place a reader looks.
+      assumeReferenceGeometry: question.assumeReferenceGeometry === true,
+      includeCells: true,
+    });
+  });
 
   // 🔴 THE SHELL IS DRAWN BEFORE ANY REQUEST IS MADE, AND EVERY FAILURE BELOW IS CAUGHT. No
   //    bootstrap step may leave the page blank: whatever breaks, the workbench, the selection
@@ -186,6 +211,12 @@ function start() {
       const picked = found.rules.find(r => r.name === name) || null;
       // Picking BY HAND is a choice, so the proposal marker comes off.
       app.setRules({ options: null, proposed: false });
+      // 🔴 AND THE REASON GOES WITH IT. `규칙 선택 필요` described the state BEFORE this pick;
+      //    left standing it would tell the operator to choose a rule they just chose, which is
+      //    the same class of defect as the silence it replaced -- a line that does not track
+      //    what it describes. Clearing to `found.reason` rather than to `''` keeps the 0-rule
+      //    case's line, which no pick can resolve.
+      app.setNotice(picked ? '' : found.reason);
       adoptRule(app, api, picked);
     });
     // A single declared candidate is adopted so the screen is usable; it stays MARKED as a
@@ -203,10 +234,17 @@ function start() {
   window.__map2 = app;
 }
 
-// One-line reasons. Nominal register, and each names a DIFFERENT state: no rule declared at
-// all, versus a rule found but nothing to align it against, versus the bootstrap itself failing.
-// Collapsing them would tell the operator "empty" three times for three different repairs.
-const WORDS_NO_RULE = '정렬 규칙 없음';
+// One-line reasons. Nominal register, and each names a DIFFERENT state: the rules route not
+// answering at all, versus a rule found but nothing to align it against, versus the bootstrap
+// itself failing. Collapsing them would tell the operator "empty" three times for three
+// different repairs.
+// 🔴 `정렬 규칙 없음` IS NO LONGER SPELLED HERE. It is one of the two adoption refusals and it
+//    now arrives from `selectAlignmentRules`, WITH the counts that make it actionable -- how
+//    many rules declared `alignment`, and that exactly one is required. A copy in this file
+//    would be a second spelling of one fact, and the copy is the one that goes stale.
+//    A FAILED ROUTE IS NOT AN ABSENT DECLARATION. Those two used to share `정렬 규칙 없음`,
+//    which sent an administrator to `enrichment_rules.json` when the server had not answered.
+const WORDS_RULES_UNREACHABLE = '규칙 조회 실패';
 const WORDS_NO_TABLE = '맵 테이블 없음';
 const WORDS_SETUP_FAILED = '초기 설정 실패';
 
@@ -229,7 +267,17 @@ function adoptRule(app, api, declaration) {
     // The rule's DECLARED target fields. Read for the write's destination, never for a picker.
     targetFields: declaration.target_fields || [],
     confirmedBy: CURRENT_USER,
-    toDecisionKey: (d) => (d && d.__key) || keyFrom(declaration, d),
+    // 🔴 THE DECLARED COLUMNS TRAVEL WITH THE SEAM, so the shell can NAME what a refused write
+    //    was short of instead of posting a blank key and relaying the server's `빠진 결정키`.
+    //    An array here means "wired"; the shell's default is `null`, which means "no page entry
+    //    has said" -- a different state, and one a harness driving `bootstrap` bare is in.
+    //    🔴 THE SAME CLEANED LIST THE COMPOSER READS, not `declaration.decision_key` raw. The
+    //       shell computes what a refused write was short of by comparing this against the
+    //       composed dict, so two spellings of "the declared columns" would disagree on exactly
+    //       the malformed declarations where the disagreement matters -- and a non-array raw
+    //       value would fall through `setContext`'s guard and leave the write UNGUARDED.
+    decisionKeyColumns: declaredKeyColumns(declaration),
+    toDecisionKey: (d) => decisionKeyOf(declaration, d).key,
   });
   buildCatalog(api, declaration).then(built => {
     app.setCatalog(built.catalog);
@@ -268,22 +316,28 @@ async function discover(api) {
     rules = Array.isArray(res && res.rules) ? res.rules : [];
   } catch (e) {
     console.log('[map2] enrichment rules unavailable:', e && e.message);
-    return { rules: [], declaration: null, reason: WORDS_NO_RULE };
+    return { rules: [], declaration: null, reason: WORDS_RULES_UNREACHABLE };
   }
 
   // The predicate lives in a pure module so it is scored by importing, not by driving a page.
+  // 🔴 AND SO DOES THE REASON. `picked.reason` is empty ONLY when exactly one rule declared
+  //    `alignment` -- the case where a rule is adopted and the worklist is about to be asked.
+  //    Every other case returns a line, because `adoptRule` returns before `refreshWorklist()`
+  //    and no request is ever issued: an unasked worklist and a slow one look identical, and
+  //    the operator has been reading the first as the second.
   const picked = selectAlignmentRules(rules);
   if (picked.capable === 0) {
     console.log('[map2] no rule declares `alignment: true`; nothing can be aligned. '
       + `Declared rules: ${rules.map(r => r && r.name).join(', ') || '(none)'}`);
-    return { rules: [], declaration: null, reason: WORDS_NO_RULE };
+    return { rules: [], declaration: null, reason: picked.reason };
   }
   if (!picked.proposed) {
     console.log(`[map2] ${picked.capable} alignment-capable rules; offering, proposing none: `
-      + picked.rules.map(r => r.name).join(', '));
+      + picked.rules.map(r => r.name).join(', ')
+      + '. No worklist request is made until one is picked -- exactly one is required.');
   }
   return { rules: picked.rules, declaration: picked.declaration,
-           proposed: picked.proposed, reason: '' };
+           proposed: picked.proposed, reason: picked.reason };
 }
 
 /**
@@ -397,13 +451,17 @@ async function buildCatalog(api, declaration) {
   return { catalog: { tables, columns, columnTypes, binding, references }, degraded };
 }
 
-/** The decision key's COLUMNS come from the rule, so this file spells them once. */
-function keyFrom(rule, decision) {
-  const cols = (rule && rule.decision_key) || [];
-  const d = decision || {};
-  if (cols.length === 2) return { [cols[0]]: d.eqp, [cols[1]]: d.product };
-  return { dt_eqp: d.eqp, product: d.product };
-}
+// 🔴 THE DECISION-KEY FALLBACK THAT STOOD HERE IS GONE, NOT MOVED-AND-KEPT. It honoured the
+//    rule's declared columns at arity 2 and emitted a HARDCODED TWO-COLUMN PAIR at every other
+//    arity, so a rule declaring a SINGLE column could never be confirmed on any deployment --
+//    not a regression, a feature that never shipped working. Its replacement is `decisionKeyOf`
+//    in `map2/view_model.js`: pure, arity-agnostic, importable, and it REFUSES rather than
+//    filling a declared column with a blank.
+//
+//    THIS FILE NOW NAMES NO DECISION-KEY COLUMN AT ALL, IN CODE OR IN PROSE -- which is the
+//    property, not the deletion. `map_editor2_question_harness.mjs` section L holds it that way,
+//    including the prose: the header of this file used to state one rule's key columns as if
+//    they were universal, which is the same assumption written in a place nobody greps.
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', start);

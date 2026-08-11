@@ -805,6 +805,8 @@ function captionFor(session, payload, selectedId) {
 export function selectAlignmentRules(rules) {
   const all = Array.isArray(rules) ? rules : [];
   const capable = all.filter(r => r && r.alignment === true);
+  const state = capable.length === 1 ? RULE_ADOPTION.ADOPTED
+    : (capable.length === 0 ? RULE_ADOPTION.NONE_CAPABLE : RULE_ADOPTION.SEVERAL_CAPABLE);
   return Object.freeze({
     rules: Object.freeze(capable),
     // Exactly one candidate is adopted so the screen is usable -- and stays marked a proposal.
@@ -812,7 +814,176 @@ export function selectAlignmentRules(rules) {
     proposed: capable.length === 1,
     capable: capable.length,
     declared: all.length,
+    // 🔴 THE THREE OUTCOMES ARE NAMED, AND TWO OF THEM CARRY A REASON. Counting `capable` and
+    //    leaving the caller to decide what that means is how "no rule was adopted" and "the
+    //    screen is still loading" became the same pixels: `adoptRule` returned before
+    //    `refreshWorklist()`, no request was ever issued, and the operator read an empty
+    //    worklist as a broken load. A refusal that does not say it refused is indistinguishable
+    //    from work in progress.
+    state,
+    reason: adoptionReason(state, capable.length, all.length),
   });
+}
+
+/** The three outcomes of reading `alignment: true` across the served rules. */
+export const RULE_ADOPTION = Object.freeze({
+  ADOPTED: 'adopted',
+  NONE_CAPABLE: 'none_capable',
+  SEVERAL_CAPABLE: 'several_capable',
+});
+
+/**
+ * ONE LINE, AND IT NAMES THE ARITHMETIC RATHER THAN THE MOOD. Both refusals carry the same two
+ * facts -- how many rules declared `alignment`, and that exactly one is required -- because
+ * those are the two numbers an administrator needs to repair `enrichment_rules.json` without
+ * reading any code. The word `alignment` is the CONFIG KEY, left in English on purpose: it is
+ * what they will search the file for.
+ *
+ * The two strings differ because the two repairs differ. `0` means the config declares nothing
+ * and no picking can help; `2+` means the config declares too much and the picker beside this
+ * line is the immediate way out. Collapsing them would say "empty" twice for two repairs, which
+ * is the failure this file's three bootstrap reasons already avoid.
+ */
+function adoptionReason(state, capable, declared) {
+  if (state === RULE_ADOPTION.ADOPTED) return '';
+  if (state === RULE_ADOPTION.NONE_CAPABLE) {
+    return `정렬 규칙 없음 · alignment 선언 0/${declared}건 · 1건 필요`;
+  }
+  return `규칙 선택 필요 · alignment 선언 ${capable}건 · 1건만 자동 채택`;
+}
+
+// ── THE DECISION UNIT'S KEY ─────────────────────────────────────────────────────
+
+/** What `decisionKeyOf` concluded. Three states, because three repairs. */
+export const DECISION_KEY = Object.freeze({
+  /** Every declared column has a value. `key` is the payload. */
+  STATED: 'stated',
+  /** The rule declares columns and at least one of them could not be filled. `key` is null. */
+  INCOMPLETE: 'incomplete',
+  /** The rule declares no `decision_key` at all. There is no unit to name. */
+  UNDECLARED: 'undeclared',
+});
+
+/**
+ * THE UNIT'S KEY, COMPOSED FROM THE RULE'S DECLARATION AND NOTHING ELSE.
+ *
+ * 🔴 WHAT THIS REPLACES, AND WHY IT NEVER WORKED FOR A ONE-COLUMN RULE. The page entry used to
+ *    honour `decision_key` only at arity 2 and emit a hardcoded `{dt_eqp, product}` at every
+ *    other arity. A deployment whose rule declares a SINGLE column therefore sent two column
+ *    names the rule never declared, and the confirmation could not succeed at any point in that
+ *    feature's life: over HTTP the route rejects undeclared keys outright
+ *    (`server/main.py:4708-4713`), and where it does not, `frame_confirmation.py:126` reports
+ *    the declared column as under-filled. That message is a true statement about the payload and
+ *    a misleading one about the cause, which is what cost this round.
+ *
+ * 🔴 A COLUMN WITH NO VALUE IS A REFUSAL TO STATE, NOT A BLANK TO SEND. Sending `{dt_job: ''}`
+ *    produces exactly the under-filled refusal above, and the client would have manufactured it.
+ *    So `key` is null unless EVERY declared column is filled, and `missing` names the ones that
+ *    are not -- a refusal that says what it refused.
+ *
+ * VALUE SOURCES, in order, per declared column:
+ *   1. `decision.__key[col]` -- the SERVER'S own composed dict, carried off a worklist row
+ *      (`map_alignment.py:6273` builds it by zipping `decision_key` against the row). It is
+ *      read COLUMN BY COLUMN rather than passed through whole, so a key composed under a
+ *      previously-adopted rule cannot ride along under the current one, and extra columns the
+ *      route would reject as `invalid` are dropped rather than sent.
+ *   2. `decision[col]` -- a value carried under the declared column's own name. Arity-agnostic
+ *      and spelling-agnostic; this is the path any future producer should use.
+ *   3. THE LEGACY POSITIONAL BRIDGE, and it is a bridge rather than a column-name assumption.
+ *      `decision.eqp` / `decision.product` are the FIRST and SECOND values of the unit key --
+ *      `worklistModel` fills them from `Object.keys(keyDict)` positionally -- so they are slots
+ *      of this program's own making, not columns of anybody's database. They are read at index
+ *      0 and 1 and never named in the output; the output's names always come from the
+ *      declaration. There is no third slot, so a three-column rule with no served dict refuses
+ *      rather than inventing one.
+ *
+ * @param {object} declaration an enrichment rule, as `GET /enrichment/rules` serves it
+ * @param {object} decision    the selected unit, as the shell holds it
+ * @returns {{state: string, key: ?object, columns: string[], missing: string[]}}
+ */
+export function decisionKeyOf(declaration, decision) {
+  const columns = Object.freeze(declaredKeyColumns(declaration));
+  const d = decision && typeof decision === 'object' ? decision : {};
+  const served = d.__key && typeof d.__key === 'object' ? d.__key : null;
+  if (columns.length === 0) {
+    return Object.freeze({ state: DECISION_KEY.UNDECLARED, key: null, columns, missing: columns });
+  }
+  const key = {};
+  const missing = [];
+  for (let i = 0; i < columns.length; i++) {
+    const col = columns[i];
+    const value = firstStated(
+      own(served, col),
+      own(d, col),
+      i === 0 ? d.eqp : (i === 1 ? d.product : undefined));
+    if (value === null) missing.push(col); else key[col] = value;
+  }
+  const complete = missing.length === 0;
+  return Object.freeze({
+    state: complete ? DECISION_KEY.STATED : DECISION_KEY.INCOMPLETE,
+    key: complete ? Object.freeze(key) : null,
+    columns,
+    missing: Object.freeze(missing),
+  });
+}
+
+/**
+ * The rule's declared key columns, cleaned. Non-strings, blanks and duplicates are dropped:
+ * a duplicate would make one column decide the arity twice, and the positional bridge above
+ * reads an INDEX, so a corrupt list must not silently shift what index 1 means.
+ */
+export function declaredKeyColumns(declaration) {
+  const raw = declaration && Array.isArray(declaration.decision_key) ? declaration.decision_key : [];
+  const out = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const name = entry.trim();
+    if (name === '' || out.indexOf(name) >= 0) continue;
+    out.push(name);
+  }
+  return out;
+}
+
+/**
+ * THE ONE SENTENCE FOR "THIS UNIT'S KEY COULD NOT BE STATED", spelled once so the read path and
+ * the write path cannot drift into two vocabularies.
+ *
+ * 미확보, not the server's 빠진: the server's `빠진 결정키` means the key arrived at the route
+ * short of a column, and this means the client never had the value to send. Same family of
+ * words, different fact -- and the difference is the whole diagnosis.
+ */
+export function decisionKeyRefusal(result) {
+  const r = result || {};
+  const missing = Array.isArray(r.missing) ? r.missing : [];
+  if (r.state === DECISION_KEY.UNDECLARED || missing.length === 0) {
+    return '확정 보류 · 결정키 선언 없음';
+  }
+  return `확정 보류 · 결정키 미확보: ${missing.join(', ')}`;
+}
+
+/**
+ * An OWN property only. A declared column named `constructor` or `toString` would otherwise
+ * resolve to a function off the prototype and be stringified into the request.
+ */
+function own(obj, key) {
+  return obj && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+}
+
+/**
+ * The first candidate that is a stated scalar. `null`, `undefined`, a blank string and anything
+ * that is not a string/number/boolean are all "not stated" -- `String({})` is `[object Object]`,
+ * which would reach the wire as a plausible-looking value.
+ */
+function firstStated(...candidates) {
+  for (const candidate of candidates) {
+    const t = typeof candidate;
+    if (t !== 'string' && t !== 'number' && t !== 'boolean') continue;
+    if (t === 'number' && !Number.isFinite(candidate)) continue;
+    const text = String(candidate);
+    if (text.trim() === '') continue;
+    return text;
+  }
+  return null;
 }
 
 /** The cross-source row is the (N+1)th focusable row, not a new pane. */
