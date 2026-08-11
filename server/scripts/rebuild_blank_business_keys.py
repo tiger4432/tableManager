@@ -45,7 +45,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from sqlalchemy import text                                    # noqa: E402
 from database.database import engine                           # noqa: E402
-from database import crud, schemas                             # noqa: E402
+from database import crud, models, schemas                     # noqa: E402
 
 STATEMENT_TIMEOUT_MS = 120_000
 CHUNK = 1_000
@@ -82,6 +82,10 @@ def run(table: str, apply: bool) -> dict:
     if not sources:
         print(f"!! '{table}' 는 composite_key_source 를 선언하지 않았다 - 대상이 아니다")
         return {"skipped": True}
+
+    # 동적 모델은 서버 기동 때 만들어진다. 이 스크립트는 생 SQL 과 config 만 쓰지만,
+    # 조합기가 언젠가 모델을 보게 되면 조용히 갈리므로 형제 스크립트들과 같은 줄로 연다.
+    models.init_dynamic_models(crud.TABLE_CONFIG)
 
     print(f"=== {table} | {'APPLY' if apply else 'CHECK (읽기 전용)'} ===")
     print(f"조합 재료: {sources}  구분자: {sep!r}\n")

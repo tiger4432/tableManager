@@ -65,7 +65,18 @@ def run(table: str, apply: bool, allow_differing: bool) -> dict:
         print(f"!! '{table}' 의 column_types 선언이 없다 - 비교할 컬럼을 모른다")
         return {"skipped": True}
 
-    mode = "APPLY" + (" +differing" if allow_differing else "") if apply else "CHECK (읽기 전용)"
+    # 🔴 동적 테이블 모델은 서버 기동 때 만들어지므로 단독 스크립트엔 없다. 이 한 줄이
+    #    없으면 `crud.delete_rows_batch` 가 "Table model ... is not initialized" 로 죽는다 -
+    #    읽기 전용 패스는 생 SQL 이라 멀쩡히 통과하고 `--apply` 에서만 죽으므로, 없으면
+    #    **점검은 초록인데 실행만 실패한다.** `backfill_enrichment.py` 등 여섯 스크립트가
+    #    같은 줄로 시작한다.
+    models.init_dynamic_models(crud.TABLE_CONFIG)
+    if models.DYNAMIC_TABLES.get(table) is None:
+        print(f"!! '{table}' 모델이 만들어지지 않았다 - table_config.json 에 선언이 있는지 "
+              f"먼저 볼 것. 읽기 전용 패스에서 미리 막는다(그래야 --apply 에서만 죽는 일이 없다)")
+        return {"skipped": True}
+
+    mode ="APPLY" + (" +differing" if allow_differing else "") if apply else "CHECK (읽기 전용)"
     print(f"=== {table} | {mode} ===")
     print(f"비교 컬럼 {len(cols)}개, 남길 행 규칙: cell_sources 최다 -> row_id 최소\n")
 
