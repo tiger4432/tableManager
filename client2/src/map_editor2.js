@@ -17,6 +17,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { API_BASE, CURRENT_USER } from './config.js';
+import { initTheme } from './theme.js';
 import { bootstrap } from './map2/main.js';
 import { selectAlignmentRules, decisionKeyOf, declaredKeyColumns,
          decisionKeyRefusal } from './map2/view_model.js';
@@ -119,6 +120,16 @@ function isOutage(err) {
 }
 
 function start() {
+  // 🔴 THE TOGGLE IS MARKUP UNTIL SOMETHING BINDS IT. `map_editor2.html` carries the
+  //    `[data-theme-toggle]` button and the FOUC snippet that stamps a STORED theme at load,
+  //    so this page always honoured a theme chosen elsewhere and its own button did nothing --
+  //    a control that looks live, reads as broken, and cannot be told apart from a dead page
+  //    by any test that only checks what the page renders. `initTheme` is the same entry every
+  //    other page calls (`main`, `admin`, `graph_viewer`, `trace`, `enrichment`, the legacy
+  //    `map_editor`); this entry was the only one missing it. Bound before the composition
+  //    root so the button works even if bootstrap below fails.
+  initTheme();
+
   const api = createResilientClient();
   const app = bootstrap({ document, api });
 

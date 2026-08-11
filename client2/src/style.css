@@ -1494,7 +1494,16 @@ body.resizing-active .history-sidebar {
 .side-indicator.side-back  { background: #f59e0b; }
 
 /* Map editor toolbar: status text may change on every cursor move, but that must
-   never change the action row's height or move the canvas below it. */
+   never change the action row's height or move the canvas below it.
+
+   🔴 THE FIXED `height` BELOW IS WHAT HOLDS THE CANVAS STILL — a clip is not, and
+      this box must not establish one. The action row hosts anchored dropdown
+      menus (`.glass-dropdown-panel`, absolutely positioned at `top: 100% + 8px`)
+      which open BELOW this box, so any clip on this element or on the row
+      swallows them whole: the menu opens in the DOM with a real rect, paints
+      nowhere, and fails hit-testing, which reads to the operator as a dead
+      button. Measured: menu at y=174 against a clip box ending at y=166, so 100%
+      of it was cut and `elementFromPoint` at its centre returned the canvas. */
 .map-editor-toolbar {
   display: flex;
   flex-direction: column;
@@ -1505,7 +1514,7 @@ body.resizing-active .history-sidebar {
   padding: 10px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-header);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .map-editor-toolbar__status,
@@ -1536,12 +1545,17 @@ body.resizing-active .history-sidebar {
   flex: 0 0 auto;
 }
 
+/* 🔴 AND `overflow-x: auto` CANNOT BE KEPT HERE EITHER, which is why this row does
+      not scroll: CSS computes an `overflow-y: visible` paired with a non-visible
+      x axis up to `auto`, so a scrollable x axis silently re-clips y and the
+      menus vanish again. Buttons that outgrow a narrow window stay reachable
+      through the page scroller on `main.main-layout`, which is where they were
+      reachable before this row existed. */
 .map-editor-toolbar__actions {
   flex: 0 0 40px;
   width: 100%;
   justify-content: flex-end;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
 }
 
 .map-editor-toolbar__actions .control-group {
