@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**§5.5 신설 — Chain Replay에 세 번째 연산 R3(`resolve`)가 들어왔다.** 저장된 층을 하나도 바꾸지 않고 **「그중 무엇이 이기는가」만 다시 답해** materialise된 표시 컬럼을 고친다 — R1(매퍼 재실행·새 층 쓰기)도 R2(주장 삭제)도 답할 수 없던 질문이다. 층이 2개 미만인 셀은 **구조적으로** 손대지 않고(0개면 컬럼을 비워 버린다), 값이 움직인 셀마다 `resolution_recompute` 감사 행이 남으며, **아웃박스 이벤트는 R1·R2와 똑같이 내지 않는다**(CLI 전용). 계기가 된 해결 순서 수리는 [data_model §2.1](../architecture/data_model.md). 직전 **§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -396,9 +396,11 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
 
 ⚠️ **컬럼명으로 유추하지 않습니다.** 같은 규칙의 두 뷰가 모두 `wafer_id` 컬럼을 가질 수 있고(하나는 판단키 전체로, 하나는 일부로 조회), 후자는 후보가 N개입니다. 선언한 뷰만 후보 원천입니다.
 
-## 🔁 5. Chain Replay — 룰을 기존 데이터에 다시 적용하기 (R1) / 낡은 소스 철회 (R2)
+## 🔁 5. Chain Replay — 룰 재적용 (R1) / 낡은 소스 철회 (R2) / 표시값 재계산 (R3)
 
-> 🧭 **이 절은 개발자 계약입니다.** 「지금 무엇을 돌려야 하나」가 필요한 운영자는 **[BACKFILL_GUIDE](./BACKFILL_GUIDE.md)**로 가십시오 — R1/R2를 포함한 **소급 경로 다섯 개**를 증상→도구 결정표로 묶어 놓았습니다(인리치먼트 2종·그래프 고아 스윕 포함).
+> 🧭 **이 절은 개발자 계약입니다.** 「지금 무엇을 돌려야 하나」가 필요한 운영자는 **[BACKFILL_GUIDE](./BACKFILL_GUIDE.md)**로 가십시오 — R1/R2/R3를 포함한 소급 경로를 증상→도구 결정표로 묶어 놓았습니다(인리치먼트 2종·그래프 고아 스윕 포함).
+
+> **세 연산을 가르는 한 줄** — R1은 **매퍼를 다시 돌려 새 층을 씁니다**, R2는 **한 층의 주장을 지웁니다**, R3는 **저장된 것을 하나도 바꾸지 않고 「그중 무엇이 이기는가」만 다시 답합니다.** 앞의 둘이 답할 수 없는 질문이 셋째이고, 그것이 세 번째 연산이 있는 이유입니다.
 
 체인 인제션은 **증분(outbox) 구동**입니다. 룰을 바꿔도 과거 데이터는 옛 룰이 남긴 상태 그대로입니다. R1은 트리거 테이블의 **현재 내용**을 키셋 페이지로 훑어 **실제 맵퍼·실제 쓰기 경로**로 다시 흘려보냅니다. `backfill_enrichment.py`(규칙 1개 전용)를 **모든 체인 룰로 일반화**한 것이고, 기본값도 같습니다 — `--apply` 없이는 아무것도 쓰지 않습니다.
 
@@ -451,6 +453,27 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py withdraw <�
 | 그 소스를 사람이**핀**한 셀(`manual_priority_source`) | 핀은 "이 소스를 보여 달라"는 사람의 선택입니다. 조용히 철회하면 그 선택을 뒤집습니다 →`pinned_skipped`로 건너뛰고 이유를 남깁니다 |
 
 **철회는 무음이 아닙니다.** 표시값이 바뀐 셀마다 `AuditLog`에 소스 `chain_replay_withdraw` · `updated_by="withdraw:<소스명>"` · old/new 값이 남습니다. 클라의 **기존 셀 이력 타임라인**이 AuditLog를 읽으므로, 빈칸을 발견한 운영자가 그 셀을 눌러 "어느 소스가 사라졌는지"를 봅니다(신규 이벤트·신규 화면 없음).
+
+### 5.5 R3 — 표시값 재계산 (`recompute_display_values`, 2026-08-11)
+
+```bash
+conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테이블>
+conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테이블> --columns col1,col2
+conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테이블> --list-all
+conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테이블> --apply
+```
+
+플래그 전수: `--columns` · `--limit`(훑는 **행** 수 상한) · `--chunk-size`(기본 1000) · `--list-all`(보고서에서 20건 절단을 풀기) · `--apply`.
+
+**왜 R1도 R2도 이것을 못 하는가.** 이긴 값은 **materialise**됩니다 — `apply_row_update_internal`이 마지막에 `setattr(row, col, new_val)`을 하고 이후의 모든 조회는 층이 아니라 그 컬럼을 읽습니다. 그래서 `crud.compute_priority_value`를 고치면 **그 뒤에 쓰이는 셀만** 고쳐집니다. 과거에 잘못 해결된 셀은 무엇인가가 다시 배달해 줄 때까지 그대로인데, **다시 배달해 줄 그것이 정확히 결함이 버리던 것**입니다(해결값이 안 움직이면 `has_changed`가 거짓이고 그 가드가 컬럼 쓰기·감사·아웃박스를 한꺼번에 막습니다). R1은 **룰이 필요하고 새 층을 쓰며**, R2는 **주장을 지웁니다** — 저장된 것을 바꾸지 않고 「무엇이 이기는가」만 다시 답하는 연산이 셋째입니다.
+
+- 🔴 **`cell_sources` 행을 하나도 만들지 않고 지우지 않고 고치지 않습니다.** 움직이는 것은 표시 컬럼뿐입니다.
+- 🔴 **층이 2개 미만인 셀은 절대 건드리지 않으며, 최적화가 아니라 안전 속성입니다.** 층이 하나면 가를 동점이 없고, 층이 **0개**면 해결 결과가 `(None, None)`이라 **다른 쓰기 경로가 소유한 컬럼을 이 패스가 비워 버립니다.** 이 관문이 「전체 테이블 실행이 자기가 이해하지 못하는 데이터를 파괴할 수 없다」의 근거입니다.
+- **무음이 아닙니다.** 표시값이 움직인 셀마다 `AuditLog`에 소스 `resolution_recompute` · `updated_by="resolved:<이긴 소스명>"` · old/new가 남습니다 — R2와 같은 자세이고, 클라의 기존 셀 이력 타임라인이 그대로 읽습니다. **기록 없이 바뀌는 값**은 지금 수리 중인 결함과 같은 계급이므로 감사 쓰기는 선택이 아니고, `--apply`는 **둘 다 하거나 둘 다 안 합니다.**
+- **사람의 핀은 존중됩니다.** 핀은 **어느 층이 이기는가**를 정하는 것이지 표시 컬럼을 얼리는 것이 아니므로, 핀이 걸린 셀은 **핀이 지목한 층의 값으로** 해결됩니다. 보고서의 `of which human-pinned`는 「핀을 무시했다」가 아니라 **「화면이 사람이 고른 층에서 멀어져 있었고 그것을 되돌렸다」**입니다.
+- ⚠️ **아웃박스/WS 이벤트를 내지 않습니다 — R1·R2와 정확히 같습니다.** 붙어 있는 클라는 **다음 새로고침에** 수리를 봅니다. **CLI 전용·오프라인 연산**이라는 것이 문서화된 계약입니다.
+- **dry-run이 곧 열거입니다.** `--apply` 없이 돌리면 바뀔 셀을 그대로 찍습니다(기본 20건, `--list-all`로 전량). 보고서의 두 사유를 구분해 읽으십시오 — **`tie broken by recency`**(동점이 있었다 = 이 결함의 지문) vs **`already out of step`**(층과 표시 컬럼이 애초에 어긋나 있었다). 인메모리 목록에는 상한이 있고 초과 시 그 사실을 말합니다 — **완전한 기록은 `--apply`가 쓴 `AuditLog` 행들**입니다.
+- 페이지 단위 커밋 + 키셋 순회(`keyset_scan.iter_pages`)라 대량 실행을 중간에 끊어도 되고, 끊기면 진행 중이던 페이지 하나만 잃습니다. 레이어링 관점의 계약은 [architecture/data_model §2.2-ter](../architecture/data_model.md).
 
 ---
 

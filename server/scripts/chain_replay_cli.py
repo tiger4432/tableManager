@@ -11,8 +11,17 @@ Dry-run everywhere by default; `--apply` is the only thing that writes.
     conda run -n assy_manager python server/scripts/chain_replay_cli.py withdraw <table> <source>
     conda run -n assy_manager python server/scripts/chain_replay_cli.py withdraw <table> <source> --columns a,b --apply
 
+    # R3 - re-answer "which stored layer wins" and repair the materialised column
+    conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <table>
+    conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <table> --apply
+
 `withdraw user` is refused: there is no supported way to remove a human's value
 from here.
+
+`resolve` creates and deletes nothing - it only re-materialises the winner over
+cells that ALREADY carry two or more layers, and writes an AuditLog entry for every
+cell whose displayed value moves. Its dry-run is the enumeration: run it without
+`--apply` (add `--list-all`) to get the exact cells before changing any of them.
 """
 import argparse
 import os
@@ -81,6 +90,37 @@ def _report_withdraw(s):
     return "\n".join(lines)
 
 
+def _report_resolve(s, list_all=False):
+    lines = [
+        "",
+        f"=== R3 display-value recompute {s['mode'].upper()} - '{s['table']}' ===",
+        f"  rows scanned            : {s['rows_scanned']} in {s['pages']} page(s)",
+        f"  multi-layer cells       : {s['cells_examined']}  (cells with <2 layers are "
+        f"never touched)",
+        f"  human-pinned cells      : {s['pinned_examined']}",
+        f"  cells whose value moves : {s['cells_changed']}",
+        f"    tie broken by recency : {s['changed_by_tiebreak']}",
+        f"    already out of step   : {s['changed_by_stale_materialisation']}",
+        f"    of which human-pinned : {s['pinned_changed']}  (the pin still picks the "
+        f"layer; only the stale display moves)",
+    ]
+    if s["cells_changed"]:
+        lines.append("  Every cell listed below gets an AuditLog entry, so the cell-history")
+        lines.append("  timeline explains the change rather than it appearing from nowhere.")
+    shown = s["changes"] if list_all else s["changes"][:20]
+    for c in shown:
+        lines.append(f"      {c['business_key_val']}.{c['column']}: {c['old_value']!r} -> "
+                     f"{c['new_value']!r} (now from {c['winning_source']!r}, "
+                     f"{c['reason']}; layers {c['sources']})")
+    if not list_all and len(s["changes"]) > len(shown):
+        lines.append(f"      ... {len(s['changes']) - len(shown)} more (use --list-all)")
+    if s["changes_truncated"]:
+        lines.append("      WARNING: the change list hit its in-memory cap; the AuditLog "
+                     "rows written by --apply are the complete record.")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -100,6 +140,15 @@ def main(argv=None):
     p.add_argument("table")
     p.add_argument("source")
     p.add_argument("--columns", default=None, help="comma-separated column allowlist")
+    p.add_argument("--apply", action="store_true")
+
+    p = sub.add_parser("resolve")
+    p.add_argument("table")
+    p.add_argument("--columns", default=None, help="comma-separated column allowlist")
+    p.add_argument("--limit", type=int, default=None, help="bound rows scanned")
+    p.add_argument("--chunk-size", type=int, default=1000)
+    p.add_argument("--list-all", action="store_true",
+                   help="print every changed cell, not the first 20")
     p.add_argument("--apply", action="store_true")
 
     p = sub.add_parser("list")
@@ -138,6 +187,12 @@ def main(argv=None):
                                           log=lambda m: print(f"  {m}"))
             for s in out["rules"]:
                 print(_report_replay(s))
+        elif args.cmd == "resolve":
+            cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
+            print(_report_resolve(chain_replay.recompute_display_values(
+                db, args.table, columns=cols, apply=args.apply, limit=args.limit,
+                chunk_size=args.chunk_size, log=lambda m: print(f"  {m}")),
+                list_all=args.list_all))
         else:
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
             print(_report_withdraw(chain_replay.withdraw_source(

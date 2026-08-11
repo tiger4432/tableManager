@@ -1069,6 +1069,32 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
         f"for {len(stale_ids)} undelivered row(s): {sorted(refresh_targets)}"
     )
 
+# [Schema] Digest of crud.undeclared_column_drops() for the heartbeat note.
+# Only the worst offenders: the note is republished on every beat and lands in a
+# ~200 byte file, so a table with 64 dropped columns must not be able to inflate it.
+_DROP_NOTE_TOP_N = 5
+
+
+def _undeclared_drop_note():
+    """`None` while nothing is being dropped, so a healthy beat is unchanged.
+
+    `(table, None)` keys mean "drops past this table's distinct-column budget", i.e.
+    counted but no longer attributable to a column name - rendered as `<over budget>`
+    rather than dropped from the digest, because a total that silently stops adding
+    up is how the original defect hid.
+    """
+    from database import crud
+
+    drops = crud.undeclared_column_drops()
+    if not drops:
+        return None
+    top = sorted(drops.items(), key=lambda kv: -kv[1])[:_DROP_NOTE_TOP_N]
+    parts = [f"{t}.{c if c is not None else '<over budget>'}={n}" for (t, c), n in top]
+    if len(drops) > len(top):
+        parts.append(f"(+{len(drops) - len(top)} more)")
+    return f"undeclared column drops: total={sum(drops.values())} " + ", ".join(parts)
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
@@ -1120,7 +1146,15 @@ async def start_chain_ingestion_worker(db_session_factory):
         # iterations are bounded by the 2 s LISTEN timeout below, so a beat that
         # stops advancing means this loop stopped advancing - the freeze case a
         # pid check cannot see.
-        heartbeat.beat("chain")
+        #
+        # [Schema] The beat also carries this process's undeclared-column drop
+        # counts. Those drops happen HERE, in the worker, and the question they
+        # raise ("is this deployment still losing a column?") has to be answerable
+        # from the web server, which is a different process. `beat`'s note is the
+        # cross-process channel that already exists and `/health` already reads, so
+        # no second channel is built for this. The note is None on a healthy worker,
+        # so a clean deployment's heartbeat is byte-identical to what it is today.
+        heartbeat.beat("chain", note=_undeclared_drop_note())
         try:
             db = db_session_factory()
             try:

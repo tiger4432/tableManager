@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**§4-bis의 「후보 공간이 4회전×2면」이 거짓이 됐다** — `db1ee42`부터 **4회전 × 2시작모서리**이고 거울은 후보 집합에서 나갔다. `grid_y_invert`를 안 쓰는 이유는 **안 바뀐다**(별칭 상쇄) → [spec/MAP_ALIGNMENT_SPEC §2.4](../spec/MAP_ALIGNMENT_SPEC.md). 직전 **§2.1-quater 신설 — 집합 기반 쓰기 경로(P3). 우선순위 판정은 한 줄도 바뀌지 않았고, 바뀐 것은 배치 경로에서 새 소스 층을 담는 객체가 `LightCellSource`가 됐다는 것 하나다(세션에 안 들어가고 우선순위 계산에만 참여하므로). 문장 301,100 → 1,200, 건수는 전부 동일**). 직전 **§2.1-ter 신설 — 「같은 값을 다시 쓰는 것은 사건이 아니다」가 이제 양쪽 계층에서 참이다**(`87a944e`). 값 계층은 처음부터 `has_changed`로 그렇게 판정했고 **소스 계층만 반대로 말하고 있었다** — 같은 사실에 두 계층이 다른 판정을 내리던 것이 결함이다. `CellOverwrite` 스킵이 `source_unchanged`를 조건에 포함하는 이유(오버라이트 행은 값을 담지 않아 진짜 편집에서도 셋이 같다)와, 그 스킵을 보는 엔드포인트가 없어 전용 그물 없이는 무방비라는 사실이 함께 있다. 직전 **§4-bis 두 문장 정정** — ① 「클라 절반은 아직 없다」가 같은 날 거짓이 됐다: `declaration.js`가 `CONFIRMED`를 싣고 `geometryDeclaration`·`frameFromDeclaration` 두 곳에 분기를 갖는다. **어휘 한 줄로는 부족했고 그 점이 `assumed`와 다르다** — `confirmed`는 **저장되므로** 분기가 없으면 아무도 안 잰 맵이 `declared`로 읽힌다. 아직 안 닫힌 것은 `grid_assumed_from`(클라 철자 0건 — 총괄 판정 대기). ② 「화면 쪽 arm-then-commit이 앞에 선다」가 거짓 — **확정은 한 동작**이고(`02416d4`) 앞에 서는 것은 조작자에게 보이는 절차가 아니라 **중복 전송 가드 셋**이다. 직전 **§2.1-bis 버전 게이트 신설** — `092b83f` `crud.version_gate_verdict`: `table_config`의 `version_column` 선언 시 기계의 기존 행 덮어쓰기를 「버전이 더 클 때만」으로 제한. 🔴 **레이어링 *앞*의 거부권이지 승급권이 아니고**, 그래서 더 높은 버전도 사람의 교정을 밀지 못한다. **선언한 테이블이 아직 없어 전 테이블 무동작**. 직전 **§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**§2.1 재작성 — 해결 순서가 명시적 전순서가 됐다**: 등재 우선순위 → `ingested_at` 내림차순 → `source_name` 오름차순. 종전 한 줄 `sorted`는 미등재 소스를 전원 99 동점으로 만들었고 stable sort가 **삽입 순서**로 떨어져 **구성상 기존 값이 모든 동점을 이겼다**(격리 `assy_qa` 실측 200/200 — **이 워크스테이션이며 운영 수치 아님**). 🔴 **서열 자체는 한 칸도 안 움직였다**(`user`(0)는 여전히 모든 기계 소스를 이긴다 — 2·3층은 **한 우선순위 안에서만** 동점을 가른다). 신규 **§2.2-ter R3 표시값 재계산** — 승자는 materialise되므로 규칙 수리는 **앞으로 쓰이는 셀만** 고친다. 🔴 **§2.1-ter의 「값 결정은 timestamp를 읽지 않는다」가 그 라운드에 거짓이 됐고 그 자리에 정정을 달았다**(사본 하나는 `backend.md`, 하나는 `CODE_MAP.md`에 더 있었다 — 후자는 code-mapper 소관). ⚠️ **저장 증가는 해결되지 않았다** — 이번 것은 정확성 절반뿐이다. 직전 **§4-bis의 「후보 공간이 4회전×2면」이 거짓이 됐다** — `db1ee42`부터 **4회전 × 2시작모서리**이고 거울은 후보 집합에서 나갔다. `grid_y_invert`를 안 쓰는 이유는 **안 바뀐다**(별칭 상쇄) → [spec/MAP_ALIGNMENT_SPEC §2.4](../spec/MAP_ALIGNMENT_SPEC.md). 직전 **§2.1-quater 신설 — 집합 기반 쓰기 경로(P3). 우선순위 판정은 한 줄도 바뀌지 않았고, 바뀐 것은 배치 경로에서 새 소스 층을 담는 객체가 `LightCellSource`가 됐다는 것 하나다(세션에 안 들어가고 우선순위 계산에만 참여하므로). 문장 301,100 → 1,200, 건수는 전부 동일**). 직전 **§2.1-ter 신설 — 「같은 값을 다시 쓰는 것은 사건이 아니다」가 이제 양쪽 계층에서 참이다**(`87a944e`). 값 계층은 처음부터 `has_changed`로 그렇게 판정했고 **소스 계층만 반대로 말하고 있었다** — 같은 사실에 두 계층이 다른 판정을 내리던 것이 결함이다. `CellOverwrite` 스킵이 `source_unchanged`를 조건에 포함하는 이유(오버라이트 행은 값을 담지 않아 진짜 편집에서도 셋이 같다)와, 그 스킵을 보는 엔드포인트가 없어 전용 그물 없이는 무방비라는 사실이 함께 있다. 직전 **§4-bis 두 문장 정정** — ① 「클라 절반은 아직 없다」가 같은 날 거짓이 됐다: `declaration.js`가 `CONFIRMED`를 싣고 `geometryDeclaration`·`frameFromDeclaration` 두 곳에 분기를 갖는다. **어휘 한 줄로는 부족했고 그 점이 `assumed`와 다르다** — `confirmed`는 **저장되므로** 분기가 없으면 아무도 안 잰 맵이 `declared`로 읽힌다. 아직 안 닫힌 것은 `grid_assumed_from`(클라 철자 0건 — 총괄 판정 대기). ② 「화면 쪽 arm-then-commit이 앞에 선다」가 거짓 — **확정은 한 동작**이고(`02416d4`) 앞에 서는 것은 조작자에게 보이는 절차가 아니라 **중복 전송 가드 셋**이다. 직전 **§2.1-bis 버전 게이트 신설** — `092b83f` `crud.version_gate_verdict`: `table_config`의 `version_column` 선언 시 기계의 기존 행 덮어쓰기를 「버전이 더 클 때만」으로 제한. 🔴 **레이어링 *앞*의 거부권이지 승급권이 아니고**, 그래서 더 높은 버전도 사람의 교정을 밀지 못한다. **선언한 테이블이 아직 없어 전 테이블 무동작**. 직전 **§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
 > **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain_replay.py`(레이어 철회), `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -42,21 +42,41 @@
 
 한 셀(table·row·col)은 여러 출처의 값을 동시에 보관합니다. 각 출처는 `CellSource` 한 행. 표시할 "진실된 값"은 우선순위로 결정합니다.
 
-### 2.1 우선순위 규칙 (`crud.compute_priority_value`)
+### 2.1 우선순위 규칙 (`crud.compute_priority_value`) — **순서는 명시적이고 전(全)순서입니다**
 
 ```
 SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_script: 3, chain_ingestion: 4 }
 # 숫자가 낮을수록 우선
 ```
 
-1. **수동 핀(manual_priority_source)이 있고 그 소스가 존재하면** → 그 소스가 승자.
-2. 아니면 소스들을 우선순위 맵으로 정렬 → 최상위 선택.
+1. **수동 핀(manual_priority_source)이 있고 그 소스가 존재하면** → 그 소스가 승자(나머지 단계는 아예 돌지 않습니다).
+2. 아니면 아래 **세 층**을 차례로 적용해 최상위 하나를 고릅니다.
 3. 테이블별 `source_priority`(table_config) 오버라이드 지원.
 4. 반환 `(value, winning_source)`.
+
+| 층 | 기준 | 왜 있는가 |
+|---|---|---|
+| **1** | **등재된 우선순위**(`priority_map`, 미등재 = 99) | **선언된 서열이 권위이고 이 라운드는 그것을 한 칸도 움직이지 않았습니다** — `user`(0)는 여전히 모든 기계 소스를 이기고, 등재된 소스는 여전히 미등재 파일명을 이깁니다. 아래 두 층은 **한 우선순위 *안에서만*** 동점을 가르며, 낮은 서열을 높은 서열 위로 올리지 못합니다 |
+| **2** | **`ingested_at` 내림차순**(최신 배달이 승) | 같은 서열이면 **가장 최근 배달이 현재의 사실 진술**이고 그보다 옛 것은 정의상 대체된 것입니다. 🔴 **timestamp를 모르는 층은 가진 층보다 *뒤로* 갑니다** — 레거시 NULL이 날짜 있는 배달을 밀어내지 못하게 하려는 것이고, 이 규칙이 없으면 `None`과 float을 비교해야 합니다 |
+| **3** | **`source_name` 오름차순** | **전순서를 완성하는 마지막 층.** 한 배치가 `datetime.now()` 하나로 여러 소스를 쓰면 2층이 동점일 수 있습니다. `idx_sources_lookup_source`가 (table, row, column, source_name)에 UNIQUE이므로 **한 셀 안에서 `source_name`은 유일하고 3층은 항상 결판냅니다** |
+
+🔴 **결과는 호출자가 `sources`를 조립한 순서·그 목록을 만든 SELECT·그 아래 물리 힙 순서 어느 것에도 의존하지 않습니다.** 그것이 전순서를 요구하는 이유의 전부입니다.
+
+> **왜 이렇게 못박아야 했는가 (수리된 결함, 2026-08-11).** 종전 구현은 `sorted(sources.keys(), key=priority_map.get(k, 99))` 한 줄이 전부였습니다. **파일에서 유도된 소스명은 전부 미등재라 모두 99로 떨어져 전원 동점**이 되고, `sorted`는 stable이므로 승자가 **dict 삽입 순서**로 결정됐습니다. 그리고 그 순서는 임의가 아닙니다 — 쓰기 경로는 저장된 층을 먼저 싣고 들어온 층을 **마지막에** 붙이므로(`apply_row_update_internal`), **구성상 기존 값이 모든 동점을 이겼습니다.** 교정된 값을 든 나중 배달은 `cell_sources`에 저장된 뒤 **조용히 버려졌습니다** — 해결값이 안 움직이면 `has_changed`가 거짓이고, 그 가드 하나가 **컬럼 쓰기·감사 로그·아웃박스 이벤트를 한꺼번에** 막기 때문입니다(§2.1-ter).
+> **실측(격리 `assy_qa` DB, 2026-08-11 — 이 워크스테이션이며 운영 수치가 아닙니다)**: 서로 **다른 값**을 든 동점 층 둘을 가진 셀 **200개**(전부 `wafer_map_metadata.grid_metadata`)에서 **200/200이 옛 값을 표시**하고 있었습니다. 수리 후 **200/200이 새 값**을 표시하며, `cell_sources`는 **2,432,116행 그대로**입니다 — 층은 하나도 만들어지거나 지워지거나 수정되지 않았습니다.
+> ⚠️ **틀린 것보다 나쁜 점은 안정적이지도 않았다는 것입니다** — 동점의 실질 결정자가 물리 힙 순서였으므로, `VACUUM FULL` 하나로 **쓰기도 감사 기록도 없이 표시값이 바뀔 수 있었습니다.**
+
+🔴 **이 수리는 「앞으로 쓰이는 셀」만 고칩니다.** 승자는 **materialise**되어 네이티브 컬럼에 앉아 있고 모든 조회는 층이 아니라 그 컬럼을 읽습니다. 이미 잘못 확정된 셀은 무엇이 다시 배달해 주지 않는 한 영원히 그대로이고, **다시 배달해 줄 그것이 바로 이 결함이 버리던 것**입니다. 이미 쌓인 셀을 고치는 경로는 **§2.2-ter의 R3**입니다.
+
+⚠️ **`ingested_at`은 세 가지 철자로 옵니다** — `{"timestamp": ISO 문자열}`(crud·`main.py`) · `{"ingested_at": datetime}`(`chain_replay.withdraw_source`) · **timestamp를 실을 수 없는 호출자**(`main.fetch_and_merge_metadata` — 그 `sources` 페이로드는 `{소스: 값}` 형태의 클라 대면 계약입니다)를 위한 **out-of-band `ingested_at_by_source=` 맵**. 정규화는 `crud.resolution_ingested_at(entry, source_name=None, ingested_at_by_source=None)` **하나**가 담당합니다 — **세 번째 저장소는 없고**(`cell_sources.ingested_at`이 셋 모두의 유일한 원천), naive/aware datetime은 여기서 UTC로 접힙니다(쓰기 경로는 `datetime.now()`로 naive를 찍고 PostgreSQL `timestamptz`는 aware로 되읽어, 둘을 비교하면 `TypeError`가 납니다).
+
+⚠️ **동점을 가를 수 있으려면 층 목록이 결정적이어야 합니다** — `crud.py`에서 해결기로 흘러가는 `cell_sources` SELECT **다섯 개**에 `ORDER BY source_name`이 붙어 있습니다. 3층이 있으므로 이것이 정확성의 조건은 아니지만, **같은 입력에 같은 진단**을 보장합니다.
 
 서열의 단일 원천은 `crud.resolve_priority_map`/`get_source_priority` — 그래프 materializer의 엣지 provenance 판정도 같은 함수를 씁니다(하드코딩 서열 금지).
 
 즉 **수동 편집(user)은 항상 자동 파서 값보다 우선**하며, 사용자는 특정 소스를 핀 고정해 표시값을 강제할 수 있습니다.
+
+🔴 **이 라운드가 고친 것은 「어느 층이 이기는가」이지 「층이 몇 개 쌓이는가」가 아닙니다.** 저장 증가(같은 셀에 재사용되지 않는 소스명이 계속 쌓이는 문제)는 **해결되지 않았습니다** — 스케줄 수집기는 매 실행마다 타임스탬프가 박힌 새 파일명을 만들고 그것이 곧 새 `source_name`이 됩니다(`server/run_auto_update.py`). 후보 설계(피드 신원 / 값 신원 등)는 `agent_workspace/reports/Cell_sources_growth_diagnosis.md` §6에 분석돼 있고 **어느 것도 구현되지 않았습니다.**
 
 ### 2.1-bis 버전 게이트 (`crud.version_gate_verdict`) — 레이어링 **앞의 거부권** · 2026-08-04 `092b83f`
 
@@ -81,7 +101,8 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 지금은 `value`와 `updated_by`가 그대로면 두 계층 모두 건드리지 않습니다.
 
 - ⚠️ **`CellOverwrite` 쪽 스킵 조건에는 소스 쪽 판정(`source_unchanged`)이 **포함**됩니다.** 오버라이트 행은 플래그·작성자·핀만 담고 **값을 담지 않으므로**, 값이 진짜 바뀐 셀에서도 그 셋은 동일합니다. 그것만 보고 스킵하면 **진짜 사용자 편집에서 `updated_at` 갱신이 멈춰**, 다른 코드가 화면에 보여 주는 컬럼의 뜻이 조용히 바뀝니다. 없앨 부담은 어차피 「안 바뀐 셀」에만 있으므로 바뀐 셀은 종전 동작 그대로입니다.
-- **`ingested_at`의 뜻이 정확해졌습니다** — 「누가 마지막으로 저장을 눌렀나」가 아니라 **「이 소스가 이 값을 마지막으로 세운 때」**. 움직이지 않는 timestamp가 아니라, **아무것도 안 바뀌었는데 움직이던 timestamp가 거짓말이었습니다.** 값 결정은 timestamp를 읽지 않으므로(§2.1의 `compute_priority_value`는 우선순위 맵만 정렬) 이 변경으로 승자가 바뀌는 셀은 없습니다.
+- **`ingested_at`의 뜻이 정확해졌습니다** — 「누가 마지막으로 저장을 눌렀나」가 아니라 **「이 소스가 이 값을 마지막으로 세운 때」**. 움직이지 않는 timestamp가 아니라, **아무것도 안 바뀌었는데 움직이던 timestamp가 거짓말이었습니다.**
+  - 🔴 **[2026-08-11 정정] 이 항목의 마지막 문장이 거짓이 됐습니다.** 종전에는 *「값 결정은 timestamp를 읽지 않으므로(`compute_priority_value`는 우선순위 맵만 정렬) 승자가 바뀌는 셀은 없습니다」*라고 적었고, **그때는 참이었습니다.** 지금은 `compute_priority_value`가 **같은 우선순위 안의 동점을 `ingested_at` 내림차순으로 가릅니다**(§2.1 2층) — 즉 이 컬럼은 **표시값 결정에 직접 참여**합니다. 그리고 두 변경은 **같은 방향**으로 맞물립니다: 무변경 재기입에서 timestamp를 안 움직이는 이 스킵이 없었다면, 아무것도 바꾸지 않은 재-Push가 **동점 판정을 뒤집었을** 것입니다. 「값이 그대로면 이 소스가 그 값을 세운 때도 그대로」라는 뜻이 2층의 전제입니다.
 - 🔴 **`cell_overwrites.updated_at`을 노출하는 엔드포인트가 없습니다.** 그래서 `/sources`를 보는 기존 단언은 이 스킵을 **볼 수 없고**, 전용 그물(`test_an_unchanged_cell_does_not_rewrite_its_overwrite_marker` — `db_session`으로 직접 조회)이 없으면 이 자리는 무방비입니다. 실제로 그 그물을 쓰기 전, 스킵을 제거하는 변이(mutation)를 스위트 전체가 **한 건도 잡지 못했습니다.**
 
 ### 2.1-quater 집합 기반 쓰기 경로 — 레이어링은 그대로, 문장만 사라진다 · 2026-08-07 P3
@@ -108,6 +129,18 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - 🔴 **사람 값을 지울 수 있는 경로가 없다 — 두 거절이 그것을 보장한다**: ⓐ `user` 소스 철회는 **거부**(priority 0은 "사람이 입력했다"의 유일한 의미) ⓑ 그 소스를 사람이 핀한 셀(`CellOverwrite.manual_priority_source`)은 **건너뛰고 이유를 남긴다**(핀은 "이 소스를 보여 달라"는 사람의 선택).
 - **무음이 아니다**: 표시값이 바뀐 셀마다 `AuditLog`에 소스 `chain_replay_withdraw` · `updated_by="withdraw:<소스명>"` · old/new가 남는다. 클라의 기존 셀 이력 타임라인이 그것을 읽으므로, 빈칸을 발견한 운영자가 **어느 소스가 사라졌는지** 확인할 수 있다.
 - 절차·CLI 정본은 [guide/chain_ingestion_guide §5.4](../guide/chain_ingestion_guide.md).
+
+### 2.2-ter 표시값 재계산 (`chain_replay.recompute_display_values`) — 2026-08-11 · R3
+
+**승자는 materialise됩니다.** `apply_row_update_internal`은 마지막에 `setattr(row, col, new_val)`을 하고, 이후의 모든 조회는 **층이 아니라 그 컬럼**을 읽습니다. 그래서 §2.1의 해결 규칙을 고쳐도 **그 뒤에 쓰인 셀만** 고쳐집니다 — 이미 잘못 확정된 셀은 무엇인가가 다시 배달해 줄 때까지 그대로이고, **다시 배달해 줄 그것이 바로 결함이 버리던 것**입니다. R3는 셀이 **이미 가지고 있는 층들**로 `compute_priority_value`를 다시 돌려 **materialise된 컬럼만** 고칩니다.
+
+- 🔴 **`cell_sources` 행을 하나도 만들지 않고, 지우지 않고, 고치지 않습니다.** 움직이는 것은 표시 컬럼뿐입니다. R1은 **매퍼**를 다시 돌리고(룰이 필요하고 새 층을 씁니다), R2는 **주장을 지웁니다** — 둘 다 「저장된 층 중 무엇이 이기는가」를 **저장된 것을 바꾸지 않고** 다시 답하지 못합니다. 그것이 세 번째 연산이 필요했던 이유입니다.
+- 🔴 **층이 2개 미만인 셀은 절대 건드리지 않으며, 이것은 최적화가 아니라 안전 속성입니다.** 층이 하나면 가를 동점이 없어 애초에 이 결함의 피해자가 될 수 없고, 층이 **0개**면 해결 결과가 `(None, None)`이라 **다른 쓰기 경로가 소유한 컬럼을 이 패스가 비워 버립니다.** 이 관문이 「전체 테이블 실행이 자기가 이해하지 못하는 데이터를 파괴할 수 없다」의 근거입니다.
+- **무음이 아닙니다.** 표시값이 움직인 셀마다 `AuditLog`에 `source_name="resolution_recompute"` · `updated_by="resolved:<이긴 소스명>"` · old/new가 남습니다. 클라의 **기존 셀 이력 타임라인**이 그것을 읽으므로 값의 변화가 어디서도 설명되지 않는 일이 없습니다 — **기록 없이 바뀌는 값**은 지금 수리 중인 결함과 같은 계급이므로 감사 쓰기는 선택 사항이 아니고, `--apply`는 **둘 다 하거나 둘 다 안 합니다.**
+- **사람의 핀은 존중됩니다.** 핀은 **어느 층이 이기는가**를 정하는 것이지 materialise된 컬럼을 얼리는 것이 아니므로, 핀이 걸린 셀은 **핀이 지목한 층의 값으로** 해결됩니다. 보고서의 `pinned_changed`는 「핀을 무시했다」가 아니라 **「화면이 사람이 고른 층에서 멀어져 있었고 그것을 되돌렸다」**입니다.
+- ⚠️ **아웃박스/WS 이벤트를 내지 않습니다** — R1·R2와 정확히 같습니다. 붙어 있는 클라는 **다음 새로고침에** 수리를 봅니다. 오프라인/CLI 전용 연산이라는 것이 문서화된 계약입니다.
+- **기본은 dry-run이고 `--apply`만 씁니다.** 페이지 단위 커밋 + 키셋 순회(`keyset_scan.iter_pages`)라 대량 실행을 중간에 끊어도 됩니다. **dry-run이 곧 열거**입니다.
+- 절차·CLI 정본은 [guide/chain_ingestion_guide §5.5](../guide/chain_ingestion_guide.md), 운영자 진입점은 [guide/BACKFILL_GUIDE §2.5](../guide/BACKFILL_GUIDE.md).
 
 ### 2.3 재교정률 (`crud.get_recorrection_stats`) — **보조 계기**
 

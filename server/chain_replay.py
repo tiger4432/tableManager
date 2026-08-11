@@ -1,4 +1,5 @@
-"""Chain Replay R1 (rule re-application) + R2 (stale source withdrawal).
+"""Chain Replay R1 (rule re-application) + R2 (stale source withdrawal)
++ R3 (display-value recompute).
 
 R1 - RE-APPLY A CHAIN RULE TO DATA THAT PREDATES IT
     Chain ingestion is outbox-increment driven: a rule only ever sees rows that
@@ -45,6 +46,20 @@ THE USER LAYER IS THE WHOLE SAFETY PROPERTY
       here can remove a value a human entered or chose. They are tested by
       injection, not asserted.
 
+R3 - RE-MATERIALISE THE RESOLUTION OVER LAYERS THAT ARE ALREADY STORED
+    R1 and R2 both change WHAT IS STORED. R3 changes nothing stored: it re-runs
+    `crud.compute_priority_value` over the layers a cell already has and repairs
+    the materialised display column when the answer moved. It exists because
+    that answer DID move - `compute_priority_value` used to resolve a tie by dict
+    insertion order, which handed every tie to the incumbent, so a corrected
+    re-delivery was stored and silently discarded (measured 2026-08-11: 200 of
+    200 tied cells on `assy_qa` displayed the older value). Fixing the resolver
+    repairs only future writes; the already-materialised wrong values need this
+    pass. It shares `_load_cell_state` and `_resolve_cell` with R2 - R2 is
+    exactly R3 with one layer excluded - and it refuses to touch a cell with
+    fewer than two layers, because such a cell has no tie and a cell with zero
+    layers would resolve to a blank.
+
 HOW A WITHDRAWAL BECOMES VISIBLE (not silent)
     Every cell R2 changes gets an `AuditLog` entry with the WITHDRAWN source in
     the message, `old_value` = what was displayed, `new_value` = what is revealed
@@ -72,6 +87,17 @@ R1_SOURCE_NAME = "chain_ingestion"
 
 # R2 provenance for the audit trail only (it writes no cell_sources row).
 R2_AUDIT_SOURCE = "chain_replay_withdraw"
+
+# R3 provenance for the audit trail only (it writes no cell_sources row either).
+# A recompute changes NO stored fact - it only re-answers "which stored layer wins"
+# and re-materialises that answer - so it must be distinguishable in the history
+# from a withdrawal, which does delete a claim.
+R3_AUDIT_SOURCE = "resolution_recompute"
+
+# Upper bound on the per-cell change list a recompute keeps in memory. The AuditLog
+# rows it writes are the permanent, unbounded enumeration; this only bounds what one
+# call hands back to a CLI or a report. `changes_truncated` says when it bit.
+DEFAULT_MAX_REPORT = 10000
 
 # R1 never writes a blank value. See the module docstring: "the rule produces
 # nothing here" is R2's statement to make, not R1's.
@@ -494,6 +520,65 @@ def _claimed_filter(table_name: str, source_name: str, columns: list = None):
     return conds
 
 
+def _load_cell_state(db, table_name: str, chunk_row_ids: list):
+    """Stored sources + human pins for a chunk of rows: TWO batched queries, not two per cell.
+
+    Extracted so R2 (`withdraw_source`) and R3 (`recompute_display_values`) cannot
+    assemble the resolver's input differently. Two functions that build the input to
+    one decision in two ways are two decisions, and the difference would only show up
+    on the cells where it matters.
+
+    `ingested_at` travels with every layer because `crud.compute_priority_value` reads
+    it to break a tie between equally-ranked sources - see its docstring. Dropping it
+    here would silently put the resolution back on dict order.
+    """
+    from database import models
+
+    sources = {}
+    for row_id, col, src, val, ing in (
+            db.query(models.CellSource.row_id, models.CellSource.column_name,
+                     models.CellSource.source_name, models.CellSource.value,
+                     models.CellSource.ingested_at)
+            .filter(models.CellSource.table_name == table_name,
+                    models.CellSource.row_id.in_(chunk_row_ids))
+            .order_by(models.CellSource.source_name.asc()).all()):
+        sources.setdefault((row_id, col), {})[src] = {"value": val, "ingested_at": ing}
+
+    pins = {}
+    for row_id, col, pin in (
+            db.query(models.CellOverwrite.row_id, models.CellOverwrite.column_name,
+                     models.CellOverwrite.manual_priority_source)
+            .filter(models.CellOverwrite.table_name == table_name,
+                    models.CellOverwrite.row_id.in_(chunk_row_ids)).all()):
+        pins[(row_id, col)] = pin
+
+    return sources, pins
+
+
+def _resolve_cell(table_name: str, col_types: dict, row, col: str,
+                  cell_sources: dict, pin, exclude_source: str = None) -> dict:
+    """Re-answer "what should this cell display" from its STORED layers.
+
+    The one place R2 and R3 agree, and the reason they must: R2 is exactly R3 with
+    one layer removed. Returns the decision without writing it, so a dry-run and an
+    apply run the identical computation.
+    """
+    from database import crud
+
+    survivors = {s: d for s, d in (cell_sources or {}).items() if s != exclude_source}
+    old_val = getattr(row, col, None)
+    new_val, top_src = crud.compute_priority_value(survivors, pin, table_name)
+    if new_val is not None:
+        new_val = crud.cast_value_by_type(new_val, col_types.get(col, "string"), col)
+    return {
+        "survivors": survivors,
+        "old_value": old_val,
+        "new_value": new_val,
+        "top_source": top_src,
+        "changed": crud.clean_str_value(old_val) != crud.clean_str_value(new_val),
+    }
+
+
 def count_withdrawable(db, table_name: str, source_name: str, columns: list = None) -> dict:
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
@@ -617,22 +702,9 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
         rows = {r.row_id: r for r in db.query(model).filter(model.row_id.in_(chunk)).all()}
 
         # Remaining sources + pins for the whole chunk: two batched queries, not
-        # two per cell.
-        remaining = {}
-        for row_id, col, src, val, ing in (
-                db.query(models.CellSource.row_id, models.CellSource.column_name,
-                         models.CellSource.source_name, models.CellSource.value,
-                         models.CellSource.ingested_at)
-                .filter(models.CellSource.table_name == table_name,
-                        models.CellSource.row_id.in_(chunk)).all()):
-            remaining.setdefault((row_id, col), {})[src] = {"value": val, "ingested_at": ing}
-        pins = {}
-        for row_id, col, pin in (
-                db.query(models.CellOverwrite.row_id, models.CellOverwrite.column_name,
-                         models.CellOverwrite.manual_priority_source)
-                .filter(models.CellOverwrite.table_name == table_name,
-                        models.CellOverwrite.row_id.in_(chunk)).all()):
-            pins[(row_id, col)] = pin
+        # two per cell. Shared with R3 so the two operations cannot assemble the
+        # resolver's input differently.
+        remaining, pins = _load_cell_state(db, table_name, chunk)
 
         delete_keys = []
         for row_id in chunk:
@@ -651,20 +723,20 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                                    f"override that choice"})
                     continue
 
-                survivors = {s: d for s, d in (remaining.get(cell) or {}).items()
-                             if s != source_name}
-                old_val = getattr(row, col, None)
-                new_val, top_src = crud.compute_priority_value(
-                    survivors, pins.get(cell), table_name)
-                if new_val is not None:
-                    new_val = crud.cast_value_by_type(new_val, col_types.get(col, "string"), col)
+                decision = _resolve_cell(table_name, col_types, row, col,
+                                         remaining.get(cell), pins.get(cell),
+                                         exclude_source=source_name)
+                survivors = decision["survivors"]
+                old_val = decision["old_value"]
+                new_val = decision["new_value"]
+                top_src = decision["top_source"]
+                changed = decision["changed"]
 
                 stats["cells_withdrawn"] += 1
                 if survivors:
                     stats["revealed"] += 1
                 else:
                     stats["emptied"] += 1
-                changed = crud.clean_str_value(old_val) != crud.clean_str_value(new_val)
                 if not changed:
                     stats["value_unchanged"] += 1
                 if len(stats["samples"]) < SAMPLE_LIMIT:
@@ -709,4 +781,167 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     log(f"[withdraw] {stats['mode']}: {stats['cells_withdrawn']} cell(s) withdrawn "
         f"({stats['revealed']} revealed another source, {stats['emptied']} left empty, "
         f"{stats['pinned_skipped']} skipped as human-pinned)")
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# R3 - re-materialise the resolution over cells that already have their layers
+# ---------------------------------------------------------------------------
+
+def recompute_display_values(db, table_name: str, columns: list = None,
+                             row_ids: list = None, apply: bool = False,
+                             chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
+                             max_report: int = DEFAULT_MAX_REPORT,
+                             log=logger.info) -> dict:
+    """[R3] Re-run the resolution over stored layers and repair the materialised column.
+
+    WHY THIS EXISTS AND WHY R1/R2 CANNOT DO IT
+        The winning value is MATERIALISED: `apply_row_update_internal` ends with
+        `setattr(row, col, new_val)` and every read serves that column, not the
+        layers. So fixing `crud.compute_priority_value` fixes only the cells written
+        AFTER the fix. Every cell that resolved wrongly in the past keeps displaying
+        the wrong value until something re-delivers it - and nothing will, because
+        the re-delivery is exactly what the defect discarded. R1 re-runs a MAPPER
+        (it needs a rule and it writes a new layer); R2 DELETES a claim. Neither
+        re-answers "which stored layer wins" without changing what is stored, and
+        that is the whole operation here: **no `cell_sources` row is created,
+        deleted or modified.** Only the display column moves.
+
+    🔴 CELLS WITH FEWER THAN TWO LAYERS ARE NEVER TOUCHED, and that is a safety
+        property, not an optimisation. A cell with one layer has no tie to resolve,
+        so it cannot be a victim of the defect this repairs; and a cell with ZERO
+        layers would resolve to `(None, None)` and this pass would BLANK a column
+        that some other write path owns. The gate is the reason a full-table run
+        cannot destroy data it does not understand.
+
+    WHAT A HUMAN SEES AFTERWARDS
+        Every cell whose displayed value moves gets an `AuditLog` row
+        (`source_name=R3_AUDIT_SOURCE`, `updated_by="resolved:<winning source>"`,
+        with old and new value), so the client's existing cell-history timeline
+        explains the change. A value that changes with no history entry is the same
+        class of defect as the one being repaired, so the audit write is not
+        optional here and `apply` does both or neither.
+
+    COST. One pass over `cell_sources` for the table, driven by a keyset walk of the
+        table's `row_id` (`keyset_scan.iter_pages`) so memory is bounded by
+        `chunk_size` and no page pays an OFFSET. The per-page source load is served
+        by `idx_sources_lookup` (table_name, row_id, ...). It commits per page, so a
+        large run is restartable and an interrupt loses at most the page in flight.
+
+    Returns the stats dict; `changes` enumerates the affected cells up to
+    `max_report`, and `changes_truncated` says whether the list ran out of budget.
+    The AuditLog rows are the unbounded record.
+    """
+    from database import crud, models
+
+    import keyset_scan
+
+    model = models.DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        raise ReplayRefused(f"table model '{table_name}' is not initialized")
+
+    col_types = (crud.TABLE_CONFIG.get(table_name, {}).get("column_types", {}) or {})
+    if columns:
+        unknown = [c for c in columns if c not in col_types]
+        if unknown:
+            raise ReplayRefused(f"column(s) not declared on '{table_name}': {unknown}")
+    wanted_cols = set(columns) if columns else None
+
+    priority_map = crud.resolve_priority_map(table_name)
+
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
+             "rows_scanned": 0, "pages": 0, "cells_examined": 0,
+             "pinned_examined": 0, "cells_changed": 0, "changed_by_tiebreak": 0,
+             "changed_by_stale_materialisation": 0, "pinned_changed": 0,
+             "changes": [], "changes_truncated": False}
+
+    condition = model.row_id.in_(list(row_ids)) if row_ids else None
+    tx_id = f"{R3_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
+
+    for page in keyset_scan.iter_pages(db, model, condition=condition,
+                                       chunk_size=chunk_size, limit=limit):
+        stats["pages"] += 1
+        stats["rows_scanned"] += len(page)
+        page_ids = [r.row_id for r in page]
+        by_id = {r.row_id: r for r in page}
+        cell_sources, pins = _load_cell_state(db, table_name, page_ids)
+
+        page_changed = False
+        for cell, srcs in cell_sources.items():
+            row_id, col = cell
+            if wanted_cols is not None and col not in wanted_cols:
+                continue
+            if col not in col_types:
+                continue
+            row = by_id.get(row_id)
+            if row is None:
+                continue
+            # The safety gate. See the docstring: one layer has no tie, zero layers
+            # would blank the column.
+            if len(srcs) < 2:
+                continue
+
+            stats["cells_examined"] += 1
+            pin = pins.get(cell)
+            if pin is not None:
+                stats["pinned_examined"] += 1
+            decision = _resolve_cell(table_name, col_types, row, col, srcs, pin)
+            if not decision["changed"]:
+                continue
+
+            # WHY the change happened, so the report separates "this repair did it"
+            # from "this cell was already out of step with its own layers". A tie is
+            # the defect's signature: two or more layers sharing the winning rank,
+            # which is where the old code fell through to dict order.
+            top_rank = priority_map.get(decision["top_source"], 99)
+            tied = sum(1 for s in srcs if priority_map.get(s, 99) == top_rank)
+            reason = "tiebreak" if tied > 1 else "stale_materialisation"
+
+            stats["cells_changed"] += 1
+            if reason == "tiebreak":
+                stats["changed_by_tiebreak"] += 1
+            else:
+                stats["changed_by_stale_materialisation"] += 1
+            # A PINNED cell that still moves is worth its own counter and it is not a
+            # contradiction: the pin decides WHICH LAYER wins (`compute_priority_value`
+            # short-circuits on it), it does not freeze the materialised column. So this
+            # counts cells where the display had drifted away from the layer a human
+            # explicitly chose - the pin is being honoured here, not overridden. It was
+            # previously called `pinned_unchanged` while being incremented on exactly the
+            # cells that DID change, which read as the opposite of what it measured.
+            if pin is not None:
+                stats["pinned_changed"] += 1
+
+            if len(stats["changes"]) < max_report:
+                stats["changes"].append({
+                    "row_id": row_id, "column": col,
+                    "business_key_val": getattr(row, "business_key_val", None),
+                    "old_value": decision["old_value"],
+                    "new_value": decision["new_value"],
+                    "winning_source": decision["top_source"],
+                    "reason": reason,
+                    "sources": sorted(srcs),
+                })
+            else:
+                stats["changes_truncated"] = True
+
+            if apply:
+                setattr(row, col, decision["new_value"])
+                crud.create_audit_log(
+                    db, table_name, row_id, col,
+                    decision["old_value"], decision["new_value"],
+                    R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}",
+                    transaction_id=tx_id,
+                    business_key=getattr(row, "business_key_val", None))
+                page_changed = True
+
+        if apply and page_changed:
+            db.commit()
+
+    if not apply:
+        db.rollback()
+    log(f"[recompute] {stats['mode']}: {stats['cells_changed']} cell(s) would change "
+        f"({stats['changed_by_tiebreak']} by tiebreak, "
+        f"{stats['changed_by_stale_materialisation']} already out of step) "
+        f"out of {stats['cells_examined']} multi-layer cell(s) in {stats['rows_scanned']} row(s)")
     return stats

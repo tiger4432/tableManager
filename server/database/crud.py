@@ -60,39 +60,108 @@ def _warn_audit_truncation_once(table_name: str, col_name: str):
 # per (table, column); repeating it from a per-cell loop would flood the log and get
 # the whole log ignored.
 #
-# Shape note: this is probed as a dict of per-table sets rather than one set of
-# (table, column) tuples so the already-warned path allocates nothing — building a
-# tuple key on every cell of a 100k-row ingest is exactly the cost this path cannot
-# afford. Entries are never cleared; a column added to the config simply stops
-# reaching the drop branch.
+# Shape note: the admission registry is a dict of per-table sets rather than one set
+# of (table, column) tuples, because it also answers "how many DISTINCT undeclared
+# columns has this table seen", which is what the budget below is spent on. Entries
+# are never cleared; a column added to the config simply stops reaching the drop
+# branch.
 _undeclared_column_warned = {}
+
+# 🔴 HOW MANY, not just "at least once". Warning once per (table, column) per process
+# meant a chain dropping the same key ten thousand times logged ONE line at startup
+# and was mute for the rest of the day — so a deployment that had been FIXED and one
+# that was still silently losing a column produced byte-identical logs from then on.
+# That is how a production column-name mismatch stayed invisible for a full day.
+#
+# The counter is therefore incremented on EVERY drop and re-announced at each power
+# of ten. Powers of ten rather than every drop because the whole reason the original
+# was once-only is that this branch runs per cell: a 100k-row ingest dropping one
+# column must not emit 100k lines. Ten lines over four orders of magnitude is a
+# volume signal that costs nothing.
+_undeclared_column_drops = {}
+
+# Drops on a table that has already spent its distinct-column budget. Counted per
+# TABLE, not per column, on purpose: the budget exists because column names come from
+# the payload, so a junk header row can mint unbounded distinct names — and a
+# `{(table, column): count}` dict that admitted them would be the same unbounded
+# growth wearing a different hat. The total is still never lost, it just stops being
+# attributable to a specific column. Bounded by the number of tables, which is config.
+_undeclared_column_drops_over_budget = {}
+
+# Membership test for the re-announce thresholds. A frozenset of ints so the check on
+# the drop path is an O(1) hash lookup that allocates nothing; 10**18 is past any
+# plausible drop count for one process.
+_DROP_ANNOUNCE_AT = frozenset(10 ** i for i in range(1, 19))
 
 # Per-table budget. For a correct caller the registry is bounded by schema size, but
 # the keys come from the payload, so junk column names (a malformed header row, a
 # parser emitting values as headers) could otherwise grow it without limit. On
-# saturation the table stops both growing and warning — drops go silent again, which
-# is announced once so the silence is never a surprise.
+# saturation the table stops growing and stops naming columns — which is announced
+# once so the silence is never a surprise. Drops keep being COUNTED past this point
+# (see `_undeclared_column_drops_over_budget`); saturation costs attribution, not
+# visibility.
 _MAX_UNDECLARED_WARNED_PER_TABLE = 64
 
 
+def undeclared_column_drops() -> dict:
+    """Snapshot of undeclared-column drops so far in THIS process: {(table, col): count}.
+
+    Public because the log is not a readable channel for this: the drops happen in the
+    chain worker, a different process from the web server, and "is this deployment
+    still losing a column?" has to be answerable without grepping a worker's stdout.
+    `chain_ingestion_worker` publishes a digest of this through the heartbeat, which
+    `/health` already reads.
+
+    A key of `(table, None)` counts drops on a table that had already spent its
+    distinct-column budget, so the totals here always add up to every drop that
+    happened even when the column name could no longer be attributed.
+
+    Returns a copy; the caller cannot mutate the registry.
+    """
+    snap = dict(_undeclared_column_drops)
+    for table_name, count in _undeclared_column_drops_over_budget.items():
+        snap[(table_name, None)] = count
+    return snap
+
+
 def _warn_undeclared_column_once(table_name: str, col_name: str):
+    """Count this drop, and announce it on the 1st, 10th, 100th, 1000th ... occurrence.
+
+    ⚠️ THE NAME IS HISTORICAL AND NOW UNDERSTATES WHAT THIS DOES. It no longer warns
+    once — warning once is what let a fixed deployment and a broken one produce
+    identical logs. It is kept only because the sole call site was pinned by the
+    change request; renaming it to `_record_undeclared_column_drop` is a four-line
+    follow-up (here, `apply_row_update_internal`, and a comment in
+    `parsers/directory_watcher.py` and `tests/test_ingestion_drop_visibility.py`).
+    """
     warned = _undeclared_column_warned.get(table_name)
     if warned is None:
         warned = _undeclared_column_warned[table_name] = set()
-    elif col_name in warned or len(warned) >= _MAX_UNDECLARED_WARNED_PER_TABLE:
+    elif col_name not in warned and len(warned) >= _MAX_UNDECLARED_WARNED_PER_TABLE:
+        # Past the budget: still counted, just no longer attributable to a column.
+        _undeclared_column_drops_over_budget[table_name] = (
+            _undeclared_column_drops_over_budget.get(table_name, 0) + 1)
+        return
+
+    key = (table_name, col_name)
+    count = _undeclared_column_drops.get(key, 0) + 1
+    _undeclared_column_drops[key] = count
+    if count != 1 and count not in _DROP_ANNOUNCE_AT:
         return
     warned.add(col_name)
     logger.warning(
         f"[Schema] Column '{col_name}' is not declared in column_types for table "
         f"'{table_name}' and was DROPPED from the update; the write still succeeded "
         f"for the declared columns. Add it to config/table_config.json to persist it. "
-        f"This warning is emitted once per (table, column) per process."
+        f"Dropped {count} time(s) in this process so far; this warning repeats at each "
+        f"power of ten, so silence after this line means the drops STOPPED."
     )
-    if len(warned) >= _MAX_UNDECLARED_WARNED_PER_TABLE:
+    if count == 1 and len(warned) >= _MAX_UNDECLARED_WARNED_PER_TABLE:
         logger.warning(
             f"[Schema] Reached {_MAX_UNDECLARED_WARNED_PER_TABLE} distinct undeclared "
             f"columns for table '{table_name}'; further undeclared columns on this table "
-            f"will be dropped WITHOUT a warning."
+            f"will be dropped without naming the column (the drop count is still "
+            f"available from crud.undeclared_column_drops())."
         )
 
 
@@ -1072,8 +1141,86 @@ def get_source_priority(source_name: str, table_name: str = None) -> int:
     return resolve_priority_map(table_name).get(source_name, 99)
 
 
-def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None):
-    """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다."""
+def resolution_ingested_at(entry: Any, source_name: str = None,
+                           ingested_at_by_source: dict = None):
+    """A source layer's `ingested_at` as absolute POSIX seconds, or None if unknown.
+
+    Callers spell the SAME column three different ways and there is no third
+    storage - `cell_sources.ingested_at` is the only origin of any of them:
+      * `{"value", "timestamp": <ISO str>, "updated_by"}` - crud + main.py,
+      * `{"value", "ingested_at": <datetime>}`            - chain_replay.withdraw_source,
+      * a bare scalar value with no timestamp at all      - main.fetch_and_merge_metadata,
+        whose `sources` payload is a client-facing contract (`{source: value}`) and
+        therefore cannot carry one. That caller passes `ingested_at_by_source`
+        instead, which is why this override is checked FIRST.
+
+    Naive and aware datetimes coexist in one dict on purpose-free grounds: the write
+    path stamps `datetime.now()` (naive, local) while PostgreSQL's `timestamptz`
+    reads back aware. Comparing the two raises TypeError, so both are normalised to
+    UTC here - `astimezone()` reads a naive value as local, which is exactly what
+    `datetime.now()` produced.
+    """
+    raw = None
+    if ingested_at_by_source and source_name is not None:
+        raw = ingested_at_by_source.get(source_name)
+    if raw is None and isinstance(entry, dict):
+        raw = entry.get("ingested_at")
+        if raw is None:
+            raw = entry.get("timestamp")
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+    if not isinstance(raw, datetime):
+        return None
+    try:
+        return raw.astimezone(timezone.utc).timestamp()
+    except (ValueError, OSError, OverflowError):  # pragma: no cover - defensive
+        return None
+
+
+def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None,
+                           ingested_at_by_source: dict = None):
+    """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다.
+
+    🔴 THE ORDER IS EXPLICIT AND TOTAL, AND IT HAS TO BE. This used to be
+    `sorted(sources.keys(), key=priority_map.get(k, 99))` and nothing else. Every
+    file-derived source name is unregistered, so all of them return 99 and ALL OF
+    THEM TIE; `sorted` is stable, so the winner fell to dict insertion order, and
+    that order is not arbitrary - the write path loads the stored sources first and
+    appends the incoming one last (`apply_row_update_internal`), so the INCUMBENT
+    won every tie by construction. A later delivery carrying a corrected value was
+    stored in `cell_sources` and then discarded in silence, because `has_changed`
+    was false and that suppresses the column write, the audit log AND the outbox
+    event. Measured 2026-08-11 on `assy_qa`: 200 of 200 tied cells displayed the
+    older value. Worse than wrong, it was not even stable - the tiebreak was
+    physical heap order, so a VACUUM FULL could change a displayed value with no
+    write and no audit entry.
+
+    The three levels, and why each one exists:
+
+    1. **Registered priority** (`priority_map`, unregistered = 99). The DECLARED
+       ranking is the authority and this change does not move it: `user` (0) still
+       outranks every machine source, and a registered source still outranks an
+       unregistered filename. Levels 2 and 3 only ever break a tie WITHIN one
+       priority - they can never promote a lower-ranked source over a higher one.
+    2. **`ingested_at` descending** - among equally-ranked sources the most recent
+       delivery is the current statement of fact, and an older one is by definition
+       superseded. A layer whose timestamp is unknown sorts AFTER one that has it
+       (2a), so a legacy NULL cannot displace a dated delivery; without 2a the
+       comparison would also have to order `None` against a float.
+    3. **`source_name` ascending** - the final TOTAL order. Two layers can carry the
+       same `ingested_at` (one batch writes several sources with one `datetime.now()`),
+       and without a total order the answer would fall back to dict order, which is
+       the defect above. `idx_sources_lookup_source` is unique on
+       (table, row, column, source_name), so within one cell `source_name` is unique
+       and level 3 always decides. The result therefore does not depend on the order
+       the caller assembled `sources` in, on the SELECT that produced it, or on the
+       physical row order underneath that SELECT.
+    """
     if not sources:
         return None, None
 
@@ -1084,12 +1231,18 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
 
     priority_map = resolve_priority_map(table_name)
 
-    sorted_sources = sorted(
-        sources.keys(),
-        key=lambda k: priority_map.get(k, 99)
-    )
-    
-    top_source = sorted_sources[0]
+    def _rank(name):
+        ts = resolution_ingested_at(sources[name], name, ingested_at_by_source)
+        return (
+            priority_map.get(name, 99),        # 1. declared ranking
+            0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
+            -ts if ts is not None else 0.0,    # 2b. newest first
+            name,                              # 3. total order, always decides
+        )
+
+    # `min` rather than `sorted`: the same first element, without materialising and
+    # sorting the whole list on a per-cell hot path.
+    top_source = min(sources.keys(), key=_rank)
     val_data = sources[top_source]
     val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
     return val, top_source
@@ -1834,6 +1987,16 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
                                   and row_id in prefetched_row_ids)
 
     # CellSource 로드
+    #
+    # [ORDER BY source_name] These two SELECTs feed `compute_priority_value`, and an
+    # unordered SELECT returns rows in whatever order the heap and the plan happen to
+    # produce. That order used to BE the tiebreak (see `compute_priority_value` for the
+    # measurement), so a resolution built on it could change after a VACUUM FULL or a
+    # plan flip with nothing written. The resolver now imposes its own total order and
+    # no longer depends on this, but a SELECT that feeds a decision states its order:
+    # `source_name` is UNIQUE per cell (`idx_sources_lookup_source`), so it is a total
+    # order, it is identical on PostgreSQL and SQLite, and it has no NULL-ordering
+    # dialect difference the way `ingested_at` would.
     if sources_cache is not None:
         if key not in sources_cache:
             if absence_is_known:
@@ -1843,7 +2006,7 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
                     models.CellSource.table_name == table_name,
                     models.CellSource.row_id == row_id,
                     models.CellSource.column_name == col_name
-                ).all()
+                ).order_by(models.CellSource.source_name.asc()).all()
                 if cell_sources_to_upsert is not None:
                     for s in col_srcs:
                         db.expunge(s)
@@ -1858,11 +2021,11 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
                 models.CellSource.table_name == table_name,
                 models.CellSource.row_id == row_id,
                 models.CellSource.column_name == col_name
-            ).all()
+            ).order_by(models.CellSource.source_name.asc()).all()
             if cell_sources_to_upsert is not None:
                 for s in col_srcs:
                     db.expunge(s)
-            
+
     # CellOverwrite 로드
     if overwrites_cache is not None:
         if key not in overwrites_cache:
@@ -1979,6 +2142,9 @@ def apply_row_update_internal(
         if col_name not in col_types:
             # Drop behaviour is deliberately unchanged: rejecting the write would turn a
             # lagging config into an outage. Only the silence is fixed.
+            # ⚠️ Despite the name this COUNTS every drop and re-announces at each power
+            # of ten; `undeclared_column_drops()` reads the counts. Warning once per
+            # process is what made a fixed deployment and a broken one look identical.
             _warn_undeclared_column_once(table_name, col_name)
             continue
 
@@ -2004,10 +2170,19 @@ def apply_row_update_internal(
         # Two layers disagreeing about whether the same fact changed is the defect.
         #
         # What this gives up is `ingested_at` moving on a no-op write, and that is the
-        # improvement: it now means "when this source last set this value" instead of
-        # "when someone last pressed save". Nothing resolves values by timestamp -
-        # `compute_priority_value` sorts by the priority map alone and never reads one -
-        # so no cell can change which layer wins because of this.
+        # improvement: it now means "when this source last CHANGED this value" instead
+        # of "when someone last pressed save".
+        #
+        # 🔴 THIS COMMENT USED TO SAY "nothing resolves values by timestamp, so no cell
+        # can change which layer wins because of this". THAT IS NO LONGER TRUE and the
+        # sentence was left here long enough to be quoted as evidence in a diagnosis.
+        # `compute_priority_value` now reads `ingested_at` to break a tie between
+        # equally-ranked sources, so this line decides ties. The behaviour is still the
+        # one we want, for a reason that has to be stated rather than assumed: a source
+        # that re-delivers a value it has already delivered has not made a NEW
+        # statement, so it must not jump ahead of a differing source that spoke after
+        # it. "Newest" means newest assertion of a value, not newest touch. Removing
+        # this guard would let a periodic re-delivery of a stale value silently win.
         source_unchanged = (
             src_obj is not None
             and src_obj.value == clean_val
@@ -2059,11 +2234,24 @@ def apply_row_update_internal(
                 }
 
         # 4. 우선순위 결정
+        #
+        # [tiebreak] An unknown `ingested_at` is reported as None, NOT as `now()`.
+        # This used to substitute `datetime.now()`, which was harmless while the
+        # timestamp was decoration and became a defect the moment it became the
+        # tiebreak: `now()` is the largest timestamp there is, so an undated legacy
+        # layer would have outranked every dated delivery - the exact inversion of
+        # `compute_priority_value`'s level 2a ("a dated layer beats an undated one").
+        # It would also have made this path disagree with `chain_replay._load_cell_state`
+        # and `main.get_cell_sources`, which both pass the raw value through, so two
+        # code paths resolving the SAME cell could pick different winners.
+        # Measured 2026-08-11 on `assy_qa`: 0 of 2,432,116 `cell_sources` rows have a
+        # NULL `ingested_at` (the column carries `server_default=func.now()`), so this
+        # is a latent hazard being closed, not an observed one being repaired.
         sources_dict = {}
         for s in col_srcs:
             sources_dict[s.source_name] = {
                 "value": s.value,
-                "timestamp": s.ingested_at.isoformat() if s.ingested_at else datetime.now().isoformat(),
+                "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
                 "updated_by": s.updated_by
             }
             
@@ -3058,7 +3246,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             ).filter(
                 models.CellSource.table_name == table_name,
                 models.CellSource.row_id.in_(all_row_ids)
-            ).all()
+            ).order_by(models.CellSource.source_name.asc()).all()
             for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
                 key = (r_id, col_name)
                 if key not in sources_cache:
@@ -3397,6 +3585,8 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
     db.query(models.CellSource).filter(or_(*delete_conds)).delete(synchronize_session=False)
 
     # 2. 캐시 일괄 생성 (N+1 SELECT 차단)
+    # [ORDER BY source_name] Same reason as `_load_metadata_row_cell`: this list feeds
+    # `compute_priority_value`, so its order is stated rather than inherited from the heap.
     all_sources = db.query(
         models.CellSource.table_name,
         models.CellSource.row_id,
@@ -3408,7 +3598,7 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
     ).filter(
         models.CellSource.table_name == table_name,
         models.CellSource.row_id.in_(row_ids)
-    ).all()
+    ).order_by(models.CellSource.source_name.asc()).all()
     
     sources_cache = {}
     for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
@@ -3462,7 +3652,7 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
         sources_dict = {
             s.source_name: {
                 "value": s.value,
-                "timestamp": s.ingested_at.isoformat() if s.ingested_at else datetime.now().isoformat(),
+                "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
                 "updated_by": s.updated_by
             }
             for s in col_srcs
@@ -3544,6 +3734,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     row_map = {r.row_id: r for r in rows}
 
     # 1. 인메모리 캐시 일괄 조회 및 적재
+    # [ORDER BY source_name] Same reason as `_load_metadata_row_cell`: this list feeds
+    # `compute_priority_value`, so its order is stated rather than inherited from the heap.
     all_sources = db.query(
         models.CellSource.table_name,
         models.CellSource.row_id,
@@ -3555,7 +3747,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     ).filter(
         models.CellSource.table_name == table_name,
         models.CellSource.row_id.in_(row_ids)
-    ).all()
+    ).order_by(models.CellSource.source_name.asc()).all()
     
     sources_cache = {}
     for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
@@ -3610,7 +3802,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         sources_dict = {
             s.source_name: {
                 "value": s.value,
-                "timestamp": s.ingested_at.isoformat() if s.ingested_at else datetime.now().isoformat(),
+                "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
                 "updated_by": s.updated_by
             }
             for s in col_srcs

@@ -39,12 +39,19 @@ def warn_capture():
     logger.addHandler(handler)
     # The registry is a process global; without this a prior test in the same
     # session could pre-warm a pair and make "fires once" pass vacuously.
+    # The DROP COUNTERS have to be cleared for the same reason and more sharply: the
+    # re-announce thresholds are absolute counts, so a pair left at 7 by an earlier
+    # test would cross 10 three drops early and move every assertion below.
     crud._undeclared_column_warned.clear()
+    crud._undeclared_column_drops.clear()
+    crud._undeclared_column_drops_over_budget.clear()
     try:
         yield handler
     finally:
         logger.removeHandler(handler)
         crud._undeclared_column_warned.clear()
+        crud._undeclared_column_drops.clear()
+        crud._undeclared_column_drops_over_budget.clear()
 
 
 def _batch(business_key_val, updates):
@@ -108,24 +115,103 @@ def test_undeclared_column_warns_once_and_row_still_saves(client, db_session, wa
     assert len(warn_capture.schema_warnings) == 1, warn_capture.schema_warnings
 
 
-def test_repeated_rows_in_one_batch_warn_once(db_session, warn_capture):
-    """The drop is a per-cell branch: 500 rows carrying the same undeclared column
-    must still produce exactly one line, not 500."""
-    batch = schemas.GeneralUpdateBatch(
+def _bulk_batch(n, col="eventtime", start=0):
+    return schemas.GeneralUpdateBatch(
         updates=[
             schemas.GeneralUpdateItem(
                 business_key_val=f"PN-{i}",
-                updates={"part_no": f"PN-{i}", "eventtime": "2026-07-27T10:00:00"},
+                updates={"part_no": f"PN-{i}", col: "2026-07-27T10:00:00"},
                 source_name="user",
                 updated_by="tester",
             )
-            for i in range(500)
+            for i in range(start, start + n)
         ],
         silent=True,
     )
-    crud.apply_batch_updates(db_session, "inventory_master", batch)
 
-    assert len(warn_capture.schema_warnings) == 1, len(warn_capture.schema_warnings)
+
+def test_repeated_rows_in_one_batch_announce_at_powers_of_ten(db_session, warn_capture):
+    """The drop is a per-cell branch, so 500 rows carrying the same undeclared column
+    must not produce 500 lines. But they must not produce ONE either.
+
+    Once-per-process is what made a broken deployment indistinguishable from a fixed
+    one: after the single startup line, ten thousand further drops looked exactly like
+    zero further drops. The volume is the signal, so it is announced at 1, 10 and 100
+    -- three lines for five hundred drops.
+    """
+    crud.apply_batch_updates(db_session, "inventory_master", _bulk_batch(500))
+
+    warnings = warn_capture.schema_warnings
+    assert len(warnings) == 3, warnings
+    assert "Dropped 1 time(s)" in warnings[0]
+    assert "Dropped 10 time(s)" in warnings[1]
+    assert "Dropped 100 time(s)" in warnings[2]
+    assert crud.undeclared_column_drops()[("inventory_master", "eventtime")] == 500
+
+
+def test_the_count_survives_across_batches_so_a_quiet_process_means_it_stopped(
+        db_session, warn_capture):
+    """THE POINT OF THE WHOLE CHANGE. The counter is per process, not per call, so a
+    chain that keeps dropping keeps announcing -- and a chain that was FIXED goes
+    quiet. Those two had been indistinguishable."""
+    for chunk in range(4):
+        crud.apply_batch_updates(db_session, "inventory_master",
+                                 _bulk_batch(3, start=chunk * 3))
+    assert crud.undeclared_column_drops()[("inventory_master", "eventtime")] == 12
+    # 12 drops spread over four separate calls still crosses exactly the 1 and 10
+    # thresholds -- the threshold is the running total, not a per-call count.
+    assert len(warn_capture.schema_warnings) == 2, warn_capture.schema_warnings
+    assert "Dropped 10 time(s)" in warn_capture.schema_warnings[1]
+
+
+def test_a_declared_column_never_reaches_the_counter(db_session, warn_capture):
+    """The accessor has to be readable as 'is this deployment losing a column right
+    now', so a healthy write must leave it empty rather than at zero-for-everything."""
+    crud.apply_batch_updates(
+        db_session, "inventory_master",
+        _batch("PN-OK", {"part_no": "PN-OK", "category": "BRACKET"}))
+    assert crud.undeclared_column_drops() == {}
+    assert warn_capture.schema_warnings == []
+
+
+def test_the_worker_heartbeat_carries_the_drop_digest(db_session, warn_capture):
+    """The drops happen in the chain worker; the question is asked at the web server's
+    /health. This pins the existing cross-process channel actually carrying them --
+    and pins the note staying None on a healthy worker, so a clean deployment's
+    heartbeat is unchanged."""
+    import chain_ingestion_worker
+
+    assert chain_ingestion_worker._undeclared_drop_note() is None
+
+    crud.apply_batch_updates(db_session, "inventory_master", _bulk_batch(4))
+    note = chain_ingestion_worker._undeclared_drop_note()
+    assert "total=4" in note
+    assert "inventory_master.eventtime=4" in note
+
+
+def test_the_digest_is_bounded_and_says_what_it_left_out(db_session, warn_capture):
+    """The note is republished on every beat into a ~200 byte file, so a table with
+    dozens of dropped columns must not be able to inflate it -- but it must say that
+    it truncated, or the total stops adding up in the reader's head."""
+    for i in range(9):
+        crud.apply_batch_updates(
+            db_session, "inventory_master",
+            _batch(f"PN-D{i}", {"part_no": f"PN-D{i}", f"dcol_{i}": 1}))
+    import chain_ingestion_worker
+
+    note = chain_ingestion_worker._undeclared_drop_note()
+    assert "total=9" in note
+    assert note.count("dcol_") == 5, note
+    assert "(+4 more)" in note, note
+
+
+def test_the_accessor_returns_a_copy_and_cannot_be_mutated_through(db_session, warn_capture):
+    crud.apply_batch_updates(db_session, "inventory_master",
+                             _batch("PN-C1", {"part_no": "PN-C1", "ghost_c": 1}))
+    snap = crud.undeclared_column_drops()
+    snap[("inventory_master", "ghost_c")] = 999
+    snap[("bogus", "bogus")] = 1
+    assert crud.undeclared_column_drops() == {("inventory_master", "ghost_c"): 1}
 
 
 def test_distinct_table_column_pairs_each_warn(db_session, warn_capture):
@@ -155,7 +241,12 @@ def test_distinct_table_column_pairs_each_warn(db_session, warn_capture):
 
 def test_registry_is_bounded_and_announces_its_own_silence(db_session, warn_capture, monkeypatch):
     """Column names come from the payload, so a junk-header caller could grow the
-    registry without limit. Past the budget it stops growing AND says so once."""
+    registry without limit. Past the budget it stops growing AND says so once.
+
+    The counter is bounded by the SAME budget, which is the point: a
+    `{(table, column): count}` dict that accepted every name a malformed header
+    invented would be exactly the unbounded growth this budget exists to stop.
+    """
     monkeypatch.setattr(crud, "_MAX_UNDECLARED_WARNED_PER_TABLE", 3)
 
     for i in range(10):
@@ -169,6 +260,13 @@ def test_registry_is_bounded_and_announces_its_own_silence(db_session, warn_capt
 
     warnings = warn_capture.schema_warnings
     drops = [m for m in warnings if "DROPPED" in m]
-    saturation = [m for m in warnings if "WITHOUT a warning" in m]
+    saturation = [m for m in warnings if "without naming the column" in m]
     assert len(drops) == 3, drops
     assert len(saturation) == 1, saturation
+
+    # Attribution is what saturation costs -- not visibility. The 7 unattributable
+    # drops are still counted, under the `(table, None)` key, so the totals add up.
+    snap = crud.undeclared_column_drops()
+    assert len([k for k in snap if k[1] is not None]) == 3, snap
+    assert snap[("inventory_master", None)] == 7, snap
+    assert sum(snap.values()) == 10, "every drop must be counted somewhere"

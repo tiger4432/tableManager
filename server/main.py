@@ -723,22 +723,35 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
         
     # 2. cell_sources 일괄 로딩 (include_sources가 True일 때만 실행)
     sources_map = {}
+    ingested_map = {}
     if include_sources:
+        # [ORDER BY source_name] Same reason as the crud SELECTs: this list feeds
+        # `compute_priority_value`, so its order is stated rather than inherited from
+        # the heap. `source_name` is UNIQUE per cell (`idx_sources_lookup_source`).
+        #
+        # [tiebreak] `ingested_at` is selected because recency breaks a tie between
+        # equally-ranked sources. Without it this READ path would resolve ties
+        # alphabetically while the WRITE path resolved them by recency, so the
+        # `priority_source` badge could name a different layer than the materialised
+        # `value` actually came from.
         sources = db.query(
             models.CellSource.row_id,
             models.CellSource.column_name,
             models.CellSource.source_name,
-            models.CellSource.value
+            models.CellSource.value,
+            models.CellSource.ingested_at
         ).filter(
             models.CellSource.table_name == table_name,
             models.CellSource.row_id.in_(row_ids)
-        ).all()
-        
-        for row_id, column_name, source_name, value in sources:
+        ).order_by(models.CellSource.source_name.asc()).all()
+
+        for row_id, column_name, source_name, value, ingested_at in sources:
             key = (row_id, column_name)
             if key not in sources_map:
                 sources_map[key] = {}
+                ingested_map[key] = {}
             sources_map[key][source_name] = value
+            ingested_map[key][source_name] = ingested_at
 
     data_list = []
     for row in rows:
@@ -768,7 +781,12 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
                 else:
                     priority_source = None
             else:
-                _, priority_source = crud.compute_priority_value(col_srcs, manual_pin, table_name)
+                # `col_srcs` is `{source: value}` because that dict IS the client-facing
+                # cell contract and cannot carry a timestamp; the timestamps travel
+                # beside it. The response shape is unchanged.
+                _, priority_source = crud.compute_priority_value(
+                    col_srcs, manual_pin, table_name,
+                    ingested_at_by_source=ingested_map.get(key))
 
             is_collision = (priority_source == "collision_merge") or (include_sources and "collision_merge" in col_srcs)
             has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)
@@ -3699,11 +3717,13 @@ def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = 
     if not row or not hasattr(table_model, col_name):
         raise HTTPException(status_code=404, detail="Cell not found")
         
+    # [ORDER BY source_name] This list feeds `compute_priority_value`; a SELECT that
+    # feeds a decision states its order rather than inheriting the heap's.
     cell_sources = db.query(models.CellSource).filter(
         models.CellSource.table_name == table_name,
         models.CellSource.row_id == row_id,
         models.CellSource.column_name == col_name
-    ).all()
+    ).order_by(models.CellSource.source_name.asc()).all()
     
     ow = db.query(models.CellOverwrite).filter(
         models.CellOverwrite.table_name == table_name,
@@ -4000,11 +4020,12 @@ def query_cells_sources(
     row_map = {r.row_id: r for r in rows}
     
     # [정규화 스키마] N+1 문제를 방지하기 위해 단 2개의 배치 쿼리로 원천 데이터와 오버라이트 정보 일괄 로드
+    # [ORDER BY source_name] Same reason as the single-cell endpoint above.
     cell_sources = db.query(models.CellSource).filter(
         models.CellSource.table_name == table_name,
         models.CellSource.row_id.in_(row_ids),
         models.CellSource.column_name.in_(col_names)
-    ).all()
+    ).order_by(models.CellSource.source_name.asc()).all()
     
     sources_map = {}
     for s in cell_sources:
