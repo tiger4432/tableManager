@@ -65,6 +65,7 @@ from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
+import chain_bindings
 import dt_map_derivation as derivation
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,10 @@ logger = logging.getLogger(__name__)
 # target table's own `map_key_columns` / `composite_key_source`, which is where the
 # answer already lives.
 DEFAULT_SOURCE_TABLE = "dt_log"
-DEFAULT_SOURCE_COLUMN = "dt_job"
+# There is deliberately NO `DEFAULT_SOURCE_COLUMN`. It was `"dt_job"`, and a name that
+# is only correct on the machine that wrote it means nobody ever has to declare the
+# real one — see `chain_bindings` for what the silence costs. The name now comes from
+# the rule, or from `table_config`, or the call is refused by name.
 DEFAULT_VALUE_COLUMNS = ("c_bn",)
 DEFAULT_ORIGIN_COLUMNS = ("core_wafer", "core_lot", "core_slot", "core_x", "core_y")
 
@@ -100,7 +104,10 @@ def _rule_source_table(rule) -> str:
 
 
 def _rule_source_column(rule) -> str:
-    return str((rule or {}).get("derivation_source_column") or DEFAULT_SOURCE_COLUMN)
+    """`derivation_source_column` > `table_config` derivation > refuse by name."""
+    return chain_bindings.resolve_column(
+        rule, "derivation_source_column", _rule_source_table(rule),
+        "the source column the derived cells are grouped by")
 
 
 def _rule_columns(rule, key, default):

@@ -17,7 +17,7 @@ def _row(job, wafer, x, y, lot="L1", slot="S1"):
 
 def test_usage_map_is_keyed_by_enriched_wafer_and_replaces_only_that_map():
     rows = [_row("J1", "W1", 1, 2), _row("J2", "W1", 1, 2), _row("J1", "W1", 2, 2)]
-    batches = mapper._usage_batches(rows, {"J1": EQUATION, "J2": EQUATION})
+    batches = mapper._usage_batches(rows, {"J1": EQUATION, "J2": EQUATION}, "dt_job")
     assert len(batches) == 1
     assert batches[0]["scope"] == {"core_wafer": "W1"}
     first = batches[0]["updates"][0]["updates"]
@@ -26,12 +26,12 @@ def test_usage_map_is_keyed_by_enriched_wafer_and_replaces_only_that_map():
 
 
 def test_lot_slot_only_rows_wait_for_wafer_enrichment():
-    assert mapper._usage_batches([_row("J1", None, 1, 2)], {"J1": EQUATION}) == []
+    assert mapper._usage_batches([_row("J1", None, 1, 2)], {"J1": EQUATION}, "dt_job") == []
 
 
 def test_wafer_separator_variants_share_one_usage_map():
     rows = [_row("J1", "wf.01", 1, 2), _row("J2", "WF-01", 2, 2)]
-    batches = mapper._usage_batches(rows, {"J1": EQUATION, "J2": EQUATION})
+    batches = mapper._usage_batches(rows, {"J1": EQUATION, "J2": EQUATION}, "dt_job")
     assert len(batches) == 1
     assert batches[0]["scope"] == {"core_wafer": "WF-01"}
 

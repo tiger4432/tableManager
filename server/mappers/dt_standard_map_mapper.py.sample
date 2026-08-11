@@ -1,8 +1,16 @@
-"""dt_inventory equations -> one scoped standard-coordinate dt_map replacement."""
+"""dt_inventory equations -> one scoped standard-coordinate dt_map replacement.
+
+THREE TABLES, THREE NAMES. This mapper reads a payload from the TRIGGER table, queries
+the SOURCE table, and writes the TARGET table. Those are three different tables and
+each states its own job-column name; a single `dt_job` literal could not express a
+deployment where any one of them differs. Every name here comes from
+`chain_bindings.resolve_column`, which refuses by name rather than assuming.
+"""
 from __future__ import annotations
 
 import json
 
+import chain_bindings
 import dt_frame_transform
 import map_meta_registrar
 import map_overlay
@@ -23,9 +31,25 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
     """Project each changed DT job from dt_log using its persisted equation."""
     from database import models
 
+    rule = rule or {}
+    source_table = rule.get("source_table", "dt_log")
+    target_table = rule.get("target_table", "dt_map")
+    trigger_job_column = chain_bindings.resolve_column(
+        rule, "trigger_job_column", rule.get("trigger_table"),
+        "the job id read out of the trigger payload")
+    source_job_column = chain_bindings.resolve_column(
+        rule, "source_job_column", source_table,
+        "the source rows this job's map is projected from")
+    # 🔴 THE OUTPUT KEY IS THE DANGEROUS ONE. A key the target table does not declare
+    #    is DROPPED by `crud.apply_batch_updates` with one warning and a successful
+    #    return, so a wrong name here writes a map with no job on it and reports 200.
+    target_job_column = chain_bindings.resolve_column(
+        rule, "target_job_column", target_table,
+        "the job column written onto the derived map and used as its replace scope")
+
     jobs = {}
     for payload in payloads or ():
-        job_id = _value(payload, "dt_job")
+        job_id = _value(payload, trigger_job_column)
         equation = {field: _value(payload, field) for field in _EQUATION_FIELDS}
         frame = _value(payload, "dt_frame")
         if not (isinstance(job_id, str) and job_id and
@@ -40,9 +64,11 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
     if not jobs:
         return {"batches": []}
 
-    source = models.DYNAMIC_TABLES.get((rule or {}).get("source_table", "dt_log"))
+    source = models.DYNAMIC_TABLES.get(source_table)
     if source is None:
         raise ValueError("dt_log model is not initialized")
+    source_job = chain_bindings.model_column(
+        source, source_table, source_job_column, "the source-row filter")
 
     batches, metadata_updates = [], []
     for job_id, job in jobs.items():
@@ -51,23 +77,23 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
         # map declaration. Re-read it from dt_log metadata so a frame confirmed
         # before the declaration was stamped cannot silently drop the reference
         # on the derived standard map.
-        source_meta = map_overlay.load_map_meta(db, (rule or {}).get("source_table", "dt_log"), job_id)
+        source_meta = map_overlay.load_map_meta(db, source_table, job_id)
         if isinstance(source_meta, dict):
             standard_meta = map_overlay.apply_valid_die_ref(
                 job["standard_meta"], source_meta.get(map_overlay.VALID_DIE_REF_KEY))
         else:
             standard_meta = job["standard_meta"]
         metadata_updates.append({
-            "business_key_val": map_meta_registrar.meta_business_key("dt_map", job_id),
+            "business_key_val": map_meta_registrar.meta_business_key(target_table, job_id),
             "updates": {
-                "target_table": "dt_map",
+                "target_table": target_table,
                 "map_id": job_id,
                 "grid_metadata": json.dumps(standard_meta, ensure_ascii=False, sort_keys=True),
             },
             "source_name": "chain_ingestion",
             "updated_by": "dt_standard_map_metadata",
         })
-        rows = db.query(source).filter(source.dt_job == job_id).all()
+        rows = db.query(source).filter(source_job == job_id).all()
         updates = []
         for row in rows:
             try:
@@ -75,13 +101,13 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
             except ValueError:
                 continue
             updates.append({"updates": {
-                "dt_job": job_id, "dt_x": x, "dt_y": y,
+                target_job_column: job_id, "dt_x": x, "dt_y": y,
                 "dt_index": row.dt_index, "c_bn": row.c_bn,
             }, "source_name": "chain_ingestion", "updated_by": "dt_standard_map"})
         batches.append({
-            "target_table": (rule or {}).get("target_table", "dt_map"),
+            "target_table": target_table,
             "replace_map": True,
-            "scope": {"dt_job": job_id},
+            "scope": {target_job_column: job_id},
             "updates": updates,
         })
     return {"map_metadata_updates": metadata_updates, "batches": batches}

@@ -1,6 +1,6 @@
 # DT/Core frame derivation chains
 
-> **Status:** active implementation | **Owner:** Lead / Backend | **Last verified:** 2026-08-10
+> **Status:** active implementation | **Owner:** Lead / Backend | **Last verified:** 2026-08-11
 
 ## Purpose
 
@@ -112,9 +112,26 @@ without `core_wafer` safely produce no usage output until enrichment supplies it
 - Load table declarations before map metadata, then chain rules, then
   enrichment rules.  A process restart is required after a signature/config
   surface change so all workers share the same configuration snapshot.
+- 🔴 **The job column is spelled nowhere in these mappers (2026-08-11).** Every
+  table in the authority table above states its own job-column name, and the four
+  mappers read each name from `table_config` (a single-column `map_key_columns`,
+  or a single-column `business_key` where there is no `composite_key_source`) or
+  from an explicit `chain_rules.json` override. **There is no `dt_job` default.**
+  A name that can be resolved from neither is refused by name — the chain aborts
+  and says which rule, which key and which table — instead of assuming a spelling
+  that is only correct on the development box. Rename the column in
+  `table_config.json` and all four chains follow; nothing in mapper code has to
+  change. Resolver: `server/chain_bindings.py`.
+- ⚠️ **One mapper spans three tables and they are three separate names.**
+  `dt_standard_map_mapper` reads a `dt_inventory` payload, queries `dt_log`, and
+  writes `dt_map`; `core_usage_mapper` reads its trigger (`dt_inventory` on one
+  rule, `dt_log` on the other), queries `dt_log`, and reads `dt_inventory`.
+  Renaming the column on only one of them is a legitimate configuration that the
+  code now expresses; a single literal could not.
 
 ## Related implementation
 
+- `server/chain_bindings.py` (job-column resolution: declaration > derivation > refusal)
 - `server/mappers/dt_inventory_metadata_mapper.py`
 - `server/mappers/dt_standard_map_mapper.py`
 - `server/mappers/core_alignment_mapper.py`

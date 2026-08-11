@@ -1,9 +1,19 @@
-"""dt_inventory core equations -> scoped physical-core usage-map replacements."""
+"""dt_inventory core equations -> scoped physical-core usage-map replacements.
+
+THREE TABLES, THREE NAMES. Two chain rules share this mapper with DIFFERENT trigger
+tables (`dt_inventory` and `dt_log`), so even the payload's job-column name is not a
+constant of the mapper — it is a property of the rule that invoked it. The source rows
+and the inventory rows are two more tables with two more declarations. All three are
+resolved through `chain_bindings`, which refuses by name; the `dt_job` literal this file
+used to carry read `None` for any other spelling and returned an empty batch that the
+chain worker recorded as success.
+"""
 from __future__ import annotations
 
 import json
 from collections import defaultdict
 
+import chain_bindings
 import dt_frame_transform
 import map_meta_registrar
 import notation_norm
@@ -39,11 +49,11 @@ def _apply_core_equations(x, y, equation):
     )
 
 
-def _usage_batches(rows, equations_by_job, target_table="core_usage_map"):
+def _usage_batches(rows, equations_by_job, source_job_column, target_table="core_usage_map"):
     """Aggregate already-fetched dt_log rows into one replace batch per core map."""
     cells = {}
     for row in rows:
-        job_id = getattr(row, "dt_job", None)
+        job_id = getattr(row, source_job_column, None)
         equation = equations_by_job.get(str(job_id))
         wafer = _canonical_wafer(getattr(row, "core_wafer", None))
         if not equation or not _nonblank(wafer):
@@ -66,6 +76,8 @@ def _usage_batches(rows, equations_by_job, target_table="core_usage_map"):
         by_map[wafer].append({"updates": {
             "core_wafer": wafer, "core_lot": lot, "core_slot": slot, "core_x": x, "core_y": y,
             "used_count": len(usage["jobs"]),
+            # `used_dt_jobs` is this map's own column and is NOT the job column of any
+            # table — it is a list of job VALUES. Its name is not resolved here.
             "used_dt_jobs": json.dumps(sorted(usage["jobs"]), ensure_ascii=False),
             "core_lot_slots": json.dumps(lot_slots, ensure_ascii=False),
         }, "source_name": SOURCE_NAME, "updated_by": UPDATED_BY})
@@ -113,15 +125,32 @@ def build_core_usage_map_batches(db, payloads, rule=None):
     from database import models
 
     rule = rule or {}
-    source = models.DYNAMIC_TABLES.get(rule.get("source_table", "dt_log"))
-    inventory = models.DYNAMIC_TABLES.get(rule.get("inventory_table", "dt_inventory"))
+    source_table = rule.get("source_table", "dt_log")
+    inventory_table = rule.get("inventory_table", "dt_inventory")
+    trigger_job_column = chain_bindings.resolve_column(
+        rule, "trigger_job_column", rule.get("trigger_table"),
+        "the job id read out of the trigger payload")
+    source_job_column = chain_bindings.resolve_column(
+        rule, "source_job_column", source_table,
+        "the source rows a physical core map is aggregated from")
+    inventory_job_column = chain_bindings.resolve_column(
+        rule, "inventory_job_column", inventory_table,
+        "the inventory rows the core equations are read from")
+
+    source = models.DYNAMIC_TABLES.get(source_table)
+    inventory = models.DYNAMIC_TABLES.get(inventory_table)
     if source is None or inventory is None:
         raise ValueError("core usage source or inventory table is not initialized")
-    jobs = {str(_value(payload, "dt_job")) for payload in payloads or ()
-            if _nonblank(_value(payload, "dt_job"))}
+    source_job = chain_bindings.model_column(
+        source, source_table, source_job_column, "the source-row filter")
+    inventory_job = chain_bindings.model_column(
+        inventory, inventory_table, inventory_job_column, "the inventory-row filter")
+
+    jobs = {str(_value(payload, trigger_job_column)) for payload in payloads or ()
+            if _nonblank(_value(payload, trigger_job_column))}
     if not jobs:
         return {"batches": []}
-    touched = db.query(source).filter(source.dt_job.in_(jobs)).all()
+    touched = db.query(source).filter(source_job.in_(jobs)).all()
     wafers = sorted({_canonical_wafer(row.core_wafer) for row in touched
                      if _canonical_wafer(row.core_wafer)})
     if not wafers:
@@ -129,12 +158,13 @@ def build_core_usage_map_batches(db, payloads, rule=None):
     folded_wafer = notation_norm.fold_notation_sql(source.core_wafer,
                                                     notation_norm.DEFAULT_RULES)
     all_rows = db.query(source).filter(folded_wafer.in_(wafers)).all()
-    all_jobs = {str(row.dt_job) for row in all_rows if _nonblank(row.dt_job)}
+    all_jobs = {str(getattr(row, source_job_column)) for row in all_rows
+                if _nonblank(getattr(row, source_job_column, None))}
     equations, frames = {}, {}
-    for item in db.query(inventory).filter(inventory.dt_job.in_(all_jobs)).all():
+    for item in db.query(inventory).filter(inventory_job.in_(all_jobs)).all():
         equation = {field: getattr(item, field, None) for field in _EQUATION_FIELDS}
         frame = _standard_frame(getattr(item, "core_frame", None))
-        job_id = str(item.dt_job)
+        job_id = str(getattr(item, inventory_job_column))
         if all(value is not None for value in equation.values()):
             equations[job_id] = equation
         if frame is not None:
@@ -143,8 +173,9 @@ def build_core_usage_map_batches(db, payloads, rule=None):
     jobs_by_wafer = defaultdict(set)
     for row in all_rows:
         wafer = _canonical_wafer(row.core_wafer)
-        if wafer and _nonblank(row.dt_job):
-            jobs_by_wafer[wafer].add(str(row.dt_job))
+        job_id = getattr(row, source_job_column, None)
+        if wafer and _nonblank(job_id):
+            jobs_by_wafer[wafer].add(str(job_id))
     approved = {
         wafer: jobs for wafer, jobs in jobs_by_wafer.items()
         if jobs and jobs.issubset(equations)
@@ -154,5 +185,5 @@ def build_core_usage_map_batches(db, payloads, rule=None):
     target_table = rule.get("target_table", "core_usage_map")
     return {
         "map_metadata_updates": _usage_metadata_updates(approved, frames, target_table),
-        "batches": _usage_batches(approved_rows, equations, target_table),
+        "batches": _usage_batches(approved_rows, equations, source_job_column, target_table),
     }

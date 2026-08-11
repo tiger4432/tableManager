@@ -1,8 +1,17 @@
-"""wafer_map_metadata(dt_log/dt_job) -> dt_inventory.dt_frame identity mapper."""
+"""wafer_map_metadata(dt_log/dt_job) -> dt_inventory.dt_frame identity mapper.
+
+The job-column name is READ from configuration on both ends — the source table the
+core-wafer roll-up is grouped by, and the target table the identity row is written to.
+They are different tables and may spell it differently; the literal `dt_job` this file
+used to carry could not say so, and both ends failed silently when it was wrong (an
+absent source column returned an empty roll-up, an undeclared target key was dropped by
+`crud.apply_batch_updates` with a warning and a successful return).
+"""
 from __future__ import annotations
 
 import json
 
+import chain_bindings
 import dt_frame_transform
 import map_alignment
 import map_overlay
@@ -30,19 +39,29 @@ def _reference_geometry(db, metadata, cache):
     return cache[key]
 
 
-def _core_wafer_lists(db, source_table, job_ids):
-    """One bounded grouped read for all jobs in this chain batch."""
+def _core_wafer_lists(db, source_table, job_ids, job_column):
+    """One bounded grouped read for all jobs in this chain batch.
+
+    `job_column` is resolved by the caller and refused by name if it is missing from the
+    model — the roll-up used to `hasattr`-gate it and `return {}`, which wrote
+    `core_wafer_list` as `[]` for every job with no exception and no log line.
+    """
     if db is None or not job_ids:
         return {}
     from database import models
 
     source = models.DYNAMIC_TABLES.get(source_table)
-    required = ("dt_job", "core_wafer", "core_lot", "core_slot")
-    if source is None or any(not hasattr(source, col) for col in required):
+    if source is None:
+        return {}
+    source_job = chain_bindings.model_column(
+        source, source_table, job_column, "the core-wafer roll-up grouping")
+    # The core_* columns are a different naming axis and keep their existing
+    # tolerant gate; only the job column is resolved and refused here.
+    if any(not hasattr(source, col) for col in ("core_wafer", "core_lot", "core_slot")):
         return {}
     grouped = {}
-    rows = db.query(source.dt_job, source.core_wafer, source.core_lot, source.core_slot).filter(
-        source.dt_job.in_(list(job_ids))).all()
+    rows = db.query(source_job, source.core_wafer, source.core_lot, source.core_slot).filter(
+        source_job.in_(list(job_ids))).all()
     for job_id, wafer, lot, slot in rows:
         key = (str(wafer or ""), str(lot or ""), str(slot or ""))
         grouped.setdefault(str(job_id), {}).setdefault(key, 0)
@@ -60,6 +79,15 @@ def _core_wafer_lists(db, source_table, job_ids):
 def copy_dt_metadata_to_inventory_batch(db, payloads, rule=None):
     rule = rule or {}
     source_table = rule.get("metadata_target_table", "dt_log")
+    target_table = rule.get("target_table", "dt_inventory")
+    source_job_column = chain_bindings.resolve_column(
+        rule, "source_job_column", source_table,
+        "the source rows the core-wafer list is rolled up from")
+    # 🔴 THE OUTPUT KEY. Undeclared on the target = dropped by
+    #    `crud.apply_batch_updates`, warned once, and the write still returns success.
+    target_job_column = chain_bindings.resolve_column(
+        rule, "target_job_column", target_table,
+        "the job column written onto the inventory identity row")
     updates, seen, reference_cache, candidates = [], set(), {}, []
     for payload in payloads or ():
         if _value(payload, "target_table") != source_table:
@@ -83,10 +111,10 @@ def copy_dt_metadata_to_inventory_batch(db, payloads, rule=None):
             equations = {}
         seen.add(job_id)
         candidates.append((job_id, metadata, equations))
-    core_lists = _core_wafer_lists(db, source_table, seen)
+    core_lists = _core_wafer_lists(db, source_table, seen, source_job_column)
     for job_id, metadata, equations in candidates:
         updates.append({"business_key_val": job_id, "updates": {
-            "dt_job": job_id,
+            target_job_column: job_id,
             "dt_frame": json.dumps(metadata, ensure_ascii=False, sort_keys=True),
             "core_wafer_list": json.dumps(core_lists.get(job_id, []), ensure_ascii=False,
                                            sort_keys=True),

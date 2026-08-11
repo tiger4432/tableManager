@@ -11,6 +11,7 @@ import json
 from collections import OrderedDict
 
 import alignment_view_service
+import chain_bindings
 import map_alignment
 import map_meta_registrar
 import map_overlay
@@ -129,9 +130,16 @@ def _fingerprint(rule_name: str, key_values: dict, view: dict, winner: str, plac
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _reference_spec_for(rule: dict, key_values: dict) -> str | None:
-    """Resolve a declared DT-job string rule; unmatched jobs are not guessed."""
-    job_id = str(key_values.get(rule.get("reference_job_column", "dt_job")) or "")
+def _reference_spec_for(rule: dict, key_values: dict, job_column: str) -> str | None:
+    """Resolve a declared DT-job string rule; unmatched jobs are not guessed.
+
+    `job_column` is resolved by the caller against the alignment rule's own
+    `decision_key`. The literal `"dt_job"` that used to sit here read `None` for any
+    other spelling, which made every `contains` test fail and every job fall through to
+    the fallback `reference_spec` — a silent change of WHICH REFERENCE a map is scored
+    against, not a visible failure.
+    """
+    job_id = str(key_values.get(job_column) or "")
     for candidate in rule.get("reference_by_job_pattern", []) or []:
         if not isinstance(candidate, dict):
             continue
@@ -158,11 +166,14 @@ def build_dt_alignment_metadata_batch(db, payloads, rule=None):
 
     decl = alignment_view_service.declared_alignment_rule(rule_name)
     decision_key = list(decl.get("decision_key") or ())
+    reference_job_column = chain_bindings.resolve_decision_column(
+        rule, "reference_job_column", decision_key,
+        "the job id the per-job reference_spec patterns are matched against")
     cfg = map_overlay.load_overlay_config()
     updates = []
 
     for key_values in _decision_units(payloads, decision_key):
-        reference_spec = _reference_spec_for(rule, key_values)
+        reference_spec = _reference_spec_for(rule, key_values, reference_job_column)
         view = alignment_view_service.resolve_alignment_view(
             db, rule_name, key_values, map_table,
             reference_spec=reference_spec, include_cells=False,

@@ -1,6 +1,6 @@
 # DT/Core frame 체인 운영 가이드
 
-> **대상:** 공정·설정 운영자 | **최종 검증:** 2026-08-10
+> **대상:** 공정·설정 운영자 | **최종 검증:** 2026-08-11 (§1-bis 잡 컬럼 이름 신설 — 매퍼에 `dt_job` 기본값이 없어졌다)
 
 이 문서는 DT와 Core frame 파생 체인을 설정·운영하는 방법을 설명한다. 데이터
 소유권과 전체 구조는 [DT/Core frame 체인 구조](../architecture/DT_CORE_FRAME_CHAINS.md)를
@@ -24,6 +24,28 @@
 추적되는 `server/config/*.json.sample`과
 `docs/guide/config_reference/*.json`은 실행 정본이 아니라 스냅샷이다.
 활성 설정을 바꾸면 같은 변경에서 활성 JSON을 두 샘플 위치에 그대로 복사한다.
+(격리 개발 환경을 쓴다면 `dev_env/config/`가 **네 번째 사본**이다 — 이미
+어긋나 있으므로 옮길 때 확인한다.)
+
+### 1-bis. 잡 컬럼 이름 (2026-08-11)
+
+🔴 **매퍼 코드에는 잡 컬럼 이름이 없다.** `dt_job`이라는 기본값도 없다. 각 테이블의
+잡 컬럼 이름은 그 테이블의 `table_config.json` 선언에서 유도된다 —
+**`map_key_columns`가 한 컬럼**이면 그것, 없으면 **`composite_key_source`가 없는
+테이블의 한 컬럼짜리 `business_key`**. 어느 쪽으로도 못 풀면 체인은 **이름을 대고
+거절**한다(어느 룰·어느 키·어느 테이블인지 메시지에 나온다).
+
+- **컬럼 이름을 바꾼다면** `table_config.json`의 그 테이블 선언만 고치면 네 체인이
+  모두 따라온다. 매퍼 파일은 건드리지 않는다.
+- **테이블마다 철자가 다를 수 있다.** `dt_log`·`dt_map`·`dt_inventory`는 서로 다른
+  이름을 가질 수 있고, 이제 코드가 그것을 표현한다.
+- **유도를 덮어쓰려면** 해당 `chain_rules.json` 룰에 `trigger_job_column` ·
+  `source_job_column` · `target_job_column` · `inventory_job_column` 중 필요한 것을
+  선언한다. 기존 `job_column` · `reference_job_column` ·
+  `derivation_source_column`도 그대로 덮어쓰기 키로 동작한다.
+- ⚠️ **`server/mappers/*.py`는 git 밖의 운영자 자산이다.** `.sample`만 배포된다.
+  샘플을 활성 매퍼 위에 통째로 덮어쓰면 운영자가 직접 넣은 수정이 조용히 되돌아간다.
+  §4의 대응표를 먼저 본다.
 
 ## 2. Core 자동 frame 규칙
 
@@ -78,6 +100,8 @@ alignment → inventory → core usage map 순서로 재생한다.
 | Core frame의 `valid_die_ref`가 없음 | 선택된 `core_wafer_map` 메타에 유효다이 참조를 등록한다. 매퍼는 선언된 참조만 복사한다. |
 | `unexpected keyword argument 'alignment_thresholds'` | 워커마다 코드/설정 버전이 섞인 상태다. 전체 프로세스를 재시작한 뒤 재생한다. |
 | 정렬기가 winner를 못 고름 | 원본 좌표, 기준맵 셀, metric, source filter를 검토한다. 애매함을 margin 하향으로 숨기지 않는다. |
+| **체인이 에러 없이 아무것도 안 씀** (2026-08-11) | 잡 컬럼 이름 불일치의 옛 증상이다. 로그에서 `[Schema] Column '<컬럼>' ... was DROPPED from the update`를 찾는다 — 나오면 그 테이블의 `table_config.json` 선언과 실제 컬럼 이름이 어긋난 것이다. 이제 이름을 못 풀면 체인이 `ColumnBindingRefused`로 **거절**하므로, 조용한 성공 대신 로그에 룰·키·테이블이 찍힌다. |
+| **`ColumnBindingRefused`** | 메시지가 지목하는 테이블의 `table_config.json`에 한 컬럼짜리 `map_key_columns`(또는 `composite_key_source` 없는 한 컬럼짜리 `business_key`)를 선언하거나, 그 룰에 해당 `*_job_column` 키를 직접 선언한다. 매퍼 코드는 고치지 않는다. |
 
 ## 5. 안전한 변경 원칙
 

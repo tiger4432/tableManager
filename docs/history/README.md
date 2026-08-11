@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **466개** 이력. (거버넌스 규칙 #4)
+> 총 **467개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-11 13:10** — [The Job Column Name Now Comes From Config And The Dt Job Default Is Gone](./20260811_131004_the_job_column_name_now_comes_from_config_and_the_dt_job_default_is_gone.md)
 - **2026-08-11 09:37** — [The Recent Panel Stopped Resorting The Table And Stopped Double Counting Changes](./20260811_093706_the_recent_panel_stopped_resorting_the_table_and_stopped_double_counting_changes.md)
 - **2026-08-11 09:28** — [A Deleted Config Key Now Inherits Instead Of Resolving To A Retired Identity](./20260811_092859_a_deleted_config_key_now_inherits_instead_of_resolving_to_a_retired_identity.md)
 - **2026-08-11 09:07** — [A Clean Exit Proved Nothing And The Largest Client Harness Had Been Scoring Zero](./20260811_090714_a_clean_exit_proved_nothing_and_the_largest_client_harness_had_been_scoring_zero.md)

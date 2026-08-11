@@ -15,6 +15,7 @@ import json
 from collections import OrderedDict
 
 import alignment_view_service
+import chain_bindings
 import dt_frame_transform
 import map_alignment
 import map_overlay
@@ -156,18 +157,31 @@ def build_core_frame_confirmation_batch(db, payloads, rule=None):
     map_table = rule.get("map_table", "dt_log")
     target_field = rule.get("target_field", "core_frame")
     target_table = rule.get("target_table", "dt_inventory")
-    job_column = rule.get("job_column", "dt_job")
     source_table = rule.get("source_table", "dt_log")
+    # The trigger table and the source table are the same table for this rule by
+    # construction (both `dt_log`), so ONE name serves the payload read and the row
+    # filter — and the `decision_key` cross-check below is what pins them together.
+    # The TARGET is a different table and gets its own name: the output key at the
+    # bottom of this function is written into `dt_inventory`, and an undeclared key
+    # there is dropped by `crud.apply_batch_updates` with a warning and a 200.
+    job_column = chain_bindings.resolve_column(
+        rule, "job_column", source_table,
+        "the job id in the trigger payload and the source-row filter")
+    target_job_column = chain_bindings.resolve_column(
+        rule, "target_job_column", target_table,
+        "the job column written onto the inventory identity row")
     decl = alignment_view_service.declared_alignment_rule(rule_name)
     if list(decl.get("decision_key") or ()) != [job_column]:
         raise ValueError("core alignment rule decision key must be [%s]" % job_column)
     from database import models
     source = models.DYNAMIC_TABLES.get(source_table)
-    jobs = _jobs_from_payloads(payloads, job_column)
-    if source is None or not hasattr(source, job_column):
+    if source is None:
         raise ValueError("core alignment source table '%s' is not initialized" % source_table)
+    source_job = chain_bindings.model_column(
+        source, source_table, job_column, "the source-row filter")
+    jobs = _jobs_from_payloads(payloads, job_column)
     rows_by_job = {job: [] for job in jobs}
-    for row in db.query(source).filter(getattr(source, job_column).in_(jobs)).all():
+    for row in db.query(source).filter(source_job.in_(jobs)).all():
         rows_by_job[str(_row_value(row, job_column))].append(row)
 
     updates = []
@@ -228,7 +242,7 @@ def build_core_frame_confirmation_batch(db, payloads, rule=None):
             # frame without the equations required to use it.
             continue
         updates.append({"business_key_val": job_id,
-                        "updates": {job_column: job_id,
+                        "updates": {target_job_column: job_id,
                                     target_field: json.dumps(metadata, ensure_ascii=False,
                                                              sort_keys=True),
                                     **equations},

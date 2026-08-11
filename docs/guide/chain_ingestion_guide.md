@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-05 (**§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -57,6 +57,49 @@ field such as `payload.get("dt_job")`: it is not in the outbox contract and
 causes live/replay divergence. Replay can omit non-column envelope metadata;
 mapper logic that needs an input value must therefore rely on `data`.
 
+### Column names: read them, never spell them (2026-08-11)
+
+🔴 **A mapper must not contain a column-name literal for the identity it reads or
+writes, and must not carry a default for one either.** `server/chain_bindings.py`
+resolves every such name with one precedence:
+
+```
+rule declaration  >  table_config derivation  >  refuse by name
+```
+
+There is no convention fallback — the same rule `68db020` established for map
+coordinate bindings. `chain_bindings.resolve_column(rule, key, table, purpose)`
+returns the name or raises `ColumnBindingRefused` (a `ValueError`, so the worker
+aborts the transaction and the API layer answers 400) with a message naming the
+rule, the config key, the table and the column.
+
+**Why a default is worse than nothing here.** `rule.get("job_column", "dt_job")`
+is correct on the machine that wrote it, so nobody ever has to declare the real
+name — and both ends of the chain then fail *silently* on a deployment that
+spells it differently:
+
+- **reading** — `_value(payload, "dt_job")` returns `None` for a name the payload
+  does not carry, the mapper skips the row and returns an empty batch, and the
+  worker records SUCCESS. The loud `source.dt_job` `AttributeError` a few lines
+  below is unreachable, because the silent read already returned.
+- **writing** — `crud.apply_batch_updates` DROPS an `updates` key the target
+  table does not declare in `column_types`, warns once per `(table, column)` per
+  process, and the write still returns success.
+
+**Ask each table separately.** One mapper reads a TRIGGER payload, queries a
+SOURCE table and writes a TARGET table. Those are three tables and each states
+its own name, which a single literal cannot express. The optional rule keys are
+`trigger_job_column`, `source_job_column`, `target_job_column`,
+`inventory_job_column`, plus the pre-existing `job_column`,
+`reference_job_column` and `derivation_source_column`. All of them are
+**overrides**: with none declared, each name is derived from that table's own
+`table_config` (a single-column `map_key_columns`, or a single-column
+`business_key` on a table that declares no `composite_key_source`).
+
+Regression net: `server/tests/test_job_column_from_config.py` — every table in it
+spells the job column `jobcol_test_job_id`, because a test written on `dt_job`
+cannot tell the working code from the broken code.
+
 Return updates; batching, commits, outbox staging, and client notification are
 worker-owned:
 
@@ -109,6 +152,31 @@ The worker accepts it only when the matching rule declares
 batches are refused. One envelope entry becomes one `GeneralUpdateBatch`, so
 two maps cannot be combined. `dt_inventory_to_standard_dt_map` uses declared
 scope `dt_map.map_key_columns=["dt_job"]`; other chains remain upserts.
+
+The scope key above is spelled from `chain_bindings.resolve_column(...,
+target_table, ...)`, not typed — it is the one output key whose name decides a
+DELETE.
+
+#### What a wrongly-spelled scope actually deletes (measured 2026-08-11)
+
+The two resolution paths of `crud.derive_replace_map_scope` behave **oppositely**,
+and only one of them is safe. Measured directly against the function:
+
+| Path | Input | Result |
+|---|---|---|
+| **Explicit `scope`** (every chain — the worker requires a non-empty scope) | key the table does not declare | **`ValueError`, before any DELETE is composed.** `crud.py` validates every key against `column_types`, the map-key contract, the model, and non-emptiness. |
+| **Derived** (no explicit scope — the API/map-push path) | single-column `map_key_columns`, payload misspells it | `None` → `apply_batch_updates` refuses. Safe. |
+| **Derived** | **two-or-more `map_key_columns`, payload misspells/omits/blanks one** | 🔴 **the filter is silently DROPPED and the remaining filters are returned.** One filter short is a WIDER delete — e.g. `{ref_table, map_key}` degrades to `{ref_table}`, which purges every map of that ref table instead of one. |
+
+The explicit path documents "a dropped filter would WIDEN a DELETE, so nothing is
+silently skipped on this path"; the derived path does exactly that skip
+(`crud.py` `derive_replace_map_scope`, the `for target_col in target_cols` loop
+`continue`s on a payload miss). It is a pre-existing hazard, it does **not** reach
+`dt_map` or `core_usage_map` (both declare a single map key, so a miss empties the
+filter set and refuses), and it is **not** fixed here. Any table with two or more
+`map_key_columns` — `map_split_registry` and `map_doe` declare
+`(ref_table, map_key)` — is exposed if a payload can reach it with one key
+missing.
 
 ### Target-map metadata within a chain
 

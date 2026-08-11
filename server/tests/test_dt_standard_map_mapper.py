@@ -50,6 +50,17 @@ class _Row:
         self.dt_index, self.c_bn = index, bin_value
 
 
+# The mapper no longer assumes `dt_job`: the trigger, source and target tables each
+# state their own job column, so the rule that names those tables is now REQUIRED.
+# `test_job_column_from_config.py` is the one that drives a non-`dt_job` name.
+RULE = {
+    "name": "dt_inventory_to_standard_dt_map",
+    "trigger_table": "dt_inventory",
+    "source_table": "dt_log",
+    "target_table": "dt_map",
+}
+
+
 def _payload():
     return {"data": {
         "dt_job": {"value": "SYN-META-001"},
@@ -69,7 +80,7 @@ def test_registers_standard_metadata_and_replaces_exactly_one_job(monkeypatch):
                         } if (table, map_id) == ("dt_log", "SYN-META-001") else None)
 
     result = dt_standard_map_mapper.build_standard_dt_map_batches(
-        _Db([_Row(1, 1, 1, "B4"), _Row(2, 3, 2, "B1")]), [_payload()],
+        _Db([_Row(1, 1, 1, "B4"), _Row(2, 3, 2, "B1")]), [_payload()], rule=RULE,
     )
 
     meta = result["map_metadata_updates"]
