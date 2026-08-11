@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **477개** 이력. (거버넌스 규칙 #4)
+> 총 **481개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-12 08:36** — [The Chain Is Closed And Ingestion Is Not Because The Gate Landed One Level Below](./20260812_083609_the_chain_is_closed_and_ingestion_is_not_because_the_gate_landed_one_level_below.md)
+- **2026-08-11 20:49** — [A Filter Written From A Hypothesis Deletes The Evidence That Would Refute It](./20260811_204928_a_filter_written_from_a_hypothesis_deletes_the_evidence_that_would_refute_it.md)
+- **2026-08-11 19:54** — [The Menus Opened Every Time And An Ancestor Clip Cut All Of Them Away](./20260811_195401_the_menus_opened_every_time_and_an_ancestor_clip_cut_all_of_them_away.md)
+- **2026-08-11 19:41** — [Generated Wal Is Not Resident Wal And The Gap Here Was 68 To 1](./20260811_194107_generated_wal_is_not_resident_wal_and_the_gap_here_was_68_to_1.md)
 - **2026-08-11 19:20** — [Four Defects That Shared A File And Nothing Else](./20260811_192000_four_defects_that_shared_a_file_and_nothing_else.md)
 - **2026-08-11 18:25** — [The Write Path Can Now Say What It Threw Away And Stops Fabricating The Row](./20260811_182500_the_write_path_can_now_say_what_it_threw_away_and_stops_fabricating_the_row.md)
 - **2026-08-11 18:23** — [The Bytes Were In The Key And The Roots Traded Their Numbers For Names](./20260811_182334_the_bytes_were_in_the_key_and_the_roots_traded_their_numbers_for_names.md)
@@ -498,4 +502,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-11 by gen_index.py*
+*Last generated: 2026-08-12 by gen_index.py*
