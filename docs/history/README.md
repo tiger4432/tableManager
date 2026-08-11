@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **476개** 이력. (거버넌스 규칙 #4)
+> 총 **477개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-11 19:20** — [Four Defects That Shared A File And Nothing Else](./20260811_192000_four_defects_that_shared_a_file_and_nothing_else.md)
 - **2026-08-11 18:25** — [The Write Path Can Now Say What It Threw Away And Stops Fabricating The Row](./20260811_182500_the_write_path_can_now_say_what_it_threw_away_and_stops_fabricating_the_row.md)
 - **2026-08-11 18:23** — [The Bytes Were In The Key And The Roots Traded Their Numbers For Names](./20260811_182334_the_bytes_were_in_the_key_and_the_roots_traded_their_numbers_for_names.md)
 - **2026-08-11 18:05** — [A Repair Pass Was Wearing A Humans Label On The Outbox](./20260811_180549_a_repair_pass_was_wearing_a_humans_label_on_the_outbox.md)

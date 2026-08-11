@@ -190,7 +190,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | 메서드 · 경로 | 용도 |
 |---|---|
 | `GET /tables` | 구성된 테이블 목록 |
-| `GET /tables/{t}/data` | 페이징/지연 그리드 조회(q 검색, cols, order_by, filters, tx 필터, target_row_id 점프). 카운트 5초 캐시. **[2026-08-05] `enrichment_queue=<규칙명>`(+`enrichment_queue_scope=queue\|keyed\|blank_key\|resolved`)** — 일반 필터가 아니라 **이름 붙은 서버측 술어**(`enrichment_config.queue_predicate_condition`, `main.apply_enrichment_queue_predicate`). 🔴 컬럼 간 OR(「target 중 하나라도 blank」)은 필터 DSL이 표현하지 못하므로 **DSL을 넓히는 대신 질문에 이름을 줬다** — DSL을 넓히면 그 표면을 기존 캘러 전부가 상속한다. 규칙 미존재·테이블 불일치·미지 스코프는 **400**(무필터 200이 「큐를 물었다」처럼 보이는 것을 막는다). count 캐시 키에도 들어간다 |
+| `GET /tables/{t}/data` | 페이징/지연 그리드 조회(q 검색, cols, order_by, filters, tx 필터, target_row_id 점프). 카운트 5초 캐시. **[2026-08-05] `enrichment_queue=<규칙명>`(+`enrichment_queue_scope=queue\|keyed\|blank_key\|resolved`)** — 일반 필터가 아니라 **이름 붙은 서버측 술어**(`enrichment_config.queue_predicate_condition`, `main.apply_enrichment_queue_predicate`). 🔴 컬럼 간 OR(「target 중 하나라도 blank」)은 필터 DSL이 표현하지 못하므로 **DSL을 넓히는 대신 질문에 이름을 줬다** — DSL을 넓히면 그 표면을 기존 캘러 전부가 상속한다. 규칙 미존재·테이블 불일치·미지 스코프는 **400**(무필터 200이 「큐를 물었다」처럼 보이는 것을 막는다). count 캐시 키에도 들어간다.<br>🔴 **[2026-08-11] count 캐시(`TABLE_COUNT_CACHE`)의 무효화가 그동안 아무 일도 하지 않았다.** 키는 `"|".join(...)`으로 쓰였는데 `invalidate_table_cache`는 `k == t or k.startswith(f"{t}_")`로 찾아서 **여덟 개 호출 지점 전부가 키를 0개 지웠다**(실측 0/4). 결과 둘: ① 쓰기 뒤 무효화된 줄 알았던 count가 TTL(5초) 내내 살아남았다(실측 A/B: 구코드 43 → 쓰기 → **43**, 신코드 44 → 쓰기 → **45**) ② 키에 사용자가 타이핑한 `?q=`/`?filters=`가 들어가므로 이 dict이 **검색어 하나당 한 칸씩 프로세스 수명 내내** 자랐고 상한이 전혀 없었다. 수리는 철자를 한 곳으로 모은 것이다 — `build_count_cache_key`(구분자의 유일한 소유자) ↔ `count_cache_table_of`(그 역연산), TTL은 `COUNT_CACHE_TTL`, 상한은 `COUNT_CACHE_MAX_ENTRIES`(2,000, `store_table_count`이 만료분 우선 회수). ⚠️ **여기 「5초」를 다시 적지 말 것** — 상수를 이름으로 부른다 |
 | `GET /tables/{t}/schema` | columns, column_types, business_key, composite_key_source, map_key_columns, map_push_ok, **`virtual_columns`**. 아래 §2.2 |
 | `GET /tables/{t}/columns/{c}/values` | **[F3] 고유값 조회 — 입력 제안(드롭다운)의 전제 프리미티브.** `?prefix=&limit=` → `{table, column, prefix, values[], truncated, limit, unavailable_reason}`. 아래 §2.1 |
 | `GET /tables/{t}/{row_id}` | 단건(전 소스 병합 메타 포함) |
@@ -199,7 +199,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `DELETE /tables/{t}/rows/{row_id}` | 단건 삭제 |
 | `POST /tables/{t}/rows/batch_delete` | 일괄 물리 삭제 |
 | `POST /tables/{t}/row_ids/target` | 정렬 오프셋의 row_id 해석(점프 스캐너) |
-| `GET /tables/{t}/export` | 필터/정렬 반영 CSV 스트림(최대 ~100만 행) |
+| `GET /tables/{t}/export` | 필터/정렬 반영 CSV 스트림. 상한은 `main.EXPORT_MAX_ROWS`(1,000,000) **한 곳에서 선언**되고 **자르지 않고 거절한다(413)**. ⚠️ **2026-08-11 이전에는 이 상한이 응답 헤더에만 걸려 있었다** — `total_count = min(total_count, 1000000)`이 크기 추산만 깎았고 스트리밍 쿼리(`export_query`)엔 `.limit()`이 아예 없어서, 200만 행 테이블은 「최대 100만 행」이라고 광고하면서 200만 행을 다 내보내고 진행률을 100% 너머로 밀었다. **거절을 고른 이유**: 잘린 CSV는 엑셀에서 멀쩡히 열리고 숫자만 모자란 파일이라 「잘렸다」를 적을 자리가 파일 안에 없고, 다운로드가 시작된 뒤엔 헤더도 사용자에게 안 보인다. 거절은 `query.count()` 직후 **첫 바이트 이전**이라 반쯤 쓰인 파일이 남지 않는다(같은 라우트가 컬럼 밀린 CSV를 500으로 거절하는 것과 같은 판단). `X-Total-Rows`는 이제 **캡이 안 걸린 진짜 행수**다 |
 
 ### 이력 / 감사
 `GET /audit_logs/recent` · `GET /audit_logs/transaction/{tx_id}` · `GET /tables/{t}/rows/{id}/history` · `GET .../cells/{col}/history` · `GET /dashboard/summary`
@@ -218,6 +218,11 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
   - **셀 이력 전용 두 번째 인덱스가 따로 필요한 이유**: 행 인덱스 하나만 있으면 `column_name`이 그 행의 범위 안에서 필터로 걸려, 300,019행짜리 행 안에서 딱 1건만 있는 컬럼도 "페이지가 찰 때까지 걷기"가 된다(9,421 buffers/117.7ms). 셀 전용 인덱스로는 5 buffers/0.09ms.
   - **`get_cell_history`가 같은 경로에 두 번 등록돼 있던 것도 이 라운드에서 지워졌다** — 둘째 등록은 도달 불가였고 `response_model`이 없어 `is_row_deleted`와 삭제된 행의 business-key 폴백이 빠진 하위 집합이었다. 회귀 그물: 이력 경로마다 등록이 하나뿐인지 단언하는 테스트.
   - 클라: `일부만 (200건) · 더 보기`가 목록 끝에 `<li>` 하나로 붙는다(새 패널·새 모드 없음). 새 세션 토큰을 요청 전에 올리고 `res.json()` 이후 다시 확인한다 — 상태줄만 보고 확인하면 바디가 도착하기 전에 이전 행의 2페이지가 새 행의 1페이지에 얹힐 수 있다.
+  - 🔴 **[2026-08-11] 셀 이력 탭이 비는 것은 「이력 없음」이 아니다 — 봉투가 이제 그 차이를 말한다.** 기계 쓰기(파서·체인·스크립트)는 셀마다가 아니라 **행마다 한 줄**을 `column_name = 'ROW_UPDATE'` 리터럴로 적으므로(`crud.py`) 셀 라우트의 `column_name == col` 필터에 **영원히 안 걸린다**. 격리 `assy_qa` 실측(2026-08-11, **이 워크스테이션이며 운영 수치가 아니다**): 감사 **239,786행 중 225,586행(94.08%)**이 `ROW_UPDATE`이고, **225,101개 행이 기계 이력만 갖고 컬럼별 기록이 하나도 없다** — 그 행들에서는 **모든** 셀 탭이 비고 행 탭은 차 있다. 기록이 없었던 게 아니라 **한쪽 화면에서만 없었고**, 그래서 아무도 신고하지 않았다.
+    - **수리는 복원이 아니라 공시다.** 셀 라우트 응답에 `row_history_total`(그 **행**의 감사 건수 = 행 탭이 페이징할 모집단)과 `row_history_truncated`(그 수가 정확값이 아니라 하한이라는 표시)가 추가됐다. `returned == 0 && row_history_total == 0`은 「이 행엔 정말 이력이 없다」, `returned == 0 && row_history_total > 0`은 「기록은 있는데 이 화면이 못 보여준다」 — **둘을 똑같이 「기록 없음」으로 그리는 것이 결함이었다.** 행 라우트에는 안 실린다(`None`) — 거기선 `returned`/`truncated`가 이미 같은 모집단을 말한다.
+    - 계측은 `audit_history.count_row_history`(`cap + 1`만 읽는 capped probe, `ROW_TOTAL_PROBE_CAP = 1000` 모듈 상수). `fetch_page`가 `truncated`를 얻는 것과 **같은 수법**이고, 300,019행짜리 행이 실재했으므로 공시 한 줄이 O(depth) 스캔이 되면 안 된다. `idx_audit_row_history` 위에서 Index Only Scan이라 실측 비용은 정확 count와 **같다**(0.32ms 대 0.39ms/5회) — 상한이 공짜다.
+    - 🔴 **요약 문자열을 파싱해 셀 이력을 복원하지 말 것.** 그 값은 데이터가 아니라 **렌더된 문장**이고(`f"{col}: {val}"`을 `", "`로 이어 붙이며 NULL은 한국어 `비어있음`, 정수 `0`과 문자열 `"0"`이 구별 불가), **값 자체가 쉼표·콜론을 가진 JSON인 경우가 실재한다** — `wafer_map_metadata`의 산 기록이 `grid_metadata: {"grid_cols": 2, "grid_rows": 2, ...}`이라 `", "`로 자르면 **`"grid_rows"`라는 없는 컬럼이 생긴다**. 표현을 데이터로 되돌리면 「이력 없음」이 아니라 **자신 있게 틀린 이력**이 나온다. 진짜 수리는 쓰기 경로에 있고 그건 별건이다.
+    - ⚠️ **클라는 아직 이 필드를 읽지 않는다** — `timeline.js`의 `readHistoryPage`는 모르는 키를 버리므로 파손은 없지만, 화면은 여전히 `No change history recorded.`(`timeline.js:410`)를 그린다. **사실은 이제 선에 실려 있고 화면은 아직 아니다.** 클라 쪽 할 일: `readHistoryPage`가 `row_history_total`/`row_history_truncated`를 함께 돌려주고, 셀 탭이 빈 목록을 그릴 때 `기록 없음` 대신 `이 셀 기록 없음 · 행 이력 N건`(행 탭으로 가는 링크)로 갈라 그리기.
 
 #### 재교정률 (`/dashboard/summary` → `recorrection`)
 핵심가치 #1 **최소 공수 교정**([SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md))의 **보조 계기**. 정의·집계는 `crud.get_recorrection_stats`([data_model §2.3](./data_model.md) 참조), 응답 래핑은 `main._get_recorrection_stat`.
