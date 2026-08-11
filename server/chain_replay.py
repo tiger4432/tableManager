@@ -697,84 +697,116 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     tx_id = f"{R2_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
     all_row_ids = list(by_row)
 
-    for i in range(0, len(all_row_ids), chunk_size):
-        chunk = all_row_ids[i:i + chunk_size]
-        rows = {r.row_id: r for r in db.query(model).filter(model.row_id.in_(chunk)).all()}
+    # 🔴 THE OUTBOX LABEL. Same defect, same shape, same fix as R3 - see
+    # `recompute_display_values` for why the label is separable from the layer.
+    # R2 reveals a cell by `setattr`, so the global `before_flush` staged its
+    # events under the context DEFAULTS: `source_name="user"`, `updated_by="system"`
+    # and a fresh uuid4 per event. Measured on assy_qa: withdrawing 4 cells staged
+    # 4 events with 4 distinct transaction ids, the live rule set accepted every
+    # one, and a connected client received 4 `batch_row_upsert` messages for
+    # `dt_job_attribution` - a table nobody withdrew anything from.
+    #
+    # ⚠️ WHY THIS IS SAFE HERE EVEN THOUGH R2 DELETES A LAYER - the question R3 did
+    # not have to answer. The deletion predicate is built from the `source_name`
+    # PARAMETER (`_claimed_filter`, and the `CellSource.source_name == source_name`
+    # filter in the delete below), never from `request_source`. So do the two
+    # refusals: `source_name in PROTECTED_SOURCES` and `pins.get(cell) ==
+    # source_name`. The context var and the parameter share a concept and nothing
+    # else - there is no path from one to the other. Verified by measurement rather
+    # than by this paragraph: the SAME fixture run with and without this block
+    # deletes the same 4 layers, skips the same human-pinned cell, and leaves a
+    # survivor set with an identical sha256
+    # (`test_withdraw_deletes_the_same_layers_whatever_the_outbox_label`).
+    #
+    # ⚠️ AND IT TAKES NOTHING AWAY FROM THE OPERATOR. A withdrawal CHANGES THE
+    # DISPLAYED VALUE, so "does the client still hear about it" is a real question -
+    # and the measured answer is that the client never heard about the withdrawn
+    # cells in the first place. The chain worker broadcasts what the chain WROTE
+    # (target tables), never the table the events came from, so before this change
+    # the only messages a client got named `dt_job_attribution`. Those were the
+    # spurious cascade, not the withdrawal. What an operator reads to understand a
+    # withdrawal is the AuditLog rows below, and they still carry
+    # `source_name=R2_AUDIT_SOURCE` - the outbox `source_name` is the loop-filter
+    # CHANNEL, not the provenance record.
+    with crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):
+        for i in range(0, len(all_row_ids), chunk_size):
+            chunk = all_row_ids[i:i + chunk_size]
+            rows = {r.row_id: r for r in db.query(model).filter(model.row_id.in_(chunk)).all()}
 
-        # Remaining sources + pins for the whole chunk: two batched queries, not
-        # two per cell. Shared with R3 so the two operations cannot assemble the
-        # resolver's input differently.
-        remaining, pins = _load_cell_state(db, table_name, chunk)
+            # Remaining sources + pins for the whole chunk: two batched queries, not
+            # two per cell. Shared with R3 so the two operations cannot assemble the
+            # resolver's input differently.
+            remaining, pins = _load_cell_state(db, table_name, chunk)
 
-        delete_keys = []
-        for row_id in chunk:
-            row = rows.get(row_id)
-            if row is None:
-                continue
-            for col in sorted(by_row.get(row_id, ())):
-                cell = (row_id, col)
-                if pins.get(cell) == source_name:
-                    stats["pinned_skipped"] += 1
+            delete_keys = []
+            for row_id in chunk:
+                row = rows.get(row_id)
+                if row is None:
+                    continue
+                for col in sorted(by_row.get(row_id, ())):
+                    cell = (row_id, col)
+                    if pins.get(cell) == source_name:
+                        stats["pinned_skipped"] += 1
+                        if len(stats["samples"]) < SAMPLE_LIMIT:
+                            stats["samples"].append({
+                                "row_id": row_id, "column": col, "action": "skipped",
+                                "why": f"a human pinned '{source_name}' on this cell "
+                                       f"(manual_priority_source); withdrawing it would "
+                                       f"override that choice"})
+                        continue
+
+                    decision = _resolve_cell(table_name, col_types, row, col,
+                                             remaining.get(cell), pins.get(cell),
+                                             exclude_source=source_name)
+                    survivors = decision["survivors"]
+                    old_val = decision["old_value"]
+                    new_val = decision["new_value"]
+                    top_src = decision["top_source"]
+                    changed = decision["changed"]
+
+                    stats["cells_withdrawn"] += 1
+                    if survivors:
+                        stats["revealed"] += 1
+                    else:
+                        stats["emptied"] += 1
+                    if not changed:
+                        stats["value_unchanged"] += 1
                     if len(stats["samples"]) < SAMPLE_LIMIT:
                         stats["samples"].append({
-                            "row_id": row_id, "column": col, "action": "skipped",
-                            "why": f"a human pinned '{source_name}' on this cell "
-                                   f"(manual_priority_source); withdrawing it would "
-                                   f"override that choice"})
-                    continue
+                            "row_id": row_id, "column": col, "action": "withdraw",
+                            "old_value": old_val, "new_value": new_val,
+                            "revealed_source": top_src,
+                            "remaining_sources": sorted(survivors)})
 
-                decision = _resolve_cell(table_name, col_types, row, col,
-                                         remaining.get(cell), pins.get(cell),
-                                         exclude_source=source_name)
-                survivors = decision["survivors"]
-                old_val = decision["old_value"]
-                new_val = decision["new_value"]
-                top_src = decision["top_source"]
-                changed = decision["changed"]
+                    if apply:
+                        delete_keys.append(cell)
+                        if changed:
+                            setattr(row, col, new_val)
+                            # Make the withdrawal legible in the place the client
+                            # already looks to answer "why does this cell say this".
+                            crud.create_audit_log(
+                                db, table_name, row_id, col, old_val, new_val,
+                                R2_AUDIT_SOURCE, f"withdraw:{source_name}",
+                                transaction_id=tx_id,
+                                business_key=getattr(row, "business_key_val", None))
 
-                stats["cells_withdrawn"] += 1
-                if survivors:
-                    stats["revealed"] += 1
-                else:
-                    stats["emptied"] += 1
-                if not changed:
-                    stats["value_unchanged"] += 1
-                if len(stats["samples"]) < SAMPLE_LIMIT:
-                    stats["samples"].append({
-                        "row_id": row_id, "column": col, "action": "withdraw",
-                        "old_value": old_val, "new_value": new_val,
-                        "revealed_source": top_src,
-                        "remaining_sources": sorted(survivors)})
-
-                if apply:
-                    delete_keys.append(cell)
-                    if changed:
-                        setattr(row, col, new_val)
-                        # Make the withdrawal legible in the place the client
-                        # already looks to answer "why does this cell say this".
-                        crud.create_audit_log(
-                            db, table_name, row_id, col, old_val, new_val,
-                            R2_AUDIT_SOURCE, f"withdraw:{source_name}",
-                            transaction_id=tx_id,
-                            business_key=getattr(row, "business_key_val", None))
-
-        if apply and delete_keys:
-            # Grouped by column so the delete is a handful of bounded IN lists
-            # (one per column) instead of one OR clause per cell - a chunk of
-            # 1000 rows x N columns would otherwise build a several-thousand-term
-            # predicate that no planner handles well.
-            by_col = {}
-            for r, c in delete_keys:
-                by_col.setdefault(c, []).append(r)
-            for col, rids in by_col.items():
-                for j in range(0, len(rids), chunk_size):
-                    db.query(models.CellSource).filter(
-                        models.CellSource.table_name == table_name,
-                        models.CellSource.source_name == source_name,
-                        models.CellSource.column_name == col,
-                        models.CellSource.row_id.in_(rids[j:j + chunk_size]),
-                    ).delete(synchronize_session=False)
-            db.commit()
+            if apply and delete_keys:
+                # Grouped by column so the delete is a handful of bounded IN lists
+                # (one per column) instead of one OR clause per cell - a chunk of
+                # 1000 rows x N columns would otherwise build a several-thousand-term
+                # predicate that no planner handles well.
+                by_col = {}
+                for r, c in delete_keys:
+                    by_col.setdefault(c, []).append(r)
+                for col, rids in by_col.items():
+                    for j in range(0, len(rids), chunk_size):
+                        db.query(models.CellSource).filter(
+                            models.CellSource.table_name == table_name,
+                            models.CellSource.source_name == source_name,
+                            models.CellSource.column_name == col,
+                            models.CellSource.row_id.in_(rids[j:j + chunk_size]),
+                        ).delete(synchronize_session=False)
+                db.commit()
 
     if not apply:
         db.rollback()

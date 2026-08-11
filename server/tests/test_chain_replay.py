@@ -471,3 +471,195 @@ def test_claimed_filter_stays_a_prefix_of_the_withdraw_index():
     # Column-scoped: adds column_name - must be the third key, so the IN list is
     # part of the Index Cond rather than an in-index filter.
     assert _referenced(chain_replay._claimed_filter("t", "s", ["a", "b"])) == cols[:3]
+
+
+# ---------------------------------------------------------------------------
+# R2's OUTBOX LABEL - the loop filter
+#
+# A withdrawal reveals a layer by `setattr`, so the global `before_flush` staged
+# its events under the context DEFAULTS - `source_name="user"`, one uuid4 each -
+# and the live rule set could not tell an operator's withdrawal from a human
+# typing in the grid. Measured on assy_qa (isolated): withdrawing 4 cells staged 4
+# events with 4 distinct transaction ids, all 4 downstream target tables were
+# woken, and a REAL WebSocket client received 4 `batch_row_upsert` messages for
+# `dt_job_attribution` - a table nobody withdrew anything from.
+#
+# R2 IS NOT R3 AND THE HAZARD IS NOT THE SAME HAZARD. R3 creates no layer; R2
+# DELETES one, which is its whole job. So the question here is whether the label
+# can reach the deletion predicate or either refusal. It cannot - they are built
+# from the `source_name` PARAMETER - and `test_withdraw_deletes_the_same_layers_
+# whatever_the_outbox_label` is the measurement rather than the argument.
+# ---------------------------------------------------------------------------
+
+import chain_ingestion_worker as chain_worker  # noqa: E402
+
+W_BLOCKED = {"name": "blocked", "trigger_table": "crep_test_target",
+             "target_table": "crep_blocked_target", "enabled": True}
+W_OPTED_IN = {"name": "opted_in", "trigger_table": "crep_test_target",
+              "target_table": "crep_optin_target", "enabled": True,
+              "allow_chain_trigger": True}
+
+
+def _outbox_since(db, marker):
+    return db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.id > marker).order_by(models.DatabaseOutbox.id).all()
+
+
+def _outbox_marker(db):
+    return db.query(models.DatabaseOutbox.id).order_by(
+        models.DatabaseOutbox.id.desc()).limit(1).scalar() or 0
+
+
+def _all_layers(db, table="crep_test_target"):
+    """Every stored layer in the table. The WHOLE set, because the hazard is a
+    deletion that takes the wrong row - which an assertion scoped to one cell of
+    one row would not see."""
+    return sorted(
+        (s.row_id, s.column_name, s.source_name, str(s.value))
+        for s in db.query(models.CellSource).filter(
+            models.CellSource.table_name == table).all())
+
+
+def _withdraw(db, source="pipeline_parser", **kw):
+    return chain_replay.withdraw_source(db, "crep_test_target", source,
+                                        columns=["note"], apply=True,
+                                        log=lambda *_: None, **kw)
+
+
+def test_r2_events_are_labelled_so_the_loop_filter_can_see_them(rep_env):
+    """GUARD W1 - THE LABEL, put to the REAL filter rather than asserted as a string."""
+    _two_layer_cell(rep_env)
+    marker = _outbox_marker(rep_env)
+    assert _withdraw(rep_env)["cells_withdrawn"] == 1
+
+    events = _outbox_since(rep_env, marker)
+    assert len(events) == 1, "one revealed row stages exactly one EDIT event"
+    payload = chain_worker.get_payload_dict(events[0])
+    assert payload["source_name"] == "chain_ingestion"
+    assert payload["updated_by"] == chain_replay.R2_AUDIT_SOURCE
+    assert not chain_worker._rule_accepts_event(W_BLOCKED, events[0]), \
+        "a rule that never opted in must not be woken by an operator's withdrawal"
+    assert chain_worker._group_target_tables(events, [W_BLOCKED]) == set()
+
+
+def test_a_rule_that_opted_in_still_consumes_a_withdrawal_event(rep_env):
+    """GUARD W2 - OPT-IN, NOT SUPPRESSION.
+
+    A 'fix' that dropped R2's events, or stopped staging them, leaves W1 green and
+    kills this. `allow_chain_trigger` must still mean yes.
+    """
+    _two_layer_cell(rep_env)
+    marker = _outbox_marker(rep_env)
+    _withdraw(rep_env)
+
+    events = _outbox_since(rep_env, marker)
+    assert events, "the withdrawal must still emit an event for anyone who wants it"
+    assert chain_worker._rule_accepts_event(W_OPTED_IN, events[0])
+    assert chain_worker._group_target_tables(events, [W_BLOCKED, W_OPTED_IN]) == \
+        {"crep_optin_target"}
+
+
+def test_r2_stages_one_transaction_id_for_the_whole_run(rep_env):
+    """GUARD W3 - THE GROUPING. One uuid4 per event made N revealed rows into N
+    serialised worker groups. `chunk_size=1` forces a page and a commit per row,
+    which is what would expose a context scoped to a page instead of the run."""
+    for i in range(3):
+        _seed(rep_env, "crep_test_target", [{"part_no": f"P{i}", "note": "FROM_SCRIPT"}],
+              source_name="custom_script", tx_id=f"s{i}a")
+        _seed(rep_env, "crep_test_target", [{"part_no": f"P{i}", "note": "FROM_PARSER"}],
+              source_name="pipeline_parser", tx_id=f"s{i}b")
+    marker = _outbox_marker(rep_env)
+    stats = _withdraw(rep_env, chunk_size=1)
+    assert stats["cells_withdrawn"] == 3
+
+    events = _outbox_since(rep_env, marker)
+    assert len(events) == 3
+    tx_ids = {chain_worker.get_payload_dict(e)["transaction_id"] for e in events}
+    assert len(tx_ids) == 1, f"one group per run, got {len(tx_ids)}: {sorted(tx_ids)}"
+    assert tx_ids.pop().startswith(chain_replay.R2_AUDIT_SOURCE)
+
+
+def test_withdraw_deletes_the_same_layers_whatever_the_outbox_label(rep_env,
+                                                                    monkeypatch):
+    """GUARD W4 - THE DELETION IS UNCHANGED, and this is R2's version of the
+    layering hazard.
+
+    R2's whole job is to delete one `cell_sources` row, so "does the label reach
+    the predicate that picks it" is a real question - and a different one from R3,
+    which creates no layer at all. The deletion is built from the `source_name`
+    PARAMETER (`_claimed_filter`, and the delete's own
+    `CellSource.source_name == source_name`), never from `request_source`.
+
+    Proved by running the SAME fixture twice - once with `transaction_context`
+    no-oped, which is exactly the pre-fix state - and comparing the FULL surviving
+    layer set, plus both refusals. On assy_qa the same comparison on a 5-cell
+    fixture gave an identical survivor sha256 (fecb0b25...) either way.
+    """
+    import contextlib
+
+    def _run():
+        _two_layer_cell(rep_env)
+        pinned = _target(rep_env, "P1")
+        # A second cell the operator pinned TO the source being withdrawn: it must
+        # be skipped, and it must be skipped identically in both modes.
+        _seed(rep_env, "crep_test_target", [{"part_no": "P2", "note": "FROM_SCRIPT"}],
+              source_name="custom_script", tx_id="p1")
+        _seed(rep_env, "crep_test_target", [{"part_no": "P2", "note": "FROM_PARSER"}],
+              source_name="pipeline_parser", tx_id="p2")
+        crud.set_cell_manual_priority_batch(
+            rep_env, "crep_test_target",
+            [{"row_id": _target(rep_env, "P2").row_id, "column_name": "note"}],
+            "pipeline_parser")
+        before = _all_layers(rep_env)
+        stats = _withdraw(rep_env)
+        with pytest.raises(chain_replay.ReplayRefused):
+            chain_replay.withdraw_source(rep_env, "crep_test_target", "user",
+                                         apply=True, log=lambda *_: None)
+        return before, _all_layers(rep_env), stats, pinned
+
+    # Pass 1: the shipped code.
+    fixed_before, fixed_after, fixed_stats, _ = _run()
+
+    # Reset the table so pass 2 starts from the same place.
+    rep_env.query(models.CellSource).delete()
+    rep_env.query(models.CellOverwrite).delete()
+    rep_env.query(models.DYNAMIC_TABLES["crep_test_target"]).delete()
+    rep_env.commit()
+
+    # Pass 2: PRE-FIX. No-oping `transaction_context` is precisely what the old
+    # code did - set no context, let `_outbox_envelope` fall back to its defaults.
+    monkeypatch.setattr(crud, "transaction_context",
+                        lambda *a, **k: contextlib.nullcontext())
+    plain_before, plain_after, plain_stats, _ = _run()
+    monkeypatch.undo()
+
+    def _norm(layers):
+        # row_ids are fresh uuid7s per pass, so key on the business-key-bearing
+        # value instead. (Learned the hard way: an un-normalised digest reported a
+        # difference that was the harness's per-run nonce, not the product's.)
+        return sorted((c, s, v) for _r, c, s, v in layers)
+
+    assert _norm(fixed_before) == _norm(plain_before), "the two fixtures must match"
+    assert _norm(fixed_after) == _norm(plain_after), \
+        "the outbox label changed WHICH layers survived a withdrawal"
+    for k in ("cells_withdrawn", "revealed", "emptied", "pinned_skipped",
+              "value_unchanged", "cells_matched"):
+        assert fixed_stats[k] == plain_stats[k], f"the label changed '{k}'"
+
+    # 🔴 THE ABSOLUTE OUTCOME, not only the differential - and this half is here
+    # because the differential half FAILED TO CATCH ITS OWN MUTATION. Pointing the
+    # delete at `request_source` instead of the parameter breaks BOTH passes
+    # equally (each deletes a source name that the fixture does not have), so the
+    # two arms still agree and a purely comparative assertion stays green. A
+    # differential test is blind to any mutation that moves both arms the same way.
+    assert _norm(fixed_after) == [("note", "custom_script", "FROM_SCRIPT"),
+                                  ("note", "custom_script", "FROM_SCRIPT"),
+                                  ("note", "pipeline_parser", "FROM_PARSER"),
+                                  ("part_no", "custom_script", "P1"),
+                                  ("part_no", "custom_script", "P2"),
+                                  ("part_no", "pipeline_parser", "P1"),
+                                  ("part_no", "pipeline_parser", "P2")], \
+        "the withdrawal must remove exactly the victim layer on the unpinned cell"
+    assert fixed_stats["pinned_skipped"] == 1, \
+        "the human pin must be honoured (and the fixture must actually exercise it)"
+    assert fixed_stats["cells_withdrawn"] == 1 and fixed_stats["revealed"] == 1
