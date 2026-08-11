@@ -103,10 +103,22 @@ def run(table: str, apply: bool, allow_differing: bool,
             readonly = True
         conn.execute(text(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}"))
 
-        sel = ", ".join(f'"{c}"' for c in ["row_id", "business_key_val"] + cols)
+        # 🔴 `SELECT *`. 처음엔 `column_types` 선언한 컬럼만 떠서 비교했는데, 그러면
+        #    **선언 밖 컬럼이 달라도 identical 로 나온다.** 비교 모집단을 선언으로 좁히는
+        #    것 자체가 가설이고, 그 가설이 반증을 먼저 지운다. 전부 떠서 분류한다.
         rows = conn.execute(text(
-            f'SELECT {sel} FROM public."{table}" WHERE business_key_val IS NOT NULL'
+            f'SELECT * FROM public."{table}" WHERE business_key_val IS NOT NULL'
         )).mappings().all()
+        if rows:
+            present = list(rows[0].keys())
+            declared = [c for c in cols if c in present]
+            # 신원·시각처럼 행마다 다른 것이 당연한 컬럼은 「다르다」에 넣되 **따로** 센다.
+            system = [c for c in present
+                      if c not in declared and c not in ("row_id", "business_key_val")]
+            print(f"실제 컬럼 {len(present)}개 = 선언 {len(declared)} + 시스템 {len(system)}")
+            print(f"시스템 컬럼: {system}\n")
+        else:
+            declared, system = cols, []
 
         groups = {}
         for r in rows:
@@ -125,14 +137,23 @@ def run(table: str, apply: bool, allow_differing: bool,
                 srccount[rid] = n
 
         stat = {"groups": len(groups), "rows_in_groups": len(ids),
-                "identical": 0, "differing": 0, "deletable": 0, "deleted": 0}
-        diff_by_col, diff_sample, victims = {}, [], []
+                "identical": 0, "differing": 0, "system_only": 0,
+                "deletable": 0, "deleted": 0}
+        diff_by_col, sys_by_col, diff_sample, victims = {}, {}, [], []
         dump_diff, dump_same = [], []
 
         for key, g in groups.items():
             base = g[0]
-            differing_cols = [c for c in cols
+            differing_cols = [c for c in declared
                               if any(_norm(r[c]) != _norm(base[c]) for r in g[1:])]
+            # 시스템 컬럼 차이는 **따로** 센다. 「선언 컬럼은 같은데 타임스탬프만 다르다」와
+            # 「데이터가 다르다」는 전혀 다른 판정이고, 한 통에 넣으면 구분이 사라진다.
+            sys_diff = [c for c in system
+                        if any(_norm(r[c]) != _norm(base[c]) for r in g[1:])]
+            if sys_diff:
+                stat["system_only"] += 0 if differing_cols else 1
+                for c in sys_diff:
+                    sys_by_col[c] = sys_by_col.get(c, 0) + 1
             if differing_cols:
                 stat["differing"] += 1
                 for c in differing_cols:
@@ -154,12 +175,15 @@ def run(table: str, apply: bool, allow_differing: bool,
                     "business_key_val": key,
                     "verdict": "differing" if differing_cols else "identical",
                     "differing_columns": differing_cols,
+                    "system_columns_differing": sys_diff,
                     # 🔴 남길 행을 표시해 둔다 - 규칙을 산문으로만 적으면 이 파일을 보는
                     #    사람이 규칙을 머릿속에서 다시 적용해야 한다.
                     "rows": [dict({"row_id": r["row_id"],
                                    "_keep": r["row_id"] == keep["row_id"],
                                    "_cell_sources": srccount.get(r["row_id"], 0)},
-                                  **{c: r[c] for c in cols})
+                                  # 선언 + 시스템 전부. 다른 것이 시스템 컬럼이면
+                                  # 선언만 실었을 때 **파일에서도 안 보인다.**
+                                  **{c: r[c] for c in declared + system})
                              for r in g],
                 })
 
@@ -177,7 +201,8 @@ def run(table: str, apply: bool, allow_differing: bool,
                 print(f"  .. {stat['deleted']}/{len(victims)}")
 
         print(f"\n{'항목':22s} {'건수':>10s}")
-        for k in ("groups", "rows_in_groups", "identical", "differing", "deletable"):
+        for k in ("groups", "rows_in_groups", "identical", "differing",
+                  "system_only", "deletable"):
             print(f"{k:22s} {stat[k]:10d}")
         if apply:
             print(f"{'deleted':22s} {stat['deleted']:10d}")
@@ -193,8 +218,14 @@ def run(table: str, apply: bool, allow_differing: bool,
                 print("   이 그룹들을 접으려면 위 컬럼 목록을 보고 판단한 뒤"
                       " --allow-differing 을 붙인다. 붙이면 위 규칙이 고른 행만 남고"
                       " 나머지 행이 가진 값은 사라진다.")
+        if sys_by_col:
+            print(f"\n선언 밖(시스템) 컬럼 차이 — 「선언 컬럼은 같은데 이것만 다른」 그룹 "
+                  f"{stat['system_only']}개. 접어도 데이터는 안 잃지만 이 값은 잃는다:")
+            for c, n in sorted(sys_by_col.items(), key=lambda x: -x[1]):
+                print(f"     {c:24s} {n:10d}")
+
         if dump_path:
-            _write_dump(dump_path, table, cols, dump_diff, dump_same)
+            _write_dump(dump_path, table, declared + system, dump_diff, dump_same)
 
         if not apply and stat["deletable"]:
             print(f"\n실제로 지우려면 --apply. 삭제는 crud.delete_rows_batch 를 통하므로"
