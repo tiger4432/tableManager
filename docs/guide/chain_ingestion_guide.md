@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**§5.5 신설 — Chain Replay에 세 번째 연산 R3(`resolve`)가 들어왔다.** 저장된 층을 하나도 바꾸지 않고 **「그중 무엇이 이기는가」만 다시 답해** materialise된 표시 컬럼을 고친다 — R1(매퍼 재실행·새 층 쓰기)도 R2(주장 삭제)도 답할 수 없던 질문이다. 층이 2개 미만인 셀은 **구조적으로** 손대지 않고(0개면 컬럼을 비워 버린다), 값이 움직인 셀마다 `resolution_recompute` 감사 행이 남는다(**CLI 전용** — 어드민 소급 등록부에 없다). ⚠️ **「아웃박스 이벤트를 안 낸다」는 문장은 일부러 적지 않았다** — 전역 `before_flush`가 dirty 행마다 `EDIT`을 실을 것으로 읽히고 측정되지 않았다(총괄 확인 대기). 계기가 된 해결 순서 수리는 [data_model §2.1](../architecture/data_model.md). 직전 **§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**§5.6 신설 — 「측정하지 않았다」가 닫혔고, 세 연산 중 *둘*이 같은 결함이었다**(`ffb23d6` R3 · `53f9187` R2). 소급 패스는 아웃박스 이벤트를 **낸다**(변경 *행*마다 `EDIT` 하나 — 셀마다 아님, `--chunk-size`는 커밋·NOTIFY만 움직인다). 🔴 **결함은 개수가 아니라 라벨**이었다: `user`/`system`+이벤트마다 uuid4로 나가 사람의 그리드 편집과 구별되지 않아 하류 매퍼 전원이 깨어났다. 지금은 둘 다 `chain_ingestion` 라벨 + 실행당 tx id 하나이고 🔴 **억제가 아니라 옵트인**이다. 🔴 **라벨(`request_source`)과 층(`update_item.source_name`)은 다른 필드**이고, R2에서는 **삭제 술어**가 파라미터로 짜여 라벨과 경로가 없다는 것을 생존 집합 sha256으로 확인했다. 🔴 **R2의 WS 프레임 4→0은 손실이 아니다** — 클라는 실제로 바뀐 셀을 전후 어느 쪽에서도 못 듣고 있었고, 없어진 것은 엉뚱한 캐스케이드 통지다. ⚠️ **R1은 라벨이 구성상 옳지만 tx id가 *페이지당* 하나로 남아 있다**(같은 비용의 약한 형태 — 미수리). §1 매퍼 계약 절과 쓰기 능력 표에 **R3 행 + 라벨=채널 규율**을 함께 실었다. 직전 **§5.5 신설 — Chain Replay에 세 번째 연산 R3(`resolve`)가 들어왔다.** 저장된 층을 하나도 바꾸지 않고 **「그중 무엇이 이기는가」만 다시 답해** materialise된 표시 컬럼을 고친다 — R1(매퍼 재실행·새 층 쓰기)도 R2(주장 삭제)도 답할 수 없던 질문이다. 층이 2개 미만인 셀은 **구조적으로** 손대지 않고(0개면 컬럼을 비워 버린다), 값이 움직인 셀마다 `resolution_recompute` 감사 행이 남는다(**CLI 전용** — 어드민 소급 등록부에 없다). ✅ ~~**「아웃박스 이벤트를 안 낸다」는 문장은 일부러 적지 않았다** — 전역 `before_flush`가 dirty 행마다 `EDIT`을 실을 것으로 읽히고 측정되지 않았다(총괄 확인 대기).~~ **적지 않은 것이 옳았고, 그 읽기가 맞았다** — 위 §5.6 참조. 계기가 된 해결 순서 수리는 [data_model §2.1](../architecture/data_model.md). 직전 **§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -118,6 +118,15 @@ Return `{"updates": []}` for an intentional no-op. Chain-created events reach
 a downstream mapper only when that downstream rule explicitly sets
 `allow_chain_trigger: true`.
 
+This opt-in is keyed on ONE thing: the outbox payload's `source_name` being
+`chain_ingestion` (`_rule_accepts_event`). Any automated pass that writes rows
+without going through the chain worker must therefore label its writes, or its
+events are read as a human edit and wake every rule a human wakes — that is the
+defect `ffb23d6` fixed in R3 and `53f9187` in R2 (§5.6). 🔴 **The label is a CHANNEL, not
+provenance**: it is `request_source` (a context var whose only reader is
+`database._outbox_envelope`), NOT `update_item.source_name` (the per-item field
+that creates a `cell_sources` layer). Setting the label does not create a layer.
+
 ## Write capability matrix: chain, enrichment, replay, and map replacement
 
 All normal writes ultimately use `crud.apply_batch_updates`, so they are
@@ -132,7 +141,8 @@ silently replace a user value.
 | Enrichment dedup                 | Upsert**one derived decision row per declared `decision_key`**                                                                                                          | Fill`target_fields` itself; arbitrarily update source rows; delete a decision row                              | `enrichment_mapper` deliberately projects only the identity/list fields. It does not assert a candidate result.                                  |
 | Enrichment auto-confirm          | Fill a declared, currently unresolved`target_field` when the configured reference views yield exactly one candidate and both global and per-rule `auto_confirm` are enabled | Overwrite any cell that already has provenance; choose among multiple/no candidates; retract a past auto-confirm | Writes with source`enrichment_auto_confirm`; ambiguity and refusal stay visible in the queue/logs.                                               |
 | Chain replay R1                  | Re-run a chosen enabled rule over current trigger-table rows, dry-run by default; apply the mapper's nonblank upserts                                                           | Reconstruct deleted trigger rows; cause a live cascade; treat mapper absence as a blank write                    | Replay sends the same canonical payload shape. Its`chain_ingestion` writes are not recursively consumed by the live worker.                      |
-| Source withdrawal R2             | Dry-run or remove one named non-user source claim from selected cells, then reveal the next source and audit the change                                                         | Delete a whole row/map; withdraw source`user`; override a `manual_priority_source` pin                       | Use this when a prior derived assertion must be retracted. It is layer-level retraction, not a new mapper result.                                  |
+| Source withdrawal R2             | Dry-run or remove one named non-user source claim from selected cells, then reveal the next source and audit the change                                                         | Delete a whole row/map; withdraw source`user`; override a `manual_priority_source` pin                       | Use this when a prior derived assertion must be retracted. It is layer-level retraction, not a new mapper result. Outbox events labelled `chain_ingestion` since `53f9187` — the deletion predicate is built from the source_name PARAMETER and is untouched by the label (§5.6.2). |
+| Display recompute R3             | Re-resolve which ALREADY-STORED layer wins and rewrite the materialised display column; audit every moved cell                                                                  | Create, alter or delete any `cell_sources` row; touch a cell with fewer than 2 layers; run without `--apply` writing anything | It changes the ANSWER, never a stored fact. Its outbox events are labelled `chain_ingestion`, so downstream rules consume them only under the same `allow_chain_trigger` opt-in R1 has (§5.6). |
 | Direct batch/API map replacement | Replace the rows in one validated map scope when`GeneralUpdateBatch.replace_map=True`                                                                                         | Purge an arbitrary table population or a scope outside the table's map-key contract                              | This is a separate, explicit destructive operation. The scope is derived from or supplied as validated map-key values.                             |
 
 ### `replace_map` boundary
@@ -454,6 +464,8 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py withdraw <�
 
 **철회는 무음이 아닙니다.** 표시값이 바뀐 셀마다 `AuditLog`에 소스 `chain_replay_withdraw` · `updated_by="withdraw:<소스명>"` · old/new 값이 남습니다. 클라의 **기존 셀 이력 타임라인**이 AuditLog를 읽으므로, 빈칸을 발견한 운영자가 그 셀을 눌러 "어느 소스가 사라졌는지"를 봅니다(신규 이벤트·신규 화면 없음).
 
+🔴 **철회가 내는 아웃박스 이벤트의 라벨은 §5.6.2가 소유합니다** — `53f9187` 전까지 이 연산은 이벤트를 `user`로 내보내 **사람의 그리드 편집처럼** 하류를 깨웠고, **어드민 소급 라우트에 있어 R3보다 도달하기 쉬웠습니다.** 삭제 술어는 그때도 지금도 라벨과 무관합니다(파라미터로 짜입니다).
+
 ### 5.5 R3 — 표시값 재계산 (`recompute_display_values`, 2026-08-11)
 
 ```bash
@@ -472,9 +484,63 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
 - **무음이 아닙니다.** 표시값이 움직인 셀마다 `AuditLog`에 소스 `resolution_recompute` · `updated_by="resolved:<이긴 소스명>"` · old/new가 남습니다 — R2와 같은 자세이고, 클라의 기존 셀 이력 타임라인이 그대로 읽습니다. **기록 없이 바뀌는 값**은 지금 수리 중인 결함과 같은 계급이므로 감사 쓰기는 선택이 아니고, `--apply`는 **둘 다 하거나 둘 다 안 합니다.**
 - **사람의 핀은 존중됩니다.** 핀은 **어느 층이 이기는가**를 정하는 것이지 표시 컬럼을 얼리는 것이 아니므로, 핀이 걸린 셀은 **핀이 지목한 층의 값으로** 해결됩니다. 보고서의 `of which human-pinned`는 「핀을 무시했다」가 아니라 **「화면이 사람이 고른 층에서 멀어져 있었고 그것을 되돌렸다」**입니다.
 - **신규 이벤트 타입도 신규 화면도 만들지 않습니다** — R2와 같은 자세이고, 설명은 기존 셀 이력 타임라인이 합니다. **CLI 전용 연산**이며 어드민 API 등록부(`server/retroactive.py`의 `OPERATIONS`)에도 **없습니다**(2026-08-11 실측 — ⓐ~ⓔ 다섯만 등재).
-  ⚠️ **「아웃박스 행을 하나도 안 만든다」고는 적지 않습니다.** `setattr(row, col, ...)`이 동적 테이블 행을 dirty로 만들고 `database.auto_stage_database_outbox`는 **모든 `Session`에 걸린 전역 `before_flush`**이므로, 커밋 시 변경 행마다 `EDIT` 이벤트가 실릴 것으로 읽힙니다(R2도 같은 모양). **정적 판독이고 측정하지 않았습니다 — 총괄 확인 대기.** 약속할 수 있는 것은 **즉시 갱신을 보장하지 않는다**는 쪽뿐입니다.
 - **dry-run이 곧 열거입니다.** `--apply` 없이 돌리면 바뀔 셀을 그대로 찍습니다(기본 20건, `--list-all`로 전량). 보고서의 두 사유를 구분해 읽으십시오 — **`tie broken by recency`**(동점이 있었다 = 이 결함의 지문) vs **`already out of step`**(층과 표시 컬럼이 애초에 어긋나 있었다). 인메모리 목록에는 상한이 있고 초과 시 그 사실을 말합니다 — **완전한 기록은 `--apply`가 쓴 `AuditLog` 행들**입니다.
 - 페이지 단위 커밋 + 키셋 순회(`keyset_scan.iter_pages`)라 대량 실행을 중간에 끊어도 되고, 끊기면 진행 중이던 페이지 하나만 잃습니다. 레이어링 관점의 계약은 [architecture/data_model §2.2-ter](../architecture/data_model.md).
+
+---
+
+### 5.6 세 연산이 내는 아웃박스 이벤트 — 라벨과 그룹핑 (`ffb23d6` + `53f9187`, 2026-08-11)
+
+> ✅ 종전 §5.5에는 「**정적 판독이고 측정하지 않았습니다 — 총괄 확인 대기**」가 있었습니다. 측정이 끝났고 **정적 판독이 맞았습니다.** 아래는 확정 서술입니다.
+>
+> 🔴 **넷째 연산을 만들기 전에 이 절을 읽으십시오.** 세 연산이 **각자** 이 문제를 만났고 둘은 같은 결함이었습니다 — 「저장된 것을 바꾸는가」 축(§5 서두)과 **독립인 두 번째 축**입니다.
+
+| | 라벨 | transaction id | 상태 |
+|---|---|---|---|
+| **R1** 재적용 | ✅ **구성상 옳다** — `apply_batch_updates`가 항목의 `source_name`(=`chain_ingestion`)을 컨텍스트로 복사한다 | ⚠️ **페이지당 하나**(`chain_replay_{run_id}_{page:06d}`) | **라벨은 닫혔고 그룹핑은 열려 있다** |
+| **R2** 철회 | ✅ `53f9187` — `chain_ingestion` / `chain_replay_withdraw` | ✅ 실행당 하나 | 닫힘 |
+| **R3** 재계산 | ✅ `ffb23d6` — `chain_ingestion` / `resolution_recompute` | ✅ 실행당 하나 | 닫힘 |
+
+- ⚠️ **R1의 남은 결함은 같은 비용의 약한 형태입니다** — 페이지당 tx id는 실행당 하나보다 **페이지 수만큼 많은 직렬 그룹**을 만듭니다. **라벨이 맞다고 그룹핑도 맞은 것이 아닙니다**(두 필드는 같은 엔벨로프에 있을 뿐 서로를 함의하지 않습니다). 미수리 — 총괄 판정 대기.
+
+#### 5.6.1 R3에서 측정된 것 (`ffb23d6`)
+
+- **이벤트는 납니다. 단위는 *행*입니다.** `setattr(row, col, ...)`이 동적 테이블 행을 dirty로 만들고 `database.auto_stage_database_outbox`가 **모든 `Session`에 걸린 전역 `before_flush`**로 `session.dirty`를 걸으므로, **변경된 행마다 `EDIT` 하나**입니다 — 셀마다가 아닙니다(한 행에서 세 컬럼이 움직여도 이벤트는 하나). 🔴 **`--chunk-size`는 커밋과 NOTIFY 횟수를 움직이지만 이벤트 수는 한 건도 움직이지 않습니다** — 이벤트 수를 줄이려고 청크를 키우지 마십시오.
+- 🔴 **결함은 개수가 아니라 *라벨*이었습니다.** 그 이벤트들은 `source_name="user"` · `updated_by="system"` · **이벤트마다 새 uuid4**를 달고 나갔고, 하류에서 이것은 **사람이 그리드에서 친 것과 구별되지 않습니다.** 격리 `assy_qa` 실측 — `dt_log` 행의 셀 하나를 수리했을 때:
+
+  | | 종전 | `ffb23d6` 이후 |
+  |---|---|---|
+  | 이벤트 | 5 | 5 |
+  | 라벨 | `user` / `system` | **`chain_ingestion` / `resolution_recompute`** |
+  | transaction id | 5 | **1** |
+  | 수락한 룰 | 5 | **0** |
+  | 파생 쓰기가 닿은 테이블 | 4 | **0** |
+
+  수리 한 번이 인리치먼트 매퍼 둘을 돌리고 두 테이블에 체인 배치를 쓰고 자동 확정 패스까지 돌았습니다(438 ms · 422 ms 2회 측정).
+- 🔴 **이것은 억제가 아니라 옵트인입니다.** `chain_ingestion` 라벨은 R1이 이미 지나는 **룰별 옵트인**(`_rule_accepts_event`, `chain_ingestion_worker.py:328`)에 R3를 함께 세웁니다 — `allow_chain_trigger: true`를 선언한 룰은 **여전히 이 이벤트를 받습니다.** 「이벤트를 안 내보낸다」로 고쳤다면 그 선언이 조용히 무의미해졌을 것이고, **침묵과 동의는 다른 물건**입니다(뮤테이션 채점에서 억제형 「수리」가 첫 가드를 통과하고 둘째에서 죽습니다 — 가드가 둘인 이유가 그것입니다).
+- 🔴 **transaction id 붕괴가 비싼 절반입니다.** 체인 워커는 **transaction id로 묶어** 처리하므로, 이벤트마다 id가 다르면 N개 수리 행이 **N개의 직렬 그룹**이 됩니다 — 그룹당 ~430 ms면 10,000행이 약 72분이고 그동안 라이브 인제션이 뒤에 줄을 섭니다.
+- 🔴 **라벨과 층은 다른 필드이고 섞이지 않습니다.** **층**을 만드는 것은 `update_item.source_name`(항목별 pydantic 필드)이고, **라벨**은 `request_source`(컨텍스트 변수 — 서버 트리 전체에서 읽는 곳은 `database._outbox_envelope` 하나)입니다. 둘이 만나는 곳은 배치 경로가 배치의 소스명을 컨텍스트로 복사하는 **정확히 한 줄**이고 **R3는 그 줄을 지나지 않습니다.** 그래서 라벨을 바꿔도 수리된 셀에 `chain_ingestion` 층이 생기지 않으며, 이것은 논증이 아니라 실측입니다(대상 행 `cell_sources` 스냅샷의 sha256이 전후 동일 · `test_recompute_creates_no_cell_sources_layer`가 고정). **이 구분이 무너지면 지금 고친 결함보다 나쁜 결함이 되고, 초록 테스트에서는 안 보입니다.**
+- ⚠️ **R3는 `_apply_replay_batch`를 지나지 않습니다 — 그 헬퍼는 R1의 것입니다.** 「페이지마다 tx id 하나」는 그 헬퍼의 성질이고 R3에 대입하면 틀립니다. R3의 이벤트는 전역 `before_flush`에서 나오고 세 필드는 `_outbox_envelope`가 읽는 **컨텍스트 기본값**에서 옵니다 — 컨텍스트를 아무도 안 세우면 `request_transaction_id.get() or str(uuid.uuid4())`가 **이벤트마다 새 uuid4**를 낳던 그 자리입니다.
+- **컨텍스트의 범위는 커밋이 아니라 페이지 루프 전체입니다** — 다음 페이지의 키셋 질의에서 일어나는 autoflush만으로도 이벤트가 스테이징되기 때문입니다.
+- ⚠️ **측정은 격리 `assy_qa`에서 했습니다 — 비율과 기제는 전이되지만 절대 수치는 아닙니다.**
+- **운영자에게 약속하는 문장은 그대로입니다: 「즉시 갱신을 보장하지 않는다 · 안 바뀌어 보이면 새로고침」.** 라벨 수리는 **하류 캐스케이드를 끈 것**이지 화면 푸시를 켠 것이 아닙니다(워커는 체인이 **쓴 것**을 방송하고, 아무것도 안 쓴 그룹은 즉시 처리 완료로 도장됩니다).
+
+#### 5.6.2 R2도 같은 결함이었고 닫혔습니다 (`53f9187`) — **버튼 뒤에 있던 쪽**
+
+`ffb23d6` 시점에는 R2가 같은 결함을 그대로 갖고 있었고, **R3보다 급했습니다** — R3는 사람이 CLI 앞에 앉아야 하지만 **R2는 어드민 소급 라우트에서 도달 가능**합니다. 수리는 `withdraw_source`를 `crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME)`으로 감싼 것이고, **`git diff -w` 기준 소스 한 줄**입니다.
+
+| | 종전 | `53f9187` 이후 |
+|---|---|---|
+| 이벤트 | 4 | 4 |
+| 라벨 | `user` / `system` | **`chain_ingestion` / `chain_replay_withdraw`** |
+| transaction id | 3 | **1** |
+| 수락한 대상 테이블 | 4 | **0** |
+| 클라가 받은 WebSocket 프레임 | 4 | **0** |
+
+- 🔴 **R3와 달리 R2는 층을 *지웁니다* — 그래서 「무엇이 지워지는가」를 따로 물었고, 상속하지 않았습니다.** 삭제 술어(`_claimed_filter`와 DELETE의 `CellSource.source_name == source_name`)는 **`source_name` 파라미터**로 짜이고 라벨은 컨텍스트 변수입니다. 두 개념이 이름을 공유할 뿐 **한쪽에서 다른 쪽으로 가는 경로가 없습니다.** 논증이 아니라 실측입니다 — 컨텍스트를 no-op 시킨 실행과 출하 실행이 **같은 4개 층을 지우고 생존 집합의 sha256이 동일**합니다.
+- 🔴 **`PROTECTED_SOURCES`와 사람의 핀은 두 진입점 모두에서 동일합니다** — 라이브러리와 **어드민 소급 라우트** 양쪽을 실제로 몰아 확인했습니다(`ReplayRefused`/`RetroactiveRefused`·`pinned_skipped=1`·핀 걸린 층과 표시값 무손상). **수리가 버튼에까지 닿았다**는 뜻이고, 라이브러리만 고치고 끝내면 정확히 이 확인이 빠집니다.
+- 🔴 **WebSocket 프레임 4 → 0은 운영자에게서 무언가를 뺀 것이 아닙니다 — 이 구분을 정확히 적는 이유가 있습니다.** 읽는 사람은 반대로 가정합니다(철회는 **표시값을 바꾸므로** 「그럼 화면 통지가 사라진 것 아닌가」는 진짜 질문입니다). 측정된 답: **클라는 실제로 바뀐 `dt_log` 셀에 대해 전후 어느 쪽에서도 통지받은 적이 없습니다.** 워커는 체인이 **쓴 것**(대상 테이블)을 방송하지 이벤트가 나온 테이블을 방송하지 않으므로, 종전의 그 4개 프레임은 **아무도 아무것도 철회하지 않은 `dt_job_attribution`**의 것이었습니다. 없어진 것은 **엉뚱한 캐스케이드 통지**이지 철회 통지가 아닙니다. 철회를 이해하려고 운영자가 읽는 것은 여전히 `AuditLog` 행이고, 그 행은 `chain_replay_withdraw`를 그대로 답니다 — **아웃박스 `source_name`은 순환 필터의 채널이지 provenance 기록이 아닙니다.**
+- ⚠️ **차등(differential) 테스트 하나가 강해 보였고 눈이 멀어 있었습니다.** 「라벨을 켜든 끄든 같은 층이 지워진다」만 단언하는 테스트는 **양팔을 똑같이 움직이는 변이를 볼 수 없습니다**(픽스처가 갖지도 않은 소스를 지우게 만드는 변이는 양팔이 여전히 일치합니다). 기존 테스트 둘은 그 변이에 죽었는데 이 변경을 위해 쓴 테스트만 살아남았습니다 — **절대 단언**(정확한 생존 집합 + `pinned_skipped == 1`)을 더해 고쳤습니다.
 
 ---
 
