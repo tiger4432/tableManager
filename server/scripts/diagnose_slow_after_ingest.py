@@ -55,6 +55,17 @@ Each section separates a cause that the others cannot rank:
   6. pg_stat_statements  - top queries, or a plain statement that it is absent
 
 ===============================================================================
+THE LAST LINE
+===============================================================================
+The report ENDS in one line naming which rung of the 4b ladder jumped and by how
+much, because the box this runs on does not allow copying output off it and an
+operator has to be able to relay the answer verbatim without understanding the
+ladder. Above it sits a twelve-character digest of the whole ladder for when the
+verdict alone is ambiguous. See section 4c for what each wording means - in
+particular, 판정불가 / 부분측정 / 점프 없음 are three DIFFERENT answers, and an
+inconclusive run never renders as a healthy one.
+
+===============================================================================
 NUMBERS THAT ARE ESTIMATES, AND WHY IT MATTERS
 ===============================================================================
 Anything marked ``~`` comes from ``pg_class.reltuples`` (maintained by
@@ -74,6 +85,7 @@ when the two disagree, and section 0 prints when the counters were last reset.
 """
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -119,6 +131,20 @@ SUB = "-" * 78
 
 snapshot = {}          # only written to disk when --json is given
 _notes = []
+
+# Everything the closing one-line verdict is allowed to reason from. Section 4b
+# fills it; `main` reads it. Kept as a module global rather than a return value
+# because the verdict has to survive a section that returned early, and "the
+# ladder did not run, and here is why" is one of the answers it must be able to
+# give.
+_ladder = {
+    "ran": False,        # did the ladder actually take measurements?
+    "why_not": None,     # if not, the operator-readable reason
+    "rungs": {},         # rung key -> _stat() dict, ONLY for HTTP 200 samples
+    "health_db": None,   # /health checks.database, verbatim
+    "r0_status": None,   # what GET /health actually answered
+    "r0_body_json": None,  # None=not reached, False=200 but not the health doc
+}
 
 
 def note(msg):
@@ -929,6 +955,20 @@ def _flag_tail(label, st):
              f"기다렸다는 뜻이고, 어느 자원인지는 이 칸이 무엇을 더했는지가 말한다.")
 
 
+def _ok(status):
+    """Did this rung actually answer? Anything else is not a measurement.
+
+    🔴 A rung that 404s or 500s still produces a LATENCY, and a fast error is the
+    fastest number on the ladder. Storing it would make every delta above and
+    below that rung a fiction - and the fiction reads as good news, because a
+    shadowed `/health` route answering a 200-HTML catch-all or a 500 in 3 ms
+    lowers the baseline the whole ladder is measured against. So a rung enters
+    `_ladder["rungs"]` only on 200; otherwise the verdict below reports it as
+    미측정 rather than as fast.
+    """
+    return isinstance(status, int) and status == 200
+
+
 def _rung(base, path, reps=_LADDER_REPS, timeout=60):
     out, status, nbytes, body = [], None, 0, b""
     for _ in range(reps):
@@ -992,6 +1032,7 @@ def section_where_the_second_goes(p, http_base, tables):
         print("  (스레드 토큰 / DB 커넥션 / 쿼리 자체)를 가르는 유일한 절이므로,")
         print("  «모든 요청이 1초» 증상을 조사 중이라면 반드시 --http 와 함께 다시 돌릴 것.")
         print("    예) --http http://127.0.0.1:8080")
+        _ladder["why_not"] = "--http 없이 실행 (사다리 자체를 안 돌렸다)"
         return
 
     base = http_base.rstrip("/")
@@ -1006,7 +1047,9 @@ def section_where_the_second_goes(p, http_base, tables):
     sub("A. R0 — GET /health  (async def · 스레드 토큰 불필요 · 풀 커넥션은 사용)")
     st0, status0, _n0, body0 = _rung(base, "/health")
     print(f"     R0 /health                    {_fmt(st0)}  [{status0}]")
-    lad["R0_health"] = st0
+    if _ok(status0):
+        lad["R0_health"] = st0
+    _ladder["r0_status"] = status0
     _flag_tail("R0 /health", st0)
     health_db = None
     try:
@@ -1021,9 +1064,15 @@ def section_where_the_second_goes(p, http_base, tables):
         print(f"       (전체 status={hj.get('status')} — 이것은 하트비트·백업 나이로도 "
               f"503이 되므로 풀 상태의 근거가 아니다)")
         snapshot.setdefault("ladder", {})["health_db"] = health_db
+        _ladder["r0_body_json"] = True
     except Exception:
         print("     └ 본문을 JSON으로 읽지 못했다 (정적 catch-all이 HTML을 200으로 "
               "돌려준 것은 아닌지 확인 — /health 라우트가 그늘에 가려졌을 수 있다).")
+        # A 200 that is not the health document means R0 may not be the async,
+        # tokenless route the ladder assumes - it may be a static file wearing
+        # /health's URL. The timing is still real, so the rung stays; but the
+        # verdict must not present a possibly-static baseline as the DB control.
+        _ladder["r0_body_json"] = False
 
     if health_db and health_db.get("status") == "ok":
         print("     ⇒ /health 가 커넥션을 «얻어서» 왕복을 마쳤다. 이 한 줄이 «풀 고갈»을")
@@ -1051,7 +1100,10 @@ def section_where_the_second_goes(p, http_base, tables):
               f"  토큰~{chunks_small}회")
         print(f"     S2 {large[-38:]:38} {_fmt(st2)}  [{sts2}] {human(n_large)}"
               f"  토큰~{chunks_large}회")
-        lad["S1_small_static"], lad["S2_large_static"] = st1, st2
+        if _ok(sts1):
+            lad["S1_small_static"] = st1
+        if _ok(sts2):
+            lad["S2_large_static"] = st2
         _flag_tail(f"S1 {small}", st1)
         _flag_tail(f"S2 {large}", st2)
         if st1 and st2 and chunks_large > chunks_small:
@@ -1082,13 +1134,13 @@ def section_where_the_second_goes(p, http_base, tables):
         # both and prints them side by side.
         if large:
             import threading as _th0
-            got0 = []
+            got0, bad0 = [], []
             _lk0 = _th0.Lock()
 
             def _one_asset():
                 ms_a, _st, _n, _b = _get(base, large, timeout=600)
                 with _lk0:
-                    got0.append(ms_a)
+                    (got0 if _ok(_st) else bad0).append(ms_a if _ok(_st) else _st)
 
             ths0 = [_th0.Thread(target=_one_asset, daemon=True)
                     for _ in range(_LADDER_CONCURRENCY)]
@@ -1098,8 +1150,11 @@ def section_where_the_second_goes(p, http_base, tables):
                 t.join()
             conc_static = _stat(got0)
             print(f"     S2 를 동시 {_LADDER_CONCURRENCY}개            {_fmt(conc_static)}"
-                  f"   ← 브라우저는 한 번에 6개를 연다")
-            lad["S2_concurrent"] = conc_static
+                  f"   ← 브라우저는 한 번에 6개를 연다"
+                  + (f"   [실패 {len(bad0)}/{_LADDER_CONCURRENCY}: {bad0[0]}]"
+                     if bad0 else ""))
+            if got0:
+                lad["S2_concurrent"] = conc_static
             snapshot.setdefault("ladder", {})["static_concurrent_p50_ms"] = \
                 conc_static["p50"] if conc_static else None
             if st2 and conc_static and st2["p50"] > 0:
@@ -1152,7 +1207,8 @@ def section_where_the_second_goes(p, http_base, tables):
                                    reps=max(3, _LADDER_REPS // 2), timeout=180)
             print(f"     {label} /tables/{tbl[:18]}/data?limit={lim:<5} {_fmt(st)}"
                   f"  [{sts}] {human(n)}")
-            lad[f"{label}_sync_db_limit{lim}"] = st
+            if _ok(sts):
+                lad[f"{label}_sync_db_limit{lim}"] = st
             _flag_tail(f"{label} /tables/{tbl}/data?limit={lim}", st)
 
     # ---- Direct SQL: the same work, with no server in the way ---------------
@@ -1174,13 +1230,13 @@ def section_where_the_second_goes(p, http_base, tables):
     print("     고정 비용이라면 거의 그대로다. 증상이 «균일»하다니, 이 구분이 중요하다.")
     if tbl:
         import threading as _th
-        got = []
+        got, bad = [], []
         _lk = _th.Lock()
 
         def _one():
             ms, sts, n, _b = _get(base, f"/tables/{tbl}/data?limit=1", timeout=180)
             with _lk:
-                got.append(ms)
+                (got if _ok(sts) else bad).append(ms if _ok(sts) else sts)
 
         solo, _s, _n, _b = _rung(base, f"/tables/{tbl}/data?limit=1", reps=3)
         ths = [_th.Thread(target=_one, daemon=True) for _ in range(_LADDER_CONCURRENCY)]
@@ -1190,7 +1246,17 @@ def section_where_the_second_goes(p, http_base, tables):
             t.join()
         conc = _stat(got)
         print(f"     단독 1개                       {_fmt(solo)}")
-        print(f"     동시 {_LADDER_CONCURRENCY}개                       {_fmt(conc)}")
+        print(f"     동시 {_LADDER_CONCURRENCY}개                       {_fmt(conc)}"
+              + (f"   [실패 {len(bad)}/{_LADDER_CONCURRENCY}: {bad[0]}]" if bad else ""))
+        # The solo/concurrent PAIR is what the verdict's R2→R2동시 step reads.
+        # Both are the same route at the same limit, taken in the same run, so the
+        # difference between them is concurrency and nothing else. R2 above is a
+        # separate sample of the same endpoint; pairing across the two would mix
+        # measurement windows.
+        if _ok(_s):
+            lad["R2_solo"] = solo
+            if got:
+                lad["R2_concurrent"] = conc
         if solo and conc and solo["p50"] > 0:
             ratio = conc["p50"] / solo["p50"]
             print(f"     ⇒ 동시/단독 = {ratio:.2f}배")
@@ -1205,6 +1271,16 @@ def section_where_the_second_goes(p, http_base, tables):
 
     snapshot.setdefault("ladder", {})["rungs"] = {
         k: v for k, v in lad.items() if v}
+
+    # Hand the readings to the closing verdict. `ran` is true as soon as ANY rung
+    # answered - a ladder that took one measurement is a partial ladder, not an
+    # absent one, and those two have to end up as different verdicts.
+    _ladder["rungs"] = {k: v for k, v in lad.items() if v}
+    _ladder["health_db"] = health_db
+    _ladder["ran"] = bool(_ladder["rungs"])
+    if not _ladder["ran"]:
+        _ladder["why_not"] = (
+            f"{base} 에서 한 칸도 200을 받지 못했다 (R0 /health → [{_ladder['r0_status']}])")
 
     # ---- The reading guide, printed with the numbers it refers to -----------
     sub("G. 읽는 법 — 어느 칸에서 뛰었나")
@@ -1241,6 +1317,214 @@ def section_where_the_second_goes(p, http_base, tables):
     print("     🔴 이 표는 «판정»이 아니라 «어느 칸에서 뛰었나»다. 가장 큰 양수 한 칸이")
     print("        원인의 이름이고, 모든 칸이 작은데 R0부터 이미 1초라면 원인은 이 사다리")
     print("        바깥(프로세스 앞단)에 있다.")
+    print("     (이 표를 한 줄로 접은 «판정»이 보고서 맨 끝에 있다.)")
+
+
+# ---------------------------------------------------------------------------
+# 4c. THE ONE LINE - the ladder folded into something that survives a phone call
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS: the production box does not permit copying output off it.
+# The operator reads the screen and re-types by hand, and every number that
+# crosses that gap can be mistyped or skipped. So the report has to END in one
+# line that already contains the answer.
+#
+# FOUR RULES, each of which is a specific way a line like this usually lies:
+#
+#   1. NAME THE RUNG, not a category. 「DB 커넥션」 on its own cannot be checked
+#      by whoever receives it. 「R1→R2 +842ms」 can: R1 and R2 differ by exactly
+#      one cost, so the name carries its own reasoning.
+#   2. INCONCLUSIVE MUST NOT RENDER AS HEALTHY. 「사다리를 못 돌렸다」,
+#      「일부만 쟀다」 and 「다 쟀는데 아무 칸도 안 뛰었다」 are three different
+#      answers and get three different words - 판정불가 / 부분측정 / 점프 없음.
+#      🔴 THIS SCRIPT HAS ALREADY MADE EXACTLY THIS MISTAKE ONCE: under an
+#      injected token saturation `_discover_assets` timed out and the report
+#      announced 「클라이언트가 빌드되지 않았다」 - a confident wrong reason
+#      produced by the very fault it was built to detect. A verdict that renders
+#      a blind run as a clean run repeats that at the top of the page.
+#   3. TWO JUMPS ARE REPORTED AS TWO. Silently taking the larger invents a
+#      ranking the ladder does not support: each step adds one cost, and nothing
+#      in the structure says the bigger delta is the one to fix first.
+#   4. CARRY THE SIZE, not only the name, so the reader can sanity-check the
+#      claim without the table it was folded from.
+#
+# The verdict names a STEP (a pair of rungs), because a step is what has a cause;
+# a single rung only has a total.
+JUMP_MS = 150.0
+# A rung at or above this is "slow" in the sense the report is about ("every
+# fetch takes over a second"). Used ONLY to keep two no-jump readings apart:
+# 「아무 칸도 안 뛰었고 전부 빨랐다」(증상 미재현 - the ladder did not reproduce
+# it) versus 「아무 칸도 안 뛰었는데 첫 칸부터 느리다」(원인이 사다리 바깥).
+# A single "no jump" would merge those two into one misleading sentence.
+SLOW_MS = 300.0
+
+# from-rung, to-rung, and the ONE cost that step adds. The cause text is the
+# step's definition (see the 4b header), not an inference drawn from the number.
+_STEPS = [
+    ("R0→S1",     "R0_health",          "S1_small_static",      "스레드토큰"),
+    ("S1→S2",     "S1_small_static",    "S2_large_static",      "스레드토큰(다회)"),
+    ("S2→S2동시", "S2_large_static",    "S2_concurrent",        "스레드토큰(동시도착)"),
+    ("S1→R1",     "S1_small_static",    "R1_sync_nodb",         "핸들러고정비"),
+    ("R1→R2",     "R1_sync_nodb",       "R2_sync_db_limit1",    "DB커넥션"),
+    ("R2→R4",     "R2_sync_db_limit1",  "R4_sync_db_limit1000", "쿼리·직렬화"),
+    ("R2→R2동시", "R2_solo",            "R2_concurrent",        "동시경합(자원미상)"),
+]
+
+# EVERY rung this file records, in ladder order, with the name the verdict says
+# out loud. One list, so the digest's positions and the verdict's rung names
+# cannot drift apart - and so that "전 칸" can only ever be said after counting
+# against the same list the rungs were stored into.
+_RUNG_LABELS = [
+    ("R0_health", "R0"),
+    ("S1_small_static", "S1"),
+    ("S2_large_static", "S2"),
+    ("S2_concurrent", "S2동시"),
+    ("R1_sync_nodb", "R1"),
+    ("R2_sync_db_limit1", "R2"),
+    ("R4_sync_db_limit1000", "R4"),
+    ("R2_solo", "R2단독"),
+    ("R2_concurrent", "R2동시"),
+]
+# R2단독 is section F's own sample of the same route as R2. It is a rung for the
+# purpose of the R2→R2동시 step, but it would spend a digest character restating
+# a magnitude the digest already carries, so it is left out of the digest only.
+_DIGEST_SKIP = {"R2_solo"}
+_DIGEST_ORDER = [k for k, _ in _RUNG_LABELS if k not in _DIGEST_SKIP]
+_DIGEST_LEGEND = ",".join(lbl for k, lbl in _RUNG_LABELS if k not in _DIGEST_SKIP)
+_HEX = "0123456789ABCDEF"
+
+
+def _digest(rungs):
+    """Twelve characters that rebuild the whole ladder to within a factor of two.
+
+    `L:` + eight rung characters + `-` + one check character, e.g. `L:3348A9C9-B`.
+
+    Each rung character is ``round(log2(p50_ms))`` in hex, so the value is the
+    magnitude and nothing else - `A` is about a second, `3` is about 8 ms. That
+    resolution is deliberate: a jump is a factor of ten or more, so factor-of-two
+    buckets are enough to RE-DERIVE the verdict from the digest alone, while
+    being short enough to dictate. Reading five exact numbers off a screen is the
+    thing this is replacing, not something to reproduce in a shorter font.
+
+    Three properties make a mis-transcription visible rather than plausible:
+      * `X` marks an unmeasured rung, and a measured rung is clamped to 1..15, so
+        a `0` anywhere in a received digest is itself proof of a typo.
+      * the `-` sits at a fixed position; if it is not the 11th character after
+        `L:`, a character was dropped or added.
+      * the check character is a POSITION-WEIGHTED sum mod 16, which catches
+        every single-character error and every adjacent transposition of two
+        unequal values - a plain sum would miss the transposition, and a
+        transposition here would rename the rung that jumped.
+    """
+    vals, chars = [], []
+    for key in _DIGEST_ORDER:
+        st = rungs.get(key)
+        if not st:
+            vals.append(0)
+            chars.append("X")
+            continue
+        v = min(15, max(1, int(round(math.log2(max(st["p50"], 1.0))))))
+        vals.append(v)
+        chars.append(_HEX[v])
+    chk = sum((i + 1) * v for i, v in enumerate(vals)) % 16
+    return "L:" + "".join(chars) + "-" + _HEX[chk]
+
+
+def _verdict():
+    """`(verdict_line, digest_line_or_None)` - see the rules above.
+
+    A `None` digest is itself information: it is returned only when nothing was
+    measured, so the absence of the second line means 판정불가 even if the first
+    line was garbled in transit.
+    """
+    rungs = _ladder.get("rungs") or {}
+    if not _ladder.get("ran") or not rungs:
+        why = _ladder.get("why_not") or "사다리 미실행 (사유 불명)"
+        return f"판정불가 — {why} | 잰 칸 0개 = 원인 지목 불가", None
+
+    jumps, measured, missing = [], [], []
+    for name, a, b, cause in _STEPS:
+        sa_, sb_ = rungs.get(a), rungs.get(b)
+        if not sa_ or not sb_:
+            missing.append(name)
+            continue
+        measured.append(name)
+        delta = sb_["p50"] - sa_["p50"]
+        if delta >= JUMP_MS:
+            jumps.append((name, delta, sa_["p50"], sb_["p50"], cause))
+
+    total, done = len(_STEPS), len(measured)
+    worst = max(st["p50"] for st in rungs.values())
+    r0 = rungs.get("R0_health")
+
+    if jumps:
+        if len(jumps) == 1:
+            nm, d, a_ms, b_ms, cz = jumps[0]
+            head = f"점프 {nm} +{d:,.0f}ms ({a_ms:,.0f}→{b_ms:,.0f}) = {cz}"
+        else:
+            # Rule 3. Ladder order, never sorted by size: sorting is the ranking
+            # this refuses to invent.
+            head = (f"점프 {len(jumps)}곳 — "
+                    + " · ".join(f"{nm} +{d:,.0f}ms={cz}"
+                                 for nm, d, _a, _b, cz in jumps)
+                    + " (전부 해당·순위 아님)")
+    elif missing:
+        head = (f"부분측정 {done}/{total}칸 — 잰 칸엔 점프 없음, "
+                f"미측정 {','.join(missing)} → 단정 불가")
+    elif worst < SLOW_MS:
+        head = f"점프 없음 · 전 칸 ≤{worst:,.0f}ms → 이번 실행에선 증상 미재현"
+    else:
+        # No step jumped, yet something is slow. Name WHICH rungs, never "전 칸"
+        # by default: a slow R0 with everything above it fast, and a uniformly
+        # slow ladder, are opposite findings and 「전 칸」 is false for the first.
+        # 🔴 Count against _RUNG_LABELS, not against len(rungs): the two differed
+        # once already (R2단독 is a rung but was not in the label list), and the
+        # mismatch printed 「R0,S1,...,R2동시 «만» 716ms」 - every rung named as
+        # the exception to itself.
+        named = [(k, lbl) for k, lbl in _RUNG_LABELS if rungs.get(k)]
+        slow = [lbl for k, lbl in named if rungs[k]["p50"] >= SLOW_MS]
+        if len(slow) == len(named):
+            lo = min(st["p50"] for st in rungs.values())
+            head = (f"점프 없음인데 전 칸 {lo:,.0f}~{worst:,.0f}ms "
+                    f"→ 원인은 사다리 바깥 (프로세스 앞단의 공통 상수)")
+        else:
+            head = (f"점프 없음 · {','.join(slow)} «만» {worst:,.0f}ms "
+                    f"→ 계단이 아니라 그 칸 고유 비용")
+
+    if r0:
+        r0txt = f"R0 {r0['p50']:,.0f}ms" + ("(느림)" if r0["p50"] >= SLOW_MS else "")
+    else:
+        r0txt = "R0 미측정(기준선 없음)"
+    hdb = (_ladder.get("health_db") or {}).get("status")
+    if not hdb:
+        # 「본문아님」 = /health answered 200 with something that is not the health
+        # document. That is the catch-all-serves-HTML trap, and it means R0 is an
+        # unverified baseline rather than a confirmed DB round trip.
+        hdb = "본문아님" if _ladder.get("r0_body_json") is False else "?"
+    tail = f"{r0txt}·최대 {worst:,.0f}ms·칸 {done}/{total}·db={hdb}"
+    if jumps and worst < SLOW_MS:
+        # A step CAN add 200 ms on a box where nothing ever reaches a second -
+        # R2→R4 on a healthy box here was +105 ms just serialising 2.7 MB. The
+        # jump is real and stays named, but relayed without this the operator
+        # would be reporting a found cause for a symptom the ladder never saw.
+        tail += "·1초증상 아님"
+    if jumps and missing:
+        tail += f"·미측정 {','.join(missing)}"
+    return f"{head} | {tail}", _digest(rungs)
+
+
+def print_verdict():
+    """The last thing the report prints. The final line IS the verdict."""
+    line, digest = _verdict()
+    print()
+    print(SEP)
+    print("  ▶ 한 줄 판정 — 이 아래 «판정» 줄만 그대로 읽어 전달하면 된다")
+    print(SEP)
+    if digest:
+        print(f"   다이제스트  {digest}")
+        print(f"      ({_DIGEST_LEGEND} · 값=log2(ms) · A≈1초 · X=미측정 · "
+              f"끝자리=검사문자)")
+    print(f"   판정  {line}")
+    print(SEP)
 
 
 # ---------------------------------------------------------------------------
@@ -1734,14 +2018,20 @@ def main():
         for i, m in enumerate(_notes, 1):
             print(f"  {i}. {m}")
     print()
-    print("  이 보고서는 판정을 하지 않는다 — 사실만 싣는다. 무엇을 고칠지는 사람이 정한다.")
+    print("  이 보고서는 «무엇을 고칠지»는 정하지 않는다 — 시간이 어디서 늘었는지까지다.")
     print(SEP)
 
     if args.json:
         snapshot["notes"] = _notes
+        line, digest = _verdict()
+        snapshot["verdict"] = {"line": line, "digest": digest}
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2, default=str)
         print(f"\n  (스냅샷 저장: {args.json})")
+
+    # LAST, and last on purpose: on a box where the output cannot be copied off,
+    # the operator scrolls to the bottom and reads one line.
+    print_verdict()
     return 0
 
 
