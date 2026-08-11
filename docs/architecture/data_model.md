@@ -263,6 +263,19 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - 🔴 **자리표(placeholder)를 만들지 않는다.** 이 라운드의 초안은 그런 행에 `UNKEYED::<row_id>`를 찍었고 **제품 소유자가 기각했다** — *「키 없는 행은 인제션 될 일 없고 손으로만 다룸」*. 자리표의 값어치는 **나중의 인제션이 그 행을 알아보게** 하는 것인데, 여기서는 그 값을 걷어 갈 사람이 없다. 수동 작업은 행을 `row_id`로 지목하므로 `business_key_val`에 손잡이가 필요 없다. ⚠️ **다음에 여기에 합성 신원을 넣고 싶어지면 먼저 답할 질문은 「그걸 누가 읽는가」다.**
 - 회귀 그물: `server/tests/test_blank_business_key_is_null.py`.
 
+### 3.1-ter 체인은 그런 행을 **애초에 내보내지 않는다** · 2026-08-11
+
+3.1-bis는 「키를 못 구한 행이 **어떤 모양으로 저장되는가**」를 정했다(NULL). 남은 질문은 **누가 그런 행을 만들어도 되는가**였고, 제품 소유자 판정은 **체인은 안 된다**이다 — 매퍼가 키를 못 구했으면 행을 내보내지 말고 건너뛴다.
+
+키 없는 행은 **아무 업서트로도 지목되지 않으므로**, 같은 데이터가 다시 배달될 때마다 한 개씩 늘어난다. 2026-08-11 운영 실측 약 **17만 행**이 한 테이블에서 그렇게 쌓였고, 그중 한 행이 `GET /api/maps/alignment/worklist`를 요청 통째로 500으로 만들었다(`c4a3159`).
+
+- **게이트는 하나다**: [`server/chain_key_gate.py`](file:///c:/Users/kk980/Developments/assyManager/server/chain_key_gate.py). 매퍼에 넣지 않은 이유는 `server/mappers/*.py`가 **gitignored**라 거기 쓴 가드는 배포에 도달하지 않기 때문이다(추적되는 것은 `.sample`뿐). 호출부는 체인이 쓰는 깔때기 둘 — `chain_ingestion_worker`의 `write_batches` 루프, `chain_replay._apply_replay_batch`.
+- **키 컬럼의 정의는 선언에서 읽는다**: `composite_key_source`(있으면) 또는 `business_key`. 리터럴 컬럼명을 쓰지 않는다 — 2026-08-11 사고의 원인이 하드코딩된 `dt_job`(운영은 `dt_job_id`)이었다. 판정 함수는 `crud.unfilled_key_columns`이고, 「빈 값」은 `crud.is_blank_value`(= `contracts/blank_predicate`)로 묻는다. 🔴 좌표 `0`은 값이지 공백이 아니다.
+- **3.1-bis에 대한 두 번째 의견이 아니다**: 이 게이트는 아무것도 지우지 않고 아무것도 NULL로 만들지 않는다. 행을 **내보내지 않을** 뿐이다. `row_id`나 `business_key_val`을 가진 항목은 절대 거절되지 않으므로 기존 행의 UPDATE는 영향이 없다.
+- **인제션·그리드는 그대로다**: 키 없는 행은 여전히 수동 작업에서 생길 수 있고 NULL이 그 모양이다(3.1-bis). assy_qa 실측(2026-08-11): 워처 `_send_to_upsert`에 키 컬럼이 빈 행을 섞어 넣으면 **전과 동일하게** 7행 중 1행이 NULL 키로 저장되고 게이트 카운터는 0이다.
+- **거절은 시끄럽다**: `(table, column)`별 프로세스 누적 카운터 + 체인 워커 하트비트 note(`crud.undeclared_column_drops()`가 이미 쓰는 그 채널) + 규칙·테이블·컬럼·건수를 적은 로그. 배치 전체가 거절되면 `replace_map`은 **실행되지 않는다** — 거절이 삭제가 되면 안 되기 때문이다.
+- 회귀 그물: `server/tests/test_chain_key_gate.py`(변이 10건 전부 사살).
+
 ### 3.2 PK 컬럼에 `index=True`를 붙이지 않는다 · 2026-08-07 D3
 
 `Column(..., primary_key=True, index=True)`는 PK가 이미 만드는 UNIQUE btree와 **키·opclass·collation이 같은 두 번째 인덱스**를 만든다. 쓰기마다 유지되고 읽는 곳은 없다. 2026-08-07 실측: **29개, 382.3MB**(최대 `ix_cell_sources_id` 314MB vs `cell_sources_pkey` 314MB).

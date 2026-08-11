@@ -41,6 +41,12 @@ import map_meta_registrar
 # views leave exactly one candidate (per-rule knob `auto_confirm`, default OFF).
 import enrichment_candidates
 
+# [ChainKeyGate] A chain may not emit a row whose key columns are not filled. The gate
+# sits on the write loop below - the one place every chain-emitted row passes through -
+# rather than in each mapper, because `server/mappers/*.py` is gitignored and a guard
+# written there does not deploy.
+import chain_key_gate
+
 logger = get_process_logger("Chain", "chain_worker.log")
 
 class OutboxListener:
@@ -446,7 +452,13 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
     # not a third chain hop: the mapper remains read-only and the worker owns
     # all persistence and outbox semantics.
     map_metadata_updates = []
-    
+    # [ChainKeyGate] target_table -> the rule names that contributed to it. Collected
+    # here, at the ONE place a rule is bound to its target, so the gate below can name
+    # the rule an operator has to fix without any emission site having to remember to
+    # tag its items. `table_updates` aggregates several rules onto one target, so this
+    # cannot be recovered after the fact.
+    rules_by_target = defaultdict(set)
+
     # 3. Evaluate rules for this transaction
     # To support batch rules, we group rules by trigger table to execute them efficiently.
     # First, gather trigger tables present in valid_events
@@ -466,7 +478,11 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
             module_name = rule.get("mapper_module")
             func_name = rule.get("mapper_function")
             is_batch = rule.get("is_batch", False)
-            
+            _rule_name = rule.get("name") or "<unnamed rule>"
+            rules_by_target[target_table].add(_rule_name)
+            if rule.get("allow_map_metadata_upsert"):
+                rules_by_target[map_meta_registrar.META_TABLE].add(_rule_name)
+
             try:
                 trigger_events = [e for e in valid_events
                                   if e.table_name == table_name
@@ -557,10 +573,51 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                     replace_map=replace_map,
                     scope=scope,
                 )
+
+                # [ChainKeyGate] 🔴 THE GATE. Every chain-emitted row reaches
+                # `apply_batch_updates` through this loop and only through this loop, so
+                # this is the one place a row with no resolvable identity can be stopped
+                # without asking seven mappers to remember to do it.
+                #
+                # It runs AFTER the batch is built (one validator has already normalised
+                # every mapper's dict/model shape) and BEFORE the write, and it is
+                # read-only - it must not assemble the composite key here, because
+                # writing it into `updates[key_col]` before `derive_replace_map_scope`
+                # runs inside `apply_batch_updates` would narrow a whole-map purge to a
+                # single die.
+                kept, key_gate_report = chain_key_gate.screen(
+                    target_table, batch_data.updates,
+                    rule_names=rules_by_target.get(target_table, ()),
+                    transaction_id=chain_tx_id)
+                if key_gate_report["refused_rows"]:
+                    batch_data.updates = kept
+                    if not kept:
+                        # 🔴 EVERY row was refused. Writing the batch anyway would be
+                        # actively destructive on a `replace_map`: the purge (or the
+                        # scope diff) removes the map's rows and nothing replaces them.
+                        # A DECLARED empty replace - `scope` with an empty payload - is
+                        # still honoured, because this arm is only reached when the gate
+                        # is what emptied the list.
+                        logger.error(
+                            f"🔴 [ChainKeyGate] Table: '{target_table}' | TX: "
+                            f"'{chain_tx_id}' | rule(s): "
+                            f"{', '.join(key_gate_report['rules']) or '<unknown>'} | the "
+                            f"whole batch of {key_gate_report['refused_rows']} row(s) "
+                            f"carried no key value in {sorted(key_gate_report['by_column'])}. "
+                            f"Nothing was written and no map was replaced.")
+                        continue
+
                 logger.info(
                     f"Executing chained batch updates to '{target_table}' under tx '{chain_tx_id}' "
-                    f"(size: {len(updates_list)}, replace_map={replace_map}, scope={scope})")
-                
+                    f"(size: {len(batch_data.updates)}, replace_map={replace_map}, scope={scope}, "
+                    f"unkeyed_refused={key_gate_report['refused_rows']})")
+
+                # [Drop report] What the WRITE discards is a different question from what
+                # the gate refuses, and 94954cb built the channel for it. Asking for it
+                # here costs one dict and turns "the chain reported success and the row
+                # has no identity" into a named table, transaction, column and count.
+                drop_report = {}
+
                 # Apply updates
                 #
                 # [OUTBOX-4] The DERIVED write is bulk too: a 10M-row dt_log file
@@ -579,7 +636,20 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 # collapses by accident - the one thing the design says must never
                 # happen. The narrowest possible scope is the whole guarantee.
                 with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
-                    results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, target_table, batch_data)
+                    results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
+                        db, target_table, batch_data, drop_report=drop_report)
+
+                if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
+                    logger.warning(
+                        f"⚠️ [Chain Write Discard] Table: '{target_table}' | TX: "
+                        f"'{chain_tx_id}' | rule(s): "
+                        f"{', '.join(sorted(rules_by_target.get(target_table, ()))) or '<unknown>'} | "
+                        f"{drop_report['dropped_cells']} cell(s) on "
+                        f"{drop_report['rows_affected']} row(s) were dropped "
+                        f"({drop_report['by_reason']}, columns {sorted(drop_report['by_column'])}); "
+                        f"{drop_report['empty_rows_suppressed']} row(s) were not created "
+                        f"because every key they carried was dropped. Fix "
+                        f"config/table_config.json or the mapper's column names.")
 
                 # [M3] Absent-only wafer_map_metadata auto-registration for
                 # chain-created maps. Uses the VALIDATED batch items (same
@@ -1095,6 +1165,20 @@ def _undeclared_drop_note():
     return f"undeclared column drops: total={sum(drops.values())} " + ", ".join(parts)
 
 
+def _worker_note():
+    """Everything this process needs to say through the heartbeat, or `None`.
+
+    Two digests share one note because there is one note: the undeclared-column drops
+    the WRITE made, and the unkeyed rows the GATE refused. They are different questions
+    with different fixes (declare a column / fix the mapper or its source), so they are
+    never summed into one number - they are joined and both named.
+
+    `None` when both are clean, so a healthy deployment's heartbeat file is unchanged.
+    """
+    parts = [p for p in (_undeclared_drop_note(), chain_key_gate.note()) if p]
+    return " | ".join(parts) or None
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
@@ -1154,7 +1238,11 @@ async def start_chain_ingestion_worker(db_session_factory):
         # cross-process channel that already exists and `/health` already reads, so
         # no second channel is built for this. The note is None on a healthy worker,
         # so a clean deployment's heartbeat is byte-identical to what it is today.
-        heartbeat.beat("chain", note=_undeclared_drop_note())
+        #
+        # [ChainKeyGate] The same argument applies verbatim to the rows the key gate
+        # refused, and for the same reason they ride the same note rather than a new
+        # channel - see `_worker_note`.
+        heartbeat.beat("chain", note=_worker_note())
         try:
             db = db_session_factory()
             try:

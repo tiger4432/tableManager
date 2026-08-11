@@ -2013,18 +2013,85 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     composite_src = config.get("composite_key_source")
     if not composite_src or not key_col:
         return False
-    if not all(col in update_item.updates for col in composite_src):
+    if _unfilled_composite_parts(composite_src, update_item.updates):
         return False
 
     vals = [clean_str_value(update_item.updates.get(col)) for col in composite_src]
-    if not all(v != "" for v in vals):
-        return False
-
     computed_key = config.get("composite_key_separator", "_").join(vals)
     update_item.business_key_val = computed_key
     if key_col not in update_item.updates:
         update_item.updates[key_col] = computed_key
     return True
+
+
+def _unfilled_composite_parts(composite_src, updates) -> list:
+    """Which `composite_key_source` columns this payload does not supply a value for.
+
+    Extracted so that the assembler above and `unfilled_key_columns` below cannot drift
+    apart: one asks "may I build a key?" and the other asks "will a key be buildable?",
+    and those must be THE SAME QUESTION or a gate would refuse rows the writer would have
+    keyed (or, worse, pass rows it will not).
+
+    Blankness is `is_blank_value`, i.e. the `clean_str_value(x) == ""` this function
+    replaced verbatim; `contracts/blank_predicate` pins the two as equivalent.
+    """
+    updates = updates or {}
+    return [col for col in composite_src
+            if col not in updates or is_blank_value(updates.get(col))]
+
+
+def unfilled_key_columns(table_name: str, update_item) -> list:
+    """The declared key columns `update_item` leaves empty, or `[]` when it carries one.
+
+    🔴 READ-ONLY. It must never call `assemble_composite_business_key`, whose two side
+    effects include writing the key back into `updates[key_col]` - and doing that before
+    `derive_replace_map_scope` runs would narrow a whole-map purge down to a single die
+    (see that function's ordering constraint). This answers the question without moving
+    anything, so it is safe to ask at any point before the write.
+
+    An EMPTY list means "accept", and it is returned for three different reasons that all
+    have to mean accept:
+
+      * the item names a `row_id` or carries a `business_key_val` - it already has an
+        identity and the writer will resolve onto it;
+      * the table declares no `business_key` at all - nothing to judge, so judging it
+        would be inventing a policy;
+      * the table declares a plain (non-composite) business key and the payload supplies
+        that column with a value. The row still fails to MATCH an existing one on a later
+        push (`_get_or_create_row` reads only `row_id`/`business_key_val`, a pre-existing
+        defect recorded at the `[scope diff]` comment in `_apply_batch_updates_once`), but
+        it does land addressable, which is what this predicate is about.
+
+    A NON-EMPTY list names the columns, so a refusal can say WHICH column was blank
+    instead of "some key is missing".
+    """
+    # Truthiness, deliberately, on both - it is what `_get_or_create_row` uses to decide
+    # whether to look a row up, so a value it would ignore must not read as an identity
+    # here either.
+    if update_item.row_id:
+        return []
+    if update_item.business_key_val and not is_blank_value(update_item.business_key_val):
+        return []
+
+    config = TABLE_CONFIG.get(table_name, {})
+    key_col = config.get("business_key")
+    composite_src = config.get("composite_key_source")
+    declared = isinstance(key_col, str) and bool(key_col.strip())
+
+    if composite_src:
+        # No key column declared -> the assembler cannot run either, so there is nothing
+        # this payload could have done differently. Not the sender's defect; not refused.
+        if not declared:
+            return []
+        return _unfilled_composite_parts(composite_src, update_item.updates)
+
+    if declared:
+        updates = update_item.updates or {}
+        if key_col in updates and not is_blank_value(updates.get(key_col)):
+            return []
+        return [key_col]
+
+    return []
 
 
 def _update_row_business_key(row: Any, key_col: str, update_item: schemas.GeneralUpdateItem, row_cache: dict):

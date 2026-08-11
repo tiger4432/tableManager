@@ -75,6 +75,9 @@ import uuid
 logger = logging.getLogger(__name__)
 
 import keyset_scan
+# [ChainKeyGate] The same gate the live chain worker runs. Replay re-runs the same
+# mappers, so it must not be able to re-create in bulk the unkeyed rows the worker refuses.
+import chain_key_gate
 
 DEFAULT_CHUNK_SIZE = keyset_scan.DEFAULT_CHUNK_SIZE
 WRITE_CHUNK = 1000
@@ -272,6 +275,12 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         "skipped_blank_cells": 0, "user_protected_cells": 0,
         "rows_created": 0, "rows_updated": 0,
         "map_metadata_items": 0, "scoped_batches": 0, "maps_replaced": 0,
+        # [ChainKeyGate] Rows the gate refused because the mapper produced no value for
+        # their key column(s). Reported alongside `skipped_blank_cells` rather than
+        # folded into it: a skipped CELL still writes its row, a refused ROW writes
+        # nothing, and an operator reading a replay report has to be able to tell a
+        # value that went missing from a row that never existed.
+        "unkeyed_rows_refused": 0, "unkeyed_key_columns": {},
         "withdrawal_candidates": [], "samples": [],
     }
 
@@ -365,13 +374,15 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             # standard frame and valid_die_ref arrive.
             if metadata_items:
                 _apply_replay_batch(db, schemas, crud, map_meta_registrar.META_TABLE,
-                                    metadata_items, run_id, stats, stats["pages"])
+                                    metadata_items, run_id, stats, stats["pages"],
+                                    rule_name=rule.get("name"))
             for i in range(0, len(items), WRITE_CHUNK):
                 _apply_replay_batch(db, schemas, crud, target_table, items[i:i + WRITE_CHUNK],
-                                    run_id, stats, stats["pages"])
+                                    run_id, stats, stats["pages"], rule_name=rule.get("name"))
             for scope, batch_items in scoped_batches:
                 _apply_replay_batch(db, schemas, crud, target_table, batch_items,
-                                    run_id, stats, stats["pages"], replace_map=True, scope=scope)
+                                    run_id, stats, stats["pages"], replace_map=True, scope=scope,
+                                    rule_name=rule.get("name"))
                 stats["maps_replaced"] += 1
         elif items:
             # Dry-run: count the cells a human's value would keep protected. This
@@ -424,10 +435,35 @@ def _scoped_batch_outputs(result: dict, rule: dict, target_table: str):
 
 
 def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, page,
-                        replace_map=False, scope=None):
+                        replace_map=False, scope=None, rule_name=None):
     batch = schemas.GeneralUpdateBatch(
         updates=items, transaction_id=f"chain_replay_{run_id}_{page:06d}", silent=False,
         replace_map=replace_map, scope=scope)
+
+    # [ChainKeyGate] Replay is the same mapper contract as live chain ingestion, so it is
+    # the SAME gate - this is the replay side of the one funnel, not a second copy of the
+    # rule. Without it a replay could re-create in bulk exactly the unkeyed rows the live
+    # worker now refuses. Note the interaction with `SKIP_BLANK` above: a blank key column
+    # is stripped from `updates` there, which is precisely what makes the item unkeyable
+    # here.
+    kept, report = chain_key_gate.screen(
+        table_name, batch.updates, rule_names=(rule_name,) if rule_name else (),
+        transaction_id=batch.transaction_id)
+    if report["refused_rows"]:
+        batch.updates = kept
+        stats["unkeyed_rows_refused"] += report["refused_rows"]
+        for col, n in report["by_column"].items():
+            stats["unkeyed_key_columns"][col] = stats["unkeyed_key_columns"].get(col, 0) + n
+        if not kept:
+            # Same reasoning as the live worker: a `replace_map` whose every row was
+            # refused would purge the map and write nothing.
+            logger.error(
+                "🔴 [ChainKeyGate] replay of '%s' onto '%s': every row of this batch (%d) "
+                "carried no key value in %s. Nothing written, no map replaced.",
+                rule_name or "<unknown rule>", table_name, report["refused_rows"],
+                sorted(report["by_column"]))
+            return
+
     results_rows, changed_cells, _logs, _deleted = crud.apply_batch_updates(db, table_name, batch)
     stats["cells_written"] += len(changed_cells or [])
     for _row, is_new in results_rows:

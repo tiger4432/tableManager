@@ -137,13 +137,48 @@ silently replace a user value.
 
 | Path                             | Can do                                                                                                                                                                          | Cannot do                                                                                                        | Notes                                                                                                                                              |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Custom chain mapper              | Upsert returned updates; read declared/current DB state through `db`; intentionally return no updates | Commit directly; write raw target rows outside the worker batch; request an unapproved purge | Normal returns are upserts. Scoped replacement requires the batch envelope and `allow_replace_map: true`. A rule may explicitly authorize metadata for its own target map with `allow_map_metadata_upsert: true`. |
+| Custom chain mapper              | Upsert returned updates; read declared/current DB state through `db`; intentionally return no updates | Commit directly; write raw target rows outside the worker batch; request an unapproved purge; **emit a row whose key columns are not filled** (see below) | Normal returns are upserts. Scoped replacement requires the batch envelope and `allow_replace_map: true`. A rule may explicitly authorize metadata for its own target map with `allow_map_metadata_upsert: true`. |
 | Enrichment dedup                 | Upsert**one derived decision row per declared `decision_key`**                                                                                                          | Fill`target_fields` itself; arbitrarily update source rows; delete a decision row                              | `enrichment_mapper` deliberately projects only the identity/list fields. It does not assert a candidate result.                                  |
 | Enrichment auto-confirm          | Fill a declared, currently unresolved`target_field` when the configured reference views yield exactly one candidate and both global and per-rule `auto_confirm` are enabled | Overwrite any cell that already has provenance; choose among multiple/no candidates; retract a past auto-confirm | Writes with source`enrichment_auto_confirm`; ambiguity and refusal stay visible in the queue/logs.                                               |
 | Chain replay R1                  | Re-run a chosen enabled rule over current trigger-table rows, dry-run by default; apply the mapper's nonblank upserts                                                           | Reconstruct deleted trigger rows; cause a live cascade; treat mapper absence as a blank write                    | Replay sends the same canonical payload shape. Its`chain_ingestion` writes are not recursively consumed by the live worker.                      |
 | Source withdrawal R2             | Dry-run or remove one named non-user source claim from selected cells, then reveal the next source and audit the change                                                         | Delete a whole row/map; withdraw source`user`; override a `manual_priority_source` pin                       | Use this when a prior derived assertion must be retracted. It is layer-level retraction, not a new mapper result. Outbox events labelled `chain_ingestion` since `53f9187` — the deletion predicate is built from the source_name PARAMETER and is untouched by the label (§5.6.2). |
 | Display recompute R3             | Re-resolve which ALREADY-STORED layer wins and rewrite the materialised display column; audit every moved cell                                                                  | Create, alter or delete any `cell_sources` row; touch a cell with fewer than 2 layers; run without `--apply` writing anything | It changes the ANSWER, never a stored fact. Its outbox events are labelled `chain_ingestion`, so downstream rules consume them only under the same `allow_chain_trigger` opt-in R1 has (§5.6). |
 | Direct batch/API map replacement | Replace the rows in one validated map scope when`GeneralUpdateBatch.replace_map=True`                                                                                         | Purge an arbitrary table population or a scope outside the table's map-key contract                              | This is a separate, explicit destructive operation. The scope is derived from or supplied as validated map-key values.                             |
+
+### A chain may not emit an unkeyed row (`chain_key_gate`, 2026-08-11)
+
+A mapper that cannot resolve an identity for a row **returns nothing for it**. Do not
+emit the row and let the write path sort it out: a blank key column writes nothing
+(`818c9c0`), so the row lands with `business_key_val` NULL, no upsert can ever address
+it, and every re-delivery of the same data creates another one. Production measured
+~170,000 such rows in one table, and one of them made
+`GET /api/maps/alignment/worklist` answer 500 for the whole request (`c4a3159`).
+
+**You do not have to write this guard.** It is enforced centrally in
+[`server/chain_key_gate.py`](file:///c:/Users/kk980/Developments/assyManager/server/chain_key_gate.py),
+on the two funnels every chain-emitted row already passes through — the
+`write_batches` loop in `chain_ingestion_worker` and `chain_replay._apply_replay_batch`.
+A guard written inside a mapper would not deploy at all, because `server/mappers/*.py`
+is gitignored and only `*.py.sample` ships.
+
+- **Which columns count as the key** is read from the declaration, never spelled: a
+  table's `composite_key_source` when it has one, otherwise its `business_key`. Same
+  discipline as §"Column names: read them, never spell them" — the 2026-08-11 incident
+  was a hardcoded `dt_job` where production's column is `dt_job_id`.
+- **Blankness** is `crud.is_blank_value`, the predicate the writer itself uses
+  (`contracts/blank_predicate`). A coordinate of `0` is a value, not a blank.
+- **An item that carries `row_id` or `business_key_val` is never refused**, so updating
+  an existing row is unaffected.
+- **A refusal is never a deletion.** If the gate empties a `replace_map` batch, the
+  batch is skipped entirely rather than purging the scope and writing nothing. A
+  *declared* empty replace (explicit `scope`, empty payload) still works.
+- **Refusals are countable and attributable**: `(table, column)` counters for the life
+  of the process, published through the chain worker's heartbeat note (the channel
+  `/health` already reads for `crud.undeclared_column_drops()`), plus a log line naming
+  the rule, the table, the columns and the count. `chain_replay` additionally reports
+  `unkeyed_rows_refused` / `unkeyed_key_columns` in its run stats.
+- **This is not a policy for ingestion or the grid.** Those may still produce a
+  keyless row, and NULL remains its accepted shape (`818c9c0`, `data_model` §3.1-bis).
 
 ### `replace_map` boundary
 
