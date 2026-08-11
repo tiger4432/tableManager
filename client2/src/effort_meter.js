@@ -97,17 +97,32 @@ export const ROUTES = Object.freeze({
  * (over-counting never flatters) and loud, but it is a real trap — register the id in the
  * same change as the call site.
  */
+/*
+ * ⚠️ `enrichment` AND `enrichment:rule` ARE KEPT DELIBERATELY, AND NEITHER HAS A LIVE CALL SITE
+ *    (2026-08-11). `/enrichment.html` was deleted with the page; `enrichment:rule` lost its only
+ *    caller when `5116f67` removed the 결손 badge. They stay for one reason and it is not
+ *    sentiment: THIS LIST IS THE VALIDATOR FOR A SERVED ALLOWLIST, not a census of live
+ *    navigations. An id removed from here does not stop anything being counted -- it makes any
+ *    `context_preserving_transitions` entry naming it report as UNKNOWN and stay counted. Both
+ *    directions were measured before leaving them in: the served list defaults to `[]` and no
+ *    `server/config/effort_metric.json` exists, so nothing is exempt today and nothing can be
+ *    un-exempted; and matching is exact against what `countNav` was actually passed, so an entry
+ *    naming a dead route exempts nothing either way. Deleting them is therefore a housekeeping
+ *    change to make with `src/enrichment.js` -- which is the only module that still names
+ *    `ROUTES.ENRICHMENT` -- and that module is sliced by four gated harnesses. One decision, not
+ *    two.
+ */
 export const ROUTE_IDS = Object.freeze([
   ROUTES.GRID,
   ROUTES.MAP_EDITOR,
   ROUTES.ADMIN,
-  ROUTES.ENRICHMENT,
+  ROUTES.ENRICHMENT,                 // no live call site since the page was deleted — see above
   ROUTES.GRAPH,
   ROUTES.TRACE,
   'grid:table',                      // main.js      — table switch
   'grid:viewmode',                   // main.js      — pagination <-> infinite scroll
   'grid:log_jump',                   // timeline.js  — jump to a history entry
-  'enrichment:rule',                 // main.js      — 결손 badge carrying ?rule=
+  'enrichment:rule',                 // no live call site since 5116f67 — see above
   `${ROUTES.MAP_EDITOR}:material`    // map_editor.js — material frame push/pop
 ]);
 
@@ -500,7 +515,11 @@ const ROUTE_BY_PATH = Object.freeze({
   '/': ROUTES.GRID,
   '/index.html': ROUTES.GRID,
   '/map_editor.html': ROUTES.MAP_EDITOR,
-  '/enrichment.html': ROUTES.ENRICHMENT,
+  // `/enrichment.html` was here until 2026-08-11. The page is deleted, so that path now 404s and
+  // a mapping for it would name a screen this build cannot serve. Removing the KEY is local by
+  // construction -- this is a flat lookup and `routeFromHref` returns null for anything absent,
+  // so no other path's resolution moves. The ROUTE ID itself (`ROUTES.ENRICHMENT`) is deliberately
+  // NOT removed here; see the note on `ROUTE_IDS`.
   '/graph.html': ROUTES.GRAPH,
   '/admin.html': ROUTES.ADMIN,
   '/trace.html': ROUTES.TRACE

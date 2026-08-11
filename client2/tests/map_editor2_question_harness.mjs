@@ -119,12 +119,12 @@ const CATALOG = {
   eq(stale, moved, 'A20 the previous set-up answer is discarded, not painted under new labels');
 
   // Per-pair picks survive a switch, so the operator does not lose a choice by looking around.
-  const picked = withSelectedCandidate(moved, 'rot90_back');
+  const picked = withSelectedCandidate(moved, 'rot90_tr');
   eq(picked.requestSeq, moved.requestSeq, 'A21 picking a candidate does NOT re-ask');
   const other = withQuestion(picked, { columns: { x: 'core_x', y: 'core_y', val: 'c_bn' } });
   eq(other.selectedCandidateId, null, 'A22 a different pair starts with no pick of its own');
   const back = withQuestion(other, { columns: { x: 'dt_x', y: 'dt_y', val: 'c_bn' } });
-  eq(back.selectedCandidateId, 'rot90_back', 'A23 returning to a pair restores its pick');
+  eq(back.selectedCandidateId, 'rot90_tr', 'A23 returning to a pair restores its pick');
   eq(columnKey({ x: 'dt_x', y: 'dt_y', val: 'c_bn' }), 'dt_x__dt_y',
      'A24 the pair key ignores the value column -- value decides scoring, not placement');
 }
@@ -237,8 +237,8 @@ const CATALOG = {
 // ── D. occupancy-only is its own statement ─────────────────────────────────────
 {
   const base = withQuestion(withCatalog(createMapSession({}), CATALOG), { mapTable: 'core_wafer_map' });
-  const tie = [{ candidate_id: 'rot0_front', agree: 500, discriminating: 528 },
-               { candidate_id: 'rot90_front', agree: 499, discriminating: 528 }];
+  const tie = [{ candidate_id: 'rot0_tl', agree: 500, discriminating: 528 },
+               { candidate_id: 'rot90_tl', agree: 499, discriminating: 528 }];
   const occ = buildViewModel(readySession(base, { reference: { kind: 'occupancy' } }, tie));
   eq(occ.evidence.kind, EVIDENCE.OCCUPANCY, 'D1 the evidence kind is read off the wire');
   ok(occ.evidence.occupancyOnly, 'D2 and flagged');
@@ -389,12 +389,12 @@ const CATALOG = {
                        value: { column: 'c_bn', origin: 'proposed', reason: null } } },
     reference: { state: 'ok', kind: 'values', cells: [[0, 0], [1, 0], [0, 1]] },
     sources: { map_count: 2, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
-               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_tl',
                         declared_frame_source: 'declared' }] },
-    candidates: [{ frame: 'rot0_front', agreement: 200, discriminating: 300 },
-                 { frame: 'rot180_back', agreement: 90, discriminating: 300 }],
-    declaration: { frames: { rot0_front: 2 }, attested_maps: 2, unattested_maps: 0, axis_sources: {} },
-    ruling: { winner: 'rot0_front' }, excluded_total: 0, stats: { scored_cells: 300, elapsed_ms: 9 },
+    candidates: [{ frame: 'rot0_tl', agreement: 200, discriminating: 300 },
+                 { frame: 'rot180_tr', agreement: 90, discriminating: 300 }],
+    declaration: { frames: { rot0_tl: 2 }, attested_maps: 2, unattested_maps: 0, axis_sources: {} },
+    ruling: { winner: 'rot0_tl' }, excluded_total: 0, stats: { scored_cells: 300, elapsed_ms: 9 },
   };
   const api = {
     counters: { reads: 0, writes: 0 },
@@ -429,7 +429,7 @@ const CATALOG = {
   const beforePick = fetches.length;
   const cells = doc.querySelectorAll('[data-me2-candidate]');
   eq(cells.length, 8, 'G7 the empty per-pair grid is populated with the eight, and only eight');
-  cells.find(c => c.getAttribute('data-frame-code') === 'rot180_back').dispatchEvent('click');
+  cells.find(c => c.getAttribute('data-frame-code') === 'rot180_tr').dispatchEvent('click');
   eq(fetches.length, beforePick, 'G8 switching candidates issues NO fetch');
   eq(api.counters.writes, 0, 'G9 and exploring performed zero writes');
   eq(doc.querySelectorAll('[data-me2-candidate]').length, 8,
@@ -449,7 +449,7 @@ const CATALOG = {
   //    record does not need one -- so `frames` stays EMPTY rather than carrying a guess.
   eq(JSON.stringify(api.lastRecord.columns), '{"x":"dt_x","y":"dt_y","val":"c_bn"}',
      'G20 the record names the column pair that was aligned');
-  eq(api.lastRecord.frame, 'rot180_back', 'G20b with the confirmed frame');
+  eq(api.lastRecord.frame, 'rot180_tr', 'G20b with the confirmed frame');
   eq(api.lastRecord.mapTable, 'dt_map', 'G20c and the table those coordinates live in');
   eq(JSON.stringify(api.lastRecord.frames), '{}',
      'G20d and it names NO target field -- an empty map, not a guessed one');
@@ -688,8 +688,8 @@ function settle() { return Promise.resolve().then(() => {}).then(() => {}).then(
 /** A READY session plus its verdict, built from the decoded payload the shell would hold. */
 function readySession(session, extra, scorings) {
   const per = scorings || [
-    { candidate_id: 'rot0_front', agree: 512, discriminating: 528 },
-    { candidate_id: 'rot90_front', agree: 300, discriminating: 528 },
+    { candidate_id: 'rot0_tl', agree: 512, discriminating: 528 },
+    { candidate_id: 'rot90_tl', agree: 300, discriminating: 528 },
   ];
   const thresholds = { min_margin_dies: 20, min_discriminating_dies: 40 };
   const payload = {

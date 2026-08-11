@@ -46,9 +46,19 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..');
 const TESTS_DIR = path.join(REPO_ROOT, 'client2', 'tests');
 
-// Lead PM direction 2026-08-09: keep every diagnostic visible, but do not make harness
-// failures/config drift an exit-code gate while the candidate-contract migration is triaged.
-const fail = msg => { console.error(`\n✗ ${msg}\n`); };
+// 🔴 THE EXIT CODE IS THE GATE, AND REMOVING IT IS NOT THE SAME AS MARKING SOMETHING RED.
+//    On 2026-08-09 this line lost its `process.exit(1)` so the candidate-axis migration could
+//    land, and the cost was measured over the following week: a clean exit proved nothing, so
+//    every lane had to hand the Lead PM `✓`/`✗` lines by hand, and 794 assertions that had
+//    stopped executing were carried as debt rather than noticed as death. A disabled gate leaves
+//    NOTHING TO GREP FOR and reads, from the outside, exactly like a gate that runs.
+//
+//    `KNOWN_RED` is the marker that exists for this. An entry there is still RUN and still
+//    REPORTED and still does not block -- that is the whole design (see the debt-list note
+//    below) -- so a migration in flight has a way to say so out loud, in one place, per harness,
+//    with a reason attached. Reaching for the exit code instead trades a per-harness statement
+//    for a silence covering all of them.
+const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 
 // ── the debt list ───────────────────────────────────────────────────────────────
 // Red as of 2026-07-30. Each is RUN and REPORTED; none of them blocks the build yet.
@@ -74,19 +84,11 @@ const KNOWN_RED = new Map([
     why: 'Lead PM accepted 2026-08-09: the harness asserts the retired front/back candidate '
        + 'space (including an 8-of-16 mirror/invert equivalence). The product now scores '
        + 'front rot*_tl/tr start corners; rewrite the oracle/fixtures before re-gating.' }],
-  ['map_editor2_question_harness.mjs', { ran: 0, failed: 0,
-    namesUnavailable: 'dies before asserting while selecting retired rot180_back',
-    why: 'Lead PM accepted 2026-08-09: fixture still selects the retired front/back candidate '
-       + 'spelling. Rewrite it for rot*_tl/tr before re-gating.' }],
-  ['map_editor2_shell_harness.mjs', { ran: 0, failed: 0,
-    namesUnavailable: 'dies at ESM import of retired SIDE_HEADERS export',
-    why: 'Lead PM accepted 2026-08-09: fixture imports the front/back UI header contract. '
-       + 'Rewrite it for START_HEADERS and rot*_tl/tr before re-gating.' }],
-  ['map2_placement_seat_harness.mjs', { ran: 0, failed: 0,
-    namesUnavailable: 'dies before asserting while parsing retired rot*_front/back ids',
-    why: 'Lead PM accepted 2026-08-09: fixture measures physical mirror candidates that no '
-       + 'longer belong to the alignment candidate space. Rewrite it for start corners before re-gating.' }],
-  ['reposition_regime_probe.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies before asserting; 0 failure lines emitted (measured 2026-08-06)',
+  // `map_editor2_shell_harness.mjs`, `map_editor2_question_harness.mjs` and
+  // `map2_placement_seat_harness.mjs` were here with `ran: 0` from 2026-08-09 to 2026-08-11.
+  // Their fixtures were rewritten for the walk-start candidate space and they are back on the
+  // gate with floors of their own -- see FLOORS below, which carries what moved and why.
+  ['reposition_regime_probe.mjs',{ ran: 0, failed: 0, namesUnavailable: 'dies before asserting; 0 failure lines emitted (measured 2026-08-06)',
     why: 'throws with ERR_INVALID_ARG_TYPE ― DEAD: a path/arg it reads has moved (and it asserts nothing by design; see its ASSERTIONS 0 0)' }],
   ['split_registry_harness.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies at extraction; 0 failure lines emitted (measured 2026-08-06)',
     why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
@@ -531,6 +533,30 @@ const FLOORS = new Map([
   // different counts), R2c is the symptom itself (191/1 giving way to 40/6), and R5b scores the
   // supersession as an ABORT rather than as an end state. R3/R3b are the negative controls: the
   // 기준 and column controls must NOT re-ask, which is the route's contract and not symmetry.
+  // 🔴 OFF THE GATE 2026-08-09, BACK ON IT 2026-08-11 AT 577. It was moved to KNOWN_RED with
+  // `ran: 0` because it died at an ESM import of the retired `SIDE_HEADERS`, and this floor was
+  // deleted with it -- so for two days the largest client harness in the tree was scoring nothing
+  // and the build said so nowhere. THE CODE WAS NEVER THE DEFECT: `db1ee42` replaced the mirror
+  // half of the candidate space with the walk start corner, and the fixtures still spoke
+  // `rot*_front/back`. What was repaired, in the harness only:
+  //   · the import and section A now read `START_HEADERS` and the `start` axis, and A11b-A11d
+  //     pin that the LEGACY `_front`/`_back` spellings still parse and still mean what they meant
+  //     (stored confirmations hold them; a screen that stopped reading them shows 선언 없음).
+  //   · the document stub authored its eight controls as `front`/`back`, so every
+  //     `data-frame-code` lookup missed and a click threw. It authors `tl`/`tr` now, exactly as
+  //     `map_editor2.html` does.
+  //   · 🔴 SECTION L'S ORACLE MOVED, AND THAT IS THE LOAD-BEARING PART OF THIS REPAIR. It seated
+  //     cells through `framesFor`, which reads ROTATION AND SIDE ONLY -- so with every candidate
+  //     now `front` it could never tell more than four of the eight apart, and it was scoring a
+  //     function that is no longer the drawing path anyway. The oracle now reads the wire's own
+  //     `placement`, and L7b/L7c pin WHERE the walk axis lives: the turn in the matrix, the start
+  //     corner in `anchor_ref`. If a later round puts the corner back into the linear part, that
+  //     is the mirror returning under a new name and those two go red.
+  // 560 -> 577 is +17 from those pins (A6b, A11b-A11d, L7b/L7c x4, L14b, L14c); no assertion was
+  // deleted, and L14 was re-pointed rather than dropped -- the eight thumbnails no longer share
+  // one bounding box, because the normalisation that made them share one also cancelled the
+  // start-corner term, so the floor is scored on the floor POPULATION instead of on its pixels.
+  ['map_editor2_shell_harness.mjs', 577],
   //
   // THE SEAT ITSELF. Scores that the screen draws where the server says it seated the map,
   // rather than recomposing `seatOf(frame) + shift` from a frame it built out of absent fields.
@@ -544,6 +570,26 @@ const FLOORS = new Map([
   // (`anchor_src == reference_top_left`) is part of the fixture on purpose: without it every frame
   // is displaced, the front/back split the operator reported vanishes, and the harness measures a
   // different defect than the one that was filed.
+  // 🔴 OFF THE GATE 2026-08-09, BACK ON IT 2026-08-11 AT 60. It died parsing `rot*_front/back`
+  // out of `candidateList()`, and its floor was deleted with it. THE SPLIT IT SCORES SURVIVED THE
+  // AXIS CHANGE, re-pointed rather than deleted: the operator reported it as front-versus-back,
+  // and what it actually is -- the old rule reproducing the shipped seat on EXACTLY ONE candidate
+  // and being displaced on the other seven -- is now scored at ONE ROTATION (`rot0_tl` still,
+  // `rot0_tr` moves), so the difference cannot be attributed to the turn. B1/B2/B3 kept their
+  // numbers and their meaning.
+  // 🔴 B3b IS NEW AND IT IS THE STRONGER HALF: the pre-placement rule read rotation and side, so
+  // it returns byte-identical seats for BOTH columns of a turn -- it was structurally incapable
+  // of expressing the axis, not merely wrong about it. That is `db1ee42`'s server-side defect
+  // (all eight shifts measured at `(-13,-11)`) arriving here as its mirror image, and it is
+  // asserted as an IDENTITY on the legacy function rather than as an error count, because a
+  // count also passes on a version that is wrong in two different ways.
+  // ⚠️ THE FIXTURE'S TRUTH MOVED FROM `rot90_back` TO `rot90_tl` and the reference gained a
+  // top-RIGHT corner, because the right column anchors there (`map_alignment.py:2113`). A7/A7b/A7c
+  // are the guard on that: two columns sharing one `anchor_ref` is exactly the state in which the
+  // walk axis does nothing, and A8 requires the eight to seat the map in eight different places.
+  // 42 -> 60 is +18 and every one of them is new coverage, not a re-count: A6 (1), A7/A7b/A7c on
+  // each of the four turns (12), A8 (1), and B3b on each turn (4). Nothing was removed.
+  ['map2_placement_seat_harness.mjs', 60],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
@@ -561,6 +607,12 @@ const FLOORS = new Map([
   // stale state and would have passed, or failed, for reasons unrelated to the dropdowns. The
   // new line clears it first and says so. A drop here means the guard block went back to
   // asserting something it had not established.
+  // 🔴 OFF THE GATE 2026-08-09, BACK ON IT 2026-08-11 AT 193. It died selecting the retired
+  // `rot180_back` out of the candidate control, and its floor was deleted with it. THE REPAIR IS
+  // ONE RESPELLING AND NOTHING ELSE -- this harness's stub publishes an EMPTY per-pair grid and
+  // lets the shell fill it from `candidateList()`, so the eight controls followed the axis change
+  // on their own and only the ids the fixture reaches for had to move. 192 -> 193 is that one
+  // assertion which had been added after the floor was last recorded, not new work.
   //
   // ⚠️ ITS `H4` NO LONGER PINS THE DECISION UNIT. `api.js` retargeted `loadReferenceView` to a
   //    rule/map_table key, so the assertion that the reference view is keyed by (eqp, product)
@@ -568,6 +620,7 @@ const FLOORS = new Map([
   //    switchover bar actually rests on. That is a deliberate, reported downgrade awaiting a
   //    seam judgement -- not a coverage loss to be baselined away. If the unit is restored,
   //    restore the stronger assertion and raise this floor.
+  ['map_editor2_question_harness.mjs', 193],
   // New 2026-08-04 with 📐 규격만 저장 (`saveMapSpecOnly`), the metadata-only write path, so its
   // floor is the count it reports on the commit that introduces it. It is the only scorer of
   // a write that must touch NO cells: its central assertions name the ENTIRE request list, and

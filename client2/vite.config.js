@@ -20,7 +20,10 @@ export default defineConfig({
         // Map Editor 2 stands BESIDE the legacy editor, it does not replace it. The entry
         // above keeps shipping unchanged until the new screen can actually confirm a frame.
         map_editor2: resolve(__dirname, 'map_editor2.html'),
-        enrichment: resolve(__dirname, 'enrichment.html'),
+        // `enrichment` was here until 2026-08-11. The queue page was retired from navigation by
+        // product-owner ruling (`5116f67` took its links; this takes the page), because
+        // correction happens in the grid with the sidebar 참조뷰 beside it. Building an entry
+        // nobody can reach is how a retired screen keeps looking shipped.
         graph: resolve(__dirname, 'graph.html'),
         trace: resolve(__dirname, 'trace.html')
       }

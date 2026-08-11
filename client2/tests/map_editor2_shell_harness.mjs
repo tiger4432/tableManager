@@ -27,7 +27,7 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe): no emoji, no em-dash.
  */
 
-import { candidateList, candidateGrid, candidateId, parseCandidateId, SIDE_HEADERS,
+import { candidateList, candidateGrid, candidateId, parseCandidateId, START_HEADERS,
          INVERSION_FOOTNOTE } from '../src/map2/candidates.js';
 import { createMapSession, withDecision, withPayload, withError, withSelectedCandidate,
          withConfirmed, withFocusedSource, withConfig, isExploringOnly,
@@ -45,7 +45,7 @@ import { createApiClient, ROUTES } from '../src/map2/api.js';
 import { deltaE00 } from './oracle/colour_difference_oracle.mjs';
 import { readArtifact, isImplemented, rejectionSummary, unmappedRejectionCodes,
          REJECTED } from '../src/map2/artifact_gateway.js';
-import { bootstrap, ELEMENT_IDS, framesFor, paintCandidateThumbs,
+import { bootstrap, ELEMENT_IDS, framesFor, paintCandidateThumbs, floorSeating,
          adaptPayload } from '../src/map2/main.js';
 
 let compared = 0;
@@ -72,18 +72,48 @@ function eq(actual, expected, what) {
 // carry the eight matrices a real server would send for them rather than eight of my own
 // choosing. Both maps are read as un-inverted here; `grid_y_invert` is exercised where it
 // belongs, in `map2_placement_seat_harness.mjs`.
+//
+// 🔴 THE LINEAR PART DOES NOT SEE THE START CORNER, AND THAT IS NOT A GAP IN THIS FIXTURE.
+//    `frame_linear_part` reads rotation, side and y-invert only, and every candidate is now the
+//    FRONT (`db1ee42`) -- so `rot0_tl` and `rot0_tr` share one matrix, and the eight ids carry
+//    four matrices. What tells the two columns apart is the ANCHOR: `first_die_of` picks the
+//    leftmost or the rightmost die of the top row (`map_alignment.py:1085`), and the reference
+//    corner moves with it (`:2113`). Modelling the corner in the matrix instead would put a
+//    mirror back in the candidate space, which is the thing that round removed.
+//    ⚠️ AND THE MOVING END IS THE REFERENCE CORNER, NOT THE SOURCE ANCHOR. `_anchor_shift`
+//    (`map_alignment.py:2113`) is explicit: which die is #1 is a fact about the equipment's
+//    numbering, so `anchor_cell` is the same for all eight; what the candidate chooses is WHICH
+//    CORNER OF THE REFERENCE that die sits on. Live measurement recorded there: while the corner
+//    was always the top-left, all eight shifts came back `(-13,-11)` and the walk axis was inert.
+//    A fixture that anchors both columns to the same corner reproduces that exactly and would
+//    score eight controls showing four pictures as a pass.
 const _ROT_FWD = { 0: [[1, 0], [0, 1]], 90: [[0, 1], [-1, 0]],
                    180: [[-1, 0], [0, -1]], 270: [[0, -1], [1, 0]] };
+function _axesOf(id) {
+  const m = /^rot(0|90|180|270)_(tl|tr|front|back)$/.exec(String(id || ''));
+  if (!m) throw new Error(`not a candidate spelling: ${id}`);
+  const token = m[2];
+  return { rotation: Number(m[1]),
+           side: token === 'back' ? 'back' : 'front',
+           leftToRight: token !== 'tr' };
+}
 function _linearFor(id) {
-  const m = /^rot(\d+)_(front|back)$/.exec(id);
-  const rot = Number(m[1]);
-  const quarter = rot === 90 || rot === 270;
-  const side = m[2] === 'back'
+  const a = _axesOf(id);
+  const quarter = a.rotation === 90 || a.rotation === 270;
+  const side = a.side === 'back'
     ? (quarter ? [[1, 0], [0, -1]] : [[-1, 0], [0, 1]])
     : [[1, 0], [0, 1]];
-  const a = _ROT_FWD[rot];
-  return [[a[0][0] * side[0][0] + a[0][1] * side[1][0], a[0][0] * side[0][1] + a[0][1] * side[1][1]],
-          [a[1][0] * side[0][0] + a[1][1] * side[1][0], a[1][0] * side[0][1] + a[1][1] * side[1][1]]];
+  const r = _ROT_FWD[a.rotation];
+  return [[r[0][0] * side[0][0] + r[0][1] * side[1][0], r[0][0] * side[0][1] + r[0][1] * side[1][1]],
+          [r[1][0] * side[0][0] + r[1][1] * side[1][0], r[1][0] * side[0][1] + r[1][1] * side[1][1]]];
+}
+/**
+ * `map_alignment.first_die_of` transcribed: the top row (minimum y), then its LEFT end. The
+ * candidate does NOT choose this -- it is where the equipment's numbering starts.
+ */
+function _firstDie(cells) {
+  const top = Math.min(...cells.map(([, y]) => y));
+  return [Math.min(...cells.filter(([, y]) => y === top).map(([x]) => x)), top];
 }
 /** One candidate's placement, as the wire carries it. */
 function placementOf(id, anchorSrc, anchorRef) {
@@ -104,14 +134,26 @@ function withPlacements(candidates, anchorSrc, anchorRef) {
  *    server that never corrected, and the eight pictures would then differ in their BOUNDING
  *    BOX rather than in their shape -- which silently turns "the eight pictures differ" into a
  *    statement about the layout window instead of about the geometry.
+ *
+ * 🔴 `anchor_ref` IS THE START CORNER'S ONLY CARRIER. The source's #1 die sits on the
+ *    reference's TOP-LEFT under `_tl` and on its TOP-RIGHT under `_tr` (`map_alignment.py:2113`,
+ *    `_t_for`). `anchor_src` is the same die for all eight. Anchoring both columns to the same
+ *    corner -- which is what this function used to do by normalising every image to one box --
+ *    cancels that term exactly and hands back four placements wearing eight names.
  */
-function fittedPlacements(candidates, srcCells) {
+function fittedPlacements(candidates, srcCells, floorCells) {
+  const floor = floorCells || srcCells;
+  const fMinX = Math.min(...floor.map(([x]) => x));
+  const fMaxX = Math.max(...floor.map(([x]) => x));
+  const fMinY = Math.min(...floor.map(([, y]) => y));
+  const anchorSrc = _firstDie(srcCells);
   return candidates.map(c => {
-    const L = _linearFor(c.frame);
-    const img = srcCells.map(([x, y]) => [L[0][0] * x + L[0][1] * y, L[1][0] * x + L[1][1] * y]);
-    const minX = Math.min(...img.map(p => p[0]));
-    const minY = Math.min(...img.map(p => p[1]));
-    return { ...c, placement: { linear: L, anchor_src: [0, 0], anchor_ref: [-minX, -minY] } };
+    const a = _axesOf(c.frame);
+    return { ...c, placement: {
+      linear: _linearFor(c.frame),
+      anchor_src: anchorSrc,
+      anchor_ref: a.leftToRight ? [fMinX, fMinY] : [fMaxX, fMinY],
+    } };
   });
 }
 function throws(fn, what) {
@@ -127,19 +169,34 @@ function throws(fn, what) {
   eq(new Set(list.map(c => c.id)).size, 8, 'A2 candidate ids are distinct');
   const grid = candidateGrid();
   eq(grid.length, 4, 'A3 four rows, one per turn');
+  // 🔴 THE SECOND AXIS IS THE WALK START CORNER, NOT THE MIRROR (`db1ee42`). Every candidate
+  //    names the FRONT; the columns differ by which corner the equipment numbered from. The
+  //    two assertions below are the ones that would go quiet first if the mirror crept back
+  //    in as a candidate -- `side` alone can no longer tell the columns apart, so pinning it
+  //    would pass on a grid whose two columns were identical.
   for (const row of grid) {
     eq(row.cells.length, 2, `A4 two columns at ${row.rotation}`);
-    eq(row.cells[0].side, 'front', `A5 left column is front at ${row.rotation}`);
-    eq(row.cells[1].side, 'back', `A6 right column is back at ${row.rotation}`);
+    eq(row.cells[0].start, 'top_left', `A5 left column starts top-left at ${row.rotation}`);
+    eq(row.cells[1].start, 'top_right', `A6 right column starts top-right at ${row.rotation}`);
+    eq(row.cells[0].side, row.cells[1].side,
+       `A6b and neither column is a mirror of the other at ${row.rotation}`);
   }
-  eq(candidateId(270, 'back'), 'rot270_back', 'A7 stored spelling');
-  eq(parseCandidateId('rot90_front').rotation, 90, 'A8 round trip rotation');
-  eq(parseCandidateId('rot90_front').side, 'front', 'A9 round trip side');
-  eq(parseCandidateId('rot45_front'), null, 'A10 a non-candidate parses to null');
+  eq(candidateId(270, 'top_right'), 'rot270_tr', 'A7 stored spelling');
+  eq(parseCandidateId('rot90_tr').rotation, 90, 'A8 round trip rotation');
+  eq(parseCandidateId('rot90_tr').start, 'top_right', 'A9 round trip start corner');
+  eq(parseCandidateId('rot45_tl'), null, 'A10 a non-candidate parses to null');
   eq(parseCandidateId(''), null, 'A11 empty parses to null');
-  ok(SIDE_HEADERS.front.includes('앞면'), 'A12 front header names the motion');
-  ok(SIDE_HEADERS.back.includes('뒷면'), 'A13 back header names the motion');
-  ok(INVERSION_FOOTNOTE.includes('180'), 'A14 inversion is one footnote, not a third axis');
+  // LEGACY SPELLINGS STAY READABLE AND KEEP THEIR OLD MEANING. Rows confirmed before the walk
+  // axis existed hold `rot90_front` / `rot90_back`, and a screen that stopped parsing them
+  // would render a stored declaration as "none". `_back` is a PHYSICAL MIRROR with no start
+  // corner -- calling it 우상단 is the equivalence `db1ee42` measured wrong.
+  eq(parseCandidateId('rot90_front').start, 'top_left', 'A11b legacy _front reads as the top-left walk');
+  eq(parseCandidateId('rot90_back').side, 'back', 'A11c legacy _back stays a mirror, not a start corner');
+  eq(parseCandidateId('rot90_back').start, null, 'A11d and it carries no start corner at all');
+  ok(START_HEADERS.top_left.includes('좌상단'), 'A12 left header names the corner');
+  ok(START_HEADERS.top_right.includes('우상단'), 'A13 right header names the corner');
+  ok(/뒤집기는 후보가 아닙니다/.test(INVERSION_FOOTNOTE),
+     'A14 flipping is one footnote saying it is NOT a candidate, not a third axis');
   ok(!/16|열여섯/.test(INVERSION_FOOTNOTE), 'A15 the footnote does not reintroduce sixteen');
 }
 
@@ -164,9 +221,9 @@ function throws(fn, what) {
   const staleErr = withError(a3, new Error('x'), a2.requestSeq);
   eq(staleErr, a3, 'B9 a stale error is discarded too');
 
-  const picked = withSelectedCandidate(fresh, 'rot90_back');
+  const picked = withSelectedCandidate(fresh, 'rot90_tr');
   eq(picked.requestSeq, fresh.requestSeq, 'B10 selecting a candidate does NOT bump the sequence');
-  eq(picked.selectedCandidateId, 'rot90_back', 'B11 selection is recorded');
+  eq(picked.selectedCandidateId, 'rot90_tr', 'B11 selection is recorded');
   // 🔴 EXPLORING-ONLY COUNTS WRITES THAT LANDED, NOT A STATE THAT PRECEDED THEM (2026-08-06).
   //    This used to pin `withArmed(...)` as the thing that left the exploring-only state, and
   //    that was wrong in both directions even before the arming was removed: arming never
@@ -287,9 +344,9 @@ function throws(fn, what) {
 // ── E. the verdict contract ─────────────────────────────────────────────────────
 {
   const scorings = [
-    { candidate_id: 'rot0_front', agree: 400, discriminating: 528 },
-    { candidate_id: 'rot90_front', agree: 300, discriminating: 528 },
-    { candidate_id: 'rot270_back', agree: 512, discriminating: 528 },
+    { candidate_id: 'rot0_tl', agree: 400, discriminating: 528 },
+    { candidate_id: 'rot90_tl', agree: 300, discriminating: 528 },
+    { candidate_id: 'rot270_tr', agree: 512, discriminating: 528 },
   ];
   const thresholds = { min_margin_dies: 20, min_discriminating_dies: 40 };
 
@@ -301,9 +358,9 @@ function throws(fn, what) {
 
   const win = decideVerdict(scorings, thresholds);
   eq(win.kind, VERDICT.WINNER, 'E5 a clear margin produces a winner');
-  eq(win.winnerId, 'rot270_back', 'E6 the winner is the top agreement count');
+  eq(win.winnerId, 'rot270_tr', 'E6 the winner is the top agreement count');
   eq(win.marginDies, 112, 'E7 the margin is a die count');
-  eq(win.rankedIds[0], 'rot270_back', 'E8 ranking order');
+  eq(win.rankedIds[0], 'rot270_tr', 'E8 ranking order');
 
   // ── E-bis. THE SERVER DECIDES THE WINNER; THIS SIDE RENDERS IT ────────────────
   // 🔴 THE DEFECT: this file sorted by `agree` alone and named its own winner, while
@@ -312,8 +369,8 @@ function throws(fn, what) {
   //    among the numbers ranked here. The server would ship a winner and the screen would say
   //    "indistinguishable" about the same payload.
   const dirScorings = [
-    { candidate_id: 'rot90_back', agree: 44, discriminating: 88, state: 'scored' },
-    { candidate_id: 'rot270_front', agree: 44, discriminating: 88, state: 'scored' },
+    { candidate_id: 'rot90_tr', agree: 44, discriminating: 88, state: 'scored' },
+    { candidate_id: 'rot270_tl', agree: 44, discriminating: 88, state: 'scored' },
   ];
   const dirWire = (ruling) => ({
     state: 'scored',
@@ -325,11 +382,11 @@ function throws(fn, what) {
 
   // The server broke the tie by direction and says so.
   const vDir = decideVerdict(dirScorings, dirThresholds, verdictContext(decodeReferenceView(
-    dirWire({ winner: 'rot90_back', decided_by: 'direction', index_violations: 0, index_steps: 87 }))));
+    dirWire({ winner: 'rot90_tr', decided_by: 'direction', index_violations: 0, index_steps: 87 }))));
   eq(vDir.kind, VERDICT.WINNER,
      'E8a a direction ruling reaches the screen as a WINNER -- the die margin is 0 by '
      + 'construction (the tie it broke was a tie ON AGREEMENT), so the old code vetoed it');
-  eq(vDir.winnerId, 'rot90_back', "E8b and the winner is the SERVER's, not this side's sort");
+  eq(vDir.winnerId, 'rot90_tr', "E8b and the winner is the SERVER's, not this side's sort");
   eq(vDir.winnerSource, 'server', 'E8c recorded as coming from the server');
   eq(vDir.decidedBy, 'direction', 'E8d carrying HOW it was decided, which is a separate claim');
   eq(vDir.indexViolations, 0, 'E8e with the evidence behind it');
@@ -345,7 +402,7 @@ function throws(fn, what) {
   eq(vTie.winnerId, null, 'E8h and a ruling that named nobody does not get a winner invented for it');
   eq(vTie.winnerSource, 'server_named_none', 'E8i named apart from a missing ruling');
 
-  // 🔴 AND THE SERVER OVERRIDES THIS SIDE'S ORDER. `rot270_front` would win the local sort on
+  // 🔴 AND THE SERVER OVERRIDES THIS SIDE'S ORDER. `rot270_tl` would win the local sort on
   //    a plain `agree` comparison; the server names the other one and that is what shows.
   // Equal agreement, which is the only shape in which the two can differ: this side ranks on
   // the same metric the server does, so a server winner with LOWER agreement is not a payload
@@ -365,14 +422,14 @@ function throws(fn, what) {
      + 'questions and only one of them belongs to the server');
 
   const tight = decideVerdict([
-    { candidate_id: 'rot0_front', agree: 500, discriminating: 528 },
-    { candidate_id: 'rot90_front', agree: 495, discriminating: 528 },
+    { candidate_id: 'rot0_tl', agree: 500, discriminating: 528 },
+    { candidate_id: 'rot90_tl', agree: 495, discriminating: 528 },
   ], thresholds);
   eq(tight.kind, VERDICT.INDISTINGUISHABLE, 'E9 a small margin is not a winner');
   eq(tight.winnerId, null, 'E10 and nobody is badged');
   ok(tight.tiedCount >= 2, 'E11 the tie is counted');
 
-  const thin = decideVerdict([{ candidate_id: 'rot0_front', agree: 38, discriminating: 40 }],
+  const thin = decideVerdict([{ candidate_id: 'rot0_tl', agree: 38, discriminating: 40 }],
     { min_margin_dies: 20, min_discriminating_dies: 60 });
   eq(thin.kind, VERDICT.NOT_SCORABLE, 'E12 too little evidence is not scorable');
   eq(thin.reason, REASON.TOO_FEW_DISCRIMINATING, 'E13 and it names the denominator');
@@ -387,8 +444,8 @@ function throws(fn, what) {
     ok(!/percent|pct|ratio|coverage|fitness/i.test(k), `E18 verdict field ${k} is not a ratio`);
   }
   // Order must be total: equal counts must not swap between two calls on the same payload.
-  const tie = [{ candidate_id: 'rot90_back', agree: 5, discriminating: 100 },
-               { candidate_id: 'rot0_front', agree: 5, discriminating: 100 }];
+  const tie = [{ candidate_id: 'rot90_tr', agree: 5, discriminating: 100 },
+               { candidate_id: 'rot0_tl', agree: 5, discriminating: 100 }];
   eq(decideVerdict(tie, thresholds).rankedIds.join(','),
      decideVerdict(tie.slice().reverse(), thresholds).rankedIds.join(','),
      'E19 ranking is stable under input order');
@@ -397,14 +454,14 @@ function throws(fn, what) {
 // ── F. the view rules ───────────────────────────────────────────────────────────
 {
   const payload = {
-    stored_candidate_id: 'rot0_front',
+    stored_candidate_id: 'rot0_tl',
     sources: [{ id: 's1', label: 'CORE 맵', cells: [] }, { id: 's2', label: 'DT 로그', cells: [] }],
     floor_cells: [],
     // `total` is the population the agreement was measured against; `discriminating` is the
     // evidence gate and is a SUBSET of `agree` on every axis (`map_alignment.py:2691`).
     per_candidate: [
-      { candidate_id: 'rot0_front', agree: 400, discriminating: 380, total: 528 },
-      { candidate_id: 'rot270_back', agree: 512, discriminating: 500, total: 528 },
+      { candidate_id: 'rot0_tl', agree: 400, discriminating: 380, total: 528 },
+      { candidate_id: 'rot270_tr', agree: 512, discriminating: 500, total: 528 },
     ],
     map_count: 12, excluded_map_count: 5, discriminating_dies: 528, elapsed_ms: 340,
   };
@@ -417,12 +474,12 @@ function throws(fn, what) {
   ok(winner.numerals, 'F2 numerals are allowed here');
   eq(winner.summary.countText, '일치 512 / 대상 528', 'F3 two absolute counts, denominator kept');
   eq(winner.summary.marginText, 'Δ 112', 'F4 the margin is a die count, written as a delta');
-  ok(winner.candidates.find(c => c.id === 'rot270_back').badges.includes('추천'), 'F5 the winner is badged');
-  ok(winner.candidates.find(c => c.id === 'rot0_front').badges.includes('현재 선언'), 'F6 the stored declaration is marked');
+  ok(winner.candidates.find(c => c.id === 'rot270_tr').badges.includes('추천'), 'F5 the winner is badged');
+  ok(winner.candidates.find(c => c.id === 'rot0_tl').badges.includes('현재 선언'), 'F6 the stored declaration is marked');
   ok(winner.meta.includes('12') && winner.meta.includes('5'), 'F7 exclusions are stated once, in aggregate');
   // The confirm's one full sentence belongs to the markup lane. The decoder hands over the
   // VALUES that sentence names, so a mis-click is visible without two lanes writing one clause.
-  eq(winner.confirm.candidateId, 'rot270_back', 'F8a the confirm carries the chosen spelling');
+  eq(winner.confirm.candidateId, 'rot270_tr', 'F8a the confirm carries the chosen spelling');
   eq(winner.confirm.eqp, 'E1', 'F8b and the equipment');
   eq(winner.confirm.product, 'P1', 'F8c and the product');
   ok(!('sentence' in winner.confirm), 'F8d and composes no sentence of its own');
@@ -441,8 +498,8 @@ function throws(fn, what) {
 
   const tightSession = withPayload(withDecision(createMapSession({ config: thresholds }), { eqp: 'E', product: 'P' }),
     { ...payload, per_candidate: [
-      { candidate_id: 'rot0_front', agree: 500, discriminating: 528 },
-      { candidate_id: 'rot90_front', agree: 495, discriminating: 528 }] }, 1);
+      { candidate_id: 'rot0_tl', agree: 500, discriminating: 528 },
+      { candidate_id: 'rot90_tl', agree: 495, discriminating: 528 }] }, 1);
   const noWinner = buildViewModel({ session: tightSession,
     verdict: decideVerdict(tightSession.payload.per_candidate, thresholds) });
   eq(noWinner.state, VIEW_STATE.SCORED_NO_WINNER, 'F17 scored-with-no-winner is its own state');
@@ -479,19 +536,22 @@ function throws(fn, what) {
   //    measured are NOT part of that refusal, and neither is the operator's ability to open one
   //    of the eight and look: hiding the first left `미상` eight times, and disabling the second
   //    left eight frames nobody could open. A zeroed score lands in exactly this state.
-  const listedNW = notScorable.candidates.find(c => c.id === 'rot270_back');
+  const listedNW = notScorable.candidates.find(c => c.id === 'rot270_tr');
   eq(listedNW.countText, '일치 512 / 대상 528',
      'F23d the eight are LISTED with their measured counts even though nothing won');
-  eq(notScorable.candidates.find(c => c.id === 'rot0_front').countText, '일치 400 / 대상 528',
+  eq(notScorable.candidates.find(c => c.id === 'rot0_tl').countText, '일치 400 / 대상 528',
      'F23e every candidate the server scored, not just one');
+  // Declaration order is BOTH start corners on each turn, turns ascending -- the reading order
+  // of the 4x2 control (`candidates.js` `candidateList`), so the list and the grid cannot
+  // disagree about which cell is candidate 3.
   eq(notScorable.candidates.map(c => c.id).join(','),
-     'rot0_front,rot90_front,rot180_front,rot270_front,rot0_back,rot90_back,rot180_back,rot270_back',
+     'rot0_tl,rot0_tr,rot90_tl,rot90_tr,rot180_tl,rot180_tr,rot270_tl,rot270_tr',
      'F23f in declaration order -- sorting by score would BE the ranking that was refused');
   ok(notScorable.candidates.every(c => !c.inert),
      'F23g the eight stay open to look through -- a refusal to rank is not an absence of data');
   ok(notScorable.candidates.every(c => !c.badges.includes('추천')),
      'F23g2 and still nothing is recommended, which is the refusal that was actually asked for');
-  eq(notScorable.candidates.find(c => c.id === 'rot90_back').countText, UNKNOWN,
+  eq(notScorable.candidates.find(c => c.id === 'rot90_tr').countText, UNKNOWN,
      'F23h a candidate the server did NOT score says the unknown word, never a 0 stand-in');
   eq(notScorable.picture, 'alone', 'F24 the source is drawn alone, with no floor beneath it');
   eq(notScorable.cause.detail, '규격이 선언되지 않았습니다.', 'F25 the server sentence is carried verbatim');
@@ -522,7 +582,10 @@ function throws(fn, what) {
   eq(marginText(47), 'Δ 47', 'F34 margin phrasing');
   eq(winner.grid.length, 4, 'F35 the view model carries the 4x2 control');
   eq(winner.grid[0].cells.length, 2, 'F36 two columns');
-  ok(winner.footnote.includes('180'), 'F37 inversion footnote is present once');
+  // The footnote answers the flip question ONCE, under the grid, by saying flipping is not a
+  // candidate at all -- see `INVERSION_FOOTNOTE`. A9-style check on the text, because the
+  // absence of this sentence is what leaves the operator hunting for a ninth control.
+  ok(/뒤집기는 후보가 아닙니다/.test(winner.footnote), 'F37 inversion footnote is present once');
   eq(winner.caption.startsWith('지금 보는 것'), true, 'F38 the picture is always captioned');
   // Same transform, different spelling: the stored one is always marked as such.
   eq(winner.candidates.filter(c => c.badges.includes('현재 선언')).length, 1, 'F39 exactly one stored marker');
@@ -542,7 +605,7 @@ function throws(fn, what) {
     reference: { state: 'ok', kind: 'values', cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
     sources: {
       map_count: 3, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
-      maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front', declared_frame_source: 'declared' }],
+      maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_tl', declared_frame_source: 'declared' }],
     },
     // 🔴 `discriminating <= agreement`, AND A `placed` BESIDE THEM. The server computes the
     //    discriminating count as `count_nonzero(member & varies)` over the agreement vector
@@ -551,13 +614,13 @@ function throws(fn, what) {
     //    is how a denominator that is a SUBSET of its numerator went unnoticed. `placed` is the
     //    occupancy axis's population (`:2800`), which is what the denominator must be.
     candidates: [
-      { frame: 'rot0_front', agreement: 200, discriminating: 180, placed: 300,
-        placement: placementOf('rot0_front', [0, 0], [0, 0]) },
-      { frame: 'rot180_back', agreement: 90, discriminating: 85, placed: 300,
-        placement: placementOf('rot180_back', [0, 0], [0, 0]) },
+      { frame: 'rot0_tl', agreement: 200, discriminating: 180, placed: 300,
+        placement: placementOf('rot0_tl', [0, 0], [0, 0]) },
+      { frame: 'rot180_tr', agreement: 90, discriminating: 85, placed: 300,
+        placement: placementOf('rot180_tr', [0, 0], [0, 0]) },
     ],
-    declaration: { frames: { rot0_front: 3 }, attested_maps: 3, unattested_maps: 0, axis_sources: {} },
-    ruling: { winner: 'rot0_front' },
+    declaration: { frames: { rot0_tl: 3 }, attested_maps: 3, unattested_maps: 0, axis_sources: {} },
+    ruling: { winner: 'rot0_tl' },
     excluded_total: 0,
     stats: { scored_cells: 300, elapsed_ms: 12 },
   };
@@ -601,10 +664,10 @@ function throws(fn, what) {
 
   // THE BAR: switching candidates is a repaint of data already in hand.
   const before = fetches.length;
-  cells.find(c => c.getAttribute('data-frame-code') === 'rot180_back').dispatchEvent('click');
+  cells.find(c => c.getAttribute('data-frame-code') === 'rot180_tr').dispatchEvent('click');
   eq(fetches.length, before, 'G16 switching candidates issues NO fetch');
   eq(api.counters.writes, 0, 'G17 exploring performed zero writes');
-  eq(app.peek().selectedCandidateId, 'rot180_back', 'G18 the repaint followed the selection');
+  eq(app.peek().selectedCandidateId, 'rot180_tr', 'G18 the repaint followed the selection');
   ok(Object.isFrozen(app.peek()), 'G19 the session handed out is frozen');
   eq(doc.querySelectorAll('[data-me2-candidate]').length, 8,
      'G20 a repaint does not multiply the controls');
@@ -764,7 +827,7 @@ function throws(fn, what) {
     assumption: { state: 'applied', requested: false,
                   basis: { table: 'core_wafer_map', map_id: 'LOT-A_05' },
                   map_count: 1, map_ids: ['s1'], text: '가정 적용됨' },
-    ruling: { winner: 'rot0_front', margin: 110, min_margin_dies: 1,
+    ruling: { winner: 'rot0_tl', margin: 110, min_margin_dies: 1,
               min_discriminating_dies: 1, geometry_assumed: true,
               thresholds_defaulted: ['min_margin_dies', 'min_discriminating_dies'],
               provisional_text: PROVISIONAL },
@@ -796,7 +859,7 @@ function throws(fn, what) {
   //    read as "declared", which is exactly the claim nobody is entitled to make.
   const declaredWire = {
     ...payload,
-    ruling: { winner: 'rot0_front', margin: 110, min_margin_dies: 20,
+    ruling: { winner: 'rot0_tl', margin: 110, min_margin_dies: 20,
               min_discriminating_dies: 40, thresholds_defaulted: [], provisional_text: null },
   };
   const docQ = makeDocument();
@@ -877,7 +940,7 @@ function throws(fn, what) {
     ...payload,
     reference: { state: 'ok', kind: 'values', cells: [[5, 5], [6, 5], [5, 6], [6, 6]] },
     sources: { map_count: 1, cell_count: 4, cells: [[3, 2], [4, 2], [3, 3], [4, 3]],
-               maps: [{ map_id: 's1', cell_count: 4, declared_frame: 'rot0_front',
+               maps: [{ map_id: 's1', cell_count: 4, declared_frame: 'rot0_tl',
                         declared_frame_source: 'declared' }] },
     // 🔴 THE WINNER IS DELIBERATELY **NOT** FIRST IN THIS LIST. With it at index 0, "look the
     //    shift up by candidate id" and "read `per_candidate[0]`" return the same object and a
@@ -888,12 +951,12 @@ function throws(fn, what) {
     // floor's first die (5,5), which is the same (+2,+3) the `shift` above spells -- the two are
     // two spellings of one placement and the drawing reads only the second.
     candidates: [
-      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
-        placement: placementOf('rot180_back', [3, 2], [3, 2]) },
-      { frame: 'rot0_front', agreement: 4, discriminating: 4, shift: { dx: 2, dy: 3 },
-        placement: placementOf('rot0_front', [3, 2], [5, 5]) },
+      { frame: 'rot180_tr', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
+        placement: placementOf('rot180_tr', [3, 2], [3, 2]) },
+      { frame: 'rot0_tl', agreement: 4, discriminating: 4, shift: { dx: 2, dy: 3 },
+        placement: placementOf('rot0_tl', [3, 2], [5, 5]) },
     ],
-    ruling: { winner: 'rot0_front', margin: 4 },
+    ruling: { winner: 'rot0_tl', margin: 4 },
   };
   const docS = makeDocument();
   const appS = bootstrap({ document: docS,
@@ -910,12 +973,12 @@ function throws(fn, what) {
   // summary line. A harness that dies mid-run reports nothing at all, which is worse than a
   // failure -- measured on the `decode-drops-field` mutant, which crashed here instead of
   // failing and took every later assertion's result with it.
-  const cardS = vmS.candidates.find(c => c.id === 'rot0_front') || {};
+  const cardS = vmS.candidates.find(c => c.id === 'rot0_tl') || {};
   eq(cardS.shift ? cardS.shift.dx : null, 2,
      'G53 the placement reaches the candidate card (dx)');
   eq(cardS.shift ? cardS.shift.dy : null, 3,
      'G53b and dy -- carried per candidate, not off the ruling');
-  const otherS = vmS.candidates.find(c => c.id === 'rot180_back') || {};
+  const otherS = vmS.candidates.find(c => c.id === 'rot180_tr') || {};
   eq(otherS.shift ? otherS.shift.dx : null, 0,
      'G53c and a DIFFERENT candidate keeps its OWN placement, not the winner one');
 
@@ -948,10 +1011,10 @@ function throws(fn, what) {
   const unplacedWire = {
     ...shiftedWire,
     candidates: [
-      { frame: 'rot0_front', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
-        placement: placementOf('rot0_front', [3, 2], [40, 40]) },
-      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
-        placement: placementOf('rot180_back', [3, 2], [40, 40]) },
+      { frame: 'rot0_tl', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
+        placement: placementOf('rot0_tl', [3, 2], [40, 40]) },
+      { frame: 'rot180_tr', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 },
+        placement: placementOf('rot180_tr', [3, 2], [40, 40]) },
     ],
   };
   const docU = makeDocument();
@@ -975,8 +1038,8 @@ function throws(fn, what) {
   const noPlacementWire = {
     ...shiftedWire,
     candidates: [
-      { frame: 'rot0_front', agreement: 0, discriminating: 4, shift: { dx: 2, dy: 3 } },
-      { frame: 'rot180_back', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 } },
+      { frame: 'rot0_tl', agreement: 0, discriminating: 4, shift: { dx: 2, dy: 3 } },
+      { frame: 'rot180_tr', agreement: 0, discriminating: 4, shift: { dx: 0, dy: 0 } },
     ],
   };
   const docN = makeDocument();
@@ -1066,10 +1129,10 @@ function throws(fn, what) {
       // TWO sources here, so the cross-source row is the corroborated case.
       loadReferenceView: () => Promise.resolve({ ...payload, state: 'no_winner',
         sources: { ...payload.sources, maps: payload.sources.maps.concat(
-          [{ map_id: 's2', cell_count: 0, declared_frame: 'rot0_front', declared_frame_source: 'declared' }]) },
+          [{ map_id: 's2', cell_count: 0, declared_frame: 'rot0_tl', declared_frame_source: 'declared' }]) },
         candidates: [
-          { frame: 'rot0_front', agreement: 500, discriminating: 528 },
-          { frame: 'rot90_front', agreement: 495, discriminating: 528 }] }),
+          { frame: 'rot0_tl', agreement: 500, discriminating: 528 },
+          { frame: 'rot90_tl', agreement: 495, discriminating: 528 }] }),
       loadWorklist: () => Promise.resolve({ rows: [] }),
       loadAlignConfig: () => Promise.resolve({}),
       confirmFrame: () => Promise.resolve({}),
@@ -1124,7 +1187,7 @@ function throws(fn, what) {
   eq(calls.length, 1, 'H4 the reference view is exactly one request, whatever it is keyed by');
   eq(client.counters.reads, 1, 'H5 reads are counted');
   eq(client.counters.writes, 0, 'H6 no write happened');
-  await client.confirmFrame({ eqp: 'E', product: 'P' }, 'rot0_front', ['s1']);
+  await client.confirmFrame({ eqp: 'E', product: 'P' }, 'rot0_tl', ['s1']);
   eq(client.counters.writes, 1, 'H7 the confirm is the only write');
   eq(calls[1].method, 'POST', 'H8 and it is the only POST');
 
@@ -1226,8 +1289,8 @@ function throws(fn, what) {
 //    flip lose the counts, the eight controls and the floor.
 {
   const doc = makeDocument();
-  const TIED = ['rot0_front', 'rot0_back', 'rot90_front', 'rot90_back',
-                'rot180_front', 'rot180_back', 'rot270_front', 'rot270_back'];
+  const TIED = ['rot0_tl', 'rot0_tr', 'rot90_tl', 'rot90_tr',
+                'rot180_tl', 'rot180_tr', 'rot270_tl', 'rot270_tr'];
   const tiePayload = {
     state: 'no_winner',
     refusal: '동점 - 판별 불가',
@@ -1236,7 +1299,7 @@ function throws(fn, what) {
                  cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
     sources: {
       map_count: 3, usable_map_count: 3, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
-      maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+      maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_tl',
                declared_frame_source: 'declared' }],
     },
     // Every one of the eight on the SAME two figures. That is what a tie looks like, and it is
@@ -1245,7 +1308,7 @@ function throws(fn, what) {
     // the G payload). The shape was `agreement: 312, discriminating: 374`, which no server emits.
     candidates: TIED.map(frame => ({ frame, state: 'scored', agreement: 312,
                                      discriminating: 300, placed: 374 })),
-    declaration: { frames: { rot0_front: 3 }, attested_maps: 3, unattested_maps: 0, axis_sources: {} },
+    declaration: { frames: { rot0_tl: 3 }, attested_maps: 3, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: null, margin: 0, reason_code: 'tie', tied: TIED.slice() },
     excluded_total: 0,
     stats: { scored_cells: 374, elapsed_ms: 12 },
@@ -1377,15 +1440,16 @@ function throws(fn, what) {
       // The fourth die carries NO number, so the `fill="none"` path is drawn rather than
       // assumed -- that branch is the one the stylesheet used to supply, and wrongly.
       cell_index: [1, 2, 40, null], cell_map: [0, 0, 0, 0], truncated: false,
-      maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+      maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_tl',
                declared_frame_source: 'declared' }],
     },
     // Refused on the SCORE, placed all the same -- so the operator can still look through a
     // frame, which is what section K is about. `map_alignment.py` `_candidate_rows`'s `placement` places every row whose
     // anchor stood, regardless of whether the ranking refused.
     candidates: fittedPlacements(candidateList().map(c => ({ frame: c.id, state: 'not_scorable' })),
-                                 [[0, 0], [1, 0], [2, 2], [3, 3]]),
-    declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+                                 [[0, 0], [1, 0], [2, 2], [3, 3]],
+                                 [[0, 0], [1, 0], [0, 1], [1, 1]]),
+    declaration: { frames: { rot0_tl: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: null, index_axis: 'ranking' },
     excluded_total: 0,
     stats: { scored_cells: 0, elapsed_ms: 3, source_indices_usable: 3 },
@@ -1417,9 +1481,9 @@ function throws(fn, what) {
   const fetchesBefore = fetches.length;
   const drawnBefore = layerShape(doc, 'me2-layer-alone');
   ok(drawnBefore.length > 0, 'K6 the refused state draws the cells it was served');
-  cells.find(c => c.getAttribute('data-frame-code') === 'rot180_front').dispatchEvent('click');
+  cells.find(c => c.getAttribute('data-frame-code') === 'rot180_tl').dispatchEvent('click');
   eq(fetches.length, fetchesBefore, 'K7 looking through a frame costs no fetch');
-  eq(app.peek().selectedCandidateId, 'rot180_front', 'K8 the selection is recorded');
+  eq(app.peek().selectedCandidateId, 'rot180_tl', 'K8 the selection is recorded');
   const drawnAfter = layerShape(doc, 'me2-layer-alone');
   ok(drawnAfter !== drawnBefore,
      'K9 and the picture is REPAINTED under that frame -- the click has a visible consequence');
@@ -1534,10 +1598,20 @@ function throws(fn, what) {
 //
 //    WHAT IS ACTUALLY SCORED HERE IS THAT THE EIGHT PICTURES DIFFER, and it is scored against an
 //    ORACLE rather than against a number this code produced: the count of distinct pictures must
-//    equal the count of distinct SEATINGS, computed independently through `computeSeating`. A
-//    renderer that painted one frame eight times would be green under "eight canvases exist" and
-//    under "every canvas was drawn into", and it is exactly the failure that would waste the
-//    operator's afternoon -- eight pictures that all look the same tell them nothing.
+//    equal the count of distinct SEATINGS, computed independently from the wire's own
+//    `placement` block. A renderer that painted one frame eight times would be green under
+//    "eight canvases exist" and under "every canvas was drawn into", and it is exactly the
+//    failure that would waste the operator's afternoon -- eight pictures that all look the same
+//    tell them nothing.
+//
+// 🔴 THE ORACLE MOVED, AND WHY IT HAD TO. It used to seat cells through
+//    `framesFor` + `computeSeating`, and `framesFor` reads ROTATION AND SIDE ONLY -- so once the
+//    second axis became the walk start corner (`db1ee42`, every candidate `front`) that oracle
+//    could only ever tell four of the eight apart, whatever the renderer did. Worse, it is no
+//    longer the drawing path at all: the picture comes from the server's `placement`
+//    (`main.js` `seatingFor`), so an oracle built on the frame was scoring a different function
+//    than the one under test. It now reads the same three fields the producer emits, in three
+//    lines of arithmetic that call nothing from `src/`.
 {
   // ANISOTROPIC AND ASYMMETRIC, ON PURPOSE. A square grid hides the axis swap under a quarter
   // turn, and a shape with any symmetry axis collapses two of the eight into one -- on such a
@@ -1545,18 +1619,21 @@ function throws(fn, what) {
   const floorCells = [];
   for (let y = 0; y < 4; y++) for (let x = 0; x < 5; x++) floorCells.push([x, y]);
   const srcCells = [[0, 0], [1, 0], [2, 0], [0, 1], [0, 2], [3, 1]];
+  // Eight rows, eight seats. A refusal is about the SCORE; the placements are shipped anyway
+  // (`map_alignment.py` `score_candidates`, the `not_considered` branch), which is what lets the
+  // operator look through all eight. Held in a name because the ORACLE below reads the WIRE
+  // spelling (`anchor_src`), never the adapted record -- decoding is part of what is under test.
+  const wireCandidates = fittedPlacements(candidateList().map(c => ({
+    frame: c.id, state: 'scored', agreement: 3, discriminating: 6 })), srcCells, floorCells);
   const payload = adaptPayload({
     state: 'no_winner',
     refusal: '동점 - 판별 불가',
     reference: { state: 'resolved', kind: 'values', cells: floorCells },
     sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
                maps: [{ map_id: 's1', cell_count: srcCells.length,
-                        declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
-    // Eight rows, eight seats. A refusal is about the SCORE; the placements are shipped anyway
-    // (`map_alignment.py` `score_candidates`, the `not_considered` branch), which is what lets the operator look through all eight.
-    candidates: fittedPlacements(candidateList().map(c => ({
-      frame: c.id, state: 'scored', agreement: 3, discriminating: 6 })), srcCells),
-    declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+                        declared_frame: 'rot0_tl', declared_frame_source: 'declared' }] },
+    candidates: wireCandidates,
+    declaration: { frames: { rot0_tl: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: null, reason_code: 'no_discrimination' },
     excluded_total: 0,
     stats: { scored_cells: 0, elapsed_ms: 4 },
@@ -1573,14 +1650,37 @@ function throws(fn, what) {
     eq(floorFrame.side, 'front', `L4 ${c.id} and unflipped`);
   }
   eq(framesFor(payload, null).frame.rotation, 0, 'L5 an absent candidate reads as the identity');
-  eq(framesFor(payload, 'rot45_front').frame.rotation, 0, 'L6 and so does an unparsable one');
+  eq(framesFor(payload, 'rot45_tl').frame.rotation, 0, 'L6 and so does an unparsable one');
 
-  // THE ORACLE: how many of the eight the geometry actually tells apart.
-  const seatSets = candidateList().map(c => computeSeating(srcCells.map(([x, y]) => ({ x, y })),
-    framesFor(payload, c.id).frame).seats.map(s => s.key).sort().join(' '));
-  const distinctSeatings = new Set(seatSets).size;
+  // THE ORACLE: how many of the eight the wire's own placements actually tell apart. Three lines
+  // of `placed = anchor_ref + L*(cell - anchor_src)`, reading the payload and nothing from
+  // `src/` -- so a defect in `placeCells` or `seatingFor` cannot be reproduced by the scorer.
+  const oracleSeatSet = (row) => {
+    const p = row.placement;
+    return srcCells.map(([x, y]) => {
+      const dx = x - p.anchor_src[0];
+      const dy = y - p.anchor_src[1];
+      return `${p.anchor_ref[0] + p.linear[0][0] * dx + p.linear[0][1] * dy},`
+           + `${p.anchor_ref[1] + p.linear[1][0] * dx + p.linear[1][1] * dy}`;
+    }).sort().join(' ');
+  };
+  const wireRows = candidateList().map(c => wireCandidates.find(r => r.frame === c.id));
+  const distinctSeatings = new Set(wireRows.map(oracleSeatSet)).size;
   eq(distinctSeatings, 8,
-     'L7 the fixture is asymmetric enough that all eight frames are genuinely different');
+     'L7 the fixture is asymmetric enough that all eight placements are genuinely different');
+  // 🔴 WHERE THE WALK AXIS LIVES, PINNED. The turn is in the MATRIX and the start corner is in
+  //    the ANCHOR (`map_alignment.py:2113` -- the source's #1 die is a fact about the equipment's
+  //    numbering, the candidate only chooses which reference corner it sits on). If a later round
+  //    puts the corner back into the linear part, that is the mirror returning to the candidate
+  //    space under a new name, and these two go red rather than the count staying quietly at 8.
+  for (const row of candidateGrid()) {
+    const tl = wireRows.find(r => r.frame === row.cells[0].id);
+    const tr = wireRows.find(r => r.frame === row.cells[1].id);
+    eq(JSON.stringify(tl.placement.linear), JSON.stringify(tr.placement.linear),
+       `L7b ${row.rotation}: the start corner is not a second linear part`);
+    ok(JSON.stringify(tl.placement.anchor_ref) !== JSON.stringify(tr.placement.anchor_ref),
+       `L7c ${row.rotation}: and the two columns do not share one reference corner`);
+  }
 
   // THE PICTURES, painted through the SAME pieces the main stage uses, onto recording surfaces.
   // No canvas and no DOM anywhere in this path -- that is what `surfaceFor` buys.
@@ -1600,16 +1700,28 @@ function throws(fn, what) {
   eq(new Set(shapes).size, distinctSeatings,
      'L13 the eight PICTURES distinguish exactly what the geometry distinguishes');
 
-  // The floor is seated ONCE for all eight. Measured as the property that makes it safe: every
-  // picture rests on the same floor marks, so nothing per-candidate re-derives them.
-  const floorMarks = candidateList().map(c => JSON.stringify(
-    surfaces.get(c.id).ops.filter(o => o.color === 'F')));
-  eq(new Set(floorMarks).size, 1, 'L14 one floor, drawn identically under all eight');
+  // The floor is seated ONCE for all eight, and it is the same POPULATION under every candidate.
+  //
+  // ⚠️ IT IS NOT THE SAME PIXELS, AND THAT CHANGED WITH THE FIXTURE, NOT WITH THE CODE. Each
+  //    thumbnail fits its viewport to the union of floor and source, so a candidate that seats
+  //    the source further out gets a smaller scale and the SAME floor dies land on different
+  //    pixels. The old fixture normalised all eight images into one box, which made the union --
+  //    and therefore the pixels -- accidentally identical; that normalisation is exactly what
+  //    cancelled the start-corner term and had to go. So the claim is scored where it actually
+  //    lives: one floor seating, candidate-independent, and the same number of floor marks in
+  //    every picture. A renderer that re-derived the floor per candidate changes the count.
+  const floorCounts = candidateList().map(c =>
+    surfaces.get(c.id).ops.filter(o => o.color === 'F').length);
+  eq(new Set(floorCounts).size, 1, 'L14 one floor population, drawn under all eight');
+  eq(floorCounts[0], floorCells.length, 'L14b and it is every reference die, not a subset');
+  const floorSeats = floorSeating(payload).seats.map(s => s.key).sort().join(' ');
+  eq(floorSeats, floorCells.map(([x, y]) => `${x},${y}`).sort().join(' '),
+     'L14c the floor sits at its stored coordinates, which no candidate can move');
 
   // A page that publishes fewer slots than eight still renders the ones it has, rather than
   // throwing -- the failure mode that takes down everything rendered after it.
   const partial = paintCandidateThumbs(
-    id => (id === 'rot90_back' ? createRecordingSurface() : null), payload, source,
+    id => (id === 'rot90_tr' ? createRecordingSurface() : null), payload, source,
     { width: 32, height: 32, padding: 1 },
     { floor: 'F', agree: 'A', gap: 'G', mismatch: 'M', unrelated: 'U', skeleton: 'S' });
   eq(partial.length, 1, 'L15 a missing slot is skipped, not thrown over');
@@ -1627,10 +1739,10 @@ function throws(fn, what) {
         reference: { state: 'resolved', kind: 'values', cells: floorCells },
         sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
                    maps: [{ map_id: 's1', cell_count: srcCells.length,
-                            declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
+                            declared_frame: 'rot0_tl', declared_frame_source: 'declared' }] },
         candidates: fittedPlacements(candidateList().map(c => ({ frame: c.id, state: 'scored',
-                                                agreement: 4, discriminating: 6 })), srcCells),
-        declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+                                                agreement: 4, discriminating: 6 })), srcCells, floorCells),
+        declaration: { frames: { rot0_tl: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
         ruling: { winner: null, reason_code: 'no_discrimination' },
         excluded_total: 0, stats: { scored_cells: 6, elapsed_ms: 4 },
       }),
@@ -1671,12 +1783,12 @@ function throws(fn, what) {
         reference: { state: 'resolved', kind: 'values', cells: floorCells },
         sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
                    maps: [{ map_id: 's1', cell_count: srcCells.length,
-                            declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
+                            declared_frame: 'rot0_tl', declared_frame_source: 'declared' }] },
         // Refused on the SCORE, placed all the same -- which is why there are still eight
         // different pictures to look through on the one screen with no counts on it.
         candidates: fittedPlacements(candidateList().map(c => ({
-          frame: c.id, state: 'not_scorable' })), srcCells),
-        declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+          frame: c.id, state: 'not_scorable' })), srcCells, floorCells),
+        declaration: { frames: { rot0_tl: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
         ruling: { winner: null, reason_code: 'no_cells_scored' },
         excluded_total: 0, stats: { scored_cells: 0, elapsed_ms: 4 },
       }),
@@ -1716,11 +1828,11 @@ function throws(fn, what) {
     state: 'no_winner', refusal: '판별 다이가 없어 후보를 가를 수 없습니다.',
     reference: { state: 'resolved', kind: 'values', cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
     sources: { map_count: 1, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
-               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_tl',
                         declared_frame_source: 'declared' }] },
-    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 2, discriminating: 4 },
-                 { frame: 'rot90_front', state: 'scored', agreement: 2, discriminating: 4 }],
-    declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+    candidates: [{ frame: 'rot0_tl', state: 'scored', agreement: 2, discriminating: 4 },
+                 { frame: 'rot90_tl', state: 'scored', agreement: 2, discriminating: 4 }],
+    declaration: { frames: { rot0_tl: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
     ruling: { winner: null, reason_code: 'no_discrimination' },
     excluded_total: 0, stats: { scored_cells: 4, elapsed_ms: 4 },
   };
@@ -1784,9 +1896,9 @@ function throws(fn, what) {
       counters: { reads: 0, writes: 0 },
       loadReferenceView: () => Promise.resolve({ ...base, state: 'scored',
         refusal: '판별 다이가 없어 후보를 가를 수 없습니다.',
-        candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 400, discriminating: 528 },
-                     { frame: 'rot90_front', state: 'scored', agreement: 100, discriminating: 528 }],
-        ruling: { winner: 'rot0_front' } }),
+        candidates: [{ frame: 'rot0_tl', state: 'scored', agreement: 400, discriminating: 528 },
+                     { frame: 'rot90_tl', state: 'scored', agreement: 100, discriminating: 528 }],
+        ruling: { winner: 'rot0_tl' } }),
       loadWorklist: () => Promise.resolve({ rows: [] }),
       loadAlignConfig: () => Promise.resolve({}),
       confirmFrame: () => Promise.resolve({}),
@@ -1830,7 +1942,7 @@ function throws(fn, what) {
     state: 'no_winner', refusal: SENTENCE,
     reference: { state: 'resolved', kind: 'values', cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
     sources: { map_count: 1, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
-               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_tl',
                         declared_frame_source: 'declared' }] },
     // 🔴 THE WEIGHTED PAIR IS HERE BECAUSE THE RULING BELOW NAMES THE WEIGHTED AXIS. This
     //    fixture used to declare `metric: values_weighted` while carrying ONLY the occupancy
@@ -1842,11 +1954,11 @@ function throws(fn, what) {
     //    reads the first one it finds -- so the fixture now carries the axis it declares.
     //    (Weighted counts are floats on the real wire; these are whole because this unit's
     //    weights are 1 and the fixture's point is the SENTENCE, not the arithmetic.)
-    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 2, discriminating: 4,
+    candidates: [{ frame: 'rot0_tl', state: 'scored', agreement: 2, discriminating: 4,
                    value_agreement: 2, value_discriminating: 4 },
-                 { frame: 'rot90_front', state: 'scored', agreement: 2, discriminating: 4,
+                 { frame: 'rot90_tl', state: 'scored', agreement: 2, discriminating: 4,
                    value_agreement: 2, value_discriminating: 4 }],
-    declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+    declaration: { frames: { rot0_tl: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
     // 🔴 THE THIRD METRIC, ON THE WIRE. `values_weighted` joined `occupancy` and `values` on
     //    `ruling.metric` and had no carriage at all on this side.
     ruling: { winner: null, reason_code: 'no_discrimination', metric: 'values_weighted' },
@@ -1957,7 +2069,7 @@ function throws(fn, what) {
 //
 // 🔴 BOTH HALVES WERE MEASURED ON THE LIVE SERVER, 2026-08-06, `dt_map` /
 //    `SYN-IDX-FULL-R0` against `valid_die_ref:PRD-A_DT13`. The server answered
-//    `ruling.metric = "index"`, `winner = "rot0_front"`, margin 87. The screen said
+//    `ruling.metric = "index"`, `winner = "rot0_tl"`, margin 87. The screen said
 //    `채점 불가` and drew `88 / 43`, `66 / 21`, `62 / 17` -- the OCCUPANCY column -- and drew
 //    the four back frames, which the server had marked `not_considered` with a reason, as
 //    `0 / 0` with `data-me2-cand-scored="true"`: indistinguishable from a frame that was
@@ -1979,7 +2091,7 @@ function throws(fn, what) {
     sources: { map_count: 1, cell_count: 4, cells: [[0, 0], [1, 0], [2, 2]],
                maps: [{ map_id: 'SYN-IDX-FULL-R0', cell_count: 88 }] },
     declaration: { frames: {}, attested_maps: 0, unattested_maps: 1, axis_sources: {} },
-    ruling: { metric: 'index', index_axis: 'ranking', winner: 'rot0_front',
+    ruling: { metric: 'index', index_axis: 'ranking', winner: 'rot0_tl',
               margin: 87, discriminating: 87,
               min_margin_dies: 20, min_discriminating_dies: 20,
               sides_considered: ['front'], sides_narrowed: true, reason_code: null },
@@ -1990,21 +2102,21 @@ function throws(fn, what) {
     //    own figure -- `SYN-IDX-FULL-R0` carries a number on all 88 of its cells, and
     //    `align.log` records `cells reaching the scorer=88`.
     candidates: [
-      { frame: 'rot0_front', state: 'scored', agreement: 88, discriminating: 43, placed: 88,
+      { frame: 'rot0_tl', state: 'scored', agreement: 88, discriminating: 43, placed: 88,
         index_agreement: 88, index_discriminating: 87, index_total: 88, reason: null },
-      { frame: 'rot90_front', state: 'scored', agreement: 66, discriminating: 21, placed: 88,
+      { frame: 'rot90_tl', state: 'scored', agreement: 66, discriminating: 21, placed: 88,
         index_agreement: 1, index_discriminating: 0, index_total: 88, reason: null },
-      { frame: 'rot180_front', state: 'scored', agreement: 62, discriminating: 17, placed: 88,
+      { frame: 'rot180_tl', state: 'scored', agreement: 62, discriminating: 17, placed: 88,
         index_agreement: 1, index_discriminating: 0, index_total: 88, reason: null },
-      { frame: 'rot270_front', state: 'scored', agreement: 66, discriminating: 21, placed: 88,
+      { frame: 'rot270_tl', state: 'scored', agreement: 66, discriminating: 21, placed: 88,
         index_agreement: 1, index_discriminating: 0, index_total: 88, reason: null },
-      { frame: 'rot0_back', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
+      { frame: 'rot0_tr', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
         index_agreement: null, index_discriminating: null, index_total: null, reason: REASON_SIDE },
-      { frame: 'rot90_back', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
+      { frame: 'rot90_tr', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
         index_agreement: null, index_discriminating: null, index_total: null, reason: REASON_SIDE },
-      { frame: 'rot180_back', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
+      { frame: 'rot180_tr', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
         index_agreement: null, index_discriminating: null, index_total: null, reason: REASON_SIDE },
-      { frame: 'rot270_back', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
+      { frame: 'rot270_tr', state: 'not_considered', agreement: 0, discriminating: 0, placed: 0,
         index_agreement: null, index_discriminating: null, index_total: null, reason: REASON_SIDE },
     ],
     excluded_total: 0,
@@ -2046,16 +2158,16 @@ function throws(fn, what) {
 
   // P2. THE NUMBERS ARE THE RULED AXIS'S. `88 / 43` is the shipped bug, and both columns are
   //     in the payload, so this is a WRONG number rather than a missing one.
-  eq(numbersOf('rot0_front'), '88 / 88',
+  eq(numbersOf('rot0_tl'), '88 / 88',
      'P2 the winner shows the index counts over the index population');
-  eq(numbersOf('rot90_front'), '1 / 88',
+  eq(numbersOf('rot90_tl'), '1 / 88',
      'P2b and a losing frame shows 1 of 88, not the 66 the occupancy column gives it');
-  eq(numbersOf('rot180_front'), '1 / 88', 'P2c every scored frame, not just the winner');
-  ok(cellOf('rot0_front').querySelector('[data-me2-cand-tags]').textContent.includes('추천'),
+  eq(numbersOf('rot180_tl'), '1 / 88', 'P2c every scored frame, not just the winner');
+  ok(cellOf('rot0_tl').querySelector('[data-me2-cand-tags]').textContent.includes('추천'),
      'P2d and the frame the server named is the one badged');
 
   // P3. A FRAME NOBODY LOOKED AT READS DIFFERENTLY FROM A FRAME THAT LOST.
-  for (const id of ['rot0_back', 'rot90_back', 'rot180_back', 'rot270_back']) {
+  for (const id of ['rot0_tr', 'rot90_tr', 'rot180_tr', 'rot270_tr']) {
     const cell = cellOf(id);
     eq(cell.getAttribute('data-me2-cand-scored'), 'false',
        `P3 ${id} is not marked as carrying real numbers`);
@@ -2066,7 +2178,7 @@ function throws(fn, what) {
     eq(numbersOf(id), ' / ',
        `P3d ${id} was given no numerals at all -- the placeholder 0 is not a measurement`);
   }
-  const scoredCell = cellOf('rot0_front');
+  const scoredCell = cellOf('rot0_tl');
   ok(scoredCell.getAttribute('data-me2-cand-scored') === 'true'
      && scoredCell.getAttribute('data-me2-cand-state') === 'scored',
      'P3e while a scored frame is marked scored -- the two are distinguishable IN THE DOM, '
@@ -2102,8 +2214,8 @@ function throws(fn, what) {
 {
   const N_TOTAL = 512;          // cells carrying a stored number -- `index_total`
   const N_WINNER = 300;         // the winner agreed on 300 of them: 212 dies SHORT of perfect
-  const LOSERS = { rot90_front: 7, rot180_front: 4, rot270_front: 6,
-                   rot0_back: 3, rot90_back: 2, rot180_back: 5, rot270_back: 1 };
+  const LOSERS = { rot90_tl: 7, rot180_tl: 4, rot270_tl: 6,
+                   rot0_tr: 3, rot90_tr: 2, rot180_tr: 5, rot270_tr: 1 };
   const shortWire = {
     state: 'scored', refusal: null,
     reference: { state: 'resolved', kind: 'values', map_id: 'PRD-A_DT13',
@@ -2111,12 +2223,12 @@ function throws(fn, what) {
     sources: { map_count: 1, cell_count: 640, cells: [[0, 0], [1, 0], [2, 2]],
                maps: [{ map_id: 'PRD-A_DT13', cell_count: 640 }] },
     declaration: { frames: {}, attested_maps: 0, unattested_maps: 1, axis_sources: {} },
-    ruling: { metric: 'index', index_axis: 'ranking', winner: 'rot0_front',
+    ruling: { metric: 'index', index_axis: 'ranking', winner: 'rot0_tl',
               min_margin_dies: 20, min_discriminating_dies: 20, reason_code: null },
     // 🔴 `index_discriminating === index_agreement` ON EVERY ROW, which is not a contrivance:
     //    it is what the server's own arithmetic produces whenever no cell is matched by all
     //    eight frames. That equality is precisely the thing that used to read as full marks.
-    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 600, discriminating: 420,
+    candidates: [{ frame: 'rot0_tl', state: 'scored', agreement: 600, discriminating: 420,
                    placed: 600, index_agreement: N_WINNER, index_discriminating: N_WINNER,
                    index_total: N_TOTAL, reason: null }]
       .concat(Object.keys(LOSERS).map(frame => ({
@@ -2148,7 +2260,7 @@ function throws(fn, what) {
   const numeratorOf = (id) => cellOf(id).querySelector('[data-me2-cand-agree]').textContent;
   const denominatorOf = (id) =>
     cellOf(id).querySelector('[data-me2-cand-discriminating]').textContent;
-  const FRAMES = ['rot0_front'].concat(Object.keys(LOSERS));
+  const FRAMES = ['rot0_tl'].concat(Object.keys(LOSERS));
 
   // ── Q0. THE CONTROL. What the defect painted vs what this paints, row by row. ──
   // The "defect reading" is computed HERE from the payload, not imported: it is an oracle of
@@ -2176,11 +2288,11 @@ function throws(fn, what) {
      + `(defect "${defectReading[0]}" vs shown "${shownReading[0]}")`);
 
   // ── Q1..Q3. THE SCREEN MUST NOT READ AS FULL MARKS ON A RUN THE SERVER SCORED SHORT ──
-  eq(denominatorOf('rot0_front'), String(N_TOTAL),
+  eq(denominatorOf('rot0_tl'), String(N_TOTAL),
      'Q1 the denominator is the population the server scored (index_total), not the '
      + 'discriminating subset');
-  eq(numeratorOf('rot0_front'), String(N_WINNER), 'Q1b and the numerator is untouched');
-  ok(numeratorOf('rot0_front') !== denominatorOf('rot0_front'),
+  eq(numeratorOf('rot0_tl'), String(N_WINNER), 'Q1b and the numerator is untouched');
+  ok(numeratorOf('rot0_tl') !== denominatorOf('rot0_tl'),
      'Q2 THE REPORTED DEFECT: a candidate the server scored 300/512 must not read as full '
      + 'marks -- the two rendered numbers must differ');
   eq(vm.summary.countText, `일치 ${N_WINNER} / 대상 ${N_TOTAL}`,
@@ -2194,12 +2306,12 @@ function throws(fn, what) {
     session: withPayload(withDecision(createMapSession({
       config: { min_margin_dies: 20, min_discriminating_dies: 20 } }), { eqp: 'E', product: 'P' }),
       { sources: [], floor_cells: [], per_candidate: [
-        { candidate_id: 'rot0_front', agree: 512, discriminating: 512, total: 512 },
-        { candidate_id: 'rot90_front', agree: 7, discriminating: 7, total: 512 }] }, 1),
-    verdict: decideVerdict([{ candidate_id: 'rot0_front', agree: 512, discriminating: 512 },
-                            { candidate_id: 'rot90_front', agree: 7, discriminating: 7 }],
+        { candidate_id: 'rot0_tl', agree: 512, discriminating: 512, total: 512 },
+        { candidate_id: 'rot90_tl', agree: 7, discriminating: 7, total: 512 }] }, 1),
+    verdict: decideVerdict([{ candidate_id: 'rot0_tl', agree: 512, discriminating: 512 },
+                            { candidate_id: 'rot90_tl', agree: 7, discriminating: 7 }],
                            { min_margin_dies: 20, min_discriminating_dies: 20 }) });
-  eq(fullMarks.candidates.find(c => c.id === 'rot0_front').countText, '일치 512 / 대상 512',
+  eq(fullMarks.candidates.find(c => c.id === 'rot0_tl').countText, '일치 512 / 대상 512',
      'Q3 CONTROL: a run the server DID score at full marks still reads as full marks -- the '
      + 'repair changes which field the denominator comes from, not whether 만점 can be shown');
 
@@ -2217,15 +2329,15 @@ function throws(fn, what) {
     session: withPayload(withDecision(createMapSession({
       config: { min_margin_dies: 20, min_discriminating_dies: 20 } }), { eqp: 'E', product: 'P' }),
       { sources: [], floor_cells: [], per_candidate: [
-        { candidate_id: 'rot0_front', agree: 300, discriminating: 300 },
-        { candidate_id: 'rot90_front', agree: 7, discriminating: 7 }] }, 1),
-    verdict: decideVerdict([{ candidate_id: 'rot0_front', agree: 300, discriminating: 300 },
-                            { candidate_id: 'rot90_front', agree: 7, discriminating: 7 }],
+        { candidate_id: 'rot0_tl', agree: 300, discriminating: 300 },
+        { candidate_id: 'rot90_tl', agree: 7, discriminating: 7 }] }, 1),
+    verdict: decideVerdict([{ candidate_id: 'rot0_tl', agree: 300, discriminating: 300 },
+                            { candidate_id: 'rot90_tl', agree: 7, discriminating: 7 }],
                            { min_margin_dies: 20, min_discriminating_dies: 20 }) });
-  eq(noTotal.candidates.find(c => c.id === 'rot0_front').countText, `일치 300 / 대상 ${UNKNOWN}`,
+  eq(noTotal.candidates.find(c => c.id === 'rot0_tl').countText, `일치 300 / 대상 ${UNKNOWN}`,
      'Q5 an older producer with no population field renders 미상 for the denominator -- never '
      + 'the discriminating count, and never a 0 stand-in');
-  eq(noTotal.candidates.find(c => c.id === 'rot0_front').total, null,
+  eq(noTotal.candidates.find(c => c.id === 'rot0_tl').total, null,
      'Q5b and the card says the population is unmeasured rather than carrying a number nobody sent');
 
   // ── Q6. NO RATIO WAS INTRODUCED. The repair is two counts, still. ──
@@ -2613,11 +2725,18 @@ function makeDocument() {
   //    live screen showed no candidates at all for exactly that reason.
   const grid = node('div', 'me2-cands-s1', { 'data-me2-candidates-for': 's1' });
   grid.hidden = true;
+  //
+  // ⚠️ THE COLUMNS ARE START CORNERS AND `data-side` IS `front` ON BOTH, exactly as
+  //    `map_editor2.html` authors them since `db1ee42`. The stub used to spell the columns
+  //    `front`/`back`, which made every `data-frame-code` lookup here miss silently -- a click
+  //    on a control that does not exist throws, and eight controls carrying ids the shell never
+  //    writes would otherwise read as a bound page.
   for (const rot of [0, 90, 180, 270]) {
-    for (const side of ['front', 'back']) {
+    for (const [token, start] of [['tl', 'top_left'], ['tr', 'top_right']]) {
       const cand = node('button', null, {
-        'data-me2-candidate': '', 'data-rotation': String(rot), 'data-side': side,
-        'data-frame-code': `rot${rot}_${side}`, 'aria-pressed': 'false',
+        'data-me2-candidate': '', 'data-rotation': String(rot), 'data-side': 'front',
+        'data-start': start,
+        'data-frame-code': `rot${rot}_${token}`, 'aria-pressed': 'false',
       });
       cand.appendChild(node('span', null, { 'data-me2-cand-tags': '' }));
       // The per-candidate score slot, three siblings deep like every other count on the page:

@@ -148,12 +148,17 @@ for (let r = 0; r < ROWS.length; r++) {
   }
 }
 // The source's anchor: first in the walk, so minimum y then minimum x on that row.
+//
+// ⚠️ IT IS THE SAME DIE FOR ALL EIGHT CANDIDATES. Which die carries number 1 is a fact about the
+//    equipment's numbering, not a thing a candidate gets to choose -- `_anchor_shift` says so in
+//    as many words (`map_alignment.py:2113`). What the candidate chooses is WHICH CORNER OF THE
+//    REFERENCE that die sits on, and that is the whole of the walk axis in a placement.
 const ANCHOR_SRC = [START_X + ROWS[0].at, START_Y];
 // 🔴 THE REFERENCE'S TOP-LEFT EQUALS THE SOURCE'S ANCHOR. That is not a convenience -- it is
-//    the condition under which the front error is exactly (0,0), and reproducing the operator's
-//    "front is fine, back is wrong" split is the whole point of this fixture. Two maps of the
-//    same product on the same grid share the die, so this is the ordinary case, not a contrived
-//    one. Under it, the old rule's error is a pure function of the mirror.
+//    the condition under which the identity candidate's error is exactly (0,0), and reproducing
+//    the operator's "one frame is fine, the others are wrong" split is the whole point of this
+//    fixture. Two maps of the same product on the same grid share the die, so this is the
+//    ordinary case, not a contrived one.
 const REF_TOP_LEFT = [ANCHOR_SRC[0], ANCHOR_SRC[1]];
 // The residual the scorer solved. NON-ZERO on both axes, so a reader that dropped it or applied
 // it twice is separable from one that applied it once.
@@ -166,24 +171,48 @@ const SRC_AXES = { yInvert: true };
 const REF_AXES = { rotation: 0, side: 'front', yInvert: true };
 
 const FRAMES = candidateList().map(c => c.id);
+/**
+ * The live candidate spelling -> the axes a placement is built from. Legacy `_front`/`_back` stay
+ * readable for the same reason `parseCandidateId` keeps them: rows confirmed before the walk axis
+ * hold them, and `_back` is a real mirror.
+ */
 function axesOf(id) {
-  const m = /^rot(\d+)_(front|back)$/.exec(id);
-  return { rotation: Number(m[1]), side: m[2] };
+  const m = /^rot(0|90|180|270)_(tl|tr|front|back)$/.exec(String(id || ''));
+  if (!m) throw new Error(`not a candidate spelling: ${id}`);
+  const token = m[2];
+  return { rotation: Number(m[1]),
+           side: token === 'back' ? 'back' : 'front',
+           leftToRight: token !== 'tr' };
 }
+
+// THE TRUTH. The floor is the image of the source under ONE candidate, so that candidate scores
+// 100% agreement and the fixture is a real alignment rather than a pile of numbers. A QUARTER TURN
+// on the LEFT column: the turn is what makes the old rule's error a different linear map rather
+// than a translation, and taking the left column keeps the floor derivable without knowing its own
+// width first (the right column's anchor is the floor's top-RIGHT corner).
+const TRUTH = 'rot90_tl';
+const TRUTH_PLACEMENT = { linear: linearPart({ ...axesOf(TRUTH), yInvert: SRC_AXES.yInvert }, REF_AXES),
+                          anchor_src: ANCHOR_SRC, anchor_ref: ANCHOR_REF };
+const FLOOR_CELLS = SRC_CELLS.map(([x, y]) => {
+  const p = oracleSeat(TRUTH_PLACEMENT, x, y);
+  return [p.x, p.y];
+});
+// 🔴 THE RIGHT COLUMN'S ANCHOR IS THE REFERENCE'S TOP-RIGHT DIE (`map_alignment.py:2113`,
+//    `_t_for`). Without this the two columns receive one anchor and ship IDENTICAL placements --
+//    which is not a hypothetical: while the corner was always the top-left, live measurement
+//    recorded all eight shifts coming back `(-13,-11)` and the walk axis doing nothing at all
+//    (`map_alignment.py:1093`). A fixture that shares one anchor reproduces that defect and
+//    scores it green.
+const REF_TOP_RIGHT = [Math.max(...FLOOR_CELLS.map(c => c[0])),
+                       Math.min(...FLOOR_CELLS.map(c => c[1]))];
 
 const PLACEMENTS = new Map(FRAMES.map(id => {
   const a = axesOf(id);
+  const corner = a.leftToRight ? REF_TOP_LEFT : REF_TOP_RIGHT;
   return [id, { linear: linearPart({ ...a, yInvert: SRC_AXES.yInvert }, REF_AXES),
-                anchor_src: ANCHOR_SRC, anchor_ref: ANCHOR_REF }];
+                anchor_src: ANCHOR_SRC,
+                anchor_ref: [corner[0] + SHIFT.dx, corner[1] + SHIFT.dy] }];
 }));
-
-// THE TRUTH. The floor is the image of the source under ONE candidate, so that candidate scores
-// 100% agreement and the fixture is a real alignment rather than a pile of numbers.
-const TRUTH = 'rot90_back';
-const FLOOR_CELLS = SRC_CELLS.map(([x, y]) => {
-  const p = oracleSeat(PLACEMENTS.get(TRUTH), x, y);
-  return [p.x, p.y];
-});
 
 function wire(overrides) {
   return {
@@ -242,7 +271,30 @@ for (const id of FRAMES) {
   eq(cmp.sourceOnlyCount, 0, 'A5 and none of them lands off the floor');
 }
 
-// ── B/C. FRONT VERSUS BACK, AND HOW MANY CELLS MOVE ─────────────────────────────
+// ── A6/A7. THE FIXTURE'S OWN CONSISTENCY, AND WHERE THE WALK AXIS LIVES ─────────
+// 🔴 THE TURN IS IN THE MATRIX; THE START CORNER IS IN THE ANCHOR. Both halves are pinned,
+//    because either one collapsing is a silent loss: a corner that leaked into the linear part
+//    would be the mirror returning to the candidate space under a new name, and two columns
+//    sharing an anchor is the `(-13,-11)` defect verbatim.
+{
+  eq(JSON.stringify(PLACEMENTS.get(TRUTH)), JSON.stringify(TRUTH_PLACEMENT),
+     'A6 the floor was derived from the same placement the wire ships for the truth');
+  for (const rotation of [0, 90, 180, 270]) {
+    const tl = PLACEMENTS.get(`rot${rotation}_tl`);
+    const tr = PLACEMENTS.get(`rot${rotation}_tr`);
+    eq(JSON.stringify(tl.linear), JSON.stringify(tr.linear),
+       `A7 ${rotation}: the start corner is not a second linear part`);
+    eq(JSON.stringify(tl.anchor_src), JSON.stringify(tr.anchor_src),
+       `A7b ${rotation}: and it does not move which die is number 1`);
+    ok(JSON.stringify(tl.anchor_ref) !== JSON.stringify(tr.anchor_ref),
+       `A7c ${rotation}: it moves the reference corner, and the two columns do not share one`);
+  }
+  eq(new Set(FRAMES.map(id => seatingFor(payload, id, source.cells).seating.seats
+       .map(s => s.key).sort().join(' '))).size, 8,
+     'A8 so the eight candidates seat the map in eight genuinely different places');
+}
+
+// ── B/C. WHICH CANDIDATES THE OLD RULE HAPPENED TO REPRODUCE, AND HOW MANY CELLS MOVE ──
 // 🔴 THE NUMBER THAT SAYS THIS FIXTURE IS WORTH ANYTHING. For each candidate, how many drawn
 //    cells sit somewhere else under the old rule than under the shipped seat, and by how much
 //    on each axis. A total of 0 means the defect axes are dead and the harness must go red.
@@ -274,17 +326,33 @@ console.log(`\ncells that move across all eight candidates: ${totalMoved} `
           + `of ${SRC_CELLS.length * FRAMES.length}`);
 ok(totalMoved > 0, 'C1 the fixture activates the defect at all (0 would mean it proves nothing)');
 
-// B. THE SPLIT THE OPERATOR REPORTED. Front frames whose linear part the old rule happened to
-//    reproduce come out at zero error; the back frames do not.
-eq(moves.get('rot0_front').moved, 0,
-   'B1 rot0_front: the old rule and the shipped seat agree -- this is why the front looked fine');
-ok(moves.get('rot0_back').moved > 0,
-   'B2 rot0_back: the old rule is displaced -- this is what the operator sees on the back');
-// 🔴 THE ASSERTION THAT WOULD HAVE CAUGHT THIS. Front error zero and back error non-zero, in the
-//    SAME run, on the SAME fixture. A harness that only exercised the front would have been
-//    green throughout the whole incident.
-ok(moves.get('rot0_front').moved === 0 && moves.get('rot0_back').moved > 0,
-   'B3 front and back are separated, and only the back moves');
+// B. THE SPLIT, RE-POINTED ONTO THE LIVE AXIS. The operator reported it as front-versus-back,
+//    and the candidate space no longer has a back (`db1ee42`). The STRUCTURE of the report is
+//    what this scores, and it survives intact: the old rule reproduces the shipped seat on
+//    exactly one candidate -- the identity, where `b = 0`, `linear = I` and the reference's
+//    top-left is the source's own anchor -- and is displaced on the other seven. A fixture that
+//    exercised only that one candidate would have been green throughout the whole incident.
+eq(moves.get('rot0_tl').moved, 0,
+   'B1 rot0_tl: the old rule and the shipped seat agree -- this is why one frame looked fine');
+ok(moves.get('rot0_tr').moved > 0,
+   'B2 rot0_tr: the same turn from the other corner is displaced -- the old rule cannot say it');
+// 🔴 THE ASSERTION THAT WOULD HAVE CAUGHT THIS. Zero error and non-zero error, in the SAME run,
+//    on the SAME fixture and at the SAME rotation, so the difference cannot be attributed to the
+//    turn.
+ok(moves.get('rot0_tl').moved === 0 && moves.get('rot0_tr').moved > 0,
+   'B3 the two are separated, and only the one the old rule can express stays still');
+// 🔴 AND THE OLD RULE IS STRUCTURALLY BLIND TO THE AXIS, not merely wrong about it. It reads
+//    rotation and side, so it returns the SAME seats for both columns of a turn -- which is the
+//    server-side defect `db1ee42` fixed, arriving here as its mirror image. Scored as an identity
+//    on the legacy function itself rather than as an error count, because an error count would
+//    also pass on a version that was wrong in two different ways.
+for (const rotation of [0, 90, 180, 270]) {
+  const legacyOf = (id) => SRC_CELLS
+    .map(([x, y]) => { const s = legacySeat(axesOf(id), x, y, DIMS, SHIFT); return `${s.x},${s.y}`; })
+    .join(' ');
+  eq(legacyOf(`rot${rotation}_tl`), legacyOf(`rot${rotation}_tr`),
+     `B3b ${rotation}: the pre-placement rule could not express the start corner at all`);
+}
 // Both axes, because the operator corrected the report to say so.
 const movedX = [...moves.values()].filter(m => m.dx !== 0).length;
 const movedY = [...moves.values()].filter(m => m.dy !== 0).length;
