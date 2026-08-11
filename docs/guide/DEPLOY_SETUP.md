@@ -1,8 +1,10 @@
 # 🚀 운영 배포 — 직접 세팅해야 하는 것들 (요약)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-08
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-11
 >
-> **이번 라운드 (2026-08-08 · D3 `4738d84`+`528dfcb`)**: **§6에 8-bis 신설 — 업무 키 UNIQUE 인덱스는 이제 배포 순서의 일부다.** 집합 기반 쓰기 경로가 행마다 내던 신원 SELECT를 없애면서 프로세스 간 경합 창이 **마이크로초 → 실측 2.4초**로 넓어졌고, 실제 프로세스 둘로 **한 업무 키에 두 행**이 재현됐다. 🔴 **8의 `--preflight-only`는 이것을 못 잡는다** — 드리프트 점검이 보는 것은 **컬럼**이지 인덱스가 아니다(실측: `schema_drift.py`에 인덱스 검사 0건).
+> **이번 라운드 (2026-08-11)**: **§6에 8-ter 신설**(`dab9152`+`2630790` — 감사 이력 인덱스 세 종, 없으면 오늘의 성능 수리가 프로덕션에 안 먹는다) + **3단계에 `dt_job` 리네임 경고**(`5b09d69` — 컬럼명을 `table_config.json`에서 바꿔도 `add_dt_log_trigger_indexes.sql`의 인덱스 정의와 `enrichment_rules.json`의 자유 SQL 다섯 곳은 체인 리졸버 밖이라 조용히 안 따라온다. 정본은 [DT_CORE_FRAME_CHAINS_GUIDE §1-bis](./DT_CORE_FRAME_CHAINS_GUIDE.md#1-bis-잡-컬럼-이름-2026-08-11)).
+>
+> **직전 라운드 (2026-08-08 · D3 `4738d84`+`528dfcb`)**: **§6에 8-bis 신설 — 업무 키 UNIQUE 인덱스는 이제 배포 순서의 일부다.** 집합 기반 쓰기 경로가 행마다 내던 신원 SELECT를 없애면서 프로세스 간 경합 창이 **마이크로초 → 실측 2.4초**로 넓어졌고, 실제 프로세스 둘로 **한 업무 키에 두 행**이 재현됐다. 🔴 **8의 `--preflight-only`는 이것을 못 잡는다** — 드리프트 점검이 보는 것은 **컬럼**이지 인덱스가 아니다(실측: `schema_drift.py`에 인덱스 검사 0건).
 >
 > **직전 라운드 (2026-08-05 · `f6406b1`)**: **§6에 8단계 `--preflight-only` 신설** — 배포·재기동 직전에 **아무것도 띄우지 않고** 포트와 **스키마 드리프트**를 묻는 자리다. 🔴 **드리프트는 `/health`에 나오지 않는다**(§6.1) — 드리프트난 스택은 `/health`가 **정상 200**을 답하면서 그 테이블의 화면만 500을 내고, 2026-08-05 하루에 3건이 그렇게 나가 **전부 제품 소유자가 제품을 쓰다가 발견했다.** ⚠️ **종료 코드는 포트만 본다** — 스크립트로 감싸지 말고 배너를 읽을 것.
 >
@@ -506,6 +508,7 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
 1. PostgreSQL 준비 → `DATABASE_URL` 설정
 2. `server/config/*.sample` → 확장자 떼고 복사 (**기존 환경이면** `install_product_tables.py --apply`로 제품 소유 테이블만 병합 — §1-2)
 3. **`table_config.json`에 우리 현장 테이블 선언** (여기가 대부분의 작업)
+   - 🔴 **DT/Core 프레임 체인의 "잡" 컬럼 이름을 현장 철자(예: `dt_job_id`)로 여기서 바꾼다면**, 그 리네임을 **체인 리졸버가 모르는 파일 둘**과 같은 변경에서 손으로 맞춰라 — 안 맞추면 조용히 안 따라온다(2026-08-11, `5b09d69`): `server/migrations/add_dt_log_trigger_indexes.sql`의 `CREATE INDEX ... (dt_job)` 두 문(재실행하지 않으면 새 컬럼명 위에 인덱스가 없다), `server/config/enrichment_rules.json`의 자유 SQL 다섯 곳(`WHERE dt_job = :dt_job` — 리졸버 밖이라 옛 이름을 계속 찾고 매번 0행). 절차 정본은 [guide/DT_CORE_FRAME_CHAINS_GUIDE §1-bis](./DT_CORE_FRAME_CHAINS_GUIDE.md#1-bis-잡-컬럼-이름-2026-08-11).
 4. `server/ingestion_workspace/<테이블>/` 디렉터리 생성
 5. 켤 기능의 config에서 `table`/`columns`를 우리 이름으로 맞춤 (§2)
 6. 맵을 쓴다면 `wafer_map_metadata` 등록 (§3)
