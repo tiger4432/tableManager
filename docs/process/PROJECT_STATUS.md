@@ -2,14 +2,30 @@
 
 > ## ▶️ 2026-08-12 목표 — 아침에 여기부터
 >
-> ### 0. 먼저 트리 상태 확인 — **밤새 레인 둘이 돌았다**
+> ### 0. 🔴 트리가 «커밋 안 된 채» 남아 있다 — 두 레인이 섞여 있다
 >
-> | 레인 | 만지는 곳 |
-> |---|---|
-> | 체인 키 게이트 (「확정 없으면 행을 안 낸다」) | `chain_ingestion_worker.py` · **`crud.py` 가능** |
-> | 감사 쓰기 1회당 1행 (구조화 JSONB) | **`crud.py`** |
+> 종료 시점에 **의도적으로 아무것도 커밋하지 않았다.** `crud.py`에 저자가 둘이고 한쪽은 **미완성**이라, 반쪽을 커밋하면 내일 누구 것인지 못 가린다.
 >
-> 🔴 **`crud.py`에 저자가 둘일 수 있다.** 커밋 경로는 **보고서가 아니라 `git status`**에서 뜬다 — 오늘 두 번 당했다. 충돌이면 순차로 다시 돌린다.
+> | 파일 | 주인 | 상태 |
+> |---|---|---|
+> | `chain_key_gate.py` (신규) · `tests/test_chain_key_gate.py` (신규) | **키 게이트** | ✅ 완료·측정됨 |
+> | `chain_ingestion_worker.py` · `chain_replay.py` · `tests/test_chain_created_logs_truncation.py` | **키 게이트** | ✅ |
+> | `docs/architecture/data_model.md`(§3.1-ter) · `docs/guide/chain_ingestion_guide.md` | **키 게이트** | ✅ |
+> | `audit_changeset.py` (신규) · `tests/test_audit_changeset.py` (신규) | **감사** | ⚠️ **중간에 세움 — 미완성** |
+> | `main.py` · `database/schemas.py` | **감사** | ⚠️ 미완성 |
+> | `docs/architecture/backend.md` · `docs/qa/FEATURE_CHECKLIST.md` · `docs/history/README.md` + 신규 이력 1건 | **미확인** | 둘 중 누구인지 확인 필요 |
+> | **`database/crud.py`** | 🔴 **둘 다** | 키 게이트의 `unfilled_key_columns`·`_unfilled_composite_parts` + 감사의 hunk |
+>
+> **내일 순서**: 감사 쪽 변경을 되돌려 키 게이트를 먼저 온전히 커밋하고, 감사는 깨끗한 베이스에서 다시 돌린다. 감사 레인 지시서는 §판정 2건에 그대로 있으므로 잃은 것은 진행분뿐이다.
+>
+> ### 0-bis. 키 게이트가 물고 온 것 — **체인은 닫혔고 인제션은 안 닫혔다**
+>
+> 게이트는 `chain_key_gate.py` 하나이고 **funnel 둘**에서 불린다(`chain_ingestion_worker.write_batches` · `chain_replay._apply_replay_batch`). 재생 경로를 함께 문 이유: **재생은 같은 맵퍼를 테이블 전체에 다시 돌리므로, 사고의 그 행을 «대량으로» 만들 수 있는 유일한 경로**다. **맵퍼는 하나도 안 건드렸으므로 `.sample` 손복사가 필요 없다.**
+>
+> 🔴 **「멈추고 보고」가 내가 지시한 것보다 한 층 깊은 데서 걸렸다.** `crud.apply_batch_updates`(진짜 단일 funnel)에 게이트를 두는 것은 **틀리다** — `818c9c0`이 **키 없는 행은 수동 그리드 작업의 정당한 모양이고 NULL이 그 철자**라고 판정해 뒀다. 실측으로 확인: 워처의 `_send_to_upsert`에 빈 키를 먹여도 **7행 쓰고 그중 1행이 키 없음, 게이트 카운터 `{}`** — **변화 없음.**
+> **즉 운영 17만 행이 인제션에서 왔다면 이 게이트는 증식을 못 막는다.** 열린 항목 #2.
+>
+> 뮤테이션 10/10. **M9(규칙 귀속 제거)가 1차에서 살아남았다 — 테스트가 전부 «리포트»만 읽고 «운영자 채널»을 아무도 안 읽었다.** 워커를 돌려 로그가 규칙 이름을 대는지 보는 테스트를 추가. 실부하 거절 **0건**(dt_log 116,134행 스캔 → 맵퍼 항목 560건 전부 통과) — **도는 인제션을 거절로 바꾸지 않는다**는 증거.
 >
 > ### 1. 반쪽인 것 마저 붙이기 ← 여기까지가 「내일 성공」
 >
