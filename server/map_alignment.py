@@ -5468,6 +5468,29 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     k_attr = (getattr(src_model, columns["index"]["column"])
               if columns.get("index", {}).get("column") else None)
 
+    # Map geometry is read ONCE for the whole request, not once per map. The batch
+    # reader is `_load_metas` and the worklist screen already uses it - a second
+    # reader here would be a second spelling of the same read.
+    #
+    # 🔴 `ignore_source_metadata` short-circuits the prefetch, it does not merely
+    #    discard it. When the flag is set every `meta` below is `None` by
+    #    construction, so paying for the batch would buy a value nothing reads.
+    # 🔴 `_load_metas` returns **what it has** when a chunk query fails, so a
+    #    missing key means either "no row" or "the read gave up". Those two are
+    #    opposite answers here: absence lets the scorer borrow the floor's
+    #    geometry ([D5]), and a failed read borrowing silently is the expensive
+    #    wrong answer this module already has a name for. `complete` is what tells
+    #    them apart; `_meta_of` re-reads the lost ids one at a time, which is
+    #    exactly what this path did before, at exactly its old cost, and only in
+    #    the already-degraded case.
+    metas, metas_complete = (({}, True) if ignore_source_metadata
+                             else _load_metas_reporting(db, map_table, ids))
+
+    def _meta_of(mid):
+        if metas_complete or mid in metas:
+            return metas.get(mid)
+        return map_overlay.load_map_meta(db, map_table, mid)
+
     source_maps = []
     src_truncated = False
     for mid in ids:
@@ -5496,7 +5519,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
               # chain can reuse the raw rows with core_x/core_y, but must not
               # accidentally treat that DT declaration as core geometry.
               "meta": (None if ignore_source_metadata
-                       else map_overlay.load_map_meta(db, map_table, mid)),
+                       else _meta_of(mid)),
               "cells": cells, "values": cvals}
         if k_at is not None:
             # 🔴 순번은 좌표와 **같은 순서·같은 길이**여야 한다. `_to_cells`가 좌표를 거르면
@@ -6153,11 +6176,28 @@ def _count_cells(db, cfg: dict, table: str, map_id: str):
 def _load_metas(db, map_table: str, map_ids) -> dict:
     """맵 규격을 **한 번에** 읽는다. 맵마다 `load_map_meta`를 부르면 N+1이고, 목록의 N은
     단위가 아니라 **맵 모집단**이다(개발 박스 실측: 단위 4개에 core 맵 544장)."""
+    return _load_metas_reporting(db, map_table, map_ids)[0]
+
+
+def _load_metas_reporting(db, map_table: str, map_ids):
+    """`_load_metas` + **끝까지 읽었는가**. `(metas, complete)`.
+
+    🔴 키가 없다는 사실에는 뜻이 **둘**이다 — 「그 맵의 규격 행이 없다」와 「읽다가 포기했다」.
+       그리고 그 둘은 [D5] 이후 **정반대의 결과**를 낳는다: 전자는 바닥에서 규격을 빌리게
+       하고(정상), 후자는 선언된 규격을 못 읽은 채로 빌리게 한다(값만 전부 틀리는 실패).
+       한 맵씩 읽던 시절에는 실패도 한 맵씩이라 이 구별이 없어도 반경이 작았지만, 배치는
+       한 번의 실패로 최대 `_META_CHUNK`장을 동시에 잃는다. 그래서 판독기가 그 사실을
+       **말해 준다** — 부르는 쪽이 dict의 모양만 보고 추측하지 않도록.
+       ⚠️ `complete=False`를 「전부 못 읽었다」로 읽지 말 것. 앞선 청크는 성공했을 수 있고,
+          그때 `out`에 담긴 값은 참이다.
+    """
     from database import models
     import json as _json
     model = models.DYNAMIC_TABLES.get(map_overlay.META_TABLE)
     if model is None:
-        return {}
+        # 표가 선언돼 있지 않다. 「읽다 만 것」이 아니라 **읽을 것이 없는 것**이고, 그
+        # 사실은 호출자가 `meta_absence_reason`으로 이름 붙여 요청 단위로 말한다.
+        return {}, True
     out = {}
     tt, mid = getattr(model, "target_table"), getattr(model, "map_id")
     gm = getattr(model, "grid_metadata")
@@ -6169,7 +6209,7 @@ def _load_metas(db, map_table: str, map_ids) -> dict:
             #    `meta_absence_reason`으로 **이름을 붙여** 응답에 싣는다. 예외를 그대로
             #    올리면 목록이 500이 되어 「무엇이 왜 안 되는가」가 통째로 사라진다.
             logger.error("[MapAlignment] meta batch query failed (%s): %s", map_table, e)
-            return out
+            return out, False
         for row in rows:
             raw = row[1]
             if not raw:
@@ -6179,7 +6219,7 @@ def _load_metas(db, map_table: str, map_ids) -> dict:
                 out[row[0]] = _json.loads(raw) if isinstance(raw, str) else raw
             except Exception:
                 out[row[0]] = None
-    return out
+    return out, True
 
 
 def _live_confirmations(db, rule_name: str, unit_keys) -> dict:

@@ -245,6 +245,16 @@ def test_the_borrow_gate_holds_when_only_the_source_lookups_failed(env, monkeypa
         return real(db, target_table, map_id)
 
     monkeypatch.setattr(map_overlay, "load_map_meta", _floor_only)
+    # 🔴 `/view` reads the source maps' specs in ONE batch (`_load_metas_reporting`), so
+    #    «the source lookups came back empty» has to be injected THERE. While this
+    #    stand-in patched `load_map_meta` alone, the batch went on reading the seeded
+    #    rows, the maps came back registered, and the gate below was never reached -
+    #    the same «insufficient mutation» shape this file exists to prevent. The floor
+    #    still resolves through `load_map_meta`, which is why that patch stays too.
+    real_batch = ma._load_metas_reporting          # bound BEFORE the patch, or it recurses
+    monkeypatch.setattr(ma, "_load_metas_reporting",
+                        lambda db, table, ids: ({}, True) if table == MAPT
+                        else real_batch(db, table, ids))
     monkeypatch.setattr(map_overlay, "meta_access_state",
                         lambda db: (map_overlay.META_ACCESS_QUERY_FAILED, "OperationalError: x"))
 
@@ -293,6 +303,53 @@ def test_a_global_fault_is_stated_once_at_the_request_level(env, monkeypatch, ho
     assert block["text"] and len(block["text"]) > 30
     assert map_overlay.META_TABLE in block["text"]
     assert view["sources"]["map_count"] == 2        # stated once for two maps
+
+
+def test_a_half_finished_batch_read_is_not_reported_as_absence(env, monkeypatch):
+    """🔴 The batch reader's failure mode, aimed at the borrow gate.
+
+    `/view` stopped asking for each map's spec separately and now prefetches them with
+    `_load_metas`, which on a failed chunk query logs an error and returns **what it
+    has** rather than raising. So a missing key stopped meaning one thing. Read as
+    «no spec row» - the [D5] normal case - every map in the lost chunk gets seated on
+    the floor's borrowed geometry, and the screen looks perfect while the coordinates
+    are somebody else's. One chunk is up to `_META_CHUNK` maps, so the batch turned a
+    one-map risk into a thousand-map one.
+
+    Here the rows ARE seeded and readable one at a time; only the batch gave up. The
+    view must therefore end up with the declared specs and borrow nothing.
+    """
+    _seed(env, floor=True)
+    monkeypatch.setattr(ma, "_load_metas_reporting",
+                        lambda db, table, ids: ({}, False))    # gave up, kept nothing
+
+    view = _view(env, reference_spec=FLOOR_SPEC, assume_reference_geometry=True)
+
+    assert view["meta_access"] is None, "the table is readable - do not blame it"
+    assert view["stats"]["assumed_map_ids"] == [], "nothing may be borrowed here"
+    assert view["stats"]["usable_map_ids"] == ["M1"]
+    assert view["sources"]["usable_map_count"] == 1
+
+
+def test_ignoring_source_metadata_does_not_pay_for_a_prefetch_it_will_discard(env, monkeypatch):
+    """`ignore_source_metadata` means every source map's `meta` is `None` by construction.
+    Prefetching under that flag would buy a value nothing reads - and on this screen the
+    N is the map POPULATION, so «one query nobody uses» is the whole reason the batch
+    exists. Calling the reader at all is the failure."""
+    _seed(env, floor=True)
+
+    def _boom(*a, **kw):
+        raise AssertionError("no spec may be read when ignore_source_metadata is set")
+
+    monkeypatch.setattr(ma, "_load_metas_reporting", _boom)
+    monkeypatch.setattr(map_overlay, "load_map_meta_cached", _boom)
+
+    view = ma.build_alignment_view(env, CFG, RULE, {"job_id": "J1"}, MAPT,
+                                   x_col="x", y_col="y", include_cells=False,
+                                   reference_spec=FLOOR_SPEC,
+                                   ignore_source_metadata=True)
+    assert all(m.get("geometry_declaration") != "declared"
+               for m in view["sources"]["maps"]), "the flag must still blank the specs"
 
 
 def test_the_healthy_path_does_not_pay_for_the_diagnosis(env, monkeypatch):
