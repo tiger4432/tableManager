@@ -111,7 +111,7 @@
         "type": "RECORDED_AS_WAFER",
         "target_label": "Wafer",
         "target_identity_from": [
-          "wafer_id"
+          "@map_key_columns"
         ],
         "description": "이 셀이 어느 웨이퍼 소속으로 기록됐는가. wafer_id는 일부러 성기므로 이 엣지가 없는 셀이 정상이고, 없음이 곧 enrichment 일감이다"
       }
@@ -123,7 +123,7 @@
     "node": {
       "label": "DtCell",
       "identity": [
-        "dt_job",
+        "@map_key_columns",
         "dt_x",
         "dt_y"
       ],
@@ -176,7 +176,7 @@
         "type": "IN_DT_JOB",
         "target_label": "DtJob",
         "target_identity_from": [
-          "dt_job"
+          "@map_key_columns"
         ],
         "description": "이 셀이 속한 DT 작업 단위. dt_job은 설비_시간_tapeslot이며 확실한 값이다"
       },
@@ -196,8 +196,7 @@
     "node": {
       "label": "BondCell",
       "identity": [
-        "bond_lot",
-        "bond_slot",
+        "@map_key_columns",
         "bond_x",
         "bond_y"
       ],

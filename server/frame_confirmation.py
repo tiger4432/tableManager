@@ -273,53 +273,14 @@ def _geometry_bases(metas: dict, contributors: list, basis_meta: dict = None) ->
 META_SOURCE_NAME = "user"
 
 
-def _basis_cells_for(db, reference: dict):
-    """확정이 쓸 참조(유효 다이) 맵의 **셀 좌표 목록**. 못 읽으면 None.
-
-    ═══ 왜 확정이 이것을 읽어야 하는가 (2026-08-06) ══════════════════════════════════════
-    `confirmed_meta_for`는 소스 맵에 `valid_die_ref`를 적는다. 그 한 줄 때문에 편집기가 그
-    맵을 다시 열 때 **원점 상자가 원에서 유효 다이 마스크로 갈리고**(`map_editor.js:1942`),
-    상자가 갈리면 같은 칸이 다른 좌표를 읽는다. 그래서 확정은 자기가 만들 좌표계의 상자를
-    알아야 원점을 옳게 적을 수 있고, 그 상자의 유일한 재료가 이 셀 목록이다.
-
-    🔴 **판 하나에 한 번 읽는다.** 기여자 수와 무관하다 — 참조는 판마다 하나이고, 마스크는
-       그 참조의 함수다. 맵마다 읽으면 같은 질의를 N번 던진다.
-    🔴 **두 번째 셀 로더를 만들지 않는다.** `map_alignment._cells_of`는 `/view`의 기준 맵
-       해석이 쓰는 바로 그 함수이고(바인딩 유도·키 캐노니컬화·상한이 그 안에 있다), 여기서
-       다시 쓰면 채점이 본 기준과 확정이 본 기준이 갈릴 수 있다.
-    ⚠️ **못 읽으면 None을 돌려주고 이름을 대서 로그에 남긴다.** 그때 원점은 원 상자에서
-       계산되는데(= 이 라운드 이전의 동작), 편집기는 여전히 마스크로 그린다. 조용하면
-       아무도 모르므로 조용히 넘기지 않는다. 이 자리를 거절로 승격할지는 총괄 판정이다.
-    """
-    import map_alignment
-    import map_overlay
-
-    ref = reference or {}
-    table, map_id = ref.get("table"), ref.get("map_id")
-    if not table or not map_id:
-        return None
-    try:
-        cfg = map_overlay.load_overlay_config()          # 작업 경계 1회 스냅샷
-        cells, _values, truncated, _kind = map_alignment._cells_of(
-            db, cfg, str(table), str(map_id), map_overlay.MAX_VALID_DIE_CELLS)
-    except Exception as e:                               # noqa: BLE001 — 읽기 실패는 거절이다
-        logger.warning("[frame_confirm] the valid-die reference '%s/%s' could not be read "
-                       "(%s: %s) — the confirmed origin falls back to the wafer circle while "
-                       "the editor draws this map from the mask",
-                       table, map_id, type(e).__name__, e)
-        return None
-    if truncated:
-        # 잘린 마스크는 **틀린 마스크**다(같은 판단이 `resolve_valid_die_set`의 상한 거절에
-        # 있다). 자른 집합으로 상자를 만들면 아무도 선언한 적 없는 좌표계가 나온다.
-        logger.warning("[frame_confirm] the valid-die reference '%s/%s' exceeds the cell cap "
-                       "(%d) — a truncated mask is a wrong mask, so the confirmed origin falls "
-                       "back to the wafer circle", table, map_id, map_overlay.MAX_VALID_DIE_CELLS)
-        return None
-    if not cells:
-        logger.warning("[frame_confirm] the valid-die reference '%s/%s' has no readable cell — "
-                       "the confirmed origin falls back to the wafer circle", table, map_id)
-        return None
-    return cells
+# [2026-08-11] `_basis_cells_for` MOVED OUT to `map_alignment.basis_cells_for`.
+#
+# It was private here, and `mappers/dt_inventory_metadata_mapper` — the chain
+# that populates the RECORD OF TRUTH replacing this module — was reaching in and
+# calling it. Retiring this module would have killed its own replacement. The
+# function also always belonged over there: it wraps `map_alignment._cells_of`
+# and feeds `map_alignment.confirmed_meta_for(basis_cells=...)`, so this module
+# was only ever its caller, never its owner.
 
 
 def _write_confirmed_meta(db, contributors: list, metas: dict, basis_meta: dict,
@@ -348,8 +309,8 @@ def _write_confirmed_meta(db, contributors: list, metas: dict, basis_meta: dict,
     ref = reference or {}
     basis = {"table": ref.get("table"), "map_id": ref.get("map_id")}
     # 판 하나에 한 번. 이 목록이 정하는 것은 **이 확정이 만들 좌표계의 원점 상자**다
-    # (§_basis_cells_for) — 기여자마다 다시 읽을 것이 아니다.
-    basis_cells = _basis_cells_for(db, ref)
+    # (§map_alignment.basis_cells_for) — 기여자마다 다시 읽을 것이 아니다.
+    basis_cells = map_alignment.basis_cells_for(db, ref)
     items, written = [], []
     for c in contributors or []:
         if c.get("excluded_reason"):

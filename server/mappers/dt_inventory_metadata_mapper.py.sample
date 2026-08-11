@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 import dt_frame_transform
-import frame_confirmation
+import map_alignment
 import map_overlay
 
 
@@ -25,7 +25,7 @@ def _reference_geometry(db, metadata, cache):
     if key not in cache:
         cache[key] = (
             map_overlay.load_map_meta(db, *key) if db is not None else None,
-            frame_confirmation._basis_cells_for(db, reference) if db is not None else None,
+            map_alignment.basis_cells_for(db, reference) if db is not None else None,
         )
     return cache[key]
 

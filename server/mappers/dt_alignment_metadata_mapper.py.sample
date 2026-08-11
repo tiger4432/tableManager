@@ -92,14 +92,14 @@ def _automatic_gate(view: dict, rule: dict | None = None,
     )
 
 
-def _basis_cells_for(db, cfg: dict, reference: dict):
-    """Read the complete valid-die basis once; a truncated mask is unusable."""
-    table, map_id = reference.get("table"), reference.get("map_id")
-    if not table or not map_id:
-        return None
-    cells, _values, truncated, _kind = map_alignment._cells_of(
-        db, cfg, str(table), str(map_id), map_overlay.MAX_VALID_DIE_CELLS)
-    return None if truncated or not cells else cells
+# [2026-08-11] The local `_basis_cells_for` is gone — it was a third hand-rolled
+# copy of the same read (same `_cells_of` call, same cap, same "a truncated mask
+# is a wrong mask" rule) and now calls `map_alignment.basis_cells_for`, which
+# takes this module's own `cfg` snapshot so the work-boundary discipline is
+# unchanged. The one behaviour that improved: a read that raises used to escape
+# and abort the whole batch, and now returns None like every other unreadable
+# reference, which this mapper already handles by skipping that unit. It also
+# names the reference in the log instead of failing silently.
 
 
 def _placement_for(ruling: dict, winner: str):
@@ -181,7 +181,7 @@ def build_dt_alignment_metadata_batch(db, payloads, rule=None):
         reference = view["reference"]
         basis = {"table": reference["table"], "map_id": reference["map_id"]}
         basis_meta = map_overlay.load_map_meta(db, basis["table"], basis["map_id"])
-        basis_cells = _basis_cells_for(db, cfg, reference)
+        basis_cells = map_alignment.basis_cells_for(db, reference, cfg)
         if basis_meta is None or basis_cells is None:
             continue
 

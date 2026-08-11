@@ -1633,16 +1633,208 @@ def derive_table_binding(table: str, val_candidates=None) -> dict | None:
     return binding
 
 
+# ═══ Per-key inheritance over a `table_config` base ════════════════════════════
+#
+# WHAT CHANGED AND WHY (2026-08-11). Resolution used to be PER BLOCK: if
+# `table_bindings.<t>.columns` existed at all it was returned verbatim, and
+# `resolve_binding_info` filled whatever the block omitted from the NAMING
+# CONVENTION - literal `x`/`y`/`val`, and `key_columns = ["lot", "slot"]`.
+#
+# That made "declare only the departure" impossible for any table that declares
+# anything. An operator who deletes `key_columns` from `core_wafer_map` to let
+# it follow `table_config` does not inherit `map_key_columns` - they silently
+# get `["lot", "slot"]`, which is the RETIRED core identity. That is the
+# 2026-08-10 cascade's mechanism, and it stayed armed after both config files
+# were corrected.
+#
+# It also could not be fixed by making the base "the derived binding", because
+# the derived binding is ALL-OR-NOTHING: `_derive_table_binding_full` bails when
+# a table has no literal `x`/`y` column, so for `core_wafer_map` (`core_x` /
+# `core_y`) the base is None and `map_key_columns` is never consulted at all.
+#
+# So the base is assembled PER KEY: identity derives from `map_key_columns`
+# whether or not the coordinate columns can be derived. Precedence, one rule,
+# applied to each key independently:
+#
+#     local declaration  >  table_config derivation  >  refuse by name
+#
+# There is no convention fallback. A key nobody can state is ABSENT, and absent
+# coordinates/identity make the binding unusable (None) rather than a guess that
+# reads zero rows and looks like data.
+BINDING_KEYS = ("x", "y", "val", "index", "key_columns")
+
+# Where a resolved key came from. Not a new vocabulary for the operator report -
+# `config_resolve_report` renders these directly.
+ORIGIN_DECLARED = "declared"
+ORIGIN_INHERITED = "inherited"
+ORIGIN_ABSENT = "absent"
+ORIGIN_REFUSED = "refused"
+
+_DECLARED_FROM = "map_overlay_config.table_bindings"
+_INHERITED_FROM = "table_config"
+
+
+def derive_binding_parts(table: str, val_candidates=None, allow_guess: bool = False):
+    """`table_config` alone -> `({key: value}, guessed)`, **key by key**.
+
+    A key this table_config cannot state is simply ABSENT from the result. That
+    is the difference from `derive_table_binding`, which answers all-or-nothing:
+    a table whose coordinates are namespaced (`core_x`/`core_y`) still yields an
+    `key_columns` here, and that is the whole point - identity must be
+    inheritable even where coordinates are not.
+
+    `allow_guess` reproduces `_derive_table_binding_full`'s labelled value-column
+    guess. It is False for the data path (a guessed value column never reaches
+    it) and True only for `resolve_binding_info`, which serves the guess to the
+    client tagged `fallback_guess` so the screen can warn instead of rendering
+    an invented column silently.
+    """
+    from database import crud
+
+    candidates = DEFAULT_VAL_CANDIDATES if val_candidates is None else val_candidates
+    tcfg = (crud.TABLE_CONFIG or {}).get(table)
+    if not isinstance(tcfg, dict):
+        return {}, False
+    types = tcfg.get("column_types") or {}
+
+    parts = {}
+    key_cols = tcfg.get("map_key_columns")
+    if isinstance(key_cols, str):
+        key_cols = [key_cols]
+    if not (isinstance(key_cols, list) and key_cols):
+        # Not an invention: lot/slot is taken only when this table actually
+        # declares both columns. `map_key_columns` remains the record of truth.
+        key_cols = ["lot", "slot"] if ("lot" in types and "slot" in types) else None
+    if key_cols:
+        parts["key_columns"] = list(key_cols)
+
+    if "x" in types and "y" in types:
+        parts["x"], parts["y"] = "x", "y"
+
+    excluded = set(key_cols or ()) | {"x", "y", tcfg.get("business_key")} | _SYSTEM_COLUMNS
+    val = next((c for c in candidates if c in types and c not in excluded), None)
+    guessed = False
+    if val is None and allow_guess:
+        val = next((c for c in types if c not in excluded), None)
+        guessed = val is not None
+    if val is not None:
+        parts["val"] = val
+
+    # `index` is never derived. Sequence columns have no naming convention, and
+    # inventing one serves a column that does not exist as "declared" - the axis
+    # then matches zero cells and reads as "the numbering disagreed", which is
+    # the opposite statement. Absent means absent.
+    return parts, guessed
+
+
+def _known_columns(table: str):
+    """Column names `table_config` states for this table, or None if it says nothing.
+
+    None is "I cannot judge this declaration", and it is why a table absent from
+    `table_config` keeps today's behaviour instead of being refused.
+    """
+    from database import crud
+
+    tcfg = (crud.TABLE_CONFIG or {}).get(table)
+    if not isinstance(tcfg, dict):
+        return None
+    return set((tcfg.get("column_types") or {}).keys()) | set(_SYSTEM_COLUMNS)
+
+
+def resolve_binding_parts(cfg: dict, table: str, allow_guess: bool = False):
+    """`(binding|None, provenance, guessed)` - the one resolver, per key.
+
+    `provenance` is `{key: {"value", "origin", "from"}}` for EVERY key in
+    `BINDING_KEYS`, including the ones nobody stated. It is the material the
+    operator report renders; a resolution nobody can inspect is how a wrong
+    declaration survives a year.
+
+    REFUSE BY NAME. A declared key naming a column `table_config` does not have
+    does not silently win and does not silently lose - it takes the binding down
+    with a log line that names the table, the key and the column. Previously
+    that declaration beat a correct derivation and the map read zero rows.
+    """
+    declared = {}
+    b = ((cfg or {}).get("table_bindings") or {}).get(table)
+    if isinstance(b, dict) and isinstance(b.get("columns"), dict):
+        declared = b["columns"]
+    base, guessed = derive_binding_parts(
+        table, resolve_value_column_candidates(cfg), allow_guess=allow_guess)
+    known = _known_columns(table)
+
+    out, prov, refused = {}, {}, []
+    for key in BINDING_KEYS:
+        raw = declared.get(key)
+        if raw not in (None, "", [], {}):
+            value = [raw] if (key == "key_columns" and isinstance(raw, str)) else raw
+            if key == "key_columns" and isinstance(value, list):
+                value = list(value)
+            names = value if isinstance(value, list) else [value]
+            missing = [] if known is None else [str(n) for n in names if str(n) not in known]
+            if missing:
+                refused.append((key, missing))
+                prov[key] = {"value": value, "origin": ORIGIN_REFUSED,
+                             "from": _DECLARED_FROM}
+                continue
+            out[key] = value
+            prov[key] = {"value": value, "origin": ORIGIN_DECLARED, "from": _DECLARED_FROM}
+        elif key == "val" and declared:
+            # 🔴 `val` IS THE KEY WHOSE OMISSION ALREADY MEANS SOMETHING, so it is the one
+            #    key that does NOT inherit once a block exists. On a declared binding,
+            #    "no val" is the site saying THIS MAP CARRIES NO VALUE — the run reads as
+            #    occupancy-only and `_cells_of` returns REFERENCE_KIND_OCCUPANCY. Filling
+            #    it from table_config would silently hand that site a value column it never
+            #    declared and flip an occupancy run into a value run, changing the scoring.
+            #    Same load-bearing restriction as `bonding_plan.DERIVED_ROLE_OF`: absence is
+            #    only ever filled where absence would otherwise be a refusal, and here it is
+            #    not a refusal, it is an answer. (test_map_alignment_columns pins this.)
+            #    With NO block at all there is no such statement to respect, so the ordinary
+            #    derivation runs and `derive_table_binding`'s "no candidate -> refuse" holds.
+            prov[key] = {"value": None, "origin": ORIGIN_ABSENT, "from": None}
+            guessed = False
+        elif key in base:
+            out[key] = base[key]
+            prov[key] = {"value": base[key], "origin": ORIGIN_INHERITED,
+                         "from": _INHERITED_FROM}
+        else:
+            prov[key] = {"value": None, "origin": ORIGIN_ABSENT, "from": None}
+            if key == "val":
+                guessed = False        # nothing was guessed if nothing was produced
+
+    if refused:
+        logger.warning(
+            "[Binding] REFUSED table=%s :: %s — declared column(s) are not in "
+            "table_config. Delete the key and it inherits from table_config; "
+            "editing it cannot help while the declaration out-ranks the derivation.",
+            table, "; ".join("%s -> %s" % (k, ", ".join(m)) for k, m in refused))
+        return None, prov, False
+    # Coordinates and identity are what a map read cannot do without, so their
+    # absence is a refusal rather than a guess.
+    #
+    # 🔴 `val` IS NOT IN THAT SET WHEN ANYTHING WAS DECLARED. A site that declares
+    #    a binding and names no value column is a NORMAL site, not a broken one —
+    #    it reads as occupancy, and `_cells_of` already says so by returning
+    #    `REFERENCE_KIND_OCCUPANCY`. Refusing there would turn "this run could only
+    #    ask about occupancy" into "this table is not a map", which is a different
+    #    and false statement (test_map_alignment_columns pins it).
+    #    A PURELY DERIVED binding still requires it: that is `derive_table_binding`'s
+    #    long-standing contract — with nothing declared, a table whose value column
+    #    matches no candidate is refused rather than served on a guess.
+    declared_any = any(p["origin"] == ORIGIN_DECLARED for p in prov.values())
+    required = ("x", "y", "key_columns") if declared_any else ("x", "y", "val",
+                                                               "key_columns")
+    if not all(out.get(k) for k in required):
+        return None, prov, False
+    return out, prov, guessed
+
+
 def resolve_binding(cfg: dict, table: str) -> dict | None:
-    """테이블의 좌표 컬럼 바인딩. **config 선언 > table_config 유도** 순. 둘 다 없으면 None.
+    """테이블의 좌표 컬럼 바인딩. **키마다 선언 > table_config 유도** 순. 못 풀면 None.
 
     None은 "이 테이블은 맵으로 해석할 수 없다"는 뜻이며 호출자가 명시 실패로 표면화한다
     (관례 값으로 조용히 추측해 0건을 정상처럼 내보내지 않는다)."""
-    bindings = (cfg.get("table_bindings") or {})
-    b = bindings.get(table)
-    if isinstance(b, dict) and b.get("columns"):
-        return dict(b["columns"])
-    return derive_table_binding(table, resolve_value_column_candidates(cfg))
+    binding, _prov, _guessed = resolve_binding_parts(cfg, table)
+    return binding
 
 
 def resolve_binding_info(cfg: dict, table: str) -> dict | None:
@@ -1657,32 +1849,26 @@ def resolve_binding_info(cfg: dict, table: str) -> dict | None:
     `"source": "fallback_guess"`로 표기된다 — 클라는 이 표지를 보고 경고해야 하며,
     선언/유도 바인딩처럼 신뢰하고 조용히 렌더하면 안 된다(데이터 경로는 이 경우 거부).
     """
-    b = (cfg.get("table_bindings") or {}).get(table)
-    if isinstance(b, dict) and b.get("columns"):
-        cols = dict(b["columns"])
-        key_cols = cols.get("key_columns") or ["lot", "slot"]
-        if isinstance(key_cols, str):
-            key_cols = [key_cols]
-        # 🔴 `index`는 **기본값으로 채우지 않는다.** x/y/val은 데이터 경로가 실제로 쓰는
-        #    리터럴 기본값이 있어서 미선언을 그 값으로 채워 서빙해도 「효력 그대로」지만,
-        #    순번 컬럼에는 이름 관례가 없다(현장마다 다르다). 없는 키를 관례 이름으로
-        #    채우면 실재하지 않는 컬럼을 「선언됐다」로 서빙하게 되고, 그 축은 조용히
-        #    0건 일치를 내며 「번호가 안 맞았다」로 읽힌다 — 정반대의 진술이다.
-        #    선언이 없으면 None이고, None이 곧 「이 축은 없다」다.
-        return {"x": cols.get("x", "x"), "y": cols.get("y", "y"),
-                "val": cols.get("val", "val"),
-                "index": cols.get("index") or None,
-                "key_columns": list(key_cols), "source": "declared"}
-    binding, guessed = _derive_table_binding_full(
-        table, resolve_value_column_candidates(cfg))
+    binding, prov, guessed = resolve_binding_parts(cfg, table, allow_guess=True)
     if binding is None:
         return None
-    # 유도는 순번 컬럼을 **만들지 않는다**(§위 주석: 이름 관례가 없다). 키는 언제나 실어
-    # 보낸다 - 없는 키와 None은 받는 쪽에서 같아 보이고, 그 구별은 화면이 「선언 안 됨」을
-    # 말할 수 있느냐를 가른다.
-    binding["index"] = None
-    binding["source"] = "fallback_guess" if guessed else "derived"
-    return binding
+    # The payload shape is a boundary contract (`GET /api/maps/paint-rules`), so
+    # it is unchanged: the same five keys plus `source`. What changed is behind
+    # it - an omitted key now INHERITS from `table_config` instead of being
+    # filled with the naming convention. `index` is still never invented: absent
+    # means None, and None is what tells the screen "this axis does not exist".
+    #
+    # `source` keeps its three values and its meaning. It describes the binding
+    # as a whole, so a table with any declared key still reads `declared`; the
+    # per-key story lives in `resolve_binding_parts`' provenance, which is what
+    # `/admin/config/resolve` renders.
+    declared_any = any(p["origin"] == ORIGIN_DECLARED for p in prov.values())
+    out = {"x": binding.get("x"), "y": binding.get("y"), "val": binding.get("val"),
+           "index": binding.get("index") or None,
+           "key_columns": list(binding.get("key_columns") or [])}
+    out["source"] = ("declared" if declared_any
+                     else "fallback_guess" if guessed else "derived")
+    return out
 
 
 def map_key_parts(binding: dict, map_key: str):

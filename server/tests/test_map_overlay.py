@@ -1148,14 +1148,82 @@ def test_paint_rules_serves_resolved_binding_declared_wins(mov_env, client,
     assert client.get("/api/maps/paint-rules").json()["binding"] is None
 
 
-def test_resolve_binding_info_normalizes_partial_declaration_unit():
-    """선언 바인딩의 누락 키는 데이터 경로의 실효 기본값으로 채워 서빙한다
-    (get_overlay는 binding.get("x", "x") 식 기본값, build_key_filters는 lot/slot 기본 —
-    서빙 값이 실제 효력과 다르면 이 필드는 단일 소스가 못 된다)."""
+def test_partial_declaration_inherits_and_never_invents_a_convention():
+    """[2026-08-11] 선언 바인딩의 **누락 키는 상속된다** — 관례 이름으로 채우지 않는다.
+
+    이 테스트는 뒤집힌 것이다. 종전 계약은 「누락 키를 데이터 경로의 실효 기본값으로
+    채워 서빙한다」였고, 그 기본값이 `x`/`y`/`val` 리터럴과 `key_columns=["lot","slot"]`
+    이었다. 그 규칙이 **2026-08-10 사고의 기전**이다: `core_wafer_map`의 정체성이
+    `["wafer_id"]`로 옮겨간 뒤 「상속시키려고」 `key_columns`를 지우면 상속이 아니라
+    **폐기된 정체성 `["lot","slot"]`**을 조용히 받았다. 이제 우선순위는 키마다
+    `선언 > table_config 유도 > 이름을 대고 거절`이고 관례 폴백은 없다.
+    """
+    # table_config가 모르는 테이블 → 상속할 바탕이 없다. 없는 것을 지어내는 대신 거절한다.
     cfg = {"table_bindings": {"some_map": {"columns": {"val": "leg"}}}}
-    assert map_overlay.resolve_binding_info(cfg, "some_map") == {
-        "x": "x", "y": "y", "val": "leg", "index": None,
-        "key_columns": ["lot", "slot"], "source": "declared"}
+    assert map_overlay.resolve_binding_info(cfg, "some_map") is None
+    assert map_overlay.resolve_binding(cfg, "some_map") is None
+
+    binding, prov, _guessed = map_overlay.resolve_binding_parts(cfg, "some_map")
+    assert binding is None
+    assert prov["val"]["origin"] == map_overlay.ORIGIN_DECLARED
+    for key in ("x", "y", "key_columns"):
+        assert prov[key]["origin"] == map_overlay.ORIGIN_ABSENT, key
+        assert prov[key]["value"] is None, key
+
+
+def test_omitted_key_inherits_map_key_columns_not_lot_slot(mov_env):
+    """[2026-08-11] 정체성 키를 지우면 `table_config.map_key_columns`를 **상속한다**.
+
+    [mutation guard] 이 단언이 지키는 것은 하나다 — 지운 키가 `["lot","slot"]`으로
+    돌아오지 않는 것. 그 값이 돌아오면 2026-08-10 사고가 다시 무장된다. 이 픽스처는
+    `lot`/`slot` 컬럼을 **갖고 있지도 않아서**, 관례 폴백이 살아나면 실재하지 않는
+    컬럼으로 필터를 만든다 — 즉 결함 축이 실제로 활성화돼 있다.
+    """
+    from database import crud
+
+    table = "mov_test_derived_map"
+    declared = crud.TABLE_CONFIG[table].get("map_key_columns")
+    assert declared == ["base"], "픽스처가 lot/slot과 다른 정체성을 선언해야 한다"
+    types = crud.TABLE_CONFIG[table]["column_types"]
+    assert "lot" not in types and "slot" not in types
+
+    # 선언 블록은 있고 정체성 키만 없다 — 종전에 ["lot","slot"]이 나오던 바로 그 모양.
+    cfg = {"table_bindings": {table: {"columns": {"x": "x", "y": "y", "val": "leg"}}}}
+    info = map_overlay.resolve_binding_info(cfg, table)
+    assert info["key_columns"] == ["base"]
+    assert info["key_columns"] != ["lot", "slot"]
+
+    _b, prov, _g = map_overlay.resolve_binding_parts(cfg, table)
+    assert prov["key_columns"]["origin"] == map_overlay.ORIGIN_INHERITED
+    assert prov["key_columns"]["from"] == "table_config"
+
+
+def test_declared_column_absent_from_table_config_is_refused_by_name(mov_env):
+    """[2026-08-11] 선언이 없는 컬럼을 가리키면 **조용히 이기지 않고 거절한다**.
+
+    이것이 2026-08-04 라이브 사고의 형태다(`bin_map.columns.x = "x"` on `dt_log`).
+    종전에는 그 선언이 올바른 유도를 이기고 0건을 읽었다. 이제 바인딩 전체가 거절되고
+    사유가 키와 컬럼을 이름으로 댄다.
+    """
+    table = "mov_test_odd_map"
+    good = {"x": "tx", "y": "ty", "val": "core_lot",
+            "key_columns": ["tape_lot", "tape_slot"]}
+    # 온전한 선언은 그대로 해석된다 — 거절이 정상 경로를 잡아먹지 않는 것부터 확인한다.
+    assert map_overlay.resolve_binding(cfg_of(table, good), table) is not None
+
+    poisoned = dict(good, x="no_such_column")
+    assert map_overlay.resolve_binding(cfg_of(table, poisoned), table) is None
+    assert map_overlay.resolve_binding_info(cfg_of(table, poisoned), table) is None
+
+    _b, prov, _g = map_overlay.resolve_binding_parts(cfg_of(table, poisoned), table)
+    assert prov["x"]["origin"] == map_overlay.ORIGIN_REFUSED
+    assert prov["x"]["value"] == "no_such_column"
+    # 나머지 키는 여전히 자기 출처를 말한다 — 거절이 진단을 지우지 않는다.
+    assert prov["y"]["origin"] == map_overlay.ORIGIN_DECLARED
+
+
+def cfg_of(table: str, columns: dict) -> dict:
+    return {"table_bindings": {table: {"columns": dict(columns)}}}
 
 
 def test_paint_rules_marks_fallback_guess_explicitly(mov_env, client):

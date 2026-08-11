@@ -119,6 +119,62 @@ def _as_col_list(value):
     return None
 
 
+# ═══ Map-identity inheritance ══════════════════════════════════════════════════
+#
+# The graph was a FIFTH place that spelled out what identifies a wafer, and
+# nothing compared it to the other four. `map_key_columns` is the record of
+# truth for "which columns name one map"; a node whose identity begins with that
+# same fact should FOLLOW it rather than repeat it, so that changing
+# `table_config` cannot leave the graph naming the same wafer differently.
+#
+# The token is explicit rather than implicit for one reason: a node identity is
+# usually the map identity PLUS something (a cell is a map plus its coordinates),
+# so "omit the key to inherit" cannot express the composition. Omitting
+# `identity` entirely still means "inherit exactly the map identity".
+#
+# `target_identity_from` accepts the token too, but its ABSENCE stays an error:
+# an edge points at a different table's node, and there is no single "the"
+# identity to inherit for a target this mapping does not name.
+INHERIT_MAP_IDENTITY = "@map_key_columns"
+
+
+def _map_identity_columns(table_name: str):
+    """`table_config.<t>.map_key_columns` through the ONE binding resolver, or None.
+
+    Deliberately not a second reader of `table_config`. `map_overlay`'s per-key
+    derivation is what the map layer itself inherits from, so the graph and the
+    map cannot disagree about what a wafer is called - they are reading the same
+    function, not two copies of the same rule.
+    """
+    try:
+        import map_overlay
+        parts, _guessed = map_overlay.derive_binding_parts(table_name)
+    except Exception as e:                     # noqa: BLE001 - a failed read is a refusal
+        logger.warning("[Ontology] map identity for '%s' could not be resolved (%s: %s)",
+                       table_name, type(e).__name__, e)
+        return None
+    cols = parts.get("key_columns")
+    return list(cols) if cols else None
+
+
+def _expand_identity(cols, table_name: str, where: str):
+    """`(expanded|None, err)` — replace the inheritance token with the map identity."""
+    if cols is None or INHERIT_MAP_IDENTITY not in cols:
+        return cols, None
+    inherited = _map_identity_columns(table_name)
+    if not inherited:
+        return None, (
+            f"{where}: '{INHERIT_MAP_IDENTITY}' cannot be resolved — table_config "
+            f"declares no map_key_columns for '{table_name}' (and lot/slot are not "
+            f"both present), so there is no map identity to inherit")
+    out = []
+    for c in cols:
+        for name in (inherited if c == INHERIT_MAP_IDENTITY else [c]):
+            if name not in out:
+                out.append(name)
+    return out, None
+
+
 def _normalize_props(raw_props, where: str, allow_spatial: bool = True):
     """props 선언을 [{"col": str, "spatial": dict|None}] 형태로 정규화한다.
 
@@ -198,9 +254,17 @@ def _validate_table_mapping(table_name: str, raw: dict, known_tables: dict):
     label = node_raw.get("label")
     if not isinstance(label, str) or not _LABEL_RE.match(label.strip() or ""):
         return None, f"node.label must be a valid identifier: {label!r}"
-    identity = _as_col_list(node_raw.get("identity"))
+    if "identity" not in node_raw:
+        # Omission means INHERIT the map identity, not "unspecified". A node that
+        # is one map row keyed the way the map is keyed no longer restates it.
+        identity = [INHERIT_MAP_IDENTITY]
+    else:
+        identity = _as_col_list(node_raw.get("identity"))
     if identity is None:
         return None, "node.identity must be a column name or non-empty list of columns"
+    identity, err = _expand_identity(identity, table_name, "node.identity")
+    if err is not None:
+        return None, err
     # §7.5c — 받아서 보존만 한다. 탐색 정책 강제는 G2.5(정책 엔진)의 일이며 현재 소비자 없음.
     node_class = node_raw.get("node_class")
     if node_class is not None:
@@ -232,6 +296,10 @@ def _validate_table_mapping(table_name: str, raw: dict, known_tables: dict):
         t_identity = _as_col_list(e.get("target_identity_from"))
         if t_identity is None:
             return None, f"edges[{i}].target_identity_from must be a column name or non-empty list"
+        t_identity, err = _expand_identity(
+            t_identity, table_name, f"edges[{i}].target_identity_from")
+        if err is not None:
+            return None, err
         e_desc = e.get("description")
         if not isinstance(e_desc, str) or not e_desc.strip():
             return None, f"edges[{i}] ('{e_type}') requires 'description' (spec §3)"

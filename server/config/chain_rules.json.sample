@@ -87,6 +87,7 @@
       "accepted_metrics": ["values", "occupancy"],
       "assume_reference_geometry": true,
       "allow_assumed_geometry": true,
+      "__alignment_thresholds_derivation": "DELIBERATE DEPARTURE from map_overlay_config.alignment (20/20) — set by the product owner, not transcribed. Read this before you delete it as an underived copy. | map_overlay_config.json's red line says 'do not transcribe these numbers, re-derive them for a different floor'. This IS the different floor, which is exactly the case that line describes: the 20 was derived against the valid_die_ref FLOOR (seed_valid_die_ref_floor.py's verify_discrimination reports that floor separates 7 non-identity frames by at least 20 dies), and this chain does not score against that floor. It scores a core wafer map (reference.table=core_wafer_map) whose reference CARRIES VALUES (value_col=c_bn), and a value-carrying reference discriminates on bin fingerprint rather than on occupancy, so the floor's occupancy resolution is not this axis's resolution. | The override is applied by alignment_view_service as a SHALLOW update on a per-invocation copy, so alignment.index (the sequence axis) keeps its own 20/20 — that key separation is deliberate and is the only thing that limited the blast radius the one time these were lowered (2026-08-05, 20 -> 1). Do not deepen that merge. | If you change reference.table or value_col, these two numbers stop being derived and must be derived again.",
       "alignment_thresholds": {
         "min_margin_dies": 5,
         "min_discriminating_dies": 10

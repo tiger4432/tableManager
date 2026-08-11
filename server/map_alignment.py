@@ -4841,11 +4841,9 @@ def resolve_source_columns(cfg: dict, table: str, model, x_col: str = None,
         # 오타가 「값 없이 채점」으로 위장한다.
         out["value"] = {"column": _named(v, "value"), "origin": COLUMN_CHOSEN, "reason": None}
     elif proposal and proposal.get("val") and not guessed:
-        # 제안은 다르다. `resolve_binding_info`는 선언에 없는 키를 **데이터 경로가 실제로
-        # 쓰는 기본값**(리터럴 `val`)으로 채워 서빙하므로, 값 컬럼을 선언하지 않은 현장의
-        # 제안은 실재하지 않는 컬럼을 가리킨다. 그것은 잘못된 선언이 아니라 **값 컬럼이
-        # 없다는 뜻**이고(데이터 경로 `_cells_of`도 같은 판정을 한다), 거절이 아니라
-        # 점유 전용으로 내려앉는다.
+        # 제안된 컬럼이 실재하지 않을 수 있다(선언에 오타가 있거나 스키마가 바뀐 경우).
+        # 거절이 아니라 점유 전용으로 내려앉되 **이름을 대고** 내려앉는다 — 데이터 경로
+        # `_cells_of`도 같은 판정을 한다.
         col = proposal["val"]
         if getattr(model, col, None) is None:
             out["value"] = {"column": None, "origin": COLUMN_ABSENT,
@@ -4854,8 +4852,25 @@ def resolve_source_columns(cfg: dict, table: str, model, x_col: str = None,
         else:
             out["value"] = {"column": col, "origin": COLUMN_PROPOSED, "reason": None}
     else:
-        out["value"] = {"column": None, "origin": COLUMN_ABSENT,
-                        "reason": (_VALUE_GUESS_REASON if guessed else None)}
+        # [2026-08-11] 여기 문장이 **비면 안 된다.**
+        #
+        # Until per-key inheritance landed, a site that declared a binding without a
+        # value column got the literal `val` filled in by the old block-replace
+        # `resolve_binding_info`; that phantom column then failed the `getattr` above
+        # and produced the sentence. The sentence was therefore an ACCIDENT of a
+        # mechanism whose whole purpose was to be deleted. The resolver no longer
+        # invents the column — omitting `val` on a declared binding now means exactly
+        # "this map carries no value" — so the honest branch has to say it out loud.
+        # Otherwise `columns.value.reason` goes null and the screen shows an absence
+        # with no explanation, which is the silent degrade this payload exists to stop.
+        if guessed:
+            reason = _VALUE_GUESS_REASON
+        elif proposal:
+            reason = ("이 맵의 바인딩이 값 컬럼을 선언하지 않았습니다 - 점유만으로 "
+                      "대조합니다")
+        else:
+            reason = None
+        out["value"] = {"column": None, "origin": COLUMN_ABSENT, "reason": reason}
 
     # 순번 컬럼. 🔴 **추측하지 않는다** — 값 컬럼과 달리 이름 관례가 없고(현장마다 다르다),
     #    추측이 맞을 확률보다 엉뚱한 수치 컬럼을 순번으로 읽을 확률이 높다. 조작자가 대거나
@@ -5012,6 +5027,64 @@ def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
     values = [(r[2] if val_col is not None else None) for r in rows]
     cells, values = _to_cells([(r[0], r[1]) for r in rows], values)
     return cells, values, truncated, kind
+
+
+def basis_cells_for(db, reference: dict, cfg: dict = None):
+    """참조(유효 다이) 맵의 **셀 좌표 목록**. 못 읽으면 None.
+
+    [WHERE THIS LIVES, 2026-08-11] Moved here from `frame_confirmation`, where it
+    was a PRIVATE function that the replacement chain had come to depend on
+    (`mappers/dt_inventory_metadata_mapper` called `frame_confirmation.
+    _basis_cells_for`). `frame_confirmation` is retiring, so retiring it would
+    have killed its own successor. It belongs here regardless of that: it wraps
+    `_cells_of` and its output feeds `confirmed_meta_for(basis_cells=...)`, both
+    of which live in this module. A third hand-rolled copy in
+    `mappers/dt_alignment_metadata_mapper` now calls this too.
+
+    ═══ 왜 확정이 이것을 읽어야 하는가 (2026-08-06) ══════════════════════════════════════
+    `confirmed_meta_for`는 소스 맵에 `valid_die_ref`를 적는다. 그 한 줄 때문에 편집기가 그
+    맵을 다시 열 때 **원점 상자가 원에서 유효 다이 마스크로 갈리고**(`map_editor.js:1942`),
+    상자가 갈리면 같은 칸이 다른 좌표를 읽는다. 그래서 확정은 자기가 만들 좌표계의 상자를
+    알아야 원점을 옳게 적을 수 있고, 그 상자의 유일한 재료가 이 셀 목록이다.
+
+    🔴 **판 하나에 한 번 읽는다.** 기여자 수와 무관하다 — 참조는 판마다 하나이고, 마스크는
+       그 참조의 함수다. 맵마다 읽으면 같은 질의를 N번 던진다.
+    🔴 **두 번째 셀 로더를 만들지 않는다.** `_cells_of`는 `/view`의 기준 맵 해석이 쓰는 바로
+       그 함수이고(바인딩 유도·키 캐노니컬화·상한이 그 안에 있다), 다시 쓰면 채점이 본
+       기준과 확정이 본 기준이 갈릴 수 있다.
+    ⚠️ **못 읽으면 None을 돌려주고 이름을 대서 로그에 남긴다.** 그때 원점은 원 상자에서
+       계산되는데, 편집기는 여전히 마스크로 그린다. 조용하면 아무도 모르므로 조용히 넘기지
+       않는다. 이 자리를 거절로 승격할지는 총괄 판정이다.
+
+    `cfg`: 호출자가 작업 경계에서 이미 잡아 둔 스냅샷. 미지정이면 여기서 1회 로드한다 —
+    한 작업 안에서 config가 두 번 갈리지 않게 하는 것이 호출자의 몫이기 때문이다.
+    """
+    ref = reference or {}
+    table, map_id = ref.get("table"), ref.get("map_id")
+    if not table or not map_id:
+        return None
+    try:
+        cfg = cfg if cfg is not None else map_overlay.load_overlay_config()
+        cells, _values, truncated, _kind = _cells_of(
+            db, cfg, str(table), str(map_id), map_overlay.MAX_VALID_DIE_CELLS)
+    except Exception as e:                               # noqa: BLE001 — 읽기 실패는 거절이다
+        logger.warning("[basis_cells] the valid-die reference '%s/%s' could not be read "
+                       "(%s: %s) — the confirmed origin falls back to the wafer circle while "
+                       "the editor draws this map from the mask",
+                       table, map_id, type(e).__name__, e)
+        return None
+    if truncated:
+        # 잘린 마스크는 **틀린 마스크**다(같은 판단이 `resolve_valid_die_set`의 상한 거절에
+        # 있다). 자른 집합으로 상자를 만들면 아무도 선언한 적 없는 좌표계가 나온다.
+        logger.warning("[basis_cells] the valid-die reference '%s/%s' exceeds the cell cap "
+                       "(%d) — a truncated mask is a wrong mask, so the confirmed origin falls "
+                       "back to the wafer circle", table, map_id, map_overlay.MAX_VALID_DIE_CELLS)
+        return None
+    if not cells:
+        logger.warning("[basis_cells] the valid-die reference '%s/%s' has no readable cell — "
+                       "the confirmed origin falls back to the wafer circle", table, map_id)
+        return None
+    return cells
 
 
 def _ref_state(state, **kw):

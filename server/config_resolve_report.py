@@ -692,11 +692,119 @@ def _resolve_notation() -> dict:
                         sources, settings, effective, ineffective, rejected)
 
 
+DOMAIN_BINDING = "binding"
+
+_BINDING_KEY_MEANING = {
+    "x": "맵의 가로 좌표 컬럼",
+    "y": "맵의 세로 좌표 컬럼",
+    "val": "셀 값 컬럼(범례·채점이 읽는 값)",
+    "index": "순번 컬럼 — 유도되지 않는다(이름 관례가 없다)",
+    "key_columns": "맵 하나를 지목하는 정체성 컬럼",
+}
+
+
+def _resolve_binding() -> dict:
+    """맵 좌표/정체성 바인딩이 **키마다** 무엇으로 결정됐는가. DB를 건드리지 않는다.
+
+    WHY THIS DOMAIN EXISTS. 바인딩은 두 파일이 같은 사실을 말할 수 있는 자리이고,
+    2026-08-10까지 그 둘이 어긋났을 때 아무도 알 수 없었다 — 선언이 유도를 이기는데
+    「무엇이 이겼나」를 묻는 자리가 없었기 때문이다. 이제 우선순위는 키마다
+    `선언 > table_config 유도 > 이름을 대고 거절` 하나이고, 이 도메인이 그 결과를 키
+    단위로 돌려준다. 「됩니다」가 아니라 **어느 철자가 이겼는지**가 답이다.
+    """
+    import map_overlay
+    from database import crud
+    from paths import config_path
+
+    cfg = map_overlay.load_overlay_config()
+    declared_tables = set((cfg.get("table_bindings") or {}).keys())
+    declared_tables = {t for t in declared_tables if not t.startswith("__")}
+    tables = sorted(set(crud.TABLE_CONFIG or {}) | declared_tables)
+
+    overlay_path = config_path("map_overlay_config.json")
+    table_path = config_path("table_config.json")
+    sources = [
+        source("map_overlay_config", overlay_path,
+               "좌표 바인딩의 **예외 선언**이 사는 자리입니다. 여기 없는 키는 "
+               "table_config에서 상속됩니다 — 관례 이름으로 채우지 않습니다."),
+        source("table_config", table_path,
+               "바인딩의 **바탕**입니다. map_key_columns가 정체성의 정본이고, "
+               "x/y/값 컬럼도 여기서 유도됩니다."),
+    ]
+
+    effective, ineffective, rejected = [], [], []
+    for table in tables:
+        if table.startswith("__"):
+            continue
+        binding, prov, _guessed = map_overlay.resolve_binding_parts(cfg, table)
+        refused = [k for k, p in prov.items() if p["origin"] == map_overlay.ORIGIN_REFUSED]
+        # 맵으로 해석되지 않고 선언도 없는 테이블은 이 도메인의 관심사가 아니다 —
+        # 전부 실으면 「맵이 아니다」가 95줄의 소음이 되어 진짜 거절을 덮는다.
+        if binding is None and not refused and table not in declared_tables:
+            continue
+
+        for key in map_overlay.BINDING_KEYS:
+            p = prov.get(key) or {}
+            origin, value = p.get("origin"), p.get("value")
+            meaning = _BINDING_KEY_MEANING.get(key, key)
+            subject = f"{table}.{key}"
+            if origin == map_overlay.ORIGIN_REFUSED:
+                rejected.append(entry(
+                    SCOPE_SETTING, subject,
+                    f"`{table}`의 {key} 선언({_as_json(value)})이 가리키는 컬럼이 "
+                    f"table_config에 없습니다 — 그래서 이 테이블의 바인딩 전체가 "
+                    f"거절됐습니다. **고치지 말고 지우십시오**: 선언은 유도를 이기므로 "
+                    f"틀린 철자는 편집으로 살아나지 않고, 키를 지우면 table_config에서 "
+                    f"상속됩니다. ({meaning})",
+                    reason=REASON_MAPPING_UNAVAILABLE,
+                    fields={"table": table, "key": key, "declared": value}))
+            elif origin == map_overlay.ORIGIN_DECLARED:
+                effective.append(entry(
+                    SCOPE_SETTING, subject,
+                    f"`{table}`의 {key}는 map_overlay_config가 선언한 "
+                    f"{_as_json(value)}입니다(선언이 유도를 이깁니다). {meaning}. "
+                    f"table_config가 같은 답을 낸다면 이 선언은 지워도 되고, 지우는 편이 "
+                    f"낫습니다 — 중복 선언은 유도가 아직 도는지를 가립니다.",
+                    fields={"table": table, "key": key, "value": value,
+                            "origin": origin}))
+            elif origin == map_overlay.ORIGIN_INHERITED:
+                effective.append(entry(
+                    SCOPE_SETTING, subject,
+                    f"`{table}`의 {key}는 table_config에서 상속한 {_as_json(value)}입니다 "
+                    f"— map_overlay_config에 선언이 없습니다. {meaning}. "
+                    f"table_config를 고치면 이 값이 따라 움직입니다.",
+                    fields={"table": table, "key": key, "value": value,
+                            "origin": origin}))
+            else:
+                ineffective.append(entry(
+                    SCOPE_SETTING, subject,
+                    f"`{table}`의 {key}를 아무도 말하지 않았습니다 — 선언도 없고 "
+                    f"table_config에서 유도되지도 않습니다. {meaning}. "
+                    f"관례 이름으로 채우지 않습니다: 없는 컬럼을 「선언됐다」로 내보내면 "
+                    f"그 축은 0건을 맞히고 화면은 그것을 「안 맞았다」로 읽습니다.",
+                    reason=REASON_NOT_DECLARED,
+                    fields={"table": table, "key": key}))
+
+        if binding is None and not refused:
+            rejected.append(entry(
+                SCOPE_RULE, table,
+                f"`{table}`은 맵으로 해석되지 않습니다 — x/y/val/key_columns 넷이 모두 "
+                f"있어야 하는데 일부를 아무도 말하지 않았습니다. 부분 답을 내보내는 대신 "
+                f"거절합니다(추측한 좌표는 0건을 정상처럼 보이게 만듭니다).",
+                reason=REASON_MAPPING_UNAVAILABLE, fields={"table": table}))
+
+    return build_domain(DOMAIN_BINDING, "맵 좌표·정체성 바인딩",
+                        sources, [], effective, ineffective, rejected)
+
+
 # 도메인 등록기. 나머지 config는 여기에 한 줄씩 붙는다.
+# 🔴 새 도메인은 **뒤에** 붙인다 — contracts/config_resolve_report의 하네스가
+#    `resolve_report()["domains"][0]`로 enrichment를 집는다.
 _RESOLVERS = {
     DOMAIN_ENRICHMENT: _resolve_enrichment,
     DOMAIN_VIRTUAL_JOIN: _resolve_virtual_join,
     DOMAIN_NOTATION: _resolve_notation,
+    DOMAIN_BINDING: _resolve_binding,
 }
 
 

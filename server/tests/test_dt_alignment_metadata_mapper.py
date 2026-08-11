@@ -49,7 +49,10 @@ def _wire_success(monkeypatch, view=None):
                         lambda *_a, **_kw: view or _view())
     monkeypatch.setattr(mapper.map_overlay, "load_overlay_config", lambda: {})
     monkeypatch.setattr(mapper.map_overlay, "load_map_meta", lambda *_a: {"grid_cols": 2})
-    monkeypatch.setattr(mapper, "_basis_cells_for", lambda *_a: [(1, 1)])
+    # [2026-08-11] The mapper's private copy of this read is gone; the one
+    # implementation lives in `map_alignment`. Patch it where it is now defined,
+    # not where it used to be copied.
+    monkeypatch.setattr(mapper.map_alignment, "basis_cells_for", lambda *_a: [(1, 1)])
     monkeypatch.setattr(mapper.map_alignment, "_load_metas", lambda *_a: {})
     monkeypatch.setattr(mapper.map_meta_registrar, "meta_business_key",
                         lambda table, map_id: "%s_%s" % (table, map_id))
