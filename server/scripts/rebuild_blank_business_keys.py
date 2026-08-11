@@ -52,7 +52,15 @@ CHUNK = 1_000
 
 
 def _blank_parts(value, sep: str) -> bool:
-    """옛 조합이 빈 컴포넌트를 남겼는가. 구분자로 쪼개 빈 조각이 있으면 참."""
+    """참고용 표시. **판정에 쓰지 않는다.**
+
+    🔴 처음엔 이것이 관문이었고 틀렸다. 「옛 조합기가 빈 컴포넌트를 «남겼을» 것」이라고
+    가정했는데, 빈 조각을 **아예 빼고** 이었다면 `a_b`가 그냥 `a`가 되어 빈 조각이
+    하나도 없다. 그 가정 때문에 운영 실행에서 blank 가 0으로 떴다.
+
+    손상의 «모양»을 맞히려 하지 않는다. 전부 재조립해서 **옛 키와 다른 것**을 찾으면
+    모양과 무관하게 걸린다.
+    """
     if value is None:
         return False
     return any(p == "" for p in str(value).split(sep))
@@ -97,17 +105,25 @@ def run(table: str, apply: bool) -> dict:
         # 살아 있는 키 전부. 새 키가 이 안에 있고 주인이 내가 아니면 그것이 충돌이다.
         owner = {r["business_key_val"]: r["row_id"] for r in rows}
 
-        stat = {"scanned": len(rows), "blank": 0, "no_material": 0,
+        stat = {"scanned": len(rows), "blank_shape": 0, "no_material": 0,
                 "unchanged": 0, "collides": 0, "rebuilt": 0, "failed": 0}
-        collide_sample, pending = [], []
+        collide_sample, pending, empty_by_col = [], [], {}
 
         for r in rows:
-            if not _blank_parts(r["business_key_val"], sep):
-                continue
-            stat["blank"] += 1
+            # 🔴 관문 없이 전부 재조립한다. 손상의 모양을 미리 맞히려 들면
+            #    (예: "빈 컴포넌트가 남았을 것") 그 모양이 아닌 손상을 통째로 놓친다.
+            if _blank_parts(r["business_key_val"], sep):
+                stat["blank_shape"] += 1          # 참고용 표시일 뿐 관문이 아니다
             new = _compose(table, r, sources)
-            if new is None or _blank_parts(new, sep):
+            if new is None:
                 stat["no_material"] += 1          # ② 사람이 값을 넣어야 한다
+                # 🔴 「못 만든다」로 끝내지 않는다 - **어느 컬럼이 비어서** 못 만드는지
+                #    세어 둔다. 그 이름이 없으면 운영자는 370,000 을 손에 들고
+                #    다음에 무엇을 할지 알 수 없다.
+                empty = [c for c in sources
+                         if r.get(c) is None or str(r.get(c)).strip() == ""]
+                for c in (empty or ["(재료는 다 찼는데 조합기가 거절)"]):
+                    empty_by_col[c] = empty_by_col.get(c, 0) + 1
                 continue
             if new == r["business_key_val"]:
                 stat["unchanged"] += 1
@@ -136,7 +152,7 @@ def run(table: str, apply: bool) -> dict:
             stat["rebuilt"] = 0
 
         print(f"\n{'항목':22s} {'건수':>10s}")
-        for k in ("scanned", "blank", "no_material", "unchanged", "collides"):
+        for k in ("scanned", "blank_shape", "no_material", "unchanged", "collides"):
             print(f"{k:22s} {stat[k]:10d}")
         print(f"{'rebuildable' if not apply else 'rebuilt':22s} "
               f"{len(pending) if not apply else stat['rebuilt']:10d}")
@@ -146,8 +162,9 @@ def run(table: str, apply: bool) -> dict:
                   f"키가 되므로 **진짜 중복**이다. 어느 쪽을 남길지는 사람이 정한다.")
             print(f"   예시 row_id: {collide_sample}")
         if stat["no_material"]:
-            print(f"\n⚠️ 재료 없음 {stat['no_material']}건 - 원본 컬럼이 비어 있어 어떤 "
-                  f"스크립트도 만들 수 없다.")
+            print(f"\n⚠️ 재료 없음 {stat['no_material']}건 - 어느 컬럼이 비어서인지:")
+            for c, n in sorted(empty_by_col.items(), key=lambda x: -x[1]):
+                print(f"     {c:24s} {n:10d}")
         if not apply and pending:
             print(f"\n실제로 쓰려면 --apply. 그 전에 위 세 줄(no_material / unchanged / "
                   f"collides)이 납득되는지 먼저 볼 것.")
