@@ -1,13 +1,19 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **481개** 이력. (거버넌스 규칙 #4)
+> 총 **487개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-12 11:43** — [A Narrower Request Cost More And The Row That Did Not Move Caught The Gate](./20260812_114343_a_narrower_request_cost_more_and_the_row_that_did_not_move_caught_the_gate.md)
+- **2026-08-12 11:11** — [The Postgresql Fixture A Commit Of Mine Called Impossible](./20260812_111113_the_postgresql_fixture_a_commit_of_mine_called_impossible.md)
+- **2026-08-12 10:38** — [The Upsert Looked Batched And The Replacement Wrote Null Over A Default](./20260812_103853_the_upsert_looked_batched_and_the_replacement_wrote_null_over_a_default.md)
+- **2026-08-12 10:16** — [The Number Option A Was Scoped From Was Wrong Before The Work Started](./20260812_101605_the_number_option_a_was_scoped_from_was_wrong_before_the_work_started.md)
+- **2026-08-12 09:24** — [An Empty Cell Tab Drew Two Facts With One Sentence](./20260812_092458_an_empty_cell_tab_drew_two_facts_with_one_sentence.md)
+- **2026-08-12 08:59** — [A Number Travelled Into Three Files Under The Opposite Predicate](./20260812_085940_a_number_travelled_into_three_files_under_the_opposite_predicate.md)
 - **2026-08-12 08:36** — [The Chain Is Closed And Ingestion Is Not Because The Gate Landed One Level Below](./20260812_083609_the_chain_is_closed_and_ingestion_is_not_because_the_gate_landed_one_level_below.md)
 - **2026-08-11 20:49** — [A Filter Written From A Hypothesis Deletes The Evidence That Would Refute It](./20260811_204928_a_filter_written_from_a_hypothesis_deletes_the_evidence_that_would_refute_it.md)
 - **2026-08-11 19:54** — [The Menus Opened Every Time And An Ancestor Clip Cut All Of Them Away](./20260811_195401_the_menus_opened_every_time_and_an_ancestor_clip_cut_all_of_them_away.md)
