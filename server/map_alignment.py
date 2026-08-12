@@ -5384,6 +5384,92 @@ def _diag_request_block(req_id, rule, key_values, map_table, src_table, map_key_
     return L
 
 
+def _source_rows_by_map(db, key_attrs, map_key_cols, filters, q_cols, id_rows, cell_cap):
+    """Every map's source cells in **one** query. `(rows_by_map_id, servable)`.
+
+    🔴 This is the read that made `/view` cost seconds. The per-map loop it
+       replaces issued one statement per map, and no dynamic table declares an
+       index on a business column, so each one was a full scan of the source
+       table: cost was `maps x table_rows`, quadratic, and it got *worse* as the
+       operator narrowed the request - a two-column decision key drops the
+       planner's row estimate to 1, which buys a parallel `Gather` whose worker
+       launch dominates the scan it was launched for (measured on `assy_qa`:
+       23 ms per map with one predicate, 99 ms per map with three).
+
+    🔴 **The bound is exactly the one the loop had, not a new one.** The loop
+       read at most `cell_cap + 1` rows per map, so the sum over maps is what
+       this may read; past that the batch declines and the caller reads map by
+       map. Adding a tighter ceiling here would change what the operator sees,
+       and that is not this function's decision to make.
+
+    🔴 `servable` is the set of map ids this answer **covers**, and a map id
+       missing from it means "read this one the old way", never "this map has no
+       cells". Those two are opposite answers: an empty list read as data seats
+       the map on the `no_cells` exclusion, a refusal the operator would then be
+       shown for a map that is perfectly fine. Same discipline as
+       `_load_metas_reporting` and for the same reason.
+
+    🔴 **The gate is per map, not per request.** It has to be: `core_lot` values
+       on this data look like `CL_2601_005_A5`, so `compose_map_id` produces an
+       id the loop's `split('_')` cannot take apart - measured, 170 of 1,443
+       key tuples on `assy_qa`. Those maps read zero cells today (that is what
+       `_no_cell_refusal`'s `key_ambiguous` is for), and serving them from the
+       batch would quietly *change the answer*, which is a ruling and not an
+       optimisation. Failing the whole request instead would have surrendered
+       the other 1,273.
+
+    The fast path covers a map only where the batch is **provably** the loop's
+    row set for it. The loop matched `col == <text part of the composed id>`, so:
+      - every map key column must be textual (`col == '3.0'` on a numeric column
+        matches 3 as well, and the composed id would not) - this one is
+        all-or-nothing because it is a property of the table, not of a map;
+      - the composed id must decompose back to the same parts (`map_key_parts`
+        lets the last column absorb the rest, so a separator inside an earlier
+        value breaks the round trip - `compose_map_id` says so);
+      - rows whose key is NULL are excluded, because `col == ''` never matched
+        them either. That map keeps its empty cell list, exactly as today.
+    """
+    from sqlalchemy import String as _String
+    if not id_rows:
+        return {}, set()
+    for a in key_attrs:
+        if not isinstance(getattr(a, "type", None), _String):
+            return {}, set()
+    nk = len(key_attrs)
+    servable = set()
+    for t in id_rows:
+        mid = compose_map_id(t)
+        if len(map_key_cols) > 1:
+            parts = mid.split(_MAP_KEY_SEPARATOR)
+            if len(parts) != len(map_key_cols):
+                continue
+            if any(parts[i] != ("" if t[i] is None else str(t[i]))
+                   for i in range(nk)):
+                continue
+        servable.add(mid)
+    if not servable:
+        return {}, set()
+    budget = len(servable) * (cell_cap + 1)
+    try:
+        rows = (db.query(*key_attrs, *q_cols)
+                  .filter(*filters, *[a.isnot(None) for a in key_attrs])
+                  .limit(budget + 1).all())
+    except Exception as e:                      # noqa: BLE001 - decline, do not guess
+        logger.error("[MapAlignment] batched source-cell read failed (%s): %s",
+                     map_key_cols, e)
+        return {}, set()
+    if len(rows) > budget:
+        # The per-map caps could not have admitted this many rows. Reading map
+        # by map is the only way to honour them one at a time.
+        return {}, set()
+    out = {}
+    for r in rows:
+        mid = compose_map_id(r[:nk])
+        if mid in servable:
+            out.setdefault(mid, []).append(tuple(r[nk:]))
+    return out, servable
+
+
 def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table: str,
                          reference_spec: str = None, include_cells: bool = True,
                          cell_cap: int = MAX_PAYLOAD_CELLS,
@@ -5441,8 +5527,11 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     if any(a is None for a in key_attrs):
         raise ValueError("소스 테이블 '%s'이 맵 키 컬럼 %s을 갖고 있지 않습니다"
                          % (src_table, map_key_cols))
-    ids = [compose_map_id(r)
-           for r in db.query(*key_attrs).filter(*filters).distinct().all()]
+    # The raw key tuples are kept, not just their composed ids: the batched cell
+    # read below has to prove it groups rows the same way the per-map predicate
+    # matched them, and a composed id cannot always be taken apart again.
+    id_rows = db.query(*key_attrs).filter(*filters).distinct().all()
+    ids = [compose_map_id(r) for r in id_rows]
 
     # 🔴 좌표 컬럼은 **인자**다. 예전에는 여기서 `_binding_of`가 정본이라 `dt_log`의 선언
     #    바인딩(`dt_x`/`dt_y`)이 `map_table`과 무관하게 이겼고, `core_wafer_map`으로 열면
@@ -5491,24 +5580,34 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             return metas.get(mid)
         return map_overlay.load_map_meta(db, map_table, mid)
 
+    # 열 순서를 **여기 한 곳에서** 정하고 아래가 그 순서로 읽는다. 조건부 열이 둘이라
+    # 인덱스를 상수로 적으면 값 컬럼이 없는 실행에서 순번이 값 자리를 읽는다.
+    q_cols = [x_attr, y_attr]
+    v_at = k_at = None
+    if v_attr is not None:
+        v_at = len(q_cols)
+        q_cols.append(v_attr)
+    if k_attr is not None:
+        k_at = len(q_cols)
+        q_cols.append(k_attr)
+
+    # Source cells are read ONCE for the whole request, not once per map. Map
+    # ids the batch does not cover are read exactly the way they used to be, at
+    # exactly the old cost, and only those.
+    cells_by_map, cells_servable = _source_rows_by_map(
+        db, key_attrs, map_key_cols, filters, q_cols, id_rows, cell_cap)
+
     source_maps = []
     src_truncated = False
     for mid in ids:
-        mfilters = list(filters)
-        for i, c in enumerate(map_key_cols):
-            part = mid if len(map_key_cols) == 1 else mid.split("_")[i]
-            mfilters.append(getattr(src_model, c) == part)
-        # 열 순서를 **여기 한 곳에서** 정하고 아래가 그 순서로 읽는다. 조건부 열이 둘이라
-        # 인덱스를 상수로 적으면 값 컬럼이 없는 실행에서 순번이 값 자리를 읽는다.
-        q_cols = [x_attr, y_attr]
-        v_at = k_at = None
-        if v_attr is not None:
-            v_at = len(q_cols)
-            q_cols.append(v_attr)
-        if k_attr is not None:
-            k_at = len(q_cols)
-            q_cols.append(k_attr)
-        rows = db.query(*q_cols).filter(*mfilters).limit(cell_cap + 1).all()
+        if mid in cells_servable:
+            rows = cells_by_map.get(mid, [])
+        else:
+            mfilters = list(filters)
+            for i, c in enumerate(map_key_cols):
+                part = mid if len(map_key_cols) == 1 else mid.split("_")[i]
+                mfilters.append(getattr(src_model, c) == part)
+            rows = db.query(*q_cols).filter(*mfilters).limit(cell_cap + 1).all()
         if len(rows) > cell_cap:
             src_truncated = True
             rows = rows[:cell_cap]
@@ -6122,6 +6221,14 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
                                % map_overlay.META_TABLE)
         if len(rows) > remaining:
             truncated, rows = True, rows[:remaining]
+        # Sizes for this floor table's whole candidate set, once. `counts_ok`
+        # false means the bulk read declined and each candidate is counted the
+        # way it used to be - same query, same cost, only for this table.
+        counts, counts_ok = _count_cells_bulk(db, cfg, ftable, [r[0] for r in rows])
+
+        def _size(map_id, _c=counts, _ok=counts_ok, _t=ftable):
+            return _c[map_id] if _ok else _count_cells(db, cfg, _t, map_id)
+
         for (map_id,) in rows:
             examined += 1
             # cap=1: **풀리는가와 어떤 종류인가**만 묻는다. 셀을 다 끌어오면 목록 한 번에
@@ -6133,7 +6240,7 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
                     "map_id": map_id,
                     "reason_code": ref.get("reason_code"),
                     "reason": ref.get("reason"),
-                    "cell_count": _count_cells(db, cfg, ftable, map_id),
+                    "cell_count": _size(map_id),
                 })
                 continue
             meta = ref.get("meta") or {}
@@ -6145,7 +6252,7 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
                 #    기준 발자국이 원이면 방위 정보를 아예 싣지 않는다(스펙 §1). 고르기 전에
                 #    보여야 한다 — 한 판 돌려 보고 알게 되면 그 한 판이 낭비다.
                 "kind": ref.get("kind"),
-                "cell_count": _count_cells(db, cfg, ftable, map_id),
+                "cell_count": _size(map_id),
                 "grid": (None if grid is None
                          else {"cols": grid["cols"], "rows": grid["rows"]}),
             })
@@ -6153,6 +6260,79 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
                 rejected=len(not_offered),
                 rejected_example=(not_offered[0]["reason"] if not_offered else None),
                 truncated=truncated)
+
+
+def _count_cells_bulk(db, cfg: dict, table: str, map_ids):
+    """Every candidate's cell count in **one** `GROUP BY`. `(counts, complete)`.
+
+    🔴 This is a payload field, not a judgement. `_load_reference` decides
+       whether a floor resolves and it is deliberately the only thing that does
+       (§resolve_reference_catalog); this function only answers "how big is it",
+       which the operator needs in order to tell "no cells at all" apart from
+       "has cells but they do not read". Batching the count therefore does not
+       create a second judge - the judge is untouched.
+
+    🔴 Cost: the catalog ran one `COUNT(*)` per candidate and the floor tables
+       carry no index on their map-key columns, so each one was a full scan of
+       the floor table. Measured on `assy_qa`: 200 candidates x 3.9 ms = 0.78 s
+       of a 1.73 s worklist page, for a number that one grouped scan answers for
+       all of them at once. The count is per *candidate*, so the loop's cost was
+       `candidates x floor_rows` - it got worse from both ends.
+
+    🔴 `complete=False` is **decline**, not "all zero". The caller must then ask
+       per candidate; a zero invented here would read to the operator as an
+       empty floor, which is one of the two states this field exists to tell
+       apart.
+
+    Fast path only where the grouped key is provably the per-candidate
+    predicate: `build_key_filters` compares each key column against
+    `canonical_bind_value`, so the columns must be textual for that comparison
+    to be the same one Python makes here. Rows with a NULL key part are dropped
+    because `col == '...'` never matched them either.
+    """
+    from database import models
+    from sqlalchemy import func as _func, String as _String
+    model = models.DYNAMIC_TABLES.get(table)
+    if model is None:
+        return {}, False
+    try:
+        b = _binding_of(cfg, table)
+        key_cols = b.get("key_columns") or ["lot", "slot"]
+        if isinstance(key_cols, str):
+            key_cols = [key_cols]
+        attrs = [getattr(model, c, None) for c in key_cols]
+        if any(a is None for a in attrs):
+            return {}, False
+        if any(not isinstance(getattr(a, "type", None), _String) for a in attrs):
+            return {}, False
+        n = len(attrs)
+        rows = db.query(*attrs, _func.count()).group_by(*attrs).all()
+    except Exception as e:                      # noqa: BLE001 - decline, do not guess
+        logger.error("[MapAlignment] bulk cell count failed (%s): %s", table, e)
+        return {}, False
+    by_key = {}
+    for r in rows:
+        parts = tuple(r[:n])
+        if any(v is None for v in parts):
+            continue
+        by_key[tuple(str(v) for v in parts)] = int(r[n])
+    out = {}
+    for map_id in map_ids:
+        try:
+            parts = map_overlay.map_key_parts(b, map_id)
+        except Exception:                       # noqa: BLE001
+            return {}, False
+        if len(parts) != n:
+            # `map_key_parts` falls back to matching the whole id against the
+            # FIRST key column when an id carries too few separators, so the
+            # per-candidate predicate is not the grouped key at all. Decline the
+            # whole table rather than answer a different question quietly.
+            return {}, False
+        want = tuple("" if cv is None else str(cv)
+                     for cv in (map_overlay.canonical_bind_value(table, name, val)
+                                for name, val in parts))
+        out[map_id] = by_key.get(want, 0)
+    return out, True
 
 
 def _count_cells(db, cfg: dict, table: str, map_id: str):
