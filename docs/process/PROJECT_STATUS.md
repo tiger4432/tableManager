@@ -146,6 +146,21 @@
 > - **빠른 경로 테스트 셋이 거기 못 들어간다** — 계수 스파이 `entered=28 accepted=0 declined=28`
 > - 🔴 **「어떤 테스트도 못 닿는다」가 거짓** — `conftest.py`가 `ASSY_TEST_DATABASE_URL`을 문서화하고 `db_session`은 **SQLite를 하드코딩**. PG 픽스처 **약 40줄**. 어떤 테스트에도 안 걸리는 행동 **9개**
 >
+> #### 🔴 **정정 — 105는 «구성원»이 셋으로 쪼개진다.** 내가 「전부 `test_map_alignment*`」라고 두 번 적었다
+>
+> | 실제 | |
+> |---:|---|
+> | **72** | `test_map_alignment*` ← 그 레인에 「105개 소유」라고 통보하고 있었다. **실제론 72** |
+> | 15 | `test_audit_changeset.py` (**멈춰 세운 감사 레인의 미추적 파일**) |
+> | 9 | `test_dt_index_walk_core_axis.py` |
+> | 1 | `test_composite_key_prefetch_budget.py` ← **오늘 만진 쓰기 경로 위** |
+> | 8 | 나머지 여섯 파일 |
+>
+> 🔴 **총합은 105로 «그대로»인데 구성원의 3분의 1이 갈렸다.** 개수 검사는 통과하고 틀린 답이 살아남는다 — 보드의 [개수 말고 구성원을 고정한다] 규칙이 **스위트 기준선 자신에게** 떨어진 것이다.
+>
+> **그 1건을 직접 돌려 봤다**: `test_inserting_new_rows_still_probes_once_per_row`가 **201**을 단언하는데 실측 **1**이다. 이건 결함을 «고정해 둔 핀»(행마다 헛된 probe 1회)이고, **그 결함이 닫혔는데 핀이 안 고쳐졌다.** 200행 `replace_map` 푸시가 SELECT **201→1**. ⚠️ 「사라졌다」와 「계측기가 못 본다」는 다르므로 **승리 선언 보류** — 후속으로 확인.
+> **「빨라져서 나는 빨강」도 빨강이고, 아무도 분해 안 한 숫자 안에 앉아 있었다.**
+>
 > #### ⚠️ 상시 빨강의 정체가 바뀌었다
 >
 > **전체 스위트 `105 failed / 3348 passed`(930초). 105개 전부 `test_map_alignment*`이고 `ab008ec` 탓이 아니다**(실측: 그 파일들에서 `entered=2 accepted=0` — 새 경로에 안 들어간다). 실패 단언은 라우트/config 술어(`"Enrichment rule 'sk1_test_rule' is not an alignment rule"`). **보드가 적어 온 「알려진 무관 실패 = `test_map_presets_api`」는 낡았다.** ⚠️ 스위트 도중 트리가 움직였으므로(`time_format.py`·`virtual_join_executor.py`) **조용한 트리에서 재측정** 필요.

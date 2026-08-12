@@ -143,7 +143,7 @@ config 선언 `dt_job` / 운영 컬럼 `dt_job_id`
 
 | 항목 | 왜 뿌리가 아닌가 |
 |---|---|
-| 업서트 fast path 16% 퇴행 | psycopg2 드라이버 디테일. 크지만 국소적이고 수리가 명확(`execute_values`, 천장 4.3배) |
+| 업서트 fast path 16% 퇴행 | psycopg2 드라이버 디테일. 크지만 국소적. **✅ 닫힘 — `ab008ec`+`ed11590`** (`PUT` 2,000행 26.1→11.9초). 🔴 **여기 적혀 있던 「수리는 `execute_values`」는 틀렸다** — 생 커서는 `psycopg2.errors.NotNullViolation`을 던져 프로젝트의 `except IntegrityError` **세 곳을 전부 통과**한다(실측). 착지한 수리는 `Connection.exec_driver_sql`로 **SQLAlchemy 안에 머무는** 다중행 `VALUES`다 |
 | 인덱스 3개 중복 (869MB 중 341MB) | DDL 한 번 |
 | `?q=` 검색이 88만 행에서 무너짐 | 앞 `%` 와일드카드의 알려진 한계. **설계 선택**이지 결함이 아니다 — 바꾸려면 검색 제품 결정 |
 | 아웃박스 힙 시체 (페이지당 0.12행) | 운영 조치(repack). **응답 지연을 안 산다**는 점까지 측정됨 |
