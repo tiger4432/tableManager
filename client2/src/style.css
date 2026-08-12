@@ -466,6 +466,23 @@ body.resizing-active .history-sidebar {
   display: none !important;
 }
 
+/* [Cell history] The empty cell tab that is NOT an empty history — the row DOES have records,
+   they are just written per-row (`ROW_UPDATE`) and cannot appear on a per-column screen. This
+   variant exists because the plain empty slot is styled to be IGNORED (dim, 0.85rem, 40px of
+   air): correct for "there is nothing", wrong for a state whose whole job is to hand the reader
+   a number and a way out. The note is the fact and reads at full text colour; the action below
+   it reuses `.timeline-more-btn`, the panel's existing "there is more, over here" control. */
+.timeline-empty.has-row-history {
+  padding: 28px 0 8px;
+}
+
+.timeline-empty-note {
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* [History paging] The 더 보기 control that closes a truncated history list.
    Deliberately a full-width control rather than a faint trailing note: it is the only thing
    telling the reader that the list above it is a page and not the whole history, and a note

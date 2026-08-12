@@ -347,7 +347,13 @@ const FLOORS = new Map([
   // The +19 is section H: the real renderer driven against the envelope, plus the two mutation
   // verdicts. Raised HERE rather than in the lane that earned it, because a floor left at 98
   // leaves the new assertions unprotected — the gate would stay green through their removal.
-  ['history_paging_harness.mjs', 117],
+  // 117 -> 138 on 2026-08-12 when the empty cell tab split into its two real states. The +21 is
+  // section I (the row genuinely has no history vs. the records exist and this view cannot show
+  // them, the count, the floor wording, and the one-click way to the row tab) plus its four
+  // mutation verdicts. Raised in the same lane that earned it: a floor left at 117 would let the
+  // gate stay green while the disclosure is deleted and 225,101 rows go back to being told their
+  // history does not exist.
+  ['history_paging_harness.mjs', 138],
   // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to

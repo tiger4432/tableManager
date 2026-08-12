@@ -98,7 +98,10 @@ function fn(src, name) {
 
 const WANTED = [
   'loadHistory', 'historyUrl', 'beginHistorySession', 'readHistoryPage',
-  'renderTimeline', 'renderHistoryMore', 'historyMoreLabel', 'createHistoryMoreDom',
+  // `createHistoryEmptyDom` is sliced from source rather than stubbed because the claim under
+  // test IS what it paints: two different facts that used to share one sentence. A stub would
+  // score section I against the harness's own idea of the empty slot.
+  'renderTimeline', 'createHistoryEmptyDom', 'renderHistoryMore', 'historyMoreLabel', 'createHistoryMoreDom',
   'markMoreFailed', 'markMoreLost', 'loadMoreHistory',
   'renderTimelineIncremental', 'createTimelineItemDom', 'appendHistoryLocally', 'formatVal',
   // The global tab, sliced for section H. `renderGlobalTimeline` is the function that dies when
@@ -225,6 +228,10 @@ let UNDER_TEST = TL0;
 // recorded, so "which endpoint, with which cursor" is scored rather than assumed.
 function buildSandbox(src = UNDER_TEST) {
   const timeline = makeEl('ul');
+  // The Row History tab button. Real, not a spy function, because the empty cell tab's way out
+  // is `elements.tabRowBtn.click()` — it reuses the tab's own listener instead of copying the
+  // switch — and only a node with a click dispatcher can score that.
+  const tabRowBtn = makeEl('button');
   const requests = [];
   const responses = [];   // {status, body, hang} | {throws: true}
   const pending = [];     // resolvers for hung requests
@@ -249,7 +256,7 @@ function buildSandbox(src = UNDER_TEST) {
     state,
     API_BASE,
     pageLimit: 1000,
-    elements: { timeline, performanceLog: makeEl('div') },
+    elements: { timeline, tabRowBtn, performanceLog: makeEl('div') },
     document: { createElement: makeEl },
     fetch: fetchFake,
     Date,
@@ -269,7 +276,7 @@ function buildSandbox(src = UNDER_TEST) {
   };
   vm.createContext(ctx);
   vm.runInContext(WANTED.map(n => fn(src, n)).join('\n\n'), ctx);
-  return { ctx, timeline, requests, responses, pending };
+  return { ctx, timeline, tabRowBtn, requests, responses, pending };
 }
 
 function resetState() {
@@ -280,6 +287,8 @@ function resetState() {
   state.cellRowHistoryCursor = null;
   state.cellRowHistoryTruncated = false;
   state.cellRowHistoryLoaded = 0;
+  state.cellRowHistoryRowTotal = null;
+  state.cellRowHistoryRowTotalIsFloor = false;
   state.cellRowHistorySession = 0;
   state.currentTransactionId = null;
   state.globalHistoryData = [];
@@ -292,6 +301,13 @@ const log = (i, row = 'ROW-A', col = 'COL-A') => ({
 });
 const page = (logs, cursor) => ({
   logs, truncated: cursor !== null, next_cursor: cursor, limit: 200, returned: logs.length,
+});
+// The CELL route's envelope. `row_history_total` is the audit count for the whole ROW and rides
+// only here — on the row route the server sends `null`, because there `returned`/`truncated`
+// already describe that same population. `row_history_truncated` says the count is a FLOOR (the
+// server probes it capped), not an exact number.
+const cellPage = (logs, cursor, rowTotal, floor = false) => ({
+  ...page(logs, cursor), row_history_total: rowTotal, row_history_truncated: floor,
 });
 // `/audit_logs/recent`. Its list is `groups`, not `logs`, because each group carries a `logs`
 // of its own — and `total_count` is the transaction's real size while `logs` holds only the
@@ -784,15 +800,158 @@ async function sectionH() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// I — an empty cell tab is TWO facts, and it used to be one sentence
+//
+// 🔴 THE SILENT WRONG ANSWER THIS SECTION EXISTS FOR. Machine writes (parsers, chains, scripts)
+//    record ONE audit row per ROW under the literal column name `ROW_UPDATE`, so the cell
+//    route's `column_name == col` filter can never match them. Isolated `assy_qa` measurement
+//    2026-08-11 (that workstation, NOT a production figure): 225,101 rows carry machine history
+//    and not one per-column entry — on every one of them, every cell tab is empty while the row
+//    tab is full. `No change history recorded.` told the operator those records did not exist.
+//
+// SO THE ASSERTION IS NOT "the message changed", IT IS "the two states are DISTINGUISHABLE and
+// the one that can be escaped offers the escape". A screen that renders both as 기록 없음 passes
+// any test that only checks the empty slot is non-empty.
+// ════════════════════════════════════════════════════════════════════════════════
+const emptyLi = (tl) => tl.children.find(c => c.classList.contains('timeline-empty')) || null;
+const emptySlot = (tl) => {
+  const li = emptyLi(tl);
+  if (!li) return { text: null, note: null, action: null };
+  const note = li.children.find(c => c.classList.contains('timeline-empty-note'));
+  const action = li.children.find(c => c.tagName === 'BUTTON');
+  return { text: li.textContent, note: note ? note.textContent : null, action };
+};
+
+async function sectionI() {
+  // -- state 1: the row really has nothing --
+  let S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'cell';
+  S.responses.push({ status: 200, body: cellPage([], null, 0) });
+  await S.ctx.loadHistory();
+  let slot = emptySlot(S.timeline);
+  check('I1 no history anywhere reads as 기록 없음', slot.text, '기록 없음');
+  check('I1b ... and offers nowhere to go', slot.action === undefined || slot.action === null, true);
+  check('I1c ... and is not a pager', mores(S.timeline).length, 0);
+
+  // -- state 2: the records exist and THIS SCREEN cannot show them --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'cell';
+  S.responses.push({ status: 200, body: cellPage([], null, 225101) });
+  await S.ctx.loadHistory();
+  slot = emptySlot(S.timeline);
+  check('I2 the two empty states are NOT the same text', slot.text === '기록 없음', false);
+  check('I2b the cell is what is empty, and it says so', slot.note, '이 셀 기록 없음');
+  checkFn('I2c the row-level count reaches the screen',
+    slot.action && slot.action.textContent,
+    t => typeof t === 'string' && t.includes('225') && t.includes('101') && t.includes('건'),
+    'a label carrying the 225101 count (grouped per locale) and 건');
+  check('I2d ... as the ROW history, named', slot.action.textContent.includes('행 이력'), true);
+  check('I2e the count is stored beside the list, not on it',
+    [state.cellRowHistoryRowTotal, state.cellRowHistoryData.row_history_total], [225101, undefined]);
+
+  // The way out, in ONE action — and through the row tab's own button, so nothing here is a
+  // second copy of the tab switch.
+  let tabClicks = 0;
+  S.tabRowBtn.addEventListener('click', () => { tabClicks++; });
+  slot.action.click();
+  check('I3 one click on the disclosure reaches the Row History tab', tabClicks, 1);
+
+  // -- the count is a FLOOR when the server says it is --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'cell';
+  S.responses.push({ status: 200, body: cellPage([], null, 1000, true) });
+  await S.ctx.loadHistory();
+  check('I4 a capped count is not presented as exact',
+    emptySlot(S.timeline).action.textContent.includes('이상'), true);
+
+  // -- and is NOT hedged when it is exact. A small count also pins the whole label with no
+  //    locale grouping in the way.
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'cell';
+  S.responses.push({ status: 200, body: cellPage([], null, 3) });
+  await S.ctx.loadHistory();
+  check('I5 an exact count states the number plainly',
+    emptySlot(S.timeline).action.textContent, '행 이력 3건 보기');
+
+  // -- the ROW tab never shows the disclosure: it IS the destination, and the server sends
+  //    `row_history_total: null` there --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'row';
+  S.responses.push({ status: 200, body: page([], null) });
+  await S.ctx.loadHistory();
+  check('I6 the row tab does not point at itself', emptySlot(S.timeline).text, '기록 없음');
+
+  // -- a count must not outlive the cell it described. Same sandbox, second cell: a disclosure
+  //    reading "행 이력 12건" under a row that has none is confidently wrong, which is worse
+  //    than the message that was missing. --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'cell';
+  S.responses.push({ status: 200, body: cellPage([], null, 12) });
+  await S.ctx.loadHistory();
+  check('I7 precondition: the first cell discloses', emptySlot(S.timeline).note, '이 셀 기록 없음');
+  state.selectedCell = { rowId: 'ROW-B', colId: 'COL-A', value: '', rowIndex: 1 };
+  S.responses.push({ status: 200, body: cellPage([], null, 0) });
+  await S.ctx.loadHistory();
+  check('I7b a stale count does not follow the operator to the next cell',
+    emptySlot(S.timeline).text, '기록 없음');
+
+  // -- both states stay removable by a live log. `renderTimelineIncremental` finds the empty
+  //    slot by `.timeline-empty`; a disclosure that dropped the class would sit above the first
+  //    real record forever. --
+  S = buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'cell';
+  S.responses.push({ status: 200, body: cellPage([], null, 7) });
+  await S.ctx.loadHistory();
+  check('I8 precondition: the disclosure is on screen', emptySlot(S.timeline).action !== undefined, true);
+  S.ctx.renderTimelineIncremental(log(9));
+  check('I8b a live log clears the disclosure', emptyLi(S.timeline), null);
+  check('I8c ... and the record is what remains', items(S.timeline).length, 1);
+  resetState();
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // G — the mutation corpus. Every defect must be CAUGHT; the controls must not fire.
 // ════════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
   { name: 'envelope assigned where the array belongs (the original defect)', defect: true,
     find: 'state.cellRowHistoryData = page.logs;',
     repl: 'state.cellRowHistoryData = page;' },
+  // Re-anchored 2026-08-12: `readHistoryPage`'s return became a multi-line object when it
+  // started carrying `row_history_total`. The CONTRACT is untouched — `truncated` still requires
+  // a cursor — so this is the same mutant against the same line, spelled where the line now is.
   { name: 'truncated no longer requires a cursor', defect: true,
-    find: 'return { logs, truncated: !!(body && body.truncated) && !!nextCursor, nextCursor };',
-    repl: 'return { logs, truncated: !!(body && body.truncated), nextCursor };' },
+    find: '    truncated: !!(body && body.truncated) && !!nextCursor,',
+    repl: '    truncated: !!(body && body.truncated),' },
+  // ── The two empty states ────────────────────────────────────────────────────
+  // Each of these puts the screen back exactly where it was before this round: an empty cell tab
+  // that says the records do not exist, over a row that has 225,101 of them.
+  { name: 'the reader drops the row-history count again', defect: true,
+    find: '    rowHistoryTotal: typeof rowTotal === \'number\' ? rowTotal : null,',
+    repl: '    rowHistoryTotal: null,' },
+  { name: 'the two empty states collapse back into one', defect: true,
+    find: "  if (state.activeHistoryTab !== 'cell' || !total || total <= 0) {",
+    repl: '  if (true) {' },
+  { name: 'a floor count is presented as an exact one', defect: true,
+    find: '  btn.textContent = state.cellRowHistoryRowTotalIsFloor\n'
+        + '    ? `행 이력 ${total.toLocaleString()}건 이상 보기`\n'
+        + '    : `행 이력 ${total.toLocaleString()}건 보기`;',
+    repl: '  btn.textContent = `행 이력 ${total.toLocaleString()}건 보기`;' },
+  { name: 'the disclosure states the count but offers no way to the row tab', defect: true,
+    find: '    elements.tabRowBtn?.click();',
+    repl: '' },
+  // NOT MUTATED, DELIBERATELY: the `cellRowHistoryRowTotal = null` reset in
+  // `beginHistorySession`. Removing it changes nothing observable today — every path that
+  // RENDERS the empty slot assigns the field first — so a "defect" mutant there would be one
+  // this corpus can never catch, and a mutant nobody can catch is a red build, not coverage.
+  // The reset stays in the source for the same reason the cursor's does: it is the envelope's
+  // reset point, and the next path that renders without assigning must not inherit a count.
   { name: 'the paging session never advances', defect: true,
     find: '  state.cellRowHistorySession += 1;\n  return state.cellRowHistorySession;',
     repl: '  return state.cellRowHistorySession;' },
@@ -856,6 +1015,7 @@ async function sectionG() {
       await sectionE();
       await sectionF();
       await sectionH();
+      await sectionI();
     } catch (e) {
       // A mutant that throws (a slice that no longer parses, a DOM operation that cannot apply)
       // is caught just as surely as one that fails an assertion.
@@ -880,6 +1040,7 @@ await sectionD();
 await sectionE();
 await sectionF();
 await sectionH();
+await sectionI();
 const beforeG = { pass, fail };
 await sectionG();
 

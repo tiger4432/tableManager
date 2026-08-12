@@ -57,6 +57,11 @@ export async function loadHistory() {
     state.cellRowHistoryCursor = page.nextCursor;
     state.cellRowHistoryTruncated = page.truncated;
     state.cellRowHistoryLoaded = page.logs.length;
+    // Cell route only; `null` on the row route. Assigned BEFORE the render because the empty
+    // state reads it — it is the difference between "이 행엔 이력이 없다" and "기록은 있는데
+    // 이 화면이 못 보여준다".
+    state.cellRowHistoryRowTotal = page.rowHistoryTotal;
+    state.cellRowHistoryRowTotalIsFloor = page.rowHistoryTotalIsFloor;
     renderTimeline(state.cellRowHistoryData);
   } catch (err) {
     if (session !== state.cellRowHistorySession) return;
@@ -82,6 +87,11 @@ function beginHistorySession() {
   state.cellRowHistoryCursor = null;
   state.cellRowHistoryTruncated = false;
   state.cellRowHistoryLoaded = 0;
+  // Cleared here with the rest of the envelope, not just overwritten on arrival: a count that
+  // outlived the cell it described would put "행 이력 12건" under a different row's empty tab —
+  // a disclosure that is confidently wrong is worse than the one that was missing.
+  state.cellRowHistoryRowTotal = null;
+  state.cellRowHistoryRowTotalIsFloor = false;
   state.cellRowHistorySession += 1;
   return state.cellRowHistorySession;
 }
@@ -112,13 +122,31 @@ function beginHistorySession() {
 // trims the projection loses its resume position), and the sidebar reads that as "not truncated"
 // — correct today only because the global tab paints no pager at all. Anything that gives it one
 // must read that third state from the body, not from this collapse.
+// 🔴 UNKNOWN KEYS USED TO BE DROPPED HERE, AND THAT IS WHY NOTHING BROKE AND NOTHING SHOWED.
+//    `row_history_total`/`row_history_truncated` have been on the wire since `721b175`; this
+//    reader threw them away, so the cell tab kept drawing one "no history" for two different
+//    facts. They are carried through as `rowHistoryTotal`/`rowHistoryTotalIsFloor`.
+//    `row_history_truncated` is renamed on the way in ON PURPOSE: in this module `truncated`
+//    means "the LIST is capped, page for more" and drives the 더 보기 control, while this one
+//    means "the COUNT is a lower bound". One word for two facts is how a pager ends up hanging
+//    off a number. `rowHistoryTotal` is `null` on the ROW route BY CONTRACT (not a missing
+//    field) — there `returned`/`truncated` already describe that same population.
 export function readHistoryPage(body, listKey = 'logs') {
-  if (Array.isArray(body)) return { logs: body, truncated: false, nextCursor: null };
+  if (Array.isArray(body)) {
+    return { logs: body, truncated: false, nextCursor: null, rowHistoryTotal: null, rowHistoryTotalIsFloor: false };
+  }
   const list = body ? body[listKey] : null;
   const logs = Array.isArray(list) ? list : [];
   const raw = body ? body.next_cursor : null;
   const nextCursor = (typeof raw === 'string' && raw) ? raw : null;
-  return { logs, truncated: !!(body && body.truncated) && !!nextCursor, nextCursor };
+  const rowTotal = body ? body.row_history_total : null;
+  return {
+    logs,
+    truncated: !!(body && body.truncated) && !!nextCursor,
+    nextCursor,
+    rowHistoryTotal: typeof rowTotal === 'number' ? rowTotal : null,
+    rowHistoryTotalIsFloor: !!(body && body.row_history_truncated),
+  };
 }
 
 // Create single timeline list item DOM element
@@ -407,7 +435,7 @@ export function renderTimeline(logs) {
   elements.timeline.innerHTML = '';
 
   if (!logs || logs.length === 0) {
-    elements.timeline.innerHTML = '<li class="timeline-empty">No change history recorded.</li>';
+    elements.timeline.appendChild(createHistoryEmptyDom());
     return;
   }
 
@@ -417,6 +445,69 @@ export function renderTimeline(logs) {
   });
 
   renderHistoryMore();
+}
+
+// [Cell history] THE EMPTY SLOT IS TWO STATES, AND IT USED TO BE ONE SENTENCE.
+//
+// 🔴 An empty cell tab is NOT "no history". Machine writes — parsers, chains, scripts — record
+//    ONE audit row per ROW with the literal `ROW_UPDATE` in the column-name slot, so the cell
+//    route's `column_name == col` filter can never match them. Isolated `assy_qa` measurement
+//    2026-08-11 (this workstation, NOT a production figure): 225,586 of 239,786 audit rows
+//    (94.08%) are `ROW_UPDATE`, and 225,101 rows carry machine history and not one per-column
+//    entry — on every one of those, every cell tab is empty while the row tab is full. Drawing
+//    both cases as `No change history recorded.` told the operator the records did not exist.
+//    They existed; they were absent FROM ONE SCREEN, which is why nobody ever reported it.
+//
+// THE FIX IS A DISCLOSURE, NOT A RECONSTRUCTION. The count comes from the envelope the server
+// already sends. It is NEVER derived by parsing the machine summary string: that value is a
+// RENDERED SENTENCE (`f"{col}: {val}"` joined on ", ", NULL written as the Korean word 비어있음
+// so integer 0 and string "0" are indistinguishable) and a live `wafer_map_metadata` record
+// reads `grid_metadata: {"grid_cols": 2, "grid_rows": 2, ...}` — splitting that on ", " invents
+// a column named `"grid_rows"` that does not exist. Presentation turned back into data does not
+// produce the missing history, it produces confidently wrong history.
+//
+// THE COUNT ALONE WOULD BE A DEAD END, so the fact carries the way out of it: the row tab is one
+// click away, on the existing tab button rather than a second copy of its wiring.
+function createHistoryEmptyDom() {
+  const li = document.createElement('li');
+  // Keeps the `.timeline-empty` class in BOTH states: `renderTimelineIncremental` finds and
+  // removes the empty slot by that selector when a live WebSocket log arrives.
+  li.className = 'timeline-empty';
+
+  const total = state.cellRowHistoryRowTotal;
+  // `null` on the row tab (contract) and `0` when the row really has nothing — same answer.
+  if (state.activeHistoryTab !== 'cell' || !total || total <= 0) {
+    li.textContent = '기록 없음';
+    return li;
+  }
+
+  li.classList.add('has-row-history');
+
+  const note = document.createElement('div');
+  note.className = 'timeline-empty-note';
+  note.textContent = '이 셀 기록 없음';
+  li.appendChild(note);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  // Same control the truncated-list pager uses, deliberately: this row is the same kind of thing
+  // — "there is more, and here is where it is" — and a second visual vocabulary for it would
+  // only make the panel harder to read.
+  btn.className = 'timeline-more-btn';
+  // 🔴 `이상` IS NOT DECORATION. The server probes this count with a cap, so a capped answer is a
+  //    FLOOR. Printing it bare would state an exact number the server never claimed.
+  btn.textContent = state.cellRowHistoryRowTotalIsFloor
+    ? `행 이력 ${total.toLocaleString()}건 이상 보기`
+    : `행 이력 ${total.toLocaleString()}건 보기`;
+  btn.addEventListener('click', () => {
+    // The row tab's own button, not a reimplementation of it. Switching tabs here directly would
+    // mean a second copy of the active-class bookkeeping, the reference-view teardown and the
+    // reload — and the copy is what drifts.
+    elements.tabRowBtn?.click();
+  });
+  li.appendChild(btn);
+
+  return li;
 }
 
 // [History paging] The one control at the end of a capped list, and the only thing on this

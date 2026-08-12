@@ -98,6 +98,22 @@ export const state = {
   // `cellRowHistoryData.length`: that array also collects live WebSocket appends, which are not
   // part of what the pager fetched and would make the control's count drift upward on its own.
   cellRowHistoryLoaded: 0,
+  // [Cell history] Audit entries on the ROW the selected cell belongs to — i.e. the population
+  // the Row History tab pages through. CELL ROUTE ONLY; `null` on the row tab, where
+  // `cellRowHistoryLoaded`/`cellRowHistoryTruncated` already describe the same population.
+  //
+  // 🔴 THE ONE FACT THAT TELLS THE TWO EMPTY TABS APART. Machine writes (parsers, chains,
+  //    scripts) store ONE audit row per ROW under the literal column name `ROW_UPDATE`, so the
+  //    cell route's `column_name == col` filter can never match them. An empty cell tab with
+  //    `> 0` here means the records EXIST and this view cannot show them — 225,101 rows in the
+  //    isolated `assy_qa` copy are in exactly that state. Drawing that the same as "기록 없음"
+  //    was the defect; this field is what makes the difference representable on screen.
+  cellRowHistoryRowTotal: null,
+  // True == the count above is a FLOOR, not exact (the server probes it capped). Named `IsFloor`
+  // rather than `Truncated` on purpose: in this module `truncated` already means "the LIST is
+  // capped, page for more", and a count that is a lower bound is a different fact. Conflating
+  // them would hang the 더 보기 pager off a number.
+  cellRowHistoryRowTotalIsFloor: false,
   // The paging session token. Bumped by every fresh `loadHistory()`, so a 더 보기 still in
   // flight when the operator clicks another cell can tell that its page belongs to a list that
   // is no longer on screen — appending the previous row's page 2 onto this row's page 1 is the
