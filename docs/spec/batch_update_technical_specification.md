@@ -1,6 +1,7 @@
 # Technical Specification: Batch Update Algorithm (N+1 Query Elimination)
 
-> **Status:** 🟠 부분 현행 | **Last-verified:** 2026-08-06 | **Owner:** Backend
+> **Status:** 🟠 부분 현행 | **Last-verified:** 2026-08-12 | **Owner:** Backend
+> **[2026-08-12]** §3.3 머리에 경고 블록 신설 — 두 `bulk_upsert_*` 코드 블록은 **전송 방식**에 대해 더 이상 현행이 아니다(`ab008ec`+`ed11590`). 빠른 길은 **닫힌 어휘 넷**으로 거절할 수 있고 거절은 `(테이블, 사유)`당 한 번 로그를 남기며, 블록 안의 `deduped` 사전은 이제 **하중을 받는 전제조건**이다(중복 충돌 키 = SQLSTATE 21000이고 `IntegrityError`가 아니다).
 > ⚠️ **[2026-08-06 상태 헤더 신설] 알고리즘의 *형태*를 읽는 문서이지 현재 시그니처의 정본이 아닙니다.** 정본은 언제나 `server/database/crud.py`이고, 서술 정본은 [architecture/backend §3](../architecture/backend.md)입니다 — 그쪽이 `replace_report`의 현재 필드(`filters`·`deleted`·`mode`·`reason`·`adopted`·`adopted_row_ids`)와 2026-08-06 업서트 라운드(프리페치 선조립·NOTIFY 접기·브로드캐스트 항목 상한)를 싣습니다. 🔴 **이 문서의 코드 블록은 축약된 옛 사본입니다**(본문이 이미 그렇게 적고 있습니다).
 
 본 문서는 `assyManager` 시스템의 파일 인제션 및 벌크(배치) 셀 데이터 적재 성능을 극대화하기 위해 설계된 **배치 업데이트 알고리즘(Batch Update Algorithm)**의 설계 구조와 실제 데이터베이스 CRUD 계층의 소스 코드를 설명합니다.
@@ -511,6 +512,15 @@ def apply_row_update_internal(
 ---
 
 ### 3.3. 벌크 적재 최적화 및 중복제거 DDL 함수들
+
+> 🔴 **[2026-08-12] 아래 두 코드 블록은 *보내는 방식*에 대해서는 더 이상 현행이 아니다** — 문장의 **모양**(`ON CONFLICT DO UPDATE`, 충돌 키, `SET` 목록)은 그대로이고 바뀐 것은 **전송**이다. PostgreSQL+psycopg2에서는 `crud._pg_multirow_upsert`가 청크마다 **진짜 다중 행 `VALUES` 문장 하나**를 보낸다. 종전의 `db.execute(stmt, 파라미터목록)`은 배치처럼 **읽히기만 하고** `cursor.executemany`로 퇴화했고, psycopg2에서 그것은 **행마다 서버 왕복 1회**였다. 서술 정본은 [architecture/backend §3 2-ter](../architecture/backend.md).
+>
+> 이 문서를 읽는 사람이 **반드시 알아야 하는 두 가지**:
+>
+> 1. **빠른 길은 *거절할 수 있다*.** 조건은 **닫힌 어휘 넷**이다 — ① PostgreSQL+psycopg2가 아니다(**SQLite는 언제나 여기 걸린다**) ② 매핑 키가 그 테이블의 컬럼이 아니다 ③ 파이썬측 `default`가 있는 컬럼을 매핑이 **빠뜨렸다** ④ 기본값(`default`/`server_default`)이 있는 컬럼에 매핑이 **`None`을 실었다**. 거절하면 위 코드 블록의 옛 경로가 그대로 받고 **행은 정확히 저장된다** — 바뀌는 것은 속도뿐(이 경로 자체 실측으로 10만 행 푸시가 7.8 s ↔ 31.2 s). ⚠️ **거절은 `(테이블, 사유)`당 한 번 WARNING을 남긴다** — 종전에는 `return False` 셋에 로그가 0개라, 컬럼에 `default=`가 하나 붙는 것만으로 모든 쓰기가 4배 느려져도 **운영자가 볼 것이 없었다.**
+> 2. 🔴 **위 블록의 `deduped` 사전은 장식이 아니라 *전제조건*이다 — 그리고 이제 그 전제가 하중을 받는다.** 종전 `executemany` 전송은 한 배치 안의 중복 충돌 키를 **조용히 용인**했다(마지막 값이 이겼다). 다중 행 문장에서는 PostgreSQL이 SQLSTATE 21000(`ON CONFLICT DO UPDATE command cannot affect row a second time`)을 던지고, 그것은 `sqlalchemy.exc.ProgrammingError`이지 **`IntegrityError`가 아니다** — 이 저장소의 `except IntegrityError` **세 곳 중 아무도 못 잡고**, 재시도 없이 배치 전체가 죽는다. 두 공개 호출부(`bulk_upsert_cell_sources`/`_overwrites`)가 각자 다시 dedup하므로 오늘 도달 불가이고, **세 번째 호출부를 만든다면 같은 dedup을 반드시 해야 한다.**
+>
+> ⚠️ **그리고 이 헬퍼는 SQLAlchemy 안에 있어야 한다.** 원시 커서(`psycopg2.extras.execute_values`)는 **같은 속도**(1.21 s 대 1.19 s)지만 `psycopg2.errors.NotNullViolation`을 던지고, `main.py` 배치 업데이트 엔드포인트의 `except IntegrityError`는 그것을 **안 잡는다** → 409 처리 경로 대신 500이다. 속도가 같으므로 이 제약을 성능 논거로 흔들 수 없다.
 
 #### [bulk_upsert_cell_sources](file:///c:/Users/kk980/Developments/assyManager/server/database/crud.py#L150)
 
