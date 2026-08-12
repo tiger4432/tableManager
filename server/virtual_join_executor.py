@@ -87,6 +87,21 @@ RULES_CACHE_TTL = 5.0
 
 _RULES_CACHE = {"at": 0.0, "by_left": None}
 
+# THE emptiness predicate and THE payload renderer, bound once instead of per cell.
+# They are `crud.clean_str_value` / `crud.resolved_text_value` and nothing else - the
+# point of hoisting them is speed, NOT a second spelling of either rule.
+_CLEAN = None
+_RENDER = None
+
+
+def _bind_crud():
+    """Bind the two `crud` functions the per-cell path uses. Lazy: `crud` imports this
+    module, so a module-scope import would be a cycle."""
+    global _CLEAN, _RENDER
+    from database import crud
+    _CLEAN = crud.clean_str_value
+    _RENDER = crud.resolved_text_value
+
 
 def reset_cache():
     """승인 선언 캐시를 즉시 버린다. config 리로드 경로가 부른다."""
@@ -492,13 +507,19 @@ def _resolve_one(joined_value, left_value, has_left_column: bool, label: str) ->
     pinned-text type that leaves one measured divergence (payload isoformat vs SQL
     canonical text) on left-owned cells only; no such declaration exists today and
     closing it is a Lead PM call (it needs a declaration-time refusal).
-    """
-    from database import crud
 
-    if has_left_column and crud.clean_str_value(left_value) != "":
+    [Why the two `crud` functions are module globals and not a local import]
+    This is called once PER CELL - 40,000 times for a 10,000-row page with four exposed
+    columns - and `from database import crud` on every one of those is a `sys.modules`
+    round trip buying nothing. The import stays LAZY (bound on first use) because
+    `crud` imports this module back; binding it at module scope is an import cycle.
+    """
+    if _CLEAN is None:
+        _bind_crud()
+    if has_left_column and _CLEAN(left_value) != "":
         return left_value, False
-    if crud.clean_str_value(joined_value) != "":
-        return crud.resolved_text_value(joined_value), True
+    if _CLEAN(joined_value) != "":
+        return _RENDER(joined_value), True
     return label, True
 
 
@@ -514,7 +535,9 @@ def attach(db, table_name: str, data_list: list) -> int:
     rules = rules_for(db, table_name)
     if not rules:
         return 0
-    from database import crud
+    if _CLEAN is None:
+        _bind_crud()
+    clean, render = _CLEAN, _RENDER
 
     row_ids = [d.get("row_id") for d in data_list if d.get("row_id")]
 
@@ -525,26 +548,42 @@ def attach(db, table_name: str, data_list: list) -> int:
     #
     # 그래서 제안(proposal)만 모은다: 한 셀에 대해 **처음으로 비어 있지 않은 조인 값**이
     # 이긴다. 아무 규칙도 값을 주지 못하면 그때 라벨로 떨어진다.
-    proposals = {}          # (row_id, col) -> 조인이 준 원값(비어 있을 수 있음)
+    # 🔴 **`(row_id, col)` 튜플 키를 쓰지 않는다** ― 컬럼별로 한 겹 판다.
+    # 튜플 키는 셀마다 튜플을 **두 번** 만든다(적재 때 한 번, 조회 때 또 한 번). 실측
+    # 10,000행 x 4컬럼에서 80,000개다. 컬럼당 dict 한 개면 조회는 `by_row.get(rid)`라
+    # 아무것도 만들지 않는다. 뜻은 그대로다: 같은 (행, 컬럼)에 대해 처음으로 비어 있지
+    # 않은 조인 값이 이긴다.
+    proposals = {}          # col -> {row_id: 조인이 준 원값(비어 있을 수 있음)}
     labels = {}             # col -> 그 컬럼을 노출한 첫 선언의 unresolved_label
     for rule in rules:
         joined = execute_rule(db, rule, row_ids)
+        label = rule["unresolved_label"]
         for col in rule["expose"]:
-            labels.setdefault(col, rule["unresolved_label"])
-        for rid, hit in joined.items():
-            for col in rule["expose"]:
-                key = (rid, col)
-                if key in proposals and crud.clean_str_value(proposals[key]) != "":
+            labels.setdefault(col, label)
+            by_row = proposals.setdefault(col, {})
+            for rid, hit in joined.items():
+                # `prev is None`은 「키가 없다」와 「값이 None이다」를 한꺼번에 덮는데,
+                # 그래도 되는 이유는 두 경우의 처리가 **같기** 때문이다 ― 값이 None이면
+                # `clean(None) == ""`라 어차피 덮어쓴다. 한 규칙 안에서 각 (행,컬럼)은
+                # 한 번만 지나가므로 이 비교는 언제나 **앞선 규칙**의 값과의 비교다.
+                prev = by_row.get(rid)
+                if prev is not None and clean(prev) != "":
                     continue        # 이미 실한 값이 있다 ― 먼저 온 것이 이긴다
-                proposals[key] = hit["values"].get(col)
+                by_row[rid] = hit["values"].get(col)
 
+    # 🔴 **바깥이 행, 안이 컬럼이다**(종전 반대). 페이로드 키 순서는 그대로다 ― 한 행
+    # 안에서 컬럼은 여전히 `labels` 순서로 삽입되므로 직렬화 바이트가 바뀌지 않는다.
+    # 바뀌는 것은 `entry.get(...)`을 **행당 1회**만 한다는 것뿐이다(종전엔 컬럼 수만큼).
+    label_items = list(labels.items())
     touched = 0
-    for col, label in labels.items():
-        for entry in data_list:
-            r_data = entry.get("data")
-            if not isinstance(r_data, dict):
-                continue
-            joined_value = proposals.get((entry.get("row_id"), col))
+    for entry in data_list:
+        r_data = entry.get("data")
+        if not isinstance(r_data, dict):
+            continue
+        rid = entry.get("row_id")
+
+        for col, label in label_items:
+            joined_value = proposals[col].get(rid)
             cell = r_data.get(col)
             has_left_column = isinstance(cell, dict)
             left_value = cell.get("value") if has_left_column else None
@@ -557,28 +596,36 @@ def attach(db, table_name: str, data_list: list) -> int:
                 # 것조차 "조인이 관여했다"는 거짓말이다(관여했지만 졌다).
                 continue
 
-            if not has_left_column:
-                cell = {"value": None, "is_overwrite": False,
-                        "is_collision_merge": False, "sources": {},
-                        "updated_by": "system", "manual_priority_source": None,
-                        "priority_source": None}
-                r_data[col] = cell
-
-            cell["value"] = value
             # 셀 단위 provenance. `cell_sources`와 **같은 어휘**라 기존 표시가 그대로
             # 읽는다. 값이 `label`이면 소스 값은 조인이 실제로 돌려준 것(없거나 빈 값)
             # 이라 "조인은 봤고 아무것도 없었다"가 그대로 읽힌다.
-            srcs = cell.get("sources")
-            cell["sources"] = dict(srcs) if isinstance(srcs, dict) else {}
             # Same rendering as the cell value: a source entry spelled differently from
             # the value it explains would send a reader looking for a second story.
-            cell["sources"][SOURCE_NAME] = crud.resolved_text_value(joined_value)
-            cell["priority_source"] = SOURCE_NAME
-            # `is_overwrite`는 **표시값**에 대한 파생 표식이다("지금 보이는 이 값이
-            # 사람이 덮어쓴 값인가"). 이 분기의 표시값은 조인이 준 것이므로 False다.
-            # 사람이 남긴 층 자체는 지워지지 않는다 ― 위에서 기존 `sources`를 복사해
-            # 유지하므로 `user` 층이 있었다면 그대로 보인다(기록은 `sources`가,
-            # 표식은 이 플래그가 나른다).
-            cell["is_overwrite"] = False
+            rendered = render(joined_value)
+
+            if has_left_column:
+                srcs = cell.get("sources")
+                srcs = dict(srcs) if isinstance(srcs, dict) else {}
+                srcs[SOURCE_NAME] = rendered
+                cell["value"] = value
+                cell["sources"] = srcs
+                cell["priority_source"] = SOURCE_NAME
+                # `is_overwrite`는 **표시값**에 대한 파생 표식이다("지금 보이는 이 값이
+                # 사람이 덮어쓴 값인가"). 이 분기의 표시값은 조인이 준 것이므로 False다.
+                # 사람이 남긴 층 자체는 지워지지 않는다 ― 위에서 기존 `sources`를 복사해
+                # 유지하므로 `user` 층이 있었다면 그대로 보인다(기록은 `sources`가,
+                # 표식은 이 플래그가 나른다).
+                cell["is_overwrite"] = False
+            else:
+                # 왼쪽에 셀이 없던 `virtual_only` 컬럼. 종전엔 **빈 셀을 만든 뒤 네 키를
+                # 덮어썼고**, `sources`는 방금 만든 `{}`를 또 `dict()`로 복사했다 ― 셀마다
+                # dict 3개. 최종 상태를 그대로 쓰면 2개다. 키 삽입 순서는 종전 리터럴과
+                # 같으므로(덮어쓰기는 순서를 바꾸지 않는다) JSON 바이트가 동일하다.
+                r_data[col] = {"value": value, "is_overwrite": False,
+                               "is_collision_merge": False,
+                               "sources": {SOURCE_NAME: rendered},
+                               "updated_by": "system",
+                               "manual_priority_source": None,
+                               "priority_source": SOURCE_NAME}
             touched += 1
     return touched
