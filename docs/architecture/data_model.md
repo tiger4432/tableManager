@@ -112,7 +112,8 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - **우선순위 판정은 한 줄도 바뀌지 않았다.** `compute_priority_value`도 `resolve_priority_map`도 `SOURCE_PRIORITY`도 그대로다. 바뀐 것은 **그 판정에 들어가는 소스 목록을 어떻게 얻는가**뿐이다.
 - 🔴 **바뀐 것: 배치 경로에서 새 소스 층을 담는 객체가 매핑 인스턴스가 아니라 `LightCellSource`다.** 그 객체는 **세션에 들어가지 않는다** — 실제 쓰기는 `cell_sources_to_upsert` 누산기에서 나가고, 이 객체는 `col_srcs`에 끼어 `compute_priority_value`에 참여하려고만 존재한다. 프리페치가 채우는 `sources_cache`는 **원래부터** `LightCellSource`였으므로 오히려 한 목록에 두 종류가 섞이던 것이 정리됐다. `CellOverwrite`도 같다(`LightCellOverwrite`).
   ⚠️ **누산기가 없는 호출자(비배치 경로)에서는 여전히 매핑 인스턴스다** — 거기서는 그 객체가 **곧 쓰기**이기 때문이다. 조건은 `cell_sources_to_upsert is None` 하나이고, 그 조건을 지우면 비배치 쓰기가 조용히 아무것도 저장하지 않는다.
-- **`cell_sources` 업서트의 문장 모양은 같고 보내는 방식만 다르다** — 문장을 한 번 컴파일하고 파라미터 목록을 넘긴다. `BULK_CHUNK_SIZE` 청킹은 그대로다(그것은 튜닝값이 아니라 int16 파라미터 한계다). 균일하지 않은 키 집합이나 값에 든 SQL 식은 `_is_executemany_safe`가 걸러 **종전 경로로 되돌린다**.
+- **`cell_sources` 업서트의 문장 모양은 같고 보내는 방식만 다르다.** `BULK_CHUNK_SIZE` 청킹은 그대로다. 균일하지 않은 키 집합이나 값에 든 SQL 식은 `_is_executemany_safe`가 걸러 **종전 경로로 되돌린다**.
+  🔴 **[2026-08-12] 보내는 방식이 한 번 더 바뀌었고, 이번에는 종전 문장이 거짓이었기 때문이다.** 「파라미터 목록을 넘긴다」는 배치 전송처럼 읽히지만 `ON CONFLICT DO UPDATE`에서는 `cursor.executemany`로 퇴화하고, psycopg2에서 그것은 **행마다 서버 왕복 1회**다(실측: 20,000 매핑 = 20,000 파라미터 집합, `execute` 0회). 지금은 `_pg_multirow_upsert`가 청크마다 **진짜 다중 행 `VALUES` 문장 하나**를 보낸다 — 문장 20개, **−79%**. **레이어링에는 아무 영향이 없다**: 같은 매핑을 구·신 경로로 써서 저장된 행을 대조했고 `value::text`를 포함해 7개 컬럼 전부 **바이트 동일**이었다. 기전과 거절 조건은 [architecture/backend §3 2-ter](./backend.md)가 정본이다.
 - **감사·아웃박스·오버라이트 마커의 건수는 동일하다** — 10만 행 실측에서 `cell_sources` 700,000 / `audit_logs` 100,000 / `database_outbox` 100,000이 변경 전후 같다. 아웃박스는 `session.new`에서 나오므로 **ORM을 우회하는 벌크 삽입은 이 경로에서 금지**이고, 그것이 데이터 행을 끝까지 ORM으로 만드는 이유다.
 
 ### 2.2 오버라이트 & 시각화

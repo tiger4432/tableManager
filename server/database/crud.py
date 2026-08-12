@@ -1695,8 +1695,14 @@ def _is_executemany_safe(mappings: list[dict]) -> bool:
     [P3] `.values(chunk)` builds a fresh multi-row VALUES clause - one BindParameter
     object per cell - and compiles it per chunk. Measured on a 100,000-row map file:
     `bulk_upsert_cell_sources` cost 223.2 s, of which only 60.2 s was SQL and 163 s
-    was that construction. Handing the driver a parameter LIST instead compiles the
-    statement once and lets it batch, which is what this predicate gates.
+    was that construction. Being able to hand the driver a flat parameter list instead
+    is what this predicate gates.
+
+    ⚠️ [P4] PASSING THIS IS NOT ITSELF THE SPEED-UP, and reading it that way is what
+    cost this path a year of per-row round trips. `db.execute(stmt, param_list)` on an
+    `ON CONFLICT DO UPDATE` degenerates to `cursor.executemany`, i.e. one round trip
+    per row. What the predicate now gates is `_pg_multirow_upsert`, which sends a real
+    multi-row `VALUES` - measured 20 statements instead of 20,000 round trips.
 
     Two properties are required and neither is guaranteed by the type annotation:
 
@@ -1720,6 +1726,115 @@ def _is_executemany_safe(mappings: list[dict]) -> bool:
         for v in m.values():
             if isinstance(v, ClauseElement):
                 return False
+    return True
+
+
+def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
+                        conflict_cols: list[str], update_cols: list[str],
+                        chunk_size: int) -> bool:
+    """Send `mappings` as one MULTI-ROW `VALUES` statement per chunk. `False` = declined.
+
+    🔴 WHY THIS EXISTS: `db.execute(stmt, list_of_dicts)` DOES NOT BATCH THIS STATEMENT.
+    It reads like a batched send and it is not. SQLAlchemy 2.0 routes a parameter list
+    through `insertmanyvalues`, and `insertmanyvalues` refuses any INSERT whose
+    `ON CONFLICT DO UPDATE` references `excluded` - measured on this statement,
+    `compiled.insertmanyvalues is False` while `dialect.use_insertmanyvalues is True`.
+    What is left is `cursor.executemany`, and psycopg2's `executemany` is a Python loop
+    over `cursor.execute`: ONE SERVER ROUND TRIP PER ROW.
+
+    Counted with a `cursor_factory` that tallies driver calls, 20,000 mappings into a
+    `LIKE cell_sources INCLUDING ALL` scratch table on the isolated `assy_qa`
+    (2026-08-12):
+
+        db.execute(stmt, chunk)   execute=     0   executemany=   20   param sets = 20,000
+        this function             execute=    20   executemany=    0   param sets =      0
+
+    20 statements against 20,000 round trips, and the wall clock follows: 5.65 s -> 1.19 s,
+    **-79 %**, 3 of 3 interleaved rounds, same direction every time. The earlier
+    `.values(chunk)` shape sent the same 20 statements but rebuilt a `BindParameter` per
+    cell and recompiled per chunk; this keeps that path's SQL and drops its Python.
+
+    ⚠️ IT MUST STAY INSIDE SQLAlchemy. `psycopg2.extras.execute_values` on a raw cursor
+    measures the same (1.21 s) and was rejected: a raw cursor raises `psycopg2.Error`,
+    not `sqlalchemy.exc.IntegrityError`, so `apply_batch_updates`' business-key recovery
+    - which catches the SQLAlchemy class - would stop seeing the exceptions it exists to
+    classify, and the Session would not know its transaction had gone bad.
+    `exec_driver_sql` goes through the same error translation and connection bookkeeping
+    every other statement here uses, for the same measured cost.
+
+    DECLINES (returns False, having written nothing) rather than guessing, whenever the
+    caller's existing path would do something this one cannot reproduce:
+      - not PostgreSQL, or not psycopg2 (the `%s` placeholders and the client-side
+        interpolation that makes 7,000 binds per statement legal are both psycopg2's);
+      - a mapping key that is not a column of `table`;
+      - a column carrying a PYTHON-side default that the mappings omit. SQLAlchemy's
+        insert would compute and send it (`CellOverwrite.is_overwrite` is `default=True`);
+        raw SQL would leave it NULL. Server defaults are fine - PostgreSQL still applies
+        those to a column the statement does not name.
+
+    Callers must have passed `_is_executemany_safe` first: this reads the key list off
+    `mappings[0]` and assumes the list is not ragged.
+    """
+    bind = db.get_bind()
+    dialect = bind.dialect
+    if dialect.name != "postgresql" or dialect.driver != "psycopg2":
+        return False
+
+    keys = list(mappings[0].keys())
+    cols = []
+    for k in keys:
+        col = table.c.get(k)
+        if col is None:
+            return False
+        cols.append(col)
+    for col in table.c:
+        if col.default is not None and col.name not in mappings[0]:
+            return False
+
+    prep = dialect.identifier_preparer
+    col_list = ", ".join(prep.quote(k) for k in keys)
+    conflict_list = ", ".join(prep.quote(c) for c in conflict_cols)
+    set_list = ", ".join(f"{prep.quote(c)} = EXCLUDED.{prep.quote(c)}" for c in update_cols)
+    head = (f"INSERT INTO {prep.format_table(table)} ({col_list}) VALUES ")
+    tail = f" ON CONFLICT ({conflict_list}) DO UPDATE SET {set_list}"
+
+    # The per-column bind processors are the ONLY reason the values land identically.
+    # `cell_sources.value` is a `JSON` column, and its processor is what turns a Python
+    # dict/str/None into the text PostgreSQL casts to json - without it a bare string
+    # value is invalid json and the statement fails outright. Verified by oracle rather
+    # than by reading: the same 2,000 mappings (str / int / None / nested dict) written
+    # through this path and through `db.execute(stmt, chunk)` produced byte-identical
+    # rows on all seven columns, `value::text` included.
+    procs = [col.type.dialect_impl(dialect).bind_processor(dialect) for col in cols]
+
+    # `db.execute()` autoflushes; a driver-level statement does not. This keeps the
+    # flush at the same point in the sequence for any caller whose Session has it on.
+    #
+    # ⚠️ THIS IS A NO-OP FOR THIS APPLICATION and that is worth knowing rather than
+    # assuming either way: `database.SessionLocal` is `autoflush=False`, so the send
+    # this replaces never flushed here either, and a business-key UNIQUE violation goes
+    # on surfacing where it always did - at `db.commit()`. Measured both arms with a
+    # pending ORM row outstanding: neither flushes it. The line stays because an
+    # outside caller with a default `sessionmaker` would otherwise see the two paths
+    # disagree, which is exactly the kind of difference nobody would find later.
+    if db.autoflush:
+        db.flush()
+
+    one_row = "(" + ",".join(["%s"] * len(keys)) + ")"
+    conn = db.connection()
+    row_sql_cache: dict[int, str] = {}
+    for chunk in _chunks(mappings, chunk_size):
+        n = len(chunk)
+        sql = row_sql_cache.get(n)
+        if sql is None:
+            sql = head + ",".join([one_row] * n) + tail
+            row_sql_cache[n] = sql
+        flat = []
+        for m in chunk:
+            for k, p in zip(keys, procs):
+                v = m[k]
+                flat.append(p(v) if p is not None else v)
+        conn.exec_driver_sql(sql, tuple(flat))
     return True
 
 
@@ -1754,9 +1869,23 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
     # below keeps handing the driver `chunk_size` rows at a time for exactly that
     # reason: what changes is HOW those rows are sent, never how many go per call.
     if _is_executemany_safe(deduped_mappings):
-        # One compiled statement, one parameter set per row. psycopg2's `values_only`
-        # executemany rewrites each call into a multi-row INSERT with the values
-        # rendered as literals, so the per-chunk VALUES construction disappears.
+        # [P4] One MULTI-ROW statement per chunk. This used to be
+        # `db.execute(stmt, chunk)` with a comment claiming psycopg2 rewrote the
+        # executemany into a multi-row INSERT. It does not, and it never did on
+        # SQLAlchemy 2.0 - `insertmanyvalues` declines an `ON CONFLICT DO UPDATE` that
+        # references `excluded`, leaving `cursor.executemany`, which is a loop of
+        # `cursor.execute`. Counted on the isolated `assy_qa`: 20,000 round trips for
+        # 20,000 rows, 5.65 s, where 20 statements do it in 1.19 s. See
+        # `_pg_multirow_upsert` for the census and why it stays inside SQLAlchemy.
+        if _pg_multirow_upsert(
+                db, models.CellSource.__table__, deduped_mappings,
+                conflict_cols=['table_name', 'row_id', 'column_name', 'source_name'],
+                update_cols=['value', 'updated_by', 'ingested_at'],
+                chunk_size=chunk_size):
+            return
+
+        # Declined (SQLite, or a mapping shape it will not guess at): the historical
+        # send. Still one compiled statement and one parameter set per row.
         stmt = upsert_insert(models.CellSource)
         stmt = stmt.on_conflict_do_update(
             index_elements=['table_name', 'row_id', 'column_name', 'source_name'],
@@ -1804,7 +1933,18 @@ def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict], chunk_size: i
         from sqlalchemy.dialects.postgresql import insert as upsert_insert
 
     # Same fast path, same fallback, same chunk size - see `bulk_upsert_cell_sources`.
+    # [P4] Identical send-path repair, and it matters here for the same reason: a map
+    # push declares `source_name='user'`, so EVERY cell takes an overwrite marker and
+    # this list is the same length as the source list.
     if _is_executemany_safe(deduped_mappings):
+        if _pg_multirow_upsert(
+                db, models.CellOverwrite.__table__, deduped_mappings,
+                conflict_cols=['table_name', 'row_id', 'column_name'],
+                update_cols=['is_overwrite', 'updated_by', 'updated_at',
+                             'manual_priority_source'],
+                chunk_size=chunk_size):
+            return
+
         stmt = upsert_insert(models.CellOverwrite)
         stmt = stmt.on_conflict_do_update(
             index_elements=['table_name', 'row_id', 'column_name'],
