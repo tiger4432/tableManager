@@ -20,11 +20,20 @@ from sqlalchemy import event
 
 Call = namedtuple("Call", "sql bind_count executemany")
 
-#: PostgreSQL's wire protocol carries the parameter count in an int16, so a single
-#: statement can never bind more than this many values - psycopg2 raises before it
-#: is sent. SQLite's own limit is an order of magnitude higher (250,000 on the
-#: build this suite runs), which is exactly why an unchunked statement can look
-#: fine here and be fatal in production.
+#: ⚠️ [2026-08-12] THIS CONSTANT USED TO BE DOCUMENTED AS A DRIVER-ENFORCED
+#: CEILING - "psycopg2 raises before it is sent" - AND THAT IS FALSE. psycopg2
+#: interpolates parameters CLIENT-SIDE (`cursor.mogrify` returns a finished SQL
+#: string), so no bound parameters cross the wire and the extended-query
+#: protocol's int16 parameter count is never consulted. Measured on the isolated
+#: `assy_qa`: one multi-row upsert of 12,000 rows x 7 columns = 84,000 binds was
+#: accepted and stored all 12,000 rows. Nothing refuses at 32,767 on this driver.
+#:
+#: The number is REAL for the protocol and it becomes a hard ceiling under a
+#: server-side-binding driver (psycopg v3, asyncpg). It is kept here as a
+#: BUDGET, not as a prediction of refusal: a statement that binds fewer than
+#: this many values is also one whose text and `mogrify` memory stay bounded,
+#: whose locks are held briefly, and which would survive a driver switch. See
+#: `crud.BULK_CHUNK_SIZE` for what the chunk bound actually buys.
 PG_MAX_BIND_PARAMS = 32767
 
 

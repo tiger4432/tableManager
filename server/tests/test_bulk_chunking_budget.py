@@ -6,12 +6,19 @@ operation in this codebase (`graph_materializer.CHUNK_SIZE`).
 5,000-die map save produced a single ~690 KB INSERT binding 210,000 parameters,
 and the delete was an N-term OR chain.
 
-🔴 WHY THIS SUITE COULD NEVER HAVE CAUGHT IT. The failure is a per-statement
-PARAMETER limit, and SQLite's is 250,000 on the build this suite runs while
-PostgreSQL's is 32,767 - the count travels in an int16 on the wire. So the
-statement production refuses outright executes happily here, and asserting only
-"the push succeeds" would assert nothing about production. The tests below
-assert the bind count per statement, which is the property that transfers.
+🔴 WHY THIS SUITE COULD NEVER HAVE CAUGHT IT BY ASSERTING SUCCESS. A statement
+of that size executes happily on SQLite (limit 250,000 binds on the build this
+suite runs), so "the push succeeds" asserts nothing about production. The tests
+below assert the BIND COUNT PER STATEMENT instead, which is the property that
+transfers.
+
+⚠️ [2026-08-12] THIS DOCSTRING USED TO SAY PostgreSQL "refuses outright" above
+32,767 because the count travels in an int16. Measured false for the driver
+this project runs: psycopg2 interpolates client-side, and one multi-row upsert
+binding 84,000 values was accepted and stored every row. The int16 limit is
+real for the protocol and would bite under psycopg3, which binds server-side -
+so the budget is worth keeping and the prediction of a refusal is not. See
+`sql_budget.PG_MAX_BIND_PARAMS`.
 """
 
 import math
@@ -69,8 +76,11 @@ def test_real_size_map_push_binds_no_more_than_one_chunk_per_statement(db_sessio
     # statement anywhere on this path trips it too.
     worst = max(recorded, key=lambda c: c.bind_count)
     assert worst.bind_count < PG_MAX_BIND_PARAMS, (
-        f"one statement bound {worst.bind_count} parameters; PostgreSQL refuses "
-        f"above {PG_MAX_BIND_PARAMS}. Statement head: {worst.sql[:120]}")
+        f"one statement bound {worst.bind_count} parameters, over the "
+        f"{PG_MAX_BIND_PARAMS} budget. psycopg2 will not refuse it (it "
+        f"interpolates client-side) - it is the statement size, the mogrify "
+        f"memory, the lock duration and a psycopg3 switch that pay. "
+        f"Statement head: {worst.sql[:120]}")
 
     expected_chunks = math.ceil(CELLS / CHUNK)
     assert len(inserts_into(recorded, "cell_sources")) == expected_chunks

@@ -309,7 +309,21 @@ def test_audit_trail_still_records_the_ingest(db_session):
 
 
 # --------------------------------------------------------------------------
-# 4. The bulk upsert fast path and its fallback
+# 4. The bulk upsert FALLBACK
+#
+# 🔴 EVERY TEST IN THIS SECTION RUNS ON THE FALLBACK, AND THE NAMES NOW SAY SO.
+# `_pg_multirow_upsert` returns False on `dialect.name != "postgresql"`, and
+# this suite's engine is in-memory SQLite, so the accepted branch is
+# unreachable from here - measured with a counting spy over this file plus
+# `test_bulk_chunking_budget.py` and `test_business_key_conflict_retry.py`:
+# `entered=28 accepted=0 declined=28` across 42 passing tests. Two of these
+# tests used to be called "the fast path", which meant a later change could
+# break the accepted branch outright while 42 green tests reported it covered.
+#
+# The fallback is worth testing - it is what SQLite, psycopg3 and every
+# declined shape actually take. It is simply not what these names used to
+# claim. The accepted branch is covered by `test_pg_multirow_upsert.py`, which
+# skips unless an isolated PostgreSQL is declared.
 # --------------------------------------------------------------------------
 
 def test_bulk_upsert_falls_back_when_a_mapping_holds_a_sql_expression(db_session):
@@ -350,9 +364,15 @@ def test_a_ragged_mapping_list_is_still_refused(db_session):
     db_session.rollback()
 
 
-def test_bulk_upsert_still_updates_on_conflict(db_session):
-    """The fast path must keep ON CONFLICT DO UPDATE semantics: a second write of
-    the same (table, row, column, source) replaces the value rather than raising."""
+def test_bulk_upsert_fallback_still_updates_on_conflict(db_session):
+    """The FALLBACK keeps ON CONFLICT DO UPDATE semantics: a second write of the
+    same (table, row, column, source) replaces the value rather than raising.
+
+    The accepted branch's own conflict target is a string `_pg_multirow_upsert`
+    assembles by hand and is therefore the one that can be wrong; it is
+    asserted in `test_pg_multirow_upsert.py::
+    test_on_conflict_do_update_replaces_the_value_on_the_accepted_branch`.
+    """
     from datetime import datetime
     def rows(v):
         return [{"table_name": TABLE, "row_id": "CF_1", "column_name": "bn",
@@ -373,10 +393,16 @@ def test_bulk_upsert_still_updates_on_conflict(db_session):
 
 @pytest.mark.parametrize("n", [0, 1, crud.BULK_CHUNK_SIZE - 1,
                                crud.BULK_CHUNK_SIZE, crud.BULK_CHUNK_SIZE + 1])
-def test_fast_path_chunk_boundaries_write_every_mapping(db_session, n):
-    """The chunk size is a correctness bound, not a tuning knob, and the fast path
-    keeps cutting at it. Same boundaries `test_bulk_chunking_budget` pins for the
-    VALUES path, asserted for the batched one."""
+def test_fallback_chunk_boundaries_write_every_mapping(db_session, n):
+    """Off-by-one guard on the chunk loop, at and around the boundary, for the
+    send this suite can reach.
+
+    ⚠️ It used to be called `test_fast_path_chunk_boundaries_...`. It never ran
+    the fast path; the equivalent on the accepted branch (which also asserts
+    the STATEMENT count, because `row_sql_cache` is keyed by chunk length) is
+    `test_pg_multirow_upsert.py::
+    test_chunk_boundaries_write_every_mapping_on_the_accepted_branch`.
+    """
     from datetime import datetime
     now = datetime.now()
     mappings = [{"table_name": TABLE, "row_id": f"CB_{i}", "column_name": "bn",
