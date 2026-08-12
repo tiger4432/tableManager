@@ -113,6 +113,45 @@
 > **A안을 고른 이유**: 계약 변경 0, 의존성 0. 50%에 닿으려면 직렬화기 교체나 병합 재작성이 필요한데 둘 다 공짜가 아니다.
 > ⚠️ **200행에선 35%가 14ms라 체감 0이다.** 체감은 1,000행 이상에서 온다. **초 단위로 기다리는 자리**(워크리스트 3.17→0.56초 · `/view`의 진짜 3.46초)는 이것과 **별개로** 잡는다.
 >
+> ### 2-bis. ✅ 쓰기 50% **달성** (`ab008ec`) — 그리고 T1 검수 둘 다 **GO-WITH-FIXES**
+>
+> `PUT` 2,000행 **26.1→11.9초(−54.5%)**, 파일 인제션 15.7→7.9초. **부품이 아니라 HTTP 요청 전체.** 셀 이력 클라도 착지(`3125755`).
+>
+> 🔴 **내가 지목한 공격 둘은 «둘 다 기각»됐고, 검수는 다른 걸 물고 왔다.**
+>
+> | | 결과 |
+> |---|---|
+> | 한 statement에 같은 충돌키 2회 → PG 21000 | **도달 불가** — 생산 accumulator가 «바로 그 튜플»로 키잉된 dict이고 공개 함수 둘이 재차 dedup. 단 **docstring의 전제 목록에 dedup이 없다** → 제3 캘러가 붙으면 테스트로 못 잡는 운영 21000 |
+> | 파라미터 65,535 상한 | **적용 안 됨** — psycopg2는 **클라이언트 측 보간**. 내가 직접 실측: `mogrify` → `SELECT 'a', 1`(`$1` 없음), **80,000 바인드 통과** |
+>
+> #### 🔴 고쳐야 할 «틀린 문장» 넷 — 전부 내가 실어 보낸 것
+>
+> 1. **`execute_values` 기각 사유** (docstring · `backend.md` §3 2-ter · `data_model.md` §2.1 · **`ab008ec` 커밋 본문**) — 「생 커서면 충돌 가드가 눈이 먼다」. **불가능하다**: `_pg_multirow_upsert`가 쓰는 `cell_sources`/`cell_overwrites`엔 **`business_key_val` 컬럼이 없다**(내가 확인). 업무키 위반은 그 «뒤» ORM flush에서 난다. **결정은 옳고 이유가 틀렸다** — 진짜 이유는 프로젝트 전역 `except IntegrityError` **3곳**이 SQLAlchemy 예외 클래스를 요구한다는 것
+> 2. **`crud.py`의 「psycopg2가 32,767에서 거절한다」** — **거짓**(위 실측). PG 프로토콜의 int16 한계는 실재하나 psycopg2가 그 경로를 안 탄다
+> 3. **`CODE_MAP.md`의 「순수 fast path다 — 느릴 수는 있고 틀릴 수는 없다」** — 측정으로 거짓이 됐다(아래 D1). `_pg_multirow_upsert` 항목 자체도 없음
+> 4. 「7개 컬럼 바이트 동일」 — 51개 값 모양 중 **46개**에서만 참. **입력을 명시해야 한다**
+>
+> #### 🔴 검수가 «찾아낸» 진짜 결함 — 기본값 컬럼의 `None`
+>
+> SQLAlchemy는 값이 `None`이고 default가 있으면 **컬럼을 statement에서 뺀다** → DB가 DEFAULT를 적용. 새 경로는 **컬럼을 이름 대고 NULL을 쓴다.** 갈리는 컬럼 셋: `cell_sources.ingested_at` · `cell_overwrites.updated_at` · `cell_overwrites.is_overwrite`.
+> **UPDATE 갈래에도 적용된다** — `ingested_at=2020-01-01` 심어 두고 `None`으로 upsert하니 새 경로가 **NULL로 덮었다.**
+> 가드 `col.default is not None and col.name not in mappings[0]`는 **누락만** 막고 `_is_executemany_safe`는 present-but-`None`에 **True**를 준다. 오늘 도달 가능한 형태는 양성(23,361행 중 1행). 파괴적 형태는 **dict 리터럴 셋의 현재 모양 뒤에만** 숨어 있다.
+>
+> 🧭 **두 검수의 렌즈가 달라서 한 컬럼을 양쪽에서 쳤다.** QA2는 「가드를 «제거»하면 `is_overwrite`가 조용히 NULL로 저장」을 뮤테이션으로 찾았고, QA1은 **가드를 그대로 두고도** present-but-`None`이면 같은 일이 난다는 걸 찾았다. **뮤테이션은 가드의 «존재»를 재고 «완전성»은 못 잰다.**
+>
+> #### 나머지
+>
+> - **경로 전환이 안 보인다** — `return False` 3곳, **로그 0줄**. 컬럼에 `default=` 하나 붙으면 조용히 7.8→31.2초. `_warn_*_once` 패턴이 같은 파일에 이미 있다
+> - **실패 로그 8.4배** — 청크 1000에서 예외 문자열 25,580자 대 3,031자. 워처가 `{e}`를 통째로 찍는다 → `e.orig`
+> - **빠른 경로 테스트 셋이 거기 못 들어간다** — 계수 스파이 `entered=28 accepted=0 declined=28`
+> - 🔴 **「어떤 테스트도 못 닿는다」가 거짓** — `conftest.py`가 `ASSY_TEST_DATABASE_URL`을 문서화하고 `db_session`은 **SQLite를 하드코딩**. PG 픽스처 **약 40줄**. 어떤 테스트에도 안 걸리는 행동 **9개**
+>
+> #### ⚠️ 상시 빨강의 정체가 바뀌었다
+>
+> **전체 스위트 `105 failed / 3348 passed`(930초). 105개 전부 `test_map_alignment*`이고 `ab008ec` 탓이 아니다**(실측: 그 파일들에서 `entered=2 accepted=0` — 새 경로에 안 들어간다). 실패 단언은 라우트/config 술어(`"Enrichment rule 'sk1_test_rule' is not an alignment rule"`). **보드가 적어 온 「알려진 무관 실패 = `test_map_presets_api`」는 낡았다.** ⚠️ 스위트 도중 트리가 움직였으므로(`time_format.py`·`virtual_join_executor.py`) **조용한 트리에서 재측정** 필요.
+>
+> 🧹 QA2의 `qa2_rev` 스키마가 「지웠다」는 보고에도 **살아 있어서**(QA1이 잡음) 92개 객체 확인 후 총괄이 삭제. `public` 무영향, `uq_bk_*` 잔여 0.
+>
 > ### 3. 운영에서 봐 주실 것
 >
 > - 🔴 **거절 로그** — 유니크 인덱스가 켜졌으니 전에 조용히 중복으로 들어가던 쓰기가 **이제 거절**된다. **새 결함이 아니라 「전부터 있던 결함이 드디어 보이는 것」**
