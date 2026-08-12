@@ -45,6 +45,38 @@ HEARTBEAT_NAME = "watcher"
 # Inherit from unified Watcher logger parent to prevent double formatting and log separation
 logger = logging.getLogger("Watcher.DirectoryWatcher")
 
+
+def _db_error_brief(exc: BaseException) -> str:
+    """One line: the exception class plus the DATABASE DRIVER's own message.
+
+    ⚠️ NOT COSMETIC, AND NOT A GUESS. SQLAlchemy attaches the rendered statement and the
+    flat parameter tuple to the exception it raises, and `crud._pg_multirow_upsert` now
+    sends ONE multi-row statement per 1,000-row chunk instead of one statement per row.
+    Measured on the isolated `assy_qa` at the production chunk size, one NOT NULL breach
+    in a 1,000-row `cell_sources` chunk (7 columns):
+
+        new multi-row send        len(str(exc)) = 25,097   statement = 23,276   params = tuple of 7,000
+        the per-row send it replaced             852                     387             dict of 6
+
+    Interpolating the exception into an f-string therefore wrote ~25 KB per failed chunk
+    - twice, because the outer handler re-logged the same object - so one bad file is a
+    log flood. The size buys nothing either: the tuple is no longer keyed by column name,
+    so finding the offending value means counting to position 7 x K, while the per-row
+    send named the failing parameter set on its own. Through here: 92 chars, 273x smaller.
+
+    `exc.orig` is the driver's own one-line message. This is the format
+    `crud.apply_batch_updates`' business-key recovery warning already uses - reused
+    rather than reinvented, so the two failure logs read the same.
+
+    NOTHING IS LOST BY THIS. Both call sites re-raise the untouched exception, and
+    `process_with_retry` still records the FULL traceback in the err/ ingestion log,
+    which is where the statement belongs if anyone wants it.
+    """
+    msg = str(getattr(exc, "orig", exc) or exc).strip()
+    first = msg.splitlines()[0] if msg else ""
+    return f"{exc.__class__.__name__}: {first}" if first else exc.__class__.__name__
+
+
 # [C-5] 파일 인제션 완료 통지에 동봉하는 감사 로그(created_logs) 상한.
 # 체인 워커(chain_ingestion_worker.py)와 공유하는 공용 상수로 승격됨 — 정의·근거는 event_constants 참조.
 # 실제 총 로그 건수는 total_log_count로 별도 전달되어 웹서버 audit_cache의 total_count 표기에 쓰인다.
@@ -1920,7 +1952,9 @@ class IngestionHandler(FileSystemEventHandler):
                     logger.info(f"[{t_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
                 except Exception as e:
                     db.rollback()
-                    logger.error(f"[{t_name}] ❌ Failed to apply local batch update: {e}")
+                    # [D3] `{e}` here wrote ~25 KB per failed chunk - see `_db_error_brief`.
+                    logger.error(f"[{t_name}] ❌ Failed to apply local batch update: "
+                                 f"{_db_error_brief(e)}")
                     raise e
                 finally:
                     db.close()
@@ -1965,7 +1999,10 @@ class IngestionHandler(FileSystemEventHandler):
                 self.on_refresh_callback(t_name, total_changed, all_created_logs, total_log_count)
                 
         except Exception as outer_e:
-            logger.error(f"[{t_name}] Outer error during batch injection loop: {outer_e}")
+            # [D3] This handler sees the SAME exception the chunk handler above just
+            # re-raised, so interpolating it by value doubled the ~25 KB, not added to it.
+            logger.error(f"[{t_name}] Outer error during batch injection loop: "
+                         f"{_db_error_brief(outer_e)}")
             raise outer_e
         finally:
             # [OUTBOX-4] Restore per_row for whatever this thread does next. A leaked

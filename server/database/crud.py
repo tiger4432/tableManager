@@ -1673,13 +1673,32 @@ def get_effort_stats(db: Session, weights: dict,
 #: loop shape as `graph_materializer.CHUNK_SIZE`, which already chunks the graph
 #: upserts, and the size the charter names.
 #:
-#: 🔴 This is a CORRECTNESS bound on PostgreSQL, not a tuning knob. The wire
-#: protocol carries a statement's parameter count in an int16, so no statement may
-#: bind more than 32,767 values - psycopg2 refuses before sending. A 5,000-die map
-#: save built ONE 690 KB INSERT binding 210,000 parameters, which SQLite (limit
-#: 250,000 on the build the suite runs) executes happily and production rejects
-#: outright. 1,000 rows x the widest of these tables is ~7,000 binds, comfortably
-#: inside the limit. Raising this constant re-opens that failure.
+#: ⚠️ THIS COMMENT USED TO SAY THIS BOUND WAS A CORRECTNESS BOUND ENFORCED BY THE
+#: DRIVER - "the wire protocol carries a statement's parameter count in an int16, so
+#: no statement may bind more than 32,767 values, psycopg2 refuses before sending".
+#: THAT IS FALSE FOR THE DRIVER THIS PROJECT RUNS, and it was believed for a year.
+#: psycopg2 interpolates parameters CLIENT-SIDE and ships one finished SQL string:
+#: `cursor.mogrify("SELECT %s, %s", ("a", 1))` returns `b"SELECT 'a', 1"`. No bound
+#: parameters ever cross the wire, so the extended-query protocol's int16 parameter
+#: count - which is real - is never consulted. Re-measured on the isolated `assy_qa`:
+#: ONE multi-row upsert of 12,000 rows x 7 columns = 84,000 binds was ACCEPTED and
+#: stored all 12,000. Nothing refuses at 32,767; nothing here would notice if it did.
+#:
+#: 🔴 THE BOUND STAYS, and it is still not a tuning knob - the reasons are just
+#: different and none of them is a hard ceiling. What it buys, per statement:
+#:   - statement TEXT size and the client-side memory `mogrify` needs to build it.
+#:     Measured on a `cell_sources` chunk: 1,000 rows = 7,000 binds is a 23 KB
+#:     template that mogrifies to 135 KB on the wire; 12,000 rows is 276 KB -> 1.6 MB,
+#:     and it scales with the VALUES, so one fat JSON cell moves it;
+#:   - lock duration and rollback cost - a failing multi-row VALUES applies 0 rows of
+#:     its chunk (measured) where the executemany it replaced had applied K-1, so a
+#:     bigger chunk is a bigger unit of loss on the retry;
+#:   - a per-chunk shape the SQL cache in `_pg_multirow_upsert` can reuse.
+#: It DOES become a hard parameter ceiling under psycopg (v3), which binds
+#: server-side - but `_pg_multirow_upsert` declines on `dialect.driver != "psycopg2"`,
+#: so under psycopg3 the fallback carries the load at 7,000 binds and is safe there
+#: too. Raising this constant is a memory/rollback trade, not a correctness cliff;
+#: say which of the three you measured before you move it.
 BULK_CHUNK_SIZE = 1000
 
 
@@ -1717,6 +1736,14 @@ def _is_executemany_safe(mappings: list[dict]) -> bool:
 
     Anything that fails either test falls back to the historical per-chunk VALUES
     path, so this is a pure fast path: it can be slow, it cannot be wrong.
+
+    ⚠️ THAT LAST SENTENCE IS A PROPERTY OF TWO FUNCTIONS, NOT OF THIS ONE. Passing here
+    only means the list has a uniform, bindable SHAPE; whether the raw send can reproduce
+    what the fallback would STORE is decided by `_pg_multirow_upsert`'s decline set. This
+    predicate answers True for a key that is present with value `None`, and that alone
+    used to be enough to write NULL over a defaulted column - see the `None`-on-a-default
+    decline there. Weaken those declines and this sentence becomes false without a word of
+    it changing here.
     """
     from sqlalchemy.sql.elements import ClauseElement
     first_keys = mappings[0].keys()
@@ -1727,6 +1754,34 @@ def _is_executemany_safe(mappings: list[dict]) -> bool:
             if isinstance(v, ClauseElement):
                 return False
     return True
+
+
+# A decline in `_pg_multirow_upsert` reverts EVERY write of that shape to one server
+# round trip per row - by this path's own census 7.8 s -> 31.2 s on a 100k-row push - and
+# until this registry existed it did so with no log line, no counter and no health field.
+# The operator saw "ingestion got slow again" and had nothing to separate it from load.
+#
+# Once per (table, REASON CODE) per process, deliberately not per (table, column): the
+# reason codes are a closed vocabulary of four, while column names come from the caller's
+# mapping keys, and a registry keyed on those is the unbounded growth
+# `_undeclared_column_warned` needs a budget for. The offending column is named in the
+# MESSAGE, so the first announcement is still actionable; a second column failing the same
+# way on the same table is silent, which is the price of the bound.
+_upsert_fastpath_declined_warned = set()
+
+
+def _warn_upsert_fastpath_declined_once(table_name: str, reason: str, detail: str):
+    key = (table_name, reason)
+    if key in _upsert_fastpath_declined_warned:
+        return
+    _upsert_fastpath_declined_warned.add(key)
+    logger.warning(
+        f"[BulkUpsert] Multi-row fast path DECLINED for '{table_name}' "
+        f"(reason={reason}): {detail}. Writes of this shape fall back to ONE SERVER "
+        f"ROUND TRIP PER ROW - this path's own census puts a 100k-row push at 7.8 s "
+        f"batched and 31.2 s on that fallback. The rows are still written CORRECTLY; "
+        f"only the send strategy changed. Once per (table, reason) per process."
+    )
 
 
 def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
@@ -1754,30 +1809,81 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
     `.values(chunk)` shape sent the same 20 statements but rebuilt a `BindParameter` per
     cell and recompiled per chunk; this keeps that path's SQL and drops its Python.
 
-    ⚠️ IT MUST STAY INSIDE SQLAlchemy. `psycopg2.extras.execute_values` on a raw cursor
-    measures the same (1.21 s) and was rejected: a raw cursor raises `psycopg2.Error`,
-    not `sqlalchemy.exc.IntegrityError`, so `apply_batch_updates`' business-key recovery
-    - which catches the SQLAlchemy class - would stop seeing the exceptions it exists to
-    classify, and the Session would not know its transaction had gone bad.
-    `exec_driver_sql` goes through the same error translation and connection bookkeeping
-    every other statement here uses, for the same measured cost.
+    ⚠️ IT MUST STAY INSIDE SQLAlchemy - BUT NOT FOR THE REASON THIS DOCSTRING USED TO
+    GIVE. `psycopg2.extras.execute_values` on a raw cursor measures the same (1.21 s) and
+    is still rejected; both halves of the old justification were measured false and are
+    recorded here so nobody re-derives them and concludes the constraint is decorative:
+
+      - "`apply_batch_updates`' business-key recovery would stop seeing the exceptions it
+        classifies" - IT CANNOT BE BLINDED FROM HERE. This helper only ever writes
+        `cell_sources` and `cell_overwrites`, and NEITHER TABLE HAS A `business_key_val`
+        COLUMN (0 rows in `information_schema.columns`). The `uq_bk_*` violation is raised
+        by the ORM flush of the DATA row, which happens after this function has returned.
+      - "the Session would not know its transaction had gone bad" - it does not know on
+        the chosen path either. Measured on all three arms after one identical NOT NULL
+        fault: `SessionTransaction.is_active` is still True and `db.commit()` still
+        RETURNS SUCCESS while committing nothing. That half buys exactly zero.
+
+    THE REASON THAT IS TRUE, and the only one: three sites in this project catch
+    `sqlalchemy.exc.IntegrityError` BY CLASS - `record_interaction_effort`,
+    `apply_batch_updates`, and `main.py`'s batch-update endpoint, which is the one this
+    helper can actually feed and which turns that class into a 409 instead of a 500. A
+    raw cursor raises `psycopg2.errors.NotNullViolation`; measured, `except IntegrityError`
+    DOES NOT CATCH IT, so a `cell_sources` NOT NULL or unique failure would sail past all
+    three. `exec_driver_sql` goes through the same error translation and connection
+    bookkeeping every other statement here uses, for the same measured cost.
 
     DECLINES (returns False, having written nothing) rather than guessing, whenever the
-    caller's existing path would do something this one cannot reproduce:
+    caller's existing path would do something this one cannot reproduce. EVERY decline is
+    logged once per (table, reason) - see `_warn_upsert_fastpath_declined_once`, and do
+    not add a silent one:
       - not PostgreSQL, or not psycopg2 (the `%s` placeholders and the client-side
         interpolation that makes 7,000 binds per statement legal are both psycopg2's);
       - a mapping key that is not a column of `table`;
       - a column carrying a PYTHON-side default that the mappings omit. SQLAlchemy's
         insert would compute and send it (`CellOverwrite.is_overwrite` is `default=True`);
-        raw SQL would leave it NULL. Server defaults are fine - PostgreSQL still applies
-        those to a column the statement does not name.
+        raw SQL would leave it NULL. Server defaults are fine when OMITTED - PostgreSQL
+        still applies those to a column the statement does not name;
+      - 🔴 a column carrying ANY default (Python-side or server-side) that a mapping
+        SUPPLIES AS `None`. This is the one that was missing and it was destructive.
+        SQLAlchemy OMITS a defaulted column from the statement when its value is `None`,
+        so the database applies the default; this function names every key of
+        `mappings[0]`, so it sent a literal NULL instead. Three columns diverged -
+        `cell_sources.ingested_at`, `cell_overwrites.updated_at` and, worst,
+        `cell_overwrites.is_overwrite`, whose NULL reads as falsy and silently retires the
+        overwrite marker that makes a manual correction beat the automatic layer. It
+        applies on the `DO UPDATE` arm too, where it overwrites a REAL stored value with
+        NULL - measured, a row seeded `is_overwrite=true` came back NULL - and it does
+        it PER ROW, so one bad mapping among 500 good ones corrupts exactly that one and
+        leaves the other 500 correct. The scan is one `any()` pass per defaulted key
+        (1 key for `cell_sources`, 2 for `cell_overwrites`): 18.8 ms per 100,000
+        `cell_overwrites` mappings, against a fallback that costs whole seconds.
 
-    Callers must have passed `_is_executemany_safe` first: this reads the key list off
-    `mappings[0]` and assumes the list is not ragged.
+    CALLER OBLIGATIONS - both of them, because a list that lists one reads as complete:
+
+      1. `_is_executemany_safe` must have passed. This reads the key list off
+         `mappings[0]` and assumes the list is not ragged.
+      2. 🔴 `mappings` MUST ALREADY BE UNIQUE ON `conflict_cols`. Two mappings sharing one
+         conflict key in ONE multi-row statement is not last-value-wins here: PostgreSQL
+         raises SQLSTATE 21000 `ON CONFLICT DO UPDATE command cannot affect row a second
+         time`. Measured on both tables, that surfaces as `sqlalchemy.exc.ProgrammingError`
+         with `.orig = psycopg2.errors.CardinalityViolation` - NOT an `IntegrityError`, so
+         none of the three `except IntegrityError` sites sees it, nothing retries it, and
+         the whole transaction aborts: the batch is lost, not the duplicate. Note that the
+         executemany send this replaced TOLERATED duplicates silently (last value won), so
+         this precondition is newly load-bearing and a caller written against the old
+         behaviour fails in production and nowhere else.
+         Both current callers rebuild a dict keyed on exactly `conflict_cols` before
+         dispatching; a third caller must do the same. Splitting duplicates across chunks
+         does NOT help by accident - it happens to work, because the violation is
+         per-statement, but nothing orders the list to make that true.
     """
     bind = db.get_bind()
     dialect = bind.dialect
     if dialect.name != "postgresql" or dialect.driver != "psycopg2":
+        _warn_upsert_fastpath_declined_once(
+            table.name, "dialect",
+            f"the bind is {dialect.name}+{dialect.driver}, not postgresql+psycopg2")
         return False
 
     keys = list(mappings[0].keys())
@@ -1785,10 +1891,40 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
     for k in keys:
         col = table.c.get(k)
         if col is None:
+            _warn_upsert_fastpath_declined_once(
+                table.name, "unknown_column",
+                f"mapping key '{k}' is not a column of this table")
             return False
         cols.append(col)
     for col in table.c:
         if col.default is not None and col.name not in mappings[0]:
+            _warn_upsert_fastpath_declined_once(
+                table.name, "python_default_omitted",
+                f"column '{col.name}' carries a Python-side default and the mappings "
+                f"omit it")
+            return False
+
+    # 🔴 A DEFAULTED COLUMN SUPPLIED AS `None` IS NOT THE SAME AS A DEFAULTED COLUMN
+    # OMITTED, and the guard above only sees the omission. SQLAlchemy drops the column
+    # from the statement in BOTH cases, so the database applies the default; this
+    # function names every key it was given, so `None` becomes a literal NULL. Measured
+    # against the fallback on the isolated `assy_qa`, INSERT arm and `DO UPDATE` arm
+    # alike: `is_overwrite` True -> NULL, `ingested_at` 2020-01-01 -> NULL. See the
+    # docstring's decline list for why the `is_overwrite` case is the one that matters.
+    #
+    # Keys are scanned rather than columns so the mapping key is what is tested (a
+    # `Column.key` need not equal its `Column.name`), and `any()` runs the scan in C.
+    # `server_default` counts as well as `default`: PostgreSQL computing `now()` is not
+    # reproducible from Python, so the only faithful answer is to hand the batch back.
+    for k, col in zip(keys, cols):
+        if col.default is None and col.server_default is None:
+            continue
+        if any(m[k] is None for m in mappings):
+            _warn_upsert_fastpath_declined_once(
+                table.name, "defaulted_column_is_none",
+                f"column '{k}' carries a default and at least one mapping supplies it "
+                f"as None, which the fallback stores as the DEFAULT and a raw statement "
+                f"would store as NULL")
             return False
 
     prep = dialect.identifier_preparer
@@ -1864,10 +2000,11 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
     # Chunks are cut from the SORTED list, so the deadlock-avoiding lock ordering
     # is preserved across them.
     #
-    # 🔴 THE CHUNKING IS NOT OPTIONAL AND IT DOES NOT MOVE. `BULK_CHUNK_SIZE` is the
-    # int16 parameter-count bound documented at its definition, and the fast path
-    # below keeps handing the driver `chunk_size` rows at a time for exactly that
-    # reason: what changes is HOW those rows are sent, never how many go per call.
+    # 🔴 THE CHUNKING STAYS AND THE FAST PATH KEEPS IT. `BULK_CHUNK_SIZE` bounds
+    # statement text, `mogrify` memory and the rollback unit - NOT a driver parameter
+    # limit; that rationale was re-measured and is false for psycopg2, see the
+    # constant's own comment. What changes below is HOW those rows are sent, never how
+    # many go per call.
     if _is_executemany_safe(deduped_mappings):
         # [P4] One MULTI-ROW statement per chunk. This used to be
         # `db.execute(stmt, chunk)` with a comment claiming psycopg2 rewrote the
