@@ -7,6 +7,18 @@ Every source the ledger reads gets one declaration here (design §1: "번역기 
     the brief. **A source with no declared time column is refused, not defaulted.** The
     failure this prevents is silent: substituting arrival time makes every atom look
     plausible and re-ordering a reload changes history.
+  * `subject_types` - the EXTENSION of this source's translator: the entity types its
+    atoms are allowed to be about. 🔴 It is a plural allow-list and it BITES - `gate`
+    refuses an atom whose `subject_type` is outside it by name
+    (`undeclared_subject_type`). Ruling R-2026-08-13-D is why both halves of that
+    sentence are here: the field used to be singular `subject_type`, it was assigned once
+    in the translator and read NOWHERE (every call site passes a literal), so
+    `validate()` was checking a value that reached no atom - a declaration teaching the
+    reader a contract nothing enforced. The literals stay in code, because the code owns
+    the FACT of each atom; this declaration owns the allowed RANGE of those facts, and a
+    translator that quietly starts minting a new type is now a counted refusal instead of
+    a discovery. **The standing rule it promoted: a declaration field has an enforcement
+    point, or it does not exist.**
   * `vocabulary` - which source `event_type`s are understood, and what each one produces.
     An `event_type` absent from this map is refused and counted; it is NOT skipped.
   * `slot_pairing` - 🔴 THE JUDGEMENT CALL OF THIS SLICE, and it is config precisely so
@@ -131,12 +143,34 @@ def validate(cfg: dict, origin: str = "<memory>"):
                 f"are naive text; without a declared zone the stored instant would be "
                 f"whatever the translating machine happened to be set to.")
 
-        subject_type = source.get("subject_type")
         from . import vocabulary
-        if subject_type not in vocabulary.ENTITY_TYPES:
+        if "subject_type" in source:
+            # The retired singular. Errors rather than being ignored, and the message
+            # carries the fix: a config that silently means nothing is the defect ruling
+            # R-2026-08-13-D exists to end, so the one thing this must NOT do is accept
+            # the old key and quietly do something else with it.
             raise LedgerConfigError(
-                f"{where}.subject_type {subject_type!r} is not a declared entity type "
-                f"({', '.join(sorted(vocabulary.ENTITY_TYPES))})")
+                f"{where}.subject_type (singular) was retired by ruling R-2026-08-13-D. "
+                f"It reached no atom - the translator names each atom's type as a literal "
+                f"- so it declared a contract nothing enforced. Rename it to "
+                f"'subject_types' and give it the LIST of every entity type this source "
+                f"may speak about, e.g. \"subject_types\": [\"Lot\", \"Wafer\"]. That list "
+                f"is enforced: an atom outside it is refused by name "
+                f"('undeclared_subject_type').")
+
+        subject_types = source.get("subject_types")
+        if not isinstance(subject_types, list) or not subject_types:
+            raise LedgerConfigError(
+                f"{where}.subject_types must be a non-empty LIST of the entity types this "
+                f"source's atoms may be about ({', '.join(sorted(vocabulary.ENTITY_TYPES))}"
+                f"). It is the translator's declared extension and the gate refuses "
+                f"anything outside it, so an absent list would refuse every atom.")
+        for member in subject_types:
+            if member not in vocabulary.ENTITY_TYPES:
+                raise LedgerConfigError(
+                    f"{where}.subject_types names {member!r}, which is not a declared "
+                    f"entity type ({', '.join(sorted(vocabulary.ENTITY_TYPES))}). Adding "
+                    f"an entity type is a vocabulary decision, not a config one.")
 
         vocab = source.get("vocabulary")
         if not isinstance(vocab, dict) or not vocab:
@@ -199,6 +233,18 @@ def translator_version(cfg: dict, source: str) -> str:
                           ensure_ascii=False)
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
     return f"{source}/{cfg.get('version', 0)}/rules:{digest}"
+
+
+def declared_subject_types(cfg: dict, source: str) -> frozenset:
+    """The entity types atoms from this source are allowed to be about.
+
+    Same shape and same direction as `declared_derivations` below: an undeclared source
+    yields the EMPTY set, which refuses everything rather than allowing everything. A
+    permissive default here would put the decoy back - the gate would hold a list that
+    never says no, which is indistinguishable from having no list at all.
+    """
+    source_cfg = source_config(cfg, source) or {}
+    return frozenset(source_cfg.get("subject_types") or ())
 
 
 def declared_derivations(cfg: dict, source: str) -> frozenset:

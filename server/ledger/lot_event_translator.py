@@ -187,7 +187,10 @@ class LotEventTranslator:
         self.time_format = source_cfg.get("occurred_at_format",
                                           DEFAULT_OCCURRED_AT_FORMAT)
         self.timezone_name = source_cfg["occurred_at_timezone"]
-        self.subject_type = source_cfg.get("subject_type", "Lot")
+        # No `self.subject_type`. Each atom below names its own type as a literal, because
+        # the code owns the FACT of the atom; what the config owns is the allowed RANGE
+        # (`subject_types`), and `gate` is where that is enforced. The field used to be
+        # read into here and used nowhere - ruling R-2026-08-13-D.
         self.register_types = frozenset(source_cfg.get("register_entity_types") or ())
         self.registered = set()
         self.blank_wafer_positions = 0

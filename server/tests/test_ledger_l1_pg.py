@@ -140,7 +140,7 @@ CFG = {
         "occurred_at_column": "event_time",
         "occurred_at_format": "%Y-%m-%d %H:%M:%S",
         "occurred_at_timezone": "UTC",
-        "subject_type": "Lot",
+        "subject_types": ["Lot", "Wafer"],
         "register_entity_types": ["Lot", "Wafer"],
         "list_separator": ":",
         "columns": {"row_identity": "business_key_val", "lot": "lot",
@@ -360,6 +360,47 @@ def _forced_failure_run(engine, commit_between_chunks):
         psycopg2.extras.execute_values = original
         ledger_store.INSERT_PAGE_SIZE = old_page
     return count(engine)
+
+
+def test_a_subject_type_the_source_never_declared_is_refused_by_the_REAL_backfill(
+        ledger, caplog):
+    """Ruling R-2026-08-13-D, proven where it has to be true: through `backfill.run`.
+
+    🔴 WIRING, NOT PREDICATE. The unit file proves the gate refuses such an atom when it
+    is handed one. That is not the same claim as "the declaration reaches the gate on the
+    path production uses" - and this project has shipped a check nobody called before
+    (`landed is not wired`, 2026-08-08). The field this ruling retired was itself exactly
+    that: read into an attribute, passed to nothing.
+
+    BOTH ARMS, on the same fixture: `Wafer` withdrawn from the declaration refuses every
+    molecule that mentions a wafer, and putting it back lands them.
+    """
+    narrowed = copy.deepcopy(CFG)
+    narrowed["sources"]["lot_event"]["subject_types"] = ["Lot"]
+    url, _ = _resolve_url()
+
+    with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
+        with _declared_as_test_database(url):
+            refused_run = backfill.run(ledger, narrowed, source="lot_event")
+
+    messages = "\n".join(r.getMessage() for r in caplog.records)
+    assert "undeclared_subject_type" in messages, (
+        "the operator's log does not name the refusal; a refusal only the caller can see "
+        "is the silent-skip defect wearing a return type")
+    assert refused_run["refused_molecules"] == 2, (
+        "both molecules of the fixture mention wafers, so both must be refused whole")
+    assert refused_run["attempted"] == 0 and count(ledger) == 0, (
+        "the molecule is all-or-nothing: a refused Wafer atom takes its Lot atoms with it")
+    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_SUBJECT_TYPE)] == 2
+
+    # --- the other arm: the SAME rows, with the type declared, land.
+    gate.reset_counters()
+    allowed = run(ledger, reset_cursor=True)
+    assert allowed["inserted"] > 0
+    assert count(ledger, "subject_type = 'Wafer'") > 0, (
+        "no Wafer atom landed even with the type declared - the refusal above would then "
+        "prove nothing about the declaration")
+    assert gate.refusals() == {}
 
 
 def test_a_molecule_cannot_land_half(ledger):

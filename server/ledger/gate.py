@@ -32,6 +32,14 @@ stop being prose:
      which is what stops a translator from quietly inferring. `REFUSE_UNDECLARED_DERIVATION`.
   4. **Can `raw_ref` re-utter it?** -> `envelope.check_envelope`. `REFUSE_NO_RAW_REF`.
 
+There is a fifth question that is not one of the design's four, and it is here because
+ruling R-2026-08-13-D put it here: **is this atom about something the source said it
+would talk about?** The source's `subject_types` declares that extension, and an atom
+outside it is `REFUSE_UNDECLARED_SUBJECT_TYPE`. It exists because the declaration used to
+be read by nothing at all, so a translator could begin minting a new entity type and the
+only trace would be a new value appearing in a column. Now it is a counted refusal with
+a name, which is the difference between drift you find and drift that finds you.
+
 WHY REFUSAL IS PER-MOLECULE AND NOT PER-ATOM
 ---------------------------------------------
 Because a half-translated event is worse than an untranslated one. If `slot_map` #7 of a
@@ -66,6 +74,12 @@ REFUSE_PAYLOAD_NOT_PRESERVABLE = "payload_not_preservable"
 #: own reason rather than `no_identity`, because the identity is not missing - there are
 #: two of them and nothing in the row says which one this event is.
 REFUSE_AMBIGUOUS_PAIR = "ambiguous_pair"
+#: An atom about an entity type the SOURCE never declared it speaks about (ruling
+#: R-2026-08-13-D). Its own reason rather than `not_true_alone`, because the atom may be
+#: perfectly true - the objection is that a translator started uttering a type nobody
+#: reviewed, and that drift is only visible if it has a name of its own to be counted
+#: under.
+REFUSE_UNDECLARED_SUBJECT_TYPE = "undeclared_subject_type"
 
 #: Every reason this gate can give. A test asserts the set is closed, for the same
 #: reason the predicate vocabulary is closed: a reason invented at a call site is a
@@ -75,6 +89,7 @@ REFUSAL_REASONS = frozenset({
     REFUSE_MISSING_OCCURRED_AT, REFUSE_NO_IDENTITY, REFUSE_NOT_TRUE_ALONE,
     REFUSE_ATOMICITY, REFUSE_UNDECLARED_DERIVATION, REFUSE_NO_RAW_REF,
     REFUSE_PAYLOAD_NOT_PRESERVABLE, REFUSE_AMBIGUOUS_PAIR,
+    REFUSE_UNDECLARED_SUBJECT_TYPE,
 })
 
 # Detail is capped, counts never are - every detail string here derives from SOURCE
@@ -216,8 +231,8 @@ def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1)
     _record(source, reason, atoms, detail, rows=rows)
 
 
-def screen_molecule(source: str, atoms, declared_derivations, molecule_ref=None,
-                    source_rows: int = 1):
+def screen_molecule(source: str, atoms, declared_derivations, declared_subject_types,
+                    molecule_ref=None, source_rows: int = 1):
     """Judge ONE source event's atoms. Returns `(kept, report)`; `kept` is all or none.
 
     `declared_derivations` is the set of derivation names the SOURCE's config declared.
@@ -225,6 +240,12 @@ def screen_molecule(source: str, atoms, declared_derivations, molecule_ref=None,
     that is atomicity check ③ in mechanical form. Passing an empty set therefore refuses
     everything, which is the correct direction: a source that declared no rules must not
     be able to produce atoms.
+
+    `declared_subject_types` is the same idea one axis over - the entity types the source
+    declared its translator may speak ABOUT (ruling R-2026-08-13-D). It is REQUIRED rather
+    than defaulted for the reason the ruling exists: a default would let a caller keep the
+    old behaviour by saying nothing, and a check that can be silently skipped is the decoy
+    field again in a new place. Empty refuses everything, deliberately.
     """
     atoms = list(atoms or ())
     report = {
@@ -243,8 +264,24 @@ def screen_molecule(source: str, atoms, declared_derivations, molecule_ref=None,
         return [], report
 
     declared = frozenset(declared_derivations or ())
+    allowed_subjects = frozenset(declared_subject_types or ())
     for index, atom in enumerate(atoms):
         where = f"atom[{index}] {atom.describe()}"
+
+        if atom.subject_type not in allowed_subjects:
+            # Checked BEFORE the identity and signature checks so the reason names what
+            # actually happened. `check_subject_keys` would also refuse an unknown type,
+            # but under `no_identity` - and "this lot has no identity" is a very
+            # different report from "this translator has started talking about
+            # equipment", which is the drift this refusal exists to surface.
+            report.update(refused=True, reason=REFUSE_UNDECLARED_SUBJECT_TYPE)
+            report["violations"].append(
+                f"{where}: subject type {atom.subject_type!r} is outside the types "
+                f"source '{source}' declared it speaks about (declared: "
+                f"{', '.join(sorted(allowed_subjects)) or 'none'}). The atom may well be "
+                f"true; what is missing is the vocabulary review that adding a type to "
+                f"`subject_types` is - declare it there and this atom lands.")
+            break
 
         if atom.derivation not in declared:
             report.update(refused=True, reason=REFUSE_UNDECLARED_DERIVATION)

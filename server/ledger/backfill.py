@@ -147,6 +147,7 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
 
     translator_ver = ledger_config.translator_version(cfg, source)
     declared = ledger_config.declared_derivations(cfg, source)
+    declared_subjects = ledger_config.declared_subject_types(cfg, source)
     batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
 
     store = LedgerStore(engine)
@@ -229,8 +230,8 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                 refused = atoms is None
                 if not refused:
                     kept, screen_report = gate.screen_molecule(
-                        source, atoms, declared, molecule_ref=molecule.ref,
-                        source_rows=len(molecule.rows))
+                        source, atoms, declared, declared_subjects,
+                        molecule_ref=molecule.ref, source_rows=len(molecule.rows))
                     refused = screen_report["refused"]
                     if refused:
                         # 🔴 A refused molecule must not leave its registers memoised:

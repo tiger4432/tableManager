@@ -41,7 +41,7 @@ def source_cfg(**overrides):
         "occurred_at_column": "event_time",
         "occurred_at_format": "%Y-%m-%d %H:%M:%S",
         "occurred_at_timezone": "UTC",
-        "subject_type": "Lot",
+        "subject_types": ["Lot", "Wafer"],
         "register_entity_types": ["Lot", "Wafer"],
         "list_separator": ":",
         "columns": {"row_identity": "business_key_val", "lot": "lot",
@@ -89,6 +89,7 @@ def translate_one(rows, cfg=None):
         return None, report
     kept, screen = gate.screen_molecule(
         "lot_event", atoms, ledger_config.declared_derivations(cfg, "lot_event"),
+        ledger_config.declared_subject_types(cfg, "lot_event"),
         molecule_ref=molecules[0].ref, source_rows=len(rows))
     return (None if screen["refused"] else kept), screen
 
@@ -215,6 +216,72 @@ def test_a_misspelled_slot_pairing_strategy_is_refused_at_load():
     cfg["sources"]["lot_event"]["vocabulary"]["split"]["slot_pairing"] = "slot_preserveing"
     with pytest.raises(ledger_config.LedgerConfigError):
         ledger_config.validate(cfg)
+
+
+def test_the_retired_singular_subject_type_is_refused_and_the_message_names_its_heir():
+    """Ruling R-2026-08-13-D. A config written before it must not load QUIETLY.
+
+    `subject_type` (singular) reached no atom, so accepting it and ignoring it would be
+    the very failure the ruling names - a declaration with no consequence. The error is
+    therefore required to carry the fix, because an operator meeting it has a file in
+    front of them and needs to know what to type instead.
+    """
+    cfg = full_cfg()
+    source = cfg["sources"]["lot_event"]
+    source.pop("subject_types")
+    source["subject_type"] = "Lot"                      # exactly the retired spelling
+    with pytest.raises(ledger_config.LedgerConfigError) as exc:
+        ledger_config.validate(cfg)
+    message = str(exc.value)
+    assert "subject_types" in message, "the message does not name the replacement key"
+    assert "undeclared_subject_type" in message, (
+        "the message does not say the new list is ENFORCED, which is the whole point of "
+        "the rename")
+
+
+def test_a_subject_type_outside_the_vocabulary_is_refused_at_load():
+    """Adding an entity type is a vocabulary decision (`vocabulary.ENTITY_TYPES`), not
+    something a source config may do on its own."""
+    cfg = full_cfg()
+    cfg["sources"]["lot_event"]["subject_types"] = ["Lot", "Reticle"]
+    with pytest.raises(ledger_config.LedgerConfigError) as exc:
+        ledger_config.validate(cfg)
+    assert "Reticle" in str(exc.value)
+
+    cfg["sources"]["lot_event"]["subject_types"] = []
+    with pytest.raises(ledger_config.LedgerConfigError):
+        ledger_config.validate(cfg)
+
+
+def test_the_shipped_declaration_covers_every_type_the_translator_actually_utters():
+    """The declaration and the literals must agree, and this is the direction that
+    matters most: the translator names each atom's type in code, so a type it utters
+    that the SHIPPED config does not declare would refuse real production molecules.
+
+    Reading the extension out of the atoms rather than asserting a list here is
+    deliberate - a hand-written expectation is a copy of the code and copies drift
+    (server-pm lessons file: enumerate members, do not count them).
+    """
+    path = os.path.join(os.path.dirname(__file__), "..", "config",
+                        "ledger_config.json.sample")
+    cfg = ledger_config.load(os.path.abspath(path))
+    declared = ledger_config.declared_subject_types(cfg, "lot_event")
+    assert declared, "the shipped config declares no subject types - the check is vacuous"
+
+    tr = LotEventTranslator(
+        ledger_config.source_config(cfg, "lot_event"),
+        ledger_config.translator_version(cfg, "lot_event"),
+        ledger_config.declared_derivations(cfg, "lot_event"))
+    rows = [row("P", child_lot="C", slots="07:08", wafers="W7:W8",
+                event_time="2026-05-03T02:17:00"),
+            row("C", parent_lot="P", slots="01:02", wafers="W1:W2",
+                event_time="2026-05-03T02:17:00")]
+    atoms, _ = tr.translate(group_molecules(rows)[0])
+    uttered = {atom.subject_type for atom in atoms}
+    assert uttered, "the translator produced no atoms - the check is vacuous"
+    assert uttered <= set(declared), (
+        f"the translator utters {sorted(uttered - set(declared))} but the shipped config "
+        f"declares only {sorted(declared)}; every molecule of that shape would be refused")
 
 
 def test_the_shipped_sample_config_validates():
@@ -516,7 +583,7 @@ def test_the_gate_refuses_the_WHOLE_molecule_not_the_bad_atom():
         occurred_at=WHEN, source_who="s", source_translator_ver="v",
         source_raw_ref="r", molecule_ref="m", derivation="first_sight")
     kept, report = gate.screen_molecule("lot_event", [good, bad], {"first_sight"},
-                                        molecule_ref="m")
+                                        {"Lot"}, molecule_ref="m")
     assert kept == []
     assert report["refused"] and report["reason"] == gate.REFUSE_NO_IDENTITY
     assert gate.atoms_lost()["lot_event"] == 2
@@ -529,7 +596,7 @@ def test_an_atom_whose_derivation_was_never_declared_is_refused():
         occurred_at=WHEN, source_who="s", source_translator_ver="v",
         source_raw_ref="r", molecule_ref="m", derivation="i_made_this_up")
     kept, report = gate.screen_molecule("lot_event", [atom], {"first_sight"},
-                                        molecule_ref="m")
+                                        {"Lot"}, molecule_ref="m")
     assert kept == [] and report["reason"] == gate.REFUSE_UNDECLARED_DERIVATION
 
 
@@ -540,7 +607,7 @@ def test_an_atom_with_no_raw_ref_is_refused():
         occurred_at=WHEN, source_who="s", source_translator_ver="v",
         source_raw_ref="", molecule_ref="m", derivation="first_sight")
     kept, report = gate.screen_molecule("lot_event", [atom], {"first_sight"},
-                                        molecule_ref="m")
+                                        {"Lot"}, molecule_ref="m")
     assert kept == [] and report["reason"] == gate.REFUSE_NO_RAW_REF
 
 
@@ -551,8 +618,49 @@ def test_a_naive_occurred_at_is_refused():
         source_translator_ver="v", source_raw_ref="r", molecule_ref="m",
         derivation="first_sight")
     kept, report = gate.screen_molecule("lot_event", [atom], {"first_sight"},
-                                        molecule_ref="m")
+                                        {"Lot"}, molecule_ref="m")
     assert kept == [] and report["reason"] == gate.REFUSE_MISSING_OCCURRED_AT
+
+
+def _equipment_atom():
+    """A WELL FORMED atom about `Equipment`. Every other check in the gate passes it -
+    `register` accepts Equipment, the identity is complete, the envelope is whole - so
+    the only thing that can refuse it is the source's declared extension. That is what
+    makes the pair of tests below a test of THIS check and not of some other one."""
+    return envelope.Atom(
+        subject_type="Equipment", subject_keys={"equipment": "EQP-07"},
+        predicate="register", occurred_at=WHEN, source_who="s",
+        source_translator_ver="v", source_raw_ref="r", molecule_ref="m",
+        derivation="first_sight")
+
+
+def test_an_atom_about_an_undeclared_subject_type_is_refused_BY_NAME():
+    """Ruling R-2026-08-13-D, the refusing arm. The atom is true; the objection is that
+    nobody reviewed this source speaking about equipment."""
+    kept, report = gate.screen_molecule("lot_event", [_equipment_atom()],
+                                        {"first_sight"}, {"Lot", "Wafer"},
+                                        molecule_ref="m")
+    assert kept == []
+    assert report["reason"] == gate.REFUSE_UNDECLARED_SUBJECT_TYPE
+    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_SUBJECT_TYPE)] == 1
+    assert "Equipment" in " ".join(report["violations"])
+
+
+def test_the_same_atom_LANDS_when_the_source_declares_that_type():
+    """⚠️ THE OTHER ARM, and it is not decoration.
+
+    A refusal guard tested only on the refusing side cannot be told apart from one that
+    refuses everything - or from one that never parsed at all. This lane's own sibling
+    shipped exactly that on 2026-08-13. So the identical atom is run through the identical
+    gate with `Equipment` added to the declaration, and it must LAND: the check reads the
+    list, rather than merely having one.
+    """
+    atom = _equipment_atom()
+    kept, report = gate.screen_molecule("lot_event", [atom], {"first_sight"},
+                                        {"Lot", "Wafer", "Equipment"}, molecule_ref="m")
+    assert kept == [atom]
+    assert not report["refused"] and report["reason"] is None
+    assert gate.refusals() == {}, "a passing atom was counted as a refusal"
 
 
 def test_refusal_reasons_are_a_closed_set():
@@ -652,6 +760,38 @@ def _inject_config_with_a_misspelled_strategy():
     cfg = full_cfg()
     cfg["sources"]["lot_event"]["vocabulary"]["merge"]["slot_pairing"] = "shared_wafr"
     ledger_config.validate(cfg)
+
+
+def _inject_config_with_the_retired_singular_subject_type():
+    cfg = full_cfg()
+    cfg["sources"]["lot_event"].pop("subject_types")
+    cfg["sources"]["lot_event"]["subject_type"] = "Lot"
+    ledger_config.validate(cfg)
+
+
+def _inject_config_declaring_a_subject_type_nobody_minted():
+    cfg = full_cfg()
+    cfg["sources"]["lot_event"]["subject_types"] = ["Lot", "Reticle"]
+    ledger_config.validate(cfg)
+
+
+def _inject_atom_about_an_undeclared_subject_type():
+    """Through the REAL gate, not through a re-implementation of its predicate.
+
+    🔴 RETURNS NORMALLY when the gate accepts the atom, and that is not sloppiness - it
+    is the only spelling both harnesses below can see. They catch `AssertionError` and
+    call it a pass, so an injection that raises one when the guard FAILED reports success
+    either way; falling off the end is what puts this guard's name in `silent`. Measured,
+    not reasoned: with the membership test disabled this entry stayed green until it was
+    written this way.
+    """
+    gate.reset_counters()
+    kept, report = gate.screen_molecule("lot_event", [_equipment_atom()],
+                                        {"first_sight"}, {"Lot", "Wafer"},
+                                        molecule_ref="m")
+    if kept or not report["refused"]:
+        return                    # the guard accepted the defect - see above
+    raise ValueError(report["reason"])
 
 
 def _inject_undeclared_refusal_reason():
@@ -856,14 +996,22 @@ INJECTIONS = TIME_INJECTIONS + [
     ("slot_map with no wafer", _inject_slot_map_without_its_wafer),
     ("config with no occurred_at column", _inject_config_without_a_time_column),
     ("config with a misspelled slot_pairing", _inject_config_with_a_misspelled_strategy),
+    ("config with the retired singular subject_type",
+     _inject_config_with_the_retired_singular_subject_type),
+    ("config declaring a subject type outside the vocabulary",
+     _inject_config_declaring_a_subject_type_nobody_minted),
+    ("atom about an undeclared subject type",
+     _inject_atom_about_an_undeclared_subject_type),
     ("refusal reason invented at a call site", _inject_undeclared_refusal_reason),
     ("non-finite number in a payload", _inject_nan_payload),
     ("unequal slot and wafer lists", _inject_unequal_slot_and_wafer_lists),
     ("row naming both sides of a pair", _inject_ambiguous_pair),
 ]
 
-#: 14 built with this file + 5 added by the 2026-08-13 world-time ruling.
-EXPECTED_INJECTIONS = 19
+#: 14 built with this file + 5 added by the 2026-08-13 world-time ruling + 3 added by
+#: ruling R-2026-08-13-D (the `subject_types` allow-list, its two config guards and the
+#: gate refusal itself).
+EXPECTED_INJECTIONS = 22
 
 
 def test_every_guard_has_been_seen_to_fail():
