@@ -1,7 +1,8 @@
 {
   "_comment": "Virtual joins announce a right-table column on a left table WITHOUT copying it. Approval requires a UNIQUE index on the right table covering the join key (virtual_join_config.required_index_ddl prints the exact DDL); until that index exists the rule is REJECTED with code no_unique_index and reports itself as such in GET /admin/config/resolve -- it does not fail silently.",
   "_why_comment": "Both rules exist so a CONFIRMED value shows up next to the RECORDED one. dt_log carries dt_lot/dt_slot that are absent 40% of the time and WRONG 10% of the time; the confirmed columns are named dt_lot_confirmed/dt_slot_confirmed precisely so they do NOT collide -- a colliding virtual column merges absent-only, so on exactly the wrong-value rows the wrong value would win and the correction would be invisible.",
-  "dt_log_confirmed_attribution": {
+  "_retired_2026_08_14_comment": "제품 소유자 판정(2026-08-14): 아래 두 선언을 내린다. 밑줄 접두라 로더가 «선언이 아니라 주석»으로 건너뛴다 ― 되살리려면 접두만 떼면 된다. || 왜 내렸나: 두 right_table(dt_job_attribution 252행 · eqp_frame_attribution 5행)이 table_config.json에 «등록돼 있지 않아» 두 선언 모두 로드마다 rejected였다. 표는 실재하고 데이터도 있으나 등록이 없어 조인이 성립하지 않았고, 그 거절이 인제션 배치마다 로그로만 흘렀다. || 무엇이 달라지나: dt_map_derivation이 이 두 이름(CONFIRMED_JOIN_RULE · FRAME_JOIN_RULE)으로 해석하므로 파생은 «전부터» 죽어 있었다. 내린 뒤에도 죽어 있고, 다만 join_rule()이 REFUSE_JOIN_RULE_MISSING으로 «이름을 대고» 중단한다 ― 배치 로그의 소음이 호출자가 받는 명시적 거절로 바뀐다. 조용해진 것이 아니라 «제자리에서» 소리가 난다. || 되살리려면 접두를 떼는 것만으로는 부족하다: 두 표를 table_config.json에 등록해야 하고, 그러지 않으면 예전처럼 rejected로 돌아간다.",
+  "_retired_dt_log_confirmed_attribution": {
     "left_table": "dt_log",
     "right_table": "dt_job_attribution",
     "join_key": [
@@ -18,7 +19,7 @@
     "join_cardinality": "one",
     "enabled": true
   },
-  "dt_log_frame_attribution": {
+  "_retired_dt_log_frame_attribution": {
     "left_table": "dt_log",
     "right_table": "eqp_frame_attribution",
     "join_key": [
