@@ -7,9 +7,9 @@
       "__comment": "lot_event is already an event table, so no state-to-event inference is needed and event_time gives occurred_at directly (design section 10, step 1). ONE logical event is TWO source rows: the parent row carries child_lot with parent_lot blank, the child row carries parent_lot with child_lot blank, and the pair is matched by (event_type, event_time, parent, child) because the source has no event id of its own. That pair is the transaction unit.",
 
       "occurred_at_column": "event_time",
-      "occurred_at_format": "%Y-%m-%d %H:%M:%S",
-      "occurred_at_timezone": "UTC",
-      "__comment_time": "MANDATORY. Design section 10 risk 1 / brief risk 2: arrival time may never stand in for world time. Remove either of these two and the translator refuses the whole source instead of guessing. The timezone is declared because event_time is naive TEXT ('YYYY-MM-DD HH:MM:SS', stored as text on purpose so it sorts lexicographically) -- without a declaration the stored instant would be whatever the translating machine's TZ happened to be.",
+      "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
+      "occurred_at_timezone": "Asia/Seoul",
+      "__comment_time": "MANDATORY. Design section 10 risk 1 / brief risk 2: arrival time may never stand in for world time. Remove either of these two and the translator refuses the whole source instead of guessing. | PRODUCT OWNER RULING 2026-08-13: fab timestamps are LOCAL time (Asia/Seoul), written ISO 8601 with the 'T' separator -- '2026-08-13T13:45:00'. This declaration was 'UTC' until that date; every atom written before it is nine hours late and NOTHING COMPLAINS, because a wrong instant is still a well-formed one. That is the whole reason this is a declaration and not a constant. | The zone is declared because event_time is naive TEXT (stored as text on purpose so it sorts lexicographically) -- with no declaration the stored instant would be whatever the translating machine's TZ happened to be. It applies ONLY to naive text: a value that carries its own offset ('...T13:45:00+09:00') has already said which instant it is, and store.parse_occurred_at honours it rather than re-applying this zone on top. | The format names what production emits; the reader also accepts the RFC 3339 space spelling of this SAME shape ('2026-08-13 13:45:00'), which is what a development box and the trace fixture hold. That is one shape in two transports, not two formats -- see store._candidate_formats.",
 
       "subject_type": "Lot",
       "register_entity_types": ["Lot", "Wafer"],

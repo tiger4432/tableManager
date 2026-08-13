@@ -113,9 +113,10 @@ def lag_report(store, source, source_cfg, cursor_row, probe_interval=60, now=Non
     position = (cursor_row.get("cursor_value") or {}).get("event_time")
     report["cursor_position"] = position
     if position:
+        from .config import DEFAULT_OCCURRED_AT_FORMAT
         from .store import parse_occurred_at
         reached = parse_occurred_at(
-            position, source_cfg.get("occurred_at_format", "%Y-%m-%d %H:%M:%S"),
+            position, source_cfg.get("occurred_at_format", DEFAULT_OCCURRED_AT_FORMAT),
             source_cfg["occurred_at_timezone"])
         if reached is not None:
             report["world_time_lag_seconds"] = (now - reached).total_seconds()

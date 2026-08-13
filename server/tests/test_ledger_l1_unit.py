@@ -9,16 +9,18 @@ iterates nothing reports every test green under every injection - which happened
 another lane in this same session. A count is the only thing that cannot be faked by an
 empty loop.
 """
+import contextlib
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import config as ledger_config          # noqa: E402
+from ledger import store as ledger_store            # noqa: E402
 from ledger import envelope, gate, schema, uuid7, vocabulary   # noqa: E402
 from ledger.lot_event_translator import (           # noqa: E402
     LotEventTranslator, group_molecules, molecule_key)
@@ -230,6 +232,148 @@ def test_the_translator_version_changes_when_a_RULE_changes():
     other = full_cfg()
     other["sources"]["lot_event"]["vocabulary"]["split"]["slot_pairing"] = "shared_wafer"
     assert ledger_config.translator_version(other, "lot_event") != base
+
+
+# ------------------------------------------------------------- declared world time
+#
+# 🔴 PRODUCT OWNER RULING 2026-08-13: fab timestamps are LOCAL (Asia/Seoul), written
+# ISO 8601 with the `T` separator. The declaration was `UTC` before that date.
+#
+# Every rule here is written as a NAMED CHECK rather than inline in a test, because the
+# fault-injection round at the bottom runs the SAME check against a deliberately wrong
+# `store.parse_occurred_at` and requires it to go red. A timezone rule that has never
+# been seen to fail is the most expensive kind of sentence in this file: a wrong instant
+# is still a well-formed one, so every atom looks fine and nothing downstream complains.
+
+SEOUL = "Asia/Seoul"
+ISO_T = "%Y-%m-%dT%H:%M:%S"
+
+
+def _instant_and_offset(value):
+    """`(UTC wall clock, utcoffset)`.
+
+    BOTH are asserted everywhere below, because the two ways of getting the offset rule
+    wrong fail differently and only one of them moves the instant:
+      * re-localising an already-offset value (`replace(tzinfo=...)`) SHIFTS it;
+      * converting it (`astimezone(...)`) is a no-op on the instant and only shows up in
+        the offset the value carries.
+    Checking the instant alone would leave the second one invisible.
+    """
+    return value.astimezone(timezone.utc).replace(tzinfo=None), value.utcoffset()
+
+
+def _check_naive_text_takes_the_declared_zone():
+    got = ledger_store.parse_occurred_at("2026-08-13T13:45:00", ISO_T, SEOUL)
+    assert got is not None, "the declared shape did not parse at all"
+    when, offset = _instant_and_offset(got)
+    assert when == datetime(2026, 8, 13, 4, 45), (
+        f"13:45 naive under a declared Asia/Seoul is 04:45 UTC; got {when}. "
+        f"Nine hours is the whole defect this ruling exists to fix.")
+    assert offset == timedelta(hours=9)
+
+
+def _check_an_explicit_offset_is_not_localised_a_second_time():
+    """The SAME-ZONE case. Deliberately kept, deliberately not trusted alone.
+
+    A source string already at `+09:00` under a declared `Asia/Seoul` is where a double
+    shift is INVISIBLE - re-localising it lands on the same instant. That is exactly why
+    the cross-zone check below exists; this one only proves the common case is not
+    mangled.
+    """
+    got = ledger_store.parse_occurred_at("2026-08-13T13:45:00+09:00", ISO_T, SEOUL)
+    assert got is not None
+    when, offset = _instant_and_offset(got)
+    assert when == datetime(2026, 8, 13, 4, 45)
+    assert offset == timedelta(hours=9)
+
+
+def _check_an_offset_that_disagrees_with_the_declaration_wins():
+    """🔴 THE DISCRIMINATING CASE. `+00:00` text under a declared `Asia/Seoul`.
+
+    The source has already said which instant it is. Re-applying the declared zone here
+    moves it nine hours; converting it silently rewrites the offset the source chose.
+    Both are caught.
+    """
+    got = ledger_store.parse_occurred_at("2026-08-13T04:45:00+00:00", ISO_T, SEOUL)
+    assert got is not None
+    when, offset = _instant_and_offset(got)
+    assert when == datetime(2026, 8, 13, 4, 45), (
+        f"an explicit +00:00 must be honoured, not re-read as Asia/Seoul; got {when}")
+    assert offset == timedelta(0), (
+        f"the source's own offset must be carried through unchanged; got {offset}")
+
+
+def _check_an_unreadable_time_is_refused_by_name():
+    for text in ("not a timestamp", "2026-13-45T99:99:99", "", None,
+                 "2026-08-13X13:45:00"):
+        got = ledger_store.parse_occurred_at(text, ISO_T, SEOUL)
+        assert got is None, (
+            f"{text!r} was given the instant {got!r} instead of being refused. `None` is "
+            f"the refusal signal; anything else here is a guess wearing a datetime.")
+
+
+def _check_the_space_spelling_reads_as_the_same_instant():
+    """The fixture's transport, not a second format.
+
+    Production emits `T`; `table_config.json` stores this column as TEXT with a space so
+    it sorts lexicographically. RFC 3339 section 5.6 makes them one shape, and the reader
+    admits both - so a declaration naming either spelling reads a box holding the other.
+    """
+    with_t = ledger_store.parse_occurred_at("2026-08-13T13:45:00", ISO_T, SEOUL)
+    with_space = ledger_store.parse_occurred_at("2026-08-13 13:45:00", ISO_T, SEOUL)
+    assert with_space is not None, (
+        "the space spelling was refused, so a development box holding the trace fixture "
+        "translates nothing at all")
+    assert _instant_and_offset(with_space) == _instant_and_offset(with_t)
+
+
+def test_naive_source_text_is_read_in_the_declared_zone():
+    _check_naive_text_takes_the_declared_zone()
+
+
+def test_an_explicit_offset_is_honoured_and_the_declared_zone_is_not_reapplied():
+    _check_an_explicit_offset_is_not_localised_a_second_time()
+    _check_an_offset_that_disagrees_with_the_declaration_wins()
+
+
+def test_a_time_that_cannot_be_read_is_refused_never_guessed():
+    _check_an_unreadable_time_is_refused_by_name()
+
+
+def test_the_T_and_space_spellings_are_one_shape_in_two_transports():
+    _check_the_space_spelling_reads_as_the_same_instant()
+
+
+def test_the_shipped_declaration_carries_the_product_owner_ruling():
+    """The ruling lives in `ledger_config.json.sample`, so the sample is where it can
+    rot. Pinning it here means a silent revert to `UTC` fails a test instead of shifting
+    every atom by nine hours."""
+    path = os.path.join(os.path.dirname(__file__), "..", "config",
+                        "ledger_config.json.sample")
+    cfg = ledger_config.load(os.path.abspath(path))
+    declared = cfg["sources"]["lot_event"]
+    assert declared["occurred_at_timezone"] == "Asia/Seoul"
+    assert declared["occurred_at_format"] == "%Y-%m-%dT%H:%M:%S"
+
+
+def _check_the_declared_zone_reaches_the_ATOM():
+    """🔴 The parser being right proves nothing about what LANDS.
+
+    `parse_occurred_at` is reached through `LotEventTranslator`, which reads the format
+    and the zone off the source declaration itself. This is the check that fails if the
+    translator ever stops passing one of them down.
+    """
+    cfg = full_cfg(occurred_at_format=ISO_T, occurred_at_timezone=SEOUL)
+    rows = [row("P", event_type="track_in", slots="01", wafers="W1",
+                event_time="2026-08-13T13:45:00")]
+    atoms, report = translate_one(rows, cfg)
+    assert atoms, f"nothing was translated: {report}"
+    stamps = {_instant_and_offset(a.occurred_at) for a in atoms}
+    assert stamps == {(datetime(2026, 8, 13, 4, 45), timedelta(hours=9))}
+
+
+def test_the_declared_zone_reaches_the_ATOM_not_only_the_parser():
+    _check_the_declared_zone_reaches_the_ATOM()
 
 
 # ------------------------------------------------------------------ molecule assembly
@@ -536,9 +680,172 @@ def _inject_ambiguous_pair():
     raise ValueError(report["reason"])
 
 
+# ------------------------------------------------------- wrong ways to read a timestamp
+#
+# 🔴 These are the injections the 2026-08-13 world-time ruling exists for. Each one is a
+# COMPLETE, plausible implementation of `parse_occurred_at` that differs from the real
+# one in exactly its timezone rule - not a stub that raises. That matters: a spot check
+# passes under every one of them, which is why the rule needed a test at all.
+
+def _read_without_applying_any_zone(raw, fmt):
+    """Everything the real reader does EXCEPT the zone decision, so the wrong versions
+    below differ from it in that decision and nothing else."""
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        return raw
+    text = str(raw).strip()
+    if not text:
+        return None
+    for candidate in ledger_store._candidate_formats(fmt):
+        try:
+            return datetime.strptime(text, candidate)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def _wrong_relocalise_everything(raw, fmt, tzname):
+    """THE DOUBLE SHIFT. `replace(tzinfo=...)` keeps the wall clock and throws away the
+    offset the source stated, so `04:45+00:00` becomes `04:45+09:00` - nine hours early,
+    and still a perfectly well-formed timestamp."""
+    parsed = _read_without_applying_any_zone(raw, fmt)
+    return None if parsed is None else parsed.replace(tzinfo=ledger_store._zone(tzname))
+
+
+def _wrong_convert_instead_of_honouring(raw, fmt, tzname):
+    """THE SILENT NO-OP. `astimezone` preserves the instant, so this one is invisible to
+    any test that checks only the instant - it merely rewrites the offset the source
+    chose and pretends the declaration was consulted."""
+    parsed = _read_without_applying_any_zone(raw, fmt)
+    if parsed is None:
+        return None
+    zone = ledger_store._zone(tzname)
+    return parsed.astimezone(zone) if parsed.tzinfo else parsed.replace(tzinfo=zone)
+
+
+def _wrong_naive_means_utc(raw, fmt, tzname):
+    """The RETIRED declaration, in code: naive text read as UTC no matter what the
+    source declared. This is the state every one of the atoms already in the ledger was
+    written under."""
+    parsed = _read_without_applying_any_zone(raw, fmt)
+    if parsed is None:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _wrong_substitute_arrival_time(raw, fmt, tzname):
+    """Design section 10 risk 1: an unreadable world time filled in with `now()`. Every
+    atom is well formed and the ORDER of history is wrong."""
+    parsed = _read_without_applying_any_zone(raw, fmt)
+    if parsed is None:
+        return datetime.now(timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=ledger_store._zone(tzname))
+
+
+def _wrong_only_the_declared_separator(raw, fmt, tzname):
+    """The reader as it stood before this ruling: ONE `strptime` against the declared
+    format. Under a `T` declaration it refuses every space-separated row - which on a
+    development box is the entire source."""
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=ledger_store._zone(tzname))
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        naive = datetime.strptime(text, fmt)
+    except (ValueError, TypeError):
+        return None
+    return naive.replace(tzinfo=ledger_store._zone(tzname))
+
+
+@contextlib.contextmanager
+def _reader_replaced_by(wrong):
+    """Swap the real reader for a wrong one on EVERY door that reaches it.
+
+    🔴 `lot_event_translator` did `from .store import parse_occurred_at`, so it holds its
+    own reference. Patching only `ledger.store` would leave the translator running the
+    correct code - and an injection that changes nothing looks exactly like a guard that
+    works (server-pm lessons file, 2026-08-11: "a wrapping key generator", and the
+    two-door identity lookup before it).
+    """
+    from ledger import lot_event_translator as translator_module
+    doors = [(ledger_store, ledger_store.parse_occurred_at),
+             (translator_module, translator_module.parse_occurred_at)]
+    for module, _ in doors:
+        module.parse_occurred_at = wrong
+    try:
+        yield
+    finally:
+        for module, original in doors:
+            module.parse_occurred_at = original
+
+
+def _time_injection(wrong, checks):
+    """Run `checks` against a wrong reader. Raises `ValueError` when every one of them
+    went red (the outcome being proven) and `AssertionError` naming the ones that stayed
+    green (the guard is a sentence)."""
+    def run():
+        stayed_green = []
+        with _reader_replaced_by(wrong):
+            for check in checks:
+                try:
+                    check()
+                except AssertionError:
+                    continue
+                stayed_green.append(check.__name__)
+        if stayed_green:
+            raise AssertionError(
+                f"{wrong.__name__} changed nothing these checks could see: "
+                f"{', '.join(stayed_green)}")
+        raise ValueError(f"{wrong.__name__} was caught by all {len(checks)} check(s)")
+    run.__name__ = wrong.__name__
+    return run
+
+
+#: (name, callable), paired with PRECISELY the checks each wrong reader must break. The
+#: pairing is the assertion: `_wrong_naive_means_utc` does not touch a value that already
+#: carries an offset, so listing the offset checks under it would be a claim this test
+#: cannot support.
+TIME_INJECTIONS = [
+    ("declared zone re-applied over an explicit offset",
+     _time_injection(_wrong_relocalise_everything,
+                     [_check_an_offset_that_disagrees_with_the_declaration_wins])),
+    ("explicit offset converted rather than honoured",
+     _time_injection(_wrong_convert_instead_of_honouring,
+                     [_check_an_offset_that_disagrees_with_the_declaration_wins])),
+    ("naive text read as UTC instead of the declared zone",
+     _time_injection(_wrong_naive_means_utc,
+                     [_check_naive_text_takes_the_declared_zone,
+                      _check_the_declared_zone_reaches_the_ATOM])),
+    ("arrival time substituted for an unreadable world time",
+     _time_injection(_wrong_substitute_arrival_time,
+                     [_check_an_unreadable_time_is_refused_by_name])),
+    ("the space spelling of the declared shape refused",
+     _time_injection(_wrong_only_the_declared_separator,
+                     [_check_the_space_spelling_reads_as_the_same_instant])),
+]
+
+
+@pytest.mark.parametrize("name,injection", TIME_INJECTIONS,
+                         ids=[n for n, _ in TIME_INJECTIONS])
+def test_a_wrong_timestamp_reader_is_CAUGHT_and_not_merely_noticed(name, injection):
+    """🔴 Distinguishes the two outcomes the shared harness below cannot.
+
+    An `AssertionError` here means the wrong reader got past the checks; a `ValueError`
+    means they refused it. Both are "an exception was raised", and telling them apart is
+    the entire value of an injection round.
+    """
+    with pytest.raises((AssertionError, ValueError)) as caught:
+        injection()
+    assert not isinstance(caught.value, AssertionError), str(caught.value)
+
+
 #: (name, callable). Each callable must RAISE. Declared as data so the count below is a
 #: real assertion about coverage rather than a comment.
-INJECTIONS = [
+INJECTIONS = TIME_INJECTIONS + [
     ("uuid7 generator that wraps", _inject_uuid7_that_wraps),
     ("uuid7 generator that repeats", _inject_uuid7_that_repeats),
     ("payload rendered to strings", _inject_payload_stringifier),
@@ -555,7 +862,8 @@ INJECTIONS = [
     ("row naming both sides of a pair", _inject_ambiguous_pair),
 ]
 
-EXPECTED_INJECTIONS = 14
+#: 14 built with this file + 5 added by the 2026-08-13 world-time ruling.
+EXPECTED_INJECTIONS = 19
 
 
 def test_every_guard_has_been_seen_to_fail():

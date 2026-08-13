@@ -56,6 +56,7 @@ import json
 import logging
 
 from . import gate, vocabulary
+from .config import DEFAULT_OCCURRED_AT_FORMAT
 from .envelope import Atom, canonical_keys, entity_ref
 from .store import parse_occurred_at
 
@@ -183,7 +184,8 @@ class LotEventTranslator:
         self.who = who
         self.separator = source_cfg.get("list_separator", ":")
         self.time_column = source_cfg["occurred_at_column"]
-        self.time_format = source_cfg.get("occurred_at_format", "%Y-%m-%d %H:%M:%S")
+        self.time_format = source_cfg.get("occurred_at_format",
+                                          DEFAULT_OCCURRED_AT_FORMAT)
         self.timezone_name = source_cfg["occurred_at_timezone"]
         self.subject_type = source_cfg.get("subject_type", "Lot")
         self.register_types = frozenset(source_cfg.get("register_entity_types") or ())

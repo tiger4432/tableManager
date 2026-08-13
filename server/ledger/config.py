@@ -50,6 +50,19 @@ CONFIG_FILENAME = "ledger_config.json"
 SLOT_PAIRING_STRATEGIES = frozenset({"shared_wafer", "slot_preserving", "none"})
 LINEAGE_STRATEGIES = frozenset({"parent_child", "none"})
 
+#: The shape a source's timestamps are read in when the source declares no
+#: `occurred_at_format`. Product owner ruling 2026-08-13: fab timestamps are ISO 8601
+#: with the `T` separator (`2026-08-13T13:45:00`), so the default names what production
+#: actually emits. `store._candidate_formats` reads the RFC 3339 space spelling of this
+#: same shape as well, which is why a development box holding `2026-08-13 13:45:00` is
+#: not a second format.
+#:
+#: One constant rather than one literal per caller: the translator and the lag report
+#: both fall back to it, and two copies of a default are two things that drift apart
+#: silently - the reader would then disagree with the lag report about what the cursor
+#: position means.
+DEFAULT_OCCURRED_AT_FORMAT = "%Y-%m-%dT%H:%M:%S"
+
 
 class LedgerConfigError(ValueError):
     """The declaration is missing or self-contradictory. Raised at load, never later."""

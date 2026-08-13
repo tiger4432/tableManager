@@ -16,6 +16,15 @@ dependencies:
   # TerminateProcess does not walk the tree, so without psutil a stopped child
   # leaves its own subprocesses (auto-update collector scripts) orphaned.
   - psutil
+  # IANA time zone database, required since 2026-08-13. The ledger declares its
+  # world time as `Asia/Seoul` (product owner: fab timestamps are local, ISO 8601
+  # with the `T` separator), and `zoneinfo.ZoneInfo("Asia/Seoul")` resolves that
+  # name against this database at RUNTIME. It was not a dependency while the
+  # declaration was `UTC`, because CPython answers UTC without consulting tzdata.
+  # 🔴 Absent, `ledger.store._zone` RAISES rather than falling back — deliberately.
+  # A silent fallback to UTC would put every atom nine hours out and nothing would
+  # complain, which is the exact failure this declaration exists to prevent.
+  - tzdata
   - pytest
   - httpx
   - pyinstaller
