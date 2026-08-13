@@ -37,6 +37,13 @@ WHAT IT DOES NOT DO
 
     It compares NAMES, not types. A column that exists with the wrong type is real
     drift and this will call it healthy. Name drift is what takes a table down.
+
+WHAT IT IS ALLOWED TO CALL HARMLESS
+    One drift kind repairs itself, and saying otherwise cost an operator a restart
+    on 2026-08-13. See `_sync_repairs` for the predicate and where it comes from.
+    Everything else keeps the full-severity banner, including every drift kind this
+    module cannot see - the classification is a whitelist of one condition, so a
+    finding it does not recognise is loud by construction rather than by intent.
 """
 import glob
 import os
@@ -76,7 +83,7 @@ _MIGRATION_GLOBS = (
 )
 _SOURCE_CACHE = None
 
-SEVERITY_ORDER = {"TABLE-DOWN": 0, "MISSING-TABLE": 1, "INFO": 2}
+SEVERITY_ORDER = {"TABLE-DOWN": 0, "MISSING-TABLE": 1, "SELF-HEALING": 2, "INFO": 3}
 
 
 def _migration_sources():
@@ -181,6 +188,96 @@ def _register_dynamic_models(models):
               f"only: {type(e).__name__}: {e}")
 
 
+def _dynamic_table_names():
+    """The exact dict `sync_dynamic_tables_schema` loops over, read - not copied.
+
+    Deliberately `models.DYNAMIC_TABLES` and not `table_config.json`. The config is
+    the DECLARATION; this dict is what the repairer actually iterates, and the two
+    can differ inside one process (a config the watcher has not picked up, a test
+    process that mapped a fixture config instead of the file on disk). Reading the
+    repairer's own input is the only way the classification cannot be wrong about
+    the repairer.
+
+    `_declared` has already imported the models and registered the dynamic ones by
+    the time `check` gets here, so this costs an attribute lookup.
+
+    An empty answer on failure is the SAFE direction and that is why the except is
+    this broad: nothing is then classified as self-healing and every finding keeps
+    today's full severity. A classifier that cannot see the repairer must not get
+    to call anything harmless.
+    """
+    try:
+        from database import models
+        return set(getattr(models, "DYNAMIC_TABLES", None) or ())
+    except Exception:
+        return set()
+
+
+def _sync_repairs(table, column_name, actual_columns, dynamic_names):
+    """Will `models.sync_dynamic_tables_schema` add this column by itself?
+
+    WHY THIS QUESTION HAS TO BE ASKED AT ALL
+        The launcher checks for drift BEFORE it spawns the children, and three of
+        those children - run_watcher.py, run_chain_worker.py, run_graph_sync.py -
+        call `sync_dynamic_tables_schema(engine)` on their own boot, as does the
+        web server through `bootstrap_database_schema`. So the launcher reports a
+        state that the startup it is beginning then repairs, seconds later. That is
+        a cross-process ordering, not a bug in either half, and it is not fixable by
+        moving the check: the value of a pre-flight is that it runs before the
+        restart. What was fixable is the banner, which told the operator that every
+        screen touching the table failed until they wrote a migration - when nothing
+        was required of them and the column existed by the time they read the line.
+
+    THE PREDICATE, TAKEN FROM THE REPAIRER'S SOURCE
+        `models.sync_dynamic_tables_schema` is a loop of three gates, and each
+        condition below is one of them, in order:
+
+            for table_name, model_class in DYNAMIC_TABLES.items():   -> (1)
+                if not inspector.has_table(table_name): continue     -> (2)
+                db_cols = {c["name"].lower() for c in ...}
+                for column in table_obj.columns:
+                    if column.name.lower() not in db_cols:            -> (3)
+                        ALTER TABLE ... ADD COLUMN ...
+
+        (1) The table is in DYNAMIC_TABLES. A system table - one declared as an ORM
+            class in database/models.py - is not in that dict and no boot path
+            ALTERs it. That is the 2026-08-05 incident shape and it stays loud.
+        (2) The table already exists physically. The sync `continue`s past a table
+            that does not, so a MISSING-TABLE finding is never self-healing here.
+            MEASURED NOTE: this gate is currently unreachable from `check`, which
+            has its own `continue` for an absent table several lines earlier and so
+            never asks about one. It is kept because it is what makes this function
+            correct on its own - it is a statement about the repairer, not about
+            its one caller - and because the day that early `continue` moves, this
+            is the line that stops a missing table being called self-healing. It is
+            covered by the unit test and by nothing else; an injection that removes
+            it leaves every database-level test green.
+        (3) The name is absent CASE-INSENSITIVELY. This one matters and is not
+            pedantry: `check` compares names exactly, the sync compares them
+            lowercased. A column declared `Foo` against a database holding `foo` is
+            therefore reported by this module and skipped forever by the sync. It is
+            permanently stuck, it never even logs a failure, and only this third
+            condition keeps it out of the self-healing bucket.
+
+    WHAT THIS DELIBERATELY DOES NOT CLAIM
+        Only that the sync will ISSUE the ALTER - not that it will succeed. The
+        statement can still fail on a lock, a privilege, or a type that will not
+        compile, and `sync_dynamic_tables_schema` swallows that into a printed
+        `[Schema Sync] Failed to add column`. No catalog read can predict it, so the
+        remedy text says so and tells the operator what a second sighting means.
+        That is the one thing the check cannot tell, stated instead of guessed.
+
+    The sync only ever issues ADD COLUMN. It never alters a type and never drops,
+    so no other drift kind can reach this bucket even if this module later learns
+    to detect one.
+    """
+    if table not in dynamic_names:
+        return False
+    if actual_columns is None:
+        return False
+    return column_name.lower() not in {c.lower() for c in actual_columns}
+
+
 def _actual(engine):
     """Catalog state. `inspect` reads information_schema on PostgreSQL and the
     equivalent pragma on SQLite, so one code path covers production and a simulated
@@ -218,6 +315,7 @@ def _add_column_ddl(table, col, dialect):
 
 def check(engine):
     declared, actual = _declared(), _actual(engine)
+    dynamic_names = _dynamic_table_names()
     dialect = engine.dialect
     findings = []
 
@@ -234,6 +332,27 @@ def check(engine):
 
         missing = [c for name, c in columns.items() if name not in actual[table]]
         for col in missing:
+            if _sync_repairs(table, col.name, actual[table], dynamic_names):
+                # Reported, never hidden - the operator gets the table and the
+                # column, and a second sighting after a restart is the signal that
+                # the ALTER is failing. What changes is the two sentences that were
+                # wrong: it does not claim the table is down, and it does not send
+                # anyone to write a migration for a column the boot owns.
+                findings.append({
+                    "severity": "SELF-HEALING", "table": table, "column": col.name,
+                    "breaks": (f"nothing that needs you: {table} is a config-declared "
+                               f"(dynamic) table, so the boot-time schema sync ADDs "
+                               f"this column when a server process starts. This check "
+                               f"runs BEFORE those processes do."),
+                    "remedy": ("nothing, and do NOT write a migration - "
+                               "models.sync_dynamic_tables_schema owns this column.\n"
+                               "        if it is STILL reported after a full restart the "
+                               "ALTER is failing and the table really is down:\n"
+                               "        grep the logs for '[Schema Sync] Failed to add "
+                               "column', then run\n"
+                               "        " + _add_column_ddl(table, col, dialect)),
+                })
+                continue
             owner = (MIGRATION_OWNER.get((table, col.name))
                      or _owner_from_sources(table, col.name))
             findings.append({
@@ -283,24 +402,53 @@ def banner_lines(findings, target):
     A CLEAN CHECK IS ONE QUIET LINE. The banner has to mean "something is broken"
     or it becomes wallpaper, so INFO findings - columns the database has and the
     code does not map, which break nothing - never raise it.
+
+    SELF-HEALING FINDINGS ARE PRINTED, NEVER COUNTED. They are real - the column is
+    genuinely absent at the moment this runs - and hiding them would cost the paper
+    trail that makes a SECOND sighting readable. But they are not the operator's, so
+    they are excluded from the headline count and from "fails until the column
+    exists", and when they are the ONLY drift the red block does not open at all.
+    The softening is confined to the one classification `_sync_repairs` can defend;
+    anything else, including any drift kind this module cannot yet see, still gets
+    the block below.
     """
-    blocking = [f for f in findings if f["severity"] != "INFO"]
-    extra = len(findings) - len(blocking)
-    if not blocking:
+    # QUIET IS THE WHITELIST, and it has to be this way round. Written as
+    # `stuck = severity in ("TABLE-DOWN", "MISSING-TABLE")` a severity nobody has
+    # invented yet - a type mismatch, the first drift kind this module cannot
+    # currently see - would fall through to neither bucket and be printed as
+    # harmless. Two named quiet kinds and "everything else is loud" cannot fail
+    # that way: a future finding is noisy until somebody argues it should not be.
+    _QUIET = ("SELF-HEALING", "INFO")
+    healing = [f for f in findings if f["severity"] == "SELF-HEALING"]
+    stuck = [f for f in findings if f["severity"] not in _QUIET]
+    extra = len(findings) - len(stuck) - len(healing)
+    if not stuck and not healing:
         detail = f" ({extra} unmapped column group(s), harmless)" if extra else ""
         return [("info", f"[Schema] no drift - the database carries every table and "
                          f"column the code maps{detail}.")]
 
+    if not stuck:
+        # The false alarm of 2026-08-13, as it should have read. Visible, on the
+        # record, and not a red block - because a red block that resolves itself
+        # before the operator finishes reading it is what turns the next real one
+        # into wallpaper.
+        out = [("warning", f"[Schema] {len(healing)} column(s) are missing that the "
+                           f"boot-time schema sync adds by itself. Nothing to do."),
+               ("warning", f"  target: {target}")]
+        out += _finding_lines(healing, "warning")
+        out += [
+            ("warning", "  이 컬럼들은 서버 프로세스가 기동하면서 자동으로 추가됩니다. "
+                        "마이그레이션을 작성하지 마십시오."),
+            ("warning", "  재기동 후에도 같은 줄이 다시 뜨면 그때는 실제 장애입니다 - "
+                        "위 do: 를 따르십시오."),
+        ]
+        return out
+
     out = [("error", _RULE),
-           ("error", f"SCHEMA DRIFT: the database is missing {len(blocking)} thing(s) "
+           ("error", f"SCHEMA DRIFT: the database is missing {len(stuck)} thing(s) "
                      f"this build requires."),
            ("error", f"  target: {target}")]
-    for f in blocking:
-        name = f"{f['table']}.{f['column']}" if f["column"] else f["table"]
-        out.append(("error", f"  [{f['severity']}] {name}"))
-        out.append(("error", f"      breaks: {f['breaks']}"))
-        for i, line in enumerate(f["remedy"].splitlines()):
-            out.append(("error", f"      do:     {line}" if i == 0 else f"  {line}"))
+    out += _finding_lines(stuck, "error")
     out += [
         ("error", "  Every screen that touches the table(s) above fails until the "
                   "column exists."),
@@ -314,8 +462,34 @@ def banner_lines(findings, target):
                   "실행 전까지 해당 테이블을"),
         ("error", "  쓰는 화면은 계속 실패합니다. 전체 점검: "
                   "python server/scripts/check_schema_drift.py"),
-        ("error", _RULE),
     ]
+    if healing:
+        # BELOW the sentences above on purpose: "the table(s) above" has to keep
+        # meaning the stuck ones. Listed rather than dropped so a second sighting
+        # after a restart has something to be a second sighting OF.
+        out += [
+            ("error", "  ---"),
+            ("error", f"  Separately - {len(healing)} column(s) the boot-time sync adds "
+                      f"by itself. NOT counted above, and no migration:"),
+        ]
+        out += _finding_lines(healing, "error")
+    out.append(("error", _RULE))
+    return out
+
+
+def _finding_lines(findings, level):
+    """One finding as the banner prints it. Shared so the two shapes cannot drift.
+
+    THE REMEDY IS COPIED, NOT SUMMARISED - that property is asserted by the tests
+    and it is why this walks `splitlines()` instead of taking the first line.
+    """
+    out = []
+    for f in findings:
+        name = f"{f['table']}.{f['column']}" if f["column"] else f["table"]
+        out.append((level, f"  [{f['severity']}] {name}"))
+        out.append((level, f"      breaks: {f['breaks']}"))
+        for i, line in enumerate(f["remedy"].splitlines()):
+            out.append((level, f"      do:     {line}" if i == 0 else f"  {line}"))
     return out
 
 

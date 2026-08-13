@@ -71,6 +71,87 @@ def narrowed_db(tmp_path):
     return engine, dropped
 
 
+# A config-declared (dynamic) table, and one whose declaration carries an
+# UPPERCASE column name. Both come from conftest's fixture config rather than the
+# operator's gitignored one, so these tests say the same thing on a box that has
+# no table_config.json - which is every worktree.
+DYN_TABLE = "inventory_master"
+DYN_MIXED_CASE_TABLE = "raw_table_1"
+DYN_MIXED_CASE_COLUMN = "EQP_ID"
+
+
+def _narrow_copy(engine, table_name, drop):
+    """Create `table_name` physically, minus `drop`, then let create_all skip it.
+
+    The mechanism, not a simulation of its result: `create_all` does not ALTER a
+    table that already exists, which is the entire reason a declared column can be
+    absent from a database that boots cleanly.
+    """
+    from database.database import Base
+
+    declared = Base.metadata.tables[table_name]
+    keep = [c.name for c in declared.columns if c.name not in drop]
+    assert len(keep) >= 2, f"{table_name} is too narrow to build a partial copy from"
+    body = ", ".join(f'"{n}" VARCHAR' for n in keep)
+    with engine.connect() as conn:
+        conn.execute(text(f'CREATE TABLE "{table_name}" ({body})'))
+        conn.commit()
+    Base.metadata.create_all(bind=engine)
+
+
+@pytest.fixture
+def drifted_dynamic_db(db_session, tmp_path):
+    """The 2026-08-13 false alarm: a dynamic table missing columns its config declares.
+
+    `db_session` is requested for its side effect - it calls `init_dynamic_models`
+    with conftest's fixture config, so DYNAMIC_TABLES is known here instead of
+    being whatever the operator's on-disk config happens to hold.
+    """
+    from database import models
+    from database.database import Base
+
+    assert DYN_TABLE in models.DYNAMIC_TABLES, (
+        f"{DYN_TABLE} is not a dynamic table in this process, so this fixture "
+        f"cannot exercise the self-healing path at all")
+    declared = Base.metadata.tables[DYN_TABLE]
+    drop = [c.name for c in declared.columns][-2:]
+    engine = create_engine(f"sqlite:///{tmp_path / 'dyn.db'}")
+    _narrow_copy(engine, DYN_TABLE, drop)
+    return engine, drop
+
+
+@pytest.fixture
+def case_folded_db(db_session, tmp_path):
+    """A dynamic table whose column differs from the declaration ONLY in case.
+
+    This is drift the sync can never repair and never even complains about: it
+    compares `column.name.lower()` against lowercased catalog names, so it sees the
+    column as present and issues nothing, forever. `check` compares exactly, so it
+    reports the column as missing - correctly. The gap between those two
+    comparisons is the reason `_sync_repairs` lowercases before it answers.
+    """
+    from database import models
+    from database.database import Base
+
+    assert DYN_MIXED_CASE_TABLE in models.DYNAMIC_TABLES
+    declared = Base.metadata.tables[DYN_MIXED_CASE_TABLE]
+    names = [c.name for c in declared.columns]
+    assert DYN_MIXED_CASE_COLUMN in names, (
+        f"{DYN_MIXED_CASE_TABLE} no longer declares {DYN_MIXED_CASE_COLUMN}; this "
+        f"fixture needs a declaration whose case differs from what it creates")
+    keep = [n for n in names if n != DYN_MIXED_CASE_COLUMN]
+    body = ", ".join(f'"{n}" VARCHAR' for n in keep)
+    engine = create_engine(f"sqlite:///{tmp_path / 'fold.db'}")
+    with engine.connect() as conn:
+        # The declared name, lowercased. Same column to a human, a different
+        # string to `check` and the same string to the sync.
+        conn.execute(text(f'CREATE TABLE "{DYN_MIXED_CASE_TABLE}" '
+                          f'({body}, "{DYN_MIXED_CASE_COLUMN.lower()}" VARCHAR)'))
+        conn.commit()
+    Base.metadata.create_all(bind=engine)
+    return engine
+
+
 # --------------------------------------------------------------- the fixture bites
 
 def test_the_fixture_actually_creates_the_failure_it_claims_to(narrowed_db):
@@ -157,6 +238,296 @@ def test_harmless_drift_does_not_raise_the_banner():
     lines = drift.banner_lines(info_only, "target-db")
     assert all(lvl == "info" for lvl, _t in lines)
     assert not any("SCHEMA DRIFT" in t for _l, t in lines)
+
+
+# ============================================================================
+# The false alarm of 2026-08-13, and the line between it and a real outage.
+#
+# The launcher printed the full red block for `dt_map.dt_lot` and `dt_map.dt_slot`
+# - "EVERY full-entity SELECT ... fails", "add a migration under
+# server/migrations/" - and the same startup then added both columns. The product
+# owner restarted and it was gone. The check was right about the STATE and wrong
+# about the CONSEQUENCE: `run_watcher.py`, `run_chain_worker.py`,
+# `run_graph_sync.py` and the web server each call
+# `models.sync_dynamic_tables_schema` on their own boot, and the launcher checks
+# BEFORE it spawns them.
+#
+# Everything below divides into two halves and they are not equally important.
+# The false-alarm half is the bug. The stuck half is the REGRESSION - if a change
+# here ever makes a real outage read as self-healing, it is worse than the noise
+# it replaced, so those tests are written to fail loudly and are injected against.
+# ============================================================================
+
+def test_the_fixture_reproduces_the_false_alarm_before_anything_is_asserted(drifted_dynamic_db):
+    """Assertion first. Without this the tests below could be green against a
+    healthy database and prove nothing about the reported failure."""
+    from sqlalchemy import inspect
+    engine, dropped = drifted_dynamic_db
+    present = {c["name"] for c in inspect(engine).get_columns(DYN_TABLE)}
+    assert present, f"{DYN_TABLE} does not exist - the sync would skip it entirely"
+    assert not (present & set(dropped)), "the columns the fixture says it dropped are there"
+
+
+def test_a_declared_dynamic_column_is_not_the_operators_problem(drifted_dynamic_db):
+    """The bug, at the level the classification is made."""
+    engine, dropped = drifted_dynamic_db
+    hits = [f for f in drift.check(engine)
+            if f["table"] == DYN_TABLE and f["column"] in dropped]
+    assert len(hits) == len(dropped), f"expected a finding per dropped column, got {hits}"
+    assert all(f["severity"] == "SELF-HEALING" for f in hits), \
+        f"a column the boot adds by itself is still reported as an outage: {hits}"
+
+
+def test_the_false_alarm_no_longer_opens_the_red_block(drifted_dynamic_db):
+    """What the operator sees. The three sentences that were wrong, named one by
+    one so a rewrite that reintroduces any of them fails here."""
+    engine, _ = drifted_dynamic_db
+    lines = drift.banner_lines(drift.check(engine), "target-db")
+    out = "\n".join(t for _l, t in lines)
+
+    assert "SCHEMA DRIFT" not in out, "the red headline still fires on a self-healing column"
+    assert "=====" not in out, "the red rule still fires"
+    assert "this build requires" not in out
+    assert "Every screen that touches" not in out, \
+        "it still claims the table is down when it is not"
+    assert "add one under server/migrations/" not in out, \
+        "it still sends the operator to write a migration for a column the boot owns"
+    assert not any(lvl == "error" for lvl, _t in lines), \
+        "a condition that resolves itself is still logged at error level"
+
+
+def test_the_self_healing_verdict_is_still_on_the_record(drifted_dynamic_db):
+    """Not quiet - just not red. The table, the column and the escalation path all
+    survive, because a SECOND sighting after a restart is the real signal and it
+    needs a first one to be second to."""
+    engine, dropped = drifted_dynamic_db
+    out = "\n".join(t for _l, t in drift.banner_lines(drift.check(engine), "target-db"))
+
+    assert DYN_TABLE in out
+    for col in dropped:
+        assert col in out, f"{col} was dropped from the verdict entirely"
+    assert "SELF-HEALING" in out
+    assert "after a full restart" in out, \
+        "nothing tells the operator what a second sighting means"
+    assert "[Schema Sync] Failed to add column" in out, \
+        "the log line that distinguishes a failed ALTER from a pending one is missing"
+    assert "ALTER TABLE" in out, "the manual remedy was dropped, not just demoted"
+
+
+def test_the_prediction_is_scored_against_what_the_sync_actually_does(drifted_dynamic_db):
+    """The predicate is one function's reading of another function's source, and a
+    reading goes stale in silence. So this does not re-read it - it runs the
+    repairer and compares the outcome against the prediction.
+
+    This is the test that catches `sync_dynamic_tables_schema` changing under us.
+    """
+    from sqlalchemy import inspect
+    from database import models
+
+    engine, dropped = drifted_dynamic_db
+    predicted = {f["column"] for f in drift.check(engine)
+                 if f["table"] == DYN_TABLE and f["severity"] == "SELF-HEALING"}
+    assert predicted, "nothing was predicted self-healing, so this proves nothing"
+
+    models.sync_dynamic_tables_schema(engine)
+
+    present = {c["name"] for c in inspect(engine).get_columns(DYN_TABLE)}
+    assert predicted <= present, (
+        f"predicted self-healing but the sync did not add: {sorted(predicted - present)}. "
+        f"The banner is now telling operators to wait for a repair that never comes.")
+    assert not [f for f in drift.check(engine) if f["table"] == DYN_TABLE], \
+        "the drift survived the very sync that was supposed to own it"
+
+
+# ------------------------------------------------- the regression that matters
+
+def test_a_system_table_column_is_never_called_self_healing(narrowed_db):
+    """The 2026-08-05 incident shape. `frame_confirmation` is declared as an ORM
+    class, so it is not in DYNAMIC_TABLES and no boot path ALTERs it - the operator
+    must run a migration. This is the case that must not be softened."""
+    engine, dropped = narrowed_db
+    hits = [f for f in drift.check(engine)
+            if f["table"] == DRIFT_TABLE and f["column"] in dropped]
+    assert hits
+    assert all(f["severity"] == "TABLE-DOWN" for f in hits), \
+        f"a system-table column was classified as self-healing: {hits}"
+
+    out = "\n".join(t for _l, t in drift.banner_lines(drift.check(engine), "t"))
+    assert "SCHEMA DRIFT" in out and "=====" in out
+    assert "Every screen that touches" in out
+
+
+def test_a_case_only_mismatch_the_sync_skips_forever_stays_table_down(case_folded_db):
+    """Detected drift the sync will never repair, and never even complain about.
+
+    The sync compares `column.name.lower()` against lowercased catalog names, so a
+    declared `EQP_ID` against a stored `eqp_id` looks present to it and it issues
+    nothing - no ALTER, no failure line, no second chance. `check` compares
+    exactly and is right that the mapped name is absent. Only the lowercasing
+    inside `_sync_repairs` keeps this out of the self-healing bucket, and the proof
+    is below: the sync runs and the column is still not there.
+    """
+    from sqlalchemy import inspect
+    from database import models
+
+    hits = [f for f in drift.check(case_folded_db)
+            if f["table"] == DYN_MIXED_CASE_TABLE
+            and f["column"] == DYN_MIXED_CASE_COLUMN]
+    assert hits, f"{DYN_MIXED_CASE_COLUMN} was not reported missing at all"
+    assert all(f["severity"] == "TABLE-DOWN" for f in hits), (
+        f"a dynamic-table column the sync silently skips was called self-healing: "
+        f"{hits}. The operator would wait through restart after restart.")
+
+    models.sync_dynamic_tables_schema(case_folded_db)
+    present = {c["name"] for c in inspect(case_folded_db).get_columns(DYN_MIXED_CASE_TABLE)}
+    assert DYN_MIXED_CASE_COLUMN not in present, (
+        "the sync repaired a case-only mismatch after all - if this is now true, "
+        "`_sync_repairs` may drop its lowercasing and this test is stale")
+
+
+def test_a_missing_dynamic_table_is_not_self_healing(db_session, tmp_path):
+    """`sync_dynamic_tables_schema` opens with `if not inspector.has_table(...):
+    continue`. It ALTERs; it does not CREATE. A dynamic table that is absent whole
+    therefore keeps its own severity and its own remedy.
+
+    WHAT KEEPS THIS TRUE IS NOT THE CLASSIFIER, and the injection run said so: this
+    test stays GREEN when `_sync_repairs` is forced to return True for everything.
+    `check` reports an absent table and `continue`s before the column loop, so the
+    classifier is never consulted about one. The property is worth pinning anyway -
+    a later refactor that routes MISSING-TABLE through the classifier would land
+    here - but it is not evidence about `_sync_repairs`. That evidence is
+    `test_sync_repairs_answers_the_three_gates_in_the_sync`, which is the only
+    thing covering gate 2.
+    """
+    from database.database import Base
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'notable.db'}")
+    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        conn.execute(text(f'DROP TABLE "{DYN_TABLE}"'))
+        conn.commit()
+
+    hits = [f for f in drift.check(engine) if f["table"] == DYN_TABLE]
+    assert hits, "a dropped dynamic table produced no finding"
+    assert all(f["severity"] == "MISSING-TABLE" for f in hits), \
+        f"an absent table was classified as a column the sync adds: {hits}"
+
+
+def test_a_drift_kind_nobody_has_classified_yet_is_loud(drifted_dynamic_db):
+    """Forward cover, and the reason `banner_lines` whitelists what is quiet
+    instead of listing what is loud.
+
+    A type mismatch is the obvious next drift kind (see the gap pinned below), and
+    the failure to avoid is that it arrives, lands in neither named bucket, and is
+    printed as harmless. Only SELF-HEALING and INFO may be quiet; a severity nobody
+    has argued about yet opens the red block.
+    """
+    engine, _ = drifted_dynamic_db
+    findings = drift.check(engine) + [{
+        "severity": "TYPE-MISMATCH", "table": "dt_map", "column": "dt_x",
+        "breaks": "the column exists with the wrong type",
+        "remedy": "ALTER TABLE dt_map ALTER COLUMN dt_x TYPE double precision",
+    }]
+    lines = drift.banner_lines(findings, "t")
+    out = "\n".join(t for _l, t in lines)
+
+    assert "SCHEMA DRIFT" in out, "an unclassified drift kind was printed as harmless"
+    assert "missing 1 thing(s)" in out, \
+        "an unclassified drift kind was left out of the count"
+    assert any(lvl == "error" for lvl, _t in lines)
+    assert "ALTER COLUMN dt_x TYPE" in out, "its remedy was dropped"
+
+
+def test_a_mixed_verdict_counts_only_the_stuck_but_prints_both(narrowed_db, drifted_dynamic_db):
+    """One database's worth of each. The headline count is what an operator acts
+    on, so it must be the stuck ones only - and the self-healing ones must still
+    appear, below the sentence that says the tables above are down."""
+    stuck_engine, stuck_cols = narrowed_db
+    heal_engine, heal_cols = drifted_dynamic_db
+    findings = drift.check(stuck_engine) + drift.check(heal_engine)
+
+    n_stuck = len([f for f in findings if f["severity"] == "TABLE-DOWN"])
+    assert n_stuck and len([f for f in findings if f["severity"] == "SELF-HEALING"])
+
+    out = "\n".join(t for _l, t in drift.banner_lines(findings, "t"))
+    assert f"missing {n_stuck} thing(s)" in out, \
+        "self-healing columns are being counted as things the build requires"
+    assert "NOT counted above" in out
+    for col in heal_cols:
+        assert col in out, "the self-healing findings vanished from a mixed verdict"
+    # Ordering: the claim "the table(s) above fail" must not have self-healing
+    # entries above it.
+    assert out.index("Every screen that touches") < out.index("[SELF-HEALING]"), \
+        "a self-healing column sits under a sentence that says the table is down"
+
+
+# ------------------------------------------------------------------ the predicate
+
+def test_sync_repairs_answers_the_three_gates_in_the_sync():
+    """The predicate on its own, with no database, one case per gate of
+    `models.sync_dynamic_tables_schema`. These are what the injections aim at."""
+    dyn = {"dt_map"}
+    # (1) in DYNAMIC_TABLES, (2) table present, (3) name absent case-insensitively
+    assert drift._sync_repairs("dt_map", "dt_lot", {"row_id"}, dyn) is True
+    # (1) fails - a system table has no boot-time ALTER path at all
+    assert drift._sync_repairs("cell_sources", "confirmation_uid", {"row_id"}, dyn) is False
+    # (2) fails - the sync `continue`s past a table that does not exist
+    assert drift._sync_repairs("dt_map", "dt_lot", None, dyn) is False
+    # (3) fails - the sync sees `dt_lot` as present and issues nothing, forever
+    assert drift._sync_repairs("dt_map", "DT_LOT", {"dt_lot"}, dyn) is False
+
+
+def test_the_predicate_reads_the_dict_the_repairer_iterates(db_session):
+    """Not a copy of table_config. `sync_dynamic_tables_schema` loops over
+    `models.DYNAMIC_TABLES`, so that is what decides - the config on disk and this
+    dict can disagree inside one process, and the repairer is the one that matters."""
+    from database import models
+    assert drift._dynamic_table_names() == set(models.DYNAMIC_TABLES)
+    assert DYN_TABLE in drift._dynamic_table_names()
+    assert DRIFT_TABLE not in drift._dynamic_table_names(), \
+        f"{DRIFT_TABLE} is a system table and must not be in the repairer's scope"
+
+
+# ------------------------------------------------------------------- the gap
+
+def test_the_check_still_cannot_see_a_type_mismatch_at_all():
+    """A LIMITATION, pinned so it is not mistaken for coverage.
+
+    The brief for this round assumed a type mismatch produces the full-severity
+    banner. It does not, and it did not before this change either: `check` compares
+    NAMES only, so a column that exists with the wrong type reads as healthy and
+    nothing is printed. That is stated in the module docstring and is asserted here
+    because the assumption is easy to make and expensive.
+
+    Nothing about the self-healing classification touched this. If type comparison
+    is ever added, `test_a_drift_kind_nobody_has_classified_yet_is_loud` above is
+    the one that says the new severity arrives loud.
+    """
+    from database.database import Base
+    engine = create_engine(f"sqlite://")
+    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        conn.execute(text('DROP TABLE "interaction_effort_logs"'))
+        # Every declared name, all of them the wrong type.
+        cols = ", ".join(
+            f'"{c.name}" BLOB'
+            for c in Base.metadata.tables["interaction_effort_logs"].columns)
+        conn.execute(text(f'CREATE TABLE "interaction_effort_logs" ({cols})'))
+        conn.commit()
+
+    # The fixture bites: without this the test passes against a healthy table and
+    # asserts nothing about types at all.
+    from sqlalchemy import inspect
+    types = {str(c["type"]).upper() for c in inspect(engine).get_columns(
+        "interaction_effort_logs")}
+    assert types == {"BLOB"}, f"the fixture did not change any type: {types}"
+
+    findings = [f for f in drift.check(engine)
+                if f["table"] == "interaction_effort_logs"]
+    assert findings == [], (
+        "the check has learned to see type drift. That is an improvement - but "
+        "confirm the new severity is not SELF-HEALING and not INFO, because the "
+        "sync only ever issues ADD COLUMN and can never repair a type.")
 
 
 # ------------------------------------------------------- it names the migration

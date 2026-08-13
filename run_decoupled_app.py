@@ -106,6 +106,22 @@ def report_schema_drift():
 
     Like the port guard above, a check must never become the reason the system
     will not start: every failure path below degrades to a line and a return.
+
+    THIS RUNS BEFORE THE PROCESSES THAT REPAIR HALF OF WHAT IT FINDS, and that is
+    not an accident to be tidied away. Three of the children started below -
+    run_watcher.py, run_chain_worker.py, run_graph_sync.py - each call
+    `models.sync_dynamic_tables_schema(engine)` on their own boot, as does the web
+    server through `bootstrap_database_schema`. So a column that table_config
+    declares on a dynamic table is missing when this line reads the catalog and
+    present a few seconds later, with nothing asked of anybody.
+
+    Moving the check after `start_all` would trade that away for nothing: the whole
+    value of a pre-flight is that the operator is still standing at the console and
+    nothing is up yet to be disrupted. What was actually wrong was the banner, which
+    on 2026-08-13 told the product owner that every screen touching `dt_map` failed
+    until they wrote a migration - for two columns the very same startup added. The
+    fix is in `schema_drift._sync_repairs`, which classifies that one drift kind and
+    leaves every other one at full severity.
     """
     try:
         # The runtime module, not the CLI in server/scripts - `server/` is already

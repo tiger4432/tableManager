@@ -70,9 +70,23 @@ def main():
         print()
 
     print(f"[drift] {len(blocking)} blocking, {len(findings) - len(blocking)} informational.")
-    if blocking:
+    if any(f["severity"] == "TABLE-DOWN" for f in findings):
         print("[drift] a TABLE-DOWN finding means that table is unusable right now, for "
               "every screen that touches it, until the column exists.")
+    healing = [f for f in findings if f["severity"] == "SELF-HEALING"]
+    if healing:
+        # Counted as blocking, deliberately, and this is the reasoning so nobody
+        # "fixes" the inconsistency with the startup banner by accident.
+        #
+        # The banner answers "what must the operator do", and for these the answer
+        # is nothing - so it does not raise the red block. This exit code answers a
+        # different question: "does the database match the code RIGHT NOW". For a
+        # self-healing column that answer is genuinely no, and this exit code feeds
+        # deploy gates. Narrowing a gate is not something a banner-wording round
+        # gets to do as a side effect, so the code stays 1 and the text explains it.
+        print(f"[drift] {len(healing)} of those are SELF-HEALING: a boot adds them and "
+              f"no migration exists to run. Exit 1 still, because the database does "
+              f"not match the code yet - re-run this after the stack is up.")
     return 1 if blocking else 0
 
 
