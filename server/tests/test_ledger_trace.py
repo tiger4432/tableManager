@@ -34,12 +34,19 @@ T0 = datetime(2026, 8, 1, 12, 0, 0, tzinfo=KST)
 
 
 def claim(id, lot, predicate, payload, occurred_at=T0, who="lot_event",
-          supersedes=None, subject_type="Lot"):
+          supersedes=None, subject_type="Lot", derivation=None):
+    """One atom. `derivation` stamps the translator's `#<derivation>` suffix.
+
+    That suffix is the ONLY place the derivation lives — `claim_basis` reads it
+    and `hop_basis` reports it — so a fixture that wants a convention-backed atom
+    stamps it here rather than setting a field the envelope does not have.
+    """
+    ver = "lot_event/1" + (f"#{derivation}" if derivation else "")
     return lt.Claim(
         id=id, subject_type=subject_type, subject_keys={"lot": lot},
         predicate=predicate, object_kind="entity", object_payload=payload,
         occurred_at=occurred_at, source_who=who,
-        source_translator_ver="lot_event/1", source_raw_ref=f"lot_event:{id}",
+        source_translator_ver=ver, source_raw_ref=f"lot_event:{id}",
         supersedes=supersedes)
 
 
@@ -224,13 +231,17 @@ def test_agreeing_witnesses_are_not_a_contest():
     assert "agreed" in hop["reason"] and "3건" in hop["reason"]
 
 
-def test_a_disagreeing_lower_class_makes_the_hop_a_candidate():
+def test_a_disagreeing_lower_class_makes_the_hop_contested():
     """🔴 The class decides WHICH answer is followed. It does not decide whether
     a disagreement happened, and the screen must report the disagreement.
 
     The confirmed claim still wins outright — that part is never in doubt — but
     two other claims named different parents, and a hop that rendered `resolved`
     would hide exactly what an investigator opened this screen to see.
+
+    The word is `contested` as of R-2026-08-13-B week 2: the class DECLARED this
+    winner and the dispute survived it. That is a different state from "k answers
+    at one authority and only a tiebreak between them", which keeps `candidate`.
     """
     atoms = [
         claim("reg", "L-C", "register", {}),
@@ -243,7 +254,7 @@ def test_a_disagreeing_lower_class_makes_the_hop_a_candidate():
     hop = [h for h in run(atoms, "L-C")["hops"]
            if h["predicate"] == "derived_from"][0]
     assert hop["to"]["keys"]["lot"] == "L-TRUE", "the ranking must not move"
-    assert hop["state"] == "candidate"
+    assert hop["state"] == lt.STATE_CONTESTED
     assert hop["n"] == 3, "three distinct answers were in contention"
     assert "하위 계급 반대 2종" in hop["reason"]
     assert "L-WRONG1" in hop["reason"] and "L-WRONG2" in hop["reason"]
@@ -263,6 +274,226 @@ def test_a_lower_class_that_AGREES_is_not_a_contest():
     assert hop["state"] == "resolved"
     assert hop["n"] == 1
     assert "class_wins" in hop["reason"] and "같은 답" in hop["reason"]
+
+
+# ---------------------------------------------------------------------------
+# contested vs candidate — R-2026-08-13-B week 2
+# ---------------------------------------------------------------------------
+#
+# 🔴 THE CONDITION THAT ENDS HERE. `candidate` was allowed as an umbrella for
+# slice 1 ONLY because `reason` carried the real distinction. It now lives in the
+# `state` field, because a client acting differently on the two is the whole
+# point and no client should have to read Korean to do it.
+#
+#     contested   the class DECLARED a winner; a lower class still disagrees
+#     candidate   the top class is split k ways; only a tiebreak separates them
+
+
+def _derived_from_hop(atoms, lot="L-C"):
+    return [h for h in run(atoms, lot)["hops"]
+            if h["predicate"] == "derived_from"][0]
+
+
+REGISTER = claim("reg", "L-C", "register", {})
+
+
+def test_contested_and_candidate_are_two_states_not_one():
+    """The split, driven from both sides in one test so the pair is visible.
+
+    Same `n`, same rank, same winner-is-followed guarantee — and different
+    states, because the AUTHORITY behind the winner differs. That is the fact a
+    consumer branches on: `contested` has a declared winner with a live
+    contradiction under it; `candidate` has no declared winner at all.
+    """
+    contested = _derived_from_hop([
+        REGISTER,
+        claim("c1", "L-C", "derived_from", {"lot": "L-TRUE", "confirmed": True}),
+        claim("o1", "L-C", "derived_from", {"lot": "L-OTHER"},
+              occurred_at=T0 + timedelta(days=9)),
+    ])
+    candidate = _derived_from_hop([
+        REGISTER,
+        claim("o1", "L-C", "derived_from", {"lot": "L-P1"}, occurred_at=T0),
+        claim("o2", "L-C", "derived_from", {"lot": "L-P2"},
+              occurred_at=T0 + timedelta(hours=1)),
+    ])
+
+    assert contested["state"] == lt.STATE_CONTESTED
+    assert candidate["state"] == lt.STATE_CANDIDATE
+    assert contested["state"] != candidate["state"], (
+        "the two collapsed back into one word - R-2026-08-13-B week 2 undone")
+    # Everything the old umbrella carried is unchanged: both report a rank, a
+    # count, and a followed answer. Only the word got more precise.
+    assert (contested["rank"], contested["n"]) == (1, 2)
+    assert (candidate["rank"], candidate["n"]) == (1, 2)
+    assert contested["to"]["keys"]["lot"] == "L-TRUE"
+    assert candidate["to"]["keys"]["lot"] == "L-P2"
+    # 🔴 The `[tag]` follows the state, so the prose and the field cannot drift.
+    assert contested["reason"].startswith("[contested]")
+    assert candidate["reason"].startswith("[candidate]")
+
+
+def test_a_split_top_class_reads_candidate_even_when_a_lower_class_also_dissents():
+    """🔴 BOTH conditions at once, and the WEAKER word wins.
+
+    `contested` asserts "a winner was DECLARED". A top class that disagrees with
+    itself declared nothing — the tiebreak levels did — so claiming `contested`
+    here would overstate the authority behind the answer. The lower-class dissent
+    does not disappear: it is still named in `reason` and still counted in `n`.
+    """
+    hop = _derived_from_hop([
+        REGISTER,
+        # two class-1 claims that do NOT agree: nothing declared a winner
+        claim("c1", "L-C", "derived_from", {"lot": "L-A", "confirmed": True},
+              occurred_at=T0 + timedelta(hours=1)),
+        claim("c2", "L-C", "derived_from", {"lot": "L-B", "confirmed": True},
+              occurred_at=T0),
+        # and a class-2 claim naming a third answer
+        claim("o1", "L-C", "derived_from", {"lot": "L-C-OBS"},
+              occurred_at=T0 + timedelta(days=9)),
+    ])
+    assert hop["state"] == lt.STATE_CANDIDATE, (
+        "a split top class must not be reported as a DECLARED winner")
+    assert hop["n"] == 3, "all three answers were in contention"
+    assert "내 답 2종" in hop["reason"], hop["reason"]
+    assert "하위 계급 반대 1종" in hop["reason"], (
+        f"gaining the word lost the fact: {hop['reason']}")
+    assert "L-C-OBS" in hop["reason"]
+
+
+def test_the_state_split_goes_red_on_a_resolver_that_still_uses_one_word():
+    """MUTANT: the pre-split behaviour, run through the same two scenarios.
+
+    Without this, the split above could be passing because the scenarios are
+    toothless rather than because the resolver tells them apart.
+    """
+    def one_word(hop):
+        return lt.STATE_CANDIDATE if hop["state"] in (
+            lt.STATE_CONTESTED, lt.STATE_CANDIDATE) else hop["state"]
+
+    contested = _derived_from_hop([
+        REGISTER,
+        claim("c1", "L-C", "derived_from", {"lot": "L-TRUE", "confirmed": True}),
+        claim("o1", "L-C", "derived_from", {"lot": "L-OTHER"},
+              occurred_at=T0 + timedelta(days=9)),
+    ])
+    candidate = _derived_from_hop([
+        REGISTER,
+        claim("o1", "L-C", "derived_from", {"lot": "L-P1"}, occurred_at=T0),
+        claim("o2", "L-C", "derived_from", {"lot": "L-P2"},
+              occurred_at=T0 + timedelta(hours=1)),
+    ])
+    assert one_word(contested) == one_word(candidate), (
+        "the mutant is supposed to be blind to the distinction")
+    assert contested["state"] != candidate["state"], "the real resolver is not"
+
+
+# ---------------------------------------------------------------------------
+# basis: {kind, name} — R-2026-08-13-C
+# ---------------------------------------------------------------------------
+#
+# 🔴 WHY THIS FIELD EXISTS, IN ONE SENTENCE: the enrich graft may never pre-mark
+# a row confirmed off a hop that rests on an assumption, and a safety rule cannot
+# be regexed out of Korean prose. That read already INVERTED once.
+
+
+def _convention_pair(observed_slot, convention_slot):
+    """A `slot_map` decided by a MEASUREMENT that overrules a CONVENTION.
+
+    The convention atom rests on `slot_preserving` (class 3, an assumption); the
+    observation stamps a derivation the source uttered (class 2). The observation
+    wins automatically, which is the ruling's whole consequence.
+    """
+    return [
+        claim("reg", "L-B", "register", {}),
+        claim("reg-a", "L-A", "register", {}),
+        claim("df", "L-B", "derived_from", {"lot": "L-A"}),
+        claim("sm-conv", "L-B", "slot_map",
+              {"lot": "L-A", "from": "07", "to": convention_slot},
+              derivation="slot_preserving"),
+        claim("sm-obs", "L-B", "slot_map",
+              {"lot": "L-A", "from": "07", "to": observed_slot},
+              derivation="pair_field"),
+    ]
+
+
+def test_basis_is_a_field_and_it_describes_the_WINNER_not_the_losers():
+    """🔴 THE INVERSION, closed.
+
+    A measurement overrules an assumption. The hop's WINNER is the measurement,
+    so `basis.kind` must be `measured` — even though the word `convention:` is
+    sitting right there in `reason`, describing the claim that LOST.
+
+    This is precisely the case the client's anchored regex was written to survive
+    and that a naive `reason.includes('convention:')` gets backwards. With the
+    fact in a field, no reading of the sentence can get it wrong.
+    """
+    hop = [h for h in run(_convention_pair("21", "07"), "L-B", "07")["hops"]
+           if h["predicate"] == "slot_map"][0]
+
+    assert hop["to"]["slot"] == "21", "the measurement must win"
+    assert hop["state"] == lt.STATE_CONTESTED
+    assert hop["basis"] == {"kind": lt.BASIS_MEASURED, "name": "pair_field"}
+    # The trap, still in the prose - and now harmless.
+    assert "convention:slot_preserving" in hop["reason"], hop["reason"]
+    assert hop["basis"]["kind"] != lt.BASIS_CONVENTION, (
+        "the hop where an assumption was OVERRULED was labelled an assumption")
+
+
+def test_basis_says_convention_when_the_winner_really_rests_on_one():
+    """The other direction: no measurement, so the assumption IS the answer.
+
+    This is the hop the graft must never pre-mark confirmed, and `basis.kind` is
+    the whole of how it knows.
+    """
+    atoms = [a for a in _convention_pair("21", "07") if a.id != "sm-obs"]
+    hop = [h for h in run(atoms, "L-B", "07")["hops"]
+           if h["predicate"] == "slot_map"][0]
+
+    assert hop["state"] == "resolved", "nothing disagreed with it"
+    assert hop["basis"] == {"kind": lt.BASIS_CONVENTION, "name": "slot_preserving"}
+
+
+def test_basis_is_none_when_there_is_no_derivation_and_when_there_is_no_winner():
+    """Both causes of None, asserted together because they must render alike.
+
+    Neither is a convention, so a consumer that treats None as "not
+    convention-backed" is correct in both — which is what makes None a safe
+    default rather than a hole in the safety rule.
+    """
+    answer = run(chain(["L-C", "L-B"], slots=["3", "5"], wafers=["W-3", "W-5"]),
+                 "L-C", "3")
+    plain = [h for h in answer["hops"] if h["state"] != "unresolvable"]
+    assert plain, "the fixture must produce at least one hop with a winner"
+    for hop in plain:
+        assert hop["basis"] is None, (
+            f"`lot_event/1` carries no `#derivation`: {hop['reason']}")
+
+    unresolvable = [h for h in run([], "L-NOTHING", "3")["hops"]]
+    assert unresolvable and unresolvable[0]["basis"] is None
+
+
+def test_basis_kind_is_the_class_3_convention_branch_and_not_a_second_register():
+    """🔴 `kind` is decided by the SAME list that decides the CLASS.
+
+    If `basis.kind` were computed from anything else it would become a second,
+    softer place to classify a derivation — and a derivation could then read
+    `measured` on the screen while resolving at class 3, or the reverse. The two
+    are asserted to be the same judgement, claim by claim.
+    """
+    cfg = lt.DEFAULT_RESOLVER_CONFIG
+    for derivation in ("slot_preserving", "pair_field", "positional_row", None):
+        c = claim("x", "L-C", "slot_map", {"lot": "L-P", "from": "1", "to": "2"},
+                  derivation=derivation)
+        basis = lt.hop_basis(c, cfg)
+        if derivation is None:
+            assert basis is None
+            continue
+        assert basis["name"] == derivation, "the name is reported VERBATIM"
+        assert ((basis["kind"] == lt.BASIS_CONVENTION)
+                == lt.is_convention_backed(c, cfg)
+                == (lt.claim_class(c, cfg) == lt.CLASS_INFERENCE)), (
+            f"{derivation}: basis.kind disagrees with the resolver's class")
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +547,7 @@ def test_class_2_may_never_outrank_class_1():
     assert hop["to"]["keys"]["lot"] == "L-CONFIRMED"
     # The two name different parents, so the hop honestly reports a contest —
     # but the ANSWER is the class-1 claim's, which is the property under test.
-    assert hop["state"] == "candidate"
+    assert hop["state"] == lt.STATE_CONTESTED
     assert hop["event_id"] == "z-confirmed"
 
 
@@ -558,8 +789,12 @@ def test_a_cycle_is_reported_as_a_cycle_not_as_a_depth_cap():
 # Shape
 # ---------------------------------------------------------------------------
 
-PINNED_HOP_KEYS = {"from", "to", "state", "rank", "n", "reason",
-                   "occurred_at", "event_id"}
+#: 🔴 THE HOP CONTRACT, AS A SET RATHER THAN AS A FLOOR. Asserted with `==`, so a
+#: field cannot arrive here unnoticed — which is exactly how `basis` was supposed
+#: to arrive and did not, spending a round living in Korean prose instead.
+#: Anything added to this set is a route-contract change and an escalation.
+PINNED_HOP_KEYS = {"from", "to", "predicate", "state", "rank", "n", "reason",
+                   "basis", "occurred_at", "event_id"}
 
 
 def test_response_shape_is_the_pinned_one():
@@ -567,14 +802,35 @@ def test_response_shape_is_the_pinned_one():
                  "L-C", "3")
     assert set(answer) == {"hops", "terminal_reason", "generated_at"}
     for hop in answer["hops"]:
-        missing = PINNED_HOP_KEYS - set(hop)
-        assert not missing, f"pinned hop key(s) dropped: {missing}"
-        # `predicate` is the ONE additive field; nothing else may appear.
-        assert set(hop) - PINNED_HOP_KEYS == {"predicate"}
-        assert hop["state"] in ("resolved", "candidate", "unresolvable")
-        assert (hop["rank"] is None) == (hop["state"] == "unresolvable")
-        assert (hop["n"] is None) == (hop["state"] == "unresolvable")
+        # 🔴 EXACT. Not "at least these" — a fourth field must turn this red.
+        assert set(hop) == PINNED_HOP_KEYS, (
+            f"hop key set moved: missing {PINNED_HOP_KEYS - set(hop)}, "
+            f"unexpected {set(hop) - PINNED_HOP_KEYS}. This is the route "
+            f"contract; adding to it is an escalation, not an edit.")
+        assert hop["state"] in lt.HOP_STATES
+        assert (hop["rank"] is None) == (hop["state"] == lt.STATE_UNRESOLVABLE)
+        assert (hop["n"] is None) == (hop["state"] == lt.STATE_UNRESOLVABLE)
+        # `basis` is ALWAYS present and is either None or the two-key shape.
+        # A key that appeared only sometimes would make every consumer guess
+        # whether its absence meant "no basis" or "an older server".
+        assert hop["basis"] is None or set(hop["basis"]) == {"kind", "name"}
+        if hop["basis"] is not None:
+            assert hop["basis"]["kind"] in lt.BASIS_KINDS
     datetime.fromisoformat(answer["generated_at"])
+
+
+def test_the_key_set_pin_goes_red_when_a_field_arrives_unnoticed():
+    """The guard above, shown to discriminate.
+
+    A pin written as "at least these keys" — the shape this test file carried
+    until `basis` landed — passes happily while a new field ships unreviewed.
+    This drives that difference rather than trusting it.
+    """
+    hop = dict.fromkeys(PINNED_HOP_KEYS)
+    assert set(hop) == PINNED_HOP_KEYS                    # the real shape passes
+    hop["confidence"] = 0.9                               # a fourth field arrives
+    assert not PINNED_HOP_KEYS - set(hop), "a floor-style pin would still pass"
+    assert set(hop) != PINNED_HOP_KEYS, "the exact pin must catch it"
 
 
 def test_times_keep_their_own_offset_and_are_never_normalised_to_utc():

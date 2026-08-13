@@ -288,6 +288,49 @@ def test_every_declared_derivation_is_explicitly_classified():
         f"(class 3). No -> add to UTTERED_DERIVATIONS here (class 2).")
     assert not (assumptions & utterances), "a derivation classified both ways"
 
+    # 🔴 AND `basis.name` IS NOT A SOFTER PLACE TO PUT ONE. The hop's structured
+    # basis reports the derivation VERBATIM, so a new one shows up there whether
+    # or not anybody classified it — which would be a way for an unclassified
+    # derivation to reach the screen looking legitimate. It cannot become a
+    # second register, because `kind` is decided by the same list the CLASS is:
+    # every declared derivation must map to `convention` iff it is an assumption.
+    for derivation in sorted(declared):
+        c = lt.Claim(
+            id="00000000-0000-7000-8000-00000000000d", subject_type="Lot",
+            subject_keys={"lot": "L-A"}, predicate="slot_map",
+            object_kind="entity_ref",
+            object_payload=entity_ref("Lot", {"lot": "L-B"},
+                                      **{"from": "1", "to": "2"}),
+            occurred_at=None, source_who="lot_event",
+            source_translator_ver=f"lot_event/1#{derivation}",
+            source_raw_ref="lot_event:1")
+        basis = lt.hop_basis(c, lt.DEFAULT_RESOLVER_CONFIG)
+        assert basis == {"kind": (lt.BASIS_CONVENTION if derivation in assumptions
+                                  else lt.BASIS_MEASURED),
+                         "name": derivation}, (
+            f"{derivation}: the hop's basis field disagrees with the "
+            f"classification this test just forced")
+
+
+def test_the_hop_states_are_the_designs_projection_words():
+    """🔴 The route's state enum against the design's own vocabulary.
+
+    `ledger/vocabulary.py::PROJECTION_ONLY_WORDS` declared `contested` before
+    this route emitted it — it is design §4.2's projection vocabulary, and the
+    gate uses it to REFUSE those words as predicates. `ledger_trace.py`
+    deliberately does not import that module (the web server must not import the
+    translator package), so the two spellings are held equal here instead.
+
+    That is what stops the route inventing a fifth state word under a private
+    spelling: a new hop state has to be a word the design already owns.
+    """
+    stray = set(lt.HOP_STATES) - vocabulary.PROJECTION_ONLY_WORDS
+    assert not stray, (
+        f"hop state(s) {sorted(stray)} are not in the design's projection "
+        f"vocabulary. Add them to `PROJECTION_ONLY_WORDS` (and to the design) "
+        f"before the route emits them.")
+    assert lt.STATE_CONTESTED in vocabulary.PROJECTION_ONLY_WORDS
+
 
 #: Derivations this lane has judged to be UTTERANCES — the source said it, the
 #: translator only reshaped it. Held here rather than in `ledger_trace.py` on
@@ -343,9 +386,19 @@ def test_an_observation_overrides_a_convention_with_nobody_unpinning_anything():
         "the convention outranked a measurement - the exact inversion the "
         "layering value exists to prevent")
     assert hop["event_id"] == observed.id
-    assert hop["state"] == "candidate"
+    # The class DECLARED this winner (class 2 over class 3) and the assumption
+    # still disagrees — `contested`, not `candidate`. R-2026-08-13-B week 2.
+    assert hop["state"] == lt.STATE_CONTESTED
     assert hop["n"] == 2
     assert "convention:slot_preserving" in hop["reason"], hop["reason"]
+
+    # 🔴 AND THE STRUCTURED FIELD DESCRIBES THE WINNER, WHICH IS THE MEASUREMENT.
+    # `bonding_log/1` carries no `#derivation`, so the winner has no declared
+    # basis at all — while the word `convention:` sits in the same sentence,
+    # belonging to the claim that lost. A consumer reading the prose gets this
+    # backwards; a consumer reading the field cannot.
+    assert hop["basis"] is None, (
+        f"the losing convention leaked into the winner's basis: {hop['basis']}")
 
 
 def test_a_merge_hop_reports_the_uttered_derivation_not_the_convention():

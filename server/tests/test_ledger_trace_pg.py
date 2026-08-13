@@ -145,14 +145,19 @@ def _object(predicate, payload):
 
 
 def atom(name, lot, predicate, payload, occurred_at=T0, who="lot_event",
-         supersedes=None):
+         supersedes=None, derivation=None):
+    """One row of `ledger_events`. `derivation` stamps `source_translator_ver`'s
+    `#<derivation>` suffix — the ONLY place an atom's basis lives, which is why a
+    convention-backed fixture stamps it here and not in a column that does not
+    exist."""
     import json
     kind, ref = _object(predicate, payload)
     ref = None if ref is None else json.dumps(ref)
     return {"id": _uuid(name), "st": "Lot",
             "sk": json.dumps({"lot": lot}), "p": predicate, "ok": kind,
             "op": ref, "oa": occurred_at, "who": who,
-            "ver": "lot_event/1", "raw": f"lot_event:{name}",
+            "ver": "lot_event/1" + (f"#{derivation}" if derivation else ""),
+            "raw": f"lot_event:{name}",
             "sup": _uuid(supersedes) if supersedes else None}
 
 
@@ -289,7 +294,9 @@ def test_a_confirmed_claim_beats_a_newer_observation_on_real_sql(ledger):
     assert hop["to"]["keys"]["lot"] == "L-TRUE"
     # The observation named a DIFFERENT parent, so the hop reports the contest —
     # but the ranking is not in doubt and the confirmed claim is what is followed.
-    assert hop["state"] == "candidate"
+    # The class DECLARED this winner, so the word is `contested` (R-2026-08-13-B
+    # week 2), not the `candidate` umbrella it sheltered under for slice 1.
+    assert hop["state"] == lt.STATE_CONTESTED
     assert hop["n"] == 2
     assert "하위 계급 반대" in hop["reason"] and "L-WRONG" in hop["reason"]
 
@@ -704,6 +711,96 @@ def test_the_route_refuses_a_request_with_no_lot(ledger_client):
     assert ledger_client.get("/api/ledger/trace").status_code == 422
     assert ledger_client.get("/api/ledger/trace",
                              params={"lot": "  "}).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# 🔴 The EXPANDED contract, on the wire — R-2026-08-13-B week 2 + R-2026-08-13-C
+# ---------------------------------------------------------------------------
+
+def _contested_by_convention(lots, slots, wafers):
+    """A chain whose FIRST slot hop has a measurement and a convention that
+    DISAGREE — the real shape, and the one the default resolver config produces.
+
+    Deliberately not built out of a class-1 claim: the ROUTE loads the shipped
+    resolver config, whose class 1 is `frame_confirmed`, and no translator emits
+    that yet. Class 2 over class 3 is the contest that actually happens today —
+    `slot_preserving` is an ASSUMPTION (class 3) and any uttered mapping outranks
+    it, which is the ontology owner's ruling doing its job.
+    """
+    rows = straight_chain(lots, slots, wafers)
+    rows.append(atom("sm-conv", lots[0], "slot_map",
+                     # the assumption: "a split keeps its slot numbers"
+                     {"lot": lots[1], "from": slots[0], "to": slots[0]},
+                     derivation="slot_preserving"))
+    return rows
+
+
+def test_the_route_puts_contested_and_basis_on_the_wire(ledger_client, ledger):
+    """🔴 THE EXPANDED CONTRACT, END TO END, THROUGH REAL POSTGRESQL AND HTTP.
+
+    Both fields at once, because they shipped in one commit on purpose — the
+    route contract is not shaken twice.
+
+      `state: "contested"`  a winner was DECLARED by the class and a lower class
+                            still disagrees. Distinct from `candidate`, which is
+                            "k answers at one authority, no winner declared".
+      `basis: {kind, name}` what the WINNER rests on, as a field. The losing
+                            convention is named in the prose of the same
+                            sentence, and a consumer reading the prose gets it
+                            BACKWARDS — that read inverted once already.
+    """
+    with ledger.begin() as conn:
+        insert(conn, _contested_by_convention(LOTS, SLOTS, WAFERS))
+
+    body = ledger_client.get("/api/ledger/trace",
+                             params={"lot": "L-D", "slot": "3"}).json()
+
+    hop = [h for h in body["hops"] if h["predicate"] == "slot_map"][0]
+    assert hop["state"] == "contested", (
+        f"a declared winner with a live contradiction under it must not read "
+        f"'{hop['state']}': {hop['reason']}")
+    assert hop["n"] == 2
+    # The measurement won. `slot_preserving` would have kept slot 3.
+    assert hop["to"]["slot"] == SLOTS[1] != SLOTS[0]
+
+    # 🔴 THE INVERSION, ON THE WIRE. `convention:` is in the sentence and belongs
+    # to the LOSER; the winner uttered its mapping and carries no derivation.
+    assert "convention:slot_preserving" in hop["reason"], hop["reason"]
+    assert hop["basis"] is None, (
+        f"the losing convention leaked into the winner's basis: {hop['basis']}")
+
+    # And every hop on the wire carries the key set, `basis` included.
+    for h in body["hops"]:
+        assert "basis" in h, "a hop reached the client without the field"
+        assert h["basis"] is None or set(h["basis"]) == {"kind", "name"}
+        assert h["state"] in lt.HOP_STATES
+
+
+def test_the_route_carries_a_convention_basis_when_the_convention_WINS(
+        ledger_client, ledger):
+    """The other side of the branch, and the one the enrich graft acts on.
+
+    With no measurement to overrule it the assumption IS the answer, and the hop
+    is `resolved` — a state that says nothing at all about how much was assumed.
+    THAT is why `basis` cannot be inferred from `state`: this hop and a fully
+    measured one are the same word, and only the field tells them apart.
+    """
+    rows = straight_chain(LOTS, SLOTS, WAFERS)
+    rows = [r for r in rows if r["id"] != _uuid(f"sm-{LOTS[0]}")]
+    rows.append(atom("sm-conv", LOTS[0], "slot_map",
+                     {"lot": LOTS[1], "from": SLOTS[0], "to": SLOTS[1]},
+                     derivation="slot_preserving"))
+    with ledger.begin() as conn:
+        insert(conn, rows)
+
+    body = ledger_client.get("/api/ledger/trace",
+                             params={"lot": "L-D", "slot": "3"}).json()
+    hop = [h for h in body["hops"] if h["predicate"] == "slot_map"][0]
+
+    assert hop["state"] == "resolved", "nothing disagreed with it"
+    assert hop["basis"] == {"kind": "convention", "name": "slot_preserving"}, (
+        "the hop the graft may NEVER pre-mark confirmed is indistinguishable "
+        "from a measured one without this field")
 
 
 # ---------------------------------------------------------------------------

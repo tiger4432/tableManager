@@ -412,10 +412,98 @@ def claim_basis(claim):
     return basis or None
 
 
+#: 🔴 **THE HOP STATE VOCABULARY.** Four words as of R-2026-08-13-B week 2; three
+#: before it, because `contested` was allowed to shelter under `candidate` for
+#: slice 1 ON THE CONDITION that `reason` carried the real distinction. That
+#: condition ends here — the distinction is now in the `state` field and the
+#: prose is free to be prose again.
+#:
+#: The two middle words are NOT degrees of the same thing, which is why one word
+#: could not keep covering both:
+#:
+#:     contested   the CLASS declared a winner and a LOWER class still disagrees.
+#:                 The ranking is not in doubt; a live contradiction survives it.
+#:     candidate   the top class is NOT UNANIMOUS — k distinct answers at the same
+#:                 authority, and only the tiebreak levels (registration priority,
+#:                 recency, event id) separate them. Nothing declared a winner.
+#:
+#: 🔴 **A hop with both is `candidate`, not `contested`.** `contested` asserts
+#: "a winner was DECLARED", and a top class that disagrees with itself declared
+#: nothing — the tiebreak did. Reporting `contested` there would overstate the
+#: authority behind the answer, so the weaker word wins when both apply, and the
+#: dissent is still named in `reason`.
+#:
+#: ⚠️ Both words mean the same thing to the ENRICH GRAFT's safety rule: neither
+#: may ever pre-mark a row confirmed. The split exists so a client can act on
+#: them differently in every OTHER respect, not so one of them can become safe.
+STATE_RESOLVED = "resolved"
+STATE_CONTESTED = "contested"
+STATE_CANDIDATE = "candidate"
+STATE_UNRESOLVABLE = "unresolvable"
+
+#: Every state a hop may carry. `test_ledger_trace.py` pins this against the hop
+#: dicts the walk actually emits, and `test_ledger_trace_contract.py` pins it
+#: against `ledger/vocabulary.py::PROJECTION_ONLY_WORDS` — the design's own
+#: projection vocabulary, which already listed `contested` before this route
+#: emitted it. That module is NOT imported here on purpose (the web server does
+#: not import the translator package), so the two spellings are held equal by a
+#: test rather than by an import, exactly as `UUID7_MS_SQL` is.
+HOP_STATES = (STATE_RESOLVED, STATE_CONTESTED, STATE_CANDIDATE,
+              STATE_UNRESOLVABLE)
+
+#: 🔴 **THE KINDS OF `basis`, AND THE ONLY DISTINCTION THE SAFETY RULE READS.**
+#:
+#:     convention   the atom's content rests on a DECLARED ASSUMPTION that is not
+#:                  in the source row ("a split keeps its slot numbers"). Class 3.
+#:     measured     the source uttered it; the translator only reshaped it. Class 2.
+#:
+#: The enrich graft's hard rule — a hop resting on a convention may NEVER
+#: pre-mark a row confirmed — branches on `kind == "convention"` and on nothing
+#: else. It used to be recoverable only by regexing Korean prose, and that read
+#: INVERTED once: a `candidate` reason lists the LOSERS' basis labels inline, so
+#: a naive `includes('convention:')` labelled "assumption" the very hop where an
+#: assumption had been OVERRULED by a measurement. A safety rule cannot live in a
+#: sentence. R-2026-08-13-C.
+BASIS_CONVENTION = "convention"
+BASIS_MEASURED = "measured"
+BASIS_KINDS = (BASIS_CONVENTION, BASIS_MEASURED)
+
+
+def hop_basis(claim, config=None):
+    """What the WINNING claim of a hop rests on, as a structured field, or None.
+
+    🔴 `name` is reported VERBATIM off `claim_basis` and `kind` is decided by
+    `is_convention_backed` — i.e. by the SAME `inference_derivations` list that
+    decides the claim's CLASS. That identity is the point, and it is what keeps
+    this field from becoming the soft landing the standing rule forbids:
+
+        kind == "convention"  <->  is_convention_backed  <->  class 3
+
+    A derivation nobody has classified therefore comes out `measured`/class 2
+    here just as it did before this field existed, and
+    `test_every_declared_derivation_is_explicitly_classified` still fails at the
+    moment it is added. `basis.name` is a REPORT of the suffix, never a second
+    register of derivations that the classification test does not see.
+
+    None has two causes that are deliberately not told apart: the hop has no
+    winner (`unresolvable`), or the winner carries no `#<derivation>` suffix.
+    Both mean "no declared basis", and neither is a convention — so a client that
+    treats null as "not convention-backed" is correct in both.
+    """
+    if claim is None:
+        return None
+    name = claim_basis(claim)
+    if name is None:
+        return None
+    return {"kind": (BASIS_CONVENTION if is_convention_backed(claim, config)
+                     else BASIS_MEASURED),
+            "name": name}
+
+
 @dataclass
 class Resolution:
     """One hop's answer plus WHY it has the state it has."""
-    state: str                       # "resolved" | "candidate" | "unresolvable"
+    state: str                       # one of `HOP_STATES`
     winner: Optional[Claim]
     answer: Any                      # the extracted answer of the winning claim
     rank: Optional[int]
@@ -437,8 +525,10 @@ def resolve(claims, answer_of, config=None, subject_label="", predicate=""):
     🔴 **`n` counts DISTINCT ANSWERS THAT WERE IN CONTENTION, across classes.**
     The class decides WHICH answer is followed; it does not decide whether a
     disagreement happened. So a lower-class claim naming a different answer still
-    counts, and the hop reads `candidate` — the ranking is never in doubt, but
-    the operator is told that something disagreed.
+    counts, and the hop reads `contested` — the ranking is never in doubt, but
+    the operator is told that something disagreed. When the TOP class is itself
+    split the word drops to `candidate`, because then nothing declared a winner
+    at all; see `HOP_STATES` for why the weaker word wins when both apply.
 
     The case that forced this shape (ontology owner, 2026-08-13): a `slot_map`
     atom produced under the `slot_preserving` convention resolves at class 3, and
@@ -454,13 +544,13 @@ def resolve(claims, answer_of, config=None, subject_label="", predicate=""):
     claims = list(claims)
     if not claims:
         return Resolution(
-            state="unresolvable", winner=None, answer=None, rank=None, n=None,
+            state=STATE_UNRESOLVABLE, winner=None, answer=None, rank=None, n=None,
             reason=f"[no_claim] {predicate} 원자 없음 · {subject_label}")
 
     usable = [c for c in claims if answer_of(c) is not None]
     if not usable:
         return Resolution(
-            state="unresolvable", winner=None, answer=None, rank=None, n=None,
+            state=STATE_UNRESOLVABLE, winner=None, answer=None, rank=None, n=None,
             reason=(f"[unusable_payload] {predicate} {len(claims)}건 · "
                     f"목적어에 답 없음 · {subject_label}"),
             top_class=None)
@@ -496,29 +586,45 @@ def resolve(claims, answer_of, config=None, subject_label="", predicate=""):
         else:
             reason = (f"[agreed] {predicate} {len(peers)}건 전부 동일 답 · "
                       f"class={top_class} {cls_name}")
-        return Resolution(state="resolved", winner=winner, answer=agreed[0],
+        return Resolution(state=STATE_RESOLVED, winner=winner, answer=agreed[0],
                           rank=1, n=1, reason=_with_basis(reason, winner, cfg),
                           top_class=top_class, competing=tuple(contenders))
 
+    # The dissent sentence is built for BOTH states, not only for `contested`.
+    # Gaining the word must not lose the fact: a hop whose top class is split AND
+    # whose lower class disagrees reads `candidate`, and the lower-class dissent
+    # is still the thing an operator needs to see.
+    #
+    # NAME what each loser rests on, because "an assumption disagreed with a
+    # measurement" and "two measurements disagreed" are different situations and
+    # the operator acts on them differently.
+    dissent_phrase = ""
     if dissent:
-        # A lower class disagreed. NAME what it rests on, because "an assumption
-        # disagreed with a measurement" and "two measurements disagreed" are
-        # different situations and the operator acts on them differently.
         losers = []
         for c in outranked:
             a = answer_of(c)
             if a in dissent and a not in [x for x, _ in losers]:
                 losers.append((a, _basis_label(c, cfg)))
         shown = " / ".join(f"{a}({lbl})" if lbl else str(a) for a, lbl in losers[:3])
-        reason = (f"[candidate] class={top_class} {cls_name} 답 {agreed[0]} · "
-                  f"하위 계급 반대 {len(dissent)}종 ({shown}) · 1순위 {agreed[0]}")
-    else:
+        dissent_phrase = f" · 하위 계급 반대 {len(dissent)}종 ({shown})"
+
+    if len(agreed) > 1:
+        # The top class is not unanimous: k answers at one authority, separated
+        # only by the tiebreak levels. NOTHING declared this winner, so the word
+        # is `candidate` even when a lower class ALSO dissents.
+        state = STATE_CANDIDATE
         shown = " / ".join(str(a) for a in agreed[:4])
         if len(agreed) > 4:
             shown += f" / +{len(agreed) - 4}"
-        reason = (f"[candidate] class={top_class} {cls_name} 내 답 {n}종 ({shown}) · "
-                  f"1순위 {agreed[0]}")
-    return Resolution(state="candidate", winner=winner, answer=agreed[0],
+        reason = (f"[{STATE_CANDIDATE}] class={top_class} {cls_name} 내 답 "
+                  f"{len(agreed)}종 ({shown}){dissent_phrase} · 1순위 {agreed[0]}")
+    else:
+        # The class DECLARED this winner and a lower class still disagrees. The
+        # ranking is not in doubt; the contradiction is alive and is reported.
+        state = STATE_CONTESTED
+        reason = (f"[{STATE_CONTESTED}] class={top_class} {cls_name} 답 "
+                  f"{agreed[0]}{dissent_phrase} · 1순위 {agreed[0]}")
+    return Resolution(state=state, winner=winner, answer=agreed[0],
                       rank=1, n=n, reason=_with_basis(reason, winner, cfg),
                       top_class=top_class, competing=tuple(contenders))
 
@@ -971,13 +1077,23 @@ def resolve_display_zone(config=None):
             f"is missing.")
 
 
-def _hop(frm, to, resolution, predicate, zone):
+def _hop(frm, to, resolution, predicate, zone, config=None):
     """One hop in the pinned response shape.
 
-    `predicate` is the one field added to the pinned hop dict — additive, never
-    a rename or a removal. Without it a client cannot tell a `has_wafer` hop from
-    a `derived_from` hop except by parsing the prose in `reason`, and the whole
-    point of this screen is that the prose is for a human.
+    🔴 **THE SHAPE IS PINNED BY KEY SET, NOT BY "at least these keys".**
+    `test_ledger_trace.py::test_response_shape_is_the_pinned_one` asserts the key
+    set EXACTLY, so a field cannot arrive here unnoticed. Two have arrived
+    deliberately, both additive, both for the same reason:
+
+      `predicate`  (L2) — without it a client cannot tell a `has_wafer` hop from
+                   a `derived_from` hop except by parsing prose.
+      `basis`      (R-2026-08-13-C) — `{kind, name}` or None. Without it a client
+                   cannot tell an assumption from an utterance except by parsing
+                   prose, and that parse had already INVERTED once.
+
+    The standing principle behind both, and the reason a third field would be
+    argued the same way: **`reason` is prose for a human; any fact the screen
+    must BRANCH on goes out as a structured field.**
     """
     winner = resolution.winner
     return {
@@ -988,6 +1104,7 @@ def _hop(frm, to, resolution, predicate, zone):
         "rank": resolution.rank,
         "n": resolution.n,
         "reason": resolution.reason,
+        "basis": hop_basis(winner, config),
         "occurred_at": (_iso(winner.occurred_at, zone)
                         if winner is not None else None),
         "event_id": str(winner.id) if winner is not None else None,
@@ -1048,10 +1165,10 @@ def trace(lot, slot=None, lookup=None, config=None, max_depth=DEFAULT_MAX_DEPTH)
     while True:
         if cur_lot not in lots_with_atoms:
             res = Resolution(
-                state="unresolvable", winner=None, answer=None, rank=None, n=None,
+                state=STATE_UNRESOLVABLE, winner=None, answer=None, rank=None, n=None,
                 reason=f"[unknown_subject] lot={cur_lot} · 원장에 원자 0")
             hops.append(_hop(_lot_node(cur_lot, cur_slot), None, res,
-                             "register", zone))
+                             "register", zone, cfg))
             terminal_reason = (f"[unknown_subject] lot={cur_lot} · 원장에 원자 0 "
                                f"— 번역 안 됨 또는 없는 랏")
             break
@@ -1066,18 +1183,18 @@ def trace(lot, slot=None, lookup=None, config=None, max_depth=DEFAULT_MAX_DEPTH)
             hops.append(_hop(
                 _lot_node(cur_lot, cur_slot),
                 _wafer_node(res.answer) if res.answer is not None else None,
-                res, "has_wafer", zone))
+                res, "has_wafer", zone, cfg))
 
         # --- question 2: which lot did this one come from? ---------------
         parent_claims = at(cur_lot, "derived_from")
         if not parent_claims:
             registered = bool(at(cur_lot, "register"))
             res = Resolution(
-                state="unresolvable", winner=None, answer=None, rank=None, n=None,
+                state=STATE_UNRESOLVABLE, winner=None, answer=None, rank=None, n=None,
                 reason=(f"[root] lot={cur_lot} · derived_from 없음"
                         + (" (register 있음)" if registered else " (register 없음)")))
             hops.append(_hop(_lot_node(cur_lot, cur_slot), None, res,
-                             "derived_from", zone))
+                             "derived_from", zone, cfg))
             terminal_reason = (
                 f"[root] lot={cur_lot} · derived_from 주장 없음 — 사슬의 뿌리"
                 if registered else
@@ -1090,7 +1207,7 @@ def trace(lot, slot=None, lookup=None, config=None, max_depth=DEFAULT_MAX_DEPTH)
         parent = res.answer
         hops.append(_hop(_lot_node(cur_lot, cur_slot),
                          _lot_node(parent, None) if parent is not None else None,
-                         res, "derived_from", zone))
+                         res, "derived_from", zone, cfg))
         if parent is None:
             terminal_reason = (f"[broken] hop {len(hops)} · derived_from "
                                f"{len(parent_claims)}건이 부모 랏을 못 준다")
@@ -1103,7 +1220,7 @@ def trace(lot, slot=None, lookup=None, config=None, max_depth=DEFAULT_MAX_DEPTH)
             parent_slot = sm_res.answer
             hops.append(_hop(_lot_node(cur_lot, cur_slot),
                              _lot_node(parent, parent_slot),
-                             sm_res, "slot_map", zone))
+                             sm_res, "slot_map", zone, cfg))
 
         depth += 1
         if parent in visited:
@@ -1169,7 +1286,7 @@ def _map_slot(index, cur_lot, parent, cur_slot, cfg):
         present = len(index.get((cur_lot, "slot_map"), [])) + \
             len(index.get((parent, "slot_map"), []))
         return Resolution(
-            state="unresolvable", winner=None, answer=None, rank=None, n=None,
+            state=STATE_UNRESOLVABLE, winner=None, answer=None, rank=None, n=None,
             reason=(f"[no_slot_map] {cur_lot}→{parent} slot={cur_slot} 짝 없음 · "
                     f"두 랏의 slot_map 원자 {present}건 중 해당 없음"))
 
