@@ -352,7 +352,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                     business_key_val=item.get("business_key_val"), updates=updates,
                     source_name=R1_SOURCE_NAME, updated_by=f"chain_replay_{run_id}"))
 
-            for scope, raws in _scoped_batch_outputs(res, rule, target_table):
+            for scope, retract, raws in _scoped_batch_outputs(res, rule, target_table):
                 batch_items = []
                 for raw in raws:
                     stats["mapper_items"] += 1
@@ -366,7 +366,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                         source_name=R1_SOURCE_NAME, updated_by=f"chain_replay_{run_id}"))
                 if batch_items:
                     stats["scoped_batches"] += 1
-                    scoped_batches.append((scope, batch_items))
+                    scoped_batches.append((scope, retract, batch_items))
 
         if apply and (items or metadata_items or scoped_batches):
             # Metadata first is the live worker's ordering too: absent-only map
@@ -379,11 +379,13 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             for i in range(0, len(items), WRITE_CHUNK):
                 _apply_replay_batch(db, schemas, crud, target_table, items[i:i + WRITE_CHUNK],
                                     run_id, stats, stats["pages"], rule_name=rule.get("name"))
-            for scope, batch_items in scoped_batches:
+            for scope, retract, batch_items in scoped_batches:
                 _apply_replay_batch(db, schemas, crud, target_table, batch_items,
-                                    run_id, stats, stats["pages"], replace_map=True, scope=scope,
-                                    rule_name=rule.get("name"))
-                stats["maps_replaced"] += 1
+                                    run_id, stats, stats["pages"],
+                                    replace_map=scope is not None, scope=scope,
+                                    retract=retract, rule_name=rule.get("name"))
+                if scope is not None:
+                    stats["maps_replaced"] += 1
         elif items:
             # Dry-run: count the cells a human's value would keep protected. This
             # is the number that makes "the user layer is safe" observable rather
@@ -419,23 +421,52 @@ def _map_metadata_outputs(result: dict, rule: dict, target_table: str):
 
 
 def _scoped_batch_outputs(result: dict, rule: dict, target_table: str):
-    """Validate and expose replace-map batches without broadening their scope."""
+    """Validate and expose removal-scoped batches without broadening their scope.
+
+    Yields `(scope, retract, updates)` where exactly ONE of `scope` / `retract` is set.
+    `scope` removes by MAP (`replace_map`); `retract` removes by SOURCE, which is the
+    only strategy that works once several sources converge on one map key. The
+    envelope's validation is `dt_map_derivation.normalize_retraction_request`, shared
+    with the live worker - the `replace_map` envelope already has two hand-kept copies
+    and this one does not get a third.
+    """
     outputs = result.get("batches") or ()
-    if outputs and not rule.get("allow_replace_map", False):
+    if outputs and not rule.get("allow_replace_map", False) and not rule.get("allow_retraction", False):
         raise ReplayRefused(f"rule '{rule.get('name')}' returned scoped batches without allow_replace_map")
     for raw in outputs:
-        if not isinstance(raw, dict) or not raw.get("replace_map"):
-            raise ReplayRefused("chain scoped batch must explicitly set replace_map=true")
+        if not isinstance(raw, dict):
+            raise ReplayRefused("chain scoped batch must be an object")
         if (raw.get("target_table") or target_table) != target_table:
             raise ReplayRefused("chain scoped batch cannot redirect to another target table")
+        retract = raw.get("retract")
+        if retract is not None and raw.get("replace_map"):
+            raise ReplayRefused(
+                f"rule '{rule.get('name')}' set both replace_map and retract on one batch; "
+                f"the purge would remove the sibling sources' cells before the retraction "
+                f"could spare them")
+        if retract is not None:
+            if not rule.get("allow_retraction", False):
+                raise ReplayRefused(
+                    f"rule '{rule.get('name')}' returned a retract envelope without allow_retraction")
+            import dt_map_derivation
+            try:
+                source_column, source_value = dt_map_derivation.normalize_retraction_request(
+                    retract, rule.get("name"))
+            except ValueError as e:
+                raise ReplayRefused(str(e))
+            yield None, (source_column, source_value), raw.get("updates") or ()
+            continue
+        if not raw.get("replace_map"):
+            raise ReplayRefused(
+                "chain scoped batch must explicitly set replace_map=true or carry a retract envelope")
         scope = raw.get("scope")
         if not isinstance(scope, dict) or not scope:
             raise ReplayRefused("chain scoped batch requires a non-empty scope")
-        yield scope, raw.get("updates") or ()
+        yield scope, None, raw.get("updates") or ()
 
 
 def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, page,
-                        replace_map=False, scope=None, rule_name=None):
+                        replace_map=False, scope=None, retract=None, rule_name=None):
     batch = schemas.GeneralUpdateBatch(
         updates=items, transaction_id=f"chain_replay_{run_id}_{page:06d}", silent=False,
         replace_map=replace_map, scope=scope)
@@ -471,6 +502,26 @@ def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, pag
             stats["rows_created"] += 1
         else:
             stats["rows_updated"] += 1
+
+    # [Retraction] Same strategy and same order as the live worker: after the committed
+    # write, remove what THIS SOURCE owns and no longer derives. A replay that upserted
+    # without retracting would leave exactly the stale rows the live path removes, so
+    # the two would disagree about the table they both claim to rebuild.
+    if retract:
+        import dt_map_derivation
+        source_column, source_value = retract
+        derived_keys = dt_map_derivation.derived_keys_of(batch.updates, table_name,
+                                                         source_column)
+        plan = dt_map_derivation.plan_retraction(db, table_name, source_column,
+                                                 source_value, derived_keys)
+        logger.info("%s", dt_map_derivation.format_retraction_summary(plan))
+        if plan.get("declined"):
+            stats["retractions_declined"] = stats.get("retractions_declined", 0) + 1
+        elif plan.get("delete_row_ids"):
+            stats["rows_retracted"] = stats.get("rows_retracted", 0) + (
+                dt_map_derivation.apply_retraction(db, plan))
+        stats["rows_retraction_protected"] = (
+            stats.get("rows_retraction_protected", 0) + plan.get("protected", 0))
 
 
 def _count_user_protected(db, target_table: str, items: list) -> int:

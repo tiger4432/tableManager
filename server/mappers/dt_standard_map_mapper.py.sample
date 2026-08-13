@@ -1,10 +1,44 @@
-"""dt_inventory equations -> one scoped standard-coordinate dt_map replacement.
+"""dt_inventory equations -> one source-retracted standard-coordinate dt_map batch.
 
 THREE TABLES, THREE NAMES. This mapper reads a payload from the TRIGGER table, queries
 the SOURCE table, and writes the TARGET table. Those are three different tables and
 each states its own job-column name; a single `dt_job` literal could not express a
 deployment where any one of them differs. Every name here comes from
 `chain_bindings.resolve_column`, which refuses by name rather than assuming.
+
+THE MAP KEY IS THE PHYSICAL UNIT, AND THAT CHANGES HOW REMOVAL WORKS
+-------------------------------------------------------------------
+`dt_map`'s map key is whatever `map_key_columns` declares. When that is the physical
+unit `(dt_lot, dt_slot)` rather than the acquisition unit `dt_job`, SEVERAL JOBS
+CONVERGE ON ONE MAP - that convergence is the point of the key, because the same
+physical die written by two jobs is one row, and the layering invariant then applies to
+it unchanged.
+
+It also breaks `replace_map`. A purge is scoped to a whole map (`derive_replace_map_scope`
+validates every scope key to be INSIDE the map-key contract, so `{dt_job: J}` is refused
+outright once `dt_job` leaves the key), and purging the map to correct one job would
+delete every sibling job's contribution to it. This mapper therefore emits a `retract`
+envelope instead: the worker upserts this job's cells and then removes what THIS JOB
+owns and no longer derives. A sibling's rows carry a different job and are never in the
+population the retraction considers.
+
+WHAT FILLS THE MAP KEY, AND WHAT REFUSES A JOB THAT CANNOT FILL IT
+-----------------------------------------------------------------
+The identity values come from the TRIGGER payload - `dt_inventory` is the row that
+records the confirmed lot and slot for a job, and this mapper already holds it. They are
+read by DECLARATION: for each of the target's `map_key_columns`, the same name on the
+trigger table, unless the rule overrides it in `map_key_source_columns`. There is no
+fallback to `dt_log`'s stored lot/slot - that column is absent 40% of the time and WRONG
+10% of the time, and a wrong lot writes cells into another lot's map with an identical
+cell count either way.
+
+A job whose confirmed lot or slot is blank is NOT gated here. Its rows are emitted with
+the blank and `chain_key_gate` refuses them on the write loop, naming the blank column
+in the operator's log. That is deliberate: `server/mappers/*.py` is gitignored by design,
+so a guard written in this file does not reach a deployment at all, while the gate is
+tracked and sits on the funnel every chain-emitted row already passes through. The
+consequence is that "no confirmed lot/slot yet" produces NO MAP for that job, which is
+the intended behaviour and not a defect - coverage is rollout progress.
 """
 from __future__ import annotations
 
@@ -12,6 +46,7 @@ import json
 
 import chain_bindings
 import dt_frame_transform
+import dt_map_derivation
 import map_meta_registrar
 import map_overlay
 
@@ -27,6 +62,37 @@ _EQUATION_FIELDS = (
 )
 
 
+def _identity_source_columns(rule, target_table: str, trigger_table: str) -> dict:
+    """target map-key column -> the TRIGGER column that carries its confirmed value.
+
+    Declaration first (`map_key_source_columns` on the rule), then the same name on the
+    trigger table, then a refusal that names the column. Same precedence and the same
+    refusal posture as `chain_bindings`, and deliberately no third fallback: the third
+    fallback is what would let a stored, unconfirmed lot fill a map key.
+    """
+    declared = (rule or {}).get("map_key_source_columns") or {}
+    known = chain_bindings.declared_columns(trigger_table)
+    mapping = {}
+    for col in dt_map_derivation.identity_columns(target_table):
+        name = declared.get(col)
+        if isinstance(name, str) and name.strip():
+            name = name.strip()
+        else:
+            name = col
+        if known is not None and name not in known:
+            raise chain_bindings.ColumnBindingRefused(
+                "chain rule '%s' fills '%s' map key column '%s' from trigger table '%s', "
+                "but '%s' declares no column '%s' (declared: %s). Add it to "
+                "map_key_source_columns on the rule, or declare the column. Refusing "
+                "rather than falling back to the stored lot/slot - that value is absent "
+                "40%% of the time and wrong 10%% of the time, and a wrong lot writes "
+                "cells into another lot's map."
+                % ((rule or {}).get("name") or "<unnamed rule>", target_table, col,
+                   trigger_table, trigger_table, name, ", ".join(sorted(known))))
+        mapping[col] = name
+    return mapping
+
+
 def build_standard_dt_map_batches(db, payloads, rule=None):
     """Project each changed DT job from dt_log using its persisted equation."""
     from database import models
@@ -34,8 +100,9 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
     rule = rule or {}
     source_table = rule.get("source_table", "dt_log")
     target_table = rule.get("target_table", "dt_map")
+    trigger_table = rule.get("trigger_table")
     trigger_job_column = chain_bindings.resolve_column(
-        rule, "trigger_job_column", rule.get("trigger_table"),
+        rule, "trigger_job_column", trigger_table,
         "the job id read out of the trigger payload")
     source_job_column = chain_bindings.resolve_column(
         rule, "source_job_column", source_table,
@@ -43,9 +110,13 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
     # 🔴 THE OUTPUT KEY IS THE DANGEROUS ONE. A key the target table does not declare
     #    is DROPPED by `crud.apply_batch_updates` with one warning and a successful
     #    return, so a wrong name here writes a map with no job on it and reports 200.
+    #    Once the map key is (dt_lot, dt_slot) this can no longer be derived - the
+    #    target declares two map-key columns and neither of them is the job - so the
+    #    rule has to declare `target_job_column` and the refusal says exactly that.
     target_job_column = chain_bindings.resolve_column(
         rule, "target_job_column", target_table,
-        "the job column written onto the derived map and used as its replace scope")
+        "the job column carried on every derived cell and retracted by")
+    identity_sources = _identity_source_columns(rule, target_table, trigger_table)
 
     jobs = {}
     for payload in payloads or ():
@@ -60,7 +131,11 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
             standard_meta = dt_frame_transform.standard_meta(frame_meta)
         except (TypeError, ValueError):
             continue
-        jobs[job_id] = {"equation": equation, "standard_meta": standard_meta}
+        # Read as-is, blank included. The blank is what `chain_key_gate` refuses, and
+        # its refusal is the one that reaches a deployment.
+        identity = {col: _value(payload, src) for col, src in identity_sources.items()}
+        jobs[job_id] = {"equation": equation, "standard_meta": standard_meta,
+                        "identity": identity}
     if not jobs:
         return {"batches": []}
 
@@ -83,16 +158,23 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
                 job["standard_meta"], source_meta.get(map_overlay.VALID_DIE_REF_KEY))
         else:
             standard_meta = job["standard_meta"]
-        metadata_updates.append({
-            "business_key_val": map_meta_registrar.meta_business_key(target_table, job_id),
-            "updates": {
-                "target_table": target_table,
-                "map_id": job_id,
-                "grid_metadata": json.dumps(standard_meta, ensure_ascii=False, sort_keys=True),
-            },
-            "source_name": "chain_ingestion",
-            "updated_by": "dt_standard_map_metadata",
-        })
+        # The meta is registered against the MAP, so its id is the map identity - the
+        # same identity the cells carry, composed by the shared primitive rather than
+        # joined here. An identity composed two ways is an identity that eventually
+        # differs, and the symptom is a meta that exists and nothing can find.
+        map_id = map_meta_registrar.compose_map_id(
+            list(identity_sources), job["identity"], target_table)
+        if map_id is not None:
+            metadata_updates.append({
+                "business_key_val": map_meta_registrar.meta_business_key(target_table, map_id),
+                "updates": {
+                    "target_table": target_table,
+                    "map_id": map_id,
+                    "grid_metadata": json.dumps(standard_meta, ensure_ascii=False, sort_keys=True),
+                },
+                "source_name": "chain_ingestion",
+                "updated_by": "dt_standard_map_metadata",
+            })
         rows = db.query(source).filter(source_job == job_id).all()
         updates = []
         for row in rows:
@@ -100,14 +182,18 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
                 x, y = dt_frame_transform.apply_dt_equations(row.dt_x, row.dt_y, equation)
             except ValueError:
                 continue
-            updates.append({"updates": {
-                target_job_column: job_id, "dt_x": x, "dt_y": y,
-                "dt_index": row.dt_index, "c_bn": row.c_bn,
-            }, "source_name": "chain_ingestion", "updated_by": "dt_standard_map"})
+            cell = dict(job["identity"])
+            # The job travels with the cell as its SOURCE, not as key material. That is
+            # what makes the cell traceable and what lets the retraction below select
+            # positively what this job owns instead of guessing by set difference.
+            cell[target_job_column] = job_id
+            cell.update({"dt_x": x, "dt_y": y,
+                         "dt_index": row.dt_index, "c_bn": row.c_bn})
+            updates.append({"updates": cell, "source_name": "chain_ingestion",
+                            "updated_by": "dt_standard_map"})
         batches.append({
             "target_table": target_table,
-            "replace_map": True,
-            "scope": {target_job_column: job_id},
+            "retract": {"source_column": target_job_column, "source_value": job_id},
             "updates": updates,
         })
     return {"map_metadata_updates": metadata_updates, "batches": batches}

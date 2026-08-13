@@ -195,15 +195,48 @@ to the target table's map-key contract, then deletes that scope before writing.
 For a chain, it is an explicit opt-in batch envelope:
 
 ```python
-return {"batches": [{"target_table": "dt_map", "replace_map": True,
-                      "scope": {"dt_job": job_id}, "updates": cells}]}
+return {"batches": [{"target_table": "core_usage_map", "replace_map": True,
+                      "scope": {"core_wafer": wafer}, "updates": cells}]}
 ```
 
 The worker accepts it only when the matching rule declares
 `allow_replace_map: true`; target redirection, empty scope, and non-replace
 batches are refused. One envelope entry becomes one `GeneralUpdateBatch`, so
-two maps cannot be combined. `dt_inventory_to_standard_dt_map` uses declared
-scope `dt_map.map_key_columns=["dt_job"]`; other chains remain upserts.
+two maps cannot be combined.
+
+#### 제거 전략은 **둘**이고, 하나만 고르는 것이 아니라 **맵의 생산자 수가 고른다**
+
+`replace_map`은 **맵 단위로** 지웁니다 — 스코프 안에서 페이로드가 다시 주장하지 않은
+모든 행. 한 맵에 **생산자가 하나**인 동안에만 옳습니다.
+
+`retract`은 **출처 단위로** 지웁니다 — 이 출처가 소유하고 있는데 더 이상 파생하지 않는
+행. 한 맵을 **여러 출처가 먹이는** 경우의 유일한 전략입니다:
+
+```python
+return {"batches": [{"target_table": "dt_map",
+                      "retract": {"source_column": "dt_job", "source_value": job_id},
+                      "updates": cells}]}
+```
+
+🔴 **한 배치에 둘 다 실으면 거부**됩니다(`chain_ingestion_worker`·`chain_replay` 양쪽).
+purge가 먼저 돌아 형제 출처의 셀을 지운 **뒤에** 좁은 전략이 그것을 살릴 기회를 갖기
+때문입니다. 봉투 검증은 `dt_map_derivation.normalize_retraction_request` 하나이고,
+룰은 `allow_retraction: true`를 선언해야 합니다.
+
+`dt_inventory_to_standard_dt_map`은 **`retract`을 씁니다.** `dt_map`의 맵 키가
+취득 단위(`dt_job`)에서 **물리 단위 `(dt_lot, dt_slot)`**로 옮겨가면서 여러 잡이 한 맵에
+수렴하기 때문입니다 — 그 수렴이 이 키의 목적입니다(같은 물리 다이는 한 행이어야
+레이어링·우선순위·사람 교정 규칙이 그대로 적용됩니다). 실측(2026-08-13, `assy_qa`,
+실제 워커): 한 맵을 두 잡이 먹이는 상태에서 `replace_map`을 쓰면 **첫 파생에서 이미**
+두 번째 잡의 쓰기가 `In Scope: 3 | Claimed: 2 | Removed: 3`으로 첫 번째 잡의 셀
+**3개를 전부** 지웁니다. 재실행조차 필요하지 않습니다. `retract`으로는 같은 상황에서
+자기 것 1행만 지우고 형제 2행은 값까지 그대로 남습니다.
+
+**사람이 고친 셀은 retract이 지우지 않습니다**(`_human_touched_row_ids`) — 파생이 사람의
+교정을 덮으면 안 되는 것과 같은 이유를 삭제까지 확장한 것입니다. 그리고 한 출처가
+소유한 것의 **절반을 넘게** 지우게 되면 예산 가드가 **거절하고 그 사실을 이름으로
+남깁니다**(0건 삭제로 보고하지 않습니다) — 잘못된 프레임이나 잘못된 확정은 정확히
+「거의 전부가 stale」처럼 보이기 때문입니다.
 
 The scope key above is spelled from `chain_bindings.resolve_column(...,
 target_table, ...)`, not typed — it is the one output key whose name decides a

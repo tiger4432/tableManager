@@ -45,17 +45,18 @@
       "enabled": true
     },
     {
-      "__comment": "S3: dt_inventory carries the confirmed dt_frame and its derived portable X/Y/sign/offset equation. Project matching dt_log rows into the standard-coordinate dt_map. Each batch replaces exactly one dt_job map, never an inferred lot/slot map.",
+      "__comment": "S3: dt_inventory carries the confirmed dt_lot/dt_slot, the confirmed dt_frame and its derived portable X/Y/sign/offset equation. Project matching dt_log rows into the standard-coordinate dt_map, which is keyed by the PHYSICAL unit (dt_lot, dt_slot). | Several jobs converge on one map, so this rule RETRACTS instead of replacing: replace_map purges a whole map and would delete a sibling job's cells to correct this one's. `retract` removes only what this job owns and no longer derives, selected positively by target_job_column. | target_job_column must be DECLARED here -- dt_map now declares two map_key_columns and neither of them is the job, so the name can no longer be derived. | map_key_source_columns is omitted because dt_inventory spells the confirmed lot and slot with the same names dt_map's map key uses; declare it if a deployment differs.",
       "name": "dt_inventory_to_standard_dt_map",
       "trigger_table": "dt_inventory",
       "target_table": "dt_map",
       "source_table": "dt_log",
       "mapper_module": "mappers.dt_standard_map_mapper",
       "mapper_function": "build_standard_dt_map_batches",
+      "target_job_column": "dt_job",
       "is_batch": true,
       "allow_chain_trigger": true,
       "allow_map_metadata_upsert": true,
-      "allow_replace_map": true,
+      "allow_retraction": true,
       "enabled": true
     },
     {

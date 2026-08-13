@@ -47,6 +47,10 @@ import enrichment_candidates
 # written there does not deploy.
 import chain_key_gate
 
+# [Retraction] Removing what ONE SOURCE owns, for a map fed by several. `replace_map`
+# removes by map and cannot express it - see the retract branch in the write loop.
+import dt_map_derivation
+
 logger = get_process_logger("Chain", "chain_worker.log")
 
 class OutboxListener:
@@ -510,20 +514,64 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                                 raise ValueError("chain map metadata update requires a non-empty map_id")
                             map_metadata_updates.append(requested)
                     if target_payload and isinstance(target_payload, dict) and target_payload.get("batches"):
-                        if not rule.get("allow_replace_map", False):
+                        # Either permission opens the envelope; the per-batch checks below
+                        # then require the one that matches the strategy the batch actually
+                        # asked for. A retract-only rule must not have to grant itself
+                        # `allow_replace_map` to be heard - that would leave a purge
+                        # permission standing for a rule that never purges.
+                        if not rule.get("allow_replace_map", False) and not rule.get("allow_retraction", False):
                             raise ValueError(
-                                f"rule '{rule.get('name')}' returned scoped batches without allow_replace_map")
+                                f"rule '{rule.get('name')}' returned scoped batches without "
+                                f"allow_replace_map or allow_retraction")
                         for requested in target_payload.get("batches") or []:
-                            if not isinstance(requested, dict) or not requested.get("replace_map"):
-                                raise ValueError("chain scoped batch must explicitly set replace_map=true")
+                            if not isinstance(requested, dict):
+                                raise ValueError("chain scoped batch must be an object")
                             requested_target = requested.get("target_table") or target_table
                             if requested_target != target_table:
                                 raise ValueError(
                                     f"rule '{rule.get('name')}' cannot redirect scoped batch to '{requested_target}'")
+                            # TWO REMOVAL STRATEGIES, NEVER BOTH.
+                            #
+                            # `replace_map` removes BY MAP: everything inside the scope
+                            # that the payload does not re-claim. It is correct exactly
+                            # while one map has one producer.
+                            #
+                            # `retract` removes BY SOURCE: what this one source owns and
+                            # no longer derives. It is the strategy for a map fed by
+                            # SEVERAL sources, where a purge scoped to the map would
+                            # delete a sibling's cells to correct this one's - the map key
+                            # cannot express "only my contribution" because
+                            # `derive_replace_map_scope` validates every scope key to be
+                            # INSIDE the map-key contract.
+                            #
+                            # Accepting both on one batch would run the purge first and
+                            # then retract against the survivors, so the sibling rows
+                            # would already be gone before the narrower strategy ever
+                            # looked at them. Refused rather than ordered.
+                            retract = requested.get("retract")
+                            if retract is not None and requested.get("replace_map"):
+                                raise ValueError(
+                                    f"rule '{rule.get('name')}' set both replace_map and retract on "
+                                    f"one batch for '{requested_target}'. replace_map removes by MAP "
+                                    f"and retract removes by SOURCE; running both would purge the "
+                                    f"sibling sources' cells before the retraction could spare them.")
+                            if retract is not None:
+                                if not rule.get("allow_retraction", False):
+                                    raise ValueError(
+                                        f"rule '{rule.get('name')}' returned a retract envelope without "
+                                        f"allow_retraction")
+                                source_column, source_value = dt_map_derivation.normalize_retraction_request(
+                                    retract, rule.get("name"))
+                                scoped_batches.append((requested_target, requested.get("updates") or [],
+                                                       None, (source_column, source_value)))
+                                continue
+                            if not requested.get("replace_map"):
+                                raise ValueError(
+                                    "chain scoped batch must explicitly set replace_map=true or carry a retract envelope")
                             if not isinstance(requested.get("scope"), dict) or not requested["scope"]:
                                 raise ValueError("chain scoped batch requires a non-empty scope")
                             scoped_batches.append((requested_target, requested.get("updates") or [],
-                                                   requested["scope"]))
+                                                   requested["scope"], None))
                 else:
                     # Single event execution - one call per ROW, which for a per-row
                     # event is one call per event exactly as before.
@@ -560,12 +608,15 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
             write_batches = []
             if map_metadata_updates:
                 write_batches.append((map_meta_registrar.META_TABLE,
-                                      map_metadata_updates, False, None))
-            write_batches.extend((target, updates, False, None)
+                                      map_metadata_updates, False, None, None))
+            write_batches.extend((target, updates, False, None, None)
                                  for target, updates in table_updates.items())
-            write_batches.extend((target, updates, True, scope)
-                                 for target, updates, scope in scoped_batches)
-            for target_table, updates_list, replace_map, scope in write_batches:
+            # `retract` batches carry replace_map=False: the removal happens AFTER the
+            # write, against what the write actually keyed. A purge cannot be scoped to
+            # one source, so there is nothing for the write path to do up front.
+            write_batches.extend((target, updates, scope is not None, scope, retract)
+                                 for target, updates, scope, retract in scoped_batches)
+            for target_table, updates_list, replace_map, scope, retract in write_batches:
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
                     transaction_id=chain_tx_id,
@@ -650,6 +701,56 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                         f"{drop_report['empty_rows_suppressed']} row(s) were not created "
                         f"because every key they carried was dropped. Fix "
                         f"config/table_config.json or the mapper's column names.")
+
+                # [Retraction] Remove what THIS SOURCE owns and no longer derives.
+                #
+                # 🔴 THIS IS WHAT LETS SEVERAL SOURCES SHARE ONE MAP. `replace_map`
+                # removes by map, and once a map key is the physical unit rather than the
+                # acquisition unit, several jobs converge on one map - so a purge scoped
+                # to the map would delete a sibling job's cells to correct this one's.
+                # `plan_retraction` selects POSITIVELY by the source column that travels
+                # on every derived cell, so a sibling's rows are not in the population it
+                # considers at all.
+                #
+                # Runs AFTER the write, deliberately: the keys it spares are the keys the
+                # write composed, read back off the items the write mutated. Planning it
+                # before the write would mean guessing at them.
+                #
+                # Contained like the M3 and enrichment hooks below and for the same
+                # reason - except that a failure here leaves STALE ROWS, which is the
+                # conservative direction. It never leaves a hole.
+                if retract:
+                    try:
+                        source_column, source_value = retract
+                        derived_keys = dt_map_derivation.derived_keys_of(
+                            batch_data.updates, target_table, source_column)
+                        plan = dt_map_derivation.plan_retraction(
+                            db, target_table, source_column, source_value, derived_keys)
+                        logger.info("%s", dt_map_derivation.format_retraction_summary(plan))
+                        if plan.get("declined"):
+                            logger.warning(
+                                f"⚠️ [DtMapRetraction] Table: '{target_table}' | TX: "
+                                f"'{chain_tx_id}' | {source_column}='{source_value}' | "
+                                f"DECLINED: {plan['declined']['reason']}. Stale rows were "
+                                f"LEFT IN PLACE; nothing was deleted.")
+                        elif plan.get("delete_row_ids"):
+                            n = dt_map_derivation.apply_retraction(db, plan)
+                            # The rows are gone from the database; a client that is not
+                            # told still draws them. Folded into the SAME delete event the
+                            # replace_map path already emits rather than a second one.
+                            deleted_row_ids = list(deleted_row_ids or []) + list(
+                                plan["delete_row_ids"])
+                            logger.info(
+                                f"🔄 [DtMapRetraction] Table: '{target_table}' | TX: "
+                                f"'{chain_tx_id}' | {source_column}='{source_value}' | "
+                                f"retracted {n} stale row(s), protected "
+                                f"{plan.get('protected', 0)} human-touched row(s)")
+                    except Exception as retract_err:
+                        logger.error(
+                            f"🔴 [DtMapRetraction] Table: '{target_table}' | TX: "
+                            f"'{chain_tx_id}' | retraction failed AFTER a committed write; "
+                            f"stale rows may remain: "
+                            f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
 
                 # [M3] Absent-only wafer_map_metadata auto-registration for
                 # chain-created maps. Uses the VALIDATED batch items (same

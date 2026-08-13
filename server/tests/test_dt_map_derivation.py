@@ -985,6 +985,79 @@ def test_apply_retraction_deletes_exactly_the_plan_and_re_derives_nothing(env):
     assert remaining == {"k1", "k2", "k4"}, "apply must not act on what the plan never saw"
 
 
+def test_apply_retraction_takes_the_ledgers_with_the_row(env):
+    """A row deleted without its `cell_sources` / `cell_overwrites` leaves records keyed
+    to a row_id that no longer exists, and nothing will ever join back to them.
+    `crud._apply_batch_updates_once` deletes exactly these two tables before it deletes
+    the row on BOTH of its removal paths; a second way to remove a map row must not be a
+    second opinion about what removing one means."""
+    db = env
+    _seed_map_rows(db, ["k1", "k2"])
+    for rid in ("k1", "k2"):
+        db.add(models.CellSource(table_name=MAP, row_id=rid, column_name="bn",
+                                 source_name="chain_ingestion", value={"value": "x"},
+                                 updated_by="chain_worker"))
+    # A human overwrite on the row that SURVIVES - it must still be there afterwards.
+    db.add(models.CellOverwrite(table_name=MAP, row_id="k1", column_name="bn",
+                                is_overwrite=True, updated_by="operator"))
+    db.commit()
+
+    def ledger(rid):
+        return (db.query(models.CellSource)
+                .filter(models.CellSource.table_name == MAP,
+                        models.CellSource.row_id == rid).count(),
+                db.query(models.CellOverwrite)
+                .filter(models.CellOverwrite.table_name == MAP,
+                        models.CellOverwrite.row_id == rid).count())
+
+    assert ledger("k2") == (1, 0), "fixture did not arm the axis this test is about"
+
+    plan = derivation.plan_retraction(db, MAP, "job", JOB, derived_keys={"k1"},
+                                      min_population=100)
+    assert plan["delete_row_ids"] == ["k2"]
+    assert derivation.apply_retraction(db, plan) == 1
+    assert ledger("k2") == (0, 0), "the retracted row left ledger orphans behind"
+    assert ledger("k1") == (1, 1), "the surviving row lost its ledger"
+
+
+def test_derived_keys_refuses_an_item_that_came_back_unkeyed(env):
+    """`plan_retraction` treats "owned and not in derived_keys" as stale, so a key
+    missing from the set is a row being marked for deletion. An incomplete set does not
+    under-delete - it OVER-deletes what was just written."""
+    from database import schemas
+    good = schemas.GeneralUpdateItem(business_key_val="k1", updates={"bn": "x"})
+    blank = schemas.GeneralUpdateItem(business_key_val=None, updates={"bn": "y"})
+
+    assert derivation.derived_keys_of([good], MAP, "job") == {"k1"}
+    with pytest.raises(derivation.DerivationRefused) as exc:
+        derivation.derived_keys_of([good, blank], MAP, "job")
+    assert exc.value.code == derivation.REFUSE_RETRACTION_UNKEYED
+    assert "1 of 2" in str(exc.value)
+
+
+@pytest.mark.parametrize("request_obj,needle", [
+    (None, "non-empty object"),
+    ({}, "non-empty object"),
+    ({"source_value": "J"}, "no 'source_column'"),
+    ({"source_column": "  ", "source_value": "J"}, "no 'source_column'"),
+    ({"source_column": "job"}, "blank 'source_value'"),
+    ({"source_column": "job", "source_value": ""}, "blank 'source_value'"),
+    ({"source_column": "job", "source_value": "   "}, "blank 'source_value'"),
+])
+def test_a_malformed_retract_envelope_is_refused_by_name(request_obj, needle):
+    """A blank source_value would select every row whose source is blank - the
+    widening the envelope exists to avoid."""
+    with pytest.raises(ValueError) as exc:
+        derivation.normalize_retraction_request(request_obj, "some_rule")
+    assert needle in str(exc.value)
+    assert "some_rule" in str(exc.value)
+
+
+def test_a_well_formed_retract_envelope_normalizes():
+    assert derivation.normalize_retraction_request(
+        {"source_column": " job ", "source_value": "J1"}, "r") == ("job", "J1")
+
+
 def test_retraction_refuses_when_the_target_does_not_carry_the_source(env):
     """Without the source on the cell, stale rows could only be guessed at by set
     difference - and set-difference is exactly what scored 16 wrong dies as 1."""

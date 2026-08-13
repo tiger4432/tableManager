@@ -818,19 +818,110 @@ def apply_retraction(db, plan) -> int:
 
     Takes the ids the plan decided on and re-derives nothing: recomputing here could
     delete something the dry run never showed.
+
+    THE LEDGERS GO WITH THE ROW. `cell_sources` and `cell_overwrites` are keyed by
+    `(table_name, row_id)` and nothing else, so a row deleted without them leaves
+    records that no longer describe anything and that no query will ever join back to.
+    `crud._apply_batch_updates_once` deletes exactly these two tables before it deletes
+    the row on BOTH of its removal paths (the up-front purge and the scope diff); this
+    is the same three statements in the same order, because a second way to remove a map
+    row is a second chance to disagree about what removing one means.
+
+    The orphans are not hypothetical: `dt_map` on this workstation carried 16,150
+    `cell_overwrites` rows whose `row_id` no longer existed (measured 2026-08-12), which
+    is what a purge that skipped the ledger leaves behind.
     """
     from database import models
-    model = models.DYNAMIC_TABLES.get(plan.get("target_table"))
+    table_name = plan.get("target_table")
+    model = models.DYNAMIC_TABLES.get(table_name)
     ids = plan.get("delete_row_ids") or []
     if model is None or not ids:
         return 0
     deleted = 0
     for i in range(0, len(ids), CHUNK):
+        chunk = ids[i:i + CHUNK]
+        db.query(models.CellSource).filter(
+            models.CellSource.table_name == table_name,
+            models.CellSource.row_id.in_(chunk)).delete(synchronize_session=False)
+        db.query(models.CellOverwrite).filter(
+            models.CellOverwrite.table_name == table_name,
+            models.CellOverwrite.row_id.in_(chunk)).delete(synchronize_session=False)
         deleted += (db.query(model)
-                    .filter(model.row_id.in_(ids[i:i + CHUNK]))
+                    .filter(model.row_id.in_(chunk))
                     .delete(synchronize_session=False))
     db.commit()
     return deleted
+
+
+# A malformed envelope raises plain `ValueError` (see `normalize_retraction_request`),
+# so it deliberately has no code here - an unraised constant is the dead-reserved-value
+# ambiguity `chain_bindings.ORIGIN_INHERITED` already left behind once.
+REFUSE_RETRACTION_UNKEYED = "retraction_derived_keys_incomplete"
+
+
+def normalize_retraction_request(request, rule_name=None) -> tuple:
+    """`{"source_column": c, "source_value": v}` -> `(c, v)`, or a ValueError that NAMES it.
+
+    One reader for the two consumers of the envelope (`chain_ingestion_worker` and
+    `chain_replay`). They already have two spellings of the `replace_map` envelope's
+    validation and those two have to be kept in step by hand; this one does not get a
+    second copy.
+
+    `ValueError` on purpose - it is what the worker's other envelope validations raise
+    and what the API layer already maps to 400.
+    """
+    who = "chain rule '%s'" % (rule_name or "<unnamed rule>")
+    if not isinstance(request, dict) or not request:
+        raise ValueError("%s: a retract envelope must be a non-empty object naming "
+                         "source_column and source_value" % who)
+    column = request.get("source_column")
+    value = request.get("source_value")
+    if not isinstance(column, str) or not column.strip():
+        raise ValueError("%s: retract envelope declares no 'source_column', so what this "
+                         "source owns could not be selected and the fallback would be a "
+                         "set difference over the whole table" % who)
+    if _blank(value):
+        raise ValueError("%s: retract envelope carries a blank 'source_value' for column "
+                         "'%s'. A blank value would select every row whose source is "
+                         "blank - the widening this envelope exists to avoid."
+                         % (who, column))
+    return column.strip(), value
+
+
+def derived_keys_of(written_items, target_table: str, source_column: str) -> set:
+    """The `business_key_val`s the write actually composed, for `plan_retraction`.
+
+    Read back from the items the write mutated rather than recomposed here.
+    `crud.assemble_composite_business_key` writes the key it built into
+    `item.business_key_val`, and asking it for the answer is what guarantees this cannot
+    disagree with the key the row was actually stored under. Recomposing the join from
+    `composite_key_source` would be a second implementation of the same rule, and the
+    two would diverge exactly when the separator or the blank handling changed.
+
+    🔴 REFUSES on an item that came back without a key. `plan_retraction` treats "owned
+    and not in derived_keys" as stale, so a key missing from this set is a row this
+    source owns being marked for deletion. An incomplete set does not under-delete, it
+    OVER-deletes, so it must not be allowed to look like a small one.
+    """
+    keys = set()
+    unkeyed = 0
+    for item in written_items or ():
+        key = getattr(item, "business_key_val", None)
+        if key is None or str(key).strip() == "":
+            unkeyed += 1
+            continue
+        keys.add(key)
+    if unkeyed:
+        raise DerivationRefused(
+            REFUSE_RETRACTION_UNKEYED,
+            "%d of %d row(s) written to '%s' came back with no business_key_val, so the "
+            "set of keys this derivation produced is incomplete. Retracting against it "
+            "would treat every one of those rows as stale and DELETE what was just "
+            "written. Refusing the retraction; the upsert itself already committed."
+            % (unkeyed, len(list(written_items or ())), target_table))
+    logger.debug("[DtMapRetraction] %s: %d derived key(s) for '%s'",
+                 target_table, len(keys), source_column)
+    return keys
 
 
 def format_retraction_summary(plan) -> str:
