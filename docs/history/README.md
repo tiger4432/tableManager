@@ -1,13 +1,28 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **500개** 이력. (거버넌스 규칙 #4)
+> 총 **515개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-13 15:21** — [The Naive Convention Check Inverts The Distinction](./20260813_152149_the_naive_convention_check_inverts_the_distinction.md)
+- **2026-08-13 15:03** — [The Gate Passed And The Step After It Is Where The Rule Strains](./20260813_150332_the_gate_passed_and_the_step_after_it_is_where_the_rule_strains.md)
+- **2026-08-13 14:41** — [Every Test Was Green Because The Lanes Fixtures Agreed With The Lane](./20260813_144117_every_test_was_green_because_the_lanes_fixtures_agreed_with_the_lane.md)
+- **2026-08-13 14:14** — [A Wrong Instant Is Still A Well Formed One](./20260813_141400_a_wrong_instant_is_still_a_well_formed_one.md)
+- **2026-08-13 14:12** — [The Operator List Lived In Messages And The Merge Question Dissolved](./20260813_141200_the_operator_list_lived_in_messages_and_the_merge_question_dissolved.md)
+- **2026-08-13 14:07** — [The Refusal That Failed To Parse Looked Exactly Like One That Fired](./20260813_140756_the_refusal_that_failed_to_parse_looked_exactly_like_one_that_fired.md)
+- **2026-08-13 14:04** — [One Capped Read Returned Different Cells And Repetition Alone Missed It](./20260813_140457_one_capped_read_returned_different_cells_and_repetition_alone_missed_it.md)
+- **2026-08-13 13:54** — [43 Source Rows Become 878 Atoms And The Split Chain Rests On A Convention](./20260813_135449_43_source_rows_become_878_atoms_and_the_split_chain_rests_on_a_convention.md)
+- **2026-08-13 13:52** — [The Answer Had Ridden Every Response Since The Route Landed With Zero Consumers](./20260813_135221_the_answer_had_ridden_every_response_since_the_route_landed_with_zero_consumers.md)
+- **2026-08-13 13:38** — [The R3 Violation Only A Fresh Deployment Could Ever Have Received](./20260813_133816_the_r3_violation_only_a_fresh_deployment_could_ever_have_received.md)
+- **2026-08-13 13:31** — [A Doc Round Corrected Its Own Previous Round And The Body Overstated Which Sentence](./20260813_133121_a_doc_round_corrected_its_own_previous_round_and_the_body_overstated_which_sentence.md)
+- **2026-08-13 13:30** — [Six Suite Reds Read The Operators Own Config](./20260813_133018_six_suite_reds_read_the_operators_own_config.md)
+- **2026-08-13 13:27** — [The Stale Anchors Were Removed Rather Than Renumbered](./20260813_132736_the_stale_anchors_were_removed_rather_than_renumbered.md)
+- **2026-08-13 13:25** — [Twelve Dies Go In One Row Comes Out And The Half Fix Reads Like The Fix](./20260813_132506_twelve_dies_go_in_one_row_comes_out_and_the_half_fix_reads_like_the_fix.md)
+- **2026-08-13 13:22** — [A Clean Scan Produced No Run Because The Two Halves Were Correct Apart](./20260813_132234_a_clean_scan_produced_no_run_because_the_two_halves_were_correct_apart.md)
 - **2026-08-13 13:14** — [The 35 Minutes Was The Walk To The Question Not The Question](./20260813_131455_the_35_minutes_was_the_walk_to_the_question_not_the_question.md)
 - **2026-08-13 12:51** — [The Drift Banner Was Accurate At Print Time And Stale Seconds Later](./20260813_125108_the_drift_banner_was_accurate_at_print_time_and_stale_seconds_later.md)
 - **2026-08-13 12:46** — [Two Spellings Of Read Only Were Not Duplicates And One Mutation Was Not Enough](./20260813_124642_two_spellings_of_read_only_were_not_duplicates_and_one_mutation_was_not_enough.md)

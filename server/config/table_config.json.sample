@@ -52,7 +52,7 @@
       "wafer_id",
       "event_time"
     ],
-    "__map_key_columns_comment": "R3 (SCHEMA_CANON): map_key_columns must be a SUBSET of composite_key_source. This said [wafer_id], which is not key material here -- and the column comment two fields up says wafer_id is DELIBERATELY SPARSE ('absence is the enrichment work item'). A purge scoped by a sparse non-key column scopes by nothing: replace_map returns 200 and deletes no rows for every row that has not been enriched yet. The live config has always carried the correct value; only this .sample was wrong, so a FRESH DEPLOYMENT was the only thing that would ever have got the broken declaration. Repaired 2026-08-13 from the live config, R3 re-run across every table in both files afterwards: 0 violations.",
+    "__map_key_columns_comment": "R3 (SCHEMA_CANON): map_key_columns must be a SUBSET of composite_key_source. This said [wafer_id], which is not key material here -- and this declaration's own opening __comment says wafer_id is DELIBERATELY SPARSE ('absence is the enrichment work item'). A purge scoped by a sparse non-key column scopes by nothing: replace_map returns 200 and deletes no rows for every row that has not been enriched yet. The live config has always carried the correct value; only this .sample was wrong, so a FRESH DEPLOYMENT was the only thing that would ever have got the broken declaration. Repaired 2026-08-13 from the live config, R3 re-run across every table in both files afterwards: 0 violations.",
     "map_key_columns": ["core_lot", "core_slot"]
   },
   "core_usage_map": {
