@@ -143,7 +143,7 @@ graph TD
 | `maps.json` | 맵 에디터 지오메트리 프리셋 |
 | `scheduler_status.json` | Auto-Update 스케줄러 실시간 상태(쓰기 전용) |
 | `auto_update_control.json` | Auto-Update 수집기별 active 토글(어드민이 쓰고 스케줄러가 매 틱 읽음 — 핫 반영, 부재 시 전부 active) — IO `utils/auto_update_control.py` |
-| `ingestion_settings.json` | 인제션 런타임 노브 — `heavy_file_mb`(P1 레인 임계)·`dedup_by_signature`·`resume_from_checkpoint`(P2). 파일 경계 핫리로드 |
+| `ingestion_settings.json` | 인제션 런타임 노브 — `heavy_file_mb`(P1 레인 임계)·`dedup_by_signature`·`resume_from_checkpoint`(P2)·**`dedup_by_path_stat`**(tier-1 경로+stat 스킵)·**`archive_processed_files`**(처리 후 파일을 옮길지 — `false`면 원장이 재처리를 막는다, 마이그레이션 선행). 파일 경계 핫리로드 |
 | `map_overlay_config.json` | **범용 맵 오버레이** — `table_bindings`(맵 좌표 컬럼)·`paint_lock`(페인트 잠금 정본). **`align_overrides`는 2026-07-27 폐지** — 정렬의 근거는 `wafer_map_metadata` 하나뿐이다 |
 | `bonding_plan_config.json` / `transfer_plan_config.json` | 계획 엔진 역할 바인딩 — 역할(role)→실테이블·컬럼, stage 선언(`target_map`), `plan_store` |
 

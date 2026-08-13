@@ -92,6 +92,7 @@ from ingestion_checkpoint import (
     CheckpointPlan,
     compute_file_signature,
     is_force_reingest,
+    read_file_stat,
 )
 
 # [Drop visibility] Per-file budget for the undeclared-column drop summary. The keys
@@ -313,6 +314,34 @@ def dedup_by_signature_enabled() -> bool:
 def resume_from_checkpoint_enabled() -> bool:
     """오프셋 체크포인트 재개 활성 여부 (기본 True). False면 항상 처음부터 적재한다."""
     return _bool_setting("resume_from_checkpoint", DEFAULT_RESUME_FROM_CHECKPOINT)
+
+
+# ── [Tier 1] 경로+stat 빠른 스킵 / 처리 후 파일 이동 정책 ──────────────────
+DEFAULT_DEDUP_BY_PATH_STAT = True
+DEFAULT_ARCHIVE_PROCESSED_FILES = True
+
+
+def dedup_by_path_stat_enabled() -> bool:
+    """[Tier 1] `(경로, mtime, size)` 일치만으로 **해시 없이** 스킵할지 (기본 True).
+
+    🔴 **실패 방향**: tier 1은 「mtime과 size가 그대로인 채 내용만 바뀐 파일을 다시
+    읽지 않는 쪽」으로 진다. 도달 가능하다 — mtime을 보존하는 복사 도구가 있고, 같은
+    길이로 같은 마이크로초에 덮어써도 그렇게 된다. 파일을 한 번만 쓰는 fab 피드에서는
+    스윕 39초→1초를 얻는 옳은 거래지만 **판단이지 공짜가 아니다**. 그 판단을 되돌리는
+    스위치가 이것이고, `dedup_by_signature: false`(전역 강제 재처리)는 이것까지
+    같이 끈다 — 그러지 않으면 「전역 강제 재처리 스위치」가 조용히 무력해진다."""
+    if not dedup_by_signature_enabled():
+        return False
+    return _bool_setting("dedup_by_path_stat", DEFAULT_DEDUP_BY_PATH_STAT)
+
+
+def archive_processed_files_enabled() -> bool:
+    """처리된 파일을 archives/·err/로 **옮길지** (기본 True = 종전 동작).
+
+    False면 파일은 떨어진 자리에 그대로 남고, 재처리 방지는 전적으로 원장이 맡는다
+    (tier 1 = 경로+stat, tier 2 = 내용 시그니처). 실패 사실도 `err/`라는 위치가 아니라
+    원장의 `status="FAILED"` 행이 들고 있게 된다."""
+    return _bool_setting("archive_processed_files", DEFAULT_ARCHIVE_PROCESSED_FILES)
 
 
 # ── [Flatten] nested directory flatten (raws/ 하위 폴더 트리 → 파일만 승격) ──
@@ -1140,19 +1169,36 @@ class IngestionHandler(FileSystemEventHandler):
             return self._process_with_retry(file_path, uploader, retries, delay)
 
     def _process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
-        # Initial debounce to allow file copy to finish
-        time.sleep(delay)
-
         abs_path = os.path.abspath(file_path)
-        if not os.path.exists(abs_path):
-            logger.debug(f"File vanished during debounce (likely processed by concurrent thread): {file_path}")
-            return
-
+        basename = os.path.basename(file_path)
         # [D1] 파일당 1회 스냅샷 — 해석·검증·업서트·로그가 전부 같은 config 스냅샷을 본다.
         # 파일 처리 도중 table_config가 바뀌어도 이 파일은 시작 시점 기준으로 완결된다.
         t_name, table_info = self._snapshot_table_context()
 
-        basename = os.path.basename(file_path)
+        # [Tier 1] **디바운스보다 먼저** 묻는다. 여기가 요점이다: 해시(파일당 ~1.7ms)보다
+        # 아래의 `time.sleep(delay)` 1초가 훨씬 비싸고, 파일을 옮기지 않으면 스윕이
+        # raws/에 쌓인 파일을 전부 다시 집어 올린다 — 이 박스의 22,626개 트리로 재면
+        # 디바운스만 6시간이 넘는다. stat 한 번으로 결론이 나는 파일에는 디바운스가
+        # 필요 없다: (mtime, size)가 원장과 같다는 것 자체가 「지금 복사 중이 아니다」다.
+        file_stat = read_file_stat(abs_path)
+        if file_stat is None:
+            logger.debug(f"File vanished before processing: {file_path}")
+            return
+        if self._try_path_stat_skip(abs_path, basename, t_name, file_stat):
+            return
+
+        # Initial debounce to allow file copy to finish
+        time.sleep(delay)
+
+        if not os.path.exists(abs_path):
+            logger.debug(f"File vanished during debounce (likely processed by concurrent thread): {file_path}")
+            return
+        # The debounce may have caught the tail of a copy — re-read the stat so the
+        # value written to the ledger is the file we are about to ingest, not the
+        # half-copied one we first saw.
+        file_stat = read_file_stat(abs_path) or file_stat
+
+        signature = None
         for attempt in range(retries):
             try:
                 # [P2-B] 파일 시그니처(내용 전체 sha256) — 재개 동일성 판정과 dedup의 공통 키.
@@ -1165,7 +1211,8 @@ class IngestionHandler(FileSystemEventHandler):
                 heartbeat.beat(HEARTBEAT_NAME, note=f"hashed {basename}")
 
                 # [P2-B] 동일 내용이 이미 SUCCESS로 적재됐으면 재처리하지 않는다(명시 기록·통지).
-                skipped = self._try_dedup_skip(file_path, basename, t_name, signature)
+                skipped = self._try_dedup_skip(file_path, basename, t_name, signature,
+                                               file_stat=file_stat)
                 if skipped:
                     return
 
@@ -1190,6 +1237,8 @@ class IngestionHandler(FileSystemEventHandler):
                     effective_total, parse_meta.get("source_kind"),
                     # `__force__` 파일은 "전부 다시 넣어라"는 뜻이므로 잔여 오프셋을 이어받지 않는다.
                     force_restart=is_force_reingest(basename),
+                    # [Tier 1] 다음 스윕이 해시 없이 이 파일을 알아보게 하는 열쇠.
+                    file_stat=file_stat,
                 )
 
                 # 매칭 및 실행 성공 (빈 결과일 수도 있음)
@@ -1208,7 +1257,8 @@ class IngestionHandler(FileSystemEventHandler):
                 # [P2-A] 재개/재시작 사유도 같은 detail 슬롯으로 노출한다(조용한 폴백 금지).
                 detail = self._compose_detail(skipped_no_key, plan, has_rows)
                 logger.info(
-                    f"[{t_name}] ✅ Successfully processed and archived: {basename}"
+                    f"[{t_name}] ✅ Successfully processed and "
+                    f"{'archived' if dest_path != abs_path else 'left in place'}: {basename}"
                     + (f" ({detail})" if detail else "")
                 )
                 self._log_ingestion_success(file_path, dest_path, t_name=t_name, detail=detail)
@@ -1225,6 +1275,7 @@ class IngestionHandler(FileSystemEventHandler):
                 dest_path = self._move_to_err_folder(file_path)
                 if not dest_path:
                     dest_path = file_path
+                self._record_failure(t_name, signature, basename, dest_path, error_msg, file_stat)
                 self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name)
                 if self.on_file_processed_callback:
                     self.on_file_processed_callback(t_name, os.path.basename(file_path), "FAILED", str(e))
@@ -1235,6 +1286,9 @@ class IngestionHandler(FileSystemEventHandler):
         dest_path = self._move_to_err_folder(file_path)
         if not dest_path:
             dest_path = file_path
+        # A locked file is a TRANSIENT failure and the file is still where it was,
+        # so it is deliberately NOT sealed in the ledger: the next sweep must be
+        # allowed to try again once the lock is released.
         self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name)
         if self.on_file_processed_callback:
             self.on_file_processed_callback(t_name, os.path.basename(file_path), "FAILED", error_msg)
@@ -1263,7 +1317,76 @@ class IngestionHandler(FileSystemEventHandler):
             parts.append(plan.note)
         return " / ".join(parts) if parts else None
 
-    def _try_dedup_skip(self, file_path: str, basename: str, t_name: str, signature: str | None) -> bool:
+    def _try_path_stat_skip(self, abs_path: str, basename: str, t_name: str, file_stat) -> bool:
+        """[Tier 1] 같은 경로·같은 (mtime, size)에 대해 이미 결론이 난 파일을 **해시 없이**
+        건너뛴다. 반환 True = 스킵(호출자는 즉시 반환).
+
+        조용하다 — 그리고 그게 요점이다. tier 1이 적중한다는 것은 「이 파일에 대해
+        이미 로그·통지·원장 기록을 남겼다」는 뜻이고, 파일을 옮기지 않으면 이 적중이
+        **스윕마다 파일 수만큼** 일어난다. 여기서 한 줄씩만 남겨도 22,626줄이 5분마다
+        쌓여 진짜 사건을 덮는다(같은 논리로 foreign source의 반복 스킵도 이미 조용하다).
+        내구성 있는 기록은 이 스킵이 찾아낸 바로 그 원장 행이다.
+
+        강제 재처리 경로는 tier 2와 동일하게 여기서도 먼저 빠져나간다."""
+        if not t_name or not file_stat:
+            return False
+        if is_force_reingest(basename):
+            return False
+        if not dedup_by_path_stat_enabled():
+            return False
+
+        db = SessionLocal()
+        try:
+            row = ingestion_checkpoint.find_terminal_by_path_stat(
+                db, t_name, abs_path, file_stat)
+        except Exception as e:
+            # 가용성 우선 — 조회 실패는 처리를 막지 않는다(전체 해시 경로로 떨어진다).
+            logger.warning(f"[{t_name}] Tier-1 path/stat lookup failed (falling back to "
+                           f"full hashing): {e}")
+            return False
+        finally:
+            db.close()
+
+        if row is None:
+            return False
+        logger.debug(
+            f"[{t_name}] ⏭️ [tier1] 경로+stat 일치로 재처리 생략 (status={row.status}, "
+            f"mtime={file_stat[0].isoformat()}, size={file_stat[1]:,}B) — {basename}"
+        )
+        # 🔴 A hit does NOT mean "do nothing". If files are still being moved and
+        # this one is STILL SITTING IN raws/ although we already reached a
+        # terminal answer about it, then its move previously FAILED (a locked
+        # file, a name clash). Returning here would skip the move retry forever
+        # and the file — and, for nested ingestion, its whole directory — would
+        # never leave raws/. Retrying is cheap: a move, with no hash and no parse.
+        # `_archive_file`/`_move_to_err_folder` log their own failures, so this
+        # stays quiet on the (normal) success.
+        if archive_processed_files_enabled() and self.is_managed_source(abs_path):
+            if row.status == ingestion_checkpoint.STATUS_FAILED:
+                self._move_to_err_folder(abs_path)
+            else:
+                self._archive_file(abs_path)
+        return True
+
+    def _record_failure(self, t_name, signature, basename, filepath, error_msg, file_stat):
+        """실패를 **원장에 종결 상태로** 남긴다 — 파일을 옮기지 않을 때의 `err/` 대체물."""
+        db = SessionLocal()
+        try:
+            ingestion_checkpoint.record_failure(
+                db, t_name, signature, basename, os.path.abspath(filepath),
+                error_msg, file_stat=file_stat,
+            )
+        except Exception as e:
+            db.rollback()
+            logger.warning(
+                f"[{t_name}] Could not seal the failure in the ingestion ledger "
+                f"(the file will be retried on the next sweep): {e}"
+            )
+        finally:
+            db.close()
+
+    def _try_dedup_skip(self, file_path: str, basename: str, t_name: str, signature: str | None,
+                        file_stat=None) -> bool:
         """[P2-B] 동일 시그니처가 이미 SUCCESS로 적재됐으면 재처리를 건너뛴다.
 
         **무음 skip 금지**: 로그 + FileIngestionLog(status="SKIPPED", 사유 문장) +
@@ -1300,6 +1423,22 @@ class IngestionHandler(FileSystemEventHandler):
         if done is None:
             return False
 
+        # [Tier 1 feed] 내용은 같은데 경로가 다르다 — 그 새 위치를 원장에 남긴다.
+        # 남기지 않으면 이 파일은 재기동마다 tier 1을 miss해 영원히 다시 해시된다.
+        # 채택 규칙(공존 사본 ping-pong 회피)은 `adopt_new_location` 참조.
+        if file_stat:
+            db = SessionLocal()
+            try:
+                fresh = ingestion_checkpoint.find_completed_ingestion(db, t_name, signature)
+                ingestion_checkpoint.adopt_new_location(
+                    db, fresh, os.path.abspath(file_path), file_stat)
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"[{t_name}] Could not record the new location of an already "
+                               f"ingested file (it will be re-hashed next sweep): {e}")
+            finally:
+                db.close()
+
         reason = (
             f"[dedup-skip] 동일 내용 파일이 이미 적재 완료됨 — 재처리 생략 "
             f"(기존 적재: '{done.filename}', {done.processed_rows:,}행, "
@@ -1307,14 +1446,18 @@ class IngestionHandler(FileSystemEventHandler):
             f"'{ingestion_checkpoint.FORCE_REINGEST_TOKEN}'를 포함하거나 "
             f"ingestion_settings.json의 dedup_by_signature를 false로 두십시오."
         )
-        if not self.is_managed_source(file_path):
-            # A foreign (read-only) source cannot be archived away, so the sweep
-            # WILL re-find it and this skip repeats forever by construction. One
+        if not self.is_managed_source(file_path) or not archive_processed_files_enabled():
+            # A file that is NOT going to be moved out of the way will be found by
+            # every later sweep, so this skip repeats forever by construction. One
             # FileIngestionLog row + one callback per sweep per file would bury
             # every real event under unbounded noise, so the repeat is quiet:
             # the durable record is the SUCCESS row written by the first
             # ingestion, keyed by the same content signature this skip matched.
-            logger.debug(f"[{t_name}] ⏭️ {reason} — {basename} (foreign source, repeat skip)")
+            # Two ways to get here now: a foreign (read-only) source, and the
+            # retention mode that leaves managed files where they land.
+            why = ("foreign source" if not self.is_managed_source(file_path)
+                   else "files are not archived (archive_processed_files=false)")
+            logger.debug(f"[{t_name}] ⏭️ {reason} — {basename} ({why}, repeat skip)")
             return True
         logger.warning(f"[{t_name}] ⏭️ {reason} — {basename}")
         dest_path = self._archive_file(file_path)
@@ -1327,7 +1470,8 @@ class IngestionHandler(FileSystemEventHandler):
         return True
 
     def _plan_checkpoint(self, signature, basename, abs_path, t_name,
-                         total_rows, source_kind, force_restart: bool = False):
+                         total_rows, source_kind, force_restart: bool = False,
+                         file_stat=None):
         """[P2-A] 체크포인트 행 준비 + 재개 오프셋 결정. 실패해도 인제션은 계속된다
         (체크포인트 비활성 = P1과 동일 동작 — 단, 그 사실을 note로 남긴다)."""
         if not signature or not t_name:
@@ -1339,6 +1483,7 @@ class IngestionHandler(FileSystemEventHandler):
             return ingestion_checkpoint.plan_ingestion(
                 db, t_name, signature, basename, abs_path,
                 total_rows, source_kind, force_restart=force_restart,
+                file_stat=file_stat,
             )
         except Exception as e:
             db.rollback()
@@ -1454,6 +1599,11 @@ class IngestionHandler(FileSystemEventHandler):
                 signature, os.path.basename(filepath), os.path.abspath(filepath), t_name,
                 effective_total, parse_meta.get("source_kind"),
                 force_restart=self._retry_should_restart(t_name, signature),
+                # The retry path is a THIRD writer of the tier-1 key. Without this
+                # it would blank nothing (R4: absent, not NULL) but would also
+                # leave the ledger pointing at the pre-retry location, so a later
+                # sweep re-hashes a file an operator just told us about.
+                file_stat=read_file_stat(os.path.abspath(filepath)),
             )
             if has_rows:
                 self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath), total_rows=total_rows, t_name=t_name, table_info=table_info, checkpoint=plan)
@@ -1535,11 +1685,36 @@ class IngestionHandler(FileSystemEventHandler):
         )
         return True
 
+    def _refuse_move_by_retention(self, action: str) -> bool:
+        """True when the operator has asked for files to STAY where they land.
+
+        Sits at the same two move primitives as `_refuse_move_of_foreign_source`
+        and for the same stated reason: put the guard at the call sites instead
+        and the identical defect recurs once per caller (success archive,
+        dedup-skip archive, err move, retry paths).
+
+        Quiet on purpose — this fires once per processed file, forever, and it
+        is the CONFIGURED behaviour, not an exception to it. What replaces the
+        `err/`-folder-as-record is the ledger's `status="FAILED"` row, written
+        by `_record_failure`, plus the unchanged `FileIngestionLog` FAILED row
+        that still carries the traceback.
+        """
+        if archive_processed_files_enabled():
+            return False
+        logger.debug(
+            f"[{self.table_name}] 📌 File left in place ({action} skipped) — "
+            f"archive_processed_files=false; the ingestion ledger is what prevents "
+            f"reprocessing."
+        )
+        return True
+
     def _move_to_err_folder(self, file_path: str) -> str:
         if not os.path.exists(file_path):
             logger.debug(f"File already gone, skipping error moving: {file_path}")
             return None
         if self._refuse_move_of_foreign_source(file_path, "err-move"):
+            return None
+        if self._refuse_move_by_retention("err-move"):
             return None
 
         err_dir = self.errors_path
@@ -1567,6 +1742,8 @@ class IngestionHandler(FileSystemEventHandler):
             logger.debug(f"File already gone, skipping archive: {file_path}")
             return None
         if self._refuse_move_of_foreign_source(file_path, "archive"):
+            return None
+        if self._refuse_move_by_retention("archive"):
             return None
 
         if not os.path.exists(self.archives_path):

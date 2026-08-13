@@ -221,7 +221,13 @@ def test_crash_mid_file_keeps_committed_offset_then_resumes(p2_env, monkeypatch)
 
     ck = _checkpoint(p2_env, signature=sig)
     assert ck is not None
-    assert ck.status == ingestion_checkpoint.STATUS_IN_PROGRESS
+    # 상태는 FAILED다 (2026-08-13 이전에는 IN_PROGRESS였다). 이 예외 핸들러가 돌았다는
+    # 것은 종전 기준으로 「파일이 err/로 갔다」 = 자동 재시도 안 함이라는 뜻이고, 파일을
+    # 옮기지 않는 모드에서는 그 사실을 폴더가 아니라 원장이 들어야 한다. 프로세스가
+    # 통째로 죽어 이 핸들러가 못 돈 경우에만 IN_PROGRESS로 남고, 그때는 다음 스윕이
+    # 자동으로 이어받는다 — P2 재개의 원래 대상이 그쪽이다.
+    assert ck.status == ingestion_checkpoint.STATUS_FAILED
+    # 🔴 종결 표시가 재개 오프셋을 지우지 않는다 — 아래 재개가 그것을 그대로 쓴다.
     assert ck.processed_rows == 1000, "커밋된 행 수와 기록된 오프셋이 일치해야 한다"
     assert len(_rows(p2_env)) == 1000
 

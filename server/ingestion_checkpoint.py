@@ -37,11 +37,46 @@ P1(heavy 레인)까지의 워처는 1,000행 청크로 적재하되 **진행 오
 4. **멱등성** — 재개 지점이 어긋나도 적재는 business key 기준 upsert이므로 중복 행이
    생기지 않는다(`test_ingestion_checkpoint.py`가 중간 오프셋 강제 재개로 실증).
    따라서 재개 실패의 최악 비용은 '느려짐'이지 '중복/유실'이 아니다.
+
+Two-tier ledger (2026-08-13)
+----------------------------
+The content signature above answers "have I processed this?" **only by reading
+the whole file**. That was affordable only because a processed file was MOVED
+out of `raws/`, so the tree the sweep walks was normally empty. Once files stay
+where they land, the sweep's cost becomes O(files in tree) *hashes*.
+
+Measured on this box over the 22,626 files that today's `archives/` holds
+(194.6 MB) — i.e. exactly the set that would accumulate in `raws/`:
+
+    listdir + stat   1.0 s      (575 files/s hashing is per-FILE-bound, not
+    full sha256     39.4 s       byte-bound: 4.9 MB/s over many small files)
+
+So a cheap first tier is added:
+
+  * **Tier 1** — `(table_name, filepath, file_mtime, file_size)` all match a
+    ledger row in a TERMINAL state (`DONE` or `FAILED`) -> skip, **one stat, no
+    read**. "Terminal" and not "DONE" on purpose: today a failed file is not
+    retried because it was moved to `err/`; with no move, the FAILED ledger row
+    is what carries that same fact.
+  * **Tier 2** — anything differs -> hash, exactly as before. **The content
+    signature remains the final authority.** A completed row found by content
+    under a different path still skips, and the ledger adopts the new location
+    when the recorded one is gone.
+
+🔴 **Failure direction of tier 1, stated so nobody has to rediscover it.**
+Tier 1 fails toward **not re-reading a file whose content changed while mtime
+and size stayed identical**. That is reachable: some copy tools preserve mtime,
+and a same-microsecond rewrite of equal length does it too. For a fab feed that
+writes each file once this is the right trade (39x cheaper sweeps), but it is a
+**judgement, not a free lunch**. Two escapes exist and both must keep working:
+`ingestion_settings.json` `dedup_by_path_stat: false` (forces hashing), and the
+`__force__` filename token (forces full re-ingestion of one file).
 """
 
 import hashlib
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("Watcher.IngestionCheckpoint")
 
@@ -50,8 +85,27 @@ _HASH_CHUNK_BYTES = 1024 * 1024
 
 SIGNATURE_ALGO = "sha256"
 
+# Tier-1 identity of an UNREADABLE file. `compute_file_signature` returns None
+# when the content cannot be read at all, and the ledger's unique key is
+# (table_name, file_signature) — so a failure on such a file had nowhere to be
+# recorded and, with no move to `err/`, would be retried on every restart
+# forever. This prefix is deliberately NOT `sha256:`, so a stat identity can
+# never be confused with (or collide with) a content signature. It is a
+# DECLARED key, not a marker pressed into service as one (SCHEMA_CANON R6).
+STAT_SIGNATURE_PREFIX = "stat"
+
 STATUS_IN_PROGRESS = "IN_PROGRESS"
 STATUS_DONE = "DONE"
+# A terminal answer that is NOT success. Before the ledger carried this, the
+# only record of "this file failed" was its LOCATION (`err/`); a mode that stops
+# moving files therefore has to write the fact down instead of walking past it.
+STATUS_FAILED = "FAILED"
+
+# States that mean "I have already reached a terminal answer about this exact
+# file". Tier 1 skips on these; tier 2 (content dedup) still skips on DONE only.
+TERMINAL_STATUSES = (STATUS_DONE, STATUS_FAILED)
+
+_EPOCH_UTC = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 # 강제 재처리 마커 — 파일명에 이 토큰이 들어 있으면 dedup skip을 우회한다.
 # (기존 `user(name)` 파일명 규약과 같은 계열의 명시적 사용자 의사 표현 경로)
@@ -88,6 +142,46 @@ def compute_file_signature(file_path: str) -> str | None:
 def is_force_reingest(filename: str) -> bool:
     """파일명 기반 강제 재처리 요청 여부 (`__force__` 토큰, 대소문자 무시)."""
     return FORCE_REINGEST_TOKEN in (filename or "").lower()
+
+
+def mtime_ns_to_datetime(mtime_ns: int) -> datetime:
+    """`st_mtime_ns` -> tz-aware UTC datetime **truncated to whole microseconds**.
+
+    Integer arithmetic on purpose. `datetime.fromtimestamp(st.st_mtime)` goes
+    through a float, and tier 1 compares this value with `=`: a value that is
+    not reproduced bit-for-bit from the same file simply MISSES, silently, and
+    the fast path quietly stops existing. Truncation (not rounding) to
+    microseconds is what PostgreSQL's `timestamptz` stores anyway, so the value
+    written and the value re-derived on the next sweep are identical.
+    """
+    return _EPOCH_UTC + timedelta(microseconds=int(mtime_ns) // 1000)
+
+
+def read_file_stat(file_path: str):
+    """`(mtime_datetime, size_bytes)` for tier 1, or `None` when unavailable.
+
+    One `os.stat`. `None` (vanished / unstattable) makes tier 1 MISS, which is
+    the safe direction: the file falls through to the existing full-hash path.
+    """
+    try:
+        st = os.stat(file_path)
+    except OSError:
+        return None
+    return mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)
+
+
+def stat_identity_signature(file_stat) -> str | None:
+    """Ledger key for a file whose CONTENT could not be read — `stat:<size>:<us>`.
+
+    Only ever used to record a FAILURE (see `record_failure`). Never used for
+    dedup-by-content: `find_completed_ingestion` is called with a real
+    `sha256:` signature or not at all.
+    """
+    if not file_stat:
+        return None
+    mtime, size = file_stat
+    micros = int((mtime - _EPOCH_UTC).total_seconds() * 1_000_000)
+    return f"{STAT_SIGNATURE_PREFIX}:{size}:{micros}"
 
 
 class CheckpointPlan:
@@ -140,20 +234,92 @@ def find_checkpoint(db, table_name: str, file_signature: str):
 
 
 def find_completed_ingestion(db, table_name: str, file_signature: str):
-    """같은 테이블에 같은 내용이 이미 완료 적재됐는지 — dedup 판정용."""
+    """같은 테이블에 같은 내용이 이미 완료 적재됐는지 — dedup 판정용.
+
+    **DONE만** 해당한다. FAILED는 「이 파일에 대한 결론」이지 「이 내용을 적재했다」가
+    아니므로, 같은 내용이 다른 경로로 다시 오면 재시도하는 것이 맞다(종전 동작 유지)."""
     row = find_checkpoint(db, table_name, file_signature)
     if row is not None and row.status == STATUS_DONE:
         return row
     return None
 
 
+def find_terminal_by_path_stat(db, table_name: str, filepath: str, file_stat):
+    """**Tier 1** — 같은 경로·같은 (mtime, size)에 대해 이미 종결된 행. 없으면 None.
+
+    조회 조건이 `idx_fic_path_stat`(table_name, filepath, file_mtime, file_size)를
+    그대로 탄다. 세 값 중 하나라도 NULL이면 SQL `=`가 참이 될 수 없으므로 tier 1은
+    **자동으로 miss**한다 — 이 컬럼들이 없던 시절에 적힌 행(그리고 filepath가 NULL인
+    행)은 tier 1의 대상이 아니라는 NULL 계약이 여기서 강제된다.
+
+    행이 둘 이상일 수 있다(같은 경로가 여러 내용을 담았다가 mtime까지 같아진 경우).
+    상한이 걸린 읽기이므로 **전순서**를 준다(SCHEMA_CANON R7): 최신 갱신 → id 역순.
+    """
+    if not table_name or not filepath or not file_stat:
+        return None
+    file_mtime, file_size = file_stat
+    Model = _get_model()
+    return (
+        db.query(Model)
+        .filter(
+            Model.table_name == table_name,
+            Model.filepath == filepath,
+            Model.file_mtime == file_mtime,
+            Model.file_size == file_size,
+            Model.status.in_(TERMINAL_STATUSES),
+        )
+        .order_by(Model.updated_at.desc(), Model.id.desc())
+        .first()
+    )
+
+
+def adopt_new_location(db, row, filepath: str, file_stat) -> bool:
+    """Tier-2 dedup 적중 시 **새 경로를 원장에 기록**한다. 반영했으면 True.
+
+    이 원장의 유일 키는 `(table_name, file_signature)` 하나뿐이므로 한 내용은 한 행,
+    즉 **경로를 하나만** 기억할 수 있다. 그래서 규칙은:
+
+      - 기록된 경로가 디스크에 **없으면** 새 위치를 채택한다 (파일이 옮겨졌거나
+        정리된 뒤 다시 떨어진 정상 경우 — 다음 스윕부터 tier 1이 적중한다).
+      - 기록된 경로가 **아직 살아 있으면** 건드리지 않는다. 사본 둘이 공존하는데
+        경로를 옮기면 스윕마다 두 사본이 서로를 밀어내며(ping-pong) 매번 해시가
+        다시 돈다. 대신 그 사본은 `note`에 위치가 남고, **스윕당 해시 1회**의
+        비용이 남는다(사본 수에 비례할 뿐 트리 크기와 무관 — 보고서에 명시).
+    """
+    if row is None or not filepath or not file_stat:
+        return False
+    file_mtime, file_size = file_stat
+    recorded = row.filepath
+    if recorded and os.path.normcase(os.path.abspath(recorded)) == os.path.normcase(filepath):
+        # Same place, possibly touched: refresh the stat so tier 1 hits again.
+        if row.file_mtime == file_mtime and row.file_size == file_size:
+            return False
+    elif recorded and os.path.exists(recorded):
+        note = f"[dedup-alt-location] 같은 내용의 사본이 여기에도 있음: {filepath}"
+        if row.note == note:
+            return False
+        row.note = note
+        db.commit()
+        return True
+    row.filepath = filepath
+    row.file_mtime = file_mtime
+    row.file_size = file_size
+    db.commit()
+    return True
+
+
 def plan_ingestion(db, table_name: str, file_signature: str, filename: str, filepath: str,
-                   total_rows: int, source_kind: str, force_restart: bool = False) -> CheckpointPlan:
+                   total_rows: int, source_kind: str, force_restart: bool = False,
+                   file_stat=None) -> CheckpointPlan:
     """체크포인트 행을 준비하고 재개 오프셋을 결정한다 (커밋은 호출자 책임 아님 — 여기서 커밋).
 
     force_restart=True면 기존 진행분을 무시하고 0부터 재적재한다(사용자 명시 재처리 경로).
+    file_stat=`(mtime, size)`가 오면 tier-1 조회 키를 같이 심는다 — **적재를 시작한
+    시점의 파일 모습**이므로, 도중에 파일이 바뀌면 다음 스윕의 tier 1이 miss하여
+    재적재로 떨어진다(안전한 방향).
     """
     Model = _get_model()
+    file_mtime, file_size = file_stat if file_stat else (None, None)
     plan = CheckpointPlan(
         table_name=table_name, file_signature=file_signature, filename=filename,
         filepath=filepath, source_kind=source_kind, total_rows=total_rows,
@@ -165,6 +331,7 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
         row = Model(
             table_name=table_name, file_signature=file_signature, filename=filename,
             filepath=filepath, source_kind=source_kind, total_rows=total_rows,
+            file_mtime=file_mtime, file_size=file_size,
             processed_rows=0, chunk_index=0, status=STATUS_IN_PROGRESS,
         )
         db.add(row)
@@ -206,6 +373,12 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
     row.filepath = filepath
     row.source_kind = source_kind
     row.total_rows = total_rows
+    # SCHEMA_CANON R4: only name the tier-1 columns when we actually have values.
+    # Writing NULL over a good stat because this call site had none would turn a
+    # tier-1 hit into a permanent miss.
+    if file_stat:
+        row.file_mtime = file_mtime
+        row.file_size = file_size
     row.status = STATUS_IN_PROGRESS
     row.note = plan.note
     if plan.resume_from == 0:
@@ -213,6 +386,53 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
         row.chunk_index = 0
     db.commit()
     return plan
+
+
+def record_failure(db, table_name: str, file_signature: str, filename: str, filepath: str,
+                   reason: str, file_stat=None) -> bool:
+    """파일 처리 **실패**를 원장에 종결 상태로 남긴다. 기록했으면 True.
+
+    왜 필요한가: 종전에 「이 파일은 실패했다」는 사실은 **파일의 위치**(`err/`)로만
+    표현됐다. 파일을 옮기지 않는 모드에서는 그 폴더가 사라지므로, 사실이 갈 곳이
+    없으면 ⓐ 운영자가 '무엇이 왜 실패했나'를 못 묻고 ⓑ 스윕이 재기동마다 같은 파일을
+    영원히 다시 시도한다. 두 결함 다 「옮기기를 멈춘 것」이 만들어 내는 것이다.
+
+    사람이 읽는 사유·트레이스는 종전대로 `FileIngestionLog(status="FAILED")`에 남는다.
+    여기 남는 것은 **종결 사실 + 짧은 사유**이고, 둘은 filepath로 이어진다.
+
+    시그니처가 없으면(내용을 읽지 못한 파일) stat 기반 키로 기록한다 —
+    `stat_identity_signature` 참조.
+    """
+    key = file_signature or stat_identity_signature(file_stat)
+    if not table_name or not key:
+        logger.warning(
+            f"Cannot record ingestion failure for '{filepath}': no content signature and "
+            f"no usable stat identity — the failure is recorded in FileIngestionLog only."
+        )
+        return False
+    Model = _get_model()
+    file_mtime, file_size = file_stat if file_stat else (None, None)
+    brief = (reason or "").strip().splitlines()
+    brief = brief[-1][:500] if brief else "unknown error"
+    note = f"[failed] {brief}"
+    row = find_checkpoint(db, table_name, key)
+    if row is None:
+        row = Model(
+            table_name=table_name, file_signature=key, filename=filename,
+            filepath=filepath, file_mtime=file_mtime, file_size=file_size,
+            processed_rows=0, chunk_index=0, status=STATUS_FAILED, note=note,
+        )
+        db.add(row)
+    else:
+        row.filename = filename
+        row.filepath = filepath
+        if file_stat:
+            row.file_mtime = file_mtime
+            row.file_size = file_size
+        row.status = STATUS_FAILED
+        row.note = note
+    db.commit()
+    return True
 
 
 def record_chunk_progress(db, plan: CheckpointPlan, processed_rows: int, chunk_index: int):

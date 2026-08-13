@@ -190,7 +190,19 @@ SYSTEM_TABLE_COLUMNS = {
     "cell_sources": ('column_name', 'confirmation_uid', 'id', 'ingested_at', 'row_id', 'source_name', 'table_name', 'updated_by', 'value'),
     # processed_chain, broadcast_at: reconciled at boot in main.py startup_event
     "database_outbox": ('broadcast_at', 'created_at', 'event_type', 'event_uuid', 'id', 'payload', 'processed_at', 'processed_chain', 'retry_count', 'status', 'table_name'),
-    "file_ingestion_checkpoints": ('chunk_index', 'file_signature', 'filename', 'filepath', 'id', 'note', 'processed_rows', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'updated_at'),
+    # file_mtime, file_size:
+    #   migrations/add_ingestion_ledger_path_stat.sql [2026-08-13]. Promoting `filepath`
+    #   from a stored marker to a LOOKUP KEY (SCHEMA_CANON R6 names this exact column as
+    #   its worked example), so "have I already processed this file?" can be answered by
+    #   one stat instead of reading the whole file - which is what stops the reconciliation
+    #   sweep costing a full-tree hash once processed files are no longer moved out of
+    #   raws/. Measured on this box over the 22,626 files archives/ holds: 1.0 s of
+    #   listdir+stat against 39.4 s of sha256. Both nullable with no default, and that IS
+    #   the contract: SQL `=` is never true for NULL, so every row written before the
+    #   migration can never satisfy the fast path and falls through to the full hash.
+    #   Verified on this box's un-migrated database that the hazard this gate exists for is
+    #   real here too - a full-entity SELECT raised UndefinedColumn on file_mtime.
+    "file_ingestion_checkpoints": ('chunk_index', 'file_mtime', 'file_signature', 'file_size', 'filename', 'filepath', 'id', 'note', 'processed_rows', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'updated_at'),
     "file_ingestion_logs": ('created_at', 'error_message', 'filename', 'filepath', 'id', 'retry_count', 'status', 'table_name', 'updated_at'),
     # new table this round - created whole by create_all, no ordering hazard
     # geometry_assumed: migrations/add_frame_confirmation.py (spec MAP_ALIGNMENT 9a - which

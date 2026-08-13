@@ -15,7 +15,8 @@
 | `DataRow` | `data_rows` | `row_id`(PK), `table_name`, `business_key_val`, `data`(JSON/JSONB) | **레거시** blob 저장. GIN+trigram 인덱스. 동적 테이블로 대체됨 |
 | `AuditLog` | `audit_logs` | `table_name`, `row_id`, `column_name`, `old_value`, `new_value`, `source_name`, `updated_by`, `transaction_id`, `timestamp` | 셀 단위 변경 이력 |
 | `DatabaseOutbox` | `database_outbox` | `event_uuid`(unique), `event_type`, `payload`, `status`, `retry_count`, `processed_chain` | 프로세스 간 이벤트(outbox 패턴). PENDING 부분 인덱스 |
-| `FileIngestionLog` | `file_ingestion_logs` | `filename`, `filepath`, `table_name`, `status`, `error_message`, `retry_count` | FAILED/SUCCESS/PENDING/PENDING_RETRY |
+| `FileIngestionLog` | `file_ingestion_logs` | `filename`, `filepath`, `table_name`, `status`, `error_message`, `retry_count` | FAILED/SUCCESS/PENDING/PENDING_RETRY. **시도마다 append**되는 이력 |
+| `FileIngestionCheckpoint` | `file_ingestion_checkpoints` | `table_name`, `file_signature`, `filepath`, **`file_mtime`**, **`file_size`**, `processed_rows`, `chunk_index`, `status`, `note` | **(테이블, 파일내용)당 단일 최신 상태** — 위 로그와 수명이 다릅니다. 상세 아래 §1.1-bis |
 | `CellOverwrite` | `cell_overwrites` | `table_name`, `row_id`, `column_name`, `is_overwrite`, `updated_by`, `manual_priority_source` | 셀 오버라이트/핀. (table,row,col) unique |
 | `CellSource` | `cell_sources` | `table_name`, `row_id`, `column_name`, `source_name`, `value`, `ingested_at`, `updated_by` | **다중 소스 레이어링 저장소**. (table,row,col,source) unique |
 | `GraphNode` | `graph_nodes` | `label`, `identity_key`, `props`(JSONB) | **온톨로지 그래프 노드**. (label,identity_key) UNIQUE — 정확 일치 MERGE |
@@ -24,6 +25,20 @@
 | `InteractionEffortLog` | `interaction_effort_logs` | `transaction_id`(unique), `session_id`, `key_count`, `mouse_count`, `nav_count`, `nav_preserved_count`, `timestamp` | **V1 정본 계기** — tx당 1행, **원시 카운트만**(점수는 조회 시점 계산). 상세 §2.4 |
 
 그래프 3테이블은 `ensure_graph_tables(engine)`(#7 패턴: info_schema 게이트+checkfirst)로 생성되며 `refresh_dynamic_models`에 동승합니다. 승격 흐름은 [event_driven_backend §4](./event_driven_backend.md).
+
+### 1.1-bis 인제션 원장의 `filepath` 승격 — 표식에서 열쇠로 (2026-08-13)
+
+[SCHEMA_CANON R6](./SCHEMA_CANON.md)이 **바로 이 컬럼**을 사고 예시로 든 자리입니다: 저장은 되는데 아무도 그걸로 묻지 않는 표식(`nullable`, 인덱스 없음, 조회는 전부 `(table_name, file_signature)`). 처리된 파일을 **옮기지 않기로** 하면서 그 표식이 열쇠가 됐고, R6대로 **인덱스·NULL 계약·유일성 계약을 함께 선언**했습니다.
+
+| 계약 | 선언 |
+|---|---|
+| 인덱스 | `idx_fic_path_stat (table_name, filepath, file_mtime, file_size)` — tier-1 조회가 이 인덱스만으로 판정됩니다. 실측(`assy_qa`, 300,063행, ANALYZE 후): `Index Scan`, 8 buffers, **0.096ms** / 인덱스 50MB(**행당 ~175B**, 경로 46자 기준 — 실 운영 경로 130자면 ~260B로 잡습니다) |
+| **NULL** | 셋 다 `nullable=True` **유지**. NULL은 「모름」이고 SQL `=`는 NULL에 참이 될 수 없으므로 **NULL 행은 tier 1에 절대 안 걸립니다** = 전체 해시로 떨어집니다(안전한 방향). 마이그레이션 이전에 적힌 모든 행이 그 경우입니다. NOT NULL로 조이지 않은 이유: `=`가 이미 주는 보장 외에 얻는 게 없는데, 운영에 NULL 행이 하나만 있어도 `SET NOT NULL`이 마이그레이션을 멈춥니다 |
+| **유일성** | **UNIQUE 아님.** 유일 키는 여전히 `(table_name, file_signature)` **하나**입니다 — 한 경로는 시간이 지나며 여러 내용을 담으므로 `(table_name, filepath)`에 UNIQUE를 걸면 정당한 갱신이 충돌합니다. 따라서 tier-1 조회는 여러 행을 만날 수 있고, **전순서**(`updated_at DESC, id DESC`)로 하나를 고릅니다([R7](./SCHEMA_CANON.md)) |
+
+- `file_size`는 [R1](./SCHEMA_CANON.md)대로 **수량**이라 `BigInteger`가 맞습니다 — 종전에는 시그니처 **문자열** 안에 갇혀 있어 질의가 불가능했습니다. `file_mtime`은 [R5](./SCHEMA_CANON.md)대로 `timestamptz`이고, `st_mtime_ns`에서 **정수 산술로 마이크로초 절단**해 만듭니다(부동소수 왕복이면 `=` 비교가 조용히 항상 miss합니다).
+- `status`에 **`FAILED`**가 추가됐습니다. 종전에 「실패」는 **파일의 위치**(`err/`)로만 표현됐고, 파일을 옮기지 않는 모드에서는 그 표현 수단이 사라집니다.
+- 🔴 **마이그레이션 선행**: `server/migrations/add_ingestion_ledger_path_stat.sql`(역방향 `..._reverse.sql`). `create_all`도 `ensure_ingestion_checkpoint_table`도 기존 테이블에 컬럼을 추가하지 않으므로, 안 돌리면 이 엔티티의 **SELECT부터** `UndefinedColumn`으로 실패합니다(이 박스에서 실측). 운영자 절차는 [guide/INGESTION_GUIDE §1.8-bis](../guide/INGESTION_GUIDE.md).
 
 ### 1.2 동적 모델 (`init_dynamic_models`)
 

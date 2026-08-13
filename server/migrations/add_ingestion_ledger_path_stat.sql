@@ -1,0 +1,96 @@
+-- Promote `file_ingestion_checkpoints.filepath` to a LOOKUP KEY, and give the
+-- ledger the two facts a cheap "have I already answered about this file?" needs.
+--
+-- WHY. Deciding "have I processed this?" used to require READING THE WHOLE FILE
+-- (`sha256:<size>:<hexdigest>`). That was affordable only because a processed
+-- file was MOVED out of `raws/`, so the tree the sweep walks was normally empty.
+-- Once files stay where they land, the sweep costs one hash PER FILE IN THE
+-- TREE. Measured on this box over the 22,626 files today's `archives/` holds
+-- (194.6 MB) - exactly the set that would accumulate in `raws/`:
+--
+--     listdir + stat   1.0 s
+--     full sha256     39.4 s      (4.9 MB/s / 575 files/s: the cost is per-FILE
+--                                  open+read overhead, not bytes hashed)
+--
+-- SCHEMA_CANON R6 names THIS COLUMN as its worked example: stored, nullable, no
+-- index, and no query ever using it. Promotion is a DECISION, so the three
+-- contracts are declared here and in `models.FileIngestionCheckpoint`:
+--
+--   index        idx_fic_path_stat (table_name, filepath, file_mtime, file_size)
+--   NULL         all three stay NULLable. NULL means "unknown", and SQL `=` is
+--                never true for NULL, so a row with any of them NULL can never
+--                satisfy tier 1 -> it falls through to the full hash, which is
+--                the safe direction. Every row written before this migration is
+--                exactly that case. NOT NULL is deliberately NOT taken: it buys
+--                nothing over what `=` already guarantees, and one pre-existing
+--                NULL row would abort the migration.
+--   uniqueness   NOT UNIQUE. The sole unique key stays (table_name,
+--                file_signature). One path holds different content over time,
+--                so UNIQUE on (table_name, filepath) would reject a legitimate
+--                update. Tier 1 therefore reads with a total order (R7).
+--
+-- R1: `file_size` is a QUANTITY, so numeric (bigint) is correct - and note it
+-- was previously trapped inside the signature STRING, where it was not
+-- queryable at all. R5: `file_mtime` is `timestamptz`, not naive.
+--
+-- 🔴 THIS IS A PREREQUISITE, NOT AN OPTIMISATION. `ensure_ingestion_checkpoint_
+-- table` and `Base.metadata.create_all` both return early when the table
+-- already exists - NEITHER adds a column to an existing table. So every
+-- database that already has `file_ingestion_checkpoints` (production included)
+-- needs this file once, and until it runs, EVEN READING the ledger fails:
+--
+--   (psycopg2.errors.UndefinedColumn) column
+--   file_ingestion_checkpoints.file_mtime does not exist
+--
+-- verified on this box's un-migrated database. The watcher survives it - its
+-- three ledger call sites each catch and log - but it survives by turning
+-- checkpointing and dedup OFF, which means EVERY FILE IS RE-INGESTED ON EVERY
+-- SWEEP. Combined with `archive_processed_files: false` that is a runaway.
+-- Run this BEFORE deploying the code, or at least before the next restart.
+-- A NEW database gets all of it from `create_all` and needs nothing.
+--
+-- ORDER OF OPERATIONS. Run this BEFORE setting `archive_processed_files: false`.
+-- With the columns missing the watcher still works (it just never tier-1 hits),
+-- but with files also no longer moved, every sweep re-hashes the whole tree.
+--
+--   psql "$DATABASE_URL" -f server/migrations/add_ingestion_ledger_path_stat.sql
+--
+-- CONCURRENTLY, so this can run against the live stack without taking a write
+-- lock (a lock here is a stalled ingestion lane). It cannot run inside a
+-- transaction block: `psql -f` runs each top-level statement in its own
+-- transaction, a wrapping BEGIN does not.
+--
+-- ADD COLUMN ... NULL with no default is metadata-only on PostgreSQL 11+ (no
+-- table rewrite), so the two ALTERs are instant regardless of table size.
+--
+-- If a CREATE INDEX CONCURRENTLY is interrupted it leaves an INVALID index
+-- behind that costs writes and serves no reads. Check afterwards:
+--
+--   SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+--   WHERE NOT i.indisvalid AND c.relname = 'idx_fic_path_stat';
+--
+-- and DROP + re-run any row it returns.
+--
+-- SIZE BUDGET, measured on `assy_qa` (not estimated): 300,063 ledger rows with
+-- ~46-char paths -> table 62 MB, idx_fic_path_stat 50 MB = ~175 B per row. The
+-- index carries the full path text, so widen that by the path length: this
+-- box's real ledger paths average ~130 chars, i.e. budget ~260 B per PROCESSED
+-- FILE. At 1,000,000 processed files, ~260 MB. If that ever matters the ledger
+-- is prunable by `updated_at` - it holds one row per processed file, not per
+-- data row, so it grows with the FEED, not with the 10M-row tables.
+--
+-- Lookup cost at that size, measured (EXPLAIN ANALYZE, BUFFERS, after ANALYZE):
+--   Index Scan using idx_fic_path_stat   8 buffers   0.096 ms
+-- Below a few thousand rows the planner picks a Seq Scan instead. That is the
+-- planner being right about a small table, not the index being unused.
+--
+-- REVERSE: server/migrations/add_ingestion_ledger_path_stat_reverse.sql
+
+ALTER TABLE file_ingestion_checkpoints
+    ADD COLUMN IF NOT EXISTS file_mtime timestamptz;
+
+ALTER TABLE file_ingestion_checkpoints
+    ADD COLUMN IF NOT EXISTS file_size bigint;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_fic_path_stat
+    ON file_ingestion_checkpoints (table_name, filepath, file_mtime, file_size);

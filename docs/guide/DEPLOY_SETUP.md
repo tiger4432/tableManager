@@ -541,6 +541,16 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    - `CONCURRENTLY`라 쓰기 락 없이 라이브 스택에 돌릴 수 있지만, **트랜잭션 블록 안에서 부를 수 없다** — `psql -f`(자동커밋)로 실행하고 래핑 `BEGIN`을 쓰지 말 것. 중단되면 `INVALID` 인덱스가 남아 쓰기 비용만 지불하고 아무 읽기도 못 받으므로, 각 파일 하단의 확인 SQL로 `indisvalid`를 재확인한다.
    - ⚠️ **8의 `--preflight-only`는 이것도 못 잡는다** — 드리프트 점검은 컬럼만 보고 인덱스는 보지 않는다(위 8-bis와 같은 사각).
    - 예상 소요·크기: `idx_audit_recent_groups` 166 MB(2,900,000행 기준, 4.2초) · `idx_audit_row_history`+`idx_audit_cell_history` 합계 실측 두 벌(운영 규모 210,196행에서 19+20 MB · 1,131,008행 픽스처에서 91+101 MB, ~170-195 B/행) — 프로덕션 `audit_logs` 행 수에 선형 비례한다.
+8-quater. 🔴 **인제션 원장에 tier-1 열쇠를 반영한다 — 안 돌리면 원장이 «읽기부터» 죽는다** (2026-08-13)
+   ```bash
+   psql "$DATABASE_URL" -f server/migrations/add_ingestion_ledger_path_stat.sql   # file_mtime, file_size, idx_fic_path_stat
+   ```
+   **왜 배포 순서에 들어왔는가**: 위 8-bis·8-ter는 **인덱스만** 만드는 단계라 건너뛰면 「느려질 뿐」이지만, 이것은 **컬럼을 둘 추가**한다. `models.FileIngestionCheckpoint`가 그 컬럼들을 선언하므로 SQLAlchemy는 그 테이블의 **모든 SELECT·INSERT에 이름을 싣는다** — 즉 마이그레이션 없이 코드만 배포하면 `file_ingestion_checkpoints`는 **통째로 죽는다**(이 박스에서 실측: 전체 엔티티 SELECT가 `UndefinedColumn: file_ingestion_checkpoints.file_mtime`). 배너의 `TABLE-DOWN` 계급이 정확히 이것이다.
+   - **워처는 죽지 않는다 — 그래서 더 나쁘다.** 원장 호출 세 자리(dedup 조회·체크포인트 계획·tier-1 조회)가 각자 예외를 잡고 경고를 남긴 뒤 계속 가므로, 인제션은 **체크포인트와 dedup이 통째로 꺼진 채** 살아남는다. `ingestion_settings.json`에 `archive_processed_files: false`가 함께 들어가면 **모든 파일이 매 스윕 재적재**된다.
+   - ✅ **8의 `--preflight-only`가 이것은 잡는다** — 드리프트 점검이 보는 것이 **컬럼**이기 때문이다(8-bis·8-ter의 인덱스 사각과 반대). 배너를 읽고 이 명령을 실행하면 된다.
+   - **신규** 설치는 `create_all`이 만들므로 이 단계가 필요 없다. `ALTER TABLE ADD COLUMN ... NULL`(기본값 없음)은 PG 11+에서 **메타데이터만** 바꾸므로 테이블 크기와 무관하게 즉시 끝나고, 인덱스는 `CONCURRENTLY`라 쓰기 락이 없다(트랜잭션 블록 밖에서 — `psql -f`).
+   - 되돌리기: `server/migrations/add_ingestion_ledger_path_stat_reverse.sql`. 🔴 **되돌리기 전에 `archive_processed_files`를 `true`로 먼저 돌려놓고 워처를 재기동하라** — 컬럼 없이 「파일도 안 옮기는」 조합이 유일하게 아픈 순서다.
+   - 크기·비용 실측(`assy_qa`, 300,063행): 인덱스 50MB(**행당 ~175B**, 경로 46자 기준) · 조회 `Index Scan` 8 buffers **0.096ms**. 원장은 **처리한 파일 수**만큼만 자란다(데이터 행 수와 무관).
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
    - ⚠️ 런처와 웹서버가 **각자** 드리프트 배너를 한 번씩 찍습니다(약 14 ms). 8을 건너뛰었어도 기동 로그에 남으니 거기서 읽으십시오.
 

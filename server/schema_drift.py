@@ -60,8 +60,17 @@ MIGRATION_OWNER = {
 }
 
 # Where a runnable remedy can live. Read once per process, not per finding.
+#
+# `*.sql` added 2026-08-13, and it is the SAME failure the comment above records,
+# one file extension over. `add_ingestion_ledger_path_stat.sql` adds two columns
+# to `file_ingestion_checkpoints`; without this line the banner said "no
+# migration is recorded for this column - add one" while the migration that owns
+# them sat in the tree. It went unnoticed until now because every earlier `.sql`
+# migration here creates INDEXES, and this check does not look at indexes at all,
+# so a `.sql` file had never owned a finding before.
 _MIGRATION_GLOBS = (
     os.path.join("server", "migrations", "*.py"),
+    os.path.join("server", "migrations", "*.sql"),
     os.path.join("server", "scripts", "setup_*.py"),
     os.path.join("server", "scripts", "*migrate*.py"),
 )
