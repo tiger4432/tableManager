@@ -1,13 +1,19 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **494개** 이력. (거버넌스 규칙 #4)
+> 총 **500개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-13 13:14** — [The 35 Minutes Was The Walk To The Question Not The Question](./20260813_131455_the_35_minutes_was_the_walk_to_the_question_not_the_question.md)
+- **2026-08-13 12:51** — [The Drift Banner Was Accurate At Print Time And Stale Seconds Later](./20260813_125108_the_drift_banner_was_accurate_at_print_time_and_stale_seconds_later.md)
+- **2026-08-13 12:46** — [Two Spellings Of Read Only Were Not Duplicates And One Mutation Was Not Enough](./20260813_124642_two_spellings_of_read_only_were_not_duplicates_and_one_mutation_was_not_enough.md)
+- **2026-08-13 12:45** — [The Current System Cannot Be The Ledger And Week One Rests On An Unchecked Count](./20260813_124540_the_current_system_cannot_be_the_ledger_and_week_one_rests_on_an_unchecked_count.md)
+- **2026-08-13 12:29** — [A Void Is A Located Area So The Geometry Is Stored And The Grade Never Is](./20260813_122954_a_void_is_a_located_area_so_the_geometry_is_stored_and_the_grade_never_is.md)
+- **2026-08-13 12:03** — [The Catalogue Taught The Wrong Spelling Which Is Why Three Scripts Copied It](./20260813_120319_the_catalogue_taught_the_wrong_spelling_which_is_why_three_scripts_copied_it.md)
 - **2026-08-13 11:45** — [The Half Of The Repair A Config File Can Never Do](./20260813_114522_the_half_of_the_repair_a_config_file_can_never_do.md)
 - **2026-08-13 10:58** — [The Switch Saved No Disk Read And None Of The 35 Minutes Is The Ledger](./20260813_105852_the_switch_saved_no_disk_read_and_none_of_the_35_minutes_is_the_ledger.md)
 - **2026-08-13 10:21** — [The Guard Was Armed And Two Lanes Agreed On A Wrong Method](./20260813_102141_the_guard_was_armed_and_two_lanes_agreed_on_a_wrong_method.md)
