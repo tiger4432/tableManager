@@ -1,0 +1,42 @@
+# VOID SCHEMA - the observation half. HAND-COPY THIS FILE to:
+#
+#     server/ingestion_workspace/void_obs/scripts/void_obs_parser.py
+#     (or <ASSY_DATA_ROOT>/ingestion_workspace/void_obs/scripts/ when set)
+#
+# and drop the same file in `inspection_run/raws/` too - see
+# inspection_run_parser.py.sample for why both halves exist.
+#
+# `server/ingestion_workspace/**` is gitignored, so nothing here can be
+# reviewed or deployed by a merge. That is why this file carries NO judgement:
+# everything that can be wrong lives in `server/parsers/void_sat_format.py`,
+# which is tracked and is already on sys.path when the watcher loads plugins.
+# Fixing a parsing defect is a `git pull`; only this shim is hand-copied.
+#
+# No restart is needed after copying: `_discover_and_execute_pipeline` lists
+# this folder on every file event.
+from void_sat_format import (VOID_TABLE, read_sat_file, screen, targets_table)
+
+from pipeline_base import BasePipelineParser
+
+
+class VoidObsSatParser(BasePipelineParser):
+    """SAT void rows -> `void_obs`."""
+
+    @classmethod
+    def match(cls, file_path: str) -> bool:
+        return (targets_table(file_path, VOID_TABLE)
+                and file_path.lower().endswith((".csv", ".txt")))
+
+    def parse(self, file_path: str) -> list[dict]:
+        # `read_sat_file` RAISES on an unreadable header rather than reading by
+        # column order. Let it propagate: the watcher marks the file FAILED and
+        # moves it to err/, which is the correct outcome. Returning [] here
+        # would report a successful ingestion of nothing.
+        _run_row, void_rows, warnings = read_sat_file(file_path)
+        for warning in warnings:
+            print(f"[void_obs] {warning}")
+        kept, report = screen(VOID_TABLE, void_rows, source=file_path)
+        if report["refused_rows"]:
+            print(f"[void_obs] refused {report['refused_rows']} row(s): "
+                  f"{report['by_reason']}")
+        return kept

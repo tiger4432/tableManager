@@ -1,0 +1,51 @@
+# VOID SCHEMA - the DENOMINATOR half. HAND-COPY THIS FILE to:
+#
+#     server/ingestion_workspace/inspection_run/scripts/inspection_run_parser.py
+#     (or <ASSY_DATA_ROOT>/ingestion_workspace/inspection_run/scripts/ when set)
+#
+# WHY THE SAME FILE IS DROPPED IN TWO WORKSPACES
+# ----------------------------------------------
+# One SAT file states two different facts: that a scan HAPPENED (one row) and
+# what it FOUND (n rows, possibly zero). The watcher runs one handler per table
+# and a parser returns rows for that one table, so each fact is read by the
+# handler that owns its table.
+#
+# It cannot be a chain from `void_obs` instead. A chain derives rows FROM rows,
+# and the run that matters most - the clean one - has no void rows to derive
+# from. A scan that found nothing would produce no run, and "clean" would
+# again be indistinguishable from "never scanned", which is the entire reason
+# this schema is two tables (DEFECT_SCHEMA_PROPOSAL §1).
+#
+# See void_obs_parser.py.sample for why the logic is not in this file.
+from void_sat_format import (RUN_TABLE, read_sat_file, screen, targets_table)
+
+from pipeline_base import BasePipelineParser
+
+
+class InspectionRunSatParser(BasePipelineParser):
+    """The one row that says this scan happened -> `inspection_run`."""
+
+    @classmethod
+    def match(cls, file_path: str) -> bool:
+        return (targets_table(file_path, RUN_TABLE)
+                and file_path.lower().endswith((".csv", ".txt")))
+
+    def parse(self, file_path: str) -> list[dict]:
+        run_row, _void_rows, warnings = read_sat_file(file_path)
+        for warning in warnings:
+            print(f"[inspection_run] {warning}")
+        if run_row is None:
+            # No voids AND no package declared in the header: the file cannot
+            # say which package layer was scanned, so there is no denominator to
+            # record. Refusing beats inventing one - a run row naming the wrong
+            # package would make voids look like they were scanned for.
+            raise ValueError(
+                f"{file_path}: no void rows and no package layer in the header "
+                f"block, so this file cannot say WHAT was scanned. A clean scan "
+                f"must declare '# base_wafer_id / base_x / base_y / gate' - that "
+                f"declaration IS the denominator.")
+        kept, report = screen(RUN_TABLE, [run_row], source=file_path)
+        if report["refused_rows"]:
+            print(f"[inspection_run] refused the run row: {report['by_reason']} "
+                  f"{report['details']}")
+        return kept
