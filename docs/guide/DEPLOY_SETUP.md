@@ -574,11 +574,16 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    순서 전체(선언 손복사 → 리로드/재기동으로 테이블 생성 → **이 인덱스** → 파서 shim 둘 → SAT 파일)는 [process/OPERATOR_RUNBOOK §4](../process/OPERATOR_RUNBOOK.md)가 정본이다. 🔴 **이 파일은 3단계이지 1단계가 아니다** — 선언이 `server/config/table_config.json`(gitignore)에 손복사되고 리로드가 물리 테이블을 만들기 전까지는 붙일 대상이 없다.
    - 🔴 **`idx_void_obs_area`는 «식» 인덱스다** — `pi() * radius_x * radius_y`. **면적 컬럼은 없고 앞으로도 없어야 한다**(합불 임계가 레시피 파라미터라 굳힌 판정은 이력을 다시 판정할 수 없게 만든다). 근거는 [architecture/data_model §1.2-bis](../architecture/data_model.md).
    - 되돌리기: `add_void_schema_indexes_reverse.sql`.
-8-septies. **정준 원장 테이블 — 추가 전용이고 급하지 않다. 단, `tzdata`가 먼저다** (2026-08-13 `f896020`+`bee1aeb`)
+8-septies. **정준 원장 테이블 — 추가 전용이고 급하지 않다. 🔴 스크립트는 «둘»이다. 단, `tzdata`가 먼저다** (2026-08-13 `f896020`+`bee1aeb`+`0198e7e`)
    ```bash
    conda run -n assy_manager python server/migrations/add_ledger_events.py            # --report 로 상태만 보기
+   conda run -n assy_manager python server/migrations/add_ledger_refusal_reasons.py   # --report / --reverse
    ```
    - **성질**: 추가 전용·멱등. DROP 없음, 기존 것의 ALTER 없음, 기존 행을 건드리는 문장 없음 — **새 테이블 둘**(`ledger_events`·`ledger_translator_cursor`)만 만든다. **안 돌려도 아무것도 안 깨진다**(부팅 시 `server/ledger`를 import하는 프로세스가 없다). 다만 그 상태에서 `GET /api/ledger/trace`는 **503 + 관계 이름**으로 답한다.
+   - 🔴 **두 번째 스크립트(`0198e7e`)는 커서 표에 `refusal_reasons JSONB` 하나를 붙인다**(열둘 → 열셋) — 거절 사유가 그전까지 **백필 프로세스의 메모리에만** 있어서 **이 DB를 어떻게 읽어도 사유 하나를 낼 수 없었다.** `ALTER TABLE … ADD COLUMN <nullable, DEFAULT 없음>` 한 문장이라 PG 11+에서 **카탈로그만** 바꾸고 힙을 안 건드린다(표 크기와 무관). 게이트가 `pg_attribute`라 **재실행은 DDL도 잠금도 0**이고, **어떤 표의 행도 읽거나 쓰지 않는다.**
+     - 🔴 **이것을 «건너뛰어도» 서버는 500이 아니다 — 양방향으로 방어돼 있다.** 쓰기 쪽은 `ledger.schema.ensure_schema`가 같은 문장을 **모든 백필 첫 단계**에 적용하고, 읽기 쪽 `GET /api/ledger/coverage`는 **카탈로그에 어느 컬럼이 있는지 먼저 묻고** 있는 것만 SELECT한다. 8의 `--preflight-only`가 잡는 계급(`file_ingestion_checkpoints`가 통째로 죽던 8-quater)과 **다른 이유가 이것**이다: 저쪽은 ORM이 컬럼 이름을 모든 문장에 실어서 표가 죽었고, 이쪽은 **읽는 쪽이 물어보고 쓰는 쪽이 스스로 고친다.** 이 스크립트는 **운영자의 진입점이자 감사 기록**이다.
+     - 되돌리기: `--reverse`. **진짜 역방향이다** — 원자도, 커서 위치도, 집계도 잃지 않고 **내역만** 잃는다.
+     - ⚠️ **기존 커서 행은 NULL을 얻고, 그 NULL이 `{}`와 다른 뜻이다** — 「이 행은 컬럼보다 오래됐고 그 `molecules_refused`는 영원히 분해될 수 없다」. `/coverage`가 그것을 **`refusals_unaccounted > 0`**(배포 이력, **결함 아님**)으로 보고한다. 읽는 법은 [guide/LEDGER_GUIDE §4.4·§4.6](./LEDGER_GUIDE.md).
    - 🔴 **`environment.yml`에 `tzdata`가 새로 들어왔다(2026-08-13).** 원장의 세상 시각 선언이 `Asia/Seoul`이고 `zoneinfo.ZoneInfo("Asia/Seoul")`은 **런타임에 IANA DB에서** 해석된다 — 선언이 `UTC`이던 동안에는 CPython이 tzdata 없이 답했으므로 **진짜로 새 의존성**이다. **없으면 폴백하지 않고 예외를 낸다**(조용히 UTC로 떨어지면 방금 고친 「모든 원자가 9시간 어긋나고 아무것도 항의하지 않는」 상태가 그대로 재현된다). 환경 갱신: `conda env update -f environment.yml`.
    - 🔴 **시간대 판정 «다음»에 돌려라.** 선언이 틀리면 백필된 원자 전부가 어긋나고, **어긋난 시각도 여전히 well-formed한 시각이라 어떤 가드도 알아채지 못한다.** 정정은 재백필이지 제자리 `UPDATE`가 아니다(해결기가 `occurred_at` 내림차순으로 순위를 매기므로 낡은 원자가 **구성상 정정본을 이긴다**).
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인

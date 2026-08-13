@@ -100,13 +100,16 @@
 |---|---|
 | **기록** | 2026-08-13 |
 | **목적** | `ledger_events`(월 단위 파티션)와 커서 테이블 생성 |
-| **방법** | `conda run -n assy_manager python server/migrations/add_ledger_events.py`<br>실행 없이 상태만 보려면 `--report`<br>생성 후 번역: `conda run -n assy_manager python -m ledger.backfill --source lot_event` |
-| **성질** | **추가 전용·멱등.** DROP 없음, 기존 것의 ALTER 없음, 기존 테이블의 행을 건드리는 문장 없음. **새 테이블 둘만 만든다** |
+| **방법** | ① `conda run -n assy_manager python server/migrations/add_ledger_events.py`<br>② `conda run -n assy_manager python server/migrations/add_ledger_refusal_reasons.py`<br>실행 없이 상태만 보려면 각각 `--report`<br>생성 후 번역: `conda run -n assy_manager python -m ledger.backfill --source lot_event` |
+| **🔴 스크립트가 «둘»이다 (2026-08-13 추가 · `0198e7e`)** | ②는 커서 표에 **`refusal_reasons`** 컬럼 하나를 붙인다(열둘 → 열셋). 거절 «사유»가 그전까지 백필 프로세스의 **메모리에만** 있어서 **DB를 어떻게 읽어도 사유 하나를 낼 수 없었다.** `ADD COLUMN <nullable, DEFAULT 없음>` 한 문장이라 PG 11+에서 **카탈로그만** 바꾸고 표 크기와 무관하며, 게이트가 `pg_attribute`라 **재실행은 DDL도 잠금도 0**이다. 되돌리기는 `--reverse`(내역만 잃고 원자·커서·집계는 안 잃는다) |
+| **⚠️ 건너뛰어도 500은 안 난다** | ②를 안 돌려도 **웹서버는 죽지 않는다** — 읽는 쪽(`/coverage`)이 카탈로그에 컬럼 존재를 먼저 묻고, 쓰는 쪽(`ensure_schema`)이 백필 첫 단계에 같은 문장을 스스로 적용한다. 잃는 것은 **화면이 거절 사유를 이름으로 보여 주는 능력**이다. 1번 항목처럼 「안 돌리면 라우트가 죽는」 계급이 **아니다** |
+| **성질** | **추가 전용·멱등.** DROP 없음, 기존 것의 ALTER 없음, 기존 테이블의 행을 건드리는 문장 없음. ①은 **새 테이블 둘만**, ②는 **컬럼 하나만** 만든다 |
 | **급하지 않은 이유** | 안 돌아도 **아무것도 안 깨진다** — 부팅 시 `server/ledger`를 import하는 프로세스가 없다. 2번과 달리 큰 기존 테이블에 컬럼을 붙이지 않아 **잠금 위험도 없다** |
 | **~~⏸ 대기~~** | ~~시간대 수정 착지 후에 돌리는 것을 권합니다 — 아래 8번 참조~~ → **해제됨.** 8번이 `bee1aeb`로 착지 |
 | **✅ 개발 박스 완료 (2026-08-13)** | 이 박스의 `assy_manager`에 마이그레이션 + 백필 실행. **909 원자 / 추적 가능 랏 25** (`has_wafer` 491 · `register` 245 · `slot_map` 153 · `derived_from` 20), `occurred_at` `2026-05-03T02:17+09:00` ~ `2026-05-21T20:33+09:00`. 원본 44행 전수 처리, 재실행 시 0행 읽음(커서 멱등) |
 | **🔴 운영은 «아직»** | 위 완료는 **개발 DB 하나**의 이야기다. 이 파일의 첫 규칙대로 **운영에서는 대표님이 직접 돌려야 하고, 그 전까지 이 항목은 열려 있다.** 운영에서 돌린 뒤 그 줄을 여기에 추가해 주십시오 |
 | **운영에서 돌린 뒤 확인** | `GET /api/ledger/coverage`가 `state`를 돌려준다 — `absent`(마이그레이션 미실행) · `empty`(백필 미실행) · `ready`. 화면이 비어 보일 때 **어느 쪽인지 이 한 줄로 갈린다** |
+| **⚠️ 그 응답의 `refusals_unaccounted`를 「결함」으로 읽지 마십시오** | **부호가 뜻이다**: `0` 정상 · **`> 0`은 배포 이력**(컬럼이 생기기 «전»에 세어진 거절 — 그 이름은 이미 끝난 프로세스와 함께 사라졌다) · `< 0`만 진짜 장부 결함이다. **개발 두 DB는 지금 `1`을 읽고 그것이 정상이다** |
 | **선행 확인** | `tzdata` 필요 (8번 참조). 없으면 조용히 UTC로 안 떨어지고 **예외를 낸다** |
 
 ---
