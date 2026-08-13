@@ -13,6 +13,17 @@
 > | **온톨로지 사용처 1순위 = 보이드 조사** | 원장 슬라이스 1을 **오늘 안에** |
 > | 개발환경 DB·CONFIG·DDL 권한 위임 | 운영은 총괄이 안 건드림, 마이그레이션만 산출 |
 >
+> ### 🔴 스위트 빨강 6건이 **코드가 아니라 운영자의 config를 읽어서** 난다 (총괄 실측 2026-08-13)
+>
+> `test_std_parser.py` 4건 + `test_workspace_config_deprecation.py` 2건.
+> **`ASSY_DATA_ROOT`를 격리하면 58 passed — 6건 전부 사라진다.** 이 테스트들이 운영자의
+> 진짜 `ingestion_settings.json`을 읽는다. 🔴 **오늘 레인 둘이 각각 이걸 자기 것이 아니라고
+> 증명하느라 시간을 썼다** — 하나는 40분짜리 2회전 diff를 걸었다.
+> **호이스트 것이 아님은 별도로 확정**: 두 파일 어디에도 `sweep_existing_files`·
+> `_ingest_directory_tree`·`settle_already_terminal` 호출이 **0건** — 그 경로에 아예 안 들어간다.
+> ⚠️ **지금 고치지 않는다.** 레인 4개가 측정 중인데 공용 `conftest.py`를 건드리면
+> **없애려는 그 오염을 내가 만든다.** 대기열로 — 고칠 곳은 두 파일의 데이터 루트 격리.
+>
 > ### 🔴 지금 열린 것 — 순서대로
 >
 > 1. **void↔die가 «안 조인된다».** `void_obs`는 `base_wafer_id+base_x+base_y+stack_gate`,
