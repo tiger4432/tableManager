@@ -100,10 +100,14 @@
 |---|---|
 | **기록** | 2026-08-13 |
 | **목적** | `ledger_events`(월 단위 파티션)와 커서 테이블 생성 |
-| **방법** | `conda run -n assy_manager python server/migrations/add_ledger_events.py`<br>실행 없이 상태만 보려면 `--report` |
+| **방법** | `conda run -n assy_manager python server/migrations/add_ledger_events.py`<br>실행 없이 상태만 보려면 `--report`<br>생성 후 번역: `conda run -n assy_manager python -m ledger.backfill --source lot_event` |
 | **성질** | **추가 전용·멱등.** DROP 없음, 기존 것의 ALTER 없음, 기존 테이블의 행을 건드리는 문장 없음. **새 테이블 둘만 만든다** |
 | **급하지 않은 이유** | 안 돌아도 **아무것도 안 깨진다** — 부팅 시 `server/ledger`를 import하는 프로세스가 없다. 2번과 달리 큰 기존 테이블에 컬럼을 붙이지 않아 **잠금 위험도 없다** |
-| **⏸ 대기** | 시간대 수정 착지 후에 돌리는 것을 권합니다 — 아래 8번 참조 |
+| **~~⏸ 대기~~** | ~~시간대 수정 착지 후에 돌리는 것을 권합니다 — 아래 8번 참조~~ → **해제됨.** 8번이 `bee1aeb`로 착지 |
+| **✅ 개발 박스 완료 (2026-08-13)** | 이 박스의 `assy_manager`에 마이그레이션 + 백필 실행. **909 원자 / 추적 가능 랏 25** (`has_wafer` 491 · `register` 245 · `slot_map` 153 · `derived_from` 20), `occurred_at` `2026-05-03T02:17+09:00` ~ `2026-05-21T20:33+09:00`. 원본 44행 전수 처리, 재실행 시 0행 읽음(커서 멱등) |
+| **🔴 운영은 «아직»** | 위 완료는 **개발 DB 하나**의 이야기다. 이 파일의 첫 규칙대로 **운영에서는 대표님이 직접 돌려야 하고, 그 전까지 이 항목은 열려 있다.** 운영에서 돌린 뒤 그 줄을 여기에 추가해 주십시오 |
+| **운영에서 돌린 뒤 확인** | `GET /api/ledger/coverage`가 `state`를 돌려준다 — `absent`(마이그레이션 미실행) · `empty`(백필 미실행) · `ready`. 화면이 비어 보일 때 **어느 쪽인지 이 한 줄로 갈린다** |
+| **선행 확인** | `tzdata` 필요 (8번 참조). 없으면 조용히 UTC로 안 떨어지고 **예외를 낸다** |
 
 ---
 

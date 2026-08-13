@@ -1177,3 +1177,277 @@ def _map_slot(index, cur_lot, parent, cur_slot, cfg):
     return resolve([c for c, _ in pairs], lambda c: answers.get(id(c)), cfg,
                    subject_label=f"{cur_lot}→{parent} slot={cur_slot}",
                    predicate="slot_map")
+
+
+# --------------------------------------------------------------------------
+# COVERAGE — "is there a ledger on this box, and what does it cover?"
+# --------------------------------------------------------------------------
+#
+# 🔴 THE PROBLEM THIS SOLVES IS THAT FOUR DIFFERENT SITUATIONS RENDER AS
+# "nothing", AND AN OPERATOR CANNOT TELL A DEPLOYMENT PROBLEM FROM A DATA
+# BOUNDARY. Measured 2026-08-13: the product owner opened the trace screen and
+# got nothing, because `assy_manager` had no `ledger_events` table at all. The
+# screen was honest and the box was empty, and nothing on screen said which.
+#
+#     ledger_events absent      -> deployment: the migration has not been run
+#     present, zero atoms       -> the backfill has not been run
+#     unknown lot               -> a data boundary
+#     known lot, no lineage     -> registered, but nothing claimed about parentage
+#
+# The first two are properties of the BOX and are answered here, once, in a
+# machine-readable `state`. The last two are properties of one LOT and are
+# already answered by `trace` (`[unknown_subject]` vs `[root] … (register 있음)`).
+# Splitting them that way is deliberate: a screen asks `coverage` once on load
+# and `trace` once per lot, and neither has to guess what the other's silence
+# meant.
+#
+# WHY `state` IS A FIELD AND NOT PROSE. Ruling R-2026-08-13-C: `reason` is prose
+# for humans, and any fact the screen must BRANCH on goes out as a structured
+# field. A client that branched on Korean text would break the first time the
+# wording improved — and L3 has already shown what a prose parse costs.
+
+#: The absent-relation refusal, as a machine-readable token rather than as
+#: Korean prose. Named here so the route, the tests and any future consumer
+#: share one spelling. A client branches on this; the message beside it is for
+#: the operator's eyes only.
+REASON_RELATION_ABSENT = "ledger_relation_absent"
+
+#: The three answers `coverage` can give. `absent` and `empty` are operational
+#: facts about the deployment; `ready` means the walk has something to walk.
+COVERAGE_STATES = ("absent", "empty", "ready")
+
+#: How many traceable lots the coverage answer carries. A handful — this is a
+#: "try one of these" affordance for the screen, not a catalogue endpoint. The
+#: catalogue is `register`, and it is counted rather than listed.
+DEFAULT_SAMPLE_SIZE = 3
+
+
+def _fetch(connection, sql, params=None):
+    """Run `sql` on either a DBAPI connection or a SQLAlchemy Connection/Session.
+
+    Same two-shaped handling `SqlClaimLookup._execute` does, and for the same
+    reason: the route hands over a `Session`'s connection while the tests and
+    any operator script hand over psycopg2.
+    """
+    conn = connection
+    # `params` stays None rather than becoming `{}` when there is nothing to
+    # bind: psycopg2 only runs its `%` interpolation pass when a parameter
+    # argument is given, and an empty dict would still turn a literal `%` in a
+    # future query into an IndexError that has nothing to do with the query.
+    if hasattr(conn, "cursor"):                          # psycopg2 connection
+        with conn.cursor() as cur:
+            cur.execute(sql, params) if params else cur.execute(sql)
+            return cur.fetchall()
+    exec_driver = getattr(conn, "exec_driver_sql", None)
+    if exec_driver is None and hasattr(conn, "connection"):    # Session
+        exec_driver = conn.connection().exec_driver_sql        # pragma: no cover
+    return list(exec_driver(sql, params) if params else exec_driver(sql))
+
+
+def relation_exists(connection, relation):
+    """Catalogue gate. `to_regclass` returns NULL for an absent relation rather
+    than raising, so this can be asked BEFORE any query that would poison the
+    transaction — this project's standing rule for DDL-adjacent work, applied to
+    reads because the failure mode is identical: one `UndefinedTable` and every
+    later statement on the connection fails for an unrelated-looking reason.
+
+    Resolution is through `search_path`, which is what makes the scratch-schema
+    test fixture ask about the scratch table rather than about `public`'s.
+    """
+    if not _IDENTIFIER.match(relation or ""):
+        raise ValueError(f"relation must be a bare SQL identifier: {relation!r}")
+    rows = _fetch(connection, "SELECT to_regclass(%(rel)s) IS NOT NULL",
+                  {"rel": relation})
+    return bool(rows and rows[0][0])
+
+
+def coverage(connection, relation="ledger_events",
+             cursor_relation="ledger_translator_cursor", config=None,
+             sample_size=DEFAULT_SAMPLE_SIZE):
+    """What this box's ledger covers, in the pinned coverage shape.
+
+    Never raises for an absent or empty ledger — those ARE the answers. The only
+    refusal is `ResolverConfigError` from an unusable display zone, which is the
+    same door `trace` refuses at and for the same reason: a screen that renders a
+    fab record in the wrong zone looks completely normal.
+
+    [SCALE — every query here is bounded by something other than atom count]
+    * existence      `to_regclass`, a catalogue lookup.
+    * any atom?      `EXISTS (SELECT 1 …)` stops at the first row; with no
+                     partitions it stops without touching a heap at all.
+    * `lots`         `count(*) WHERE predicate='register' AND subject_type='Lot'`
+                     is served by the PARTIAL index `idx_ledger_register`, which
+                     is O(entities) while the table is O(atoms) — that index's
+                     own admission note says so.
+    * `occurred_at`  `min`/`max` ride `uq_ledger_atom`, whose LEADING column is
+                     `occurred_at` (`schema.DEDUPE_COLUMNS`), so each partition
+                     answers from one end of an index and PostgreSQL merges them.
+                     🔴 This is why no new index was added for this endpoint: the
+                     one that idempotency already pays for happens to be sorted
+                     on exactly the column the header needs.
+    * `sample`       an ordered index scan on `idx_ledger_subject_lot` with a
+                     LIMIT, so it stops after a handful rather than sorting the
+                     ledger, plus one indexed seek per sampled lot.
+    There is deliberately NO `SELECT DISTINCT source_who` — see `sources` below.
+
+    MEASURED 2026-08-13, throwaway probe DB, 280,000 atoms / 100,000 lots across
+    12 monthly partitions, VACUUM ANALYZEd (a probe without statistics reports a
+    plan nobody will ever run):
+
+        EXISTS               0.12 ms   3 buffers, 11 of 12 partitions unvisited
+        min/max occurred_at  0.13 ms   8 buffers, Index Only Scan + Limit 1
+        sample               1.07 ms  38 buffers, MergeAppend of index scans
+        count(register)     24.06 ms 636 buffers, Index Only Scan, 0 heap fetches
+        coverage() total    31 ms
+
+    🔴 `lots` IS THE ONLY ONE THAT GROWS, and it grows with ENTITIES, not atoms —
+    it walks the whole partial index. At this source's density (909 atoms / 25
+    lots) a ten-million-atom ledger is ~275,000 lots, so ~66 ms.
+
+    **It is deliberately NOT cached, and that is the interesting decision.** This
+    project caches counts for 5 s elsewhere (`main.TABLE_COUNT_CACHE`) and the
+    same trick would work here. But this endpoint exists to tell an operator
+    whether the migration and backfill they JUST RAN took effect — a cache would
+    make it answer "absent" or "empty" for five seconds at the exact moment its
+    answer matters most, which is a worse defect than 66 ms. If a future consumer
+    polls it, cache it THERE.
+    """
+    cfg = config or load_resolver_config()
+    zone = resolve_display_zone(cfg)
+
+    answer = {"state": "absent", "lots": 0, "sources": [],
+              "occurred_at": {"from": None, "to": None}, "sample": []}
+
+    # `sources` comes from the CURSOR table, not from `DISTINCT source_who`.
+    #
+    # Two reasons, and the second one is the better one. (1) There is no index on
+    # `source_who` and there is no consumer that would justify adding one, so a
+    # DISTINCT over it is a sequential scan of the whole ledger — at ten million
+    # atoms that is a multi-second page load for a header field. (2) The cursor
+    # table is the ledger's own registry of WHO HAS WRITTEN HERE, and it still
+    # answers when the ledger is empty: a translator that ran and refused every
+    # molecule leaves a cursor row and no atoms, and "a translator has been here
+    # and produced nothing" is precisely the distinction `state: "empty"` exists
+    # to draw. `DISTINCT source_who` would say `[]` for both "never ran" and
+    # "ran, refused everything".
+    #
+    # The two spellings agree by construction for every translator that exists:
+    # `backfill.run(source=…)` keys the cursor row, and the same string is the
+    # translator's `who`, which becomes `source_who` on every atom
+    # (`lot_event_translator.SOURCE`). A future translator whose `who` differs
+    # from its cursor key would make this field name a source rather than an
+    # author — worth a test at that point, not a scan today.
+    if relation_exists(connection, cursor_relation):
+        answer["sources"] = [
+            r[0] for r in _fetch(
+                connection, f"SELECT source FROM {cursor_relation} ORDER BY source")
+            if r[0]]
+
+    if not relation_exists(connection, relation):
+        return answer                                   # state stays "absent"
+
+    populated = _fetch(connection, f"SELECT EXISTS (SELECT 1 FROM {relation})")
+    if not (populated and populated[0][0]):
+        answer["state"] = "empty"
+        return answer
+
+    answer["state"] = "ready"
+    rows = _fetch(connection, f"SELECT count(*) FROM {relation} "
+                              f"WHERE predicate = 'register' AND subject_type = 'Lot'")
+    answer["lots"] = int(rows[0][0]) if rows else 0
+
+    rows = _fetch(connection,
+                  f"SELECT min(occurred_at), max(occurred_at) FROM {relation}")
+    if rows:
+        answer["occurred_at"] = {"from": _iso(rows[0][0], zone),
+                                 "to": _iso(rows[0][1], zone)}
+
+    answer["sample"] = _coverage_sample(connection, relation, sample_size)
+    return answer
+
+
+#: How many `derived_from` atoms the sample ranks over. See `_coverage_sample`
+#: for why this is a WINDOW and not "all of them".
+SAMPLE_CANDIDATE_WINDOW = 300
+
+
+def _coverage_sample(connection, relation, sample_size):
+    """A handful of lots the trace screen will actually have something to say about.
+
+    THE RULE, in two parts:
+
+    1. **Eligible** = the lot is the SUBJECT of a `derived_from` atom, i.e. the
+       ledger claims where it came from, so the walk produces a real lineage hop
+       rather than an immediate `[root]`. A lot with only a `register` is
+       registered, not traceable, and offering it would demonstrate the very
+       emptiness this endpoint exists to explain.
+    2. **Ordered** by how many `derived_from` atoms name it, most first, ties
+       broken by lot name so the answer is stable across calls (an operator's
+       "try this" link must not shuffle on refresh).
+
+    Rule 1 is also what keeps hand-typed junk out without the translator judging
+    its source. `assy_manager`'s ledger legitimately registers a lot called
+    `adsfas` — somebody typed it into `lot_event` — and the ledger MUST keep
+    counting it, because the count is a fact about the source. But nothing is
+    derived from `adsfas`, so it is not eligible here. The junk is excluded by
+    a property of the data, not by a blocklist that would need maintaining.
+
+    Rule 2 surfaces contended lineage first, which is the most informative thing
+    the screen can open on: on `assy_manager` it puts `CL-2601-005-A5` (three
+    `derived_from` atoms, two of which disagree) ahead of lots with one.
+
+    [WHY A WINDOW AND NOT `GROUP BY` OVER THE WHOLE LEDGER]
+    Measured 2026-08-13 on a throwaway probe, 280,828 atoms / 80,828
+    `derived_from`, VACUUM ANALYZEd:
+
+        index-ordered LIMIT, no ranking      2.3 ms     36 buffers
+        GROUP BY over ALL derived_from      98.4 ms  7,796 buffers
+        this: ranked over a 300-row window   ~2 ms     ~40 buffers
+
+    The middle one is O(lineage events) — ~1.2 s at ten million atoms, on an
+    endpoint a screen calls when it loads. So the ranking runs over a BOUNDED
+    window of the index-ordered scan and the aggregation happens in Python. The
+    ranking is therefore EXACT for any ledger whose lineage fits in the window
+    (every ledger this box has: `assy_manager` holds 20 `derived_from` atoms)
+    and is an honest "best of the first {SAMPLE_CANDIDATE_WINDOW}" beyond it.
+    A sample is a "try one of these" affordance; paying a second of page load to
+    rank it perfectly would be the wrong trade.
+
+    The slot is carried because the screen's interesting questions are
+    slot-shaped (`has_wafer` and `slot_map` hops only exist when a slot is
+    given), so a sample without one would demo a third of the feature. It is
+    normalised through `_slot_text`, the same reader the walk uses, so what the
+    client sends back matches what the walk compares against — `3` and `03` are
+    the same slot and `3 != "03"` is exactly how a chain silently reads broken.
+    """
+    if sample_size <= 0:
+        return []
+    # ORDER BY on the index's leading expression makes this a MergeAppend of
+    # per-partition index scans that stops at the window, rather than a sort of
+    # the ledger. The ORDER BY is also what makes the window DETERMINISTIC —
+    # without it the rows come back in whatever order the partitions are read.
+    counts = {}
+    for row in _fetch(connection, f"""
+            SELECT subject_keys->>'lot' FROM {relation}
+            WHERE predicate = 'derived_from'
+            ORDER BY subject_keys->>'lot' LIMIT %(w)s""",
+            {"w": int(SAMPLE_CANDIDATE_WINDOW)}):
+        if row[0]:
+            counts[row[0]] = counts.get(row[0], 0) + 1
+    lots = [lot for lot, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            ][:int(sample_size)]
+
+    sample = []
+    for lot in lots:
+        rows = _fetch(connection, f"""
+            SELECT object_payload->'qualifiers'->>'slot'
+            FROM {relation}
+            WHERE subject_keys->>'lot' = %(lot)s AND predicate = 'has_wafer'
+              AND object_payload->'qualifiers'->>'slot' IS NOT NULL
+            ORDER BY 1 LIMIT 1""", {"lot": lot})
+        slot = _slot_text(rows[0][0]) if rows else None
+        if slot is not None:
+            # Only a (lot, slot) the walk can answer BOTH questions for is
+            # offered. Fewer honest samples beat a padded list.
+            sample.append({"lot": lot, "slot": slot})
+    return sample

@@ -969,3 +969,278 @@ def test_cost_per_hop_at_two_ledger_sizes_interleaved(ledger, capsys):
         with ledger.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS ledger_small CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS ledger_big CASCADE"))
+
+
+# ---------------------------------------------------------------------------
+# COVERAGE — the four "nothings" have to become four different answers
+# ---------------------------------------------------------------------------
+#
+# The defect these tests exist for was found on a real box, not imagined: the
+# product owner opened the trace screen on `assy_manager` and got nothing,
+# because that database had no `ledger_events` table at all. A deployment
+# problem and a data boundary rendered identically and the screen said neither.
+# Each test below pins ONE of the four situations apart from the others.
+#
+#     1 relation absent    deployment — the migration has not been run
+#     2 present, no atoms  the backfill has not been run
+#     3 unknown lot        a data boundary
+#     4 known, no lineage  registered, nothing claimed about its parentage
+
+def _coverage(conn, **kw):
+    return lt.coverage(conn, config=lt.DEFAULT_RESOLVER_CONFIG, **kw)
+
+
+def test_coverage_says_absent_when_the_relation_is_not_there(ledger):
+    """SITUATION 1. Asked of a relation the catalogue does not know — exactly
+    what `to_regclass` sees on a database whose migration never ran.
+
+    It must be an ANSWER, not an exception: an operator in front of a blank
+    screen needs the word `absent`, not a stack trace.
+    """
+    with ledger.connect() as conn:
+        answer = _coverage(conn, relation="ledger_events_not_migrated",
+                           cursor_relation="ledger_cursor_not_migrated")
+    assert answer["state"] == "absent"
+    assert answer["lots"] == 0
+    assert answer["sources"] == []
+    assert answer["occurred_at"] == {"from": None, "to": None}
+    assert answer["sample"] == []
+
+
+def test_coverage_says_empty_when_the_table_is_there_and_holds_nothing(ledger):
+    """SITUATION 2.
+
+    🔴 This is the one the trace screen CANNOT tell from situation 3 on its own:
+    against an empty ledger every lot comes back `[unknown_subject]`, exactly as
+    an unknown lot does against a full one. The difference is a property of the
+    box, so it is answered here rather than guessed there.
+    """
+    with ledger.connect() as conn:
+        answer = _coverage(conn)
+    assert answer["state"] == "empty"
+    assert answer["lots"] == 0
+    assert answer["occurred_at"] == {"from": None, "to": None}
+    assert answer["sample"] == []
+
+
+def test_coverage_reports_a_ready_ledger_in_the_pinned_shape(ledger):
+    with ledger.begin() as conn:
+        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
+    with ledger.connect() as conn:
+        answer = _coverage(conn)
+
+    assert set(answer) == {"state", "lots", "sources", "occurred_at", "sample"}
+    assert answer["state"] == "ready"
+    # The `register` atoms ARE the catalog — four lots, four registers.
+    assert answer["lots"] == len(LOTS)
+    assert answer["sources"] == []          # nothing wrote a cursor row here
+    assert answer["occurred_at"]["from"] is not None
+    assert answer["occurred_at"]["from"] <= answer["occurred_at"]["to"]
+
+
+def test_coverage_renders_times_in_the_declared_zone(ledger):
+    """The same rule `_iso` follows everywhere else, so the response does not
+    depend on the PostgreSQL session's TimeZone or on the machine's."""
+    with ledger.begin() as conn:
+        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
+    seoul = dict(lt.DEFAULT_RESOLVER_CONFIG, display_timezone="Asia/Seoul")
+    utc = dict(lt.DEFAULT_RESOLVER_CONFIG, display_timezone="UTC")
+    with ledger.connect() as conn:
+        in_seoul = lt.coverage(conn, config=seoul)["occurred_at"]["from"]
+        in_utc = lt.coverage(conn, config=utc)["occurred_at"]["from"]
+
+    assert in_seoul.endswith("+09:00"), in_seoul
+    assert in_utc.endswith("+00:00"), in_utc
+    # The SAME instant said twice. If these differed, the zone would be being
+    # applied to the VALUE rather than to its rendering — the defect `bee1aeb`
+    # closed, which nothing complains about because a wrong instant is still a
+    # well-formed one.
+    assert datetime.fromisoformat(in_seoul) == datetime.fromisoformat(in_utc)
+
+
+def test_every_sampled_lot_is_one_the_trace_can_actually_walk(ledger):
+    """🔴 THE SAMPLE IS SCORED BY ITS CONSUMER, NOT BY ITS OWN SQL.
+
+    A "try one of these" affordance that offered a lot with no lineage would
+    demonstrate the very emptiness this endpoint exists to explain. So every
+    sampled `(lot, slot)` is fed to the walk and required to produce a RESOLVED
+    lineage hop and a resolved `has_wafer` hop — i.e. the screen opens on
+    something, for both of the questions a slot makes askable.
+    """
+    with ledger.begin() as conn:
+        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
+    with ledger.connect() as conn:
+        sample = _coverage(conn)["sample"]
+        assert sample, "a ready ledger with three lineage links sampled nothing"
+        for entry in sample:
+            assert set(entry) == {"lot", "slot"}
+            assert isinstance(entry["slot"], str) and entry["slot"]
+            answer = trace_on(conn, entry["lot"], entry["slot"])
+            resolved = [h for h in answer["hops"]
+                        if h["predicate"] == "derived_from"
+                        and h["state"] == "resolved"]
+            assert resolved, (
+                f"sampled lot {entry['lot']!r} produced no resolved lineage hop: "
+                f"{answer['terminal_reason']}")
+            wafer_hops = [h for h in answer["hops"] if h["predicate"] == "has_wafer"]
+            assert wafer_hops and wafer_hops[0]["state"] == "resolved", (
+                f"sampled slot {entry['slot']!r} is not one lot "
+                f"{entry['lot']!r} holds")
+
+
+def test_the_sample_leads_with_the_lot_that_has_the_most_lineage(ledger):
+    """Rule 2 of `_coverage_sample`, and it is what puts a CONTENDED lot first.
+
+    The most informative thing the screen can open on is a lot whose lineage is
+    disputed, because that is where the state vocabulary earns its keep. On
+    `assy_manager` this rule surfaces `CL-2601-005-A5` — three `derived_from`
+    atoms, two of which disagree — ahead of lots carrying one.
+    """
+    with ledger.begin() as conn:
+        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
+        # L-B gains a SECOND, contending parent claim. Nothing else changes.
+        insert(conn, [atom("df-L-B-alt", "L-B", "derived_from", {"lot": "L-A"},
+                           occurred_at=T0 + timedelta(hours=9))])
+    with ledger.connect() as conn:
+        sample = _coverage(conn)["sample"]
+    assert sample[0]["lot"] == "L-B", (
+        f"the contended lot is not first: {[e['lot'] for e in sample]}")
+
+
+def test_a_lot_nothing_is_derived_from_is_never_sampled(ledger):
+    """SITUATION 4, and the junk filter in one test.
+
+    `assy_manager`'s ledger legitimately registers a lot called `adsfas` —
+    somebody typed it into `lot_event`. The ledger MUST keep counting it: the
+    translator records what the source uttered and does not judge it, and `lots`
+    is a fact about the source. But it must not be the first thing an operator
+    reads, and rule 1 excludes it by a PROPERTY OF THE DATA (nothing is derived
+    from it) rather than by a blocklist somebody would have to maintain.
+    """
+    with ledger.begin() as conn:
+        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
+        insert(conn, [atom("reg-junk", "adsfas", "register", {}),
+                      atom("hw-junk", "adsfas", "has_wafer",
+                           {"slot": "1", "wafer": "W-JUNK"})])
+    with ledger.connect() as conn:
+        answer = _coverage(conn)
+    assert answer["lots"] == len(LOTS) + 1, "the junk lot was dropped from the count"
+    assert "adsfas" not in [e["lot"] for e in answer["sample"]]
+
+
+def test_a_lot_with_only_a_register_is_told_apart_from_a_lot_nobody_knows(ledger):
+    """SITUATION 4 vs SITUATION 3 — the two that are both "the ledger says
+    nothing about this lot" and are NOT the same fact."""
+    with ledger.begin() as conn:
+        insert(conn, [atom("reg-LONELY", "L-LONELY", "register", {})])
+    with ledger.connect() as conn:
+        answer = _coverage(conn)
+        assert answer["state"] == "ready"
+        assert answer["lots"] == 1
+        assert answer["sample"] == []
+        known = trace_on(conn, "L-LONELY")
+        unknown = trace_on(conn, "L-NEVER-SEEN")
+
+    # The two facts live in two places, and BOTH are anchored rather than free
+    # prose — `[root]` / `[unknown_subject]` in `terminal_reason`, and the
+    # register marker on the hop that could not be resolved. A client branches on
+    # the anchors (L3's provisional canon under R-2026-08-13-C); the sentence
+    # around them is for the operator.
+    assert known["terminal_reason"].startswith("[root]")
+    assert unknown["terminal_reason"].startswith("[unknown_subject]")
+    assert "register 있음" in known["hops"][-1]["reason"], known["hops"][-1]["reason"]
+    assert known["terminal_reason"] != unknown["terminal_reason"], (
+        "situations 3 and 4 render identically — the operator cannot tell a data "
+        "boundary from a lot with no lineage claim")
+
+
+def test_coverage_names_the_sources_that_have_written_to_the_ledger(ledger):
+    """`sources` comes from the cursor table, so it still answers when the ledger
+    is EMPTY — "a translator ran and produced nothing" is a different fact from
+    "no translator has ever run", and both render as zero atoms."""
+    with ledger.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO ledger_translator_cursor "
+            "(source, translator_ver, cursor_value) "
+            "VALUES ('lot_event', 'lot_event/1', '{}'::jsonb)"))
+    try:
+        with ledger.connect() as conn:
+            answer = _coverage(conn)
+        assert answer["state"] == "empty"
+        assert answer["sources"] == ["lot_event"]
+    finally:
+        with ledger.begin() as conn:
+            conn.execute(text("DELETE FROM ledger_translator_cursor"))
+
+
+# --- the same distinctions, over HTTP ---------------------------------------
+
+def test_the_coverage_route_serves_the_pinned_shape(ledger_client, ledger):
+    with ledger.begin() as conn:
+        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
+    resp = ledger_client.get("/api/ledger/coverage")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json"), (
+        "the route was shadowed by the SPA catch-all - include_router must stay "
+        "ABOVE it in main.py")
+    body = resp.json()
+    assert set(body) == {"state", "lots", "sources", "occurred_at", "sample"}
+    assert body["state"] == "ready"
+    assert body["lots"] == len(LOTS)
+    assert set(body["occurred_at"]) == {"from", "to"}
+
+
+def test_the_coverage_route_answers_200_when_the_ledger_is_not_deployed(
+        ledger_client, monkeypatch):
+    """An absent ledger is an ANSWER over HTTP too. A 500 here is what the
+    product owner would read as "the screen itself is broken"."""
+    import ledger_trace_router as router_module
+    monkeypatch.setattr(router_module, "LEDGER_RELATION", "ledger_events_not_migrated")
+    monkeypatch.setattr(router_module, "LEDGER_CURSOR_RELATION",
+                        "ledger_cursor_not_migrated")
+    resp = ledger_client.get("/api/ledger/coverage")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "absent"
+
+
+def test_the_trace_route_names_an_absent_ledger_in_a_field_not_in_prose(
+        ledger_client, monkeypatch):
+    """🔴 THE ALARM THAT HAD NEVER BEEN RUNG.
+
+    The 503-for-an-absent-relation branch shipped with NO test, so nothing had
+    ever driven it — and it did not work on this box: it matched the English
+    words "does not exist" in the driver's message, while this PostgreSQL emits
+    Korean. The relation is now judged by the catalogue and the body is
+    machine-readable. This is the test that fires it.
+    """
+    import ledger_trace_router as router_module
+    monkeypatch.setattr(router_module, "LEDGER_RELATION", "ledger_events_not_migrated")
+
+    resp = ledger_client.get("/api/ledger/trace", params={"lot": "L-D", "slot": "3"})
+    assert resp.status_code == 503
+    detail = resp.json()["detail"]
+    assert isinstance(detail, dict), (
+        "the client would have to parse Korean prose to tell a deployment "
+        "problem from a data boundary")
+    # 🔴 THE LITERAL, NOT THE CONSTANT. `detail["reason"] == lt.REASON_RELATION_
+    # ABSENT` compares the code to itself and stays green while the token the
+    # client lane branches on changes underneath it — a mutant renaming the
+    # constant passed that version of this assertion. The wire value is the
+    # contract, so the wire value is what is written out here.
+    assert detail["reason"] == "ledger_relation_absent"
+    assert lt.REASON_RELATION_ABSENT == "ledger_relation_absent"
+    assert detail["state"] == "absent"
+    assert detail["relation"] == "ledger_events_not_migrated"
+    assert detail["message"]
+
+
+def test_an_unknown_lot_and_an_undeployed_ledger_are_different_responses(
+        ledger_client, ledger):
+    """SITUATION 3 vs SITUATION 1, over HTTP. One is a 200 carrying a reason, the
+    other a 503 carrying a machine-readable one. They must never coincide."""
+    with ledger.begin() as conn:
+        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
+    resp = ledger_client.get("/api/ledger/trace",
+                             params={"lot": "L-NEVER-SEEN", "slot": "1"})
+    assert resp.status_code == 200
+    assert "unknown_subject" in resp.json()["terminal_reason"]
