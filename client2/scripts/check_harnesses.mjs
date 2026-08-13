@@ -453,7 +453,29 @@ const FLOORS = new Map([
   // line reframes the answer) has no mutant in the corpus — one would have to anchor on a
   // comment. It was mutation-tested BY HAND instead: reordering the two appends in
   // `ledger_trace_view.js` turns it red and prints the order it found.
-  ['ledger_trace_harness.mjs', 319],
+  //
+  // 319 -> 380 (2026-08-14, E1 — the client wired to server 5bacdfc). Two contract changes in
+  // one: per-hop `basis: {kind, name}`, and `contested` split out of `candidate`.
+  //
+  // 🔴 THE FIELD IS NOT A CONVENIENCE, IT CLOSES AN INVERSION AND AN IMPOSSIBILITY. The screen
+  //    used to read the winner's basis off the reason sentence — which also names the LOSERS'
+  //    bases, so both disputed hops in the probe fixture read "assumption" while the winner of
+  //    each is a measurement. And no reading of `state` could have replaced it: an undisputed
+  //    convention-backed hop is `resolved`, the SAME word a fully measured one gets. C3c/C3d
+  //    and N4 score that exact pair; C5c/C5d feed a hop whose sentence and field DISAGREE,
+  //    because on real output they never do and no capture can force the choice.
+  //
+  // 🔴 `contested` REACHED PAST ITS LABEL. `trace()` follows `res.answer`, so a contested
+  //    `derived_from` hop MOVED the walk — but `hasLineageStep` was keyed on
+  //    `state === 'resolved'` and announced such a chain as having no parentage. It was already
+  //    wrong for `candidate`. N7/N8 pin the repair; `lineage-step-keyed-on-the-state-word` is
+  //    the mutant.
+  //
+  // 11 more mutants (44 -> 55). The new fixture, `ledger_trace_contested.json`, is REAL
+  // resolver output with NO DATABASE behind it: `contested` needs a cross-class disagreement
+  // and the natural ledger has ZERO in 278 hops, so `fixtures/gen_ledger_trace_contested.py`
+  // declares the atoms and runs the shipped `trace()` over `InMemoryClaimLookup`.
+  ['ledger_trace_harness.mjs', 380],
   // New 2026-08-06 with `opts.restoreDraft` (e34d57d, 「맵을 로드하면 로드한 맵이 나온다」).
   // Same rule as the other new entries: the floor is the count it reports on the commit that
   // introduces it. 14 of its assertions are the mutation corpus itself (12 defects + 2

@@ -7,16 +7,32 @@
 // one of them is invisible to an exit code and to a glance at the page:
 //
 //   P1  🔴 A HOP RESTING ON A DECLARED CONVENTION MUST NOT RENDER LIKE ONE RESTING ON A
-//       MEASUREMENT. The server writes the distinction as `· convention:<name>` versus
-//       `· basis=<name>` (`ledger_trace.py::_basis_label`), and the ontology owner ruled
-//       (2026-08-13) that convention-backed atoms resolve at class 3 precisely so this
-//       difference is visible. A screen that paints both the same throws the ruling away.
+//       MEASUREMENT. The ontology owner ruled (2026-08-13) that convention-backed atoms
+//       resolve at class 3 precisely so this difference is visible. A screen that paints both
+//       the same throws the ruling away.
+//
+//       🔴 AND SINCE SERVER 5bacdfc IT IS A FIELD, `basis: {kind, name}`, CONSUMED RATHER THAN
+//       DERIVED. It is not derivable: an undisputed convention-backed hop reads `resolved`, the
+//       SAME word a fully measured one gets — C3c/C3d and N4 score exactly that pair. Deriving
+//       it from the sentence is worse than impossible, it is inverted (see the trap below).
 //
 //   P2  UNRESOLVABLE IS CONTENT, NOT AN ERROR. `[no_claim]`, `[root]` and friends are the
 //       product telling the truth about what nobody recorded. Rendering them as a failure, an
 //       empty state, or a hidden row is the one forbidden answer (`trace()`: "빈 결과 금지").
 //
 //   P3  CANDIDATE MEANS SOMETHING DISAGREED, and the count is part of the statement.
+//
+//   P5  🔴 `contested` AND `candidate` ARE TWO DIFFERENT FACTS, NOT TWO DEGREES OF ONE. Server
+//       5bacdfc split the word: `contested` means the class DECLARED a winner and a LOWER class
+//       still disagrees; `candidate` means the top class is split and NOTHING declared a winner
+//       (a hop that is both reads `candidate`, the weaker word). So `contested` may render
+//       neither as 확정 — something disagreed — nor as 이견 — a winner was declared. Section B
+//       pins three states to three sentences and section N pins them on screen.
+//
+//       AND IT REACHED FURTHER THAN THE LABEL. `trace()` steps to the parent whenever the
+//       resolution produced one, so a `contested` derived_from hop MOVED the walk;
+//       `hasLineageStep` keyed on `state === 'resolved'` announced such a chain as having no
+//       parentage. That was already wrong for `candidate` before this round. N7/N8.
 //
 //   P4  🔴 FOUR DIFFERENT NOTHINGS MUST READ AS FOUR DIFFERENT SENTENCES, AND THIS ONE IS A
 //       MEASURED PRODUCT FAILURE, not a precaution. The product owner ran the shipped screen
@@ -49,8 +65,13 @@
 //    Both contain the substring `convention:`, and in BOTH the winner is a MEASUREMENT — the
 //    assumption is the thing that was overruled. A `reason.includes('convention:')` check marks
 //    both hops as assumption-backed, which is the exact inversion of what the screen is for.
-//    Section C and G4 pin the anchored reading; mutant `basis-suffix-unanchored` proves they can
-//    fail.
+//
+//    🔴 THE FIELD RETIRES THE READING, AND C5c/C5d ARE WHERE THAT STOPS BEING A CLAIM. On real
+//    output the sentence and the field always agree, so no capture can force the choice. Those
+//    two feed a hop whose sentence and field DISAGREE, one in each direction; a reader that
+//    still consults the prose gets both backwards. The suffix reading survives only as the
+//    legacy path for a server older than 5bacdfc (C5f-C5h), still anchored, still scored by
+//    `basis-suffix-unanchored`.
 //
 // THE FIXTURES ARE CAPTURES, NOT INVENTIONS. `fixtures/ledger_trace_live.json` is the answer the
 // route gave for lot `CL-2601-007-A2-A6-A8` slot `02` on isolated `assy_qa` (878 real atoms).
@@ -88,6 +109,13 @@ const PROBE_PATH = join(HERE, 'fixtures', 'ledger_trace_probe.json');
 // J goes red rather than the screen going quietly wrong.
 const NOTHINGS_PATH = join(HERE, 'fixtures', 'ledger_trace_nothings.json');
 const COVERAGE_PATH = join(HERE, 'fixtures', 'ledger_coverage.json');
+// 🔴 P5's fixture, and it is REAL RESOLVER OUTPUT WITH NO DATABASE BEHIND IT.
+// `contested` needs a cross-class disagreement; the server lane measured the natural ledger and
+// found ZERO in 278 hops, so the state cannot be captured off `assy_qa` at all. Rather than
+// invent the reason grammar, `fixtures/gen_ledger_trace_contested.py` declares the atoms and
+// runs the SHIPPED `ledger_trace.trace()` over `InMemoryClaimLookup` — the states, sentences and
+// `basis` fields are the server's own. Regenerate it with that script, never by hand.
+const CONTESTED_PATH = join(HERE, 'fixtures', 'ledger_trace_contested.json');
 
 const die = (msg) => {
   console.error(`HARNESS FAILURE: ${msg}`);
@@ -96,7 +124,7 @@ const die = (msg) => {
 };
 
 for (const p of [CORE_PATH, VIEW_PATH, ENTRY_PATH, PAGE_PATH, VITE_PATH, LIVE_PATH, PROBE_PATH,
-                 NOTHINGS_PATH, COVERAGE_PATH]) {
+                 NOTHINGS_PATH, COVERAGE_PATH, CONTESTED_PATH]) {
   if (!existsSync(p)) die(`missing ${p}`);
 }
 
@@ -109,6 +137,7 @@ const LIVE = JSON.parse(readFileSync(LIVE_PATH, 'utf8'));
 const PROBE = JSON.parse(readFileSync(PROBE_PATH, 'utf8'));
 const NOTHINGS = JSON.parse(readFileSync(NOTHINGS_PATH, 'utf8'));
 const COVERAGE = JSON.parse(readFileSync(COVERAGE_PATH, 'utf8'));
+const CONTESTED = JSON.parse(readFileSync(CONTESTED_PATH, 'utf8')).trace;
 
 // The fixtures are load-bearing. A capture that stopped carrying the states this file scores
 // would make every section below pass vacuously, so their SHAPE is asserted before anything
@@ -128,6 +157,47 @@ const COVERAGE = JSON.parse(readFileSync(COVERAGE_PATH, 'utf8'));
   if (!(h4.includes('convention:') && !/(convention:|basis=)[^\s·()]+$/.test(h4))) {
     die('probe hop 4 is no longer "winner has NO basis, loser is a convention" — '
       + 'the anchored-suffix trap is not in the fixture and section C would pass vacuously');
+  }
+
+  // ── P5's fixtures: `basis` IS ON THE WIRE, and `contested` is a word ───────────────
+  // 🔴 THE CAPTURES MUST CARRY THE FIELD. Section C now scores a READING OF `hop.basis`;
+  // against fixtures that predate it every one of those checks would silently fall through to
+  // the legacy suffix path and score the old behaviour under the new names.
+  for (const [name, trace] of [['live', LIVE], ['probe', PROBE], ['contested', CONTESTED]]) {
+    if (!trace.hops.every((h) => 'basis' in h)) {
+      die(`${name} fixture has hops with no \`basis\` key — regenerate it `
+        + `(fixtures/backfill_basis.py, or gen_ledger_trace_contested.py)`);
+    }
+  }
+  // 🔴 AND THE ONE PAIR THAT MAKES `basis` UNDERIVABLE FROM `state` HAS TO BE IN THEM. Two
+  // hops, the SAME state word, opposite bases. Without both, every "the field decides" check
+  // below could be satisfied by reading `state`.
+  const kinds = (t) => t.hops.map((h) => `${h.state}/${(h.basis || {}).kind || 'none'}`);
+  for (const [name, trace] of [['live', LIVE], ['contested', CONTESTED]]) {
+    const k = kinds(trace);
+    if (!k.includes('resolved/convention') || !k.includes('resolved/measured')) {
+      die(`${name} fixture no longer carries BOTH a convention-backed and a measured `
+        + `\`resolved\` hop — the underivability of \`basis\` would go unscored (${k.join(',')})`);
+    }
+  }
+  // 🔴 THE TRAP, NOW IN THE STATE IT WAS NEVER SHOWN IN. `contested` hop 1's sentence names a
+  // convention (the LOSER's) and its field says `measured` (the WINNER's).
+  const ct = CONTESTED.hops[1];
+  if (!(ct.state === 'contested' && ct.n === 2
+        && ct.reason.includes('convention:') && ct.basis && ct.basis.kind === 'measured')) {
+    die('contested fixture hop 1 is no longer "contested, sentence names a convention, field '
+      + `says measured" — got ${JSON.stringify({ state: ct.state, n: ct.n, basis: ct.basis })}`);
+  }
+  // 🔴 AND ITS CHAIN'S ONLY LINEAGE STEP IS THAT HOP. `hasLineageStep` keyed on
+  // `state === 'resolved'` calls this chain "혈통 주장 없음" — a walk that really moved,
+  // announced as having no parentage. N7/N8 score it; without this shape they cannot.
+  if (!String(CONTESTED.terminal_reason || '').startsWith('[root]')) {
+    die('contested fixture no longer terminates `[root]` — N7/N8 need the root headline path');
+  }
+  const lineage = CONTESTED.hops.filter((h) => h.predicate === 'derived_from' && h.to);
+  if (!(lineage.length === 1 && lineage[0].state === 'contested')) {
+    die('contested fixture: its only lineage step is supposed to be the contested hop — got '
+      + JSON.stringify(lineage.map((h) => h.state)));
   }
 
   // ── P4's fixtures, same rule ──────────────────────────────────────────────────────
@@ -312,6 +382,26 @@ async function suite(coreSource, viewSource) {
     // whether two things disagreed or five did.
     eq('B2b candidate label carries the count', v(hop('candidate', '[candidate] x', 2)).label, '이견 2종');
     eq('B2c candidate label at n=5', v(hop('candidate', '[candidate] x', 5)).label, '이견 5종');
+
+    // 🔴 P5. `contested` IS NOT A SYNONYM FOR EITHER NEIGHBOUR, and the label is where that
+    // stops being an opinion. A winner WAS declared (so it is not 이견, which asserts that
+    // nothing declared one) and something disagreed (so it is not 확정). `n` counts the answers
+    // in contention and the top class held exactly one, so the dissent is `n - 1` — the same
+    // number the server's own sentence prints as `하위 계급 반대 N종`.
+    eq('B2d contested is not confident', v(hop('contested', '[contested] x', 2)).tone, 'contested');
+    eq('B2e contested says a winner was declared AND that something disagreed',
+      v(hop('contested', '[contested] x', 2)).label, '확정 · 반대 1종');
+    eq('B2f the dissent count is n-1', v(hop('contested', '[contested] x', 4)).label, '확정 · 반대 3종');
+    eq('B2g contested without n', v(hop('contested', '[contested] x', null)).label, '확정 · 반대');
+    eq('B2h and the state reaches the caller verbatim',
+      v(hop('contested', '[contested] x', 2)).state, 'contested');
+    // 🔴 THE THREE MIDDLE WORDS MUST BE THREE DIFFERENT SENTENCES ON SCREEN. A `contested` arm
+    // that fell through to `resolved` would satisfy every other check in this section.
+    ok('B2i resolved / contested / candidate read three different ways',
+      new Set([v(hop('resolved', '[single] x')).label,
+        v(hop('contested', '[contested] x', 2)).label,
+        v(hop('candidate', '[candidate] x', 2)).label]).size === 3,
+      'two of the three hop states read the same');
     eq('B3 no_claim tone', v(hop('unresolvable', '[no_claim] x')).tone, 'gap');
     eq('B3b no_claim label', v(hop('unresolvable', '[no_claim] x')).label, '주장 없음');
     // P2: a root is the END of a recorded chain, not a hole in one.
@@ -334,40 +424,94 @@ async function suite(coreSource, viewSource) {
     eq('B15 terminal unknown degrades', core.terminalVerdict('[brand_new] x').label, '중단');
   }
 
-  // ── C. the basis suffix — P1, and the trap ────────────────────────────────────────
+  // ── C. the basis FIELD — P1, and the trap ─────────────────────────────────────────
+  // 🔴 THE FIELD, NOT THE SENTENCE (server 5bacdfc). `hopBasis` takes the HOP now. What it
+  // must never do again is read the winner's basis out of prose that also names the losers'.
   {
     const b = core.hopBasis;
-    const conv = b(LIVE.hops[2].reason);
+    const conv = b(LIVE.hops[2]);
     ok('C1 a convention hop is read as a convention', conv && conv.kind === 'convention',
       `got ${JSON.stringify(conv)}`);
     eq('C1b and names the derivation', conv && conv.name, 'slot_preserving');
-    const meas = b(LIVE.hops[1].reason);
-    ok('C2 a measured hop is read as a measurement', meas && meas.kind === 'basis',
+    const meas = b(LIVE.hops[1]);
+    // 🔴 THE SERVER'S WORD, VERBATIM. `measured`, not a client synonym: a second spelling of
+    // one vocabulary is how the two drift apart with nothing to notice.
+    ok('C2 a measured hop is read as a measurement', meas && meas.kind === 'measured',
       `got ${JSON.stringify(meas)}`);
     eq('C2b and names its derivation', meas && meas.name, 'pair_field');
-    eq('C3 has_wafer basis', b(LIVE.hops[0].reason).name, 'positional_row');
+    eq('C3 has_wafer basis', b(LIVE.hops[0]).name, 'positional_row');
 
-    // 🔴 THE TRAP, BOTH DIRECTIONS, ON REAL SERVER OUTPUT.
-    const trapA = b(PROBE.hops[1].reason);
+    // 🔴 C3c IS THE WHOLE REASON THE FIELD EXISTS. Two hops of the SAME state word, opposite
+    // bases. No reading of `state` — none — can tell these apart, and the fixture guard above
+    // pins that both are really in the capture.
+    eq('C3c the two hops carry the same state', LIVE.hops[1].state, LIVE.hops[2].state);
+    ok('C3d and the screen still tells them apart',
+      b(LIVE.hops[1]).kind !== b(LIVE.hops[2]).kind,
+      'an assumption and a measurement read alike under one state word');
+
+    // 🔴 THE TRAP, BOTH DIRECTIONS, ON REAL SERVER OUTPUT — and now in TWO states.
+    const trapA = b(PROBE.hops[1]);
     ok('C4 winner=measurement, loser=convention -> MEASUREMENT',
-      trapA && trapA.kind === 'basis' && trapA.name === 'pair_field',
+      trapA && trapA.kind === 'measured' && trapA.name === 'pair_field',
       `got ${JSON.stringify(trapA)} from ${JSON.stringify(PROBE.hops[1].reason)}`);
-    const trapB = b(PROBE.hops[4].reason);
+    const trapB = b(PROBE.hops[4]);
     ok('C5 winner=no basis, loser=convention -> NOTHING', trapB === null,
       `got ${JSON.stringify(trapB)} from ${JSON.stringify(PROBE.hops[4].reason)}`);
+    const trapC = b(CONTESTED.hops[1]);
+    ok('C5b the same trap in a CONTESTED hop',
+      trapC && trapC.kind === 'measured' && trapC.name === 'pair_field',
+      `got ${JSON.stringify(trapC)} from ${JSON.stringify(CONTESTED.hops[1].reason)}`);
 
-    eq('C6 a reason with no basis', b('[no_claim] has_wafer 원자 없음 · lot=X slot=2'), null);
-    eq('C7 empty reason', b(''), null);
-    eq('C8 null reason', b(null), null);
+    // 🔴 C5c/C5d: THE FIELD OUTRANKS THE SENTENCE, DEMONSTRATED RATHER THAN ASSERTED. Feed a
+    // hop whose sentence and field disagree in each direction. A reader that still consults the
+    // prose gets both of these backwards; nothing else in this file forces that choice, because
+    // on real output the two always agree.
+    eq('C5c a convention field beats a measured sentence',
+      b({ reason: '[single] x · basis=pair_field', basis: { kind: 'convention', name: 'slot_preserving' } }).kind,
+      'convention');
+    eq('C5d a measured field beats a convention sentence',
+      b({ reason: '[single] x · convention:slot_preserving', basis: { kind: 'measured', name: 'pair_field' } }).kind,
+      'measured');
+    // 🔴 AND A `null` FIELD IS THE SERVER SAYING "no declared basis" — taken at its word, even
+    // when the sentence still carries a suffix. Falling back there would resurrect the reading.
+    eq('C5e an explicit null is not re-derived from the sentence',
+      b({ reason: '[single] x · convention:slot_preserving', basis: null }), null);
+
+    // 🔴 THE LEGACY PATH, AND ONLY AN ABSENT KEY REACHES IT. `basis` shipped unversioned, so a
+    // client against a server older than 5bacdfc would otherwise stop marking assumptions
+    // altogether — a silent loss of the one distinction this screen exists for. The fallback is
+    // the ANCHORED suffix, so it does not reintroduce the inversion.
+    eq('C5f no key at all falls back to the anchored suffix',
+      b({ reason: '[single] slot_map 1건 · class=3 inference · convention:slot_preserving' }).kind,
+      'convention');
+    eq('C5g and the fallback is still anchored',
+      b({ reason: PROBE.hops[1].reason }).kind, 'measured');
+    eq('C5h a legacy hop with no suffix', b({ reason: '[no_claim] x' }), null);
+
+    eq('C6 a hop with no basis', b({ reason: '[no_claim] has_wafer 원자 없음', basis: null }), null);
+    eq('C7 a basis with no name is no basis', b({ basis: { kind: 'convention', name: '' } }), null);
+    eq('C8 no hop at all', b(null), null);
     const label = core.basisLabel({ kind: 'convention', name: 'slot_preserving' });
     eq('C9 convention label text', label.text, '가정 · slot_preserving');
     eq('C9b convention label kind', label.kind, 'convention');
-    const mlabel = core.basisLabel({ kind: 'basis', name: 'pair_field' });
+    const mlabel = core.basisLabel({ kind: 'measured', name: 'pair_field' });
     eq('C10 measurement label text', mlabel.text, '근거 · pair_field');
     // The two labels must not be the same string with a different noun in front — they are the
     // whole of P1 in the vocabulary, so they are asserted apart explicitly.
     ok('C10b the two labels differ', label.text !== mlabel.text, 'assumption and basis read alike');
     eq('C11 no basis, no label', core.basisLabel(null), null);
+    // 🔴 A THIRD KIND MAY NOT CLAIM 근거 — the same rule as `hopVerdict`'s default branch. 근거
+    // is the confident word here, and `BASIS_KINDS` is a list the server may extend.
+    const ulabel = core.basisLabel({ kind: 'brand_new', name: 'x' });
+    ok('C11b an unknown kind is not painted as a measurement', ulabel.kind !== 'measured'
+      && !ulabel.text.startsWith('근거'), JSON.stringify(ulabel));
+    ok('C11c nor as an assumption', ulabel.kind !== 'convention' && !ulabel.text.startsWith('가정'));
+    ok('C11d and it is not counted as one either',
+      core.summarize({ hops: [{ state: 'resolved', reason: '[single] x', basis: { kind: 'brand_new', name: 'x' } }] })
+        .convention === 0);
+    // ONE spelling of the safety-relevant question, exported so the view cannot grow a second.
+    ok('C11e isConvention is the one test', core.isConvention({ kind: 'convention', name: 'x' })
+      && !core.isConvention({ kind: 'measured', name: 'x' }) && !core.isConvention(null));
     eq('C12 tag is read off the prefix', core.reasonTag('[class_wins] x'), 'class_wins');
     eq('C12b untagged', core.reasonTag('no tag'), null);
   }
@@ -434,6 +578,24 @@ async function suite(coreSource, viewSource) {
     eq('F9 probe conventions counted at the WINNER', probe.convention, 3);
     eq('F10 an empty trace summarises to zero', core.summarize({ hops: [] }).total, 0);
     eq('F11 a malformed trace does not throw', core.summarize(null).total, 0);
+
+    // 🔴 P5 AT THE SUMMARY LEVEL. `contested` is a THIRD bucket. Folded into 확정 the chain
+    // reports agreement where a contradiction is alive; folded into 이견 it reports that nobody
+    // declared a winner when one was declared. Both are the summary stating something the
+    // resolver did not find.
+    const ct = core.summarize(CONTESTED);
+    eq('F12 the contested hop is counted', ct.contested, 1);
+    eq('F13 and NOT as 확정', ct.resolved, 3);
+    eq('F14 nor as 이견', ct.candidate, 0);
+    eq('F15 every hop lands in exactly one bucket',
+      ct.resolved + ct.contested + ct.candidate + ct.unresolvable, ct.total);
+    // The same arithmetic on the two older fixtures, so a bucket that starts double-counting
+    // shows up wherever it happens.
+    eq('F15b live too', live.resolved + live.contested + live.candidate + live.unresolvable, live.total);
+    eq('F15c probe too', probe.resolved + probe.contested + probe.candidate + probe.unresolvable, probe.total);
+    // 🔴 AND THE ASSUMPTION COUNT IS OFF THE FIELD. The contested hop's SENTENCE names a
+    // convention (the loser's); only one hop in that chain rests on one.
+    eq('F16 contested conventions counted at the WINNER', ct.convention, 1);
   }
 
   // ── G. what actually reaches the screen ───────────────────────────────────────────
@@ -459,12 +621,12 @@ async function suite(coreSource, viewSource) {
       conventionRows.every((li) => classesOf(li).includes('lt-hop--convention')));
     ok('G3d a measured row is NOT marked',
       !classesOf(at(items, 1)).includes('lt-hop--convention'));
-    eq('G3e a measured row says so', at(items, 1).getAttribute('data-basis'), 'basis');
+    eq('G3e a measured row says so', at(items, 1).getAttribute('data-basis'), 'measured');
     eq('G3f a basis-less row says that too', at(items, 9).getAttribute('data-basis'), 'none');
     const chips = byClass(mount, 'lt-basis');
     ok('G3g 가정 and 근거 chips are different elements',
       chips.some((c) => c.getAttribute('data-basis-kind') === 'convention')
-      && chips.some((c) => c.getAttribute('data-basis-kind') === 'basis'));
+      && chips.some((c) => c.getAttribute('data-basis-kind') === 'measured'));
     ok('G3h the assumption chip says 가정',
       first(byAttr(mount, 'data-basis-kind', 'convention')).textContent.startsWith('가정'));
 
@@ -498,7 +660,8 @@ async function suite(coreSource, viewSource) {
     ok('G9 the subject line is on screen', screen.includes('CL-2601-007-A2-A6-A8 · 슬롯 2'));
     ok('G10 the assumption count is a chip', byAttr(mount, 'data-chip', 'convention').length === 1
       && first(byAttr(mount, 'data-chip', 'convention')).textContent === '가정 3');
-    eq('G10b no 이견 chip when nothing disagreed', byAttr(mount, 'data-chip', 'contested').length, 0);
+    eq('G10b no 이견 chip when nothing disagreed', byAttr(mount, 'data-chip', 'candidate').length, 0);
+    eq('G10c nor a 반대 one', byAttr(mount, 'data-chip', 'contested').length, 0);
 
     // ── the probe answer: candidate, and the trap on screen ────────────────────────
     const doc2 = makeDoc();
@@ -520,7 +683,7 @@ async function suite(coreSource, viewSource) {
       !classesOf(at(items2, 4)).includes('lt-hop--convention'));
     eq('G12c and the summary chip agrees',
       first(byAttr(mount2, 'data-chip', 'convention')).textContent, '가정 3');
-    eq('G12d the 이견 chip appears', first(byAttr(mount2, 'data-chip', 'contested')).textContent, '이견 2');
+    eq('G12d the 이견 chip appears', first(byAttr(mount2, 'data-chip', 'candidate')).textContent, '이견 2');
 
     // P2 in its strongest form: an answer that is entirely gaps is still an ANSWER.
     const allGaps = {
@@ -561,6 +724,109 @@ async function suite(coreSource, viewSource) {
     ok('G16b the server sentence is verbatim', mount5.textContent.includes('<<detail>>'));
     eq('G16c and is marked as a notice',
       first(byClass(mount5, 'lt-notice')).getAttribute('data-answer-kind'), 'notice');
+  }
+
+  // ── N. P5: `contested`, and `basis` as a field, ON SCREEN ─────────────────────────
+  // 🔴 WHY THIS SECTION IS RENDERED AND NOT COMPUTED. C3c/C3d prove the CORE can tell a
+  // convention-backed `resolved` hop from a measured one. That proves nothing about the screen:
+  // both could arrive at the same row markup and the operator would read one fact where there
+  // are two. These check what reaches the DOM.
+  {
+    const doc = makeDoc();
+    const mount = doc.createElement('div');
+    view.renderTrace(doc, mount, CONTESTED, 'CT-2601-009-A4 · 슬롯 2',
+      core.nothingVerdict(CONTESTED, 'ready', COVERAGE.ready));
+    const items = byTag(mount, 'LI');
+    eq('N1 one row per hop', items.length, CONTESTED.hops.length);
+    eq('N1b the server word reaches the DOM verbatim',
+      at(items, 1).getAttribute('data-state'), 'contested');
+
+    // 🔴 N2 IS THE REQUIREMENT IN ONE LINE. A declared winner over a live dissent must not read
+    // like an undisputed one.
+    ok('N2 a contested row is not toned confident',
+      at(items, 1).getAttribute('data-tone') !== 'ok', at(items, 1).getAttribute('data-tone'));
+    eq('N2b and its badge says both halves',
+      first(byClass(at(items, 1), 'lt-badge')).textContent, '확정 · 반대 1종');
+    ok('N2c which is not what a plainly resolved row says',
+      first(byClass(at(items, 1), 'lt-badge')).textContent
+        !== first(byClass(at(items, 0), 'lt-badge')).textContent);
+    ok('N2d nor what a candidate row says — three states, three sentences',
+      first(byClass(at(items, 1), 'lt-badge')).textContent !== '이견 2종');
+
+    // 🔴 N3 IS THE TRAP IN THE NEW STATE. The contested row's sentence names
+    // `convention:slot_preserving` — the LOSER's. Marking that row as an assumption tells the
+    // operator that the measurement which WON is a guess.
+    eq('N3 the contested row rests on a measurement', at(items, 1).getAttribute('data-basis'), 'measured');
+    ok('N3b so it is not marked as an assumption',
+      !classesOf(at(items, 1)).includes('lt-hop--convention'),
+      'the overruled assumption was attributed to the winner');
+    ok('N3c even though its sentence names one',
+      CONTESTED.hops[1].reason.includes('convention:'));
+
+    // 🔴 N4 IS THE WHOLE OF "BASIS CANNOT BE INFERRED FROM STATE", ON SCREEN. Two rows, the
+    // SAME `data-state`, and they must not be the same row.
+    const resolvedRows = items.filter((li) => li.getAttribute('data-state') === 'resolved');
+    const bases = resolvedRows.map((li) => li.getAttribute('data-basis'));
+    ok('N4 the resolved rows do not all rest on the same thing',
+      bases.includes('convention') && bases.includes('measured'), bases.join(','));
+    // 🔴 TOLERANT, AND IT IS MEASURED — the same trap section K documents. Written with a bare
+    // `.find(...).getAttribute(...)`, `basis-kind-collapsed` and `assumption-mark-dropped` were
+    // both reported "caught (threw: Cannot read properties of undefined)": an exception aborts
+    // the file before N4b-N5d run, so the assertions meant to NAME those defects never scored.
+    const rowWith = (kind) => resolvedRows.find((li) => li.getAttribute('data-basis') === kind) || null;
+    const convRow = rowWith('convention');
+    const measRow = rowWith('measured');
+    const attrOf = (li, name) => (li ? li.getAttribute(name) : '(no such row)');
+    const classesIn = (li) => (li ? classesOf(li) : []);
+    const chipIn = (li) => {
+      const found = li ? byClass(li, 'lt-basis') : [];
+      return found.length ? found[0].textContent : '(no chip)';
+    };
+    ok('N4b they really are one state word',
+      !!convRow && !!measRow && attrOf(convRow, 'data-state') === attrOf(measRow, 'data-state'),
+      `${attrOf(convRow, 'data-state')} | ${attrOf(measRow, 'data-state')}`);
+    ok('N4c and the assumption-backed one is marked',
+      classesIn(convRow).includes('lt-hop--convention'), classesIn(convRow).join(' '));
+    ok('N4d while the measured one is not',
+      !!measRow && !classesIn(measRow).includes('lt-hop--convention'), classesIn(measRow).join(' '));
+    ok('N4e their chips say different words',
+      chipIn(convRow).startsWith('가정') && chipIn(measRow).startsWith('근거'),
+      `${chipIn(convRow)} | ${chipIn(measRow)}`);
+    // ...and the TONE is identical, which is the point: colour is the state axis, and it is the
+    // basis axis that has to carry this. If these ever differ, one of the two signals has
+    // started encoding the other.
+    ok('N4f while their tone is the same',
+      !!convRow && !!measRow && attrOf(convRow, 'data-tone') === attrOf(measRow, 'data-tone'),
+      `${attrOf(convRow, 'data-tone')} | ${attrOf(measRow, 'data-tone')}`);
+
+    // The summary, same three facts.
+    eq('N5 the 반대 chip appears', first(byAttr(mount, 'data-chip', 'contested')).textContent, '반대 1');
+    eq('N5b and no 이견 chip, because nothing was left undecided',
+      byAttr(mount, 'data-chip', 'candidate').length, 0);
+    eq('N5c 확정 counts only the undisputed hops',
+      first(byAttr(mount, 'data-chip', 'resolved')).textContent, '확정 3');
+    eq('N5d and the assumption count is 1, off the field',
+      first(byAttr(mount, 'data-chip', 'convention')).textContent, '가정 1');
+
+    // The server's sentence, verbatim, in this chain too.
+    const screen = mount.textContent;
+    ok('N6 every reason is on screen',
+      CONTESTED.hops.every((h) => screen.includes(h.reason)),
+      CONTESTED.hops.filter((h) => !screen.includes(h.reason)).map((h) => h.reason).join(' | '));
+
+    // 🔴 N7/N8: THE REPAIR THE WIDENED VOCABULARY FORCED. `trace()` follows `res.answer`, so it
+    // steps to the parent on a `contested` hop exactly as on a `resolved` one — this chain
+    // WALKED. `hasLineageStep` keyed on `state === 'resolved'` calls it "등재됐으나 혈통 주장
+    // 없음": a chain with a parent, announced as having none. It was already wrong for
+    // `candidate`; `contested` made it wrong twice.
+    eq('N7 a chain whose one lineage step is contested is not a nothing',
+      core.nothingVerdict(CONTESTED, 'ready', COVERAGE.ready), null);
+    ok('N7b and no headline is painted over it',
+      !screen.includes('등재됐으나 혈통 주장 없음'), 'a walked chain was told it has no parentage');
+    // The discrimination it must NOT lose: a lot that really has no parent claim still gets the
+    // sentence. Without this, N7 is satisfied by never producing the verdict at all.
+    eq('N8 a lot with no parent claim still gets it',
+      (core.nothingVerdict(NOTHINGS.root_only, 'ready') || {}).kind, 'no_lineage_claim');
   }
 
   // ── J. reading the coverage answer — "what can I ask" ─────────────────────────────
@@ -1025,14 +1291,60 @@ const CORE = 'core';
 const VIEW = 'view';
 
 const DEFECTS = [
+  // 🔴 THE SHIPPED DEFECT OF THIS ROUND: read the winner's basis out of the sentence again. The
+  // sentence names the LOSERS' bases too, so on the contested and candidate hops it inverts.
+  [CORE, 'basis-read-from-the-sentence-again',
+    (s) => s.replace("  if ('basis' in hop) {", '  if (false) {')],
+  // The same defect one notch subtler: consult the field, but let the prose override it.
+  [CORE, 'sentence-overrides-the-field',
+    (s) => s.replace('  return basisFromReason(hop.reason);\n}',
+      '  return basisFromReason(hop.reason) || null;\n}')
+      .replace("  if ('basis' in hop) {\n    const b = hop.basis;",
+        "  if ('basis' in hop && !basisFromReason(hop.reason)) {\n    const b = hop.basis;")],
   // The trap, from the front: an anywhere-match reads the overruled assumption as the winner's.
+  // Still scored, because the legacy path is still reachable against an older server.
   [CORE, 'basis-suffix-unanchored',
     (s) => s.replace('/\\s·\\s(convention:|basis=)([^\\s·()]+)$/', '/(convention:|basis=)([^\\s·()]+)/')],
   [CORE, 'basis-kind-collapsed',
-    (s) => s.replace("kind: m[1] === 'convention:' ? 'convention' : 'basis'", "kind: 'basis'")],
+    (s) => s.replace('    return { kind: b.kind == null ? \'\' : String(b.kind), name };',
+      "    return { kind: BASIS_MEASURED, name };")],
+  // An explicit `null` means "no declared basis". Re-deriving it from the prose resurrects the
+  // reading the field was shipped to retire.
+  [CORE, 'null-basis-falls-back-to-the-prose',
+    (s) => s.replace('    if (!b || typeof b !== \'object\') return null;',
+      '    if (!b || typeof b !== \'object\') return basisFromReason(hop.reason);')],
+  [CORE, 'unknown-basis-kind-reads-as-measured',
+    (s) => s.replace("  return { text: `? · ${basis.name}`, kind: 'unknown' };",
+      '  return { text: `근거 · ${basis.name}`, kind: BASIS_MEASURED };')],
   [CORE, 'assumption-labelled-like-a-measurement',
-    (s) => s.replace('? { text: `가정 · ${basis.name}`, kind: \'convention\' }',
-      '? { text: `근거 · ${basis.name}`, kind: \'convention\' }')],
+    (s) => s.replace('if (basis.kind === BASIS_CONVENTION) return { text: `가정 · ${basis.name}`',
+      'if (basis.kind === BASIS_CONVENTION) return { text: `근거 · ${basis.name}`')],
+
+  // ── P5: the third state ───────────────────────────────────────────────────────────
+  // 🔴 THE DEFAULT A CLIENT FALLS INTO WHEN A VOCABULARY WIDENS: no arm at all, so `contested`
+  //    drops through to the gap branch and a declared winner reads as 미해결.
+  [CORE, 'contested-has-no-arm',
+    (s) => s.replace("  if (state === 'contested') {", '  if (false) {')],
+  // 🔴 AND THE WORSE ONE: `contested` treated as a synonym for `resolved`, so the dissent
+  //    disappears from a screen whose entire purpose is showing where the chain disagrees.
+  [CORE, 'contested-reads-as-plainly-resolved',
+    (s) => s.replace("  if (state === 'resolved') return { state, tag, tone: 'ok', label: '확정' };",
+      "  if (state === 'resolved' || state === 'contested') return { state, tag, tone: 'ok', label: '확정' };")],
+  [CORE, 'contested-loses-its-dissent-count',
+    (s) => s.replace("label: Number.isFinite(n) && n > 1 ? `확정 · 반대 ${n - 1}종` : '확정 · 반대',",
+      "label: '확정 · 반대',")],
+  [CORE, 'contested-counted-as-agreement',
+    (s) => s.replace("    else if (v.state === 'contested') out.contested += 1;", '')
+      .replace("    if (v.state === 'resolved') out.resolved += 1;",
+        "    if (v.state === 'resolved' || v.state === 'contested') out.resolved += 1;")],
+  // 🔴 THE REPAIR, AS A MUTANT. Keyed back on the state word, a chain whose one lineage step is
+  //    disputed is announced as having no parentage — `no-lineage-claimed-on-a-real-root`
+  //    arriving through the state vocabulary instead of through the terminal tag.
+  [CORE, 'lineage-step-keyed-on-the-state-word',
+    (s) => s.replace("h.predicate === 'derived_from' && nodeId(h.to) !== null",
+      "h.predicate === 'derived_from' && h.state === 'resolved'")],
+  [VIEW, 'contested-chip-dropped',
+    (s) => s.replace("  if (s.contested > 0) chip('contested', 'contested', `반대 ${s.contested}`);", '')],
   [CORE, 'unknown-state-reads-confident',
     (s) => s.replace("tone: 'gap',\n    label: (tag && GAP_LABEL[tag]) || '미해결',",
       "tone: 'ok',\n    label: (tag && GAP_LABEL[tag]) || '미해결',")],
@@ -1045,17 +1357,23 @@ const DEFECTS = [
   [CORE, 'instant-drops-its-offset',
     (s) => s.replace('return `${date} ${rest}`;', 'return `${date} ${rest.slice(0, 8)}`;')],
   [CORE, 'summary-counts-any-basis-as-an-assumption',
-    (s) => s.replace("if (basis && basis.kind === 'convention') out.convention += 1;",
-      'if (basis) out.convention += 1;')],
+    (s) => s.replace('if (isConvention(hopBasis(hop))) out.convention += 1;',
+      'if (hopBasis(hop)) out.convention += 1;')],
   [CORE, 'gap-labels-collapse',
     (s) => s.replace("label: (tag && GAP_LABEL[tag]) || '미해결',", "label: '미해결',")],
   [VIEW, 'assumption-mark-dropped',
-    (s) => s.replace("item.setAttribute('data-basis', isConvention ? 'convention' : (basis ? 'basis' : 'none'));",
-      "item.setAttribute('data-basis', basis ? 'basis' : 'none');")],
+    (s) => s.replace("item.setAttribute('data-basis', label ? label.kind : 'none');",
+      "item.setAttribute('data-basis', basis ? 'measured' : 'none');")],
   [VIEW, 'assumption-class-dropped',
-    (s) => s.replace("${isConvention ? ' lt-hop--convention' : ''}", '')],
+    (s) => s.replace("${convention ? ' lt-hop--convention' : ''}", '')],
   [VIEW, 'every-row-marked-as-an-assumption',
-    (s) => s.replace("${isConvention ? ' lt-hop--convention' : ''}", ' lt-hop--convention')],
+    (s) => s.replace("${convention ? ' lt-hop--convention' : ''}", ' lt-hop--convention')],
+  // 🔴 THE ONE THE VIEW COULD STILL GET WRONG ON ITS OWN: mark the row from the STATE instead
+  //    of the basis. Every `resolved` row would then be an assumption and no other would be —
+  //    the two orthogonal signals collapsed into one.
+  [VIEW, 'assumption-mark-read-off-the-state',
+    (s) => s.replace('  const convention = isConvention(basis);',
+      "  const convention = verdict.state === 'resolved';")],
   [VIEW, 'reason-paraphrased',
     (s) => s.replace("body.appendChild(el(doc, 'p', 'lt-hop__reason', String((hop && hop.reason) || '')));",
       "body.appendChild(el(doc, 'p', 'lt-hop__reason', '판정 근거 확인 필요'));")],
@@ -1068,7 +1386,7 @@ const DEFECTS = [
   [VIEW, 'terminal-block-dropped',
     (s) => s.replace('wrap.appendChild(renderTerminal(doc, trace));', '')],
   [VIEW, 'assumption-chip-dropped',
-    (s) => s.replace("if (s.convention > 0) chip('convention', `가정 ${s.convention}`);", '')],
+    (s) => s.replace("if (s.convention > 0) chip('convention', 'convention', `가정 ${s.convention}`);", '')],
   [VIEW, 're-render-accumulates',
     (s) => s.replace('  clear(mount);\n  const wrap', '  const wrap')],
   [VIEW, 'state-hook-invented',
@@ -1088,7 +1406,7 @@ const DEFECTS = [
   [CORE, 'no-lineage-claimed-on-a-real-root',
     (s) => s.replace("if (tag === 'root' && !hasLineageStep(trace)) {", "if (tag === 'root') {")],
   [CORE, 'lineage-step-counts-any-hop',
-    (s) => s.replace("h.predicate === 'derived_from' && h.state === 'resolved'", '!!h')],
+    (s) => s.replace("h.predicate === 'derived_from' && nodeId(h.to) !== null", '!!h')],
   [CORE, 'coverage-unknown-state-reads-ready',
     (s) => s.replace("return COVERAGE_STATES.has(s) ? s : 'unknown';", "return s || 'ready';")],
   [CORE, 'absent-and-empty-collapse',

@@ -13,10 +13,15 @@
 //
 // WHAT IT MUST MAKE VISIBLE (product brief, slice 1 layer 3):
 //   1. a hop resting on a CONVENTION must not look like one resting on a
-//      measurement — `hopBasis` is the whole of that distinction;
+//      measurement — `hopBasis` is the whole of that distinction, and since
+//      server 5bacdfc it READS THE WIRE'S `basis` FIELD instead of deriving it.
+//      It is underivable: an undisputed convention-backed hop is `resolved`, the
+//      same word a fully measured one gets;
 //   2. `unresolvable` is CONTENT, not an error — `hopVerdict` gives it a name
 //      ("뿌리", "주장 없음") and never an error tone;
-//   3. `candidate` means something disagreed — the count is in the label.
+//   3. `candidate` means NOBODY declared a winner and `contested` means one was
+//      declared over a live dissent — two different facts, two labels, and the
+//      count is in both.
 // ============================================================
 
 // ── the question each predicate asks ─────────────────────────
@@ -110,38 +115,83 @@ export function reasonTag(reason) {
   return m ? m[1] : null;
 }
 
-// 🔴 ANCHORED AT THE END, AND THAT IS NOT A DETAIL.
+// ── what the WINNER rests on — A FIELD, NOT A READING OF THE SENTENCE ────────
 //
-// `server/ledger_trace.py::_with_basis` APPENDS the winning claim's basis label
-// to the reason, so the winner's label is always the suffix. But a `candidate`
-// reason ALSO carries the losers' labels inline —
-//   `[candidate] ... 하위 계급 반대 1종 (LOT-B(convention:slot_preserving)) · 1순위 LOT-A`
-// — and there the convention belongs to the claim that LOST. A last-match or
-// anywhere-match regex reads that as "this hop rests on an assumption", which is
-// the exact inversion of what the screen exists to show: the assumption is what
-// was overruled. The inline labels are always followed by ` · 1순위 …`, so they
-// cannot reach `$`. `ledger_trace_harness.mjs` section C pins both directions.
+// 🔴 `basis` CANNOT BE INFERRED FROM `state`, AND THAT IS WHY THE SERVER SHIPPED
+// IT (5bacdfc). A convention-backed hop nothing disputes reads `resolved` — the
+// same word a fully measured one gets. There is no state string, and no
+// combination of them, that separates an assumption from an utterance.
+//
+// 🔴 AND IT CANNOT BE READ OUT OF `reason` EITHER. `_with_basis` appends the
+// WINNER's label, but a `contested` / `candidate` sentence ALSO names the LOSERS'
+// labels inline:
+//   `[contested] class=2 observation 답 LOT-A · 하위 계급 반대 1종
+//    (LOT-B(convention:slot_preserving)) · 1순위 LOT-A · basis=pair_field`
+// The convention there belongs to the claim that LOST, and an anywhere-match
+// reads it as "this hop rests on an assumption" — the exact inversion of what the
+// screen exists to show. The field says `{kind: 'measured', name: 'pair_field'}`,
+// and the field is the winner's.
+//
+// So: the wire's `basis` is CONSUMED, never derived. `hop.basis === null` is the
+// server SAYING there is no declared basis and is taken at its word.
+
+//: The kinds `server/ledger_trace.py::BASIS_KINDS` declares.
+//:   convention — a declared ASSUMPTION not present in the source row. Class 3.
+//:   measured   — the source uttered it; the translator only reshaped it. Class 2.
+const BASIS_CONVENTION = 'convention';
+const BASIS_MEASURED = 'measured';
+
+//: 🔴 THE LEGACY READING, AND IT IS ONLY REACHED WHEN THE WIRE HAS NO `basis` KEY
+//: AT ALL. `basis` is unversioned and ungated by design, so a client running
+//: against a server older than 5bacdfc would otherwise silently stop marking
+//: assumptions — the one thing P1 exists to prevent. ANCHORED AT THE END, which
+//: is the whole of its correctness: the inline losers' labels are always followed
+//: by ` · 1순위 …` and cannot reach `$`. A `null` basis never comes here; only an
+//: ABSENT key does.
 const BASIS_SUFFIX = /\s·\s(convention:|basis=)([^\s·()]+)$/;
 
-/**
- * What the WINNING claim of this hop rests on, or null.
- *
- * `{kind: 'convention'}` — a declared ASSUMPTION (the server ranks it class 3,
- * inference, by the ontology owner's 2026-08-13 ruling). `{kind: 'basis'}` — a
- * derivation the source actually uttered. The two must never render the same.
- */
-export function hopBasis(reason) {
+function basisFromReason(reason) {
   const m = BASIS_SUFFIX.exec(String(reason == null ? '' : reason));
   if (!m) return null;
-  return { kind: m[1] === 'convention:' ? 'convention' : 'basis', name: m[2] };
+  return { kind: m[1] === 'convention:' ? BASIS_CONVENTION : BASIS_MEASURED, name: m[2] };
 }
 
-/** 'convention' -> 가정, 'basis' -> 근거. The WORD is the point (server `_basis_label`). */
+/**
+ * What the WINNING claim of this hop rests on, or null. THE HOP, not its reason.
+ *
+ * Null has two causes the server deliberately does not tell apart — no winner, or
+ * a winner with no declared derivation — and a client treating null as "not
+ * convention-backed" is correct in both (`hop_basis` docstring).
+ */
+export function hopBasis(hop) {
+  if (!hop || typeof hop !== 'object') return null;
+  if ('basis' in hop) {
+    const b = hop.basis;
+    if (!b || typeof b !== 'object') return null;
+    const name = b.name == null ? '' : String(b.name);
+    if (name === '') return null;
+    return { kind: b.kind == null ? '' : String(b.kind), name };
+  }
+  return basisFromReason(hop.reason);
+}
+
+/** Does this hop rest on a declared ASSUMPTION? ONE spelling of that question. */
+export function isConvention(basis) {
+  return !!basis && basis.kind === BASIS_CONVENTION;
+}
+
+/**
+ * 'convention' -> 가정, 'measured' -> 근거. The WORD is the point (`_basis_label`).
+ *
+ * 🔴 A kind this screen does not know reads as NEITHER — same rule as
+ * `hopVerdict`'s default branch, for the same reason. 근거 is the confident word
+ * here, and a wire that grows a third kind must not be able to claim it.
+ */
 export function basisLabel(basis) {
   if (!basis) return null;
-  return basis.kind === 'convention'
-    ? { text: `가정 · ${basis.name}`, kind: 'convention' }
-    : { text: `근거 · ${basis.name}`, kind: 'basis' };
+  if (basis.kind === BASIS_CONVENTION) return { text: `가정 · ${basis.name}`, kind: BASIS_CONVENTION };
+  if (basis.kind === BASIS_MEASURED) return { text: `근거 · ${basis.name}`, kind: BASIS_MEASURED };
+  return { text: `? · ${basis.name}`, kind: 'unknown' };
 }
 
 /**
@@ -150,13 +200,37 @@ export function basisLabel(basis) {
  * `tone` drives colour and shape; `label` is what the operator reads. NOTE the
  * default branch: an unrecognised `state` falls to 'gap', never to 'ok'. A wire
  * that grows a fifth state must not be able to paint itself confident.
+ *
+ * 🔴 THREE WORDS IN THE MIDDLE, NOT TWO, AND THEY ARE NOT DEGREES OF EACH OTHER
+ * (server `HOP_STATES`):
+ *
+ *   resolved   n == 1. Nothing disagreed.
+ *   contested  the top class was unanimous and a LOWER class dissents — a winner
+ *              was DECLARED over a live contradiction. The ranking is not in
+ *              doubt; the contradiction is.
+ *   candidate  the top class is split k ways. NOTHING declared a winner; only the
+ *              tiebreak separated them. A hop that is BOTH reads `candidate`.
+ *
+ * So `contested` shares neither word: it is not 확정 (something disagreed, and
+ * says so) and it is not 이견 (a winner was declared, and says so). Its label
+ * carries both halves and its tone is the disagreement one, because the fact the
+ * operator must not miss is the dissent.
  */
 export function hopVerdict(hop) {
   const state = hop && hop.state ? String(hop.state) : 'unresolvable';
   const tag = reasonTag(hop && hop.reason);
+  const n = Number(hop && hop.n);
   if (state === 'resolved') return { state, tag, tone: 'ok', label: '확정' };
+  if (state === 'contested') {
+    // `n` counts the distinct answers in contention; `contested` means the top
+    // class held exactly one of them, so the rest are the dissent — the same
+    // count the server's own sentence prints as `하위 계급 반대 N종`.
+    return {
+      state, tag, tone: 'contested',
+      label: Number.isFinite(n) && n > 1 ? `확정 · 반대 ${n - 1}종` : '확정 · 반대',
+    };
+  }
   if (state === 'candidate') {
-    const n = Number(hop && hop.n);
     return {
       state, tag, tone: 'contested',
       label: Number.isFinite(n) && n > 1 ? `이견 ${n}종` : '이견',
@@ -263,21 +337,29 @@ export function instantText(iso) {
  * `convention` is the number that justifies the screen. 127 of the first 878
  * real atoms exist only because of a declared convention; a trace that does not
  * count them hands the operator a conclusion dressed as an observation.
+ *
+ * 🔴 `contested` GETS ITS OWN BUCKET AND IS NEVER FOLDED INTO 확정. Folding it
+ * there would say the chain agrees where it does not; folding it into 이견 would
+ * say nobody declared a winner where one was declared. It is a third fact and it
+ * is counted as one.
+ *
+ * 🔴 AND `convention` IS COUNTED OFF THE FIELD, AT THE WINNER. Five of the eleven
+ * probe hops carry the substring `convention:`; only three REST on one.
  */
 export function summarize(trace) {
   const hops = trace && Array.isArray(trace.hops) ? trace.hops : [];
   const out = {
-    total: hops.length, resolved: 0, candidate: 0, unresolvable: 0,
+    total: hops.length, resolved: 0, contested: 0, candidate: 0, unresolvable: 0,
     convention: 0, lots: 0,
   };
   const lots = new Set();
   for (const hop of hops) {
     const v = hopVerdict(hop);
     if (v.state === 'resolved') out.resolved += 1;
+    else if (v.state === 'contested') out.contested += 1;
     else if (v.state === 'candidate') out.candidate += 1;
     else out.unresolvable += 1;
-    const basis = hopBasis(hop && hop.reason);
-    if (basis && basis.kind === 'convention') out.convention += 1;
+    if (isConvention(hopBasis(hop))) out.convention += 1;
     const from = nodeId(hop && hop.from);
     if (from !== null) lots.add(from);
   }
@@ -307,7 +389,8 @@ export function summarize(trace) {
 // 🔴 AND IT IS INFERRED FROM THE `state` AND THE `[tag]` PREFIX, NEVER FROM THE
 // PROSE. The last round measured what prose-reading costs: `reason.includes(
 // 'convention:')` INVERTS the assumption/measurement distinction because the
-// losers' labels are in the same sentence. The same trap is live here — the
+// losers' labels are in the same sentence — which is why that distinction is now
+// a FIELD (`basis`) and not a reading at all. The same trap is live here — the
 // unknown-subject sentence and the root sentence both talk about atoms being
 // absent — so section K scores that a changed sentence under an unchanged tag
 // cannot change the verdict.
@@ -435,10 +518,21 @@ export function coverageSamples(coverage) {
   return out;
 }
 
-/** Did the walk actually MOVE — did any hop resolve a parent lot? */
+/**
+ * Did the walk actually MOVE — did any hop name a parent lot?
+ *
+ * 🔴 KEYED ON THE ANSWER, NOT ON THE STATE WORD, AND THAT IS A REPAIR. `trace()`
+ * steps to the parent whenever the resolution produced one — it follows
+ * `res.answer`, which is non-null for `contested` and `candidate` hops exactly as
+ * it is for `resolved` ones. Keyed on `state === 'resolved'` this said "no
+ * lineage claim" about a chain that really walked, whenever the ONE lineage step
+ * happened to be disputed; `contested` arriving made a second state wrong the
+ * same way. `to` is the walk's own record of having moved, so it cannot go stale
+ * the next time the vocabulary widens.
+ */
 function hasLineageStep(trace) {
   const hops = trace && Array.isArray(trace.hops) ? trace.hops : [];
-  return hops.some((h) => h && h.predicate === 'derived_from' && h.state === 'resolved');
+  return hops.some((h) => h && h.predicate === 'derived_from' && nodeId(h.to) !== null);
 }
 
 /**

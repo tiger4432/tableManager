@@ -12,8 +12,8 @@
 // `ledger_trace_core.js`.
 // ============================================================
 import {
-  hopVerdict, hopBasis, basisLabel, hopQuestion, hopAnswer, hopAnswerContext,
-  nodeText, instantText, summarize, terminalVerdict,
+  hopVerdict, hopBasis, basisLabel, isConvention, hopQuestion, hopAnswer,
+  hopAnswerContext, nodeText, instantText, summarize, terminalVerdict,
   coverageVerdict, coverageFacts, coverageSamples,
 } from './ledger_trace_core.js';
 
@@ -31,42 +31,59 @@ function clear(mount) {
 // The summary chips. Zero-valued ones are OMITTED rather than shown as 0: a row
 // of zeroes is four things to read past on the way to the one number that is not
 // zero, and 확정 is the only count that is always meaningful.
+//
+// 🔴 `data-chip` CARRIES THE BUCKET, `--tone` CARRIES THE COLOUR, and they are
+// not the same axis: 반대 and 이견 are two different facts that share the
+// disagreement colour. Keying the hook on the tone would have made them one chip
+// under two names.
 function renderSummary(doc, trace, subjectText) {
   const s = summarize(trace);
   const head = el(doc, 'header', 'lt-head');
   head.appendChild(el(doc, 'div', 'lt-head__subject', subjectText));
 
   const chips = el(doc, 'div', 'lt-chips');
-  const chip = (tone, text) => {
+  const chip = (key, tone, text) => {
     const c = el(doc, 'span', `lt-chip lt-chip--${tone}`, text);
-    c.setAttribute('data-chip', tone);
+    c.setAttribute('data-chip', key);
     chips.appendChild(c);
   };
-  chip('lots', `랏 ${s.lots}`);
-  chip('ok', `확정 ${s.resolved}`);
-  if (s.candidate > 0) chip('contested', `이견 ${s.candidate}`);
-  if (s.unresolvable > 0) chip('gap', `미확정 ${s.unresolvable}`);
+  chip('lots', 'lots', `랏 ${s.lots}`);
+  chip('resolved', 'ok', `확정 ${s.resolved}`);
+  // 🔴 NEVER FOLDED INTO 확정. A winner was declared and something still
+  // disagrees; a chain that reports it as agreement is the screen saying the
+  // opposite of what the resolver found.
+  if (s.contested > 0) chip('contested', 'contested', `반대 ${s.contested}`);
+  if (s.candidate > 0) chip('candidate', 'contested', `이견 ${s.candidate}`);
+  if (s.unresolvable > 0) chip('unresolvable', 'gap', `미확정 ${s.unresolvable}`);
   // 🔴 The count that justifies the screen. Shown whenever it is non-zero, and
   // never folded into 확정 — a hop the ledger only believes under a declared
   // assumption is not the same fact as one a source uttered.
-  if (s.convention > 0) chip('convention', `가정 ${s.convention}`);
+  if (s.convention > 0) chip('convention', 'convention', `가정 ${s.convention}`);
   head.appendChild(chips);
   return head;
 }
 
 function renderHop(doc, hop, ordinal) {
   const verdict = hopVerdict(hop);
-  const basis = hopBasis(hop && hop.reason);
-  const isConvention = !!basis && basis.kind === 'convention';
+  // 🔴 THE HOP, NOT ITS SENTENCE. `basis` is the server's field about the WINNER;
+  // the sentence names the LOSERS' bases too, and reading it here inverted the
+  // answer once (server 5bacdfc).
+  const basis = hopBasis(hop);
+  const label = basisLabel(basis);
+  const convention = isConvention(basis);
 
+  // 🔴 TWO ORTHOGONAL SIGNALS, AND THEY MUST STAY ORTHOGONAL: `--${tone}` is the
+  // STATE (확정 / 반대·이견 / 미확정) and `--convention` is the BASIS. A contested
+  // hop whose winner is measured is amber and SOLID; an undisputed hop resting on
+  // an assumption is green and DASHED. Neither word can be read off the other.
   const item = el(doc, 'li',
-    `lt-hop lt-hop--${verdict.tone}${isConvention ? ' lt-hop--convention' : ''}`);
-  // Hooks for the harness and for anyone reading the DOM. They carry the
-  // SERVER'S words (`state`, `predicate`) plus the one thing the screen derives.
+    `lt-hop lt-hop--${verdict.tone}${convention ? ' lt-hop--convention' : ''}`);
+  // Hooks for the harness and for anyone reading the DOM. They carry the SERVER'S
+  // words — `state`, `predicate`, and now `basis.kind` — verbatim.
   item.setAttribute('data-state', verdict.state);
   item.setAttribute('data-tone', verdict.tone);
   item.setAttribute('data-predicate', String((hop && hop.predicate) || ''));
-  item.setAttribute('data-basis', isConvention ? 'convention' : (basis ? 'basis' : 'none'));
+  item.setAttribute('data-basis', label ? label.kind : 'none');
 
   item.appendChild(el(doc, 'div', 'lt-hop__rail'));
 
@@ -93,7 +110,6 @@ function renderHop(doc, hop, ordinal) {
   const context = hopAnswerContext(hop);
   if (context) line.appendChild(el(doc, 'span', 'lt-hop__context', context));
 
-  const label = basisLabel(basis);
   if (label) {
     const chip = el(doc, 'span', `lt-basis lt-basis--${label.kind}`, label.text);
     chip.setAttribute('data-basis-kind', label.kind);
