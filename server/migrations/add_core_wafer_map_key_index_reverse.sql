@@ -1,0 +1,22 @@
+-- REVERSE of server/migrations/add_core_wafer_map_key_index.sql.
+--
+--   psql "$DATABASE_URL" -f server/migrations/add_core_wafer_map_key_index_reverse.sql
+--
+-- Dropping this index costs no data - rebuilding it is one CONCURRENTLY statement.
+-- Check where you are first:
+--   SELECT current_database();
+--
+-- 🔴 WHAT IT COSTS IS NOT "the map screen gets slower". While
+-- `map_overlay_config.json` declares `core_wafer_map.key_columns` as the composite
+-- (or omits it and inherits `table_config.map_key_columns`), every registered floor
+-- resolves, and each one issues a per-map cell read and a per-map COUNT(*) against
+-- this predicate. Without the index those are sequential scans: measured on
+-- assy_qa, `GET /api/maps/alignment/references` went 0.332 s -> 1.128 s for 200
+-- maps, and the per-candidate cost scales with the table, so the gap widens as
+-- `core_wafer_map` grows. Reverting this file alone leaves the route correct and
+-- slow. If the intent is to undo the whole repair, revert the config half too.
+--
+-- CONCURRENTLY for the same reason the forward file uses it: a plain DROP INDEX
+-- takes an ACCESS EXCLUSIVE lock on `core_wafer_map` and stalls every reader.
+
+DROP INDEX CONCURRENTLY IF EXISTS idx_core_wafer_map_map_key;

@@ -1,0 +1,83 @@
+-- The index `core_wafer_map` is read by when it is used AS A MAP.
+--
+--   psql "$DATABASE_URL" -f server/migrations/add_core_wafer_map_key_index.sql
+--
+-- 🔴 ORDER. This index and the `map_overlay_config.json` repair in the same change
+-- are ONE repair, and this half must land FIRST. The config repair makes 201
+-- previously-refused floors resolve, and every one of them then issues the cell
+-- read this index serves. Landing the config alone makes the route SLOWER, not
+-- faster - measured below. `map_overlay.load_overlay_config` re-reads the file on
+-- every call, so the config half takes effect on the next request with no restart:
+-- there is no window in which to catch up afterwards.
+--
+-- 🔴 THIS FILE NAMES A DATABASE NOWHERE, so it cannot refuse the wrong one - `psql`
+-- connects wherever you point it. Check before you run:
+--   SELECT current_database();
+-- (SCHEMA_CANON §3 asks a migration to refuse an unspecified DB; a `.sql` file
+-- cannot, and pretending otherwise would be worse than saying so. The statement
+-- below is additive and IF NOT EXISTS, so the blast radius of a wrong target is an
+-- unused index, not data.)
+--
+-- CONCURRENTLY: `core_wafer_map` is an ingestion target and a lock on it is a
+-- stalled lane. It cannot run inside a transaction block - `psql -f` runs each
+-- top-level statement in its own transaction, and a wrapping BEGIN would break it.
+--
+-- If interrupted it leaves an INVALID index that costs writes and serves no reads:
+--   SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+--   WHERE NOT i.indisvalid AND c.relname = 'idx_core_wafer_map_map_key';
+--
+-- REVERSE: server/migrations/add_core_wafer_map_key_index_reverse.sql
+--
+--
+-- ================================================================
+-- WHY THESE COLUMNS, AND NOT THE ONES IN THE TABLE NAME
+-- ================================================================
+-- The column list is not a choice - it is `table_config.core_wafer_map.
+-- map_key_columns`, which is `[core_lot, core_slot]`. That declaration is what
+-- `map_overlay.build_key_filters` decomposes a map id into, so the predicate every
+-- map read issues is literally
+--
+--     WHERE core_lot = ? AND core_slot = ?
+--
+-- ⚠️ THE COLUMN LIST IS CONFIG-DRIVEN, so this file has an expiry condition rather
+-- than a lifetime: if `map_key_columns` is ever re-declared, this index stops
+-- matching the predicate and silently becomes dead weight. It does not fail, it
+-- just stops being used. Whoever changes that declaration owns this file too.
+--
+-- Three statement shapes read through it, all in `map_alignment`:
+--
+--   `_cells_of`        SELECT core_x, core_y, c_bn ... WHERE <key>
+--                      ORDER BY core_y, core_x, row_id LIMIT cap+1   -- per map
+--   `_count_cells`     SELECT count(*) ... WHERE <key>               -- per map
+--   `_count_cells_bulk` SELECT core_lot, core_slot, count(*) ... GROUP BY 1,2
+--
+-- Measured on assy_qa (24,200 rows, 200 maps, ANALYZE before each plan):
+--
+--                        no index      (core_lot, core_slot)
+--   cell read LIMIT 2    3.615 ms      0.082 ms      seq scan -> index scan
+--   COUNT(*) one key     3.727 ms      0.050 ms
+--   GROUP BY key         7.899 ms      4.782 ms      HashAgg -> GroupAgg
+--
+-- The per-map shapes are the ones that matter: they run once PER CANDIDATE, so
+-- their cost is `candidates x table_rows` and it grows from both ends. The bulk
+-- GROUP BY is one statement whichever plan it gets.
+--
+-- ⚠️ NOT A COVERING INDEX, and that was measured rather than assumed. The obvious
+-- extension is `(core_lot, core_slot, core_y, core_x, row_id) INCLUDE (c_bn)`,
+-- which additionally serves `_cells_of`'s ORDER BY and makes the read index-only.
+-- It does not pay: the cell read measured 0.110 ms against that index versus
+-- 0.082 ms against this one (the sort it removes is a top-N heapsort over ~121
+-- rows, which costs nothing), and it pushed the GROUP BY back to a HashAggregate.
+-- End to end the catalog measured 0.329 s with it and 0.332 s with this index -
+-- inside the run-to-run spread. Six columns of write amplification on an ingestion
+-- target, bought with nothing. If per-map cell counts ever grow by orders of
+-- magnitude the balance changes and the covering variant deserves re-measuring;
+-- the number that decides it is rows-per-map, which is ~121 today.
+--
+-- ⚠️ NOT PARTIAL and NOT UNIQUE. `(core_lot, core_slot)` is a map identity, not a
+-- row identity - `core_wafer_map`'s business key is `core_cell_key` over
+-- (core_lot, core_slot, core_x, core_y), so hundreds of cells share one key here.
+-- A UNIQUE index would refuse the second cell of every map.
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_core_wafer_map_map_key
+    ON core_wafer_map (core_lot, core_slot);
