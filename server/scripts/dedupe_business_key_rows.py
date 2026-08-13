@@ -44,12 +44,112 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from sqlalchemy import text                                    # noqa: E402
-from database.database import engine, SessionLocal             # noqa: E402
 from database import crud, models                              # noqa: E402
 
 STATEMENT_TIMEOUT_MS = 120_000
 CHUNK = 200
 SAMPLE = 5
+
+
+# =============================================================================
+# The read-only guard
+# =============================================================================
+# 🔴 THIS SPELLING IS NOT NEW AND MUST NOT BE RE-INVENTED. It is the one
+# `server/scripts/diagnose_wal_headroom.py` (class `RO`) and
+# `server/scripts/diagnose_slow_after_ingest.py` already use: the setting goes in as a
+# CONNECTION OPTION, which the server applies before this session's first transaction
+# exists and re-applies to every transaction after it. That is what makes it survive a
+# rollback and what makes it independent of the isolation level.
+#
+# WHAT STOOD HERE BEFORE, AND WHAT WAS MEASURABLY TRUE ABOUT IT
+#
+#     conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+#     conn.execute(text("SET SESSION default_transaction_read_only = on"))
+#
+# ⚠️ In that order it DID engage. Measured on the isolated `assy_qa` (PostgreSQL 18.3 /
+# SQLAlchemy 2.0.49 / psycopg2 2.9.11), 2026-08-13: `execution_options` puts psycopg2
+# into autocommit on this very Connection, so there is no open transaction for the SET
+# to be trapped inside; `transaction_read_only` read `on` and a CREATE was refused,
+# still refused after a rollback. Nothing was ever deleted that should not have been.
+#
+# 🔴 The defect is that the safety property rested on an unrelated setting. Under the
+# ordinary isolation level the identical statement lands inside an implicit transaction
+# that began under the old default and keeps it: `transaction_read_only` stays `off`, a
+# CREATE is ACCEPTED, and `default_transaction_read_only` reads `on` throughout. This
+# file never read the flag back, so the two were indistinguishable from inside it.
+#
+# So `transaction_read_only` is read back below rather than trusted, and
+# `default_transaction_read_only` is deliberately NOT what gets checked - it reads `on`
+# in both arrangements, including the one that accepts writes.
+#
+# `statement_timeout` moves in here from the `SET` it used to be. It covered the
+# counting pass and only the counting pass before (the deletes go out through
+# `SessionLocal`), and it still does.
+READONLY_OPTIONS = ("-c default_transaction_read_only=on "
+                    f"-c statement_timeout={STATEMENT_TIMEOUT_MS} "
+                    "-c client_encoding=utf8")
+
+READONLY_REFUSAL = "[read-only guard] REFUSED"
+
+
+def open_readonly_engine(url: str = None):
+    """An engine every one of whose transactions is read-only, armed at connect time.
+
+    `NullPool` is load-bearing rather than tidiness: a connection carrying this flag
+    must never re-enter a pool that something else draws from. It is also what retires
+    the `invalidate()` this script used to need on the way out - measured on `assy_qa`,
+    a pinned connection returned to a pooled engine hands the NEXT checkout a session
+    that still refuses writes. An engine of our own has no next checkout.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import NullPool
+    if url is None:
+        from database.database import SQLALCHEMY_DATABASE_URL
+        url = SQLALCHEMY_DATABASE_URL
+    return create_engine(
+        url, poolclass=NullPool,
+        connect_args={"options": READONLY_OPTIONS,
+                      "application_name": "assy_dedupe_bk_check"})
+
+
+def assert_readonly(conn):
+    """Refuse unless POSTGRESQL ITSELF reports that this connection cannot write."""
+    try:
+        armed = conn.execute(text("SHOW transaction_read_only")).scalar()
+    except Exception as exc:
+        raise RuntimeError(
+            f"{READONLY_REFUSAL}: `transaction_read_only` could not be read from this "
+            f"connection ({type(exc).__name__}: {str(exc).strip().splitlines()[0]}). "
+            f"This is a PostgreSQL operator script and it will not run a pass it "
+            f"cannot prove is read-only.") from exc
+    if str(armed).lower() != "on":
+        raise RuntimeError(
+            f"{READONLY_REFUSAL}: PostgreSQL reports transaction_read_only={armed!r} "
+            f"on the connection this run counts with. Refusing to run a check pass "
+            f"that is not actually protected.")
+    return conn
+
+
+def assert_writable(conn):
+    """The mirror, for `--apply`. Fails before the first chunk instead of during it."""
+    armed = conn.execute(text("SHOW transaction_read_only")).scalar()
+    if str(armed).lower() != "off":
+        raise RuntimeError(
+            f"{READONLY_REFUSAL} (inverted): --apply was asked for but PostgreSQL "
+            f"reports transaction_read_only={armed!r} on the connection that would do "
+            f"the deleting. Nothing was attempted.")
+    return conn
+
+
+def open_readonly_connection(engine):
+    """THE ONLY DOOR to a counting-pass connection: connect, then prove it, or refuse."""
+    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        assert_readonly(conn)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
 
 
 def _norm(v):
@@ -95,14 +195,33 @@ def run(table: str, apply: bool, allow_differing: bool,
     print(f"=== {table} | {mode} ===")
     print(f"비교 컬럼 {len(cols)}개, 남길 행 규칙: cell_sources 최다 -> row_id 최소\n")
 
-    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-    readonly = False
-    try:
-        if not apply:
-            conn.execute(text("SET SESSION default_transaction_read_only = on"))
-            readonly = True
-        conn.execute(text(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}"))
+    # THE WRITABLE SESSION FACTORY IS RESOLVED ONLY WHEN SOMETHING IS GOING TO BE
+    # DELETED. A check run never imports it, never opens it, and therefore has no
+    # writable connection anywhere in this process for the counting pass to reach for.
+    session_factory = None
+    if apply:
+        from database.database import SessionLocal as _SessionLocal
+        from database.database import engine as _app_engine
+        session_factory = _SessionLocal
+        # 🔴 PROVE THE APPLY PATH BEFORE THE COUNTING PASS, NOT AFTER IT. This is the
+        # same discipline as the `DYNAMIC_TABLES` gate above and for the same reason:
+        # the read-only pass is raw SQL, the write path is `crud.delete_rows_batch`,
+        # and anything the write path needs that the read path does not touch turns
+        # into "the check is green and only --apply fails". The connection is proven
+        # writable here and then dropped; the deletes open their own.
+        with _app_engine.connect() as w:
+            assert_writable(w)
 
+    # The counting pass gets a connection PROVEN read-only by the server, in BOTH modes
+    # - `--apply` does not make the counting half writable, it only adds a second,
+    # separate session that deletes.
+    ro_engine = open_readonly_engine()
+    try:
+        conn = open_readonly_connection(ro_engine)
+    except BaseException:
+        ro_engine.dispose()
+        raise
+    try:
         # 🔴 `SELECT *`. 처음엔 `column_types` 선언한 컬럼만 떠서 비교했는데, 그러면
         #    **선언 밖 컬럼이 달라도 identical 로 나온다.** 비교 모집단을 선언으로 좁히는
         #    것 자체가 가설이고, 그 가설이 반증을 먼저 지운다. 전부 떠서 분류한다.
@@ -210,7 +329,7 @@ def run(table: str, apply: bool, allow_differing: bool,
         if apply:
             for i in range(0, len(victims), CHUNK):
                 part = victims[i:i + CHUNK]
-                db = SessionLocal()
+                db = session_factory()
                 try:
                     # 정본 경로. 연쇄 삭제 + DELETE 감사 로그를 같이 한다.
                     n = crud.delete_rows_batch(db, table, part, user_name="dedupe_script")
@@ -262,9 +381,10 @@ def run(table: str, apply: bool, allow_differing: bool,
                   f" cell_sources·cell_overwrites 가 함께 지워지고 DELETE 감사 로그가 남는다.")
         return stat
     finally:
-        if readonly:
-            conn.invalidate()
+        # No `invalidate()` any more, and nothing to remember: the flag lives on a
+        # NullPool engine of our own, so there is no pooled connection to poison.
         conn.close()
+        ro_engine.dispose()
 
 
 def main(argv=None) -> int:

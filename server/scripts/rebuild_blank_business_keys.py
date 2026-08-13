@@ -20,9 +20,28 @@
    조합 규칙이 바뀌는 날 이 스크립트만 옛 규칙으로 남는다. 그래서 SQL로 잇지 않고
    그 함수를 부른다.
 
-🔴 기본은 읽기 전용이고, 세션에 `default_transaction_read_only`를 걸어 **구조적으로**
-   못 쓰게 한다 — 아래 코드에 UPDATE가 없다는 것을 운영자가 믿어야 하는 상태로 두지
-   않는다. 쓰려면 `--apply`.
+🔴 The default pass is read-only, and the SERVER is what enforces it - not the absence
+   of an UPDATE in the code below, which an operator would otherwise have to take on
+   trust. Use `--apply` to write.
+
+   ⚠️ THIS PARAGRAPH USED TO CALL THAT PROTECTION "STRUCTURAL" AND THE WORD WAS WRONG.
+   What stood here was `SET SESSION default_transaction_read_only = on`, issued on a
+   connection that `execution_options` had already put into AUTOCOMMIT. Measured on the
+   isolated `assy_qa` (PostgreSQL 18.3 / SQLAlchemy 2.0.49 / psycopg2 2.9.11) on
+   2026-08-13, IN THAT ORDER IT DID ENGAGE: writes were refused, before and after a
+   rollback. Nothing was ever written that should not have been.
+
+   It engaged only BECAUSE the connection happened to be in autocommit. Under the
+   ordinary isolation level the identical statement lands inside an implicit
+   transaction that began under the old default and keeps it - `transaction_read_only`
+   stays `off`, a CREATE is ACCEPTED, and `default_transaction_read_only` reads `on`
+   the whole time. Nothing in this file read the flag back, so the two arrangements
+   were indistinguishable from inside it. A safety property resting on an unrelated
+   setting that nobody declared, verified by nothing, is not structural.
+
+   It is structural now: armed as a CONNECTION OPTION (independent of isolation level)
+   and refused unless PostgreSQL itself reports `transaction_read_only = on`. See the
+   guard section below the imports.
 
 세 가지를 먼저 답한 뒤에야 쓴다:
 
@@ -44,11 +63,96 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from sqlalchemy import text                                    # noqa: E402
-from database.database import engine                           # noqa: E402
 from database import crud, models, schemas                     # noqa: E402
 
 STATEMENT_TIMEOUT_MS = 120_000
 CHUNK = 1_000
+
+
+# =============================================================================
+# The read-only guard
+# =============================================================================
+# 🔴 THIS SPELLING IS NOT NEW AND MUST NOT BE RE-INVENTED. It is the one
+# `server/scripts/diagnose_wal_headroom.py` (class `RO`) and
+# `server/scripts/diagnose_slow_after_ingest.py` already use: the setting goes in as a
+# CONNECTION OPTION, which the server applies before this session's first transaction
+# exists and re-applies to every transaction after it. That is what makes it survive a
+# rollback, and what makes it independent of the isolation level. See the module
+# docstring for what stood here before and what was measurably true about it.
+#
+# `transaction_read_only` is the flag PostgreSQL enforces and it is READ BACK below
+# rather than trusted. `default_transaction_read_only` is deliberately NOT what gets
+# checked: it reads `on` even in the arrangement that accepts writes.
+#
+# `statement_timeout` moves in here from the `SET` it used to be. It covered the
+# counting pass and only the counting pass before (the writes went out on other
+# connections), and it still does.
+READONLY_OPTIONS = ("-c default_transaction_read_only=on "
+                    f"-c statement_timeout={STATEMENT_TIMEOUT_MS} "
+                    "-c client_encoding=utf8")
+
+READONLY_REFUSAL = "[read-only guard] REFUSED"
+
+
+def open_readonly_engine(url: str = None):
+    """An engine every one of whose transactions is read-only, armed at connect time.
+
+    `NullPool` is load-bearing rather than tidiness: a connection carrying this flag
+    must never re-enter a pool that something else draws from. It is also what retires
+    the `invalidate()` this script used to need on the way out - measured on `assy_qa`,
+    a pinned connection returned to a pooled engine hands the NEXT checkout a session
+    that still refuses writes, so a missed `invalidate()` would have broken the next
+    user of the application pool. An engine of our own has no next checkout.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import NullPool
+    if url is None:
+        from database.database import SQLALCHEMY_DATABASE_URL
+        url = SQLALCHEMY_DATABASE_URL
+    return create_engine(
+        url, poolclass=NullPool,
+        connect_args={"options": READONLY_OPTIONS,
+                      "application_name": "assy_rebuild_bk_check"})
+
+
+def assert_readonly(conn):
+    """Refuse unless POSTGRESQL ITSELF reports that this connection cannot write."""
+    try:
+        armed = conn.execute(text("SHOW transaction_read_only")).scalar()
+    except Exception as exc:
+        raise RuntimeError(
+            f"{READONLY_REFUSAL}: `transaction_read_only` could not be read from this "
+            f"connection ({type(exc).__name__}: {str(exc).strip().splitlines()[0]}). "
+            f"This is a PostgreSQL operator script and it will not run a pass it "
+            f"cannot prove is read-only.") from exc
+    if str(armed).lower() != "on":
+        raise RuntimeError(
+            f"{READONLY_REFUSAL}: PostgreSQL reports transaction_read_only={armed!r} "
+            f"on the connection this run counts with. Refusing to run a check pass "
+            f"that is not actually protected.")
+    return conn
+
+
+def assert_writable(conn):
+    """The mirror, for `--apply`. Fails before the first chunk instead of during it."""
+    armed = conn.execute(text("SHOW transaction_read_only")).scalar()
+    if str(armed).lower() != "off":
+        raise RuntimeError(
+            f"{READONLY_REFUSAL} (inverted): --apply was asked for but PostgreSQL "
+            f"reports transaction_read_only={armed!r} on the connection that would do "
+            f"the writing. Nothing was attempted.")
+    return conn
+
+
+def open_readonly_connection(engine):
+    """THE ONLY DOOR to a counting-pass connection: connect, then prove it, or refuse."""
+    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        assert_readonly(conn)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
 
 
 def _blank_parts(value, sep: str) -> bool:
@@ -90,17 +194,34 @@ def run(table: str, apply: bool) -> dict:
     print(f"=== {table} | {'APPLY' if apply else 'CHECK (읽기 전용)'} ===")
     print(f"조합 재료: {sources}  구분자: {sep!r}\n")
 
-    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-    readonly = False
-    try:
-        if not apply:
-            # 관례가 아니라 구조로 막는다. 끝나면 invalidate 로 커넥션을 버린다 -
-            # close() 는 풀로 돌려보내므로 다음 사용자가 이 플래그를 물려받는다
-            # (add_business_key_unique_index.py 가 실제로 그 사고를 겪었다).
-            conn.execute(text("SET SESSION default_transaction_read_only = on"))
-            readonly = True
-        conn.execute(text(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}"))
+    # THE WRITABLE ENGINE IS RESOLVED ONLY WHEN SOMETHING IS GOING TO BE WRITTEN. A
+    # check run never imports it, never opens it, and therefore has no writable
+    # connection anywhere in this process for the counting pass to reach for.
+    write_engine = None
+    if apply:
+        from database.database import engine as _app_engine
+        write_engine = _app_engine
+        # 🔴 PROVE THE APPLY PATH BEFORE THE COUNTING PASS, NOT AFTER IT. The trap is
+        # already recorded in the sibling `dedupe_business_key_rows.py`: its read-only
+        # pass was raw SQL while its write path needed `models.init_dynamic_models`, so
+        # the check ran clean and only `--apply` died. The general shape is "the check
+        # exercised less setup than the apply needs". Here that setup is the assembler
+        # (`_compose`, run over every row by the counting pass below), the dynamic
+        # models (initialised above), and a connection that PostgreSQL will accept
+        # writes on - which is what this asks, up front, on a connection it then drops.
+        with write_engine.connect() as w:
+            assert_writable(w)
 
+    # The counting pass gets a connection PROVEN read-only by the server, in BOTH modes
+    # - `--apply` does not make the counting half writable, it only adds a second,
+    # separate connection that writes.
+    ro_engine = open_readonly_engine()
+    try:
+        conn = open_readonly_connection(ro_engine)
+    except BaseException:
+        ro_engine.dispose()
+        raise
+    try:
         cols = ", ".join(f'"{c}"' for c in ["row_id", "business_key_val"] + sources)
         # 🔴 NULL 키도 대상이다. 처음엔 `WHERE business_key_val IS NOT NULL` 로 걸렀는데
         #    그것이 정확히 고쳐야 할 행들을 빼고 있었다 — 제품 소유자가 운영에서 확인.
@@ -152,7 +273,9 @@ def run(table: str, apply: bool) -> dict:
         if apply:
             for i in range(0, len(pending), CHUNK):
                 chunk = pending[i:i + CHUNK]
-                with engine.begin() as w:
+                # A different engine from the one `conn` came from. `conn` cannot run
+                # this statement and PostgreSQL, not this file, is what says so.
+                with write_engine.begin() as w:
                     for row_id, new in chunk:
                         w.execute(text(
                             f'UPDATE public."{table}" SET business_key_val = :k '
@@ -183,9 +306,10 @@ def run(table: str, apply: bool) -> dict:
                   f"collides)이 납득되는지 먼저 볼 것.")
         return stat
     finally:
-        if readonly:
-            conn.invalidate()
+        # No `invalidate()` any more, and nothing to remember: the flag lives on a
+        # NullPool engine of our own, so there is no pooled connection to poison.
         conn.close()
+        ro_engine.dispose()
 
 
 def main(argv=None) -> int:

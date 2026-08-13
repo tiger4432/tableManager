@@ -298,6 +298,19 @@ class CatalogueConn:
             return _Rows([(t,) for t in self._tables])
         if "xd.indkey = xp.indkey" in s:
             return _Rows(self._redundant)
+        if "transaction_read_only" in s:
+            # 🔴 THIS IS NOT THE DOUBLE PRETENDING TO BE SAFE - IT IS TELLING THE TRUTH.
+            # `assert_readonly` REFUSES a connection that cannot answer, which is the
+            # property we want, and it is why this fake could not reach the counting pass
+            # at all until it answered. A fake executes nothing, so `on` is the honest
+            # reply, not a bypass.
+            #
+            # ⚠️ Do NOT read a green here as evidence that the guard works. That claim is
+            # only ever earned against a real PostgreSQL session, in
+            # `server/tests/test_readonly_guard.py`, which reads the flag back from the
+            # server and proves an actual write is REFUSED. This file tests the report
+            # shape and nothing else.
+            return _Scalar("on")
         return _Rows([])
 
     def invalidate(self):
@@ -313,6 +326,21 @@ class _Rows(list):
 
     def first(self):
         return self[0] if self else None
+
+
+class _Scalar:
+    """A one-value result, for the settings the read-only guard reads back.
+
+    Separate from `_Rows` on purpose: `_Rows` has no `.scalar()`, and that absence is what
+    made `assert_readonly` refuse this fake outright rather than assume it was safe. Giving
+    `_Rows` a `.scalar()` would have made every catalogue query answer settings queries too.
+    """
+
+    def __init__(self, value):
+        self._value = value
+
+    def scalar(self):
+        return self._value
 
 
 class FakeEngine:
@@ -339,32 +367,35 @@ def test_droppable_is_decided_by_the_query_layer_not_the_caller(monkeypatch):
     assert got == {"ix_t_id": True, "idx_handwritten": False, "ix_": False}
 
 
-def test_check_mode_pins_the_session_read_only_and_then_discards_it():
-    """🔴 The defect only an end-to-end run caught, now netted.
-
-    `SET SESSION` lives on the DBAPI connection and `close()` RETURNS that connection to
-    the pool rather than closing it. Without `invalidate()` the next checkout inherits
-    the read-only flag, and a check run in the same process silently disables the apply
-    run that follows it - every CREATE/DROP fails with `ReadOnlySqlTransaction`.
-    """
-    conn = CatalogueConn()
-    mig.run(apply=False, engine=FakeEngine(conn))
-    assert any("default_transaction_read_only = on" in s for s in conn.sql)
-    assert conn.invalidated, "a read-only-pinned connection must never re-enter the pool"
-
-
-def test_write_mode_neither_pins_nor_discards():
-    """The converse. Invalidating unconditionally would throw away a healthy connection
-    on every apply, and pinning unconditionally would make the apply impossible."""
-    conn = CatalogueConn()
-    mig.run(apply=True, drop_redundant=True, engine=FakeEngine(conn))
-    assert not any("default_transaction_read_only" in s for s in conn.sql)
-    assert not conn.invalidated
+# 🔴 TWO TESTS WERE DELETED HERE, AND THE REASON IS NOT "THEY BROKE".
+#
+# `test_check_mode_pins_the_session_read_only_and_then_discards_it` and
+# `test_write_mode_neither_pins_nor_discards` pinned the MECHANICS of the old guard:
+# that `run()` emits `SET SESSION default_transaction_read_only = on` and then calls
+# `invalidate()` so the pinned session cannot re-enter the pool.
+#
+# Both mechanics are gone, and what they protected is now structurally impossible
+# rather than merely tested: the read-only property is armed as a CONNECTION OPTION on
+# a `NullPool` engine, so there is no pooled session to inherit a flag and nothing to
+# invalidate. A test that asserts the presence of a statement the code no longer issues
+# is not coverage of a behaviour, it is a copy of an implementation.
+#
+# The behaviours themselves did not go unwatched - they are asserted against a real
+# PostgreSQL session in `server/tests/test_readonly_guard.py`, which reads
+# `transaction_read_only` back and proves a write is REFUSED, which the fake connection
+# here could never do. That is the trade: two fake-driven mechanics tests out, one
+# server-enforced behaviour test in.
 
 
 def test_run_reports_both_sections_and_returns_them():
+    """Kept, not deleted - this one asserts the report SHAPE, not the guard's mechanics.
+
+    It broke only because `run()` gained a `readonly_engine=` seam, so the fake has to be
+    handed to the connection the counting pass actually uses. Deleting a test because its
+    double no longer fits the seam loses the assertion for free.
+    """
     conn = CatalogueConn(redundant_rows=[("t", "ix_t_id", "t_pkey", 8, "d", "p")])
-    out = mig.run(apply=False, engine=FakeEngine(conn))
+    out = mig.run(apply=False, engine=FakeEngine(conn), readonly_engine=FakeEngine(conn))
     assert out["results"] == []
     assert [r["index"] for r in out["redundant"]["found"]] == ["ix_t_id"]
     assert out["redundant"]["dropped"] == []

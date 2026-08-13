@@ -116,6 +116,8 @@ covered by a valid unique index and nothing in section 2 failed.
 block, so the session runs with `isolation_level="AUTOCOMMIT"` (same shape as
 `server/scripts/setup_db_performance.py`). CONCURRENTLY is not optional: `bonding_map` is
 ~1.76M rows in production and a plain build locks writes for the duration.
+
+READ-ONLY BY DEFAULT - AND THAT CLAIM USED TO BE FALSE. See the guard section below.
 """
 import argparse
 import hashlib
@@ -130,6 +132,136 @@ from sqlalchemy import text  # noqa: E402
 INDEX_PREFIX = "uq_bk_"
 _MAX_IDENTIFIER = 63
 BK_COLUMN = "business_key_val"
+
+
+# =============================================================================
+# The read-only guard
+# =============================================================================
+# 🔴 THE SPELLING HERE IS NOT NEW AND MUST NOT BE RE-INVENTED. It is the one
+# `server/scripts/diagnose_wal_headroom.py` (class `RO`) and
+# `server/scripts/diagnose_slow_after_ingest.py` already use: the setting goes in as a
+# CONNECTION OPTION, which the server applies before this session's first transaction
+# exists and re-applies to every transaction after it.
+#
+# WHAT THIS FILE USED TO DO, AND WHAT WAS ACTUALLY TRUE ABOUT IT
+#
+#     conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+#     conn.execute(text("SET SESSION default_transaction_read_only = on"))
+#
+# ⚠️ IN THAT ORDER, IT DID ENGAGE - do not read the paragraph below as "the old code
+# was writing to production", because it was not. Measured on the isolated `assy_qa`
+# (PostgreSQL 18.3, SQLAlchemy 2.0.49, psycopg2 2.9.11) on 2026-08-13:
+# `execution_options` flips psycopg2's `autocommit` to True on this very Connection, so
+# there is no open transaction for the SET to be trapped inside. The session variable
+# took, `transaction_read_only` read `on`, and a CREATE was refused - still refused
+# after a rollback.
+#
+# 🔴 THE DEFECT IS THAT ITS ONE SAFETY PROPERTY RESTED ON A SETTING THAT IS HERE FOR AN
+# UNRELATED REASON. AUTOCOMMIT is in this file because `CREATE INDEX CONCURRENTLY`
+# cannot run in a transaction block; the guard silently borrowed it. Remove it, reorder
+# those two lines, or run one statement before the `execution_options`, and the SET
+# lands inside an implicit transaction that began under the old default and keeps it.
+# Measured in that arrangement, same database, same session:
+#
+#     after SET       default_transaction_read_only = on   <- the variable one checks
+#     after SET       transaction_read_only         = off  <- the one PostgreSQL enforces
+#     after rollback  transaction_read_only         = off  <- the SET discarded outright
+#     CREATE TABLE on that connection                      ACCEPTED
+#
+# AND NOTHING HERE EVER READ THE FLAG BACK, so those two arrangements were
+# indistinguishable from inside the script: it reported itself protected either way.
+# An operator was handed this as safe on the strength of a sentence, not a check.
+#
+# THE REPAIR IS THEREFORE TWO THINGS, NOT ONE:
+#   1. Arm at CONNECT time, which is independent of isolation level. Measured `on`
+#      with writes refused under BOTH autocommit and the default isolation, before and
+#      after a rollback.
+#   2. Read `transaction_read_only` back and REFUSE. `default_transaction_read_only`
+#      is deliberately NOT what gets checked - it reads `on` in both arrangements
+#      above, including the one that accepts writes.
+#
+# WHAT IS DELIBERATELY *NOT* IN THE OPTIONS. `diagnose_wal_headroom.py` also pins
+# `statement_timeout` / `lock_timeout` / `idle_in_transaction_session_timeout`. This
+# script has never had any of them, and `duplicate_census` is a full GROUP BY over
+# every table carrying the column on a 14 GB database - adding a timeout here would
+# turn a pre-flight that works today into one that fails, which is a separate decision
+# from arming the guard. `client_encoding` matches `database/database.py`.
+READONLY_OPTIONS = ("-c default_transaction_read_only=on "
+                    "-c client_encoding=utf8")
+
+#: Present in every refusal, so a caller can pin the reason rather than the exception
+#: type (same discipline as `db_safety.REFUSAL_MARKER`).
+READONLY_REFUSAL = "[read-only guard] REFUSED"
+
+
+def open_readonly_engine(url: str = None):
+    """An engine every one of whose transactions is read-only, armed at connect time.
+
+    `NullPool` is load-bearing, not tidiness: these connections must never be handed to
+    anything else. It is also what retired the `invalidate()` dance this file used to
+    need - the old pattern set a session variable on a connection borrowed from the
+    APPLICATION pool, so returning it poisoned the next checkout and an apply run that
+    followed a check run in the same process failed every CREATE with
+    `ReadOnlySqlTransaction`. An engine of our own has no next checkout to poison.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import NullPool
+    if url is None:
+        from database.database import SQLALCHEMY_DATABASE_URL
+        url = SQLALCHEMY_DATABASE_URL
+    return create_engine(
+        url, poolclass=NullPool,
+        connect_args={"options": READONLY_OPTIONS,
+                      "application_name": "assy_bk_index_check"})
+
+
+def assert_readonly(conn):
+    """Refuse unless POSTGRESQL ITSELF reports that this connection cannot write.
+
+    A guard that cannot verify itself is the defect this exists to end, so the answer
+    comes from the server rather than from the fact that an option string was passed.
+    """
+    try:
+        armed = conn.execute(text("SHOW transaction_read_only")).scalar()
+    except Exception as exc:
+        raise RuntimeError(
+            f"{READONLY_REFUSAL}: `transaction_read_only` could not be read from this "
+            f"connection ({type(exc).__name__}: {str(exc).strip().splitlines()[0]}). "
+            f"This is a PostgreSQL operator script and it will not run a pass it "
+            f"cannot prove is read-only.") from exc
+    if str(armed).lower() != "on":
+        raise RuntimeError(
+            f"{READONLY_REFUSAL}: PostgreSQL reports transaction_read_only={armed!r} "
+            f"on the connection this run counts with. Refusing to run a pre-flight "
+            f"that is not actually protected.")
+    return conn
+
+
+def assert_writable(conn):
+    """The mirror, for `--apply`. Fails BEFORE the first table instead of during it.
+
+    This is the direct net for the incident the old code left a comment about: a
+    read-only flag inherited from a pooled connection used to surface as a
+    `ReadOnlySqlTransaction` on every individual CREATE/DROP, halfway through a run.
+    """
+    armed = conn.execute(text("SHOW transaction_read_only")).scalar()
+    if str(armed).lower() != "off":
+        raise RuntimeError(
+            f"{READONLY_REFUSAL} (inverted): --apply was asked for but PostgreSQL "
+            f"reports transaction_read_only={armed!r} on the connection that would do "
+            f"the writing. Nothing was attempted.")
+    return conn
+
+
+def open_readonly_connection(engine):
+    """THE ONLY DOOR to a counting-pass connection: connect, then prove it, or refuse."""
+    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        assert_readonly(conn)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
 
 
 def unique_index_name(table: str) -> str:
@@ -411,13 +543,23 @@ def redundant_pk_indexes(conn) -> list:
     return out
 
 
-def drop_redundant_indexes(conn, apply: bool) -> dict:
+def drop_redundant_indexes(conn, apply: bool, write_conn=None) -> dict:
     """Report - and, with `apply`, drop - the PK-duplicating indexes.
 
     Idempotent in both directions: the discovery query returns nothing once they are
     gone, and the DDL carries `IF EXISTS` so a concurrent operator running the same
     script is a no-op rather than an error.
+
+    TWO CONNECTIONS, ON PURPOSE. `conn` DISCOVERS and CONFIRMS (catalogue reads);
+    `write_conn` DROPS. `run` hands in the read-only connection as `conn` and the
+    writable one as `write_conn`, so the pass that decides what is redundant physically
+    cannot issue the DDL it is deciding about, and the post-drop confirmation comes off
+    a connection that could not have caused the state it is reading. Omitting
+    `write_conn` sends the drops through `conn`, which is what a direct caller holding
+    one writable connection wants - and cannot become a silent bypass, because the
+    server refuses the DDL outright if that connection is the read-only one.
     """
+    wconn = write_conn if write_conn is not None else conn
     found = redundant_pk_indexes(conn)
     total = sum(r["bytes"] for r in found)
     print(f"\n=== Section 2: indexes duplicating their own PRIMARY KEY ===")
@@ -441,8 +583,8 @@ def drop_redundant_indexes(conn, apply: bool) -> dict:
             print(f"  would drop {r['index']:44s} ({size_mb:8.1f} MB)  == {r['pk_index']}")
             continue
         try:
-            conn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS public."
-                              + quote_ident(r["index"])))
+            wconn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS public."
+                               + quote_ident(r["index"])))
         except Exception as e:
             failed.append(dict(r, error=str(e).strip().splitlines()[0]))
             print(f"  !! FAILED   {r['index']}: {failed[-1]['error']}")
@@ -469,35 +611,67 @@ def drop_redundant_indexes(conn, apply: bool) -> dict:
     return {"found": found, "dropped": dropped, "skipped": skipped, "failed": failed}
 
 
-def run(apply: bool, only: list = None, engine=None, drop_redundant: bool = False) -> dict:
-    from database.database import engine as default_engine
-    engine = engine or default_engine
+def run(apply: bool, only: list = None, engine=None, drop_redundant: bool = False,
+        readonly_engine=None) -> dict:
+    """Section 1 and section 2, counted on a read-only connection and applied on another.
 
+    🔴 TWO ENGINES, AND THE SPLIT IS THE SAFETY PROPERTY. The counting pass
+    (`tables_with_business_key`, `plan_table` -> `duplicate_census` /
+    `existing_unique_index` / `index_exists`, `redundant_pk_indexes`) is only ever
+    handed `conn`, which comes from `open_readonly_connection` and has been PROVEN
+    read-only by the server. The writable engine is resolved and connected to only
+    inside `if writes:` - so in a check-only run this process never resolves it, never
+    opens it, and has no writable connection for the counting pass to reach for.
+
+    Both passes ask the same questions of the same catalogue through the same
+    functions, so `--check` against production cannot disagree with what `--apply`
+    would then do; that was already true and the split does not break it.
+
+    `readonly_engine` exists for callers injecting a stub. It does not skip
+    verification: whatever is passed still has to answer `SHOW transaction_read_only`
+    with `on` or the run refuses.
+    """
     writes = apply or drop_redundant
     print(f"=== D3 - section 1 {'APPLY' if apply else 'CHECK (read-only)'}, "
           f"section 2 {'DROP' if drop_redundant else 'CHECK (read-only)'} ===")
 
     results = []
     redundant = None
-    readonly_pinned = False
-    # AUTOCOMMIT because CREATE/DROP INDEX CONCURRENTLY cannot run in a transaction block.
-    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    own_ro_engine = readonly_engine is None
+    if own_ro_engine:
+        # Derived from the writable engine's URL when one was handed in, so an injected
+        # engine still decides WHICH database is counted - only not whether the counting
+        # connection may write.
+        url = None
+        if engine is not None:
+            url = getattr(engine, "url", None)
+            if url is None:
+                raise TypeError(
+                    "run(engine=...) received an object with no `.url`, so no read-only "
+                    "engine can be derived from it. Inject `readonly_engine=` as well.")
+            url = str(url)
+        readonly_engine = open_readonly_engine(url)
+
     try:
-        if not writes:
-            # Structurally read-only, not read-only by convention. An operator running
-            # a pre-flight against production should not have to trust that the code
-            # below happens to contain no DDL.
-            #
-            # 🔴 AND IT MUST NOT SURVIVE THIS CALL - found by running check and apply
-            # against one engine in a single process. `SET SESSION` lives on the DBAPI
-            # connection, and `conn.close()` RETURNS that connection to the pool rather
-            # than closing it, so the next checkout inherited the read-only flag and
-            # every CREATE/DROP in the apply run failed with `ReadOnlySqlTransaction`.
-            # A "reset it afterwards" statement would be a second thing that has to run;
-            # `invalidate()` throws the connection away instead, which cannot be skipped
-            # by an exception on the way out.
-            conn.execute(text("SET SESSION default_transaction_read_only = on"))
-            readonly_pinned = True
+        conn = open_readonly_connection(readonly_engine)
+    except BaseException:
+        # A refusal must not leak the engine it refused on.
+        if own_ro_engine:
+            readonly_engine.dispose()
+        raise
+
+    wconn = None
+    try:
+        if writes:
+            # Resolved HERE and nowhere earlier. AUTOCOMMIT because CREATE/DROP INDEX
+            # CONCURRENTLY cannot run inside a transaction block.
+            if engine is None:
+                from database.database import engine as default_engine
+                engine = default_engine
+            wconn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+            # Before the first table, not on the twelfth: an apply that cannot write
+            # must say so up front.
+            assert_writable(wconn)
 
         tables = tables_with_business_key(conn)
         if only:
@@ -512,10 +686,11 @@ def run(apply: bool, only: list = None, engine=None, drop_redundant: bool = Fals
         print(header)
 
         for t in tables:
-            r = plan_table(conn, t)
+            r = plan_table(conn, t)          # read-only connection. Always.
             if r["verdict"] is None:
                 if apply:
-                    verdict, detail = build_index(conn, t, r["index_name"])
+                    # The writable one, and only here.
+                    verdict, detail = build_index(wconn, t, r["index_name"])
                     r["verdict"] = verdict
                     r["detail"] = detail
                 else:
@@ -526,14 +701,18 @@ def run(apply: bool, only: list = None, engine=None, drop_redundant: bool = Fals
 
         section1 = _report_section1(results, apply)
 
-        # Section 2 shares the connection but nothing else. It never reads section 1's
+        # Section 2 shares the connections but nothing else. It never reads section 1's
         # verdicts and section 1 never reads its result, so `--drop-redundant` alone is
-        # a complete, meaningful run.
-        redundant = drop_redundant_indexes(conn, drop_redundant)
+        # a complete, meaningful run. `wconn` is None unless something is being written,
+        # in which case the drops fall back to the read-only `conn` and the server
+        # refuses them - a bypass would have to survive PostgreSQL, not just review.
+        redundant = drop_redundant_indexes(conn, drop_redundant, write_conn=wconn)
     finally:
-        if readonly_pinned:
-            conn.invalidate()
         conn.close()
+        if own_ro_engine:
+            readonly_engine.dispose()
+        if wconn is not None:
+            wconn.close()
 
     return dict(section1, redundant=redundant)
 
