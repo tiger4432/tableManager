@@ -42,6 +42,16 @@ is hashed into `source_translator_ver` (so every atom says which convention made
 is ever found false. Setting `slot_pairing` to `shared_wafer` takes the zero-inference
 position and yields no `slot_map` for splits at all.
 
+A REFUSAL IS NEVER PARTIAL - ruling R-2026-08-13-H
+---------------------------------------------------
+Every refusal below goes through `gate.refuse` inside `gate.building_molecule`, which
+raises `MoleculeRefused` and unwinds the whole molecule. No helper returns a "refused"
+sentinel any more, because a sentinel is only as good as the call site that reads it and
+one of them read `... or []`: the gate counted an `atomicity_violation`, the log said the
+row produced nothing, and three atoms of that same molecule landed. Per-fragment survival
+is what `incomplete` is for - a true but incomplete utterance - and it is not what
+`refuse` means.
+
 AN INCOMPLETE MOLECULE IS NOT A REFUSAL
 ----------------------------------------
 The isolated database contains a real instance: someone retyped `child_lot` in the grid,
@@ -193,6 +203,14 @@ class LotEventTranslator:
         # read into here and used nowhere - ruling R-2026-08-13-D.
         self.register_types = frozenset(source_cfg.get("register_entity_types") or ())
         self.registered = set()
+        #: The memos this molecule added, so a refusal can take them back. A refused
+        #: molecule that leaves its lots memoised is the same defect one move later: the
+        #: register atom was never written, and the NEXT molecule mentioning that lot
+        #: finds the memo, emits no register, and the entity is never registered at all.
+        #: A list rather than a snapshot of `registered` - the memo holds one entry per
+        #: distinct entity in the whole run and copying it per molecule is what makes a
+        #: ten-million row backfill quadratic.
+        self._registered_here = []
         self.blank_wafer_positions = 0
 
     # ------------------------------------------------------------------- atom makers
@@ -239,6 +257,7 @@ class LotEventTranslator:
         if memo in self.registered:
             return None
         self.registered.add(memo)
+        self._registered_here.append(memo)
         return self._atom(molecule, "register", entity_type, keys, occurred_at, rows,
                           "first_sight")
 
@@ -246,12 +265,73 @@ class LotEventTranslator:
     def translate(self, molecule):
         """One molecule -> `(atoms, report)`. Atoms are NOT yet screened by the gate.
 
-        Returns `(None, report)` when the molecule was refused before any atom could be
-        built - an undeclared `event_type`, an unparseable time, a missing identity. The
-        gate has already counted it by then; the caller only has to not write anything.
+        Returns `(None, report)` when the molecule was refused ANYWHERE below - at the
+        door (an undeclared `event_type`, an unparseable time, a missing identity) or
+        part way through building its atoms (an unequal positional pairing found while
+        making a `slot_map`). The gate has already counted it by then; the caller only
+        has to not write anything.
+
+        🔴 THE ONE-WAY DOOR IS HERE, and it is a `try` rather than a convention (ruling
+        R-2026-08-13-H). Inside `gate.building_molecule` every `gate.refuse` raises, so a
+        refusal in any helper - including one written next year - unwinds past every
+        `atoms.append` and lands on this handler with nothing accumulated. There is no
+        expression a future author can write in `_build` that swallows it, which is the
+        difference between this fix and returning `[]` from `_slot_map`.
         """
         report = {"molecule": molecule.ref, "refused": False, "reason": None,
                   "atoms": 0, "incomplete": not molecule.is_complete}
+        self._registered_here = []
+        try:
+            with gate.building_molecule(SOURCE):
+                atoms = self._build(molecule)
+        except gate.MoleculeRefused as refusal:
+            self._forget_this_molecules_registers()
+            report.update(refused=True, reason=refusal.reason)
+            return None, report
+
+        # The molecule stands, so its memos stand with it. Emptied here rather than left
+        # lying around so the list only ever describes a molecule IN FLIGHT - a stale one
+        # would let a later call give back registers that were written.
+        self._registered_here = []
+
+        report["atoms"] = len(atoms)
+        # `incomplete` is REPORTED here and COUNTED by the caller. The caller is the only
+        # place that knows whether the gate went on to refuse this molecule, and a
+        # molecule that never landed must not appear in both buckets - adding the two
+        # would then exceed the number of source events.
+        return atoms, report
+
+    def _forget_this_molecules_registers(self):
+        """Give back the memos of a molecule that landed nothing.
+
+        Nothing was written, so a lot left marked "already registered" by a REFUSED
+        molecule is registered nowhere: the next molecule that mentions it finds the memo
+        and emits no register either. That is the half-refusal one move on - the molecule
+        stored no atom and still left a mark that changes what later molecules write.
+        `backfill._forget_registers` does the same job for the refusals the gate makes
+        after `translate` has already returned.
+        """
+        for memo in self._registered_here:
+            self.registered.discard(memo)
+        self._registered_here = []
+
+    def _build(self, molecule):
+        """The atoms of one molecule, or a raised `gate.MoleculeRefused`.
+
+        Never returns a refusal. Every exit is either a list of atoms or an unwind, which
+        is what makes `translate`'s handler the ONLY place a refusal can be turned back
+        into a value - and why the checks below simply refuse and carry on reading as if
+        the refusal ended the function, because it does.
+
+        The precondition is checked rather than assumed: run outside the scope, every
+        `gate.refuse` here would merely COUNT and execution would continue past a check
+        that was supposed to stop it. That is the swallow again, one level up.
+        """
+        if not gate.molecule_is_open():
+            raise RuntimeError(
+                "_build must run inside gate.building_molecule() - outside it a refusal "
+                "counts without aborting, which is the defect ruling R-2026-08-13-H "
+                "removed. Call translate().")
 
         if molecule.ambiguous:
             row = molecule.rows[0] if molecule.rows else {}
@@ -266,8 +346,6 @@ class LotEventTranslator:
                         f"wafers to a lineage the source never asserted, so nothing is "
                         f"written for it.",
                         rows=len(molecule.rows))
-            report.update(refused=True, reason=gate.REFUSE_AMBIGUOUS_PAIR)
-            return None, report
 
         rule = (self.cfg.get("vocabulary") or {}).get(molecule.event_type)
         if rule is None:
@@ -278,8 +356,6 @@ class LotEventTranslator:
                         f"{len(molecule.rows)} source row(s) at "
                         f"{molecule.event_time} produced nothing",
                         rows=len(molecule.rows))
-            report.update(refused=True, reason=gate.REFUSE_UNDECLARED_VOCABULARY)
-            return None, report
 
         occurred_at = parse_occurred_at(molecule.event_time, self.time_format,
                                         self.timezone_name)
@@ -289,8 +365,6 @@ class LotEventTranslator:
                         f"{self.time_format!r}; arrival time is NOT substituted "
                         f"(design §10 risk 1)",
                         rows=len(molecule.rows))
-            report.update(refused=True, reason=gate.REFUSE_MISSING_OCCURRED_AT)
-            return None, report
 
         atoms = []
         lineage = rule.get("lineage", "none")
@@ -304,8 +378,6 @@ class LotEventTranslator:
                         f"no lot value on any of the {len(molecule.rows)} row(s) of "
                         f"molecule {molecule.ref}",
                         rows=len(molecule.rows))
-            report.update(refused=True, reason=gate.REFUSE_NO_IDENTITY)
-            return None, report
 
         for lot in sorted(lots):
             atom = self._register(molecule, "Lot", {"lot": lot}, occurred_at,
@@ -316,11 +388,7 @@ class LotEventTranslator:
         # --- has_wafer, straight off each row's positional pairs -------------------
         if rule.get("emit_has_wafer", True):
             for row in molecule.rows:
-                pairs = self._positional_pairs(row)
-                if pairs is None:
-                    report.update(refused=True, reason=gate.REFUSE_ATOMICITY)
-                    return None, report
-                for slot, wafer in pairs:
+                for slot, wafer in self._positional_pairs(row):
                     if not wafer:
                         # 🔴 A blank wafer_id makes no atom. The brief says so and the
                         # reason is the design's own rule: an atom is a claim, and
@@ -346,18 +414,16 @@ class LotEventTranslator:
                 entity_ref("Lot", {"lot": molecule.parent})))
 
         # --- slot_map, by the DECLARED strategy ------------------------------------
+        # 🔴 NO `or []` HERE, AND NOTHING FOR ONE TO GUARD ANY MORE. `_slot_map` returns
+        # a list or raises; the swallowed `None` this line used to merge is the defect
+        # ruling R-2026-08-13-H names.
         if pairing != "none" and molecule.parent and molecule.child:
-            atoms.extend(self._slot_map(molecule, pairing, occurred_at) or [])
+            atoms.extend(self._slot_map(molecule, pairing, occurred_at))
 
-        report["atoms"] = len(atoms)
-        # `incomplete` is REPORTED here and COUNTED by the caller. The caller is the only
-        # place that knows whether the gate went on to refuse this molecule, and a
-        # molecule that never landed must not appear in both buckets - adding the two
-        # would then exceed the number of source events.
-        return atoms, report
+        return atoms
 
     def _positional_pairs(self, row):
-        """`[(slot, wafer)]` for one row, or `None` after refusing an unequal pair.
+        """`[(slot, wafer)]` for one row. Refuses the MOLECULE on an unequal pair.
 
         The length check is not defensive tidiness. `world.py` asserts it in the
         GENERATOR with the reason spelled out: an unequal length "does not raise anywhere
@@ -375,10 +441,17 @@ class LotEventTranslator:
                         f"{self.cfg['columns']['wafers']} has {len(wafers)}; a positional "
                         f"pairing across unequal lists reattributes wafers to the wrong "
                         f"slots and still looks well formed", rows=1)
-            return None
         return [(s.strip(), w.strip()) for s, w in zip(slots, wafers)]
 
     def _slot_map(self, molecule, strategy, occurred_at):
+        """`[atom]`, possibly empty. A refusal here unwinds the molecule, it is not
+        returned - see `translate`, and ruling R-2026-08-13-H for what returning it cost.
+
+        `[]` and a refusal are DIFFERENT ANSWERS and always were: `[]` means the source
+        said nothing to map (a split under `shared_wafer`, a molecule with no child row),
+        and that is a fact the lag and incomplete counters can show. The old `None` third
+        answer is gone, which is why no caller can confuse the two any more.
+        """
         parent_row = molecule.parent_row()
         child_row = molecule.child_row()
 
@@ -389,8 +462,6 @@ class LotEventTranslator:
             if child_row is None:
                 return []
             pairs = self._positional_pairs(child_row)
-            if pairs is None:
-                return None
             return [
                 self._atom(molecule, "slot_map", "Lot", {"lot": molecule.parent},
                            occurred_at, [child_row], "slot_preserving", "entity_ref",
@@ -407,8 +478,6 @@ class LotEventTranslator:
                 return []
             parent_pairs = self._positional_pairs(parent_row)
             child_pairs = self._positional_pairs(child_row)
-            if parent_pairs is None or child_pairs is None:
-                return None
             parent_at = {w: s for s, w in parent_pairs if w}
             atoms = []
             for slot, wafer in child_pairs:

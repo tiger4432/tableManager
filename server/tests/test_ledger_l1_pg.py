@@ -533,6 +533,128 @@ def test_a_SECOND_run_in_this_process_does_not_re_attribute_the_first_runs_refus
     assert row["refusal_reasons"][gate.REFUSE_UNDECLARED_VOCABULARY]["count"] == 2
 
 
+# =============================================== THE HALF REFUSAL (R-2026-08-13-H)
+#
+# Measured on a real backfill before the fix: the gate counted `atomicity_violation`, the
+# log said "1 source row(s) produced nothing", `refused_molecules` was 0 and THREE atoms
+# of that molecule were in the database. The cursor then read `molecules_refused = 0`
+# beside a breakdown summing to 1, i.e. `refusals_unaccounted = -1` - the sign the ruling
+# reserves for a real bookkeeping fault.
+#
+# 🔴 THE ROUTE IS `emit_has_wafer: false`, and it is not incidental. With has_wafer on,
+# the same rows are read through the same `_positional_pairs` in an earlier loop, which
+# refuses first and never reaches the slot map. Declaring it false is the reachable route
+# the ruling names, and it is a config line rather than a patched function.
+
+#: `emit_has_wafer: false` + a strategy that reads BOTH rows of the molecule.
+SLOT_MAP_ONLY_SPLIT = {"lineage": "parent_child", "slot_pairing": "shared_wafer",
+                       "emit_has_wafer": False}
+
+#: The parent row lists two slots and one wafer. Under `shared_wafer` the parent row is
+#: read ONLY by the slot map, so the refusal happens where the ruling says it does.
+UNEQUAL_SPLIT = [src("P", child_lot="C", slots="07:08", wafers="W7"),
+                 src("C", parent_lot="P", slots="01:02", wafers="W7:W8")]
+
+#: The same molecule with equal lists: two shared wafers, so it lands with two slot maps.
+WELL_FORMED_SPLIT = [src("P", child_lot="C", slots="07:08", wafers="W7:W8"),
+                     src("C", parent_lot="P", slots="01:02", wafers="W7:W8")]
+
+#: Kept beside the split so every run below also lands SOMETHING. A test whose only
+#: molecule is refused cannot tell "refused" from "translated nothing at all".
+TRACK_IN_ROWS = [r for r in BASE_ROWS if r["event_type"] == "track_in"]
+
+#: Every atom of the split molecule, whichever side it is uttered from: the two lot
+#: registers, the `derived_from` whose subject is C, and any slot map (subject P).
+SPLIT_SUBJECTS = ("subject_keys IN ('{\"lot\":\"P\"}'::jsonb, '{\"lot\":\"C\"}'::jsonb) "
+                  "OR object_payload->'keys'->>'lot' IN ('P','C')")
+
+
+def _slot_map_only_cfg():
+    cfg = copy.deepcopy(CFG)
+    cfg["sources"]["lot_event"]["vocabulary"]["split"] = dict(SLOT_MAP_ONLY_SPLIT)
+    return cfg
+
+
+def _seed_split(engine, split_rows):
+    connection = engine.raw_connection()
+    try:
+        _seed(connection, list(split_rows) + TRACK_IN_ROWS)
+    finally:
+        connection.close()
+
+
+def refusals_unaccounted(engine, source="lot_event"):
+    """`molecules_refused` minus what the breakdown explains, from the READER.
+
+    Computed by `ledger_trace._cursor_rows` - the code that puts the number on the
+    operator's screen - rather than re-derived here. A test that re-implements the
+    arithmetic proves the arithmetic, not the screen.
+    """
+    from datetime import timezone as _tz
+
+    import ledger_trace
+    connection = engine.raw_connection()
+    try:
+        rows = ledger_trace._cursor_rows(connection, schema.CURSOR_TABLE, _tz.utc)
+    finally:
+        connection.close()
+    for entry in rows:
+        if entry.get("source") == source:
+            return entry.get("refusals_unaccounted")
+    return None
+
+
+def test_a_refusal_inside_slot_map_lands_NOTHING_and_the_books_balance(ledger, caplog):
+    """Ruling R-2026-08-13-H, both arms, through the REAL backfill.
+
+    The refusing arm asserts three separate things, because any one of them alone can be
+    true for the wrong reason: nothing of that molecule is in the database, the refusal is
+    COUNTED and NAMED where a reader with only a connection can see it, and
+    `refusals_unaccounted` is 0 rather than the -1 that was measured.
+    """
+    _seed_split(ledger, UNEQUAL_SPLIT)
+    url, _ = _resolve_url()
+
+    with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
+        with _declared_as_test_database(url):
+            refused_run = backfill.run(ledger, _slot_map_only_cfg(), source="lot_event")
+
+    assert "atomicity_violation" in "\n".join(r.getMessage() for r in caplog.records)
+    assert refused_run["refused_molecules"] == 1, (
+        "the aggregate did not count the refusal the gate recorded - that disagreement IS "
+        "the defect, and it reads as refusals_unaccounted = -1")
+    assert gate.refusals()[("lot_event", gate.REFUSE_ATOMICITY)] == 1
+    assert count(ledger, SPLIT_SUBJECTS) == 0, (
+        "atoms of a refused molecule are in the database - the molecule landed half")
+    assert count(ledger) > 0, (
+        "the run wrote nothing at all, so 'no atoms of the split' would be true for the "
+        "wrong reason")
+
+    row = read_cursor_row(ledger)
+    assert row["refusal_reasons"][gate.REFUSE_ATOMICITY]["count"] == 1
+    assert breakdown_disagreement(ledger) is None
+    assert refusals_unaccounted(ledger) == 0, (
+        "the reader still sees a bookkeeping fault on this cursor")
+
+    # --- the other arm: the SAME declaration, a well formed molecule, lands whole.
+    gate.reset_counters()
+    _seed_split(ledger, WELL_FORMED_SPLIT)
+    with _declared_as_test_database(url):
+        landed = backfill.run(ledger, _slot_map_only_cfg(), source="lot_event",
+                              reset_cursor=True)
+
+    assert landed["refused_molecules"] == 0 and gate.refusals() == {}
+    assert count(ledger, "predicate = 'slot_map'") == 2, (
+        "the shared wafers produced no slot map, so the refusing arm would prove nothing "
+        "about this configuration")
+    assert count(ledger, "predicate = 'derived_from'") == 1
+    assert count(ledger, "predicate = 'has_wafer' AND (" + SPLIT_SUBJECTS + ")") == 0, (
+        "`emit_has_wafer: false` was ignored, so the refusal above did not come from the "
+        "slot map path this ruling is about")
+    assert refusals_unaccounted(ledger) == 0, (
+        "a clean run left the aggregate and its breakdown disagreeing")
+
+
 # ------------------------------------------------------------------- half landing
 def _forced_failure_run(engine, commit_between_chunks):
     """Fail in the MIDDLE of one molecule's insert. Returns the atoms left behind.
@@ -934,17 +1056,59 @@ def _inject_breakdown_that_does_not_add_up(engine):
     raise ValueError(f"the invariant caught the drift: {complaint}")
 
 
+def _inject_slot_map_refusal_swallowed(engine):
+    """The half refusal of 2026-08-13, put back and run against the real database.
+
+    `... or []` cannot be written any more - the helper returns a list or unwinds - so the
+    swallow is re-created as what a future author would type instead: a caller that
+    catches the refusal and carries on with an empty list. If atoms then land beside a
+    counted refusal, this file's guard has been proven to see the thing it was written
+    for, down to the sign of `refusals_unaccounted`.
+
+    🔴 RETURNS NORMALLY when the swallow changes nothing. Never `AssertionError` on that
+    arm - the harness reads it as "the guard raised".
+    """
+    from ledger import lot_event_translator as translator_module
+
+    _seed_split(engine, UNEQUAL_SPLIT)
+    original = translator_module.LotEventTranslator._slot_map
+
+    def swallowing(self, molecule, strategy, occurred_at):
+        try:
+            return original(self, molecule, strategy, occurred_at)
+        except gate.MoleculeRefused:
+            return []
+
+    translator_module.LotEventTranslator._slot_map = swallowing
+    url, _ = _resolve_url()
+    try:
+        with _declared_as_test_database(url):
+            result = backfill.run(engine, _slot_map_only_cfg(), source="lot_event")
+    finally:
+        translator_module.LotEventTranslator._slot_map = original
+
+    landed = count(engine, SPLIT_SUBJECTS)
+    if not landed or result["refused_molecules"]:
+        return                     # the swallow changed nothing this guard could see
+    raise ValueError(
+        f"the swallow left {landed} atom(s) of a refused molecule in the database with "
+        f"refused_molecules={result['refused_molecules']} and refusals_unaccounted="
+        f"{refusals_unaccounted(engine)} - the guard sees the half refusal")
+
+
 PG_INJECTIONS = [
     ("transaction boundary removed", _inject_missing_transaction_boundary),
     ("duplicate atom past the unique index", _inject_duplicate_atom_past_the_unique_index),
     ("register carrying an object", _inject_register_with_an_object),
     ("atom outside every partition", _inject_atom_outside_every_partition),
     ("refusal breakdown that does not add up", _inject_breakdown_that_does_not_add_up),
+    ("a fragment's refusal swallowed by its caller", _inject_slot_map_refusal_swallowed),
 ]
 
 #: 4 built with this file + 1 added by ruling R-2026-08-13-F (the refusal breakdown must
-#: agree with the aggregate it explains).
-EXPECTED_PG_INJECTIONS = 5
+#: agree with the aggregate it explains) + 1 by ruling R-2026-08-13-H (a refusal swallowed
+#: between the gate and the writer).
+EXPECTED_PG_INJECTIONS = 6
 
 
 def test_pg_injection_count_is_declared():

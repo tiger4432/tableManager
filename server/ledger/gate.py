@@ -46,14 +46,94 @@ Because a half-translated event is worse than an untranslated one. If `slot_map`
 split is malformed, keeping the other eight atoms produces a lineage that LOOKS complete
 and is not - the exact failure mode "표식이 열쇠로" describes, where a partial record is
 mistaken for a whole one. Refusing the molecule leaves a hole the lag report can see.
+
+🔴 AND IT IS ENFORCED HERE, NOT BY EVERY AUTHOR REMEMBERING IT (ruling R-2026-08-13-H)
+---------------------------------------------------------------------------------------
+The standing principle: **if `refuse` fires on ANY fragment of a molecule, that molecule
+contributes zero atoms.** Per-fragment survival is what `incomplete` is for - a true but
+incomplete utterance - and collapsing the two gives a ledger where something was refused
+and half of it is stored.
+
+A translator therefore builds its atoms inside `building_molecule`, and every `refuse`
+underneath it RAISES `MoleculeRefused` rather than returning a value somebody has to
+check. It used to return one; one caller merged it with `... or []` and three atoms of a
+refused molecule landed. THE NEXT TRANSLATOR INHERITS THIS ONLY IF IT OPENS THE SCOPE, so
+its atom-building body should assert `molecule_is_open()` the way `lot_event_translator`
+does - outside the scope a refusal counts without aborting, which is the same defect.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
+import threading
 
 from . import envelope, vocabulary
 
 logger = logging.getLogger("Ledger.Gate")
+
+
+# ------------------------------------------------------- the refusal that cannot be lost
+class MoleculeRefused(Exception):
+    """`refuse` fired while a molecule was being built, so that molecule is over.
+
+    🔴 WHY AN EXCEPTION AND NOT A RETURN VALUE - ruling R-2026-08-13-H.
+    `lot_event_translator` used to signal a fragment-level refusal by returning `None`
+    from the helper that built the fragment, and one call site merged the result with
+    `... or []`. Measured on a real backfill: the gate counted `atomicity_violation`, the
+    log said "1 source row(s) produced nothing", and THREE atoms of that molecule landed
+    anyway - a ledger where something was refused and half of it is stored, which is the
+    exact shape §10-bis disqualifies the current system for. The cursor then read
+    `molecules_refused=0` beside a breakdown summing to 1 (`refusals_unaccounted = -1`).
+
+    Returning `[]` instead of `None` would have fixed that one line and left the hole:
+    the next helper written the same way is re-broken by the next convenience. An
+    exception is the only shape no merge expression can swallow, so the signal survives
+    `or []`, `or {}`, a bare `extend`, and an ignored return value alike.
+    """
+
+    def __init__(self, source: str, reason: str, detail: str):
+        super().__init__(f"{source}: {reason}: {detail}")
+        self.source = source
+        self.reason = reason
+        self.detail = detail
+
+
+#: Per-thread depth of open molecules. Thread-local rather than a module global because
+#: the refusal is about ONE execution's molecule, while the counters below are process
+#: aggregates on purpose - two translators in two threads must share the counts and must
+#: NOT share each other's abort.
+_open = threading.local()
+
+
+@contextlib.contextmanager
+def building_molecule(source: str):
+    """While this is open, ANY `refuse` for any source aborts by raising.
+
+    The caller does not have to remember to use a special refusal function, and a helper
+    added later does not have to know this rule exists - it calls `gate.refuse` like
+    every other refusal site and its molecule stops. That is the point: the standing
+    principle (a refusal on any fragment means the molecule contributes zero atoms) is
+    enforced by the gate rather than by every author remembering it.
+
+    `screen_molecule` deliberately does NOT raise: it records through `_record`, it is
+    all-or-nothing by construction, and it hands back `[]` - there is no fragment it
+    could leave behind.
+    """
+    _open.depth = getattr(_open, "depth", 0) + 1
+    try:
+        yield
+    finally:
+        _open.depth -= 1
+
+
+def molecule_is_open() -> bool:
+    """Whether a refusal on this thread would abort a molecule right now.
+
+    A translator's atom-building body asserts this rather than assuming it: outside the
+    scope every `refuse` would only COUNT, execution would carry on past the check that
+    was meant to stop it, and the result would be the half-landing again.
+    """
+    return getattr(_open, "depth", 0) > 0
 
 
 # ---------------------------------------------------------------- refusal vocabulary
@@ -222,6 +302,13 @@ def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1)
     Separate from `screen_molecule` because these refusals happen BEFORE any atom
     exists, and forcing the caller to build a fake atom just to be refused would be a
     worse contract than two entry points.
+
+    🔴 Inside `building_molecule` this RAISES `MoleculeRefused` after counting (ruling
+    R-2026-08-13-H). Counting first is deliberate - the refusal is a fact whether or not
+    anybody catches the exception - and raising second is what stops the caller from
+    counting a refusal and then writing the molecule anyway. Outside a molecule scope it
+    only counts, which is what `backfill.run` needs when it refuses a whole SOURCE: there
+    is no molecule in flight to abort.
     """
     if reason not in REFUSAL_REASONS:
         # A reason nobody declared cannot be charted, and the gate refusing to invent
@@ -229,6 +316,8 @@ def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1)
         raise ValueError(f"'{reason}' is not a declared refusal reason "
                          f"({sorted(REFUSAL_REASONS)})")
     _record(source, reason, atoms, detail, rows=rows)
+    if molecule_is_open():
+        raise MoleculeRefused(source, reason, detail)
 
 
 def screen_molecule(source: str, atoms, declared_derivations, declared_subject_types,

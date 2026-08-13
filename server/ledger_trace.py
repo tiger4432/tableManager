@@ -1556,12 +1556,21 @@ def _unaccounted(entry, reasons):
                  Deployment history, NOT a fault.
         < 0      the breakdown exceeds the aggregate, which is a real bookkeeping
                  fault: a refusal path that counts in the gate without refusing the
-                 molecule. One such path exists and was MEASURED on 2026-08-13 —
-                 `lot_event_translator.translate` swallows `_slot_map`'s refusal with
-                 `or []`, so the gate counts a refusal, the molecule lands anyway, and
-                 the operator's log says "produced nothing" about a row that produced
-                 three atoms. It is unreachable with every `emit_has_wafer` the shipped
-                 config declares, and reachable by declaring one `false`.
+                 molecule. **No such path is currently known.**
+
+                 One existed and was MEASURED on 2026-08-13 — `lot_event_translator`
+                 swallowed `_slot_map`'s refusal with `or []`, so the gate counted a
+                 refusal, the molecule landed anyway, and the operator's log said
+                 "produced nothing" about a row that produced three atoms. Closed by
+                 R-2026-08-13-H: the refusal now travels as `gate.MoleculeRefused`,
+                 which no merge expression can swallow, and both arms are guarded in
+                 `test_ledger_l1_pg.py`.
+
+                 🔴 Keep this branch anyway. It is the detector, and the reason it
+                 reads NEGATIVE is that the swallow direction is the dangerous one —
+                 a refusal counted while its atoms land is worse than a refusal
+                 uncounted. If this number ever goes negative again, a new path of
+                 the same shape has opened.
     """
     if "molecules_refused" not in entry:
         return None                                          # pragma: no cover
