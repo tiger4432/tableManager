@@ -24,9 +24,18 @@ WHAT IS DELIBERATELY NOT HERE
   "bulk equals per-candidate" test here would be a second spelling of coverage that
   exists. Only the DECLINE - the case where the two read different questions - is
   pinned below, because that one rang nothing.
-- Cell ORDER. Neither the loop nor the batch declares an `ORDER BY`, and the truncated
-  read is already known to be nondeterministic about which rows survive the cap. Row
-  sets are compared as multisets, because that is what the code promises.
+- Cell ORDER. 🔴 THIS PARAGRAPH DESCRIBED A DEFECT, NOT A DESIGN, AND R7 CLOSED IT
+  (2026-08-13). It used to read "Neither the loop nor the batch declares an `ORDER BY`,
+  and the truncated read is already known to be nondeterministic about which rows
+  survive the cap" -- and treated that as a promise worth honouring rather than a bug
+  worth naming. It was measured: one capped read returned genuinely DIFFERENT cells
+  between runs, and `_unit_maps` survived 16 identical repeats before failing the
+  moment the planner was allowed to pick another plan. Both reads now carry a total
+  order, pinned by `test_capped_reads_have_a_total_order.py`.
+  Row sets are still compared here as MULTISETS -- deliberately, and for a different
+  reason than before: this file asks whether the loop and the batch read the same
+  QUESTION, and ordering is now someone else's pinned invariant. Do not turn this into
+  a second spelling of that test.
 """
 import json
 

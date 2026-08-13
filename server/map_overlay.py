@@ -286,10 +286,21 @@ def _meta_select(db, model, target_table: str, map_id: str):
 
     🔴 프로브가 다른 컬럼 집합을 질의하면 「읽을 수 있다」고 답해 놓고 실제 읽기는 터질 수
        있다 — 그것이 정확히 이 판정이 막으려는 상태다. 그래서 질의의 철자는 하나다.
+
+    🔴 [R7 - a capped read needs a total order] `.first()` is `LIMIT 1`, and nothing
+       makes `(target_table, map_id)` unique: measured on both databases,
+       `wafer_map_metadata` carries no unique index beyond its `row_id` primary key,
+       so one duplicated pair would let the SAME map read a DIFFERENT geometry from
+       one refresh to the next - rotation, side, start - with no error anywhere. The
+       order is `row_id`, i.e. the oldest row wins, because every other record that
+       already points at this map was written against that one. The real repair is a
+       unique index on the pair (§R6); that lives in a migration and is reported, not
+       taken, by this lane.
     """
     return (db.query(getattr(model, "grid_metadata"))
             .filter(getattr(model, "target_table") == target_table,
                     getattr(model, "map_id") == map_id)
+            .order_by(getattr(model, "row_id"))
             .first())
 
 
@@ -2005,7 +2016,17 @@ def get_overlay(db, cfg: dict, target_table: str, target_key: str,
 
         try:
             cols = [x_col, y_col] + ([val_col] if val_col is not None else [])
-            rows = db.query(*cols).filter(*filters).limit(cell_cap + 1).all()
+            # [R7] This read CUTS at `cell_cap` and the cut is operator-reachable:
+            # `GET /api/maps/overlay?limit=N`. Unordered it returned two different
+            # cell sets over 16 identical requests on assy_qa - different cells, no
+            # error. Raster `(y, x)` so a truncated overlay is the top of the map,
+            # `row_id` (the primary key) last so duplicate coordinates - real, 2,576
+            # groups in `core_defect_map`'s 5,152 rows - cannot leave the choice to
+            # the planner. Same key as `map_alignment._cells_of`, so a map cut here
+            # and a map cut there lose the same cells.
+            rows = (db.query(*cols).filter(*filters)
+                      .order_by(y_col, x_col, getattr(model, "row_id"))
+                      .limit(cell_cap + 1).all())
         except Exception as e:
             logger.warning("[MapOverlay] cell query failed (%s/%s): %s", s_table, key, e)
             entry["status"] = STATUS_SOURCE_MISSING
@@ -2645,6 +2666,17 @@ def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap, home=None):
             f"참조 맵 '{ref_table}/{ref_key}'을 이 맵의 프레임으로 옮길 수 없음: {ve}")
 
     try:
+        # 🔴 [R7] This read has a `LIMIT` and deliberately NO `ORDER BY`, and that is
+        #    a ruling rather than an oversight. It never cuts: one row past the cap
+        #    and the whole reference is REFUSED below, so the answer is either the
+        #    complete set or no answer - and the result is a `frozenset`, which has
+        #    no order to get wrong. An `ORDER BY` here would buy nothing and would be
+        #    paid for by exactly the maps that refuse: measured on a 1,000,000-cell
+        #    probe map at cap 20,000, 17.6 ms -> 394.3 ms (22x), because the sort has
+        #    to read every matching row before the limit can discard them.
+        #    ⚠️ If this refusal is ever softened into a truncation, this read needs
+        #    `ORDER BY y, x, row_id` in the same breath - a truncated valid-die mask
+        #    taken in planner order is a different mask on every refresh.
         rows = db.query(x_col, y_col).filter(*filters).limit(cell_cap + 1).all()
     except Exception as e:
         logger.warning("[ValidDie] ref cell query failed (%s/%s): %s",

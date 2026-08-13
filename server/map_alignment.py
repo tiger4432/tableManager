@@ -4997,7 +4997,16 @@ def _indices_for(rows, at: int):
 
 
 def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
-    """(table, map_id) 한 맵의 좌표 목록. 상한 초과는 **조용히 자르지 않고** 알린다."""
+    """(table, map_id) 한 맵의 좌표 목록. 상한 초과는 **조용히 자르지 않고** 알린다.
+
+    [R7 - a capped read needs a TOTAL order] The cut is `(y, x, row_id)`: raster
+    order, the order a map is read in, so a truncated map is the TOP OF THE MAP and
+    not a scatter the operator cannot place. `(y, x)` alone is not enough - measured
+    on assy_qa, `core_defect_map` has 2,576 duplicate-coordinate groups in 5,152 rows
+    and `dt_log` 2,192 on `(core_x, core_y)`, so the tie-break FIRES on real data.
+    `row_id` is the primary key of every dynamic table, which makes the order total.
+    `(y, x)` is this module's own spelling of canonical position (§_seat_cost).
+    """
     from database import models
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
@@ -5014,7 +5023,9 @@ def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
     # 서버가 아는 것을 클라가 모양으로 추론하게 두지 않는다.
     val_col = getattr(model, b.get("val", "val"), None) if b.get("val") else None
     cols = [x_col, y_col] + ([val_col] if val_col is not None else [])
-    rows = db.query(*cols).filter(*filters).limit(cap + 1).all()
+    rows = (db.query(*cols).filter(*filters)
+              .order_by(y_col, x_col, getattr(model, "row_id"))
+              .limit(cap + 1).all())
     truncated = len(rows) > cap
     rows = rows[:cap]
     kind = REFERENCE_KIND_VALUES if val_col is not None else REFERENCE_KIND_OCCUPANCY
@@ -5428,6 +5439,19 @@ def _source_rows_by_map(db, key_attrs, map_key_cols, filters, q_cols, id_rows, c
         value breaks the round trip - `compose_map_id` says so);
       - rows whose key is NULL are excluded, because `col == ''` never matched
         them either. That map keeps its empty cell list, exactly as today.
+
+    🔴 [R7 - a capped read needs a total order] This read has a `LIMIT` but it must
+       NOT get an `ORDER BY`, and the reason is measured rather than aesthetic. The
+       limit here is a **budget guard**, not a cut: past it the whole batch declines.
+       An `ORDER BY` would make the decline decision pay for a full sort of the
+       filtered set - measured on a 2,000,000-row probe, 10.4 ms -> 366.9 ms (35x),
+       and the decline path is the one the `params`-less worklist flow takes on every
+       request. Determinism is bought instead by making sure **nothing this function
+       returns is ever cut**: a map holding more than `cell_cap` rows is dropped from
+       `servable`, so the caller reads exactly that map through the ordered per-map
+       statement (§build_alignment_view). What is left is complete by construction,
+       and a complete set has nothing to lose to an order. The rows are still sorted
+       in Python so the payload array is stable between the two routes.
     """
     from sqlalchemy import String as _String
     if not id_rows:
@@ -5450,8 +5474,15 @@ def _source_rows_by_map(db, key_attrs, map_key_cols, filters, q_cols, id_rows, c
     if not servable:
         return {}, set()
     budget = len(servable) * (cell_cap + 1)
+    # `row_id` rides along as the ORDER's last key. It is the primary key of every
+    # dynamic table, so it is what makes the per-map order TOTAL - and it has to be,
+    # because duplicate coordinates inside one map are real: measured on assy_qa,
+    # `dt_log` has 2,192 duplicate `(core_x, core_y)` groups and `core_defect_map`
+    # 2,576 in 5,152 rows. It is stripped before the rows leave this function, so the
+    # caller's column positions are exactly the ones it passed in `q_cols`.
+    rid = getattr(key_attrs[0].class_, "row_id")
     try:
-        rows = (db.query(*key_attrs, *q_cols)
+        rows = (db.query(*key_attrs, *q_cols, rid)
                   .filter(*filters, *[a.isnot(None) for a in key_attrs])
                   .limit(budget + 1).all())
     except Exception as e:                      # noqa: BLE001 - decline, do not guess
@@ -5466,8 +5497,32 @@ def _source_rows_by_map(db, key_attrs, map_key_cols, filters, q_cols, id_rows, c
     for r in rows:
         mid = compose_map_id(r[:nk])
         if mid in servable:
-            out.setdefault(mid, []).append(tuple(r[nk:]))
-    return out, servable
+            out.setdefault(mid, []).append((tuple(r[nk:-1]), r[-1]))
+    # [R7] Nothing this function hands back may be CUT by the caller - a cut needs an
+    # order and this read deliberately has none (§docstring). A map holding more than
+    # the per-map cap therefore leaves `servable`, which is this function's existing
+    # way of saying "read this one the old way", and the caller re-reads that map with
+    # the ordered per-map statement. Every list left here is COMPLETE: the batch only
+    # returns at all when its own `LIMIT budget + 1` did not bite, so no map's rows
+    # were lost to it.
+    over = {mid for mid, v in out.items() if len(v) > cell_cap}
+    for mid in over:
+        out.pop(mid, None)
+    servable -= over
+    if not servable:
+        return {}, set()
+
+    def _order(p):
+        # Same key the ordered per-map statement uses, read through the module's one
+        # coordinate-adoption rule so a row this cannot place sorts LAST instead of
+        # raising on `None < float`. Unplaceable rows are dropped by `_to_cells`
+        # downstream anyway; what matters here is that the order is total, and
+        # `row_id` (the primary key) makes it so.
+        cell = _readable_cell(p[0][0], p[0][1])
+        return (cell is None, cell[1] if cell else 0, cell[0] if cell else 0, p[1])
+
+    return ({mid: [c for c, _ in sorted(v, key=_order)] for mid, v in out.items()},
+            servable)
 
 
 def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table: str,
@@ -5530,7 +5585,13 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     # The raw key tuples are kept, not just their composed ids: the batched cell
     # read below has to prove it groups rows the same way the per-map predicate
     # matched them, and a composed id cannot always be taken apart again.
-    id_rows = db.query(*key_attrs).filter(*filters).distinct().all()
+    # [R7] Ordered even though it has no `LIMIT`, because its order IS a cap: `ids`
+    # decides the order of `source_maps`, and the scoring budget below spends
+    # `cell_cap` walking that list (§score_candidates `room`). Unordered, WHICH map
+    # loses its cells to the budget was the planner's choice - measured on assy_qa,
+    # 2 distinct payloads over 16 identical requests and 3 over 7 planner settings.
+    # `DISTINCT` makes the projection unique, so ordering by all of it is total.
+    id_rows = db.query(*key_attrs).filter(*filters).distinct().order_by(*key_attrs).all()
     ids = [compose_map_id(r) for r in id_rows]
 
     # 🔴 좌표 컬럼은 **인자**다. 예전에는 여기서 `_binding_of`가 정본이라 `dt_log`의 선언
@@ -5607,7 +5668,14 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             for i, c in enumerate(map_key_cols):
                 part = mid if len(map_key_cols) == 1 else mid.split("_")[i]
                 mfilters.append(getattr(src_model, c) == part)
-            rows = db.query(*q_cols).filter(*mfilters).limit(cell_cap + 1).all()
+            # [R7] This is the statement that CUTS, so it carries the total order:
+            # raster `(y, x)` so a truncated map is the top of the map, `row_id`
+            # last so duplicate coordinates (real - 2,192 groups in `dt_log` on
+            # `(core_x, core_y)`) cannot leave the choice to the planner. Same key
+            # as `_cells_of`, so the reference and the sources are cut alike.
+            rows = (db.query(*q_cols).filter(*mfilters)
+                      .order_by(y_attr, x_attr, getattr(src_model, "row_id"))
+                      .limit(cell_cap + 1).all())
         if len(rows) > cell_cap:
             src_truncated = True
             rows = rows[:cell_cap]
@@ -6207,7 +6275,14 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
             truncated = True
             break
         try:
-            rows = (db.query(mid).filter(tt == ftable).order_by(mid)
+            # [R7] `order_by(mid)` alone is a PARTIAL order here: nothing enforces
+            # one row per `(target_table, map_id)` - measured, `wafer_map_metadata`
+            # carries no unique index beyond its `row_id` primary key on either
+            # database, so the pair is a convention the writer keeps and not a
+            # constraint the table keeps (§R6, a marker is not a key). `row_id` last
+            # makes the cut total whether or not that convention ever slips.
+            rows = (db.query(mid).filter(tt == ftable)
+                      .order_by(mid, getattr(meta_model, "row_id"))
                       .limit(remaining + 1).all())
         except Exception as e:
             # 🔴 메타 테이블을 못 읽으면 **카탈로그만 비는 것이 아니라 목록 전체가 500이었다**
@@ -6427,8 +6502,13 @@ def _unit_maps(db, src_model, decision_key: list, map_key_cols: list,
     """
     key_attrs = [getattr(src_model, c) for c in decision_key]
     map_attrs = [getattr(src_model, c) for c in map_key_cols]
+    # [R7] `DISTINCT` makes the projection unique, so ordering by ALL of it is a
+    # total order - no `row_id` needed, and it must not be added: `row_id` is not in
+    # the select list and `SELECT DISTINCT` cannot order by what it does not select.
+    # Free at scale, because the DISTINCT already sorts (measured on a 2,000,000-row
+    # probe: 237.7 ms -> 237.2 ms).
     rows = (db.query(*key_attrs, *map_attrs).filter(*narrow)
-              .distinct().limit(cap + 1).all())
+              .distinct().order_by(*key_attrs, *map_attrs).limit(cap + 1).all())
     truncated = len(rows) > cap
     rows = rows[:cap]
     n = len(decision_key)
@@ -6505,8 +6585,13 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         filters.append(or_(*[cast(a, String).ilike(pattern) for a in key_attrs]))
 
     matched = db.query(_func.count()).select_from(derived_model).filter(*filters).scalar()
+    # [R7] Which units survive `unit_cap` decides which units an operator can even
+    # SEE, so the cut is by decision key ascending - the same order the screen's
+    # default sort (`unit_key`) then shows them in, so page 1 of a truncated list is
+    # the head of the list and not a sample of it. `DISTINCT` makes the projection
+    # unique, so this is total; `row_id` cannot be added here (not selected).
     rows = (db.query(*key_attrs, *list_attrs).filter(*filters)
-              .distinct().limit(unit_cap + 1).all())
+              .distinct().order_by(*key_attrs, *list_attrs).limit(unit_cap + 1).all())
     units_truncated = len(rows) > unit_cap
     rows = rows[:unit_cap]
 
