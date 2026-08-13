@@ -39,12 +39,49 @@
 > | 레인 | 만지는 곳 |
 > |---|---|
 > | **R7 상한 읽기 정렬** | `map_alignment.py` · `map_overlay.py` |
-> | **스윕 tier-1 끌어올리기** | `directory_watcher.py` · `ingestion_checkpoint.py` (재시작 35분→~1초 목표) |
-> | **void 스키마 구현** | `table_config.json`(+sample) · `parsers/void_sat_format.py` · 새 마이그레이션 |
+> | ✅ **스윕 tier-1 끌어올리기** | **착지 `831ab68`** — 아래 참조 |
+> | ✅ **void 스키마 구현** | **착지 `346aa88`** — 아래 참조 |
 > | **원장 L1** — `ledger_events`+번역기 | `server/ledger/**` · 새 마이그레이션 · `ledger_config.json` |
 > | **원장 L2** — 추적 질의+라우트 | `ledger_trace.py` · (필요시 `main.py` 최소 diff) |
 > | **정렬기 UI 자동채움** | `client2/**` |
 > | ⏸ **스택 픽스처** | 판정 대기였음 — **층 축 확정됐으므로 재개 가능** |
+>
+> #### ✅ `831ab68` 스윕 tier-1 — **35분이 원장이 아니라 «원장까지 걸어가는 길»이었다**
+>
+> 티어1 질문은 옳았고 **묻는 자리가 한 단계 깊었다**. 이미 `stat`을 쥔 호출자를 지나쳐
+> 파일마다 세션 1개 + `table_config.json` 디스크 재독 2회를 낸 뒤에 물었다 — **파일당
+> ~92ms, 그중 원장은 0ms**. `settle_already_terminal`이 그 질문을 묶어서 먼저 한다.
+> 격리 `assy_qa` 2,001파일·원장 52,001행, arm 교차, 중앙값: **재스윕 26.432초→0.602초
+> (43.9배)** · **콜드 스윕 대조군 1.0배**(건너뛴 것 없음의 증거) · 신규/변경/`__force__`
+> 31.0/31.2/28.5초→1.81/1.96/1.81초. 배치 500은 실측(2,001을 한 질의로 = **3배 나쁨**,
+> OR 항수 계획 비용). ⚠️ **레인이 자기 계측기 고장을 잡았다** — 첫 측정이 컬럼 없는 DB에
+> 떨어져 **티어1이 한 번도 안 불린 채** 그럴듯한 숫자를 냈다. 총괄 재확인: 두 DB 모두 컬럼
+> 있음. 📌 **지시서보다 한 곳 더**(중첩 트리 루프) — 총괄 승인, `archive_processed_files:
+> false`에선 그 루프가 **주기마다** 재지불한다. 2줄 삭제로 되돌아감.
+>
+> #### ✅ `346aa88` void 스키마 — **아무것도 «못» 찾은 스캔도 사실이라 자기 행을 갖는다**
+>
+> 두 테이블. `inspection_run`이 **분모**(스캔이 있었다) — 없으면 「보이드 0」과 「스캔 안 함」이
+> 같은 부재고 둘 다 깨끗하게 읽힌다. `void_obs`가 관측. **등급은 물리적으로 저장 불가**
+> (grade|pass|fail|verdict|area|yield 매칭 컬럼 0개, 총괄 실측) — 면적은 표현식 인덱스
+> `pi()*radius_x*radius_y`(존재 확인). 33 passed · E2E 37/37 3회 · 변이 6/6 빨강.
+> **검증이 잡은 진짜 결함 둘**: ① **깨끗한 스캔이 run을 아예 못 만들었다** — 소비자가
+> 생산자가 안 쓴 헤더 키 4개를 읽었고 양쪽이 따로 보면 멀쩡했다(이 설계가 존재하는 이유인
+> 바로 그 행) ② **소수점 콤마가 뒤 컬럼을 통째로 밀었다** — `1,25`는 CSV에서 두 필드고
+> 밀린 값도 유효한 수라 **`radius_x`가 `radius_y`를 담는다**. 어떤 숫자 검사도 못 잡는다.
+> ⚠️ **진짜 SAT 파일을 한 번도 못 봤다** — 헤더 철자는 대소문자·구분자 접힘 별칭이고
+> `# key: value` 런 메타 블록은 **내가 지어냈다**(여덟 컬럼에 시각·레시피·설비가 없다).
+> 다르면 `_ALIASES`/`_RUN_ALIASES` 한정 수정.
+>
+> **void를 실제로 써 보려면 (운영자 손복사 — config는 gitignore라 `git pull`이 안 실어온다)**
+> ① `table_config.json.sample`의 `void_obs`·`inspection_run` 두 선언을 `table_config.json`으로
+> 복사 → ② 재기동 또는 `POST /admin/reload-configs` (물리 테이블 생성 + 워크스페이스
+> 자동 프로비저닝) → ③ `psql -f server/migrations/add_void_schema_indexes.sql` **② 다음에**
+> (`.sql`은 잘못된 대상을 거절 못 한다 — `SELECT current_database();` 먼저) → ④
+> `parsers/void_obs_parser.py.sample`·`inspection_run_parser.py.sample`을 각
+> `ingestion_workspace/<table>/scripts/`로 복사(재기동 불필요) → ⑤ SAT 파일을 **두
+> `raws/` 양쪽에** 넣는다(파일 하나가 사실 둘을 말하고 워처는 테이블당 핸들러 1개).
+> 깨끗한 스캔은 파생할 행이 없으므로 **체인으로 대신할 수 없다.**
 >
 > **원장 계약(총괄이 못박음)**: `ledger_events`의 물리 컬럼 11개 = 봉투 7필드를 편 것
 > (`id`·`subject_type`·`subject_keys`·`predicate`·`object_kind`·`object_payload`·
