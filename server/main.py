@@ -165,6 +165,13 @@ app.add_middleware(
                     "WWW-Authenticate"]
 )
 
+# --- Ledger lineage trace (GET /api/ledger/trace) --------------------------
+# Registered HERE for the same reason /health is: FastAPI matches in registration
+# order and the SPA catch-all `@app.get("/{file_name:path}")` at the bottom of
+# this file would otherwise serve index.html with a 200 for this path too.
+import ledger_trace_router  # noqa: E402
+app.include_router(ledger_trace_router.router)
+
 # --- Health endpoint -------------------------------------------------------
 # Registered HERE, far above the SPA catch-all `@app.get("/{file_name:path}")` at
 # the bottom of this file. That ordering is the whole point: FastAPI matches in
