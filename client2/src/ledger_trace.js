@@ -173,11 +173,16 @@ async function run(asked, { pushUrl = true } = {}) {
     return;
   }
   if (mine !== session) return;
-  await coverageReady;
+  // 🔴 THE BODY, not just the state it set. `ledgerState` tells the answer WHICH
+  // nothing it is; the body is what lets the one dead-end nothing — a lot the
+  // ledger does not know — point at lots it does. It is the request the page
+  // already made, so the way forward costs nothing extra and cannot go stale
+  // against the state derived from the same body.
+  const coverage = await coverageReady;
   if (mine !== session) return;
 
   renderTrace(document, mount, trace, subjectOf(trace, asked),
-    nothingVerdict(trace, ledgerState));
+    nothingVerdict(trace, ledgerState, coverage));
 }
 
 function boot() {

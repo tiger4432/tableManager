@@ -453,8 +453,24 @@ function hasLineageStep(trace) {
  * the terminal block ALREADY say that lot is not in the ledger, and a headline
  * repeating it would be a second sentence about the same fact. The kind is still
  * named so the caller — and the harness — can tell it apart from a real chain.
+ *
+ * 🔴 AND `samples` IS WHY THAT IS NOT THE WHOLE ANSWER. The sentence was right
+ * and the SCREEN was still a dead end: an operator who mistypes a lot reads
+ * "원장에 없음", correctly, and has nowhere to go — which is the 「막연하다」
+ * report on this very axis, one row further along. `coverage` is the body the
+ * page already fetched to tell the four nothings apart, so the way forward costs
+ * no request; it is the same list the empty state offers, spelled by the same
+ * function, so a lot that is offered here answers when it is clicked.
+ *
+ * ONLY `unknown_lot` gets it, and that is a rule rather than an omission:
+ *   * `ledger_absent` / `ledger_empty` — there is nothing findable to point at,
+ *     and a list of lots on a ledger with zero atoms would be a claim that they
+ *     exist (the same prohibition `renderCoverage` already holds for counts).
+ *   * `no_lineage_claim` — that lot WAS found. Offering alternatives there
+ *     answers a question the operator did not ask.
+ * An absent `coverage` yields an empty list, never an invented one.
  */
-export function nothingVerdict(trace, ledgerState) {
+export function nothingVerdict(trace, ledgerState, coverage) {
   const state = ledgerState == null ? 'unknown' : String(ledgerState);
   if (state === 'absent') {
     return {
@@ -473,7 +489,10 @@ export function nothingVerdict(trace, ledgerState) {
 
   const tag = reasonTag(trace && trace.terminal_reason);
   if (tag === 'unknown_subject') {
-    return { kind: 'unknown_lot', tone: 'gap', title: null, detail: null };
+    return {
+      kind: 'unknown_lot', tone: 'gap', title: null, detail: null,
+      samples: coverageSamples(coverage),
+    };
   }
   // `[root]` is a successful ending when the walk got somewhere. On the FIRST
   // hop it means the opposite of a traversal: the ledger registered this lot and

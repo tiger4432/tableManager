@@ -422,7 +422,38 @@ const FLOORS = new Map([
   // Mutant `refusal-state-read-from-the-sentence` passes the real capture — whose sentence does
   // contain 없음 — and lies about every other one, which is why the assertion is written from
   // the direction that catches it.
-  ['ledger_trace_harness.mjs', 291],
+  //
+  // 291 -> 319 (2026-08-13, row 3's dead end). The four-nothings round got the SENTENCE right
+  // and left one of the four a dead end: an operator who mistypes a lot reads a correct
+  // "원장에 없음" and has nowhere to go. K3b's ruling stands — no second sentence about a fact
+  // the hops already state — so the way out is the sample list the empty state already offers,
+  // read off the coverage body the page already fetched. 3 more mutants, and the interesting
+  // half of this entry is what the first run of those mutants measured:
+  //
+  // 🔴 THE THROW TRAP, RE-ARMED AND RE-CAUGHT. K11-K14 were first written as `nv(...).samples`.
+  //    Two mutants (`nothing-ignores-the-ledger-state`, `lineage-step-counts-any-hop`) make
+  //    `nothingVerdict` return NULL, so they were reported "caught (threw: Cannot read
+  //    properties of null)" — an exception that aborts the file before the assertions meant to
+  //    name them ever run. That is the SAME defect this entry already records being fixed once
+  //    with `first`/`at`/`kindOf`; `samplesOf` is the third tolerant reader for the same reason.
+  //
+  // 🔴 AN AMBIGUOUS MUTANT ANCHOR TESTS A DIFFERENT FUNCTION. `way-forward-offered-on-every-
+  //    nothing` first anchored on `title: '원장이 비어 있습니다 — 백필 미실행',`, which the core
+  //    spells TWICE (`coverageVerdict` and `nothingVerdict`). `String.replace` takes the first,
+  //    so the mutation landed where nothing reads a `samples` key and ESCAPED — while the
+  //    did-it-apply guard passed, because the source genuinely changed. It is now anchored on
+  //    the `detail` line, which is unique to the verdict under test.
+  //
+  // 🔴 AND ONE NEW ASSERTION CAUGHT ITSELF. M8h was written as `byTag(...,'LI').length === 1`
+  //    and read 4 — the sample links are list items too. Both CONTROL mutants were "caught" by
+  //    it, which is this file's own signal that a check is broken rather than that a defect was
+  //    found. It counts `lt-hop` now.
+  //
+  // M8g (the way forward renders AFTER the terminal block, because above the chain is where a
+  // line reframes the answer) has no mutant in the corpus — one would have to anchor on a
+  // comment. It was mutation-tested BY HAND instead: reordering the two appends in
+  // `ledger_trace_view.js` turns it red and prints the order it found.
+  ['ledger_trace_harness.mjs', 319],
   // New 2026-08-06 with `opts.restoreDraft` (e34d57d, 「맵을 로드하면 로드한 맵이 나온다」).
   // Same rule as the other new entries: the floor is the count it reports on the commit that
   // introduces it. 14 of its assertions are the mutation corpus itself (12 defects + 2

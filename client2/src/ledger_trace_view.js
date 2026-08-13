@@ -115,6 +115,31 @@ function renderHop(doc, hop, ordinal) {
   return item;
 }
 
+/**
+ * The sample lots, as the list of links they already are.
+ *
+ * 🔴 ONE SPELLING, TWO SCREENS. The empty state offers these before a question,
+ * and the unknown-lot answer offers them after one; if the two built their own
+ * anchors, a sample could become a different KIND of thing depending on which
+ * screen handed it over — and only one of them would be scored. A real `href`,
+ * not a click handler: this screen's answer IS a URL, so middle-click,
+ * copy-link and the back button all work and the page needs no state to serve
+ * them. It is also why the way forward costs zero form controls.
+ */
+function renderSamples(doc, samples) {
+  const ul = el(doc, 'ul', 'lt-samples');
+  for (const s of samples) {
+    const li = el(doc, 'li', 'lt-samples__item');
+    const a = el(doc, 'a', 'lt-samples__link', s.text);
+    a.setAttribute('href', `?${s.query}`);
+    a.setAttribute('data-sample-lot', s.lot);
+    if (s.slot !== null) a.setAttribute('data-sample-slot', s.slot);
+    li.appendChild(a);
+    ul.appendChild(li);
+  }
+  return ul;
+}
+
 function renderTerminal(doc, trace) {
   const reason = String((trace && trace.terminal_reason) || '');
   const verdict = terminalVerdict(reason);
@@ -158,6 +183,25 @@ export function renderTrace(doc, mount, trace, subjectText, nothing) {
   wrap.appendChild(chain);
 
   wrap.appendChild(renderTerminal(doc, trace));
+
+  // 🔴 THE WAY FORWARD, AND IT GOES *BELOW* THE ANSWER ON PURPOSE. The headline
+  // above the chain reframes what the chain MEANS; this does not — it is the
+  // next step after the operator has read that their lot is not in the ledger.
+  // Putting it above would hand out an escape hatch before the diagnosis.
+  //
+  // Which nothing earns one is `nothingVerdict`'s decision, not this file's:
+  // today only `unknown_lot` carries a list, because it is the only one where
+  // the screen was right and still a dead end. An empty list renders nothing at
+  // all — a heading with no lots under it would be a promise the ledger cannot
+  // keep.
+  const forward = nothing && Array.isArray(nothing.samples) ? nothing.samples : [];
+  if (forward.length) {
+    const box = el(doc, 'div', 'lt-forward');
+    box.setAttribute('data-forward', String(nothing.kind || ''));
+    box.appendChild(el(doc, 'div', 'lt-forward__title', '물을 수 있는 랏'));
+    box.appendChild(renderSamples(doc, forward));
+    wrap.appendChild(box);
+  }
 
   if (trace && trace.generated_at) {
     wrap.appendChild(el(doc, 'div', 'lt-generated',
@@ -216,19 +260,7 @@ export function renderCoverage(doc, mount, coverage) {
 
     const samples = coverageSamples(coverage);
     if (samples.length) {
-      const ul = el(doc, 'ul', 'lt-samples');
-      for (const s of samples) {
-        const li = el(doc, 'li', 'lt-samples__item');
-        const a = el(doc, 'a', 'lt-samples__link', s.text);
-        // A real href, not a click handler: middle-click, copy-link and the
-        // back button all work, and the page needs no state to serve it.
-        a.setAttribute('href', `?${s.query}`);
-        a.setAttribute('data-sample-lot', s.lot);
-        if (s.slot !== null) a.setAttribute('data-sample-slot', s.slot);
-        li.appendChild(a);
-        ul.appendChild(li);
-      }
-      wrap.appendChild(ul);
+      wrap.appendChild(renderSamples(doc, samples));
     }
 
     wrap.appendChild(el(doc, 'p', 'lt-coverage__hint',

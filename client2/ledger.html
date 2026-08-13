@@ -488,6 +488,30 @@
       font-size: 14px;
       color: var(--text-dim);
     }
+
+    /* ── 막다른 답의 다음 한 걸음 ─────────────────────────────
+       🔴 없는 랏을 물었을 때 「원장에 없음」은 맞는 문장이었지만 화면은 막다른
+          길이었다. 위 표본 목록을 그대로 재사용한다 — 같은 링크, 같은 질문.
+
+       답을 「다시 말하는」 줄이 아니라 답을 읽은 다음의 한 걸음이므로 사슬 위가
+       아니라 종단 블록 아래에 온다. 답보다 낮은 위계라 왼쪽 굵은 테두리를 쓰지
+       않고 인셋 배경으로 물러난다 — 점선은 이 화면에서 「가정」의 뜻이라 여기에
+       쓰지 않는다. 제목은 15px, 메타로 내리지 않는다(가독성 = 기능). */
+    .lt-forward {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+    }
+
+    .lt-forward__title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .lt-forward .lt-samples { margin-top: 12px; }
   </style>
 </head>
 

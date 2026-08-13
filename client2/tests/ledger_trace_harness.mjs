@@ -657,6 +657,13 @@ async function suite(coreSource, viewSource) {
     // the first run of this section. With these, each one fails the assertion that NAMES it.
     const kindOf = (v) => (v && v.kind !== undefined ? v.kind : '(no verdict)');
     const titleOf = (v) => (v && v.title !== undefined ? v.title : '(no verdict)');
+    // 🔴 AND THE SAME RULE FOR THE WAY FORWARD, MEASURED THE SAME WAY. Written first as
+    // `nv(...).samples`, it re-armed the exact trap the paragraph above describes: the two
+    // mutants that make `nothingVerdict` return NULL were reported "caught (threw: Cannot read
+    // properties of null)" — an exception that aborts the file BEFORE K11-K14 run, so the
+    // assertions meant to name them never scored. A tolerant reader is what makes each mutant
+    // fail the assertion that names it.
+    const samplesOf = (v) => (v && Array.isArray(v.samples) ? v.samples : []);
 
     eq('K1 absent is a deployment fact', kindOf(nv(null, 'absent')), 'ledger_absent');
     eq('K1b in the words the operator needs',
@@ -710,6 +717,46 @@ async function suite(coreSource, viewSource) {
       kindOf(nv(NOTHINGS.root_only, 'unknown')), 'no_lineage_claim');
     eq('K9b a null state does not throw', kindOf(nv(NOTHINGS.unknown_lot, null)), 'unknown_lot');
     eq('K10 a malformed trace does not throw', nv(null, 'ready'), null);
+
+    // 🔴 ROW 3 WAS RIGHT ABOUT THE SENTENCE AND WRONG ABOUT THE DEAD END. K3b keeps the
+    // headline silent because the hops already say "원장에 없음" — that ruling stands. But an
+    // operator who mistypes a lot then reads a correct answer and has NOWHERE TO GO, which is
+    // the 「막연하다」 report one row further along. The coverage body is the one the page
+    // already fetched to tell the four nothings apart, so this costs no request.
+    const forward = nv(NOTHINGS.unknown_lot, 'ready', COVERAGE.ready);
+    eq('K11 an unknown lot is offered somewhere to go',
+      samplesOf(forward).length, COVERAGE.ready.sample.length);
+    // 🔴 AND THEY ARE THE SAME QUESTIONS THE EMPTY STATE OFFERS, spelled by the same function.
+    // A second spelling is how a suggested lot becomes a link that answers differently from
+    // the identical-looking one on the previous screen.
+    eq('K11b spelled exactly as the empty state spells them',
+      samplesOf(forward).map((s) => s.query).join('|'),
+      core.coverageSamples(COVERAGE.ready).map((s) => s.query).join('|'));
+    // The way out must not smuggle the second sentence back in.
+    eq('K11c and still adds no second sentence', titleOf(forward), null);
+    eq('K11d and is still the same kind of nothing', kindOf(forward), 'unknown_lot');
+
+    // 🔴 ONLY THE DEAD END GETS ONE, and the two exclusions are different reasons.
+    // An empty or absent ledger has nothing findable, so a list of lots there would be a
+    // claim that they exist — the same prohibition L8e holds for counts.
+    eq('K12 an empty ledger offers no lots it does not have',
+      samplesOf(nv(NOTHINGS.unknown_lot, 'empty', COVERAGE.ready)).length, 0);
+    eq('K12b nor does an absent one',
+      samplesOf(nv(null, 'absent', COVERAGE.ready)).length, 0);
+    // A registered lot with no parent claim WAS found. Offering alternatives there answers a
+    // question the operator did not ask.
+    eq('K13 a lot that was found is not sent elsewhere',
+      samplesOf(nv(NOTHINGS.root_only, 'ready', COVERAGE.ready)).length, 0);
+
+    // 🔴 NEVER INVENTED. A server too old to carry `/coverage` — or one that answered with
+    // nothing to sample — leaves the screen exactly as it was. Same rule as `coverageFacts`'
+    // absent count: an offer nobody can honour is worse than no offer.
+    eq('K14 no coverage in hand, no way forward',
+      samplesOf(nv(NOTHINGS.unknown_lot, 'ready')).length, 0);
+    eq('K14b and the verdict is otherwise unchanged',
+      kindOf(nv(NOTHINGS.unknown_lot, 'ready')), 'unknown_lot');
+    eq('K14c a coverage body with no sample yields no offer',
+      samplesOf(nv(NOTHINGS.unknown_lot, 'ready', COVERAGE.empty)).length, 0);
   }
 
   // ── L. the empty state on screen — requirement 1 ──────────────────────────────────
@@ -829,6 +876,65 @@ async function suite(coreSource, viewSource) {
 
     view.renderTrace(doc3, m3, LIVE, 'x');
     eq('M7 a second answer drops the previous headline', byClass(m3, 'lt-nothing').length, 0);
+
+    // ── row 3's way forward, on screen ──────────────────────────────────────────────
+    // 🔴 M2 SAID THE SCREEN STAYS SILENT AND IT STILL DOES. What changes is that the silence
+    // is no longer a dead end: the lots this ledger CAN answer for are on the page, as the
+    // same links the empty state offers.
+    const doc6 = makeDoc();
+    const m6 = doc6.createElement('div');
+    view.renderTrace(doc6, m6, NOTHINGS.unknown_lot, 'x',
+      core.nothingVerdict(NOTHINGS.unknown_lot, 'ready', COVERAGE.ready));
+    const fwd = first(byClass(m6, 'lt-forward'));
+    eq('M8 an unknown lot is given somewhere to go', fwd.getAttribute('data-forward'), 'unknown_lot');
+    ok('M8b and the lots are named', m6.textContent.includes('CL-2601-006-A1-A7/04'), m6.textContent);
+    const fwdLinks = byTag(fwd, 'A');
+    eq('M8c every one is a link', fwdLinks.length, COVERAGE.ready.sample.length);
+    eq('M8d and the link IS the question',
+      first(fwdLinks).getAttribute('href'), '?lot=CL-2601-006-A1-A7&slot=04');
+    // 🔴 THE TWO RULINGS THIS MUST NOT BREAK. K3b/M2: no second sentence about a fact the
+    // hops already state. And the complexity budget: anchors are not controls, so the way
+    // forward is still zero form controls — no panel, no mode, no button.
+    eq('M8e no headline was smuggled back in', byClass(m6, 'lt-nothing').length, 0);
+    eq('M8f no control was added', byTag(m6, 'BUTTON').length + byTag(m6, 'INPUT').length, 0);
+    // 🔴 AND IT COMES AFTER THE ANSWER. Above the chain is where a line REFRAMES what the
+    // chain means; this is the step after reading it. An escape hatch printed before the
+    // diagnosis gets read INSTEAD of it.
+    const wrapKids = ((m6.children[0] || NOTHING).children || [])
+      .map((n) => String(n.className || '').split(/\s+/)[0]);
+    ok('M8g and it comes after the terminal block',
+      wrapKids.indexOf('lt-forward') > wrapKids.indexOf('lt-terminal')
+      && wrapKids.indexOf('lt-forward') !== -1, wrapKids.join(','));
+    // An addition, never a substitution — the hops are still the answer. Counted by CLASS and
+    // not by `LI`: the sample links are list items too, so `byTag(...,'LI')` here reads 1 hop
+    // + 3 samples and the assertion fails on a correct screen. It did, on the first run, and
+    // both CONTROL mutants were "caught" by it — which is the signal that a check is broken
+    // rather than that the source moved.
+    eq('M8h the answer is still the answer', byClass(m6, 'lt-hop').length, 1);
+    ok('M8i with the server sentence still verbatim',
+      m6.textContent.includes(NOTHINGS.unknown_lot.hops[0].reason));
+
+    const doc7 = makeDoc();
+    const m7 = doc7.createElement('div');
+    view.renderTrace(doc7, m7, NOTHINGS.unknown_lot, 'x',
+      core.nothingVerdict(NOTHINGS.unknown_lot, 'ready'));
+    eq('M9 no coverage, no invented way forward', byClass(m7, 'lt-forward').length, 0);
+
+    const doc8 = makeDoc();
+    const m8 = doc8.createElement('div');
+    view.renderTrace(doc8, m8, NOTHINGS.three_gen, 'x',
+      core.nothingVerdict(NOTHINGS.three_gen, 'ready', COVERAGE.ready));
+    eq('M10 a working chain is not sent elsewhere', byClass(m8, 'lt-forward').length, 0);
+
+    // 🔴 AND AN EMPTY LEDGER OFFERS NOTHING TO CLICK, whatever it was handed. Its headline
+    // says the backfill never ran; a list of lots underneath would contradict it in the same
+    // breath.
+    const doc9 = makeDoc();
+    const m9 = doc9.createElement('div');
+    view.renderTrace(doc9, m9, NOTHINGS.unknown_lot, 'x',
+      core.nothingVerdict(NOTHINGS.unknown_lot, 'empty', COVERAGE.ready));
+    eq('M11 an empty ledger offers nothing to click', byTag(m9, 'A').length, 0);
+    ok('M11b and still says why', m9.textContent.includes('백필 미실행'), m9.textContent);
   }
 
   return { pass, fail: failed.length, failed };
@@ -900,6 +1006,15 @@ function census() {
   ok('H19 the four sentences are not composed in the entry',
     !ENTRY_SRC.includes('원장이 이 DB에 설치되지 않았습니다')
     && !ENTRY_SRC.includes('등재됐으나 혈통 주장 없음'));
+  // 🔴 "LANDED IS NOT WIRED", ON THE ONE ARGUMENT ROW 3 DEPENDS ON. The core can compute the
+  // way forward perfectly and the entry can still call `nothingVerdict` with two arguments —
+  // in which case the dead end is exactly as it was and every assertion in K and M passes.
+  // The entry awaits that body already; these two pin that it is BOUND rather than discarded,
+  // and that it reaches the verdict.
+  ok('H20 the coverage body is bound, not just awaited',
+    /(const|let)\s+\w+\s*=\s*await\s+coverageReady/.test(ENTRY_SRC));
+  ok('H20b and it is what the verdict is fed',
+    /nothingVerdict\(\s*trace\s*,\s*ledgerState\s*,\s*\w+\s*\)/.test(ENTRY_SRC));
 
   return { pass, fail: failed.length, failed };
 }
@@ -980,8 +1095,8 @@ const DEFECTS = [
     (s) => s.replaceAll("title: '원장이 비어 있습니다 — 백필 미실행',",
       "title: '원장이 이 DB에 설치되지 않았습니다',")],
   [CORE, 'unknown-lot-repeats-what-the-hops-said',
-    (s) => s.replace("return { kind: 'unknown_lot', tone: 'gap', title: null, detail: null };",
-      "return { kind: 'unknown_lot', tone: 'gap', title: '원장에 없는 랏', detail: null };")],
+    (s) => s.replace("kind: 'unknown_lot', tone: 'gap', title: null, detail: null,",
+      "kind: 'unknown_lot', tone: 'gap', title: '원장에 없는 랏', detail: null,")],
   // 🔴 THE PROSE PARSER, AS A MUTANT. It passes the real captured refusal (whose sentence does
   //    contain 없음) and lies about every other one — the shape of defect this screen has
   //    already paid for once on the convention/measurement axis.
@@ -1022,6 +1137,25 @@ const DEFECTS = [
   [VIEW, 'nothing-headline-loses-its-kind',
     (s) => s.replace("box.setAttribute('data-nothing', String(nothing.kind || ''));",
       "box.setAttribute('data-nothing', 'gap');")],
+
+  // ── row 3: the answer that was right and still a dead end ─────────────────────────
+  // 🔴 THE STATE AS IT SHIPPED. The sentence is correct, the operator has nowhere to go.
+  //    This is the mutant that reproduces the screen the ruling was written about.
+  [CORE, 'unknown-lot-is-a-dead-end',
+    (s) => s.replace('      samples: coverageSamples(coverage),\n', '')],
+  // 🔴 THE OVERCORRECTION, and it is the worse defect of the two: a ledger with zero atoms
+  //    would list lots as if they were there, which is a measurement of a table that has
+  //    nothing in it — L8e's prohibition arriving through a different door.
+  //    🔴 ANCHORED ON THE `detail`, NOT THE `title`. Written against the title first, it
+  //    ESCAPED — and not because the check was weak: that title is spelled TWICE in the core
+  //    (`coverageVerdict` and `nothingVerdict`), `String.replace` takes the FIRST, so the
+  //    mutation landed in the empty state's verdict where nothing reads a `samples` key. It
+  //    changed the source, so the did-it-apply guard passed, and the mutant scored a defect
+  //    nobody had introduced. An ambiguous anchor is a mutant that tests a different function.
+  [CORE, 'way-forward-offered-on-every-nothing',
+    (s) => s.replace("      detail: '이 랏이 없는 게 아니라 원장이 비었다 · 원자 0건',",
+      "      detail: '이 랏이 없는 게 아니라 원장이 비었다 · 원자 0건',\n      samples: coverageSamples(coverage),")],
+  [VIEW, 'way-forward-dropped', (s) => s.replace('if (forward.length) {', 'if (false) {')],
 ];
 
 // Must ESCAPE. If one is caught, a check is reading source text instead of behaviour.
