@@ -4996,8 +4996,17 @@ def _indices_for(rows, at: int):
     return out
 
 
-def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
+def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int, known_count: int = None):
     """(table, map_id) 한 맵의 좌표 목록. 상한 초과는 **조용히 자르지 않고** 알린다.
+
+    `known_count`: this key's row count when the caller ALREADY knows it (see
+    `_count_cells_bulk`). Only `0` short-circuits, and it short-circuits the
+    QUERY, never a judgement: every refusal this function can raise is decided
+    before the read and stays exactly where it was, so a caller that supplies a
+    count gets the same answer it would have got by paying for the scan. The
+    predicate is identical on both sides - `_count_cells` counts the rows
+    `build_key_filters` selects, which is the filter this SELECT uses - so "no
+    rows to count" and "no rows to read" are the same fact.
 
     [R7 - a capped read needs a TOTAL order] The cut is `(y, x, row_id)`: raster
     order, the order a map is read in, so a truncated map is the TOP OF THE MAP and
@@ -5023,12 +5032,18 @@ def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int):
     # 서버가 아는 것을 클라가 모양으로 추론하게 두지 않는다.
     val_col = getattr(model, b.get("val", "val"), None) if b.get("val") else None
     cols = [x_col, y_col] + ([val_col] if val_col is not None else [])
+    kind = REFERENCE_KIND_VALUES if val_col is not None else REFERENCE_KIND_OCCUPANCY
+    if known_count == 0:
+        # 🔴 The read is skipped, the ORDER BY is not weakened - there is nothing
+        #    to order. `kind` is a property of the BINDING, not of the rows, so it
+        #    is the same value the query path would have produced.
+        cells, values = _to_cells([], [])
+        return cells, values, False, kind
     rows = (db.query(*cols).filter(*filters)
               .order_by(y_col, x_col, getattr(model, "row_id"))
               .limit(cap + 1).all())
     truncated = len(rows) > cap
     rows = rows[:cap]
-    kind = REFERENCE_KIND_VALUES if val_col is not None else REFERENCE_KIND_OCCUPANCY
     # 🔴 값을 **읽고 버리지 않는다.** 이 함수는 예전에 값 컬럼을 SELECT해 놓고 좌표만
     #    돌려주었고, 그래서 `reference.kind: "values"`는 아무도 쓰지 않는 선언이었다.
     #    그러는 동안 채점은 점유만 봤는데, 점유는 평평할 뿐 아니라 **원 마스크 위에서는
@@ -5157,6 +5172,41 @@ def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int,
     return _load_reference(db, cfg, table, map_id, origin, cap)
 
 
+#: Request-scoped slot holding `{(table, map_id): rows}` for keys whose size the
+#: caller already learned in bulk. ONE cache entry, not one per candidate, so
+#: seeding it cannot crowd out the `("ref", ...)` memos under `_REF_CACHE_MAX`.
+_CELL_COUNT_CK = "cell_counts"
+
+
+def _seed_cell_counts(cache: dict, table: str, counts: dict):
+    """Publish a whole floor table's sizes to the reads that would re-derive them.
+
+    🔴 This does not create a second judge (§resolve_reference_catalog). The
+       judgement stays in `_load_reference`; what moves is WHERE the number comes
+       from - one grouped scan for every candidate instead of one full scan per
+       candidate per read. The floor tables carry no index on their map-key
+       columns, so each of those reads was `O(floor_rows)` and the loop was
+       `O(candidates x floor_rows)` - measured on the dev box, 201 candidates x
+       (3.0 ms cell read + 3.9 ms count) = 1.59 s of a 1.91 s worklist page.
+
+    ⚠️ Only ever seed from a source that answers the SAME predicate. Today that
+       is `_count_cells_bulk` and only when it reports `complete` - it declines
+       rather than guess precisely so that this seeding stays sound.
+    """
+    if cache is None or not counts:
+        return
+    slot = cache.setdefault(_CELL_COUNT_CK, {})
+    for map_id, n in counts.items():
+        slot[(table, map_id)] = n
+
+
+def _known_cell_count(cache: dict, table: str, map_id: str):
+    """The seeded size, or `None` for "nobody knows" - which is not "zero"."""
+    if not cache:
+        return None
+    return (cache.get(_CELL_COUNT_CK) or {}).get((table, map_id))
+
+
 # 작업 단위 캐시 상한 — 넘치면 그냥 안 담는다(최악이 중복 해석 1회이고 오답은 아니다,
 # `map_overlay._VALID_DIE_CACHE_MAX`와 같은 규율).
 _REF_CACHE_MAX = 256
@@ -5200,12 +5250,17 @@ def _load_reference(db, cfg: dict, table: str, map_id: str, origin: str, cap: in
     why = map_overlay.geometry_refusal(meta)
     if why is not None and not _allows_synthetic_reference_geometry(table):
         return _refuse(REF_REFUSAL_GEOMETRY, "기준 맵 '%s · %s': %s" % (table, map_id, why))
+    # This key's size, if the caller already paid for the whole table's sizes in
+    # one query (`_seed_cell_counts`). `None` means nobody knows and both reads
+    # below run exactly as they always did.
+    known = _known_cell_count(cache, table, map_id)
     try:
-        cells, values, truncated, kind = _cells_of(db, cfg, table, map_id, cap)
+        cells, values, truncated, kind = _cells_of(db, cfg, table, map_id, cap,
+                                                   known_count=known)
     except ValueError as e:
         return _refuse(REF_REFUSAL_BINDING, str(e))
     if not cells:
-        code, reason = _no_cell_refusal(db, cfg, table, map_id)
+        code, reason = _no_cell_refusal(db, cfg, table, map_id, known_count=known)
         return _refuse(code, reason)
     out = _ref_state(REFERENCE_RESOLVED, source=origin, table=table, map_id=map_id,
                      cells=cells, values=values, count=len(cells),
@@ -5228,8 +5283,13 @@ def _meta_row_exists(db, table: str, map_id: str) -> bool:
         return False
 
 
-def _no_cell_refusal(db, cfg: dict, table: str, map_id: str):
+def _no_cell_refusal(db, cfg: dict, table: str, map_id: str, known_count: int = None):
     """좌표 0건일 때 **무엇이 0건인가**를 가른다. `(reason_code, 문장)`.
+
+    `known_count`: the same row count the caller may already hold
+    (`_count_cells_bulk`). It replaces the `COUNT(*)` this function used to
+    issue per candidate and nothing else - ⓐ/ⓑ/ⓒ are told apart by exactly the
+    number they were told apart by before.
 
     같은 증상에 원인이 셋이고 수리가 셋 다 다르다:
 
@@ -5254,7 +5314,7 @@ def _no_cell_refusal(db, cfg: dict, table: str, map_id: str):
     except ValueError:
         key_cols = []
     where = (" (조회 조건: %s)" % bound) if bound else ""
-    n_rows = _count_cells(db, cfg, table, map_id)
+    n_rows = known_count if known_count is not None else _count_cells(db, cfg, table, map_id)
     if n_rows:
         return (REF_REFUSAL_COORDS_UNREADABLE,
                 "기준 맵 '%s · %s'의 행에 읽을 수 있는 좌표가 없습니다 — x·y가 수가 "
@@ -6269,6 +6329,10 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
 
     tt, mid = getattr(meta_model, "target_table"), getattr(meta_model, "map_id")
     items, not_offered, examined, truncated = [], [], 0, False
+    # 요청 경계의 캐시. `_resolve_reference`가 이미 받는 그 dict이고(두 번째 캐시를 만들지
+    # 않는다), 이 루프에서는 세 가지를 나른다 — 해석 결과 memo · `meta_absence_reason`
+    # 1회 · 그리고 아래에서 심는 **바닥 테이블별 셀 개수**.
+    ref_cache = {}
     for ftable in tables:
         remaining = cap - examined
         if remaining <= 0:
@@ -6300,6 +6364,13 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
         # false means the bulk read declined and each candidate is counted the
         # way it used to be - same query, same cost, only for this table.
         counts, counts_ok = _count_cells_bulk(db, cfg, ftable, [r[0] for r in rows])
+        # 🔴 이 수를 payload에만 쓰고 버리면 **아래 루프가 같은 수를 후보마다 다시 판다.**
+        #    실측(개발 박스): 후보 201개가 `no_cells`로 거절되는데, 그 거절 하나마다
+        #    `core_wafer_map`(24,749행, 맵 키에 인덱스 없음) 전체 스캔이 **두 번** 돌았다 —
+        #    셀 읽기 3.0 ms + 개수 세기 3.9 ms. 판정은 그대로 두고 **수의 출처만** 여기로
+        #    모은다(§_seed_cell_counts).
+        if counts_ok:
+            _seed_cell_counts(ref_cache, ftable, counts)
 
         def _size(map_id, _c=counts, _ok=counts_ok, _t=ftable):
             return _c[map_id] if _ok else _count_cells(db, cfg, _t, map_id)
@@ -6308,7 +6379,8 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
             examined += 1
             # cap=1: **풀리는가와 어떤 종류인가**만 묻는다. 셀을 다 끌어오면 목록 한 번에
             # 바닥 수 x 2만 셀을 읽게 되고, 그것은 색인이 색인 대상보다 무거워지는 자리다.
-            ref = _resolve_reference(db, cfg, "%s:%s" % (ftable, map_id), [], 1)
+            ref = _resolve_reference(db, cfg, "%s:%s" % (ftable, map_id), [], 1,
+                                     cache=ref_cache)
             if ref["state"] != REFERENCE_RESOLVED:
                 not_offered.append({
                     "table": ftable,

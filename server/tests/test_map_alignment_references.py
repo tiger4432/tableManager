@@ -297,6 +297,64 @@ def test_sizes_are_counted_and_not_fetched(env, client):
     assert len(ref["cells"]) == 1 and ref["count"] == 1
 
 
+def test_the_prefetched_size_replaces_the_query_and_not_the_judgement(env, monkeypatch):
+    """The catalog already knows every candidate's size before the loop starts, and the
+    per-candidate reads must USE that number rather than re-derive it.
+
+    🔴 WHY THIS IS A TEST AND NOT A COMMENT. The floor tables carry no index on their
+       map-key columns, so each per-candidate read is a full scan and the loop costs
+       `candidates x floor_rows`. Measured on the isolated development database (NOT
+       production): 201 of 212 candidates refused with `no_cells`, and each refusal ran
+       TWO full scans of `core_wafer_map` (24,749 rows) - one to read cells that were not
+       there, one to count them - for 1.59 s of a 1.91 s worklist page. The same defect
+       was already found and repaired once for `cell_count` alone (`_count_cells_bulk`);
+       it survived in the two reads inside `_load_reference`, so a comment did not hold
+       it and this does.
+
+    🔴 THE SHORTCUT MUST NOT BECOME A SECOND JUDGE. `_load_reference` is deliberately the
+       only thing that decides whether a floor resolves, so the catalog computed with the
+       prefetch and the catalog computed without it are compared WHOLE - all three shapes
+       at once, because the seeded number is what tells `no_cells` apart from
+       `coords_unreadable`, and getting it wrong swaps one refusal for the other silently.
+    """
+    _seed_floor(env, "GOOD", "A", [(3, 3), (4, 3)])            # resolves
+    _seed_floor(env, "EMPTY", "B", [])                          # spec row, no cells
+    _seed_floor(env, "JUNK", "C", [(1, 1), (2, 2)],             # cells, unreadable x/y
+                coords=[(None, None), (None, None)])
+
+    counted, told = [], {}
+    real_count, real_cells = ma._count_cells, ma._cells_of
+
+    def spy_count(db, cfg, table, map_id):
+        counted.append(map_id)
+        return real_count(db, cfg, table, map_id)
+
+    def spy_cells(db, cfg, table, map_id, cap, known_count=None):
+        told[map_id] = known_count
+        return real_cells(db, cfg, table, map_id, cap, known_count=known_count)
+
+    monkeypatch.setattr(ma, "_count_cells", spy_count)
+    monkeypatch.setattr(ma, "_cells_of", spy_cells)
+    seeded = ma.resolve_reference_catalog(env, {})
+
+    assert counted == [], "the refusal path re-ran a COUNT(*) the catalog already had"
+    assert told["EMPTY_B"] == 0, "the cell read was not told this key is empty"
+    assert told["GOOD_A"] == 2, (
+        "a populated floor must still be READ - only a zero may skip the query")
+
+    # The control: the same catalog with the hoist disabled runs the reads the way it
+    # ran them before, and must arrive at the identical answer.
+    counted.clear()
+    told.clear()
+    monkeypatch.setattr(ma, "_seed_cell_counts", lambda *a, **kw: None)
+    unseeded = ma.resolve_reference_catalog(env, {})
+
+    assert seeded == unseeded, "the prefetch changed the answer, not just the cost"
+    assert sorted(counted) == ["EMPTY_B", "JUNK_C"], (
+        "control: without the prefetch every refused candidate pays for its own COUNT(*)")
+    assert set(told.values()) == {None}, "control: nothing was known in advance"
+
+
 def test_a_declared_pointer_with_no_spec_row_is_not_a_candidate_at_all(env, client):
     """The eight declared `valid_die_ref` pointers that resolve zero times are still not
     offered, and they are not even examined: candidacy starts at the spec row."""
