@@ -92,6 +92,7 @@ from ingestion_checkpoint import (
     CheckpointPlan,
     compute_file_signature,
     is_force_reingest,
+    mtime_ns_to_datetime,
     read_file_stat,
 )
 
@@ -969,10 +970,15 @@ class IngestionHandler(FileSystemEventHandler):
                     refused += 1
                     continue
                 try:
-                    mtime = os.stat(fp).st_mtime
+                    st = os.stat(fp)
                 except OSError:
                     continue  # vanished between snapshot and walk
-                to_process.append((mtime, fp))
+                # Carry the tier-1 key off the stat we just took (same reason as
+                # the sweep: the expensive part is getting to the question).
+                to_process.append((
+                    st.st_mtime, fp,
+                    (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
+                ))
         to_process.sort(key=lambda x: x[0])
 
         # Junk goes first so the rmdir pass below can actually empty a directory
@@ -989,8 +995,20 @@ class IngestionHandler(FileSystemEventHandler):
                     f"[{t_name}] Tree ingestion: could not discard system file {fp}: {e}"
                 )
 
-        for _mtime, fp in to_process:
+        # [Tier 1, hoisted] The same batched question the sweep asks, for a reason
+        # that bites HARDER here: this loop dispatches every file of the tree on
+        # every trigger, and it has no equivalent of the sweep's in-memory
+        # (mtime, size) cache. When files are left in place the tree is never
+        # emptied, so each periodic sweep re-triggers it and re-pays ~92 ms per
+        # file — not once per restart, but every cycle, forever.
+        cleared = self.settle_already_terminal(
+            [(os.path.abspath(fp), fstat) for _m, fp, fstat in to_process])
+        dispatched = 0
+        for _mtime, fp, _fstat in to_process:
+            if os.path.abspath(fp) in cleared:
+                continue
             self._handle_event(fp)
+            dispatched += 1
 
         # Remove emptied directories bottom-up. os.rmdir fails on non-empty
         # directories by design — that failure IS the "never delete a directory
@@ -1003,16 +1021,17 @@ class IngestionHandler(FileSystemEventHandler):
                 os.rmdir(dirpath)
             except OSError:
                 removed_all = False
+        settled = f", {len(cleared)} already concluded (tier-1)" if cleared else ""
         if refused or not removed_all:
             logger.warning(
                 f"[{t_name}] 📂 Tree ingestion incomplete for '{dir_label}': dispatched "
-                f"{len(to_process)} file(s), {refused} refused — directory preserved; "
+                f"{dispatched} file(s){settled}, {refused} refused — directory preserved; "
                 f"periodic sweep will retry."
             )
         else:
             logger.info(
-                f"[{t_name}] 📂 Tree ingested '{dir_label}': {len(to_process)} file(s) "
-                f"processed in place, directory tree removed."
+                f"[{t_name}] 📂 Tree ingested '{dir_label}': {dispatched} file(s) "
+                f"processed in place{settled}, directory tree removed."
             )
 
         # NOTE: the flatten design ended here with a second dispatch pass over the
@@ -1367,6 +1386,116 @@ class IngestionHandler(FileSystemEventHandler):
             else:
                 self._archive_file(abs_path)
         return True
+
+    # ── [Tier 1, hoisted] 스윕/트리 워크가 이미 들고 있는 stat으로 «묶어서» 묻기 ──
+
+    def settle_already_terminal(self, entries) -> set:
+        """[Tier 1, HOISTED + BATCHED] Answer «is this file already concluded?» for
+        MANY files with one query per `TIER1_BATCH_SIZE`, and FINISH the ones it
+        clears right here. Returns the set of abs paths that must **not** be
+        dispatched to `_handle_event`.
+
+        `entries`: `[(abs_path, file_stat), ...]`. Both callers (the sweep and the
+        tree walk) already hold the `os.stat`, so this costs no extra syscall.
+
+        WHY IT MOVED. `_try_path_stat_skip` asks the identical question and gets
+        the identical answer — but it sits INSIDE `_process_with_retry`, so every
+        file first pays the whole per-file dispatch to get there: a fresh
+        `SessionLocal()` per file, and `_snapshot_table_context()` re-reading
+        `table_config.json` **from disk** per file (twice, counting
+        `_handle_event`'s own `self.table_name`), plus `dedup_by_path_stat_enabled()`
+        re-reading `ingestion_settings.json`. Measured on this box: **~92 ms per
+        tier-1 HIT**, ≈35 minutes over the 22,626-file tree — while the raw walk
+        that finds those files costs 1.0 s. **None of the 92 ms is the ledger.**
+        This method pays each of those costs ONCE for the whole batch.
+
+        🔴 A CLEARED FILE IS NOT A NO-OP. See `_settle_terminal_hits`: if files
+        are still being moved and a concluded file is STILL in raws/, its move
+        failed, and dropping the retry strands it — and, for nested ingestion, its
+        whole directory — in raws/ forever. That defect was created once already
+        by short-circuiting a tier-1 hit; it is not going to be created again by
+        hoisting one.
+
+        Everything this does NOT clear falls through unchanged, including on
+        error: an unreadable ledger returns the empty set, i.e. every file goes
+        down the existing path exactly as before (availability first, same rule as
+        `_try_path_stat_skip`).
+        """
+        if not entries:
+            return set()
+        # One settings read for the batch. `dedup_by_signature: false` turns this
+        # off too — that is `dedup_by_path_stat_enabled`'s own contract, inherited
+        # here rather than restated.
+        if not dedup_by_path_stat_enabled():
+            return set()
+        # One config read for the batch. The files that MISS still take their own
+        # per-file snapshot inside `_process_with_retry`, so hot-reload semantics
+        # on the processing path are untouched; all files in one batch belong to
+        # one workspace, so they would have resolved to this same table anyway.
+        t_name, _table_info = self._snapshot_table_context()
+        if not t_name:
+            return set()
+
+        # `__force__` means "ingest it again" — it must leave before the ledger is
+        # consulted, exactly as it does in `_try_path_stat_skip`.
+        askable = [
+            (abs_path, file_stat) for abs_path, file_stat in entries
+            if file_stat and not is_force_reingest(os.path.basename(abs_path))
+        ]
+        if not askable:
+            return set()
+
+        db = SessionLocal()  # ONE session for the whole batch, not one per file
+        try:
+            found = ingestion_checkpoint.find_terminal_by_path_stat_batch(
+                db, t_name, askable)
+            statuses = {p: row.status for p, row in found.items()}
+        except Exception as e:
+            logger.warning(
+                f"[{t_name}] Batched tier-1 lookup failed for {len(askable)} file(s) "
+                f"(falling back to per-file dispatch, which asks the same question "
+                f"one at a time): {e}"
+            )
+            return set()
+        finally:
+            db.close()
+
+        if not statuses:
+            return set()
+        self._settle_terminal_hits(statuses)
+        return set(statuses)
+
+    def _settle_terminal_hits(self, statuses: dict):
+        """The move retry a tier-1 hit owes, done once per batch.
+
+        Quiet on purpose, for the reason `_try_path_stat_skip` states: a hit means
+        the log, the notification and the ledger row already exist, and with files
+        left in place a hit happens **once per file per sweep** — one line each
+        would bury real events under 22,626 of them every 5 minutes.
+        """
+        if not archive_processed_files_enabled():
+            # Retention mode: a concluded file is MEANT to stay where it landed,
+            # and there is nothing to retry. This is the mode the 35 minutes was
+            # measured in, so this early return is the hot path.
+            return
+        for abs_path, status in statuses.items():
+            if not self.is_managed_source(abs_path):
+                continue
+            # The same claim `_handle_event` takes before touching a file. Without
+            # it this batch could move a file out from under the watchdog thread
+            # that is ingesting it — the very race `processing_files` exists for.
+            with self._processing_lock:
+                if abs_path in self.processing_files:
+                    continue
+                self.processing_files.add(abs_path)
+            try:
+                if status == ingestion_checkpoint.STATUS_FAILED:
+                    self._move_to_err_folder(abs_path)
+                else:
+                    self._archive_file(abs_path)
+            finally:
+                with self._processing_lock:
+                    self.processing_files.discard(abs_path)
 
     def _record_failure(self, t_name, signature, basename, filepath, error_msg, file_stat):
         """실패를 **원장에 종결 상태로** 남긴다 — 파일을 옮기지 않을 때의 `err/` 대체물."""
@@ -2362,9 +2491,15 @@ class WorkspaceWatcher:
           시그니처가 바뀌면 다시 시도한다.
         - _handle_event가 중복 진입 가드·존재 확인·디바운스·재시도·아카이브/에러 이동·
           FileIngestionLog 기록을 모두 수행하므로 처리 의미론은 이벤트 경로와 동일하다.
+        - **[Tier 1, hoisted]** 이미 결론이 난 파일은 `_handle_event`에 넘기기 «전»에
+          `settle_already_terminal`이 **묶어서** 원장에 묻고 여기서 종결한다. 같은 답을
+          한 단계 더 들어가서 얻으면 파일당 세션 1개 + `table_config.json` 디스크 재독
+          2회를 낸다(이 박스 실측 파일당 ~92ms, 22,626 파일 ≈35분 — 그중 원장은 0).
+          걸러지지 않은 파일은 종전 경로 그대로 내려간다.
 
         raw_paths: None이면 등록된 전체 raws/, 아니면 해당 절대경로 목록만.
-        반환: 처리를 시도한 파일 수."""
+        반환: `_handle_event`로 디스패치한 파일 수 (tier 1이 여기서 종결한 파일은 제외 —
+        그 수는 스윕 로그 한 줄에 함께 남는다)."""
         with self._sweep_lock:
             if raw_paths is None:
                 targets = list(self.handlers_by_raw_path.items())
@@ -2372,7 +2507,8 @@ class WorkspaceWatcher:
                 wanted = {os.path.abspath(p) for p in raw_paths}
                 targets = [(p, h) for p, h in self.handlers_by_raw_path.items() if p in wanted]
 
-            candidates = []  # (mtime, abs_file_path, handler, signature)
+            # (mtime, file_path, abs_path, handler, sweep_signature, tier1_stat)
+            candidates = []
             seen_paths = set()
             for raw_path, handler in targets:
                 try:
@@ -2404,7 +2540,12 @@ class WorkspaceWatcher:
                     sig = (st.st_mtime, st.st_size)
                     if self._sweep_attempted.get(fp) == sig:
                         continue
-                    candidates.append((st.st_mtime, fp, handler, sig))
+                    # The tier-1 key comes off the stat we ALREADY took — the
+                    # whole point of asking here rather than one dispatch deeper.
+                    candidates.append((
+                        st.st_mtime, fp, os.path.abspath(fp), handler, sig,
+                        (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
+                    ))
 
             # 처리 완료(이동)된 파일의 시그니처는 정리해 무한 성장 방지
             for stale in [p for p in self._sweep_attempted
@@ -2412,15 +2553,48 @@ class WorkspaceWatcher:
                 self._sweep_attempted.pop(stale, None)
 
             candidates.sort(key=lambda c: c[0])
+
+            # [Tier 1, hoisted] Ask the ledger about ALL of them here, batched,
+            # before anything enters the per-file dispatch pipeline. A file that
+            # is already concluded costs a share of one query instead of a
+            # `SessionLocal()`, two disk reads of `table_config.json` and a
+            # settings read of its own — ~92 ms each, ≈35 min over this box's
+            # 22,626-file tree, paid on the first sweep after every restart.
+            # A file this does NOT clear is dispatched below unchanged.
+            cleared = set()
+            by_handler = {}
+            for _m, _fp, abs_fp, handler, _sig, fstat in candidates:
+                by_handler.setdefault(handler, []).append((abs_fp, fstat))
+            for handler, entries in by_handler.items():
+                if self._stop_event.is_set():
+                    break  # shutdown: the dispatch loop below breaks too
+                try:
+                    cleared |= handler.settle_already_terminal(entries)
+                except Exception as e:
+                    # Never let the fast path decide whether files get processed:
+                    # an empty `cleared` means everything takes the old route.
+                    logger.warning(
+                        f"Sweep: batched tier-1 lookup failed for "
+                        f"{os.path.basename(os.path.dirname(handler.workspace_path))}"
+                        f"/{os.path.basename(handler.workspace_path)} "
+                        f"({len(entries)} file(s)) — dispatching them individually: {e}"
+                    )
+
             processed = 0
-            for _mtime, fp, handler, sig in candidates:
+            for _mtime, fp, abs_fp, handler, sig, _fstat in candidates:
                 if self._stop_event.is_set():
                     break
                 self._sweep_attempted[fp] = sig
+                if abs_fp in cleared:
+                    continue
                 handler._handle_event(fp)
                 processed += 1
-            if processed:
-                logger.info(f"🧹 Sweep: attempted {processed} pre-existing file(s) in raws/.")
+            if processed or cleared:
+                logger.info(
+                    f"🧹 Sweep: {len(candidates)} candidate file(s) in raws/ — "
+                    f"{len(cleared)} already concluded (tier-1, batched), "
+                    f"{processed} dispatched."
+                )
             return processed
 
     def _sweep_safely(self, raw_paths=None, reason=""):

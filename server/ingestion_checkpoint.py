@@ -63,6 +63,24 @@ So a cheap first tier is added:
     under a different path still skips, and the ledger adopts the new location
     when the recorded one is gone.
 
+Where tier 1 is ASKED (2026-08-13, second round)
+------------------------------------------------
+The two tiers above are about *what* is asked. This is about *where*, and it was
+worth more than tier 1 itself. Tier 1 originally lived inside
+`_process_with_retry`, one dispatch deeper than the caller that already holds
+the `stat` — so a HIT still paid the whole per-file pipeline to get there: a
+`SessionLocal()` per file, `table_config.json` re-read from disk per file (twice),
+`ingestion_settings.json` re-read per file. Measured on this box: **~92 ms per
+hit, ≈35 min over the 22,626-file tree, and none of it the ledger** — while the
+`listdir + stat` that finds those files costs 1.0 s.
+
+`find_terminal_by_path_stat_batch` below is that question asked once for many
+files. `sweep_existing_files` and `_ingest_directory_tree` both call it with the
+stats they already took, and dispatch only what it does not clear. The
+single-file `find_terminal_by_path_stat` stays exactly where it was and still
+answers for everything the batch declines — the fast answer just arrives earlier
+now.
+
 🔴 **Failure direction of tier 1, stated so nobody has to rediscover it.**
 Tier 1 fails toward **not re-reading a file whose content changed while mtime
 and size stayed identical**. That is reachable: some copy tools preserve mtime,
@@ -77,6 +95,8 @@ import hashlib
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import and_, or_
 
 logger = logging.getLogger("Watcher.IngestionCheckpoint")
 
@@ -271,6 +291,96 @@ def find_terminal_by_path_stat(db, table_name: str, filepath: str, file_stat):
         .order_by(Model.updated_at.desc(), Model.id.desc())
         .first()
     )
+
+
+# How many files ONE tier-1 lookup answers when the caller already holds every
+# stat (the sweep and the tree walk both do). See
+# `find_terminal_by_path_stat_batch` for why this number and not another.
+TIER1_BATCH_SIZE = 500
+
+
+def find_terminal_by_path_stat_batch(db, table_name: str, entries, batch_size: int = None):
+    """**Tier 1, batched** — `find_terminal_by_path_stat` asked for MANY files.
+
+    `entries`: iterable of `(filepath, file_stat)` where `file_stat` is the
+    `(mtime, size)` pair `read_file_stat` returns. Returns `{filepath: row}` for
+    the files that already have a TERMINAL row matching all four of
+    `(table_name, filepath, file_mtime, file_size)`. A path that is absent simply
+    MISSES and its caller must send it down the unchanged per-file path — the
+    same safe direction the single-file lookup fails in.
+
+    **The predicate is not a re-derivation.** Each file contributes the exact
+    `and_(filepath ==, file_mtime ==, file_size ==)` triple the single-file query
+    builds, OR'd together under the same `table_name` + `status IN (TERMINAL)`
+    filter. That matters more than it looks: comparing the stat in Python instead
+    would mean re-deriving how a `DateTime(timezone=True)` comes BACK from each
+    backend (SQLite returns it naive, PostgreSQL returns it in the session's
+    timezone), and a batch that gets that wrong either clears everything or
+    clears nothing — both silent. Leaving the comparison in SQL means there is
+    no second spelling of tier 1 to keep in step with the first.
+
+    **Which row wins.** The lookup is deliberately not unique-keyed (one path can
+    have held several contents), so `find_terminal_by_path_stat` imposes a total
+    order and takes the first. The same total order is applied here across the
+    whole chunk and the first row seen per path is kept: restricting a globally
+    sorted stream to one path preserves that path's internal order, so the row
+    this returns is the row the single-file query would have returned. The
+    winner's `status` is what decides `archives/` vs `err/` at the call site,
+    which is why the row, and not merely "yes/no", comes back.
+
+    **Batch size (`TIER1_BATCH_SIZE = 500`), measured rather than guessed.** One
+    file costs 3 bind parameters, so a chunk costs ~1,500 of PostgreSQL's 65,535
+    ceiling — the ceiling is not what breaks first. What breaks first is PLANNING,
+    which grows with the OR arity. Whole-sweep cost over 2,001 files against a
+    52,001-row ledger on isolated `assy_qa` (2026-08-13, median of 3):
+
+        batch     50   100   250   500   1000   2000
+        ms/file  0.37  0.46  0.41  0.41   0.59   1.26
+
+    Flat from 50 to 500 and then it degrades — one query for all 2,001 files is
+    **3x worse** than five queries of 500. 500 is the top of the flat band: the
+    fewest round trips that still cost nothing to plan. It keeps a 22,626-file
+    tree at 46 queries.
+    """
+    if not table_name or not entries:
+        return {}
+    Model = _get_model()
+    size = int(batch_size or TIER1_BATCH_SIZE)
+
+    # Dedupe by path: a duplicate would add a redundant OR arm and could let a
+    # later chunk's ordering overwrite an earlier chunk's winner.
+    items, seen = [], set()
+    for filepath, file_stat in entries:
+        if not filepath or not file_stat or filepath in seen:
+            continue
+        seen.add(filepath)
+        items.append((filepath, file_stat))
+
+    found = {}
+    for start in range(0, len(items), size):
+        chunk = items[start:start + size]
+        clauses = [
+            and_(
+                Model.filepath == filepath,
+                Model.file_mtime == file_stat[0],
+                Model.file_size == file_stat[1],
+            )
+            for filepath, file_stat in chunk
+        ]
+        rows = (
+            db.query(Model)
+            .filter(
+                Model.table_name == table_name,
+                Model.status.in_(TERMINAL_STATUSES),
+                or_(*clauses),
+            )
+            .order_by(Model.updated_at.desc(), Model.id.desc())
+            .all()
+        )
+        for row in rows:
+            if row.filepath not in found:
+                found[row.filepath] = row
+    return found
 
 
 def adopt_new_location(db, row, filepath: str, file_stat) -> bool:
