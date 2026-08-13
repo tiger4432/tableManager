@@ -54,102 +54,30 @@ SAMPLE = 5
 # =============================================================================
 # The read-only guard
 # =============================================================================
-# 🔴 THIS SPELLING IS NOT NEW AND MUST NOT BE RE-INVENTED. It is the one
-# `server/scripts/diagnose_wal_headroom.py` (class `RO`) and
-# `server/scripts/diagnose_slow_after_ingest.py` already use: the setting goes in as a
-# CONNECTION OPTION, which the server applies before this session's first transaction
-# exists and re-applies to every transaction after it. That is what makes it survive a
-# rollback and what makes it independent of the isolation level.
+# 🔴 THIS PROPERTY HAS ONE HOME AND THIS FILE IS NOT IT. Everything below comes
+# from `server/db_safety.py`. This file used to carry its own copy of the four
+# functions - character for character the same as two siblings' - which is how a
+# safety property acquires a defect: not by anyone re-inventing it wrongly, but
+# by the copy being made before the original was known to be wrong. The
+# measurements are in `db_safety.py`, next to the code they are about.
 #
-# WHAT STOOD HERE BEFORE, AND WHAT WAS MEASURABLY TRUE ABOUT IT
-#
-#     conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-#     conn.execute(text("SET SESSION default_transaction_read_only = on"))
-#
-# ⚠️ In that order it DID engage. Measured on the isolated `assy_qa` (PostgreSQL 18.3 /
-# SQLAlchemy 2.0.49 / psycopg2 2.9.11), 2026-08-13: `execution_options` puts psycopg2
-# into autocommit on this very Connection, so there is no open transaction for the SET
-# to be trapped inside; `transaction_read_only` read `on` and a CREATE was refused,
-# still refused after a rollback. Nothing was ever deleted that should not have been.
-#
-# 🔴 The defect is that the safety property rested on an unrelated setting. Under the
-# ordinary isolation level the identical statement lands inside an implicit transaction
-# that began under the old default and keeps it: `transaction_read_only` stays `off`, a
-# CREATE is ACCEPTED, and `default_transaction_read_only` reads `on` throughout. This
-# file never read the flag back, so the two were indistinguishable from inside it.
-#
-# So `transaction_read_only` is read back below rather than trusted, and
-# `default_transaction_read_only` is deliberately NOT what gets checked - it reads `on`
-# in both arrangements, including the one that accepts writes.
-#
-# `statement_timeout` moves in here from the `SET` it used to be. It covered the
-# counting pass and only the counting pass before (the deletes go out through
-# `SessionLocal`), and it still does.
-READONLY_OPTIONS = ("-c default_transaction_read_only=on "
-                    f"-c statement_timeout={STATEMENT_TIMEOUT_MS} "
-                    "-c client_encoding=utf8")
+# WHAT THIS FILE STILL DECIDES: its `pg_stat_activity` name, and that its
+# counting pass carries `statement_timeout`. That timeout covered the counting
+# pass and only the counting pass before this consolidation (the deletes go out
+# through `SessionLocal`), and it still does.
+from db_safety import (  # noqa: E402
+    READONLY_OPTIONS, READONLY_REFUSAL, assert_readonly, assert_writable,
+    close_readonly_connection, open_readonly_connection)
+import db_safety  # noqa: E402
 
-READONLY_REFUSAL = "[read-only guard] REFUSED"
+READONLY_APPLICATION_NAME = "assy_dedupe_bk_check"
 
 
 def open_readonly_engine(url: str = None):
-    """An engine every one of whose transactions is read-only, armed at connect time.
-
-    `NullPool` is load-bearing rather than tidiness: a connection carrying this flag
-    must never re-enter a pool that something else draws from. It is also what retires
-    the `invalidate()` this script used to need on the way out - measured on `assy_qa`,
-    a pinned connection returned to a pooled engine hands the NEXT checkout a session
-    that still refuses writes. An engine of our own has no next checkout.
-    """
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import NullPool
-    if url is None:
-        from database.database import SQLALCHEMY_DATABASE_URL
-        url = SQLALCHEMY_DATABASE_URL
-    return create_engine(
-        url, poolclass=NullPool,
-        connect_args={"options": READONLY_OPTIONS,
-                      "application_name": "assy_dedupe_bk_check"})
-
-
-def assert_readonly(conn):
-    """Refuse unless POSTGRESQL ITSELF reports that this connection cannot write."""
-    try:
-        armed = conn.execute(text("SHOW transaction_read_only")).scalar()
-    except Exception as exc:
-        raise RuntimeError(
-            f"{READONLY_REFUSAL}: `transaction_read_only` could not be read from this "
-            f"connection ({type(exc).__name__}: {str(exc).strip().splitlines()[0]}). "
-            f"This is a PostgreSQL operator script and it will not run a pass it "
-            f"cannot prove is read-only.") from exc
-    if str(armed).lower() != "on":
-        raise RuntimeError(
-            f"{READONLY_REFUSAL}: PostgreSQL reports transaction_read_only={armed!r} "
-            f"on the connection this run counts with. Refusing to run a check pass "
-            f"that is not actually protected.")
-    return conn
-
-
-def assert_writable(conn):
-    """The mirror, for `--apply`. Fails before the first chunk instead of during it."""
-    armed = conn.execute(text("SHOW transaction_read_only")).scalar()
-    if str(armed).lower() != "off":
-        raise RuntimeError(
-            f"{READONLY_REFUSAL} (inverted): --apply was asked for but PostgreSQL "
-            f"reports transaction_read_only={armed!r} on the connection that would do "
-            f"the deleting. Nothing was attempted.")
-    return conn
-
-
-def open_readonly_connection(engine):
-    """THE ONLY DOOR to a counting-pass connection: connect, then prove it, or refuse."""
-    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-    try:
-        assert_readonly(conn)
-    except BaseException:
-        conn.close()
-        raise
-    return conn
+    """This script's counting engine. One line of policy over the shared door."""
+    return db_safety.open_readonly_engine(
+        url, application_name=READONLY_APPLICATION_NAME,
+        statement_timeout_ms=STATEMENT_TIMEOUT_MS)
 
 
 def _norm(v):
@@ -381,9 +309,10 @@ def run(table: str, apply: bool, allow_differing: bool,
                   f" cell_sources·cell_overwrites 가 함께 지워지고 DELETE 감사 로그가 남는다.")
         return stat
     finally:
-        # No `invalidate()` any more, and nothing to remember: the flag lives on a
-        # NullPool engine of our own, so there is no pooled connection to poison.
-        conn.close()
+        # Nothing to remember: the shared teardown does the same thing whichever
+        # mode the connection was opened in, and the flag lives on a NullPool
+        # engine of our own, so there is no pooled connection to poison anyway.
+        close_readonly_connection(conn)
         ro_engine.dispose()
 
 

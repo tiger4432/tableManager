@@ -1,8 +1,30 @@
 # -*- coding: utf-8 -*-
-"""The read-only pre-flight of the three business-key operator scripts.
+"""The read-only pre-flight of all SEVEN operator scripts, and its one home.
+
+THE PROPERTY NOW HAS ONE DEFINITION - `server/db_safety.py`
+    It had three spellings across seven scripts, one of them wrong, and the
+    scripts did not each invent theirs: they COPIED. `test_no_script_carries_its
+    _own_copy_of_the_guard` is the assertion that keeps it that way, and it is
+    structural rather than textual - it asks whether each script's name for a
+    guard IS the home's object.
+
+THE SEVEN DOORS ARE EXERCISED AGAINST A REAL SERVER, NOT DESCRIBED
+    `DOORS` opens each script's own read-only path the way the script opens it,
+    and `_assert_guard_holds` puts the same four questions to every one: the flag
+    reads back `on`, a real write is REFUSED, the refusal survives a rollback, and
+    the identical write SUCCEEDS on a writable engine - that last one being the
+    control that separates "the guard works" from "those three statements were
+    broken".
+
+THE INJECTION
+    `test_injecting_spelling_c_into_the_home_turns_every_door_red` restores the
+    retired spelling INSIDE `db_safety` and asserts that `_assert_guard_holds` -
+    the same function, not a re-spelling of it - then FAILS for every door. A
+    guard whose removal changes nothing is not a guard, and this file has no way
+    to know it is discriminating anything without that arm.
 
 WHAT WAS WRONG, MEASURED RATHER THAN ASSUMED
-    All three armed their read-only pass with
+    Three of the seven armed their read-only pass with
 
         conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
         conn.execute(text("SET SESSION default_transaction_read_only = on"))
@@ -55,7 +77,10 @@ SKIPPING, NOT FAILING, is the contract when no PostgreSQL is declared - the same
     ASSY_PG_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
         python -m pytest server/tests/test_readonly_guard.py
 """
+import ast
+import inspect
 import itertools
+import re
 
 import pytest
 import sqlalchemy as sa
@@ -63,17 +88,80 @@ from sqlalchemy import text
 
 from conftest import _declared_as_test_database, _resolve_pg_test_url
 
+import db_safety
 import migrations.add_business_key_unique_index as mig
+import migrations.drop_redundant_layering_indexes as dropidx
+import scripts.audit_schema_canon as canon
+import scripts.check_missing_business_key as checkbk
 import scripts.dedupe_business_key_rows as dedupe
+import scripts.dev_env.snapshot_db as snapshot
 import scripts.rebuild_blank_business_keys as rebuild
 
-#: The three modules under test. Every behavioural claim below is made about all
-#: three by parameter rather than about one of them by hand - one script quietly
-#: keeping the old spelling is the failure this lane exists to end.
+#: The three modules that re-export the whole four-name surface. Kept as a
+#: parameter set because the stub-level claims are about the shared functions and
+#: these are the modules a caller reaches them through by name.
 GUARDS = [
     pytest.param(mig, id="add_business_key_unique_index"),
     pytest.param(rebuild, id="rebuild_blank_business_keys"),
     pytest.param(dedupe, id="dedupe_business_key_rows"),
+]
+
+#: 🔴 ALL SEVEN. Every script that needs "this pass cannot write", with the door
+#: it actually opens - not a re-creation of it here. `opener(url)` returns
+#: `(engine, connection)`; whatever the script does to get a proven-read-only
+#: connection is what gets tested, so a script that quietly stops using the
+#: shared home fails these rather than passing a test of the home.
+#:
+#: THE SEVENTH IS NOT LIKE THE OTHER SIX AND THAT IS THE POINT. `audit_schema
+#: _canon` takes an engine it did not build (`--url`, or the application's pooled
+#: engine), so it cannot arm at connect time and uses `PER_TRANSACTION`. It is in
+#: the same table under the same assertions: the mode differs, the property does
+#: not.
+def _door_connect_time(module):
+    def opener(url):
+        engine = module.open_readonly_engine(url)
+        return engine, module.open_readonly_connection(engine)
+    return opener
+
+
+def _door_audit(url):
+    """The borrowed-engine arm. A plain engine, armed per transaction."""
+    engine = sa.create_engine(url, poolclass=sa.pool.NullPool)
+    return engine, canon.readonly_connection(engine)
+
+
+def _door_snapshot(url):
+    """`open_source_readonly` returns `(engine, conn)` and adds a live write
+    probe on top of the shared read-back."""
+    return snapshot.open_source_readonly(url)
+
+
+DOORS = [
+    pytest.param(_door_connect_time(mig), id="add_business_key_unique_index"),
+    pytest.param(_door_connect_time(dropidx), id="drop_redundant_layering_indexes"),
+    pytest.param(_door_connect_time(rebuild), id="rebuild_blank_business_keys"),
+    pytest.param(_door_connect_time(dedupe), id="dedupe_business_key_rows"),
+    pytest.param(_door_connect_time(checkbk), id="check_missing_business_key"),
+    pytest.param(_door_snapshot, id="dev_env.snapshot_db"),
+    pytest.param(_door_audit, id="audit_schema_canon"),
+]
+
+#: Every module that must not carry its own copy, with the guard names it binds.
+#: `open_readonly_engine` is deliberately NOT in this list: each script legitimately
+#: wraps it to name itself in `pg_stat_activity` and to choose its statement
+#: timeout, and those wrappers are asserted thin separately.
+SHARED_NAMES = ("assert_readonly", "assert_writable", "open_readonly_connection",
+                "close_readonly_connection", "readonly_state", "READONLY_REFUSAL",
+                "READONLY_OPTIONS")
+
+CONSOLIDATED = [
+    pytest.param(mig, id="add_business_key_unique_index"),
+    pytest.param(dropidx, id="drop_redundant_layering_indexes"),
+    pytest.param(rebuild, id="rebuild_blank_business_keys"),
+    pytest.param(dedupe, id="dedupe_business_key_rows"),
+    pytest.param(checkbk, id="check_missing_business_key"),
+    pytest.param(snapshot, id="dev_env.snapshot_db"),
+    pytest.param(canon, id="audit_schema_canon"),
 ]
 
 SCHEMA = "roguard_pytest"
@@ -398,27 +486,56 @@ def _refused(res):
     return all(v == "ReadOnlySqlTransaction" for v in res.values())
 
 
-@pytest.mark.parametrize("module", GUARDS)
-def test_the_server_refuses_every_write_on_a_counting_connection(module, pg_url):
-    """Read the flag back, then try to break it three different ways."""
-    engine = module.open_readonly_engine(pg_url)
-    try:
-        conn = module.open_readonly_connection(engine)
-        assert conn.execute(text("SHOW transaction_read_only")).scalar() == "on"
-        assert _refused(_trial(conn)), "a write got through the guard"
+def _assert_guard_holds(opener, url):
+    """The four questions, put to one script's own read-only door.
 
-        # the rollback is where a statement-level pin is discarded outright
+    🔴 THIS IS THE ONE FUNCTION THE INJECTION ARM RE-USES, and that is deliberate:
+    if the red arm re-spelled these assertions it would be proving something about
+    its own copy rather than about the assertions that run in anger. Every failure
+    mode below is an `AssertionError`, which is what `pytest.raises` downstream
+    keys on.
+    """
+    engine, conn = opener(url)
+    try:
+        # 1. the server itself says the flag is on
+        assert str(conn.execute(text("SHOW transaction_read_only")).scalar()) == "on", (
+            "PostgreSQL does not report this connection read-only")
+        # 2. a real write is REFUSED - three shapes, each in its own transaction
+        assert _refused(_trial(conn)), "a write got through the guard"
+        # 3. the refusal survives a rollback, which is where spelling C was
+        #    discarded outright
         conn.rollback()
-        assert conn.execute(text("SHOW transaction_read_only")).scalar() == "on"
+        assert str(conn.execute(text("SHOW transaction_read_only")).scalar()) == "on", (
+            "the flag did not survive a rollback")
         assert _refused(_trial(conn)), "the guard did not survive a rollback"
         conn.close()
 
-        # a SECOND connection: a session-level SET arms only the one that ran it
-        second = module.open_readonly_connection(engine)
-        assert _refused(_trial(second))
+        # 4. a SECOND connection off the same engine. A session-level SET arms only
+        #    the connection that ran it; a connect-time option arms every one.
+        _, second = opener(url)
+        assert _refused(_trial(second)), "the guard is per-connection, not per-engine"
         second.close()
+    finally:
+        engine.dispose()
 
-        # and one that is NOT in autocommit - the setting the old pattern leaned on
+
+@pytest.mark.parametrize("opener", DOORS)
+def test_every_one_of_the_seven_doors_refuses_a_real_write(opener, pg_url):
+    """🔴 THE TABLE. Each script's own read-only path, exercised as the script
+    opens it, against a live server."""
+    _assert_guard_holds(opener, pg_url)
+
+
+@pytest.mark.parametrize("module", GUARDS)
+def test_the_guard_does_not_depend_on_the_isolation_level(module, pg_url):
+    """The connect-time arm holds on a connection nobody put into AUTOCOMMIT.
+
+    This is the property the retired spelling did not have, stated as a separate
+    test because `open_readonly_connection` sets AUTOCOMMIT for its own reasons
+    and would otherwise hide it.
+    """
+    engine = module.open_readonly_engine(pg_url)
+    try:
         plain = engine.connect()
         assert plain.execute(text("SHOW transaction_read_only")).scalar() == "on"
         assert _refused(_trial(plain)), (
@@ -487,3 +604,176 @@ def test_the_repaired_engine_refuses_where_the_old_pattern_did_not(module, pg_ur
         conn.close()
     finally:
         engine.dispose()
+
+
+# ===========================================================================
+# 4. ONE HOME - the property that stops this from happening again
+# ===========================================================================
+
+@pytest.mark.parametrize("module", CONSOLIDATED)
+def test_no_script_carries_its_own_copy_of_the_guard(module):
+    """🔴 THE CONSOLIDATION ITSELF, ASSERTED STRUCTURALLY.
+
+    Not a text search for a spelling - a text search cannot tell a re-export from
+    a re-implementation, and the last thing this property needs is a check that
+    passes because somebody named their copy the same. Every guard name a script
+    binds must BE the home's object (`is`), so a copy fails on identity no matter
+    how it is spelled or how faithfully it was transcribed.
+
+    TWO LEGITIMATE SHAPES, AND BOTH HAVE TO BE ACCEPTED. A script may import the
+    names (`from db_safety import assert_writable`) or reach them through the
+    module (`db_safety.close_readonly_connection(...)`). `snapshot_db` does the
+    latter and binds none of the names, which the first draft of this test called
+    a failure - a predicate that had quietly decided there was only one way to
+    depend on a module.
+    """
+    imported = [n for n in SHARED_NAMES if hasattr(module, n)]
+    for name in imported:
+        assert getattr(module, name) is getattr(db_safety, name), (
+            f"{module.__name__}.{name} is not `db_safety.{name}` - this is a copy, "
+            f"and a copy carries whatever the original got wrong")
+
+    via_module = getattr(module, "db_safety", None)
+    assert imported or via_module is db_safety, (
+        f"{module.__name__} neither imports the shared guard names nor holds the "
+        f"home module - it is getting the property from somewhere else")
+    if via_module is not None:
+        assert via_module is db_safety
+
+
+#: A statement that PINS read-only, as opposed to a string that merely talks about
+#: it. Structural on purpose: the first draft asked "does this string contain
+#: read_only/readonly/READ ONLY" and produced two false members out of two files -
+#: an error message ("no read-only engine can be derived from it") and a probe
+#: table called `_devenv_readonly_probe`. A detector that cries wolf on its own
+#: repository gets read as noise the day it is right.
+_READONLY_PIN = re.compile(
+    r"^\s*SET\s+(SESSION\s+)?(CHARACTERISTICS\s+AS\s+TRANSACTION\s+READ\s+ONLY"
+    r"|(SESSION\s+)?\w*default_transaction_read_only|TRANSACTION\s+READ\s+ONLY)",
+    re.IGNORECASE)
+
+
+def _executed_strings(src):
+    """String literals handed to a call - the only shape a pin was ever issued in."""
+    tree = ast.parse(src)
+    return [arg.value for node in ast.walk(tree) if isinstance(node, ast.Call)
+            for arg in node.args
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str)]
+
+
+def test_the_pin_detector_would_catch_a_pin():
+    """🔴 FAULT-INJECT THE DETECTOR BEFORE TRUSTING ITS ZEROS. All three retired
+    spellings must be caught, and the two measured false positives must not be."""
+    caught = 'conn.execute(text("SET SESSION default_transaction_read_only = on"))\n' \
+             'conn.execute(text("SET default_transaction_read_only = on"))\n' \
+             'conn.execute(text("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"))\n'
+    found = [s for s in _executed_strings(caught) if _READONLY_PIN.match(s)]
+    assert len(found) == 3, f"the detector misses a retired spelling: {found}"
+
+    innocent = 'raise ValueError("no read-only engine can be derived from it")\n' \
+               'conn.execute(text("CREATE TEMP TABLE _devenv_readonly_probe (x int)"))\n' \
+               'conn.execute(text("SHOW transaction_read_only"))\n'
+    assert [s for s in _executed_strings(innocent) if _READONLY_PIN.match(s)] == []
+
+
+@pytest.mark.parametrize("module", CONSOLIDATED)
+def test_no_script_issues_a_read_only_pin_of_its_own(module):
+    """No script executes any of the three spellings itself.
+
+    ⚠️ THE SEARCH IS OVER EXECUTED CODE, NOT OVER THE TEXT OF THE FILE. Six of
+    these modules now DOCUMENT the retired statements at length - on purpose, so
+    the next reader learns why - and a substring search over the source calls that
+    documentation a defect. The AST walk asks only about string literals that are
+    arguments to a call, which is the only shape any of them was ever issued in.
+    """
+    offending = [s for s in _executed_strings(inspect.getsource(module))
+                 if _READONLY_PIN.match(s)]
+    assert offending == [], (
+        f"{module.__name__} issues its own read-only statement: {offending}. "
+        f"The guard has one home and it is `db_safety`.")
+
+
+def test_the_home_exposes_both_working_spellings_rather_than_picking_one():
+    """A and B differ in something real, so neither could be dropped silently.
+
+    CONNECT_TIME is stronger but needs an engine we BUILD; PER_TRANSACTION works on
+    a borrowed one. `audit_schema_canon` takes an `engine` parameter from its
+    caller, so collapsing the home onto CONNECT_TIME would have removed a
+    capability rather than a duplicate.
+    """
+    assert db_safety.CONNECT_TIME != db_safety.PER_TRANSACTION
+    sig = inspect.signature(db_safety.open_readonly_connection)
+    assert sig.parameters["mode"].default == db_safety.CONNECT_TIME
+    with pytest.raises(ValueError):
+        db_safety.open_readonly_connection(object(), mode="whatever-looks-safe")
+
+
+def test_choosing_the_wrong_mode_is_a_refusal_and_not_a_hole(pg_url):
+    """The mode names a MECHANISM, so a caller can pick the wrong one for their
+    engine. That must surface as a refusal, because the verdict comes from the
+    server rather than from which branch was taken."""
+    engine = sa.create_engine(pg_url, poolclass=sa.pool.NullPool)
+    try:
+        # CONNECT_TIME on an engine that was never armed at connect time.
+        with pytest.raises(RuntimeError) as err:
+            db_safety.open_readonly_connection(engine,
+                                               mode=db_safety.CONNECT_TIME)
+        assert db_safety.READONLY_REFUSAL in str(err.value)
+    finally:
+        engine.dispose()
+
+
+# ===========================================================================
+# 5. 🔴 THE INJECTION - put the retired spelling back into the HOME
+# ===========================================================================
+
+def _spelling_c_options(statement_timeout_ms=None):
+    """`readonly_options` with the read-only pin removed - the pre-repair state."""
+    if not statement_timeout_ms:
+        return "-c client_encoding=utf8"
+    return f"-c client_encoding=utf8 -c statement_timeout={int(statement_timeout_ms)}"
+
+
+def _spelling_c_connection(engine, *, mode=None):
+    """Spelling C, restored exactly: connect at the ORDINARY isolation level,
+    issue the SET, return without reading anything back."""
+    conn = engine.connect()
+    conn.execute(text("SET SESSION default_transaction_read_only = on"))
+    return conn
+
+
+@pytest.mark.parametrize("opener", DOORS)
+def test_injecting_spelling_c_into_the_home_turns_every_door_red(
+        opener, pg_url, monkeypatch):
+    """🔴 A GUARD WHOSE REMOVAL CHANGES NOTHING IS NOT A GUARD.
+
+    Both halves of the repair are removed from `db_safety` - the connect-time
+    option AND the read-back - which together are what spelling C did not have.
+    Then `_assert_guard_holds` runs: the SAME function the green tests call, so
+    what is being shown red is the assertion that runs in anger and not a
+    restatement of it.
+
+    ⚠️ REMOVING ONE HALF IS NOT ENOUGH AND THAT IS WHY BOTH GO. With only the
+    read-back removed the connect option still arms the session and every door
+    stays green - an insufficient mutation and a robust test look identical from
+    outside. The mutation is verified sufficient by this test failing.
+
+    ⚠️ `dev_env/snapshot_db` goes red with `SystemExit`, not `AssertionError`, and
+    that is not a wrinkle to paper over - it is that script's own live write probe
+    firing before the shared assertions get a turn. It is the one door in the
+    table that proves the guard by exercising it rather than by reading a flag, so
+    under injection it aborts first. Both are red; the distinction is recorded so
+    nobody later "fixes" it into uniformity and deletes the extra proof.
+    """
+    monkeypatch.setattr(db_safety, "readonly_options", _spelling_c_options)
+    monkeypatch.setattr(db_safety, "open_readonly_connection",
+                        _spelling_c_connection)
+    # The scripts import the names directly, so the module-level bindings have to
+    # be redirected too - which is itself a check that they ARE the home's object.
+    for module in (mig, dropidx, rebuild, dedupe, checkbk):
+        if hasattr(module, "open_readonly_connection"):
+            monkeypatch.setattr(module, "open_readonly_connection",
+                                _spelling_c_connection)
+
+    with pytest.raises((AssertionError, SystemExit)):
+        _assert_guard_holds(opener, pg_url)

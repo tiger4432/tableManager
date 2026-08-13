@@ -4,6 +4,26 @@
 원본 `composite_key_source` 컬럼은 다 차 있는데 키만 빈 상태다.
 
 🔴 이 스크립트는 **아무것도 쓰지 않는다.** 세션을 읽기 전용으로 고정해 구조적으로 못 쓰게 한다.
+
+   ⚠️ THE SECOND HALF OF THAT SENTENCE WAS FALSE AND IS WORTH RECORDING RATHER THAN
+   QUIETLY FIXING. What stood below was `SET SESSION default_transaction_read_only = on`
+   on a connection borrowed from the application pool at the ORDINARY isolation level.
+   Measured on the isolated `assy_qa` (PostgreSQL 18.3 / SQLAlchemy 2.0.49 /
+   psycopg2 2.9.11) on 2026-08-13, in exactly that arrangement:
+
+       default_transaction_read_only = on     <- the variable the sentence meant
+       transaction_read_only         = off    <- the one PostgreSQL enforces
+       CREATE / INSERT / UPDATE               ALL THREE ACCEPTED
+
+   So the session was NOT pinned and nothing was structural about it. 🔴 AND NOTHING
+   FOLLOWS FROM THAT ABOUT THIS SCRIPT'S SAFETY: there is no write statement anywhere in
+   this file, which is why the first half of the sentence is still true and why nothing
+   was ever written. The defect was a claim, not an incident. It is fixed here because a
+   guard that has never been armed is indistinguishable from one that has been disarmed,
+   and because this file was one of three that copied the wrong spelling from a document
+   which taught it - the copying is the thing being repaired, and this is the copy that
+   proves it was copying rather than three independent mistakes.
+
    채우는 일은 별개 라운드다 — 그 전에 답해야 할 것이 셋이고, 그 셋이 이 스크립트의 출력이다:
 
    ① 몇 행인가                     — 규모
@@ -32,10 +52,25 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from sqlalchemy import text                                    # noqa: E402
-from database.database import engine                           # noqa: E402
+
+# 🔴 The read-only guard has ONE home, `server/db_safety.py`. This script no
+# longer borrows the application's pooled engine, because the flag cannot be
+# armed at connect time on an engine somebody else built - and connect time is
+# what makes it independent of the isolation level, which is the whole repair.
+from db_safety import (  # noqa: E402
+    close_readonly_connection, open_readonly_connection)
+import db_safety  # noqa: E402
 
 CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "config", "table_config.json")
+
+READONLY_APPLICATION_NAME = "assy_missing_bk_check"
+
+
+def open_readonly_engine(url=None):
+    """This script's engine. One line of policy over the shared door."""
+    return db_safety.open_readonly_engine(
+        url, application_name=READONLY_APPLICATION_NAME)
 
 
 def main():
@@ -44,17 +79,30 @@ def main():
     args = ap.parse_args()
 
     cfg = json.load(io.open(CONFIG, encoding="utf-8"))
-    conn = engine.connect()
     # 🔴 구조적으로 못 쓰게 한다. 「읽기 전용입니다」라고 적는 것과 세션이 거절하는 것은
-    #    다른 물건이고, 이 저장소는 후자만 증거로 친다.
-    conn.execute(text("SET SESSION default_transaction_read_only = on"))
+    #    다른 물건이고, 이 저장소는 후자만 증거로 친다. The door below REFUSES unless
+    #    PostgreSQL itself answers `transaction_read_only = on`.
+    ro_engine = open_readonly_engine()
+    try:
+        conn = open_readonly_connection(ro_engine)
+    except BaseException:
+        ro_engine.dispose()
+        raise
+    try:
+        _report(conn, cfg, args.table)
+    finally:
+        close_readonly_connection(conn)
+        ro_engine.dispose()
+
+
+def _report(conn, cfg, only_table):
     q = lambda s: [tuple(r) for r in conn.execute(text(s))]
 
     tables = [r[0] for r in q(
         "SELECT table_name FROM information_schema.columns "
         "WHERE column_name='business_key_val' AND table_schema='public' ORDER BY 1")]
-    if args.table:
-        tables = [t for t in tables if t == args.table]
+    if only_table:
+        tables = [t for t in tables if t == only_table]
 
     total_missing = 0
     for t in tables:
@@ -116,7 +164,12 @@ def main():
         print("키 없는 행 없음. (이 박스 기준이고, 운영은 다른 기계다.)")
     else:
         print("합계 키 없는 행: %d" % total_missing)
-    print("아무것도 쓰지 않았다 — 세션이 읽기 전용으로 고정돼 있다.")
+    # This line used to be printed on the strength of a `SET` that did not take. It
+    # is printed now on the strength of PostgreSQL having answered the question -
+    # `open_readonly_connection` refuses the run otherwise, so reaching here IS the
+    # evidence rather than a restatement of the intent.
+    print("아무것도 쓰지 않았다 — 세션이 읽기 전용이라고 PostgreSQL 이 답했다 "
+          "(transaction_read_only=%s)." % db_safety.readonly_state(conn))
 
 
 if __name__ == "__main__":

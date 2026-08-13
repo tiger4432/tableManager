@@ -151,33 +151,48 @@ def test_there_is_no_apply_mode():
 
 
 def test_every_connection_goes_through_the_verified_readonly_helper():
-    """No raw `engine.connect()` anywhere - and the helper checks that it worked.
+    """No raw `engine.connect()` anywhere - and the helper is the SHARED one.
 
-    🔴 Measured on both development databases on this box: the obvious spelling,
-    `SET SESSION default_transaction_read_only = on`, leaves the session WRITABLE.
-    `default_transaction_read_only` reads `on` while `transaction_read_only` reads `off`
-    and `CREATE TABLE` succeeds, because the SET itself opens the implicit transaction and
-    that transaction keeps the old default. A guard that reports itself as armed and is
-    not is worse than no guard, so the pin is `postgresql_readonly=True` and the helper
-    READS BACK `transaction_read_only` before returning the connection.
+    🔴 THIS TEST USED TO PIN THE SPELLING AND NOW PINS THE HOME. It asserted that
+    `readonly_connection`'s body contained `postgresql_readonly=True` and
+    `SHOW transaction_read_only` - which was true, and which is exactly how a
+    safety property ends up with one copy per file. Six sibling scripts needed the
+    same property; three of them shipped `SET SESSION default_transaction_read_only
+    = on`, which leaves the session WRITABLE at the ordinary isolation level
+    (`default_transaction_read_only` reads `on` while `transaction_read_only` reads
+    `off` and `CREATE TABLE` succeeds, because the SET itself opens the implicit
+    transaction and that transaction keeps the old default).
+
+    The guard now lives in `server/db_safety.py`, is exercised against a live
+    server for all seven scripts in `test_readonly_guard.py`, and is fault-injected
+    there. What THIS file still owns is the audit's own obligation: every
+    connection it opens goes through that door, in the mode a borrowed engine
+    needs, and gets discarded on the way out.
     """
     src = io.open(canon.__file__, encoding="utf-8").read()
     body = src[src.index("def readonly_connection("):]
     body = body[:body.index("\ndef ", 10)]
-    assert "postgresql_readonly=True" in body
-    assert "SHOW transaction_read_only" in body, (
-        "the helper trusts the pin instead of reading it back")
-    assert "raise RuntimeError" in body, "an unarmed session must refuse, not warn"
+    assert "db_safety.open_readonly_connection" in body, (
+        "the audit is spelling the guard itself again instead of calling the home")
+    assert "PER_TRANSACTION" in body, (
+        "the audit takes an engine it did not build, so the connect-time arm is "
+        "not available to it - the mode has to be the per-transaction one")
+    # No re-implementation smuggled in beside the delegation.
+    for spelling in ("postgresql_readonly=True", "SHOW transaction_read_only",
+                     "raise RuntimeError"):
+        assert spelling not in body, (
+            f"{spelling!r} is back in this file; it belongs to `db_safety` alone")
 
     for fn in ("def load_physical(", "def probe_numeric_fill("):
         fbody = src[src.index(fn):]
         fbody = fbody[:fbody.index("\ndef ", 10)]
         assert "readonly_connection(engine)" in fbody, f"{fn} opens its own connection"
-        assert "finally:" in fbody and "invalidate()" in fbody, (
+        assert "finally:" in fbody and "close_readonly_connection(conn)" in fbody, (
             f"{fn} does not discard its connection in a finally block")
 
-    # `engine.connect()` may appear only inside the helper and in the reachability ping.
-    assert src.count("engine.connect()") <= 2, (
+    # `engine.connect()` may appear only in the reachability ping - the helper no
+    # longer opens one itself.
+    assert src.count("engine.connect()") <= 1, (
         "a connection is being opened outside `readonly_connection`")
 
 

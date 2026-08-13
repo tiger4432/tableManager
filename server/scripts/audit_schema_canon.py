@@ -7,11 +7,19 @@ eight rules there each came out of a real incident, and prose alone drifts back 
 true within a week with nobody noticing. This script is the counting half.
 
 **READ-ONLY, STRUCTURALLY.** There is no `--apply`, no DDL, no INSERT/UPDATE anywhere in
-this file, and the connection is pinned with `SET SESSION default_transaction_read_only`
-before a single catalogue query runs - the same discipline (and the same
-`conn.invalidate()` on the way out, so the flag cannot leak back into the pool) that
-`server/migrations/add_business_key_unique_index.py` uses for its `--check` pass. An
-operator pointing this at production should not have to read the body to believe that.
+this file, and every connection it opens comes back from `db_safety` having been READ
+BACK: PostgreSQL is asked `SHOW transaction_read_only` and the run refuses unless the
+server itself answers `on`. That guard has exactly one home, shared with the six operator
+scripts that need the same property - this file does not spell it a second time. An
+operator pointing this at production should not have to read the body to believe it, and
+should not have to check whether this copy of the guard is the repaired one.
+
+⚠️ The sentence that stood here named `SET SESSION default_transaction_read_only` as the
+mechanism. That statement leaves the session WRITABLE at the ordinary isolation level
+(measured; see `db_safety.py`), and it was never what this file did - the prose had drifted
+off the code. It is called out rather than quietly deleted because three sibling scripts
+DID ship that statement, and this docstring is one of the places the wrong spelling was
+available to be copied from.
 
 WHAT IT JUDGES - BOTH SOURCES, AND THEIR DISAGREEMENT
 -----------------------------------------------------
@@ -72,6 +80,8 @@ import re
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+from db_safety import close_readonly_connection  # noqa: E402
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                          "..", ".."))
@@ -218,46 +228,42 @@ def _read_json(path):
 def readonly_connection(engine):
     """A connection PROVEN read-only, not one that has been asked nicely.
 
-    🔴 THE OBVIOUS SPELLING OF THIS DOES NOT WORK, AND IT IS ALREADY IN THIS REPOSITORY.
-    `conn.execute("SET SESSION default_transaction_read_only = on")` is what a read-only
-    pre-flight looks like, and measured on both databases on this box it leaves the
-    session **writable**:
+    🔴 THE GUARD ITSELF LIVES IN `server/db_safety.py` AND MUST NOT BE RESPELLED HERE.
+    This function is one line of policy over the shared door: it names the MODE this
+    audit needs, and nothing else. The reason the property has a single home is this
+    file's own history - the obvious spelling
+    (`SET SESSION default_transaction_read_only = on`) leaves the session WRITABLE at the
+    ordinary isolation level, three sibling scripts shipped it anyway because they copied
+    it from a document that taught it as correct, and the measurements that settle it now
+    sit next to the code they are about rather than in one script's docstring.
 
-        default_transaction_read_only = on     <- the SET took effect
-        transaction_read_only        = off     <- and this is the one that decides
-        CREATE TABLE ...             SUCCEEDED
-
-    The reason is that the SET itself BEGINS the implicit transaction, so the transaction
-    it runs in was opened under the old default and keeps it; every later statement on
-    that connection is inside that same still-writable transaction. The variable an
-    operator would think to check reads `on` the whole time. This is a guard that reports
-    itself as armed and is not.
-
-    `postgresql_readonly=True` is SQLAlchemy's own option and sets the per-transaction
-    flag, which is the one PostgreSQL enforces (measured: `transaction_read_only = on`,
-    DDL refused). **And it is still verified below rather than trusted** - a safety claim
-    nobody exercised is the exact thing this file just found in the alternative.
+    WHY `PER_TRANSACTION` AND NOT THE STRONGER CONNECT-TIME ARM. `load_physical` and
+    `probe_numeric_fill` take an `engine` PARAMETER - `main()` passes either one built
+    from `--url` or the application's own pooled engine. A connect-time option can only be
+    armed on an engine we build ourselves, so requiring it here would mean this audit
+    could no longer be pointed at an engine it did not construct. `postgresql_readonly`
+    arms the borrowed connection instead and leaves the engine alone. Measured on
+    `assy_qa`: `transaction_read_only = on`, CREATE/INSERT/UPDATE all refused, and still
+    refused on the transaction AFTER an explicit rollback - which `probe_numeric_fill`
+    depends on, because it rolls back once per failed probe.
     """
-    from sqlalchemy import text
-    conn = engine.connect().execution_options(postgresql_readonly=True)
-    armed = conn.execute(text("SHOW transaction_read_only")).scalar()
-    if str(armed).lower() != "on":
-        conn.invalidate()
-        conn.close()
-        raise RuntimeError(
-            "refusing to run: could not make this session read-only "
-            f"(transaction_read_only={armed!r}). The audit will not touch a database it "
-            f"cannot prove it is unable to write to.")
-    return conn
+    import db_safety
+    return db_safety.open_readonly_connection(engine, mode=db_safety.PER_TRANSACTION)
 
 
 def load_physical(engine, label):
     """One read-only pass over the catalogue.
 
-    `invalidate()` rather than `close()` on the way out: `close()` returns the connection
-    to the pool, and a session-level setting left on a pooled connection becomes the next
-    checkout's problem. Throwing it away cannot be skipped by an exception, which
-    `finally` alone does not guarantee for a reset statement.
+    ⚠️ THIS DOCSTRING USED TO SAY THE `invalidate()` WAS LOAD-BEARING - that `close()`
+    returns the connection to the pool and "a session-level setting left on a pooled
+    connection becomes the next checkout's problem". Nobody had measured that. Measured on
+    2026-08-13 (SQLAlchemy 2.0.49, `QueuePool`): with `close()` alone the next checkout
+    read `transaction_read_only=off` and ACCEPTED a write, for the `postgresql_readonly`
+    arm and for the raw `SET SESSION` arm alike. The teardown is kept - it costs one
+    discarded socket and does not depend on that reset behaviour staying true across
+    versions - but it is defence in depth, not the thing standing between this audit and
+    a poisoned pool. `close_readonly_connection` is shared so no caller has to remember
+    which arm it opened with.
     """
     from sqlalchemy import text
     from migrations.add_business_key_unique_index import (  # noqa: E402
@@ -300,8 +306,7 @@ def load_physical(engine, label):
         for t in sorted(snap.bk_tables):
             snap.unique_bk[t] = existing_unique_index(conn, t)
     finally:
-        conn.invalidate()
-        conn.close()
+        close_readonly_connection(conn)
     return snap
 
 
@@ -456,8 +461,7 @@ def probe_numeric_fill(engine, candidates, sample=20000):
                 conn.rollback()
                 out[(t, c)] = {"error": str(e).strip().splitlines()[0][:80]}
     finally:
-        conn.invalidate()
-        conn.close()
+        close_readonly_connection(conn)
     return out
 
 

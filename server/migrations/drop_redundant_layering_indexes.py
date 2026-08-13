@@ -49,10 +49,11 @@ USAGE
     conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py
     conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py --apply
 
-Default is read-only and opens the session with
-`default_transaction_read_only = on`, so a pre-flight against production is
-structurally incapable of writing rather than read-only by convention. Exit code
-is 0 only when every listed index ended up either dropped or already absent.
+Default is read-only, and that is now enforced by PostgreSQL and verified by
+reading `transaction_read_only` back - see the guard note above `run()` for what
+stood here before, which was one `SET SESSION` statement that held only because
+of an AUTOCOMMIT setting present for an unrelated reason. Exit code is 0 only
+when every listed index ended up either dropped or already absent.
 """
 import argparse
 import os
@@ -62,6 +63,22 @@ import time
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from sqlalchemy import text  # noqa: E402
+
+# 🔴 THE READ-ONLY GUARD HAS ONE HOME AND IT IS `server/db_safety.py`. This file
+# is the one in this family that DROPS INDEXES - twelve write statements - so it
+# is the one where a guard that reports itself armed and is not costs the most.
+# It does not get its own spelling. `db_safety` carries the measurements.
+from db_safety import (  # noqa: E402
+    assert_writable, close_readonly_connection, open_readonly_connection)
+import db_safety  # noqa: E402
+
+READONLY_APPLICATION_NAME = "assy_drop_redundant_check"
+
+
+def open_readonly_engine(url=None):
+    """This script's counting engine. One line of policy over the shared door."""
+    return db_safety.open_readonly_engine(
+        url, application_name=READONLY_APPLICATION_NAME)
 
 TABLES = ("cell_sources", "cell_overwrites", "audit_logs")
 
@@ -211,22 +228,61 @@ def stats_are_trustworthy(conn, table):
     return reset_at, (int(age) if age is not None else None), int(peers or 0)
 
 
-def run(apply=False, engine=None):
-    from database.database import engine as default_engine
-    engine = engine or default_engine
-
+# =============================================================================
+# WHAT THE GUARD IN `run()` USED TO BE, AND WHY IT IS TWO CONNECTIONS NOW
+# =============================================================================
+# It was one connection and one statement:
+#
+#     conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+#     if not apply:
+#         conn.execute(text("SET SESSION default_transaction_read_only = on"))
+#
+# ⚠️ IN THAT ORDER IT DID ENGAGE - measured on `assy_qa` 2026-08-13,
+# `transaction_read_only = on` and CREATE/INSERT/UPDATE all refused. Nothing was
+# ever dropped by a check pass that should not have been, and this comment does
+# not claim otherwise.
+#
+# 🔴 IT ENGAGED BY ACCIDENT. The AUTOCOMMIT is in this file because
+# `DROP INDEX CONCURRENTLY` cannot run inside a transaction block; the guard
+# silently borrowed it. Measured on the same database with that one setting
+# removed, the identical statement leaves `transaction_read_only = off` and a
+# CREATE is ACCEPTED while `default_transaction_read_only` still reads `on`.
+# Nothing here read the flag back, so both arrangements looked identical from
+# inside the script. A guard whose correctness depends on an unrelated setting
+# nobody has written down is one refactor away from being no guard.
+#
+# TWO CONNECTIONS, NOT ONE, IS THE OTHER HALF. The old shape asked the SAME
+# connection to discover indexes and to drop them, with a flag as the only thing
+# separating the two modes. Now the counting pass runs on a connection PostgreSQL
+# refuses writes on in BOTH modes, and `--apply` adds a second, separate one. A
+# check run has no writable connection anywhere in the process, and an apply run
+# cannot issue its DDL down the connection that decided on it even by mistake -
+# the same shape as `add_business_key_unique_index.run`.
+def run(apply=False, engine=None, readonly_engine=None):
     print(f"=== Retire redundant layering indexes - "
           f"{'APPLY' if apply else 'CHECK (read-only)'} ===")
-    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-    readonly_pinned = False
+
+    own_ro_engine = readonly_engine is None
+    if own_ro_engine:
+        readonly_engine = open_readonly_engine()
+    try:
+        conn = open_readonly_connection(readonly_engine)
+    except BaseException:
+        if own_ro_engine:
+            readonly_engine.dispose()
+        raise
+
+    wconn = None
     dropped, refused, absent = [], [], []
     try:
-        if not apply:
-            # Structurally read-only, not read-only by convention - and thrown away
-            # afterwards rather than reset, because `close()` returns a pooled
-            # connection and the flag would ride it into the next checkout.
-            conn.execute(text("SET SESSION default_transaction_read_only = on"))
-            readonly_pinned = True
+        if apply:
+            # THE WRITABLE CONNECTION IS RESOLVED ONLY WHEN SOMETHING IS GOING TO
+            # BE DROPPED, and proven writable up front so `--apply` fails before
+            # its first DROP rather than on its twelfth.
+            from database.database import engine as default_engine
+            wconn = (engine or default_engine).connect().execution_options(
+                isolation_level="AUTOCOMMIT")
+            assert_writable(wconn)
 
         db = conn.execute(text("SELECT current_database()")).scalar()
         print(f"database: {db}\n")
@@ -260,7 +316,7 @@ def run(apply=False, engine=None):
                   f"collation {me['coll']} direction {me['option']})")
             print(f"      ROLLBACK: {rollback_ddl(me['def'])}")
             if apply:
-                if _drop(conn, name):
+                if _drop(wconn, name):
                     dropped.append(name)
             else:
                 print(f"      would run: DROP INDEX CONCURRENTLY IF EXISTS "
@@ -307,7 +363,7 @@ def run(apply=False, engine=None):
                 continue
             print(f"      ROLLBACK: {rollback_ddl(me['def'])}")
             if apply:
-                if _drop(conn, name):
+                if _drop(wconn, name):
                     dropped.append(name)
             else:
                 print(f"      would run: DROP INDEX CONCURRENTLY IF EXISTS "
@@ -329,9 +385,11 @@ def run(apply=False, engine=None):
                           f"({facts[table][wider]['bytes']/1024/1024:.1f} MB) - KEPT")
 
     finally:
-        if readonly_pinned:
-            conn.invalidate()
-        conn.close()
+        close_readonly_connection(conn)
+        if own_ro_engine:
+            readonly_engine.dispose()
+        if wconn is not None:
+            wconn.close()
 
     print(f"\nSummary: {len(dropped)} dropped, {len(refused)} refused, "
           f"{len(absent)} already absent.")

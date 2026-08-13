@@ -36,6 +36,8 @@ if SERVER_DIR not in sys.path:
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
 
+import db_safety
+
 DEFAULT_SOURCE = "postgresql://postgres:admin@localhost:5432/assy_manager"
 DEFAULT_TARGET = "postgresql://postgres:admin@localhost:5432/assy_qa"
 
@@ -63,23 +65,38 @@ def log(msg):
 
 # ---------------------------------------------------------------- source guard
 def open_source_readonly(url):
-    """Open the production connection and PROVE it cannot write.
+    """Open the SOURCE (production) connection and PROVE it cannot write.
 
-    Returns (engine, connection). The connection has session-level read-only
-    transaction characteristics; the guard is verified by attempting a write.
+    Returns (engine, connection).
+
+    🔴 THE GUARD LIVES IN `server/db_safety.py`. This function is the mode choice
+    plus one extra proof, and nothing else. What stood here was a THIRD spelling of
+    the same property:
+
+        conn.execute(text("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"))
+        conn.execute(text("SET default_transaction_read_only = on"))
+        conn.commit()
+
+    ⚠️ MEASURED ON `assy_qa` 2026-08-13, THAT ARRANGEMENT DID WORK -
+    `transaction_read_only = on`, writes refused - so unlike the bare `SET SESSION`
+    in two sibling scripts this one was not a lie. It was retired anyway, because
+    a safety property with three working spellings and one broken one is a
+    property nobody can check at a glance, and because the repair to the broken
+    one cannot be applied to spellings that do not share a home.
+
+    THE WRITE PROBE IS KEPT, AND IT IS STRICTLY MORE THAN THE SHARED DOOR DOES.
+    `assert_readonly` asks PostgreSQL for the flag; this asks PostgreSQL to
+    perform a write and requires it to refuse. A temp table touches no production
+    relation, and the refusal is matched on SQLSTATE 25006
+    (`read_only_sql_transaction`) rather than on the message text: the server
+    speaks the OS locale, so string matching breaks silently. This is the one
+    script in the family that proves the guard by exercising it at run time, and
+    it is the one pointed at production data by default, so it keeps that.
     """
-    engine = create_engine(url, connect_args={
-        "application_name": "assy_devenv_snapshot_readonly",
-    })
-    conn = engine.connect()
-    conn.execute(text("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"))
-    conn.execute(text("SET default_transaction_read_only = on"))
-    conn.commit()
+    engine = db_safety.open_readonly_engine(
+        url, application_name="assy_devenv_snapshot_readonly")
+    conn = db_safety.open_readonly_connection(engine)
 
-    # Self-test: the guard must actually be live. A temp table touches no
-    # production relation - PostgreSQL rejects the statement as read-only first.
-    # Matched on SQLSTATE 25006 (read_only_sql_transaction), never on the message
-    # text: the server speaks the OS locale, so string matching silently breaks.
     READ_ONLY_SQLSTATE = "25006"
     try:
         conn.execute(text("CREATE TEMP TABLE _devenv_readonly_probe (x int)"))
@@ -383,7 +400,7 @@ def run(args):
     log(f"sequences advanced: {n_seq}")
 
     dst.close(); dst_engine.dispose()
-    src.close(); src_engine.dispose()
+    db_safety.close_readonly_connection(src); src_engine.dispose()
 
     elapsed = time.time() - t_start
     print("\n" + "=" * 72)

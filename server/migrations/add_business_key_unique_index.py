@@ -137,131 +137,40 @@ BK_COLUMN = "business_key_val"
 # =============================================================================
 # The read-only guard
 # =============================================================================
-# 🔴 THE SPELLING HERE IS NOT NEW AND MUST NOT BE RE-INVENTED. It is the one
-# `server/scripts/diagnose_wal_headroom.py` (class `RO`) and
-# `server/scripts/diagnose_slow_after_ingest.py` already use: the setting goes in as a
-# CONNECTION OPTION, which the server applies before this session's first transaction
-# exists and re-applies to every transaction after it.
+# 🔴 THIS PROPERTY HAS ONE HOME AND THIS FILE IS NOT IT. Everything below is
+# imported from `server/db_safety.py`, which is where the options string, the
+# read-back and both refusals live. The names are re-exported rather than
+# referenced through the module so `mig.assert_readonly` keeps working for
+# callers and tests - a re-export is one definition under two names, which a copy
+# is not.
 #
-# WHAT THIS FILE USED TO DO, AND WHAT WAS ACTUALLY TRUE ABOUT IT
+# WHY THERE IS A HOME AT ALL. This block used to hold four functions, and two
+# sibling scripts held character-for-character copies of them while three others
+# ran an OLDER spelling that reported itself armed and, at the ordinary isolation
+# level, was not. Nobody re-invented that older spelling either; they copied it
+# from a document that taught it as correct. A safety property with no single
+# home gets copied, and a copy carries whatever the original got wrong. The
+# measurements behind all of that are in `db_safety.py`, next to the code they
+# are about.
 #
-#     conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-#     conn.execute(text("SET SESSION default_transaction_read_only = on"))
-#
-# ⚠️ IN THAT ORDER, IT DID ENGAGE - do not read the paragraph below as "the old code
-# was writing to production", because it was not. Measured on the isolated `assy_qa`
-# (PostgreSQL 18.3, SQLAlchemy 2.0.49, psycopg2 2.9.11) on 2026-08-13:
-# `execution_options` flips psycopg2's `autocommit` to True on this very Connection, so
-# there is no open transaction for the SET to be trapped inside. The session variable
-# took, `transaction_read_only` read `on`, and a CREATE was refused - still refused
-# after a rollback.
-#
-# 🔴 THE DEFECT IS THAT ITS ONE SAFETY PROPERTY RESTED ON A SETTING THAT IS HERE FOR AN
-# UNRELATED REASON. AUTOCOMMIT is in this file because `CREATE INDEX CONCURRENTLY`
-# cannot run in a transaction block; the guard silently borrowed it. Remove it, reorder
-# those two lines, or run one statement before the `execution_options`, and the SET
-# lands inside an implicit transaction that began under the old default and keeps it.
-# Measured in that arrangement, same database, same session:
-#
-#     after SET       default_transaction_read_only = on   <- the variable one checks
-#     after SET       transaction_read_only         = off  <- the one PostgreSQL enforces
-#     after rollback  transaction_read_only         = off  <- the SET discarded outright
-#     CREATE TABLE on that connection                      ACCEPTED
-#
-# AND NOTHING HERE EVER READ THE FLAG BACK, so those two arrangements were
-# indistinguishable from inside the script: it reported itself protected either way.
-# An operator was handed this as safe on the strength of a sentence, not a check.
-#
-# THE REPAIR IS THEREFORE TWO THINGS, NOT ONE:
-#   1. Arm at CONNECT time, which is independent of isolation level. Measured `on`
-#      with writes refused under BOTH autocommit and the default isolation, before and
-#      after a rollback.
-#   2. Read `transaction_read_only` back and REFUSE. `default_transaction_read_only`
-#      is deliberately NOT what gets checked - it reads `on` in both arrangements
-#      above, including the one that accepts writes.
-#
-# WHAT IS DELIBERATELY *NOT* IN THE OPTIONS. `diagnose_wal_headroom.py` also pins
-# `statement_timeout` / `lock_timeout` / `idle_in_transaction_session_timeout`. This
-# script has never had any of them, and `duplicate_census` is a full GROUP BY over
-# every table carrying the column on a 14 GB database - adding a timeout here would
-# turn a pre-flight that works today into one that fails, which is a separate decision
-# from arming the guard. `client_encoding` matches `database/database.py`.
-READONLY_OPTIONS = ("-c default_transaction_read_only=on "
-                    "-c client_encoding=utf8")
+# WHAT THIS FILE STILL DECIDES FOR ITSELF: the application name an operator will
+# read out of `pg_stat_activity`, and the fact that it takes NO statement
+# timeout. `duplicate_census` is a full GROUP BY over every table carrying the
+# column on a 14 GB database; capping it would turn a pre-flight that works today
+# into one that fails, which is a separate decision from arming the guard.
+from db_safety import (  # noqa: E402
+    READONLY_OPTIONS, READONLY_REFUSAL, assert_readonly, assert_writable,
+    close_readonly_connection, open_readonly_connection)
+import db_safety  # noqa: E402
 
-#: Present in every refusal, so a caller can pin the reason rather than the exception
-#: type (same discipline as `db_safety.REFUSAL_MARKER`).
-READONLY_REFUSAL = "[read-only guard] REFUSED"
+#: The name `pg_stat_activity` shows for this script's counting pass.
+READONLY_APPLICATION_NAME = "assy_bk_index_check"
 
 
 def open_readonly_engine(url: str = None):
-    """An engine every one of whose transactions is read-only, armed at connect time.
-
-    `NullPool` is load-bearing, not tidiness: these connections must never be handed to
-    anything else. It is also what retired the `invalidate()` dance this file used to
-    need - the old pattern set a session variable on a connection borrowed from the
-    APPLICATION pool, so returning it poisoned the next checkout and an apply run that
-    followed a check run in the same process failed every CREATE with
-    `ReadOnlySqlTransaction`. An engine of our own has no next checkout to poison.
-    """
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import NullPool
-    if url is None:
-        from database.database import SQLALCHEMY_DATABASE_URL
-        url = SQLALCHEMY_DATABASE_URL
-    return create_engine(
-        url, poolclass=NullPool,
-        connect_args={"options": READONLY_OPTIONS,
-                      "application_name": "assy_bk_index_check"})
-
-
-def assert_readonly(conn):
-    """Refuse unless POSTGRESQL ITSELF reports that this connection cannot write.
-
-    A guard that cannot verify itself is the defect this exists to end, so the answer
-    comes from the server rather than from the fact that an option string was passed.
-    """
-    try:
-        armed = conn.execute(text("SHOW transaction_read_only")).scalar()
-    except Exception as exc:
-        raise RuntimeError(
-            f"{READONLY_REFUSAL}: `transaction_read_only` could not be read from this "
-            f"connection ({type(exc).__name__}: {str(exc).strip().splitlines()[0]}). "
-            f"This is a PostgreSQL operator script and it will not run a pass it "
-            f"cannot prove is read-only.") from exc
-    if str(armed).lower() != "on":
-        raise RuntimeError(
-            f"{READONLY_REFUSAL}: PostgreSQL reports transaction_read_only={armed!r} "
-            f"on the connection this run counts with. Refusing to run a pre-flight "
-            f"that is not actually protected.")
-    return conn
-
-
-def assert_writable(conn):
-    """The mirror, for `--apply`. Fails BEFORE the first table instead of during it.
-
-    This is the direct net for the incident the old code left a comment about: a
-    read-only flag inherited from a pooled connection used to surface as a
-    `ReadOnlySqlTransaction` on every individual CREATE/DROP, halfway through a run.
-    """
-    armed = conn.execute(text("SHOW transaction_read_only")).scalar()
-    if str(armed).lower() != "off":
-        raise RuntimeError(
-            f"{READONLY_REFUSAL} (inverted): --apply was asked for but PostgreSQL "
-            f"reports transaction_read_only={armed!r} on the connection that would do "
-            f"the writing. Nothing was attempted.")
-    return conn
-
-
-def open_readonly_connection(engine):
-    """THE ONLY DOOR to a counting-pass connection: connect, then prove it, or refuse."""
-    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-    try:
-        assert_readonly(conn)
-    except BaseException:
-        conn.close()
-        raise
-    return conn
+    """This script's counting engine. One line of policy over the shared door."""
+    return db_safety.open_readonly_engine(
+        url, application_name=READONLY_APPLICATION_NAME)
 
 
 def unique_index_name(table: str) -> str:
@@ -708,7 +617,7 @@ def run(apply: bool, only: list = None, engine=None, drop_redundant: bool = Fals
         # refuses them - a bypass would have to survive PostgreSQL, not just review.
         redundant = drop_redundant_indexes(conn, drop_redundant, write_conn=wconn)
     finally:
-        conn.close()
+        close_readonly_connection(conn)
         if own_ro_engine:
             readonly_engine.dispose()
         if wconn is not None:
