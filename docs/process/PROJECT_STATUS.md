@@ -1,5 +1,65 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🔄 2026-08-13 오후 — 컴팩트 직전 상태 (레인 7 도는 중)
+>
+> ### ⚖️ 제품 소유자 판정 (오늘)
+>
+> | | |
+> |---|---|
+> | **`stack_height` = 층 «번호»** | 내 제안서가 「더미의 높이」라 적었던 것 — 틀렸다. SAT의 `gate`와 같은 축 |
+> | **운영 `bonding_log` = 다이당 1행** | = (stack, x, y)당 1행. **이 박스 픽스처는 자리당 1행이라 운영 모양이 아니다** |
+> | **`b_bn` = base bin** | 무시. 결함 필드로 승격하는 트랙 **닫음** |
+> | **디펙 범위 = fab+dt+bonding 전부** · **보이드는 패키지 안** · **SAT는 pkg 단위** | |
+> | **온톨로지 사용처 1순위 = 보이드 조사** | 원장 슬라이스 1을 **오늘 안에** |
+> | 개발환경 DB·CONFIG·DDL 권한 위임 | 운영은 총괄이 안 건드림, 마이그레이션만 산출 |
+>
+> ### 🔴 지금 열린 것 — 순서대로
+>
+> 1. **void↔die가 «안 조인된다».** `void_obs`는 `base_wafer_id+base_x+base_y+stack_gate`,
+>    `bonding_log`는 `bond_lot+bond_slot+bond_x+bond_y`. **보이드가 자기 층의 다이에 못
+>    닿는다** — 온톨로지 1순위 사용처가 이음매에서 끊긴다. 🔴 **내가 두 레인을 다른 신원
+>    어휘로 내보내서 만든 이음매다.**
+> 2. **다이당 1행이 오늘 불가능하다.** 실측: 12장 넣으면 **1행** 저장.
+>    `composite_key_source`에 층을 넣으면 12행. **선언만 하고 키에 안 넣는 「반쪽」도 1행.**
+>    ⚠️ 층을 키에 넣으면 **그걸 안 보내는 피드가 전부 키를 잃는다** — 순서가 위험하다
+> 3. **`base_id`·`bx`·`by`가 5,296행 중 0행 채움 + 미선언** → 거기 쓰면 **200 받고 조용히
+>    버려진다.** 고아 컬럼 9개. 🔴 **`bond_lot`/`bond_slot`의 다른 철자가 «아니다»** — 하나는
+>    웨이퍼 신원, 하나는 카세트 자리. **유도하면 이 픽스처가 드러내려는 결함을 만들어 낸다**
+> 4. **`diagnose_db_health.py`** — `SET TRANSACTION READ ONLY`(첫 트랜잭션만). 실측 롤백 후
+>    `off`, **CREATE 통과**. docstring은 「의도가 아니라 실제로 읽기 전용」이라 주장. **운영자가
+>    진짜 DB에 겨눌 수 있는 진단 도구.** `diagnose_slow_after_ingest`·`diagnose_wal_headroom`은
+>    메커니즘은 맞고 되읽기만 없음
+> 5. **대소문자 컬럼은 영원히 안 고쳐진다** — `check()`는 정확히, sync는 `.lower()`로 비교.
+>    매 부팅 보고되고 수리기는 영원히 건너뛰며 **실패 로그조차 없다**
+> 6. **`check()`는 타입 불일치를 아예 못 본다** — 전 컬럼 `BLOB` 재생성에도 발견 0건. 탐지
+>    추가는 **별도 판정**(다이얼렉트 간 오탐 표면이 큼)
+>
+> ### 🔄 도는 레인 7 — 착지하면 총괄이 검수·커밋
+>
+> | 레인 | 만지는 곳 |
+> |---|---|
+> | **R7 상한 읽기 정렬** | `map_alignment.py` · `map_overlay.py` |
+> | **스윕 tier-1 끌어올리기** | `directory_watcher.py` · `ingestion_checkpoint.py` (재시작 35분→~1초 목표) |
+> | **void 스키마 구현** | `table_config.json`(+sample) · `parsers/void_sat_format.py` · 새 마이그레이션 |
+> | **원장 L1** — `ledger_events`+번역기 | `server/ledger/**` · 새 마이그레이션 · `ledger_config.json` |
+> | **원장 L2** — 추적 질의+라우트 | `ledger_trace.py` · (필요시 `main.py` 최소 diff) |
+> | **정렬기 UI 자동채움** | `client2/**` |
+> | ⏸ **스택 픽스처** | 판정 대기였음 — **층 축 확정됐으므로 재개 가능** |
+>
+> **원장 계약(총괄이 못박음)**: `ledger_events`의 물리 컬럼 11개 = 봉투 7필드를 편 것
+> (`id`·`subject_type`·`subject_keys`·`predicate`·`object_kind`·`object_payload`·
+> `occurred_at`·`source_who`·`source_translator_ver`·`source_raw_ref`·`supersedes`),
+> `occurred_at` 시간 파티션, 라우트 `GET /api/ledger/trace?lot=&slot=` → `hops[]`에
+> `state: resolved|candidate|unresolvable` + `reason`. **L3(화면)은 L2 착지 후.**
+>
+> ### 🧭 정렬기 UI — 서버는 이미 답하고 화면이 안 묻는다
+>
+> 워크리스트는 **이미 `?rule=` 단위**(미지 규칙 404, `params`는 그 규칙 결정키만).
+> 응답 `selection.map_tables`가 **고를 수 있는 것과 «못 고르는 이유»**를 이미 낸다.
+> `/api/maps/paint-rules`가 테이블별 해석된 x·y·val 바인딩을 이미 서빙한다.
+> **남은 건 클라 배선뿐.** 조건: 못 고르는 이유 표시 · `fallback_guess`면 추측임을 표시 ·
+> 서버 변경 필요하면 클라에서 우회 금지(판정의 두 번째 구현이 된다)
+
 > ## ▶️ 2026-08-13 — 스키마 정준화 착수, 그리고 내가 낸 거짓 경보
 >
 > **제품 소유자 권한 위임**: 개발환경 DB·CONFIG 설정권 + DDL. 목표는 **raw → 정준층 → 온톨로지**,
