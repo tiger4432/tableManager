@@ -5,7 +5,10 @@ full copy is neither fast nor needed. What verification actually needs is copied
 
   * every map registered in `wafer_map_metadata`, and the rows of its target
     table that belong to those maps
-  * the plan tables (map_doe, map_doe_source, map_split_registry, transfer_plan*)
+  * the plan tables (map_split_registry, transfer_plan*). `map_doe` and
+    `map_doe_source` were dropped 2026-08-13; a table that exists in the source
+    but not in the target is logged as "not in target (skipped)", so a source
+    that has not been dropped yet costs a log line, not a failure.
   * every small table in full
   * the layering tables (cell_sources / cell_overwrites) and audit_logs
     restricted to the rows actually copied

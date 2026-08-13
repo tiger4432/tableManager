@@ -84,7 +84,15 @@ def config_with_site_only(tmp_path, name="table_config.json", newline="\r\n"):
 
 
 # ---------------------------------------------------------------------------
-# 1. fresh config, no product entries -> all four added
+# 1. fresh config, no product entries -> every declared table added
+#
+# [2026-08-13] The single-entry fixtures below used to poke `map_doe`; that table
+# and `map_doe_source` were dropped, so they now poke `map_split_registry` and
+# `valid_die_ref`. Nothing about what is being verified changed -- these tests
+# need *a* product entry, not that particular one. The set-level assertions
+# (`test_empty_object_gets_every_product_table`) are keyed off PRODUCT_TABLES and
+# so followed the retirement on their own; they are the ones that pin "the
+# installer creates exactly the declared set" and they are kept, not weakened.
 # ---------------------------------------------------------------------------
 
 class TestFreshConfig:
@@ -139,8 +147,8 @@ class TestFreshConfig:
         path = write(tmp_path / "table_config.json", text)
         run(path, apply_mode=True)
         body = read_bytes(path).decode("utf-8")
-        assert '\n    "map_doe": {\n' in body
-        assert '\n        "business_key": "doe_key",\n' in body
+        assert '\n    "map_split_registry": {\n' in body
+        assert '\n        "business_key": "split_key",\n' in body
 
     def test_missing_file_is_an_error_and_creates_nothing(self, tmp_path):
         path = tmp_path / "nope.json"
@@ -211,54 +219,60 @@ class TestNoOpAndPreservation:
         assert code == 0, report
         body = read_bytes(path)
         assert body.startswith(b"\xef\xbb\xbf")
-        assert json.loads(body.decode("utf-8-sig"))["map_doe"] == product_tables.PRODUCT_TABLES["map_doe"]
+        assert (json.loads(body.decode("utf-8-sig"))["map_split_registry"]
+                == product_tables.PRODUCT_TABLES["map_split_registry"])
 
     def test_comment_reworded_in_config_is_not_drift(self, tmp_path):
         """Annotations cannot change behaviour, so they must not flag an operator."""
         cfg = {name: dict(entry) for name, entry in product_tables.PRODUCT_TABLES.items()}
-        cfg["map_doe"]["__comment"] = "our own note"
-        del cfg["map_doe_source"]["__comment"]
+        cfg["map_split_registry"]["__comment"] = "our own note"
+        del cfg["valid_die_ref"]["__comment"]
         path = write(tmp_path / "table_config.json", json.dumps(cfg, indent=2, ensure_ascii=False))
 
         code, report = run(path, apply_mode=True)
         assert code == 0, report
         assert "DRIFT" not in report
-        assert json.loads(read_bytes(path).decode("utf-8"))["map_doe"]["__comment"] == "our own note"
+        assert (json.loads(read_bytes(path).decode("utf-8"))["map_split_registry"]["__comment"]
+                == "our own note")
 
     def test_sync_comments_makes_a_stale_comment_actionable(self, tmp_path):
         """A comment cannot change behaviour, but it can actively mislead.
 
-        `map_doe`'s live comment still told an operator that `plan_store.doe` points at
-        it, months after that binding was retired. Ignoring comment drift is right by
-        default -- the operator may have annotated it -- but there has to be a way to
-        refresh one, and it has to be opt-in and visible in the report.
+        The case this was written for: `map_doe`'s live comment still told an operator
+        that `plan_store.doe` points at it, months after that binding was retired.
+        (That table has since been dropped, so the fixture below uses a live one --
+        the hazard is the stale text, not the table.) Ignoring comment drift is right
+        by default -- the operator may have annotated it -- but there has to be a way
+        to refresh one, and it has to be opt-in and visible in the report.
         """
         cfg = {name: dict(entry) for name, entry in product_tables.PRODUCT_TABLES.items()}
-        cfg["map_doe"]["__comment"] = "stale: plan_store.doe points here"
+        cfg["map_split_registry"]["__comment"] = "stale: plan_store.doe points here"
         path = write(tmp_path / "table_config.json", json.dumps(cfg, indent=2, ensure_ascii=False))
+
+        def live_comment():
+            return json.loads(read_bytes(path).decode("utf-8"))["map_split_registry"]["__comment"]
 
         # default: invisible, and nothing is written
         code, report = run(path, apply_mode=True, overwrite_drift=True)
         assert code == 0 and "DRIFT" not in report
-        assert json.loads(read_bytes(path).decode("utf-8"))["map_doe"]["__comment"].startswith("stale")
+        assert live_comment().startswith("stale")
 
         # opt-in: reported as drift, and still not written without --overwrite-drift
         code, report = run(path, strict=True)
         assert code == 1 and "DRIFT" in report and "__comment" in report
-        assert json.loads(read_bytes(path).decode("utf-8"))["map_doe"]["__comment"].startswith("stale")
+        assert live_comment().startswith("stale")
 
         # opt-in + overwrite: replaced with the product text
         code, report = run(path, apply_mode=True, overwrite_drift=True, strict=True)
         assert code == 0, report
-        assert (json.loads(read_bytes(path).decode("utf-8"))["map_doe"]["__comment"]
-                == product_tables.PRODUCT_TABLES["map_doe"]["__comment"])
+        assert live_comment() == product_tables.PRODUCT_TABLES["map_split_registry"]["__comment"]
 
     def test_sync_comments_leaves_site_entries_byte_identical(self, tmp_path):
         """The comment path must not become a licence to reformat the operator's file."""
         cfg = {"pti_site_log": {"business_key": "lot_id", "column_types": {"lot_id": "string"}}}
         for name, entry in product_tables.PRODUCT_TABLES.items():
             cfg[name] = dict(entry)
-        cfg["map_doe"]["__comment"] = "stale"
+        cfg["map_split_registry"]["__comment"] = "stale"
         path = write(tmp_path / "table_config.json", json.dumps(cfg, indent=2, ensure_ascii=False))
         before = read_bytes(path).decode("utf-8")
         site_span = before[before.index('"pti_site_log"'):before.index('"wafer_map_metadata"')]
@@ -284,7 +298,7 @@ def _config_with_modified_product_entry(tmp_path, mutate):
 class TestDrift:
     def test_changed_separator_is_blocking_drift_and_is_not_overwritten(self, tmp_path):
         def mutate(cfg):
-            cfg["map_doe"]["composite_key_separator"] = "_"
+            cfg["map_split_registry"]["composite_key_separator"] = "_"
         path = _config_with_modified_product_entry(tmp_path, mutate)
         before = read_bytes(path)
 
@@ -299,12 +313,12 @@ class TestDrift:
 
     def test_dropped_column_is_blocking_drift(self, tmp_path):
         def mutate(cfg):
-            del cfg["map_doe"]["column_types"]["qty_total"]
+            del cfg["map_split_registry"]["column_types"]["stack"]
         path = _config_with_modified_product_entry(tmp_path, mutate)
 
         code, report = run(path, apply_mode=True)
         assert code == 1
-        assert "missing  column_types.qty_total" in report
+        assert "missing  column_types.stack" in report
 
     def test_operator_added_column_is_additive_not_blocking(self, tmp_path):
         """A superset must never be reported as blocking.
@@ -313,8 +327,8 @@ class TestDrift:
         that flag would then delete the columns they added.
         """
         def mutate(cfg):
-            cfg["map_doe"]["column_types"]["site_tag"] = "string"
-            cfg["map_doe"]["display_columns"].append("site_tag")
+            cfg["map_split_registry"]["column_types"]["site_tag"] = "string"
+            cfg["map_split_registry"]["display_columns"].append("site_tag")
         path = _config_with_modified_product_entry(tmp_path, mutate)
         before = read_bytes(path)
 
@@ -329,7 +343,7 @@ class TestDrift:
     def test_reordered_display_columns_is_blocking(self, tmp_path):
         """Order carries meaning; only an in-order superset counts as additive."""
         def mutate(cfg):
-            cfg["map_doe"]["display_columns"].reverse()
+            cfg["map_split_registry"]["display_columns"].reverse()
         path = _config_with_modified_product_entry(tmp_path, mutate)
 
         code, report = run(path, apply_mode=True)
@@ -339,7 +353,7 @@ class TestDrift:
     def test_extra_component_in_composite_key_is_blocking(self, tmp_path):
         """composite_key_source is the business key -- appending is not additive."""
         def mutate(cfg):
-            cfg["map_doe"]["composite_key_source"].append("stack_band")
+            cfg["map_split_registry"]["composite_key_source"].append("split_desc")
         path = _config_with_modified_product_entry(tmp_path, mutate)
 
         code, report = run(path, apply_mode=True)
@@ -348,16 +362,17 @@ class TestDrift:
 
     def test_overwrite_drift_flag_replaces_the_entry(self, tmp_path):
         def mutate(cfg):
-            cfg["map_doe"]["composite_key_separator"] = "_"
-            cfg["map_doe"]["column_types"]["site_tag"] = "string"
+            cfg["map_split_registry"]["composite_key_separator"] = "_"
+            cfg["map_split_registry"]["column_types"]["site_tag"] = "string"
         path = _config_with_modified_product_entry(tmp_path, mutate)
 
         code, report = run(path, apply_mode=True, overwrite_drift=True)
 
         assert code == 0, report
         parsed = json.loads(read_bytes(path).decode("utf-8"))
-        assert parsed["map_doe"] == product_tables.PRODUCT_TABLES["map_doe"]
-        assert "site_tag" not in parsed["map_doe"]["column_types"], "a full replacement drops extras"
+        assert parsed["map_split_registry"] == product_tables.PRODUCT_TABLES["map_split_registry"]
+        assert ("site_tag" not in parsed["map_split_registry"]["column_types"]), \
+            "a full replacement drops extras"
         assert parsed["pti_site_log"] == {"business_key": "lot_id"}, "site entry untouched"
         assert len(backups(tmp_path)) == 1
 
@@ -417,7 +432,7 @@ class TestWriteMechanics:
         path = config_with_site_only(tmp_path)
         code, _ = run(path, apply_mode=True)
         assert code == 0
-        assert json.loads(read_bytes(path).decode("utf-8"))["map_doe"]
+        assert json.loads(read_bytes(path).decode("utf-8"))["map_split_registry"]
 
     def test_no_stray_files_beyond_the_backup(self, tmp_path):
         path = config_with_site_only(tmp_path)
@@ -674,10 +689,11 @@ class TestProductWritePathsAreDeclared:
     #
     # M2.6 retarget (2026-07-27): map_doe / map_doe_source have no writer any
     # more - the DOE collapsed into the map_split_registry row (knobs + bands),
-    # which map_editor.js writes. Their declarations survive as deprecated,
-    # read-only entries, so there is no payload left to check for them. This is
-    # the retarget the docstring asks for, NOT a deletion: map_split_registry
-    # below now covers every column the product writes for a DOE.
+    # which map_editor.js writes. This was the retarget the docstring asks for,
+    # NOT a deletion: map_split_registry below covers every column the product
+    # writes for a DOE. (2026-08-13: those two tables were dropped outright -
+    # declaration, indexes and physical table - so there is nothing left to
+    # retarget from.)
     #
     # 2026-08-04: the map_split_registry write payload moved out of map_editor.js
     # into client2/src/split_registry_row.js (``buildLegendRegistryUpdates``) when

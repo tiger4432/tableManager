@@ -7,8 +7,6 @@ DT 원천·계획 저장소에 복합 인덱스를 보장한다.
 - dt_map: 영역 귀속 강등 경로 진입점.
 - map_split_registry: [M2.6] 계획 저장소가 이 한 테이블로 접혔다 — `validate_plan`의
   진입 필터가 `(ref_table, map_key)` 동치이고, 행 수는 (맵 수 × legend 값 수)로 자란다.
-- map_doe / map_doe_source: **폐기됨**(M2.6). 코드는 더 이상 읽지 않지만 물리 DROP이
-  사용자 승인 대기 중이라 인덱스를 남겨 둔다 — DROP과 함께 이 두 줄도 지운다.
 - 계획 맵의 페인팅 값 group-by는 **대상 맵 자신**(bonding_map/dt_map)의 맵 키 인덱스를
   그대로 탄다(아래 idx_*_base / idx_dt_map_lot_slot).
 M1 인덱스(core_defect_map/eds_fail_map/wafer_process/bonding_log/wafer_map_metadata)는
@@ -31,9 +29,11 @@ INDEXES = [
     ("idx_dt_map_lot_slot", "dt_map", "(lot, slot)"),
     # [M2.6] 계획 저장소의 진입점 — validate가 여기서 계획을 통째로 읽는다.
     ("idx_map_split_registry_ref_map", "map_split_registry", "(ref_table, map_key)"),
-    # 아래 둘은 폐기된 테이블용 — 물리 DROP(사용자 승인 대기)까지만 유지한다.
-    ("idx_map_doe_ref_map", "map_doe", "(ref_table, map_key)"),
-    ("idx_map_doe_source_ref_map", "map_doe_source", "(ref_table, map_key)"),
+    # [RETIRED 2026-08-13] idx_map_doe_ref_map / idx_map_doe_source_ref_map are gone:
+    # their tables were dropped (server/migrations/drop_map_doe_tables.sql). The
+    # existence gate below would have skipped them silently, which is exactly why the
+    # lines are deleted rather than left to rot — a permanent "[skip]" teaches the
+    # operator to ignore skips.
     # ②: 소스 사용 영역 (휴면 — 테이블 미적용 시 자동 skip)
     ("idx_map_source_region_ref_map_src", "map_source_region",
      "(ref_table, map_key, source_lot, source_slot)"),
