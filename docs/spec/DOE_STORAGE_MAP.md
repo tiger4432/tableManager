@@ -1,6 +1,6 @@
 # 🗺️ DOE 영역 저장 지도 — 무엇을 어디에 쓰는가
 
-> **Status:** 🗄️ **대체됨 — 아래 본문은 폐기된 3테이블 모델이다** | **Last-verified:** 2026-07-27 (M2.6 서버 리바인딩 `0f8d35f` 반영) · 소스에서 역산(추정 아님)
+> **Status:** 🗄️ **대체됨 — 아래 본문은 폐기된 3테이블 모델이다** | **Last-verified:** 2026-08-13 (`c0fb735` — 두 테이블이 **선언째 은퇴**했고 개발 DB에서는 물리 DROP까지 실행됐다. 직전 2026-07-27 M2.6 서버 리바인딩 `0f8d35f`) · 소스에서 역산(추정 아님)
 > **대상:** map editor 우측 「2. Legend & DOE」 패널에서 편집하는 모든 항목
 > **근거:** `client2/src/transfer_plan.js`(DOE 저장) · `client2/src/map_editor.js`(legend 저장)
 
@@ -8,7 +8,7 @@
 >
 > **지금의 모델** — `map_split_registry` 한 테이블이 값(=DOE 조건) 전부를 담습니다:
 > `split_key` · `color` · `split_desc` · `knobs` · **`bands` JSON** `[{seq, to, materials[]}]`.
-> `map_doe`·`map_doe_source`는 **폐기**됐습니다(기존 행을 읽을 수 있게 선언만 DEPRECATED로 남아 있고, 아무것도 쓰지 않습니다).
+> 🗄️ **[2026-08-13 `c0fb735`] `map_doe`·`map_doe_source`는 «선언째» 은퇴했습니다.** 2026-07-27에 폐기되고 「읽기용 선언만 남긴다」 상태였으나, 제품 소유자 승인으로 `.sample`·`product_tables.py`에서 삭제되고 **개발 두 DB에서는 물리 DROP까지 실행**됐습니다(`server/migrations/drop_map_doe_tables.sql`, 운영 절차는 [process/OPERATOR_RUNBOOK §5](../process/OPERATOR_RUNBOOK.md)). ⚠️ **그래서 아래 §2·§3의 컬럼 표는 이제 «읽을 수 있는 테이블»에 대한 서술이 아니고**, 운영 DB에 남아 있는 기존 행을 손으로 옮길 때만 의미가 있습니다. 🔴 **역방향 스크립트를 쓸 일이 생기면 그 파일을 보십시오 — 물리 컬럼은 이 문서의 목록과 다릅니다**(선언에 없는 일반 컬럼 일곱, `band_seq`/`qty_total`/`qty`는 `double precision`).
 > 구간은 **연속**이라 `from`은 앞 구간의 `to`+1로 유도되고, 층 수 = `to_i − to_(i−1)`, **수량·자재 배분은 저장하지 않고 파생**합니다.
 >
 > **양쪽이 착지했습니다(2026-07-27).** `knobs`·`bands`는 라이브 `table_config.json`에 선언돼 **물리 컬럼으로 존재**하고(config watcher가 재기동 없이 ALTER 실행), `server/transfer_plan.py`는 `plan_store.registry` → `map_split_registry`로 **리바인딩됐습니다**.

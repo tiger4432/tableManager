@@ -1,8 +1,14 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-13 | **Owner:** Lead / Backend
 >
-> ### 이번 라운드 (2026-08-11 · 리빙 문서 동기화)
+> ### 이번 라운드 (2026-08-13 2차 · 리빙 문서 동기화 · `c0fb735`+`346aa88`+`f896020`+`272da5b`)
+> - 🗄️ **§5.8-ter의 `map_doe`·`map_doe_source` 두 행을 걷었습니다**(`c0fb735` — 선언·설치기에서 은퇴). ⚠️ **운영자의 `table_config.json`에는 아직 남아 있을 수 있고**(gitignore라 배포가 안 덮습니다) 남아 있어도 새로 쓰는 코드는 없습니다. 물리 삭제 절차는 [OPERATOR_RUNBOOK §5](../process/OPERATOR_RUNBOOK.md). `--overwrite-drift`가 이 둘을 **되살린** 전례(🚨 항목)는 그대로 유효합니다.
+> - **§5.8-ter에 void 기능 행 신설**(`346aa88`) — `inspection_run`+`void_obs`. 🔴 **켜는 순서가 있고**(선언 → 리로드 → 인덱스 → 파서 shim → 파일) 🔴 **둘 다 `map_key_columns`를 선언하지 않으며** 🔴 **등급·면적 컬럼을 추가하면 안 됩니다.**
+> - **§1 표에 `ledger_config.json` 신설**(`f896020`+`bee1aeb`) — 🔴 **`occurred_at_*` 셋은 필수이고 빠지면 소스 전체를 거절**합니다(도착 시각 대용 금지). 🔴 **`occurred_at_timezone`은 naive 텍스트에만 적용**되고 자기 오프셋을 가진 값은 이미 자기 순간을 말했습니다. `vocabulary`의 관례 선언은 **`source_translator_ver`에 해시**돼 원자마다 출처가 남습니다.
+> - 🔴 **§6에 함정 A-4 신설 — 「.sample과 실 파일은 조용히 갈라지고, 깨진 선언을 받을 사람은 새 박스뿐이다」**(`272da5b`). 추적되는 `.sample`의 `core_wafer_map.map_key_columns`가 R3를 위반했고, **희소한 비키 컬럼으로 스코프한 purge는 200을 내고 아무것도 안 지웁니다.** 라이브는 처음부터 옳았고 **그래서 이 박스에서는 아무도 못 봤습니다.** 🔴 **눈에 띈 하나만 고치지 말고 규칙을 전 테이블에 다시 돌릴 것.** ⚠️ 라이브에 없는 `.sample` 선언 넷의 채택은 **레인들이 착지한 뒤로 대기 중**입니다.
+>
+> ### 직전 라운드 (2026-08-11 · 리빙 문서 동기화)
 > - 🗄️ 🔴 **§S9의 4행이 *은퇴한 키*의 세팅 절차를 가르치고 있었습니다 — `alignment.sides`.** `db1ee42`가 후보의 두 번째 축을 **면에서 걸음의 시작 모서리로** 바꾸면서 그 키를 읽는 코드가 사라졌습니다(HEAD 실측 `load_alignment_sides` 0건). **선언하면 조용히 무시되고 경고도 없습니다** — 「썼는데 아무 일도 안 일어난다」의 전형이라 **행을 지우지 않고 은퇴 표시**했습니다. 키 상세는 [config/map_overlay_config](./config/map_overlay_config.md), 후보 공간의 정본은 [spec/MAP_ALIGNMENT_SPEC §2.4](../spec/MAP_ALIGNMENT_SPEC.md).
 >
 > ### 직전 라운드 (2026-08-06 · 리빙 문서 동기화)
@@ -64,6 +70,7 @@ server/database/virtual_graph.json
 | **`effort_metric.json`** | **V1 정본 계기** — 상호작용 점수 배점(`weights.key/mouse/nav/nav_preserved`, 기본 1/3/5/**0**) + `context_preserving_transitions`(유지 전이 허용목록, **기본 빈 배열 = 모든 이동이 상실로 계산됨**, 정확 일치·**와일드카드 거절**). `GET /api/effort/config`로 서빙(클라 하드코딩 금지) | 사용자 | ignored (`.sample` 有) | 즉시(다음 조회부터, 집계는 60초 캐시) | web |
 | **`suggest_config.json`** | **입력 제안(고유값 조회) 노브** — 목록 길이(`default_limit`/`max_limit`)·최소 접두 길이·프로브 예산·타임아웃·**느린 응답 경보(`slow_warn_ms`)** + **접두 인덱스 대상 선정**(`index_min_rows`/`index_columns`/`index_exclude`). 조회 노브는 즉시, `index_*`는 **`setup_db_performance.py` 재실행이 유일한 반영 경로** | 사용자 | ignored (`.sample` 有) | 조회 노브 = 즉시(**요청당 1회 스냅샷**) / `index_*` = 스크립트 재실행 | web + `scripts/setup_db_performance.py` |
 | **`audit_history_config.json`** (2026-08-11 신설) | **감사 이력 조회 상한** — 행/셀 이력 페이지 크기(`default_limit`/`max_limit`) + **전역 「최근」 패널 discovery 걸음의 하드 천장**(`recent_max_scan_rows`/`recent_scan_chunk_rows`/`recent_logs_per_group`/`recent_refresh_max_delta_rows`). `audit_cache`가 `audit_history.load_config()`를 재사용 — 두 번째 로더가 아니다. 🔴 **인덱스 없이는 이 config만으로 아무것도 안 빨라진다** — §5.6-quinquies 참조 | 사용자 | ignored (`.sample` 有 — ⚠️ **`recent_*` 넷이 아직 안 실려 있다**, §5.6-quinquies) | 즉시(**요청당 1회 스냅샷**) | web |
+| **`ledger_config.json`** (2026-08-13 신설 · `f896020`) | **정준 원장 번역기 선언 — 소스 하나당 항목 하나.** 🔴 **`occurred_at_*` 셋은 필수**이고 하나라도 빠지면 번역기가 **그 소스를 통째로 거절**합니다(도착 시각으로 대신하지 않습니다). 🔴 **`occurred_at_timezone`은 「이 소스의 naive 텍스트가 무슨 뜻인가」의 선언**입니다 — 2026-08-13 제품 소유자 판정으로 `Asia/Seoul`(fab는 현지시간, ISO 8601 `T`). **자기 오프셋을 가진 문자열은 이미 자기 순간을 말했으므로 이 존을 덧씌우지 않습니다.** `vocabulary`는 이벤트 타입별 관례 선언(`lineage`·`slot_pairing`·`emit_*`)이고 **`source_translator_ver`에 해시되어** 원자마다 「어느 관례가 만들었는가」가 남습니다. 그 밖에 `batch.molecules_per_transaction`(**사건 «전체» 단위 — 절대 분수 아님**) · `partitioning.interval`(월) · `lag.probe_interval_seconds` | 사용자 | ignored (`.sample` 有) | 번역기 실행 시 재독 | `server/ledger/*`(백필·번역기). ⚠️ **웹서버·워커는 부팅 시 이것을 읽지 않습니다** |
 | `scheduler_status.json` | 스케줄러→UI 텔레메트리 | **시스템(자동 생성)** | ignored | — | run_auto_update가 씀, web이 읽음 |
 | `supervisor_status.json` | **[운영]** 자식 프로세스 감시 상태(자식별 state·재시작 횟수·실패 사유, `updated_at`=감시자 생존 신호) | **시스템(자동 생성)** | ignored | — | `run_decoupled_app`이 씀, `/health`가 읽음 |
 | `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동(`watcher`·`chain`·`graph`·`scheduler` — **수를 적지 않습니다**) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
@@ -635,12 +642,13 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 |---|---|---|
 | `map_split_registry` | 맵 값(legend) 레지스트리 — `split_desc`·`color`의 정본이자 **DOE 그 자체**. 값 하나 = 행 하나 = DOE 조건 하나이며, 층 구조는 **zone 컬럼 넷**(`stack`·`mat_1h`·`mat_mid`·`mat_top`, 2026-07-28)에 있다(`knobs`·`split_desc`는 온톨로지가 소비하므로 **평면 컬럼으로 남긴다**). 🗄️ `bands`는 폐기됐지만 실계획이 남아 있어 **읽기 전용**으로 계속 선언한다 — 새 writer 금지 | `ref_table\|map_key\|value` (구분자 `\|`) |
 | `wafer_map_metadata` | 격자 규격(`grid_metadata`) | `target_table_map_id` |
-| 🗄️ `map_doe` | **[DEPRECATED 2026-07-27 — M2.6] 아무것도 쓰지 않습니다.** 선언은 운영자가 기존 행을 **읽어서** 손으로 옮길 수 있도록만 남아 있습니다. 새 소비자를 붙이지 마십시오 | `ref_table\|map_key\|doe_value\|band_seq` |
-| 🗄️ `map_doe_source` | **[DEPRECATED 2026-07-27 — M2.6]** 자재는 `map_split_registry.bands[].materials`로 이동했습니다. 위와 같은 조건 | 위 + `\|source_lot\|source_slot` |
+| `valid_die_ref` | 유효 다이 맵의 저장 테이블 — **한 행 = 한 맵의 한 셀**. 🔴 **행의 존재 자체가 「이 다이가 유효하다」의 답**이므로 그런 뜻의 컬럼을 새로 만들지 마십시오(둘이 어긋나면 화면이 어느 쪽이 이겼는지 말하지 못합니다). 사용자 절차는 [VALID_DIE_MAP_GUIDE](./VALID_DIE_MAP_GUIDE.md) | `product_type_x_y` (구분자 `_`, `map_key_columns = (product, type)`) |
 
-> 🗄️ **폐기 2종의 물리 `DROP TABLE`은 별도 단계이며 운영자 승인이 필요합니다.** 선언을 지우기 전에 그 행을 읽을 수 없게 된다는 점을 확인하십시오.
+> 🗄️ **[2026-08-13 `c0fb735`] `map_doe`·`map_doe_source`는 은퇴했습니다 — 이 표에서도, `.sample`에서도, `product_tables.py`에서도 사라졌습니다.** 2026-07-27(M2.6) 폐기 이후 「읽기용 선언만 남긴다」 상태였고, 코드 주석이 「DROP TABLE은 운영자 승인 필요」라 적고 기다리던 것을 제품 소유자가 승인했습니다. **운영 물리 삭제 절차는 [process/OPERATOR_RUNBOOK §5](../process/OPERATOR_RUNBOOK.md)**(마이그레이션은 **비어 있지 않으면 거절**하고, 이미 없으면 조용히 통과합니다).
+> - ⚠️ **당신의 `table_config.json`에는 아직 그 두 선언이 남아 있을 수 있습니다** — 이 파일은 gitignore라 배포가 덮지 않습니다. 남아 있어도 새로 쓰는 코드는 없습니다. 선언을 지우면 **기존 행을 읽을 수 없게 되므로** 물리 삭제와 같은 순서로 판단하십시오.
+> - 🔴 **`--overwrite-drift`로 그 둘이 «되살아난» 전례가 있습니다**(아래 🚨 항목) — 은퇴 이후에도 그 함정 자체는 유효합니다.
 
-> 위 네 테이블의 **`composite_key_separator`를 바꾸지 마십시오.** `map_key`가 `_` 조인 문자열이고 테이블명에도 `_`가 흔해 `_` 구분자로는 키가 모호해집니다(클라이언트의 `SPLIT_KEY_SEP`와도 일치해야 합니다).
+> 위 표의 테이블들은 **`composite_key_separator`를 바꾸지 마십시오.** `map_key`가 `_` 조인 문자열이고 테이블명에도 `_`가 흔해 `_` 구분자로는 키가 모호해집니다(클라이언트의 `SPLIT_KEY_SEP`와도 일치해야 합니다).
 
 > `table_config.json.sample`의 나머지 엔트리(`bonding_map`, `inventory_master`, `production_plan`, `parts`, `large_table_100`)는 **동작 예시**입니다 — 제품이 이름을 강제하는 저장소가 아니므로 현장 테이블로 교체하거나 지워도 됩니다.
 
@@ -653,6 +661,7 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 | **결손 보정 (enrichment)** | `enrichment_rules.json` | `source_table`로 쓸 원천(샘플 예: `bonding_log`) · `derived_table`로 쓸 파생(샘플 예: `bonding_job_inventory`, `decision_key`를 `composite_key_source`로 갖는 키 계약 필요) |
 | **맵 오버레이** | `map_overlay_config.json` | 겹쳐 볼 맵 테이블 전부. **단 선언 없이도 동작합니다**(`table_config`에서 자동 유도) — 컬럼명이 관례와 다를 때만 선언 |
 | **[F5] 프리셋 라우팅** | `map_overlay_config.json` (`preset_routing`) | 라우팅할 맵 테이블. ①을 켤 때만 **제품코드 조회 테이블**(운영 소유, 예: `product_master`)이 `table_config.json`에 추가로 선언돼야 합니다 — **미선언이 정상 구성**이고 그때는 패턴 규칙만으로 동작합니다 |
+| **void(보이드) 관측** (2026-08-13 `346aa88`) | 없음 — 선언이 곧 전부입니다 | `inspection_run`(**분모** — 스캔이 있었다) · `void_obs`(관측). **`.sample`에 두 선언이 그대로 실려 있으니 손복사**하십시오(제품 소유 테이블이 아니므로 `install_product_tables.py`는 이것을 옮기지 않습니다). 🔴 **켜는 순서가 있습니다 — 선언 → 리로드(테이블 생성) → 인덱스 → 파서 shim → 파일**: [process/OPERATOR_RUNBOOK §4](../process/OPERATOR_RUNBOOK.md). 🔴 **둘 다 `map_key_columns`를 선언하지 않습니다**(런은 웨이퍼 격자가 아니고 보이드는 연속 좌표의 점입니다) — 선언하면 이유 없이 `replace_map` purge 스코핑과 [R3](../architecture/SCHEMA_CANON.md)의 사고 반경에 들어갑니다. 🔴 **등급·면적 컬럼을 «추가하지 마십시오»** — 합불은 레시피 임계에 달렸고 면적은 식 인덱스가 답합니다([data_model §1.2-bis](../architecture/data_model.md)) |
 
 > 위 표의 이름(`dt_log`, `bonding_log` …)은 **`.sample`이 쓰는 예시일 뿐 표준이 아닙니다.** 현장 테이블명이 다르면 그 이름 그대로 선언하고 바인딩만 맞추면 됩니다 — 코드는 실테이블명을 하드코딩하지 않습니다.
 
@@ -682,6 +691,15 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 
 **A-3. 최상위가 객체가 아닌 JSON(`[]`·`null`)** — ✅ **2026-07-29 수정됨(H5).**
 게이트가 `json.loads` 결과를 검사 없이 통과시켰습니다. 측정: `[]` → `init_dynamic_models`가 `AttributeError` → main의 광범위 `except`가 잡음 → **동적 모델 0개로 부팅, ERROR 한 줄.** UI는 비어 보이고 로그는 거의 깨끗합니다 — **A의 fail-fast가 없애려던 실패 그 자체**입니다. `null`은 더 나빴습니다(프로세스 수명 내내 `TABLE_CONFIG`가 `None`). 최상위 타입 검사는 의미 수준 트집이 아니라 **"이 문서는 테이블 맵이 아니다"** 이므로 파싱 실패와 같은 급으로 다룹니다. 빈 파일도 같습니다(잘림과 구분할 수 없습니다).
+
+**A-4. `.sample`과 실 파일은 «조용히» 갈라지고, 깨진 선언을 받을 사람은 «새 박스뿐»입니다** (2026-08-13 `272da5b`)
+`server/config/*`가 gitignore인 것은 **설계**입니다 — 배포가 운영자의 조정본을 덮어쓰면 안 되니까요. 그 설계가 사는 실패 양식이 정확히 이것입니다: 둘이 갈라져도 **아무도 통보받지 않고**, 깨진 `.sample`은 **이 박스에서 영원히 무해**하며 **처음 설치되는 환경에서만** 발현합니다.
+- **실제 사례**: `core_wafer_map.map_key_columns`가 추적되는 `.sample`에서 [R3](../architecture/SCHEMA_CANON.md)를 위반하고 있었습니다(`[wafer_id]`가 `composite_key_source`에 없음). 규칙 위반보다 나쁜 것은 **그 컬럼이 세 줄 위 주석에 「의도적으로 희소하다 — 부재가 곧 보정 작업 항목이다」라고 적혀 있다**는 점입니다. **희소한 비키 컬럼으로 스코프한 purge는 아무것도 스코프하지 못하므로**, 아직 보정되지 않은 모든 행에 대해 `replace_map`이 200을 내고 **아무것도 지우지 않습니다.** 라이브 config는 처음부터 옳은 `[core_lot, core_slot]`을 들고 있었고 — **그래서 이 박스에서는 아무도 못 봤습니다.**
+- 🔴 **눈에 띈 테이블 하나만 고치지 말고 규칙을 «전 테이블에» 다시 돌리십시오** — 한 테이블에만 적용한 규칙은 적용되지 않은 규칙입니다. 검출기는 `server/scripts/audit_schema_canon.py`.
+- **`map_overlay_config.json.sample`에 `core_usage_map`의 바인딩이 빠져 있었습니다.** 그 테이블은 **양쪽 table_config 모두에 선언돼 있어** 새 박스는 테이블을 받고 칠할 방법은 못 받습니다 — 컬럼이 이름공간을 타서(`core_x`/`core_y`/`used_count`) **유도가 닿지 못하는**, 그 파일 자신의 `__derived_note`가 「반드시 선언하라」고 적은 바로 그 경우입니다.
+- **이유는 라이브 파일에도 주석 키로 함께 옮겼습니다** — 운영자의 박스는 `.sample`을 **읽지 않으므로**, 안 그러면 올바른 값을 들고 **그것이 무엇을 막고 있는지에 대한 기록은 없는** 상태가 됩니다.
+- ⚠️ **아직 안 한 것(대기 중)**: 라이브 `table_config.json`에 `.sample`이 가진 선언 넷이 없습니다(`dt_job_attribution`·`eqp_frame_attribution`·그리고 은퇴한 `map_doe`/`map_doe_source`). 채택은 **돌고 있는 모든 프로세스가 읽는 것을 바꾸므로** 측정 중인 레인이 착지한 뒤로 미뤘습니다.
+- ✅ **함께 확인하고 무해했던 것**: 라이브 `ingestion_settings.json`이 `.sample`이 선언한 키 열다섯을 생략하고 있으나 **모든 기본값이 선언값과 같습니다** — 파일이 아니라 **코드에** 물어서 확인했습니다.
 
 **B. 에디터의 "원자적 저장"(temp + rename)** — ✅ **2026-07-29 수정됨(#9 + H3).**
 예전 watcher는 `on_modified`만 처리해서, temp 파일에 쓰고 rename하는 도구(일부 에디터·에이전트 Edit 도구)로 `table_config.json`을 고치면 **ALTER가 조용히 누락**됐습니다. 2026-07-29 1차 수정이 `on_moved`를 넣었지만 **그것으로 계급이 닫히지 않았습니다** — rename의 원본 temp가 **다른 디렉터리**에 있으면 `moved`가 아예 없고 `deleted`+`created`만 옵니다(`tempfile.mkstemp()`의 기본이 시스템 temp 디렉터리입니다). `on_created`까지 넣은 지금 세 형태 모두 반영됩니다(§4.4).

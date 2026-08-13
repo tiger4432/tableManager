@@ -267,8 +267,13 @@ map key, so a miss empties the filter set and refuses)"*. Half of that is now
 false: `4d5198c` moved `dt_map` to `(dt_lot, dt_slot)`, so **`dt_map` is now
 exposed** and `core_usage_map` (still one key: `core_wafer`) is not. Measured on
 `.sample`, the tables declaring two or more `map_key_columns` are `dt_map`,
-`bonding_log`, `map_split_registry`, `valid_die_ref`, `map_doe` and
-`map_doe_source`. **Chains are unaffected either way** — they take the explicit
+`bonding_log`, `map_split_registry` and `valid_die_ref`. 🔴 **[2026-08-13 recount ·
+`c0fb735`] `map_doe` and `map_doe_source` have left this list — the declarations
+themselves were retired**, which is this paragraph's own rule applied a second
+time in two days: the list is recounted whenever a declaration moves, not when a
+table is thought to be interesting. The void pair (`inspection_run`, `void_obs`)
+declares **no** `map_key_columns` deliberately, so it never enters this radius.
+**Chains are unaffected either way** — they take the explicit
 path. The hazard is the API / map-push path. Ruling on the fix itself belongs to
 [SCHEMA_CANON R3](../architecture/SCHEMA_CANON.md), whose corollary is that a
 partially resolved derived scope must **refuse** rather than return a partial dict.

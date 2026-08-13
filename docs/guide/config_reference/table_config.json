@@ -52,6 +52,7 @@
       "wafer_id",
       "event_time"
     ],
+    "__map_key_columns_comment": "R3 (SCHEMA_CANON): map_key_columns must be a SUBSET of composite_key_source. This said [wafer_id], which is not key material here -- and this declaration's own opening __comment says wafer_id is DELIBERATELY SPARSE ('absence is the enrichment work item'). A purge scoped by a sparse non-key column scopes by nothing: replace_map returns 200 and deletes no rows for every row that has not been enriched yet. The live config has always carried the correct value; only this .sample was wrong, so a FRESH DEPLOYMENT was the only thing that would ever have got the broken declaration. Repaired 2026-08-13 from the live config, R3 re-run across every table in both files afterwards: 0 violations.",
     "map_key_columns": ["core_lot", "core_slot"]
   },
   "core_usage_map": {
@@ -157,8 +158,8 @@
     "business_key": "dt_job",
     "column_types": {
       "dt_job": "string",
-      "dt_lot": "number",
-      "dt_slot": "number",
+      "dt_lot": "string",
+      "dt_slot": "string",
       "dt_eqp": "string",
       "dt_type": "string",
       "dt_frame": "string",
@@ -202,12 +203,14 @@
   },
 
   "dt_map": {
-    "__comment": "[TRACE FIXTURE -- DERIVED, do not write by hand] Projection of dt_log produced by the dt_log_to_dt_map chain rule. A hand-written row here silently disagrees with the next replay. | MAP KEY IS dt_job, not dt_lot/dt_slot: those two are still being inferred, and keying a map on a value under inference makes every consumer bind to a key that CHANGES WHEN THE GUESS IS CORRECTED -- the correction would then read as 'the map moved'. | Each cell carries its origin (core_wafer/core_lot/core_slot/core_x/core_y) because one DT wafer mixes dies from several core wafers, so the map's own key cannot recover where a die came from. That provenance is the difference between a map you can draw and a map you can trace.",
+    "__comment": "[DERIVED -- do not write by hand] Projection of dt_log produced by the DT map chain rules. A hand-written row here silently disagrees with the next replay. | MAP KEY IS (dt_lot, dt_slot) -- the PHYSICAL UNIT, not the acquisition unit. A map is one wafer, and one wafer can be fed by SEVERAL dt_jobs; that convergence is the point, because the same physical die written by two jobs must be ONE row or the layering invariant and the human-correction rule cannot apply to it. | dt_job is therefore NOT key material: it travels with the cell as its SOURCE. That is what makes a cell traceable and what lets the chain retract exactly one job's contribution (dt_map_derivation.plan_retraction) -- replace_map cannot, because a purge is scoped to a whole map and would delete a sibling job's cells to correct this one's. | A job with no confirmed (dt_lot, dt_slot) yet produces NO MAP: chain_key_gate refuses the unkeyed rows and names the blank column. That is rollout progress, not a defect. | Each cell carries its origin (core_wafer/core_lot/core_slot/core_x/core_y) because one DT wafer mixes dies from several core wafers, so the map's own key cannot recover where a die came from. That provenance is the difference between a map you can draw and a map you can trace.",
     "business_key": "cell_key",
-    "composite_key_source": ["dt_job", "dt_x", "dt_y"],
+    "composite_key_source": ["dt_lot", "dt_slot", "dt_x", "dt_y"],
     "composite_key_separator": "_",
     "column_types": {
       "cell_key": "string",
+      "dt_lot": "string",
+      "dt_slot": "string",
       "dt_job": "string",
       "dt_x": "number",
       "dt_y": "number",
@@ -216,13 +219,15 @@
     },
     "display_columns": [
       "cell_key",
+      "dt_lot",
+      "dt_slot",
       "dt_job",
       "dt_x",
       "dt_y",
       "dt_index",
       "c_bn"
     ],
-    "map_key_columns": ["dt_job"]
+    "map_key_columns": ["dt_lot", "dt_slot"]
   },
   "bonding_log": {
     "__comment": "[TRACE FIXTURE] Bonding record. b_bn is the bonding bin -- the DEFECT this whole fixture exists to trace back to a core die. | dt_lot/dt_slot here are the values AS OF BONDING TIME and they differ from the ones dt_log recorded at DT time, because split/merge moved the wafer in between. THIS IS WHY A SQL JOIN CANNOT SOLVE IT: joining bonding_log.dt_lot to dt_log.dt_lot does not error, it matches the WRONG wafer plausibly. The join has to be (key + as-of when) and then walk the lot_event chain. | bond_x/bond_y carry a third independent 8-way frame ambiguity -- the same primitive applies here as at core->dt, which is what 'universal' means (one primitive, N applications), NOT a third spelling of the same code.",
@@ -332,6 +337,66 @@
     },
     "display_columns": ["pkg_id", "base", "x", "y", "leg"],
     "map_key_columns": ["base"]
+  },
+  "inspection_run": {
+    "__comment": "[VOID SCHEMA — the DENOMINATOR] One row = one scan that HAPPENED. It exists so that 'no void rows' can be told apart from 'never scanned'; a void_yn column on bonding_log cannot tell those apart and both read false (DEFECT_SCHEMA_PROPOSAL §1). Yield needs a denominator: '3 voids' means nothing without 'out of how many scans'. | KEY = (method, base_wafer_id, base_x, base_y, stack_gate, observed_at). A scan is 'this method looked at this package layer at this instant', and a package cannot be in two machines at once, so that tuple is unique by physics. recipe_id/eqp_id are RECORDED BUT NOT KEY MATERIAL, deliberately: a re-delivered file that corrects a typo'd recipe must UPDATE the run, not mint a second one and orphan its voids. 🔴 The cost, named: if a source's observed_at is coarser than the re-scan interval (date-only, and the package is scanned twice in a day) the second run COLLIDES with the first and the denominator silently loses a run. The remedy when a real file shows a scan/job id exists is one line — add it to composite_key_source. | observed_at is 'datetime' -> physical timestamptz (R5), and it is the SOURCE's inspection time, never arrival. ⚠️ crud.cast_value_by_type has NO datetime branch, so this column receives a STRING at the write boundary; PostgreSQL coerces it. Measured on assy_qa: an offset-bearing string lands correctly, garbage is REFUSED (DataError), and a NAIVE string is silently reinterpreted in the session TimeZone — which is exactly the value R5 forbids. The parser therefore emits an explicit offset and never a naive stamp. | base_x/base_y are QUANTITIES (R1 'do you do arithmetic on it') and base_wafer_id is an assigned NAME, so string (R1). stack_gate is 'number' because layer order is arithmetic and '10' < '3' lexicographically; the physical column is double precision, which cannot forbid 3.5, so the PARSER enforces integrality. | NO subject_kind column: every accepted row is package-scoped BY CONSTRUCTION (base_x is key material and the gate refuses a blank one), so the column would be a constant. NO source_file column: cell_sources.source_name already carries the originating filename per cell, and a second home for one fact is the ROOT_DEFECTS '대조 안 함' root. | NO map_key_columns: a run is not a wafer grid. Declaring them would opt this table into replace_map purge scoping and SCHEMA_CANON R3's scope-widening incident for nothing.",
+    "business_key": "run_uid",
+    "composite_key_source": ["method", "base_wafer_id", "base_x", "base_y", "stack_gate", "observed_at"],
+    "composite_key_separator": "|",
+    "column_types": {
+      "run_uid": "string",
+      "method": "string",
+      "base_wafer_id": "string",
+      "base_x": "number",
+      "base_y": "number",
+      "stack_gate": "number",
+      "recipe_id": "string",
+      "eqp_id": "string",
+      "observed_at": "datetime"
+    },
+    "display_columns": [
+      "run_uid",
+      "method",
+      "base_wafer_id",
+      "base_x",
+      "base_y",
+      "stack_gate",
+      "recipe_id",
+      "eqp_id",
+      "observed_at"
+    ]
+  },
+  "void_obs": {
+    "__comment": "[VOID SCHEMA — the OBSERVATION] One row = one void seen by one scan. Columns are the eight the real SAT output carries (product owner 2026-08-13): base wafer id, base_x, base_y, inchip_x, inchip_y, gate, radius_x, radius_y. They say exactly two things — WHERE (which package, which stack layer, where inside the die) and HOW BIG (an elliptical extent). | 🔴 THE GRADE IS NEVER STORED. Pass/fail is `area > threshold` and the threshold is a RECIPE parameter, so a stored verdict makes history un-re-judgeable and drops a 5%-recipe FAIL into the same cell as a 10%-recipe FAIL. Area is π·rx·ry and is NOT a column either — a 'larger than X' query gets an EXPRESSION INDEX (server/migrations/add_void_schema_indexes.sql), not a materialised number. This is ROOT_DEFECTS' '박제' root and DEFECT_SCHEMA_PROPOSAL §2-bis rejects it by name. b_bn is what this table exists NOT to be: a grade with no geometry and no threshold recorded. | KEY = (run_uid, inchip_x, inchip_y). run_uid already encodes the package, the layer, the method and the time, so repeating them in the key would only lengthen it. 🔴 WHAT THIS KEY CANNOT DO: it does not re-identify a void ACROSS runs. Two scans of the same package that both find 'the same' void produce two rows, because voids are found by an algorithm and its centroid will not repeat to the bit. That is deliberate — an observation belongs to the scan that made it — but nobody should read a void's history across runs out of this table. | Within one run, two rows at the same centroid would silently merge into one upsert, so the PARSER refuses the later ones and names the collision (reason `duplicate_location`); the UNIQUE index on business_key_val is the same refusal enforced by the database. | base_wafer_id/base_x/base_y/stack_gate are ALSO stored here although run_uid encodes them: the grid read path (GET /tables/{t}/data) is per-table and never joins, so a row that cannot say where it is would be unreadable on its own. They cannot drift from run_uid because ONE function derives both (parsers/void_sat_format.compose_run_uid). | `unit` is per-row and not on inspection_run for the same reason: a number whose unit is only reachable by a join is a number the grid shows without one, and unit-less numeric columns silently mix two machines' values (proposal §3). Cost, named: nothing forbids two rows of one run disagreeing about the unit — the parser takes one declaration per file, so it cannot happen from ingestion, but it is not enforced. | NO map_key_columns — see inspection_run. A void is a point with continuous coordinates, not a cell in a grid.",
+    "business_key": "void_uid",
+    "composite_key_source": ["run_uid", "inchip_x", "inchip_y"],
+    "composite_key_separator": "|",
+    "column_types": {
+      "void_uid": "string",
+      "run_uid": "string",
+      "base_wafer_id": "string",
+      "base_x": "number",
+      "base_y": "number",
+      "stack_gate": "number",
+      "inchip_x": "number",
+      "inchip_y": "number",
+      "radius_x": "number",
+      "radius_y": "number",
+      "unit": "string"
+    },
+    "display_columns": [
+      "void_uid",
+      "run_uid",
+      "base_wafer_id",
+      "base_x",
+      "base_y",
+      "stack_gate",
+      "inchip_x",
+      "inchip_y",
+      "radius_x",
+      "radius_y",
+      "unit"
+    ]
   },
   "wafer_map_metadata": {
     "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 격자 규격(grid_metadata)의 정본. 맵을 담는 모든 테이블(defect·EDS·DT·bonding·core)이 여기에 등록돼야 정렬이 성립한다 — 미등록은 정상 상태가 아니라 누락이며, 화면에는 '화면기준' 칩으로 표면화된다. bk = target_table_map_id.",
@@ -454,90 +519,6 @@
       "unit_price",
       "MAX",
       "MIN"
-    ]
-  },
-  "map_doe": {
-    "__comment": "[DEPRECATED 2026-07-27 — M2.6] Nothing writes this table any more: the DOE moved into map_split_registry (one row per value, bands as JSON). The declaration stays only so an operator can still READ the rows while moving their own data by hand; the physical DROP TABLE is a separate step and needs the operator's approval. Do not add a new consumer. === historical description below === [제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 전사 계획(M2)의 DOE 정의. 행 단위는 (값, STACK 구간)이라 bk = ref_table|map_key|doe_value|band_seq 다. band_seq(정수 서수)가 정체를 지고 stack_band(자유 텍스트 라벨)는 비키 컬럼이다 — 라벨을 키에 넣으면 라벨 수정이 곧 re-key가 되어 하위 자재 행이 고아가 된다. transfer_plan_config.json의 plan_store.doe 바인딩이 이 테이블을 가리킨다. updated_by·eventtime은 클라이언트가 저장 시 함께 쓰는 감사 컬럼이며(client2/src/transfer_plan.js), 특히 eventtime은 다시 읽혀 계획 헤더의 '서버 <시각>' 칩이 된다 — 선언에서 빼면 서버가 조용히 버려(crud.py의 column_types 게이트) 칩이 사라진다. | map_key_columns = (ref_table, map_key): that pair IS the plan's identity - there is no plan_id - so it is the scope a `replace_map` write deletes by. A DOE save sends the plan's complete set; deletion is then part of the write instead of a separate client-side difference step. Removing this declaration silently turns `replace_map` into crud.py's column-guessing fallback, which matches almost nothing and deletes nothing.",
-    "business_key": "doe_key",
-    "composite_key_source": [
-      "ref_table",
-      "map_key",
-      "doe_value",
-      "band_seq"
-    ],
-    "composite_key_separator": "|",
-    "column_types": {
-      "doe_key": "string",
-      "ref_table": "string",
-      "map_key": "string",
-      "doe_value": "string",
-      "band_seq": "number",
-      "stack_band": "string",
-      "qty_total": "number",
-      "knobs": "string",
-      "note": "string",
-      "updated_by": "string",
-      "eventtime": "string"
-    },
-    "display_columns": [
-      "doe_key",
-      "ref_table",
-      "map_key",
-      "doe_value",
-      "band_seq",
-      "stack_band",
-      "qty_total",
-      "knobs",
-      "note",
-      "updated_by",
-      "eventtime"
-    ],
-    "map_key_columns": [
-      "ref_table",
-      "map_key"
-    ]
-  },
-  "map_doe_source": {
-    "__comment": "[DEPRECATED 2026-07-27 — M2.6] Nothing writes this table any more: materials moved into map_split_registry.bands[].materials as raw ID strings. Same terms as map_doe - readable for a hand migration, DROP TABLE needs the operator's approval, no new consumers. === historical description below === [제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] DOE 구간에 투입되는 자재(소스 웨이퍼) 묶음. 한 구간에 여러 매가 붙으므로(pool) bk에 소스 차원이 더해진다: ref_table|map_key|doe_value|band_seq|source_lot|source_slot. 매별 소요는 구간 총량(map_doe.qty_total)의 균등 배분이며 qty가 명시되면 그것이 우선한다. transfer_plan_config.json의 plan_store.doe_source 바인딩이 이 테이블을 가리킨다. updated_by·eventtime은 map_doe와 동일하게 클라이언트가 저장 시 함께 쓰는 감사 컬럼이다 — 선언에서 빼면 조용히 버려진다. | map_key_columns = (ref_table, map_key): same scope as map_doe. The material pool of a plan is saved as one complete set, so dropping the last material of a band has to be expressible as a write.",
-    "business_key": "source_key",
-    "composite_key_source": [
-      "ref_table",
-      "map_key",
-      "doe_value",
-      "band_seq",
-      "source_lot",
-      "source_slot"
-    ],
-    "composite_key_separator": "|",
-    "column_types": {
-      "source_key": "string",
-      "ref_table": "string",
-      "map_key": "string",
-      "doe_value": "string",
-      "band_seq": "number",
-      "source_lot": "string",
-      "source_slot": "string",
-      "qty": "number",
-      "note": "string",
-      "updated_by": "string",
-      "eventtime": "string"
-    },
-    "display_columns": [
-      "source_key",
-      "ref_table",
-      "map_key",
-      "doe_value",
-      "band_seq",
-      "source_lot",
-      "source_slot",
-      "qty",
-      "note",
-      "updated_by",
-      "eventtime"
-    ],
-    "map_key_columns": [
-      "ref_table",
-      "map_key"
     ]
   }
 }

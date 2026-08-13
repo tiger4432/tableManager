@@ -2,7 +2,9 @@
 
 > **Status:** 🟢 Living | **Last-verified:** 2026-08-13
 >
-> **이번 라운드 (2026-08-13 2차)**: **§6-8의 배너 읽는 법에 `SELF-HEALING` 계급이 늘었다**(`eb700e5`) — config로 선언한 **동적 테이블**의 컬럼은 서버 프로세스 기동이 **스스로 추가**하고 이 점검은 그보다 **먼저** 돌 뿐이다. 🔴 **「할 일 없음」이고 마이그레이션을 쓰면 안 된다** — 종전에는 이것도 「이 테이블을 쓰는 모든 화면이 실패한다」로 나갔고 제품 소유자가 그 값을 냈다. ⚠️ **다만 «두 번째» 목격은 진짜다**(재기동 뒤에도 남으면 그 `ALTER`가 실패 중). **직전 라운드 (2026-08-13 1차)**: **§6에 마이그레이션 단계 둘이 늘었다** — **8-quater**(`ba664c5` · 인제션 원장 tier-1 열쇠. 안 돌리면 그 테이블이 **읽기부터** 죽는다)와 **8-quinquies**(`8bdc136` · `dt_inventory.dt_lot`/`dt_slot` 물리 타입). 🔴 **둘의 성격이 다르다**: 앞엣것은 **코드가 그 컬럼을 요구해서** 안 돌리면 깨지고, 뒤엣것은 **아무것도 안 깨진 채 선언과 물리가 계속 어긋난다** — 그래서 뒤엣것은 배너가 아니라 `audit_schema_canon.py`가 답한다.
+> **이번 라운드 (2026-08-13 3차)**: **§6에 마이그레이션 단계 둘이 늘었고, 배포 «의존성»이 하나 늘었다.** **8-sexies**(`346aa88` · void 스키마 인덱스 — 🔴 **3단계이지 1단계가 아니다**, 선언 손복사와 리로드가 테이블을 만든 «다음»에만 붙는다. 🔴 `idx_void_obs_area`는 **식 인덱스**이고 **면적 컬럼은 없어야 한다**). **8-septies**(`f896020`+`bee1aeb` · 정준 원장 — **추가 전용·멱등이고 안 돌려도 아무것도 안 깨진다**, 다만 그 상태에서 trace 라우트는 503 + 관계 이름으로 답한다). 🔴 **`environment.yml`에 `tzdata`가 새로 들어왔다** — `Asia/Seoul`은 런타임에 IANA DB에서 해석되고 `UTC`는 그런 적이 없었다. **없으면 폴백하지 않고 예외를 낸다**(조용한 UTC 폴백이 방금 고친 결함의 재현이므로). 🔴 **시간대 판정 «다음»에 원장을 돌려라 — 어긋난 시각도 well-formed해서 어떤 가드도 못 알아챈다.** 그리고 **§1-2에서 `map_doe`·`map_doe_source`가 은퇴했다**(`c0fb735`) — ⚠️ **기존 환경의 gitignore된 `table_config.json`에는 아직 남아 있을 수 있다.** 🔴 §1-2의 제품 소유 **목록**이 세 번째로 낡아, 이번에는 **수도 목록도 적지 않는다**(정본은 `product_tables.py`).
+>
+> **직전 라운드 (2026-08-13 2차)**: **§6-8의 배너 읽는 법에 `SELF-HEALING` 계급이 늘었다**(`eb700e5`) — config로 선언한 **동적 테이블**의 컬럼은 서버 프로세스 기동이 **스스로 추가**하고 이 점검은 그보다 **먼저** 돌 뿐이다. 🔴 **「할 일 없음」이고 마이그레이션을 쓰면 안 된다** — 종전에는 이것도 「이 테이블을 쓰는 모든 화면이 실패한다」로 나갔고 제품 소유자가 그 값을 냈다. ⚠️ **다만 «두 번째» 목격은 진짜다**(재기동 뒤에도 남으면 그 `ALTER`가 실패 중). **직전 라운드 (2026-08-13 1차)**: **§6에 마이그레이션 단계 둘이 늘었다** — **8-quater**(`ba664c5` · 인제션 원장 tier-1 열쇠. 안 돌리면 그 테이블이 **읽기부터** 죽는다)와 **8-quinquies**(`8bdc136` · `dt_inventory.dt_lot`/`dt_slot` 물리 타입). 🔴 **둘의 성격이 다르다**: 앞엣것은 **코드가 그 컬럼을 요구해서** 안 돌리면 깨지고, 뒤엣것은 **아무것도 안 깨진 채 선언과 물리가 계속 어긋난다** — 그래서 뒤엣것은 배너가 아니라 `audit_schema_canon.py`가 답한다.
 >
 > **직전 라운드 (2026-08-11)**: **§6에 8-ter 신설**(`dab9152`+`2630790` — 감사 이력 인덱스 세 종, 없으면 오늘의 성능 수리가 프로덕션에 안 먹는다) + **3단계에 `dt_job` 리네임 경고**(`5b09d69` — 컬럼명을 `table_config.json`에서 바꿔도 `add_dt_log_trigger_indexes.sql`의 인덱스 정의와 `enrichment_rules.json`의 자유 SQL 다섯 곳은 체인 리졸버 밖이라 조용히 안 따라온다. 정본은 [DT_CORE_FRAME_CHAINS_GUIDE §1-bis](./DT_CORE_FRAME_CHAINS_GUIDE.md#1-bis-잡-컬럼-이름-2026-08-11)).
 >
@@ -64,12 +66,12 @@ DATABASE_URL=postgresql://<user>:<pw>@<host>:5432/<db>
 
 이 시스템의 스키마 SSOT다. 여기 선언된 테이블만 존재한다.
 
-- **이미 들어 있는 것(제품 소유 — 그대로 두기)**: `wafer_map_metadata`, `map_split_registry`(전사 계획의 DOE 저장소 — `knobs`·`bands` 컬럼 포함), 그리고 🗄️ `map_doe`·`map_doe_source`(**폐기 2026-07-27 — 아무것도 쓰지 않고 기존 행 읽기용으로만 남아 있다**)
+- **이미 들어 있는 것(제품 소유 — 그대로 두기)**: `wafer_map_metadata`, `map_split_registry`(전사 계획의 DOE 저장소 — `knobs`·`bands` 컬럼 포함), `valid_die_ref`. 🗄️ **[2026-08-13 `c0fb735`] `map_doe`·`map_doe_source`는 은퇴했다** — 선언·설치기 양쪽에서 사라졌다(2026-07-27 폐기 → 제품 소유자가 물리 삭제 승인). ⚠️ **기존 환경의 `table_config.json`에는 아직 남아 있을 수 있고**(이 파일은 gitignore라 배포가 안 덮는다) 남아 있어도 새로 쓰는 코드는 없다. 물리 `DROP`은 [process/OPERATOR_RUNBOOK §5](../process/OPERATOR_RUNBOOK.md).
 - **내가 추가할 것(현장 소유)**: 우리 공장 로그·맵 테이블 전부. 아래 §2의 기능별 표 참조.
 
 각 테이블에 필요한 것: 컬럼 정의(`column_types`), **비즈니스 키**(`business_key`), 복합키면 `composite_key_source` + `composite_key_separator`.
 
-> ⚠️ **구분자 함정**: 맵 키는 `_`가 흔하고 테이블명에도 `_`가 있다. 복합키 구분자로 `_`를 쓰면 파싱이 깨진다. 제품 소유 테이블은 `|`를 쓴다 — 새로 만들 때도 `|` 권장. 🔴 **[2026-08-06 정정] 종전 이 자리는 「제품 소유 *3종*」이었고 바로 아래 §는 「*4종*」이라 적어, 같은 파일이 같은 집합에 두 수를 적고 있었다. 둘 다 틀렸다** — `server/product_tables.py`의 `PRODUCT_TABLES`는 `wafer_map_metadata` · `map_split_registry` · `valid_die_ref` · 🗄️ `map_doe` · 🗄️ `map_doe_source`(뒤 둘은 폐기)다. **수를 다시 적지 않는다. 정본은 그 파일이다.**
+> ⚠️ **구분자 함정**: 맵 키는 `_`가 흔하고 테이블명에도 `_`가 있다. 복합키 구분자로 `_`를 쓰면 파싱이 깨진다. 제품 소유 테이블은 `|`를 쓴다 — 새로 만들 때도 `|` 권장. 🔴 **[2026-08-06 정정 · 2026-08-13 갱신] 종전 이 자리는 「제품 소유 *3종*」이었고 바로 아래 §는 「*4종*」이라 적어, 같은 파일이 같은 집합에 두 수를 적고 있었다.** 그 뒤 목록을 다섯으로 적었고, `c0fb735`가 그중 둘을 은퇴시켜 **그 목록도 낡았다** — 이것이 세 번째다. **수도 목록도 여기 다시 적지 않는다. 정본은 `server/product_tables.py`의 `PRODUCT_TABLES` 하나다.**
 
 #### 제품 소유 테이블은 **손으로 옮기지 않는다** (2026-07-27 · 2026-08-06 기수 삭제)
 
@@ -565,6 +567,20 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    - **되돌리기**: `..._reverse.sql`. 🔴 **역방향은 대칭이 아니다** — 텍스트→수치는 값을 **바꾼다**(`DT-2601-001`은 수가 아니고 슬롯 `01`은 `1`이 되어 돌아오지 않는다). 그래서 변환 불가값이 하나라도 있으면 **거절하고, 그 거절 자체가 답이다**(그 컬럼은 애초에 수치형일 수 없었다는 뜻). 전부 변환 가능해도 **선행 0은 따로 경고**한다.
    - **확인은 작업한 스크립트가 아니라 검출기로**: `python server/scripts/audit_schema_canon.py`의 `declared_type_disagrees_with_catalogue`가 0이 되는지 본다.
    - ⚠️ **`declared_column_absent_from_catalogue`가 남는 것은 다른 이야기다** — 선언은 있고 컬럼이 없는 상태는 **다음 기동에 스스로 풀린다**(ADD는 동기화가 *하는* 일이다). 풀리지 않는 것은 **타입 불일치**뿐이다.
+8-sexies. **void(보이드) 스키마 — 인덱스는 «테이블이 생긴 다음»이다** (2026-08-13 `346aa88`)
+   ```bash
+   psql "$DATABASE_URL" -f server/migrations/add_void_schema_indexes.sql
+   ```
+   순서 전체(선언 손복사 → 리로드/재기동으로 테이블 생성 → **이 인덱스** → 파서 shim 둘 → SAT 파일)는 [process/OPERATOR_RUNBOOK §4](../process/OPERATOR_RUNBOOK.md)가 정본이다. 🔴 **이 파일은 3단계이지 1단계가 아니다** — 선언이 `server/config/table_config.json`(gitignore)에 손복사되고 리로드가 물리 테이블을 만들기 전까지는 붙일 대상이 없다.
+   - 🔴 **`idx_void_obs_area`는 «식» 인덱스다** — `pi() * radius_x * radius_y`. **면적 컬럼은 없고 앞으로도 없어야 한다**(합불 임계가 레시피 파라미터라 굳힌 판정은 이력을 다시 판정할 수 없게 만든다). 근거는 [architecture/data_model §1.2-bis](../architecture/data_model.md).
+   - 되돌리기: `add_void_schema_indexes_reverse.sql`.
+8-septies. **정준 원장 테이블 — 추가 전용이고 급하지 않다. 단, `tzdata`가 먼저다** (2026-08-13 `f896020`+`bee1aeb`)
+   ```bash
+   conda run -n assy_manager python server/migrations/add_ledger_events.py            # --report 로 상태만 보기
+   ```
+   - **성질**: 추가 전용·멱등. DROP 없음, 기존 것의 ALTER 없음, 기존 행을 건드리는 문장 없음 — **새 테이블 둘**(`ledger_events`·`ledger_translator_cursor`)만 만든다. **안 돌려도 아무것도 안 깨진다**(부팅 시 `server/ledger`를 import하는 프로세스가 없다). 다만 그 상태에서 `GET /api/ledger/trace`는 **503 + 관계 이름**으로 답한다.
+   - 🔴 **`environment.yml`에 `tzdata`가 새로 들어왔다(2026-08-13).** 원장의 세상 시각 선언이 `Asia/Seoul`이고 `zoneinfo.ZoneInfo("Asia/Seoul")`은 **런타임에 IANA DB에서** 해석된다 — 선언이 `UTC`이던 동안에는 CPython이 tzdata 없이 답했으므로 **진짜로 새 의존성**이다. **없으면 폴백하지 않고 예외를 낸다**(조용히 UTC로 떨어지면 방금 고친 「모든 원자가 9시간 어긋나고 아무것도 항의하지 않는」 상태가 그대로 재현된다). 환경 갱신: `conda env update -f environment.yml`.
+   - 🔴 **시간대 판정 «다음»에 돌려라.** 선언이 틀리면 백필된 원자 전부가 어긋나고, **어긋난 시각도 여전히 well-formed한 시각이라 어떤 가드도 알아채지 못한다.** 정정은 재백필이지 제자리 `UPDATE`가 아니다(해결기가 `occurred_at` 내림차순으로 순위를 매기므로 낡은 원자가 **구성상 정정본을 이긴다**).
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
    - ⚠️ 런처와 웹서버가 **각자** 드리프트 배너를 한 번씩 찍습니다(약 14 ms). 8을 건너뛰었어도 기동 로그에 남으니 거기서 읽으십시오.
 

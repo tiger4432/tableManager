@@ -112,21 +112,23 @@
 | | |
 |---|---|
 | **기록** | 2026-08-13 |
-| **목적** | `wafer_map_metadata`에 `(target_table, map_id)` **UNIQUE 인덱스**(SCHEMA_CANON R6) |
-| **왜** | `map_overlay._meta_select`의 `.first()`가 `LIMIT 1`이다. **유니크 인덱스가 양쪽 DB 모두 없어서**, 중복 한 쌍이 있으면 같은 맵이 새로고침마다 **다른 «기하»**를 읽는다 |
+| **목적** | `wafer_map_metadata.business_key_val`에 **UNIQUE 인덱스**(SCHEMA_CANON **R2** — 「`business_key`를 선언했으면 UNIQUE 인덱스가 있어야 한다」) |
+| **⚠️ 정정** | 이 항목은 처음에 **R6**이라 적었다. R6은 「표식은 열쇠가 아니다」로 다른 규칙이다. 그리고 인덱스 대상도 원시 컬럼 쌍이 아니라 **`business_key_val`**이다 — 이 프로젝트의 기존 패턴(`uq_bk_<table>`)이고, `composite_key_source = [target_table, map_id]`이므로 **같은 제약이다.** 총괄 실측 2026-08-13 |
+| **왜** | 🔴 **선언과 물리가 어긋난 R2 위반이다.** `product_tables.py`가 `business_key: "map_pk"`, `composite_key_source: [target_table, map_id]`를 **선언**해 놓았는데, 물리 UNIQUE는 `wafer_map_metadata_pkey`(= `row_id`) **하나뿐**이다. 그래서 `map_overlay._meta_select`의 `.first()`(`LIMIT 1`)가 중복 한 쌍을 만나면 같은 맵이 새로고침마다 **다른 «기하»**를 읽는다 |
 | **지금 상태** | `c36368c`가 읽기에 총순서를 박아 **리더는 결정적**으로 만들었다. 🔴 **그런데 그 대가로 이제 중복을 «조용히 가린다»** — 예전엔 값이 흔들려서 티가 났다 |
-| **방법** | **아직 마이그레이션 파일이 없다.** 만들기 전에 운영에 중복이 있는지부터 세야 한다: <br>`SELECT target_table, map_id, count(*) FROM wafer_map_metadata GROUP BY 1,2 HAVING count(*) > 1;` <br>0이면 인덱스를 그냥 붙이면 되고, 0이 아니면 **어느 행을 남길지가 먼저 판정할 문제**다 |
+| **방법** | **아직 마이그레이션 파일이 없다.** 만들기 전에 운영에 중복이 있는지부터 세야 한다: <br>`SELECT business_key_val, count(*) FROM wafer_map_metadata WHERE business_key_val IS NOT NULL GROUP BY 1 HAVING count(*) > 1;` <br>0이면 `CREATE UNIQUE INDEX uq_bk_wafer_map_metadata ON wafer_map_metadata (business_key_val);`를 붙이면 되고, 0이 아니면 **어느 행을 남길지가 먼저 판정할 문제**다 |
 
 ---
 
-## 8. ⏳ 진행 중 — 원장 시각대
+## 8. ✅ 완료 — 원장 시각대 (2026-08-13, `bee1aeb`)
 
 | | |
 |---|---|
 | **기록** | 2026-08-13 |
 | **판정** | **현지시간 `Asia/Seoul`**, 형식은 가운데 `T`가 낀 ISO 8601(`2026-08-13T13:45:00`) — 제품 소유자 |
-| **상태** | 레인 작업 중. 착지 전엔 6번을 운영에 돌리지 않는 편이 낫다 |
-| **위험** | 틀리면 **모든 원자가 9시간 어긋나고 아무것도 항의하지 않는다** |
+| **상태** | ✅ **착지 `bee1aeb`.** 6번(원장 테이블)을 이제 운영에 돌려도 된다 — 이 항목이 걸어 둔 대기가 풀렸다 |
+| **위험** | 틀리면 **모든 원자가 9시간 어긋나고 아무것도 항의하지 않는다.** 그래서 못 읽는 시각은 추측 대신 거절하고, 오프셋을 달고 온 문자열엔 선언 시간대를 다시 먹이지 않는다 |
+| **🔴 배포 의존성이 «생겼다»** | `Asia/Seoul`은 IANA tzdata를 런타임에 찾는다 — `UTC`는 안 찾았다. **`environment.yml`에 `tzdata`를 넣었으니 운영 환경도 재생성해야 한다.** 없으면 조용히 UTC로 떨어지지 않고 **예외를 낸다**(일부러 그렇게 뒀다 — 조용한 폴백은 방금 고친 결함을 그대로 재현한다) |
 
 ---
 
