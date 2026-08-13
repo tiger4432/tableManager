@@ -284,3 +284,207 @@ export function summarize(trace) {
   out.lots = lots.size;
   return out;
 }
+
+// ── what can be asked at all, and WHICH nothing this is ──────
+//
+// 🔴 THE ROUND THIS SECTION EXISTS FOR. The product owner ran the screen against
+// a database with no `ledger_events` table and got a blank. Correct, and useless:
+// FOUR unrelated situations painted the same nothing, and an operator could not
+// tell a deployment problem from a data boundary.
+//
+//   absent   the table was never migrated onto this box  -> a DEPLOYMENT fact
+//   empty    the table is there, the backfill never ran  -> an OPERATIONS fact
+//   unknown  the lot is not in the ledger                -> a DATA boundary
+//   no line. the lot IS registered, nobody claimed a parent -> a CONTENT fact
+//
+// 🔴 AND TWO OF THEM ARE INDISTINGUISHABLE FROM THE TRACE ALONE. With zero atoms
+// `ledger_trace.py`'s walk finds `cur_lot not in lots_with_atoms` for EVERY lot,
+// so an empty ledger answers `[unknown_subject] … 원장에 원자 0` — byte for byte
+// the answer a genuinely unknown lot gets on a full ledger. The only thing that
+// separates them is `GET /api/ledger/coverage`'s `state`. That is why the state
+// is an ARGUMENT here and not something this file tries to infer.
+//
+// 🔴 AND IT IS INFERRED FROM THE `state` AND THE `[tag]` PREFIX, NEVER FROM THE
+// PROSE. The last round measured what prose-reading costs: `reason.includes(
+// 'convention:')` INVERTS the assumption/measurement distinction because the
+// losers' labels are in the same sentence. The same trap is live here — the
+// unknown-subject sentence and the root sentence both talk about atoms being
+// absent — so section K scores that a changed sentence under an unchanged tag
+// cannot change the verdict.
+
+//: The pinned `state` values of `GET /api/ledger/coverage`.
+const COVERAGE_STATES = new Set(['absent', 'empty', 'ready']);
+
+/**
+ * The wire's `state`, or 'unknown'.
+ *
+ * 🔴 An unrecognised state degrades to 'unknown', NEVER to 'ready' — the same
+ * rule as `hopVerdict`'s default branch, for the same reason. 'ready' is the one
+ * value that makes the screen say "ask me anything"; a wire that grows a fourth
+ * state, or a server too old to carry this route at all, must not be able to
+ * claim it.
+ */
+export function coverageState(coverage) {
+  const s = coverage && coverage.state ? String(coverage.state) : '';
+  return COVERAGE_STATES.has(s) ? s : 'unknown';
+}
+
+/**
+ * The empty state as words: what this ledger can answer, or why it cannot.
+ *
+ * 'unknown' falls back to the hint this screen shipped with, which is what a
+ * server without the coverage route gets. Degrading to the old screen is the
+ * only honest answer there — the alternative is a claim about a box we did not
+ * measure.
+ */
+export function coverageVerdict(coverage) {
+  const state = coverageState(coverage);
+  if (state === 'absent') {
+    return {
+      state, tone: 'error',
+      title: '원장이 이 DB에 설치되지 않았습니다',
+      detail: '마이그레이션 미실행 · 런북 6항',
+    };
+  }
+  if (state === 'empty') {
+    return {
+      state, tone: 'gap',
+      title: '원장이 비어 있습니다 — 백필 미실행',
+      detail: '테이블 있음 · 원자 0건',
+    };
+  }
+  if (state === 'ready') {
+    return { state, tone: 'ok', title: '무엇을 물을 수 있나', detail: null };
+  }
+  return {
+    state, tone: 'idle',
+    title: '랏을 입력하세요',
+    detail: '랏만 넣으면 랏 사슬만, 「랏/슬롯」이면 그 자리의 웨이퍼까지.',
+  };
+}
+
+/**
+ * A refusal body, read as `{state, text}`.
+ *
+ * `detail` is what FastAPI wrapped: `HTTPException(detail=...)` arrives as
+ * `{"detail": ...}`. Since the server lane's ruling R-2026-08-13-C the
+ * absent-relation 503 carries a STRUCTURED detail —
+ *
+ *   {reason: "ledger_relation_absent", state: "absent", relation: "…",
+ *    message: "원장 테이블 … 없음 — 마이그레이션 미실행 (…)"}
+ *
+ * 🔴 AND `state` IS THE SAME WORD `GET /coverage` USES, which the route says in
+ * its own docstring. So the screen branches on `state` and never on `message`:
+ * the message is prose for a human and the server lane may reword it whenever it
+ * likes. It goes out as `text` to be printed verbatim — a diagnosis that hides
+ * what the server said cannot be checked against the server.
+ *
+ * An older server sends a bare string; then `state` is 'unknown' and the caller
+ * falls back to the coverage it already fetched.
+ */
+export function refusalReading(detail, status) {
+  if (detail && typeof detail === 'object') {
+    const message = typeof detail.message === 'string' && detail.message !== ''
+      ? detail.message : JSON.stringify(detail);
+    return { state: coverageState(detail), text: message };
+  }
+  if (typeof detail === 'string' && detail !== '') return { state: 'unknown', text: detail };
+  return { state: 'unknown', text: `HTTP ${status == null ? '?' : status}` };
+}
+
+/**
+ * The coverage numbers, each one NULL when the wire did not carry it.
+ *
+ * 🔴 A missing count renders as nothing, never as 0. "0 lots" is a measurement
+ * ("the backfill has not run") and an absent field is not one; printing the
+ * second as the first is how a screen states a fact nobody established.
+ */
+export function coverageFacts(coverage) {
+  const lots = Number(coverage && coverage.lots);
+  const sources = coverage && Array.isArray(coverage.sources)
+    ? coverage.sources.filter((s) => s != null && String(s) !== '').map(String)
+    : [];
+  const range = coverage && coverage.occurred_at && typeof coverage.occurred_at === 'object'
+    ? coverage.occurred_at : {};
+  return {
+    lots: Number.isFinite(lots) ? lots : null,
+    sources,
+    from: range.from ? instantText(range.from) : null,
+    to: range.to ? instantText(range.to) : null,
+  };
+}
+
+/**
+ * The sample lots, as the links they already are.
+ *
+ * The answer to this screen's question IS a URL (`?lot=…&slot=…`), so a sample
+ * needs no control and no handler — it is the same link a trace gets pasted into
+ * a message as. `query` is built by `traceQuery`, the one place the query string
+ * is spelled, so a sample cannot drift from what Enter sends.
+ */
+export function coverageSamples(coverage) {
+  const list = coverage && Array.isArray(coverage.sample) ? coverage.sample : [];
+  const out = [];
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue;
+    const lot = entry.lot == null ? '' : String(entry.lot);
+    if (!lot) continue;
+    const slot = entry.slot == null || String(entry.slot) === '' ? null : String(entry.slot);
+    out.push({ lot, slot, text: queryText({ lot, slot }), query: traceQuery({ lot, slot }) });
+  }
+  return out;
+}
+
+/** Did the walk actually MOVE — did any hop resolve a parent lot? */
+function hasLineageStep(trace) {
+  const hops = trace && Array.isArray(trace.hops) ? trace.hops : [];
+  return hops.some((h) => h && h.predicate === 'derived_from' && h.state === 'resolved');
+}
+
+/**
+ * WHICH of the four nothings this is, or null when the answer is a real chain.
+ *
+ * `ledgerState` is `coverageState(...)` — the DEPLOYMENT facts outrank anything
+ * the walk can say, because on an absent or empty ledger the walk's sentence is
+ * true and misleading at the same time ("원장에 원자 0" is about the lot when the
+ * ledger is full, and about the ledger when it is not).
+ *
+ * `title: null` on `unknown_lot` is deliberate and not a stub: the gap hop and
+ * the terminal block ALREADY say that lot is not in the ledger, and a headline
+ * repeating it would be a second sentence about the same fact. The kind is still
+ * named so the caller — and the harness — can tell it apart from a real chain.
+ */
+export function nothingVerdict(trace, ledgerState) {
+  const state = ledgerState == null ? 'unknown' : String(ledgerState);
+  if (state === 'absent') {
+    return {
+      kind: 'ledger_absent', tone: 'error',
+      title: '원장이 이 DB에 설치되지 않았습니다',
+      detail: '마이그레이션 미실행 · 런북 6항',
+    };
+  }
+  if (state === 'empty') {
+    return {
+      kind: 'ledger_empty', tone: 'gap',
+      title: '원장이 비어 있습니다 — 백필 미실행',
+      detail: '이 랏이 없는 게 아니라 원장이 비었다 · 원자 0건',
+    };
+  }
+
+  const tag = reasonTag(trace && trace.terminal_reason);
+  if (tag === 'unknown_subject') {
+    return { kind: 'unknown_lot', tone: 'gap', title: null, detail: null };
+  }
+  // `[root]` is a successful ending when the walk got somewhere. On the FIRST
+  // hop it means the opposite of a traversal: the ledger registered this lot and
+  // nobody ever claimed a parent for it. `[dead_end]` keeps its own label (혈통
+  // 미상) — there the register atom is missing too, which is a different fact.
+  if (tag === 'root' && !hasLineageStep(trace)) {
+    return {
+      kind: 'no_lineage_claim', tone: 'gap',
+      title: '등재됐으나 혈통 주장 없음',
+      detail: 'register 있음 · derived_from 원자 0건',
+    };
+  }
+  return null;
+}

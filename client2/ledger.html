@@ -363,6 +363,130 @@
       font-size: 14px;
       color: var(--text-muted);
       word-break: break-word;
+      /* 진단 한 줄 + 서버가 쓴 문장 한 줄. 둘은 다른 사람이 쓴 문장이므로 붙이지 않는다. */
+      white-space: pre-line;
+    }
+
+    /* ── 어떤 「없음」인가 ────────────────────────────────────
+       🔴 이 화면이 이번 라운드에 존재하는 이유. 원장 미설치 · 백필 미실행 ·
+          없는 랏 · 혈통 주장 없음 — 넷이 같은 빈 화면으로 보였다. 답 위에
+          놓는 것은 아래 사슬의 「의미」를 바꾸기 때문이다. */
+    .lt-nothing {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-left: 6px solid var(--info);
+    }
+    .lt-nothing--error { border-left-color: var(--danger); }
+    .lt-nothing--gap { border-left-color: var(--info); }
+
+    /* 🔴 홉 뱃지는 13px(메타)지만 이 자리의 뱃지는 메타가 아니라 이 화면 상태의
+       제목이다. 「등재됐으나 혈통 주장 없음」이 아래 서버 문장보다 작으면 읽히는
+       순서가 뒤집힌다 — 가독성 = 기능. */
+    .lt-nothing .lt-badge {
+      font-size: 15px;
+      padding: 5px 12px;
+    }
+
+    .lt-nothing__detail {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+
+    /* ── 질문 전: 무엇을 물을 수 있나 ─────────────────────────
+       새 영역이 아니라 원래 있던 빈 상태의 「내용」이다. 표본은 링크 —
+       이 화면의 답은 원래 URL이므로 조작 장치가 필요 없다. */
+    .lt-coverage {
+      padding: 28px 24px;
+      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-left: 6px solid var(--border-strong);
+      box-shadow: var(--shadow-card);
+    }
+    .lt-coverage--ok { border-left-color: var(--accent); }
+    .lt-coverage--gap { border-left-color: var(--info); }
+    .lt-coverage--error { border-left-color: var(--danger); }
+
+    .lt-coverage__title { font-size: 17px; font-weight: 600; }
+
+    .lt-coverage__detail {
+      margin-top: 8px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+
+    .lt-facts {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 28px;
+    }
+
+    .lt-fact { display: flex; align-items: baseline; gap: 10px; }
+
+    .lt-fact__term {
+      font-size: 14px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .lt-fact__value {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .lt-samples {
+      list-style: none;
+      margin-top: 16px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* 표본 하나가 곧 하나의 질문이다. 작게 쓰지 않는다 — 이걸 누르는 게 이
+       화면의 첫 동작이다. */
+    .lt-samples__link {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 15px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      text-decoration: none;
+      color: var(--accent);
+      background: var(--accent-weak);
+      border: 1px solid transparent;
+      transition: border-color .15s ease, transform .15s ease;
+    }
+    .lt-samples__link:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+    .lt-samples__link:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 4px var(--focus-ring);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .lt-samples__link:hover { transform: none; }
+    }
+
+    .lt-coverage__hint {
+      margin-top: 16px;
+      font-size: 14px;
+      color: var(--text-dim);
     }
   </style>
 </head>

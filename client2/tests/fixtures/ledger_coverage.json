@@ -1,0 +1,57 @@
+{
+ "_what": "GET /api/ledger/coverage. THE SHAPE is the one the lead PM pinned; it is NOT a capture, because the route did not exist in server/ when this was written (server/ledger_trace_router.py carried only /trace).",
+ "_ready_values": "MEASURED, not invented: lots/sources/occurred_at come from read-only SELECTs against assy_qa on 2026-08-13 (25 distinct Lot subjects, one source_who, 2026-05-03..2026-05-21). The sample entries are three lots that exist in that ledger.",
+ "_empty_absent_values": "CONSTRUCTED from the pinned shape. An empty or absent ledger has nothing to measure, and building one would have needed DDL on assy_qa, which this round was not allowed to do.",
+ "ready": {
+  "state": "ready",
+  "lots": 25,
+  "sources": [
+   "lot_event"
+  ],
+  "occurred_at": {
+   "from": "2026-05-03T02:17:00+09:00",
+   "to": "2026-05-21T20:33:00+09:00"
+  },
+  "sample": [
+   {
+    "lot": "CL-2601-006-A1-A7",
+    "slot": "04"
+   },
+   {
+    "lot": "CL-2601-006-A1",
+    "slot": null
+   },
+   {
+    "lot": "CL-2601-005",
+    "slot": null
+   }
+  ]
+ },
+ "empty": {
+  "state": "empty",
+  "lots": 0,
+  "sources": [],
+  "occurred_at": {
+   "from": null,
+   "to": null
+  },
+  "sample": []
+ },
+ "absent": {
+  "state": "absent",
+  "lots": 0,
+  "sources": [],
+  "occurred_at": {
+   "from": null,
+   "to": null
+  },
+  "sample": []
+ },
+ "_refusal_absent": "CAPTURED from the live route on 2026-08-13: client-pm pointed ledger_trace_router.LEDGER_RELATION at a table that does not exist (no DDL, no writes) and GET /api/ledger/trace produced this 503 body. `relation` therefore carries the probe name rather than `ledger_events` — the STRUCTURE is what section J scores.",
+ "refusal_absent": {
+  "reason": "ledger_relation_absent",
+  "state": "absent",
+  "relation": "ledger_events_not_migrated",
+  "message": "원장 테이블 ledger_events_not_migrated 없음 — 마이그레이션 미실행 (server/migrations/add_ledger_events.py)"
+ }
+}

@@ -14,6 +14,7 @@
 import {
   hopVerdict, hopBasis, basisLabel, hopQuestion, hopAnswer, hopAnswerContext,
   nodeText, instantText, summarize, terminalVerdict,
+  coverageVerdict, coverageFacts, coverageSamples,
 } from './ledger_trace_core.js';
 
 function el(doc, tag, className, text) {
@@ -132,11 +133,24 @@ function renderTerminal(doc, trace) {
  * screen that painted "결과 없음" over an all-`unresolvable` answer would be
  * discarding the answer — where the chain breaks, and why, is the product.
  */
-export function renderTrace(doc, mount, trace, subjectText) {
+export function renderTrace(doc, mount, trace, subjectText, nothing) {
   clear(mount);
   const wrap = el(doc, 'section', 'lt-answer');
   wrap.setAttribute('data-answer-kind', 'trace');
   wrap.appendChild(renderSummary(doc, trace, subjectText));
+
+  // WHICH nothing this is, when it is one — above the chain, because it changes
+  // what the chain below MEANS. On an empty ledger every hop reads "원장에 원자
+  // 0" and that sentence is about the ledger, not about the lot; without this
+  // line the operator reads a deployment state as a data boundary. `title: null`
+  // (the unknown-lot case) renders nothing: the hops already say it.
+  if (nothing && nothing.title) {
+    const box = el(doc, 'div', `lt-nothing lt-nothing--${nothing.tone || 'gap'}`);
+    box.setAttribute('data-nothing', String(nothing.kind || ''));
+    box.appendChild(el(doc, 'span', `lt-badge lt-badge--${nothing.tone || 'gap'}`, nothing.title));
+    if (nothing.detail) box.appendChild(el(doc, 'p', 'lt-nothing__detail', nothing.detail));
+    wrap.appendChild(box);
+  }
 
   const chain = el(doc, 'ol', 'lt-chain');
   const hops = trace && Array.isArray(trace.hops) ? trace.hops : [];
@@ -161,6 +175,70 @@ export function renderTrace(doc, mount, trace, subjectText) {
  * here reads exactly like a real answer and cannot be traced back to what the
  * server actually said.
  */
+/**
+ * The empty state — the screen BEFORE a question, answering "what can I ask".
+ *
+ * 🔴 IT IS CONTENT IN THE STATE THAT WAS ALREADY THERE, NOT A PANEL. This mount
+ * held a one-line hint; it now holds the hint plus the coverage the hint was
+ * missing. No new region, no mode, no control: the samples are ANCHORS, because
+ * this screen's answer is a URL, so a sample is the answer already written down.
+ *
+ * On `absent` / `empty` it is the whole message — there is nothing to sample and
+ * the reason there is nothing is the thing the operator needs.
+ */
+export function renderCoverage(doc, mount, coverage) {
+  clear(mount);
+  const verdict = coverageVerdict(coverage);
+  const wrap = el(doc, 'section', `lt-coverage lt-coverage--${verdict.tone}`);
+  wrap.setAttribute('data-answer-kind', 'coverage');
+  wrap.setAttribute('data-coverage-state', verdict.state);
+
+  wrap.appendChild(el(doc, 'div', 'lt-coverage__title', verdict.title));
+  if (verdict.detail) wrap.appendChild(el(doc, 'p', 'lt-coverage__detail', verdict.detail));
+
+  if (verdict.state === 'ready') {
+    const facts = coverageFacts(coverage);
+    const list = el(doc, 'dl', 'lt-facts');
+    const fact = (key, term, text) => {
+      const row = el(doc, 'div', 'lt-fact');
+      row.setAttribute('data-fact', key);
+      row.appendChild(el(doc, 'dt', 'lt-fact__term', term));
+      row.appendChild(el(doc, 'dd', 'lt-fact__value', text));
+      list.appendChild(row);
+    };
+    // Each fact appears only if the wire carried it. An omitted row says "not
+    // reported"; a row reading 0 or "—" would say "measured, and it is nothing".
+    if (facts.lots !== null) fact('lots', '추적 가능한 랏', `${facts.lots}`);
+    if (facts.sources.length) fact('sources', '출처', facts.sources.join(' · '));
+    if (facts.from && facts.to) fact('range', '기간', `${facts.from} ~ ${facts.to}`);
+    else if (facts.from) fact('range', '기간', `${facts.from} ~`);
+    if (list.children.length) wrap.appendChild(list);
+
+    const samples = coverageSamples(coverage);
+    if (samples.length) {
+      const ul = el(doc, 'ul', 'lt-samples');
+      for (const s of samples) {
+        const li = el(doc, 'li', 'lt-samples__item');
+        const a = el(doc, 'a', 'lt-samples__link', s.text);
+        // A real href, not a click handler: middle-click, copy-link and the
+        // back button all work, and the page needs no state to serve it.
+        a.setAttribute('href', `?${s.query}`);
+        a.setAttribute('data-sample-lot', s.lot);
+        if (s.slot !== null) a.setAttribute('data-sample-slot', s.slot);
+        li.appendChild(a);
+        ul.appendChild(li);
+      }
+      wrap.appendChild(ul);
+    }
+
+    wrap.appendChild(el(doc, 'p', 'lt-coverage__hint',
+      '랏만 넣으면 랏 사슬만, 「랏/슬롯」이면 그 자리의 웨이퍼까지.'));
+  }
+
+  mount.appendChild(wrap);
+  return wrap;
+}
+
 export function renderNotice(doc, mount, { tone, title, detail }) {
   clear(mount);
   const box = el(doc, 'div', `lt-notice lt-notice--${tone || 'idle'}`);

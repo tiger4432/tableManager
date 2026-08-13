@@ -18,6 +18,27 @@
 //
 //   P3  CANDIDATE MEANS SOMETHING DISAGREED, and the count is part of the statement.
 //
+//   P4  🔴 FOUR DIFFERENT NOTHINGS MUST READ AS FOUR DIFFERENT SENTENCES, AND THIS ONE IS A
+//       MEASURED PRODUCT FAILURE, not a precaution. The product owner ran the shipped screen
+//       against a database with no `ledger_events` table, got a blank, and said the boundary of
+//       what can and cannot be found is too vague. Four unrelated situations painted that same
+//       blank: the table was never migrated (DEPLOYMENT), the table is there and the backfill
+//       never ran (OPERATIONS), the lot is not in the ledger (DATA BOUNDARY), and the lot is
+//       registered with nobody claiming a parent (CONTENT).
+//
+//       🔴 TWO OF THEM ARE INDISTINGUISHABLE FROM THE TRACE ALONE, and `fixtures/
+//       ledger_trace_nothings.json::unknown_lot` is the proof rather than the argument: with
+//       zero atoms `ledger_trace.py`'s walk takes `cur_lot not in lots_with_atoms` for EVERY
+//       lot, so an empty ledger answers `[unknown_subject] … 원장에 원자 0` — the same answer a
+//       genuinely unknown lot gets on a full one. K5 and M3 score the SAME trace object under
+//       two ledger states and demand two different screens. Only `GET /api/ledger/coverage`'s
+//       `state` can separate them, which is why it is an argument and never an inference.
+//
+//       AND A REAL CHAIN IS NOT A NOTHING. `three_gen` walks three generations and ALSO
+//       terminates `[root]`, so a rule keyed on the terminal tag alone calls a working answer
+//       "혈통 주장 없음". K6/M5 pin it; mutant `no-lineage-claimed-on-a-real-root` proves they
+//       can fail.
+//
 // 🔴 THE TRAP THAT MOTIVATES HALF THIS FILE, AND IT IS NOT HYPOTHETICAL — IT IS IN THE
 //    FIXTURES. `_with_basis` APPENDS the WINNING claim's basis to the reason, but a `candidate`
 //    reason also names the LOSERS' bases inline:
@@ -59,6 +80,14 @@ const PAGE_PATH = join(HERE, '..', 'ledger.html');
 const VITE_PATH = join(HERE, '..', 'vite.config.js');
 const LIVE_PATH = join(HERE, 'fixtures', 'ledger_trace_live.json');
 const PROBE_PATH = join(HERE, 'fixtures', 'ledger_trace_probe.json');
+// P4's two fixtures. `ledger_trace_nothings.json` is REAL server output (`ledger_trace.trace()`
+// called against isolated `assy_qa` over a read-only connection). `ledger_coverage.json` is the
+// shape the lead PM pinned with its `ready` numbers MEASURED off that same ledger — it is not a
+// capture, and says so in its own `_what`, because the route did not exist in `server/` when
+// this was written. Section J scores the reading of that shape; if the shipped route differs,
+// J goes red rather than the screen going quietly wrong.
+const NOTHINGS_PATH = join(HERE, 'fixtures', 'ledger_trace_nothings.json');
+const COVERAGE_PATH = join(HERE, 'fixtures', 'ledger_coverage.json');
 
 const die = (msg) => {
   console.error(`HARNESS FAILURE: ${msg}`);
@@ -66,7 +95,8 @@ const die = (msg) => {
   process.exit(2);
 };
 
-for (const p of [CORE_PATH, VIEW_PATH, ENTRY_PATH, PAGE_PATH, VITE_PATH, LIVE_PATH, PROBE_PATH]) {
+for (const p of [CORE_PATH, VIEW_PATH, ENTRY_PATH, PAGE_PATH, VITE_PATH, LIVE_PATH, PROBE_PATH,
+                 NOTHINGS_PATH, COVERAGE_PATH]) {
   if (!existsSync(p)) die(`missing ${p}`);
 }
 
@@ -77,6 +107,8 @@ const PAGE_SRC = readFileSync(PAGE_PATH, 'utf8');
 const VITE_SRC = readFileSync(VITE_PATH, 'utf8');
 const LIVE = JSON.parse(readFileSync(LIVE_PATH, 'utf8'));
 const PROBE = JSON.parse(readFileSync(PROBE_PATH, 'utf8'));
+const NOTHINGS = JSON.parse(readFileSync(NOTHINGS_PATH, 'utf8'));
+const COVERAGE = JSON.parse(readFileSync(COVERAGE_PATH, 'utf8'));
 
 // The fixtures are load-bearing. A capture that stopped carrying the states this file scores
 // would make every section below pass vacuously, so their SHAPE is asserted before anything
@@ -96,6 +128,42 @@ const PROBE = JSON.parse(readFileSync(PROBE_PATH, 'utf8'));
   if (!(h4.includes('convention:') && !/(convention:|basis=)[^\s·()]+$/.test(h4))) {
     die('probe hop 4 is no longer "winner has NO basis, loser is a convention" — '
       + 'the anchored-suffix trap is not in the fixture and section C would pass vacuously');
+  }
+
+  // ── P4's fixtures, same rule ──────────────────────────────────────────────────────
+  // 🔴 THE PAIRING IS THE FIXTURE. `root_only` and `three_gen` must BOTH terminate `[root]`,
+  // and only one of them may have walked anywhere. If that stops being true, K6/M5 stop
+  // scoring the discrimination and start agreeing with a defect for free.
+  const term = (t) => String((t && t.terminal_reason) || '');
+  if (!term(NOTHINGS.root_only).startsWith('[root]')) {
+    die('nothings fixture: `root_only` no longer terminates `[root]`');
+  }
+  if (!term(NOTHINGS.three_gen).startsWith('[root]')) {
+    die('nothings fixture: `three_gen` no longer terminates `[root]` — it is here precisely '
+      + 'because a REAL chain shares that tag with a lot nobody claimed a parent for');
+  }
+  if (NOTHINGS.root_only.hops.some((h) => h.predicate === 'derived_from' && h.state === 'resolved')) {
+    die('nothings fixture: `root_only` resolved a parent — it is supposed to have none');
+  }
+  if (!NOTHINGS.three_gen.hops.some((h) => h.predicate === 'derived_from' && h.state === 'resolved')) {
+    die('nothings fixture: `three_gen` resolved no parent — it is no longer a chain');
+  }
+  if (!term(NOTHINGS.unknown_lot).startsWith('[unknown_subject]')) {
+    die('nothings fixture: `unknown_lot` no longer terminates `[unknown_subject]`');
+  }
+  // 🔴 AND THE ONE-HOP ANSWERS MUST BE THE SAME SHAPE. That identity is the defect: on an
+  // empty ledger EVERY lot answers exactly like this. K5/M3 are about telling them apart
+  // from OUTSIDE the trace, so the trace must genuinely be unable to.
+  if (NOTHINGS.unknown_lot.hops.length !== 1) {
+    die(`nothings fixture: \`unknown_lot\` has ${NOTHINGS.unknown_lot.hops.length} hops, expected 1`);
+  }
+  for (const state of ['ready', 'empty', 'absent']) {
+    if (!COVERAGE[state] || COVERAGE[state].state !== state) {
+      die(`coverage fixture has no \`${state}\` body carrying state="${state}"`);
+    }
+  }
+  if (!(COVERAGE.ready.sample || []).length) {
+    die('coverage fixture `ready` carries no sample — section L would score an empty list');
   }
 }
 
@@ -495,6 +563,274 @@ async function suite(coreSource, viewSource) {
       first(byClass(mount5, 'lt-notice')).getAttribute('data-answer-kind'), 'notice');
   }
 
+  // ── J. reading the coverage answer — "what can I ask" ─────────────────────────────
+  {
+    const cs = core.coverageState;
+    eq('J1 ready', cs(COVERAGE.ready), 'ready');
+    eq('J2 empty', cs(COVERAGE.empty), 'empty');
+    eq('J3 absent', cs(COVERAGE.absent), 'absent');
+    // 🔴 Same rule as `hopVerdict`'s default branch, for the same reason: 'ready' is the one
+    // value that makes the screen say "ask me anything". A wire that grows a fourth state — or
+    // a server too old to carry this route — must not be able to claim it.
+    eq('J4 an unknown state degrades', cs({ state: 'brand_new' }), 'unknown');
+    eq('J5 no body degrades', cs(null), 'unknown');
+    eq('J6 a body with no state degrades', cs({ lots: 25 }), 'unknown');
+
+    const ready = core.coverageVerdict(COVERAGE.ready);
+    const absent = core.coverageVerdict(COVERAGE.absent);
+    const empty = core.coverageVerdict(COVERAGE.empty);
+    eq('J7 ready asks the operator for a question', ready.title, '무엇을 물을 수 있나');
+    eq('J8 absent names the deployment', absent.title, '원장이 이 DB에 설치되지 않았습니다');
+    eq('J8b and points at the runbook', absent.detail, '마이그레이션 미실행 · 런북 6항');
+    eq('J9 empty names the backfill', empty.title, '원장이 비어 있습니다 — 백필 미실행');
+    // 🔴 THE PRODUCT COMPLAINT, AS ONE ASSERTION. On the shipped screen these three were the
+    // same blank. If any two of them read alike here, this round did nothing.
+    ok('J10 the three states say three different things',
+      new Set([ready.title, absent.title, empty.title]).size === 3,
+      `${ready.title} | ${absent.title} | ${empty.title}`);
+    const unknown = core.coverageVerdict(null);
+    eq('J11 an unreachable coverage falls back to the old hint', unknown.title, '랏을 입력하세요');
+    // It must not diagnose a box it never reached. 'idle' is the tone that claims nothing.
+    eq('J11b and claims nothing about the ledger', unknown.tone, 'idle');
+
+    const facts = core.coverageFacts(COVERAGE.ready);
+    eq('J12 the lot count', facts.lots, 25);
+    eq('J13 the sources', facts.sources.join(','), 'lot_event');
+    // The declared zone survives here exactly as it does in a hop (section E).
+    eq('J14 the range keeps its offset', facts.from, '2026-05-03 02:17:00+09:00');
+    eq('J14b both ends', facts.to, '2026-05-21 20:33:00+09:00');
+    // 🔴 A COUNT NOBODY SENT IS NOT A MEASURED ZERO. "0 lots" means the backfill has not run;
+    // an absent field means nothing was reported, and printing the second as the first states
+    // a fact nobody established.
+    eq('J15 an absent count is null', core.coverageFacts({ state: 'ready' }).lots, null);
+    eq('J15b a real zero survives', core.coverageFacts({ lots: 0 }).lots, 0);
+    eq('J16 no sources is an empty list', core.coverageFacts(null).sources.length, 0);
+    eq('J16b junk in the source list is dropped',
+      core.coverageFacts({ sources: ['a', null, ''] }).sources.join(','), 'a');
+    eq('J17 no range', core.coverageFacts(null).from, null);
+
+    const samples = core.coverageSamples(COVERAGE.ready);
+    eq('J18 every sample survives', samples.length, COVERAGE.ready.sample.length);
+    // A sample IS the question, spelled by the same two functions Enter uses — so a sample
+    // cannot drift from what the one input box sends.
+    eq('J19 a sample with a slot reads as it would be typed', samples[0].text, 'CL-2601-006-A1-A7/04');
+    eq('J19b and its query carries the slot', samples[0].query, 'lot=CL-2601-006-A1-A7&slot=04');
+    eq('J20 a bare lot keeps no slot', samples[1].query, 'lot=CL-2601-006-A1');
+    eq('J20b nor in its text', samples[1].text, 'CL-2601-006-A1');
+    eq('J21 malformed entries are dropped, not rendered as blanks',
+      core.coverageSamples({ sample: [null, {}, { lot: '' }, { lot: 'X' }] }).length, 1);
+    eq('J22 no sample list at all', core.coverageSamples(null).length, 0);
+
+    // ── the refusal, read structurally ──────────────────────────────────────────────
+    // `COVERAGE.refusal_absent` is the real 503 body, captured off the live route.
+    const rr = core.refusalReading;
+    const absentRefusal = rr(COVERAGE.refusal_absent, 503);
+    eq('J23 the refusal carries its own state', absentRefusal.state, 'absent');
+    // 🔴 AND THE OPERATOR GETS THE SENTENCE, NOT THE BLOB. `message` is written for a human;
+    // dumping the whole JSON is how a refusal becomes unreadable at the moment it matters.
+    eq('J23b and the server sentence is what is shown',
+      absentRefusal.text, COVERAGE.refusal_absent.message);
+    ok('J23c not the JSON blob', !absentRefusal.text.startsWith('{'), absentRefusal.text);
+    // 🔴 J24 IS THE PROHIBITION THE BRIEF SPELLED OUT. The state comes from the STRUCTURED
+    // field; a reading that infers it from the sentence says "absent" about a box that told it
+    // "ready". `message` is prose the server lane may reword at any time.
+    eq('J24 the sentence does not decide the state',
+      rr({ state: 'ready', message: '원장 테이블 ledger_events 없음' }, 503).state, 'ready');
+    eq('J25 an older server sends a bare string', rr('해결기 config 거절: x', 503).state, 'unknown');
+    eq('J25b and it is shown verbatim', rr('해결기 config 거절: x', 503).text, '해결기 config 거절: x');
+    eq('J26 an object with no state degrades', rr({ message: 'x' }, 503).state, 'unknown');
+    eq('J26b an unrecognised state degrades', rr({ state: 'brand_new' }, 503).state, 'unknown');
+    eq('J27 an object with no message still shows something', rr({ state: 'absent' }, 503).text,
+      '{"state":"absent"}');
+    eq('J28 no detail at all falls back to the status', rr(null, 503).text, 'HTTP 503');
+    eq('J28b and claims no state', rr(null, 503).state, 'unknown');
+  }
+
+  // ── K. WHICH nothing — P4 ─────────────────────────────────────────────────────────
+  {
+    const nv = core.nothingVerdict;
+    // 🔴 TOLERANT, FOR THE SAME REASON AS `first`/`at` ABOVE, AND IT IS MEASURED. Several of
+    // the mutants below make `nothingVerdict` return NULL where a verdict is due, so a bare
+    // `nv(...).kind` throws — and a throw aborts the whole suite, scoring the mutant "caught"
+    // by an exception while the assertions that were supposed to name it never run. Both
+    // `nothing-ignores-the-ledger-state` and `lineage-step-counts-any-hop` did exactly that on
+    // the first run of this section. With these, each one fails the assertion that NAMES it.
+    const kindOf = (v) => (v && v.kind !== undefined ? v.kind : '(no verdict)');
+    const titleOf = (v) => (v && v.title !== undefined ? v.title : '(no verdict)');
+
+    eq('K1 absent is a deployment fact', kindOf(nv(null, 'absent')), 'ledger_absent');
+    eq('K1b in the words the operator needs',
+      titleOf(nv(null, 'absent')), '원장이 이 DB에 설치되지 않았습니다');
+    eq('K2 empty is an operations fact',
+      kindOf(nv(NOTHINGS.unknown_lot, 'empty')), 'ledger_empty');
+    eq('K2b in its own words',
+      titleOf(nv(NOTHINGS.unknown_lot, 'empty')), '원장이 비어 있습니다 — 백필 미실행');
+
+    const unk = nv(NOTHINGS.unknown_lot, 'ready');
+    eq('K3 an unknown lot is a data boundary', kindOf(unk), 'unknown_lot');
+    // 🔴 NAMED, AND DELIBERATELY SILENT. The gap hop and the terminal block already say this
+    // lot is not in the ledger; a headline repeating it is a second sentence about one fact,
+    // which is what "UI 단순성" costs when nobody counts it.
+    eq('K3b and adds no second sentence', titleOf(unk), null);
+
+    const root = nv(NOTHINGS.root_only, 'ready');
+    eq('K4 a registered lot with no parent claim', kindOf(root), 'no_lineage_claim');
+    eq('K4b says so', titleOf(root), '등재됐으나 혈통 주장 없음');
+
+    // 🔴 K5 IS THE MEASURED DEFECT. The SAME trace object. On a ready ledger it means "that lot
+    // is not here"; on an empty one it means "nothing is here, the backfill never ran". The
+    // shipped screen could not tell an operator which, and that is the report this round answers.
+    ok('K5 one trace, two ledgers, two answers',
+      kindOf(nv(NOTHINGS.unknown_lot, 'ready')) !== kindOf(nv(NOTHINGS.unknown_lot, 'empty')),
+      'an empty ledger and an unknown lot still read the same');
+    // 🔴 K6 IS THE OTHER HALF. `three_gen` walked three generations and ALSO terminates
+    // `[root]`. A rule keyed on the terminal tag alone tells the operator that a working answer
+    // has no lineage — the inversion again, not merely a miss.
+    eq('K6 a real chain is not a nothing', nv(NOTHINGS.three_gen, 'ready'), null);
+
+    // 🔴 THE TAG DECIDES, NEVER THE SENTENCE. Same tag, completely different prose -> same
+    // verdict; and prose that reads like ANOTHER tag must not win. `[root]`'s real sentence
+    // already contains 없음 and `[unknown_subject]`'s contains 원자 0, so a substring reader
+    // has two ways to be wrong here.
+    const reworded = { hops: NOTHINGS.root_only.hops, terminal_reason: '[root] 완전히 다른 문장' };
+    eq('K7 rewording the sentence does not change the verdict',
+      kindOf(nv(reworded, 'ready')), 'no_lineage_claim');
+    const trap = {
+      hops: NOTHINGS.root_only.hops,
+      terminal_reason: '[root] lot=X · 원장에 원자 0 처럼 읽히는 문장',
+    };
+    eq('K7b prose that reads like another tag does not win',
+      kindOf(nv(trap, 'ready')), 'no_lineage_claim');
+
+    eq('K8 an untagged terminal is not a nothing',
+      nv({ hops: [], terminal_reason: 'no tag here' }, 'ready'), null);
+    // With no coverage route the trace-side nothings still work — the screen degrades, it does
+    // not go blind.
+    eq('K9 an unknown ledger state still reads the trace',
+      kindOf(nv(NOTHINGS.root_only, 'unknown')), 'no_lineage_claim');
+    eq('K9b a null state does not throw', kindOf(nv(NOTHINGS.unknown_lot, null)), 'unknown_lot');
+    eq('K10 a malformed trace does not throw', nv(null, 'ready'), null);
+  }
+
+  // ── L. the empty state on screen — requirement 1 ──────────────────────────────────
+  {
+    const doc = makeDoc();
+    const mount = doc.createElement('div');
+    view.renderCoverage(doc, mount, COVERAGE.ready);
+    const wrap = first(byClass(mount, 'lt-coverage'));
+    eq('L1 the empty state is not an answer', wrap.getAttribute('data-answer-kind'), 'coverage');
+    eq('L1b and says which ledger state it is', wrap.getAttribute('data-coverage-state'), 'ready');
+
+    const screen = mount.textContent;
+    ok('L2 how many lots are traceable', screen.includes('25'), screen);
+    ok('L3 from which sources', screen.includes('lot_event'));
+    ok('L4 over what range, with its offset', screen.includes('2026-05-03 02:17:00+09:00'));
+
+    const links = byTag(mount, 'A');
+    eq('L5 every sample is a link', links.length, COVERAGE.ready.sample.length);
+    eq('L5b and the link IS the question',
+      first(links).getAttribute('href'), '?lot=CL-2601-006-A1-A7&slot=04');
+    eq('L5c reading as the operator would type it', first(links).textContent, 'CL-2601-006-A1-A7/04');
+    eq('L6 a bare-lot sample', at(links, 1).getAttribute('href'), '?lot=CL-2601-006-A1');
+    // 🔴 THE COMPLEXITY BUDGET, ON THE RENDERED DOM RATHER THAN THE PAGE SOURCE. Coverage is
+    // CONTENT in the state that was already there. An anchor is not a control: the answer to
+    // this screen is a URL, so a sample is that answer already written down.
+    eq('L7 no input was added', byTag(mount, 'INPUT').length, 0);
+    eq('L7b no button was added', byTag(mount, 'BUTTON').length, 0);
+
+    const doc2 = makeDoc();
+    const m2 = doc2.createElement('div');
+    view.renderCoverage(doc2, m2, COVERAGE.absent);
+    ok('L8 absent says the deployment sentence',
+      m2.textContent.includes('원장이 이 DB에 설치되지 않았습니다'), m2.textContent);
+    ok('L8b and points at the runbook', m2.textContent.includes('런북 6항'));
+    eq('L8c and offers nothing to click', byTag(m2, 'A').length, 0);
+    eq('L8d and is marked absent',
+      first(byClass(m2, 'lt-coverage')).getAttribute('data-coverage-state'), 'absent');
+    // 🔴 NO FABRICATED MEASUREMENT. There is no ledger to count, so no count is printed. A
+    // "추적 가능한 랏 0" here would be a measurement of a table that does not exist.
+    ok('L8e and counts nothing', !m2.textContent.includes('추적 가능한 랏'), m2.textContent);
+
+    const doc3 = makeDoc();
+    const m3 = doc3.createElement('div');
+    view.renderCoverage(doc3, m3, COVERAGE.empty);
+    ok('L9 empty says the backfill sentence', m3.textContent.includes('백필 미실행'), m3.textContent);
+    ok('L9b and the two do not read alike', m2.textContent !== m3.textContent);
+
+    const doc4 = makeDoc();
+    const m4 = doc4.createElement('div');
+    view.renderCoverage(doc4, m4, null);
+    ok('L10 an unreachable coverage falls back to the shipped hint',
+      m4.textContent.includes('랏을 입력하세요'), m4.textContent);
+    eq('L10b and diagnoses nothing',
+      first(byClass(m4, 'lt-coverage')).getAttribute('data-coverage-state'), 'unknown');
+    eq('L10c and offers no samples it does not have', byTag(m4, 'A').length, 0);
+
+    view.renderCoverage(doc4, m4, COVERAGE.ready);
+    eq('L11 a second render replaces the first', byClass(m4, 'lt-coverage').length, 1);
+    ok('L11b with nothing of the first left', !m4.textContent.includes('랏을 입력하세요'));
+
+    // A lot id out of the ledger is DATA here too.
+    const doc5 = makeDoc();
+    const m5 = doc5.createElement('div');
+    view.renderCoverage(doc5, m5, { state: 'ready', lots: 1, sources: [], sample: [{ lot: '<b>x</b>' }] });
+    ok('L12 a sample lot reaches the screen as text', m5.textContent.includes('<b>x</b>'));
+  }
+
+  // ── M. the nothing, on the answer — requirement 2 ─────────────────────────────────
+  {
+    const doc = makeDoc();
+    const mount = doc.createElement('div');
+    view.renderTrace(doc, mount, NOTHINGS.unknown_lot, 'x',
+      core.nothingVerdict(NOTHINGS.unknown_lot, 'empty'));
+    const box = first(byClass(mount, 'lt-nothing'));
+    eq('M1 an empty ledger is named on the answer', box.getAttribute('data-nothing'), 'ledger_empty');
+    ok('M1b in words', box.textContent.includes('원장이 비어 있습니다 — 백필 미실행'), box.textContent);
+    // The headline is ADDED, never substituted. The hops are still the answer.
+    eq('M1c the answer is still an answer', byTag(mount, 'LI').length, 1);
+    eq('M1d and still a trace',
+      first(byClass(mount, 'lt-answer')).getAttribute('data-answer-kind'), 'trace');
+    ok('M1e with the server sentence still verbatim',
+      mount.textContent.includes(NOTHINGS.unknown_lot.hops[0].reason));
+
+    const doc2 = makeDoc();
+    const m2 = doc2.createElement('div');
+    view.renderTrace(doc2, m2, NOTHINGS.unknown_lot, 'x',
+      core.nothingVerdict(NOTHINGS.unknown_lot, 'ready'));
+    eq('M2 an unknown lot on a ready ledger adds no headline',
+      byClass(m2, 'lt-nothing').length, 0);
+    ok('M2b because the gap rendering already names it',
+      m2.textContent.includes('원장에 없는 랏'), m2.textContent);
+    // 🔴 M3 IS K5 ON SCREEN. Same fixture, same renderer, two ledgers — two screens.
+    ok('M3 the two screens differ', m2.textContent !== mount.textContent,
+      'an empty ledger and an unknown lot still render identically');
+
+    const doc3 = makeDoc();
+    const m3 = doc3.createElement('div');
+    view.renderTrace(doc3, m3, NOTHINGS.root_only, 'x',
+      core.nothingVerdict(NOTHINGS.root_only, 'ready'));
+    ok('M4 a registered lot with no parent claim says so',
+      m3.textContent.includes('등재됐으나 혈통 주장 없음'), m3.textContent);
+    eq('M4b and is named for the DOM',
+      first(byClass(m3, 'lt-nothing')).getAttribute('data-nothing'), 'no_lineage_claim');
+
+    const doc4 = makeDoc();
+    const m4 = doc4.createElement('div');
+    view.renderTrace(doc4, m4, NOTHINGS.three_gen, 'x',
+      core.nothingVerdict(NOTHINGS.three_gen, 'ready'));
+    eq('M5 a working chain carries no nothing headline', byClass(m4, 'lt-nothing').length, 0);
+    eq('M5b and renders its whole chain', byTag(m4, 'LI').length, NOTHINGS.three_gen.hops.length);
+
+    // Omitting the verdict is the pre-P4 call shape (section G) and must stay silent.
+    const doc5 = makeDoc();
+    const m5 = doc5.createElement('div');
+    view.renderTrace(doc5, m5, LIVE, 'x');
+    eq('M6 no verdict, no headline', byClass(m5, 'lt-nothing').length, 0);
+
+    view.renderTrace(doc3, m3, LIVE, 'x');
+    eq('M7 a second answer drops the previous headline', byClass(m3, 'lt-nothing').length, 0);
+  }
+
   return { pass, fail: failed.length, failed };
 }
 
@@ -515,10 +851,13 @@ function census() {
   ok('H4 the entry renders through the view',
     ENTRY_SRC.includes('renderTrace(') && ENTRY_SRC.includes('renderNotice('));
   // 🔴 THE SESSION GUARD, COUNTED. Two questions in flight resolve in arrival order, and a
-  // check at only the first await passes every test that does not stall the body. There are
-  // three suspension points on the happy-and-refusal paths (fetch, refusal body, json body).
+  // check at only the first await passes every test that does not stall the body. The
+  // suspension points are fetch, refusal body, json body, and — since P4 — the coverage body
+  // on all three of the empty / refusal / answer paths. Raised 4 -> 8 with those: a coverage
+  // response landing after the operator has moved on would repaint a stale screen just as a
+  // stale trace would.
   ok('H5 the session guard is checked after every await',
-    countOccurrences(ENTRY_SRC, 'mine !== session') >= 4,
+    countOccurrences(ENTRY_SRC, 'mine !== session') >= 8,
     `found ${countOccurrences(ENTRY_SRC, 'mine !== session')}`);
   // 🔴 READ-ONLY. This screen issues one GET and the route writes nothing.
   ok('H6 the entry issues no write', !/method\s*:\s*['"](POST|PUT|PATCH|DELETE)/i.test(ENTRY_SRC));
@@ -543,6 +882,24 @@ function census() {
   ok('H13 the page carries exactly one input', controls === 1, `found ${controls}`);
   const buttons = (PAGE_SRC.match(/<button\b/gi) || []).length;
   ok('H14 and no buttons at all', buttons === 0, `found ${buttons}`);
+  // P4's wiring. The reading of coverage could be perfect and never asked for.
+  ok('H15 the entry asks the coverage route', ENTRY_SRC.includes('/api/ledger/coverage'));
+  ok('H16 the empty state goes through the view', ENTRY_SRC.includes('renderCoverage('));
+  ok('H17 and the answer is told WHICH nothing it is', ENTRY_SRC.includes('nothingVerdict('));
+  // The refusal's reading lives in the core, where the harness can score it (section J23-J28).
+  // Re-deriving it in the entry would put an unmeasurable branch on the path that runs when
+  // the ledger is not deployed — the exact path the product owner was on.
+  ok('H17b the refusal is read by the core', ENTRY_SRC.includes('refusalReading('));
+  // 🔴 STILL READ-ONLY, AND NOW OVER TWO ROUTES. `/coverage` is a GET like `/trace`, and H6
+  // above already forbids a method on either — this pins that the second route did not arrive
+  // with a write path of its own.
+  ok('H18 the coverage call is a bare GET',
+    /fetch\(`\$\{API_BASE\}\/api\/ledger\/coverage`\)/.test(ENTRY_SRC));
+  // The four sentences live in the CORE, where the harness can score them, not in the entry —
+  // which is text-only here and would make them unmeasurable.
+  ok('H19 the four sentences are not composed in the entry',
+    !ENTRY_SRC.includes('원장이 이 DB에 설치되지 않았습니다')
+    && !ENTRY_SRC.includes('등재됐으나 혈통 주장 없음'));
 
   return { pass, fail: failed.length, failed };
 }
@@ -604,6 +961,67 @@ const DEFECTS = [
       "item.setAttribute('data-state', 'resolved');")],
   [VIEW, 'answer-built-as-markup',
     (s) => s.replace("if (text !== undefined && text !== null) node.textContent = String(text);", '')],
+
+  // ── P4: the four nothings ─────────────────────────────────────────────────────────
+  // 🔴 THE ONE THAT SHIPPED. `nothingVerdict` stops consulting the ledger state, so an empty
+  //    ledger reads exactly like an unknown lot — the screen the product owner used.
+  [CORE, 'nothing-ignores-the-ledger-state',
+    (s) => s.replace("const state = ledgerState == null ? 'unknown' : String(ledgerState);",
+      "const state = 'unknown';")],
+  // 🔴 THE INVERSION ON THIS AXIS. Keyed on the terminal tag alone, a chain that really walked
+  //    three generations is announced as having no lineage.
+  [CORE, 'no-lineage-claimed-on-a-real-root',
+    (s) => s.replace("if (tag === 'root' && !hasLineageStep(trace)) {", "if (tag === 'root') {")],
+  [CORE, 'lineage-step-counts-any-hop',
+    (s) => s.replace("h.predicate === 'derived_from' && h.state === 'resolved'", '!!h')],
+  [CORE, 'coverage-unknown-state-reads-ready',
+    (s) => s.replace("return COVERAGE_STATES.has(s) ? s : 'unknown';", "return s || 'ready';")],
+  [CORE, 'absent-and-empty-collapse',
+    (s) => s.replaceAll("title: '원장이 비어 있습니다 — 백필 미실행',",
+      "title: '원장이 이 DB에 설치되지 않았습니다',")],
+  [CORE, 'unknown-lot-repeats-what-the-hops-said',
+    (s) => s.replace("return { kind: 'unknown_lot', tone: 'gap', title: null, detail: null };",
+      "return { kind: 'unknown_lot', tone: 'gap', title: '원장에 없는 랏', detail: null };")],
+  // 🔴 THE PROSE PARSER, AS A MUTANT. It passes the real captured refusal (whose sentence does
+  //    contain 없음) and lies about every other one — the shape of defect this screen has
+  //    already paid for once on the convention/measurement axis.
+  [CORE, 'refusal-state-read-from-the-sentence',
+    (s) => s.replace('return { state: coverageState(detail), text: message };',
+      "return { state: String(detail.message || '').includes('없음') ? 'absent' : 'unknown', text: message };")],
+  [CORE, 'refusal-state-ignored',
+    (s) => s.replace('return { state: coverageState(detail), text: message };',
+      "return { state: 'unknown', text: message };")],
+  [CORE, 'refusal-shows-the-blob-not-the-sentence',
+    (s) => s.replace("? detail.message : JSON.stringify(detail);", '? JSON.stringify(detail) : JSON.stringify(detail);')],
+  [CORE, 'coverage-count-fakes-a-zero',
+    (s) => s.replace('lots: Number.isFinite(lots) ? lots : null,',
+      'lots: Number.isFinite(lots) ? lots : 0,')],
+  [CORE, 'samples-drop-the-slot',
+    (s) => s.replace('out.push({ lot, slot, text: queryText({ lot, slot }), query: traceQuery({ lot, slot }) });',
+      'out.push({ lot, slot, text: queryText({ lot, slot: null }), query: traceQuery({ lot, slot: null }) });')],
+  [VIEW, 'coverage-renders-as-an-answer',
+    (s) => s.replace("wrap.setAttribute('data-answer-kind', 'coverage');",
+      "wrap.setAttribute('data-answer-kind', 'trace');")],
+  [VIEW, 'samples-are-not-links',
+    (s) => s.replace("const a = el(doc, 'a', 'lt-samples__link', s.text);",
+      "const a = el(doc, 'span', 'lt-samples__link', s.text);")],
+  [VIEW, 'sample-links-lose-their-question',
+    (s) => s.replace('a.setAttribute(\'href\', `?${s.query}`);', "a.setAttribute('href', '?');")],
+  [VIEW, 'coverage-samples-dropped', (s) => s.replace('if (samples.length) {', 'if (false) {')],
+  [VIEW, 'coverage-count-dropped',
+    (s) => s.replace("if (facts.lots !== null) fact('lots', '추적 가능한 랏', `${facts.lots}`);", '')],
+  // An absent ledger has nothing to count, so a count printed there is a measurement of a
+  // table that does not exist.
+  [VIEW, 'a-broken-ledger-reports-measurements',
+    (s) => s.replace("if (verdict.state === 'ready') {", 'if (true) {')],
+  [VIEW, 'coverage-re-render-accumulates',
+    (s) => s.replace('  clear(mount);\n  const verdict = coverageVerdict(coverage);',
+      '  const verdict = coverageVerdict(coverage);')],
+  [VIEW, 'nothing-headline-dropped',
+    (s) => s.replace('if (nothing && nothing.title) {', 'if (false) {')],
+  [VIEW, 'nothing-headline-loses-its-kind',
+    (s) => s.replace("box.setAttribute('data-nothing', String(nothing.kind || ''));",
+      "box.setAttribute('data-nothing', 'gap');")],
 ];
 
 // Must ESCAPE. If one is caught, a check is reading source text instead of behaviour.

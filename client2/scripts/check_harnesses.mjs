@@ -389,7 +389,40 @@ const FLOORS = new Map([
   //
   // H13/H14 are the COMPLEXITY BUDGET as an assertion: exactly one form control on the page and
   // no buttons. A later round that grows a filter bar goes red here and has to argue for it.
-  ['ledger_trace_harness.mjs', 171],
+  //
+  // 171 -> 276 (2026-08-13, P4 「어떤걸 찾을수 있고 없는지 막연하다」). The product owner ran the
+  // shipped screen against a database with no `ledger_events` and got a blank; FOUR unrelated
+  // situations painted that same blank (table never migrated / backfill never run / unknown lot
+  // / registered lot nobody claimed a parent for). 17 more mutants come with it, and two of them
+  // are the load-bearing pair:
+  //
+  // 🔴 `nothing-ignores-the-ledger-state` IS THE SHIPPED DEFECT. With zero atoms the walk takes
+  //    `cur_lot not in lots_with_atoms` for EVERY lot, so an empty ledger answers
+  //    `[unknown_subject] … 원장에 원자 0` — byte-identical to a genuinely unknown lot on a full
+  //    one. K5/M3 feed the SAME captured trace object two ledger states and demand two different
+  //    screens; nothing inside the trace can tell them apart, which is why the answer comes from
+  //    `GET /api/ledger/coverage`'s `state` and never from an inference.
+  //
+  // 🔴 `no-lineage-claimed-on-a-real-root` IS THE INVERSION ON THAT AXIS, the same shape as the
+  //    convention/measurement one above: a chain that really walked three generations ALSO
+  //    terminates `[root]`, so a rule keyed on the terminal tag alone announces a working answer
+  //    as having no lineage. K6/M5 pin it against a real 8-hop capture.
+  //
+  // K7/K7b are why none of this is read out of prose: same tag + different sentence must give
+  // the same verdict, and a `[root]` sentence that reads like an `[unknown_subject]` one must
+  // not win. Two mutants (`nothing-ignores-the-ledger-state`, `lineage-step-counts-any-hop`)
+  // were caught by a THROW on their first run and were re-armed with tolerant accessors, so
+  // each is now caught by the assertion that names it rather than by an exception that aborts
+  // the file.
+  //
+  // 276 -> 291 mid-round, when the server lane's `/trace` refusal turned STRUCTURED
+  // (`detail: {reason, state, relation, message}`, ruling R-2026-08-13-C) while this one was in
+  // flight. J23-J28 score that reading against the REAL captured 503 body, and J24 is the
+  // prohibition itself: `refusalReading({state:'ready', message:'…없음'})` must answer "ready".
+  // Mutant `refusal-state-read-from-the-sentence` passes the real capture — whose sentence does
+  // contain 없음 — and lies about every other one, which is why the assertion is written from
+  // the direction that catches it.
+  ['ledger_trace_harness.mjs', 291],
   // New 2026-08-06 with `opts.restoreDraft` (e34d57d, 「맵을 로드하면 로드한 맵이 나온다」).
   // Same rule as the other new entries: the floor is the count it reports on the commit that
   // introduces it. 14 of its assertions are the mutation corpus itself (12 defects + 2
