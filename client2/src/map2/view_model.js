@@ -32,7 +32,24 @@
 import { candidateGrid, candidateList, BADGE_WINNER, BADGE_STORED, INVERSION_FOOTNOTE } from './candidates.js';
 import { VERDICT, REASON } from './verdict_bridge.js';
 import { DECIDED_BY_DIRECTION } from './verdict.js';
-import { PHASE, BINDING_FALLBACK_GUESS, BINDING_NONE } from './session.js';
+import { PHASE, BINDING_DECLARED, BINDING_DERIVED, BINDING_FALLBACK_GUESS,
+         BINDING_NONE } from './session.js';
+
+/**
+ * A PAIR NOBODY AGREED TO. Membership, not a negation and not a count.
+ *
+ * 🔴 IT IS TWO WORDS, AND BOTH HAVE TO BE HERE. `derived` and `fallback_guess` are different
+ *    facts about the binding -- one inherits from `table_config`, the other invents a value
+ *    column the data path refuses -- but they are the SAME fact about consent: no operator named
+ *    this pair. The proposal marking and the write's disclosure key on this set; only the
+ *    guess-specific word (`WORDS.bindingGuess`) keys on `fallback_guess` alone.
+ *
+ *    Spelled as members rather than as `!== BINDING_DECLARED` on purpose: the negation would
+ *    silently swallow `none` -- no pair chosen at all -- and put a 컬럼 확인 control beside two
+ *    empty selects. A set that gains a member gains it here, once.
+ */
+const UNAGREED_BINDINGS = Object.freeze([BINDING_DERIVED, BINDING_FALLBACK_GUESS]);
+function isUnagreed(source) { return UNAGREED_BINDINGS.indexOf(source) >= 0; }
 
 /** The four visible states. Three of them are named in the brief; WINNER is the fourth. */
 export const VIEW_STATE = Object.freeze({
@@ -65,6 +82,20 @@ export const WORDS = Object.freeze({
   columnsUnstated: '컬럼 미표기',
   // A pre-filled pair nobody has agreed to. Marked everywhere it appears, never flattened.
   proposed: '제안',
+  // 🔴 THE VALUE COLUMN IS INVENTED. `fallback_guess` is the route's OWN marker and its contract
+  //    says in as many words that a client must warn rather than render it like a declaration --
+  //    the data path refuses the same binding outright. `제안` cannot carry that: it is the word
+  //    for `derived` too, and a derived binding is an ordinary inheritance. Two states, two
+  //    words, or the stronger one is invisible inside the weaker.
+  bindingGuess: '값 컬럼 추측',
+  // 🔴 AN OVERRIDE IS VISIBLE AS AN OVERRIDE. Naming a column by hand raises the provenance to
+  //    `declared`, which is right for the WRITE -- an operator's choice outranks a config's --
+  //    but it made the screen indistinguishable from one showing the declaration itself. This
+  //    word says the pair on screen is not the pair the server declared, and names the axes.
+  overrideDiffers: '선언과 다름',
+  // A map table this rule cannot gather. The REASON is the server's own sentence and rides
+  // beside this word; nothing here composes one.
+  tableUnavailable: '선택 불가',
   xColumn: 'x 컬럼',
   yColumn: 'y 컬럼',
   valueColumn: 'value 컬럼',
@@ -1072,7 +1103,22 @@ function questionModel(session, attribution) {
   const coordNames = numericOnly(names, types);
   const refList = (cat.references && Array.isArray(cat.references[q.mapTable]))
     ? cat.references[q.mapTable] : [];
-  const proposed = q.bindingSource === BINDING_FALLBACK_GUESS;
+  const proposed = isUnagreed(q.bindingSource);
+  // 🔴 WHAT THE DECLARATION SAYS, BESIDE WHAT IS ON SCREEN. Read from the catalog rather than
+  //    held as a fifth provenance word: an override is a COMPARISON, and a stored word for it
+  //    would have to be kept true through every table switch and every re-normalisation. Only a
+  //    `declared` binding can be disagreed with -- disagreeing with a proposal is just choosing.
+  const declaredBinding = (cat.binding && cat.binding[q.mapTable]) || null;
+  const overrideAxes = (declaredBinding && declaredBinding.source === BINDING_DECLARED)
+    ? [
+        declaredBinding.x && cols.x && cols.x !== declaredBinding.x ? 'x' : null,
+        declaredBinding.y && cols.y && cols.y !== declaredBinding.y ? 'y' : null,
+        // Clearing a declared value column IS an override -- it turns a valued run into an
+        // occupancy-only one, which is the change with the largest effect on what can be
+        // answered. `null` on both sides is agreement, so the comparison normalises first.
+        (declaredBinding.val || null) !== (cols.val || null) ? '값' : null,
+      ].filter(Boolean)
+    : [];
 
   return Object.freeze({
     // THE PRIMITIVE TUPLE, carried as values. Nothing downstream reconstructs it from a name.
@@ -1081,7 +1127,13 @@ function questionModel(session, attribution) {
     yCol: cols.y || null,
     valCol: cols.val || null,
     reference: q.reference || null,
-    tables: Object.freeze(tables.map(t => option(t.table, t.label || t.table, t.table === q.mapTable))),
+    // 🔴 THE UNCHOOSABLE TABLES STAY ON THE LIST, DISABLED, CARRYING THEIR REASON. Dropping them
+    //    would be the silent narrowing that sends an operator to a person instead of to a
+    //    repair -- `valid_die_ref` and `bonding_map` vanish for BOTH rules and `dt_map` vanishes
+    //    for exactly one of them, and no absence can tell those two facts apart. The server
+    //    composed the sentence (`소스 'dt_core_view'에 맵 키 컬럼 없음 - dt_lot, dt_slot`); this
+    //    side joins it to the table name and adds no clause of its own.
+    tables: Object.freeze(tables.map(t => tableOption(t, q.mapTable))),
     // The table's REAL columns. No column name is written down in this file.
     xOptions: Object.freeze(coordNames.map(n => option(n, n, n === cols.x))),
     yOptions: Object.freeze(coordNames.map(n => option(n, n, n === cols.y))),
@@ -1102,6 +1154,14 @@ function questionModel(session, attribution) {
     bindingIsGuess: proposed,
     bindingSource: q.bindingSource || BINDING_NONE,
     proposalWord: proposed ? WORDS.proposed : '',
+    // Only `fallback_guess` earns this one. A flag rides beside the word so a consumer that
+    // needs the FACT never has to match on a Korean label to recover it.
+    bindingGuessed: q.bindingSource === BINDING_FALLBACK_GUESS,
+    guessWord: q.bindingSource === BINDING_FALLBACK_GUESS ? WORDS.bindingGuess : '',
+    // Which axes the operator moved off the declaration, and the one line that says so.
+    overrideAxes: Object.freeze(overrideAxes),
+    overrideWord: overrideAxes.length > 0
+      ? `${WORDS.overrideDiffers} · ${overrideAxes.join('/')}` : '',
     attributionState: attribution ? attribution.state : ATTRIBUTION.UNAMBIGUOUS,
   });
 }
@@ -1113,7 +1173,33 @@ function numericOnly(names, types) {
 }
 
 function option(value, label, selected) {
-  return Object.freeze({ value: String(value), label: String(label), selected: selected === true });
+  return Object.freeze({ value: String(value), label: String(label), selected: selected === true,
+                         disabled: false, reason: null });
+}
+
+/**
+ * One map table, as the picker shows it.
+ *
+ * 🔴 THE REASON IS THE SERVER'S SENTENCE AND IT IS NOT SHORTENED. It names the columns the
+ *    source is missing, which is the whole of what an administrator needs to repair it; a
+ *    truncation would leave `선택 불가` standing alone, which is the reasonless "없음" that sent
+ *    the product owner to a person rather than to a config file. `선택 불가` leads it so the
+ *    state is readable before the sentence is.
+ */
+function tableOption(t, current) {
+  const name = String(t.table);
+  const selectable = t.selectable !== false;
+  const reason = t.reason == null ? '' : String(t.reason);
+  const label = selectable ? String(t.label || name)
+    : [name, WORDS.tableUnavailable, reason].filter(Boolean).join(' · ');
+  return Object.freeze({
+    value: name, label,
+    // An unchoosable table can never be the current one -- `resolveQuestion` moves off it -- so
+    // this is written from the comparison and not from a second rule.
+    selected: selectable && name === current,
+    disabled: !selectable,
+    reason: reason || null,
+  });
 }
 
 /**
@@ -1294,7 +1380,12 @@ function confirmModel(session, selectedId, storedId, state, attribution, assumpt
   //    but a confirmation bakes an unverified rotation into stored coordinates and nothing
   //    downstream looks wrong afterwards. So the one act that cannot be taken back is the one
   //    act that requires the pair to have been agreed and the answer to have an owner.
-  const restsOnGuess = q.bindingSource === BINDING_FALLBACK_GUESS
+  //    MEMBERSHIP, NOT ONE WORD. `derived` reaches this expression now that `resolveQuestion`
+  //    stops folding it into `fallback_guess`, and it must keep holding the same disclosure it
+  //    always did: an inherited pair is still a pair nobody named. Keying on `fallback_guess`
+  //    alone would have quietly dropped the disclosure for every derived binding on the day the
+  //    fold was removed -- the guard would still be there, and it would score nothing.
+  const restsOnGuess = isUnagreed(q.bindingSource)
     || (attribution && attribution.state === ATTRIBUTION.UNSTATED);
   // 🔴 THE ONLY GATE IS "SOMETHING IS SELECTED" (product owner, 2026-08-07: 「어차피 사람이
   //    검수하고 누르는거라 막을 이유없음」). A confirmation IS the human's claim, so the scorer
@@ -1385,7 +1476,12 @@ function confirmModel(session, selectedId, storedId, state, attribution, assumpt
 }
 
 function hintFor(state, selectedId, question, attribution) {
-  if (question.bindingSource === BINDING_FALLBACK_GUESS) return `${WORDS.proposed} · 컬럼 확인 필요`;
+  // The guess gets its own instruction, ahead of the generic proposal: `값 컬럼 추측` tells the
+  // operator WHICH part is invented, and that is what decides whether they can just agree.
+  if (question.bindingSource === BINDING_FALLBACK_GUESS) {
+    return `${WORDS.bindingGuess} · 컬럼 확인 필요`;
+  }
+  if (isUnagreed(question.bindingSource)) return `${WORDS.proposed} · 컬럼 확인 필요`;
   if (question.bindingSource === BINDING_NONE) return '컬럼 선택 필요';
   if (attribution && attribution.state === ATTRIBUTION.UNSTATED) return WORDS.columnsUnstated;
   if (state === VIEW_STATE.SCORED_NO_WINNER && !selectedId) return '후보 직접 선택';

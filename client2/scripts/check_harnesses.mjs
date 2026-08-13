@@ -676,7 +676,10 @@ const FLOORS = new Map([
   //    the runs that must be scored -- and a throw before the ASSERTIONS line reports to this
   //    runner as DEAD, not red. Measured: two of the five mutants did exactly that before the
   //    accessors existed. All five now report `ASSERTIONS 256 <n>` with n > 0.
-  ['map_editor2_question_harness.mjs', 256],
+  // 256 -> 305: sections N..N4 -- the rule chooses the map table (`selection.map_tables`), a
+  // refused table carries the server's reason, `derived` stops being folded into
+  // `fallback_guess`, an override is visible as one, and a rule pick empties the worklist.
+  ['map_editor2_question_harness.mjs', 305],
   // New 2026-08-04 with 📐 규격만 저장 (`saveMapSpecOnly`), the metadata-only write path, so its
   // floor is the count it reports on the commit that introduces it. It is the only scorer of
   // a write that must touch NO cells: its central assertions name the ENTIRE request list, and

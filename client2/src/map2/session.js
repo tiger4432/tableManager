@@ -111,6 +111,12 @@ export const BINDING_NONE = 'none';
  *    `기준 없음` state rather than an error.
  */
 export const EMPTY_CATALOG = Object.freeze({
+  // 🔴 A TABLE RECORD MAY CARRY `selectable` AND `reason`, AND BOTH ARE THE SERVER'S. The
+  //    worklist answers `selection.map_tables` per RULE -- which tables this rule's source can
+  //    actually be gathered by, and the reason each of the others cannot -- so the offer is a
+  //    served fact, not a list this client narrows. `selectable` ABSENT means choosable: the
+  //    bootstrap catalog is built before any worklist has answered, and an absent field must
+  //    not read as a refusal.
   tables: Object.freeze([]),
   // Per table, the REAL SCHEMA's column names -- `/tables/{table}/schema`, the route admin
   // already consumes. No column list is written down in this client.
@@ -271,9 +277,21 @@ export function resolveQuestion(question, catalog) {
   const cat = catalog || EMPTY_CATALOG;
   const q = question || EMPTY_QUESTION;
   const tables = Array.isArray(cat.tables) ? cat.tables : [];
-  const tableNames = tables.map(t => t.table);
-  const mapTable = tableNames.includes(q.mapTable) ? q.mapTable
-    : (tableNames.length > 0 ? tableNames[0] : q.mapTable || null);
+  // 🔴 AN UNCHOOSABLE TABLE IS NOT A CHOICE, AND ADOPTING ONE IS HOW THE FEATURE READ AS BROKEN.
+  //    `core_frame_review` gathers `dt_core_view`, which carries neither `dt_lot` nor `dt_slot`,
+  //    so `dt_map` cannot be its map table -- and the route answers 200 with every unit
+  //    `unscorable / map_keys_unavailable` rather than refusing. Measured on the isolated box:
+  //    150/150 unscorable under that pair, 0 of them a fact about the data. The server says which
+  //    tables this rule can gather (`selection.map_tables`); this side obeys it and never
+  //    re-decides it. `selectable !== false` so a catalog built before the first worklist -- where
+  //    nothing has said anything yet -- stays choosable.
+  const choosable = tables.filter(t => t && t.selectable !== false).map(t => t.table);
+  const mapTable = choosable.includes(q.mapTable) ? q.mapTable
+    : (choosable.length > 0 ? choosable[0]
+      // A catalog that offers tables and none of them choosable is a real, nameable state: this
+      // rule has nothing to align against. Keeping the refused table would leave the screen
+      // asking a question the server has already said this rule may not ask.
+      : (tables.length > 0 ? null : q.mapTable || null));
 
   // A column name that is not in THAT table's schema is not a column. Keeping it would let a
   // table switch carry the previous table's names forward, and the request would then name
@@ -284,7 +302,14 @@ export function resolveQuestion(question, catalog) {
   let x = known(asked.x) ? asked.x : null;
   let y = known(asked.y) ? asked.y : null;
   let val = known(asked.val) ? asked.val : null;
-  let bindingSource = q.bindingSource === BINDING_DECLARED ? BINDING_DECLARED : BINDING_FALLBACK_GUESS;
+  // 🔴 `derived` SURVIVES AS ITSELF. It used to be folded into `fallback_guess`, and the fold
+  //    cost the screen the one distinction the route takes trouble to draw: `fallback_guess`
+  //    means the VALUE COLUMN IS INVENTED and the data path refuses it outright, while `derived`
+  //    is an ordinary inheritance from `table_config`. Both are pairs nobody agreed to -- the
+  //    proposal marking and the write's disclosure cover BOTH, by membership, in `view_model` --
+  //    but only one of them is a guess, and only that one gets a word saying so.
+  let bindingSource = (q.bindingSource === BINDING_DECLARED || q.bindingSource === BINDING_DERIVED)
+    ? q.bindingSource : BINDING_FALLBACK_GUESS;
 
   // Nothing chosen for this table yet: adopt whatever the catalog says about it, CARRYING ITS
   // PROVENANCE. A declared binding is a declaration; a name-matched guess stays a proposal all
@@ -304,7 +329,10 @@ export function resolveQuestion(question, catalog) {
       //    table has no value column is the same failure in the other direction: a stale choice
       //    impersonating a declaration. The binding for the table now in force decides all three.
       val = known(b.val) ? b.val : null;
-      bindingSource = b.source === BINDING_DECLARED ? BINDING_DECLARED : BINDING_FALLBACK_GUESS;
+      // The served word, verbatim. An unrecognised one is treated as a guess, never as a
+      // declaration: a vocabulary this client has not met must not unlock the quiet path.
+      bindingSource = (b.source === BINDING_DECLARED || b.source === BINDING_DERIVED)
+        ? b.source : BINDING_FALLBACK_GUESS;
     } else {
       bindingSource = BINDING_NONE;
     }
@@ -415,6 +443,28 @@ export function withQuestion(session, patch) {
 export function withWorklistQuery(session, query) {
   return next(session, {
     worklist: Object.freeze({ ...session.worklist, query: String(query == null ? '' : query) }),
+    worklistSeq: session.worklistSeq + 1,
+  });
+}
+
+/**
+ * THE RULE CHANGED, SO THE LIST ON SCREEN IS ABOUT SOMETHING ELSE.
+ *
+ * 🔴 THE ROWS GO AND THE SEQUENCE MOVES. A rule declares what a unit IS, so a page fetched under
+ *    the previous one is not a stale copy of this answer -- it is an answer to a different
+ *    question, sitting under the new rule's labels. Leaving it there is the failure the table
+ *    switch already had to fix once (two tables on one screen, measured 2026-08-06); the rule is
+ *    the wider version of it. The catalog rebuild between the pick and the refetch is several
+ *    served round trips, and it can FAIL -- in which case no refetch is ever issued and the
+ *    previous rule's rows stay up permanently. So the clear happens at the pick, not at the
+ *    answer.
+ *
+ * ⚠️ THE SEARCH TEXT SURVIVES. It is the operator's, not the rule's, and re-typing it after
+ *    every rule change would be friction on the reading path.
+ */
+export function withWorklistReset(session) {
+  return next(session, {
+    worklist: Object.freeze({ ...EMPTY_WORKLIST, query: session.worklist.query }),
     worklistSeq: session.worklistSeq + 1,
   });
 }

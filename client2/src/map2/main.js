@@ -36,7 +36,7 @@
 
 import { createMapSession, withDecision, withPayload, withError, withSelectedCandidate,
          withFocusedSource, withConfig, withCatalog, withQuestion, withConfirmFailed,
-         withWorklistQuery, withWorklist, withWorklistError, withConfirmed,
+         withWorklistQuery, withWorklist, withWorklistError, withWorklistReset, withConfirmed,
          columnKey, isAskable, isUnset, BINDING_DECLARED, PHASE } from './session.js';
 import { placeCells, FLOOR_PLACEMENT, compareSeatings, unionBounds } from './seating.js';
 import { layoutFor, paintComparison, createCanvasSurface } from './painter.js';
@@ -213,6 +213,41 @@ export function normaliseWorklist(res) {
 function numOrNullish(v) {
   const n = Number(v);
   return Number.isFinite(n) && v !== null && v !== '' ? n : null;
+}
+
+/**
+ * The bootstrap table list + `selection.map_tables` -> the catalog's table list. PURE.
+ *
+ * 🔴 THE SERVED LIST IS THE SET, NOT A FILTER OVER THE BOOTSTRAP ONE. Both sides read the same
+ *    declaration (`map_key_columns`) off the same config, so they agree on WHICH tables exist --
+ *    but only the server's answer is per rule, and only it carries the reasons. Intersecting
+ *    would let a failed `/tables/{t}/schema` delete a table from the offer silently, which is
+ *    the reasonless disappearance this whole change exists to stop. A table with no schema in
+ *    hand still appears, still carries its reason, and simply offers no column names yet.
+ *
+ * The client's `label` survives where it had one; nothing else about the record does.
+ */
+export function withServedMapTables(catalog, served) {
+  const cat = catalog || {};
+  const known = new Map((Array.isArray(cat.tables) ? cat.tables : [])
+    .filter(t => t && t.table).map(t => [String(t.table), t]));
+  return {
+    ...cat,
+    tables: Object.freeze((served || []).filter(t => t && t.table).map(t => {
+      const name = String(t.table);
+      const prior = known.get(name);
+      return Object.freeze({
+        table: name,
+        label: (prior && prior.label) || name,
+        // 🔴 `!== false`, NOT `=== true`. A server that has not grown the field yet says nothing
+        //    about selectability, and "said nothing" must not read as "refused" -- that would
+        //    empty the picker against an older deployment.
+        selectable: t.selectable !== false,
+        // The server's sentence, verbatim or absent. Never composed here.
+        reason: t.reason == null ? null : String(t.reason),
+      });
+    })),
+  };
 }
 
 function bindElements(doc) {
@@ -452,8 +487,22 @@ export function bootstrap(deps) {
       }
       node.setAttribute('data-me2-options', signature);
     }
+    // 🔴 DISABLED-NESS AND LABELS ARE APPLIED ON EVERY PASS, NOT ONLY ON A REBUILD. The signature
+    //    above is built from the option VALUES, and the values do not move when the rule does:
+    //    the same nine map tables are offered under both alignment rules and only `selectable`
+    //    and the reason differ between them. Keying the rebuild on the labels instead would
+    //    close an open dropdown on every repaint, which is the defect the signature exists to
+    //    stop -- so the cheap half runs unconditionally and the expensive half stays guarded.
+    for (const child of Array.from(node.options || [])) {
+      const opt = options.find(o => o.value === child.value);
+      if (!opt) continue;
+      child.disabled = opt.disabled === true;
+      if (child.textContent !== opt.label) child.textContent = opt.label;
+    }
     const selected = options.find(o => o.selected);
     node.value = selected ? selected.value : '';
+    // Every option refused is not the same as no option at all, and the control must stay open in
+    // the first case: the operator has to be able to READ the reasons.
     node.disabled = options.length === 0;
   }
 
@@ -464,6 +513,13 @@ export function bootstrap(deps) {
     // that outranks anything it could say about the answer it does not have.
     if (notice) parts.push(notice);
     if (vm.question.proposalWord) parts.push(vm.question.proposalWord);
+    // 🔴 AND WHICH KIND OF PROPOSAL, WHEN THE ROUTE SAID. `fallback_guess` is served with that
+    //    marker precisely so a client warns instead of rendering an invented column silently;
+    //    `제안` alone cannot say it, because it is also the word for an inherited binding.
+    if (vm.question.guessWord) parts.push(vm.question.guessWord);
+    // The operator's own disagreement with the declaration. It goes beside the proposal words
+    // rather than replacing them: they are facts about different pairs (nobody's, and theirs).
+    if (vm.question.overrideWord) parts.push(vm.question.overrideWord);
     if (vm.evidence.occupancyOnly) parts.push(CAUSE.reference_no_values);
     if (vm.attribution.state === ATTRIBUTION.UNSTATED) parts.push(WORDS.columnsUnstated);
     // 🔴 THE SERVER'S SENTENCE, VERBATIM, AND IT GOES LAST. Last because the tokens ahead of it
@@ -1645,12 +1701,64 @@ export function bootstrap(deps) {
       // the reference: the route takes no `reference` parameter at all, so the 기준 control
       // changes how ONE unit is scored and not which units exist.
     }, controller ? controller.signal : undefined))
-      .then(res => { settle(); setSession(withWorklist(session, normaliseWorklist(res), seq)); })
+      .then(res => {
+        settle();
+        const page = normaliseWorklist(res);
+        // 🔴 THE OFFER IS READ BEFORE THE PAGE IS PAINTED, AND THAT ORDER IS THE POINT. The route
+        //    requires `map_table` to answer at all, so the first ask under a new rule necessarily
+        //    carries the PREVIOUS rule's table -- and when that table is not one this rule may
+        //    gather, the 150 rows that come back are 150 refusals about a question nobody asked.
+        //    Measured on the isolated box: painting them first put a full unscorable list on
+        //    screen for ~2s before the corrected answer replaced it. An answer this side already
+        //    knows is about the wrong table is not a slower answer, it is a wrong one.
+        if (adoptServedSelection(page, seq)) return;
+        setSession(withWorklist(session, page, seq));
+      })
       .catch(err => {
         settle();
         if (err && err.name === 'AbortError') return;
         setSession(withWorklistError(session, err, seq));
       });
+  }
+
+  /**
+   * WHICH MAP TABLES THIS RULE MAY BE GATHERED BY, AS THE ROUTE ANSWERED IT.
+   *
+   * 🔴 THE ANSWER WAS ALREADY ON THE WIRE AND THE SCREEN THREW IT AWAY. `selection.map_tables`
+   *    has ridden on every worklist response since the route landed, carrying `selectable` per
+   *    table AND the server's reason for each refusal, and `normaliseWorklist` has carried it
+   *    into the session -- with no reader. Meanwhile the picker was filled from the BOOTSTRAP
+   *    discovery, which is every table declaring `map_key_columns` and is therefore the same
+   *    nine tables under every rule. The measured consequence, on the isolated box today:
+   *    picking `core_frame_review` and leaving `dt_map` selected answers 200 with 150 of 150
+   *    units `unscorable`, and not one of those refusals is a fact about the data.
+   *
+   * 🔴 NOTHING HERE DECIDES SELECTABILITY. The predicate is the server's (`map_table_catalog`:
+   *    does the rule's source model carry this map table's key columns) and so is the sentence.
+   *    A client that re-derived either would be a second implementation of a ruling, which is
+   *    the failure this codebase refuses by name.
+   *
+   * ⚠️ IT CAN RE-ASK, EXACTLY ONCE, AND THE TERMINATION IS STRUCTURAL RATHER THAN COUNTED.
+   *    `map_table_catalog` depends only on the RULE's source table -- not on the `map_table`
+   *    that was asked -- so the second answer carries the identical offer, the table does not
+   *    move again, and no third request is issued. A counter here would be a guard against a
+   *    loop that cannot form, and it would hide the day the server's answer really does depend
+   *    on the question.
+   */
+  /** @returns {boolean} true when the table moved and the list was re-asked -- the page in hand
+   *  is then about a table this rule may not gather and must NOT be painted. */
+  function adoptServedSelection(page, seq) {
+    if (!page || seq !== session.worklistSeq) return false;  // a superseded page speaks for nobody
+    const served = page.selection && Array.isArray(page.selection.map_tables)
+      ? page.selection.map_tables : null;
+    if (!served || served.length === 0) return false;
+    const before = session.question.mapTable;
+    setSession(withCatalog(session, withServedMapTables(session.catalog, served)));
+    // The table on screen was not one this rule can gather. `resolveQuestion` has already moved
+    // to one it can; the LIST still belongs to the table we just left, so it is re-asked.
+    if (!session.question.mapTable || session.question.mapTable === before) return false;
+    fetchWorklist();
+    return true;
   }
 
   function markLoop() {
@@ -2012,7 +2120,17 @@ export function bootstrap(deps) {
      */
     setContext(next) {
       if (!next) return;
-      if (next.rule) context.rule = String(next.rule);
+      if (next.rule) {
+        // 🔴 A NEW RULE EMPTIES THE LIST AT THE PICK, NOT AT THE ANSWER. The page entry rebuilds
+        //    the catalog between the two (several served round trips per table), and that
+        //    rebuild can FAIL -- in which case `refreshWorklist` is never reached and the
+        //    PREVIOUS rule's units stay on screen under the new rule's name, permanently. The
+        //    sequence bump goes with it, so an answer already in flight for the old rule cannot
+        //    land either.
+        const changed = String(next.rule) !== context.rule;
+        context.rule = String(next.rule);
+        if (changed) setSession(withWorklistReset(session));
+      }
       if (Array.isArray(next.targetFields)) context.targetFields = next.targetFields.slice();
       if (next.confirmedBy) context.confirmedBy = String(next.confirmedBy);
       // An ARRAY is a declaration (possibly of nothing); absence leaves the `null` "unwired".

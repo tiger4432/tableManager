@@ -33,7 +33,8 @@
  */
 
 import { createMapSession, withQuestion, withCatalog, withSelectedCandidate, withDecision,
-         withPayload, withWorklistQuery, withWorklist, withWorklistError, withConfirmed,
+         withPayload, withWorklistQuery, withWorklist, withWorklistError, withWorklistReset,
+         withConfirmed,
          resolveQuestion, columnKey, isAskable, isUnset, columnsOf,
          BINDING_DECLARED, BINDING_DERIVED, BINDING_FALLBACK_GUESS, BINDING_NONE,
          EMPTY_QUESTION } from '../src/map2/session.js';
@@ -44,7 +45,7 @@ import { buildViewModel, assertNoRatio, countCoordinatePairs, selectAlignmentRul
 import { createApiClient, ROUTES, RouteNotServedError, normaliseReferenceCatalog,
          REFERENCE_CATALOG_SERVED, REFERENCE_CATALOG_UNAVAILABLE } from '../src/map2/api.js';
 import { referenceOptionLabel, REFERENCE_KIND_WORD } from '../src/map2/view_model.js';
-import { bootstrap, normaliseWorklist } from '../src/map2/main.js';
+import { bootstrap, normaliseWorklist, withServedMapTables } from '../src/map2/main.js';
 import { decideVerdict } from '../src/map2/verdict_bridge.js';
 // The ONE file read as text rather than imported: `map_editor2.js` is a page entry that touches
 // `document` at module scope and exports nothing. See section L for why the census exists at all.
@@ -1003,6 +1004,229 @@ const CATALOG = {
      'M11 and LEADS it -- whether the screen can answer at all outranks what an answer rests on');
 }
 
+// ── N. the rule chooses the table, and a refused table says why ────────────────
+//
+// The served answer (`selection.map_tables`) has ridden on every worklist response since the
+// route landed and had NO READER. What the picker showed instead was the bootstrap discovery --
+// every table declaring `map_key_columns`, i.e. the SAME nine under every rule. Measured on the
+// isolated box: `core_frame_review` (source `dt_core_view`) with `dt_map` selected answers 200
+// with 150 of 150 units `unscorable / map_keys_unavailable`, and not one of those refusals is a
+// fact about the data.
+{
+  // The two shapes the route really sends, verbatim from :8099 today.
+  const FOR_DT_LOG = [
+    { table: 'core_wafer_map', selectable: true, reason: null },
+    { table: 'dt_map', selectable: true, reason: null },
+    { table: 'valid_die_ref', selectable: false,
+      reason: "소스 'dt_log'에 맵 키 컬럼 없음 - type" },
+  ];
+  const FOR_DT_CORE_VIEW = [
+    { table: 'core_wafer_map', selectable: true, reason: null },
+    { table: 'dt_map', selectable: false,
+      reason: "소스 'dt_core_view'에 맵 키 컬럼 없음 - dt_lot, dt_slot" },
+    { table: 'valid_die_ref', selectable: false,
+      reason: "소스 'dt_core_view'에 맵 키 컬럼 없음 - product, type" },
+  ];
+
+  const base = { ...CATALOG, tables: [{ table: 'dt_map', label: 'dt_map' }] };
+  const merged = withServedMapTables(base, FOR_DT_CORE_VIEW);
+  eq(merged.tables.length, 3, 'N1 the SERVED list is the set -- a refused table is not deleted');
+  eq(merged.tables[1].selectable, false, 'N2 carrying the server`s verdict per table');
+  ok(merged.tables[1].reason.indexOf('dt_lot') >= 0,
+     'N3 and the server`s own sentence, which names the columns to repair');
+  eq(merged.columns, base.columns, 'N4 nothing else about the catalog is touched');
+
+  // 🔴 NEGATIVE CONTROL. Without it this section would score a fixture that cannot fail: if
+  //    `selectable` were ignored entirely, N1..N3 above still pass. The two rules must produce
+  //    DIFFERENT adopted tables from the same starting question, and the difference must be
+  //    exactly the table one of them may not gather.
+  const asked = withQuestion(withCatalog(createMapSession({}), CATALOG), { mapTable: 'dt_map' });
+  eq(asked.question.mapTable, 'dt_map', 'N5 the operator is on dt_map');
+  const underDtLog = withCatalog(asked, withServedMapTables(asked.catalog, FOR_DT_LOG));
+  eq(underDtLog.question.mapTable, 'dt_map',
+     'N6 a rule whose source CAN gather dt_map leaves the operator where they were');
+  const underCoreView = withCatalog(asked, withServedMapTables(asked.catalog, FOR_DT_CORE_VIEW));
+  eq(underCoreView.question.mapTable, 'core_wafer_map',
+     'N7 a rule whose source cannot moves to one it can, rather than answering 150/150 unscorable');
+  ok(underDtLog.question.mapTable !== underCoreView.question.mapTable,
+     'N8 NEGATIVE CONTROL: the two rules disagree about the table -- a fixture where they agreed '
+     + 'would score nothing at all');
+
+  // Every table refused is a state with a name, not a table left standing.
+  const noneChoosable = withCatalog(asked, withServedMapTables(asked.catalog,
+    FOR_DT_CORE_VIEW.map(t => ({ ...t, selectable: false, reason: t.reason || 'x'}))));
+  eq(noneChoosable.question.mapTable, null,
+     'N9 a rule with nothing to align against holds no table, rather than a refused one');
+
+  // ⚠️ ABSENT IS NOT REFUSED. A server that does not carry the field must not empty the picker.
+  const silent = withServedMapTables(base, [{ table: 'dt_map' }, { table: 'core_wafer_map' }]);
+  ok(silent.tables.every(t => t.selectable), 'N10 an unstated `selectable` stays choosable');
+
+  // The picker's own line: refused options stay, disabled, carrying the reason.
+  const vm = buildViewModel({ session: underCoreView, verdict: null });
+  const opt = vm.question.tables.find(o => o.value === 'dt_map');
+  ok(opt, 'N11 the refused table is still ON the list -- a silent disappearance is unreadable');
+  ok(opt.disabled, 'N12 and cannot be picked');
+  ok(opt.label.indexOf(WORDS.tableUnavailable) >= 0, 'N13 marked with the state word');
+  ok(opt.label.indexOf('dt_lot') >= 0, 'N14 and the reason, verbatim, is IN the label');
+  ok(!opt.selected, 'N15 a table nobody may pick is never the current one');
+  ok(vm.question.tables.find(o => o.value === 'core_wafer_map').label.indexOf(
+       WORDS.tableUnavailable) < 0, 'N16 a choosable table carries no such mark');
+}
+
+// ── N2. derived is not a guess, and an override is visible as one ──────────────
+{
+  const CAT = {
+    ...CATALOG,
+    columns: { ...CATALOG.columns, dt_map: ['dt_job', 'dt_x', 'dt_y', 'core_x', 'core_y', 'c_bn'] },
+    binding: {
+      ...CATALOG.binding,
+      derived_tbl: { x: 'x', y: 'y', val: 'c_bn', source: BINDING_DERIVED },
+    },
+    tables: [{ table: 'derived_tbl', label: 'derived_tbl' }].concat(CATALOG.tables),
+    columns2: null,
+  };
+  CAT.columns.derived_tbl = ['x', 'y', 'c_bn'];
+  CAT.references.derived_tbl = [];
+
+  const der = withQuestion(withCatalog(createMapSession({}), CAT), { mapTable: 'derived_tbl' });
+  eq(der.question.bindingSource, BINDING_DERIVED,
+     'N17 a derived binding keeps its OWN word -- it is no longer folded into fallback_guess');
+  const vmDer = buildViewModel(readySession(der));
+  ok(vmDer.question.bindingIsGuess,
+     'N18 and is still a pair nobody agreed to, so the proposal marking survives the unfolding');
+  ok(vmDer.confirm.restsOnGuess,
+     'N19 and so does the write`s disclosure -- the guard scores by MEMBERSHIP, not by one word');
+  eq(vmDer.question.guessWord, '', 'N20 but it is not called a guess: nothing was invented here');
+
+  const guessed = withQuestion(withCatalog(createMapSession({}), CATALOG),
+                              { mapTable: 'core_wafer_map' });
+  const vmGuess = buildViewModel(readySession(guessed));
+  eq(vmGuess.question.guessWord, WORDS.bindingGuess,
+     'N21 only fallback_guess earns the word the route`s contract asks a client to show');
+  ok(vmGuess.question.bindingGuessed, 'N22 carried as a flag beside the word');
+  ok(vmGuess.confirm.inertHint.indexOf(WORDS.bindingGuess) >= 0,
+     'N23 and the instruction names WHICH part is invented');
+
+  // An override: the pair on screen is not the pair the server declared.
+  const declared = withCatalog(createMapSession({}), CATALOG);   // dt_map, declared dt_x/dt_y
+  eq(buildViewModel(readySession(declared)).question.overrideWord, '',
+     'N24 agreeing with the declaration is not an override');
+  const moved = withQuestion(declared, { columns: { x: 'core_x', y: 'core_y', val: 'c_bn' } });
+  const vmMoved = buildViewModel(readySession(moved));
+  eq(vmMoved.question.bindingSource, BINDING_DECLARED,
+     'N25 the operator`s own pick still outranks the config, as the write requires');
+  ok(vmMoved.question.overrideWord.indexOf(WORDS.overrideDiffers) >= 0,
+     'N26 but the screen says the pair is not the declared one');
+  ok(vmMoved.question.overrideAxes.indexOf('x') >= 0
+     && vmMoved.question.overrideAxes.indexOf('y') >= 0,
+     'N27 naming the axes that moved');
+  ok(vmMoved.question.overrideAxes.indexOf('값') < 0,
+     'N28 and NOT the one that did not -- an override that names everything names nothing');
+  // Clearing a declared value column is an override too: it changes what can be ANSWERED.
+  const noVal = withQuestion(declared, { columns: { x: 'dt_x', y: 'dt_y', val: null } });
+  ok(buildViewModel(readySession(noVal)).question.overrideAxes.indexOf('값') >= 0,
+     'N29 clearing a declared value column turns a valued run into an occupancy one, and says so');
+}
+
+// ── N3. a new rule empties the list at the PICK, not at the answer ─────────────
+{
+  const rows = [{ unit_key: 'U1', state: 'pending', map_count: 3 }];
+  let s = withWorklist(createMapSession({}), normaliseWorklist({ units: rows }), 0);
+  s = withWorklistQuery(s, 'BLK');
+  s = withWorklist(s, normaliseWorklist({ units: rows }), s.worklistSeq);
+  eq(s.worklist.rows.length, 1, 'N30 a page for the previous rule is on screen');
+
+  const cleared = withWorklistReset(s);
+  eq(cleared.worklist.rows.length, 0, 'N31 picking a new rule empties it AT THE PICK');
+  ok(!cleared.worklist.served,
+     'N32 and the list reads as unanswered -- the catalog rebuild between pick and refetch can fail');
+  eq(cleared.worklist.query, 'BLK', 'N33 the operator`s search text is theirs, not the rule`s');
+  eq(cleared.worklistSeq, s.worklistSeq + 1, 'N34 with the sequence moved');
+  eq(withWorklist(cleared, normaliseWorklist({ units: rows }), s.worklistSeq), cleared,
+     'N35 so an answer already in flight for the OLD rule cannot land under the new one`s name');
+}
+
+// ── N4. the shell: the served offer reaches the picker, and re-asks ONCE ───────
+//
+// The end of the wire. Everything above is pure; this drives the real `bootstrap` so the
+// segment that was actually missing -- a reader for `selection.map_tables` -- is scored where it
+// runs, on the DOM the page publishes.
+{
+  const doc = makeDocument();
+  const served = [
+    { table: 'dt_map', selectable: false,
+      reason: "소스 'dt_core_view'에 맵 키 컬럼 없음 - dt_lot, dt_slot" },
+    { table: 'core_wafer_map', selectable: true, reason: null },
+  ];
+  const asked = [];
+  // The two pages differ, so "which one is on screen" is answerable. A fixture serving the same
+  // rows to both questions could not tell a corrected list from an uncorrected one.
+  const unitsFor = (t) => t === 'dt_map'
+    ? [{ unit_key: 'REFUSED-1', state: 'unscorable', reason_code: 'map_keys_unavailable' }]
+    : [{ unit_key: 'U1', state: 'pending', map_count: 3 }];
+  const api = { counters: { reads: 0, writes: 0 },
+                loadReferenceView: () => Promise.resolve({}),
+                loadAlignConfig: () => Promise.resolve({}) };
+  const app = bootstrap({ document: doc, api });
+  app.setCatalog(CATALOG);                       // dt_map first, as the bootstrap discovers it
+  app.setContext({ rule: 'core_frame_review', decisionKeyColumns: ['dt_job'] });
+  app.setWorklistLoader((q) => {
+    asked.push(q);
+    // The route's answer does not depend on WHICH map_table was asked -- `map_table_catalog`
+    // reads the rule's source model only -- so the second answer is byte-identical to the first.
+    // That is what makes the re-ask terminate, and modelling it any other way would hide it.
+    return Promise.resolve({ units: unitsFor(q.mapTable), selection: { map_tables: served } });
+  });
+  eq(app.peek().question.mapTable, 'dt_map', 'N36 the bootstrap catalog put the operator on dt_map');
+
+  // 🔴 EVERY ROW EVER APPENDED, NOT THE ROWS LEFT AT THE END. The defect below is a TRANSIENT --
+  //    the refused table's page is painted and then replaced a round trip later -- and an
+  //    end-state assertion is blind to it by construction: two mutations that put 150 wrong rows
+  //    on screen for a second BOTH passed N47/N48 when those read `peek()` after settling
+  //    (measured, MUT-11 and MUT-12). So the witness is the DOM's own write log.
+  const painted = [];
+  for (const id of ['me2-worklist-rows', 'me2-worklist-rows-unscorable']) {
+    const host = doc.getElementById(id);
+    const append = host.appendChild.bind(host);
+    host.appendChild = (n) => { painted.push(String(n.textContent)); return append(n); };
+  }
+  app.refreshWorklist();
+
+  await settle().then(settle).then(settle).then(() => {
+    eq(asked.length, 2, 'N37 the list is re-asked exactly once after the table is corrected');
+    eq((asked[0] || {}).mapTable, 'dt_map', 'N38 the first ask was for the table on screen');
+    eq((asked[1] || {}).mapTable, 'core_wafer_map',
+       'N39 and the second for the one this rule can actually gather');
+    eq((asked[1] || {}).rule, 'core_frame_review', 'N40 under the rule that declared the unit');
+
+    const select = doc.getElementById('me2-table-select');
+    const opts = select.options;
+    eq(opts.length, 2, 'N41 both tables are on the picker');
+    const refused = opts.find(o => o.value === 'dt_map');
+    ok(refused.disabled, 'N42 the refused one is disabled IN THE DOM, not merely in the model');
+    ok(refused.textContent.indexOf('dt_lot') >= 0,
+       'N43 and the server`s reason is readable on it -- a reasonless absence sends the operator '
+       + 'to a person instead of to a config file');
+    ok(!opts.find(o => o.value === 'core_wafer_map').disabled, 'N44 the choosable one is not');
+    eq(select.value, 'core_wafer_map', 'N45 and it is what the control now holds');
+    ok(!select.disabled,
+       'N46 the control stays OPEN -- the operator has to be able to read the refusals');
+
+    // 🔴 AND THE REFUSED TABLE'S PAGE IS NEVER PAINTED. The route needs a `map_table` to answer
+    //    at all, so the first ask under a new rule necessarily carries the previous rule's
+    //    table; what comes back is a full list of refusals about a question nobody asked.
+    //    Measured live before this ordering: 150 unscorable rows on screen for ~2s. An answer
+    //    this side already knows is about the wrong table is a wrong answer, not a slow one.
+    const keys = app.peek().worklist.rows.map(r => r.unit_key);
+    eq(keys.join(','), 'U1', 'N47 the list that settles is the CORRECTED table`s');
+    ok(painted.some(t => t.indexOf('U1') >= 0), 'N48 and it was drawn');
+    ok(!painted.some(t => t.indexOf('REFUSED-1') >= 0),
+       'N49 while the refused table`s page was NEVER drawn -- not for one repaint. Scored off '
+       + 'every append the shell made, because the end state cannot see a transient');
+  });
+}
+
 console.log(`ASSERTIONS ${compared} ${failures.length}`);
 if (failures.length > 0) {
   console.log('\nFAILURES');
@@ -1081,6 +1305,17 @@ function makeDocument() {
         return null;
       },
     };
+    // 🔴 `<select>.options`, MODELLED, BECAUSE ITS ABSENCE MADE A DEFECT UNREACHABLE FROM HERE.
+    //    `fillSelect` rebuilds the children only when the option VALUES change and applies
+    //    `disabled` and the labels on EVERY pass -- which is the half that matters when the rule
+    //    changes, because the nine map tables keep their values and only their selectability and
+    //    their reasons move. Reading `node.options || []` against a stub with no such property
+    //    made that loop a no-op here: the mutation that never disables an option SURVIVED with
+    //    the harness green (measured, MUT-7). A stub that under-models the platform reports
+    //    green on a defect that exists only in a browser.
+    Object.defineProperty(el, 'options', {
+      get() { return this.children.filter(c => c.tagName === 'OPTION'); },
+    });
     let ownText = '';
     Object.defineProperty(el, 'textContent', {
       get() { return this.children.length > 0 ? this.children.map(c => c.textContent).join('') : ownText; },

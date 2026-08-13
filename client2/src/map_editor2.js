@@ -210,18 +210,33 @@ function start() {
   discover(api).then(found => {
     if (found.reason) app.setNotice(found.reason);
     // The offer, in the order the server declared it. Nothing here ranks or renames.
+    //
+    // 🔴 THE OFFER IS A FUNCTION OF WHAT IS PICKED, AND IT HAS TO BE RE-MARKED ON EVERY PICK.
+    //    The handler below used to pass `options: null` -- "keep the offer, change only the
+    //    marking" -- but the only marking it changed was the PROPOSAL flag. The `selected`
+    //    booleans stayed as they were built, and on this deployment they are built with the
+    //    PLACEHOLDER selected: two rules declare `alignment` so `found.declaration` is null and
+    //    nothing may be proposed. `fillSelect` writes `node.value` from those booleans on every
+    //    repaint, so the control snapped back to `규칙 선택` the instant the pick was made --
+    //    measured on the isolated box today, with the table, the columns and the worklist all
+    //    filling in correctly underneath a picker that read as untouched. A control that
+    //    forgets what the operator told it reads as broken however right the rest of the screen
+    //    is, and it is the FIRST control in the chain.
+    //
+    //    Rebuilding the array does not rebuild the DOM: `fillSelect` keys its rebuild on the
+    //    option VALUES, which do not move here, so the dropdown cannot be closed under an open
+    //    hand by this.
+    const ruleOptions = (name) =>
+      [{ value: '', label: WORDS_PICK_RULE, selected: !name }].concat(
+        found.rules.map(r => ({ value: r.name, label: r.name, selected: r.name === name })));
+
     app.setRules({
-      options: [{ value: '', label: WORDS_PICK_RULE, selected: !found.declaration }].concat(
-        found.rules.map(r => ({
-          value: r.name,
-          label: r.name,
-          selected: !!found.declaration && r.name === found.declaration.name,
-        }))),
+      options: ruleOptions(found.declaration ? found.declaration.name : null),
       proposed: !!found.proposed,
     }, (name) => {
       const picked = found.rules.find(r => r.name === name) || null;
-      // Picking BY HAND is a choice, so the proposal marker comes off.
-      app.setRules({ options: null, proposed: false });
+      // Picking BY HAND is a choice, so the proposal marker comes off -- and the pick is marked.
+      app.setRules({ options: ruleOptions(picked ? picked.name : null), proposed: false });
       // 🔴 AND THE REASON GOES WITH IT. `규칙 선택 필요` described the state BEFORE this pick;
       //    left standing it would tell the operator to choose a rule they just chose, which is
       //    the same class of defect as the silence it replaced -- a line that does not track
