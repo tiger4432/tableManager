@@ -1,13 +1,20 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **487개** 이력. (거버넌스 규칙 #4)
+> 총 **494개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-13 11:45** — [The Half Of The Repair A Config File Can Never Do](./20260813_114522_the_half_of_the_repair_a_config_file_can_never_do.md)
+- **2026-08-13 10:58** — [The Switch Saved No Disk Read And None Of The 35 Minutes Is The Ledger](./20260813_105852_the_switch_saved_no_disk_read_and_none_of_the_35_minutes_is_the_ledger.md)
+- **2026-08-13 10:21** — [The Guard Was Armed And Two Lanes Agreed On A Wrong Method](./20260813_102141_the_guard_was_armed_and_two_lanes_agreed_on_a_wrong_method.md)
+- **2026-08-13 09:45** — [The Sibling Would Have Died On The First Write Not On A Rerun](./20260813_094550_the_sibling_would_have_died_on_the_first_write_not_on_a_rerun.md)
+- **2026-08-13 09:42** — [The Rule The Obvious Detector Could Not See](./20260813_094256_the_rule_the_obvious_detector_could_not_see.md)
+- **2026-08-13 09:40** — [The Defect Field Was Already There And My Sweep Matched Names](./20260813_094045_the_defect_field_was_already_there_and_my_sweep_matched_names.md)
+- **2026-08-13 09:09** — [Eight Schema Rules And The Clause That Binds The Rest Of The Day](./20260813_090958_eight_schema_rules_and_the_clause_that_binds_the_rest_of_the_day.md)
 - **2026-08-12 11:43** — [A Narrower Request Cost More And The Row That Did Not Move Caught The Gate](./20260812_114343_a_narrower_request_cost_more_and_the_row_that_did_not_move_caught_the_gate.md)
 - **2026-08-12 11:11** — [The Postgresql Fixture A Commit Of Mine Called Impossible](./20260812_111113_the_postgresql_fixture_a_commit_of_mine_called_impossible.md)
 - **2026-08-12 10:38** — [The Upsert Looked Batched And The Replacement Wrote Null Over A Default](./20260812_103853_the_upsert_looked_batched_and_the_replacement_wrote_null_over_a_default.md)
@@ -508,4 +515,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-12 by gen_index.py*
+*Last generated: 2026-08-13 by gen_index.py*
