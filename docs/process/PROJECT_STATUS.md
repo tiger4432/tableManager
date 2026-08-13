@@ -8,28 +8,42 @@
 > 그대로입니다 — 통과하려면 `--i-accept-writing-to-owner-database`를 **명령줄에 적어야**
 > 합니다(셸 히스토리와 보고서에 남습니다).
 >
-> ### 🔑 분리 술어 — 이것 하나가 라이선스다
+> ### 🔑 분리 술어 — 표마다 «다르다» (2026-08-14 실행 후 실측 정정)
+>
+> ⚠️ **내가 실행 전에 적었던 「`updated_by` 하나로 전부 걸러진다」는 틀렸다.**
+> `updated_by`는 **`cell_sources`에만 있다.** 나머지 네 표엔 그 컬럼이 **없어서** 그 술어를
+> 쓰면 걸러지는 게 아니라 **에러가 난다**(조용히 0을 주는 것보다는 낫지만, 내가 약속한
+> 물건이 아니었다). 표마다 이렇게 쓴다:
 >
 > ```sql
-> WHERE updated_by = 'seed_syn_void_base_join'   -- 제외
-> DELETE FROM <table> WHERE updated_by = 'seed_syn_void_base_join'   -- 롤백
+> -- cell_sources (레이어링 감사)
+> WHERE updated_by = 'seed_syn_void_base_join'
+> -- bonding_log / inspection_run  : 네임스페이스 접두
+> WHERE bond_lot LIKE 'SYN-VOID-%'
+> -- void_obs                      : 베이스 웨이퍼 접두
+> WHERE base_wafer_id LIKE 'SYN-BW-%'
+> -- wafer_map_metadata            : 같은 접두의 map_id
+> WHERE map_id LIKE 'SYN-VOID-%'
 > ```
 >
-> 네임스페이스도 함께: `bond_lot LIKE 'SYN-VOID-%'` · `base_id LIKE 'SYN-BW-%'`.
+> ### 📊 실제 발자국 (실행 후 실측, 2500 웨이퍼 = 100랏 × 25슬롯, 21.9분)
 >
-> ### 📊 증분 (드라이런 실측, 2500 웨이퍼 = 100랏 × 25슬롯)
+> | 표 | 픽스처 | 전체 | **픽스처 비율** |
+> |---|---|---|---|
+> | `cell_sources` | 7,356,816 | 21,202,813 | **34.7 %** |
+> | `bonding_log` | 352,500 | 357,796 | 🔴 **98.5 %** |
+> | `void_obs` | 91,756 | 91,756 | 🔴 **100 %** |
+> | `inspection_run` | 77,500 | 77,500 | 🔴 **100 %** |
+> | `wafer_map_metadata` | 2,500 | 3,431 | 72.9 % |
 >
-> | 표 | +행 |
-> |---|---|
-> | `bonding_log` | **352,500** |
-> | `void_obs` | 91,756 (음성대조 5,000 포함) |
-> | `inspection_run` | 77,500 |
-> | `wafer_map_metadata` | 2,500 |
-> | `cell_sources` | **레이어링이 파생 생성** — 백만 단위, 실행 후 실측해 이 표를 갱신할 것 |
+> `cell_sources` **14 GB** / DB 전체 **20 GB**.
 >
-> 🔴 **필터 없이 `cell_sources`·`bonding_log`를 가로질러 재면 픽스처를 재는 것이다.**
-> 어제 계측 규율의 결론은 「권장」이 아니라 **「모르고 그러는 게 불가능해야 한다」**였고,
-> 이 문단이 그 장치다. 픽스처 이전 숫자를 인용할 땐 **측정 시각을 함께** 적을 것.
+> 🔴 **`void_obs`와 `inspection_run`은 실데이터가 «한 행도» 없다 — 전부 픽스처다.**
+> 이 두 표에서 나온 어떤 분포·비율·상관도 **합성 생성기의 파라미터를 다시 읽은 것**이지
+> 공정에 대한 관측이 아니다. `bonding_log`도 실데이터는 5,296행(1.5%)뿐이다.
+> 필터 없이 이 표들을 가로질러 재면 픽스처를 재는 것이다. 어제 계측 규율의 결론은
+> 「권장」이 아니라 **「모르고 그러는 게 불가능해야 한다」**였고, 이 문단이 그 장치다.
+> 픽스처 이전 숫자를 인용할 땐 **측정 시각을 함께** 적을 것.
 >
 > 📌 `wafer_map_metadata` 2,500행은 전부 `target_table='bonding_log'`이라 **바닥 선택기
 > (`floor_tables()` = `valid_die_ref`·`core_wafer_map`)에는 안 들어간다** — references
