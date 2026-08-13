@@ -86,8 +86,15 @@ NULL이 그 철자**다. PostgreSQL의 UNIQUE 인덱스는 NULL을 서로 충돌
 > 「`None`이면 거절」 가드가 안 뜬다.** 게다가 `updates[0]` 하나만 보므로 10,000행 중
 > 9,999행이 멀쩡하고 첫 행만 비어도 넓어진다(실행 확인). purge는 `CellOverwrite`를
 > 무조건 지우므로 **사람 교정이 같이 날아간다.**
-> `.sample` 기준 노출 테이블 **5개**: `bonding_log`·`map_split_registry`·`valid_die_ref`·
-> `map_doe`·`map_doe_source`.
+> `.sample` 기준 노출 테이블 **6개**: `bonding_log`·`map_split_registry`·`valid_die_ref`·
+> `map_doe`·`map_doe_source`·**`dt_map`**.
+>
+> ⚠️ **`dt_map`은 2026-08-13에 «들어왔다»** — 그날 키가 `(dt_lot, dt_slot)`으로 옮겨지며
+> 맵키가 둘이 됐다. 그 전까지 `PRIMITIVES`와 체인 가이드는 **「`dt_map`은 맵키가 하나라
+> 안전하다」**고 적고 있었다. 🔴 **노출은 테이블의 성질이 아니라 «선언의 개수»다** —
+> 그러니 이 목록은 맵키를 늘리는 변경마다 **다시 세어야** 하고, 그 변경을 하는 레인의
+> 체크리스트에 들어가야 한다. 체인 경로는 스코프를 명시하므로 무관하고, **API·맵 푸시
+> 경로가 노출된다.**
 
 **따름 규칙**: 파생 갈래가 **일부만** 풀리면 부분 dict가 아니라 **거절**한다.
 

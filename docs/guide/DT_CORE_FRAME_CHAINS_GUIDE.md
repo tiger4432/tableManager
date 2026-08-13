@@ -1,6 +1,6 @@
 # DT/Core frame 체인 운영 가이드
 
-> **대상:** 공정·설정 운영자 | **최종 검증:** 2026-08-11 (§1-bis에 **리네임이 안 따라가는 파일 둘**을 추가 — DDL 인덱스 정의와 `enrichment_rules.json`의 자유 SQL은 체인 리졸버 밖이라 컬럼명을 바꿔도 조용히 안 따라온다. §1-bis 자체는 잡 컬럼 이름 신설 — 매퍼에 `dt_job` 기본값이 없어졌다)
+> **대상:** 공정·설정 운영자 | **최종 검증:** 2026-08-13 (`4d5198c` — **`dt_map`의 맵 키가 `dt_job`에서 `(dt_lot, dt_slot)`으로 옮겨갔다.** 여러 잡이 한 맵에 수렴하므로 제거 전략도 `replace_map`에서 **`retract`**으로 바뀌었고, 잡 컬럼은 이제 **유도되지 않고 선언돼야** 한다 — §1-bis·§3·§4·§5 갱신)
 
 이 문서는 DT와 Core frame 파생 체인을 설정·운영하는 방법을 설명한다. 데이터
 소유권과 전체 구조는 [DT/Core frame 체인 구조](../architecture/DT_CORE_FRAME_CHAINS.md)를
@@ -48,6 +48,12 @@
     옛 컬럼명을 그대로 찾고, 대상 컬럼이 없으니 **매번 조용히 0행**을 반환할 수 있다.
   - 이 둘은 어느 쪽도 아직 자동으로 리네임을 따라가지 않는다 — **컬럼을 바꾼다면 이 두 파일도
     같은 변경에서 손으로 맞춰라.**
+- 🔴 **`dt_map`은 이제 유도로 풀리지 않는다 — 선언해야 한다** (2026-08-13 `4d5198c`).
+  `dt_map`의 `map_key_columns`가 **둘**(`dt_lot`, `dt_slot`)이 됐고 그중 어느 것도 잡이
+  아니므로, 위 유도 규칙 두 갈래가 모두 성립하지 않는다. 그래서
+  `dt_inventory_to_standard_dt_map` 룰에 **`target_job_column`이 선언돼 있어야 한다**
+  (`.sample`에는 `"target_job_column": "dt_job"`으로 들어 있다). 이 자리에서
+  `ColumnBindingRefused`가 뜨면 **리졸버가 고장 난 것이 아니라 선언이 빠진 것**이다.
 - **테이블마다 철자가 다를 수 있다.** `dt_log`·`dt_map`·`dt_inventory`는 서로 다른
   이름을 가질 수 있고, 이제 코드가 그것을 표현한다.
 - **유도를 덮어쓰려면** 해당 `chain_rules.json` 룰에 `trigger_job_column` ·
@@ -85,8 +91,13 @@ DT job이 들어온 뒤 아래 순서로 확인한다.
 2. `dt_inventory`에 `dt_frame`, 여섯 `dt_*` 수식 필드가 있는지 확인한다.
    물리 Core 매칭이 성공했다면 `core_frame`과 여섯 `core_*` 수식 필드도 있어야
    한다.
-3. `dt_map`에 해당 job의 표준 좌표 셀만 있고, 메타가 `front`, 회전 `0`, 시작
-   `(1,1)`, 원본과 같은 `valid_die_ref`인지 확인한다.
+3. `dt_map`에서 **그 job의 `(dt_lot, dt_slot)` 맵**을 찾아, 표준 좌표 셀이 있고 메타가
+   `front`, 회전 `0`, 시작 `(1,1)`, 원본과 같은 `valid_die_ref`인지 확인한다.
+   ⚠️ **한 맵에 여러 job의 셀이 섞여 있는 것이 정상이다**(2026-08-13부터) — 셀마다
+   `dt_job`이 실려 있으므로 출처는 그것으로 본다. 「이 job의 셀만」이라는 옛 점검은
+   더 이상 성립하지 않는다.
+   🔴 **맵이 아예 없으면 먼저 `dt_inventory`의 `dt_lot`·`dt_slot`이 채워졌는지 본다** —
+   비어 있으면 맵을 안 만드는 것이 규칙이다(§4 첫 행).
 4. `core_wafer` enrichment가 끝난 뒤 `core_usage_map`에 해당 wafer의 표준 Core
    좌표, `used_count`, `used_dt_jobs`가 있는지 확인한다.
 
@@ -104,7 +115,9 @@ alignment → inventory → core usage map 순서로 재생한다.
 
 | 증상 | 확인 및 조치 |
 |---|---|
-| `dt_map`이 없음 | `dt_inventory.dt_frame`과 여섯 DT 수식이 있는지 확인하고 `dt_inventory_to_standard_dt_map`을 재생한다. |
+| `dt_map`이 없음 | **먼저 `dt_inventory`의 `dt_lot`·`dt_slot`을 본다**(2026-08-13). 둘 중 하나라도 비어 있으면 **맵을 안 만드는 것이 규칙이다** — `chain_key_gate`가 그 행을 거절하며 **비어 있는 컬럼 이름을 로그에 찍는다**. 확정이 아직 안 된 job은 맵이 없는 것이 정상이고(도입 초기에는 대다수가 그렇다), 고칠 곳은 체인이 아니라 lot/slot 확정 경로다. 둘이 채워져 있는데도 없으면 그때 `dt_inventory.dt_frame`과 여섯 DT 수식을 확인하고 `dt_inventory_to_standard_dt_map`을 재생한다. |
+| **철회가 거절됨**(로그에 「would retract N% of what … owns」) | 예산 가드다. 한 출처가 소유한 것의 절반을 넘게 지우게 되는 계획은 **실행하지 않고 사유를 남긴다** — 0건 삭제로 조용히 넘어가지 않는다. 대개 **프레임이나 lot/slot 확정이 틀렸다**는 신호이므로 삭제 한도부터 올리지 말고 그쪽을 먼저 본다. |
+| **한 잡의 옛 셀이 안 지워짐** | 형제 잡이 같은 칸을 나중에 쓰면 그 셀의 `dt_job`이 **덮인다**(last-writer-wins). 철회는 자기 이름이 붙은 셀만 고르므로, 이름을 뺏긴 셀은 자기가 회수할 수 없다. **덜 지우는 방향이라 데이터는 안전하지만 잔여가 남는다** — 필요하면 그 맵 전체를 소유 체인으로 다시 돌린다. |
 | Core frame이 없음 | 원본에 설정된 Core 식별값이 있는지, 해당 `core_wafer_map`이 있는지 확인한 뒤 후보 채점 결과를 본다. 문턱부터 내리지 않는다. |
 | `core_usage_map`이 없음 | `core_wafer`가 필수다. 기존 attribution enrichment를 고친 뒤 `dt_log_to_core_usage_map`을 재생한다. |
 | 한 wafer의 usage 셀이 둘로 갈라짐 | lot/slot을 map key에 넣지 않는다. 하나의 `core_wafer` 값으로 정규화·enrich한다. |
@@ -116,8 +129,12 @@ alignment → inventory → core usage map 순서로 재생한다.
 
 ## 5. 안전한 변경 원칙
 
-- DT/Core frame을 변경한 뒤에는 하위 replace-map 소유 체인을 재생한다. 해당 맵
-  범위는 append되지 않고 새 결과로 교체된다.
+- DT/Core frame을 변경한 뒤에는 하위 맵 소유 체인을 재생한다. 어느 쪽도 append되지
+  않는다 — `core_usage_map`은 맵 범위가 **교체**되고, `dt_map`은 그 잡이 소유한 채
+  더는 파생하지 않는 셀이 **철회**된다(2026-08-13부터. 종전에는 둘 다 교체였다).
+- 🔴 **`dt_map`에 `replace_map`을 다시 켜지 마라.** 여러 잡이 한 맵을 먹이므로 맵 단위
+  purge는 **형제 잡의 셀을 지운다** — 재실행에서가 아니라 **첫 파생에서** 그렇다.
+  두 전략을 한 배치에 함께 실으면 워커와 리플레이 양쪽이 **거부**한다.
 - Core 기준맵의 유효다이맵을 바꾸면 채점 근거도 바뀐다. 먼저 Core frame을
   재평가하고 usage map을 재생한다.
 - `dt_core_view`는 Map Editor의 시각 검토용이다. 자동 쓰기 경로로 사용하지 않는다.

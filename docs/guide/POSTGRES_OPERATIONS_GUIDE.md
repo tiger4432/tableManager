@@ -1,6 +1,6 @@
 # 🐘 PostgreSQL & pgAdmin4 운영 관리 가이드 (AssyManager)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (§3.1에 **접두 중복·미사용 인덱스 회수** 항목 신설 + `--drop-redundant`가 드라이런이 아니라는 경고 추가 — 준비만 됐고 **아직 아무 DB에도 적용하지 않았다**. 직전 2026-08-08: §3.1에 **업무 키가 안 조립된 행의 읽기 전용 사전점검** 항목 신설 — `b2ceb55`. ⚠️ **이 배지는 낡아 있었습니다**: `cc602ed`가 D3 두 절(`uq_bk_<table>` · `--drop-redundant`)을 이미 넣었는데 날짜가 2026-07-31에 멈춰 있었습니다 — **본문이 앞서고 배지가 뒤처지면 독자는 본문을 안 읽습니다.** 직전 2026-07-31: §3.1에 R2 회수 범위 인덱스 `idx_sources_by_source` — `1948338`) | **Owner:** Ops
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-13 (§3.1에 **읽기 전용 가드** 항목 신설 — 「사전점검」이 *증명된 성질*인 스크립트와 *의도일 뿐*인 스크립트가 갈린다. 🔴 이 문서가 `check_missing_business_key.py`에 대해 「구조적으로 못 쓴다」고 적고 있던 것이 **거짓이었다** — `SET SESSION default_transaction_read_only`는 PostgreSQL이 강제하는 변수가 아니다. 직전 2026-08-11: §3.1에 **접두 중복·미사용 인덱스 회수** 항목 신설 + `--drop-redundant`가 드라이런이 아니라는 경고 추가 — 준비만 됐고 **아직 아무 DB에도 적용하지 않았다**. 직전 2026-08-08: §3.1에 **업무 키가 안 조립된 행의 읽기 전용 사전점검** 항목 신설 — `b2ceb55`. ⚠️ **이 배지는 낡아 있었습니다**: `cc602ed`가 D3 두 절(`uq_bk_<table>` · `--drop-redundant`)을 이미 넣었는데 날짜가 2026-07-31에 멈춰 있었습니다 — **본문이 앞서고 배지가 뒤처지면 독자는 본문을 안 읽습니다.** 직전 2026-07-31: §3.1에 R2 회수 범위 인덱스 `idx_sources_by_source` — `1948338`) | **Owner:** Ops
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 AssyManager의 백엔드 데이터베이스인 PostgreSQL을 운영하고 pgAdmin4를 통해 데이터를 직접 관리하는 방법을 안내합니다.
@@ -84,6 +84,22 @@ WHERE tablename = 'data_rows';
 > - `python server/scripts/setup_db_performance.py` — 성능 인덱스 일체
 > - `python server/migrations/add_business_key_unique_index.py --apply` — 업무 키 UNIQUE 인덱스(§3.1-bis)
 
+#### 읽기 전용 가드 — 「사전점검」이 실제로 못 쓴다는 뜻인 곳은 어디인가 (2026-08-13 `b1dd2f0`)
+
+아래 스크립트들의 **사전점검**(플래그 없는 호출)은 아무것도 쓰지 않습니다. 다만 **그것이 «의도»인 스크립트와 «증명된 성질»인 스크립트가 갈립니다** — 운영 DB를 가리키기 전에 어느 쪽인지 알고 부르십시오.
+
+| 스크립트 | 가드 |
+|---|---|
+| `migrations/add_business_key_unique_index.py` · `scripts/dedupe_business_key_rows.py` · `scripts/rebuild_blank_business_keys.py` | ✅ **증명됨.** 엔진을 `-c default_transaction_read_only=on` **연결 옵션**으로 열고, `transaction_read_only`를 **SHOW로 되읽어** `on`이 아니거나 **답하지 못하면 연결을 거절**합니다. 쓰기용 엔진은 `--apply` 갈래 **안에서만** 열리므로 점검만 하는 실행은 쓰기 가능한 연결을 아예 만들지 않습니다 |
+| `scripts/audit_schema_canon.py` | ✅ **증명됨** — 다만 **철자가 다릅니다**(`postgresql_readonly=True`, SQLAlchemy 자체 옵션). 되읽어 확인하는 것은 같습니다. **통합은 총괄 판정 대기이고, 셋째 철자를 만들지 마십시오** |
+| `migrations/drop_redundant_layering_indexes.py` · `scripts/check_missing_business_key.py` · `scripts/dev_env/snapshot_db.py` | ⚠️ **옛 철자.** `SET SESSION default_transaction_read_only = on` 한 줄뿐입니다 — 플래그만 됐고 수리는 안 됐습니다 |
+
+🔴 **왜 옛 철자로는 부족한가**: `default_transaction_read_only`와 `transaction_read_only`는 **다른 변수**이고, PostgreSQL이 실제로 강제하는 것은 뒤엣것입니다. `SET SESSION`은 앞엣것만 바꾸므로, **이미 열려 있던 트랜잭션은 옛 기본값을 그대로 들고** `transaction_read_only = off` — 즉 `CREATE TABLE`이 통과합니다. 「세웠으니 됐다」가 아니라 **강제되는 쪽을 되읽어야** 답이 나옵니다.
+
+⚠️ **이 셋이 지금까지 무언가를 쓴 적은 없습니다.** 위 세 스크립트는 `SET` 앞에서 연결을 AUTOCOMMIT으로 전환하고 있었고, 그 덕에 값이 갇힐 트랜잭션이 없어 **우연히** 무장돼 있었습니다. 그 AUTOCOMMIT이 거기 있던 이유는 `CREATE INDEX CONCURRENTLY`가 트랜잭션 블록에서 못 돌기 때문이지 안전성과는 무관합니다 — **무관한 이유로 지우는 순간 가드가 조용히 풀립니다.** 그래서 「우연히 성립」을 「구조적으로 성립」으로 바꾼 것이 이 라운드입니다.
+
+채점: `server/tests/test_readonly_guard.py`(실서버 대상 — 쓰기 시도 전건 거절 + **쓰기 가능 엔진에서 같은 문장이 성공하는 대조군**. 대조군이 없으면 「가드가 막았다」와 「쓰기 자체가 깨졌다」를 구별할 수 없습니다). 재사용 관점은 [PRIMITIVES §6](../architecture/PRIMITIVES.md).
+
 #### 업무 키 UNIQUE 인덱스 (`uq_bk_<table>`) — 2026-08-07 D3
 
 `business_key_val`의 유일성을 **데이터베이스가 강제**하게 한다(배경·의미는 [data_model §3.1](../architecture/data_model.md)). 없으면 프로세스 둘이 같은 키를 동시에 쓸 때 **한 업무 키에 두 행이 조용히** 생긴다(재현된 창 2.4초).
@@ -91,7 +107,7 @@ WHERE tablename = 'data_rows';
 🔴 **먼저 읽기 전용 사전점검부터 돌린다. 운영에 중복이 하나라도 있으면 `CREATE UNIQUE INDEX`는 실패한다.**
 
 ```bash
-# ① 사전점검 — 아무것도 쓰지 않는다(세션을 read-only로 고정한 뒤 조회만 한다)
+# ① 사전점검 — 아무것도 쓰지 않는다(연결이 읽기 전용임을 «되읽어 증명»한다 — 아래 「읽기 전용 가드」)
 conda run -n assy_manager python server/migrations/add_business_key_unique_index.py
 
 # ② 반영
@@ -111,7 +127,7 @@ conda run -n assy_manager python server/scripts/check_missing_business_key.py
 conda run -n assy_manager python server/scripts/check_missing_business_key.py --table dt_log
 ```
 
-- 🔴 **아무것도 쓰지 않는다 — 세션이 `default_transaction_read_only = on`으로 고정돼 구조적으로 못 쓴다.** 채우는 일은 **별개 라운드**다.
+- **아무것도 쓰지 않는다** — 다만 ⚠️ **이 스크립트의 가드는 아직 옛 철자다**(2026-08-13 확인). 종전 이 자리에는 *「세션이 `default_transaction_read_only = on`으로 고정돼 **구조적으로** 못 쓴다」*라고 적혀 있었고 **그 보증은 성립하지 않는다** — 그 변수는 PostgreSQL이 강제하는 변수가 아니다(아래 「읽기 전용 가드」). 실제로는 안 쓰지만 **거절로 증명되지는 않는다.** 채우는 일은 **별개 라운드**다.
 - 답하는 것은 셋이다: **① 몇 행인가**(규모) **② 재료가 있는가**(키 컬럼이 비어 있으면 어떤 스크립트도 못 만든다 — 사람이 값을 넣어야 한다) **③ 채우면 기존 행과 충돌하는가**(같은 재료를 가진 행이 이미 키를 갖고 있으면 그 둘은 중복이다).
 - ⚠️ **③이 잡히면 유니크 인덱스는 그것을 거절하고, 인덱스가 없으면 조용히 둘이 된다. 어느 행이 사는지는 사람이 정한다** — `audit_logs`·`cell_sources` 귀속이 그 선택을 따라간다.
 - 🔴 **이 스크립트는 키를 조합하지 않는다.** 조합의 정본은 `crud.assemble_composite_business_key`이고, 여기서 문자열을 이어 붙이면 그것이 **두 번째 철자**가 되어 조합 규칙이 바뀌는 날 이 스크립트만 옛 규칙으로 남는다. 그래서 「재료가 있는가」와 「같은 재료가 이미 키를 갖는가」만 센다 — **그 둘은 조합 규칙과 무관하게 참**이다.
@@ -134,7 +150,7 @@ conda run -n assy_manager python server/migrations/add_business_key_unique_index
 위 `--drop-redundant`의 **자매 스크립트**이고 대상 계급이 다르다. 저쪽은 「PK 인덱스의 사본」만, 이쪽은 `cell_sources`/`cell_overwrites`/`audit_logs`의 **① 넓은 인덱스의 진짜 왼쪽 접두사** ② **읽는 곳이 없는 인덱스**다.
 
 ```bash
-conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py           # 사전점검(세션 read-only 고정)
+conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py           # 사전점검(⚠️ 옛 철자 가드 — 아래 「읽기 전용 가드」)
 conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py --apply   # 회수
 ```
 

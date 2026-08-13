@@ -1,6 +1,12 @@
 # DT/Core frame derivation chains
 
-> **Status:** active implementation | **Owner:** Lead / Backend | **Last verified:** 2026-08-11
+> **Status:** active implementation | **Owner:** Lead / Backend | **Last verified:** 2026-08-13
+>
+> **2026-08-13 (`4d5198c`)** — `dt_map` moved off the acquisition unit onto the physical
+> one, and its removal strategy moved with it.  Four statements in this file were made
+> false by that move and are corrected below with what they used to say: the authority
+> table's key column, active chain 3, "Both standard-map outputs use `replace_map`", and
+> the job-column derivation bullet.
 
 ## Purpose
 
@@ -34,7 +40,7 @@ an authority and must not be reintroduced.
 | `dt_log` | ingest | `dt_job` raw cells | source coordinates, bin, core identity |
 | `wafer_map_metadata` | DT alignment | `target_table=dt_log`, `map_id=dt_job` | DT grid metadata only |
 | `dt_inventory` | chain integration record | `dt_job` | `dt_frame`, `core_frame`, equations, enriched core list |
-| `dt_map` | derived replace-map | `dt_job` | DT cells in standard coordinates |
+| `dt_map` | derived, **source-retracted** map | **`(dt_lot, dt_slot)`** — the physical unit | DT cells in standard coordinates.  `dt_job` is **not** key material: it rides on every cell as its source |
 | `core_wafer_map` | physical reference | configured lot/slot map id | core valid-die and defect/bin reference |
 | `core_usage_map` | derived replace-map | `core_wafer` | cells used by DT jobs after core standardization |
 
@@ -65,8 +71,11 @@ equations if the selected alignment cannot be represented by this equation.
 2. `wafer_map_metadata_to_dt_inventory` copies that DT metadata into
    `dt_inventory.dt_frame`, derives DT equations, and records the job's core
    wafer list.
-3. `dt_inventory_to_standard_dt_map` replaces the complete `dt_map` scope for
-   the job from raw `dt_log` cells and the DT equations.
+3. `dt_inventory_to_standard_dt_map` writes this job's cells into the `(dt_lot,
+   dt_slot)` map from raw `dt_log` cells and the DT equations, then **retracts**
+   what this job still owns there and no longer derives.  (Until 2026-08-13 this
+   line read "replaces the complete `dt_map` scope for the job" — the scope was
+   the job, and it no longer is.)
 4. `dt_log_to_primary_core_frame` selects the first configured core identity
    for the job (ordered by `dt_index`, then core identity), aligns its raw
    `c_wx`/`c_wy` cells to a configured `core_wafer_map`, and writes
@@ -76,10 +85,63 @@ equations if the selected alignment cannot be represented by this equation.
    runs for raw ingest/enrichment changes so a later `core_wafer` attribution
    is reflected without manual reconstruction.
 
-Both standard-map outputs use `replace_map`.  A successful rerun replaces only
-the declared map scope; it does not append a second version of the same map.
-The ingestion worker permits the inventory-to-map dependency explicitly, while
-cycle validation continues to reject unapproved chain loops.
+🔴 **The two standard-map outputs no longer share a removal strategy.**  Until
+2026-08-13 this paragraph read *"Both standard-map outputs use `replace_map`"*,
+and that sentence was true only while one map had one producer.
+
+| Output | Producers per map | Removal |
+|---|---|---|
+| `core_usage_map` | one enriched `core_wafer` | `replace_map` — purge the map scope, rewrite it |
+| `dt_map` | **several `dt_job`s converge on one wafer** | `retract` — remove only what *this* source owns and no longer derives |
+
+Neither appends a second version of the same map.  The ingestion worker permits
+the inventory-to-map dependency explicitly, while cycle validation continues to
+reject unapproved chain loops.
+
+### The retraction is a prerequisite of the key, not an enhancement
+
+`plan_retraction` in `server/dt_map_derivation.py` was present but had **zero
+production callers** before this move; it is now wired through
+`chain_ingestion_worker` and `chain_replay`.  Two facts about that wiring must
+survive any future edit:
+
+- 🔴 **The retraction has to stay in front of any scoped `replace_map` on a
+  converged map.**  This is not "eventually a rerun would hurt" — with
+  `replace_map` scoped to `(dt_lot, dt_slot)`, the second job to derive kills the
+  first job's cells on the **first** derivation, inside one transaction group
+  (measured on `assy_qa`, 2026-08-13: `In Scope: 3 | Claimed: 2 | Removed: 3`).
+  Both engines therefore **refuse a batch that carries `replace_map` and
+  `retract` together**: the purge would run first and delete the sibling's cells
+  before the narrow strategy could spare them.
+- 🔴 **`dt_job` on a converged cell is last-writer-wins.**  A job whose cells were
+  overwritten by a sibling can never retract its own stale contribution, because
+  the retraction selects positively by the source column and that cell no longer
+  names it.  The direction is conservative — it **under-deletes** — but the
+  property is new with this key and did not exist while the map was per-job.
+  (The development fixture's 100% overlap is degenerate and is not a production
+  rate.)
+
+Two further properties of the retraction, both structural: cells carrying a human
+overwrite are never retracted (`_human_touched_row_ids`), and a plan that would
+remove more than the configured fraction of what a source owns is **declined by
+name** rather than reported as zero — a wrong frame or a wrong confirmation looks
+exactly like "almost everything is stale".  Operator-facing detail lives in
+[guide/chain_ingestion_guide](../guide/chain_ingestion_guide.md).
+
+### A job with no confirmed lot and slot produces no map, and that is the rule working
+
+The map is created only once `(dt_lot, dt_slot)` is filled.  This needed no new
+code: `chain_key_gate` already refuses a row whose declared key columns are
+unfilled, and naming `dt_lot`/`dt_slot` in `composite_key_source` covers them for
+free.  On the development fixture 141 of 150 jobs produced no map — that is
+rollout progress, not a defect, and the refusal names the blank column.
+
+`composite_key_source` is `["dt_lot", "dt_slot", "dt_x", "dt_y"]` and
+`coordinate_columns` stays derived rather than declared.  Three constraints force
+that shape: the row key must be unique per physical die, `derive_cells`
+transforms a 2-tuple only, and keeping `dt_job` in the key would prevent the
+convergence that is the point of the move.  Keeping the map key inside the
+composite source is also what [SCHEMA_CANON R3](./SCHEMA_CANON.md) requires.
 
 ## Core selection and evidence
 
@@ -101,6 +163,11 @@ logs arrive with only lot/slot while others arrive with wafer ID; adding lot/slo
 to the replace-map identity would split one physical wafer into two maps.  Rows
 without `core_wafer` safely produce no usage output until enrichment supplies it.
 
+⚠️ **The two maps spell the physical unit differently on purpose.**  `dt_map` keys
+on `(dt_lot, dt_slot)` and `core_usage_map` on a single `core_wafer` — both are
+"one map per physical wafer", and the difference is which spelling of that wafer
+the upstream log actually carries.  Do not normalise one onto the other.
+
 ## Operational invariants
 
 - Never edit `dt_map` or `core_usage_map` as source data; rerun their owner
@@ -117,6 +184,13 @@ without `core_wafer` safely produce no usage output until enrichment supplies it
   mappers read each name from `table_config` (a single-column `map_key_columns`,
   or a single-column `business_key` where there is no `composite_key_source`) or
   from an explicit `chain_rules.json` override. **There is no `dt_job` default.**
+  - 🔴 **For `dt_map` the derivation branch is now structurally unavailable
+    (2026-08-13).**  It declares **two** `map_key_columns` and neither of them is
+    the job, so `chain_bindings` cannot pick one and refuses by name.  The rule
+    `dt_inventory_to_standard_dt_map` therefore **must declare
+    `target_job_column`**; it does.  This is the derivation working as designed —
+    a `ColumnBindingRefused` here means the declaration is missing, not that the
+    resolver is broken.
   A name that can be resolved from neither is refused by name — the chain aborts
   and says which rule, which key and which table — instead of assuming a spelling
   that is only correct on the development box. Rename the column in
@@ -132,6 +206,7 @@ without `core_wafer` safely produce no usage output until enrichment supplies it
 ## Related implementation
 
 - `server/chain_bindings.py` (job-column resolution: declaration > derivation > refusal)
+- `server/dt_map_derivation.py` (the gate, the identity, the frame — and `plan_retraction` / `apply_retraction` / `normalize_retraction_request`)
 - `server/mappers/dt_inventory_metadata_mapper.py`
 - `server/mappers/dt_standard_map_mapper.py`
 - `server/mappers/core_alignment_mapper.py`

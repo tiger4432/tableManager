@@ -1,8 +1,10 @@
 # 🚀 운영 배포 — 직접 세팅해야 하는 것들 (요약)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-11
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-13
 >
-> **이번 라운드 (2026-08-11)**: **§6에 8-ter 신설**(`dab9152`+`2630790` — 감사 이력 인덱스 세 종, 없으면 오늘의 성능 수리가 프로덕션에 안 먹는다) + **3단계에 `dt_job` 리네임 경고**(`5b09d69` — 컬럼명을 `table_config.json`에서 바꿔도 `add_dt_log_trigger_indexes.sql`의 인덱스 정의와 `enrichment_rules.json`의 자유 SQL 다섯 곳은 체인 리졸버 밖이라 조용히 안 따라온다. 정본은 [DT_CORE_FRAME_CHAINS_GUIDE §1-bis](./DT_CORE_FRAME_CHAINS_GUIDE.md#1-bis-잡-컬럼-이름-2026-08-11)).
+> **이번 라운드 (2026-08-13)**: **§6에 마이그레이션 단계 둘이 늘었다** — **8-quater**(`ba664c5` · 인제션 원장 tier-1 열쇠. 안 돌리면 그 테이블이 **읽기부터** 죽는다)와 **8-quinquies**(`8bdc136` · `dt_inventory.dt_lot`/`dt_slot` 물리 타입). 🔴 **둘의 성격이 다르다**: 앞엣것은 **코드가 그 컬럼을 요구해서** 안 돌리면 깨지고, 뒤엣것은 **아무것도 안 깨진 채 선언과 물리가 계속 어긋난다** — 그래서 뒤엣것은 배너가 아니라 `audit_schema_canon.py`가 답한다.
+>
+> **직전 라운드 (2026-08-11)**: **§6에 8-ter 신설**(`dab9152`+`2630790` — 감사 이력 인덱스 세 종, 없으면 오늘의 성능 수리가 프로덕션에 안 먹는다) + **3단계에 `dt_job` 리네임 경고**(`5b09d69` — 컬럼명을 `table_config.json`에서 바꿔도 `add_dt_log_trigger_indexes.sql`의 인덱스 정의와 `enrichment_rules.json`의 자유 SQL 다섯 곳은 체인 리졸버 밖이라 조용히 안 따라온다. 정본은 [DT_CORE_FRAME_CHAINS_GUIDE §1-bis](./DT_CORE_FRAME_CHAINS_GUIDE.md#1-bis-잡-컬럼-이름-2026-08-11)).
 >
 > **직전 라운드 (2026-08-08 · D3 `4738d84`+`528dfcb`)**: **§6에 8-bis 신설 — 업무 키 UNIQUE 인덱스는 이제 배포 순서의 일부다.** 집합 기반 쓰기 경로가 행마다 내던 신원 SELECT를 없애면서 프로세스 간 경합 창이 **마이크로초 → 실측 2.4초**로 넓어졌고, 실제 프로세스 둘로 **한 업무 키에 두 행**이 재현됐다. 🔴 **8의 `--preflight-only`는 이것을 못 잡는다** — 드리프트 점검이 보는 것은 **컬럼**이지 인덱스가 아니다(실측: `schema_drift.py`에 인덱스 검사 0건).
 >
@@ -551,6 +553,15 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    - **신규** 설치는 `create_all`이 만들므로 이 단계가 필요 없다. `ALTER TABLE ADD COLUMN ... NULL`(기본값 없음)은 PG 11+에서 **메타데이터만** 바꾸므로 테이블 크기와 무관하게 즉시 끝나고, 인덱스는 `CONCURRENTLY`라 쓰기 락이 없다(트랜잭션 블록 밖에서 — `psql -f`).
    - 되돌리기: `server/migrations/add_ingestion_ledger_path_stat_reverse.sql`. 🔴 **되돌리기 전에 `archive_processed_files`를 `true`로 먼저 돌려놓고 워처를 재기동하라** — 컬럼 없이 「파일도 안 옮기는」 조합이 유일하게 아픈 순서다.
    - 크기·비용 실측(`assy_qa`, 300,063행): 인덱스 50MB(**행당 ~175B**, 경로 46자 기준) · 조회 `Index Scan` 8 buffers **0.096ms**. 원장은 **처리한 파일 수**만큼만 자란다(데이터 행 수와 무관).
+8-quinquies. 🔴 **선언만 고친 컬럼 타입은 물리 DB에 «절대» 도달하지 않는다 — `dt_inventory.dt_lot`/`dt_slot`** (2026-08-13 `8bdc136`)
+   ```bash
+   psql "$DATABASE_URL" -f server/migrations/alter_dt_inventory_lot_slot_to_text.sql
+   ```
+   **왜 이것이 손으로 돌아야 하는 단계인가**: `table_config.json`의 `column_types`를 `"number" → "string"`으로 고쳐도 **물리 컬럼은 `double precision`으로 남는다.** `sync_dynamic_tables_schema`는 **`ALTER TABLE … ADD COLUMN`만** 발행하고 **타입을 바꾸는 문장은 이 저장소 어디에도 없다.** 그래서 선언 수정은 **언제나 절반짜리 수리**이고, 나머지 절반이 이 파일이다. 규칙의 정본은 [SCHEMA_CANON R1](../architecture/SCHEMA_CANON.md)(식별자는 절대 수치형이 아니다 — lot id `CL_2601_005_A5`는 `double precision`에 들어가지 않는다).
+   - **이 박스 실측**: `assy_manager`는 `double precision`·251행·**0 filled**(변환할 것도 잃을 것도 없다), `assy_qa`는 이미 `character varying`. 스윕 전체에서 수치형인 lot/slot 컬럼은 **그 둘뿐**이었다 — ⚠️ **운영의 수는 다르다. 돌리기 전에 그쪽에서 다시 세라.**
+   - **되돌리기**: `..._reverse.sql`. 🔴 **역방향은 대칭이 아니다** — 텍스트→수치는 값을 **바꾼다**(`DT-2601-001`은 수가 아니고 슬롯 `01`은 `1`이 되어 돌아오지 않는다). 그래서 변환 불가값이 하나라도 있으면 **거절하고, 그 거절 자체가 답이다**(그 컬럼은 애초에 수치형일 수 없었다는 뜻). 전부 변환 가능해도 **선행 0은 따로 경고**한다.
+   - **확인은 작업한 스크립트가 아니라 검출기로**: `python server/scripts/audit_schema_canon.py`의 `declared_type_disagrees_with_catalogue`가 0이 되는지 본다.
+   - ⚠️ **`declared_column_absent_from_catalogue`가 남는 것은 다른 이야기다** — 선언은 있고 컬럼이 없는 상태는 **다음 기동에 스스로 풀린다**(ADD는 동기화가 *하는* 일이다). 풀리지 않는 것은 **타입 불일치**뿐이다.
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
    - ⚠️ 런처와 웹서버가 **각자** 드리프트 배너를 한 번씩 찍습니다(약 14 ms). 8을 건너뛰었어도 기동 로그에 남으니 거기서 읽으십시오.
 

@@ -34,7 +34,9 @@ filters chain-produced events per rule (not merely per trigger table), and rejec
 a cycle made of opt-in edges while loading the rule configuration. The approved
 graph is therefore finite: `dt_log -> wafer_map_metadata -> dt_inventory`.
 
-No S2 write derives `dt_map`, changes a coordinate, or applies `replace_map`.
+No S2 write derives `dt_map`, changes a coordinate, or removes anything from a
+map — neither `replace_map` nor `retract`.  (`retract` added 2026-08-13: it is the
+strategy S3 uses on `dt_map`, and this boundary statement covers it too.)
 
 ## 규칙
 
@@ -78,4 +80,4 @@ normal automatic confirmation.
 - `server/mappers/dt_alignment_metadata_mapper.py`는 gitignore된 live mapper이며, 추적되는
   `.sample`과 byte-identical이어야 한다.
 - frame/placement/origin 계산은 mapper가 재구현하지 않고 `map_alignment.confirmed_meta_for()`만 사용한다.
-- S2 `dt_inventory.dt_frame` serialized-JSON metadata 복제는 이 계약의 일부다. `dt_log + dt_inventory -> dt_map replace_map`은 아직 아니다.
+- S2 `dt_inventory.dt_frame` serialized-JSON metadata 복제는 이 계약의 일부다. `dt_log + dt_inventory -> dt_map` 파생은 아직 아니다 — 그쪽은 S3이고, **`replace_map`이 아니라 `retract`을 쓴다**(2026-08-13 `4d5198c`. 이 줄은 그전까지 `replace_map`이라 적고 있었다). 계약은 [architecture/DT_CORE_FRAME_CHAINS](../architecture/DT_CORE_FRAME_CHAINS.md).

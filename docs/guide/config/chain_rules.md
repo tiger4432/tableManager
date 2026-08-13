@@ -1,6 +1,6 @@
 # `chain_rules.json` 세팅 — 체인 인제션 룰
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** Ingester
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-13 (§5 키 표에 **제거 전략 옵트인 둘**(`allow_replace_map`·`allow_retraction`)과 **`*_job_column` 명시 선언** 행 추가 — `4d5198c`. 셋 다 표에 없어서, `dt_map`처럼 맵 키가 둘인 타깃에서 왜 체인이 이름을 대며 거절하는지 이 문서만으로는 알 수 없었다) | **Owner:** Ingester
 > 상위: [폴더 인덱스](./README.md) · 동작 원리 정본은 [chain_ingestion_guide](../chain_ingestion_guide.md) · 절차 요약은 [CONFIG_GUIDE §3-S8](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -67,3 +67,6 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 | `mapper_module` / `mapper_function` | `server/mappers/` 하위 모듈 경로와 함수명 |
 | `is_batch` | `true` = 배치(DataFrame) 모드 |
 | `enabled` | `false`면 룰 비활성 |
+| `allow_replace_map` | 맵퍼가 **맵 단위 전량 교체** 봉투를 낼 수 있게 하는 옵트인. 선언 없이 그 봉투를 내면 워커가 거부한다 |
+| `allow_retraction` | (2026-08-13 `4d5198c`) 맵퍼가 **출처 단위 철회** 봉투(`retract`)를 낼 수 있게 하는 옵트인. 🔴 **한 배치에 `replace_map`과 `retract`을 함께 실으면 거부된다** — purge가 먼저 돌면 형제 출처의 셀을 구할 기회가 없다. 어느 쪽을 쓸지는 취향이 아니라 **그 맵의 생산자가 하나인가 여럿인가**가 정한다 → [chain_ingestion_guide](../chain_ingestion_guide.md) |
+| `*_job_column` (`trigger_`/`source_`/`target_`/`inventory_`) | 잡 컬럼 이름의 **명시 선언**. 미선언이면 `table_config`에서 유도한다. 🔴 **유도는 「한 컬럼짜리 `map_key_columns`」에 기대므로, `map_key_columns`가 둘 이상인 타깃은 반드시 선언해야 한다** — `dt_map`이 2026-08-13에 그 상태가 됐고 `dt_inventory_to_standard_dt_map`은 `target_job_column`을 선언한다 → [DT_CORE_FRAME_CHAINS_GUIDE §1-bis](../DT_CORE_FRAME_CHAINS_GUIDE.md) |
