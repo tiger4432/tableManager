@@ -1,0 +1,241 @@
+{
+  "hops": [
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2-A6-A8"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Wafer",
+        "keys": {
+          "wafer": "WF.010702"
+        }
+      },
+      "predicate": "has_wafer",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[single] has_wafer 1건 · class=2 observation · src=lot_event · basis=positional_row",
+      "occurred_at": "2026-05-03T18:16:00+09:00",
+      "event_id": "019ff985-d772-701d-a2d3-b745731f0853"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2-A6-A8"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2-A6"
+        }
+      },
+      "predicate": "derived_from",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[single] derived_from 1건 · class=2 observation · src=lot_event · basis=pair_field",
+      "occurred_at": "2026-05-03T18:16:00+09:00",
+      "event_id": "019ff985-d772-702c-bf4b-b232e6069936"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2-A6-A8"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2-A6"
+        },
+        "slot": "2"
+      },
+      "predicate": "slot_map",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[single] slot_map 1건 · class=3 inference · src=lot_event · convention:slot_preserving",
+      "occurred_at": "2026-05-03T18:16:00+09:00",
+      "event_id": "019ff985-d772-702d-86ec-dd16b87f4e5b"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2-A6"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Wafer",
+        "keys": {
+          "wafer": "WF.010702"
+        }
+      },
+      "predicate": "has_wafer",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[single] has_wafer 1건 · class=2 observation · src=lot_event · basis=positional_row",
+      "occurred_at": "2026-05-03T13:42:00+09:00",
+      "event_id": "019ff985-d771-7074-938f-1e83fd98d924"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2-A6"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2"
+        }
+      },
+      "predicate": "derived_from",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[single] derived_from 1건 · class=2 observation · src=lot_event · basis=pair_field",
+      "occurred_at": "2026-05-03T13:42:00+09:00",
+      "event_id": "019ff985-d772-7000-94bd-437bc5ade63c"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2-A6"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2"
+        },
+        "slot": "2"
+      },
+      "predicate": "slot_map",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[single] slot_map 1건 · class=3 inference · src=lot_event · convention:slot_preserving",
+      "occurred_at": "2026-05-03T13:42:00+09:00",
+      "event_id": "019ff985-d772-7001-8716-995caf022d92"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Wafer",
+        "keys": {
+          "wafer": "WF.010702"
+        }
+      },
+      "predicate": "has_wafer",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[agreed] has_wafer 2건 전부 동일 답 · class=2 observation · basis=positional_row",
+      "occurred_at": "2026-05-03T06:51:00+09:00",
+      "event_id": "019ff985-d770-7049-8d2b-cc041da44761"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007"
+        }
+      },
+      "predicate": "derived_from",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[single] derived_from 1건 · class=2 observation · src=lot_event · basis=pair_field",
+      "occurred_at": "2026-05-03T04:34:00+09:00",
+      "event_id": "019ff985-d770-7027-b4cc-8e15483da56f"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007-A2"
+        },
+        "slot": "2"
+      },
+      "to": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007"
+        },
+        "slot": "2"
+      },
+      "predicate": "slot_map",
+      "state": "resolved",
+      "rank": 1,
+      "n": 1,
+      "reason": "[single] slot_map 1건 · class=3 inference · src=lot_event · convention:slot_preserving",
+      "occurred_at": "2026-05-03T04:34:00+09:00",
+      "event_id": "019ff985-d770-7029-ad8e-ecea1845ebbf"
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007"
+        },
+        "slot": "2"
+      },
+      "to": null,
+      "predicate": "has_wafer",
+      "state": "unresolvable",
+      "rank": null,
+      "n": null,
+      "reason": "[no_claim] has_wafer 원자 없음 · lot=CL-2601-007 slot=2",
+      "occurred_at": null,
+      "event_id": null
+    },
+    {
+      "from": {
+        "type": "Lot",
+        "keys": {
+          "lot": "CL-2601-007"
+        },
+        "slot": "2"
+      },
+      "to": null,
+      "predicate": "derived_from",
+      "state": "unresolvable",
+      "rank": null,
+      "n": null,
+      "reason": "[root] lot=CL-2601-007 · derived_from 없음 (register 있음)",
+      "occurred_at": null,
+      "event_id": null
+    }
+  ],
+  "terminal_reason": "[root] lot=CL-2601-007 · derived_from 주장 없음 — 사슬의 뿌리",
+  "generated_at": "2026-08-13T14:59:29.428845+09:00"
+}

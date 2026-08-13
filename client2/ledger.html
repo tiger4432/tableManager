@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <title>AssyManager - 원장 혈통 추적</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧬</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ── 디자인 토큰은 tokens.css(SSOT, ledger_trace.js가 임포트)에서 공급 ──
+       이 블록은 이 페이지의 레이아웃/컴포넌트만 정의하며 시맨틱 토큰만 참조한다.
+
+       🔴 가독성 = 기능. 이 화면의 내용은 「왜 이 답인가」라는 서버의 문장이고,
+          그 문장이 작으면 화면이 존재할 이유가 없어진다. 본문 15px, 서버 문장
+          14px 모노, 메타 13px — 그 아래로 내리지 말 것. */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-app);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .lt-app-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+    }
+
+    .lt-app-header__inner {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .lt-title {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+    }
+
+    .lt-title__sub {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text-dim);
+    }
+
+    .lt-ask {
+      flex: 1 1 340px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 280px;
+    }
+
+    /* 이 화면의 유일한 입력. 랏 하나, 「랏/슬롯」이면 그 자리까지. */
+    #lt-query {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-family: var(--font-mono);
+      font-size: 15px;
+      padding: 10px 14px;
+      color: var(--text);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+
+    #lt-query::placeholder { color: var(--text-dim); font-family: var(--font-sans); }
+
+    #lt-query:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px var(--focus-ring);
+    }
+
+    .lt-ask__hint {
+      font-size: 13px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .lt-home {
+      font-size: 14px;
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+      transition: background .15s ease, color .15s ease;
+    }
+    .lt-home:hover { background: var(--surface-hover); color: var(--text); }
+
+    /* ── Page ───────────────────────────────────────────────── */
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 24px 24px 72px;
+    }
+
+    /* ── 답의 머리: 무엇을 물었고, 사슬이 어떤 구성인가 ──────── */
+    .lt-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .lt-head__subject {
+      font-family: var(--font-mono);
+      font-size: 19px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      word-break: break-all;
+    }
+
+    .lt-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .lt-chip {
+      font-size: 14px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .lt-chip--lots { background: var(--bg-inset); color: var(--text-muted); border-color: var(--border); }
+    .lt-chip--ok { background: var(--success-weak); color: var(--success); border-color: var(--success); }
+    .lt-chip--contested { background: var(--warning-weak); color: var(--warning); border-color: var(--warning); }
+    .lt-chip--gap { background: var(--info-weak); color: var(--info); border-color: var(--info); }
+    /* 가정은 실선이 아니라 점선 — 아래 홉 레일과 같은 신호를 머리에서 미리 준다. */
+    .lt-chip--convention {
+      background: var(--overwrite-weak);
+      color: var(--overwrite);
+      border: 1px dashed var(--overwrite);
+    }
+
+    /* ── 사슬 ───────────────────────────────────────────────── */
+    .lt-chain { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+    .lt-hop {
+      display: flex;
+      gap: 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px 14px 0;
+      box-shadow: var(--shadow-card);
+      animation: lt-rise .22s ease both;
+    }
+
+    @keyframes lt-rise {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .lt-hop { animation: none; }
+    }
+
+    /* 🔴 두 신호는 직교한다 — 색은 상태(확정/이견/미확정), 무늬는 근거(실선=출처가
+       말한 것, 점선=선언된 가정). 가정에 기댄 홉과 관측에 기댄 홉이 한눈에 달라야
+       한다는 것이 이 화면의 존재 이유(온톨로지 소유자 2026-08-13 판정: 규약 유래
+       원자는 class 3 inference). */
+    .lt-hop__rail {
+      flex: 0 0 6px;
+      border-radius: 12px 0 0 12px;
+      background: var(--border-strong);
+    }
+    .lt-hop--ok .lt-hop__rail { background: var(--success); }
+    .lt-hop--contested .lt-hop__rail { background: var(--warning); }
+    .lt-hop--gap .lt-hop__rail { background: var(--info); }
+    .lt-hop--end .lt-hop__rail { background: var(--accent); }
+
+    .lt-hop--convention .lt-hop__rail {
+      background: repeating-linear-gradient(
+        to bottom,
+        var(--overwrite) 0 9px,
+        transparent 9px 16px);
+    }
+    .lt-hop--convention { border-color: var(--overwrite); border-style: dashed; }
+
+    .lt-hop__body { flex: 1 1 auto; min-width: 0; }
+
+    .lt-hop__top {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .lt-hop__ordinal {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      min-width: 20px;
+    }
+
+    .lt-hop__from {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      word-break: break-all;
+    }
+
+    .lt-hop__q { font-size: 15px; color: var(--text); font-weight: 500; }
+
+    .lt-hop__answer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 8px 0 6px;
+    }
+
+    .lt-badge {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      padding: 4px 10px;
+      border-radius: 7px;
+      white-space: nowrap;
+      background: var(--bg-inset);
+      color: var(--text-muted);
+    }
+    .lt-badge--ok { background: var(--success-weak); color: var(--success); }
+    .lt-badge--contested { background: var(--warning-weak); color: var(--warning); }
+    /* 미확정은 오류색이 아니다 — 아무도 기록하지 않았다는 사실이 곧 내용이다. */
+    .lt-badge--gap { background: var(--info-weak); color: var(--info); }
+    .lt-badge--end { background: var(--accent-weak); color: var(--accent); }
+    .lt-badge--truncated { background: var(--orange-weak); color: var(--orange); }
+
+    .lt-hop__value {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      word-break: break-all;
+    }
+    .lt-hop__value--none { color: var(--text-dim); font-weight: 400; }
+
+    .lt-hop__context {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-dim);
+      word-break: break-all;
+    }
+
+    .lt-basis {
+      font-size: 13px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+      background: var(--bg-inset);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    /* 「가정」과 「근거」는 같은 자리에 오지만 절대 같아 보이면 안 된다. */
+    .lt-basis--convention {
+      background: var(--overwrite-weak);
+      color: var(--overwrite);
+      border: 1px dashed var(--overwrite);
+    }
+
+    /* 서버가 쓴 문장 그대로. 이 화면에서 제일 중요한 줄이므로 작게 쓰지 않는다. */
+    .lt-hop__reason {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border-radius: 8px;
+      padding: 8px 12px;
+      word-break: break-word;
+    }
+
+    .lt-hop__meta {
+      margin-top: 7px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      word-break: break-all;
+    }
+
+    /* ── 사슬의 끝 ──────────────────────────────────────────── */
+    .lt-terminal {
+      margin-top: 14px;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-left: 6px solid var(--border-strong);
+    }
+    .lt-terminal--end { border-left-color: var(--accent); }
+    .lt-terminal--gap { border-left-color: var(--info); }
+    .lt-terminal--contested { border-left-color: var(--warning); }
+    .lt-terminal--truncated { border-left-color: var(--orange); }
+
+    .lt-terminal__reason {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+
+    .lt-generated {
+      margin-top: 12px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      text-align: right;
+    }
+
+    /* ── 답이 아닌 상태(질문 전 · 조회 중 · 서버 거절) ───────── */
+    .lt-notice {
+      padding: 28px 24px;
+      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-card);
+    }
+    .lt-notice--error { border-left: 6px solid var(--danger); }
+    .lt-notice--busy { border-left: 6px solid var(--accent); }
+    .lt-notice--idle { border-left: 6px solid var(--border-strong); }
+
+    .lt-notice__title { font-size: 17px; font-weight: 600; }
+
+    .lt-notice__detail {
+      margin-top: 8px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="lt-app-header">
+    <div class="lt-app-header__inner">
+      <div class="lt-title">
+        🧬 원장 혈통 추적
+        <span class="lt-title__sub">이 웨이퍼는 어디서 왔나</span>
+      </div>
+      <div class="lt-ask">
+        <input id="lt-query" type="text" autocomplete="off" spellcheck="false"
+          placeholder="랏 또는 랏/슬롯" aria-label="추적할 랏 또는 랏/슬롯" />
+        <span class="lt-ask__hint">Enter</span>
+      </div>
+      <a class="lt-home" href="/index.html">← 그리드</a>
+    </div>
+  </header>
+
+  <main>
+    <div id="lt-result"></div>
+  </main>
+
+  <script type="module" src="/src/ledger_trace.js"></script>
+</body>
+
+</html>

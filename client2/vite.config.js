@@ -25,7 +25,13 @@ export default defineConfig({
         // correction happens in the grid with the sidebar 참조뷰 beside it. Building an entry
         // nobody can reach is how a retired screen keeps looking shipped.
         graph: resolve(__dirname, 'graph.html'),
-        trace: resolve(__dirname, 'trace.html')
+        trace: resolve(__dirname, 'trace.html'),
+        // Ledger lineage (slice 1, layer 3). A SEPARATE entry from `trace` above:
+        // that one is the G2 knowledge-graph report over `/graph/trace`, this one
+        // is the canonical ledger walk over `/api/ledger/trace`. Two questions,
+        // two answers, and folding them into one page would put a screen that
+        // shows WHY a claim won behind a screen that shows what is connected.
+        ledger: resolve(__dirname, 'ledger.html')
       }
     }
   }

@@ -366,6 +366,30 @@ const FLOORS = new Map([
   // an UNFLAGGED chip 1x1 must stay a real 1mm declaration — because that is the only thing
   // separating this from a magic-number sentinel, and 1 is a legal pitch.
   ['isotropic_cell_harness.mjs', 152],
+  // New 2026-08-13 with the ledger lineage screen (slice 1, layer 3). Floor is the count it
+  // reports on the commit that introduces it -- there is no earlier tree to measure it against.
+  // 23 of its 171 are the mutation corpus itself (21 defects + 2 controls), scored as assertions
+  // rather than printed as prose so a corpus that stops being applied sinks `ran` and BLOCKS.
+  //
+  // 🔴 ITS LOAD-BEARING HALF IS ONE DISTINCTION: a hop resting on a DECLARED CONVENTION must not
+  //    render like one resting on a measurement. The server writes it as `· convention:<name>`
+  //    versus `· basis=<name>`, and the ontology owner ruled (2026-08-13) that convention-backed
+  //    atoms resolve at class 3 exactly so an operator can see the difference. The naive reading
+  //    -- `reason.includes('convention:')` -- is not merely weaker, it INVERTS the answer: a
+  //    `candidate` reason names the LOSERS' bases inline, so both contested hops in the probe
+  //    fixture contain that substring while the winner of each is a measurement. C4/C5/F9/G12
+  //    pin it, and the fixtures are REAL server output (a throwaway `ledger_probe` schema built
+  //    from the 878-atom `assy_qa` ledger), not a guess at the reason grammar.
+  //
+  // 🔴 THE SECOND HALF IS THAT `unresolvable` IS CONTENT. `[no_claim]` and `[root]` are the
+  //    product telling the truth about what nobody recorded, so G4/G13 pin that a gap row is
+  //    never toned as an error, is never filtered out of the chain, and that an answer made
+  //    ENTIRELY of gaps still renders as an answer. Two of the defect mutants (`gap-rows-hidden`,
+  //    `gap-rows-toned-as-errors`) are the shapes that would look like a tidy screen.
+  //
+  // H13/H14 are the COMPLEXITY BUDGET as an assertion: exactly one form control on the page and
+  // no buttons. A later round that grows a filter bar goes red here and has to argue for it.
+  ['ledger_trace_harness.mjs', 171],
   // New 2026-08-06 with `opts.restoreDraft` (e34d57d, 「맵을 로드하면 로드한 맵이 나온다」).
   // Same rule as the other new entries: the floor is the count it reports on the commit that
   // introduces it. 14 of its assertions are the mutation corpus itself (12 defects + 2
