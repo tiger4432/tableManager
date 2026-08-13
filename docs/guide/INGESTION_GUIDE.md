@@ -1,6 +1,6 @@
 # 📥 AssyManager 인제션 파이프라인 가이드 (Ingestion Pipeline Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§1.9 전면 대체 + §1.9-bis 신설** — `600b49d`+`a5eb934` 소스 대조: `directory_watcher.request_tree_ingest`/`_ingest_directory_tree`/`relative_source_path`/`is_managed_source`/`_unique_dest`/`nested_dirs_enabled`, `advanced_ingester.extract_path_metadata`/`_merge_row`/`process_file`/`REASON_*`/`ALLOWED_RULE_KEYS`. ① **평탄화가 사라졌습니다** — 파일은 승격되지 않고 **자기 중첩 경로 그대로** 적재되며 상대 POSIX 경로가 파서에 `self.rel_path`로 전달됩니다. `_build_collision_name`·`_resolve_flatten_dest`·`_sanitize_flatten_component`·`FLATTEN_SEP` 및 `~` 구분자·`__force__` 조작 방어가 **함께 소멸**(접합하는 코드가 없으면 조작할 토큰이 없음). 함께 신설: 조건부 아카이브(`is_managed_source` — 외부 읽기 전용 트리는 이동·삭제 없음), `_unique_dest`(동명 파일 아카이브 충돌 — 종전 `_<epoch>` 1회 시도는 같은 초에 POSIX에서 **덮어썼습니다**). 🔴 **`flatten_nested_dirs`는 뜻이 바뀐 채 이름을 유지**합니다(개명하면 운영자의 off 스위치가 조용히 무력화) — 로그 문구도 "파일이 적재되지 않는다"로 정정됐습니다. ② **§1.9-bis `filename_rules` 선언 규격 신설** — 이 스키마는 **어느 문서에도 없었습니다**: 허용 키 5개(미지 키는 거절)·명명 상태 4종(`no_match`/`ambiguous_reference`/`cast_failed`/**`path_value_discarded`** ← `path_overrides_header`에서 개명)·`required` 기본 false·로드 시점 거절(캡처 그룹 없는 정규식 포함)·대상은 **상대 POSIX 경로**·`^` 앵커 주의(살아 있는 규칙 0건이라 무피해). 🔴 **우선순위는 사용자 판정 `filename < header < row`** — 「파일이 정본」이 경로까지 확장됩니다. ⚠️ `600b49d`의 커밋 메시지는 `header < filename < row`로 적혀 있으나 그것은 `a5eb934`에서 **뒤집혔습니다**. 직전 2026-07-29: §1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py`, `advanced_ingester.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-13 (**§1.8-ter 신설 — tier 1을 «어디서» 묻는가**, `831ab68`. tier 1은 `_process_with_retry` 안에 있어서 **HIT조차 파일당 세션 1개 + `table_config.json` 디스크 재독 2회**를 냈다. 지금은 스윕과 트리 워크가 **이미 든 `stat`으로 500개씩 묶어** 묻고(`settle_already_terminal` → `find_terminal_by_path_stat_batch`) 걸러진 파일을 거기서 종결한다. 🔴 **술어는 다시 쓰지 않았고**(같은 `and_` 세 쌍을 OR로) **단일 조회는 무변경**이며 **걸러진 파일도 이동 재시도는 갚는다**. 실측 재스윕 26.432초→0.602초(43.9배), 콜드 스윕 1.0배(= 아무것도 안 건너뛴다는 대조군). ⚠️ **「~92 ms/file·≈35분」은 `assy_manager`에서 잰 «이전» 값**이고 그 격리 측정과 같은 실행이 아니다. 직전 **§1.8-bis 두 층 원장 신설**(`ba664c5`). 직전 2026-07-30 **§1.9 전면 대체 + §1.9-bis 신설** — `600b49d`+`a5eb934` 소스 대조: `directory_watcher.request_tree_ingest`/`_ingest_directory_tree`/`relative_source_path`/`is_managed_source`/`_unique_dest`/`nested_dirs_enabled`, `advanced_ingester.extract_path_metadata`/`_merge_row`/`process_file`/`REASON_*`/`ALLOWED_RULE_KEYS`. ① **평탄화가 사라졌습니다** — 파일은 승격되지 않고 **자기 중첩 경로 그대로** 적재되며 상대 POSIX 경로가 파서에 `self.rel_path`로 전달됩니다. `_build_collision_name`·`_resolve_flatten_dest`·`_sanitize_flatten_component`·`FLATTEN_SEP` 및 `~` 구분자·`__force__` 조작 방어가 **함께 소멸**(접합하는 코드가 없으면 조작할 토큰이 없음). 함께 신설: 조건부 아카이브(`is_managed_source` — 외부 읽기 전용 트리는 이동·삭제 없음), `_unique_dest`(동명 파일 아카이브 충돌 — 종전 `_<epoch>` 1회 시도는 같은 초에 POSIX에서 **덮어썼습니다**). 🔴 **`flatten_nested_dirs`는 뜻이 바뀐 채 이름을 유지**합니다(개명하면 운영자의 off 스위치가 조용히 무력화) — 로그 문구도 "파일이 적재되지 않는다"로 정정됐습니다. ② **§1.9-bis `filename_rules` 선언 규격 신설** — 이 스키마는 **어느 문서에도 없었습니다**: 허용 키 5개(미지 키는 거절)·명명 상태 4종(`no_match`/`ambiguous_reference`/`cast_failed`/**`path_value_discarded`** ← `path_overrides_header`에서 개명)·`required` 기본 false·로드 시점 거절(캡처 그룹 없는 정규식 포함)·대상은 **상대 POSIX 경로**·`^` 앵커 주의(살아 있는 규칙 0건이라 무피해). 🔴 **우선순위는 사용자 판정 `filename < header < row`** — 「파일이 정본」이 경로까지 확장됩니다. ⚠️ `600b49d`의 커밋 메시지는 `header < filename < row`로 적혀 있으나 그것은 `a5eb934`에서 **뒤집혔습니다**. 직전 2026-07-29: §1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py`, `advanced_ingester.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 `assyManager`의 핵심 자동화 모듈인 **Directory Watcher**의 작동 원리와, 새로운 데이터를 DB로 적재하기 위한 **Pandas 기반 파이프라인(Pipeline) 구성 방법**을 설명합니다.
 
@@ -133,6 +133,52 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, ① 재기동하면 �
 
 ---
 
+## 1.8-ter Tier 1을 **어디서** 묻는가 — 이미 `stat`을 든 호출부에서, **묶어서** (`831ab68` · 2026-08-13)
+
+§1.8-bis는 tier 1이 **무엇을** 묻는지를 정합니다. 이 절은 **어디서** 묻는지이고, **그 자리가 tier 1 자체보다 컸습니다.**
+
+tier 1은 원래 `_process_with_retry` **안**에 있었습니다 — 스윕과 트리 워크가 이미 `os.stat`을 들고 있는 지점보다 **디스패치 한 단계 아래**입니다. 그래서 **HIT조차 거기까지 가는 파이프라인 전액을 냈습니다**: 파일당 `SessionLocal()` 하나, 파일당 `table_config.json` **디스크 재독 2회**, 파일당 `ingestion_settings.json` 재독.
+
+| | |
+|---|---|
+| 이미 결론 난 파일 1개가 그 자리까지 가는 비용 | **~92 ms** — ⚠️ **이 수는 `assy_manager`에서 잰 «이전» 값**이고, 아래 격리 측정과 **같은 실행에서 나온 수가 아닙니다** |
+| 22,626 파일 트리에 그 값을 곱하면 | **≈35분** (같은 출처 · 같은 단서) |
+| 그 파일들을 **찾는** `listdir + stat` | **1.0초** |
+
+🔴 **35분 중 원장 몫은 0이었습니다.** 느렸던 것은 질문이 아니라 **질문에 도달하는 길**입니다.
+
+**지금**: `IngestionHandler.settle_already_terminal(entries)`가 `(abs_path, (mtime, size))` 목록을 받아 `ingestion_checkpoint.find_terminal_by_path_stat_batch(db, table_name, entries)`로 **`TIER1_BATCH_SIZE = 500`개씩 한 질의에** 묻고, 걸러진 파일을 **거기서 종결**합니다. 부르는 곳은 **둘**입니다 — `WorkspaceWatcher.sweep_existing_files`(기동·주기 스윕)와 `IngestionHandler._ingest_directory_tree`(§1.9 폴더 드롭). 걸러지지 않은 파일은 `_handle_event`로 **종전 경로 그대로** 내려갑니다.
+
+- 🔴 **술어를 다시 쓰지 않았습니다.** 배치는 파일마다 단일 조회가 만드는 `and_(filepath, file_mtime, file_size)` **바로 그 세 쌍**을 기여하고 같은 `table_name` + 종결 상태 필터 아래 OR로 묶습니다 — 비교는 **SQL 안에** 남습니다. 파이썬에서 stat을 비교하면 `DateTime(timezone=True)`가 백엔드마다 **어떻게 돌아오는지**(SQLite는 naive, PostgreSQL은 세션 타임존)를 다시 유도해야 하고, 그걸 틀리면 **전부 걸러지거나 하나도 안 걸러지고 둘 다 조용합니다.**
+- **단일 조회 `find_terminal_by_path_stat` / `_try_path_stat_skip`은 무변경**입니다. 배치가 걸러 주지 않는 것 전부를 **여전히 그쪽이** 답합니다 — 배치는 빠른 답이 **더 일찍 도착**하게 할 뿐입니다.
+- 🔴 **걸러진 파일은 no-op이 아닙니다.** 파일을 옮기는 모드에서 종결된 파일이 아직 `raws/`에 있다면 **그 이동이 실패한 것**이고, 재시도를 빼면 그 파일이 — 중첩 인제션이면 **그 디렉터리 통째로** — 영구히 남습니다. `_settle_terminal_hits`가 그 이동 재시도를 `_handle_event`와 **같은 `processing_files` 클레임** 아래에서 갚습니다. `archive_processed_files: false`(옮기지 않는 모드)에서는 갚을 것이 없으므로 조기 반환합니다.
+- **실패 방향은 「종전 경로」입니다.** 원장을 못 읽으면 빈 집합을 돌려주고 **모든 파일이 예전처럼 개별 디스패치**됩니다(가용성 우선 — `_try_path_stat_skip`과 같은 규칙).
+- **끄는 스위치는 새로 생기지 않았습니다** — `dedup_by_path_stat: false`와 `dedup_by_signature: false`가 이 배치도 함께 끕니다(계약을 `dedup_by_path_stat_enabled()`에서 그대로 상속합니다).
+
+**실측** (격리 `assy_qa` · 후보 파일 2,001개 · 원장 52,001행 · 두 팔을 번갈아 실행 · 중앙값):
+
+| 시나리오 | 이전 | 이후 | |
+|---|---|---|---|
+| 재기동 후 **변경 없는 트리** 재스윕 | 26.432초 (13.21 ms/file) | **0.602초** (0.30 ms/file) | **43.9배** |
+| **콜드 스윕**(전부 신규) | 21.140초 | 20.964초 | **1.0배 — 이것이 「아무것도 건너뛰지 않았다」는 대조군입니다** |
+| 그중 새 파일 1개 | 31.0초 | 1.81초 | |
+| 그중 변경된 파일 1개 | 31.2초 | 1.96초 | |
+| 그중 `__force__` 파일 1개 | 28.5초 | 1.81초 | |
+
+**배치 크기 500은 고른 것이 아니라 잰 것입니다** (같은 2,001 파일, ms/file):
+
+| batch | 50 | 100 | 250 | **500** | 1000 | 2000 |
+|---|---|---|---|---|---|---|
+| ms/file | 0.37 | 0.46 | 0.41 | **0.41** | 0.59 | 1.26 |
+
+50~500이 평평하고 그 뒤로 나빠집니다 — **2,001개를 한 질의로 묻는 것이 500짜리 다섯 질의보다 3배 나쁩니다.** 파일당 바인드는 3개라 500 청크가 ~1,500개로 PostgreSQL의 65,535 상한과는 거리가 멀고, **먼저 무너지는 것은 OR arity에 따라 자라는 «계획 비용»**입니다. 500 = 평평한 구간의 꼭대기(계획 비용이 아직 0인 채로 왕복이 가장 적은 지점)이고, 22,626 파일 트리를 **46 질의**로 유지합니다.
+
+⚠️ **트리 워크 쪽이 스윕보다 더 아픕니다.** `_ingest_directory_tree`는 트리거마다 트리의 **모든 파일을 다시 디스패치**하고 스윕의 `_sweep_attempted` 같은 인메모리 캐시가 없습니다 — 파일을 안 옮기는 모드에서는 트리가 영원히 안 비므로 **재기동당 1회가 아니라 매 사이클** 그 비용을 냅니다.
+
+채점: `server/tests/test_sweep_tier1_hoist.py`(18) + `test_nested_dir_ingestion.py`(22).
+
+---
+
 ## 1.9 폴더 드롭 — **제자리 적재, 그리고 경로가 운반체다** (`600b49d` · 2026-07-30. 종전 「평탄화」 `0c6ac1a` 대체)
 
 `raws/`에 파일이 **다중 층위 폴더로 감싸여** 들어오면, 트리가 정온해진 뒤 **각 파일을 자기 실제 중첩 경로 그대로** 기존 이벤트 경로에 넣습니다. 파일을 루트로 승격시키지 않습니다. 구현: `directory_watcher.IngestionHandler.request_tree_ingest / _ingest_directory_tree`(트리거: 디렉토리 watchdog 이벤트 + 기동/주기 스윕).
@@ -146,7 +192,7 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, ① 재기동하면 �
 | 항목 | 동작 |
 |---|---|
 | 정온(quiescence) 게이트 | **무변경.** 트리 전체 스냅샷(`{상대경로: (size, mtime)}`)이 폴링 간격(1초, 파일 디바운스와 동일) 동안 **연속 2회 동일**할 때만 진행 — 복사 중인 폴더를 반쯤 처리하지 않습니다. 최대 600초 대기 후 미안정이면 손대지 않고 유예(주기 스윕이 재시도) |
-| 파일 디스패치 | 모든 일반 파일을 mtime 오름차순으로 **자기 위치에서** 기존 이벤트 경로에 투입(`_handle_event` → 레인 라우팅 → 파서 → 체크포인트/dedup → archives/·err/ **전부 무변경**). 바뀐 것은 **넘겨지는 경로가 중첩됐다는 것 하나**입니다 |
+| 파일 디스패치 | 모든 일반 파일을 mtime 오름차순으로 **자기 위치에서** 기존 이벤트 경로에 투입(`_handle_event` → 레인 라우팅 → 파서 → 체크포인트/dedup → archives/·err/ **전부 무변경**). 바뀐 것은 **넘겨지는 경로가 중첩됐다는 것 하나**입니다. 🔴 **[`831ab68`] 그 앞에 tier-1 배치 관문이 하나 섭니다** — 이미 결론 난 파일은 `settle_already_terminal`이 **묶어서** 원장에 묻고 여기서 종결하므로 `_handle_event`에 가지 않습니다(§1.8-ter). 이 루프는 트리거마다 트리 전체를 다시 디스패치하고 인메모리 캐시가 없어 **스윕보다 이 관문이 더 필요한 자리**입니다. 로그의 「dispatched N」은 이제 **후보 수가 아니라 실제 내려간 수**이고, 걸러진 수는 같은 줄에 함께 남습니다 |
 | 파서가 받는 것 | 매칭된 파이프라인 파서 인스턴스에 **`self.rel_path`**(POSIX 상대 경로)를 심습니다 — `parse(path)` 시그니처를 넓히지 않습니다(사용자 스크립트가 전부 서브클래스이므로 시그니처 변경은 전수 수정입니다). 이 문자열이 **`filename_rules`가 매칭하는 대상**입니다(→ §1.9-bis) |
 | 경로 문자열의 규격 | `relative_source_path(abs, root)` — **상대**(절대 경로는 규칙을 dev↔운영 사이에서 비이식적으로 만듭니다)이고 **POSIX 구분자**(Windows 구분자는 JSON 정규식에서 네 글자가 됩니다). 봉쇄는 **결과 기반**입니다(문자 블랙리스트가 아니라 "다시 join하면 같은 파일인가") — `..` 성분이나 다른 드라이브는 생존할 수 없고, 트리 순회는 이 검사에 실패하는 항목을 **건드리지 않고 남깁니다**(정션이 그 경로입니다) |
 | 폴더 제거 | **비게 된 디렉터리만** `os.rmdir` — 내용물이 남은 폴더는 구조적으로 삭제 불가입니다. 처리 못 한 파일은 자기 디렉터리를 살려 두고, 주기 스윕(300초)이 나중에 재시도합니다 |
