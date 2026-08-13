@@ -1,0 +1,72 @@
+{
+  "__doc": "Canonical-ledger translator declarations. One entry per SOURCE (design section 1). See server/ledger/config.py for what every field is a declaration OF, and why each one is config rather than code.",
+  "version": 1,
+
+  "sources": {
+    "lot_event": {
+      "__comment": "lot_event is already an event table, so no state-to-event inference is needed and event_time gives occurred_at directly (design section 10, step 1). ONE logical event is TWO source rows: the parent row carries child_lot with parent_lot blank, the child row carries parent_lot with child_lot blank, and the pair is matched by (event_type, event_time, parent, child) because the source has no event id of its own. That pair is the transaction unit.",
+
+      "occurred_at_column": "event_time",
+      "occurred_at_format": "%Y-%m-%d %H:%M:%S",
+      "occurred_at_timezone": "UTC",
+      "__comment_time": "MANDATORY. Design section 10 risk 1 / brief risk 2: arrival time may never stand in for world time. Remove either of these two and the translator refuses the whole source instead of guessing. The timezone is declared because event_time is naive TEXT ('YYYY-MM-DD HH:MM:SS', stored as text on purpose so it sorts lexicographically) -- without a declaration the stored instant would be whatever the translating machine's TZ happened to be.",
+
+      "subject_type": "Lot",
+      "register_entity_types": ["Lot", "Wafer"],
+      "__comment_register": "Issued entity types get a register atom on first sight (design section 5 rule 3). Die is COMPOSED and is deliberately absent -- registering it would mean an atom per die.",
+
+      "list_separator": ":",
+      "__comment_list": "slot_numbers and wafer_ids are colon-delimited and correspond POSITIONALLY with EQUAL LENGTH. A length mismatch does not fail loudly downstream, it silently reattributes wafers to the wrong slots, so the gate treats it as an atomicity violation and refuses the whole molecule.",
+
+      "columns": {
+        "row_identity": "business_key_val",
+        "lot": "lot",
+        "event_type": "event_type",
+        "parent_lot": "parent_lot",
+        "child_lot": "child_lot",
+        "slots": "slot_numbers",
+        "wafers": "wafer_ids",
+        "equipment": "equipment"
+      },
+
+      "vocabulary": {
+        "split": {
+          "lineage": "parent_child",
+          "slot_pairing": "slot_preserving",
+          "emit_has_wafer": true,
+          "emit_register": true,
+          "__comment": "slot_preserving is an OPERATOR DECLARATION, not something the translator inferred: on this source a split's wafers keep their slot numbers (product owner's own worked example). The two rows of a split are both POST-event snapshots, so the moved wafers have already left the parent's row and no wafer is uttered on both sides -- with slot_pairing 'shared_wafer' a split produces ZERO slot_map atoms. Switch to 'shared_wafer' to take the zero-inference position; the declaration is hashed into source_translator_ver either way, so every atom says which convention made it, and source_raw_ref allows re-translation if the convention is later found false."
+        },
+        "merge": {
+          "lineage": "parent_child",
+          "slot_pairing": "shared_wafer",
+          "emit_has_wafer": true,
+          "emit_register": true,
+          "__comment": "A merge's source-lot row is a PRE-move snapshot and its destination row is POST-move, so the moved wafers ARE uttered on both sides. shared_wafer therefore needs no convention at all here: the from-slot and the to-slot are both read straight off the source."
+        },
+        "track_in": {
+          "lineage": "none",
+          "slot_pairing": "none",
+          "emit_has_wafer": true,
+          "emit_register": true,
+          "__comment": "No parent or child -- a track_in utters membership only. An event_type that is NOT listed in this map is refused at the door and counted; it is never skipped."
+        }
+      }
+    }
+  },
+
+  "batch": {
+    "molecules_per_transaction": 200,
+    "__comment": "How many WHOLE source events share one transaction. Never a fraction of one: a molecule that landed half would leave a lineage that looks complete and is not."
+  },
+
+  "partitioning": {
+    "interval": "month",
+    "__comment": "ledger_events is RANGE partitioned on occurred_at from day one -- adding partitioning to a populated table is a full rewrite, measured in this session. The translator creates the month it needs before it writes into it."
+  },
+
+  "lag": {
+    "probe_interval_seconds": 60,
+    "__comment": "How often the cursor-vs-source-head probe may run a real COUNT against the source. The cheap half of the lag report (world-time lag, cursor age) costs no query at all and is always on."
+  }
+}
