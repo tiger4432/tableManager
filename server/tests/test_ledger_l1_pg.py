@@ -329,6 +329,210 @@ def test_an_undeclared_event_type_is_refused_counted_and_NAMED_IN_THE_LOG(ledger
     assert "undeclared_vocabulary" in (gate.note() or "")
 
 
+# ================================================== THE REFUSAL BREAKDOWN (R-2026-08-13-F)
+#
+# Before this column, named refusal reasons could not be read out of the database at all:
+# `gate._refusals` is process-local to THIS process, the web server deliberately never
+# imports `server/ledger`, and the heartbeat note the gate writes is dropped by `/health`.
+# The cursor row carried two aggregate integers and no names.
+#
+# 🔴 THE INVARIANT THE RULING PINS: the aggregates are the AUTHORITY and the JSONB is
+# their breakdown, so `sum(refusal_reasons[*].count) == molecules_refused` at write time.
+# If the breakdown were written outside the cursor-advance transaction it would drift, and
+# that disagreement would then read as a false alarm on the very screen built to show
+# trouble - a status strip that cries wolf about its own bookkeeping is worse than none.
+
+#: A source row that fills BOTH sides of a pair. Refused as `ambiguous_pair` - a SECOND
+#: reason in the same run, so the breakdown is proven to be per-reason rather than one
+#: blob wearing a name.
+AMBIGUOUS_ROW = src("A", event_type="split", parent_lot="P", child_lot="C",
+                    slots="01", wafers="W1", event_time="2026-06-03 00:00:00")
+
+#: An event_type nobody declared. Refused as `undeclared_vocabulary`.
+UNDECLARED_ROW = src("Z", event_type="scrapped", slots="01", wafers="W9",
+                     event_time="2026-06-02 00:00:00")
+
+
+def read_cursor_row(engine, source="lot_event"):
+    connection = engine.raw_connection()
+    try:
+        return ledger_store.LedgerStore(engine).read_cursor(connection, source)
+    finally:
+        connection.close()
+
+
+def breakdown_disagreement(engine, source="lot_event"):
+    """`None` when the breakdown adds up to the aggregate it explains, else why not.
+
+    Read back from the DATABASE rather than from the run's return value: the whole
+    point of the column is that a process which is not this one can see the names, so
+    a check that consulted `gate.refusals()` would prove nothing about what was
+    STORED. Returns a sentence rather than asserting, so the fault-injection round can
+    use the same judgement without raising `AssertionError` on the arm where the guard
+    works (both shared harnesses read that as success).
+    """
+    row = read_cursor_row(engine, source)
+    if row is None:
+        return f"no cursor row for {source!r} at all"
+    reasons = row.get("refusal_reasons")
+    if reasons is None:
+        return (f"molecules_refused={row['molecules_refused']} and refusal_reasons is "
+                f"NULL - the writer did not record the breakdown")
+    explained = sum(int(entry["count"]) for entry in reasons.values())
+    if explained != row["molecules_refused"]:
+        return (f"the breakdown explains {explained} refusal(s) but the aggregate beside "
+                f"it says {row['molecules_refused']}: {reasons}")
+    return None
+
+
+def test_a_refusal_reaches_the_cursor_column_BY_NAME(ledger):
+    """🔴 FIRE THE PATH, DO NOT MERELY WRITE IT.
+
+    A backfill that REFUSES something, and then the reason read back out of the column
+    by a reader holding nothing but a database connection. Two different reasons in one
+    run, because a breakdown that could only ever hold one key would pass a
+    single-reason test while being useless.
+    """
+    connection = ledger.raw_connection()
+    try:
+        _seed(connection, BASE_ROWS + [UNDECLARED_ROW, AMBIGUOUS_ROW])
+    finally:
+        connection.close()
+
+    result = run(ledger)
+    assert result["refused_molecules"] == 2, (
+        "the fixture did not refuse anything, so this test would prove nothing")
+
+    row = read_cursor_row(ledger)
+    reasons = row["refusal_reasons"]
+    assert set(reasons) == {gate.REFUSE_UNDECLARED_VOCABULARY, gate.REFUSE_AMBIGUOUS_PAIR}, (
+        f"the column does not name what was refused: {reasons}")
+    assert reasons[gate.REFUSE_UNDECLARED_VOCABULARY]["count"] == 1
+    assert reasons[gate.REFUSE_AMBIGUOUS_PAIR]["count"] == 1
+    # `last_at` is stamped by the DATABASE clock in the same transaction as the count,
+    # so it is comparable with `updated_at` beside it rather than with this machine's.
+    assert reasons[gate.REFUSE_AMBIGUOUS_PAIR]["last_at"].endswith("+00:00")
+    assert breakdown_disagreement(ledger) is None
+    # And the atoms of the refused molecules did not land - the breakdown describes
+    # molecules that were REALLY refused, not ones that were counted and written anyway.
+    assert count(ledger, "subject_keys = '{\"lot\":\"Z\"}'::jsonb") == 0
+
+
+def test_a_CLEAN_run_leaves_a_truthful_breakdown_rather_than_a_stale_one(ledger):
+    """🔴 THE OTHER ARM. A guard tested on one arm is half-tested.
+
+    Three facts, and the third is the one a "latest run wins" design would get wrong:
+
+      1. a first run with nothing refused writes `{}` - the writer has owned this row
+         and refused nothing. NOT NULL, which means "this row predates the column";
+      2. a later run that refuses something adds to it;
+      3. a clean run AFTER that leaves the earlier breakdown standing, because the
+         aggregate beside it also still counts those refusals. The breakdown explains
+         `molecules_refused`, and `molecules_refused` accumulates - so a clean run that
+         emptied the breakdown would produce exactly the disagreement this column exists
+         to prevent. What tells the operator the entry is old is `last_at`, which does
+         NOT move when nothing of that reason happened.
+    """
+    clean = run(ledger)
+    assert clean["refused_molecules"] == 0
+    row = read_cursor_row(ledger)
+    assert row["refusal_reasons"] == {}, (
+        f"a clean run must write an EMPTY breakdown, not NULL (which means 'predates "
+        f"the column') and not a fabricated one: {row['refusal_reasons']}")
+    assert row["molecules_refused"] == 0
+    assert breakdown_disagreement(ledger) is None
+
+    # 2. now refuse something.
+    connection = ledger.raw_connection()
+    try:
+        _seed(connection, BASE_ROWS + [UNDECLARED_ROW])
+    finally:
+        connection.close()
+    dirty = run(ledger, reset_cursor=True)
+    assert dirty["refused_molecules"] == 1
+    after_refusal = read_cursor_row(ledger)
+    stamped = after_refusal["refusal_reasons"][gate.REFUSE_UNDECLARED_VOCABULARY]
+    assert stamped["count"] == 1
+    assert breakdown_disagreement(ledger) is None
+
+    # 3. and a clean run afterwards must not erase it, invent one, or re-stamp it.
+    connection = ledger.raw_connection()
+    try:
+        _seed(connection, BASE_ROWS)
+    finally:
+        connection.close()
+    again = run(ledger, reset_cursor=True)
+    assert again["refused_molecules"] == 0
+    final = read_cursor_row(ledger)
+    assert final["molecules_refused"] == 1, "the aggregate lost a refusal it had counted"
+    assert final["refusal_reasons"][gate.REFUSE_UNDECLARED_VOCABULARY] == stamped, (
+        "a clean run moved an entry nothing happened to - `last_at` would then say a "
+        "quiet reason fired just now, which is how a stale entry hides its own age")
+    assert breakdown_disagreement(ledger) is None
+
+
+def test_the_breakdown_and_the_aggregate_are_written_in_ONE_transaction(ledger):
+    """The invariant across MANY batches, which is where a delta can go wrong.
+
+    `molecules_per_transaction = 1` makes every molecule its own flush, so the run
+    writes the cursor a dozen times and each write carries a delta rather than a running
+    total. Summing a running total once per batch is the obvious way to write this and
+    it over-counts by a factor of the batch count - a defect that a single-batch test
+    cannot see, because with one batch the delta and the total are the same number.
+    """
+    connection = ledger.raw_connection()
+    try:
+        _seed(connection, BASE_ROWS + [UNDECLARED_ROW, AMBIGUOUS_ROW])
+    finally:
+        connection.close()
+
+    per_molecule = copy.deepcopy(CFG)
+    per_molecule["batch"]["molecules_per_transaction"] = 1
+    url, _ = _resolve_url()
+    with _declared_as_test_database(url):
+        result = backfill.run(ledger, per_molecule, source="lot_event")
+
+    assert result["batches"] >= 4, (
+        f"only {result['batches']} batch(es) - the fixture did not exercise the "
+        f"multi-batch path this test exists for")
+    assert result["refused_molecules"] == 2
+    assert breakdown_disagreement(ledger) is None
+    row = read_cursor_row(ledger)
+    assert sum(e["count"] for e in row["refusal_reasons"].values()) == 2
+
+
+def test_a_SECOND_run_in_this_process_does_not_re_attribute_the_first_runs_refusals(
+        ledger):
+    """`gate._refusals` lives for the whole process, so the delta's baseline has to be
+    taken from the gate AS IT IS at the start of a run rather than from zero.
+
+    Otherwise the first batch of run 2 claims every refusal run 1 already recorded, the
+    breakdown exceeds the aggregate, and the screen reports a bookkeeping fault. This is
+    not a hypothetical process shape: this test file runs several backfills in one
+    interpreter, and so does an operator sweeping two sources.
+    """
+    connection = ledger.raw_connection()
+    try:
+        _seed(connection, BASE_ROWS + [UNDECLARED_ROW])
+    finally:
+        connection.close()
+
+    first = run(ledger)
+    assert first["refused_molecules"] == 1
+    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_VOCABULARY)] == 1
+
+    # 🔴 NO `gate.reset_counters()` here. The counters SURVIVING is the condition under
+    # test; resetting them would test a process that does not exist.
+    second = run(ledger, reset_cursor=True)
+    assert second["refused_molecules"] == 1
+    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_VOCABULARY)] == 2
+
+    assert breakdown_disagreement(ledger) is None
+    row = read_cursor_row(ledger)
+    assert row["molecules_refused"] == 2
+    assert row["refusal_reasons"][gate.REFUSE_UNDECLARED_VOCABULARY]["count"] == 2
+
+
 # ------------------------------------------------------------------- half landing
 def _forced_failure_run(engine, commit_between_chunks):
     """Fail in the MIDDLE of one molecule's insert. Returns the atoms left behind.
@@ -692,14 +896,55 @@ def _inject_atom_outside_every_partition(engine):
     raise AssertionError("a row landed with no partition to hold it")
 
 
+def _inject_breakdown_that_does_not_add_up(engine):
+    """Make the breakdown and the aggregate disagree, and see whether anything notices.
+
+    The defect being re-introduced is the one ruling R-2026-08-13-F names: a breakdown
+    written somewhere other than the aggregate's own transaction, which drifts. Here it
+    is forced directly - the delta is swallowed while `refused` still counts - because
+    the shape of the drift matters more than the mechanism that produced it.
+
+    🔴 IT RETURNS NORMALLY WHEN THE GUARD ACCEPTS THE DEFECT, and raises `ValueError`
+    when the guard catches it. Never `AssertionError` on the accepting arm: the shared
+    harnesses treat that as "the guard raised", so an injection written the other way
+    around reports success while proving nothing (`eb1ae8b`'s lane hit exactly this).
+    """
+    connection = engine.raw_connection()
+    try:
+        _seed(connection, BASE_ROWS + [UNDECLARED_ROW])
+    finally:
+        connection.close()
+
+    original = backfill._refusal_delta
+    backfill._refusal_delta = lambda gate_mod, source, baseline: (
+        {}, original(gate_mod, source, baseline)[1])
+    try:
+        result = run(engine)
+    finally:
+        backfill._refusal_delta = original
+
+    if result["refused_molecules"] != 1:
+        # The injection did not reach the state it exists to create. Reported as the
+        # guard ACCEPTING (a normal return), because "my mutation changed nothing" and
+        # "the guard is fine" look identical from outside and only one of them is true.
+        return
+    complaint = breakdown_disagreement(engine)
+    if complaint is None:
+        return
+    raise ValueError(f"the invariant caught the drift: {complaint}")
+
+
 PG_INJECTIONS = [
     ("transaction boundary removed", _inject_missing_transaction_boundary),
     ("duplicate atom past the unique index", _inject_duplicate_atom_past_the_unique_index),
     ("register carrying an object", _inject_register_with_an_object),
     ("atom outside every partition", _inject_atom_outside_every_partition),
+    ("refusal breakdown that does not add up", _inject_breakdown_that_does_not_add_up),
 ]
 
-EXPECTED_PG_INJECTIONS = 4
+#: 4 built with this file + 1 added by ruling R-2026-08-13-F (the refusal breakdown must
+#: agree with the aggregate it explains).
+EXPECTED_PG_INJECTIONS = 5
 
 
 def test_pg_injection_count_is_declared():

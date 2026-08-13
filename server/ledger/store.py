@@ -155,7 +155,7 @@ class LedgerStore:
             cursor.execute(
                 f"SELECT translator_ver, cursor_value, molecules_done, atoms_written, "
                 f"       atoms_deduped, molecules_refused, incomplete_molecules, "
-                f"       source_head, head_probed_at, updated_at "
+                f"       source_head, head_probed_at, updated_at, refusal_reasons "
                 f"FROM {schema.CURSOR_TABLE} WHERE source = %s", (source,))
             row = cursor.fetchone()
         if row is None:
@@ -165,17 +165,68 @@ class LedgerStore:
             "molecules_done": row[2], "atoms_written": row[3], "atoms_deduped": row[4],
             "molecules_refused": row[5], "incomplete_molecules": row[6],
             "source_head": row[7], "head_probed_at": row[8], "updated_at": row[9],
+            "refusal_reasons": row[10],
         }
 
+    #: `now()` as UTC ISO-8601, built in SQL so `last_at` is stamped by the DATABASE
+    #: clock in the same transaction as the count it belongs to. Rendering it here rather
+    #: than in Python also keeps one spelling of "when": `updated_at` beside it is
+    #: `now()` too, so a reader comparing the two is comparing one clock.
+    _NOW_ISO = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '+00:00'"
+
+    #: The INSERT side: a `{reason: count}` delta becomes `{reason: {count, last_at}}`.
+    #: An empty delta becomes `{}` - the writer has owned this row and refused nothing,
+    #: which is a different fact from the NULL a row predating the column carries.
+    _SHAPE_REASONS = f"""
+        (SELECT coalesce(jsonb_object_agg(key, jsonb_build_object(
+                    'count', value::bigint, 'last_at', {_NOW_ISO})), '{{}}'::jsonb)
+         FROM jsonb_each_text(%s::jsonb))
+    """
+
+    def _merge_reasons_sql(self):
+        """The ON CONFLICT side: old breakdown + this batch's delta, per reason.
+
+        🔴 A FULL JOIN rather than `||`, because jsonb has no per-key arithmetic and `||`
+        would REPLACE each key's count with the batch's instead of adding it - a
+        breakdown that silently reported the last batch while the aggregate beside it
+        reported the run. `last_at` moves only for reasons this batch actually saw;
+        a reason that has gone quiet keeps the time it last fired, which is what makes a
+        stale entry tell its own age instead of looking current.
+
+        Bounded by the size of `gate.REFUSAL_REASONS` (a closed vocabulary), so this is
+        arithmetic over at most a dozen keys no matter how large the ledger grows.
+        """
+        table = schema.CURSOR_TABLE
+        return f"""
+        (SELECT coalesce(jsonb_object_agg(k, jsonb_build_object(
+                    'count', c, 'last_at', l)), '{{}}'::jsonb)
+         FROM (
+            SELECT coalesce(o.key, n.key) AS k,
+                   coalesce((o.value->>'count')::bigint, 0)
+                 + coalesce((n.value->>'count')::bigint, 0) AS c,
+                   coalesce(n.value->>'last_at', o.value->>'last_at') AS l
+            FROM jsonb_each(coalesce({table}.{schema.REFUSAL_REASONS_COLUMN},
+                                     '{{}}'::jsonb)) o
+            FULL JOIN jsonb_each(EXCLUDED.{schema.REFUSAL_REASONS_COLUMN}) n
+                   ON n.key = o.key
+         ) merged)
+        """
+
     def _advance_cursor(self, connection, source, translator_ver, cursor_value,
-                        molecules, atoms, deduped, refused, incomplete):
-        """Issue the cursor UPDATE on the caller's OPEN transaction. No commit."""
+                        molecules, atoms, deduped, refused, incomplete, reasons=None):
+        """Issue the cursor UPDATE on the caller's OPEN transaction. No commit.
+
+        `reasons` is this batch's `{reason: molecules}` DELTA - never a running total,
+        because the column accumulates in SQL. `{}` is the ordinary value for a clean
+        batch and leaves the breakdown untouched.
+        """
         with connection.cursor() as cursor:
             cursor.execute(f"""
                 INSERT INTO {schema.CURSOR_TABLE} (
                     source, translator_ver, cursor_value, molecules_done, atoms_written,
-                    atoms_deduped, molecules_refused, incomplete_molecules, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
+                    atoms_deduped, molecules_refused, incomplete_molecules,
+                    {schema.REFUSAL_REASONS_COLUMN}, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, {self._SHAPE_REASONS}, now())
                 ON CONFLICT (source) DO UPDATE SET
                     translator_ver       = EXCLUDED.translator_ver,
                     cursor_value         = EXCLUDED.cursor_value,
@@ -189,12 +240,13 @@ class LedgerStore:
                                            + EXCLUDED.molecules_refused,
                     incomplete_molecules = {schema.CURSOR_TABLE}.incomplete_molecules
                                            + EXCLUDED.incomplete_molecules,
+                    {schema.REFUSAL_REASONS_COLUMN} = {self._merge_reasons_sql()},
                     updated_at           = now()
             """, (source, translator_ver, _json(cursor_value), molecules, atoms,
-                  deduped, refused, incomplete))
+                  deduped, refused, incomplete, _json(dict(reasons or {}))))
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
-                    refused=0, incomplete=0):
+                    refused=0, incomplete=0, reasons=None):
         """🔴 The atomic unit. Atoms in, cursor forward, ONE commit, or nothing at all.
 
         The counters are ACCUMULATED, not set. A field that is SET has been a defect in
@@ -202,6 +254,13 @@ class LedgerStore:
         for one transaction arrived and the last overwrote the first), and a backfill
         writes many batches for one cursor row, so accumulate is the only semantics that
         can be right here.
+
+        `reasons` is the same batch's refusals BY NAME (`{reason: molecules}`) and it
+        rides in the SAME statement as `refused`, which is the whole of ruling
+        R-2026-08-13-F's mechanism: the aggregate is the authority, the breakdown
+        explains it, and one transaction is what stops the two from ever disagreeing.
+        `sum(reasons.values()) == refused` is the caller's contract and
+        `test_ledger_l1_pg.py` pins it at write time from the other side (the database).
         """
         connection = self.connection()
         try:
@@ -209,7 +268,7 @@ class LedgerStore:
             attempted, inserted = self.insert_atoms(connection, atoms)
             self._advance_cursor(connection, source, translator_ver, cursor_value,
                                  molecules, inserted, attempted - inserted,
-                                 refused, incomplete)
+                                 refused, incomplete, reasons=reasons)
             connection.commit()
             return {"attempted": attempted, "inserted": inserted,
                     "deduped": attempted - inserted, "molecules": molecules}

@@ -181,6 +181,14 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         pending, pending_cursor, pending_molecules = [], after, 0
         pending_refused, pending_incomplete = 0, 0
 
+        # 🔴 THE BASELINE IS TAKEN FROM THE GATE AS IT IS NOW, NOT FROM ZERO.
+        # `gate._refusals` lives for the whole PROCESS, so a second `run()` in one
+        # process (every test file does this, and so does an operator sweeping two
+        # sources) would otherwise re-attribute the first run's refusals to this run's
+        # first batch - the breakdown would then exceed the aggregate it explains, which
+        # is precisely the disagreement ruling R-2026-08-13-F exists to prevent.
+        refusal_baseline = _refusal_totals(gate, source)
+
         while True:
             if max_batches is not None and result["batches"] >= max_batches:
                 break
@@ -256,13 +264,14 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                 if pending_molecules >= batch_size:
                     _flush(store, source, translator_ver, pending, pending_cursor,
                            pending_molecules, pending_refused, pending_incomplete,
-                           result)
+                           result, gate, refusal_baseline)
                     pending, pending_molecules = [], 0
                     pending_refused, pending_incomplete = 0, 0
 
             if pending_molecules:
                 _flush(store, source, translator_ver, pending, pending_cursor,
-                       pending_molecules, pending_refused, pending_incomplete, result)
+                       pending_molecules, pending_refused, pending_incomplete, result,
+                       gate, refusal_baseline)
                 pending, pending_molecules = [], 0
                 pending_refused, pending_incomplete = 0, 0
 
@@ -277,6 +286,10 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         result["partitions"] = [name for name, _ in schema.partitions(read)]
 
         cursor_row = store.read_cursor(read, source)
+        # Read back rather than reported from memory: the point of the column is that
+        # somebody OTHER than this process can see the breakdown, so the run's own log
+        # quotes what a reader would actually get.
+        result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
         result["lag"] = observability.lag_report(
             store, source, source_cfg, cursor_row,
             probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
@@ -296,11 +309,42 @@ def _forget_registers(translator, atoms):
                 (atom.subject_type, canonical_keys(atom.subject_keys)))
 
 
+def _refusal_totals(gate, source):
+    """`{reason: molecules}` the gate has counted for `source` SO FAR IN THIS PROCESS."""
+    return {reason: total for (src, reason), total in gate.refusals().items()
+            if src == source}
+
+
+def _refusal_delta(gate, source, baseline):
+    """This batch's refusals BY NAME - the totals now, minus the baseline.
+
+    Does NOT advance the baseline: `_flush` does that only after the write commits, so a
+    batch that raises leaves its refusals to be attributed to the retry rather than
+    silently dropped from the breakdown while `molecules_refused` still counts them.
+    """
+    totals = _refusal_totals(gate, source)
+    delta = {reason: total - baseline.get(reason, 0) for reason, total in totals.items()
+             if total > baseline.get(reason, 0)}
+    return delta, totals
+
+
 def _flush(store, source, translator_ver, atoms, cursor_value, molecules, refused,
-           incomplete, result):
+           incomplete, result, gate, refusal_baseline):
+    """One batch: atoms, the cursor, the aggregates AND their breakdown, in one commit.
+
+    🔴 The breakdown is computed HERE, immediately before the write, so the names and the
+    integer beside them come from the same instant. `sum(delta) == refused` is the
+    contract `store.write_batch` documents; where the two could disagree is a defect in
+    the refusal PATHS rather than in this arithmetic, so it is asserted by a test against
+    the database rather than enforced here - telemetry must never be able to roll back a
+    batch of atoms (`observability.lag_report` takes the same stance).
+    """
+    delta, totals = _refusal_delta(gate, source, refusal_baseline)
     written = store.write_batch(
         source, translator_ver, atoms, {"event_time": cursor_value}, molecules,
-        refused=refused, incomplete=incomplete)
+        refused=refused, incomplete=incomplete, reasons=delta)
+    refusal_baseline.clear()
+    refusal_baseline.update(totals)
     result["molecules"] += molecules
     result["attempted"] += written["attempted"]
     result["inserted"] += written["inserted"]

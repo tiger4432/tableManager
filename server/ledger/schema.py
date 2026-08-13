@@ -98,12 +98,46 @@ CREATE TABLE IF NOT EXISTS {CURSOR_TABLE} (
     atoms_deduped        BIGINT      NOT NULL DEFAULT 0,
     molecules_refused    BIGINT      NOT NULL DEFAULT 0,
     incomplete_molecules BIGINT      NOT NULL DEFAULT 0,
+    refusal_reasons      JSONB,
     source_head          JSONB,
     head_probed_at       TIMESTAMPTZ,
     started_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 )
 """
+
+#: `refusal_reasons` in one sentence, so the shape is not learned from the writer's SQL:
+#: `{reason: {"count": <bigint>, "last_at": "<UTC ISO-8601>"}}`, one entry per
+#: `gate.REFUSAL_REASONS` name that has ever fired for this source.
+#:
+#: 🔴 IT IS A BREAKDOWN, NOT A SECOND OPINION (ruling R-2026-08-13-F). The two aggregate
+#: integers beside it are the AUTHORITY and this column explains one of them, so it
+#: ACCUMULATES exactly as `molecules_refused` does and `sum(count) == molecules_refused`
+#: for every row the current writer has owned end to end. If the breakdown were written
+#: outside the cursor-advance transaction it would drift from the aggregate, and that
+#: disagreement would then read as a false alarm on the very screen built to show
+#: trouble - a status strip that cries wolf about its own bookkeeping is worse than none.
+#: `store._advance_cursor` therefore writes both in ONE statement, and
+#: `test_ledger_l1_pg.py` pins the equality at write time.
+#:
+#: NULL is NOT `{}` and the difference is load-bearing. NULL means "this row predates the
+#: column" - both development databases held such a row with `molecules_refused = 1` when
+#: this shipped - so its aggregate can never be broken down and the reader says so rather
+#: than rendering an empty breakdown that reads as "no refusals". `{}` means the writer
+#: has owned this row and nothing has been refused.
+REFUSAL_REASONS_COLUMN = "refusal_reasons"
+
+#: Columns added to an EXISTING cursor table. `ensure_schema` applies them, so a
+#: translator can never meet a table it cannot write into - the ordering hazard that
+#: `add_frame_confirmation.py` documents (a reader reaching a column its migration has
+#: not created yet) is real here in the WRITE direction too. The read side is defended
+#: separately: `ledger_trace.coverage` asks the catalogue which of these exist before it
+#: selects them, so a web server that boots before the migration serves an answer rather
+#: than a 500.
+CURSOR_ADDITIONS = (
+    (REFUSAL_REASONS_COLUMN,
+     f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {REFUSAL_REASONS_COLUMN} JSONB"),
+)
 
 # 🔴 EVERY INDEX BELOW HAS A NAMED CONSUMER, AND THAT IS THE ADMISSION RULE.
 #
@@ -195,15 +229,53 @@ def _relation_exists(cursor, name: str) -> bool:
     return bool(cursor.fetchone()[0])
 
 
+def column_exists(connection, table: str, column: str) -> bool:
+    """Does `table` carry `column`, in the schema `search_path` resolves it to?
+
+    The same catalogue-first rule as `_relation_exists`, one level down, and it is
+    resolved through `to_regclass` rather than by matching `information_schema` on a bare
+    table name: this box has a second copy of these tables in a scratch schema, and an
+    unqualified `information_schema` match reports on whichever one it meets first
+    (the defect `add_ledger_events.report` documents for `pg_indexes`).
+
+    Takes a DBAPI connection OR an open cursor, because both callers exist: `ensure_schema`
+    already holds a cursor and a migration script holds a connection.
+    """
+    sql = ("SELECT EXISTS (SELECT 1 FROM pg_attribute "
+           "WHERE attrelid = to_regclass(%s) AND attname = %s "
+           "AND attnum > 0 AND NOT attisdropped)")
+    if hasattr(connection, "execute"):                      # already a cursor
+        connection.execute(sql, (table, column))
+        return bool(connection.fetchone()[0])
+    with connection.cursor() as cursor:
+        cursor.execute(sql, (table, column))
+        return bool(cursor.fetchone()[0])
+
+
 def ensure_schema(connection):
     """Create the ledger, the cursor table and the indexes. Idempotent, additive only.
 
-    No DROP and no ALTER of anything that exists. Takes a DBAPI connection and commits
-    once at the end, so a failure leaves nothing half-built.
+    No DROP, and the only ALTER is `CURSOR_ADDITIONS` - columns ADDED to the cursor
+    table, each gated on the catalogue so an up-to-date database issues no DDL and takes
+    no lock at all. Takes a DBAPI connection and commits once at the end, so a failure
+    leaves nothing half-built.
+
+    🔴 Why the ALTER is here rather than only in the migration script: the writer calls
+    this on every run, so a translator can never reach a cursor table that is missing a
+    column it is about to write. `add_ledger_refusal_reasons.py` remains the operator's
+    entry point and the audit trail - it calls this same function, so there is still ONE
+    spelling of the DDL (the rule `add_ledger_events.py` states).
     """
     with connection.cursor() as cursor:
         cursor.execute(CREATE_LEDGER)
         cursor.execute(CREATE_CURSOR)
+        for column, statement in CURSOR_ADDITIONS:
+            # Gated rather than `ADD COLUMN IF NOT EXISTS`: that spelling still takes
+            # ACCESS EXCLUSIVE on the table to decide it has nothing to do, and this runs
+            # at the start of every backfill.
+            if not column_exists(cursor, CURSOR_TABLE, column):
+                logger.info("[Ledger] adding %s.%s", CURSOR_TABLE, column)
+                cursor.execute(statement)
         for statement in INDEXES:
             cursor.execute(statement)
     connection.commit()

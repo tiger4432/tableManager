@@ -1288,7 +1288,30 @@ def coverage(connection, relation="ledger_events",
     * `sample`       an ordered index scan on `idx_ledger_subject_lot` with a
                      LIMIT, so it stops after a handful rather than sorting the
                      ledger, plus one indexed seek per sampled lot.
+    * `atoms`        `pg_class.reltuples` summed over the partitions. THE CATALOGUE,
+                     never `count(*)`: `store.atom_count()` counts every row of
+                     every partition and is exactly the cost this endpoint may not
+                     pay. It is an ESTIMATE and the response says so in a field
+                     (`exact: false`), because a screen that prints a maintained
+                     statistic as if it were a count is how "the ledger lost rows"
+                     gets reported after an autovacuum has simply not run yet.
+    * `partitions`   `pg_inherits` + `pg_class`, the same catalogue query
+                     `schema.partitions` runs. Free, and exact.
+    * `cursors`      the whole cursor table. O(sources) — one row per translator,
+                     not per atom — so it is a handful of rows forever.
+    * `last_atom`    `ORDER BY occurred_at DESC LIMIT 1`, which rides
+                     `uq_ledger_atom`'s leading column exactly as min/max above do:
+                     one index descent per partition and a MergeAppend, O(partitions)
+                     rather than O(atoms). `recorded_at` costs NOTHING extra — it is
+                     decoded from the `id` that row already carries.
     There is deliberately NO `SELECT DISTINCT source_who` — see `sources` below.
+    There is deliberately no verification-run log: none exists, and ruling
+    R-2026-08-13-F declined to build one for a status strip. The screen says so.
+
+    🔴 ONE REQUEST, NOT TWO (ruling R-2026-08-13-F). The status strip reuses THIS
+    body rather than fetching its own, so everything added above had to be O(1) in
+    atoms or it would have made the page-load call heavier. `lots` remains the only
+    field that grows, under the ruling that already governs it.
 
     MEASURED 2026-08-13, throwaway probe DB, 280,000 atoms / 100,000 lots across
     12 monthly partitions, VACUUM ANALYZEd (a probe without statistics reports a
@@ -1316,7 +1339,9 @@ def coverage(connection, relation="ledger_events",
     zone = resolve_display_zone(cfg)
 
     answer = {"state": "absent", "lots": 0, "sources": [],
-              "occurred_at": {"from": None, "to": None}, "sample": []}
+              "occurred_at": {"from": None, "to": None}, "sample": [],
+              "atoms": dict(ATOMS_UNKNOWN), "partitions": {"count": 0, "list": []},
+              "cursors": [], "last_atom": {"occurred_at": None, "recorded_at": None}}
 
     # `sources` comes from the CURSOR table, not from `DISTINCT source_who`.
     #
@@ -1338,13 +1363,18 @@ def coverage(connection, relation="ledger_events",
     # from its cursor key would make this field name a source rather than an
     # author — worth a test at that point, not a scan today.
     if relation_exists(connection, cursor_relation):
-        answer["sources"] = [
-            r[0] for r in _fetch(
-                connection, f"SELECT source FROM {cursor_relation} ORDER BY source")
-            if r[0]]
+        answer["cursors"] = _cursor_rows(connection, cursor_relation, zone)
+        answer["sources"] = [c["source"] for c in answer["cursors"] if c["source"]]
 
     if not relation_exists(connection, relation):
         return answer                                   # state stays "absent"
+
+    # Catalogue facts, and they are answered for an EMPTY ledger too: "the table is
+    # deployed and partitioned and holds nothing" is a different report from "the table
+    # is deployed and I cannot tell you anything about it", and the second one is what an
+    # early return here would produce.
+    answer["partitions"] = _partition_report(connection, relation)
+    answer["atoms"] = _atom_estimate(connection, relation)
 
     populated = _fetch(connection, f"SELECT EXISTS (SELECT 1 FROM {relation})")
     if not (populated and populated[0][0]):
@@ -1352,6 +1382,7 @@ def coverage(connection, relation="ledger_events",
         return answer
 
     answer["state"] = "ready"
+    answer["last_atom"] = _last_atom(connection, relation, zone)
     rows = _fetch(connection, f"SELECT count(*) FROM {relation} "
                               f"WHERE predicate = 'register' AND subject_type = 'Lot'")
     answer["lots"] = int(rows[0][0]) if rows else 0
@@ -1364,6 +1395,238 @@ def coverage(connection, relation="ledger_events",
 
     answer["sample"] = _coverage_sample(connection, relation, sample_size)
     return answer
+
+
+#: The atom count before the catalogue has been asked, and the shape every answer
+#: keeps. 🔴 `exact` is FALSE in every spelling of this field — there is no branch
+#: of this endpoint that counts rows — so a client that reads it can render "약"
+#: without deciding when to.
+ATOMS_UNKNOWN = {"estimate": 0, "exact": False, "method": "pg_class.reltuples",
+                 "unanalyzed_partitions": 0}
+
+
+def _atom_estimate(connection, relation):
+    """How many atoms, APPROXIMATELY, from the catalogue alone.
+
+    `reltuples` is maintained by VACUUM and ANALYZE rather than by the statistics
+    collector, which is why it is trustworthy in exactly the situation
+    `pg_stat_user_tables` is not: this project spent a round on five phantom
+    "bloated" tables because `n_live_tup` had been reset while the tables were
+    fine (server-pm lessons, 2026-08-06). It is still an estimate, and the two
+    ways it lies are both reported rather than smoothed over:
+
+      * a partition that has never been analysed carries `-1` (PostgreSQL 14+)
+        or `0`. Counting either as "no atoms" would let a freshly restored
+        database report an empty ledger that is full, so those partitions are
+        COUNTED and named in `unanalyzed_partitions`, and the estimate says how
+        many of its inputs it could not see.
+      * between a bulk write and the next autovacuum the number is simply old.
+        `exact: false` is the whole of the defence, and it is the client's job to
+        render it as an approximation.
+
+    Summed over the PARTITIONS, never read off the parent: a partitioned parent
+    holds no rows of its own, so its own `reltuples` is 0 and a reader that took
+    it would report an empty ledger with total confidence.
+    """
+    rows = _fetch(connection, """
+        SELECT coalesce(sum(GREATEST(c.reltuples, 0)), 0)::bigint,
+               count(*) FILTER (WHERE c.reltuples < 0 OR c.relpages = 0)
+        FROM pg_class parent
+        JOIN pg_inherits inh ON inh.inhparent = parent.oid
+        JOIN pg_class c ON c.oid = inh.inhrelid
+        WHERE parent.oid = to_regclass(%(rel)s)
+    """, {"rel": relation})
+    if not rows:
+        return dict(ATOMS_UNKNOWN)                           # pragma: no cover
+    return dict(ATOMS_UNKNOWN, estimate=int(rows[0][0] or 0),
+                unanalyzed_partitions=int(rows[0][1] or 0))
+
+
+def _partition_report(connection, relation):
+    """The partitions and their bounds — the same catalogue query `schema.partitions`
+    runs, spelled here rather than imported for the reason the relation names at the
+    top of `ledger_trace_router` are: the web server must not import the translator
+    package to answer a read (`server/ledger/__init__.py` states that coupling is
+    empty, and it is worth keeping empty).
+
+    The BOUND is carried verbatim, as PostgreSQL renders it. Parsing
+    `FOR VALUES FROM (…) TO (…)` into a pair of instants here would be a second
+    spelling of the partition grammar, and the screen needs to show the operator what
+    the database says, not this module's re-reading of it.
+    """
+    rows = _fetch(connection, """
+        SELECT c.relname, pg_get_expr(c.relpartbound, c.oid)
+        FROM pg_class parent
+        JOIN pg_inherits inh ON inh.inhparent = parent.oid
+        JOIN pg_class c ON c.oid = inh.inhrelid
+        WHERE parent.oid = to_regclass(%(rel)s)
+        ORDER BY c.relname
+    """, {"rel": relation})
+    return {"count": len(rows),
+            "list": [{"name": name, "bound": bound} for name, bound in rows]}
+
+
+#: Every column the cursor report would like, in the order the response carries them.
+#: Which of them EXIST is asked of the catalogue per request, because a web server may
+#: legitimately be running against a database whose migration has not been applied yet —
+#: the ordering hazard `add_frame_confirmation.py` documents, and the failure it produces
+#: is a 500 on a status endpoint, i.e. the screen reporting itself broken.
+CURSOR_FIELDS = ("source", "translator_ver", "cursor_value", "molecules_done",
+                 "atoms_written", "atoms_deduped", "molecules_refused",
+                 "incomplete_molecules", "refusal_reasons", "source_head",
+                 "head_probed_at", "started_at", "updated_at")
+
+#: Cursor columns that are instants and are rendered in the declared display zone,
+#: the same rule every other time in this response follows.
+CURSOR_TIME_FIELDS = frozenset({"head_probed_at", "started_at", "updated_at"})
+
+
+def _cursor_rows(connection, cursor_relation, zone):
+    """The translator cursor table, whole. O(sources), and that is the point.
+
+    🔴 `refusal_reasons` IS THE ONLY READ OF NAMED REFUSALS THAT EXISTS. The gate's
+    counters are process-local to the backfill, the web server never imports that
+    package, and the heartbeat note it writes is not served — so before ruling
+    R-2026-08-13-F no read of this database could produce a reason breakdown at all.
+    This is that read.
+
+    `refusals_unaccounted` is computed here rather than left to the client, and it is
+    the anti-false-alarm field. A row written before the column existed carries NULL
+    with a non-zero `molecules_refused` — both development databases had exactly that,
+    `molecules_refused = 1` and no breakdown — and a screen that rendered "1 refused"
+    beside an empty list would be reporting a bookkeeping fault that is not there. So
+    the response states how much of the aggregate the breakdown accounts for, and the
+    remainder is a fact about deployment history rather than a discrepancy.
+    """
+    present = _existing_columns(connection, cursor_relation, CURSOR_FIELDS)
+    if "source" not in present:
+        return []                                            # pragma: no cover
+    selected = [f for f in CURSOR_FIELDS if f in present]
+    rows = _fetch(connection,
+                  f"SELECT {', '.join(selected)} FROM {cursor_relation} ORDER BY source")
+    out = []
+    for row in rows:
+        entry = dict(zip(selected, row))
+        for field in CURSOR_TIME_FIELDS & set(entry):
+            entry[field] = _iso(entry[field], zone)
+        reasons = entry.get("refusal_reasons")
+        if "refusal_reasons" in entry:
+            # Only when the DATABASE has the column. Setting the key regardless would
+            # make "this server is running ahead of its migration" and "this row
+            # predates the breakdown" render identically, and only the first of those
+            # is fixed by running something.
+            entry["refusal_reasons"] = _rendered_reasons(reasons, zone)
+        entry["refusals_unaccounted"] = _unaccounted(entry, reasons)
+        out.append(entry)
+    return out
+
+
+def _rendered_reasons(reasons, zone):
+    """`{reason: {count, last_at}}` with `last_at` moved into the display zone.
+
+    The column stores UTC (`store.LedgerStore._NOW_ISO`) so that two writers can never
+    disagree about what a stored string means; the rendering happens here, once, exactly
+    as `occurred_at` is rendered. NULL survives as NULL — see `_cursor_rows`.
+    """
+    if not isinstance(reasons, dict):
+        return reasons
+    out = {}
+    for name, entry in reasons.items():
+        if not isinstance(entry, dict):                      # pragma: no cover
+            out[name] = entry
+            continue
+        last_at = entry.get("last_at")
+        if isinstance(last_at, str):
+            try:
+                last_at = _iso(datetime.fromisoformat(last_at), zone)
+            except ValueError:                               # pragma: no cover
+                pass
+        out[name] = {"count": entry.get("count"), "last_at": last_at}
+    return out
+
+
+def _unaccounted(entry, reasons):
+    """`molecules_refused` minus what the breakdown explains. 0 on a healthy row.
+
+    🔴 THE SIGN CARRIES MEANING, so a client branches on it rather than on the number:
+
+        0        the breakdown accounts for the aggregate. The ordinary answer.
+        > 0      refusals counted before this column existed (or before a
+                 `--reverse`), whose names are gone with the process that held them.
+                 Deployment history, NOT a fault.
+        < 0      the breakdown exceeds the aggregate, which is a real bookkeeping
+                 fault: a refusal path that counts in the gate without refusing the
+                 molecule. One such path exists and was MEASURED on 2026-08-13 —
+                 `lot_event_translator.translate` swallows `_slot_map`'s refusal with
+                 `or []`, so the gate counts a refusal, the molecule lands anyway, and
+                 the operator's log says "produced nothing" about a row that produced
+                 three atoms. It is unreachable with every `emit_has_wafer` the shipped
+                 config declares, and reachable by declaring one `false`.
+    """
+    if "molecules_refused" not in entry:
+        return None                                          # pragma: no cover
+    total = int(entry.get("molecules_refused") or 0)
+    if not isinstance(reasons, dict):
+        return total                                # NULL: nothing is accounted for
+    explained = sum(int((e or {}).get("count") or 0) for e in reasons.values()
+                    if isinstance(e, dict))
+    return total - explained
+
+
+def _existing_columns(connection, relation, wanted):
+    """Which of `wanted` the relation actually has, per the catalogue.
+
+    Resolved through `to_regclass` rather than by matching `information_schema` on a
+    bare table name: this box carries a second copy of these tables in a scratch schema
+    and a name match would answer about whichever one it met first.
+    """
+    rows = _fetch(connection, """
+        SELECT attname FROM pg_attribute
+        WHERE attrelid = to_regclass(%(rel)s) AND attnum > 0 AND NOT attisdropped
+    """, {"rel": relation})
+    return {r[0] for r in rows} & set(wanted)
+
+
+#: The 48-bit millisecond stamp RFC 9562 puts in the first 12 hex digits of a UUIDv7,
+#: decoded in SQL. 🔴 THERE IS NO `recorded_at` COLUMN AND THERE MUST NOT BE ONE
+#: (ruling R-2026-08-13-F: a second home for one fact) — the write time lives inside
+#: `id`, which is what `ledger/uuid7.py` exists to guarantee.
+#:
+#: Decoded here rather than by importing `ledger.uuid7.timestamp_ms` because the web
+#: server does not import the translator package (`server/ledger/__init__.py`'s stated
+#: safety property). That leaves two spellings of one decode, so the two are pinned
+#: against each other by a test rather than trusted to stay equal.
+#:
+#: The version nibble is checked first: a non-v7 id carries no timestamp, and decoding
+#: one anyway would mint a confident, wrong instant out of random bits. NULL is the
+#: honest answer, and the fixtures in `test_ledger_trace_pg.py` are uuid5, so this
+#: branch is exercised by the existing suite rather than only by a written-for-it test.
+UUID7_MS_SQL = """
+    CASE WHEN substr(replace({column}::text, '-', ''), 13, 1) = '7'
+         THEN to_timestamp(
+                (('x' || substr(replace({column}::text, '-', ''), 1, 12))
+                 ::bit(48)::bigint) / 1000.0)
+    END
+"""
+
+
+def _last_atom(connection, relation, zone):
+    """The newest atom's event time and the time it was RECORDED.
+
+    Two different questions that look like one: `occurred_at` is when the world did
+    something, and the id's stamp is when this box heard about it. A ledger whose
+    newest event time is yesterday is either quiet or stuck, and the gap between these
+    two numbers is what tells them apart — the distinction `observability.lag_report`
+    exists for, made visible without asking the source table anything.
+    """
+    rows = _fetch(connection, f"""
+        SELECT occurred_at, {UUID7_MS_SQL.format(column="id")}
+        FROM {relation} ORDER BY occurred_at DESC LIMIT 1
+    """)
+    if not rows:
+        return {"occurred_at": None, "recorded_at": None}    # pragma: no cover
+    return {"occurred_at": _iso(rows[0][0], zone),
+            "recorded_at": _iso(rows[0][1], zone)}
 
 
 #: How many `derived_from` atoms the sample ranks over. See `_coverage_sample`
