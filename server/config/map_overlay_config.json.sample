@@ -4,11 +4,12 @@
   "table_bindings": {
     "__derived_note": "Declare a binding ONLY where the coordinate columns depart from the x/y/val convention -- every fixture table does, because its columns are namespaced (core_x, dt_x, bond_x). bonding_map / core_defect_map / eds_fail_map are omitted on purpose: table_config derives the identical binding for them, and a duplicate declaration only hides whether the derivation path still works.",
     "core_wafer_map": {
+      "__key_columns_comment": "Identity must agree with table_config.core_wafer_map.map_key_columns, which is [core_lot, core_slot]. This said [wafer_id] and was the LAST surviving copy of that retired identity: commit 272da5b already restored the composite in table_config.json.sample on 2026-08-13, because wafer_id is not in composite_key_source and its column comment says it is DELIBERATELY SPARSE ('absence is the enrichment work item'). Measured 2026-08-14 on assy_manager: of 204 wafer_map_metadata rows for this table, 3 resolve against wafer_id and 201 against core_lot||'_'||core_slot -- the writer (map_meta_registrar, which reads table_config.map_key_columns) has been composing composite ids the whole time while this declaration made the reader look them up by wafer_id, so 201 registered floors were refused no_cells and never offered to the operator. This key may instead be DELETED, in which case it inherits table_config.map_key_columns and there is only one copy to keep true; measured, both spellings resolve to the identical binding.",
       "columns": {
         "x": "core_x",
         "y": "core_y",
         "val": "c_bn",
-        "key_columns": ["wafer_id"]
+        "key_columns": ["core_lot", "core_slot"]
       }
     },
     "core_usage_map": {
