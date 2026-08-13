@@ -1,6 +1,6 @@
 # 📒 정준 원장 (Canonical Ledger) — 소스 붙이는 법 · 백필 돌리는 법
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-13 | **Owner:** Server / Ledger | **Source-of-truth:** `server/ledger/` · `server/ledger_trace.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 | **Owner:** Server / Ledger | **Source-of-truth:** `server/ledger/` · `server/ledger_trace.py`
 >
 > **이 문서가 소유하는 것: HOW.** 새 소스에 번역기를 붙이는 절차와, 운영자가 백필을 돌리고 숫자를 읽는 절차.
 > **WHY는 여기 없다** — 왜 원자가 7필드인지, 왜 어휘가 닫혀 있는지, 왜 해결 서열이 4계급인지는
@@ -12,7 +12,13 @@
 > ⚠️ **이 문서의 모든 수치는 이 개발 박스(`assy_manager` / `assy_qa`) 실측이고 운영의 증거가 아니다.**
 > 측정 시점은 2026-08-13이며, 인용할 때 그 귀속을 떼지 말 것.
 >
-> **이번 라운드 (2026-08-13 5차 · `4f46c25..f313279`)** — 🔴 **마이그레이션이 둘이 됐다**(§4.1) ·
+> **이번 라운드 (2026-08-14 · `92547c3` · R-2026-08-13-H-bis)** — 🔴 **번역기는 더 이상 «자기 스코프를 열지 않는다»**(§1.1 · §2 · §3 ③).
+> `backfill.run`의 분자 루프가 `gate.building_molecule`을 들고, 번역기를 **손으로 모는 호출부(테스트 포함)는 자기가 열어야 한다** — 안 열면 `RuntimeError`.
+> 🔴 **다만 오늘 동작은 하나도 안 바뀐다**: 번역기 클래스는 하나이고 `backfill.run`의 호출자는 자기 CLI `main()`뿐이라
+> **가치는 미래의 두 번째 번역기 작성자가 맞을 `RuntimeError`**다(「착지 ≠ 배선」). 함께: `screen_molecule`의 **거절만** 예외가 됐고
+> **「할 말 없음」의 `[]`는 그대로 반환**이며, `store.write_batch(reasons=…)`는 **필수 키워드 인자**가 됐다.
+>
+> **직전 라운드 (2026-08-13 5차 · `4f46c25..f313279`)** — 🔴 **마이그레이션이 둘이 됐다**(§4.1) ·
 > `subject_types` 복수 allow-list가 **문다**(§3 ② · `eb1ae8b`) · 거절이 **어느 파편에서든** 분자를 세운다(§2.2 · `f313279`) ·
 > 커서에 **`refusal_reasons`**와 `/coverage`의 **부호 계약**(§4.4 · §4.6 · `0198e7e`).
 > ⚠️ **§4.4·§4.6의 라이브 판독은 그 커밋들 «이전»에 뜬 것**이고 그 자리에 귀속을 달아 두었다 — 재백필하지 않았기 때문이다.
@@ -43,11 +49,11 @@
 | `envelope.py` | 설계 §3의 7필드를 파이썬 객체 하나(`Atom`)로. 11컬럼 평탄화는 `ROW_COLUMNS` **한 자리**에서만 | **타입 보존** — payload는 `Json`으로 나가 정수 `0`과 문자열 `"0"`이 갈린다. `freeze_payload`가 못 보존할 모양(이미 문자열로 렌더된 payload · `NaN`/`Inf` · 비문자열 키)을 **고치지 않고 거절**한다. `recorded_at` 컬럼은 **일부러 없다**(uuid7 안에 있다). `molecule_ref`는 메모리에만 있고 **컬럼이 아니다** |
 | `vocabulary.py` | 닫힌 어휘 + 항목별 **기계 검증 가능한 서명** | **v0는 일곱이고 그 수는 통제 장치다**(`test_ledger_l1_unit.py`가 집합을 못박는다). `register`만 `object_kind IS NULL`. **투영 상태어**(`resolved`·`contested`·`candidate`·`unresolvable`·`pinned`)는 이름으로 거절된다 — 원장에 절대 안 들어간다 |
 | `uuid7.py` | 단조 UUIDv7 — 워터마크이자 기록시각 | **구성상 단조**. 밀리초당 4,096(12비트 카운터), 넘치면 **미래를 당겨 쓰고**, 벽시계가 뒤로 가면 **직전 밀리초를 유지**한다. `assert_monotonic`은 **센 개수를 돌려준다**(빈 순회가 성공을 보고하지 못하게) |
-| `gate.py` | 문 앞에서 거절하고 **센다**. 단위는 행이 아니라 **분자** | 설계 §3의 **원자성 검사 넷** + **다섯째 질문**(`subject_types` — R-2026-08-13-D)이 산문에서 코드가 되는 자리. 🔴 **전부 아니면 전무이고, 그 규칙이 «어느 파편에든» 걸린다**(R-2026-08-13-H): `gate.building_molecule(source)` 스코프 안에서는 **사유를 가리지 않고 모든** `gate.refuse`가 세고 나서 `gate.MoleculeRefused`를 **raise**한다. 내년에 추가되는 헬퍼는 이 규칙이 있는 줄 몰라도 자기 분자를 세운다. 거절 사유는 **닫힌 집합 열둘**이고 호출부가 새 사유를 지어내면 `ValueError` |
+| `gate.py` | 문 앞에서 거절하고 **센다**. 단위는 행이 아니라 **분자** | 설계 §3의 **원자성 검사 넷** + **다섯째 질문**(`subject_types` — R-2026-08-13-D)이 산문에서 코드가 되는 자리. 🔴 **전부 아니면 전무이고, 그 규칙이 «어느 파편에든» 걸린다**(R-2026-08-13-H): `gate.building_molecule(source)` 스코프 안에서는 **사유를 가리지 않고 모든** `gate.refuse`가 세고 나서 `gate.MoleculeRefused`를 **raise**한다. 내년에 추가되는 헬퍼는 이 규칙이 있는 줄 몰라도 자기 분자를 세운다. 🔴 **`screen_molecule`의 거절도 그 문법이다**(2026-08-14 `92547c3` · R-H-bis 1) — 다만 **거절 팔만** 그렇고, **정당하게 할 말이 없던 분자(원자 0개)는 여전히 `[]`를 «반환»**한다. 거절과 무발화를 같은 문법으로 만들면 거절 카운터가 두 가지 뜻을 갖는다. 🔴 **스코프를 «여는» 것은 이 모듈도 번역기도 아니고 드라이버다**(아래 `backfill.py`). 거절 사유는 **닫힌 집합 열둘**이고 호출부가 새 사유를 지어내면 `ValueError` |
 | `config.py` | `ledger_config.json`을 **로드 시점에** 검증 | **선언 없는 것은 기본값이 아니라 거절이다** — 시각 컬럼·시간대가 없으면 소스 전체를 거절한다. `translator_version()`이 **선언 전체를 해시**해 원자마다 어떤 규칙이 만들었는지 남긴다. **런당 1회 읽는다**(행마다 아님) |
-| `lot_event_translator.py` | 첫 번째 소스, 그리고 다음 번역기가 베낄 **모양** | **한 이벤트 = 두 행 = 한 분자**. 짝은 `(event_type, event_time, parent, child)`로 맞춘다(소스에 이벤트 id가 없다). 🔴 **한 행이 양쪽을 다 채우면 고립시켜 거절**한다 — 「부모 먼저, 없으면 자식」류 순서는 그 행의 웨이퍼를 소스가 주장한 적 없는 계보에 조용히 붙인다. 🔴 **일방향 문은 `translate` 하나다**(R-2026-08-13-H): 원자를 만드는 본문(`_build`)은 `gate.building_molecule` 안에서 돌고 **거절을 값으로 다시 바꾸는 자리는 `translate`의 `except MoleculeRefused` 하나뿐**이다. `_build` 안에는 그것을 삼킬 수 있는 표현식이 없다 — `_build`가 `gate.molecule_is_open()`을 **가정하지 않고 단언**하는 이유가 그것이다 |
-| `store.py` | 원자 쓰기 + 커서 전진, **한 트랜잭션** | 커밋 하나 안에 원자와 커서가 같이 들어간다(§2.4). 연결은 **반드시** `engine.raw_connection()` — `psycopg2.connect`는 `db_safety` 가드를 우회한다. `parse_occurred_at`이 **선언 시간대는 naive 텍스트에만** 먹이고 오프셋을 달고 온 문자열은 그대로 존중한다 |
-| `backfill.py` | 커서 루프 — **분자를 반으로 자르지 않는다** | 커서는 행 오프셋이 아니라 **`event_time`**이고, 배치는 언제나 **온전한 `event_time` 그룹의 정수 개**다. 페이지가 꽉 찼으면 **꼬리 그룹을 버린다**(잘렸는지 안에서는 알 수 없다) |
+| `lot_event_translator.py` | 첫 번째 소스, 그리고 다음 번역기가 베낄 **모양** | **한 이벤트 = 두 행 = 한 분자**. 짝은 `(event_type, event_time, parent, child)`로 맞춘다(소스에 이벤트 id가 없다). 🔴 **한 행이 양쪽을 다 채우면 고립시켜 거절**한다 — 「부모 먼저, 없으면 자식」류 순서는 그 행의 웨이퍼를 소스가 주장한 적 없는 계보에 조용히 붙인다. 🔴 **이 파일은 스코프를 «열지 않고 요구»한다**(2026-08-14 `92547c3` · R-H-bis 3). `translate`는 `gate.building_molecule` **안에서 불려야** 하고, 안 열고 부르면 `_build`의 단언이 **`RuntimeError`**를 내며 그 메시지가 **누가 여는지(`backfill.run`)와 두 줄짜리 철자**를 댄다. 여는 자리가 여기였을 때는 그 규율이 **두 번째 번역기 작성자가 이 파일을 읽고 «알아채야»** 물려받는 구전이었다. 🔴 **번역기 쪽 일방향 문은 여전히 `translate`의 `except MoleculeRefused` 하나**이고 `_build` 안에는 그것을 삼킬 표현식이 없다 — 다만 **게이트 심사의 거절을 받는 두 번째 문이 드라이버에 있다**([spec §3.3-bis 표](../spec/LEDGER_TECHNICAL_SPEC.md)) |
+| `store.py` | 원자 쓰기 + 커서 전진, **한 트랜잭션** | 커밋 하나 안에 원자와 커서가 같이 들어간다(§2.4). 연결은 **반드시** `engine.raw_connection()` — `psycopg2.connect`는 `db_safety` 가드를 우회한다. `parse_occurred_at`이 **선언 시간대는 naive 텍스트에만** 먹이고 오프셋을 달고 온 문자열은 그대로 존중한다. 🔴 **`write_batch(…, reasons=…)`는 «필수 키워드» 인자다**(2026-08-14 `92547c3` · R-H-bis 2) — 기본값도 없고 명시적 `None`도 `TypeError`이며, 깨끗한 런의 정당한 값은 **명시적 `{}`** 하나다(§4.4의 부호 계약이 여기 걸려 있다) |
+| `backfill.py` | 커서 루프 — **분자를 반으로 자르지 않는다** · 🔴 **분자 스코프를 «여는» 자리** | 커서는 행 오프셋이 아니라 **`event_time`**이고, 배치는 언제나 **온전한 `event_time` 그룹의 정수 개**다. 페이지가 꽉 찼으면 **꼬리 그룹을 버린다**(잘렸는지 안에서는 알 수 없다). 🔴 **분자 루프가 `with gate.building_molecule(source)`를 들고 `translator.translate`와 `gate.screen_molecule`을 «같은» 스코프 안에 감싼다**(2026-08-14 `92547c3` · R-H-bis 3) — 그래서 이 드라이버가 모는 **모든** 번역기는 작성자가 규칙을 몰라도 스코프 안에서 태어난다. ⚠️ **오늘 이 드라이버를 부르는 것은 자기 파일의 CLI `main()`뿐**이다(데몬·라우트·워커 0) |
 | `observability.py` | 거절 요약 + **뒤처짐(lag)** 보고 — 첫날부터 | 티어 2단. **티어 1은 질의 0회**(세계시각 뒤처짐 · 커서 나이) — 이것만으로 「커서가 안 움직인다」가 보인다. **티어 2는 스로틀 걸린 1질의**(소스 head·뒤에 남은 행 수). 🔴 `probe_allowed`를 같이 실어 **「안 뒤처짐」과 「안 물어봄」을 구별**한다 |
 | `schema.py` | 물리 DDL **한 철자**. 마이그레이션도 이것을 부른다 | **첫날부터 월 단위 RANGE 파티션**(`ALTER TABLE ... PARTITION BY`가 없으므로 나중은 전면 재작성). 🔴 **모든 인덱스는 이름 붙은 소비자를 갖는다** — 소비자 없이 지어졌다 제거된 셋의 **가격이 주석에 남아 있다** |
 
@@ -69,13 +75,18 @@
 소스 행들                (backfill.fetch_page — event_time 순, 그룹 경계에서만 자른다)
    ↓ group_molecules     한 소스 이벤트 = 한 분자 (lot_event은 두 행)
 분자
-   ↓ translator.translate   원자를 «만든다». 아직 아무것도 안 검사됐다
-Atom[]
-   ↓ gate.screen_molecule   원자성 검사 넷. 전부 아니면 전무
-kept[]  (또는 [])
-   ↓ store.write_batch      원자 INSERT + 커서 UPDATE = 커밋 하나
+   │  ┌─ with gate.building_molecule(source):   ← 🔴 드라이버가 «여기서» 연다 (backfill.run)
+   │  │     ↓ translator.translate   원자를 «만든다». 아직 아무것도 안 검사됐다
+   │  │  Atom[]
+   │  │     ↓ gate.screen_molecule   원자성 검사 넷 + 다섯째 질문. 전부 아니면 전무
+   │  └─ except gate.MoleculeRefused: refused = True   ← 거절은 «풀려서» 여기로 온다
+kept[]  (거절이면 아무것도 안 실린다 · 「할 말 없음」이면 [])
+   ↓ store.write_batch(…, reasons={사유: 분자수})   원자 INSERT + 커서 UPDATE = 커밋 하나
 ledger_events + ledger_translator_cursor
 ```
+
+🔴 **스코프를 여는 것은 번역기가 아니라 이 루프다**(2026-08-14 `92547c3` · R-H-bis 3).
+번역기를 **손으로 모는 호출부**(테스트·일회성 스크립트)는 **자기가 열어야 한다** — §3 ③.
 
 ### 2.1 실제 예 하나 — `assy_manager`, 2026-08-13 실측
 
@@ -138,6 +149,15 @@ source_raw_ref        = "lot_event:[\"CL-2601-006-A1|split|…\",\"CL-2601-006|s
 지금은 `gate.refuse`가 스코프 안에서 **예외**(`MoleculeRefused`)를 던진다 —
 🔴 **`[]`를 돌려주는 수리는 «그 측정만» 초록으로 만들고 모양을 그대로 남긴다.**
 **어떤 병합 표현식도 예외를 삼킬 수 없다.** 파편 단위 생존은 **`incomplete`의 몫**이지 `refuse`의 뜻이 아니다.
+
+🔴 **게이트의 심사도 같은 문법이 됐고, 스코프는 드라이버가 연다** (2026-08-14 `92547c3` · R-2026-08-13-H-bis).
+`screen_molecule`의 **거절 팔**은 이제 `gate.refuse`를 지나 `MoleculeRefused`로 풀리고, `backfill.run`이 **심사를 스코프 «안»에서**
+부르기 때문에 그 풀림이 실제로 발화한다. ⚠️ **「이제 언제나 raise한다」로 읽지 말 것** —
+**정당하게 할 말이 없던 분자**(원자 0개: 빈 wafer 컬럼의 `track_in`)는 **여전히 `[]`를 반환**하고 **거절로 세어지지 않는다.**
+그 둘을 같은 문법으로 만들면 위의 거절 카운터가 두 가지 뜻을 갖는다.
+🔴 **이것이 단위 테스트만으로는 못 정착되는 자리다**: 옛 반환형을 주입하면 단위는 빨개지지만,
+같은 주입을 실 PostgreSQL에 걸었을 때 나오는 것은 **게이트 2 대 드라이버 0**(`refused_molecules`)이고 —
+**세지 않고 잃는** 그 경로가 §4.4의 `refusals_unaccounted`를 **음수**로 민다.
 
 🔴 **거절된 분자는 자기 «부작용»도 되돌린다.** `register` 원자는 실행 스코프 메모에 거절 검사보다 **먼저** 들어가므로,
 아무것도 안 쓰이면 그 랏은 **아무것도 안 쓴 분자에 의해 등록됨으로 표시되고 이후 누구도 등록하지 않는다.**
@@ -242,13 +262,28 @@ source_raw_ref        = "lot_event:[\"CL-2601-006-A1|split|…\",\"CL-2601-006|s
 ```python
 class <Source>Translator:
     def __init__(self, source_cfg, translator_ver, declared_derivations, who=SOURCE): ...
+    # 🔴 `gate.building_molecule` 안에서 «불린다». 이 안에서 스코프를 열지 «않는다» — 첫 항목 참조
     def translate(self, molecule) -> tuple[list[Atom] | None, dict]: ...
 ```
 
 지켜야 하는 것:
 
+- 🔴 **분자 스코프를 «열지 마라». 그것은 드라이버의 일이다** (2026-08-14 `92547c3` · R-H-bis 3).
+  `lot_event_translator`는 한때 `translate` 안에서 `with gate.building_molecule(SOURCE):`를 들고 있었고,
+  **베낄 모양으로서 그것이 틀렸다** — 그러면 규율이 「이 파일을 읽고 그 `with`를 «알아챈» 두 번째 작성자」에게만 전해진다.
+  지금은 `backfill.run`의 분자 루프가 들고 있으므로 **이 드라이버가 모는 번역기는 전부 스코프 안에서 태어난다.**
+  ⚠️ **번역기를 손으로 모는 호출부(테스트·일회성 스크립트)는 자기가 열어야 한다** — 안 열면 `_build`의 단언이 `RuntimeError`를 낸다:
+  ```python
+  with gate.building_molecule(source):
+      atoms, report = tr.translate(molecule)
+  ```
+  🔴 **이 문장 하나가 오늘 이 항목의 «전부»다.** 번역기 클래스는 아직 하나이고 `backfill.run`을 부르는 것은
+  자기 파일의 CLI `main()`뿐이라 **오늘 동작은 하나도 안 바뀌었다.** 이 구조의 값어치는 전부
+  **당신이 두 번째 번역기 작성자일 때 맞을 그 `RuntimeError`**이고 — 그것이 이 절이 존재하는 이유다.
 - **`(atoms, report)`를 돌려준다.** 원자가 되기 전에 거절했으면 **`(None, report)`** — 그때는 이미 `gate.refuse()`가 세었고
   호출자는 아무것도 안 쓰기만 하면 된다.
+- **게이트 심사(`gate.screen_molecule`)는 호출자가 «같은 스코프 안에서» 부른다.** 그 거절은 값이 아니라
+  `MoleculeRefused`로 풀려 나오므로 **번역기가 검사할 반환값이 아니다.** (「할 말 없음」의 `[]`만 값으로 온다.)
 - **모든 원자는 `envelope.entity_ref`로 object payload를 만든다.** 손으로 dict를 조립하지 말 것(⑤ 참조).
 - **`source_raw_ref`는 재번역의 유일한 경로다.** `lot_event`는 `raw_ref()`에서 **JSON 배열**로 쓴다 —
   행 신원(`business_key_val`)이 이미 `|`를 품고 있어서 구분자로 또 이으면 **다시 쪼갤 수 없는 문자열**이 된다.
@@ -316,6 +351,8 @@ server/tests/test_ledger_trace_contract.py::test_every_declared_derivation_is_ex
 | **`occurred_at`은 소스 시각** | 도착 시각이 대체될 수 있는 갈래가 **하나도 없어야** 한다. 안 읽히는 시각은 **거절**이 정답. 결함 주입으로 확인할 것 — 🔴 **주입은 `ledger.store`와 번역기 모듈 «양쪽»에 걸어야 한다**(번역기가 `parse_occurred_at`을 자기 이름으로 import해서 들고 있다. 한쪽만 패치하면 **성공해 보이는 주입 아래서 진짜 코드가 돈다**) |
 | **오프셋 왕복** | 단언은 **instant «와» offset을 둘 다** 검사한다. `astimezone` 철자의 결함은 instant를 보존하므로 **instant만 보는 테스트에는 아예 안 보인다** |
 | **반쪽 착지 불가** | 페이지 중간 청크가 이미 INSERT된 뒤 raise하면 **원자 0개가 살아남아야** 한다. 경계를 걷어냈을 때 원자가 남는 것이 **그 테스트가 빨개질 수 있음의 증명**이다 |
+| 🔴 **번역기를 손으로 몰 때 스코프를 «연다»** | (2026-08-14 `92547c3`) 테스트가 `translate`를 직접 부르면 `with gate.building_molecule(source):`로 감싼다 — 안 감싸면 `RuntimeError`이고 **그 빨강은 고장이 아니라 ③의 가드가 도는 증거**다. 🔴 **양팔을 다 태워라**: 스코프 «밖»에서는 `RuntimeError`, 스코프 «안»에서는 **원자가 나와야** 한다(거절 팔만 보면 「전부 거절하는 가드」와 구별이 안 된다) |
+| ⚠️ **「예외가 던져진다」는 주입 하네스 «안에서» 못 주장한다** | 이 저장소의 공유 주입 하네스 둘이 `AssertionError`를 **성공으로 친다** — **틀린 예외가 던져져도 초록**이다. 그러니 `pytest.raises(<정확한 타입>)`으로 쓰고, 예외에 대한 단언은 **전부 블록 «밖»에서 `caught.value`에** 대고 한다(블록 안, 호출 뒤에 쓴 단언은 **한 번도 실행되지 않는다**). 증명은 **옛 모양을 실제로 주입해 빨강을 실측**하는 것 |
 | **어휘 집합** | `PREDICATES`가 정확히 일곱 · `REFUSAL_REASONS`가 닫혀 있음 |
 
 **실행:**
