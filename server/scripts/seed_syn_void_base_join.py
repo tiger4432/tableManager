@@ -440,16 +440,31 @@ def _write(db, table: str, rows: list) -> int:
     return written
 
 
-def _guard_database(db):
-    """Refuse a database this fixture must never touch. Names the one it reached."""
+def _guard_database(db, allow_owner_database=False):
+    """Refuse a database this fixture must never touch. Names the one it reached.
+
+    `allow_owner_database` is the product owner's per-run decision (2026-08-14),
+    NOT a relaxation of the rule. The guard stays because the next run is not this
+    run: the default still refuses, and anyone who wants the owner's database has
+    to say so on the command line where it shows up in shell history and in a
+    report. The license is separability -- every row written carries
+    `updated_by = UPDATED_BY`, so one predicate excludes the whole fixture from any
+    measurement and one DELETE removes it.
+    """
     from sqlalchemy import text
 
     name = db.execute(text("SELECT current_database()")).scalar()
     if name in FORBIDDEN_DATABASES:
-        raise SystemExit(
-            "REFUSED: connected to '%s', which is the owner's working database. "
-            "Synthetic rows never go there. Point DATABASE_URL at a fixture "
-            "database and re-run." % name)
+        if not allow_owner_database:
+            raise SystemExit(
+                "REFUSED: connected to '%s', which is the owner's working database. "
+                "Synthetic rows never go there. Point DATABASE_URL at a fixture "
+                "database and re-run, or pass --i-accept-writing-to-owner-database "
+                "if the owner has decided otherwise for this run." % name)
+        print("!! OWNER DATABASE '%s' -- writing synthetic rows by explicit "
+              "decision." % name)
+        print("!! every row carries updated_by = '%s'" % UPDATED_BY)
+        print("!! rollback: DELETE FROM <table> WHERE updated_by = '%s'" % UPDATED_BY)
     return name
 
 
@@ -632,6 +647,10 @@ def main():
     parser.add_argument("--seed", type=int, default=20260813)
     parser.add_argument("--no-negatives", action="store_true",
                         help="omit the two rows that must NOT join")
+    parser.add_argument("--i-accept-writing-to-owner-database", action="store_true",
+                        dest="allow_owner_database",
+                        help="write into a FORBIDDEN_DATABASES name. Owner decision "
+                             "only; every row stays removable by updated_by.")
     args = parser.parse_args()
 
     started = time.time()
@@ -678,7 +697,8 @@ def main():
     models.init_dynamic_models(crud.TABLE_CONFIG)
     db = SessionLocal()
     try:
-        print("database: %s" % _guard_database(db))
+        print("database: %s" % _guard_database(
+            db, allow_owner_database=args.allow_owner_database))
         if args.apply:
             t0 = time.time()
             meta_n = _register_map_meta(db, wafers)

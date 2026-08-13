@@ -1,5 +1,40 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## ⚠️ `assy_manager`에 합성 픽스처가 «있다» — 재는 사람 전원 읽을 것 (2026-08-14)
+>
+> **제품 소유자 결정으로 100랏 픽스처가 대표님 작업 DB `assy_manager`에 들어갑니다.**
+> 이 결정은 「합성 원자는 `assy_manager`에 절대 안 넣는다」는 상설 규칙을 **이 픽스처에
+> 한해** 대체합니다. 규칙 자체는 살아 있고, 시드 스크립트의 `FORBIDDEN_DATABASES` 가드도
+> 그대로입니다 — 통과하려면 `--i-accept-writing-to-owner-database`를 **명령줄에 적어야**
+> 합니다(셸 히스토리와 보고서에 남습니다).
+>
+> ### 🔑 분리 술어 — 이것 하나가 라이선스다
+>
+> ```sql
+> WHERE updated_by = 'seed_syn_void_base_join'   -- 제외
+> DELETE FROM <table> WHERE updated_by = 'seed_syn_void_base_join'   -- 롤백
+> ```
+>
+> 네임스페이스도 함께: `bond_lot LIKE 'SYN-VOID-%'` · `base_id LIKE 'SYN-BW-%'`.
+>
+> ### 📊 증분 (드라이런 실측, 2500 웨이퍼 = 100랏 × 25슬롯)
+>
+> | 표 | +행 |
+> |---|---|
+> | `bonding_log` | **352,500** |
+> | `void_obs` | 91,756 (음성대조 5,000 포함) |
+> | `inspection_run` | 77,500 |
+> | `wafer_map_metadata` | 2,500 |
+> | `cell_sources` | **레이어링이 파생 생성** — 백만 단위, 실행 후 실측해 이 표를 갱신할 것 |
+>
+> 🔴 **필터 없이 `cell_sources`·`bonding_log`를 가로질러 재면 픽스처를 재는 것이다.**
+> 어제 계측 규율의 결론은 「권장」이 아니라 **「모르고 그러는 게 불가능해야 한다」**였고,
+> 이 문단이 그 장치다. 픽스처 이전 숫자를 인용할 땐 **측정 시각을 함께** 적을 것.
+>
+> 📌 `wafer_map_metadata` 2,500행은 전부 `target_table='bonding_log'`이라 **바닥 선택기
+> (`floor_tables()` = `valid_die_ref`·`core_wafer_map`)에는 안 들어간다** — references
+> 카탈로그 측정과 겹치지 않는다.
+
 > ## 🌅 2026-08-14 아침에 여기부터 (2026-08-13 마감, 레인 0 · 미푸시 0)
 >
 > ### ⚖️ 제품 소유자 판정 둘 (2026-08-13 밤)
