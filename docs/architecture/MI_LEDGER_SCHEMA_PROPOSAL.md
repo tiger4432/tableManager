@@ -27,23 +27,33 @@
 
 ## 2. 원장 어휘 — 웨이퍼 내 계측에 «본질적으로 존재하는 것»만 (제품 소유자 지시)
 
-웨이퍼 안에서 무언가를 잴 때 세상에 실재하는 것은 넷뿐이다. 나머지(잡 id·파일명·
-장비 코드·측정자)는 전부 방언이거나 출처다.
+웨이퍼 안에서 무언가를 잴 때 세상에 실재하는 것은 여섯이다. 나머지(잡 id·파일명)는
+방언이거나 출처다. (v0 초판은 넷이었다 — 제품 소유자가 「누가」와 「어떻게」의 누락을
+차례로 지적했고, 검토 결과 하나는 산문에 묻혀 있었고 하나는 「누가」에 뭉쳐 있었다.)
 
 | 본질 | 내용 | 봉투에서의 자리 |
 |---|---|---|
-| **① 어디** | 어느 웨이퍼의, 어느 좌표계(frame)의, 어느 위치 (x, y) — 그리고 선택적으로 그 자리의 **구조**(bond_line·film·TSV…) | subject = Wafer, payload의 `{frame, x, y, structure?}` (§5-2: 프레임은 subject 금지) |
-| **② 무엇을** | **물리량** — 두께·폭·면적·정렬오차·휨… 단위와 차원은 물리량의 시그니처에 속한다 (µm 없는 「두께」는 없다) | payload의 `quantity` — 어휘 등재 대상, 방언은 번역으로 소멸 |
-| **③ 얼마** | 값 (+ 요약이면 stat·n) | payload의 `{value, unit, stat?, n?}` |
-| **④ 언제·어떻게** | 계측 행위 자체 — 시각·방법·레시피. **사실이 아니라 사실의 출처다** | `occurred_at` + `source{who, raw_ref=run_uid}` |
+| **① 누가 (행위자)** | **잰 주체 — 장비.** 출처가 아니라 세상의 사실이다: 보이드 해석에서 장비는 **후보 공통 요인**이고(「전부 MI-2로 측정」= 장비 편향, 형제 교집합의 입력), 산문에 묻으면 분석이 못 쓴다 | payload의 `eqp` — **질의 가능한 필드로** (§12의 장비 개체 승격 판정이 나면 `processed_with` 동반 주장으로 승격 경로) |
+| **② 어떻게** | **방법·레시피·조건** — 같은 장비라도 레시피가 다르면 다른 측정이다. **재심 가능성이 여기 걸린다**: 임계·조건은 레시피의 파라미터라, 어떻게를 잃은 값은 재판정이 불가능해진다 (void의 「등급 금지」와 같은 뿌리) | payload의 `{method, recipe, conditions?}` — 역시 질의 가능하게. 레시피도 형제 교집합의 후보 요인 |
+| **③ 어디** | 어느 웨이퍼의, 어느 좌표계(frame)의, 어느 위치 (x, y) — 선택적으로 그 자리의 **구조**(bond_line·film·TSV…) | subject = Wafer, payload의 `{frame, x, y, structure?}` (§5-2: 프레임은 subject 금지) |
+| **④ 무엇을** | **물리량** — 두께·폭·면적·정렬오차·휨… 단위와 차원은 물리량의 시그니처에 속한다 (µm 없는 「두께」는 없다) | payload의 `quantity` — 어휘 등재 대상, 방언은 번역으로 소멸 |
+| **⑤ 얼마** | 값 (+ 요약이면 stat·n) | payload의 `{value, unit, stat?, n?}` |
+| **⑥ 언제** | 계측이 일어난 세상의 시각 | `occurred_at` (도착 시각 대입 금지) |
+
+그리고 봉투에는 **⑦ 발화자 — 누가 이 주장을 «하는가»** 가 원래부터 있다:
+`source{who, translator_ver, raw_ref=run_uid}`. 행위자(①)와 발화자(⑦)는 다른
+질문이다 — MI 장비가 쟀고(행위자), MI 시스템의 내보내기 파일이 말하며(발화자),
+둘이 갈리는 날(수기 입력·타 시스템 경유)이 반드시 온다.
 
 ```
-(Wafer W, measured, {quantity, value, unit, frame, x, y, structure?, stat?, n?},
- occurred_at, source{raw_ref: run_uid})
+(Wafer W, measured,
+ {quantity, value, unit, frame, x, y, structure?,
+  eqp, method, recipe, conditions?, stat?, n?},
+ occurred_at, source{who, raw_ref: run_uid})
 ```
 
-봉투 7필드가 이 넷을 새 구조 없이 그대로 받는다는 것 — 그게 봉투를 그렇게 설계한
-이유다. **①이 subject+위치 payload, ②③이 object, ④가 occurred_at+source.**
+봉투 7필드가 이 여섯+발화자를 새 구조 없이 그대로 받는다 — **①②④⑤가 object,
+③이 subject+위치 payload, ⑥이 occurred_at, ⑦이 source.**
 
 물리량(②) 규율 둘: 단위는 물리량 시그니처의 일부라 단위 없는 값은 게이트가 거절
 (void의 `DEFAULT_UNIT: None`과 같은 자세). 그리고 두 장비가 같은 이름을 쓴다고 같은
