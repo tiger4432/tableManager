@@ -57,9 +57,16 @@ and half of it is stored.
 A translator therefore builds its atoms inside `building_molecule`, and every `refuse`
 underneath it RAISES `MoleculeRefused` rather than returning a value somebody has to
 check. It used to return one; one caller merged it with `... or []` and three atoms of a
-refused molecule landed. THE NEXT TRANSLATOR INHERITS THIS ONLY IF IT OPENS THE SCOPE, so
-its atom-building body should assert `molecule_is_open()` the way `lot_event_translator`
-does - outside the scope a refusal counts without aborting, which is the same defect.
+refused molecule landed.
+
+🔴 AND THE SCOPE IS OPENED BY THE SHARED DRIVER, NOT BY EACH TRANSLATOR (R-H-bis 3)
+------------------------------------------------------------------------------------
+"The next translator inherits this only if it opens the scope" was the remaining hole:
+a discipline a second author has to DISCOVER is oral tradition, not structure. So the
+loop that walks molecules (`backfill.run`) holds the `with`, every translator it drives
+is born inside it, and `_build`'s `molecule_is_open()` assertion is kept as the second
+net rather than the first. `screen_molecule` refuses through `refuse` for the same
+reason (R-H-bis 1): one grammar, so a future caller cannot pick the wrong one.
 """
 from __future__ import annotations
 
@@ -115,9 +122,16 @@ def building_molecule(source: str):
     principle (a refusal on any fragment means the molecule contributes zero atoms) is
     enforced by the gate rather than by every author remembering it.
 
-    `screen_molecule` deliberately does NOT raise: it records through `_record`, it is
-    all-or-nothing by construction, and it hands back `[]` - there is no fragment it
-    could leave behind.
+    🔴 WHO OPENS IT: the SHARED DRIVER that walks molecules, not the translator (ruling
+    R-2026-08-13-H-bis 3). A translator that opened its own scope passed the discipline
+    on by word of mouth - the second translator inherits it only if its author reads the
+    first one and notices. With `backfill.run` holding the `with`, a translator is
+    structurally born inside the scope and cannot be written outside it; `_build`'s
+    `molecule_is_open()` assertion stays as the second net for a driver that forgets.
+
+    `screen_molecule` refuses through `refuse` like everything else (ruling R-H-bis 1),
+    so a molecule the GATE rejects unwinds here too - which is why the driver screens
+    inside this scope rather than after it.
     """
     _open.depth = getattr(_open, "depth", 0) + 1
     try:
@@ -322,7 +336,14 @@ def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1)
 
 def screen_molecule(source: str, atoms, declared_derivations, declared_subject_types,
                     molecule_ref=None, source_rows: int = 1):
-    """Judge ONE source event's atoms. Returns `(kept, report)`; `kept` is all or none.
+    """Judge ONE source event's atoms. Returns `(kept, report)`, or RAISES on a refusal.
+
+    🔴 THE REFUSAL LEAVES AS `MoleculeRefused`, NOT AS `[]` (ruling R-H-bis 1). Called
+    inside `building_molecule` - which is where the driver calls it - a refused molecule
+    unwinds; the returned `(kept, report)` pair is therefore only ever the ACCEPTING
+    answer, and `kept` is every atom that went in. Outside a scope it degrades to the old
+    `([], report)` with `report["refused"]` set, because `refuse` only counts there; that
+    is the double net, not a second contract to program against.
 
     `declared_derivations` is the set of derivation names the SOURCE's config declared.
     An atom whose `derivation` is outside it is refused even if it is otherwise perfect -
@@ -347,9 +368,13 @@ def screen_molecule(source: str, atoms, declared_derivations, declared_subject_t
     }
 
     if not atoms:
-        # Not an error. A `track_in` for a lot whose wafer column is entirely blank
-        # legitimately produces nothing, and counting that as a refusal would make the
-        # refusal counter mean two different things.
+        # Not an error, and THE ONLY `[]` this function still returns on its own account.
+        # A `track_in` for a lot whose wafer column is entirely blank legitimately
+        # produces nothing, and counting that as a refusal would make the refusal counter
+        # mean two different things. It stays a return rather than joining the exception
+        # grammar for exactly that reason: nothing was refused, so there is nothing to
+        # abort. Since ruling R-H-bis the two are no longer spelled alike - a refusal
+        # leaves through `MoleculeRefused`, silence leaves through here.
         return [], report
 
     declared = frozenset(declared_derivations or ())
@@ -424,9 +449,20 @@ def screen_molecule(source: str, atoms, declared_derivations, declared_subject_t
             break
 
     if report["refused"]:
-        _record(source, report["reason"], len(atoms),
-                f"molecule={molecule_ref} :: " + " ; ".join(report["violations"][:3]),
-                rows=source_rows)
+        # 🔴 ONE SIGNALLING GRAMMAR, NOT TWO (ruling R-2026-08-13-H-bis 1).
+        # This used to call `_record` and hand back `[]`. That is the shape R-H executed
+        # one module over: a refusal expressed as an EMPTY COLLECTION is swallowed by
+        # `or []`, by a bare `extend`, and by an ignored return - and it is spelled
+        # identically to the "this molecule legitimately had nothing to say" return
+        # twenty lines up, so no caller can tell the two apart by looking. Going out
+        # through `refuse` counts exactly as before and then RAISES `MoleculeRefused`
+        # while a molecule scope is open, which is the one shape no merge expression can
+        # absorb. Outside a scope `refuse` only counts, so the fall-through below is the
+        # double net: a caller that never opened a scope still gets `[]` and a report,
+        # never a silent pass.
+        refuse(source, report["reason"],
+               f"molecule={molecule_ref} :: " + " ; ".join(report["violations"][:3]),
+               atoms=len(atoms), rows=source_rows)
         return [], report
 
     return atoms, report

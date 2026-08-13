@@ -79,19 +79,33 @@ def translator(cfg=None):
 
 
 def translate_one(rows, cfg=None):
-    """Group `rows` into ONE molecule, translate it, and screen it. `(atoms, report)`."""
+    """Group `rows` into ONE molecule, translate it, and screen it. `(atoms, report)`.
+
+    🔴 SHAPED LIKE `backfill.run`'s molecule loop, deliberately. The driver opens
+    `gate.building_molecule` and screens INSIDE it (rulings R-H-bis 1 and 3), so a helper
+    that opened no scope - or that screened outside one - would be testing a control flow
+    production does not have: `_build` would refuse to run at all, and a gate refusal
+    would come back as `([], report)` instead of unwinding.
+    """
     cfg = cfg or full_cfg()
     tr = translator(cfg)
     molecules = group_molecules(rows)
     assert len(molecules) == 1, f"expected one molecule, got {len(molecules)}"
-    atoms, report = tr.translate(molecules[0])
-    if atoms is None:
-        return None, report
-    kept, screen = gate.screen_molecule(
-        "lot_event", atoms, ledger_config.declared_derivations(cfg, "lot_event"),
-        ledger_config.declared_subject_types(cfg, "lot_event"),
-        molecule_ref=molecules[0].ref, source_rows=len(rows))
-    return (None if screen["refused"] else kept), screen
+    try:
+        with gate.building_molecule("lot_event"):
+            atoms, report = tr.translate(molecules[0])
+            if atoms is None:
+                return None, report
+            kept, screen = gate.screen_molecule(
+                "lot_event", atoms,
+                ledger_config.declared_derivations(cfg, "lot_event"),
+                ledger_config.declared_subject_types(cfg, "lot_event"),
+                molecule_ref=molecules[0].ref, source_rows=len(rows))
+    except gate.MoleculeRefused as refusal:
+        return None, {"source": refusal.source, "molecule_ref": molecules[0].ref,
+                      "refused": True, "reason": refusal.reason,
+                      "violations": [refusal.detail]}
+    return kept, screen
 
 
 # ------------------------------------------------------------------------- vocabulary
@@ -276,7 +290,8 @@ def test_the_shipped_declaration_covers_every_type_the_translator_actually_utter
                 event_time="2026-05-03T02:17:00"),
             row("C", parent_lot="P", slots="01:02", wafers="W1:W2",
                 event_time="2026-05-03T02:17:00")]
-    atoms, _ = tr.translate(group_molecules(rows)[0])
+    with gate.building_molecule("lot_event"):     # the driver's job (ruling R-H-bis 3)
+        atoms, _ = tr.translate(group_molecules(rows)[0])
     uttered = {atom.subject_type for atom in atoms}
     assert uttered, "the translator produced no atoms - the check is vacuous"
     assert uttered <= set(declared), (
@@ -772,6 +787,160 @@ def test_the_same_atom_LANDS_when_the_source_declares_that_type():
     assert gate.refusals() == {}, "a passing atom was counted as a refusal"
 
 
+# ------------------------------------------- ruling R-2026-08-13-H-bis 1: one grammar
+#
+# 🔴 THESE ARE NOT INJECTION-HARNESS ENTRIES ON PURPOSE. Both shared harnesses at the
+# bottom of this file catch `AssertionError` and read it as "the guard fired", so a guard
+# whose whole claim is "an exception is raised" cannot state that claim there - a round
+# that raised the WRONG exception would report success. `pytest.raises(<the exact type>)`
+# is the spelling that can tell those two apart, and every assertion about the exception
+# is made on `caught.value` AFTER the block, because a statement written after the raising
+# call inside it would never execute.
+
+
+def test_a_gate_refusal_inside_a_molecule_scope_UNWINDS_rather_than_returning():
+    """Ruling R-H-bis 1. The refusal used to leave as `([], report)`.
+
+    `[]` is the shape ruling R-H executed one module over: `or []`, a bare `extend` and an
+    ignored return all absorb it. Now the gate refuses through `gate.refuse` like every
+    other refusal site, so inside a molecule scope it unwinds - and the counting that used
+    to happen beside the `return` still happens, because `refuse` counts BEFORE it raises.
+    """
+    gate.reset_counters()
+    reached_the_line_after_the_call = []
+    with pytest.raises(gate.MoleculeRefused) as caught:
+        with gate.building_molecule("lot_event"):
+            kept, _report = gate.screen_molecule(
+                "lot_event", [_equipment_atom()], {"first_sight"}, {"Lot", "Wafer"},
+                molecule_ref="m")
+            reached_the_line_after_the_call.extend(kept or [])   # the swallow, unwritable
+
+    assert caught.value.reason == gate.REFUSE_UNDECLARED_SUBJECT_TYPE
+    assert caught.value.source == "lot_event"
+    assert reached_the_line_after_the_call == [], (
+        "execution continued past the refusal, so a merge expression could still swallow "
+        "it - which is the 2026-08-13 defect in a new place")
+    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_SUBJECT_TYPE)] == 1, (
+        "the refusal unwound without being counted - `molecules_refused` and the "
+        "breakdown beside it would then disagree in the OTHER direction")
+    assert gate.atoms_lost()["lot_event"] == 1
+
+
+def test_a_refusal_and_a_silence_are_no_longer_SPELLED_alike():
+    """⚠️ THE OTHER ARM, and it is what stops the ruling from being over-applied.
+
+    A molecule that legitimately produced no atoms - a `track_in` whose wafer column is
+    blank throughout - still leaves by RETURNING `([], report)`, un-refused and uncounted.
+    That was always the intent and it is now the only `[]` the gate emits on its own
+    account: with the refusal raising, the two outcomes that used to be typed identically
+    can finally be told apart by a caller that looks at neither the report nor the docs.
+    """
+    gate.reset_counters()
+    with gate.building_molecule("lot_event"):
+        kept, report = gate.screen_molecule("lot_event", [], {"first_sight"}, {"Lot"},
+                                            molecule_ref="m")
+    assert kept == [] and not report["refused"] and report["reason"] is None
+    assert gate.refusals() == {}, (
+        "a molecule with nothing to say was counted as a refusal, which makes the refusal "
+        "counter mean two different things")
+
+
+def test_outside_a_molecule_scope_the_gate_still_refuses_by_RETURNING():
+    """The double net, and the reason this change is not a contract break.
+
+    `refuse` only counts when no molecule is open, so a caller that never opened a scope
+    keeps the old pair rather than silently receiving atoms. It is the same degradation
+    `gate.refuse` itself has had since R-H - one rule, not a second one for this call.
+    """
+    gate.reset_counters()
+    assert not gate.molecule_is_open()
+    kept, report = gate.screen_molecule("lot_event", [_equipment_atom()],
+                                        {"first_sight"}, {"Lot", "Wafer"},
+                                        molecule_ref="m")
+    assert kept == [] and report["refused"]
+    assert report["reason"] == gate.REFUSE_UNDECLARED_SUBJECT_TYPE
+    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_SUBJECT_TYPE)] == 1
+
+
+# ------------------------------------- ruling R-2026-08-13-H-bis 3: the driver's scope
+
+
+def test_a_translator_run_without_the_DRIVERS_scope_refuses_to_run_at_all():
+    """Ruling R-H-bis 3, both arms in one test.
+
+    `translate` used to open `gate.building_molecule` itself, which made the all-or-nothing
+    rule something a SECOND translator's author inherited only by reading this one and
+    noticing. The scope belongs to the loop that walks molecules now, so the translator
+    asserts it instead of creating it: a driver that forgot gets a `RuntimeError` naming
+    the omission, where before the ruling it would have got counted refusals beside landed
+    atoms.
+
+    The accepting arm is here rather than in a sibling test on purpose - a guard that only
+    ever refuses is indistinguishable from one that refuses everything.
+    """
+    tr = translator()
+    molecule = group_molecules(
+        [row("P", event_type="track_in", slots="01", wafers="W1")])[0]
+
+    assert not gate.molecule_is_open()
+    with pytest.raises(RuntimeError) as caught:
+        tr.translate(molecule)
+    assert "building_molecule" in str(caught.value)
+    assert "backfill.run" in str(caught.value), (
+        "the message has to NAME who opens the scope, or the next author has to go "
+        "reading to find out")
+
+    with gate.building_molecule("lot_event"):
+        atoms, report = tr.translate(molecule)
+    assert atoms, f"the same molecule was refused inside the scope too: {report}"
+
+
+# --------------------------------- ruling R-2026-08-13-H-bis 2: no default for `reasons`
+#
+# 🔴 THE SUITE BEING GREEN PROVES NOTHING HERE. Every caller of `write_batch` in the tree
+# already passes `reasons`, so the default could come back tomorrow and nothing else in
+# this repository would notice. These two call it the way a caller who FORGOT would.
+
+
+def test_write_batch_has_no_default_for_reasons():
+    """Ruling R-H-bis 2, read off the signature.
+
+    Keyword-only as well as undefaulted: `reasons` sits behind two integer parameters with
+    defaults, so positionally it is one miscount away from being handed `incomplete`.
+    """
+    import inspect
+    parameter = inspect.signature(ledger_store.LedgerStore.write_batch).parameters["reasons"]
+    assert parameter.default is inspect.Parameter.empty, (
+        "the default is back. A caller who says nothing about refusals would again "
+        "advance `molecules_refused` with no names beside it")
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def test_a_write_that_FORGETS_reasons_fails_loudly_and_writes_nothing():
+    """The same rule exercised as a call, because a signature can be satisfied and then
+    undone by a `reasons or {}` in the body - which is exactly what used to be there.
+
+    `engine=None` is deliberate: both refusals below have to happen BEFORE any connection
+    is taken, so an engine that cannot produce one is the proof that nothing was written.
+    An `AttributeError` here would mean the check runs too late.
+    """
+    store = ledger_store.LedgerStore(None)
+    argv = ("lot_event", "v1", [], {"event_time": "2026-05-03 02:17:00"}, 1)
+
+    with pytest.raises(TypeError) as omitted:
+        store.write_batch(*argv)
+    assert "reasons" in str(omitted.value)
+
+    # 🔴 AND AN EXPLICIT `None` IS REFUSED TOO. Removing the default while the body still
+    # read `reasons or {}` would leave the decoy one keystroke away - the ruling says the
+    # only legitimate empty breakdown is an explicit `{}` from a run that refused nothing.
+    with pytest.raises(TypeError) as explicit_none:
+        store.write_batch(*argv, reasons=None)
+    assert "H-bis" in str(explicit_none.value), (
+        "the message does not name the ruling it enforces, so the next author reads it "
+        "as a type nit and passes `{}` for a batch that DID refuse")
+
+
 def test_refusal_reasons_are_a_closed_set():
     with pytest.raises(ValueError):
         gate.refuse("lot_event", "a_reason_i_invented", "detail")
@@ -967,12 +1136,14 @@ def _refused_then_later_registers(tr):
     raised there is read as success by both harnesses, so the one thing this helper must
     never do is fail loudly on its own.
     """
-    refused, _ = tr.translate(group_molecules(_unequal_split_rows())[0])
+    with gate.building_molecule("lot_event"):     # the driver's job (ruling R-H-bis 3)
+        refused, _ = tr.translate(group_molecules(_unequal_split_rows())[0])
     if refused is not None:
         return None
     later = [row("P", event_type="track_in", slots="01", wafers="W1",
                  event_time="2026-05-04 09:00:00")]
-    atoms, _ = tr.translate(group_molecules(later)[0])
+    with gate.building_molecule("lot_event"):
+        atoms, _ = tr.translate(group_molecules(later)[0])
     return [a for a in atoms
             if a.predicate == "register" and a.subject_keys == {"lot": "P"}]
 

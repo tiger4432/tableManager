@@ -52,6 +52,12 @@ row produced nothing, and three atoms of that same molecule landed. Per-fragment
 is what `incomplete` is for - a true but incomplete utterance - and it is not what
 `refuse` means.
 
+🔴 THIS FILE DOES NOT OPEN THAT SCOPE (ruling R-H-bis 3). The loop that walks molecules
+does, so `translate` REQUIRES an open scope instead of creating one. The difference is
+who the rule binds: opened here, it binds this translator and reaches the next one only
+if its author copies this file; opened by the driver, it binds everything the driver
+drives, including a translator written next year by somebody who never read this.
+
 AN INCOMPLETE MOLECULE IS NOT A REFUSAL
 ----------------------------------------
 The isolated database contains a real instance: someone retyped `child_lot` in the grid,
@@ -277,13 +283,20 @@ class LotEventTranslator:
         `atoms.append` and lands on this handler with nothing accumulated. There is no
         expression a future author can write in `_build` that swallows it, which is the
         difference between this fix and returning `[]` from `_slot_map`.
+
+        🔴 THE CALLER MUST ALREADY BE INSIDE `gate.building_molecule` (ruling R-H-bis 3).
+        This method used to open that scope itself, which made the discipline something
+        the SECOND translator would inherit only by reading the first one and noticing.
+        The shared driver holds the `with` now, so any translator it drives is inside the
+        scope by construction; `_build` asserts it rather than assuming it, and a caller
+        that forgot gets a `RuntimeError` naming the omission instead of a molecule that
+        counts its refusals and writes its atoms anyway.
         """
         report = {"molecule": molecule.ref, "refused": False, "reason": None,
                   "atoms": 0, "incomplete": not molecule.is_complete}
         self._registered_here = []
         try:
-            with gate.building_molecule(SOURCE):
-                atoms = self._build(molecule)
+            atoms = self._build(molecule)
         except gate.MoleculeRefused as refusal:
             self._forget_this_molecules_registers()
             report.update(refused=True, reason=refusal.reason)
@@ -325,13 +338,18 @@ class LotEventTranslator:
 
         The precondition is checked rather than assumed: run outside the scope, every
         `gate.refuse` here would merely COUNT and execution would continue past a check
-        that was supposed to stop it. That is the swallow again, one level up.
+        that was supposed to stop it. That is the swallow again, one level up. Since
+        ruling R-H-bis the scope belongs to the DRIVER, so this assertion is the second
+        net under a driver that forgot rather than a guard on this file's own `with`.
         """
         if not gate.molecule_is_open():
             raise RuntimeError(
                 "_build must run inside gate.building_molecule() - outside it a refusal "
                 "counts without aborting, which is the defect ruling R-2026-08-13-H "
-                "removed. Call translate().")
+                "removed. The scope is opened by the loop that walks molecules "
+                "(`backfill.run`), not by the translator (ruling R-H-bis 3), so a caller "
+                "driving a translator by hand has to open it: "
+                "`with gate.building_molecule(source): tr.translate(molecule)`.")
 
         if molecule.ambiguous:
             row = molecule.rows[0] if molecule.rows else {}

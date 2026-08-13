@@ -234,20 +234,38 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
             read.rollback()
 
             for molecule in molecules:
-                atoms, molecule_report = translator.translate(molecule)
-                refused = atoms is None
-                if not refused:
-                    kept, screen_report = gate.screen_molecule(
-                        source, atoms, declared, declared_subjects,
-                        molecule_ref=molecule.ref, source_rows=len(molecule.rows))
-                    refused = screen_report["refused"]
-                    if refused:
-                        # 🔴 A refused molecule must not leave its registers memoised:
-                        # nothing was written, so the next molecule that mentions the
-                        # same lot has to be free to register it.
-                        _forget_registers(translator, atoms)
-                    else:
-                        pending.extend(kept)
+                atoms, molecule_report = None, None
+                try:
+                    # 🔴 THE MOLECULE SCOPE IS OPENED HERE, BY THE SHARED DRIVER, and
+                    # this is the whole of ruling R-H-bis 3. It used to be opened inside
+                    # `LotEventTranslator.translate`, which meant a SECOND translator
+                    # inherited the all-or-nothing rule only if its author read the first
+                    # translator and noticed the `with`. Opened by the loop that walks
+                    # molecules, every translator this driver drives is born inside the
+                    # scope whether or not anyone tells its author the rule exists.
+                    #
+                    # SCREENING IS INSIDE THE SAME SCOPE on purpose (R-H-bis 1): since
+                    # `screen_molecule` refuses through `gate.refuse` like every other
+                    # refusal site, a molecule the GATE rejects unwinds to the handler
+                    # below instead of handing back an `[]` that a future edit could
+                    # merge away.
+                    with gate.building_molecule(source):
+                        atoms, molecule_report = translator.translate(molecule)
+                        refused = atoms is None
+                        if not refused:
+                            kept, _screen_report = gate.screen_molecule(
+                                source, atoms, declared, declared_subjects,
+                                molecule_ref=molecule.ref,
+                                source_rows=len(molecule.rows))
+                            pending.extend(kept)
+                except gate.MoleculeRefused:
+                    # The gate refused after the translator had already built (and
+                    # counted) atoms. Nothing of this molecule is pending - the unwind
+                    # happened before `pending.extend` - but its registers must be given
+                    # back: nothing was written, so the next molecule that mentions the
+                    # same lot has to be free to register it.
+                    refused = True
+                    _forget_registers(translator, atoms)
                 if refused:
                     pending_refused += 1
                     result["refused_molecules"] += 1

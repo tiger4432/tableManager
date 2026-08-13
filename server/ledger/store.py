@@ -45,6 +45,17 @@ logger = logging.getLogger("Ledger.Store")
 
 INSERT_PAGE_SIZE = 1000
 
+#: Ruling R-2026-08-13-H-bis 2. Spelled once, raised from both the public write and the
+#: private statement under it, so the two cannot drift into saying different things about
+#: the same rule.
+_REASONS_REQUIRED = (
+    "reasons is required and must not be None (ruling R-2026-08-13-H-bis 2). Pass this "
+    "batch's refusals BY NAME as {reason: molecules}; pass an explicit {} when the batch "
+    "refused nothing. There is no default, because a write that advances "
+    "molecules_refused without names produces the same positive `refusals_unaccounted` "
+    "that `ledger_trace` reports as DEPLOYMENT HISTORY - so a live bookkeeping hole "
+    "would be shown to the operator as an old one.")
+
 
 def _json(value):
     from psycopg2.extras import Json
@@ -213,13 +224,17 @@ class LedgerStore:
         """
 
     def _advance_cursor(self, connection, source, translator_ver, cursor_value,
-                        molecules, atoms, deduped, refused, incomplete, reasons=None):
+                        molecules, atoms, deduped, refused, incomplete, *, reasons):
         """Issue the cursor UPDATE on the caller's OPEN transaction. No commit.
 
         `reasons` is this batch's `{reason: molecules}` DELTA - never a running total,
         because the column accumulates in SQL. `{}` is the ordinary value for a clean
-        batch and leaves the breakdown untouched.
+        batch and leaves the breakdown untouched, and it is REQUIRED for the reason
+        `write_batch` states: this is the statement that writes `molecules_refused`, so
+        this is where a count without names would actually be committed.
         """
+        if reasons is None:
+            raise TypeError(_REASONS_REQUIRED)
         with connection.cursor() as cursor:
             cursor.execute(f"""
                 INSERT INTO {schema.CURSOR_TABLE} (
@@ -243,11 +258,26 @@ class LedgerStore:
                     {schema.REFUSAL_REASONS_COLUMN} = {self._merge_reasons_sql()},
                     updated_at           = now()
             """, (source, translator_ver, _json(cursor_value), molecules, atoms,
-                  deduped, refused, incomplete, _json(dict(reasons or {}))))
+                  deduped, refused, incomplete, _json(dict(reasons))))
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
-                    refused=0, incomplete=0, reasons=None):
+                    refused=0, incomplete=0, *, reasons):
         """🔴 The atomic unit. Atoms in, cursor forward, ONE commit, or nothing at all.
+
+        🔴 `reasons` HAS NO DEFAULT, and that is ruling R-2026-08-13-H-bis 2. It used to
+        default to `None`, which meant a caller who said nothing about refusals got the
+        behaviour from before the breakdown column existed: `molecules_refused` advanced
+        and the names beside it did not. That is R-D's decoy field wearing a function
+        signature - a field whose absence is indistinguishable from its emptiness - and
+        the sign contract downstream is built on the difference. `ledger_trace` reads
+        `molecules_refused - sum(breakdown)` and branches on the SIGN: `> 0` means
+        "counted before this column existed", i.e. DEPLOYMENT HISTORY, not a fault. A
+        defaulted `reasons` manufactures that same positive number on a current build, so
+        a real gap and an old one become one number and the operator is told a live
+        bookkeeping hole is history. Keyword-only rather than merely undefaulted so it
+        cannot be supplied positionally by accident either, and an explicit `None` is
+        rejected below: the only legitimate empty breakdown is an explicit `{}` from a
+        run that refused nothing.
 
         The counters are ACCUMULATED, not set. A field that is SET has been a defect in
         this system before (QA D-1: an override count under-reported because two messages
@@ -262,6 +292,10 @@ class LedgerStore:
         `sum(reasons.values()) == refused` is the caller's contract and
         `test_ledger_l1_pg.py` pins it at write time from the other side (the database).
         """
+        if reasons is None:
+            # Checked BEFORE the connection is opened: refusing early costs nothing and
+            # keeps the refusal about the CALL rather than about a half-built transaction.
+            raise TypeError(_REASONS_REQUIRED)
         connection = self.connection()
         try:
             self.ensure_partitions(connection, {a.occurred_at for a in atoms})

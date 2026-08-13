@@ -29,6 +29,7 @@ import ledger_trace as lt
 ledger_pkg = pytest.importorskip(
     "ledger", reason="the ledger translator package (L1) is not present")
 from ledger import config as ledger_config          # noqa: E402
+from ledger import gate                             # noqa: E402
 from ledger import vocabulary                       # noqa: E402
 from ledger.envelope import Atom, entity_ref        # noqa: E402
 from ledger.lot_event_translator import (           # noqa: E402
@@ -146,7 +147,10 @@ def _translate(rows):
     tr = _translator()
     atoms = []
     for molecule in group_molecules(rows):
-        produced, _report = tr.translate(molecule)
+        # The molecule scope belongs to whatever drives the translator (ruling R-H-bis
+        # 3); in production that is `backfill.run`, and here it is this loop.
+        with gate.building_molecule("lot_event"):
+            produced, _report = tr.translate(molecule)
         atoms.extend(produced or [])
     return _atoms_to_claims(atoms)
 
