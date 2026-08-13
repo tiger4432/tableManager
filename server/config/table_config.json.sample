@@ -230,7 +230,7 @@
     "map_key_columns": ["dt_lot", "dt_slot"]
   },
   "bonding_log": {
-    "__comment": "[TRACE FIXTURE] Bonding record. b_bn is the bonding bin -- the DEFECT this whole fixture exists to trace back to a core die. | dt_lot/dt_slot here are the values AS OF BONDING TIME and they differ from the ones dt_log recorded at DT time, because split/merge moved the wafer in between. THIS IS WHY A SQL JOIN CANNOT SOLVE IT: joining bonding_log.dt_lot to dt_log.dt_lot does not error, it matches the WRONG wafer plausibly. The join has to be (key + as-of when) and then walk the lot_event chain. | bond_x/bond_y carry a third independent 8-way frame ambiguity -- the same primitive applies here as at core->dt, which is what 'universal' means (one primitive, N applications), NOT a third spelling of the same code.",
+    "__comment": "[TRACE FIXTURE] Bonding record. b_bn is the bonding bin -- the DEFECT this whole fixture exists to trace back to a core die. | dt_lot/dt_slot here are the values AS OF BONDING TIME and they differ from the ones dt_log recorded at DT time, because split/merge moved the wafer in between. THIS IS WHY A SQL JOIN CANNOT SOLVE IT: joining bonding_log.dt_lot to dt_log.dt_lot does not error, it matches the WRONG wafer plausibly. The join has to be (key + as-of when) and then walk the lot_event chain. | bond_x/bond_y carry a third independent 8-way frame ambiguity -- the same primitive applies here as at core->dt, which is what 'universal' means (one primitive, N applications), NOT a third spelling of the same code. | base_id/bx/by are the BASE side of the void->die seam: base_id names the base wafer and (bx, by) is the die position on it, which is what void_obs.base_wafer_id/base_x/base_y address. 🔴 THEY ARE DERIVED, NOT INDEPENDENT COORDINATES (product owner 2026-08-13): base (x, y) IS bond (x, y) put through the frame transform declared by this map's wafer_map_metadata row (rotation + side). So the frame is load-bearing for the void join -- a wrong frame attaches every void to a plausible WRONG die, silently, which is the same failure class as the wrong-wafer join above, one layer up. ONE primitive computes it (map_overlay.make_frame_transform via dt_map_derivation.source_meta_for_frame); a second spelling of a coordinate transform is how two screens come to disagree about where a die is. | 🔴 DECLARED NON-KEY ON PURPOSE. Adding them to composite_key_source would re-key all 5,296 existing rows and un-key every feed that omits them -- the identical argument that keeps stack_height out. The identity stays (bond_lot, bond_slot, bond_x, bond_y). | No ingestion path fills them yet; today the only writer is server/scripts/seed_syn_void_base_join.py, which is an assy_qa fixture.",
     "business_key": "bond_cell_key",
     "composite_key_source": ["bond_lot", "bond_slot", "bond_x", "bond_y"],
     "composite_key_separator": "_",
@@ -240,6 +240,9 @@
       "bond_slot": "string",
       "bond_x": "number",
       "bond_y": "number",
+      "base_id": "string",
+      "bx": "number",
+      "by": "number",
       "b_bn": "string",
       "stack_height": "number",
       "dt_lot": "string",
@@ -255,6 +258,9 @@
       "bond_slot",
       "bond_x",
       "bond_y",
+      "base_id",
+      "bx",
+      "by",
       "b_bn",
       "stack_height",
       "dt_lot",

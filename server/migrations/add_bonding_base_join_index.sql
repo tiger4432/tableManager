@@ -1,0 +1,62 @@
+-- The index the void -> die join is read through.
+--
+--   psql "$DATABASE_URL" -f server/migrations/add_bonding_base_join_index.sql
+--
+-- 🔴 ORDER. `base_id`/`bx`/`by` are physical columns on `bonding_log` in both dev
+-- databases already, but they were UNDECLARED until 2026-08-13 - an undeclared
+-- column takes a write and drops it with a 200. Declare them in
+-- `table_config.json` (`column_types`, NOT `composite_key_source`) before this file
+-- is worth anything. Verify:
+--   SELECT count(base_id), count(bx), count(by) FROM bonding_log;
+--
+-- 🔴 THIS FILE NAMES A DATABASE NOWHERE, so it cannot refuse the wrong one - `psql`
+-- connects wherever you point it. Check before you run:
+--   SELECT current_database();
+-- (SCHEMA_CANON §3 asks a migration to refuse an unspecified DB; a `.sql` file
+-- cannot, and pretending otherwise would be worse than saying so. The statement
+-- below is additive and IF NOT EXISTS, so the blast radius of a wrong target is an
+-- unused index, not data.)
+--
+-- CONCURRENTLY: a lock on `bonding_log` is a stalled ingestion lane. It cannot run
+-- inside a transaction block - `psql -f` runs each top-level statement in its own
+-- transaction, and a wrapping BEGIN would break that.
+--
+-- If interrupted it leaves an INVALID index that costs writes and serves no reads:
+--   SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+--   WHERE NOT i.indisvalid AND c.relname = 'idx_bonding_log_base_position';
+--
+-- REVERSE: server/migrations/add_bonding_base_join_index_reverse.sql
+--
+--
+-- ================================================================
+-- "Which die is under this void"
+-- ================================================================
+-- `void_obs` addresses a package by (base_wafer_id, base_x, base_y, stack_gate) and
+-- reaches `bonding_log` through (base_id, bx, by). Without this index that join is
+-- a sequential scan of `bonding_log` per void - the [확장성 최우선] rule sizes every
+-- read at 10M rows, and 10M rows scanned per void is not a read, it is an outage.
+--
+-- COLUMN ORDER is the join's own order, and the prefix is separately useful:
+-- (base_id) alone answers "every die on this base wafer", and (base_id, bx) is not
+-- a question anybody asks, so nothing is lost by putting `bx` second.
+--
+-- `stack_height` is INCLUDEd rather than indexed. The layer predicate
+-- (`stack_gate <= stack_height`) cannot use it for a seek - it compares against a
+-- value from the OTHER table - but carrying it makes the lookup index-only, which
+-- is what removes the heap fetch per matched void. It is not a key column because a
+-- key column would change the row order for no seek benefit.
+--
+-- `row_id` is the last key column for R7: a capped read needs a TOTAL order, and
+-- ties left for the planner to break differently on each refresh is the /view
+-- incident.
+--
+-- ⚠️ NOT PARTIAL. `WHERE base_id IS NOT NULL` would be tempting today, when the
+-- 5,296 real rows have it NULL and only the fixture fills it - the index would be
+-- a fraction of the size. It is deliberately NOT written that way: the moment a
+-- real feed starts filling `base_id`, a partial index silently keeps excluding
+-- rows it was built before, and the join starts missing dies with no error. The
+-- size saving is temporary; the trap is permanent.
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bonding_log_base_position
+    ON bonding_log (base_id, bx, by, row_id)
+    INCLUDE (stack_height);
