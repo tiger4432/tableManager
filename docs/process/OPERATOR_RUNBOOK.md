@@ -154,4 +154,13 @@
 
 ## 부록 — 이 박스에서만 하면 되는 것 (운영 아님)
 
+- **`bonding_log`의 base 조인 인덱스** (2026-08-14 등재, **차단 아님**)
+  ```bash
+  psql "postgresql://postgres:admin@localhost:5432/assy_manager" -f server/migrations/add_bonding_base_join_index.sql
+  ```
+  마이그레이션 파일은 **저장소에 이미 있고 이 박스에만 미적용**이다. 없어도 돌지만
+  놀라움 장치의 칩→랏 브리지가 매 요청 **352,500행 전수 스캔 398 ms**(HashAggregate가
+  디스크로 20 MB 스필). 오늘 `core_wafer_map` 건과 **같은 모양** — 인덱스가 없어서가
+  아니라 **인덱스가 «이 박스에» 없어서**다. ⚠️ 건 뒤엔 `ANALYZE`도 같이 — 오늘 통계 없는
+  표에 인덱스만 걸어 「효과 없음」으로 읽은 적이 있다.
 - **`:8081` 격리 스택 재기동** — 셀 이력 기능이 착지하기 «전»에 뜬 프로세스라 그 기능이 안 보인다.
