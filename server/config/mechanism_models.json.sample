@@ -1,0 +1,56 @@
+{
+  "__doc": "M4 mechanism graph - direction-only causal edges (PHYSICS_ONTOLOGY_SETUP.md section 4). dir: '+' source up -> target up, '-' source up -> target down, 'u' non-monotone (an assertion, not 'unknown'). Edges are DECLARED knowledge, owner-reviewed 2026-08-14; equations (form) absent by design - direction alone is enough for the explanation gate. The 'signatures' blocks are human documentation (spatial pattern each cause tends to leave, keyed to the three map frames); the loader ignores them. Consumer: the three-gate ranking's mechanism gate (factor -> finding reachability) and the structure view's mechanism layer.",
+  "void_formation": {
+    "version": "v0",
+    "validity": "declared, direction-only; owner-reviewed 2026-08-14",
+    "nodes": ["bond_pressure", "bond_temp", "pre_bond_queue_h", "stage_particle", "dt_pass_count", "tape_adhesion_anomaly", "core_cmp_nonuniform", "humidity", "interface_unfill", "wetting_deficit", "surface_oxidation", "local_gap", "adhesive_residue", "interface_contam", "backside_damage", "edge_gap", "moisture_uptake", "outgassing", "void"],
+    "edges": [
+      {"from": "bond_pressure", "to": "interface_unfill", "dir": "-"},
+      {"from": "interface_unfill", "to": "void", "dir": "+"},
+      {"from": "bond_temp", "to": "wetting_deficit", "dir": "-"},
+      {"from": "wetting_deficit", "to": "void", "dir": "+"},
+      {"from": "pre_bond_queue_h", "to": "surface_oxidation", "dir": "+"},
+      {"from": "surface_oxidation", "to": "wetting_deficit", "dir": "+"},
+      {"from": "stage_particle", "to": "local_gap", "dir": "+"},
+      {"from": "local_gap", "to": "void", "dir": "+"},
+      {"from": "dt_pass_count", "to": "adhesive_residue", "dir": "+"},
+      {"from": "adhesive_residue", "to": "interface_contam", "dir": "+"},
+      {"from": "interface_contam", "to": "void", "dir": "+"},
+      {"from": "tape_adhesion_anomaly", "to": "backside_damage", "dir": "+"},
+      {"from": "backside_damage", "to": "void", "dir": "+"},
+      {"from": "core_cmp_nonuniform", "to": "edge_gap", "dir": "+"},
+      {"from": "edge_gap", "to": "void", "dir": "+"},
+      {"from": "humidity", "to": "moisture_uptake", "dir": "+"},
+      {"from": "moisture_uptake", "to": "outgassing", "dir": "+"},
+      {"from": "outgassing", "to": "void", "dir": "+"}
+    ],
+    "signatures": {
+      "stage_particle": "bond frame: recurring cluster at a FIXED stage position",
+      "tape_adhesion_anomaly": "dt frame: stripes following tape rows",
+      "core_cmp_nonuniform": "core frame: edge ring",
+      "pre_bond_queue_h": "uniform across the lot, position-independent",
+      "dt_pass_count": "correlates with pass count - a path feature, not a position"
+    }
+  },
+  "delam_formation": {
+    "version": "v0",
+    "validity": "declared, direction-only; owner-reviewed 2026-08-14",
+    "nodes": ["bond_pressure", "die_stress", "tape_adhesion_anomaly", "backside_damage", "delam"],
+    "edges": [
+      {"from": "bond_pressure", "to": "die_stress", "dir": "+"},
+      {"from": "die_stress", "to": "delam", "dir": "+"},
+      {"from": "backside_damage", "to": "delam", "dir": "+"}
+    ],
+    "signatures": {
+      "bond_pressure": "note: pressure LOW feeds void_formation, pressure HIGH feeds die_stress - the two models together make bond_pressure vs quality non-monotone"
+    }
+  },
+  "void_observation_bias": {
+    "version": "v0",
+    "validity": "NOT a formation path. A factor arriving only here explains APPEARANCE, not occurrence - the gate must report it as observation-bias candidate, never as a cause. Kept as its own model so the split is structural.",
+    "nodes": ["post_bond_queue_h", "void_observed"],
+    "edges": [
+      {"from": "post_bond_queue_h", "to": "void_observed", "dir": "u"}
+    ]
+  }
+}
