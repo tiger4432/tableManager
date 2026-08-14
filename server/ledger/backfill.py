@@ -1,6 +1,24 @@
-"""The `lot_event` backfill - a cursor loop that never cuts a molecule in half.
+"""The backfill drivers - cursor loops that never cut a molecule in half.
 
     conda run -n assy_manager python -m ledger.backfill --source lot_event
+    conda run -n assy_manager python -m ledger.backfill --source void_obs
+
+🔴 TWO GRAMMARS, ONE ENTRY POINT (ruling R-2026-08-14-D)
+----------------------------------------------------------
+`run()` dispatches on the source's declared `kind` and there are two drivers under it:
+
+  * `_run_lineage` - `lot_event` and its kin. A molecule is a GROUP of source rows sharing
+    an `event_time`, so the cursor is a world time and the batch has to be cut on a group
+    boundary (everything below).
+  * `_run_observation` - `void_obs`, `delam_obs`. One row IS one utterance, so there is no
+    group to cut; what those sources need instead is a cursor that works when a bulk load
+    stamps ONE `updated_at` on ninety thousand rows, which a time cursor cannot. See
+    `_run_observation` for the keyset that does.
+
+They share everything that carries a rule: the molecule scope is opened by the DRIVER in
+both (ruling R-H-bis 3), registrations are looked up once per page in both, and both write
+through `store.write_batch`, so "atoms and cursor in one transaction" has one
+implementation rather than one per grammar.
 
 WHERE THE BATCH IS CUT, AND WHY IT MATTERS MORE THAN THE BATCH SIZE
 --------------------------------------------------------------------
@@ -127,11 +145,38 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
     """Translate everything past the cursor. Returns a `BackfillResult`.
 
+    Dispatches on the source's DECLARED grammar (`kind`), which defaults to `lineage` -
+    so every call written before ruling R-2026-08-14-D reaches the same driver it always
+    did. An undeclared source is refused here, before either driver runs, because the
+    refusal is about the DECLARATION and neither grammar owns it.
+
     `reset_cursor=True` deliberately re-reads work that is already done - it is how net 2
     of the idempotency argument gets exercised, and how an operator re-translates after a
     rule change (the new `source_translator_ver` makes the new atoms distinct from the
     old ones, which is correct: they are different claims made by different rules).
     """
+    from . import config as ledger_config
+    from . import gate
+
+    source_cfg = ledger_config.source_config(cfg, source)
+    if source_cfg is None:
+        gate.refuse(source, gate.REFUSE_UNDECLARED_SOURCE,
+                    f"source {source!r} has no declaration in "
+                    f"{cfg.get('__origin__', 'ledger_config.json')}; nothing was read")
+        return BackfillResult(source=source, refused_source=True, atoms=0, molecules=0)
+
+    if source_cfg.get("kind") == ledger_config.SOURCE_KIND_OBSERVATION:
+        return _run_observation(engine, cfg, source, fetch_rows=fetch_rows,
+                                reset_cursor=reset_cursor, start_from=start_from,
+                                max_batches=max_batches, probe_lag=probe_lag)
+    return _run_lineage(engine, cfg, source, fetch_rows=fetch_rows,
+                        reset_cursor=reset_cursor, start_from=start_from,
+                        max_batches=max_batches, probe_lag=probe_lag)
+
+
+def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
+                 reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
+    """The `lot_event` driver. Unchanged by ruling R-2026-08-14-D except for its name."""
     from . import config as ledger_config
     from . import gate, observability, schema
     from .envelope import canonical_keys
@@ -280,14 +325,16 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                 pending_cursor = molecule.event_time
 
                 if pending_molecules >= batch_size:
-                    _flush(store, source, translator_ver, pending, pending_cursor,
+                    _flush(store, source, translator_ver, pending,
+                           {"event_time": pending_cursor},
                            pending_molecules, pending_refused, pending_incomplete,
                            result, gate, refusal_baseline)
                     pending, pending_molecules = [], 0
                     pending_refused, pending_incomplete = 0, 0
 
             if pending_molecules:
-                _flush(store, source, translator_ver, pending, pending_cursor,
+                _flush(store, source, translator_ver, pending,
+                       {"event_time": pending_cursor},
                        pending_molecules, pending_refused, pending_incomplete, result,
                        gate, refusal_baseline)
                 pending, pending_molecules = [], 0
@@ -309,6 +356,238 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         # quotes what a reader would actually get.
         result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
         result["lag"] = observability.lag_report(
+            store, source, source_cfg, cursor_row,
+            probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
+            force_probe=probe_lag)
+        result["gate_note"] = gate.note()
+        result["lag_note"] = observability.lag_note(result["lag"])
+        return result
+    finally:
+        read.close()
+
+
+# --------------------------------------------------------------- observation driver
+def fetch_observation_page(connection, source, source_cfg, after, limit):
+    """One page of finding rows past the keyset `after`, as dicts with LOGICAL names.
+
+    🔴 KEYSET, NOT OFFSET, AND NOT A TIME. The row-value comparison
+    `(updated_at, row_id) > (…, …)` is what the declared watermark index answers directly,
+    so page N costs the same as page 1 - the property an OFFSET loses and the reason this
+    project forbids large offsets. A world-time cursor is not available here at all: the
+    findings' world time lives on the run, and their own `updated_at` is stamped in bulk
+    (92 distinct values across 91,756 rows on this box), so a time cursor would make one
+    load one indivisible group.
+    """
+    columns = source_cfg["columns"]
+    watermark = list(source_cfg["watermark"]["columns"])
+    select = [f"{columns['row_identity']} AS row_identity",
+              f"{columns['wafer']} AS wafer",
+              f"{columns['run_key']} AS run_key"]
+    for logical in ("die_x", "die_y", "die_gate", "inchip_x", "inchip_y",
+                    "extent_x", "extent_y", "unit", "class"):
+        physical = columns.get(logical)
+        if physical:
+            select.append(f"{physical} AS {logical}")
+    select.extend(f"{column} AS __wm{index}__"
+                  for index, column in enumerate(watermark))
+    ordered = ", ".join(watermark)
+    where, params = "", []
+    if after:
+        placeholders = ", ".join(["%s"] * len(watermark))
+        where = f"WHERE ({ordered}) > ({placeholders}) "
+        params.extend(after)
+    params.append(limit)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT {', '.join(select)} FROM {source} {where}"
+            f"ORDER BY {ordered} LIMIT %s", tuple(params))
+        names = [d[0] for d in cursor.description]
+        rows = [dict(zip(names, row)) for row in cursor.fetchall()]
+    for row in rows:
+        row["__watermark__"] = [row.pop(f"__wm{index}__")
+                                for index in range(len(watermark))]
+    return rows
+
+
+def fetch_runs(connection, source_cfg, keys):
+    """`{run_key: {occurred_at, method}}` for a whole page. ONE query.
+
+    A per-row lookup is what makes a ten-million row backfill quadratic - the same
+    argument `store.existing_registrations` is built on, one relation over. The page's
+    distinct keys are bound as an ARRAY, so the planner counts them instead of guessing.
+    """
+    if not keys:
+        return {}
+    run = source_cfg["run"]
+    relation = run["relation"]
+    key_column = run["key_column"]
+    time_column = source_cfg["occurred_at_column"]
+    method_column = run.get("method_column")
+    select = [f"{key_column} AS run_key", f"{time_column} AS occurred_at"]
+    if method_column:
+        select.append(f"{method_column} AS method")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT {', '.join(select)} FROM {relation} "
+            f"WHERE {key_column} = ANY(%s)", (sorted(keys),))
+        names = [d[0] for d in cursor.description]
+        return {row[0]: dict(zip(names, row)) for row in cursor.fetchall()}
+
+
+def _watermark_json(values):
+    """The watermark as something `jsonb` can hold and `>` can read back.
+
+    Datetimes go to ISO-8601 text. On resume they are bound straight back into the
+    row-value comparison and PostgreSQL coerces them to the column's own type - which is
+    why the ISO spelling matters: it is the one text form that means the same instant to
+    the database as the value it came from.
+    """
+    from datetime import datetime as _dt
+    return [v.isoformat() if isinstance(v, _dt) else (None if v is None else str(v))
+            for v in values]
+
+
+def _run_observation(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,
+                     reset_cursor=False, start_from=None, max_batches=None,
+                     probe_lag=True):
+    """`void_obs` / `delam_obs` -> `observed` atoms. Ruling R-2026-08-14-D.
+
+    🔴 THE MOLECULE SCOPE IS OPENED HERE, BY THIS DRIVER, exactly as the lineage driver
+    opens it (ruling R-H-bis 3). One row is one molecule in this grammar, so the
+    all-or-nothing rule is trivially satisfied - and that is precisely why the scope is
+    still opened rather than skipped: the day this driver grows a second atom per row, the
+    rule is already holding it.
+    """
+    from . import config as ledger_config
+    from . import gate, observability, schema
+    from .envelope import canonical_keys
+    from .observation_translator import ObservationMolecule, ObservationTranslator
+    from .store import LedgerStore
+
+    source_cfg = ledger_config.source_config(cfg, source)
+    translator_ver = ledger_config.translator_version(cfg, source)
+    declared = ledger_config.declared_derivations(cfg, source)
+    declared_subjects = ledger_config.declared_subject_types(cfg, source)
+    batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
+    finding_kind = source_cfg.get("finding_kind")
+
+    # 🔴 THE CLOSED CLASS SET COMES FROM THE KIND REGISTRY, NOT FROM THIS DECLARATION
+    # (§6-quater). `ledger_config` says WHICH COLUMN utters a class; `finding_kinds` says
+    # WHICH VALUES a class may take, because that set is a property of the kind and the
+    # console builds its slice axis from the same list. Two declarations of one closed set
+    # is how a value that is legal on one screen is refused on the other.
+    declared_classes = ()
+    if (source_cfg.get("columns") or {}).get("class"):
+        try:
+            import finding_kinds
+            declared_classes = finding_kinds.classes(finding_kind)
+        except Exception as exc:
+            logger.warning("[Ledger] %s declares a class column but the kind registry "
+                           "could not be read (%s); every uttered class will be refused",
+                           source, exc)
+
+    store = LedgerStore(engine)
+    store.ensure_schema()
+
+    read = store.connection()
+    try:
+        existing = store.read_cursor(read, source)
+        if isinstance(start_from, str):
+            # `--from "2026-08-14T08:30:02+09:00|019ffd76-…"`. A keyset has as many parts
+            # as the declaration has columns, so the operator's string is split rather
+            # than guessed at, and a wrong arity is a loud IndexError at the first page
+            # instead of a comparison that quietly matches everything.
+            start_from = start_from.split("|")
+        after = start_from if start_from is not None else (
+            None if reset_cursor else (existing or {}).get("cursor_value", {}).get(
+                "watermark"))
+
+        logger.info("[Ledger] backfill %s (observation) | translator_ver=%s | "
+                    "finding_kind=%s | classes=%s | cursor=%r%s",
+                    source, translator_ver, finding_kind, list(declared_classes), after,
+                    " (RESET)" if reset_cursor else "")
+
+        result = BackfillResult(
+            source=source, kind=ledger_config.SOURCE_KIND_OBSERVATION,
+            translator_ver=translator_ver, started_from=after,
+            molecules=0, refused_molecules=0, incomplete_molecules=0,
+            attempted=0, inserted=0, deduped=0, batches=0, blank_geometry=0,
+            rows_read=0, cursor=after, seconds=0.0)
+        started = time.monotonic()
+
+        translator = ObservationTranslator(source, source_cfg, translator_ver, declared,
+                                           declared_classes=declared_classes)
+        refusal_baseline = _refusal_totals(gate, source)
+
+        while True:
+            if max_batches is not None and result["batches"] >= max_batches:
+                break
+            rows = fetch_observation_page(read, source, source_cfg, after, fetch_rows)
+            if not rows:
+                break
+            result["rows_read"] += len(rows)
+
+            runs = fetch_runs(read, source_cfg, {r["run_key"] for r in rows
+                                                 if r.get("run_key")})
+            subjects = {("Wafer", canonical_keys({"wafer": str(r["wafer"]).strip()}))
+                        for r in rows if str(r.get("wafer") or "").strip()}
+            translator.registered |= store.existing_registrations(read, subjects)
+
+            # END THE READ TRANSACTION BEFORE WRITING - same reason as the lineage
+            # driver: this connection holds ACCESS SHARE on `ledger_events` and the first
+            # write may need ACCESS EXCLUSIVE to create a partition, so the process would
+            # block on itself.
+            read.rollback()
+
+            pending, pending_molecules, pending_refused = [], 0, 0
+            pending_cursor = after
+            for row in rows:
+                molecule = ObservationMolecule(source, row)
+                atoms, refused = None, False
+                try:
+                    with gate.building_molecule(source):
+                        atoms, _report = translator.translate(molecule, runs)
+                        refused = atoms is None
+                        if not refused:
+                            kept, _screen = gate.screen_molecule(
+                                source, atoms, declared, declared_subjects,
+                                molecule_ref=molecule.ref, source_rows=1)
+                            pending.extend(kept)
+                except gate.MoleculeRefused:
+                    refused = True
+                    _forget_registers(translator, atoms)
+                if refused:
+                    pending_refused += 1
+                    result["refused_molecules"] += 1
+                pending_molecules += 1
+                pending_cursor = molecule.watermark
+
+                if pending_molecules >= batch_size:
+                    _flush(store, source, translator_ver, pending,
+                           {"watermark": _watermark_json(pending_cursor)},
+                           pending_molecules, pending_refused, 0, result, gate,
+                           refusal_baseline)
+                    pending, pending_molecules, pending_refused = [], 0, 0
+
+            if pending_molecules:
+                _flush(store, source, translator_ver, pending,
+                       {"watermark": _watermark_json(pending_cursor)},
+                       pending_molecules, pending_refused, 0, result, gate,
+                       refusal_baseline)
+
+            after = _watermark_json(rows[-1]["__watermark__"])
+            result["cursor"] = after
+            if len(rows) < fetch_rows:
+                break
+
+        result["seconds"] = round(time.monotonic() - started, 3)
+        result["blank_geometry"] = translator.blank_geometry
+        result["census"] = store.census()
+        result["partitions"] = [name for name, _ in schema.partitions(read)]
+
+        cursor_row = store.read_cursor(read, source)
+        result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
+        result["lag"] = observability.lag_report_keyset(
             store, source, source_cfg, cursor_row,
             probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
             force_probe=probe_lag)
@@ -359,7 +638,7 @@ def _flush(store, source, translator_ver, atoms, cursor_value, molecules, refuse
     """
     delta, totals = _refusal_delta(gate, source, refusal_baseline)
     written = store.write_batch(
-        source, translator_ver, atoms, {"event_time": cursor_value}, molecules,
+        source, translator_ver, atoms, cursor_value, molecules,
         refused=refused, incomplete=incomplete, reasons=delta)
     refusal_baseline.clear()
     refusal_baseline.update(totals)
@@ -392,7 +671,9 @@ def main(argv=None):
     parser.add_argument("--reset-cursor", action="store_true",
                         help="re-read work already done (exercises the unique index)")
     parser.add_argument("--from", dest="start_from", default=None,
-                        help="start after this event_time instead of the cursor")
+                        help="start after this position instead of the cursor: an "
+                             "event_time for a lineage source, a '|'-joined keyset "
+                             "(updated_at|row_id) for an observation source")
     parser.add_argument("--fetch-rows", type=int, default=DEFAULT_FETCH_ROWS)
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument("--config", default=None)

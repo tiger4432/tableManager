@@ -31,6 +31,38 @@ put a word in the enum that the design does not have, so `register` instead carr
 `object_kind IS NULL` and the DDL's CHECK constraint makes that legal for `register`
 ALONE. Stated here because it is the one place this implementation had to decide
 something the pinned contract did not spell out.
+
+🔴 WALK SEMANTICS ARE PART OF THE DECLARATION (ruling R-2026-08-14-E)
+----------------------------------------------------------------------
+`traversable` and `direction` say what the LINEAGE WALK may do with a word, and they live
+here rather than in `ledger_trace.LINEAGE_PREDICATES` because the tuple over there was a
+second list of the vocabulary: a predicate added here could never join the walk without an
+edit in a module that does not know the vocabulary exists, and one that MUST NOT join it
+had nothing to say so with.
+
+`traversable` has THREE states and the third one is the point:
+
+    True    the walk RECURSES through this edge   — lineage (`derived_from`)
+    False   reached and fetched as an ANNOTATION of a lot the walk already got to,
+            never passed through — 「도달은 하되 통과 금지」
+    None    the walk does not fetch it AT ALL. Scoped requests only.
+
+`None` is not "unset". `observed` carries it deliberately (ruling R-2026-08-14-D addendum
+①): a wafer holds tens of thousands of observations, and a walk that dragged them back
+with the lot's lineage would die the moment the defect translator succeeded. Observations
+are fetched by an explicitly scoped request (kind, period) and never by reaching a lot.
+
+`direction` constrains which way a traversable edge is followed
+(`subject_to_object` = child -> parent for `derived_from`). It is `None` for everything
+that is not traversed, because a direction on an edge nobody walks is a decoy field.
+
+🔴 `degree_cap` IS NOT DECLARED HERE YET, AND THAT IS DELIBERATE. R-2026-08-14-E asks for
+it; the enforcement point is inside `ledger_trace`'s recursive CTE (a per-node
+`LEFT JOIN LATERAL … LIMIT`), which is the one query in this system whose plan has already
+been measured and argued about, and a cap declared without that change would be a field
+nothing reads — the decoy R-2026-08-13-D exists to prevent. It arrives with its
+enforcement, in its own round, and「허브에서 정지」reports through the walk's existing
+`truncation_reason` rather than through a new response field.
 """
 from __future__ import annotations
 
@@ -94,6 +126,9 @@ PREDICATES = {
         "object": None,                       # ∅ - see module docstring
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
+        # Existence itself. Reached with a lot and never passed through - there is no
+        # object to pass through TO.
+        "traversable": False, "direction": None,
     },
     "pin": {
         "label_ko": "핀(사람 확정)",
@@ -102,6 +137,7 @@ PREDICATES = {
         "object": {"kind": "event_ref"},
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
+        "traversable": None, "direction": None,
     },
     "same_as": {
         "label_ko": "동일 개체",
@@ -111,6 +147,12 @@ PREDICATES = {
                    "types": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
+        # 🔴 Identity merge WILL be traversable the day it is emitted - a walk that stops
+        # at an alias answers about half an entity. It stays out of the walk while its
+        # status is `reserved` so that opening it is one deliberate edit HERE, with the
+        # vocabulary-pinning test as its ruling, rather than a shape that arrives with the
+        # first atom.
+        "traversable": None, "direction": None,
     },
     # ---------------------------------------------------------------- §4.2 ontology
     "derived_from": {
@@ -120,6 +162,10 @@ PREDICATES = {
         "object": {"kind": "entity_ref", "types": ["Lot"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "E90 genealogy", "superseded_by": None,
+        # 🔴 THE ONLY EDGE THE WALK RECURSES THROUGH. `ledger_trace`'s recursive CTE reads
+        # this declaration for the predicate it follows and for the direction it follows
+        # it in: subject (child) -> object (parent).
+        "traversable": True, "direction": "subject_to_object",
     },
     "slot_map": {
         "label_ko": "슬롯 대응",
@@ -133,6 +179,10 @@ PREDICATES = {
         # from, so an atom that carries it can be argued with.
         "qualifiers": ["from", "to", "wafer"],
         "unit": None, "semi_ref": "E90", "superseded_by": None,
+        # Annotation. Its object IS a lot, so it looks traversable - and following it
+        # would double-count: `derived_from` already reached that lot, and a slot map is
+        # what is SAID about the pair rather than another way to get there.
+        "traversable": False, "direction": None,
     },
     "has_wafer": {
         "label_ko": "웨이퍼 보유",
@@ -141,6 +191,9 @@ PREDICATES = {
         "object": {"kind": "entity_ref", "types": ["Wafer"]},
         "qualifiers": ["slot"],
         "unit": None, "semi_ref": "E90", "superseded_by": None,
+        # Annotation: membership of a lot the walk already reached. Bounded by slots per
+        # lot, which is why it is safe to fetch with the neighbourhood - unlike `observed`.
+        "traversable": False, "direction": None,
     },
     "frame_confirmed": {
         "label_ko": "프레임 확정",
@@ -149,6 +202,7 @@ PREDICATES = {
         "object": {"kind": "value"},
         "qualifiers": [],
         "unit": None, "semi_ref": "E142 coordinate system", "superseded_by": None,
+        "traversable": None, "direction": None,
     },
     # ------------------------------------------------------- §4.2 ontology, slice 2
     # 🔴 THE RESERVED PREDICATE, OPENED. `CANONICAL_LEDGER_DESIGN.md` §4.2 reserved
@@ -190,6 +244,13 @@ PREDICATES = {
                    "required": ["step", "step_family", "eqp", "recipe"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "E40 process job", "superseded_by": None,
+        # 🔴 NOT IN THE WALK, and today that is enforced by an ACCIDENT worth naming: the
+        # equipment and the recipe live inside a `value` payload rather than as entities,
+        # so there is structurally nothing to traverse to. The day equipment becomes an
+        # entity that firewall disappears - and this declaration is what keeps the answer
+        # the same when it does. A hub with thousands of wafers is exactly what a walk
+        # must not pass through.
+        "traversable": None, "direction": None,
     },
     # One atom per SETPOINT (PHYSICS_ONTOLOGY_SETUP §3). Not one atom per recipe holding
     # a parameter dictionary: the diff between two revisions is then a set difference over
@@ -202,6 +263,8 @@ PREDICATES = {
         "object": {"kind": "value", "required": ["param", "value", "unit"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "E40 recipe parameter", "superseded_by": None,
+        # A recipe is a hub by construction (one revision, every wafer that ran it).
+        "traversable": None, "direction": None,
     },
     # 🔴 EVERY MOVEMENT OF A CHIP, IN ONE WORD (`PHYSICS_ONTOLOGY_SETUP` §2-bis, product
     # owner 2026-08-14). Wafer -> DT picking, DT -> bonding, a future rework return: one
@@ -237,6 +300,65 @@ PREDICATES = {
         "object": {"kind": "value", "required": ["from", "to"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "E90 substrate movement", "superseded_by": None,
+        # 🔴 The position-continuity walk (`to` of event N joined to `from` of event N+1)
+        # is a DIFFERENT walk from the lot lineage one, over `value` containers rather
+        # than entity refs. Declaring it traversable here would put it in the lineage
+        # walk's fetch set, which is not what it is - so it stays out until that walk
+        # exists and can declare its own semantics.
+        "traversable": None, "direction": None,
+    },
+    # ------------------------------------------------------- §4.2 ontology, slice 3
+    # 🔴 THE OBSERVATION WORD (ruling R-2026-08-14-D, `MI_LEDGER_SCHEMA_PROPOSAL` §6-bis).
+    # Voids, delaminations, fab defects and a human's microscope note are ONE utterance
+    # shape - "this was found, here, this big, by this look" - and §6-bis's whole finding
+    # is that they differ from a measurement in the OBJECT only. `measured` (the value of a
+    # physical quantity) is its sibling and is deliberately NOT registered today: no
+    # translator emits it yet, and this vocabulary registers a word when the need is
+    # demonstrated rather than when it is anticipated.
+    #
+    # WHY THE SUBJECT IS THE WAFER AND THE CHIP IS IN THE PAYLOAD
+    # ------------------------------------------------------------
+    # Same rule as `transferred`, for the same reason: `Die` is COMPOSED, so it has no
+    # registration and no identity to hang an observation on. §6-bis says subject = Wafer
+    # with the chip coordinates carried, and §5-2 says the die is designated in the
+    # payload. The consequence is that every observation of every chip on a substrate
+    # folds under ONE subject, which is what makes "이 웨이퍼의 보이드" one query.
+    #
+    # 🔴 WHY `run_uid` IS REQUIRED - THE DENOMINATOR RULE, INSIDE THE LEDGER
+    # -----------------------------------------------------------------------
+    # 「3 voids」means nothing without「out of how many scans」. The scan population lives
+    # in `inspection_run`, and an observation atom that did not name its run would put the
+    # ledger in the position the source tables are already out of: countable findings with
+    # no countable denominator, so every rate computed from the ledger alone would be
+    # arithmetic over whatever rows happened to be nearby. Required rather than merely
+    # documented, because `required` is the enforcement point a `value` object has
+    # (R-2026-08-13-D) - and refusing an observation with no run is the correct outcome,
+    # not an inconvenience.
+    #
+    # ⚠️ §6-ter's arbitrary human observation (an OM note) HAS no run and no denominator by
+    # its own admission. It is not in scope today, and when it lands this required field is
+    # what will force that to be a ruling - "an observation with no denominator" is a
+    # decision somebody has to make out loud - rather than a silently absent key.
+    #
+    # WHAT IS NOT HERE: `class` (§6-quater - a defect's class is a CLAIM, carried when the
+    # source utters one and re-assertable by a human later, so it is a payload field and
+    # never a column), and any pass/fail (the threshold is a recipe parameter; storing a
+    # verdict makes history un-re-judgeable).
+    "observed": {
+        "label_ko": "관측",
+        "status": "active", "since": 3, "layer": "ontology",
+        "subject": ["Wafer"],
+        "object": {"kind": "value",
+                   "required": ["finding_kind", "method", "run_uid"]},
+        "qualifiers": [],
+        "unit": None, "semi_ref": "E142 defect location", "superseded_by": None,
+        # 🔴 `None`, AND IT IS THE WHOLE OF ADDENDUM ① (R-2026-08-14-D). The walk fetches
+        # every claim of every lot it reaches; a wafer carries tens of thousands of
+        # observations, so putting this word in that set would make the trace screen die on
+        # the day the translator first succeeds. Observations are read by a SCOPED request
+        # (kind, period) - `GET /api/ledger/siblings` and the console's own queries - and
+        # never by reaching a lot.
+        "traversable": None, "direction": None,
     },
 }
 
@@ -244,6 +366,66 @@ PREDICATES = {
 #: is complete and so a future emitter does not re-mint the word under a second
 #: spelling, but emitting one today is an undeclared-vocabulary refusal.
 EMITTABLE = frozenset(name for name, sig in PREDICATES.items() if sig["status"] == "active")
+
+#: The directions a traversable edge may be followed in (ruling R-2026-08-14-E). Closed,
+#: because a direction nothing implements is a walk that silently goes the wrong way -
+#: `ledger_trace` refuses a declaration it cannot execute BY NAME rather than falling back
+#: to the direction it happens to have hard-coded.
+WALK_DIRECTIONS = frozenset({"subject_to_object", "object_to_subject"})
+
+
+def walk_predicates():
+    """Every predicate the lineage walk may FETCH - traversable ones and annotations.
+
+    🔴 This is what `ledger_trace.LINEAGE_PREDICATES` used to spell by hand. Derived, so
+    admitting a word to the walk is a declaration change plus the vocabulary-pinning test,
+    and EXCLUDING one (`observed`) is a thing the vocabulary can actually say.
+    """
+    return tuple(sorted(name for name, sig in PREDICATES.items()
+                        if sig.get("traversable") is not None))
+
+
+def traversable_predicates():
+    """The predicates the walk RECURSES through. A subset of `walk_predicates()`."""
+    return tuple(sorted(name for name, sig in PREDICATES.items()
+                        if sig.get("traversable") is True))
+
+
+def walk_direction(predicate):
+    """Which way a traversable edge is followed, or `None` if it is not traversed."""
+    return (PREDICATES.get(predicate) or {}).get("direction")
+
+
+def check_walk_declaration():
+    """Violations of the walk declaration's own rules. Pure; the test is the enforcer.
+
+    Two directions of the same rule, because a declaration that can only ever be
+    consistent-by-accident is the decoy again: a traversable edge with no direction would
+    be walked whichever way the SQL happened to be written, and a direction on an edge
+    nobody walks would teach a reader a constraint that binds nothing.
+    """
+    violations = []
+    for name, sig in PREDICATES.items():
+        if "traversable" not in sig:
+            violations.append(
+                f"predicate '{name}' does not declare `traversable`. Three states are "
+                f"legal (True = the walk recurses, False = annotation only, None = the "
+                f"walk never fetches it); an absent field is a fourth that means nothing.")
+            continue
+        traversable = sig.get("traversable")
+        direction = sig.get("direction")
+        if traversable is True:
+            if direction not in WALK_DIRECTIONS:
+                violations.append(
+                    f"predicate '{name}' is traversable but declares direction "
+                    f"{direction!r}, which is not one of {sorted(WALK_DIRECTIONS)}")
+        elif direction is not None:
+            violations.append(
+                f"predicate '{name}' is not traversable (traversable={traversable!r}) "
+                f"but declares direction {direction!r} - a direction on an edge nobody "
+                f"walks binds nothing")
+    return violations
+
 
 #: The projection's state words (§4.2, third vocabulary). Named here for ONE reason: so
 #: the gate can refuse them by name. "This word belongs to the cache, never to the

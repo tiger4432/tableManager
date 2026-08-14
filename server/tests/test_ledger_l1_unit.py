@@ -137,19 +137,37 @@ def test_v0_vocabulary_is_exactly_seven_words():
     justified only when destruction WITHOUT movement is demonstrated.
 
     All three are `since: 2`, so the slice a word entered in stays queryable, and the
-    count stays a control: an ELEVENTH word still turns this red. This test failed on
-    each of the three as they landed, which is the whole reason it is worth its upkeep.
+    count stays a control: an ELEVENTH word still turns this red. It did - see below.
+
+    THE ELEVENTH WORD (ruling R-2026-08-14-D, 2026-08-14): `observed`.
+    `MI_LEDGER_SCHEMA_PROPOSAL` §6-bis had reserved the need in prose since the night
+    before; what closed it was a MEASUREMENT rather than an argument. The structure census
+    (`3202ac7`) showed 91,756 voids and 10,421 delaminations living in source tables only,
+    every finding kind answering `in_ledger: false`, and no defect edge anywhere on the
+    type graph - the ledger had no way to say「관측했다」at all. So the word is registered
+    with `since: 3`, which keeps the slice it entered in queryable exactly as slice 2's
+    three do.
+
+    🔴 ITS SIBLING `measured` IS DELIBERATELY NOT REGISTERED. §6-bis names both halves of
+    the split (`observed` = a finding exists, `measured` = a quantity has this value) and
+    the growth rule is that a word is registered when a translator needs it, not when the
+    design mentions it. Nothing emits a metrology measurement today. A TWELFTH word still
+    turns this red, which is the whole point of keeping the count here.
     """
     assert set(vocabulary.PREDICATES) == {
         "register", "pin", "same_as",
         "derived_from", "slot_map", "has_wafer", "frame_confirmed",
         "processed_with", "has_param", "transferred",
+        "observed",
     }
     # The seven that were v0 are still `since: 1`; nothing was renumbered to make the
     # arithmetic tidy. A word's slice is evidence about when the system learned to say it.
     assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 1} == {
         "register", "pin", "same_as",
         "derived_from", "slot_map", "has_wafer", "frame_confirmed",
+    }
+    assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 3} == {
+        "observed",
     }
 
 

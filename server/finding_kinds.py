@@ -82,6 +82,16 @@ DEFAULT_FINDING_KINDS = {
         "observation_table": "void_obs",
         "extent_columns": ["radius_x", "radius_y"],
         "unit_column": "unit",
+        # 🔴 EMPTY, DECLARED OUT LOUD - and that is this file's own `observed_by` rule
+        # applied one field over. MEASURED 2026-08-14: `void_obs` has no class column at
+        # all, so the SAT tool utters no classification and the console renders no class
+        # axis for a void. Leaving the field absent would have said the same thing to
+        # `classes()` (it reads with `.get`) and a DIFFERENT thing to a reader: "nobody
+        # has decided yet" rather than "the source says nothing". §6-quater names
+        # 계면/벌크/에지 as a void's eventual set, so this is a real open question and the
+        # empty list is where the answer will land - beside the tool that starts uttering
+        # one.
+        "classes": [],
     },
     "delam": {
         # Interface delamination. A DIFFERENT method looks for it, which is what makes
@@ -93,6 +103,19 @@ DEFAULT_FINDING_KINDS = {
         "observation_table": "delam_obs",
         "extent_columns": ["extent_x", "extent_y"],
         "unit_column": "unit",
+        # 🔴 THE CLOSED CLASS SET, AND IT NOW HAS A SECOND ENFORCEMENT POINT.
+        # §6-quater: a defect's class is a CLAIM the tool utters, and the values it may
+        # use are per-kind, closed and add-only. These two are MEASURED from the source
+        # (`SELECT interface, count(*) FROM delam_obs GROUP BY 1` on 2026-08-14:
+        # die-to-substrate 5,332 / die-to-die 5,089), not invented here.
+        #
+        # Until ruling R-2026-08-14-D this list only made a console axis appear. It is now
+        # also what the ledger's observation translator screens `delam_obs.interface`
+        # against: a value outside it refuses the atom BY NAME rather than putting an
+        # unreviewed word in the ledger. That is the check §6-quater asks for - "두 장비가
+        # 같은 class 이름을 쓰면 프레임 검사 먼저" - and it only happens if a new spelling
+        # cannot arrive quietly.
+        "classes": ["die-to-die", "die-to-substrate"],
     },
 }
 

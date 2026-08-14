@@ -56,10 +56,94 @@ except ImportError:                     # pragma: no cover - import-path fallbac
 # The claim — one ledger atom as the resolver sees it
 # --------------------------------------------------------------------------
 
-#: The v0 lineage vocabulary this slice reads (design §4.2). The translator emits
-#: exactly these four; asking for anything else is how the vocabulary grows in
-#: silence (brief §5 risk 4), so the walk names them explicitly.
-LINEAGE_PREDICATES = ("derived_from", "slot_map", "has_wafer", "register")
+#: 🔴 THE WALK'S VOCABULARY IS DECLARED, NOT LISTED HERE (ruling R-2026-08-14-E).
+#:
+#: This used to be the literal `("derived_from", "slot_map", "has_wafer", "register")` —
+#: a SECOND list of the vocabulary, in a module that does not know the vocabulary exists.
+#: Two things were wrong with it and only one was visible:
+#:
+#:   * a predicate could not JOIN the walk without an edit here, so "the walk reads the
+#:     lineage words" was upkeep rather than a property;
+#:   * and a predicate could not be KEPT OUT of it either — there was nowhere to say so.
+#:     `observed` (ruling R-2026-08-14-D) is the word that made that fatal: a wafer carries
+#:     tens of thousands of findings, `claims_for_lots` drags back EVERY claim of every lot
+#:     it reaches, and a defect translator succeeding would have killed this screen. The
+#:     declaration says `traversable: None` and that is now a fact the walk reads.
+#:
+#: `lineage_predicates()` is the fetch set (traversable words AND annotations);
+#: `traversal_predicate()` is the single word the recursion follows. Both come from
+#: `ledger.vocabulary`, IMPORTED LAZILY: `LEDGER_GUIDE` §0 promises nothing on the web
+#: server's boot path imports `server/ledger`, and this module is imported by the router,
+#: so the import lives inside the call exactly as `ledger_structure._vocabulary()` does.
+#:
+#: `ledger_trace.LINEAGE_PREDICATES` still resolves, through the module `__getattr__`
+#: below, because it is what an existing reader reaches for. It is the DERIVED tuple now.
+_WALK_CACHE = {}
+
+
+def _vocabulary():
+    """The closed vocabulary. Lazy, and never cached across a reload of it."""
+    from ledger import vocabulary
+    return vocabulary
+
+
+def lineage_predicates():
+    """Every predicate the walk may FETCH for a lot it reached. Derived, order stable."""
+    if "fetch" not in _WALK_CACHE:
+        _WALK_CACHE["fetch"] = tuple(_vocabulary().walk_predicates())
+    return _WALK_CACHE["fetch"]
+
+
+def traversal_predicate():
+    """The ONE predicate the recursion follows, checked against what it can execute.
+
+    🔴 A declaration this walk cannot honour is REFUSED BY NAME rather than approximated.
+    Two arms of that: a second traversable word would need a different recursive CTE (the
+    current one joins on one predicate), and a `direction` other than `subject_to_object`
+    would need the join written the other way round. Falling back to the hard-coded
+    behaviour in either case is how a declaration becomes decoration — the walk would keep
+    following `derived_from` while the declaration said something else, and every test
+    would stay green.
+    """
+    if "traverse" not in _WALK_CACHE:
+        vocabulary = _vocabulary()
+        traversable = list(vocabulary.traversable_predicates())
+        if len(traversable) != 1:
+            raise ResolverConfigError(
+                f"the vocabulary declares {len(traversable)} traversable predicate(s) "
+                f"({', '.join(traversable) or 'none'}) and this walk implements exactly "
+                f"one. A second lineage edge needs the recursive CTE to join on a set "
+                f"rather than a value, which is a measured change to the one query whose "
+                f"plan this system has already argued about - it is not a default this "
+                f"function may pick.")
+        predicate = traversable[0]
+        direction = vocabulary.walk_direction(predicate)
+        if direction != "subject_to_object":
+            raise ResolverConfigError(
+                f"predicate '{predicate}' declares walk direction {direction!r}; this "
+                f"walk implements 'subject_to_object' only (subject_keys->>'lot' joined "
+                f"to the object's lot). Walking it the other way is a different query, "
+                f"not a flag.")
+        _WALK_CACHE["traverse"] = predicate
+    return _WALK_CACHE["traverse"]
+
+
+def reset_walk_cache():
+    """Tests only - so a swapped vocabulary is actually re-read."""
+    _WALK_CACHE.clear()
+
+
+def __getattr__(name):
+    """`LINEAGE_PREDICATES`, resolved on access rather than at import.
+
+    Module-level `__getattr__` (PEP 562) is what lets the name keep working for readers
+    and tests while the VALUE comes from the declaration - and it is what keeps the lazy
+    import lazy, because a module-level constant would have to import `server/ledger` at
+    the web server's boot.
+    """
+    if name == "LINEAGE_PREDICATES":
+        return lineage_predicates()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 #: How deep the walk goes before it stops and SAYS it stopped. A cap that ends
 #: the answer without a `terminal_reason` would be indistinguishable from a root.
@@ -692,11 +776,17 @@ class ClaimLookup:
     def reachable_lots(self, lot, max_depth):
         raise NotImplementedError
 
-    def claims_for_lots(self, lots, predicates=LINEAGE_PREDICATES):
+    def claims_for_lots(self, lots, predicates=None):
         raise NotImplementedError
 
     def neighbourhood(self, lot, max_depth=DEFAULT_MAX_DEPTH,
-                      predicates=LINEAGE_PREDICATES):
+                      predicates=None):
+        # `None` means "whatever the vocabulary declares", resolved HERE rather than in a
+        # default argument: a default is evaluated at import time and would drag
+        # `server/ledger` onto the web server's boot path (`LEDGER_GUIDE` §0). A caller
+        # that passes a list still gets exactly that list - the scoped-query path depends
+        # on it.
+        predicates = lineage_predicates() if predicates is None else predicates
         lots, truncated, reason = self.reachable_lots(lot, max_depth)
         claims = self.claims_for_lots(lots, predicates)
         return Neighbourhood(claims=list(claims), lots=tuple(lots),
@@ -712,9 +802,10 @@ class InMemoryClaimLookup(ClaimLookup):
         self._claims = list(claims)
 
     def reachable_lots(self, lot, max_depth):
+        traverse = traversal_predicate()
         by_lot = {}
         for c in self._claims:
-            if c.predicate == "derived_from" and c.subject_lot:
+            if c.predicate == traverse and c.subject_lot:
                 parent = _payload_lot(c)
                 if parent:
                     by_lot.setdefault(c.subject_lot, []).append(parent)
@@ -736,9 +827,9 @@ class InMemoryClaimLookup(ClaimLookup):
         return seen, truncated, ("[depth_cap] %d홉에서 조회 중단" % max_depth
                                  if truncated else None)
 
-    def claims_for_lots(self, lots, predicates=LINEAGE_PREDICATES):
+    def claims_for_lots(self, lots, predicates=None):
         wanted = set(lots)
-        preds = set(predicates)
+        preds = set(lineage_predicates() if predicates is None else predicates)
         return [c for c in self._claims
                 if c.subject_type == "Lot" and c.subject_lot in wanted
                 and c.predicate in preds]
@@ -770,7 +861,7 @@ WITH RECURSIVE reach(lot, depth) AS (
         JOIN {relation} e
           ON e.subject_type = 'Lot'
          AND e.subject_keys->>'lot' = r.lot
-         AND e.predicate = 'derived_from'
+         AND e.predicate = %(traverse)s
         WHERE r.depth < %(max_depth)s
           AND COALESCE(e.object_payload->'keys'->>'lot', e.object_payload->>'lot') IS NOT NULL
 ) CYCLE lot SET is_cycle USING path
@@ -801,7 +892,7 @@ WITH RECURSIVE reach(lot, depth) AS (
         JOIN {relation} e
           ON e.subject_type = 'Lot'
          AND e.subject_keys->>'lot' = r.lot
-         AND e.predicate = 'derived_from'
+         AND e.predicate = %(traverse)s
         WHERE r.depth < %(max_depth)s
           AND COALESCE(e.object_payload->'keys'->>'lot', e.object_payload->>'lot') IS NOT NULL
 ) CYCLE lot SET is_cycle USING path
@@ -829,13 +920,14 @@ class SqlClaimLookup(ClaimLookup):
 
     def reachable_lots(self, lot, max_depth):
         sql = _REACH_ONLY_CTE.format(relation=self.relation)
-        rows = self._execute(sql, {"start_lot": lot, "max_depth": int(max_depth)})
+        rows = self._execute(sql, {"start_lot": lot, "max_depth": int(max_depth),
+                                   "traverse": traversal_predicate()})
         lots = [r[0] for r in rows if r[0] is not None]
         truncated = any(int(r[1] or 0) >= int(max_depth) for r in rows)
         return lots, truncated, (f"[depth_cap] {max_depth}홉에서 조회 중단"
                                  if truncated else None)
 
-    def claims_for_lots(self, lots, predicates=LINEAGE_PREDICATES):
+    def claims_for_lots(self, lots, predicates=None):
         if not lots:
             return []
         sql = (f"SELECT id, subject_type, subject_keys, predicate, object_kind, "
@@ -844,6 +936,7 @@ class SqlClaimLookup(ClaimLookup):
                f"WHERE subject_type = 'Lot' "
                f"AND subject_keys->>'lot' = ANY(%(lots)s) "
                f"AND predicate = ANY(%(predicates)s)")
+        predicates = lineage_predicates() if predicates is None else predicates
         rows = self._execute(sql, {"lots": [str(x) for x in lots],
                                    "predicates": list(predicates)})
         return [_claim_from_row(r) for r in rows]
@@ -893,10 +986,12 @@ class OneShotSqlClaimLookup(SqlClaimLookup):
     """
 
     def neighbourhood(self, lot, max_depth=DEFAULT_MAX_DEPTH,
-                      predicates=LINEAGE_PREDICATES):
+                      predicates=None):
+        predicates = lineage_predicates() if predicates is None else predicates
         sql = _TRACE_CTE.format(relation=self.relation)
         rows = self._execute(sql, {"start_lot": lot, "max_depth": int(max_depth),
-                                   "predicates": list(predicates)})
+                                   "predicates": list(predicates),
+                                   "traverse": traversal_predicate()})
         claims = []
         lots = []
         max_seen = 0

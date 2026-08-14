@@ -34,6 +34,28 @@ WHAT THE CONSOLE NEEDS, AND WHY EACH FIELD IS SERVED RATHER THAN DERIVED
     에지 for a void, add-only, declared per kind). Empty is a fact about the kind, not a
     missing feature, and it renders as no class axis at all.
 
+`in_ledger` / `ledger_state` / `ledger_atoms`  🔴 ruling R-2026-08-14-D
+    THREE FIELDS BECAUSE THERE ARE THREE DIFFERENT QUESTIONS, and the structure census
+    that produced this ruling is what proved they are different: every kind came back
+    `in_ledger: false` while 91,756 voids sat in a source table, and one boolean could not
+    say whether that meant "nobody translates this", "somebody translates it and has not
+    run yet" or "it is translated and flowing".
+
+      `in_ledger`    A DECLARATION fact: some `ledger_config.json` source declares this
+                     kind and translates it under `ledger_predicate`. Costs no query, and
+                     is answerable on a box with no ledger table at all.
+      `ledger_state` The MEASURED half, in `GET /api/ledger/structure`'s own five words:
+                     `absent` (nothing declares it), `declared_only` (declared, counted,
+                     zero atoms — the backfill has not run), `flowing` (atoms exist),
+                     `unmeasured` (the ledger relation is absent, or is too large to count
+                     for a page-load request).
+      `ledger_atoms` The count itself, `null` when unmeasured. Same `null`-is-not-`0` rule
+                     as `atoms` above, one relation over.
+
+    The linkage is DERIVED from the translator declarations rather than asserted here.
+    Declaring a new observation source is therefore the whole of putting a kind in the
+    ledger, and no list in this file has to be remembered.
+
 🔴 A KIND WITH ZERO OBSERVATIONS IS LISTED. Dropping it would leave the operator unable
 to learn that the kind exists — they would read「이 시스템은 박리를 모른다」off a screen
 that merely had no delamination rows. Declared-and-empty and undeclared are different
@@ -72,6 +94,18 @@ EXACT_COUNT_MAX_BYTES = 256 * 1024 * 1024
 STATE_ABSENT = "absent"    # no kind's observation relation exists — migration not run
 STATE_EMPTY = "empty"      # relations exist and hold nothing — backfill not run
 STATE_READY = "ready"      # at least one kind has observations
+
+#: The ledger itself, for the per-kind translation linkage. Named rather than inlined for
+#: the reason `ledger_trace_router` names it: it is the seam a materialised projection
+#: would repoint.
+LEDGER_RELATION = "ledger_events"
+
+#: Per-kind ledger state, in `GET /api/ledger/structure`'s words. One vocabulary across
+#: the ledger endpoints — see the module docstring for what each one answers.
+LEDGER_STATE_ABSENT = "absent"
+LEDGER_STATE_DECLARED_ONLY = "declared_only"
+LEDGER_STATE_FLOWING = "flowing"
+LEDGER_STATE_UNMEASURED = "unmeasured"
 
 
 def _relation_facts(connection, relation):
@@ -140,6 +174,81 @@ def _run_counts(connection, methods):
     return {row[0]: int(row[1]) for row in rows}
 
 
+def _declared_translations():
+    """`{finding_kind: {"source": ..., "predicate": ...}}` from `ledger_config.json`.
+
+    🔴 THE IMPORT IS LAZY, AND THAT IS A DEPLOYMENT GUARANTEE RATHER THAN A STYLE CHOICE.
+    `LEDGER_GUIDE` §0 promises that nothing on the web server's boot path imports
+    `server/ledger` — the translator package can be absent, broken or mid-edit and the
+    server still starts. This module IS on that path (`ledger_trace_router` imports it), so
+    the import stays inside the call and an unreadable declaration degrades to "no kind is
+    declared" with a warning, never to a failed boot.
+    """
+    try:
+        from ledger import config as ledger_config
+        cfg = ledger_config.load()
+        observation = ledger_config.SOURCE_KIND_OBSERVATION
+        predicate = ledger_config.OBSERVATION_PREDICATE
+    except Exception as exc:
+        logger.warning("kind catalogue: translator declarations unreadable (%s); every "
+                       "kind reports in_ledger=false", exc)
+        return {}
+    found = {}
+    for name, source in (cfg.get("sources") or {}).items():
+        if not isinstance(source, dict) or source.get("kind") != observation:
+            continue
+        kind = str(source.get("finding_kind") or "").strip()
+        if kind:
+            found[kind] = {"source": name, "predicate": predicate}
+    return found
+
+
+def _partitioned_bytes(connection, relation):
+    """On-disk size of a PARTITIONED relation. A filesystem stat per partition.
+
+    🔴 `pg_relation_size` on the parent of a partitioned table is ZERO — the rows live in
+    the children — so the obvious one-liner would report a 39 MB ledger as 0 bytes and let
+    every size gate through. Returns `None` when the relation does not exist.
+    """
+    rows = _fetch(connection, """
+        SELECT coalesce(sum(pg_relation_size(c.oid)), 0)
+        FROM pg_class parent
+        JOIN pg_inherits i ON i.inhparent = parent.oid
+        JOIN pg_class c ON c.oid = i.inhrelid
+        WHERE parent.oid = to_regclass(%(rel)s)
+    """, {"rel": relation})
+    if not rows:
+        return None
+    return int(rows[0][0] or 0)
+
+
+def _ledger_atoms_by_source(connection, predicates):
+    """`{source_who: atoms}` for the given predicates, or `None` when nothing was counted.
+
+    ONE grouped query for every kind at once, and it is GATED: a `GROUP BY source_who` over
+    `ledger_events` has no index to ride (the type-level census pays the same price and
+    says so), so above `EXACT_COUNT_MAX_BYTES` this returns `None` and every kind reports
+    `unmeasured` rather than making a page load buy a 10-million-row scan.
+
+    `None` and `{}` are different answers and both are used: `None` is "nobody counted",
+    `{}` is "counted, and this predicate has written nothing anywhere".
+    """
+    if not predicates:
+        return {}
+    if not relation_exists(connection, LEDGER_RELATION):
+        return None
+    size = _partitioned_bytes(connection, LEDGER_RELATION)
+    if size is not None and size > EXACT_COUNT_MAX_BYTES:
+        logger.info("kind catalogue: %s is %s bytes; per-kind atom counts omitted",
+                    LEDGER_RELATION, size)
+        return None
+    rows = _fetch(connection,
+                  f"SELECT source_who, count(*) FROM {LEDGER_RELATION} "
+                  f"WHERE predicate = ANY(%(predicates)s) GROUP BY source_who",
+                  {"predicates": sorted(set(predicates))})
+    return {row[0]: int(row[1]) for row in rows}
+
+
 def catalog(connection):
     """Every declared finding kind, with its coverage. Read-only, one page-load call.
 
@@ -156,6 +265,10 @@ def catalog(connection):
         wanted_methods.update(finding_kinds.methods(name))
     runs_by_method = _run_counts(connection, sorted(wanted_methods))
     runs_known = bool(runs_by_method) or not wanted_methods
+
+    translations = _declared_translations()
+    ledger_atoms = _ledger_atoms_by_source(
+        connection, {t["predicate"] for t in translations.values()})
 
     rows, any_relation, any_atom = [], False, False
     for name in names:
@@ -175,6 +288,7 @@ def catalog(connection):
         runs = None
         if methods and runs_known:
             runs = sum(runs_by_method.get(m, 0) for m in methods)
+        translation = translations.get(name)
         rows.append({
             "kind": name,
             "label": str(spec.get("label") or name),
@@ -185,6 +299,11 @@ def catalog(connection):
             "has_denominator": has_denominator,
             "classes": finding_kinds.classes(name),
             "observation_table": relation,
+            # The ledger linkage — see the module docstring for why it is three fields.
+            "in_ledger": translation is not None,
+            "ledger_source": (translation or {}).get("source"),
+            "ledger_predicate": (translation or {}).get("predicate"),
+            **_ledger_position(translation, ledger_atoms),
         })
 
     if not any_relation:
@@ -194,6 +313,26 @@ def catalog(connection):
     else:
         state = STATE_EMPTY
     return {"state": state, "default": _default_kind(names), "kinds": rows}
+
+
+def _ledger_position(translation, ledger_atoms):
+    """`{ledger_state, ledger_atoms}` for one kind. The four words, decided in one place.
+
+    🔴 `declared_only` vs `unmeasured` is the distinction this project has already paid for
+    once (`absent-zero-is-not-inert-zero`): a kind whose translator has never run and a
+    kind nobody counted are different sentences to an operator deciding whether to run a
+    backfill or to go and look at the deployment.
+    """
+    if translation is None:
+        return {"ledger_state": LEDGER_STATE_ABSENT, "ledger_atoms": None}
+    if ledger_atoms is None:
+        return {"ledger_state": LEDGER_STATE_UNMEASURED, "ledger_atoms": None}
+    written = int(ledger_atoms.get(translation["source"], 0))
+    return {
+        "ledger_state": (LEDGER_STATE_FLOWING if written
+                         else LEDGER_STATE_DECLARED_ONLY),
+        "ledger_atoms": written,
+    }
 
 
 def _default_kind(names):

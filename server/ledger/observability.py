@@ -60,9 +60,15 @@ def lag_note(lag: dict):
     """
     if not lag:
         return None
-    pieces = [f"cursor={lag.get('cursor_position') or '<none>'}",
-              f"world_lag={_fmt_seconds(lag.get('world_time_lag_seconds'))}",
-              f"cursor_age={_fmt_seconds(lag.get('cursor_age_seconds'))}"]
+    pieces = [f"cursor={lag.get('cursor_position') or '<none>'}"]
+    if lag.get("lag_basis") == LAG_BASIS_ARRIVAL_WATERMARK:
+        # Named differently on purpose - see `lag_report_keyset`. Printing an arrival lag
+        # under the world-time label is how a two-month-old scan reads as a two-month-old
+        # translator.
+        pieces.append(f"wm_age={_fmt_seconds(lag.get('watermark_age_seconds'))}")
+    else:
+        pieces.append(f"world_lag={_fmt_seconds(lag.get('world_time_lag_seconds'))}")
+    pieces.append(f"cursor_age={_fmt_seconds(lag.get('cursor_age_seconds'))}")
     if lag.get("rows_behind") is not None:
         pieces.append(f"rows_behind={lag['rows_behind']}")
         pieces.append(f"head={lag.get('source_head') or '<none>'}")
@@ -152,6 +158,134 @@ def lag_report(store, source, source_cfg, cursor_row, probe_interval=60, now=Non
         # takes the same stance for the same reason.
         pass
     return report
+
+
+#: What a lag number is measured against. SERVED, never inferred: the two drivers measure
+#: DIFFERENT things and a reader who cannot tell them apart would compare a world-time lag
+#: with an arrival-order one and conclude the translator had fallen behind by months.
+LAG_BASIS_WORLD_TIME = "world_time"
+LAG_BASIS_ARRIVAL_WATERMARK = "arrival_watermark"
+
+
+def lag_report_keyset(store, source, source_cfg, cursor_row, probe_interval=60,
+                      now=None, force_probe=False):
+    """The observation driver's lag report. Same two tiers, a different yardstick.
+
+    🔴 IT DOES NOT REPORT A WORLD-TIME LAG, AND THAT IS THE HONEST ANSWER RATHER THAN A
+    GAP. An observation source's cursor is a KEYSET over `(updated_at, row_id)` - arrival
+    order - because its world time is not on the row at all (it belongs to the inspection
+    run). "How far behind in world time am I" is therefore unanswerable from the cursor:
+    a scan performed in May can be loaded today and would sit at the HEAD of this cursor.
+    So `world_time_lag_seconds` stays `None`, `lag_basis` says which yardstick was used,
+    and `watermark_age_seconds` answers the question this cursor CAN answer - how old the
+    newest row I have translated is, in the ingester's clock.
+
+    Reporting the arrival lag under the world-time field would have been the easy version,
+    and it is the one that tells an operator a two-month-old scan means a two-month-behind
+    translator.
+    """
+    now = now or datetime.now(timezone.utc)
+    report = {
+        "source": source,
+        "lag_basis": LAG_BASIS_ARRIVAL_WATERMARK,
+        "cursor_position": None,
+        "world_time_lag_seconds": None,
+        "watermark_age_seconds": None,
+        "cursor_age_seconds": None,
+        "source_head": None,
+        "rows_behind": None,
+        "head_probe_age_seconds": None,
+        "probe_allowed": False,
+    }
+    if cursor_row is None:
+        report["never_started"] = True
+        return report
+
+    watermark = (cursor_row.get("cursor_value") or {}).get("watermark") or []
+    report["cursor_position"] = "/".join(str(v) for v in watermark) or None
+    if watermark:
+        reached = _as_datetime(watermark[0])
+        if reached is not None:
+            report["watermark_age_seconds"] = (now - reached).total_seconds()
+
+    updated_at = cursor_row.get("updated_at")
+    if isinstance(updated_at, datetime):
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        report["cursor_age_seconds"] = (now - updated_at).total_seconds()
+
+    probed_at = cursor_row.get("head_probed_at")
+    if isinstance(probed_at, datetime):
+        if probed_at.tzinfo is None:
+            probed_at = probed_at.replace(tzinfo=timezone.utc)
+        report["head_probe_age_seconds"] = (now - probed_at).total_seconds()
+    head = (cursor_row.get("source_head") or {}).get("watermark")
+    report["source_head"] = "/".join(str(v) for v in head) if head else None
+
+    last = _last_probe.get(source)
+    allowed = force_probe or last is None or (time.monotonic() - last) >= probe_interval
+    report["probe_allowed"] = bool(allowed)
+    if not allowed:
+        return report
+
+    _last_probe[source] = time.monotonic()
+    head_values, behind = probe_keyset_head(store, source, source_cfg, watermark)
+    report["source_head"] = "/".join(str(v) for v in head_values) if head_values else None
+    report["rows_behind"] = behind
+    report["head_probe_age_seconds"] = 0.0
+    try:
+        store.record_source_head(source, {"watermark": [str(v) for v in head_values],
+                                          "rows_behind": behind})
+    except Exception:                                            # pragma: no cover
+        pass
+    return report
+
+
+def _as_datetime(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def probe_keyset_head(store, source, source_cfg, watermark):
+    """`(head_watermark, rows_behind)` for a keyset cursor. One statement.
+
+    The `count(*) FILTER` uses the SAME row-value comparison the page fetch uses, so the
+    declared watermark index serves both. That is why the watermark is declared rather
+    than assumed: an index-less keyset would turn this probe into the sequential scan the
+    tier split exists to avoid.
+    """
+    columns = list((source_cfg.get("watermark") or {}).get("columns") or ())
+    if not columns:
+        return None, None
+    ordered = ", ".join(columns)
+    descending = ", ".join(f"{c} DESC" for c in columns)
+    connection = store.connection()
+    try:
+        with connection.cursor() as cursor:
+            # 🔴 THE HEAD IS THE LAST ROW IN KEYSET ORDER, NOT `max()` PER COLUMN.
+            # `(max(updated_at), max(row_id))` is a tuple that need not exist in the
+            # table: the newest row and the largest identity are usually different rows,
+            # and a cursor advanced to that fabricated pair would SKIP everything between
+            # them. `ORDER BY … DESC LIMIT 1` walks the declared index backwards by one.
+            cursor.execute(f"SELECT {ordered} FROM {source} "
+                           f"ORDER BY {descending} LIMIT 1")
+            head = cursor.fetchone()
+            if watermark and len(watermark) == len(columns):
+                placeholders = ", ".join(["%s"] * len(columns))
+                cursor.execute(
+                    f"SELECT count(*) FROM {source} "
+                    f"WHERE ({ordered}) > ({placeholders})", tuple(watermark))
+            else:
+                cursor.execute(f"SELECT count(*) FROM {source}")
+            behind = cursor.fetchone()[0]
+        return (list(head) if head else None), int(behind or 0)
+    finally:
+        connection.close()
 
 
 def probe_source_head(store, source, source_cfg, position):

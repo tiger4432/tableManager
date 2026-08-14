@@ -53,6 +53,89 @@
           "__comment": "No parent or child -- a track_in utters membership only. An event_type that is NOT listed in this map is refused at the door and counted; it is never skipped."
         }
       }
+    },
+
+    "void_obs": {
+      "__comment": "OBSERVATION grammar (ruling R-2026-08-14-D, MI_LEDGER_SCHEMA_PROPOSAL section 6-bis). One row is ONE utterance -- a finding names its own wafer, chip, extent and run -- so there is no molecule to assemble and no event pair to match. That is why `kind` exists: validating this declaration against the lineage required columns would have refused it for having no parent_lot.",
+
+      "kind": "observation",
+      "finding_kind": "void",
+      "__comment_kind": "The finding kind this source translates, and the value that lands in every atom's payload. It must be a kind server/finding_kinds.py declares -- that registry owns what a kind IS (its denominator methods, its observation table, its closed class set) and this declaration owns only which source produces it.",
+
+      "synthetic": true,
+      "__comment_synthetic": "THIS SOURCE IS 100% GENERATED on this box (the answer-key fixture: void_obs, delam_obs and inspection_run alike), so every atom translated from it is fabricated too. The flag rides in the payload, which makes the fact readable FROM THE ATOM -- object_payload->>'synthetic' -- instead of from somebody's memory of which tables were seeded. Remove this line on the day a real feed arrives and the next translation stops claiming it.",
+
+      "occurred_at_column": "observed_at",
+      "occurred_at_timezone": "Asia/Seoul",
+      "__comment_time": "THE COLUMN IS ON THE RUN RELATION, NOT ON THE FINDING ROW. void_obs carries created_at and updated_at and both are ARRIVAL times stamped by the ingester; the instant a void was found is the instant of the scan that found it, which is inspection_run.observed_at. A finding whose run cannot be resolved therefore produces NOTHING rather than an atom timestamped by when a file happened to load -- design section 10 risk 1, one table over. The column is timestamptz, so it already carries its instant and the declared zone applies only if that ever becomes naive text.",
+
+      "subject_types": ["Wafer"],
+      "register_entity_types": ["Wafer"],
+      "__comment_subject": "Section 6-bis: subject = Wafer, with the chip coordinates carried in the payload. Die is COMPOSED (wafer x grid) so it has no registration and nothing to hang an observation on, and folding every chip's findings under one substrate is what makes 'this wafer's voids' a single query. Registering a wafer from an observation feed is legitimate -- seeing a defect on a substrate is first-hand evidence it exists -- and it is a declaration either way: empty this list and the feed mints no entities.",
+
+      "watermark": {"columns": ["updated_at", "row_id"]},
+      "__comment_watermark": "The cursor, as a KEYSET. It cannot be a world time: this source's world time is not on the row, and its own updated_at is stamped in bulk (MEASURED 2026-08-14: 91,756 rows across 92 distinct values), so a time cursor would make one load a single indivisible group. (updated_at, row_id) is unique, monotone under insert AND edit -- an operator's correction bumps updated_at and the row is revisited, which is how a re-utterance reaches the ledger -- and it is index-backed by idx_void_obs_updated, which the page fetch and the lag probe both use.",
+
+      "run": {
+        "relation": "inspection_run",
+        "key_column": "run_uid",
+        "method_column": "method",
+        "__comment": "The denominator, named. '3 voids' means nothing without 'out of how many scans', so `observed` REQUIRES run_uid in its payload and this declaration is where the translator reads it from. method comes from the same row because it is HOW the finding was looked for, and it is what finding_kinds.observed_by defines the denominator against."
+      },
+
+      "columns": {
+        "row_identity": "row_id",
+        "wafer": "base_wafer_id",
+        "run_key": "run_uid",
+        "die_x": "base_x",
+        "die_y": "base_y",
+        "die_gate": "stack_gate",
+        "inchip_x": "inchip_x",
+        "inchip_y": "inchip_y",
+        "extent_x": "radius_x",
+        "extent_y": "radius_y",
+        "unit": "unit",
+        "__comment": "Three of these are required (row_identity, wafer, run_key) and the rest are optional, because a source that does not utter a thing must be able to stay silent about it rather than declare a column that is not there. A name this translator does not read is REFUSED at load -- it would usually be a typo for one that is. NOTE: void_obs utters no class, so no class mapping appears here; delam_obs does, and its declaration says so."
+      }
+    },
+
+    "delam_obs": {
+      "__comment": "The SECOND kind, and the reason the console's generalisation is testable at all: delamination is found by a DIFFERENT method (scat) than a void (sat), so the denominator actually swings when the kind parameter changes. If both kinds shared one method every kind would be counted against the same rows and a hardcoded 'void' would pass every test.",
+
+      "kind": "observation",
+      "finding_kind": "delam",
+      "synthetic": true,
+      "__comment_synthetic": "Same as void_obs: generated source, fabricated atoms, and the atom says so.",
+
+      "occurred_at_column": "observed_at",
+      "occurred_at_timezone": "Asia/Seoul",
+
+      "subject_types": ["Wafer"],
+      "register_entity_types": ["Wafer"],
+
+      "watermark": {"columns": ["updated_at", "row_id"]},
+
+      "run": {
+        "relation": "inspection_run",
+        "key_column": "run_uid",
+        "method_column": "method"
+      },
+
+      "columns": {
+        "row_identity": "row_id",
+        "wafer": "base_wafer_id",
+        "run_key": "run_uid",
+        "die_x": "base_x",
+        "die_y": "base_y",
+        "die_gate": "stack_gate",
+        "inchip_x": "inchip_x",
+        "inchip_y": "inchip_y",
+        "extent_x": "extent_x",
+        "extent_y": "extent_y",
+        "unit": "unit",
+        "class": "interface",
+        "__comment_class": "THE CLASS COLUMN, AND IT IS A CLAIM RATHER THAN AN ATTRIBUTE (section 6-quater, product owner: class에 대한 주장이지). interface is the TOOL's classification, uttered at scan time, so it rides in the same atom as part of the same utterance. A human who later looks at the image and disagrees does not edit it -- they assert classified_as against this atom's id and the layering rules resolve the contest. THIS DECLARATION SAYS ONLY WHERE THE CLASS COMES FROM; which values are legal is the kind registry's (server/finding_kinds.py classes), because that set is a property of the kind and the console builds its slice axis from the same list. A value outside it is refused BY NAME."
+      }
     }
   },
 

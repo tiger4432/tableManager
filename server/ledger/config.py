@@ -41,6 +41,40 @@ Every source the ledger reads gets one declaration here (design §1: "번역기 
   * `molecules_per_transaction` - how many WHOLE source events share a transaction. Never
     a fraction of one (see `backfill.py`).
 
+🔴 `kind` - WHICH GRAMMAR A SOURCE SPEAKS (ruling R-2026-08-14-D)
+------------------------------------------------------------------
+`lot_event` is a LINEAGE source: two rows make one event, and its columns are lots, slots
+and parent/child. `void_obs` is an OBSERVATION source: one row IS one utterance, its
+columns are a finding's position and extent, and its world time is not even on the row -
+it belongs to the inspection run that produced it. Validating the second against the
+first's required column list would have refused it for not having a `parent_lot`.
+
+So `kind` names the grammar and the validation dispatches on it. It DEFAULTS to `lineage`,
+which is what keeps every declaration written before this ruling valid unchanged - and the
+default is a fact about history, not a preference: a source that does not say is the one
+shape this file already knew.
+
+An observation source additionally declares its RUN - the inspection execution that
+produced the finding:
+
+    "run": {"relation": "inspection_run", "key_column": "run_uid",
+            "method_column": "method"}
+
+and its `occurred_at_column` is read from THAT relation, not from the observation row.
+That is not a convenience: a finding has no time of its own, it has the time of the look
+that found it, and inventing one from `created_at` would be arrival time wearing a
+world-time hat - risk 1 of design §10, one table over.
+
+🔴 `watermark` - WHERE AN OBSERVATION SOURCE'S CURSOR LIVES
+------------------------------------------------------------
+A lineage source's cursor is its world time. An observation source's cannot be: every row
+of a bulk load shares one `updated_at` (measured on this box: 91,756 `void_obs` rows across
+92 distinct values), so a time cursor would put a whole load in one indivisible group. The
+declared watermark is therefore a KEYSET - `(updated_at, row_id)` - which is unique,
+monotone under both insert and edit, and index-backed (`idx_void_obs_updated`). Declaring
+the columns rather than assuming them is what lets a source whose editor stamps a
+different column say so.
+
 RELOAD POLICY
 -------------
 Read once per RUN, not per row. `crud`'s own hard-won rule (QA D1/F4): re-reading config
@@ -61,6 +95,39 @@ CONFIG_FILENAME = "ledger_config.json"
 #: fell back to "none" would produce a ledger with no slot chain and no complaint.
 SLOT_PAIRING_STRATEGIES = frozenset({"shared_wafer", "slot_preserving", "none"})
 LINEAGE_STRATEGIES = frozenset({"parent_child", "none"})
+
+#: The grammars a source may declare. `lineage` is the default and the one every
+#: declaration written before ruling R-2026-08-14-D speaks.
+SOURCE_KIND_LINEAGE = "lineage"
+SOURCE_KIND_OBSERVATION = "observation"
+SOURCE_KINDS = frozenset({SOURCE_KIND_LINEAGE, SOURCE_KIND_OBSERVATION})
+
+#: Columns a LINEAGE source must map. Named here rather than inline so the observation
+#: list beside it is visibly a different list rather than an exception to this one.
+LINEAGE_REQUIRED_COLUMNS = ("lot", "event_type", "slots", "wafers", "parent_lot",
+                            "child_lot", "row_identity")
+
+#: Columns an OBSERVATION source must map. Everything else about a finding - where on the
+#: chip, how big, which class - is OPTIONAL, because a source that does not utter a thing
+#: must be able to say so by leaving it out rather than by declaring a column that does
+#: not exist. These three are the ones without which there is no atom at all: the route
+#: back to the row, the subject it is about, and the run that makes it countable.
+OBSERVATION_REQUIRED_COLUMNS = ("row_identity", "wafer", "run_key")
+
+#: The optional ones, listed so a typo in a declaration is caught rather than silently
+#: producing an atom with a field missing. Add-only; a name absent from here is refused.
+OBSERVATION_OPTIONAL_COLUMNS = ("die_x", "die_y", "die_gate", "inchip_x", "inchip_y",
+                                "extent_x", "extent_y", "unit", "class")
+
+#: The derivation an observation atom carries: ONE source row, uttered as it stands.
+DERIVATION_OBSERVATION_ROW = "observation_row"
+
+#: 🔴 The predicate an observation source's translator emits. ONE SPELLING, because two
+#: modules need it: the translator that writes it and `ledger_kinds`, which answers「이
+#: 종류가 원장에 있는가」by asking which declaration carries which kind under which word.
+#: A literal in each would be a linkage that agrees on the day it is written and silently
+#: stops agreeing the day the word changes.
+OBSERVATION_PREDICATE = "observed"
 
 #: The shape a source's timestamps are read in when the source declares no
 #: `occurred_at_format`. Product owner ruling 2026-08-13: fab timestamps are ISO 8601
@@ -172,6 +239,16 @@ def validate(cfg: dict, origin: str = "<memory>"):
                     f"entity type ({', '.join(sorted(vocabulary.ENTITY_TYPES))}). Adding "
                     f"an entity type is a vocabulary decision, not a config one.")
 
+        kind = source.get("kind", SOURCE_KIND_LINEAGE)
+        if kind not in SOURCE_KINDS:
+            raise LedgerConfigError(
+                f"{where}.kind {kind!r} is not one of {sorted(SOURCE_KINDS)}. The kind "
+                f"selects which grammar this source's translator speaks, so a misspelling "
+                f"would validate the declaration against the wrong required columns.")
+        if kind == SOURCE_KIND_OBSERVATION:
+            _validate_observation_source(source, where)
+            continue
+
         vocab = source.get("vocabulary")
         if not isinstance(vocab, dict) or not vocab:
             raise LedgerConfigError(
@@ -202,8 +279,7 @@ def validate(cfg: dict, origin: str = "<memory>"):
         if not isinstance(columns, dict):
             raise LedgerConfigError(f"{where}.columns must map logical names to source "
                                     f"columns")
-        for required in ("lot", "event_type", "slots", "wafers", "parent_lot",
-                         "child_lot", "row_identity"):
+        for required in LINEAGE_REQUIRED_COLUMNS:
             if not str(columns.get(required) or "").strip():
                 raise LedgerConfigError(f"{where}.columns.{required} is not declared")
 
@@ -212,6 +288,84 @@ def validate(cfg: dict, origin: str = "<memory>"):
     if size < 1:
         raise LedgerConfigError(f"{origin}: batch.molecules_per_transaction must be >= 1")
     return cfg
+
+
+def _validate_observation_source(source: dict, where: str):
+    """Ruling R-2026-08-14-D's declaration, checked. Every rule here has a consumer.
+
+    🔴 The one that matters most is `run`. An observation with no inspection run is an
+    observation with no denominator, and the `observed` signature makes `run_uid` a
+    REQUIRED payload field precisely so that such an atom cannot be written. If the
+    declaration did not have to name the run relation, the translator would have nothing
+    to read it from and every atom would be refused at the gate for a reason that pointed
+    at the wrong file.
+    """
+    finding_kind = str(source.get("finding_kind") or "").strip()
+    if not finding_kind:
+        raise LedgerConfigError(
+            f"{where}.finding_kind is not declared. An observation source translates ONE "
+            f"kind of finding (`server/finding_kinds.py` is the registry of what a kind "
+            f"is), and the value lands in every atom's payload - guessing it from the "
+            f"table name would put an unreviewed word in the ledger.")
+
+    run = source.get("run")
+    if not isinstance(run, dict):
+        raise LedgerConfigError(
+            f"{where}.run must declare the inspection run this source's findings belong "
+            f"to: {{\"relation\": ..., \"key_column\": ..., \"method_column\": ...}}. "
+            f"It is where `occurred_at` is read from (a finding has the time of the LOOK "
+            f"that found it) and it is the denominator - `observed` requires `run_uid` in "
+            f"its payload, so a source with no run declaration can produce no atoms.")
+    for field in ("relation", "key_column"):
+        if not str(run.get(field) or "").strip():
+            raise LedgerConfigError(f"{where}.run.{field} is not declared")
+
+    watermark = source.get("watermark")
+    if not isinstance(watermark, dict) or not watermark.get("columns"):
+        raise LedgerConfigError(
+            f"{where}.watermark must declare the cursor columns, e.g. "
+            f"{{\"columns\": [\"updated_at\", \"row_id\"]}}. An observation source cannot "
+            f"use a world-time cursor: a bulk load stamps one `updated_at` on every row, "
+            f"so the whole load would be one indivisible group. The declared keyset must "
+            f"be UNIQUE and index-backed.")
+    columns_declared = [str(c).strip() for c in watermark["columns"]]
+    if not all(columns_declared):
+        raise LedgerConfigError(f"{where}.watermark.columns holds a blank column name")
+
+    columns = source.get("columns")
+    if not isinstance(columns, dict):
+        raise LedgerConfigError(f"{where}.columns must map logical names to source "
+                                f"columns")
+    for required in OBSERVATION_REQUIRED_COLUMNS:
+        if not str(columns.get(required) or "").strip():
+            raise LedgerConfigError(
+                f"{where}.columns.{required} is not declared. An observation atom needs "
+                f"the route back to its row, the wafer it is about, and the run that "
+                f"makes it countable; the rest of a finding is optional because a source "
+                f"that does not utter a thing must be able to stay silent about it.")
+    known = set(OBSERVATION_REQUIRED_COLUMNS) | set(OBSERVATION_OPTIONAL_COLUMNS)
+    # `__`-prefixed keys are this config file's comment convention (every block carries
+    # them and `ledger_structure` already filters on the same prefix). They are not
+    # mappings and must not be judged as ones.
+    undeclared = sorted(name for name, value in columns.items()
+                        if not name.startswith("__") and name not in known
+                        and value is not None)
+    if undeclared:
+        raise LedgerConfigError(
+            f"{where}.columns names {', '.join(undeclared)}, which this translator does "
+            f"not read (known: {', '.join(sorted(known))}). A mapping nothing consumes is "
+            f"a declaration that teaches the reader a contract nobody enforces - ruling "
+            f"R-2026-08-13-D - and here it would usually be a typo for one that IS read.")
+    if "vocabulary" in source:
+        raise LedgerConfigError(
+            f"{where}.vocabulary is a LINEAGE declaration (it maps source event types to "
+            f"lineage rules) and an observation source has no event types - one row is one "
+            f"utterance. Remove it, or set kind to '{SOURCE_KIND_LINEAGE}'.")
+
+
+def source_kind(cfg: dict, source: str) -> str:
+    """Which grammar a source speaks. Absent means `lineage` - see the module docstring."""
+    return (source_config(cfg, source) or {}).get("kind", SOURCE_KIND_LINEAGE)
 
 
 def source_config(cfg: dict, source: str) -> dict:
@@ -255,6 +409,15 @@ def declared_derivations(cfg: dict, source: str) -> frozenset:
     a rule the operator did not turn on.
     """
     source_cfg = source_config(cfg, source) or {}
+    if source_cfg.get("kind") == SOURCE_KIND_OBSERVATION:
+        # One row, uttered as it stands. There is no second rule here and that is the
+        # point of the grammar: an observation source has nothing to infer, so a
+        # translator that ever needed a second derivation would be doing something the
+        # declaration never allowed.
+        names = {DERIVATION_OBSERVATION_ROW}
+        if source_cfg.get("register_entity_types"):
+            names.add("first_sight")
+        return frozenset(names)
     names = {"positional_row"}          # (slot[i], wafer[i]) on one row - always uttered
     for rule in (source_cfg.get("vocabulary") or {}).values():
         if rule.get("lineage") == "parent_child":

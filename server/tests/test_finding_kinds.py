@@ -28,13 +28,30 @@ def test_the_default_kind_is_a_default_and_not_a_special_case():
     The product owner's words: "코드에 기본값 아닌 finding_kind='void' 하드코딩이 보이면
     일반화가 소실된 것." So the default has to BE a declared kind like any other, with no
     field the others lack.
+
+    ⚠️ THE ASSERTION IS ONE-DIRECTIONAL, AND IT WAS NOT (repaired 2026-08-14, ruling
+    R-2026-08-14-D). It used to be `set(default) == set(other)`, which is a STRICTER
+    sentence than the paragraph above and a wrong one: it also fires when a NON-default
+    kind declares something the default does not. That happened the moment `delam` got its
+    closed class set (§6-quater) - a legitimate per-kind declaration, on the kind whose
+    tool actually utters a class - and it made another lane's round go red for a reason
+    that had nothing to do with a special case.
+
+    What this test protects is the DEFAULT being privileged. A kind carrying a field its
+    neighbours lack is only a defect when that kind is the default, because that is the
+    shape a hidden `finding_kind='void'` branch grows out of. So the difference is asked
+    for in one direction only, and both fields the registry documents as optional
+    (`classes`, `unit_column`) stay optional in the direction where they mean something.
     """
     assert finding_kinds.DEFAULT_KIND in finding_kinds.kinds()
     default = finding_kinds.spec()
-    other = finding_kinds.spec("delam")
-    assert set(default) == set(other), (
-        "the default kind carries fields the others do not, which is how a special case "
-        "starts")
+    for other_kind in finding_kinds.kinds():
+        if other_kind == finding_kinds.DEFAULT_KIND:
+            continue
+        extra = set(default) - set(finding_kinds.spec(other_kind))
+        assert not extra, (
+            f"the default kind carries field(s) {sorted(extra)} that {other_kind!r} does "
+            f"not, which is how a special case starts")
 
 
 def test_an_undeclared_kind_is_refused_by_name_and_never_silently_defaulted():
