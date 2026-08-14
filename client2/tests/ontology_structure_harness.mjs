@@ -63,6 +63,39 @@ const ENTRY_SRC = readFileSync(ENTRY_PATH, 'utf8');
 const PAGE_SRC = readFileSync(PAGE_PATH, 'utf8');
 const FIX = JSON.parse(readFileSync(join(HERE, 'fixtures', 'ontology_structure.json'), 'utf8'));
 
+// ── the stylesheet, from BOTH of its files ──────────────────────────────────────────
+//
+// 🔴 AN ASSERTION THAT LOSES ITS SOURCE DOES NOT GO RED — IT GOES VACUOUS, AND VACUOUS
+// READS EXACTLY LIKE GREEN (lead PM, 2026-08-14). This project has shipped that failure
+// before: a DOM assertion stayed green while every row was hidden, because the legend
+// carried the same words the rows did. Red is a message; vacuous is silence wearing
+// green. So each source below is checked for PRESENCE and for CONTENT, and a missing
+// one KILLS THE RUN rather than quietly narrowing what section M can still see.
+//
+// The `os-` rules live in two places: the structure block inside `ledger.html`, and
+// `client2/src/ledger_console.css`, which ADDS variants (the `declared_unconsumed` ones
+// among them). Reading only the first is not a future blindness — it is a present one.
+const CONSOLE_CSS_PATH = join(SRC, 'ledger_console.css');
+const STRUCTURE_CSS = (() => {
+  const anchor = '구조 뷰 (?view=structure)';
+  const at = PAGE_SRC.indexOf(anchor);
+  if (at < 0) die(`ledger.html lost the structure CSS anchor 「${anchor}」 — section M would assert over nothing`);
+  const block = PAGE_SRC.slice(at);
+  const end = block.indexOf('</style>');
+  const inPage = end > 0 ? block.slice(0, end) : block;
+  if (!/\.os-[a-z]/.test(inPage)) {
+    die('the ledger.html structure block carries no `os-` rule — section M would be vacuous');
+  }
+  let inFile = '';
+  try { inFile = readFileSync(CONSOLE_CSS_PATH, 'utf8'); } catch (_) {
+    die(`cannot read ${CONSOLE_CSS_PATH} — section M would be blind to every rule that lives there`);
+  }
+  if (!/\.os-[a-z]/.test(inFile)) {
+    die('ledger_console.css carries no `os-` rule — it moved again, or this path is stale');
+  }
+  return `${inPage}\n${inFile}`;
+})();
+
 const core = await import(new URL('../src/ontology_structure_core.js', import.meta.url).href);
 const view = await import(new URL('../src/ontology_structure_view.js', import.meta.url).href);
 const ccCore = await import(new URL('../src/case_control_core.js', import.meta.url).href);
@@ -220,16 +253,21 @@ console.log('\n── B. no hardcoded structure ──────────�
 // measured 0 may not print as 미보고, which is a different fact.
 console.log('\n── C. declared-only axes, and a measured zero ────────────────────');
 {
-  const zero = model.edgeList.filter((e) => e.status === 'declared_zero');
+  // 🔴 THE STATE WORDS ARE THE SERVER'S, NOT THIS CLIENT'S (2026-08-14). The five
+  // in `server/ledger_structure.py` are `flowing` · `declared_only` · `unmeasured`
+  // · `undeclared` · `declared_unconsumed`. `declared_zero` and
+  // `declared_unmeasured` were client-side spellings that never appeared on the
+  // wire, and two names for one fact is the drift this whole screen reports on.
+  const zero = model.edgeList.filter((e) => e.status === 'declared_only');
   ok('C1 the declared-and-never-used edge is in the list',
     zero.some((e) => e.predicate === 'grafted_onto'),
     `got ${JSON.stringify(model.edgeList.map((e) => `${e.predicate}:${e.status}`))}`);
   // 🔴 SCOPED TO THE EDGE LIST, NOT TO THE PAGE. The LEGEND also carries
-  // `data-status="declared_zero"` and prints the same words, so a tree-wide check passes
+  // `data-state="declared_only"` and prints the same words, so a tree-wide check passes
   // even when every declared-only edge has been dropped — MEASURED, on the mutant that
   // filters them out. A proxy that stays green under the defect it names is not evidence.
   const listBox = first(byClass(tree, 'os-edgelist'));
-  const rows = byAttr(listBox, 'data-status', 'declared_zero');
+  const rows = byAttr(listBox, 'data-state', 'declared_only');
   ok('C2 and it reaches the DOM as a row of the axis list', rows.length > 0);
   ok('C3 with the words that say which layer it came from',
     listBox.textContent.includes('선언만 · 원장 0'));
@@ -260,7 +298,7 @@ console.log('\n── C. declared-only axes, and a measured zero ─────
   const noLedger = core.structureModel({
     body: { ...FIX, state: 'absent' }, kinds, kindsBody, question,
   });
-  const unmeasured = noLedger.edgeList.filter((e) => e.status === 'declared_unmeasured');
+  const unmeasured = noLedger.edgeList.filter((e) => e.status === 'unmeasured');
   ok('C10 with no ledger deployed the same axis is unmeasured, not zero',
     unmeasured.some((e) => e.predicate === 'grafted_onto')
     && unmeasured.every((e) => e.atoms === null),
@@ -269,10 +307,10 @@ console.log('\n── C. declared-only axes, and a measured zero ─────
   const m3 = d3.createElement('div');
   view.renderStructure(d3, m3, noLedger, null);
   ok('C11 and it renders 미보고 rather than 0건',
-    first(byAttr(first(byClass(m3, 'os-edgelist')), 'data-status', 'declared_unmeasured'))
+    first(byAttr(first(byClass(m3, 'os-edgelist')), 'data-state', 'unmeasured'))
       .textContent.includes('미보고'));
   ok('C12 an aggregate that never answered leaves no measured zeros anywhere',
-    noLedger.totals.declaredZero === 0 && noLedger.totals.aggregateRan === false);
+    noLedger.totals.declaredOnly === 0 && noLedger.totals.aggregateRan === false);
 }
 
 // ── D. the undeclared observed edge is a finding ────────────────────────────────────
@@ -430,20 +468,53 @@ console.log('\n── K. which nothing is this ───────────
   ok('K2 the frame still paints', byClass(m2, 'os-panel').length >= 3);
   ok('K3 the notice says the route is missing, not that the ledger is', m2.textContent.includes('미배포'));
   ok('K4 the kind registry still answers from its own route', m2.textContent.includes('마름병'));
-  ok('K5 the axis panel says the axes are unreported rather than showing none silently',
-    m2.textContent.includes('선언된 축이 없습니다'));
+  // 🔴 K5 — THE THREE EMPTIES MUST BE TELLABLE APART (lead PM, P0, 2026-08-14).
+  //
+  // The defect that cost the owner an evening was not that the screen was empty;
+  // it was that an empty screen and a screen with legitimately nothing on it were
+  // the SAME PIXELS. So it is not enough that each of these prints something —
+  // asserting merely "not silent" would stay green on a screen that printed one
+  // generic sentence over all three, which is exactly the state being repaired.
+  //
+  // Three worlds, three sentences, and the test fails if any two collapse:
+  //   the answer could not be READ      · the census RAN and counted none
+  //   the layer filter excluded them all
+  const axisWordsOf = (m) => {
+    const d = makeDoc();
+    const mt = d.createElement('div');
+    view.renderStructure(d, mt, m, null);
+    return first(byClass(mt, 'os-edgelist')).textContent;
+  };
+  const unreadableWords = axisWordsOf(nothing);
+  const measuredZeroWords = axisWordsOf(core.structureModel({
+    body: { state: 'ready', edges: [] }, kinds, kindsBody, question,
+  }));
+  const filteredWords = axisWordsOf(core.structureModel({
+    body: FIX, kinds, kindsBody, question: { view: 'structure', edge: '', layer: 'no-such-layer' },
+  }));
+  ok('K5a an unreadable answer says the axes could not be READ',
+    unreadableWords.includes('읽지 못'), unreadableWords);
+  ok('K5b a census that ran and found none says it MEASURED zero',
+    measuredZeroWords.includes('0개') && measuredZeroWords.includes('측정된 0'),
+    measuredZeroWords);
+  ok('K5c a filter that excluded them all says so, and names the whole',
+    filteredWords.includes('계층') && filteredWords.includes('8'), filteredWords);
+  ok('K5d and no two of the three are the same sentence — a blank must say WHICH blank',
+    new Set([unreadableWords, measuredZeroWords, filteredWords]).size === 3,
+    `${unreadableWords} || ${measuredZeroWords} || ${filteredWords}`);
+
   const empty = core.structureModel({
     body: { state: 'empty', predicates: FIX.predicates, edges: [] }, kinds, kindsBody, question,
   });
   ok('K6 an empty ledger with a live aggregate reads as declared, measured 0',
-    empty.totals.declaredZero === empty.totals.edges && empty.totals.edges === 6,
-    `${empty.totals.declaredZero}/${empty.totals.edges}`);
+    empty.totals.declaredOnly === empty.totals.edges && empty.totals.edges === 6,
+    `${empty.totals.declaredOnly}/${empty.totals.edges}`);
   const noEdgesKey = core.structureModel({
     body: { state: 'ready', predicates: FIX.predicates }, kinds, kindsBody, question,
   });
   ok('K7 a response with no `edges` key at all claims no zeros',
-    noEdgesKey.totals.declaredZero === 0 && noEdgesKey.totals.declaredUnmeasured === 6,
-    `${noEdgesKey.totals.declaredZero}/${noEdgesKey.totals.declaredUnmeasured}`);
+    noEdgesKey.totals.declaredOnly === 0 && noEdgesKey.totals.unmeasured === 6,
+    `${noEdgesKey.totals.declaredOnly}/${noEdgesKey.totals.unmeasured}`);
 }
 
 // ── L. wiring — it is on the page, at its own URL ───────────────────────────────────
@@ -453,8 +524,21 @@ console.log('\n── L. wiring ────────────────
   ok('L2 the entry imports the renderer', /renderStructure/.test(ENTRY_SRC));
   ok('L3 and asks the aggregate route', /api\/ledger\/structure/.test(ENTRY_SRC));
   ok('L4 the view is a URL, not a mode', /view=structure/.test(PAGE_SRC));
-  ok('L5 the structure view does not also run the console',
-    /if \(isStructure\)[\s\S]{0,900}?return;/.test(ENTRY_SRC));
+  // 🔴 THE INTENT SURVIVED ITS PROBE. This asserted `if (isStructure) … return;`
+  // until `ledger_trace.js` was rewritten and `isStructure` ceased to exist —
+  // which made the test red for a reason that had nothing to do with the property
+  // it defends. The PROPERTY is still real and still worth defending: a view
+  // fetches only its own question, so opening the structure screen must not also
+  // start the console's work. Re-expressed against what `render(params)` does
+  // today — the structure branch RETURNS, and the console-only fetch is reachable
+  // only after that return. Tangle the two again and this goes red.
+  const renderBody = ENTRY_SRC.slice(ENTRY_SRC.indexOf('function render(params)'));
+  const structAt = renderBody.indexOf('STRUCTURE_VIEW');
+  const structReturn = renderBody.indexOf('return;', structAt);
+  const coverageAt = renderBody.indexOf('loadCoverage(');
+  ok('L5 the structure view returns before any of the console view\'s work',
+    structAt > 0 && structReturn > structAt && coverageAt > structReturn,
+    `structure@${structAt} return@${structReturn} loadCoverage@${coverageAt}`);
   ok('L6 it has its own session guard', /structureSession/.test(ENTRY_SRC));
   ok('L7 no new dependency was added',
     !/from '(?!\.\/)/.test(stripComments(VIEW_SRC).replace(/from 'node:[^']*'/g, '')));
@@ -463,9 +547,8 @@ console.log('\n── L. wiring ────────────────
 // ── M. readability is scored ────────────────────────────────────────────────────────
 console.log('\n── M. readability ────────────────────────────────────────────────');
 {
-  const block = PAGE_SRC.slice(PAGE_SRC.indexOf('구조 뷰 (?view=structure)'));
-  const styleEnd = block.indexOf('</style>');
-  const css = styleEnd > 0 ? block.slice(0, styleEnd) : block;
+  //: BOTH files. Assembled and validated at load — see `STRUCTURE_CSS`.
+  const css = STRUCTURE_CSS;
   const sizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => Number(m[1]));
   ok('M1 the structure CSS declares font sizes at all', sizes.length > 10, `${sizes.length}`);
   const small = sizes.filter((s) => s < 13);
@@ -479,11 +562,260 @@ console.log('\n── M. readability ──────────────�
   // 🔴 「선언만」 IS NOT FADED. The lead PM's rule, scored: no opacity below 1 and no
   // dim-text colour on the declared-only edge or row. Fading it would say "less
   // important" about the very rows the owner may be here to find.
+  //: Written against the POST-rename spelling. `declared_zero` was a client-side word
+  //: that never existed on the wire; the stylesheet is being renamed to the server's
+  //: `declared_only` in the same commit as the view's unwrap, and these two assertions
+  //: are what prove the halves agree.
   ok('M6 the declared-only edge is dashed, not dimmed',
-    /\.os-edge--declared_zero \.os-edge__lead \{[^}]*stroke:\s*var\(--text-muted\)[^}]*stroke-dasharray/.test(css)
-    && !/\.os-edge--declared_zero[^{]*\{[^}]*opacity:\s*0\.[0-5]/.test(css));
-  ok('M7 and its row keeps a full-contrast background',
-    !/\.os-row--declared_zero\s*\{[^}]*background/.test(css));
+    /\.os-edge--declared_only \.os-edge__lead \{[^}]*stroke:\s*var\(--text-muted\)[^}]*stroke-dasharray/.test(css)
+    && !/\.os-edge--declared_only[^{]*\{[^}]*opacity:\s*0\.[0-5]/.test(css));
+  // 🔴 THIS WAS A BARE NEGATIVE AND SO IT PASSED VACUOUSLY. `!/…background/` is true
+  // when the rule sets no background AND when the rule does not exist at all — so
+  // deleting the row style entirely read as green. Require the rule to EXIST first,
+  // then require it to carry no background: a missing rule is now red, not silent.
+  const declaredOnlyRow = /\.os-row--declared_only\s*\{([^}]*)\}/.exec(css);
+  ok('M7 the declared-only row exists and keeps a full-contrast background',
+    !!declaredOnlyRow && !/background/.test(declaredOnlyRow[1]),
+    declaredOnlyRow ? declaredOnlyRow[1].trim().replace(/\s+/g, ' ')
+      : 'no `.os-row--declared_only` rule at all — the old assertion would have been vacuous here');
+}
+
+// ── N. served shape: the edge identity is the server's id ───────────────────────────
+console.log('\n── N. edge identity (36, not 6) ──────────────────────────────────');
+{
+  // 🔴 THE ONE GUARD THAT CATCHES A WRONG SCREEN THAT LOOKS RIGHT (P0, 2026-08-14).
+  // On the SERVED shape `subject|predicate|object_kind` is NOT unique: a predicate
+  // that accepts many target types emits one edge PER TARGET, all sharing that
+  // triple. Measured against the live route, `same_as` alone yields 36 edges
+  // behind 6 triples. Re-deriving the key here — the obvious "simplification",
+  // and what this file's own `edgeKey` invites — silently merges thirty edges into
+  // six, and the graph still draws, still balances, and still reads as correct.
+  // Nothing on screen says otherwise. Only a count can tell, so the count is
+  // pinned.
+  //
+  // The fixture is an orchard for the reason S1 records, and it is a DISCRIMINANT
+  // by construction: the two candidate rules disagree on it 36 to 6. A fixture
+  // they agreed on would decide nothing.
+  const GROVE = ['Sapling', 'Orchard', 'Crate', 'Trellis', 'Grove', 'Nursery'];
+  const servedEdges = [];
+  for (const s of GROVE) {
+    for (const t of GROVE) {
+      servedEdges.push({
+        id: `${s}|same_grove_as|entity:${t}`,
+        subject_type: s,
+        predicate: 'same_grove_as',
+        object_kind: 'entity_ref',
+        object_kind_label: '개체 참조',
+        object_type: t,
+        declared: true,
+        atoms: 0,
+        edge_state: 'declared_only',
+        layer: 'canonical',
+        status: 'active',
+        since: 1,
+      });
+    }
+  }
+  const SERVED_FIX = {
+    state: 'ready',
+    generated_at: '2026-08-14T16:19:25+09:00',
+    graph: {
+      nodes: GROVE.map((t) => ({
+        id: t, type: t, label: t, entity_class: 'issued', keys: ['id'],
+        declared: true, atoms_as_subject: 0, node_state: 'declared_only',
+      })),
+      edges: servedEdges,
+      layers: [],
+      mechanism: null,
+    },
+    vocabulary: {
+      predicates: [{
+        predicate: 'same_grove_as', label: '같은 숲', layer: 'canonical', status: 'active',
+        since: 1, subject_types: GROVE, object_kind: 'entity_ref', object_types: GROVE,
+        object_fields: [], qualifiers: [], atoms: 0,
+      }],
+      entity_types: GROVE.map((t) => ({ type: t, label: t, class: 'issued', keys: ['id'] })),
+    },
+    declarations: [],
+  };
+  //: The fixture is load-bearing — assert the two rules actually disagree on it.
+  const triples = new Set(servedEdges.map((e) => `${e.subject_type}|${e.predicate}|${e.object_kind}`));
+  if (servedEdges.length !== 36 || triples.size !== 6) {
+    die(`served fixture stopped discriminating: ${servedEdges.length} edges over ${triples.size} triples`);
+  }
+
+  const sm = core.structureModel({ body: SERVED_FIX, kinds, kindsBody, question });
+  ok('N1 the served shape is recognised as served', sm.reading.shape === 'served', sm.reading.shape);
+  ok('N2 every served edge keeps its own identity — 36, not 6',
+    sm.edgeList.length === 36, `got ${sm.edgeList.length}`);
+  ok('N3 and the 36 keys are distinct',
+    new Set(sm.edgeList.map((e) => e.key)).size === 36);
+  ok('N4 the key is the server\'s id, not the re-derived triple',
+    sm.edgeList.every((e) => e.key.includes('entity:')),
+    sm.edgeList[0] && sm.edgeList[0].key);
+  ok('N5 all 36 reach the drawn graph, not just the list',
+    sm.graph.edges.length === 36, `got ${sm.graph.edges.length}`);
+  const dN = makeDoc();
+  const mN = dN.createElement('div');
+  view.renderStructure(dN, mN, sm, null);
+  const nRows = byAttr(first(byClass(mN, 'os-edgelist')), 'data-state', 'declared_only');
+  ok('N6 and all 36 reach the DOM as rows of the axis list',
+    nRows.length === 36, `got ${nRows.length}`);
+  ok('N7 the server\'s state word is used rather than re-derived',
+    sm.edgeList.every((e) => e.status === 'declared_only'));
+  // 🔴 AND A STATE THIS CLIENT HAS NEVER HEARD OF STILL RENDERS — the same
+  // discipline S6 applies to grades. A legend that iterates a fixed list of five
+  // would drop it, and the edges under it would leave the screen silently.
+  const alien = JSON.parse(JSON.stringify(SERVED_FIX));
+  alien.graph.edges[0].edge_state = 'quantum_superposed';
+  const am = core.structureModel({ body: alien, kinds, kindsBody, question });
+  const dA = makeDoc();
+  const mA = dA.createElement('div');
+  view.renderStructure(dA, mA, am, null);
+  ok('N8 an unknown edge state survives under its raw spelling',
+    am.edgeList.some((e) => e.status === 'quantum_superposed')
+    && am.totals.byState.some((s) => s.key === 'quantum_superposed' && s.n === 1),
+    JSON.stringify(am.totals.byState));
+  ok('N9 and it does not take its edge off the screen',
+    am.edgeList.length === 36 && mA.textContent.includes('quantum_superposed'));
+}
+
+// ── O. a blank is never silent ──────────────────────────────────────────────────────
+console.log('\n── O. no silent blank ────────────────────────────────────────────');
+{
+  // 🔴 THE DEFECT OF 2026-08-14, PINNED. Three of the four containers this screen
+  // read had moved one level down the response. Nothing threw; every array came
+  // back empty and the frame painted itself over a void under the words 「원장 가동
+  // — 아래 숫자는 실측입니다」. The repair is not "read the new keys" — that fixes
+  // today's drift and nothing about tomorrow's. The repair is that a reader which
+  // cannot find the graph SAYS SO.
+  const drifted = {
+    state: 'ready', generated_at: '2026-08-14T16:19:25+09:00',
+    relation: 'ledger_events', window: {}, cost: {}, cursors: [], drift: {},
+  };
+  const dm = core.structureModel({ body: drifted, kinds, kindsBody, question });
+  ok('O1 an unrecognisable body is reported, not treated as an empty world',
+    dm.reading.ok === false && dm.reading.shape === 'unreadable', dm.reading.shape);
+  ok('O2 and the reading names BOTH what was expected and what arrived',
+    dm.reading.why.includes('graph.edges') && dm.reading.why.includes('cursors'),
+    dm.reading.why);
+  const dO = makeDoc();
+  const mO = dO.createElement('div');
+  view.renderStructure(dO, mO, dm, null);
+  ok('O3 the screen is not blank', mO.children.length > 0);
+  ok('O4 it says the emptiness is the READER\'s, not the ledger\'s',
+    mO.textContent.includes('원장이 비어서가 아닙니다'), mO.textContent.slice(0, 200));
+  ok('O5 and it refuses to claim the ledger state it was handed',
+    !mO.textContent.includes('아래 숫자는 실측입니다'));
+
+  // 🔴 A THROW MUST REACH THE SCREEN. The renderer used to clear the mount and
+  // THEN build, so anything that threw left a literally empty element — the same
+  // pixels as an empty world, with no way to tell them apart.
+  const poisoned = core.structureModel({ body: FIX, kinds, kindsBody, question });
+  Object.defineProperty(poisoned, 'edgeList', {
+    get() { throw new Error('INJECTED render fault'); },
+  });
+  const dP = makeDoc();
+  const mP = dP.createElement('div');
+  let escaped = false;
+  try { view.renderStructure(dP, mP, poisoned, null); } catch (_) { escaped = true; }
+  ok('O6 a render fault does not escape to the caller', escaped === false);
+  ok('O7 the mount is not left empty by it', mP.children.length > 0);
+  ok('O8 and the fault itself is on screen',
+    mP.textContent.includes('그리지 못했습니다') && mP.textContent.includes('INJECTED render fault'),
+    mP.textContent.slice(0, 160));
+}
+
+// ── P. the class the view emits has a rule that styles it ───────────────────────────
+console.log('\n── P. view ↔ stylesheet agree ────────────────────────────────────');
+{
+  // 🔴 THE SEAM NOTHING WAS WATCHING (lead PM, 2026-08-14). The view builds its class
+  // names out of the state word, the stylesheet keys its rules on that same word, and
+  // NOTHING compared the two — so when the state vocabulary was corrected to the
+  // server's spelling, every dashed edge silently became a solid one. No test moved.
+  // The screen still drew, still balanced, still read as correct, and the one thing it
+  // exists to show — an axis that carries data vs an axis that is only declared —
+  // stopped being visible.
+  //
+  // Both directions matter and they catch different halves of a rename:
+  //   emitted-but-unstyled  ->  the view moved first, the CSS did not      (P2)
+  //   styled-but-unemitted  ->  the CSS kept a rule nothing can reach      (P3)
+  const NOT_A_STATE = new Set(['on', 'off']);
+  const modifiersIn = (text) => {
+    const out = new Set();
+    for (const m of text.matchAll(/\.os-(?:edge|row|badge|legend__item)--([a-z_]+)/g)) {
+      if (!NOT_A_STATE.has(m[1])) out.add(m[1]);
+    }
+    return out;
+  };
+
+  // A world holding all five states at once, so the harvest is of what the view
+  // ACTUALLY put on the elements rather than of what this test assumes it puts there.
+  const mk = (t, st, atoms, declared) => ({
+    id: `Bed|planted_row|entity:${t}`, subject_type: 'Bed', predicate: 'planted_row',
+    object_kind: 'entity_ref', object_type: t, declared, atoms,
+    edge_state: st, layer: 'canonical', status: 'active', since: 1,
+  });
+  const PFIX = {
+    state: 'ready',
+    generated_at: '2026-08-14T16:19:25+09:00',
+    graph: {
+      nodes: [{
+        id: 'Bed', type: 'Bed', label: 'Bed', entity_class: 'issued', keys: ['id'],
+        declared: true, atoms_as_subject: 5, node_state: 'flowing',
+      }],
+      edges: [
+        mk('Rose', 'flowing', 5, true),
+        mk('Tulip', 'declared_only', 0, true),
+        mk('Iris', 'unmeasured', null, true),
+        mk('Weed', 'undeclared', 3, false),
+      ],
+      layers: [],
+      mechanism: {
+        state: 'declared', declared: true, config: 'm.json',
+        models: [{ model: 'bloom', version: 'v0', nodes: ['sun', 'petal'], edge_ids: ['bloom|sun->petal'] }],
+        nodes: [],
+        edges: [{
+          id: 'bloom|sun->petal', model: 'bloom', source: 'sun', target: 'petal',
+          dir: '+', dir_label: '증가', edge_state: 'declared_unconsumed',
+        }],
+      },
+    },
+    vocabulary: {
+      predicates: [{
+        predicate: 'planted_row', label: '심음', layer: 'canonical', status: 'active',
+        since: 1, subject_types: ['Bed'], object_kind: 'entity_ref',
+        object_types: ['Rose', 'Tulip', 'Iris'], object_fields: [], qualifiers: [], atoms: 5,
+      }],
+      entity_types: [{ type: 'Bed', label: 'Bed', class: 'issued', keys: ['id'] }],
+    },
+    declarations: [],
+  };
+  const pm = core.structureModel({ body: PFIX, kinds, kindsBody, question });
+  const dP2 = makeDoc();
+  const mP2 = dP2.createElement('div');
+  view.renderStructure(dP2, mP2, pm, null);
+
+  const emitted = new Set();
+  for (const n of walk(mP2)) {
+    for (const c of classesOf(n)) {
+      const m = /^os-(?:edge|row|badge|legend__item)--([a-z_]+)$/.exec(c);
+      if (m && !NOT_A_STATE.has(m[1])) emitted.add(m[1]);
+    }
+  }
+  const STATES = ['flowing', 'declared_only', 'unmeasured', 'undeclared', 'declared_unconsumed'];
+  //: The fixture is load-bearing: if it stopped exercising all five, P2 would pass by
+  //: simply never emitting the state whose rule went missing.
+  ok('P1 the fixture drives all five states onto the screen',
+    STATES.every((s) => emitted.has(s)), `emitted ${[...emitted].sort().join(',')}`);
+
+  const styled = modifiersIn(STRUCTURE_CSS);
+  const unstyled = [...emitted].filter((s) => !styled.has(s));
+  ok('P2 every state the view emits has a rule in the stylesheet',
+    unstyled.length === 0, `unstyled: ${unstyled.sort().join(',')}`);
+  const orphan = [...styled].filter((s) => !emitted.has(s));
+  ok('P3 and no rule is left keyed on a state the view can no longer emit',
+    orphan.length === 0, `orphan: ${orphan.sort().join(',')}`);
 }
 
 // ── verdict ─────────────────────────────────────────────────────────────────────────

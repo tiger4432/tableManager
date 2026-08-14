@@ -2,10 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "assy-stack",
+      "url": "http://localhost:8080",
+      "port": 8080
+    },
+    {
       "name": "client2-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "client2"],
-      "port": 5173
+      "runtimeArgs": ["run", "dev", "--", "--port", "5173", "--strictPort"],
+      "cwd": "client2",
+      "port": 5173,
+      "url": "http://localhost:5173"
     }
   ]
 }

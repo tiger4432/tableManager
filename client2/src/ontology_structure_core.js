@@ -39,56 +39,64 @@
 // vanishing — that is the test of the difference.
 //
 // ------------------------------------------------------------
-// 🔴 PROPOSED SHAPE — NOT YET SERVED (server lane is building the aggregate).
-// This client consumes ONE call. Every field is optional to this reader: a
-// missing one renders as 미보고, never as 0 and never as a blank.
+// 🔴 TWO SHAPES, AND THE READER SAYS WHICH ONE IT GOT (P0, 2026-08-14).
 //
-//   GET /api/ledger/structure
-//     -> {
-//          state: "absent" | "empty" | "ready",
-//          generated_at: "<iso>",
+// The screen shipped against a PROPOSED flat shape that was never served. What
+// `server/ledger_structure.py` actually answers nests the same facts one level
+// down, and reading the flat keys against it yielded four empty arrays, no throw,
+// and a frame that announced 「원장 가동 — 아래 숫자는 실측입니다」 over nothing.
+// THAT is the defect this header now exists to prevent: a shape mismatch that
+// renders as silence is indistinguishable from a world with nothing in it.
 //
-//          entity_types: [                       // vocabulary.ENTITY_TYPES
-//            { type: "Lot", label: "랏",
-//              class: "issued" | "composed",
-//              keys: ["lot"], semi_ref: "E90 substrate",
-//              atoms: <int|null> }               // atoms whose SUBJECT is this type
-//          ],
+// So `shapeReading` names the containers it located, and a body it cannot read at
+// all is a REPORTED condition carrying the top-level keys that did arrive.
 //
-//          predicates: [                         // vocabulary.PREDICATES
-//            { predicate: "has_wafer", label: "웨이퍼 보유", gloss: "<한 줄 뜻>",
-//              layer: "canonical" | "ontology",
-//              status: "active" | "reserved",
-//              since: <int>, semi_ref: "E90",
-//              subject: ["Lot"],
-//              object: null | { kind: "value"|"entity_ref"|"event_ref",
-//                               types: ["Wafer"], required: ["step", …] },
-//              qualifiers: ["slot"],
-//              atoms: <int|null> }
-//          ],
+//   SERVED (`server/ledger_structure.py`, measured 2026-08-14) — the primary read:
+//     { state: "absent"|"empty"|"ready", generated_at, relation,
+//       window: { declared, spec, from, to, forced, forced_reason },
+//       cost:   { census_ms, atoms_counted, groups, exact, … },
+//       graph: {
+//         nodes: [ { id, type, label, entity_class, keys, semi_ref, declared,
+//                    atoms_as_subject, atoms_as_object, registered, node_state } ],
+//         edges: [ { id: "Lot|has_wafer|entity:Wafer",   // ← THE IDENTITY. see below
+//                    source, target, subject_type, predicate, predicate_label,
+//                    object_kind, object_kind_label, object_type, object_fields,
+//                    qualifiers, status, layer, since, semi_ref, declared,
+//                    atoms, first_at, last_at, classes: {…}, sources: [ … ],
+//                    edge_state } ],
+//         layers: [ { id: "ledger"|"mechanism", label, state, nodes, edges, atoms } ],
+//         mechanism: { state, declared, config, spec_ref, models, nodes, edges,
+//                      directions, ledger_link, … } },
+//       vocabulary: { predicates: [ { predicate, label, layer, status, since,
+//                                     subject_types, object_kind, object_types,
+//                                     object_fields, qualifiers, semi_ref, atoms,
+//                                     classes, edge_ids } ],
+//                     entity_types: [ { type, label, class, keys, semi_ref } ],
+//                     object_kinds, classes, projection_only_words },
+//       kinds: { state, default, kinds: [ … ], readable },
+//       declarations: [ { id, group, config, origin, path, declares, name, label,
+//                         readable, detail: {…}, edge_ids, node_ids, atoms, cursor } ],
+//       cursors: [ … ], drift: { undeclared_edge_ids, undeclared_node_ids,
+//                                undeclared_sources } }
 //
-//          edges: [                              // GROUP BY subject_type, predicate,
-//            { subject_type: "Lot",              //          object_kind
-//              predicate: "has_wafer",
-//              object_kind: "entity_ref" | null, // null = ∅ (register)
-//              object_types: ["Wafer"],          // observed targets, may be []
-//              atoms: <int>,
-//              first_at: "<iso>|null", last_at: "<iso>|null",
-//              classes: { pin: n, confirmed: n, observation: n, inference: n } }
-//          ],
+//   LEGACY (the proposed flat shape) — still read, because the harness fixture is
+//     written in it and it is what proves the DERIVATION discipline: flat
+//     `predicates` / `entity_types` / `edges` / `declarations`, where no edge list
+//     is served and the skeleton is the cross product of the signatures.
 //
-//          declarations: [                       // 선언 지도 — which config says what
-//            { source: "ledger_config",
-//              file: "server/config/ledger_config.json",
-//              title: "소스 → 원장 번역",
-//              items: [ { term: "lot_event · split", detail: "…",
-//                         edges: [ { subject_type, predicate, object_kind } ] } ] }
-//          ]
-//        }
+// 🔴 ON THE SERVED SHAPE THE EDGE IDENTITY IS THE SERVER'S `id`, NOT THIS FILE'S
+// `edgeKey`. Measured: `same_as` alone yields 36 edges whose
+// `subject|predicate|object_kind` triple collapses to 6 — six distinct target
+// types per subject share one triple. Re-deriving the key here would silently
+// merge thirty edges into six and the screen would be wrong while looking right,
+// which is the exact failure mode this repository has already paid for twice.
+// One authority per shape: the server unions declaration and ledger, and this
+// file draws what it is told.
 //
-// CHANGING WHAT THIS CONSUMES IS AN ESCALATION, NOT AN EDIT — and so is the
-// server lane answering a different shape. A 404 leaves the model at state
-// 'unknown' and the screen says so out loud instead of drawing an empty world.
+// 🔴 AND THE FIVE EDGE STATES ARE THE SERVER'S WORDS (`ledger_structure.py`):
+// `flowing` · `declared_only` · `unmeasured` · `undeclared` ·
+// `declared_unconsumed`. This file does not re-derive them when the wire carries
+// one, and a sixth state it has never heard of survives under its raw spelling.
 // ============================================================
 
 export const STRUCTURE_VIEW = 'structure';
@@ -110,6 +118,116 @@ const STRUCTURE_STATES = new Set(['absent', 'empty', 'ready']);
 export function structureState(body) {
   const s = body && body.state != null ? String(body.state) : '';
   return STRUCTURE_STATES.has(s) ? s : 'unknown';
+}
+
+// ── the five edge states, as the server spells them ──────────
+//
+// `server/ledger_structure.py` owns the rule that assigns these; this file only
+// reads the word. Kept as constants so the one place that DERIVES a state (the
+// legacy flat shape, which carries no `edge_state`) uses the same five words the
+// wire does, instead of a second spelling that has to be translated back.
+export const EDGE_FLOWING = 'flowing';
+export const EDGE_DECLARED_ONLY = 'declared_only';
+export const EDGE_UNMEASURED = 'unmeasured';
+export const EDGE_UNDECLARED = 'undeclared';
+export const EDGE_DECLARED_UNCONSUMED = 'declared_unconsumed';
+export const EDGE_STATES = [
+  EDGE_FLOWING, EDGE_DECLARED_ONLY, EDGE_UNMEASURED, EDGE_UNDECLARED,
+  EDGE_DECLARED_UNCONSUMED,
+];
+
+// ── WHERE THE ANSWER KEEPS ITS PARTS ─────────────────────────
+//
+// 🔴 ONE PLACE THAT READS THE ENVELOPE AND NAMES WHAT IT EXPECTED (lead PM, P0,
+// 2026-08-14). The seam between this screen and `/api/ledger/structure` drifted
+// once — the client asked for four top-level keys, three of them had moved a
+// level down, and the result was four empty arrays, NO THROW, and a frame that
+// claimed the numbers on it were measurements. An empty screen and a screen with
+// legitimately nothing on it looked identical.
+//
+// So the containers are located ONCE, here, and the outcome is a value the view
+// is obliged to render: which containers were found, which were expected and
+// missing, and — when nothing at all was recognisable — the top-level keys that
+// DID arrive, so the reader can see the drift rather than infer it from silence.
+
+export const SHAPE_SERVED = 'served';
+export const SHAPE_LEGACY = 'legacy';
+export const SHAPE_NONE = 'none';
+export const SHAPE_UNREADABLE = 'unreadable';
+
+//: What the served shape must contain for this screen to have anything to draw.
+//: `graph.edges` is the load-bearing one: without it there is no graph at all.
+const SERVED_CONTAINERS = [
+  ['graph.edges', (b) => b.graph && Array.isArray(b.graph.edges)],
+  ['graph.nodes', (b) => b.graph && Array.isArray(b.graph.nodes)],
+  ['vocabulary.predicates', (b) => b.vocabulary && Array.isArray(b.vocabulary.predicates)],
+  ['vocabulary.entity_types', (b) => b.vocabulary && Array.isArray(b.vocabulary.entity_types)],
+];
+
+const LEGACY_CONTAINERS = [
+  ['edges', (b) => Array.isArray(b.edges)],
+  ['predicates', (b) => Array.isArray(b.predicates)],
+  ['entity_types', (b) => Array.isArray(b.entity_types)],
+];
+
+function probe(body, table) {
+  const found = [];
+  const missing = [];
+  for (const [name, test] of table) {
+    let hit = false;
+    try { hit = !!test(body); } catch (_) { hit = false; }
+    (hit ? found : missing).push(name);
+  }
+  return { found, missing };
+}
+
+/**
+ * Which shape the answer is in — and, when it is in none of them, what arrived.
+ *
+ * @returns { shape, keys, found, missing, ok, why }
+ *   `ok` is false for `none` and `unreadable`. `why` is a sentence the view
+ *   prints verbatim; it names the keys rather than describing them, because a
+ *   description cannot be compared against the server by the person reading it.
+ */
+export function shapeReading(body) {
+  if (body === null || body === undefined) {
+    return {
+      shape: SHAPE_NONE, keys: [], found: [], missing: [], ok: false,
+      why: '응답 없음',
+    };
+  }
+  if (typeof body !== 'object' || Array.isArray(body)) {
+    return {
+      shape: SHAPE_UNREADABLE, keys: [], found: [], missing: [], ok: false,
+      why: `응답이 객체가 아닙니다 (${Array.isArray(body) ? 'array' : typeof body})`,
+    };
+  }
+  const keys = Object.keys(body).sort();
+  const served = probe(body, SERVED_CONTAINERS);
+  if (served.found.length) {
+    return {
+      shape: SHAPE_SERVED, keys, found: served.found, missing: served.missing, ok: true,
+      why: served.missing.length
+        ? `응답에 ${served.missing.join(' · ')} 없음 — 그 부분은 비어 보입니다`
+        : '',
+    };
+  }
+  const legacy = probe(body, LEGACY_CONTAINERS);
+  if (legacy.found.length) {
+    return {
+      shape: SHAPE_LEGACY, keys, found: legacy.found, missing: legacy.missing, ok: true,
+      why: '',
+    };
+  }
+  // 🔴 THE BLANK THAT MUST NEVER BE SILENT. Neither layout was recognised, so
+  // every panel below is about to be empty for a reason that has nothing to do
+  // with the ledger. Name the expectation AND the arrival — the pair is the
+  // diagnosis, either one alone is a guess.
+  return {
+    shape: SHAPE_UNREADABLE, keys, found: [], missing: SERVED_CONTAINERS.map((c) => c[0]),
+    ok: false,
+    why: `응답에서 그래프를 찾지 못했습니다 — 기대 ${SERVED_CONTAINERS.map((c) => c[0]).join(' · ')} / 도착 ${keys.length ? keys.join(' · ') : '(키 없음)'}`,
+  };
 }
 
 export const classLabel = (key) => CLASS_LABELS[key] || String(key);
@@ -324,6 +442,309 @@ function ghostEntityType(type) {
   };
 }
 
+// ── reading the SERVED shape ─────────────────────────────────
+//
+// The server has already unioned the declaration with the ledger, so on this path
+// there is no skeleton to derive: `graph.edges` IS the union and `graph.nodes` IS
+// the type list, ghosts included. What is left to do here is translate field
+// names and refuse to invent anything the wire did not say.
+
+function servedPredicate(row) {
+  const predicate = strOrEmpty(row && row.predicate);
+  //: `object_kind: null` is a DECLARATION (the ∅ object), not an absent field, so
+  //: it must not collapse into "this predicate has no object clause" — the ∅
+  //: column node hangs off it.
+  const kind = row && row.object_kind != null ? String(row.object_kind) : '';
+  const types = listOf(row && row.object_types);
+  const fields = listOf(row && row.object_fields);
+  const hasObject = kind !== '' || types.length > 0 || fields.length > 0;
+  return {
+    predicate,
+    label: strOrEmpty(row && row.label) || predicate,
+    gloss: strOrEmpty(row && row.gloss),
+    layer: strOrEmpty(row && row.layer),
+    status: strOrEmpty(row && row.status),
+    since: numOrNull(row && row.since),
+    semiRef: strOrEmpty(row && row.semi_ref),
+    subject: listOf(row && row.subject_types),
+    object: hasObject ? { kind, types, required: fields } : null,
+    qualifiers: listOf(row && row.qualifiers),
+    atoms: numOrNull(row && row.atoms),
+    declared: true,
+  };
+}
+
+function servedEntityType(row) {
+  const type = strOrEmpty(row && (row.type != null ? row.type : row.id));
+  //: `atoms_as_subject` is the count this column means — how much has been SAID
+  //: about instances of this type. `atoms` is accepted as the older spelling.
+  const asSubject = row && row.atoms_as_subject !== undefined
+    ? numOrNull(row.atoms_as_subject) : numOrNull(row && row.atoms);
+  return {
+    type,
+    label: strOrEmpty(row && row.label) || type,
+    cls: strOrEmpty(row && (row.class != null ? row.class : row.entity_class)),
+    keys: listOf(row && row.keys),
+    semiRef: strOrEmpty(row && row.semi_ref),
+    atoms: asSubject,
+    atomsAsObject: numOrNull(row && row.atoms_as_object),
+    registered: numOrNull(row && row.registered),
+    nodeState: strOrEmpty(row && row.node_state),
+    declared: !(row && row.declared === false),
+  };
+}
+
+function readSources(raw) {
+  return (Array.isArray(raw) ? raw : []).map((s) => ({
+    who: strOrEmpty(s && s.source_who),
+    derivation: strOrEmpty(s && s.derivation),
+    atoms: numOrNull(s && s.atoms),
+  })).filter((s) => s.who || s.derivation);
+}
+
+/**
+ * One served edge, normalised.
+ *
+ * 🔴 THE KEY IS `row.id`. See the file header: the `subject|predicate|kind`
+ * triple is NOT unique on this shape — measured, `same_as` puts six edges (one
+ * per target type) behind each triple. Falling back to the derived key when the
+ * server sends no id keeps the legacy contract, but the id wins whenever it
+ * exists.
+ */
+function servedEdge(row) {
+  const subjectType = strOrEmpty(row.subject_type);
+  const predicate = strOrEmpty(row.predicate);
+  const objectKind = row.object_kind == null ? '' : String(row.object_kind);
+  const target = strOrEmpty(row.object_type);
+  const atoms = numOrNull(row.atoms);
+  return {
+    key: strOrEmpty(row.id) || edgeKey(subjectType, predicate, objectKind),
+    subjectType,
+    predicate,
+    objectKind,
+    objectKindLabel: strOrEmpty(row.object_kind_label),
+    declaredTypes: target ? [target] : [],
+    observedTypes: [],
+    atoms,
+    firstAt: strOrEmpty(row.first_at),
+    lastAt: strOrEmpty(row.last_at),
+    classes: row.classes && typeof row.classes === 'object' ? row.classes : null,
+    declared: !(row.declared === false),
+    observed: atoms !== null,
+    //: The server's verdict. `edgeStatusOf` prefers it over any derivation.
+    wireState: strOrEmpty(row.edge_state),
+    wireLayer: strOrEmpty(row.layer),
+    since: numOrNull(row.since),
+    predicateStatus: strOrEmpty(row.status),
+    semiRef: strOrEmpty(row.semi_ref),
+    qualifiers: listOf(row.qualifiers),
+    objectFields: listOf(row.object_fields),
+    sources: readSources(row.sources),
+  };
+}
+
+/** A `detail` object, as one bounded line. Six entries, then it stops. */
+function compactDetail(detail) {
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return '';
+  const parts = [];
+  for (const k of Object.keys(detail)) {
+    if (parts.length >= 6) { parts.push('…'); break; }
+    const v = detail[k];
+    if (v === null || v === undefined || v === '') continue;
+    if (Array.isArray(v)) { if (v.length) parts.push(`${k} ${v.length}`); }
+    else if (typeof v === 'object') {
+      const n = Object.keys(v).length;
+      if (n) parts.push(`${k} {${n}}`);
+    } else parts.push(`${k} ${String(v)}`);
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * The served declaration list, grouped by its own `group` field.
+ *
+ * The legacy shape nested items inside a source; the served one is flat and says
+ * which group each row belongs to. Grouping here rather than asking the server to
+ * re-nest keeps the wire one row per declaration, which is also what carries
+ * `readable: false` — a config the server could not open, which is exactly the
+ * kind of gap this panel exists to show.
+ */
+function servedDeclarations(rows, edgeKeys) {
+  const groups = new Map();
+  for (const d of (Array.isArray(rows) ? rows : [])) {
+    if (!d || typeof d !== 'object') continue;
+    const groupKey = strOrEmpty(d.group) || 'etc';
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        source: groupKey, file: '', title: '', items: [], files: [],
+      });
+    }
+    const g = groups.get(groupKey);
+    if (!g.title) g.title = strOrEmpty(d.declares) || groupKey;
+    const file = strOrEmpty(d.config);
+    if (file && !g.files.includes(file)) g.files.push(file);
+    const detail = compactDetail(d.detail);
+    const unreadable = d.readable === false;
+    groups.get(groupKey).items.push({
+      term: strOrEmpty(d.label) || strOrEmpty(d.name) || strOrEmpty(d.id),
+      detail: unreadable ? `읽지 못함${detail ? ` · ${detail}` : ''}` : detail,
+      //: Only ids that resolve to an edge on screen become links. A ref to an
+      //: edge that is not here would be a dead link that looks live.
+      edges: listOf(d.edge_ids).filter((k) => edgeKeys.has(k)),
+      atoms: numOrNull(d.atoms),
+      readable: !unreadable,
+    });
+  }
+  const out = [...groups.values()];
+  for (const g of out) {
+    g.file = g.files.slice(0, 3).join(' · ') + (g.files.length > 3 ? ' …' : '');
+    delete g.files;
+  }
+  return out;
+}
+
+/** The `graph.layers` summary — which layer of the world is in what condition. */
+function servedLayers(rows) {
+  return (Array.isArray(rows) ? rows : []).map((l) => ({
+    id: strOrEmpty(l && l.id),
+    label: strOrEmpty(l && l.label) || strOrEmpty(l && l.id),
+    state: strOrEmpty(l && l.state),
+    nodes: numOrNull(l && l.nodes),
+    edges: numOrNull(l && l.edges),
+    atoms: numOrNull(l && l.atoms),
+    reason: strOrEmpty(l && l.reason),
+    message: strOrEmpty(l && l.message),
+    specRef: strOrEmpty(l && l.spec_ref),
+  })).filter((l) => l.id);
+}
+
+/**
+ * The M4 mechanism graph.
+ *
+ * 🔴 IT IS NOT DRAWN INTO THE THREE COLUMNS. Its nodes are causal variables
+ * (`bond_pressure → interface_unfill`), not subject/predicate/object triples, and
+ * forcing them into that layout would assert a join that does not exist. It gets
+ * its own panel — which is also the only place the fifth edge state,
+ * `declared_unconsumed`, can currently be seen.
+ */
+function servedMechanism(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const edges = (Array.isArray(raw.edges) ? raw.edges : []).map((e) => ({
+    id: strOrEmpty(e && e.id),
+    model: strOrEmpty(e && e.model),
+    source: strOrEmpty(e && e.source),
+    target: strOrEmpty(e && e.target),
+    dir: strOrEmpty(e && e.dir),
+    dirLabel: strOrEmpty(e && e.dir_label),
+    hasForm: !!(e && e.has_form),
+    atoms: numOrNull(e && e.atoms),
+    status: strOrEmpty(e && e.edge_state),
+  }));
+  const nodes = (Array.isArray(raw.nodes) ? raw.nodes : []).map((n) => ({
+    id: strOrEmpty(n && n.id),
+    label: strOrEmpty(n && n.label) || strOrEmpty(n && n.id),
+    model: strOrEmpty(n && n.model),
+    atoms: numOrNull(n && n.atoms),
+    status: strOrEmpty(n && n.node_state),
+  }));
+  const link = raw.ledger_link && typeof raw.ledger_link === 'object' ? {
+    entityType: strOrEmpty(raw.ledger_link.entity_type),
+    reason: strOrEmpty(raw.ledger_link.reason),
+    message: strOrEmpty(raw.ledger_link.message),
+  } : null;
+  return {
+    state: strOrEmpty(raw.state) || 'unknown',
+    declared: !!raw.declared,
+    config: strOrEmpty(raw.config),
+    origin: strOrEmpty(raw.origin),
+    specRef: strOrEmpty(raw.spec_ref),
+    reason: strOrEmpty(raw.reason),
+    message: strOrEmpty(raw.message),
+    models: (Array.isArray(raw.models) ? raw.models : []).map((m) => ({
+      model: strOrEmpty(m && m.model),
+      version: strOrEmpty(m && m.version),
+      nodes: listOf(m && m.nodes),
+      edgeIds: listOf(m && m.edge_ids),
+      validity: strOrEmpty(m && m.validity),
+    })),
+    nodes,
+    edges,
+    link,
+  };
+}
+
+/** The kind registry, when the structure answer carries one of its own. */
+function servedKinds(raw) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.kinds)) return null;
+  const rows = [];
+  for (const k of raw.kinds) {
+    if (!k || typeof k !== 'object') continue;
+    const kind = strOrEmpty(k.kind);
+    if (!kind) continue;
+    const methods = listOf(k.observed_by);
+    rows.push({
+      kind,
+      label: strOrEmpty(k.label) || kind,
+      atoms: numOrNull(k.atoms),
+      runs: numOrNull(k.runs),
+      methods,
+      classes: listOf(k.classes),
+      //: The server's own field, never a re-derivation from the method count —
+      //: same rule `case_control_core.kindCatalog` records at length.
+      hasDenominator: typeof k.has_denominator === 'boolean'
+        ? k.has_denominator : methods.length > 0,
+      observationTable: strOrEmpty(k.observation_table),
+      ledgerState: strOrEmpty(k.ledger_state),
+      ledgerAtoms: numOrNull(k.ledger_atoms),
+      ledgerEdges: listOf(k.ledger_edge_ids),
+    });
+  }
+  return { state: strOrEmpty(raw.state) || 'unknown', rows };
+}
+
+/** How the census was taken — the reader's right to know what the numbers cost. */
+function servedCensus(body) {
+  const cost = body.cost && typeof body.cost === 'object' ? body.cost : {};
+  const win = body.window && typeof body.window === 'object' ? body.window : {};
+  return {
+    relation: strOrEmpty(body.relation),
+    ms: numOrNull(cost.census_ms),
+    atoms: numOrNull(cost.atoms_counted),
+    groups: numOrNull(cost.groups),
+    exact: typeof cost.exact === 'boolean' ? cost.exact : null,
+    windowSpec: strOrEmpty(win.spec),
+    windowFrom: strOrEmpty(win.from),
+    windowTo: strOrEmpty(win.to),
+    forced: !!win.forced,
+    forcedReason: strOrEmpty(win.forced_reason),
+  };
+}
+
+function servedDrift(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {};
+  return {
+    edges: listOf(d.undeclared_edge_ids),
+    nodes: listOf(d.undeclared_node_ids),
+    sources: listOf(d.undeclared_sources),
+  };
+}
+
+/**
+ * An edge's state.
+ *
+ * 🔴 THE WIRE'S WORD WINS AND AN UNKNOWN ONE SURVIVES. `server/ledger_structure.py`
+ * owns the rule; re-deriving over the top would be a second implementation of it,
+ * which is how this repository produced two disagreeing coordinate transforms. The
+ * derivation below runs ONLY when no state was sent — the legacy flat shape.
+ */
+function edgeStatusOf(e) {
+  if (e.wireState) return e.wireState;
+  if (!e.declared) return EDGE_UNDECLARED;
+  if (e.atoms !== null && e.atoms > 0) return EDGE_FLOWING;
+  if (e.atoms === 0) return EDGE_DECLARED_ONLY;
+  return EDGE_UNMEASURED;
+}
+
 // ── layout (pure geometry, so the harness can score it) ──────
 //
 // 🔴 DETERMINISTIC, NOT FORCE-DIRECTED. `graph_viewer.js` carries a force layout
@@ -379,101 +800,148 @@ function place(items, x, w, h, pitch, contentH, top) {
 export function structureModel({ body, kinds, kindsBody, question } = {}) {
   const q = question || {};
   const state = structureState(body);
+  // 🔴 THE ENVELOPE IS READ ONCE, AND THE OUTCOME IS PART OF THE MODEL. Every
+  // panel below can legitimately be empty; only this value can say whether the
+  // emptiness is the ledger's or the reader's.
+  const reading = shapeReading(body);
+  const served = reading.shape === SHAPE_SERVED;
+
+  const graph = served && body.graph && typeof body.graph === 'object' ? body.graph : null;
+  const vocab = served && body.vocabulary && typeof body.vocabulary === 'object'
+    ? body.vocabulary : null;
 
   // ── vocabulary and types, as the server declared them ──
-  const predRows = body && Array.isArray(body.predicates) ? body.predicates : [];
   const predicates = new Map();
+  const predRows = served
+    ? (vocab && Array.isArray(vocab.predicates) ? vocab.predicates : [])
+    : (body && Array.isArray(body.predicates) ? body.predicates : []);
   for (const row of predRows) {
-    const sig = readPredicate(row);
+    const sig = served ? servedPredicate(row) : readPredicate(row);
     if (sig.predicate) predicates.set(sig.predicate, sig);
   }
 
-  const typeRows = body && Array.isArray(body.entity_types) ? body.entity_types : [];
   const entityTypes = new Map();
+  const typeRows = served
+    ? (vocab && Array.isArray(vocab.entity_types) ? vocab.entity_types : [])
+    : (body && Array.isArray(body.entity_types) ? body.entity_types : []);
   for (const row of typeRows) {
-    const t = readEntityType(row);
+    const t = served ? servedEntityType(row) : readEntityType(row);
     if (t.type) entityTypes.set(t.type, t);
   }
-
-  // ── the declared skeleton ──
-  const edges = new Map();
-  for (const sig of predicates.values()) {
-    for (const e of declaredEdgesOf(sig)) {
-      edges.set(e.key, {
-        ...e,
-        observedTypes: [],
-        atoms: null,
-        firstAt: '',
-        lastAt: '',
-        classes: null,
-        declared: true,
-        observed: false,
-      });
+  // On the served shape the counted nodes come separately, in census order.
+  // Declaration order stays authoritative for POSITION; the node row supplies the
+  // numbers and any type the ledger knows and the vocabulary does not.
+  if (graph && Array.isArray(graph.nodes)) {
+    for (const row of graph.nodes) {
+      const t = servedEntityType(row);
+      if (!t.type) continue;
+      const prior = entityTypes.get(t.type);
+      entityTypes.set(t.type, prior ? { ...prior, ...t, label: t.label || prior.label } : t);
     }
   }
 
-  // ── the observed weight, merged onto the same key ──
-  const edgeRows = body && Array.isArray(body.edges) ? body.edges : [];
-  for (const row of edgeRows) {
-    if (!row || typeof row !== 'object') continue;
-    const subjectType = strOrEmpty(row.subject_type);
-    const predicate = strOrEmpty(row.predicate);
-    if (!subjectType || !predicate) continue;
-    const objectKind = row.object_kind == null ? '' : String(row.object_kind);
-    const key = edgeKey(subjectType, predicate, objectKind);
-    const prior = edges.get(key);
-    const merged = {
-      key,
-      subjectType,
-      predicate,
-      objectKind,
-      declaredTypes: prior ? prior.declaredTypes : [],
-      observedTypes: listOf(row.object_types),
-      atoms: numOrNull(row.atoms),
-      firstAt: strOrEmpty(row.first_at),
-      lastAt: strOrEmpty(row.last_at),
-      classes: row.classes && typeof row.classes === 'object' ? row.classes : null,
-      declared: !!prior,
-      observed: true,
-    };
-    edges.set(key, merged);
-    // Vocabulary the ledger holds and the declaration does not. It gets a node so
-    // the edge has somewhere to land, and it is marked so it reads as the finding
-    // it is rather than as a normal part of the world.
-    if (!predicates.has(predicate)) predicates.set(predicate, ghostPredicate(predicate));
-    if (!entityTypes.has(subjectType)) entityTypes.set(subjectType, ghostEntityType(subjectType));
+  // ── the edges ──
+  //
+  // SERVED: the server already unioned declaration and ledger; this is a read.
+  // LEGACY: no edge list is served, so the skeleton is the cross product of the
+  //         signatures and the rows are merged onto it. The two paths never mix,
+  //         because a key built two ways is the drift this screen reports on.
+  const edges = new Map();
+  let aggregateRan;
+  if (served) {
+    for (const row of (graph && Array.isArray(graph.edges) ? graph.edges : [])) {
+      if (!row || typeof row !== 'object') continue;
+      const e = servedEdge(row);
+      if (!e.key || !e.subjectType || !e.predicate) continue;
+      edges.set(e.key, e);
+      if (!predicates.has(e.predicate)) predicates.set(e.predicate, ghostPredicate(e.predicate));
+      if (!entityTypes.has(e.subjectType)) {
+        entityTypes.set(e.subjectType, ghostEntityType(e.subjectType));
+      }
+    }
+    // The server states every edge's condition itself, including `unmeasured`, so
+    // there is nothing left here to claim on its behalf.
+    aggregateRan = !!(graph && Array.isArray(graph.edges))
+      && (state === 'ready' || state === 'empty');
+  } else {
+    // ── the declared skeleton ──
+    for (const sig of predicates.values()) {
+      for (const e of declaredEdgesOf(sig)) {
+        edges.set(e.key, {
+          ...e,
+          observedTypes: [],
+          atoms: null,
+          firstAt: '',
+          lastAt: '',
+          classes: null,
+          declared: true,
+          observed: false,
+          wireState: '',
+          wireLayer: '',
+          sources: [],
+        });
+      }
+    }
+    // ── the observed weight, merged onto the same key ──
+    const edgeRows = body && Array.isArray(body.edges) ? body.edges : [];
+    for (const row of edgeRows) {
+      if (!row || typeof row !== 'object') continue;
+      const subjectType = strOrEmpty(row.subject_type);
+      const predicate = strOrEmpty(row.predicate);
+      if (!subjectType || !predicate) continue;
+      const objectKind = row.object_kind == null ? '' : String(row.object_kind);
+      const key = edgeKey(subjectType, predicate, objectKind);
+      const prior = edges.get(key);
+      edges.set(key, {
+        key,
+        subjectType,
+        predicate,
+        objectKind,
+        objectKindLabel: '',
+        declaredTypes: prior ? prior.declaredTypes : [],
+        observedTypes: listOf(row.object_types),
+        atoms: numOrNull(row.atoms),
+        firstAt: strOrEmpty(row.first_at),
+        lastAt: strOrEmpty(row.last_at),
+        classes: row.classes && typeof row.classes === 'object' ? row.classes : null,
+        declared: !!prior,
+        observed: true,
+        wireState: strOrEmpty(row.edge_state),
+        wireLayer: strOrEmpty(row.layer),
+        sources: readSources(row.sources),
+      });
+      // Vocabulary the ledger holds and the declaration does not. It gets a node
+      // so the edge has somewhere to land, and it is marked so it reads as the
+      // finding it is rather than as a normal part of the world.
+      if (!predicates.has(predicate)) predicates.set(predicate, ghostPredicate(predicate));
+      if (!entityTypes.has(subjectType)) entityTypes.set(subjectType, ghostEntityType(subjectType));
+    }
+    // 🔴 AN EDGE HAS TWO POSSIBLE ORIGINS AND THE SCREEN MUST NOT CONFLATE THEM
+    // (lead PM, 2026-08-14): one comes out of the LEDGER AGGREGATE and carries a
+    // count, a period and a grade mix; the other comes out of the DECLARATION
+    // ALONE and its count may be zero.
+    //
+    // 🔴 AND THAT MEANS A MEASURED ZERO MUST NOT RENDER AS 미보고. An absent FIELD
+    // is not a measurement, but a GROUP BY that ran and produced no group for a
+    // declared axis IS one — the axis was looked for and found empty. So the zero
+    // is claimable exactly when the aggregate actually ran, and unclaimable
+    // otherwise.
+    //
+    //   state ready | empty + an `edges` array -> a declared axis with no row is 0
+    //   anything else                          -> it is 미보고, and says so
+    aggregateRan = Array.isArray(body && body.edges)
+      && (state === 'ready' || state === 'empty');
   }
-
-  // 🔴 AN EDGE HAS TWO POSSIBLE ORIGINS AND THE SCREEN MUST NOT CONFLATE THEM
-  // (lead PM, 2026-08-14): one comes out of the LEDGER AGGREGATE and carries a
-  // count, a period and a grade mix; the other comes out of the DECLARATION ALONE
-  // and its count may be zero. The tracking UI's verdict gate is about to become
-  // the FIRST consumer of the M4 mechanism graph, so "declared, zero consumers"
-  // is a thing the owner comes to this screen looking for.
-  //
-  // 🔴 AND THAT MEANS A MEASURED ZERO MUST NOT RENDER AS 미보고. The two are
-  // different facts and this file has already been warned once about the shape:
-  // an absent FIELD is not a measurement, but a GROUP BY that ran and produced no
-  // group for a declared axis IS one — the axis was looked for and found empty.
-  // So the zero is claimable exactly when the aggregate actually ran over a
-  // deployed table, and unclaimable otherwise.
-  //
-  //   state ready | empty  + an `edges` array  ->  a declared axis with no row is 0
-  //   anything else                            ->  it is 미보고, and says so
-  const aggregateRan = Array.isArray(body && body.edges)
-    && (state === 'ready' || state === 'empty');
 
   // ── status per edge, and the layer filter ──
   const layerFilter = q.layer || '';
   const allEdges = [...edges.values()].map((e) => {
     // A declared axis the aggregate did not report is a zero ONLY if the
-    // aggregate is in a position to have reported it.
-    const atoms = (e.atoms === null && e.declared && !e.observed && aggregateRan) ? 0 : e.atoms;
-    let status;
-    if (!e.declared) status = 'undeclared';
-    else if (atoms !== null && atoms > 0) status = 'flowing';
-    else if (atoms === 0) status = 'declared_zero';
-    else status = 'declared_unmeasured';
+    // aggregate is in a position to have reported it. (Legacy path only — on the
+    // served shape the server has already decided, and `wireState` says so.)
+    const atoms = (!e.wireState && e.atoms === null && e.declared && !e.observed && aggregateRan)
+      ? 0 : e.atoms;
+    const status = edgeStatusOf({ ...e, atoms });
     const sig = predicates.get(e.predicate);
     // Object targets: what the declaration says, plus anything the rows actually
     // carried. Both, because a target observed and not declared is exactly the
@@ -490,7 +958,7 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
       // here to tell apart. `both` is the healthy case: declared AND flowing.
       origin: e.declared && (atoms !== null && atoms > 0) ? 'both'
         : (e.declared ? 'declaration' : 'ledger'),
-      layer: sig ? sig.layer : '',
+      layer: e.wireLayer || (sig ? sig.layer : ''),
       grades: classReading(e.classes, atoms),
       period: periodReading(e.firstAt, e.lastAt),
     };
@@ -579,7 +1047,11 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
         objectKind: e.objectKind,
         type: t,
         label: known ? known.label : t,
-        sub: known && known.keys.length ? `키 ${known.keys.join(' · ')}` : objectKindLabel(e.objectKind),
+        //: The server's own label for the kind when it sent one — it is the same
+        //: enum this file translates, and its spelling is the authority.
+        sub: known && known.keys.length
+          ? `키 ${known.keys.join(' · ')}`
+          : (e.objectKindLabel || objectKindLabel(e.objectKind)),
         declared: !!known,
       };
     } else {
@@ -589,7 +1061,7 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
         kindOfNode: 'object',
         objectKind: e.objectKind,
         type: '',
-        label: objectKindLabel(e.objectKind),
+        label: e.objectKindLabel || objectKindLabel(e.objectKind),
         sub: e.targets.length > 1 ? `${e.targets.length}종` : '',
         declared: true,
       };
@@ -692,40 +1164,83 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
   });
 
   // ── kind registry panel ──
-  const rawKinds = kindsBody && Array.isArray(kindsBody.kinds) ? kindsBody.kinds : [];
-  const tableOf = new Map();
-  for (const row of rawKinds) {
-    if (row && row.kind != null) tableOf.set(String(row.kind), strOrEmpty(row.observation_table));
+  //
+  // The served answer carries its own registry, richer than the shared catalog
+  // (it knows which ledger edges each kind reaches). Prefer it; fall back to the
+  // separately-fetched `/api/ledger/kinds` so the panel still answers when the
+  // structure route does not.
+  const inlineKinds = served ? servedKinds(body.kinds) : null;
+  let kindState;
+  let kindRows;
+  if (inlineKinds) {
+    kindState = inlineKinds.state;
+    kindRows = inlineKinds.rows;
+  } else {
+    const rawKinds = kindsBody && Array.isArray(kindsBody.kinds) ? kindsBody.kinds : [];
+    const tableOf = new Map();
+    for (const row of rawKinds) {
+      if (row && row.kind != null) tableOf.set(String(row.kind), strOrEmpty(row.observation_table));
+    }
+    kindState = kinds && kinds.state ? kinds.state : 'unknown';
+    kindRows = (kinds && Array.isArray(kinds.kinds) ? kinds.kinds : []).map((k) => ({
+      ...k,
+      observationTable: tableOf.get(k.kind) || '',
+    }));
   }
-  const kindRows = (kinds && Array.isArray(kinds.kinds) ? kinds.kinds : []).map((k) => ({
-    ...k,
-    observationTable: tableOf.get(k.kind) || '',
-  }));
 
   // ── declaration map ──
   const declRows = body && Array.isArray(body.declarations) ? body.declarations : [];
-  const declarations = declRows.map((d) => ({
-    source: strOrEmpty(d && d.source),
-    file: strOrEmpty(d && d.file),
-    title: strOrEmpty(d && d.title) || strOrEmpty(d && d.source),
-    items: (d && Array.isArray(d.items) ? d.items : []).map((item) => {
-      const refs = (item && Array.isArray(item.edges) ? item.edges : [])
-        .map((r) => edgeKey(r && r.subject_type, r && r.predicate, r && r.object_kind))
-        .filter((k) => edges.has(k));
-      return {
-        term: strOrEmpty(item && item.term),
-        detail: strOrEmpty(item && item.detail),
-        edges: refs,
-      };
-    }),
-  }));
+  const declarations = served
+    ? servedDeclarations(declRows, new Set(edges.keys()))
+    : declRows.map((d) => ({
+      source: strOrEmpty(d && d.source),
+      file: strOrEmpty(d && d.file),
+      title: strOrEmpty(d && d.title) || strOrEmpty(d && d.source),
+      items: (d && Array.isArray(d.items) ? d.items : []).map((item) => {
+        const refs = (item && Array.isArray(item.edges) ? item.edges : [])
+          .map((r) => edgeKey(r && r.subject_type, r && r.predicate, r && r.object_kind))
+          .filter((k) => edges.has(k));
+        return {
+          term: strOrEmpty(item && item.term),
+          detail: strOrEmpty(item && item.detail),
+          edges: refs,
+          atoms: null,
+          readable: true,
+        };
+      }),
+    }));
 
+  // ── the two layers of the world, and the mechanism graph ──
+  const graphLayers = served && graph ? servedLayers(graph.layers) : [];
+  const mechanism = served && graph ? servedMechanism(graph.mechanism) : null;
+  const census = served ? servedCensus(body) : null;
+  const drift = served ? servedDrift(body.drift) : null;
+
+  // 🔴 EVERY STATE THAT OCCURRED IS COUNTED, INCLUDING ONE THIS FILE HAS NEVER
+  // HEARD OF. Same discipline as `classReading`: a sixth state introduced by the
+  // server must show up under its raw spelling rather than vanish from a legend
+  // that iterates a fixed list of five.
+  const stateCounts = new Map();
+  const bump = (k) => { if (k) stateCounts.set(k, (stateCounts.get(k) || 0) + 1); };
+  for (const e of allEdges) bump(e.status);
+  for (const e of (mechanism ? mechanism.edges : [])) bump(e.status);
+  const statusRows = EDGE_STATES.map((k) => ({ key: k, n: stateCounts.get(k) || 0 }));
+  for (const k of stateCounts.keys()) {
+    if (!EDGE_STATES.includes(k)) statusRows.push({ key: k, n: stateCounts.get(k) });
+  }
+
+  const countOf = (k) => allEdges.filter((e) => e.status === k).length;
   const totals = {
     edges: allEdges.length,
-    flowing: allEdges.filter((e) => e.status === 'flowing').length,
-    declaredZero: allEdges.filter((e) => e.status === 'declared_zero').length,
-    declaredUnmeasured: allEdges.filter((e) => e.status === 'declared_unmeasured').length,
-    undeclared: allEdges.filter((e) => e.status === 'undeclared').length,
+    flowing: countOf(EDGE_FLOWING),
+    declaredOnly: countOf(EDGE_DECLARED_ONLY),
+    unmeasured: countOf(EDGE_UNMEASURED),
+    undeclared: countOf(EDGE_UNDECLARED),
+    //: The fifth state lives on the mechanism layer, which is not part of the
+    //: three-column graph — so it is counted from there, not invented here.
+    declaredUnconsumed: (mechanism ? mechanism.edges : [])
+      .filter((e) => e.status === EDGE_DECLARED_UNCONSUMED).length,
+    byState: statusRows,
     atoms: allEdges.reduce((s, e) => s + (e.atoms || 0), 0),
     reported: allEdges.some((e) => e.atoms !== null),
     aggregateRan,
@@ -733,6 +1248,14 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
 
   return {
     state,
+    //: WHICH NOTHING THIS IS. The view is obliged to render this when it is not
+    //: `ok` — a blank whose cause is the reader must not look like a blank whose
+    //: cause is the ledger.
+    reading,
+    graphLayers,
+    mechanism,
+    census,
+    drift,
     generatedAt: strOrEmpty(body && body.generated_at),
     question: { view: STRUCTURE_VIEW, edge: q.edge || '', layer: layerFilter },
     layers,
@@ -754,8 +1277,14 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
       // 🔴 THE DECLARED-ONLY AXES SIT TOGETHER AND ARE NOT BURIED. They are what
       // the owner may specifically be here for ("declared but zero consumers"), so
       // they are one contiguous block rather than scattered among the busy ones.
-      const RANK = { flowing: 0, undeclared: 1, declared_zero: 2, declared_unmeasured: 3 };
-      const rank = (e) => (RANK[e.status] === undefined ? 4 : RANK[e.status]);
+      const RANK = {
+        [EDGE_FLOWING]: 0,
+        [EDGE_UNDECLARED]: 1,
+        [EDGE_DECLARED_ONLY]: 2,
+        [EDGE_UNMEASURED]: 3,
+        [EDGE_DECLARED_UNCONSUMED]: 4,
+      };
+      const rank = (e) => (RANK[e.status] === undefined ? 5 : RANK[e.status]);
       if (rank(a) !== rank(b)) return rank(a) - rank(b);
       const aa = a.atoms === null ? -1 : a.atoms;
       const bb = b.atoms === null ? -1 : b.atoms;
@@ -763,10 +1292,7 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
       return a.key < b.key ? -1 : 1;
     }).map((e) => ({ ...e, selected: !!q.edge && q.edge === e.key })),
     vocabulary,
-    kinds: {
-      state: kinds && kinds.state ? kinds.state : 'unknown',
-      rows: kindRows,
-    },
+    kinds: { state: kindState, rows: kindRows },
     declarations,
     totals,
   };

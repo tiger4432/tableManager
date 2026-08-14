@@ -72,8 +72,176 @@ import { renderSurprise } from './surprise_view.js';
 // REAL valid-die mask, read through routes that are already deployed. Owner
 // constraint 3: no invented circular grid, ever.
 import { resolveFloors } from './surprise_axis.js';
+// 🔴 ONE FUNCTION DECIDES WHICH FRAMES EXIST, AND BOTH CALLERS READ IT. The strip
+// renderer and this loader used to have separate ideas of what to fetch — the
+// renderer walked every matched frame while the loader fetched one map per marked
+// lot — so the strip showed 25 pending entries that nothing was ever going to
+// fill. `mapWants` is the renderer's own computation, exported for the loader.
+import { mapWants } from './surprise_map_core.js';
 
 const byId = (id) => document.getElementById(id);
+
+// ════════════════════════════════════════════════════════════
+// THE IN-PAGE ROUTER
+//
+// 🔴 ONE QUESTION = ONE URL. THAT WAS NEVER "ONE QUESTION = ONE PAGE LOAD".
+// The principle was implemented as `<a href="?…">` and one `location.search =`,
+// which means the browser threw the document away on every click: view switch,
+// column add/drop, slot pick, kind pick, slice pick, lot open. The product owner
+// used the screen and reported it as unusable — 「막 뭐 누를 때마다 새로고침되는데」
+// (2026-08-14). Marking, scroll and the table's horizontal scroll all died on
+// every click, and a 103-column table cannot be read that way.
+//
+// So the address bar still moves — every control is still a real, copyable,
+// back-buttonable URL, and a pasted link still renders its view in a cold tab —
+// but the ONLY thing that reloads the document is F5:
+//
+//   anchor click  -> preventDefault + pushState + render()
+//   Enter in box  -> pushState + render()
+//   marking       -> replaceState + repaint (a selection, not a question)
+//   back/forward  -> popstate + render()
+//
+// A link that LEAVES the console (`/index.html`, another origin, target=_blank,
+// download, a modified click) is a real navigation and is left alone — the guard
+// is on pathname/origin, not on a list of hrefs, so an anchor added tomorrow in
+// any view module is routed without that module knowing this file exists.
+// ════════════════════════════════════════════════════════════
+
+//: Which view the address bar is on right now, in the same spelling
+//: `parseStructureQuery` yields ('' = the ask view). Read by the ask box, and by
+//: the click handler to decide whether a click is a change of question (scroll to
+//: top) or a change of detail within the same question (hold the scroll).
+let currentView = '';
+//: The lot view's question as the URL stated it, so a lot typed in the box while
+//: that view is up keeps the finding kind the URL is already carrying.
+let currentLotAsked = null;
+
+//: Where the reader was, to be re-applied after the paints of the current
+//: navigation. Null means "this navigation is a new question — start at the top".
+let pendingScroll = null;
+
+//: 🔴 AND WHERE THEY WERE SIDEWAYS. After the transpose this is the expensive one:
+//: lots run left to right, so a reader comparing the newest lots is a hundred
+//: columns from the left edge. It is held in a variable rather than re-read off
+//: the DOM each time because a view paints TWICE — the busy frame has no columns,
+//: so reading the position off it would forget the reader between the frame and
+//: the answer, which is exactly what was measured happening.
+let tableScrollLeft = 0;
+
+function holdScroll() { pendingScroll = window.pageYOffset || 0; }
+
+//: The position WE last wrote, so the scroll listener below can tell our own
+//: restore apart from the reader moving. `scrollTo` reports asynchronously, so a
+//: boolean flag flipped around the call would already be false by then.
+let scrollWeSet = null;
+
+/**
+ * Re-apply the held scroll after a paint.
+ *
+ * Called after EVERY paint of a navigation, not once: a view paints twice (the
+ * frame with 「집계 중…」, then the answer), and the second paint changes the
+ * document height, so a single restore lands on a page that is about to grow.
+ *
+ * 🔴 AND IT MUST STOP WHEN THE READER TAKES OVER. The surprise view keeps
+ * painting long after its navigation — every axis map that lands repaints the
+ * mount — so a hold that never expired would yank the reader back to where they
+ * were a minute ago each time a wafer arrived. `releaseScrollOnUserScroll` below
+ * is what ends it.
+ */
+function settleScroll() {
+  if (pendingScroll === null) return;
+  if ((window.pageYOffset || 0) !== pendingScroll) {
+    scrollWeSet = pendingScroll;
+    window.scrollTo(0, pendingScroll);
+  }
+}
+
+function releaseScrollOnUserScroll() {
+  window.addEventListener('scroll', () => {
+    const y = window.pageYOffset || 0;
+    // Our own restore landing — not the reader.
+    if (scrollWeSet !== null && y === scrollWeSet) { scrollWeSet = null; return; }
+    pendingScroll = null;
+    scrollWeSet = null;
+  }, { passive: true });
+}
+
+function currentParams() {
+  return new URLSearchParams(window.location.search);
+}
+
+function viewOf(params) {
+  return parseStructureQuery(params).view;
+}
+
+/**
+ * Go to a URL on this page WITHOUT reloading it.
+ *
+ * `keepScroll` is the difference between "same question, more detail" (adding a
+ * column, picking a slot — the reader is mid-read and must not be thrown to the
+ * top) and "a different question" (a view switch — the top is where the new
+ * answer starts).
+ *
+ * A browser that refuses `pushState` (file://, an ancient shell) falls back to a
+ * real navigation rather than to a dead control.
+ */
+function go(url, { keepScroll = false } = {}) {
+  const next = String(url || '?');
+  if (!window.history || !window.history.pushState) {
+    window.location.href = next;
+    return;
+  }
+  try {
+    // Stamp where the CURRENT entry was, so Back returns to the same place
+    // rather than to the top of a screen the reader had scrolled through.
+    window.history.replaceState({ scrollY: window.pageYOffset || 0 }, '', window.location.href);
+    window.history.pushState({ scrollY: 0 }, '', next);
+  } catch (err) {
+    window.location.href = next;
+    return;
+  }
+  if (keepScroll) holdScroll();
+  else {
+    // A different question starts at the top — of both axes.
+    pendingScroll = null;
+    tableScrollLeft = 0;
+    window.scrollTo(0, 0);
+  }
+  render(currentParams());
+}
+
+/**
+ * Every anchor on the page, decided per click.
+ *
+ * 🔴 DELEGATED ON `document`, BOUND ONCE. The views clear and rebuild their
+ * mounts on every repaint, so a listener per anchor would leak one per anchor per
+ * repaint — and the structure view's anchors live in a module this lane must not
+ * edit. One listener at the document is what routes them all without touching a
+ * single view file.
+ */
+function onDocumentClick(e) {
+  if (e.defaultPrevented || e.button !== 0) return;
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const start = e.target;
+  const a = start && typeof start.closest === 'function' ? start.closest('a[href]') : null;
+  if (!a) return;
+  // SVG anchors carry an SVGAnimatedString `href`; the attribute is read as text
+  // for every anchor so this function never depends on which namespace it is in.
+  if (a.hasAttribute('download')) return;
+  const target = a.getAttribute('target');
+  if (target && target !== '_self') return;
+  const raw = a.getAttribute('href');
+  if (!raw) return;
+  if (raw.charAt(0) === '#') return; // a fragment is the browser's own job
+  let u;
+  try { u = new URL(raw, window.location.href); } catch (err) { return; }
+  // 🔴 LEAVING THE CONSOLE STAYS A REAL NAVIGATION. `← 그리드` is a different
+  // document and must load like one.
+  if (u.origin !== window.location.origin) return;
+  if (u.pathname !== window.location.pathname) return;
+  e.preventDefault();
+  go(`${u.pathname}${u.search}${u.hash}`, { keepScroll: viewOf(new URLSearchParams(u.search)) === currentView });
+}
 
 // 🔴 COVERAGE — "what can I ask", fetched ONCE per page load.
 //
@@ -160,8 +328,11 @@ async function runStructure(question) {
   const catalog = await loadKinds();
   if (mine !== structureSession) return;
 
-  const paint = (body, notice) => renderStructure(document, mount,
-    structureModel({ body, kinds: catalog, kindsBody, question }), notice);
+  const paint = (body, notice) => {
+    renderStructure(document, mount,
+      structureModel({ body, kinds: catalog, kindsBody, question }), notice);
+    settleScroll();
+  };
 
   // The frame paints from the catalog alone first, so the kind registry is
   // readable while the aggregate is still in flight.
@@ -223,8 +394,22 @@ const axisInFlight = new Set();
 function paintSurprise(catalog, notice) {
   const mount = byId('lt-surprise');
   if (!mount) return null;
+  // 🔴 THE TABLE'S HORIZONTAL SCROLL IS STATE TOO, and after the transpose it is
+  // the most expensive state on the screen: lots run sideways, so a reader
+  // comparing the newest ten lots is a hundred columns from the left edge. A
+  // repaint that reset it would undo the reader's position on every marking tick.
+  const before = mount.querySelector('.sx-tablewrap');
+  // Only LEARN a position from a table that could actually hold one. The busy
+  // frame is a table with no columns and reads back 0 — believing it is how the
+  // reader's place got thrown away between the frame and the answer.
+  if (before && before.scrollWidth > before.clientWidth) tableScrollLeft = before.scrollLeft;
   const model = surpriseModel({ body: surpriseBody, kinds: catalog, question: surpriseAsked });
   renderSurprise(document, mount, model, notice, { maps: axisMaps, floors: axisFloors });
+  if (tableScrollLeft) {
+    const after = mount.querySelector('.sx-tablewrap');
+    if (after) after.scrollLeft = tableScrollLeft;
+  }
+  settleScroll();
   return model;
 }
 
@@ -240,12 +425,15 @@ function paintSurprise(catalog, notice) {
  * registered frame and a real valid-die mask under it — which is the whole of
  * the owner's third constraint that can be honoured today.
  */
-async function loadAxisMap(rowId, catalog) {
-  // 🔴 THE CACHE KEY CARRIES THE SLOT. One lot is 25 bonding frames with
-  // different grids, so `row` alone would serve slot 3's picture under slot 7's
-  // heading the moment the reader changed slots.
-  const slot = surpriseAsked.slot || '';
-  const key = `${rowId}|${slot}`;
+async function loadAxisMap(rowId, slot, catalog) {
+  // 🔴 THE SLOT IS A PARAMETER, NOT A READ OF `surpriseAsked`. One lot is many
+  // bonding frames, and the strip asks for a SPECIFIC one per entry — a loader
+  // that took the address bar's slot instead would fetch the same frame N times
+  // and leave the other N-1 entries pending forever.
+  //
+  // 🔴 AND THE CACHE KEY CARRIES IT. `row` alone would serve slot 3's picture
+  // under slot 7's heading.
+  const key = `${rowId}|${slot || ''}`;
   if (axisInFlight.has(key) || axisMaps[key]) return;
   axisInFlight.add(key);
   const parts = [`row=${encodeURIComponent(rowId)}`];
@@ -268,14 +456,25 @@ async function loadAxisMap(rowId, catalog) {
   try {
     await resolveFloors(axisMaps[key].projections, axisFloors);
   } catch (err) { /* a floor that will not resolve renders as its own refusal */ }
-  paintSurprise(catalog, null);
+  // Repaint, then ask what the strip wants NEXT. `mapWants` hands back a bounded
+  // batch, so this is what walks a 25-frame lot to completion instead of firing
+  // 25 requests at once.
+  pumpAxisMaps(paintSurprise(catalog, null), catalog);
 }
 
+/**
+ * Fetch whatever the strip is still waiting for.
+ *
+ * 🔴 IT ASKS THE RENDERER, IT DOES NOT GUESS. Iterating `model.marked` was the
+ * defect: one marked lot is many bonding frames, so one map per marked lot left
+ * every other entry 「불러오는 중…」 forever. `mapWants` runs the strip's own
+ * layout and returns the `{row, slot}` pairs it has no body for — one function
+ * decides which frames exist and both callers read it.
+ */
 function pumpAxisMaps(model, catalog) {
   if (!model) return;
-  const slot = surpriseAsked.slot || '';
-  for (const row of model.marked) {
-    if (!axisMaps[`${row.row}|${slot}`]) loadAxisMap(row.row, catalog);
+  for (const want of mapWants(model, axisMaps)) {
+    loadAxisMap(want.row, want.slot, catalog);
   }
 }
 
@@ -359,8 +558,13 @@ async function runSurprise(question) {
 function repaintSurprise() {
   const mount = byId('lt-surprise');
   if (!mount) return;
+  // A tick of a checkbox must leave the reader exactly where they were — both
+  // axes. `paintSurprise` restores the table's horizontal scroll; this holds the
+  // page's vertical one across the rebuild.
+  holdScroll();
   if (window.history && window.history.replaceState) {
-    window.history.replaceState(null, '', `?${surpriseQuery(surpriseAsked)}`);
+    window.history.replaceState({ scrollY: window.pageYOffset || 0 }, '',
+      `?${surpriseQuery(surpriseAsked)}`);
   }
   loadKinds().then((catalog) => {
     pumpAxisMaps(paintSurprise(catalog, null), catalog);
@@ -426,8 +630,10 @@ async function runLot(question) {
   // here — `finding=<kind>` is the generalisation and `void` is a default that
   // lives in the catalog, not in this client.
   const kind = pickKind(catalog, question.finding);
-  const paint = (body, notice) => renderLotReference(document, mount,
-    lotModel({ body, question, kind }), notice);
+  const paint = (body, notice) => {
+    renderLotReference(document, mount, lotModel({ body, question, kind }), notice);
+    settleScroll();
+  };
 
   // No lot in the address is a real state of this view and it costs no request.
   if (!question.lot) {
@@ -485,6 +691,7 @@ async function runEmpty(mount) {
   const body = await loadCoverage();
   if (mine !== session) return;
   renderCoverage(document, mount, body);
+  settleScroll();
 }
 
 // 🔴 THE CONSOLE'S OWN SESSION GUARD. It is a SEPARATE counter from the lineage
@@ -526,8 +733,11 @@ async function runConsole(question) {
   // waiting for an answer they already decided against.
   const kind = consoleModel({ catalog, body: null, question }).kind;
   const asked = { finding: kind, slices: question.slices };
-  renderConsole(document, mount, consoleModel({ catalog, body: null, question: asked }),
-    { tone: 'busy', title: '집계 중…', detail: null });
+  const paint = (body, notice) => {
+    renderConsole(document, mount, consoleModel({ catalog, body, question: asked }), notice);
+    settleScroll();
+  };
+  paint(null, { tone: 'busy', title: '집계 중…', detail: null });
 
   const query = `${consoleQuery(asked)}&mode=contrast`;
   let res;
@@ -535,8 +745,7 @@ async function runConsole(question) {
     res = await fetch(`${API_BASE}/api/ledger/siblings?${query}`);
   } catch (err) {
     if (mine !== consoleSession) return;
-    renderConsole(document, mount, consoleModel({ catalog, body: null, question: asked }),
-      { tone: 'error', title: '서버에 닿지 못했습니다', detail: String((err && err.message) || err) });
+    paint(null, { tone: 'error', title: '서버에 닿지 못했습니다', detail: String((err && err.message) || err) });
     return;
   }
   if (mine !== consoleSession) return;
@@ -547,7 +756,7 @@ async function runConsole(question) {
     // The panels still render, every one of them saying what it does not know.
     // The server's sentence goes out verbatim beneath — same rule as the
     // lineage refusal, and for the same reason.
-    renderConsole(document, mount, consoleModel({ catalog, body: null, question: asked }), {
+    paint(null, {
       tone: res.status === 404 ? 'gap' : 'error',
       title: res.status === 404
         ? '집계 API 미배포 — 화면만 준비됨'
@@ -562,13 +771,12 @@ async function runConsole(question) {
     body = await res.json();
   } catch (err) {
     if (mine !== consoleSession) return;
-    renderConsole(document, mount, consoleModel({ catalog, body: null, question: asked }),
-      { tone: 'error', title: '응답을 읽지 못했습니다', detail: String((err && err.message) || err) });
+    paint(null, { tone: 'error', title: '응답을 읽지 못했습니다', detail: String((err && err.message) || err) });
     return;
   }
   if (mine !== consoleSession) return;
 
-  renderConsole(document, mount, consoleModel({ catalog, body, question: asked }), null);
+  paint(body, null);
 }
 
 async function run(asked, { pushUrl = true } = {}) {
@@ -589,9 +797,11 @@ async function run(asked, { pushUrl = true } = {}) {
     // very next reload would put them back on the default kind with no way to
     // tell that their choice had been discarded.
     const keep = consoleQuery(consoleAsked);
-    window.history.replaceState(null, '', `?${keep ? `${keep}&` : ''}${query}`);
+    window.history.replaceState({ scrollY: window.pageYOffset || 0 }, '',
+      `?${keep ? `${keep}&` : ''}${query}`);
   }
-  renderNotice(document, mount, { tone: 'busy', title: '조회 중…', detail: null });
+  const notice = (n) => { renderNotice(document, mount, n); settleScroll(); };
+  notice({ tone: 'busy', title: '조회 중…', detail: null });
 
   // Started here and cached, so it costs one request per page load and is
   // settled long before the walk answers. It is awaited below rather than here:
@@ -603,9 +813,7 @@ async function run(asked, { pushUrl = true } = {}) {
     res = await fetch(`${API_BASE}/api/ledger/trace?${query}`);
   } catch (err) {
     if (mine !== session) return;
-    renderNotice(document, mount, {
-      tone: 'error', title: '서버에 닿지 못했습니다', detail: String(err && err.message || err),
-    });
+    notice({ tone: 'error', title: '서버에 닿지 못했습니다', detail: String(err && err.message || err) });
     return;
   }
   if (mine !== session) return;
@@ -626,7 +834,7 @@ async function run(asked, { pushUrl = true } = {}) {
     const nothing = res.status === 422
       ? null
       : nothingVerdict(null, refusal.state === 'unknown' ? ledgerState : refusal.state);
-    renderNotice(document, mount, {
+    notice({
       tone: nothing ? nothing.tone : 'error',
       title: nothing
         ? nothing.title
@@ -642,9 +850,7 @@ async function run(asked, { pushUrl = true } = {}) {
     trace = await res.json();
   } catch (err) {
     if (mine !== session) return;
-    renderNotice(document, mount, {
-      tone: 'error', title: '응답을 읽지 못했습니다', detail: String(err && err.message || err),
-    });
+    notice({ tone: 'error', title: '응답을 읽지 못했습니다', detail: String(err && err.message || err) });
     return;
   }
   if (mine !== session) return;
@@ -661,8 +867,8 @@ async function run(asked, { pushUrl = true } = {}) {
 }
 
 // The console's question as the URL stated it, remembered so the lineage answer
-// can keep it in the address bar (see `run`). Set once in `boot`, because every
-// console navigation is a real link and therefore a fresh page.
+// can keep it in the address bar (see `run`). Re-read on every in-page navigation
+// (`render`), because a console navigation is no longer a fresh page.
 let consoleAsked = { finding: '', slices: {} };
 
 /**
@@ -702,89 +908,39 @@ function switchViews(view) {
 }
 
 /**
- * Enter in the lineage box, from a view that has no lineage panel on screen.
+ * Answer whatever the address bar is currently asking — WITHOUT reloading.
  *
- * `toQuery` is how the CURRENT view says where a typed lot should land. The two
- * type-level views have no lot of their own, so a lot means "show me its
- * lineage"; the reference view IS about a lot, so a lot typed there means "the
- * same question about a different lot" — anything else would be the address bar
- * changing question on the operator without being asked to.
+ * This is the whole of what a page load used to do, minus the page load. It is
+ * called on first boot, on every routed anchor click, on Enter in the lineage
+ * box, and on back/forward. Every branch keeps the rule the four views were
+ * written under: a view fetches ONLY its own question, so "what does this screen
+ * cost" stays readable.
  */
-function bindNavigatingAsk(toQuery) {
-  const box = byId('lt-query');
-  if (!box) return;
-  const build = typeof toQuery === 'function' ? toQuery : traceQuery;
-  box.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    const asked = parseQuery(box.value);
-    if (!asked.lot) return;
-    // A real navigation — a different question is a different URL.
-    window.location.search = `?${build(asked)}`;
-  });
-  box.focus();
-}
-
-function boot() {
-  initTheme();
-  const params = new URLSearchParams(window.location.search);
-  const structureAsked = parseStructureQuery(params);
-  const view = structureAsked.view;
-  const isStructure = view === STRUCTURE_VIEW;
+function render(params) {
+  const view = viewOf(params);
+  currentView = view;
   switchViews(view);
 
   if (view === SURPRISE_VIEW) {
-    // 🔴 ONLY THE KIND CATALOG, NOT COVERAGE AND NOT THE CONSOLE — same rule the
-    // structure view follows. A view that quietly issues another view's requests
-    // makes every reading of "what does this screen cost" wrong.
     loadKinds();
     runSurprise(parseSurpriseQuery(params));
-
-    // 🔴 ONE DELEGATED LISTENER ON THE MOUNT, BOUND ONCE. The mount survives every
-    // re-render (the view clears its children, not the mount), so marking cannot
-    // leak a listener per row per repaint — which on a few hundred lots and a few
-    // dozen marks is the difference between a screen and a freeze.
-    const mount = byId('lt-surprise');
-    if (mount) {
-      mount.addEventListener('change', (e) => {
-        const target = e.target;
-        if (!target || typeof target.getAttribute !== 'function') return;
-        const lot = target.getAttribute('data-mark-lot');
-        if (!lot) return;
-        surpriseAsked = toggleMark(surpriseAsked, lot);
-        repaintSurprise();
-      });
-    }
-    bindNavigatingAsk();
     return;
   }
 
   if (view === LOT_VIEW) {
-    // 🔴 ONLY THE KIND CATALOG AND THIS VIEW'S OWN QUESTION — same rule the two
-    // views above follow. A view that quietly issues another view's requests
-    // makes every reading of "what does this screen cost" wrong.
     loadKinds();
-    const lotAsked = parseLotQuery(params);
-    runLot(lotAsked);
-    // A lot typed here keeps the SAME question — the reference view of that lot —
-    // and keeps the finding kind the URL is already carrying.
-    bindNavigatingAsk((asked) => lotQuery({
-      lot: asked.lot, slot: asked.slot, finding: lotAsked.finding,
-    }));
+    currentLotAsked = parseLotQuery(params);
+    runLot(currentLotAsked);
     return;
   }
 
-  if (isStructure) {
-    // 🔴 ONLY THE KIND CATALOG IS FETCHED HERE, NOT COVERAGE AND NOT THE CONSOLE.
-    // A view that quietly issues the other view's requests makes every reading of
-    // "what does this screen cost" wrong, and the console's answer would be
-    // rendered into a hidden mount where nobody could see it was stale.
+  if (view === STRUCTURE_VIEW) {
     loadKinds();
-    runStructure(structureAsked);
-    bindNavigatingAsk();
+    runStructure(parseStructureQuery(params));
     return;
   }
 
+  // ── the ask view ──
   // In flight from the first tick. Whichever path `run` takes below, the answer
   // to "which nothing is this" is already on its way.
   loadCoverage();
@@ -792,8 +948,10 @@ function boot() {
   // kind picker paints from the catalog rather than from a fallback.
   loadKinds();
 
-  const input = byId('lt-query');
-  const fromUrl = { lot: (params.get('lot') || '').trim(), slot: (params.get('slot') || '').trim() || null };
+  const fromUrl = {
+    lot: (params.get('lot') || '').trim(),
+    slot: (params.get('slot') || '').trim() || null,
+  };
 
   // 🔴 THE CONSOLE RUNS ON EVERY LOAD, WITH OR WITHOUT A LOT. It is this page's
   // entry point (the 현황판 answers "which defect, how often, over what"), and a
@@ -803,20 +961,90 @@ function boot() {
   consoleAsked = parseConsoleQuery(params);
   runConsole(consoleAsked);
 
-  if (input) {
-    if (fromUrl.lot) input.value = queryText(fromUrl);
-    // ONE control, and Enter is its whole contract. `change` is deliberately not
-    // bound: it also fires on blur, so clicking away would re-issue a question
-    // the operator did not ask again.
-    input.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      run(parseQuery(input.value));
-    });
-    input.focus();
-  }
+  const input = byId('lt-query');
+  // Only overwritten when the URL names a lot — otherwise a half-typed lot would
+  // be wiped by a click on a slice chip beside the box.
+  if (input && fromUrl.lot) input.value = queryText(fromUrl);
 
   run(fromUrl.lot ? fromUrl : { lot: '', slot: null }, { pushUrl: false });
+}
+
+/**
+ * Enter in the lineage box.
+ *
+ * BOUND ONCE, and it reads the CURRENT view rather than being re-bound per view —
+ * re-binding on every in-page navigation would stack one listener per navigation
+ * and fire the question N times on the Nth Enter.
+ *
+ * Where a typed lot lands is the current view's business: the two type-level
+ * views have no lot of their own, so a lot means "show me its lineage"; the
+ * reference view IS about a lot, so a lot typed there means "the same question
+ * about a different lot"; and in the ask view the lineage panel is already on
+ * screen, so it renders in place and the answer's URL is written by `run`.
+ */
+function bindAskBox() {
+  const box = byId('lt-query');
+  if (!box) return;
+  box.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const asked = parseQuery(box.value);
+    if (!asked.lot) return;
+    if (currentView === LOT_VIEW) {
+      go(`?${lotQuery({
+        lot: asked.lot,
+        slot: asked.slot,
+        finding: currentLotAsked ? currentLotAsked.finding : '',
+      })}`);
+      return;
+    }
+    if (currentView === STRUCTURE_VIEW || currentView === SURPRISE_VIEW) {
+      go(`?${traceQuery(asked)}`);
+      return;
+    }
+    run(asked);
+  });
+  box.focus();
+}
+
+/**
+ * 🔴 ONE DELEGATED LISTENER ON THE MOUNT, BOUND ONCE — and now bound in `boot`
+ * rather than in the surprise branch, because the surprise view is entered and
+ * left many times per page load instead of once. The mount survives every
+ * re-render (the view clears its children, not the mount), so marking cannot leak
+ * a listener per row per repaint — which on a few hundred lots and a few dozen
+ * marks is the difference between a screen and a freeze.
+ */
+function bindMarking() {
+  const mount = byId('lt-surprise');
+  if (!mount) return;
+  mount.addEventListener('change', (e) => {
+    const target = e.target;
+    if (!target || typeof target.getAttribute !== 'function') return;
+    const lot = target.getAttribute('data-mark-lot');
+    if (!lot) return;
+    surpriseAsked = toggleMark(surpriseAsked, lot);
+    repaintSurprise();
+  });
+}
+
+function boot() {
+  initTheme();
+  // The browser's own scroll restore races our fetches — it fires before the
+  // answer exists, so it lands on a short page and is then wrong. `popstate`
+  // carries the position instead, applied after each paint.
+  if (window.history && 'scrollRestoration' in window.history) {
+    try { window.history.scrollRestoration = 'manual'; } catch (err) { /* not settable */ }
+  }
+  document.addEventListener('click', onDocumentClick);
+  window.addEventListener('popstate', (e) => {
+    pendingScroll = e && e.state && typeof e.state.scrollY === 'number' ? e.state.scrollY : 0;
+    render(currentParams());
+  });
+  releaseScrollOnUserScroll();
+  bindAskBox();
+  bindMarking();
+  render(currentParams());
 }
 
 if (document.readyState === 'loading') {

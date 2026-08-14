@@ -369,12 +369,22 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   const tbody = first(byClass(mount, 'sx-tbody'));
   const legend = first(byClass(mount, 'sx-legend'));
 
+  // 🔴 THE TABLE IS TRANSPOSED (owner, 2026-08-14: 「가로로 리스팅해」). A LOT is a
+  // COLUMN now: its header is one `th.sx-lotcol` in the head row, and its cells are
+  // spread one per metric row down the body. So a lot's cell is the node carrying
+  // BOTH `data-lot` and `data-col` — which is also why these two helpers exist
+  // instead of a tree-wide sweep: the assertions must stay scoped to the table, or
+  // the legend (same words, same 미검사) makes them vacuous. See S5.
+  const headRow = first(byClass(mount, 'sx-hrow'));
+  const lotHead = (lot) => first(byAttr(headRow, 'data-lot', lot));
+  const cellOf = (lot, col) => first(
+    byAttr(tbody, 'data-lot', lot).filter((n) => n.getAttribute('data-col') === col));
+
   // ── A. 미검사 ≠ 0 ────────────────────────────────────────────────────────────
   console.log('\n── A. 미검사와 0은 다른 칸 ───────────────────────────────');
   {
-    const r0 = first(byAttr(tbody, 'data-lot', 'CL-2601-002'));
-    const zero = first(byAttr(r0, 'data-col', 'zzq:found_rate'));
-    const unscanned = first(byAttr(r0, 'data-col', 'zzq:extent_mean'));
+    const zero = cellOf('CL-2601-002', 'zzq:found_rate');
+    const unscanned = cellOf('CL-2601-002', 'zzq:extent_mean');
 
     eq('A1 the measured zero says it was measured', zero.getAttribute('data-cell-state'), 'measured');
     eq('A2 the unscanned cell says it was not', unscanned.getAttribute('data-cell-state'), 'unscanned');
@@ -393,15 +403,14 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
 
     // 🔴 AN ABSENT CELL IS NOT AN UNSCANNED CELL. 미검사 is a measurement the server
     // made; a cell the response never carried is a hole in the ANSWER.
-    const r3 = first(byAttr(tbody, 'data-lot', 'CL-2601-021'));
-    const absent = first(byAttr(r3, 'data-col', 'zzq:extent_mean'));
+    const absent = cellOf('CL-2601-021', 'zzq:extent_mean');
     eq('A11 a cell the response omitted reads as 미보고', absent.getAttribute('data-cell-state'), 'unreported');
-    ok('A12 and NOT as 미검사', absent.getAttribute('data-cell-state')
-      !== first(byAttr(r0, 'data-col', 'zzq:extent_mean')).getAttribute('data-cell-state'));
+    ok('A12 and NOT as 미검사',
+      absent.getAttribute('data-cell-state') !== unscanned.getAttribute('data-cell-state'));
     ok('A13 the two nothings read differently on screen',
       absent.textContent.includes('미보고') && !absent.textContent.includes('미검사'), absent.textContent);
 
-    const unmeasurable = first(byAttr(r3, 'data-col', 'wob:found_rate'));
+    const unmeasurable = cellOf('CL-2601-021', 'wob:found_rate');
     eq('A9 unmeasurable is its own state', unmeasurable.getAttribute('data-cell-state'), 'unmeasurable');
     ok('A10 and it reads as neither zero nor 미검사',
       unmeasurable.textContent.includes('측정 불가') && !unmeasurable.textContent.includes('미검사'),
@@ -411,8 +420,7 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   // ── B. 분모 ──────────────────────────────────────────────────────────────────
   console.log('\n── B. 분모 없는 숫자 출고 금지 ────────────────────────────');
   {
-    const r1 = first(byAttr(tbody, 'data-lot', 'CL-2601-006'));
-    const rate = first(byAttr(r1, 'data-col', 'zzq:found_rate'));
+    const rate = cellOf('CL-2601-006', 'zzq:found_rate');
     const frac = first(byClass(rate, 'sx-cell__f'));
     // 🔴 725, NOT 3525. The denominator is the INSPECTED chip count; a client that
     // took the row's universe would be wrong by ~5×.
@@ -421,12 +429,15 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
     eq('B2 and it is NOT the row universe', frac.getAttribute('data-denominator') === '3525', false);
     ok('B3 the fraction is on screen beside the percentage',
       rate.textContent.includes('302/725'), rate.textContent);
-    const chips = first(byClass(r1, 'sx-row__chips'));
-    ok('B4 the row universe is labelled as its own thing, not as the denominator',
+    // The lot's unit count rode in a row cell before the transpose; it rides in the
+    // lot's COLUMN HEADER now, and it is still labelled as its own thing.
+    const chips = first(byClass(lotHead('CL-2601-006'), 'sx-lotcol__units'));
+    ok('B4 the lot universe is labelled as its own thing, not as the denominator',
       chips.textContent.includes('3,525'), chips.textContent);
+    eq('B4b and it is addressable as a number, not only as text',
+      chips.getAttribute('data-universe'), '3525');
 
-    const nod = first(byAttr(tbody, 'data-lot', 'CL-2601-021'));
-    const bare = first(byAttr(nod, 'data-col', 'zzq:found_rate'));
+    const bare = cellOf('CL-2601-021', 'zzq:found_rate');
     eq('B5 a measured rate with no denominator refuses', bare.getAttribute('data-cell-state'), 'no_denominator');
     ok('B6 and the count still shows, because the count is real',
       bare.textContent.includes('12건'), bare.textContent);
@@ -434,18 +445,17 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
       bare.textContent.includes('검사 칩'), bare.textContent);
     ok('B8 no percentage is printed without a denominator', !bare.textContent.includes('%'), bare.textContent);
 
-    eq('B9 an unreported row universe is not 0',
-      first(byClass(nod, 'sx-row__chips--none')).getAttribute('data-chips'), 'none');
+    eq('B9 an unreported lot universe is not 0',
+      first(byClass(lotHead('CL-2601-021'), 'sx-row__chips--none')).getAttribute('data-chips'), 'none');
   }
 
   // ── C. level은 서버가 낸다 ────────────────────────────────────────────────────
   console.log('\n── C. 조건부서식 단계는 서버의 것 ─────────────────────────');
   {
-    const r1 = first(byAttr(tbody, 'data-lot', 'CL-2601-006'));
     eq('C1 the served level reaches the cell verbatim',
-      first(byAttr(r1, 'data-col', 'zzq:found_rate')).getAttribute('data-heat'), '4');
-    eq('C2 and a different column keeps ITS level',
-      first(byAttr(r1, 'data-col', 'zzq:extent_mean')).getAttribute('data-heat'), '2');
+      cellOf('CL-2601-006', 'zzq:found_rate').getAttribute('data-heat'), '4');
+    eq('C2 and a different metric keeps ITS level',
+      cellOf('CL-2601-006', 'zzq:extent_mean').getAttribute('data-heat'), '2');
     // 🔴 NO THRESHOLD FUNCTION EXISTS IN THE SOURCE. S3, scored as text because
     // the defect is a second implementation existing at all.
     const bare = stripComments(coreSrc);
@@ -460,22 +470,80 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   // ── D. 특수평가: 뱃지만, 칠하지 않고, 숨기지 않고 ─────────────────────────────
   console.log('\n── D. 특수평가 행 ────────────────────────────────────────');
   {
-    const rows = byClass(tbody, 'sx-row');
-    eq('D1 every row is in the table, off-baseline included', rows.length, 4);
-    const qe = first(byAttr(tbody, 'data-lot', 'CL-2601-QE2'));
+    // 🔴 LOTS ARE COLUMNS NOW, so "every row is in the table" is counted on the
+    // head row. The claim is unchanged: an off-baseline lot is SHOWN.
+    eq('D1 every lot is in the table, off-baseline included',
+      byClass(headRow, 'sx-lotcol').length, 4);
+    const qe = lotHead('CL-2601-QE2');
     ok('D2 it is not hidden', qe !== NOTHING);
     eq('D3 it is badged', first(byClass(qe, 'sx-bucket')).getAttribute('data-bucket-badge'), 'special_eval');
     ok('D4 the badge says so in words', qe.textContent.includes('특수평가'), qe.textContent.slice(0, 120));
     // 🔴 THE SUPPRESSION RULE IS THE SERVER'S DECLARATION, not a bucket-name match.
-    eq('D3b the row carries the server\'s baseline membership',
+    eq('D3b the lot carries the server\'s baseline membership',
       qe.getAttribute('data-counts-baseline'), '0');
-    const cell = first(byAttr(qe, 'data-col', 'zzq:found_rate'));
+    const cell = cellOf('CL-2601-QE2', 'zzq:found_rate');
     eq('D5 and its cell is NOT painted despite a served level', cell.getAttribute('data-heat'), null);
     eq('D6 the suppression is stated, not silent', cell.getAttribute('data-heat-suppressed'), 'special_eval');
     ok('D7 the value is still printed', cell.textContent.includes('34.0%'), cell.textContent);
     ok('D8 the legend explains the rule', legend.textContent.includes('칠하지 않습니다'), '');
     ok('D9 and names the declared discriminator rather than a guessed one',
       legend.textContent.includes('counts_toward_baseline'), '');
+  }
+
+  // ── P. 전치 — 트렌드는 가로로 읽힌다 ─────────────────────────────────────────
+  // 🔴 소유자 2026-08-14: 「상단 트렌드 표는 세로 말고 가로로 리스팅해」.
+  console.log('\n── P. 전치 — 행=지표, 열=랏, 최신이 오른쪽 ────────────────');
+  {
+    const lots = byClass(headRow, 'sx-lotcol');
+    eq('P1 every lot is a COLUMN', lots.length, 4);
+    // 🔴 THE ORDER IS THE ANSWER'S. `/lots` returns ascending `order_index` and
+    // this view does not sort, so the newest lot is the last column. A reversed
+    // render would look plausible and be wrong, which is why the corpus mutates it.
+    eq('P2 the oldest lot is the leftmost column',
+      first(lots).getAttribute('data-lot'), 'CL-2601-002');
+    eq('P3 the newest lot is the RIGHTMOST column',
+      lots[lots.length - 1].getAttribute('data-lot'), 'CL-2601-021');
+
+    // 🔴 THE METRIC AXIS IS A LIST THE RENDERER ITERATES, not a layout. The
+    // follow-up round (a panel that composes the metric set) edits that list; it
+    // does not rewrite this table.
+    const mrows = byClass(tbody, 'sx-mrow');
+    eq('P4 every declared metric is a ROW', mrows.length, 3);
+    eq('P5 in the order the resolved question named them',
+      mrows.map((r) => r.getAttribute('data-col')).join(','),
+      'zzq:found_rate,zzq:extent_mean,wob:found_rate');
+
+    // Scope is not decoration on a transposed table — it is the only thing that
+    // tells a screen reader which axis a header belongs to.
+    eq('P6 the metric header is scoped as a row header',
+      first(byClass(tbody, 'sx-th--metric')).getAttribute('scope'), 'row');
+    eq('P7 and the lot header as a column header', first(lots).getAttribute('scope'), 'col');
+
+    // ── marking survived the transpose, and did not eat the heat ──
+    const markedModel = core.surpriseModel({
+      body: FIX,
+      kinds: KINDS,
+      question: core.parseSurpriseQuery(new URLSearchParams('view=surprise&mark=R-2')),
+    });
+    const dm = makeDoc('light');
+    const mm = dm.createElement('div');
+    view.renderSurprise(dm, mm, markedModel, null, null);
+    const mHead = first(byAttr(first(byClass(mm, 'sx-hrow')), 'data-lot', 'CL-2601-006'));
+    eq('P8 the marked lot is flagged on its column header',
+      mHead.getAttribute('data-marked'), '1');
+    ok('P9 and its mark box is checked, in the header',
+      first(byAttr(mHead, 'data-mark-lot', 'R-2')) !== NOTHING);
+    const mBody = first(byClass(mm, 'sx-tbody'));
+    const mCell = first(byAttr(mBody, 'data-lot', 'CL-2601-006')
+      .filter((n) => n.getAttribute('data-col') === 'zzq:found_rate'));
+    eq('P10 every cell of the marked column carries the membership',
+      mCell.getAttribute('data-marked'), '1');
+    // 🔴 THE ONE THAT WOULD BE EASY TO LOSE. Marking a lot must not erase the very
+    // conditional formatting the reader marked it for.
+    eq('P11 and marking did NOT erase the cell\'s heat', mCell.getAttribute('data-heat'), '4');
+    const unmarked = first(byAttr(first(byClass(mm, 'sx-hrow')), 'data-lot', 'CL-2601-002'));
+    eq('P12 an unmarked lot is still in the table (스팟파이어식)',
+      unmarked.getAttribute('data-marked'), '0');
   }
 
   // ── E. 지표 목록은 선언에서 나온다 ────────────────────────────────────────────
@@ -554,7 +622,8 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
     // the legend — and the mutant pair below measures that this actually holds.
     eq('G1 the legend uses no row attribute', hasAttr(legend, 'data-heat').length, 0);
     ok('G2 it uses its own instead', hasAttr(legend, 'data-heat-key').length >= 4);
-    eq('G3 the legend has no table rows in it', byClass(legend, 'sx-row').length, 0);
+    eq('G3 the legend has no table rows in it', byClass(legend, 'sx-mrow').length, 0);
+    eq('G3b nor any lot column', byClass(legend, 'sx-lotcol').length, 0);
     ok('G4 painted cells exist only in the table body',
       hasAttr(tbody, 'data-heat').length > 0);
   }
@@ -600,25 +669,38 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
       !/Math\.sqrt|<circle|arc\(/.test(stripComments(mapViewSrc)), 'a circular grid crept back in');
   }
 
-  // ── I. 슬롯은 질문의 일부 ────────────────────────────────────────────────────
-  console.log('\n── I. 랏 하나 ≠ 프레임 하나 ──────────────────────────────');
+  // ── I. 맵 로더와 맵 렌더러는 «같은» 프레임 목록을 본다 ────────────────────────
+  //
+  // 🔴 THE SLOT PICKER IS GONE (owner, 2026-08-14: stop demanding a slot, render
+  // every matched frame). Its assertions I1–I6 died with the feature they tested
+  // and were removed rather than relaxed.
+  //
+  // What replaces them is the contract the LOADER now depends on. `ledger_trace.js`
+  // used to iterate `model.marked` and fetch one map per marked lot, which left a
+  // 25-frame lot showing 25 entries 「불러오는 중…」 that nothing would ever fill.
+  // It now drives off `mapWants`, so the two callers cannot disagree about which
+  // frames exist — and these assertions are what keeps that true.
+  console.log('\n── I. 맵 로더 = 맵 렌더러 ────────────────────────────────');
   {
-    const row = first(byAttr(first(byClass(mount, 'sx-maps')), 'data-map-lot', 'CL-2601-006'));
-    const strip = first(byClass(row, 'sx-slots'));
-    ok('I1 the slot strip exists', strip !== NOTHING);
-    // 🔴 READ, NOT ASSEMBLED. The list is the server's answer to
-    // `frame_ambiguous_across_slots`, so the client does not build it twice.
-    eq('I2 listing the slots the SERVER says exist', strip.getAttribute('data-slot-count'), '3');
-    eq('I3 the served slot is marked current', first(byAttr(strip, 'aria-current', 'true')).getAttribute('data-slot'), '3');
-    ok('I4 each slot is an anchor carrying the whole question',
-      first(byAttr(strip, 'data-slot', '7')).getAttribute('href').includes('slot=7'));
-    eq('I5 the note is attributed to the refusal it came from',
-      first(byClass(strip, 'sx-slots__note')).getAttribute('data-slot-note'),
-      'frame_ambiguous_across_slots');
-    ok('I6 and it is the server\'s sentence, not a paraphrase',
-      strip.textContent.includes('격자 치수가 다르다'), strip.textContent);
     const cached = mapCore.mapSection(model, { 'R-2|': AXIS_FIX }, {});
     eq('I7 the map is keyed on the row id the route takes', cached.lots[0].row, 'R-2');
+    // 🔴 THE PAIRS ARE `{row, slot}`, and the loader passes BOTH. A loader reading
+    // the address bar's slot instead of the pair's would refetch one frame N times.
+    const wants = mapCore.mapWants(model, {});
+    ok('I8 an unfetched frame is asked for', wants.length > 0, JSON.stringify(wants));
+    ok('I9 every want names its own row AND its own slot',
+      wants.every((w) => typeof w.row === 'string' && w.row && 'slot' in w),
+      JSON.stringify(wants));
+    // A frame already in the cache is NOT asked for again — this is what makes the
+    // pump terminate instead of looping on the same key.
+    const served = {};
+    for (const w of wants) served[`${w.row}|${w.slot}`] = { projections: [] };
+    eq('I10 a frame already in hand is not asked for again',
+      mapCore.mapWants(model, served).filter((w) => served[`${w.row}|${w.slot}`]).length, 0);
+    ok('I11 the loader asks the renderer rather than iterating marked lots',
+      /mapWants\(model, axisMaps\)/.test(ENTRY_SRC) && !/for \(const row of model\.marked\)/.test(ENTRY_SRC));
+    ok('I12 and the loader takes the slot as a parameter',
+      /loadAxisMap\(want\.row, want\.slot, catalog\)/.test(ENTRY_SRC));
   }
 
   // ── J. 차트 ──────────────────────────────────────────────────────────────────
@@ -734,8 +816,16 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
     ok('L3 the wide table scrolls rather than shrinking the type',
       /\.sx-tablewrap\s*\{[^}]*overflow-x:\s*auto/.test(css));
     ok('L4 cell values are 15px', /\.sx-cell__v\s*\{[^}]*font-size:\s*15px/.test(css));
-    ok('L5 the unmarked rows are not hidden or faded (스팟파이어식)',
-      !/\.sx-row:not\(\.sx-row--marked\)[^{]*\{[^}]*(display:\s*none|opacity:\s*0\.[0-5])/.test(css));
+    ok('L5 the unmarked lots are not hidden or faded (스팟파이어식)',
+      !/\.sx-(lotcol|cell|mrow):not\(\.sx-\1--marked\)[^{]*\{[^}]*(display:\s*none|opacity:\s*0\.[0-5])/.test(css));
+    // 🔴 AND MARKING MUST NOT ERASE THE HEAT. Before the transpose a marked row was
+    // painted over with a full-bleed inset; on a marked COLUMN that would hide the
+    // conditional formatting of every metric for the very lot under comparison.
+    ok('L5b marking a lot does not paint over its cells',
+      !/\.sx-cell--marked\s*\{[^}]*inset 0 0 0 9999px/.test(css));
+    ok('L7 the metric axis is pinned to the left so a wide table stays readable',
+      /\.sx-th--metric[^{]*\{[^}]*position:\s*sticky/.test(css)
+      && /\.sx-th--metric[^{]*\{[^}]*left:\s*0/.test(css));
     ok('L6 the refused axis is dashed, not dimmed',
       /\.sx-map--refused\s*\{[^}]*border-style:\s*dashed/.test(css)
       && !/\.sx-map--refused[^{]*\{[^}]*opacity:\s*0\.[0-5]/.test(css));
@@ -774,16 +864,30 @@ const DEFECTS = [
     (s) => s.replace("'data-denominator': reading.of === null ? null : String(reading.of),", "'data-denominator': null,")],
   ['view', 'N1 the unpainted-column header flag disappears',
     (s) => s.replace('} else if (col.observed && col.observed.neverPainted) {', '} else if (false) {')],
-  ['view', 'D1 the off-baseline row is filtered out of the table',
-    (s) => s.replace('for (const row of model.rows) body.appendChild(renderRow(doc, row, model));', 'for (const row of model.rows) { if (row.special) continue; body.appendChild(renderRow(doc, row, model)); }')],
+  // 🔴 RE-ANCHORED FOR THE TRANSPOSE. A lot is a COLUMN, so "filtered out" is now
+  // a dropped column header rather than a dropped row — the defect is the same one
+  // (the rows that would refute the reading get deleted) and must still be caught.
+  ['view', 'D1 the off-baseline lot is filtered out of the table',
+    (s) => s.replace('for (const row of model.rows) hr.appendChild(renderLotHead(doc, row));', 'for (const row of model.rows) { if (row.special) continue; hr.appendChild(renderLotHead(doc, row)); }')],
+  ['view', 'D1b the off-baseline lot keeps its header but loses its cells',
+    (s) => s.replace('if (!hit) continue;', 'if (!hit || row.special) continue;')],
+  // 🔴 THE ORDER IS THE ANSWER'S ORDER. The owner asked for 「최신이 오른쪽」, and
+  // the only thing that delivers it is that this file does not sort: the server
+  // returns ascending `order_index`, so the last column is the newest lot. A file
+  // that reversed the lots would look plausible and be wrong.
+  ['view', 'the lot columns are drawn newest-first instead of newest-right',
+    (s) => s.replace('for (const row of model.rows) hr.appendChild(renderLotHead(doc, row));', 'for (const row of model.rows.slice().reverse()) hr.appendChild(renderLotHead(doc, row));')],
   ['mapcore', 'S7 the unreachable axis stops being flagged',
     (s) => s.replace("panel.unreachable = state === 'unreachable';", 'panel.unreachable = false;')],
   ['mapcore', 'H7b the absent valid-die mask stops being named',
     (s) => s.replace("code: floorSeating ? (cellSet.cells.length ? null : 'no_cells') : 'mask_absent',", 'code: null,')],
   ['mapview', 'S6 a refused axis gets a canvas anyway',
     (s) => s.replace('if (!panel.ok) {', 'if (false) {')],
-  ['mapview', 'S8 the slot strip disappears',
-    (s) => s.replace('if (lot.slots && lot.slots.length) {', 'if (false) {')],
+  // 🔴 `S8 the slot strip disappears` WAS HERE and is gone with the feature it
+  // mutated (owner: stop demanding a slot). Its anchor `if (lot.slots && …)` no
+  // longer exists, and a mutant whose anchor has rotted tests nothing while
+  // looking like coverage — the harness `die()`s on it rather than letting it
+  // pass silently, which is why it is deleted rather than left to skip.
   ['view', 'O2 truncation stops being reported',
     (s) => s.replace('if (model.truncated) {', 'if (false) {')],
 ];

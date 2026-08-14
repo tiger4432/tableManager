@@ -9,6 +9,17 @@
    · 이 파일은 4개 엔트리(main/map_editor/enrichment/admin) 전부가 최우선 임포트.
    ============================================================ */
 
+/* ⚠️ 임시 거처 — 원장 콘솔의 1920px 레이아웃 시트.
+   제 자리는 여기가 아니라 `ledger_trace.js` 의 `import './ledger_console.css'` 다.
+   ledger.html 이 스타일을 인라인 <style> 로 갖고 있어 CSS 파일만 만질 수 있는
+   레인에서는 «CSS 안에서» 로드 경로를 만드는 방법이 @import 뿐이었다.
+   총괄이 ledger_trace.js 에 한 줄을 넣는 순간 이 @import 는 지워야 한다
+   (안 지우면 4개 엔트리 전부가 원장 전용 CSS를 계속 싣는다).
+   그때까지의 안전장치: ledger_console.css 의 모든 규칙은
+   `body:has(.lt-app-header)` 로 스코프돼 있어 다른 페이지에서 효과가 0 이다
+   (index/admin 실측으로 before==after 확인). */
+@import './ledger_console.css';
+
 /* ── 값 세트 1: Light (기본 테마) ───────────────────────────
    :root 단독 셀렉터를 병기하여 data-theme 미스탬프(FOUC 스크립트 실패) 시에도
    light 값이 폴백으로 적용되도록 한다. */

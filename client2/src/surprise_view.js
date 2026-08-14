@@ -161,10 +161,18 @@ function renderColumnBar(doc, model) {
 
 // ── 표 ───────────────────────────────────────────────────────
 
-/** One column header: 항목 · 집계 · 기저 — the denominator's definition included. */
+/**
+ * One METRIC's header: 항목 · 집계 · 기저 — the denominator's definition included.
+ *
+ * 🔴 IT IS A ROW HEADER NOW (`scope="row"`), not a column header. The wire still
+ * calls these `columns[]` and this file still calls them columns, because that is
+ * the server's word for "a metric × an aggregate" and renaming it here would put
+ * a translation layer between the address bar and the request. What changed is
+ * only where they are DRAWN — see `renderTable`.
+ */
 function renderColumnHead(doc, col) {
   const th = el(doc, 'th', 'sx-th sx-th--metric');
-  attrs(th, { scope: 'col', 'data-col': col.key });
+  attrs(th, { scope: 'row', 'data-col': col.key });
   th.appendChild(el(doc, 'span', 'sx-th__metric', col.kindLabel));
   th.appendChild(el(doc, 'span', 'sx-th__agg', col.aggLabel));
   const foot = el(doc, 'span', 'sx-th__base');
@@ -256,9 +264,22 @@ function renderCell(doc, cell) {
   return td;
 }
 
-function renderRow(doc, row, model) {
-  const tr = el(doc, 'tr', `sx-row${row.marked ? ' sx-row--marked' : ''}`);
-  attrs(tr, {
+/**
+ * ONE LOT, as a COLUMN HEADER.
+ *
+ * 🔴 THE TABLE RUNS SIDEWAYS NOW — product owner, 2026-08-14: 「상단 트렌드 표는
+ * 세로 말고 가로로 리스팅해」. Everything a lot used to carry across a row (the
+ * mark box, the lineage link, the production ordinal, the bucket badge, the unit
+ * count) is stacked into its column header instead, in that reading order.
+ *
+ * Nothing about a lot was dropped in the move: the SAME `data-*` attributes ride
+ * here that used to ride on `sx-row`, so marking, the bucket reading and the
+ * baseline-exclusion flag are all still addressable — they just changed axis.
+ */
+function renderLotHead(doc, row) {
+  const th = el(doc, 'th', `sx-th sx-lotcol${row.marked ? ' sx-lotcol--marked' : ''}`);
+  attrs(th, {
+    scope: 'col',
     'data-lot': row.lot,
     'data-row': row.row,
     'data-bucket': row.bucket,
@@ -266,7 +287,7 @@ function renderRow(doc, row, model) {
     'data-marked': row.marked ? '1' : '0',
   });
 
-  const markTd = el(doc, 'td', 'sx-row__mark');
+  const markWrap = el(doc, 'label', 'sx-lotcol__mark');
   const box = doc.createElement('input');
   attrs(box, {
     type: 'checkbox',
@@ -277,80 +298,127 @@ function renderRow(doc, row, model) {
   // set the DEFAULT and a re-render would leave stale boxes ticked.
   box.checked = row.marked;
   if (row.marked) box.setAttribute('checked', 'checked');
-  markTd.appendChild(box);
-  tr.appendChild(markTd);
+  markWrap.appendChild(box);
+  th.appendChild(markWrap);
 
-  const lotTd = el(doc, 'td', 'sx-row__lot');
   // The lineage answer for this lot — the other question on this same page.
   const a = el(doc, 'a', 'sx-lot', row.lot);
   a.setAttribute('href', `?lot=${encodeURIComponent(row.lot)}`);
   a.setAttribute('data-lot-link', row.lot);
-  lotTd.appendChild(a);
-  if (row.seq !== null) {
-    lotTd.appendChild(el(doc, 'span', 'sx-row__seq', `#${row.seq}`));
-  }
-  tr.appendChild(lotTd);
+  th.appendChild(a);
 
-  const bucketTd = el(doc, 'td', 'sx-row__bucket');
+  const foot = el(doc, 'span', 'sx-lotcol__foot');
+  if (row.seq !== null) foot.appendChild(el(doc, 'span', 'sx-row__seq', `#${row.seq}`));
   const badge = el(doc, 'span', `sx-bucket sx-bucket--${row.bucket}`, row.bucketLabel);
   badge.setAttribute('data-bucket-badge', row.bucket);
-  bucketTd.appendChild(badge);
-  tr.appendChild(bucketTd);
+  foot.appendChild(badge);
+  th.appendChild(foot);
 
-  const chipsTd = el(doc, 'td', 'sx-row__chips');
+  // `universe` is the lot's unit count, NOT the inspected-chip denominator —
+  // those differ by ~5× and the denominator rides in each cell's fraction.
+  const units = el(doc, 'span', 'sx-lotcol__units');
   if (row.universe === null) {
-    const none = el(doc, 'span', 'sx-row__chips--none', '미보고');
-    none.setAttribute('data-chips', 'none');
-    chipsTd.appendChild(none);
+    units.className = 'sx-lotcol__units sx-row__chips--none';
+    units.textContent = '단위 수 미보고';
+    units.setAttribute('data-chips', 'none');
   } else {
-    chipsTd.appendChild(el(doc, 'span', null, countText(row.universe)));
+    units.textContent = countText(row.universe);
+    units.setAttribute('data-universe', String(row.universe));
   }
-  tr.appendChild(chipsTd);
-
-  for (const cell of row.cells) tr.appendChild(renderCell(doc, cell));
-  if (!model.columns.length) {
-    tr.appendChild(el(doc, 'td', 'sx-cell sx-cell--nocol', '열 없음'));
-  }
-  return tr;
+  th.appendChild(units);
+  return th;
 }
 
+/**
+ * The table, TRANSPOSED: rows = 지표, columns = 랏 생산 순서, newest on the right.
+ *
+ * 🔴 WHY SIDEWAYS. A trend is read along the time axis, and the eye reads left to
+ * right — with lots down the page the owner had to scan vertically for a trend and
+ * horizontally for a comparison, which is the wrong way round for both. The lots
+ * arrive from `/lots` in ascending `order_index` (oldest first, verified against
+ * the live route), and the columns are laid out in that same array order, so the
+ * NEWEST LOT IS THE RIGHTMOST COLUMN with no sorting in this file.
+ *
+ * 🔴 AND THE METRIC AXIS IS A LIST, NOT A LAYOUT. `model.columns` is the resolved
+ * metric set — the URL's `columns=` question intersected with the server's
+ * declaration — and this function does nothing but iterate it. A metric declared
+ * tomorrow becomes a row here with no line changing, the row ORDER is the list's
+ * order, and a panel that edits that list is a panel that edits the URL. There is
+ * no hardcoded sequence of rows anywhere in this file.
+ *
+ * 🔴 WHAT SURVIVED THE TRANSPOSE UNCHANGED: `renderCell` is called verbatim, so
+ * the conditional formatting (`data-heat`, `sx-cell--hN`), the fraction, the lift
+ * and — the one that must never be quietly dropped — the THIRD BUCKET, 미검사, are
+ * exactly what they were. 미검사 · 측정된 0 · 미보고 are still three different
+ * cells with three different `data-cell-state`s.
+ */
 function renderTable(doc, model) {
   const wrap = el(doc, 'div', 'sx-tablewrap');
-  wrap.setAttribute('data-panel', 'table');
+  attrs(wrap, { 'data-panel': 'table', 'data-orient': 'metric-rows' });
 
-  const table = el(doc, 'table', 'sx-table');
+  const table = el(doc, 'table', 'sx-table sx-table--t');
+  attrs(table, {
+    'data-lot-count': String(model.rows.length),
+    'data-metric-count': String(model.columns.length),
+  });
+
+  // ── the head: one cell per lot, in production order ──
   const head = el(doc, 'thead');
-  const hr = el(doc, 'tr');
-  const th = (cls, text, extra) => {
-    const n = el(doc, 'th', `sx-th ${cls}`, text);
-    n.setAttribute('scope', 'col');
-    if (extra) attrs(n, extra);
-    hr.appendChild(n);
-    return n;
-  };
-  th('sx-th--mark', '마킹');
-  // 🔴 THE ROW AXIS NAMES ITSELF. `row_axis.label` is 「본딩 랏」 today and the
-  // axis is switchable (`by=`), so a hardcoded 「랏」 would mislabel the column
-  // the moment somebody asks a different axis.
-  th('sx-th--lot', model.rowAxis.label || '행');
-  th('sx-th--bucket', '버킷');
-  // `universe` is the row's unit count, NOT the inspected-chip denominator —
-  // those differ by ~5× and the denominator rides in each cell's fraction.
-  th('sx-th--chips', '행 단위 수');
-  for (const col of model.columns) hr.appendChild(renderColumnHead(doc, col));
-  if (!model.columns.length) th('sx-th--nocol', '지표');
+  const hr = el(doc, 'tr', 'sx-hrow');
+  const corner = el(doc, 'th', 'sx-th sx-th--corner');
+  corner.setAttribute('scope', 'col');
+  corner.appendChild(el(doc, 'span', 'sx-th__corner-a', '지표'));
+  // 🔴 THE LOT AXIS NAMES ITSELF. `row_axis.label` is 「본딩 랏」 today and the axis
+  // is switchable (`by=`), so a hardcoded 「랏」 would mislabel the axis the moment
+  // somebody asks a different one. The arrow is the direction of time.
+  corner.appendChild(el(doc, 'span', 'sx-th__corner-b',
+    `${model.rowAxis.label || '행'} 생산 순서 →`));
+  hr.appendChild(corner);
+  for (const row of model.rows) hr.appendChild(renderLotHead(doc, row));
   head.appendChild(hr);
   table.appendChild(head);
 
+  // ── the body: one row per metric ──
   const body = el(doc, 'tbody', 'sx-tbody');
-  for (const row of model.rows) body.appendChild(renderRow(doc, row, model));
+  for (const col of model.columns) {
+    const tr = el(doc, 'tr', 'sx-mrow');
+    attrs(tr, { 'data-col': col.key, 'data-metric-row': '1' });
+    tr.appendChild(renderColumnHead(doc, col));
+    for (const row of model.rows) {
+      const hit = row.cells.find((c) => c.column.key === col.key);
+      if (!hit) continue;
+      const td = renderCell(doc, hit);
+      // The marked lot is a COLUMN now, and CSS cannot select a column — so the
+      // membership is written on every cell of it, the same fact the header
+      // carries.
+      td.setAttribute('data-lot', row.lot);
+      if (row.marked) {
+        td.setAttribute('data-marked', '1');
+        td.className = `${td.className} sx-cell--marked`;
+      }
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+  if (!model.columns.length) {
+    // 빈 축 정직 — the metric axis is empty, and the table says so in its own
+    // voice rather than disappearing.
+    const tr = el(doc, 'tr', 'sx-mrow sx-mrow--nocol');
+    const th = el(doc, 'th', 'sx-th sx-th--nocol', '지표');
+    th.setAttribute('scope', 'row');
+    tr.appendChild(th);
+    const td = el(doc, 'td', 'sx-cell sx-cell--nocol', '지표 없음');
+    if (model.rows.length) td.setAttribute('colspan', String(model.rows.length));
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
   table.appendChild(body);
   wrap.appendChild(table);
 
   if (!model.rows.length) {
     wrap.appendChild(el(doc, 'p', 'sx-empty',
       model.state === 'unknown'
-        ? '집계 응답 없음 — 행을 그릴 근거가 없습니다'
+        ? '집계 응답 없음 — 열을 그릴 근거가 없습니다'
         : '이 구간에 랏이 없습니다'));
   }
   return wrap;
@@ -369,7 +437,7 @@ function renderLegend(doc, model) {
   box.setAttribute('data-panel', 'legend');
 
   const heat = el(doc, 'div', 'sx-legend__group');
-  heat.appendChild(el(doc, 'span', 'sx-legend__term', '조건부서식 — 열마다 자기 기저 대비 배수'));
+  heat.appendChild(el(doc, 'span', 'sx-legend__term', '조건부서식 — 지표마다 자기 기저 대비 배수'));
   // 🔴 THE LADDER IS THE WIRE'S, LABELS INCLUDED. A legend that described a scale
   // the paint does not use is worse than no legend.
   for (const step of model.ladder) {
@@ -596,7 +664,8 @@ function renderHead(doc, model) {
   const head = el(doc, 'header', 'sx-head');
   head.appendChild(el(doc, 'h2', 'sx-head__h', '구성요소 항목별 종합 트렌드'));
   head.appendChild(el(doc, 'p', 'sx-head__sub',
-    '행 = 랏 생산 순서 · 열 = 선언된 지표 · 색 = 열마다 자기 기저 대비 배수. 고르기 전에 눈에 들어오는 것이 이 화면의 목적입니다.'));
+    '행 = 선언된 지표 · 열 = 랏 생산 순서(최신이 오른쪽) · 색 = 지표마다 자기 기저 대비 배수. '
+    + '트렌드는 가로로 읽습니다.'));
 
   const meta = el(doc, 'div', 'sx-head__meta');
   meta.setAttribute('data-panel', 'counts');

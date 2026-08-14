@@ -1264,8 +1264,8 @@
 
     /* 🔴 「선언만」은 «흐리게»가 아니라 «질감이 다르게». 파선 + 본문색 —
        결함처럼도, 부수적으로도 보이지 않게. 소유자가 찾으러 오는 것이 이것이다. */
-    .os-legend__item--declared_zero .os-legend__swatch { border-top: 3px dashed var(--text-muted); }
-    .os-legend__item--declared_unmeasured .os-legend__swatch { border-top: 3px dotted var(--text-muted); }
+    .os-legend__item--declared_only .os-legend__swatch { border-top: 3px dashed var(--text-muted); }
+    .os-legend__item--unmeasured .os-legend__swatch { border-top: 3px dotted var(--text-muted); }
     .os-legend__item--undeclared .os-legend__swatch { border-top-color: var(--warning); }
     .os-legend__grades { display: inline-flex; align-items: center; gap: 12px; font-size: 14px; }
     .os-grade-key { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); }
@@ -1316,10 +1316,10 @@
 
     /* 선언만 있는 축: 파선(0 측정됨) / 점선(집계 미보고). 색은 본문색 —
        «약한 실선»이 아니다. 굵기도 줄이지 않는다(2.4px, 코드에서 고정). */
-    .os-edge--declared_zero .os-edge__lead { stroke: var(--text-muted); stroke-dasharray: 9 6; }
-    .os-edge--declared_zero .os-edge__tail { stroke: var(--text-muted); stroke-dasharray: 9 6; opacity: 0.7; }
-    .os-edge--declared_unmeasured .os-edge__lead { stroke: var(--text-muted); stroke-dasharray: 2 5; }
-    .os-edge--declared_unmeasured .os-edge__tail { stroke: var(--text-muted); stroke-dasharray: 2 5; opacity: 0.7; }
+    .os-edge--declared_only .os-edge__lead { stroke: var(--text-muted); stroke-dasharray: 9 6; }
+    .os-edge--declared_only .os-edge__tail { stroke: var(--text-muted); stroke-dasharray: 9 6; opacity: 0.7; }
+    .os-edge--unmeasured .os-edge__lead { stroke: var(--text-muted); stroke-dasharray: 2 5; }
+    .os-edge--unmeasured .os-edge__tail { stroke: var(--text-muted); stroke-dasharray: 2 5; opacity: 0.7; }
     .os-edge--undeclared .os-edge__lead, .os-edge--undeclared .os-edge__tail { stroke: var(--warning); }
     .os-edge--off { opacity: 0.22; }
 
@@ -1332,7 +1332,7 @@
     .os-edge:focus-visible .os-edge__chipbox { stroke: var(--accent); stroke-width: 3; }
     .os-edge__chipbox { fill: var(--bg-surface); stroke: var(--border); stroke-width: 1; }
     .os-edge--flowing .os-edge__chipbox { stroke: var(--accent); }
-    .os-edge--declared_zero .os-edge__chipbox { stroke: var(--text-muted); stroke-dasharray: 4 3; }
+    .os-edge--declared_only .os-edge__chipbox { stroke: var(--text-muted); stroke-dasharray: 4 3; }
     .os-edge--undeclared .os-edge__chipbox { stroke: var(--warning); }
     .os-edge__chip { font-size: 13px; font-family: var(--font-mono); fill: var(--text); font-weight: 600; }
 
@@ -1367,12 +1367,12 @@
 
     /* 배경을 죽이지 않는다 — 회색 판 위에 얹으면 「덜 중요함」으로 읽힌다.
        왼쪽 띠만 파선 질감으로 바꿔 «다른 출처»임을 말한다. */
-    .os-row--declared_zero {
+    .os-row--declared_only {
       border-left-color: var(--text-muted);
       border-left-style: dashed;
     }
 
-    .os-row--declared_unmeasured {
+    .os-row--unmeasured {
       border-left-color: var(--text-muted);
       border-left-style: dotted;
     }
@@ -1404,13 +1404,13 @@
 
     .os-badge--flowing { background: var(--accent-weak); color: var(--accent); }
 
-    .os-badge--declared_zero {
+    .os-badge--declared_only {
       background: transparent;
       color: var(--text-muted);
       border: 1.5px dashed var(--text-muted);
     }
 
-    .os-badge--declared_unmeasured {
+    .os-badge--unmeasured {
       background: transparent;
       color: var(--text-muted);
       border: 1.5px dotted var(--text-muted);
@@ -1696,7 +1696,16 @@
     }
     .sx-itemchip__n { font-size: 13px; color: var(--text-dim); font-family: var(--font-mono); }
 
-    /* ── 표 ── */
+    /* ══ 표 — 전치됨 ═══════════════════════════════════════════
+       🔴 행 = 지표, 열 = 랏 생산 순서, 최신이 오른쪽 (소유자 2026-08-14:
+          「상단 트렌드 표는 세로 말고 가로로 리스팅해」). 트렌드는 가로로 읽힌다.
+
+       그래서 이 표에서 «가로 스크롤»은 결함이 아니라 정상 동작이고, 두 축의
+       머리는 각자 고정된다 — 랏 머리는 위, 지표 머리는 왼쪽, 모서리는 둘 다.
+       랏 100개를 지나가는 동안 무슨 지표인지 계속 보여야 한다.
+
+       🔴 가독성 = 기능: 열을 화면에 «맞추려고» 글씨를 줄이지 않는다. 열은 제
+          폭을 갖고 넘치는 만큼 옆으로 흐른다. */
     .sx-tablewrap {
       overflow-x: auto;
       border: 1px solid var(--border);
@@ -1705,6 +1714,8 @@
     }
 
     .sx-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 760px; }
+    /* width:auto — 100%면 랏 100개가 한 화면에 눌려 들어간다. */
+    .sx-table--t { width: auto; min-width: 100%; }
 
     .sx-th {
       position: sticky;
@@ -1719,9 +1730,51 @@
       font-weight: 600;
       white-space: nowrap;
     }
-    .sx-th--mark, .sx-th--lot, .sx-th--bucket { text-align: left; }
 
-    .sx-th--metric { display: table-cell; }
+    /* ── 모서리: 두 축의 이름이 만나는 칸. 가로·세로 둘 다 고정. ── */
+    .sx-th--corner {
+      left: 0;
+      z-index: 4;
+      text-align: left;
+      vertical-align: bottom;
+      border-right: 1px solid var(--border-strong);
+    }
+    .sx-th__corner-a { display: block; font-size: 15px; font-weight: 700; }
+    .sx-th__corner-b { display: block; font-size: 13px; font-weight: 400; color: var(--text-dim); }
+
+    /* ── 랏 열 머리: 마킹 · 랏 · 순번 · 버킷 · 단위 수가 세로로 쌓인다. ── */
+    .sx-lotcol {
+      text-align: left;
+      vertical-align: bottom;
+      min-width: 118px;
+    }
+    .sx-lotcol__mark { display: block; margin-bottom: 4px; cursor: pointer; }
+    .sx-lotcol__mark input { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
+    .sx-lotcol .sx-lot { display: block; }
+    .sx-lotcol__foot { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+    .sx-lotcol__foot .sx-row__seq { margin-left: 0; }
+    .sx-lotcol__units {
+      display: block;
+      margin-top: 3px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text-dim);
+    }
+
+    /* ── 지표 행 머리: «왼쪽»에 고정. 위가 아니라 왼쪽인 것이 전치의 핵심. ── */
+    .sx-th--metric, .sx-th--nocol {
+      position: sticky;
+      top: auto;
+      left: 0;
+      z-index: 3;
+      text-align: left;
+      vertical-align: top;
+      white-space: normal;
+      border-right: 1px solid var(--border-strong);
+      border-bottom: 1px solid var(--border);
+    }
+    .sx-th--metric { display: table-cell; min-width: 208px; max-width: 300px; }
     .sx-th__metric { display: block; font-size: 15px; font-weight: 650; }
     .sx-th__agg { display: block; font-size: 14px; font-weight: 500; color: var(--text-muted); }
     .sx-th__base { display: block; font-size: 13px; font-weight: 400; color: var(--text-dim); font-family: var(--font-mono); }
@@ -1755,17 +1808,19 @@
     .sx-fact--warn { color: var(--warning); background: var(--warning-weak); }
     .sx-provnote { font-size: 13px; color: var(--text-dim); margin-top: 6px; max-width: 76ch; }
 
-    .sx-row > td { border-bottom: 1px solid var(--border); padding: 8px 12px; }
-    .sx-row:nth-child(even) > td { background-image: linear-gradient(var(--row-stripe), var(--row-stripe)); }
-    .sx-row:hover > td { background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }
+    /* ── 지표 행 ── */
+    .sx-mrow > td, .sx-mrow > th { border-bottom: 1px solid var(--border); padding: 8px 12px; }
+    .sx-mrow:nth-child(even) > td { background-image: linear-gradient(var(--row-stripe), var(--row-stripe)); }
+    .sx-mrow:hover > td { background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }
 
-    /* 마킹된 행은 «흐림이 아니라 강조»다 — 비마킹을 숨기지 않는다(스팟파이어식). */
-    .sx-row--marked > td { box-shadow: inset 0 0 0 9999px var(--accent-weak); }
-    .sx-row--marked > .sx-row__mark { border-left: 3px solid var(--accent); }
+    /* 🔴 마킹은 «흐림이 아니라 강조»다 — 비마킹을 숨기지 않는다(스팟파이어식).
+       전치 후 마킹 단위는 «열»이고 CSS엔 열 선택자가 없으므로, 표식은 그 열의
+       칸마다 붙는다(surprise_view.js가 data-marked를 칸에 쓴다).
 
-    .sx-row__mark { width: 42px; }
-    .sx-row__mark input { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
-    .sx-row__lot { white-space: nowrap; }
+       그리고 칸을 덮지 않고 «양옆 레일»로 표시한다 — 예전처럼 전면을 칠하면
+       조건부서식 색을 가려, 마킹한 순간 그 열의 놀라움이 사라진다. */
+    .sx-lotcol--marked { background: var(--accent-weak); box-shadow: inset 0 3px 0 0 var(--accent); }
+    .sx-cell--marked { box-shadow: inset 2px 0 0 0 var(--accent), inset -2px 0 0 0 var(--accent); }
 
     .sx-lot {
       font-family: var(--font-mono);
@@ -1776,7 +1831,6 @@
     .sx-lot:hover { text-decoration: underline; }
     .sx-lot:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: 4px; }
     .sx-row__seq { font-size: 13px; color: var(--text-dim); margin-left: 7px; font-family: var(--font-mono); }
-    .sx-row__chips { text-align: right; font-family: var(--font-mono); font-size: 14px; }
     .sx-row__chips--none { color: var(--text-dim); font-size: 13px; }
 
     .sx-bucket {
@@ -1894,29 +1948,37 @@
 
     .sx-maprow__head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
     .sx-maprow__lot { font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--accent); }
-    .sx-maprow__slot { font-size: 14px; color: var(--text-muted); }
-    .sx-maprow__hint { font-size: 13px; color: var(--text-dim); }
+    /* 🔴 슬롯 «선택기»는 사라졌다 (소유자 2026-08-14: 슬롯을 요구하지 말고
+       걸린 프레임을 전부 그려라). `.sx-slots*`·`.sx-slot*`·`.sx-maprow__slot`·
+       `.sx-maprow__hint`가 여기 있었다 — 없어진 기능의 스타일은 남겨 두면
+       다음 사람이 되살릴 선택기를 찾게 만든다.
 
-    /* 슬롯 = URL의 일부. 새 모드도 모달도 아니고 링크 한 줄이다. */
-    .sx-slots { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-    .sx-slots__term { font-size: 13px; color: var(--text-dim); margin-right: 2px; }
-    .sx-slots__note { font-size: 13px; color: var(--warning); margin-left: 6px; }
+       대신 랏 하나가 프레임 «띠»로 펼쳐진다. 띠는 가로로 흐르고 넘치면
+       스크롤한다 — 표와 같은 규율(글씨를 줄이지 않는다). */
+    .sx-maprow__note { font-size: 13px; color: var(--text-dim); }
+    .sx-maprow__served { font-size: 13px; color: var(--text-muted); font-family: var(--font-mono); }
 
-    .sx-slot {
-      min-width: 30px;
-      text-align: center;
-      font-family: var(--font-mono);
-      font-size: 14px;
-      color: var(--text-muted);
-      text-decoration: none;
+    .sx-strip { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+
+    .sx-frame {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px 12px;
       border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 3px 8px;
-      transition: background .15s ease, color .15s ease, border-color .15s ease;
+      border-radius: 10px;
+      background: var(--bg-inset);
     }
-    .sx-slot:hover { background: var(--accent-weak); border-color: var(--accent); color: var(--accent); }
-    .sx-slot:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
-    .sx-slot--on { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+    .sx-frame__cap { font-family: var(--font-mono); font-size: 14px; color: var(--text-muted); }
+    .sx-frame__wafer { display: flex; gap: 12px; flex-wrap: wrap; }
+    /* 아직 안 온 프레임은 «빈 자리»로 선다 — 없는 것을 그린 척하지 않는다. */
+    .sx-frame__gap {
+      font-size: 13px;
+      color: var(--text-dim);
+      border: 1px dashed var(--border-strong);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
 
     .sx-maprow__panels { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
 
@@ -2173,11 +2235,11 @@
       .lr-table { display: block; overflow-x: auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/ledger-B80ZxXVU.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/config-C2tLWVyv.js">
+  <script type="module" crossorigin src="/assets/ledger-CnWrjZJY.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/config-Dph2PIQR.js">
   <link rel="modulepreload" crossorigin href="/assets/declaration-Ba1WhIrE.js">
   <link rel="modulepreload" crossorigin href="/assets/map_key-BZIPE9-P.js">
-  <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
+  <link rel="stylesheet" crossorigin href="/assets/config-SSVAnefx.css">
 </head>
 
 <body>
@@ -2215,8 +2277,9 @@
          원장 집계(GROUP BY 주어유형·술어·목적어종류)에서 «생성»되고, 이 파일에도
          소스에도 노드/엣지 목록은 없다. -->
     <!-- 🔴 넷째 질문: 「지금 이상한 랏이 있는가」 (?view=surprise) — 놀라움 장치.
-         선택기가 없다. 행 = 랏 생산 순서, 열 = 선언된 지표 전부, 조건부서식은
-         열(항목) 축으로. 열 구성 {항목 × 집계}는 URL에 실리고, 지표 목록은
+         선택기가 없다. 행 = 선언된 지표 전부, 열 = 랏 생산 순서(최신이 오른쪽),
+         조건부서식은 지표(항목) 축으로 — 트렌드는 가로로 읽힌다(소유자 2026-08-14).
+         열 구성 {항목 × 집계}는 URL에 실리고, 지표 목록은
          이 파일에도 소스에도 없다 — 서버 선언에서 나온다. -->
     <!-- 🔴 다섯째 질문: 「이 랏은 왜 이상한가」 (?view=lot&lot=…) — 랏 참조뷰(화면 ②).
          네 구역이 추론 순서다: 헤더(랏·버킷·요약 숫자·구조 뷰 링크) → 혈통 요약

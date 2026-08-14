@@ -22,8 +22,7 @@
 // ============================================================
 
 import { layoutFor, paintSeating, createCanvasSurface } from './map2/painter.js';
-import { mapSection } from './surprise_map_core.js';
-import { surpriseQuery, withSlot } from './surprise_core.js';
+import { mapSection, frameSpanOf, waferLabelOf } from './surprise_map_core.js';
 
 const VIEW = { width: 176, height: 176, padding: 3 };
 
@@ -177,7 +176,87 @@ function renderPanel(doc, panel) {
 }
 
 /**
- * The whole map section — one row per marked lot, three axes across.
+ * A refused axis INSIDE a frame entry — one line, not a paragraph.
+ *
+ * 🔴 THE SAME SENTENCE 25 TIMES IS NOISE, AND READABILITY IS A FEATURE. Every entry
+ * in a 25-wafer strip carries the same two unreachable axes, so the full sentence is
+ * printed ONCE above the strip and each entry keeps a terse marker holding the axis's
+ * place. Nothing is hidden — the axis is still named, still flagged, still counted.
+ */
+function renderGap(doc, panel) {
+  const gap = el(doc, 'p', 'sx-frame__gap');
+  const span = frameSpanOf(panel);
+  gap.setAttribute('data-axis', panel.axis);
+  gap.setAttribute('data-axis-ok', '0');
+  gap.setAttribute('data-axis-code', panel.code || '');
+  if (panel.unreachable) gap.setAttribute('data-unreachable', '1');
+  // 🔴 SLOTS AND LOTS ARE PRINTED SEPARATELY AND NEVER MULTIPLIED — see
+  // `frameSpanOf`. The wire says which slots occur and which lots occur, not which
+  // pairs, so a product would be a count of frames nobody registered.
+  const parts = [panel.label];
+  if (span.slots) {
+    gap.setAttribute('data-span-slots', String(span.slots));
+    parts.push(`프레임 슬롯 ${span.slots}`);
+  }
+  if (span.lots > 1) {
+    gap.setAttribute('data-span-lots', String(span.lots));
+    parts.push(`랏 ${span.lots}`);
+  }
+  if (!span.slots) parts.push(panel.why);
+  gap.textContent = parts.join(' · ');
+  return gap;
+}
+
+/**
+ * ONE FRAME = ONE PICTURE = ONE BONDED BASE WAFER.
+ *
+ * 🔴 AND IT IS NOT A LINK. The strip is content, not navigation: nothing here is an
+ * anchor, nothing carries an `href`, so selecting or scrolling it can never load a
+ * page. The reader is not asked to choose — every matched frame is already drawn.
+ */
+function renderFrame(doc, frame, compact) {
+  const box = el(doc, 'article', 'sx-frame');
+  box.setAttribute('data-frame-slot', String(frame.slot));
+  box.setAttribute('data-frame-key', String(frame.key));
+
+  const cap = el(doc, 'header', 'sx-frame__cap');
+  const label = waferLabelOf(frame.panels, frame.slot);
+  const name = el(doc, 'span', 'sx-frame__wafer', label.text);
+  // 🔴 WHERE THE NAME CAME FROM, ON THE ELEMENT. The owner asked for base WF id and
+  // the route serves the frame key; recording which one is on screen keeps the day
+  // the field lands from looking like the day the label changed for no reason.
+  name.setAttribute('data-wafer-source', label.source);
+  cap.appendChild(name);
+  box.appendChild(cap);
+
+  if (frame.pending) {
+    const wait = el(doc, 'p', 'sx-frame__gap', '불러오는 중…');
+    wait.setAttribute('data-frame-pending', '1');
+    box.appendChild(wait);
+    return box;
+  }
+
+  // 🔴 COMPACTION IS FOR REPETITION, AND A STRIP OF ONE HAS NONE. When this lot
+  // resolves to a single frame the refused axes render in FULL — their own headings
+  // and the server's own sentence — exactly as before the strip existed. Compacting
+  // there would have cost information and bought nothing, which is what it did: it
+  // dropped two axes' headings and replaced the server's sentence with a count.
+  const drawn = (frame.panels || []).filter((p) => p.ok);
+  const gaps = (frame.panels || []).filter((p) => !p.ok);
+  // 🔴 THE OLD CLASS IS KEPT ALONGSIDE THE NEW ONE ON PURPOSE. `.sx-maprow__panels`
+  // already carries the flex row this container wants, and the stylesheet belongs to
+  // another lane — riding the existing rule means the strip is laid out correctly the
+  // moment it ships instead of stacking unstyled while it waits for a CSS round.
+  const panels = el(doc, 'div', 'sx-frame__panels sx-maprow__panels');
+  for (const panel of drawn) panels.appendChild(renderPanel(doc, panel));
+  if (!compact) for (const panel of gaps) panels.appendChild(renderPanel(doc, panel));
+  box.appendChild(panels);
+  if (compact) for (const panel of gaps) box.appendChild(renderGap(doc, panel));
+  return box;
+}
+
+/**
+ * The whole map section — one entry per MATCHED FRAME, each its own map.
  *
  * 🔴 NOTHING MARKED IS NOT AN ERROR, it is the screen's resting state, and it
  * says what to do rather than showing an empty box.
@@ -190,7 +269,7 @@ export function renderAxisMaps(doc, model, maps, floors) {
   box.setAttribute('data-marked-lots', String(section.marked));
 
   if (!section.marked) {
-    const hint = el(doc, 'p', 'sx-empty', '표에서 랏을 ☑ 마킹하면 여기에 세 좌표계의 맵이 뜹니다.');
+    const hint = el(doc, 'p', 'sx-empty', '표에서 랏을 ☑ 마킹하면 여기에 그 랏의 웨이퍼 맵이 한 장씩 뜹니다.');
     hint.setAttribute('data-maps-empty', '1');
     box.appendChild(hint);
     return box;
@@ -202,62 +281,58 @@ export function renderAxisMaps(doc, model, maps, floors) {
 
     const head = el(doc, 'div', 'sx-maprow__head');
     head.appendChild(el(doc, 'span', 'sx-maprow__lot', lot.lot));
-    if (lot.slot) {
-      const s = el(doc, 'span', 'sx-maprow__slot', `슬롯 ${lot.slot}`);
-      s.setAttribute('data-served-slot', String(lot.slot));
-      head.appendChild(s);
-    }
-    head.appendChild(el(doc, 'span', 'sx-maprow__hint', '마킹 해제는 표에서'));
     row.appendChild(head);
-
-    // 🔴 THE SLOT STRIP. One lot is 25 bonding frames with DIFFERENT grids, so
-    // "the lot's map" does not exist and a picture that averaged them would be a
-    // wafer nobody made. This is anchors, not a mode and not a modal: the slot is
-    // in the URL like every other part of the question, and the strip lists the
-    // slots this lot ACTUALLY has rather than a range invented here.
-    if (lot.slots && lot.slots.length) {
-      const strip = el(doc, 'div', 'sx-slots');
-      strip.setAttribute('data-panel', 'slots');
-      strip.setAttribute('data-slot-count', String(lot.slots.length));
-      strip.appendChild(el(doc, 'span', 'sx-slots__term', '슬롯'));
-      for (const s of lot.slots) {
-        const on = String(s.slot) === String(lot.slot);
-        const a = el(doc, 'a', `sx-slot${on ? ' sx-slot--on' : ''}`, String(s.slot));
-        a.setAttribute('href', `?${surpriseQuery(withSlot(model.question, s.slot))}`);
-        a.setAttribute('data-slot', String(s.slot));
-        if (s.cols !== null && s.rows !== null) {
-          a.setAttribute('title', `${s.cols}×${s.rows}`);
-        }
-        if (on) a.setAttribute('aria-current', 'true');
-        strip.appendChild(a);
-      }
-      // 🔴 WHY THE SLOT MATTERS IS THE SERVER'S SENTENCE, NOT A GUESS HERE. It
-      // says the row spans several frames and that the grids differ per slot;
-      // paraphrasing it would be this client asserting a fact it did not measure.
-      const said = lot.panels.find((pn) => pn.code === 'frame_ambiguous_across_slots');
-      const note = el(doc, 'span', 'sx-slots__note',
-        (said && said.detail) || (said && said.why) || '슬롯마다 격자가 다릅니다');
-      note.setAttribute('data-slot-note', said ? said.code : 'none');
-      strip.appendChild(note);
-      row.appendChild(strip);
-    }
 
     if (lot.pending) {
       row.appendChild(el(doc, 'p', 'sx-map__why', lot.why));
       box.appendChild(row);
       continue;
     }
-    if (!lot.panels.length) {
-      const why = el(doc, 'p', 'sx-map__why', lot.why);
-      why.setAttribute('data-refusal', 'no_axes');
+
+    // 🔴 THE CASE THAT CANNOT BE OPENED SAYS SO, AND STILL SHOWS WHAT IT HAS. The
+    // matched frames span several lots and the wire does not say which (lot, slot)
+    // pairs are real — so nothing is enumerated and the served refusals keep their
+    // places, each axis still named. Picking one lot would be the fiction.
+    if (lot.plan && (lot.plan.kind === 'blocked' || lot.plan.kind === 'no_axes')) {
+      const why = el(doc, 'p', 'sx-map__why', lot.plan.why);
+      why.setAttribute('data-refusal', lot.plan.code || 'no_axes');
       row.appendChild(why);
+      const panels = el(doc, 'div', 'sx-maprow__panels');
+      for (const panel of lot.served || []) panels.appendChild(renderPanel(doc, panel));
+      row.appendChild(panels);
       box.appendChild(row);
       continue;
     }
 
-    const panels = el(doc, 'div', 'sx-maprow__panels');
-    for (const panel of lot.panels) panels.appendChild(renderPanel(doc, panel));
-    row.appendChild(panels);
+    const frames = lot.frames || [];
+    const ready = frames.filter((f) => !f.pending).length;
+    // 🔴 THE SERVER'S SENTENCE, ONCE, ABOVE THE STRIP. It is the refusal that
+    // actually happened — this screen does not weaken it, it answers it by drawing
+    // every frame it named. Paraphrasing would be asserting a fact not measured here.
+    const said = frames.map((f) => (f.panels || []).find((p) => p.code === 'frame_ambiguous_across_slots'))
+      .find(Boolean);
+    if (frames.length > 1) {
+      const note = el(doc, 'p', 'sx-maprow__note');
+      note.setAttribute('data-frame-total', String(frames.length));
+      note.setAttribute('data-frame-ready', String(ready));
+      note.setAttribute('data-strip-axis', (lot.plan && lot.plan.axis) || '');
+      note.textContent = `${(lot.plan && lot.plan.label) || ''} 프레임 ${frames.length}장 — 한 장씩`
+        + (ready < frames.length ? ` · ${ready}/${frames.length} 로드됨` : '');
+      row.appendChild(note);
+      if (said && said.detail) {
+        const server = el(doc, 'p', 'sx-maprow__served', said.detail);
+        server.setAttribute('data-refusal', said.code);
+        row.appendChild(server);
+      }
+    }
+
+    // Same reasoning as `sx-frame__panels`: ride the existing flex rule so the strip
+    // lays out on arrival, and let the CSS lane refine `.sx-strip` afterwards.
+    const strip = el(doc, 'div', 'sx-strip sx-maprow__panels');
+    strip.setAttribute('data-panel', 'frames');
+    strip.setAttribute('data-frame-count', String(frames.length));
+    for (const frame of frames) strip.appendChild(renderFrame(doc, frame, frames.length > 1));
+    row.appendChild(strip);
     box.appendChild(row);
   }
   return box;

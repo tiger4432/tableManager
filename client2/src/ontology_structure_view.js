@@ -82,30 +82,39 @@ function countOrDash(n) {
 // declared-only edge is DASHED, not faded — full-contrast ink, same stroke
 // weight, different texture. Fading it would say "less important", and the whole
 // reason the owner comes to this screen may be to find exactly these.
+//: The five states `server/ledger_structure.py` assigns, in its spelling. A state
+//: not in this map still renders — under its raw wire word — because a state that
+//: vanishes takes its edges off the screen with it.
 const EDGE_STATUS = {
   flowing: { label: '원장 집계', hint: '선언 + 원장에 원자' },
-  declared_zero: { label: '선언만 · 원장 0', hint: '축은 선언됐고 집계는 0을 셌다' },
-  declared_unmeasured: { label: '선언만 · 집계 미보고', hint: '아직 세어지지 않았다' },
+  declared_only: { label: '선언만 · 원장 0', hint: '축은 선언됐고 집계는 0을 셌다' },
+  unmeasured: { label: '선언만 · 집계 미보고', hint: '아직 세어지지 않았다' },
   undeclared: { label: '미선언 · 관측됨', hint: '원장에 있고 어휘에 없음' },
+  declared_unconsumed: { label: '선언만 · 소비자 없음', hint: '선언됐고 읽는 쪽이 없다' },
 };
 
-const LEGEND_N = {
-  flowing: (t) => t.flowing,
-  declared_zero: (t) => t.declaredZero,
-  declared_unmeasured: (t) => t.declaredUnmeasured,
-  undeclared: (t) => t.undeclared,
-};
+const statusLabelOf = (key) => (EDGE_STATUS[key] ? EDGE_STATUS[key].label : String(key));
+
+// 🔴 ONE VOCABULARY, ALL THE WAY TO THE CLASS NAME (2026-08-14). This carried a
+// `STYLE_TOKEN` map for exactly one commit, because the stylesheet was keyed on
+// two spellings — `declared_zero`, `declared_unmeasured` — that never existed on
+// the wire. The styling lane renamed those two rules to the server's words, so
+// the translation became the identity and is gone: the state IS the modifier.
+//
+// Nothing may reintroduce a second spelling here. `data-state` and the class now
+// carry the same five words the server assigns, which is the whole point — a
+// state with two names is the drift this screen exists to report.
 
 function renderLegend(doc, model) {
   const box = el(doc, 'div', 'os-legend');
   const layers = el(doc, 'span', 'os-legend__layers', '엣지 출처 두 층');
   box.appendChild(layers);
-  for (const key of ['flowing', 'declared_zero', 'declared_unmeasured', 'undeclared']) {
-    const item = el(doc, 'span', `os-legend__item os-legend__item--${key}`);
-    item.setAttribute('data-status', key);
+  for (const row of model.totals.byState) {
+    const item = el(doc, 'span', `os-legend__item os-legend__item--${row.key}`);
+    item.setAttribute('data-state', row.key);
     item.appendChild(el(doc, 'span', 'os-legend__swatch'));
-    item.appendChild(el(doc, 'span', 'os-legend__label', EDGE_STATUS[key].label));
-    item.appendChild(el(doc, 'span', 'os-legend__n', countText(LEGEND_N[key](model.totals))));
+    item.appendChild(el(doc, 'span', 'os-legend__label', statusLabelOf(row.key)));
+    item.appendChild(el(doc, 'span', 'os-legend__n', countText(row.n)));
     box.appendChild(item);
   }
   const grades = el(doc, 'span', 'os-legend__grades');
@@ -225,7 +234,7 @@ function renderGraph(doc, model) {
     const a = svg(doc, 'a', `os-edge os-edge--${e.status}${e.selected ? ' os-edge--on' : ''}${anySelected && !e.selected ? ' os-edge--off' : ''}`);
     a.setAttribute('href', `?${structureQuery({ ...model.question, edge: e.selected ? '' : e.key })}`);
     a.setAttribute('data-edge', e.key);
-    a.setAttribute('data-status', e.status);
+    a.setAttribute('data-state', e.status);
     const title = svg(doc, 'title');
     title.textContent = `${e.subjectType} · ${e.predicate} · ${objectKindLabel(e.objectKind)} — ${countOrDash(e.atoms)}`;
     a.appendChild(title);
@@ -297,13 +306,23 @@ function renderGraph(doc, model) {
 function renderEdgeList(doc, model) {
   const box = el(doc, 'div', 'os-edgelist');
   if (!model.edgeList.length) {
-    box.appendChild(el(doc, 'div', 'os-empty', '선언된 축이 없습니다 — 어휘가 비었거나 응답이 축을 담지 않았습니다'));
+    // 🔴 WHICH EMPTY IS THIS. Three different worlds produce zero rows here and
+    // they are not the same fact: the response was unreadable, the census ran and
+    // found no axis, or the filter excluded them all.
+    const shape = model.reading || { ok: true };
+    let why;
+    if (!shape.ok) why = '응답에서 축을 읽지 못했습니다 — 위 경고를 보십시오';
+    else if (model.question.layer && model.totals.edges > 0) {
+      why = `이 계층에 축이 없습니다 — 전체 ${countText(model.totals.edges)}개`;
+    } else if (model.totals.aggregateRan) why = '집계가 실행됐고 축을 0개 보고했습니다 (측정된 0)';
+    else why = '선언된 축이 없습니다 — 어휘가 비었거나 응답이 축을 담지 않았습니다';
+    box.appendChild(el(doc, 'div', 'os-empty', why));
     return box;
   }
   for (const e of model.edgeList) {
     const row = el(doc, 'div', `os-row os-row--${e.status}${e.selected ? ' os-row--on' : ''}`);
     row.setAttribute('data-edge', e.key);
-    row.setAttribute('data-status', e.status);
+    row.setAttribute('data-state', e.status);
     row.id = `edge-${encodeURIComponent(e.key)}`;
 
     const head = el(doc, 'div', 'os-row__head');
@@ -317,7 +336,7 @@ function renderEdgeList(doc, model) {
       e.targets.length ? e.targets.join(' · ') : objectKindLabel(e.objectKind)));
     head.appendChild(triple);
 
-    const badge = el(doc, 'span', `os-badge os-badge--${e.status}`, EDGE_STATUS[e.status].label);
+    const badge = el(doc, 'span', `os-badge os-badge--${e.status}`, statusLabelOf(e.status));
     head.appendChild(badge);
     head.appendChild(el(doc, 'span', 'os-row__n', countOrDash(e.atoms)));
     row.appendChild(head);
@@ -337,10 +356,10 @@ function renderEdgeList(doc, model) {
 
     row.appendChild(renderGrades(doc, e.grades, e.atoms));
 
-    if (e.status === 'declared_zero') {
+    if (e.status === 'declared_only') {
       row.appendChild(el(doc, 'div', 'os-row__why',
         '선언된 축 · 원장 집계 0건 — 이 축을 쓰는 소스나 번역기가 아직 없습니다 (측정된 0)'));
-    } else if (e.status === 'declared_unmeasured') {
+    } else if (e.status === 'unmeasured') {
       row.appendChild(el(doc, 'div', 'os-row__why',
         '선언된 축 · 집계가 이 축을 보고하지 않았습니다 — 0인지 아닌지 아직 모릅니다'));
     } else if (e.status === 'undeclared') {
@@ -444,7 +463,21 @@ function renderKinds(doc, model) {
 
 function renderDeclarations(doc, model) {
   const panel = el(doc, 'section', 'os-panel os-panel--wide');
-  panel.appendChild(panelHead(doc, '선언 지도', '어떤 config가 무엇을 선언하는가 — 항목에서 해당 축으로'));
+  const declHead = panelHead(doc, '선언 지도', '어떤 config가 무엇을 선언하는가 — 항목에서 해당 축으로');
+  // 🔴 THE PANEL NAMES ITS N (lead PM, 2026-08-14). The list scrolls inside its
+  // own box now, which is not concealment — every row is still there and still
+  // reachable — but a reader who cannot see the end of a list has to ask how long
+  // it is. Saying it removes the question. DERIVED, never typed: it is the count
+  // of items across the groups, so it stays true when a config is added.
+  const declN = model.declarations.reduce(
+    (s, d) => s + (Array.isArray(d.items) ? d.items.length : 0), 0);
+  //: Only when there ARE declarations. A 「0건」 over a response that simply did
+  //: not carry the container would be an invented measurement — the same
+  //: absent-is-not-zero rule the rest of this screen follows.
+  if (model.declarations.length) {
+    declHead.appendChild(el(doc, 'span', 'os-chip os-panel__n', `${countText(declN)}건`));
+  }
+  panel.appendChild(declHead);
   if (!model.declarations.length) {
     panel.appendChild(el(doc, 'div', 'os-empty',
       '선언 미보고 — 집계 응답이 `declarations`를 담지 않았습니다'));
@@ -498,6 +531,132 @@ function renderNotice(doc, notice) {
   return box;
 }
 
+// ── the seam, when it drifts ─────────────────────────────────
+//
+// 🔴 A BLANK MUST SAY WHICH BLANK IT IS (lead PM, P0, 2026-08-14). This screen
+// spent an evening painting an empty frame under the words 「원장 가동 — 아래
+// 숫자는 실측입니다」 because three of the four containers it read had moved one
+// level down the response. Nothing threw; every panel just had nothing to say and
+// said it politely.
+//
+// So when the reader could not find the graph, that is stated ABOVE everything
+// else, with the keys it expected and the keys that arrived — a pair anyone can
+// check against the server without reading this file.
+function renderShapeAlarm(doc, reading) {
+  if (!reading || reading.ok) return null;
+  const box = el(doc, 'div', 'os-notice os-notice--error');
+  box.appendChild(el(doc, 'div', 'os-notice__title',
+    reading.shape === 'none'
+      ? '구조 응답 없음 — 화면이 빈 것은 원장이 비어서가 아닙니다'
+      : '구조 응답을 읽지 못했습니다 — 화면이 빈 것은 원장이 비어서가 아닙니다'));
+  if (reading.why) box.appendChild(el(doc, 'div', 'os-notice__detail', reading.why));
+  return box;
+}
+
+/** A served-shape gap: the graph was found, one of its parts was not. */
+function renderShapeGap(doc, reading) {
+  if (!reading || !reading.ok || !reading.why) return null;
+  const box = el(doc, 'div', 'os-notice os-notice--gap');
+  box.appendChild(el(doc, 'div', 'os-notice__title', '응답에 빠진 부분이 있습니다'));
+  box.appendChild(el(doc, 'div', 'os-notice__detail', reading.why));
+  return box;
+}
+
+// ── the layers of the world ──────────────────────────────────
+
+function renderLayers(doc, model) {
+  if (!model.graphLayers || !model.graphLayers.length) return null;
+  const box = el(doc, 'div', 'os-filter');
+  box.appendChild(el(doc, 'span', 'os-filter__term', '층'));
+  for (const l of model.graphLayers) {
+    const chip = el(doc, 'span', 'os-chip');
+    chip.setAttribute('data-layer', l.id);
+    const parts = [l.label];
+    parts.push(`노드 ${l.nodes === null ? '미보고' : countText(l.nodes)}`);
+    parts.push(`엣지 ${l.edges === null ? '미보고' : countText(l.edges)}`);
+    //: A layer with no atom count is not a layer with zero atoms — the mechanism
+    //: layer is declared and never counted, and those are different facts.
+    parts.push(l.atoms === null ? '원자 미집계' : `원자 ${countText(l.atoms)}`);
+    chip.textContent = parts.join(' · ');
+    box.appendChild(chip);
+    if (l.message) box.appendChild(el(doc, 'span', 'os-chip os-chip--none', l.message));
+  }
+  return box;
+}
+
+// ── the mechanism layer (M4) ─────────────────────────────────
+//
+// 🔴 NOT DRAWN INTO THE THREE COLUMNS. Its nodes are causal variables, not
+// subject/predicate/object triples; forcing them into that layout would assert a
+// join that does not exist. It is also the only place the fifth edge state,
+// `declared_unconsumed`, can be seen today.
+function renderMechanism(doc, model) {
+  const m = model.mechanism;
+  if (!m) return null;
+  const panel = el(doc, 'section', 'os-panel os-panel--wide');
+  panel.appendChild(panelHead(doc, '기전 그래프 (M4)',
+    '선언된 인과 모형 — 원장이 아직 읽지 않는 축'));
+
+  const facts = el(doc, 'div', 'os-kind__facts');
+  const fact = (term, val, none) => {
+    const f = el(doc, 'div', 'os-fact');
+    f.appendChild(el(doc, 'span', 'os-fact__term', term));
+    f.appendChild(el(doc, 'span', none ? 'os-fact__val os-fact__val--none' : 'os-fact__val', val));
+    facts.appendChild(f);
+  };
+  fact('상태', m.state);
+  fact('선언 파일', m.config || '미보고', !m.config);
+  if (m.specRef) fact('스펙', m.specRef);
+  if (m.link && m.link.message) fact('원장 연결', m.link.message, true);
+  if (m.message) fact('메시지', m.message, true);
+  panel.appendChild(facts);
+
+  if (!m.models.length) {
+    panel.appendChild(el(doc, 'div', 'os-empty', '선언된 모형 없음'));
+    return panel;
+  }
+  const byModel = new Map();
+  for (const e of m.edges) {
+    if (!byModel.has(e.model)) byModel.set(e.model, []);
+    byModel.get(e.model).push(e);
+  }
+  for (const mm of m.models) {
+    const row = el(doc, 'div', 'os-row');
+    row.setAttribute('data-model', mm.model);
+    const head = el(doc, 'div', 'os-row__head');
+    head.appendChild(el(doc, 'span', 'os-row__pred', mm.model));
+    if (mm.version) head.appendChild(el(doc, 'span', 'os-chip', mm.version));
+    head.appendChild(el(doc, 'span', 'os-row__n',
+      `노드 ${countText(mm.nodes.length)} · 엣지 ${countText(mm.edgeIds.length)}`));
+    row.appendChild(head);
+    const edges = byModel.get(mm.model) || [];
+    if (!edges.length) {
+      // 🔴 NOT SKIPPED. A config section with no causal edges is a DECLARATION
+      // that contributes none — `bindings` (field → physical quantity) is exactly
+      // that, and dropping it because its count surprised somebody would hide a
+      // real declaration behind a tidier list.
+      row.appendChild(el(doc, 'div', 'os-row__why', '인과 엣지 없음 — 선언은 있고 그래프에 기여하지 않습니다'));
+    } else {
+      const meta = el(doc, 'div', 'os-row__meta');
+      for (const e of edges) {
+        const chip = el(doc, 'span', 'os-chip',
+          `${e.source} ${e.dirLabel || e.dir || '→'} ${e.target}`);
+        chip.setAttribute('data-state', e.status);
+        meta.appendChild(chip);
+      }
+      row.appendChild(meta);
+      const states = [...new Set(edges.map((e) => e.status))].filter(Boolean);
+      const badges = el(doc, 'div', 'os-row__meta');
+      for (const s of states) {
+        badges.appendChild(el(doc, 'span', `os-badge os-badge--${s}`, statusLabelOf(s)));
+      }
+      row.appendChild(badges);
+    }
+    panel.appendChild(row);
+  }
+  return panel;
+}
+
 const STATE_READING = {
   ready: { tone: 'ok', text: '원장 가동 — 아래 숫자는 실측입니다' },
   empty: { tone: 'gap', text: '테이블은 있고 원자 0 — 선언만 보입니다 (백필 미실행)' },
@@ -514,7 +673,28 @@ const STATE_READING = {
  * before the aggregate route does.
  */
 export function renderStructure(doc, mount, model, notice) {
+  // 🔴 THE MOUNT IS NOT CLEARED UNTIL THERE IS SOMETHING TO PUT IN IT, AND A
+  // THROW IS PUT ON SCREEN (lead PM, P0, 2026-08-14). The old order was
+  // `clear(mount)` and then build; anything that threw mid-build left a literally
+  // empty element and the user saw a blank page with no way to tell it from an
+  // empty world. Now the tree is built detached, and a failure paints the failure.
+  let root;
+  try {
+    root = buildStructure(doc, mount, model, notice);
+  } catch (err) {
+    root = el(doc, 'div', 'os');
+    const box = el(doc, 'div', 'os-notice os-notice--error');
+    box.appendChild(el(doc, 'div', 'os-notice__title', '구조 화면을 그리지 못했습니다'));
+    box.appendChild(el(doc, 'div', 'os-notice__detail',
+      String((err && err.stack) || (err && err.message) || err).slice(0, 600)));
+    root.appendChild(box);
+  }
   clear(mount);
+  mount.appendChild(root);
+  return root;
+}
+
+function buildStructure(doc, mount, model, notice) {
   const root = el(doc, 'div', 'os');
 
   const head = el(doc, 'div', 'os-head');
@@ -524,13 +704,27 @@ export function renderStructure(doc, mount, model, notice) {
     '어떤 객체가 어떤 관계로 이어져 있고, 어디에 데이터가 얼마나 있는가'));
   head.appendChild(title);
 
-  const reading = STATE_READING[model.state] || STATE_READING.unknown;
+  // 🔴 THE LEDGER'S STATE IS ONLY CLAIMABLE IF THE ANSWER WAS READ. `ready` over
+  // an unreadable body is how this screen came to announce 「아래 숫자는 실측입니다」
+  // above nothing at all.
+  const shape = model.reading || { ok: true, shape: 'legacy' };
+  const reading = shape.ok
+    ? (STATE_READING[model.state] || STATE_READING.unknown)
+    : { tone: 'gap', text: '응답을 읽지 못해 원장 상태를 말할 수 없습니다' };
   const state = el(doc, 'span', `os-state os-state--${reading.tone}`, reading.text);
-  state.setAttribute('data-state', model.state);
+  state.setAttribute('data-state', shape.ok ? model.state : 'unreadable');
   head.appendChild(state);
   root.appendChild(head);
 
+  const alarm = renderShapeAlarm(doc, shape);
+  if (alarm) root.appendChild(alarm);
+  const gap = renderShapeGap(doc, shape);
+  if (gap) root.appendChild(gap);
+
   if (notice) root.appendChild(renderNotice(doc, notice));
+
+  const layerStrip = renderLayers(doc, model);
+  if (layerStrip) root.appendChild(layerStrip);
 
   // the layer filter — anchors, so it is in the URL
   if (model.layers.length > 1) {
@@ -561,12 +755,28 @@ export function renderStructure(doc, mount, model, notice) {
   grid.appendChild(renderKinds(doc, model));
   root.appendChild(grid);
 
+  const mech = renderMechanism(doc, model);
+  if (mech) root.appendChild(mech);
+
   root.appendChild(renderDeclarations(doc, model));
 
-  if (model.generatedAt) {
-    root.appendChild(el(doc, 'div', 'os-generated', `집계 시각 ${instantText(model.generatedAt)}`));
+  const stamp = [];
+  if (model.generatedAt) stamp.push(`집계 시각 ${instantText(model.generatedAt)}`);
+  const c = model.census;
+  if (c) {
+    if (c.relation) stamp.push(c.relation);
+    if (c.ms !== null) stamp.push(`${countText(c.ms)}ms`);
+    if (c.atoms !== null) stamp.push(`원자 ${countText(c.atoms)}`);
+    //: `exact: false` means the census was windowed — the numbers above are a
+    //: slice, not the ledger. Saying so is cheaper than being asked why they moved.
+    if (c.exact === false) {
+      stamp.push(`부분 집계${c.windowSpec ? ` · ${c.windowSpec}` : ''}`);
+    }
+    if (c.forced && c.forcedReason) stamp.push(c.forcedReason);
   }
-  mount.appendChild(root);
+  if (stamp.length) {
+    root.appendChild(el(doc, 'div', 'os-generated', stamp.join(' · ')));
+  }
   return root;
 }
 

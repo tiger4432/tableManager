@@ -104,14 +104,36 @@ export const MAP_REFUSAL = {
   // R-2026-08-14-D. This sentence stands in the core axis's own place; it is content.
   no_live_bridge: '연결 없음 — 좌표 컬럼이 이 행에서 전부 NULL입니다 (0이 아니라 부재)',
   no_registered_frame: '프레임 미등록 — 등록된 격자 없이는 그리지 않습니다',
-  frame_ambiguous_across_slots: '이 행이 프레임 여러 개에 걸쳐 있습니다 — 슬롯을 고르십시오',
+  // 🔴 THE SENTENCE NO LONGER ASKS FOR A SLOT. The refusal is still the server's and
+  // still FACTUAL — several frames matched and they cannot share one canvas — but the
+  // remedy changed: the strip below renders each matched frame as its own map. Asking
+  // the reader to pick was never sufficient anyway (MEASURED: `slot=01` resolves the
+  // bonding axis and leaves DT and core ambiguous on the very same response).
+  frame_ambiguous_across_slots: '이 행이 프레임 여러 개에 걸쳐 있습니다 — 아래에 한 장씩 폅니다',
   unreachable: '연결 없음 — 이 축을 이을 살아있는 다리가 없습니다',
   frame_unusable: '프레임 선언이 좌표를 세우기에 부족합니다',
   origin_box_unknown: '오리진 박스 미상 — 물리 규격(phys_*) 선언이 없습니다',
   no_cells: '이 행에 이 축의 불량 칩이 없습니다',
   seating_failed: '좌석 계산 실패',
   mask_absent: '유효 다이 마스크 미적용 — 등록 격자 위에 불량 칩만 그립니다',
+  // 🔴 THE ONE CASE THE STRIP CANNOT HONESTLY OPEN, AND IT SAYS SO RATHER THAN
+  // PICKING. When the matched frames span more than one lot, the wire hands over
+  // `available_lots` and `available_slots` as two SEPARATE lists — which pairs of
+  // them actually occur is not on the wire. Enumerating the cartesian product would
+  // invent frames nobody registered; enumerating one lot's would drop the rest.
+  frames_span_lots: '이 축의 프레임이 랏 여러 개에 걸쳐 있습니다 — 어느 조합이 실재하는지 응답에 없어 한 장씩 펴지 못합니다',
+  // The row cannot be narrowed at all: no projection's frames are keyed on the axis
+  // this row was read under, so no `slot` value addresses one of them.
+  frames_not_addressable: '이 행은 슬롯으로 좁혀지지 않습니다 — 프레임 키가 이 행의 축에 속하지 않습니다',
 };
+
+//: 🔴 HOW MANY FRAMES ARE ASKED FOR PER PAINT PASS. MEASURED on this box: a marked
+//: lot matches 25 frames (107 of 108 lots; the 108th matches 20), so «fetch them all»
+//: is 25 round trips per marked lot fired at once — six marked lots would be 150.
+//: The loader repaints as each answer lands, and each repaint asks for the next
+//: batch, so the strip fills itself progressively with NO control for the reader to
+//: press. Scrolling is the only gesture, which is what the owner asked for.
+export const FRAME_STRIP = Object.freeze({ batch: 8 });
 
 function strOrEmpty(v) {
   return v === null || v === undefined ? '' : String(v);
@@ -202,6 +224,29 @@ export function toCells(raw) {
   return { cells, dropped };
 }
 
+/**
+ * 🔴 THE REGISTERED DECLARATION ARRIVES AS TEXT, AND REJECTING IT MEANT NO MAP EVER DREW.
+ *
+ * MEASURED on the live route: `wafer_map_metadata.grid_metadata` is `character varying`,
+ * not `json`, so the frame's grid comes over the wire as a JSON STRING. This gate used to
+ * read `typeof grid === 'object'`, which is false for every live response — so every
+ * `ready` projection fell through to `no_registered_frame` and this screen has never
+ * painted a wafer on real data. It was invisible because the harness fixture writes the
+ * grid as an object literal, and a fixture that cannot express the wire's own type cannot
+ * fail on it.
+ *
+ * Parsing is still a GATE, not a coercion: text that is not an object is refused exactly
+ * as before. Nothing is defaulted into existence, and no shape is invented — the
+ * declaration is read, or it is missing and says so.
+ */
+export function gridMetaOf(grid) {
+  if (grid && typeof grid === 'object' && !Array.isArray(grid)) return grid;
+  if (typeof grid !== 'string' || !grid.trim()) return null;
+  let parsed;
+  try { parsed = JSON.parse(grid); } catch (err) { return null; }
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+}
+
 function refuse(axis, code, detail) {
   return {
     axis: strOrEmpty(axis && axis.axis),
@@ -216,9 +261,42 @@ function refuse(axis, code, detail) {
     floor: null,
     marks: null,
     bounds: null,
+    // 🔴 A REFUSED PANEL STILL KNOWS WHOSE WAFER IT IS, and that is not a contradiction:
+    // the refusal is about which FRAMES pair, not about who the wafer is. It matters in
+    // the case where every panel of an entry refused — a registered frame key with no
+    // registered grid — because then the refusals are the only place the name can come
+    // from, and without this the entry falls back to the frame key while the wire was
+    // carrying the wafer id all along.
+    wafer: '',
+    // 🔴 AND THE FRAME KEY SURVIVES A REFUSAL FOR THE SAME REASON. Found by the same
+    // assertion that found the `wafer` gap, one layer along: a refused panel dropped
+    // `mapId` too, so an entry whose every axis refused fell all the way back to a bare
+    // slot number — 「01」 — when the server had declared `BS-2601-001_01` on the very
+    // frame it was refusing. MEASURED: this is not a corner case. 120 of the 3,895
+    // registered bonding frames are `auto_registered` placeholders (`phys_chip_x: 1`)
+    // that `isFrameUsable` correctly refuses, and they are exactly the 5 lots that carry
+    // no base identity — so on those lots EVERY entry took this path.
+    mapId: '',
     availableSlots: [],
+    availableLots: [],
     counts: { floor: 0, marked: 0, found: null, scanned: null, offFloor: 0, dropped: 0 },
   };
+}
+
+/**
+ * The frames this refused projection matched, counted along BOTH keys separately.
+ *
+ * 🔴 SLOTS × LOTS IS NOT THE ANSWER AND MUST NOT BE MULTIPLIED. The wire says which
+ * slots occur and which lots occur; it does not say which PAIRS occur. MEASURED on
+ * this box: one row's core axis answers 25 slots and 2 lots, and the real number of
+ * core frames per bonded wafer is 25–30 — never the product, 50. So the two counts
+ * are reported side by side and the screen prints both rather than a total it would
+ * be making up.
+ */
+export function frameSpanOf(panel) {
+  const slots = listOf(panel && panel.availableSlots).length;
+  const lots = listOf(panel && panel.availableLots).length;
+  return { slots, lots, enumerable: lots === 1 && slots > 0 };
 }
 
 /**
@@ -248,6 +326,16 @@ export function axisPanel(axis, floors) {
     // second time from a shape this client would have to guess.
     const fr = axis.frame || {};
     panel.availableSlots = listOf(fr.available_slots).map(strOrEmpty).filter(Boolean);
+    // 🔴 AND THE LOT LIST WITH IT. The frame key is `{lot}_{slot}` — reading only the
+    // slots and calling that «the frames» is the same flattening the server refused,
+    // one layer up: MEASURED, a core axis answers 2 lots × 25 slots, and a strip built
+    // from the slots alone would put two wafers' frames under one heading.
+    panel.availableLots = listOf(fr.available_lots).map(strOrEmpty).filter(Boolean);
+    // The server sets `wafer` on the REFUSED frame too, when the rows it refused over
+    // still counted to exactly one bonded base wafer. Absent stays absent — the field is
+    // omitted, never `null`, so an empty string here means «not served», not «unnamed».
+    panel.wafer = strOrEmpty(fr.wafer);
+    panel.mapId = strOrEmpty(fr.map_id);
     // Cells can be served without a frame; they are counted, never drawn.
     panel.counts.marked = cellSet.cells.length;
     panel.counts.found = intOrNull(axis.found);
@@ -257,11 +345,20 @@ export function axisPanel(axis, floors) {
 
   // ── the frame: the REGISTERED declaration, read, never invented ──
   const fr = axis.frame || {};
-  const meta = fr.grid && typeof fr.grid === 'object' ? fr.grid : null;
-  if (!meta) return refuse(axis, 'no_registered_frame', strOrEmpty(fr.map_id));
+  // Every refusal from here down is about a frame the server NAMED, so each one carries
+  // that name and its wafer out with it. Refusing to draw is not a reason to forget who
+  // was refused — the entry still has to say which frame it is standing for.
+  const named = (code, detail) => {
+    const panel = refuse(axis, code, detail);
+    panel.mapId = strOrEmpty(fr.map_id);
+    panel.wafer = strOrEmpty(fr.wafer);
+    return panel;
+  };
+  const meta = gridMetaOf(fr.grid);
+  if (!meta) return named('no_registered_frame', strOrEmpty(fr.map_id));
   const declared = frameFromDeclaration(meta, { defaults: FRAME_DEFAULTS });
   const usable = isFrameUsable(declared);
-  if (!usable.ok) return refuse(axis, 'frame_unusable', '사유 ' + usable.reasons.join(', '));
+  if (!usable.ok) return named('frame_unusable', '사유 ' + usable.reasons.join(', '));
   const seatFrame = seatFrameOf(declared);
 
   // ── the floor: the valid-die mask, IF a resolver supplied one ──
@@ -278,9 +375,9 @@ export function axisPanel(axis, floors) {
     try {
       floorSeating = computeSeating(floorCells.cells, seatFrame, null);
     } catch (err) {
-      return refuse(axis, 'seating_failed', String((err && err.message) || err));
+      return named('seating_failed', String((err && err.message) || err));
     }
-    if (!floorSeating.boxKnown) return refuse(axis, 'origin_box_unknown', refKey);
+    if (!floorSeating.boxKnown) return named('origin_box_unknown', refKey);
   }
 
   // ── the overlay: defect chips in THIS axis's own coordinates ──
@@ -289,7 +386,7 @@ export function axisPanel(axis, floors) {
     try {
       markSeating = computeSeating(cellSet.cells, seatFrame, null);
     } catch (err) {
-      return refuse(axis, 'seating_failed', String((err && err.message) || err));
+      return named('seating_failed', String((err && err.message) || err));
     }
   }
 
@@ -318,6 +415,11 @@ export function axisPanel(axis, floors) {
     basis: strOrEmpty(axis.coordinate_unit) || 'cells_from_origin',
     reference: refKey,
     mapId: strOrEmpty(fr.map_id),
+    // 🔴 THE CARRY-THROUGH. `waferLabelOf` reads `panel.wafer`, and panels are built HERE
+    // from an explicit field list — so a field the wire carries but this list omits is
+    // dropped one layer before any reader can see it. A consumer that reads a field is
+    // not the same thing as a field that arrives.
+    wafer: strOrEmpty(fr.wafer),
     ok: true,
     // The mask gap is stated ON a panel that otherwise rendered.
     code: floorSeating ? (cellSet.cells.length ? null : 'no_cells') : 'mask_absent',
@@ -333,6 +435,7 @@ export function axisPanel(axis, floors) {
       : gridBounds,
     grid: { cols: declared.cols, rows: declared.rows },
     availableSlots: [],
+    availableLots: [],
     counts: {
       floor: floorSeating ? floorSeating.seatCount : 0,
       marked: markSeating ? markSeating.seatCount : 0,
@@ -346,30 +449,15 @@ export function axisPanel(axis, floors) {
 
 export function lotAxisMaps(entry, floors) {
   const axes = listOf(entry && entry.projections);
-  // 🔴 THE SLOT STRIP IS DERIVED FROM WHAT THE LOT ACTUALLY HAS, never from a
-  // range this file makes up. A lot with 25 slots and a lot with 3 are both real
-  // and the screen must not imply the second is missing 22.
-  const panelsFirst = axes.map((a) => axisPanel(a, floors));
-  // 🔴 THE SLOT LIST IS THE SERVER'S ANSWER TO `frame_ambiguous_across_slots`,
-  // not a range this file makes up. A row spanning 25 slots and one spanning 3
-  // are both real, and the screen must not imply the second is missing 22.
-  const slotSet = [];
-  for (const pf of panelsFirst) {
-    for (const sl of listOf(pf.availableSlots)) {
-      if (!slotSet.includes(sl)) slotSet.push(sl);
-    }
-  }
-  const slots = slotSet.map((sl) => ({ slot: sl, cols: null, rows: null }));
+  const panels = axes.map((a) => axisPanel(a, floors));
   const base = {
     lot: strOrEmpty(entry && entry.lot),
     row: strOrEmpty(entry && entry.row),
     slot: strOrEmpty(entry && entry.slot),
-    slots,
   };
   if (!axes.length) {
     return { ...base, ok: false, why: MAP_REFUSAL.no_axes, panels: [] };
   }
-  const panels = panelsFirst;
   return {
     ...base,
     ok: panels.some((p) => p.ok),
@@ -382,33 +470,190 @@ export function lotAxisMaps(entry, floors) {
 }
 
 /**
- * The map section for the whole marked set.
+ * 🔴 WHICH PROJECTION'S FRAMES THIS ROW CAN BE OPENED ONE BY ONE — DERIVED, NOT NAMED.
  *
- * `maps` is `{lot: <axis payload>}`, filled in by the loader as answers arrive,
- * so a slow axis fetch shows as 「불러오는 중」 on that lot alone rather than
- * blanking the section.
+ * The route narrows rows with `slot`, and the server applies it to the ROW AXIS's own
+ * slot column and to nothing else (`_slot_column_for`). So the projection a `slot`
+ * can resolve is the one whose frames are keyed on the very column the row was looked
+ * up by — and the wire already says which one that is, without naming a column:
+ * `available_lots` is the distinct set of that projection's lot key among rows the
+ * WHERE clause matched, so it is EXACTLY `[row]` when the projection's lot column IS
+ * the row axis's column, and something else otherwise.
+ *
+ * MEASURED, `row=SYN-VOID-001` under `by=bond_lot`:
+ *   bond  available_lots ["SYN-VOID-001"]              <- equals the row: addressable
+ *   dt    available_lots ["SYN-DT-001"]                <- a different lot space
+ *   core  available_lots ["SYN-CL-001","SYN-CL-002"]   <- two, and unpairable
+ * and under `by=dt_lot` the same test moves to the DT projection with no code change.
+ *
+ * That is the whole point: NO TABLE OR COLUMN NAME IS TYPED IN THIS FILE. A deployment
+ * that declares different relations and different axes swaps its declarations and this
+ * test follows them, because it compares two values the response itself carries.
  */
-export function mapSection(model, maps, floors) {
-  const marked = listOf(model && model.marked);
+export function addressableProjection(entry) {
+  const row = strOrEmpty(entry && entry.row);
+  if (!row) return null;
+  for (const p of listOf(entry && entry.projections)) {
+    const fr = (p && p.frame) || {};
+    const lots = listOf(fr.available_lots).map(strOrEmpty).filter(Boolean);
+    const slots = listOf(fr.available_slots).map(strOrEmpty).filter(Boolean);
+    if (lots.length === 1 && lots[0] === row && slots.length) {
+      return { axis: strOrEmpty(p.axis), label: axisLabel(p.axis, p.label), slots, lot: lots[0] };
+    }
+  }
+  return null;
+}
+
+/**
+ * The strip for ONE marked row: which frames to open, or why they cannot be opened.
+ *
+ * 🔴 ONE FRAME IS ONE BONDED BASE WAFER, AND THAT IS MEASURED, NOT ASSUMED. On this
+ * box `bonding_log.base_id` and the bonding frame key `(lot, slot)` are a BIJECTION —
+ * 2,575 base wafers, 2,575 frames, 1:1 in both directions, no base wafer touching two
+ * frames and no frame carrying two base wafers. So listing the addressable
+ * projection's frames IS listing the lot's bonded base wafers; the wafer axis is not a
+ * second mechanism bolted beside the multi-render, it is the same list read correctly.
+ *
+ * ⚠️ WHAT THAT BIJECTION DOES NOT BUY. It holds for the BONDING axis only. The same
+ * measurement says one base wafer's dies arrive from 25 DT frames and from 25–30 core
+ * frames, so 「웨이퍼 한 장 = 프레임 한 장」 is true of the wafer's OWN coordinate
+ * system and false of the others. Those axes therefore stay refused INSIDE each
+ * wafer's entry, with their frame counts printed — a fact about how the product is
+ * built, not a gap in this screen.
+ */
+export function stripPlan(entry) {
+  const row = strOrEmpty(entry && entry.row);
+  const projections = listOf(entry && entry.projections);
+  if (!projections.length) return { row, kind: 'no_axes', axis: '', slots: [], why: MAP_REFUSAL.no_axes };
+
+  // 🔴 A ROW THAT ALREADY RESOLVES IS NOT AMBIGUOUS AND MUST NOT BE RE-FETCHED. When
+  // the served answer already drew a frame, that answer IS the single entry — asking
+  // for it again under a slot it never carried would be this file inventing a key.
+  if (projections.some((p) => strOrEmpty(p.state) === 'ready')) {
+    return { row, kind: 'single', axis: '', slots: [strOrEmpty(entry.slot)], why: '' };
+  }
+
+  const addr = addressableProjection(entry);
+  if (addr) return { row, kind: 'strip', axis: addr.axis, label: addr.label, slots: addr.slots, why: '' };
+
+  // Nothing addressable. Say WHICH of the two situations happened — 「랏이 여럿이라
+  // 짝을 모른다」 and 「이 행에는 좁힐 슬롯 자체가 없다」 are different facts and a
+  // reader deciding whether to re-ask under another axis needs to tell them apart.
+  const spanning = projections.some((p) => listOf(p.frame && p.frame.available_lots).length > 1);
   return {
-    marked: marked.length,
-    // 🔴 KEYED ON `row`, NOT ON THE LOT NAME — `/api/ledger/lot_map` takes the
-    // bonding row id, and one lot carries many of them.
-    lots: marked.map((r) => {
-      // The cache key carries the slot for the reason `loadAxisMap` records:
-      // `row` alone would show one slot's wafer under another slot's heading.
-      const slot = strOrEmpty(model && model.question && model.question.slot);
-      const entry = (maps && (maps[`${r.row}|${slot}`] || maps[r.row])) || null;
-      if (!entry) {
-        return {
-          lot: r.lot, row: r.row, ok: false, pending: true,
-          why: '축 맵 불러오는 중…', panels: [], slots: [], slot: '',
-        };
-      }
-      return {
-        ...lotAxisMaps({ ...entry, lot: r.lot, row: r.row }, floors),
-        pending: false,
-      };
-    }),
+    row, kind: 'blocked', axis: '', slots: [],
+    code: spanning ? 'frames_span_lots' : 'frames_not_addressable',
+    why: spanning ? MAP_REFUSAL.frames_span_lots : MAP_REFUSAL.frames_not_addressable,
   };
 }
+
+/**
+ * 🔴 WHAT THIS ENTRY IS CALLED — AND WHERE THE NAME CAME FROM, RECORDED.
+ *
+ * The owner asked for the strip to be labelled by base WF id. The route does not serve
+ * one: `frame` carries `map_id` (`{lot}_{slot}`) and the response has no field naming
+ * the bonded base wafer. Since the two are a measured bijection the ENTRY is right
+ * either way, but the LABEL would be an invention, so this returns the frame key the
+ * server did declare and marks the source. The day a `wafer` field lands on the frame
+ * the label upgrades with no edit here, and until then nothing on screen claims to be
+ * a wafer id that isn't one.
+ */
+export function waferLabelOf(panels, slot) {
+  // 🔴 AGREEMENT, NOT THE FIRST ONE FOUND. Each projection derives its wafer over its OWN
+  // surviving rows — the subsets differ, because a projection only keeps rows where its
+  // coordinates are non-null. So «the first panel carrying a wafer» is a SAMPLE, and
+  // sampling an identity is the exact move the server refuses one layer down when it
+  // counts `wafers_seen` instead of taking `next(iter(...))` of an unchecked set.
+  // On this corpus the panels always agree; a corpus where they did not would otherwise
+  // label the entry with whichever axis happened to be listed first.
+  const named = [];
+  for (const p of listOf(panels)) {
+    const w = strOrEmpty(p && p.wafer);
+    if (w && !named.includes(w)) named.push(w);
+  }
+  if (named.length === 1) return { text: named[0], source: 'served' };
+  // Disagreement is not a tiebreak — it means this entry is not one wafer, so it does
+  // not get a wafer's name. Fall through to the key the frame actually declared.
+  for (const p of listOf(panels)) {
+    const m = strOrEmpty(p && p.mapId);
+    if (m) return { text: m, source: named.length > 1 ? 'frame_key_disputed' : 'frame_key' };
+  }
+  return { text: strOrEmpty(slot), source: 'slot' };
+}
+
+/**
+ * The map section for the whole marked set.
+ *
+ * `maps` is `{`${row}|${slot}`: <lot_map body>}`, filled in by the loader as answers
+ * arrive. Returns the render model AND `wanted` — the next few `{row, slot}` the
+ * loader should ask for. The budget is what keeps the strip from firing 25 requests
+ * per marked lot in one burst; each answer repaints, and each repaint asks for the
+ * next batch, so no control exists for the reader to press.
+ */
+export function mapSection(model, maps, floors, options) {
+  const marked = listOf(model && model.marked);
+  const askedSlot = strOrEmpty(model && model.question && model.question.slot);
+  const budget = intOrNull(options && options.batch);
+  let left = budget === null ? FRAME_STRIP.batch : budget;
+  const wanted = [];
+  const want = (row, slot) => {
+    if (left <= 0) return false;
+    left -= 1;
+    wanted.push({ row, slot });
+    return true;
+  };
+  const at = (row, slot) => (maps && maps[`${row}|${slot}`]) || null;
+
+  const lots = marked.map((r) => {
+    const row = strOrEmpty(r.row);
+    // 🔴 KEYED ON `row`, NOT ON THE LOT NAME — `/api/ledger/lot_map` takes the
+    // bonding row id, and one lot carries many of them.
+    const base = at(row, askedSlot) || (maps && maps[row]) || null;
+    const head = { lot: r.lot, row, slot: askedSlot };
+    if (!base) {
+      want(row, askedSlot);
+      return { ...head, pending: true, why: '축 맵 불러오는 중…', frames: [], plan: null };
+    }
+    const plan = stripPlan({ ...base, row });
+    if (plan.kind === 'no_axes' || plan.kind === 'blocked') {
+      return {
+        ...head, pending: false, frames: [], plan,
+        // The server's own sentence when it wrote one, so a refusal on screen is
+        // the refusal that happened rather than this file's paraphrase of it.
+        served: listOf(base.projections).map((p) => axisPanel(p, floors)),
+      };
+    }
+    if (plan.kind === 'single') {
+      const one = lotAxisMaps({ ...base, lot: r.lot, row }, floors);
+      return {
+        ...head, pending: false, plan,
+        frames: [{ slot: strOrEmpty(base.slot), key: `${row}|${strOrEmpty(base.slot)}`,
+                   pending: false, ...one }],
+      };
+    }
+    const frames = plan.slots.map((slot) => {
+      const body = at(row, slot);
+      if (!body) {
+        const asked = want(row, slot);
+        return { slot, key: `${row}|${slot}`, pending: true, asked, panels: [] };
+      }
+      return {
+        slot, key: `${row}|${slot}`, pending: false,
+        ...lotAxisMaps({ ...body, lot: r.lot, row, slot }, floors),
+      };
+    });
+    return { ...head, pending: false, plan, frames };
+  });
+
+  return { marked: marked.length, lots, wanted };
+}
+
+/**
+ * The `{row, slot}` pairs the loader should fetch next — the same computation the
+ * render does, exported so the loader does not have to reimplement the strip's idea
+ * of which frames exist. One function decides, both callers read it.
+ */
+export function mapWants(model, maps, options) {
+  return mapSection(model, maps, null, options).wanted;
+}
+

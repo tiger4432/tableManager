@@ -1,0 +1,324 @@
+/* ============================================================
+   ledger_console.css — 원장 콘솔(ledger.html)의 1920px 기준 폭 레이아웃
+
+   왜 이 파일이 따로 있나
+   ─────────────────────
+   ledger.html 은 자기 스타일을 <style> 인라인 블록으로 갖는다. 이 파일은 그
+   블록을 «대체하지 않고 덮는다».
+
+   덮기가 성립하는 근거 두 가지 — 둘 다 성립해야 안전하다고 보고 둘 다 확인했다:
+   ① 순서: 빌드 산출물에서 이 시트의 <link rel=stylesheet>(assets/*.css)는 인라인
+      <style> 의 «뒤»에 주입된다(dist/ledger.html 에서 확인). dev 에서는 모듈
+      임포트가 런타임에 <head> 끝에 붙으므로 역시 뒤다.
+   ② 명시도: 아래 모든 규칙은 `body:has(.lt-app-header)` 접두사를 갖는다.
+      = (0,1,1) 가산 → 인라인 블록의 `main`(0,0,1)·`.lr`(0,1,0)·`.cc`(0,1,0)·
+      `.sx-table`(0,1,0) 를 «순서와 무관하게» 이긴다.
+   ②가 있으므로 ledger.html 이 다른 레인 손에 재정렬돼도 이 시트는 계속 이긴다.
+   (그래서 이 주석은 ledger.html 의 행 번호를 인용하지 않는다 — 그 파일은 지금도
+   편집 중이고 행 번호는 유통기한이 있다. 덮는 대상은 «술어»로 적는다:
+   `.lt-app-header__inner` / `main` / `.lr` 세 곳의 `max-width: 1080px`.)
+
+   🔴 SCOPING — 이 시트는 tokens.css 를 타고 4개 엔트리 전부에 실린다.
+      `main` 같은 요소 선택자는 7개 페이지 전부에 있으므로, 이 파일의 모든 규칙은
+      `body:has(.lt-app-header)`(원장 콘솔에만 있는 클래스) 안으로 스코프한다.
+      스코프 밖 페이지에서 이 파일의 시각적 효과는 0이어야 한다.
+
+   🔴 가독성 = 기능 (SSOT). 이 파일은 폰트 크기를 «하나도» 줄이지 않는다.
+      넓어진 폭은 밀도(단수·배치)로만 쓴다. 좁아서 안 들어가면 좁은 채로 두고
+      보고한다 — 글씨를 줄여서 넣지 않는다.
+      오히려 폭이 넓어지면 «줄 길이»가 가독성을 해치므로, 전폭에 남는 산문에는
+      측정(ch) 상한을 새로 «건다». 폭 확대의 대가는 밀도지 가독성이 아니다.
+   ============================================================ */
+
+/* ── 기준 폭 ──────────────────────────────────────────────────
+   1920px 가 기준. 1880px 캡 + 기존 24px 패딩 = 좌우 ~32px 여백.
+   캡을 아주 없애지 않는 이유: 울트라와이드(3440px)에서 표의 한 행이
+   눈으로 따라갈 수 없는 길이가 된다. 1920 을 «채우되» 그 위로는 안 늘린다. */
+body:has(.lt-app-header) {
+  --lt-page-w: 1880px;
+}
+
+/* 인라인 블록의 `max-width: 1080px` 를 덮는다. 그 선언은 «세 곳»에 있다 —
+   `.lt-app-header__inner` · `main` · `.lr`.
+   세 곳«전부»여야 한다: `.lr`(참조뷰 루트)을 빼먹으면 main 만 넓어지고 참조뷰는
+   1080px 에 갇힌 채 3단으로 접혀 칸이 오히려 294px 로 «좁아진다»(실측으로 잡음). */
+body:has(.lt-app-header) main {
+  max-width: var(--lt-page-w);
+}
+
+/* 🔴 헤더는 `main` 과 «같은 값»을 쓰면 안 된다 — 어긋난다.
+   `main` 의 글이 서는 자리는 max-width «안쪽», 즉 자기 좌우 패딩(24px)을 뺀
+   1832px 다. 반면 `.lt-app-header__inner` 는 헤더의 패딩«바깥» 기준이라
+   1880 을 그대로 주면 좌우로 12.5px 씩 밀려 검색창과 아래 표의 왼쪽 선이
+   어긋난다(실측: -12.5 / +12.5). 1080px 시절엔 둘 다 캡에 걸려 우연히 맞아
+   있었으므로, 이건 «폭을 넓히면서 새로 생기는» 어긋남이다.
+   48px = main 의 좌우 패딩 합. 이 값을 빼면 두 선이 정확히 0 으로 맞는다. */
+body:has(.lt-app-header) .lt-app-header__inner {
+  max-width: calc(var(--lt-page-w) - 48px);
+}
+
+/* `.lr` 은 이미 폭이 잡힌 main «안»이라 자기 캡이 필요 없다. */
+body:has(.lt-app-header) .lr {
+  max-width: none;
+}
+
+/* ── ① 조사 랜딩(#lt-console) — 세로로 쌓인 패널을 가로로 편다 ──
+   1080px 에서 `.cc` 는 패널 6장이 세로로 쌓여 2645px 였다. 전부 한 단이라
+   가로가 통째로 비었다. auto-fit 로 «폭이 허락하는 만큼만» 단을 늘린다.
+
+   하한 640px 은 «고른 값이 아니라 잰 값»이다. 1920px 에서 단 수를 바꿔 가며
+   `.cc` 전체 높이를 실측한 결과(라이브 DOM, 실데이터):
+     1단(1832px) 2562px · 2단(909px) 2128px · 3단(601px) 2246px · 4단(448px) 2767px
+   2단이 최소다. 3단이 더 나쁜 이유는 패널이 좁아지면 안쪽 내용이 되접혀
+   «세로로 자라기» 때문 — 한 패널은 909px 에서 525px 인데 601px 에서 899px 이 된다.
+   즉 단을 더 쪼개면 가로는 더 쓰지만 세로 스크롤이 도로 늘어난다.
+
+   640px 하한 + 1880px 캡 = 이 화면은 «항상 2단»이다(울트라와이드에서도).
+   1300px 아래에서는 1단으로 접힌다 — 좁은 화면의 오늘 동작은 그대로(회귀 없음).
+
+   🔴 grid 가 아니라 multi-column 인 이유 — 스크롤 총량이 다르다.
+   grid 는 «행»을 만든다. 행 높이 = 그 행에서 제일 큰 패널. 패널 높이가
+   771/272 · 152/525 · 689/92 로 들쭉날쭉하면 각 행마다 빈 칸이 생긴다 —
+   실측으로 빈 칸 합계가 1469px 였다. 즉 가로는 썼는데 세로가 그대로다.
+   multi-column 은 행이 없다. 패널이 단 안에 «흘러» 쌓이므로 빈 칸이 안 생긴다.
+     grid 2단 2128px → multicol 2단 1421px (같은 폭·같은 글씨·같은 내용)
+   3단은 여기서도 더 나쁘다(1539px) — 폭이 좁아지면 패널이 세로로 자란다.
+
+   `columns: 640px 2` 는 «너비 하한 + 단 수 상한»을 함께 준다. 그래서
+   좁은 화면에서 2단을 강제하지 않고 스스로 1단으로 접힌다.
+   (`columns: 2` 로 쓰면 폭과 무관하게 항상 2단이라 좁은 화면이 깨진다.) */
+body:has(.lt-app-header) .cc {
+  display: block;
+  columns: 640px 2;
+  column-gap: 14px;
+}
+
+/* 기본은 «전단 가로지르기». 패널만 단 안에 흐른다.
+   이렇게 두면 콘솔 JS 가 새 자식(공지·요약줄 등)을 추가해도 그 자식은
+   자동으로 전폭이 된다 — 단에 끼어들어 레이아웃이 깨지지 않는다.
+   (지금 이 규칙이 잡는 것: nav.cc-kinds, div.cc-generated)
+   DOM 순서는 안 건드리므로 탭 포커스 순서도 그대로다. */
+body:has(.lt-app-header) .cc > * {
+  column-span: all;
+}
+
+/* `break-inside: avoid` 가 없으면 패널이 단 경계에서 «잘려» 테두리와 그림자가
+   두 동강 난다. margin-bottom 은 flex 시절의 `gap: 14px` 를 대신한다. */
+body:has(.lt-app-header) .cc > .cc-panel {
+  column-span: none;
+  break-inside: avoid;
+  margin-bottom: 14px;
+}
+
+/* ── ② 조사 결과(#lt-result) — 사슬은 «서사»라 넓히지 않는다 ──
+   🔴 의도적으로 좁게 남긴 유일한 블록. 사슬은 홉이 순서대로 이어지는 문장이고,
+      1880px 짜리 한 줄은 눈이 다음 줄 첫 글자를 못 찾는다(되돌아오기 실패).
+      1100px 은 오늘(1032px)보다 넓으면서 측정이 무너지지 않는 상한이다.
+      가운데 정렬하지 않는다 — 위의 전폭 콘솔 아래에서 왼쪽 정렬이라야
+      «좁은 게 의도»로 읽힌다. 가운데 정렬은 고아처럼 보인다.
+   사슬 머리(.lt-head)·커버리지는 데이터라 전폭을 그대로 쓴다. */
+body:has(.lt-app-header) .lt-chain {
+  max-width: 1100px;
+}
+
+/* ── ③ 트렌드(#lt-surprise) — 놀라움 표를 넓게 ──
+   전치와의 시너지: 행=지표, 열=랏 순서(최신이 오른쪽, 가로 스크롤).
+   `.sx-tablewrap` 은 이미 overflow-x:auto 라 스크롤 그릇은 있다.
+
+   width:100% → min-width:100% 로 바꾸는 이유가 전치의 핵심이다.
+   `width:100%` 는 표를 그릇에 «맞춰 눌러» 열이 몇 개든 1880px 안에 욱여넣는다
+   (= 랏이 늘면 칸이 좁아져 글씨가 줄바꿈되거나 잘린다).
+   `width:auto; min-width:100%` 는 «모자라면 채우고, 넘치면 자란다» —
+   랏이 200개여도 각 칸은 제 폭을 지키고 그릇이 가로로 스크롤한다.
+   이것이 글씨를 줄이지 않고 시간축을 늘리는 유일한 방법이다. */
+body:has(.lt-app-header) .sx-table {
+  width: auto;
+  min-width: 100%;
+}
+
+/* 표가 페이지를 밀어내지 않게 — «구역 안에서» 세로로도 스크롤한다.
+   실측: 랏 103개일 때 `.sx-tablewrap` 혼자 8666px, 페이지 10099px 중 86%.
+   그 아래 소형 다중 차트(428px)와 맵 스트립에 닿으려면 표 8666px 를 지나가야
+   했다 — 소유자의 「스크롤 너무 많이」가 정확히 이 자리다.
+     페이지 10099 → 2105px (표는 960px 창 안에서 11행씩 보여 주고 내부 스크롤)
+
+   🔴 이건 «숨김»이 아니다. 접은 게 아니라 창에 넣은 것이라 103행이 전부 그대로
+      있고 스크롤로 전부 닿는다. 게다가 이 화면은 총계를 이미 말하고 있다 —
+      머리의 「103 본딩 랏」이 그 수다. 접는 방식이었다면 「아래 N건」이 필요했고
+      그건 마크업이라 이 레인에서 못 한다.
+   120px = 스티키 페이지 헤더(73px) + 표의 제 머리행이 헤더에 딱 붙지 않을 만큼.
+   이 값에서 보이는 행이 가장 많다(11행) — 더 줄여도 페이지 높이는 거의 안 준다
+   (실측: -160px→2065 · -220px→2005 · 70vh→1901). 그래서 가장 헐렁한 값을 쓴다. */
+body:has(.lt-app-header) .sx-tablewrap {
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  /* 스크롤바가 나타났다 사라지며 열 폭이 흔들리지 않게 자리를 미리 잡는다. */
+  scrollbar-gutter: stable;
+}
+
+/* 첫 열 고정 — 전치되면 첫 열이 «지표 이름»이다. 가로로 스크롤해 2024년치
+   랏을 보는 동안 «지금 보는 행이 무슨 지표인가»가 화면에서 사라지면 표가
+   읽히지 않는다. 지금(비전치) 표에서는 마킹 칸이 고정돼 마킹이 늘 손 닿는
+   자리에 있다 — 두 모양 모두에서 이득이라 구조 선택자로 건다.
+
+   ⚠️ 전치 마크업의 클래스명을 모르고 걸었다(다른 레인 소관). 그래서 클래스가
+      아니라 `tr > :first-child` 구조로 걸었다 — 클래스가 바뀌어도 살아남는다. */
+body:has(.lt-app-header) .sx-table tr > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  /* 스크롤해 들어오는 칸과 겹치는 경계선. transform/opacity 가 아닌 정적
+     box-shadow 라 리플로 없음(애니메이션 아님). */
+  box-shadow: 1px 0 0 var(--border);
+}
+
+/* 머리행의 첫 칸은 «두 축» 고정(top 은 인라인 블록의 .sx-th 가 이미 건다).
+   z-index 3: 세로 스티키 머리(z:2)보다 위여야 좌상단 모서리가 안 가린다. */
+body:has(.lt-app-header) .sx-table thead tr > :first-child {
+  z-index: 3;
+}
+
+/* 🔴 배경은 명시도 0(`:where`)으로 준다.
+   스티키 칸은 불투명해야 밑으로 지나가는 칸이 안 비친다. 그런데 이 자리에
+   조건부서식(.sx-cell--h1~h4, 명시도 0,1,0)이 올 수 있다 — 명시도를 0 으로
+   낮춰야 «히트맵 색이 이긴다». 색이 곧 내용인 표에서 회색으로 덮으면 안 된다.
+   `background-color` 만 쓰는 것도 의도다 — 짝수행 줄무늬는 `background-image`
+   라 shorthand 로 덮으면 줄무늬가 첫 칸에서만 끊긴다. */
+:where(body:has(.lt-app-header) .sx-table tr > :first-child) {
+  background-color: var(--bg-surface);
+}
+
+:where(body:has(.lt-app-header) .sx-table thead tr > :first-child) {
+  background-color: var(--bg-header);
+}
+
+/* ── ③-2 구조뷰(#lt-structure) — 「선언 지도」가 화면을 삼킨다 ──
+   실측: 선언 지도 패널 혼자 1924px, 구조뷰 2888px 중 67%. 안에 `.os-decl` 행이
+   32개 «패널의 직속 자식»으로 늘어서 있다 — 감쌀 목록 컨테이너가 없다.
+   그래서 목록이 아니라 «패널»을 스크롤 창으로 만들고, 패널 머리를 그 안에
+   sticky 로 고정한다(머리까지 같이 밀려 나가면 무슨 표인지 잃는다).
+
+   🔴 여기서도 접지 않는다 — 32행 전부 그대로 있고 스크롤로 닿는다.
+   ⓘ 다만 이 패널은 트렌드 표와 달리 «총 개수를 말하지 않는다». 접은 게 아니라
+     스크롤이라 규칙상 필수는 아니지만, 머리에 개수가 있으면 더 정직하다.
+     그건 마크업이라 이 레인 밖 — 보고서에 넘긴다.
+
+   선택자를 `.os-panel--wide` 로 못 잡는 이유: 「축별 실측」 패널도 같은 클래스다
+   (118px). `:has(.os-decl)` 은 «선언 행을 담은 패널»이라는 뜻이라 의미가 맞고,
+   실측으로 이 술어에 걸리는 패널은 4개 중 정확히 1개다. */
+body:has(.lt-app-header) .os-panel:has(.os-decl) {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* 🔴 위 패딩을 «머리에게 넘긴다». `.os-panel` 은 flex 컨테이너라 sticky 머리가
+     border box 가 아니라 content box 를 기준으로 붙는다 — 패딩을 여기 두면
+     머리가 패널 위쪽에서 18px 내려온 자리에 멈추고, 그 띠로 행이 올라온다
+     (실측: 음수 마진 방식 delta 19px, 패딩 이전 방식 delta 1px). */
+  padding-top: 0;
+}
+
+/* 머리가 위 패딩을 대신 갖는다. 좌우 음수 마진으로 패널의 좌우 패딩까지 덮어
+   스크롤해 올라오는 행을 «가로 전체»에서 가린다. */
+body:has(.lt-app-header) .os-panel:has(.os-decl) .os-panel__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-surface);
+  margin: 0 -20px;
+  padding: 18px 20px 10px;
+}
+
+/* ── 다섯째 엣지 상태 `declared_unconsumed` — 「선언만 · 소비자 없음」 ──
+   지금까지 이 상태만 규칙이 없어 민짜 기본 배지로 떨어졌다. 「선언됐는데 아무도
+   안 읽는다」는 뜻이라 «평범해 보이면 안 되는» 바로 그 상태다.
+
+   무늬 = 근거, 색 = 상태 (이 화면의 기존 직교 규칙 그대로).
+   · 근거는 «선언만» → 채우지 않고 파선 테두리 (flowing 의 채운 배지와 구별).
+     파선/점선 배분은 지시대로 건드리지 않았다 — 기존 뜻을 그대로 둔다.
+   · 색은 `--accent-2`. 눈이 아니라 재서 골랐다. 후보 --info 와 --accent-2 를
+     구별해야 할 세 색(flowing=--accent · undeclared=--warning ·
+     declared_only/unmeasured=--text-muted)에 대해 CIE-Lab ΔE 최솟값:
+       --info      light 21.8 / dark 17.4  ← dark 에서 --accent 와 17.4 로 붙는다
+       --accent-2  light 50.4 / dark 41.7
+     --info 는 다크에서 flowing 과 혼동될 거리다. 이 배지가 절대 하면 안 되는
+     혼동이 그거라 --accent-2 를 쓴다. 두 테마 모두에서 안전하다. */
+body:has(.lt-app-header) .os-badge--declared_unconsumed {
+  background: transparent;
+  color: var(--accent-2);
+  border: 1.5px dashed var(--accent-2);
+}
+
+/* 범례는 스와치가 아니라 «항목»에 상태 클래스가 붙는다 —
+   `os-legend__item os-legend__item--<state>` (renderLegend 가 그렇게 쓴다).
+   그래서 선택자가 `.os-legend__swatch--*` 가 아니다. */
+body:has(.lt-app-header) .os-legend__item--declared_unconsumed .os-legend__swatch {
+  border-top: 3px dashed var(--accent-2);
+}
+
+/* ── ④ 랏 참조뷰(#lt-lot) — 혈통 · 순위표 · 이력을 «나란히» ──
+   1400px 위에서만 편다. 그 아래는 오늘처럼 세로로 쌓인다(회귀 없음).
+
+   자리는 `data-panel` 로 잡는다 — lot_reference_view.js 의 panel() 이 이미
+   붙이는 앵커라 마크업을 «한 글자도» 추가하지 않는다.
+   (키: lineage · rank · investigations · actions — panel() 호출부가 정본)
+
+   문턱이 1600px 인 이유(1400 에서 올려 잡음): 1400px 뷰포트에서 3단은
+   384/537/384 가 된다 — 실측. 384px 는 혈통·이력 칸의 mono 랏 ID 가 되접히기
+   시작하는 폭이다. 글씨를 줄여서 맞추는 선택지는 «없으므로»(가독성=기능),
+   칸이 좁아지는 대신 문턱을 올려 그 구간은 오늘처럼 세로로 쌓이게 둔다.
+   1600px: 443/620/443 · 1920px(기준 폭): 529/741/529 — 둘 다 여유 있음. */
+@media (min-width: 1600px) {
+  body:has(.lt-app-header) .lr {
+    display: grid;
+    /* 가운데(순위표)를 넓게: 세 관문 + 요인 키 + 계열/대상 배지가 한 행에
+       들어가야 표가 접히지 않는다. 양옆(혈통·이력)은 목록이라 좁아도 읽힌다. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* 기본 전폭 — 머리·액션·꼬리·공지, 그리고 앞으로 추가될 무엇이든.
+     세 패널만 명시적으로 자기 단에 앉는다. */
+  body:has(.lt-app-header) .lr > * {
+    grid-column: 1 / -1;
+  }
+
+  body:has(.lt-app-header) .lr > [data-panel="lineage"] {
+    grid-column: 1;
+  }
+
+  body:has(.lt-app-header) .lr > [data-panel="rank"] {
+    grid-column: 2;
+  }
+
+  body:has(.lt-app-header) .lr > [data-panel="investigations"] {
+    grid-column: 3;
+  }
+
+  /* 인라인 블록의 `.lr-panel { margin-top: 16px }` 은 grid gap 과 «겹쳐»
+     32px 가 된다. gap 이 정본이므로 margin 을 0 으로 내린다. */
+  body:has(.lt-app-header) .lr > .lr-panel {
+    margin-top: 0;
+  }
+
+  /* 좌우 패딩은 main 이 이미 24px 를 준다. `.lr` 이 또 24px 를 주면 좌우로
+     48px 씩 — 「여백으로 낭비 금지」에 정확히 걸린다. 세로 패딩은 남긴다.
+     (좁은 화면의 `@media (max-width:820px)` 패딩 규칙은 이 블록 밖이라 무사) */
+  body:has(.lt-app-header) .lr {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* ── 가독성 상한 — 폭이 늘어난 «대가»를 여기서 치른다 ──────────
+   위 세 패널 안의 산문은 단 폭(~500px)이 이미 측정을 잡아 준다. 이 상한이
+   실제로 무는 자리는 «전폭으로 남는» 블록들이다 — 머리의 불일치 문장,
+   액션 패널, 그리고 랏이 없을 때의 안내문.
+   92ch ≈ 780px — 한글/영문 혼용에서 눈이 되돌아올 수 있는 상한. */
+body:has(.lt-app-header) .lr-head__mismatch,
+body:has(.lt-app-header) .lr-gap__why,
+body:has(.lt-app-header) .lr-note,
+body:has(.lt-app-header) .lr-none__why,
+body:has(.lt-app-header) .lr-log__q {
+  max-width: 92ch;
+}
