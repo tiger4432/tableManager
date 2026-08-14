@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 
 import finding_kinds
+import ledger_journey
 import ledger_kinds
 import ledger_lots
 import ledger_siblings
@@ -219,6 +220,52 @@ def ledger_siblings_route(
             # The race the catalogue gate cannot close: a relation dropped between the
             # `to_regclass` lookup and the query. Judged on SQLSTATE, which is the same
             # five characters in every locale and every driver.
+            raise _relation_absent()
+        raise
+
+
+@router.get("/journey")
+def ledger_journey_route(
+    scope: str = Query(..., description="마킹 — <축이름>:<값>,<값>. 주어 2개로 풀려야 한다"),
+    finding: str = Query(None, description="관측 종류. 미지정 시 등록부의 기본값"),
+    window: str = Query(None, description="7d 또는 YYYY-MM-DD..YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+):
+    """WF 2장의 «여정 대조» — 두 주어가 걸은 공정 서열을 위에서 아래로. 읽기 전용.
+
+    🔴 A SEPARATE ROUTE, NOT A MODE OF `/siblings`, AND THAT IS THE POINT. `/siblings`'s
+    rows carry 배수·신뢰구간·「우연 아님」; this shape carries none of them because two
+    subjects cannot support them. Folding an n=2 answer into an endpoint whose contract
+    includes population statistics is how a field that must not exist gets emitted as null
+    「and the client will hide it」 — and a field that exists gets rendered eventually.
+    The existing `/siblings?scope=` answer is UNCHANGED by this route existing.
+
+    🔴 3장 이상은 여기서 답하지 않는다 — 422 `scope_is_not_a_pair`, 해결된 주어 목록과
+    함께. 순위 레일이 그 질문의 답이고, 이 화면이 다섯 열짜리 표로 번지면 그건 소유자가
+    치우라고 한 바로 그 표다.
+    """
+    try:
+        return ledger_journey.journey(
+            db.connection(), kind=finding, scope=scope, window=window)
+    except ledger_walk_contrast.WalkRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except ledger_siblings.SiblingsRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except ledger_siblings.SiblingsConfigError as exc:
+        logger.error("journey axis geometry refused: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "axes_config_refused", "message": f"요인 선언 거절: {exc}"})
+    except ledger_trace.ResolverConfigError as exc:
+        logger.error("ledger resolver config refused: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "resolver_config_refused", "message": f"해결기 config 거절: {exc}"})
+    except finding_kinds.FindingKindError as exc:
+        logger.error("finding-kind registry refused: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "finding_kind_registry_refused",
+            "message": f"관측 종류 등록부 거절: {exc}"})
+    except Exception as exc:                       # noqa: BLE001 - same backstop
+        if _is_undefined_table(exc):
             raise _relation_absent()
         raise
 

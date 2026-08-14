@@ -1,0 +1,75 @@
+{
+  "__doc": "JOURNEY CONTRAST declarations for GET /api/ledger/journey (brief P0-3). This file exists for ONE reason: the screen must say 「본딩 · 압력」 where the ledger says `processed_with·params_actual.pressure_MPa`, and a Korean name for a step or a payload leaf is operator knowledge that the data does not carry. 🔴 IT IS NOT AN ITEM LIST. Nothing here decides what is compared -- every leaf of every atom of the two marked subjects is compared whether it is named here or not, and an unnamed leaf renders as its RAW PATH (정직 우선, orchard rule). Deleting this whole file degrades the screen to raw paths; it does not remove a single segment, item or value.",
+  "version": 1,
+
+  "segments": {
+    "__doc": "🔴 THE ONE STRUCTURAL DECLARATION, and it is the thing the P0-3 brief did NOT anticipate (the brief says 「새 선언 0개」 for data and 「라벨 선언 한 층」 for names). Segmenting a journey needs to know WHICH predicate carries a process step and WHERE inside its payload the step's name and family live. `server/ledger/vocabulary.py` declares that `processed_with`'s object requires ['step','step_family','eqp','recipe'] but nothing says which of those four IS the step -- reading it off position in that list would be a convention, and a convention is exactly what breaks the day a schema differs. So it is declared here. Adding a second journey-bearing predicate is an entry in this block and costs no Python. | `name_path` and `family_path` are dotted paths into `object_payload`. `family_path` may be omitted; the family then reads as 「미선언」 rather than being guessed from the step name.",
+    "processed_with": {
+      "family_path": "step_family",
+      "name_path": "step"
+    }
+  },
+
+  "family_labels": {
+    "__doc": "step_family value -> Korean. An undeclared family renders as its raw value.",
+    "fab": "전공정",
+    "packaging": "후공정",
+    "metrology": "계측"
+  },
+
+  "step_labels": {
+    "__doc": "step value -> Korean. This is where 「본딩」 comes from and it is the reason `SYN-BD-03` is no longer the only thing on the row. An undeclared step renders as its raw value -- visible and ugly, which is the point: a missing declaration must look missing.",
+    "PLASMA_CLEAN": "플라즈마 세정",
+    "BONDING": "본딩",
+    "MOLDING": "몰딩",
+    "POST_BOND_QUEUE": "본딩 후 대기",
+    "MI_THICKNESS": "두께 계측",
+    "DIFFUSION": "확산",
+    "DT": "다이 트랜스퍼",
+    "DEPO": "증착",
+    "ETCH": "식각",
+    "PHOTO": "노광",
+    "CMP": "연마",
+    "CLEAN": "세정"
+  },
+
+  "field_labels": {
+    "__doc": "payload leaf -> Korean name (and optionally its unit). THREE spellings are looked up, most specific first: `<predicate>:<dotted path>`, `<dotted path>`, and the bare LEAF name. The bare leaf is what lets ONE entry serve `params_actual.pressure_MPa` and `params_setpoint.pressure_MPa` -- the setpoint/actual distinction is NOT carried by the label, it is carried by the atom's resolution class (관측 vs 추론), which is declared in `ledger_resolver.json` and needs no second spelling here. Declare the longer form when two leaves of the same name are different quantities. | A value may be a plain string (the label) or an object {label, unit}. `unit` is rendered next to the number; without it the number is shown bare rather than with a guessed unit.",
+
+    "eqp": "장비",
+    "chamber": "챔버",
+    "step": "공정",
+    "step_family": "공정 계열",
+    "pass_no": "패스",
+    "job": "작업",
+    "recipe.id": "레시피",
+    "recipe.recipe_id": "레시피",
+    "recipe.rev": "레시피 rev",
+
+    "pressure_MPa": {"label": "압력", "unit": "MPa"},
+    "temp_C": {"label": "온도", "unit": "°C"},
+    "temp_c": {"label": "온도", "unit": "°C"},
+    "time_s": {"label": "시간", "unit": "s"},
+    "vacuum_Pa": {"label": "진공도", "unit": "Pa"},
+    "vacuum_assist": "진공 보조",
+    "purge_delay_s": {"label": "퍼지 지연", "unit": "s"},
+    "clean_time_s": {"label": "세정 시간", "unit": "s"},
+    "post_bond_queue_h": {"label": "본딩 후 대기", "unit": "h"},
+    "thickness_um": {"label": "두께", "unit": "µm"},
+    "thickness_nm": {"label": "두께", "unit": "nm"},
+    "cure_s": {"label": "경화 시간", "unit": "s"},
+    "clamp_kN": {"label": "클램프 힘", "unit": "kN"},
+    "mold_temp_C": {"label": "몰드 온도", "unit": "°C"},
+    "transfer_mm_s": {"label": "이송 속도", "unit": "mm/s"},
+    "furnace_C": {"label": "노 온도", "unit": "°C"},
+    "dwell_min": {"label": "유지 시간", "unit": "min"},
+    "ramp_C_min": {"label": "승온율", "unit": "°C/min"},
+    "o2_slm": {"label": "산소 유량", "unit": "slm"},
+    "stage_temp_C": {"label": "스테이지 온도", "unit": "°C"},
+    "pick_force_N": {"label": "픽 하중", "unit": "N"},
+    "place_accuracy_um": {"label": "배치 정밀도", "unit": "µm"},
+    "uv_dose_mJ": {"label": "UV 조사량", "unit": "mJ"},
+    "dose_mj": {"label": "조사량", "unit": "mJ"},
+    "depth_um": {"label": "깊이", "unit": "µm"}
+  }
+}
