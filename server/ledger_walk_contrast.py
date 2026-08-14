@@ -28,6 +28,11 @@ WHAT IS COMPARED, AND OVER WHICH DENOMINATOR
     control   subjects with NONE of their units inside it, minus declared exclusions
     mixed     subjects with some of each — their OWN bucket, never folded into either
 
+A leaf's JSON type picks the comparison and nothing else does: a string or boolean gets a
+share contrast per VALUE, a number gets a mean-ratio contrast per FIELD. Both land in ONE
+ranking under the same declared band and the same three gates, because a cause that lives
+in a number is a cause and a screen that can only show categories cannot be read alone.
+
 🔴 The unit of comparison is the **subject the atoms hang off** (a wafer), not the
 package. A `processed_with` atom is asserted about a wafer; counting its 141 packages as
 141 independent observations would shrink every confidence interval by an order of
@@ -117,11 +122,30 @@ REASON_NO_ATOMS = "no_atoms_for_subjects"
 REASON_UNKNOWN_AXIS = "unknown_marking_axis"
 REASON_BAD_SCOPE = "bad_scope"
 REASON_ABSENT_FROM_CONTROL = "absent_from_control_population"
+#: Scope-value accounting. 🔴 A requested value that matches nothing used to vanish in
+#: silence — the contrast then answered about a NARROWER case set than the caller asked
+#: for, and every number downstream (case n, the ratio, the interval, the gates) inherited
+#: it while looking perfectly healthy. Measured 2026-08-14 on the live stack:
+#: `scope=bond_lot:SYN-VOID-101,NOPE-999` returned `state: "ready"`, echoed both values and
+#: computed 25 case subjects — byte-identical to asking for the one lot alone.
+REASON_VALUE_UNKNOWN = "value_not_in_axis"
+REASON_VALUE_OUT_OF_POPULATION = "value_outside_population"
+REASON_NO_VALUE_MATCHED = "no_scope_value_matched"
 REASON_NO_ATTRIBUTED = "no_attributed_denominator"
+#: Numeric-only outcomes. 🔴 All three keep the candidate IN the list. A quantity that
+#: cannot be put on a ratio scale (a mean of 0, a signed quantity) is a fact about the
+#: data, and dropping it is how a screen looks more complete than it is.
+REASON_NOT_COMPARABLE_SCALE = "not_comparable_scale"
+REASON_NO_DISPERSION = "no_dispersion_measured"
+REASON_ZERO_DISPERSION = "zero_dispersion"
 
 #: Comparison kinds, decided by the JSON type of the leaf and by nothing else — the owner's
 #: rule 「필드 유형이 비교 방식을 자동 결정」. `categorical` gets a share contrast;
-#: `distribution` gets per-side summary statistics and is ranked by R7, not here.
+#: `distribution` gets a MEAN-RATIO contrast and enters the SAME ranking, with the same
+#: three gates and the same enrichment band (2026-08-14 — before that a numeric field was
+#: walked, attributed and then never scored, so 33 of 49 fields on the live fixture, every
+#: process condition among them, could not reach the screen at all: 「수치에 사는 원인은
+#: 보이지 않았다」).
 COMPARE_CATEGORICAL = "categorical"
 COMPARE_DISTRIBUTION = "distribution"
 COMPARE_NULL = "always_null"
@@ -150,6 +174,13 @@ WALK_DEFAULTS = {
     "control_min_subjects": 30,
     "evidence_ref_sample": 5,
     "high_cardinality_at": 200,
+    #: 🔴 A NOTE THRESHOLD, NOT A RANKING ONE. The enrichment band is a MULTIPLE, and a
+    #: multiple is unit-dependent for a physical quantity: bond temperature 150 vs 145 is
+    #: 1.03x in °C and 1.016x in K, so a band declared at 1.5x demotes a declared,
+    #: mechanistically-modelled cause for reasons that live in the thermometer. Rather than
+    #: invent a second promotion rule tonight, the fields the band demoted while their
+    #: SPREAD says they are far apart get named on screen.
+    "std_diff_note_at": 1.0,
 }
 
 _Z95 = 1.959963985
@@ -310,8 +341,37 @@ def contrast(connection, kind=None, scope=None, window=None, limit=None,
     plan = sib._Plan(geometry, observation, methods, win, has_runs,
                      run_time_as="run_time" if has_runs else None)
 
-    sides = _sides(connection, plan, source, axis, subject, values, has_runs)
+    sides, per_value = _sides(connection, plan, source, axis, subject, values, has_runs)
     envelope["scope"].update(_scope_block(sides, has_runs))
+
+    # 🔴 EVERY REQUESTED VALUE IS ACCOUNTED FOR BEFORE ANY NUMBER IS REPORTED. A contrast
+    # that silently narrows its own case set gives a confident answer about a population
+    # nobody asked about, and it looks healthy the whole way down — which is worse than an
+    # error, because an error would stop somebody.
+    accounting, unmatched = _account_values(connection, source, axis, values, per_value)
+    envelope["scope"].update({
+        "value_accounting": accounting,
+        "values_requested": len(values),
+        "values_resolved": len(values) - len(unmatched),
+        "values_dropped": len(unmatched),
+    })
+    if unmatched:
+        # `notes` because the console prints a note's sentence VERBATIM and unconditionally
+        # — the one channel that reaches the screen with no client change.
+        envelope["notes"].append({
+            "note": "scope_values_dropped",
+            "values": list(unmatched),
+            "message": (f"마킹한 {len(values)}개 중 {len(unmatched)}개가 대조에서 빠졌다 — "
+                        f"{_dropped_sentence(accounting)}"
+                        + (f". 아래 모든 수치는 남은 {len(values) - len(unmatched)}개 "
+                           f"기준이다" if len(unmatched) < len(values) else ""))})
+    if len(unmatched) == len(values):
+        # 🔴 NOT an empty contrast — a scope that matched NOBODY. A well-formed answer here
+        # would be an answer about a population that does not exist.
+        return _degraded(envelope, REASON_NO_VALUE_MATCHED,
+                         f"마킹한 값 {len(values)}개가 전부 매칭 0 — "
+                         f"대조할 케이스가 없다 ({_dropped_sentence(accounting)})",
+                         state=STATE_EMPTY)
     if not sides["case"]["subjects"]:
         return _degraded(envelope, REASON_EMPTY_CASE,
                          "케이스 쪽 주어 0 — 마킹한 값이 이 모집단에 없음",
@@ -356,6 +416,7 @@ def contrast(connection, kind=None, scope=None, window=None, limit=None,
         "gates": _gate_legend(),
     })
     _note_high_cardinality(envelope, fields, walk_cfg)
+    _note_flat_but_separated(envelope, scored, walk_cfg)
     return envelope
 
 
@@ -383,26 +444,91 @@ def _sides(connection, plan, source, axis, subject, values, has_runs):
     narrow = source.filter_clause("a", [], params)
     sql = (
         f"{plan.prelude},\n"
-        f"marked AS (SELECT p.unit_id, p.is_found, p.{subject.column} AS subject,\n"
-        f"                  (a.{axis.column}::text = ANY(%(scope_values)s)) AS in_scope\n"
+        f"marked AS (SELECT p.unit_id, p.is_found, p.{subject.column}::text AS subject,\n"
+        f"                  a.{axis.column}::text AS mark_val\n"
         f"           FROM pop p JOIN {source.relation} a "
         f"ON {sib._join_on('p', 'a', source.join)}{narrow})\n"
-        f"SELECT subject,\n"
-        f"       CASE WHEN bool_and(in_scope) THEN 'case'\n"
-        f"            WHEN bool_or(in_scope) THEN 'mixed'\n"
+        f"SELECT 'subject'::text AS kind, subject AS name,\n"
+        f"       CASE WHEN bool_and(mark_val = ANY(%(scope_values)s)) THEN 'case'\n"
+        f"            WHEN bool_or(mark_val = ANY(%(scope_values)s)) THEN 'mixed'\n"
         f"            ELSE 'control' END AS side,\n"
         f"       count(*) AS units, {found_expr} AS found_units\n"
-        f"FROM marked GROUP BY subject")
+        f"FROM marked GROUP BY subject\n"
+        f"UNION ALL\n"
+        # 🔴 THE ACCOUNTING IS DRIVEN BY THE REQUEST, NOT BY WHAT THE DATA CONTAINED.
+        # `unnest(...) LEFT JOIN marked` emits one row PER REQUESTED VALUE whether or not
+        # it matched, which is the whole difference between「빠졌다」and silence: a
+        # GROUP BY over the joined rows can only ever report the values that survived.
+        f"SELECT 'value'::text, v.val, NULL::text,\n"
+        f"       count(m.unit_id), count(DISTINCT m.subject)\n"
+        f"FROM unnest(%(scope_values)s::text[]) AS v(val)\n"
+        f"LEFT JOIN marked m ON m.mark_val = v.val\n"
+        f"GROUP BY v.val")
     out = {s: {"subjects": [], "units": 0, "found_units": 0}
            for s in (SIDE_CASE, SIDE_CONTROL, SIDE_MIXED)}
-    for subject_id, side, units_n, found_n in _fetch(connection, sql, params):
+    per_value = {}
+    for kind, name, side, units_n, found_n in _fetch(connection, sql, params):
+        if kind == "value":
+            per_value[name] = {"units": int(units_n or 0),
+                               "subjects": int(found_n or 0)}
+            continue
         bucket = out[side]
-        bucket["subjects"].append(subject_id)
+        bucket["subjects"].append(name)
         bucket["units"] += int(units_n)
         bucket["found_units"] += int(found_n or 0)
     for bucket in out.values():
         bucket["subjects"].sort()
-    return out
+    return out, per_value
+
+
+def _account_values(connection, source, axis, requested, per_value):
+    """Every requested scope value, resolved or dropped, NAMED and with its reason.
+
+    🔴 DROPPING A VALUE THAT MATCHED NOTHING IS FINE; DOING IT IN SILENCE IS THE DEFECT.
+    「빠졌다」 alone is not enough either — a reader told only that much goes hunting for a
+    typo when the window may be the cause, so the two are told apart.
+    """
+    rows, unmatched = [], []
+    for value in requested:
+        got = per_value.get(str(value)) or {"units": 0, "subjects": 0}
+        if got["units"]:
+            rows.append({"value": value, "state": "resolved",
+                         "units": got["units"], "subjects": got["subjects"],
+                         "reason": None, "message": None})
+        else:
+            rows.append({"value": value, "state": "dropped", "units": 0, "subjects": 0,
+                         "reason": None, "message": None})
+            unmatched.append(value)
+    if not unmatched:
+        return rows, unmatched
+
+    # [SCALE] Only on the drop path, and ONE scan of the axis relation no matter how many
+    # values dropped — the alternative (an EXISTS per value) is N scans of a table this
+    # project sizes at 10M rows, on exactly the path that is already going wrong.
+    known = _values_in_axis(connection, source, axis, unmatched)
+    for row in rows:
+        if row["state"] != "dropped":
+            continue
+        if row["value"] in known:
+            row["reason"] = REASON_VALUE_OUT_OF_POPULATION
+            row["message"] = "축에는 있으나 이 기간·모집단에 유닛 0건"
+        else:
+            row["reason"] = REASON_VALUE_UNKNOWN
+            row["message"] = f"{axis.label or axis.name}에 없는 값 — 오타 가능"
+    return rows, unmatched
+
+
+def _values_in_axis(connection, source, axis, values):
+    """Which of these values exist on the axis at all, ignoring window and population."""
+    sql = (f"SELECT DISTINCT a.{axis.column}::text FROM {source.relation} a "
+           f"WHERE a.{axis.column}::text = ANY(%(vals)s)")
+    return {r[0] for r in _fetch(connection, sql, {"vals": [str(v) for v in values]})}
+
+
+def _dropped_sentence(rows):
+    """The dropped values, named with their reasons — never a bare count."""
+    return ", ".join(
+        f"{r['value']}({r['message']})" for r in rows if r["state"] == "dropped")
 
 
 def _scope_block(sides, has_runs):
@@ -561,6 +687,26 @@ flat(id, sid, side, predicate, ord_code, path, val, vtype) AS (
            f.path || t2.k, t2.v, jsonb_typeof(t2.v)
     FROM flat f, jsonb_each(f.val) AS t2(k, v)
     WHERE f.vtype = 'object' AND array_length(f.path, 1) < %(max_depth)s
+),
+-- 🔴 THE NUMERIC SIDE COLLAPSES TO THE SUBJECT FIRST, AND THAT IS THE WHOLE DESIGN.
+-- A wafer carrying 141 `processed_with` atoms would otherwise contribute 141 readings of
+-- its own bond temperature, shrinking every interval by an order of magnitude and putting
+-- noise on top of the ranking — the same mistake this module's header refuses for the
+-- categorical side, stated there about packages. So one subject gives ONE reading (its own
+-- mean), and the contrast is then between two sets of subject readings. `flat` is a
+-- recursive CTE and is therefore materialised once, so this second aggregation re-reads it
+-- rather than re-walking the payloads.
+subj_num AS (
+    SELECT f.predicate, f.path, f.sid, f.side,
+           avg((f.val #>> '{{}}')::numeric)               AS sval,
+           count(*)                                       AS leaves,
+           count(*) FILTER (WHERE f.ord_code = 1)         AS n_before,
+           count(*) FILTER (WHERE f.ord_code = 2)         AS n_after,
+           count(*) FILTER (WHERE f.ord_code = 0)         AS n_no_obs,
+           (array_agg(f.id::text))[1]                     AS a_ref
+    FROM flat f
+    WHERE f.vtype = 'number'
+    GROUP BY 1, 2, 3, 4
 )
 SELECT f.predicate,
        array_to_string(f.path, '.') AS field,
@@ -585,13 +731,37 @@ SELECT f.predicate,
                 THEN (f.val #>> '{{}}')::numeric END)                 AS num_min,
        max(CASE WHEN f.vtype = 'number'
                 THEN (f.val #>> '{{}}')::numeric END)                 AS num_max,
-       (array_agg(f.id::text) FILTER (WHERE f.side = 'case'))[1:%(sample_n)s] AS refs
+       (array_agg(f.id::text) FILTER (WHERE f.side = 'case'))[1:%(sample_n)s] AS refs,
+       NULL::numeric                                                  AS case_sd,
+       NULL::numeric                                                  AS control_sd
 FROM flat f
 WHERE f.vtype <> 'object'
 GROUP BY GROUPING SETS ((f.predicate, f.path,
                          CASE WHEN f.vtype IN ('string','boolean')
                               THEN f.val #>> '{{}}' END),
                         (f.predicate, f.path))
+UNION ALL
+-- `is_field_row = 2` — a THIRD row kind beside the value rows (0) and the field coverage
+-- row (1): one per numeric field, carrying both sides' subject-level moments.
+SELECT n.predicate,
+       array_to_string(n.path, '.'),
+       2,
+       NULL::text,
+       count(*) FILTER (WHERE n.side = 'case'),
+       count(*) FILTER (WHERE n.side = 'control'),
+       sum(n.leaves)::bigint,
+       sum(n.leaves)::bigint,
+       0::bigint,
+       'number'::text, 'number'::text,
+       sum(n.n_before)::bigint, sum(n.n_after)::bigint, sum(n.n_no_obs)::bigint,
+       avg(n.sval) FILTER (WHERE n.side = 'case'),
+       avg(n.sval) FILTER (WHERE n.side = 'control'),
+       min(n.sval), max(n.sval),
+       (array_agg(n.a_ref) FILTER (WHERE n.side = 'case'))[1:%(sample_n)s],
+       stddev_samp(n.sval) FILTER (WHERE n.side = 'case'),
+       stddev_samp(n.sval) FILTER (WHERE n.side = 'control')
+FROM subj_num n
+GROUP BY 1, 2
 """
     return _fetch(connection, sql, params)
 
@@ -599,7 +769,10 @@ GROUP BY GROUPING SETS ((f.predicate, f.path,
 _COLS = ("predicate", "field", "is_field_row", "value", "case_n", "control_n",
          "leaves", "numeric_leaves", "null_leaves", "vtype_min", "vtype_max",
          "n_before", "n_after", "n_no_obs_time", "case_avg", "control_avg",
-         "num_min", "num_max", "refs")
+         "num_min", "num_max", "refs", "case_sd", "control_sd")
+
+#: `is_field_row` discriminates three row kinds out of one scan.
+ROW_VALUE, ROW_FIELD, ROW_NUMERIC = 0, 1, 2
 
 
 def _shape(rows, case_of, control_of, walk_cfg):
@@ -609,12 +782,15 @@ def _shape(rows, case_of, control_of, walk_cfg):
     all — and every candidate row is handed its own field's coverage, because a rate whose
     denominator has not been checked is the thing this console refuses to print.
     """
-    fields, values = {}, []
+    fields, values, nums = {}, [], {}
     for raw in rows:
         row = dict(zip(_COLS, raw))
         key = (row["predicate"], row["field"])
-        if int(row["is_field_row"]) == 1:
+        kind = int(row["is_field_row"])
+        if kind == ROW_FIELD:
             fields[key] = row
+        elif kind == ROW_NUMERIC:
+            nums[key] = row
         else:
             values.append(row)
 
@@ -637,13 +813,8 @@ def _shape(rows, case_of, control_of, walk_cfg):
             },
             "distinct_values": None,
             "high_cardinality": False,
-            "numeric": (None if compare != COMPARE_DISTRIBUTION else {
-                "case_mean": _round(row["case_avg"]),
-                "control_mean": _round(row["control_avg"]),
-                "min": _round(row["num_min"]), "max": _round(row["num_max"]),
-                "state": "summary_only",
-                "message": "수치 분포 대조는 R7 — 지금은 양쪽 요약만",
-            }),
+            "numeric": (None if compare != COMPARE_DISTRIBUTION
+                        else _field_numeric(nums.get(key), row)),
         })
     by_key = {(f["predicate"], f["field"]): f for f in out_fields}
 
@@ -673,8 +844,45 @@ def _shape(rows, case_of, control_of, walk_cfg):
         if field is not None and field.get("high_cardinality"):
             continue
         candidates.append({"row": row, "field": field, "case_of": case_of,
-                           "control_of": control_of})
+                           "control_of": control_of, "kind": COMPARE_CATEGORICAL})
+
+    # 🔴 ONE NUMERIC CANDIDATE PER NUMERIC FIELD — bounded by the field count rather than
+    # by a value explosion, which is why the numeric side needs no high-cardinality rule.
+    # It is emitted whether or not it turns out to be comparable: 「비교 불가」 is an
+    # answer and it belongs on the same list as the answers that ARE ratios.
+    for field in out_fields:
+        if field["compare"] != COMPARE_DISTRIBUTION:
+            continue
+        nrow = nums.get((field["predicate"], field["field"]))
+        if nrow is None:
+            continue
+        candidates.append({"row": nrow, "field": field, "case_of": case_of,
+                           "control_of": control_of, "kind": COMPARE_DISTRIBUTION})
     return out_fields, candidates
+
+
+def _field_numeric(nrow, field_row):
+    """The `fields[]` summary for a numeric field — SUBJECT-level once the walk measured it.
+
+    The fallback keeps the older leaf-level pair rather than reporting nothing, and says so:
+    a field whose summary silently changed unit would be worse than one that admits which
+    unit it is in.
+    """
+    if nrow is None:
+        return {"case_mean": _round(field_row["case_avg"]),
+                "control_mean": _round(field_row["control_avg"]),
+                "min": _round(field_row["num_min"]), "max": _round(field_row["num_max"]),
+                "unit_of_summary": "leaf",
+                "state": "summary_only",
+                "message": "주어 단위 요약 미측정 — 잎 단위 평균만"}
+    return {"case_mean": _round(nrow["case_avg"]),
+            "control_mean": _round(nrow["control_avg"]),
+            "case_sd": _round(nrow["case_sd"]), "control_sd": _round(nrow["control_sd"]),
+            "case_subjects": int(nrow["case_n"]), "control_subjects": int(nrow["control_n"]),
+            "min": _round(nrow["num_min"]), "max": _round(nrow["num_max"]),
+            "unit_of_summary": "subject",
+            "state": "compared",
+            "message": "주어별 평균끼리 평균비로 대조 — 같은 순위에 참여"}
 
 
 def _compare_kind(field_row):
@@ -689,6 +897,8 @@ def _compare_kind(field_row):
 # ------------------------------------------------------------------------ scoring
 def _score(item, contrast_cfg, min_support):
     """One candidate into the pinned row. Both denominators, twice: side and attributed."""
+    if item.get("kind") == COMPARE_DISTRIBUTION:
+        return _score_numeric(item, contrast_cfg, min_support)
     row, field = item["row"], item["field"]
     case_n, control_n = int(row["case_n"]), int(row["control_n"])
     if case_n < min_support and control_n < min_support:
@@ -761,6 +971,168 @@ def _score(item, contrast_cfg, min_support):
     return out
 
 
+def _score_numeric(item, contrast_cfg, min_support):
+    """One NUMERIC field into the SAME pinned row — same gates, same band, same columns.
+
+    🔴 THE EFFECT IS A MEAN RATIO, ON PURPOSE, AND IT IS THE SAME SCALE THE CATEGORICAL
+    SIDE ALREADY USES. `enrichment` is 「몇 배」 either way, so `defaults.contrast`'s
+    declared band (`enriched_at` / `depleted_at`) bands both, `_gate_real` reads the same
+    95% lower bound, and `_rank_key` compares like with like. That is also the answer to
+    multiplicity: 33 numeric fields entering the ranking are held to the SAME rule that
+    keeps 51 categorical candidates from promoting noise — an interval bound clearing an
+    operator-declared band, not a p-value, and `min_support` on the same subject counts.
+
+    🔴 AND THE INTERVAL IS BETWEEN-SUBJECT. `sd` here is the spread of the SUBJECTS' own
+    means (the SQL collapsed each subject first), so the delta-method interval on the log
+    ratio is measured against the noise between wafers, not between the leaves of one wafer.
+
+    Not comparable is a VERDICT, not a removal — see `REASON_NOT_COMPARABLE_SCALE`.
+    """
+    row, field = item["row"], item["field"]
+    case_n, control_n = int(row["case_n"]), int(row["control_n"])
+    if case_n < min_support and control_n < min_support:
+        return None
+
+    case_of, control_of = item["case_of"], item["control_of"]
+    predicate, fname = row["predicate"], row["field"]
+    case_mean, control_mean = _num(row["case_avg"]), _num(row["control_avg"])
+    case_sd, control_sd = _num(row["case_sd"]), _num(row["control_sd"])
+
+    numeric = {
+        "effect": "mean_ratio",
+        "unit_of_observation": "subject",
+        "case": {"mean": _round(case_mean), "sd": _round(case_sd), "subjects": case_n},
+        "control": {"mean": _round(control_mean), "sd": _round(control_sd),
+                    "subjects": control_n},
+        "range": {"min": _round(row["num_min"]), "max": _round(row["num_max"])},
+        "mean_delta": (None if case_mean is None or control_mean is None
+                       else _round(case_mean - control_mean)),
+        # 🔴 REPORTED, NEVER RANKED ON. The band is a RATIO band, so a quantity that moves
+        # 3% against a spread of 0.1% reads 「차이 없음」 while being wildly separated.
+        # `std_diff` is that separation, carried so the gap is visible instead of silently
+        # deciding nothing — a second promotion rule is a design decision, not tonight's.
+        "std_diff": _std_diff(case_mean, case_sd, case_n,
+                              control_mean, control_sd, control_n),
+        "state": "compared", "message": None,
+    }
+
+    out = {
+        "candidate_key": f"{predicate}:{fname}",
+        "predicate": predicate,
+        "field": fname,
+        # No `value`: the candidate IS the field. A numeric row that invented a value
+        # would collide with the categorical row contract the console renders.
+        "value": None,
+        "axis": f"{predicate}·{fname}",
+        "label": _numeric_label(predicate, fname, case_mean, control_mean),
+        "about": "walk",
+        "compare": COMPARE_DISTRIBUTION,
+        "unit": "subject",
+        # 🔴 「귀속 51/75」 SURVIVES INTO THE ROW. For a quantity every attributed subject
+        # carries a reading, so `n` and `attributed_of` coincide — and `coverage` is then
+        # exactly the gap the owner named (`clamp_kN`: 51 of 75 case, 587 of 834 control).
+        # Averaging over the missing would be the one thing this console refuses to print.
+        "case": _side(case_n, case_of, case_n),
+        "control": _side(control_n, control_of, control_n),
+        "found": None, "clean_scanned": None,
+        "enrichment": None, "enrichment_ci": None,
+        # `rate_delta` stays null: a difference of means is not a difference of rates, and
+        # putting one under the other's name is the reuse this module refuses elsewhere.
+        # It travels as `numeric.mean_delta` instead.
+        "rate_delta": None,
+        "enrichment_state": UNDETERMINABLE,
+        "enrichment_basis": "attributed",
+        "reason": None,
+        "numeric": numeric,
+        "evidence_refs": [{"relation": LEDGER_TABLE, "key_column": "id", "key": r,
+                           "population": "case"}
+                          for r in (row["refs"] or []) if r],
+        "evidence_ref_count": case_n,
+        "_timing": {"before": int(row["n_before"]), "after": int(row["n_after"]),
+                    "no_obs_time": int(row["n_no_obs_time"])},
+    }
+
+    if not case_n or not control_n or case_mean is None or control_mean is None:
+        out["reason"] = REASON_NO_ATTRIBUTED
+        numeric.update({"state": "not_comparable",
+                        "message": "한쪽 귀속 0 — 대조할 값이 없음"})
+        return out
+    if case_mean <= 0 or control_mean <= 0:
+        # 🔴 「비교 불가」 AND IT STAYS ON THE LIST. A quantity centred on zero (or signed)
+        # has no ratio; measured on this box `params_actual.purge_delay_s` is 0.0 on both
+        # sides. Dropping it would leave a reader thinking the walk never saw it.
+        out["reason"] = REASON_NOT_COMPARABLE_SCALE
+        numeric.update({"state": "not_comparable",
+                        "message": "평균이 0 이하 — 비율 척도 불가 (차이만 보고)"})
+        return out
+
+    ratio = case_mean / control_mean
+    out["enrichment"] = _round(ratio)
+    se = _log_ratio_se(case_mean, case_sd, case_n, control_mean, control_sd, control_n)
+    if se is None:
+        # One side has fewer than two subjects, so it has no spread of its own. The point
+        # estimate stands and `real` reports `unknown` — never `fail`.
+        out["reason"] = REASON_NO_DISPERSION
+        numeric.update({"state": "point_only",
+                        "message": "주어 2개 미만 — 산포 없음, 구간 불가"})
+        return out
+    half = _Z95 * se
+    low, high = ratio * math.exp(-half), ratio * math.exp(half)
+    out["enrichment_ci"] = [_round(low), _round(high)]
+    if se == 0.0:
+        # Both sides are constant. The interval is a point, which is TRUE of this sample and
+        # overconfident about the next one, so the row says which it is.
+        out["reason"] = REASON_ZERO_DISPERSION
+        numeric["message"] = "양쪽 모두 상수 — 구간 폭 0 (이 표본에 한해)"
+    if low >= contrast_cfg["enriched_at"]:
+        out["enrichment_state"] = ENRICHED
+    elif high <= contrast_cfg["depleted_at"]:
+        out["enrichment_state"] = DEPLETED
+    else:
+        out["enrichment_state"] = FLAT
+    return out
+
+
+def _log_ratio_se(m1, s1, n1, m2, s2, n2):
+    """Delta-method standard error of `log(m1/m2)`. `None` when a side has no spread."""
+    if s1 is None or s2 is None or n1 < 1 or n2 < 1:
+        return None
+    return math.sqrt(s1 * s1 / (n1 * m1 * m1) + s2 * s2 / (n2 * m2 * m2))
+
+
+def _std_diff(m1, s1, n1, m2, s2, n2):
+    """Standardised mean difference (pooled). Reported beside the ratio, never ranked on."""
+    if None in (m1, m2, s1, s2) or (n1 + n2) < 3:
+        return None
+    var = ((n1 - 1) * s1 * s1 + (n2 - 1) * s2 * s2) / float(n1 + n2 - 2)
+    if var <= 0:
+        return None
+    return _round((m1 - m2) / math.sqrt(var))
+
+
+def _numeric_label(predicate, fname, case_mean, control_mean):
+    """🔴 THE NUMBERS RIDE IN THE LABEL. The console's 마킹/나머지 columns hold counts, so
+    for a quantity the two means would otherwise be nowhere on the row and the reader would
+    see 「2.73×」 with nothing to read it against."""
+    return (f"{predicate}·{fname} 평균 "
+            f"{_fmt_num(case_mean)} ↔ {_fmt_num(control_mean)}")
+
+
+def _fmt_num(value):
+    if value is None:
+        return "—"
+    size = abs(value)
+    if size >= 10000:
+        return "%.0f" % value
+    if size >= 1:
+        return "%.2f" % value
+    return "%.4g" % value
+
+
+def _num(value):
+    return None if value is None else float(value)
+
+
 def _side(n, of, attributed_of):
     """One side of one row. Two denominators and never a bare ratio: `of` is the side,
     `attributed_of` is how much of that side the FIELD reaches, and `coverage` is the
@@ -805,6 +1177,13 @@ _GATE_CODE = {GATE_PASS: "P", GATE_UNKNOWN: "-", GATE_FAIL: "X",
               mechanism_gate.VERDICT_BIAS: "B"}
 
 
+#: Why an interval could not be formed, in that case's own words.
+_NO_INTERVAL_MESSAGE = {
+    REASON_NOT_COMPARABLE_SCALE: "비교 불가 — 비율 척도에 올릴 수 없는 값",
+    REASON_NO_DISPERSION: "산포를 낼 주어가 부족",
+}
+
+
 def _gate_real(row, contrast_cfg):
     """실재 — is the difference bigger than its own noise? The Katz lower bound decides.
 
@@ -813,9 +1192,14 @@ def _gate_real(row, contrast_cfg):
     """
     ci = row.get("enrichment_ci")
     if not ci or ci[0] is None:
+        reason = row.get("reason") or "no_interval"
         return {"verdict": GATE_UNKNOWN, "basis": "katz_lower_bound",
-                "reason": row.get("reason") or "no_interval",
-                "message": "구간을 낼 분모가 없음", "detail": None}
+                "reason": reason,
+                # 🔴 The sentence names the ACTUAL obstacle. A numeric field refused for
+                # its scale is not「분모가 없다」, and one sentence covering both would
+                # send a reader looking for a missing denominator that is right there.
+                "message": _NO_INTERVAL_MESSAGE.get(reason, "구간을 낼 분모가 없음"),
+                "detail": None}
     low, high = ci
     state = row["enrichment_state"]
     verdict = GATE_PASS if state in (ENRICHED, DEPLETED) else GATE_FAIL
@@ -902,6 +1286,41 @@ def _note_high_cardinality(envelope, fields, walk_cfg):
                         "distinct_values": f["distinct_values"]} for f in noisy],
             "message": ("값이 너무 많아 사실상 식별자인 필드 — 필드 행은 남고 값 단위 "
                         "비교만 생략했다 (숨긴 것이 아니라 뜻이 없어서)")})
+
+
+def _note_flat_but_separated(envelope, scored, walk_cfg):
+    """🔴 THE DOUBT, ON SCREEN RATHER THAN ONLY IN A REPORT.
+
+    A numeric candidate the ratio band called 「차이 없음」 while the two sides are far
+    apart relative to their own spread is the one place this scoring can quietly lose a
+    real cause. Measured on the demo fixture: `params_actual.temp_C` is 150.0 vs 145.3 —
+    a declared cause with a mechanism edge to `void` — and lands at 1.03x, flat, because
+    the band counts multiples. Naming it costs a sentence; promoting it would be a second
+    ranking rule invented at the console, which is a design decision and not this round's.
+    """
+    at = float(walk_cfg["std_diff_note_at"])
+    hits = []
+    for row in scored:
+        if row.get("compare") != COMPARE_DISTRIBUTION:
+            continue
+        if row.get("enrichment_state") != FLAT:
+            continue
+        spread = (row.get("numeric") or {}).get("std_diff")
+        if spread is None or abs(spread) < at:
+            continue
+        hits.append(row)
+    if not hits:
+        return
+    hits.sort(key=lambda r: -abs(r["numeric"]["std_diff"]))
+    named = ", ".join(f"{r['candidate_key']}({r['enrichment']}배, 산포대비 "
+                      f"{r['numeric']['std_diff']})" for r in hits)
+    envelope["notes"].append({
+        "note": "flat_ratio_but_separated", "at": at,
+        "fields": [{"candidate_key": r["candidate_key"],
+                    "enrichment": r["enrichment"],
+                    "std_diff": r["numeric"]["std_diff"]} for r in hits],
+        "message": (f"배수로는 「차이 없음」이나 산포 대비로는 크게 갈린 수치 — {named}. "
+                    f"밴드가 «배수» 기준이라 단위에 좌우된다(°C↔K). 순위에는 미반영")})
 
 
 def _round(value, places=6):

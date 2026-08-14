@@ -53,6 +53,8 @@
       "key_column": "bond_cell_key",
       "join": { "base_wafer_id": "base_id", "base_x": "bx", "base_y": "by" },
       "axes": [
+        { "name": "wafer",        "label": "웨이퍼",      "column": "base_id",
+          "__comment": "🔴 THE SUBJECT ITSELF, AS A MARKING AXIS. Until this entry existed every declared axis was lot / equipment / recipe level, so 「이 웨이퍼 두 장과 나머지」 was INEXPRESSIBLE -- the console's only option was to widen two marked wafers to the lots they sit in, and the screen then answered about fifty wafers when the owner had marked two (measured 2026-08-14). `base_id` is this relation's spelling of the same identity the geometry declares as `ledger_subject.column: base_wafer_id`; the two-hop translation is the `join` block right above, which is why this costs no Python. 🔴 IT IS ALSO A FACTOR AXIS, WITH 2,600 VALUES -- every axis declared here is offered to `mode=intersection` and to the lot grid's `by=`, and one value per wafer is an IDENTIFIER rather than a factor. Narrow with `axes=` when ranking factors; the walk contrast (`scope=wafer:<id>`) is unaffected because marking never ranks the axis it marked with." },
         { "name": "bond_eqp",     "label": "본딩 장비",   "column": "bond_eqp" },
         { "name": "bond_lot",     "label": "본딩 랏",     "column": "bond_lot" },
         { "name": "dt_lot",       "label": "DT 랏",       "column": "dt_lot" },

@@ -50,9 +50,21 @@ def row(predicate, field, value, case_n, control_n, *, is_field=False,
         before=0, after=0, no_obs=0, refs=("a1",)):
     """One grouping-sets row in `_COLS` order — the shape `_walk` returns."""
     leaves = case_n + control_n if leaves is None else leaves
-    return (predicate, field, 1 if is_field else 0, None if is_field else value,
+    return (predicate, field, walk.ROW_FIELD if is_field else walk.ROW_VALUE,
+            None if is_field else value,
             case_n, control_n, leaves, numeric, nulls, vtype, vtype,
-            before, after, no_obs, None, None, None, None, list(refs))
+            before, after, no_obs, None, None, None, None, list(refs), None, None)
+
+
+def numeric_row(predicate, field, case_n, control_n, case_mean, control_mean,
+                case_sd, control_sd, *, before=0, after=0, no_obs=0, refs=("a1",)):
+    """The THIRD row kind — one per numeric field, both sides' subject-level moments."""
+    leaves = case_n + control_n
+    return (predicate, field, walk.ROW_NUMERIC, None,
+            case_n, control_n, leaves, leaves, 0, "number", "number",
+            before, after, no_obs, case_mean, control_mean,
+            min(case_mean, control_mean), max(case_mean, control_mean),
+            list(refs), case_sd, control_sd)
 
 
 def shape(rows, case_of, control_of):
@@ -240,7 +252,82 @@ def test_the_json_type_decides_the_comparison_and_nothing_else():
                      "chamber": walk.COMPARE_CATEGORICAL,
                      "to.position": walk.COMPARE_NULL}
     numeric = next(f for f in fields if f["compare"] == walk.COMPARE_DISTRIBUTION)
+    # No subject-level row was supplied here, so the summary says which unit it is in
+    # rather than quietly presenting leaf means as subject means.
     assert numeric["numeric"]["state"] == "summary_only"
+    assert numeric["numeric"]["unit_of_summary"] == "leaf"
+
+
+# ------------------------------------------------------ 8. numerics enter the ranking
+def test_a_numeric_field_is_ranked_beside_the_categorical_ones():
+    """🔴 THE ROUND'S ASSERTION. Measured live before this landed: 49 fields, 33 of them
+    numeric, and `candidate compare kinds: {"categorical": 20}` — every process condition
+    was walked, attributed, and then could never reach the screen because it produced no
+    candidate at all. A cause that lives in a number was invisible."""
+    rows = [
+        row("processed_with", "params_actual.post_bond_queue_h", None, 75, 834,
+            is_field=True, leaves=909, numeric=909, vtype="number"),
+        numeric_row("processed_with", "params_actual.post_bond_queue_h",
+                    75, 834, 33.25, 12.18, 4.0, 3.0, before=909),
+    ]
+    fields, candidates = shape(rows, 75, 834)
+    assert [c["kind"] for c in candidates] == [walk.COMPARE_DISTRIBUTION]
+    hit = walk._score(candidates[0], CONTRAST_CFG, 2)
+    # The same row contract the console already draws: one effect on the SAME scale as the
+    # categorical enrichment, so the declared band and `_rank_key` compare like with like.
+    assert hit["compare"] == walk.COMPARE_DISTRIBUTION
+    assert hit["enrichment"] == round(33.25 / 12.18, 6)
+    assert hit["enrichment_state"] == walk.ENRICHED
+    assert hit["enrichment_ci"][0] > CONTRAST_CFG["enriched_at"]
+    assert hit["unit"] == "subject" and hit["value"] is None
+    # The two means are IN THE LABEL: the 마킹/나머지 columns carry counts, so without
+    # this the reader sees 「2.73×」 with nothing to read it against.
+    assert "33.25" in hit["label"] and "12.18" in hit["label"]
+    # A difference of means never travels under the name of a difference of rates.
+    assert hit["rate_delta"] is None
+    assert fields[0]["numeric"]["state"] == "compared"
+
+
+def test_a_numeric_field_off_the_ratio_scale_says_so_and_keeps_its_row():
+    """Measured on this box: `params_actual.purge_delay_s` is 0.0 on both sides. There is
+    no ratio to report — and dropping it is how a screen looks more complete than it is."""
+    rows = [
+        row("processed_with", "params_actual.purge_delay_s", None, 75, 587,
+            is_field=True, leaves=662, numeric=662, vtype="number"),
+        numeric_row("processed_with", "params_actual.purge_delay_s",
+                    75, 587, 0.0, 0.0, 0.0, 0.0),
+    ]
+    _f, candidates = shape(rows, 75, 834)
+    hit = walk._score(candidates[0], CONTRAST_CFG, 2)
+    assert hit is not None
+    assert hit["reason"] == walk.REASON_NOT_COMPARABLE_SCALE
+    assert hit["enrichment"] is None and hit["enrichment_ci"] is None
+    assert hit["numeric"]["state"] == "not_comparable"
+    # 🔴 The gate says WHY in that case's own words. 「분모가 없다」 would send a reader
+    # looking for a missing denominator that is sitting right there.
+    graph = mechanism_gate.MechanismGraph({}, "<test>", "memory")
+    walk._attach_gates(hit, "void", graph, CONTRAST_CFG)
+    assert hit["gates"]["real"]["verdict"] == walk.GATE_UNKNOWN
+    assert hit["gates"]["real"]["message"] == "비교 불가 — 비율 척도에 올릴 수 없는 값"
+
+
+def test_a_numeric_fields_partial_attribution_survives_into_the_row():
+    """The owner's example: `clamp_kN` reaches 51 of 75 marked subjects and 587 of 834
+    others. Averaging over the missing would report a data gap as a measurement."""
+    rows = [
+        row("processed_with", "params_actual.clamp_kN", None, 51, 587,
+            is_field=True, leaves=638, numeric=638, vtype="number"),
+        numeric_row("processed_with", "params_actual.clamp_kN",
+                    51, 587, 59.83, 60.01, 0.4, 0.4),
+    ]
+    _f, candidates = shape(rows, 75, 834)
+    hit = walk._score(candidates[0], CONTRAST_CFG, 2)
+    assert hit["case"]["n"] == 51 and hit["case"]["of"] == 75
+    assert hit["control"]["n"] == 587 and hit["control"]["of"] == 834
+    assert hit["case"]["coverage"] == round(51 / 75, 6)
+    assert hit["control"]["coverage"] == round(587 / 834, 6)
+    # A decoy: 0.3% apart on a ratio band declared at 1.5x. It must NOT be promoted.
+    assert hit["enrichment_state"] == walk.FLAT
 
 
 # ---------------------------------------------------------------- scope + buckets
@@ -256,6 +343,31 @@ def test_a_malformed_scope_is_refused_by_name(bad):
 
 def test_scope_parses_an_axis_and_its_values():
     assert walk.parse_scope("bond_lot:A,B , C") == ("bond_lot", ["A", "B", "C"])
+
+
+def test_every_requested_scope_value_is_named_resolved_or_dropped(monkeypatch):
+    """🔴 Measured live 2026-08-14: `scope=bond_lot:SYN-VOID-101,NOPE-999` came back
+    `state: "ready"`, echoed BOTH values and reported 25 case subjects — byte-identical to
+    asking for the one lot alone. Nothing in the answer said the second value matched
+    nothing, so a confident contrast covered a population the caller never asked for."""
+    monkeypatch.setattr(walk, "_values_in_axis",
+                        lambda *a, **k: {"OUT-OF-WINDOW"})
+    axis = type("A", (), {"name": "bond_lot", "label": "본딩 랏"})()
+    rows, unmatched = walk._account_values(
+        None, None, axis,
+        ["SYN-VOID-101", "OUT-OF-WINDOW", "NOPE-999"],
+        {"SYN-VOID-101": {"units": 725, "subjects": 25}})
+    assert [r["value"] for r in rows] == ["SYN-VOID-101", "OUT-OF-WINDOW", "NOPE-999"]
+    assert [r["state"] for r in rows] == ["resolved", "dropped", "dropped"]
+    assert unmatched == ["OUT-OF-WINDOW", "NOPE-999"]
+    # 🔴 「빠졌다」 ALONE IS NOT ENOUGH. One is a window problem and the other is a typo,
+    # and a reader told only that something dropped goes hunting for the wrong one.
+    assert rows[1]["reason"] == walk.REASON_VALUE_OUT_OF_POPULATION
+    assert rows[2]["reason"] == walk.REASON_VALUE_UNKNOWN
+    assert "본딩 랏" in rows[2]["message"]
+    # And they are NAMED in the sentence, never counted.
+    assert "OUT-OF-WINDOW" in walk._dropped_sentence(rows)
+    assert "NOPE-999" in walk._dropped_sentence(rows)
 
 
 def test_the_pending_exclusion_buckets_report_null_and_never_zero():
