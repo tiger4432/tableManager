@@ -178,22 +178,29 @@ export async function resolveFloors(axes, into) {
     // one wafer's mask under another's frame.
     //
     // A reference with no `map_id` still falls through to `mask_absent` below.
-    // That branch is kept because a frame could land in that state; WHETHER
-    // ANYTHING REACHES IT TODAY IS NOT ESTABLISHED HERE.
     //
-    // What IS measured (2026-08-14, restarted server): 9 probes across
-    // `SYN-VOID-002` / `-050` / `-103` × slots 01 / 13 / 25 ALL carry
-    // `map_id: "SYN-VD_G15X15"`, and the live row set is 103 rows all
-    // `SYN-VOID-*`. So on this data the branch is not reached — but that is a
-    // statement about 9 samples, not about every frame.
+    // 🔴 REFERENCE-LESS FRAMES ARE REAL. `wafer_map_metadata` measured 2026-08-14:
+    // of the non-SYN bonding frames, 120 exist and 0 carry a reference. So this
+    // branch has a genuine population behind it — it is NOT dead code, and the
+    // next reader should expect those frames to draw no mask when something
+    // projects them.
     //
-    // 🔴 AN EARLIER VERSION OF THIS COMMENT NAMED `BS-2601-*` AS THE
-    // REFERENCE-LESS CASE AND SAID IT WAS REFUSED AS `frame_unusable`. There are
-    // ZERO `BS-`-prefixed rows in the live set; that lot family came from an older
-    // note, not from a measurement, and it was asserted here as current fact.
-    // Do not re-add a named exception to this branch without a probe that returns
-    // it — a comment that names a specific cause makes the next reader stop
-    // looking for the real one.
+    // They are simply not in the window the surprise table lists: 9 probes across
+    // `SYN-VOID-002` / `-050` / `-103` × slots 01 / 13 / 25 all carry
+    // `map_id: "SYN-VD_G15X15"`, so nothing REACHED here in that sample.
+    //
+    // 🔴 TWO POPULATIONS, AND THEY ARE NOT INTERCHANGEABLE. The 103-row table is a
+    // LIST OF LOTS; the 120 above are FRAMES. An earlier correction to this comment
+    // counted zero `BS-` LOTS in the table and concluded the reference-less FRAMES
+    // did not exist — a count from one population appearing to refute a claim about
+    // another. Before a number kills a sentence here, check the number is counting
+    // the sentence's own subject.
+    //
+    // (The version before THAT named `BS-2601-*` as the reference-less case and
+    // asserted it was refused as `frame_unusable`. The family name and the refusal
+    // reason are still unverified. Do not re-add a named exception without a probe
+    // that returns it — naming a specific cause stops the next reader looking for
+    // the real one.)
     const fr = (axis && axis.frame) || {};
     const ref = fr.valid_die_ref || axis.reference || null;
     if (!ref) continue;
