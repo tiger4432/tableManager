@@ -934,6 +934,11 @@ def lot_map(connection, row, kind=None, by=None, slot=None, window=None, now=Non
     box), so there is no single grid a whole lot can be drawn on. `slot` selects one; with
     no `slot` the response lists the frames available and draws none, rather than
     flattening incompatible grids on top of each other and calling the result a wafer.
+
+    ⚠️ AND `slot` BELONGS TO EXACTLY ONE FAMILY — the row axis's (see `_slot_column_for`),
+    named back in `slot_column`. It narrows ROWS; it never picks a frame. Each projection
+    derives its frame key from ITS OWN lot/slot pair on the surviving rows, so a request
+    for bonding slot 3 cannot make the core axis look up a core frame numbered 3.
     """
     now = now or datetime.now(timezone.utc)
     config = ledger_siblings.load_axes_config()
@@ -961,10 +966,18 @@ def lot_map(connection, row, kind=None, by=None, slot=None, window=None, now=Non
             params["win_to"] = requested_window.end
             time_clause += f" AND {geometry.run_time_column} < %(win_to)s"
     slot_clause = ""
-    slot_column = _slot_column_for(source)
+    # 🔴 THE SLOT NARROWS ROWS IN THE ROW AXIS'S OWN FAMILY, AND NOWHERE ELSE. See
+    # `_slot_column_for`. A row axis with no frame family (`bond_eqp`, `b_bn`, ...) has no
+    # slot to be narrowed by, so nothing is narrowed and `slot_column` below says so — the
+    # response never implies a filter it did not run.
+    slot_column = _slot_column_for(axis)
+    if slot_column and not _column_present(connection, source.relation, slot_column):
+        slot_column = None
     if slot and slot_column:
         params["slot"] = slot
         slot_clause = f" AND b.{slot_column} = %(slot)s"
+    else:
+        slot_column = None
 
     projected = ", ".join(
         f"b.{a['x_column']} AS {a['axis']}_x, b.{a['y_column']} AS {a['axis']}_y"
@@ -997,8 +1010,8 @@ LEFT JOIN scanned s ON """ + " AND ".join(
 WHERE b.{axis.column} = %(row)s{slot_clause}
 """
     raw = _fetch(connection, sql, params)
-    return _map_envelope(connection, row, axis, source, slot, the_kind, raw, projected,
-                         requested_window, now)
+    return _map_envelope(connection, row, axis, source, slot, slot_column, the_kind, raw,
+                         projected, requested_window, now)
 
 
 def _column_present(connection, relation, column):
@@ -1018,16 +1031,37 @@ def _frame_key_columns(connection, relation):
     return present
 
 
-def _slot_column_for(source):
-    """The slot column of the row axis's own frame family, or None."""
+def _slot_column_for(axis):
+    """The slot column of the ROW AXIS's own frame family, or None if it has none.
+
+    🔴 THE DOCSTRING WAS RIGHT AND THE CODE WAS WRONG (2026-08-14), and the tell was in
+    the signature: this took a `source` it never read, and `return`ed inside the loop on
+    the FIRST declared family, so it answered `bond_slot` for every row axis there is.
+    That is a loop written to look like a lookup. Judged in favour of the docstring, for a
+    reason that is not taste:
+
+    `slot` narrows the rows of `row`, and `row` is a value of `axis.column`. A bond lot is
+    subdivided by `bond_slot`, a DT lot by `dt_slot` — THREE DIFFERENT SLOT SPACES, in
+    which the token "3" names three different physical objects. Filtering a `by=dt_lot`
+    row on `bond_slot` keeps an arbitrary cross-section of that DT lot and hands it to the
+    frame logic as if it were one frame's worth, which is the same fiction
+    `MAP_REASON_FRAME_AMBIGUOUS` is named after, one layer earlier.
+
+    ⚠️ AND `None` IS AN ANSWER, NOT A GAP. A row axis that is not a lot at all
+    (`bond_eqp`, `b_bn`, `stack_height`) has no frame family, so there is no column a
+    `slot` could mean. Borrowing the first family's would narrow on a slot space the
+    caller never named — 「다른 축의 슬롯을 빌려다 쓰면 안 된다」 (lead PM, 2026-08-14).
+    The caller reports the `None` as `slot_column: null` so the screen can see that its
+    `slot` bought nothing, rather than reading an unnarrowed row as one slot's picture.
+    """
     for spec in MAP_AXES:
         lot_col, slot_col = spec["frame_key_columns"]
-        if lot_col and slot_col:
+        if lot_col and slot_col and lot_col == axis.column:
             return slot_col
     return None
 
 
-def _map_envelope(connection, row, axis, source, slot, kind, raw, projected,
+def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, projected,
                   window, now):
     """Every declared axis, each carrying its own verdict. An axis with no data is
     PRESENT and says why — it is never dropped."""
@@ -1075,20 +1109,48 @@ def _map_envelope(connection, row, axis, source, slot, kind, raw, projected,
         lot_col, slot_col = spec["frame_key_columns"]
         # 🔴 THE FRAME KEYS ARE COUNTED, NOT SAMPLED. Picking the first value seen is what
         # produced the fiction this constant is named for (`MAP_REASON_FRAME_AMBIGUOUS`).
+        #
+        # 🔴 AND EVERY AXIS READS ITS OWN PAIR — `bond_lot`/`bond_slot`, `dt_lot`/`dt_slot`,
+        # `core_lot`/`core_slot`. This line used to override the slot with the REQUEST's
+        # `slot` for every axis at once (`str(slot) if slot else ...`), which is a bonding
+        # slot: the filter that produced it is `b.bond_slot = %(slot)s`. So the core axis
+        # looked its frame up at `wafer_map_metadata` under `{core_lot}_{bond_slot}` — a
+        # key made of two unrelated families. It was invisible only because the core axis
+        # is `unreachable` on this box today; the day core coordinates arrive it becomes A
+        # PLAUSIBLE WRONG GRID, which is the one outcome `_frame`'s docstring says is worse
+        # than no grid at all (「지어낸 격자는 없는 결함을 만든다」).
+        #
+        # The override was not merely wrong, it was REDUNDANT where it was right: the
+        # WHERE clause has already narrowed `present` to the requested slot, so for the
+        # filtered axis `slots_seen` IS `[slot]`, spelled the way the column stores it —
+        # which is the spelling `map_id` needs. Deriving it costs nothing and cannot cross
+        # a family. (Fixed 2026-08-14, ahead of the fixture lane's `core_slot != bond_slot`
+        # corpus, so the repair is not shaped by the sample that exposes it.)
         lots_seen = {r.get(lot_col) for r in present if r.get(lot_col)}
         slots_seen = sorted({str(r.get(slot_col)) for r in present if r.get(slot_col)})
         frame_lot = next(iter(lots_seen)) if len(lots_seen) == 1 else None
-        frame_slot = str(slot) if slot else (slots_seen[0] if len(slots_seen) == 1
-                                             else None)
+        frame_slot = slots_seen[0] if len(slots_seen) == 1 else None
         cells = [{"x": x, "y": y, "n": n} for (x, y), n in sorted(counts.items())]
 
         if frame_slot is None or frame_lot is None:
+            # 🔴 TWO SITUATIONS, TWO SENTENCES. 「슬롯을 고르십시오」 is actionable advice
+            # when the row spans several frames and an INSTRUCTION TO DO THE IMPOSSIBLE
+            # when this axis records no frame key at all — the core axis's case the moment
+            # it has coordinates but `core_lot`/`core_slot` are unrecorded or absent from
+            # the relation. The token stays (the client's refusal vocabulary is a landed
+            # contract); the sentence tells the truth about which one happened.
+            unkeyed = not lots_seen or not slots_seen
             projections.append({
                 "axis": ax, "label": spec["label"], "sublabel": spec["sublabel"],
                 "state": MAP_STATE_NO_FRAME, "reason": MAP_REASON_FRAME_AMBIGUOUS,
-                "message": ("이 행이 프레임 여러 개에 걸쳐 있다 — 슬롯마다 격자 치수가 "
-                            "다르므로 한 장에 겹쳐 그리면 좌표가 전부 어긋난다. "
-                            "slot을 지정할 것."),
+                "message": (
+                    (f"이 축의 프레임 키({lot_col}·{slot_col})가 이 행에 기록돼 있지 "
+                     f"않다 — 좌표는 있으나 어느 프레임의 좌표인지 알 수 없다. 슬롯을 "
+                     f"골라도 해결되지 않는다.")
+                    if unkeyed else
+                    ("이 행이 프레임 여러 개에 걸쳐 있다 — 슬롯마다 격자 치수가 "
+                     "다르므로 한 장에 겹쳐 그리면 좌표가 전부 어긋난다. "
+                     "slot을 지정할 것.")),
                 "frame": {"state": MAP_STATE_NO_FRAME,
                           "reason": MAP_REASON_FRAME_AMBIGUOUS,
                           "available_slots": slots_seen,
@@ -1118,6 +1180,12 @@ def _map_envelope(connection, row, axis, source, slot, kind, raw, projected,
         "row_axis": {"name": axis.name, "label": axis.label,
                      "source": f"{source.relation}.{axis.column}"},
         "slot": slot,
+        # 🔴 WHICH COLUMN THE `slot` WAS ACTUALLY APPLIED TO, OR `null` FOR 「applied to
+        # nothing」. Echoing `slot` alone lets a screen show an UNNARROWED row under a slot
+        # heading: if the row happens to span one slot the projection resolves, and the
+        # operator reads a whole equipment's chips as one slot's picture. The request and
+        # what the query did are two facts, so the response carries both.
+        "slot_column": slot_column,
         "window": window.as_dict(),
         "projections": projections,
         "provenance": {"source": PROVENANCE_SOURCE_TABLES, "ledger_backed": False,
