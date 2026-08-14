@@ -20,6 +20,7 @@ from database.database import get_db
 import finding_kinds
 import ledger_kinds
 import ledger_siblings
+import ledger_structure
 import ledger_trace
 
 logger = logging.getLogger(__name__)
@@ -227,6 +228,52 @@ def ledger_kind_catalog(db: Session = Depends(get_db)):
         if _is_undefined_table(exc):
             # The race the catalogue gate cannot close: a relation dropped between the
             # `to_regclass` lookup and the count. Judged on SQLSTATE.
+            raise _relation_absent()
+        raise
+
+
+@router.get("/structure")
+def ledger_structure_view(
+    window: str = Query(None, description="7d 또는 YYYY-MM-DD..YYYY-MM-DD. 건수만 좁힌다"),
+    db: Session = Depends(get_db),
+):
+    """온톨로지 «구조» — 어떤 개체가 어떤 관계로 이어지고, 어디에 데이터가 얼마나 있나.
+
+    🔴 유형 수준이다. 랏·웨이퍼·보이드 같은 «인스턴스»는 한 건도 나오지 않는다 —
+    그건 `GET /trace`의 화면이고 이건 그 보완이다.
+
+    🔴 200 AND A `state` FOR AN ABSENT OR EMPTY LEDGER. The DECLARED half of the graph is
+    served in all three states, because a box with no `ledger_events` at all still has an
+    ontology — and somebody staring at a blank screen is exactly who needs to see it.
+
+    🔴 NOTHING IN THE RESPONSE IS HAND-DRAWN. Nodes and edges are generated from
+    `server/ledger/vocabulary.py` (declared) merged with one `GROUP BY` over the ledger
+    (observed). A predicate added to the vocabulary appears here with no edit to any
+    route, and a shape observed that nothing declares appears as `undeclared` rather than
+    being dropped.
+
+    `window` narrows the COUNTS only; every declared edge stays on the screen at
+    `atoms: 0`. Read-only.
+    """
+    try:
+        return ledger_structure.structure(db.connection(), window=window)
+    except ledger_siblings.SiblingsRequestError as exc:
+        # `window` is parsed by ONE spelling (`ledger_siblings.parse_window`), so a
+        # malformed window is refused here with the same structured body and the same
+        # `reason` token the siblings route uses. A client branches on the token.
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except ledger_structure.StructureError as exc:
+        logger.error("ledger structure declaration unreadable: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "vocabulary_unreadable", "message": str(exc)})
+    except ledger_trace.ResolverConfigError as exc:
+        logger.error("ledger resolver config refused: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "resolver_config_refused", "message": f"해결기 config 거절: {exc}"})
+    except Exception as exc:                       # noqa: BLE001 - same backstop
+        if _is_undefined_table(exc):
+            # The race the catalogue gate cannot close: a relation dropped between the
+            # `to_regclass` lookup and the census. Judged on SQLSTATE.
             raise _relation_absent()
         raise
 

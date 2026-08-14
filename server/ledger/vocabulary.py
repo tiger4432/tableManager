@@ -39,14 +39,32 @@ from __future__ import annotations
 OBJECT_KINDS = frozenset({"value", "entity_ref", "event_ref"})
 
 
+#: 🔴 `label_ko` IS PART OF THE DECLARATION, NOT DECORATION.
+#:
+#: `GET /api/ledger/structure` renders this vocabulary as a picture and the picture's
+#: labels are Korean (readability is a function of this project, not a preference). The
+#: label therefore has to come from the same place the word does. The alternative - a
+#: label map living beside the renderer - is a SECOND list of the vocabulary, and a second
+#: list is how a word added here shows up on screen as a bare identifier while every test
+#: still passes.
+#:
+#: The enforcement point (this project's standing rule: a declaration field has one, or it
+#: does not exist) is `test_ledger_l1_unit.py::test_every_declared_word_carries_a_label`.
+#: A reader that meets an entry without one falls back to the raw name rather than
+#: raising - the screen degrades to English, it does not go blank.
+#:
 #: Entity types (§4.2). `register` is required for ISSUED types and forbidden for
 #: COMPOSED ones - `Die` exists by construction (Wafer x product grid) and registering
 #: it would mean 160M register atoms for no gain (§5 rule 3).
 ENTITY_TYPES = {
-    "Lot":       {"class": "issued",   "keys": ["lot"],       "semi_ref": "E90 substrate"},
-    "Wafer":     {"class": "issued",   "keys": ["wafer"],     "semi_ref": "E90 substrate"},
-    "Product":   {"class": "issued",   "keys": ["product"],   "semi_ref": None},
-    "Equipment": {"class": "issued",   "keys": ["equipment"], "semi_ref": "E10"},
+    "Lot":       {"class": "issued",   "keys": ["lot"],       "semi_ref": "E90 substrate",
+                  "label_ko": "랏"},
+    "Wafer":     {"class": "issued",   "keys": ["wafer"],     "semi_ref": "E90 substrate",
+                  "label_ko": "웨이퍼"},
+    "Product":   {"class": "issued",   "keys": ["product"],   "semi_ref": None,
+                  "label_ko": "제품"},
+    "Equipment": {"class": "issued",   "keys": ["equipment"], "semi_ref": "E10",
+                  "label_ko": "장비"},
     # 🔴 `rev` IS PART OF THE IDENTITY, NOT AN ATTRIBUTE OF IT (PHYSICS_ONTOLOGY_SETUP
     # §3). A recipe revision is a NEW REGISTRATION, never an edit of an existing subject.
     # The consequence is the reason: the ledger is append-only, so if `rev` were an
@@ -55,8 +73,10 @@ ENTITY_TYPES = {
     # With `rev` in the key the two revisions are two subjects, both permanently
     # assertable, and "what changed between rev4 and rev5" is a diff of two subjects'
     # `has_param` claims rather than a history reconstruction.
-    "Recipe":    {"class": "issued",   "keys": ["recipe", "rev"], "semi_ref": "E40 recipe"},
-    "Die":       {"class": "composed", "keys": ["wafer", "x", "y"], "semi_ref": "E142 location"},
+    "Recipe":    {"class": "issued",   "keys": ["recipe", "rev"], "semi_ref": "E40 recipe",
+                  "label_ko": "레시피"},
+    "Die":       {"class": "composed", "keys": ["wafer", "x", "y"], "semi_ref": "E142 location",
+                  "label_ko": "다이"},
 }
 
 ISSUED_TYPES = frozenset(k for k, v in ENTITY_TYPES.items() if v["class"] == "issued")
@@ -68,6 +88,7 @@ ISSUED_TYPES = frozenset(k for k, v in ENTITY_TYPES.items() if v["class"] == "is
 PREDICATES = {
     # ---------------------------------------------------------------- §4.1 canonical
     "register": {
+        "label_ko": "등록",
         "status": "active", "since": 1, "layer": "canonical",
         "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe"],
         "object": None,                       # ∅ - see module docstring
@@ -75,6 +96,7 @@ PREDICATES = {
         "unit": None, "semi_ref": "local", "superseded_by": None,
     },
     "pin": {
+        "label_ko": "핀(사람 확정)",
         "status": "active", "since": 1, "layer": "canonical",
         "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"],
         "object": {"kind": "event_ref"},
@@ -82,6 +104,7 @@ PREDICATES = {
         "unit": None, "semi_ref": "local", "superseded_by": None,
     },
     "same_as": {
+        "label_ko": "동일 개체",
         "status": "reserved", "since": 1, "layer": "canonical",
         "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"],
         "object": {"kind": "entity_ref",
@@ -91,6 +114,7 @@ PREDICATES = {
     },
     # ---------------------------------------------------------------- §4.2 ontology
     "derived_from": {
+        "label_ko": "유래",
         "status": "active", "since": 1, "layer": "ontology",
         "subject": ["Lot"],
         "object": {"kind": "entity_ref", "types": ["Lot"]},
@@ -98,6 +122,7 @@ PREDICATES = {
         "unit": None, "semi_ref": "E90 genealogy", "superseded_by": None,
     },
     "slot_map": {
+        "label_ko": "슬롯 대응",
         "status": "active", "since": 1, "layer": "ontology",
         "subject": ["Lot"],
         "object": {"kind": "entity_ref", "types": ["Lot"]},
@@ -110,6 +135,7 @@ PREDICATES = {
         "unit": None, "semi_ref": "E90", "superseded_by": None,
     },
     "has_wafer": {
+        "label_ko": "웨이퍼 보유",
         "status": "active", "since": 1, "layer": "ontology",
         "subject": ["Lot"],
         "object": {"kind": "entity_ref", "types": ["Wafer"]},
@@ -117,6 +143,7 @@ PREDICATES = {
         "unit": None, "semi_ref": "E90", "superseded_by": None,
     },
     "frame_confirmed": {
+        "label_ko": "프레임 확정",
         "status": "reserved", "since": 1, "layer": "ontology",
         "subject": ["Wafer"],
         "object": {"kind": "value"},
@@ -153,6 +180,7 @@ PREDICATES = {
     # tiebreak below it - and it keeps losing even when the setpoint atom is NEWER and
     # comes from a higher-priority source, which is exactly the case the fixture builds.
     "processed_with": {
+        "label_ko": "공정 처리",
         "status": "active", "since": 2, "layer": "ontology",
         "subject": ["Wafer"],
         # `required` is checked by `check_signature`; see the note there. Without it a
@@ -168,6 +196,7 @@ PREDICATES = {
     # atoms rather than a structural comparison of two blobs, and a single parameter can
     # be superseded on its own when a recipe sheet is found to have been mistranscribed.
     "has_param": {
+        "label_ko": "설정값",
         "status": "active", "since": 2, "layer": "ontology",
         "subject": ["Recipe"],
         "object": {"kind": "value", "required": ["param", "value", "unit"]},
@@ -202,6 +231,7 @@ PREDICATES = {
     # the emitter owns the exclusivity - stated here so the next author knows the check
     # is not merely missing.
     "transferred": {
+        "label_ko": "이동",
         "status": "active", "since": 2, "layer": "ontology",
         "subject": ["Wafer"],
         "object": {"kind": "value", "required": ["from", "to"]},

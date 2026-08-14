@@ -153,6 +153,31 @@ def test_v0_vocabulary_is_exactly_seven_words():
     }
 
 
+def test_every_declared_word_carries_a_label():
+    """`label_ko` is the ENFORCEMENT POINT for the label declaration.
+
+    This project's standing rule is that a declaration field has an enforcement point or
+    it does not exist (`ledger/config.py`, ruling R-2026-08-13-D). `GET /api/ledger/
+    structure` renders the vocabulary as a picture whose labels are Korean, and it reads
+    them from here rather than from a map beside the renderer — a second list of the
+    vocabulary is how a word added here shows up on screen as a bare identifier while
+    every other test stays green.
+
+    The reader falls back to the raw name rather than raising, so this test is the ONLY
+    thing that turns red for an unlabelled word. That is deliberate: a missing label must
+    degrade the screen to English, never blank it.
+    """
+    unlabelled = [name for name, sig in vocabulary.PREDICATES.items()
+                  if not str(sig.get("label_ko") or "").strip()]
+    assert unlabelled == [], (
+        f"predicate(s) {unlabelled} carry no `label_ko`; the structure view would render "
+        f"them as bare identifiers")
+    unlabelled = [name for name, entry in vocabulary.ENTITY_TYPES.items()
+                  if not str(entry.get("label_ko") or "").strip()]
+    assert unlabelled == [], (
+        f"entity type(s) {unlabelled} carry no `label_ko`")
+
+
 def test_a_value_object_is_checked_against_its_declared_required_fields():
     """A `value` payload used to be structurally unchecked. `required` is the bite.
 
