@@ -32,6 +32,17 @@
 >
 > 🔴 **이 사본을 읽고 그 철자를 옮겨 적는 것이 2026-08-04 라이브 사고의 원인이었다** — 사람이 테이블만 `dt_log`로 바꾸고 **컬럼명은 템플릿의 일반명(`"x": "x"`)으로 남겨** 형태 검증·필수 역할 검증을 전부 통과한 채 조회 시점에만 조용히 죽었다. 이 폴더의 JSON은 **「이 환경에서는 이렇게 선언했다」의 사본**이지 이식 가능한 기본값이 아니다.
 >
+> ### ✅ 2026-08-14 — `transfer_plan_config.json` 사본을 **재복사**했다 (위 ①② 중 전자를 닫음)
+>
+> 트리거 ⓐⓒ. `dt` stage가 `source_config_ref` 위임에서 **인라인 `source`로** 옮겨가고
+> (`server/M1_SOURCE_CONFIG_REF.RETIRED.md`), `bonding.total_chips`의 `x`/`y`가 `dt_x`/`dt_y`로
+> 복원됐다. 사본은 `cp`로 다시 뜼으며(손편집 아님), 재복사 직후 라이브와 파싱 동일을
+> 확인했다. ⚠️ **`bonding_plan_config.json` 사본은 이미 라이브와 동일했고, 그것이 문제다** —
+> 위 ②가 적은 「존재하지 않는 테이블 셋」은 사본의 낛음이 아니라 **라이브의 상태**였다.
+> 그 테이블 셋은 물리적으로는 존재하며(5,152 / 2,576 / 22행) `table_config.json`에서만
+> 빠져 있고, 그래서 `GET /api/bonding-plan/core-summary`가 `remaining: 0`을 낸다
+> — 총괄 판정 대기 → [config/bonding_plan_config](../config/bonding_plan_config.md).
+
 > **수리는 손편집이 아니라 재복사다**(Lead / Backend). 그전까지 이 두 파일에서 계획 config를 배우지 말고 [config/transfer_plan_config](../config/transfer_plan_config.md)를 읽어라 — 그쪽 예시는 **`GET /admin/transfer-plan/dry-run`으로 수용을 실측한 것**이다.
 >
 > ### 🔴 알려진 고장 (2026-08-13 · doc-keeper) — `table_config.json` 사본이 `.sample`보다 **84줄** 낡았다

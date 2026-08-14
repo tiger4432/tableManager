@@ -383,15 +383,25 @@ def test_validate_omits_the_marker_when_the_gross_number_never_judged(env, clien
 
 
 # ---------------------------------------------------------------------------
-# M1 (core-kind) path — bonding_plan config
+# M1 route (`GET /api/bonding-plan/core-summary`) + core-kind stage
+#
+# 🔴 [2026-08-14] These used to be ONE assertion each, because the `dt` stage
+# delegated to `bonding_plan_config.json` and both surfaces read the same file.
+# The delegation was retired (`server/M1_SOURCE_CONFIG_REF.RETIRED.md`) and the
+# two surfaces are now independent, so each test drives BOTH configs and checks
+# both — that independence is exactly what could rot unnoticed.
+# M1 itself is NOT retired: the route and `bonding_plan_config.json` are live and
+# these tests are now their only regression net inside this file.
 # ---------------------------------------------------------------------------
 
 
-def test_m1_absent_used_chips_serves_availability(env, client):
+def test_absent_used_chips_serves_availability(env, client):
     db, tmp_path, monkeypatch = env
     bp = _bp_config()
     del bp["sources"]["used_chips"]
-    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    cfg = _tp_config()
+    del cfg["stages"]["dt"]["source"]["transfer_log"]
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg, bp_cfg=bp)
     _seed_scenario(db)
 
     # M1's own endpoint: counts unchanged (absent role contributes 0), status
@@ -403,41 +413,46 @@ def test_m1_absent_used_chips_serves_availability(env, client):
                            "used": 0, "remaining": 33}
     assert m1["inactive_subtractions"] == ["used_chips"]
 
-    # dt reshape: remaining stays a number, kind renamed to the M2 vocabulary.
+    # dt stage (inline): remaining stays a number, kind named in M2 vocabulary.
     body = _summary(client, stage="dt", lot="CORE-A", slot="01")
     assert body["sources"]["transfer_log"] == "not_declared"
     assert body["chips"]["remaining"] == 33
     assert body["chips"]["remaining_reliable"] is True
     assert body["chips"]["transferred"] is None
-    assert body["inactive_subtractions"] == ["transfer_log"]
+    # `origin_log` is not declared on this stage either, so it joins the list.
+    assert body["inactive_subtractions"] == ["transfer_log", "origin_log"]
     assert not any(w.get("type") == transfer_plan.WARN_SOURCE_DEGRADED
                    for w in body["warnings"])
 
 
-def test_m1_broken_used_chips_still_demotes(env, client):
+def test_broken_used_chips_still_demotes(env, client):
     db, tmp_path, monkeypatch = env
-    bp = _bp_config()
-    bp["sources"]["used_chips"]["table"] = "tp_test_no_such"
-    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    cfg = _tp_config()
+    cfg["stages"]["dt"]["source"]["transfer_log"]["table"] = "tp_test_no_such"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
     _seed_scenario(db)
     body = _summary(client, stage="dt", lot="CORE-A", slot="01")
     assert body["sources"]["transfer_log"] == "missing"
     assert body["chips"]["remaining"] is None
     assert body["chips"]["remaining_reliable"] is False
-    assert "inactive_subtractions" not in body
+    # A BROKEN binding is not an absent one — it never enters `inactive_subtractions`.
+    assert "transfer_log" not in (body.get("inactive_subtractions") or [])
 
 
-def test_m1_total_chips_stays_required(env, client):
+def test_total_chips_stays_required(env, client):
     """The denominator is exempt from the relaxation — absent total_chips is
-    still `missing` and availability refuses a number."""
+    still `missing` and availability refuses a number. Both surfaces."""
     db, tmp_path, monkeypatch = env
     bp = _bp_config()
     del bp["sources"]["total_chips"]
-    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    cfg = _tp_config()
+    del cfg["stages"]["dt"]["source"]["total_chips"]
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg, bp_cfg=bp)
     _seed_scenario(db)
     m1 = client.get("/api/bonding-plan/core-summary",
                     params={"lot": "CORE-A", "slot": "01"}).json()
     assert m1["sources"]["total_chips"] == "missing"
     body = _summary(client, stage="dt", lot="CORE-A", slot="01")
+    assert body["sources"]["total_chips"] == "missing"
     assert body["chips"]["remaining"] is None
     assert body["chips"]["remaining_reliable"] is False

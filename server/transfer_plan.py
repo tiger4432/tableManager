@@ -58,8 +58,12 @@ value = one DOE condition**, bk = `ref_table|map_key|value`.
   `bins=1,2` 지정 시 `bins` 블록 동봉(BIN별 가용 — §BIN 축). `scope=lot`은 슬롯 없이
   로트 전체를 묻는 형태이며 `chips` 없이 `{slots, bins}`만 답한다.
 - GET /api/transfer-plan/validate?ref_table=&map_key=  : 계획 경고 목록
-- M1 `GET /api/bonding-plan/core-summary`는 외부 계약 불변 — core-kind 소스 가용의
-  인스턴스로 내부 통합(본 모듈이 `bonding_plan.get_core_summary`를 어댑터로 감싼다).
+- M1 `GET /api/bonding-plan/core-summary`는 **별개 라우트다** (main.py → `bonding_plan`
+  직접 호출). 2026-08-14까지는 이 모듈이 그것을 어댑터로 감싸 `dt` stage에 재사용했지만
+  그 다리는 은퇴했다 — 이제 두 라우트는 서로를 읽지 않고 **각자의 config**를 읽는다
+  (M2는 `transfer_plan_config.json`, M1은 `bonding_plan_config.json`).
+  ⚠️ 2026-08-14 실측: M1 라우트는 역할 다섯이 전부 `missing`이고 `remaining: 0`을 낸다 —
+  자기 config가 미등록 테이블을 가리킨다. 총괄 판정 대기(`M1_SOURCE_CONFIG_REF.RETIRED.md`).
 
 [키 파싱 금지 — v1에서 승계한 불변식] 서버는 `map_key`를 **파싱하지 않는다**. 컬럼 equality
 조회에만 쓰고, 맵 셀 조회 시의 분해는 `table_config.map_key_columns` 선언에 따른 공용 규칙
@@ -69,15 +73,20 @@ value = one DOE condition**, bk = `ref_table|map_key|value`.
 `GET /api/transfer-plan/stages`가 그것을 그대로 노출한다. 미선언 stage는 조용히 매핑하지
 않고 `stage_unknown`(effect: validation_skipped)으로 표면화한다.
 
-[stage source 선언 2형]
-1. `"source_config_ref": "bonding_plan"` — M1 `bonding_plan_config.json`을 소스 역할
-   바인딩으로 재사용(하위호환 경로). core-kind 가용 = M1 집계의 재성형(reshape).
-2. inline `"source": {...}` — 일반 역할 엔진:
-   - `total_chips` / `transfer_log`(기전사 로그, distinct 칩) / `process_history`(M1 규율)
+[stage source 선언 — 형태는 하나다 (2026-08-14)]
+inline `"source": {...}` — 일반 역할 엔진. **모든** stage가 이 형태다:
+   - `total_chips` / `transfer_log`(기전사 로그, distinct 칩) / `process_history`
    - `origin_log`: 칩 단위 출신 귀속(tape 소스의 핵심 — dt_log: 테이프 좌표↔코어 좌표)
    - `fail_sources.{name}`: fail 원천. `frame: "origin"`이면 출신(core) 프레임 fail을
      origin_log 조인으로 타깃(tape) 좌표에 투영("테이프에도 불량 섞임" 처리의 핵심),
-     `frame: "self"`면 자기 identity 직접 카운트(M1 맵 모드와 동일).
+     `frame: "self"`면 자기 identity 직접 카운트.
+
+🗄️ **`"source_config_ref": "bonding_plan"` 위임 형태는 은퇴했다** — 근거·부활 조건은
+`server/M1_SOURCE_CONFIG_REF.RETIRED.md`. 요약: 그 경로를 쓰던 유일한 stage(`dt`)의 다섯
+역할이 전부 `missing`이었고, 원인은 M1 config가 **`table_config`에서 빠진 테이블**과
+**선언에서 빠진 컬럼**을 가리키고 있었기 때문이다. 위임을 되살리기 전에 그 문서를 읽어라 —
+같은 자리로 돌아온다. M1 자체(`bonding_plan.get_core_summary` + `GET /api/bonding-plan/
+core-summary`)는 **살아 있다**: 은퇴한 것은 M2가 M1을 대신 읽던 다리 하나다.
 
 [보조 역할 선언은 선택이다 — relaxation 2026-08-04, 총괄 board request 2]
 `transfer_log`·`origin_log`·`fail_sources`·`process_history`는 **키가 아예 없으면**
@@ -144,7 +153,13 @@ MAX_BIN_VALUES = 200          # 맵 1장의 distinct BIN 값 상한 (group-by �
 MAX_BIN_CELLS = 200_000       # BIN 좌표 페치 상한 (맵 1장. 감산항 교차용 — 응답에 싣지 않는다)
 MAX_LOT_SLOTS = 50            # `scope=lot` 팬아웃 상한 (로트 1개 = 보통 25슬롯)
 
-M1_SOURCE_REFS = ("bonding_plan",)   # source_config_ref 허용 값
+# 🗄️ `M1_SOURCE_REFS` / `source_config_ref` — RETIRED 2026-08-14.
+#    `server/M1_SOURCE_CONFIG_REF.RETIRED.md` (approval, measured cause, revival).
+#    Do not reintroduce the constant to "keep compatibility": a config that still
+#    carries `source_config_ref` now falls through to the inline branch and reads
+#    its own `source` block, which is the honest answer — the key names a delegate
+#    that no longer exists, and silently honouring it is how the `dt` stage sat at
+#    five `missing` roles without anyone being told which file was at fault.
 
 # ---- ZONE 모델 (2026-07-28, bands를 대체) ----
 #
@@ -412,20 +427,13 @@ def _aux_role_status(block, key, required=("lot", "slot")) -> str:
 
 
 def _stage_role_statuses(stage_cfg: dict) -> dict:
-    """stage의 소스 역할별 연결 상태 (모델·컬럼 해석만 — 행 조회 없음)."""
-    import bonding_plan
-    ref = stage_cfg.get("source_config_ref")
-    if ref in M1_SOURCE_REFS:
-        bp_cfg = bonding_plan.load_bonding_plan_config()
-        sources = (bp_cfg.get("sources") or {})
-        return {
-            "total_chips": _binding_status(sources.get("total_chips")),
-            "transfer_log": _aux_role_status(sources, "used_chips"),
-            "process_history": _aux_role_status(sources, "process_history"),
-            "defect": _aux_role_status(sources, "defect"),
-            "eds_fail": _aux_role_status(sources, "eds_fail"),
-        }
+    """stage의 소스 역할별 연결 상태 (모델·컬럼 해석만 — 행 조회 없음).
 
+    🗄️ The `source_config_ref` branch that used to stand first (delegating the
+    five roles to `bonding_plan_config.json`'s `sources`) was retired 2026-08-14 —
+    `server/M1_SOURCE_CONFIG_REF.RETIRED.md`. Every stage now reads its own
+    `source` block.
+    """
     source = stage_cfg.get("source") or {}
     out = {
         "total_chips": _binding_status(source.get("total_chips")),
@@ -690,29 +698,12 @@ def dry_run(cfg: dict) -> dict:
         source = stage_cfg.get("source") or {}
         roles = [_role_dry_run(_bin_axis_source(stage_cfg), BIN_AXIS_ROLES,
                                "bin_map", f"stages.{name}.bin_map")]
-        ref = stage_cfg.get("source_config_ref")
-        if ref in M1_SOURCE_REFS:
-            # 이 stage는 소스 역할을 M1 config에 위임한다 ― 자기 `source.*`는 **읽히지
-            # 않는다**. 그걸 `not_declared`로 내면 운영자에게 "여기를 채워라"라고 말하는
-            # 셈이고, 채워도 아무 일도 일어나지 않는다. `not_reached`가 정확히 이 뜻이다.
-            import bonding_plan as _bp
-            for role, required in _STAGE_SOURCE_ROLES:
-                roles.append({
-                    "role": role, "where": f"stages.{name}.source.{role}",
-                    "declared": source.get(role) is not None, "table": None,
-                    "accepted": False, "reason": _bp.BINDING_NOT_REACHED,
-                    "detail": (f"이 stage는 소스 역할을 `{ref}` config에 위임합니다"
-                               f"(`source_config_ref`) ― `stages.{name}.source.{role}`은 "
-                               f"읽히지 않습니다. 이 역할은 bonding_plan_config.json에서 "
-                               f"선언하세요."),
-                    "required": list(required), "columns": {},
-                    "removable_declarations": [],
-                })
-            stages_out.append({
-                "name": name, "source_config_ref": ref,
-                "target_map": stage_cfg.get("target_map") or {}, "roles": roles,
-            })
-            continue
+        # 🗄️ The `source_config_ref` delegation branch stood here until 2026-08-14
+        #    and emitted `not_reached` for every source role — see
+        #    `server/M1_SOURCE_CONFIG_REF.RETIRED.md`. `BINDING_NOT_REACHED` itself
+        #    STAYS in `bonding_plan` (it is still in `BINDING_REFUSALS`, and the
+        #    counts block below still buckets on it) so that a future delegate can
+        #    reuse the vocabulary rather than invent a second word for it.
         for role, required in _STAGE_SOURCE_ROLES:
             if role == "transfer_log" and transfer_log_is_declared_none(source.get(role)):
                 # [7c] 정확한 문자열 "none"은 선언된 상태지 깨진 바인딩이 아니다.
@@ -734,7 +725,11 @@ def dry_run(cfg: dict) -> dict:
                                        _OPTIONAL_ROLE_EFFECTS[FAIL_SOURCE_ROLE]))
         stages_out.append({
             "name": name,
-            "source_config_ref": stage_cfg.get("source_config_ref"),
+            # 🗄️ `source_config_ref` was reported here. Dropped 2026-08-14 with the
+            #    delegation path — a field that can only ever be null now would read
+            #    as "this stage delegates nowhere", which is a different claim from
+            #    "there is no such thing to delegate to". No consumer: the client
+            #    fetches only the enrichment dry-run, never this admin route.
             "target_map": stage_cfg.get("target_map") or {},
             "roles": roles,
         })
@@ -967,62 +962,14 @@ def _region_block(total_pts, fail_sets: dict, used_set: set, region: set) -> dic
     return block
 
 
-def _core_region_counts(db, bp_cfg: dict, lot: str, slot: str, region: set):
-    """[②] core-kind(M1 위임) 소스의 영역 내 집계.
-
-    M1 `get_core_summary`는 rect만 받으므로 셀 집합을 넘길 수 없다. M1 config의 역할
-    바인딩을 M2 어댑터 형태로 읽어 좌표 집합을 직접 구성한다(정렬은 M1과 동일하게 메타
-    델타에서 유도해 canonical 사상 후 교차).
-
-    ⚠️ 어댑터의 `fail_sources`는 **`bonding_plan.CANONICAL_FRAME_ROLES`와 같은 순서**로
-    쌓는다 — `_canonical_origin_meta`가 이 순서로 canonical 프레임을 고르므로, 순서가
-    다르면 M1 `get_core_summary`와 다른 프레임을 기준 삼아 두 경로의 수치가 갈린다.
-    `frame`을 "self"로 두면 canonical 후보가 하나도 없어 dst 메타가 None이 되고, 그러면
-    정렬이 통째로 identity로 떨어진다(조용한 오답).
-    """
-    import bonding_plan
-
-    sources = (bp_cfg.get("sources") or {})
-    adapter = {
-        "identity": bp_cfg.get("core_identity") or {"compose": ["lot", "slot"]},
-        "map_metadata": bp_cfg.get("map_metadata"),
-        "fail_sources": {
-            k: dict(sources[k], frame="origin")
-            for k in bonding_plan.CANONICAL_FRAME_ROLES
-            if _valid_binding(sources.get(k))
-        },
-    }
-
-    # total 좌표
-    total_pts = None
-    src = sources.get("total_chips")
-    model, cols = _resolve(src, required=("lot", "slot"))
-    if model is not None and "x" in cols and "y" in cols:
-        pts, _tr = _fetch_pairs(db, cols, _identity_filters(src, cols, lot, slot),
-                                cap=MAX_REGION_CELLS, tag="region:total")
-        total_pts = set(pts)
-
-    # fail 좌표 (align 적용 — canonical 프레임)
-    fail_sets = {}
-    for name in ("defect", "eds_fail"):
-        fs = sources.get(name)
-        model, cols = _resolve(fs, required=("lot", "slot"))
-        if model is None or "x" not in cols or "y" not in cols:
-            fail_sets[name] = None
-            continue
-        pts, _mk, _tr = _canonical_fail_set(db, adapter, fs, cols, lot, slot)
-        fail_sets[name] = pts   # None이면 align 불가 → 영역 집계도 미상
-
-    # 기전사 좌표
-    used_set = set()
-    src = sources.get("used_chips")
-    model, cols = _resolve(src, required=("lot", "slot"))
-    if model is not None and "x" in cols and "y" in cols:
-        pts, _tr = _fetch_pairs(db, cols, _identity_filters(src, cols, lot, slot),
-                                distinct=True, cap=MAX_REGION_CELLS, tag="region:used")
-        used_set = set(pts)
-
-    return _region_block(total_pts, fail_sets, used_set, region)
+# 🗄️ `_core_region_counts(db, bp_cfg, lot, slot, region)` stood here until
+#    2026-08-14. It was the region (`ref_table`+`map_key`) arm of the delegation
+#    path: `bonding_plan.get_core_summary` takes rects and cannot take a cell set,
+#    so this rebuilt the coordinate sets from M1's own role bindings through the
+#    M2 adapter shape. It had exactly one caller, in the branch that is gone.
+#    Retired with it — `server/M1_SOURCE_CONFIG_REF.RETIRED.md`. The inline engine
+#    needs no equivalent: `_summarize_inline` already builds `total_pts` /
+#    `fail_union` / `used_set` and hands them to the SAME `_region_block`.
 
 
 # ---------------------------------------------------------------------------
@@ -1447,51 +1394,16 @@ def _lot_slots(db, stage_cfg, lot):
     return [r[0] for r in rows if r[0] is not None], truncated, origin
 
 
-def _reshape_m1_summary(m1: dict, stage_name: str, stage_cfg: dict) -> dict:
-    """M1 core-summary(계약 §C) → M2 공통 형태로 재성형 (core-kind 가용의 내부 통합)."""
-    chips = m1.get("chips") or {}
-    src = m1.get("sources") or {}
-    statuses = {
-        "total_chips": src.get("total_chips", "missing"),
-        "transfer_log": src.get("used_chips", "missing"),
-        "process_history": src.get("process_history", "missing"),
-        "defect": src.get("defect", "missing"),
-        "eds_fail": src.get("eds_fail", "missing"),
-    }
-    # [QA F1] core-kind 경로도 동일한 강등 노출을 갖는다 — 같은 규율로 표면화한다.
-    # ([relaxation] `not_declared`는 강등이 아니므로 assess_degradation이 지나친다 —
-    #  M1이 감산항 없이 낸 remaining이 숫자로 그대로 나간다.)
-    deg_warnings, remaining_reliable, total_reliable = assess_degradation(
-        statuses, fail_roles={"defect", "eds_fail"})
-    used_not_declared = statuses["transfer_log"] == STATUS_NOT_DECLARED
-    chips_block, inv_warnings = build_chips_block(
-        total=chips.get("total", 0),
-        fail_breakdown={
-            "defect": chips.get("defect", 0),
-            "eds_fail": chips.get("eds_fail", 0),
-        },
-        # [relaxation] 소모 로그 미선언이면 transferred는 미상(0으로 위장 금지)
-        transferred=None if used_not_declared else chips.get("used", 0),
-        remaining=chips.get("remaining", 0),
-        remaining_reliable=remaining_reliable,
-        total_reliable=total_reliable,
-    )
-    out = {
-        "identity": m1.get("identity"),
-        "stage": stage_name,
-        "source_kind": stage_cfg.get("source_kind"),
-        "sources": statuses,
-        "chips": chips_block,
-        "history": m1.get("history") or [],
-        "warnings": deg_warnings + inv_warnings + (m1.get("warnings") or []),
-    }
-    # [relaxation] M1이 감산에서 뺀 종류를 M2 어휘로 개명해 그대로 나른다
-    # (used_chips → transfer_log — /stages의 역할 개명과 같은 매핑).
-    inactive = [("transfer_log" if r == "used_chips" else r)
-                for r in (m1.get("inactive_subtractions") or [])]
-    if inactive:
-        out["inactive_subtractions"] = inactive
-    return out
+# 🗄️ `_reshape_m1_summary(m1, stage_name, stage_cfg)` stood here until 2026-08-14.
+#    It reshaped M1's `core-summary` contract (§C) into the M2 common shape, and it
+#    is where the five role names were TRANSLATED: M1's `used_chips` became M2's
+#    `transfer_log`, and M1's `defect`/`eds_fail` became top-level roles that the
+#    inline engine spells as `fail_sources.<name>` instead. That renaming table is
+#    the reason a `dt` stage on the inline path reports FOUR roles, not five: the
+#    two fail roles are now named by the config, not by this function.
+#    Retired with its only caller — `server/M1_SOURCE_CONFIG_REF.RETIRED.md`.
+#    🔴 `bonding_plan.get_core_summary` and `GET /api/bonding-plan/core-summary`
+#    are NOT retired; only this adapter is.
 
 
 def _fetch_pairs(db, cols, filters, distinct=False, cap=MAX_FAIL_POINTS, tag=""):
@@ -2236,22 +2148,22 @@ def _bin_warnings(bins: dict) -> list:
 
 
 def get_stage_source_summary(db, cfg: dict, stage_name: str, lot: str, slot: str,
-                             bp_config: dict = None,
                              ref_table: str = None, map_key: str = None,
                              bins: str = None) -> dict:
     """단계별 소스 가용 집계 — 계약 공통 형태를 생성한다.
 
     stage 미선언 시 KeyError (라우트가 404로 변환).
-    bp_config: source_config_ref 스테이지용 M1 config 스냅샷(미지정 시 여기서 1회 로드 —
-    validate처럼 반복 호출하는 상위는 스냅샷을 주입해 작업 경계 1회 로드 규율을 지킨다).
     ref_table/map_key: 계획 맵 정체성(v2 — 구 plan_id 대체). 소스 영역 스코프에만 쓰인다.
     bins: `"1,2"` 형태의 BIN 요청(선택). 지정하면 요청한 BIN이 **전부** 답을 받는다 —
       맵에 없으면 `bin_absent`이며 **절대 `0`이 아니다**(DOE_BAND_MODEL §4-bis 🔴).
       생략하면 맵에 있는 BIN을 전부 나열한다. `bins`를 아예 주지 않으면 BIN 블록도 없다
       (기존 소비자의 응답이 커지지 않는다).
-    """
-    import bonding_plan
 
+    🗄️ The `bp_config` keyword (an M1 config snapshot, injected by `validate` so the
+    delegating stage loaded `bonding_plan_config.json` once per plan rather than once
+    per demand) went with the delegation path on 2026-08-14 — nothing reads that file
+    on this route any more. `server/M1_SOURCE_CONFIG_REF.RETIRED.md`.
+    """
     stages = get_stages(cfg)
     stage_cfg = stages.get(stage_name)
     if not isinstance(stage_cfg, dict):
@@ -2265,31 +2177,13 @@ def get_stage_source_summary(db, cfg: dict, stage_name: str, lot: str, slot: str
     if ref_table and map_key:
         region = load_source_region(db, cfg, ref_table, map_key, lot, slot)
 
-    ref = stage_cfg.get("source_config_ref")
-    if ref in M1_SOURCE_REFS:
-        # [내부 통합] M1 core-summary = core-kind 소스 가용의 인스턴스 (외부 계약 불변)
-        bp_cfg = bp_config if bp_config is not None else bonding_plan.load_bonding_plan_config()
-        m1 = bonding_plan.get_core_summary(db, lot, slot, config=bp_cfg)
-        out = _reshape_m1_summary(m1, stage_name, stage_cfg)
-        if region is not None:
-            out["region_chips"] = _core_region_counts(db, bp_cfg, lot, slot, region)
-            out["region_chips"]["reliable"] = out["chips"].get("remaining_reliable", True)
-        if want_bins:
-            # M1 위임 경로는 좌표 집합을 만들지 않는다(집계만 넘겨받는다). 축을 흉내 내면
-            # 감산항 없는 셀 수가 `가용`으로 둔갑하므로 **못 한다고 말한다.**
-            out["bins"] = _bins_unavailable(
-                "core-kind(M1 위임) 소스는 BIN별 감산을 계산할 좌표 집합을 갖지 않습니다.",
-                BIN_SCOPE_SLOT, bin_request)
-            out["warnings"] = (out.get("warnings") or []) + _bin_warnings(out["bins"])
-        return out
-
     return _summarize_inline(db, stage_name, stage_cfg, lot, slot, region=region,
                              want_bins=want_bins, bin_request=bin_request,
                              bin_refused=bin_refused)
 
 
 def get_lot_bin_summary(db, cfg: dict, stage_name: str, lot: str,
-                        bins: str = None, bp_config: dict = None) -> dict:
+                        bins: str = None) -> dict:
     """`scope=lot` — 로트 **전체**(모든 슬롯)의 BIN별 가용.
 
     토큰 `MID1:2`는 "MID1 로트의 모든 슬롯, BIN 2"라는 정의된 뜻이다(§4-bis). 슬롯별
@@ -2366,7 +2260,7 @@ def get_lot_bin_summary(db, cfg: dict, stage_name: str, lot: str,
     inactive_union = []   # [relaxation] 슬롯 요약이 밝힌 비활성 감산 종류의 합집합
     for s in slots:
         one = get_stage_source_summary(db, cfg, stage_name, lot, s,
-                                       bp_config=bp_config, bins=bins or "")
+                                       bins=bins or "")
         for r in (one.get("inactive_subtractions") or []):
             if r not in inactive_union:
                 inactive_union.append(r)
@@ -3541,10 +3435,10 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
 
     # ---- 수량 부족 + 소스 fail 경고 (소스 가용은 (lot,slot)당 1회 캐시) ----
     summary_cache = {}
-    bp_snapshot = None
-    if stage_cfg is not None and stage_cfg.get("source_config_ref") in M1_SOURCE_REFS:
-        import bonding_plan
-        bp_snapshot = bonding_plan.load_bonding_plan_config()  # 작업 경계 1회 스냅샷
+    # 🗄️ A `bonding_plan_config.json` snapshot was taken here (once per plan, so the
+    #    delegating stage did not re-read that file per demand). Retired 2026-08-14
+    #    with the delegation path — the inline engine reads no second config file, so
+    #    the once-per-work-boundary discipline is satisfied by `cfg` alone.
 
     def _get_summary(s_lot, s_slot):
         """(lot, slot)당 1회. **실패도 캐시한다** — 안 그러면 계속 실패하는 소스가
@@ -3554,7 +3448,7 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
         if key not in summary_cache:
             try:
                 summary_cache[key] = (get_stage_source_summary(
-                    db, cfg, stage_name, s_lot, s_slot, bp_config=bp_snapshot), None)
+                    db, cfg, stage_name, s_lot, s_slot), None)
             except Exception as e:
                 logger.warning("[TransferPlan] source summary failed for (%s,%s): %s",
                                s_lot, s_slot, e)

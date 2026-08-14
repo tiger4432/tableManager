@@ -185,10 +185,58 @@ def _bp_config():
 def _tp_config():
     cfg = {
         "stages": {
+            # [2026-08-14] This stage carried `"source_config_ref": "bonding_plan"`
+            # until the delegation path was retired
+            # (`server/M1_SOURCE_CONFIG_REF.RETIRED.md`). It is now declared inline
+            # against the SAME tp_test_* tables and the SAME role bindings the M1
+            # config used, so the arithmetic every test below asserts is unchanged:
+            # `origin_log` is absent, so remaining falls to the subtractive form
+            # `total − Σfail − used`, which is exactly what M1 computed.
+            # The one deliberate difference: M1 named `defect`/`eds_fail` as
+            # top-level roles and the inline engine names them through
+            # `fail_sources`, in the SELF frame (M1's align projection had no
+            # counterpart here because source and canonical frame were the same map).
             "dt": {
                 "description": "core→tape 전사",
                 "source_kind": "core", "target_kind": "tape",
-                "source_config_ref": "bonding_plan",
+                "source": {
+                    "identity": {"compose": ["lot", "slot"]},
+                    "map_metadata": {
+                        "table": "tp_test_map_meta",
+                        "columns": {"target_table": "target_table", "map_id": "map_id",
+                                    "grid_metadata": "grid_metadata"},
+                    },
+                    "total_chips": {
+                        "table": "tp_test_core_defect_map",
+                        "columns": {"lot": "lot", "slot": "slot", "x": "x", "y": "y"},
+                    },
+                    "transfer_log": {
+                        "table": "tp_test_bonding_log",
+                        "columns": {"lot": "core_lot", "slot": "core_slot",
+                                    "x": "cx", "y": "cy"},
+                    },
+                    "process_history": {
+                        "table": "tp_test_wafer_process",
+                        "columns": {"step": "step", "eqp": "eqp_id", "result": "result",
+                                    "time": "start_time", "recipe": "recipe_id",
+                                    "knobs": "knobs", "lot": "lot", "slot": "slot"},
+                    },
+                    "fail_sources": {
+                        "defect": {
+                            "frame": "self", "table": "tp_test_core_defect_map",
+                            "columns": {"lot": "lot", "slot": "slot",
+                                        "x": "x", "y": "y", "val": "val"},
+                            "fail_values": ["D"],
+                        },
+                        "eds_fail": {
+                            "frame": "self", "table": "tp_test_eds_fail_map",
+                            "columns": {"lot": "lot", "slot": "slot",
+                                        "x": "x", "y": "y", "val": "val"},
+                            "fail_values": ["F"],
+                        },
+                    },
+                    "warnings": {"result_fail_values": ["FAIL"]},
+                },
                 "target_map": {"preset": "TAPE", "table": "tp_test_dt_map"},
             },
             "bonding": {
@@ -458,10 +506,19 @@ def test_stages_empty_config(tp_env, client, tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 2. core-kind (dt stage) — M1 내부 통합 reshape
+# 2. core-kind (dt stage) — 인라인 선언 (2026-08-14 이전에는 M1 위임 reshape)
 # ---------------------------------------------------------------------------
 
-def test_dt_stage_reshapes_m1_summary(tp_env, client):
+def test_dt_stage_core_availability(tp_env, client):
+    """core-kind 가용. 이 stage는 2026-08-14까지 M1 config에 위임했다.
+
+    🔴 **숫자는 하나도 바뀌지 않았다** — total 36, defect 2, eds_fail 1, used 0,
+    remaining 33. 감산식(`total − Σfail − used`)이 M1의 것과 같기 때문이다
+    (`origin_log` 미선언이면 인라인 엔진도 같은 식을 쓴다). 바뀐 것은 `eds_fail`의
+    상태 마커뿐 — M1은 정렬을 적용해 `connected(aligned:180)`을 냈고, `frame: "self"`는
+    정렬을 상의하지 않아 `connected`다. **카운트는 정렬 불변이라 fail 수는 같다**;
+    좌표 교차(영역·BIN)만 달라진다 → `test_core_frame_fail_source_is_not_aligned`.
+    """
     _seed_scenario(tp_env)
     res = client.get("/api/transfer-plan/source-summary",
                      params={"stage": "dt", "lot": "CORE-A", "slot": "01"})
@@ -469,7 +526,6 @@ def test_dt_stage_reshapes_m1_summary(tp_env, client):
     body = res.json()
     assert body["stage"] == "dt" and body["source_kind"] == "core"
     assert body["identity"] == {"lot": "CORE-A", "slot": "01"}
-    # M1 집계의 재성형: total 36, defect 2, eds 1(F행 1), used 0 → remaining 33
     assert body["chips"] == {
         "total": 36,
         "fail_breakdown": {"defect": 2, "eds_fail": 1},
@@ -478,7 +534,7 @@ def test_dt_stage_reshapes_m1_summary(tp_env, client):
         "remaining_reliable": True,   # 전 역할 정상 → 신뢰 가능(상한 필드 없음)
     }
     assert body["sources"]["transfer_log"] == "connected"
-    assert body["sources"]["eds_fail"] == "connected(aligned:180)"
+    assert body["sources"]["eds_fail"] == "connected"
     assert "by_core" not in body
 
 
@@ -791,16 +847,19 @@ def test_normal_path_is_reliable_and_quiet(tp_env, client):
 
 
 def test_dt_stage_degradation_also_surfaced(tp_env, client, tmp_path, monkeypatch):
-    """core-kind(M1 reshape) 경로도 동일 규율 — 여기만 빠지면 우회로가 남는다.
+    """core-kind 경로도 동일 규율 — 여기만 빠지면 우회로가 남는다.
 
     [relaxation 2026-08-04] 강등을 유발하려면 역할을 **지우면 안 된다** — 부재는 이제
     not_declared(완화)다. 선언된 채 깨진 바인딩(테이블 부재)이 강등의 재현법이다.
     부재 측의 완화 동작은 test_availability_relaxation.py가 고정한다.
+    [2026-08-14] 파손을 주입하는 자리가 `bonding_plan_config`의 `sources.defect`에서
+    이 stage 자신의 `source.fail_sources.defect`로 옮겨왔다 — 위임 은퇴.
     """
     _seed_scenario(tp_env)
-    bp = _bp_config()
-    bp["sources"]["defect"]["table"] = "tp_test_no_such"   # 선언된 채 파손 → missing
-    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    cfg = _tp_config()
+    # 선언된 채 파손 → missing
+    cfg["stages"]["dt"]["source"]["fail_sources"]["defect"]["table"] = "tp_test_no_such"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
     body = client.get("/api/transfer-plan/source-summary",
                       params={"stage": "dt", "lot": "CORE-A", "slot": "01"}).json()
     assert body["sources"]["defect"] == "missing"
@@ -999,8 +1058,25 @@ def test_source_region_empty_set_is_zero_not_missing(tp_env, client):
     assert rc["cells"] == 0 and rc["total"] == 0 and rc["remaining"] == 0
 
 
-def test_source_region_scopes_core_availability_with_align(tp_env, client):
-    """[②] core-kind(M1 위임) 소스도 영역 스코프가 된다 — align 적용 좌표로 교차."""
+def test_source_region_scopes_core_availability(tp_env, client):
+    """[②] core-kind 소스도 영역 스코프가 된다 — 자기 프레임 좌표로 교차.
+
+    🔴 [2026-08-14] 기댓값 둘이 바뀌었고 그것이 이 라운드의 **기능 손실**이다. 예전의 이
+    테스트는 `_core_region_counts`(M1 위임 경로)를 탔고, 그쪽은 fail 원천을 canonical
+    코어 프레임으로 **정렬한 뒤** 교차했다: eds 저장좌표 (6,6)이 canonical (1,1)로 사상돼
+    영역 {(1,1),(2,2),(5,5)}에 걸렸고 `eds_fail == 1`, `remaining == 1`이었다.
+    인라인 엔진에는 core-kind(`frame: "self"`) fail 원천을 정렬하는 경로가 **없다** —
+    `_canonical_fail_set`은 `frame: "origin"` 갈래에서만 호출되고 그쪽은 `origin_log`를
+    요구한다. 그래서 (6,6)이 그대로 비교돼 영역에 걸리지 않는다.
+    **카운트는 정렬 불변이라 헤드라인 `chips`는 그대로다** — 어긋나는 것은 좌표 교차뿐
+    (영역·BIN). 아래 `..._is_not_aligned` 테스트가 그 부재를 못 박는다.
+
+    🔴 두 번째 변화: `region_chips.fail_breakdown`의 **키가 바뀌었다**. M1 어댑터는
+    원천별로 `{"defect": n, "eds_fail": m}`을 냈고, 인라인 엔진은 원천별 좌표 집합을
+    따로 들고 있지 않아 합집합 한 항목 `{"all_fail": n}`만 낸다(`_summarize_inline`이
+    `_region_block`에 넘기는 형태 — bonding stage는 처음부터 그랬다). 소비자 없음:
+    client2에 `region_chips`·`fail_breakdown` 철자가 0건이다.
+    """
     _seed_scenario(tp_env)
     _seed_region(tp_env, "BASE-C", ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
     tp_env.commit()
@@ -1010,28 +1086,43 @@ def test_source_region_scopes_core_availability_with_align(tp_env, client):
     rc = body["region_chips"]
     assert rc["cells"] == 3
     assert rc["total"] == 3                       # 3칸 모두 defect 풀맵에 존재
-    assert rc["fail_breakdown"]["defect"] == 1    # (2,2)
-    assert rc["fail_breakdown"]["eds_fail"] == 1  # canonical (1,1) — 정렬 적용 증거
-    assert rc["remaining"] == 1                   # (5,5)만 가용
+    # defect (2,2)만 영역 안. eds는 저장 (6,6)이고 정렬이 없어 영역 밖.
+    assert rc["fail_breakdown"] == {"all_fail": 1}
+    assert rc["remaining"] == 2                   # (1,1)과 (5,5)
 
 
-def test_source_region_core_align_negative_control(tp_env, client):
-    """eds 메타를 rot 0으로 바꾸면 저장좌표(6,6)로 비교되어 영역 내 eds가 0 — 실효 대조군.
+def test_core_frame_fail_source_is_not_aligned(tp_env, client):
+    """🔴 **부재를 못 박는 테스트다 — 고칠 때 이 단언을 뒤집어라.**
 
-    이 경로(`_core_region_counts`)는 M1 config를 M2 어댑터로 감싸므로, 어댑터가 canonical
-    후보를 못 찾으면 정렬이 조용히 identity로 떨어진다 — 그 회귀를 여기서 잡는다.
+    `frame: "self"` fail 원천은 자기 맵의 **회전 선언을 상의하지 않는다**. 회전을 180에서
+    0으로 바꿔도 영역 교차 결과가 **변하지 않는다**는 것이 그 증거다 — 정렬이 붙어 있다면
+    180일 때 (6,6)→(1,1)로 사상돼 결과가 달라져야 한다.
+
+    M1 위임 경로(`bonding_plan.canonical_basis` + `CANONICAL_FRAME_ROLES`)에는 이 정렬이
+    있었고 2026-08-14 은퇴와 함께 사라졌다(`server/M1_SOURCE_CONFIG_REF.RETIRED.md`).
+    라이브에서는 잠복 상태다 — `dt` stage가 fail 원천을 하나도 선언하지 않기 때문이지,
+    엔진이 그것을 처리할 수 있어서가 아니다. 회전된 코어 계측 맵을 선언하는 순간 영역·BIN
+    수치가 조용히 틀린다.
     """
+    def _eds_in_region(db, tag, rotation):
+        _seed_region(db, tag, ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
+        model = models.DYNAMIC_TABLES["tp_test_map_meta"]
+        db.query(model).filter(model.target_table == "tp_test_eds_fail_map").delete()
+        _add_meta(db, "tp_test_eds_fail_map", "CORE-A_01", rotation=rotation)
+        db.commit()
+        body = client.get("/api/transfer-plan/source-summary", params=_region_params(
+            tag, stage="dt", lot="CORE-A", slot="01")).json()
+        return body["region_chips"]["fail_breakdown"]
+
     db = tp_env
     _seed_scenario(db)
-    _seed_region(db, "BASE-C2", ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
-    model = models.DYNAMIC_TABLES["tp_test_map_meta"]
-    db.query(model).filter(model.target_table == "tp_test_eds_fail_map").delete()
-    _add_meta(db, "tp_test_eds_fail_map", "CORE-A_01", rotation=0)
-    db.commit()
-    body = client.get("/api/transfer-plan/source-summary", params=_region_params(
-        "BASE-C2", stage="dt", lot="CORE-A", slot="01")).json()
-    assert body["region_chips"]["fail_breakdown"]["eds_fail"] == 0
-    assert body["region_chips"]["fail_breakdown"]["defect"] == 1   # 무회전 원천은 불변
+    rot180 = _eds_in_region(db, "BASE-C-180", 180)
+    rot0 = _eds_in_region(db, "BASE-C-0", 0)
+    # `all_fail` 하나뿐이다(위 테스트 참조). 180이면 (6,6)→(1,1)로 사상돼 영역에 걸려
+    # 2가 되어야 하고, 0이면 1이어야 한다 — 지금은 둘 다 1이다: 정렬이 없다는 뜻.
+    assert rot180["all_fail"] == rot0["all_fail"] == 1, (
+        "정렬이 붙었다면 이 둘은 달라야 한다 — 이 테스트를 뒤집고 위 테스트의 "
+        "기댓값(all_fail 2 / remaining 1)을 되돌려라")
 
 
 def test_source_region_binding_reported_in_plan_store(tp_env, client):
@@ -2638,19 +2729,25 @@ def test_typo_fail_val_column_refuses_the_unfiltered_count(tp_env, client, tmp_p
     assert body["chips"]["remaining_upper_bound"] == 3
 
 
-def test_dt_reshape_carries_the_unresolved_demotion(tp_env, client, tmp_path,
-                                                    monkeypatch):
-    """M1-delegated (dt) path: a typo in the bonding_plan config must surface through
-    the reshape with the same reliability consequences."""
+def test_core_kind_carries_the_unresolved_demotion(tp_env, client, tmp_path,
+                                                   monkeypatch):
+    """core-kind (dt) path: a `val` typo in a self-frame fail source must surface
+    with the same reliability consequences as the tape path above.
+
+    [2026-08-14] The typo used to be injected into `bonding_plan_config.json`
+    (`sources.defect.columns.val`) and travelled through the retired reshape; it is
+    now injected into this stage's own `source.fail_sources.defect`. The arithmetic
+    is unchanged — the corrupted term is zeroed and the served value is an upper
+    bound, 36 − 0 − 1 − 0 = 35.
+    """
     _seed_scenario(tp_env)
-    bp = _bp_config()
-    bp["sources"]["defect"]["columns"]["val"] = "vall"
-    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    cfg = _tp_config()
+    cfg["stages"]["dt"]["source"]["fail_sources"]["defect"]["columns"]["val"] = "vall"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
     body = _summary(client, stage="dt", lot="CORE-A", slot="01")
     assert body["sources"]["defect"] == "connected(column_unresolved:val)"
     assert body["chips"]["fail_breakdown"]["defect"] == 0
     assert body["chips"]["remaining"] is None
-    # M1 subtraction with the corrupted term zeroed: 36 - 0 - 1 - 0 = 35 (upper bound)
     assert body["chips"]["remaining_upper_bound"] == 35
 
 

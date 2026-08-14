@@ -1,14 +1,37 @@
 {
-  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다.",
+  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. 모든 stage는 자기 `source` 블록에 역할을 인라인 선언한다 — 위임(`source_config_ref`)은 2026-08-14에 은퇴했다(server/M1_SOURCE_CONFIG_REF.RETIRED.md). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다.",
   "stages": {
     "dt": {
-      "description": "DT(Die Transfer): 코어 웨이퍼의 칩을 테이프에 전사하는 단계. 소스 가용 = M1 core-summary(코어 total − defect − eds_fail − 기전사).",
+      "description": "DT(Die Transfer): 코어 웨이퍼의 칩을 테이프에 전사하는 단계. 소스 가용 = 코어 웨이퍼 맵의 칩 − 이미 전사된 칩(dt_log).",
       "source_kind": "core",
       "target_kind": "tape",
-      "source_config_ref": "bonding_plan",
+
+      "__source_comment": "[2026-08-14] This stage used to delegate its source roles to M1 `bonding_plan_config.json` via `\"source_config_ref\": \"bonding_plan\"`. All five delegated roles read `missing` on the live server, for TWO different causes, both measured: (a) `core_defect_map` / `eds_fail_map` / `wafer_process` are not declared in `table_config.json`, so no dynamic model exists (their auto-update generators are in `auto_update_control.disabled` and they left `table_config` between 2026-07-28 and 2026-08-04 — retired fixture tables that still hold rows); (b) `used_chips` pointed at `bonding_log.core_lot/core_slot/cx/cy`, columns that exist PHYSICALLY but are absent from that table's `table_config` declaration, and are NULL on all 357,796 rows anyway. The roles below are bound to the tables the live model actually uses. `process_history` and `fail_sources` are DELIBERATELY not declared — there is no registered per-wafer process table, and no declared fail-value vocabulary for `core_wafer_map.c_bn`; the response names both absences in `inactive_subtractions` rather than pretending the subtraction happened.",
+      "source": {
+        "total_chips": {
+          "__comment": "The core wafer's own chip map. 🔴 x/y ARE DECLARED HERE ON PURPOSE, and this is NOT the same case as `bonding.bin_map` below. Derivation (`bonding_plan.resolve_effective_columns`) only fills roles that the CALLING site marks `required`, and every site that resolves `total_chips` asks for `(\"lot\", \"slot\")` only (`transfer_plan._summarize_inline`, and the `total_pts` fetch that region/BIN totals depend on). So x/y are never derived for this role: omit them and `total_pts` stays None and every region/BIN total reads null — measured 2026-08-14 on the bonding stage, which had them deleted. `bin_map`'s x/y are a different case: BIN_AXIS_ROLES marks them required, so there deletion really does hand the job to the map binding.",
+          "table": "core_wafer_map",
+          "columns": {
+            "lot": "core_lot",
+            "slot": "core_slot",
+            "x": "core_x",
+            "y": "core_y"
+          }
+        },
+        "transfer_log": {
+          "__comment": "Core chips already transferred off this wafer. 🔴 x/y are the CORE-frame pair (`core_x`/`core_y`), which is a genuine departure from this table's map binding (`map_overlay_config.table_bindings.dt_log` -> `dt_x`/`dt_y`, the TAPE frame). `DERIVED_ROLE_OF`'s own comment names this case: a second coordinate pair on one table cannot be chosen by the map binding, so it must be declared. Deleting these two lines does not fall back to derivation — for an OPTIONAL role nothing is ever filled — it silently drops the set subtraction to `connected(count_only)`.",
+          "table": "dt_log",
+          "columns": {
+            "lot": "core_lot",
+            "slot": "core_slot",
+            "x": "core_x",
+            "y": "core_y"
+          }
+        }
+      },
       "target_map": {
         "preset": "TAPE",
-        "table": "dt_log"
+        "table": "dt_map"
       }
     },
     "bonding": {
@@ -16,18 +39,18 @@
       "source_kind": "tape",
       "target_kind": "base",
 
+      "__bin_map_comment": "x/y are ABSENT ON PURPOSE — they are inherited from the map binding for this table (map_overlay_config.table_bindings.dt_map -> dt_x/dt_y, itself derivable from table_config). Do not re-add them: a declared role out-ranks the derivation, so a wrong spelling here cannot be fixed by editing it, only by deleting it. That is the 2026-08-04 incident (`\"x\": \"x\"` on a table whose coordinates are dt_x/dt_y), and it sat in this file until 2026-08-11. 🔴 This holds because BIN_AXIS_ROLES marks x/y REQUIRED — see `source.total_chips` below for the optional-role case, where deletion switches the capability off instead. | lot/slot/bin ARE declared because they are genuine departures: key roles are never derived (bonding_plan.DERIVED_ROLE_OF), and `bin` would derive `dt_index` (this table's map VALUE column), which is not the bin. Ask `GET /admin/config/resolve?domain=binding` what actually won.",
       "bin_map": {
-        "table": "dt_log",
+        "table": "dt_map",
         "columns": {
           "lot": "dt_lot",
           "slot": "dt_slot",
-          "x": "x",
-          "y": "y",
           "bin": "c_bn"
         }
       },
       "source": {
         "identity": {
+          "__comment": "🔴 ROLE keys, not column names. `map_overlay.compose_map_id` looks each entry up in a `{\"lot\": ..., \"slot\": ...}` value dict, so a column-name spelling finds nothing. Measured 2026-08-14: `[\"dt_lot\", \"dt_slot\"]` (which stood here) composes the map id `\"_\"`; `[\"lot\", \"slot\"]` composes `\"CL-2601-001_03\"`. Inert today — the only reader is the origin-frame fail projection and this stage declares no `fail_sources` — so it was a latent wrong answer, not a live one. This equals the default, so deleting the whole block is also correct.",
           "compose": ["lot", "slot"]
         },
         "map_metadata": {
@@ -39,11 +62,13 @@
           }
         },
         "total_chips": {
-          "__comment": "⚠️ x/y를 «적지 마라» — map binding에서 상속된다(dt_map -> dt_x/dt_y). 선언된 역할이 파생을 이기므로 여기 틀린 철자를 쓰면 옳은 철자로 «고칠» 수 없고 «지워야만» 고쳐진다. 실제 사고 두 번: 2026-08-04(bin_map)과 2026-08-14(total_chips) — 둘 다 자리표시자 'x','y'가 dt_map에 그대로 복사됐고, 그 표에 x/y 컬럼이 없어 좌표를 못 잡아 칩 집계가 total_unknown으로 떨어졌다. lot/slot은 키 역할이라 파생되지 않으므로 «반드시» 적는다.",
+          "__comment": "2026-08-14, TWO repairs on the same four lines — read both before editing. (1) `\"x\": \"x\", \"y\": \"y\"` was wrong: `dt_map`'s coordinates are `dt_x`/`dt_y`. (2) DELETING them did not fix it, and that is the correction to the first repair's reasoning. Measured on the live server after the deletion: `GET /api/transfer-plan/source-summary?stage=bonding&lot=DT_LOT&slot=1&bins=` still answered `\"total\": null` with `\"총칩 좌표를 알 수 없어 BIN별 총계를 계산할 수 없습니다\"` — the owner's original symptom — while the role status went from `connected(column_unresolved:x,y)` to a clean `connected`. The deletion removed the only visible sign and left the capability off. 🔴 THE RULE, precisely: `bonding_plan.resolve_effective_columns` fills a role only if the CALLER marked it `required`. `bin_map` (above) resolves against BIN_AXIS_ROLES = (lot, slot, x, y, bin), so x/y ARE required there and deletion genuinely hands them to the map binding — that is the 2026-08-04 case and it stands. `total_chips` is resolved with `(\"lot\", \"slot\")` at every site (`transfer_plan._summarize_inline`, and the `total_pts` fetch behind region/BIN totals), so its x/y are OPTIONAL, never derived, and must be spelled here. \"Delete, do not respell\" is a rule about REQUIRED roles only. Ask `GET /admin/transfer-plan/dry-run` which spelling won.",
           "table": "dt_map",
           "columns": {
             "lot": "dt_lot",
-            "slot": "dt_slot"
+            "slot": "dt_slot",
+            "x": "dt_x",
+            "y": "dt_y"
           }
         },
 

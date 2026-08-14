@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **515개** 이력. (거버넌스 규칙 #4)
+> 총 **516개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-14 10:35** — [The Deletion Removed The Only Sign And Left The Capability Off](./20260814_103500_the_deletion_removed_the_only_sign_and_left_the_capability_off.md)
 - **2026-08-13 15:21** — [The Naive Convention Check Inverts The Distinction](./20260813_152149_the_naive_convention_check_inverts_the_distinction.md)
 - **2026-08-13 15:03** — [The Gate Passed And The Step After It Is Where The Rule Strains](./20260813_150332_the_gate_passed_and_the_step_after_it_is_where_the_rule_strains.md)
 - **2026-08-13 14:41** — [Every Test Was Green Because The Lanes Fixtures Agreed With The Lane](./20260813_144117_every_test_was_green_because_the_lanes_fixtures_agreed_with_the_lane.md)
@@ -536,4 +537,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-13 by gen_index.py*
+*Last generated: 2026-08-14 by gen_index.py*

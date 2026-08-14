@@ -333,10 +333,21 @@ def test_dry_run_distinguishes_a_deletable_column_from_a_load_bearing_one(deriv_
     assert total_x["exists_on_table"] is True
 
 
-def test_dry_run_marks_a_delegating_stage_not_reached(deriv_env):
-    """A stage delegating via `source_config_ref` never reads its own `source.*`.
-    Calling that `not_declared` invites an operator to fill in a block nothing
-    consults - `not_reached` is the existing word for exactly this.
+def test_dry_run_no_longer_honours_source_config_ref(deriv_env):
+    """🗄️ Replaces `test_dry_run_marks_a_delegating_stage_not_reached`.
+
+    A stage used to be able to delegate its source roles to
+    `bonding_plan_config.json` with `"source_config_ref": "bonding_plan"`, and the
+    dry-run reported every source role as `not_reached` — the word for "you may
+    fill this in, but nothing will read it". That path was retired 2026-08-14
+    (`server/M1_SOURCE_CONFIG_REF.RETIRED.md`).
+
+    The retirement must be VISIBLE, not silent: a config still carrying the key
+    now reads its own (empty) `source` block, so the roles come back
+    `not_declared` and `not_reached` is 0. An operator who left the key behind
+    sees "you declared nothing here", which is the truth — the alternative,
+    quietly honouring a delegate that no longer exists, is how the live `dt`
+    stage sat at five `missing` roles with no file named as the cause.
     """
     cfg = _cfg(SHORT)
     cfg["stages"]["dt"] = {"source_kind": "core", "target_kind": "tape",
@@ -345,9 +356,14 @@ def test_dry_run_marks_a_delegating_stage_not_reached(deriv_env):
     report = transfer_plan.dry_run(cfg)
 
     total = _role_of(report, "dt", "total_chips")
-    assert total["reason"] == bonding_plan.BINDING_NOT_REACHED
-    assert "bonding_plan" in total["detail"]
-    assert report["counts"]["not_reached"] == len(transfer_plan._STAGE_SOURCE_ROLES)
+    assert total["reason"] == bonding_plan.BINDING_NOT_DECLARED
+    assert total["reason"] != bonding_plan.BINDING_NOT_REACHED
+    assert report["counts"]["not_reached"] == 0
+    # The vocabulary itself stays available for a future delegate.
+    assert bonding_plan.BINDING_NOT_REACHED in bonding_plan.BINDING_REFUSALS
+    # And the retired key is no longer echoed back as a stage attribute.
+    dt_stage = next(s for s in report["stages"] if s["name"] == "dt")
+    assert "source_config_ref" not in dt_stage
 
 
 def test_dry_run_touches_no_data(deriv_env, monkeypatch):

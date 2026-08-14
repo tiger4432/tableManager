@@ -35,7 +35,10 @@
                         -> `client2/src/transfer_plan.js` renders `detail` verbatim -> `unknownCellHtml` title
   dry-run:              `_role_dry_run` · `dry_run` [transfer_plan.py]
                         / route GET /admin/transfer-plan/dry-run (require_admin_token) [main.py]
-  source_config_ref allowed:  M1_SOURCE_REFS = ("bonding_plan",)  [transfer_plan.py]
+  source_config_ref:    🗄️ RETIRED 2026-08-14 — `M1_SOURCE_REFS` and its five branch sites are
+                        gone. `server/M1_SOURCE_CONFIG_REF.RETIRED.md` (approval, measured
+                        cause, revival). A config still carrying the key now falls through
+                        to the inline branch and reads its own `source` block.
   degradation engine:   `_status_is_degraded` · `_degradation_effect` · `assess_degradation`
                         / chips gate `build_chips_block`  [transfer_plan.py]
   relaxation (2c2a777 + 101311f):  STATUS_NOT_DECLARED · `role_is_declared` (predicate = KEY PRESENCE)
@@ -222,7 +225,26 @@ plan_store      registry         ACCEPTED
                 source_region    not_declared
 ```
 
-`not_reached`는 **결함이 아닙니다** — `dt` stage는 `source_config_ref`로 소스 역할을 M1에 위임하므로 자기 `source.*` 블록을 **읽지 않습니다**. 거기를 채워도 아무 일도 일어나지 않습니다.
+🗄️ **`not_reached`는 이제 나오지 않습니다** (2026-08-14). 그것은 위임(`source_config_ref`) stage의 상태였고 — 「채워도 읽히지 않는다」 — 위임 경로가 은퇴했습니다(`server/M1_SOURCE_CONFIG_REF.RETIRED.md`). 모든 stage가 자기 `source` 블록을 읽으므로 미선언 역할은 `not_declared`입니다. 어휘 자체(`bonding_plan.BINDING_NOT_REACHED`)는 향후 위임자를 위해 남아 있습니다.
+
+### 3.3 같은 파일, 2026-08-14 (dt 인라인 전환 + `total_chips` x/y 복원 이후)
+
+```
+counts: {"total":18,"accepted":6,"rejected":0,"not_declared":12,"not_reached":0,
+         "derived_columns":2,"absent_optional_columns":0,"removable_declarations":0}
+
+stage dt        total_chips      ACCEPTED        (core_wafer_map)
+                transfer_log     ACCEPTED        (dt_log, core_x/core_y)
+                (나머지 6종)      not_declared
+stage bonding   bin_map          ACCEPTED        <- x/y는 유도(derived_columns 2의 정체)
+                map_metadata     ACCEPTED
+                total_chips      ACCEPTED        <- x/y는 «선언». 유도되지 않습니다
+                (나머지 5종)      not_declared
+plan_store      registry         ACCEPTED
+                source_region    not_declared
+```
+
+🔴 **`derived_columns: 2`가 §1.1의 규칙을 눈으로 보여 줍니다.** 유도된 두 컬럼은 `bonding.bin_map`의 `x`/`y`입니다(BIN_AXIS_ROLES가 required로 표시). `bonding.total_chips`와 `dt.total_chips`의 `x`/`y`는 **선언돼 있고 유도 대상이 아닙니다** — 지우면 채워지는 것이 아니라 영역·BIN 총계가 `null`이 됩니다. 2026-08-14에 실제로 그렇게 됐습니다(§1.1 경고 참조).
 
 ---
 
@@ -238,12 +260,17 @@ plan_store      registry         ACCEPTED
      "description": "DT: 코어 웨이퍼의 칩을 테이프에 전사.",
      "source_kind": "core",
      "target_kind": "tape",
-     "source_config_ref": "bonding_plan",
+     "source": {
+       "total_chips": { "table": "core_wafer_map",
+         "columns": { "lot": "core_lot", "slot": "core_slot", "x": "core_x", "y": "core_y" } },
+       "transfer_log": { "table": "dt_log",
+         "columns": { "lot": "core_lot", "slot": "core_slot", "x": "core_x", "y": "core_y" } }
+     },
      "target_map": { "preset": "TAPE", "table": "dt_map" }
    }
    ```
 
-   소스는 둘 중 하나 — ① `"source_config_ref": "bonding_plan"`(M1 바인딩 재사용, 유일 허용값) ② 인라인 `"source": {...}`.
+   🗄️ **소스 선언 형태는 이제 하나뿐입니다** — 인라인 `"source": {...}`. 예전에는 `"source_config_ref": "bonding_plan"`으로 M1 바인딩을 재사용할 수 있었고, 위 `dt` 예시가 바로 그 stage입니다. 그 경로는 2026-08-14에 은퇴했습니다 — 이유와 부활 조건은 `server/M1_SOURCE_CONFIG_REF.RETIRED.md`. ⚠️ **`x`/`y`를 `total_chips`에 반드시 쓰십시오**: 유도는 호출자가 `required`로 표시한 역할만 메우는데, `total_chips`는 어느 사이트에서도 `("lot", "slot")`만 요구합니다(§1.1 참조).
 5. **`plan_store`** — 기존 환경이 zone 이전 상태면 라이브 파일에 손으로 역할키를 더해야 합니다(gitignored라 `.sample` 갱신이 따라오지 않음). 유도 대상이 아니므로 **7종 전부** 씁니다:
 
    ```json
@@ -259,7 +286,7 @@ plan_store      registry         ACCEPTED
      "material_identity": { "compose": ["lot", "slot"], "separator": "_" }
    }
    ```
-6. **BIN 축이 필요하면** stage(또는 그 `source`) 블록에 §1.1의 짧은 형태로 선언 — 단 **M1 위임(`source_config_ref`) stage에는 선언해도 무효**이므로 inline `source`로 바꿔야 하고, 신뢰 가능한 잔여에는 `origin_log`까지 필요합니다.
+6. **BIN 축이 필요하면** stage(또는 그 `source`) 블록에 §1.1의 짧은 형태로 선언합니다. 신뢰 가능한 잔여에는 `origin_log`까지 필요합니다. (예전에는 「M1 위임 stage에는 선언해도 무효」라는 단서가 여기 있었습니다 — 그 위임 경로가 사라졌으므로 이제 어느 stage에서든 유효합니다.)
 7. 저장 — 반영은 자동입니다(**요청마다 재읽기**, 재기동·reload 불필요). `map_overlay_config.json`도 저장하면 즉시 반영됩니다(파일 mtime 기준 메모).
 8. 🔴 **저장 직후 dry-run을 찍습니다**(§3). 이것이 반영 확인의 **1순위**입니다 — 아래 §5는 그다음입니다.
 
@@ -379,7 +406,15 @@ dt_job_attribution, dt_log, dt_map, ...
 
 `columns`가 객체가 아니거나, `table`이 빈 문자열/누락이거나, 블록 자체가 객체가 아닌 경우입니다. 문장이 **읽힌 값을 그대로 인용**하므로(JSON), 무엇을 썼는지 되짚을 필요가 없습니다.
 
-### ⑦ `not_reached` — 여기는 애초에 읽히지 않는다
+### ⑦ 🗄️ `not_reached` — 은퇴했습니다 (2026-08-14)
+
+이 사유는 위임(`source_config_ref`) stage만이 받았고, 그 경로가 사라졌습니다
+(`server/M1_SOURCE_CONFIG_REF.RETIRED.md`). 지금 그 키가 남아 있는 config는 키가
+**조용히 무시되고** stage가 자기 `source` 블록을 읽습니다 — 비어 있으면 `not_declared`
+입니다. 어휘(`bonding_plan.BINDING_NOT_REACHED`)는 `BINDING_REFUSALS`에 남아 있으므로
+향후 위임자가 같은 단어를 쓸 수 있습니다.
+
+예전 문장(참고용 — 이제 나오지 않습니다):
 
 ```
 이 stage는 소스 역할을 `bonding_plan` config에 위임합니다(`source_config_ref`) ―
@@ -394,7 +429,7 @@ dt_job_attribution, dt_log, dt_map, ...
 | 화면 문장(접두) | 뜻 |
 |---|---|
 | `로트 전체 가용을 계산할 수 없습니다 ― 슬롯을 셀 원천이 둘 다 없습니다. ① … ② …` | `scope=lot`인데 `lot_membership`도 `bin_map`도 못 읽음. **①과 ②가 각자의 사유를 따로** 말합니다 — 하나로 뭉치면 「자재 대장을 안 쓰는 정상 사이트」와 「`bin_map` 컬럼 오타」가 같은 글자로 보고됩니다 |
-| `core-kind(M1 위임) 소스는 BIN별 감산을 계산할 좌표 집합을 갖지 않습니다.` | `source_config_ref` stage에서 `?bins=`를 요청함. **`bin_map`을 선언해도 무효** — inline `source`로 전환해야 합니다 |
+| 🗄️ `core-kind(M1 위임) 소스는 BIN별 감산을 계산할 좌표 집합을 갖지 않습니다.` | **더 이상 나오지 않습니다** (2026-08-14 위임 경로 은퇴). 같은 상황은 이제 `bin_map` 미선언 사유로 나옵니다 — 선언하면 동작합니다 |
 | `BIN 분포 조회에 실패했습니다: …` / `BIN 좌표 조회에 실패했습니다: …` | config가 아니라 **질의 실패**입니다(이 경우 `reason`은 비어 있습니다 — 닫힌 어휘 밖의 원인에 억지로 단어를 붙이지 않습니다) |
 | `로트 '<lot>'의 슬롯이 상한(50)을 넘어 전체를 합산할 수 없습니다.` | `MAX_LOT_SLOTS` 초과 — 부분합을 지어내지 않습니다 |
 
@@ -446,18 +481,18 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 
 **`description`** (필수) · **`source_kind`/`target_kind`**
 - 역할: `/stages` 응답과 소스 요약에 그대로 실리는 **표시 라벨**입니다.
-- 함정: `source_kind`를 바꿔도 **계산 경로는 안 바뀝니다** — core-kind(M1 위임) 여부는 `source_config_ref` 유무가 정합니다.
+- 함정: `source_kind`는 표시 라벨일 뿐 **계산 경로의 스위치가 아닙니다.** 2026-08-14부터 모든 stage가 같은 인라인 엔진을 타며, 가르는 것은 선언된 역할입니다(`origin_log`가 있으면 집합 감산, 없으면 `total − Σfail − used`). 예전에는 `source_config_ref` 유무가 경로를 갈랐습니다.
 
 **`target_map: {preset, table}`**
 - 만드는 판정: **맵 테이블 → stage 역인덱스**. 맵 에디터에서 `table`의 맵을 열면 stage가 유도되고, `/validate`도 이걸로 stage를 찾습니다. `preset`은 에디터 표시용.
 - 미선언/오타: 그 테이블은 어느 stage에도 안 속함 → validate가 `stage_unknown` 경고 + **수량·가용·fail 검증 전부 생략**(status `unverified` — 404 아님. "경고 없음 = 이상 없음"이 아닙니다).
 - 함정: 두 stage가 같은 `table`을 선언하면 **먼저 선언된 stage가 이깁니다**(첫 매치).
 
-**`source_config_ref: "bonding_plan"`** (유일 허용값)
-- 만드는 숫자: 소스 가용을 **M1 `bonding_plan_config`의 바인딩으로 위임** — `chips`는 M1 core-summary(코어 total − defect − eds_fail − 기전사)를 재성형한 것이고, `/stages`의 역할 상태도 M1의 `total_chips`·`used_chips`(→`transfer_log`로 개명)·`process_history`·`defect`·`eds_fail`로 표시됩니다.
-- 미연결: ref도 inline `source`도 없으면 `total_chips`가 `missing`이라 `chips.total=0`·`remaining=null`입니다.
-- **[2026-08-04] M1 위임 경로도 보조 역할이 선택입니다** — `bonding_plan_config`에서 `defect`·`eds_fail`·`used_chips`·`process_history` 키를 빼면 `not_declared`이고, M1의 산술은 변하지 않은 채 상태 문자열과 `inactive_subtractions`만 달라집니다.
-- 함정: ① **이 경로에서 `bin_map`은 선언해도 무효** — 좌표 집합을 넘겨받지 않아 `bins.axis: "unavailable"` 고정. BIN이 필요하면 inline `source`로 전환. ② dry-run에서 이 stage의 `source.*` 역할은 전부 **`not_reached`** 입니다 — `not_declared`가 아니라는 것이 요점입니다(§6 ⑦).
+🗄️ **`source_config_ref`** — **RETIRED 2026-08-14**
+- 무엇이었나: 소스 가용을 M1 `bonding_plan_config.json`의 바인딩으로 위임하는 키였고, 허용값은 `"bonding_plan"` 하나였습니다. 그 경로를 쓰던 유일한 stage(`dt`)의 역할 다섯이 전부 `missing`이었고, 원인은 M1 config가 **`table_config.json`에서 빠진 테이블**과 **선언에서 빠진 컴럼**을 가리키고 있었기 때문입니다. 근거·부활 조건은 `server/M1_SOURCE_CONFIG_REF.RETIRED.md`.
+- 지금 이 키가 남아 있으면: **조용히 무시**되고 stage가 자기 `source` 블록을 읽습니다. 비어 있으면 전부 `not_declared`이고 `total_chips`가 없어 `chips.total=0`·`remaining=null`입니다. **지우십시오.**
+- 대체: 인라인 `"source": {...}`. 더 표현력이 놓습니다 — `origin_log`·원천별 `frame`을 가진 `fail_sources`·`bin_map`·`lot_membership`은 위임 경로가 도달할 수 없던 것들입니다.
+- ⚠️ **M1 자체는 은퇴하지 않았습니다** — `GET /api/bonding-plan/core-summary`와 `bonding_plan_config.json`은 살아 있습니다. 다만 **그 라우트도 같은 이유로 역할 다섯이 `missing`이고 `remaining: 0`을 냅니다**(2026-08-14 실측). 총괄 판정 대기 — `bonding_plan_config` 가이드 참조.
 
 **`bin_map`** (선택 — stage 블록 또는 `source` 블록, stage 쪽 우선)
 - 필수 역할: `lot, slot, x, y, bin` — 그중 **`x`·`y`·`bin`은 유도됩니다**. 짧은 형태는 `{table, lot, slot}`(§1.1).

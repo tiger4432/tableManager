@@ -1,7 +1,36 @@
 # `bonding_plan_config.json` 세팅 — M1 본딩 계획 역할 바인딩
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 | **Owner:** Backend / UI-Map
+> **Status:** 🟠 Living / **소비자 1개 남음 — 총괄 판정 대기** | **Last-verified:** 2026-08-14 | **Owner:** Backend / UI-Map
 > 상위: [폴더 인덱스](./README.md) · [CONFIG_GUIDE §3-S6](../CONFIG_GUIDE.md) · [MAP_EDITOR_SPEC §6](../../spec/MAP_EDITOR_SPEC.md)(엔진 계약)
+
+> ## ⚠️ 2026-08-14 — 이 파일의 위상이 바뀌었습니다. 먼저 읽으십시오.
+>
+> **① M2가 더 이상 이 파일을 읽지 않습니다.** `transfer_plan_config.json`의 `dt` stage가
+> `"source_config_ref": "bonding_plan"`으로 여기 바인딩을 재사용하던 경로는 **은퇴했습니다**
+> → `server/M1_SOURCE_CONFIG_REF.RETIRED.md`. dt stage의 소스를 바꾸려면 이제 그쪽 파일의
+> 인라인 `source` 블록을 만집니다. **아래 본문에서 「M2가 위임받는다」고 말하는 문장은 전부
+> 과거형으로 읽으십시오.**
+>
+> **② 남은 소비자는 하나뿐입니다** — `GET /api/bonding-plan/core-summary`
+> (`server/main.py`, `bonding_plan.load_bonding_plan_config` + `get_core_summary`).
+>
+> **③ 그리고 이 박스에서 그 라우트는 아무것도 세지 못합니다.** 2026-08-14 실측:
+>
+> ```
+> GET /api/bonding-plan/core-summary?lot=CL-2601-001&slot=03
+> sources: total_chips/defect/eds_fail/used_chips/process_history = 모두 missing
+> chips:   {"total":0,"defect":0,"eds_fail":0,"used":0,"remaining":0}
+> ```
+>
+> 🔴 **`remaining: 0`은 「없다」가 아니라 「못 읽었다」입니다** — 조용한 0이고, 이것이 이
+> 파일의 가장 위험한 상태입니다. 원인은 §2-2의 전제가 깨진 것: 이 파일이 바인딩한
+> `core_defect_map`·`eds_fail_map`·`wafer_process`가 `table_config.json`에 **없고**(수집기도
+> `auto_update_control.disabled`에 있습니다), `used_chips`가 가리키는
+> `bonding_log.core_lot/core_slot/cx/cy`는 물리적으로는 있으나 **`table_config` 선언에
+> 없으며 전 357,796행이 NULL**입니다.
+>
+> **판정이 필요합니다(총괄):** ⓐ 위 테이블들을 다시 등록해 M1을 되살릴 것인가,
+> ⓑ 라우트와 이 파일을 함께 은퇴시킬 것인가. ⓑ는 REST 경로 삭제라 경계 계약입니다.
 
 <!-- Loader evidence (2026-08-04, availability relaxation pass — anchors re-measured):
   load: server/bonding_plan.py:69 load_bonding_plan_config (missing/corrupt -> {} partial operation)
@@ -19,7 +48,7 @@
 
 - **M1 본딩 가용량 화면(core-summary)을 현장 테이블에 연결할 때** — 코드는 테이블명을 하드코딩하지 않으므로 바인딩 교체만으로 원천이 바뀝니다
 - fail로 칠 값(`fail_values`)·경고 값(`result_fail_values`)을 현장 코드 체계에 맞출 때
-- M2의 `source_config_ref: "bonding_plan"` stage가 이 바인딩을 재사용하므로, **dt stage의 소스를 바꿀 때도 여기**를 만집니다
+- 🗄️ ~~M2의 `source_config_ref: "bonding_plan"` stage가 이 바인딩을 재사용하므로, **dt stage의 소스를 바꿀 때도 여기**를 만집니다~~ — **2026-08-14 은퇴.** dt stage는 이제 `transfer_plan_config.json`의 인라인 `source` 블록을 읽습니다. 이 파일을 만져도 dt에는 아무 영향이 없습니다 → [transfer_plan_config.md](./transfer_plan_config.md)
 
 ## 2. 세팅 절차
 
@@ -88,5 +117,5 @@ conda run -n assy_manager python server/scripts/backup_config.py restore bonding
 - 대상은 **`process_history`·`defect`·`eds_fail`·`used_chips`** 넷입니다. 🔴 **`total_chips`는 예외로 계속 필수** — 분모가 없으면 가용이 성립하지 않으므로 부재도 `missing`입니다. "이제 다 선택"으로 일반화하면 그 코어의 가용이 통째로 미상이 됩니다.
 - **`inactive_subtractions`** — 감산에서 빠진 종류의 이름 목록(예: `["defect", "used_chips"]`)이 `core-summary` 응답의 최상위 선택 필드로 나갑니다. 비면 필드 자체가 없으므로 **전 역할 선언 환경의 응답은 완화 전과 바이트 단위로 동일**합니다. 감산항만 실리므로 `process_history`는 들어가지 않습니다.
 - **M1의 산술은 안 바뀌었습니다** — `remaining = total − defect − eds_fail − used`이고 미선언 role은 종전에도 0이었습니다. 달라진 것은 상태 문자열과 이 새 필드뿐입니다.
-- M2가 이 바인딩을 위임받는 dt stage에서는 어휘가 개명돼 실립니다(`used_chips` → `transfer_log`). 그 경로에서는 `transferred`가 `null`로 나갑니다(로그가 없으므로 미상 — 가짜 `0` 금지). 전체 의미론과 클라 표기 계약은 [MAP_EDITOR_SPEC §6.2-ter](../../spec/MAP_EDITOR_SPEC.md)가 정본입니다.
+- 🗄️ ~~M2가 이 바인딩을 위임받는 dt stage에서는 어휘가 개명돼 실립니다(`used_chips` → `transfer_log`).~~ — **2026-08-14 은퇴.** 그 개명은 `_reshape_m1_summary`가 했고 그 함수는 삭제됐습니다. M2의 `transfer_log`는 이제 `transfer_plan_config.json`이 직접 그 이름으로 선언합니다. 미선언 시 `transferred`가 `null`로 나가는 규칙(로그가 없으므로 미상 — 가짜 `0` 금지)은 **양쪽에 그대로** 있습니다. 전체 의미론과 클라 표기 계약은 [MAP_EDITOR_SPEC §6.2-ter](../../spec/MAP_EDITOR_SPEC.md)가 정본입니다.
 - **라이브 config는 손댈 것이 없습니다.** 강등을 피하려고 일부러 깨진 바인딩을 넣어 둔 사이트는 이제 그 **키를 지우면** 됩니다.
