@@ -65,6 +65,16 @@ function clear(mount) {
   while (mount.firstChild) mount.removeChild(mount.firstChild);
 }
 
+/**
+ * 🔴 THE UNIT IS WHATEVER THE AXIS SAYS IT IS — never the word 「랏」.
+ *
+ * Standing owner principle: 「그냥 랏이란 단위를 잊으라 그래」. The lot survives as a
+ * VALUE (a label, a filter, a colour-by) but never in the UNIT position of a count,
+ * a population or a marking sentence. Hardcoding 「랏」 was how a table listing
+ * wafers still told the reader it was counting lots.
+ */
+const unitOf = (model) => (model && model.rowAxis && model.rowAxis.label) || '행';
+
 function link(doc, className, text, question) {
   const a = el(doc, 'a', className, text);
   a.setAttribute('href', `?${surpriseQuery(question)}`);
@@ -472,7 +482,7 @@ function renderTable(doc, model) {
     wrap.appendChild(el(doc, 'p', 'sx-empty',
       model.state === 'unknown'
         ? '집계 응답 없음 — 열을 그릴 근거가 없습니다'
-        : '이 구간에 랏이 없습니다'));
+        : `이 구간에 ${unitOf(model)}이 없습니다`));
   }
   return wrap;
 }
@@ -521,7 +531,7 @@ function renderLegend(doc, model) {
   const cellStates = [
     ['unscanned', '— 미검사', '검사 모집단 밖입니다. 0이 아니라 «모름»입니다'],
     ['measured', '0 측정된 0', '검사했고 발생이 0이었습니다'],
-    ['unmeasurable', '측정 불가', '이 항목이 이 랏에서 정의되지 않습니다'],
+    ['unmeasurable', '측정 불가', `이 항목이 이 ${unitOf(model)}에서 정의되지 않습니다`],
     ['no_denominator', '분모 없음', '건수는 있으나 율을 정의할 분모가 없습니다'],
     ['unreported', '미보고', '집계가 이 칸을 싣지 않았습니다 — 답의 구멍입니다'],
   ];
@@ -567,7 +577,7 @@ function renderChart(doc, series, model) {
   const cap = el(doc, 'figcaption', 'sx-chart__cap');
   cap.appendChild(el(doc, 'span', 'sx-chart__title', series.column.label));
   cap.appendChild(el(doc, 'span', 'sx-chart__n',
-    `${series.plotted}/${series.total} 랏 표시`));
+    `${series.plotted}/${series.total} ${unitOf(model)} 표시`));
   box.appendChild(cap);
 
   if (!series.points.length) {
@@ -575,12 +585,12 @@ function renderChart(doc, series, model) {
     // went unmeasured" are different facts, and dropping the second one turns a
     // measurement gap into a blank box the reader will read as "nothing happened".
     const none = el(doc, 'p', 'sx-chart__none',
-      series.gaps.length ? `측정값 없음 — ${series.gaps.length}랏 미측정` : '그릴 측정값 없음');
+      series.gaps.length ? `측정값 없음 — ${series.gaps.length}${unitOf(model)} 미측정` : '그릴 측정값 없음');
     none.setAttribute('data-chart-empty', '1');
     if (series.gaps.length) none.setAttribute('data-chart-gaps', String(series.gaps.length));
     box.appendChild(none);
     if (series.special.length) {
-      const sp = el(doc, 'p', 'sx-chart__none', `특수평가 ${series.special.length}랏은 선에서 제외됩니다`);
+      const sp = el(doc, 'p', 'sx-chart__none', `특수평가 ${series.special.length}${unitOf(model)}은 선에서 제외됩니다`);
       sp.setAttribute('data-chart-special', String(series.special.length));
       box.appendChild(sp);
     }
@@ -601,7 +611,7 @@ function renderChart(doc, series, model) {
   attrs(s, {
     viewBox: `0 0 ${CHART.w} ${CHART.h}`,
     role: 'img',
-    'aria-label': `${series.column.label} 생산 순서 추이, ${series.plotted}개 랏`,
+    'aria-label': `${series.column.label} 생산 순서 추이, ${series.plotted}개 ${unitOf(model)}`,
     preserveAspectRatio: 'none',
   });
 
@@ -679,7 +689,7 @@ function renderChart(doc, series, model) {
   foot.appendChild(el(doc, 'span', 'sx-chart__top',
     `최대 ${valueText(series.max, series.column.valueKind)}`));
   if (series.gaps.length) {
-    const g = el(doc, 'span', 'sx-chart__gaps', `미측정 ${series.gaps.length}랏`);
+    const g = el(doc, 'span', 'sx-chart__gaps', `미측정 ${series.gaps.length}${unitOf(model)}`);
     g.setAttribute('data-chart-gaps', String(series.gaps.length));
     foot.appendChild(g);
   }
@@ -717,7 +727,7 @@ function renderHead(doc, model) {
   const head = el(doc, 'header', 'sx-head');
   head.appendChild(el(doc, 'h2', 'sx-head__h', '구성요소 항목별 종합 트렌드'));
   head.appendChild(el(doc, 'p', 'sx-head__sub',
-    '행 = 선언된 지표 · 열 = 랏 생산 순서(최신이 오른쪽) · 색 = 지표마다 자기 기저 대비 배수. '
+    `행 = 선언된 지표 · 열 = ${unitOf(model)} 생산 순서(최신이 오른쪽) · 색 = 지표마다 자기 기저 대비 배수. `
     + '트렌드는 가로로 읽습니다.'));
 
   const meta = el(doc, 'div', 'sx-head__meta');
@@ -745,9 +755,46 @@ function renderHead(doc, model) {
   if (model.window.forced) {
     fact('window_forced', `구간 강제됨 — ${model.window.forcedReason || '사유 미보고'}`, 'warn');
   }
+  // 🔴 A CAP THE SCREEN DOES NOT MENTION IS A SILENT TRUNCATION — and here it is
+  // the worst kind, because a wafer missing from the table is a wafer nobody can
+  // mark. So the bound says its own size, the whole size, and offers the way back.
   if (model.truncated) {
-    fact('truncated',
-      `행 잘림 — ${countText(model.rowsReturned)}/${countText(model.rowsTotal)}행만 왔습니다`, 'warn');
+    const shown = model.rowsReturned;
+    const total = model.rowsTotal;
+    const back = Number(model.question.offset || 0);
+    const span = shown || 0;
+    const f = el(doc, 'span', 'sx-fact sx-fact--cap');
+    f.setAttribute('data-fact', 'capped');
+    // 「장」 for wafers reads as Korean; any other axis takes its own label rather
+    // than a counter this file invented. Closed enum, raw fallback — the same
+    // pattern the bucket and heat labels use.
+    const c = model.rowAxis.name === 'wafer' ? '장' : ` ${unitOf(model)}`;
+    f.appendChild(el(doc, 'span', null,
+      `최신 ${countText(shown)}${c} — 전체 ${countText(total)}${c}`));
+    if (back > 0) {
+      const prev = link(doc, 'sx-fact__more', '· 이전 보기', {
+        ...model.question,
+        limit: String(span),
+        offset: String(Math.max(0, back - span)),
+      });
+      prev.setAttribute('data-cap-prev', String(Math.max(0, back - span)));
+      f.appendChild(prev);
+    }
+    if (back + span < (total || 0)) {
+      const next = link(doc, 'sx-fact__more', '· 이후 보기', {
+        ...model.question,
+        limit: String(span),
+        offset: String(Math.min((total || 0) - span, back + span)),
+      });
+      next.setAttribute('data-cap-next', '1');
+      f.appendChild(next);
+    }
+    // 전체 보기 — the cap is a default, never a wall.
+    const all = link(doc, 'sx-fact__more', '· 전체 보기',
+      { ...model.question, limit: '', offset: '', all: '1' });
+    all.setAttribute('data-cap-all', '1');
+    f.appendChild(all);
+    facts.appendChild(f);
   }
   if (model.provenance.source) {
     fact('provenance',
@@ -770,7 +817,16 @@ function renderHead(doc, model) {
   if (model.strayMarks.length) {
     const stray = el(doc, 'p', 'sx-stray');
     stray.setAttribute('data-stray-marks', String(model.strayMarks.length));
-    stray.textContent = `표에 없는 마킹 ${model.strayMarks.length}건: ${model.strayMarks.join(', ')} — 이 구간 밖의 랏입니다`;
+    // 🔴 OFF-PAGE IS NOT UNMARKED. The newest-N cap can leave a marked wafer
+    // outside the loaded page; it still counts, it still scopes the contrast, and
+    // it must not read as though the reader had unmarked it. The link brings the
+    // page back to where they are.
+    stray.textContent = `이 페이지 밖 마킹 ${model.strayMarks.length}건: ${model.strayMarks.join(', ')}`
+      + ' — 대조·개수에는 그대로 들어갑니다';
+    const showAll = link(doc, 'sx-stray__all', '· 전체 보기',
+      { ...model.question, limit: '', offset: '', all: '1' });
+    showAll.setAttribute('data-stray-all', '1');
+    stray.appendChild(showAll);
     head.appendChild(stray);
   }
   return head;
@@ -783,6 +839,71 @@ function renderHead(doc, model) {
  * is in flight", "the route is not deployed" and "here is the answer" — every
  * panel below renders in all three, saying what it does not know.
  */
+/**
+ * 🔴 A MARK MUST NOT REBUILD THE TABLE. This is the other half of the lag fix.
+ *
+ * A cap alone still repaints everything it kept: ticking one checkbox tore down
+ * and rebuilt every column × every metric row, plus the chart, plus the maps —
+ * and at 2,600 columns that hung the renderer for over 30 seconds (measured: the
+ * click never returned inside a 30s budget). Marking is a SELECTION, not a new
+ * answer, so it touches only what marking changes:
+ *
+ *   · the marked column's header flag, class and checkbox
+ *   · that column's cells' membership flag
+ *   · the marked count
+ *   · the chart dots (marked points are drawn larger)
+ *   · the maps and the contrast rail, which are keyed on the marked set
+ *
+ * Everything else — the table's structure, every value, every heat class — is
+ * already correct and is left alone. Returns false when the DOM is not in a state
+ * it can patch, so the caller falls back to a full render rather than guessing.
+ */
+export function updateMarks(doc, root, model, axisData, contrastNode) {
+  if (!root) return false;
+  const table = root.querySelector('.sx-table');
+  if (!table) return false;
+
+  const marked = new Set(model.marked.map((r) => r.row));
+  const markedLots = new Set(model.marked.map((r) => r.lot));
+  for (const th of table.querySelectorAll('.sx-lotcol')) {
+    const on = marked.has(th.getAttribute('data-row'));
+    th.setAttribute('data-marked', on ? '1' : '0');
+    th.classList.toggle('sx-lotcol--marked', on);
+    const box = th.querySelector('input[data-mark-lot]');
+    if (box) box.checked = on;
+  }
+  for (const td of table.querySelectorAll('.sx-tbody td[data-lot]')) {
+    const on = markedLots.has(td.getAttribute('data-lot'));
+    if (on) td.setAttribute('data-marked', '1');
+    else td.removeAttribute('data-marked');
+    td.classList.toggle('sx-cell--marked', on);
+  }
+
+  const stat = root.querySelector('[data-stat="marked"] .sx-stat__n');
+  if (stat) stat.textContent = countText(model.counts.marked);
+
+  // The three panels that ARE keyed on the marked set get rebuilt — they are
+  // small beside the table, and they would otherwise show a stale selection.
+  const charts = root.querySelector('[data-panel="charts"]');
+  if (charts && charts.parentNode) charts.parentNode.replaceChild(renderCharts(doc, model), charts);
+
+  const maps = root.querySelector('[data-panel="maps-body"]');
+  if (maps && maps.parentNode) {
+    maps.parentNode.replaceChild(renderAxisMaps(doc, model,
+      (axisData && axisData.maps) || null, (axisData && axisData.floors) || null), maps);
+  }
+
+  const slot = root.querySelector('[data-panel="contrast-slot"]');
+  if (slot) {
+    while (slot.firstChild) slot.removeChild(slot.firstChild);
+    if (contrastNode) slot.appendChild(contrastNode);
+  } else if (contrastNode) {
+    // The rail did not exist at the last full render (nothing was marked then).
+    return false;
+  }
+  return true;
+}
+
 export function renderSurprise(doc, mount, model, notice, axisData, contrastNode) {
   clear(mount);
   const root = el(doc, 'section', 'sx');
@@ -812,17 +933,20 @@ export function renderSurprise(doc, mount, model, notice, axisData, contrastNode
   const charts = el(doc, 'section', 'sx-section');
   charts.appendChild(el(doc, 'h3', 'sx-section__h', '같은 표를 선으로 — 생산 순서 축'));
   charts.appendChild(el(doc, 'p', 'sx-section__sub',
-    '지표마다 작은 차트 하나. 단위가 달라 겹치면 서로를 가립니다. 표에서 마킹하면 그 랏의 점이 굵어집니다.'));
+    `지표마다 작은 차트 하나. 단위가 달라 겹치면 서로를 가립니다. 표에서 마킹하면 그 ${unitOf(model)}의 점이 굵어집니다.`));
   charts.appendChild(renderCharts(doc, model));
   root.appendChild(charts);
 
   const maps = el(doc, 'section', 'sx-section');
   maps.setAttribute('data-panel', 'maps-section');
-  maps.appendChild(el(doc, 'h3', 'sx-section__h', '마킹한 랏 — 본딩축 · DT축 · 코어축'));
+  maps.appendChild(el(doc, 'h3', 'sx-section__h', `마킹한 ${unitOf(model)} — 본딩축 · DT축 · 코어축`));
   maps.appendChild(el(doc, 'p', 'sx-section__sub',
     '같은 불량 칩을 transferred 걷기로 세 좌표계에 투영합니다. 어느 축에서 뭉치는지가 기전 힌트입니다.'));
-  maps.appendChild(renderAxisMaps(doc, model,
-    (axisData && axisData.maps) || null, (axisData && axisData.floors) || null));
+  const mapsBody = renderAxisMaps(doc, model,
+    (axisData && axisData.maps) || null, (axisData && axisData.floors) || null);
+  // Named so `updateMarks` can replace exactly this and nothing around it.
+  mapsBody.setAttribute('data-panel', 'maps-body');
+  maps.appendChild(mapsBody);
   root.appendChild(maps);
 
   if (model.generatedAt) {

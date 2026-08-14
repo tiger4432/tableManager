@@ -374,7 +374,49 @@ function renderFields(doc, model) {
  * asserted. 미검사 on either side is neither — it is 「대조 불가」, because a
  * comparison against something nobody measured is not a finding.
  */
-function renderPair(doc, pair) {
+/**
+ * THE DOOR TO THE JOURNEY VIEW.
+ *
+ * 🔴 A VIEW WITH NO ENTRANCE IS A VIEW NOBODY USES. The journey was reachable
+ * only by typing its URL. The rail already appears at two marks and already knows
+ * the pair, so it is the door — no new screen, no nav link for an address that
+ * has no answer without a scope.
+ *
+ * 🔴 AND IT IS A REAL `href`, not a click handler. The delegated router carries it
+ * without a reload, middle-click opens a tab, and the link is copyable — the same
+ * rule as every other control on this console.
+ *
+ * 🔴 IT APPEARS ONLY WHEN THE PAIR IS A PAIR OF SUBJECTS. The journey takes
+ * exactly two subjects; two marks on the LOT axis resolve to fifty wafers and the
+ * route answers 422. A link that lands on a refusal is worse than no link, because
+ * the refusal reads as breakage — so on any other axis this says why instead.
+ */
+function renderJourneyDoor(doc, pair, subjectKey) {
+  const box = el(doc, 'div', 'cx-door');
+  box.setAttribute('data-panel', 'journey-door');
+  // Unknown subject key = the contrast has not answered yet. Say nothing rather
+  // than guess: the door appears a moment later with the rest of the rail.
+  if (!subjectKey) return null;
+
+  if (pair.axis !== subjectKey) {
+    box.className = 'cx-door cx-door--blocked';
+    box.setAttribute('data-door', 'wrong-axis');
+    box.appendChild(el(doc, 'span', 'cx-door__why',
+      `여정 대조는 ${subjectKey} 축 전용 — 지금 축은 한 열이 주어 여럿입니다`));
+    return box;
+  }
+
+  const a = el(doc, 'a', 'cx-door__go');
+  a.setAttribute('href',
+    `?view=journey&scope=${encodeURIComponent(`${pair.axis}:${pair.a.row},${pair.b.row}`)}`);
+  a.setAttribute('data-door', 'journey');
+  a.appendChild(el(doc, 'span', 'cx-door__label', '여정 대조'));
+  a.appendChild(el(doc, 'span', 'cx-door__hint', '어디까지 같은 길, 어디서 갈림 →'));
+  box.appendChild(a);
+  return box;
+}
+
+function renderPair(doc, pair, subjectKey) {
   const box = el(doc, 'section', 'cx-pair');
   box.setAttribute('data-panel', 'pair');
 
@@ -441,6 +483,9 @@ function renderPair(doc, pair) {
   if (!pair.metrics.length) {
     box.appendChild(el(doc, 'p', 'cx-empty', '열이 없어 비교할 지표가 없습니다'));
   }
+  // The door to the fuller answer, right under the two-metric comparison.
+  const door = renderJourneyDoor(doc, pair, subjectKey);
+  if (door) box.appendChild(door);
   return box;
 }
 
@@ -474,10 +519,13 @@ export function renderContrast(doc, mount, model, notice, pair) {
 
   const head = el(doc, 'header', 'cx-head');
   head.appendChild(el(doc, 'h3', 'cx-head__h',
-    pair ? 'A vs B — 두 랏 대조' : `마킹한 ${countText(n)}개 ${model.scope.axisLabel || '랏'} — 무엇이 다른가`));
+    // 🔴 THE UNIT COMES FROM THE AXIS, NEVER THE WORD 「랏」 — 「그냥 랏이란 단위를
+    // 잊으라 그래」. The lot is a value here, not a unit.
+    pair ? `A vs B — 두 ${model.scope.axisLabel || '주어'} 대조`
+      : `마킹한 ${countText(n)}개 ${model.scope.axisLabel || '주어'} — 무엇이 다른가`));
   head.appendChild(el(doc, 'p', 'cx-head__sub',
     pair
-      ? '위: 표에 있는 지표를 나란히. 아래: 두 랏을 묶어 나머지 전체와 걷기 대조.'
+      ? '위: 표에 있는 지표를 나란히. 아래: 둘을 묶어 나머지 전체와 걷기 대조.'
       : '마킹한 쪽과 나머지 전체를 걷어서 나온 차이를, 관문 셋으로 채점해 순위로. 마킹을 바꾸면 이 답이 바뀝니다.'));
   if (model.engine) {
     const eng = el(doc, 'span', 'cx-head__engine', `엔진 ${model.engine}`);
@@ -488,7 +536,7 @@ export function renderContrast(doc, mount, model, notice, pair) {
 
   // The pair comparison comes FIRST and costs no request — it is on screen before
   // the walk below returns.
-  if (pair) root.appendChild(renderPair(doc, pair));
+  if (pair) root.appendChild(renderPair(doc, pair, model.subject.key));
   else if (n > 2) root.appendChild(renderTooMany(doc, n));
 
   if (notice) root.appendChild(renderNotice(doc, notice));

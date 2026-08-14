@@ -22,7 +22,7 @@
 // ============================================================
 
 import { layoutFor, paintSeating, createCanvasSurface } from './map2/painter.js';
-import { mapSection, storedAxisTracks } from './surprise_map_core.js';
+import { mapSection, storedAxisTracks, MAP_CAPS, SHEET_EACH, SHEET_AGG } from './surprise_map_core.js';
 import { surpriseQuery } from './surprise_core.js';
 
 /**
@@ -367,11 +367,19 @@ function renderSheet(doc, sheet) {
     // No declared grid for this axis at this granularity. The chips are counted and their
     // coordinates are real; what is missing is a registered lattice, and this file does not
     // invent one — the standing constraint the whole screen is built on.
+    // 🔴 A REFUSAL IN THE SHEET'S OWN PLACE, NAMING WHAT IS MISSING — not a caption that
+    // counts what it did not draw. The chips are real and their coordinates are measured;
+    // what does not exist is a REGISTERED grid for this axis at wafer granularity, and this
+    // file will not invent one. The unlock is one field, named on screen so the next reader
+    // does not go hunting: the projection would have to carry its declared grid.
+    const spanTxt = sheet.spans && sheet.spans.slots
+      ? `이 축의 프레임 ${sheet.spans.slots}장`
+        + (sheet.spans.lots > 1 ? ` · 랏 ${sheet.spans.lots}개` : '') + '에 걸쳐 있습니다'
+      : '이 축의 프레임이 하나로 정해지지 않습니다';
     const why = el(doc, 'p', 'sx-sheet__why',
-      `${sheet.label}은 집계 시트를 그릴 등록 격자가 응답에 없습니다 — 칩 ${sheet.chips || 0}개의 `
-      + '좌표는 실측이지만 올릴 격자가 없습니다'
-      + (sheet.spans && sheet.spans.slots ? ` (프레임 ${sheet.spans.slots}장 분산`
-        + (sheet.spans.lots > 1 ? ` · 랏 ${sheet.spans.lots}` : '') + ')' : ''));
+      `격자 미선언 — ${spanTxt}. 칩 ${sheet.chips || 0}개의 좌표는 실측이지만 올릴 등록 격자가 `
+      + '응답에 없어 그리지 않습니다 (지어낸 격자는 없는 결함을 만듭니다). '
+      + '서버가 이 투영의 선언 격자를 실어오면 그대로 그려집니다.');
     why.setAttribute('data-refusal', sheet.code || 'no_registered_frame');
     box.appendChild(why);
     return box;
@@ -453,11 +461,53 @@ function heatColor(colors, t) {
 }
 
 /**
+ * 🔴 THE 낱장/집계 TOGGLE — a crossing, not a mode.
+ *
+ * Both readings are legitimate and they answer different questions: four wafers side by
+ * side show WHICH wafer, one overlaid sheet shows WHERE on the stage. The default follows
+ * the count (`sheetModeFor`), and this link lets the reader cross without re-marking.
+ *
+ * ⚠️ `sheets` IS NOT YET IN THE SHARED SERIALISER. `surpriseQuery` whitelists the
+ * parameters it knows and drops the rest, so the one it drops is appended here — the same
+ * shape `wafer` took before `surprise_core.js` learned it. NAMED to the lead rather than
+ * left as a silent divergence: `parseSurpriseQuery` must read `sheets`, and
+ * `surpriseQuery` must emit it, or this toggle survives a click but not a reload.
+ */
+function sheetHref(question, mode) {
+  const base = surpriseQuery({ ...(question || {}), sheets: mode });
+  if (/(^|&)sheets=/.test(base)) return `?${base}`;
+  return `?${base}&sheets=${encodeURIComponent(mode)}`;
+}
+
+function renderToggle(doc, section, question) {
+  const bar = el(doc, 'p', 'sx-maps__toggle');
+  bar.setAttribute('data-sheet-mode', section.mode);
+  bar.setAttribute('data-mode-auto', section.modeAuto ? '1' : '0');
+  for (const [mode, label] of [[SHEET_EACH, '낱장'], [SHEET_AGG, '집계']]) {
+    const on = section.mode === mode;
+    const a = el(doc, 'a', `sx-modepick${on ? ' sx-modepick--on' : ''}`, label);
+    a.setAttribute('href', sheetHref(question, mode));
+    a.setAttribute('data-mode', mode);
+    if (on) a.setAttribute('aria-current', 'true');
+    bar.appendChild(a);
+  }
+  // The default is stated so the reader knows why they are looking at this one.
+  if (section.modeAuto) {
+    bar.appendChild(el(doc, 'span', 'sx-maps__togglewhy',
+      section.mode === SHEET_EACH
+        ? ` 마킹 ${section.wafers}장 — ${MAP_CAPS.individualMax}장 이하는 낱장이 기본`
+        : ` 마킹 ${section.wafers}장 — ${MAP_CAPS.individualMax}장 초과는 집계가 기본`));
+  }
+  return bar;
+}
+
+/**
  * The whole map section.
  *
- * 🔴 THE POPULATION IS WHAT WAS MARKED, AND THE UNIT IS THE WAFER. There is no lot-count
- * gate here and no lot-count sentence: 「그냥 랏이란 단위를 잊으라 그래」. Two wafers across
- * two lots draw exactly as two wafers.
+ * 🔴 THE POPULATION IS WHAT WAS MARKED, AND THE UNIT IS THE WAFER. No lot-count gate and no
+ * lot-count sentence: 「그냥 랏이란 단위를 잊으라 그래」. Two wafers across two lots draw as
+ * two wafers. No frame of an unmarked wafer is ever drawn or counted — the members list IS
+ * the marked list, one request each, and nothing expands a wafer into its lot.
  */
 export function renderAxisMaps(doc, model, maps, floors) {
   const box = el(doc, 'div', 'sx-maps');
@@ -465,11 +515,11 @@ export function renderAxisMaps(doc, model, maps, floors) {
 
   const section = mapSection(model, maps, floors);
   box.setAttribute('data-marked-wafers', String(section.wafers));
-  box.setAttribute('data-sheet-count', String(section.sheets.length));
+  box.setAttribute('data-sheet-mode', section.mode);
 
   if (!section.marked) {
     const hint = el(doc, 'p', 'sx-empty',
-      '표에서 웨이퍼를 ☑ 마킹하면 좌표계마다 한 장씩, 마킹한 웨이퍼의 불량이 포개져 뜹니다.');
+      '표에서 웨이퍼를 ☑ 마킹하면 좌표계마다 맵이 뜹니다.');
     hint.setAttribute('data-maps-empty', '1');
     box.appendChild(hint);
     return box;
@@ -477,16 +527,56 @@ export function renderAxisMaps(doc, model, maps, floors) {
 
   const head = el(doc, 'p', 'sx-maps__head');
   head.setAttribute('data-population', String(section.wafers));
-  head.textContent = `마킹 ${section.wafers}장 — 좌표계마다 한 장으로 포갭니다`
+  head.textContent = `마킹 ${section.wafers}장`
     + (section.pending ? ` · ${section.wafers - section.pending}/${section.wafers} 로드됨` : '');
   box.appendChild(head);
+  box.appendChild(renderToggle(doc, section, model.question));
 
-  const sheets = el(doc, 'div', 'sx-sheets sx-maprow__panels');
-  sheets.setAttribute('data-panel', 'sheets');
-  for (const sheet of section.sheets) sheets.appendChild(renderSheet(doc, sheet));
-  box.appendChild(sheets);
+  if (section.mode === SHEET_AGG) {
+    box.setAttribute('data-sheet-count', String(section.sheets.length));
+    const sheets = el(doc, 'div', 'sx-sheets sx-maprow__panels');
+    sheets.setAttribute('data-panel', 'sheets');
+    for (const sheet of section.sheets) sheets.appendChild(renderSheet(doc, sheet));
+    box.appendChild(sheets);
+  } else {
+    // 🔴 SMALL N: ONE SHEET PER WAFER, SIDE BY SIDE, GROUPED BY COORDINATE SYSTEM. Four
+    // pictures are readable and an overlay of four is not — the heat would have four
+    // levels and no lattice could show through it. Grouping by axis keeps the comparison
+    // the reader is making (same coordinate system, different wafer) on one line.
+    box.setAttribute('data-sheet-count', String(section.axes.length * section.members.length));
+    for (const axis of section.axes) {
+      const band = el(doc, 'div', 'sx-band');
+      band.setAttribute('data-band-axis', axis);
+      const first = section.members.find((m) => (m.panels || []).some((p) => p.axis === axis));
+      const lbl = first ? (first.panels.find((p) => p.axis === axis) || {}).label : axis;
+      band.appendChild(el(doc, 'p', 'sx-band__head', lbl || axis));
+      const row = el(doc, 'div', 'sx-band__row sx-maprow__panels');
+      for (const m of section.members) {
+        const cellBox = el(doc, 'div', 'sx-band__cell');
+        cellBox.setAttribute('data-band-wafer', m.row);
+        const name = el(doc, 'a', 'sx-band__wafer', m.row);
+        name.setAttribute('href', waferHref(model.question, m.row));
+        name.setAttribute('data-wafer-focus', m.row);
+        cellBox.appendChild(name);
+        if (m.pending) {
+          const w = el(doc, 'p', 'sx-band__gap', '불러오는 중…');
+          w.setAttribute('data-frame-pending', '1');
+          cellBox.appendChild(w);
+        } else {
+          const p = (m.panels || []).find((q) => q.axis === axis);
+          // A wafer with no panel for this axis keeps its place and says so — an absent
+          // column would read as «this wafer is fine on this axis».
+          if (p) cellBox.appendChild(renderPanel(doc, p));
+          else cellBox.appendChild(el(doc, 'p', 'sx-band__gap', '이 축 없음'));
+        }
+        row.appendChild(cellBox);
+      }
+      band.appendChild(row);
+      box.appendChild(band);
+    }
+  }
 
-  // 🔴 INDIVIDUAL FRAMES ARE DETAIL, NOT THE DEFAULT — and the cap is counted in WAFERS.
+  // 🔴 INDIVIDUAL DETAIL IS A CLICK, AND THE CAP IS COUNTED IN WAFERS.
   if (section.focus) {
     const det = el(doc, 'div', 'sx-detail');
     det.setAttribute('data-detail-wafer', section.focus.row);
@@ -495,7 +585,7 @@ export function renderAxisMaps(doc, model, maps, floors) {
     for (const p of section.focus.panels) panels.appendChild(renderPanel(doc, p));
     det.appendChild(panels);
     box.appendChild(det);
-  } else if (section.wafers <= section.detailCap) {
+  } else if (section.mode === SHEET_AGG && section.wafers <= section.detailCap) {
     const pick = el(doc, 'p', 'sx-maps__pick');
     pick.setAttribute('data-detail-offer', String(section.wafers));
     pick.appendChild(el(doc, 'span', 'sx-maps__picklabel', '낱장으로 보려면 웨이퍼를 고르십시오: '));
@@ -506,9 +596,9 @@ export function renderAxisMaps(doc, model, maps, floors) {
       pick.appendChild(a);
     }
     box.appendChild(pick);
-  } else {
+  } else if (section.mode === SHEET_AGG) {
     const many = el(doc, 'p', 'sx-maps__pick',
-      `마킹 ${section.wafers}장 — 낱장 상세는 ${section.detailCap}장 이하에서 제공합니다 (집계 시트는 제한 없음)`);
+      `마킹 ${section.wafers}장 — 낱장 상세는 ${section.detailCap}장 이하에서 고를 수 있습니다 (집계는 제한 없음)`);
     many.setAttribute('data-detail-capped', String(section.wafers));
     box.appendChild(many);
   }

@@ -16,7 +16,9 @@
 //                                                     ROW PRESENCE IS THE MASK
 //
 // 🔴 THE DEFECT OVERLAY IS THE PART THAT IS NOT SERVED YET. Its proposed shape is
-// pinned in `surprise_map_core.js`'s header (`GET /api/ledger/lot_axis_map`).
+// pinned in `surprise_map_core.js`'s header. The live route is
+// `GET /api/ledger/lot_map` — this comment named `/api/ledger/lot_axis_map`, which
+// does not exist and never shipped under that spelling.
 // Until it lands the panels draw the real wafer and say 「불량 좌표 미배포」 —
 // which is the honest picture, not a placeholder.
 //

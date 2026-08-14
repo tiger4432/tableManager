@@ -138,6 +138,25 @@ export const SURPRISE_VIEW = 'surprise';
  */
 export const DEFAULT_ROW_AXIS = 'wafer';
 
+/**
+ * 🔴 THE NEWEST-END CAP. Owner: 「웨이퍼 리스트 너무 많아서 렉 먹어서 뭐 볼 수가
+ * 없는데」 — 2,600 wafer columns made the screen unusable.
+ *
+ * 🔴 AND `limit` ALONE WOULD HAVE MADE IT WORSE, SILENTLY. Verified: `limit=6`
+ * returns `order_index` 0–5 of 2,600 — the OLDEST end — in a view whose whole
+ * premise is that the newest are on the right. So the cap is a newest-N PAGE
+ * (`offset = total - N`), not a `limit`.
+ *
+ * 🔴 AND THE DATE WINDOW CANNOT DO THIS JOB ON THIS DATA. Measured: every window
+ * (7d/30d/90d/180d) returns the same 50 wafers ending at `SYN-BW-001-25`, while
+ * the true newest is `SYN-BW-103-25` — the fixture's `occurred_at` run into the
+ * future, so a window ending "now" catches only the earliest lots. The window is
+ * still the principled bound and it ships in this round, but it is NOT the
+ * default cap, because on this data it would show the oldest 50 and call them
+ * recent.
+ */
+export const WAFER_CAP = 300;
+
 // ── the only literals: closed wire enums, with raw fallback ──
 
 //: Lot buckets. `special_eval` is the one that matters: the owner's second
@@ -256,6 +275,18 @@ export function parseSurpriseQuery(params) {
     window: get('window'),
     kind: get('kind'),
     limit: get('limit'),
+    // The newest-N page. Both ride in the URL so a bounded view is addressable and
+    // 「이전 보기」 is an anchor like every other control.
+    offset: get('offset'),
+    // 🔴 THE CAP IS A DEFAULT, NEVER A WALL. `all=1` is the reader saying "show me
+    // everything anyway" — explicit, addressable, and their choice rather than the
+    // screen's. It is the client's own, so it never reaches the route.
+    all: get('all') === '1',
+    // 🔴 THE MAP LANE'S 「낱장 / 집계」 TOGGLE. Its link was correct but this reader
+    // dropped the parameter, so `?sheets=agg` was ignored on load — the toggle
+    // survived a click and not a reload, which means a shared link showed a
+    // different screen than the sender was looking at. Same treatment as `wafer`.
+    sheets: get('sheets'),
     // Marking and slot are the client's own — the server has no opinion on which
     // rows are emphasised, and `slot` belongs to /lot_map rather than /lots.
     marked: get('mark').split(',').map((x) => x.trim()).filter(Boolean),
@@ -282,6 +313,9 @@ export function surpriseQuery(question) {
   if (q.window) parts.push(`window=${encodeURIComponent(q.window)}`);
   if (q.kind) parts.push(`kind=${encodeURIComponent(q.kind)}`);
   if (q.limit) parts.push(`limit=${encodeURIComponent(q.limit)}`);
+  if (q.offset) parts.push(`offset=${encodeURIComponent(q.offset)}`);
+  if (q.all) parts.push('all=1');
+  if (q.sheets) parts.push(`sheets=${encodeURIComponent(q.sheets)}`);
   const marked = listOf(q.marked).map(strOrEmpty).filter(Boolean);
   if (marked.length) parts.push(`mark=${encodeURIComponent(marked.join(','))}`);
   if (q.slot) parts.push(`slot=${encodeURIComponent(q.slot)}`);
@@ -302,7 +336,25 @@ export function lotsQuery(question) {
   if (q.window) parts.push(`window=${encodeURIComponent(q.window)}`);
   if (q.kind) parts.push(`kind=${encodeURIComponent(q.kind)}`);
   if (q.limit) parts.push(`limit=${encodeURIComponent(q.limit)}`);
+  if (q.offset) parts.push(`offset=${encodeURIComponent(q.offset)}`);
   return parts.join('&');
+}
+
+/**
+ * The newest-N page this question needs, or `null` when nothing needs capping.
+ *
+ * An explicit `limit`/`offset` in the URL wins — the reader paged deliberately —
+ * and an axis with fewer rows than the cap is shown whole.
+ */
+export function newestPage(question, rowAxisName, total, cap) {
+  const q = question || {};
+  if (q.all) return null;
+  if (q.limit || q.offset) return null;
+  if (strOrEmpty(rowAxisName) !== DEFAULT_ROW_AXIS) return null;
+  const n = cap || WAFER_CAP;
+  const t = numOrNull(total);
+  if (t === null || t <= n) return null;
+  return { limit: String(n), offset: String(t - n) };
 }
 
 /**
@@ -917,7 +969,13 @@ export function surpriseModel({ body, kinds, question } = {}) {
     counts: {
       rows: rows.length,
       offBaseline: rows.filter((r) => !r.counts).length,
-      marked: marked.length,
+      // 🔴 THE MARKED COUNT IS THE READER'S SET, NOT THE VISIBLE SUBSET. With a
+      // newest-N cap a marked wafer can sit off the loaded page; counting only the
+      // rows on screen would report the reader's own selection as smaller than it
+      // is, and paging is the machine's convenience, not a change of mind.
+      marked: markedSet.size,
+      markedOnPage: marked.length,
+      markedOffPage: strayMarks.length,
     },
   };
 }

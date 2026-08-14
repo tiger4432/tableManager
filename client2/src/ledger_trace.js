@@ -66,8 +66,9 @@ import { renderStructure } from './ontology_structure_view.js';
 // `window`, so both are scored under bare node like the three above.
 import {
   SURPRISE_VIEW, parseSurpriseQuery, surpriseQuery, lotsQuery, surpriseModel, toggleMark,
+  newestPage, WAFER_CAP,
 } from './surprise_core.js';
-import { renderSurprise } from './surprise_view.js';
+import { renderSurprise, updateMarks } from './surprise_view.js';
 // The floor under the three-axis maps — the REGISTERED frame declaration and the
 // REAL valid-die mask, read through routes that are already deployed. Owner
 // constraint 3: no invented circular grid, ever.
@@ -524,6 +525,9 @@ function pairOf(model) {
     return hit ? hit.reading : null;
   };
   return {
+    // The axis these two marks are ON — the journey door needs it to know whether
+    // a pair of marks is a pair of SUBJECTS. See `renderPair`.
+    axis: model.rowAxis.name,
     a: { lot: a.lot, row: a.row, bucket: a.bucketLabel, seq: a.seq, universe: a.universe },
     b: { lot: b.lot, row: b.row, bucket: b.bucketLabel, seq: b.seq, universe: b.universe },
     metrics: model.columns.map((col) => ({
@@ -783,6 +787,45 @@ async function runSurprise(question) {
     return;
   }
   if (mine !== surpriseSession) return;
+
+  // 🔴 THE NEWEST-END CAP, APPLIED AFTER THE COUNT IS KNOWN. The route pages from
+  // the OLDEST end, so a newest-N needs `offset = total - N` and the total only
+  // arrives with a response. The first request is therefore a counting request;
+  // it costs one extra round trip on entering the wafer axis and nothing after,
+  // because paging from here carries `limit`/`offset` in the URL.
+  const page = newestPage(question,
+    body && body.row_axis && body.row_axis.name,
+    body && body.populations && body.populations.rows_total, WAFER_CAP);
+  if (page) {
+    const capped = { ...question, limit: page.limit, offset: page.offset };
+    let res2;
+    try {
+      res2 = await fetch(`${API_BASE}/api/ledger/lots?${lotsQuery(capped)}`);
+    } catch (err) {
+      // The uncapped body is already in hand; showing it beats showing nothing.
+      if (mine !== surpriseSession) return;
+      paint(body, null);
+      return;
+    }
+    if (mine !== surpriseSession) return;
+    if (res2.ok) {
+      let body2 = null;
+      try { body2 = await res2.json(); } catch (err) { body2 = null; }
+      if (mine !== surpriseSession) return;
+      if (body2) {
+        surpriseAsked = capped;
+        // The cap is part of the question, so it belongs in the address bar —
+        // `replaceState`, not push: the reader did not navigate, the screen bounded
+        // itself and is saying so.
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({ scrollY: window.pageYOffset || 0 }, '',
+            `?${surpriseQuery(capped)}`);
+        }
+        paint(body2, null);
+        return;
+      }
+    }
+  }
   paint(body, null);
 }
 
@@ -806,7 +849,21 @@ function repaintSurprise() {
       `?${surpriseQuery(surpriseAsked)}`);
   }
   loadKinds().then((catalog) => {
-    pumpAxisMaps(paintSurprise(catalog, null), catalog);
+    // 🔴 THE FAST PATH. A mark patches the table in place instead of rebuilding
+    // it; a full render here is what made 2,600 columns hang the renderer.
+    const mount = byId('lt-surprise');
+    const root = mount && mount.querySelector('.sx');
+    const model = surpriseModel({ body: surpriseBody, kinds: catalog, question: surpriseAsked });
+    const patched = root && updateMarks(document, root, model,
+      { maps: axisMaps, floors: axisFloors }, contrastNodeFor(model));
+    if (!patched) {
+      pumpAxisMaps(paintSurprise(catalog, null), catalog);
+      return;
+    }
+    lastCatalog = catalog;
+    settleScroll();
+    pumpAxisMaps(model, catalog);
+    pumpContrast(model);
   });
 }
 

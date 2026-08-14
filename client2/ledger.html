@@ -2055,6 +2055,24 @@
     .cx-pair__verdict--differs { color: var(--warning); }
     .cx-pair__verdict--unknown { color: var(--text-dim); font-weight: 500; }
 
+    /* ── 여정 진입로 — 2장 마킹의 «다음 한 걸음» ── */
+    .cx-door { margin-top: 10px; }
+    .cx-door__go {
+      display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+      padding: 9px 12px; border-radius: 9px; text-decoration: none;
+      background: var(--accent); color: var(--accent-contrast);
+      border: 1px solid var(--accent);
+    }
+    .cx-door__go:hover { filter: brightness(1.06); }
+    .cx-door__go:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+    .cx-door__label { font-size: 15px; font-weight: 700; }
+    .cx-door__hint { font-size: 13px; opacity: .9; }
+    /* 링크 대신 «왜 없는지» — 422로 보내는 링크는 없느니만 못하다. */
+    .cx-door--blocked .cx-door__why {
+      display: block; font-size: 13px; color: var(--info);
+      background: var(--info-weak); border-radius: 8px; padding: 8px 12px;
+    }
+
     /* 🔴 3개 이상은 «조용히 다른 것»을 하지 않는다 — 그렇다고 말한다. */
     .cx-toomany {
       font-size: 14px; font-weight: 600; color: var(--info);

@@ -718,7 +718,24 @@ export function storedAxisTracks(panel) {
 //: unit substitution the owner ruled on: 「그냥 랏이란 단위를 잊으라 그래」. Aggregate sheets
 //: are unbounded — overlaying more wafers makes the pattern SHARPER, so capping them would
 //: throw away the only thing that shows it.
-export const MAP_CAPS = Object.freeze({ detailWafers: 10 });
+export const MAP_CAPS = Object.freeze({
+  detailWafers: 10,
+  //: 🔴 THE SMALL-N THRESHOLD. Four separate pictures are readable side by side and an
+  //: overlay of four says almost nothing — the heat has four levels and no lattice can
+  //: show through. Above it the individual sheets stop being readable and the overlay is
+  //: the only thing that carries the pattern (VMR 2.17 raw; see `overlayOf`). The reader
+  //: can always cross with the 낱장/집계 toggle, so this is a DEFAULT, not a gate.
+  individualMax: 4,
+});
+
+//: The sheet modes, and the auto rule. `` (empty) means «follow the count».
+export const SHEET_EACH = "each";
+export const SHEET_AGG = "agg";
+export function sheetModeFor(asked, wafers) {
+  const want = strOrEmpty(asked);
+  if (want === SHEET_EACH || want === SHEET_AGG) return want;
+  return wafers <= MAP_CAPS.individualMax ? SHEET_EACH : SHEET_AGG;
+}
 
 /**
  * 🔴 THE OVERLAY IS IN STORED COORDINATES, AND THAT IS A MEASURED CHOICE, NOT A STYLE ONE.
@@ -774,6 +791,7 @@ export function overlayOf(panels) {
 export function mapSection(model, maps, floors, options) {
   const marked = listOf(model && model.marked);
   const focusWafer = strOrEmpty(model && model.question && model.question.wafer);
+  const askedMode = strOrEmpty(model && model.question && model.question.sheets);
   const budget = intOrNull(options && options.batch);
   let left = budget === null ? FRAME_STRIP.batch : budget;
   const wanted = [];
@@ -863,7 +881,11 @@ export function mapSection(model, maps, floors, options) {
   }
 
   const focus = focusWafer ? settled.find((m) => m.row === focusWafer) : null;
+  const mode = sheetModeFor(askedMode, members.length);
   return {
+    mode,
+    modeAuto: !strOrEmpty(askedMode),
+    axes,
     marked: marked.length,
     wafers: members.length,
     members,

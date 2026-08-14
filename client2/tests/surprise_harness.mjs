@@ -703,7 +703,10 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
     const charts = first(byClass(mount, 'sx-charts'));
     eq('J1 one chart per column', byClass(charts, 'sx-chart').length, model.columns.length);
     const c0 = first(byAttr(charts, 'data-chart', 'zzq:found_rate'));
-    ok('J2 the chart states its own denominator', c0.textContent.includes('/4 랏 표시'), c0.textContent);
+    // The claim is unchanged — the chart states how many of the rows it drew. The
+    // unit stopped being the hardcoded word 「랏」 and now comes from the row axis
+    // (`그냥 랏이란 단위를 잊으라 그래`), so the expected string carries the axis label.
+    ok('J2 the chart states its own denominator', c0.textContent.includes('2/4 본딩 랏 표시'), c0.textContent);
     // Special-eval lots are not in the line but are on the axis.
     ok('J3 the special lot is marked apart from the line',
       byAttr(c0, 'data-special-lot', 'CL-2601-QE2').length === 1);
@@ -764,10 +767,15 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   {
     const facts = first(byAttr(mount, 'data-panel', 'facts'));
     ok('O1 a forced window is stated', byAttr(facts, 'data-fact', 'window_forced').length === 1);
-    ok('O2 a truncated row set is stated', byAttr(facts, 'data-fact', 'truncated').length === 1);
-    ok('O3 with both sides of the fraction',
-      first(byAttr(facts, 'data-fact', 'truncated')).textContent.includes('4/12'),
-      first(byAttr(facts, 'data-fact', 'truncated')).textContent);
+    // 🔴 THE CLAIM IS UNCHANGED AND STILL SCORED: a bounded row set is stated, with
+    // BOTH numbers. Only the sentence moved — 「행 잘림 — 4/12행」 became the
+    // owner-specified 「최신 4 — 전체 12」 that the newest-N cap renders, so the fact
+    // is `capped` and the two sides are separate spans rather than a fraction.
+    ok('O2 a bounded row set is stated', byAttr(facts, 'data-fact', 'capped').length === 1);
+    const capFact = first(byAttr(facts, 'data-fact', 'capped'));
+    ok('O3 with both sides of it',
+      capFact.textContent.includes('4 본딩 랏') && capFact.textContent.includes('12 본딩 랏'),
+      capFact.textContent);
     ok('O4 provenance says these numbers are not ledger-backed',
       first(byAttr(facts, 'data-fact', 'provenance')).textContent.includes('원장 미기반'));
     ok('O5 a server note reaches the screen',

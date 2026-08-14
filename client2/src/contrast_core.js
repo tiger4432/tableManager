@@ -2,7 +2,12 @@
 // contrast_core.js — 마킹한 랏들이 «무엇이 다른가»를 모델로.
 //
 // PURE. No DOM, no network, no `window` — same contract as `surprise_core.js`,
-// so `tests/contrast_harness.mjs` drives it under bare node.
+// so it COULD be driven under bare node the way the other cores are.
+//
+// 🔴 IT IS NOT. There is no `tests/contrast_harness.mjs` — this comment claimed one
+// existed, which is a claim of coverage that does not exist and is worse than
+// saying nothing. This panel is currently scored by nobody; writing that harness is
+// outstanding work, not done work.
 //
 // 🔴 WHY THIS EXISTS AT ALL. Marking five lots used to produce 125 wafer maps
 // stacked into 12,283px of vertical scroll and no comparison anywhere. A pile of
@@ -121,40 +126,29 @@ export function contrastScope(question, rowAxis) {
 }
 
 /**
- * 🔴 TEMPORARY MITIGATION — REMOVE WHEN THE ENGINE CAN DECLARE `rank: false`.
+ * The request. `mode` and `finding` are parameters — there is no second route.
  *
- * Every axis declared on the server is also offered to the FACTOR engine, and
- * that engine has no high-cardinality guard (the walk contrast has one; the axes
- * engine does not). The moment a `wafer` axis is declared, individual wafer
- * IDENTITIES enter the factor ranking — measured by the server lane: 8 of the top
- * 20 rows became wafer ids, pushing 8 real factors off the page. One value per
- * wafer, 2,600 of them, is an identifier and not a factor.
+ * 🔴 `axes=` IS GONE, AND SO IS THE LIST IT CARRIED. A hardcoded `FACTOR_AXES`
+ * lived here to keep wafer IDENTITIES out of the factor ranking while the engine
+ * had no high-cardinality guard. The engine now refuses to rank an identity axis
+ * at source — a `rank: false` flag plus a measured `high_cardinality_at`
+ * threshold, both declarations — so the client-side copy is dead weight.
+ * Verified equal by the server lane: with and without the eight explicit axes,
+ * 18 factors out of 261 considered, identical list.
  *
- * The correct fix is a `rank: false` flag on the declaration, which is engine
- * code and was rightly not built mid-demo. This list is the zero-code stand-in:
- * the panel names the axes it wants instead of accepting everything declared.
- *
- * 🔴 SO THIS LIST IS A LIABILITY AND IS MEANT TO DIE. It is a copy of a server
- * declaration living in a client, which means an axis declared tomorrow will NOT
- * appear here and nobody will be told. Delete it — and this comment — the moment
- * the engine can mark an axis unrankable at the source.
- *
- * The walk contrast (`scope=…`) is unaffected either way: marking never ranks the
- * axis it marked with. This is only about the factor panel's own request.
+ * 🔴 THE LESSON, KEPT BECAUSE THE SHAPE RECURS: a client-side copy of a server
+ * declaration goes stale silently. An axis declared tomorrow would never have
+ * entered that list and nobody would have been told. If this client ever needs an
+ * axis list again it must READ one, not keep one — `axes[]` now carries `rank`
+ * and `ranked` per axis, so the list is derivable from the declaration instead of
+ * duplicated beside it.
  */
-export const FACTOR_AXES = [
-  'bond_eqp', 'bond_lot', 'dt_lot', 'core_lot',
-  'b_bn', 'stack_height', 'scan_recipe', 'scan_eqp',
-];
-
-/** The request. `mode` and `finding` are parameters — there is no second route. */
 export function contrastQuery(question, rowAxis) {
   const scope = contrastScope(question, rowAxis);
   if (!scope.ok) return '';
   const parts = [
     'mode=contrast',
     `scope=${encodeURIComponent(`${scope.axis}:${scope.values.join(',')}`)}`,
-    `axes=${encodeURIComponent(FACTOR_AXES.join(','))}`,
   ];
   const finding = strOrEmpty(question && question.kind);
   if (finding) parts.push(`finding=${encodeURIComponent(finding)}`);
@@ -417,6 +411,12 @@ export function contrastModel({ body, question, rowAxis } = {}) {
     scope: readScope(body),
     subject: {
       type: strOrEmpty(body && body.subject && body.subject.type),
+      // 🔴 THE AXIS WHOSE ROWS ARE SUBJECTS, ONE FOR ONE. `key` is `wafer` today
+      // and it is what decides whether a pair of marks is a pair of SUBJECTS —
+      // two marks on the lot axis resolve to fifty wafers, which the journey route
+      // refuses. Read from the response rather than assumed, so the day the
+      // subject becomes something else the door follows it.
+      key: strOrEmpty(body && body.subject && body.subject.key),
       unitLabel: strOrEmpty(body && body.subject && body.subject.unit_label),
     },
     gates,
