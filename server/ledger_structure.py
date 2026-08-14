@@ -1207,10 +1207,35 @@ def _kinds_panel(connection, edges):
     `ledger_kinds.catalog` already answers everything about it; a second catalogue here
     would be the exact drift its own docstring exists to prevent.
 
-    The added fields are the linkage this screen owes the operator: `in_ledger` and
-    `ledger_edge_ids`. On a box where no predicate carries observations they come back
-    `false` / `[]` — which IS the answer, and it is the one that explains why the defect
-    data does not appear on the type graph at all.
+    🔴 THIS PANEL ADDS ONE FIELD (`ledger_edge_ids`) AND OVERWRITES NONE.
+    ------------------------------------------------------------------------
+    It used to overwrite `in_ledger` too, and that is how this endpoint came to disagree
+    with `GET /api/ledger/kinds` about the same fact. MEASURED 2026-08-14, one live call
+    each, `assy_manager`: `/kinds` answered `in_ledger: true` for both `void` and `delam`
+    (91,756 + 10,421 atoms, `ledger_state: "flowing"`) while THIS panel answered
+    `in_ledger: false` — and the same response's own `graph.edges` carried
+    `Wafer|observed|value` at 102,177 atoms, `edge_state: "flowing"`, sourced from
+    `void_obs` and `delam_obs`. One response contradicted itself and the other endpoint.
+
+    The cause was a predicate that could never match: the test was
+    `row["kind"] in edge["object_fields"]`, but `object_fields` holds the object's
+    REQUIRED FIELD NAMES (`["finding_kind", "method", "run_uid"]`) and `row["kind"]` holds
+    a VALUE (`"void"`). A name is compared against a value, so it was false for every kind
+    on every box, forever — including the boxes where the answer was `false` anyway, which
+    is why nothing noticed until the observations landed.
+
+    🔴 `in_ledger` HAS AN AUTHORITY AND IT IS NOT HERE. `ledger_kinds.catalog` answers it
+    from the TRANSLATOR DECLARATION (ruling R-2026-08-14-D: a declaration fact, answerable
+    on a box with no ledger table at all), and it serves `ledger_state` / `ledger_atoms`
+    for the MEASURED half beside it. This panel's job is the third question — WHICH EDGES —
+    and a second spelling of the first question is what produced the disagreement.
+
+    `ledger_edge_ids` is therefore derived from the same declaration `in_ledger` is, so the
+    two can never part company: the edges carrying the kind's declared `ledger_predicate`.
+    Not from the census's `source_who`, deliberately — that would make the list go empty
+    for a declared kind whose backfill has not run yet, and `_kind_declarations` would then
+    report `link_reason: "no_predicate_declared"` about a predicate that IS declared. The
+    count is already the measured half's job.
     """
     try:
         panel = ledger_kinds.catalog(connection)
@@ -1218,16 +1243,15 @@ def _kinds_panel(connection, edges):
         logger.warning("structure: kind catalogue unreadable: %s", exc)
         return {"state": STATE_ABSENT, "default": "", "kinds": [],
                 "readable": False, "error": str(exc)}
-    # A kind is IN the ledger when some predicate's declared value fields or entity
-    # targets name its observation. Nothing does today, and the linkage is computed
-    # rather than asserted so the day a `observed` predicate is declared, this fills in
-    # with no edit here.
+    # The edges this kind's declared predicate owns — declared ones AND any undeclared one
+    # the census turned up under the same predicate, so drift is linked rather than hidden.
+    # An undeclared kind has no `ledger_predicate`, and `None` is guarded explicitly rather
+    # than left to compare unequal against every edge: a null predicate must never link.
     for row in panel.get("kinds") or []:
-        ids = sorted(e["id"] for e in edges.values()
-                     if row["kind"] in (e.get("object_fields") or [])
-                     or row["kind"] == e.get("predicate"))
-        row["ledger_edge_ids"] = ids
-        row["in_ledger"] = bool(ids)
+        predicate = row.get("ledger_predicate")
+        row["ledger_edge_ids"] = ([] if not predicate else
+                                  sorted(e["id"] for e in edges.values()
+                                         if e["predicate"] == predicate))
     panel["readable"] = True
     return panel
 

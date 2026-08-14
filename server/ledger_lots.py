@@ -120,11 +120,15 @@ today is one that gets thrown away. `provenance` is the seam instead — see bel
 
 🔴 `provenance` IS THE SWAP SEAM, AND IT IS PINNED BY A TEST
 --------------------------------------------------------------
-Today the numbers come from the source tables, because the defect observations are NOT in
-the ledger: `GET /api/ledger/structure` reports every finding kind at `in_ledger: false`,
-and 91,756 voids plus 10,421 delams live only in `void_obs`/`delam_obs`. So `provenance`
-says exactly that — `source: "source_tables"`, `ledger_backed: false`, and the relations
-it actually read.
+Today the numbers come from the source tables, because THIS MODULE STILL READS THEM:
+`_GridPlan` scans `void_obs` / `delam_obs` / `bonding_log` / `inspection_run` and no
+statement here touches `ledger_events`. So `provenance` says exactly that —
+`source: "source_tables"`, `ledger_backed: false`, and the relations it actually read.
+
+⚠️ That is a fact about THIS QUERY, not about the ledger's contents, and the two came
+apart on 2026-08-14: the `observed` translation landed and `Wafer|observed|value` now
+carries 102,177 atoms (`GET /api/ledger/kinds`: both kinds `in_ledger: true`, `flowing`).
+`ledger_backed` stays `false` until the READ path moves, which has not happened.
 
 When the translation lands, the same response says `ledger_backed: true` and THE CLIENT
 DOES NOT CHANGE A LINE. That property is the point, so it is asserted rather than hoped
@@ -1162,16 +1166,27 @@ PROVENANCE_LEDGER = "ledger"
 def _provenance(relations, gate):
     """Where these numbers came from, said out loud.
 
-    Today: the source tables, because the defect observations are NOT in the ledger —
-    `GET /api/ledger/structure` reports every finding kind at `in_ledger: false`. Saying
-    `ledger` here would be a claim this box cannot support, and the console's whole
-    premise is that a number without its provenance is not evidence.
+    Today: the source tables — because THIS CODE PATH still reads them. `_GridPlan` scans
+    `void_obs` / `delam_obs` / `inspection_row`, and no statement in this module touches
+    `ledger_events`. Saying `ledger` here would be a claim about where these particular
+    numbers came from, and it would be false whatever the ledger holds.
+
+    ⚠️ THE REASON MOVED, THE VALUE DID NOT (2026-08-14). This block used to justify itself
+    with 「관측이 원장에 없다」, and that premise expired the day the `observed` translation
+    landed: MEASURED, `Wafer|observed|value` carries 102,177 atoms from `void_obs` and
+    `delam_obs`, and `GET /api/ledger/kinds` answers `in_ledger: true`, `flowing` for both
+    kinds. `ledger_backed: False` is STILL TRUE and must not be flipped — the observations
+    being in the ledger and this endpoint reading them are two different facts, and only
+    the second one is what this field reports. Flipping the value would make the response
+    lie about its own query; leaving the old reason would send the next reader looking for
+    a bug in a field that is answering correctly.
     """
     return {
         "source": PROVENANCE_SOURCE_TABLES,
         "ledger_backed": False,
         "relations": [r for r in relations if r not in gate["absent_relations"]],
         "absent_relations": gate["absent_relations"],
-        "note": ("불량 관측이 아직 원장에 없다 — finding_kinds 전 종류가 "
-                 "in_ledger: false. 번역 착지 시 이 블록만 바뀐다."),
+        "note": ("이 경로가 아직 원장을 읽지 않는다 — 숫자는 소스 테이블에서 나온다. "
+                 "관측 자체는 원장에 있다(observed 원자 존재). 읽기 측이 옮겨 오면 "
+                 "이 블록만 바뀐다."),
     }
