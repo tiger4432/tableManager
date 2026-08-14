@@ -129,6 +129,23 @@ CREATE TABLE wafer_map_metadata (
 BOND_LOT, DT_LOT, CORE_LOT = "BOND-A", "DT-A", "CORE-A"
 UNKEYED_LOT = "BOND-N"          # coordinates on every axis, NO core lot/slot recorded
 
+#: 🔴 THE BONDED-BASE-WAFER GROUPS. The 16 packages above each carry their OWN `base_id`,
+#: which is the shape a frame with MANY wafers on it has — useful as the negative case and
+#: useless as the positive one. These two lots have the shape the live box measured
+#: (`base_id` ↔ the bonding frame key, 1:1), and its absence:
+#:
+#:   WAFER_LOT  one frame, ONE base wafer   -> `frame.wafer` names it
+#:   BLANK_LOT  one frame, NO base identity -> the field is ABSENT and the frame still opens
+#:
+#: `bx` VARIES within WAFER_LOT while `by` is constant, on purpose: it makes the declared
+#: identity column and the other unit columns give DIFFERENT answers, which is what lets
+#: `test_the_identity_follows_the_declaration` decide anything at all.
+WAFER_LOT, BLANK_LOT = "BOND-W", "BOND-Z"
+WAFER_SLOT = 5
+WAFER_ID = "BW-777"
+WAFER_CONSTANT_Y = 7
+N_WAFER = N_BLANK = 3
+
 #: (bond_slot, dt_slot, core_slot, bond_y, dt_y, cy). The y coordinate is the GROUP'S
 #: FINGERPRINT: it says which rows survived the `WHERE`, which is how a test about the
 #: filter column can tell one narrowing from another.
@@ -146,6 +163,8 @@ FRAMES = {
     f"{CORE_LOT}_21": (13, 13),       # correct for group A's core slot
     f"{CORE_LOT}_3": (4, 4),          # DECOY: core lot x BONDING slot
     f"{UNKEYED_LOT}_9": (10, 10),
+    f"{WAFER_LOT}_{WAFER_SLOT}": (9, 9),
+    f"{BLANK_LOT}_{WAFER_SLOT}": (9, 9),
 }
 DECOY_CORE_KEY, TRUE_CORE_KEY = f"{CORE_LOT}_3", f"{CORE_LOT}_21"
 DECOY_DT_KEY, TRUE_DT_KEY = f"{DT_LOT}_3", f"{DT_LOT}_7"
@@ -185,6 +204,20 @@ def _plant(connection):
                 f"INSERT INTO {OBS_RELATION} (void_uid, run_uid, base_wafer_id, base_x, "
                 f"base_y) VALUES (%s,%s,%s,%s,%s)",
                 (f"void|W-{i:02d}", f"sat|W-{i:02d}", f"W-{i:02d}", i, 0))
+        # 🔴 PLANTED AFTER THE SCAN LOOP ABOVE, so these packages have no inspection run
+        # and no observation. `frame.wafer` is a property of the BONDED rows, not of what
+        # was found on them, and a fixture that could only exercise it through a finding
+        # would be asserting two rules at once.
+        cur.executemany(
+            f"INSERT INTO {LOT_RELATION} VALUES "
+            f"(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            [(f"PKG-W{j}", WAFER_ID, j, WAFER_CONSTANT_Y, "EQP-3",
+              WAFER_LOT, WAFER_SLOT, j + 1, 4, "DT-W", 13, j + 1, 8, None, None, None, None)
+             for j in range(N_WAFER)]
+            + [(f"PKG-Z{j}", None, None, None, "EQP-3",
+                BLANK_LOT, WAFER_SLOT, j + 1, 4, "DT-Z", 13, j + 1, 8, None, None, None,
+                None)
+               for j in range(N_BLANK)])
         for map_id, (cols, grid_rows) in FRAMES.items():
             cur.execute(
                 "INSERT INTO wafer_map_metadata VALUES (%s,%s,%s,%s)",
@@ -215,6 +248,10 @@ AXES = {
         "unit_columns": ["base_wafer_id", "base_x", "base_y"],
         "run_key_column": "run_uid", "run_method_column": "method",
         "run_time_column": "observed_at", "observation_run_ref_column": "run_uid",
+        #: WHICH unit column names the wafer. `frame.wafer` is read through THIS plus the
+        #: attribution join below, so a deployment moves the identity by editing these two
+        #: and nothing else — see `test_the_identity_follows_the_declaration`.
+        "ledger_subject": {"type": "Wafer", "key": "wafer", "column": "base_wafer_id"},
         "universe": {"relation": LOT_RELATION,
                      "join": {"base_wafer_id": "base_id", "base_x": "bx",
                               "base_y": "by"}},
@@ -421,3 +458,79 @@ def test_an_axis_with_no_recorded_frame_key_does_not_tell_the_reader_to_pick_a_s
     assert bond["state"] == ledger_lots.MAP_STATE_READY, \
         "one axis lacking a key must not cost the axes that have one"
     assert bond["frame"]["map_id"] == f"{UNKEYED_LOT}_9"
+
+
+# ------------------------------------------------- who the frame IS: the base wafer id
+def test_the_frame_names_the_bonded_base_wafer_and_never_samples_one(pg):
+    """🔴 P0 item 5 (「본딩 base wf 축으로 리스트」). The strip is listed by bonded base
+    wafer and labelled with its id, so the frame has to CARRY the id — `map_id` is
+    `{lot}_{slot}`, a frame key, and a screen that printed it under a wafer heading would
+    be naming the wafer after something that is not its name.
+
+    Asserted together with its negative, because the two candidate implementations differ
+    ONLY there: `BOND_LOT`'s frame carries six base wafers, so an implementation that took
+    the first value it saw would label six wafers' dies with one wafer's id — the same
+    flattening `MAP_REASON_FRAME_AMBIGUOUS` is named after, one field over. The field is
+    absent there, and present exactly where the frame IS one wafer.
+    """
+    one = _axis(ledger_lots.lot_map(pg, row=WAFER_LOT, slot=str(WAFER_SLOT)), "bond")
+    assert one["state"] == ledger_lots.MAP_STATE_READY, one
+    assert one["frame"]["map_id"] == f"{WAFER_LOT}_{WAFER_SLOT}"
+    assert one["frame"][ledger_lots.IDENTITY_FIELD] == WAFER_ID, \
+        "the frame of a single bonded base wafer must name it"
+
+    many = _axis(ledger_lots.lot_map(pg, row=BOND_LOT, slot="3"), "bond")
+    assert many["state"] == ledger_lots.MAP_STATE_READY, many
+    assert ledger_lots.IDENTITY_FIELD not in many["frame"], (
+        f"a frame carrying {N_A} base wafers named one of them: "
+        f"{many['frame'].get(ledger_lots.IDENTITY_FIELD)!r}")
+
+
+def test_a_frame_with_no_recorded_base_identity_omits_the_field_and_still_opens(pg):
+    """MEASURED on `assy_manager` 2026-08-14: 5 of 108 bond lots (`BS-2601-001..005`,
+    5,296 rows) carry no `base_id` at all, their frames are registered, and the operator
+    still opens them. So the absent identity must cost the map nothing — the projection is
+    `ready`, the grid is served, and the FIELD is simply not there. Not `null` dressed as a
+    name, not the frame key wearing a wafer's heading."""
+    bond = _axis(ledger_lots.lot_map(pg, row=BLANK_LOT, slot=str(WAFER_SLOT)), "bond")
+    assert bond["state"] == ledger_lots.MAP_STATE_READY, bond
+    assert bond["frame"]["map_id"] == f"{BLANK_LOT}_{WAFER_SLOT}", \
+        "a lot with no base identity must still get its registered frame"
+    assert _grid(bond)["grid_cols"] == 9
+    assert ledger_lots.IDENTITY_FIELD not in bond["frame"], (
+        f"an identity was invented for a lot that records none: "
+        f"{bond['frame'].get(ledger_lots.IDENTITY_FIELD)!r}")
+
+
+def test_the_identity_follows_the_declaration_and_is_no_column_name_in_code(pg):
+    """🔴 THE STANDING COMPLETION CRITERION, DRIVEN: a feature is complete only if it fires
+    in a different-schema deployment by swapping DECLARATIONS, with zero code change.
+
+    The same planted rows are read three times under three declarations, and they answer
+    three different ways — which is only possible because no column name is typed in
+    `ledger_lots.py`:
+
+        column: base_wafer_id   ->  `BW-777`  (the wafer id, through join base_wafer_id->base_id)
+        column: base_y          ->  `7`       (another unit column, through join base_y->by)
+        no ledger_subject       ->  absent    (nothing declared, so nothing claimed)
+
+    `bx` varies and `by` is constant across these rows on purpose: the two candidate
+    columns give DIFFERENT answers here, so a fixture where they agreed could not tell a
+    declaration-following implementation from one that reached for `base_id` directly.
+    """
+    import copy
+
+    swapped = copy.deepcopy(AXES)
+    swapped["geometry"]["ledger_subject"]["column"] = "base_y"
+    ledger_siblings.set_axes_config(swapped)
+    moved = _axis(ledger_lots.lot_map(pg, row=WAFER_LOT, slot=str(WAFER_SLOT)), "bond")
+    assert moved["frame"][ledger_lots.IDENTITY_FIELD] == str(WAFER_CONSTANT_Y), \
+        "the identity did not follow the declaration — a column name is baked into the code"
+
+    undeclared = copy.deepcopy(AXES)
+    undeclared["geometry"].pop("ledger_subject")
+    ledger_siblings.set_axes_config(undeclared)
+    silent = _axis(ledger_lots.lot_map(pg, row=WAFER_LOT, slot=str(WAFER_SLOT)), "bond")
+    assert silent["state"] == ledger_lots.MAP_STATE_READY, silent
+    assert ledger_lots.IDENTITY_FIELD not in silent["frame"], (
+        "a geometry that declares no ledger subject must claim no identity")

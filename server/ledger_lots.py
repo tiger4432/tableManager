@@ -921,6 +921,24 @@ MAP_REASON_FRAME_AMBIGUOUS = "frame_ambiguous_across_slots"
 FRAME_RELATION = "wafer_map_metadata"
 VALID_DIE_RELATION = "valid_die_ref"
 
+#: 🔴 WHO THE FRAME IS. The owner asked for the map strip to be listed by the BONDED BASE
+#: WAFER and labelled with its id (`SCENARIO_CONSOLE_BRIEF` P0 item 5, 「본딩 base wf 축으로
+#: 리스트」). `map_id` is `{lot}_{slot}`, which is the frame's key and not the wafer's name,
+#: so the client had nothing to put under a wafer heading that was not an invention.
+#:
+#: `IDENTITY_FIELD` is FIXED because it is a landed client contract —
+#: `surprise_map_core.waferLabelOf` reads `frame.wafer` and upgrades the label the moment it
+#: arrives. Only the VALUE is declared, and the declaration is `siblings_axes.json`'s
+#: `geometry.ledger_subject.column` (the unit column the config already declares to BE the
+#: wafer subject's key) mapped through the attribution source's own `join` into that
+#: relation's spelling. NO TABLE OR COLUMN NAME IS TYPED HERE: a deployment that declares
+#: another subject column, or another relation that spells it differently, gets its identity
+#: on the wire by swapping declarations alone.
+IDENTITY_FIELD = "wafer"
+#: The alias it is fetched under — the row tuples are zipped positionally against `names`,
+#: so the identity must not be able to collide with a frame key column's own name.
+IDENTITY_ALIAS = "frame_identity"
+
 
 def lot_map(connection, row, kind=None, by=None, slot=None, window=None, now=None):
     """One marked row's defective chips, projected onto every declared axis.
@@ -988,6 +1006,11 @@ def lot_map(connection, row, kind=None, by=None, slot=None, window=None, now=Non
 
     key_cols = ", ".join(f"b.{c}" for c in _frame_key_columns(connection,
                                                              source.relation))
+    # The bonded base wafer's declared identity, on the SAME row the bridge already lands
+    # on — no new relation, so ruling R-2026-08-14-D is untouched and the column is free.
+    identity_column = _identity_column(connection, geometry, source)
+    identity_select = (f", b.{identity_column} AS {IDENTITY_ALIAS}"
+                       if identity_column else "")
     sql = f"""
 WITH runs AS (
     SELECT {geometry.run_key_column} AS run_key, {', '.join(units)}
@@ -999,7 +1022,7 @@ WITH runs AS (
 ), scanned AS (
     SELECT DISTINCT {', '.join(units)} FROM runs
 )
-SELECT {projected}{',' if key_cols else ''} {key_cols},
+SELECT {projected}{',' if key_cols else ''} {key_cols}{identity_select},
        (f.{units[0]} IS NOT NULL) AS is_found,
        (s.{units[0]} IS NOT NULL) AS is_scanned
 FROM {source.relation} b
@@ -1011,7 +1034,35 @@ WHERE b.{axis.column} = %(row)s{slot_clause}
 """
     raw = _fetch(connection, sql, params)
     return _map_envelope(connection, row, axis, source, slot, slot_column, the_kind, raw,
-                         projected, requested_window, now)
+                         projected, requested_window, now, identity_column)
+
+
+def _identity_column(connection, geometry, source):
+    """The column on `source.relation` that NAMES the bonded base wafer, or `None`.
+
+    🔴 REACHED THROUGH THE DECLARATION, TWO HOPS, AND NEITHER HOP IS A LITERAL:
+
+        geometry.ledger_subject.column   the UNIT column the config declares to be the
+                                         wafer subject's key (`base_wafer_id`). Declared
+                                         rather than `unit_columns[0]` — see `Geometry`,
+                                         which pays for that distinction already.
+        source.join[<that>]              that unit column in THIS relation's own spelling
+                                         (`bonding_log.base_id`; `inspection_run` spells
+                                         it `base_wafer_id`, and the join says so).
+
+    `None` when the geometry declares no ledger subject, when this relation's join does not
+    carry it, or when the column is not deployed — three ways of having no declared
+    identity, and all three answer the same way: the field is simply not on the wire. That
+    is the honest answer rather than a fallback to the frame key, which would put a
+    `{lot}_{slot}` on screen under a wafer heading.
+    """
+    subject = getattr(geometry, "ledger_subject", None) if geometry else None
+    if not subject:
+        return None
+    column = (source.join or {}).get(subject.get("column"))
+    if not column or not _column_present(connection, source.relation, column):
+        return None
+    return column
 
 
 def _column_present(connection, relation, column):
@@ -1062,7 +1113,7 @@ def _slot_column_for(axis):
 
 
 def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, projected,
-                  window, now):
+                  window, now, identity_column=None):
     """Every declared axis, each carrying its own verdict. An axis with no data is
     PRESENT and says why — it is never dropped."""
     names = []
@@ -1071,6 +1122,8 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
             names.extend([f"{spec['axis']}_x", f"{spec['axis']}_y"])
     key_columns = _frame_key_columns(connection, source.relation)
     names.extend(key_columns)
+    if identity_column:
+        names.append(IDENTITY_ALIAS)
     names.extend(["is_found", "is_scanned"])
     rows = [dict(zip(names, r)) for r in raw]
 
@@ -1130,6 +1183,15 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
         slots_seen = sorted({str(r.get(slot_col)) for r in present if r.get(slot_col)})
         frame_lot = next(iter(lots_seen)) if len(lots_seen) == 1 else None
         frame_slot = slots_seen[0] if len(slots_seen) == 1 else None
+        # 🔴 THE WAFER IS COUNTED, NOT SAMPLED — the same rule as the frame keys above, for
+        # the same reason. MEASURED on `assy_manager` 2026-08-14: `base_id` and the BONDING
+        # frame key are a bijection (2,575 ↔ 2,575), so this resolves on the bonding axis
+        # and the strip gets its label. It does NOT resolve on the DT axis, where one frame
+        # carries dies from many base wafers — and there the field is absent rather than
+        # naming whichever wafer the first row happened to be, which is how a strip would
+        # come to label 25 wafers' dies with one wafer's id.
+        wafers_seen = {r.get(IDENTITY_ALIAS) for r in present if r.get(IDENTITY_ALIAS)}
+        frame_wafer = next(iter(wafers_seen)) if len(wafers_seen) == 1 else None
         cells = [{"x": x, "y": y, "n": n} for (x, y), n in sorted(counts.items())]
 
         if frame_slot is None or frame_lot is None:
@@ -1151,15 +1213,17 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
                     ("이 행이 프레임 여러 개에 걸쳐 있다 — 슬롯마다 격자 치수가 "
                      "다르므로 한 장에 겹쳐 그리면 좌표가 전부 어긋난다. "
                      "slot을 지정할 것.")),
-                "frame": {"state": MAP_STATE_NO_FRAME,
-                          "reason": MAP_REASON_FRAME_AMBIGUOUS,
-                          "available_slots": slots_seen,
-                          "available_lots": sorted(str(x) for x in lots_seen)},
+                "frame": _with_identity(
+                    {"state": MAP_STATE_NO_FRAME,
+                     "reason": MAP_REASON_FRAME_AMBIGUOUS,
+                     "available_slots": slots_seen,
+                     "available_lots": sorted(str(x) for x in lots_seen)}, frame_wafer),
                 "coordinate_unit": "cells_from_origin",
                 "cells": cells, "found": found, "scanned": scanned})
             continue
 
-        frame = _frame(connection, source.relation, frame_lot, frame_slot, spec)
+        frame = _with_identity(
+            _frame(connection, source.relation, frame_lot, frame_slot, spec), frame_wafer)
         projections.append({
             "axis": ax, "label": spec["label"], "sublabel": spec["sublabel"],
             # 🔴 The projection is only `ready` when there is a REGISTERED frame under it.
@@ -1191,6 +1255,22 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
         "provenance": {"source": PROVENANCE_SOURCE_TABLES, "ledger_backed": False,
                        "relations": [source.relation, finding_kinds.RUN_TABLE]},
     }
+
+
+def _with_identity(frame, wafer):
+    """Name the frame's bonded base wafer — or leave the field OFF, which is an answer.
+
+    🔴 ABSENT IS A FACT HERE, AND IT HAS A MEASURED POPULATION. `assy_manager`, 2026-08-14:
+    5 of 108 bond lots (`BS-2601-001`..`005`, 5,296 rows) carry NO `base_id` at all, and
+    their frames are registered and still open. Those maps must keep opening and must not
+    acquire a name — so nothing is invented, nothing falls back to `map_id`, and the frame
+    is never dropped from the response. The client renders the frame key instead and marks
+    it as such (`data-wafer-source="frame_key"`), so nothing on screen claims to be a wafer
+    id that isn't one.
+    """
+    if wafer:
+        frame[IDENTITY_FIELD] = str(wafer)
+    return frame
 
 
 def _frame(connection, relation, lot, slot, spec):
