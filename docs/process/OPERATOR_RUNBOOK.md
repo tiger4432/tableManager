@@ -114,12 +114,16 @@
 
 ---
 
-## 7. ⏳ 파일 없음 — 만들어야 하는 것
+## 7. 🔴 지금 대기열 «맨 위» — 업무키 UNIQUE 인덱스 28개 표 전부
 
 | | |
 |---|---|
-| **기록** | 2026-08-13 |
-| **목적** | `wafer_map_metadata.business_key_val`에 **UNIQUE 인덱스**(SCHEMA_CANON **R2** — 「`business_key`를 선언했으면 UNIQUE 인덱스가 있어야 한다」) |
+| **기록** | 2026-08-13 등재 · **2026-08-14 실측으로 전면 개정** |
+| **⚠️ 이 항목의 두 문장이 틀렸었다** | ① 「아직 마이그레이션 파일이 없다」 — **있다**: `server/migrations/add_business_key_unique_index.py`. 기본이 읽기 전용이고 `--apply`로만 쓴다. ② 「`wafer_map_metadata` 건」 — **범위가 그 한 표가 아니다.** 스크립트는 `tables_with_business_key()`로 대상을 «발견»한다 |
+| **🔑 실측 (2026-08-14, `assy_manager`, 읽기 전용)** | **`business_key_val`을 가진 표 28개 · 그중 UNIQUE 인덱스 보유 «0개» · 중복 업무키 «0건»** — 28개 표 전부에서 `count(*) == count(DISTINCT business_key_val)`. **즉 오늘 돌리면 전부 성공한다.** 이 항목이 오래 막혀 있던 이유(「중복이 있으면 어느 행을 남길지가 먼저 판정할 문제」)가 **실측으로 해소됐다** — 판정할 것이 없다 |
+| **🔴 왜 대기열 맨 위인가** | `models.py:806-813`이 **자기 주석에서** 「새로 만든 DB는 이 마이그레이션 전까진 무방비」라고 경고한다. 그리고 안 돌았다. 이건 성능이 아니라 **동일성 무결성**이고, 쓰기 경로가 「업무키는 유일하다」를 «가정»하는데 물리가 그걸 보장하지 않는 상태다. 유일성은 지금까지 **쓰기 경로가 우연히 그렇게 보였기 때문에만** 유지됐다 |
+| **한 줄** | `conda run -n assy_manager python server/migrations/add_business_key_unique_index.py --apply` <br>(먼저 인자 없이 돌리면 읽기 전용 리포트만 나온다) |
+| **목적(원 항목)** | `business_key_val`에 **UNIQUE 인덱스**(SCHEMA_CANON **R2** — 「`business_key`를 선언했으면 UNIQUE 인덱스가 있어야 한다」) |
 | **⚠️ 정정** | 이 항목은 처음에 **R6**이라 적었다. R6은 「표식은 열쇠가 아니다」로 다른 규칙이다. 그리고 인덱스 대상도 원시 컬럼 쌍이 아니라 **`business_key_val`**이다 — 이 프로젝트의 기존 패턴(`uq_bk_<table>`)이고, `composite_key_source = [target_table, map_id]`이므로 **같은 제약이다.** 총괄 실측 2026-08-13 |
 | **왜** | 🔴 **선언과 물리가 어긋난 R2 위반이다.** `product_tables.py`가 `business_key: "map_pk"`, `composite_key_source: [target_table, map_id]`를 **선언**해 놓았는데, 물리 UNIQUE는 `wafer_map_metadata_pkey`(= `row_id`) **하나뿐**이다. 그래서 `map_overlay._meta_select`의 `.first()`(`LIMIT 1`)가 중복 한 쌍을 만나면 같은 맵이 새로고침마다 **다른 «기하»**를 읽는다 |
 | **지금 상태** | `c36368c`가 읽기에 총순서를 박아 **리더는 결정적**으로 만들었다. 🔴 **그런데 그 대가로 이제 중복을 «조용히 가린다»** — 예전엔 값이 흔들려서 티가 났다 |
