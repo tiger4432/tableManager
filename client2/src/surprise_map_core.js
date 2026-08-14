@@ -77,10 +77,17 @@
 //   resolved floor       141 seats · defect chips 13 · off-floor 0
 //   extent               the MASK's bounds (0..13), no longer the declared grid (0..14)
 //
-// ⚠️ AND IT DID NOT LAND EVERYWHERE, WHICH IS THE HONEST HALF. The 120 `BS-2601-*`
-// frames carry `{relation, present}` with NO `map_id`, so for them the sentence stays
-// and is TRUE. The mask-absent branch is therefore live code, not dead code kept for
-// sentiment — a panel that lost the sentence entirely would be lying about those 120.
+// ⚠️ AND `mask_absent` IS NOW UNREACHABLE ON LIVE DATA — SAY IT RATHER THAN IMPLY IT.
+// Reaching it needs a frame that is USABLE and has NO resolvable reference, and measured
+// on this box that combination does not occur: every `ready` frame carries a `map_id`
+// (bond `SYN-VD_G15X15`, dt `SYN-VD_G15X10`, core `SYN-VD_G23X23`), and the 120
+// `BS-2601-*` frames that carry no reference never get that far — `isFrameUsable` refuses
+// them first, so their panel reads `frame_unusable`, NOT 「마스크 미적용」.
+//
+// It is kept because the population is one registration away from existing again, and
+// because the harness fixture exercises exactly that shape. But nobody should go looking
+// for 「마스크 미적용」 on screen today, and a note claiming the 120 show it would be
+// wrong — an earlier draft of this block claimed precisely that.
 // ------------------------------------------------------------
 
 import { frameFromDeclaration, isFrameUsable } from './map2/declaration.js';

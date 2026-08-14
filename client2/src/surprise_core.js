@@ -232,6 +232,15 @@ export function parseSurpriseQuery(params) {
     // rows are emphasised, and `slot` belongs to /lot_map rather than /lots.
     marked: get('mark').split(',').map((x) => x.trim()).filter(Boolean),
     slot: get('slot'),
+    // 🔴 THE WAFER IN THE SEAT, NOT THE SEAT. `wafer` carries the base WF id
+    // exactly as the server serves it on `projections[].frame.wafer`; empty or
+    // absent means no focus. It is deliberately NOT a slot number and NOT a frame
+    // key — those name a seat, and a seat is occupied by different wafers over
+    // time, so focusing by seat would follow the position rather than the thing.
+    //
+    // Client-only, like `mark` and `slot`: it changes which wafer is emphasised,
+    // not what was asked of `/lots`, so it stays out of `lotsQuery` below.
+    wafer: get('wafer'),
   };
 }
 
@@ -248,6 +257,10 @@ export function surpriseQuery(question) {
   const marked = listOf(q.marked).map(strOrEmpty).filter(Boolean);
   if (marked.length) parts.push(`mark=${encodeURIComponent(marked.join(','))}`);
   if (q.slot) parts.push(`slot=${encodeURIComponent(q.slot)}`);
+  // 🔴 THE FOCUSED WAFER TRAVELS WITH THE QUESTION. Without this the serializer
+  // dropped it silently, so a focus could be reached by clicking but never by
+  // pasting — and this screen's whole contract is that the answer IS the URL.
+  if (q.wafer) parts.push(`wafer=${encodeURIComponent(q.wafer)}`);
   return parts.join('&');
 }
 

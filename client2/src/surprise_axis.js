@@ -155,10 +155,29 @@ export async function resolveFloors(axes, into) {
   const wanted = [];
   for (const axis of Array.isArray(axes) ? axes : []) {
     // 🔴 THE LANDED SHAPE PUTS IT UNDER THE FRAME: `frame.valid_die_ref` is
-    // `{relation, present}`. It announces PRESENCE, not which map — so today no
-    // key is resolvable and this loop finds nothing, which is why the panels say
-    // 「유효 다이 마스크 미적용」 instead of drawing an unregistered wafer. The
-    // moment the server adds `map_id` here, the mask resolves with no other edit.
+    // `{relation, present, map_id}`, and THE MASK RESOLVES. Measured live
+    // 2026-08-14 after the server restart: `SYN-VOID-001` slot 07 carries
+    // `{relation: "valid_die_ref", present: true, map_id: "SYN-VD_G15X15"}`, all
+    // three axes resolve, floor seats 141 / off-floor 0, and the panel's mask code
+    // is null where it used to read 「유효 다이 마스크 미적용」.
+    //
+    // (This comment said the opposite until tonight — that `map_id` was absent and
+    // this loop found nothing. It described a real past state, which is exactly
+    // why it was dangerous: a stale comment reads as current, and this one would
+    // have told the next reader the mask was dead while it was working.)
+    //
+    // 🔴 THE KEY IS `table|map_id` AND BOTH HALVES MUST AGREE. `relation` names
+    // WHICH TABLE the id is an id in, so two references with the same `map_id` in
+    // different relations are different masks — dropping either half would serve
+    // one wafer's mask under another's frame.
+    //
+    // A reference with no `map_id` still falls through to `mask_absent` below.
+    // That branch is NOT the normal case on live data — it is currently
+    // unreachable there, because every usable frame carries a reference and every
+    // reference-less frame (the real `BS-2601-*`) is refused earlier as
+    // `frame_unusable` (its `cols`/`rows` are `auto_registered`, not declared).
+    // It survives on a harness fixture and is kept because a future frame could
+    // land in that state — not because anything reaches it today.
     const fr = (axis && axis.frame) || {};
     const ref = fr.valid_die_ref || axis.reference || null;
     if (!ref) continue;
