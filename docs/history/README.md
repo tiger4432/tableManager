@@ -1,13 +1,24 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **582개** 이력. (거버넌스 규칙 #4)
+> 총 **593개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-14 19:28** — [P0 4 Borrowed Values And The Explorer That Waits For Tomorrow](./20260814_192846_p0_4_borrowed_values_and_the_explorer_that_waits_for_tomorrow.md)
+- **2026-08-14 19:24** — [Numbers Can Be Causes A Wafer Can Be Marked And A Scope Stops Absorbing](./20260814_192406_numbers_can_be_causes_a_wafer_can_be_marked_and_a_scope_stops_absorbing.md)
+- **2026-08-14 19:22** — [Six Questions Then The Envelope Then Five](./20260814_192247_six_questions_then_the_envelope_then_five.md)
+- **2026-08-14 19:16** — [P0 2 And P0 3 The Screen Substituted Its Own Unit For The Users](./20260814_191638_p0_2_and_p0_3_the_screen_substituted_its_own_unit_for_the_users.md)
+- **2026-08-14 19:12** — [Ruling R K The Floor Holds Tonight And The Repair Carries Orientation](./20260814_191215_ruling_r_k_the_floor_holds_tonight_and_the_repair_carries_orientation.md)
+- **2026-08-14 19:09** — [The K1 Lot Lands And Present Was Not Correctness](./20260814_190937_the_k1_lot_lands_and_present_was_not_correctness.md)
+- **2026-08-14 19:04** — [Axis 7 A Lot That Splits Diverges And Merges Back](./20260814_190443_axis_7_a_lot_that_splits_diverges_and_merges_back.md)
+- **2026-08-14 19:01** — [Three Journey Fields And The Six Axes Report](./20260814_190128_three_journey_fields_and_the_six_axes_report.md)
+- **2026-08-14 18:53** — [A Wafer Becomes Addressable And A Correction Gets Corrected](./20260814_185327_a_wafer_becomes_addressable_and_a_correction_gets_corrected.md)
+- **2026-08-14 18:45** — [Marking Stops Piling Up Maps And Starts Answering](./20260814_184538_marking_stops_piling_up_maps_and_starts_answering.md)
+- **2026-08-14 18:40** — [The Mask Was One Missing Field And The Core Axis One Missing Declaration](./20260814_184000_the_mask_was_one_missing_field_and_the_core_axis_one_missing_declaration.md)
 - **2026-08-14 16:15** — [The Contrast Stops Choosing Its Items And The Gates Arrive](./20260814_161500_the_contrast_stops_choosing_its_items_and_the_gates_arrive.md)
 - **2026-08-14 15:25** — [The Admin Panel Becomes The Declaration Editor](./20260814_152513_the_admin_panel_becomes_the_declaration_editor.md)
 - **2026-08-14 15:13** — [The Reference View Lands And The Gate Column Refuses To Fold](./20260814_151352_the_reference_view_lands_and_the_gate_column_refuses_to_fold.md)
