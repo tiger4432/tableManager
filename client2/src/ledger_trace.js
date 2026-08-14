@@ -38,6 +38,15 @@ import {
   parseConsoleQuery, consoleQuery, kindCatalog, consoleModel,
 } from './case_control_core.js';
 import { renderConsole } from './case_control_view.js';
+// The THIRD question, and the one that has to be answered before the other two can
+// be designed further (product owner, 2026-08-14: "구조가 너무 숨겨져 있어서 UI
+// 어떻게 설계해야 할지 모르겠어"). Not an instance graph — the TYPE graph: which
+// subject types are joined to which object kinds by which predicate, and how much
+// data is on each join. Same page, same tokens, same anchors-only discipline.
+import {
+  STRUCTURE_VIEW, parseStructureQuery, structureModel,
+} from './ontology_structure_core.js';
+import { renderStructure } from './ontology_structure_view.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -87,14 +96,85 @@ function loadCoverage() {
 // server lane answering a different shape. A 404 leaves the catalog at 'unknown'
 // and the console degrades to the declared default kind, saying so out loud.
 let kindsPromise = null;
+// 🔴 THE RAW BODY, KEPT BESIDE THE NORMALISED ONE. `kindCatalog` is the shared
+// reader and it deliberately does not carry `observation_table` — the console has
+// no use for it. The structure view's kind-registry panel does ("kind별
+// observed_by · 관측 테이블 · 건수"), and the honest way to get one field the
+// shared reader drops is to keep the body, NOT to widen a reader two screens
+// depend on for a field only one of them reads.
+let kindsBody = null;
 
 function loadKinds() {
   if (kindsPromise) return kindsPromise;
   kindsPromise = fetch(`${API_BASE}/api/ledger/kinds`)
     .then((res) => (res.ok ? res.json() : null))
     .catch(() => null)
-    .then((body) => kindCatalog(body));
+    .then((body) => { kindsBody = body; return kindCatalog(body); });
   return kindsPromise;
+}
+
+// 🔴 THE STRUCTURE VIEW'S OWN SESSION GUARD — a THIRD counter, for the same
+// reason the console has a second one. The three questions are independent and a
+// shared counter would make one of them silently cancel another's answer.
+let structureSession = 0;
+
+/**
+ * The type-level structure of the ledger.
+ *
+ * 🔴 PROPOSED SHAPE — NOT YET SERVED. The parallel server lane is building the
+ * aggregate; the consumed shape is pinned in `ontology_structure_core.js`'s
+ * header and changing it is an escalation, not an edit. A 404 renders the whole
+ * frame with every panel saying what it does not know, which is what lets this
+ * screen ship before the route does.
+ */
+async function runStructure(question) {
+  const mount = byId('lt-structure');
+  if (!mount) return;
+  const mine = ++structureSession;
+
+  const catalog = await loadKinds();
+  if (mine !== structureSession) return;
+
+  const paint = (body, notice) => renderStructure(document, mount,
+    structureModel({ body, kinds: catalog, kindsBody, question }), notice);
+
+  // The frame paints from the catalog alone first, so the kind registry is
+  // readable while the aggregate is still in flight.
+  paint(null, { tone: 'busy', title: '구조 집계 중…', detail: null });
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/ledger/structure`);
+  } catch (err) {
+    if (mine !== structureSession) return;
+    paint(null, { tone: 'error', title: '서버에 닿지 못했습니다', detail: String((err && err.message) || err) });
+    return;
+  }
+  if (mine !== structureSession) return;
+
+  if (!res.ok) {
+    const refusal = await readRefusal(res);
+    if (mine !== structureSession) return;
+    paint(null, {
+      tone: res.status === 404 ? 'gap' : 'error',
+      title: res.status === 404
+        ? '구조 집계 API 미배포 — 화면만 준비됨'
+        : `서버 거절 (${res.status})`,
+      detail: refusal.text,
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await res.json();
+  } catch (err) {
+    if (mine !== structureSession) return;
+    paint(null, { tone: 'error', title: '응답을 읽지 못했습니다', detail: String((err && err.message) || err) });
+    return;
+  }
+  if (mine !== structureSession) return;
+  paint(body, null);
 }
 
 // 🔴 THE SESSION GUARD. Two questions in flight resolve in whatever order the
@@ -319,8 +399,65 @@ async function run(asked, { pushUrl = true } = {}) {
 // console navigation is a real link and therefore a fresh page.
 let consoleAsked = { finding: '', slices: {} };
 
+/**
+ * Which of the page's questions the URL is asking.
+ *
+ * 🔴 ONE QUESTION = ONE URL, and that is why this is a branch on a parameter
+ * rather than a tab with state. `?view=structure` is a different question about
+ * the same ledger, so it is a different address — pasteable, back-buttonable, and
+ * costing the page no control beyond the two anchors in the header.
+ */
+function switchViews(view) {
+  const structure = view === STRUCTURE_VIEW;
+  const show = (id, on) => {
+    const node = byId(id);
+    if (node) node.hidden = !on;
+  };
+  show('lt-structure', structure);
+  show('lt-console', !structure);
+  show('lt-result', !structure);
+  const rule = document.querySelector('.lt-section-rule');
+  if (rule) rule.hidden = structure;
+  const ask = document.querySelector('.lt-ask');
+  // The lineage box stays visible in both views — it is how the operator leaves
+  // this one — but in the structure view its Enter NAVIGATES rather than renders,
+  // because the panel it would render into is not on screen.
+  if (ask) ask.hidden = false;
+  for (const a of document.querySelectorAll('[data-view-link]')) {
+    a.classList.toggle('lt-view--on', a.getAttribute('data-view-link') === (structure ? STRUCTURE_VIEW : 'ask'));
+  }
+}
+
 function boot() {
   initTheme();
+  const params = new URLSearchParams(window.location.search);
+  const structureAsked = parseStructureQuery(params);
+  const isStructure = structureAsked.view === STRUCTURE_VIEW;
+  switchViews(structureAsked.view);
+
+  if (isStructure) {
+    // 🔴 ONLY THE KIND CATALOG IS FETCHED HERE, NOT COVERAGE AND NOT THE CONSOLE.
+    // A view that quietly issues the other view's requests makes every reading of
+    // "what does this screen cost" wrong, and the console's answer would be
+    // rendered into a hidden mount where nobody could see it was stale.
+    loadKinds();
+    runStructure(structureAsked);
+    const box = byId('lt-query');
+    if (box) {
+      box.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const asked = parseQuery(box.value);
+        if (!asked.lot) return;
+        // A real navigation — the lineage answer is a different question and
+        // therefore a different URL.
+        window.location.search = `?${traceQuery(asked)}`;
+      });
+      box.focus();
+    }
+    return;
+  }
+
   // In flight from the first tick. Whichever path `run` takes below, the answer
   // to "which nothing is this" is already on its way.
   loadCoverage();
@@ -329,7 +466,6 @@ function boot() {
   loadKinds();
 
   const input = byId('lt-query');
-  const params = new URLSearchParams(window.location.search);
   const fromUrl = { lot: (params.get('lot') || '').trim(), slot: (params.get('slot') || '').trim() || null };
 
   // 🔴 THE CONSOLE RUNS ON EVERY LOAD, WITH OR WITHOUT A LOT. It is this page's

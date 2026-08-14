@@ -108,7 +108,7 @@
 | ~~`enrichment.html`~~ | ~~`src/enrichment.js`~~ | 🗄️ **[2026-08-11 `ab36fab`] 삭제됨** — 파일도 vite `rollupOptions.input` 진입점도 없다. `1e29078`이 배지·nav 링크를 먼저 걷었고(product-owner ruling — "correction happens in the grid"), 이 커밋이 페이지 자체를 지웠다. `src/enrichment.js`는 소스에 남아 있으나 **어떤 HTML도 그것을 로드하지 않는 죽은 모듈**이다(`effort_meter.js`가 그 사실을 주석으로 명시하고 정리를 별도 결정으로 미룬다). 조회 절반(참조뷰)은 아래 §3 모듈 표의 `enrichment_reference_view.js`로 이식됐다. **[`fde424c`] `/enrichment.html`을 직접 열면 404 본문이 "Enrichment 페이지 폐지됨 · 참조뷰 → 메인 화면 이력 사이드바 탭"**이라고 답한다 — 종전 문구("Please build frontend first")는 존재할 수 없는 파일을 빌드하라고 운영자를 보내는 거짓 처방이었다. 라우트 자체는 살려 뒀다(북마크가 SPA 캐치올의 `index.html`로 떨어지지 않고 명확한 답을 받도록) |
 | `graph.html` | `src/graph_viewer.js` | 지식그래프 서브그래프 뷰어(§6) |
 | `trace.html` | `src/trace.js` | 객체 중심 추적 리포트(§6) |
-| `ledger.html` | `src/ledger_trace.js` (+ `ledger_trace_core.js`·`ledger_trace_view.js`) | **원장 혈통 추적 화면**(2026-08-13 `d9b98ab` 신설 — §7). 조작자가 랏 하나(`LOT/02`·`LOT 02`도 받는다)를 치면 `GET /api/ledger/trace`의 홉을 카드 사슬로 그린다. 🔴 **복잡도 예산: 앱 전체에서 폼 컨트롤 «+1»**(빌드된 페이지에서 `querySelectorAll('input,select,textarea,button').length === 1` 실측) + 기존 메뉴의 nav 앵커 하나. **모달 없음·모드 없음·패널 없음** |
+| `ledger.html` | `src/ledger_trace.js` (+ `ledger_trace_core.js`·`ledger_trace_view.js` · `case_control_*.js` · `ontology_structure_*.js`) | **원장 화면 — 한 페이지, 질문 셋**(2026-08-13 `d9b98ab` 신설 — §7). 랏 하나(`LOT/02`·`LOT 02`도 받는다)를 치면 `GET /api/ledger/trace`의 홉을 카드 사슬로 그린다(§6.1). 같은 페이지 위쪽이 케이스-컨트롤 콘솔(§6.2), `?view=structure`가 유형 구조 뷰(§6.3). 🔴 **복잡도 예산: 앱 전체에서 폼 컨트롤 «+1»**(빌드된 페이지에서 `querySelectorAll('input,select,textarea,button').length === 1` 실측) + nav 앵커. **모달 없음·모드 없음** — 뷰 전환도 URL이지 상태가 아니다 |
 
 빌드 산출물 `dist/`는 FastAPI(:8080)가 서빙. `define`로 빌드 타임에 `import.meta.env.VITE_USER`(OS 사용자명) 주입 → `config.js`의 `CURRENT_USER`.
 
@@ -523,7 +523,7 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 §6.1과 **같은 페이지의 두 번째 절**입니다. 새 페이지도 새 모드도 새 모달도 아니고, `main`이 `#lt-console`(위·이 절)과 `#lt-result`(아래·§6.1)를 나란히 답니다. 위는 「이 불량이 얼마나 나고, 난 쪽과 안 난 쪽이 뭐가 다른가」, 아래는 「이 웨이퍼는 어디서 왔나」.
 
 - **모듈 둘 + 하네스**: `case_control_core.js`(순수 — 율·모집단·요인 판독) · `case_control_view.js`(렌더 · `document`가 인자) · `client2/tests/case_control_harness.mjs` + `tests/fixtures/case_control.json`.
-- **소비 라우트**: `GET /api/ledger/siblings?finding=&mode=intersection|contrast`(**같은 날 착지** — `server/ledger_siblings.py` + `ledger_trace_router.py:151`). 🔴 **한 엔드포인트 두 프레이밍이고 «한 번만» 부릅니다** — 응답의 `factors[]` 한 벌을 세 패널이 각각 다르게 읽습니다(현황판=축별 묶기 · 공통점=서버 순서 그대로 · 차이점=행이 «스스로 든» `enrichment_state`로 걸러 `enrichment_ci` 하한으로 정렬). 세 패널이 같은 모집단을 두고 서로 다른 말을 할 수 없는 이유가 이것입니다. ⏳ **종류 카탈로그 라우트는 아직 없습니다**(`server/finding_kinds.py`는 있고 노출 라우트가 없다) — 선택기는 「종류 목록 없음 — 기본값으로 조회」로 정직하게 강등됩니다. **`GET /api/ledger/kinds` 신설이 남은 하나이고 경계 계약이라 총괄 승인 사항입니다.**
+- **소비 라우트**: `GET /api/ledger/siblings?finding=&mode=intersection|contrast`(**같은 날 착지** — `server/ledger_siblings.py` + `ledger_trace_router.py:151`). 🔴 **한 엔드포인트 두 프레이밍이고 «한 번만» 부릅니다** — 응답의 `factors[]` 한 벌을 세 패널이 각각 다르게 읽습니다(현황판=축별 묶기 · 공통점=서버 순서 그대로 · 차이점=행이 «스스로 든» `enrichment_state`로 걸러 `enrichment_ci` 하한으로 정렬). 세 패널이 같은 모집단을 두고 서로 다른 말을 할 수 없는 이유가 이것입니다. ✅ **종류 카탈로그 라우트는 착지했습니다** — `GET /api/ledger/kinds`(`ledger_trace_router.py:206` + `server/ledger_kinds.py::catalog`). 행마다 `kind`·`label`·`atoms`·`runs`·`observed_by`·`has_denominator`·`classes`·`observation_table`을 싣고, **관측 0인 종류도 전부 실립니다**(숨기면 「없는 종류」와 구분되지 않으므로). 라우트가 없는 서버에서는 선택기가 「종류 목록 없음 — 기본값으로 조회」로 정직하게 강등됩니다.
 - ⚠️ **현황판의 두 숫자는 «같은 종류가 아닙니다»** — 머리글은 발생률(발견/`inspection_run`), 아래 축별 행은 **난 쪽 비중**(발견 건수 대비)입니다. 응답이 축별 검사 모집단을 싣지 않으므로 「B-3의 보이드율」은 **오늘 계산할 수 없고**, 화면이 분모를 지어내지 않도록 패널이 그 차이를 한 줄로 말합니다. ⏳ 축별 분모가 필요하면 서버 레인에 추가 요청 사항입니다.
 - 🔴 **이송 추적은 «길이 가변» 홉 리스트입니다** (`4dff09f` · [PHYSICS_ONTOLOGY_SETUP §2-bis](./PHYSICS_ONTOLOGY_SETUP.md)). 칩의 모든 이동이 `transferred` 사건 하나이고 걷기는 **위치 연속성**(홉 N의 `to` = 홉 N+1의 `from`)으로 잇습니다 — **「보이드→본딩→DT→코어」를 네 개의 «고정 단계»로 그리면 결함입니다.** DT n회 경유·DT→DT 재이송·재작업 반송이 전부 같은 걷기이고, 하네스 픽스처는 **DT를 두 번** 경유해 고정 단계 렌더러가 거기서 빨개집니다. 🔴 **홉마다 수량 «쌍»**(「12개 중 8개」)이 붙습니다 — DT는 **선별 이송**이라 화살표만 그리면 「웨이퍼가 통째로 지나갔다」와 화면상 구분되지 않고 **그건 틀린 그림**입니다. 쌍은 `rateReading`을 통과하므로 분자만 나갈 경로가 없고, **잔량**(유입−유출)은 양쪽이 실수일 때만 뜹니다. 🔴 **끊김은 «잇지 않고 보입니다»** — 만나지 않는 두 홉을 나란히 그리면 기록되지 않은 연결을 화면이 주장하는 것이라, 빨간 점선과 문장 한 줄로 표시합니다. ⏳ **다이 단위 바인딩(④)은 미착지**이고 화면이 그렇게 «말합니다» — 랏 수준에서 끝나는 사슬은 정직한 답이지 짧은 그림이 아닙니다.
 - **홉의 basis 배지는 §6.1의 그 렌더러 그대로입니다** — `basis: {kind, name}`를 필드에서 읽습니다. 관례 기반 홉과 실측 홉이 **같은 상태 단어**를 달기 때문에 상태에서 유도할 수 없고, 픽스처가 두 종류를 모두 실어 그 축이 채점됩니다.
@@ -536,6 +536,20 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - 🔴 **컨트롤이 0개 늘었습니다 — §6.1의 복잡도 예산이 그대로 유효합니다.** 종류 고르기·슬라이스 걸기·슬라이스 해제가 전부 **앵커**입니다(이 화면의 답이 원래 URL이므로). 페이지는 여전히 입력 하나·버튼 0개이고 `ledger_trace_harness.mjs`의 H13/H14가 손대지 않은 채 초록입니다.
 - ⚠️ **없어서 0이 아닙니다.** 카탈로그 행의 `atoms` 부재는 숫자 없음, 슬라이스의 분모 부재는 거절, 어휘가 선언했는데 이 조회에 안 나온 class는 **「미보고」** — 어느 것도 `0`으로 그려지지 않습니다. 🔴 **이 규율은 초안에서 실제로 깨져 있었고 하네스가 잡았습니다: `Number(null) === 0`이라 `Number.isFinite(Number(v))` 관용구가 「안 셌다」를 「세었더니 0」으로 뒤집었습니다.** 지금은 `numOrNull` 하나를 통과합니다.
 - ⏳ **쓰기 경로는 이 라운드에 없습니다** — `collect_request`/`fill_missing`(`POST /api/ledger/actions`)은 서버 라우트도 admin 토큰 헬퍼 공유도 아직입니다(`adminFetch`는 `admin.js` 모듈 사설이라 추출이 선행돼야 합니다). 사후 재분류(`classified_as`)도 어휘 예약뿐이라 **화면에 쓰기 경로를 만들지 않았습니다.**
+
+### 6.3 온톨로지 유형 구조 뷰 (`ledger.html?view=structure` · `src/ontology_structure_*.js`) — 2026-08-14
+
+같은 페이지의 **셋째 질문**이고, 제품 소유자가 「구조가 너무 숨겨져 있어서 UI를 어떻게 설계할지 모르겠다」고 한 그 자리입니다([SCENARIO_CONSOLE_BRIEF §0-quater](../process/SCENARIO_CONSOLE_BRIEF.md)). **인스턴스 그래프가 아니라 «유형» 그래프**입니다 — 주어 유형 × 술어 × 목적어 종류.
+
+- **모듈 둘 + 하네스**: `ontology_structure_core.js`(순수 — 파생·집계 판독·**레이아웃 기하까지**) · `ontology_structure_view.js`(DOM + 인라인 SVG · `document`가 인자) · `client2/tests/ontology_structure_harness.mjs`(90 단언) + `tests/fixtures/ontology_structure.json`.
+- 🔴 **화면 전체가 «생성»되고 그림은 어디에도 없습니다.** 선언된 골격은 어휘 시그니처의 **교차곱**(술어가 선언한 subject 타입 × 그 술어의 object kind)이고, 무게는 원장의 `GROUP BY subject_type, predicate, object_kind`입니다. **소스에 노드/엣지 목록이 있으면 실패**이고 하네스가 그것을 채점합니다 — 픽스처가 **과수원**(Orchard·Sapling·`planted_in`)이라 목록을 든 화면은 아무것도 그리지 못하고, 별도로 `vocabulary.py`의 실제 낱말 열여섯을 두 모듈 소스에서 **0건**으로 단언합니다.
+- 🔴 **엣지의 출처가 «둘»이고 시각적으로 갈립니다**(총괄 2026-08-14). ① 원장 집계 — 실선·굵기 = log(건수)·건수/기간/등급 있음 ② 선언만 — **파선**(원장 0) 또는 **점선**(집계 미보고). ③ 어휘에 없는데 원장에 있는 축은 **주황 실선 · 「미선언」**. 추적 UI의 판정 관문이 M4 기전 그래프를 **처음** 소비할 예정이라 「선언됐지만 소비자 0」이 소유자가 **찾으러 오는** 것입니다.
+- 🔴 **그래서 「선언만」은 흐리게 그리지 않습니다.** 파선이지 **약한 실선이 아니고**(굵기 2.4px 고정 — 가장 가는 실선보다 굵다), 행 배경도 죽이지 않습니다. 흐리게 하면 「덜 중요함」을 말하게 되는데 그건 이 화면의 목적과 반대입니다. **0인 선언 엣지는 절대 숨기지 않습니다.**
+- 🔴 **「측정된 0」과 「미보고」는 다른 사실이고 화면이 구분합니다.** 집계가 **배포된 테이블 위에서 실제로 돌았을 때만**(`state ∈ {ready, empty}` **그리고** 응답에 `edges` 배열이 있을 때만) 선언 축의 부재를 `0`으로 읽습니다. 그 밖에는 `미보고`이고, 기간·등급도 0건 축에서는 「원자 0 — 기간/등급 없음」이지 「미보고」가 아닙니다. 하네스는 같은 본문을 `state: absent`로만 바꿔 두 규칙이 **다른 답**을 내게 해 둡니다.
+- 🔴 **새 그래프 라이브러리 0개.** `graph_viewer.js`의 캔버스 힘-레이아웃은 **인스턴스** 그래프용(크고 미지의 노드 집합)이고, 이 그래프는 어휘라 노드가 열 몇 개이며 **전부 한국어 텍스트를 답니다**. 캔버스 텍스트는 읽기·선택·히트테스트가 전부 손수 구현이라, 여기는 손으로 짠 **인라인 SVG** + **결정적 3열 레이아웃**(주어 유형 │ 술어 │ 목적어 종류)입니다. 힘-레이아웃은 매 로드 다르게 앉아 **소유자가 한 지점을 가리켜 설명할 수 없습니다.**
+- **가독성 = 기능**: 노드 라벨 17px·본문 15px·**최소 13px**(하네스가 CSS를 훑어 13px 미만을 빨갛게 합니다). 좁은 화면에서 그래프는 **가로 스크롤**하지 글씨를 줄이지 않습니다. 실측(브라우저): 노드 상자 겹침 0 · 상자 밖으로 넘치는 텍스트 0 · 페이지 가로 오버플로 없음 · 다크 토큰 정상 해석.
+- **컨트롤 0개 추가**: 계층 필터·엣지 선택·선언 지도 링크가 전부 앵커이고, 뷰 전환도 헤더 링크 둘(`?` / `?view=structure`)입니다. 구조 뷰에서는 랏 입력의 Enter가 **렌더가 아니라 이동**입니다(그릴 패널이 화면에 없으므로).
+- ⏳ **소비 라우트 `GET /api/ledger/structure`는 아직 없습니다** — 서버 레인 병행. 소비 형태는 `ontology_structure_core.js` 헤더에 pin돼 있고 **바꾸는 것은 편집이 아니라 에스컬레이션**입니다. 404면 프레임 전체가 「구조 집계 API 미배포 — 화면만 준비됨」과 함께 각 패널이 **자기가 모르는 것을 말하며** 그려집니다. **kind 레지스트리 패널은 오늘 이미 실데이터**입니다(`GET /api/ledger/kinds`).
 
 ---
 
