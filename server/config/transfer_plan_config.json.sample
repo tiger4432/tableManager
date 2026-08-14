@@ -39,12 +39,11 @@
           }
         },
         "total_chips": {
-          "table": "dt_log",
+          "__comment": "⚠️ x/y를 «적지 마라» — map binding에서 상속된다(dt_map -> dt_x/dt_y). 선언된 역할이 파생을 이기므로 여기 틀린 철자를 쓰면 옳은 철자로 «고칠» 수 없고 «지워야만» 고쳐진다. 실제 사고 두 번: 2026-08-04(bin_map)과 2026-08-14(total_chips) — 둘 다 자리표시자 'x','y'가 dt_map에 그대로 복사됐고, 그 표에 x/y 컬럼이 없어 좌표를 못 잡아 칩 집계가 total_unknown으로 떨어졌다. lot/slot은 키 역할이라 파생되지 않으므로 «반드시» 적는다.",
+          "table": "dt_map",
           "columns": {
-            "lot": "lot",
-            "slot": "slot",
-            "x": "x",
-            "y": "y"
+            "lot": "dt_lot",
+            "slot": "dt_slot"
           }
         },
 
