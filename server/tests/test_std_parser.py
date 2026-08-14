@@ -29,6 +29,37 @@ import directory_watcher
 from directory_watcher import IngestionHandler, WorkspaceWatcher
 from std_parser import parse_std_file, is_std_supported
 
+from isolated_data_root import assert_isolated, isolate_data_root
+
+
+# ---------------------------------------------------------------------------
+# 이 파일은 운영자의 실제 config를 절대 읽지 않는다 (R-2026-08-14-A F4)
+# ---------------------------------------------------------------------------
+# 이 파일의 `process_with_retry` 테스트들은 처리된 파일이 `archives/`로 옮겨졌는지를
+# 단언한다. 그 동작의 스위치는 `ingestion_settings.json`의 `archive_processed_files`이고,
+# 그 파일은 gitignore 대상이라 **이 박스가 무슨 말을 하든 그대로 읽힌다** — 실제로
+# 이 박스에는 `false`가 들어 있어 4건이 상시 빨강이었다. 두 라운드 연속 다른 레인들이
+# 「내 것 아님」을 증명하는 데 시간을 썼다.
+#
+# 파일 스코프 autouse다. 공용 conftest를 바꾸지 않으므로 다른 레인의 파일은 그대로이고,
+# 이 파일만 따로 실행해도(`pytest server/tests/test_std_parser.py`) 격리가 살아 있다 —
+# 셸에서 `ASSY_DATA_ROOT`를 export하는 방식과의 차이가 그것이다.
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path, monkeypatch):
+    """빈 임시 config 디렉터리. 설정 파일 부재 = 문서화된 기본값."""
+    return isolate_data_root(monkeypatch, tmp_path)
+
+
+def test_this_file_cannot_read_the_operator_s_config(isolated_config):
+    """격리 자체를 못 박는다 — 격리가 풀리면 이 테스트가 **먼저** 운다.
+
+    이것이 없으면 격리가 조용히 사라졌을 때 증상이 「아카이브 단언 4건이 빨강」으로만
+    나타나고, 그 빨강은 지난 두 라운드가 그랬듯 인제션 코드의 결함으로 읽힌다.
+    """
+    assert_isolated(isolated_config)
+    assert directory_watcher.archive_processed_files_enabled() is True, (
+        "기본값은 '옮긴다'이고, 이 파일의 단언들은 그 기본값 위에 서 있다")
+
 
 INVENTORY_INFO = {
     "business_key": "part_no",

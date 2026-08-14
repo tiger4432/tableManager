@@ -32,6 +32,28 @@ from directory_watcher import (
     resolve_workspace_root,
 )
 
+from isolated_data_root import assert_isolated, isolate_data_root
+
+
+# ---------------------------------------------------------------------------
+# 이 파일은 운영자의 실제 config를 절대 읽지 않는다 (R-2026-08-14-A F4)
+# ---------------------------------------------------------------------------
+# 근거는 `test_std_parser.py`의 같은 블록과 동일하다 — 이 파일도 `process_with_retry`를
+# 태우고 처리 후 파일이 `archives/`로 갔는지를 단언하는데, 그 스위치인
+# `ingestion_settings.json`의 `archive_processed_files`는 gitignore 대상 파일이 쥐고 있다.
+# 이 박스의 값이 `false`라 2건이 상시 빨강이었다.
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path, monkeypatch):
+    """빈 임시 config 디렉터리. 설정 파일 부재 = 문서화된 기본값."""
+    return isolate_data_root(monkeypatch, tmp_path)
+
+
+def test_this_file_cannot_read_the_operator_s_config(isolated_config):
+    """격리가 풀리면 이 테스트가 **먼저** 운다 — 아카이브 단언들보다 먼저."""
+    assert_isolated(isolated_config)
+    assert directory_watcher.archive_processed_files_enabled() is True, (
+        "기본값은 '옮긴다'이고, 이 파일의 단언들은 그 기본값 위에 서 있다")
+
 
 TABLE_INFO = {
     "business_key": "part_no",

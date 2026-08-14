@@ -19,11 +19,16 @@ what `_no_cell_refusal`'s `key_ambiguous` names.
    before, 72 failed with the gate removed).
 
 WHAT IS DELIBERATELY NOT HERE
-- `_count_cells_bulk`'s VALUES. `test_map_alignment_references.py` and
+- `_count_cells_bulk`'s VALUES in bulk. `test_map_alignment_references.py` and
   `test_map_alignment_worklist.py` already ring on a count that is off by one, so a
   "bulk equals per-candidate" test here would be a second spelling of coverage that
-  exists. Only the DECLINE - the case where the two read different questions - is
-  pinned below, because that one rang nothing.
+  exists. Only the EXCLUSION - the case where the two read different questions - is
+  pinned below, because that one rang nothing. (It was a whole-table DECLINE until
+  R-2026-08-14-A F2; one bad id cost every other candidate on that table its grouped
+  read, and the tests here now pin the per-map shape instead. The caller half - that
+  an excluded id still reaches the operator with its honest per-candidate count -
+  lives in `test_map_alignment_references.py`, next to the prefetch test it shares a
+  fixture with.)
 - Cell ORDER. 🔴 THIS PARAGRAPH DESCRIBED A DEFECT, NOT A DESIGN, AND R7 CLOSED IT
   (2026-08-13). It used to read "Neither the loop nor the batch declares an `ORDER BY`,
   and the truncated read is already known to be nondeterministic about which rows
@@ -53,6 +58,7 @@ SRC = "abr_test_log"
 DERIVED = "abr_test_unit"
 MAPT = "abr_test_map"
 FLOOR = "abr_test_floor"
+FLOOR1 = "abr_test_floor1"      # the same shape keyed on ONE column
 
 PHYS = {"phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
         "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0}
@@ -89,6 +95,14 @@ TABLES = {
             "column_types": {"cell_key": "string", "lot": "string", "slot": "string",
                              "x": "number", "y": "number", "val": "string"},
             "map_key_columns": KEY_COLS},
+    # 🔴 The same floor shape with ARITY ONE. An id carrying no separator is CORRECT
+    #    here, so this table is what stops a repair from counting separators without
+    #    asking how many the table declares. Whoever writes the rule as "must contain a
+    #    `_`" turns this table's healthy ids into excluded ones.
+    FLOOR1: {"business_key": "cell_key",
+             "column_types": {"cell_key": "string", "job": "string",
+                              "x": "number", "y": "number", "val": "string"},
+             "map_key_columns": ["job"]},
     # Product-owned, copied verbatim from `table_config.json` for the reason every other
     # alignment fixture copies it: `Base.metadata` outlives one test, so a fixture that
     # invents a different shape breaks the first run and passes every run after it.
@@ -324,7 +338,7 @@ def test_a_null_map_key_keeps_the_empty_cell_list_it_has_today(env):
 
 
 # ---------------------------------------------------------------------------
-# 5. the bulk cell count declines rather than answer a different question
+# 5. the bulk cell count excludes an id it cannot answer - that id ALONE
 # ---------------------------------------------------------------------------
 
 def _seed_floor(db, rows):
@@ -336,27 +350,98 @@ def _seed_floor(db, rows):
     db.commit()
 
 
-def test_the_bulk_cell_count_declines_for_an_id_that_does_not_decompose(env):
-    """`map_key_parts` falls back to matching the WHOLE id against the FIRST key column
-    when an id carries too few separators. The per-candidate `COUNT(*)` then asks
-    "how many rows have `lot = <id>`", which is not the grouped `(lot, slot)` key at all
-    - it is a different question with a different answer.
+def _seed_floor1(db, rows):
+    """`rows` = [(job, x, y), ...] into the SINGLE-key floor table."""
+    f = models.DYNAMIC_TABLES[FLOOR1]
+    for i, (job, x, y) in enumerate(rows):
+        db.add(f(row_id="g%d" % i, business_key_val="g%d" % i, cell_key="g%d" % i,
+                 job=job, x=x, y=y, val="1"))
+    db.commit()
 
-    The numbers are the point: the honest per-candidate answer here is 2, and a bulk read
-    that answered anyway would report 0. `cell_count` is what lets an operator tell
-    "no cells at all" apart from "has cells but they do not read", so a fabricated 0 is
-    not a smaller number, it is the wrong one of those two states.
+
+def test_an_id_that_does_not_decompose_is_excluded_alone(env):
+    """🔴 THE RULING (R-2026-08-14-A F2). One id that cannot be taken apart used to
+    decline the count for the WHOLE table, so every healthy candidate on it paid the
+    per-candidate scan the batch exists to remove. The exclusion is now per map, the same
+    shape `_source_rows_by_map` already had (`b510df2`).
+
+    THE FIXTURE HAS BOTH KINDS ON ONE TABLE ON PURPOSE. With only the bad id present the
+    old rule and the new rule return the same thing - `{}` and nothing covered - so such a
+    fixture decides nothing. The two healthy ids in the SAME call are what separates them:
+    the old rule returns `({}, False)` here, and `L1_01` below is the assertion that fails
+    on it.
+
+    `map_key_parts` falls back to matching the WHOLE id against the FIRST key column when
+    an id carries too few separators, so for `nounderscore` the per-candidate `COUNT(*)`
+    asks "how many rows have `lot = 'nounderscore'`" - a different question from the
+    grouped `(lot, slot)` key, with a different answer. The numbers are the point: the
+    honest per-candidate answer is 2 and a bulk read that answered anyway would report 0.
+    `cell_count` is what lets an operator tell "no cells at all" apart from "has cells but
+    they do not read", so a fabricated 0 is not a smaller number, it is the wrong one of
+    those two states.
     """
     _seed_floor(env, [("nounderscore", "01", 1, 1), ("nounderscore", "02", 2, 2),
-                      ("L1", "01", 3, 3)])
+                      ("L1", "01", 3, 3), ("L2", "02", 4, 4), ("L2", "02", 5, 5)])
 
-    # Positive control: the bulk read is willing and correct on an id that decomposes.
-    ok_counts, ok = ma._count_cells_bulk(env, {}, FLOOR, ["L1_01"])
-    assert ok is True and ok_counts == {"L1_01": 1}
+    counts, servable = ma._count_cells_bulk(
+        env, {}, FLOOR, ["L1_01", "nounderscore", "L2_02"])
 
-    counts, complete = ma._count_cells_bulk(env, {}, FLOOR, ["nounderscore"])
-    assert complete is False, (
-        "the grouped key cannot answer the per-candidate predicate for this id")
-    assert counts == {}
+    assert servable == {"L1_01", "L2_02"}, (
+        "one undecomposable id must not cost its neighbours the grouped read")
+    assert counts == {"L1_01": 1, "L2_02": 2}
+    assert "nounderscore" not in counts, (
+        "an id outside `servable` must carry NO number here - a 0 sitting in the dict is "
+        "one `counts.get(id, 0)` away from being served as an empty floor")
     # What the caller falls back to, and what a served answer would have contradicted.
     assert ma._count_cells(env, {}, FLOOR, "nounderscore") == 2
+
+
+def test_a_single_key_floor_never_calls_a_separatorless_id_undecomposable(env):
+    """🔴 THE TRAP THE RULING NAMES. "map_id without a separator" is a defect only where
+    the DECLARED arity demands one. This table declares one key column, so `AAA` is an
+    ordinary id and `MID_01` is an ordinary id too - `map_key_parts` gives the whole
+    string to the single column either way. A rule that counted separators instead of
+    reading the declaration would exclude every id on this table and send the operator to
+    rename maps that were fine.
+
+    Arity is read from the RESOLVED binding, per table. Asserted here rather than assumed,
+    because that is the input the exclusion is computed from.
+    """
+    b = map_overlay.resolve_binding({}, FLOOR1)
+    assert b["key_columns"] == ["job"], "premise: this floor is keyed on ONE column"
+
+    _seed_floor1(env, [("AAA", 1, 1), ("AAA", 2, 2), ("MID_01", 3, 3)])
+    counts, servable = ma._count_cells_bulk(env, {}, FLOOR1, ["AAA", "MID_01", "GONE"])
+
+    assert servable == {"AAA", "MID_01", "GONE"}, (
+        "no id on a single-key floor can be undecomposable")
+    assert counts == {"AAA": 2, "MID_01": 1, "GONE": 0}, (
+        "`GONE` is covered and genuinely empty - which is exactly the state an excluded "
+        "id must NOT be confused with")
+
+
+def test_an_id_with_extra_separators_is_covered_and_agrees_with_the_loop(env):
+    """The other side of the arity question, and the reason the exclusion is "too FEW
+    parts" rather than "not exactly `n` parts". `map_key_parts` lets the last column
+    absorb the remainder, so `A_B_C` on a two-column key decomposes into exactly two parts
+    - the wrong two, but the SAME wrong two the per-candidate `COUNT(*)` binds. Both
+    answer 0, so there is nothing to exclude and excluding it would only cost a scan.
+    """
+    _seed_floor(env, [("A_B", "C", 1, 1), ("L1", "01", 3, 3)])
+
+    counts, servable = ma._count_cells_bulk(env, {}, FLOOR, ["A_B_C", "L1_01"])
+    assert "A_B_C" in servable and counts["A_B_C"] == 0
+    assert ma._count_cells(env, {}, FLOOR, "A_B_C") == 0, (
+        "the per-candidate predicate binds lot='A', slot='B_C' and finds nothing either "
+        "- if this ever stops being true the batch is no longer the loop for this id")
+
+
+def test_a_table_level_obstacle_still_declines_the_whole_table(env):
+    """Not every decline became per-map, and it must not. "This table has no model" is a
+    property of the TABLE - it is not true of one candidate and false of its neighbour, so
+    no per-map answer exists on it and the caller counts every candidate the old way. An
+    empty `servable` is how that is said, and it is the same sentence as before.
+    """
+    assert "abr_test_no_such_table" not in models.DYNAMIC_TABLES
+    counts, servable = ma._count_cells_bulk(env, {}, "abr_test_no_such_table", ["L1_01"])
+    assert (counts, servable) == ({}, set())

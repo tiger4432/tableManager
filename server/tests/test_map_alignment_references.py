@@ -355,6 +355,47 @@ def test_the_prefetched_size_replaces_the_query_and_not_the_judgement(env, monke
     assert set(told.values()) == {None}, "control: nothing was known in advance"
 
 
+def test_one_unaddressable_id_does_not_cost_the_table_its_grouped_count(env, monkeypatch):
+    """🔴 R-2026-08-14-A F2, at the caller. `_count_cells_bulk` used to answer
+    all-or-nothing: one registered `map_id` that cannot be taken apart into the key
+    columns its table declares sent EVERY candidate on that table back to the
+    per-candidate `COUNT(*)` the grouped read exists to remove. The exclusion is now per
+    map, and this is where that becomes visible - `_count_cells` is called for the bad id
+    and for nothing else.
+
+    THE FIXTURE CARRIES BOTH KINDS ON ONE TABLE. With only the bad id registered, the old
+    rule and the new one behave identically (nothing is covered either way), so such a
+    fixture proves nothing. `GOOD_A` and `EMPTY_B` in the same catalog pass are what
+    separate them: under the old rule `counted` holds all three.
+
+    And the excluded id is not merely skipped - it must still reach the operator with a
+    number, the honest per-candidate one. `NOSEP` is registered under an id that binds
+    `product='NOSEP'` alone, which matches its two rows; a batch that answered anyway
+    would have reported 0 and drawn an empty floor over a populated one.
+    """
+    _seed_floor(env, "GOOD", "A", [(3, 3), (4, 3)])            # resolves
+    _seed_floor(env, "EMPTY", "B", [])                          # spec row, no cells
+    _seed_floor(env, "NOSEP", "X", [(5, 5), (6, 5)], map_id="NOSEP")
+
+    counted = []
+    real_count = ma._count_cells
+
+    def spy_count(db, cfg, table, map_id):
+        counted.append(map_id)
+        return real_count(db, cfg, table, map_id)
+
+    monkeypatch.setattr(ma, "_count_cells", spy_count)
+    cat = ma.resolve_reference_catalog(env, {})
+
+    assert counted == ["NOSEP"], (
+        "only the id the grouped read cannot address may pay for its own COUNT(*)")
+    sizes = {i["map_id"]: i["cell_count"] for i in cat["items"]}
+    sizes.update({n["map_id"]: n["cell_count"] for n in cat["not_offered"]})
+    assert sizes == {"GOOD_A": 2, "EMPTY_B": 0, "NOSEP": 2}, (
+        "the excluded id keeps the per-candidate answer; 0 here would be the wrong one "
+        "of the two states `cell_count` exists to tell apart")
+
+
 def test_a_declared_pointer_with_no_spec_row_is_not_a_candidate_at_all(env, client):
     """The eight declared `valid_die_ref` pointers that resolve zero times are still not
     offered, and they are not even examined: candidacy starts at the spec row."""

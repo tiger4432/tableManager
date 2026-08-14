@@ -5190,8 +5190,10 @@ def _seed_cell_counts(cache: dict, table: str, counts: dict):
        (3.0 ms cell read + 3.9 ms count) = 1.59 s of a 1.91 s worklist page.
 
     ⚠️ Only ever seed from a source that answers the SAME predicate. Today that
-       is `_count_cells_bulk` and only when it reports `complete` - it declines
-       rather than guess precisely so that this seeding stays sound.
+       is `_count_cells_bulk`, and only for the ids it reports as `servable` -
+       it leaves an id out rather than guess its count, precisely so that this
+       seeding stays sound. Seeding an id the batch did not cover would publish
+       a fabricated size to every later read in the request.
     """
     if cache is None or not counts:
         return
@@ -6360,20 +6362,26 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
                                % map_overlay.META_TABLE)
         if len(rows) > remaining:
             truncated, rows = True, rows[:remaining]
-        # Sizes for this floor table's whole candidate set, once. `counts_ok`
-        # false means the bulk read declined and each candidate is counted the
-        # way it used to be - same query, same cost, only for this table.
-        counts, counts_ok = _count_cells_bulk(db, cfg, ftable, [r[0] for r in rows])
+        # Sizes for this floor table's candidate set, once. `counts_servable` is
+        # the set of ids that one grouped read COVERS; anything outside it is
+        # counted the way it used to be - same query, same cost, and only for
+        # the ids it applies to. It used to be a whole-table boolean, so a
+        # single registration whose id could not be taken apart sent every other
+        # candidate on that table back to the per-candidate scan.
+        counts, counts_servable = _count_cells_bulk(db, cfg, ftable, [r[0] for r in rows])
         # 🔴 이 수를 payload에만 쓰고 버리면 **아래 루프가 같은 수를 후보마다 다시 판다.**
         #    실측(개발 박스): 후보 201개가 `no_cells`로 거절되는데, 그 거절 하나마다
         #    `core_wafer_map`(24,749행, 맵 키에 인덱스 없음) 전체 스캔이 **두 번** 돌았다 —
         #    셀 읽기 3.0 ms + 개수 세기 3.9 ms. 판정은 그대로 두고 **수의 출처만** 여기로
         #    모은다(§_seed_cell_counts).
-        if counts_ok:
+        if counts_servable:
             _seed_cell_counts(ref_cache, ftable, counts)
 
-        def _size(map_id, _c=counts, _ok=counts_ok, _t=ftable):
-            return _c[map_id] if _ok else _count_cells(db, cfg, _t, map_id)
+        def _size(map_id, _c=counts, _s=counts_servable, _t=ftable):
+            # `in _s`, never `_c.get(map_id, 0)`: an id the batch does not cover
+            # has NO answer here, and a default 0 would be the wrong one of the
+            # two states `cell_count` exists to tell apart (§_count_cells_bulk).
+            return _c[map_id] if map_id in _s else _count_cells(db, cfg, _t, map_id)
 
         for (map_id,) in rows:
             examined += 1
@@ -6410,7 +6418,7 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
 
 
 def _count_cells_bulk(db, cfg: dict, table: str, map_ids):
-    """Every candidate's cell count in **one** `GROUP BY`. `(counts, complete)`.
+    """Every candidate's cell count in **one** `GROUP BY`. `(counts, servable)`.
 
     🔴 This is a payload field, not a judgement. `_load_reference` decides
        whether a floor resolves and it is deliberately the only thing that does
@@ -6419,17 +6427,45 @@ def _count_cells_bulk(db, cfg: dict, table: str, map_ids):
        "has cells but they do not read". Batching the count therefore does not
        create a second judge - the judge is untouched.
 
-    🔴 Cost: the catalog ran one `COUNT(*)` per candidate and the floor tables
-       carry no index on their map-key columns, so each one was a full scan of
-       the floor table. Measured on `assy_qa`: 200 candidates x 3.9 ms = 0.78 s
-       of a 1.73 s worklist page, for a number that one grouped scan answers for
-       all of them at once. The count is per *candidate*, so the loop's cost was
-       `candidates x floor_rows` - it got worse from both ends.
+    🔴 Cost: the catalog ran one `COUNT(*)` per candidate. Measured on `assy_qa`
+       when neither floor table carried an index on its map-key columns: 200
+       candidates x 3.9 ms = 0.78 s of a 1.73 s worklist page, for a number that
+       one grouped scan answers for all of them at once. The count is per
+       *candidate*, so the loop's cost was `candidates x floor_rows` - it got
+       worse from both ends. (Since then `core_wafer_map` gained
+       `idx_core_wafer_map_map_key (core_lot, core_slot)`, so its fallback is an
+       index-only scan; `valid_die_ref` still sequential-scans. The per-candidate
+       read is therefore no longer uniformly a full scan, and a claim that it is
+       should be re-measured rather than repeated.)
 
-    🔴 `complete=False` is **decline**, not "all zero". The caller must then ask
-       per candidate; a zero invented here would read to the operator as an
+    🔴 `servable` is the set of map ids this answer **covers**, and it is the
+       same word `_source_rows_by_map` uses for the same reason (`b510df2`). An
+       id missing from it means "count this one the old way", never "this map
+       has zero cells": a zero invented here would read to the operator as an
        empty floor, which is one of the two states this field exists to tell
-       apart.
+       apart. A caller must therefore key off `servable`, never
+       `counts.get(map_id, 0)`.
+
+    🔴 **THE GATE IS PER MAP, NOT PER TABLE.** It used to be per table: one
+       registration whose id could not be taken apart declined the whole floor,
+       and every other candidate on it paid the per-candidate scan the batch
+       exists to remove. One bad row is a naming defect in one row; making its
+       neighbours pay for it is a rule defect. Only conditions that are
+       properties of the TABLE stay all-or-nothing below (no model, no binding,
+       a missing or non-textual key column) - those cannot be true of one map
+       and false of its neighbour.
+
+    🔴 **Arity is read per table and is never assumed to be two.** `n` comes
+       from the RESOLVED binding (`_binding_of` -> `map_overlay.resolve_binding`,
+       where a declared `table_bindings[...].columns.key_columns` outranks
+       `table_config.map_key_columns`), so a single-key floor is judged as a
+       single-key floor. With `n == 1` `map_key_parts` always returns exactly
+       one part, so an id carrying no separator at all is CORRECT there and this
+       function must never exclude it. Measured 2026-08-14 on the development
+       box: of the two tables `floor_tables()` reaches, `valid_die_ref` had 0
+       registered ids that cannot be taken apart, and `core_wafer_map` had 3 of
+       204 - all three synthetic (`SYN-CORE-WAFER-0*`). Three rows were costing
+       the other 201 their grouped read.
 
     Fast path only where the grouped key is provably the per-candidate
     predicate: `build_key_filters` compares each key column against
@@ -6441,7 +6477,7 @@ def _count_cells_bulk(db, cfg: dict, table: str, map_ids):
     from sqlalchemy import func as _func, String as _String
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
-        return {}, False
+        return {}, set()
     try:
         b = _binding_of(cfg, table)
         key_cols = b.get("key_columns") or ["lot", "slot"]
@@ -6449,37 +6485,61 @@ def _count_cells_bulk(db, cfg: dict, table: str, map_ids):
             key_cols = [key_cols]
         attrs = [getattr(model, c, None) for c in key_cols]
         if any(a is None for a in attrs):
-            return {}, False
+            return {}, set()
         if any(not isinstance(getattr(a, "type", None), _String) for a in attrs):
-            return {}, False
+            return {}, set()
         n = len(attrs)
         rows = db.query(*attrs, _func.count()).group_by(*attrs).all()
     except Exception as e:                      # noqa: BLE001 - decline, do not guess
         logger.error("[MapAlignment] bulk cell count failed (%s): %s", table, e)
-        return {}, False
+        return {}, set()
     by_key = {}
     for r in rows:
         parts = tuple(r[:n])
         if any(v is None for v in parts):
             continue
         by_key[tuple(str(v) for v in parts)] = int(r[n])
-    out = {}
+    out, servable, excluded = {}, set(), []
     for map_id in map_ids:
         try:
             parts = map_overlay.map_key_parts(b, map_id)
         except Exception:                       # noqa: BLE001
-            return {}, False
+            excluded.append(map_id)
+            continue
         if len(parts) != n:
             # `map_key_parts` falls back to matching the whole id against the
-            # FIRST key column when an id carries too few separators, so the
-            # per-candidate predicate is not the grouped key at all. Decline the
-            # whole table rather than answer a different question quietly.
-            return {}, False
+            # FIRST key column when an id carries too few separators, so for
+            # THIS id the per-candidate predicate is not the grouped key at all.
+            # Leave it out of `servable` - its neighbours are unaffected, and
+            # the caller counts this one the way it always did.
+            #
+            # Note what this does NOT catch, deliberately: an id with too MANY
+            # separators still decomposes into exactly `n` parts, because
+            # `map_key_parts` lets the last column absorb the rest. Such an id
+            # simply misses in `by_key` and gets 0 - which is the same 0 the
+            # per-candidate `COUNT(*)` returns, since it binds the same wrong
+            # parts. Same answer, so nothing to exclude.
+            excluded.append(map_id)
+            continue
         want = tuple("" if cv is None else str(cv)
                      for cv in (map_overlay.canonical_bind_value(table, name, val)
                                 for name, val in parts))
         out[map_id] = by_key.get(want, 0)
-    return out, True
+        servable.add(map_id)
+    if excluded:
+        # Named, not just counted. These are registrations whose `map_id` cannot
+        # address the key columns its own table declares, and nothing else on the
+        # screen says so - the operator sees an ordinary `cell_count` because the
+        # per-candidate fallback answers honestly. Fix the names and these rejoin
+        # the one grouped read.
+        logger.warning(
+            "[MapAlignment] bulk cell count covers %d/%d candidate(s) on %s; %d "
+            "map_id(s) do not decompose into the %d declared key column(s) %s "
+            "and are counted one at a time: %s%s",
+            len(servable), len(servable) + len(excluded), table, len(excluded),
+            n, key_cols, ", ".join(str(m) for m in excluded[:5]),
+            "" if len(excluded) <= 5 else " (+%d more)" % (len(excluded) - 5))
+    return out, servable
 
 
 def _count_cells(db, cfg: dict, table: str, map_id: str):
