@@ -869,8 +869,14 @@ class MultiDiscoveryScheduler:
                 # 3. 주간 config 스냅샷 (수집기가 아닌 유지보수 작업 — maybe_backup_configs 참조)
                 self.maybe_backup_configs()
 
-                # 4. 그래프 고아 노드 스윕 (같은 계열의 유지보수 작업 — maybe_sweep_graph_orphans 참조)
-                self.maybe_sweep_graph_orphans()
+                # 4. ⚰️ [R-2026-08-14-H] 그래프 고아 노드 스윕 호출이 여기 있었다.
+                # 스윕의 «대상»이 은퇴했다. 그리고 이 스케줄러는 그래프 워커와 달리
+                # 스택에 남으므로, 이 한 줄을 두면 은퇴가 성립하지 않는다:
+                # `graph_orphans.run_scheduled`는 첫 동작으로 `ensure_graph_tables`를
+                # 부르고, 그것이 DROP된 세 표를 빈 채로 되살린다. 살아남은
+                # 프로세스가 죽은 저장소를 복원하는 이 경로가, 이번 판정에서
+                # 「워커만 멈추면 된다」가 틀린 이유다.
+                # 스윕 메서드와 `graph_orphans` 모듈은 판정 ④의 코드 제거 라운드 몫.
 
                 time.sleep(self.check_interval)
         except KeyboardInterrupt:

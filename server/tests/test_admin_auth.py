@@ -1283,6 +1283,16 @@ class TestInternalCallsNeverConsultProxyConfiguration:
         Same shape, same defect: httpx also honours HTTP_PROXY by default. Fixing
         only the three worker senders would have left a fourth loopback hop that
         fails identically and surfaces as a graph-sync error with a healthy worker.
+
+        ⚠️ [R-2026-08-14-H] THIS TEST IS NOW GREEN FOR A STALE REASON. It reads
+        the SOURCE of `manual_graph_sync`, and that source still contains
+        `trust_env=False` - but the function raises `_graph_branch_retired()`
+        before reaching it, so the loopback hop it describes no longer happens
+        and :8090 has no listener. It is left in place, and not rewritten,
+        because the route body and this assertion have to die in the SAME change:
+        ruling item ④ (retire the old-graph-only code paths) owns both. A test
+        that passes by inspecting unreachable code is not evidence about running
+        behaviour, and it must not be cited as such in the meantime.
         """
         import inspect
 

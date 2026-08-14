@@ -481,8 +481,31 @@ def test_reload_entry_point_rereads_the_file_from_disk(sweep_env, onto_files, mo
 
 # ---------------------------------------------------------------------------
 # 7) item (3) - rejected mappings are on a surface, not only in a log
+#
+# ⚰️ [R-2026-08-14-H] THE SURFACE IS GONE. `GET /graph/mapping-summary` now
+# refuses with 410, so the five tests below assert a response shape that no
+# longer exists. They are skipped rather than deleted for the reason given at
+# the top of `test_graph_viewer_api.py`: the route body and its description die
+# together in ruling item ④.
+#
+# 📌 Worth carrying forward when that round runs: the PROPERTY these five pinned
+# is not "the summary has these fields" but **"a declaration that failed to load
+# is visible somewhere other than a log"** - because a renamed column silently
+# deletes a table's ontology, and success counts cannot tell "did not grow" from
+# "died". The ledger's declaration surface owes the same guarantee; R-2026-08-13-G
+# already builds a tab that shows `config.validate()` results and the
+# declaration-vs-cursor hash split. That is where this property should land.
+#
+# The rest of this file (hot reload, orphan sweep) is UNAFFECTED and still runs -
+# only this section touches the retired HTTP surface.
 # ---------------------------------------------------------------------------
 
+_MAPPING_SUMMARY_RETIRED = pytest.mark.skip(
+    reason="R-2026-08-14-H retired GET /graph/mapping-summary (410 "
+           "old_graph_branch_retired); removed with the route body in ruling item 4")
+
+
+@_MAPPING_SUMMARY_RETIRED
 def test_mapping_summary_lists_the_loaded_tables(client, sweep_env):
     body = client.get("/graph/mapping-summary").json()
     entry = next(t for t in body["tables"] if t["table"] == "sweep_test_bonding")
@@ -496,6 +519,7 @@ def test_mapping_summary_lists_the_loaded_tables(client, sweep_env):
     assert body["source"]["exists"] is True
 
 
+@_MAPPING_SUMMARY_RETIRED
 def test_mapping_summary_reports_a_renamed_column_with_its_reason(client, sweep_env, onto_files):
     """The exact silent failure: `ontology_config` logs and skips, and the success
     count merely stops growing."""
@@ -511,6 +535,7 @@ def test_mapping_summary_reports_a_renamed_column_with_its_reason(client, sweep_
     assert "slot_renamed" in r["reason"]
 
 
+@_MAPPING_SUMMARY_RETIRED
 def test_mapping_summary_reports_an_unreadable_file(client, sweep_env, tmp_path, monkeypatch):
     bad = tmp_path / "broken.json"
     bad.write_text("{ this is not json", encoding="utf-8")
@@ -522,6 +547,7 @@ def test_mapping_summary_reports_an_unreadable_file(client, sweep_env, tmp_path,
     assert "could not read" in body["rejected"][0]["reason"]
 
 
+@_MAPPING_SUMMARY_RETIRED
 def test_mapping_summary_reports_a_v1_format_file(client, sweep_env, onto_files):
     """A v1 file yields zero v2 mappings — identical to an empty file on a surface
     that only counts successes."""
@@ -533,6 +559,7 @@ def test_mapping_summary_reports_a_v1_format_file(client, sweep_env, onto_files)
     assert {r["table"] for r in body["rejected"]} == {"default", "tables"}
 
 
+@_MAPPING_SUMMARY_RETIRED
 def test_mapping_summary_reports_a_missing_file_as_absence_not_rejection(
         client, sweep_env, tmp_path, monkeypatch):
     monkeypatch.setattr(ontology_config, "ONTOLOGY_PATH", str(tmp_path / "nope.json"))

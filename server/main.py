@@ -115,7 +115,20 @@ def bootstrap_database_schema(bind=None):
         context="boot-time DDL (Base.metadata.create_all)",
         production_url=DEFAULT_PG_URL,
     )
-    models.Base.metadata.create_all(bind=target)
+    # 🔴 [R-2026-08-14-H] 은퇴한 그래프 표는 부팅이 다시 만들지 않는다.
+    # 이게 없으면 DROP 스크립트는 «아무 일도 하지 않은 것»이 된다: 다음 재기동의
+    # create_all이 세 표를 빈 채로 되살리고, 뷰어는 「그래프가 아직 비어 있습니다」를
+    # 띄운다 — 즉 「은퇴했다」가 「아직 안 쌓였다」로 둔갑한다. 판정이 순서를 못 박아
+    # 가며 막으려던 부정직한 중간 상태가 정확히 이 모양이다.
+    # 클래스 자체는 남겨 둔다(판정 ④가 자기 라운드에서 걷어낸다). 여기서 «메타데이터를
+    # 변형»하지 않고 이 호출에서만 제외하는 이유는, `Base.metadata`가 테스트 픽스처가
+    # 표를 만드는 통로이기도 하기 때문이다 — 공유 메타데이터를 지우면 은퇴와 무관한
+    # 그래프 단위 테스트가 「no such table」로 죽는다.
+    models.Base.metadata.create_all(
+        bind=target,
+        tables=[t for t in models.Base.metadata.sorted_tables
+                if t.name not in RETIRED_GRAPH_TABLES],
+    )
     try:
         models.sync_dynamic_tables_schema(target)
     except Exception as e:
@@ -2974,8 +2987,16 @@ class GraphSyncRequest(BaseModel):
 @app.post("/api/graph/sync")
 async def manual_graph_sync(req: Optional[GraphSyncRequest] = None, db: Session = Depends(get_db)):
     """관리자 수동 트리거 그래프 DB 동기화 API (상시 가동 GraphSync 서버 호출 위임)"""
+    # ⚰️ R-2026-08-14-H — 아래는 도달 불가. 이것은 «읽기»가 아니라 사본을 만드는
+    # 파이프라인으로 들어가는 «쓰기» 진입점이므로, 조회 라우트들과 같은 라운드에
+    # 같이 막는다. 대상 워커(:8090)는 스택에서 빠졌으니 통과시켜 봐야 503이고,
+    # 503은 「잠깐 죽었다」로 읽혀 운영자를 재기동으로 보낸다 — 그 재기동은 이제
+    # 아무것도 되살리지 않는다. 은퇴는 은퇴라고 말해야 한다.
+    # (`_graph_branch_retired`는 이 함수보다 아래에 정의되지만 이름 해석은 호출
+    #  시점이라 문제되지 않는다.)
+    raise _graph_branch_retired()
     import httpx
-    
+
     table_name = req.table_name if req else "all"
     row_ids = req.row_ids if req and req.row_ids else []
     
@@ -3024,7 +3045,62 @@ async def manual_graph_sync(req: Optional[GraphSyncRequest] = None, db: Session 
             )
 
 
+# ================== 구 그래프 갈래 은퇴 — 판정 R-2026-08-14-H ==================
+# 소유자 결정(2026-08-14): 사본을 만들던 파이프라인(추출 → 머티리얼라이즈 → 저장)을
+# 폐기한다. `graph_nodes`/`graph_edges`/`graph_sync_state`는 DROP되고,
+# `graph_sync_worker`는 프로세스 스택에서 빠졌다. 근거는 실측이었다: 워커에
+# `ledger` 참조가 0건이고 `server/ledger/`에 그래프 결합이 0건 — 두 갈래가 같은 소스
+# 표를 각자 읽으면서 서로를 몰랐고, 원장이 개체 층인데 옛 파이프라인이 사본을 하나 더
+# 들고 있었다.
+#
+# 🔴 왜 라우트를 «지우지» 않고 거절로 바꾸는가 — 두 가지 이유가 있고 둘 다 실측이다.
+#   ① 이 앱의 정적 catch-all(`@app.get("/{file_name:path}")`)은 «없는 경로에
+#      HTML을 200으로» 돌려준다. 라우트를 삭제하면 `/graph/stats`가 404가 아니라
+#      index.html 200이 되고, 클라의 `res.ok`가 참이 되어 JSON 파싱에서 터진다 —
+#      은퇴가 «알 수 없는 오류»로 보이는, 이 판정이 정확히 금지한 부정직한 상태다.
+#   ② 판정 ④에 따라 «구 그래프 전용 코드 경로 제거»는 자기 라운드를 갖는다. 여기서는
+#      진입만 막고 몸통은 다음 라운드가 걷어낸다.
+#
+# 410이지 404가 아니다. 404는 「그런 것은 없다」이고 410은 「있었고, 의도적으로
+# 은퇴시켰다」이다. 이 화면을 다시 여는 사람이 알아야 하는 것은 후자다. 판정문의
+# 낱말은 "404"였고 이 선택은 그 letter에서 벗어나므로 보고서에 명시한다.
+RETIRED_GRAPH_TABLES = ("graph_nodes", "graph_edges", "graph_sync_state")
+GRAPH_BRANCH_RETIRED_REASON = "old_graph_branch_retired"
+GRAPH_BRANCH_SUCCESSOR = "/api/ledger/trace"
+
+
+def _graph_branch_retired() -> HTTPException:
+    """구 그래프 갈래의 거절 — 한 철자로, 모든 라우트가 공유한다.
+
+    🔴 본문은 산문이 아니라 구조화 필드다(판정 R-2026-08-13-C: `reason`은 사람을
+    위한 산문이고, 화면이 «분기»해야 하는 사실은 반드시 구조화 필드로 나간다).
+    클라는 `detail.reason`을 읽어 「은퇴」와 「일시적 장애」를 가른다 — 이 구분이
+    없으면 뷰어가 「다시 시도」 버튼을 띄우고, 그 버튼은 영원히 성공하지 않는다.
+    `successor`는 이 질문의 새 주소이므로 화면이 사용자를 그리로 보낼 수 있다.
+    """
+    # 🔴 `no-store`가 붙는 이유는 실측에서 나왔다. **410은 HTTP 기본값이 캐시
+    # 가능**이라, 브라우저가 이 거절을 붙들고 있으면 «거절이 거절보다 오래 산다»:
+    # 이 라운드에서 문구를 고쳤는데 화면은 옛 문구를 계속 보여 줬고(캐시된 본문),
+    # 같은 기전이면 나중에 이 갈래를 되살려도 브라우저는 한동안 410을 답한다.
+    # 은퇴 화면이 은퇴 사실보다 오래 남는 것은 이 판정이 순서를 못 박아 가며
+    # 막으려던 그 부정직한 상태와 같은 부류다.
+    return HTTPException(status_code=410, headers={"Cache-Control": "no-store"}, detail={
+        "reason": GRAPH_BRANCH_RETIRED_REASON,
+        "state": "retired",
+        "successor": GRAPH_BRANCH_SUCCESSOR,
+        "ruling": "R-2026-08-14-H",
+        # 뷰어가 이 문장을 제목 «아래»에 붙이므로 제목을 되풀이하지 않는다
+        # (초안은 "구 그래프 저장소는 은퇴했습니다"로 시작해 화면에서 같은 문장이
+        #  두 번 보였다). curl로 이걸 직접 보는 운영자에게도 `reason` 필드가 이미
+        #  정체를 말하므로, 여기서는 «무엇이 없어졌고 어디로 갔는지»만 싣는다.
+        "message": ("노드·엣지 테이블이 폐기되고 동기화 워커가 스택에서 "
+                    "제거되었습니다. 혈통 추적은 원장 구조 뷰로 옮겨졌습니다."),
+    })
+
+
 # ----------------- [Ontology 뷰어] read-only 그래프 조회 API (경계 계약 — 총괄 승인) -----------------
+# ⚰️ 아래 라우트 본문은 전부 도달 불가다 — 각 함수 첫 줄이 `_graph_branch_retired()`를
+# raise한다(위 블록). 다음 라운드(판정 ④)가 몸통과 헬퍼를 함께 걷어낸다.
 # graph_nodes/graph_edges를 웹서버가 직접 조회한다(read-only — 워커 경유 불필요).
 # G2 추적 리포트가 같은 응답 형태를 공유할 예정이므로 필드는 최소로 유지(과설계 금지).
 
@@ -3217,6 +3293,7 @@ def _serialize_graph_nodes(nodes: dict) -> list:
 @app.get("/graph/stats")
 def get_graph_stats(db: Session = Depends(get_db)):
     """뷰어 첫 화면 + 라이브 검증용 — label/edge_type별 카운트와 마지막 동기화 시각."""
+    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
     from sqlalchemy import func as sa_func
 
     label_rows = (
@@ -3253,6 +3330,7 @@ def get_graph_neighbors(
     - 엣지 접근은 (from,type)/(to,type) 인덱스 경로만 사용(방향별 2쿼리).
     - 상한 도달로 일부가 잘리면 truncated=True.
     """
+    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
     if depth not in (1, 2):
         raise HTTPException(status_code=400, detail="depth는 1 또는 2만 허용됩니다.")
     limit = max(1, min(int(limit), GRAPH_NEIGHBOR_NODE_CAP))
@@ -3289,6 +3367,7 @@ def search_graph_nodes(
     - 빈 q + label 없음 → 빈 결과 (전 테이블 덤프 금지 — C-7 무제한 로드 금지).
     - offset은 두 모드 공통 지원 (identity_key 오름차순 안정 정렬 전제).
     """
+    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
     term = (q or "").strip()
     if not term and not label:
         return {"results": []}
@@ -3376,6 +3455,7 @@ def post_graph_trace(req: GraphTraceRequest, db: Session = Depends(get_db)):
     - 존재하지 않는 시드는 무시하고 missing_seeds로 보고. 전부 미존재여도 404가 아니라
       빈 nodes로 200 응답(경계 계약).
     """
+    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
     if not req.seeds:
         raise HTTPException(status_code=400, detail="seeds는 1개 이상이어야 합니다.")
     if not (1 <= req.depth <= GRAPH_TRACE_DEPTH_CAP):
@@ -3637,6 +3717,7 @@ def get_chip_trace(identity: str, db: Session = Depends(get_db)):
       (결정 ② — 정책 엔진 G2.5가 없으므로 질의 형상이 강제한다).
     - 빈 홉은 없다. 모든 홉이 recorded / none_recorded / not_declared 중 하나를 말한다.
     """
+    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
     seed = (
         db.query(models.GraphNode)
         .filter(
@@ -3768,6 +3849,12 @@ def get_graph_mapping_summary():
     엔드포인트를 만들 자리가 아니라 이미 조회하는 응답에 태울 자리다(PRIMITIVES §3).
     `tables`의 형태는 바뀌지 않았다 — 추가 필드이므로 기존 클라 계약은 그대로다.
     """
+    # ⚰️ R-2026-08-14-H — 아래는 도달 불가.
+    # 🔴 이 라우트의 거절은 클라에서 «자기 치유»로 작동한다. `trace_launch.js`가
+    # 이것을 그리드의 「🕸️ 추적」 버튼 노출 게이트로 쓰고 있고, 실패하면 진입점을
+    # 스스로 감춘다. 즉 이 한 줄이 구 trace 화면으로 가는 유일한 사용자 경로를
+    # 닫는다 — 클라 코드를 고쳐서가 아니라 이미 있던 게이트가 정직하게 동작해서다.
+    raise _graph_branch_retired()
     import ontology_config
     known = crud.TABLE_CONFIG if crud.TABLE_CONFIG else None
     rejections = []

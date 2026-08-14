@@ -161,7 +161,19 @@ def test_the_launcher_declares_the_ports_its_children_bind():
     so silently inherits the 60 s-forever policy again."""
     src = open(os.path.join(ROOT, "run_decoupled_app.py"), encoding="utf-8").read()
     assert "ports=(int(api_port),)" in src
-    assert "ports=(int(graph_port),)" in src
+    # `ports=(int(graph_port),)` was asserted here too. R-2026-08-14-H retired the
+    # graph sync worker, so the API server is now the ONLY child that binds a port
+    # - which is why the assertion below matters more than it used to: if a future
+    # child starts binding something and forgets to declare it, there is no longer
+    # a second declared example sitting next to it in the spec list to copy.
+    # Pinned on the ChildSpec CONSTRUCTION, not on the file name. The launcher
+    # keeps a tombstone comment naming `run_graph_sync.py`, and a bare
+    # `"run_graph_sync.py" not in src` would match that comment and fail on a
+    # launcher that is perfectly correct - the same trap the heartbeat guard in
+    # test_process_supervisor.py already fell into once.
+    assert 'ChildSpec("Graph DB Sync Worker"' not in src, (
+        "the retired graph sync worker is back in the launcher; R-2026-08-14-H "
+        "removed it and its storage was dropped")
 
 
 # ===========================================================================
@@ -452,8 +464,10 @@ def test_the_capture_is_declared_for_every_child():
     """A child added later without a log_file is invisible again for exactly the
     reason this fix exists."""
     src = open(os.path.join(ROOT, "run_decoupled_app.py"), encoding="utf-8").read()
+    # "Graph DB Sync Worker" was the third member until R-2026-08-14-H retired the
+    # old graph branch; the stack is four children now (five with the desktop UI).
     for name in ("Backend FastAPI Server", "File Ingestion Watcher",
-                 "Graph DB Sync Worker", "Chained Ingestion Worker",
+                 "Chained Ingestion Worker",
                  "Auto Update Scheduler"):
         i = src.index(f'ChildSpec("{name}"')
         window = src[i:i + 420]

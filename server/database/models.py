@@ -1149,8 +1149,12 @@ def refresh_dynamic_models(engine=None):
     init_dynamic_models(new_config)
     if engine is not None:
         created = create_missing_dynamic_tables(engine)
-        # [Ontology G1] 그래프 시스템 테이블도 핫리로드 경로에서 항상 존재 보장(#7 패턴 동승).
-        created.extend(ensure_graph_tables(engine))
+        # ⚰️ [R-2026-08-14-H] `ensure_graph_tables(engine)` 호출이 여기 있었다.
+        # 구 그래프 저장소가 은퇴하면서 «되살리는 경로»로 뒤집혔다: 웹서버는 살아
+        # 있고 핫리로드는 운영자가 아무 때나 누르므로, 이 한 줄이 남아 있으면
+        # DROP된 세 표가 다음 리로드에 빈 채로 돌아온다. 함수 자체는 남겨 둔다 —
+        # 그래프 단위 테스트가 픽스처 생성에 쓰고, 판정 ④의 코드 제거 라운드가
+        # 함수와 호출자를 함께 걷어낸다.
         # [P2] 인제션 체크포인트 테이블도 동일 보장 (워처가 부팅 전 이 경로로 먼저 도달할 수 있음)
         created.extend(ensure_ingestion_checkpoint_table(engine))
         return created

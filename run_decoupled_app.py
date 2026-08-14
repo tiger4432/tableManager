@@ -30,24 +30,16 @@ def log_launcher(msg, level="INFO"):
     _launcher_logger.log(_LEVELS.get(level, 20), msg)
 
 
-# run_graph_sync.py binds its HTTP service to loopback, not to 0.0.0.0. The
-# probe has to use the same address the child will: on Windows a bind to
-# 0.0.0.0:8090 succeeds while another process holds 127.0.0.1:8090.
-#
-# [2026-08-04] Deliberately NOT given the dual-stack treatment the API port just
-# got, and this is the reasoning so nobody has to redo it. The API port needed it
-# because a BROWSER dials it by NAME, and `localhost` resolves to ::1 first. The
-# graph port has no such caller: its only client is server/main.py's /api/graph/sync
-# hop, which dials the IPv4 LITERAL `http://127.0.0.1:{port}/sync`. A literal never
-# consults the resolver, so there is no address it can pick that this bind does not
-# answer. Binding a second family here would widen the reachable surface of an
-# internal-only service to buy exactly nothing. If a caller that dials this by name
-# ever appears, that is the moment to revisit - and `bind_targets` is where.
-GRAPH_BIND_HOST = "127.0.0.1"
+# ⚰️ [R-2026-08-14-H] `GRAPH_BIND_HOST = "127.0.0.1"`과 그 근거 문단이 여기 있었다.
+# 문단은 「그래프 포트는 이름으로 다이얼하는 호출자가 없으니 듀얼스택이 불필요하다」를
+# 설명하고 있었는데, 그 유일한 호출자였던 `main.py`의 `/api/graph/sync` 홉이 이번
+# 판정으로 거절로 바뀌었다. 즉 호출자가 0이 됐고 바인드할 프로세스도 사라졌다.
+# 근거가 살아 있는 판단은 코드가 사라져도 되살아나므로, 부활이 필요하면 git 이력에
+# 있다(이 커밋의 부모).
 
 
-def refuse_if_ports_are_taken(api_host, api_port, graph_port):
-    """Refuse to start when an older stack still owns the ports. Returns True if clear.
+def refuse_if_ports_are_taken(api_host, api_port):
+    """Refuse to start when an older stack still owns the port. Returns True if clear.
 
     THE FAILURE THIS REPLACES
     -------------------------
@@ -64,8 +56,11 @@ def refuse_if_ports_are_taken(api_host, api_port, graph_port):
     and the answer belongs on the console the operator is already looking at.
     """
     try:
-        conflicts = (preflight_port_check([int(api_port)], host=api_host)
-                     + preflight_port_check([int(graph_port)], host=GRAPH_BIND_HOST))
+        # ⚰️ [R-2026-08-14-H] 그래프 포트(:8090) 프로브가 여기 함께 있었다. 이제
+        # 이 런처가 띄우는 자식 중 그 포트를 바인드하는 것이 없으므로, 계속 물어보면
+        # «아무도 필요로 하지 않는 포트» 때문에 스택 전체가 기동을 거부할 수 있다 —
+        # 가드가 자기가 막으려던 것(못 뜨는 스택)이 되는 자리다.
+        conflicts = preflight_port_check([int(api_port)], host=api_host)
     except Exception as e:
         # A guard must never become the reason the system will not start. If the
         # ports cannot even be parsed or probed, say so and let the children try.
@@ -108,8 +103,8 @@ def report_schema_drift():
     will not start: every failure path below degrades to a line and a return.
 
     THIS RUNS BEFORE THE PROCESSES THAT REPAIR HALF OF WHAT IT FINDS, and that is
-    not an accident to be tidied away. Three of the children started below -
-    run_watcher.py, run_chain_worker.py, run_graph_sync.py - each call
+    not an accident to be tidied away. Two of the children started below -
+    run_watcher.py, run_chain_worker.py - each call
     `models.sync_dynamic_tables_schema(engine)` on their own boot, as does the web
     server through `bootstrap_database_schema`. So a column that table_config
     declares on a dynamic table is missing when this line reads the catalog and
@@ -219,10 +214,8 @@ def main():
     # so is an explicit "0.0.0.0" - because narrowing the bind is the entire point
     # of the variable and an operator who typed an address meant that address.
     api_host = os.environ.get("ASSY_API_HOST", DUAL_STACK_HOST)
-    # The graph sync worker's own HTTP service. Same default and same env var as
-    # run_graph_sync.py, read here rather than hardcoded so the isolated dev
-    # stack's :8091 is checked instead of production's :8090.
-    graph_port = os.environ.get("GRAPH_SYNC_PORT", "8090")
+    # ⚰️ [R-2026-08-14-H] `graph_port` 읽기가 여기 있었다 (GRAPH_SYNC_PORT, 기본 8090).
+    # 이 런처는 더 이상 그 포트를 쓰는 자식을 띄우지 않는다.
     server_cmd = [python_exe, "-m", "uvicorn", "main:app",
                   "--host", api_host, "--port", api_port]
     if args.reload:
@@ -237,7 +230,7 @@ def main():
     # printed until we know there is going to be one, because "Starting
     # AssyManager" followed by a refusal is exactly the kind of contradiction an
     # operator has to stop and reread.
-    ports_clear = refuse_if_ports_are_taken(api_host, api_port, graph_port)
+    ports_clear = refuse_if_ports_are_taken(api_host, api_port)
     if ports_clear:
         # The second pre-flight question, asked in the same slot as the first and
         # for the same reason: BEFORE the restart rather than after it.
@@ -261,7 +254,7 @@ def main():
         # the end-to-end test drives, so the refusal path can be exercised
         # against throwaway ports with no risk of spawning a second stack.
         if ports_clear:
-            log_launcher(f"Preflight OK: ports {api_port} and {graph_port} are free.")
+            log_launcher(f"Preflight OK: port {api_port} is free.")
         sys.exit(0 if ports_clear else 1)
     if not ports_clear:
         sys.exit(1)
@@ -297,8 +290,8 @@ def main():
                      + ("  (기본값 - IPv4/IPv6 양쪽)"
                         if api_host == DUAL_STACK_HOST
                         else "  (ASSY_API_HOST 지정 - 이 주소로만 접속됩니다)"))
-    log_launcher(f"그래프 싱크 리슨 주소: {describe_bind_host(GRAPH_BIND_HOST)} "
-                 f": 포트 {graph_port}  (내부 전용)")
+    # ⚰️ [R-2026-08-14-H] 「그래프 싱크 리슨 주소」 배너가 여기 있었다. 아무도
+    # 바인드하지 않는 포트를 계속 announce하면 운영자는 그 프로세스가 있다고 믿는다.
 
     # `heartbeat=` names the progress beat each child publishes (see
     # server/utils/heartbeat.py). /health joins this list to those beats: the
@@ -322,10 +315,14 @@ def main():
         ChildSpec("File Ingestion Watcher", [python_exe, "run_watcher.py"], server_dir,
                   heartbeat="watcher", start_delay=2.0,
                   log_file=paths.log_path("watcher_stdout.log")),
-        ChildSpec("Graph DB Sync Worker", [python_exe, "run_graph_sync.py"], server_dir,
-                  heartbeat="graph", ports=(int(graph_port),),
-                  port_host=GRAPH_BIND_HOST,
-                  log_file=paths.log_path("graph_sync_stdout.log")),
+        # ⚰️ [R-2026-08-14-H] "Graph DB Sync Worker" (`run_graph_sync.py`, :8090)가
+        # 여기 있었다. 스택은 5프로세스에서 4프로세스가 된다.
+        # 이 자식이 하던 일은 outbox를 증분 소비해 행을 `graph_nodes`/`graph_edges`의
+        # 사본으로 머티리얼라이즈하는 것이었다. 소유자 판정으로 그 사본이 폐기됐다 —
+        # 원장(`ledger_events`)이 개체 층이고, 실측상 이 워커에는 `ledger` 참조가
+        # 0건이었다. 두 갈래가 같은 소스 표를 각자 읽으며 서로를 몰랐다는 뜻이다.
+        # 진입(라우트)은 `server/main.py`의 `_graph_branch_retired`가 막고,
+        # 저장소는 `server/migrations/drop_graph_storage.py`가 폐기한다.
         ChildSpec("Chained Ingestion Worker", [python_exe, "run_chain_worker.py"], server_dir,
                   heartbeat="chain",
                   log_file=paths.log_path("chain_worker_stdout.log")),

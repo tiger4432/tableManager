@@ -372,7 +372,9 @@ def test_launcher_declares_a_heartbeat_for_every_worker():
     # name: a comment mentioning `run_graph_sync.py` above main() matched first
     # and made this guard fail on a launcher whose specs were perfectly correct.
     src = src[src.index("    specs = ["):]
-    for runner, hb in [("run_watcher.py", "watcher"), ("run_graph_sync.py", "graph"),
+    # `run_graph_sync.py`/"graph" was here until R-2026-08-14-H retired the old
+    # graph branch and removed that child from the launcher entirely.
+    for runner, hb in [("run_watcher.py", "watcher"),
                        ("run_chain_worker.py", "chain"), ("run_auto_update.py", "scheduler")]:
         m = re.search(re.escape(runner) + r"[^\n]*\n?[^\n]*", src)
         assert m, f"{runner} is no longer spawned by the launcher"

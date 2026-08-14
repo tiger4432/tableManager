@@ -575,13 +575,17 @@ def test_correlated_children_are_unhealthy_and_named_as_an_outage():
 
 def test_a_permanent_failure_still_reads_as_a_permanent_failure():
     """The control: the correlated branch must not have swallowed the other."""
+    # The child named here is a FIXTURE, not an assertion about the stack - this
+    # test drives synthetic supervisor state and never reads the launcher. It used
+    # to name "Graph DB Sync Worker"/"graph", which R-2026-08-14-H retired; renamed
+    # to a child that still exists so the fixture stops teaching a dead name.
     sup = supervisor_status(
-        {"Graph DB Sync Worker": {"state": "failed", "heartbeat": "graph", "pid": None,
-                                  "restarts": 5, "uptime_seconds": None,
-                                  "last_exit_code": 1,
-                                  "failure_reason": "exited 6 times in a row"}},
-        failed=["Graph DB Sync Worker"])
-    payload, status = run(hbs={"graph": stale()}, sup=sup)
+        {"Chained Ingestion Worker": {"state": "failed", "heartbeat": "chain", "pid": None,
+                                      "restarts": 5, "uptime_seconds": None,
+                                      "last_exit_code": 1,
+                                      "failure_reason": "exited 6 times in a row"}},
+        failed=["Chained Ingestion Worker"])
+    payload, status = run(hbs={"chain": stale()}, sup=sup)
     assert status == 503
     assert payload["checks"]["supervisor"]["status"] == "failed_children"
     assert any("permanently failed" in p for p in payload["problems"])

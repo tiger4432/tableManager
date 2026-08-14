@@ -501,24 +501,14 @@ OPERATIONS = {
         "cli_only": ["--limit", "--ignore-knob (measure a rule whose knob is off)",
                      "classify / propose subcommands", "all rules at once"],
     },
-    "graph_orphans": {
-        "label": "그래프 고아 노드 스윕",
-        "what_is_missing": "엣지도 없고 어떤 매핑으로도 다시 만들 수 없는 노드가 남아 있다",
-        "params": [],
-        "count": _count_graph_orphans,
-        "run": _run_graph_orphans,
-        "cli": "server/scripts/graph_orphan_sweep.py --apply",
-        # The one that is not like the others. See the module docstring.
-        "deletes": "graph_nodes rows (derived data; a resync remints what should exist)",
-        "restartable": False,
-        "commit_granularity": (
-            "ONE commit after the whole delete loop - an interrupted run rolls back "
-            "entirely, including chunks already deleted"),
-        "cli_only": ["--label (restrict to labels)", "--max-fraction", "--min-population",
-                     "--ignore-rejected",
-                     "--allow-production (a CLI-only gate: run_scheduled, which this "
-                     "button and the daily scheduler both call, has no such gate)"],
-    },
+    # ⚰️ [R-2026-08-14-H] `graph_orphans` 항목이 여기 있었다 — 등록에서 뺀다.
+    # 이 dict는 어드민 화면의 «버튼 목록»이다(`GET /admin/retroactive/operations`).
+    # 남겨 두면 운영자에게 은퇴한 저장소를 청소하는 버튼이 계속 보이고, 그 버튼은
+    # `graph_orphans.run_scheduled` → `ensure_graph_tables`를 타서 DROP된 표를
+    # 되살린 뒤 「고아 0건」이라고 보고한다. 즉 화면이 「깨끗하다」고 말하는데
+    # 사실은 「방금 빈 표를 다시 만들었다」인 상태 — 판정이 막으려는 부정직이다.
+    # `_count_graph_orphans`/`_run_graph_orphans` 함수와 `graph_orphans` 모듈은
+    # 남는다(판정 ④의 코드 제거 라운드 몫). 여기서 죽는 것은 «진입»이다.
 }
 
 

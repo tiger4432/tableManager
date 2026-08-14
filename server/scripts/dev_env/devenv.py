@@ -157,7 +157,9 @@ PROCESSES = [
     ("api", [sys.executable, "-m", "uvicorn", "main:app",
              "--host", "127.0.0.1", "--port", str(API_PORT)]),
     ("chain", [sys.executable, "run_chain_worker.py"]),
-    ("graph", [sys.executable, "run_graph_sync.py"]),
+    # ⚰️ [R-2026-08-14-H] ("graph", run_graph_sync.py) 가 여기 있었다. 격리 스택은
+    # 운영 스택의 축소판이어야 하므로 같이 뺀다 — 격리 환경에만 죽은 갈래가 남으면
+    # QA가 운영에 없는 동작을 재현하게 된다.
     # DELIBERATELY ABSENT: run_watcher.py, run_auto_update.py.
 ]
 

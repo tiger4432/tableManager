@@ -733,7 +733,11 @@ class TestIsolatedWatcherRefusalIsStructural:
         started = " ".join(" ".join(cmd) for _, cmd in devenv.PROCESSES)
         assert "run_watcher" not in started
         assert "run_auto_update" not in started
-        assert {n for n, _ in devenv.PROCESSES} == {"api", "chain", "graph"}
+        # "graph" was the third member until R-2026-08-14-H retired the old graph
+        # branch. It is dropped from the isolated stack for the same reason it is
+        # dropped from the production one: a dev environment that still runs a
+        # retired process lets QA reproduce behaviour production no longer has.
+        assert {n for n, _ in devenv.PROCESSES} == {"api", "chain"}
 
 
 class TestIsolatedWatcherLauncherEndToEnd:

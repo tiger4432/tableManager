@@ -141,13 +141,33 @@ function setStatsState(state, errMsg) {
   el('stats-error').style.display = state === 'error' ? 'flex' : 'none';
   el('stats-empty').style.display = state === 'empty' ? 'flex' : 'none';
   el('stats-content').style.display = state === 'content' ? 'flex' : 'none';
+  el('stats-retired').style.display = state === 'retired' ? 'flex' : 'none';
   if (state === 'error') el('stats-error-sub').textContent = errMsg || '';
+  if (state === 'retired') el('stats-retired-sub').textContent = errMsg || '';
+}
+
+// 판정 R-2026-08-14-H. 서버는 은퇴를 410 + `detail.reason`으로 «구조화 필드»로
+// 말한다(판정 R-2026-08-13-C: 화면이 분기해야 하는 사실은 산문이 아니라 필드다).
+// 여기서 상태코드가 아니라 reason을 보는 이유: 410은 다른 사정으로도 올 수 있고,
+// 「은퇴」와 「고장」을 가르는 것은 그 낱말이지 숫자가 아니다.
+const RETIRED_REASON = 'old_graph_branch_retired';
+
+async function readRetirement(res) {
+  if (res.status !== 410) return null;
+  try {
+    const body = await res.clone().json();
+    const d = body && body.detail;
+    if (d && d.reason === RETIRED_REASON) return d.message || '';
+  } catch (_) { /* 본문이 JSON이 아니면 은퇴가 아니다 */ }
+  return null;
 }
 
 async function loadStats() {
   setStatsState('loading');
   try {
     const res = await fetch(`${API_BASE}/graph/stats`);
+    const retired = await readRetirement(res);
+    if (retired !== null) { setStatsState('retired', retired); return; }
     if (!res.ok) throw new Error(`GET /graph/stats → HTTP ${res.status}`);
     const data = await res.json();
     S.stats = {

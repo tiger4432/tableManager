@@ -196,43 +196,69 @@ class TestInventory:
         body = client.get("/admin/retroactive/operations").json()
         assert {o["op"] for o in body["operations"]} == set(retroactive.OPERATIONS)
         # Non-vacuous: an empty registry would satisfy the equality above.
-        assert len(body["operations"]) == 5
+        # Was 5 until R-2026-08-14-H deregistered `graph_orphans` - see
+        # test_the_retired_graph_sweep_is_not_offered_as_a_button below.
+        assert len(body["operations"]) == 4
+
+    def test_the_retired_graph_sweep_is_not_offered_as_a_button(self, client):
+        """R-2026-08-14-H: the old graph branch was retired and its three tables
+        dropped, so the sweep that cleaned them must not remain clickable.
+
+        This is not cosmetic. `_run_graph_orphans` calls
+        `graph_orphans.run_scheduled`, whose first act is `ensure_graph_tables` -
+        so the button would RECREATE the dropped tables and then report "0
+        orphans", i.e. the screen would say "clean" when the truth is "I just
+        remade three empty tables". The ruling fixed the execution order
+        specifically to keep states like that from existing.
+        """
+        assert "graph_orphans" not in retroactive.OPERATIONS
+        body = client.get("/admin/retroactive/operations").json()
+        assert "graph_orphans" not in {o["op"] for o in body["operations"]}
+        # And the route refuses it rather than answering with a stale shape.
+        # 400, not 404: this surface treats an unregistered op as a bad request
+        # (measured, not assumed - the first draft of this test asserted 404 and
+        # was corrected by the run).
+        r = client.get("/admin/retroactive/graph_orphans/count")
+        assert r.status_code == 400
+        assert "graph_orphans" in str(r.json()["detail"])
 
     def test_each_operation_declares_the_parameters_it_needs(self, client):
         ops = {o["op"]: o for o in client.get("/admin/retroactive/operations").json()
                ["operations"]}
         assert [p["name"] for p in ops["withdraw"]["params"]] == \
             ["table", "source", "columns"]
-        assert ops["graph_orphans"]["params"] == []
         # withdraw takes no --limit and no --chunk-size on the CLI either; a
         # parameter here that the operation does not have would be a lie the
         # client would render as a control.
         assert "limit" not in {p["name"] for p in ops["withdraw"]["params"]}
 
-    def test_the_sweep_is_marked_as_the_one_that_is_not_like_the_others(self, client):
-        """Four write and resume; one deletes and rolls the whole run back.
+    def test_every_remaining_operation_commits_per_chunk_and_resumes(self, client):
+        """The registry's odd-one-out is gone, and that changes what this pins.
 
-        VERIFIED AT SOURCE 2026-07-31: `graph_orphans.apply_sweep` issues the only
-        `commit()` in its module, AFTER the delete loop. A client that worded one
-        confirmation for five buttons would be wrong on exactly this one, so the
-        distinction has to arrive as data rather than as a comment.
+        Until R-2026-08-14-H this test was
+        `test_the_sweep_is_marked_as_the_one_that_is_not_like_the_others`: four
+        operations wrote and resumed, and `graph_orphans` alone deleted rows and
+        rolled the whole run back, so a client wording ONE confirmation for five
+        buttons would have been wrong on exactly that one. With the sweep
+        deregistered the registry is homogeneous again - which is worth asserting
+        rather than deleting, because a future non-restartable operation added
+        without saying so is the failure this guarded against all along.
         """
         ops = {o["op"]: o for o in client.get("/admin/retroactive/operations").json()
                ["operations"]}
-        assert ops["graph_orphans"]["restartable"] is False
-        assert "graph_nodes" in ops["graph_orphans"]["deletes"]
-        assert "roll" in ops["graph_orphans"]["commit_granularity"].lower()
         for op in ("chain_replay", "enrichment_backfill", "enrichment_confirm",
                    "withdraw"):
             assert ops[op]["restartable"] is True, (
                 f"{op} is marked non-restartable; it commits per chunk")
+        assert all(o["restartable"] is True for o in ops.values()), (
+            "a non-restartable operation is registered without this test knowing; "
+            "one confirmation wording no longer fits every button")
 
     def test_it_says_what_the_buttons_do_not_cover(self, client):
         """The CLI is not retired by this surface and the surface has to say so."""
         ops = {o["op"]: o for o in client.get("/admin/retroactive/operations").json()
                ["operations"]}
         assert any("replay-all" in x for x in ops["chain_replay"]["cli_only"])
-        assert any("allow-production" in x for x in ops["graph_orphans"]["cli_only"])
         for o in ops.values():
             assert o["cli"], "every operation must name its CLI equivalent"
 
@@ -312,8 +338,9 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                                                                     retro_env):
         """Echoing the requested budget would say a sample was taken when none was.
 
-        `withdraw`'s count is two aggregates; `graph_orphans`' is one. Neither reads
-        a row, so neither has a denominator, and `null` is the only honest value.
+        `withdraw`'s count is two aggregates. It reads no row, so it has no
+        denominator, and `null` is the only honest value. (`graph_orphans` was the
+        other example here until R-2026-08-14-H deregistered it.)
         """
         body = client.get("/admin/retroactive/withdraw/count"
                           "?table=retro_test_target&source=chain_ingestion"
@@ -323,7 +350,11 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
         assert body["count_kind"] == retroactive.COUNT_UPPER_BOUND
 
     def test_an_upper_bound_is_never_presented_as_the_answer(self, client, retro_env):
-        body = client.get("/admin/retroactive/graph_orphans/count").json()
+        # Subject moved from `graph_orphans` to `withdraw` when R-2026-08-14-H
+        # deregistered the graph sweep. Both are upper-bound counts, so the
+        # property under test is unchanged - only the operation that carries it.
+        body = client.get("/admin/retroactive/withdraw/count"
+                          "?table=retro_test_target&source=chain_ingestion").json()
         assert body["count_kind"] == retroactive.COUNT_UPPER_BOUND
         assert body["extra"]["why_upper_bound"]
         assert "최대" in body["affected_label"]

@@ -146,7 +146,15 @@ function setupEventListeners() {
                   window.location.pathname.includes('admin') || 
                   urlParams.get('user') === 'admin' ||
                   localStorage.getItem('isAdmin') === 'true';
-  if (isAdmin && elements.graphSyncBtn) {
+  // ⚰️ [판정 R-2026-08-14-H] 구 그래프 갈래 은퇴 — 이 버튼은 더 이상 노출하지 않는다.
+  // 이건 «조회»가 아니라 사본을 만드는 파이프라인으로 들어가는 «쓰기» 진입점이었다
+  // (선택 행 → POST /api/graph/sync → 머티리얼라이즈). 서버가 그 라우트를 410으로
+  // 거절하므로 버튼을 두면 누를 때마다 실패 토스트만 뜬다 — 눌러도 되는 것처럼
+  // 보이는 죽은 버튼은 화면이 사용자에게 하는 거짓말이다.
+  // 마크업(index.html)의 기본값이 이미 `display: none`이라, 「보이게 만들지 않는 것」
+  // 만으로 진입이 닫힌다. 버튼 마크업과 이 핸들러 몸통은 판정 ④의 코드 제거 라운드 몫.
+  const GRAPH_SYNC_RETIRED = true;   // R-2026-08-14-H
+  if (!GRAPH_SYNC_RETIRED && isAdmin && elements.graphSyncBtn) {
     elements.graphSyncBtn.style.display = 'inline-block';
     elements.graphSyncBtn.addEventListener('click', async () => {
       if (!state.gridApi) return;

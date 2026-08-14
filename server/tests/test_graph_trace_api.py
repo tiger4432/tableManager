@@ -12,16 +12,28 @@
 materializer 경유가 불필요하다(뷰어 테스트와 동일 패턴).
 테이블명은 사용자 config에 실존 불가능한 고유 접두(trace_test_*)를 사용(교훈 파일).
 """
-import datetime
-import json
-
 import pytest
 
-import main
-import ontology_config
-import enrichment_config
-from database import crud
-from database.models import GraphNode, GraphEdge
+# ⚰️ [R-2026-08-14-H] 이 파일이 검증하던 두 라우트는 은퇴했다.
+# `POST /graph/trace`와 `GET /graph/mapping-summary`가 이제 410으로 거절한다.
+# 삭제가 아니라 스킵인 이유는 `test_graph_viewer_api.py` 상단과 같다 —
+# 서술과 코드는 같은 변경(판정 ④)에서 함께 죽는다.
+# 새 계약은 `test_graph_branch_retired.py`가 단언한다.
+pytest.skip(
+    "R-2026-08-14-H retired the old graph branch; these routes now refuse with "
+    "410 old_graph_branch_retired. Removed together with the route bodies in "
+    "ruling item 4. New contract: test_graph_branch_retired.py",
+    allow_module_level=True,
+)
+
+import datetime  # noqa: E402
+import json  # noqa: E402
+
+import main  # noqa: E402
+import ontology_config  # noqa: E402
+import enrichment_config  # noqa: E402
+from database import crud  # noqa: E402
+from database.models import GraphNode, GraphEdge  # noqa: E402
 
 T09 = datetime.datetime(2026, 7, 25, 9, 0, 0)
 T10 = datetime.datetime(2026, 7, 25, 10, 0, 0)

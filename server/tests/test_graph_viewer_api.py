@@ -10,12 +10,30 @@
 [격리] 그래프 시스템 테이블(graph_nodes/edges/sync_state)에 직접 시딩 —
 API는 read-only이므로 materializer 경유가 불필요하다.
 """
-import datetime
-
 import pytest
 
-import main
-from database.models import GraphNode, GraphEdge, GraphSyncState
+# ⚰️ [R-2026-08-14-H] 이 파일이 검증하던 세 라우트는 은퇴했다.
+# `/graph/stats`·`/graph/neighbors`·`/graph/nodes/search`는 이제 첫 줄에서
+# `_graph_branch_retired()`(410)를 raise하고, 이 파일이 시딩하던
+# `graph_nodes`/`graph_edges`/`graph_sync_state`는 DROP 대상이다.
+#
+# 🔴 왜 «삭제»가 아니라 스킵인가. 이 테스트들이 서술하는 동작과 그 동작을 담은
+# 라우트 몸통은 «같은 변경»에서 죽어야 한다 — 판정 ④(구 그래프 전용 코드 경로
+# 제거)가 둘 다 소유한다. 지금 테스트만 지우면 아직 저장소에 살아 있는 600여 줄의
+# 라우트 코드가 «아무도 서술하지 않는 코드»로 남고, 다음 라운드가 그걸 지울 때
+# 무엇을 잃는지 읽을 곳이 없어진다.
+# 새 계약(거절의 모양)은 `test_graph_branch_retired.py`가 단언한다.
+pytest.skip(
+    "R-2026-08-14-H retired the old graph branch; these routes now refuse with "
+    "410 old_graph_branch_retired. Removed together with the route bodies in "
+    "ruling item 4. New contract: test_graph_branch_retired.py",
+    allow_module_level=True,
+)
+
+import datetime  # noqa: E402
+
+import main  # noqa: E402
+from database.models import GraphNode, GraphEdge, GraphSyncState  # noqa: E402
 
 EVENT_TIME = datetime.datetime(2026, 7, 25, 10, 0, 0)
 

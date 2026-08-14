@@ -16,16 +16,34 @@ but the opposite - that the shape refuses to leak:
 Table names carry a `ct_test_` prefix so they cannot collide with a real table in
 the user's gitignored config (ontology-pm memory: the bonding_log trap).
 """
-import datetime
-import json
-
 import pytest
 
-import main
-import ontology_config
-import enrichment_config
-from database import crud
-from database.models import GraphNode, GraphEdge
+# ⚰️ [R-2026-08-14-H] 이 파일이 검증하던 `GET /graph/chip-trace`는 은퇴했다.
+# 삭제가 아니라 스킵인 이유는 `test_graph_viewer_api.py` 상단과 같다 —
+# 서술과 코드는 같은 변경(판정 ④)에서 함께 죽는다.
+#
+# 📌 이 파일은 셋 중 «가장 아까운» 것이라 다음 라운드가 특히 유의해야 한다: 여기
+# 담긴 것은 라우트의 세부가 아니라 **형상이 새지 않는다는 성질**(형제 셀 부재,
+# 잎은 되확장하지 않음, 빈 홉 금지 — 모든 홉이 recorded/none_recorded/
+# not_declared 중 하나를 말한다)이다. 원장 걷기가 같은 질문을 이어받을 때 그
+# 성질들은 **다시 단언되어야 한다** — 걷기에는 이미 depth 상한·terminal_reason의
+# 같은 규율이 있으므로 자리는 있다. 지우기 전에 이 문단을 읽을 것.
+# 새 계약(거절의 모양)은 `test_graph_branch_retired.py`가 단언한다.
+pytest.skip(
+    "R-2026-08-14-H retired the old graph branch; this route now refuses with "
+    "410 old_graph_branch_retired. Removed together with the route body in "
+    "ruling item 4. New contract: test_graph_branch_retired.py",
+    allow_module_level=True,
+)
+
+import datetime  # noqa: E402
+import json  # noqa: E402
+
+import main  # noqa: E402
+import ontology_config  # noqa: E402
+import enrichment_config  # noqa: E402
+from database import crud  # noqa: E402
+from database.models import GraphNode, GraphEdge  # noqa: E402
 
 T20 = datetime.datetime(2026, 7, 20, 9, 0, 0)
 T21 = datetime.datetime(2026, 7, 21, 9, 0, 0)
