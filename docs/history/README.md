@@ -1,7 +1,7 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **563개** 이력. (거버넌스 규칙 #4)
+> 총 **582개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
@@ -9,6 +9,25 @@
 ## 2026-08 (August 2026)
 
 - **2026-08-14 16:15** — [The Contrast Stops Choosing Its Items And The Gates Arrive](./20260814_161500_the_contrast_stops_choosing_its_items_and_the_gates_arrive.md)
+- **2026-08-14 15:25** — [The Admin Panel Becomes The Declaration Editor](./20260814_152513_the_admin_panel_becomes_the_declaration_editor.md)
+- **2026-08-14 15:13** — [The Reference View Lands And The Gate Column Refuses To Fold](./20260814_151352_the_reference_view_lands_and_the_gate_column_refuses_to_fold.md)
+- **2026-08-14 14:56** — [The Reference View Brief And The Redirection That Beat It To R1](./20260814_145613_the_reference_view_brief_and_the_redirection_that_beat_it_to_r1.md)
+- **2026-08-14 14:51** — [The Hourly Stress Log And Twelve Scenarios](./20260814_145113_the_hourly_stress_log_and_twelve_scenarios.md)
+- **2026-08-14 14:45** — [84600 Of 368371 Is Not Populated](./20260814_144548_84600_of_368371_is_not_populated.md)
+- **2026-08-14 14:41** — [Ruling H The Pipeline Dies And The Surviving Viewer Is A Capability](./20260814_144115_ruling_h_the_pipeline_dies_and_the_surviving_viewer_is_a_capability.md)
+- **2026-08-14 14:23** — [The Tape Fed By Many Wafers And The Fan Out That Had No Variance](./20260814_142330_the_tape_fed_by_many_wafers_and_the_fan_out_that_had_no_variance.md)
+- **2026-08-14 13:59** — [A Coordinate Frame Is A Claim And It Governs The Transfers](./20260814_135937_a_coordinate_frame_is_a_claim_and_it_governs_the_transfers.md)
+- **2026-08-14 13:44** — [Two Board Refreshes Bracket The Afternoon](./20260814_134455_two_board_refreshes_bracket_the_afternoon.md)
+- **2026-08-14 13:43** — [The Frame Lookup Borrowed The Bonding Slot For Every Axis](./20260814_134312_the_frame_lookup_borrowed_the_bonding_slot_for_every_axis.md)
+- **2026-08-14 13:42** — [Event Missingness And The Premise That Missing Is Normal](./20260814_134256_event_missingness_and_the_premise_that_missing_is_normal.md)
+- **2026-08-14 13:28** — [No Route Master The Order Is Read Never Declared](./20260814_132854_no_route_master_the_order_is_read_never_declared.md)
+- **2026-08-14 13:25** — [One Worklist Api And The Triangle That Defines Missing](./20260814_132527_one_worklist_api_and_the_triangle_that_defines_missing.md)
+- **2026-08-14 13:09** — [A Word Lived In The Vocabulary With No Row In Its Contract](./20260814_130948_a_word_lived_in_the_vocabulary_with_no_row_in_its_contract.md)
+- **2026-08-14 13:08** — [The Same Question Is Never Bought Twice And The Past Recalls Itself](./20260814_130835_the_same_question_is_never_bought_twice_and_the_past_recalls_itself.md)
+- **2026-08-14 13:02** — [The Client Refuses To Invent The State It Was Told To Display](./20260814_130231_the_client_refuses_to_invent_the_state_it_was_told_to_display.md)
+- **2026-08-14 13:01** — [The Algorithm Canon And The Mechanism Graph Stop Being Prose](./20260814_130115_the_algorithm_canon_and_the_mechanism_graph_stop_being_prose.md)
+- **2026-08-14 12:56** — [Lineage Commonality Becomes Contrast Class Five](./20260814_125603_lineage_commonality_becomes_contrast_class_five.md)
+- **2026-08-14 12:53** — [A Filter Comparing A Name To A Value Was False Forever](./20260814_125319_a_filter_comparing_a_name_to_a_value_was_false_forever.md)
 - **2026-08-14 12:45** — [A Saturating Ratio Cannot Be Scored By Multiples](./20260814_124500_a_saturating_ratio_cannot_be_scored_by_multiples.md)
 - **2026-08-14 12:42** — [Defect Observations Become Claims And The Walk Refuses Them](./20260814_124200_defect_observations_become_claims_and_the_walk_refuses_them.md)
 - **2026-08-14 12:39** — [The Surprise Table And A Seam Nobody Had Crossed](./20260814_123900_the_surprise_table_and_a_seam_nobody_had_crossed.md)
