@@ -84,13 +84,19 @@ for having no consumer (`schema.INDEXES`'s note on `idx_ledger_type_pred_time`,
 64.4 B/atom); it would not serve this query anyway, because it lacks the payload and
 provenance columns.
 
-MEASURED on `assy_manager`, 2026-08-14, 84,747 atoms across two monthly partitions:
+MEASURED on `assy_manager`, 2026-08-14, 84,747 atoms across two monthly partitions,
+`CENSUS_SQL` run directly against the live relation, best of five:
 
-    census, whole ledger, with the class breakdown        85 ms   (11 groups)
-    census, one month (partition pruned)                  85 ms   (6 groups)
+    census, whole ledger, with the class breakdown       172 ms   (12 groups)
 
-So the request is ~1.0 microsecond per atom, and at the ten-million-atom target that is
-~10 s — far past what a page load may spend. The defence is a declared SIZE GATE rather
+⚠️ ONE measurement is recorded because one was taken. An earlier revision of this block
+carried 85 ms / ~1.0 us/atom / ~10 s, which disagreed with this file's own landing commit
+(`3202ac7`: 182 ms, ~2 us/atom, ~20 s) by a factor of two; the remeasurement above agrees
+with the commit and the 85 ms figure has been deleted rather than reconciled. A
+partition-pruned number is not quoted here because none was taken.
+
+So the request is ~2.0 microseconds per atom, and at the ten-million-atom target that is
+~20 s — far past what a page load may spend. The defence is a declared SIZE GATE rather
 than a cache:
 
   * under `FULL_CENSUS_MAX_BYTES` the census covers the WHOLE ledger;
@@ -108,19 +114,29 @@ gives for itself: this screen is what an operator opens right after running a ba
 and a cache would make it answer with the pre-backfill structure at the exact moment its
 answer matters most. If a client polls it, the cache belongs there.
 
-🔴 THE RESOLUTION CLASS IS COMPUTED IN SQL, AND THAT IS A SECOND SPELLING
+🔴 THE RESOLUTION CLASS IS *NOT* COMPUTED IN SQL — THE GROUP KEY IS
 --------------------------------------------------------------------------
 `ledger_trace.claim_class` is the authority and it is pure Python over one claim. Pulling
 84,747 rows into Python to classify them is exactly the whole-table load this project
-forbids, so the class is expressed as a SQL `CASE` here — built FROM the same resolver
-config, with every value bound as a parameter and nothing interpolated.
+forbids, so the tempting move is to transcribe the four-arm ladder into a SQL `CASE`.
+That was written, measured, and THROWN AWAY — it was slower (285 ms against 152 ms on the
+same atoms) and, the reason that actually matters, it was a SECOND SPELLING of a rule that
+already has an authority.
 
-Two spellings of one rule drift. This one is guarded rather than hoped about:
-`test_ledger_structure_pg.py::test_the_sql_class_agrees_with_claim_class` runs both over
-the same rows and asserts the per-class totals match, on a fixture that contains at least
-one atom of EACH class — including the two that are easy to get wrong (a `#derivation`
-suffix that is an inference, and a payload flag that must match JSON `true` rather than
-any truthy value).
+What runs instead: every input to `claim_class` except the two payload flags is already a
+grouping column, so the flags are lifted INTO the group key (`CENSUS_SQL`, columns 7-8)
+and `claim_class` itself is called once per GROUP, on a `CensusClaim` shim. Nothing
+re-implements the ladder, so nothing can drift from it. The same argument applies to the
+derivation: `ledger_trace.claim_basis` owns the `#<derivation>` suffix and reads the raw
+provenance column, which is grouped rather than parsed in SQL. See the block comment above
+`CENSUS_SQL` for the full argument and `CensusClaim` for what the shim may carry.
+
+Guarded by `test_ledger_structure_pg.py::test_the_class_breakdown_agrees_with_claim_class`,
+which compares the served breakdown against a HAND-WRITTEN expectation (an oracle, not the
+implementation checking itself) on a fixture holding at least one atom of EACH class —
+including the two that are easy to get wrong: a `#derivation` suffix that is an inference,
+and a payload flag that must match JSON `true` rather than any truthy value. It asserts
+both class-3 routes fire separately, so it cannot pass with half the resolver working.
 """
 from __future__ import annotations
 
