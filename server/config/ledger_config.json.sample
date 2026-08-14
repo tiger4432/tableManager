@@ -136,6 +136,46 @@
         "class": "interface",
         "__comment_class": "THE CLASS COLUMN, AND IT IS A CLAIM RATHER THAN AN ATTRIBUTE (section 6-quater, product owner: class에 대한 주장이지). interface is the TOOL's classification, uttered at scan time, so it rides in the same atom as part of the same utterance. A human who later looks at the image and disagrees does not edit it -- they assert classified_as against this atom's id and the layering rules resolve the contest. THIS DECLARATION SAYS ONLY WHERE THE CLASS COMES FROM; which values are legal is the kind registry's (server/finding_kinds.py classes), because that set is a property of the kind and the console builds its slice axis from the same list. A value outside it is refused BY NAME."
       }
+    },
+
+    "dt_log": {
+      "__comment": "TRANSFER grammar (the third one). One dt_log row is one DIE moved into one DT tape cell, and the declared atom unit is the JOB-RUN -- so rows are GROUPED, which neither of the other two grammars does (lineage groups a PAIR by an event key, observation does not group at all). One whole dt_job is one molecule; it utters one `transferred` atom per SOURCE WAFER, carrying qty. Subject = Wafer because a die is COMPOSED (wafer x grid) and the wafer is the die's permanent identity root -- PHYSICS_ONTOLOGY_SETUP section 2-bis.",
+
+      "__comment_real_data": "🔴 THIS IS THE FIRST NON-SYNTHETIC SOURCE THIS LEDGER TRANSLATES. void_obs and delam_obs declare `synthetic: true` because they are 100% generated; dt_log is the operator's own table, so THERE IS NO synthetic FLAG HERE and there must never be one added by reflex. The ledger has no UPDATE: a wrong synthetic flag is not a typo, it is a permanent mark on real observations that can only be removed by re-translating. dt_log DOES hold seeded rows beside the real ones (the SYN-* job families -- MEASURED 2026-08-14: of 396 jobs, 120 are DT-EQP-* real-data jobs holding 8,700 rows and the rest are SYN-*), and that is a fact about the SOURCE TABLE, not about this translation.",
+
+      "kind": "transfer",
+
+      "occurred_at_column": "event_time",
+      "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
+      "occurred_at_timezone": "Asia/Seoul",
+      "__comment_time": "MANDATORY, same rule as every other source: arrival time may never stand in for world time. dt_log's event_time is TEXT and this box holds THREE spellings of it -- '2026-05-11 00:00:00' (naive, RFC 3339 space), '2026-08-09T00:00:00Z' and '2026-08-10T00:07:00+09:00'. store._candidate_formats reads all three under this ONE declaration: the space is the same shape in a different transport, and a trailing offset is admitted so it can be HONOURED (a value carrying its own offset has already said which instant it is, so the declared zone is applied only to the naive spelling). MEASURED 2026-08-14: 8 of 396 jobs carry a blank event_time on every row and are refused as missing_occurred_at; 0 jobs carry more than one distinct event_time.",
+
+      "subject_types": ["Wafer"],
+      "register_entity_types": ["Wafer"],
+      "__comment_subject": "Wafer only. The DT tape is a PLACE in this grammar, not a subject -- it appears as the `to` container of the movement, which is what keeps the chain walkable by position rather than by step name. Registering a core wafer from a handler log is first-hand evidence it exists, and it is a declaration either way: empty register_entity_types and this feed mints no entities.",
+
+      "group": {
+        "column": "dt_job",
+        "row_order_column": "row_id",
+        "__comment": "The column whose value makes ONE molecule, and the tiebreak that makes a page deterministic. dt_job is also this table's declared map_key_columns, so server/database/models.py already declares an index for it (idx_dt_log_declared_key, INDEX_POLICY tier 1) -- the page fetch needs no index of its own. ⚠️ MEASURED 2026-08-14 on assy_manager: that declared index does NOT physically exist yet (create_all does not add indexes to existing tables), so today's page fetch sorts. At 34,939 rows that is free; before this source reaches millions the declared index has to be materialised. | The order is (dt_job, row_id) and NOT business_key_val: business_key_val is '<dt_job>_<dt_x>_<dt_y>', so ordering by it groups by job only as long as no job name is a prefix of another (measured: 0 such pairs TODAY). A batch boundary that rests on an accident of the current data is the half-landing waiting for one new job name."
+      },
+
+      "container": {
+        "relation": "dt_inventory",
+        "key_column": "dt_job",
+        "lot_column": "dt_lot",
+        "slot_column": "dt_slot",
+        "__comment": "WHERE THE DESTINATION'S IDENTITY IS CONFIRMED, and this is the honesty of the whole declaration. dt_log carries dt_lot/dt_slot of its own and table_config.json says what they are in its own words: 'the INFERENCE TARGETS -- 40% absent, and 10% PRESENT BUT WRONG, which is worse than absent because a wrong value makes a join succeed quietly', and 'a guess must never sit inside an identity'. So the container's identity is read from dt_inventory (dt_job is its business key) and NEVER from the row. An atom whose destination was confirmed carries derivation #job_run_to_confirmed_container and a `to` of type dt_slot; one that was not carries #job_run_to_job and a `to` of type dt_job -- the ACQUISITION unit, named as itself so an unjoinable hop reads as unjoinable instead of matching nothing under a name that promised to match. | 🔴 MEASURED 2026-08-14 on assy_manager: dt_inventory holds 401 rows, all 396 dt_jobs of dt_log have a row in it (100% PRESENCE -- which is what an earlier round measured), and exactly ONE row has a non-blank dt_lot: the string 'DT_LOT', a spreadsheet HEADER ingested as data, on job 'SYN-TL-R0-N033-H6B051FE5-190173579598445683512727345364142736600'. So the confirmed path resolves for ZERO jobs today and every atom lands unconfirmed. Presence is not confirmation."
+      },
+
+      "columns": {
+        "row_identity": "business_key_val",
+        "group_key": "dt_job",
+        "wafer": "core_wafer",
+        "recorded_lot": "dt_lot",
+        "recorded_slot": "dt_slot",
+        "__comment": "Three are required (row_identity, group_key, wafer) and two are optional. recorded_lot/recorded_slot are what the SOURCE ROW wrote down about the destination; they are carried into the payload as `container_recorded` -- a LIST, outside the `to` container, never identity -- so the confirmation flow has evidence to argue with and a reader can see the source's own claim beside the ledger's refusal to promote it. | core_wafer is the subject and 6,731 of 34,939 rows do not have one (6,209 of those carry core_lot+core_slot instead). Those rows produce no atom and their job-run is counted `incomplete`: composing a wafer id out of lot and slot would be the concatenated-identity incident design section 3 is built from."
+      }
     }
   },
 

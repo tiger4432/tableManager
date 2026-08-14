@@ -61,19 +61,27 @@ def lag_note(lag: dict):
     if not lag:
         return None
     pieces = [f"cursor={lag.get('cursor_position') or '<none>'}"]
-    if lag.get("lag_basis") == LAG_BASIS_ARRIVAL_WATERMARK:
+    basis = lag.get("lag_basis")
+    if basis == LAG_BASIS_ARRIVAL_WATERMARK:
         # Named differently on purpose - see `lag_report_keyset`. Printing an arrival lag
         # under the world-time label is how a two-month-old scan reads as a two-month-old
         # translator.
         pieces.append(f"wm_age={_fmt_seconds(lag.get('watermark_age_seconds'))}")
+    elif basis == LAG_BASIS_GROUP_ORDER:
+        # No time field AT ALL, and that is the point of the third basis: this cursor
+        # moves in name order, so any duration printed beside it would be read as
+        # progress through time and would not be.
+        pieces.append("basis=group_order")
     else:
         pieces.append(f"world_lag={_fmt_seconds(lag.get('world_time_lag_seconds'))}")
     pieces.append(f"cursor_age={_fmt_seconds(lag.get('cursor_age_seconds'))}")
-    if lag.get("rows_behind") is not None:
-        pieces.append(f"rows_behind={lag['rows_behind']}")
+    unit, behind = ("groups_behind", lag.get("groups_behind")) \
+        if basis == LAG_BASIS_GROUP_ORDER else ("rows_behind", lag.get("rows_behind"))
+    if behind is not None:
+        pieces.append(f"{unit}={behind}")
         pieces.append(f"head={lag.get('source_head') or '<none>'}")
     else:
-        pieces.append(f"rows_behind=? (last probed "
+        pieces.append(f"{unit}=? (last probed "
                       f"{_fmt_seconds(lag.get('head_probe_age_seconds'))} ago)")
     return "ledger lag[" + ", ".join(pieces) + "]"
 
@@ -165,6 +173,15 @@ def lag_report(store, source, source_cfg, cursor_row, probe_interval=60, now=Non
 #: with an arrival-order one and conclude the translator had fallen behind by months.
 LAG_BASIS_WORLD_TIME = "world_time"
 LAG_BASIS_ARRIVAL_WATERMARK = "arrival_watermark"
+#: 🔴 THE THIRD YARDSTICK, AND IT IS NEITHER OF THE OTHER TWO. A transfer source's cursor
+#: is a GROUP KEY (`dt_job`), and group keys are ordered by name, not by time and not by
+#: arrival. So "how far behind am I" is answerable only in GROUPS, and reporting it under
+#: either of the fields above would be a number that reads like time and is not. Measured
+#: on `assy_manager` 2026-08-14: `dt_job` name order and `event_time` order disagree - the
+#: `DT-EQP-*` family sorts first and is the OLDEST (May), while `SYN-*` sorts last and is
+#: the NEWEST (August), so a world-time lag taken from this cursor would swing by three
+#: months depending on which letter the next job name starts with.
+LAG_BASIS_GROUP_ORDER = "group_order"
 
 
 def lag_report_keyset(store, source, source_cfg, cursor_row, probe_interval=60,
@@ -239,6 +256,99 @@ def lag_report_keyset(store, source, source_cfg, cursor_row, probe_interval=60,
     except Exception:                                            # pragma: no cover
         pass
     return report
+
+
+def lag_report_group(store, source, source_cfg, cursor_row, probe_interval=60,
+                     now=None, force_probe=False):
+    """The transfer driver's lag report. Same two tiers, a third yardstick.
+
+    🔴 `world_time_lag_seconds` STAYS `None` EVEN THOUGH THIS SOURCE HAS A WORLD TIME, and
+    that is the honest answer rather than a gap. `dt_log` carries `event_time`, so the
+    temptation is to report the last translated group's timestamp as a lag. It would be
+    wrong: the cursor advances in GROUP NAME order, so the group the cursor sits on is not
+    the newest one translated - it is merely the alphabetically last. A translator that had
+    finished every August job and no May one would report itself three months behind, and
+    one that had done the reverse would report itself current while most of the source was
+    untranslated.
+
+    What this cursor CAN answer is `groups_behind`, and that is what it answers.
+    """
+    now = now or datetime.now(timezone.utc)
+    report = {
+        "source": source,
+        "lag_basis": LAG_BASIS_GROUP_ORDER,
+        "cursor_position": None,
+        "world_time_lag_seconds": None,
+        "cursor_age_seconds": None,
+        "source_head": None,
+        "groups_behind": None,
+        "head_probe_age_seconds": None,
+        "probe_allowed": False,
+    }
+    if cursor_row is None:
+        report["never_started"] = True
+        return report
+
+    position = (cursor_row.get("cursor_value") or {}).get("group_key")
+    report["cursor_position"] = position
+
+    updated_at = cursor_row.get("updated_at")
+    if isinstance(updated_at, datetime):
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        report["cursor_age_seconds"] = (now - updated_at).total_seconds()
+
+    probed_at = cursor_row.get("head_probed_at")
+    if isinstance(probed_at, datetime):
+        if probed_at.tzinfo is None:
+            probed_at = probed_at.replace(tzinfo=timezone.utc)
+        report["head_probe_age_seconds"] = (now - probed_at).total_seconds()
+    report["source_head"] = (cursor_row.get("source_head") or {}).get("group_key")
+
+    last = _last_probe.get(source)
+    allowed = force_probe or last is None or (time.monotonic() - last) >= probe_interval
+    report["probe_allowed"] = bool(allowed)
+    if not allowed:
+        return report
+
+    _last_probe[source] = time.monotonic()
+    head, behind = probe_group_head(store, source, source_cfg, position)
+    report["source_head"] = head
+    report["groups_behind"] = behind
+    report["head_probe_age_seconds"] = 0.0
+    try:
+        store.record_source_head(source, {"group_key": None if head is None else str(head),
+                                          "groups_behind": behind})
+    except Exception:                                            # pragma: no cover
+        pass
+    return report
+
+
+def probe_group_head(store, source, source_cfg, position):
+    """`(head_group_key, groups_behind)` for a group cursor. Two statements, one scan each.
+
+    🔴 `groups_behind` COUNTS DISTINCT GROUPS, NOT ROWS. A transfer molecule is a group, so
+    rows-behind would answer a question nobody asked and would be off by the group size -
+    on `dt_log` that is a factor of up to 150.
+    """
+    group_column = (source_cfg.get("group") or {}).get("column")
+    if not group_column:
+        return None, None
+    connection = store.connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT max({group_column}) FROM {source}")
+            head = (cursor.fetchone() or [None])[0]
+            if position:
+                cursor.execute(
+                    f"SELECT count(DISTINCT {group_column}) FROM {source} "
+                    f"WHERE {group_column} > %s", (position,))
+            else:
+                cursor.execute(f"SELECT count(DISTINCT {group_column}) FROM {source}")
+            behind = cursor.fetchone()[0]
+        return head, int(behind or 0)
+    finally:
+        connection.close()
 
 
 def _as_datetime(value):

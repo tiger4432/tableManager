@@ -305,6 +305,27 @@ PREDICATES = {
         # than entity refs. Declaring it traversable here would put it in the lineage
         # walk's fetch set, which is not what it is - so it stays out until that walk
         # exists and can declare its own semantics.
+        #
+        # 🔴 RE-JUDGED WHEN THE `dt_log` TRANSLATOR LANDED (2026-08-14), because the
+        # standing rule is that a word joins the walk by DECISION, never by arriving. The
+        # decision is unchanged and TWO OF THE THREE REASONS ARE NOT THE OBVIOUS ONE:
+        #
+        #   ① `True` is not merely wrong, it is UNRUNNABLE. `ledger_trace.
+        #      traversal_predicate` refuses a vocabulary with more than one traversable
+        #      word BY NAME - the recursive CTE joins on a value, not a set - so this
+        #      would take the trace screen down rather than widen it.
+        #   ② `False` (fetch as an annotation) is wrong for a reason of KIND: an
+        #      annotation is something said about a lot the walk already reached, and this
+        #      word's subject is a WAFER whose object is an opaque `value` container. The
+        #      lot walk has nothing to attach it to.
+        #   ③ ⚠️ CARGO DOES NOT DECIDE IT, and saying it did would be a borrowed argument.
+        #      MEASURED on `assy_manager` after the `dt_log` backfill: 72,485 `transferred`
+        #      atoms over 3,378 wafers, MAX 34 PER WAFER (28 of them from `dt_log`). That
+        #      is the same order as `has_wafer`, which IS fetched at max 62 per lot - so
+        #      the volume argument that keeps `observed` out (R-2026-08-14-D addendum ①)
+        #      does NOT apply here. It is a watch item, not the reason: a core wafer feeding
+        #      DT jobs for its whole life grows this number, and the day it reaches
+        #      `observed`'s order the cap declared by R-2026-08-14-E is what should answer.
         "traversable": None, "direction": None,
     },
     # ------------------------------------------------------- §4.2 ontology, slice 3

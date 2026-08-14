@@ -1193,10 +1193,36 @@ def structure(connection, window=None, relation=LEDGER_RELATION,
 
 
 def _declared_source_names():
+    """The sources `ledger_config.json` declares.
+
+    🔴 AN UNREADABLE DECLARATION FILE IS NOT AN EMPTY ONE, AND THIS FUNCTION CANNOT TELL
+    THE READER WHICH IT GOT. `drift.undeclared_sources` is `seen - this`, so a `set()`
+    returned because the file could not be READ makes every source on the box - including
+    the ones that are declared perfectly - appear as drift.
+
+    MEASURED 2026-08-14, on the live `:8080`: a source declaring the new `transfer` kind
+    was added to the file while that process was still holding a `ledger/config.py` from
+    before the kind existed. Its validator refused the whole file, this `except` turned the
+    refusal into "nothing is declared", and the screen reported all EIGHT sources as
+    undeclared - four of which had been declared for days. The response looked exactly like
+    a real drift finding.
+
+    The `except` stays (a structure view must not 500 because a config file is being
+    edited) and the shape of the response is a client contract, so what changes here is
+    that the failure now SAYS SO in the log instead of being indistinguishable from an
+    honest empty answer. Making the response itself able to say "declarations unreadable"
+    is a contract change and belongs with the client, not in this commit.
+    """
     try:
         from ledger import config as ledger_config
         return set((ledger_config.load().get("sources") or {}))
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "structure: ledger_config could not be read (%s: %s), so NO source counts as "
+            "declared and every source will be reported in drift.undeclared_sources. "
+            "This is a reader failure, not drift - the usual cause is a running process "
+            "older than the declaration file it is reading.",
+            type(exc).__name__, exc)
         return set()
 
 

@@ -75,6 +75,39 @@ monotone under both insert and edit, and index-backed (`idx_void_obs_updated`). 
 the columns rather than assuming them is what lets a source whose editor stamps a
 different column say so.
 
+🔴 `transfer` - THE THIRD GRAMMAR, AND WHY IT IS A GRAMMAR AND NOT A FLAG (`dt_log`)
+-------------------------------------------------------------------------------------
+`dt_log`'s row is ONE DIE moved into one tape cell, and the declared atom unit is the
+JOB-RUN. So its rows must be GROUPED - which neither grammar above does: `lineage` groups
+by an event key that pairs exactly two rows, `observation` does not group at all. A
+transfer source therefore declares
+
+    "group": {"column": "dt_job", "row_order_column": "row_id"}
+
+and one whole value of that column is one molecule. The cursor is that value; a batch is
+always a whole number of groups.
+
+It also declares where the DESTINATION's identity is CONFIRMED:
+
+    "container": {"relation": "dt_inventory", "key_column": "dt_job",
+                  "lot_column": "dt_lot", "slot_column": "dt_slot"}
+
+🔴 This is the declaration that keeps the round honest. `dt_log` carries `dt_lot`/`dt_slot`
+of its own and `table_config.json` says in its own words what they are: "the INFERENCE
+TARGETS -- 40% absent, and 10% PRESENT BUT WRONG, which is worse than absent because a
+wrong value makes a join succeed quietly", and "a guess must never sit inside an identity".
+A translator that read them would produce a movement chain that joins plausibly and wrongly
+for a tenth of the fab. So the identity comes from the confirming relation, the row's own
+reading is preserved beside it as `container_recorded` (never as identity), and the atom
+says which of the two it got through its DERIVATION - `job_run_to_confirmed_container` or
+`job_run_to_job`.
+
+MEASURED ON `assy_manager`, 2026-08-14, and this is why the distinction is not theoretical:
+`dt_inventory` holds 401 rows and exactly ONE of them has a non-blank `dt_lot` - the string
+`'DT_LOT'`, a spreadsheet HEADER that was ingested as data. So the confirmed path currently
+resolves for ZERO jobs, every atom lands under `job_run_to_job`, and the ledger says
+"unconfirmed" instead of inventing a container.
+
 RELOAD POLICY
 -------------
 Read once per RUN, not per row. `crud`'s own hard-won rule (QA D1/F4): re-reading config
@@ -100,7 +133,22 @@ LINEAGE_STRATEGIES = frozenset({"parent_child", "none"})
 #: declaration written before ruling R-2026-08-14-D speaks.
 SOURCE_KIND_LINEAGE = "lineage"
 SOURCE_KIND_OBSERVATION = "observation"
-SOURCE_KINDS = frozenset({SOURCE_KIND_LINEAGE, SOURCE_KIND_OBSERVATION})
+#: 🔴 THE THIRD GRAMMAR (`dt_log`, 2026-08-14). Neither of the two above fits, and the
+#: reason is the UNIT rather than the columns:
+#:
+#:   * `lineage` assembles a molecule from a PAIR of rows found by an event key. `dt_log`
+#:     has no pair - and no event id at all; what it has is a job column that many rows
+#:     share.
+#:   * `observation` treats ONE ROW as one utterance. `dt_log`'s row is one DIE, and the
+#:     declared atom unit is the JOB-RUN, so its rows must be GROUPED - which is exactly
+#:     the thing the observation driver is built not to do.
+#:
+#: So a transfer source declares the column its rows GROUP BY, and one whole group is one
+#: molecule. The cursor is that column's value, and a batch is always a whole number of
+#: groups (the same cut the lineage driver makes on `event_time`, one column over).
+SOURCE_KIND_TRANSFER = "transfer"
+SOURCE_KINDS = frozenset({SOURCE_KIND_LINEAGE, SOURCE_KIND_OBSERVATION,
+                          SOURCE_KIND_TRANSFER})
 
 #: Columns a LINEAGE source must map. Named here rather than inline so the observation
 #: list beside it is visibly a different list rather than an exception to this one.
@@ -119,8 +167,54 @@ OBSERVATION_REQUIRED_COLUMNS = ("row_identity", "wafer", "run_key")
 OBSERVATION_OPTIONAL_COLUMNS = ("die_x", "die_y", "die_gate", "inchip_x", "inchip_y",
                                 "extent_x", "extent_y", "unit", "class")
 
+#: Columns a TRANSFER source must map. `group_key` is the column whose value makes a
+#: molecule; `wafer` is the substrate the moved dies belong to and therefore the SUBJECT.
+#: Everything else a transfer row carries is optional for the same reason it is optional
+#: on an observation source: a source that does not utter a thing must be able to stay
+#: silent rather than declare a column that is not there.
+TRANSFER_REQUIRED_COLUMNS = ("row_identity", "group_key", "wafer")
+
+#: The optional ones. `recorded_lot`/`recorded_slot` are what the SOURCE ROW wrote down
+#: about the destination container. 🔴 They are NEVER identity - on `dt_log` they are the
+#: table's own declared inference targets ("40% absent, and 10% PRESENT BUT WRONG"), and
+#: `table_config.json`'s own rule is that "a guess must never sit inside an identity".
+#: They are carried as a preserved utterance so the confirmation flow has evidence to
+#: argue with, and the container's identity comes from the confirmation relation below.
+TRANSFER_OPTIONAL_COLUMNS = ("recorded_lot", "recorded_slot")
+
 #: The derivation an observation atom carries: ONE source row, uttered as it stands.
 DERIVATION_OBSERVATION_ROW = "observation_row"
+
+#: The two derivations a transfer atom may carry, and the difference between them is the
+#: WHOLE honesty of this grammar - it is queryable, exactly as `#slot_preserving` is:
+#:
+#:     WHERE source_translator_ver LIKE '%#job_run_to_confirmed_container'
+#:
+#: separates the atoms whose destination has a confirmed physical identity from the ones
+#: whose destination could only be named as the acquisition job. No new column and no new
+#: payload flag: the derivation field already means "which rule made this claim", and
+#: `gate.screen_molecule` already refuses a derivation the config did not declare.
+DERIVATION_TRANSFER_CONFIRMED = "job_run_to_confirmed_container"
+DERIVATION_TRANSFER_JOB = "job_run_to_job"
+
+#: 🔴 The predicate a transfer source's translator emits. One spelling, for the reason
+#: `OBSERVATION_PREDICATE` has one.
+TRANSFER_PREDICATE = "transferred"
+
+#: The `type` words of a `transferred` payload's `from` / `to` containers. They are
+#: spelled here because the FIXTURE GENERATORS already emit them
+#: (`server/scripts/seed_syn_process_ledger.py`'s `PLACE_*`), and position continuity -
+#: §2-bis's "event N's `to` is event N+1's `from`" - is a comparison of the WHOLE
+#: container object. Two spellings of one place would silently produce a chain that never
+#: joins, which is the failure this grammar exists to make visible rather than commit.
+PLACE_WAFER_GRID = "wafer_grid"
+PLACE_DT_SLOT = "dt_slot"
+#: 🔴 A place the fixture does NOT have, and it is new on purpose. A DT tape addressed by
+#: the JOB that filled it is the ACQUISITION unit, not the physical wafer - `table_config`
+#: says so in its own words ("MAP KEY IS (dt_lot, dt_slot) -- the PHYSICAL UNIT, not the
+#: acquisition unit"). Giving it its own type is what makes an unjoinable hop READ as
+#: unjoinable instead of silently matching nothing under a name that promised to match.
+PLACE_DT_JOB = "dt_job"
 
 #: 🔴 The predicate an observation source's translator emits. ONE SPELLING, because two
 #: modules need it: the translator that writes it and `ledger_kinds`, which answers「이
@@ -248,6 +342,9 @@ def validate(cfg: dict, origin: str = "<memory>"):
         if kind == SOURCE_KIND_OBSERVATION:
             _validate_observation_source(source, where)
             continue
+        if kind == SOURCE_KIND_TRANSFER:
+            _validate_transfer_source(source, where)
+            continue
 
         vocab = source.get("vocabulary")
         if not isinstance(vocab, dict) or not vocab:
@@ -363,6 +460,90 @@ def _validate_observation_source(source: dict, where: str):
             f"utterance. Remove it, or set kind to '{SOURCE_KIND_LINEAGE}'.")
 
 
+def _validate_transfer_source(source: dict, where: str):
+    """The transfer declaration, checked. Every rule below has a consumer.
+
+    🔴 THE ONE THAT MATTERS MOST IS `container`. A transfer atom's `to` is a PLACE, and
+    position continuity joins places by value - so the question "what is this destination's
+    identity" has to be answered from a declared relation rather than from whichever column
+    on the row looks like it. On `dt_log` the row's own `dt_lot`/`dt_slot` is the table's
+    declared INFERENCE TARGET, and using it would produce a chain that joins plausibly and
+    wrongly for the ~10% of rows the fixture deliberately mis-fills. If the declaration did
+    not have to name the confirming relation, the only available answer would be the wrong
+    one, and nothing would say so.
+
+    A source with no confirmation relation at all is legal and says so by declaring
+    `"container": {"relation": null}` - it then emits every atom under
+    `job_run_to_job` and the ledger reads back "this destination was never confirmed"
+    rather than "this destination is a lot named X".
+    """
+    group = source.get("group")
+    if not isinstance(group, dict) or not str(group.get("column") or "").strip():
+        raise LedgerConfigError(
+            f"{where}.group must declare the column whose value makes one molecule, e.g. "
+            f"{{\"column\": \"dt_job\"}}. A transfer source's rows are DIES and its atom "
+            f"unit is the job-run, so the driver has to know which column groups them; "
+            f"guessing it would make the batch boundary fall inside a source event, which "
+            f"is the half-landing the whole gate exists to prevent.")
+    if not str(group.get("row_order_column") or "").strip():
+        raise LedgerConfigError(
+            f"{where}.group.row_order_column is not declared. The page is ordered by "
+            f"(group column, this column) so that a group is CONTIGUOUS and a re-read "
+            f"returns the same rows in the same order; without a tiebreak the order "
+            f"inside a group is whatever the plan happened to produce.")
+
+    container = source.get("container")
+    if not isinstance(container, dict):
+        raise LedgerConfigError(
+            f"{where}.container must declare where the DESTINATION's identity is "
+            f"confirmed: {{\"relation\": ..., \"key_column\": ..., \"lot_column\": ..., "
+            f"\"slot_column\": ...}}, or {{\"relation\": null}} to state that this source "
+            f"has no confirming relation at all. It is not optional, because the "
+            f"alternative to a declared confirmation is a translator reading whichever "
+            f"column on the row looks like the answer - and on this source that column is "
+            f"the declared inference target.")
+    if str(container.get("relation") or "").strip():
+        for field in ("key_column", "lot_column", "slot_column"):
+            if not str(container.get(field) or "").strip():
+                raise LedgerConfigError(
+                    f"{where}.container.{field} is not declared. A relation that cannot "
+                    f"be keyed and read produces no confirmation, which is silently the "
+                    f"same as having declared none.")
+
+    columns = source.get("columns")
+    if not isinstance(columns, dict):
+        raise LedgerConfigError(f"{where}.columns must map logical names to source "
+                                f"columns")
+    for required in TRANSFER_REQUIRED_COLUMNS:
+        if not str(columns.get(required) or "").strip():
+            raise LedgerConfigError(
+                f"{where}.columns.{required} is not declared. A transfer atom needs the "
+                f"route back to its rows, the column that groups them into one job-run, "
+                f"and the substrate the moved dies belong to - which is the SUBJECT, "
+                f"because a die is COMPOSED and has no identity to carry through a move.")
+    known = set(TRANSFER_REQUIRED_COLUMNS) | set(TRANSFER_OPTIONAL_COLUMNS)
+    undeclared = sorted(name for name, value in columns.items()
+                        if not name.startswith("__") and name not in known
+                        and value is not None)
+    if undeclared:
+        raise LedgerConfigError(
+            f"{where}.columns names {', '.join(undeclared)}, which this translator does "
+            f"not read (known: {', '.join(sorted(known))}). A mapping nothing consumes is "
+            f"a declaration that teaches the reader a contract nobody enforces - ruling "
+            f"R-2026-08-13-D.")
+    if str(columns["group_key"]).strip() != str(group["column"]).strip():
+        raise LedgerConfigError(
+            f"{where}: columns.group_key is {columns['group_key']!r} but group.column is "
+            f"{group['column']!r}. They name the same physical column from two sides (the "
+            f"driver orders and cuts by one, the translator reads the other), and two "
+            f"spellings would make the molecule's key disagree with the batch boundary.")
+    if "vocabulary" in source:
+        raise LedgerConfigError(
+            f"{where}.vocabulary is a LINEAGE declaration (it maps source event types to "
+            f"lineage rules) and a transfer source has no event types - a job-run is one "
+            f"movement. Remove it, or set kind to '{SOURCE_KIND_LINEAGE}'.")
+
+
 def source_kind(cfg: dict, source: str) -> str:
     """Which grammar a source speaks. Absent means `lineage` - see the module docstring."""
     return (source_config(cfg, source) or {}).get("kind", SOURCE_KIND_LINEAGE)
@@ -409,6 +590,18 @@ def declared_derivations(cfg: dict, source: str) -> frozenset:
     a rule the operator did not turn on.
     """
     source_cfg = source_config(cfg, source) or {}
+    if source_cfg.get("kind") == SOURCE_KIND_TRANSFER:
+        # BOTH transfer derivations are legal for every transfer source, and that is not
+        # laxity: which one an atom carries is decided by whether the DATA confirmed the
+        # destination, so an operator cannot turn one off without turning the honesty off
+        # with it. What the declaration governs is whether there is a confirming relation
+        # AT ALL - and a source that declares none can only ever emit the unconfirmed one.
+        names = {DERIVATION_TRANSFER_JOB}
+        if str(((source_cfg.get("container") or {}).get("relation") or "")).strip():
+            names.add(DERIVATION_TRANSFER_CONFIRMED)
+        if source_cfg.get("register_entity_types"):
+            names.add("first_sight")
+        return frozenset(names)
     if source_cfg.get("kind") == SOURCE_KIND_OBSERVATION:
         # One row, uttered as it stands. There is no second rule here and that is the
         # point of the grammar: an observation source has nothing to infer, so a

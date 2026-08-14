@@ -2,10 +2,11 @@
 
     conda run -n assy_manager python -m ledger.backfill --source lot_event
     conda run -n assy_manager python -m ledger.backfill --source void_obs
+    conda run -n assy_manager python -m ledger.backfill --source dt_log
 
-🔴 TWO GRAMMARS, ONE ENTRY POINT (ruling R-2026-08-14-D)
-----------------------------------------------------------
-`run()` dispatches on the source's declared `kind` and there are two drivers under it:
+🔴 THREE GRAMMARS, ONE ENTRY POINT (ruling R-2026-08-14-D)
+------------------------------------------------------------
+`run()` dispatches on the source's declared `kind` and there are three drivers under it:
 
   * `_run_lineage` - `lot_event` and its kin. A molecule is a GROUP of source rows sharing
     an `event_time`, so the cursor is a world time and the batch has to be cut on a group
@@ -14,11 +15,16 @@
     group to cut; what those sources need instead is a cursor that works when a bulk load
     stamps ONE `updated_at` on ninety thousand rows, which a time cursor cannot. See
     `_run_observation` for the keyset that does.
+  * `_run_transfer` - `dt_log`. One row is one DIE and the atom unit is the JOB-RUN, so
+    rows are grouped by a DECLARED column and the cursor is that column's value. It is the
+    lineage driver's group cut with the group named by the declaration instead of being
+    the time column - `_cut_on_group_boundary` is shared between them for exactly that
+    reason.
 
 They share everything that carries a rule: the molecule scope is opened by the DRIVER in
-both (ruling R-H-bis 3), registrations are looked up once per page in both, and both write
-through `store.write_batch`, so "atoms and cursor in one transaction" has one
-implementation rather than one per grammar.
+all three (ruling R-H-bis 3), registrations are looked up once per page in all three, and
+all three write through `store.write_batch`, so "atoms and cursor in one transaction" has
+one implementation rather than one per grammar.
 
 WHERE THE BATCH IS CUT, AND WHY IT MATTERS MORE THAN THE BATCH SIZE
 --------------------------------------------------------------------
@@ -125,20 +131,64 @@ def fetch_group(connection, source, columns, event_time):
         return [dict(zip(names, row)) for row in cursor.fetchall()]
 
 
-def _cut_on_group_boundary(rows, page_limit):
-    """`(complete_rows, trailing_event_time_or_None)`.
+def _cut_on_group_boundary(rows, page_limit, key="event_time"):
+    """`(complete_rows, trailing_group_value_or_None)`.
 
-    Returns the rows that are safe to process now, plus the event_time whose group had to
+    Returns the rows that are safe to process now, plus the group value whose group had to
     be dropped because the page may have cut it. `None` for the second element means the
     page reached the end of the source and nothing was dropped.
+
+    `key` is a parameter rather than a constant because the TRANSFER grammar cuts on the
+    same boundary for the same reason, over a different column (ruling R-2026-08-14-D's
+    third grammar). The rule being shared is what matters: a batch is a whole number of
+    groups or the molecule lands half.
     """
     if not rows:
         return [], None
     if len(rows) < page_limit:
         return rows, None
-    last_time = rows[-1]["event_time"]
-    kept = [r for r in rows if r["event_time"] != last_time]
-    return kept, last_time
+    last_value = rows[-1][key]
+    kept = [r for r in rows if r[key] != last_value]
+    return kept, last_value
+
+
+def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
+    """Yield `(rows, cursor_after, is_last_page)` - whole groups only, none skipped.
+
+    🔴 THE ONE PLACE THE PAGE RULE LIVES, and it is one place because it was two and they
+    were both wrong in the same way. Both drivers that page over groups need three
+    behaviours and the third is the one that bit:
+
+      1. a page that filled may have CUT its trailing group, so that group is dropped;
+      2. a page that is ENTIRELY one group cannot be cut down at all, so that group is
+         fetched whole and processed alone;
+      3. 🔴 the cursor then advances to the last group processed IN FULL - never to the
+         dropped one. The fetch is `WHERE key > cursor`, so advancing to the dropped
+         group's key skips the very group that was set aside because it still needed
+         reading.
+
+    MEASURED 2026-08-14, when `dt_log` became the first source larger than one page: 396
+    job-runs in the table, 379 translated, 17 groups and 1,862 source rows silently gone.
+    `lot_event` is 43 rows, so `dropped` was always `None` there and rule 3 had never been
+    executed by anything.
+
+    `fetch_page(after)` and `fetch_group(key_value)` are the source-specific halves; every
+    rule above is here, so a fourth grammar inherits them by calling this rather than by
+    copying a loop.
+    """
+    while True:
+        rows = fetch_page(after)
+        if not rows:
+            return
+        complete, dropped = _cut_on_group_boundary(rows, page_limit, key=key)
+        if not complete:
+            complete = fetch_group(dropped)
+            dropped = None
+        after = complete[-1][key]
+        last = dropped is None and len(rows) < page_limit
+        yield complete, after, last
+        if last:
+            return
 
 
 def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
@@ -169,6 +219,10 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         return _run_observation(engine, cfg, source, fetch_rows=fetch_rows,
                                 reset_cursor=reset_cursor, start_from=start_from,
                                 max_batches=max_batches, probe_lag=probe_lag)
+    if source_cfg.get("kind") == ledger_config.SOURCE_KIND_TRANSFER:
+        return _run_transfer(engine, cfg, source, fetch_rows=fetch_rows,
+                             reset_cursor=reset_cursor, start_from=start_from,
+                             max_batches=max_batches, probe_lag=probe_lag)
     return _run_lineage(engine, cfg, source, fetch_rows=fetch_rows,
                         reset_cursor=reset_cursor, start_from=start_from,
                         max_batches=max_batches, probe_lag=probe_lag)
@@ -234,18 +288,16 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         # is precisely the disagreement ruling R-2026-08-13-F exists to prevent.
         refusal_baseline = _refusal_totals(gate, source)
 
-        while True:
+        # The page rule - whole groups, and the dropped one comes back - is
+        # `walk_group_pages`, shared with the transfer driver. What is left here is what is
+        # actually about lineage.
+        pages = walk_group_pages(
+            lambda position: fetch_page(read, source, columns, position, fetch_rows),
+            lambda event_time: fetch_group(read, source, columns, event_time),
+            "event_time", after, fetch_rows)
+        for complete, next_after, _last_page in pages:
             if max_batches is not None and result["batches"] >= max_batches:
                 break
-            rows = fetch_page(read, source, columns, after, fetch_rows)
-            if not rows:
-                break
-            complete, dropped = _cut_on_group_boundary(rows, fetch_rows)
-            if not complete:
-                # One event_time group is larger than a page. Read it whole rather than
-                # process a fragment of it.
-                complete = fetch_group(read, source, columns, dropped)
-                dropped = None
             result["rows_read"] += len(complete)
 
             molecules = group_molecules(complete)
@@ -340,10 +392,8 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                 pending, pending_molecules = [], 0
                 pending_refused, pending_incomplete = 0, 0
 
-            after = dropped or complete[-1]["event_time"]
+            after = next_after
             result["cursor"] = after
-            if dropped is None and len(rows) < fetch_rows:
-                break
 
         result["seconds"] = round(time.monotonic() - started, 3)
         result["blank_wafer_positions"] = translator.blank_wafer_positions
@@ -596,6 +646,254 @@ def _run_observation(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,
         return result
     finally:
         read.close()
+
+
+# ------------------------------------------------------------------ transfer driver
+def _transfer_select(source_cfg):
+    """The SELECT list for a transfer page, in LOGICAL names. Shared by page and group.
+
+    Written once because the two fetches below MUST produce identically shaped dicts: the
+    group-escape fetch exists precisely for the case where a page could not hold a whole
+    molecule, and a translator receiving a differently shaped row on that path would fail
+    only on groups larger than a page - the rarest input, so the last one anybody tests.
+    """
+    columns = source_cfg["columns"]
+    select = [f"{columns['row_identity']} AS row_identity",
+              f"{columns['group_key']} AS group_key",
+              f"{columns['wafer']} AS wafer",
+              f"{source_cfg['occurred_at_column']} AS event_time"]
+    for logical in ("recorded_lot", "recorded_slot"):
+        physical = columns.get(logical)
+        if physical:
+            select.append(f"{physical} AS {logical}")
+    return select
+
+
+def fetch_transfer_page(connection, source, source_cfg, after, limit):
+    """One page of transfer rows past `after`, ordered so groups are CONTIGUOUS.
+
+    🔴 ORDERED BY `(group column, row order column)`, NOT BY THE ROW IDENTITY ALONE. On
+    `dt_log` the identity is `business_key_val = '<dt_job>_<dt_x>_<dt_y>'`, so ordering by
+    it LOOKS like ordering by job - and it is, only as long as no job name is a prefix of
+    another (measured: 0 pairs today). That is an accident of the current data, not a
+    property of the source, and a batch boundary that depends on an accident is the
+    half-landing waiting for one new job name. Ordering by the declared group column makes
+    contiguity structural.
+    """
+    group_column = source_cfg["group"]["column"]
+    order_column = source_cfg["group"]["row_order_column"]
+    where, params = "", []
+    if after:
+        where = f"WHERE {group_column} > %s "
+        params.append(after)
+    params.append(limit)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT {', '.join(_transfer_select(source_cfg))} FROM {source} {where}"
+            f"ORDER BY {group_column}, {order_column} LIMIT %s", tuple(params))
+        names = [d[0] for d in cursor.description]
+        return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+
+def fetch_transfer_group(connection, source, source_cfg, group_key):
+    """Every row of ONE group. The escape hatch for a group bigger than a page."""
+    group_column = source_cfg["group"]["column"]
+    order_column = source_cfg["group"]["row_order_column"]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT {', '.join(_transfer_select(source_cfg))} FROM {source} "
+            f"WHERE {group_column} = %s ORDER BY {order_column}", (group_key,))
+        names = [d[0] for d in cursor.description]
+        return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+
+def fetch_containers(connection, source_cfg, keys):
+    """`{group_key: {"lot": ..., "slot": ...}}` for a whole page. ONE query.
+
+    Same shape and same argument as `fetch_runs`: a per-group lookup is what makes a
+    ten-million row backfill quadratic. A group ABSENT from the result is a destination
+    nobody confirmed, and the translator records that rather than treating it as an error -
+    which is why this returns only what it found and never a placeholder.
+    """
+    container = source_cfg.get("container") or {}
+    relation = str(container.get("relation") or "").strip()
+    if not relation or not keys:
+        return {}
+    key_column = container["key_column"]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT {key_column} AS group_key, {container['lot_column']} AS lot, "
+            f"{container['slot_column']} AS slot FROM {relation} "
+            f"WHERE {key_column} = ANY(%s)", (sorted(keys),))
+        return {row[0]: {"lot": row[1], "slot": row[2]} for row in cursor.fetchall()}
+
+
+def _run_transfer(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,
+                  reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
+    """`dt_log` -> `transferred` atoms. The third grammar.
+
+    🔴 THE MOLECULE SCOPE IS OPENED HERE, BY THIS DRIVER (ruling R-H-bis 3), exactly as the
+    other two open it. This grammar is the one where it bites hardest: a job-run folds up
+    to 150 source rows into several atoms, so a refusal discovered while building the fifth
+    wafer's atom has to unwind the first four - and it does, because every `gate.refuse`
+    under this `with` raises.
+    """
+    from . import config as ledger_config
+    from . import gate, observability, schema
+    from .envelope import canonical_keys
+    from .store import LedgerStore
+    from .transfer_translator import TransferTranslator
+
+    source_cfg = ledger_config.source_config(cfg, source)
+    translator_ver = ledger_config.translator_version(cfg, source)
+    declared = ledger_config.declared_derivations(cfg, source)
+    declared_subjects = ledger_config.declared_subject_types(cfg, source)
+    batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
+    group_column = source_cfg["group"]["column"]
+
+    store = LedgerStore(engine)
+    store.ensure_schema()
+
+    read = store.connection()
+    try:
+        existing = store.read_cursor(read, source)
+        after = start_from if start_from is not None else (
+            None if reset_cursor else (existing or {}).get("cursor_value", {}).get(
+                "group_key"))
+
+        logger.info("[Ledger] backfill %s (transfer) | translator_ver=%s | group=%s | "
+                    "container=%s | cursor=%r%s",
+                    source, translator_ver, group_column,
+                    (source_cfg.get("container") or {}).get("relation"), after,
+                    " (RESET)" if reset_cursor else "")
+
+        result = BackfillResult(
+            source=source, kind=ledger_config.SOURCE_KIND_TRANSFER,
+            translator_ver=translator_ver, started_from=after,
+            molecules=0, refused_molecules=0, incomplete_molecules=0,
+            attempted=0, inserted=0, deduped=0, batches=0,
+            unanchored_rows=0, confirmed_groups=0, unconfirmed_groups=0,
+            rows_read=0, cursor=after, seconds=0.0)
+        started = time.monotonic()
+
+        translator = TransferTranslator(source, source_cfg, translator_ver, declared)
+        refusal_baseline = _refusal_totals(gate, source)
+
+        # 🔴 THE SAME PAGE RULE AS THE LINEAGE DRIVER, FROM THE SAME FUNCTION. A group
+        # larger than a page is fetched whole rather than folded as a fragment - and a
+        # fragment here would be worse than elsewhere, because it produces a `qty` that is
+        # wrong and looks right.
+        pages = walk_group_pages(
+            lambda position: fetch_transfer_page(read, source, source_cfg, position,
+                                                 fetch_rows),
+            lambda group_key: fetch_transfer_group(read, source, source_cfg, group_key),
+            "group_key", after, fetch_rows)
+        for complete, next_after, _last_page in pages:
+            if max_batches is not None and result["batches"] >= max_batches:
+                break
+            result["rows_read"] += len(complete)
+
+            molecules = _group_transfer_rows(source, complete)
+            containers = fetch_containers(read, source_cfg,
+                                          {m.group_key for m in molecules})
+            subjects = {("Wafer", canonical_keys({"wafer": str(r["wafer"]).strip()}))
+                        for r in complete if str(r.get("wafer") or "").strip()}
+            translator.registered |= store.existing_registrations(read, subjects)
+
+            # END THE READ TRANSACTION BEFORE WRITING - same reason as the other two
+            # drivers: this connection holds ACCESS SHARE on `ledger_events` and the first
+            # write may need ACCESS EXCLUSIVE to create a partition.
+            read.rollback()
+
+            pending, pending_molecules = [], 0
+            pending_refused, pending_incomplete = 0, 0
+            pending_cursor = after
+            for molecule in molecules:
+                atoms, molecule_report, refused = None, None, False
+                try:
+                    with gate.building_molecule(source):
+                        atoms, molecule_report = translator.translate(molecule, containers)
+                        refused = atoms is None
+                        if not refused:
+                            kept, _screen = gate.screen_molecule(
+                                source, atoms, declared, declared_subjects,
+                                molecule_ref=molecule.ref,
+                                source_rows=len(molecule.rows))
+                            pending.extend(kept)
+                except gate.MoleculeRefused:
+                    refused = True
+                    _forget_registers(translator, atoms)
+                if refused:
+                    pending_refused += 1
+                    result["refused_molecules"] += 1
+                elif molecule_report.get("incomplete"):
+                    # Only a molecule that actually LANDED can be incomplete - counting a
+                    # refused one in both buckets makes an operator's sum exceed the
+                    # source.
+                    gate.record_incomplete(source)
+                    pending_incomplete += 1
+                    result["incomplete_molecules"] += 1
+                pending_molecules += 1
+                pending_cursor = molecule.group_key
+
+                if pending_molecules >= batch_size:
+                    _flush(store, source, translator_ver, pending,
+                           {"group_key": pending_cursor},
+                           pending_molecules, pending_refused, pending_incomplete,
+                           result, gate, refusal_baseline)
+                    pending, pending_molecules = [], 0
+                    pending_refused, pending_incomplete = 0, 0
+
+            if pending_molecules:
+                _flush(store, source, translator_ver, pending,
+                       {"group_key": pending_cursor},
+                       pending_molecules, pending_refused, pending_incomplete, result,
+                       gate, refusal_baseline)
+
+            after = next_after
+            result["cursor"] = after
+
+        result["seconds"] = round(time.monotonic() - started, 3)
+        result["unanchored_rows"] = translator.unanchored_rows
+        result["confirmed_groups"] = translator.confirmed_groups
+        result["unconfirmed_groups"] = translator.unconfirmed_groups
+        result["census"] = store.census()
+        result["partitions"] = [name for name, _ in schema.partitions(read)]
+
+        cursor_row = store.read_cursor(read, source)
+        result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
+        result["lag"] = observability.lag_report_group(
+            store, source, source_cfg, cursor_row,
+            probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
+            force_probe=probe_lag)
+        result["gate_note"] = gate.note()
+        result["lag_note"] = observability.lag_note(result["lag"])
+        return result
+    finally:
+        read.close()
+
+
+def _group_transfer_rows(source, rows):
+    """Rows already in group order -> molecules, order preserved.
+
+    Deliberately does NOT assume contiguity: a group value that reappears after another
+    group started still lands in its own molecule rather than a second one. Contiguity is
+    what the ORDER BY buys and what the page cut relies on; this function not depending on
+    it means a mis-ordered page produces a wrong batch boundary (loud, the cursor moves
+    oddly) rather than two half molecules (silent).
+    """
+    from .transfer_translator import TransferMolecule
+
+    molecules, order = {}, []
+    for row in rows:
+        key = row["group_key"]
+        molecule = molecules.get(key)
+        if molecule is None:
+            molecule = TransferMolecule(source, key)
+            molecules[key] = molecule
+            order.append(key)
+        molecule.rows.append(row)
+    return [molecules[key] for key in order]
 
 
 def _forget_registers(translator, atoms):
