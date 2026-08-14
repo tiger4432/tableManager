@@ -176,6 +176,104 @@ atom as a duplicate. `RECIPE_ORDER` is now explicit and **append-only** for that
 a sorted-order timestamp is an idempotency bug that only fires the day somebody adds a
 member in the middle.
 
+## 3-ter. Lot-level excursions (ruling R-2026-08-14-F) — BUILT, NOT RUN
+
+🔴 **Condition 4 honoured: nothing was written.** `--apply` was fired *without* the flag to
+prove the gate bites, and it refused. Verified after: `bonding_log` rows for lots 101–103
+= **0**, excursion atoms = **0**, `cell_sources` under the marker = **0**.
+
+### 🔴 A measurement that changes the ask — `found_rate` can never be coloured
+
+Measured over all 100 lots, no window (`ledger_lots`' own metric definitions):
+
+| aggregate | min | **median (baseline)** | max | max/median |
+|---|---|---|---|---|
+| `found_rate` | 0.5766 | **0.6124** | 0.6483 | **1.059** |
+| `per_chip` | 1.1393 | **1.2248** | 1.3255 | 1.082 |
+| `extent_mean` | 55.10 | **58.659** | 64.32 | 1.097 |
+
+`found_rate` is `found chips / scanned chips` — **bounded by 1.0**. Against a 0.6124
+baseline the largest ratio that column can *ever* show is **1.633**, and the first ladder
+step is 2.0. **A lot where every single scanned chip has a void still renders uncoloured.**
+That is a property of a saturating ratio judged against a mid-range baseline; no plant
+fixes it. So the excursion is planted on the **unbounded** declared aggregates — `per_chip`
+and `extent_mean` — and `found_rate` is declared unscorable in code with the arithmetic
+pinned by a test that fails the day someone lowers the threshold below the ceiling.
+
+⚠️ **I could not reproduce the brief's "최대 1.554배".** I measure max/median = **1.059**
+for `found_rate` with no window. Both numbers are in the report rather than one being
+silently adopted — the gap is probably a window or a different column, and it is worth
+one minute from whoever produced 1.554 before the grid's baseline is trusted.
+
+### What is planted, and why new lots
+
+Three lots, **late in production order on the axis the grid actually sorts by** —
+`ledger_lots._build` takes each row's time from `inspection_run.observed_at` and says in
+its own comment that `bonding_log.event_time` is one identical string across all 352,500
+synthetic rows and cannot order anything. So these lots are late because their *scans* are
+late (day offsets 101–103), not because their names sort last.
+
+| lot | per_chip | ÷ baseline | level | margin to next step |
+|---|---|---|---|---|
+| `SYN-VOID-101` | 2.818 | **2.30×** | 1 주의 | below 3.0 |
+| `SYN-VOID-102` | 4.146 | **3.39×** | 2 높음 | below 4.5 |
+| `SYN-VOID-103` | 6.090 | **4.97×** | 3 심각 | below 6.0 |
+
+Graded so the **ladder itself** is exercised, not one step of it. `found_rate` lands at
+0.880 / 0.931 / 0.945 — ratios ~1.44–1.54, still uncoloured, which is the saturation
+finding demonstrated rather than argued.
+
+🔴 **New lots rather than more voids on lots 098–100, and the reason is a contradiction.**
+Every existing wafer already carries a `processed_with` atom naming its bonding revision.
+Giving an excursion a *cause* on those wafers would assert a second, different revision for
+a run the ledger has already described — append-only keeps both, the later wins by rank,
+and that is a **correction**, a completely different claim from "a new revision rolled out
+late". New lots have no history to contradict. It also makes condition 2 far stronger: the
+100 existing lots are **untouched**, so "unplanted lots do not light up" holds by
+construction rather than by re-measuring and hoping.
+
+**The cause connects (condition 1):** every excursion wafer bonds under **`SYN-RCP-BOND` rev 6**
+— a value in the *same* factor namespace the case-control contrast already scores
+(`recipe_rev@BONDING`). So grid → reference view → contrast is scorable end to end, and
+`prove_cause_connects` runs the existing `contrast()` to check it. Projected enrichment
+once applied: ~2,050 cases / ~125 controls → **ratio ≈ 9.5**, with the existing rev5 factor
+diluting only from 2.02 to ~1.94 (still over its declared 1.5 floor). rev6 also gives S2 a
+second real diff: pressure 0.22 → 0.16, time 12 → 9, four parameters unchanged.
+
+### Both directions, and the bug the second one catches
+
+`server/tests/test_lot_excursion.py` (8 passed) replaces `lot_table` with a synthetic
+100-lot table, so the ruling is scorable **without** the database:
+
+- planted lots reach their declared levels;
+- 🔴 a **rogue normal lot at 2.5×** must be reported — this is the only assertion standing
+  between "the grid works" and "the grid colours everything";
+- absence is **PENDING, never a vacuous PASS** (which is what `--prove` prints today);
+- the trend break must land at the **end** of the series (a planted lot dated early fails);
+- `found_rate`'s ceiling is pinned against the live threshold list.
+
+**The self-consistency test found a real bug in my own declaration**: lot 101 declared
+level 1 with `expect_min_ratio` 1.8 when the step is 2.0, and lot 103 declared level 3 with
+4.2 when the step is 4.5. The answer key would have failed for a reason having nothing to
+do with the data. Corrected to 2.0 / 3.0 / 4.5 with ~13% generator margin.
+
+### To run it, once the owner approves
+
+```
+conda run -n assy_manager python server/scripts/seed_syn_lot_excursion.py --apply --i-accept-writing-to-owner-database
+conda run -n assy_manager python server/scripts/seed_syn_lot_excursion.py --prove
+# then, to extend the DT transfer chain onto the new lots (idempotent for everything else):
+conda run -n assy_manager python server/scripts/seed_syn_process_ledger.py --apply --i-accept-writing-to-owner-database
+```
+
+Would add: 10,575 `bonding_log`, 2,175 `inspection_run`, 9,464 `void_obs`, 75
+`wafer_map_metadata`, 232 atoms.
+
+**Rollback:** `updated_by = 'seed_syn_lot_excursion'` (`cell_sources`/`cell_overwrites`);
+`ledger_events WHERE source_translator_ver LIKE 'syn_lot_excursion/%'`;
+`bond_lot IN ('SYN-VOID-101','SYN-VOID-102','SYN-VOID-103')`;
+`base_wafer_id LIKE 'SYN-BW-1__-%'` for runs and voids.
+
 ## 4. The three-way split is real, and cannot silently collapse
 
 `server/finding_kinds.population_ctes(kind)` is the **one** spelling of the split:
@@ -227,6 +325,8 @@ kind name appears as a literal in code, and it is a default parameter value.
 | `C:\Users\kk980\Developments\assyManager\server\ledger\vocabulary.py` | **MODIFIED** — `Recipe` entity type (`keys: ["recipe","rev"]`, issued); `processed_with` + `has_param` + **`transferred`** predicates (`since: 2`, seven words → **ten**); `Recipe` added to `register`/`pin`/`same_as` subjects; `check_signature` now enforces `{"kind":"value","required":[...]}` |
 | `C:\Users\kk980\Developments\assyManager\server\finding_kinds.py` | **NEW** — the kind registry and the single spelling of the three-way split |
 | `C:\Users\kk980\Developments\assyManager\server\scripts\seed_syn_process_ledger.py` | **NEW** — generator + `--prove` answer key |
+| `C:\Users\kk980\Developments\assyManager\server\scripts\seed_syn_lot_excursion.py` | **NEW** — lot excursions (R-2026-08-14-F). **Built and dry-run only; not applied.** |
+| `C:\Users\kk980\Developments\assyManager\server\tests\test_lot_excursion.py` | **NEW** — 8 tests, both directions, no database needed |
 | `C:\Users\kk980\Developments\assyManager\server\tests\test_finding_kinds.py` | **NEW** — 7 tests |
 | `C:\Users\kk980\Developments\assyManager\server\tests\test_ledger_l1_unit.py` | **MODIFIED** — the seven-word pin now records the nine-word ruling (name unchanged, deliberately); 2 new tests |
 | `C:\Users\kk980\Developments\assyManager\server\config\table_config.json` | **MODIFIED** (gitignored operator config) — `delam_obs` declared |
