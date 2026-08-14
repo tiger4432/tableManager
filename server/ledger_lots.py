@@ -173,6 +173,13 @@ REASON_BAD_COLUMNS = "bad_columns_spec"
 REASON_NO_DENOMINATOR = "no_observed_by_declared"
 REASON_RELATION_ABSENT = "relation_absent"
 REASON_GRID_TOO_LARGE = "grid_too_large_for_full_window"
+#: 🔴 A DECLARED WINDOW THAT CANNOT BE APPLIED IS A REFUSAL, NEVER AN ECHO. The geometry
+#: has to name a run time column for a window to mean anything here; without one the only
+#: honest answers are 「이 축은 기간으로 좁힐 수 없다」 or silence, and emitting a
+#: `window.applied` block that no clause implements is the worse of the two failures —
+#: silently ignoring a parameter is a bug, claiming it ran is a false statement, and it
+#: also removes the one cheap way a caller could have noticed.
+REASON_WINDOW_NOT_APPLICABLE = "window_not_applicable_to_axis"
 
 #: Above this — summed on-disk size of every relation the grid must scan — the all-time
 #: grid is refused and `LARGE_GRID_WINDOW` is FORCED. 512 MB is ~1.5 M bridged chips at
@@ -446,13 +453,17 @@ def _relation_size(connection, relation):
     return int(rows[0][0])
 
 
-def apply_size_gate(connection, relations, window, now=None):
+def apply_size_gate(connection, relations, window, now=None, may_force=True):
     """`(window, gate)` — forces `LARGE_GRID_WINDOW` when the scan is too big to buy.
 
     🔴 THE FORCING IS ANNOUNCED. `ledger_structure` established the shape and this reuses
     it verbatim: a screen may never quietly show a month's counts under an all-time
     heading. When the gate fires the caller's requested window is preserved in
     `window.requested` beside the one that was actually applied.
+
+    `may_force=False` when the caller knows the window could not be applied even if it were
+    forced (no declared run time column). Reporting `forced: true` there would announce a
+    narrowing that no clause performs — the same false claim as an unapplied `applied`.
     """
     sizes, missing = {}, []
     for relation in relations:
@@ -465,7 +476,7 @@ def apply_size_gate(connection, relations, window, now=None):
     gate = {"relations": sizes, "absent_relations": missing,
             "total_bytes": total, "max_bytes": FULL_GRID_MAX_BYTES,
             "forced": False, "reason": None}
-    if window.declared or total <= FULL_GRID_MAX_BYTES:
+    if window.declared or total <= FULL_GRID_MAX_BYTES or not may_force:
         return window, gate
     gate["forced"] = True
     gate["reason"] = REASON_GRID_TOO_LARGE
@@ -614,10 +625,33 @@ class _GridPlan:
                 f"sum(a{i}.n) FILTER (WHERE {scanned_flag}) AS events_{i}",
                 f"avg(a{i}.extent) FILTER (WHERE {scanned_flag}) AS extent_{i}",
             ])
+        # 🔴 THE WINDOW HAS TO REACH THE ROW SET, NOT ONLY THE CELLS.
+        #
+        # The driving table is `unit` — the chip→row bridge, which is a fact about what was
+        # BONDED and knows nothing about time. `runs` is the only windowed relation, and it
+        # arrives through LEFT JOINs, so before this clause a window narrowed the
+        # measurements and left every row standing: measured on the restarted server,
+        # `window=1990-01-01..1990-01-02` returned all 2,600 wafers with every cell
+        # 「미검사」, under a `window.applied` block claiming the filter had run. `/siblings`
+        # answered `state: "empty"` for the same window, because its population is defined
+        # THROUGH the windowed runs — so the two endpoints disagreed about what a window
+        # means, and the console is about to draw them side by side.
+        #
+        # `HAVING` rather than an inner join, deliberately: an inner join would also shrink
+        # `universe` (`count(*)`), which is the third bucket's denominator — how many chips
+        # this row HAS, a structural fact that no window may edit. So the row must have at
+        # least one chip with a run inside the window to appear, and the row's own size is
+        # still reported in full. Undeclared window keeps every row, never-scanned rows
+        # included, which is what `geometry.universe` exists to make expressible.
+        # Counted on a unit column rather than on `first_at`: a run with a NULL timestamp
+        # would make `min(run_at)` null and drop a row that genuinely has runs. Under a
+        # declared window such a run is already excluded by the time clause, so the two
+        # spellings agree today — but only one of them stays right without that argument.
+        having = (f"\nHAVING count(t.{units[0]}) > 0" if window.declared else "")
         return ("WITH " + ",\n".join(parts) + "\nSELECT " + ",\n       ".join(selects)
                 + "\nFROM unit u\n" + "\n".join(joins)
-                + "\nGROUP BY u.row_value\nORDER BY min(t.first_at) NULLS LAST, "
-                  "u.row_value")
+                + "\nGROUP BY u.row_value" + having
+                + "\nORDER BY min(t.first_at) NULLS LAST, u.row_value")
 
 
 # --------------------------------------------------------------------------- cells
@@ -740,6 +774,19 @@ def lots(connection, columns=None, by=None, window=None, kind=None, limit=None,
     source, axis = resolve_row_axis(config, axis_kind, by)
     geometry, _attribution = config.for_kind(axis_kind)
 
+    # 🔴 REFUSE BEFORE ANY WORK, RATHER THAN ECHO AFTERWARDS. `_runs_cte` can only apply a
+    # window through `geometry.run_time_column`; without one it silently emits no time
+    # clause. That branch used to run all the way to a `window.applied` block, which is the
+    # false statement this route was reported for. An honest refusal is fine here — the
+    # caller asked for something this axis cannot do, and now it is told which.
+    if requested_window.declared and not geometry.run_time_column:
+        raise LotGridRequestError({
+            "reason": REASON_WINDOW_NOT_APPLICABLE,
+            "window": window, "kind": axis_kind, "axis": axis.name,
+            "message": (f"{axis.label or axis.name} 축은 기간으로 좁힐 수 없다 — "
+                        f"{axis_kind} 기하가 run_time_column을 선언하지 않았다. "
+                        f"window 없이 요청할 것")})
+
     plan = _GridPlan(geometry, source, axis, resolved, requested_window)
 
     # -- the gate, BEFORE the scan ------------------------------------------------
@@ -748,8 +795,16 @@ def lots(connection, columns=None, by=None, window=None, kind=None, limit=None,
         table = finding_kinds.observation_table(column.kind)
         if table not in relations:
             relations.append(table)
-    applied_window, gate = apply_size_gate(connection, relations, requested_window,
-                                           now=now)
+    # 🔴 The gate may FORCE a window, so it inherits the same rule: forcing one onto an
+    # axis that cannot apply it would manufacture the very `applied` lie the refusal above
+    # exists to prevent — this time on a request that declared nothing and did nothing
+    # wrong. A geometry with no run time column keeps the all-time grid and the gate says
+    # `forced: false`, which is true.
+    applied_window, gate = (
+        apply_size_gate(connection, relations, requested_window, now=now)
+        if geometry.run_time_column
+        else apply_size_gate(connection, relations, requested_window, now=now,
+                             may_force=False))
     if gate["forced"]:
         logger.warning("lot grid windowed to %s: %s bytes over %s",
                        LARGE_GRID_WINDOW, gate["total_bytes"], FULL_GRID_MAX_BYTES)

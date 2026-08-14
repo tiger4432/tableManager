@@ -556,7 +556,22 @@ def siblings(connection, kind=None, mode=MODE_INTERSECTION, window=None, limit=N
 
     plan = _Plan(geometry, observation, methods, win, has_runs)
     counts = _populations(connection, plan)
-    if has_runs and counts["scanned"] == 0:
+    if has_runs and counts["scanned"] == 0 and not win.declared:
+        # 🔴 THE FALLBACK TAKES THE WINDOW DOWN WITH IT, SO IT MAY ONLY FIRE ALL-TIME.
+        #
+        # `_Plan` keeps the time clause INSIDE `if has_runs`, so rebuilding with
+        # `has_runs=False` deletes the runs CTE and every window filter along with it, and
+        # `pop` becomes the found set over ALL TIME. Measured on this box before the guard:
+        # `window=1990-01-01..1990-01-02` reported `state: "ready"` with `found: 49,369
+        # packages` — every void ever observed, relabelled with a two-day window in 1990
+        # that the response echoed. Strictly worse than returning unfiltered rows, because
+        # the number is large, positive and wrong rather than merely unnarrowed.
+        #
+        # The two situations the old spelling conflated are different answers:
+        #   scanned == 0 all-time     this KIND has no denominator (nobody scans for it)
+        #   scanned == 0 in a window  nothing happened in the period you asked about
+        # The first is a property of the registry; the second is the answer 「그 기간엔
+        # 없다」 and it must stay windowed to be true.
         reason, has_runs = REASON_NO_RUNS, False
         plan = _Plan(geometry, observation, methods, win, False)
         counts = _populations(connection, plan)

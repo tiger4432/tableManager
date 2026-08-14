@@ -384,3 +384,61 @@ def test_paging_reports_what_was_truncated(declared):
     assert body["populations"] == {"rows_total": 10, "rows_returned": 3,
                                    "rows_truncated": True}
     assert len(body["rows"]) == 3
+
+
+# --------------------------------------------------------- the window must REACH the rows
+def _plan_for(window_spec):
+    """A real `_GridPlan` over the swapped declarations — the SQL, not a description."""
+    config = ledger_siblings.load_axes_config()
+    columns = ledger_lots.parse_columns("bolt:found_rate")
+    source, axis = ledger_lots.resolve_row_axis(config, "bolt")
+    geometry, _attr = config.for_kind("bolt")
+    window = ledger_siblings.parse_window(window_spec)
+    return ledger_lots._GridPlan(geometry, source, axis, columns, window)
+
+
+def test_a_declared_window_narrows_the_ROWS_and_not_only_the_cells(declared):
+    """🔴 THE DEFECT THIS DEFENDS, MEASURED ON THE RESTARTED SERVER 2026-08-14:
+    `window=1990-01-01..1990-01-02` returned all 2,600 rows with every cell 「미검사」,
+    under a `window.applied` block claiming the filter had run — while `/siblings` answered
+    `state: "empty"` for the same window. Two endpoints disagreeing about what a window
+    means, about to be drawn side by side.
+
+    The driving table is the chip→row bridge, which knows nothing about time; `runs` is the
+    only windowed relation and it arrives by LEFT JOIN, so without this clause the window
+    could never remove a row.
+    """
+    windowed, all_time = _plan_for("7d").sql, _plan_for(None).sql
+    assert "HAVING" in windowed
+    assert "HAVING" not in all_time
+    # The narrowing hangs off the RUN-derived bridge, so it means「이 기간에 런이 있었다」
+    # and cannot be satisfied by a row that merely exists.
+    assert "chip_time" in windowed and "count(t." in windowed
+    # 🔴 And `universe` is still `count(*)` — an inner join would have narrowed the row's
+    # own size too, and how many chips a lot HAS is a structural fact no window may edit.
+    assert "count(*) AS universe" in windowed
+
+
+def test_a_window_that_cannot_be_applied_is_refused_and_never_echoed(declared):
+    """🔴 Silently ignoring a parameter is a bug; echoing it back inside an `applied` block
+    is an active claim that the filter ran, and it removes the only cheap way a caller could
+    have noticed. A geometry with no run time column can only refuse."""
+    # 🔴 EXPLICIT `None`, not a missing key: `ledger_siblings._DEFAULTS` supplies
+    # `observed_at` for any geometry that omits it, so a declaration can only LOSE the run
+    # time column by saying so. That is worth knowing — it means this refusal is a guard on
+    # a door somebody would have to open deliberately, not a hole standing open today.
+    timeless = {k: dict(v) if isinstance(v, dict) else v
+                for k, v in SWAPPED_AXES.items()}
+    timeless["geometry"] = dict(SWAPPED_AXES["geometry"], run_time_column=None)
+    ledger_siblings.set_axes_config(timeless)
+
+    # The refusal lands BEFORE any scan — `connection` is never touched.
+    with pytest.raises(ledger_lots.LotGridRequestError) as exc:
+        ledger_lots.lots(None, window="7d")
+    assert exc.value.detail["reason"] == ledger_lots.REASON_WINDOW_NOT_APPLICABLE
+    assert "run_time_column" in exc.value.detail["message"]
+
+    # ...and the same axis without a window is not refused: the refusal is about the
+    # WINDOW, not about the axis being unusable.
+    plan = _plan_for(None)
+    assert "HAVING" not in plan.sql
