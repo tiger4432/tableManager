@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 
 import finding_kinds
+import ledger_kinds
 import ledger_siblings
 import ledger_trace
 
@@ -198,6 +199,34 @@ def ledger_siblings_route(
             # The race the catalogue gate cannot close: a relation dropped between the
             # `to_regclass` lookup and the query. Judged on SQLSTATE, which is the same
             # five characters in every locale and every driver.
+            raise _relation_absent()
+        raise
+
+
+@router.get("/kinds")
+def ledger_kind_catalog(db: Session = Depends(get_db)):
+    """어떤 불량 종류를 물을 수 있는지 — 화면이 로드할 때 한 번 묻는다. 읽기 전용.
+
+    🔴 200 AND A `state` FOR AN ABSENT OR EMPTY SET OF OBSERVATION RELATIONS, never an
+    error - the same rule `GET /coverage` follows, and the same three words. The one
+    non-200 is a registry that cannot be read (503), which is a deployment fact and not
+    an answer about kinds.
+
+    🔴 EVERY DECLARED KIND IS LISTED, INCLUDING THE ONES WITH ZERO OBSERVATIONS. A kind
+    hidden for having no rows cannot be distinguished from a kind that does not exist,
+    and the operator would read the second from the first.
+    """
+    try:
+        return ledger_kinds.catalog(db.connection())
+    except finding_kinds.FindingKindError as exc:
+        logger.error("finding-kind registry refused: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "finding_kind_registry_refused",
+            "message": f"관측 종류 등록부 거절: {exc}"})
+    except Exception as exc:                       # noqa: BLE001 - same backstop
+        if _is_undefined_table(exc):
+            # The race the catalogue gate cannot close: a relation dropped between the
+            # `to_regclass` lookup and the count. Judged on SQLSTATE.
             raise _relation_absent()
         raise
 

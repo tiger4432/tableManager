@@ -148,6 +148,17 @@ def load(force_reload: bool = False) -> dict:
                     f"list and an EMPTY one mean different things - empty declares 'no "
                     f"systematic scan looks for this, so there is no denominator', which "
                     f"is a decision somebody has to make explicitly.")
+            declared_classes = spec.get("classes")
+            if declared_classes is not None and (
+                    not isinstance(declared_classes, (list, tuple))
+                    or any(not isinstance(c, str) or not c.strip()
+                           for c in declared_classes)):
+                raise FindingKindError(
+                    f"finding kind {name!r} declares `classes` that is not a list of "
+                    f"non-empty names. The class set is CLOSED and add-only, so a "
+                    f"malformed declaration has to be refused rather than half-read - "
+                    f"a screen that offers a blank class as a slice axis asks a "
+                    f"question nobody can answer.")
         _cache = merged
         return merged
 
@@ -196,6 +207,23 @@ def has_denominator(kind: str = DEFAULT_KIND) -> bool:
     words), not an empty panel and certainly not a rate over an invented denominator.
     """
     return bool(methods(kind))
+
+
+def classes(kind: str = DEFAULT_KIND):
+    """This kind's CLOSED class set, or `[]` when it declares none.
+
+    `MI_LEDGER_SCHEMA_PROPOSAL` §6-quater: a defect's class (계면/벌크/에지 for a void)
+    is a CLAIM rather than a stored attribute, and the set of names a claim may use is
+    per-kind, closed and add-only - void's set is not delamination's. It is declared
+    here, beside the kind, for the same reason `observed_by` is: the console builds its
+    class slice axis from the declaration, so registering a kind's classes is what makes
+    the axis appear, with no client change.
+
+    🔴 EMPTY IS AN ANSWER. A kind whose source utters no class renders no class axis at
+    all - not an axis with nothing in it, and certainly not a borrowed set from the kind
+    next door.
+    """
+    return [str(c) for c in (spec(kind).get("classes") or ())]
 
 
 def observation_table(kind: str = DEFAULT_KIND) -> str:
