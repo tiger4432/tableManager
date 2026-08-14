@@ -110,11 +110,76 @@ def translate_one(rows, cfg=None):
 
 # ------------------------------------------------------------------------- vocabulary
 def test_v0_vocabulary_is_exactly_seven_words():
-    """The brief fixes v0 at seven. A vocabulary that grows quietly is not closed."""
+    """The brief fixed v0 at seven. It is NINE now, and this is where that is written.
+
+    🔴 THE NAME OF THIS TEST IS DELIBERATELY UNCHANGED. `vocabulary.py` says adding a
+    word "is a ruling, and the test is where the ruling has to be written down" - so the
+    test that guarded seven is the test that has to record why there are nine, rather
+    than a new test appearing beside a quietly relaxed old one.
+
+    THE RULING (product owner, 2026-08-14, `SCENARIO_CONSOLE_BRIEF` §0-bis + board §
+    "가상 소스 범위 확장"): `processed_with` and `has_param` are opened because the need
+    was demonstrated, not anticipated - the system could record that a package had a void
+    and could not record ANYTHING about the conditions that produced it, so every causal
+    question died at the first hop. `processed_with` was already RESERVED by design §4.2;
+    `has_param` is its recipe-side counterpart and arrives with it because a process run
+    that names a recipe revision nobody can read the setpoints of explains nothing.
+
+    Both are `since: 2`, so the slice a word entered in stays queryable, and the count
+    stays a control: a TENTH word still turns this red.
+    """
     assert set(vocabulary.PREDICATES) == {
         "register", "pin", "same_as",
         "derived_from", "slot_map", "has_wafer", "frame_confirmed",
+        "processed_with", "has_param",
     }
+    # The seven that were v0 are still `since: 1`; nothing was renumbered to make the
+    # arithmetic tidy. A word's slice is evidence about when the system learned to say it.
+    assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 1} == {
+        "register", "pin", "same_as",
+        "derived_from", "slot_map", "has_wafer", "frame_confirmed",
+    }
+
+
+def test_a_value_object_is_checked_against_its_declared_required_fields():
+    """A `value` payload used to be structurally unchecked. `required` is the bite.
+
+    Both directions, because a check that only ever accepts is the decoy declaration
+    ruling R-2026-08-13-D killed: a well-formed run lands, and one that forgot which step
+    it was about is refused BY NAME.
+    """
+    good = {"step": "BONDING", "step_family": "packaging", "eqp": "SYN-BD-02",
+            "recipe": {"id": "SYN-RCP-BOND", "rev": "4"}}
+    assert not vocabulary.check_signature("processed_with", "Wafer", "value", good)
+
+    missing_step = dict(good)
+    missing_step.pop("step")
+    violations = vocabulary.check_signature("processed_with", "Wafer", "value",
+                                            missing_step)
+    assert violations and "step" in violations[0]
+
+    # 🔴 PRESENCE, NOT TRUTHINESS. A setpoint of 0 is a setpoint, and a truthiness test
+    # would refuse it - which is the shape of bug that only ever bites on the values
+    # somebody actually cared about.
+    assert not vocabulary.check_signature(
+        "has_param", "Recipe", "value",
+        {"param": "purge_delay_s", "value": 0, "unit": "s"})
+    assert not vocabulary.check_signature(
+        "has_param", "Recipe", "value",
+        {"param": "vacuum_assist", "value": False, "unit": "bool"})
+
+
+def test_recipe_identity_carries_the_revision():
+    """A revision is a new subject, so `rev` is key material and a bare id is refused."""
+    assert vocabulary.check_subject_keys("Recipe", {"recipe": "SYN-RCP-BOND"})
+    assert not vocabulary.check_subject_keys(
+        "Recipe", {"recipe": "SYN-RCP-BOND", "rev": "4"})
+    # ... and the two revisions are two DIFFERENT subjects, which is the whole point:
+    # rev4's evidence cannot be destroyed by rev5 arriving.
+    assert ({"recipe": "SYN-RCP-BOND", "rev": "4"}
+            != {"recipe": "SYN-RCP-BOND", "rev": "5"})
+    assert vocabulary.requires_register("Recipe"), (
+        "Recipe is an ISSUED entity - a revision is registered, not constructed")
 
 
 def test_projection_state_words_can_never_be_written():

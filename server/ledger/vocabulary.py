@@ -47,6 +47,15 @@ ENTITY_TYPES = {
     "Wafer":     {"class": "issued",   "keys": ["wafer"],     "semi_ref": "E90 substrate"},
     "Product":   {"class": "issued",   "keys": ["product"],   "semi_ref": None},
     "Equipment": {"class": "issued",   "keys": ["equipment"], "semi_ref": "E10"},
+    # 🔴 `rev` IS PART OF THE IDENTITY, NOT AN ATTRIBUTE OF IT (PHYSICS_ONTOLOGY_SETUP
+    # §3). A recipe revision is a NEW REGISTRATION, never an edit of an existing subject.
+    # The consequence is the reason: the ledger is append-only, so if `rev` were an
+    # attribute the only way to record rev5 would be to supersede rev4's atoms - and the
+    # evidence for every wafer that actually ran under rev4 would stop being reachable.
+    # With `rev` in the key the two revisions are two subjects, both permanently
+    # assertable, and "what changed between rev4 and rev5" is a diff of two subjects'
+    # `has_param` claims rather than a history reconstruction.
+    "Recipe":    {"class": "issued",   "keys": ["recipe", "rev"], "semi_ref": "E40 recipe"},
     "Die":       {"class": "composed", "keys": ["wafer", "x", "y"], "semi_ref": "E142 location"},
 }
 
@@ -60,22 +69,23 @@ PREDICATES = {
     # ---------------------------------------------------------------- §4.1 canonical
     "register": {
         "status": "active", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "Product", "Equipment"],
+        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe"],
         "object": None,                       # ∅ - see module docstring
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
     },
     "pin": {
         "status": "active", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "Product", "Equipment", "Die"],
+        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"],
         "object": {"kind": "event_ref"},
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
     },
     "same_as": {
         "status": "reserved", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "Product", "Equipment", "Die"],
-        "object": {"kind": "entity_ref", "types": ["Lot", "Wafer", "Product", "Equipment", "Die"]},
+        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"],
+        "object": {"kind": "entity_ref",
+                   "types": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
     },
@@ -112,6 +122,57 @@ PREDICATES = {
         "object": {"kind": "value"},
         "qualifiers": [],
         "unit": None, "semi_ref": "E142 coordinate system", "superseded_by": None,
+    },
+    # ------------------------------------------------------- §4.2 ontology, slice 2
+    # 🔴 THE RESERVED PREDICATE, OPENED. `CANONICAL_LEDGER_DESIGN.md` §4.2 reserved
+    # `processed_with` (E40) from the start and PHYSICS_ONTOLOGY_SETUP §2 is where the
+    # need was demonstrated: the system held logistics (lots, splits) and observations
+    # (measurements, voids) but had nowhere for the CAUSE to live. Opening it takes the
+    # vocabulary from seven words to nine, which is a ruling and not a drift -
+    # `test_ledger_l1_unit.py::test_v0_vocabulary_is_exactly_seven_words` is where that
+    # ruling is written down, and it is the reason a tenth word cannot arrive quietly.
+    #
+    # WHY THE OBJECT IS A `value` AND NOT AN `entity_ref`
+    # ---------------------------------------------------
+    # One process run names SEVERAL things at once - a step, a machine, a recipe
+    # revision, and the conditions it actually ran at. `entity_ref` points at exactly one
+    # entity, so expressing this as entity_refs would need three atoms that are only
+    # jointly true, and atomicity check ① ("is it true standing alone?") would fail for
+    # each of them: "wafer W was processed on eqp B-3" standing alone does not say under
+    # which recipe, and the pairing would have to be recovered from `occurred_at`
+    # collisions. The run is ONE claim, so it is one atom.
+    #
+    # 🔴 `params_actual` IS WHAT MAKES «MEASURED BEATS SETPOINT» FREE
+    # ----------------------------------------------------------------
+    # An atom carrying `params_actual` is what the equipment log UTTERED, so it resolves
+    # at class 2 (observation) by `ledger_trace.claim_class`'s default arm. An atom whose
+    # parameters were filled in FROM THE RECIPE instead carries the payload flag
+    # `inferred: true` (`DEFAULT_RESOLVER_CONFIG["inference_payload_flag"]`) and resolves
+    # at class 3. No new ranking code exists anywhere: the setpoint fallback loses to the
+    # measurement because the class boundary in `claim_rank_key` cannot be crossed by any
+    # tiebreak below it - and it keeps losing even when the setpoint atom is NEWER and
+    # comes from a higher-priority source, which is exactly the case the fixture builds.
+    "processed_with": {
+        "status": "active", "since": 2, "layer": "ontology",
+        "subject": ["Wafer"],
+        # `required` is checked by `check_signature`; see the note there. Without it a
+        # `value` object would be structurally unchecked, and a signature that checks
+        # nothing is the decoy declaration ruling R-2026-08-13-D put an end to.
+        "object": {"kind": "value",
+                   "required": ["step", "step_family", "eqp", "recipe"]},
+        "qualifiers": [],
+        "unit": None, "semi_ref": "E40 process job", "superseded_by": None,
+    },
+    # One atom per SETPOINT (PHYSICS_ONTOLOGY_SETUP §3). Not one atom per recipe holding
+    # a parameter dictionary: the diff between two revisions is then a set difference over
+    # atoms rather than a structural comparison of two blobs, and a single parameter can
+    # be superseded on its own when a recipe sheet is found to have been mistranscribed.
+    "has_param": {
+        "status": "active", "since": 2, "layer": "ontology",
+        "subject": ["Recipe"],
+        "object": {"kind": "value", "required": ["param", "value", "unit"]},
+        "qualifiers": [],
+        "unit": None, "semi_ref": "E40 recipe parameter", "superseded_by": None,
     },
 }
 
@@ -185,6 +246,35 @@ def check_signature(predicate, subject_type, object_kind, object_payload):
         violations.append(
             f"predicate '{predicate}' declares object kind '{declared_object['kind']}' "
             f"but this atom carries '{object_kind}'")
+
+    if object_kind == "value":
+        # 🔴 A `value` object used to be structurally unchecked, which meant a predicate
+        # could declare a shape in prose and the gate would accept anything at all -
+        # ruling R-2026-08-13-D's decoy declaration, one column over. `required` is the
+        # enforcement point, so a `processed_with` atom that forgot which step it was
+        # about is refused by the same machinery that refuses an undeclared predicate.
+        #
+        # ⚠️ Presence, NOT truthiness. `has_param`'s `value` is legitimately `0` and
+        # legitimately `False`, and a truthiness test would refuse the two setpoints most
+        # worth recording. A blank STRING is still refused: it is the shape design §3's
+        # concatenation incident came from.
+        required = declared_object.get("required") or []
+        if required:
+            if not isinstance(object_payload, dict):
+                violations.append(
+                    f"predicate '{predicate}' declares a value object with required "
+                    f"field(s) {', '.join(required)}, so the payload must be an object")
+                return violations
+            absent = [field for field in required
+                      if field not in object_payload
+                      or object_payload[field] is None
+                      or (isinstance(object_payload[field], str)
+                          and not object_payload[field].strip())]
+            if absent:
+                violations.append(
+                    f"predicate '{predicate}' requires value field(s) "
+                    f"{', '.join(required)}; missing or blank: {', '.join(absent)}")
+        return violations
 
     if object_kind == "entity_ref":
         if not isinstance(object_payload, dict):

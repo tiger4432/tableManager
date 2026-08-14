@@ -404,6 +404,44 @@
       "unit"
     ]
   },
+  "delam_obs": {
+    "__comment": "[FINDING SCHEMA — THE SECOND KIND] One row = one interface delamination seen by one scan. It exists so that the case-control console's generalization is TESTED rather than asserted: with one finding kind, `finding=<kind>` is a parameter nobody has ever changed, and the first real second kind is where a hidden `WHERE finding_kind='void'` would surface. Declared in `server/finding_kinds.py` with `observed_by: [scat]`, so the DENOMINATOR swings when the console's kind parameter changes — if this kind shared `sat` with voids, switching kind would count the same runs and prove nothing. | KEY = (run_uid, inchip_x, inchip_y), the same rule `void_obs` uses and for the same reason: run_uid already encodes package, layer, method and time. | 🔴 NO GRADE, same ruling as void_obs — pass/fail is `area > threshold` and the threshold is a recipe parameter, so a stored verdict makes history un-re-judgeable. `extent_x`/`extent_y` are the geometry; `interface` names WHICH bond interface separated (die-to-die vs die-to-substrate), which is a location, not a verdict. | `unit` is per-row for the reason void_obs states: a number whose unit is only reachable by a join is a number the grid shows without one. | NO map_key_columns — a delamination is a point with continuous coordinates, not a cell in a grid.",
+    "business_key": "delam_uid",
+    "composite_key_source": [
+      "run_uid",
+      "inchip_x",
+      "inchip_y"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "delam_uid": "string",
+      "run_uid": "string",
+      "base_wafer_id": "string",
+      "base_x": "number",
+      "base_y": "number",
+      "stack_gate": "number",
+      "inchip_x": "number",
+      "inchip_y": "number",
+      "extent_x": "number",
+      "extent_y": "number",
+      "interface": "string",
+      "unit": "string"
+    },
+    "display_columns": [
+      "delam_uid",
+      "run_uid",
+      "base_wafer_id",
+      "base_x",
+      "base_y",
+      "stack_gate",
+      "inchip_x",
+      "inchip_y",
+      "extent_x",
+      "extent_y",
+      "interface",
+      "unit"
+    ]
+  },
   "wafer_map_metadata": {
     "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 격자 규격(grid_metadata)의 정본. 맵을 담는 모든 테이블(defect·EDS·DT·bonding·core)이 여기에 등록돼야 정렬이 성립한다 — 미등록은 정상 상태가 아니라 누락이며, 화면에는 '화면기준' 칩으로 표면화된다. bk = target_table_map_id.",
     "business_key": "map_pk",
