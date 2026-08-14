@@ -1,6 +1,6 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 3차 (관측 번역 — §3.7·§3.7-quinquies·§4.5·§4.8·§5.5-bis·§5.7 / 직전: 구조 뷰 `3202ac7`) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 밤 (§4.7 ⑤ 기전 층 현행 확정 — `mechanism_models.json` 라이브·소비자 둘·바인딩 규율 `87374a5`. 직전 3차: 관측 번역 — §3.7·§3.7-quinquies·§4.5·§4.8·§5.5-bis·§5.7) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
 > **이번 라운드 (2026-08-14 3차 · 관측 번역 — R-2026-08-14-D + R-2026-08-14-E ⓐ · 갱신 트리거 ⑦·⑧)** —
@@ -16,7 +16,7 @@
 > `ENTITY_TYPES`·`PREDICATES` 전 항목에 붙었다** — 낱말은 하나도 안 늘고 안 줄었으며 서명 «의미»도 안 바뀌었다. **집행 지점은 단위 테스트 하나**이고,
 > 읽는 쪽이 폴백하므로 그 테스트 말고는 아무것도 빨개지지 않는다) · **§4.7 신설**(`GET /api/ledger/structure` 응답 계약 —
 > 🔴 **손으로 적은 노드·엣지 목록이 없다**(생성 + 병합) · 🔴 **상태 낱말 다섯을 «필드로» 낸다** · 🔴 **`atoms: 0` ≠ `atoms: null`** ·
-> 🔴 **창은 건수만 좁히고 «선언»은 절대 안 좁힌다** · 층 둘(`ledger`·`mechanism`, M4는 오늘 `absent`)) ·
+> 🔴 **창은 건수만 좁히고 «선언»은 절대 안 좁힌다** · 층 둘(`ledger`·`mechanism`, M4는 그날 `absent` — **이후 착지, §4.7 ⑤의 정정이 현행**)) ·
 > **§5.7 신설**(센서스 비용과 **크기 게이트** — 캐시가 아니다. ⚠️ **버려진 SQL 철자의 비교값과 수가 겹치니 인용 전에 라벨을 볼 것**).
 >
 > **직전 라운드 (2026-08-14 · 어휘 확장 · 제품 소유자 판정)** — **§3.7 신설**(닫힌 어휘 계약 — **일곱에서 아홉**: `processed_with`·`has_param`,
@@ -705,8 +705,9 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 제안을 그 자리에 두면 **착지한 선언으로 오독된다.** 🔴 **`ledger_link`도 «유도»된다**: 기전 노드는 `Model` 개체 타입을 통해 원장에 닿는데
 어휘가 그 타입을 선언하지 않으므로 「붙을 자리가 없다」가 답이고, **`Model`이 선언되는 날 이 문장은 스스로 거짓이 된다.**
 ✅ **[2026-08-14 · `f52628f`] 앞의 ⚠️ 문단은 «부분적으로» 낡았다** — `server/config/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개 · 코드 0줄 변경**)
-그 층은 더 이상 `absent`가 아니다. ⚠️ **어느 낱말로 답하는지·`Model` 타입이 생겼는지는 그 커밋을 낸 레인이 확정한다** —
-**관측 번역 레인이 지나가며 표시만 남겼고**(2026-08-14 3차), 이 절의 나머지 수치를 현행으로 인용하기 전에 그쪽 갱신을 볼 것.
+그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재하고 소비자는 **둘**이다 — 이 라우트의 기전 층 + 3관문 랭킹의 기전 관문(`server/mechanism_gate.py`).
+파일은 `models`(방향만 — 방정식은 일부러 없다) · `signatures`(사람용, 로더 무시) · **`bindings`**(필드→물리량. 🔴 **항목 목록이 아니다** — 바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다).
+🔴 **바인딩은 데이터가 실재하는 날 켠다**(`87374a5` — `post_bond_queue_h`가 그 실례. 공백에 바인딩을 지어내지 않는다). 부재 갈래(`no_declaration_file`)는 파일 없는 박스에서 여전히 발화한다.
 
 **⑥ 🔴 등급 분포를 SQL이 «분류하지 않는다» — 그룹 키만 만든다.**
 `ledger_trace.claim_class`/`claim_basis`가 권위이고 순수 파이썬이다. `claim_class`의 입력 중 **그룹 컬럼이 아닌 것은 페이로드 플래그 둘뿐**이라

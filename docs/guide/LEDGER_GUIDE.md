@@ -12,7 +12,10 @@
 > ⚠️ **이 문서의 모든 수치는 이 개발 박스(`assy_manager` / `assy_qa`) 실측이고 운영의 증거가 아니다.**
 > 측정 시점은 2026-08-13이며, 인용할 때 그 귀속을 떼지 말 것.
 >
-> **이번 라운드 (2026-08-14 3차 · 관측 번역 — R-2026-08-14-D + R-2026-08-14-E ⓐ)** — 🔴 **이 문서의 §3이 이제 «문법 둘»을 가르친다.**
+> **이번 라운드 (2026-08-14 밤 · 걷기 대조 + 기전 config — `5ea29b6`·`87374a5` 리빙 동기화)** — 🔴 **§1.2에 `server/ledger_walk_contrast.py` 행 신설**:
+> `/siblings`의 `scope=`가 엔진을 바꾸는 자리이고 **항목 목록이 0줄**이다(선언은 필터가 아니라 예산). 같은 커밋으로 **수치 필드가 후보가 됐고**(주어당 한 값으로 접은 뒤 같은 랭킹 사다리 — 둘째 임계 없음), **`wafer` 마킹 축**이 `siblings_axes.json.sample` 선언 한 항목으로 생겼으며(파이썬 0줄 — 「이 두 장 vs 나머지」가 처음으로 표현 가능), **요청된 scope 값의 회계**(`unnest` LEFT JOIN — 못 찾은 값을 흡수하지 않고 이름 대며 탈락시킨다)가 들어왔다. 라우트 계약은 [backend §2](../architecture/backend.md)(**이 라운드에 드디어 행이 생겼다**), 선언은 [CONFIG_GUIDE §1](./CONFIG_GUIDE.md). **§4.6-bis의 기전 층 문단을 현행으로 정정**했다 — `mechanism_models.json`은 실재하고 바인딩은 데이터가 실재하는 날 켠다(`87374a5`).
+>
+> **직전 라운드 (2026-08-14 3차 · 관측 번역 — R-2026-08-14-D + R-2026-08-14-E ⓐ)** — 🔴 **이 문서의 §3이 이제 «문법 둘»을 가르친다.**
 > ① **어휘가 열하나**가 됐다 — `observed`(subject `Wafer`, `value` 목적어, `required` = `finding_kind`·`method`·**`run_uid`**).
 > 🔴 **`run_uid`가 required인 것이 분모 규율이 원장 «안»에서도 서는 자리**다(「보이드 3개」는 「몇 개를 봤는데 3개」 없이는 아무 뜻이 없다).
 > 짝인 `measured`는 **일부러 등재하지 않았다** — 발화하는 것이 없다.
@@ -94,6 +97,7 @@
 | `server/ledger_structure.py` (2026-08-14) | `GET /api/ledger/structure` — **유형 수준 온톨로지 그림 + 선언 지도**. 노드=개체 타입, 엣지=(subject 타입, 술어, 목적어) 삼중항 | 🔴 **손으로 적은 노드·엣지 목록이 이 파일에 «없다»**(제품 소유자 실패 조건: 「하드코딩된 목록이 응답 어디에든 보이면 실패」). **선언된 절반**은 `vocabulary.ENTITY_TYPES` × `PREDICATES`에서, **관측된 절반**은 원장 한 번의 `GROUP BY`에서 생성하고 **둘을 병합**한다 — 병합이 설계 전부다. 선언에만 있는 모양(`declared_only`)과 데이터에만 있는 모양(`undeclared`)은 **손으로 그린 그림이 영원히 못 내는 답 둘**이다. 🔴 **어휘는 «지연» import한다**(호출 «안»에서) — §0의 「`server/`에서 `server/ledger`를 import하는 부팅 경로가 없다」를 *거의* 참이 아니라 **글자 그대로** 참으로 두려고. 🔴 **등급 분포를 SQL이 «분류하지 않는다»** — 그룹 키만 만들고 `ledger_trace.claim_class`/`claim_basis`를 **그대로 부른다**(철자가 둘이면 갈라진다). 🔴 **등록 엣지는 이름이 아니라 «모양»(`object_kind IS NULL`)으로 식별**한다 — `predicate == "register"` 리터럴이 먼저 쓰였고 어휘를 갈아끼우는 테스트가 잡았다 |
 | `server/ledger_trace.py` | **셋이 살고 둘은 서로를 몰라야 한다**: **해결기**(`claim_class`/`claim_rank_key`/`resolve` — 순수 파이썬, SQL·테이블명·커넥션 0) · **조회기**(`ClaimLookup` 계열 — 가져오기만 하고 등급을 모른다) · **보행**(`trace` — 조회기에 한 번 묻고 홉마다 해결기에 한 번 묻는다) | 스타일이 아니라 **구조 요구**다. 슬라이스 1은 **랏 단위**라 질의 시점 해결로 가지만 **슬롯 단위 혈통은 질의 시점에서 죽는다**(인라인 452 ms 대 물질화 0.58 ms — 합성·이 박스). 조회기가 **교체 가능한 객체**라 물질화된 클로저 테이블로 옮기는 것이 **생성자 인자 하나**이고 해결기는 한 줄도 안 바뀐다. `InMemoryClaimLookup`은 그 교체 가능성을 **주장이 아니라 검사된 성질**로 만든다. 🔴 **[2026-08-14 3차] 「무엇을 걷는가」가 이 파일에 더 이상 «적혀» 있지 않다** — `LINEAGE_PREDICATES`는 리터럴 목록이었고 지금은 `vocabulary.walk_predicates()`에서 **파생**되며, 재귀가 따르는 낱말도 `traversal_predicate()`가 대어 **두 CTE 모두 SQL 파라미터로 바인드**한다(`'derived_from'` 리터럴이 없어졌다). 어휘는 **호출 안에서 지연 import**하므로 §0의 부팅 경로 보증은 그대로다. 🔴 **동작 불변이 단언돼 있다**(`test_ledger_observed_unit.py::test_the_walk_vocabulary_is_derived_and_still_says_what_it_said`) — 파생으로 옮기면서 걷기가 **한 낱말도 더 얻거나 잃지 않았다**는 것이 이 이관의 유일한 합격 조건이었다 |
 | `server/ledger_trace_router.py` | `APIRouter(prefix="/api/ledger")` **하나에 라우트 일곱** — `/trace` · `/coverage` · `/siblings` · `/kinds` · `/structure` · **`/lots`** · **`/lot_map`**(뒤 둘은 2026-08-14 놀라움 장치). 전부 **읽기 전용**. 🔴 **라우트 계약의 정본은 [backend §2](../architecture/backend.md)이고 이 칸은 색인이다** | 🔴 **SPA catch-all «위»에 등록해야 한다.** FastAPI는 등록 순서로 매칭하므로 catch-all 뒤에 등록된 라우트는 **200으로 `index.html`을 받는다** — 감시자가 죽은 엔드포인트를 살아 있다고 부르게 되는 실패다(`/health`가 실제로 그랬다). 현재 `server/main.py`에서 catch-all 훨씬 위에 등록돼 있다. 🔴 **빈 `hops`는 가능한 답이 아니다** — 어느 홉에서 왜 끊겼는지가 이 화면의 존재 이유다 |
+| `server/ledger_siblings.py` + `server/ledger_walk_contrast.py` (2026-08-14 밤 등재) | `/siblings`의 **엔진 둘** — 축 엔진(선언된 요인 기하 위 케이스-컨트롤, `mode=intersection\|contrast`)과 **걷기 대조**(`scope=` 마킹 시 — 「이 랏/웨이퍼들과 나머지는 뭐가 다른가」). 응답 `engine` 필드가 어느 쪽이 답했는지 말한다. 요인 기하는 전부 `server/config/siblings_axes.json`(.sample 폴백) 선언 | 🔴 **걷기 대조에는 항목 목록이 «한 줄도» 없다** — 후보는 마킹된 주어들의 걷기가 닿는 모든 술어×필드×값이고, 선언(`defaults.walk`)은 필터가 아니라 **예산**이다(CASE는 절대 안 깎고 control만 결정적 표본 · `walk.gate`가 그랬다고 말한다). 🔴 **수치는 주어당 «한 값»으로 접은 뒤 같은 랭킹 사다리를 탄다**(원자 141개 웨이퍼 = 관측 1 — 둘째 임계를 발명하지 않는다. 배율 밴드의 단위 의존성은 화면에 이름이 불린다). 🔴 **요청된 scope 값은 전수 회계된다** — `unnest` LEFT JOIN으로 해소/탈락이 이름 불리고, 전부 탈락이면 `empty`이지 남은 값에 대한 잘 지어진 답이 아니다. 🔴 **기전 관문은 `server/mechanism_gate.py` + `mechanism_models.json`** — 바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다. 세부·수치는 [backend §2 `/siblings`](../architecture/backend.md)가 정본 |
 | `client2/src/ledger_trace_core.js` | **순수**. DOM·네트워크·import 0. 서버 답을 낱말과 톤에 매핑만 한다 | 🔴 **이 모듈은 원장에 대해 아무것도 판정하지 않는다.** 어느 주장이 이기는지는 서버가 이미 정했다. **여기에 승패 규칙이 나타나면 그건 두 번째 해결기이고 틀린 것이다** |
 | `client2/src/ledger_trace_view.js` | 답을 DOM으로. `document`가 **전역이 아니라 인자** | 그래서 `client2/tests/ledger_trace_harness.mjs`가 **진짜 렌더러를** bare node로 몰아 「화면에 실제로 도달한 것」을 단언한다 — 함수가 존재한다는 단언이 아니라. `innerHTML` 0(원장에서 나온 랏 id가 마크업이 될 수 없다) |
 | `client2/src/ledger_trace.js` | 페이지 진입점(`ledger.html`). 질문 읽기 → fetch → 뷰에 넘기기 | 🔴 **읽기 전용 화면.** GET 하나를 쏘고 아무 데도 안 쓴다. `window`를 만지는 유일한 파일이라 나머지 둘이 bare node에서 채점된다 |
@@ -815,9 +819,12 @@ GET /api/ledger/coverage  ->  200
   🔴 **씨앗은 `server/config/mechanism_models.json`이고 `.sample`은 «일부러» 안 실었다** — 이 프로젝트에서 `.sample`은 「출하된 선언」이라
   제안을 그 자리에 두면 **착지한 선언으로 오독된다.** 파일이 놓이는 날 코드 변경 없이 렌더된다.
   - ✅ **[2026-08-14 · `f52628f` — 그날이 왔다] 위 두 줄은 낡았다.** `server/config/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개**),
-    구조 뷰는 **코드 0줄 변경으로** 그 층을 답한다. ⚠️ **이 절의 나머지 문장을 그대로 인용하지 말 것** —
-    정확한 현행 상태는 그 커밋을 낸 레인의 문서 갱신과 [PHYSICS_ONTOLOGY_SETUP §4](../architecture/PHYSICS_ONTOLOGY_SETUP.md)가 소유한다
-    (**관측 번역 레인이 지나가며 발견해 표시만 남긴 것**이고, 그 층은 이 라운드의 소관이 아니었다).
+    구조 뷰는 **코드 0줄 변경으로** 그 층을 답한다.
+  - **[2026-08-14 밤 — 현행 확정]** 라이브 `mechanism_models.json`도 실재하고 소비자는 **둘**이다: 이 라우트의 기전 층 + **3관문 랭킹의 기전 관문**(`server/mechanism_gate.py` — 요인→결함 도달 가능성). 파일의 뼈대는 셋 —
+    `models`(방향만 있는 인과 엣지, `dir: '+'/'-'/'u'`. **방정식은 일부러 없다**) · `signatures`(사람용 공간 패턴 문서 — **로더가 무시한다**) · **`bindings`**(필드→물리량. 🔴 **항목 목록이 아니다** —
+    바인딩 안 된 후보도 대조에서 안 좁혀지고 기전 칸에 `unknown`을 달고 나온다). 🔴 **바인딩은 «데이터가 실재하는 날» 켠다**(`87374a5`) — `post_bond_queue_h`는 측정 필드가 없는 동안 「정직한 공백」으로
+    문서화돼 있다가 증강 레인이 필드를 실재로 만든 저녁에 바인딩이 켜졌다(코드 0줄). **화면을 완성돼 보이게 하려고 공백에 바인딩을 지어내지 말 것** — 남은 공백 다섯(`stage_particle`·`humidity` 등)이 그 규율의 현재형이다.
+    ⚠️ **`.sample`과 라이브를 «동일하게» 편집한다** — 추적되는 것은 `.sample`뿐이다.
 
 **이 박스 실측 (2026-08-14 2차, `assy_manager`, 84,747원자 · 두 파티션)**: census **182 ms** · 호출 전체 **285 ms** · 페이로드 **59 KB**.
 ⚠️ **이 수를 다른 문서의 「285 ms」와 섞지 말 것** — 버려진 SQL 사다리 철자의 비교값에도 같은 수가 있다([spec §5.7](../spec/LEDGER_TECHNICAL_SPEC.md)).
