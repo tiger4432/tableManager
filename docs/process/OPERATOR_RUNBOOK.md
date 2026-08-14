@@ -129,7 +129,7 @@
 | **⚠️ 정정** | 이 항목은 처음에 **R6**이라 적었다. R6은 「표식은 열쇠가 아니다」로 다른 규칙이다. 그리고 인덱스 대상도 원시 컬럼 쌍이 아니라 **`business_key_val`**이다 — 이 프로젝트의 기존 패턴(`uq_bk_<table>`)이고, `composite_key_source = [target_table, map_id]`이므로 **같은 제약이다.** 총괄 실측 2026-08-13 |
 | **왜** | 🔴 **선언과 물리가 어긋난 R2 위반이다.** `product_tables.py`가 `business_key: "map_pk"`, `composite_key_source: [target_table, map_id]`를 **선언**해 놓았는데, 물리 UNIQUE는 `wafer_map_metadata_pkey`(= `row_id`) **하나뿐**이다. 그래서 `map_overlay._meta_select`의 `.first()`(`LIMIT 1`)가 중복 한 쌍을 만나면 같은 맵이 새로고침마다 **다른 «기하»**를 읽는다 |
 | **지금 상태** | `c36368c`가 읽기에 총순서를 박아 **리더는 결정적**으로 만들었다. 🔴 **그런데 그 대가로 이제 중복을 «조용히 가린다»** — 예전엔 값이 흔들려서 티가 났다 |
-| **방법** | **아직 마이그레이션 파일이 없다.** 만들기 전에 운영에 중복이 있는지부터 세야 한다: <br>`SELECT business_key_val, count(*) FROM wafer_map_metadata WHERE business_key_val IS NOT NULL GROUP BY 1 HAVING count(*) > 1;` <br>0이면 `CREATE UNIQUE INDEX uq_bk_wafer_map_metadata ON wafer_map_metadata (business_key_val);`를 붙이면 되고, 0이 아니면 **어느 행을 남길지가 먼저 판정할 문제**다 |
+| **~~방법 (2026-08-13 원문)~~** | ~~**아직 마이그레이션 파일이 없다.** 만들기 전에 운영에 중복이 있는지부터 세야 한다 … 0이면 `CREATE UNIQUE INDEX uq_bk_wafer_map_metadata …`를 붙이면 되고, 0이 아니면 **어느 행을 남길지가 먼저 판정할 문제**다~~ → **위 「한 줄」 행으로 대체.** 이 문장은 바로 위 ⚠️ 행이 반박한 그 문장인데 같은 절 안에 남아 있었다(2026-08-14 정정). 파일은 있고, 중복은 28개 표 전부 0이며, 대상은 이 한 표가 아니다 |
 
 ---
 
@@ -151,6 +151,23 @@
 |---|---|
 | 원장 주 1의 전제 확인 — 운영 `lot_event`에 진짜 SPLIT/MERGE가 있나. **이 박스 픽스처로는 답이 안 나온다** | `SELECT event_type, count(*) FROM lot_event GROUP BY 1;` |
 | 7번의 선행 — `wafer_map_metadata`에 중복이 있나 | `SELECT target_table, map_id, count(*) FROM wafer_map_metadata GROUP BY 1,2 HAVING count(*) > 1;` |
+
+---
+
+## 10. 🔴 실행이 아니라 «주의» — 같은 파일을 다시 넣으면 거절되는 표가 있다
+
+> 총괄 지시로 doc-keeper가 등재(2026-08-14 · `50a21c7`). **돌릴 것이 없는 항목**이고, 신고를 받았을 때 **어디를 보는지**가 내용이다.
+
+| | |
+|---|---|
+| **기록** | 2026-08-14 (픽스처 레인 재현, 이 박스) |
+| **증상** | 어떤 표에 **파일을 처음 넣으면 성공**하고, **같은 키를 담은 파일을 다시 넣으면 배치가 통째로 거절**된다. 로그에 `[BK Conflict Unresolved]`가 남고 그 앞에 회복 시도 3회(`[BK Conflict Recovered]` 아님)가 있다. **새 키만 담긴 파일은 그대로 잘 들어간다** |
+| **어느 표인가** | `table_config.json`에서 **`composite_key_source`를 «선언하지 않은»** 표. `business_key`만 있으면 해당된다. 확인: 그 표의 선언에 `composite_key_source` 키가 있는지 본다 |
+| **왜** | 신원 해석기가 **`row_id`와 `business_key_val` 둘만** 보고 기존 행을 찾는데, 그 `business_key_val`을 payload에서 만들어 주는 코드가 **복합 키 선언이 있을 때만** 돈다. 그래서 업무 키를 **값으로** 실어 보낸 행은 신원 없이 도착해 **매번 새 행**이 되고, `uq_bk_<표>` 유니크 인덱스가 그것을 실패로 바꾼다. **기전과 판별 케이스**: [architecture/data_model §3.1-quater](../architecture/data_model.md) |
+| **🔴 인덱스를 걷지 마십시오** | 유니크 인덱스가 원인이 아니다. 인덱스가 없으면 같은 사건이 **같은 업무 키를 가진 행이 조용히 둘 생기는** 형태로 나타날 뿐이고, 그쪽이 더 나쁘다 |
+| **오늘의 회피** | ① 그 표에 **`composite_key_source`를 선언**한다(신원을 구성하는 컬럼들로). ⚠️ **기존 행이 있으면 업무 키 값이 재계산되므로 재키잉이다** — 운영 표에서는 총괄 판정을 거칠 것. ② 또는 재인제션 전에 **그 파일이 덮을 범위의 행을 먼저 지운다**(범위를 좁혀서). 픽스처가 쓴 것이 ②이고 **코드에 「우회」라고 명시**돼 있다 |
+| **⏳ 수리** | 없다. 고치는 자리는 신원 해석기가 **선언된 업무 키 컬럼의 값으로도** 조회하게 하는 것으로 보이지만, 그 변경은 **모든 표의 신원 해석**을 건드리므로 총괄 판정 대상이다 |
+| **오늘 이 상태인 표(이 박스)** | `wafer_process`(2026-08-14 재등재). 다른 표는 선언을 직접 확인할 것 |
 
 ---
 

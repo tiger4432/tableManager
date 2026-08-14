@@ -2,7 +2,12 @@
 
 > **Status:** 🟢 Living | **Last-verified:** 2026-08-14 | **Owner:** Lead / Backend
 >
-> ### 이번 라운드 (2026-08-14 3차 · 리빙 문서 동기화 · 결함 관측의 원장 번역 — R-2026-08-14-D)
+> ### 이번 라운드 (2026-08-14 4차 · 리빙 문서 동기화 · 픽스처 세트 정비 — `50a21c7`)
+> - 🔴 **§5.8-ter에 「선언 안에 컬럼이 빠져 있는 것」 경고 신설 — 이번 라운드의 세 선언이 전부 그 모양입니다.** `bonding_log`의 코어 컬럼 **넷**(`core_lot`·`core_slot`·`cx`·`cy`)과 `dt_map`의 코어 컬럼 **다섯**(`core_wafer`·`core_lot`·`core_slot`·`core_x`·`core_y`)은 **물리 DB에 이미 있었고** `column_types`에만 없었습니다 → 모든 writer의 그 셀이 **200과 함께 드롭**됐고 368,371행·5,619행이 전부 NULL로 읽혔습니다. ⚠️ **ALTER는 0줄입니다 — 데이터가 없던 것이 아니라 선언이 없던 것입니다.**
+> - 🔴 **`wafer_process`가 «재»등재됐습니다** — 2026-07-28~08-04 사이 이 선언에서 **이탈**했는데 행은 PostgreSQL에 그대로 살아 있었습니다(실측 3,022행). 그동안 `transfer_plan_config`의 `process_history` 역할은 `not_declared`였고 enrichment 참조 뷰에는 질의할 동적 모델이 없었습니다. **선언에서 사라진 표는 「없는 표」가 아니라 「아무도 못 읽는 표」입니다.**
+> - 🔴 **§5.8-ter에 `composite_key_source` 경고 추가** — 이 키를 선언하지 않은 표는 **재인제션 두 번째 파일이 통째로 거절**됩니다(첫 파일은 성공하므로 켤 때는 안 보입니다). 기전·판별 케이스는 [architecture/data_model §3.1-quater](../architecture/data_model.md), 키 설명은 [config/table_config §5](./config/table_config.md), 운영자 자리는 [process/OPERATOR_RUNBOOK §10](../process/OPERATOR_RUNBOOK.md).
+>
+> ### 직전 라운드 (2026-08-14 3차 · 리빙 문서 동기화 · 결함 관측의 원장 번역 — R-2026-08-14-D)
 > - 🔴 **§1의 `ledger_config.json` 행에 «두 번째 문법»이 생겼습니다 — 소스가 `kind`를 선언합니다**(`lineage` \| `observation`, **기본 `lineage`**라 기존 선언은 한 글자도 안 바뀝니다). 관측 소스의 선언 키는 **다릅니다**: `finding_kind` · `run{relation,key_column,method_column}` · `watermark.columns` · `synthetic` · 필수 컬럼 셋(`row_identity`·`wafer`·`run_key`). 🔴 **`vocabulary`를 관측 소스에 쓰면 로드 에러**이고, 🔴 **`columns`의 «모르는 이름»도 로드 에러**입니다(안 읽히는 매핑은 대개 읽히는 이름의 오타입니다). 🔴 **세상의 시각이 관측 행에 없어서 선언된 런 조인에서 읽습니다** — 런을 못 풀면 **거절**이지 도착 시각으로 대신하지 않습니다. 🔴 **커서가 세계 시각이 아니라 «키셋»**(`updated_at, row_id`)입니다 — 대량 적재가 `updated_at` 하나를 91,756행에 찍어(서로 다른 값 92개) 시각 커서로는 **한 적재를 쪼갤 수 없습니다.** 실물 선언 둘(`void_obs`·`delam_obs`)이 **`.sample`에 그대로** 실려 있습니다 → 절차는 [LEDGER_GUIDE §3 ②-bis](./LEDGER_GUIDE.md).
 > - **§1의 `finding_kinds.json` 행에 `classes` 추가 — 필드가 넷에서 «다섯»**입니다. 종류별 **닫힌 값 집합**이고 🔴 **이제 화면용 참고 목록이 아니라 «게이트»입니다**: 원장 번역기가 소스의 class 값을 이 집합에 대고 검사해 **밖의 값은 원자를 거절**합니다. 🔴 **빈 목록 `[]`은 「이 종류는 class를 발화하지 않는다」는 결정**이고(`void`가 그렇습니다) `observed_by`의 「부재 ≠ 빈 목록」 규칙이 그대로 적용됩니다.
 >
@@ -676,6 +681,13 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 | **맵 오버레이** | `map_overlay_config.json` | 겹쳐 볼 맵 테이블 전부. **단 선언 없이도 동작합니다**(`table_config`에서 자동 유도) — 컬럼명이 관례와 다를 때만 선언 |
 | **[F5] 프리셋 라우팅** | `map_overlay_config.json` (`preset_routing`) | 라우팅할 맵 테이블. ①을 켤 때만 **제품코드 조회 테이블**(운영 소유, 예: `product_master`)이 `table_config.json`에 추가로 선언돼야 합니다 — **미선언이 정상 구성**이고 그때는 패턴 규칙만으로 동작합니다 |
 | **결함(finding) 관측** (2026-08-13 `346aa88` · **2026-08-14 두 번째 종류**) | 종류 정의는 `finding_kinds.json`(**선택** — 없으면 코드 기본값. §1) · 테이블 선언은 `table_config.json` | `inspection_run`(**분모** — 스캔이 있었다. **종류를 가리지 않고 하나**이고 `method`가 무엇을 찾은 스캔인지 말합니다) · `void_obs`(보이드, `method='sat'`) · **`delam_obs`**(계면 박리, `method='scat'` — 2026-08-14). **`.sample`에 세 선언이 그대로 실려 있으니 손복사**하십시오(제품 소유 테이블이 아니므로 `install_product_tables.py`는 이것을 옮기지 않습니다). 🔴 **켜는 순서가 있습니다 — 선언 → 리로드(테이블 생성) → 인덱스 → 파서 shim → 파일**: [process/OPERATOR_RUNBOOK §4](../process/OPERATOR_RUNBOOK.md). 🔴 **테이블을 «만드는» 것은 `models.create_missing_dynamic_tables`이고 `sync_dynamic_tables_schema`가 «아닙니다»** — 후자는 **`ADD COLUMN`만** 발행하므로 **없는 테이블에는 아무 일도 안 하고**, 그 무동작은 성공과 똑같이 조용합니다(§4.1). 🔴 **전부 `map_key_columns`를 선언하지 않습니다**(런은 웨이퍼 격자가 아니고 결함은 연속 좌표의 점입니다) — 선언하면 이유 없이 `replace_map` purge 스코핑과 [R3](../architecture/SCHEMA_CANON.md)의 사고 반경에 들어갑니다. 🔴 **등급·면적 컬럼을 «추가하지 마십시오»** — 합불은 레시피 임계에 달렸고 면적은 식 인덱스가 답합니다([data_model §1.2-bis](../architecture/data_model.md)). 🔴 **종류를 더할 때 `observed_by`의 method는 기존 종류와 «달라야» 합니다** — 공유하면 종류를 바꿔도 같은 런을 세게 되어 **분모가 안 움직이고**, 종류 파라미터가 실제로 도는지 그 데이터로는 판별할 수 없습니다. ⚠️ **`delam_obs`에는 아직 파서가 없습니다**(현재 유일한 생산자가 합성 생성기입니다) **· 면적 식 인덱스도 없습니다**(`void_obs`의 `idx_void_obs_area` 대응물이 없으므로 크기 질의를 붙이면 그 인덱스가 함께 필요합니다) |
+
+> 🔴 **[2026-08-14 `50a21c7`] 표를 선언하는 것과 «그 표의 컬럼을 선언하는 것»은 다른 일이고, 두 번째가 조용합니다.**
+> 위 표의 어느 이름이 `table_config.json`에 있다고 해서 그 기능이 도는 것이 아닙니다 — **`column_types`에 없는 컬럼은 물리 DB에 있어도 쓰기가 200을 받고 그 셀만 드롭**됩니다(§6). 화면에는 「데이터가 없다」로 보이므로 파서·체인·인제션을 먼저 의심하게 되고, 그 오진에 시간이 갑니다.
+> - **실사례 셋이 한 라운드에 나왔습니다.** `bonding_log`의 `core_lot`/`core_slot`/`cx`/`cy`, `dt_map`의 `core_wafer`/`core_lot`/`core_slot`/`core_x`/`core_y` — 물리 컬럼은 **전부 이미 있었고** 선언에만 없었습니다. 그리고 `wafer_process`는 **표 자체가 선언에서 이탈**해 있었는데(2026-07-28~08-04 사이) 행은 살아 있었습니다. **ALTER는 한 줄도 필요 없었습니다.**
+> - ⚠️ **`__comment`가 그 컬럼을 설명하고 있어도 선언이 아닙니다** — 위 `dt_map`의 주석은 그 표가 만들어진 이래 「셀마다 출처를 싣는다」고 적고 있었고 `column_types`에는 그중 **하나도** 없었습니다. **코드는 주석을 읽지 않습니다.**
+> - **확인은 개수가 아니라 «집합»으로**: `information_schema.columns`의 컬럼 이름 집합과 선언의 `column_types` 키 집합을 대조하십시오. 절차는 [config/table_config §1](./config/table_config.md).
+> - 🔴 **`composite_key_source`를 선언하지 않은 표는 «재»인제션에서 거절됩니다** — 첫 파일은 들어가고 두 번째 파일이 `uq_bk_<표>` 위반으로 통째로 실패합니다([data_model §3.1-quater](../architecture/data_model.md)). 위 표에서 오늘 그 상태인 것은 **`wafer_process`**입니다.
 
 > 위 표의 이름(`dt_log`, `bonding_log` …)은 **`.sample`이 쓰는 예시일 뿐 표준이 아닙니다.** 현장 테이블명이 다르면 그 이름 그대로 선언하고 바인딩만 맞추면 됩니다 — 코드는 실테이블명을 하드코딩하지 않습니다.
 

@@ -29,8 +29,15 @@
 > `bonding_log.core_lot/core_slot/cx/cy`는 물리적으로는 있으나 **`table_config` 선언에
 > 없으며 전 357,796행이 NULL**입니다.
 >
-> **판정이 필요합니다(총괄):** ⓐ 위 테이블들을 다시 등록해 M1을 되살릴 것인가,
+> 🔴 **[2026-08-14 정정 · `50a21c7`] 위 문단의 «절반»이 더 이상 참이 아닙니다 — 그러나 `remaining: 0`은 그대로입니다.**
+> 실측으로 다시 갈라 적습니다(선언은 `table_config.json` 라이브·`.sample` 양쪽 대조, 행 수는 이 박스 읽기 전용):
+> - ✅ **`wafer_process`는 재등재됐습니다**(라이브·`.sample` 양쪽). 행은 그동안에도 살아 있었습니다 — 실측 **3,022행 / 랏 28**. 즉 이 표는 이제 **`process_history` 역할이 읽을 수 있는 상태**입니다.
+> - ✅ **`bonding_log.core_lot`/`core_slot`/`cx`/`cy`도 선언됐고 값이 들어왔습니다** — 「전 357,796행 NULL」은 **거짓이 됐습니다.** 오늘 실측 **368,371행 중 84,600행**(본딩 랏 108개 중 **24개**)에 값이 있습니다. ⚠️ **전량이 아닙니다** — 나머지는 여전히 NULL이고 그것이 의도된 음성 케이스입니다([data_model §3.3](../../architecture/data_model.md)).
+> - 🔴 **`core_defect_map`·`eds_fail_map`은 «여전히» 선언되지 않았습니다**(라이브·`.sample` 둘 다 없음). **`defect`·`eds_fail` 감산항이 아직 못 읽는 상태이므로 위의 조용한 `0`은 그대로입니다** — 원인 목록이 셋에서 **둘**로 줄었을 뿐입니다.
+>
+> **판정이 필요합니다(총괄):** ⓐ **남은 두 테이블**(`core_defect_map`·`eds_fail_map`)을 등록해 M1을 되살릴 것인가,
 > ⓑ 라우트와 이 파일을 함께 은퇴시킬 것인가. ⓑ는 REST 경로 삭제라 경계 계약입니다.
+> ⚠️ **원인이 줄었다고 증상이 준 것은 아닙니다** — 이 문단을 인용할 때 「고쳐졌다」로 요약하지 마십시오.
 
 <!-- Loader evidence (2026-08-04, availability relaxation pass — anchors re-measured):
   load: server/bonding_plan.py:69 load_bonding_plan_config (missing/corrupt -> {} partial operation)
