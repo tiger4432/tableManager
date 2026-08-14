@@ -35,9 +35,19 @@ import { renderTrace, renderNotice, renderCoverage } from './ledger_trace_view.j
 // `case_control_core.js` and the DOM is `case_control_view.js`, neither of which
 // touches `window`, so both are scored under bare node like the two above.
 import {
-  parseConsoleQuery, consoleQuery, kindCatalog, consoleModel,
+  parseConsoleQuery, consoleQuery, kindCatalog, consoleModel, pickKind,
 } from './case_control_core.js';
 import { renderConsole } from './case_control_view.js';
+// The FIFTH question, and the one the brief calls 화면 ② (§0-quinquies R2): ONE
+// lot, and everything known about why it is odd — 혈통 요약 · 차이점 순위표(세
+// 관문) · 조사 이력. Not a page and not a modal: `?view=lot&lot=…` is a different
+// question about the same ledger, so it is a different address. The reading is
+// `lot_reference_core.js` and the DOM is `lot_reference_view.js`, neither of
+// which touches `window`, so both are scored under bare node like the four above.
+import {
+  LOT_VIEW, parseLotQuery, lotQuery, lotFetchQuery, lotModel,
+} from './lot_reference_core.js';
+import { renderLotReference } from './lot_reference_view.js';
 // The THIRD question, and the one that has to be answered before the other two can
 // be designed further (product owner, 2026-08-14: "구조가 너무 숨겨져 있어서 UI
 // 어떻게 설계해야 할지 모르겠어"). Not an instance graph — the TYPE graph: which
@@ -387,6 +397,82 @@ async function readRefusal(res) {
   return refusalReading(detail, res.status);
 }
 
+// 🔴 THE REFERENCE VIEW'S OWN SESSION GUARD — a FIFTH counter, same reason as
+// the four above. Five independent questions; a shared counter would let one
+// silently cancel another's answer.
+let lotSession = 0;
+
+/**
+ * Everything known about ONE lot — 화면 ② (brief §0-quinquies R2).
+ *
+ * 🔴 PROPOSED SHAPE — NOT YET SERVED. R1 (랏 스코프 대조 + 귀속 N/M 커버리지) is
+ * being built in a parallel lane; the consumed shape is pinned in
+ * `lot_reference_core.js`'s header and changing it is an escalation, not an edit.
+ *
+ * 🔴 A 404 IS CONTENT HERE, NOT AN ERROR SCREEN. The whole frame paints — four
+ * sections, every one of them saying what it does not know — because that is
+ * what lets this screen land ahead of the route, and because 「배포 안 됨」 and
+ * 「이 랏은 깨끗함」 must never look the same.
+ */
+async function runLot(question) {
+  const mount = byId('lt-lot');
+  if (!mount) return;
+  const mine = ++lotSession;
+
+  const catalog = await loadKinds();
+  if (mine !== lotSession) return;
+
+  // The kind is resolved against the SERVER's catalog, never against a literal
+  // here — `finding=<kind>` is the generalisation and `void` is a default that
+  // lives in the catalog, not in this client.
+  const kind = pickKind(catalog, question.finding);
+  const paint = (body, notice) => renderLotReference(document, mount,
+    lotModel({ body, question, kind }), notice);
+
+  // No lot in the address is a real state of this view and it costs no request.
+  if (!question.lot) {
+    paint(null, null);
+    return;
+  }
+
+  paint(null, { tone: 'busy', title: '랏 대조 집계 중…', detail: null });
+
+  const asked = Object.assign({}, question, { finding: kind });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/ledger/lot?${lotFetchQuery(asked)}`);
+  } catch (err) {
+    if (mine !== lotSession) return;
+    paint(null, { tone: 'error', title: '서버에 닿지 못했습니다', detail: String((err && err.message) || err) });
+    return;
+  }
+  if (mine !== lotSession) return;
+
+  if (!res.ok) {
+    const refusal = await readRefusal(res);
+    if (mine !== lotSession) return;
+    paint(null, {
+      tone: res.status === 404 ? 'gap' : 'error',
+      title: res.status === 404
+        ? '랏 스코프 대조 API 미배포 — 화면만 준비됨'
+        : `서버 거절 (${res.status})`,
+      detail: refusal.text,
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await res.json();
+  } catch (err) {
+    if (mine !== lotSession) return;
+    paint(null, { tone: 'error', title: '응답을 읽지 못했습니다', detail: String((err && err.message) || err) });
+    return;
+  }
+  if (mine !== lotSession) return;
+  paint(body, null);
+}
+
 /**
  * The empty state — the screen BEFORE a question, answering "what can I ask".
  *
@@ -590,13 +676,15 @@ let consoleAsked = { finding: '', slices: {} };
 function switchViews(view) {
   const structure = view === STRUCTURE_VIEW;
   const surprise = view === SURPRISE_VIEW;
-  const ask = !structure && !surprise;
+  const lot = view === LOT_VIEW;
+  const ask = !structure && !surprise && !lot;
   const show = (id, on) => {
     const node = byId(id);
     if (node) node.hidden = !on;
   };
   show('lt-structure', structure);
   show('lt-surprise', surprise);
+  show('lt-lot', lot);
   show('lt-console', ask);
   show('lt-result', ask);
   const rule = document.querySelector('.lt-section-rule');
@@ -606,24 +694,33 @@ function switchViews(view) {
   // this one — but outside the ask view its Enter NAVIGATES rather than renders,
   // because the panel it would render into is not on screen.
   if (box) box.hidden = false;
-  const current = structure ? STRUCTURE_VIEW : (surprise ? SURPRISE_VIEW : 'ask');
+  const current = structure ? STRUCTURE_VIEW
+    : (surprise ? SURPRISE_VIEW : (lot ? LOT_VIEW : 'ask'));
   for (const a of document.querySelectorAll('[data-view-link]')) {
     a.classList.toggle('lt-view--on', a.getAttribute('data-view-link') === current);
   }
 }
 
-/** Enter in the lineage box, from a view that has no lineage panel on screen. */
-function bindNavigatingAsk() {
+/**
+ * Enter in the lineage box, from a view that has no lineage panel on screen.
+ *
+ * `toQuery` is how the CURRENT view says where a typed lot should land. The two
+ * type-level views have no lot of their own, so a lot means "show me its
+ * lineage"; the reference view IS about a lot, so a lot typed there means "the
+ * same question about a different lot" — anything else would be the address bar
+ * changing question on the operator without being asked to.
+ */
+function bindNavigatingAsk(toQuery) {
   const box = byId('lt-query');
   if (!box) return;
+  const build = typeof toQuery === 'function' ? toQuery : traceQuery;
   box.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     const asked = parseQuery(box.value);
     if (!asked.lot) return;
-    // A real navigation — the lineage answer is a different question and
-    // therefore a different URL.
-    window.location.search = `?${traceQuery(asked)}`;
+    // A real navigation — a different question is a different URL.
+    window.location.search = `?${build(asked)}`;
   });
   box.focus();
 }
@@ -659,6 +756,21 @@ function boot() {
       });
     }
     bindNavigatingAsk();
+    return;
+  }
+
+  if (view === LOT_VIEW) {
+    // 🔴 ONLY THE KIND CATALOG AND THIS VIEW'S OWN QUESTION — same rule the two
+    // views above follow. A view that quietly issues another view's requests
+    // makes every reading of "what does this screen cost" wrong.
+    loadKinds();
+    const lotAsked = parseLotQuery(params);
+    runLot(lotAsked);
+    // A lot typed here keeps the SAME question — the reference view of that lot —
+    // and keeps the finding kind the URL is already carrying.
+    bindNavigatingAsk((asked) => lotQuery({
+      lot: asked.lot, slot: asked.slot, finding: lotAsked.finding,
+    }));
     return;
   }
 
