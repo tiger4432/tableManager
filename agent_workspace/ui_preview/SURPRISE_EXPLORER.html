@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>놀라움 탐색기 — 화면 ① 재설계안</title>
+<style>
+:root{
+  --bg:#F6F6F3; --panel:#FFFFFF; --ink:#20242A; --sub:#5C6470; --faint:#8B93A0;
+  --line:#E3E4E0; --accent:#0F766E; --accent-bg:#E4F1EF;
+  --hot:#B91C1C; --hot-bg:#FBEAEA; --warn:#B45309; --warn-bg:#F8EEDC;
+  --mono:ui-monospace,'Cascadia Mono','D2Coding',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16181C; --panel:#1E2126; --ink:#E8EAED; --sub:#A6ADB8; --faint:#6E7683;
+    --line:#2E3238; --accent:#3AA79B; --accent-bg:#173330;
+    --hot:#E8706B; --hot-bg:#3A2224; --warn:#D99A4E; --warn-bg:#3A2F1E;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16181C; --panel:#1E2126; --ink:#E8EAED; --sub:#A6ADB8; --faint:#6E7683;
+  --line:#2E3238; --accent:#3AA79B; --accent-bg:#173330;
+  --hot:#E8706B; --hot-bg:#3A2224; --warn:#D99A4E; --warn-bg:#3A2F1E;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.65 'Pretendard Variable',Pretendard,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;}
+main{max-width:960px;margin:0 auto;padding:20px 14px 60px}
+h1{font-size:21px;font-weight:600;margin:6px 0 2px}
+h2{font-size:17px;font-weight:600;margin:0 0 4px}
+.meta{font-size:13px;color:var(--faint)}
+.q{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.08em;
+  color:var(--accent);background:var(--accent-bg);border-radius:4px;padding:2px 8px;margin-bottom:6px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:16px;margin-top:16px}
+.flow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:13px}
+.flow b{font-weight:600;background:var(--panel);border:1px solid var(--line);
+  border-radius:6px;padding:4px 10px}
+.flow span{color:var(--faint)}
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.pill{font:inherit;font-size:13px;padding:5px 12px;border-radius:16px;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel);color:var(--sub)}
+.pill.on{background:var(--accent);border-color:var(--accent);color:#fff}
+select{font:inherit;font-size:13px;padding:5px 8px;border-radius:8px;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+.note{font-size:13px;color:var(--sub);border-left:3px solid var(--accent);
+  padding:2px 0 2px 10px;margin:10px 0 0}
+.tablewrap{overflow-x:auto;margin-top:8px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+th{color:var(--sub);font-weight:500;text-align:right;padding:7px 8px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+td.id{font-family:var(--mono);font-size:12.5px}
+tr.hot td{background:var(--hot-bg)}
+tr.hot td:first-child{color:var(--hot)}
+.b{font-size:11.5px;border-radius:10px;padding:1px 8px;font-weight:500}
+.b.prod{background:var(--accent-bg);color:var(--accent)}
+.b.eval{background:var(--warn-bg);color:var(--warn)}
+.b.unk{background:var(--line);color:var(--sub)}
+.x{font-weight:600;color:var(--hot)}
+.spark{font-family:var(--mono);letter-spacing:-1px;color:var(--faint);font-size:12px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--sub);margin-top:10px}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+svg text{font-family:inherit}
+footer{font-size:12.5px;color:var(--faint);margin-top:26px;line-height:1.8}
+a{color:var(--accent)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+<h1>놀라움 탐색기 — 화면 ① 재설계안 v2</h1>
+<p class="meta">임시 제안 · 정본은 docs/process/SCENARIO_CONSOLE_BRIEF.md §0-ter · 화면 속 수치는 전부 시늉(목업)</p>
+
+<div class="flow">
+  <b>얼마나 · 누가</b><span>→</span><b>언제</b><span>→</span><b>어디</b><span>→</span><b>왜 (참조뷰로)</b>
+</div>
+<p class="meta" style="margin-top:6px">질문 순서가 화면 순서. 아래 세 구역은 같은 「단위 × 지표」 선택을 공유한다 —
+표에서 이상을 찾고, 시간에서 언제부터인지, 공간에서 어디에 몰리는지 보고, 참조뷰로 넘어간다.</p>
+
+<section>
+<div class="q">공통 조작부</div>
+<h2>무엇의 놀라움인가 — 단위 × 지표 선택</h2>
+<div class="ctrl">
+  <button class="pill on" data-u="lot" onclick="setUnit('lot',this)">랏</button>
+  <button class="pill" data-u="wafer" onclick="setUnit('wafer',this)">웨이퍼</button>
+  <button class="pill" data-u="chip" onclick="setUnit('chip',this)">칩</button>
+  <select id="metric" onchange="setMetric()">
+    <option value="ratio">지표: 발생 칩 비율</option>
+    <option value="mean">지표: 칩당 평균 발생 수</option>
+    <option value="area">지표: 평균 보이드 면적 (예시)</option>
+  </select>
+  <select><option>불량: 보이드</option><option>불량: 박리</option></select>
+  <select><option>최근 30일</option></select>
+</div>
+<p class="note">지표는 코드가 아니라 <b>선언</b>이다: 지표 하나 = {분자 정의, 분모 정의, 단위 라벨} 선언
+(finding_kinds와 같은 방식의 config). 「발생 칩 비율」= 발생 칩 수 ÷ 검사 칩 수,
+「칩당 평균 발생 수」= 발생 총수 ÷ 검사 칩 수. 새 지표 추가 = 선언 한 줄, 파이썬 0줄.</p>
+</section>
+
+<section>
+<div class="q">얼마나 · 누가</div>
+<h2 id="tblTitle">랏별 순위 — 발생 칩 비율, 기저 대비 놀라움 순</h2>
+<div class="tablewrap"><table id="tbl">
+<thead><tr id="thead"></tr></thead>
+<tbody id="tbody"></tbody>
+</table></div>
+<p class="note" id="unitNote">랏·웨이퍼는 표가 자연스럽고, <b>칩 단위는 개수가 수천이라 표는 상위 N만</b> —
+칩의 본 화면은 아래 공간 맵이다. 미검사 단위는 사라지지 않고 「미검사」 행으로 남는다
+(안 본 것은 양호가 아니라 모름).</p>
+</section>
+
+<section>
+<div class="q">언제</div>
+<h2>시간 트렌드 — 선택 단위의 지표를 생산 순서로</h2>
+<svg viewBox="0 0 640 190" style="width:100%;height:auto" role="img" aria-label="랏 생산 순서에 따른 발생 칩 비율 추이, 정상 범위 밴드와 이상 랏 강조">
+  <rect x="40" y="118" width="580" height="34" fill="var(--accent-bg)"/>
+  <text x="612" y="132" text-anchor="end" font-size="11" fill="var(--accent)">정상 범위 (기저율 ±)</text>
+  <line x1="40" y1="160" x2="620" y2="160" stroke="var(--line)"/>
+  <polyline fill="none" stroke="var(--faint)" stroke-width="1.6"
+    points="40,138 80,142 120,131 160,139 200,128 240,136 280,133 320,125 360,130"/>
+  <polyline fill="none" stroke="var(--hot)" stroke-width="2"
+    points="360,130 400,96 440,72 480,54 520,38 560,30 600,26"/>
+  <circle cx="600" cy="26" r="4" fill="var(--hot)"/>
+  <text x="596" y="18" text-anchor="end" font-size="11.5" fill="var(--hot)">CL-2601-006 · 41.6%</text>
+  <circle cx="440" cy="72" r="3" fill="var(--hot)"/>
+  <text x="440" y="176" text-anchor="middle" font-size="10.5" fill="var(--faint)">← 여기부터 꺾임 (본딩 EQP-07 투입 시점과 겹침)</text>
+  <text x="40" y="176" font-size="10.5" fill="var(--faint)">랏 생산 순서 →</text>
+</svg>
+<p class="note">시간축은 달력 날짜와 <b>생산 순서</b> 둘 다 지원 — 장비 교체·레시피 rev 같은
+사건(원장의 사실)을 축 위에 마커로 겹치면 「언제부터」가 「무엇과 함께」로 바뀐다.</p>
+</section>
+
+<section>
+<div class="q">어디</div>
+<h2>공간 맵 — 칩 단위 놀라움의 본 화면</h2>
+<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+  <div>
+    <svg id="wmap" viewBox="0 0 260 260" style="width:250px;height:auto" role="img" aria-label="웨이퍼 지도, 가장자리 한쪽에 보이드 발생 칩이 몰린 패턴"></svg>
+    <p class="meta" style="margin:4px 0 0;text-align:center">웨이퍼 내 — 칩 (x,y)별 지표</p>
+  </div>
+  <div style="flex:1;min-width:220px">
+    <p style="font-size:14px;margin:0 0 8px">공간은 <b>두 겹</b>이다:</p>
+    <p style="font-size:13.5px;color:var(--sub);margin:0 0 8px">
+    ① <b>웨이퍼 내</b> — 칩 좌표 (x,y) 히트맵. 가장자리 링, 한쪽 쏠림, 중심 뭉침 같은
+    패턴이 기전의 힌트다 (왼쪽 예시: 좌하단 가장자리 쏠림).</p>
+    <p style="font-size:13.5px;color:var(--sub);margin:0 0 8px">
+    ② <b>칩 내</b> — inchip (x,y). 보이드가 칩의 어느 자리에 나는지.
+    관측 문법이 원래 「어느 칩의 inchip x,y」라서 공짜로 나온다.</p>
+    <p style="font-size:13.5px;color:var(--sub);margin:0">
+    맵의 칩을 탭 → 그 칩의 관측·이력(참조뷰의 칩 드릴) → <b>왜</b>로 넘어간다.</p>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--line)"></span>발생 0 (검사됨)</span>
+      <span><span class="sw" style="background:#E8B75A"></span>낮음</span>
+      <span><span class="sw" style="background:#D85A30"></span>높음</span>
+      <span><span class="sw" style="background:var(--hot)"></span>매우 높음</span>
+      <span><span class="sw" style="background:repeating-linear-gradient(45deg,var(--line),var(--line) 2px,var(--panel) 2px,var(--panel) 4px)"></span>미검사</span>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="q">왜</div>
+<h2>여기서부터는 참조뷰</h2>
+<p style="font-size:14px;color:var(--sub);margin:0">
+표·트렌드·맵 어디서든 단위 하나(랏/웨이퍼/칩)를 고르면 참조뷰로 — 공유 이력 펼치기,
+세 관문 순위표(실재·상류·기전), 조사 이력, 액션 발급. 그쪽 설계는 기존 제안 유지.</p>
+</section>
+
+<footer>
+쪼갠 이유: 「얼마나」는 여러 단위를 훑는 화면, 「언제·어디」는 고른 단위를 들여다보는 화면이라
+성격이 다르다 — 다만 한 페이지의 세 구역으로 이어 두어 선택이 공유된다. 폭이 좁으면(폰) 세로로,
+넓으면 표 옆에 트렌드·맵이 붙는 반응형.<br>
+피드백 요청: ① 기본 지표를 무엇으로(발생 칩 비율?) ② 칩 단위 놀라움의 기준 —
+같은 웨이퍼 내 상대(이웃 대비)인지 전체 칩 기저 대비인지 ③ 시간축 기본(날짜 vs 생산 순서).
+</footer>
+</main>
+<script>
+var D={
+ lot:{ratio:{h:["랏","버킷","발생칩/검사칩","비율","기저 대비","추이"],r:[
+  ["CL-2601-006","prod","312 / 750","41.6%","×6.9","▁▂▅▇█",1],
+  ["CL-2601-014","prod","198 / 750","26.4%","×4.4","▂▃▅▆▆",0],
+  ["CL-2601-QE2","eval","85 / 250","34.0%","제외","▄▄▄▄▄",0],
+  ["CL-2601-002","prod","4 / 750","0.5%","×0.1","▁▁▁▁▁",0],
+  ["CL-2601-021","unk","미검사","—","—","—",0]]},
+ mean:{h:["랏","버킷","발생 총수/검사칩","칩당 평균","기저 대비","추이"],r:[
+  ["CL-2601-006","prod","1,204 / 750","1.61","×8.0","▁▂▅▇█",1],
+  ["CL-2601-014","prod","310 / 750","0.41","×2.1","▂▃▅▆▆",0],
+  ["CL-2601-QE2","eval","221 / 250","0.88","제외","▄▄▄▄▄",0],
+  ["CL-2601-002","prod","5 / 750","0.01","×0.1","▁▁▁▁▁",0],
+  ["CL-2601-021","unk","미검사","—","—","—",0]]},
+ area:{h:["랏","버킷","측정 보이드 수","평균 면적(um2)","기저 대비","추이"],r:[
+  ["CL-2601-006","prod","1,204","5,210","×3.2","▁▃▆▇█",1],
+  ["CL-2601-QE2","eval","221","4,880","제외","▄▄▄▄▄",0],
+  ["CL-2601-014","prod","310","2,140","×1.3","▂▃▃▄▄",0],
+  ["CL-2601-002","prod","5","990","×0.6","▁▁▁▁▁",0],
+  ["CL-2601-021","unk","미검사","—","—","—",0]]}},
+ wafer:{h:["웨이퍼 (랏-슬롯)","버킷","발생칩/검사칩","비율","랏 내 대비","추이"],r:[
+  ["CL-2601-006 · 03","prod","98 / 121","81.0%","×1.9","▃▅▇██",1],
+  ["CL-2601-006 · 07","prod","71 / 121","58.7%","×1.4","▃▄▆▇▇",1],
+  ["CL-2601-006 · 12","prod","22 / 121","18.2%","×0.4","▂▂▃▃▃",0],
+  ["CL-2601-014 · 01","prod","41 / 121","33.9%","×1.3","▃▄▄▅▅",0],
+  ["CL-2601-006 · 15","unk","미검사","—","—","—",0]]},
+ chip:{h:["칩 (웨이퍼 · x,y)","버킷","발생 수","칩 기저 대비","이웃 대비","위치"],r:[
+  ["006-03 · (2,14)","prod","9","×45","×6.1","가장자리",1],
+  ["006-03 · (3,14)","prod","7","×35","×4.8","가장자리",1],
+  ["006-07 · (2,13)","prod","6","×30","×4.0","가장자리",1],
+  ["014-01 · (9,9)","prod","3","×15","×9.2","중심 고립",0],
+  ["006-03 · (11,4)","prod","2","×10","×1.1","—",0]]}};
+var unit='lot';
+function bucket(b){return b=='prod'?'<span class="b prod">양산</span>':b=='eval'?'<span class="b eval">특수평가</span>':'<span class="b unk">미상</span>';}
+function render(){
+ var m=document.getElementById('metric').value;
+ var d=unit=='lot'?D.lot[m]:D[unit];
+ document.getElementById('thead').innerHTML=d.h.map(function(h){return '<th>'+h+'</th>';}).join('');
+ document.getElementById('tbody').innerHTML=d.r.map(function(r){
+  return '<tr'+(r[6]?' class="hot"':'')+'><td class="id">'+r[0]+'</td><td>'+bucket(r[1])+'</td><td>'+r[2]+
+   '</td><td>'+r[3]+'</td><td'+(r[6]?' class="x"':'')+'>'+r[4]+'</td><td class="spark">'+r[5]+'</td></tr>';}).join('');
+ var names={lot:'랏',wafer:'웨이퍼',chip:'칩'};
+ var mm={ratio:'발생 칩 비율',mean:'칩당 평균 발생 수',area:'평균 보이드 면적'};
+ document.getElementById('tblTitle').textContent=names[unit]+'별 순위 — '+(unit=='lot'?mm[m]:unit=='wafer'?'발생 칩 비율':'발생 수')+', 놀라움 순';
+ document.getElementById('metric').style.display=unit=='lot'?'':'none';
+}
+function setUnit(u,el){unit=u;var ps=document.querySelectorAll('.pill');for(var i=0;i<ps.length;i++)ps[i].className='pill';el.className='pill on';render();}
+function setMetric(){render();}
+render();
+(function(){
+ var svg=document.getElementById('wmap'),N=17,c=13,R=8.2,parts=[];
+ for(var y=0;y<N;y++)for(var x=0;x<N;x++){
+  var dx=x-8,dy=y-8,r=Math.sqrt(dx*dx+dy*dy);
+  if(r>R)continue;
+  var v=0;
+  var ex=x-3,ey=y-13,ed=Math.sqrt(ex*ex+ey*ey);
+  if(ed<4.4)v=1-ed/4.4;
+  if(r>R-1.4&&x<8&&y>8)v=Math.max(v,0.45);
+  if((x*7+y*13)%23==0)v=Math.max(v,0.3);
+  var miss=((x*5+y*11)%29==0);
+  var f=miss?'url(#hatch)':v<=0?'var(--line)':v<0.35?'#E8B75A':v<0.7?'#D85A30':'var(--hot)';
+  parts.push('<rect x="'+(x*c+16)+'" y="'+(y*c+16)+'" width="'+(c-1.5)+'" height="'+(c-1.5)+'" rx="1.5" fill="'+f+'"/>');
+ }
+ svg.innerHTML='<defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="4" fill="var(--panel)"/><path d="M0 4L4 0" stroke="var(--line)" stroke-width="1"/></pattern></defs>'
+  +'<circle cx="130" cy="130" r="118" fill="none" stroke="var(--line)" stroke-width="1.5"/>'+parts.join('');
+})();
+</script>
+</body>
+</html>
