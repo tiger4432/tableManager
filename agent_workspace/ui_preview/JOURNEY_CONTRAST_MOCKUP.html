@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>여정 대조 시안 — P0-3 정본 (소유자 승인 원본 위젯)</title>
+<!-- Owner-approved mockup, verbatim from the fork's rendered widget (2026-08-14).
+     Owner: 「그래 저렇게 나오니까 좋네」 → 「클라한테 저 위젯 그대로 줘라 저거 좋다」.
+     Spec lives in SCENARIO_CONSOLE_BRIEF.md P0-3 (+ addenda). This file is the LOOK.
+     The var block below only substitutes the host theme so the file opens standalone;
+     production uses ledger console tokens. -->
+<style>
+  :root {
+    --surface-1: #f7f6f3; --surface-2: #ffffff;
+    --border: #e3e1db; --border-strong: #c9c7c0; --border-stronger: #8a8880;
+    --text-secondary: #5f5e5a; --text-muted: #8a8880;
+    --bg-success: #eaf3de; --text-success: #3b6d11;
+  }
+  body { font-family: system-ui, sans-serif; background: #edece8; padding: 24px; margin: 0; }
+  a { color: #185fa5; text-decoration: none; }
+  b { font-weight: 500; }
+  p { line-height: 1.5; }
+</style>
+
+<div style="background:var(--surface-1);border-radius:12px;padding:1rem 1.25rem;max-width:660px">
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px">
+    <span style="font-size:15px;font-weight:500">여정 대조</span>
+    <span style="font-size:13px;color:var(--text-secondary)">SYN-BW-101-06 vs SYN-BW-101-15 · 같은 길 5구간, 갈라진 곳 2곳</span>
+  </div>
+  <div style="display:flex;gap:8px;margin:8px 0 14px">
+    <span style="font-size:12px;padding:3px 10px;border-radius:10px;background:#FAECE7;color:#712B13">갈림 ① 본딩 압력 0.6 vs 1.2 MPa</span>
+    <span style="font-size:12px;padding:3px 10px;border-radius:10px;background:#FAECE7;color:#712B13">갈림 ② 대기 76h vs 12h</span>
+  </div>
+
+  <div style="border-left:2px solid var(--border-strong);margin-left:8px;padding-left:0">
+
+    <div style="display:flex;gap:10px;align-items:baseline;padding:6px 0 6px 14px;position:relative">
+      <span style="position:absolute;left:-5px;top:12px;width:8px;height:8px;border-radius:50%;background:var(--border-stronger)"></span>
+      <span style="font-size:13px;min-width:88px;color:var(--text-secondary)">본딩</span>
+      <span style="font-size:13px;color:var(--text-muted)">같음 — 장비 SYN-BD-03 · 레시피 rev 5</span>
+    </div>
+
+    <div style="margin:4px 0 4px 14px;position:relative;background:var(--surface-2);border:0.5px solid #F0997B;border-radius:8px;padding:10px 12px">
+      <span style="position:absolute;left:-19px;top:14px;width:8px;height:8px;border-radius:50%;background:#D85A30"></span>
+      <p style="margin:0;font-size:13px;color:var(--text-secondary)">본딩 · 압력</p>
+      <p style="margin:2px 0 6px;font-size:14px">#06은 <b>0.6 MPa</b>, #15는 <b>1.2 MPa</b>로 붙였다</p>
+      <div style="display:flex;gap:14px;font-size:12px;margin-bottom:6px">
+        <span style="color:#993C1D">#06 · 0.6 MPa · 보이드 6.1개/칩</span>
+        <span style="color:var(--text-secondary)">#15 · 1.2 MPa · 보이드 1.2개/칩</span>
+      </div>
+      <div style="display:flex;gap:6px;font-size:12px">
+        <span style="padding:2px 8px;border-radius:9px;background:var(--bg-success);color:var(--text-success)">✓ 시간상 앞섬</span>
+        <span style="padding:2px 8px;border-radius:9px;background:var(--bg-success);color:var(--text-success)">✓ 물리 경로 있음</span>
+        <a href="#" style="font-size:12px;margin-left:auto">저압→미충전→보이드 경로 보기 →</a>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:baseline;padding:6px 0 6px 14px;position:relative">
+      <span style="position:absolute;left:-5px;top:12px;width:8px;height:8px;border-radius:50%;background:var(--border-stronger)"></span>
+      <span style="font-size:13px;min-width:88px;color:var(--text-secondary)">본딩후 대기</span>
+      <span style="font-size:13px;color:#993C1D">#06 76h vs #15 12h — 관측 편향 후보(발생 아님)</span>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:baseline;padding:6px 0 6px 14px;position:relative">
+      <span style="position:absolute;left:-5px;top:12px;width:8px;height:8px;border-radius:50%;background:var(--border-stronger)"></span>
+      <span style="font-size:13px;min-width:88px;color:var(--text-secondary)">DT 이송</span>
+      <span style="font-size:13px;color:var(--text-muted)">같음 — SYN-DT-101 · 1회</span>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:baseline;padding:6px 0 6px 14px;position:relative">
+      <span style="position:absolute;left:-5px;top:12px;width:8px;height:8px;border-radius:50%;background:var(--border-stronger)"></span>
+      <span style="font-size:13px;min-width:88px;color:var(--text-secondary)">두께 측정</span>
+      <span style="font-size:13px;color:var(--text-muted)">#06 측정 없음 · #15 71.2µm — 결측은 상태</span>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:baseline;padding:6px 0 6px 14px;position:relative">
+      <span style="position:absolute;left:-5px;top:12px;width:8px;height:8px;border-radius:50%;background:var(--border-stronger)"></span>
+      <span style="font-size:13px;min-width:88px;color:var(--text-secondary)">보이드 검사</span>
+      <span style="font-size:13px;color:var(--text-secondary)">#06 153개(6.1/칩) · #15 30개(1.2/칩)</span>
+    </div>
+
+  </div>
+  <p style="margin:10px 0 0;font-size:12px;color:var(--text-muted)">같은 구간은 한 줄로 접힘 · 갈라진 구간만 카드로 열림 · 구간명 클릭 = 구조 뷰의 그 자리로</p>
+</div>
