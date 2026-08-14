@@ -94,6 +94,29 @@ REASON_NO_RUNS = "no_runs_for_methods"
 REASON_RUN_RELATION_ABSENT = "run_relation_absent"
 REASON_FINDING_RELATION_ABSENT = "finding_relation_absent"
 REASON_NO_UNIVERSE = "no_universe_declared"
+
+#: The factor engine's own size guard, kin to the walk contrast's `walk.high_cardinality_at`
+#: and deliberately the same name, the same default and the same shape of answer — the
+#: field row survives, only the VALUE rows are dropped, and a note says which axis and why.
+#:
+#: 🔴 WHY IT EXISTS. Every declared axis is offered to this engine, and until tonight it had
+#: no equivalent of the walk's guard. Measured 2026-08-14, the hour a `wafer` axis was
+#: declared for MARKING: 8 of the top 20 factor rows became individual wafer identities and
+#: pushed 8 real factors off the page. The client was carrying the mitigation — a hardcoded
+#: list of eight axis names in the request — which is a copy of a server declaration living
+#: in a client, so an axis declared tomorrow would not have appeared in it and nobody would
+#: have been told.
+#:
+#: Two mechanisms, on purpose, because they fail differently:
+#:   `rank: false` on the axis   DECLARED. Cheap — the axis never enters the GROUPING SETS,
+#:                               so an identity axis costs nothing rather than costing a
+#:                               group per value. Requires somebody to know.
+#:   `high_cardinality_at`       MEASURED. Catches the axis nobody thought to flag, which
+#:                               is the exact case the client's list could not catch.
+FACTOR_DEFAULTS = {"high_cardinality_at": 200}
+
+REASON_AXIS_NOT_RANKABLE = "axis_declared_not_rankable"
+NOTE_HIGH_CARDINALITY_AXES = "high_cardinality_axes"
 REASON_UNIVERSE_RELATION_ABSENT = "universe_relation_absent"
 REASON_UNKNOWN_KIND = "unknown_finding_kind"
 REASON_BAD_WINDOW = "bad_window"
@@ -166,7 +189,7 @@ DEFAULT_AXES_CONFIG = {
 
 
 class Axis:
-    __slots__ = ("name", "label", "column", "about", "relation")
+    __slots__ = ("name", "label", "column", "about", "relation", "rank")
 
     def __init__(self, raw, source, where, i):
         self.name = raw.get("name")
@@ -176,10 +199,19 @@ class Axis:
         self.label = raw.get("label") or self.name
         self.about = raw.get("about") or source.about
         self.relation = source.relation
+        # 🔴 `rank: false` — DECLARED, never a name typed into the engine. An axis whose
+        # values are IDENTITIES (one wafer, one chip) is a perfectly good thing to MARK
+        # with and a meaningless thing to rank: every value has one carrier, so it fills
+        # the ranking with rows that cannot be evidence of anything. Default true, because
+        # an axis somebody bothered to declare is a factor until they say otherwise.
+        declared = raw.get("rank", True)
+        self.rank = True if declared is None else bool(declared)
 
     def as_dict(self):
+        # `rank` travels so the client can BUILD its axis list from the declaration
+        # instead of keeping a copy of one.
         return {"name": self.name, "label": self.label, "about": self.about,
-                "source": f"{self.relation}.{self.column}"}
+                "source": f"{self.relation}.{self.column}", "rank": self.rank}
 
 
 class AttributionSource:
@@ -583,9 +615,23 @@ def siblings(connection, kind=None, mode=MODE_INTERSECTION, window=None, limit=N
     envelope["denominator"] = denominator
 
     # -- 3. the factors. One pass per attribution relation; GROUPING SETS inside it.
+    factor_cfg = dict(FACTOR_DEFAULTS)
+    factor_cfg.update(defaults.get("factors") or {})
+    cardinality_cap = int(factor_cfg["high_cardinality_at"])
+
     rows, axis_meta, considered = [], [], 0
+    unrankable, noisy = [], []
     for source in attribution:
         picked = [a for a in source.axes if not wanted or a.name in wanted]
+        # 🔴 DECLARED REFUSAL, BEFORE THE SQL. A `rank: false` axis is dropped here rather
+        # than after the aggregate, so it never becomes a grouping set — an identity axis
+        # over 10M rows would otherwise produce a group per value on its way to being
+        # thrown away. It is still resolvable for MARKING (`scope=`) and for the lot grid's
+        # `by=`, which read `source.axes` directly and are untouched by this.
+        for ax in picked:
+            if not ax.rank:
+                unrankable.append(ax)
+        picked = [a for a in picked if a.rank]
         if not picked:
             continue
         if not relation_exists(connection, source.relation):
@@ -594,12 +640,50 @@ def siblings(connection, kind=None, mode=MODE_INTERSECTION, window=None, limit=N
             continue
         source_rows, covered = _factors(connection, plan, source, picked,
                                         sample_n, has_runs, methods)
+        # 🔴 MEASURED REFUSAL, AFTER IT. The distinct-value count per axis is already in
+        # hand — it is the number of rows this pass produced for that axis — so the guard
+        # is free rather than a second query. Same rule the walk contrast applies to a
+        # payload field with 55,000 values, for the same reason: one carrier per value is
+        # an identifier, and the interval would demote every one of them anyway after they
+        # had filled the page.
+        per_axis = {}
+        for row in source_rows:
+            per_axis[row["axis"]] = per_axis.get(row["axis"], 0) + 1
+        over = {name for name, n in per_axis.items() if n > cardinality_cap}
+        for ax in picked:
+            if ax.name in over:
+                noisy.append((ax, per_axis[ax.name]))
+        source_rows = [r for r in source_rows if r["axis"] not in over]
+
         considered += len(source_rows)
         rows.extend(source_rows)
         for ax in picked:
             meta = ax.as_dict()
             meta["covered"] = covered
+            # 🔴 The axis KEEPS ITS ROW and says it was not ranked. An axis that vanished
+            # silently is indistinguishable from one that was never declared.
+            if ax.name in over:
+                meta.update({"ranked": False, "reason": NOTE_HIGH_CARDINALITY_AXES,
+                             "distinct_values": per_axis[ax.name]})
             axis_meta.append(meta)
+
+    for ax in unrankable:
+        meta = ax.as_dict()
+        meta.update({"ranked": False, "reason": REASON_AXIS_NOT_RANKABLE,
+                     "covered": None})
+        axis_meta.append(meta)
+    if unrankable:
+        envelope["notes"].append({
+            "note": REASON_AXIS_NOT_RANKABLE,
+            "axes": [a.name for a in unrankable],
+            "message": ("선언상 순위 대상이 아닌 축 — 값이 식별자라 요인이 될 수 없다 "
+                        f"({', '.join(a.label for a in unrankable)}). 마킹에는 그대로 쓴다")})
+    if noisy:
+        envelope["notes"].append({
+            "note": NOTE_HIGH_CARDINALITY_AXES, "at": cardinality_cap,
+            "axes": [{"name": a.name, "distinct_values": n} for a, n in noisy],
+            "message": (f"값이 {cardinality_cap}종을 넘어 사실상 식별자인 축 — 축은 남고 "
+                        "값 단위 순위만 생략했다 (숨긴 것이 아니라 뜻이 없어서)")})
 
     factors = [_score(r, populations, has_runs, reason, defaults["contrast"])
                for r in rows if r["n_found"] >= min_support]

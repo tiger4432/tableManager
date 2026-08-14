@@ -449,3 +449,73 @@ def test_an_absent_observation_relation_is_an_answer_and_not_an_error(pg):
     assert answer["denominator"]["reason"] == \
         ledger_siblings.REASON_FINDING_RELATION_ABSENT
     assert answer["populations"]["found"]["count"] is None, "absent is not zero"
+
+
+# ---------------------------------------------------- the factor engine's identity guard
+# 🔴 These need no database: what they defend is the DECLARATION contract, and the engine
+# half is driven against a live relation in the round's report. They run where the `pg`
+# tests skip, which is the point — the rule they hold is that an axis's rankability comes
+# from a declaration and never from a name typed into the engine.
+def _axes_with(**wafer_extra):
+    return {
+        "attribution": [{
+            "relation": "bonding_log", "about": "process", "label": "본딩",
+            "join": {"base_wafer_id": "base_id", "base_x": "bx", "base_y": "by"},
+            "axes": [dict({"name": "wafer", "label": "웨이퍼", "column": "base_id"},
+                          **wafer_extra),
+                     {"name": "bond_lot", "label": "본딩 랏", "column": "bond_lot"}],
+        }],
+        "kinds": {},
+    }
+
+
+def test_an_axis_is_rankable_until_a_declaration_says_otherwise():
+    cfg = ledger_siblings.AxesConfig(_axes_with(), "<test>")
+    by_name = {a.name: a for a in cfg.attribution[0].axes}
+    assert by_name["wafer"].rank is True and by_name["bond_lot"].rank is True
+    # ...and the flag travels, so a client can BUILD an axis list rather than copy one.
+    assert by_name["wafer"].as_dict()["rank"] is True
+
+
+def test_rank_false_is_read_from_the_declaration_and_never_from_the_name():
+    cfg = ledger_siblings.AxesConfig(_axes_with(rank=False), "<test>")
+    by_name = {a.name: a for a in cfg.attribution[0].axes}
+    assert by_name["wafer"].rank is False
+    assert by_name["wafer"].as_dict()["rank"] is False
+    # 🔴 THE NAME DECIDES NOTHING. The same axis name with no flag is rankable, so no
+    # `if name == "wafer"` can be hiding behind a passing assertion above.
+    plain = ledger_siblings.AxesConfig(_axes_with(), "<test>")
+    assert {a.name: a.rank for a in plain.attribution[0].axes}["wafer"] is True
+    # A sibling axis is untouched: the refusal is per-axis, not per-source.
+    assert by_name["bond_lot"].rank is True
+
+
+def test_a_non_rankable_axis_is_still_fully_usable_for_marking():
+    """🔴 THE INVARIANT THE FIX MUST NOT BREAK. `rank: false` says 「요인이 아니다」, not
+    「축이 아니다」 — marking never ranks the axis it marked with, so `scope=wafer:…` and
+    the lot grid's `by=wafer` must go on resolving it."""
+    import ledger_lots
+    import ledger_walk_contrast
+    cfg = ledger_siblings.AxesConfig(_axes_with(rank=False), "<test>")
+    ledger_siblings.set_axes_config(_axes_with(rank=False))
+    try:
+        _source, axis = ledger_walk_contrast.resolve_marking_axis(cfg, "void", "wafer")
+        assert axis.name == "wafer" and axis.rank is False
+        _s2, axis2 = ledger_lots.resolve_row_axis(cfg, "void", "wafer")
+        assert axis2.name == "wafer"
+    finally:
+        ledger_siblings.set_axes_config(None)
+
+
+def test_the_cardinality_cap_is_declared_and_falls_back_to_the_shared_default():
+    """The MEASURED half — the one that catches the axis nobody thought to flag."""
+    assert ledger_siblings.FACTOR_DEFAULTS["high_cardinality_at"] == 200
+    cfg = ledger_siblings.AxesConfig(
+        dict(_axes_with(), defaults={"factors": {"high_cardinality_at": 7}}), "<test>")
+    merged = dict(ledger_siblings.FACTOR_DEFAULTS)
+    merged.update(cfg.defaults.get("factors") or {})
+    assert merged["high_cardinality_at"] == 7
+    bare = ledger_siblings.AxesConfig(_axes_with(), "<test>")
+    merged = dict(ledger_siblings.FACTOR_DEFAULTS)
+    merged.update(bare.defaults.get("factors") or {})
+    assert merged["high_cardinality_at"] == 200

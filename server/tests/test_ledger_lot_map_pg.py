@@ -534,3 +534,68 @@ def test_the_identity_follows_the_declaration_and_is_no_column_name_in_code(pg):
     assert silent["state"] == ledger_lots.MAP_STATE_READY, silent
     assert ledger_lots.IDENTITY_FIELD not in silent["frame"], (
         "a geometry that declares no ledger subject must claim no identity")
+
+
+# ------------------------------------------------------- the denominator layer, on the wire
+# 🔴 These need no database: `relation_exists` is stubbed so the frame lookups take their
+# absent branch, which leaves exactly the CELL rule under test. What they defend is that
+# `cells[]` stopped being the found set — the middle layer of every stack.
+def _map_rows(monkeypatch, rows, projected="b.bond_x AS bond_x, b.bond_y AS bond_y"):
+    monkeypatch.setattr(ledger_lots, "relation_exists", lambda *a, **k: False)
+    monkeypatch.setattr(ledger_lots, "_frame_key_columns",
+                        lambda *a, **k: ["bond_lot", "bond_slot"])
+    from datetime import datetime, timezone
+    axis = type("A", (), {"name": "bond_lot", "label": "본딩 랏", "column": "bond_lot"})()
+    source = type("S", (), {"relation": "bonding_log", "key_column": "bond_cell_key"})()
+    window = ledger_siblings.parse_window(None)
+    body = ledger_lots._map_envelope(
+        None, "L-1", axis, source, None, None, "void", rows, projected,
+        window, datetime(2026, 8, 14, tzinfo=timezone.utc))
+    return next(p for p in body["projections"] if p["axis"] == "bond")
+
+
+def test_a_position_that_was_never_inspected_is_not_a_scanned_one(monkeypatch):
+    """🔴 THE REASON THERE ARE THREE VALUES AND NOT TWO. Measured on `SYN-BW-101-07`: 141
+    bonded positions, 29 inspected, 26 with a finding. Tagging the other 112 as `scanned`
+    would be a false claim about 112 of 141 — the same 「미검사 ≠ 0」 rule this module
+    already enforces for its grid cells."""
+    # (x, y, lot, slot, is_found, is_scanned)
+    rows = [(1, 1, "L", "01", True, True),      # found
+            (2, 2, "L", "01", False, True),     # inspected, nothing found
+            (3, 3, "L", "01", False, False)]    # bonded, never inspected
+    proj = _map_rows(monkeypatch, rows)
+    states = {(c["x"], c["y"]): c["state"] for c in proj["cells"]}
+    assert states == {(1, 1): ledger_lots.MAP_CELL_FOUND,
+                      (2, 2): ledger_lots.MAP_CELL_SCANNED,
+                      (3, 3): ledger_lots.MAP_CELL_UNSCANNED}
+    # 🔴 The two that must never merge, said as an assertion rather than as a comment.
+    assert states[(2, 2)] != states[(3, 3)]
+
+
+def test_cells_stopped_being_the_found_set_but_n_did_not_change_meaning(monkeypatch):
+    """`cells[]` now carries the denominator; `n` still counts findings, so a consumer
+    that reads `n` is unaffected and one that counted ROWS must filter on `state`."""
+    rows = [(1, 1, "L", "01", True, True), (1, 1, "L", "01", True, True),
+            (2, 2, "L", "01", False, True), (3, 3, "L", "01", False, False)]
+    proj = _map_rows(monkeypatch, rows)
+    assert len(proj["cells"]) == 3                     # every present position
+    by_pos = {(c["x"], c["y"]): c for c in proj["cells"]}
+    assert by_pos[(1, 1)]["n"] == 2                    # findings at that position
+    assert by_pos[(2, 2)]["n"] == 0 and by_pos[(3, 3)]["n"] == 0
+    # The projection counters keep counting ROWS, and `sum(n)` still equals `found`.
+    assert proj["found"] == 2 and proj["scanned"] == 3
+    assert sum(c["n"] for c in proj["cells"]) == proj["found"]
+
+
+def test_a_refusing_projection_reports_how_many_frames_it_is_superposing(monkeypatch):
+    """A row spanning several frames is a SUPERPOSITION, and the count is the fact that
+    makes it readable as one. Without a frame relation there is no grid to agree on, so
+    the basis is absent rather than assumed."""
+    rows = [(1, 1, "L", "01", True, True), (2, 2, "L", "02", True, True)]
+    proj = _map_rows(monkeypatch, rows)
+    frame = proj["frame"]
+    assert proj["state"] == ledger_lots.MAP_STATE_NO_FRAME
+    assert frame["frames_considered"] == 2 and frame["superposed"] is True
+    # 🔴 No frame relation deployed -> nothing matched -> NO grid invented.
+    assert frame["frames_matched"] == 0
+    assert "grid" not in frame and "valid_die_ref" not in frame

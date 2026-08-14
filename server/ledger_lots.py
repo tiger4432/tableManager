@@ -964,6 +964,28 @@ MAP_AXES = [
 MAP_STATE_READY = "ready"
 MAP_STATE_NO_FRAME = "no_frame"
 MAP_STATE_UNREACHABLE = "unreachable"
+
+#: 🔴 THE MIDDLE LAYER. `cells[]` used to be the FOUND SET ALONE — `counts[key]` was built
+#: inside `if not r.get("is_found"): continue` — so every map was a numerator with no
+#: denominator under it and 「보이드 26개」 had nothing to be 26 OF. The scanned positions
+#: were computed in the same loop, counted into `scanned`, and then thrown away.
+#:
+#: THREE values, not the two the brief asked for, and the third is the reason: measured on
+#: `SYN-BW-101-07`, 141 bonded positions carry 29 scanned and 26 found. Tagging the other
+#: 112 as `scanned` would be a false claim about 112 of 141 positions — the exact 「미검사와
+#: 0은 다른 답」 rule this file already enforces in its grid cells (`CELL_UNSCANNED`). So the
+#: same three-way split the populations use, spelled the same way:
+#:   found      inspected, and something was found here
+#:   scanned    inspected, nothing found — the denominator the finding is a fraction of
+#:   unscanned  present in the process record, never inspected. NOT a zero.
+#:
+#: ⚠️ `cells[]` IS THEREFORE NO LONGER THE FOUND SET. A consumer that drew every cell as a
+#: finding now draws 141 where it drew 26 and must filter on `state`. `n` keeps its exact
+#: meaning (findings at this position, so 0 on the other two states) so nothing that reads
+#: it shifts.
+MAP_CELL_FOUND = "found"
+MAP_CELL_SCANNED = "scanned"
+MAP_CELL_UNSCANNED = "unscanned"
 MAP_REASON_NO_BRIDGE = "no_live_bridge"
 MAP_REASON_NO_FRAME = "no_registered_frame"
 #: 🔴 CAUGHT BY ITS OWN SMOKE TEST, 2026-08-14, and named so it cannot come back. With no
@@ -1211,16 +1233,18 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
                             f"R-2026-08-14-D)"),
                 "frame": None, "cells": [], "found": 0, "scanned": 0})
             continue
+        # 🔴 EVERY PRESENT POSITION, not the found ones. See `MAP_CELL_*`.
         counts = {}
         found = scanned = 0
         for r in present:
+            key = (int(r[xk]), int(r[yk]))
+            cell = counts.setdefault(key, {"n": 0, "scanned": 0})
             if r.get("is_scanned"):
                 scanned += 1
-            if not r.get("is_found"):
-                continue
-            found += 1
-            key = (int(r[xk]), int(r[yk]))
-            counts[key] = counts.get(key, 0) + 1
+                cell["scanned"] += 1
+            if r.get("is_found"):
+                found += 1
+                cell["n"] += 1
         lot_col, slot_col = spec["frame_key_columns"]
         # 🔴 THE FRAME KEYS ARE COUNTED, NOT SAMPLED. Picking the first value seen is what
         # produced the fiction this constant is named for (`MAP_REASON_FRAME_AMBIGUOUS`).
@@ -1254,7 +1278,16 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
         # come to label 25 wafers' dies with one wafer's id.
         wafers_seen = {r.get(IDENTITY_ALIAS) for r in present if r.get(IDENTITY_ALIAS)}
         frame_wafer = next(iter(wafers_seen)) if len(wafers_seen) == 1 else None
-        cells = [{"x": x, "y": y, "n": n} for (x, y), n in sorted(counts.items())]
+        cells = [{"x": x, "y": y, "n": c["n"],
+                  "state": (MAP_CELL_FOUND if c["n"]
+                            else MAP_CELL_SCANNED if c["scanned"]
+                            else MAP_CELL_UNSCANNED)}
+                 for (x, y), c in sorted(counts.items())]
+        # 🔴 THE PAIRS, NOT THE CROSS PRODUCT of `lots_seen` x `slots_seen`. A wafer's dies
+        # come off 25 DT tapes; pairing every lot with every slot would ask the frame table
+        # about combinations that were never used and then report them as unregistered.
+        pairs_seen = sorted({(r.get(lot_col), r.get(slot_col)) for r in present
+                             if r.get(lot_col) and r.get(slot_col)})
 
         if frame_slot is None or frame_lot is None:
             # 🔴 TWO SITUATIONS, TWO SENTENCES. 「슬롯을 고르십시오」 is actionable advice
@@ -1275,11 +1308,18 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
                     ("이 행이 프레임 여러 개에 걸쳐 있다 — 슬롯마다 격자 치수가 "
                      "다르므로 한 장에 겹쳐 그리면 좌표가 전부 어긋난다. "
                      "slot을 지정할 것.")),
+                # 🔴 A REFUSAL STILL CARRIES WHAT THE FRAMES AGREE ON. Refusing to pick ONE
+                # frame is not a reason to withhold what all of them say: measured on
+                # `SYN-BW-101-07`, the 25 DT frames it touches are all registered and all
+                # describe the SAME 15x10 lattice, and the DT sheet could not be drawn only
+                # because that agreement was never carried at wafer granularity.
                 "frame": _with_identity(
-                    {"state": MAP_STATE_NO_FRAME,
-                     "reason": MAP_REASON_FRAME_AMBIGUOUS,
-                     "available_slots": slots_seen,
-                     "available_lots": sorted(str(x) for x in lots_seen)}, frame_wafer),
+                    dict({"state": MAP_STATE_NO_FRAME,
+                          "reason": MAP_REASON_FRAME_AMBIGUOUS,
+                          "available_slots": slots_seen,
+                          "available_lots": sorted(str(x) for x in lots_seen)},
+                         **_agreed_frame(connection, source.relation, pairs_seen)),
+                    frame_wafer),
                 "coordinate_unit": "cells_from_origin",
                 "cells": cells, "found": found, "scanned": scanned})
             continue
@@ -1363,6 +1403,70 @@ def _frame(connection, relation, lot, slot, spec):
     return {"state": MAP_STATE_READY, "table": relation, "map_id": rows[0][0],
             "grid": rows[0][1],
             "valid_die_ref": _valid_die_pointer(connection, rows[0][1])}
+
+
+def _agreed_frame(connection, relation, pairs):
+    """What the frames a row SPANS agree on — the lattice, and the valid-die floor.
+
+    🔴 THE REFUSAL IS ABOUT SUPERPOSITION, NOT ABOUT THE LATTICE, and the two were being
+    treated as one. The `frame_ambiguous` sentence says 「슬롯마다 격자 치수가 다르므로」 —
+    measured on this box that is simply false for the DT axis: all 25 frames
+    `SYN-BW-101-07` touches are registered and every one is 15x10 from (0,0). What is
+    genuinely unsafe is drawing 25 tapes' dies on ONE sheet, because position (3,4) then
+    shows a sum over 25 tapes. So the lattice is served — the client needs it and it is
+    read, never invented — and `superposed` says out loud what the cells actually are.
+
+    `frames_considered` vs `frames_matched` is the basis, on the wire: a grid agreed by 24
+    of 25 registered frames is not the same claim as one agreed by all 25, and a client
+    that cannot see the difference cannot decide whether to draw.
+
+    One query, bounded by the frames the row actually touches.
+    """
+    out = {"frames_considered": len(pairs), "frames_matched": 0, "superposed": len(pairs) > 1}
+    if not pairs or not relation_exists(connection, FRAME_RELATION):
+        return out
+    map_ids = [f"{lot}_{slot}" for lot, slot in pairs]
+    rows = _fetch(connection,
+                  f"SELECT map_id, grid_metadata FROM {FRAME_RELATION} "
+                  f"WHERE target_table = %(t)s AND map_id = ANY(%(ids)s)",
+                  {"t": relation, "ids": map_ids})
+    out["frames_matched"] = len(rows)
+    if not rows:
+        return out
+
+    lattices, pointers = [], []
+    for _map_id, raw in rows:
+        try:
+            meta = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:                                    # noqa: BLE001 - text is data
+            return out                                       # unreadable -> agree on nothing
+        if not isinstance(meta, dict):
+            return out
+        # Compared with the floor pointer REMOVED rather than against a typed list of grid
+        # keys: two frames may legitimately point at different floors while describing the
+        # same lattice, and a hardcoded key list would silently stop covering a lattice key
+        # added tomorrow. Everything else must match exactly — a conservative comparison
+        # fails to `no grid`, which is the behaviour that was already there.
+        lattice = {k: v for k, v in meta.items() if k != "valid_die_ref"}
+        lattices.append(json.dumps(lattice, sort_keys=True, default=str))
+        pointers.append(_valid_die_pointer(connection, meta))
+
+    if len(set(lattices)) == 1:
+        out["grid"] = json.loads(lattices[0])
+        out["grid_basis"] = "agreed_across_matched_frames"
+        if out["frames_matched"] < out["frames_considered"]:
+            out["grid_partial"] = True
+            out["grid_message"] = (
+                f"격자는 등록된 {out['frames_matched']}개 프레임이 «전부 같다»는 근거 —"
+                f" 나머지 {out['frames_considered'] - out['frames_matched']}개는 미등록이라"
+                f" 확인 못 했다")
+    # The floor is served only when every matched frame points at the SAME one. Two tapes
+    # drawn on different valid-die maps have no common mask, and picking one would put the
+    # wrong wafer's mask under the other's dies.
+    keys = {(p.get("relation"), p.get("map_id")) for p in pointers}
+    if len(keys) == 1 and pointers[0].get("map_id"):
+        out["valid_die_ref"] = pointers[0]
+    return out
 
 
 def _valid_die_pointer(connection, grid_metadata):
