@@ -157,9 +157,15 @@ export async function resolveFloors(axes, into) {
     // 🔴 THE LANDED SHAPE PUTS IT UNDER THE FRAME: `frame.valid_die_ref` is
     // `{relation, present, map_id}`, and THE MASK RESOLVES. Measured live
     // 2026-08-14 after the server restart: `SYN-VOID-001` slot 07 carries
-    // `{relation: "valid_die_ref", present: true, map_id: "SYN-VD_G15X15"}`, all
-    // three axes resolve, floor seats 141 / off-floor 0, and the panel's mask code
-    // is null where it used to read 「유효 다이 마스크 미적용」.
+    // `{relation: "valid_die_ref", present: true, map_id: "SYN-VD_G15X15"}` ON THE
+    // BOND AXIS, which paints 141 유효 다이, and the panel's mask caption reads
+    // 「마스크 valid_die_ref|SYN-VD_G15X15」 where it used to read 「유효 다이
+    // 마스크 미적용」.
+    //
+    // 🔴 THE BOND AXIS, NOT ALL THREE. Under a `bond_lot` row axis the `dt` and
+    // `core` projections come back `no_frame` — that is the ambiguity domain, not
+    // a missing mask. An earlier version of this comment said "all three axes
+    // resolve", which the same response it cited already contradicted.
     //
     // (This comment said the opposite until tonight — that `map_id` was absent and
     // this loop found nothing. It described a real past state, which is exactly
@@ -172,12 +178,22 @@ export async function resolveFloors(axes, into) {
     // one wafer's mask under another's frame.
     //
     // A reference with no `map_id` still falls through to `mask_absent` below.
-    // That branch is NOT the normal case on live data — it is currently
-    // unreachable there, because every usable frame carries a reference and every
-    // reference-less frame (the real `BS-2601-*`) is refused earlier as
-    // `frame_unusable` (its `cols`/`rows` are `auto_registered`, not declared).
-    // It survives on a harness fixture and is kept because a future frame could
-    // land in that state — not because anything reaches it today.
+    // That branch is kept because a frame could land in that state; WHETHER
+    // ANYTHING REACHES IT TODAY IS NOT ESTABLISHED HERE.
+    //
+    // What IS measured (2026-08-14, restarted server): 9 probes across
+    // `SYN-VOID-002` / `-050` / `-103` × slots 01 / 13 / 25 ALL carry
+    // `map_id: "SYN-VD_G15X15"`, and the live row set is 103 rows all
+    // `SYN-VOID-*`. So on this data the branch is not reached — but that is a
+    // statement about 9 samples, not about every frame.
+    //
+    // 🔴 AN EARLIER VERSION OF THIS COMMENT NAMED `BS-2601-*` AS THE
+    // REFERENCE-LESS CASE AND SAID IT WAS REFUSED AS `frame_unusable`. There are
+    // ZERO `BS-`-prefixed rows in the live set; that lot family came from an older
+    // note, not from a measurement, and it was asserted here as current fact.
+    // Do not re-add a named exception to this branch without a probe that returns
+    // it — a comment that names a specific cause makes the next reader stop
+    // looking for the real one.
     const fr = (axis && axis.frame) || {};
     const ref = fr.valid_die_ref || axis.reference || null;
     if (!ref) continue;
