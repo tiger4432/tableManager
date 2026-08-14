@@ -220,9 +220,20 @@ export function kindCatalog(body) {
       methods,
       classes,
       runs: numOrNull(row.runs),
-      // A kind with no declared observation method has no run population. This
-      // is the ONE place that judgement is made; the contrast panel consumes it.
-      hasDenominator: methods.length > 0,
+      // 🔴 THE SERVER'S FIELD, NOT A RE-DERIVATION. This read `methods.length > 0`
+      // for one round, and the two answers agreed — which is exactly what made it
+      // dangerous rather than safe. `server/finding_kinds.py` owns the rule
+      // ("does this kind have an inspection_run population"), and a second
+      // implementation of it here is a copy of the same truth that can drift the
+      // day the server's rule grows a clause the count cannot express. That is
+      // the defect shape this whole console spent the day removing.
+      //
+      // The fallback is for a server too old to send the field, and it degrades
+      // to the count rather than to `true`: a kind that cannot be judged must not
+      // be able to claim it has a denominator.
+      hasDenominator: typeof row.has_denominator === 'boolean'
+        ? row.has_denominator
+        : methods.length > 0,
     });
   }
   const declaredDefault = body && body.default != null ? String(body.default) : '';
@@ -415,8 +426,19 @@ export function populationSplit(body) {
   const universe = count(pop.universe);
   const total = universe !== null ? universe
     : ((denominator === null || unscanned === null) ? null : denominator + unscanned);
+  // 🔴 RUNS THAT SCANNED SOMETHING OUTSIDE THE DECLARED POPULATION. Live on this
+  // box: 2,500 of them. They are inside `scanned` and outside `universe`, so the
+  // three counts do NOT close against the total and a reader who adds them up
+  // gets a discrepancy with no explanation. The server names it; the screen shows
+  // it rather than letting the arithmetic quietly fail to balance.
+  const outside = pop.scanned_outside_universe && typeof pop.scanned_outside_universe === 'object'
+    ? pop.scanned_outside_universe : null;
   return {
     found, clean, unscanned, denominator, total,
+    outsideUniverse: outside ? {
+      count: numOrNull(outside.count),
+      message: outside.message == null ? null : String(outside.message),
+    } : null,
     unit: (pop.found && pop.found.unit) || (body && body.finding && body.finding.population_unit) || null,
     rate: rateReading(found, denominator),
   };
@@ -529,6 +551,7 @@ export function factorRows(body) {
  */
 export function sliceRows(body, declaredClasses) {
   const rows = factorRows(body);
+  const coverage = axisCoverage(body);
   const byAxis = new Map();
   for (const row of rows) {
     if (!byAxis.has(row.axis)) byAxis.set(row.axis, []);
@@ -557,14 +580,26 @@ export function sliceRows(body, declaredClasses) {
     }
   }
 
+  // 🔴 THE AXIS NAME COMES FROM THE SERVER WHEN THE SERVER SENT ONE. `axes[]`
+  // declares `bond_eqp` -> 「본딩 장비」 and `scan_recipe` -> 「검사 레시피」, which
+  // this client cannot know and must not invent; `SLICE_AXES` only fixes the
+  // ORDER of the ones it has an opinion about.
+  const group = (axis, rows2) => {
+    const cov = coverage.get(axis) || null;
+    return {
+      axis,
+      term: cov && cov.label ? cov.label : axisTerm(axis),
+      about: cov ? cov.about : null,
+      coveredFound: cov ? cov.coveredFound : null,
+      coveredClean: cov ? cov.coveredClean : null,
+      rows: rows2,
+    };
+  };
   const out = [];
   for (const spec of SLICE_AXES) {
-    if (byAxis.has(spec.axis)) {
-      out.push({ axis: spec.axis, term: axisTerm(spec.axis), rows: byAxis.get(spec.axis) });
-      byAxis.delete(spec.axis);
-    }
+    if (byAxis.has(spec.axis)) { out.push(group(spec.axis, byAxis.get(spec.axis))); byAxis.delete(spec.axis); }
   }
-  for (const [axis, rows2] of byAxis) out.push({ axis, term: axisTerm(axis), rows: rows2 });
+  for (const [axis, rows2] of byAxis) out.push(group(axis, rows2));
   return out;
 }
 
@@ -605,6 +640,37 @@ export function contrastRows(body) {
     if (bl === null) return -1;
     return bl - al;
   });
+}
+
+/**
+ * Per-axis attribution coverage — how much of each population the axis could
+ * actually be computed over.
+ *
+ * 🔴 A FACTOR'S DENOMINATOR AND ITS AXIS'S COVERAGE ARE NOT THE SAME NUMBER, AND
+ * THE DIFFERENCE IS INVISIBLE WITHOUT THIS. Live on this box the `bond_eqp` axis
+ * covers 44,399 of 46,899 found packages — 2,500 defective packages have NO
+ * bonding attribution at all — yet every `bond_eqp` factor row still divides by
+ * 46,899. So a factor that is present in EVERY attributable package reads 94.7%,
+ * not 100%, and the missing 5.3% is a data gap being rendered as a measured
+ * absence. The axis header says the coverage so the reader can tell the two
+ * apart.
+ */
+export function axisCoverage(body) {
+  const axes = body && Array.isArray(body.axes) ? body.axes : [];
+  const out = new Map();
+  for (const ax of axes) {
+    if (!ax || typeof ax !== 'object' || ax.name == null) continue;
+    const cov = ax.covered && typeof ax.covered === 'object' ? ax.covered : null;
+    out.set(String(ax.name), {
+      name: String(ax.name),
+      label: ax.label == null || String(ax.label) === '' ? String(ax.name) : String(ax.label),
+      about: ax.about == null ? null : String(ax.about),
+      source: ax.source == null ? null : String(ax.source),
+      coveredFound: cov ? numOrNull(cov.found) : null,
+      coveredClean: cov ? numOrNull(cov.clean_scanned) : null,
+    });
+  }
+  return out;
 }
 
 /** Anything the server wanted to say about this answer that is not a number. */

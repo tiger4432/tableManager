@@ -223,7 +223,26 @@ export function renderStatus(doc, model) {
   for (const group of groups) {
     const g = el(doc, 'div', 'cc-slice');
     g.setAttribute('data-axis', group.axis);
-    g.appendChild(el(doc, 'div', 'cc-slice__term', group.term));
+    const term = el(doc, 'div', 'cc-slice__term');
+    term.appendChild(el(doc, 'span', 'cc-slice__name', group.term));
+    if (group.about) {
+      const b = el(doc, 'span', `cc-about cc-about--${group.about}`, aboutText(group.about));
+      b.setAttribute('data-about', group.about);
+      term.appendChild(b);
+    }
+    // 🔴 AN AXIS'S COVERAGE IS NOT ITS ROWS' DENOMINATOR, AND THE GAP IS INVISIBLE
+    // WITHOUT THIS. Live: the bonding axes reach 44,399 of the 46,899 found packages,
+    // yet every row still divides by 46,899 — so a factor present in EVERY attributable
+    // package reads 94.7%, and the missing 5.3% is a data gap rendering as a measured
+    // absence. Shown only when it actually differs, so it is a signal and not furniture.
+    if (group.coveredFound !== null && group.coveredFound !== model.split.found) {
+      const cov = el(doc, 'span', 'cc-slice__cov',
+        `귀속 ${countText(group.coveredFound)}/${countText(model.split.found)}`);
+      cov.setAttribute('data-axis-covered', String(group.coveredFound));
+      cov.setAttribute('title', '이 축으로 귀속 가능한 발견 건수 — 아래 행의 분모와 다릅니다');
+      term.appendChild(cov);
+    }
+    g.appendChild(term);
     const rows = el(doc, 'div', 'cc-slice__rows');
     for (const row of group.rows) {
       // 🔴 A DECLARED-BUT-UNREPORTED ROW IS STILL A LINK AND STILL NOT A ZERO.
@@ -285,6 +304,18 @@ export function renderPopulation(doc, model) {
     ? '분모 없음 — 발견·깨끗 중 하나가 미보고'
     : `분모 ${countText(model.split.denominator)} = 발견 ${countText(model.split.found)} + 깨끗 ${countText(model.split.clean)} · 미스캔 제외`;
   panel.appendChild(sum);
+
+  // 🔴 THE REASON THE THREE COUNTS DO NOT CLOSE. Live on this box, 2,500 runs scanned
+  // something outside the declared population — so found + clean + never_scanned does
+  // not equal the universe, and a reader who adds them gets a discrepancy with no
+  // explanation on screen. The server names it; this prints its name and its number.
+  if (model.split.outsideUniverse && model.split.outsideUniverse.count !== null) {
+    const out = el(doc, 'p', 'cc-pop__outside');
+    out.setAttribute('data-outside-universe', String(model.split.outsideUniverse.count));
+    out.textContent = `${countText(model.split.outsideUniverse.count)} · `
+      + (model.split.outsideUniverse.message || '선언된 모집단 밖을 스캔한 run');
+    panel.appendChild(out);
+  }
   return panel;
 }
 

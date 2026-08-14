@@ -138,6 +138,32 @@ const FIX = JSON.parse(readFileSync(join(HERE, 'fixtures', 'case_control.json'),
     die('every declared class is reported — the 미보고 path (declared but absent) would be unscored');
   }
 
+  // 🔴 THE LIVE CAPTURE HAS TO BE A CAPTURE, AND IT HAS TO STILL LACK WHAT IT LACKED.
+  const live = FIX.siblings_live;
+  if (!live || live.state !== 'ready') die('no live capture — section N would be vacuous');
+  if ('trace' in live || 'facts' in live) {
+    die('the live capture now carries trace/facts — N14/N15 assert their ABSENCE; re-read the '
+      + 'response and move those panels onto real data instead of asserting a hole');
+  }
+  if (!live.populations.scanned_outside_universe) die('live capture lost scanned_outside_universe — N9 vacuous');
+  if (!(live.axes || []).some((a) => a.covered && a.covered.found !== live.populations.found.count)) {
+    die('no axis whose coverage DIFFERS from the found count — N11 would be undecidable');
+  }
+  if (FIX.catalog_live.default !== 'void') die('live catalog default moved — N3 pins it');
+  // 🔴 AND THE CONSTRUCTED CATALOG MUST STILL DISAGREE WITH THE CONSTANT, because the LIVE one
+  // does not: live default IS `void`, which is also DEFAULT_FINDING_KIND.
+  if (FIX.catalog_live.default === FIX.catalog.default) {
+    die('the constructed catalog no longer differs from the live one — D1 would decide nothing');
+  }
+  const disagree = FIX.catalog.kinds.find((k) => k.kind === 'nodenom_disagree');
+  if (!disagree || disagree.has_denominator !== false || !(disagree.observed_by || []).length) {
+    die('no catalog row where has_denominator DISAGREES with observed_by.length — O1 would pass '
+      + 'under both the field and the re-derivation, and decide nothing');
+  }
+  if (FIX.catalog.kinds.some((k) => k.kind === 'tilt' && 'has_denominator' in k)) {
+    die('`tilt` gained a has_denominator field — O3 scores the legacy fallback and needs it absent');
+  }
+
   // 🔴 THE TRANSFER WALK MUST VISIT DT MORE THAN ONCE, OR "DT happens once" PASSES.
   const hops = FIX.siblings.trace.hops;
   const dtStops = hops.filter((h) => h.to && h.to.kind === 'dt_slot').length;
@@ -367,8 +393,9 @@ async function suite(coreSource, viewSource) {
     ok('E8 the catalog marks the kind as denominator-less', kindRow.hasDenominator === false);
     const { mount: m2 } = render(FIX.siblings, { finding: 'void', slices: {} });
     ok('E9 and the picker marks it before it is clicked',
-      byAttr(m2, 'data-kind-nodenominator', '1').length === 1,
-      String(byAttr(m2, 'data-kind-nodenominator', '1').length));
+      first(byAttr(m2, 'data-kind', 'discoloration')).getAttribute('data-kind-nodenominator') === null
+      && byClass(first(byAttr(m2, 'data-kind', 'discoloration')), 'cc-kind__nodenom').length === 1,
+      first(byAttr(m2, 'data-kind', 'discoloration')).textContent);
   }
 
   // ── F. 🔴 both denominators, on screen, in 차이점 ─────────────────────────────────
@@ -435,6 +462,15 @@ async function suite(coreSource, viewSource) {
     // 🔴 THE PANEL SAYS ITS TWO NUMBERS ARE DIFFERENT KINDS OF NUMBER. The headline is a
     // defect rate; the rows are shares of the found population. Without the caption a reader
     // substitutes one for the other and 83%-of-my-defects becomes 83%-defective.
+    // 🔴 THE AXIS'S COVERAGE IS NOT ITS ROWS' DENOMINATOR. Here 5 of the 6 found packages are
+    // attributable through the process relation and every eqp row still divides by 6 — so a
+    // factor present in every attributable package reads 83%, and the missing sixth is a data
+    // gap that would otherwise render as a measured absence.
+    ok('F11c an axis with an attribution gap says so',
+      first(byAttr(status, 'data-axis-covered', '5')).textContent.includes('5/6'),
+      first(byAttr(status, 'data-axis-covered', '5')).textContent);
+    ok('F11d and an axis with no gap carries no badge',
+      byAttr(status, 'data-axis-covered', '6').length === 0);
     ok('F11b the panel says the rows are shares, not rates',
       first(byAttr(status, 'data-slices-caption', 'share-of-found')) !== NOTHING);
     ok('F12 a factor with no clean side refuses rather than borrowing one',
@@ -671,6 +707,114 @@ async function suite(coreSource, viewSource) {
       && !stripComments(viewSource).includes('classified_as'));
   }
 
+  // ── N. 🔴 THE LIVE CAPTURE — the shape the box actually answers ───────────────────
+  //
+  // Everything above runs on a CONSTRUCTED body, because the live answer cannot exercise the
+  // `flat` drop, the class axis, the fact chip or the transfer walk. This section runs the
+  // real capture, which is the only thing that can catch the client reading a field the
+  // server does not send — the failure mode a hand-written fixture is structurally blind to.
+  {
+    const liveCat = core.kindCatalog(FIX.catalog_live);
+    const { mount, model } = (() => {
+      const d = makeDoc();
+      const m = d.createElement('div');
+      const mo = core.consoleModel({ catalog: liveCat, body: FIX.siblings_live, question: { finding: 'void', slices: {} } });
+      view.renderConsole(d, m, mo, null);
+      return { mount: m, model: mo };
+    })();
+
+    ok('N1 the live catalog yields both kinds', liveCat.kinds.length === 2, String(liveCat.kinds.length));
+    ok('N2 and the picker renders them in the order they arrived',
+      hasAttr(mount, 'data-kind').map((n) => n.getAttribute('data-kind')).join(',') === 'delam,void',
+      hasAttr(mount, 'data-kind').map((n) => n.getAttribute('data-kind')).join(','));
+    ok('N3 the live default is honoured', core.pickKind(liveCat, '') === 'void');
+    ok('N4 live atom counts reach the picker',
+      first(byAttr(mount, 'data-kind-atoms', '91756')) !== NOTHING);
+
+    // 🔴 THE REAL NUMBERS, WITH THEIR REAL DENOMINATOR.
+    ok('N5 the live denominator is `scanned`, not a sum done here',
+      model.split.denominator === 75000, String(model.split.denominator));
+    ok('N6 found + clean equals it', model.split.found + model.split.clean === 75000);
+    ok('N7 never_scanned is its own number and stays out',
+      model.split.unscanned === 280000 && model.split.denominator === 75000);
+    const lead = first(byClass(mount, 'cc-rate--lead'));
+    ok('N8 the headline prints both sides', lead.textContent.includes('46,899/75,000'), lead.textContent);
+
+    // 🔴 THE POPULATION THAT DOES NOT CLOSE, AND THE SERVER SAYS WHY. 2,500 runs scanned
+    // something outside the declared universe; without this the reader adds three counts,
+    // gets a different total, and has no explanation on screen.
+    ok('N9 scanned-outside-universe is read', model.split.outsideUniverse !== null
+      && model.split.outsideUniverse.count === 2500,
+      JSON.stringify(model.split.outsideUniverse));
+
+    // 🔴 AXIS COVERAGE IS NOT THE FACTOR DENOMINATOR. bond_* axes reach 44,399 of 46,899
+    // found packages, yet every bond factor still divides by 46,899 — so a factor present in
+    // every ATTRIBUTABLE package reads 94.7%, and the missing 5.3% is a data gap that would
+    // otherwise render as a measured absence.
+    const cov = core.axisCoverage(FIX.siblings_live);
+    ok('N10 axis coverage is read off the wire',
+      cov.get('bond_eqp').coveredFound === 44399, String(cov.get('bond_eqp') && cov.get('bond_eqp').coveredFound));
+    ok('N11 and it differs from the factor denominator',
+      cov.get('bond_eqp').coveredFound !== model.split.found);
+    ok('N12 the server names the axis, this client does not invent it',
+      cov.get('scan_recipe').label === '검사 레시피', cov.get('scan_recipe').label);
+    const group = model.slices.find((g) => g.axis === 'scan_recipe');
+    ok('N13 and the slice group carries the server label', group && group.term === '검사 레시피',
+      group && group.term);
+
+    // 🔴 NO `trace` AND NO `facts` IN THE LIVE ANSWER — both panels must say so rather than
+    // render an empty chain or an empty chip grid that reads as "nothing happened".
+    ok('N14 the live answer carries no trace, and the panel says so',
+      first(byAttr(mount, 'data-trace', 'absent')) !== NOTHING);
+    ok('N15 and no facts, and that panel says so too',
+      first(byAttr(mount, 'data-panel', 'facts')).textContent.includes('팩트 없음'),
+      first(byAttr(mount, 'data-panel', 'facts')).textContent);
+
+    // The live rows carry a finite interval where the ratio is undefined.
+    const neg = first(byAttr(mount, 'data-factor', 'SYN_VOID_NEG'));
+    // 🔴 "LANDED IS NOT WIRED": reading these off the wire and never rendering them is the
+    // same as not reading them. Both must be ON SCREEN.
+    ok('N15b the outside-universe count reaches the screen',
+      first(byAttr(mount, 'data-outside-universe', '2500')).textContent.includes('2,500'),
+      first(byAttr(mount, 'data-outside-universe', '2500')).textContent);
+    // On the live answer every RENDERED axis covers the whole found population (the bonding
+    // axes carry a real gap but all their factors were flat and dropped), so no badge is
+    // correct here — and asserting its ABSENCE is what stops the badge becoming furniture.
+    ok('N15c no coverage badge where coverage is complete',
+      hasAttr(mount, 'data-axis-covered').length === 0,
+      String(hasAttr(mount, 'data-axis-covered').length));
+    ok('N16 a factor absent from the clean side prints both fractions',
+      neg.textContent.includes('5000/46,899') || neg.textContent.includes('5,000/46,899'), neg.textContent);
+    ok('N17 and never prints Infinity', !neg.textContent.includes('Infinity'), neg.textContent);
+    ok('N18 the live class axis is EMPTY and nothing is drawn for it',
+      liveCat.kinds.every((k) => k.classes.length === 0)
+      && model.slices.every((g) => g.axis !== 'class'));
+  }
+
+  // ── O. 🔴 `has_denominator` IS THE SERVER'S FIELD, NOT A SECOND IMPLEMENTATION ────
+  {
+    // The discriminant: this row DECLARES an observed_by method AND says has_denominator
+    // false. Deriving the flag from `observed_by.length` answers true; reading the field
+    // answers false. The two rules disagree here, which is the only reason this decides.
+    const row = catalog.kinds.find((k) => k.kind === 'nodenom_disagree');
+    ok('O1 the server field wins over the derivable count',
+      row.hasDenominator === false && row.methods.length > 0,
+      `${row.hasDenominator} / ${row.methods.length}`);
+    ok('O2 a kind the server says HAS one is not second-guessed',
+      catalog.kinds.find((k) => k.kind === 'void').hasDenominator === true);
+    // A server too old to send the field degrades to the count — and to the SAFE side.
+    const legacy = catalog.kinds.find((k) => k.kind === 'tilt');
+    ok('O3 an absent field falls back to the count', legacy.hasDenominator === true);
+    ok('O4 and the fallback cannot claim a denominator out of nothing',
+      core.kindCatalog({ state: 'ready', kinds: [{ kind: 'x', observed_by: [] }] })
+        .kinds[0].hasDenominator === false);
+    // The picker marks it, so the operator sees it before clicking.
+    const { mount } = render(FIX.siblings, { finding: 'void', slices: {} });
+    ok('O5 the picker marks every denominator-less kind',
+      byAttr(mount, 'data-kind-nodenominator', '1').length === 2,
+      String(byAttr(mount, 'data-kind-nodenominator', '1').length));
+  }
+
   // ── K. re-render, and the notice that does not replace the console ────────────────
   {
     const doc = makeDoc();
@@ -814,7 +958,11 @@ const DEFECTS = [
   [CORE, 'the-refusal-loses-its-reason',
     (s) => s.replace("? '검사 모집단이 정의되지 않음' : String(den.message),", "? '' : '',")],
   [CORE, 'a-kind-with-no-methods-claims-a-denominator',
-    (s) => s.replace('      hasDenominator: methods.length > 0,', '      hasDenominator: true,')],
+    (s) => s.replace('        : methods.length > 0,', '        : true,')],
+  // 🔴 THE SECOND IMPLEMENTATION, RESTORED. Re-deriving the flag from the count ignores what
+  // the server said — and today the two agree everywhere except the one row built to disagree.
+  [CORE, 'has-denominator-re-derived-instead-of-read',
+    (s) => s.replace("        ? row.has_denominator\n        : methods.length > 0,", "        ? methods.length > 0\n        : methods.length > 0,")],
   [VIEW, 'the-refusal-panel-renders-empty',
     (s) => s.replace("    box.appendChild(el(doc, 'span', 'cc-nodenom__title', '분모 없음 — 대조 불가'));", '')],
 

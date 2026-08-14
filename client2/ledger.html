@@ -701,6 +701,30 @@
       margin-bottom: 6px;
     }
 
+    .cc-slice__term { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .cc-slice__name { font-size: 14px; font-weight: 600; color: var(--text-dim); }
+
+    /* 축의 «귀속 가능 건수»는 아래 행들의 분모가 아니다 — 다를 때만 뜬다. */
+    .cc-slice__cov {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      padding: 1px 8px;
+      border-radius: 5px;
+      background: var(--info-weak);
+      color: var(--info);
+    }
+
+    /* 세 수가 «안 맞는» 이유. 없으면 독자가 더해 보고 차이만 발견한다. */
+    .cc-pop__outside {
+      margin-top: 6px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+
     .cc-slice__rows { display: flex; flex-direction: column; gap: 4px; }
 
     .cc-slicerow {
