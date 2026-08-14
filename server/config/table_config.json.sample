@@ -215,7 +215,12 @@
       "dt_x": "number",
       "dt_y": "number",
       "dt_index": "number",
-      "c_bn": "string"
+      "c_bn": "string",
+      "core_wafer": "string",
+      "core_lot": "string",
+      "core_slot": "string",
+      "core_x": "number",
+      "core_y": "number"
     },
     "display_columns": [
       "cell_key",
@@ -225,9 +230,15 @@
       "dt_x",
       "dt_y",
       "dt_index",
-      "c_bn"
+      "c_bn",
+      "core_wafer",
+      "core_lot",
+      "core_slot",
+      "core_x",
+      "core_y"
     ],
-    "map_key_columns": ["dt_lot", "dt_slot"]
+    "map_key_columns": ["dt_lot", "dt_slot"],
+    "__comment_origin_columns": "🔴 The __comment above has said 'each cell carries its origin (core_wafer/core_lot/core_slot/core_x/core_y)' since this table was declared, and column_types declared NONE of them -- so the chain's origin cells were dropped and all 5,619 rows on the owner's box read core_lot NULL. That was a DECLARATION defect, not missing data: the prose described an intent the declaration did not implement. Declared 2026-08-14."
   },
   "bonding_log": {
     "__comment": "[TRACE FIXTURE] Bonding record. b_bn is the bonding bin -- the DEFECT this whole fixture exists to trace back to a core die. | dt_lot/dt_slot here are the values AS OF BONDING TIME and they differ from the ones dt_log recorded at DT time, because split/merge moved the wafer in between. THIS IS WHY A SQL JOIN CANNOT SOLVE IT: joining bonding_log.dt_lot to dt_log.dt_lot does not error, it matches the WRONG wafer plausibly. The join has to be (key + as-of when) and then walk the lot_event chain. | bond_x/bond_y carry a third independent 8-way frame ambiguity -- the same primitive applies here as at core->dt, which is what 'universal' means (one primitive, N applications), NOT a third spelling of the same code. | base_id/bx/by are the BASE side of the void->die seam: base_id names the base wafer and (bx, by) is the die position on it, which is what void_obs.base_wafer_id/base_x/base_y address. 🔴 THEY ARE DERIVED, NOT INDEPENDENT COORDINATES (product owner 2026-08-13): base (x, y) IS bond (x, y) put through the frame transform declared by this map's wafer_map_metadata row (rotation + side). So the frame is load-bearing for the void join -- a wrong frame attaches every void to a plausible WRONG die, silently, which is the same failure class as the wrong-wafer join above, one layer up. ONE primitive computes it (map_overlay.make_frame_transform via dt_map_derivation.source_meta_for_frame); a second spelling of a coordinate transform is how two screens come to disagree about where a die is. | 🔴 DECLARED NON-KEY ON PURPOSE. Adding them to composite_key_source would re-key all 5,296 existing rows and un-key every feed that omits them -- the identical argument that keeps stack_height out. The identity stays (bond_lot, bond_slot, bond_x, bond_y). | No ingestion path fills them yet; today the only writer is server/scripts/seed_syn_void_base_join.py, which is an assy_qa fixture.",
@@ -249,6 +260,10 @@
       "dt_slot": "string",
       "dt_x": "number",
       "dt_y": "number",
+      "core_lot": "string",
+      "core_slot": "string",
+      "cx": "number",
+      "cy": "number",
       "bond_eqp": "string",
       "event_time": "string"
     },
@@ -267,10 +282,52 @@
       "dt_slot",
       "dt_x",
       "dt_y",
+      "core_lot",
+      "core_slot",
+      "cx",
+      "cy",
       "bond_eqp",
       "event_time"
     ],
-    "map_key_columns": ["bond_lot", "bond_slot"]
+    "map_key_columns": ["bond_lot", "bond_slot"],
+    "__comment_core_columns": "core_lot/core_slot/cx/cy existed PHYSICALLY on the owner's box since before 2026-08-04 but were absent from this declaration, so every writer's cells were dropped with a 200 and all 368,371 rows read NULL -- which is why GET /api/ledger/lot_map served the core axis at state 'unreachable'. Declared 2026-08-14. | AS-OF CONVENTION: core_lot/core_slot are the values AS OF DT TIME, the same convention dt_lot/dt_slot on this row already follow, so the whole row is one convention. The wafer's CURRENT lot is core_wafer_map's, and the gap between the two is exactly the lot_event walk. | cx/cy are the die's position on the CORE wafer, in cells from origin -- never a millimetre.",
+    "__comment_core_slot_is_not_bond_slot": "core_slot is the CORE wafer's slot and it is NOT bond_slot: one bonded wafer's 141 dies arrive from 25 different core wafers. Any code that reaches for a frame with the bond slot while reading a core coordinate is reading the wrong frame."
+  },
+  "wafer_process": {
+    "__comment": "Per-wafer fab process history -- one row per (wafer, step). RE-DECLARED 2026-08-14; it left this file between 2026-07-28 and 2026-08-04 while its rows stayed in PostgreSQL, so the table was live-but-undeclared and every consumer read it as absent: transfer_plan_config's `process_history` role reported `not_declared`, and the enrichment reference view had no dynamic model to query. | IDENTITY IS (lot, slot), NOT wafer_id. Measured 2026-07-30: core_wafer_map.wafer_id <-> wafer_process.wafer_id matched 8 of 80, while (core_lot, core_slot) <-> (lot, slot) matched 80 of 80, and some wafer_id values are mojibake. lot/slot are therefore the join and wafer_id is a downgraded attribute.",
+    "business_key": "proc_id",
+    "column_types": {
+      "proc_id": "string",
+      "wafer_id": "string",
+      "lot": "string",
+      "slot": "string",
+      "lot_id": "string",
+      "slot_no": "string",
+      "step": "string",
+      "eqp_id": "string",
+      "start_time": "string",
+      "end_time": "string",
+      "result": "string",
+      "eventtime": "string",
+      "recipe_id": "string",
+      "knobs": "string"
+    },
+    "display_columns": [
+      "proc_id",
+      "wafer_id",
+      "lot",
+      "slot",
+      "lot_id",
+      "slot_no",
+      "step",
+      "eqp_id",
+      "start_time",
+      "end_time",
+      "result",
+      "eventtime",
+      "recipe_id",
+      "knobs"
+    ]
   },
   "wafer_id_status": {
     "__comment": "[TRACE FIXTURE] Per (lot, slot) wafer-id snapshots. DELIBERATELY SPARSE -- it records only a fraction of the real state changes (user: 'SPARSE 함'). The deltas live in lot_event; this table is a corroborating witness, never the primary source. Treating it as complete is precisely the mistake the fixture is built to catch.",
