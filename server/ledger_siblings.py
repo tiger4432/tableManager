@@ -232,9 +232,15 @@ class AttributionSource:
 
 
 class Geometry:
+    #: `ledger_subject` is what lets the WALK contrast turn a population unit into a
+    #: ledger subject (`{type, key, column}` — e.g. a package's `base_wafer_id` IS the
+    #: `Wafer` subject's `wafer` key). 🔴 DECLARED rather than conventional: taking
+    #: `unit_columns[0]` would work on the package geometry and silently join the wrong
+    #: column the first time a kind counts something else. A geometry that omits it makes
+    #: the walk answer 「걷기 불가 — 원장 주어 선언 없음」, which is a state, not a guess.
     __slots__ = ("unit", "unit_label", "unit_columns", "run_key_column",
                  "run_method_column", "run_time_column", "observation_run_ref_column",
-                 "universe_relation", "universe_join")
+                 "universe_relation", "universe_join", "ledger_subject")
 
     def __init__(self, raw, where="geometry"):
         self.unit = raw.get("unit") or "unit"
@@ -253,6 +259,16 @@ class Geometry:
         self.observation_run_ref_column = _identifier(
             raw.get("observation_run_ref_column"),
             f"{where}.observation_run_ref_column")
+        ledger_subject = raw.get("ledger_subject") or None
+        if ledger_subject:
+            self.ledger_subject = {
+                "type": str(ledger_subject.get("type") or ""),
+                "key": str(ledger_subject.get("key") or ""),
+                "column": _identifier(ledger_subject.get("column"),
+                                      f"{where}.ledger_subject.column"),
+            }
+        else:
+            self.ledger_subject = None
         universe = raw.get("universe") or {}
         if universe:
             self.universe_relation = _identifier(universe.get("relation"),
@@ -395,10 +411,21 @@ class _Plan:
     distinction the console renders as 「분모 없음」.
     """
 
-    def __init__(self, geometry, observation_relation, methods, window, has_runs):
+    def __init__(self, geometry, observation_relation, methods, window, has_runs,
+                 run_time_as=None):
         self.geo = geometry
         self.units = geometry.unit_columns
         self.has_runs = has_runs
+        # 🔴 ADDITIVE AND DEFAULT-OFF. `run_time_as` carries the run's timestamp out of the
+        # `runs` CTE for the walk contrast's UPSTREAM gate, which has to ask 「이 원자가
+        # 관측보다 앞섰나」 against the same runs this plan already defines. With the
+        # default the emitted SQL is byte-identical to what it was before, so `/siblings`
+        # cannot change behaviour by this parameter existing; and building a second runs
+        # CTE in the other module would have put the method and window filters in two
+        # places, which is how two panels of one screen start disagreeing.
+        self.run_time_as = (_identifier(run_time_as, "run_time_as")
+                            if (run_time_as and geometry.run_time_column and has_runs)
+                            else None)
         self.params = {}
         self.prelude = self._build(observation_relation, methods, window)
 
@@ -415,8 +442,11 @@ class _Plan:
                 if window.end is not None:
                     self.params["win_to"] = window.end
                     time_clause += f" AND {geo.run_time_column} < %(win_to)s"
+            time_select = (f", {geo.run_time_column} AS {self.run_time_as}"
+                           if self.run_time_as else "")
             parts.append(
-                f"runs AS (SELECT {geo.run_key_column} AS run_key, {', '.join(units)} "
+                f"runs AS (SELECT {geo.run_key_column} AS run_key, {', '.join(units)}"
+                f"{time_select} "
                 f"FROM {finding_kinds.RUN_TABLE} "
                 f"WHERE {geo.run_method_column} = ANY(%(methods)s){time_clause})")
             parts.append(f"scanned AS (SELECT DISTINCT {', '.join(units)} FROM runs)")

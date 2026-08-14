@@ -10,6 +10,14 @@
       "enriched_at": 1.5,
       "depleted_at": 0.6667,
       "__comment": "The enrichment band. A factor between these two is FLAT -- carried by the found and the clean sides alike -- and `mode=contrast` drops it. That is the decoy filter, and where the line sits is an operator's judgement rather than a programmer's, which is why it is here."
+    },
+    "walk": {
+      "__comment": "🔴 BUDGET, NOT A FILTER. The walk contrast (`scope=`) has NO item list -- every predicate x payload field x value the marked subjects carry is a candidate, so a newly translated predicate appears with zero declarations here. These numbers only bound the COST of touching them. `max_atoms` is the ceiling on atoms flattened in one request; the CASE side is never thinned (it is the question), only the control side, deterministically by sorted position so the same URL answers the same way twice, and `walk.gate` in the response says it happened. MEASURED 2026-08-14 on assy_manager: the flatten costs ~73us per atom (187,234 atoms / 19.6s), so 60,000 atoms is roughly a 4.4s ceiling. `high_cardinality_at` does not drop anything either -- a field above it keeps its row and gains a note saying its values are identifiers rather than factors.",
+      "max_atoms": 60000,
+      "max_depth": 6,
+      "control_min_subjects": 30,
+      "evidence_ref_sample": 5,
+      "high_cardinality_at": 200
     }
   },
 
@@ -22,6 +30,13 @@
     "run_method_column": "method",
     "run_time_column": "observed_at",
     "observation_run_ref_column": "run_uid",
+
+    "ledger_subject": {
+      "__comment": "How a population unit becomes a LEDGER SUBJECT, for the walk contrast. A package's `base_wafer_id` is literally the `Wafer` subject's `wafer` key -- measured: bonding_log.base_id and ledger subject_keys->>'wafer' are the same 2,575 SYN-BW-... identifiers. 🔴 Declared rather than assumed: taking unit_columns[0] happens to be right for packages and would silently join the wrong column the day a kind counts something else. `column` MUST be one of `unit_columns`. Omit this block and the walk answers 「걷기 불가 — 원장 주어 선언 없음」 instead of guessing.",
+      "type": "Wafer",
+      "key": "wafer",
+      "column": "base_wafer_id"
+    },
 
     "universe": {
       "__comment": "What COULD have been scanned -- the third bucket. Without it `never_scanned` would have to be guessed, and a guessed third bucket is how a never-scanned package quietly joins the clean side.",

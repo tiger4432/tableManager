@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **562개** 이력. (거버넌스 규칙 #4)
+> 총 **563개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-14 16:15** — [The Contrast Stops Choosing Its Items And The Gates Arrive](./20260814_161500_the_contrast_stops_choosing_its_items_and_the_gates_arrive.md)
 - **2026-08-14 12:45** — [A Saturating Ratio Cannot Be Scored By Multiples](./20260814_124500_a_saturating_ratio_cannot_be_scored_by_multiples.md)
 - **2026-08-14 12:42** — [Defect Observations Become Claims And The Walk Refuses Them](./20260814_124200_defect_observations_become_claims_and_the_walk_refuses_them.md)
 - **2026-08-14 12:39** — [The Surprise Table And A Seam Nobody Had Crossed](./20260814_123900_the_surprise_table_and_a_seam_nobody_had_crossed.md)

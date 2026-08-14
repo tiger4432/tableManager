@@ -1,6 +1,14 @@
 {
   "__doc": "M4 mechanism graph - direction-only causal edges (PHYSICS_ONTOLOGY_SETUP.md section 4). dir: '+' source up -> target up, '-' source up -> target down, 'u' non-monotone (an assertion, not 'unknown'). Edges are DECLARED knowledge, owner-reviewed 2026-08-14; equations (form) absent by design - direction alone is enough for the explanation gate. The 'signatures' blocks are human documentation (spatial pattern each cause tends to leave, keyed to the three map frames); the loader ignores them. Consumer: the three-gate ranking's mechanism gate (factor -> finding reachability) and the structure view's mechanism layer.",
+  "bindings": {
+    "__doc": "FIELD -> PHYSICAL QUANTITY. This is the ONLY thing that connects the walk's candidate space to the mechanism graph, and it is knowledge the modeller has that the data does not: `params_actual.pressure_MPa` is a number in a payload until somebody says it measures `bond_pressure`. 🔴 IT IS NOT AN ITEM LIST. Nothing here narrows what the contrast compares - every predicate x field x value the walk touches is a candidate whether it is bound or not, and an unbound candidate simply carries `unknown` in the mechanism column instead of a verdict. That is why a newly translated predicate reaches the screen with zero declarations. Key form: `<predicate>:<dotted field path>`, or the bare path to bind every predicate that carries it. 🔴 THE GAPS ARE HONEST, NOT UNFINISHED: `post_bond_queue_h` (the observation-bias model's only source) has NO field in the ledger today - no translated payload carries the bond-to-inspection wait - so nothing is bound to it and the bias branch is exercised by `test_mechanism_gate.py` rather than by a binding invented to make a screen look complete. Likewise `stage_particle`, `humidity`, `tape_adhesion_anomaly`, `core_cmp_nonuniform` and `dt_pass_count` are declared causes with no measuring field yet; `dt_pass_count` is a PATH feature (count of `transferred` hops) rather than a payload leaf and arrives with R7.",
+    "processed_with:params_actual.pressure_MPa": ["bond_pressure"],
+    "processed_with:params_setpoint.pressure_MPa": ["bond_pressure"],
+    "processed_with:params_actual.temp_C": ["bond_temp"],
+    "processed_with:params_setpoint.temp_C": ["bond_temp"]
+  },
   "void_formation": {
+    "role": "formation", "finding_kind": "void", "target": "void",
     "version": "v0",
     "validity": "declared, direction-only; owner-reviewed 2026-08-14",
     "nodes": ["bond_pressure", "bond_temp", "pre_bond_queue_h", "stage_particle", "dt_pass_count", "tape_adhesion_anomaly", "core_cmp_nonuniform", "humidity", "interface_unfill", "wetting_deficit", "surface_oxidation", "local_gap", "adhesive_residue", "interface_contam", "backside_damage", "edge_gap", "moisture_uptake", "outgassing", "void"],
@@ -33,6 +41,7 @@
     }
   },
   "delam_formation": {
+    "role": "formation", "finding_kind": "delam", "target": "delam",
     "version": "v0",
     "validity": "declared, direction-only; owner-reviewed 2026-08-14",
     "nodes": ["bond_pressure", "die_stress", "tape_adhesion_anomaly", "backside_damage", "delam"],
@@ -46,6 +55,7 @@
     }
   },
   "void_observation_bias": {
+    "role": "observation_bias", "finding_kind": "void", "target": "void_observed",
     "version": "v0",
     "validity": "NOT a formation path. A factor arriving only here explains APPEARANCE, not occurrence - the gate must report it as observation-bias candidate, never as a cause. Kept as its own model so the split is structural.",
     "nodes": ["post_bond_queue_h", "void_observed"],

@@ -23,6 +23,7 @@ import ledger_lots
 import ledger_siblings
 import ledger_structure
 import ledger_trace
+import ledger_walk_contrast
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,8 @@ def ledger_siblings_route(
     limit: int = Query(None, description="요인 행 수 상한"),
     min_support: int = Query(None, description="요인 행의 최소 발견 건수"),
     axes: str = Query(None, description="축 이름 CSV. 미지정 시 선언된 전부"),
+    scope: str = Query(None, description="랏 마킹 — <축이름>:<값>[,<값>...]. "
+                                         "지정하면 걷기 대조로 전환"),
     db: Session = Depends(get_db),
 ):
     """「이 결함들이 공유하는 요인은?」과 「난 쪽과 안 난 쪽은 뭐가 다른가?」.
@@ -179,9 +182,24 @@ def ledger_siblings_route(
     `GET /coverage`.
     """
     try:
-        return ledger_siblings.siblings(
+        # 🔴 `scope` SWITCHES THE ENGINE, and the response says which one answered.
+        # Marking lots turns the question from 「난 쪽과 안 난 쪽은 뭐가 다른가」 into
+        # 「이 랏들과 정상 양산은 뭐가 다른가」, and the second one has no item list:
+        # the candidates are whatever the walk touches (owner, 2026-08-14: 「항목에
+        # 가정이 들어가잖아」). Still ONE endpoint — `engine` is a field, not a route,
+        # because a second endpoint is how two framings of one question stop being
+        # comparable side by side.
+        if (scope or "").strip():
+            return ledger_walk_contrast.contrast(
+                db.connection(), kind=finding, scope=scope, window=window,
+                limit=limit, min_support=min_support)
+        answer = ledger_siblings.siblings(
             db.connection(), kind=finding, mode=mode, window=window,
             limit=limit, min_support=min_support, axes=axes)
+        answer.setdefault("engine", "axes")
+        return answer
+    except ledger_walk_contrast.WalkRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
     except ledger_siblings.SiblingsRequestError as exc:
         # The body is STRUCTURED (ruling R-2026-08-13-C): the client branches on
         # `detail.reason`, the operator reads `detail.message`, and nobody parses Korean
