@@ -19,7 +19,7 @@
 │   ├── server-pm       →  server/ 전 영역                 [헌장: docs/prompts/server_pm.md]
 │   ├── client-pm       →  client2/ + desktop_wrapper.py   [헌장: docs/prompts/client_pm.md]
 │   ├── map-pm          →  맵 에디터·좌표·오버레이·DOE (client-pm이 아니라 이쪽)
-│   └── ontology-pm     →  그래프 머티리얼라이저·온톨로지 매핑·graph/trace 뷰어
+│   └── ontology-pm     →  원장 어휘·판정 대장·물리 온톨로지 (⚰️ 2026-08-14: 구 그래프 머티리얼라이저 은퇴)
 │
 ├─ 문서 (🔴 파일이 안 겹쳐서 **동시에** 돈다 — 그것이 분할의 목적이다)
 │   ├── doc-keeper      →  리빙 문서 동기화 · PRIMITIVES

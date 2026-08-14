@@ -1,6 +1,6 @@
 # 📅 AssyManager Ingestion Auto Update & Scheduler 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (**§4-quater 신설 — 소급 적용 실행**(`fbc1053`). 이 데몬이 하는 「수집기가 아닌 일」이 **셋**이 됐습니다. 🔴 앞의 둘과 달리 **전용 스레드**에서 도는데, 인라인이면 실행 내내 박동이 멈춰 `/health`가 이 데몬을 `wedged`로 보고하기 때문입니다. 동시 1건이고 두 번째 요청은 조용히 큐잉하지 않고 **거절 + 아웃박스 행 미처리 유지**입니다. 직전 2026-07-30: **§4-ter 신설 + §4-bis의 "유지보수 작업 1건" 정정** — `server/run_auto_update.py`(`maybe_sweep_graph_orphans`·`run()`의 틱 4번 항목)·`server/graph_orphans.py`(`due`/`declaration_blockers`/`run_scheduled`·`CHECK_INTERVAL_SEC`·`SWEEP_INTERVAL_SEC`·`ENABLE_ENV`) 실측. `530fdfd`가 그래프 고아 노드 스윕을 이 데몬의 틱에 올렸으므로 유지보수 작업은 **2건**이다. 요점은 삭제가 아니라 **거절**(선언에 거부가 하나라도 있으면 `status: refused`로 전체 거절 — `min_population` 미만 라벨은 예산 가드가 못 막기 때문). 주기 상태의 출처가 config 백업과 다르다는 것(파일 vs 프로세스 monotonic → **재기동마다 1회 실행**)도 등재. 직전 2026-07-27) | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · `server/graph_orphans.py`(§4-ter) · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 (⚰️ **[`2ec78b9` · R-2026-08-14-H] §4-ter 그래프 고아 스윕이 스케줄에서 «제거»됐습니다** — 이 데몬의 「수집기가 아닌 일」이 셋에서 **둘**이 됐습니다. 🔴 **호출 한 줄을 빼는 것이 정리가 아니라 «필수»였습니다**: 그래프 워커는 스택에서 빠졌지만 이 스케줄러는 남고, 스윕이 첫 동작으로 `ensure_graph_tables`를 불러 **DROP된 표를 빈 채로 되살렸을** 것입니다 — 살아남은 프로세스가 죽은 저장소를 복원하는 이 경로가 「워커만 멈추면 된다」가 틀린 이유입니다. 직전 2026-07-31: **§4-quater 신설 — 소급 적용 실행**(`fbc1053`). 이 데몬이 하는 「수집기가 아닌 일」이 **셋**이 됐습니다. 🔴 앞의 둘과 달리 **전용 스레드**에서 도는데, 인라인이면 실행 내내 박동이 멈춰 `/health`가 이 데몬을 `wedged`로 보고하기 때문입니다. 동시 1건이고 두 번째 요청은 조용히 큐잉하지 않고 **거절 + 아웃박스 행 미처리 유지**입니다. 직전 2026-07-30: **§4-ter 신설 + §4-bis의 "유지보수 작업 1건" 정정** — `server/run_auto_update.py`(`maybe_sweep_graph_orphans`·`run()`의 틱 4번 항목)·`server/graph_orphans.py`(`due`/`declaration_blockers`/`run_scheduled`·`CHECK_INTERVAL_SEC`·`SWEEP_INTERVAL_SEC`·`ENABLE_ENV`) 실측. `530fdfd`가 그래프 고아 노드 스윕을 이 데몬의 틱에 올렸으므로 유지보수 작업은 **2건**이다. 요점은 삭제가 아니라 **거절**(선언에 거부가 하나라도 있으면 `status: refused`로 전체 거절 — `min_population` 미만 라벨은 예산 가드가 못 막기 때문). 주기 상태의 출처가 config 백업과 다르다는 것(파일 vs 프로세스 monotonic → **재기동마다 1회 실행**)도 등재. 직전 2026-07-27) | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · `server/graph_orphans.py`(§4-ter) · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 디렉토리는 각 테이블별 실시간 인제션 파일 수집 및 백업 스케줄링을 독립적이고 완벽하게 관리할 수 있는 **하이브리드 동적 다중 감지 수집 시스템**입니다.
 
@@ -151,7 +151,16 @@ out = build_rows()
 
 ---
 
-## 🧹 4-ter. 두 번째 유지보수 작업 — 그래프 고아 노드 스윕 (2026-07-30 `530fdfd`)
+## 🧹 4-ter. ⚰️ ~~두 번째 유지보수 작업 — 그래프 고아 노드 스윕~~ — **스케줄에서 제거됨** (2026-08-14 `2ec78b9` · R-2026-08-14-H)
+
+🔴 **이 데몬은 더 이상 그래프 고아 스윕을 돌리지 않습니다. 아래는 역사 기록입니다.** 스윕의 **대상**(`graph_nodes`/`graph_edges`)이 은퇴하고 DROP됐습니다.
+
+🔴 **그리고 이 한 줄을 빼는 것이 «필수»였지 정리가 아니었습니다.** 그래프 워커는 스택에서 빠졌지만 **이 스케줄러는 남습니다.** `graph_orphans.run_scheduled`는 첫 동작으로 `ensure_graph_tables`를 부르므로, 호출을 두면 **살아남은 프로세스가 죽은 저장소를 빈 채로 복원**하고 화면은 「그래프가 아직 비어 있습니다」를 답합니다 — 은퇴가 「아직 안 채워짐」의 옷을 입는 것. **이것이 「워커만 멈추면 된다」가 틀린 이유**이고, 봉인된 부활 경로 셋 중 하나입니다.
+
+⚠️ **이 데몬의 「수집기가 아닌 일」은 이제 «둘»입니다** — §4-bis 주간 config 스냅샷 · §4-quater 소급 적용 실행. 스윕 메서드와 `graph_orphans` 모듈 자체는 판정 ④의 코드 제거 라운드 몫이라 트리에 남아 있지만 **부르는 사람이 없습니다.**
+
+<details>
+<summary>⚪ 이하 원문(역사 기록) — 「무엇이 있었나」를 읽을 때만 펼치십시오</summary>
 
 두 번째 유지보수 작업이 같은 틱에 올라탔습니다: **그래프 고아 노드 스윕**. 구현은 `server/graph_orphans.py`, 호출부는 `MultiDiscoveryScheduler.maybe_sweep_graph_orphans()` → `graph_orphans.run_scheduled()`이고, 매 틱 검사가 아니라 **30분에 한 번 "지금 할 때인가"만 묻고**(`CHECK_INTERVAL_SEC`) 주기는 **1일**(`SWEEP_INTERVAL_SEC`)입니다.
 
@@ -168,11 +177,13 @@ out = build_rows()
 * **끄는 노브**: `GRAPH_ORPHAN_SWEEP_ENABLED=false`(형제 `GRAPH_MATERIALIZER_ENABLED`와 같은 표기). `status: "disabled"`로 보고합니다.
 * **실패 격리**: §4-bis와 동일 — 스윕 예외는 로그로만 나가고 수집기 실행을 막지 않습니다.
 * ⚠️ **주기 상태의 출처가 §4-bis와 다릅니다.** config 백업은 "디스크의 최신 스냅샷이 7일보다 오래됐는가"를 **파일에서** 유도하지만, 스윕은 **프로세스 메모리의 monotonic 시각**(`_last_orphan_sweep`)을 봅니다. `0.0`은 "첫 틱에 실행"이므로 **스케줄러 재기동마다 스윕이 한 번 돕니다.** 멱등하고 저렴한 유지보수라 문제가 되지 않지만, "하루 1회"를 재기동과 무관한 보장으로 읽지는 마십시오.
-* 운영자 문(수동): `server/scripts/graph_orphan_sweep.py` — **dry run 기본**, `--apply`는 격리 밖에서 `--allow-production` 필요(dry run은 읽기 전용이라 어디서나 허용). 플래그 전수·종료 코드·**⚠️ 이 스윕만 페이지 단위 커밋이 아니라는 사실**은 [BACKFILL_GUIDE §5·§6](./BACKFILL_GUIDE.md)에 있습니다(다른 소급 경로 넷과 나란히 놓은 자리).
+* ⚰️ 운영자 문(수동): `server/scripts/graph_orphan_sweep.py` — **[2026-08-14] 대상 테이블이 없어 돌리지 마십시오.** 종전 서술: **dry run 기본**, `--apply`는 격리 밖에서 `--allow-production` 필요(dry run은 읽기 전용이라 어디서나 허용). 플래그 전수·종료 코드·**⚠️ 이 스윕만 페이지 단위 커밋이 아니라는 사실**은 [BACKFILL_GUIDE §5·§6](./BACKFILL_GUIDE.md)에 있습니다(다른 소급 경로 넷과 나란히 놓은 자리).
+
+</details>
 
 ---
 
-## 🔁 4-quater. 세 번째 「수집기가 아닌 일」 — 소급 적용 실행 (2026-07-31 `fbc1053`)
+## 🔁 4-quater. ~~세 번째~~ **두 번째** 「수집기가 아닌 일」 — 소급 적용 실행 (2026-07-31 `fbc1053` · ⚠️ 서수는 2026-08-14 §4-ter 은퇴로 하나 앞당겨졌습니다)
 
 `POST /admin/retroactive/{op}/run`이 아웃박스에 쓴 `RETROACTIVE_RUN` 행을 **이 데몬이 집어 실행**합니다. 소비 지점은 틱 루프이고 실행은 `retroactive.execute`, 운영자 관점 절차는 [BACKFILL_GUIDE §7](./BACKFILL_GUIDE.md)에 있습니다(**이 절은 「왜 여기서 도는가」만** 다룹니다).
 

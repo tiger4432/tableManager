@@ -13,7 +13,7 @@
 | 레이어링/업서트 코어 | `server/database/crud.py`, `models.py`, `schemas.py` |
 | 인제션 파이프라인 | `server/parsers/` (`directory_watcher.py`, `pipeline_base.py`, `html_topology_parser.py`) |
 | 체인 인제션 | `server/chain_ingestion_worker.py`, `server/mappers/` |
-| 그래프 동기화 | `server/graph_sync_worker.py`, `config/ontology_mapping.json` |
+| ⚰️ ~~그래프 동기화~~ | **[2026-08-14 `2ec78b9` · R-2026-08-14-H] 은퇴** — 워커가 스택에서 빠지고 저장소가 DROP됐다. 이 도메인의 후계는 아래 **원장(ledger)** 행이다 |
 | Auto-Update 스케줄러 | `server/run_auto_update.py` |
 | 설정/스키마 | `server/config/*.json`, `server/database/config_watcher.py` |
 | 맵 지오메트리 엔진 | `server/utils/physical_wafer_engine.py`, `coordinate_transformer.py` |

@@ -1,6 +1,11 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 밤 (§6.4의 쌍 레일 항목에 **「여정 대조는 서버 절반만 착지했고 화면은 없다」**를 명시 — `GET /api/ledger/journey` 클라 소비자 **0개**(grep). **화면 서술은 한 줄도 안 늘었다**) | **Owner:** UI / Excel Interaction
+> **Status:** 🟠 부분 최신 (§1~§5 Living · **§6.1~§6.4는 🗄️ 대체됨 — R-리라이트**) | **Last-verified:** 2026-08-14 심야
+>
+> 🔴 **[R-리라이트 · 소유자 최종] 콘솔 클라이언트 화면은 내일 «전면 재작성»됩니다** — §6 배너가 「무엇이 살아남고 무엇이 계승되지 않는가」의 정본입니다. **서버 계약은 전부 보존**([backend §2](./backend.md)), **화면은 계승하지 않습니다.** 이 문서의 §6 서술을 새 화면의 설계 근거로 쓰지 마십시오.
+> ⚰️ **[`2ec78b9` · R-2026-08-14-H] 구 지식그래프 뷰어(`graph.html`·`trace.html`)는 은퇴**했습니다 — §6.0 신설, 진입점 표·§7 갱신. nav 링크 삭제, 행 선택 버튼은 **활성 판정 라우트가 410이 되어 클라 변경 0줄로 자기 치유**.
+>
+> 직전 (§6.4의 쌍 레일 항목에 **「여정 대조는 서버 절반만 착지했고 화면은 없다」**를 명시 — `GET /api/ledger/journey` 클라 소비자 **0개**(grep). **화면 서술은 한 줄도 안 늘었다**) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 >
 > ### 이번 라운드 (2026-08-14 밤 · 놀라움 장치 등재 + 마킹 대조 — `66e2925`·`f21a916` 리빙 동기화)
@@ -107,13 +112,13 @@
 
 | HTML | ESM 모듈 | 페이지 |
 |---|---|---|
-| `index.html` | `src/main.js` | 데이터 그리드(메인) — 「🕸️ 추적」 진입점(`trace_launch.js`) 포함 |
+| `index.html` | `src/main.js` | 데이터 그리드(메인). ⚰️ **[2026-08-14 `2ec78b9`] nav의 「🕸️ 추적」 링크는 삭제**됐고, 행 선택 버튼(`trace_launch.js`)은 **판정 라우트가 410이 되어 스스로 숨는다** — 클라 변경 0줄로 자기 치유한 것이 그 활성 판정 설계의 배당금이다 |
 | `admin.html` | `src/admin.js` | 어드민 — 파이프라인 생애주기 5탭(§5, Monaco CDN) |
 | `map_editor.html` | `src/map_editor.js` | 웨이퍼 맵 에디터 |
 | `map_editor2.html` | `src/map_editor2.js` (+ `src/map2/*`) | **Map Editor 2 — 맵 정렬 화면**(2026-08-05 신설, 개발 중). 🔴 **레거시 에디터를 대체하지 않고 *옆에 선다*** — 위 진입점은 새 화면이 실제로 프레임을 확정할 수 있게 될 때까지 그대로 출하됩니다(`vite.config.js`가 그렇게 적고 있습니다). 서버 라우트는 `39b43ab`에서 붙었습니다 |
 | ~~`enrichment.html`~~ | ~~`src/enrichment.js`~~ | 🗄️ **[2026-08-11 `ab36fab`] 삭제됨** — 파일도 vite `rollupOptions.input` 진입점도 없다. `1e29078`이 배지·nav 링크를 먼저 걷었고(product-owner ruling — "correction happens in the grid"), 이 커밋이 페이지 자체를 지웠다. `src/enrichment.js`는 소스에 남아 있으나 **어떤 HTML도 그것을 로드하지 않는 죽은 모듈**이다(`effort_meter.js`가 그 사실을 주석으로 명시하고 정리를 별도 결정으로 미룬다). 조회 절반(참조뷰)은 아래 §3 모듈 표의 `enrichment_reference_view.js`로 이식됐다. **[`fde424c`] `/enrichment.html`을 직접 열면 404 본문이 "Enrichment 페이지 폐지됨 · 참조뷰 → 메인 화면 이력 사이드바 탭"**이라고 답한다 — 종전 문구("Please build frontend first")는 존재할 수 없는 파일을 빌드하라고 운영자를 보내는 거짓 처방이었다. 라우트 자체는 살려 뒀다(북마크가 SPA 캐치올의 `index.html`로 떨어지지 않고 명확한 답을 받도록) |
-| `graph.html` | `src/graph_viewer.js` | 지식그래프 서브그래프 뷰어(§6) |
-| `trace.html` | `src/trace.js` | 객체 중심 추적 리포트(§6) |
+| ⚰️ `graph.html` | `src/graph_viewer.js` | **[2026-08-14 `2ec78b9`] 데이터 소스가 은퇴했다.** 페이지는 **딥링크로 여전히 열리고 묘비(tombstone)**를 띄워 원장 구조 뷰(`ledger.html?view=structure`)로 보낸다. 🔴 **파일을 지우지 않은 것이 판정이다** — 지우면 SPA catch-all이 `index.html`을 200으로 답해 `res.ok`가 참이 되고 클라가 HTML을 JSON으로 파싱하다 죽는다(은퇴가 「알 수 없는 오류」로 보인다). ⚠️ **이 레인은 작업 «중»에 정정 `c7ad95d`를 읽고 자기 계획을 뒤집었다** — 살아남는 것은 **능력이지 파일이 아니다** |
+| ⚰️ `trace.html` | `src/trace.js` | **[2026-08-14] 같은 은퇴.** `POST /graph/trace`가 410이다. 후계는 `ledger.html`의 원장 혈통 추적(§6.1) |
 | `ledger.html` | `src/ledger_trace.js` (+ `ledger_trace_core.js`·`ledger_trace_view.js` · `case_control_*.js` · `ontology_structure_*.js`) | **원장 화면 — 한 페이지, 질문 셋**(2026-08-13 `d9b98ab` 신설 — §7). 랏 하나(`LOT/02`·`LOT 02`도 받는다)를 치면 `GET /api/ledger/trace`의 홉을 카드 사슬로 그린다(§6.1). 같은 페이지 위쪽이 케이스-컨트롤 콘솔(§6.2), `?view=structure`가 유형 구조 뷰(§6.3). 🔴 **복잡도 예산: 앱 전체에서 폼 컨트롤 «+1»**(빌드된 페이지에서 `querySelectorAll('input,select,textarea,button').length === 1` 실측) + nav 앵커. **모달 없음·모드 없음** — 뷰 전환도 URL이지 상태가 아니다 |
 
 빌드 산출물 `dist/`는 FastAPI(:8080)가 서빙. `define`로 빌드 타임에 `import.meta.env.VITE_USER`(OS 사용자명) 주입 → `config.js`의 `CURRENT_USER`.
@@ -497,13 +502,33 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 
 ---
 
-## 6. 지식그래프 뷰어 & 추적 리포트 (온톨로지 트랙 UI)
+## 6. 원장 콘솔 (`ledger.html`) & ⚰️ 구 지식그래프 뷰어
 
-| 페이지 | 역할 |
+> 🔴 **[2026-08-14 심야 · 소유자 최종 「내일 이거 처음부터 다시 만드는 거로 해, 다 폐기하고」 — 판정 R-리라이트] 아래 §6.1~§6.4가 서술하는 «화면»은 내일 전면 재작성됩니다.**
+>
+> **이 절은 지우지 않고 «대체됨(superseded)»으로 표시합니다** — 재작성이 참조는 하되 계승하지 않기 때문입니다. 정본은 [process/SCENARIO_CONSOLE_BRIEF](../process/SCENARIO_CONSOLE_BRIEF.md)의 **R-아침 · R-리라이트** 블록입니다.
+>
+> **읽는 법 — 이 절에서 무엇이 살아남고 무엇이 안 살아남는가:**
+>
+> | 살아남는다(재작성이 «소비»한다) | 계승하지 않는다 |
+> |---|---|
+> | **서버 계약 전부** — `/api/ledger/{trace,coverage,kinds,structure,lots,lot_map,siblings,journey}`. 정본은 [backend §2](./backend.md)이고 **검수 합격 상태** | **화면 전부** — 트렌드 표·차트·맵 섹션·대조 레일·구 랏 참조뷰·여정 화면·구조뷰 UI |
+> | **설계 원칙** — 웨이퍼가 단위(랏은 값이다) · 3문장 맵 · 육하 카드 · 문구 다이어트 · **거절 사다리** · 차트=작업대 · 3초 짚기 · 「없어서 0이 아니다」 · 분모 없는 백분율 금지 · 구조화 필드로 분기(산문 파싱 금지) | **현재 화면 배치·DOM·모듈 경계** — `surprise_*.js`/`contrast_*.js`/`case_control_*.js`의 구성은 하루의 누적으로 설계 결이 세 번 바뀐 채 굳었다 |
+> | **승인 시안** `JOURNEY_CONTRAST_MOCKUP.html` · 하네스가 고정한 «판별식» 픽스처들 | **랏 축 잔재 · 구 쌍 레일 · 안 그려지는 약속 문구 · 단위 자리의 랏** |
+>
+> ⚠️ **그러므로 이 절의 문장을 「지금 화면이 이렇다」로도, 「새 화면이 이래야 한다」로도 읽지 마십시오.** 앞엣것은 내일 아침이면 거짓이 되고, 뒤엣것은 이 절이 결정할 권한이 없습니다. **새 화면의 설계 근거는 위 「살아남는다」 칸과 브리프뿐입니다.**
+>
+> 🔴 **착공 조건 셋**(retrofit 아님 — 위반 코드는 라인 단위 반려): 문구 다이어트 · 거절 사다리 · 웨이퍼 단위. 그리고 **스모크 1본을 첫 화면과 같은 커밋에.**
+
+### 6.0 ⚰️ 구 지식그래프 뷰어 — 은퇴 (2026-08-14 `2ec78b9` · R-2026-08-14-H)
+
+🔴 **아래 셋은 전부 은퇴했습니다** — 소비하던 라우트가 **410**을 답합니다([backend §2](./backend.md)의 은퇴 블록).
+
+| 페이지 | 상태 |
 |---|---|
-| `graph.html` + `graph_viewer.js` | **서브그래프 뷰어** — 첫 화면 `/graph/stats` 카운트 카드, label+identity 자동완성 검색, `/graph/neighbors` 1/2-hop 서브그래프를 무라이브러리 BFS 동심원 캔버스로 렌더. 노드 클릭=재중심 탐색, user provenance 엣지 강조(`--overwrite` 색), truncated 배지. 테마 색은 1회 캐싱+`themechange` 재캐싱(상시 rAF 없음) |
-| `trace.html` + `trace.js`/`trace_core.js` | **추적 리포트** — 시드 칩(상한 20)·depth 1–3·시간 범위로 `POST /graph/trace` → 라벨별 엔티티 그룹 테이블 + event_time 시간순 타임라인(user provenance 강조, 구조 엣지 접이식). URL 동기화(`replaceState`), 청크 렌더(그룹 100행/타임라인 300건) |
-| 진입 흐름 | 메인 그리드에서 행 선택 → 「🕸️ 추적」(`trace_launch.js`, `/graph/mapping-summary`로 활성 판정) → 선택 행을 identity로 조립(서버 `compose_identity` 미러 — `\|` 조인+이스케이프+float 안정화)해 시드로 전달. graph.html ↔ trace.html 양방향 크로스링크 |
+| `graph.html` + `graph_viewer.js` | ⚰️ **묘비만 띄웁니다.** 딥링크는 살아 있고 원장 구조 뷰로 보냅니다. ~~첫 화면 `/graph/stats` 카운트 카드, `/graph/neighbors` 1/2-hop 무라이브러리 BFS 동심원 캔버스~~ |
+| `trace.html` + `trace.js`/`trace_core.js` | ⚰️ ~~시드 칩(상한 20)·depth 1–3으로 `POST /graph/trace`~~ — 후계는 §6.1 |
+| 진입 흐름 | ⚰️ **nav 링크 삭제 · 행 선택 버튼은 자기 치유.** `trace_launch.js`가 `/graph/mapping-summary`로 활성을 판정하는데 그 라우트가 거절하므로 **클라 변경 0줄로 숨습니다** — 「활성 판정을 라우트에 묻는다」는 설계가 은퇴를 공짜로 처리한 자리입니다 |
 
 ### 6.1 원장 혈통 추적 화면 (`ledger.html` + `src/ledger_trace*.js`) — 2026-08-13 `d9b98ab`
 
@@ -557,7 +582,16 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - **컨트롤 0개 추가**: 계층 필터·엣지 선택·선언 지도 링크가 전부 앵커이고, 뷰 전환도 헤더 링크 둘(`?` / `?view=structure`)입니다. 구조 뷰에서는 랏 입력의 Enter가 **렌더가 아니라 이동**입니다(그릴 패널이 화면에 없으므로).
 - ✅ **[2026-08-14 밤 정정] 소비 라우트 `GET /api/ledger/structure`는 «착지했습니다»** — 계약의 정본은 [backend §2](./backend.md)(유형 센서스 + 두 층 — `ledger`·`mechanism`. **기전 층도 `mechanism_models.json` 착지로 이제 렌더됩니다**). 소비 형태는 여전히 `ontology_structure_core.js` 헤더에 pin돼 있고 **바꾸는 것은 편집이 아니라 에스컬레이션**입니다. 404 폴백 문장(「구조 집계 API 미배포 — 화면만 준비됨」)은 구 서버용으로 남습니다.
 
-### 6.4 놀라움 장치 — 트렌드 화면 + 마킹 대조 (`ledger.html?view=surprise` · `src/surprise_*.js` + `src/contrast_*.js`) — 2026-08-14
+### 6.4 🗄️ **[대체됨 — R-리라이트]** 놀라움 장치 — 트렌드 화면 + 마킹 대조 (`ledger.html?view=surprise` · `src/surprise_*.js` + `src/contrast_*.js`) — 2026-08-14
+
+> 🔴 **이 절이 서술하는 화면은 내일 폐기됩니다**(위 §6 배너). 아래는 **「무엇이 있었고 어떤 결함을 실제로 밟았나」**의 기록이고, 재작성이 **소비**해야 할 것은 서버 계약과 원칙뿐입니다.
+>
+> 🔴 **새로 쓰는 사람이 반드시 알아야 하는 서버 형태 변경 셋**(전부 [backend §2](./backend.md)가 정본):
+> 1. **`projections[].cells[]`는 더 이상 «발견된 것들»이 아니다** — 좌표가 있는 모든 위치가 실리고 `state`가 `found`/`scanned`/`unscanned` 셋 중 하나다. **`n`으로 분기하면 「미검사」를 「깨끗함」으로 그린다**(이 프로젝트가 이미 값을 치른 실패: 커버리지 간극이 품질 개선으로 렌더됨). **`state`로 거를 것.**
+> 2. **`projections[].frame`이 `wafer`·`valid_die_ref.map_id`·`grid`를 싣는다** — `wafer`는 base 웨이퍼가 하나로 세어질 때만 실리고 **아니면 키 자체가 없다**(null 아님). 프레임이 슬롯을 가로질러 애매하면 그 대신 중첩 회계(`frames_considered`/`frames_matched`/`superposed`)가 온다.
+> 3. **걷기 대조는 둘째 라우트가 아니라 `/siblings`의 `scope=` 파라미터다.** 여정 대조는 **별도 라우트** `GET /api/ledger/journey`이고 **주어 «둘» 전용**(셋 이상은 422 `scope_is_not_a_pair` — 3장 이상은 `/siblings?scope=`가 답한다).
+>
+> ⚠️ **오늘 밤 이 화면이 밟은 결함 넷은 재작성이 «다시 밟을 수 있는» 것들이다**: 랏 단위와 웨이퍼 단위의 혼용(마킹 2장이 50장에 대해 답함) · 마킹이 맵을 쌓아 요청 폭풍(130 응답) · 열 편집이 같은 URL을 낳아 무동작 · 레일 브레이크포인트(1280px)가 실제 창(1256px) 밖이라 **말없이** 정적 블록이 됨. 앞의 둘은 서버 쪽으로 해소됐고(`wafer` 축 · `scope=`), **뒤의 둘은 화면 결함이라 재작성이 상속하지 않는다.**
 
 같은 페이지의 **넷째 질문**: 「지금 이상한 랏이 있는가」. nav 라벨은 「트렌드」. 소비 라우트는 [backend §2](./backend.md)의 `/api/ledger/lots`(표) · `/api/ledger/lot_map`(3축 맵 스트립) · `/api/ledger/siblings`(마킹 대조) — **셋 다 읽기 전용이고 화면 계약의 정본은 그 표다.** 이 화면이 「놀라움 장치」인 이유는 **선택기가 없기 때문**이다: 조작자는 고르기 «전에» 이상한 것을 봐야 하고, 표를 읽는 것이 분석이며 선택은 그다음이다([SCENARIO_CONSOLE_BRIEF §0-ter](../process/SCENARIO_CONSOLE_BRIEF.md)).
 
@@ -579,4 +613,5 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - REST + WebSocket at `127.0.0.1:8080` (FastAPI). 엔드포인트: [backend.md](./backend.md)
 - 셀 데이터 형태: `data[col] = {value, is_overwrite, priority_source}` (grid.js `ensureCellObject`가 정규화). **가상 조인 셀도 같은 형태**다 — 서버 `attach`가 같은 키를 채우므로 클라에 두 번째 리더가 없다(§3.4)
 - 스키마 형태: `GET /tables/{t}/schema` → `{table_name, columns, column_types, business_key, composite_key_source, map_key_columns, map_push_ok, virtual_columns}`. **`columns`는 저장 컬럼만**이고 `virtual_columns`는 별도 배열이다 — 둘을 합치는 순간 「저장하는가」에 기대는 소비자 넷이 조용히 틀린다([backend §2.2](./backend.md))
-- 그래프 조회: `GET /graph/{stats,neighbors,nodes/search,mapping-summary}` + `POST /graph/trace` (read-only)
+- 원장 읽기: `GET /api/ledger/{trace,coverage,kinds,structure,lots,lot_map,siblings,journey}` (read-only) — 계약 정본 [backend §2](./backend.md)
+- ⚰️ 구 그래프 조회: `GET /graph/*` + `POST /graph/trace` + `POST /api/graph/sync` — **[2026-08-14] 전부 410**(`Cache-Control: no-store`). 본문은 구조화 필드(`detail.reason === "old_graph_branch_retired"`)이므로 **화면은 「은퇴」와 「일시적 장애」를 분기할 수 있고**, 그래서 「다시 시도」 버튼을 띄우지 않습니다

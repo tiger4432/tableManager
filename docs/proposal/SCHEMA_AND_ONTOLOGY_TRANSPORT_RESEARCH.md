@@ -344,6 +344,9 @@ graph_nodes(CoreCell) identity 예: 'BLKCORE0000|1|-1|-30'  (= core_lot|core_slo
 graph_nodes 206,987 · graph_edges 413,011 (assy_qa, 2026-08-11)
 ```
 
+> ⚰️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] 위 박스의 `graph_nodes`·`graph_edges`는 그 뒤 **DROP**됐습니다** — 이 수치는 **2026-08-11 시점의 기록**이고 다시 재목할 수 없습니다. 본문이 이 측정에서 도출하는 **`ontology_mapping.json`에 대한 권고(§3.3 · §말미)는 소비자가 없어진 선언에 대한 것**이므로 그대로 실행하지 마십시오. 그러나 이 문서의 **중심 판정**(「어휘는 코드, 결합은 현장 선언」)은 저장소 중립이라 **원장 어휘에 그대로 다시 물을 수 있습니다**([CANONICAL_LEDGER_DESIGN §4.2](../architecture/CANONICAL_LEDGER_DESIGN.md)). — doc-keeper
+
+
 **결론: 두 소비자 다 검사가 있었고, 두 검사 다 이 변경을 볼 수 없는 종류였다.**
 필요한 검사는 "컬럼이 있나"가 아니라 **"identity 선언이 서로 같은 것을 가리키나"**다.
 그건 §6·§8의 대상이다.

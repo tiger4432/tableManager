@@ -1,6 +1,29 @@
 # 🕸️ Ontology Knowledge Graph Spec — LLM 백본 지식그래프
 
-> **Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계) | **Last-verified:** 2026-07-30 (**폐기 형태를 가르치던 세 자리 정정** — `server/config/ontology_mapping.json` 실선언 + `server/ontology_config.py`(`_ALLOWED_NODE_KEYS`·`_normalize_props`) 대조. ① **§3 매핑 예제 전면 교체** — `Chip`/`identity:"log_id"`/`BONDED_FROM→Wafer`/`PLACED_ON→Base`는 `aea4700`이 **셀 체인**으로 대체했다(`CoreCell(core_lot,core_slot,cx,cy)`가 두 로그의 행 노드 · `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell` · `FROM_CORE→Core` · **좌표는 엣지 props가 아니라 identity 안에** · `base←dt`는 파생 · `wafer_id`는 정체가 아니라 속성). 실측 근거(추상 칩에서 17행 붕괴·15행이 다른 `(bx,by)`로 소실 → 셀로 4,432/4,434 생존)와 `identity` 리스트 형·`event_time_column`·`spatial` props 형태를 함께 반영. **`aea4700`은 문서 변경 0건이었고 같은 파일을 고친 `8670e3b`도 이 예제를 건드리지 않았다.** ② **§7.5b `DTEvent` 지위 명시** — 착지한 것은 셀 체인이고 `DTEvent`/`TapeState`는 **G3.5 설계로 미물화**, 셀 체인을 대체하지 않고 그 위에 얹힌다. `dt_eqp` 노드 승격 유보 근거(단일 값 768행 = degree 768 허브) 등재. ③ **§7.5c 동적/정적 예시 정정** — `Chip`·`Base`는 라이브에 없고 `CoreCell`·`BaseCell`·`DtCell`이 정본, `BaseCell`은 마스터가 아니라 셀, 폐기 `Chip` 12,468개는 스윕 대상, `node_class`는 아직 강제되지 않는다. 직전 2026-07-25 최초 검증) | **Owner:** 총괄 PM
+> 🗄️ **부분 대체 — 이 문서의 「구현」 절반은 2026-08-14에 은퇴했습니다** (`2ec78b9` · 판정 [R-2026-08-14-H](../process/LEDGER_RULINGS.md)).
+>
+> 🔴 **아래 종전 배지의 「G1·뷰어·G2 라이브 가동」은 «거짓이 됐습니다».** 사본을 만들던 파이프라인(추출 → 머티리얼라이즈 → 저장)이 폐기됐습니다: `graph_sync_worker`가 프로세스 스택에서 빠졌고, `graph_nodes`·`graph_edges`·`graph_sync_state`가 **DROP**됐으며(약 841 MB), 진입 라우트 **일곱**이 `410 Gone`을 답합니다. 계약의 정본은 [architecture/backend §2](../architecture/backend.md)의 은퇴 블록입니다.
+>
+> **절마다 상태가 다릅니다 — 이 표가 정본입니다.**
+>
+> | 절 | 상태 |
+> |---|---|
+> | §0 핵심 가치 · §1 방향(**단, 「저장소 = PG 엣지 스토어」 행은 죽음**) | ⚪ **설계 — 살아 있음** |
+> | §2 저장소 스키마 · §4 PG 엣지 스토어/Neo4j 이관 · §5·§5.1 처리량 계약 | 🗄️ **죽음** — 표가 DROP됐습니다 |
+> | §3 매핑 config 예제 · 로더 리로드 | 🗄️ **죽음** — 읽는 워커가 없습니다(`ontology_mapping.json`은 파일로 살아 있으나 **소비자 0**) |
+> | §7 불량 추론망 · §7.5·§7.5b 시공간 위상 · **§7.5c `node_class`+4대 탐색 정책** · §7.6 추론 보조 보강 · §7.7 키 참조 무결성 | ⚪ **설계 — 살아 있음(애초에 미구현)** |
+> | §7.5d `GET /graph/chip-trace` · §7.5e 재동기화/고아 스윕/mapping-summary | 🗄️ **죽음** — 전부 410이거나 스케줄러에서 탈락 |
+> | §8 단계표 G1·G2 행 | 🗄️ **죽음**(그 스택 위에서 배달됨) |
+>
+> 🔴 **원장은 이 문서의 어휘를 승계하지 않았습니다 — 자기 어휘를 따로 갖고 있습니다.** [CANONICAL_LEDGER_DESIGN §4.2](../architecture/CANONICAL_LEDGER_DESIGN.md)가 SEMI E90/E142에 정박한 개체 타입·술어를 정의하고, `node_class`·`label`·`ontology_mapping.json`을 **한 번도 참조하지 않습니다.** 그래서 「살아 있는 설계」는 **원장 트랙으로 승계할 후보**이지 오늘 도는 것의 서술이 아닙니다.
+>
+> ⚠️ **§7.5c에 붙는 단서** — 그 분류의 «개념»은 살아 있지만 «선언 채널»은 `ontology_mapping.json` 하나뿐이고, 그 파일은 판정 R-2026-08-14-H의 후속 항목으로 은퇴 예정입니다. 이 절을 살리려면 선언의 거처를 원장 어휘 소유자 쪽으로 다시 앉히는 결정이 필요합니다(**총괄 판정 대상 — 문서 레인이 정하지 않았습니다**).
+>
+> **후계** — 인스턴스 수준 혈통 `GET /api/ledger/trace` · 유형 수준 구조 `GET /api/ledger/structure` · 개체 층 [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md).
+>
+> ---
+>
+> ~~**Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계)~~ | **Last-verified:** 2026-08-14 (은퇴 반영) · 직전 2026-07-30 (**폐기 형태를 가르치던 세 자리 정정** — `server/config/ontology_mapping.json` 실선언 + `server/ontology_config.py`(`_ALLOWED_NODE_KEYS`·`_normalize_props`) 대조. ① **§3 매핑 예제 전면 교체** — `Chip`/`identity:"log_id"`/`BONDED_FROM→Wafer`/`PLACED_ON→Base`는 `aea4700`이 **셀 체인**으로 대체했다(`CoreCell(core_lot,core_slot,cx,cy)`가 두 로그의 행 노드 · `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell` · `FROM_CORE→Core` · **좌표는 엣지 props가 아니라 identity 안에** · `base←dt`는 파생 · `wafer_id`는 정체가 아니라 속성). 실측 근거(추상 칩에서 17행 붕괴·15행이 다른 `(bx,by)`로 소실 → 셀로 4,432/4,434 생존)와 `identity` 리스트 형·`event_time_column`·`spatial` props 형태를 함께 반영. **`aea4700`은 문서 변경 0건이었고 같은 파일을 고친 `8670e3b`도 이 예제를 건드리지 않았다.** ② **§7.5b `DTEvent` 지위 명시** — 착지한 것은 셀 체인이고 `DTEvent`/`TapeState`는 **G3.5 설계로 미물화**, 셀 체인을 대체하지 않고 그 위에 얹힌다. `dt_eqp` 노드 승격 유보 근거(단일 값 768행 = degree 768 허브) 등재. ③ **§7.5c 동적/정적 예시 정정** — `Chip`·`Base`는 라이브에 없고 `CoreCell`·`BaseCell`·`DtCell`이 정본, `BaseCell`은 마스터가 아니라 셀, 폐기 `Chip` 12,468개는 스윕 대상, `node_class`는 아직 강제되지 않는다. 직전 2026-07-25 최초 검증) | **Owner:** 총괄 PM
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) §1 핵심가치 #2 | 대체 완료: [graph_db_integration_plan.md](../_archive/graph_db_integration_plan.md) (Kafka 기반 구상 — 본 스펙이 대체, 2026-07-25 아카이브)
 
 ## 0. 핵심 가치 (사용자 확정 2026-07-25)

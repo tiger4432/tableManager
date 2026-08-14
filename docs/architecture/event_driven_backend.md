@@ -1,6 +1,8 @@
-# 🔗 이벤트 기반 백엔드: Outbox · 체인 인제션 · 온톨로지 그래프 승격
+# 🔗 이벤트 기반 백엔드: Outbox · 체인 인제션 · ~~온톨로지 그래프 승격~~
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**§2.2에 「`request_source`는 채널 라벨이지 레이어 소스명이 아니다」 + 「컨텍스트를 안 세우는 자동 경로는 사람의 편집으로 나간다」 신설** — `ffb23d6`+`53f9187`. 실제 사고: 소급 수리 패스 **둘**(R3·R2)의 아웃박스 이벤트가 `user`/`system`+이벤트마다 uuid4로 나가 하류 매퍼 전원을 깨우고 tx id가 안 묶여 N개 직렬 그룹이 됐다. **R1은 라벨이 구성상 옳은데 tx id는 페이지당 하나로 남아 있다 — 두 필드는 서로를 함의하지 않는다.** 🔴 **라벨이 쓰기/삭제 대상을 바꾸지 않는다는 것은 경로마다 따로 확인한다**(R2는 층을 지우므로 R3와 질문이 달랐고, 판정은 스냅샷 해시였다). 직전 2026-08-06 **[`2fc4f00`] §3.6에 「삭제 id 목록도 `BROADCAST_ITEM_LIMIT`을 받고, 잘렸다는 사실이 같이 나간다」 신설** — `batch_refresh_required`의 `deleted_row_ids_omitted`. 이 팔에는 상한이 아예 없었는데 `deleted_row_ids`가 collision-merge 껍데기 몇 건만 나르던 동안은 도달 불가능한 결함이었다. 직전 [`25de4ae`] **§2.3에 「NOTIFY는 트랜잭션당 1회」**(그 레인이 직접 기입). 직전 2026-08-04 **[`2aab7e2`] 브로드캐스트 복구 두 갈래** — ① **스윕의 재발사 집합이 넓어졌다**: `refresh_targets = affected_targets | source_tables`. 종전에는 체인 규칙에 걸리지 않는 미전달 행(규칙 비활성·트리거 아님·워처 마커)이 **아무것도 발사되지 않은 채 확정만** 찍혀 조용히 소각됐다 — 「무한 스윕을 막는 것은 발사 안 함이 아니라 확정을 찍는 것」. ② **워처의 실패한 통지가 durable 마커를 남긴다**(`record_undelivered_notification` → `EVENT_BROADCAST_RECOVERY`): 예전엔 로그하고 버려서 허브가 몇 초 깜박이는 것만으로 통지가 영구 유실됐다. **새 큐가 아니라 기존 스윕이 이미 줍는 모양**으로 쓴다. 함께: `/health` 도달성 판정이 상태코드에서 **응답 BODY**로 바뀌었다(`own_health_payload`). 직전 2026-07-30: **[F8] 통지 전송 계층 항목 신설** — loopback 통지가 사내 프록시로 나가 403으로 거절된 운영 장애의 근본 수리. `internal_event_client.internal_event_session()`(`trust_env=False`) 단일 팩토리, 발신자 자체 클라이언트 생성 금지를 테스트로 강제, 실패 줄에 `admin-gate=yes|no` 판정 + 조치 명시. 직전: 2026-07-25) | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py`, `graph_materializer.py`, `ontology_config.py`, **`server/internal_event_client.py`**
+> ⚰️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] §4(그래프 승격)는 은퇴했고 접혀 있습니다.** outbox 소비자는 셋에서 **둘**(체인 워커 · 스케줄러)이 됐습니다. §1~§3(Outbox · 체인 인제션)은 **한 줄도 영향받지 않았고 여전히 정본**입니다. §1의 아키텍처 다이어그램과 §2의 「그래프 워커 예산(`GRAPH_BATCH_LIMIT`)」 서술은 **더 이상 도는 코드에 대한 서술이 아닙니다** — 이벤트 축약 설계의 근거로만 읽으십시오.
+>
+> **Status:** 🟠 부분 최신 (§1~§3 Living · §4 🗄️ 은퇴) | **Last-verified:** 2026-08-14 (**§2.2에 「`request_source`는 채널 라벨이지 레이어 소스명이 아니다」 + 「컨텍스트를 안 세우는 자동 경로는 사람의 편집으로 나간다」 신설** — `ffb23d6`+`53f9187`. 실제 사고: 소급 수리 패스 **둘**(R3·R2)의 아웃박스 이벤트가 `user`/`system`+이벤트마다 uuid4로 나가 하류 매퍼 전원을 깨우고 tx id가 안 묶여 N개 직렬 그룹이 됐다. **R1은 라벨이 구성상 옳은데 tx id는 페이지당 하나로 남아 있다 — 두 필드는 서로를 함의하지 않는다.** 🔴 **라벨이 쓰기/삭제 대상을 바꾸지 않는다는 것은 경로마다 따로 확인한다**(R2는 층을 지우므로 R3와 질문이 달랐고, 판정은 스냅샷 해시였다). 직전 2026-08-06 **[`2fc4f00`] §3.6에 「삭제 id 목록도 `BROADCAST_ITEM_LIMIT`을 받고, 잘렸다는 사실이 같이 나간다」 신설** — `batch_refresh_required`의 `deleted_row_ids_omitted`. 이 팔에는 상한이 아예 없었는데 `deleted_row_ids`가 collision-merge 껍데기 몇 건만 나르던 동안은 도달 불가능한 결함이었다. 직전 [`25de4ae`] **§2.3에 「NOTIFY는 트랜잭션당 1회」**(그 레인이 직접 기입). 직전 2026-08-04 **[`2aab7e2`] 브로드캐스트 복구 두 갈래** — ① **스윕의 재발사 집합이 넓어졌다**: `refresh_targets = affected_targets | source_tables`. 종전에는 체인 규칙에 걸리지 않는 미전달 행(규칙 비활성·트리거 아님·워처 마커)이 **아무것도 발사되지 않은 채 확정만** 찍혀 조용히 소각됐다 — 「무한 스윕을 막는 것은 발사 안 함이 아니라 확정을 찍는 것」. ② **워처의 실패한 통지가 durable 마커를 남긴다**(`record_undelivered_notification` → `EVENT_BROADCAST_RECOVERY`): 예전엔 로그하고 버려서 허브가 몇 초 깜박이는 것만으로 통지가 영구 유실됐다. **새 큐가 아니라 기존 스윕이 이미 줍는 모양**으로 쓴다. 함께: `/health` 도달성 판정이 상태코드에서 **응답 BODY**로 바뀌었다(`own_health_payload`). 직전 2026-07-30: **[F8] 통지 전송 계층 항목 신설** — loopback 통지가 사내 프록시로 나가 403으로 거절된 운영 장애의 근본 수리. `internal_event_client.internal_event_session()`(`trust_env=False`) 단일 팩토리, 발신자 자체 클라이언트 생성 금지를 테스트로 강제, 실패 줄에 `admin-gate=yes|no` 판정 + 조치 명시. 직전: 2026-07-25) | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py`, `graph_materializer.py`, `ontology_config.py`, **`server/internal_event_client.py`**
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 개괄 [backend.md](./backend.md)
 > 관련: [chain_ingestion_guide](../guide/chain_ingestion_guide.md)(맵퍼 개발) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)(그래프 트랙 스펙)
 >
@@ -25,12 +27,12 @@ graph TD
 
     subgraph Background Daemons
         Outbox -->|3a. processed_chain=False| ChainWorker[Chain Ingestion Worker]
-        Outbox -->|3b. keyset 커서 증분| GraphWorker[Graph Sync Worker materializer]
     end
 
     ChainWorker -->|4. 파생 업서트 source=chain_ingestion| Upsert
-    GraphWorker -->|5. 노드/엣지 UPSERT| GraphStore[(graph_nodes / graph_edges)]
 ```
+
+> ⚰️ **[2026-08-14] 이 그림에서 「Graph Sync Worker materializer → graph_nodes/graph_edges」 갈래가 삭제됐습니다**(§4 참조). outbox의 나머지 계약은 그대로입니다.
 
 ---
 
@@ -263,9 +265,19 @@ outbox는 이벤트당 행 버전 3개(INSERT → 처리 UPDATE → broadcast_at
 
 ---
 
-## 4. 온톨로지 그래프 승격 (Graph Materializer)
+## 4. ⚰️ 온톨로지 그래프 승격 (Graph Materializer) — **은퇴** (2026-08-14 `2ec78b9` · R-2026-08-14-H)
 
-인제션·교정되는 모든 로우를 매핑 config에 따라 **PG 엣지 스토어(`graph_nodes`/`graph_edges`)의 속성 그래프로 자동 승격**하는 데몬입니다(`graph_sync_worker.py` + `graph_materializer.py`, :8090). 설계 배경·킬러 쿼리·로드맵은 [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)이 정본이며, 여기서는 소비 흐름만 요약합니다.
+🔴 **이 절 전체는 더 이상 현행 서술이 아닙니다.** 아래 흐름은 **아무도 실행하지 않습니다** — `graph_sync_worker`가 프로세스 스택에서 빠졌고, 저장소 `graph_nodes`·`graph_edges`·`graph_sync_state`는 **DROP**됐으며(약 841 MB), 진입 라우트 일곱은 **410**을 답합니다. 은퇴 계약의 정본은 [backend §2](./backend.md)의 은퇴 블록입니다.
+
+- **은퇴 근거는 실측입니다** — 이 워커에 `ledger` 참조 **0건**, `server/ledger/`에 그래프 결합 **0건**. **두 갈래가 같은 outbox·같은 소스 표를 각자 읽으면서 서로를 몰랐고**, 원장(`ledger_events`)이 개체 층인데 이쪽이 사본을 하나 더 들고 있었습니다.
+- **outbox 자체는 그대로입니다** — 소비자가 셋에서 **둘**(체인 워커 · 스케줄러)이 됐을 뿐입니다. §1~§3의 outbox 계약은 이 은퇴에 **한 줄도 영향받지 않습니다.**
+- 🔴 **저장소를 지우는 것만으로는 은퇴가 아니었습니다** — 표를 **다시 만들** 경로가 셋 있었고(부팅 `create_all` · 핫리로드 `ensure_graph_tables` · **스케줄러의 고아 스윕**) 셋 다 봉인됐습니다. 그러지 않았다면 재기동이 빈 표를 돌려주고 뷰어가 「그래프가 아직 비어 있습니다」라 말했을 것입니다 — **은퇴가 「아직 안 채워짐」의 옷을 입는 것.**
+- **후계**: 개체 층은 원장([LEDGER_GUIDE](../guide/LEDGER_GUIDE.md)), 인스턴스 혈통은 `GET /api/ledger/trace`, 유형 그래프는 `GET /api/ledger/structure`.
+
+<details>
+<summary>⚪ 이하 §4.1~§4.5는 <b>역사 기록</b>입니다 — 「무엇이 있었나」를 읽을 때만 펼치십시오. 여기 적힌 어떤 흐름도 오늘 돌지 않습니다.</summary>
+
+인제션·교정되는 모든 로우를 매핑 config에 따라 PG 엣지 스토어(`graph_nodes`/`graph_edges`)의 속성 그래프로 자동 승격하던 데몬입니다(`graph_sync_worker.py` + `graph_materializer.py`, :8090). 설계 배경은 [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)(🗄️ 부분 대체).
 
 ### 4.1 소비 흐름 (outbox 증분 → 자동 승격)
 
@@ -304,7 +316,9 @@ Neo4j 반영 경로는 청크 훅 인터페이스(`_neo4j_chunk_hook_factory`)�
 
 ### 4.5 조회 계층
 
-읽기는 워커가 아니라 **웹서버(main.py)의 read-only API**(`/graph/stats`·`neighbors`·`nodes/search`·`trace`·`mapping-summary` — **목록 옆에 수를 적지 않는다**)이 담당합니다 — [backend.md §2](./backend.md) 참조. 클라이언트는 `graph.html`(서브그래프 뷰어)·`trace.html`(추적 리포트)이 소비합니다([frontend.md §6](./frontend.md)).
+읽기는 워커가 아니라 웹서버(main.py)의 read-only API가 담당했습니다 — ⚰️ **[2026-08-14] 그 라우트들은 지금 전부 410입니다**([backend §2](./backend.md)의 은퇴 블록).
+
+</details>
 
 ---
 

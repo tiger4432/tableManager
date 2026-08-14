@@ -1,8 +1,12 @@
 # 🔁 소급 적용 가이드 — 규칙을 「이미 쌓인 데이터」에 적용하는 길들
 
-> **Status:** 🟢 Living | **작성:** 2026-07-31 · doc-keeper | **Last-verified:** 2026-08-11
+> **Status:** 🟢 Living | **작성:** 2026-07-31 · doc-keeper | **Last-verified:** 2026-08-14
 >
-> **이번 라운드 (2026-08-11 2차 · `ffb23d6`+`53f9187` — ⓕ와 ⓑ가 더 이상 하류 체인을 깨우지 않습니다)**
+> **이번 라운드 (2026-08-14 · `2ec78b9` · R-2026-08-14-H — ⓔ가 «없어졌습니다»)**
+> - ⚰️ **ⓔ 그래프 고아 스윕 은퇴** — 지울 대상(`graph_nodes`/`graph_edges`/`graph_sync_state`)이 **DROP**됐습니다(약 841 MB). `server/retroactive.py`의 `OPERATIONS`가 다섯에서 **넷**(`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`)이 되어 어드민 API에서도 **등록 해제**됐고, 스케줄러의 자동 호출도 제거됐습니다.
+> - 🔴 **이 문서에서 「다섯」이라 적힌 자리는 전부 「넷」으로 읽으십시오** — §5 · §6.2 · §6.3 · §7의 ⓔ 관련 서술은 접혀 있습니다. **ⓐ~ⓓ와 ⓕ는 한 줄도 영향받지 않았습니다.**
+>
+> **직전 라운드 (2026-08-11 2차 · `ffb23d6`+`53f9187` — ⓕ와 ⓑ가 더 이상 하류 체인을 깨우지 않습니다)**
 > - 🔴 **§2.3에 ⓑ(철회)의 같은 수리를 실었습니다**(`53f9187`). **이쪽이 더 급했습니다 — 철회는 어드민 화면의 버튼에서도 돌아갑니다.** 지워지는 층은 한 줄도 달라지지 않았고(살아남은 층 집합이 바이트 단위로 동일), `user` 거절과 사람 핀 건너뛰기는 **CLI·버튼 양쪽에서** 그대로입니다.
 > - 🔴 **화면 알림 4건 → 0건은 잃은 것이 아닙니다** — 그 4건은 아무도 철회하지 않은 다른 테이블의 알림이었고, **값이 바뀐 칸은 전에도 지금도 알림이 안 갑니다.** 확인하는 자리는 셀 이력 타임라인이고 변하지 않았습니다.
 > - ⚠️ **ⓐ(재적용)만 아직 페이지 단위로 묶입니다** — 라벨은 원래 맞았고 그룹핑만 남았습니다(미수리).
@@ -39,7 +43,7 @@
 | 옛 룰이 만든 **틀린 값이 아직 이기고 있다**. 룰을 고쳐 재적용해도 그 칸은 안 바뀐다 | **ⓑ R2** `chain_replay_cli.py withdraw <테이블> <소스>` |
 | 파생 테이블에 **행 자체가 없다**. 워크리스트에도 안 뜬다 | **ⓒ** `backfill_enrichment.py <룰>` |
 | 파생 **행은 있는데** 타깃 칸이 **비어 있다**. 워크리스트에는 떠 있다 | **ⓓ** `enrichment_insights.py confirm <룰>` |
-| 매핑을 바꿨더니 그래프에 **아무 데도 안 붙은 노드**가 남았다 | **ⓔ** `graph_orphan_sweep.py` |
+| ~~매핑을 바꿨더니 그래프에 **아무 데도 안 붙은 노드**가 남았다~~ | ⚰️ **[2026-08-14] ⓔ 은퇴** — 그래프 저장소가 DROP돼 이 증상이 존재하지 않습니다(§5) |
 | 칸에 **여러 소스가 쌓여 있는데 옛 층이 표시되고 있다**. 소스 목록을 열면 새 값이 **저장은 돼 있다** | **ⓕ R3** `chain_replay_cli.py resolve <테이블>` |
 
 🔴 **ⓒ와 ⓓ를 가르는 질문은 하나입니다 — 「파생 테이블에 그 행이 있습니까?」**
@@ -255,7 +259,19 @@ conda run -n assy_manager python server/scripts/enrichment_insights.py propose  
 
 ---
 
-## 5. ⓔ graph_orphan_sweep — 유일하게 「지우는」 소급
+## 5. ⚰️ ~~ⓔ graph_orphan_sweep~~ — **은퇴** (2026-08-14 `2ec78b9` · R-2026-08-14-H)
+
+🔴 **ⓔ는 더 이상 소급 경로가 아닙니다 — 돌리지 마십시오.** 지울 대상(`graph_nodes`/`graph_edges`)이 은퇴하고 **DROP**됐습니다(약 841 MB).
+
+- **어드민 API에서 «등록 해제»됐습니다.** `server/retroactive.py`의 `OPERATIONS`는 이제 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm` **넷**입니다. `GET /admin/retroactive/operations`에 ⓔ 행이 없고, `POST /admin/retroactive/graph_orphans/run`은 미등재 연산으로 거절됩니다. 이 문서에서 **「다섯」이라 적힌 자리는 전부 「넷」으로 읽으십시오.**
+- **스케줄 호출도 제거됐습니다**([AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)) — 🔴 **그것은 정리가 아니라 필수였습니다**: `graph_orphans.run_scheduled`가 첫 동작으로 `ensure_graph_tables`를 불러 **DROP된 표를 되살렸을** 것입니다.
+- **CLI 파일 `server/scripts/graph_orphan_sweep.py`는 트리에 남아 있지만**(판정 ④의 코드 제거 라운드 몫) **대상 테이블이 없어 정상 동작하지 않습니다.**
+- ⚠️ **§1의 「ⓔ만 페이지 커밋이 아니다」·§6.2·§6.3(종료 코드 3)·§7의 `--allow-production` 서술은 전부 이 연산에 대한 것이라 «함께 은퇴»합니다.** ⓐ~ⓓ에 대한 서술은 **한 줄도 영향받지 않았습니다.**
+
+<details>
+<summary>⚪ 이하 원문(역사 기록)</summary>
+
+### ~~ⓔ graph_orphan_sweep — 유일하게 「지우는」 소급~~
 
 ```bash
 conda run -n assy_manager python server/scripts/graph_orphan_sweep.py
@@ -281,6 +297,8 @@ conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --ignore-r
 * **깨끗한 선언 전제** — 온톨로지 매핑이 하나라도 깨끗하게 로드되지 않으면 **스윕 전체를 거절**합니다. 이유를 **먼저 읽고** 나서만 `--ignore-rejected`를 쓰십시오.
 * **격리 관문** — `--apply`를 격리 데이터 루트 밖에서 하려면 `--allow-production`이 필요합니다. dry-run은 읽기 전용이라 어디서나 됩니다.
 * `--limit-print`는 **출력 줄 수**만 자릅니다. **삭제 범위와 무관합니다**(`0`이면 전부 출력).
+
+</details>
 
 ---
 

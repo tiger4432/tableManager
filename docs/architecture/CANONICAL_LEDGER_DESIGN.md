@@ -274,7 +274,7 @@ neutrality의 가격표(19.7초 중 3.9초). 「정정이 흐른다」는 **싸�
 
 > **제1원칙: 원장은 기존 시스템의 «소비자»로 태어난다. 쓰기 경로는 한 줄도 안 바꾼다.**
 
-`ledger_translator` = chain worker·graph_sync_worker의 **셋째 형제** (outbox 구독,
+`ledger_translator` = chain worker의 **형제**(⚰️ **[2026-08-14 `2ec78b9`] 종전 「chain worker·graph_sync_worker의 «셋째» 형제」였고, 그 셋째 자리가 은퇴해 형제는 «둘»이다** — 그리고 그 은퇴 근거가 바로 이 설계였다: 원장이 개체 층인데 옛 파이프라인이 사본을 하나 더 들고 있었다) (outbox 구독,
 자기 커서). `ledger_events` 신규 테이블, **첫날부터 시간 파티션**.
 
 | 단계 | 연결 | 비고 |

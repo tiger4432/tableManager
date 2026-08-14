@@ -1,6 +1,12 @@
 # `ontology_mapping.json` 세팅 — 그래프 노드/엣지 매핑 (v2)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-11 (**`node.identity`가 맵 정체성을 상속할 수 있다** — `68db020` 신설 `@map_key_columns` 토큰 + 「생략하면 전체 상속」, §5 참조) | **Owner:** Sync / 총괄
+> 🗄️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] 이 선언은 소비자를 잃었습니다 — 이 절차를 따라도 아무 일도 일어나지 않습니다.**
+> 
+> 사본을 만들던 파이프라인이 은퇴했습니다: 이 파일을 읽던 `graph_sync_worker`가 프로세스 스택에서 빠졌고, 검증에 쓰던 `GET /graph/neighbors`를 포함한 라우트 일곱이 **410**을 답하며, `graph_nodes`·`graph_edges`·`graph_sync_state`가 **DROP**됐습니다(약 841 MB). 파일은 디스크에 남아 있지만 **읽는 코드가 없습니다** — 이 표에서 가장 위험한 상태이므로 별표로 남깁니다([CONFIG_GUIDE §1](../CONFIG_GUIDE.md)).
+> 
+> 아래 내용은 **역사 기록**이고, 산문 안의 코드 앵커(`graph_sync_worker.py:489` 등)는 더 이상 도는 경로를 가리키지 않습니다. 파일 자체의 은퇴는 판정 R-2026-08-14-H의 후속 항목입니다. **후계**: 개체 층은 원장([LEDGER_GUIDE](../LEDGER_GUIDE.md)), 유형 구조는 `GET /api/ledger/structure`.
+> 
+> ~~**Status:** 🟢 Living~~ → 🗄️ **대체됨** | **Last-verified:** 2026-08-14 · 직전 2026-08-11 (**`node.identity`가 맵 정체성을 상속할 수 있다** — `68db020` 신설 `@map_key_columns` 토큰 + 「생략하면 전체 상속」, §5 참조) | **Owner:** Sync / 총괄
 > 상위: [폴더 인덱스](./README.md) · 트랙 스펙은 [ONTOLOGY_GRAPH_SPEC §3](../../spec/ONTOLOGY_GRAPH_SPEC.md) · 온보딩 절차는 [CONFIG_GUIDE §3-S4](../CONFIG_GUIDE.md) · 상속 메커니즘은 [data_model §5.0-bis](../../architecture/data_model.md) · [PRIMITIVES §3](../../architecture/PRIMITIVES.md#-키를-지우면-상속한다--관례-폴백이-아니라-파생-리졸버로-2026-08-11-등록--68db020)가 정본
 
 <!-- Loader evidence (2026-07-28):

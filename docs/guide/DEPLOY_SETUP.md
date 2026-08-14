@@ -351,8 +351,8 @@ curl.exe -s -o NUL -w "%{http_code}`n" --noproxy "*" http://127.0.0.1:8080/healt
 
 **C-1. 우리 코드의 내부 홉 (완료 — 2026-07-30).** 프로세스 간 loopback 호출은 **프록시 설정을 절대 참조하지 않는다.**
 
-- 워커 `run_watcher`·`chain_ingestion_worker`·`graph_sync_worker`(**목록 옆에 수를 적지 않는다**)는 세션을 직접 만들지 않고 **`server/internal_event_client.internal_event_session()`** 하나에서 받는다(`trust_env=False`). 발신자마다 따로 고치다 같은 결함이 세 번 재발한 이력이 있어, **세션을 직접 만드는 발신자가 생기면 테스트가 실패**하도록 막아 두었다.
-- 웹서버 → GraphSync 워커(`/api/graph/sync` → `127.0.0.1:8090`)의 `httpx`도 `trust_env=False`다. **같은 모양의 네 번째 홉**이라 같이 막았다.
+- 워커 `run_watcher`·`chain_ingestion_worker`(⚰️ **[2026-08-14 `2ec78b9`] `graph_sync_worker`는 스택에서 빠졌다** · **목록 옆에 수를 적지 않는다**)는 세션을 직접 만들지 않고 **`server/internal_event_client.internal_event_session()`** 하나에서 받는다(`trust_env=False`). 발신자마다 따로 고치다 같은 결함이 세 번 재발한 이력이 있어, **세션을 직접 만드는 발신자가 생기면 테스트가 실패**하도록 막아 두었다.
+- ⚰️ **[2026-08-14] 종전 여기에 「웹서버 → GraphSync 워커(`/api/graph/sync` → `127.0.0.1:8090`)의 `httpx`도 `trust_env=False`」 항목이 있었다** — 그 홉의 대상이 은퇴했고 라우트는 410을 답한다. **규율 자체는 남는다**: 새 loopback 홉이 생기면 같은 처방을 붙일 것.
 - 범위는 **우리 세션 객체 하나**다. `urllib`을 쓰는 수집 스크립트에는 닿지 않는다 — 그쪽은 C-2가 따로 맡는다.
 
 **C-2. 수집 스크립트 — 스케줄러가 자기 프로세스에서 정한다 (2026-07-30 `4aae627`).** 수집 스크립트는 운영자가 쓰고 스케줄러가 `exec`로 돌리는 코드라 각자 프록시를 다룰 수 없다. 그래서 **스케줄러(`run_auto_update.py`)가 기동 시 자기 프로세스의 프록시 정책을 확정한다** — 셸에 무엇이 들어 있든 상관없이.
@@ -405,7 +405,7 @@ NO_PROXY만  → {'no': '127.0.0.1,localhost'}
 | **맵 오버레이** | `map_overlay_config.json` | 겹칠 맵 테이블들 (x/y 컬럼 + 맵 키 컬럼 선언 필요) |
 | **체인 인제션** | `chain_rules.json` | 트리거/타깃 테이블 + `server/mappers/`의 매퍼 모듈 |
 | **결손 보완** | `enrichment_rules.json` | 규칙이 참조하는 테이블 |
-| **온톨로지 그래프** | `ontology_mapping.json` | 노드/엣지로 승격할 테이블 |
+| ⚰️ ~~**온톨로지 그래프**~~ | `ontology_mapping.json` | **[2026-08-14] 소비자 0** — 읽는 워커도 라우트도 없다(고쳐도 아무 일도 안 일어난다) |
 
 **상태 확인**: 바인딩이 제대로 붙었는지는 API가 알려준다. `missing`이 뜨면 그 테이블이 `table_config.json`에 없거나 컬럼명이 어긋난 것이다.
 
@@ -464,7 +464,7 @@ python server/scripts/dev_env/devenv.py down
 | DB | `assy_manager` | `assy_qa` (`DATABASE_URL`) |
 | 디스크 | `server/config`, `server/ingestion_workspace` | `dev_env/…` (`ASSY_DATA_ROOT`) |
 | API | 127.0.0.1:8080 | 127.0.0.1:8081 |
-| 그래프 워커 | 127.0.0.1:8090 | 127.0.0.1:8091 |
+| ⚰️ ~~그래프 워커~~ | ~~127.0.0.1:8090~~ | ~~127.0.0.1:8091~~ — **[2026-08-14] 아무도 바인드하지 않는다**(기동 배너도 삭제) |
 
 `ASSY_DATA_ROOT`가 `config/`·`ingestion_workspace/`**·프로세스 로그**를 통째로 옮기는 단일 지점이다(`server/paths.py`). 안 걸면 기존 경로 그대로다.
 
@@ -522,7 +522,7 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    ```bash
    conda run -n assy_manager python run_decoupled_app.py --preflight-only
    ```
-   **아무것도 띄우지 않고** 포트 두 개(8080·8090)와 **스키마 드리프트**를 점검한 뒤 종료합니다. 배포·재기동 직전이 이 명령의 자리입니다 — 「마이그레이션을 돌렸던가」를 **화면이 500을 내기 전에** 묻는 유일한 자리이기 때문입니다.
+   **아무것도 띄우지 않고** API 포트(8080 — ⚠️ **[2026-08-14] 종전 「포트 두 개(8080·8090)」는 그래프 워커 은퇴로 거짓이 됐습니다**)와 **스키마 드리프트**를 점검한 뒤 종료합니다. 배포·재기동 직전이 이 명령의 자리입니다 — 「마이그레이션을 돌렸던가」를 **화면이 500을 내기 전에** 묻는 유일한 자리이기 때문입니다.
    - 🔴 **종료 코드는 포트만 봅니다**(비었으면 0, 물려 있으면 1). **드리프트는 종료 코드를 바꾸지 않습니다** — 무인 재기동이 컬럼 하나로 스택 전체를 계속 죽여 놓지 않게 하려는 의도입니다. 그러니 **배너를 읽으십시오.**
    - 배너가 `TABLE-DOWN`을 말하면 그 테이블은 **통째로 죽습니다**(그 컬럼을 읽지 않는 코드까지 — SQLAlchemy가 매핑된 컬럼 전부를 SELECT·INSERT에 싣습니다). 평결이 **어느 마이그레이션을 돌려라**까지 말하므로 그대로 실행하십시오.
    - `MISSING-TABLE`은 대개 웹서버를 한 번 띄우면(`create_all`) 해결됩니다. `INFO`(DB에만 있는 컬럼)는 **무해**합니다 — 되돌린 배포의 잔여물이며 [ROLLBACK_PROCEDURE §5](ROLLBACK_PROCEDURE.md)가 그 처리를 다룹니다.

@@ -73,7 +73,7 @@
 | 페이징/뷰 모드 | 페이지 이동(이전/다음/번호 입력), 뷰 모드 전환, 전체 로드, CSV export. 뷰 모드 2종: `📄 Paging`(pagination — 하단 페이지 컨트롤 표시) / `♾️ Scroll`(infinite — 페이지 컨트롤 숨김, 스크롤 하단 도달 시 다음 청크 자동 로드) | 하단 `prev/next-page-btn`·`page-input`·`view-mode-select`·`load-all-btn`·`load-csv-btn` | `state.currentSkip/pageCache`·`grid.updateViewModeUI`(§7) · GET `/tables/{t}/export`(§1.2) |
 | 컬럼 필터/정렬 | 컬럼 헤더 아래 플로팅 필터(텍스트/숫자 타입별), 헤더 클릭 정렬, 최신순 토글 | AG-Grid 헤더 필터 행, 설정 메뉴 `sort-latest-toggle` | `grid.buildColumnDefs`(floatingFilter) · `main.get_column_filter_condition`(서버, §1.1) |
 | 트랜잭션 모드 | 편집을 로컬 스테이징 후 일괄 커밋/롤백 | 설정 메뉴 `tx-mode-toggle` → `tx-apply-btn`/`tx-discard-btn` | `main.applyPendingTxEdits/discardPendingTxEdits` · `ui.updateTxModeUI/setTransactionFilter`(§7) |
-| 그래프 수동 동기화 | 현재 데이터를 그래프 워커로 수동 동기화 트리거 | 툴바 `graph-sync-btn` | POST `/api/graph/sync` → graph_sync_worker(§1.4/§6) |
+| ⚰️ ~~그래프 수동 동기화~~ | **[2026-08-14 `2ec78b9`] 은퇴** — `POST /api/graph/sync`가 410이다(프록시 대상 워커가 스택에 없다). §1.9 참조 | ~~툴바 `graph-sync-btn`~~ | — |
 
 ### 1.2 변경 이력 (타임라인)
 
@@ -180,7 +180,16 @@
 | **config 선언의 효과 조회 (F9, 2026-07-30 서버 · **2026-07-31 화면 착지** `93610cb`)** | 「내가 쓴 config가 먹었나」에 제품이 답한다. `GET /admin/config/resolve`가 선언을 **세 모집단**으로 나눠 돌려준다 — `effective` · `ineffective`(+ **명명된 사유**) · `rejected`(+ 사유) + `settings`(실효값과 **그 값이 온 파일**, 파일 부재로 기본값인 경우 포함). ✅ **진입은 어드민 Overview 탭의 세 번째 계기 줄**이다(`admin.js`의 `refreshConfigResolve` → 뷰 모델 `config_resolve_view.js`). 1분 스로틀 · `Reload Configs`를 누르면 force로 즉시 다시 읽는다. 🔴 사람이 읽을 문장(`detail`)은 **서버가 만들고 클라는 그대로 렌더해야 한다**(계약) — 클라가 「효과 없음」을 자기 규칙으로 판정하면 하드코딩 사본 계급이 재발한다. 사유 어휘는 닫혀 있고 **전부 런타임 열화 어휘 재사용**(`not_declared`·`mapping_unavailable`·`scope_unresolved`·`not_reached` — 새 단어 0). ⚠️ **`scope_unresolved`는 켜기 전 경고**: 선언 뷰가 판단키의 일부만으로 조회하면 런타임은 `ambiguous`가 아니라 `single`을 내므로 실행 중에는 보이지 않는다. DB 질의 0건(config만). 드라이런은 별도 라우트이고 **HTTP에 쓰기 경로가 없다**. ⚠️ **등록된 도메인은 2026-07-31 실측 `enrichment` · `virtual_join` 둘**이고 나머지는 같은 틀로 붙는다 — 도메인을 추가하면 [DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md)의 해당 행과 이 행을 함께 고친다 | 진입: `GET /admin/config/resolve` · `GET /admin/enrichment/auto-confirm/dry-run?rule=`(어드민 토큰) — 코드: `config_resolve_report.resolve_report` · 점검 §2.8-ter · [ENRICHMENT_QUEUE_SPEC §5.2-bis](../spec/ENRICHMENT_QUEUE_SPEC.md) · [CONFIG_GUIDE §4.2-bis](../guide/CONFIG_GUIDE.md) · [config/enrichment_rules §7.3-bis](../guide/config/enrichment_rules.md) · 계약 `contracts/config_resolve_report/` |
 | **소급 적용(backfill) 어드민 API — ⚠️ 화면은 아직 없다 (2026-07-31 `fbc1053`)** | CLI에만 있던 **소급 5종**(R1 재적용 · R2 소스 회수 · enrichment 파생행 생성 · 단일 후보 자동 확정 · 그래프 고아 스윕)에 **인벤토리·건수·실행** 라우트가 생겼다. ⚠️ **어드민 화면의 버튼은 `77d27d3` 기준 아직 없다**(그리는 클라 코드가 커밋 트리에 없다 — **다만 화면 작업이 진행 중이므로 인용 전 `client2/src`에서 grep할 것**) — **지금의 점검은 `curl`이다.** 🔴 **인벤토리·건수 응답이 `deletes`·`restartable`·`commit_granularity`를 실어 나른다**: 확인 문구 하나로 다섯 버튼을 덮으면 그 하나가 틀리기 때문이다(넷은 청크 커밋이라 이어서 재실행되지만 **고아 스윕만 삭제 루프가 끝난 뒤 한 번 커밋**해 중단 시 전부 롤백). 🔴 **모든 건수가 `count_kind`를 함께 답한다**(`exact`/`sample`/`upper_bound`) — 다섯 중 넷은 요청 경로에서 정확할 수 없고 **어느 것도 정확한 척하지 않는다**. 실행은 **아웃박스 한 줄 + 즉시 반환**이고 실제 실행은 스케줄러 전용 스레드(동시 1건). **새 연산은 하나도 구현하지 않았다** — 카운트는 각 연산 자신의 dry-run, 실행은 같은 함수의 `apply=True` | 진입: `curl -H "X-Admin-Token: …"` → `GET /admin/retroactive/operations` · `.../{op}/count` · `POST .../{op}/run`(**strict 토큰**) — 코드: `server/retroactive.py`(등록부) · `run_auto_update.start_retroactive_run` · 점검 §2.8-quinquies · [BACKFILL_GUIDE §7](../guide/BACKFILL_GUIDE.md) · [backend §2](../architecture/backend.md) · [AUTO_UPDATE_GUIDE §4-quater](../guide/AUTO_UPDATE_GUIDE.md) |
 
-### 1.9 온톨로지 그래프 (승격·뷰어·추적)
+### 1.9 ⚰️ ~~온톨로지 그래프 (승격·뷰어·추적)~~ — **은퇴 · 점검 대상 아님** (2026-08-14 `2ec78b9` · R-2026-08-14-H)
+
+> 🔴 **이 절의 모든 행은 «지금 돌리면 실패하는 점검»입니다 — 실행하지 마십시오.** 워커가 스택에서 빠지고, `graph_nodes`·`graph_edges`·`graph_sync_state`가 **DROP**됐으며(약 841 MB), 라우트 일곱이 **410**을 답합니다. 후계 점검은 **§1.13 원장** 쪽입니다.
+>
+> ✅ **대신 점검할 것 하나** — **은퇴가 정직하게 보이는가**: ① `GET /graph/stats` → **410**이고 본문에 `reason: "old_graph_branch_retired"`·`successor: "/api/ledger/trace"`가 있다(404도 200도 아니다) ② 응답 헤더에 **`Cache-Control: no-store`** ③ `graph.html`을 딥링크로 열면 **묘비**가 뜨고 구조 뷰로 가는 링크가 있다 ④ 메인 그리드 nav에 「🕸️ 추적」이 **없고**, 행 선택 버튼도 **뜨지 않는다**(클라 변경 0줄 자기 치유) ⑤ **재기동 후에도 세 표가 다시 생기지 않는다** — 이것이 봉인된 부활 경로 셋의 회귀 점검이고, 실패하면 화면이 「그래프가 아직 비어 있습니다」로 **은퇴를 「아직 안 됨」으로** 말한다. 자동 그물은 `server/tests/test_graph_branch_retired.py`.
+
+<details>
+<summary>⚪ 이하 원문(역사 기록)</summary>
+
+#### ~~1.9 온톨로지 그래프 (승격·뷰어·추적)~~
 
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
@@ -193,6 +202,8 @@
 | 객체 중심 추적 리포트 | 멀티 시드(≤20) BFS 합집합 → 라벨별 그룹 테이블 + event_time 타임라인. depth 1..3·시간 범위·타입 필터, missing seeds 분리 표시, 뷰어 양방향 크로스링크 | `/trace.html` — 메인 그리드 행 선택 → 「🕸️ 추적」 버튼(새 탭, 선택 행→identity 시드) | `trace.js`/`trace_core.js`/`trace_launch.js`(§7) · POST `/graph/trace`·GET `/graph/mapping-summary`(§1.5) |
 | 추적 진입점 자동 표시 | `mapping-summary`로 현재 테이블의 매핑 활성 여부를 판정해 「🕸️ 추적」 버튼 노출/숨김. **[`530fdfd`] 같은 응답이 `rejected[]`·`rejected_count`·`source{path, exists}`를 함께 싣는다** — 컬럼 하나 rename에 그 테이블의 온톨로지가 통째로 사라지던 것이 표면에 안 나왔기 때문. 점검: **정상 상태에서 `rejected`는 반드시 비어 있어야** 하고(늘 뭔가 들어 있는 사유 목록은 곧 무시당한다), **파일 부재는 거부가 아니라 `source.exists: false`로만** 나오는가 | (자동) 메인 그리드 툴바 | `trace_launch.refreshTraceEntry`(§7) · GET `/graph/mapping-summary`(§1.5) |
 | **칩 추적 (`GET /graph/chip-trace`)** — 경계 계약 (`8670e3b`+`ae2811c` 2026-07-30) | 칩(`CoreCell`) 1개의 이력을 **웨이퍼 스코프**로 추적. **BFS가 아니라 고정 형상**이고 **depth 파라미터가 없다** — 같은 시드의 `POST /graph/trace` depth 2는 1,000 노드 캡을 태우고 그중 **994개가 형제 CoreCell**(남의 칩)이며, 엣지 타입 필터로 막으면 홍수가 **더 커진다**(1,341→11,549, `Eqp` degree 10,284로 우회). 3다리: ① 칩 자신(`BONDED_TO→BaseCell`·`TRANSFERRED_TO→DtCell`) ② 웨이퍼(`FROM_CORE→Core` ← `PERFORMED_ON`) ③ 잎(`USED_KNOB`/`USED_RECIPE`/`EXECUTED_BY` — **되확장 금지**). 실측 234노드/694엣지·57ms·무관 노드 0. 🔴 **점검의 핵심은 "빈 홉이 없는가"다** — 다리마다 `recorded`·`none_recorded`(선언 있고 행 0)·`not_declared`(매핑이 그 쌍을 더는 선언 안 함)·**`mapping_unavailable`**(선언을 **읽지 못했다** — 매핑 파일 저장 중/거부/부재. 확인: 파일을 잠깐 깨뜨리면 `not_declared`가 아니라 이쪽이 나오는가, 그리고 `recorded`/`none_recorded`는 **강등되지 않는가**)·**`not_reached`+`blocked_by`**(앵커 다리가 죽어 **묻지 않았다**. 확인: `PERFORMED_ON`을 rename하면 잎이 `USED_KNOB: none_recorded, count 0`이 **아니라** `not_reached`로 나오는가 — 종전 버그가 "이 웨이퍼는 knob을 쓰지 않았다"고 주장했다) 중 하나를 말한다. 스코프는 `scope_unresolved`(Core 주장 0개 또는 2개 이상, **또는 그 다리가 잘림** — 라이브 2,687셀이 소스 파일별 복수 `FROM_CORE`를 가진다). **절단은 상태가 아니라 다리별 `truncated`+`capped_at`**이고 `count`(주장 수)≠`node_ids`(개체 수)는 **의도**다 | 아직 전용 UI 없음 — REST 직접 호출(`?identity=<CoreCell identity>`). 시드 부재 404 | `main.py get_chip_trace`/`_chip_trace_leg`/`_chip_trace_declaration`(§1.5) · [ONTOLOGY_GRAPH_SPEC §7.5d](../spec/ONTOLOGY_GRAPH_SPEC.md) · [backend §2 그래프 조회](../architecture/backend.md) |
+
+</details>
 
 ### 1.13 정준 원장 (ledger) — 슬라이스 1 · 2026-08-13 신설
 
@@ -227,7 +238,7 @@
 
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
-| 자식 프로세스 감시·자동 재시작 | 런처가 5~6개 자식을 1초 주기로 감시. 죽으면 백오프 재시작(2/4/8/16/32초), **6번째 연속 실패에서 영구 `FAILED`**(배너 로그 + `/health` 503). 60초 이상 살아 있었으면 예산 회복. 데스크톱 셸 종료 = 전체 종료 | `python run_decoupled_app.py` (상태 파일 `config/supervisor_status.json`) | `server/process_supervisor.py` · [backend §1.3](../architecture/backend.md) |
+| 자식 프로세스 감시·자동 재시작 | ⚠️ **[2026-08-14] 수를 여기 적지 않는다 — 정본은 `run_decoupled_app.py`의 `specs`다**(그래프 싱크 워커 은퇴로 백엔드 자식이 다섯에서 넷이 됐고, 이 자리의 「5~6」은 그 라운드에 낡았다). 런처가 자식을 1초 주기로 감시. 죽으면 백오프 재시작(2/4/8/16/32초), **6번째 연속 실패에서 영구 `FAILED`**(배너 로그 + `/health` 503). 60초 이상 살아 있었으면 예산 회복. 데스크톱 셸 종료 = 전체 종료 | `python run_decoupled_app.py` (상태 파일 `config/supervisor_status.json`) | `server/process_supervisor.py` · [backend §1.3](../architecture/backend.md) |
 | 워커 진행 박동 | 워커 4종(`watcher`/`chain`/`graph`/`scheduler`)이 **자기 작업 루프 안에서** 박동. pid가 아니라 진행이 신호라 **살아 있는 채 멈춘 워커**(`wedged`)를 잡는다. 정체 임계 60초. 상태값은 **8종**(`ok`·`starting`·`missing`·`foreign_beat`·`wedged`·`stale`·`stalled`·`down` — [backend §1.3](../architecture/backend.md)). ⚠️ **`stalled`는 별개 검출기**: 박동은 신선한데 claim한 작업이 **300초** 무진행인 경우로, 워처의 재시도 폴러가 계속 박동하는 동안 인제션이 멈춰 있던 실제 사고를 잡는다 | (자동) `config/worker_heartbeats/*.json` | `server/utils/heartbeat.py` |
 | 헬스 엔드포인트 | **항상 JSON**, 정상 200 / `unhealthy` 503. `checks{database, workers, outbox, supervisor}` + 사람이 읽는 `problems[]`. DB 프로브 2초 타임아웃·중복 프로브 차단 | `GET /health` | `server/health.py` · `main.py` |
 | outbox 적체 판정 | **크기가 아니라 나이**(5분 degraded / 15분 unhealthy). 정상적인 10만 행 적재가 outbox 11.6만 행을 만들기 때문에 크기 임계는 큰 파일마다 오경보한다 | 위 응답의 `checks.outbox` | `health.probe_outbox` |
@@ -245,7 +256,7 @@
 | 어드민 공유 토큰 게이트 | `/admin/*` **API 라우트 전부**(2026-07-31 실측 **22개** — `@app.<verb>("/admin` 세기, 페이지 서빙 2개 제외)가 `ASSY_ADMIN_TOKEN` 환경변수 + `X-Admin-Token` 헤더 필요(비교 `secrets.compare_digest`). ⚠️ **이 수는 admin 라우트가 추가되는 커밋마다 낡는다** — 커버리지 판정의 정본은 수가 아니라 **`test_admin_auth.py`가 FastAPI 라우트 테이블을 열거하는 단언**이다. **조회도 포함** — 소스 코드 반환·파이프라인 열거도 유출이다. 미제시 **401**, 불일치 **403**. 예외는 페이지 서빙 `GET /admin`·`/admin.html` 2개(브라우저 내비게이션이라 헤더를 붙일 수 없고, 표시 데이터는 전부 게이트된 JSON에서 온다) | 서버 환경변수 | `server/admin_auth.py` · [backend §API](../architecture/backend.md) · [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md) |
 | 미설정 시 **부분** fail-closed | 토큰이 없으면 **strict 3라우트**(`POST /admin/scripts/code` · `POST /admin/auto-update/run-now` · **`POST /admin/retroactive/{op}/run`** — 2026-07-31 추가)만 **503**, 나머지는 **열린 채 동작**. 전부 잠그면 운영자가 **고치러 들어갈 페이지에서 잠긴다** — 의도된 비대칭이다. 🔴 **소급 실행이 strict인 이유는 코드 실행이라서가 아니다** — 테이블 전체 재작성·소스 주장 회수·노드 삭제이고 **같은 아웃박스로 같은 스케줄러 프로세스에 닿는다**(피해 계급이 같다). 목록의 정본은 `test_admin_auth.STRICT_ADMIN_ROUTES` | (자동) 기동 시 | `require_admin_token{,_strict}` |
 | 비-ASCII 토큰 거부 | HTTP 헤더는 latin-1 디코딩이라 **한글·이모지 토큰은 구조적으로 인증 불가**. 서버가 기동 시 **거부하고 미설정 상태로 취급**하며 배너를 `ERROR`로 남긴다. 조용히 admin 라우트 전부를 죽이고 "토큰이 틀렸다"고 답하는 **복구 불능 상태**를 만들지 않기 위함 | 기동 로그 `[admin-auth]` | `token_is_unusable`/`startup_banner` |
-| `/internal/events/*` 게이트 | 워커→웹서버 IPC 4개도 **같은 토큰**. `broadcast`는 임의 dict를 **접속 중인 전 클라이언트 그리드에 중계**하고 `audit_cache`에 주입하므로, 조회 admin만 잠그는 것은 거꾸로였다. 워커 3종은 **런처 환경을 상속**해 자동으로 헤더를 붙인다 | (자동) 워커 기동 | `internal_event_headers()` · `run_watcher`/`chain_ingestion_worker`/`graph_sync_worker` |
+| `/internal/events/*` 게이트 | 워커→웹서버 IPC 4개도 **같은 토큰**. `broadcast`는 임의 dict를 **접속 중인 전 클라이언트 그리드에 중계**하고 `audit_cache`에 주입하므로, 조회 admin만 잠그는 것은 거꾸로였다. 워커 3종은 **런처 환경을 상속**해 자동으로 헤더를 붙인다 | (자동) 워커 기동 | `internal_event_headers()` · `run_watcher`/`chain_ingestion_worker` (⚰️ **[2026-08-14] `graph_sync_worker`는 스택에서 빠졌다**) |
 | **통지 4xx가 누가 거절했는지 말한다** (2026-07-30 `23a346d`) | `/internal/events/*`의 401/403 로그에 **`admin-gate=yes\|no`**가 붙는다. 판정은 게이트가 **자기 거부에만** 다는 `WWW-Authenticate: X-Admin-Token` 헤더 하나이고(대소문자 무시 **정확 일치** — 프록시의 `WWW-Authenticate: Basic realm=…`이 우리 것으로 읽히면 안 된다), `admin-gate=yes`면 **토큰 지문**과 모집단별 REMEDY가 함께 나온다(403 = 양쪽 토큰 다름 / 401+지문 있음 = 전송 중 탈락 / 401+`none` = 이 프로세스에 변수 없음 / 401+`unusable-non-ascii` = 비-ASCII라 헤더를 못 만듦). 🔴 **`admin-gate=no`면 토큰을 아무리 만져도 안 고쳐진다** — 앞단(프록시·방화벽·포트를 뺏은 다른 프로세스)이 답한 것이다. 2026-07-30 인시던트의 3시간이 이 한 줄이 없어서 들었다 | 워커 로그 | `admin_auth.internal_event_failure_note` · [DEPLOY_SETUP §1-4/§1-5](../guide/DEPLOY_SETUP.md) |
 | **loopback HTTP는 프록시를 참조하지 않는다** (2026-07-30 `23a346d`) | 워커→웹서버 호출의 세션은 **`internal_event_client.internal_event_session()` 하나**에서만 나오고 `trust_env=False`다(환경변수·Windows 프록시 레지스트리 **둘 다** 차단, 스레드 로컬). 웹서버→GraphSync의 `httpx`도 같다. 원 사고: 레지스트리 `ProxyOverride`의 `<local>`은 **점 없는 호스트명만** 우회시켜 `localhost`는 통과하고 **`127.0.0.1`은 프록시로 나갔다** → 사설 주소 중계 거부 403(게이트 없는 `/health`까지). 🔴 **네 번째 발신자가 기억해야 하는 규칙이 아니라 테스트다** — 같은 결함이 발신자별로 세 번 재발해, 이제 발신자가 세션을 직접 만들면 `test_admin_auth.py`가 실패한다. 기동 시 데몬 3종이 `/health` 프로브 + `proxy-env` 요약을 찍는다 | (자동) 데몬 기동 로그 `[internal-events]` | `server/internal_event_client.py` · `test_admin_auth.py::test_no_sender_builds_its_own_client` · [PRIMITIVES §6](../architecture/PRIMITIVES.md) |
 | 정적 폴백 봉쇄 (traversal 차단) | SPA catch-all이 **결과 기반 containment 검사** 후에만 파일을 낸다. 이전에는 **무인증으로 임의 파일**(`table_config.json`, `Windows/win.ini`, 게이트 자신의 소스)이 200이었다 — 잠근 조회 라우트가 지키던 바로 그 바이트가 옆문으로 나가고 있었다. 탈출은 **403이 아니라 404**(탈출이 파싱됐다는 사실조차 확인해 주지 않는다) | `GET /{경로}` | `main.py serve_static_or_index` · `_resolve_admin_script_path`(재사용된 원형) |
@@ -459,7 +470,7 @@
 - [ ] 🎯 **파일 인제션은 축약된다**: 1,000행 파일 드롭 → `database_outbox`에 그 tx의 행이 **1건**(`payload`에 `row_ids`/`row_count`가 있고 `data`가 **없다**). 🔴 1,000건이면 회귀다(opt-in이 안 걸린 것).
 - [ ] 🎯 **사람 경로는 축약되지 않는다**: 그리드 셀 편집·맵 Push → 그 tx의 outbox 행이 **행마다 1건**이고 `data`를 나른다. 🔴 **여기가 축약되면 즉시 NO-GO다** — 기본값이 `per_row`인 이유이고, 화면에 못 닿는 교정은 교정 루프를 끊는다(핵심가치 #3).
 - [ ] **파생은 그대로 난다**: 축약된 원본 인제션 뒤에도 파생 테이블이 규칙대로 채워진다(체인 워커가 본 테이블을 다시 읽어 매퍼에 같은 중첩 payload를 준다). 사용자 맵퍼(`server/mappers/`)를 고치지 않았는데 값이 비면 회귀다.
-- [ ] **그래프도 그대로 승격된다**: 축약 이벤트로 들어온 행들이 `graph_nodes`/`graph_edges`에 나타나고, 엣지의 `updated_by`가 **그 행을 쓴 주체**다. 🔴 서로 다른 두 주체(워처/체인)가 같은 테이블에 연달아 쓴 뒤 **뒤쪽 행들이 앞쪽 주체 이름을 달고 있으면 회귀다**(조용한 결함 — 아무것도 실패하지 않는다).
+- [ ] ⚰️ **[2026-08-14 `2ec78b9`] 이 항목은 «점검 대상이 아닙니다»** — 그래프 승격이 은퇴하고 저장소가 DROP됐습니다. 🔴 **다만 이 항목이 검증하던 «진짜 성질」은 남습니다**: 축약 이벤트의 `updated_by`가 서로 다른 주체(워처/체인)를 섞지 않는가 — 그 성질은 이제 체인 워커 쪽에서 확인하십시오. ~~**그래프도 그대로 승격된다**: 축약 이벤트로 들어온 행들이 `graph_nodes`/`graph_edges`에 나타나고,~~ 엣지의 `updated_by`가 **그 행을 쓴 주체**다. 🔴 서로 다른 두 주체(워처/체인)가 같은 테이블에 연달아 쓴 뒤 **뒤쪽 행들이 앞쪽 주체 이름을 달고 있으면 회귀다**(조용한 결함 — 아무것도 실패하지 않는다).
 - [ ] **실패는 청크째 격리되지 않는다**: 맵퍼 예외를 유발하는 행 하나를 포함한 축약 청크 → 3회 재시도 후 부모가 FAILED가 되고 `error_log.reexpanded_into`가 행 수를 적으며, `<tx>#row#` id를 가진 per-row 이벤트들이 PENDING으로 생긴다. 이어서 **문제 행 하나만** FAILED로 남고 나머지는 성공한다.
 - [ ] **재시도 버튼이 outbox를 불리지 않는다**: 이미 재확장된 FAILED 부모에 `/admin/outbox/retry-failed`를 눌러도 `skipped_reexpanded`가 응답에 오고 **outbox 행 수가 늘지 않는다.** 🔴 늘면 클릭마다 1,000배다.
 
@@ -580,7 +591,7 @@
 > **점검은 격리 환경(:8081)에서 하십시오** — 이 절의 실행 항목은 **진짜 쓰기**입니다.
 > 운영자 절차 전문은 [BACKFILL_GUIDE §7](../guide/BACKFILL_GUIDE.md).
 
-- [ ] **인벤토리에 다섯이 다 있다**: `GET /admin/retroactive/operations` → `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans`. 각 항목에 `params`·`cli`·`cli_only`가 있다.
+- [ ] **인벤토리에 «넷»이 다 있다**(⚰️ **[2026-08-14 `2ec78b9`] `graph_orphans`가 «등록 해제»됐다 — 다섯이 아니라 넷이고, 아래 `graph_orphans` 관련 세 항목은 전부 은퇴했다**): `GET /admin/retroactive/operations` → `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans`. 각 항목에 `params`·`cli`·`cli_only`가 있다.
 - [ ] 🎯 **다섯이 같은 종류가 아니라고 응답이 말한다**: 각 항목에 **`deletes`·`restartable`·`commit_granularity`** 셋이 있고, **`graph_orphans`만 `restartable: false`**이며 그 `commit_granularity`가 「삭제 루프가 끝난 뒤 한 번」이라고 말한다. 🔴 **다섯이 전부 같은 값이면 결함**이다 — 확인 문구 하나로 다섯 버튼을 덮게 되고, 그 하나가 틀리는 쪽은 **되돌릴 수 없는 삭제**다.
 - [ ] **DB를 건드리지 않는다**: 인벤토리 호출은 config만 읽는다(DB를 내려도 200이면 정상).
 - [ ] 🎯 **모든 카운트가 `count_kind`를 함께 준다**: 다섯 각각 `GET /admin/retroactive/{op}/count` → 응답에 `count_kind`가 있고 값이 `exact`/`sample`/`upper_bound` 중 하나다. 🔴 **수만 있고 종류가 없으면 결함**이다.
@@ -716,7 +727,14 @@
 - [ ] **코드 에디터(공용 뷰)**: 파일 피커에서 파서 스크립트 열기 → Monaco 편집 → 저장 → 다음 인제션에 반영. `#editor=<path>` 딥링크 직접 진입 동작. dirty 상태에서 다른 파일 선택 시 confirm. (오프라인 등 Monaco CDN 실패 시 인라인 에디터 폴백.)
 - [ ] **Config 리로드**: `table_config.json` 수정 → Reload Configs → 웹서버·워커 캐시 리로드(SYSTEM_RELOAD), 신규 테이블 물리 CREATE + 워크스페이스 감시 시작(이슈 #7 해소 확인).
 
-### 2.11 온톨로지 그래프 (승격·뷰어·추적)
+### 2.11 ⚰️ ~~온톨로지 그래프 (승격·뷰어·추적)~~ — **은퇴 · 돌리지 마십시오** (2026-08-14 `2ec78b9`)
+
+> 🔴 **아래 절차는 전부 실패합니다** — 저장소가 DROP되고 라우트가 410입니다. 이 절 대신 **§1.9의 「은퇴가 정직하게 보이는가」 다섯 항목**을 돌리십시오.
+
+<details>
+<summary>⚪ 이하 원문(역사 기록)</summary>
+
+#### ~~2.11 온톨로지 그래프 (승격·뷰어·추적)~~
 
 - [ ] 🎯 **자동 승격**: 매핑 대상 테이블 셀 교정 → 재조회 없이 graph_nodes/edges에 반영(워커 `[GraphLatency]` 로그 lag 확인, 실측 기대 ~수백 ms). 교정값 엣지는 provenance=user.
 - [ ] **수동 백필**: 메인 툴바 그래프 동기화 버튼(또는 POST `/api/graph/sync`) → 성공 응답 + 테이블 노드/엣지 수 stats 반영.
@@ -728,7 +746,9 @@
 - [ ] **추적 리포트**: 메인 그리드에서 매핑 대상 행 1~여러 개 선택 → 「🕸️ 추적」 → 새 탭 trace.html에 시드 칩 + 라벨별 그룹 테이블 + 타임라인 렌더. depth 변경 → 즉시 재실행, 시간 범위 입력 → 재실행 버튼 동작.
 - [ ] **추적 에지 — missing seeds**: 그래프에 없는 시드 포함 시 missing 구분 표시(전체 실패 아님). 시드 21개 이상 선택 시 상한 20 토스트.
 - [ ] **크로스링크**: 추적 리포트 노드 → 뷰어(`?label=&identity=`) 이동, 뷰어 → 추적 리포트 역방향 이동.
-- [ ] **진입점 자동 표시**: 매핑 없는 테이블에서는 「🕸️ 추적」 버튼 숨김, 매핑 대상 테이블 전환 시 노출.
+- [ ] ⚰️ **[2026-08-14] 이 항목은 이제 「항상 숨는다」가 정답입니다** — 판정 라우트가 410이라 어느 테이블에서도 안 뜹니다. **진입점 자동 표시**: 매핑 없는 테이블에서는 「🕸️ 추적」 버튼 숨김, 매핑 대상 테이블 전환 시 노출.
+
+</details>
 
 ### 2.12 듀얼 테마
 
@@ -773,7 +793,7 @@
 **중복 기동 거절 (2026-08-04 `06b7761`)** — 재시도로 고칠 수 없는 실패는 예산을 태우기 전에 이름을 얻어야 한다.
 
 - [ ] 🎯 **스택이 떠 있는 상태에서 런처를 또 돌린다** → **1초 안에 거절**하고 **아무것도 기동하지 않는다.** 배너가 포트를 쥔 **PID와 프로세스 이름**을 대고 `taskkill /PID <pid> /T /F`를 준다. 🔴 **이미 도는 스택이 멀쩡한지 확인**하는 것까지가 이 항목이다(가드가 남의 프로세스를 건드리면 회귀).
-- [ ] **질문만 하는 형태**: `python run_decoupled_app.py --preflight-only` → 포트가 비었으면 `Preflight OK: ports 8080 and 8090 are free.` + **exit 0**, 물려 있으면 거절 배너 + **exit 1**.
+- [ ] **질문만 하는 형태**: `python run_decoupled_app.py --preflight-only` → 포트가 비었으면 **`Preflight OK: port 8080 is free.`**(⚠️ **[2026-08-14 정정] 종전 「ports 8080 and 8090 are free.」는 그래프 워커 은퇴로 거짓이 됐다** — 프로브 대상이 하나다) + **exit 0**, 물려 있으면 거절 배너 + **exit 1**.
 
 **스키마 드리프트 부팅 점검 (2026-08-05 `f6406b1` · `server/schema_drift.py`)** — 「마이그레이션이 돌아야 한다」는 배포 사실을 **아무도 안 나르고 있었다.** 개발·테스트 박스에서는 절대 안 보이고 **오직 운영 화면에서만** 드러난다.
 
@@ -865,7 +885,7 @@
 
 - [ ] 🎯 **4xx가 누가 거절했는지 말한다**: 워커를 **변수 없는 셸**로 띄우고 파일 드롭 → 워커 로그의 통지 실패 줄에 **`admin-gate=yes token-fingerprint=none`** + "이 프로세스에 변수가 없다"는 REMEDY가 함께 나온다. 이어서 **다른 토큰**을 든 셸로 띄우면 `admin-gate=yes` + **403** + "서버가 다른 토큰을 쥐고 있다, 지문을 배너와 대조하고 **트리 전체**를 한 셸에서 재기동하라". 숫자만 있고 진단이 없으면 회귀.
 - [ ] 🎯 **`admin-gate=no`는 우리가 아니다**: `/internal/events/*`를 가로채는 것(프록시·다른 프로세스)을 앞에 두고 통지 → 로그가 **`admin-gate=no`** + *"NOT AN ADMIN-TOKEN FAILURE"* + 본 헤더 에코. 🔴 이 상태에서 **토큰을 고치라고 안내하면 회귀**다 — 실제 사고에서 그 오안내가 진단을 몇 시간 늦췄다. 판정 근거는 `WWW-Authenticate: X-Admin-Token`의 **정확 일치**이므로, 프록시가 `WWW-Authenticate: Basic realm=…`을 붙여도 `no`로 읽혀야 한다.
-- [ ] **기동 로그가 프록시를 먼저 말한다**: 데몬 3종(`run_watcher`·`chain_ingestion_worker`·`graph_sync_worker`) 기동 로그에 `[internal-events] http://127.0.0.1:8080/health -> 200, direct (proxy bypassed). proxy-env=…`가 **정상일 때도** 찍힌다. **연결 거부는 `INFO`**(기동 순서상 정상 — 여기에 경고를 울리면 아무도 안 읽는다).
+- [ ] **기동 로그가 프록시를 먼저 말한다**: 데몬들(`run_watcher`·`chain_ingestion_worker` — ⚰️ **[2026-08-14] `graph_sync_worker` 은퇴**) 기동 로그에 `[internal-events] http://127.0.0.1:8080/health -> 200, direct (proxy bypassed). proxy-env=…`가 **정상일 때도** 찍힌다. **연결 거부는 `INFO`**(기동 순서상 정상 — 여기에 경고를 울리면 아무도 안 읽는다).
 - [ ] 🎯 **아픈 스택을 프록시로 고발하지 않는다** (2026-08-04): `/health`가 **503**을 돌려주는 상태를 만든다(체크 하나만 실패해도 그렇게 된다 — `health.HTTP_UNHEALTHY`). 데몬 기동 로그가 **`WARNING`** + `answered by THIS application reporting status='…'` + `Problems:` 목록으로 나와야 한다. 🔴 **여기서 프록시 장문(`ERROR`)이 뜨면 회귀다** — 2026-07-31에 실제 원인이 **중복 런처**였는데 체인 워커와 그래프 싱크 워커가 나란히 이 장문을 찍어 진단을 오도했다. 판별자는 상태코드가 아니라 응답 **BODY**이고(`internal_event_client.own_health_payload` — `status` 키 + **dict인** `checks`가 함께 있어야 우리 것), 프록시의 HTML 에러 페이지는 그 둘을 동시에 만족시킬 수 없다.
 - [ ] **그래도 앞단 탐지는 살아 있다**: `/health`에 **우리 모양이 아닌 body**로 비-200을 내는 것을 앞에 두면 여전히 **`ERROR`** + `/health carries NO admin gate …` + `answered by '<이름>'`이 나와야 한다(방아쇠만 좁힌 것이지 탐지를 없앤 게 아니다 — 이 사이트의 사내 프록시는 여전히 `127.0.0.1`에 `<local>`을 안 먹인다).
 - [ ] **발신자가 자기 세션을 만들지 않는다**: `conda run -n assy_manager pytest server/tests/test_admin_auth.py -k "own_client or trust_the_environment"` → 통과. 새 워커가 `requests.post(`를 직접 쓰면 **여기서 빨개져야** 한다(같은 결함이 발신자별로 세 번 재발한 자리라, 규칙이 아니라 테스트로 못박혀 있다). ⚠️ **`NO_PROXY` 환경변수를 이 문제의 처방으로 쓰지 마라** — 그 트리의 모든 자식이 프록시를 못 타게 되어 자동 업데이트가 죽는다([DEPLOY_SETUP §1-5](../guide/DEPLOY_SETUP.md)).

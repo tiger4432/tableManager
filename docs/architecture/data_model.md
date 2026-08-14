@@ -19,12 +19,12 @@
 | `FileIngestionCheckpoint` | `file_ingestion_checkpoints` | `table_name`, `file_signature`, `filepath`, **`file_mtime`**, **`file_size`**, `processed_rows`, `chunk_index`, `status`, `note` | **(테이블, 파일내용)당 단일 최신 상태** — 위 로그와 수명이 다릅니다. 상세 아래 §1.1-bis |
 | `CellOverwrite` | `cell_overwrites` | `table_name`, `row_id`, `column_name`, `is_overwrite`, `updated_by`, `manual_priority_source` | 셀 오버라이트/핀. (table,row,col) unique |
 | `CellSource` | `cell_sources` | `table_name`, `row_id`, `column_name`, `source_name`, `value`, `ingested_at`, `updated_by` | **다중 소스 레이어링 저장소**. (table,row,col,source) unique |
-| `GraphNode` | `graph_nodes` | `label`, `identity_key`, `props`(JSONB) | **온톨로지 그래프 노드**. (label,identity_key) UNIQUE — 정확 일치 MERGE |
-| `GraphEdge` | `graph_edges` | `type`, `from_node`, `to_node`, `props`, `source_name`, `source_row_ref`, `event_time` | **온톨로지 그래프 엣지**(provenance 포함). (from,type)/(to,type) 인덱스 + (from,type,to,source_name) UNIQUE + `source_row_ref` 인덱스(retarget용) |
-| `GraphSyncState` | `graph_sync_state` | `last_outbox_id` | materializer의 outbox 소비 커서(단일 행) |
+| ~~`GraphNode`~~ | ~~`graph_nodes`~~ | — | ⚰️ **[2026-08-14 `2ec78b9`] 물리 테이블 DROP**(590,885행 · 324 MB) |
+| ~~`GraphEdge`~~ | ~~`graph_edges`~~ | — | ⚰️ **DROP**(1,034,472행 · 517 MB) |
+| ~~`GraphSyncState`~~ | ~~`graph_sync_state`~~ | — | ⚰️ **DROP** — materializer의 outbox 커서였고, 그 소비자가 스택에서 빠졌습니다 |
 | `InteractionEffortLog` | `interaction_effort_logs` | `transaction_id`(unique), `session_id`, `key_count`, `mouse_count`, `nav_count`, `nav_preserved_count`, `timestamp` | **V1 정본 계기** — tx당 1행, **원시 카운트만**(점수는 조회 시점 계산). 상세 §2.4 |
 
-그래프 3테이블은 `ensure_graph_tables(engine)`(#7 패턴: info_schema 게이트+checkfirst)로 생성되며 `refresh_dynamic_models`에 동승합니다. 승격 흐름은 [event_driven_backend §4](./event_driven_backend.md).
+⚰️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] 종전 이 자리는 「그래프 3테이블은 `ensure_graph_tables(engine)`로 생성되며 `refresh_dynamic_models`에 동승합니다」였고, 그 문장이 «부활 경로»였습니다.** 표를 DROP한 뒤 **다시 만들** 경로가 셋 있었고 각각 변이 주입으로 증명됐습니다 — ① 부팅 `create_all` ② 핫리로드가 타는 이 `ensure_graph_tables` 동승 ③ **스케줄러가 워커보다 오래 살아남아** 고아 스윕이 첫 동작으로 같은 함수를 부름. 셋 다 봉인됐습니다(`models.py`의 호출 지점에 묘비 주석이 있습니다). 🔴 **닫지 않았다면 재기동이 «빈 표 셋»을 돌려주고 화면이 「그래프가 아직 비어 있습니다」라 말했을 것입니다 — 은퇴가 「아직 안 채워짐」의 옷을 입는 것**이고, 그 둘은 운영자가 할 일이 정반대입니다. 되돌리는 SQL(`server/migrations/drop_graph_storage_reverse.sql`)은 **모양만 복원할 뿐 갈래를 되살리지 않습니다.** 후계는 [원장 §1.1-ter](#) 및 [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md).
 
 ### 1.1-bis 인제션 원장의 `filepath` 승격 — 표식에서 열쇠로 (2026-08-13)
 
