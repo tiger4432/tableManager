@@ -19,6 +19,7 @@ from database.database import get_db
 
 import finding_kinds
 import ledger_kinds
+import ledger_lots
 import ledger_siblings
 import ledger_structure
 import ledger_trace
@@ -274,6 +275,99 @@ def ledger_structure_view(
         if _is_undefined_table(exc):
             # The race the catalogue gate cannot close: a relation dropped between the
             # `to_regclass` lookup and the census. Judged on SQLSTATE.
+            raise _relation_absent()
+        raise
+
+
+def _lot_grid_refusals(exc):
+    """The refusals `lots` and `lot_map` share, in ONE spelling for both routes.
+
+    Bodies are STRUCTURED (ruling R-2026-08-13-C): the client branches on
+    `detail.reason`, the operator reads `detail.message`, and nobody parses Korean
+    to tell an unknown aggregate from an unknown row axis.
+    """
+    if isinstance(exc, ledger_lots.LotGridRequestError):
+        return HTTPException(status_code=422, detail=exc.detail)
+    if isinstance(exc, ledger_siblings.SiblingsRequestError):
+        return HTTPException(status_code=422, detail=exc.detail)
+    if isinstance(exc, ledger_siblings.SiblingsConfigError):
+        logger.error("lot grid axis geometry refused: %s", exc)
+        return HTTPException(status_code=503, detail={
+            "reason": "axes_config_refused", "message": f"요인 선언 거절: {exc}"})
+    if isinstance(exc, finding_kinds.FindingKindError):
+        logger.error("finding-kind registry refused: %s", exc)
+        return HTTPException(status_code=503, detail={
+            "reason": "finding_kind_registry_refused",
+            "message": f"관측 종류 등록부 거절: {exc}"})
+    return None
+
+
+@router.get("/lots")
+def ledger_lot_grid(
+    columns: str = Query(None, description="열 명세 CSV — <종류>:<집계>. 미지정 시 선언된 기본값"),
+    by: str = Query(None, description="행 축 이름. 미지정 시 선언된 기본 축"),
+    window: str = Query(None, description="7d 또는 YYYY-MM-DD..YYYY-MM-DD"),
+    kind: str = Query(None, description="행 축·기하를 고를 때 기준이 되는 종류"),
+    limit: int = Query(None, description="행 수 상한"),
+    offset: int = Query(None, description="행 오프셋"),
+    db: Session = Depends(get_db),
+):
+    """놀라움 장치 — 행 = 선언된 축, 열 = {항목 × 집계}. 읽기 전용.
+
+    🔴 「미검사」와 「0」은 다른 답이고 `cells[].state`가 그 둘을 가른다. 클라가 0에서
+    미검사를 «추론»하지 않는다 — 실측으로 랏의 20.6%만 검사되므로, 랏 크기를 분모로
+    쓰면 5배 틀린다.
+
+    🔴 지표 목록은 이 파일에도 라우트에도 없다. 항목은 `finding_kinds` 등록부,
+    집계는 `ledger_lots.AGGREGATES`, 행 축은 `siblings_axes.json`이 선언한다 —
+    종류를 하나 선언하면 열 계열이 통째로 늘고 여기는 한 줄도 안 바뀐다.
+
+    🔴 스캔이 상한을 넘으면 window가 «강제»되고 응답이 그렇게 말한다
+    (`window.forced` + `forced_reason`). 한 달 치를 전 기간으로 표기하는 화면은 없다.
+    """
+    try:
+        return ledger_lots.lots(db.connection(), columns=columns, by=by, window=window,
+                                kind=kind, limit=limit, offset=offset)
+    except Exception as exc:                       # noqa: BLE001 - mapped below
+        mapped = _lot_grid_refusals(exc)
+        if mapped is not None:
+            raise mapped
+        if _is_undefined_table(exc):
+            # The race the catalogue gate cannot close: a relation dropped between the
+            # `to_regclass` lookup and the scan. Judged on SQLSTATE.
+            raise _relation_absent()
+        raise
+
+
+@router.get("/lot_map")
+def ledger_lot_map(
+    row: str = Query(..., description="마킹된 행의 값 (예: 본딩 랏 id)"),
+    kind: str = Query(None, description="관측 종류. 미지정 시 등록부의 기본값"),
+    by: str = Query(None, description="행 축 이름. /lots와 같은 축을 넘길 것"),
+    slot: str = Query(None, description="슬롯. 프레임이 슬롯마다 다르므로 필요"),
+    window: str = Query(None, description="7d 또는 YYYY-MM-DD..YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+):
+    """마킹된 행의 불량 칩을 «선언된 축마다» 투영한다. 읽기 전용.
+
+    🔴 좌표는 오리진 기준 «칸수»다. 피치를 곱하지 않고 mm를 내지 않는다.
+
+    🔴 닿지 않는 축은 숨기지 않고 `state: "unreachable"` + `reason`으로 답한다.
+    코어축이 지금 그 상태다 — `bonding_log.core_lot`·`cx`·`cy`가 357,796행 전부
+    NULL이라 투영할 좌표 자체가 없고, 닿으려면 새 옆조인이 필요한데 그건
+    R-2026-08-14-D 위반이다. 「없으면 없다고」.
+
+    ⚠️ 한 랏 = 한 프레임이 아니다. 슬롯마다 격자 치수가 다르게 등록돼 있어
+    `slot` 없이는 그리지 않고 고를 수 있는 슬롯 목록을 답한다.
+    """
+    try:
+        return ledger_lots.lot_map(db.connection(), row=row, kind=kind, by=by,
+                                   slot=slot, window=window)
+    except Exception as exc:                       # noqa: BLE001 - mapped below
+        mapped = _lot_grid_refusals(exc)
+        if mapped is not None:
+            raise mapped
+        if _is_undefined_table(exc):
             raise _relation_absent()
         raise
 
