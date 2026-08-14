@@ -732,12 +732,23 @@ def _resolve_binding() -> dict:
                "x/y/값 컬럼도 여기서 유도됩니다."),
     ]
 
+    candidates = map_overlay.resolve_value_column_candidates(cfg)
+
     effective, ineffective, rejected = [], [], []
     for table in tables:
         if table.startswith("__"):
             continue
         binding, prov, _guessed = map_overlay.resolve_binding_parts(cfg, table)
         refused = [k for k, p in prov.items() if p["origin"] == map_overlay.ORIGIN_REFUSED]
+        # What the derivation WOULD have said, so a declaration can be told apart
+        # from a restatement of it. Until 2026-08-14 this domain only offered the
+        # operator a hypothetical ("if table_config says the same, you may delete
+        # it") — which is the one thing the operator cannot evaluate from the
+        # screen, and it is why a duplicated `key_columns` survived long enough to
+        # drift (R-2026-08-14-A F3).
+        derived, _dguessed = map_overlay.derive_binding_parts(table, candidates)
+        block = ((cfg.get("table_bindings") or {}).get(table)) or {}
+        stated_reason = block.get("__reason") if isinstance(block, dict) else None
         # 맵으로 해석되지 않고 선언도 없는 테이블은 이 도메인의 관심사가 아니다 —
         # 전부 실으면 「맵이 아니다」가 95줄의 소음이 되어 진짜 거절을 덮는다.
         if binding is None and not refused and table not in declared_tables:
@@ -759,14 +770,47 @@ def _resolve_binding() -> dict:
                     reason=REASON_MAPPING_UNAVAILABLE,
                     fields={"table": table, "key": key, "declared": value}))
             elif origin == map_overlay.ORIGIN_DECLARED:
-                effective.append(entry(
-                    SCOPE_SETTING, subject,
-                    f"`{table}`의 {key}는 map_overlay_config가 선언한 "
-                    f"{_as_json(value)}입니다(선언이 유도를 이깁니다). {meaning}. "
-                    f"table_config가 같은 답을 낸다면 이 선언은 지워도 되고, 지우는 편이 "
-                    f"낫습니다 — 중복 선언은 유도가 아직 도는지를 가립니다.",
-                    fields={"table": table, "key": key, "value": value,
-                            "origin": origin}))
+                would_be = derived.get(key)
+                restates = would_be == value
+                fields = {"table": table, "key": key, "value": value,
+                          "origin": origin, "derived_would_be": would_be,
+                          "restates_derivation": restates}
+                if restates:
+                    # "delete it", not "you may delete it": the condition was
+                    # checked here. The values are equal, so deleting the
+                    # declaration cannot change one character on the screen.
+                    detail = (f"`{table}`의 {key} 선언 {_as_json(value)}은 "
+                              f"table_config에서 유도되는 값과 **같습니다** — 이 선언은 "
+                              f"아무것도 바꾸지 않습니다. 지우십시오: 진실의 사본 둘은 "
+                              f"언젠가 갈라지고, 중복 선언은 유도가 아직 도는지를 "
+                              f"가립니다. ({meaning})")
+                else:
+                    detail = (f"`{table}`의 {key}는 map_overlay_config가 선언한 "
+                              f"{_as_json(value)}입니다(선언이 유도를 이깁니다). "
+                              f"table_config는 " +
+                              (f"{_as_json(would_be)}(으)로 유도합니다"
+                               if would_be is not None else "이 키를 유도하지 못합니다") +
+                              f". {meaning}.")
+                    # An override without a stated reason is not a declaration, it
+                    # is drift (R-2026-08-14-A F3). Scoped to the IDENTITY key on
+                    # purpose: in this repo overriding x/y/val is the normal state
+                    # (every fixture table namespaces its coordinate columns) and
+                    # `__derived_note` already states that reason collectively, so
+                    # demanding a per-table reason there would be noise, and a
+                    # requirement that fires on everything gets ignored.
+                    if key == "key_columns":
+                        # `override_reason`, not `reason`: the envelope's own `reason`
+                        # is the closed runtime vocabulary and must not be shadowed
+                        # by free prose inside `fields`.
+                        fields["reason_declared"] = bool(stated_reason)
+                        if stated_reason:
+                            fields["override_reason"] = stated_reason
+                        else:
+                            detail += (" ⚠️ 이 블록에 `__reason`이 없습니다 — 정체성을 "
+                                       "table_config와 다르게 선언하려면 무엇을 알기에 "
+                                       "다르게 부르는지 적어야 합니다. 이유 없는 "
+                                       "오버라이드는 선언이 아니라 드리프트입니다.")
+                effective.append(entry(SCOPE_SETTING, subject, detail, fields=fields))
             elif origin == map_overlay.ORIGIN_INHERITED:
                 effective.append(entry(
                     SCOPE_SETTING, subject,
