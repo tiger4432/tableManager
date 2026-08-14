@@ -22,7 +22,7 @@
 
 import {
   enrichmentLabel, verdictFace, rateText, countText, fractionText,
-  enrichmentText, ciText,
+  enrichmentText, ciText, factorSentence, gateMeaning, splitCandidates,
 } from './contrast_core.js';
 // The pair view prints the SAME numbers the table above prints, through the same
 // formatter — two spellings of one value is how a screen comes to disagree with
@@ -111,7 +111,13 @@ function renderScope(doc, model) {
   return box;
 }
 
-/** One gate verdict, as a chip. The server's sentence rides in the title. */
+/**
+ * One gate verdict, as a chip.
+ *
+ * 🔴 THE SYMBOL STAYS, THE LABEL BECOMES THE MEANING. 실재 · 상류 · 기전 are this
+ * project's words and meant nothing to the owner; ✓ / — / ✗ beside 「우연 아님」
+ * needs no glossary. The server's own sentence still rides in the title.
+ */
 function renderGate(doc, cell) {
   const chip = el(doc, 'span', `cx-gate cx-gate--${cell.verdict}`);
   // 🔴 THE ROW'S OWN ATTRIBUTE NAME. The legend uses `data-legend-gate` so a
@@ -119,11 +125,18 @@ function renderGate(doc, cell) {
   attrs(chip, { 'data-gate': cell.id, 'data-gate-verdict': cell.verdict });
   const face = verdictFace(cell.verdict);
   chip.appendChild(el(doc, 'span', 'cx-gate__glyph', face.glyph));
-  chip.appendChild(el(doc, 'span', 'cx-gate__word', cell.label));
+  chip.appendChild(el(doc, 'span', 'cx-gate__word', gateMeaning(cell.id, cell.label)));
   if (cell.message) chip.setAttribute('title', cell.message);
   return chip;
 }
 
+/**
+ * The one legend line, at the panel HEAD rather than buried under the list.
+ *
+ * 🔴 IT IS ONE OF ONLY TWO PLACES ON THIS PANEL ALLOWED A FULL SENTENCE (the
+ * other is the factor head). The owner could not read the gates at all, and a
+ * legend that arrives after the rows it explains has already failed.
+ */
 function renderGateLegend(doc, model) {
   const box = el(doc, 'div', 'cx-legend');
   box.setAttribute('data-panel', 'contrast-legend');
@@ -131,64 +144,74 @@ function renderGateLegend(doc, model) {
     box.appendChild(el(doc, 'span', 'cx-legend__term', '관문 선언 미보고 — 서버가 관문 축을 싣지 않았습니다'));
     return box;
   }
-  box.appendChild(el(doc, 'span', 'cx-legend__term', '관문'));
   for (const gate of model.gates.gates) {
     const item = el(doc, 'span', 'cx-legend__item');
     item.setAttribute('data-legend-gate', gate.id);
-    item.appendChild(el(doc, 'span', 'cx-legend__label', gate.label));
-    if (gate.doc) item.appendChild(el(doc, 'span', 'cx-legend__doc', gate.doc));
+    item.appendChild(el(doc, 'span', 'cx-legend__label', gateMeaning(gate.id, gate.label)));
     box.appendChild(item);
   }
-  // 🔴 미판정 ≠ 불통과, said out loud. 「실재✓ · 상류✓ · 기전 —」 is the DOE
-  // candidate, and a reader who reads the dash as a failure throws it away.
   box.appendChild(el(doc, 'span', 'cx-legend__hint',
-    '— 는 «미판정»이지 불통과가 아닙니다. 실재✓ · 상류✓ · 기전 — 이 곧 DOE 후보입니다.'));
+    '✓ 둘 이상 = 원인 후보. 「물리 경로 있음」이 — 면 아직 물리 모델에 없는 요인입니다(틀렸다는 뜻이 아닙니다).'));
   return box;
 }
 
-/** One candidate. */
-function renderRow(doc, row, model) {
-  const tr = el(doc, 'tr', 'cx-row');
-  attrs(tr, {
+/**
+ * One candidate — A SENTENCE FIRST, numbers underneath as support.
+ *
+ * 🔴 THE ROW USED TO BE FIVE NUMERIC COLUMNS AND NOTHING ELSE, which is what the
+ * owner meant by 「용어들이 뭔말임?」. The finding now reads as a sentence in the
+ * reader's own language; the same numbers stay directly below it, so nothing was
+ * removed — the table stopped being the ONLY way to get the answer.
+ *
+ * A card rather than a table row because this panel is a 440px rail: five columns
+ * of numbers there either wrap into noise or shrink the type, and shrinking the
+ * type is not available (가독성 = 기능).
+ */
+function renderCandidate(doc, row, model) {
+  const box = el(doc, 'article', 'cx-cand');
+  attrs(box, {
     'data-candidate': row.key,
     'data-enrichment-state': row.enrichmentState,
     'data-gate-code': row.gateCode || null,
     'data-bias': row.biasCandidate ? '1' : null,
   });
 
-  const factor = el(doc, 'td', 'cx-cell cx-cell--factor');
-  factor.appendChild(el(doc, 'span', 'cx-factor__label', row.label));
-  const meta = el(doc, 'span', 'cx-factor__meta');
-  if (row.about) {
-    const b = el(doc, 'span', 'cx-about', row.about === 'walk' ? '걷기' : row.about);
-    b.setAttribute('data-about', row.about);
-    meta.appendChild(b);
-  }
-  if (row.evidenceCount !== null) {
-    meta.appendChild(el(doc, 'span', 'cx-evidence', `근거 ${countText(row.evidenceCount)}건`));
-  }
-  factor.appendChild(meta);
-  tr.appendChild(factor);
+  // 🔴 THE SENTENCE. One of only two places on this panel allowed to be prose.
+  const say = el(doc, 'p', 'cx-cand__say', factorSentence(row, model.subject));
+  say.setAttribute('data-sentence', '1');
+  box.appendChild(say);
 
-  const sideCell = (key, side) => {
-    const td = el(doc, 'td', `cx-cell cx-cell--${key}`);
-    td.setAttribute('data-side', key);
-    td.appendChild(el(doc, 'span', 'cx-rate', rateText(side.rate)));
-    const frac = fractionText(side);
+  const gates = el(doc, 'div', 'cx-cand__gates');
+  for (const cell of row.gates) gates.appendChild(renderGate(doc, cell));
+  if (row.biasCandidate) {
+    const flag = el(doc, 'span', 'cx-biasflag', '편향 후보');
+    flag.setAttribute('data-bias-flag', '1');
+    gates.appendChild(flag);
+  }
+  box.appendChild(gates);
+
+  // The support numbers, in noun form — no sentences below this line.
+  const num = el(doc, 'div', 'cx-cand__num');
+  const side = (key, term, s) => {
+    const cell = el(doc, 'span', `cx-num cx-num--${key}`);
+    cell.setAttribute('data-side', key);
+    cell.appendChild(el(doc, 'span', 'cx-num__term', term));
+    cell.appendChild(el(doc, 'span', 'cx-rate', rateText(s.rate)));
+    const frac = fractionText(s);
     if (frac) {
       const f = el(doc, 'span', 'cx-frac', frac);
       attrs(f, {
-        'data-numerator': side.n === null ? null : String(side.n),
-        'data-denominator': side.of === null ? null : String(side.of),
+        'data-numerator': s.n === null ? null : String(s.n),
+        'data-denominator': s.of === null ? null : String(s.of),
       });
-      td.appendChild(f);
+      cell.appendChild(f);
     }
-    tr.appendChild(td);
+    num.appendChild(cell);
   };
-  sideCell('case', row.case);
-  sideCell('control', row.control);
+  side('case', '마킹', row.case);
+  side('control', '나머지', row.control);
 
-  const lift = el(doc, 'td', 'cx-cell cx-cell--lift');
+  const lift = el(doc, 'span', 'cx-num cx-num--lift');
   const badge = el(doc, 'span', `cx-lift cx-lift--${row.enrichmentState || 'unknown'}`,
     enrichmentText(row));
   attrs(badge, {
@@ -197,22 +220,42 @@ function renderRow(doc, row, model) {
   });
   lift.appendChild(badge);
   lift.appendChild(el(doc, 'span', 'cx-lift__word', enrichmentLabel(row.enrichmentState)));
-  const ci = ciText(row);
-  // 🔴 THE INTERVAL RIDES WITH THE POINT ESTIMATE, ALWAYS. On the live fixture the
+  // 🔴 THE INTERVAL RIDES WITH THE POINT ESTIMATE, ALWAYS. On the live data the
   // top candidate has NO point estimate at all (absent from the control
   // population) and the interval is the entire finding.
+  const ci = ciText(row);
   if (ci) lift.appendChild(el(doc, 'span', 'cx-ci', ci));
-  tr.appendChild(lift);
+  num.appendChild(lift);
 
-  const gates = el(doc, 'td', 'cx-cell cx-cell--gates');
-  for (const cell of row.gates) gates.appendChild(renderGate(doc, cell));
-  if (row.biasCandidate) {
-    const flag = el(doc, 'span', 'cx-biasflag', '편향 후보');
-    flag.setAttribute('data-bias-flag', '1');
-    gates.appendChild(flag);
+  if (row.evidenceCount !== null) {
+    num.appendChild(el(doc, 'span', 'cx-evidence', `근거 ${countText(row.evidenceCount)}건`));
   }
-  tr.appendChild(gates);
-  return tr;
+  box.appendChild(num);
+  return box;
+}
+
+/**
+ * One named group, with its ONE explanatory line.
+ *
+ * 🔴 THE OWNER ASKED WHAT IS THE SAME AND WHAT IS DIFFERENT (「대체 뭐가 같다는건지
+ * 다르단건지」) and the panel was one undifferentiated ranking. These are the
+ * owner's own words for the two groups, and the third group exists so that a
+ * factor which is neither does not get quietly dropped.
+ */
+function renderGroup(doc, key, title, lead, rows, model) {
+  const sec = el(doc, 'section', `cx-group cx-group--${key}`);
+  attrs(sec, { 'data-group': key, 'data-group-count': String(rows.length) });
+  const h = el(doc, 'h4', 'cx-group__h');
+  h.appendChild(el(doc, 'span', 'cx-group__title', title));
+  h.appendChild(el(doc, 'span', 'cx-group__n', `${countText(rows.length)}건`));
+  sec.appendChild(h);
+  sec.appendChild(el(doc, 'p', 'cx-group__lead', lead));
+  if (!rows.length) {
+    sec.appendChild(el(doc, 'p', 'cx-empty', '해당 없음'));
+    return sec;
+  }
+  for (const row of rows) sec.appendChild(renderCandidate(doc, row, model));
+  return sec;
 }
 
 /**
@@ -411,6 +454,10 @@ export function renderContrast(doc, mount, model, notice, pair) {
 
   if (notice) root.appendChild(renderNotice(doc, notice));
   root.appendChild(renderScope(doc, model));
+  // 🔴 THE LEGEND SITS AT THE HEAD, ABOVE THE ROWS IT EXPLAINS. It used to be at
+  // the bottom, which is the same as not being there for a reader who did not
+  // already know the words.
+  root.appendChild(renderGateLegend(doc, model));
 
   // 🔴 A SAMPLED CONTROL GROUP, SAID BESIDE THE NUMBERS IT CHANGES.
   if (model.walk.controlSampled) {
@@ -437,29 +484,19 @@ export function renderContrast(doc, mount, model, notice, pair) {
     // The fold discipline: this box scrolls, the page does not grow.
     const listWrap = el(doc, 'div', 'cx-listwrap');
     listWrap.setAttribute('data-panel', 'contrast-list');
-    const table = el(doc, 'table', 'cx-table');
-    const thead = el(doc, 'thead');
-    const hr = el(doc, 'tr');
-    const th = (cls, text) => {
-      const t = el(doc, 'th', `cx-th ${cls}`, text);
-      t.setAttribute('scope', 'col');
-      hr.appendChild(t);
-    };
-    th('cx-th--factor', '요인');
-    th('cx-th--case', '마킹');
-    th('cx-th--control', '나머지');
-    th('cx-th--lift', '배수');
-    th('cx-th--gates', '관문');
-    thead.appendChild(hr);
-    table.appendChild(thead);
-    const tbody = el(doc, 'tbody', 'cx-tbody');
-    for (const row of model.candidates) tbody.appendChild(renderRow(doc, row, model));
-    table.appendChild(tbody);
-    listWrap.appendChild(table);
+    const split = splitCandidates(model.candidates);
+    listWrap.appendChild(renderGroup(doc, 'differs', '차이점',
+      '마킹한 쪽에만 몰린 것 — 갈라놓은 후보', split.differs, model));
+    listWrap.appendChild(renderGroup(doc, 'common', '공통점',
+      '마킹한 것들이 똑같이 지나간 것 — 함께 의심', split.common, model));
+    // Shown only when it has members: an empty third group is a heading that
+    // explains nothing, but a hidden non-empty one is a dropped row.
+    if (split.rest.length) {
+      listWrap.appendChild(renderGroup(doc, 'rest', '그 외',
+        '마킹 쪽에서 갈리지도, 전부 공유하지도 않은 것', split.rest, model));
+    }
     root.appendChild(listWrap);
   }
-
-  root.appendChild(renderGateLegend(doc, model));
   if (model.fields.length) root.appendChild(renderFields(doc, model));
 
   for (const note of model.notes) {

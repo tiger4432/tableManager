@@ -156,6 +156,36 @@ body:has(.lt-app-header) .sx-tablewrap {
   scrollbar-gutter: stable;
 }
 
+/* 🔴 조건부서식이 «호버해야만» 보이던 버그 (소유자 신고 P0-2/3, 2026-08-14).
+   원인은 클래스 미부여가 아니다 — 히트 색은 계산까지 제대로 되고 있었고,
+   그 위를 «불투명한 이미지»가 덮고 있었다. ledger.html 인라인 블록의 두 줄:
+     .sx-mrow:nth-child(2n) > td { background-image: linear-gradient(--row-stripe …) }
+     .sx-mrow:hover        > td { background-image: linear-gradient(--surface-hover …) }
+   `--row-stripe` = #f7f9fb (알파 없음, 완전 불투명)
+   `--surface-hover` = #1f27330d (알파 0d = 5%)
+   CSS 페인트 순서에서 background-image 는 background-color «위»에 그려진다.
+   그래서 짝수 행의 히트 색(.sx-cell--h1~h4 의 background-color)이 줄무늬 밑에
+   깔려 죽고, 호버하는 순간 그 불투명 줄무늬가 5% 투명 레이어로 «교체»되면서
+   밑에 있던 히트가 비쳐 나왔다 — 「호버해야 서식이 걸린다」의 정체.
+
+   ⚠️ 이 줄무늬 규칙은 전치 전에는 `.sx-row` 였다. 전치 레인이 `.sx-mrow` 로
+      이름만 바꿔 옮기면서 버그도 같이 왔다. 그래서 `.sx-row` 로 찾으면
+      「이미 없는 규칙」으로 보인다 — 실제로 도는 갈래는 `.sx-mrow` 쪽이다.
+
+   고침: 히트를 «가진» 칸에서만 줄무늬 이미지를 끈다. 색을 바꾸지 않고 덮개만
+   치우므로 히트 세 단(2.30/3.38/4.97×)이 원래 색 그대로 나온다.
+   `:hover` 규칙(0,2,1)보다 이 규칙이 명시도(0,3,2)가 높아 호버 중에도 히트가
+   흐려지지 않는다 — 호버가 색을 «바꾸던» 것도 같이 사라진다.
+
+   보존 확인 두 가지:
+   · 마킹은 `.sx-cell--marked` 의 inset box-shadow(좌우 2px 레일)라 배경을 안
+     덮는다 — 히트가 여전히 아무것에도 지지 않는다.
+   · 미검사(.sx-cell--unscanned)는 히트 클래스가 없어 이 규칙에 안 걸린다.
+     계속 «안 칠해진» 채로 남아 측정된 0 과 구별된다. */
+body:has(.lt-app-header) .sx-mrow > td:is(.sx-cell--h1, .sx-cell--h2, .sx-cell--h3, .sx-cell--h4) {
+  background-image: none;
+}
+
 /* 첫 열 고정 — 전치되면 첫 열이 «지표 이름»이다. 가로로 스크롤해 2024년치
    랏을 보는 동안 «지금 보는 행이 무슨 지표인가»가 화면에서 사라지면 표가
    읽히지 않는다. 지금(비전치) 표에서는 마킹 칸이 고정돼 마킹이 늘 손 닿는

@@ -2101,29 +2101,43 @@
     .cx-truncation--full { color: var(--text-muted); background: var(--bg-inset); font-weight: 500; }
 
     .cx-listwrap {
-      max-height: 46vh; overflow-y: auto; overflow-x: auto;
-      border: 1px solid var(--border); border-radius: 12px; background: var(--bg-surface);
+      max-height: 52vh; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: var(--bg-surface); padding: 4px 10px 10px;
     }
-    .cx-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 720px; }
-    .cx-th {
-      position: sticky; top: 0; z-index: 2;
-      background: var(--bg-header); border-bottom: 1px solid var(--border-strong);
-      padding: 8px 12px; text-align: right; font-size: 13px; font-weight: 600;
-      white-space: nowrap; color: var(--text-dim);
-    }
-    .cx-th--factor { text-align: left; }
-    .cx-row > td { border-bottom: 1px solid var(--border); padding: 9px 12px; vertical-align: top; }
-    .cx-row:hover > td { background: var(--surface-hover); }
 
-    .cx-cell { text-align: right; white-space: nowrap; }
-    .cx-cell--factor { text-align: left; white-space: normal; }
-    .cx-factor__label { display: block; font-family: var(--font-mono); font-size: 15px; font-weight: 600; word-break: break-all; }
-    .cx-factor__meta { display: flex; gap: 8px; margin-top: 3px; flex-wrap: wrap; }
+    /* ── 공통점 / 차이점 — 소유자의 낱말 그대로, 각 한 줄 설명 ── */
+    .cx-group + .cx-group { margin-top: 14px; }
+    .cx-group__h {
+      position: sticky; top: 0; z-index: 2;
+      display: flex; align-items: baseline; gap: 8px;
+      background: var(--bg-surface); padding: 8px 0 4px; margin: 0;
+    }
+    .cx-group__title { font-size: 15px; font-weight: 700; }
+    .cx-group__n { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+    .cx-group--differs .cx-group__title { color: var(--warning); }
+    .cx-group--common .cx-group__title { color: var(--success); }
+    .cx-group__lead { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+
+    /* ── 요인 카드 — 문장이 먼저, 숫자는 아래 보조 ── */
+    .cx-cand {
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px; background: var(--bg-inset);
+    }
+    /* 🔴 이 화면에서 제일 중요한 줄. 작게 쓰지 않는다 — 가독성 = 기능. */
+    .cx-cand__say { font-size: 15px; line-height: 1.6; word-break: break-word; }
+    .cx-cand__gates { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+    .cx-cand__num {
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline;
+      margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border);
+    }
+    .cx-num { display: inline-flex; align-items: baseline; gap: 5px; }
+    .cx-num__term { font-size: 13px; color: var(--text-dim); }
     .cx-about { font-size: 13px; padding: 1px 7px; border-radius: 5px; background: var(--accent-weak); color: var(--accent); }
     .cx-evidence { font-size: 13px; color: var(--text-dim); font-family: var(--font-mono); }
 
-    .cx-rate { display: block; font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
-    .cx-frac { display: block; font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+    .cx-rate { font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
+    .cx-frac { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
 
     .cx-lift {
       display: inline-block; font-family: var(--font-mono); font-size: 15px; font-weight: 700;
@@ -2133,11 +2147,10 @@
     .cx-lift--depleted { background: var(--info-weak); color: var(--info); }
     .cx-lift--flat { background: var(--bg-inset); color: var(--text-dim); }
     .cx-lift--undeterminable { background: var(--bg-inset); color: var(--info); }
-    .cx-lift__word { display: block; font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+    .cx-lift__word { font-size: 13px; color: var(--text-muted); }
     /* 구간은 점추정과 «함께» 읽힌다 — 최상위 후보엔 점추정이 아예 없다. */
-    .cx-ci { display: block; font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+    .cx-ci { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
 
-    .cx-cell--gates { text-align: left; white-space: normal; }
     .cx-gate {
       display: inline-flex; align-items: baseline; gap: 4px;
       font-size: 13px; padding: 2px 8px; border-radius: 999px; margin: 0 4px 4px 0;
@@ -2427,11 +2440,11 @@
       .lr-table { display: block; overflow-x: auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/ledger-CHAY4b7C.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/config-Dph2PIQR.js">
+  <script type="module" crossorigin src="/assets/ledger-BTiakZOg.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/config-BMD10Jt5.js">
   <link rel="modulepreload" crossorigin href="/assets/declaration-Ba1WhIrE.js">
   <link rel="modulepreload" crossorigin href="/assets/map_key-BZIPE9-P.js">
-  <link rel="stylesheet" crossorigin href="/assets/config-SSVAnefx.css">
+  <link rel="stylesheet" crossorigin href="/assets/config-DRplvttf.css">
 </head>
 
 <body>

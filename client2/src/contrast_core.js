@@ -120,11 +120,42 @@ export function contrastScope(question, rowAxis) {
   return { axis, values, ok: Boolean(axis) && values.length >= CONTRAST_MIN_MARKS };
 }
 
+/**
+ * 🔴 TEMPORARY MITIGATION — REMOVE WHEN THE ENGINE CAN DECLARE `rank: false`.
+ *
+ * Every axis declared on the server is also offered to the FACTOR engine, and
+ * that engine has no high-cardinality guard (the walk contrast has one; the axes
+ * engine does not). The moment a `wafer` axis is declared, individual wafer
+ * IDENTITIES enter the factor ranking — measured by the server lane: 8 of the top
+ * 20 rows became wafer ids, pushing 8 real factors off the page. One value per
+ * wafer, 2,600 of them, is an identifier and not a factor.
+ *
+ * The correct fix is a `rank: false` flag on the declaration, which is engine
+ * code and was rightly not built mid-demo. This list is the zero-code stand-in:
+ * the panel names the axes it wants instead of accepting everything declared.
+ *
+ * 🔴 SO THIS LIST IS A LIABILITY AND IS MEANT TO DIE. It is a copy of a server
+ * declaration living in a client, which means an axis declared tomorrow will NOT
+ * appear here and nobody will be told. Delete it — and this comment — the moment
+ * the engine can mark an axis unrankable at the source.
+ *
+ * The walk contrast (`scope=…`) is unaffected either way: marking never ranks the
+ * axis it marked with. This is only about the factor panel's own request.
+ */
+export const FACTOR_AXES = [
+  'bond_eqp', 'bond_lot', 'dt_lot', 'core_lot',
+  'b_bn', 'stack_height', 'scan_recipe', 'scan_eqp',
+];
+
 /** The request. `mode` and `finding` are parameters — there is no second route. */
 export function contrastQuery(question, rowAxis) {
   const scope = contrastScope(question, rowAxis);
   if (!scope.ok) return '';
-  const parts = ['mode=contrast', `scope=${encodeURIComponent(`${scope.axis}:${scope.values.join(',')}`)}`];
+  const parts = [
+    'mode=contrast',
+    `scope=${encodeURIComponent(`${scope.axis}:${scope.values.join(',')}`)}`,
+    `axes=${encodeURIComponent(FACTOR_AXES.join(','))}`,
+  ];
   const finding = strOrEmpty(question && question.kind);
   if (finding) parts.push(`finding=${encodeURIComponent(finding)}`);
   const win = strOrEmpty(question && question.window);
@@ -393,6 +424,188 @@ export function enrichmentText(row) {
   // is an infinite ratio, and the interval is what carries the finding.
   if (row.ciLow !== null) return '∞×';
   return '미보고';
+}
+
+// ── 자연어 ───────────────────────────────────────────────────
+//
+// 🔴 THE PANEL HAD NO DEFINITIONS ON IT. Owner, 2026-08-14: 「대체 뭐가 같다는건지
+// 다르단건지 모르겠음」, 「용어들이 뭔말임?」 — 걷기 · 근거 N건 · 실재 · 상류 ·
+// 기전 · 배수 · 구간 were all undefined on screen. Every one of them is a term this
+// project invented, and a reader who has to be told what a column means is reading
+// a table that has not answered anything yet.
+//
+// So each factor row gets ONE SENTENCE that says the finding in words, and the
+// numeric table stays underneath as support. The terse-copy rule still holds
+// everywhere else: full sentences live ONLY in the factor head and the one legend
+// line, and every other label stays a symbol or a noun form.
+
+//: Counters, by subject type. A closed wire enum with a raw fallback — same
+//: pattern as the bucket and heat label maps, not an ontology in the client.
+const UNIT_COUNTER = { Wafer: '장', Lot: '개', Frame: '장' };
+
+//: What a predicate DID, as a verb. The sentence has to read as an event, and
+//: 「processed_with·eqp = X 였다」 is the jargon the owner objected to.
+//:
+//: The particle is chosen at render time, not baked in — see `particle` below.
+const PREDICATE_VERB = {
+  processed_with: { p: 'obj', yes: '지났다', no: '지나지 않았다' },
+  observed: { p: 'subj', yes: '관측됐다', no: '관측되지 않았다' },
+  measured: { p: 'inst', yes: '측정됐다', no: '측정되지 않았다' },
+};
+const DEFAULT_VERB = { p: 'subj', yes: '해당된다', no: '해당되지 않는다' };
+
+const PARTICLES = { obj: ['을', '를'], subj: ['이', '가'], inst: ['으로', '로'] };
+
+//: Digits whose Korean reading ends in a consonant: 영 0 · 일 1 · 삼 3 · 육 6 ·
+//: 칠 7 · 팔 8. (2 이, 4 사, 5 오, 9 구 end in vowels.)
+const CONSONANT_DIGITS = '013678';
+//: Latin letters whose Korean reading ends in a consonant: 엘 · 엠 · 엔 · 알.
+const CONSONANT_LETTERS = 'LMNR';
+
+/**
+ * 🔴 THE PARTICLE FOLLOWS THE SOUND, AND THE SOUND IS THE VALUE'S.
+ *
+ * Live output before this existed: 「이 레시피 버전(6)를 지났다」 — 6 reads 육,
+ * which ends in a consonant, so it takes 을. Getting this wrong is exactly the
+ * translated-sounding Korean the copy rule forbids, and the owner asked for this
+ * panel to read as language.
+ *
+ * The particle attaches to what is SPOKEN last, which is the text inside the
+ * parentheses — not the `)` character that literally precedes it.
+ */
+function endsInConsonant(word) {
+  const s = strOrEmpty(word).trim();
+  if (!s) return false;
+  const ch = s[s.length - 1];
+  const code = ch.charCodeAt(0);
+  // Hangul syllable: the final-consonant index is the remainder mod 28.
+  if (code >= 0xAC00 && code <= 0xD7A3) return (code - 0xAC00) % 28 !== 0;
+  if (ch >= '0' && ch <= '9') return CONSONANT_DIGITS.indexOf(ch) >= 0;
+  if (/[A-Za-z]/.test(ch)) return CONSONANT_LETTERS.indexOf(ch.toUpperCase()) >= 0;
+  return false;
+}
+
+export function particle(word, kind) {
+  const pair = PARTICLES[kind] || PARTICLES.subj;
+  return endsInConsonant(word) ? pair[0] : pair[1];
+}
+
+//: What a field IS, as a noun. Unknown fields keep their wire spelling rather than
+//: vanishing — the sentence degrades to the raw field name and stays true.
+//: Filled from the fields the live walk actually returns (measured 2026-08-14:
+//: eqp · recipe.rev · recipe.id · chamber · step · method · class · basis ·
+//: finding_kind · inferred · params_actual.*). An unlisted field degrades to its
+//: wire spelling, which is honest but reads as English — so this map is worth
+//: extending when a new field starts appearing, NOT worth pre-populating with
+//: guesses about fields nobody has seen.
+const FIELD_NOUN = {
+  eqp: '이 장비',
+  chamber: '이 챔버',
+  recipe: '이 레시피',
+  'recipe.id': '이 레시피',
+  'recipe.rev': '이 레시피 버전',
+  class: '이 분류',
+  method: '이 검사 방식',
+  finding_kind: '이 불량 종류',
+  run_uid: '이 실행',
+  step: '이 공정 단계',
+  operator: '이 작업자',
+  basis: '이 근거 등급',
+  inferred: '이 추론 여부',
+};
+
+const counterOf = (subject) => UNIT_COUNTER[strOrEmpty(subject && subject.type)] || '개';
+
+function pctText(rate) {
+  if (rate === null) return '미보고';
+  const p = rate * 100;
+  return `${p >= 10 || p === 0 ? Math.round(p) : p.toFixed(1)}%`;
+}
+
+/** `4.1배 몰림(신뢰구간 3.6~4.6배)` — the multiple, in words. */
+export function liftPhrase(row) {
+  const ci = (row.ciLow !== null && row.ciHigh !== null)
+    ? `(신뢰구간 ${row.ciLow >= 100 ? Math.round(row.ciLow) : row.ciLow.toFixed(1)}~${row.ciHigh >= 100 ? Math.round(row.ciHigh) : row.ciHigh.toFixed(1)}배)`
+    : '';
+  if (row.enrichmentState === 'flat') return '몰림 없음';
+  if (row.enrichmentState === 'undeterminable') return `표본이 적어 판정 불가${ci}`;
+  // 🔴 NO POINT ESTIMATE IS NOT ZERO. `absent_from_control_population` means the
+  // factor is missing from the other side entirely — an infinite ratio, and the
+  // interval is the whole finding. Printing 「0배」 would invert it.
+  if (row.enrichment === null) {
+    if (row.enrichmentState === 'depleted') return `마킹한 쪽엔 아예 없음${ci}`;
+    return `나머지엔 아예 없음${ci}`;
+  }
+  const x = row.enrichment >= 100 ? Math.round(row.enrichment) : row.enrichment.toFixed(1);
+  if (row.enrichmentState === 'depleted') return `${x}배로 드묾${ci}`;
+  return `${x}배 몰림${ci}`;
+}
+
+/**
+ * ONE SENTENCE for one factor — the owner's own template.
+ *
+ * 「마킹한 25장 전부(100%)가 이 장비(SYN-BD-03)를 지났다 — 나머지는 859장 중
+ *   208장(24%). 4.1배 몰림(신뢰구간 3.6~4.6배)」
+ *
+ * Every number in it is the same number the table below prints; this is a
+ * rewording, never a second computation.
+ */
+export function factorSentence(row, subject) {
+  const c = counterOf(subject);
+  const v = PREDICATE_VERB[row.predicate] || DEFAULT_VERB;
+  const noun = FIELD_NOUN[row.field] || row.field || '이 요인';
+  const value = row.value ? `(${row.value})` : '';
+  // The spoken tail is the value when there is one, otherwise the noun.
+  const thing = `${noun}${value}${particle(row.value || noun, v.p)}`;
+
+  let head;
+  if (row.case.of === null || row.case.n === null) {
+    head = `마킹한 쪽 귀속 미보고 — ${thing} ${v.yes}`;
+  } else if (row.case.n === row.case.of && row.case.of > 0) {
+    head = `마킹한 ${countText(row.case.of)}${c} 전부(100%)가 ${thing} ${v.yes}`;
+  } else if (row.case.n === 0) {
+    head = `마킹한 ${countText(row.case.of)}${c} 중 어느 것도 ${thing} ${v.no}`;
+  } else {
+    head = `마킹한 ${countText(row.case.of)}${c} 중 ${countText(row.case.n)}${c}`
+      + `(${pctText(row.case.rate)})가 ${thing} ${v.yes}`;
+  }
+
+  const tail = (row.control.of === null || row.control.n === null)
+    ? '나머지 쪽 귀속 미보고'
+    : `나머지는 ${countText(row.control.of)}${c} 중 ${countText(row.control.n)}${c}(${pctText(row.control.rate)})`;
+
+  return `${head} — ${tail}. ${liftPhrase(row)}`;
+}
+
+//: 🔴 THE GATE NAMES ARE THE PROJECT'S JARGON. 실재 · 상류 · 기전 mean nothing to
+//: someone who did not design them, so the SYMBOL stays (it is the compact signal)
+//: and the LABEL becomes the meaning. Keyed on the server's gate id, falling back
+//: to the server's own label for a gate declared tomorrow.
+const GATE_MEANING = {
+  real: '우연 아님',
+  upstream: '시간상 앞섬',
+  mechanism: '물리 경로 있음',
+};
+
+export const gateMeaning = (id, served) => GATE_MEANING[strOrEmpty(id)] || strOrEmpty(served) || strOrEmpty(id);
+
+/**
+ * 공통점 / 차이점 / 그 외 — the split the owner asked for by name.
+ *
+ * 🔴 AND NOTHING IS DROPPED. A factor that is neither concentrated nor shared is
+ * still shown, in its own group, because a list that quietly keeps only the
+ * interesting rows is the fake reduction of surprise this project does not do.
+ */
+export function splitCandidates(candidates) {
+  const differs = [];
+  const common = [];
+  const rest = [];
+  for (const row of listOf(candidates)) {
+    if (row.enrichmentState === 'enriched' || row.enrichmentState === 'depleted') differs.push(row);
+    else if (row.case.of !== null && row.case.of > 0 && row.case.n === row.case.of) common.push(row);
+    else rest.push(row);
+  }
+  return { differs, common, rest };
 }
 
 export function ciText(row) {
