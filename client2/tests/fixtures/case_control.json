@@ -1,0 +1,225 @@
+{
+  "_note": "Fixture for tests/case_control_harness.mjs, in the SHAPE `GET /api/ledger/siblings` actually returns (`server/ledger_siblings.py::siblings` / `::_score`). The route landed 2026-08-14 while this console was being built; the box on :8080 still runs a process that predates it, so this is written from the source's own envelope rather than from a capture. Replace with a capture the moment the process restarts.",
+
+  "_discriminating": "Every fixture value here exists to make two candidate rules DISAGREE. The catalog's default is `scratch` and its first row is `crack`, with `void` third — so reading the catalog and reaching for the fallback constant give different answers. `void` and `crack` declare DISJOINT class sets — so a hardcoded class list passes for one kind and fails the other. The transfer walk visits DT TWICE — so any code assuming one DT hop renders a visibly shorter chain.",
+
+  "catalog": {
+    "state": "ready",
+    "default": "scratch",
+    "kinds": [
+      { "kind": "crack", "label": "크랙", "atoms": 88, "observed_by": ["sat"], "runs": 2100,
+        "classes": ["die_edge", "corner"] },
+      { "kind": "scratch", "label": "스크래치", "atoms": 213, "observed_by": ["aoi"], "runs": 2500 },
+      { "kind": "void", "label": "보이드", "atoms": 412, "observed_by": ["xray"], "runs": 2500,
+        "classes": ["interfacial", "bulk", "edge"] },
+      { "kind": "discoloration", "label": "변색", "atoms": 7, "observed_by": [], "runs": null },
+      { "kind": "tilt", "label": "틸트", "observed_by": ["sat"] }
+    ]
+  },
+
+  "catalog_no_default": {
+    "state": "ready",
+    "kinds": [
+      { "kind": "crack", "label": "크랙", "atoms": 88, "observed_by": ["sat"], "runs": 2100 },
+      { "kind": "void", "label": "보이드", "atoms": 412, "observed_by": ["xray"], "runs": 2500 }
+    ]
+  },
+
+  "catalog_absent": { "state": "absent" },
+
+  "_siblings_note": "populations.scanned 250 is the denominator the server counted; found 6 + clean_scanned 244 add to it by construction, which is exactly why the client reads `scanned` instead of adding. never_scanned 1120 is OUTSIDE it — folding it in reports 6/1370 (0.44%) where the truth is 6/250 (2.4%).",
+
+  "siblings": {
+    "state": "ready",
+    "mode": "contrast",
+    "generated_at": "2026-08-14T09:12:44.113+09:00",
+    "finding": {
+      "kind": "void", "label": "보이드", "declared": true,
+      "observed_by": ["xray"],
+      "population_unit": "package", "population_unit_label": "패키지 (base 위치)",
+      "unit_columns": ["base_wafer_id", "base_x", "base_y"],
+      "source": { "relation": "void_obs" }
+    },
+    "window": { "declared": false, "spec": null, "from": null, "to": null },
+    "denominator": {
+      "state": "ready", "basis": "inspection_run", "methods": ["xray"],
+      "reason": null, "message": null
+    },
+    "populations": {
+      "found": { "count": 6, "unit": "package" },
+      "scanned": { "count": 250, "unit": "package" },
+      "clean_scanned": { "count": 244, "unit": "package" },
+      "never_scanned": { "count": 1120, "unit": "package" },
+      "universe": { "count": 1370, "unit": "package" }
+    },
+    "axes": [
+      { "name": "class", "label": "클래스", "about": "inspection", "source": "void_obs.class" },
+      { "name": "eqp", "label": "설비", "about": "process", "source": "lot_hist.eqp" },
+      { "name": "recipe", "label": "레시피", "about": "process", "source": "lot_hist.recipe" }
+    ],
+    "factors_considered": 9,
+    "factors_truncated": false,
+    "notes": [],
+    "factors": [
+      { "axis": "class", "value": "interfacial", "label": "클래스 = interfacial", "about": "inspection",
+        "found": { "n": 5, "of": 6, "rate": 0.8333 },
+        "clean_scanned": { "n": 3, "of": 244, "rate": 0.0123 },
+        "enrichment": 67.8, "enrichment_ci": [21.4, 214.6], "rate_delta": 0.821,
+        "enrichment_state": "enriched", "reason": null,
+        "evidence_refs": [{ "relation": "void_obs", "key_column": "run_uid", "key": "XR-4471", "column": "class", "population": "found" }],
+        "evidence_ref_count": 5 },
+      { "axis": "eqp", "value": "B-3", "label": "설비 = B-3", "about": "process",
+        "found": { "n": 5, "of": 6, "rate": 0.8333 },
+        "clean_scanned": { "n": 115, "of": 244, "rate": 0.4713 },
+        "enrichment": 1.77, "enrichment_ci": [1.52, 2.06], "rate_delta": 0.362,
+        "enrichment_state": "enriched", "reason": null,
+        "evidence_refs": [{ "relation": "lot_hist", "key_column": "run_uid", "key": "884120", "column": "eqp", "population": "found" }],
+        "evidence_ref_count": 5 },
+      { "axis": "recipe", "value": "R-12@4", "label": "레시피 = R-12@4", "about": "process",
+        "found": { "n": 5, "of": 6, "rate": 0.8333 },
+        "clean_scanned": { "n": 91, "of": 244, "rate": 0.373 },
+        "enrichment": 2.23, "enrichment_ci": [1.44, 3.47], "rate_delta": 0.46,
+        "enrichment_state": "enriched", "reason": null,
+        "evidence_refs": [], "evidence_ref_count": 5 },
+      { "axis": "eqp", "value": "C-2", "label": "설비 = C-2", "about": "process",
+        "found": { "n": 4, "of": 6, "rate": 0.6667 },
+        "clean_scanned": { "n": 0, "of": 244, "rate": 0.0 },
+        "enrichment": null, "enrichment_ci": [12.9, 402.1], "rate_delta": 0.6667,
+        "enrichment_state": "enriched", "reason": "absent_from_clean_population",
+        "evidence_refs": [], "evidence_ref_count": 4 },
+      { "axis": "eqp", "value": "P-880", "label": "설비 = P-880", "about": "process",
+        "found": { "n": 6, "of": 6, "rate": 1.0 },
+        "clean_scanned": { "n": 238, "of": 244, "rate": 0.9754 },
+        "enrichment": 1.03, "enrichment_ci": [0.98, 1.07], "rate_delta": 0.0246,
+        "enrichment_state": "flat", "reason": null,
+        "evidence_refs": [], "evidence_ref_count": 6 },
+      { "axis": "eqp", "value": "W-9", "label": "설비 = W-9", "about": "process",
+        "found": { "n": 2, "of": 6, "rate": 0.3333 },
+        "clean_scanned": null,
+        "enrichment": null, "enrichment_ci": null, "rate_delta": null,
+        "enrichment_state": "undeterminable", "reason": "no_runs_for_methods",
+        "evidence_refs": [], "evidence_ref_count": 2 }
+    ],
+
+    "_trace_note": "The transfer walk is a LIST OF ANY LENGTH joined by location continuity (hop N `to` == hop N+1 `from`), never four fixed stages. This wafer visits DT TWICE — hops 3 and 4 — which is the case that a fixed-stage renderer collapses. Hop 5 deliberately does NOT meet hop 4's `to`, so the continuity break has to be visible.",
+
+    "trace": {
+      "subject": { "type": "Package", "keys": { "package": "PKG-gate3" } },
+      "terminal_reason": "[die_binding_absent] 다이 단위 바인딩 미착지 — 랏 수준에서 종료",
+      "hops": [
+        { "predicate": "transferred", "label": "본딩",
+          "from": { "kind": "package", "keys": { "package": "PKG-gate3" } },
+          "to": { "kind": "bond_run", "keys": { "run": "BOND-8841" } },
+          "quantity": { "moved": 8, "of": 12, "verb": "본딩", "unit": "die" },
+          "basis": { "kind": "measured", "name": "bond_log" },
+          "occurred_at": "2026-08-11T22:15:00+09:00",
+          "event_id": "0191f2c1-0000-7000-8000-00000000cc01" },
+        { "predicate": "transferred", "label": "DT 적재",
+          "from": { "kind": "bond_run", "keys": { "run": "BOND-8841" } },
+          "to": { "kind": "dt_slot", "keys": { "dt": "DT-D", "slot": "5" } },
+          "quantity": { "moved": 12, "of": 30, "verb": "적재", "unit": "die", "remainder": 18 },
+          "basis": { "kind": "measured", "name": "dt_load" },
+          "occurred_at": "2026-08-11T18:40:00+09:00",
+          "event_id": "0191f2c1-0000-7000-8000-00000000cc02" },
+        { "predicate": "transferred", "label": "DT→DT 재이송",
+          "from": { "kind": "dt_slot", "keys": { "dt": "DT-D", "slot": "5" } },
+          "to": { "kind": "dt_slot", "keys": { "dt": "DT-A", "slot": "2" } },
+          "quantity": { "moved": 30, "of": 44, "verb": "재이송", "unit": "die" },
+          "basis": { "kind": "convention", "name": "carrier_slot_preserving" },
+          "occurred_at": "2026-08-11T14:05:00+09:00",
+          "event_id": "0191f2c1-0000-7000-8000-00000000cc03" },
+        { "predicate": "transferred", "label": "코어 솎음",
+          "from": { "kind": "dt_slot", "keys": { "dt": "DT-A", "slot": "2" } },
+          "to": { "kind": "wafer", "keys": { "wafer": "WF.010702" } },
+          "quantity": { "moved": 24, "of": 86, "verb": "솎음", "unit": "die", "remainder": 62 },
+          "basis": { "kind": "measured", "name": "pick_log" },
+          "occurred_at": "2026-08-10T09:30:00+09:00",
+          "event_id": "0191f2c1-0000-7000-8000-00000000cc04" },
+        { "predicate": "transferred", "label": "코어 랏",
+          "from": { "kind": "wafer", "keys": { "wafer": "WF.999999" } },
+          "to": { "kind": "lot", "keys": { "lot": "CL-2601-007-A2" } },
+          "basis": { "kind": "convention", "name": "lot_level_to_wafer" },
+          "occurred_at": "2026-08-09T02:00:00+09:00",
+          "event_id": "0191f2c1-0000-7000-8000-00000000cc05" }
+      ]
+    },
+
+    "facts": [
+      {
+        "predicate": "measured",
+        "subject": { "type": "Wafer", "keys": { "wafer": "WF.010702" } },
+        "payload": {
+          "quantity": "bondline_thickness", "value": 41.7, "unit": "um",
+          "eqp": "MI-07", "method": "MI-confocal", "recipe": "MI-R3",
+          "frame": "CORE_XY", "die_x": 12, "die_y": 30, "stat": "mean", "n": 9
+        },
+        "occurred_at": "2026-08-12T04:31:00+09:00",
+        "source": { "who": "MI", "translator_ver": "mi_v0.3", "raw_ref": "run_uid=MI-88213" },
+        "basis": { "kind": "measured", "name": "mi_row" },
+        "event_id": "0191f2c1-0000-7000-8000-00000000ab01"
+      },
+      {
+        "predicate": "observed",
+        "subject": { "type": "Wafer", "keys": { "wafer": "WF.010702" } },
+        "payload": {
+          "finding_kind": "void", "class": "interfacial", "severity_word": "대형",
+          "zone": "edge", "note": "3시 방향 가장자리, 육안으로도 보임"
+        },
+        "occurred_at": "2026-08-12T07:02:10+09:00",
+        "source": { "who": "XRAY", "raw_ref": "run_uid=XR-4471" },
+        "basis": { "kind": "measured", "name": "defect_row" },
+        "event_id": "0191f2c1-0000-7000-8000-00000000ab02"
+      },
+      {
+        "predicate": "processed_with",
+        "subject": { "type": "Wafer", "keys": { "wafer": "WF.010702" } },
+        "payload": {
+          "step": "die_attach", "eqp": "B-3",
+          "recipe": { "recipe_id": "R-12", "rev": 4 },
+          "chamber": "C-2", "step_family": "packaging",
+          "params_actual": { "temp": 210, "time": 12 }
+        },
+        "occurred_at": "2026-08-11T22:15:00+09:00",
+        "source": { "who": "MES", "raw_ref": "lot_hist=884120" },
+        "basis": { "kind": "convention", "name": "lot_level_to_wafer" },
+        "event_id": "0191f2c1-0000-7000-8000-00000000ab03"
+      },
+      {
+        "predicate": "processed_with",
+        "subject": { "type": "Wafer", "keys": { "wafer": "WF.010702" } },
+        "payload": { "step": "reflow", "eqp": "RF-1" },
+        "occurred_at": "2026-08-11T23:40:00+09:00"
+      }
+    ]
+  },
+
+  "_no_denominator_note": "The OM-observation case: the kind declares no observed_by, so there is no inspection_run population. `found` is real, `clean_scanned` is not, and the contrast panel must render 「분모 없음 — 대조 불가」 WITH the server's reason as its content — not an empty panel, which reads as 'no differences found'.",
+
+  "siblings_no_denominator": {
+    "state": "ready",
+    "mode": "contrast",
+    "generated_at": "2026-08-14T09:13:02.401+09:00",
+    "finding": { "kind": "discoloration", "label": "변색", "declared": true, "observed_by": [] },
+    "denominator": {
+      "state": "absent", "basis": null, "methods": [],
+      "reason": "no_observed_by_declared",
+      "message": "분모 없음 — 대조 불가 (observed_by 선언 없음 (체계적 스캔 없는 임의 관측))"
+    },
+    "populations": { "found": { "count": 7, "unit": "package" } },
+    "axes": [],
+    "factors_considered": 1,
+    "factors_truncated": false,
+    "notes": [
+      { "note": "contrast_unavailable", "reason": "no_observed_by_declared", "message": "분모 없음 — 대조 불가" }
+    ],
+    "factors": [
+      { "axis": "eqp", "value": "B-3", "label": "설비 = B-3", "about": "process",
+        "found": { "n": 6, "of": 7, "rate": 0.8571 },
+        "clean_scanned": null,
+        "enrichment": null, "enrichment_ci": null, "rate_delta": null,
+        "enrichment_state": "undeterminable", "reason": "no_observed_by_declared",
+        "evidence_refs": [], "evidence_ref_count": 6 }
+    ],
+    "facts": []
+  }
+}

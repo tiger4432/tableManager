@@ -29,6 +29,15 @@ import {
   refusalReading,
 } from './ledger_trace_core.js';
 import { renderTrace, renderNotice, renderCoverage } from './ledger_trace_view.js';
+// The SECOND question this page answers — how often a finding kind happens, and
+// what separates the wafers it happened to from the ones it did not. Same page,
+// same tokens, same "a nothing is content" discipline; the reading is
+// `case_control_core.js` and the DOM is `case_control_view.js`, neither of which
+// touches `window`, so both are scored under bare node like the two above.
+import {
+  parseConsoleQuery, consoleQuery, kindCatalog, consoleModel,
+} from './case_control_core.js';
+import { renderConsole } from './case_control_view.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -57,6 +66,35 @@ function loadCoverage() {
       return body;
     });
   return coveragePromise;
+}
+
+// 🔴 THE KIND CATALOG — "which defect kinds can I ask about", fetched ONCE per
+// page load, exactly like coverage above.
+//
+// It is what makes the console GENERAL instead of a void screen with a
+// parameter. The picker is built from this body; the atom count in it is what
+// tells the operator which kinds actually have data, so a kind that is declared
+// and never observed reads as declared-and-empty rather than as a dead console.
+//
+// 🔴 PROPOSED SHAPE — NOT YET SERVED. As of this round no route answers it
+// (`server/ledger_trace_router.py` carries `/trace` and `/coverage` only) and
+// the finding-kind vocabulary is not in `server/ledger/vocabulary.py` either.
+// This client consumes:
+//   GET /api/ledger/kinds
+//     -> {state: "absent"|"empty"|"ready", default: "<kind>",
+//         kinds: [{kind, label?, atoms, observed_by: [method], runs}]}
+// CHANGING WHAT THIS CONSUMES IS AN ESCALATION, NOT AN EDIT — and so is the
+// server lane answering a different shape. A 404 leaves the catalog at 'unknown'
+// and the console degrades to the declared default kind, saying so out loud.
+let kindsPromise = null;
+
+function loadKinds() {
+  if (kindsPromise) return kindsPromise;
+  kindsPromise = fetch(`${API_BASE}/api/ledger/kinds`)
+    .then((res) => (res.ok ? res.json() : null))
+    .catch(() => null)
+    .then((body) => kindCatalog(body));
+  return kindsPromise;
 }
 
 // 🔴 THE SESSION GUARD. Two questions in flight resolve in whatever order the
@@ -103,6 +141,90 @@ async function runEmpty(mount) {
   renderCoverage(document, mount, body);
 }
 
+// 🔴 THE CONSOLE'S OWN SESSION GUARD. It is a SEPARATE counter from the lineage
+// one on purpose: the two questions are independent, and sharing a counter would
+// make asking a lot cancel the console's answer (and the reverse), which is a
+// screen silently discarding a question the operator did ask.
+let consoleSession = 0;
+
+/**
+ * The case-control answer for one finding kind.
+ *
+ * 🔴 PROPOSED SHAPE — NOT YET SERVED. The parallel server lane is building it.
+ * This client consumes ONE call for BOTH analysis panels (the brief's
+ * "둘째 엔드포인트 금지" — two endpoints would let 공통점 and 차이점 disagree
+ * about the same population):
+ *   GET /api/ledger/siblings?finding=<kind>&mode=contrast[&eqp&recipe&lot&from&to]
+ *     -> {finding, generated_at,
+ *         denominator: {basis: "inspection_run", methods: [...], runs: N},
+ *         population:  {found: N, clean: N, unscanned: N},
+ *         slices:   [{axis, key, found, denominator}],
+ *         shared:   [{factor, in_found, of_found, in_base, of_base}],
+ *         contrast: [{factor, found: {n, d}, clean: {n, d}}],
+ *         facts:    [<measured|observed|processed_with atom>]}
+ * Every field is optional to this client: a missing one renders as 미보고 or
+ * 분모 없음, never as 0 and never as a blank. That is what lets the console ship
+ * before the route does — and what makes a partially-answered response readable
+ * instead of a screen that looks broken.
+ */
+async function runConsole(question) {
+  const mount = byId('lt-console');
+  if (!mount) return;
+  const mine = ++consoleSession;
+
+  const catalog = await loadKinds();
+  if (mine !== consoleSession) return;
+
+  // The frame paints from the catalog alone: the picker is usable while the
+  // counts are still in flight, so the operator can change their mind without
+  // waiting for an answer they already decided against.
+  const kind = consoleModel({ catalog, body: null, question }).kind;
+  const asked = { finding: kind, slices: question.slices };
+  renderConsole(document, mount, consoleModel({ catalog, body: null, question: asked }),
+    { tone: 'busy', title: '집계 중…', detail: null });
+
+  const query = `${consoleQuery(asked)}&mode=contrast`;
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/ledger/siblings?${query}`);
+  } catch (err) {
+    if (mine !== consoleSession) return;
+    renderConsole(document, mount, consoleModel({ catalog, body: null, question: asked }),
+      { tone: 'error', title: '서버에 닿지 못했습니다', detail: String((err && err.message) || err) });
+    return;
+  }
+  if (mine !== consoleSession) return;
+
+  if (!res.ok) {
+    const refusal = await readRefusal(res);
+    if (mine !== consoleSession) return;
+    // The panels still render, every one of them saying what it does not know.
+    // The server's sentence goes out verbatim beneath — same rule as the
+    // lineage refusal, and for the same reason.
+    renderConsole(document, mount, consoleModel({ catalog, body: null, question: asked }), {
+      tone: res.status === 404 ? 'gap' : 'error',
+      title: res.status === 404
+        ? '집계 API 미배포 — 화면만 준비됨'
+        : `서버 거절 (${res.status})`,
+      detail: refusal.text,
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await res.json();
+  } catch (err) {
+    if (mine !== consoleSession) return;
+    renderConsole(document, mount, consoleModel({ catalog, body: null, question: asked }),
+      { tone: 'error', title: '응답을 읽지 못했습니다', detail: String((err && err.message) || err) });
+    return;
+  }
+  if (mine !== consoleSession) return;
+
+  renderConsole(document, mount, consoleModel({ catalog, body, question: asked }), null);
+}
+
 async function run(asked, { pushUrl = true } = {}) {
   const mount = byId('lt-result');
   if (!mount) return;
@@ -114,7 +236,14 @@ async function run(asked, { pushUrl = true } = {}) {
   if (pushUrl && window.history && window.history.replaceState) {
     // The answer becomes a link. No control needed for that, and it is how a
     // trace gets pasted into a message.
-    window.history.replaceState(null, '', `?${query}`);
+    //
+    // 🔴 AND IT CARRIES THE CONSOLE'S QUESTION ALONG. Both questions live in the
+    // same URL because they live on the same page; overwriting the query string
+    // with the lot alone would drop the finding kind the operator chose, and the
+    // very next reload would put them back on the default kind with no way to
+    // tell that their choice had been discarded.
+    const keep = consoleQuery(consoleAsked);
+    window.history.replaceState(null, '', `?${keep ? `${keep}&` : ''}${query}`);
   }
   renderNotice(document, mount, { tone: 'busy', title: '조회 중…', detail: null });
 
@@ -185,15 +314,31 @@ async function run(asked, { pushUrl = true } = {}) {
     nothingVerdict(trace, ledgerState, coverage));
 }
 
+// The console's question as the URL stated it, remembered so the lineage answer
+// can keep it in the address bar (see `run`). Set once in `boot`, because every
+// console navigation is a real link and therefore a fresh page.
+let consoleAsked = { finding: '', slices: {} };
+
 function boot() {
   initTheme();
   // In flight from the first tick. Whichever path `run` takes below, the answer
   // to "which nothing is this" is already on its way.
   loadCoverage();
+  // Same, for the second question. Started before anything is rendered so the
+  // kind picker paints from the catalog rather than from a fallback.
+  loadKinds();
 
   const input = byId('lt-query');
   const params = new URLSearchParams(window.location.search);
   const fromUrl = { lot: (params.get('lot') || '').trim(), slot: (params.get('slot') || '').trim() || null };
+
+  // 🔴 THE CONSOLE RUNS ON EVERY LOAD, WITH OR WITHOUT A LOT. It is this page's
+  // entry point (the 현황판 answers "which defect, how often, over what"), and a
+  // lot query is a drill-down BESIDE it, not instead of it. `finding` absent is
+  // not a special case: `pickKind` resolves it against the catalog, so the
+  // landing screen is whatever the vocabulary declares as its default.
+  consoleAsked = parseConsoleQuery(params);
+  runConsole(consoleAsked);
 
   if (input) {
     if (fromUrl.lot) input.value = queryText(fromUrl);

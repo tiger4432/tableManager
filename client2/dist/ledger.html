@@ -512,8 +512,596 @@
     }
 
     .lt-forward .lt-samples { margin-top: 12px; }
+
+    /* ══ 케이스-컨트롤 조사 콘솔 ═══════════════════════════════
+       🔴 새 페이지가 아니라 이 화면의 성장이다. 위 혈통 추적과 같은 토큰·같은
+          위계·같은 「없음은 내용이다」 규율을 쓴다.
+
+       🔴 폼 컨트롤이 하나도 없다. 종류 고르기·슬라이스 걸기·해제가 전부
+          앵커다 — 이 화면의 답은 원래 URL이므로. 그래서 페이지의 입력은
+          여전히 위쪽 랏 상자 하나뿐이다.
+
+       🔴 가독성 = 기능. 율은 28px, 분수는 15px 모노, 분모 설명 14px.
+          분수를 메타 크기로 내리면 「분모와 함께」가 형식만 남는다. */
+    .cc { display: flex; flex-direction: column; gap: 14px; margin-bottom: 26px; }
+
+    /* ── 종류 선택기 — 어휘에서 생성, 하드코딩 없음 ─────────── */
+    .cc-kinds {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-card);
+    }
+
+    .cc-kinds__term {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .cc-kinds__list { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .cc-kind {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 7px;
+      font-size: 15px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      text-decoration: none;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      transition: border-color .15s ease, transform .15s ease, color .15s ease;
+    }
+    .cc-kind:hover { border-color: var(--accent); color: var(--text); transform: translateY(-1px); }
+    .cc-kind:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus-ring); }
+
+    .cc-kind--active {
+      background: var(--accent-weak);
+      color: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* 커버리지 — 어느 종류에 데이터가 있는지가 선택의 근거다. */
+    .cc-kind__n { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+    .cc-kind--active .cc-kind__n { color: var(--accent); }
+
+    .cc-kind__nodenom {
+      font-size: 12px;
+      padding: 1px 6px;
+      border-radius: 5px;
+      background: var(--info-weak);
+      color: var(--info);
+      white-space: nowrap;
+    }
+
+    .cc-kinds__none { font-size: 14px; color: var(--text-dim); }
+
+    .cc-standing {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 10px 16px;
+      border-radius: 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-left: 6px solid var(--info);
+    }
+    .cc-standing__kind { font-family: var(--font-mono); font-size: 15px; }
+    .cc-standing__why { font-size: 14px; color: var(--text-muted); }
+
+    /* ── 패널 ─────────────────────────────────────────────────── */
+    .cc-panel {
+      padding: 16px 18px;
+      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-card);
+    }
+
+    .cc-panel__title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-dim);
+      letter-spacing: 0.02em;
+      margin-bottom: 12px;
+    }
+
+    .cc-empty { font-size: 14px; color: var(--text-dim); }
+
+    /* ── 율 — 분수는 절대 숨기지 않는다 ───────────────────────── */
+    .cc-rate { display: inline-flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+
+    .cc-rate__pct {
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .cc-rate--lead .cc-rate__pct { font-size: 32px; }
+
+    /* 🔴 분수는 메타가 아니다 — 율의 나머지 절반이다. */
+    .cc-rate__frac { font-family: var(--font-mono); font-size: 15px; color: var(--text-muted); }
+    .cc-rate--lead .cc-rate__frac { font-size: 18px; }
+
+    .cc-rate__why {
+      font-size: 13px;
+      font-weight: 500;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--info-weak);
+      color: var(--info);
+    }
+    .cc-rate--lead .cc-rate__why { font-size: 15px; padding: 5px 12px; }
+
+    /* ── 현황 머리 ────────────────────────────────────────────── */
+    .cc-headline {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .cc-den {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+      text-align: right;
+    }
+    .cc-den__title { font-family: var(--font-mono); font-size: 15px; color: var(--text); }
+    .cc-den__detail { font-size: 14px; color: var(--text-dim); }
+
+    /* 분모 없음은 오류색이 아니다 — 종류에 대한 사실이다. */
+    .cc-den--undeclared .cc-den__title,
+    .cc-den--unreported .cc-den__title { color: var(--info); font-weight: 600; }
+
+    /* ── 슬라이스 ─────────────────────────────────────────────── */
+    .cc-slicechips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+    .cc-slicechip {
+      font-size: 14px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 999px;
+      text-decoration: none;
+      background: var(--accent-weak);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .cc-slicechip:hover { background: var(--surface-active); }
+
+    /* 이 패널의 두 숫자는 «같은 종류가 아니다» — 위는 발생률, 아래는 난 쪽 비중.
+       분모가 다르므로 한 줄로 말해 준다. 메타로 내리지 않는다(가독성 = 기능). */
+    .cc-slices__caption {
+      margin-top: 14px;
+      font-size: 14px;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border-radius: 8px;
+      padding: 7px 12px;
+    }
+
+    .cc-slice { margin-top: 14px; }
+
+    .cc-slice__term {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+
+    .cc-slice__rows { display: flex; flex-direction: column; gap: 4px; }
+
+    .cc-slicerow {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--text);
+      background: var(--bg-inset);
+      border: 1px solid transparent;
+      transition: border-color .15s ease;
+    }
+    .cc-slicerow:hover { border-color: var(--accent); }
+    .cc-slicerow:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus-ring); }
+
+    .cc-slicerow__key { font-family: var(--font-mono); font-size: 15px; }
+
+    /* 어휘가 선언했는데 이 조회에 안 나온 클래스 — 「0건」이 아니라 「미보고」다.
+       배경 없이 물러나되 여전히 눌러서 물을 수 있는 링크로 남는다. */
+    .cc-slicerow--declared { background: transparent; border-style: dashed; border-color: var(--border); }
+    .cc-slicerow--declared .cc-slicerow__key { color: var(--text-dim); }
+
+    /* class 축은 첫 줄에 온다 — 「계면 보이드만 이 장비에 몰림」이 이 화면의 발견이라
+       그 축이 아래로 밀리면 대조가 안 보인다. 판정이 아니라 분류이므로 색은 중립. */
+    .cc-slice[data-axis="class"] .cc-slice__term { color: var(--accent); }
+
+    /* ── 3분할 모집단 ─────────────────────────────────────────── */
+    .cc-pop {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .cc-pop__cell {
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-top: 4px solid var(--border-strong);
+    }
+    .cc-pop__cell--found { border-top-color: var(--warning); }
+    .cc-pop__cell--clean { border-top-color: var(--success); }
+
+    /* 🔴 미스캔은 제3 부류다 — 점선이 「분모 밖」이라는 뜻을 색보다 먼저 준다. */
+    .cc-pop__cell--out { border-style: dashed; border-top-color: var(--info); }
+
+    .cc-pop__term { font-size: 14px; color: var(--text-dim); }
+
+    .cc-pop__n {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .cc-pop__note { font-size: 13px; color: var(--text-dim); }
+
+    .cc-pop__sum {
+      margin-top: 12px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+
+    /* ── 공통점 / 차이점 ──────────────────────────────────────── */
+    .cc-rows { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+
+    .cc-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 9px 12px;
+      border-radius: 8px;
+      background: var(--bg-inset);
+    }
+
+    .cc-row__factor { display: flex; align-items: baseline; gap: 8px; }
+    .cc-row__term { font-size: 13px; color: var(--text-dim); }
+    .cc-row__key { font-family: var(--font-mono); font-size: 16px; font-weight: 500; }
+
+    .cc-row__sides { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+
+    .cc-side { display: inline-flex; align-items: baseline; gap: 7px; }
+    .cc-side__term { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+    .cc-side[data-side="clean"] .cc-rate__pct,
+    .cc-side[data-side="base"] .cc-rate__pct { color: var(--text-muted); font-weight: 500; }
+
+    .cc-lift {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 7px;
+      background: var(--warning-weak);
+      color: var(--warning);
+      white-space: nowrap;
+    }
+
+    /* 🔴 「분모 없음 — 대조 불가」는 오류 화면이 아니라 이 패널의 내용이다.
+          위 lt-nothing과 같은 규율 — 사유가 함께 있어야 읽을 수 있다. */
+    .cc-nodenom {
+      padding: 14px 16px;
+      border-radius: 10px;
+      background: var(--info-weak);
+      border-left: 6px solid var(--info);
+    }
+    .cc-nodenom__title { font-size: 16px; font-weight: 600; color: var(--info); }
+    .cc-nodenom__why { margin-top: 6px; font-size: 14px; color: var(--text-muted); }
+
+    /* 요인이 «공정»인지 «검사»인지 — 배지이지 필터가 아니다. 이 둘을 구분 못 하면
+       스캐너 아티팩트를 공정 원인으로 보고하게 된다. */
+    .cc-about {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 5px;
+      background: var(--bg-surface);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+    .cc-about--inspection { background: var(--info-weak); color: var(--info); border-color: transparent; }
+    .cc-about--process { background: var(--accent-weak); color: var(--accent); border-color: transparent; }
+
+    .cc-lift { display: inline-flex; align-items: baseline; gap: 6px; }
+    .cc-lift--up { background: var(--warning-weak); color: var(--warning); }
+    .cc-lift--down { background: var(--info-weak); color: var(--info); }
+    .cc-lift--flat { background: var(--bg-surface); color: var(--text-dim); }
+    .cc-lift--gap { background: var(--info-weak); color: var(--info); }
+    /* 구간은 «점추정보다 먼저» 읽혀야 하는 것이 아니라 함께 읽혀야 하는 것 —
+       작지만 메타보다 크게. */
+    .cc-lift__ci { font-family: var(--font-mono); font-size: 13px; font-weight: 400; opacity: .85; }
+
+    .cc-row__why { font-family: var(--font-mono); font-size: 13px; color: var(--info); }
+
+    /* ── 이송 추적 — 길이 가변 홉 리스트 ──────────────────────── */
+    .cc-trace__subject {
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+
+    .cc-hops { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+
+    .cc-hop {
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-left: 5px solid var(--success);
+    }
+    .cc-hop--unresolvable { border-left-color: var(--info); }
+
+    /* 🔴 끊김은 잇지 않고 «보인다». 만나지 않는 두 홉을 나란히 그리면
+       기록되지 않은 연결을 화면이 주장하는 것이다. */
+    .cc-hop--break { border-left-color: var(--danger); border-style: dashed; }
+
+    .cc-hop__break {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--danger);
+      margin-bottom: 6px;
+    }
+
+    .cc-hop__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .cc-hop__ord { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+    .cc-hop__label { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+    .cc-hop__from { font-family: var(--font-mono); font-size: 14px; color: var(--text-dim); }
+
+    .cc-hop__line {
+      margin-top: 5px;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .cc-hop__arrow { font-size: 16px; color: var(--text-dim); }
+
+    .cc-hop__to {
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 500;
+      word-break: break-all;
+    }
+    .cc-hop__to--none { color: var(--text-dim); font-weight: 400; }
+
+    /* 🔴 수량 쌍이 선별을 보이게 만드는 유일한 것 — 화살표만 그리면
+       「웨이퍼가 통째로 지나갔다」와 화면상 구분되지 않는다. */
+    .cc-qty { display: inline-flex; align-items: baseline; gap: 7px; }
+    .cc-qty__verb { font-size: 13px; color: var(--text-dim); }
+
+    .cc-qty__rem {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      padding: 2px 9px;
+      border-radius: 6px;
+      background: var(--overwrite-weak);
+      color: var(--overwrite);
+      white-space: nowrap;
+    }
+
+    .cc-hop__meta {
+      margin-top: 5px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      word-break: break-all;
+    }
+
+    .cc-hop__reason {
+      margin-top: 5px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+
+    .cc-trace__foot {
+      margin-top: 10px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+
+    .cc-trace__terminal {
+      margin-top: 8px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+
+    .cc-notes { display: flex; flex-direction: column; gap: 6px; }
+
+    .cc-note {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-left: 5px solid var(--info);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+
+    /* ── 통일 팩트 칩 — 세 술어 한 렌더러 ─────────────────────── */
+    .cc-facts {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 10px;
+    }
+
+    .cc-fact {
+      padding: 11px 13px;
+      border-radius: 10px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-left: 5px solid var(--border-strong);
+    }
+    /* 색만 술어별로 다르고 «구조»는 하나다 — 세 종류를 나란히 읽는 게 목적. */
+    .cc-fact--measured { border-left-color: var(--accent); }
+    .cc-fact--observed { border-left-color: var(--warning); }
+    .cc-fact--processed_with { border-left-color: var(--success); }
+
+    .cc-fact__head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .cc-fact__term { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+    .cc-fact__name { font-family: var(--font-mono); font-size: 15px; font-weight: 500; }
+
+    .cc-fact__value {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .cc-fact__meta { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .cc-fact__q {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-muted);
+      background: var(--bg-surface);
+      border-radius: 6px;
+      padding: 2px 8px;
+    }
+
+    /* 관찰자가 «말한» 문장 — 그대로 보이고 절대 파싱하지 않는다. */
+    .cc-fact__note {
+      margin-top: 7px;
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+
+    .cc-fact__foot {
+      margin-top: 8px;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* 발화자 배지 — 숫자에 붙는 셋 중 하나. 없으면 「출처 미상」이 내용이다. */
+    .cc-speaker {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 2px 9px;
+      border-radius: 6px;
+      background: var(--accent-weak);
+      color: var(--accent);
+    }
+    .cc-speaker--unknown { background: var(--info-weak); color: var(--info); }
+
+    .cc-basis {
+      font-size: 13px;
+      font-weight: 500;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    /* 위 홉 칩과 같은 신호 — 가정은 점선, 근거는 실선. 한 화면 두 규칙 금지. */
+    .cc-basis--convention {
+      background: var(--overwrite-weak);
+      color: var(--overwrite);
+      border: 1px dashed var(--overwrite);
+    }
+
+    .cc-evidence { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+    .cc-evidence--none { color: var(--info); }
+
+    .cc-fact__at { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+
+    /* ── 콘솔의 「답이 아닌 상태」 ─────────────────────────────── */
+    .cc-notice {
+      padding: 20px 18px;
+      border-radius: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-card);
+    }
+    .cc-notice--error { border-left: 6px solid var(--danger); }
+    .cc-notice--busy { border-left: 6px solid var(--accent); }
+    .cc-notice--gap { border-left: 6px solid var(--info); }
+    .cc-notice--idle { border-left: 6px solid var(--border-strong); }
+
+    .cc-notice__title { font-size: 16px; font-weight: 600; }
+
+    .cc-notice__detail {
+      margin-top: 7px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      white-space: pre-line;
+      word-break: break-word;
+    }
+
+    .cc-generated {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      text-align: right;
+    }
+
+    /* 두 질문 사이의 경계. 새 모드가 아니라 같은 스크롤의 다음 절이다. */
+    .lt-section-rule {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 6px 0 16px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dim);
+    }
+    .lt-section-rule::after {
+      content: "";
+      flex: 1 1 auto;
+      height: 1px;
+      background: var(--border);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cc-kind:hover { transform: none; }
+    }
   </style>
-  <script type="module" crossorigin src="/assets/ledger-DQ3QZANo.js"></script>
+  <script type="module" crossorigin src="/assets/ledger-BRdh5K5p.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-C2tLWVyv.js">
   <link rel="stylesheet" crossorigin href="/assets/config-BGEGxa5k.css">
 </head>
@@ -535,6 +1123,12 @@
   </header>
 
   <main>
+    <!-- 🔴 한 페이지, 두 질문. 새 페이지도 새 모드도 아니고 같은 스크롤의 두 절이다.
+         위: 「이 불량은 얼마나 나고, 난 쪽과 안 난 쪽이 뭐가 다른가」 (케이스-컨트롤 콘솔)
+         아래: 「이 웨이퍼는 어디서 왔나」 (혈통 추적 — 원래 있던 그 화면, 그대로)
+         콘솔의 조작은 전부 앵커라 이 페이지의 폼 컨트롤은 여전히 위쪽 랏 상자 하나뿐. -->
+    <div id="lt-console"></div>
+    <div class="lt-section-rule">웨이퍼 혈통</div>
     <div id="lt-result"></div>
   </main>
 
