@@ -558,6 +558,19 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    - **신규** 설치는 `create_all`이 만들므로 이 단계가 필요 없다. `ALTER TABLE ADD COLUMN ... NULL`(기본값 없음)은 PG 11+에서 **메타데이터만** 바꾸므로 테이블 크기와 무관하게 즉시 끝나고, 인덱스는 `CONCURRENTLY`라 쓰기 락이 없다(트랜잭션 블록 밖에서 — `psql -f`).
    - 되돌리기: `server/migrations/add_ingestion_ledger_path_stat_reverse.sql`. 🔴 **되돌리기 전에 `archive_processed_files`를 `true`로 먼저 돌려놓고 워처를 재기동하라** — 컬럼 없이 「파일도 안 옮기는」 조합이 유일하게 아픈 순서다.
    - 크기·비용 실측(`assy_qa`, 300,063행): 인덱스 50MB(**행당 ~175B**, 경로 46자 기준) · 조회 `Index Scan` 8 buffers **0.096ms**. 원장은 **처리한 파일 수**만큼만 자란다(데이터 행 수와 무관).
+8-quinquies. 🔴 **동적 테이블 인덱스를 «선언»에 맞춘다 — 안 돌리면 기존 DB는 한 개도 안 바뀐다** (2026-08-14 F6, 판정 `R-2026-08-14-B`)
+   ```bash
+   conda run -n assy_manager python server/migrations/align_indexes_to_declarations.py            # 사전점검(읽기 전용, PostgreSQL이 강제)
+   conda run -n assy_manager python server/migrations/align_indexes_to_declarations.py --apply
+   ```
+   **왜 배포 순서에 들어왔는가**: 이 라운드에서 `models.init_dynamic_models`가 인덱스를 하드코딩 목록이 아니라 **`table_config.json`의 선언**에서 파생하도록 바뀌었다(`idx_<표>_declared_key`). 그런데 `create_all`은 **이미 있는 테이블에 인덱스를 추가하지도, 어떤 인덱스를 지우지도 않는다** — 그래서 빌더 변경은 **신규 테이블에만** 닿는다. 이 단계가 기존 DB의 유일한 반영 경로다. 정책·표별 근거는 [architecture/INDEX_POLICY](../architecture/INDEX_POLICY.md).
+   - **무엇을 하는가**: ① 표마다 선언 키 인덱스를 **만든다**(`map_key_columns` → 없으면 `composite_key_source` → 없으면 단일 컬럼 `business_key`) ② 스캔 0으로 실측된 `ix_<표>_created_at`과 `idx_<표>_bk`를 **은퇴시킨다**.
+   - 🔴 **순비용이 «음수»다.** `assy_qa` 실측(40,546행 INSERT, `EXPLAIN (ANALYZE, WAL)` 문장 단위): 2칸 키 형태에서 **−80.9 B/행 WAL(−10.9%)·insert 시간 −11.8%**, config에서 가장 넓은 6칸 키 형태에서도 **−28.6 B/행(−3.8%)**. 인덱스를 하나 더 얹는 값(+78.9 ~ +131.2 B/행)보다 은퇴 둘이 크다.
+   - **모든 동작이 대상 DB에서 다시 증명된다.** 한 DB의 측정은 다른 DB의 사실이 아니다 — 증명에 실패한 항목은 **이름과 이유를 찍고 거절**되며 나머지는 계속 진행한다. 실제로 `assy_manager`에서 4건, `assy_qa`에서 7건이 「이 표의 인덱스가 전부 스캔 0 = 카운터가 아무것도 관측 못 함」으로 거절됐다(신선 복원·통계 리셋 방어). **거절이 있으면 종료 코드 1이다 — 실패가 아니라 「이 박스에서는 그 항목이 아직 증명 안 됐다」는 뜻**이니 출력을 읽을 것.
+   - `CREATE`/`DROP` 모두 `CONCURRENTLY`라 라이브 스택에 쓰기 락 없이 돌지만 **트랜잭션 블록 안에서 못 돈다**(스크립트가 AUTOCOMMIT 연결을 따로 연다). 중단되면 `INVALID` 인덱스가 남고 스크립트가 그것을 **이름과 함께 실패로 보고**한다.
+   - 되돌리기: 같은 스크립트의 `--reverse --apply`. 저장된 목록이 아니라 **같은 config·같은 카탈로그에서 다시 계산**하므로 정방향과 어긋날 수 없다. `assy_qa`에서 정방향 155→145, 역방향 145→155로 **표별 개수까지 원상 복귀**를 실측했다.
+   - ⚠️ **8의 `--preflight-only`는 이것도 못 잡는다** — 드리프트 점검은 컬럼만 보고 인덱스는 보지 않는다(8-bis·8-ter와 같은 사각).
+   - ⚠️ **`server/scripts/setup_bonding_plan_indexes.py`·`setup_transfer_plan_indexes.py`가 만드는 인덱스 둘은 선언 키와 컬럼이 «같고 이름만 다르다».** 마이그레이션은 이름이 아니라 컬럼으로 멱등이라 **중복을 만들지 않고 건너뛴다**. 이름 통일은 저 스크립트들을 먼저 정리해야 한다 → [INDEX_POLICY §6.1](../architecture/INDEX_POLICY.md).
 8-quinquies. 🔴 **선언만 고친 컬럼 타입은 물리 DB에 «절대» 도달하지 않는다 — `dt_inventory.dt_lot`/`dt_slot`** (2026-08-13 `8bdc136`)
    ```bash
    psql "$DATABASE_URL" -f server/migrations/alter_dt_inventory_lot_slot_to_text.sql

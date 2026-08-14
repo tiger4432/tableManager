@@ -760,6 +760,79 @@ DYNAMIC_TABLES = sys._dynamic_tables_singleton
 from sqlalchemy.orm import registry
 mapper_registry = registry()
 
+
+# ---------------------------------------------------------------------------
+# [F6] The declared-key index rule.
+# ---------------------------------------------------------------------------
+# Every index this builder creates must be explainable from a declaration in
+# `table_config.json`. This function is where "which declaration" is answered,
+# and it is the ONLY place the answer is written down.
+#
+# WHY NOT "index map_key_columns" - the rule that looks obvious and is wrong.
+# The single most-scanned index in the system sits on `wafer_map_metadata`
+# (44,103 scans measured 2026-08-14 on `assy_manager`, one day of dev workload),
+# it covers `(target_table, map_id)`, and that table declares NO
+# `map_key_columns` at all - `(target_table, map_id)` is its
+# `composite_key_source`. A rule phrased as "index every table's
+# `map_key_columns`" would have missed the hottest read in the system. That is
+# why `composite_key_source` is a fallback tier and not an afterthought, and it
+# is why ruling R-2026-08-14-B declined to promote the naive rule to canon.
+#
+# WHY THE PRECEDENCE IS THIS PRECEDENCE. `map_key_columns` is declared as a
+# leading prefix of `composite_key_source` on all nine tables that declare both
+# (verified 2026-08-14 against the live config), so the map key is the NARROWER
+# index for the same lookups - narrower means less WAL per row, which is the
+# cost this rule is charged for. Falling back the other way would pay for
+# coordinate columns nobody filters on.
+#
+# The tier order is the same one `chain_bindings.identity_column` already
+# resolves - map key first, then `business_key` gated on there being no
+# composite key - and this is deliberately not a second spelling of that
+# judgement: this function generalises it from "the single identity column" to
+# "the declared key tuple of any arity", which is what an index needs.
+#
+# ALL OR NOTHING. If a declaration names a column the table does not have, this
+# refuses the whole index and says so. A partial tuple would be a DIFFERENT
+# index than the one declared, silently - drift wearing a declaration's clothes
+# (ruling F3).
+_KEY_TIERS = ("map_key_columns", "composite_key_source")
+
+
+def declared_key_columns(table_cfg: dict):
+    """`(columns, source_declaration)` for the index this table's config declares.
+
+    Returns `([], reason)` when the config declares no usable lookup key. The
+    reason is a sentence, because an index that cannot name its declaration must
+    not exist and an ABSENT index must be able to say why it is absent.
+    """
+    col_types = table_cfg.get("column_types") or {}
+
+    for decl in _KEY_TIERS:
+        raw = table_cfg.get(decl)
+        if not isinstance(raw, list) or not raw:
+            continue
+        cols = [str(c) for c in raw if str(c).strip()]
+        if not cols:
+            continue
+        missing = [c for c in cols if c not in col_types]
+        if missing:
+            return [], (f"'{decl}' names {missing} which are not declared columns; "
+                        f"refusing a partial index")
+        return cols, decl
+
+    # Tier 3: a table whose row identity IS one declared column. The
+    # `composite_key_source` gate is what stops a composite CELL key
+    # (`dt_cell_key`, `cell_key`) - which is not a column at all on those
+    # tables - from being mistaken for an identity column.
+    business_key = table_cfg.get("business_key")
+    if (isinstance(business_key, str) and business_key.strip()
+            and not table_cfg.get("composite_key_source")
+            and business_key in col_types):
+        return [business_key], "business_key"
+
+    return [], "no map_key_columns, no composite_key_source, and no single-column business_key"
+
+
 def init_dynamic_models(config_dict: dict):
     """
     table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
@@ -812,7 +885,19 @@ def init_dynamic_models(config_dict: dict):
             # database is unprotected until the migration is run, so the migration
             # belongs in the setup sequence and not only in the upgrade one.
             Column("business_key_val", String, index=True, nullable=True),
-            Column("created_at", DateTime(timezone=True), server_default=func.now(), index=True),
+            # [F6] NO index on `created_at`. Measured 2026-08-14 across both dev
+            # copies - 35 of the 36 (table, database) pairs read ZERO, and there is no
+            # `created_at` filter on any dynamic table anywhere in the read path (every
+            # `created_at <` hit greps to `DatabaseOutbox`). It was maintained on every
+            # insert of every table for nothing.
+            # ⚠️ The one exception, stated because a rounded-off "zero everywhere" is
+            # how a rule stops being checkable: `ix_production_plan_created_at` on
+            # `assy_qa` read 1 in ~24 h on a 10-row table. The migration REFUSES that
+            # one by itself - its gate is the live counter on the target database, not
+            # this sentence. Existing databases keep their index until
+            # `server/migrations/retire_unread_framework_indexes.py` is run - see that
+            # file for the drop and its reverse.
+            Column("created_at", DateTime(timezone=True), server_default=func.now()),
             Column("updated_at", DateTime(timezone=True), server_default=func.now(), index=True),
             Column("is_graph_synced", Boolean, default=False, nullable=True, index=True),
             Column("needs_graph_rollback", Boolean, default=False, nullable=True, index=True),
@@ -833,14 +918,45 @@ def init_dynamic_models(config_dict: dict):
             columns.append(Column(col_name, sql_type, nullable=True))
             
         # 3. 1,000만 행 스케일에 최적화된 복합 색인(Covering Index) 정의
-        idx_bk_name = f"idx_{table_name}_bk"
-        idx_updated_name = f"idx_{table_name}_updated"
-        
-        table_args = (
-            Index(idx_bk_name, "business_key_val", "row_id"),
-            Index(idx_updated_name, "updated_at", "row_id"),
-        )
-        
+        #
+        # [F6] `idx_<table>_bk` ("business_key_val, row_id") is GONE. Measured
+        # 2026-08-14: zero scans on all 18 registered tables on BOTH dev copies,
+        # because the single-column `ix_<table>_business_key_val` beside it wins every
+        # identity lookup (`crud.get_row_by_business_key`, `_get_or_create_row`,
+        # `_find_business_key_conflict` all filter `business_key_val == ?` and select
+        # the row, not just its id, so the `row_id` suffix buys no index-only scan).
+        # The drop for existing databases is structurally gated - see
+        # `retire_unread_framework_indexes.py`, which refuses unless another index
+        # leading with `business_key_val` survives on that table.
+        table_args = [
+            Index(f"idx_{table_name}_updated", "updated_at", "row_id"),
+        ]
+
+        # [F6] The declared-key index. This is the ONLY index here derived from the
+        # table's own config rather than from a fixed list, and it is the answer to
+        # "the builder attaches indexes to a hardcoded column list that never reads
+        # the declared keys". `map_key_columns` -> else `composite_key_source` ->
+        # else a single-column `business_key`; see `declared_key_columns` for why
+        # that order and why a naive `map_key_columns`-only rule is wrong.
+        #
+        # Cost, measured on `assy_qa` 2026-08-14 (40,546-row insert, 5 alternating
+        # rounds, per-statement WAL via EXPLAIN(ANALYZE, WAL) so a concurrent
+        # workload cannot contaminate it): adding this index on top of today's list
+        # costs +78.9 B/row of WAL on a 2-column key and +131.2 B/row on a 6-column
+        # one. Retiring the two unread indexes above pays for it and then some - the
+        # NET of this whole change is -80.9 B/row (-10.9% WAL, -11.8% insert time)
+        # on the `bonding_log` shape and -28.6 B/row (-3.8%, -5.7%) on the widest
+        # key in the config. Every WAL sample was byte-identical across repeats.
+        key_cols, key_source = declared_key_columns(table_cfg)
+        if key_cols:
+            table_args.append(Index(f"idx_{table_name}_declared_key", *key_cols))
+        elif "refusing" in key_source:
+            # A declaration that names a column the table does not have is a config
+            # defect, not a table without a key. Silence here would look identical to
+            # the benign case, so it is said out loud once, at build time.
+            print(f"[Schema] '{table_name}': no declared-key index - {key_source}")
+        table_args = tuple(table_args)
+
         # 4. Table 객체 동적 생성 및 metadata 등록
         table_obj = Table(
             table_name,
