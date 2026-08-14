@@ -66,14 +66,21 @@
 //                   READ, not assembled a second time by this client
 //   `found`/`scanned` per projection; cells carry `n`
 //
-// 🔴 AND ONE LEG IS STILL MISSING, NAMED RATHER THAN GUESSED. `valid_die_ref` is
-// announced as `{relation, present}` — its presence, not WHICH map. The valid-die
-// table is keyed on `(product, type)` while the frame's `map_id` is `{lot}_{slot}`
-// on `wafer_map_metadata`; the two key spaces do not meet, so this client CANNOT
-// derive which mask belongs to a projection. The panel therefore draws the defect
-// chips on the REGISTERED GRID and says 「유효 다이 마스크 미적용」 — the grid is
-// declared, the mask is absent, and neither is invented. Reported to the lead PM
-// as a one-field request: `valid_die_ref.map_id` on the projection's frame.
+// 🔴 THE MISSING LEG LANDED (2026-08-14). `valid_die_ref` used to be announced as
+// `{relation, present}` — presence, not WHICH map — so no key was resolvable and every
+// panel said 「유효 다이 마스크 미적용」. The frame now carries `valid_die_ref.map_id`
+// and the mask resolves through the key `surprise_axis.js::resolveFloors` deposits,
+// `"<relation>|<map_id>"`, which is the same key `referenceKey` below builds.
+//
+// MEASURED against the restarted server, `SYN-VOID-001` slot 07:
+//   frame.valid_die_ref  {"relation":"valid_die_ref","present":true,"map_id":"SYN-VD_G15X15"}
+//   resolved floor       141 seats · defect chips 13 · off-floor 0
+//   extent               the MASK's bounds (0..13), no longer the declared grid (0..14)
+//
+// ⚠️ AND IT DID NOT LAND EVERYWHERE, WHICH IS THE HONEST HALF. The 120 `BS-2601-*`
+// frames carry `{relation, present}` with NO `map_id`, so for them the sentence stays
+// and is TRUE. The mask-absent branch is therefore live code, not dead code kept for
+// sentiment — a panel that lost the sentence entirely would be lying about those 120.
 // ------------------------------------------------------------
 
 import { frameFromDeclaration, isFrameUsable } from './map2/declaration.js';
@@ -133,7 +140,18 @@ export const MAP_REFUSAL = {
 //: The loader repaints as each answer lands, and each repaint asks for the next
 //: batch, so the strip fills itself progressively with NO control for the reader to
 //: press. Scrolling is the only gesture, which is what the owner asked for.
-export const FRAME_STRIP = Object.freeze({ batch: 8 });
+//: 🔴 AND ABOVE THIS MANY MARKED LOTS THE MAPS ARE NOT THE ANSWER. MEASURED: a marked lot
+//: matches 25 frames, so five marked lots is 125 maps — a page that ran to 12,283px, which
+//: is the strip obeying its instruction and being wrong one level up. What the reader asked
+//: by marking five lots is 「이것들이 서로 어떻게 다른가」, and that question is the contrast
+//: panel's; the maps answer 「이 웨이퍼는 어떻게 생겼나」, which is a question about ONE.
+//:
+//: ⚠️ THIS IS ARRANGEMENT, NOT CONCEALMENT, AND THE DIFFERENCE IS A STATED COUNT.
+//: `SCENARIO_CONSOLE_BRIEF` P0 item 6: 「접힌/잘린 내용은 「아래 N건」류 존재 표시 필수 —
+//: 스크롤을 줄이는 건 배치이지 은닉이 아니다」. So the summary prints the REAL number of
+//: frames it is not drawing. A strip that quietly drew the first few would be the fake
+//: attenuation this project already has a ruling against.
+export const FRAME_STRIP = Object.freeze({ batch: 8, maxLotsForMaps: 1 });
 
 function strOrEmpty(v) {
   return v === null || v === undefined ? '' : String(v);
@@ -273,9 +291,15 @@ function refuse(axis, code, detail) {
     // `mapId` too, so an entry whose every axis refused fell all the way back to a bare
     // slot number — 「01」 — when the server had declared `BS-2601-001_01` on the very
     // frame it was refusing. MEASURED: this is not a corner case. 120 of the 3,895
-    // registered bonding frames are `auto_registered` placeholders (`phys_chip_x: 1`)
-    // that `isFrameUsable` correctly refuses, and they are exactly the 5 lots that carry
-    // no base identity — so on those lots EVERY entry took this path.
+    // registered bonding frames are refused by `isFrameUsable`, and they are exactly the
+    // 5 lots that carry no base identity — so on those lots EVERY entry took this path.
+    //
+    // ⚠️ AND THE REFUSAL IS ABOUT PROVENANCE, NOT GEOMETRY. An earlier version of this
+    // note blamed `phys_chip_x: 1`, which is WRONG and would send the next reader to
+    // check the die pitch — `isFrameUsable` never inspects the pitch at all. It requires
+    // `cols`/`rows` to carry `source === DECLARED`, and on these frames the source is
+    // `auto_registered`: the REGISTRAR wrote those dimensions, nobody declared them.
+    // Measured reason tokens: `["cols:auto_registered", "rows:auto_registered"]`.
     mapId: '',
     availableSlots: [],
     availableLots: [],
@@ -363,9 +387,10 @@ export function axisPanel(axis, floors) {
 
   // ── the floor: the valid-die mask, IF a resolver supplied one ──
   //
-  // The wire announces `valid_die_ref: {relation, present}` — presence, not WHICH
-  // map — so today this is null and the panel says so. See the header: the two key
-  // spaces do not meet, and guessing one would draw a wafer nobody registered.
+  // The frame now names WHICH map (`valid_die_ref.map_id`), so this resolves wherever a
+  // reference was registered and stays null where none was — see the header. Both
+  // outcomes are live: SYN frames seat a 141-cell mask, the 120 `BS-2601-*` frames get
+  // no key and keep the mask-absent sentence, and neither case is guessed.
   const refKey = referenceKey(fr.valid_die_ref);
   const resolved = (floors && refKey && floors[refKey]) || null;
   const floorRaw = listOf(resolved && resolved.cells).length ? resolved.cells : null;
@@ -590,9 +615,44 @@ export function waferLabelOf(panels, slot) {
  * per marked lot in one burst; each answer repaints, and each repaint asks for the
  * next batch, so no control exists for the reader to press.
  */
+/**
+ * 🔴 THE FAN-IN OF ONE WAFER — NAMED, COUNTED, AND NOT MULTIPLIED.
+ *
+ * A focused wafer's dies did not all come from one place: MEASURED, one bonded base wafer
+ * receives from 25 DT frames and 25–30 core frames. The temptation in a focus view is to
+ * render 「이 웨이퍼의 소스」 as a grid of source frames, which means pairing the lot list
+ * with the slot list — and the wire says which lots occur and which slots occur, never
+ * which PAIRS. So each source axis reports its lots BY NAME and its slot count as a
+ * separate number, and pairs are only claimed when there is exactly one lot to pair with.
+ *
+ * ⚠️ AND THE CELLS CANNOT BE SPLIT PER SOURCE FRAME. The refused projection serves this
+ * wafer's chips in that axis's coordinates, but with no per-chip frame attribution — so
+ * 「이 칩은 이 테이프에서 왔다」 is not answerable from this response and is not drawn.
+ */
+export function fanInOf(panel) {
+  const span = frameSpanOf(panel);
+  const lots = listOf(panel && panel.availableLots);
+  return {
+    axis: strOrEmpty(panel && panel.axis),
+    label: strOrEmpty(panel && panel.label),
+    lots,
+    slots: span.slots,
+    // Pairs are determined only when one lot owns every slot. With two, the real pairing
+    // is not on the wire and the product would be frames nobody registered.
+    pairable: span.enumerable,
+    chips: (panel && panel.counts && panel.counts.marked) || 0,
+    why: strOrEmpty(panel && panel.why),
+    unreachable: !!(panel && panel.unreachable),
+  };
+}
+
 export function mapSection(model, maps, floors, options) {
   const marked = listOf(model && model.marked);
   const askedSlot = strOrEmpty(model && model.question && model.question.slot);
+  // 🔴 THE FOCUS CONTRACT, READ IN ONE PLACE. `question.wafer` is the base WF id exactly as
+  // the server serves it on `projections[].frame.wafer` — never a slot number and never a
+  // frame key, because those name a seat and this names the wafer sitting in it.
+  const focusWafer = strOrEmpty(model && model.question && model.question.wafer);
   const budget = intOrNull(options && options.batch);
   let left = budget === null ? FRAME_STRIP.batch : budget;
   const wanted = [];
@@ -603,6 +663,12 @@ export function mapSection(model, maps, floors, options) {
     return true;
   };
   const at = (row, slot) => (maps && maps[`${row}|${slot}`]) || null;
+  // 🔴 CARDINALITY DECIDES WHETHER MAPS ARE THE ANSWER AT ALL. Several marked lots is a
+  // CONTRAST question, and 125 maps is not a contrast — it is a pile. Above the threshold
+  // this section draws nothing and COUNTS everything, and the count is what makes it
+  // arrangement rather than hiding. It also stops the fetch storm at its source: five
+  // marked lots asked for 5 + 5x25 = 130 responses and now ask for 5.
+  const drawMaps = marked.length <= FRAME_STRIP.maxLotsForMaps;
 
   const lots = marked.map((r) => {
     const row = strOrEmpty(r.row);
@@ -621,6 +687,23 @@ export function mapSection(model, maps, floors, options) {
         // The server's own sentence when it wrote one, so a refusal on screen is
         // the refusal that happened rather than this file's paraphrase of it.
         served: listOf(base.projections).map((p) => axisPanel(p, floors)),
+      };
+    }
+    // 🔴 COUNTED, NOT DRAWN. The frame total is the plan's own list — the same list the
+    // strip would have opened — so the number the summary prints is exactly what is being
+    // withheld, never an estimate and never a subset that got rendered anyway.
+    const frameTotal = plan.kind === 'single' ? 1 : listOf(plan.slots).length;
+    if (!drawMaps) {
+      return {
+        ...head, pending: false, plan, frames: [], suppressed: true,
+        counts: {
+          frames: frameTotal,
+          // Which axes this lot could not reach at all is cheap to say and is the one
+          // thing a reader loses by not seeing the panels.
+          unreachable: listOf(base.projections)
+            .filter((p) => strOrEmpty(p.state) === 'unreachable').length,
+          axes: listOf(base.projections).length,
+        },
       };
     }
     if (plan.kind === 'single') {
@@ -642,10 +725,51 @@ export function mapSection(model, maps, floors, options) {
         ...lotAxisMaps({ ...body, lot: r.lot, row, slot }, floors),
       };
     });
-    return { ...head, pending: false, plan, frames };
+    if (!focusWafer) return { ...head, pending: false, plan, frames };
+
+    // 🔴 FOCUS FILTERS WHAT IS DRAWN, NEVER WHAT IS FETCHED. The strip still converges on
+    // every frame, because the wafer is identified by a name the response carries and the
+    // only way to know which frame holds it is to have that frame's answer. A pasted URL
+    // therefore lands 「찾는 중」 with real progress rather than an empty panel.
+    const hit = frames.find((f) => !f.pending
+      && waferLabelOf(f.panels, f.slot).source === 'served'
+      && waferLabelOf(f.panels, f.slot).text === focusWafer);
+    const settled = frames.filter((f) => !f.pending).length;
+    return {
+      ...head, pending: false, plan,
+      frames: hit ? [hit] : [],
+      focus: {
+        wafer: focusWafer,
+        found: !!hit,
+        // 「아직 못 찾았다」 and 「이 랏에 없다」 are different answers and the reader is
+        // deciding different things on them, so the counts that separate them are carried.
+        scanning: !hit && settled < frames.length,
+        scanned: settled,
+        total: frames.length,
+        fanIn: hit ? listOf(hit.panels).filter((p) => !p.ok).map(fanInOf) : [],
+      },
+    };
   });
 
-  return { marked: marked.length, lots, wanted };
+  // The section's own totals, so the summary states a number it did not have to add up
+  // twice — and so 「아래 N건」 is the count of frames, not of lots.
+  const suppressed = lots.some((l) => l.suppressed);
+  const frameTotal = lots.reduce(
+    (n, l) => n + (l.counts ? l.counts.frames : listOf(l.frames).length), 0);
+  const stillLoading = lots.filter((l) => l.pending).length;
+  return {
+    marked: marked.length,
+    lots,
+    wanted,
+    suppressed,
+    frameTotal,
+    stillLoading,
+    // Why the maps are not drawn, in the section's own voice — a reader who marked five
+    // lots must not be left to guess whether the maps are missing or merely not the point.
+    suppressedWhy: suppressed
+      ? `랏 ${marked.length}개 · 프레임 ${frameTotal}장 — 여러 랏은 맵이 아니라 대조로 읽습니다`
+      : '',
+  };
 }
 
 /**

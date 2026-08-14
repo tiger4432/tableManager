@@ -70,7 +70,11 @@
 //                                  excluded_rows, excluded_reason},
 //                       thresholds: [{level, at, label}],
 //                       state: "ready"|"unmeasurable", reason } ],
-//          aggregates_available: [ {aggregate, label, …} ],
+//          // 🔴 `name`, NOT `aggregate` — verified against the live route
+//          // 2026-08-14. This comment said `aggregate` and that is precisely what
+//          // made the mismatch look settled for a whole round.
+//          aggregates_available: [ {name, label, value_kind, needs_denominator,
+//                                   over, doc} ],
 //          row_axis: { name, label, about, relation, column, source },
 //          axes_available: [ {name, label, about, source} ],
 //
@@ -260,21 +264,44 @@ export function lotsQuery(question) {
   return parts.join('&');
 }
 
-/** The same question with one column dropped. */
-export function withoutColumn(question, col) {
+/**
+ * The question's column list, MATERIALIZED.
+ *
+ * 🔴 THE IMPLICIT DEFAULT MUST BECOME EXPLICIT THE MOMENT THE READER EDITS IT.
+ * With a bare `?view=surprise` the question names no columns while the server
+ * resolves four, so editing produced a `cols` list derived from an EMPTY one:
+ * removing gave back the same URL (the ✕ buttons were dead, which is what the
+ * owner hit), and adding would have written a one-column URL that silently
+ * dropped the other three. Both are the same bug — an edit computed against a
+ * list the reader was never shown.
+ *
+ * So the resolved set is written into the question first, and the edit applies to
+ * that. Arriving stays convenient; editing becomes explicit. Nothing downstream
+ * needed changing — once the URL names the columns, it already worked.
+ */
+export function materializeColumns(question, resolved) {
+  const named = listOf(question && question.cols);
+  const src = named.length ? named : listOf(resolved);
+  return src
+    .map((c) => ({ kind: strOrEmpty(c && c.kind), aggregate: strOrEmpty(c && c.aggregate) }))
+    .filter((c) => c.kind && c.aggregate);
+}
+
+/** The same question with one column dropped, against the materialized set. */
+export function withoutColumn(question, col, resolved) {
   const key = colKey(col && col.kind, col && col.aggregate);
   return {
     ...question,
-    cols: listOf(question && question.cols).filter((c) => colKey(c.kind, c.aggregate) !== key),
+    cols: materializeColumns(question, resolved).filter((c) => colKey(c.kind, c.aggregate) !== key),
   };
 }
 
-/** The same question with one column appended (idempotent). */
-export function withColumn(question, col) {
+/** The same question with one column appended (idempotent), against the materialized set. */
+export function withColumn(question, col, resolved) {
   const key = colKey(col && col.kind, col && col.aggregate);
-  const cols = listOf(question && question.cols);
+  const cols = materializeColumns(question, resolved);
   if (cols.some((c) => colKey(c.kind, c.aggregate) === key)) return { ...question, cols };
-  return { ...question, cols: cols.concat([{ kind: col.kind, aggregate: col.aggregate }]) };
+  return { ...question, cols: cols.concat([{ kind: strOrEmpty(col.kind), aggregate: strOrEmpty(col.aggregate) }]) };
 }
 
 /** The same question aimed at a different slot — an anchor, like every other control. */
@@ -315,8 +342,17 @@ export function toggleMark(question, lot) {
  */
 export function metricCatalog(body, kinds) {
   const columns = listOf(body && body.columns).map(readColumn).filter((c) => c.key);
+  // 🔴 THE FIELD IS `name`. Measured live 2026-08-14: the server ships
+  // `aggregates_available: [{name, label, value_kind, needs_denominator, over,
+  // doc}, …]` — six of them — and this reader looked for `aggregate` then `id`.
+  // Neither exists, so all six parsed to an empty id, got filtered out, and the
+  // 「열 추가」 menu was silently empty while claiming to be complete. The READER
+  // moved (lead PM ruling): the response is live and other consumers may already
+  // read it, so bending the server to one reader is the larger blast radius.
+  // `aggregate`/`id` stay as fallbacks so an older server keeps working.
   const aggregates = listOf(body && body.aggregates_available).map((a) => ({
-    aggregate: strOrEmpty(a && (a.aggregate !== undefined ? a.aggregate : a.id)),
+    aggregate: strOrEmpty(a && (a.name !== undefined ? a.name
+      : (a.aggregate !== undefined ? a.aggregate : a.id))),
     label: strOrEmpty(a && a.label),
     valueKind: strOrEmpty(a && a.value_kind),
     needsDenominator: !!(a && a.needs_denominator),

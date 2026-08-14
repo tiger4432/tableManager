@@ -23,6 +23,24 @@
 
 import { layoutFor, paintSeating, createCanvasSurface } from './map2/painter.js';
 import { mapSection, frameSpanOf, waferLabelOf } from './surprise_map_core.js';
+import { surpriseQuery } from './surprise_core.js';
+
+/**
+ * 🔴 THE FOCUS LINK, BUILT WITH THE SHARED SERIALISER AND NOT A SECOND ONE.
+ *
+ * `surpriseQuery` whitelists the parameters it knows, and `wafer` is not yet among them —
+ * so the one parameter it drops is appended here, and ONLY if it did not already emit it.
+ * The day the serialiser learns `wafer` this keeps producing exactly one of it, which is
+ * the difference between a seam and a duplicate parameter that silently wins.
+ *
+ * The href is query-only — no scheme, no pathname — so the generic in-page router keeps it
+ * in the document. A focus is a question, and one question is one URL.
+ */
+function waferHref(question, wafer) {
+  const base = surpriseQuery({ ...(question || {}), wafer });
+  if (/(^|&)wafer=/.test(base)) return `?${base}`;
+  return wafer ? `?${base}&wafer=${encodeURIComponent(wafer)}` : `?${base}`;
+}
 
 const VIEW = { width: 176, height: 176, padding: 3 };
 
@@ -214,19 +232,36 @@ function renderGap(doc, panel) {
  * anchor, nothing carries an `href`, so selecting or scrolling it can never load a
  * page. The reader is not asked to choose — every matched frame is already drawn.
  */
-function renderFrame(doc, frame, compact) {
+function renderFrame(doc, frame, compact, question) {
   const box = el(doc, 'article', 'sx-frame');
   box.setAttribute('data-frame-slot', String(frame.slot));
   box.setAttribute('data-frame-key', String(frame.key));
 
   const cap = el(doc, 'header', 'sx-frame__cap');
   const label = waferLabelOf(frame.panels, frame.slot);
-  const name = el(doc, 'span', 'sx-frame__wafer', label.text);
+  // 🔴 A WAFER THAT CANNOT BE NAMED CANNOT BE FOCUSED BY NAME, AND IT SAYS SO.
+  // The focus address is the base WF id; 120 of the 2,695 frames on this box have no base
+  // identity at all (the five `BS-2601-*` lots), so there is no value a `?wafer=` could
+  // carry for them. Those entries render as text with a stated reason rather than as a
+  // link that would resolve to nothing — 「눌러도 아무 일이 없다」 is the worst answer.
+  const focusable = label.source === 'served';
+  const name = el(doc, focusable ? 'a' : 'span', 'sx-frame__wafer', label.text);
   // 🔴 WHERE THE NAME CAME FROM, ON THE ELEMENT. The owner asked for base WF id and
   // the route serves the frame key; recording which one is on screen keeps the day
   // the field lands from looking like the day the label changed for no reason.
   name.setAttribute('data-wafer-source', label.source);
+  if (focusable) {
+    name.setAttribute('href', waferHref(question, label.text));
+    name.setAttribute('data-wafer-focus', label.text);
+  } else {
+    name.setAttribute('data-focusable', '0');
+  }
   cap.appendChild(name);
+  if (!focusable) {
+    const no = el(doc, 'span', 'sx-frame__nofocus', '식별자 없음 — 초점 불가');
+    no.setAttribute('data-no-identity', '1');
+    cap.appendChild(no);
+  }
   box.appendChild(cap);
 
   if (frame.pending) {
@@ -256,6 +291,82 @@ function renderFrame(doc, frame, compact) {
 }
 
 /**
+ * One focused wafer: the heading that says what is on screen, and the FAN-IN.
+ *
+ * 🔴 THE FAN-IN IS NAMED AND COUNTED, NEVER PAIRED INTO A GRID. See `fanInOf`: the wire
+ * gives which source lots occur and which slots occur, not which pairs, so the lots are
+ * listed BY NAME and the slot count stands beside them as its own number. With two source
+ * lots nothing is enumerated at all and the row says why.
+ */
+function renderFocus(doc, lot, question) {
+  const f = lot.focus;
+  const box = el(doc, 'div', 'sx-focus');
+  box.setAttribute('data-panel', 'focus');
+  box.setAttribute('data-focus-wafer', String(f.wafer));
+  box.setAttribute('data-focus-found', f.found ? '1' : '0');
+
+  const head = el(doc, 'div', 'sx-focus__head');
+  head.appendChild(el(doc, 'span', 'sx-focus__wafer', f.wafer));
+  // Leaving focus is the same question minus one parameter — an in-page link, not a mode
+  // toggle, so the way back is the address bar's way back.
+  const back = el(doc, 'a', 'sx-focus__back', `전체 ${f.total}장 보기`);
+  back.setAttribute('href', waferHref(question, ''));
+  back.setAttribute('data-focus-clear', '1');
+  head.appendChild(back);
+  box.appendChild(head);
+
+  if (!f.found) {
+    // 🔴 「아직 못 찾았다」 AND 「이 랏에 없다」 ARE DIFFERENT ANSWERS, and the reader acts
+    // differently on them, so the progress that separates them is printed rather than one
+    // spinner standing for both.
+    const why = el(doc, 'p', 'sx-focus__why', f.scanning
+      ? `웨이퍼 찾는 중… ${f.scanned}/${f.total} 프레임 확인`
+      : `이 랏의 ${f.total}장 어디에도 ${f.wafer}가 없습니다`);
+    why.setAttribute('data-focus-state', f.scanning ? 'scanning' : 'absent');
+    box.appendChild(why);
+    return box;
+  }
+
+  const list = el(doc, 'ul', 'sx-focus__fanin');
+  list.setAttribute('data-fanin-count', String(f.fanIn.length));
+  for (const src of f.fanIn) {
+    const li = el(doc, 'li', 'sx-focus__src');
+    li.setAttribute('data-fanin-axis', src.axis);
+    li.appendChild(el(doc, 'span', 'sx-focus__srcaxis', src.label));
+    if (src.unreachable || !src.slots) {
+      li.appendChild(el(doc, 'span', 'sx-focus__srcwhy', src.why));
+      list.appendChild(li);
+      continue;
+    }
+    // Lots BY NAME — the reader can go look them up — and the slot count beside them.
+    const lots = el(doc, 'span', 'sx-focus__srclots', src.lots.join(' · '));
+    lots.setAttribute('data-fanin-lots', String(src.lots.length));
+    li.appendChild(lots);
+    const n = el(doc, 'span', 'sx-focus__srcn', `프레임 ${src.slots}장`);
+    n.setAttribute('data-fanin-slots', String(src.slots));
+    li.appendChild(n);
+    const chips = el(doc, 'span', 'sx-focus__srcchips', `칩 ${src.chips}`);
+    chips.setAttribute('data-fanin-chips', String(src.chips));
+    li.appendChild(chips);
+    if (!src.pairable) {
+      // 🔴 THE PRODUCT IS NOT COMPUTED AND THE REFUSAL SAYS SO IN THOSE WORDS.
+      const no = el(doc, 'span', 'sx-focus__srcgap',
+        `랏 ${src.lots.length}개 — 어느 랏의 어느 슬롯인지 응답에 없어 한 장씩 세지 않습니다`);
+      no.setAttribute('data-fanin-unpairable', '1');
+      li.appendChild(no);
+    }
+    list.appendChild(li);
+  }
+  box.appendChild(list);
+  // The one thing the response cannot answer, stated once rather than implied by absence.
+  const gap = el(doc, 'p', 'sx-focus__gap',
+    '칩마다 어느 소스 프레임에서 왔는지는 응답에 없습니다 — 소스별로 나눠 그리지 않습니다.');
+  gap.setAttribute('data-fanin-attribution', 'absent');
+  box.appendChild(gap);
+  return box;
+}
+
+/**
  * The whole map section — one entry per MATCHED FRAME, each its own map.
  *
  * 🔴 NOTHING MARKED IS NOT AN ERROR, it is the screen's resting state, and it
@@ -272,6 +383,54 @@ export function renderAxisMaps(doc, model, maps, floors) {
     const hint = el(doc, 'p', 'sx-empty', '표에서 랏을 ☑ 마킹하면 여기에 그 랏의 웨이퍼 맵이 한 장씩 뜹니다.');
     hint.setAttribute('data-maps-empty', '1');
     box.appendChild(hint);
+    return box;
+  }
+
+  // 🔴 SEVERAL LOTS: COUNT, DO NOT DRAW — AND SAY THE COUNT OUT LOUD. Five marked lots is
+  // 125 maps and 12,283px of page, which is the strip answering a question nobody asked:
+  // marking several lots asks how they DIFFER, and that is the contrast panel's answer.
+  // P0 item 6 governs the form — 「접힌/잘린 내용은 「아래 N건」류 존재 표시 필수 —
+  // 스크롤을 줄이는 건 배치이지 은닉이 아니다」 — so the real frame total is printed and
+  // nothing is quietly drawn instead.
+  if (section.suppressed) {
+    const sum = el(doc, 'div', 'sx-mapsum');
+    sum.setAttribute('data-map-summary', '1');
+    sum.setAttribute('data-frame-total', String(section.frameTotal));
+    sum.setAttribute('data-marked-lots', String(section.marked));
+    sum.appendChild(el(doc, 'p', 'sx-mapsum__why', section.suppressedWhy));
+
+    const list = el(doc, 'ul', 'sx-mapsum__list');
+    for (const lot of section.lots) {
+      const li = el(doc, 'li', 'sx-mapsum__row');
+      li.setAttribute('data-map-lot', lot.lot);
+      li.appendChild(el(doc, 'span', 'sx-mapsum__lot', lot.lot));
+      if (lot.pending) {
+        li.appendChild(el(doc, 'span', 'sx-mapsum__n', '세는 중…'));
+      } else {
+        const n = lot.counts ? lot.counts.frames : 0;
+        const c = el(doc, 'span', 'sx-mapsum__n', `프레임 ${n}장`);
+        c.setAttribute('data-frame-count', String(n));
+        li.appendChild(c);
+        // An axis nobody can reach is the one fact lost by not drawing the panels, so it
+        // survives into the summary rather than disappearing with them.
+        if (lot.counts && lot.counts.unreachable > 0) {
+          const u = el(doc, 'span', 'sx-mapsum__gap',
+            `연결 없는 축 ${lot.counts.unreachable}/${lot.counts.axes}`);
+          u.setAttribute('data-unreachable-axes', String(lot.counts.unreachable));
+          li.appendChild(u);
+        }
+      }
+      list.appendChild(li);
+    }
+    sum.appendChild(list);
+
+    // 🔴 THE EXISTENCE STATEMENT, IN THE FORM THE BRIEF NAMES. Not 「몇 장 더」 — the exact
+    // number of frames that exist and are not on screen, plus how to open them.
+    const more = el(doc, 'p', 'sx-mapsum__more',
+      `아래 ${section.frameTotal}건 미표시 — 랏 하나만 마킹하면 그 랏의 웨이퍼 맵이 한 장씩 펼쳐집니다.`);
+    more.setAttribute('data-hidden-frames', String(section.frameTotal));
+    sum.appendChild(more);
+    box.appendChild(sum);
     return box;
   }
 
@@ -306,12 +465,17 @@ export function renderAxisMaps(doc, model, maps, floors) {
 
     const frames = lot.frames || [];
     const ready = frames.filter((f) => !f.pending).length;
+    // 🔴 FOCUS HEADS THE ROW, because it changes what the rest of the row means: the strip
+    // below is one wafer, not the lot's 25, and the reader must know that before reading it.
+    if (lot.focus) row.appendChild(renderFocus(doc, lot, model.question));
     // 🔴 THE SERVER'S SENTENCE, ONCE, ABOVE THE STRIP. It is the refusal that
     // actually happened — this screen does not weaken it, it answers it by drawing
     // every frame it named. Paraphrasing would be asserting a fact not measured here.
     const said = frames.map((f) => (f.panels || []).find((p) => p.code === 'frame_ambiguous_across_slots'))
       .find(Boolean);
-    if (frames.length > 1) {
+    // Under focus the strip is deliberately one frame, so the 「N장 — 한 장씩」 note would
+    // be describing a strip that is not on screen.
+    if (frames.length > 1 && !lot.focus) {
       const note = el(doc, 'p', 'sx-maprow__note');
       note.setAttribute('data-frame-total', String(frames.length));
       note.setAttribute('data-frame-ready', String(ready));
@@ -331,7 +495,9 @@ export function renderAxisMaps(doc, model, maps, floors) {
     const strip = el(doc, 'div', 'sx-strip sx-maprow__panels');
     strip.setAttribute('data-panel', 'frames');
     strip.setAttribute('data-frame-count', String(frames.length));
-    for (const frame of frames) strip.appendChild(renderFrame(doc, frame, frames.length > 1));
+    for (const frame of frames) {
+      strip.appendChild(renderFrame(doc, frame, frames.length > 1, model.question));
+    }
     row.appendChild(strip);
     box.appendChild(row);
   }

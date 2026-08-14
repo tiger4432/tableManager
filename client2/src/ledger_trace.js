@@ -78,6 +78,14 @@ import { resolveFloors } from './surprise_axis.js';
 // lot — so the strip showed 25 pending entries that nothing was ever going to
 // fill. `mapWants` is the renderer's own computation, exported for the loader.
 import { mapWants } from './surprise_map_core.js';
+// 🔴 THE ANSWER TO MULTI-MARKING. Marking five lots produced 125 wafer maps and
+// 12,283px of scroll with no comparison anywhere — a pile of pictures restates
+// the question once per wafer instead of answering it. One wafer deserves a
+// picture; several lots deserve a ranked contrast. Same page, same marking
+// gesture, no second route: `mode` and `finding` are parameters on the endpoint
+// the console already talks to.
+import { contrastQuery, contrastModel } from './contrast_core.js';
+import { renderContrast } from './contrast_view.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -391,9 +399,142 @@ const axisMaps = Object.create(null);
 const axisFloors = Object.create(null);
 const axisInFlight = new Set();
 
+// 🔴 THE CONTRAST PANEL'S OWN SESSION GUARD — a SIXTH counter, same reason as the
+// five above: it is an independent question and a shared counter would let one
+// answer silently cancel another's.
+let contrastSession = 0;
+let contrastBody = null;
+let contrastNotice = null;
+//: The scope the panel has already asked about, so a repaint does not re-ask.
+//: This is also what makes `paintSurprise -> pumpContrast -> paintSurprise`
+//: terminate rather than loop.
+let contrastKey = '';
+//: What the last paint was given, so an answer arriving out of band can repaint
+//: without the caller having to hold the catalog.
+let lastCatalog = null;
+let lastSurpriseNotice = null;
+
+/**
+ * The contrast panel, built as a detached node and handed to the surprise
+ * renderer — which stays a pure function of the model it was given.
+ */
+/**
+ * The A-vs-B reading, built from the TABLE DATA ALREADY ON SCREEN.
+ *
+ * 🔴 NO SECOND FETCH FOR THIS HALF. Both lots' metrics are already in the answer
+ * the table was drawn from, so comparing them costs nothing and is instant — the
+ * owner clicks two lots and the comparison is there before any walk returns.
+ *
+ * Null unless EXACTLY two are marked: the pair framing is v1 and a three-lot
+ * selection must say so rather than quietly rendering the first two.
+ */
+function pairOf(model) {
+  if (!model || model.marked.length !== 2) return null;
+  const [a, b] = model.marked;
+  const readingOf = (row, col) => {
+    const hit = row.cells.find((c) => c.column.key === col.key);
+    return hit ? hit.reading : null;
+  };
+  return {
+    a: { lot: a.lot, row: a.row, bucket: a.bucketLabel, seq: a.seq, universe: a.universe },
+    b: { lot: b.lot, row: b.row, bucket: b.bucketLabel, seq: b.seq, universe: b.universe },
+    metrics: model.columns.map((col) => ({
+      key: col.key,
+      label: col.kindLabel,
+      agg: col.aggLabel,
+      valueKind: col.valueKind,
+      a: readingOf(a, col),
+      b: readingOf(b, col),
+    })),
+  };
+}
+
+function contrastNodeFor(model) {
+  if (!model) return null;
+  if (!contrastQuery(surpriseAsked, model.rowAxis)) return null;
+  const node = document.createElement('div');
+  renderContrast(document, node,
+    contrastModel({ body: contrastBody, question: surpriseAsked, rowAxis: model.rowAxis }),
+    contrastNotice, pairOf(model));
+  return node;
+}
+
+/**
+ * Ask for the contrast when the MARKED SET changes.
+ *
+ * 🔴 THE SCOPE IS THE MARKING. That is the whole gesture — mark, and the answer
+ * appears in the same screen. `contrastKey` is what keeps a repaint (a map
+ * landing, a column edit) from re-asking a question already answered.
+ */
+function pumpContrast(model) {
+  if (!model) return;
+  const query = contrastQuery(surpriseAsked, model.rowAxis);
+  if (!query) {
+    // Marking cleared — drop the answer rather than leaving a stale contrast
+    // under an empty selection.
+    contrastKey = '';
+    contrastBody = null;
+    contrastNotice = null;
+    return;
+  }
+  if (query === contrastKey) return;
+  contrastKey = query;
+  runContrast(query);
+}
+
+async function runContrast(query) {
+  const mine = ++contrastSession;
+  contrastBody = null;
+  contrastNotice = { tone: 'busy', title: '대조 걷는 중…', detail: null };
+  repaintFromCache();
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/ledger/siblings?${query}`);
+  } catch (err) {
+    if (mine !== contrastSession) return;
+    contrastNotice = { tone: 'error', title: '서버에 닿지 못했습니다', detail: String((err && err.message) || err) };
+    repaintFromCache();
+    return;
+  }
+  if (mine !== contrastSession) return;
+
+  if (!res.ok) {
+    const refusal = await readRefusal(res);
+    if (mine !== contrastSession) return;
+    contrastNotice = {
+      tone: res.status === 404 ? 'gap' : 'error',
+      title: res.status === 404 ? '대조 API 미배포 — 화면만 준비됨' : `서버 거절 (${res.status})`,
+      detail: refusal.text,
+    };
+    repaintFromCache();
+    return;
+  }
+
+  let body;
+  try {
+    body = await res.json();
+  } catch (err) {
+    if (mine !== contrastSession) return;
+    contrastNotice = { tone: 'error', title: '응답을 읽지 못했습니다', detail: String((err && err.message) || err) };
+    repaintFromCache();
+    return;
+  }
+  if (mine !== contrastSession) return;
+  contrastBody = body;
+  contrastNotice = null;
+  repaintFromCache();
+}
+
+function repaintFromCache() {
+  return paintSurprise(lastCatalog, lastSurpriseNotice);
+}
+
 function paintSurprise(catalog, notice) {
   const mount = byId('lt-surprise');
   if (!mount) return null;
+  lastCatalog = catalog;
+  lastSurpriseNotice = notice;
   // 🔴 THE TABLE'S HORIZONTAL SCROLL IS STATE TOO, and after the transpose it is
   // the most expensive state on the screen: lots run sideways, so a reader
   // comparing the newest ten lots is a hundred columns from the left edge. A
@@ -404,12 +545,22 @@ function paintSurprise(catalog, notice) {
   // reader's place got thrown away between the frame and the answer.
   if (before && before.scrollWidth > before.clientWidth) tableScrollLeft = before.scrollLeft;
   const model = surpriseModel({ body: surpriseBody, kinds: catalog, question: surpriseAsked });
-  renderSurprise(document, mount, model, notice, { maps: axisMaps, floors: axisFloors });
+  const contrastNode = contrastNodeFor(model);
+  // 🔴 THE RIGHT RAIL IS A DECIDED LAYOUT, NOT A FLOATING CHOICE. The body carries
+  // the flag because the rail is `position: fixed` and the page has to give back
+  // the width it occupies — a fixed panel over unshifted content would sit on top
+  // of the rightmost (newest) lots, which are exactly the ones being compared.
+  document.body.classList.toggle('has-contrast', Boolean(contrastNode));
+  renderSurprise(document, mount, model, notice, { maps: axisMaps, floors: axisFloors },
+    contrastNode);
   if (tableScrollLeft) {
     const after = mount.querySelector('.sx-tablewrap');
     if (after) after.scrollLeft = tableScrollLeft;
   }
   settleScroll();
+  // Asked AFTER the paint, and guarded by `contrastKey`, so this cannot recurse:
+  // the repaint it triggers finds the key unchanged and stops.
+  pumpContrast(model);
   return model;
 }
 

@@ -117,7 +117,10 @@ function renderColumnBar(doc, model) {
     chip.setAttribute('data-col-declared', col.declared ? '1' : '0');
     chip.appendChild(el(doc, 'span', 'sx-colchip__label', col.label));
     if (!col.declared) chip.appendChild(el(doc, 'span', 'sx-colchip__warn', '미선언'));
-    const drop = link(doc, 'sx-colchip__drop', '✕', withoutColumn(model.question, col));
+    // The resolved set goes in, so removing a column the URL never named still
+    // removes it — see `materializeColumns`.
+    const drop = link(doc, 'sx-colchip__drop', '✕',
+      withoutColumn(model.question, col, model.columns));
     drop.setAttribute('title', `${col.label} 열 제거`);
     drop.setAttribute('aria-label', `${col.label} 열 제거`);
     chip.appendChild(drop);
@@ -129,11 +132,24 @@ function renderColumnBar(doc, model) {
   add.setAttribute('data-panel', 'columns-available');
   add.appendChild(el(doc, 'span', 'sx-cols__term', '열 추가'));
   if (!model.available.length) {
-    add.appendChild(el(doc, 'span', 'sx-cols__none',
-      model.catalog.columns.length ? '선언된 지표가 전부 올라와 있습니다' : '선언된 집계 없음'));
+    // 🔴 A SCREEN MUST NOT ASSERT COMPLETENESS IT HAS NOT GOT. This said 「선언된
+    // 지표가 전부 올라와 있습니다」 while 1 of 12 addressable columns was up — the
+    // aggregate reader was dropping every declaration (see `metricCatalog`), so
+    // the bar was reporting its own blindness as a full house. It now states what
+    // it can count, and claims completeness only when the numbers agree.
+    const up = model.columns.length;
+    const space = model.catalog.items.length * model.catalog.aggregates.length;
+    let text;
+    if (!model.catalog.aggregates.length) text = '집계 선언 미보고 — 추가할 후보를 셀 수 없습니다';
+    else if (space > up) text = `추가 후보 없음 — 선언 ${space}개 중 ${up}개 올라옴 (나머지는 이 응답에 없음)`;
+    else text = `선언된 ${space}개가 전부 올라와 있습니다`;
+    const none = el(doc, 'span', 'sx-cols__none', text);
+    attrs(none, { 'data-add-space': String(space), 'data-add-up': String(up) });
+    add.appendChild(none);
   }
   for (const col of model.available) {
-    const a = link(doc, 'sx-coladd', `+ ${col.label}`, withColumn(model.question, col));
+    const a = link(doc, 'sx-coladd', `+ ${col.label}`,
+      withColumn(model.question, col, model.columns));
     a.setAttribute('data-col-add', col.key);
     add.appendChild(a);
   }
@@ -730,7 +746,7 @@ function renderHead(doc, model) {
  * is in flight", "the route is not deployed" and "here is the answer" — every
  * panel below renders in all three, saying what it does not know.
  */
-export function renderSurprise(doc, mount, model, notice, axisData) {
+export function renderSurprise(doc, mount, model, notice, axisData, contrastNode) {
   clear(mount);
   const root = el(doc, 'section', 'sx');
   root.setAttribute('data-view', 'surprise');
@@ -741,6 +757,19 @@ export function renderSurprise(doc, mount, model, notice, axisData) {
   root.appendChild(renderColumnBar(doc, model));
   root.appendChild(renderTable(doc, model));
   root.appendChild(renderLegend(doc, model));
+
+  // 🔴 THE ANSWER TO MULTI-MARKING GOES HERE — directly under the table the marks
+  // were made in, above the pictures. Marking several lots asks "what is different
+  // about these", and a pile of wafer maps restates the question once per wafer
+  // instead of answering it. The panel is built by the entry file (it is a fetch
+  // of its own) and handed in as a node, so this renderer stays a pure function of
+  // the model it was given.
+  if (contrastNode) {
+    const slot = el(doc, 'section', 'sx-section sx-section--contrast');
+    slot.setAttribute('data-panel', 'contrast-slot');
+    slot.appendChild(contrastNode);
+    root.appendChild(slot);
+  }
 
   const charts = el(doc, 'section', 'sx-section');
   charts.appendChild(el(doc, 'h3', 'sx-section__h', '같은 표를 선으로 — 생산 순서 축'));
