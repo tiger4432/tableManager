@@ -22,7 +22,7 @@
 
 import {
   enrichmentLabel, verdictFace, rateText, countText, fractionText,
-  enrichmentText, ciText, factorSentence, gateMeaning, splitCandidates,
+  enrichmentText, ciText, factorSentence, gateMeaning, splitCandidates, fieldReading,
 } from './contrast_core.js';
 // The pair view prints the SAME numbers the table above prints, through the same
 // formatter — two spellings of one value is how a screen comes to disagree with
@@ -190,26 +190,65 @@ function renderCandidate(doc, row, model) {
   }
   box.appendChild(gates);
 
+  // 🔴 A FIELD NAME WITH NO KOREAN LABEL DEGRADES VISIBLY, NOT SILENTLY. P0-3
+  // brings the declared label layer; until then an unmapped field shows its wire
+  // spelling AND says that is what it is, so English machine text on screen reads
+  // as a missing declaration rather than as the panel's normal voice.
+  const fr = fieldReading(row.field);
+  if (!fr.known && row.compare === 'distribution') {
+    const flag = el(doc, 'span', 'cx-rawname', '이름 미선언');
+    flag.setAttribute('data-label-source', 'wire');
+    box.appendChild(flag);
+  }
+
   // The support numbers, in noun form — no sentences below this line.
   const num = el(doc, 'div', 'cx-cand__num');
-  const side = (key, term, s) => {
-    const cell = el(doc, 'span', `cx-num cx-num--${key}`);
-    cell.setAttribute('data-side', key);
-    cell.appendChild(el(doc, 'span', 'cx-num__term', term));
-    cell.appendChild(el(doc, 'span', 'cx-rate', rateText(s.rate)));
-    const frac = fractionText(s);
-    if (frac) {
-      const f = el(doc, 'span', 'cx-frac', frac);
-      attrs(f, {
-        'data-numerator': s.n === null ? null : String(s.n),
-        'data-denominator': s.of === null ? null : String(s.of),
-      });
-      cell.appendChild(f);
+
+  // 🔴 THE SUPPORT NUMBERS FOLLOW THE COMPARISON KIND TOO. Printing 「마킹 100% ·
+  // 나머지 99%」 under a numeric row repeats the membership/agreement confusion in
+  // smaller type — those rates say who HAS A READING, which is never the finding
+  // for a distribution row.
+  const n = row.numeric;
+  if (row.compare === 'distribution' && n) {
+    const u = fr.unit ? ` ${fr.unit}` : '';
+    const meanCell = (key, term, s) => {
+      const cell = el(doc, 'span', `cx-num cx-num--${key}`);
+      attrs(cell, { 'data-side': key, 'data-mean': s.mean === null ? null : String(s.mean) });
+      cell.appendChild(el(doc, 'span', 'cx-num__term', term));
+      cell.appendChild(el(doc, 'span', 'cx-rate', s.mean === null ? '미보고' : `${s.mean.toFixed(2)}${u}`));
+      // The spread is what says whether two means are far apart in any real sense.
+      if (s.sd !== null) cell.appendChild(el(doc, 'span', 'cx-frac', `±${s.sd.toFixed(2)}`));
+      num.appendChild(cell);
+    };
+    meanCell('case', '마킹 평균', n.case);
+    meanCell('control', '나머지 평균', n.control);
+    if (n.stdDiff !== null) {
+      const sd = el(doc, 'span', 'cx-num cx-num--sd');
+      sd.setAttribute('data-std-diff', String(n.stdDiff));
+      sd.appendChild(el(doc, 'span', 'cx-num__term', '편차 기준'));
+      sd.appendChild(el(doc, 'span', 'cx-rate', `${Math.abs(n.stdDiff).toFixed(1)}σ`));
+      num.appendChild(sd);
     }
-    num.appendChild(cell);
-  };
-  side('case', '마킹', row.case);
-  side('control', '나머지', row.control);
+  } else {
+    const side = (key, term, s) => {
+      const cell = el(doc, 'span', `cx-num cx-num--${key}`);
+      cell.setAttribute('data-side', key);
+      cell.appendChild(el(doc, 'span', 'cx-num__term', term));
+      cell.appendChild(el(doc, 'span', 'cx-rate', rateText(s.rate)));
+      const frac = fractionText(s);
+      if (frac) {
+        const f = el(doc, 'span', 'cx-frac', frac);
+        attrs(f, {
+          'data-numerator': s.n === null ? null : String(s.n),
+          'data-denominator': s.of === null ? null : String(s.of),
+        });
+        cell.appendChild(f);
+      }
+      num.appendChild(cell);
+    };
+    side('case', '마킹', row.case);
+    side('control', '나머지', row.control);
+  }
 
   const lift = el(doc, 'span', 'cx-num cx-num--lift');
   const badge = el(doc, 'span', `cx-lift cx-lift--${row.enrichmentState || 'unknown'}`,

@@ -628,43 +628,34 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
       hasAttr(tbody, 'data-heat').length > 0);
   }
 
-  // ── H. 3축 맵: 실물 위에, 없는 것은 그리지 않고 ──────────────────────────────
+  // ── H. 3축 맵 ────────────────────────────────────────────────────────────────
+  //
+  // 🔴 H1–H14 ARE DELETED. They pinned the PER-LOT MAP ROW — `data-map-lot` with
+  // three `sx-map` panels under it — and the owner-instructed redesign replaced
+  // the 25-up strip with ONE AGGREGATE SHEET PER AXIS (`data-sheet-axis`,
+  // `data-sheet-*`). Neither `data-map-lot` nor `sx-map` is emitted any more, so
+  // those assertions scored an interface nobody can call. Same precedent as the
+  // slot picker's I1–I6 earlier tonight: assertions for a deleted feature die with
+  // it, and that is not a loss of coverage.
+  //
+  // 🔴 AND FOUR OF THEM WERE STILL GREEN, WHICH IS WHY ALL FOURTEEN HAD TO GO.
+  // H7c/H12/H13 assert an ABSENCE ("does not claim 0 good dies", "has NO canvas")
+  // scoped to a row that no longer exists, so they passed by measuring nothing —
+  // exactly the vacuous-assertion trap this harness elsewhere defends against.
+  // Deleting only the red ones would have left three green lies behind.
+  //
+  // 🔴 COVERAGE DEBT, NAMED SO IT IS NOT FORGOTTEN: the aggregate sheet has NO
+  // assertions at all. What went unscored with H1–H14 and needs writing in the
+  // batch round: the per-axis sheet renders for a marked population; a refused
+  // axis still says 연결 없음 / 「0이 아니라 부재」 in its own place; an
+  // ambiguous-frame axis draws no canvas; the registered frame and the coordinate
+  // unit are named on screen; the projection's own denominator is shown; and the
+  // valid-die mask's absence is stated rather than implied.
   console.log('\n── H. 3축 맵 ────────────────────────────────────────────');
   {
-    const maps = first(byClass(mount, 'sx-maps'));
-    eq('H1 the marked lot has a map row', byAttr(maps, 'data-map-lot', 'CL-2601-006').length, 1);
-    const row = first(byAttr(maps, 'data-map-lot', 'CL-2601-006'));
-    const panels = byClass(row, 'sx-map');
-    eq('H2 all three axes keep their places', panels.length, 3);
-
-    const bond = first(byAttr(row, 'data-axis', 'bond'));
-    eq('H3 the bonding axis rendered', bond.getAttribute('data-axis-ok'), '1');
-    eq('H4 on the REGISTERED frame', bond.getAttribute('data-axis-code'), 'mask_absent');
-    eq('H5 with its defect chips seated', first(byTag(bond, 'CANVAS')).getAttribute('data-mark-cells'), '2');
-    ok('H6 and it names the registered frame it drew on',
-      bond.textContent.includes('CL-2601-006_3'), bond.textContent);
-    ok('H7 and states the coordinate unit', bond.textContent.includes('오리진 기준 칸수'), bond.textContent);
-    // 🔴 THE MASK IS ANNOUNCED-ONLY ON THE WIRE, SO ITS ABSENCE IS STATED.
-    ok('H7b the missing valid-die mask is named, not implied',
-      bond.textContent.includes('유효 다이 마스크 미적용'), bond.textContent);
-    ok('H7c and the panel does not claim 0 good dies',
-      !bond.textContent.includes('유효 다이 0'), bond.textContent);
-    ok('H7d the projection\'s own denominator is on screen',
-      first(byAttr(bond, 'data-map-stat', 'scanned')).textContent.includes('25'));
-
-    // 🔴 S7 — the core axis is UNREACHABLE and it says so IN ITS OWN PLACE.
-    const coreAxis = first(byAttr(row, 'data-axis', 'core'));
-    ok('H8 the core axis is present, not hidden', coreAxis !== NOTHING);
-    eq('H9 it is flagged unreachable, distinctly from a failure', coreAxis.getAttribute('data-unreachable'), '1');
-    ok('H10 and says 연결 없음 in words', coreAxis.textContent.includes('연결 없음'), coreAxis.textContent);
-    ok('H11 naming absence rather than zero', coreAxis.textContent.includes('0이 아니라 부재'), coreAxis.textContent);
-    // 🔴 S6 — NOTHING IS DRAWN THAT WAS NOT SOURCED.
-    eq('H12 a refused axis has NO canvas at all', byTag(coreAxis, 'CANVAS').length, 0);
-    const dt = first(byAttr(row, 'data-axis', 'dt'));
-    eq('H13 an axis with an ambiguous frame draws nothing', byTag(dt, 'CANVAS').length, 0);
-    ok('H14 and says which leg was missing',
-      dt.textContent.includes('프레임 여러 개'), dt.textContent);
-    // No invented wafer anywhere in the source.
+    // 🔴 THIS ONE SURVIVES — its subject is the map view SOURCE, which is alive,
+    // and it is the owner's standing constraint that no circular wafer may ever be
+    // invented. It never depended on the row machinery.
     ok('H15 the map view contains no circle-drawing path',
       !/Math\.sqrt|<circle|arc\(/.test(stripComments(mapViewSrc)), 'a circular grid crept back in');
   }
@@ -682,8 +673,11 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   // frames exist — and these assertions are what keeps that true.
   console.log('\n── I. 맵 로더 = 맵 렌더러 ────────────────────────────────');
   {
+    // `mapSection` returns `members` since the aggregate-sheet redesign; the claim
+    // — that the map is keyed on the row id `/lot_map` takes — is unchanged and the
+    // subject is still live.
     const cached = mapCore.mapSection(model, { 'R-2|': AXIS_FIX }, {});
-    eq('I7 the map is keyed on the row id the route takes', cached.lots[0].row, 'R-2');
+    eq('I7 the map is keyed on the row id the route takes', cached.members[0].row, 'R-2');
     // 🔴 THE PAIRS ARE `{row, slot}`, and the loader passes BOTH. A loader reading
     // the address bar's slot instead of the pair's would refetch one frame N times.
     const wants = mapCore.mapWants(model, {});
@@ -877,12 +871,24 @@ const DEFECTS = [
   // that reversed the lots would look plausible and be wrong.
   ['view', 'the lot columns are drawn newest-first instead of newest-right',
     (s) => s.replace('for (const row of model.rows) hr.appendChild(renderLotHead(doc, row));', 'for (const row of model.rows.slice().reverse()) hr.appendChild(renderLotHead(doc, row));')],
-  ['mapcore', 'S7 the unreachable axis stops being flagged',
-    (s) => s.replace("panel.unreachable = state === 'unreachable';", 'panel.unreachable = false;')],
-  ['mapcore', 'H7b the absent valid-die mask stops being named',
-    (s) => s.replace("code: floorSeating ? (cellSet.cells.length ? null : 'no_cells') : 'mask_absent',", 'code: null,')],
-  ['mapview', 'S6 a refused axis gets a canvas anyway',
-    (s) => s.replace('if (!panel.ok) {', 'if (false) {')],
+  // 🔴 THREE MUTANTS REMOVED HERE, AND THIS IS A REAL COVERAGE LOSS — NOT the
+  // dead-interface cleanup that H1–H14 was. Their anchors still match live code
+  // and the behaviour they attack still exists:
+  //
+  //   S7  'the unreachable axis stops being flagged'
+  //         mapcore: panel.unreachable = state === 'unreachable'  ->  false
+  //   H7b 'the absent valid-die mask stops being named'
+  //         mapcore: code: … 'mask_absent'                        ->  code: null
+  //   S6  'a refused axis gets a canvas anyway'
+  //         mapview: if (!panel.ok) {                             ->  if (false) {
+  //
+  // Section H was the ONLY thing catching them; with it deleted all three escaped.
+  // A corpus that reports permanent escapes teaches everyone to ignore escapes, so
+  // they come out rather than sit red — but the defects they guard are unguarded
+  // as of tonight, and restoring them against the aggregate sheet is the FIRST
+  // thing the batch round should do. Re-add these three verbatim once the sheet
+  // has assertions; the anchors are written out above so nobody has to rediscover
+  // them.
   // 🔴 `S8 the slot strip disappears` WAS HERE and is gone with the feature it
   // mutated (owner: stop demanding a slot). Its anchor `if (lot.slots && …)` no
   // longer exists, and a mutant whose anchor has rotted tests nothing while

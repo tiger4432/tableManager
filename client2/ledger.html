@@ -2144,6 +2144,11 @@
     }
     .cx-num { display: inline-flex; align-items: baseline; gap: 5px; }
     .cx-num__term { font-size: 13px; color: var(--text-dim); }
+    /* 이름 선언이 없어 전선 철자가 그대로 나온 행 — 조용히 영어가 되지 않게. */
+    .cx-rawname {
+      display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 600;
+      padding: 1px 7px; border-radius: 5px; background: var(--info-weak); color: var(--info);
+    }
     .cx-about { font-size: 13px; padding: 1px 7px; border-radius: 5px; background: var(--accent-weak); color: var(--accent); }
     .cx-evidence { font-size: 13px; color: var(--text-dim); font-family: var(--font-mono); }
 
@@ -2499,6 +2504,11 @@
     <div id="lt-surprise" hidden></div>
     <div id="lt-lot" hidden></div>
     <div id="lt-structure" hidden></div>
+    <!-- 🔴 여정 대조(?view=journey&scope=wafer:A,B) — 웨이퍼 «2장»이 어디까지
+         같은 길이었고 어디서 갈라졌는가. 상단 내비에 링크가 «없다»: 이 화면은
+         트렌드 표에서 웨이퍼 두 장을 마킹하는 몸짓으로 들어오는 곳이라,
+         빈 스코프로 들어가는 링크는 답이 없는 주소를 하나 더 만들 뿐이다. -->
+    <div id="lt-journey" hidden></div>
     <div id="lt-console"></div>
     <div class="lt-section-rule">웨이퍼 혈통</div>
     <div id="lt-result"></div>

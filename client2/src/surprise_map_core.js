@@ -367,6 +367,9 @@ export function axisPanel(axis, floors) {
     // omitted, never `null`, so an empty string here means «not served», not «unnamed».
     panel.wafer = strOrEmpty(fr.wafer);
     panel.mapId = strOrEmpty(fr.map_id);
+    // The STORED cells ride along on the panel. The aggregate sheet overlays these raw
+    // (see `overlayOf`) and must never reach for the seated copy.
+    panel.cells = cellSet.cells;
     // Cells can be served without a frame; they are counted, never drawn.
     panel.counts.marked = cellSet.cells.length;
     panel.counts.found = intOrNull(axis.found);
@@ -466,6 +469,7 @@ export function axisPanel(axis, floors) {
       ? (markSeating ? unionBounds(floorSeating.bounds, markSeating.bounds) : floorSeating.bounds)
       : gridBounds,
     grid: { cols: declared.cols, rows: declared.rows },
+    cells: cellSet.cells,
     availableSlots: [],
     availableLots: [],
     counts: {
@@ -710,138 +714,172 @@ export function storedAxisTracks(panel) {
   return { top, left };
 }
 
+//: 🔴 CAPS ARE COUNTED IN WAFERS, NEVER IN LOTS. The retired gate counted lots, which is the
+//: unit substitution the owner ruled on: 「그냥 랏이란 단위를 잊으라 그래」. Aggregate sheets
+//: are unbounded — overlaying more wafers makes the pattern SHARPER, so capping them would
+//: throw away the only thing that shows it.
+export const MAP_CAPS = Object.freeze({ detailWafers: 10 });
+
+/**
+ * 🔴 THE OVERLAY IS IN STORED COORDINATES, AND THAT IS A MEASURED CHOICE, NOT A STYLE ONE.
+ *
+ * `computeSeating` is NOT used here, and using it would silently destroy the answer. The
+ * per-wafer maps seat their cells through the frame's rotation/side because a picture of ONE
+ * wafer should look like that wafer. The aggregate asks a different question — 「같은 스테이지
+ * 자리에서 반복되는가」 — and `bond_x`/`bond_y` are already stage coordinates, so seating them
+ * rotates each wafer into its own frame and scatters a stage-fixed pattern.
+ *
+ * MEASURED, variance-to-mean ratio over the mask (Poisson = 1.0, higher = clustered):
+ *
+ *                              SYN-VOID-101      SYN-VOID-001
+ *   raw stored coordinates       VMR 2.17          VMR 1.89
+ *   seated (rotation applied)    VMR 1.20          VMR 1.23
+ *
+ * Seating drags it to noise both times. The pattern is a stage lattice — hot cells at x=4
+ * and x=9, every 5 rows — which is a multi-site head signature, and it exists only in
+ * stored space. This is why the aggregate must not reuse the per-wafer seating path.
+ */
+export function overlayOf(panels) {
+  const heat = new Map();
+  let chips = 0;
+  for (const p of listOf(panels)) {
+    for (const c of listOf(p && p.cells)) {
+      const x = intOrNull(c.x); const y = intOrNull(c.y);
+      if (x === null || y === null) continue;
+      chips += 1;
+      const k = `${x},${y}`;
+      heat.set(k, (heat.get(k) || 0) + 1);
+    }
+  }
+  let max = 0;
+  for (const v of heat.values()) if (v > max) max = v;
+  return { heat, chips, max, cells: heat.size };
+}
+
+/**
+ * The map section for the MARKED POPULATION — and the population is exactly what was marked.
+ *
+ * 🔴 NO UNIT SUBSTITUTION. Marking is a WAFER. One marked wafer means that wafer's own
+ * bonding frame plus that wafer's chips projected onto the other axes — never its lot's
+ * other 24 frames. The previous version expanded a marked row into every slot of its lot,
+ * which is how 「마킹이 1장인데 25장 얘기가 왜 나와」 happened. MEASURED: `by=wafer` resolves
+ * the bonding frame directly (`row_axis.source = bonding_log.base_id`, bond `ready`,
+ * `map_id SYN-VOID-101_07`), so no expansion is needed to draw a wafer at all.
+ *
+ * 🔴 THE DEFAULT IS ONE AGGREGATE SHEET PER COORDINATE SYSTEM, not a list of wafers. The
+ * mechanism signatures ask about fixed-position clustering, tape stripes and edge rings, and
+ * those live ONLY in the overlay — see `overlayOf` for the measurement. N separate sheets do
+ * not show the pattern less well, they remove it.
+ */
 export function mapSection(model, maps, floors, options) {
   const marked = listOf(model && model.marked);
-  const askedSlot = strOrEmpty(model && model.question && model.question.slot);
-  // 🔴 THE FOCUS CONTRACT, READ IN ONE PLACE. `question.wafer` is the base WF id exactly as
-  // the server serves it on `projections[].frame.wafer` — never a slot number and never a
-  // frame key, because those name a seat and this names the wafer sitting in it.
   const focusWafer = strOrEmpty(model && model.question && model.question.wafer);
   const budget = intOrNull(options && options.batch);
   let left = budget === null ? FRAME_STRIP.batch : budget;
   const wanted = [];
-  const want = (row, slot) => {
-    if (left <= 0) return false;
-    left -= 1;
-    wanted.push({ row, slot });
-    return true;
-  };
-  const at = (row, slot) => (maps && maps[`${row}|${slot}`]) || null;
-  // 🔴 CARDINALITY DECIDES WHETHER MAPS ARE THE ANSWER AT ALL. Several marked lots is a
-  // CONTRAST question, and 125 maps is not a contrast — it is a pile. Above the threshold
-  // this section draws nothing and COUNTS everything, and the count is what makes it
-  // arrangement rather than hiding. It also stops the fetch storm at its source: five
-  // marked lots asked for 5 + 5x25 = 130 responses and now ask for 5.
-  const drawMaps = marked.length <= FRAME_STRIP.maxLotsForMaps;
+  const at = (row) => (maps && (maps[`${row}|`] || maps[row])) || null;
 
-  const lots = marked.map((r) => {
+  // ── the population: one request per marked wafer, no slot ───────────────────────────
+  const members = [];
+  for (const r of marked) {
     const row = strOrEmpty(r.row);
-    // 🔴 KEYED ON `row`, NOT ON THE LOT NAME — `/api/ledger/lot_map` takes the
-    // bonding row id, and one lot carries many of them.
-    const base = at(row, askedSlot) || (maps && maps[row]) || null;
-    const head = { lot: r.lot, row, slot: askedSlot };
-    if (!base) {
-      want(row, askedSlot);
-      return { ...head, pending: true, why: '축 맵 불러오는 중…', frames: [], plan: null };
+    if (!row) continue;
+    const body = at(row);
+    if (!body) {
+      if (left > 0) { left -= 1; wanted.push({ row, slot: '' }); }
+      members.push({ row, label: r.lot || row, pending: true, panels: [] });
+      continue;
     }
-    const plan = stripPlan({ ...base, row });
-    if (plan.kind === 'no_axes' || plan.kind === 'blocked') {
-      return {
-        ...head, pending: false, frames: [], plan,
-        // The server's own sentence when it wrote one, so a refusal on screen is
-        // the refusal that happened rather than this file's paraphrase of it.
-        served: listOf(base.projections).map((p) => axisPanel(p, floors)),
-      };
-    }
-    // 🔴 COUNTED, NOT DRAWN. The frame total is the plan's own list — the same list the
-    // strip would have opened — so the number the summary prints is exactly what is being
-    // withheld, never an estimate and never a subset that got rendered anyway.
-    const frameTotal = plan.kind === 'single' ? 1 : listOf(plan.slots).length;
-    if (!drawMaps) {
-      return {
-        ...head, pending: false, plan, frames: [], suppressed: true,
-        counts: {
-          frames: frameTotal,
-          // Which axes this lot could not reach at all is cheap to say and is the one
-          // thing a reader loses by not seeing the panels.
-          unreachable: listOf(base.projections)
-            .filter((p) => strOrEmpty(p.state) === 'unreachable').length,
-          axes: listOf(base.projections).length,
-        },
-      };
-    }
-    if (plan.kind === 'single') {
-      const one = lotAxisMaps({ ...base, lot: r.lot, row }, floors);
-      return {
-        ...head, pending: false, plan,
-        frames: [{ slot: strOrEmpty(base.slot), key: `${row}|${strOrEmpty(base.slot)}`,
-                   pending: false, ...one }],
-      };
-    }
-    const frames = plan.slots.map((slot) => {
-      const body = at(row, slot);
-      if (!body) {
-        const asked = want(row, slot);
-        return { slot, key: `${row}|${slot}`, pending: true, asked, panels: [] };
+    const panels = listOf(body.projections).map((p) => axisPanel(p, floors));
+    members.push({ row, label: r.lot || row, pending: false, panels, body });
+  }
+
+  const settled = members.filter((m) => !m.pending);
+  const axes = [];
+  for (const m of settled) {
+    for (const p of m.panels) if (!axes.includes(p.axis)) axes.push(p.axis);
+  }
+
+  // ── one sheet per (axis, grid) ─────────────────────────────────────────────────────
+  const sheets = [];
+  for (const axis of axes) {
+    const groups = new Map();
+    const gridless = [];
+    let unsettled = 0;
+    for (const m of settled) {
+      const p = m.panels.find((q) => q.axis === axis);
+      if (!p) continue;
+      if (!p.ok) {
+        // No declared grid on this panel. Its chips are real and counted, but there is no
+        // registered lattice to lay them on and this file does not invent one.
+        gridless.push({ wafer: m.row, panel: p });
+        continue;
       }
-      return {
-        slot, key: `${row}|${slot}`, pending: false,
-        ...lotAxisMaps({ ...body, lot: r.lot, row, slot }, floors),
-      };
-    });
-    if (!focusWafer) return { ...head, pending: false, plan, frames };
+      // 🔴 「방향 미확정」 IS AN EXCLUSION, NOT A GUESS. A frame whose declaration does not
+      // settle its own grid is dropped from the overlay and COUNTED, the same way the axis
+      // labeller prints no numbers rather than numbers it cannot stand behind.
+      if (!p.frame || !Number.isInteger(p.frame.cols) || !Number.isInteger(p.frame.rows)) {
+        unsettled += 1; continue;
+      }
+      const key = `${p.frame.cols}x${p.frame.rows}|${strOrEmpty(p.table)}`;
+      if (!groups.has(key)) {
+        groups.set(key, { key, cols: p.frame.cols, rows: p.frame.rows, panels: [], wafers: [], orient: new Set() });
+      }
+      const g = groups.get(key);
+      g.panels.push(p); g.wafers.push(m.row);
+      g.orient.add(`${p.frame.rotation}/${p.frame.side}`);
+    }
+    for (const g of groups.values()) {
+      const ov = overlayOf(g.panels);
+      sheets.push({
+        axis,
+        label: axisLabel(axis, (g.panels[0] || {}).label),
+        gridKey: g.key,
+        cols: g.cols,
+        rows: g.rows,
+        wafers: g.wafers,
+        // 🔴 THE ORIENTATION MIX IS REPORTED, NOT SILENTLY MERGED. See `overlayOf`: mixing
+        // them is what SHOWS the stage pattern, because these are stage coordinates — but
+        // the reader is told the mix exists rather than having to assume it away.
+        orientations: [...g.orient],
+        heat: ov.heat, chips: ov.chips, max: ov.max, cellCount: ov.cells,
+        unsettled,
+        ok: true,
+      });
+    }
+    if (!groups.size && gridless.length) {
+      const ov = overlayOf(gridless.map((x) => x.panel));
+      const first = gridless[0].panel;
+      sheets.push({
+        axis, label: axisLabel(axis, first.label), ok: false,
+        code: first.code || 'no_registered_frame',
+        why: first.why,
+        wafers: gridless.map((x) => x.wafer),
+        chips: ov.chips, cellCount: ov.cells, max: ov.max,
+        spans: frameSpanOf(first),
+        unsettled,
+      });
+    }
+  }
 
-    // 🔴 FOCUS FILTERS WHAT IS DRAWN, NEVER WHAT IS FETCHED. The strip still converges on
-    // every frame, because the wafer is identified by a name the response carries and the
-    // only way to know which frame holds it is to have that frame's answer. A pasted URL
-    // therefore lands 「찾는 중」 with real progress rather than an empty panel.
-    const hit = frames.find((f) => !f.pending
-      && waferLabelOf(f.panels, f.slot).source === 'served'
-      && waferLabelOf(f.panels, f.slot).text === focusWafer);
-    const settled = frames.filter((f) => !f.pending).length;
-    return {
-      ...head, pending: false, plan,
-      frames: hit ? [hit] : [],
-      focus: {
-        wafer: focusWafer,
-        found: !!hit,
-        // 「아직 못 찾았다」 and 「이 랏에 없다」 are different answers and the reader is
-        // deciding different things on them, so the counts that separate them are carried.
-        scanning: !hit && settled < frames.length,
-        scanned: settled,
-        total: frames.length,
-        fanIn: hit ? listOf(hit.panels).filter((p) => !p.ok).map(fanInOf) : [],
-      },
-    };
-  });
-
-  // The section's own totals, so the summary states a number it did not have to add up
-  // twice — and so 「아래 N건」 is the count of frames, not of lots.
-  const suppressed = lots.some((l) => l.suppressed);
-  const frameTotal = lots.reduce(
-    (n, l) => n + (l.counts ? l.counts.frames : listOf(l.frames).length), 0);
-  const stillLoading = lots.filter((l) => l.pending).length;
+  const focus = focusWafer ? settled.find((m) => m.row === focusWafer) : null;
   return {
     marked: marked.length,
-    lots,
+    wafers: members.length,
+    members,
+    sheets,
     wanted,
-    suppressed,
-    frameTotal,
-    stillLoading,
-    // Why the maps are not drawn, in the section's own voice — a reader who marked five
-    // lots must not be left to guess whether the maps are missing or merely not the point.
-    suppressedWhy: suppressed
-      ? `랏 ${marked.length}개 · 프레임 ${frameTotal}장 — 여러 랏은 맵이 아니라 대조로 읽습니다`
-      : '',
+    pending: members.filter((m) => m.pending).length,
+    focusWafer,
+    focus: focus || null,
+    detailCap: MAP_CAPS.detailWafers,
   };
 }
 
 /**
  * The `{row, slot}` pairs the loader should fetch next — the same computation the
- * render does, exported so the loader does not have to reimplement the strip's idea
- * of which frames exist. One function decides, both callers read it.
+ * render does, exported so the loader does not have to reimplement it.
  */
 export function mapWants(model, maps, options) {
   return mapSection(model, maps, null, options).wanted;
 }
-

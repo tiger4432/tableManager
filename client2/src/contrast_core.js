@@ -571,11 +571,16 @@ export function fieldReading(field) {
   };
 }
 
-//: Enough digits to be read, not enough to be noise. Big numbers lose decimals.
+//: Enough digits to be read, not enough to be noise.
+//:
+//: 🔴 THE FIRST DECIMAL SURVIVES ABOVE 100. Rounding `145.478` to `145` beside a
+//: case mean of `150` made 「편차 기준 3.3σ」 look like an error — the reader
+//: cannot see a 4.5 gap when one side has been rounded away. Trailing `.0` is
+//: dropped so an exact 150 does not gain a fake precision digit.
 function numText(v) {
   if (v === null) return '미보고';
   const a = Math.abs(v);
-  if (a >= 100) return v.toFixed(0);
+  if (a >= 100) return v.toFixed(1).replace(/\.0$/, '');
   if (a >= 1) return v.toFixed(2);
   return v.toFixed(3);
 }
@@ -658,7 +663,16 @@ export function liftPhrase(row) {
     ? `(신뢰구간 ${row.ciLow >= 100 ? Math.round(row.ciLow) : row.ciLow.toFixed(1)}~${row.ciHigh >= 100 ? Math.round(row.ciHigh) : row.ciHigh.toFixed(1)}배)`
     : '';
   if (row.enrichmentState === 'flat') return '몰림 없음';
-  if (row.enrichmentState === 'undeterminable') return `표본이 적어 판정 불가${ci}`;
+  // 🔴 THE SERVER'S REASON, NOT A BETTER-SOUNDING GUESS. This said 「표본이 적어
+  // 판정 불가」, which is an INVENTED CAUSE: live, `purge_delay_s` is undeterminable
+  // because 「평균이 0 이하 — 비율 척도 불가 (차이만 보고)」 — nothing to do with
+  // sample size. A client replacing a true stated reason with a plausible false one
+  // is the same defect family as the rest of tonight's, and the fix is to pass the
+  // sentence through rather than to write a better guess.
+  if (row.enrichmentState === 'undeterminable') {
+    const said = strOrEmpty(row.numeric && row.numeric.message);
+    return said ? `${said}${ci}` : `판정 불가 — 사유 미보고${ci}`;
+  }
   // 🔴 NO POINT ESTIMATE IS NOT ZERO. `absent_from_control_population` means the
   // factor is missing from the other side entirely — an infinite ratio, and the
   // interval is the whole finding. Printing 「0배」 would invert it.
@@ -681,6 +695,14 @@ export function liftPhrase(row) {
  * rewording, never a second computation.
  */
 export function factorSentence(row, subject) {
+  // 🔴 THE RESPONSE SAYS WHICH KIND OF COMPARISON THIS IS, AND THE CLIENT WAS NOT
+  // READING IT. `compare` is normalised in `readCandidate` and then ignored, so a
+  // numeric field got the membership template: 「마킹한 50장 전부(100%)가
+  // params_setpoint.temp_C를 지났다」. You cannot 지나다 a temperature — and the
+  // 100% there means EVERY WAFER HAS A READING, which reads as "they all ran at
+  // the same temperature". Presence printed as agreement.
+  if (row.compare === 'distribution') return numericSentence(row, subject);
+
   const c = counterOf(subject);
   const v = PREDICATE_VERB[row.predicate] || DEFAULT_VERB;
   const noun = FIELD_NOUN[row.field] || row.field || '이 요인';

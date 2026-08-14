@@ -86,6 +86,13 @@ import { mapWants } from './surprise_map_core.js';
 // the console already talks to.
 import { contrastQuery, contrastModel } from './contrast_core.js';
 import { renderContrast } from './contrast_view.js';
+// The SEVENTH question: two wafers, and where their journeys stopped being the
+// same one. Entered by marking a pair in the trend table — there is deliberately
+// no nav link, because a journey with no scope is an address with no answer.
+import {
+  JOURNEY_VIEW, parseJourneyQuery, journeyFetchQuery, journeyModel,
+} from './journey_core.js';
+import { renderJourney } from './journey_view.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -379,6 +386,87 @@ async function runStructure(question) {
   }
   if (mine !== structureSession) return;
   paint(body, null);
+}
+
+// 🔴 THE JOURNEY VIEW'S OWN SESSION GUARD — a SEVENTH counter, same reason as the
+// six others: independent questions, and a shared counter would let one answer
+// silently cancel another's.
+let journeySession = 0;
+
+/**
+ * Two wafers, and where their journeys diverged.
+ *
+ * 🔴 A 422 HERE IS A SCREEN, NOT AN ERROR STRING, AND IT MUST NOT GO THROUGH
+ * `readRefusal`. That helper flattens the detail to `{state, text}`, which throws
+ * away `arity_resolved`, `subjects` and `axis` — the exact fields the refusal
+ * panel renders by name. Live, one marked wafer answers:
+ *
+ *   {reason: "scope_is_not_a_pair", arity_required: 2, arity_resolved: 1,
+ *    subjects: ["SYN-BW-101-06"], axis: "wafer", message: "여정 대조는 주어 2개 전용…"}
+ *
+ * so the screen can say 「해결된 주어 1 / 필요 2」 and name the wafer. Flattened,
+ * that becomes a generic 「서버 거절 (422)」 and the reader learns nothing about
+ * what to do next — which is the whole content of this particular refusal.
+ */
+async function runJourney(question) {
+  const mount = byId('lt-journey');
+  if (!mount) return;
+  const mine = ++journeySession;
+
+  const paint = (body, refusal, notice) => {
+    renderJourney(document, mount, journeyModel({ body, question, refusal }), notice);
+    settleScroll();
+  };
+
+  // No scope in the address is a real state of this view and it costs no request.
+  const query = journeyFetchQuery(question);
+  if (!query) {
+    paint(null, null, null);
+    return;
+  }
+
+  paint(null, null, { tone: 'busy', title: '여정 대조 중…', detail: null });
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/ledger/journey?${query}`);
+  } catch (err) {
+    if (mine !== journeySession) return;
+    paint(null, null, { tone: 'error', title: '서버에 닿지 못했습니다', detail: String((err && err.message) || err) });
+    return;
+  }
+  if (mine !== journeySession) return;
+
+  if (!res.ok) {
+    // The RAW detail, with the status merged in — see the note above.
+    let detail = null;
+    try {
+      const body = await res.json();
+      if (body && body.detail && typeof body.detail === 'object') detail = body.detail;
+    } catch (err) { /* not JSON — fall through to the generic notice below */ }
+    if (mine !== journeySession) return;
+    if (detail) {
+      paint(null, { ...detail, status: res.status }, null);
+      return;
+    }
+    paint(null, null, {
+      tone: res.status === 404 ? 'gap' : 'error',
+      title: res.status === 404 ? '여정 대조 API 미배포 — 화면만 준비됨' : `서버 거절 (${res.status})`,
+      detail: null,
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await res.json();
+  } catch (err) {
+    if (mine !== journeySession) return;
+    paint(null, null, { tone: 'error', title: '응답을 읽지 못했습니다', detail: String((err && err.message) || err) });
+    return;
+  }
+  if (mine !== journeySession) return;
+  paint(body, null, null);
 }
 
 // 🔴 THE SURPRISE VIEW'S OWN SESSION GUARD — a FOURTH counter, same reason as
@@ -1034,7 +1122,8 @@ function switchViews(view) {
   const structure = view === STRUCTURE_VIEW;
   const surprise = view === SURPRISE_VIEW;
   const lot = view === LOT_VIEW;
-  const ask = !structure && !surprise && !lot;
+  const journey = view === JOURNEY_VIEW;
+  const ask = !structure && !surprise && !lot && !journey;
   const show = (id, on) => {
     const node = byId(id);
     if (node) node.hidden = !on;
@@ -1042,6 +1131,7 @@ function switchViews(view) {
   show('lt-structure', structure);
   show('lt-surprise', surprise);
   show('lt-lot', lot);
+  show('lt-journey', journey);
   show('lt-console', ask);
   show('lt-result', ask);
   const rule = document.querySelector('.lt-section-rule');
@@ -1052,7 +1142,8 @@ function switchViews(view) {
   // because the panel it would render into is not on screen.
   if (box) box.hidden = false;
   const current = structure ? STRUCTURE_VIEW
-    : (surprise ? SURPRISE_VIEW : (lot ? LOT_VIEW : 'ask'));
+    : (surprise ? SURPRISE_VIEW
+      : (lot ? LOT_VIEW : (journey ? JOURNEY_VIEW : 'ask')));
   for (const a of document.querySelectorAll('[data-view-link]')) {
     a.classList.toggle('lt-view--on', a.getAttribute('data-view-link') === current);
   }
@@ -1088,6 +1179,14 @@ function render(params) {
   if (view === STRUCTURE_VIEW) {
     loadKinds();
     runStructure(parseStructureQuery(params));
+    return;
+  }
+
+  // 🔴 NO `loadKinds()` HERE. This view asks the catalog nothing, and a view that
+  // quietly issues another view's requests makes every reading of "what does this
+  // screen cost" wrong — the same rule the other three follow.
+  if (view === JOURNEY_VIEW) {
+    runJourney(parseJourneyQuery(params));
     return;
   }
 
@@ -1149,7 +1248,8 @@ function bindAskBox() {
       })}`);
       return;
     }
-    if (currentView === STRUCTURE_VIEW || currentView === SURPRISE_VIEW) {
+    if (currentView === STRUCTURE_VIEW || currentView === SURPRISE_VIEW
+      || currentView === JOURNEY_VIEW) {
       go(`?${traceQuery(asked)}`);
       return;
     }
