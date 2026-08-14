@@ -174,6 +174,40 @@ PREDICATES = {
         "qualifiers": [],
         "unit": None, "semi_ref": "E40 recipe parameter", "superseded_by": None,
     },
+    # 🔴 EVERY MOVEMENT OF A CHIP, IN ONE WORD (`PHYSICS_ONTOLOGY_SETUP` §2-bis, product
+    # owner 2026-08-14). Wafer -> DT picking, DT -> bonding, a future rework return: one
+    # predicate, one grammar. It ABSORBS the reserved `consumed`, because consumption is
+    # a transfer OUT; `consumed` is registered only if destruction-without-movement
+    # (scrap) is ever demonstrated, and it is deliberately NOT registered today.
+    #
+    # WHY THE SUBJECT IS THE WAFER AND NOT THE DIE
+    # ---------------------------------------------
+    # A die is COMPOSED (Wafer x grid), so it has no registration and no identity of its
+    # own to carry through a move. The wafer is the die's permanent identity root, and
+    # §5-2's rule is that the die is designated IN THE PAYLOAD. The consequence is the
+    # point: the subject does not change when the chip moves. What changes is position,
+    # and position is the CONTENT of the event.
+    #
+    # 🔴 WHY `from` AND `to` ARE STRUCTURED CONTAINERS AND NOT STEP NAMES
+    # --------------------------------------------------------------------
+    # The trace walk joins event N's `to` to event N+1's `from` - POSITION CONTINUITY -
+    # and never on a step name. That is what makes a chain of arbitrary length work: two
+    # DT hops, three, a rework return, all the same walk. §2-bis states the failure mode
+    # as a rule: "단계 수를 아는 코드가 어디에도 없어야 한다". A join that assumes DT
+    # happens once is a defect at that spot, and it is a defect that PASSES every test
+    # written on a fixture where DT happens once.
+    #
+    # `die` XOR `qty`: an event either names one die or carries a count. The signature
+    # cannot express XOR, so `required` holds only the two that are always present and
+    # the emitter owns the exclusivity - stated here so the next author knows the check
+    # is not merely missing.
+    "transferred": {
+        "status": "active", "since": 2, "layer": "ontology",
+        "subject": ["Wafer"],
+        "object": {"kind": "value", "required": ["from", "to"]},
+        "qualifiers": [],
+        "unit": None, "semi_ref": "E90 substrate movement", "superseded_by": None,
+    },
 }
 
 #: Predicates a translator may EMIT. `reserved` entries are declared so the vocabulary

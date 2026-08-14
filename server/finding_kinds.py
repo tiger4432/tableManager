@@ -39,9 +39,21 @@ WHAT A KIND DECLARES, AND WHY EACH FIELD IS LOAD-BEARING
 `population_ctes` is not a convenience. The brief's rule is that a package which was
 NEVER SCANNED must not be able to drift into the clean side, and the way that rule gets
 broken is always the same: somebody writes the control population as "no finding row",
-which is true of 277,500 positions on this box that nobody has ever looked at. So the
-control set is defined as ``scanned MINUS found`` and never as ``NOT EXISTS(finding)``,
-and it is defined in ONE place so that a second consumer cannot spell it the other way.
+which is true of **280,001** positions on this box that nobody has ever looked at
+(MEASURED 2026-08-14 for kind `void`, against 46,899 found and 28,101 clean-scanned; an
+earlier draft of this docstring said 277,500, which was arithmetic on the fixture size and
+not a count -- it omitted the ~2,501 distinct positions contributed by the 5,296
+non-synthetic `bonding_log` rows). So the control set is defined as ``scanned MINUS found``
+and never as ``NOT EXISTS(finding)``.
+
+⚠️ **AND THERE IS A SECOND SPELLING, LANDED, WHICH THIS FILE DOES NOT OWN.**
+`server/ledger_siblings.py` assembles its own `runs` / `scanned` / `found` rather than
+calling `population_ctes`, and it has a real reason: the console scopes runs to a time
+window and must define `found` THROUGH those windowed runs to keep `found ⊆ scanned`.
+So the honest statement is not "one spelling" - it is: **two spellings exist, they agree
+today, and nothing detects the day they stop.** Do not merge them without deciding where
+the window belongs; do not repeat "one spelling" from this docstring without grepping for
+callers first.
 """
 from __future__ import annotations
 
@@ -208,7 +220,7 @@ def population_ctes(kind: str = DEFAULT_KIND) -> str:
     of method names) and may bind `:package_filter` conditions of its own.
 
     🔴 `kind_clean` is `scanned MINUS found`, NOT `NOT EXISTS(finding)`. On this box the
-    difference is 277,500 positions: every bonded position nobody has ever scanned would
+    difference is 280,001 positions (measured): every bonded position nobody has scanned would
     otherwise be reported as clean, and the console's central claim - "these packages were
     LOOKED AT and were fine" - would be false for the overwhelming majority of the rows
     supporting it. The brief names this exact drift as non-negotiable, and the way to

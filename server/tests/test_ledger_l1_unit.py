@@ -125,13 +125,25 @@ def test_v0_vocabulary_is_exactly_seven_words():
     `has_param` is its recipe-side counterpart and arrives with it because a process run
     that names a recipe revision nobody can read the setpoints of explains nothing.
 
-    Both are `since: 2`, so the slice a word entered in stays queryable, and the count
-    stays a control: a TENTH word still turns this red.
+    THE SECOND RULING, THE SAME DAY (`PHYSICS_ONTOLOGY_SETUP` §2-bis, commit `4dff09f`):
+    `transferred` - every movement of a chip, in one word. It arrived by REPLACING two
+    earlier drafts of the same fact, and the reason is worth keeping because the count is
+    what caught it. Draft 1 modelled DT as a step a wafer passes through
+    (`processed_with` with `step: DT`); draft 2 split it into per-stage load/consume
+    claims. Both would have needed re-uttering. The generalisation subsumes them: a
+    movement is one event kind, selection is that event's EXISTENCE, and residual is a
+    fold of inflow minus outflow. 🔴 It also ABSORBS the reserved `consumed`, which is
+    therefore still unregistered - consumption is a transfer OUT, and a separate word is
+    justified only when destruction WITHOUT movement is demonstrated.
+
+    All three are `since: 2`, so the slice a word entered in stays queryable, and the
+    count stays a control: an ELEVENTH word still turns this red. This test failed on
+    each of the three as they landed, which is the whole reason it is worth its upkeep.
     """
     assert set(vocabulary.PREDICATES) == {
         "register", "pin", "same_as",
         "derived_from", "slot_map", "has_wafer", "frame_confirmed",
-        "processed_with", "has_param",
+        "processed_with", "has_param", "transferred",
     }
     # The seven that were v0 are still `since: 1`; nothing was renumbered to make the
     # arithmetic tidy. A word's slice is evidence about when the system learned to say it.

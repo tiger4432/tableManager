@@ -102,6 +102,80 @@ time, mutant picked the setpoint every time.
 
 ---
 
+## 3-bis. `transferred` v0 — the fourth leg, and the shape that survived three drafts
+
+Added after the answer key landed, on the coordinator's DT instruction. **The instruction
+arrived three times in three shapes; only the third was built.** Recording all three
+because the first two are traps that read as reasonable:
+
+| draft | shape | why it was wrong |
+|---|---|---|
+| 1 | `processed_with` with `step: DT`, one per wafer | models DT as a step a wafer **passes through**. It is not — some dies are picked, the rest stay. Would have needed re-uttering. |
+| 2 | two claims: load (적재) + consume (소비), `consumed` registered | selection expressed stage-by-stage. Still stage-shaped; `consumed` would have been minted for something a transfer already says. |
+| **3 — built** | **`transferred`**, one predicate for every movement (`PHYSICS_ONTOLOGY_SETUP` §2-bis, `4dff09f`) | selection **is** the event's existence; residual is a fold; `consumed` is absorbed and deliberately **not registered**. |
+
+**Nothing from drafts 1–2 was wasted** — the `SYN-RCP-DT` recipe and the DT-conditions
+atom survive as `processed_with`, standing **alongside** the movement events, because
+conditions and movement are different claims about one run.
+
+```
+(Wafer core, transferred, {from:{type,keys,position}, to:{...}, qty, source_population?})
+```
+
+Emitted 65,279 movement atoms in three shapes — and the shapes are the proof the walk is
+generic:
+
+```
+wafer_grid -> dt_slot      2,500    the pick (partial: source_population > qty)
+dt_slot    -> dt_slot        279    the SECOND DT hop
+dt_slot    -> package_gate 62,500   the bonding consume (qty MEASURED from bonding_log)
+```
+
+🔴 **Only the load side is planted; the consume side is counted.** Every die in
+`bonding_log` already records which DT lot and slot it came from, so "how many dies went
+from slot S into base wafer B" is a count over rows that exist (125–150 per pair,
+measured). Nothing on disk says how many were *picked onto* the slot, and that gap is
+what the selection model fills.
+
+### The n-hop proof — the acceptance core
+
+```
+=== TRANSFER CHAIN :: package -> DT slot(s) -> core wafer ===
+packages walked: 400 | reached the core wafer: 400
+chains passing TWO dt slots: 125 | one dt slot: 275
+a 'DT happens once' join would be WRONG on: 125 of them        VERDICT: PASS
+```
+
+The walk joins **event N's `to` to event N+1's `from`** and stops when nothing matches.
+There is no hop count anywhere in it — the only integer is a cycle guard at 20. The
+mutant is the load-bearing half: a join that took exactly one step back from the package
+lands on a `dt_slot` instead of a `wafer_grid` on precisely the 125 three-hop chains. **On
+a fixture where DT always happens once, both walks return the same answer and neither is
+tested** — which is why `--double-dt-fraction 0` is documented as the setting that
+destroys the discrimination.
+
+### Residual as a fold
+
+```
+dt slot containers: 2,779 | containers with NEGATIVE residual: 0
+  {dt_lot: SYN-DT-085, dt_slot: 16}  loaded=180 shipped=150 residual=30
+```
+
+Computed in SQL as inflow − outflow over `transferred` events only. **Never stored** — a
+stored residual can disagree with the events it summarises and then nobody can say which
+is wrong. 2,779 = 2,500 recorded slots + 279 staging slots. Zero negative, i.e. no
+container ever ships more than it held.
+
+### Idempotency, verified rather than assumed
+
+Re-running `--apply` reported **`inserted=70284 deduped=13554`** — exactly the first run's
+atom count deduped, nothing duplicated. That is not luck: adding `SYN-RCP-DT` to a
+`sorted(RECIPES)` enumeration would have slid `SYN-RCP-MOLD` from index 3 to 4, changing
+its `occurred_at`, its `identity()` tuple, and re-inserting every already-written MOLD
+atom as a duplicate. `RECIPE_ORDER` is now explicit and **append-only** for that reason —
+a sorted-order timestamp is an idempotency bug that only fires the day somebody adds a
+member in the middle.
+
 ## 4. The three-way split is real, and cannot silently collapse
 
 `server/finding_kinds.population_ctes(kind)` is the **one** spelling of the split:
@@ -150,7 +224,7 @@ kind name appears as a literal in code, and it is a default parameter value.
 
 | file | change |
 |---|---|
-| `C:\Users\kk980\Developments\assyManager\server\ledger\vocabulary.py` | **MODIFIED** — `Recipe` entity type (`keys: ["recipe","rev"]`, issued); `processed_with` + `has_param` predicates (`since: 2`); `Recipe` added to `register`/`pin`/`same_as` subjects; `check_signature` now enforces `{"kind":"value","required":[...]}` |
+| `C:\Users\kk980\Developments\assyManager\server\ledger\vocabulary.py` | **MODIFIED** — `Recipe` entity type (`keys: ["recipe","rev"]`, issued); `processed_with` + `has_param` + **`transferred`** predicates (`since: 2`, seven words → **ten**); `Recipe` added to `register`/`pin`/`same_as` subjects; `check_signature` now enforces `{"kind":"value","required":[...]}` |
 | `C:\Users\kk980\Developments\assyManager\server\finding_kinds.py` | **NEW** — the kind registry and the single spelling of the three-way split |
 | `C:\Users\kk980\Developments\assyManager\server\scripts\seed_syn_process_ledger.py` | **NEW** — generator + `--prove` answer key |
 | `C:\Users\kk980\Developments\assyManager\server\tests\test_finding_kinds.py` | **NEW** — 7 tests |
@@ -182,14 +256,16 @@ source to `ledger_config.json` — `ledger_config.validate` requires `columns.lo
 
 | target | before | added |
 |---|---|---|
-| `ledger_events` | 909 | **13,554** (→ 14,463). `processed_with` 11,030 · `register` 2,504 · `has_param` 20. New partition `ledger_events_2026_08`. |
+| `ledger_events` | 909 | **83,838** (→ 84,747). `transferred` 65,279 · `processed_with` 13,530 · `register` 5,250 · `has_param` 24. New partition `ledger_events_2026_08`. |
 | `ledger_translator_cursor` | 1 row | **1 row** (`syn_process_ledger`, 10,004 molecules) |
 | `inspection_run` | 77,500 (`sat`) | **30,000** (`scat`) |
 | `delam_obs` | table did not exist | **10,421** |
 | `cell_sources` | 21,202,816 | **395,052** (`updated_by = 'seed_syn_process_ledger'`) |
 
-Nothing existing was updated, trimmed or vacuumed. Atom write: attempted 13,554,
-inserted 13,554, deduped 0. RDB write: 87.5 s total.
+Nothing existing was updated, trimmed or vacuumed. Two `--apply` runs: the first wrote
+13,554 atoms (0 deduped), the second wrote 70,284 and **deduped exactly the first 13,554**.
+`inspection_run` stayed at 30,000 `scat` rows and `delam_obs` at 10,421 across both runs —
+no duplication. Write time 87.5 s + 59.8 s.
 
 ### 🔴 Rollback predicate
 
@@ -243,11 +319,48 @@ fixture's boundary. Reverting the config is `delam_obs` out of `table_config.jso
    and the M2 physical-quantity dictionary. `chamber` shipped as a **payload field**, not as
    a declared entity. MI `measured` facts were not added — the brief's five items did not
    list them and the ordering line did; flagging the ambiguity rather than deciding it.
-4. **`docs/history/` entry not written** and `gen_index.py` not run, because other lanes are
+4. 🔴 **`population_ctes` is NOT the only spelling of the population split, and I said it
+   was.** `server/ledger_siblings.py` (tracked, landed, another lane) assembles its own
+   `runs`/`scanned`/`found` and mentions `population_ctes` only in prose. It has a real
+   reason — the console scopes runs to a time window and must define `found` *through*
+   those windowed runs to keep `found ⊆ scanned` — so "merge them" is the wrong
+   prescription. The honest statement, now in both docstrings: **two spellings exist, they
+   agree today, and nothing detects the day they stop.** Someone has to decide where the
+   window belongs. Found by `doc-keeper`, not by me; my original claim was repeated from a
+   docstring without grepping for callers.
+5. **`step`'s "closed value set" never shipped.** `PHYSICS_ONTOLOGY_SETUP` §2 asserts it
+   as designed; `check_signature` only requires `step` to be *present* and accepts any
+   string. The enumeration lives solely in `seed_syn_process_ledger.STEPS` and nothing
+   enforces it, so a typo'd step is born as a new step, silently. Same class of hole one
+   axis over: `transferred`'s `from.type`/`to.type` container kinds are also unenforced
+   strings today.
+6. **The vocabulary rulings are not in `LEDGER_RULINGS.md`** — that document's own rule is
+   that a ruling not recorded there was never made. It is ontology-pm owned, so neither I
+   nor doc-keeper edited it. Three rulings landed today (`processed_with`, `has_param`,
+   `transferred`) and `SCENARIO_CONSOLE_BRIEF.md` has no ownership row either. Routing call.
+7. **`docs/history/` entry not written** and `gen_index.py` not run, because other lanes are
    live and the history index is a shared file. Draft below for the batch.
+8. **Time, stated plainly:** the DT leg was quoted at 30 minutes for one `processed_with`
+   row. It became three model revisions and a new predicate, and ran well past that. The
+   escape hatch was not taken because the second correction changed the reduction
+   direction to "fewer events, not a simpler model" — so the model is complete and the
+   event count is the aggregate one (`qty` per container move, 65,279 atoms) rather than
+   one atom per die (which would have been ~705,000).
 
 ### History entry draft
 
+> **A chip's every movement becomes one word, and the fixture is built so a shortcut fails.**
+> `transferred` (§2-bis) replaced two earlier drafts of the same fact in one afternoon —
+> DT as a step a wafer passes through, then DT as separate load and consume claims. Both
+> would have had to be re-uttered, and the vocabulary count is what caught each one: the
+> test that pinned seven words failed three times today and now records why there are ten.
+> Selection is the event's existence, residual is inflow minus outflow, and the reserved
+> `consumed` is absorbed rather than registered. The part that had to be *engineered* is
+> the fixture, not the walk: a tenth of the DT slots are reached through a second DT slot,
+> because on a fixture where DT happens once a position-continuity walk and a step-name
+> walk return the same answer and neither is tested. 125 of 400 walked chains are three
+> hops, and the single-hop shortcut is wrong on exactly those 125.
+>
 > **`processed_with` opens, and the recipe revision becomes a subject rather than a field.**
 > The ledger could record that a package had a void and could record nothing about the
 > conditions that made it, so every causal question died at the first hop. The reserved

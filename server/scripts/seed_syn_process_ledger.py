@@ -124,8 +124,13 @@ DERIV_FIRST_SIGHT = "first_sight"        # register, on first appearance
 DERIV_EQP_LOG = "eqp_log"                # params_actual - the utterance
 DERIV_RECIPE_SETPOINT = "recipe_setpoint"  # params_setpoint - the class-3 fallback
 DERIV_RECIPE_BOOK = "recipe_book"        # has_param - the recipe sheet
+#: `transfer_log` - a chip movement as the handling system uttered it (§2-bis). It is an
+#: UTTERANCE, not a convention, so it resolves at class 2; it is listed here because the
+#: gate refused the whole molecule when it was not, which is the check working.
+DERIV_TRANSFER_LOG = "transfer_log"
 DECLARED_DERIVATIONS = frozenset({DERIV_FIRST_SIGHT, DERIV_EQP_LOG,
-                                  DERIV_RECIPE_SETPOINT, DERIV_RECIPE_BOOK})
+                                  DERIV_RECIPE_SETPOINT, DERIV_RECIPE_BOOK,
+                                  DERIV_TRANSFER_LOG})
 DECLARED_SUBJECT_TYPES = frozenset({"Wafer", "Recipe"})
 
 FORBIDDEN_DATABASES = ()   # the owner's box IS the target today; the flag below is the gate
@@ -145,6 +150,16 @@ STEPS = {
     "BONDING":   {"family": "packaging", "recipe": None, "has_eqp_log": True},
     "MOLDING":   {"family": "packaging", "recipe": ("SYN-RCP-MOLD", "1"),
                   "has_eqp_log": True},
+    # 🔴 DT IS NOT IN THE PER-BASE-WAFER LOOP, AND THAT IS THE WHOLE CORRECTION.
+    # A first draft of this fixture put DT there, which models it as a step a wafer
+    # PASSES THROUGH. It is not: some of a core wafer's dies are picked onto a DT slot
+    # and the rest stay behind, and some of that slot is bonded while the rest stays as
+    # inventory. That is a MOVEMENT, and movements are `transferred` events whose
+    # existence IS the selection (§2-bis). This entry exists only so the DT run's
+    # CONDITIONS have a recipe to name - see `dt_condition_atoms`, which is emitted
+    # ALONGSIDE the movement events and never instead of them.
+    "DT":        {"family": "packaging", "recipe": ("SYN-RCP-DT", "1"),
+                  "has_eqp_log": False, "in_wafer_step_loop": False},
 }
 
 #: 🔴 THE VOID FACTOR. rev5 lowers bonding pressure, which is the mechanism graph's
@@ -170,7 +185,23 @@ RECIPES = {
         "furnace_C": (1050.0, "C"), "ramp_C_min": (8.0, "C/min"),
         "dwell_min": (45.0, "min"), "o2_slm": (2.0, "slm"),
     },
+    ("SYN-RCP-DT", "1"): {
+        "pick_force_N": (0.8, "N"), "place_accuracy_um": (5.0, "um"),
+        "uv_dose_mJ": (120.0, "mJ"), "stage_temp_C": (60.0, "C"),
+    },
 }
+
+#: 🔴 EXPLICIT ORDER, AND IT IS APPEND-ONLY. Each recipe's `occurred_at` is derived from
+#: its position here. It used to be derived from `sorted(RECIPES)`, which meant adding
+#: `SYN-RCP-DT` would have slid `SYN-RCP-MOLD` from index 3 to 4 - a different timestamp,
+#: a different `identity()` tuple, and every already-written MOLD atom would have been
+#: RE-INSERTED as a duplicate instead of deduping on re-run. A sorted-order timestamp is
+#: an idempotency bug that only fires the day somebody adds a member in the middle.
+RECIPE_ORDER = (
+    ("SYN-RCP-BOND", "4"), ("SYN-RCP-BOND", "5"),
+    ("SYN-RCP-DIFF", "2"), ("SYN-RCP-MOLD", "1"),
+    ("SYN-RCP-DT", "1"),                       # appended 2026-08-14; never inserted above
+)
 
 BOND_RECIPE_ID = "SYN-RCP-BOND"
 BOND_REV_CAUSAL = "5"      # the planted one
@@ -329,8 +360,15 @@ def recipe_atoms():
     permanently assertable after rev5 lands - which is what makes "what did the wafers
     that ran under rev4 actually see" answerable a year later.
     """
+    missing = set(RECIPES) ^ set(RECIPE_ORDER)
+    if missing:
+        raise SystemExit("REFUSED: RECIPE_ORDER and RECIPES disagree about %s. The order "
+                         "decides each recipe's occurred_at, so a member in one and not "
+                         "the other is an atom with no stamp or a stamp with no atom."
+                         % sorted(missing))
     atoms = []
-    for index, ((recipe_id, rev), params) in enumerate(sorted(RECIPES.items())):
+    for index, (recipe_id, rev) in enumerate(RECIPE_ORDER):
+        params = RECIPES[(recipe_id, rev)]
         keys = {"recipe": recipe_id, "rev": rev}
         ref = f"recipe_book:{recipe_id}@{rev}"
         molecule = f"recipe:{recipe_id}:{rev}"
@@ -420,6 +458,255 @@ def wafer_atoms(wafer: str, index: int, factors: dict, bond_eqp: str):
                 _stamp(0, step_no * 60 + (index % 60)), WHO_EQP_LOG, DERIV_EQP_LOG,
                 f"eqp_log:{eqp}:{wafer}:{step}", molecule))
     return atoms
+
+
+# --------------------------------------------------------------------------
+# `transferred` - the chip movement axis (PHYSICS_ONTOLOGY_SETUP §2-bis)
+# --------------------------------------------------------------------------
+
+#: Container KINDS a chip can sit in. `from`/`to` name one of these, never a step name -
+#: the walk joins on POSITION, so the container is the thing that has to be comparable.
+PLACE_WAFER_GRID = "wafer_grid"
+PLACE_DT_SLOT = "dt_slot"
+PLACE_PACKAGE_GATE = "package_gate"
+
+#: The staging DT lot a re-transferred population passes through. 🔴 ITS ONLY PURPOSE IS
+#: TO MAKE THE CHAIN LONGER THAN ONE HOP, and that is not decoration - see
+#: `prove_transfer_chain`. A fixture where DT always happens once cannot tell a
+#: position-continuity walk from a step-name walk, because both give the same answer.
+STAGING_DT_PREFIX = "SYN-DTX-"
+DOUBLE_DT_FRACTION = 0.10
+
+DERIV_TRANSFER = DERIV_TRANSFER_LOG
+
+
+def place(kind: str, keys: dict, position=None) -> dict:
+    """One end of a movement. 🔴 ONE constructor, because continuity is EQUALITY.
+
+    Event N's `to` has to compare equal to event N+1's `from` or the chain breaks, and
+    two hand-built dicts that differ by a key order, a missing `position`, or an int
+    where the other has a str are a chain that silently stops. Building both ends through
+    one function is what makes "the same place" the same value.
+    """
+    return {"type": kind, "keys": dict(keys), "position": position}
+
+
+def dt_transfer_facts(db):
+    """MEASURED movement: `{(dt_lot, dt_slot): {base_wafer: dies}}` from `bonding_log`.
+
+    The consumption side is not invented. Every die this fixture bonded already records
+    which DT lot and slot it came from, so "how many dies went from DT slot S into base
+    wafer B" is a count over rows that exist. Only the LOAD side is planted, because
+    nothing in this database says how many dies were picked onto a DT slot in the first
+    place - and that gap is exactly what the selection model is for.
+    """
+    from sqlalchemy import text
+
+    rows = db.execute(text(
+        "SELECT dt_lot, dt_slot, base_id, count(*) FROM bonding_log "
+        "WHERE bond_lot LIKE :p GROUP BY 1, 2, 3"), {"p": BOND_LOT_PREFIX + "%"}).all()
+    facts = {}
+    for dt_lot, dt_slot, base_id, dies in rows:
+        facts.setdefault((dt_lot, dt_slot), {})[base_id] = int(dies)
+    return facts
+
+
+def transfer_atoms(facts, double_fraction: float = DOUBLE_DT_FRACTION):
+    """The chip movement chain per (dt_lot, dt_slot). Returns `(atoms, stats)`.
+
+    🔴 SELECTION IS THE EVENT'S CONTENT, NOT A SEPARATE CLAIM (§2-bis). A wafer does not
+    "pass through" DT: some of its dies are picked and the rest stay behind, and the way
+    that is said is that a transfer event exists for what moved and does not exist for
+    what did not. `qty` carries how many, so residual is a FOLD - inflow minus outflow per
+    container - rather than a stored number that can disagree with its own inputs.
+
+    🔴 AND SOME CHAINS ARE THREE HOPS LONG, DELIBERATELY. A tenth of the DT slots are fed
+    through a STAGING lot first, so the population reaches its recorded slot by
+    wafer -> DTX -> DT -> package. Every hop is the same predicate and the walk joins
+    `to` to `from`; nothing anywhere counts hops.
+    """
+    atoms, stats = [], {"load": 0, "restage": 0, "consume": 0, "chains_3hop": 0,
+                        "chains_2hop": 0, "core_wafers": 0}
+
+    for pair_index, ((dt_lot, dt_slot), consumers) in enumerate(sorted(facts.items())):
+        consumed_total = sum(consumers.values())
+        core_wafer = "SYN-CW-%s-%s" % (dt_lot.replace("SYN-DT-", ""), dt_slot)
+        molecule = "transfer:%s:%s" % (dt_lot, dt_slot)
+
+        # The load is PARTIAL in both directions and both numbers are planted, because
+        # nothing on disk says either one. Residual stays positive by construction: a DT
+        # slot that was emptied exactly would make "잔량" untestable on every row.
+        residual = 6 + (_h("residual", dt_lot, dt_slot) % 25)
+        loaded = consumed_total + residual
+        wafer_die_population = loaded + 40 + (_h("skipped", dt_lot, dt_slot) % 120)
+
+        recorded_slot = place(PLACE_DT_SLOT, {"dt_lot": dt_lot, "dt_slot": dt_slot})
+        origin = place(PLACE_WAFER_GRID, {"wafer": core_wafer})
+
+        atoms.append(_atom("Wafer", {"wafer": core_wafer}, "register", None, None,
+                           _stamp(-2, pair_index % 1440), WHO_EQP_LOG,
+                           DERIV_FIRST_SIGHT, "core_wafer_registry:%s" % core_wafer,
+                           molecule))
+        stats["core_wafers"] += 1
+
+        double = (_h("double", dt_lot, dt_slot) % 1000) < double_fraction * 1000
+        if double:
+            staging = place(PLACE_DT_SLOT,
+                            {"dt_lot": STAGING_DT_PREFIX + dt_lot.replace("SYN-DT-", ""),
+                             "dt_slot": dt_slot})
+            hops = [(origin, staging, loaded, -1, "pick"),
+                    (staging, recorded_slot, loaded, 0, "restage")]
+            stats["chains_3hop"] += 1
+        else:
+            hops = [(origin, recorded_slot, loaded, -1, "pick")]
+            stats["chains_2hop"] += 1
+
+        for source, target, qty, day, label in hops:
+            payload = {"from": source, "to": target, "qty": qty}
+            if label == "pick":
+                # What the selection COST, so a reader can see it was a selection:
+                # the wafer held this many dies and this many were taken.
+                payload["source_population"] = wafer_die_population
+            atoms.append(_atom(
+                "Wafer", {"wafer": core_wafer}, "transferred", "value", payload,
+                _stamp(day, pair_index % 720), WHO_EQP_LOG, DERIV_TRANSFER,
+                "transfer_log:%s:%s:%s" % (dt_lot, dt_slot, label), molecule))
+            stats["load" if label == "pick" else "restage"] += 1
+
+        # Consumption: one event per bonding pick out of this slot. The `from` is the
+        # SAME value the previous hop's `to` was, by construction, so continuity holds.
+        for consumer_index, (base_wafer, dies) in enumerate(sorted(consumers.items())):
+            atoms.append(_atom(
+                "Wafer", {"wafer": core_wafer}, "transferred", "value",
+                {"from": recorded_slot,
+                 "to": place(PLACE_PACKAGE_GATE, {"base_wafer": base_wafer}),
+                 "qty": dies},
+                _stamp(1, (pair_index + consumer_index) % 1440), WHO_EQP_LOG,
+                DERIV_TRANSFER,
+                "transfer_log:%s:%s:bond:%s" % (dt_lot, dt_slot, base_wafer),
+                molecule))
+            stats["consume"] += 1
+
+    return atoms, stats
+
+
+def dt_condition_atoms(facts):
+    """`processed_with` for the DT RUN's conditions - alongside, never instead (§2-bis).
+
+    The movement and the conditions are two different claims about one run, so they are
+    two different predicates about the same subject. Collapsing them would make "what
+    were the pick conditions" unanswerable without parsing a movement event.
+    """
+    recipe_id, rev = STEPS["DT"]["recipe"]
+    setpoints = RECIPES[(recipe_id, rev)]
+    atoms = []
+    for index, (dt_lot, dt_slot) in enumerate(sorted(facts)):
+        core_wafer = "SYN-CW-%s-%s" % (dt_lot.replace("SYN-DT-", ""), dt_slot)
+        atoms.append(_atom(
+            "Wafer", {"wafer": core_wafer}, "processed_with", "value",
+            {"step": "DT", "step_family": STEPS["DT"]["family"],
+             "eqp": "SYN-DTQ-%02d" % (1 + (_h("dtq", dt_lot, dt_slot) % 3)),
+             "recipe": {"id": recipe_id, "rev": rev},
+             "job": "SYN-DTJOB-%s-%s" % (dt_lot, dt_slot),
+             "params_setpoint": {n: v for n, (v, _u) in sorted(setpoints.items())},
+             "inferred": True, "basis": DERIV_RECIPE_SETPOINT},
+            _stamp(2, 180 + index % 60), WHO_RECIPE_BOOK, DERIV_RECIPE_SETPOINT,
+            "recipe_book:%s@%s:%s" % (recipe_id, rev, core_wafer),
+            "transfer:%s:%s" % (dt_lot, dt_slot)))
+    return atoms
+
+
+def prove_transfer_chain(db, sample: int = 400):
+    """Walk `void -> package -> DT slot -> core wafer` BY POSITION, and score the mutant.
+
+    🔴 THE MUTANT IS THE POINT. A walk that joins on the STEP NAME and a walk that joins
+    on POSITION CONTINUITY give the SAME answer on every chain where DT happens once - so
+    a fixture with only 2-hop chains proves nothing about either. This runs both walks
+    and requires them to DISAGREE on the 3-hop chains: the step-name walk stops at the
+    staging lot (or jumps over it), the position walk reaches the core wafer.
+    """
+    import json as _json
+
+    from sqlalchemy import text
+
+    rows = db.execute(text("""
+        SELECT subject_keys->>'wafer', object_payload, occurred_at, id
+        FROM ledger_events
+        WHERE predicate = 'transferred'
+    """)).all()
+
+    # index by `from` and by `to`, as the walk itself would
+    by_to, by_from = {}, {}
+    for wafer, payload, occurred_at, atom_id in rows:
+        key_to = _json.dumps(payload["to"], sort_keys=True)
+        key_from = _json.dumps(payload["from"], sort_keys=True)
+        by_to.setdefault(key_to, []).append((wafer, payload, occurred_at, atom_id))
+        by_from.setdefault(key_from, []).append((wafer, payload, occurred_at, atom_id))
+
+    packages = [k for k in by_to if '"package_gate"' in k]
+    walked = reached_core = hops_3 = hops_2 = 0
+    step_name_walk_wrong = 0
+
+    for key in sorted(packages)[:sample]:
+        walked += 1
+        # BACKWARD walk: from the package, keep asking "which event ended where this one
+        # began?" until nothing does. NOTHING HERE COUNTS HOPS.
+        current = by_to[key][0]
+        depth = 0
+        while True:
+            previous = by_to.get(_json.dumps(current[1]["from"], sort_keys=True))
+            if not previous:
+                break
+            current = min(previous, key=lambda e: (e[2], str(e[3])))
+            depth += 1
+            if depth > 20:               # a cycle guard, never a hop count
+                break
+        origin = current[1]["from"]
+        if origin.get("type") == PLACE_WAFER_GRID:
+            reached_core += 1
+        if depth >= 2:
+            hops_3 += 1
+            # The MUTANT: a walk that assumed "DT happens once" would take exactly one
+            # step back from the package and call whatever it landed on the origin.
+            one_step = by_to[key][0][1]["from"]
+            if one_step.get("type") != PLACE_WAFER_GRID:
+                step_name_walk_wrong += 1
+        else:
+            hops_2 += 1
+
+    return {"packages_walked": walked, "reached_core_wafer": reached_core,
+            "chains_with_extra_dt_hop": hops_3, "chains_with_one_dt_hop": hops_2,
+            "single_hop_assumption_would_be_wrong_on": step_name_walk_wrong}
+
+
+def prove_residual_is_a_fold(db, limit: int = 5):
+    """Residual per container = inflow - outflow, computed from events only.
+
+    Never a stored number: a stored residual can disagree with the events it summarises,
+    and then nobody can tell which is wrong.
+    """
+    from sqlalchemy import text
+
+    rows = db.execute(text("""
+        WITH ev AS (
+            SELECT object_payload->'to'   AS dst,
+                   object_payload->'from' AS src,
+                   (object_payload->>'qty')::numeric AS qty
+            FROM ledger_events WHERE predicate = 'transferred'
+        ),
+        inflow  AS (SELECT dst AS box, sum(qty) q FROM ev
+                    WHERE dst->>'type' = :slot GROUP BY 1),
+        outflow AS (SELECT src AS box, sum(qty) q FROM ev
+                    WHERE src->>'type' = :slot GROUP BY 1)
+        SELECT coalesce(i.box, o.box) AS box,
+               coalesce(i.q, 0) AS loaded, coalesce(o.q, 0) AS shipped,
+               coalesce(i.q, 0) - coalesce(o.q, 0) AS residual
+        FROM inflow i FULL JOIN outflow o ON o.box = i.box
+        ORDER BY residual DESC NULLS LAST
+    """), {"slot": PLACE_DT_SLOT}).mappings().all()
+    negative = [r for r in rows if r["residual"] is not None and r["residual"] < 0]
+    return {"containers": len(rows), "sample": [dict(r) for r in rows[:limit]],
+            "negative_residual_containers": len(negative)}
 
 
 # --------------------------------------------------------------------------
@@ -848,6 +1135,10 @@ def main():
                         help="cap the wafer count (0 = every fixture wafer)")
     parser.add_argument("--scans-per-wafer", type=int, default=DELAM_SCANS_PER_WAFER)
     parser.add_argument("--causal-top-fraction", type=float, default=0.10)
+    parser.add_argument("--double-dt-fraction", type=float, default=DOUBLE_DT_FRACTION,
+                        help="share of DT slots reached via a SECOND dt slot. 🔴 zero "
+                             "makes every chain one hop, and then a position-continuity "
+                             "walk and a step-name walk cannot be told apart")
     parser.add_argument("--i-accept-writing-to-owner-database", action="store_true",
                         dest="allow_owner")
     args = parser.parse_args()
@@ -897,6 +1188,36 @@ def main():
                 and klass["measured_wins"] == klass["wafers_with_both"]
                 and klass["mutant_disagrees"] == klass["wafers_with_both"]
                 else "FAIL - the fixture cannot tell the class apart from the tiebreaks"))
+
+            chain = prove_transfer_chain(db)
+            print("\n=== TRANSFER CHAIN :: package -> DT slot(s) -> core wafer ===")
+            print("packages walked: %d | reached the core wafer: %d"
+                  % (chain["packages_walked"], chain["reached_core_wafer"]))
+            print("chains passing TWO dt slots: %d | one dt slot: %d"
+                  % (chain["chains_with_extra_dt_hop"],
+                     chain["chains_with_one_dt_hop"]))
+            print("a 'DT happens once' join would be WRONG on: %d of them"
+                  % chain["single_hop_assumption_would_be_wrong_on"])
+            print("VERDICT: %s" % (
+                "PASS" if chain["packages_walked"]
+                and chain["reached_core_wafer"] == chain["packages_walked"]
+                and chain["chains_with_extra_dt_hop"] > 0
+                and chain["single_hop_assumption_would_be_wrong_on"]
+                == chain["chains_with_extra_dt_hop"]
+                else "FAIL - either the walk does not reach the core wafer, or every "
+                     "chain is one hop and the fixture cannot tell a position walk from "
+                     "a step-name walk"))
+
+            fold = prove_residual_is_a_fold(db)
+            print("\n=== RESIDUAL IS A FOLD (inflow - outflow), never a stored number ===")
+            print("dt slot containers: %d | containers with NEGATIVE residual: %d"
+                  % (fold["containers"], fold["negative_residual_containers"]))
+            for row in fold["sample"][:3]:
+                print("  %s loaded=%s shipped=%s residual=%s"
+                      % (row["box"], row["loaded"], row["shipped"], row["residual"]))
+            print("VERDICT: %s" % ("PASS" if fold["containers"]
+                                   and not fold["negative_residual_containers"]
+                                   else "FAIL - a container shipped more than it held"))
             return
 
         started = time.time()
@@ -908,6 +1229,11 @@ def main():
         positions = scan_positions(db, args.scans_per_wafer)
 
         atoms = recipe_atoms()
+        transfer_facts = dt_transfer_facts(db)
+        chain_atoms, chain_stats = transfer_atoms(transfer_facts,
+                                                  args.double_dt_fraction)
+        atoms.extend(chain_atoms)
+        atoms.extend(dt_condition_atoms(transfer_facts))
         runs, findings = [], []
         for index, wafer in enumerate(sorted(rates)):
             atoms.extend(wafer_atoms(wafer, index, factors[wafer],
@@ -931,6 +1257,11 @@ def main():
                  MOLD_EQP_CAUSAL, mold_causal))
         print("decoys: step/recipe id (100%% of both populations), chamber %s (~%.0f%% "
               "of both), bond eqp (lot-determined)" % (CHAMBERS[0], CHAMBER_SKEW * 100))
+        print("transfer chain: core wafers=%d  pick=%d  restage=%d  bond-consume=%d  |  "
+              "chains via TWO dt slots=%d, via one=%d"
+              % (chain_stats["core_wafers"], chain_stats["load"],
+                 chain_stats["restage"], chain_stats["consume"],
+                 chain_stats["chains_3hop"], chain_stats["chains_2hop"]))
 
         if not args.apply:
             print("DRY RUN: nothing written. Re-run with --apply.")
