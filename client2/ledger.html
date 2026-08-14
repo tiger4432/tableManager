@@ -1727,6 +1727,34 @@
     .sx-th__base { display: block; font-size: 13px; font-weight: 400; color: var(--text-dim); font-family: var(--font-mono); }
     .sx-th__den { display: block; font-size: 13px; font-weight: 400; color: var(--text-dim); }
 
+    /* 🔴 「칠해진 칸 0」·「채점 불가」는 열 머리에 «내용»으로 선다 (R-2026-08-14-G).
+       조용한 무색은 「정상」으로 읽힌다 — 가짜 감쇄. 셀마다 반복하면 소음이므로
+       지표의 성질은 지표의 자리에. 선언(서버)과 관측(이 응답)은 색으로 갈린다. */
+    .sx-th__flag {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--warning);
+      background: var(--warning-weak);
+      border-radius: 6px;
+      padding: 2px 7px;
+      margin-top: 4px;
+      white-space: normal;
+      max-width: 22ch;
+    }
+    .sx-th__flag--declared { color: var(--danger); background: var(--danger-weak); }
+
+    .sx-facts { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .sx-fact {
+      font-size: 13px;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border-radius: 999px;
+      padding: 3px 11px;
+    }
+    .sx-fact--warn { color: var(--warning); background: var(--warning-weak); }
+    .sx-provnote { font-size: 13px; color: var(--text-dim); margin-top: 6px; max-width: 76ch; }
+
     .sx-row > td { border-bottom: 1px solid var(--border); padding: 8px 12px; }
     .sx-row:nth-child(even) > td { background-image: linear-gradient(var(--row-stripe), var(--row-stripe)); }
     .sx-row:hover > td { background-image: linear-gradient(var(--surface-hover), var(--surface-hover)); }

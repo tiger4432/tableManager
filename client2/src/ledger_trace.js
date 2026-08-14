@@ -55,7 +55,7 @@ import { renderStructure } from './ontology_structure_view.js';
 // `surprise_core.js` and the DOM is `surprise_view.js`, neither of which touches
 // `window`, so both are scored under bare node like the three above.
 import {
-  SURPRISE_VIEW, parseSurpriseQuery, surpriseQuery, surpriseModel, toggleMark,
+  SURPRISE_VIEW, parseSurpriseQuery, surpriseQuery, lotsQuery, surpriseModel, toggleMark,
 } from './surprise_core.js';
 import { renderSurprise } from './surprise_view.js';
 // The floor under the three-axis maps — the REGISTERED frame declaration and the
@@ -240,7 +240,10 @@ async function loadAxisMap(rowId, catalog) {
   axisInFlight.add(key);
   const parts = [`row=${encodeURIComponent(rowId)}`];
   if (slot) parts.push(`slot=${encodeURIComponent(slot)}`);
-  if (surpriseAsked.finding) parts.push(`kind=${encodeURIComponent(surpriseAsked.finding)}`);
+  if (surpriseAsked.kind) parts.push(`kind=${encodeURIComponent(surpriseAsked.kind)}`);
+  // The same axis the table was read under — `/lot_map` resolves `row` against it,
+  // so omitting it would look the row up on a different axis than it came from.
+  if (surpriseAsked.by) parts.push(`by=${encodeURIComponent(surpriseAsked.by)}`);
   let body = null;
   try {
     const res = await fetch(`${API_BASE}/api/ledger/lot_map?${parts.join('&')}`);
@@ -250,10 +253,10 @@ async function loadAxisMap(rowId, catalog) {
   }
   // `{axes: []}` is the honest stand-in for "no answer": `lotAxisMaps` renders it
   // as ONE named refusal rather than three copies of the same sentence.
-  axisMaps[key] = body && Array.isArray(body.axes) ? body : { axes: [] };
+  axisMaps[key] = body && Array.isArray(body.projections) ? body : { projections: [] };
   axisInFlight.delete(key);
   try {
-    await resolveFloors(axisMaps[key].axes, axisFloors);
+    await resolveFloors(axisMaps[key].projections, axisFloors);
   } catch (err) { /* a floor that will not resolve renders as its own refusal */ }
   paintSurprise(catalog, null);
 }
@@ -296,10 +299,13 @@ async function runSurprise(question) {
   // readable while the aggregate is still in flight.
   paint(null, { tone: 'busy', title: '집계 중…', detail: null });
 
-  const query = surpriseQuery(question);
+  // 🔴 THE REQUEST IS NOT THE ADDRESS BAR. `mark` and `slot` are the client's own
+  // (which rows are emphasised, and which slot the maps are of) and sending them
+  // to `/lots` would be asking the server a question it does not answer.
+  const query = lotsQuery(question);
   let res;
   try {
-    res = await fetch(`${API_BASE}/api/ledger/lots?${query}`);
+    res = await fetch(`${API_BASE}/api/ledger/lots${query ? `?${query}` : ''}`);
   } catch (err) {
     if (mine !== surpriseSession) return;
     paint(null, { tone: 'error', title: '서버에 닿지 못했습니다', detail: String((err && err.message) || err) });

@@ -37,46 +37,44 @@
 // grid standing in for a wafer nobody registered.
 //
 // ------------------------------------------------------------
-// 🔴 PROPOSED SHAPE — NOT YET SERVED.
+// 🔴 THE LANDED CONTRACT — `server/ledger_lots.py::lot_map` (`56d8aae`).
 //
-//   GET /api/ledger/lot_map?row=<row>&slot=<slot>&kind=<kind>&by=<axis>
-//     -> { row, lot, slot, kind, generated_at,
-//          slots: [ {slot, cols, rows} ],     // 🔴 이 랏이 «실제로» 가진 슬롯들
-//          axes: [
-//            { axis: "bond" | "dt" | "core",
-//              label: "본딩축",
-//              table: "bonding_log",          // whose coordinates these are
-//              basis: "transferred",          // how the projection was obtained
-//              reference: { table: "valid_die_ref", map_id: "PRD-A_BASE" },
-//              frame: { <grid_metadata object> } | null,
-//              floor: [ {x, y} ] | null,      // null -> resolve via `reference`
-//              cells: [ {x, y, n} ] | null,   // null -> 좌표 미배포, NOT zero defects
-//              state: "ready" | "absent" | "unreachable",
-//              reason: "no_live_bridge" | "<token>" } ] }
+//   GET /api/ledger/lot_map?row=<row>&slot=<slot>&kind=<kind>&by=<axis>&window=
+//     -> { row, state, generated_at, kind, slot,
+//          row_axis: {name, label, source},
+//          window: {...},
+//          projections: [
+//            { axis: "bond"|"dt"|"core", label: "본딩축", sublabel: "스테이지 좌표",
+//              state: "ready" | "no_frame" | "unreachable",
+//              reason: "no_live_bridge" | "no_registered_frame"
+//                    | "frame_ambiguous_across_slots" | null,
+//              message: "<한국어 문장>" | null,
+//              frame: { state: "ready", table, map_id, grid: <grid_metadata>,
+//                       valid_die_ref: {relation, present} }
+//                   | { state: "no_frame", reason: "frame_ambiguous_across_slots",
+//                       available_slots: [...], available_lots: [...] }
+//                   | { state, reason, message }  | null,
+//              coordinate_unit: "cells_from_origin",
+//              cells: [{x, y, n}], found: <int>, scanned: <int> } ],
+//          provenance: {...} }
 //
-// 🔴 ONE LOT IS NOT ONE MAP. Measured by the server lane (2026-08-14): the
-// bonding map is keyed on `(bond_lot, bond_slot)` — 25 slots per lot, each with
-// its OWN grid (11×11, 12×12, 12×13, 13×13…). `slot` is therefore part of the
-// question, not a detail: overlaying 25 slots into one picture would draw a
-// wafer that does not exist anywhere. The frames are real — 2,500 of them
-// registered in `wafer_map_metadata` — which is exactly why there is no excuse
-// for a drawn circle.
+// DIFFS THIS CLIENT ABSORBED (server won every one):
+//   `projections`   not `axes`
+//   `frame.grid`    carries the grid_metadata; there is no inline `floor`
+//   the SLOT LIST arrives as `frame.available_slots` under
+//                   `reason: "frame_ambiguous_across_slots"` — so the strip is
+//                   READ, not assembled a second time by this client
+//   `found`/`scanned` per projection; cells carry `n`
 //
-// 🔴 AND THE CORE AXIS IS UNREACHABLE TODAY, MEASURED, NOT ASSUMED:
-// `bonding_log.core_lot/core_slot/cx/cy` are NULL across all 357,796 rows and
-// `dt_map.core_lot` across all 5,619 — zero matches. Reviving it needs a new side
-// join, which ruling R-2026-08-14-D forbids. The server answers
-// `{"axis":"core","state":"unreachable","reason":"no_live_bridge"}` and THIS
-// SCREEN SAYS SO IN THE CORE AXIS'S OWN PLACE. It is not hidden and the slot is
-// not collapsed to two — an absence the reader cannot see is an absence they
-// will assume away, which is the structure view's 「선언만 있는 축」 rule.
-//
-// `floor`/`frame` may be omitted, in which case the loader resolves them from
-// the two routes that ARE deployed today (`/tables/wafer_map_metadata/data` and
-// `/tables/valid_die_ref/data`) and hands them in through `floors`.
-//
-// CHANGING WHAT THIS CONSUMES IS AN ESCALATION, NOT AN EDIT.
-// ============================================================
+// 🔴 AND ONE LEG IS STILL MISSING, NAMED RATHER THAN GUESSED. `valid_die_ref` is
+// announced as `{relation, present}` — its presence, not WHICH map. The valid-die
+// table is keyed on `(product, type)` while the frame's `map_id` is `{lot}_{slot}`
+// on `wafer_map_metadata`; the two key spaces do not meet, so this client CANNOT
+// derive which mask belongs to a projection. The panel therefore draws the defect
+// chips on the REGISTERED GRID and says 「유효 다이 마스크 미적용」 — the grid is
+// declared, the mask is absent, and neither is invented. Reported to the lead PM
+// as a one-field request: `valid_die_ref.map_id` on the projection's frame.
+// ------------------------------------------------------------
 
 import { frameFromDeclaration, isFrameUsable } from './map2/declaration.js';
 import { computeSeating, unionBounds } from './map2/seating.js';
@@ -100,20 +98,19 @@ const AXIS_HINTS = {
 //: The refusal vocabulary. TOKENS with sentences beside them, so the screen can
 //: print the sentence and the harness can score the token.
 export const MAP_REFUSAL = {
-  no_axes: '축 선언 없음 — 서버가 축을 실어오지 않았습니다',
-  // 🔴 MEASURED, NOT MISSING. The bridge columns are NULL across every row, so
-  // there is no join to make — and making one is forbidden by R-2026-08-14-D.
-  // This sentence stands in the core axis's own place; it is content.
+  no_axes: '축 선언 없음 — 서버가 투영을 실어오지 않았습니다',
+  // 🔴 MEASURED, NOT MISSING. `bonding_log.core_lot`/`cx`/`cy` are NULL across all
+  // 357,796 rows, so there is no join to make — and making one is forbidden by
+  // R-2026-08-14-D. This sentence stands in the core axis's own place; it is content.
+  no_live_bridge: '연결 없음 — 좌표 컬럼이 이 행에서 전부 NULL입니다 (0이 아니라 부재)',
+  no_registered_frame: '프레임 미등록 — 등록된 격자 없이는 그리지 않습니다',
+  frame_ambiguous_across_slots: '이 행이 프레임 여러 개에 걸쳐 있습니다 — 슬롯을 고르십시오',
   unreachable: '연결 없음 — 이 축을 이을 살아있는 다리가 없습니다',
-  no_live_bridge: '연결 없음 — 브릿지 컬럼이 전 행 NULL입니다 (0이 아니라 부재)',
-  no_slot: '이 슬롯의 맵이 없습니다',
-  frame_undeclared: '프레임 미등록 — wafer_map_metadata에 이 축의 선언이 없습니다',
   frame_unusable: '프레임 선언이 좌표를 세우기에 부족합니다',
-  reference_absent: 'valid die 레퍼런스 없음 — 그릴 웨이퍼가 없습니다',
-  reference_empty: 'valid die 레퍼런스에 칸이 0개입니다',
   origin_box_unknown: '오리진 박스 미상 — 물리 규격(phys_*) 선언이 없습니다',
-  cells_unreported: '불량 좌표 미배포 — 바닥만 실물입니다',
+  no_cells: '이 행에 이 축의 불량 칩이 없습니다',
   seating_failed: '좌석 계산 실패',
+  mask_absent: '유효 다이 마스크 미적용 — 등록 격자 위에 불량 칩만 그립니다',
 };
 
 function strOrEmpty(v) {
@@ -176,8 +173,11 @@ export const axisHint = (axis) => AXIS_HINTS[strOrEmpty(axis)] || '';
 /** The key a resolved floor is filed under — `table|map_id`. */
 export function referenceKey(ref) {
   if (!ref) return '';
-  const table = strOrEmpty(ref.table);
+  const table = strOrEmpty(ref.relation !== undefined ? ref.relation : ref.table);
   const mapId = strOrEmpty(ref.map_id !== undefined ? ref.map_id : ref.mapId);
+  // 🔴 NO `map_id` MEANS NO RESOLVABLE MASK, AND THAT IS THE HONEST ANSWER. The
+  // wire announces presence only; a key built from the relation alone would match
+  // whichever mask happened to be cached and draw the wrong wafer.
   if (!table || !mapId) return '';
   return `${table}|${mapId}`;
 }
@@ -216,7 +216,8 @@ function refuse(axis, code, detail) {
     floor: null,
     marks: null,
     bounds: null,
-    counts: { floor: 0, marked: 0, offFloor: 0, dropped: 0 },
+    availableSlots: [],
+    counts: { floor: 0, marked: 0, found: null, scanned: null, offFloor: 0, dropped: 0 },
   };
 }
 
@@ -230,124 +231,135 @@ function refuse(axis, code, detail) {
 export function axisPanel(axis, floors) {
   if (!axis) return refuse(axis, 'no_axes');
 
-  // 🔴 THE FIRST GATE, AND IT IS A STATEMENT RATHER THAN AN ERROR. An axis the
-  // server declares `unreachable` keeps its heading, its place in the row and its
-  // reason — the core axis reads 「연결 없음」 beside two drawn wafers instead of
-  // leaving a two-axis row that quietly implies there were only ever two.
   const state = strOrEmpty(axis.state);
-  if (state === 'unreachable') {
-    const reason = strOrEmpty(axis.reason);
-    const panel = refuse(axis, MAP_REFUSAL[reason] ? reason : 'unreachable',
-      reason && !MAP_REFUSAL[reason] ? `사유 ${reason}` : '');
-    panel.unreachable = true;
+  const reason = strOrEmpty(axis.reason);
+  const cellSet = toCells(axis.cells);
+
+  // 🔴 THE SERVER'S REFUSAL IS RENDERED AS THE SERVER WROTE IT, in its own place.
+  // An axis it cannot reach keeps its heading and its row position — the core
+  // axis reads 「연결 없음」 beside two drawn wafers instead of leaving a
+  // two-axis row that quietly implies there were only ever two.
+  if (state !== 'ready') {
+    const panel = refuse(axis, MAP_REFUSAL[reason] ? reason : (state || 'unreachable'),
+      strOrEmpty(axis.message));
+    panel.unreachable = state === 'unreachable';
+    // 🔴 THE SLOT LIST COMES OFF THE REFUSAL. `frame_ambiguous_across_slots`
+    // answers WHICH slots exist, so the strip is read rather than assembled a
+    // second time from a shape this client would have to guess.
+    const fr = axis.frame || {};
+    panel.availableSlots = listOf(fr.available_slots).map(strOrEmpty).filter(Boolean);
+    // Cells can be served without a frame; they are counted, never drawn.
+    panel.counts.marked = cellSet.cells.length;
+    panel.counts.found = intOrNull(axis.found);
+    panel.counts.scanned = intOrNull(axis.scanned);
     return panel;
   }
 
-  const ref = axis.reference || null;
-  const key = referenceKey(ref);
-  const resolved = (floors && key && floors[key]) || null;
+  // ── the frame: the REGISTERED declaration, read, never invented ──
+  const fr = axis.frame || {};
+  const meta = fr.grid && typeof fr.grid === 'object' ? fr.grid : null;
+  if (!meta) return refuse(axis, 'no_registered_frame', strOrEmpty(fr.map_id));
+  const declared = frameFromDeclaration(meta, { defaults: FRAME_DEFAULTS });
+  const usable = isFrameUsable(declared);
+  if (!usable.ok) return refuse(axis, 'frame_unusable', '사유 ' + usable.reasons.join(', '));
+  const seatFrame = seatFrameOf(declared);
 
-  // ── the frame: registered declaration only ──
-  const meta = (axis.frame && typeof axis.frame === 'object')
-    ? axis.frame
-    : (resolved && resolved.frame) || null;
-  if (!meta) {
-    return refuse(axis, 'frame_undeclared',
-      key ? `참조: ${key}` : '참조 선언도 없습니다');
-  }
-  const frame = frameFromDeclaration(meta, { defaults: FRAME_DEFAULTS });
-  const usable = isFrameUsable(frame);
-  if (!usable.ok) {
-    return refuse(axis, 'frame_unusable', `사유 ${usable.reasons.join(', ')}`);
-  }
-  const seatFrame = seatFrameOf(frame);
-
-  // ── the floor: valid_die_ref rows, presence IS the mask ──
-  const floorRaw = listOf(axis.floor).length
-    ? axis.floor
-    : ((resolved && resolved.cells) || null);
-  if (floorRaw === null) return refuse(axis, 'reference_absent', key ? `참조: ${key}` : '');
-  const floorCells = toCells(floorRaw);
-  if (!floorCells.cells.length) return refuse(axis, 'reference_empty', key ? `참조: ${key}` : '');
-
-  let floorSeating;
-  try {
-    floorSeating = computeSeating(floorCells.cells, seatFrame, null);
-  } catch (err) {
-    return refuse(axis, 'seating_failed', String((err && err.message) || err));
-  }
-  // 🔴 `boxKnown === false` MEANS THE ORIGIN BOX WAS NOT DERIVABLE — the physical
-  // spec is absent, so `boundingBoxOf` returned null and the seater fell back to
-  // an identity box. That is a designed refusal, and drawing on top of it would
-  // put every cell at the wrong offset. Not a warning: a stop.
-  if (!floorSeating.boxKnown) return refuse(axis, 'origin_box_unknown', key ? `참조: ${key}` : '');
-
-  // ── the overlay: defect chips in THIS axis's coordinates ──
-  const hasCells = listOf(axis.cells).length > 0 || Array.isArray(axis.cells);
-  const markCells = hasCells ? toCells(axis.cells) : { cells: [], dropped: 0 };
-  let markSeating = null;
-  if (hasCells && markCells.cells.length) {
+  // ── the floor: the valid-die mask, IF a resolver supplied one ──
+  //
+  // The wire announces `valid_die_ref: {relation, present}` — presence, not WHICH
+  // map — so today this is null and the panel says so. See the header: the two key
+  // spaces do not meet, and guessing one would draw a wafer nobody registered.
+  const refKey = referenceKey(fr.valid_die_ref);
+  const resolved = (floors && refKey && floors[refKey]) || null;
+  const floorRaw = listOf(resolved && resolved.cells).length ? resolved.cells : null;
+  let floorSeating = null;
+  if (floorRaw) {
+    const floorCells = toCells(floorRaw);
     try {
-      markSeating = computeSeating(markCells.cells, seatFrame, null);
+      floorSeating = computeSeating(floorCells.cells, seatFrame, null);
+    } catch (err) {
+      return refuse(axis, 'seating_failed', String((err && err.message) || err));
+    }
+    if (!floorSeating.boxKnown) return refuse(axis, 'origin_box_unknown', refKey);
+  }
+
+  // ── the overlay: defect chips in THIS axis's own coordinates ──
+  let markSeating = null;
+  if (cellSet.cells.length) {
+    try {
+      markSeating = computeSeating(cellSet.cells, seatFrame, null);
     } catch (err) {
       return refuse(axis, 'seating_failed', String((err && err.message) || err));
     }
   }
 
-  // A defect seated where the reference has no die is a FINDING about the data,
-  // not a pixel to hide: it means the two maps disagree about which dies exist.
+  // 🔴 WITH NO MASK THE EXTENT IS THE DECLARED GRID, NOT THE DEFECTS' OWN SPAN.
+  // Fitting the picture to the defects would rescale it per row and make two rows
+  // uncomparable — and would imply the wafer is exactly as big as its damage.
+  const gridBounds = {
+    minX: 0,
+    minY: 0,
+    maxX: Math.max(0, (declared.cols || 1) - 1),
+    maxY: Math.max(0, (declared.rows || 1) - 1),
+    empty: false,
+  };
   let offFloor = 0;
-  if (markSeating) {
+  if (markSeating && floorSeating) {
     for (const seat of markSeating.seats) {
-      if (!floorSeating.byKey.has(`${seat.x},${seat.y}`)) offFloor += 1;
+      if (!floorSeating.byKey.has(seat.x + ',' + seat.y)) offFloor += 1;
     }
   }
 
   return {
     axis: strOrEmpty(axis.axis),
     label: axisLabel(axis.axis, axis.label),
-    hint: axisHint(axis.axis),
-    table: strOrEmpty(axis.table),
-    basis: strOrEmpty(axis.basis),
-    reference: key,
+    hint: strOrEmpty(axis.sublabel) || axisHint(axis.axis),
+    table: strOrEmpty(fr.table),
+    basis: strOrEmpty(axis.coordinate_unit) || 'cells_from_origin',
+    reference: refKey,
+    mapId: strOrEmpty(fr.map_id),
     ok: true,
-    // 🔴 THE FLOOR IS REAL AND THE OVERLAY MAY NOT BE. Said in the panel rather
-    // than left for the reader to infer from an empty wafer.
-    code: hasCells ? null : 'cells_unreported',
-    why: hasCells ? '' : MAP_REFUSAL.cells_unreported,
+    // The mask gap is stated ON a panel that otherwise rendered.
+    code: floorSeating ? (cellSet.cells.length ? null : 'no_cells') : 'mask_absent',
+    why: floorSeating
+      ? (cellSet.cells.length ? '' : MAP_REFUSAL.no_cells)
+      : MAP_REFUSAL.mask_absent,
     detail: '',
-    frame,
+    frame: declared,
     floor: floorSeating,
     marks: markSeating,
-    bounds: markSeating
-      ? unionBounds(floorSeating.bounds, markSeating.bounds)
-      : floorSeating.bounds,
+    bounds: floorSeating
+      ? (markSeating ? unionBounds(floorSeating.bounds, markSeating.bounds) : floorSeating.bounds)
+      : gridBounds,
+    grid: { cols: declared.cols, rows: declared.rows },
+    availableSlots: [],
     counts: {
-      floor: floorSeating.seatCount,
+      floor: floorSeating ? floorSeating.seatCount : 0,
       marked: markSeating ? markSeating.seatCount : 0,
+      found: intOrNull(axis.found),
+      scanned: intOrNull(axis.scanned),
       offFloor,
-      dropped: floorCells.dropped + markCells.dropped,
+      dropped: cellSet.dropped,
     },
   };
 }
 
-/**
- * The three axes for one marked lot.
- *
- * A lot with no axis payload at all comes back as ONE refusal rather than three
- * identical ones — the reader learns nothing from the same sentence written
- * three times.
- */
 export function lotAxisMaps(entry, floors) {
-  const axes = listOf(entry && entry.axes);
+  const axes = listOf(entry && entry.projections);
   // 🔴 THE SLOT STRIP IS DERIVED FROM WHAT THE LOT ACTUALLY HAS, never from a
   // range this file makes up. A lot with 25 slots and a lot with 3 are both real
   // and the screen must not imply the second is missing 22.
-  const slots = listOf(entry && entry.slots).map((s) => ({
-    slot: strOrEmpty(s && s.slot !== undefined ? s.slot : s),
-    cols: intOrNull(s && s.cols),
-    rows: intOrNull(s && s.rows),
-  })).filter((s) => s.slot !== '');
+  const panelsFirst = axes.map((a) => axisPanel(a, floors));
+  // 🔴 THE SLOT LIST IS THE SERVER'S ANSWER TO `frame_ambiguous_across_slots`,
+  // not a range this file makes up. A row spanning 25 slots and one spanning 3
+  // are both real, and the screen must not imply the second is missing 22.
+  const slotSet = [];
+  for (const pf of panelsFirst) {
+    for (const sl of listOf(pf.availableSlots)) {
+      if (!slotSet.includes(sl)) slotSet.push(sl);
+    }
+  }
+  const slots = slotSet.map((sl) => ({ slot: sl, cols: null, rows: null }));
   const base = {
     lot: strOrEmpty(entry && entry.lot),
     row: strOrEmpty(entry && entry.row),
@@ -357,7 +369,7 @@ export function lotAxisMaps(entry, floors) {
   if (!axes.length) {
     return { ...base, ok: false, why: MAP_REFUSAL.no_axes, panels: [] };
   }
-  const panels = axes.map((a) => axisPanel(a, floors));
+  const panels = panelsFirst;
   return {
     ...base,
     ok: panels.some((p) => p.ok),

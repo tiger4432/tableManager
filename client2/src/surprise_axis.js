@@ -154,14 +154,19 @@ export async function resolveFloors(axes, into) {
   const floors = into || {};
   const wanted = [];
   for (const axis of Array.isArray(axes) ? axes : []) {
-    const ref = axis && axis.reference;
-    const table = ref && ref.table ? String(ref.table) : '';
-    const mapId = ref && (ref.map_id !== undefined ? ref.map_id : ref.mapId);
+    // 🔴 THE LANDED SHAPE PUTS IT UNDER THE FRAME: `frame.valid_die_ref` is
+    // `{relation, present}`. It announces PRESENCE, not which map — so today no
+    // key is resolvable and this loop finds nothing, which is why the panels say
+    // 「유효 다이 마스크 미적용」 instead of drawing an unregistered wafer. The
+    // moment the server adds `map_id` here, the mask resolves with no other edit.
+    const fr = (axis && axis.frame) || {};
+    const ref = fr.valid_die_ref || axis.reference || null;
+    if (!ref) continue;
+    const table = String(ref.relation || ref.table || '');
+    const mapId = ref.map_id !== undefined ? ref.map_id : ref.mapId;
     if (!table || mapId === undefined || mapId === null || mapId === '') continue;
     const key = `${table}|${mapId}`;
     if (floors[key]) continue;
-    const hasInline = axis.frame && Array.isArray(axis.floor) && axis.floor.length;
-    if (hasInline) continue;
     wanted.push([key, table, String(mapId)]);
   }
   await Promise.all(wanted.map(async ([key, table, mapId]) => {

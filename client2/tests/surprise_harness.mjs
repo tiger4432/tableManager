@@ -66,74 +66,120 @@ try {
 const FIX = {
   state: 'ready',
   generated_at: '2026-08-14T18:00:00+09:00',
-  scale: [2, 3, 4.5, 6],
-  metrics: [
+  row_axis: { name: 'bond_lot', label: '본딩 랏', about: 'process',
+              relation: 'bonding_log', column: 'bond_lot',
+              source: 'bonding_log.bond_lot' },
+  axes_available: [{ name: 'bond_lot', label: '본딩 랏', about: 'process' }],
+  aggregates_available: [
+    { aggregate: 'found_rate', label: '발생 칩비', value_kind: 'ratio', needs_denominator: true },
+    { aggregate: 'extent_mean', label: '평균 크기', value_kind: 'mean', needs_denominator: true },
+    { aggregate: 'event_count', label: '관측 건수', value_kind: 'count', needs_denominator: false },
+  ],
+  columns: [
     {
-      metric: 'zzq',
-      label: '지큐',
-      basis: 'inspection_run',
-      observed_by: ['AOI'],
-      aggregates: [
-        { agg: 'chip_rate', label: '발생칩비', unit: 'ratio', denominator: '검사 칩', baseline: 0.065 },
-        { agg: 'mean_area', label: '평균면적', unit: 'um2', baseline: 1500 },
+      id: 'zzq:found_rate', kind: 'zzq', kind_label: '지큐',
+      aggregate: 'found_rate', aggregate_label: '발생 칩비',
+      value_kind: 'ratio', doc: '발견 칩 / 검사 칩', has_denominator: true,
+      denominator: { population: 'scanned_chips', label: '검사 칩', methods: ['AOI'] },
+      baseline: { value: 0.065, basis: 'median_of_rows', n_rows: 4,
+                  excluded_rows: 0, excluded_reason: null },
+      thresholds: [{ level: 1, at: 2.0, label: '주의' }, { level: 2, at: 3.0, label: '높음' },
+                   { level: 3, at: 4.5, label: '심각' }, { level: 4, at: 6.0, label: '극단' }],
+      state: 'ready', reason: null,
+    },
+    {
+      id: 'zzq:extent_mean', kind: 'zzq', kind_label: '지큐',
+      aggregate: 'extent_mean', aggregate_label: '평균 크기',
+      value_kind: 'mean', doc: '', has_denominator: true,
+      denominator: { population: 'found_chips', label: '발견 칩', methods: ['AOI'] },
+      baseline: { value: 1500, basis: 'median_of_rows', n_rows: 3,
+                  excluded_rows: 0, excluded_reason: null },
+      thresholds: [{ level: 1, at: 2.0, label: '주의' }, { level: 2, at: 3.0, label: '높음' },
+                   { level: 3, at: 4.5, label: '심각' }, { level: 4, at: 6.0, label: '극단' }],
+      state: 'ready', reason: null,
+    },
+    {
+      // 🔴 THE COLUMN THAT IS NEVER PAINTED — R-2026-08-14-G. Every cell is
+      // measured and none reaches the first step, which is exactly the shape that
+      // reads as 「정상」 if the screen stays silent.
+      id: 'wob:found_rate', kind: 'wob', kind_label: '워브',
+      aggregate: 'found_rate', aggregate_label: '발생 칩비',
+      value_kind: 'ratio', doc: '', has_denominator: true,
+      denominator: { population: 'scanned_chips', label: '검사 칩', methods: ['AOI'] },
+      baseline: { value: 0.6124, basis: 'median_of_rows', n_rows: 4,
+                  excluded_rows: 0, excluded_reason: null },
+      thresholds: [{ level: 1, at: 2.0, label: '주의' }, { level: 2, at: 3.0, label: '높음' },
+                   { level: 3, at: 4.5, label: '심각' }, { level: 4, at: 6.0, label: '극단' }],
+      state: 'ready', reason: null,
+    },
+  ],
+  rows: [
+    {
+      row: 'R-1', label: 'CL-2601-002', order_index: 2,
+      occurred_at: { first: '2026-05-03T02:17:00+09:00', last: '2026-05-03T09:00:00+09:00' },
+      bucket: { id: 'unknown', label: '미상', counts_toward_baseline: true },
+      universe: 3525,
+      cells: [
+        // 🔴 A MEASURED ZERO. 725 chips inspected, none had the finding.
+        { column: 'zzq:found_rate', state: 'measured', value: 0, n: 0, of: 725,
+          ratio_to_baseline: 0, level: 0 },
+        { column: 'zzq:extent_mean', state: 'unscanned', value: null, n: null, of: 0 },
+        { column: 'wob:found_rate', state: 'measured', value: 0.61, n: 442, of: 725,
+          ratio_to_baseline: 0.996, level: 0 },
       ],
     },
     {
-      metric: 'wob',
-      label: '워브',
-      basis: 'inspection_run',
-      aggregates: [
-        { agg: 'chip_rate', label: '발생칩비', unit: 'ratio', denominator: '검사 칩', baseline: 0.01 },
-        // Declared and NOT in the URL — the 「열 추가」 side of the declaration.
-        { agg: 'per_chip', label: '칩당수', unit: '', baseline: 0.02 }],
+      row: 'R-2', label: 'CL-2601-006', order_index: 6,
+      occurred_at: { first: '2026-05-06T02:00:00+09:00', last: '2026-05-06T11:00:00+09:00' },
+      bucket: { id: 'unknown', label: '미상', counts_toward_baseline: true },
+      universe: 3525,
+      cells: [
+        { column: 'zzq:found_rate', state: 'measured', value: 0.416, n: 302, of: 725,
+          ratio_to_baseline: 6.4, level: 4 },
+        { column: 'zzq:extent_mean', state: 'measured', value: 5210, n: 302, of: 302,
+          ratio_to_baseline: 3.47, level: 2 },
+        { column: 'wob:found_rate', state: 'measured', value: 0.648, n: 470, of: 725,
+          ratio_to_baseline: 1.059, level: 0 },
+      ],
+    },
+    {
+      // 🔴 OUT OF THE BASELINE BY THE SERVER'S OWN DECLARATION — shown, badged,
+      // and NOT painted even though it carries a level.
+      row: 'R-3', label: 'CL-2601-QE2', order_index: 7,
+      occurred_at: { first: '2026-05-07T02:00:00+09:00', last: null },
+      bucket: { id: 'special_eval', label: '특수평가', counts_toward_baseline: false },
+      universe: 1200,
+      cells: [
+        { column: 'zzq:found_rate', state: 'measured', value: 0.34, n: 82, of: 240,
+          ratio_to_baseline: 5.2, level: 3 },
+        { column: 'zzq:extent_mean', state: 'measured', value: 4880, n: 82, of: 82,
+          ratio_to_baseline: 3.25, level: 2 },
+        { column: 'wob:found_rate', state: 'measured', value: 0.59, n: 141, of: 240,
+          ratio_to_baseline: 0.963, level: 0 },
+      ],
+    },
+    {
+      // 🔴 THE ROW THAT DISCRIMINATES TWO MORE DEFECTS: an ABSENT cell, and a
+      // measured rate whose denominator never arrived.
+      row: 'R-4', label: 'CL-2601-021', order_index: 9,
+      occurred_at: { first: null, last: null },
+      bucket: { id: 'unknown', label: '미상', counts_toward_baseline: true },
+      universe: null,
+      cells: [
+        { column: 'zzq:found_rate', state: 'measured', value: 0.08, n: 12, of: null,
+          ratio_to_baseline: 1.2, level: 0 },
+        // 'zzq:extent_mean' is ABSENT — 답의 구멍, 미검사가 아니다.
+        { column: 'wob:found_rate', state: 'unmeasurable', value: null, n: null, of: null },
+      ],
     },
   ],
-  default_columns: [{ metric: 'zzq', agg: 'chip_rate' }, { metric: 'wob', agg: 'chip_rate' }],
-  lots: [
-    {
-      row: 'R-1', lot: 'CL-2601-002', seq: 2, bucket: 'production', bucket_label: '양산',
-      inspected: { chips: 725 },
-      cells: {
-        // 🔴 A MEASURED ZERO. 725 chips were inspected and none had the finding.
-        'zzq|chip_rate': { state: 'measured', value: 0, n: 0, d: 725, baseline: 0.065, lift: 0, level: 0 },
-        'zzq|mean_area': { state: 'unmeasurable', reason: '결함 0 — 면적 정의 안 됨' },
-        // 🔴 AND AN UNSCANNED CELL, IN THE SAME ROW. Not 0. Not clean. Unknown.
-        'wob|chip_rate': { state: 'unscanned' },
-      },
-    },
-    {
-      row: 'R-2', lot: 'CL-2601-006', seq: 6, bucket: 'production', bucket_label: '양산',
-      inspected: { chips: 725 },
-      cells: {
-        'zzq|chip_rate': { state: 'measured', value: 0.416, n: 302, d: 725, baseline: 0.065, lift: 6.4, level: 4 },
-        'zzq|mean_area': { state: 'measured', value: 5210, baseline: 1500, lift: 3.47, level: 2 },
-        'wob|chip_rate': { state: 'no_denominator', n: 4, reason: '검사 런 없음' },
-      },
-    },
-    {
-      // 🔴 SPECIAL EVALUATION, WITH A LEVEL THE SERVER ASSIGNED. It must be SHOWN,
-      // BADGED, and NOT PAINTED — and above all not filtered away.
-      row: 'R-3', lot: 'CL-2601-QE2', seq: 7, bucket: 'special_eval', bucket_label: '특수평가',
-      inspected: { chips: 240 },
-      cells: {
-        'zzq|chip_rate': { state: 'measured', value: 0.34, n: 82, d: 240, baseline: 0.065, lift: 5.2, level: 3 },
-        'zzq|mean_area': { state: 'measured', value: 4880, baseline: 1500, lift: 3.25, level: 2 },
-        'wob|chip_rate': { state: 'measured', value: 0.021, n: 5, d: 240, baseline: 0.01, lift: 2.1, level: 1 },
-      },
-    },
-    {
-      // 🔴 THE ROW THAT DISCRIMINATES TWO MORE DEFECTS.
-      row: 'R-4', lot: 'CL-2601-021', seq: 9, bucket: 'unknown', bucket_label: '미상',
-      inspected: { chips: null },
-      cells: {
-        // 값은 있는데 분모가 없다 — 「분모 없는 숫자 출고 금지」의 시험대.
-        'zzq|chip_rate': { state: 'measured', value: 0.08, n: 12, baseline: 0.065, lift: 1.2, level: 0 },
-        // 그리고 'zzq|mean_area' 는 «아예 없다» — 미검사가 아니라 답의 구멍.
-        'wob|chip_rate': { state: 'unscanned' },
-      },
-    },
-  ],
-  events: [{ seq: 6, label: 'EQP-07 투입', kind: 'equipment' }],
+  populations: { rows_total: 12, rows_returned: 4, rows_truncated: true },
+  window: { requested: '전 기간', applied: '30d', forced: true,
+            forced_reason: 'grid_too_large' },
+  notes: [{ code: 'relation_absent', message: 'delam_obs 미배포' }],
+  provenance: { source: 'source_tables', ledger_backed: false,
+                relations: ['void_obs', 'bonding_log'], absent_relations: ['delam_obs'],
+                note: '이 경로가 아직 원장을 읽지 않는다.' },
 };
 
 const KINDS = { state: 'ready', kinds: [{ kind: 'zzq', label: '지큐', atoms: 900 }, { kind: 'vrn', label: '브른', atoms: 11 }] };
@@ -142,36 +188,57 @@ const KINDS = { state: 'ready', kinds: [{ kind: 'zzq', label: '지큐', atoms: 9
 // whole file pass vacuously, so the properties the assertions depend on are
 // checked before anything is compared.
 {
-  const r0 = FIX.lots[0].cells;
-  if (r0['zzq|chip_rate'].value !== 0) die('fixture lost its MEASURED ZERO — S1 cannot be scored');
-  if (r0['wob|chip_rate'].state !== 'unscanned') die('fixture lost its UNSCANNED cell — S1 cannot be scored');
-  if (FIX.lots[2].bucket !== 'special_eval') die('fixture lost its special-eval row');
-  if (!(FIX.lots[2].cells['zzq|chip_rate'].level > 0)) die('special-eval row carries no level — suppression is untestable');
-  if (FIX.lots[1].cells['zzq|chip_rate'].d === FIX.lots[1].inspected.chips * 5) die('fixture denominator degenerated');
-  if ('zzq|mean_area' in FIX.lots[3].cells) die('fixture lost its ABSENT cell — 미보고 vs 미검사 is untestable');
-  if (FIX.lots[3].cells['zzq|chip_rate'].d !== undefined) die('fixture lost its denominator-less rate — S2 is untestable');
+  const cell = (r, c) => FIX.rows[r].cells.find((x) => x.column === c);
+  if (cell(0, 'zzq:found_rate').value !== 0) die('fixture lost its MEASURED ZERO — S1 cannot be scored');
+  if (cell(0, 'zzq:extent_mean').state !== 'unscanned') die('fixture lost its UNSCANNED cell — S1 cannot be scored');
+  if (FIX.rows[2].bucket.counts_toward_baseline !== false) die('fixture lost its off-baseline row');
+  if (!(cell(2, 'zzq:found_rate').level > 0)) die('off-baseline row carries no level — suppression is untestable');
+  if (cell(1, 'zzq:found_rate').of === FIX.rows[1].universe) die('fixture denominator collapsed into the row universe');
+  if (cell(3, 'zzq:extent_mean')) die('fixture lost its ABSENT cell — 미보고 vs 미검사 is untestable');
+  if (cell(3, 'zzq:found_rate').of !== null) die('fixture lost its denominator-less rate — S2 is untestable');
+  // R-2026-08-14-G: the column every cell of which is measured and none painted.
+  const wob = FIX.rows.map((r) => r.cells.find((x) => x.column === 'wob:found_rate'));
+  if (!wob.slice(0, 3).every((c) => c.state === 'measured' && c.level === 0)) {
+    die('fixture lost its NEVER-PAINTED column — fake attenuation is untestable');
+  }
   if (/zzq|wob/.test(CORE_SRC) || /zzq|wob/.test(VIEW_SRC)) die('the fixture metric names appear in the source — S4 is vacuous');
+  if (/1\.554/.test(CORE_SRC + VIEW_SRC + PAGE_SRC)) die('the retracted 1.554 figure is in the shipped source');
 }
 
 const AXIS_FIX = {
-  row: 'R-2', lot: 'CL-2601-006', slot: '3',
-  slots: [{ slot: '1', cols: 11, rows: 11 }, { slot: '3', cols: 12, rows: 13 }, { slot: '7', cols: 13, rows: 13 }],
-  axes: [
+  row: 'R-2', slot: '3', kind: 'zzq',
+  row_axis: { name: 'bond_lot', label: '본딩 랏', source: 'bonding_log.bond_lot' },
+  projections: [
     {
-      axis: 'bond', table: 'bonding_log', basis: 'transferred',
-      reference: { table: 'valid_die_ref', map_id: 'PRD-A_BASE' },
-      frame: { grid_cols: 5, grid_rows: 5, grid_start_x: 1, grid_start_y: 1, rotation: 0, side: 'front', phys_wafer_dia: 300, phys_chip_x: 40, phys_chip_y: 40, phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3 },
-      floor: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }],
-      cells: [{ x: 2, y: 2 }],
-      state: 'ready',
+      axis: 'bond', label: '본딩축', sublabel: '스테이지 좌표',
+      state: 'ready', reason: null, message: null,
+      coordinate_unit: 'cells_from_origin',
+      frame: {
+        state: 'ready', table: 'bonding_log', map_id: 'CL-2601-006_3',
+        grid: { grid_cols: 5, grid_rows: 5, grid_start_x: 1, grid_start_y: 1,
+                rotation: 0, side: 'front' },
+        valid_die_ref: { relation: 'valid_die_ref', present: true },
+      },
+      cells: [{ x: 2, y: 2, n: 3 }, { x: 3, y: 2, n: 1 }],
+      found: 4, scanned: 25,
     },
     {
-      axis: 'dt', table: 'bonding_log', basis: 'transferred',
-      reference: { table: 'valid_die_ref', map_id: 'PRD-A_TAPE' },
-      frame: null, floor: null, cells: null, state: 'absent',
+      // 🔴 THE ROW SPANS SEVERAL FRAMES — and the SLOT LIST is the server's answer.
+      axis: 'dt', label: 'DT축', sublabel: '테이프 좌표',
+      state: 'no_frame', reason: 'frame_ambiguous_across_slots',
+      message: '이 행이 프레임 여러 개에 걸쳐 있다 — 슬롯마다 격자 치수가 다르다.',
+      coordinate_unit: 'cells_from_origin',
+      frame: { state: 'no_frame', reason: 'frame_ambiguous_across_slots',
+               available_slots: ['1', '3', '7'], available_lots: ['CL-2601-006'] },
+      cells: [{ x: 1, y: 4, n: 2 }], found: 2, scanned: 25,
     },
     // 🔴 MEASURED UNREACHABLE — 357,796 rows of NULL bridge columns.
-    { axis: 'core', state: 'unreachable', reason: 'no_live_bridge' },
+    {
+      axis: 'core', label: '코어축', sublabel: '웨이퍼 좌표',
+      state: 'unreachable', reason: 'no_live_bridge',
+      message: 'bonding_log.cx가 이 행에서 전부 NULL — 좌표가 기록되지 않았다.',
+      frame: null, cells: [], found: 0, scanned: 0,
+    },
   ],
 };
 
@@ -288,7 +355,7 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   const { core, view, mapCore } = await load(coreSrc, viewSrc, mapCoreSrc, mapViewSrc);
 
   const question = core.parseSurpriseQuery(new URLSearchParams(
-    'view=surprise&cols=zzq:chip_rate,zzq:mean_area,wob:chip_rate&mark=CL-2601-006'));
+    'view=surprise&columns=zzq:found_rate,zzq:extent_mean,wob:found_rate&mark=R-2'));
   const model = core.surpriseModel({ body: FIX, kinds: KINDS, question });
 
   const doc = makeDoc('light');
@@ -306,8 +373,8 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   console.log('\n── A. 미검사와 0은 다른 칸 ───────────────────────────────');
   {
     const r0 = first(byAttr(tbody, 'data-lot', 'CL-2601-002'));
-    const zero = first(byAttr(r0, 'data-col', 'zzq|chip_rate'));
-    const unscanned = first(byAttr(r0, 'data-col', 'wob|chip_rate'));
+    const zero = first(byAttr(r0, 'data-col', 'zzq:found_rate'));
+    const unscanned = first(byAttr(r0, 'data-col', 'zzq:extent_mean'));
 
     eq('A1 the measured zero says it was measured', zero.getAttribute('data-cell-state'), 'measured');
     eq('A2 the unscanned cell says it was not', unscanned.getAttribute('data-cell-state'), 'unscanned');
@@ -327,47 +394,48 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
     // 🔴 AN ABSENT CELL IS NOT AN UNSCANNED CELL. 미검사 is a measurement the server
     // made; a cell the response never carried is a hole in the ANSWER.
     const r3 = first(byAttr(tbody, 'data-lot', 'CL-2601-021'));
-    const absent = first(byAttr(r3, 'data-col', 'zzq|mean_area'));
+    const absent = first(byAttr(r3, 'data-col', 'zzq:extent_mean'));
     eq('A11 a cell the response omitted reads as 미보고', absent.getAttribute('data-cell-state'), 'unreported');
     ok('A12 and NOT as 미검사', absent.getAttribute('data-cell-state')
-      !== first(byAttr(r3, 'data-col', 'wob|chip_rate')).getAttribute('data-cell-state'));
+      !== first(byAttr(r0, 'data-col', 'zzq:extent_mean')).getAttribute('data-cell-state'));
     ok('A13 the two nothings read differently on screen',
       absent.textContent.includes('미보고') && !absent.textContent.includes('미검사'), absent.textContent);
 
-    const unmeasurable = first(byAttr(r0, 'data-col', 'zzq|mean_area'));
+    const unmeasurable = first(byAttr(r3, 'data-col', 'wob:found_rate'));
     eq('A9 unmeasurable is its own state', unmeasurable.getAttribute('data-cell-state'), 'unmeasurable');
-    ok('A10 and it carries the server reason', unmeasurable.textContent.includes('면적 정의 안 됨'), unmeasurable.textContent);
+    ok('A10 and it reads as neither zero nor 미검사',
+      unmeasurable.textContent.includes('측정 불가') && !unmeasurable.textContent.includes('미검사'),
+      unmeasurable.textContent);
   }
 
   // ── B. 분모 ──────────────────────────────────────────────────────────────────
   console.log('\n── B. 분모 없는 숫자 출고 금지 ────────────────────────────');
   {
     const r1 = first(byAttr(tbody, 'data-lot', 'CL-2601-006'));
-    const rate = first(byAttr(r1, 'data-col', 'zzq|chip_rate'));
-    eq('B1 the denominator is the INSPECTED chip count', rate.getAttribute('data-denominator'), null);
+    const rate = first(byAttr(r1, 'data-col', 'zzq:found_rate'));
     const frac = first(byClass(rate, 'sx-cell__f'));
-    eq('B2 and it reaches the DOM as the fraction', frac.getAttribute('data-denominator'), '725');
+    // 🔴 725, NOT 3525. The denominator is the INSPECTED chip count; a client that
+    // took the row's universe would be wrong by ~5×.
+    eq('B1 the denominator is the inspected chip count, off the wire',
+      frac.getAttribute('data-denominator'), '725');
+    eq('B2 and it is NOT the row universe', frac.getAttribute('data-denominator') === '3525', false);
     ok('B3 the fraction is on screen beside the percentage',
       rate.textContent.includes('302/725'), rate.textContent);
-    // 🔴 725, NOT 3525. A client that took the lot size would be wrong by 5×.
     const chips = first(byClass(r1, 'sx-row__chips'));
-    ok('B4 the inspected count is stated per row', chips.textContent.includes('725'), chips.textContent);
+    ok('B4 the row universe is labelled as its own thing, not as the denominator',
+      chips.textContent.includes('3,525'), chips.textContent);
 
-    const nod = first(byAttr(r1, 'data-col', 'wob|chip_rate'));
-    eq('B5 a rate with no denominator refuses', nod.getAttribute('data-cell-state'), 'no_denominator');
+    const nod = first(byAttr(tbody, 'data-lot', 'CL-2601-021'));
+    const bare = first(byAttr(nod, 'data-col', 'zzq:found_rate'));
+    eq('B5 a measured rate with no denominator refuses', bare.getAttribute('data-cell-state'), 'no_denominator');
     ok('B6 and the count still shows, because the count is real',
-      nod.textContent.includes('4건'), nod.textContent);
-    ok('B7 with the server reason for why there is no rate',
-      nod.textContent.includes('검사 런 없음'), nod.textContent);
-    ok('B8 no percentage is printed without a denominator', !nod.textContent.includes('%'), nod.textContent);
+      bare.textContent.includes('12건'), bare.textContent);
+    ok('B7 naming which denominator is missing',
+      bare.textContent.includes('검사 칩'), bare.textContent);
+    ok('B8 no percentage is printed without a denominator', !bare.textContent.includes('%'), bare.textContent);
 
-    // 🔴 AND A *MEASURED* RATE WITH NO DENOMINATOR IS REFUSED TOO. This is the
-    // one that would be wrong by 5× if the client guessed the lot size.
-    const bare = first(byAttr(first(byAttr(tbody, 'data-lot', 'CL-2601-021')), 'data-col', 'zzq|chip_rate'));
-    eq('B9 a measured rate with no denominator refuses', bare.getAttribute('data-cell-state'), 'no_denominator');
-    ok('B10 and prints no percentage', !bare.textContent.includes('%'), bare.textContent);
-    ok('B11 the count survives, because the count is real', bare.textContent.includes('12건'), bare.textContent);
-    eq('B12 an unreported chip count is not 0', first(byClass(first(byAttr(tbody, 'data-lot', 'CL-2601-021')), 'sx-row__chips--none')).getAttribute('data-chips'), 'none');
+    eq('B9 an unreported row universe is not 0',
+      first(byClass(nod, 'sx-row__chips--none')).getAttribute('data-chips'), 'none');
   }
 
   // ── C. level은 서버가 낸다 ────────────────────────────────────────────────────
@@ -375,32 +443,39 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   {
     const r1 = first(byAttr(tbody, 'data-lot', 'CL-2601-006'));
     eq('C1 the served level reaches the cell verbatim',
-      first(byAttr(r1, 'data-col', 'zzq|chip_rate')).getAttribute('data-heat'), '4');
+      first(byAttr(r1, 'data-col', 'zzq:found_rate')).getAttribute('data-heat'), '4');
     eq('C2 and a different column keeps ITS level',
-      first(byAttr(r1, 'data-col', 'zzq|mean_area')).getAttribute('data-heat'), '2');
+      first(byAttr(r1, 'data-col', 'zzq:extent_mean')).getAttribute('data-heat'), '2');
     // 🔴 NO THRESHOLD FUNCTION EXISTS IN THE SOURCE. S3, scored as text because
     // the defect is a second implementation existing at all.
     const bare = stripComments(coreSrc);
     ok('C3 the core carries no client-side threshold ladder',
       !/l\s*>=\s*bands\[/.test(bare) && !/function heatLevel/.test(bare), 'a level ladder is back in the core');
     ok('C4 the legend says who assigned the step',
-      legend.textContent.includes('단계 판정: 서버'), legend.textContent.slice(0, 200));
+      legend.textContent.includes('단계 판정'), legend.textContent.slice(0, 200));
+    ok('C5 the legend ladder is the wire\'s, labels included',
+      legend.textContent.includes('주의') && legend.textContent.includes('2배 이상'));
   }
 
   // ── D. 특수평가: 뱃지만, 칠하지 않고, 숨기지 않고 ─────────────────────────────
   console.log('\n── D. 특수평가 행 ────────────────────────────────────────');
   {
     const rows = byClass(tbody, 'sx-row');
-    eq('D1 every lot is in the table, special included', rows.length, 4);
+    eq('D1 every row is in the table, off-baseline included', rows.length, 4);
     const qe = first(byAttr(tbody, 'data-lot', 'CL-2601-QE2'));
     ok('D2 it is not hidden', qe !== NOTHING);
     eq('D3 it is badged', first(byClass(qe, 'sx-bucket')).getAttribute('data-bucket-badge'), 'special_eval');
     ok('D4 the badge says so in words', qe.textContent.includes('특수평가'), qe.textContent.slice(0, 120));
-    const cell = first(byAttr(qe, 'data-col', 'zzq|chip_rate'));
+    // 🔴 THE SUPPRESSION RULE IS THE SERVER'S DECLARATION, not a bucket-name match.
+    eq('D3b the row carries the server\'s baseline membership',
+      qe.getAttribute('data-counts-baseline'), '0');
+    const cell = first(byAttr(qe, 'data-col', 'zzq:found_rate'));
     eq('D5 and its cell is NOT painted despite a served level', cell.getAttribute('data-heat'), null);
     eq('D6 the suppression is stated, not silent', cell.getAttribute('data-heat-suppressed'), 'special_eval');
     ok('D7 the value is still printed', cell.textContent.includes('34.0%'), cell.textContent);
     ok('D8 the legend explains the rule', legend.textContent.includes('칠하지 않습니다'), '');
+    ok('D9 and names the declared discriminator rather than a guessed one',
+      legend.textContent.includes('counts_toward_baseline'), '');
   }
 
   // ── E. 지표 목록은 선언에서 나온다 ────────────────────────────────────────────
@@ -408,49 +483,62 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   {
     const cols = first(byClass(mount, 'sx-cols'));
     ok('E1 the declared metric reaches the column bar',
-      byAttr(cols, 'data-col', 'zzq|chip_rate').length > 0);
+      byAttr(cols, 'data-col', 'zzq:found_rate').length > 0);
     ok('E2 a SECOND declared metric does too',
-      byAttr(cols, 'data-col', 'wob|chip_rate').length > 0);
+      byAttr(cols, 'data-col', 'wob:found_rate').length > 0);
+    // The 「열 추가」 menu is the cross product of registered kinds with declared
+    // aggregates — both off the wire, neither listed in the source.
     ok('E3 a declared aggregate that is not up is offered for adding',
-      byAttr(cols, 'data-col-add', 'wob|per_chip').length > 0);
+      byAttr(cols, 'data-col-add', 'wob:event_count').length > 0);
     // 🔴 THE REAL TEST OF S4: a metric name invented HERE, right now, reaches the
     // screen without a line changing in the source.
     const invented = core.surpriseModel({
-      body: { ...FIX, metrics: FIX.metrics.concat([{ metric: 'qqx', label: '큐엑스', aggregates: [{ agg: 'zz', label: '집계', unit: '' }] }]) },
+      body: {
+        ...FIX,
+        columns: FIX.columns.concat([{
+          id: 'qqx:zz', kind: 'qqx', kind_label: '큐엑스',
+          aggregate: 'zz', aggregate_label: '집계', value_kind: 'count',
+          has_denominator: false, baseline: { value: null }, thresholds: [], state: 'ready',
+        }]),
+      },
       kinds: KINDS,
-      question: core.parseSurpriseQuery(new URLSearchParams('view=surprise&cols=qqx:zz')),
+      question: core.parseSurpriseQuery(new URLSearchParams('view=surprise')),
     });
     const d2 = makeDoc('light');
     const m2 = d2.createElement('div');
     view.renderSurprise(d2, m2, invented, null, null);
     ok('E4 a metric declared one second ago is a column',
-      byAttr(first(byClass(m2, 'sx-table')), 'data-col', 'qqx|zz').length > 0);
+      byAttr(first(byClass(m2, 'sx-table')), 'data-col', 'qqx:zz').length > 0);
     ok('E5 and its label came from the declaration',
       first(byClass(m2, 'sx-table')).textContent.includes('큐엑스'));
     // An item the kind catalog knows and the metric declaration does not.
     ok('E6 a declared-but-unaggregated item is shown, not dropped',
       byAttr(cols, 'data-item', 'vrn').length > 0);
-    // A column the URL asks for that nothing declares.
-    const strayModel = core.surpriseModel({
-      body: FIX, kinds: KINDS,
-      question: core.parseSurpriseQuery(new URLSearchParams('view=surprise&cols=nope:none')),
-    });
-    eq('E7 an undeclared column is flagged rather than silently dropped',
-      strayModel.columns.length, 1);
-    eq('E8 and it knows it is undeclared', strayModel.columns[0].declared, false);
+    // 🔴 THE ROW AXIS NAMES ITSELF TOO — it is switchable (`by=`), so a hardcoded
+    // 「랏」 would mislabel the column the moment somebody asks a different axis.
+    ok('E7 the row axis label comes off the wire',
+      first(byClass(mount, 'sx-table')).textContent.includes('본딩 랏'));
+    ok('E8 and the header stat uses it as well',
+      first(byAttr(mount, 'data-stat', 'rows')).textContent.includes('본딩 랏'));
   }
 
   // ── F. URL은 질문이다 ────────────────────────────────────────────────────────
   console.log('\n── F. 열 구성 · 마킹 · 슬롯이 URL에 실린다 ─────────────────');
   {
-    const q = core.parseSurpriseQuery(new URLSearchParams('view=surprise&cols=zzq:chip_rate,wob:chip_rate&mark=A,B&slot=3'));
+    const q = core.parseSurpriseQuery(new URLSearchParams(
+      'view=surprise&columns=zzq:found_rate,wob:found_rate&mark=A,B&slot=3&by=bond_lot&window=7d'));
     eq('F1 columns parse out of the URL', q.cols.length, 2);
     eq('F2 marks parse out of the URL', q.marked.join('|'), 'A|B');
     eq('F3 the slot parses out of the URL', q.slot, '3');
     const back = core.surpriseQuery(q);
-    ok('F4 and the question round-trips', back.includes('cols=') && back.includes('mark=') && back.includes('slot=3'), back);
-    const dropped = core.surpriseQuery(core.withoutColumn(q, { metric: 'zzq', agg: 'chip_rate' }));
-    ok('F5 dropping a column is a URL, not a mode', dropped.includes('wob%3Achip_rate') && !dropped.includes('zzq%3Achip_rate'), dropped);
+    ok('F4 and the question round-trips', back.includes('columns=') && back.includes('mark=') && back.includes('slot=3'), back);
+    // 🔴 THE REQUEST IS NOT THE ADDRESS BAR. `mark` and `slot` are the client's own.
+    const req = core.lotsQuery(q);
+    ok('F4b the request carries the server\'s parameters only',
+      req.includes('columns=') && req.includes('by=bond_lot') && req.includes('window=7d')
+      && !req.includes('mark=') && !req.includes('slot='), req);
+    const dropped = core.surpriseQuery(core.withoutColumn(q, { kind: 'zzq', aggregate: 'found_rate' }));
+    ok('F5 dropping a column is a URL, not a mode', dropped.includes('wob%3Afound_rate') && !dropped.includes('zzq%3Afound_rate'), dropped);
     const toggled = core.toggleMark(q, 'A');
     eq('F6 unmarking removes exactly one lot', toggled.marked.join('|'), 'B');
     // Every column control is an anchor.
@@ -482,10 +570,18 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
 
     const bond = first(byAttr(row, 'data-axis', 'bond'));
     eq('H3 the bonding axis rendered', bond.getAttribute('data-axis-ok'), '1');
-    eq('H4 on the real valid-die floor', first(byTag(bond, 'CANVAS')).getAttribute('data-floor-cells'), '6');
-    eq('H5 with the defect chip on it', first(byTag(bond, 'CANVAS')).getAttribute('data-mark-cells'), '1');
-    ok('H6 and it names its provenance', bond.textContent.includes('valid_die_ref|PRD-A_BASE'), bond.textContent);
+    eq('H4 on the REGISTERED frame', bond.getAttribute('data-axis-code'), 'mask_absent');
+    eq('H5 with its defect chips seated', first(byTag(bond, 'CANVAS')).getAttribute('data-mark-cells'), '2');
+    ok('H6 and it names the registered frame it drew on',
+      bond.textContent.includes('CL-2601-006_3'), bond.textContent);
     ok('H7 and states the coordinate unit', bond.textContent.includes('오리진 기준 칸수'), bond.textContent);
+    // 🔴 THE MASK IS ANNOUNCED-ONLY ON THE WIRE, SO ITS ABSENCE IS STATED.
+    ok('H7b the missing valid-die mask is named, not implied',
+      bond.textContent.includes('유효 다이 마스크 미적용'), bond.textContent);
+    ok('H7c and the panel does not claim 0 good dies',
+      !bond.textContent.includes('유효 다이 0'), bond.textContent);
+    ok('H7d the projection\'s own denominator is on screen',
+      first(byAttr(bond, 'data-map-stat', 'scanned')).textContent.includes('25'));
 
     // 🔴 S7 — the core axis is UNREACHABLE and it says so IN ITS OWN PLACE.
     const coreAxis = first(byAttr(row, 'data-axis', 'core'));
@@ -496,8 +592,9 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
     // 🔴 S6 — NOTHING IS DRAWN THAT WAS NOT SOURCED.
     eq('H12 a refused axis has NO canvas at all', byTag(coreAxis, 'CANVAS').length, 0);
     const dt = first(byAttr(row, 'data-axis', 'dt'));
-    eq('H13 an axis with no frame also draws nothing', byTag(dt, 'CANVAS').length, 0);
-    ok('H14 and says which leg was missing', dt.textContent.includes('프레임 미등록'), dt.textContent);
+    eq('H13 an axis with an ambiguous frame draws nothing', byTag(dt, 'CANVAS').length, 0);
+    ok('H14 and says which leg was missing',
+      dt.textContent.includes('프레임 여러 개'), dt.textContent);
     // No invented wafer anywhere in the source.
     ok('H15 the map view contains no circle-drawing path',
       !/Math\.sqrt|<circle|arc\(/.test(stripComments(mapViewSrc)), 'a circular grid crept back in');
@@ -509,16 +606,19 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
     const row = first(byAttr(first(byClass(mount, 'sx-maps')), 'data-map-lot', 'CL-2601-006'));
     const strip = first(byClass(row, 'sx-slots'));
     ok('I1 the slot strip exists', strip !== NOTHING);
-    eq('I2 listing the slots the lot ACTUALLY has', strip.getAttribute('data-slot-count'), '3');
+    // 🔴 READ, NOT ASSEMBLED. The list is the server's answer to
+    // `frame_ambiguous_across_slots`, so the client does not build it twice.
+    eq('I2 listing the slots the SERVER says exist', strip.getAttribute('data-slot-count'), '3');
     eq('I3 the served slot is marked current', first(byAttr(strip, 'aria-current', 'true')).getAttribute('data-slot'), '3');
     ok('I4 each slot is an anchor carrying the whole question',
       first(byAttr(strip, 'data-slot', '7')).getAttribute('href').includes('slot=7'));
-    // 🔴 THE GRIDS DIFFER PER SLOT, AND THE SCREEN SAYS SO.
-    eq('I5 differing grids are announced',
-      first(byClass(strip, 'sx-slots__note')).getAttribute('data-slot-dims'), '3');
-    ok('I6 in words', strip.textContent.includes('슬롯마다 격자가 다릅니다'), strip.textContent);
+    eq('I5 the note is attributed to the refusal it came from',
+      first(byClass(strip, 'sx-slots__note')).getAttribute('data-slot-note'),
+      'frame_ambiguous_across_slots');
+    ok('I6 and it is the server\'s sentence, not a paraphrase',
+      strip.textContent.includes('격자 치수가 다르다'), strip.textContent);
     const cached = mapCore.mapSection(model, { 'R-2|': AXIS_FIX }, {});
-    eq('I7 the map is keyed on the bonding row id, not the lot name', cached.lots[0].row, 'R-2');
+    eq('I7 the map is keyed on the row id the route takes', cached.lots[0].row, 'R-2');
   }
 
   // ── J. 차트 ──────────────────────────────────────────────────────────────────
@@ -526,17 +626,76 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
   {
     const charts = first(byClass(mount, 'sx-charts'));
     eq('J1 one chart per column', byClass(charts, 'sx-chart').length, model.columns.length);
-    const c0 = first(byAttr(charts, 'data-chart', 'zzq|chip_rate'));
+    const c0 = first(byAttr(charts, 'data-chart', 'zzq:found_rate'));
     ok('J2 the chart states its own denominator', c0.textContent.includes('/4 랏 표시'), c0.textContent);
     // Special-eval lots are not in the line but are on the axis.
     ok('J3 the special lot is marked apart from the line',
       byAttr(c0, 'data-special-lot', 'CL-2601-QE2').length === 1);
     ok('J4 the marked lot has an emphasised dot',
       first(byAttr(c0, 'data-dot-lot', 'CL-2601-006')).getAttribute('data-dot-marked') === '1');
-    const c1 = first(byAttr(charts, 'data-chart', 'wob|chip_rate'));
-    ok('J5 unscanned lots are counted as gaps, not plotted as zero',
+    const c1 = first(byAttr(charts, 'data-chart', 'zzq:extent_mean'));
+    ok('J5 unscanned rows are counted as gaps, not plotted as zero',
       c1.getAttribute('data-chart-gaps') !== null || c1.textContent.includes('미측정'), c1.textContent);
-    ok('J6 the ledger event is on the axis', byAttr(c0, 'data-event', 'EQP-07 투입').length > 0);
+    // 🔴 THE WIRE CARRIES NO LEDGER EVENTS TODAY, so no marker is drawn and none
+    // is claimed. A chart that invented a marker would be the whole defect.
+    eq('J6 no event marker is drawn when none was served', hasAttr(charts, 'data-event').length, 0);
+  }
+
+  // ── N. 채점 불가가 화면에 보인다 (R-2026-08-14-G) ────────────────────────────
+  console.log('\n── N. 가짜 감쇄 방지 ─────────────────────────────────────');
+  {
+    // 🔴 A COLUMN THAT IS NEVER PAINTED READS AS 「정상」. The fixture's third
+    // column is measured in every row and painted in none — exactly the shape the
+    // ruling names, and exactly what `found_rate` does on the live box (saturates
+    // at 1.0, baseline 0.6124, so the ceiling is 1.633 and the first step is 2.0).
+    const head = first(byAttr(first(byClass(mount, 'sx-table')), 'data-col', 'wob:found_rate'));
+    const flag = first(byClass(head, 'sx-th__flag'));
+    ok('N1 an entirely unpainted column says so in its header', flag !== NOTHING);
+    eq('N2 naming how many cells were measured', flag.getAttribute('data-col-unpainted'), '3');
+    ok('N3 with the largest multiple and the first threshold, so silence is legible',
+      flag.textContent.includes('첫 문턱 2배') && flag.textContent.includes('최대'), flag.textContent);
+    // 🔴 IT MUST NOT CLAIM THE METRIC CANNOT BE GRADED. That is the SERVER'S
+    // declaration about the metric's mathematics; this is a fact about this answer.
+    ok('N4 and it does NOT claim 채점 불가 — that is the server\'s to declare',
+      !flag.textContent.includes('채점 불가'), flag.textContent);
+    // A painted column carries no such flag — otherwise the marker is noise.
+    const painted = first(byAttr(first(byClass(mount, 'sx-table')), 'data-col', 'zzq:found_rate'));
+    eq('N5 a column that did paint carries no flag', byClass(painted, 'sx-th__flag').length, 0);
+    // 🔴 THE SERVER'S DECLARATION, WHEN IT SHIPS, RENDERS AHEAD OF THE OBSERVATION.
+    const declaredModel = core.surpriseModel({
+      body: {
+        ...FIX,
+        columns: FIX.columns.map((c) => (c.id === 'wob:found_rate'
+          ? { ...c, state: 'ungradable', reason: '천장 1.633 < 첫 문턱 2.0' } : c)),
+      },
+      kinds: KINDS, question: model.question,
+    });
+    const d3 = makeDoc('light');
+    const m3 = d3.createElement('div');
+    view.renderSurprise(d3, m3, declaredModel, null, null);
+    const declaredHead = first(byAttr(first(byClass(m3, 'sx-table')), 'data-col', 'wob:found_rate'));
+    eq('N6 a column state the client has never heard of still renders',
+      first(byClass(declaredHead, 'sx-th__flag')).getAttribute('data-col-state'), 'ungradable');
+    ok('N7 as 채점 불가, with the server\'s reason verbatim',
+      declaredHead.textContent.includes('채점 불가')
+      && declaredHead.textContent.includes('천장 1.633'), declaredHead.textContent);
+    ok('N8 and it replaces the observation rather than doubling it',
+      byClass(declaredHead, 'sx-th__flag').length === 1);
+  }
+
+  // ── O. 응답의 성질을 숨기지 않는다 ───────────────────────────────────────────
+  console.log('\n── O. 강제 구간 · 잘린 행 · 출처 ─────────────────────────');
+  {
+    const facts = first(byAttr(mount, 'data-panel', 'facts'));
+    ok('O1 a forced window is stated', byAttr(facts, 'data-fact', 'window_forced').length === 1);
+    ok('O2 a truncated row set is stated', byAttr(facts, 'data-fact', 'truncated').length === 1);
+    ok('O3 with both sides of the fraction',
+      first(byAttr(facts, 'data-fact', 'truncated')).textContent.includes('4/12'),
+      first(byAttr(facts, 'data-fact', 'truncated')).textContent);
+    ok('O4 provenance says these numbers are not ledger-backed',
+      first(byAttr(facts, 'data-fact', 'provenance')).textContent.includes('원장 미기반'));
+    ok('O5 a server note reaches the screen',
+      byAttr(facts, 'data-fact', 'relation_absent').length === 1);
   }
 
   // ── K. 배선 ──────────────────────────────────────────────────────────────────
@@ -546,6 +705,8 @@ async function suite(coreSrc, viewSrc, mapCoreSrc, mapViewSrc) {
     ok('K2 the view is a URL, not a mode', /view=surprise/.test(PAGE_SRC));
     ok('K3 the entry imports the renderer', /renderSurprise/.test(ENTRY_SRC));
     ok('K4 and asks the confirmed aggregate route', /api\/ledger\/lots/.test(ENTRY_SRC));
+    ok('K4b sending the server\'s parameters, not the address bar',
+      /lotsQuery\(question\)/.test(ENTRY_SRC));
     ok('K5 and the confirmed map route', /api\/ledger\/lot_map/.test(ENTRY_SRC));
     ok('K6 it has its own session guard', /surpriseSession/.test(ENTRY_SRC));
     ok('K7 the surprise view does not also run the console',
@@ -592,29 +753,39 @@ const DEFECTS = [
   ['core', 'S1 unscanned collapses into the measured path',
     (s) => s.replace("if (wire === 'unscanned') {", "if (false && wire === 'unscanned') {")],
   ['core', 'S1 an absent cell is called 미검사 instead of 미보고',
-    (s) => s.replace("state: 'unreported', value: null, n: null, d: null,", "state: 'unscanned', value: null, n: null, d: null,")],
-  ['core', 'S3 the level is derived from the lift instead of served',
-    (s) => s.replace('const served = numOrNull(raw.level);', 'const served = numOrNull(raw.lift);')],
+    (s) => s.replace("state: 'unreported', value: null, n: null, of: null,", "state: 'unscanned', value: null, n: null, of: null,")],
+  ['core', 'S3 the level is derived from the ratio instead of served',
+    (s) => s.replace('const served = numOrNull(raw.level);', 'const served = numOrNull(raw.ratio_to_baseline);')],
   ['core', 'S2 a rate prints without its denominator',
-    (s) => s.replace("if (col.unit === UNIT_RATIO && d === null) {", "if (false) {")],
-  ['core', 'D5 the special-eval row gets painted',
-    (s) => s.replace("const suppressed = strOrEmpty(bucket) === 'special_eval';", 'const suppressed = false;')],
-  ['core', 'E7 an undeclared column is dropped instead of flagged',
-    (s) => s.replace('      const hit = declared.get(key);\n      if (hit) return { ...hit, declared: true };', '      const hit = declared.get(key);\n      return { ...(hit || {}), declared: true };')],
+    (s) => s.replace('if (col.hasDenominator && of === null) {', 'if (false) {')],
+  ['core', 'D5 the off-baseline row gets painted',
+    (s) => s.replace('const suppressed = counts === false;', 'const suppressed = false;')],
+  ['core', 'E7 the row axis label is dropped',
+    (s) => s.replace('label: strOrEmpty(body && body.row_axis && body.row_axis.label),', "label: '',")],
+  ['core', 'N1 the unpainted-column fact is never computed',
+    (s) => s.replace('neverPainted: measured > 0 && painted === 0,', 'neverPainted: false,')],
+  ['core', 'O1 a forced window stops being reported',
+    (s) => s.replace('forced: win.forced === true,', 'forced: false,')],
   ['view', 'A2 the cell state stops reaching the DOM',
     (s) => s.replace("attrs(td, { 'data-col': column.key, 'data-cell-state': reading.state });", "attrs(td, { 'data-col': column.key, 'data-cell-state': 'measured' });")],
   ['view', 'G4 painted cells stop being painted',
     (s) => s.replace("if (reading.level !== null) td.setAttribute('data-heat', String(reading.level));", 'if (false) td.setAttribute("data-heat", "0");')],
   ['view', 'B2 the fraction loses its denominator attribute',
-    (s) => s.replace("'data-denominator': reading.d === null ? null : String(reading.d),", "'data-denominator': null,")],
-  ['view', 'D1 the special-eval row is filtered out of the table',
+    (s) => s.replace("'data-denominator': reading.of === null ? null : String(reading.of),", "'data-denominator': null,")],
+  ['view', 'N1 the unpainted-column header flag disappears',
+    (s) => s.replace('} else if (col.observed && col.observed.neverPainted) {', '} else if (false) {')],
+  ['view', 'D1 the off-baseline row is filtered out of the table',
     (s) => s.replace('for (const row of model.rows) body.appendChild(renderRow(doc, row, model));', 'for (const row of model.rows) { if (row.special) continue; body.appendChild(renderRow(doc, row, model)); }')],
   ['mapcore', 'S7 the unreachable axis stops being flagged',
-    (s) => s.replace("if (state === 'unreachable') {", 'if (false) {')],
+    (s) => s.replace("panel.unreachable = state === 'unreachable';", 'panel.unreachable = false;')],
+  ['mapcore', 'H7b the absent valid-die mask stops being named',
+    (s) => s.replace("code: floorSeating ? (cellSet.cells.length ? null : 'no_cells') : 'mask_absent',", 'code: null,')],
   ['mapview', 'S6 a refused axis gets a canvas anyway',
-    (s) => s.replace('    if (panel.detail) box.appendChild(el(doc, \'p\', \'sx-map__detail\', panel.detail));\n    // 🔴 AND NOTHING IS DRAWN. No canvas, no placeholder grid, no circle.\n    return box;', "    if (panel.detail) box.appendChild(el(doc, 'p', 'sx-map__detail', panel.detail));")],
+    (s) => s.replace('if (!panel.ok) {', 'if (false) {')],
   ['mapview', 'S8 the slot strip disappears',
     (s) => s.replace('if (lot.slots && lot.slots.length) {', 'if (false) {')],
+  ['view', 'O2 truncation stops being reported',
+    (s) => s.replace('if (model.truncated) {', 'if (false) {')],
 ];
 
 // 🔴 THE CONTROLS ARE THE OTHER HALF OF S5. The first one gives the LEGEND the
@@ -626,7 +797,7 @@ const CONTROLS = [
   // to move; every ROW assertion (A*, B*, C1-C2, D*, G4) must NOT — that, and
   // only that, is what proves the row assertions are measuring rows.
   ['view', "the legend speaks the rows' attribute (must not move any ROW assertion)",
-    (s) => s.replace("item.setAttribute('data-heat-key', String(i));", "item.setAttribute('data-heat', String(i));\n    item.setAttribute('data-heat-key', String(i));"),
+    (s) => s.replace("item.setAttribute('data-heat-key', String(step.level));", "item.setAttribute('data-heat', String(step.level)); item.setAttribute('data-heat-key', String(step.level));"),
     ['G1']],
   ['core', 'a private helper is renamed', (s) => s.replace(/\bstrOrEmpty\b/g, 'asText'), []],
 ];

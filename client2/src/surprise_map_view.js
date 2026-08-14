@@ -135,8 +135,16 @@ function renderPanel(doc, panel) {
     s.appendChild(el(doc, 'span', 'sx-map__statterm', term));
     foot.appendChild(s);
   };
-  stat('유효 다이', panel.counts.floor, 'floor');
+  // 🔴 THE MASK IS ONLY COUNTED WHEN IT WAS APPLIED. Printing 「유효 다이 0」 for a
+  // panel that never received a mask would read as a wafer with no good dies.
+  if (panel.floor) stat('유효 다이', panel.counts.floor, 'floor');
+  else if (panel.grid) stat('등록 격자', `${panel.grid.cols}×${panel.grid.rows}`, 'grid');
   stat('불량 칩', panel.counts.marked, 'marked');
+  // `found`/`scanned` are the projection's own denominator — the chips this axis
+  // could see at all. A defect count without it is a number with no claim.
+  if (panel.counts.scanned !== null && panel.counts.scanned !== undefined) {
+    stat('검사 칩', panel.counts.scanned, 'scanned');
+  }
   if (panel.counts.offFloor > 0) {
     const off = el(doc, 'span', 'sx-map__off',
       `레퍼런스 밖 ${panel.counts.offFloor}칩 — 두 맵이 유효 다이를 다르게 봅니다`);
@@ -150,7 +158,7 @@ function renderPanel(doc, panel) {
   }
   box.appendChild(foot);
 
-  if (panel.code === 'cells_unreported') {
+  if (panel.code) {
     const gap = el(doc, 'p', 'sx-map__why', panel.why);
     gap.setAttribute('data-refusal', panel.code);
     box.appendChild(gap);
@@ -159,9 +167,9 @@ function renderPanel(doc, panel) {
   const prov = el(doc, 'p', 'sx-map__prov');
   prov.setAttribute('data-provenance', panel.reference || 'none');
   prov.textContent = [
-    panel.table ? `좌표 ${panel.table}` : '',
-    panel.reference ? `레퍼런스 ${panel.reference}` : '',
-    panel.basis ? `투영 ${panel.basis}` : '',
+    panel.mapId ? `프레임 ${panel.mapId}` : '',
+    panel.table ? `등록 ${panel.table}` : '',
+    panel.reference ? `마스크 ${panel.reference}` : '마스크 미지정',
     '좌표 단위: 오리진 기준 칸수',
   ].filter(Boolean).join(' · ');
   box.appendChild(prov);
@@ -223,16 +231,14 @@ export function renderAxisMaps(doc, model, maps, floors) {
         if (on) a.setAttribute('aria-current', 'true');
         strip.appendChild(a);
       }
-      // The grids differ per slot — said out loud, because a reader comparing two
-      // slots side by side will otherwise read a size change as a data change.
-      const dims = lot.slots.filter((s) => s.cols !== null && s.rows !== null);
-      const distinct = new Set(dims.map((s) => `${s.cols}x${s.rows}`));
-      if (distinct.size > 1) {
-        const note = el(doc, 'span', 'sx-slots__note',
-          `슬롯마다 격자가 다릅니다 (${distinct.size}종)`);
-        note.setAttribute('data-slot-dims', String(distinct.size));
-        strip.appendChild(note);
-      }
+      // 🔴 WHY THE SLOT MATTERS IS THE SERVER'S SENTENCE, NOT A GUESS HERE. It
+      // says the row spans several frames and that the grids differ per slot;
+      // paraphrasing it would be this client asserting a fact it did not measure.
+      const said = lot.panels.find((pn) => pn.code === 'frame_ambiguous_across_slots');
+      const note = el(doc, 'span', 'sx-slots__note',
+        (said && said.detail) || (said && said.why) || '슬롯마다 격자가 다릅니다');
+      note.setAttribute('data-slot-note', said ? said.code : 'none');
+      strip.appendChild(note);
       row.appendChild(strip);
     }
 

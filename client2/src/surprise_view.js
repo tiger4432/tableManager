@@ -141,14 +141,14 @@ function renderColumnBar(doc, model) {
 
   // Items the kind catalog declares but the metric declaration has no aggregate
   // for. 빈 축 정직 — an item nobody can chart is still an item that exists.
-  const itemOnly = model.catalog.items.filter((it) => it.source === 'declared_item_only');
+  const itemOnly = model.catalog.items.filter((it) => it.source === 'catalog_only');
   if (itemOnly.length) {
     const gap = el(doc, 'div', 'sx-cols__row sx-cols__row--gap');
     gap.setAttribute('data-panel', 'columns-undeclared');
     gap.appendChild(el(doc, 'span', 'sx-cols__term', '집계 미선언 항목'));
     for (const it of itemOnly) {
       const chip = el(doc, 'span', 'sx-itemchip');
-      chip.setAttribute('data-item', it.metric);
+      chip.setAttribute('data-item', it.kind);
       chip.appendChild(el(doc, 'span', 'sx-itemchip__label', it.label));
       chip.appendChild(el(doc, 'span', 'sx-itemchip__n',
         it.atoms === null ? '건수 미보고' : `${countText(it.atoms)}건`));
@@ -165,19 +165,45 @@ function renderColumnBar(doc, model) {
 function renderColumnHead(doc, col) {
   const th = el(doc, 'th', 'sx-th sx-th--metric');
   attrs(th, { scope: 'col', 'data-col': col.key });
-  th.appendChild(el(doc, 'span', 'sx-th__metric', col.metricLabel));
+  th.appendChild(el(doc, 'span', 'sx-th__metric', col.kindLabel));
   th.appendChild(el(doc, 'span', 'sx-th__agg', col.aggLabel));
   const foot = el(doc, 'span', 'sx-th__base');
   if (col.baseline !== null && col.baseline !== undefined) {
-    foot.textContent = `기저 ${valueText(col.baseline, col.unit)}`;
+    foot.textContent = `기저 ${valueText(col.baseline, col.valueKind)}`;
     foot.setAttribute('data-baseline', String(col.baseline));
   } else {
     foot.textContent = '기저 미보고';
     foot.setAttribute('data-baseline', 'none');
   }
   th.appendChild(foot);
-  if (col.denominator) {
-    th.appendChild(el(doc, 'span', 'sx-th__den', `분모 ${col.denominator}`));
+  if (col.denominatorLabel) {
+    th.appendChild(el(doc, 'span', 'sx-th__den', `분모 ${col.denominatorLabel}`));
+  }
+  // 🔴 THE SERVER'S COLUMN-LEVEL DECLARATION, FIRST AND GENERIC. Any state other
+  // than `ready` renders here with the server's own reason — so the 「채점 불가」
+  // declaration of R-2026-08-14-G lights up the moment the server ships it, with
+  // no edit to this file. It is NOT emitted today (checked in `ledger_lots.py`:
+  // the only non-ready column state is `unmeasurable`, set when a relation is
+  // absent), and that gap is reported rather than filled in from here.
+  if (col.state !== 'ready') {
+    const bad = el(doc, 'span', 'sx-th__flag sx-th__flag--declared',
+      col.reason ? `채점 불가 — ${col.reason}` : '채점 불가 — 사유 미보고');
+    bad.setAttribute('data-col-state', col.state);
+    th.appendChild(bad);
+  } else if (col.observed && col.observed.neverPainted) {
+    // 🔴 A COLUMN THAT WENT ENTIRELY UNPAINTED SAYS SO. Not 「채점 불가」 — that is
+    // the server's claim about the metric and this is a fact about this answer:
+    // N cells measured, none reached the first step, and the largest multiple was
+    // this. A reader can no longer read the absence of colour as 「정상」, and a
+    // reader also cannot mistake it for a declaration, because it never claims
+    // the metric CANNOT be graded — only that here, it was not.
+    const flag = el(doc, 'span', 'sx-th__flag');
+    flag.setAttribute('data-col-unpainted', String(col.observed.measured));
+    const top = col.observed.maxRatio;
+    const cut = col.observed.firstThreshold;
+    flag.textContent = `이 응답에서 칠해진 칸 0 / ${col.observed.measured}`
+      + (top !== null && cut !== null ? ` · 최대 ${liftText(top)}, 첫 문턱 ${cut}배` : '');
+    th.appendChild(flag);
   }
   return th;
 }
@@ -212,20 +238,20 @@ function renderCell(doc, cell) {
     td.className = `sx-cell sx-cell--h${reading.level}`;
   }
 
-  td.appendChild(el(doc, 'span', 'sx-cell__v', valueText(reading.value, column.unit)));
+  td.appendChild(el(doc, 'span', 'sx-cell__v', valueText(reading.value, column.valueKind)));
   const frac = fractionText(reading);
   if (frac) {
     const f = el(doc, 'span', 'sx-cell__f', frac);
     attrs(f, {
       'data-numerator': reading.n === null ? null : String(reading.n),
-      'data-denominator': reading.d === null ? null : String(reading.d),
+      'data-denominator': reading.of === null ? null : String(reading.of),
     });
     td.appendChild(f);
   }
-  if (reading.lift !== null) {
-    const lift = el(doc, 'span', 'sx-cell__lift', liftText(reading.lift));
-    lift.setAttribute('data-lift', String(reading.lift));
-    td.appendChild(lift);
+  if (reading.ratio !== null) {
+    const ratio = el(doc, 'span', 'sx-cell__lift', liftText(reading.ratio));
+    ratio.setAttribute('data-lift', String(reading.ratio));
+    td.appendChild(ratio);
   }
   return td;
 }
@@ -234,7 +260,9 @@ function renderRow(doc, row, model) {
   const tr = el(doc, 'tr', `sx-row${row.marked ? ' sx-row--marked' : ''}`);
   attrs(tr, {
     'data-lot': row.lot,
+    'data-row': row.row,
     'data-bucket': row.bucket,
+    'data-counts-baseline': row.counts ? '1' : '0',
     'data-marked': row.marked ? '1' : '0',
   });
 
@@ -242,7 +270,7 @@ function renderRow(doc, row, model) {
   const box = doc.createElement('input');
   attrs(box, {
     type: 'checkbox',
-    'data-mark-lot': row.lot,
+    'data-mark-lot': row.row,
     'aria-label': `${row.lot} 마킹`,
   });
   // `.checked` is the property the browser reads; the attribute alone would only
@@ -270,12 +298,12 @@ function renderRow(doc, row, model) {
   tr.appendChild(bucketTd);
 
   const chipsTd = el(doc, 'td', 'sx-row__chips');
-  if (row.chips === null) {
+  if (row.universe === null) {
     const none = el(doc, 'span', 'sx-row__chips--none', '미보고');
     none.setAttribute('data-chips', 'none');
     chipsTd.appendChild(none);
   } else {
-    chipsTd.appendChild(el(doc, 'span', null, countText(row.chips)));
+    chipsTd.appendChild(el(doc, 'span', null, countText(row.universe)));
   }
   tr.appendChild(chipsTd);
 
@@ -301,9 +329,14 @@ function renderTable(doc, model) {
     return n;
   };
   th('sx-th--mark', '마킹');
-  th('sx-th--lot', '랏');
+  // 🔴 THE ROW AXIS NAMES ITSELF. `row_axis.label` is 「본딩 랏」 today and the
+  // axis is switchable (`by=`), so a hardcoded 「랏」 would mislabel the column
+  // the moment somebody asks a different axis.
+  th('sx-th--lot', model.rowAxis.label || '행');
   th('sx-th--bucket', '버킷');
-  th('sx-th--chips', '검사 칩');
+  // `universe` is the row's unit count, NOT the inspected-chip denominator —
+  // those differ by ~5× and the denominator rides in each cell's fraction.
+  th('sx-th--chips', '행 단위 수');
   for (const col of model.columns) hr.appendChild(renderColumnHead(doc, col));
   if (!model.columns.length) th('sx-th--nocol', '지표');
   head.appendChild(hr);
@@ -337,20 +370,27 @@ function renderLegend(doc, model) {
 
   const heat = el(doc, 'div', 'sx-legend__group');
   heat.appendChild(el(doc, 'span', 'sx-legend__term', '조건부서식 — 열마다 자기 기저 대비 배수'));
-  for (let i = 1; i < HEAT_LABELS.length; i += 1) {
-    const item = el(doc, 'span', `sx-legend__item sx-legend__item--h${i}`);
-    item.setAttribute('data-heat-key', String(i));
+  // 🔴 THE LADDER IS THE WIRE'S, LABELS INCLUDED. A legend that described a scale
+  // the paint does not use is worse than no legend.
+  for (const step of model.ladder) {
+    const item = el(doc, 'span', `sx-legend__item sx-legend__item--h${step.level}`);
+    item.setAttribute('data-heat-key', String(step.level));
     item.appendChild(el(doc, 'span', 'sx-legend__swatch'));
-    item.appendChild(el(doc, 'span', 'sx-legend__label', HEAT_LABELS[i]));
-    item.appendChild(el(doc, 'span', 'sx-legend__cut', `${model.scale[i - 1]}배 이상`));
+    item.appendChild(el(doc, 'span', 'sx-legend__label',
+      step.label || HEAT_LABELS[step.level] || `단계 ${step.level}`));
+    item.appendChild(el(doc, 'span', 'sx-legend__cut',
+      step.at === null ? '문턱 미보고' : `${step.at}배 이상`));
     heat.appendChild(item);
+  }
+  if (!model.ladder.length) {
+    heat.appendChild(el(doc, 'span', 'sx-legend__cut', '문턱 선언 미보고 — 서버가 단계를 싣지 않았습니다'));
   }
   // 🔴 WHO ASSIGNED THE STEP, SAID ON SCREEN. The level is the server's number in
   // every case — this line only says whether the BANDS beside the swatches came
   // from the server's declaration or are the documented defaults, so a reader
   // cannot mistake the cut points for something the browser decided.
   heat.appendChild(el(doc, 'span', 'sx-legend__src',
-    model.scaleFromServer ? '단계 판정: 서버 · 구간 선언됨' : '단계 판정: 서버 · 구간 표시는 기본값'));
+    model.ladder.length ? '단계 판정·구간 선언: 서버' : '단계 판정: 서버'));
   box.appendChild(heat);
 
   const states = el(doc, 'div', 'sx-legend__group');
@@ -376,7 +416,8 @@ function renderLegend(doc, model) {
   const buckets = el(doc, 'div', 'sx-legend__group');
   buckets.appendChild(el(doc, 'span', 'sx-legend__term', '특수평가 행'));
   buckets.appendChild(el(doc, 'span', 'sx-legend__hint',
-    '뱃지로만 구분하고 칠하지 않습니다 — 숨기지도 않습니다. 배율 계산·대조군에서만 빠집니다.'));
+    '기저에서 빠지는 행은 뱃지로만 구분하고 칠하지 않습니다 — 숨기지도 않습니다. '
+    + '구분자는 서버 선언(bucket.counts_toward_baseline)이며, 지금은 전 행이 「미상 · 기저 포함」입니다.'));
   box.appendChild(buckets);
 
   return box;
@@ -515,7 +556,7 @@ function renderChart(doc, series, model) {
   const foot = el(doc, 'div', 'sx-chart__foot');
   foot.appendChild(el(doc, 'span', 'sx-chart__axislabel', '생산 순서 →'));
   foot.appendChild(el(doc, 'span', 'sx-chart__top',
-    `최대 ${valueText(series.max, series.column.unit)}`));
+    `최대 ${valueText(series.max, series.column.valueKind)}`));
   if (series.gaps.length) {
     const g = el(doc, 'span', 'sx-chart__gaps', `미측정 ${series.gaps.length}랏`);
     g.setAttribute('data-chart-gaps', String(series.gaps.length));
@@ -566,10 +607,38 @@ function renderHead(doc, model) {
     s.appendChild(el(doc, 'span', 'sx-stat__term', term));
     meta.appendChild(s);
   };
-  stat('랏', countText(model.counts.lots), 'lots');
-  stat('특수평가', countText(model.counts.special), 'special');
+  stat(model.rowAxis.label || '행', countText(model.counts.rows), 'rows');
+  stat('기저 제외', countText(model.counts.offBaseline), 'off_baseline');
   stat('마킹', countText(model.counts.marked), 'marked');
   head.appendChild(meta);
+
+  // 🔴 WHAT WOULD CHANGE THE MEANING OF EVERY NUMBER ABOVE, SAID BESIDE THEM.
+  const facts = el(doc, 'div', 'sx-facts');
+  facts.setAttribute('data-panel', 'facts');
+  const fact = (key, text, tone) => {
+    const f = el(doc, 'span', `sx-fact${tone ? ` sx-fact--${tone}` : ''}`, text);
+    f.setAttribute('data-fact', key);
+    facts.appendChild(f);
+  };
+  if (model.window.forced) {
+    fact('window_forced', `구간 강제됨 — ${model.window.forcedReason || '사유 미보고'}`, 'warn');
+  }
+  if (model.truncated) {
+    fact('truncated',
+      `행 잘림 — ${countText(model.rowsReturned)}/${countText(model.rowsTotal)}행만 왔습니다`, 'warn');
+  }
+  if (model.provenance.source) {
+    fact('provenance',
+      model.provenance.ledgerBacked
+        ? `출처 ${model.provenance.source} · 원장 기반`
+        : `출처 ${model.provenance.source} · 원장 미기반`,
+      model.provenance.ledgerBacked ? null : 'warn');
+  }
+  for (const nte of model.notes) fact(nte.code || 'note', nte.message, 'warn');
+  if (facts.children.length) head.appendChild(facts);
+  if (model.provenance.note) {
+    head.appendChild(el(doc, 'p', 'sx-provnote', model.provenance.note));
+  }
 
   const order = el(doc, 'p', `sx-order${model.order.ok ? '' : ' sx-order--gap'}`);
   order.setAttribute('data-order-ok', model.order.ok ? '1' : '0');

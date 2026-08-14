@@ -52,56 +52,61 @@
 // paid that bill once today on `has_denominator`.
 //
 // ------------------------------------------------------------
-// 🔴 PROPOSED SHAPE — NOT YET SERVED (the server lane is building the
-// aggregate; the lead PM hands the contract over when it lands). Every field is
-// optional to this reader: a missing one renders as 미보고 or 미검사, NEVER as 0
-// and never as a blank. That is what lets this screen ship before the route.
+// 🔴 THE LANDED CONTRACT — `server/ledger_lots.py` (`56d8aae`), diffed field by
+// field on 2026-08-14. THE SERVER IS CANONICAL; where this client's earlier
+// proposal disagreed, the client moved.
 //
-//   GET /api/ledger/lots[?cols=&from=&to=&limit=]
-//     -> {
-//          state: "absent" | "empty" | "ready",
-//          generated_at: "<iso>",
+//   GET /api/ledger/lots?columns=<kind:agg,…>&by=&window=&kind=&limit=&offset=
+//     -> { state: "absent"|"empty"|"ready", generated_at,
 //
-//          // ── 선언: 무엇이 열이 될 수 있는가 (항목 × 집계) ──
-//          metrics: [
-//            { metric: "void", label: "보이드",
-//              basis: "inspection_run",          // 분모의 정의
-//              observed_by: ["AOI"],
-//              aggregates: [
-//                { agg: "chip_rate", label: "발생칩비", unit: "ratio",
-//                  numerator: "발생 칩", denominator: "검사 칩",
-//                  baseline: <num|null> }         // 열의 기저 (없으면 행이 실어옴)
-//              ] }
-//          ],
-//          default_columns: [ {metric, agg}, … ],  // 서버가 선언한 기본 질문
-//          scale: [2, 3, 4.5, 6],                  // 조건부서식 배수 단계 (선택)
+//          // 🔴 THE COLUMNS ARE THE RESOLVED SET, not a menu. `columns[].id` is
+//          // "<kind>:<aggregate>" and it is the SAME STRING `rows[].cells[].column`
+//          // carries, so the two collide by construction.
+//          columns: [ { id, kind, kind_label, aggregate, aggregate_label,
+//                       value_kind: "ratio"|"count"|"mean", doc,
+//                       has_denominator,
+//                       denominator: {population, label, methods} | null,
+//                       baseline: {value, basis: "median_of_rows", n_rows,
+//                                  excluded_rows, excluded_reason},
+//                       thresholds: [{level, at, label}],
+//                       state: "ready"|"unmeasurable", reason } ],
+//          aggregates_available: [ {aggregate, label, …} ],
+//          row_axis: { name, label, about, relation, column, source },
+//          axes_available: [ {name, label, about, source} ],
 //
-//          // ── 행: 생산 순서. 정렬은 서버가 한다 (클라 정렬 아님) ──
-//          lots: [
-//            { row: "<row id — the key /lot_map takes>",
-//              lot: "CL-2601-006", seq: <int>, started_at: "<iso>",
-//              bucket: "production"|"special_eval"|"unknown",
-//              bucket_label: "양산",
-//              inspected: { chips: <int|null>, runs: <int|null> } | null,
-//              cells: {
-//                // 🔴 `state` AND `level` ARE THE SERVER'S. Never derived here.
-//                "void|chip_rate": { state: "measured", value: 0.416,
-//                                    n: 312, d: 725,     // d = INSPECTED chips,
-//                                    baseline: 0.065,    //     not lot size
-//                                    lift: 6.4, level: 4 },
-//                "delam|chip_rate": { state: "unscanned" },
-//                "peel|area":       { state: "unmeasurable", reason: "…" }
-//              } }
-//          ],
+//          rows: [ { row, label, order_index,
+//                    occurred_at: {first, last},
+//                    bucket: {id, label, counts_toward_baseline},
+//                    universe: <int>,
+//                    cells: [ { column, state, value, n, of,
+//                               ratio_to_baseline, level } ] } ],
 //
-//          // ── 원장 사건: 차트의 세로 마커 ──
-//          events: [ { seq: <int>, at: "<iso>", label: "EQP-07 투입",
-//                      kind: "equipment", ref: "<atom id|null>" } ]
-//        }
+//          populations: {rows_total, rows_returned, rows_truncated},
+//          window: {requested, applied, forced, forced_reason},
+//          gate: {...}, notes: [{code, message}],
+//          provenance: {source, ledger_backed, relations, absent_relations, note} }
 //
-// CHANGING WHAT THIS CONSUMES IS AN ESCALATION, NOT AN EDIT — and so is the
-// server lane answering a different shape.
-// ============================================================
+// DIFFS THIS CLIENT ABSORBED (server won every one):
+//   `of`            not `d`          — the denominator's field name
+//   `ratio_to_baseline` not `lift`
+//   `columns[]`     not `metrics[].aggregates[]`
+//   `rows[]`        not `lots[]`;  `cells` is a LIST, not a map
+//   `id` uses `:`   not `|`
+//   `order_index`   not `seq`;  `label` not `lot`;  `universe` not `inspected.chips`
+//   `thresholds` are PER COLUMN, not one page-level `scale`
+//   `baseline` is an OBJECT with its basis and its exclusion count
+//   `bucket` is an OBJECT and carries `counts_toward_baseline` — which is what
+//           decides paint suppression now, instead of matching a literal
+//           `special_eval`. The server declares the rule; this file obeys it.
+//   no `events` — the ledger carries no chip observations yet, so the trend
+//           charts have no vertical markers to draw and say nothing about them.
+//
+// 🔴 AND ONE STATE IS THIS CLIENT'S OWN, CONFIRMED BY THE LEAD PM. The wire has
+// four (`measured`/`unscanned`/`no_denominator`/`unmeasurable`); `unreported` is
+// a FIFTH that only this file can produce — the response omitted the cell
+// entirely. That is a hole in the ANSWER, not a measurement about the fab, and
+// collapsing it into 미검사 would put a claim behind a missing field.
+// ------------------------------------------------------------
 
 export const SURPRISE_VIEW = 'surprise';
 
@@ -122,13 +127,10 @@ const BUCKET_LABELS = {
 //: unit word appended rather than being dropped.
 const UNIT_RATIO = 'ratio';
 
-//: 🔴 THE CONDITIONAL-FORMATTING BANDS — FOR THE LEGEND'S WORDS ONLY.
-//: Owner: "조건부서식 현행 유지 — 열마다 자기 기저 대비 배수 단계". The step a cell
-//: is painted at (`level`) is COMPUTED BY THE SERVER and consumed verbatim; these
-//: numbers exist so the legend can say what the steps mean, and the server's own
-//: `scale` replaces them when it sends one. Nothing in this file assigns a level.
-export const DEFAULT_SCALE = [2, 3, 4.5, 6];
-
+//: 🔴 FALLBACK WORDS FOR THE LEGEND, AND NOTHING ELSE. The ladder that paints is
+//: `columns[].thresholds` off the wire ({level, at, label}); these names are used
+//: only when a column carries none, so the legend can still say what a swatch
+//: means. Nothing in this file assigns a level — see the header.
 export const HEAT_LABELS = ['기저권', '주의', '높음', '심각', '극단'];
 
 const STATES = new Set(['absent', 'empty', 'ready']);
@@ -174,13 +176,13 @@ function listOf(v) {
  * by construction, so a metric renamed on the server cannot silently match the
  * wrong column.
  */
-export function colKey(metric, agg) {
-  return `${strOrEmpty(metric)}|${strOrEmpty(agg)}`;
+export function colKey(kind, aggregate) {
+  return `${strOrEmpty(kind)}:${strOrEmpty(aggregate)}`;
 }
 
-/** The URL spelling of one column — `metric:agg`. */
+/** The URL spelling of one column — identical to the server's `id`. */
 export function colToken(col) {
-  return `${strOrEmpty(col && col.metric)}:${strOrEmpty(col && col.agg)}`;
+  return colKey(col && col.kind, col && col.aggregate);
 }
 
 function parseColToken(token) {
@@ -188,10 +190,10 @@ function parseColToken(token) {
   if (!raw) return null;
   const at = raw.indexOf(':');
   if (at < 0) return null;
-  const metric = raw.slice(0, at).trim();
-  const agg = raw.slice(at + 1).trim();
-  if (!metric || !agg) return null;
-  return { metric, agg };
+  const kind = raw.slice(0, at).trim();
+  const aggregate = raw.slice(at + 1).trim();
+  if (!kind || !aggregate) return null;
+  return { kind, aggregate };
 }
 
 // ── the question, as a URL ───────────────────────────────────
@@ -212,26 +214,20 @@ export function parseSurpriseQuery(params) {
     const v = params && typeof params.get === 'function' ? params.get(k) : null;
     return v === null || v === undefined ? '' : String(v).trim();
   };
-  const cols = get('cols').split(',').map(parseColToken).filter(Boolean);
-  const marked = get('mark').split(',').map((s) => s.trim()).filter(Boolean);
   return {
     view: get('view'),
-    cols,
-    marked,
-    // Which finding kind the three-axis maps are OF. Shared spelling with the
-    // console's `finding` on purpose — the same word means the same thing on
-    // both of this page's questions, and a lot carried from one to the other
-    // keeps its kind.
-    finding: get('finding'),
-    // 🔴 WHICH SLOT THE MAPS ARE OF, AND IT IS NOT OPTIONAL DETAIL. Measured by
-    // the server lane: the bonding map is keyed on `(bond_lot, bond_slot)`, so
-    // ONE LOT IS 25 FRAMES and their grids differ (11×11, 12×12, 12×13, 13×13…).
-    // There is no such thing as "the lot's map"; overlaying 25 slots into one
-    // picture would invent a wafer that does not exist. Empty means "whichever
-    // slot the server declares as default", resolved against the answer.
+    // 🔴 THE PARAMETER NAMES ARE THE SERVER'S, SPELLED IDENTICALLY. `columns`,
+    // `by`, `window`, `kind` go to the route verbatim, so the address bar and the
+    // request are the same sentence and there is no translation layer to drift.
+    cols: get('columns').split(',').map(parseColToken).filter(Boolean),
+    by: get('by'),
+    window: get('window'),
+    kind: get('kind'),
+    limit: get('limit'),
+    // Marking and slot are the client's own — the server has no opinion on which
+    // rows are emphasised, and `slot` belongs to /lot_map rather than /lots.
+    marked: get('mark').split(',').map((x) => x.trim()).filter(Boolean),
     slot: get('slot'),
-    from: get('from'),
-    to: get('to'),
   };
 }
 
@@ -239,32 +235,46 @@ export function parseSurpriseQuery(params) {
 export function surpriseQuery(question) {
   const q = question || {};
   const parts = [`view=${encodeURIComponent(SURPRISE_VIEW)}`];
-  const cols = listOf(q.cols).map(colToken).filter((t) => t !== ':' && t.indexOf(':') > 0);
-  if (cols.length) parts.push(`cols=${encodeURIComponent(cols.join(','))}`);
+  const cols = listOf(q.cols).map(colToken).filter((t) => t.indexOf(':') > 0);
+  if (cols.length) parts.push(`columns=${encodeURIComponent(cols.join(','))}`);
+  if (q.by) parts.push(`by=${encodeURIComponent(q.by)}`);
+  if (q.window) parts.push(`window=${encodeURIComponent(q.window)}`);
+  if (q.kind) parts.push(`kind=${encodeURIComponent(q.kind)}`);
+  if (q.limit) parts.push(`limit=${encodeURIComponent(q.limit)}`);
   const marked = listOf(q.marked).map(strOrEmpty).filter(Boolean);
   if (marked.length) parts.push(`mark=${encodeURIComponent(marked.join(','))}`);
-  if (q.finding) parts.push(`finding=${encodeURIComponent(q.finding)}`);
   if (q.slot) parts.push(`slot=${encodeURIComponent(q.slot)}`);
-  if (q.from) parts.push(`from=${encodeURIComponent(q.from)}`);
-  if (q.to) parts.push(`to=${encodeURIComponent(q.to)}`);
+  return parts.join('&');
+}
+
+/** The request the route actually takes — the question minus the client-only parts. */
+export function lotsQuery(question) {
+  const q = question || {};
+  const parts = [];
+  const cols = listOf(q.cols).map(colToken).filter((t) => t.indexOf(':') > 0);
+  if (cols.length) parts.push(`columns=${encodeURIComponent(cols.join(','))}`);
+  if (q.by) parts.push(`by=${encodeURIComponent(q.by)}`);
+  if (q.window) parts.push(`window=${encodeURIComponent(q.window)}`);
+  if (q.kind) parts.push(`kind=${encodeURIComponent(q.kind)}`);
+  if (q.limit) parts.push(`limit=${encodeURIComponent(q.limit)}`);
   return parts.join('&');
 }
 
 /** The same question with one column dropped. */
 export function withoutColumn(question, col) {
-  const key = colKey(col && col.metric, col && col.agg);
+  const key = colKey(col && col.kind, col && col.aggregate);
   return {
     ...question,
-    cols: listOf(question && question.cols).filter((c) => colKey(c.metric, c.agg) !== key),
+    cols: listOf(question && question.cols).filter((c) => colKey(c.kind, c.aggregate) !== key),
   };
 }
 
 /** The same question with one column appended (idempotent). */
 export function withColumn(question, col) {
-  const key = colKey(col && col.metric, col && col.agg);
+  const key = colKey(col && col.kind, col && col.aggregate);
   const cols = listOf(question && question.cols);
-  if (cols.some((c) => colKey(c.metric, c.agg) === key)) return { ...question, cols };
-  return { ...question, cols: cols.concat([{ metric: col.metric, agg: col.agg }]) };
+  if (cols.some((c) => colKey(c.kind, c.aggregate) === key)) return { ...question, cols };
+  return { ...question, cols: cols.concat([{ kind: col.kind, aggregate: col.aggregate }]) };
 }
 
 /** The same question aimed at a different slot — an anchor, like every other control. */
@@ -294,147 +304,117 @@ export function toggleMark(question, lot) {
 // ── the declaration: what can be a column ────────────────────
 
 /**
- * The declared metric × aggregate space.
+ * The column space, read from the answer.
  *
- * 🔴 THIS IS THE WHOLE ANSWER TO "지표를 하드코딩하지 말 것". Two sources, in
- * order of authority:
- *
- *   the metrics declaration   `body.metrics[].aggregates[]` — the real one. Each
- *                             aggregate declares its own label, unit, numerator,
- *                             denominator and baseline.
- *   the kind catalog          `GET /api/ledger/kinds`, which this page already
- *                             fetches and which IS deployed. It carries the ITEM
- *                             axis only, so before the metrics route ships the
- *                             screen can still say WHICH items exist and that
- *                             their aggregates are not declared yet.
- *
- * An item present in the catalog and absent from the metrics declaration is
- * reported as `declared_item_only` rather than dropped — a hidden axis is one the
- * owner cannot know exists (the structure view's rule, and the same reason).
+ * 🔴 STILL NO METRIC LIST IN THIS FILE, and the landed contract makes that
+ * cleaner rather than harder. `body.columns` is the RESOLVED set (what is up);
+ * `body.aggregates_available` × the kind catalog is the space it was resolved
+ * out of (what could be). Both come off the wire. A finding kind registered
+ * tomorrow, or an aggregate added to `ledger_lots.AGGREGATES`, appears here
+ * without a line changing.
  */
 export function metricCatalog(body, kinds) {
-  const columns = [];
-  const seen = new Set();
+  const columns = listOf(body && body.columns).map(readColumn).filter((c) => c.key);
+  const aggregates = listOf(body && body.aggregates_available).map((a) => ({
+    aggregate: strOrEmpty(a && (a.aggregate !== undefined ? a.aggregate : a.id)),
+    label: strOrEmpty(a && a.label),
+    valueKind: strOrEmpty(a && a.value_kind),
+    needsDenominator: !!(a && a.needs_denominator),
+    doc: strOrEmpty(a && a.doc),
+  })).filter((a) => a.aggregate);
+
   const items = [];
-  const itemSeen = new Set();
-
-  const pushItem = (item) => {
-    if (itemSeen.has(item.metric)) return;
-    itemSeen.add(item.metric);
-    items.push(item);
-  };
-
-  for (const m of listOf(body && body.metrics)) {
-    const metric = strOrEmpty(m && m.metric);
-    if (!metric) continue;
-    const aggregates = listOf(m.aggregates);
-    pushItem({
-      metric,
-      label: strOrEmpty(m.label) || metric,
-      basis: strOrEmpty(m.basis),
-      observedBy: listOf(m.observed_by).map(strOrEmpty).filter(Boolean),
-      atoms: numOrNull(m.atoms),
-      aggregateCount: aggregates.length,
-      source: 'metrics',
-    });
-    for (const a of aggregates) {
-      const agg = strOrEmpty(a && a.agg);
-      if (!agg) continue;
-      const key = colKey(metric, agg);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      columns.push({
-        key,
-        metric,
-        agg,
-        metricLabel: strOrEmpty(m.label) || metric,
-        aggLabel: strOrEmpty(a.label) || agg,
-        label: `${strOrEmpty(m.label) || metric} ${strOrEmpty(a.label) || agg}`,
-        unit: strOrEmpty(a.unit),
-        numerator: strOrEmpty(a.numerator),
-        denominator: strOrEmpty(a.denominator),
-        basis: strOrEmpty(a.basis) || strOrEmpty(m.basis),
-        baseline: numOrNull(a.baseline),
-      });
-    }
+  const seen = new Set();
+  for (const c of columns) {
+    if (seen.has(c.kind)) continue;
+    seen.add(c.kind);
+    items.push({ kind: c.kind, label: c.kindLabel, atoms: null, source: 'columns' });
   }
-
-  // The item axis from the catalog that IS deployed, for everything the metrics
-  // declaration did not cover.
   for (const row of listOf(kinds && kinds.kinds)) {
-    const metric = strOrEmpty(row && row.kind);
-    if (!metric || itemSeen.has(metric)) continue;
-    pushItem({
-      metric,
-      label: strOrEmpty(row.label) || metric,
-      basis: listOf(row.observed_by).length ? 'inspection_run' : '',
-      observedBy: listOf(row.observed_by).map(strOrEmpty).filter(Boolean),
+    const kind = strOrEmpty(row && row.kind);
+    if (!kind || seen.has(kind)) continue;
+    seen.add(kind);
+    items.push({
+      kind,
+      label: strOrEmpty(row.label) || kind,
       atoms: numOrNull(row.atoms),
-      aggregateCount: 0,
-      source: 'declared_item_only',
+      source: 'catalog_only',
     });
   }
 
+  return { state: surpriseState(body), columns, aggregates, items };
+}
+
+/** One declared column, normalised. Every field optional; a missing one is null, never 0. */
+export function readColumn(raw) {
+  const c = raw || {};
+  const kind = strOrEmpty(c.kind);
+  const aggregate = strOrEmpty(c.aggregate);
+  const base = c.baseline || null;
+  const den = c.denominator || null;
   return {
-    state: surpriseState(body),
-    columns,
-    items,
-    // The server's own default question. Absent -> the whole declared space, in
-    // declaration order. Never a list written here.
-    defaults: listOf(body && body.default_columns)
-      .map((c) => ({ metric: strOrEmpty(c && c.metric), agg: strOrEmpty(c && c.agg) }))
-      .filter((c) => c.metric && c.agg && seen.has(colKey(c.metric, c.agg))),
+    // 🔴 THE SERVER'S OWN `id` WHEN IT SENT ONE. Deriving it would be a second
+    // spelling of a key the cells already carry, and the day the two disagree the
+    // table silently loses a column.
+    key: strOrEmpty(c.id) || (kind && aggregate ? colKey(kind, aggregate) : ''),
+    kind,
+    aggregate,
+    kindLabel: strOrEmpty(c.kind_label) || kind,
+    aggLabel: strOrEmpty(c.aggregate_label) || aggregate,
+    label: `${strOrEmpty(c.kind_label) || kind} ${strOrEmpty(c.aggregate_label) || aggregate}`.trim(),
+    valueKind: strOrEmpty(c.value_kind),
+    doc: strOrEmpty(c.doc),
+    hasDenominator: c.has_denominator === true,
+    denominatorLabel: strOrEmpty(den && den.label),
+    denominatorPopulation: strOrEmpty(den && den.population),
+    baseline: numOrNull(base && base.value),
+    baselineBasis: strOrEmpty(base && base.basis),
+    baselineRows: numOrNull(base && base.n_rows),
+    baselineExcluded: numOrNull(base && base.excluded_rows),
+    baselineExcludedReason: strOrEmpty(base && base.excluded_reason),
+    thresholds: listOf(c.thresholds).map((t) => ({
+      level: numOrNull(t && t.level),
+      at: numOrNull(t && t.at),
+      label: strOrEmpty(t && t.label),
+    })).filter((t) => t.level !== null),
+    state: strOrEmpty(c.state) || 'ready',
+    reason: strOrEmpty(c.reason),
+    declared: true,
   };
+}
+
+/** The columns that are up — the server already resolved them. */
+export function resolveColumns(catalog) {
+  return listOf(catalog && catalog.columns);
 }
 
 /**
- * Which columns are up, resolved against the declaration.
+ * The declared columns that are NOT up — the 「열 추가」 menu, DERIVED as the
+ * cross product of the registered kinds with the declared aggregates.
  *
- * A column asked for by the URL and NOT declared does not silently vanish: it
- * comes back with `declared: false` so the screen can say the question named
- * something the server does not know, which is a fact about the question rather
- * than a rendering accident.
+ * 🔴 A PAIR THE SERVER WOULD REFUSE IS STILL OFFERED, because the refusal is
+ * itself the answer (`state: "unmeasurable"` with a reason) and hiding the pair
+ * would leave the reader unable to find out why it is not available.
  */
-export function resolveColumns(catalog, question) {
-  const declared = new Map(listOf(catalog && catalog.columns).map((c) => [c.key, c]));
-  const asked = listOf(question && question.cols);
-
-  if (asked.length) {
-    return asked.map((c) => {
-      const key = colKey(c.metric, c.agg);
-      const hit = declared.get(key);
-      if (hit) return { ...hit, declared: true };
-      return {
-        key,
-        metric: strOrEmpty(c.metric),
-        agg: strOrEmpty(c.agg),
-        metricLabel: strOrEmpty(c.metric),
-        aggLabel: strOrEmpty(c.agg),
-        label: `${strOrEmpty(c.metric)} · ${strOrEmpty(c.agg)}`,
-        unit: '',
-        numerator: '',
-        denominator: '',
-        basis: '',
-        baseline: null,
-        declared: false,
-      };
-    });
-  }
-
-  const defaults = listOf(catalog && catalog.defaults);
-  if (defaults.length) {
-    return defaults
-      .map((c) => declared.get(colKey(c.metric, c.agg)))
-      .filter(Boolean)
-      .map((c) => ({ ...c, declared: true }));
-  }
-  return listOf(catalog && catalog.columns).map((c) => ({ ...c, declared: true }));
-}
-
-/** The declared columns that are NOT currently up — the "열 추가" menu, derived. */
 export function availableColumns(catalog, columns) {
   const up = new Set(listOf(columns).map((c) => c.key));
-  return listOf(catalog && catalog.columns).filter((c) => !up.has(c.key));
+  const out = [];
+  for (const item of listOf(catalog && catalog.items)) {
+    for (const agg of listOf(catalog && catalog.aggregates)) {
+      const key = colKey(item.kind, agg.aggregate);
+      if (up.has(key)) continue;
+      out.push({
+        key,
+        kind: item.kind,
+        aggregate: agg.aggregate,
+        kindLabel: item.label,
+        aggLabel: agg.label || agg.aggregate,
+        label: `${item.label} ${agg.label || agg.aggregate}`.trim(),
+        doc: agg.doc,
+      });
+    }
+  }
+  return out;
 }
 
 // ── the cell: where 미검사 and 0 part ways ───────────────────
@@ -457,47 +437,48 @@ export function availableColumns(catalog, columns) {
  * than at every call site because there are as many call sites as there are
  * cells.
  */
-export function cellReading(raw, column, { bucket } = {}) {
+export function cellReading(raw, column, { counts } = {}) {
   const col = column || {};
 
-  // 🔴 AN ABSENT CELL IS NOT AN UNSCANNED CELL. `unscanned` is a MEASUREMENT —
-  // the server looked and the chip was outside the inspected population. A cell
-  // the response simply did not carry is a gap in the ANSWER, and calling it
-  // 미검사 would put a claim about the fab behind a hole in a payload.
+  // 🔴 AN ABSENT CELL IS NOT AN UNSCANNED CELL — the fifth state, and the only
+  // one this file produces. `unscanned` is a MEASUREMENT (`of == 0`: the chip was
+  // outside the inspected population). A cell the response never carried is a gap
+  // in the ANSWER, and calling it 미검사 would put a claim about the fab behind a
+  // missing field.
   if (raw === null || raw === undefined) {
     return {
-      state: 'unreported', value: null, n: null, d: null,
-      baseline: null, lift: null, level: null, painted: false,
+      state: 'unreported', value: null, n: null, of: null,
+      baseline: null, ratio: null, level: null, painted: false,
       text: '미보고', why: '집계가 이 칸을 싣지 않았습니다',
     };
   }
 
   const n = numOrNull(raw.n);
-  const d = numOrNull(raw.d);
+  const of = numOrNull(raw.of);
   const value = numOrNull(raw.value);
   const wire = strOrEmpty(raw.state);
 
   // ── the three non-measured wire states, consumed verbatim ──
   if (wire === 'unscanned') {
     return {
-      state: 'unscanned', value: null, n, d,
-      baseline: null, lift: null, level: null, painted: false,
+      state: 'unscanned', value: null, n, of,
+      baseline: null, ratio: null, level: null, painted: false,
       text: '—', why: '미검사 · 0 아님',
     };
   }
   if (wire === 'unmeasurable') {
     return {
-      state: 'unmeasurable', value: null, n, d,
-      baseline: null, lift: null, level: null, painted: false,
-      text: '측정 불가', why: strOrEmpty(raw.reason) || '이 항목은 이 랏에서 정의되지 않습니다',
+      state: 'unmeasurable', value: null, n, of,
+      baseline: null, ratio: null, level: null, painted: false,
+      text: '측정 불가', why: strOrEmpty(col.reason) || '이 상자에서 계산할 수 없는 열입니다',
     };
   }
   if (wire === 'no_denominator') {
     return {
-      state: 'no_denominator', value: null, n, d,
-      baseline: null, lift: null, level: null, painted: false,
+      state: 'no_denominator', value: null, n, of,
+      baseline: null, ratio: null, level: null, painted: false,
       text: n !== null ? `${n}건` : '—',
-      why: strOrEmpty(raw.reason) || '분모 없음 — 율을 정의할 수 없습니다',
+      why: '분모 없음 — 율을 정의할 수 없습니다',
     };
   }
 
@@ -507,37 +488,39 @@ export function cellReading(raw, column, { bucket } = {}) {
   // it is reported as one rather than smoothed into a zero.
   if (value === null) {
     return {
-      state: 'unreported', value: null, n, d,
-      baseline: null, lift: null, level: null, painted: false,
+      state: 'unreported', value: null, n, of,
+      baseline: null, ratio: null, level: null, painted: false,
       text: '미보고', why: wire === 'measured' ? '측정됨이라 했으나 값이 없습니다' : '집계 미보고',
     };
   }
-  // 🔴 분모 없는 숫자 출고 금지. A rate whose denominator never arrived is a
-  // number with no claim attached — and on this fixture the denominator is the
-  // INSPECTED chip count (725 of 3,525), so guessing one would be wrong by 5×.
-  if (col.unit === UNIT_RATIO && d === null) {
+  // 🔴 분모 없는 숫자 출고 금지. Measured on the live box: only 20.6% of a lot's
+  // chips are inspected, so a rate whose denominator never arrived would be wrong
+  // by ~5× if anybody substituted the lot size.
+  if (col.hasDenominator && of === null) {
     return {
-      state: 'no_denominator', value, n, d: null,
-      baseline: null, lift: null, level: null, painted: false,
-      text: n !== null ? `${n}건` : '—', why: '분모 없음 — 검사 칩 수 미보고',
+      state: 'no_denominator', value, n, of: null,
+      baseline: null, ratio: null, level: null, painted: false,
+      text: n !== null ? `${n}건` : '—',
+      why: `분모 없음 — ${col.denominatorLabel || '분모'} 미보고`,
     };
   }
 
-  const baseline = numOrNull(raw.baseline) !== null ? numOrNull(raw.baseline) : numOrNull(col.baseline);
-  const lift = numOrNull(raw.lift);
-
-  // 🔴 THE STEP IS THE SERVER'S NUMBER. No threshold function runs here — see
-  // the file header. An absent `level` leaves the cell UNPAINTED rather than
-  // falling back to a client scale that would disagree with every other cell.
+  // 🔴 THE STEP AND THE RATIO ARE THE SERVER'S NUMBERS. No threshold ladder runs
+  // in this file — the baseline is a median over rows this client never sees, so
+  // recomputing the level would be a second scale that drifts from the first.
   const served = numOrNull(raw.level);
-  // 🔴 특수평가 행은 칠하지 않는다 (owner constraint 2). The value is printed and
-  // the badge distinguishes it; suppressing the PAINT rather than the ROW is the
-  // whole point — a filter would delete the rows that refute the reading.
-  const suppressed = strOrEmpty(bucket) === 'special_eval';
+  // 🔴 SUPPRESSION IS DECLARED, NOT MATCHED. The server marks each row with
+  // `bucket.counts_toward_baseline`; a row outside the baseline is shown, badged,
+  // and NOT painted — because a colour means "against this baseline" and that row
+  // is not in it. Matching a literal bucket name here would re-hardcode the very
+  // discriminator the owner has not yet named.
+  const suppressed = counts === false;
   const level = suppressed ? null : served;
 
   return {
-    state: 'measured', value, n, d, baseline, lift,
+    state: 'measured', value, n, of,
+    baseline: numOrNull(col.baseline),
+    ratio: numOrNull(raw.ratio_to_baseline),
     level, painted: level !== null && level > 0,
     levelServed: served !== null,
     suppressed,
@@ -546,8 +529,8 @@ export function cellReading(raw, column, { bucket } = {}) {
 }
 
 /** The multiple, as text. Never a bare number without its ×. */
-export function liftText(lift) {
-  const l = numOrNull(lift);
+export function liftText(ratio) {
+  const l = numOrNull(ratio);
   if (l === null) return '';
   if (l >= 100) return `${Math.round(l)}×`;
   if (l >= 10) return `${l.toFixed(1)}×`;
@@ -561,10 +544,10 @@ export function liftText(lift) {
  * dropped — the same "an enum member I have never heard of still renders" rule
  * the rest of these screens hold.
  */
-export function valueText(value, unit) {
+export function valueText(value, valueKind) {
   const v = numOrNull(value);
   if (v === null) return '—';
-  const u = strOrEmpty(unit);
+  const u = strOrEmpty(valueKind);
   if (u === UNIT_RATIO) {
     const pct = v * 100;
     if (pct === 0) return '0%';
@@ -580,18 +563,19 @@ export function valueText(value, unit) {
   else if (abs >= 1) body = v.toFixed(2);
   else if (abs === 0) body = '0';
   else body = v.toPrecision(3);
-  if (!u || u === 'count') return body;
-  return `${body} ${u}`;
+  // `count` and `mean` are shapes, not units — the server sends no unit word,
+  // so appending one would be this file inventing a dimension.
+  return body;
 }
 
 /** The fraction under a cell — the denominator, always on screen when it exists. */
 export function fractionText(reading) {
   if (!reading) return '';
   const n = reading.n;
-  const d = reading.d;
+  const of = reading.of;
   if (n === null || n === undefined) return '';
-  if (d === null || d === undefined) return `${n}`;
-  return `${n}/${d}`;
+  if (of === null || of === undefined) return `${n}`;
+  return `${n}/${of}`;
 }
 
 // ── the rows: lots in production order ───────────────────────
@@ -606,43 +590,57 @@ export function fractionText(reading) {
  */
 export function lotRows(body, columns) {
   const cols = listOf(columns);
-  return listOf(body && body.lots).map((row, i) => {
-    const lot = strOrEmpty(row && row.lot);
-    const bucket = strOrEmpty(row && row.bucket) || 'unknown';
-    const cells = (row && row.cells) || {};
+  return listOf(body && body.rows).map((row, i) => {
+    const r = row || {};
+    const bucket = r.bucket || {};
+    // 🔴 `counts_toward_baseline` IS THE PAINT RULE, and it is the SERVER'S
+    // declaration. Today every row is `unknown` + counts:true, deliberately —
+    // the owner has not yet named the real special-evaluation discriminator, and
+    // excluding rows on a guess would quietly reshape every colour on the screen.
+    const counts = bucket.counts_toward_baseline !== false;
+    // The cells arrive as a LIST keyed by the column id, so they are indexed once
+    // per row rather than searched once per column per row.
+    const byColumn = new Map();
+    for (const c of listOf(r.cells)) {
+      const key = strOrEmpty(c && c.column);
+      if (key) byColumn.set(key, c);
+    }
     return {
-      lot,
-      // 🔴 THE KEY `/api/ledger/lot_map` TAKES. It is `row`, not the lot name:
-      // the map is keyed on a bonding row, and passing a display label where an
-      // id belongs is how a map comes back for the wrong wafer.
-      row: strOrEmpty(row && row.row) || lot,
+      // 🔴 `row` IS THE KEY `/lot_map` TAKES; `label` is what a human reads. They
+      // are the same string today and passing one where the other belongs is how
+      // a map comes back for the wrong wafer the day they diverge.
+      row: strOrEmpty(r.row),
+      lot: strOrEmpty(r.label) || strOrEmpty(r.row),
       index: i,
-      seq: numOrNull(row && row.seq),
-      startedAt: strOrEmpty(row && row.started_at),
-      bucket,
-      bucketLabel: bucketLabel(bucket, row && row.bucket_label),
-      special: bucket === 'special_eval',
-      chips: numOrNull(row && row.inspected && row.inspected.chips),
-      runs: numOrNull(row && row.inspected && row.inspected.runs),
+      seq: numOrNull(r.order_index),
+      startedAt: strOrEmpty(r.occurred_at && r.occurred_at.first),
+      lastAt: strOrEmpty(r.occurred_at && r.occurred_at.last),
+      bucket: strOrEmpty(bucket.id) || 'unknown',
+      bucketLabel: bucketLabel(bucket.id, bucket.label),
+      counts,
+      special: !counts,
+      universe: numOrNull(r.universe),
       cells: cols.map((col) => ({
         column: col,
-        reading: cellReading(
-          Object.prototype.hasOwnProperty.call(cells, col.key) ? cells[col.key] : null,
-          col, { bucket },
-        ),
+        reading: cellReading(byColumn.has(col.key) ? byColumn.get(col.key) : null,
+          col, { counts }),
       })),
     };
   });
 }
 
 /** Whether the response gave a real production order, stated rather than assumed. */
-export function orderReading(rows) {
+export function orderReading(rows, body) {
   const list = listOf(rows);
-  if (!list.length) return { ok: false, why: '행 없음' };
+  const axis = (body && body.row_axis) || null;
+  const term = strOrEmpty(axis && axis.label) || '행';
+  if (!list.length) return { ok: false, why: '행 없음', term };
   const withSeq = list.filter((r) => r.seq !== null);
-  if (withSeq.length === list.length) return { ok: true, why: '생산 순서 (서버 seq)' };
-  if (withSeq.length === 0) return { ok: false, why: '생산 순서 미보고 — 응답 순서 그대로' };
-  return { ok: false, why: `생산 순서 일부 미보고 (${withSeq.length}/${list.length})` };
+  if (withSeq.length === list.length) {
+    return { ok: true, why: `${term} 발생 순서 (서버 order_index)`, term };
+  }
+  if (withSeq.length === 0) return { ok: false, why: '순서 미보고 — 응답 순서 그대로', term };
+  return { ok: false, why: `순서 일부 미보고 (${withSeq.length}/${list.length})`, term };
 }
 
 // ── the small multiples ──────────────────────────────────────
@@ -730,18 +728,67 @@ export function eventMarkers(body, rows) {
 export function surpriseModel({ body, kinds, question } = {}) {
   const asked = question || { cols: [], marked: [] };
   const catalog = metricCatalog(body, kinds);
-  const columns = resolveColumns(catalog, asked);
-  const scale = listOf(body && body.scale).map(numOrNull).filter((s) => s !== null);
+  const columns = resolveColumns(catalog);
   const rows = lotRows(body, columns);
   const markedSet = new Set(listOf(asked.marked).map(strOrEmpty));
-  for (const row of rows) row.marked = markedSet.has(row.lot);
+  for (const row of rows) row.marked = markedSet.has(row.row) || markedSet.has(row.lot);
 
   const marked = rows.filter((r) => r.marked);
-  // 🔴 A MARK FOR A LOT NOT IN THE TABLE IS REPORTED, NOT SWALLOWED. A pasted URL
-  // whose window no longer contains the lot would otherwise show an empty map
+  // 🔴 A MARK FOR A ROW NOT IN THE TABLE IS REPORTED, NOT SWALLOWED. A pasted URL
+  // whose window no longer contains the row would otherwise show an empty map
   // section with no explanation.
-  const inTable = new Set(rows.map((r) => r.lot));
-  const strayMarks = Array.from(markedSet).filter((m) => !inTable.has(m));
+  const present = new Set();
+  for (const r of rows) { present.add(r.row); present.add(r.lot); }
+  const strayMarks = Array.from(markedSet).filter((m) => !present.has(m));
+
+  // The threshold ladder, for the LEGEND'S WORDS. It is read off a column rather
+  // than declared here, so the legend cannot describe a scale the paint does not
+  // use. Columns all carry the same ladder today; the first one that has it wins.
+  const ladder = (columns.find((c) => c.thresholds.length) || { thresholds: [] }).thresholds;
+
+  // 🔴 FAKE ATTENUATION — R-2026-08-14-G. A column that is never painted READS AS
+  // 「정상」, and silence is the one thing this screen must not say by accident.
+  //
+  // 🔴 AND THIS IS NOT THE SERVER'S DECLARATION. The ruling asks for 「이 지표는
+  // 현행 규칙으로 채점 불가」, which is a claim about the metric's MATHEMATICS —
+  // that `found/scanned` saturates at 1.0, so with a baseline of 0.6124 its
+  // ceiling is 1.633 and the first threshold at 2.0 is unreachable BY ANY DATA.
+  // Only the server can say that; deriving it here would be the client inventing
+  // the answer, which is the shape already repaired twice today.
+  //
+  // What IS computable from the payload, and is stated as such, is a fact about
+  // THIS RESPONSE: how many cells were painted, and how far the largest multiple
+  // got toward the first step. It cannot be mistaken for the declaration because
+  // it never says 「불가」 — it says what happened here. When the server ships the
+  // real declaration it arrives on `columns[].state`/`reason` and renders through
+  // the generic path above, ahead of this.
+  for (const col of columns) {
+    let painted = 0;
+    let measured = 0;
+    let maxRatio = null;
+    for (const row of rows) {
+      const hit = row.cells.find((c) => c.column.key === col.key);
+      const r = hit && hit.reading;
+      if (!r || r.state !== 'measured') continue;
+      measured += 1;
+      if (r.painted) painted += 1;
+      if (r.ratio !== null && (maxRatio === null || r.ratio > maxRatio)) maxRatio = r.ratio;
+    }
+    const steps = col.thresholds.map((t) => t.at).filter((t) => t !== null);
+    col.observed = {
+      painted,
+      measured,
+      maxRatio,
+      firstThreshold: steps.length ? Math.min.apply(null, steps) : null,
+      // `true` only when there was something to paint and none of it was painted.
+      // Zero measured cells is a different nothing and is left to the cells.
+      neverPainted: measured > 0 && painted === 0,
+    };
+  }
+
+  const populations = (body && body.populations) || {};
+  const win = (body && body.window) || {};
+  const prov = (body && body.provenance) || {};
 
   return {
     state: surpriseState(body),
@@ -750,17 +797,49 @@ export function surpriseModel({ body, kinds, question } = {}) {
     catalog,
     columns,
     available: availableColumns(catalog, columns),
-    scale: scale.length ? scale : DEFAULT_SCALE,
-    scaleFromServer: scale.length > 0,
+    rowAxis: {
+      name: strOrEmpty(body && body.row_axis && body.row_axis.name),
+      label: strOrEmpty(body && body.row_axis && body.row_axis.label),
+      source: strOrEmpty(body && body.row_axis && body.row_axis.source),
+    },
+    axesAvailable: listOf(body && body.axes_available).map((a) => ({
+      name: strOrEmpty(a && a.name),
+      label: strOrEmpty(a && a.label),
+      about: strOrEmpty(a && a.about),
+    })).filter((a) => a.name),
+    ladder,
     rows,
-    order: orderReading(rows),
+    order: orderReading(rows, body),
     marked,
     strayMarks,
     series: columns.map((c) => chartSeries(rows, c)),
     events: eventMarkers(body, rows),
+    // 🔴 THE HONESTY BLOCK. A forced window, a truncated row set and a
+    // not-ledger-backed provenance are all things that change what the numbers
+    // mean, and a screen that shows the numbers without them is overstating them.
+    truncated: populations.rows_truncated === true,
+    rowsTotal: numOrNull(populations.rows_total),
+    rowsReturned: numOrNull(populations.rows_returned),
+    window: {
+      requested: win.requested || null,
+      applied: win.applied || null,
+      forced: win.forced === true,
+      forcedReason: strOrEmpty(win.forced_reason),
+    },
+    provenance: {
+      source: strOrEmpty(prov.source),
+      ledgerBacked: prov.ledger_backed === true,
+      note: strOrEmpty(prov.note),
+      relations: listOf(prov.relations).map(strOrEmpty).filter(Boolean),
+      absent: listOf(prov.absent_relations).map(strOrEmpty).filter(Boolean),
+    },
+    notes: listOf(body && body.notes).map((nte) => ({
+      code: strOrEmpty(nte && nte.code),
+      message: strOrEmpty(nte && nte.message),
+    })).filter((nte) => nte.message),
     counts: {
-      lots: rows.length,
-      special: rows.filter((r) => r.special).length,
+      rows: rows.length,
+      offBaseline: rows.filter((r) => !r.counts).length,
       marked: marked.length,
     },
   };
