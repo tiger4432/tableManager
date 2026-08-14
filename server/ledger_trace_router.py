@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 
+import finding_kinds
+import ledger_siblings
 import ledger_trace
 
 logger = logging.getLogger(__name__)
@@ -144,6 +146,60 @@ def _relation_absent() -> HTTPException:
         "message": (f"원장 테이블 {LEDGER_RELATION} 없음 — 마이그레이션 미실행 "
                     f"(server/migrations/add_ledger_events.py)"),
     })
+
+
+@router.get("/siblings")
+def ledger_siblings_route(
+    finding: str = Query(None, description="관측 종류. 미지정 시 등록부의 기본값"),
+    mode: str = Query("intersection", description="intersection | contrast"),
+    window: str = Query(None, description="7d 또는 YYYY-MM-DD..YYYY-MM-DD"),
+    limit: int = Query(None, description="요인 행 수 상한"),
+    min_support: int = Query(None, description="요인 행의 최소 발견 건수"),
+    axes: str = Query(None, description="축 이름 CSV. 미지정 시 선언된 전부"),
+    db: Session = Depends(get_db),
+):
+    """「이 결함들이 공유하는 요인은?」과 「난 쪽과 안 난 쪽은 뭐가 다른가?」.
+
+    🔴 ONE endpoint, TWO framings — `mode` is a parameter and never a second route.
+    The row shape is identical in both modes, which is what lets the console put them
+    side by side; a decoy factor tops `intersection` and is dropped by `contrast`, and
+    that difference is only legible if the two answers are the same shape.
+
+    🔴 `finding` IS A PARAMETER FROM THE FIRST LINE. `void` is the registry's default
+    value, not a branch — `server/finding_kinds.py` is where a kind is declared, and a
+    `finding_kind='void'` literal anywhere below the default would mean the
+    generalisation had been lost (brief §0 [일반화]).
+
+    Read-only. Every non-200 is a malformed request (422) or an undeployed relation,
+    and the second one is answered as a 200 with `state: "absent"` rather than as an
+    error — an absent table is one of this endpoint's ANSWERS, exactly as it is for
+    `GET /coverage`.
+    """
+    try:
+        return ledger_siblings.siblings(
+            db.connection(), kind=finding, mode=mode, window=window,
+            limit=limit, min_support=min_support, axes=axes)
+    except ledger_siblings.SiblingsRequestError as exc:
+        # The body is STRUCTURED (ruling R-2026-08-13-C): the client branches on
+        # `detail.reason`, the operator reads `detail.message`, and nobody parses Korean
+        # to tell an unknown kind from a malformed window.
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except ledger_siblings.SiblingsConfigError as exc:
+        logger.error("siblings factor geometry refused: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "axes_config_refused", "message": f"요인 선언 거절: {exc}"})
+    except finding_kinds.FindingKindError as exc:
+        logger.error("finding-kind registry refused: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "finding_kind_registry_refused",
+            "message": f"관측 종류 등록부 거절: {exc}"})
+    except Exception as exc:                       # noqa: BLE001 - same backstop as trace
+        if _is_undefined_table(exc):
+            # The race the catalogue gate cannot close: a relation dropped between the
+            # `to_regclass` lookup and the query. Judged on SQLSTATE, which is the same
+            # five characters in every locale and every driver.
+            raise _relation_absent()
+        raise
 
 
 @router.get("/coverage")

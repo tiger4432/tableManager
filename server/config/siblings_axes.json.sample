@@ -1,0 +1,72 @@
+{
+  "__doc": "FACTOR GEOMETRY for GET /api/ledger/siblings. This file declares HOW a population is attributed to factors; it does NOT declare what a finding kind is -- that registry is server/finding_kinds.py (`observed_by`, `observation_table`), and there is deliberately no second copy of it here. Adding a factor axis is an entry in `attribution` and costs no Python.",
+  "version": 1,
+
+  "defaults": {
+    "limit": 20,
+    "min_support": 2,
+    "evidence_ref_sample": 5,
+    "contrast": {
+      "enriched_at": 1.5,
+      "depleted_at": 0.6667,
+      "__comment": "The enrichment band. A factor between these two is FLAT -- carried by the found and the clean sides alike -- and `mode=contrast` drops it. That is the decoy filter, and where the line sits is an operator's judgement rather than a programmer's, which is why it is here."
+    }
+  },
+
+  "geometry": {
+    "__comment": "One member of every population is one PACKAGE: a bonded position, addressed the way void_obs addresses it. Same granularity as finding_kinds.population_ctes, on purpose -- two panels of one screen that count at two granularities disagree in front of the operator and neither of them is wrong.",
+    "unit": "package",
+    "unit_label": "패키지 (base 위치)",
+    "unit_columns": ["base_wafer_id", "base_x", "base_y"],
+    "run_key_column": "run_uid",
+    "run_method_column": "method",
+    "run_time_column": "observed_at",
+    "observation_run_ref_column": "run_uid",
+
+    "universe": {
+      "__comment": "What COULD have been scanned -- the third bucket. Without it `never_scanned` would have to be guessed, and a guessed third bucket is how a never-scanned package quietly joins the clean side.",
+      "relation": "bonding_log",
+      "join": { "base_wafer_id": "base_id", "base_x": "bx", "base_y": "by" }
+    }
+  },
+
+  "attribution": [
+    {
+      "relation": "bonding_log",
+      "about": "process",
+      "label": "본딩 공정",
+      "key_column": "bond_cell_key",
+      "join": { "base_wafer_id": "base_id", "base_x": "bx", "base_y": "by" },
+      "axes": [
+        { "name": "bond_eqp",     "label": "본딩 장비",   "column": "bond_eqp" },
+        { "name": "bond_lot",     "label": "본딩 랏",     "column": "bond_lot" },
+        { "name": "dt_lot",       "label": "DT 랏",       "column": "dt_lot" },
+        { "name": "b_bn",         "label": "본딩 판정",   "column": "b_bn" },
+        { "name": "stack_height", "label": "스택 높이",   "column": "stack_height" }
+      ]
+    },
+    {
+      "relation": "inspection_run",
+      "about": "inspection",
+      "label": "검사 자체",
+      "key_column": "run_uid",
+      "join": { "base_wafer_id": "base_wafer_id", "base_x": "base_x", "base_y": "base_y" },
+      "filter": {
+        "column": "method",
+        "values_from": "observed_by",
+        "__comment": "🔴 MEASURED, not a precaution. inspection_run holds EVERY method's runs. Without this narrowing, a package that was also scanned for delamination dragged `SYN_DELAM_R1` onto a `finding=void` answer (assy_manager, 2026-08-14) -- the delam scanner's recipe reported as a factor of voids. A factor relation holding rows about OTHER kinds must be narrowed by the same declaration that defines this kind's denominator, or the generalization leaks between kinds."
+      },
+      "__comment_about": "`about: inspection` is a BADGE, never a filter. These are the SCANNER's recipe and equipment, not the process that made the part. An enrichment here is a real finding -- the inspector is biased -- but it is a DIFFERENT finding, and a console that cannot tell the two apart will report a scanner artefact as a process cause.",
+      "axes": [
+        { "name": "scan_recipe", "label": "검사 레시피", "column": "recipe_id" },
+        { "name": "scan_eqp",    "label": "검사 장비",   "column": "eqp_id" }
+      ]
+    }
+  ],
+
+  "kinds": {
+    "__comment": "Per-kind overrides. An EMPTY object means 'use the shared geometry and attribution above', which is the answer for every package-scoped kind. A kind whose findings live at a different granularity overrides `geometry`; a kind with its own factor sources overrides `attribution`.",
+    "void": {},
+    "delam": {}
+  }
+}
