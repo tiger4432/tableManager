@@ -114,6 +114,30 @@
 
 export const SURPRISE_VIEW = 'surprise';
 
+/**
+ * 🔴 THE DEFAULT ROW AXIS IS THE WAFER — a product decision, 2026-08-14.
+ *
+ * Owner: 「왜 자꾸 마킹 25개씩 물려? 1매씩하라고」. The trend table listed LOTS, and
+ * a lot is 25 wafers, so ticking one column marked 25 things. Nothing in the
+ * marking code was wrong — it faithfully marked what the column named. The unit
+ * was wrong, and that same wrong unit produced the 125-map pile earlier the same
+ * evening. The owner has now said twice that the unit is the wafer.
+ *
+ * Measured before deciding (live, 2,600 wafers): the transposed table renders all
+ * 2,600 columns in 968ms with 33,918 nodes and a 16ms scroll interaction, newest
+ * still rightmost. So performance did not decide this; the unit did.
+ *
+ * 🔴 AND THERE IS DELIBERATELY NO DEFAULT `limit` TO GO WITH IT. `limit` alone
+ * takes from the OLDEST end (verified: `limit=6` returns order_index 0–5 of
+ * 2,600), so capping the wafer axis would quietly show the oldest wafers in a
+ * view whose whole premise is that the newest are on the right. The honest bound
+ * is a date window, not a row cap.
+ *
+ * The lot axis is not deleted — it is one chip away, and every axis in the picker
+ * comes from the server's `axes_available`.
+ */
+export const DEFAULT_ROW_AXIS = 'wafer';
+
 // ── the only literals: closed wire enums, with raw fallback ──
 
 //: Lot buckets. `special_eval` is the one that matters: the owner's second
@@ -224,7 +248,11 @@ export function parseSurpriseQuery(params) {
     // `by`, `window`, `kind` go to the route verbatim, so the address bar and the
     // request are the same sentence and there is no translation layer to drift.
     cols: get('columns').split(',').map(parseColToken).filter(Boolean),
-    by: get('by'),
+    // Absent means the product default, not "let the server choose" — the server's
+    // own default is the lot axis, which is the unit the owner rejected. It is
+    // materialized into the URL by `surpriseQuery`, so the axis is addressable and
+    // a pasted link restores it like every other part of the question.
+    by: get('by') || DEFAULT_ROW_AXIS,
     window: get('window'),
     kind: get('kind'),
     limit: get('limit'),

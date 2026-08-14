@@ -1696,6 +1696,17 @@
     }
     .sx-itemchip__n { font-size: 13px; color: var(--text-dim); font-family: var(--font-mono); }
 
+    /* ── 행 축 선택기: 한 열이 «무엇»인가 ── */
+    .sx-axes { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 10px; }
+    .sx-axis {
+      font-size: 14px; padding: 4px 12px; border-radius: 999px;
+      text-decoration: none; color: var(--text-muted);
+      background: var(--bg-inset); border: 1px solid var(--border);
+    }
+    .sx-axis:hover { border-color: var(--accent); color: var(--text); }
+    .sx-axis:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+    .sx-axis--on { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+
     /* ══ 표 — 전치됨 ═══════════════════════════════════════════
        🔴 행 = 지표, 열 = 랏 생산 순서, 최신이 오른쪽 (소유자 2026-08-14:
           「상단 트렌드 표는 세로 말고 가로로 리스팅해」). 트렌드는 가로로 읽힌다.
@@ -2440,7 +2451,7 @@
       .lr-table { display: block; overflow-x: auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/ledger-BTiakZOg.js"></script>
+  <script type="module" crossorigin src="/assets/ledger-YVJjnCuz.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-BMD10Jt5.js">
   <link rel="modulepreload" crossorigin href="/assets/declaration-Ba1WhIrE.js">
   <link rel="modulepreload" crossorigin href="/assets/map_key-BZIPE9-P.js">

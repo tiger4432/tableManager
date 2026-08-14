@@ -175,6 +175,43 @@ function renderColumnBar(doc, model) {
   return box;
 }
 
+/**
+ * 행 축 선택기 — what one column IS.
+ *
+ * 🔴 THE AXIS IS THE MOST CONSEQUENTIAL THING ON THIS SCREEN and it was invisible.
+ * A column meant a LOT, so marking one column marked 25 wafers, and nothing on
+ * screen said so. The default is the wafer now; this bar is what keeps the lot
+ * axis reachable rather than deleted, and what makes the current unit legible.
+ *
+ * Every option comes from the server's `axes_available` — no axis list here.
+ *
+ * 🔴 SWITCHING AXES CLEARS THE MARKS. A lot id is not a wafer id: carrying marks
+ * across would leave the URL naming rows that cannot exist on the new axis, and
+ * the contrast would then be scoped to ghosts. The stray-mark reporter would
+ * catch it, but the honest thing is not to create them.
+ */
+function renderAxisBar(doc, model) {
+  const box = el(doc, 'div', 'sx-axes');
+  box.setAttribute('data-panel', 'axes');
+  box.appendChild(el(doc, 'span', 'sx-cols__term', '행 축'));
+  if (!model.axesAvailable.length) {
+    box.appendChild(el(doc, 'span', 'sx-cols__none',
+      model.rowAxis.label
+        ? `${model.rowAxis.label} — 선택 가능한 축 미보고`
+        : '축 선언 미보고'));
+    return box;
+  }
+  for (const axis of model.axesAvailable) {
+    const on = axis.name === model.rowAxis.name;
+    const a = link(doc, `sx-axis${on ? ' sx-axis--on' : ''}`, axis.label || axis.name,
+      { ...model.question, by: axis.name, marked: [], slot: '' });
+    attrs(a, { 'data-axis': axis.name, 'data-axis-on': on ? '1' : '0' });
+    if (on) a.setAttribute('aria-current', 'true');
+    box.appendChild(a);
+  }
+  return box;
+}
+
 // ── 표 ───────────────────────────────────────────────────────
 
 /**
@@ -754,6 +791,7 @@ export function renderSurprise(doc, mount, model, notice, axisData, contrastNode
 
   root.appendChild(renderHead(doc, model));
   if (notice) root.appendChild(renderNotice(doc, notice));
+  root.appendChild(renderAxisBar(doc, model));
   root.appendChild(renderColumnBar(doc, model));
   root.appendChild(renderTable(doc, model));
   root.appendChild(renderLegend(doc, model));

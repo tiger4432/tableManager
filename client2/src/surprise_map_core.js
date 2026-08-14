@@ -653,6 +653,63 @@ export function fanInOf(panel) {
   };
 }
 
+/**
+ * 🔴 WHICH STORED COORDINATE RUNS ALONG EACH DRAWN EDGE — DERIVED FROM THE SEATS, NEVER
+ * ASSUMED FROM THE FRAME.
+ *
+ * The owner asked for X across the top and Y down the left, as CELL COUNTS FROM THE ORIGIN
+ * (never millimetres — pitch does not place a cell, and multiplying by it manufactures a
+ * precision the stored value does not have). The trap is that the drawn image is SEAT
+ * space, not stored space: `computeSeating` puts each cell through the frame's rotation and
+ * side, so under `rotation: 90` a drawn COLUMN holds a constant stored **y**, not x.
+ * Labelling that column with a stored x would be a caption that is wrong while the picture
+ * is right — this domain's signature defect.
+ *
+ * MEASURED, and it is not hypothetical: `SYN-VOID-001`'s 25 bonding frames span all eight
+ * rotation x side combinations, so on that one lot both cases are on screen at once.
+ *
+ * So nothing is assumed. Each seat carries the `cell` it came from, and this reads them:
+ * if every drawn column holds exactly one stored x, columns track x; if instead every
+ * column holds exactly one stored y, they track y. If NEITHER holds, the mapping is not a
+ * column-preserving one and this returns `null` so the caller draws the grid with NO
+ * numbers rather than numbers it cannot stand behind.
+ */
+export function storedAxisTracks(panel) {
+  const seatings = [panel && panel.floor, panel && panel.marks].filter(Boolean);
+  const byCol = new Map();
+  const byRow = new Map();
+  let seen = 0;
+  for (const seating of seatings) {
+    for (const seat of listOf(seating.seats)) {
+      const cell = seat && seat.cell;
+      if (!cell) continue;
+      const cx = intOrNull(cell.x);
+      const cy = intOrNull(cell.y);
+      if (cx === null || cy === null) continue;
+      seen += 1;
+      if (!byCol.has(seat.x)) byCol.set(seat.x, { xs: new Set(), ys: new Set() });
+      if (!byRow.has(seat.y)) byRow.set(seat.y, { xs: new Set(), ys: new Set() });
+      byCol.get(seat.x).xs.add(cx); byCol.get(seat.x).ys.add(cy);
+      byRow.get(seat.y).xs.add(cx); byRow.get(seat.y).ys.add(cy);
+    }
+  }
+  if (!seen) return null;
+  const settle = (group) => {
+    const constX = [...group.values()].every((v) => v.xs.size === 1);
+    const constY = [...group.values()].every((v) => v.ys.size === 1);
+    // Both constant means one line of cells — no axis is determined, so claim neither.
+    if (constX === constY) return null;
+    const which = constX ? 'x' : 'y';
+    const at = new Map();
+    for (const [seatPos, v] of group) at.set(seatPos, [...(constX ? v.xs : v.ys)][0]);
+    return { axis: which, at };
+  };
+  const top = settle(byCol);
+  const left = settle(byRow);
+  if (!top || !left) return null;
+  return { top, left };
+}
+
 export function mapSection(model, maps, floors, options) {
   const marked = listOf(model && model.marked);
   const askedSlot = strOrEmpty(model && model.question && model.question.slot);

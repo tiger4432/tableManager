@@ -22,35 +22,59 @@
 // ============================================================
 
 import { layoutFor, paintSeating, createCanvasSurface } from './map2/painter.js';
-import { mapSection, frameSpanOf, waferLabelOf } from './surprise_map_core.js';
+import { mapSection, frameSpanOf, waferLabelOf, storedAxisTracks } from './surprise_map_core.js';
 import { surpriseQuery } from './surprise_core.js';
 
 /**
  * 🔴 THE FOCUS LINK, BUILT WITH THE SHARED SERIALISER AND NOT A SECOND ONE.
  *
- * `surpriseQuery` whitelists the parameters it knows, and `wafer` is not yet among them —
- * so the one parameter it drops is appended here, and ONLY if it did not already emit it.
- * The day the serialiser learns `wafer` this keeps producing exactly one of it, which is
- * the difference between a seam and a duplicate parameter that silently wins.
+ * This used to append `wafer` itself, because `surpriseQuery` whitelists parameters and did
+ * not know that one. It knows it now (`surprise_core.js` serialises `wafer`, and
+ * `parseSurpriseQuery` reads it back), so the fallback is gone rather than kept "just in
+ * case": a branch nothing can reach is a place mutants rot, and this lane has already had
+ * one mutant survive by pointing at exactly such a branch.
+ *
+ * If the serialiser ever stopped emitting it, the guard is an ASSERTION, not defensive code
+ * here — the focus suite pins that every link carries exactly one `wafer`.
  *
  * The href is query-only — no scheme, no pathname — so the generic in-page router keeps it
  * in the document. A focus is a question, and one question is one URL.
  */
 function waferHref(question, wafer) {
-  const base = surpriseQuery({ ...(question || {}), wafer });
-  if (/(^|&)wafer=/.test(base)) return `?${base}`;
-  return wafer ? `?${base}&wafer=${encodeURIComponent(wafer)}` : `?${base}`;
+  return `?${surpriseQuery({ ...(question || {}), wafer })}`;
 }
 
 const VIEW = { width: 176, height: 176, padding: 3 };
+
+//: 🔴 THE GUTTER THE AXIS NUMBERS LIVE IN, in DEVICE pixels (the canvas is drawn at 2x).
+//: It is carved OUT of the same box rather than added to it, so the strip's 25 entries keep
+//: their footprint and the CSS lane's `.sx-map { width: 210px }` still governs.
+//:
+//: `tickFont` is not shrinkable. Readability is a feature here and small type is worse than
+//: no type — so when the numbers do not fit, FEWER of them are drawn (see `labelStep`),
+//: never smaller ones.
+const AXIS = Object.freeze({
+  left: 26, top: 22, tickFont: 17, minCellForUnitGrid: 5, emphasisEvery: 5,
+});
 
 //: 🔴 THE PAINTER TAKES COLOURS, IT NEVER READS THEM (`painter.js` calls no
 //: `getComputedStyle` by design). These are transcribed from `tokens.css` for the
 //: two themes; a canvas cannot inherit a CSS variable, so the transcription is the
 //: only way and keeping it beside the only call site is what keeps it findable.
 const PALETTE = {
-  light: { floor: '#d7dce4', mark: '#c22f2f', off: '#8a5a00' },
-  dark: { floor: '#36425f', mark: '#f87e7e', off: '#f6bd35' },
+  // 🔴 THE GRID TONES ARE MEASURED, NOT PICKED BY EYE — three constraints pull against each
+  // other and a swatch that looks fine in isolation loses one of them. Contrast ratios,
+  // computed against this palette's own values:
+  //
+  //                     unit vs mask   5th vs mask   unit vs 5th   mark vs mask
+  //   light             2.28           3.97          1.74          4.08
+  //   dark              2.26           3.59          1.59          3.94
+  //
+  // Darkening the unit line further raises the first column and collapses the third — at
+  // `#737f96` the every-fifth emphasis falls to 1.35 and stops reading as emphasis at all,
+  // so the thing you actually count by disappears. These sit at the knee.
+  light: { floor: '#d7dce4', mark: '#c22f2f', off: '#8a5a00', grid: '#8792a5', grid5: '#5f6a7d', tick: '#5a6478' },
+  dark: { floor: '#36425f', mark: '#f87e7e', off: '#f6bd35', grid: '#6b7897', grid5: '#8f9bb8', tick: '#9aa6c0' },
 };
 
 function el(doc, tag, className, text) {
@@ -67,6 +91,98 @@ function attrs(node, map) {
     node.setAttribute(k, String(v));
   }
   return node;
+}
+
+/**
+ * How many cells apart the printed numbers are.
+ *
+ * 🔴 THE TYPE NEVER SHRINKS; THE LABELS THIN OUT. A 23-wide core grid gives each cell about
+ * 14 device px and a two-digit number needs roughly 20, so labelling every cell would
+ * either overlap or force 8px type — and small type is worse than none. The GRID stays at
+ * one cell either way, which is what makes counting possible; the numbers are the anchors
+ * you count from.
+ */
+function labelStep(cell, font) {
+  const need = font * 1.35;
+  let step = 1;
+  while (cell * step < need) step += 1;
+  // Land on 1, 2, 5, 10 ... so the printed numbers are ones a human counts by.
+  const nice = [1, 2, 5, 10, 20, 25, 50];
+  for (const n of nice) if (n >= step) return n;
+  return step;
+}
+
+/**
+ * Coordinate axes and a one-cell grid, drawn with the raw context.
+ *
+ * 🔴 NOT A SECOND RENDERER. Every DIE is still placed by `map2/painter.js` off
+ * `map2/seating.js`; this draws only chrome — rules and numerals — in the gutter and across
+ * the same layout the painter used. No cell position is computed here.
+ *
+ * 🔴 THE NUMBERS ARE CELL COUNTS FROM THE ORIGIN. Nothing here multiplies by a pitch and
+ * nothing emits a millimetre. `storedAxisTracks` supplies them from the seats' own source
+ * cells, so they are the stored coordinates however the frame rotated the picture — and
+ * when it cannot determine that mapping it returns null and the numbers are omitted rather
+ * than guessed.
+ */
+function paintAxes(ctx, panel, layout, colors, tracks) {
+  if (!layout || layout.empty || !layout.cell) return;
+  const { cell, originX, originY, cols, rows, minX, minY } = layout;
+  const right = originX + cols * cell;
+  const bottom = originY + rows * cell;
+
+  // ── the rules, ON TOP OF THE MASK but UNDER the defect marks ───────────────────────
+  // That order is the whole answer to 「겹쳐도 읽혀야 한다」: the grid has to cross the
+  // valid-die footprint to be countable there, and it must never cross a marked die,
+  // because the mark is the figure and the grid is the scaffold. Nothing is sacrificed —
+  // the mark's own edges are grid lines, so a run stays countable straight through it.
+  const unit = cell >= AXIS.minCellForUnitGrid;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= cols; i++) {
+    const strong = (minX + i) % AXIS.emphasisEvery === 0 || i === cols;
+    if (!strong && !unit) continue;
+    ctx.strokeStyle = strong ? colors.grid5 : colors.grid;
+    ctx.beginPath();
+    const x = Math.round(originX + i * cell) + 0.5;
+    ctx.moveTo(x, originY); ctx.lineTo(x, bottom); ctx.stroke();
+  }
+  for (let j = 0; j <= rows; j++) {
+    const strong = (minY + j) % AXIS.emphasisEvery === 0 || j === rows;
+    if (!strong && !unit) continue;
+    ctx.strokeStyle = strong ? colors.grid5 : colors.grid;
+    ctx.beginPath();
+    const y = Math.round(originY + j * cell) + 0.5;
+    ctx.moveTo(originX, y); ctx.lineTo(right, y); ctx.stroke();
+  }
+
+  if (!tracks) return;
+  // ── the numerals ──────────────────────────────────────────────────────────────────
+  ctx.fillStyle = colors.tick;
+  ctx.font = `${AXIS.tickFont}px ui-monospace, monospace`;
+  const step = labelStep(cell, AXIS.tickFont);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  for (let i = 0; i < cols; i++) {
+    const v = tracks.top.at.get(minX + i);
+    if (v === undefined) continue;
+    if (v % step !== 0 && i !== cols - 1 && i !== 0) continue;
+    ctx.fillText(String(v), originX + (i + 0.5) * cell, originY - 4);
+  }
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let j = 0; j < rows; j++) {
+    const v = tracks.left.at.get(minY + j);
+    if (v === undefined) continue;
+    if (v % step !== 0 && j !== rows - 1 && j !== 0) continue;
+    ctx.fillText(String(v), originX - 5, originY + (j + 0.5) * cell);
+  }
+  // 🔴 WHICH STORED AXIS EACH EDGE IS. Under a rotated frame the top edge carries stored
+  // Y, and a corner that still said 「X」 would be the wrong caption on a right picture.
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${tracks.left.axis.toUpperCase()}↓`, 2, originY - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(`${tracks.top.axis.toUpperCase()}→`, originX - 5, AXIS.tickFont);
 }
 
 function paletteFor(doc) {
@@ -126,13 +242,26 @@ function renderPanel(doc, panel) {
     const ctx = canvas.getContext('2d');
     if (ctx) {
       const surface = createCanvasSurface(ctx);
-      const layout = layoutFor(panel.bounds, {
-        width: VIEW.width * 2, height: VIEW.height * 2, padding: VIEW.padding * 2,
+      // 🔴 THE GUTTER IS CARVED OUT, NOT ADDED ON. `layoutFor` is given the SHRUNKEN
+      // viewport and its origin is then translated into the remaining box, so the die
+      // arithmetic is still entirely the painter's — this shifts the window, it does not
+      // recompute a single cell position.
+      const fitted = layoutFor(panel.bounds, {
+        width: VIEW.width * 2 - AXIS.left,
+        height: VIEW.height * 2 - AXIS.top,
+        padding: VIEW.padding * 2,
       });
+      const layout = fitted.empty ? fitted : {
+        ...fitted, originX: fitted.originX + AXIS.left, originY: fitted.originY + AXIS.top,
+      };
       const colors = paletteFor(doc);
       surface.clear(VIEW.width * 2, VIEW.height * 2);
       try {
         paintSeating(surface, panel.floor, layout, colors.floor);
+        // Order is load-bearing: mask, then the rules ON it, then the marks ON TOP of
+        // everything — so the grid is countable across the footprint and can never sit
+        // over a defect die. See `paintAxes`.
+        paintAxes(ctx, panel, layout, colors, storedAxisTracks(panel));
         if (panel.marks) paintSeating(surface, panel.marks, layout, colors.mark);
       } catch (err) {
         // `paintSeating` throws when it could not place every seat — a loud

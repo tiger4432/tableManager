@@ -218,6 +218,39 @@ function rowGates(row, gates) {
   });
 }
 
+/**
+ * The numeric comparison, for a `compare: "distribution"` candidate.
+ *
+ * 🔴 `state` IS THE SERVER'S AND SO IS `message`. Measured live: `purge_delay_s`
+ * comes back `not_comparable` with 「평균이 0 이하 — 비율 척도 불가 (차이만 보고)」.
+ * Any client-side guess at WHY a comparison failed ("표본이 적어…") is an invented
+ * cause sitting on top of a stated one.
+ */
+function readNumeric(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const side = (s) => ({
+    mean: numOrNull(s && s.mean),
+    sd: numOrNull(s && s.sd),
+    subjects: intOrNull(s && s.subjects),
+  });
+  const range = raw.range || {};
+  return {
+    effect: strOrEmpty(raw.effect),
+    state: strOrEmpty(raw.state),
+    message: strOrEmpty(raw.message),
+    case: side(raw.case),
+    control: side(raw.control),
+    meanDelta: numOrNull(raw.mean_delta),
+    // 🔴 THE STANDARDISED DIFFERENCE IS THE ONE THAT SURVIVES A FLAT RATIO.
+    // `temp_C`: means 150 vs 145.5 — a ratio of 1.03, which reads as 「몰림 없음」,
+    // while the standardised difference is 3.3σ. Reporting only the ratio would
+    // call a real separation "no difference".
+    stdDiff: numOrNull(raw.std_diff),
+    min: numOrNull(range.min),
+    max: numOrNull(range.max),
+  };
+}
+
 export function readCandidate(raw, gates) {
   const c = raw || {};
   const ci = Array.isArray(c.enrichment_ci) ? c.enrichment_ci : [];
@@ -242,6 +275,10 @@ export function readCandidate(raw, gates) {
     rateDelta: numOrNull(c.rate_delta),
     // The server's word for WHY, kept as the wire spelled it.
     reason: strOrEmpty(c.reason),
+    // 🔴 THE NUMERIC BLOCK — the whole finding for a `distribution` row. Without
+    // it the client can only see the MEMBERSHIP rates (「50/50 have a reading」),
+    // which is presence, not agreement. See `factorSentence`.
+    numeric: readNumeric(c.numeric),
     evidenceCount: intOrNull(c.evidence_ref_count),
     evidenceShown: listOf(c.evidence_refs).length,
     gates: rowGates(c, gates),
@@ -488,6 +525,99 @@ function endsInConsonant(word) {
 export function particle(word, kind) {
   const pair = PARTICLES[kind] || PARTICLES.subj;
   return endsInConsonant(word) ? pair[0] : pair[1];
+}
+
+//: 🔴 NOT A DICTIONARY OF EVERY FIELD — the quantities the walk ACTUALLY returns
+//: today (measured 2026-08-14: pressure · temp · purge_delay · post_bond_queue).
+//: P0-3 brings a declared label layer and this goes away; until then anything
+//: unlisted degrades to its wire spelling AND SAYS SO on screen (`known: false`),
+//: because a silent fallback to English machine text is the complaint itself.
+const QUANTITY_NOUN = {
+  pressure: '압력',
+  temp: '온도',
+  purge_delay: '퍼지 지연',
+  post_bond_queue: '본딩 후 대기',
+};
+const PARAM_SOURCE = { params_setpoint: '설정', params_actual: '실측' };
+const UNIT_TEXT = { MPa: 'MPa', C: '°C', s: '초', h: '시간', mm: 'mm', um: 'µm', pct: '%' };
+
+/**
+ * Read a wire field name into something a human can say.
+ *
+ * `params_actual.pressure_MPa` -> {label: '실측 압력', unit: 'MPa', known: true}
+ * `params_actual.vacuum_assist` -> {label: 'params_actual.vacuum_assist', known: false}
+ *
+ * The unit is taken from the trailing `_<unit>` because that is how these names
+ * are built — a general rule, not a per-field entry.
+ */
+export function fieldReading(field) {
+  const raw = strOrEmpty(field);
+  const dot = raw.indexOf('.');
+  const prefix = dot > 0 ? raw.slice(0, dot) : '';
+  let rest = dot > 0 ? raw.slice(dot + 1) : raw;
+  let unit = '';
+  const us = rest.lastIndexOf('_');
+  if (us > 0 && UNIT_TEXT[rest.slice(us + 1)]) {
+    unit = UNIT_TEXT[rest.slice(us + 1)];
+    rest = rest.slice(0, us);
+  }
+  const quantity = QUANTITY_NOUN[rest] || '';
+  const source = PARAM_SOURCE[prefix] || '';
+  return {
+    raw,
+    unit,
+    known: Boolean(quantity),
+    label: quantity ? `${source ? `${source} ` : ''}${quantity}` : raw,
+  };
+}
+
+//: Enough digits to be read, not enough to be noise. Big numbers lose decimals.
+function numText(v) {
+  if (v === null) return '미보고';
+  const a = Math.abs(v);
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 1) return v.toFixed(2);
+  return v.toFixed(3);
+}
+
+/**
+ * 🔴 A DISTRIBUTION ROW COMPARES VALUES, NOT MEMBERSHIP.
+ *
+ * The defect this replaces: every row got the categorical template, so a numeric
+ * field read 「마킹한 50장 전부(100%)가 params_setpoint.temp_C를 지났다」. Three
+ * things wrong at once — you cannot 지나다 a temperature, the name is wire
+ * spelling, and worst, 「100%」 there means EVERY WAFER HAS A READING, which a
+ * reader takes as "they all ran at the same temperature". That is presence
+ * reported as agreement, and the response said `compare: "distribution"` the
+ * whole time.
+ *
+ * 🔴 AND THE RATIO ALONE CAN SAY THE OPPOSITE OF THE TRUTH. `temp_C` live: means
+ * 150 vs 145.5, ratio 1.03 — which lands in `flat` and would print 「몰림 없음」 —
+ * while the standardised difference is 3.3σ and the marked side has sd 0. So both
+ * measures go in the sentence whenever the server computed them.
+ */
+function numericSentence(row, subject) {
+  const f = fieldReading(row.field);
+  const n = row.numeric;
+  const u = f.unit ? ` ${f.unit}` : '';
+  if (!n) return `${f.label} — 수치 대조 미보고`;
+
+  const head = `마킹한 쪽 ${f.label} 평균 ${numText(n.case.mean)}${u}`
+    + `, 나머지 ${numText(n.control.mean)}${u}`;
+
+  // The server said it could not compare, and said why. Its sentence, verbatim.
+  if (n.state !== 'compared') {
+    return `${head} — ${n.message || '비교 불가 — 사유 미보고'}`;
+  }
+
+  const bits = [];
+  if (row.enrichment !== null) {
+    bits.push(`${row.enrichment >= 100 ? Math.round(row.enrichment) : row.enrichment.toFixed(2)}배`);
+  }
+  if (n.stdDiff !== null) {
+    bits.push(`편차 기준 ${Math.abs(n.stdDiff).toFixed(1)}σ ${n.stdDiff > 0 ? '높음' : '낮음'}`);
+  }
+  return bits.length ? `${head} — ${bits.join(' · ')}` : head;
 }
 
 //: What a field IS, as a noun. Unknown fields keep their wire spelling rather than
