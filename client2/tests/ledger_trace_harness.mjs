@@ -1235,8 +1235,20 @@ function census() {
   ok('H6 the entry issues no write', !/method\s*:\s*['"](POST|PUT|PATCH|DELETE)/i.test(ENTRY_SRC));
   // `change` also fires on BLUR, so binding it would re-ask a question the operator did not
   // ask again — the same trap the map editor's confirm control paid for.
+  // 🔴 NARROWED 2026-08-14 (surprise view). The predicate used to be "the entry
+  // contains no `addEventListener('change'` ANYWHERE", which is broader than the
+  // reason above: the trap is `change` ON A TEXT INPUT, because that fires on
+  // blur. A checkbox's `change` fires on toggle and on nothing else, and the
+  // surprise view's marking is a delegated checkbox listener on its own mount.
+  // The assertion now says what it always meant — the LINEAGE BOX commits on
+  // keydown — and a `change` binding is only allowed where it is delegated to a
+  // mount rather than bound to `lt-query`.
   ok('H7 the input commits on keydown only',
-    ENTRY_SRC.includes("addEventListener('keydown'") && !ENTRY_SRC.includes("addEventListener('change'"));
+    ENTRY_SRC.includes("addEventListener('keydown'")
+    && !/(box|input)\.addEventListener\('change'/.test(ENTRY_SRC));
+  ok('H7b and any change listener is delegated to a mount, never to the query box',
+    [...ENTRY_SRC.matchAll(/(\w+)\.addEventListener\('change'/g)]
+      .every((m) => m[1] === 'mount'));
   // The zone ruling, enforced across all three modules at once.
   ok('H8 nothing re-localises the server instants',
     !/toLocale(Date|Time)?String/.test(stripComments(ENTRY_SRC + CORE_PRISTINE + VIEW_PRISTINE)));
