@@ -1,5 +1,5 @@
 {
-  "__doc": "JOURNEY CONTRAST declarations for GET /api/ledger/journey (brief P0-3). This file exists for ONE reason: the screen must say 「본딩 · 압력」 where the ledger says `processed_with·params_actual.pressure_MPa`, and a Korean name for a step or a payload leaf is operator knowledge that the data does not carry. 🔴 IT IS NOT AN ITEM LIST. Nothing here decides what is compared -- every leaf of every atom of the two marked subjects is compared whether it is named here or not, and an unnamed leaf renders as its RAW PATH (정직 우선, orchard rule). Deleting this whole file degrades the screen to raw paths; it does not remove a single segment, item or value.",
+  "__doc": "JOURNEY CONTRAST declarations for GET /api/ledger/journey (brief P0-3). This file exists for ONE reason: the screen must say 「본딩 · 압력」 where the ledger says `processed_with·params_actual.pressure_MPa`, and a Korean name for a step or a payload leaf is operator knowledge that the data does not carry. 🔴 IT IS NOT AN ITEM LIST. Nothing here decides what is COMPARED -- every leaf of every atom of the two marked subjects is compared whether it is named here or not, and an unnamed leaf renders as its RAW PATH (정직 우선, orchard rule). 🔴 BUT THE TWO HALVES OF THIS FILE FAIL DIFFERENTLY, so do not read the line above as 'delete it all and only the Korean is lost' -- an earlier version of this comment said exactly that and it was wrong. The three LABEL blocks (step_labels / family_labels / field_labels) narrow nothing: delete them and every segment, item and value is still produced, with raw paths in place of names. The `segments` block is STRUCTURAL: it is the only thing that says which predicate carries a journey and where the step name lives inside its payload, so deleting it leaves no axis to draw and GET /api/ledger/journey answers state='absent', reason='no_journey_predicate_declared', segments=[] -- a degraded ANSWER rather than an error, but an empty screen all the same.",
   "version": 1,
 
   "segments": {
@@ -54,7 +54,7 @@
     "vacuum_assist": "진공 보조",
     "purge_delay_s": {"label": "퍼지 지연", "unit": "s"},
     "clean_time_s": {"label": "세정 시간", "unit": "s"},
-    "post_bond_queue_h": {"label": "본딩 후 대기", "unit": "h"},
+    "post_bond_queue_h": {"label": "대기 시간", "unit": "h"},
     "thickness_um": {"label": "두께", "unit": "µm"},
     "thickness_nm": {"label": "두께", "unit": "nm"},
     "cure_s": {"label": "경화 시간", "unit": "s"},

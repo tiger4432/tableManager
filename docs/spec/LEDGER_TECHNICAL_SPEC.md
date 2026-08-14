@@ -1,6 +1,6 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 밤 (§4.7 ⑤ 기전 층 현행 확정 — `mechanism_models.json` 라이브·소비자 둘·바인딩 규율 `87374a5`. 직전 3차: 관측 번역 — §3.7·§3.7-quinquies·§4.5·§4.8·§5.5-bis·§5.7) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 밤 (**§4.9 신설 — `GET /api/ledger/journey`(주어 «둘» 전용 여정 대조, `server/ledger_journey.py` · 갱신 트리거 ⑧)**. 🔴 **이 절이 못박는 계약 넷: ① n=2에 집단 통계가 «부재»(null 아님)이고 관문이 둘 ② 한쪽 값의 상태가 «넷»이며 셋이 「없음」처럼 생겼다 ③ 육하원칙은 봉투→슬롯 매핑 «하나»이고 「왜」만 층이 다르다(선언의 부재 ≠ 기록의 부재) ④ 세그먼트 서수는 «해결 등급 안에서» 매긴다.** 직전: §4.7 ⑤ 기전 층 현행 확정 — `mechanism_models.json` 라이브·소비자 둘·바인딩 규율 `87374a5`. 직전 3차: 관측 번역 — §3.7·§3.7-quinquies·§4.5·§4.8·§5.5-bis·§5.7) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
 > **이번 라운드 (2026-08-14 3차 · 관측 번역 — R-2026-08-14-D + R-2026-08-14-E ⓐ · 갱신 트리거 ⑦·⑧)** —
@@ -773,6 +773,75 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 - ⚠️ **이 라우트는 여전히 «아무것도 선언하지 않는다».** 종류의 정의는 `server/finding_kinds.py`,
   어느 소스가 어느 종류를 번역하는지는 `ledger_config.json`이다 — **여기에 세 번째 목록이 생기면 드리프트가 보이지 않게 된다**
   (적히는 날엔 언제나 일치하므로).
+
+### 4.9 `GET /api/ledger/journey` — **주어 «둘» 전용 응답 계약** (2026-08-14 밤 · `server/ledger_journey.py` · 갱신 트리거 ⑧)
+
+라우트 표는 [backend §2](../architecture/backend.md)가 소유하고, 운영자가 읽는 법은 [guide §4.6-quater](../guide/LEDGER_GUIDE.md)다.
+여기는 **조용히 깨지면 안 되는 의미론**만 적는다. 이 라우트는 새 사실을 계산하지 않는다 — **원장이 이미 든 원자를 순서로 재배치**한다.
+
+#### ⓐ 🔴 집단 통계는 **없다. `null`도 아니다.**
+
+| 계약 | 철자 |
+|---|---|
+| 주어 수 | **정확히 둘.** 아니면 **422 `scope_is_not_a_pair`** + `arity_resolved` + **해결된 주어 이름**. 강등해서 표를 그리지 않는다 — 다섯 열짜리 표가 이 화면이 «치우려던» 그것이다 |
+| 없는 필드 | `enrichment` · `enrichment_ci` · `rate` · `rate_delta` · `std_diff` · `case` · `control` · `candidates` · `min_support` — **키가 아예 없다**(실측: 라이브 응답 재귀 키 스캔 0건) |
+| `gates` | **두 항목**: `upstream`(「시간상 앞섬」 — `occurred_at` 두 개의 비교라 모집단이 필요 없다) · `mechanism`(「물리 경로 있음」 — 선언의 인용) |
+| `statistics` | `{state: "not_applicable", arity: 2, message}` — **셋째 관문이 고장이 아니라 «부재»임을 말하는 자리**다 |
+
+- 🔴 **`null`로 내지 않는 이유가 이 절의 전부다**: 존재하는 필드는 언젠가 렌더되고, **웨이퍼 두 장 위에서 계산된 신뢰구간은 이 프로젝트가 에러보다 나쁘게 치는 「확신에 찬 거짓」**이다.
+- 🔴 **`arity: 2`가 «필드»다.** 「`candidates`가 없으니 2장 모양이겠지」로 추론하는 클라는 언젠가 틀린다.
+- **3장 이상의 답은 `/siblings?scope=`이고 그 응답은 이 라우트가 생겨도 한 바이트도 안 바뀌었다** — n=2 모양을 집단 통계가 계약에 든 엔드포인트에 «모드»로 접는 것이 위 필드가 `null`로 새는 경로다.
+
+#### ⓑ 🔴 한쪽 값의 상태가 **넷**이고, 그중 **셋이 「없음」처럼 생겼다**
+
+| 상태 | 뜻 | 실측(`assy_manager`, 합성) |
+|---|---|---|
+| `recorded` | 값이 있다 — **`0`과 `false`를 포함한다** | `SYN-BW-001-01/-02` BONDING의 `params_setpoint.purge_delay_s = 0` |
+| `recorded_null` | 소스가 **명시적으로 JSON null을 발화**했다 | ⚠️ **도달 가능하지만 이 박스에서 미실증** — `processed_with` payload의 명시적 null **0건** |
+| `not_recorded` | 이 주어는 그 구간을 **걸었는데** 이 경로의 잎이 없다 | `SYN-BW-001-01` vs `-02`의 `params_actual.*`(둘 다 걸은 BONDING) |
+| `segment_absent` | 이 주어는 **그 구간 자체를 안 걸었다** | `SYN-BW-101-06`은 `MI_THICKNESS` 원자가 **아예 없고** `-15`는 748.41 µm를 쟀다 |
+
+🔴 **셋을 한 낱말로 접으면 화면이 조용히 거짓말한다** — 「측정 안 함」은 **그 주어 그 구간에 대한 사실**이고 「구간을 안 걸음」은 **다른 사실**이다.
+위 두 쌍이 그 구별을 «한 행 안에서» 보여 준다: 같은 BONDING 구간에 `not_recorded`인 잎과 `recorded`인 `0`이 나란히 앉는다.
+
+#### ⓒ 🔴 육하원칙 — **봉투→슬롯 매핑 «하나»**, 그리고 「왜」만 층이 다르다
+
+- 원장은 **다섯**을 답한다(`who`·`when`·`where`·`what`·`how` — 전부 봉투 필드에서. 소유자 정정: 「엄밀히 원장은 누가·언제·어디서·무엇을·어떻게까지」).
+  🔴 **술어별 조립 코드가 없다** — 매핑 하나가 모든 술어의 모든 원자에 돈다. **내일 번역된 술어도 같은 카드로 렌더되면 맞게 지은 것이다.**
+- 🔴 **「왜」는 인용이지 사실이 아니다.** `layer: "declaration"` · `is_missing_record: **false**` · `citation{config, model, model_version, model_version_state}`.
+  ⚠️ `model_version`은 **`null`일 수 있고 그것이 정직한 답이다**(실측: `mechanism_models.json`의 어느 모델도 `version`을 선언하지 않는다 — 「v0」을 지어내지 않는다).
+- 🔴 **빈 「왜」는 «선언»의 부재이지 «기록»의 부재가 아니고, 상태가 셋이다**:
+
+| 상태 | 뜻 |
+|---|---|
+| `answered` | 모델이 경로를 댔다(편향 후보 포함 — 그때 문장은 **「발생 아님」** 꼬리를 단다) |
+| `declared_no_path` | **모델이 「아니오」라 답했다** — 물었고 답이 왔다 |
+| `not_declared` | **아무도 안 물었다** — 그 물리가 선언된 적이 없다 |
+
+  뒤 둘을 합치면 `mechanism_gate`가 자기 문서에서 네 문단에 걸쳐 거절하는 그 결함이다.
+- **여섯 슬롯 전부가 `is_missing_record`를 든다** — 클라 규칙 하나가 여섯을 덮고, 「왜」에는 그 값이 항상 `false`라 **「기록 없음」이 그 자리에 칠해질 수 없다.**
+  완결성은 **주장이 아니라 측정**이다(`six_completeness.complete` = 여섯 슬롯 전부가 문장을 든다).
+
+#### ⓓ 🔴 세그먼트 — 서수는 **해결 등급 «안»에서** 매긴다
+
+세그먼트 = **`(step_family, step, ordinal)`**, 키는 `<family>/<step>#<ordinal>`.
+`ordinal`은 그 주어의 같은 step 원자들 중 `occurred_at` 순위이되 **`ledger_trace.claim_class` 하나 안에서** 매기고, **묶을 때는 등급을 뺀다.**
+
+- 🔴 **그 절이 하는 일**: 장비 로그와 레시피 책은 **같은 물리적 런**을 다른 순간·다른 등급으로 말한다. 등급 안에서 순위를 매겨야 1번 런이 1번 런과 짝지어지고,
+  그러지 않으면 **한 번의 본딩이 두 구간으로 쪼개진다.** 실측: `SYN-BW-101-06`의 BONDING은 08-10 01:05/01:45(장비 로그 · 관측 등급)와 08-12 01:05/01:45(레시피 책 · 추론 등급) — **원자 넷, 런 둘.**
+- **한 구간의 두 원자가 한 잎을 두고 다투면** 승자는 `ledger_trace.claim_rank_key`(혈통 해결기와 **같은 전순서**)가 정하고 **패자는 `superseded_by_here`로 실려 나간다** — 「실측이 설정값을 이긴다」의 철자는 이 시스템에 **하나**다(§4.1-bis).
+- `position_basis`가 **`observation` \| `inference`** — 그 구간의 «자리»가 실측 시각에서 왔는지 레시피 책의 날짜에서 왔는지. 🔴 **순서가 이 화면의 주된 주장이므로 그것이 거짓말할 수 있는 «유일한 방식»에 이름이 붙어 있다**(실측: `SYN-BW-101-06`의 DIFFUSION은 추론 원자로만 존재하고 그 날짜가 BONDING 뒤라 전공정이 후공정 «아래»에 앉는다 — 응답은 조용히 재정렬하지 않고 `notes[]`로 말한다).
+- **step 이름이 payload의 «어디»에 있는지는 선언이다** — `ledger_journey.json`의 `segments` 블록([CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md)).
+  `vocabulary.py`는 `processed_with`의 목적어가 `['step','step_family','eqp','recipe']`를 요구한다고만 말하고 **그중 무엇이 step인지는 말하지 않는다** — 목록의 자리로 읽는 것은 관례이고, 관례는 스키마가 다른 날 깨진다.
+- **step 값이 없는 여정 원자는 «버리지 않는다»** — 「(step 기록 없음)」이라는 자기 구간을 얻는다. 무슨 일이 있었나를 보여 주는 화면에서 원자가 사라지는 것이 더 나쁜 답이다.
+
+#### ⓔ 선언 층은 **이름만 붙이고 아무것도 좁히지 않는다**
+
+`ledger_journey.json`(라이브) → `.json.sample`(출하) → 부재 순으로 찾고 **`labels.origin`이 `live`\|`sample`\|`absent`를 말한다**(`mechanism_gate`의 규칙 그대로).
+🔴 **이름 블록 셋(`step_labels`·`family_labels`·`field_labels`)은 «아무것도 좁히지 않는다»** — 두 주어 원자의 **모든 잎**이 이름 유무와 무관하게 비교되고, 이름 없는 잎은 **원시 경로로** 렌더된다(정직 우선). 그 셋을 통째로 비워도 **구간·항목·값의 수는 0개 줄어든다.**
+🔴 ⚠️ **그러나 `segments` 블록은 다르다 — 그것은 «구조적» 선언이라 없으면 그릴 축이 없다.** 선언된 여정 술어가 하나도 없으면 응답은 200이되 `state: "absent"` · `reason: "no_journey_predicate_declared"`이고 **`segments: []`**다.
+**즉 「파일이 없어도 다 나온다」는 이름 층에 대해서만 참이다** — `ledger_journey.py`(및 `.json.sample`)의 산문은 이 구별 없이 「파일을 지워도 구간·항목·값이 안 준다」고 적고 있고, **그 문장은 `segments`에 대해 거짓이다**(코드가 정본 — 총괄 보고 대상).
+**부재·깨짐이 예외가 아니라 상태(`labels.state`)인 것은 양쪽 모두 참**이다 — 세부는 [CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md).
 
 ---
 

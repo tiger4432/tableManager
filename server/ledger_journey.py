@@ -43,8 +43,10 @@ correction that settles the layering: 「엄밀히 원장은 누가·언제·어
                  of the setpoint/actual distinction anywhere
     왜           `mechanism_gate` — a QUOTATION of a declared model, never a ledger fact,
                  and marked as such (`layer: "declaration"`). An empty 왜 is NOT a missing
-                 record: `slot_state` says `model_absent`, which the screen must render
-                 differently from 「기록 없음」.
+                 record: `state` is `not_declared` (nobody was asked) or
+                 `declared_no_path` (the model was asked and said no) — never
+                 `not_recorded` — and `is_missing_record` is `false`, which is what the
+                 screen must render differently from 「기록 없음」.
 
 There is ONE envelope→slot mapping and it runs for every atom of every predicate. A
 predicate translated tomorrow renders in the same card. `test`-visible consequence: no
@@ -147,10 +149,20 @@ DEFAULTS = {
 class JourneyConfig:
     """`ledger_journey.json`, or an honest absence of it.
 
-    🔴 AN ABSENT FILE IS A STATE, NOT AN ERROR. Every segment, item and value is produced
-    without it; the only thing lost is the Korean, and a leaf with no declared name renders
-    as its RAW PATH. `state` says which world the screen is in so an operator can tell 「이
-    필드는 이름이 없다」 from 「이 파일이 없다」.
+    🔴 AN ABSENT FILE IS A STATE, NOT AN ERROR — BUT THE TWO HALVES OF THIS FILE FAIL
+    DIFFERENTLY, AND AN EARLIER VERSION OF THIS DOCSTRING GOT IT WRONG.
+
+      * The three LABEL blocks (`step_labels`, `family_labels`, `field_labels`) narrow
+        nothing. Delete them and every segment, item and value is still produced; only the
+        Korean is lost and each name renders as its RAW PATH.
+      * The `segments` block is STRUCTURAL. It is the only thing that says which predicate
+        carries a journey and where the step name lives inside its payload, so with it gone
+        there is no axis to draw and `journey()` answers `state: "absent"`,
+        `reason: "no_journey_predicate_declared"`, `segments: []` — a degraded ANSWER, not
+        an error, but emphatically not「같은 화면에서 이름만 빠진 것」.
+
+    `state` says which world the screen is in so an operator can tell 「이 필드는 이름이
+    없다」 from 「이 파일이 없다」.
     """
 
     __slots__ = ("segments", "step_labels", "family_labels", "field_labels",
@@ -448,8 +460,8 @@ def journey(connection, kind=None, scope=None, window=None, now=None, overrides=
     envelope["segments"] = segments
     envelope["summary"] = _summary(segments)
     envelope["headline"] = (
-        f"같은 길 {envelope['summary']['same']}구간, "
-        f"갈라진 곳 {envelope['summary']['diverged'] + envelope['summary']['one_sided']}곳")
+        f"같은 길 {envelope['summary']['folded']}구간, "
+        f"갈라진 곳 {envelope['summary']['opened']}곳")
     _note_inference_positioned(envelope, segments)
     _note_bias_candidates(envelope, segments)
     return envelope
@@ -765,6 +777,15 @@ def _segment(key, members, subjects, labels, kind, graph, obs_at, zone, cfg, res
         "_sort_at": instants[0],
     }
     segment["agreement"] = _agreement(items, cfg)
+    # 🔴 THE GREY LINE, ASSEMBLED SERVER-SIDE. The ruling's own form —
+    # 「본딩 — 같음: 장비 SYN-BD-EXC · 레시피 rev 6 · 수치 3건 차이」 — so the client
+    # concatenates nothing and two consoles cannot punctuate it two ways. `null` when the
+    # segment is not foldable, which is the same signal as `agreement.foldable` in the
+    # shape the renderer actually consumes.
+    segment["fold_line"] = (
+        f"{segment['display']} — {segment['agreement']['sentence']}"
+        if segment["agreement"]["foldable"] and segment["agreement"]["sentence"]
+        else None)
     segment["sentence"] = _sentence(segment, subjects, cfg)
     # 🔴 THE SIX ARE ATTACHED HERE AND NOWHERE ELSE — one mapping, after the segment knows
     # its own 어디서 and 언제. A card is complete when all six answer OR say they cannot,
@@ -786,47 +807,146 @@ def _segment(key, members, subjects, labels, kind, graph, obs_at, zone, cfg, res
 
 
 def _agreement(items, cfg):
-    """WHAT AGREED, named — because 「같음」 is information and not the absence of a card.
+    """WHAT AGREED AND WHAT STILL DIFFERS — the grey line, and the account it must give.
 
-    🔴 THE FOLD RULE IS NOT DECIDED HERE, AND THAT IS DELIBERATE. Measured on
-    `assy_manager` with the owner's own pair (`SYN-BW-101-06` / `-15`): every one of the
-    eight segments carries at least one differing measured number, so a fold on strict
-    equality NEVER fires on real data and the screen would be eight cards. But the run
-    IDENTITY agrees in five of them (BONDING#1 is `eqp SYN-BD-EXC · recipe rev 6 · chamber
-    CH-A` on both sides while `temp_C` reads 155.712 against 154.152), which is exactly the
-    grey line the owner drew: 「본딩 — 같음: 장비 SYN-BD-03 · 레시피 rev 5」.
+    🔴 THE FOLD RULE IS RUN IDENTITY. Lead PM ruling, 2026-08-14, decided by measurement:
+    on real data NO segment is byte-identical (every one of the owner's eight carries at
+    least one differing measured number), so a fold on strict equality fires 0 times in 8
+    and a collapse rule that never collapses makes the design vacuous — the owner would get
+    the eight open cards they were trying to escape. Run identity DOES agree in five of the
+    eight (BONDING#1 is `eqp SYN-BD-EXC · recipe rev 6` on both sides while `temp_C` reads
+    155.712 against 154.152), and that is the grey line they drew.
 
-    Two facts are therefore reported and NEITHER is collapsed into the other: `actors` says
-    whether the run identity matched, `content` says whether the values did, and
-    `mechanism_bound_diverged` counts the divergences a declared physical model can reach.
-    A console can fold on `verdict == "same"` (nothing at all moved) or on
-    `actors == "same" and mechanism_bound_diverged == 0` (the run was the same run and
-    nothing that moved is modelled as a cause) without a server change. Choosing between
-    them is an owner's judgement — inventing one here is the second ranking rule this
-    project refuses to invent at the console.
+    🔴 AND FOLDED IS NOT HIDDEN — THE LINE ACCOUNTS FOR EVERYTHING UNDER IT. Folding on
+    identity while a number moved and calling it 「같음」 with nothing else said would be a
+    small lie about sameness, which is the one thing this console exists to stop. So the
+    sentence carries a differs-clause (「… · 수치 4건 차이」) and `differing` carries the
+    counts and the paths behind it, pre-computed: the client renders and expands the line
+    without ever walking raw leaves. Same rule the truncation notice and the multi-lot map
+    summary follow, and the same reason both are allowed to show less.
+
+    ⚠️ `mechanism_bound` IS REPORTED IN THE TAIL, and that is a deliberate loudness. The
+    fold does not consult it (the ruling is identity, full stop), but a divergence with a
+    DECLARED path to the finding is the DOE candidate, and one disappearing silently behind
+    a grey line is precisely the failure this screen guards against. Counting it in the
+    sentence lets the reader — and the owner — see what the fold costs without changing
+    what the fold is.
     """
     actors = [i for i in items if i["role"] in ("actor", "segment")]
     content = [i for i in items if i["role"] == "content"]
     named = [i for i in actors
              if i["verdict"] == VERDICT_SAME and i["role"] == "actor"]
     named.sort(key=_item_rank)
-    sentence = " · ".join(f"{i['display']} {i['A']['text']}"
-                          for i in named[:cfg["sentence_items"]])
+    head = " · ".join(f"{i['display']} {i['A']['text']}"
+                      for i in named[:cfg["sentence_items"]])
+
+    # 🔴 TWO ROLES ARE NOT COUNTED AS DIFFERENCES, FOR TWO DIFFERENT REASONS.
+    # `epistemic` (`inferred`/`confirmed`) are the resolver's own flags, already surfaced as
+    # each side's resolution class — a reader told 「수치 5건 차이」 where one of the five is
+    # `inferred: true` goes looking for a process difference that is not there.
+    # `segment` (the step annotation) is the segment's own IDENTITY: it can never differ
+    # inside a folded segment by construction, and in a one-sided one 「step이 다르다」 is
+    # not a fact about the process, it is the absence restated.
+    differing = [i for i in items
+                 if i["verdict"] != VERDICT_SAME
+                 and i["role"] not in ("epistemic", "segment")]
+    differing.sort(key=_item_rank)
+    numeric = [i for i in differing if _is_numeric_item(i)]
+    formation = [i for i in differing
+                 if i["gates"]["mechanism"]["verdict"] == mechanism_gate.VERDICT_PASS]
+    bias = [i for i in differing
+            if i["gates"]["mechanism"]["verdict"] == mechanism_gate.VERDICT_BIAS]
+    bound = formation + bias
+    actors_verdict = _roll(actors)
+    # 🔴 THE FOLD DECISION, SO THE CLIENT NEVER INVENTS IT — AND ITS SECOND CLAUSE IS THE
+    # WHOLE REVISION. Lead PM, 2026-08-14, revising the identity-only rule after it was
+    # measured: `SYN-BW-101-01 / -06` folded 7 of 7 with `bond_pressure` and `bond_temp`
+    # — each with a DECLARED path to `void` — behind the grey lines. A fold exists to
+    # collapse NOISE, and a difference with a declared physical path to the outcome is by
+    # construction not noise; folding it inverts the purpose of the screen at exactly the
+    # comparison an engineer runs when they already suspect the process.
+    #
+    # ⚠️ THE COUNT IS SPLIT because `bias_candidate` is a live question, not a settled one.
+    # `formation_bound` reaches a FORMATION model's target; `bias_bound` reaches only an
+    # observation-bias target — 「발생 아님」, which the brief says must not appear at the
+    # rank of a cause, and opening a card IS a rank. The shipped rule is the ruling as
+    # written (`mechanism_bound == 0`, both kinds block); switching to formation-only is
+    # this one predicate. Measured cost of the difference is in the round's report.
+    foldable = actors_verdict == VERDICT_SAME and not bound
     return {
-        "actors": _roll(actors),
+        "actors": actors_verdict,
         "content": _roll(content),
+        # A `one_sided` segment can never be foldable — one subject was not there, and
+        # there is no shared road to collapse.
+        "foldable": foldable,
+        "fold_basis": "run_identity_and_no_mechanism_path",
+        "fold_basis_label": "장비·레시피·rev 일치 · 기전 경로 있는 차이 없음",
+        # 🔴 WHY A SEGMENT OPENED DESPITE THE IDENTITY MATCHING. Without this the reader
+        # sees an open card whose first line says 「같음」 and has no way to learn that the
+        # opening was itself a judgement.
+        "fold_blocked_by": ("mechanism_path"
+                            if actors_verdict == VERDICT_SAME and bound else None),
         "agreeing_actors": [{"path": i["path"], "display": i["display"],
                              "text": i["A"]["text"]} for i in named],
-        "mechanism_bound_diverged": sum(
-            1 for i in items
-            if i["verdict"] != VERDICT_SAME
-            and i["gates"]["mechanism"]["verdict"] in (mechanism_gate.VERDICT_PASS,
-                                                       mechanism_gate.VERDICT_BIAS)),
+        # 🔴 PRE-COMPUTED, because the ruling says the client must not recompute it from
+        # raw leaves. `paths` is a direct lookup key into `segment.items` for the expand.
+        "differing": {
+            "total": len(differing),
+            "numeric": len(numeric),
+            "other": len(differing) - len(numeric),
+            "mechanism_bound": len(bound),
+            # 🔴 SPLIT, because the two do not mean the same thing and the fold rule may
+            # yet want only one of them. `formation_bound` reaches a formation model's
+            # target (a cause); `bias_bound` reaches only an observation-bias target
+            # (「발생 아님」 — why it was SEEN, not why it formed).
+            "formation_bound": len(formation),
+            "bias_bound": len(bias),
+            "paths": [i["path"] for i in differing],
+            "items": [{"path": i["path"], "display": i["display"], "role": i["role"],
+                       "verdict": i["verdict"], "numeric": _is_numeric_item(i),
+                       "mechanism": i["gates"]["mechanism"]["verdict"],
+                       "A": i["A"]["text"], "B": i["B"]["text"]}
+                      for i in differing],
+        },
+        "mechanism_bound_diverged": len(bound),
         # 🔴 ALWAYS RENDERABLE, even in a segment that also diverged. The owner's grey line
         # is this string; withholding it until nothing at all differs is how 「같음」 stops
         # being information.
-        "sentence": (f"같음: {sentence}" if sentence else None),
+        "sentence": (f"같음: {head}{_differs_clause(len(numeric), len(differing) - len(numeric), len(bound))}"
+                     if head else None),
     }
+
+
+def _is_numeric_item(item):
+    """Is this leaf a QUANTITY? Judged on the JSON type of whichever side recorded a value
+    — the same rule `ledger_walk_contrast._compare_kind` uses, and not on the field's name.
+    `bool` is checked first because it is an `int` subclass in Python."""
+    for side in (item["A"], item["B"]):
+        if side["state"] != VALUE_RECORDED:
+            continue
+        value = side["value"]
+        if isinstance(value, bool):
+            return False
+        return isinstance(value, (int, float))
+    return False
+
+
+def _differs_clause(numeric, other, bound):
+    """The tail that stops a fold from being a claim of sameness. 🔴 Nouns and counts, no
+    sentence — UI copy rule (기호·명사형 우선); the one full sentence per card is the fact
+    line above it."""
+    if not (numeric or other):
+        return ""
+    parts = []
+    if numeric:
+        parts.append(f"수치 {numeric}건")
+    if other:
+        parts.append(f"그 외 {other}건")
+    tail = f" · {' · '.join(parts)} 차이"
+    if bound:
+        # The DOE candidates, counted where the fold would otherwise bury them.
+        tail += f" (기전 {bound}건)"
+    return tail
 
 
 def _roll(items):
@@ -1276,12 +1396,61 @@ def _sentence(segment, subjects, cfg):
         detail = " · ".join(f"{i['display']} {i['A']['text']}"
                             for i in named[:cfg["sentence_items"]])
         return f"{step} — 같음: {detail}" if detail else f"{step} — 같음"
+
+    # 🔴 THE CARD THAT OPENED DESPITE THE IDENTITY MATCHING LEADS WITH BOTH HALVES.
+    # Lead PM, 2026-08-14: 「same equipment, different pressure」 is a sharper finding than
+    # either half alone, so the fact line names what agreed AND what a declared physical
+    # model can reach — 「장비·레시피 같음 · 압력·온도 다름」 — rather than opening with a
+    # bare divergence that hides the fact that the run was the same run.
+    if segment["agreement"].get("fold_blocked_by") == "mechanism_path":
+        agreed = _short_names(a["display"] for a in
+                              segment["agreement"]["agreeing_actors"])
+        bound = [i for i in top
+                 if i["gates"]["mechanism"]["verdict"] in (
+                     mechanism_gate.VERDICT_PASS, mechanism_gate.VERDICT_BIAS)]
+        moved = _short_names(i["display"] for i in bound)
+        rest = len(top) - len(bound)
+        tail = f" 외 {rest}건" if rest > 0 else ""
+        left = f"{'·'.join(agreed)} 같음 · " if agreed else ""
+        # 🔴 A CARD OPENED ONLY BY A BIAS CANDIDATE CARRIES 「발생 아님」 ON ITS FIRST LINE.
+        # The brief is explicit that an observation-bias factor must not read at the rank of
+        # a cause, and OPENING a card IS a rank — so if the fold was blocked by nothing but
+        # bias, the fact line says what kind of finding this is before it says anything
+        # else. Without this the revised fold rule would promote a scanner artefact to a
+        # process card, which is the exact confusion `mechanism_gate` was split to prevent.
+        if not segment["agreement"]["differing"]["formation_bound"]:
+            return f"{step} — 발생 아님(관측 편향) · {left}{'·'.join(moved)} 다름{tail}"
+        return f"{step} — {left}{'·'.join(moved)} 다름{tail}"
     head = top[0]
     left = (head["A"]["text"] if head["A"]["state"] == VALUE_RECORDED else "기록 없음")
     right = (head["B"]["text"] if head["B"]["state"] == VALUE_RECORDED else "기록 없음")
     rest = len(top) - 1
     tail = f" 외 {rest}건" if rest else ""
     return (f"{step} — {head['display']}: {a_id} {left}, {b_id} {right}{tail}")
+
+
+def _short_names(displays):
+    """Display names for a summary line — PREFIX-deduped, never truncated.
+
+    「레시피」 and 「레시피 rev」 both agreeing would otherwise read 「장비·레시피·레시피
+    rev 같음」 on a line meant to be scanned, so the longer one is dropped when the shorter
+    is its prefix. Nothing is LOST: every agreeing actor is in `agreement.agreeing_actors`
+    and every item is in `items`.
+
+    🔴 A FIRST CUT TOOK THE FIRST WHITESPACE TOKEN AND THAT WAS A DEFECT, not a style
+    choice. It rendered 「본딩 후 대기」 as 「본딩」, so a POST_BOND_QUEUE card read
+    「본딩 다름」 — naming the wrong process step, on the summary line, in a screen whose
+    entire purpose is to say which step differed. Shortening a label may drop a word; it
+    may never change which thing the label denotes.
+    """
+    out = []
+    for display in displays:
+        text = str(display)
+        if any(text.startswith(kept) for kept in out):
+            continue
+        out = [kept for kept in out if not kept.startswith(text)]
+        out.append(text)
+    return out
 
 
 def _fmt(value, unit):
@@ -1301,8 +1470,21 @@ def _fmt(value, unit):
 
 
 def _summary(segments):
+    """🔴 TWO COUNTS OF 「같음」, AND THEY MEAN DIFFERENT THINGS.
+
+    `folded` follows the RULING (run identity agreed → one grey line) and is what the
+    headline counts, because a headline that disagrees with the screen below it is worse
+    than no headline. `same` is the STRICT count (nothing at all moved) and stays because
+    it is the measurement the ruling was decided on — on the owner's pair it is 0 of 8
+    while `folded` is 5, and a reader who cannot see both cannot see why the rule is what
+    it is.
+    """
+    folded = sum(1 for s in segments if s["agreement"]["foldable"])
     return {
         "segments": len(segments),
+        "folded": folded,
+        "opened": len(segments) - folded,
+        "fold_basis": "run_identity",
         VERDICT_SAME: sum(1 for s in segments if s["verdict"] == VERDICT_SAME),
         VERDICT_DIVERGED: sum(1 for s in segments if s["verdict"] == VERDICT_DIVERGED),
         VERDICT_ONE_SIDED: sum(1 for s in segments

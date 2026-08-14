@@ -1,6 +1,6 @@
 # 📒 정준 원장 (Canonical Ledger) — 소스 붙이는 법 · 백필 돌리는 법
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 | **Owner:** Server / Ledger | **Source-of-truth:** `server/ledger/` · `server/ledger_trace.py` · `server/ledger_structure.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 밤 (§4.6-quater 신설 — **`GET /api/ledger/journey` 읽는 법 + step·항목 한국어 이름 «붙이는» 법**. ⚠️ **서버만 착지했고 화면은 아직 없다**) | **Owner:** Server / Ledger | **Source-of-truth:** `server/ledger/` · `server/ledger_trace.py` · `server/ledger_structure.py` · `server/ledger_journey.py`
 >
 > **이 문서가 소유하는 것: HOW.** 새 소스에 번역기를 붙이는 절차와, 운영자가 백필을 돌리고 숫자를 읽는 절차.
 > **WHY는 여기 없다** — 왜 원자가 7필드인지, 왜 어휘가 닫혀 있는지, 왜 해결 서열이 4계급인지는
@@ -96,8 +96,9 @@
 |---|---|---|
 | `server/ledger_structure.py` (2026-08-14) | `GET /api/ledger/structure` — **유형 수준 온톨로지 그림 + 선언 지도**. 노드=개체 타입, 엣지=(subject 타입, 술어, 목적어) 삼중항 | 🔴 **손으로 적은 노드·엣지 목록이 이 파일에 «없다»**(제품 소유자 실패 조건: 「하드코딩된 목록이 응답 어디에든 보이면 실패」). **선언된 절반**은 `vocabulary.ENTITY_TYPES` × `PREDICATES`에서, **관측된 절반**은 원장 한 번의 `GROUP BY`에서 생성하고 **둘을 병합**한다 — 병합이 설계 전부다. 선언에만 있는 모양(`declared_only`)과 데이터에만 있는 모양(`undeclared`)은 **손으로 그린 그림이 영원히 못 내는 답 둘**이다. 🔴 **어휘는 «지연» import한다**(호출 «안»에서) — §0의 「`server/`에서 `server/ledger`를 import하는 부팅 경로가 없다」를 *거의* 참이 아니라 **글자 그대로** 참으로 두려고. 🔴 **등급 분포를 SQL이 «분류하지 않는다»** — 그룹 키만 만들고 `ledger_trace.claim_class`/`claim_basis`를 **그대로 부른다**(철자가 둘이면 갈라진다). 🔴 **등록 엣지는 이름이 아니라 «모양»(`object_kind IS NULL`)으로 식별**한다 — `predicate == "register"` 리터럴이 먼저 쓰였고 어휘를 갈아끼우는 테스트가 잡았다 |
 | `server/ledger_trace.py` | **셋이 살고 둘은 서로를 몰라야 한다**: **해결기**(`claim_class`/`claim_rank_key`/`resolve` — 순수 파이썬, SQL·테이블명·커넥션 0) · **조회기**(`ClaimLookup` 계열 — 가져오기만 하고 등급을 모른다) · **보행**(`trace` — 조회기에 한 번 묻고 홉마다 해결기에 한 번 묻는다) | 스타일이 아니라 **구조 요구**다. 슬라이스 1은 **랏 단위**라 질의 시점 해결로 가지만 **슬롯 단위 혈통은 질의 시점에서 죽는다**(인라인 452 ms 대 물질화 0.58 ms — 합성·이 박스). 조회기가 **교체 가능한 객체**라 물질화된 클로저 테이블로 옮기는 것이 **생성자 인자 하나**이고 해결기는 한 줄도 안 바뀐다. `InMemoryClaimLookup`은 그 교체 가능성을 **주장이 아니라 검사된 성질**로 만든다. 🔴 **[2026-08-14 3차] 「무엇을 걷는가」가 이 파일에 더 이상 «적혀» 있지 않다** — `LINEAGE_PREDICATES`는 리터럴 목록이었고 지금은 `vocabulary.walk_predicates()`에서 **파생**되며, 재귀가 따르는 낱말도 `traversal_predicate()`가 대어 **두 CTE 모두 SQL 파라미터로 바인드**한다(`'derived_from'` 리터럴이 없어졌다). 어휘는 **호출 안에서 지연 import**하므로 §0의 부팅 경로 보증은 그대로다. 🔴 **동작 불변이 단언돼 있다**(`test_ledger_observed_unit.py::test_the_walk_vocabulary_is_derived_and_still_says_what_it_said`) — 파생으로 옮기면서 걷기가 **한 낱말도 더 얻거나 잃지 않았다**는 것이 이 이관의 유일한 합격 조건이었다 |
-| `server/ledger_trace_router.py` | `APIRouter(prefix="/api/ledger")` **하나에 라우트 일곱** — `/trace` · `/coverage` · `/siblings` · `/kinds` · `/structure` · **`/lots`** · **`/lot_map`**(뒤 둘은 2026-08-14 놀라움 장치). 전부 **읽기 전용**. 🔴 **라우트 계약의 정본은 [backend §2](../architecture/backend.md)이고 이 칸은 색인이다** | 🔴 **SPA catch-all «위»에 등록해야 한다.** FastAPI는 등록 순서로 매칭하므로 catch-all 뒤에 등록된 라우트는 **200으로 `index.html`을 받는다** — 감시자가 죽은 엔드포인트를 살아 있다고 부르게 되는 실패다(`/health`가 실제로 그랬다). 현재 `server/main.py`에서 catch-all 훨씬 위에 등록돼 있다. 🔴 **빈 `hops`는 가능한 답이 아니다** — 어느 홉에서 왜 끊겼는지가 이 화면의 존재 이유다 |
+| `server/ledger_trace_router.py` | `APIRouter(prefix="/api/ledger")` **하나에 라우트 여덟** — `/trace` · `/coverage` · `/siblings` · `/kinds` · `/structure` · **`/lots`** · **`/lot_map`**(뒤 둘은 2026-08-14 놀라움 장치) · **`/journey`**(2026-08-14 밤 · 아래 행). 전부 **읽기 전용**. 🔴 **라우트 계약의 정본은 [backend §2](../architecture/backend.md)이고 이 칸은 색인이다** | 🔴 **SPA catch-all «위»에 등록해야 한다.** FastAPI는 등록 순서로 매칭하므로 catch-all 뒤에 등록된 라우트는 **200으로 `index.html`을 받는다** — 감시자가 죽은 엔드포인트를 살아 있다고 부르게 되는 실패다(`/health`가 실제로 그랬다). 현재 `server/main.py`에서 catch-all 훨씬 위에 등록돼 있다. 🔴 **빈 `hops`는 가능한 답이 아니다** — 어느 홉에서 왜 끊겼는지가 이 화면의 존재 이유다 |
 | `server/ledger_siblings.py` + `server/ledger_walk_contrast.py` (2026-08-14 밤 등재) | `/siblings`의 **엔진 둘** — 축 엔진(선언된 요인 기하 위 케이스-컨트롤, `mode=intersection\|contrast`)과 **걷기 대조**(`scope=` 마킹 시 — 「이 랏/웨이퍼들과 나머지는 뭐가 다른가」). 응답 `engine` 필드가 어느 쪽이 답했는지 말한다. 요인 기하는 전부 `server/config/siblings_axes.json`(.sample 폴백) 선언 | 🔴 **걷기 대조에는 항목 목록이 «한 줄도» 없다** — 후보는 마킹된 주어들의 걷기가 닿는 모든 술어×필드×값이고, 선언(`defaults.walk`)은 필터가 아니라 **예산**이다(CASE는 절대 안 깎고 control만 결정적 표본 · `walk.gate`가 그랬다고 말한다). 🔴 **수치는 주어당 «한 값»으로 접은 뒤 같은 랭킹 사다리를 탄다**(원자 141개 웨이퍼 = 관측 1 — 둘째 임계를 발명하지 않는다. 배율 밴드의 단위 의존성은 화면에 이름이 불린다). 🔴 **요청된 scope 값은 전수 회계된다** — `unnest` LEFT JOIN으로 해소/탈락이 이름 불리고, 전부 탈락이면 `empty`이지 남은 값에 대한 잘 지어진 답이 아니다. 🔴 **기전 관문은 `server/mechanism_gate.py` + `mechanism_models.json`** — 바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다. 세부·수치는 [backend §2 `/siblings`](../architecture/backend.md)가 정본 |
+| **`server/ledger_journey.py`** (2026-08-14 밤) | `/journey`의 **주어 «둘» 전용** 읽기 — 두 주어의 원자를 **공정 구간의 순서**로 재배치한다. 새 사실을 계산하지 않는다. 이름 층은 `server/config/ledger_journey.json`(.sample). 읽는 법 §4.6-quater · 계약 [spec §4.9](../spec/LEDGER_TECHNICAL_SPEC.md) | 🔴 **`/siblings`의 «모드»가 아니라 별도 라우트인 것이 설계 전부다** — 저쪽 계약에는 배수·신뢰구간이 들어 있고 **주어 둘은 그 무엇도 지탱하지 못하므로**, 여기서는 그 키들이 `null`이 아니라 **아예 없다**(관문도 셋이 아니라 둘). 🔴 **주어가 둘로 안 풀리면 강등이 아니라 «거절»**(422)이고 해결된 주어를 이름 댄다. 🔴 **술어 이름으로 분기하는 갈래가 0개** — 육하원칙 여섯 슬롯은 봉투→슬롯 매핑 하나라 **내일 번역된 술어도 같은 카드로** 렌더된다. 🔴 **세그먼트 서수는 «해결 등급 안에서»** 매기고 묶을 때 등급을 뺀다 — 그래야 장비 로그와 레시피 책이 한 물리적 런을 둘로 안 쪼갠다. 🔴 **`claim_rank_key`를 재구현하지 않고 «부른다»** — 한 구간의 두 원자가 한 잎을 다투면 혈통 해결기와 **같은 전순서**가 승자를 정하고 패자는 실려 나간다 |
 | `client2/src/ledger_trace_core.js` | **순수**. DOM·네트워크·import 0. 서버 답을 낱말과 톤에 매핑만 한다 | 🔴 **이 모듈은 원장에 대해 아무것도 판정하지 않는다.** 어느 주장이 이기는지는 서버가 이미 정했다. **여기에 승패 규칙이 나타나면 그건 두 번째 해결기이고 틀린 것이다** |
 | `client2/src/ledger_trace_view.js` | 답을 DOM으로. `document`가 **전역이 아니라 인자** | 그래서 `client2/tests/ledger_trace_harness.mjs`가 **진짜 렌더러를** bare node로 몰아 「화면에 실제로 도달한 것」을 단언한다 — 함수가 존재한다는 단언이 아니라. `innerHTML` 0(원장에서 나온 랏 id가 마크업이 될 수 없다) |
 | `client2/src/ledger_trace.js` | 페이지 진입점(`ledger.html`). 질문 읽기 → fetch → 뷰에 넘기기 | 🔴 **읽기 전용 화면.** GET 하나를 쏘고 아무 데도 안 쓴다. `window`를 만지는 유일한 파일이라 나머지 둘이 bare node에서 채점된다 |
@@ -853,6 +854,42 @@ GET /api/ledger/coverage  ->  200
 
 **이 박스 실측 (2026-08-14 3차)**: `void` · `delam` 둘 다 `in_ledger: true` · `ledger_state: "flowing"` ·
 `ledger_atoms` **91,756 / 10,421** — 즉 **소스 행 수와 정확히 같고 거절 0 · 불완전 0**이다.
+
+#### 4.6-quater `GET /api/ledger/journey` — **두 장이 «어디서» 갈라졌나** (2026-08-14 밤)
+
+⚠️ **오늘은 REST로만 있다 — 이 응답을 그리는 화면은 «아직 없다».** 계약은 [backend §2](../architecture/backend.md), 의미론은 [spec §4.9](../spec/LEDGER_TECHNICAL_SPEC.md).
+
+```
+GET /api/ledger/journey?scope=wafer:SYN-BW-101-06,SYN-BW-101-15&finding=void&window=30d
+```
+
+- 🔴 **주어가 «둘»이어야 한다.** 아니면 **422**이고 본문이 `reason: "scope_is_not_a_pair"` · `arity_resolved` · **풀린 주어 이름**을 든다.
+  운영자가 읽는 법은 하나다 — **에러가 아니라 「그 질문은 순위 레일(`/siblings?scope=`)의 것」이라는 안내**다(실측: 웨이퍼 셋 → 3, 실재 하나 + 오타 하나 → 1).
+- **읽는 순서**: `headline`(「같은 길 N구간, 갈라진 곳 M곳」) → `segments[]`를 위에서 아래로 → 갈라진 구간의 `sentence`(**첫 줄이 항상 사실 문장**) → `items[]`.
+- **구간마다 무엇을 보는가**:
+
+| 필드 | 읽는 법 |
+|---|---|
+| `display` | 화면에 찍는 구간 이름(「후공정 · 본딩」). **선언이 없으면 원시 값이 그대로 보인다 — 그것이 의도다**(빠진 선언은 빠져 보여야 한다) |
+| `verdict` | `same`(둘 다 걸었고 전 항목 동일) · `diverged` · `one_sided`(**한쪽만 걸었다**) |
+| `agreement` | 🔴 **「같음」도 정보다.** `actors`(런의 신원이 같았나)와 `content`(값이 같았나)를 **따로** 답한다 — 실측 소유자 쌍에서 여덟 구간 전부가 수치 하나쯤은 다르지만 **런 신원은 다섯에서 일치**한다. 회색 한 줄(「본딩 — 같음: 장비 … · 레시피 rev …」)은 `agreement.sentence`다 |
+| `position_basis` | `inference`면 **그 구간의 자리가 레시피 책의 날짜에서 왔다** — 물리적 순서로 읽지 말 것. 같은 사실이 `notes[]`에도 모여 나온다 |
+| `when.gap_seconds` | 두 주어의 그 구간 사이 시간차. `null`이면 한쪽에 시각이 없다 |
+
+- **항목(`items[]`)마다 A/B 두 칸**이고, 🔴 **빈칸으로 보이는 것이 세 종류다** — `not_recorded`(구간은 걸었는데 이 항목 기록 없음) · `segment_absent`(구간 자체를 안 걸음) · `recorded_null`(소스가 명시적 null을 말함). **`0`은 빈칸이 아니라 측정값이다**([spec §4.9 ⓑ](../spec/LEDGER_TECHNICAL_SPEC.md)).
+- **`six`(육하원칙)**: 여섯 슬롯 전부가 답하거나 **「기록 없음」이라 말한다**(빈칸·생략 없음). 🔴 **「왜」만 다른 층이다** — 「물리 모델에 아직 없음」은 **원장의 결측이 아니라 선언의 부재**이고, 그래서 그 슬롯의 `is_missing_record`는 언제나 `false`다. 화면은 그 둘을 **다른 문구·다른 색**으로 그려야 한다.
+- **`notes[]`에 잘림이 실린다** — 주어당 원자 상한(`atoms_truncated`)·구간 상한(`segments_truncated`). **조용히 잘리는 것이 없다.**
+
+**step·항목의 한국어 이름을 붙이는 법** (선언만이고 파이썬 0줄):
+
+1. `server/config/ledger_journey.json`을 연다(라이브가 없으면 `.json.sample`을 복사해 만든다 — 응답의 `labels.origin`이 `live`\|`sample`\|`absent`로 **지금 어느 쪽을 읽고 있는지** 말한다).
+2. 구간 이름은 `step_labels`에 `<step 값>: "본딩"`, 계열은 `family_labels`.
+3. 항목 이름은 `field_labels`에 `<잎 이름>: "압력"` 또는 `{"label": "압력", "unit": "MPa"}`. **조회 철자가 셋이고 구체적인 것부터**다 — `<술어>:<점 경로>` → `<점 경로>` → **맨 잎 이름**. 맨 잎이 기본값인 이유는 그 한 항목이 `params_actual.pressure_MPa`와 `params_setpoint.pressure_MPa`를 **동시에** 이름 짓기 때문이다(설정/실측 구분은 라벨이 아니라 **원자의 해결 등급**이 나른다). 같은 이름의 잎 둘이 **다른 물리량**일 때만 긴 철자를 쓴다.
+4. 저장하고 **다시 요청한다** — 프로세스 수명 캐시라 서버 재기동 또는 `ledger_journey.load_config(force_reload=True)`가 필요하다.
+
+🔴 **이름 블록 셋은 «항목 목록»이 아니다.** 이름을 안 붙인 잎도 **똑같이 비교되고** 원시 경로로 화면에 나온다 — 이름 선언을 지워서 사라지는 것은 **한국어뿐**이고 구간·항목·값은 하나도 안 준다. 「화면에서 빼려고」 거기서 지우는 것은 **아무 효과가 없다.**
+🔴 **새 여정 술어를 붙이는 것은 `segments` 블록의 항목 하나**다 — payload 안 어디에 step 이름과 계열이 있는지를 점 경로로 적으면 되고 파이썬은 0줄이다. **거기에 선언이 없는 술어는 여정 축에 안 나타난다.**
+⚠️ **그래서 `segments`만은 「지워도 이름만 없어지는」 블록이 아니다** — 그 블록이(또는 라이브·`.sample` 둘 다) 없으면 응답은 500이 아니라 200이되 `state: "absent"` · `reason: "no_journey_predicate_declared"` · **`segments: []`**로 «그렇게 말한다». ⚠️ **코드와 `.sample`의 산문은 「파일을 통째로 지워도 구간·항목·값이 안 준다」고 적고 있는데 그 문장은 `segments`에 대해 거짓이다**(총괄 보고 대상 — 문서는 코드의 동작을 적었다).
 
 ### 4.7 🔴 합성·픽스처 적재를 걷어내는 법 — **목록이 아니라 술어** (2026-08-14)
 
