@@ -138,11 +138,13 @@ where the numbers came from fails that test.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 
 import finding_kinds
 import ledger_siblings
+import map_overlay
 from ledger_trace import _fetch, relation_exists
 
 logger = logging.getLogger("Ledger.Lots")
@@ -919,7 +921,12 @@ MAP_REASON_FRAME_AMBIGUOUS = "frame_ambiguous_across_slots"
 #: Where a registered frame's geometry lives. The map is drawn on THIS, never on a circle
 #: this module invented — owner constraint 3 (「목업의 원형 격자는 시늉이다」).
 FRAME_RELATION = "wafer_map_metadata"
-VALID_DIE_RELATION = "valid_die_ref"
+#: 🔴 NOT TYPED HERE. `map_overlay.VALID_DIE_TABLE` is the PINNED storage table of valid-die
+#: maps (user ruling 2026-08-04), and the name itself is declared by
+#: `product_tables.PRODUCT_TABLES` — a deployment that spells its floor differently changes
+#: the declaration and this module follows. It used to be a literal in this file, which made
+#: it a SECOND spelling of a name that already had an owner.
+VALID_DIE_RELATION = map_overlay.VALID_DIE_TABLE
 
 #: 🔴 WHO THE FRAME IS. The owner asked for the map strip to be listed by the BONDED BASE
 #: WAFER and labelled with its id (`SCENARIO_CONSOLE_BRIEF` P0 item 5, 「본딩 base wf 축으로
@@ -1300,9 +1307,54 @@ def _frame(connection, relation, lot, slot, spec):
                 "map_id": map_id}
     return {"state": MAP_STATE_READY, "table": relation, "map_id": rows[0][0],
             "grid": rows[0][1],
-            "valid_die_ref": {"relation": VALID_DIE_RELATION,
-                              "present": relation_exists(connection,
-                                                         VALID_DIE_RELATION)}}
+            "valid_die_ref": _valid_die_pointer(connection, rows[0][1])}
+
+
+def _valid_die_pointer(connection, grid_metadata):
+    """WHICH valid-die map this frame is drawn on — read off the frame's own declaration.
+
+    🔴 THIS FIELD USED TO ANNOUNCE PRESENCE ONLY (`{relation, present}`), AND THAT MADE THE
+    MASK UNREACHABLE. The client resolves a floor by `table|map_id`
+    (`surprise_map_core.referenceKey`) and REFUSES to build a key from the relation alone,
+    because a key without the map id matches whichever mask happened to be cached and draws
+    the wrong wafer. So with no `map_id` on the wire every panel took the `mask_absent`
+    branch — the mask path had no way to fire at all, on any data.
+
+    🔴 THE POINTER IS DECLARED, NOT DERIVED. `grid_metadata.valid_die_ref` is the declared
+    consumer of the floor table (`product_tables.PRODUCT_TABLES['valid_die_ref']`), and it is
+    read here through the SAME parser the map editor and the overlay use
+    (`map_overlay.parse_valid_die_ref`), so the three cannot disagree about what a
+    declaration means. No table name and no key convention is typed in this module: a
+    deployment that names its floor differently changes the declaration and this follows.
+
+    Three answers, matching the parser's three:
+      declared and readable  -> `map_id` is on the wire and the mask resolves.
+      not declared           -> no `map_id`. The panel draws the registered grid and says
+                                「유효 다이 마스크 미적용」, which is true.
+      declared but unreadable-> no `map_id` PLUS `reason`. A typo must not read as 「선언
+                                없음」 — that is how a broken declaration silently becomes a
+                                wafer nobody registered.
+    """
+    ref, error = (None, None)
+    try:
+        meta = (json.loads(grid_metadata) if isinstance(grid_metadata, str)
+                else grid_metadata)
+    except Exception:                                        # noqa: BLE001 - text is data
+        meta = None
+        error = "grid_metadata를 JSON으로 읽을 수 없다"
+    if isinstance(meta, dict):
+        ref, error = map_overlay.parse_valid_die_ref(meta)
+    out = {"relation": VALID_DIE_RELATION,
+           "present": relation_exists(connection, VALID_DIE_RELATION)}
+    if ref:
+        # `parse_valid_die_ref` PINS the read table (2026-08-04 ruling); `relation` carries
+        # that pinned answer rather than whatever the declaration happened to name, so the
+        # client reads the floor from the one place floors live.
+        out["relation"] = ref["table"]
+        out["map_id"] = ref["map_id"]
+    elif error:
+        out["reason"] = error
+    return out
 
 
 #: 🔴 THE SWAP SEAM. See the module docstring — this is the ONLY field that moves when the

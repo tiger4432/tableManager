@@ -56,6 +56,7 @@
         { "name": "bond_eqp",     "label": "본딩 장비",   "column": "bond_eqp" },
         { "name": "bond_lot",     "label": "본딩 랏",     "column": "bond_lot" },
         { "name": "dt_lot",       "label": "DT 랏",       "column": "dt_lot" },
+        { "name": "core_lot",     "label": "코어 랏",     "column": "core_lot" },
         { "name": "b_bn",         "label": "본딩 판정",   "column": "b_bn" },
         { "name": "stack_height", "label": "스택 높이",   "column": "stack_height" }
       ]
