@@ -4582,6 +4582,11 @@ def reload_local_process_cache():
     try:
         import ledger_trace
         ledger_trace.reset_walk_cache()
+        # 🔴 그리고 해소기 캐시도. 선언형 소스의 `emit` 규칙이 «클래스»를 선언하므로
+        # (`class: "inference"`), 그 목록은 이제 `ledger_config.json`에서 온다 — admin에서
+        # 규칙 하나를 추가하고 이 캐시를 안 버리면, 새 규칙의 원자가 «다음 재기동까지»
+        # 3류가 아니라 2류로 순위된다. 그건 조용히 가정이 실측을 이기는 상태다.
+        ledger_trace.load_resolver_config(force_reload=True)
     except Exception:
         pass
 

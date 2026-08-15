@@ -194,6 +194,36 @@ def test_a_config_word_reaches_the_walk_declaration_the_same_way(extension):
     assert vocabulary.check_walk_declaration() == []
 
 
+def test_the_merged_view_notices_when_the_CODE_SET_is_swapped(extension):
+    """🔴 REGRESSION. The merged view is derived from TWO mutable things — the extension
+    file and this module's `PREDICATES` — and the first version keyed its cache on only the
+    file.
+
+    MEASURED failure: a suite that swaps the whole vocabulary also repoints
+    `paths.CONFIG_DIR`, which dropped the merged view WHILE THE FAKE WAS INSTALLED. The
+    rebuild cached the fake, the restore changed nothing the key could see, and the next
+    test file got a vocabulary with zero traversable predicates and an error about a
+    recursive CTE — three files away from the cause.
+
+    It reads as a test-isolation problem and it is not: any process that swaps or reloads
+    the code set at runtime would serve claims judged against a vocabulary it no longer has.
+    """
+    real = vocabulary.PREDICATES
+    fake = {"only_word": {"label_ko": "x", "layer": "ontology", "status": "active",
+                          "since": 1, "subject": ["Lot"], "object": None,
+                          "qualifiers": [], "traversable": None, "direction": None}}
+    try:
+        vocabulary.PREDICATES = fake
+        assert set(vocabulary.all_predicates()) == {"only_word"}, (
+            "the merged view ignored a swapped code set")
+        assert vocabulary.traversable_predicates() == ()
+    finally:
+        vocabulary.PREDICATES = real
+    assert set(vocabulary.all_predicates()) == set(real), (
+        "the merged view kept serving the fake after the code set was restored")
+    assert vocabulary.traversable_predicates() == ("derived_from",)
+
+
 def test_a_malformed_extension_degrades_to_code_only_and_SAYS_SO(extension):
     """Never raises. Five processes import this module; a stray comma must not stop them.
 

@@ -489,8 +489,21 @@ def kinds_view() -> list:
          "required_columns": list(ledger_config.DECLARED_REQUIRED_COLUMNS),
          "optional_columns": [],
          "required_blocks": ["watermark", "emit", "occurred_at_basis"],
-         "emit_rule_fields": ["rule", "predicate", "subject", "object", "when"],
+         "emit_rule_fields": ["rule", "predicate", "class", "subject", "object", "when"],
          "when_operators": sorted(ledger_config.WHEN_OPERATORS),
+         # 🔴 규칙마다 «해소 등급»을 고른다(설계 §6: 2 관측 / 3 추론). 기본값 없음.
+         # 이 선택을 개발자에게 미루면 그는 «남의 의도»를 추측하게 되고, 그 사이 화면을
+         # 쓰는 것만으로 빌드가 빨개진다. 규칙을 쓰는 사람만이 답을 안다.
+         "classes": [
+             {"value": ledger_config.EMIT_CLASS_OBSERVATION, "rank": 2,
+              "label_ko": "관측 — 이 행이 그렇게 «말했다»",
+              "help_ko": "원자의 내용이 눈앞의 행에서 왔습니다. 번역기는 모양만 바꿨고 "
+                         "행에 없던 것을 더하지 않았습니다."},
+             {"value": ledger_config.EMIT_CLASS_INFERENCE, "rank": 3,
+              "label_ko": "추론 — 행이 말하지 않은 «규칙»에 기댄다",
+              "help_ko": "원자의 내용이 관례·기본값·규칙에서 왔습니다. 나중에 실측이 "
+                         "나오면 그 실측이 «자동으로» 이깁니다 — 아무도 무언가를 "
+                         "철회하지 않아도."}],
          "occurred_at_bases": [
              {"value": "claim_time",
               "label_ko": "주장 시각 — 이 컬럼이 «배정·승인된 순간»이 맞다"},

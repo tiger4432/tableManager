@@ -204,6 +204,43 @@ WHEN_OPERATORS = frozenset({"equals", "not_equals", "in", "not_in", "present", "
 #: written `$$`.
 COLUMN_REF_PREFIX = "$"
 
+#: 🔴 THE RESOLUTION CLASS OF AN `emit` RULE, DECLARED BY THE OPERATOR. No default.
+#:
+#: Design §6's ladder is `0 핀(사람) > 1 확정된 체인 주장 > 2 관측 > 3 추론`, and the two
+#: ranks a source translation can land in are the bottom two. Which one is not a property
+#: of the table, the predicate or the translator - it is a property of WHERE THE ATOM'S
+#: CONTENT CAME FROM, and only the person writing the rule knows that.
+#:
+#: WHY THE OPERATOR AND NOT A DEVELOPER
+#: -------------------------------------
+#: The classification rule used to be enforced by a test carrying a hand-maintained list,
+#: which worked while every derivation was born in Python. This grammar's derivations are
+#: born in a config file written through a screen, and the standing check would then fail
+#: in CI for a developer to clear - a developer who was not there when the rule was written
+#: and would be guessing at somebody else's intent. Worse, until they cleared it, USING the
+#: admin screen would break the build. So the choice moves to the only person who holds the
+#: answer, at the only moment they hold it, in exactly the shape `traversable` already uses:
+#: explicit, no default, refused at save.
+#:
+#: WHY IT MATTERS THAT THIS IS NOT COSMETIC
+#: -----------------------------------------
+#: The ledger has no UPDATE, so this stamp is permanent, and the resolution order TRUSTS
+#: it: a class-2 claim beats a class-3 one automatically, with nobody retracting anything.
+#: An inference-grade claim wearing observation grade therefore wins against a real
+#: measurement - silently, and forever.
+EMIT_CLASS_OBSERVATION = "observation"
+EMIT_CLASS_INFERENCE = "inference"
+EMIT_CLASSES = {
+    #: 「관측」 - the source row SAID this. The translator reshaped what was in front of it
+    #: and added nothing that was not there.
+    EMIT_CLASS_OBSERVATION: 2,
+    #: 「추론」 - the atom's content rests on a DECLARED ASSUMPTION not present in the row
+    #: (a convention, a rule, a default). `slot_preserving` is the existing example: the
+    #: source never uttered the slot pairing; an operator declared that splits preserve
+    #: slots, and every atom made under it is a conclusion rather than a report.
+    EMIT_CLASS_INFERENCE: 3,
+}
+
 #: Columns a LINEAGE source must map. Named here rather than inline so the observation
 #: list beside it is visibly a different list rather than an exception to this one.
 LINEAGE_REQUIRED_COLUMNS = ("lot", "event_type", "slots", "wafers", "parent_lot",
@@ -709,6 +746,22 @@ def _validate_emit_rule(rule: dict, where: str, seen_rules: set):
     predicate = str(rule.get("predicate") or "").strip()
     if not predicate:
         raise LedgerConfigError(f"{where}.predicate is not declared")
+
+    # 🔴 THE CLASS, CHOSEN EXPLICITLY. Same discipline as `traversable`: no default,
+    # because a defaulted class is a claim about evidence that nobody made - and this one
+    # decides which atom WINS when two disagree.
+    rule_class = rule.get("class")
+    if rule_class not in EMIT_CLASSES:
+        raise LedgerConfigError(
+            f"{where}.class must be declared as '{EMIT_CLASS_OBSERVATION}' or "
+            f"'{EMIT_CLASS_INFERENCE}' (design §6: 2 관측 / 3 추론); got "
+            f"{rule_class!r}. Ask one question about the atom this rule makes: does its "
+            f"content come from the ROW IN FRONT OF YOU, or from a convention or default "
+            f"that the row never uttered? The row -> '{EMIT_CLASS_OBSERVATION}'. A "
+            f"convention -> '{EMIT_CLASS_INFERENCE}'. There is no default, because the "
+            f"ledger never updates and the resolution order trusts this: a class-2 claim "
+            f"beats a class-3 one automatically, so an assumption labelled as an "
+            f"observation would silently and permanently outrank a real measurement.")
     # NOT checked against the vocabulary here, and that is deliberate: the vocabulary is
     # merged from code AND the operator's declaration file, so a predicate registered in
     # the same admin session as this source would be refused by a check that ran at config
@@ -827,6 +880,37 @@ def declared_subject_types(cfg: dict, source: str) -> frozenset:
     """
     source_cfg = source_config(cfg, source) or {}
     return frozenset(source_cfg.get("subject_types") or ())
+
+
+def declared_inference_derivations(cfg: dict) -> frozenset:
+    """Every derivation ACROSS EVERY SOURCE that its own rule declared class 3.
+
+    🔴 ONE HOME FOR THE ANSWER, read by two very different consumers: the RESOLVER
+    (`ledger_trace.load_resolver_config` folds these into `inference_derivations`, so a
+    declared assumption loses to a measurement at query time) and the CLASSIFICATION TEST
+    (which now reads the declaration instead of demanding a hand-maintained code-side
+    list). If those two read different sources of truth, the test goes green while the
+    resolver ranks the atom the other way - which is worse than having no test, because it
+    is a test that certifies the wrong answer.
+
+    Only the `declared` grammar can contribute. The other three grammars' derivations are
+    minted by Python, so their class stays a code-side judgement where a code reviewer can
+    see it; there is no config field on those sources that could say otherwise.
+    """
+    out = set()
+    for source, declaration in (cfg.get("sources") or {}).items():
+        if str(source).startswith("__") or not isinstance(declaration, dict):
+            continue
+        if declaration.get("kind") != SOURCE_KIND_DECLARED:
+            continue
+        for rule in declaration.get("emit") or []:
+            if not isinstance(rule, dict):
+                continue
+            if rule.get("class") == EMIT_CLASS_INFERENCE:
+                name = str(rule.get("rule") or "").strip()
+                if name:
+                    out.add(name)
+    return frozenset(out)
 
 
 def declared_derivations(cfg: dict, source: str) -> frozenset:

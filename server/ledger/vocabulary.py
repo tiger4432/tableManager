@@ -596,7 +596,16 @@ def all_predicates() -> dict:
     everything against. Callers that need to mutate copy it themselves.
     """
     merged = _EXTENSION_CACHE.get("merged")
-    if merged is not None:
+    # 🔴 THE CACHE IS KEYED ON THE `PREDICATES` OBJECT ITSELF, NOT ONLY ON THE FILE.
+    # This view is derived from TWO mutable things - the extension file and this module's
+    # `PREDICATES` - and the first version keyed only the file. MEASURED failure: a suite
+    # that swaps the whole vocabulary (`test_ledger_structure_pg`) also repoints
+    # `paths.CONFIG_DIR`, which dropped the merged view WHILE THE FAKE WAS INSTALLED; the
+    # rebuild cached the fake, the restore changed nothing the key could see, and the NEXT
+    # test file got a vocabulary with zero traversable predicates and an error about a
+    # recursive CTE. An identity check is O(1), needs no syscall, and catches exactly the
+    # rebinding that a stat cannot.
+    if merged is not None and _EXTENSION_CACHE.get("merged_from") is PREDICATES:
         return merged
     # 🔴 NO `os.stat` ON THIS PATH. The freshness check lives in `_load_extension`, which
     # request-path callers (`config_predicates`, `extension_status`) go through and which
@@ -610,6 +619,7 @@ def all_predicates() -> dict:
     for name, sig in PREDICATES.items():
         merged[name] = dict(sig, origin="code")
     _EXTENSION_CACHE["merged"] = merged
+    _EXTENSION_CACHE["merged_from"] = PREDICATES
     return merged
 
 

@@ -214,6 +214,31 @@ DEFAULT_RESOLVER_CONFIG = {
     "confirmed_predicates": ["frame_confirmed"],
     "confirmed_sources": [],
     "confirmed_payload_flag": "confirmed",
+    # 🔴 class 1 — DERIVATIONS WHOSE DESTINATION WAS CONFIRMED AGAINST A DECLARED
+    # RELATION. Ontology owner's ruling, 2026-08-15, and the FIRST USE of class 1 for
+    # anything other than `frame_confirmed`.
+    #
+    # WHY A DERIVATION LIST AND NOT ONE OF THE THREE TESTS ABOVE. `confirmed_sources`
+    # would promote every atom `dt_log` makes, and the whole point is that ONE of its two
+    # derivations confirmed its destination and the other could not. `confirmed_payload_flag`
+    # would need the translator to stamp a new key, which reaches only atoms written AFTER
+    # the change — the 29 already in the ledger would keep the wrong rank. The derivation
+    # suffix is already stamped on every atom ever written, so reading class off it is
+    # retroactive by construction, and the class stays a READ-TIME declaration rather than
+    # a permanent mark (which is what makes it revisable at all).
+    #
+    # WHAT MAKES THIS ATOM CLASS 1 RATHER THAN A GOOD CLASS 2. Its `to` identity comes from
+    # the declared confirmation relation, and MEASURED on a real atom that identity
+    # DISAGREES with `container_recorded` — the row's own written-down value, preserved
+    # beside it as evidence to argue with. A claim that may override what the source row
+    # said is not an observation of equal standing with one; 「확정된 체인 주장」 is exactly
+    # the rung design §6 has for it.
+    #
+    # AND IT ANSWERS A REAL GAP. Its sibling `job_run_to_job` is class 2, so under equal
+    # class the tiebreak would be `occurred_at` desc then id — a wafer carrying both would
+    # resolve by ordering, arbitrarily, and wrong about half the time. Class 1 makes the
+    # confirmed container win BY RANK, deterministically.
+    "confirmed_derivations": ["job_run_to_confirmed_container"],
     # class 3 — inference. §3 puts confidence INSIDE the object payload, so the
     # flag is read from there and never from the envelope.
     "inference_sources": [],
@@ -325,8 +350,44 @@ def load_resolver_config(force_reload=False):
                     f"{RESOLVER_CONFIG_FILENAME} declares unknown keys: "
                     f"{sorted(unknown)}")
             merged.update(declared)
+        merged["inference_derivations"] = sorted(
+            set(merged.get("inference_derivations") or ())
+            | set(_declared_inference_derivations()))
         _config_cache = merged
         return merged
+
+
+def _declared_inference_derivations():
+    """Class-3 derivations an OPERATOR declared on `declared`-grammar `emit` rules.
+
+    🔴 WHY THE RESOLVER READS THE TRANSLATOR'S CONFIG. Since the `declared` grammar landed,
+    a derivation can be born in a config file written through the admin screen, and its
+    class is declared beside it (`"class": "inference"`). If that declaration reached the
+    classification TEST but not this function, the test would go green while the resolver
+    ranked those atoms as observations - a check certifying the opposite of what runs.
+
+    🔴 AND IT RAISES RATHER THAN DEGRADING. An unreadable declaration means these
+    derivations fall back to `claim_class`'s final `return CLASS_OBSERVATION`, which is
+    precisely the inversion the whole rule exists to prevent - an assumption outranking a
+    measurement, permanently, because a file had a stray comma. Loud beats subtly wrong;
+    this is the same posture `load_resolver_config` already takes for its own malformed
+    file, one file over.
+    """
+    try:
+        from ledger import config as ledger_config
+    except Exception:
+        # The translator package is not importable in this process at all (the web server
+        # is not required to ship it). Nothing declared it, so nothing is missing.
+        return frozenset()
+    try:
+        return ledger_config.declared_inference_derivations(ledger_config.load())
+    except Exception as exc:
+        raise ResolverConfigError(
+            f"the ledger source declarations could not be read, so operator-declared "
+            f"class-3 derivations cannot be honoured ({exc.__class__.__name__}: {exc}). "
+            f"Refusing rather than continuing: without them every such atom would rank as "
+            f"an OBSERVATION, which is the inversion design §6 exists to prevent - a "
+            f"declared assumption would silently outrank a real measurement.")
 
 
 def set_resolver_config(config):
@@ -361,6 +422,17 @@ def is_convention_backed(claim, config=None):
     return basis is not None and basis in tuple(cfg["inference_derivations"])
 
 
+def is_confirmed_derivation(claim, config=None):
+    """True when this atom's content was CONFIRMED against a declared relation.
+
+    Symmetric with `is_convention_backed` and read off the same `#<derivation>` suffix —
+    one register of derivations, three classes read from it, no twelfth column.
+    """
+    cfg = config or load_resolver_config()
+    basis = claim_basis(claim)
+    return basis is not None and basis in tuple(cfg.get("confirmed_derivations") or ())
+
+
 def claim_class(claim, config=None):
     """§6's four ranks: 0 pin > 1 confirmed chain claim > 2 observation > 3 inference."""
     cfg = config or load_resolver_config()
@@ -369,7 +441,8 @@ def claim_class(claim, config=None):
     payload = claim.object_payload or {}
     if (claim.predicate in tuple(cfg["confirmed_predicates"])
             or (claim.source_who or "") in tuple(cfg["confirmed_sources"])
-            or payload.get(cfg["confirmed_payload_flag"]) is True):
+            or payload.get(cfg["confirmed_payload_flag"]) is True
+            or is_confirmed_derivation(claim, cfg)):
         return CLASS_CONFIRMED
     # 🔴 A conclusion drawn under a declared convention is INFERENCE, however
     # good the convention is. `CONVENTION_DERIVATIONS_RULE` carries the reasoning
@@ -582,11 +655,21 @@ def hop_basis(claim, config=None):
 
         kind == "convention"  <->  is_convention_backed  <->  class 3
 
-    A derivation nobody has classified therefore comes out `measured`/class 2
-    here just as it did before this field existed, and
+    A derivation nobody has classified therefore comes out `measured` here just as
+    it did before this field existed, and
     `test_every_declared_derivation_is_explicitly_classified` still fails at the
     moment it is added. `basis.name` is a REPORT of the suffix, never a second
     register of derivations that the classification test does not see.
+
+    ⚠️ `measured` DOES NOT MEAN CLASS 2 — it means「not convention-backed」, which
+    since 2026-08-15 covers class 1 AND class 2. `job_run_to_confirmed_container`
+    (class 1, confirmed against a declared relation) and `job_run_to_job` (class 2,
+    an honest weaker utterance) both report `measured`, so THIS FIELD CANNOT TELL
+    THEM APART. That is a deliberate non-change rather than an oversight: widening
+    `BASIS_KINDS` is a response-shape change for every consumer that switches on
+    `kind`, and it is a decision for the product owner rather than a side effect of
+    a classification ruling. A client that needs the distinction reads the hop's
+    CLASS, which is where the ranking actually lives.
 
     None has two causes that are deliberately not told apart: the hop has no
     winner (`unresolvable`), or the winner carries no `#<derivation>` suffix.

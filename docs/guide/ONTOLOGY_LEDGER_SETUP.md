@@ -190,7 +190,7 @@ conda run -n assy_manager python -m ledger.backfill --source dt_log      # trans
 | 키 | 필수 | 뜻 · 함정 |
 |---|---|---|
 | **`kind`** | ✅ | `"declared"` |
-| **`occurred_at_basis`** | ✅ | `"claim_time"` \| `"row_created"`. 🔴 **기본값 없음**([R-…-15-N](../process/LEDGER_RULINGS.md) ②). 대장의 세계 시각은 **주장이 성립한 때**여야 하는데 대부분의 대장은 `created_at`만 있다. 둘 다 합법이고 **뜻이 다르므로** 어느 쪽인지 말해야 한다 — 안 그러면 「언제 참이 됐나」가 조용히 「언제 적재됐나」가 된다. `row_created`면 그 사실이 **원자 payload에 실린다**(`object_payload->>'occurred_at_basis'`) |
+| **`occurred_at_basis`** | ✅ | `"claim_time"` \| `"row_created"`. 🔴 **기본값 없음**([R-…-15-N](../process/LEDGER_RULINGS.md) ②). 대장의 세계 시각은 **주장이 성립한 때**여야 하는데 대부분의 대장은 `created_at`만 있다. 둘 다 합법이고 **뜻이 다르므로** 어느 쪽인지 말해야 한다 — 안 그러면 「언제 참이 됐나」가 조용히 「언제 적재됐나」가 된다. 그 사실은 **`value` 목적어의 payload에만 실린다**(`object_payload->>'occurred_at_basis'`). ⚠️ **`entity_ref` 목적어에는 안 실린다** — 그 payload는 `type`/`keys`/`qualifiers`로 모양이 엄격히 검사돼서 키를 하나 더 넣으면 게이트가 «거절»한다. 그 원자들은 이 사실을 자기 안이 아니라 **선언에** 지니므로, 시각 기준을 질의로 확인할 때는 `entity_ref` 원자를 payload로 거르지 말고 소스 선언을 봐야 한다 |
 | **`watermark`** | ✅ | `{columns: [...]}` 키셋 커서. 대장은 UPDATE되므로(N ③: 갱신은 새 원자) **편집에도 단조**여야 한다 — `(updated_at, row_id)` |
 | **`columns`** | ✅ | **`row_identity` 하나뿐.** 나머지 컬럼은 `emit` 안에서 `"$컬럼"`으로 직접 부른다(논리 이름 사전을 또 만들지 않는다) |
 | **`emit`** | ✅ | 🔴 **이 문법의 전부** — 한 행이 낳을 원자의 목록 |
@@ -203,6 +203,7 @@ conda run -n assy_manager python -m ledger.backfill --source dt_log      # trans
 |---|---|---|
 | `rule` | ✅ | 이 규칙이 찍을 **파생 이름**. `source_translator_ver LIKE '%#<rule>'`로 질의된다. 한 소스 안에서 중복 금지 |
 | `predicate` | ✅ | 술어. **여기서 어휘 대조를 하지 않는다** — 게이트가 원자마다 «살아 있는» 합쳐진 어휘로 검사한다(방금 화면에서 등재한 낱말이 캐시 때문에 거절되지 않도록) |
+| **`class`** | ✅ | 🔴 **해소 등급을 «규칙을 쓰는 사람»이 고른다. 기본값 없음.** `"observation"`(설계 §6의 2 관측 — 원자의 내용이 «눈앞의 행»에서 왔다) \| `"inference"`(3 추론 — 행이 말하지 않은 관례·기본값에 기댄다). **왜 운영자인가**: 내용이 어디서 왔는지는 규칙을 쓴 사람만 안다. 개발자에게 미루면 «남의 의도»를 추측하게 되고, 그전까지는 화면을 쓰는 것만으로 CI가 빨개진다. **왜 기본값이 없는가**: 원장은 UPDATE가 없어 이 도장은 영구적이고, 해소 서열이 이것을 «신뢰»한다 — 2류는 3류를 자동으로 이기므로, 추론을 관측이라 적으면 그 주장이 실측을 조용히·영원히 이긴다. `traversable` 삼상태와 같은 규율 |
 | `subject` | ✅ | `{type, keys}`. `keys`는 그 개체 타입의 **키 전부**여야 한다(부분 신원 = 설계 §3의 연결 사고) |
 | `object` | ⬜ | `null`(∅) \| `{kind:"value", payload:{…}}` \| `{kind:"entity_ref", type, keys, qualifiers}` |
 | `when` | ⬜ | 열 값 분기. `{column, <연산자>}` — `equals`·`not_equals`·`in`·`not_in`·`present`·`absent` **중 정확히 하나**. 🔴 **0개도 2개도 거절**이고 **오타난 연산자도 거절**이다: 무시된 연산자는 조건을 «항상 참»으로 만들어 아무도 요청하지 않은 원자를 낳는다 |
