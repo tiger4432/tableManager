@@ -1,8 +1,10 @@
 # 📒 정준 원장 (Canonical Ledger) — 번역기 쓰는 법 · 숫자 읽는 법
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 2차 (셋업 통폐합 — 선언·순서 이관, 기전 config 블록 이름 정정) | **Owner:** Server / Ledger | **Source-of-truth:** `server/ledger/` · `server/ledger_trace.py` · `server/ledger_selection.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 3차 (§3 ①의 어휘 절차가 «절반»으로 — R-2026-08-15-M) | **Owner:** Server / Ledger | **Source-of-truth:** `server/ledger/` · `server/ledger_trace.py` · `server/ledger_selection.py`
 >
 > **이 문서가 소유하는 것: HOW(코드).** 번역기를 «쓰는» 절차와, 운영자가 숫자를 읽는 절차.
+> 🔴 **[2026-08-15 3차] §3 ①의 어휘 절차도 «절반»이 됐다** — 여기 남은 것은 **정준 층 술어와 개체 타입**(코드 + 판정)이고,
+> **온톨로지 층 술어는 선언으로 늘린다**([ONTOLOGY_LEDGER_SETUP §4](./ONTOLOGY_LEDGER_SETUP.md) · 계약 [spec §3.7-sexies](../spec/LEDGER_TECHNICAL_SPEC.md)).
 > 🔴 **[2026-08-15 분할] 「무엇을 선언하는가」는 이 문서가 더 이상 소유하지 않는다** —
 > `ledger_config.json`의 키 표(종전 §3 ②·②-bis·②-ter)와 마이그레이션·백필의 **순서·명령**은
 > **[guide/ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)** 하나로 옮겼다.
@@ -261,6 +263,18 @@ source_raw_ref        = "lot_event:[\"CL-2601-006-A1|split|…\",\"CL-2601-006|s
 원장은 없는 연결을 지어내는 대신 **「이 목적지는 확정된 적 없다」**를 말한다.
 
 ### ① 어휘 검사 — 먼저, 그리고 코드보다 먼저
+
+🔴 **[2026-08-15 · R-2026-08-15-M] 이 절이 소유하는 것이 «절반»으로 줄었다.** 어휘가 층으로 갈렸고 늘리는 문이 둘이다:
+
+| 무엇을 늘리려는가 | 어디로 | 소유 문서 |
+|---|---|---|
+| **정준 층 술어**(`register`·`pin`·`same_as`) | 🔴 **코드 + 판정만** — 화면에 문이 «없다» | **이 절** |
+| **개체 타입**(`ENTITY_TYPES`) | 🔴 **코드 + 판정만** — 주어의 **신원 키 정의**라 서명 완결 검사로 안전해지지 않는다 | **이 절** |
+| **온톨로지 층 술어** | ✅ **선언으로**(`server/config/ledger_vocabulary.json` · 어드민 화면 · 코드 0줄 · 재기동 0회) | 🔴 **[ONTOLOGY_LEDGER_SETUP §4](./ONTOLOGY_LEDGER_SETUP.md)** · 계약 [spec §3.7-sexies](../spec/LEDGER_TECHNICAL_SPEC.md) |
+
+⚠️ **아래 절차는 «코드 쪽 두 칸»에만 적용된다.** 선언 쪽은 v0 고정 테스트를 빨갛게 만들지 않는다 —
+그 테스트가 못박는 것은 **코드가 싣는 집합**(`PREDICATES`)이고, 선언 확장분은 합쳐진 뷰(`all_predicates()`)로 합류하며
+응답이 **출처(`origin: code|config`)를 구분해 표시**한다. 🔴 **그러므로 「테스트가 빨개지지 않았으니 어휘가 안 늘었다」는 이제 «거짓»이다.**
 
 새 술어나 새 개체 타입이 필요한가? **대개는 아니다.** 필요하다면 [설계 §4.3의 **3문 검사**](../architecture/CANONICAL_LEDGER_DESIGN.md)를 통과한 **판정**으로만 등재한다:
 
