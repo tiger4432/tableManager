@@ -66,6 +66,10 @@ enforcement, in its own round, and「허브에서 정지」reports through the w
 """
 from __future__ import annotations
 
+import json
+import os
+import re
+
 #: Object kinds, exactly as pinned for slice 1. `None` additionally means ∅ and is
 #: legal only for a predicate whose signature declares `object` as `None`.
 OBJECT_KINDS = frozenset({"value", "entity_ref", "event_ref"})
@@ -93,6 +97,10 @@ ENTITY_TYPES = {
                   "label_ko": "랏"},
     "Wafer":     {"class": "issued",   "keys": ["wafer"],     "semi_ref": "E90 substrate",
                   "label_ko": "웨이퍼"},
+    # Analysis grain: one physical base wafer can participate in several bonding legs.
+    # This is a new issued subject, never an undeclared extra key on `Wafer`.
+    "WaferLeg":  {"class": "issued",   "keys": ["wafer", "bonding_leg"],
+                  "semi_ref": "E90/E142 process context", "label_ko": "웨이퍼-본딩 레그"},
     "Product":   {"class": "issued",   "keys": ["product"],   "semi_ref": None,
                   "label_ko": "제품"},
     "Equipment": {"class": "issued",   "keys": ["equipment"], "semi_ref": "E10",
@@ -122,7 +130,7 @@ PREDICATES = {
     "register": {
         "label_ko": "등록",
         "status": "active", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe"],
+        "subject": ["Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe"],
         "object": None,                       # ∅ - see module docstring
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
@@ -133,7 +141,7 @@ PREDICATES = {
     "pin": {
         "label_ko": "핀(사람 확정)",
         "status": "active", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"],
+        "subject": ["Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe", "Die"],
         "object": {"kind": "event_ref"},
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
@@ -142,9 +150,9 @@ PREDICATES = {
     "same_as": {
         "label_ko": "동일 개체",
         "status": "reserved", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"],
+        "subject": ["Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe", "Die"],
         "object": {"kind": "entity_ref",
-                   "types": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"]},
+                   "types": ["Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe", "Die"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
         # 🔴 Identity merge WILL be traversable the day it is emitted - a walk that stops
@@ -215,33 +223,18 @@ PREDICATES = {
     #
     # WHY THE OBJECT IS A `value` AND NOT AN `entity_ref`
     # ---------------------------------------------------
-    # One process run names SEVERAL things at once - a step, a machine, a recipe
-    # revision, and the conditions it actually ran at. `entity_ref` points at exactly one
-    # entity, so expressing this as entity_refs would need three atoms that are only
-    # jointly true, and atomicity check ① ("is it true standing alone?") would fail for
-    # each of them: "wafer W was processed on eqp B-3" standing alone does not say under
-    # which recipe, and the pairing would have to be recovered from `occurred_at`
-    # collisions. The run is ONE claim, so it is one atom.
-    #
-    # 🔴 `params_actual` IS WHAT MAKES «MEASURED BEATS SETPOINT» FREE
-    # ----------------------------------------------------------------
-    # An atom carrying `params_actual` is what the equipment log UTTERED, so it resolves
-    # at class 2 (observation) by `ledger_trace.claim_class`'s default arm. An atom whose
-    # parameters were filled in FROM THE RECIPE instead carries the payload flag
-    # `inferred: true` (`DEFAULT_RESOLVER_CONFIG["inference_payload_flag"]`) and resolves
-    # at class 3. No new ranking code exists anywhere: the setpoint fallback loses to the
-    # measurement because the class boundary in `claim_rank_key` cannot be crossed by any
-    # tiebreak below it - and it keeps losing even when the setpoint atom is NEWER and
-    # comes from a higher-priority source, which is exactly the case the fixture builds.
+    # A process occurrence says only which STEP ran under which RECIPE. Equipment,
+    # families, actuals and setpoints may remain as legacy extra payload, but they are not
+    # part of this word's required contract and selection comparison never candidates
+    # them. Physical numeric observations belong to the separate `measured` predicate.
     "processed_with": {
         "label_ko": "공정 처리",
         "status": "active", "since": 2, "layer": "ontology",
-        "subject": ["Wafer"],
+        "subject": ["Wafer", "WaferLeg"],
         # `required` is checked by `check_signature`; see the note there. Without it a
         # `value` object would be structurally unchecked, and a signature that checks
         # nothing is the decoy declaration ruling R-2026-08-13-D put an end to.
-        "object": {"kind": "value",
-                   "required": ["step", "step_family", "eqp", "recipe"]},
+        "object": {"kind": "value", "required": ["step", "recipe"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "E40 process job", "superseded_by": None,
         # 🔴 NOT IN THE WALK, and today that is enforced by an ACCIDENT worth naming: the
@@ -368,7 +361,7 @@ PREDICATES = {
     "observed": {
         "label_ko": "관측",
         "status": "active", "since": 3, "layer": "ontology",
-        "subject": ["Wafer"],
+        "subject": ["Wafer", "WaferLeg"],
         "object": {"kind": "value",
                    "required": ["finding_kind", "method", "run_uid"]},
         "qualifiers": [],
@@ -381,18 +374,504 @@ PREDICATES = {
         # never by reaching a lot.
         "traversable": None, "direction": None,
     },
+    # The physical-quantity sibling of `observed` (MI schema §6-bis).  The UI calls its
+    # comparison category `measured_as`, but that is a presentation namespace, not a
+    # second ledger word.  Process telemetry remains `processed_with.params_actual`;
+    # `measured` is for a separate metrology act with its own method/run evidence.
+    #
+    # Missingness is part of the utterance, never reconstructed from a numeric sentinel.
+    # A recorded result must carry the actual value and run identity.  The other three
+    # states must OMIT `value`: accepting even JSON null would invite a consumer to turn
+    # it into numeric zero.  `check_signature` enforces this declarative state contract.
+    "measured": {
+        "label_ko": "계측",
+        "status": "active", "since": 4, "layer": "ontology",
+        "subject": ["Wafer", "WaferLeg"],
+        "object": {
+            "kind": "value",
+            "required": ["metric", "unit", "method", "state"],
+            "state_contract": {
+                "field": "state",
+                "allowed": ["recorded", "missing", "not_performed", "unknown"],
+                "value_field": "value",
+                "value_required_for": ["recorded"],
+                "value_forbidden_for": ["missing", "not_performed", "unknown"],
+                "required_by_state": {"recorded": ["run_uid"]},
+            },
+        },
+        "qualifiers": [],
+        "unit": None, "semi_ref": "E16 measurement", "superseded_by": None,
+        # High-cardinality metrology is read only by a bounded, subject-scoped request.
+        "traversable": None, "direction": None,
+    },
 }
 
-#: Predicates a translator may EMIT. `reserved` entries are declared so the vocabulary
-#: is complete and so a future emitter does not re-mint the word under a second
-#: spelling, but emitting one today is an undeclared-vocabulary refusal.
-EMITTABLE = frozenset(name for name, sig in PREDICATES.items() if sig["status"] == "active")
+#: 🔴 THE CODE-LOADED SET, NAMED. `PREDICATES` is what this MODULE declares, and
+#: `test_ledger_l1_unit.py` pins it - ruling R-2026-08-15-M ④ says in as many words that
+#: the fixed test pins「코드가 싣는 집합」and that the config extension joins as a separate
+#: list. Reading `PREDICATES` therefore still means exactly what it meant yesterday, and
+#: everything that has to ask about the WHOLE language calls `all_predicates()` below.
+CODE_PREDICATES = PREDICATES
 
 #: The directions a traversable edge may be followed in (ruling R-2026-08-14-E). Closed,
 #: because a direction nothing implements is a walk that silently goes the wrong way -
 #: `ledger_trace` refuses a declaration it cannot execute BY NAME rather than falling back
 #: to the direction it happens to have hard-coded.
 WALK_DIRECTIONS = frozenset({"subject_to_object", "object_to_subject"})
+
+#: The statuses a declared word may carry. `retired` is the ONLY way a word leaves
+#: circulation (ruling R-2026-08-15-M ③): atoms are already lying in the ledger under it,
+#: so deleting the declaration would make those atoms unreadable rather than obsolete.
+PREDICATE_STATUSES = ("active", "reserved", "retired")
+
+#: The two layers, §4.1 / §4.2. `canonical` is code plus a ruling and is NOT reachable
+#: from a screen; `ontology` is the one that grows.
+LAYER_CANONICAL = "canonical"
+LAYER_ONTOLOGY = "ontology"
+EDITABLE_LAYER = LAYER_ONTOLOGY
+
+# ===========================================================================
+# THE ONTOLOGY LAYER'S SECOND SOURCE - DECLARATION (ruling R-2026-08-15-M ②/④)
+# ===========================================================================
+# The split this implements is NOT new. The module docstring above draws it already:
+# §4.1 is「사실상 동결」and §4.2「append-only로 성장」. What was missing is that a layer
+# documented as growing could only be grown by editing this file, so the growth needed a
+# developer and a deploy.
+#
+# 🔴 WHY A SEPARATE FILE AND NOT A KEY IN `ledger_config.json`
+# -------------------------------------------------------------
+# `ledger_config.json` is loaded through `ledger.config.validate`, which raises on the
+# whole file when ANY source declaration is malformed. Words and sources would then share
+# a failure: a typo in a column mapping would take the vocabulary down with it, and a
+# vocabulary the gate cannot read refuses every atom of every source. Two files means a
+# broken source refuses that source, and a broken word list refuses words - each failure
+# stays the size of what actually failed.
+#
+# 🔴 WHY THE LOADER NEVER RAISES
+# --------------------------------
+# `ledger.config.load` raises because a source with no declared time column has no honest
+# behaviour to fall back on. This one has one: the code-loaded set, which is the ledger
+# every process ran on before this file existed. A malformed extension therefore
+# DEGRADES to code-only and says so through `extension_status()` - which is what
+# `/admin/config/resolve` renders - rather than taking five processes down over a stray
+# comma in an operator's edit.
+EXTENSION_FILENAME = "ledger_vocabulary.json"
+
+#: 🔴 EVERY ONE OF THESE IS REQUIRED, AND `traversable` IS REQUIRED AS A *KEY*
+#: (ruling R-2026-08-15-M ②). The tri-state's third state is `None`, so "absent" and
+#: "explicitly uncollected" would be the same value if presence were not checked
+#: separately - and a defaulted `traversable` is a walk semantics nobody chose. The
+#: check below therefore asks `"traversable" in declaration`, never `.get(...)`.
+SIGNATURE_FIELDS = ("label_ko", "subject", "object", "traversable", "direction",
+                    "since", "layer", "status")
+
+#: Loaded lazily and cached with the file's mtime+size, because five processes import this
+#: module and a per-lookup stat on a hot path is a cost with no reader. `reset_cache()` is
+#: wired into `/admin/reload-configs`, so an edit takes effect without a restart - which is
+#: the entire point of the round this arrived in.
+_EXTENSION_CACHE = {}
+
+
+def extension_path() -> str:
+    """Where the config extension lives. Same directory as every other operator config."""
+    try:
+        import paths
+        config_dir = paths.CONFIG_DIR
+    except Exception:
+        config_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+    return os.path.join(config_dir, EXTENSION_FILENAME)
+
+
+def reset_cache():
+    """Forget the loaded extension. Called by `/admin/reload-configs`."""
+    _EXTENSION_CACHE.clear()
+
+
+def _stat_key(path):
+    try:
+        info = os.stat(path)
+        return (info.st_mtime_ns, info.st_size)
+    except OSError:
+        return None
+
+
+def _load_extension():
+    """`(predicates, status)`. Never raises - see the block comment above."""
+    path = extension_path()
+    key = _stat_key(path)
+    cached = _EXTENSION_CACHE.get("value")
+    if cached is not None and _EXTENSION_CACHE.get("key") == key:
+        return cached
+
+    status = {"path": path, "exists": key is not None, "ok": True, "error": None,
+              "count": 0}
+    predicates = {}
+    if key is not None:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                raw = json.load(handle)
+            declared = (raw or {}).get("predicates")
+            if not isinstance(declared, dict):
+                raise ValueError("'predicates' must be an object mapping name -> signature")
+            for name, declaration in declared.items():
+                if str(name).startswith("__"):
+                    continue
+                violations = check_predicate_declaration(name, declaration,
+                                                         against=predicates)
+                if violations:
+                    raise ValueError(
+                        f"predicate '{name}': " + "; ".join(v["detail_en"]
+                                                            for v in violations))
+                predicates[name] = _normalise_declaration(declaration)
+            status["count"] = len(predicates)
+        except Exception as exc:
+            # The whole file, not the one entry: a partially loaded vocabulary is a
+            # vocabulary whose contents depend on dict order, and the gate would then
+            # accept a word on one process and refuse it on another.
+            predicates = {}
+            status.update(ok=False, error=f"{exc.__class__.__name__}: {exc}", count=0)
+
+    value = (predicates, status)
+    _EXTENSION_CACHE["key"] = key
+    _EXTENSION_CACHE["value"] = value
+    _EXTENSION_CACHE.pop("merged", None)   # the merged view is now stale by construction
+    return value
+
+
+def _normalise_declaration(declaration: dict) -> dict:
+    """A config entry in the exact shape a code entry has. Missing OPTIONAL keys only."""
+    entry = dict(declaration)
+    entry.setdefault("qualifiers", [])
+    entry.setdefault("unit", None)
+    entry.setdefault("semi_ref", None)
+    entry.setdefault("superseded_by", None)
+    return entry
+
+
+def config_predicates() -> dict:
+    """The words the operator declared. `{}` when there is no file or it is unreadable."""
+    return dict(_load_extension()[0])
+
+
+def extension_status() -> dict:
+    """Whether the extension file loaded, and why not. Rendered by `/admin/config/resolve`."""
+    return dict(_load_extension()[1])
+
+
+def all_predicates() -> dict:
+    """🔴 THE WHOLE LANGUAGE, every entry stamped with where it came from.
+
+    Everything that ASKS A QUESTION OF THE VOCABULARY reads this - the gate's signature
+    check, the walk's fetch set, the structure view. `PREDICATES` stays the code-loaded
+    set so the v0 pinning test keeps pinning what it was written to pin (R-M ④), and the
+    two are related by construction rather than by a second list somebody maintains.
+
+    A config entry can never shadow a code one: the code set is applied LAST. The
+    declaration checker already refuses a duplicate by name, so this is the second net,
+    and it is the one that holds when a file is edited outside the admin route.
+
+    ⚠️ THE RETURNED DICT IS SHARED AND MUST BE TREATED AS READ-ONLY. `check_signature`
+    calls this once per ATOM, so building a fresh dict per call would put an O(vocabulary)
+    allocation on a path that runs ten million times - the cost this project measures
+    everything against. Callers that need to mutate copy it themselves.
+    """
+    merged = _EXTENSION_CACHE.get("merged")
+    if merged is not None:
+        return merged
+    # 🔴 NO `os.stat` ON THIS PATH. The freshness check lives in `_load_extension`, which
+    # request-path callers (`config_predicates`, `extension_status`) go through and which
+    # drops this cache when the file's stat key moves; the daemons that call this per atom
+    # are refreshed by `reset_cache()` on `/admin/reload-configs`, which is the declared
+    # mechanism for「재기동 없이 반영」. A stat per atom would be ten million syscalls.
+    config = config_predicates()
+    merged = {}
+    for name, sig in config.items():
+        merged[name] = dict(sig, origin="code" if name in PREDICATES else "config")
+    for name, sig in PREDICATES.items():
+        merged[name] = dict(sig, origin="code")
+    _EXTENSION_CACHE["merged"] = merged
+    return merged
+
+
+def predicate_origin(predicate: str):
+    """`"code"` / `"config"` / `None`. What the structure view labels a word with."""
+    if predicate in PREDICATES:
+        return "code"
+    if predicate in config_predicates():
+        return "config"
+    return None
+
+
+def emittable() -> frozenset:
+    """Predicates a translator may EMIT, across BOTH sources.
+
+    A function rather than the module-level constant it used to be: a frozenset computed
+    at import time would have frozen the config layer's contents at whatever the file said
+    when the first process imported this module, and `/admin/reload-configs` could never
+    have changed it. `reserved` entries are declared so the vocabulary is complete and so a
+    future emitter does not re-mint the word under a second spelling, but emitting one
+    today is an undeclared-vocabulary refusal.
+    """
+    return frozenset(name for name, sig in all_predicates().items()
+                     if sig.get("status") == "active")
+
+
+def _violation(code, field, detail_ko, detail_en):
+    """One refusal, in the shape the admin route returns and the loader logs.
+
+    Two renderings of one judgement on purpose: `detail_ko` is what the operator reads on
+    the screen (this project's rule is that every human sentence is built by the server),
+    and `detail_en` is what goes in a process log where Korean would be mojibake on a
+    console the operator does not own.
+    """
+    return {"code": code, "field": field, "detail_ko": detail_ko, "detail_en": detail_en}
+
+
+#: The closed refusal set for a predicate declaration. Closed for the reason the gate's
+#: reasons are: a code invented at a call site is a refusal the screen cannot render.
+DECL_REFUSALS = (
+    "signature_incomplete", "invalid_identifier", "undeclared_entity_type",
+    "undeclared_object_kind", "duplicate_predicate", "canonical_layer_forbidden",
+    "invalid_value", "traversable_true_unavailable", "retire_target_unknown",
+)
+
+_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def check_predicate_declaration(name, declaration, against: dict = None) -> list:
+    """Violations of a CONFIG predicate declaration. Empty list = it may be saved.
+
+    🔴 THE COMPLETENESS RULE IS THE POINT (R-2026-08-15-M ②). An incomplete signature is a
+    word the gate cannot check, and a word the gate cannot check is a write path with no
+    gate - which is the thing this whole subsystem exists to not be. So every field is
+    required, and the refusal names the field rather than saying "invalid".
+
+    `against` is the set already accepted in this same file, so a file declaring one name
+    twice is refused rather than silently keeping whichever came last.
+    """
+    out = []
+    against = against or {}
+
+    if not isinstance(name, str) or not _NAME_RE.match(name):
+        out.append(_violation(
+            "invalid_identifier", "name",
+            f"술어 이름 '{name}'은 소문자·숫자·밑줄만 쓸 수 있고 문자로 시작해야 합니다. "
+            f"이 이름은 SQL과 JSON 양쪽에서 그대로 쓰이는 식별자입니다.",
+            f"predicate name {name!r} must match {_NAME_RE.pattern}"))
+        return out
+    if name in PREDICATES:
+        out.append(_violation(
+            "duplicate_predicate", "name",
+            f"'{name}'은 코드가 이미 싣고 있는 술어입니다. 선언으로 덮어쓸 수 없습니다 — "
+            f"코드가 싣는 낱말을 화면이 바꾸면 원자의 뜻이 배포마다 달라집니다.",
+            f"predicate {name!r} is already declared in code"))
+    if name in against:
+        out.append(_violation(
+            "duplicate_predicate", "name",
+            f"'{name}'이 선언 파일 안에 두 번 나옵니다.",
+            f"predicate {name!r} is declared twice in the extension file"))
+    if name in PROJECTION_ONLY_WORDS:
+        out.append(_violation(
+            "invalid_identifier", "name",
+            f"'{name}'은 투영(projection)의 상태 낱말이라 원장에 실릴 수 없습니다.",
+            f"{name!r} is a projection-only word"))
+    if not isinstance(declaration, dict):
+        out.append(_violation(
+            "signature_incomplete", None,
+            "술어 선언은 객체여야 합니다.", "declaration must be an object"))
+        return out
+
+    # --- ② 서명 완결성. 없는 필드를 먼저 전부 세고 나서 값들을 본다: 화면이 빈칸 하나만
+    #     고치고 다시 거절당하는 왕복을 하지 않도록.
+    absent = [field for field in SIGNATURE_FIELDS if field not in declaration]
+    if absent:
+        out.append(_violation(
+            "signature_incomplete", absent[0],
+            f"서명이 완결되지 않았습니다 — {', '.join(absent)}가 없습니다. 게이트는 서명으로 "
+            f"원자를 검사하므로, 빠진 필드가 하나라도 있으면 그 낱말은 검사할 수 없는 "
+            f"낱말이 됩니다(= 검사 없는 쓰기 경로).",
+            f"signature incomplete: missing {', '.join(absent)}"))
+        return out
+
+    layer = declaration.get("layer")
+    if layer != LAYER_ONTOLOGY:
+        out.append(_violation(
+            "canonical_layer_forbidden", "layer",
+            f"layer는 '{LAYER_ONTOLOGY}'만 선언할 수 있습니다(받은 값: {layer!r}). "
+            f"canonical 층은 기록의 문법이라 코드와 판정으로만 늘어납니다.",
+            f"layer must be {LAYER_ONTOLOGY!r}, got {layer!r}"))
+
+    if not str(declaration.get("label_ko") or "").strip():
+        out.append(_violation(
+            "signature_incomplete", "label_ko",
+            "label_ko가 비었습니다. 구조 뷰가 이 낱말을 한국어로 그리므로 라벨은 낱말과 "
+            "같은 자리에서 와야 합니다.",
+            "label_ko is blank"))
+
+    status = declaration.get("status")
+    if status not in PREDICATE_STATUSES:
+        out.append(_violation(
+            "invalid_value", "status",
+            f"status는 {', '.join(PREDICATE_STATUSES)} 중 하나여야 합니다(받은 값: "
+            f"{status!r}).",
+            f"status must be one of {PREDICATE_STATUSES}, got {status!r}"))
+
+    since = declaration.get("since")
+    if not isinstance(since, int) or isinstance(since, bool) or since < 1:
+        out.append(_violation(
+            "invalid_value", "since",
+            f"since는 1 이상의 정수여야 합니다(받은 값: {since!r}). 어느 슬라이스에서 "
+            f"이 낱말이 생겼는지가 원자를 되짚는 기준입니다.",
+            f"since must be an int >= 1, got {since!r}"))
+
+    subject = declaration.get("subject")
+    if not isinstance(subject, list) or not subject:
+        out.append(_violation(
+            "signature_incomplete", "subject",
+            "subject는 이 술어가 받을 수 있는 주어 타입의 비어 있지 않은 목록이어야 "
+            "합니다.", "subject must be a non-empty list"))
+    else:
+        unknown = [s for s in subject if s not in ENTITY_TYPES]
+        if unknown:
+            out.append(_violation(
+                "undeclared_entity_type", "subject",
+                f"subject의 {', '.join(map(str, unknown))}는 선언된 개체 타입이 아닙니다"
+                f"(선언된 것: {', '.join(sorted(ENTITY_TYPES))}). 개체 타입을 늘리는 것은 "
+                f"config가 아니라 어휘 판정입니다.",
+                f"subject names undeclared entity type(s) {unknown}"))
+
+    out.extend(_check_object_declaration(declaration.get("object")))
+    out.extend(_check_walk_fields(name, declaration, against))
+
+    qualifiers = declaration.get("qualifiers", [])
+    if not isinstance(qualifiers, list) or any(not isinstance(q, str) or not q.strip()
+                                               for q in qualifiers):
+        out.append(_violation(
+            "invalid_value", "qualifiers",
+            "qualifiers는 문자열 목록이어야 합니다(없으면 빈 목록).",
+            "qualifiers must be a list of non-blank strings"))
+
+    superseded_by = declaration.get("superseded_by")
+    if superseded_by is not None:
+        known = set(PREDICATES) | set(against)
+        if superseded_by not in known:
+            out.append(_violation(
+                "retire_target_unknown", "superseded_by",
+                f"superseded_by가 가리키는 '{superseded_by}'는 선언된 술어가 아닙니다.",
+                f"superseded_by names undeclared predicate {superseded_by!r}"))
+    return out
+
+
+def _check_object_declaration(declared_object) -> list:
+    """`object` is either ∅ or a kind with something the gate can actually check."""
+    out = []
+    if declared_object is None:
+        # ∅ is legal for `register` ALONE and the DDL's CHECK says so. An ontology word
+        # with no object would be a word that says only "this happened" about a subject -
+        # `register` in a second spelling, which §4.1 owns.
+        return [_violation(
+            "signature_incomplete", "object",
+            "object가 ∅입니다. 목적어 없는 술어는 canonical의 register뿐이고, ontology 층은 "
+            "무엇에 대해 무엇을 말하는지를 실어야 합니다.",
+            "object must not be null for an ontology predicate")]
+    if not isinstance(declared_object, dict):
+        return [_violation("signature_incomplete", "object",
+                           "object는 {kind, ...} 객체여야 합니다.",
+                           "object must be an object")]
+    kind = declared_object.get("kind")
+    if kind not in OBJECT_KINDS:
+        out.append(_violation(
+            "undeclared_object_kind", "object.kind",
+            f"object.kind는 {', '.join(sorted(OBJECT_KINDS))} 중 하나여야 합니다"
+            f"(받은 값: {kind!r}).",
+            f"object.kind must be one of {sorted(OBJECT_KINDS)}, got {kind!r}"))
+        return out
+    if kind == "value":
+        required = declared_object.get("required")
+        # 🔴 NON-EMPTY, and this is ruling R-2026-08-13-D one column over: `required` is
+        # the ONLY enforcement point a `value` object has, so a value object without one
+        # is a signature that checks nothing - the decoy declaration, declared.
+        if not isinstance(required, list) or not required or any(
+                not isinstance(f, str) or not f.strip() for f in required):
+            out.append(_violation(
+                "signature_incomplete", "object.required",
+                "object.kind가 'value'면 required에 반드시 실려야 하는 필드 이름을 "
+                "하나 이상 적어야 합니다. required가 없는 value 목적어는 게이트가 아무것도 "
+                "검사하지 않는 서명입니다.",
+                "a value object needs a non-empty `required` list"))
+    elif kind == "entity_ref":
+        types = declared_object.get("types")
+        if not isinstance(types, list) or not types:
+            out.append(_violation(
+                "signature_incomplete", "object.types",
+                "object.kind가 'entity_ref'면 가리킬 수 있는 개체 타입 목록(types)이 "
+                "필요합니다.", "an entity_ref object needs a non-empty `types` list"))
+        else:
+            unknown = [t for t in types if t not in ENTITY_TYPES]
+            if unknown:
+                out.append(_violation(
+                    "undeclared_entity_type", "object.types",
+                    f"object.types의 {', '.join(map(str, unknown))}는 선언된 개체 "
+                    f"타입이 아닙니다.",
+                    f"object.types names undeclared entity type(s) {unknown}"))
+    return out
+
+
+def _check_walk_fields(name, declaration, against: dict = None) -> list:
+    """`traversable` / `direction`, including the one the WALK cannot execute.
+
+    🔴 `traversable: true` is refused while another traversable word exists, and the
+    refusal is not squeamishness: `ledger_trace.traversal_predicate` REFUSES BY NAME a
+    vocabulary with more than one traversable word (its recursive CTE joins on a value,
+    not a set). Accepting the declaration here would take the trace screen down at the
+    next request - a save that breaks a different screen, with the operator holding a
+    green save message. The three states stay selectable; the one this walk cannot run
+    says so at save time instead of at read time.
+    """
+    out = []
+    traversable = declaration.get("traversable")
+    if traversable not in (True, False, None):
+        out.append(_violation(
+            "invalid_value", "traversable",
+            f"traversable은 true(재귀 통과) / false(도달만) / null(미수집) 셋 중 하나를 "
+            f"«명시»해야 합니다(받은 값: {traversable!r}).",
+            f"traversable must be True, False or None, got {traversable!r}"))
+        return out
+
+    direction = declaration.get("direction")
+    if traversable is True:
+        # 🔴 `PREDICATES` + the entries already accepted, NEVER `all_predicates()`. The
+        # loader calls this function WHILE it is assembling the config layer, so reading
+        # the merged view here would re-enter the loader and hang. The union below is the
+        # same set the loader is building towards, one entry earlier.
+        known = dict(against or {})
+        known.update(PREDICATES)
+        already = [n for n, sig in known.items()
+                   if sig.get("traversable") is True and n != name]
+        if already:
+            out.append(_violation(
+                "traversable_true_unavailable", "traversable",
+                f"traversable=true는 지금 선택할 수 없습니다 — 걷기는 통과 술어를 정확히 "
+                f"하나만 실행할 수 있고 이미 '{', '.join(sorted(already))}'가 그 자리에 "
+                f"있습니다. 둘째 통과 엣지는 재귀 질의를 값이 아니라 집합으로 조인하도록 "
+                f"바꾸는 «측정된 변경»이라 선언으로 켤 수 없습니다. 주석형이면 false"
+                f"(도달만), 걷기가 안 가져와야 하면 null을 고르세요.",
+                f"a second traversable predicate is not executable by the walk "
+                f"(existing: {sorted(already)})"))
+        elif direction not in WALK_DIRECTIONS:
+            out.append(_violation(
+                "invalid_value", "direction",
+                f"traversable=true면 direction은 {', '.join(sorted(WALK_DIRECTIONS))} "
+                f"중 하나여야 합니다(받은 값: {direction!r}).",
+                f"direction must be one of {sorted(WALK_DIRECTIONS)}, got {direction!r}"))
+    elif direction is not None:
+        out.append(_violation(
+            "invalid_value", "direction",
+            f"traversable이 {traversable!r}인데 direction이 {direction!r}입니다. 아무도 "
+            f"걷지 않는 엣지의 방향은 아무것도 구속하지 않습니다 — null이어야 합니다.",
+            f"direction {direction!r} on a non-traversable predicate binds nothing"))
+    return out
 
 
 def walk_predicates():
@@ -402,19 +881,19 @@ def walk_predicates():
     admitting a word to the walk is a declaration change plus the vocabulary-pinning test,
     and EXCLUDING one (`observed`) is a thing the vocabulary can actually say.
     """
-    return tuple(sorted(name for name, sig in PREDICATES.items()
+    return tuple(sorted(name for name, sig in all_predicates().items()
                         if sig.get("traversable") is not None))
 
 
 def traversable_predicates():
     """The predicates the walk RECURSES through. A subset of `walk_predicates()`."""
-    return tuple(sorted(name for name, sig in PREDICATES.items()
+    return tuple(sorted(name for name, sig in all_predicates().items()
                         if sig.get("traversable") is True))
 
 
 def walk_direction(predicate):
     """Which way a traversable edge is followed, or `None` if it is not traversed."""
-    return (PREDICATES.get(predicate) or {}).get("direction")
+    return (all_predicates().get(predicate) or {}).get("direction")
 
 
 def check_walk_declaration():
@@ -426,7 +905,7 @@ def check_walk_declaration():
     nobody walks would teach a reader a constraint that binds nothing.
     """
     violations = []
-    for name, sig in PREDICATES.items():
+    for name, sig in all_predicates().items():
         if "traversable" not in sig:
             violations.append(
                 f"predicate '{name}' does not declare `traversable`. Three states are "
@@ -457,11 +936,13 @@ PROJECTION_ONLY_WORDS = frozenset({
 
 
 def is_declared(predicate: str) -> bool:
-    return predicate in PREDICATES
+    """🔴 THE MERGED SET. `gate.screen_molecule` asks this to refuse an undeclared word,
+    so a predicate registered from admin becomes emittable here and nowhere else."""
+    return predicate in all_predicates()
 
 
 def signature(predicate: str):
-    return PREDICATES.get(predicate)
+    return all_predicates().get(predicate)
 
 
 def check_signature(predicate, subject_type, object_kind, object_payload):
@@ -471,18 +952,41 @@ def check_signature(predicate, subject_type, object_kind, object_payload):
     and announcing; this owns only the judgement, so the judgement can be unit-tested
     without a database and reused by anything else that has to ask the same question.
     """
-    violations = []
-
     if predicate in PROJECTION_ONLY_WORDS:
         return [f"'{predicate}' is a PROJECTION state word (design §4.2) and may never "
                 f"be written to the ledger"]
 
-    sig = PREDICATES.get(predicate)
+    # 🔴 THE MERGED SET, so a config-declared word is checked by exactly the machinery a
+    # code-declared one is. This is the line ruling R-2026-08-15-M ④ means by「게이트의
+    # 서명 검사는 합쳐진 집합을 그대로 쓴다」 - the same `required` fields, the same
+    # subject list, the same entity_ref identity check, with no second code path.
+    sig = all_predicates().get(predicate)
     if sig is None:
         return [f"predicate '{predicate}' is not in the closed vocabulary"]
+    return check_signature_against(sig, predicate, subject_type, object_kind,
+                                   object_payload)
+
+
+def check_signature_against(sig, predicate, subject_type, object_kind, object_payload):
+    """`check_signature` with the declaration HANDED IN rather than looked up.
+
+    🔴 Exists for ONE caller and the reason is worth stating: the admin dry run has to
+    show what a signature that is NOT YET SAVED would accept and refuse, and the only
+    honest way to do that is to run the gate's own judgement over it. The alternative -
+    temporarily inserting the candidate into the shared merged dict - would mutate a
+    process-wide cache that live translations read, so a preview on the web server could
+    change what a concurrent request's gate believes. A parameter cannot do that.
+    """
+    violations = []
     if sig["status"] != "active":
+        # `retired` and `reserved` are different facts and the message says which:
+        # retirement is a word that HAS been spoken and may not be spoken again (atoms
+        # still read back), reservation is one that has not been spoken yet.
+        why = ("it was RETIRED and may no longer be emitted; atoms already written under "
+               "it still read back" if sig["status"] == "retired"
+               else "it may not be emitted yet")
         violations.append(f"predicate '{predicate}' is declared but its status is "
-                          f"'{sig['status']}' - it may not be emitted yet")
+                          f"'{sig['status']}' - {why}")
 
     if subject_type not in ENTITY_TYPES:
         violations.append(f"subject type '{subject_type}' is not a declared entity type")
@@ -541,6 +1045,41 @@ def check_signature(predicate, subject_type, object_kind, object_payload):
                 violations.append(
                     f"predicate '{predicate}' requires value field(s) "
                     f"{', '.join(required)}; missing or blank: {', '.join(absent)}")
+        state_contract = declared_object.get("state_contract") or {}
+        if state_contract and isinstance(object_payload, dict):
+            state_field = state_contract["field"]
+            state = object_payload.get(state_field)
+            allowed = state_contract.get("allowed") or []
+            if state not in allowed:
+                violations.append(
+                    f"predicate '{predicate}' requires {state_field} to be one of "
+                    f"{', '.join(allowed)}; got {state!r}")
+            else:
+                state_required = (state_contract.get("required_by_state") or {}).get(
+                    state, [])
+                absent_for_state = [field for field in state_required
+                                    if field not in object_payload
+                                    or object_payload[field] is None
+                                    or (isinstance(object_payload[field], str)
+                                        and not object_payload[field].strip())]
+                if absent_for_state:
+                    violations.append(
+                        f"predicate '{predicate}' state '{state}' requires field(s) "
+                        f"{', '.join(absent_for_state)}")
+                value_field = state_contract.get("value_field")
+                if state in (state_contract.get("value_required_for") or []):
+                    if (value_field not in object_payload
+                            or object_payload[value_field] is None
+                            or (isinstance(object_payload[value_field], str)
+                                and not object_payload[value_field].strip())):
+                        violations.append(
+                            f"predicate '{predicate}' state '{state}' requires field "
+                            f"'{value_field}'")
+                if (state in (state_contract.get("value_forbidden_for") or [])
+                        and value_field in object_payload):
+                    violations.append(
+                        f"predicate '{predicate}' state '{state}' forbids field "
+                        f"'{value_field}'")
         return violations
 
     if object_kind == "entity_ref":

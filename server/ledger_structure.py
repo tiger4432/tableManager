@@ -25,8 +25,13 @@ complement.
 So there is no list of nodes and no list of edges anywhere in this file. Both halves are
 GENERATED:
 
-  * the DECLARED half from `vocabulary.ENTITY_TYPES` x `vocabulary.PREDICATES` — adding a
-    predicate to the vocabulary puts an edge on the screen and costs nothing here;
+  * the DECLARED half from `vocabulary.ENTITY_TYPES` x `vocabulary.all_predicates()` —
+    adding a predicate to the vocabulary puts an edge on the screen and costs nothing
+    here. 🔴 `all_predicates()` rather than `PREDICATES` since ruling R-2026-08-15-M: the
+    vocabulary now has TWO sources (code and the operator's declaration) and each row and
+    edge carries `origin: "code" | "config"`. Reading only the code-loaded set would have
+    made a word an operator registered from admin invisible on the one screen that exists
+    to show what the ledger can say;
   * the OBSERVED half from one `GROUP BY` over `ledger_events` — a source that starts
     emitting a shape nobody declared appears as an `undeclared` edge rather than being
     silently dropped.
@@ -273,7 +278,12 @@ def declared_edges(vocabulary):
     field a screen dims them by.
     """
     edges = {}
-    for predicate, sig in vocabulary.PREDICATES.items():
+    # 🔴 `all_predicates()`, NOT `PREDICATES` (ruling R-2026-08-15-M ④). The whole point of
+    # letting an operator register an ontology word from admin is that they can then SEE it
+    # here - the brief's completion journey ends at「새 술어·새 엣지가 «선언 출처: config»로
+    # 뜬다」. Reading only the code-loaded set would have made a registered word invisible
+    # on the one screen that exists to show what the ledger can say.
+    for predicate, sig in vocabulary.all_predicates().items():
         declared_object = sig.get("object")
         for subject_type in sig.get("subject") or []:
             if declared_object is None:
@@ -311,6 +321,11 @@ def declared_edges(vocabulary):
                     "unit": sig.get("unit"),
                     "semi_ref": sig.get("semi_ref"),
                     "superseded_by": sig.get("superseded_by"),
+                    # ADDITIVE field: which of the two sources declared this word
+                    # ("code" | "config"). An existing consumer is untouched; a screen that
+                    # wants to say「선언으로 늘었다」reads this instead of guessing from
+                    # `since`, which is a slice number and not a provenance.
+                    "origin": sig.get("origin", "code"),
                     "declared": True,
                     "atoms": None,
                     "first_at": None,
@@ -593,7 +608,7 @@ def _vocabulary_panel(vocabulary, edges):
     predicate whose every edge is `declared_only`.
     """
     rows = []
-    for predicate, sig in vocabulary.PREDICATES.items():
+    for predicate, sig in vocabulary.all_predicates().items():
         mine = [e for e in edges.values() if e["predicate"] == predicate]
         atoms = None
         classes = None
@@ -608,6 +623,7 @@ def _vocabulary_panel(vocabulary, edges):
             "predicate": predicate,
             "label": _label(sig, predicate),
             "layer": sig.get("layer"),
+            "origin": sig.get("origin", "code"),   # ADDITIVE - see `declared_edges`
             "status": sig.get("status"),
             "emittable": sig.get("status") == "active",
             "since": sig.get("since"),

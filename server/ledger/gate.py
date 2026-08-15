@@ -248,6 +248,47 @@ def reset_counters():
     del _samples[:]
 
 
+#: Serialises `captured()`. The counters are PROCESS aggregates on purpose (see `_open`'s
+#: note above), so two overlapping captures would each hand back the other's refusals.
+_capture_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def captured():
+    """Run something and collect ONLY its refusals, leaving the process counters intact.
+
+    🔴 WHY THIS EXISTS: the admin dry run drives the REAL translators through the REAL
+    gate (ruling R-2026-08-15-M ⑥ -「가짜 미리보기는 조용한 거짓말」), and the gate's
+    counters are what `/health` and the heartbeat report. Without this, an operator
+    previewing a declaration would raise the live refusal totals of a source that refused
+    nothing, and「거절이 쌓이나」would answer yes because somebody looked.
+
+    Yields a dict that is filled in on exit with the same shapes the module-level readers
+    return, so a caller reports a dry run's refusals with the code that reports a run's.
+    """
+    with _capture_lock:
+        saved = (dict(_refusals), dict(_atoms_lost), dict(_rows_refused),
+                 dict(_incomplete), list(_samples))
+        reset_counters()
+        handle = {}
+        try:
+            yield handle
+        finally:
+            # Filled BEFORE the restore and inside `finally`, so a refusal that arrived
+            # as an exception is still reported rather than lost with the unwind.
+            handle["refusals"] = dict(_refusals)
+            handle["atoms_lost"] = dict(_atoms_lost)
+            handle["rows_refused"] = dict(_rows_refused)
+            handle["incomplete"] = dict(_incomplete)
+            handle["samples"] = list(_samples)
+            reset_counters()
+            _refusals.update(saved[0])
+            _atoms_lost.update(saved[1])
+            _rows_refused.update(saved[2])
+            _incomplete.update(saved[3])
+            _samples.extend(saved[4])
+
+
 def note():
     """Heartbeat digest, or `None` while nothing is being refused.
 

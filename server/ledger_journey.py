@@ -969,7 +969,10 @@ def _predicate_declaration(predicate):
     """
     try:
         from ledger import vocabulary
-        sig = (vocabulary.PREDICATES or {}).get(predicate) or {}
+        # The MERGED set (R-2026-08-15-M ④): a word registered from admin has a
+        # `label_ko` of its own, and reading only the code-loaded set would render it as
+        # a bare English identifier while every test stayed green.
+        sig = (vocabulary.all_predicates() or {}).get(predicate) or {}
     except Exception:                                            # pragma: no cover
         sig = {}
     return {"label": sig.get("label_ko") or predicate,

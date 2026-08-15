@@ -4566,6 +4566,25 @@ def reload_local_process_cache():
     except Exception:
         pass
 
+    # [Ledger vocabulary] 🔴 이 줄이 「재기동 0회」의 근거다. admin에서 등재한 ontology
+    # 술어는 `server/config/ledger_vocabulary.json`에 앉고, 어휘 로더는 그 파일을 프로세스
+    # 수명 동안 캐시한다(원자 하나당 stat 한 번은 1,000만 행에서 syscall 1,000만 번이므로).
+    # 캐시를 여기서 버리지 않으면 새 낱말은 «다음 재기동까지» 게이트에 없는 낱말이고, 그
+    # 낱말로 발화한 원자는 undeclared_vocabulary로 조용히 거절된다.
+    try:
+        from ledger import vocabulary as ledger_vocabulary
+        ledger_vocabulary.reset_cache()
+    except Exception:
+        pass
+
+    # 걷기가 들고 있는 파생 목록(fetch 집합·통과 술어)도 어휘에서 나온 사본이므로 같이
+    # 버린다. 어휘만 갱신하고 이걸 두면 새 술어가 게이트에는 있고 걷기에는 없다.
+    try:
+        import ledger_trace
+        ledger_trace.reset_walk_cache()
+    except Exception:
+        pass
+
     # Remove custom mappers from sys.modules cache
     mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
     for k in mapper_keys:
@@ -5586,6 +5605,285 @@ def get_config_resolve_report(domain: str = None):
     import config_resolve_report
     domains = [d.strip() for d in domain.split(",")] if domain else None
     return config_resolve_report.resolve_report(domains)
+
+
+# -----------------------------------------------------------------------------
+# 원장 셋업 — 소스를 잇고 어휘를 늘린다 (판정 R-2026-08-15-M)
+#
+#   소유자 목표: 「내가 소스 테이블 하나 새로 만들어서 어휘 추가까지 하는 것」을 코드 0줄·
+#   재기동 0회로. 아래 여섯 라우트가 그 여정의 서버 절반이다.
+#
+#   🔴 저장은 항상 3단이고 예외가 없다(R-M ⑥): 문법 검증 → 드라이런(쓰기 0) → 저장 +
+#   reload + 「먹었는가」. 3단째는 `/admin/config/resolve`의 **기존** 조립기가 만든다 —
+#   두 번째 판정기를 만들지 않는다.
+#
+#   🔴 드라이런 없는 저장은 «만들지 않는» 것이 아니라 «불가능한» 것이다: `/save`는
+#   드라이런이 돌려준 지문(token)을 요구하고, 지문은 선언 내용의 해시라 드라이런 뒤에
+#   선언을 한 자라도 고치면 `dry_run_stale`로 거절된다. 화면의 규율이 아니라 서버의 구조다.
+# -----------------------------------------------------------------------------
+
+def _ledger_admin_refusal(violations):
+    """거절 응답 하나. 사유 문장은 전부 서버가 만들고 클라는 그대로 렌더한다."""
+    return HTTPException(status_code=400, detail={"ok": False,
+                                                  "violations": list(violations)})
+
+
+@app.get("/admin/ledger/vocabulary", dependencies=[Depends(require_admin_token)])
+def get_ledger_vocabulary():
+    """어휘 전체 — 코드가 싣는 것과 선언으로 늘린 것을 **출처로 구분해서**(R-M ④).
+
+    화면이 폼을 만들 재료가 전부 여기서 나간다(개체 타입, 목적어 종류, 걷기 방향,
+    `traversable` 삼상태의 한국어, 서명 필수 필드 목록). 클라이언트가 이 목록들을 자기
+    쪽에 복사해 두면, 서버가 상태를 하나 늘리는 날 화면만 모르는 사본이 된다.
+    """
+    import ledger_admin
+    return ledger_admin.vocabulary_view()
+
+
+@app.get("/admin/ledger/sources", dependencies=[Depends(require_admin_token)])
+def get_ledger_sources():
+    """소스 선언과 **kind별 필수/선택 컬럼 목록**. 폼은 이 선언에서 생성된다.
+
+    `unsupported_kinds`가 비어 있지 않은 것이 중요하다: 판정은 났지만 번역기가 없는 종류
+    (`derivation`)를 목록에서 지우면 화면이 「이 시스템은 그런 걸 못 한다」로 읽히고,
+    사유와 함께 실으면 「아직 안 왔다」로 읽힌다.
+    """
+    import ledger_admin
+    return ledger_admin.sources_view()
+
+
+@app.get("/admin/ledger/relations", dependencies=[Depends(require_admin_token)])
+def get_ledger_relations(q: str = None, limit: int = 200, db: Session = Depends(get_db)):
+    """실재하는 관계와 컬럼. **카탈로그만 읽는다** — 비용이 테이블 행 수와 무관하다."""
+    import ledger_admin
+    return ledger_admin.relations_view(db, query=q, limit=limit)
+
+
+@app.post("/admin/ledger/dry-run", dependencies=[Depends(require_admin_token)])
+def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """1단 + 2단. **쓰기 0**으로 「이 선언이 낳을 원자」를 원자 봉투 그대로 돌려준다.
+
+    🔴 실제 번역기를 태운다(브리핑 §4:「가짜 미리보기는 조용한 거짓말이다」). 페치·분자
+    조립·번역·게이트 심사 전부 백필이 쓰는 바로 그 코드이고, 다른 것은 **커넥션의
+    트랜잭션이 READ ONLY로 열려 있다는 것 하나**다 — 그래서 쓰기 0은 이 코드가 쓰기를
+    안 부른다는 약속이 아니라 PostgreSQL이 쓰기를 거절한다는 사실이다.
+    """
+    import ledger_admin
+    from ledger import dry_run as ledger_dry_run
+
+    target = payload.get("target")
+    name = str(payload.get("name") or "").strip()
+    declaration = payload.get("declaration")
+    if target not in ledger_admin.TARGETS:
+        raise _ledger_admin_refusal([ledger_admin.violation(
+            "declaration_rejected", "target",
+            f"target은 {', '.join(ledger_admin.TARGETS)} 중 하나여야 합니다.")])
+
+    if target == ledger_admin.TARGET_PREDICATE:
+        return _ledger_predicate_dry_run(name, declaration)
+
+    violations = ledger_admin.check_source_declaration(db, name, declaration)
+    if violations:
+        raise _ledger_admin_refusal(violations)
+
+    cfg = ledger_admin.candidate_config(name, declaration)
+    try:
+        result = ledger_dry_run.preview(engine, cfg, name,
+                                        rows=payload.get("rows")
+                                        or ledger_dry_run.DEFAULT_ROWS)
+    except ledger_dry_run.DryRunUnavailable as exc:
+        raise _ledger_admin_refusal([ledger_admin.violation(
+            "declaration_rejected", None, exc.detail_ko, str(exc))])
+
+    result["ok"] = True
+    result["target"] = target
+    result["name"] = name
+    result["token"] = ledger_admin.declaration_token(target, name, declaration)
+    result["sentence_ko"] = (
+        f"이 선언은 {result['rows_read']}행을 읽어 분자 {result['molecules']}개를 만들고 "
+        f"원자 {result['atoms']}개를 씁니다"
+        + (f" (분자 {result['molecules_refused']}개는 게이트가 거절)"
+           if result["molecules_refused"] else "")
+        + ". 이 미리보기는 아무것도 쓰지 않았습니다.")
+    return result
+
+
+def _ledger_predicate_dry_run(name, declaration):
+    """술어 선언의 2단. 원자를 «만들지» 않고, 서명이 무엇을 받고 무엇을 거절하는지 보인다.
+
+    🔴 원자를 만들 수 없는 것이 이 화면의 한계가 아니라 **오늘의 사실**이다: 새 술어를
+    발화할 번역기가 아직 없다(`derivation` 종류는 R-M ⑤로 판정만 났다). 그래서 여기서
+    보여 줄 수 있는 진짜는 「이 서명이 실제로 무엇을 판정하는가」이고, 그것은 게이트가
+    쓰는 바로 그 함수(`vocabulary.check_signature`)를 태워서 얻는다 — 서명을 설명하는
+    문장을 지어내면 그것이야말로 가짜 미리보기다.
+    """
+    import ledger_admin
+    from ledger import vocabulary
+
+    existing = {n: sig for n, sig in vocabulary.config_predicates().items() if n != name}
+    violations = vocabulary.check_predicate_declaration(name, declaration,
+                                                        against=existing)
+    if violations:
+        raise _ledger_admin_refusal(violations)
+
+    declared_object = declaration.get("object") or {}
+    subject_type = (declaration.get("subject") or [None])[0]
+    probes = []
+
+    def probe(label_ko, payload, object_kind=None):
+        # 🔴 게이트가 쓰는 **바로 그 판정 함수**에 후보 서명을 «인자로» 넘긴다. 공유
+        # 캐시에 후보를 잠깐 끼워 넣는 방식은 같은 프로세스의 동시 번역이 그 사이에
+        # 미등재 낱말을 인정하게 만든다 — 미리보기가 남의 게이트를 바꾸는 것이다.
+        found = vocabulary.check_signature_against(
+            declaration, name, subject_type,
+            object_kind if object_kind is not None else declared_object.get("kind"),
+            payload)
+        probes.append({"case_ko": label_ko, "accepted": not found,
+                       "violations": found})
+
+    if declared_object.get("kind") == "value":
+        required = list(declared_object.get("required") or [])
+        probe("필수 필드를 모두 실은 원자",
+              {field: f"<{field}>" for field in required})
+        if required:
+            short = {field: f"<{field}>" for field in required[1:]}
+            probe(f"필수 필드 '{required[0]}'이 빠진 원자", short)
+    elif declared_object.get("kind") == "entity_ref":
+        target_type = (declared_object.get("types") or [None])[0]
+        keys = {k: f"<{k}>" for k in
+                (vocabulary.ENTITY_TYPES.get(target_type, {}).get("keys") or [])}
+        probe("완결된 개체 참조를 실은 원자", {"type": target_type, "keys": keys})
+        probe("개체 참조의 식별자가 빈 원자",
+              {"type": target_type, "keys": {k: "" for k in keys}})
+
+    return {
+        "ok": True, "target": ledger_admin.TARGET_PREDICATE, "name": name,
+        "writes": 0, "read_only_enforced": True,
+        "atoms": 0, "atoms_rendered": [], "truncated": False,
+        "rows_read": 0, "molecules": 0, "molecules_refused": 0,
+        "refusals": [], "refusals_by_reason": {},
+        "signature_probes": probes,
+        "notes": ["이 술어를 발화하는 번역기가 아직 없으므로 원자는 만들어지지 "
+                  "않습니다. 위 항목은 게이트가 이 서명으로 실제 무엇을 받고 무엇을 "
+                  "거절하는지를 같은 함수로 판정한 결과입니다."],
+        "token": ledger_admin.declaration_token(ledger_admin.TARGET_PREDICATE, name,
+                                                declaration),
+        "sentence_ko": (f"'{name}' 서명은 완결됐습니다. 저장하면 게이트가 이 서명으로 "
+                        f"원자를 검사하고 구조 뷰에 «선언 출처: config»로 뜹니다."),
+    }
+
+
+@app.post("/admin/ledger/save", dependencies=[Depends(require_admin_token_strict)])
+def post_ledger_save(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """3단 — 저장 → reload → 「먹었는가」 한 문장.
+
+    백업(사본이 곧 undo) → 임시 파일 → `os.replace`로 원자적 교체. config 파일은 설계상
+    gitignore라 **이력이 없으므로**(R-2026-08-13-G), 되돌릴 수 있는 사본을 남기는 것이
+    이 경로가 존재해도 되는 조건이다.
+    """
+    import ledger_admin
+    from ledger import vocabulary
+
+    target = payload.get("target")
+    name = str(payload.get("name") or "").strip()
+    declaration = payload.get("declaration")
+    token = payload.get("token")
+    if target not in ledger_admin.TARGETS:
+        raise _ledger_admin_refusal([ledger_admin.violation(
+            "declaration_rejected", "target",
+            f"target은 {', '.join(ledger_admin.TARGETS)} 중 하나여야 합니다.")])
+
+    expected = ledger_admin.declaration_token(target, name, declaration)
+    if token != expected:
+        raise _ledger_admin_refusal([ledger_admin.violation(
+            "dry_run_stale", None,
+            "이 선언에 대한 드라이런 결과가 없습니다(또는 드라이런 후 선언이 "
+            "바뀌었습니다). 저장은 «방금 본 그 선언»에 대해서만 됩니다 — 드라이런을 "
+            "다시 돌린 뒤 저장하세요.",
+            "the token does not match a dry run of this exact declaration")])
+
+    if target == ledger_admin.TARGET_SOURCE:
+        violations = ledger_admin.check_source_declaration(db, name, declaration)
+        if violations:
+            raise _ledger_admin_refusal(violations)
+        written = ledger_admin.save_source(name, declaration)
+    else:
+        existing = {n: s for n, s in vocabulary.config_predicates().items() if n != name}
+        violations = vocabulary.check_predicate_declaration(name, declaration,
+                                                            against=existing)
+        if violations:
+            raise _ledger_admin_refusal(violations)
+        written = ledger_admin.save_predicate(name, declaration)
+
+    return _ledger_reload_and_report(db, target, name, written)
+
+
+@app.post("/admin/ledger/vocabulary/retire",
+          dependencies=[Depends(require_admin_token_strict)])
+def post_ledger_retire_predicate(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """R-M ③ — 삭제는 없고 은퇴만 있다. 원자가 이미 그 낱말로 누워 있기 때문이다.
+
+    은퇴는 **읽기를 막지 않는다**: 게이트가 발화를 거절할 뿐이고, 기존 원자는 그대로
+    읽히며 구조 뷰에도 계속 뜬다.
+    """
+    import ledger_admin
+
+    name = str(payload.get("name") or "").strip()
+    superseded_by = payload.get("superseded_by") or None
+    try:
+        written = ledger_admin.retire_predicate(name, superseded_by)
+    except KeyError:
+        raise _ledger_admin_refusal([ledger_admin.violation(
+            "retire_target_unknown", "name",
+            f"'{name}'은 선언 파일에 없는 술어입니다.")])
+    except ValueError as exc:
+        raise _ledger_admin_refusal([ledger_admin.violation(
+            "not_editable", "name", str(exc))])
+    return _ledger_reload_and_report(db, ledger_admin.TARGET_PREDICATE, name, written,
+                                     intent="retire")
+
+
+def _ledger_reload_and_report(db, target, name, written, intent="save"):
+    """저장의 나머지 절반 — 캐시 교체와 「먹었는가」.
+
+    `reload_local_process_cache()`는 `/admin/reload-configs`가 부르는 바로 그 함수이고,
+    SYSTEM_RELOAD 이벤트가 나머지 프로세스로 같은 교체를 퍼뜨린다. 그래서 **재기동이
+    필요 없다** — 이 라운드의 목표 중 절반이 그 문장이다.
+    """
+    import config_resolve_report
+
+    reload_system_configs(db=db)
+    report = config_resolve_report.resolve_report([config_resolve_report.DOMAIN_LEDGER])
+    domain = (report.get("domains") or [{}])[0]
+    counts = domain.get("counts") or {}
+    took = any(e.get("subject") == name for e in domain.get("effective") or [])
+    if target == "predicate":
+        took = took or any(name in str(e.get("subject") or "")
+                           for e in domain.get("effective") or [])
+    # 🔴 은퇴는 「유효 목록에서 빠지는 것」이 성공이다. 저장과 같은 문장을 쓰면 성공한
+    # 은퇴가 실패처럼 읽힌다 — 화면이 조용히 거짓말하지 않는다는 규율이 여기서도 성립한다.
+    head = (f"원장 선언 해석: 유효 {counts.get('effective', 0)} · 효과없음 "
+            f"{counts.get('ineffective', 0)} · 거절 {counts.get('rejected', 0)}.")
+    if intent == "retire":
+        sentence = (f"'{name}'을 은퇴 처리했고 캐시를 교체했습니다(재기동 없음). "
+                    f"이제 이 낱말로는 원자를 만들 수 없고, 이미 이 낱말로 실린 원자는 "
+                    f"그대로 읽힙니다. {head}"
+                    + ("" if not took else
+                       f" ⚠️ '{name}'이 아직 유효 목록에 있습니다 — 은퇴가 반영되지 "
+                       f"않았습니다."))
+    else:
+        sentence = (
+            f"저장했고 캐시를 교체했습니다(재기동 없음). {head} "
+            + (f"'{name}'은 지금 **유효**합니다."
+               if took else
+               f"'{name}'은 유효 목록에 없습니다 — 아래 사유 문장을 보세요."))
+    return {
+        "ok": True, "saved": True, "target": target, "name": name,
+        "path": written.get("path"), "backup": written.get("backup"),
+        "replaced": written.get("replaced", False),
+        "reloaded": True, "took": took,
+        "resolve": domain, "sentence_ko": sentence,
+    }
 
 
 @app.get("/admin/config/virtual-join/verify", dependencies=[Depends(require_admin_token)])

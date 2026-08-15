@@ -36,7 +36,8 @@
 | 선언 | 무엇을 지배하나 | config인가 코드인가 | 라이브가 없으면 | 이 박스(2026-08-15) |
 |---|---|---|---|---|
 | **`server/config/ledger_config.json`** | **소스 선언** — 소스마다 한 장. 문법(`kind`)·세상의 시각 컬럼·시간대·컬럼 매핑·허용 subject 타입 | **config** | `.sample`로 폴백 → **둘 다 없으면 번역기가 «거절하고 안 돈다»**(시각 컬럼을 추측하지 않는다) | 라이브 有 · 소스 넷(`lot_event`·`void_obs`·`delam_obs`·`dt_log`) |
-| **`server/ledger/vocabulary.py`** | **어휘** — 술어·개체 타입과 각각의 서명(subject 타입·목적어 종류·`required`·걷기 의미론) | 🔴 **코드** (config 채널 **없음**) | — | §4 · §9 ① |
+| **`server/ledger/vocabulary.py`** | **어휘의 «코드 절반»** — 정준 층 전부 + 코드가 싣는 온톨로지 술어, 그리고 **개체 타입(`ENTITY_TYPES`)은 여기만** | 🔴 **코드**(정준 층은 화면에서 늘릴 수 없다 — 판정 사안) | — | §4 |
+| **`server/config/ledger_vocabulary.json`** | **어휘의 «선언 절반»** — ontology 층 술어의 append-only 확장. 서명 완결이 저장 조건 | **config**(2026-08-15 신설 · R-2026-08-15-M) | 🔴 **`.sample` 폴백 «없음»** — 라이브가 없으면 코드가 싣는 낱말만 쓴다. **일부러 그렇다**: 샘플이 로드되면 아무도 선언하지 않은 낱말이 닫힌 어휘에 들어간다 | 라이브 **없음**(`.sample`은 모양 설명용) · §4 |
 | **`server/finding_kinds.py`** + `server/config/finding_kinds.json` | **결함 종류** — 종류마다 분모(`observed_by`)·관측 테이블·크기 컬럼·닫힌 class 집합 | 🔴 **코드 기본값 + JSON «덮어쓰기»**(선택) | 기본값 둘(`void`·`delam`)로 돈다 | JSON **없음**(코드 기본값으로 도는 중) · §5 · §9 ② |
 | **`server/config/mechanism_models.json`** | **기전 그래프** — 방향만 있는 인과 모델 + `bindings`(필드→물리량). 「**물리 경로 있음**」 관문이 읽는 것 | **config** | `.sample` → 둘 다 없으면 **에러가 아니라 «상태»**(`no_mechanism_config`) | 라이브 有(`.sample`도 有) |
 | **`server/config/siblings_axes.json`** | **요인 기하** — 마킹·행·요인 축, 모집단 단위, `rank: false`(식별자 축)·`high_cardinality_at` | **config** | `.sample`로 폴백 → **둘 다 없으면 거절**(축 0개는 500이 아니라 이름 붙은 거절) | 라이브 **없음** — `.sample`로 도는 중 |
@@ -187,23 +188,34 @@ conda run -n assy_manager python -m ledger.backfill --source dt_log      # trans
 
 ---
 
-## 4. 어휘 — 🔴 **코드다**
+## 4. 어휘 — 🔴 **층에 따라 갈린다**(2026-08-15부터)
 
-`server/ledger/vocabulary.py`가 술어(`PREDICATES`)와 개체 타입(`ENTITY_TYPES`)의 **유일한 철자**다. **config 채널은 없다.**
+**두 층이고 성질이 다르며, 이제 «어디서 늘리는가»도 다르다.**
 
-- **두 층이고 성질이 다르다** — **정준**(기록의 문법: `register`·`pin`·예약 `same_as`)은 **사실상 동결**이라 바꾸는 것은 마이그레이션급 사건이고,
-  **온톨로지**(세계의 언어: `derived_from`·`slot_map`·`has_wafer`·…)는 **append-only로 성장**한다.
-  🔴 **삭제·재정의는 원리적으로 불가**하다 — 원자가 술어를 영원히 참조하므로 `deprecate`(신규 기입 금지)만 있다.
+| 층 | 무엇 | 어디서 늘리나 | 왜 |
+|---|---|---|---|
+| **정준**(§4.1) | 기록의 문법 — `register`·`pin`·예약 `same_as` | 🔴 **코드 + 판정만.** 화면에 문이 **없다** | 기록의 문법이 조용히 자라면 원장이 원장이 아니게 된다 |
+| **온톨로지**(§4.2) | 세계의 언어 — `derived_from`·`observed`·… | ✅ **admin 화면에서 선언으로**(코드 0줄·재기동 0회) 또는 코드로 | 설계가 이미 「append-only로 성장」이라 적어 둔 층이다 |
+| **개체 타입**(`ENTITY_TYPES`) | `Lot`·`Wafer`·`Recipe`·… | 🔴 **코드 + 판정만** | 주어의 «신원 키»가 바뀌는 일이라 술어 하나 늘리는 것과 급이 다르다 |
+
+- **선언 확장의 자리**: `server/config/ledger_vocabulary.json`. 화면 경로는 `POST /admin/ledger/dry-run` → `POST /admin/ledger/save`이고,
+  **저장은 언제나 3단**이다(문법 검증 → 쓰기 0 드라이런 → 저장+리로드+「먹었는가」). 드라이런 없는 저장은 만들지 않은 게 아니라 **불가능**하다 —
+  저장이 «그 선언의» 드라이런 지문을 요구한다.
+- 🔴 **서명이 완결돼야 저장된다.** `label_ko`·`subject`·`object{kind, required}`·**`traversable` 삼상태 «명시»**·`direction`·`layer`·`status`·`since`.
+  하나라도 없으면 이름 붙은 거절이다. ⚠️ **`traversable`은 «키의 존재»까지 본다** — 없으면 「생각 안 했다」와 「걷기가 절대 안 가져온다(null)」가 같은 선언이 된다.
+- 🔴 **`traversable: true`는 오늘 «선택할 수 없다»** — 걷기의 재귀 질의는 통과 술어를 정확히 하나만 실행하고 그 자리엔 `derived_from`이 있다.
+  둘째를 저장하면 추적 화면이 다음 요청에 죽으므로, **읽는 날이 아니라 저장하는 날** 이름 붙여 거절한다.
+- 🔴 **삭제 경로가 «없다».** 원자가 이미 그 낱말로 누워 있으므로 `status: retired` + `superseded_by`만 있고, **은퇴는 읽기를 막지 않는다**(발화만 막는다).
 - 🔴 **이 문서는 낱말 목록도 그 «개수»도 옮겨 적지 않는다.** 옮겨 적는 순간 두 번째 목록이 되고, 그 둘은 갈라진다.
-  정본은 `PREDICATES`이고, 화면에 그려지는 것도 그 선언에서 **생성**된다(`GET /api/ledger/structure` — 손으로 적은 노드 목록이 응답 어디에도 없다).
+  정본은 코드의 `PREDICATES` + 선언 파일이고, 합쳐진 뷰는 `vocabulary.all_predicates()` 하나다.
+  화면에 그려지는 것도 그 선언에서 **생성**된다(`GET /api/ledger/structure` — 손으로 적은 노드 목록이 응답 어디에도 없고, 항목마다 `origin: code|config`가 붙는다).
 - **셋업에서 실제로 걸리는 지점은 하나다**: `ledger_config.json`의 `subject_types` 멤버는 **`ENTITY_TYPES`에 있는 이름이어야 한다.**
-  없는 이름을 적으면 **로드 시점에 거절**되고, 그 해결은 config 편집이 아니라 **어휘 등재**다.
-- ⏳ **[R-2026-08-15-M] 온톨로지 층은 «선언으로» 열리기로 판정됐고 아직 구현되지 않았다** — §9 ①. **오늘은 아래 절차가 유일한 경로다.**
-- **낱말·개체 타입을 더하는 절차**(3문 검사 → 판정 기록 → 예상된 빨강을 갚는 법)는 [LEDGER_GUIDE §3 ①](./LEDGER_GUIDE.md),
-  기준은 [CANONICAL_LEDGER_DESIGN §4.3](../architecture/CANONICAL_LEDGER_DESIGN.md), 판정은 [LEDGER_RULINGS](../process/LEDGER_RULINGS.md).
-- ⚠️ **낱말을 더해도 DDL은 0줄이다** — 그래서 **스키마 감시로는 영원히 안 잡힌다.** 집행 지점은 단위 테스트다.
-
-🔴 **완성 조건 미달 — §9 ①.**
+  없는 이름을 적으면 **로드 시점에 거절**되고, 그 해결은 config 편집이 아니라 **코드의 어휘 등재**다(개체 타입은 여전히 코드다).
+- **코드로 낱말·개체 타입을 더하는 절차**(3문 검사 → 판정 기록 → 예상된 빨강을 갚는 법)는 [LEDGER_GUIDE §3 ①](./LEDGER_GUIDE.md),
+  기준은 [CANONICAL_LEDGER_DESIGN §4.3](../architecture/CANONICAL_LEDGER_DESIGN.md), 판정은 [LEDGER_RULINGS R-2026-08-15-M](../process/LEDGER_RULINGS.md).
+- ⚠️ **낱말을 더해도 DDL은 0줄이다** — 그래서 **스키마 감시로는 영원히 안 잡힌다.** 집행 지점은 단위 테스트(`test_ledger_admin_setup.py`)다.
+- ⚠️ **선언 파일이 깨지면 «통째로» 무시하고 코드 집합으로 내려간다** — 절반만 실린 어휘는 프로세스마다 다른 낱말을 인정하기 때문이다.
+  그 강등은 조용하지 않다: `GET /admin/config/resolve?domain=ledger`가 사유와 함께 말한다.
 
 ---
 
@@ -326,20 +338,26 @@ conda run -n assy_manager python -m ledger.backfill --source dt_log      # trans
 > 완성 조건(소유자 상설): **다른 스키마의 운영 환경에서 코드 0줄, 선언 교체만으로 발화한다.**
 > 아래 셋은 오늘 그 조건을 못 만족한다. 이 문서가 그것을 숨기지 않는 것이 이 절의 전부다.
 
-**① 어휘가 «오늘» 코드다 — 그리고 이 자리는 이미 판정돼 열리는 중이다.**
-`vocabulary.py`에 config 채널이 **없어서**, 다른 스키마의 배포가 새 술어나 새 개체 타입을 필요로 하면 오늘은 **파이썬을 고쳐야 한다.**
-🔴 **[R-2026-08-15-M · 소유자 판정] 이 간극에 답이 나왔고, 답은 「전부 연다」가 아니라 «층으로 가른다»이다:**
+**① ✅ [2026-08-15 — 절반이 닫혔다] 어휘의 «온톨로지 층»은 이제 선언이다. 남은 절반은 개체 타입과 넷째 문법.**
+🔴 **[R-2026-08-15-M · 소유자 판정] 답은 「전부 연다」가 아니라 «층으로 가른다»였고, 그대로 착지했다:**
 
 | 층 | 판정 | 오늘 |
 |---|---|---|
-| **정준**(`register`·`pin`·`same_as`) | 🔴 **코드 + 판정. admin은 읽기 전용이고 화면에서 늘릴 수 없다** — 기록의 문법이 조용히 자라면 원장이 원장이 아니게 된다 | 코드 |
-| **온톨로지**(세계의 언어) | ✅ **선언으로 append-only 확장 허용** — 단 **서명이 완결돼야 저장된다**(`subject`·`object{kind, required}`·`traversable` 삼상태 «명시»·`direction`·`label_ko`·`layer`·`since`). 하나라도 비면 거절 | ⏳ **미구현** |
+| **정준**(`register`·`pin`·`same_as`) | 🔴 **코드 + 판정. admin은 읽기 전용이고 화면에서 늘릴 수 없다** — 기록의 문법이 조용히 자라면 원장이 원장이 아니게 된다 | ✅ 코드(화면에 문 없음이 테스트로 고정) |
+| **온톨로지**(세계의 언어) | ✅ **선언으로 append-only 확장 허용** — 단 **서명이 완결돼야 저장된다** | ✅ **착지**(`ledger_vocabulary.json` · §4) |
+| **개체 타입**(`ENTITY_TYPES`) | (판정 대상 아님) | 🔴 **여전히 코드** — 아래 ①-bis |
 
-- 🔴 **삭제는 판정에서도 금지다** — `status: retired` + `superseded_by`만 가능하다(원자가 이미 그 낱말로 누워 있다).
-- 🔴 **v0 고정 집합 테스트는 유지된다** — 못 박는 것은 «코드가 싣는 집합»이고, 선언 확장분은 별도 목록으로 합류하되
-  응답과 구조 뷰가 **출처(코드 / 선언)를 구분해 표시**한다. **「선언으로 늘었다」가 눈에 보여야 한다.**
-- ⏳ **이 표의 오른쪽 칸이 «미구현»인 동안 §4가 현행이다.** 착수 지시는 [process/ADMIN_SETUP_BRIEF](../process/ADMIN_SETUP_BRIEF.md),
-  판정 본문은 [LEDGER_RULINGS R-2026-08-15-M](../process/LEDGER_RULINGS.md). **판정을 기능으로 읽지 마라.**
+- 🔴 **삭제는 판정에서도 금지다** — `status: retired` + `superseded_by`만 가능하다(원자가 이미 그 낱말로 누워 있다). 라우트에 DELETE가 0개임을 테스트가 단언한다.
+- 🔴 **v0 고정 집합 테스트는 유지된다** — 못 박는 것은 «코드가 싣는 집합»(`PREDICATES`)이고, 선언 확장분은 합쳐진 뷰(`all_predicates()`)로 합류하며
+  응답과 구조 뷰가 **출처(`origin: code|config`)를 구분해 표시**한다. **「선언으로 늘었다」가 눈에 보인다.**
+
+**①-bis 남은 간극 둘.**
+- **개체 타입은 여전히 코드다.** 다른 스키마의 배포가 새 «주어»를 필요로 하면(예: `Cassette`) 파이썬을 고쳐야 한다.
+  술어와 달리 개체 타입은 **신원 키의 정의**라 서명 완결 검사로 안전해지지 않는다 — 열려면 자기 판정이 필요하다.
+- **넷째 문법 `derivation`(R-M ⑤)은 번역기가 없다.** 판정만 났고, `GET /admin/ledger/sources`가 그것을
+  `unsupported_kinds`에 **사유와 함께** 실어 화면이 「못 한다」가 아니라 「아직 안 왔다」로 읽히게 한다.
+  결과적으로 **오늘 선언으로 등재한 술어를 발화할 번역기가 없다** — `/admin/config/resolve?domain=ledger`가 그 낱말을
+  「효과없음: 발화하는 번역기 없음」으로 이름 대어 보고한다.
 
 **② 결함 종류는 절반만 열려 있다.** 종류의 **정의**는 `finding_kinds.json`으로 덮어쓸 수 있지만,
 **모집단·런의 «주소»는 코드 상수**다 — `PACKAGE_TABLE = "bonding_log"` · `PACKAGE_COLUMNS = ("base_id","bx","by")` · `RUN_TABLE = "inspection_run"`.

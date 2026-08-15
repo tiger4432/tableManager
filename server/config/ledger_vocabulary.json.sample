@@ -1,0 +1,51 @@
+{
+  "__doc": "Ontology-layer predicates declared by the OPERATOR (ruling R-2026-08-15-M). The canonical layer (register / pin / same_as) lives in server/ledger/vocabulary.py and is deliberately NOT extensible from here or from a screen: it is the grammar of the record, and a grammar that grows quietly stops being one. This file grows the second layer, design section 4.2, which the design already describes as append-only. ENTITY TYPES are not extensible from here either -- a new subject type is a change to what identity MEANS, not a new word about one.",
+
+  "__how": "Do not hand-edit if you can avoid it. The admin screen writes this file through POST /admin/ledger/save, which refuses an incomplete signature, refuses a name the code already owns, runs a zero-write dry run first, and leaves a timestamped .bak beside the file. A hand edit gets none of that, and this file is gitignored by design so a bad edit has no history to be recovered from. If you do edit it, POST /admin/reload-configs afterwards -- every process caches this file for the life of the process (a stat per atom would be ten million syscalls on a ten-million row backfill, so the cache is not optional and the reload hook is how it is dropped).",
+
+  "__no_fallback": "Unlike ledger_config.json, the loader does NOT fall back to this .sample. That is deliberate: a sample that loaded would put words nobody declared into the closed vocabulary of a fresh checkout. With no live file the ledger runs on the code-loaded set alone, which is exactly what it did before this file existed.",
+
+  "__on_failure": "If this file cannot be parsed, or any entry fails its signature check, the WHOLE file is ignored and the ledger degrades to the code-loaded set. Half a vocabulary would mean one process accepting a word another refuses. The degradation is never silent -- GET /admin/config/resolve?domain=ledger reports it with the parser's own message.",
+
+  "version": 1,
+
+  "predicates": {},
+
+  "__example_predicate": {
+    "scrapped": {
+      "__comment": "COPY THE SHAPE, NOT THIS ENTRY. Every field below is REQUIRED and the save refuses without it, because a signature the gate cannot check is a word the gate cannot check -- which is a write path with no gate.",
+
+      "label_ko": "폐기",
+      "__label_ko": "The screen's word for this predicate. Part of the declaration, not decoration: the structure view renders this vocabulary as a picture and its labels are Korean, so the label has to come from the same place the word does.",
+
+      "layer": "ontology",
+      "__layer": "Always 'ontology' here. 'canonical' is refused by name.",
+
+      "status": "active",
+      "__status": "active | reserved | retired. There is NO delete: atoms are already lying in the ledger under a registered word, so retirement (status + superseded_by) is the only way out. Retirement stops EMISSION and does not stop READING.",
+
+      "since": 5,
+      "__since": "Which slice this word arrived in. An integer >= 1.",
+
+      "subject": ["Wafer"],
+      "__subject": "The entity types this predicate may be ABOUT. Every member must be a declared entity type in server/ledger/vocabulary.py -- adding an entity TYPE is a vocabulary ruling, not a config edit.",
+
+      "object": {"kind": "value", "required": ["reason", "run_uid"]},
+      "__object": "kind is value | entity_ref | event_ref. A 'value' object MUST carry a non-empty `required` list, because that list is the ONLY enforcement point a value object has -- a value object with nothing required is a signature that checks nothing (ruling R-2026-08-13-D). An 'entity_ref' object carries `types` instead: the entity types it may point at.",
+
+      "qualifiers": [],
+      "__qualifiers": "Named parts of an entity_ref that are said ABOUT the pairing rather than being part of the object's identity (has_wafer's `slot`). Empty for a value object.",
+
+      "traversable": null,
+      "__traversable": "🔴 THREE STATES, AND THE CHOICE IS MANDATORY -- an absent key is refused rather than defaulted, because a defaulted walk semantics is a declaration nobody made. true = the lineage walk RECURSES through this edge. false = the walk REACHES it as an annotation of something it already got to, and never passes through. null = the walk does not fetch it AT ALL; it is read only by an explicitly scoped request. `observed` carries null deliberately -- a wafer holds tens of thousands of observations and a walk that dragged them along would die the day the defect translator first succeeded. NOTE: `true` is refused today. The walk's recursive query joins on one predicate value rather than a set, so it executes exactly one traversable word and `derived_from` holds that slot; a second one would take the trace screen down at the next request. The refusal happens on SAVE, naming the word that holds the slot.",
+
+      "direction": null,
+      "__direction": "subject_to_object | object_to_subject, and ONLY when traversable is true. A direction on an edge nobody walks binds nothing, so it is refused.",
+
+      "unit": null,
+      "semi_ref": null,
+      "superseded_by": null,
+      "__superseded_by": "The word that replaced this one, when status is retired."
+    }
+  }
+}

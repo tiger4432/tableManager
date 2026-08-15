@@ -841,6 +841,188 @@ def _resolve_binding() -> dict:
                         sources, [], effective, ineffective, rejected)
 
 
+# ---------------------------------------------------------------------------
+# ledger — 소스 선언과 어휘 확장 (판정 R-2026-08-15-M)
+# ---------------------------------------------------------------------------
+
+DOMAIN_LEDGER = "ledger"
+
+
+def _resolve_ledger() -> dict:
+    """원장의 선언 둘 — 소스(`ledger_config.json`)와 어휘 확장(`ledger_vocabulary.json`).
+
+    🔴 **두 번째 판정기를 만들지 않는다**(지시서 §1). admin의 저장 3단째가 묻는
+    「먹었는가」는 이 도메인 하나로 답한다. 새 조립기를 세우면 같은 사실이 두 화면에서 다른
+    문장으로 나오고, 그 순간 「사람이 읽을 문장은 서버가 만든다」는 계약이 깨진다.
+
+    두 파일을 한 도메인에 넣는 이유: 운영자가 하는 일이 하나이기 때문이다 — 「테이블을
+    원장에 이었다」. 소스는 섰는데 그 소스가 쓰려는 낱말이 안 실렸으면, 그건 두 도메인의
+    문제가 아니라 한 여정의 실패다.
+    """
+    from ledger import config as ledger_config
+    from ledger import vocabulary
+
+    sources_path = ledger_config.config_path()
+    vocab_path = vocabulary.extension_path()
+    effective, ineffective, rejected = [], [], []
+
+    # ---- 소스 선언
+    document, load_error = {}, None
+    read_path = sources_path
+    if not os.path.exists(read_path) and os.path.exists(read_path + ".sample"):
+        read_path = read_path + ".sample"
+    try:
+        with open(read_path, "r", encoding="utf-8") as handle:
+            document = json.load(handle)
+    except FileNotFoundError:
+        document = {}
+    except Exception as e:
+        load_error = f"{e.__class__.__name__}: {e}"
+
+    if load_error:
+        rejected.append(entry(
+            SCOPE_FILE, os.path.basename(sources_path),
+            f"소스 선언 파일을 읽지 못했습니다 ({load_error}). 이 파일이 안 읽히면 어떤 "
+            f"테이블도 원장으로 번역되지 않습니다.",
+            reason=REASON_MAPPING_UNAVAILABLE))
+    else:
+        declared_sources = (document.get("sources") or {})
+        for name, declaration in sorted(declared_sources.items()):
+            if str(name).startswith("__"):
+                continue
+            kind = (declaration or {}).get("kind", ledger_config.SOURCE_KIND_LINEAGE)
+            try:
+                ledger_config.validate({"sources": {name: declaration}},
+                                       origin=read_path)
+            except Exception as e:
+                rejected.append(entry(
+                    SCOPE_RULE, name,
+                    f"`{name}` 소스 선언이 검증을 통과하지 못했습니다 — {e}",
+                    reason=REASON_MAPPING_UNAVAILABLE,
+                    fields={"source": name, "kind": kind}))
+                continue
+            version = ledger_config.translator_version(
+                {"version": document.get("version", 1),
+                 "sources": {name: declaration}}, name)
+            effective.append(entry(
+                SCOPE_RULE, name,
+                f"`{name}`은 {kind} 문법으로 번역됩니다. 이 선언이 찍는 출처 문자열은 "
+                f"{version}이고, 원자마다 그 값이 실리므로 어느 규칙이 만든 주장인지 "
+                f"되짚을 수 있습니다.",
+                fields={"source": name, "kind": kind, "translator_ver": version,
+                        "subject_types": list(declaration.get("subject_types") or [])}))
+
+    # ---- 어휘 확장
+    status = vocabulary.extension_status()
+    if not status["exists"]:
+        ineffective.append(entry(
+            SCOPE_FILE, os.path.basename(vocab_path),
+            "어휘 확장 파일이 아직 없습니다 — 원장은 코드가 싣는 낱말"
+            f"({len(vocabulary.PREDICATES)}개)만 씁니다. 이것은 결함이 아니라 아직 "
+            "선언으로 늘린 낱말이 없다는 뜻입니다.",
+            reason=REASON_NOT_DECLARED))
+    elif not status["ok"]:
+        rejected.append(entry(
+            SCOPE_FILE, os.path.basename(vocab_path),
+            f"어휘 확장 파일을 읽지 못해 **통째로** 무시했습니다 ({status['error']}). "
+            f"게이트는 지금 코드가 싣는 낱말만 인정하므로, 선언으로 늘린 술어를 쓰는 "
+            f"원자는 전부 undeclared_vocabulary로 거절됩니다. 반쯤 읽는 대신 전부 "
+            f"무시하는 이유는, 절반만 실린 어휘가 프로세스마다 다른 낱말을 인정하게 "
+            f"만들기 때문입니다.",
+            reason=REASON_MAPPING_UNAVAILABLE))
+    else:
+        for name, sig in sorted(vocabulary.config_predicates().items()):
+            fields = {"predicate": name, "origin": "config",
+                      "status": sig.get("status"),
+                      "traversable": sig.get("traversable")}
+            if sig.get("status") != "active":
+                ineffective.append(entry(
+                    SCOPE_RULE, name,
+                    f"`{name}`은 선언됐지만 status가 '{sig.get('status')}'라 아직(또는 "
+                    f"더 이상) 발화될 수 없습니다. 읽기는 막지 않습니다 — 이미 이 낱말로 "
+                    f"누워 있는 원자는 그대로 읽힙니다.",
+                    reason=REASON_NOT_REACHED, fields=fields))
+                continue
+            in_walk = sig.get("traversable") is not None
+            effective.append(entry(
+                SCOPE_RULE, name,
+                f"`{name}`이 어휘에 실렸습니다(출처: 선언). 게이트가 이 서명으로 원자를 "
+                f"검사하고, 구조 뷰에 «선언 출처: config»로 뜹니다. 걷기: "
+                f"{'가져옴' if in_walk else '가져오지 않음(범위 지정 질의 전용)'}.",
+                fields=fields))
+        if status["count"]:
+            # 「낱말은 실렸는데 아무도 발화하지 않는다」 — 선언은 섰지만 여정이 안 끝난
+            # 상태. 조용히 두면 운영자는 술어를 등재해 놓고 원자가 안 생기는 이유를
+            # 어디서도 못 읽는다.
+            emitters = _ledger_emitted_predicates(document)
+            silent = sorted(name for name, sig in vocabulary.config_predicates().items()
+                            if sig.get("status") == "active" and name not in emitters)
+            if silent:
+                ineffective.append(entry(
+                    SCOPE_RULE, ", ".join(silent),
+                    f"선언된 술어 {', '.join(silent)}을(를) 발화하는 번역기가 없습니다 — "
+                    f"어휘에는 실렸고 게이트도 인정하지만, 어떤 소스 선언도 이 낱말로 "
+                    f"원자를 만들지 않으므로 원장에는 아직 한 건도 생기지 않습니다.",
+                    reason=REASON_NOT_DECLARED,
+                    fields={"predicates": silent}))
+
+    settings = [
+        setting("vocabulary.code_words", len(vocabulary.PREDICATES), ORIGIN_DEFAULT,
+                "server/ledger/vocabulary.py",
+                detail="코드가 싣는 낱말 수 — 판정으로만 늘어납니다."),
+        setting("vocabulary.config_words", status.get("count", 0),
+                ORIGIN_FILE if status["exists"] else ORIGIN_DEFAULT, vocab_path,
+                detail="선언으로 늘린 낱말 수."),
+        setting("batch.molecules_per_transaction",
+                int((document.get("batch") or {}).get("molecules_per_transaction", 200)),
+                ORIGIN_FILE if (document.get("batch") or {}).get(
+                    "molecules_per_transaction") else ORIGIN_DEFAULT,
+                sources_path,
+                detail="한 트랜잭션에 실리는 분자 수. 분자는 절대 쪼개지지 않습니다."),
+    ]
+    sources = [
+        source("ledger_config", sources_path,
+               "소스 → 원장 번역 선언(컬럼 매핑·시각 컬럼·주어 타입·워터마크).",
+               degraded=bool(load_error)),
+        source("ledger_vocabulary", vocab_path,
+               "ontology 층 술어의 선언 확장. canonical 층은 코드가 소유합니다.",
+               exists=status["exists"], degraded=not status["ok"]),
+    ]
+    return build_domain(DOMAIN_LEDGER, "원장 — 소스 선언과 어휘",
+                        sources, settings, effective, ineffective, rejected)
+
+
+def _ledger_emitted_predicates(document: dict) -> set:
+    """선언된 소스들이 «발화할 수 있는» 술어 집합.
+
+    번역기가 어느 낱말을 내는지는 코드의 사실이므로 여기서 유도한다 — 선언 파일에 「이
+    소스는 X를 낸다」는 칸이 없기 때문이다. 그 칸이 생기는 날(derivation 종류, R-M ⑤)
+    이 함수는 선언을 읽는 쪽으로 바뀐다.
+    """
+    from ledger import config as ledger_config
+
+    out = {"register"}
+    for name, declaration in (document.get("sources") or {}).items():
+        if str(name).startswith("__") or not isinstance(declaration, dict):
+            continue
+        kind = declaration.get("kind", ledger_config.SOURCE_KIND_LINEAGE)
+        if kind == ledger_config.SOURCE_KIND_OBSERVATION:
+            out.add(ledger_config.OBSERVATION_PREDICATE)
+        elif kind == ledger_config.SOURCE_KIND_TRANSFER:
+            out.add(ledger_config.TRANSFER_PREDICATE)
+        else:
+            for rule in (declaration.get("vocabulary") or {}).values():
+                if not isinstance(rule, dict):
+                    continue
+                if rule.get("lineage") == "parent_child":
+                    out.add("derived_from")
+                if rule.get("slot_pairing", "none") != "none":
+                    out.add("slot_map")
+                if rule.get("emit_has_wafer"):
+                    out.add("has_wafer")
+    return out
+
+
 # 도메인 등록기. 나머지 config는 여기에 한 줄씩 붙는다.
 # 🔴 새 도메인은 **뒤에** 붙인다 — contracts/config_resolve_report의 하네스가
 #    `resolve_report()["domains"][0]`로 enrichment를 집는다.
@@ -849,6 +1031,7 @@ _RESOLVERS = {
     DOMAIN_VIRTUAL_JOIN: _resolve_virtual_join,
     DOMAIN_NOTATION: _resolve_notation,
     DOMAIN_BINDING: _resolve_binding,
+    DOMAIN_LEDGER: _resolve_ledger,
 }
 
 
