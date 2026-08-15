@@ -303,6 +303,140 @@ def test_a_legal_identifier_passes():
     assert ledger_admin.check_identifier("base_wafer_id", "columns.wafer") == []
 
 
+# --------------------------- the source surface: declared tables, and raw editing
+def test_a_source_on_an_undeclared_table_is_refused_at_SAVE_not_only_hidden(monkeypatch):
+    """🔴 The picker rule needs an enforcement point or it is advice.
+
+    Owner, 2026-08-15: the table list is `table_config`'s declared set only. Hiding
+    undeclared tables from the picker would leave the rule advisory, because the RAW JSON
+    editor is a second door into the same save. The reason is addressing rather than
+    permission: a table the rest of the system does not declare has no key columns, no
+    ingestion and no chain, so atoms about its rows name something nothing else can point
+    at.
+    """
+    monkeypatch.setattr(ledger_admin, "declared_tables", lambda: ["void_obs"])
+    violations = ledger_admin.check_source_declaration(None, "some_other_table", {})
+    assert codes(violations) == ["undeclared_table"]
+    assert "table_config.json" in violations[0]["detail_ko"]
+
+
+def test_an_undeclared_table_is_NAMED_rather_than_silently_absent():
+    """An operator who types a table they can SEE in the database and gets an empty list
+    learns the screen is broken; one who gets a sentence learns what to do next. Same
+    refusal ladder as everywhere else — the refusal names the next action."""
+    import inspect
+
+    body = inspect.getsource(ledger_admin.relations_view)
+    assert "undeclared" in body
+    assert "테이블 미등록" in body, (
+        "the undeclared-table sentence changed - it is the operator's next action")
+
+
+def test_raw_json_that_does_not_parse_is_refused_WITH_A_POSITION():
+    """The three-step save is not relaxed for the raw path: no parse, no dry run, no save.
+    A raw editor's most common failure is a stray comma, and 「JSON이 잘못됐다」 with no
+    position sends the operator hunting through a 200-line blob."""
+    parsed, refusal = ledger_admin.parse_raw_declaration(
+        '{\n  "kind": "observation",\n  "oops": ,\n}')
+    assert parsed is None
+    assert refusal["code"] == "declaration_rejected"
+    assert "3행" in refusal["detail_ko"], refusal["detail_ko"]
+
+    parsed, refusal = ledger_admin.parse_raw_declaration('["not", "an", "object"]')
+    assert parsed is None and refusal["code"] == "declaration_rejected"
+
+    parsed, refusal = ledger_admin.parse_raw_declaration('{"kind": "observation"}')
+    assert parsed == {"kind": "observation"} and refusal is None
+
+
+def test_a_stale_base_is_refused_so_one_save_cannot_clobber_another(tmp_path):
+    """🔴 CONCURRENCY IS ITS OWN PROBLEM AND HAS ITS OWN ANSWER.
+
+    The strict admin token is AUTHENTICATION - it answers「are you allowed to write」and
+    says nothing about「is the thing you edited still the thing on disk」. The dry-run
+    token is a freshness check on the operator's OWN preview: two operators can each
+    dry-run their own edit and both tokens are valid. Config files are gitignored by
+    design, so a clobbered edit has no history to recover from.
+    """
+    path = str(tmp_path / "ledger_config.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"version": 1, "sources": {}}, handle)
+    base = ledger_admin.file_fingerprint(path)
+
+    assert ledger_admin.check_base(path, base) is None
+    assert ledger_admin.check_base(path, None) is None      # the form sends none
+
+    with open(path, "w", encoding="utf-8") as handle:       # somebody else saved
+        json.dump({"version": 1, "sources": {"theirs": {}}}, handle)
+    stale = ledger_admin.check_base(path, base)
+    assert stale is not None and stale["code"] == "stale_base"
+
+    # An absent file has a fingerprint of its own, so "created since you looked" is caught
+    # rather than reading as unchanged.
+    os.remove(path)
+    assert ledger_admin.file_fingerprint(path) == "sha256:absent"
+    assert ledger_admin.check_base(path, base)["code"] == "stale_base"
+
+
+# ------------------------- the declaration map as an edit surface (owner, 08-15)
+def test_every_declaration_row_says_whether_it_can_be_edited_and_by_what():
+    """🔴 The structure view became an admin screen, so a row a human can see and the code
+    cannot address is the last thing between the map and being its own edit surface.
+
+    The identity was already there — `config` names the file, `name` names the key. What
+    this asserts is the JUDGEMENT: most of these files have no save route yet, and a client
+    cannot tell「no route exists」from「I have not built the form」by looking at a row.
+    """
+    import ledger_structure
+
+    rows = [
+        {"group": "translator", "config": "ledger_config.json", "name": "void_obs",
+         "readable": True},
+        {"group": "translator", "config": "ledger_config.json", "name": "syn_world",
+         "readable": True, "declared": False},
+        {"group": "axis", "config": "siblings_axes.json", "name": "bond_eqp",
+         "readable": True},
+        {"group": "translator", "config": "ledger_config.json", "name": None,
+         "readable": False},
+    ]
+    handles = [ledger_structure._edit_handle(row) for row in rows]
+
+    assert handles[0] == {"editable": True, "target": "source", "name": "void_obs",
+                          "config": "ledger_config.json",
+                          "route": "/admin/ledger/save",
+                          "raw_route": "/admin/ledger/config/raw"}
+    # 🔴 A DERIVED row must NOT get a key that goes nowhere. `syn_world` is a source the
+    # ledger has atoms from and the config never declared - there is no config key to edit.
+    assert handles[1]["editable"] is False and handles[1]["reason"] == "derived"
+    assert "name" not in handles[1], "a derived row was handed an edit key"
+    assert handles[2]["editable"] is False and handles[2]["reason"] == "no_route"
+    assert handles[3]["editable"] is False and handles[3]["reason"] == "unreadable"
+    for handle in handles[1:]:
+        assert handle["detail_ko"], "a non-editable row must say WHY, not just refuse"
+
+
+def test_a_predicate_row_is_editable_only_when_an_operator_declared_it():
+    """The canonical layer has no door by ruling; a code-loaded ontology word is code."""
+    import ledger_structure
+
+    body = open(ledger_structure.__file__, encoding="utf-8").read()
+    assert '"retire_route": "/admin/ledger/vocabulary/retire"' in body, (
+        "the predicate row lost its retire route - retirement is the ONLY way a word "
+        "leaves circulation, so the screen needs it addressable")
+    assert '"reason": ("canonical" if' in body
+
+
+def test_the_class_1_key_is_rendered_on_the_declaration_map():
+    """A class-deciding key missing from the map is a declaration nothing SHOWS — the
+    sibling of a declaration nothing reads, and this repo has shipped several today."""
+    import ledger_structure
+
+    body = open(ledger_structure.__file__, encoding="utf-8").read()
+    assert "confirmed_derivations" in body, (
+        "`confirmed_derivations` decides class 1 but does not appear on the declaration "
+        "map, so an operator cannot see which declaration outranked which atom")
+
+
 # ------------------------------------------------- ⑥ the save cannot skip the dry run
 def test_the_token_binds_a_save_to_the_EXACT_declaration_that_was_previewed():
     """🔴 What makes「드라이런 없는 저장 버튼은 만들지 않는다」a server rule.

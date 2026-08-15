@@ -51,7 +51,8 @@ REFUSAL_CODES = (
     "undeclared_entity_type", "undeclared_object_kind", "duplicate_predicate",
     "canonical_layer_forbidden", "not_editable", "unsupported_kind",
     "declaration_rejected", "dry_run_stale", "retire_target_unknown", "invalid_value",
-    "traversable_true_unavailable", "duplicate_source",
+    "traversable_true_unavailable", "duplicate_source", "undeclared_table",
+    "stale_base",
 )
 
 #: PostgreSQL의 «따옴표 없는» 식별자. 소문자·숫자·밑줄만, 문자로 시작. 큰따옴표 식별자를
@@ -208,6 +209,21 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
         return [violation("declaration_rejected", None, "선언은 객체여야 합니다.",
                           "declaration must be an object")]
 
+    # ---- 🔴 FIRST: the source table must be one `table_config.json` declares (owner,
+    #      2026-08-15). Before the column checks, because it is the ROOT refusal — if the
+    #      table is not declared, every column complaint under it is noise pointing at the
+    #      wrong fix. And it is checked HERE rather than only in the picker because hiding
+    #      undeclared tables from a dropdown is advice: the raw JSON editor is a second
+    #      door into the same save.
+    if source not in declared_tables():
+        return [violation(
+            "undeclared_table", "source",
+            f"'{source}'은 `table_config.json`에 선언되지 않은 테이블입니다. 먼저 거기 "
+            f"선언하세요 — 선언되지 않은 테이블은 키 컬럼도 인제션도 체인도 없어서, "
+            f"원장에 이으면 시스템의 나머지가 지목할 수 없는 행에 대한 원자를 만들게 "
+            f"됩니다.",
+            f"{source!r} is not declared in table_config.json")]
+
     kind = declaration.get("kind", ledger_config.SOURCE_KIND_LINEAGE)
     if kind not in ledger_config.SOURCE_KINDS:
         return [violation(
@@ -313,6 +329,100 @@ def candidate_config(source: str, declaration: dict) -> dict:
             "__origin__": "<admin candidate>"}
 
 
+def file_fingerprint(path: str) -> str:
+    """The file's CONTENT hash — the base a save says it was editing.
+
+    🔴 WHY THIS EXISTS, AND WHY THE STRICT ADMIN TOKEN IS NOT IT. `POST /admin/scripts/code`
+    is gated by `require_admin_token_strict`, but that token is AUTHENTICATION — it answers
+    「are you allowed to write」and says nothing about 「is the thing you edited still the
+    thing on disk」. That path has no optimistic lock at all: two operators who open the
+    same file both write, and the second silently erases the first.
+
+    `declaration_token` is not it either — it binds a save to the declaration that was
+    DRY RUN, which is a freshness check on the operator's own preview. Two operators can
+    each dry-run their own edit and both tokens are valid.
+
+    So concurrency needs its own answer, and this is it: the raw editor reads the file with
+    its fingerprint, sends it back on save, and a mismatch is refused by name. Config files
+    are gitignored by design, so a clobbered edit has no history to be recovered from —
+    which is exactly why this cannot be left to「operators will coordinate」.
+    """
+    if not os.path.exists(path):
+        return "sha256:absent"
+    with open(path, "rb") as handle:
+        return "sha256:" + hashlib.sha256(handle.read()).hexdigest()
+
+
+def source_raw_view(source: str = None) -> dict:
+    """The raw JSON an operator edits, plus the base fingerprint the save will check.
+
+    🔴 PER SOURCE, NOT THE WHOLE FILE — the decision, and the reasoning is a clobber
+    surface: whole-file editing makes every save a rewrite of every OTHER source's
+    declaration, so two operators working on two unrelated tables collide by construction.
+    Per source, they collide only when they are genuinely editing the same thing, and then
+    the fingerprint catches it. It also composes with the path that already exists: the
+    form and the raw editor produce the SAME `{target, name, declaration}` save, so the
+    three-step discipline is one implementation rather than two that drift.
+
+    The whole file is still READABLE here (`document`) so the operator can see their edit
+    in context; it is simply not the unit of writing.
+    """
+    path = sources_path()
+    read_path = path
+    if not os.path.exists(read_path) and os.path.exists(read_path + ".sample"):
+        read_path = read_path + ".sample"
+    document, error = {}, None
+    try:
+        document = _read_json(read_path, {})
+    except Exception as exc:
+        error = f"{exc.__class__.__name__}: {exc}"
+    sources = (document.get("sources") or {}) if isinstance(document, dict) else {}
+    out = {
+        "config_path": path,
+        "read_path": read_path,
+        "base": file_fingerprint(read_path),
+        "sources": sorted(s for s in sources if not str(s).startswith("__")),
+        "error": error,
+        "editable_unit": "source",
+        "note_ko": "편집 단위는 «소스 하나»입니다. 파일 전체를 덮어쓰면 다른 사람이 방금 "
+                   "선언한 소스가 말없이 사라지기 때문입니다. 저장은 폼과 똑같이 3단"
+                   "(문법 검증 → 드라이런 → 저장)을 거칩니다.",
+    }
+    if source is not None:
+        out["source"] = source
+        out["declaration"] = sources.get(source)
+        out["raw"] = json.dumps(sources.get(source), ensure_ascii=False, indent=2)
+    return out
+
+
+def parse_raw_declaration(raw: str):
+    """Operator JSON -> a declaration, or a `declaration_rejected` violation naming the line.
+
+    A raw editor's most common failure is a trailing comma at 3am, and 「JSON이 잘못됐다」
+    without a position sends the operator hunting through a 200-line blob.
+    """
+    if isinstance(raw, dict):
+        return raw, None
+    try:
+        parsed = json.loads(raw)
+    except ValueError as exc:
+        line = getattr(exc, "lineno", None)
+        column = getattr(exc, "colno", None)
+        where = f" ({line}행 {column}열)" if line else ""
+        return None, violation(
+            "declaration_rejected", "raw",
+            f"JSON을 읽지 못했습니다{where}: {exc.msg if hasattr(exc, 'msg') else exc}. "
+            f"드라이런을 돌릴 수 없으니 저장도 하지 않습니다 — 파싱되지 않는 선언은 "
+            f"무엇을 낳을지 보여 줄 수가 없습니다.",
+            f"raw declaration is not valid JSON: {exc}")
+    if not isinstance(parsed, dict):
+        return None, violation(
+            "declaration_rejected", "raw",
+            "선언은 JSON 객체여야 합니다(배열이나 값이 아니라).",
+            "raw declaration must be a JSON object")
+    return parsed, None
+
+
 def declaration_token(target: str, name: str, declaration) -> str:
     """이 «정확한» 선언의 지문. 저장은 같은 지문의 드라이런을 요구한다(R-M ⑥).
 
@@ -382,6 +492,27 @@ def sources_path() -> str:
 def vocabulary_path() -> str:
     from ledger import vocabulary
     return vocabulary.extension_path()
+
+
+def check_base(path: str, base: str):
+    """A `stale_base` violation, or `None`. Skipped when the caller sent no base.
+
+    Not required, deliberately: the FORM path builds its declaration from a rendered view
+    and has no single file it claims to be based on, while the RAW path hands the operator
+    a blob and must. Requiring it everywhere would have made the form send a value it does
+    not mean, and a field that is sent because it is required is a field nobody checks.
+    """
+    if not base:
+        return None
+    current = file_fingerprint(path)
+    if base == current:
+        return None
+    return violation(
+        "stale_base", None,
+        "이 파일은 당신이 연 뒤에 바뀌었습니다 — 다른 사람이 먼저 저장했거나 파일이 직접 "
+        "편집됐습니다. 지금 저장하면 그 변경이 «말없이» 사라집니다(config 파일은 설계상 "
+        "git 이력이 없어 되돌릴 수 없습니다). 다시 읽어 편집 내용을 얹은 뒤 저장하세요.",
+        f"base fingerprint {base} does not match current {current}")
 
 
 def save_source(source: str, declaration: dict) -> dict:
@@ -599,30 +730,78 @@ def vocabulary_view() -> dict:
     }
 
 
+def declared_tables() -> list:
+    """`table_config.json`이 선언한 테이블 이름. 소스로 고를 수 있는 «전부»."""
+    from database import crud
+
+    return sorted(name for name in (crud.TABLE_CONFIG or {})
+                  if not str(name).startswith("__"))
+
+
 def relations_view(db, query: str = None, limit: int = 200) -> dict:
-    """실재하는 관계와 컬럼. 카탈로그만 읽으므로 행 수와 무관하게 싸다."""
+    """소스로 고를 수 있는 테이블과 그 컬럼 (소유자 지시 2026-08-15).
+
+    🔴 목록은 `table_config.json`이 선언한 것«만»이다 — DB에 있다고 다 쓸 수 있는 게
+    아니다. 이유는 권한이 아니라 **주소 지정**이다: table_config에 없는 테이블은 시스템의
+    나머지가 모르는 테이블이라 키 컬럼도, 인제션도, 체인도 없다. 그걸 원장에 이으면
+    **아무도 지목할 수 없는 행에 대한 원자**를 찍게 된다. 선언된 집합이 곧 시스템이
+    말할 수 있는 집합이다.
+
+    🔴 **그러나 나머지를 조용히 없애지 않는다.** 검색어가 실재하는 DB 테이블에 맞는데
+    미선언이면 그 사실을 이름과 함께 돌려준다. 자기가 DB에서 «보고 있는» 테이블 이름을
+    쳤는데 빈 목록이 오면 운영자는 「화면이 고장났다」를 배우고, 사유 문장이 오면
+    「다음에 뭘 해야 하는지」를 배운다. 이 저장소의 거절 사다리 그대로 — 거절은 다음
+    행동을 지목한다.
+
+    컬럼은 여전히 `information_schema`가 답한다. 「무슨 컬럼이 있나」는 카탈로그의 일이고,
+    table_config의 `column_types`는 인제션이 «쓰는» 컬럼이지 테이블에 «있는» 컬럼의
+    전수가 아니다 — 그걸로 컬럼 픽커를 만들면 실재하는 컬럼이 목록에서 빠진다.
+    """
     from sqlalchemy import text
 
     limit = max(1, min(int(limit or 200), 1000))
-    params = {"limit": limit}
-    where = "WHERE table_schema = current_schema()"
-    if query:
-        where += " AND table_name LIKE :q"
-        params["q"] = f"%{str(query).strip().lower()}%"
-    names = db.execute(text(
-        f"SELECT table_name FROM information_schema.tables {where} "
-        f"ORDER BY table_name LIMIT :limit"), params).fetchall()
-    wanted = [row[0] for row in names]
-    if not wanted:
-        return {"relations": [], "truncated": False}
-    rows = db.execute(text(
-        "SELECT table_name, column_name, data_type FROM information_schema.columns "
-        "WHERE table_schema = current_schema() AND table_name = ANY(:names) "
-        "ORDER BY table_name, ordinal_position"), {"names": wanted}).fetchall()
-    grouped = {name: [] for name in wanted}
-    for table, column, data_type in rows:
-        grouped[table].append({"name": column, "type": data_type})
+    needle = str(query or "").strip().lower()
+    declared = declared_tables()
+    matched = [name for name in declared if not needle or needle in name.lower()]
+    shown = matched[:limit]
+
+    grouped = {name: [] for name in shown}
+    missing = []
+    if shown:
+        rows = db.execute(text(
+            "SELECT table_name, column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = ANY(:names) "
+            "ORDER BY table_name, ordinal_position"), {"names": shown}).fetchall()
+        for table, column, data_type in rows:
+            grouped[table].append({"name": column, "type": data_type})
+        # 선언은 됐는데 물리 테이블이 아직 없는 경우도 이름을 준다. 폼이 그것을 고르면
+        # `unknown_relation`으로 거절되는데, 고르기 «전에» 말해 주는 편이 낫다.
+        missing = sorted(name for name in shown if not grouped[name])
+
+    # 🔴 미선언이지만 «실재하는» 테이블 — 이름과 다음 행동을 함께.
+    undeclared = []
+    if needle:
+        rows = db.execute(text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = current_schema() AND table_name LIKE :q "
+            "ORDER BY table_name LIMIT :limit"),
+            {"q": f"%{needle}%", "limit": limit}).fetchall()
+        declared_set = set(declared)
+        undeclared = [
+            {"name": row[0],
+             "detail_ko": f"테이블 미등록 — 먼저 `table_config.json`에 '{row[0]}'을 "
+                          f"선언하세요. 선언되지 않은 테이블은 키 컬럼도 인제션도 없어서, "
+                          f"원장에 이으면 시스템의 나머지가 지목할 수 없는 행에 대한 "
+                          f"원자를 만들게 됩니다."}
+            for row in rows if row[0] not in declared_set]
+
     return {
-        "relations": [{"name": name, "columns": grouped[name]} for name in wanted],
-        "truncated": len(wanted) >= limit,
+        "relations": [{"name": name, "columns": grouped[name],
+                       "declared": True, "exists": bool(grouped[name])}
+                      for name in shown],
+        "undeclared": undeclared,
+        "missing_relations": missing,
+        "declared_total": len(declared),
+        "source": "table_config.json",
+        "truncated": len(matched) > len(shown),
     }

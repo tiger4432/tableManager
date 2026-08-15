@@ -5657,6 +5657,25 @@ def get_ledger_sources():
     return ledger_admin.sources_view()
 
 
+@app.get("/admin/ledger/config/raw", dependencies=[Depends(require_admin_token)])
+def get_ledger_config_raw(source: str = None):
+    """`ledger_config.json` 원본 — 폼이 유일한 입구가 아니다(소유자 지시 2026-08-15).
+
+    🔴 **편집 단위는 «소스 하나»**이고 그 결정에는 이유가 있다: 파일 전체를 쓰기 단위로
+    삼으면 모든 저장이 «다른 소스 전부»의 재작성이라, 서로 다른 테이블을 만지는 두 사람이
+    구조적으로 충돌한다. 소스 단위면 진짜로 같은 것을 편집할 때만 충돌하고, 그때는
+    `base` 지문이 잡는다.
+
+    응답의 `base`는 파일 내용 해시이고, 저장 때 되돌려 보내면 그 사이 파일이 바뀐 경우
+    `stale_base`로 거절된다. ⚠️ **strict 관리자 토큰은 이 역할을 하지 않는다** —
+    그건 「쓸 수 있는가」(인증)를 답하지 「네가 연 것이 아직 디스크의 그것인가」를 답하지
+    않는다. `/admin/scripts/code`에는 그 보호가 «없고», config 파일은 설계상 git 이력이
+    없어 덮어쓰면 되돌릴 수 없다.
+    """
+    import ledger_admin
+    return ledger_admin.source_raw_view(source)
+
+
 @app.get("/admin/ledger/relations", dependencies=[Depends(require_admin_token)])
 def get_ledger_relations(q: str = None, limit: int = 200, db: Session = Depends(get_db)):
     """실재하는 관계와 컬럼. **카탈로그만 읽는다** — 비용이 테이블 행 수와 무관하다."""
@@ -5683,6 +5702,14 @@ def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)
         raise _ledger_admin_refusal([ledger_admin.violation(
             "declaration_rejected", "target",
             f"target은 {', '.join(ledger_admin.TARGETS)} 중 하나여야 합니다.")])
+
+    # 🔴 원본 JSON 편집도 «같은 문»으로 들어온다. 3단은 완화되지 않는다(소유자 지시):
+    # 손으로 고친 JSON 덩어리야말로 틀린 선언이 나오는 자리이고, 미리보기의 값이 가장 큰
+    # 경로다. 파싱조차 안 되면 그건 `declaration_rejected`이고 몇 행인지 말해 준다.
+    if declaration is None and payload.get("raw") is not None:
+        declaration, refusal = ledger_admin.parse_raw_declaration(payload["raw"])
+        if refusal is not None:
+            raise _ledger_admin_refusal([refusal])
 
     if target == ledger_admin.TARGET_PREDICATE:
         return _ledger_predicate_dry_run(name, declaration)
@@ -5797,6 +5824,20 @@ def post_ledger_save(payload: dict = Body(...), db: Session = Depends(get_db)):
         raise _ledger_admin_refusal([ledger_admin.violation(
             "declaration_rejected", "target",
             f"target은 {', '.join(ledger_admin.TARGETS)} 중 하나여야 합니다.")])
+
+    if declaration is None and payload.get("raw") is not None:
+        declaration, refusal = ledger_admin.parse_raw_declaration(payload["raw"])
+        if refusal is not None:
+            raise _ledger_admin_refusal([refusal])
+
+    # 🔴 동시 편집 가드. `base`를 보낸 경우에만 검사한다 — 원본 편집기는 자기가 연 파일을
+    # 지목할 수 있고 폼은 그럴 대상이 없다. 필수로 만들면 폼이 «뜻하지 않는 값»을 보내게
+    # 되고, 보내야 해서 보내는 필드는 아무도 검사하지 않는 필드가 된다.
+    stale = ledger_admin.check_base(
+        ledger_admin.sources_path() if target == ledger_admin.TARGET_SOURCE
+        else ledger_admin.vocabulary_path(), payload.get("base"))
+    if stale is not None:
+        raise _ledger_admin_refusal([stale])
 
     expected = ledger_admin.declaration_token(target, name, declaration)
     if token != expected:

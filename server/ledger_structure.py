@@ -624,6 +624,23 @@ def _vocabulary_panel(vocabulary, edges):
             "label": _label(sig, predicate),
             "layer": sig.get("layer"),
             "origin": sig.get("origin", "code"),   # ADDITIVE - see `declared_edges`
+            # ADDITIVE, and the same question the declaration rows now answer: is this row
+            # an edit surface? A predicate is addressable by its NAME, and editable only
+            # when an operator declared it — the canonical layer has no door by ruling, and
+            # a code-loaded ontology word is code.
+            "edit": ({"editable": True, "target": "predicate", "name": predicate,
+                      "route": "/admin/ledger/save",
+                      "retire_route": "/admin/ledger/vocabulary/retire"}
+                     if sig.get("origin") == "config" else
+                     {"editable": False,
+                      "reason": ("canonical" if sig.get("layer") == "canonical"
+                                 else "code"),
+                      "detail_ko": ("정준 층은 기록의 문법이라 화면에서 늘리거나 고칠 수 "
+                                    "없습니다 — 코드와 판정으로만 바뀝니다."
+                                    if sig.get("layer") == "canonical" else
+                                    "코드가 싣는 낱말입니다. 고치려면 "
+                                    "`server/ledger/vocabulary.py`와 어휘 고정 테스트를 "
+                                    "함께 바꿔야 합니다.")}),
             "status": sig.get("status"),
             "emittable": sig.get("status") == "active",
             "since": sig.get("since"),
@@ -801,6 +818,58 @@ def mechanism_layer(vocabulary):
 
 
 # ----------------------------------------------------------------- declaration map
+
+#: 🔴 WHICH DECLARATION ROWS ARE AN EDIT SURFACE, AND WHAT ADDRESSES THEM.
+#:
+#: The structure view moved into admin (owner, 2026-08-15) because it shows the state of
+#: what the ledger can SAY — not analysis, and not something Spotfire supplies. A map you
+#: can read and cannot edit is a map with no door, so every row now says whether it has
+#: one and what to knock on.
+#:
+#: The identity itself was already here: `config` names the file and `name` names the key
+#: within it (`id` is the two joined). What was missing is the JUDGEMENT — most of these
+#: files have no save route yet, and a client cannot tell「no route exists」from「I have
+#: not built the form」by looking at a row. So the row says it.
+#:
+#: ⚠️ Group membership is not enough on its own: `ledger_config` also emits DERIVED rows
+#: (a source the ledger has atoms from but the config never declared; a cursor row with no
+#: declaration). Those have no config key to edit, and giving them one would be a key that
+#: goes nowhere — the thing the owner explicitly asked not to fabricate.
+_EDIT_TARGETS = {"translator": ("source", "/admin/ledger/save")}
+
+
+def _edit_handle(item):
+    """The additive `edit` object for one declaration row. Never raises, never guesses."""
+    if not item.get("readable", True):
+        return {"editable": False, "reason": "unreadable",
+                "detail_ko": "이 선언 파일을 읽지 못해 편집 대상을 특정할 수 없습니다. "
+                             "파일을 고친 뒤 다시 여세요."}
+    # A DERIVED row: observed from the ledger or the cursor table, not read from a config
+    # key. `declared: False` is how the builders already mark them.
+    if item.get("declared") is False:
+        return {"editable": False, "reason": "derived",
+                "detail_ko": "이 행은 선언이 아니라 «원장에서 관측된 사실»입니다 — 편집할 "
+                             "config 키가 없습니다. 이것을 선언으로 만들려면 소스를 새로 "
+                             "등록하세요(그 테이블이 table_config.json에 있어야 합니다)."}
+    target = _EDIT_TARGETS.get(item.get("group"))
+    if target is None or not item.get("name"):
+        return {"editable": False, "reason": "no_route",
+                "detail_ko": f"`{item.get('config')}`은 아직 화면에서 편집할 수 없습니다 — "
+                             f"저장 경로가 없습니다. 파일을 직접 고치고 "
+                             f"`POST /admin/reload-configs`를 누르세요."}
+    kind, route = target
+    return {"editable": True, "target": kind, "name": item["name"],
+            "config": item.get("config"), "route": route,
+            "raw_route": "/admin/ledger/config/raw"}
+
+
+def _with_edit_handles(items):
+    """One spelling, applied to every builder's output — see `_edit_handle`."""
+    for item in items:
+        item["edit"] = _edit_handle(item)
+    return items
+
+
 def _origin(filename):
     """`(origin, path)` under this project's live/sample convention, asked the way every
     loader in the ledger asks it: the operator's file first, the shipped sample second."""
@@ -1005,6 +1074,15 @@ def _resolver_declarations(config, edges):
          sorted(e["id"] for e in edges.values()
                 if any(s["source_who"] in set(config["confirmed_sources"])
                        for s in e["sources"])), "source_who"),
+        # 🔴 The rung's FIRST use for anything but `frame_confirmed` (ruled 2026-08-15).
+        # It belongs on this panel for the reason the panel exists: this key is why 29
+        # `transferred` atoms outrank their unconfirmed siblings BY CLASS rather than by
+        # timestamp, and an operator can only see which declaration did that if the
+        # linkage is rendered. A class-deciding key missing from the declaration map is a
+        # declaration nothing shows — the sibling of a declaration nothing reads.
+        ("confirmed_derivations", "확정 유도 (등급 1)",
+         list(config.get("confirmed_derivations") or []),
+         by_derivation(config.get("confirmed_derivations") or []), "derivation"),
         ("inference_derivations", "추론 유도 (등급 3)",
          list(config["inference_derivations"]),
          by_derivation(config["inference_derivations"]), "derivation"),
@@ -1157,6 +1235,10 @@ def structure(connection, window=None, relation=LEDGER_RELATION,
     declarations.extend(_resolver_declarations(cfg, edges))
     declarations.extend(_kind_declarations(kinds_panel))
     declarations.extend(_mechanism_declarations(mechanism))
+    # ADDITIVE: every row says whether it is an edit surface and what addresses it. Applied
+    # HERE, once, over every builder's output — a per-builder copy would be five places for
+    # one rule and the sixth builder would be written without it.
+    _with_edit_handles(declarations)
 
     node_list = sorted(nodes.values(),
                        key=lambda n: (-(n["atoms_as_subject"] or 0), n["id"]))
