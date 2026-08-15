@@ -1103,10 +1103,14 @@
       pointer-events: none !important;
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-Bttxg9_T.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/config-BMD10Jt5.js">
-  <link rel="modulepreload" crossorigin href="/assets/effort_meter-7t3pOYBR.js">
-  <link rel="stylesheet" crossorigin href="/assets/config-DRplvttf.css">
+  <script type="module" crossorigin src="/assets/admin-CxrjHZwn.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
+  <link rel="modulepreload" crossorigin href="/assets/ontology_structure_view-oe81kcPZ.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-CXYS4egR.js">
+  <link rel="modulepreload" crossorigin href="/assets/effort_meter-BNln0JiC.js">
+  <link rel="stylesheet" crossorigin href="/assets/ontology_structure_view-xGvHhDSm.css">
+  <link rel="stylesheet" crossorigin href="/assets/config-ZCVo3oho.css">
+  <link rel="stylesheet" crossorigin href="/assets/admin-B9I9KcKS.css">
 </head>
 <body>
   <header>
@@ -1161,6 +1165,7 @@
           <button id="tab-chain-btn" class="tab-btn">Chain</button>
           <button id="tab-autoupdate-btn" class="tab-btn">Auto Update</button>
           <button id="tab-enrichment-btn" class="tab-btn">Enrichment</button>
+          <button id="tab-ledger-btn" class="tab-btn">원장 선언</button>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <span id="last-refreshed" style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);"></span>
@@ -1511,6 +1516,13 @@
             </div>
           </div>
         </div>
+
+        <!-- ═══ 원장 선언 탭: 구조 맵이 그대로 온다 ═══
+             새 화면이 아니라 `ledger.html?view=structure`의 지도를 admin이 호스트하는 것이다.
+             리더(`ontology_structure_*.js`)는 한 줄도 안 바뀌었고, 바뀐 것은 구동기와
+             주소 체계다 — 지도의 앵커는 `?view=structure&layer=&edge=`로 남고
+             admin의 라우터가 그것을 배운다. -->
+        <div id="ledger-tab-wrapper" style="flex: 1; overflow: auto; display: none;"></div>
       </div>
 
       <!-- Left Panel Footer: Pagination Controls (File 로그 / Chain 실패 목록 전용) -->
@@ -1606,6 +1618,6 @@
 
   <div class="toast-container" id="toast-container"></div>
 
-  <!-- Load script directly -->
+  <!-- Load script directly -->
 </body>
 </html>

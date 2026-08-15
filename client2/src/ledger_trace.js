@@ -56,6 +56,10 @@ import { renderLotReference } from './lot_reference_view.js';
 import {
   STRUCTURE_VIEW, parseStructureQuery, structureModel,
 } from './ontology_structure_core.js';
+// The structure view's stylesheet moved out of `ledger.html` when admin became a second
+// host. Imported here rather than by the view itself, which must stay node-importable
+// for its harness.
+import './ontology_structure.css';
 import { renderStructure } from './ontology_structure_view.js';
 // The FOURTH question, and the one the owner calls 놀라움 장치 (화면 ①,
 // SCENARIO_CONSOLE_BRIEF §0-ter): "무엇을 볼지 고르기 전에 이상한 게 눈에 들어와야

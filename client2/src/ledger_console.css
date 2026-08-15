@@ -258,32 +258,11 @@ body:has(.lt-app-header) .os-panel:has(.os-decl) .os-panel__head {
   padding: 18px 20px 10px;
 }
 
-/* ── 다섯째 엣지 상태 `declared_unconsumed` — 「선언만 · 소비자 없음」 ──
-   지금까지 이 상태만 규칙이 없어 민짜 기본 배지로 떨어졌다. 「선언됐는데 아무도
-   안 읽는다」는 뜻이라 «평범해 보이면 안 되는» 바로 그 상태다.
+/* ⓘ `declared_unconsumed` 배지·범례 규칙은 `ontology_structure.css`로 이사했다 —
+   그건 페이지 기하가 아니라 «이 지도의 의미»(무늬=근거, 색=상태)라 화면을 따라간다.
+   여기 남은 위 스크롤 규칙은 반대다: `100vh - 200px`는 콘솔 헤더 높이를 전제하는
+   이 «페이지»의 성질이므로 따라가지 않고, admin 패널은 자기 담기를 자기가 정한다. */
 
-   무늬 = 근거, 색 = 상태 (이 화면의 기존 직교 규칙 그대로).
-   · 근거는 «선언만» → 채우지 않고 파선 테두리 (flowing 의 채운 배지와 구별).
-     파선/점선 배분은 지시대로 건드리지 않았다 — 기존 뜻을 그대로 둔다.
-   · 색은 `--accent-2`. 눈이 아니라 재서 골랐다. 후보 --info 와 --accent-2 를
-     구별해야 할 세 색(flowing=--accent · undeclared=--warning ·
-     declared_only/unmeasured=--text-muted)에 대해 CIE-Lab ΔE 최솟값:
-       --info      light 21.8 / dark 17.4  ← dark 에서 --accent 와 17.4 로 붙는다
-       --accent-2  light 50.4 / dark 41.7
-     --info 는 다크에서 flowing 과 혼동될 거리다. 이 배지가 절대 하면 안 되는
-     혼동이 그거라 --accent-2 를 쓴다. 두 테마 모두에서 안전하다. */
-body:has(.lt-app-header) .os-badge--declared_unconsumed {
-  background: transparent;
-  color: var(--accent-2);
-  border: 1.5px dashed var(--accent-2);
-}
-
-/* 범례는 스와치가 아니라 «항목»에 상태 클래스가 붙는다 —
-   `os-legend__item os-legend__item--<state>` (renderLegend 가 그렇게 쓴다).
-   그래서 선택자가 `.os-legend__swatch--*` 가 아니다. */
-body:has(.lt-app-header) .os-legend__item--declared_unconsumed .os-legend__swatch {
-  border-top: 3px dashed var(--accent-2);
-}
 
 /* ── ④ 랏 참조뷰(#lt-lot) — 혈통 · 순위표 · 이력을 «나란히» ──
    1400px 위에서만 편다. 그 아래는 오늘처럼 세로로 쌓인다(회귀 없음).

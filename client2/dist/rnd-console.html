@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>R&amp;D Investigation Console</title>
+  <script type="module" crossorigin src="/assets/rnd_console-BvoPuKUM.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
+  <link rel="stylesheet" crossorigin href="/assets/rnd_console-CVT6D19g.css">
+</head>
+<body>
+  <main class="rnd-console">
+    <header class="rnd-shell-head">
+      <div>
+        <p class="rnd-eyebrow">R&amp;D WORKSPACE</p>
+        <h1>Investigation Console</h1>
+        <p>차이 → 근거 → 다음 확인</p>
+      </div>
+      <div class="rnd-shell-status" data-rnd-status role="status">연결 확인</div>
+    </header>
+
+    <section class="rnd-controls" aria-label="조사 범위">
+      <label>
+        <span>기간</span>
+        <select data-rnd-window>
+          <option value="30d">최근 30일</option>
+          <option value="90d" selected>최근 90일</option>
+          <option value="180d">최근 180일</option>
+          <option value="365d">최근 365일</option>
+        </select>
+      </label>
+      <button type="button" data-rnd-apply>조회</button>
+      <details class="rnd-kind-config" open>
+        <summary>Trend Config</summary>
+        <div data-rnd-kind-options></div>
+      </details>
+      <section class="rnd-selection-context" aria-label="Selection Context">
+        <h2>Selection Context</h2>
+        <button type="button" data-rnd-group="A">A 불량</button>
+        <button type="button" data-rnd-group="B">B 정상</button>
+        <div data-rnd-context>선택 없음</div>
+        <button type="button" data-rnd-clear>해제</button>
+      </section>
+    </section>
+
+    <div class="rnd-banner" data-rnd-banner hidden></div>
+    <section data-rnd-trend aria-label="Trend Workbench"></section>
+    <section data-rnd-investigation aria-label="R&amp;D Investigation"></section>
+  </main>
+</body>
+</html>

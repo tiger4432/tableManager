@@ -118,12 +118,24 @@ export const MAP_REFUSAL = {
   // R-2026-08-14-D. This sentence stands in the core axis's own place; it is content.
   no_live_bridge: '연결 없음 — 좌표 컬럼이 이 행에서 전부 NULL입니다 (0이 아니라 부재)',
   no_registered_frame: '프레임 미등록 — 등록된 격자 없이는 그리지 않습니다',
-  // 🔴 THE SENTENCE NO LONGER ASKS FOR A SLOT. The refusal is still the server's and
-  // still FACTUAL — several frames matched and they cannot share one canvas — but the
-  // remedy changed: the strip below renders each matched frame as its own map. Asking
-  // the reader to pick was never sufficient anyway (MEASURED: `slot=01` resolves the
-  // bonding axis and leaves DT and core ambiguous on the very same response).
-  frame_ambiguous_across_slots: '이 행이 프레임 여러 개에 걸쳐 있습니다 — 아래에 한 장씩 폅니다',
+  // 🔴 A PROMISE AND A DEMAND STOOD HERE, AND BOTH WERE WRONG.
+  //
+  // The client's line promised 「아래에 한 장씩 폅니다」 and drew nothing; the server's
+  // `message` under the same token demanded 「slot을 지정할 것」, which is the machine asking
+  // the reader to do its work. The server lane then MEASURED the demand's own premise —
+  // 「슬롯마다 격자 치수가 다르므로」 — and it is false: the 25 DT frames a wafer touches are
+  // all 15x10. What is genuinely unsafe is SUPERPOSITION (position (3,4) is a sum over 25
+  // tapes), not a lattice mismatch, and superposition is a fact to STATE, not a reason to
+  // refuse. So the frame block now carries the agreed lattice and this panel DRAWS.
+  //
+  // The tokens below are what is left when drawing is genuinely impossible, and each one
+  // names the missing thing rather than an action for the reader. They are DERIVED from the
+  // counts on the frame block (`frames_considered` / `frames_matched` / `grid`), so one code
+  // path decides for bond, DT and core alike — no axis name is ever tested.
+  frame_ambiguous_across_slots: '이 행이 프레임 여러 개에 걸쳐 있습니다',
+  frame_unkeyed: '프레임 키 미기록 — 좌표는 있으나 어느 프레임의 좌표인지 알 수 없습니다',
+  frames_unregistered: '겹치는 프레임이 전부 미등록 — 올릴 등록 격자가 없습니다',
+  grid_disagrees: '겹치는 프레임의 격자 선언 불일치 — 한 장에 겹쳐 그리면 좌표가 어긋납니다',
   unreachable: '연결 없음 — 이 축을 이을 살아있는 다리가 없습니다',
   frame_unusable: '프레임 선언이 좌표를 세우기에 부족합니다',
   origin_box_unknown: '오리진 박스 미상 — 물리 규격(phys_*) 선언이 없습니다',
@@ -229,24 +241,58 @@ export function referenceKey(ref) {
   return `${table}|${mapId}`;
 }
 
+//: 🔴 `cells[]` IS NO LONGER THE FOUND SET, AND A CONSUMER THAT MISSES THAT DRAWS FIVE TIMES
+//: TOO MANY FINDINGS. The route now emits EVERY present position tagged with a state
+//: (`server/ledger_lots.py::MAP_CELL_*`); measured on `SYN-BW-101-07` the bond axis went from
+//: 26 cells to 141 — found 26, scanned 3, unscanned 112. `n` is unchanged (0 off `found`).
+//:
+//: The three states are the owner's three layers, minus the mask which comes from elsewhere:
+//:   found      inspected, something was found            -> the top layer, 보이드 위치
+//:   scanned    inspected, nothing found                  -> counted, drawn as 사용
+//:   unscanned  present in the record, never inspected     -> counted, drawn as 사용
+//: 「미검사」 and 「0」 are different answers, so the two are never summed into one number.
+export const MAP_CELL_FOUND = 'found';
+export const MAP_CELL_SCANNED = 'scanned';
+export const MAP_CELL_UNSCANNED = 'unscanned';
+const CELL_STATES = [MAP_CELL_FOUND, MAP_CELL_SCANNED, MAP_CELL_UNSCANNED];
+
 /**
- * Cells as `{x, y, key}` — the shape `computeSeating` consumes.
+ * Cells as `{x, y, state, key}` — the shape `computeSeating` consumes, plus the state.
  *
  * 🔴 A CELL WITH A NON-INTEGER COORDINATE IS DROPPED AND COUNTED, not coerced.
  * `Number('')` is 0, and a coordinate silently becoming (0,0) puts a defect at
  * the origin of a wafer it was never on.
+ *
+ * 🔴 AN UNTAGGED CELL IS A FINDING, WHICH IS THE OLD WIRE READ EXACTLY AS IT MEANT. Before
+ * the middle layer landed, `cells[]` WAS the found set — so treating a missing `state` as
+ * `found` reproduces the previous picture rather than inventing a third answer. `tagged`
+ * says which wire answered, so the caller never prints a 검사/미검사 split it did not get.
  */
 export function toCells(raw) {
   const cells = [];
   let dropped = 0;
+  let tagged = 0;
   for (const c of listOf(raw)) {
     const x = intOrNull(c && c.x);
     const y = intOrNull(c && c.y);
     if (x === null || y === null) { dropped += 1; continue; }
     const n = intOrNull(c && c.n);
-    cells.push({ x, y, n, key: `${x},${y}` });
+    const raws = strOrEmpty(c && c.state);
+    const state = CELL_STATES.includes(raws) ? raws : '';
+    if (state) tagged += 1;
+    cells.push({ x, y, n, state, key: `${x},${y}` });
   }
-  return { cells, dropped };
+  return { cells, dropped, tagged: tagged > 0 };
+}
+
+/** The findings among present positions — untagged cells ARE findings (see `toCells`). */
+export function foundCells(cells) {
+  return listOf(cells).filter((c) => !c.state || c.state === MAP_CELL_FOUND);
+}
+
+/** Positions this projection actually inspected. Never merged with 미검사. */
+export function scannedCells(cells) {
+  return listOf(cells).filter((c) => c.state === MAP_CELL_FOUND || c.state === MAP_CELL_SCANNED);
 }
 
 /**
@@ -310,7 +356,22 @@ function refuse(axis, code, detail) {
     mapId: '',
     availableSlots: [],
     availableLots: [],
-    counts: { floor: 0, marked: 0, found: null, scanned: null, offFloor: 0, dropped: 0 },
+    // 🔴 SUPERPOSITION IS A PROPERTY OF EVERY PANEL, NOT A SPECIAL CASE OF ONE AXIS. A single
+    // registered frame is `superposed: false, framesMatched: 1` — the same three numbers, the
+    // same rendering path. Nothing downstream tests the axis name to decide what to say.
+    superposed: false,
+    framesConsidered: null,
+    framesMatched: null,
+    gridPartial: false,
+    gridMessage: '',
+    // 🔴 POSITION COUNTS, NOT ROW COUNTS, AND THE TWO NEVER SHARE A NAME. `rowsFound` /
+    // `rowsScanned` are the projection's own row totals (one wafer's die can be recorded
+    // more than once); `present` / `inspected` / `marked` count DISTINCT POSITIONS, which is
+    // what the picture draws. This file had one number computed two ways once already.
+    counts: {
+      floor: 0, present: 0, inspected: 0, marked: 0, offFloor: 0, dropped: 0,
+      rowsFound: null, rowsScanned: null, tagged: false,
+    },
   };
 }
 
@@ -337,59 +398,91 @@ export function frameSpanOf(panel) {
  * reference -> nothing; both -> the REAL wafer, with the defect overlay if it
  * came and a stated gap if it did not.
  */
+/**
+ * 🔴 WHY A LATTICE-LESS PANEL COULD NOT BE DRAWN — DERIVED FROM THE COUNTS, NOT FROM PROSE.
+ *
+ * The server sends one token (`frame_ambiguous_across_slots`) for three different facts, and
+ * its `message` for the middle one is a demand whose stated premise the server lane has since
+ * measured to be FALSE. So the reason is recomputed here from numbers the response carries:
+ *
+ *   frames_considered === 0        the axis records no frame key at all -> `frame_unkeyed`
+ *   frames_matched === 0           they are all unregistered            -> `frames_unregistered`
+ *   matched > 0 and no `grid`      their declarations differ            -> `grid_disagrees`
+ *
+ * Numbers, not axis names — so the same three sentences serve bond, DT and core.
+ */
+export function ambiguityCode(fr) {
+  const considered = intOrNull(fr && fr.frames_considered);
+  const matched = intOrNull(fr && fr.frames_matched);
+  const slots = listOf(fr && fr.available_slots).length;
+  const lots = listOf(fr && fr.available_lots).length;
+  if (considered === 0 || (considered === null && !slots && !lots)) return 'frame_unkeyed';
+  if (matched === 0) return 'frames_unregistered';
+  if (matched === null) return 'frame_ambiguous_across_slots';
+  return 'grid_disagrees';
+}
+
 export function axisPanel(axis, floors) {
   if (!axis) return refuse(axis, 'no_axes');
 
   const state = strOrEmpty(axis.state);
   const reason = strOrEmpty(axis.reason);
   const cellSet = toCells(axis.cells);
+  const fr = axis.frame || {};
+  // 🔴 THE GATE IS THE LATTICE, NOT THE PROJECTION'S `state`. A projection can be `no_frame`
+  // — it refuses to pick ONE of the frames the row spans — and still carry what all of them
+  // agree on (`frame.grid`, `frame.valid_die_ref`). That agreement is a registered
+  // declaration, read and never invented, so it is drawable. Reading `state === 'ready'`
+  // instead is what made DT and core promise a sheet and then show nothing.
+  //
+  // `unreachable` falls out of this on its own: there are no coordinates, so the server sends
+  // no frame, so there is no lattice and nothing is drawn.
+  const meta = gridMetaOf(fr.grid);
 
-  // 🔴 THE SERVER'S REFUSAL IS RENDERED AS THE SERVER WROTE IT, in its own place.
-  // An axis it cannot reach keeps its heading and its row position — the core
-  // axis reads 「연결 없음」 beside two drawn wafers instead of leaving a
-  // two-axis row that quietly implies there were only ever two.
-  if (state !== 'ready') {
-    const panel = refuse(axis, MAP_REFUSAL[reason] ? reason : (state || 'unreachable'),
-      strOrEmpty(axis.message));
-    panel.unreachable = state === 'unreachable';
-    // 🔴 THE SLOT LIST COMES OFF THE REFUSAL. `frame_ambiguous_across_slots`
-    // answers WHICH slots exist, so the strip is read rather than assembled a
-    // second time from a shape this client would have to guess.
-    const fr = axis.frame || {};
-    panel.availableSlots = listOf(fr.available_slots).map(strOrEmpty).filter(Boolean);
-    // 🔴 AND THE LOT LIST WITH IT. The frame key is `{lot}_{slot}` — reading only the
-    // slots and calling that «the frames» is the same flattening the server refused,
-    // one layer up: MEASURED, a core axis answers 2 lots × 25 slots, and a strip built
-    // from the slots alone would put two wafers' frames under one heading.
-    panel.availableLots = listOf(fr.available_lots).map(strOrEmpty).filter(Boolean);
-    // The server sets `wafer` on the REFUSED frame too, when the rows it refused over
-    // still counted to exactly one bonded base wafer. Absent stays absent — the field is
-    // omitted, never `null`, so an empty string here means «not served», not «unnamed».
+  // Whatever happens next, the frame's identity survives it. Refusing to draw is not a reason
+  // to forget whose wafer this is, nor which frames were involved.
+  const carry = (panel) => {
     panel.wafer = strOrEmpty(fr.wafer);
     panel.mapId = strOrEmpty(fr.map_id);
-    // The STORED cells ride along on the panel. The aggregate sheet overlays these raw
-    // (see `overlayOf`) and must never reach for the seated copy.
+    // 🔴 THE SLOT AND LOT LISTS COME OFF THE WIRE. The frame key is `{lot}_{slot}`; reading
+    // only the slots and calling that «the frames» is the flattening the server refused one
+    // layer up — a core axis answers 2 lots and 25 slots, and the PAIRS are not on the wire.
+    panel.availableSlots = listOf(fr.available_slots).map(strOrEmpty).filter(Boolean);
+    panel.availableLots = listOf(fr.available_lots).map(strOrEmpty).filter(Boolean);
+    panel.superposed = !!fr.superposed;
+    panel.framesConsidered = intOrNull(fr.frames_considered);
+    panel.framesMatched = intOrNull(fr.frames_matched);
+    panel.gridPartial = !!fr.grid_partial;
+    panel.gridMessage = strOrEmpty(fr.grid_message);
+    // The STORED cells ride along. The aggregate sheet overlays these raw (see `overlayOf`)
+    // and must never reach for the seated copy.
     panel.cells = cellSet.cells;
-    // Cells can be served without a frame; they are counted, never drawn.
-    panel.counts.marked = cellSet.cells.length;
-    panel.counts.found = intOrNull(axis.found);
-    panel.counts.scanned = intOrNull(axis.scanned);
+    panel.counts.present = cellSet.cells.length;
+    panel.counts.inspected = scannedCells(cellSet.cells).length;
+    panel.counts.marked = foundCells(cellSet.cells).length;
+    panel.counts.dropped = cellSet.dropped;
+    panel.counts.tagged = cellSet.tagged;
+    panel.counts.rowsFound = intOrNull(axis.found);
+    panel.counts.rowsScanned = intOrNull(axis.scanned);
+    return panel;
+  };
+
+  if (!meta) {
+    // 🔴 THE SERVER'S SENTENCE IS PRINTED EXCEPT WHERE IT DEMANDS AN ACTION. Under the
+    // ambiguity token its `message` reads 「slot을 지정할 것」 on a premise the server lane
+    // measured false; a refusal on this screen explains itself and names what is missing, it
+    // never asks the reader to do the machine's work. Every other refusal is the server's own
+    // and factual, so it is carried through untouched.
+    const ambiguous = reason === 'frame_ambiguous_across_slots';
+    const code = ambiguous
+      ? ambiguityCode(fr)
+      : (MAP_REFUSAL[reason] ? reason : (state || 'unreachable'));
+    const panel = carry(refuse(axis, code, ambiguous ? '' : strOrEmpty(axis.message)));
+    panel.unreachable = state === 'unreachable';
     return panel;
   }
 
-  // ── the frame: the REGISTERED declaration, read, never invented ──
-  const fr = axis.frame || {};
-  // Every refusal from here down is about a frame the server NAMED, so each one carries
-  // that name and its wafer out with it. Refusing to draw is not a reason to forget who
-  // was refused — the entry still has to say which frame it is standing for.
-  const named = (code, detail) => {
-    const panel = refuse(axis, code, detail);
-    panel.mapId = strOrEmpty(fr.map_id);
-    panel.wafer = strOrEmpty(fr.wafer);
-    return panel;
-  };
-  const meta = gridMetaOf(fr.grid);
-  if (!meta) return named('no_registered_frame', strOrEmpty(fr.map_id));
+  const named = (code, detail) => carry(refuse(axis, code, detail));
   const declared = frameFromDeclaration(meta, { defaults: FRAME_DEFAULTS });
   const usable = isFrameUsable(declared);
   if (!usable.ok) return named('frame_unusable', '사유 ' + usable.reasons.join(', '));

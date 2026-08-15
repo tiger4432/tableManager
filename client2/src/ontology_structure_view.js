@@ -26,9 +26,19 @@
 // horizontally inside its own box rather than scaling the type down.
 // ============================================================
 
+// 🔴 THIS MODULE DOES NOT IMPORT ITS OWN STYLESHEET, AND THAT IS DELIBERATE.
+//   The obvious move when the `os-*` rules left `ledger.html` was `import './ontology_structure.css'`
+//   right here, so both hosts got it through the module graph. It was tried and reverted: this
+//   file is imported by `tests/ontology_structure_harness.mjs` in BARE NODE, which has no CSS
+//   loader, so the import turned the whole harness into ERR_UNKNOWN_FILE_EXTENSION. Being
+//   importable outside a bundler is not an accident of this module — it is the property that
+//   lets the harness drive the real renderer instead of a copy of it.
+//   The stylesheet is therefore imported by the HOSTS (`ledger_map_panel.js` for admin,
+//   `ledger_trace.js` for the console), which is one more place to remember and the right
+//   trade: a forgotten import is an unstyled screen, a broken harness is a blind one.
 import {
   structureQuery, classLabel, objectKindLabel, layerLabel,
-  instantText, LAYOUT,
+  instantText, LAYOUT, curvePath, curvePointAt,
 } from './ontology_structure_core.js';
 import { countText } from './case_control_view.js';
 
@@ -174,10 +184,9 @@ function renderGrades(doc, grades, atoms) {
 
 // ── the graph ────────────────────────────────────────────────
 
-function bezier(a) {
-  const dx = Math.max(40, (a.x2 - a.x1) * 0.55);
-  return `M ${a.x1} ${a.y1} C ${a.x1 + dx} ${a.y1}, ${a.x2 - dx} ${a.y2}, ${a.x2} ${a.y2}`;
-}
+// The curve spelling lives in the core now (`curvePath`), beside the function that finds a
+// point ON it for badge placement. Two spellings of one curve is how a label ends up sitting
+// where the line is not.
 
 function nodeBox(doc, parent, node, className, lines) {
   const g = svg(doc, 'g', className);
@@ -241,13 +250,13 @@ function renderGraph(doc, model) {
 
     if (e.tail) {
       const tail = svg(doc, 'path', 'os-edge__tail');
-      attrs(tail, { d: bezier(e.tail), fill: 'none' });
+      attrs(tail, { d: curvePath(e.tail), fill: 'none' });
       a.appendChild(tail);
     }
     if (e.lead) {
       const lead = svg(doc, 'path', 'os-edge__lead');
       attrs(lead, {
-        d: bezier(e.lead), fill: 'none',
+        d: curvePath(e.lead), fill: 'none',
         // 🔴 A DECLARED-ONLY EDGE IS NOT THINNER. It is dashed and it is 2.4 —
         // heavier than the thinnest flowing edge, so "no data" can never be
         // mistaken for "a little data".
@@ -256,19 +265,34 @@ function renderGraph(doc, model) {
       a.appendChild(lead);
       // The count rides the segment that carries it. Language-neutral numerals —
       // the Korean is on the nodes, where there is room for it.
-      const cx = (e.lead.x1 + e.lead.x2) / 2;
-      const cy = (e.lead.y1 + e.lead.y2) / 2;
+      //
+      // 🔴 THE POSITION IS THE MODEL'S, NOT A FRACTION OF THIS CURVE. Badges are placed by a
+      // pass that keeps them off each other (`spreadBadges`); computing a midpoint here would
+      // put a dozen of them back on the same pixel. When the model has no position — no lead
+      // segment — there is no badge rather than a guessed one.
       // `0` is a MEASUREMENT and prints as one. `?` is the absence of one. The
       // screen would be lying if it printed either in place of the other.
       const text = e.atoms === null ? '?' : countText(e.atoms);
-      const w = 18 + (text.length * 8.5);
-      const chip = svg(doc, 'rect', 'os-edge__chipbox');
-      attrs(chip, { x: cx - (w / 2), y: cy - 13, width: w, height: 26, rx: 13, ry: 13 });
-      a.appendChild(chip);
-      const label = svg(doc, 'text', 'os-edge__chip');
-      attrs(label, { x: cx, y: cy + 5, 'text-anchor': 'middle' });
-      label.textContent = text;
-      a.appendChild(label);
+      if (e.badge) {
+        const cx = e.badge.x;
+        const cy = e.badge.y;
+        const w = 18 + (text.length * 8.5);
+        // A short leader when the badge had to move off its own curve to stay readable, so it
+        // never becomes a number floating next to the wrong line.
+        const onCurve = curvePointAt(e.lead, e.badgeT);
+        if (Math.abs(onCurve.y - cy) > 2) {
+          const tie = svg(doc, 'line', 'os-edge__tie');
+          attrs(tie, { x1: onCurve.x, y1: onCurve.y, x2: cx, y2: cy });
+          a.appendChild(tie);
+        }
+        const chip = svg(doc, 'rect', 'os-edge__chipbox');
+        attrs(chip, { x: cx - (w / 2), y: cy - 13, width: w, height: 26, rx: 13, ry: 13 });
+        a.appendChild(chip);
+        const label = svg(doc, 'text', 'os-edge__chip');
+        attrs(label, { x: cx, y: cy + 5, 'text-anchor': 'middle' });
+        label.textContent = text;
+        a.appendChild(label);
+      }
     }
     edgeLayer.appendChild(a);
   }

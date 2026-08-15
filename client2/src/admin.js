@@ -28,6 +28,9 @@ import {
   buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
   resolveCount, paramEntries, paramsKey, RETRO_CHROME,
 } from './retroactive_view.js';
+// [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
+// 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
+import { initLedgerMap, renderLedgerMap, parseMapQuestion, STRUCTURE_VIEW } from './ledger_map_panel.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -164,7 +167,9 @@ async function adminFetch(url, init) {
 }
 
 // ── State Cache ─────────────────────────────────────────────
-let currentTab = 'overview'; // 'overview' | 'file' | 'chain' | 'autoupdate' | 'enrichment'
+// switchTab이 받은 지도 질문을 fetchData까지 옮기는 자리 (탭 전환과 렌더가 분리돼 있다).
+let pendingMapQuestion = null;
+let currentTab = 'overview'; // 'overview' | 'file' | 'chain' | 'autoupdate' | 'enrichment' | 'ledger'
 
 let outboxPage = 1;
 let outboxLimit = 10;
@@ -217,6 +222,7 @@ const TAB_ALIASES = {
   chain: 'chain',
   autoupdate: 'autoupdate',
   enrichment: 'enrichment',
+  ledger: 'ledger',
   outbox: 'chain',      // 구 Outbox Failures 탭 (outbox fail = chain fail)
   workspace: 'file',    // 구 Workspaces 탭
   mapper: 'chain'       // 구 Mappers 탭
@@ -229,12 +235,14 @@ const tabFileBtn = byId('tab-file-btn');
 const tabChainBtn = byId('tab-chain-btn');
 const tabAutoUpdateBtn = byId('tab-autoupdate-btn');
 const tabEnrichmentBtn = byId('tab-enrichment-btn');
+const tabLedgerBtn = byId('tab-ledger-btn');
 
 const overviewWrapper = byId('overview-wrapper');
 const fileTabWrapper = byId('file-tab-wrapper');
 const chainTabWrapper = byId('chain-tab-wrapper');
 const autoUpdateTabWrapper = byId('autoupdate-tab-wrapper');
 const enrichmentTabWrapper = byId('enrichment-tab-wrapper');
+const ledgerTabWrapper = byId('ledger-tab-wrapper');
 
 const overviewGrid = byId('overview-grid');
 const healthStripEl = byId('health-strip');
@@ -313,6 +321,15 @@ document.addEventListener('DOMContentLoaded', () => {
   initMonacoEditor();
   initConfigResolveLine();
   initRetroactiveLine();
+  // 원장 선언 지도. `adminFetch`·`failureFactOf`·resolve 렌더러를 **넘겨준다** — 토큰 재시도
+  // 규율과 401 판별(`isGateRejection`)과 「먹었는가」 판정기의 두 번째 사본을 만들지 않는다.
+  initLedgerMap({
+    root: ledgerTabWrapper,
+    apiBase: API_BASE,
+    adminFetch,
+    failureFactOf,
+    renderResolveInto,
+  });
 
   // 해시/쿼리 라우팅 적용 (기본 Overview) — switchTab이 fetchData + 스트립 갱신 수행
   applyRoute(true);
@@ -403,7 +420,33 @@ function parseRoute() {
   return { key, value };
 }
 
+/** 🔴 THE MAP ADDRESSES ITSELF WITH QUERY PARAMS, AND THAT PROPERTY IS THE ONE BEING PRESERVED.
+ *
+ * Every filter and every edge selection on the declaration map is an `<a href>` carrying
+ * `?view=structure&layer=…&edge=…` — that is its 「컨트롤 0개 추가」 property, and it is the
+ * reason the map has no state to get out of sync with its URL.
+ *
+ * Admin's own router reads the HASH first and falls back to `?tab=`. Left alone, a click on the
+ * map inside admin would full-page-load `/admin.html?view=structure&layer=…`, admin would find
+ * no hash and no `?tab=`, and land on Overview — the selection lost on every single click.
+ *
+ * So the HOST absorbs the conflict, not the reader: admin learns to recognise `view=structure`
+ * as an address for the ledger tab and hands the whole question through. Not one line of the
+ * map changed to make this work.
+ */
+function mapQuestionFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  const question = parseMapQuestion(params);
+  return question.view === STRUCTURE_VIEW ? question : null;
+}
+
 function applyRoute(isInitial) {
+  const mapQuestion = mapQuestionFromLocation();
+  if (mapQuestion) {
+    if (isInitial || currentTab !== 'ledger') switchTab('ledger', { mapQuestion });
+    else renderLedgerMap(mapQuestion);
+    return;
+  }
   const { key, value } = parseRoute();
   if (key === 'editor') {
     // 구 Code Editor 탭 URL → 공용 에디터 뷰. #editor=<path>는 해당 파일 즉시 오픈.
@@ -421,9 +464,13 @@ function isEditorViewOpen() {
   return editorContentWrapper.style.display === 'flex';
 }
 
+// 좌패널 전폭으로 도는 탭 — 우패널의 진단·에디터를 쓰지 않고 자기 본문이 넓어야 하는 것들.
+// 원장 선언 지도는 `os-panel--wide` 패널을 여러 개 나란히 그리는 화면이라 여기 속한다.
+const FULL_BLEED_TABS = ['overview', 'ledger'];
+
 function updatePanelLayout() {
-  // Overview는 좌패널 전폭(우패널·리사이저 숨김). 단, 에디터 뷰가 열리면 우패널을 되살린다.
-  const fullBleed = currentTab === 'overview' && !isEditorViewOpen();
+  // 전폭 탭은 우패널·리사이저를 숨긴다. 단, 에디터 뷰가 열리면 우패널을 되살린다.
+  const fullBleed = FULL_BLEED_TABS.includes(currentTab) && !isEditorViewOpen();
   if (fullBleed) {
     if (!leftPanelEl.dataset.layoutSaved) {
       leftPanelEl.dataset.layoutSaved = '1';
@@ -443,7 +490,7 @@ function updatePanelLayout() {
     splitResizerEl.style.display = 'block';
     rightPanelEl.style.display = 'flex';
   }
-  healthStripEl.style.display = currentTab === 'overview' ? 'none' : 'grid';
+  healthStripEl.style.display = FULL_BLEED_TABS.includes(currentTab) ? 'none' : 'grid';
 }
 
 // ── 탭 전환 본체 — 탭 버튼·헬스 카드·해시 라우터가 공용 ────
@@ -480,9 +527,16 @@ function switchTab(tabName, opts = {}) {
   clearDiagnostics();
 
   updatePanelLayout();
-  history.replaceState(null, '', `#${t.tab}`);
+  // 🔴 지도 탭에서는 주소를 «건드리지 않는다». `#ledger`를 찍으면 `?view=structure&edge=…`가
+  // 그대로 남은 채 해시가 덧붙어, 다음 새로고침에서 어느 쪽이 주소인지 화면이 대답하지
+  // 못한다. 지도의 주소는 지도의 앵커가 소유한다.
+  if (t.tab === 'ledger') {
+    pendingMapQuestion = opts.mapQuestion || mapQuestionFromLocation()
+      || { view: STRUCTURE_VIEW, layer: '', edge: '' };
+  }
+  else history.replaceState(null, '', `#${t.tab}`);
 
-  if (t.tab !== 'overview') refreshHealthStrip();
+  if (!FULL_BLEED_TABS.includes(t.tab)) refreshHealthStrip();
   fetchData();
 }
 
@@ -494,7 +548,8 @@ function setupEventListeners() {
     { btn: tabFileBtn, tab: 'file', wrapper: fileTabWrapper },
     { btn: tabChainBtn, tab: 'chain', wrapper: chainTabWrapper },
     { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTabWrapper },
-    { btn: tabEnrichmentBtn, tab: 'enrichment', wrapper: enrichmentTabWrapper }
+    { btn: tabEnrichmentBtn, tab: 'enrichment', wrapper: enrichmentTabWrapper },
+    { btn: tabLedgerBtn, tab: 'ledger', wrapper: ledgerTabWrapper }
   ];
 
   tabDefs.forEach(t => {
@@ -833,6 +888,12 @@ async function fetchData(options = {}) {
       const status = await fetchEnrichmentStatus();
       if (isStale()) return false;
       renderEnrichmentTable(status);
+    } else if (tab === 'ledger') {
+      // 이 탭은 자기 실패를 자기 화면에 «그린다»(구조 뷰의 notice + 편집기의 조회 실패 줄).
+      // 여기서 throw하면 아래 catch의 토스트가 두 번째 사유를 만든다.
+      await renderLedgerMap(pendingMapQuestion
+        || { view: STRUCTURE_VIEW, layer: '', edge: '' });
+      pendingMapQuestion = null;
     }
     markRefreshed();
     return true;
@@ -1734,6 +1795,18 @@ function renderConfigResolve() {
     block.open = true;
     configResolveAutoOpened = true;
   }
+}
+
+/** 「먹었는가」 보고서를 임의의 컨테이너에 그린다 — 원장 선언 편집기가 저장 응답의 `resolve`를
+ *  이 함수로 그린다. **두 번째 판정기를 만들지 않기** 위해 렌더러도 하나로 둔다: 같은 보고서가
+ *  두 곳에서 다르게 보이면 어느 쪽이 맞는지 화면이 대답하지 못한다. */
+function renderResolveInto(container, view) {
+  if (!container || !view) return;
+  if (view.empty) {
+    container.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.emptyText)));
+    return;
+  }
+  view.domains.forEach((domain) => container.appendChild(cfgDomainEl(domain)));
 }
 
 function cfgDomainEl(domain) {

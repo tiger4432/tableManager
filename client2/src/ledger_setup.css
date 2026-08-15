@@ -1,0 +1,106 @@
+/* ── 원장 선언 편집기 (구조 뷰 행의 «편집 모드») ──
+   화면이 아니라 «행에 붙는 편집기»의 스타일이다(브리프 §6-1). 그래서 페이지·탭·카드
+   규칙이 여기 없다 — `.ls-editor`는 자기를 부른 행 안에서 자란다.
+
+   ⚠️ 이 편집기는 `cfg-*`/`retro-*` 어휘를 그대로 입는다. 그 규칙들은 지금
+   `admin.html`의 인라인 스타일에만 있으므로, 편집기를 다른 페이지(구조 뷰)에 올리려면
+   그 어휘를 공용 시트로 «먼저» 빼야 한다. 여기 사본을 만들면 같은 낱말이 두 곳에서
+   갈라진다. */
+
+.ls-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 14px 0 4px;
+}
+.ls-group { display: flex; flex-direction: column; gap: 8px; }
+.ls-form { display: flex; flex-direction: column; gap: 16px; }
+.ls-relations, .ls-kinds {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+/* 선택 후보(테이블·kind). 고른 것은 테두리로 말한다 — 색만으로는 안 보인다. */
+.ls-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ls-pill:hover:not(:disabled) { border-color: var(--accent); }
+.ls-pill:disabled { opacity: 0.45; cursor: not-allowed; }
+.ls-pill[data-picked="1"] {
+  border-color: var(--accent);
+  background: var(--accent-weak, var(--bg-inset));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.ls-pill[data-tone="muted"] { opacity: 0.7; cursor: default; }
+.ls-pill-label { font-size: 0.82rem; color: var(--text-muted); }
+
+/* 「가독성은 기능이다」 — 생성된 폼의 라벨은 본문(.cfg-detail 0.88rem)보다 작지 않다. */
+.ls-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  flex-basis: 100%;
+}
+.ls-checks {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.ls-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.ls-check .cfg-jsonval { font-size: 0.8rem; }
+.ls-list { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ls-list-row { display: flex; gap: 8px; align-items: center; }
+.ls-json { min-width: 420px; width: 100%; }
+.ls-object-detail { display: flex; gap: 8px; flex-wrap: wrap; flex-basis: 100%; }
+.ls-facts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* 폼 ⇄ 원본 JSON — 한 선언의 두 철자. 저장 3단은 양쪽 모두 같다. */
+.ls-modes { display: flex; gap: 8px; align-items: center; }
+.ls-raw { display: flex; flex-direction: column; gap: 10px; }
+/* Monaco는 명시 높이를 요구한다(자동으로 자라지 않는다). textarea 폴백은 자기 rows를 쓴다. */
+.ls-raw-editor { min-height: 320px; border: 1px solid var(--border); border-radius: 8px; }
+.ls-raw-editor > textarea { border: 0; min-height: 320px; }
+.ls-predicates { display: flex; flex-direction: column; }
+.ls-probes { display: flex; flex-direction: column; }
+.ls-actions { padding-top: 4px; }
+.ls-actions .cfg-btn { padding: 6px 16px; font-size: 0.84rem; }
+.ls-result { display: flex; flex-direction: column; gap: 12px; }
+
+/* 원자 봉투 — 번역기가 낸 그대로. 접지 않고, 다시 배열하지 않는다. */
+.ls-atom {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text-muted);
+}
+/* 거절 사유가 붙은 입력칸 — 서버 문장이 그 칸 «아래»에 그대로 붙는다. */
+.retro-field[data-invalid="1"] .retro-input { border-color: var(--danger); }
+.ls-violation { flex-basis: 100%; color: var(--danger); }

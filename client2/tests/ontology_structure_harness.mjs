@@ -72,28 +72,40 @@ const FIX = JSON.parse(readFileSync(join(HERE, 'fixtures', 'ontology_structure.j
 // green. So each source below is checked for PRESENCE and for CONTENT, and a missing
 // one KILLS THE RUN rather than quietly narrowing what section M can still see.
 //
-// The `os-` rules live in two places: the structure block inside `ledger.html`, and
-// `client2/src/ledger_console.css`, which ADDS variants (the `declared_unconsumed` ones
-// among them). Reading only the first is not a future blindness — it is a present one.
-const CONSOLE_CSS_PATH = join(SRC, 'ledger_console.css');
+// The `os-` rules live in two FILES, and 2026-08-15 is why this is a LIST rather than a path.
+// They used to sit inline in `ledger.html`; the structure view is now hosted by admin as well,
+// so the rules moved to `src/ontology_structure.css` and the page's block went empty. THE GUARD
+// BELOW FIRED, WHICH IS THE ENTIRE POINT — section M would otherwise have gone green while
+// measuring nothing, and vacuous reads exactly like green.
+//
+// The assertion follows the rules: `ledger.html` is NOT a source here any more, and adding it
+// back to make this pass would re-create the emptiness the guard exists to catch.
+//
+//   ontology_structure.css  the screen's own rules (moved out of the page — 144 selectors,
+//                           including the `declared_unconsumed` badge and legend variants)
+//   ledger_console.css      the console PAGE's overrides still keyed on `os-` (the wide
+//                           declaration panel's scroll containment)
+//
+// Every named source is checked for presence AND content, and a missing or empty one KILLS THE
+// RUN rather than quietly narrowing what section M can still see.
+const CSS_SOURCES = [
+  ['ontology_structure.css', join(SRC, 'ontology_structure.css')],
+  ['ledger_console.css', join(SRC, 'ledger_console.css')],
+];
 const STRUCTURE_CSS = (() => {
-  const anchor = '구조 뷰 (?view=structure)';
-  const at = PAGE_SRC.indexOf(anchor);
-  if (at < 0) die(`ledger.html lost the structure CSS anchor 「${anchor}」 — section M would assert over nothing`);
-  const block = PAGE_SRC.slice(at);
-  const end = block.indexOf('</style>');
-  const inPage = end > 0 ? block.slice(0, end) : block;
-  if (!/\.os-[a-z]/.test(inPage)) {
-    die('the ledger.html structure block carries no `os-` rule — section M would be vacuous');
+  const parts = [];
+  for (const [label, path] of CSS_SOURCES) {
+    let text = '';
+    try { text = readFileSync(path, 'utf8'); } catch (_) {
+      die(`cannot read ${path} — section M would be blind to every rule that lives there`);
+    }
+    if (!/\.os-[a-z]/.test(text)) {
+      die(`${label} carries no \`os-\` rule — the rules moved again, or this source is stale. `
+        + 'Repoint this list at where they went; do NOT drop the source to make the run pass.');
+    }
+    parts.push(text);
   }
-  let inFile = '';
-  try { inFile = readFileSync(CONSOLE_CSS_PATH, 'utf8'); } catch (_) {
-    die(`cannot read ${CONSOLE_CSS_PATH} — section M would be blind to every rule that lives there`);
-  }
-  if (!/\.os-[a-z]/.test(inFile)) {
-    die('ledger_console.css carries no `os-` rule — it moved again, or this path is stale');
-  }
-  return `${inPage}\n${inFile}`;
+  return parts.join('\n');
 })();
 
 const core = await import(new URL('../src/ontology_structure_core.js', import.meta.url).href);
@@ -240,8 +252,12 @@ console.log('\n── B. no hardcoded structure ──────────�
   ok('B2 the one `pin` literal is the grade enum, beside the other three',
     allowed.length === 0 || (coreCode.includes("'confirmed'") && coreCode.includes("'inference'")),
     'a lone `pin` would be a vocabulary literal, not the class enum');
-  ok('B3 the page carries no node or edge markup either',
-    !/data-node=/.test(PAGE_SRC) && !/os-node--subject[^{]*\{[^}]*content/.test(PAGE_SRC));
+  //: The second clause moved off `PAGE_SRC` on 2026-08-15 for the same reason section M did:
+  //: the `os-` rules left the page, so asking the PAGE whether a stylesheet injects node labels
+  //: became a question about a file that has no stylesheet in it — true, and about nothing. It
+  //: asks the stylesheet now, which is where such a rule could actually be written.
+  ok('B3 neither the page nor the stylesheet carries node or edge content',
+    !/data-node=/.test(PAGE_SRC) && !/os-node--subject[^{]*\{[^}]*content/.test(STRUCTURE_CSS));
 }
 
 // ── C. the two origins, and the zero that is a measurement ──────────────────────────

@@ -763,11 +763,22 @@ export const LAYOUT = {
   subjW: 220,
   predW: 330,
   objW: 230,
-  gap: 118,
+  // 🔴 THE GUTTER IS THE FIX. The tangle in the left gutter was mostly a short-distance
+  // problem: a dozen curves converging across 118px cross inside a few pixels of each other,
+  // and the SAME edges over a wider gap separate on their own without a single one moving. It
+  // also buys the room the count badges need to sit apart. Admin hosts this full-bleed, so the
+  // width is there to spend.
+  gap: 216,
   sideH: 64,
   predH: 88,
-  pitchSide: 86,
-  pitchPred: 112,
+  // Taller pitch on both side columns: the fan-in angle is set by how far apart the ENDS are,
+  // and a short centred subject column against a tall predicate column is what made the angle
+  // brutal at the top and bottom.
+  pitchSide: 104,
+  pitchPred: 124,
+  // Minimum vertical clearance between two count badges whose x ranges overlap.
+  badgeGapY: 34,
+  badgeH: 26,
 };
 
 function columnX() {
@@ -775,6 +786,107 @@ function columnX() {
   const predX = subjX + LAYOUT.subjW + LAYOUT.gap;
   const objX = predX + LAYOUT.predW + LAYOUT.gap;
   return { subjX, predX, objX, width: objX + LAYOUT.objW + LAYOUT.padX };
+}
+
+/**
+ * The cubic this screen draws an edge with, in ONE place.
+ *
+ * The view used to spell the control points itself and the model computed the badge point from
+ * a straight-line midpoint — two descriptions of one curve, and the badge sat where the line
+ * was rather than where the curve is. Both now come from here.
+ */
+export function curveOf(a) {
+  const dx = Math.max(40, (a.x2 - a.x1) * 0.55);
+  return { x0: a.x1, y0: a.y1, x1: a.x1 + dx, y1: a.y1, x2: a.x2 - dx, y2: a.y2, x3: a.x2, y3: a.y2 };
+}
+
+export function curvePath(a) {
+  const c = curveOf(a);
+  return `M ${c.x0} ${c.y0} C ${c.x1} ${c.y1}, ${c.x2} ${c.y2}, ${c.x3} ${c.y3}`;
+}
+
+/** The point at parameter `t` on that cubic. */
+export function curvePointAt(a, t) {
+  const c = curveOf(a);
+  const u = 1 - t;
+  const b0 = u * u * u;
+  const b1 = 3 * u * u * t;
+  const b2 = 3 * u * t * t;
+  const b3 = t * t * t;
+  return {
+    x: (b0 * c.x0) + (b1 * c.x1) + (b2 * c.x2) + (b3 * c.x3),
+    y: (b0 * c.y0) + (b1 * c.y1) + (b2 * c.y2) + (b3 * c.y3),
+  };
+}
+
+/**
+ * BARYCENTRE ORDERING — the standard crossing-reduction sweep for a layered graph.
+ *
+ * Each node in `nodes` moves to the average position of the nodes it connects to in the layer
+ * that is currently fixed. Repeated a few times over alternating layers, this removes most
+ * crossings without anyone choosing an order by hand — which matters here more than usual,
+ * because words are now registered FROM this screen and any hand-tuned order would be wrong the
+ * moment one is.
+ *
+ * Nodes with no neighbours keep their existing relative position rather than collapsing to the
+ * top: their barycentre is undefined, not zero. Ties keep prior order, so the sweep is stable
+ * and repeated passes converge instead of oscillating.
+ */
+function barycentreOrder(nodes, neighbourIndices) {
+  const prior = new Map(nodes.map((n, i) => [n.id, i]));
+  const scored = nodes.map((n, i) => {
+    const ns = neighbourIndices(n) || [];
+    const bary = ns.length ? ns.reduce((s, v) => s + v, 0) / ns.length : null;
+    return { node: n, i, bary };
+  });
+  return scored.slice().sort((a, b) => {
+    if (a.bary === null && b.bary === null) return a.i - b.i;
+    // An unconnected node holds its ground: it is compared on its own index, so it neither
+    // sinks to the bottom nor floats to the top.
+    const av = a.bary === null ? a.i : a.bary;
+    const bv = b.bary === null ? b.i : b.bary;
+    if (av !== bv) return av - bv;
+    return prior.get(a.node.id) - prior.get(b.node.id);
+  }).map((s) => s.node);
+}
+
+/**
+ * Spread the count badges so every one of them is readable.
+ *
+ * The badge used to sit at a fixed fraction along its edge, so a dozen edges converging on one
+ * predicate stacked a dozen numbers at nearly the same point — 「0 · 0 · 0 · 120 · 12」 written
+ * over each other and over their own circles. A number you cannot read is not a number on the
+ * screen.
+ *
+ * So placement is a constraint, not a formula: start from the point on the curve, then relax
+ * pairs apart in y until no two boxes that overlap in x still overlap in y. Nothing is dropped
+ * and nothing is folded — every edge keeps its number, including every zero.
+ */
+function spreadBadges(badges, minGapY) {
+  const ROUNDS = 24;
+  for (let round = 0; round < ROUNDS; round += 1) {
+    let moved = false;
+    for (let i = 0; i < badges.length; i += 1) {
+      for (let j = i + 1; j < badges.length; j += 1) {
+        const a = badges[i];
+        const b = badges[j];
+        const xOverlap = Math.abs(a.x - b.x) < ((a.w + b.w) / 2);
+        if (!xOverlap) continue;
+        const dy = b.y - a.y;
+        const need = minGapY;
+        if (Math.abs(dy) >= need) continue;
+        // Push symmetrically so neither edge's badge is privileged, and break an exact tie in a
+        // fixed direction so the loop cannot oscillate forever.
+        const push = (need - Math.abs(dy)) / 2;
+        const dir = dy === 0 ? (i < j ? -1 : 1) : Math.sign(dy);
+        a.y -= push * dir;
+        b.y += push * dir;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return badges;
 }
 
 function place(items, x, w, h, pitch, contentH, top) {
@@ -986,7 +1098,7 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
   const usedSubjects = new Set(shown.map((e) => e.subjectType));
   const usedPredicates = new Set(shown.map((e) => e.predicate));
 
-  const subjectNodes = [...entityTypes.values()]
+  let subjectNodes = [...entityTypes.values()]
     .filter((t) => usedSubjects.has(t.type))
     .sort((a, b) => (a.declared === b.declared ? 0 : (a.declared ? -1 : 1)))
     .map((t) => ({
@@ -1000,7 +1112,7 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
       declared: t.declared,
     }));
 
-  const predicateNodes = [...predicates.values()]
+  let predicateNodes = [...predicates.values()]
     .filter((p) => usedPredicates.has(p.predicate))
     .sort((a, b) => {
       if (a.declared !== b.declared) return a.declared ? -1 : 1;
@@ -1032,7 +1144,7 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
   // KIND itself, which is the third axis of the brief's GROUP BY. Both cases come
   // out of the declaration — neither is a choice made here about which predicate
   // is special.
-  const objectNodes = [];
+  let objectNodes = [];
   const objectIdOf = new Map();
   for (const e of shown) {
     let id;
@@ -1068,6 +1180,37 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
     }
     objectIdOf.set(e.key, id);
     if (!objectNodes.some((n) => n.id === id)) objectNodes.push(node);
+  }
+
+  // ── ordering: fewer crossings before any coordinate is chosen ──
+  //
+  // Three layers, so the sweep alternates: predicates follow their subjects, objects follow
+  // their predicates, then subjects follow their predicates and the whole thing repeats. Two
+  // rounds is where this stops paying — the third moved nothing on the live vocabulary.
+  {
+    const subjOf = (e) => `subj:${e.subjectType}`;
+    const predOf = (e) => `pred:${e.predicate}`;
+    const indexIn = (arr) => new Map(arr.map((n, i) => [n.id, i]));
+    const neighbours = (fromId, toId, arr) => {
+      const at = indexIn(arr);
+      const map = new Map();
+      for (const e of shown) {
+        const f = fromId(e);
+        const t = at.get(toId(e));
+        if (t === undefined) continue;
+        if (!map.has(f)) map.set(f, []);
+        map.get(f).push(t);
+      }
+      return map;
+    };
+    for (let round = 0; round < 2; round += 1) {
+      let m = neighbours((e) => `pred:${e.predicate}`, subjOf, subjectNodes);
+      predicateNodes = barycentreOrder(predicateNodes, (n) => m.get(n.id));
+      m = neighbours((e) => objectIdOf.get(e.key), predOf, predicateNodes);
+      objectNodes = barycentreOrder(objectNodes, (n) => m.get(n.id));
+      m = neighbours(subjOf, predOf, predicateNodes);
+      subjectNodes = barycentreOrder(subjectNodes, (n) => m.get(n.id));
+    }
   }
 
   // ── geometry ──
@@ -1129,8 +1272,25 @@ export function structureModel({ body, kinds, kindsBody, question } = {}) {
       } : null,
       weight: maxAtoms > 0 && e.atoms ? Math.min(1, Math.log10(1 + e.atoms) / Math.log10(1 + maxAtoms)) : 0,
       selected: !!q.edge && q.edge === e.key,
+      // Staggered along the curve by fan slot BEFORE any collision pass: edges into the same
+      // predicate start at different points instead of all starting at the same one and being
+      // pushed apart afterwards. The relaxation below then only has real conflicts to solve.
+      badgeT: fan.length > 1 ? 0.34 + (0.42 * (slot / (fan.length - 1))) : 0.5,
     };
   });
+
+  // ── the count badges, placed to avoid each other ──
+  const badges = laidEdges.filter((e) => e.lead).map((e) => {
+    const at = curvePointAt(e.lead, e.badgeT);
+    const text = e.atoms === null ? '?' : String(e.atoms);
+    return { key: e.key, x: at.x, y: at.y, w: 18 + (text.length * 8.5), h: LAYOUT.badgeH };
+  });
+  spreadBadges(badges, LAYOUT.badgeGapY);
+  const badgeAt = new Map(badges.map((b) => [b.key, b]));
+  for (const e of laidEdges) {
+    const b = badgeAt.get(e.key);
+    e.badge = b ? { x: Math.round(b.x), y: Math.round(b.y), w: b.w } : null;
+  }
 
   // ── vocabulary panel: every declared predicate, used or not ──
   const atomsByPredicate = new Map();
