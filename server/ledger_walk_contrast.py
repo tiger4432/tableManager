@@ -91,7 +91,7 @@ from datetime import datetime, timezone
 import finding_kinds
 import ledger_siblings as sib
 import mechanism_gate
-from ledger_trace import _fetch, relation_exists
+from ledger_trace import _fetch, relation_exists, rollup_subject_types
 
 #: The relation the walk reads. 🔴 A literal rather than `from ledger.schema import
 #: LEDGER_TABLE`, and deliberately: `ledger_trace_router` states the rule — nothing on the
@@ -615,11 +615,16 @@ def _atoms_per_subject(connection, subject, sample_ids):
     """Atoms per subject, measured on a sample of the case side rather than assumed."""
     if not sample_ids:
         return 0
+    # Rolled up like the walk it sizes (R-2026-08-15-O). If this probe counted a narrower
+    # population than `_walk` actually reads, the sampling step derived from it would be
+    # wrong in the direction that matters - it would under-sample the very subjects whose
+    # extra atoms it failed to count.
     sql = (f"SELECT count(*) FROM {LEDGER_TABLE} "
-           f"WHERE subject_type = %(stype)s "
+           f"WHERE subject_type = ANY(%(stypes)s) "
            f"AND subject_keys->>%(skey)s = ANY(%(ids)s)")
-    total = int(_fetch(connection, sql, {"stype": subject.type, "skey": subject.key,
-                                         "ids": list(sample_ids)})[0][0])
+    total = int(_fetch(connection, sql,
+                       {"stypes": list(rollup_subject_types(subject.type)),
+                        "skey": subject.key, "ids": list(sample_ids)})[0][0])
     return max(1, int(math.ceil(total / float(len(sample_ids)))))
 
 
@@ -633,7 +638,7 @@ def _walk(connection, plan, subject, case_ids, control_ids, walk_cfg):
     """
     params = dict(plan.params)
     params.update({
-        "stype": subject.type, "skey": subject.key,
+        "stypes": list(rollup_subject_types(subject.type)), "skey": subject.key,
         "case_ids": list(case_ids), "control_ids": list(control_ids),
         "max_depth": int(walk_cfg["max_depth"]),
         "sample_n": int(walk_cfg["evidence_ref_sample"]),
@@ -671,9 +676,14 @@ atoms AS (
            CASE WHEN o.obs_at IS NULL THEN 0
                 WHEN e.occurred_at < o.obs_at THEN 1
                 ELSE 2 END AS ord_code
+    -- 🔴 ROOT-KEY ROLLUP (R-2026-08-15-O). The contrast asks what differs between two
+    -- populations of WAFERS; a bonding leg is a wafer at a finer grain, and pinning one
+    -- `subject_type` here made every FINAL_BOND condition invisible to the very screen
+    -- built to find condition differences. The join key does not change - a derived type
+    -- declares the root key its atoms carry.
     FROM sides s
     JOIN {LEDGER_TABLE} e
-      ON e.subject_type = %(stype)s
+      ON e.subject_type = ANY(%(stypes)s)
      AND e.subject_keys->>%(skey)s = s.subject
     LEFT JOIN subj_obs o ON o.subject = s.subject
     WHERE e.object_payload IS NOT NULL

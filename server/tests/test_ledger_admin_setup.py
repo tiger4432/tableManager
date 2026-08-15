@@ -392,6 +392,132 @@ def test_the_previews_translator_version_is_the_one_a_real_run_would_stamp():
             == ledger_config.translator_version(live, "lot_event"))
 
 
+# ------------------------------------------------------- root-key rollup (R-…-08-15-O)
+def test_the_rollup_declaration_is_self_consistent():
+    """A rollup that could only ever be right by accident is the decoy declaration again:
+    a `root_key` that is not a key part of BOTH types produces a join on a jsonb field one
+    side never carries, and THAT RETURNS ZERO EXTRA ROWS rather than an error — which is
+    indistinguishable from the bug the declaration exists to fix."""
+    assert vocabulary.check_entity_type_declaration() == []
+
+
+def test_waferleg_rolls_up_into_wafer():
+    assert vocabulary.rollup_subject_types("Wafer") == ("Wafer", "WaferLeg")
+    assert vocabulary.root_key("WaferLeg") == "wafer"
+    assert vocabulary.root_key("Wafer") is None
+
+
+def test_a_root_type_with_no_derived_types_rolls_up_to_itself_alone():
+    """The helper must be safe to call for every subject, not only the one that has a
+    derived type today — a reader that special-cased `Wafer` would break the day a second
+    aggregation unit arrived."""
+    assert vocabulary.rollup_subject_types("Lot") == ("Lot",)
+    assert vocabulary.rollup_subject_types("Recipe") == ("Recipe",)
+
+
+def test_composed_types_do_NOT_roll_up_even_though_their_keys_contain_the_root():
+    """🔴 The reason the rollup is DECLARED and not inferred from key containment.
+    `Die`'s keys are (wafer, x, y) — a superset of `Wafer`'s — so "rolls up if its keys
+    contain yours" would fold every die atom into every wafer-scope read. There are 160M
+    dies by construction."""
+    assert "Die" not in vocabulary.rollup_subject_types("Wafer")
+    assert vocabulary.ENTITY_TYPES["Die"].get("rolls_up_to") is None
+
+
+@pytest.mark.parametrize("broken,expected", [
+    ({"rolls_up_to": "Wafer"}, "only one of"),                      # no root_key
+    ({"root_key": "wafer"}, "only one of"),                         # no rolls_up_to
+    ({"rolls_up_to": "Nope", "root_key": "wafer"}, "not a declared entity type"),
+    ({"rolls_up_to": "Wafer", "root_key": "nonesuch"}, "not one of its own key parts"),
+    ({"rolls_up_to": "Recipe", "root_key": "wafer"}, "not a key part of its root"),
+])
+def test_a_broken_rollup_declaration_is_caught_by_name(monkeypatch, broken, expected):
+    types = dict(vocabulary.ENTITY_TYPES)
+    types["Trial"] = {"class": "issued", "keys": ["wafer", "trial"], "semi_ref": None,
+                      "label_ko": "시험", **broken}
+    monkeypatch.setattr(vocabulary, "ENTITY_TYPES", types)
+    violations = vocabulary.check_entity_type_declaration()
+    assert any(expected in v for v in violations), violations
+
+
+def test_chained_rollups_are_refused_rather_than_silently_truncated():
+    """A reader would follow one hop and stop, so the second hop's atoms would go missing
+    exactly the way `WaferLeg`'s did — the same defect, one level down."""
+    types = dict(vocabulary.ENTITY_TYPES)
+    types["Trial"] = {"class": "issued", "keys": ["wafer", "trial"], "semi_ref": None,
+                      "label_ko": "시험", "rolls_up_to": "WaferLeg", "root_key": "wafer"}
+    original = vocabulary.ENTITY_TYPES
+    vocabulary.ENTITY_TYPES = types
+    try:
+        assert any("chained rollups" in v
+                   for v in vocabulary.check_entity_type_declaration())
+    finally:
+        vocabulary.ENTITY_TYPES = original
+
+
+def test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type():
+    """🔴 THE POINT OF THE RULING, asserted where it can actually regress: the three
+    wafer-scope readers must bind a LIST. Pinning one `subject_type` is what made 42
+    `WaferLeg` atoms invisible and the screen say「본딩 조건 차이 없음」falsely.
+
+    Asserted on the SQL text because these are hand-built query strings — there is no
+    object to interrogate, and a future edit back to `= %(stype)s` is exactly the
+    regression this guards."""
+    import ledger_journey
+    import ledger_walk_contrast
+
+    sources = [
+        ("ledger_journey", open(ledger_journey.__file__, encoding="utf-8").read()),
+        ("ledger_walk_contrast",
+         open(ledger_walk_contrast.__file__, encoding="utf-8").read()),
+    ]
+    for name, text in sources:
+        assert "subject_type = %(stype)s" not in text, (
+            f"{name} still pins a single subject_type — WaferLeg atoms are invisible again")
+        assert "subject_type = ANY(%(stypes)s)" in text, (
+            f"{name} no longer asks for the rolled-up set")
+
+
+def test_the_two_grain_arms_each_pin_their_own_subject_type():
+    """🔴 NOT a rollup site — the opposite, and the distinction is the whole defect.
+
+    `_process_sql` and `_analysis_process_sql` fill ONE dict at TWO grains (component,
+    keyed by wafer; analysis_unit, keyed by (wafer, bonding_leg)). Leaving the first
+    unpinned let the same `WaferLeg` atom land in both buckets and be counted twice - no
+    error, every downstream number confidently wrong. Both arms must therefore pin, and
+    neither may be widened to the rolled-up set.
+
+    Guarded on the SQL text because these are hand-built strings: a future edit that
+    "helpfully" applies the rollup here is exactly the regression to catch.
+    """
+    import ledger_selection
+
+    component_arm = ledger_selection._process_sql()
+    unit_arm = ledger_selection._analysis_process_sql()
+    assert "subject_type = 'Wafer'" in component_arm, (
+        "the component arm lost its pin - WaferLeg atoms will be double-counted against "
+        "the analysis arm that already reads them")
+    assert "subject_type = 'WaferLeg'" in unit_arm
+    for arm in (component_arm, unit_arm):
+        assert "ANY(%(stypes)s)" not in arm, (
+            "a two-grain arm was widened to the rollup set, merging what these two "
+            "queries exist to hold apart")
+
+    # Its sibling pair carries the same shape, for the same reason.
+    assert "subject_type = 'Wafer'" in ledger_selection._measurement_sql()
+    assert "subject_type = 'WaferLeg'" in ledger_selection._analysis_measurement_sql()
+
+
+def test_the_rollup_helper_has_one_spelling_for_every_reader():
+    """Three copies of one fact is how `WaferLeg` came to be visible to one query and
+    invisible to the next in the first place."""
+    import ledger_trace
+
+    assert ledger_trace.rollup_subject_types("Wafer") == ("Wafer", "WaferLeg")
+    ledger_trace.reset_walk_cache()
+    assert ledger_trace.rollup_subject_types("Wafer") == ("Wafer", "WaferLeg")
+
+
 # ------------------------------------------------ the gate's counters survive a preview
 def test_a_preview_does_not_move_the_processs_refusal_counters():
     """🔴 Otherwise「거절이 쌓이나」answers yes because somebody LOOKED at a declaration.

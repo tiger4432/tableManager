@@ -147,8 +147,62 @@ SOURCE_KIND_OBSERVATION = "observation"
 #: molecule. The cursor is that column's value, and a batch is always a whole number of
 #: groups (the same cut the lineage driver makes on `event_time`, one column over).
 SOURCE_KIND_TRANSFER = "transfer"
+
+#: 🔴 THE FOURTH GRAMMAR, AND THE ONLY ONE WITH NO PYTHON CLASS OF ITS OWN
+#: (`ADMIN_SETUP_BRIEF` §6-2, 2026-08-15).
+#:
+#: The observation that produced it: A TRANSLATOR BELONGS TO A SHAPE, NOT TO A SOURCE.
+#: `void_obs` and `delam_obs` are two sources sharing one translator because they are one
+#: shape. So the thing that is actually missing when a new table arrives is not a source
+#: entry - it is a SHAPE - and writing a Python class per shape is what put「코드 0줄」out
+#: of reach. This kind takes the row -> atom mapping ITSELF as a declaration (`emit`), so a
+#: table whose shape is「one row says N things」needs no code at all.
+#:
+#: 🔴 DELIBERATELY NARROW, AND THE BOUNDARY IS MEASURED. One row -> 1..N atoms, value
+#: mapping, and branching on a column's value. STRUCTURAL TRANSFORMS ARE OUT: one
+#: `lot_event` row pairs `slot_numbers` against `wafer_ids` POSITIONALLY and yields
+#: `derived_from` 1 + `has_wafer` 19. Expressing that declaratively means inventing a small
+#: programming language, and a config file that is a programming language is a programming
+#: language nobody can debug. Those shapes keep their Python classes.
+#:
+#: ⚠️ THIS IS NOT R-2026-08-15-M ⑤'s `derivation`, AND THE TWO MUST NOT BE CONFLATED.
+#: That ruling's fourth kind evaluates conditions AGAINST THE LEDGER (via the walk) to
+#: produce class-3 INFERENCE carrying evidence atom ids. This one translates A SOURCE ROW
+#: it is looking straight at, which is the same epistemic act the other three perform. They
+#: occupy the same "fourth" slot in two documents written a day apart; the later one
+#: (`ADMIN_SETUP_BRIEF` §6-2) is canonical and is what this implements. The walk-reading
+#: inference kind remains unbuilt, and calling this one `derivation` would have quietly
+#: given class-3 rules' name to class-2 claims.
+SOURCE_KIND_DECLARED = "declared"
+
 SOURCE_KINDS = frozenset({SOURCE_KIND_LINEAGE, SOURCE_KIND_OBSERVATION,
-                          SOURCE_KIND_TRANSFER})
+                          SOURCE_KIND_TRANSFER, SOURCE_KIND_DECLARED})
+
+#: Columns a DECLARED source must map. Only one: the route back to the row it came from.
+#: Everything else this grammar reads is named inside `emit`, by the physical column name,
+#: because a logical-name indirection would be a second vocabulary to keep in step with the
+#: first for no gain - the declaration already says which column it means.
+DECLARED_REQUIRED_COLUMNS = ("row_identity",)
+
+#: 🔴 THE HONESTY FIELD, REQUIRED (ruling R-2026-08-15-N ②). A registry row's `occurred_at`
+#: should be WHEN THE CLAIM WAS MADE - assigned, approved. Most registry tables do not have
+#: such a column and only carry `created_at`, which is when the ROW appeared. Both are legal;
+#: silently passing the second off as the first is not, because every downstream question of
+#: the form「when did this become true」would then be answered with「when did this get
+#: loaded」. So the declaration must SAY WHICH, and there is no default: `claim_time` asserts
+#: that the column really is the moment of the claim, `row_created` admits it is not.
+OCCURRED_AT_BASES = frozenset({"claim_time", "row_created"})
+
+#: The `when` clause's operators. Closed, for the reason every other vocabulary here is
+#: closed: an operator invented at a call site is a branch nobody can chart, and a
+#: MISSPELLED one that silently fell through to "always true" would emit atoms nobody
+#: declared while every test stayed green.
+WHEN_OPERATORS = frozenset({"equals", "not_equals", "in", "not_in", "present", "absent"})
+
+#: The prefix that makes a declared value a COLUMN REFERENCE rather than a literal.
+#: `"$leg"` is the row's `leg`; `"leg"` is the four-character string. A literal `$` is
+#: written `$$`.
+COLUMN_REF_PREFIX = "$"
 
 #: Columns a LINEAGE source must map. Named here rather than inline so the observation
 #: list beside it is visibly a different list rather than an exception to this one.
@@ -344,6 +398,9 @@ def validate(cfg: dict, origin: str = "<memory>"):
             continue
         if kind == SOURCE_KIND_TRANSFER:
             _validate_transfer_source(source, where)
+            continue
+        if kind == SOURCE_KIND_DECLARED:
+            _validate_declared_source(source, where)
             continue
 
         vocab = source.get("vocabulary")
@@ -544,6 +601,196 @@ def _validate_transfer_source(source: dict, where: str):
             f"movement. Remove it, or set kind to '{SOURCE_KIND_LINEAGE}'.")
 
 
+def _validate_declared_source(source: dict, where: str):
+    """The declarative grammar, checked. `ADMIN_SETUP_BRIEF` §6-2.
+
+    🔴 EVERY RULE HERE EXISTS BECAUSE THE ALTERNATIVE IS A SILENT WRONG ATOM. This kind has
+    no Python class reviewing its output, so the declaration IS the program and this
+    function is the only compiler it gets. The gate is the second net - a malformed atom is
+    refused rather than written - but a refusal at backfill time is a worse place to learn
+    about a typo than a refusal at save time, which is what this produces.
+    """
+    basis = str(source.get("occurred_at_basis") or "").strip()
+    if basis not in OCCURRED_AT_BASES:
+        raise LedgerConfigError(
+            f"{where}.occurred_at_basis must be declared as one of "
+            f"{sorted(OCCURRED_AT_BASES)} (ruling R-2026-08-15-N ②). A registry row's world "
+            f"time should be WHEN THE CLAIM WAS MADE; most registry tables only carry a "
+            f"row-creation timestamp. Both are legal and they mean different things, so the "
+            f"declaration has to say which - 'claim_time' asserts that "
+            f"{source.get('occurred_at_column')!r} really is the moment of the claim, "
+            f"'row_created' admits it is when the row appeared. There is no default, "
+            f"because a defaulted answer here would silently turn 'when did this become "
+            f"true' into 'when did this get loaded'.")
+
+    watermark = source.get("watermark")
+    if not isinstance(watermark, dict) or not watermark.get("columns"):
+        raise LedgerConfigError(
+            f"{where}.watermark must declare the cursor columns, e.g. "
+            f"{{\"columns\": [\"updated_at\", \"row_id\"]}}. A registry is UPDATED in place "
+            f"(R-2026-08-15-N ③ - an update is a new atom, not an edit), so the cursor has "
+            f"to be monotone under edit as well as insert; that is what an "
+            f"(updated_at, row_id) keyset is and what a world-time cursor is not.")
+    if not all(str(c).strip() for c in watermark["columns"]):
+        raise LedgerConfigError(f"{where}.watermark.columns holds a blank column name")
+
+    columns = source.get("columns")
+    if not isinstance(columns, dict):
+        raise LedgerConfigError(f"{where}.columns must map logical names to source columns")
+    for required in DECLARED_REQUIRED_COLUMNS:
+        if not str(columns.get(required) or "").strip():
+            raise LedgerConfigError(
+                f"{where}.columns.{required} is not declared. Every atom needs a route back "
+                f"to the row that uttered it - without one the claim cannot be argued with, "
+                f"and re-translation after a rule change has nothing to re-read.")
+    known = set(DECLARED_REQUIRED_COLUMNS)
+    undeclared = sorted(name for name, value in columns.items()
+                        if not name.startswith("__") and name not in known
+                        and value is not None)
+    if undeclared:
+        raise LedgerConfigError(
+            f"{where}.columns names {', '.join(undeclared)}, which this grammar does not "
+            f"read (known: {', '.join(sorted(known))}). A declared source names its columns "
+            f"INSIDE `emit`, by physical name (\"$leg\"), so a logical-name map here would "
+            f"be a second vocabulary that nothing consumes - ruling R-2026-08-13-D.")
+
+    emit = source.get("emit")
+    if not isinstance(emit, list) or not emit:
+        raise LedgerConfigError(
+            f"{where}.emit must be a non-empty LIST of the atoms one row produces. This is "
+            f"the whole grammar: a source declared with no `emit` reads every row and says "
+            f"nothing, which is never what somebody meant to write.")
+    if "vocabulary" in source:
+        raise LedgerConfigError(
+            f"{where}.vocabulary is a LINEAGE declaration (source event type -> lineage "
+            f"rule). A declared source branches inside each `emit` rule's `when` instead.")
+
+    seen_rules = set()
+    declared_subjects = set(source.get("subject_types") or ())
+    for index, rule in enumerate(emit):
+        _validate_emit_rule(rule, f"{where}.emit[{index}]", seen_rules)
+        # 🔴 CROSS-CHECKED HERE RATHER THAN LEFT TO THE GATE. The gate WOULD refuse these
+        # atoms (`undeclared_subject_type`), but it would do it once per row at backfill
+        # time - and「the declaration contradicts itself」is knowable the moment it is
+        # written. Deferring a save-time-knowable error to run time is exactly the delay
+        # this round exists to remove.
+        subject_type = (rule.get("subject") or {}).get("type")
+        if subject_type and subject_type not in declared_subjects:
+            raise LedgerConfigError(
+                f"{where}.emit[{index}].subject.type is '{subject_type}', which is not in "
+                f"this source's subject_types ({', '.join(sorted(declared_subjects)) or 'none'}). "
+                f"`subject_types` is the translator's declared EXTENSION - the types its "
+                f"atoms are allowed to be about - so every atom this rule makes would be "
+                f"refused by name. Add '{subject_type}' to subject_types, or point the rule "
+                f"at a type this source is allowed to speak about.")
+
+
+def _validate_emit_rule(rule: dict, where: str, seen_rules: set):
+    """One row -> one atom, declared. The unit of this grammar."""
+    from . import vocabulary
+
+    if not isinstance(rule, dict):
+        raise LedgerConfigError(f"{where} must be an object")
+
+    name = str(rule.get("rule") or "").strip()
+    if not name:
+        raise LedgerConfigError(
+            f"{where}.rule is not declared. It names the DERIVATION every atom this rule "
+            f"makes will carry, so「which declared rule made this claim」is queryable "
+            f"(`source_translator_ver LIKE '%#<rule>'`) exactly as `#slot_preserving` is. "
+            f"The gate refuses an atom whose derivation the config did not declare, so an "
+            f"unnamed rule could emit nothing at all.")
+    if name in seen_rules:
+        raise LedgerConfigError(
+            f"{where}.rule {name!r} is declared twice. Two rules under one derivation name "
+            f"are two claims that cannot be told apart afterwards.")
+    seen_rules.add(name)
+
+    predicate = str(rule.get("predicate") or "").strip()
+    if not predicate:
+        raise LedgerConfigError(f"{where}.predicate is not declared")
+    # NOT checked against the vocabulary here, and that is deliberate: the vocabulary is
+    # merged from code AND the operator's declaration file, so a predicate registered in
+    # the same admin session as this source would be refused by a check that ran at config
+    # load time in a process whose vocabulary cache predates it. The GATE checks it, per
+    # atom, against the live merged set - which is the check that cannot go stale.
+
+    subject = rule.get("subject")
+    if not isinstance(subject, dict):
+        raise LedgerConfigError(
+            f"{where}.subject must declare the atom's subject: "
+            f"{{\"type\": \"Wafer\", \"keys\": {{\"wafer\": \"$base_wafer_id\"}}}}")
+    subject_type = subject.get("type")
+    if subject_type not in vocabulary.ENTITY_TYPES:
+        raise LedgerConfigError(
+            f"{where}.subject.type {subject_type!r} is not a declared entity type "
+            f"({', '.join(sorted(vocabulary.ENTITY_TYPES))}). Adding an entity type is a "
+            f"vocabulary decision, not a config one.")
+    keys = subject.get("keys")
+    expected = vocabulary.ENTITY_TYPES[subject_type]["keys"]
+    if not isinstance(keys, dict) or sorted(keys) != sorted(expected):
+        raise LedgerConfigError(
+            f"{where}.subject.keys must name EXACTLY the key parts of "
+            f"'{subject_type}' ({', '.join(expected)}); got "
+            f"{sorted(keys) if isinstance(keys, dict) else keys!r}. A partial identity is "
+            f"the concatenation incident one column over - design §3 - and an extra part is "
+            f"an identity this type does not have.")
+
+    declared_object = rule.get("object")
+    if declared_object is not None:
+        if not isinstance(declared_object, dict):
+            raise LedgerConfigError(f"{where}.object must be an object or null")
+        kind = declared_object.get("kind")
+        if kind not in vocabulary.OBJECT_KINDS:
+            raise LedgerConfigError(
+                f"{where}.object.kind {kind!r} is not one of "
+                f"{sorted(vocabulary.OBJECT_KINDS)}")
+        if kind == "value":
+            if not isinstance(declared_object.get("payload"), dict) \
+                    or not declared_object["payload"]:
+                raise LedgerConfigError(
+                    f"{where}.object.payload must be a non-empty object for a value "
+                    f"object - it is what the atom actually SAYS.")
+        elif kind == "entity_ref":
+            target = declared_object.get("type")
+            if target not in vocabulary.ENTITY_TYPES:
+                raise LedgerConfigError(
+                    f"{where}.object.type {target!r} is not a declared entity type")
+            target_keys = declared_object.get("keys")
+            target_expected = vocabulary.ENTITY_TYPES[target]["keys"]
+            if not isinstance(target_keys, dict) \
+                    or sorted(target_keys) != sorted(target_expected):
+                raise LedgerConfigError(
+                    f"{where}.object.keys must name EXACTLY the key parts of '{target}' "
+                    f"({', '.join(target_expected)})")
+
+    when = rule.get("when")
+    if when is not None:
+        if not isinstance(when, dict):
+            raise LedgerConfigError(f"{where}.when must be an object or absent")
+        if not str(when.get("column") or "").strip():
+            raise LedgerConfigError(f"{where}.when.column is not declared")
+        operators = [op for op in when if op in WHEN_OPERATORS]
+        if len(operators) != 1:
+            raise LedgerConfigError(
+                f"{where}.when must carry EXACTLY ONE operator from "
+                f"{sorted(WHEN_OPERATORS)}; found {operators or 'none'}. Two operators in "
+                f"one clause would have to be combined by a rule nobody wrote down, and "
+                f"zero is a clause that is always true - which is an `emit` rule with no "
+                f"`when` at all, spelled misleadingly.")
+        operator = operators[0]
+        if operator in ("in", "not_in") and not isinstance(when[operator], list):
+            raise LedgerConfigError(f"{where}.when.{operator} must be a list")
+        unknown = [key for key in when
+                   if key != "column" and key not in WHEN_OPERATORS
+                   and not str(key).startswith("__")]
+        if unknown:
+            raise LedgerConfigError(
+                f"{where}.when names {', '.join(unknown)}, which is not an operator this "
+                f"grammar implements. A misspelled operator that was ignored would make the "
+                f"clause always true and emit atoms nobody asked for.")
+
+
 def source_kind(cfg: dict, source: str) -> str:
     """Which grammar a source speaks. Absent means `lineage` - see the module docstring."""
     return (source_config(cfg, source) or {}).get("kind", SOURCE_KIND_LINEAGE)
@@ -590,6 +837,20 @@ def declared_derivations(cfg: dict, source: str) -> frozenset:
     a rule the operator did not turn on.
     """
     source_cfg = source_config(cfg, source) or {}
+    if source_cfg.get("kind") == SOURCE_KIND_DECLARED:
+        # 🔴 THE DECLARATION IS THE LIST. Every `emit` rule's `rule` name becomes a legal
+        # derivation and nothing else does, so this grammar's provenance is exactly as
+        # queryable as the hand-written translators' - `#<rule>` on `source_translator_ver`
+        # tells you which declared rule made a claim. It also means a rule REMOVED from the
+        # config stops being emittable immediately, which is what makes the gate's refusal
+        # the safety net the brief promises: a declaration that drifts produces named
+        # refusals rather than atoms under a rule nobody can find.
+        names = {str(rule.get("rule")).strip()
+                 for rule in (source_cfg.get("emit") or [])
+                 if isinstance(rule, dict) and str(rule.get("rule") or "").strip()}
+        if source_cfg.get("register_entity_types"):
+            names.add("first_sight")
+        return frozenset(names)
     if source_cfg.get("kind") == SOURCE_KIND_TRANSFER:
         # BOTH transfer derivations are legal for every transfer source, and that is not
         # laxity: which one an atom carries is decided by whether the DATA confirmed the

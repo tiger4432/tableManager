@@ -99,8 +99,27 @@ ENTITY_TYPES = {
                   "label_ko": "웨이퍼"},
     # Analysis grain: one physical base wafer can participate in several bonding legs.
     # This is a new issued subject, never an undeclared extra key on `Wafer`.
+    # 🔴 AN AGGREGATION UNIT, AND ITS ROOT KEY IS DECLARED (ruling R-2026-08-15-O).
+    # The owner's definition: 「본딩 시 다이별로 조건이 달라서 생기는, 본딩 후 자재에만
+    # 성립하는 집계 단위」. Its existence as a separate subject is FORCED - a wafer bonded
+    # at two pressures makes "저압으로 붙었다" and "고압으로 붙었다" both true, and under one
+    # subject those are competing claims on the same (subject, predicate) that the resolver
+    # would settle by killing one. Splitting the subject is what lets both live.
+    #
+    # The price is that reads split too, and they did so SILENTLY: 42 atoms (MEASURED
+    # 2026-08-15 - `observed` 18, `register` 12, `processed_with` 12, over 6 root wafers)
+    # were invisible to every wafer-scope query, so the screen read「본딩 조건 차이 없음」
+    # and that was false. `rolls_up_to` + `root_key` are what a reader joins on instead of
+    # a single `subject_type`.
+    #
+    # 🔴 DECLARED, NEVER INFERRED FROM KEY CONTAINMENT. `Die`'s keys (wafer, x, y) are also
+    # a superset of `Wafer`'s, so "rolls up if its keys contain yours" would fold every die
+    # atom into wafer-scope reads - 160M of them by construction. The relationship being an
+    # explicit statement is the difference between an aggregation unit and a coincidence of
+    # spelling.
     "WaferLeg":  {"class": "issued",   "keys": ["wafer", "bonding_leg"],
-                  "semi_ref": "E90/E142 process context", "label_ko": "웨이퍼-본딩 레그"},
+                  "semi_ref": "E90/E142 process context", "label_ko": "웨이퍼-본딩 레그",
+                  "rolls_up_to": "Wafer", "root_key": "wafer"},
     "Product":   {"class": "issued",   "keys": ["product"],   "semi_ref": None,
                   "label_ko": "제품"},
     "Equipment": {"class": "issued",   "keys": ["equipment"], "semi_ref": "E10",
@@ -1153,6 +1172,81 @@ def check_subject_keys(subject_type, subject_keys):
     if extra:
         violations.append(f"subject identity for '{subject_type}' carries undeclared key "
                           f"part(s) {', '.join(sorted(extra))}")
+    return violations
+
+
+# ===========================================================================
+# ROOT-KEY ROLLUP (ruling R-2026-08-15-O)
+# ===========================================================================
+
+def rollup_subject_types(root_type: str) -> tuple:
+    """`root_type` plus every type that DECLARES it rolls up into it. Sorted, stable.
+
+    🔴 THIS IS WHAT A WAFER-SCOPE READ JOINS ON, instead of `subject_type = 'Wafer'`.
+    「What happened to this wafer」 has to include what happened to its bonding legs; a
+    query pinned to one type answers a narrower question than the one the screen is asking
+    and reports the difference as an absence.
+
+    ⚠️ NOT every reader should call this. A registration existence check, a per-type
+    census, a `GROUP BY subject_type` - those are legitimately type-specific and widening
+    them would be a different defect. The test is whether the caller is asking about a
+    SUBJECT (roll up) or about a TYPE (do not).
+    """
+    types = {root_type}
+    types.update(name for name, entry in ENTITY_TYPES.items()
+                 if entry.get("rolls_up_to") == root_type)
+    return tuple(sorted(types))
+
+
+def root_key(subject_type: str):
+    """The key part a derived type shares with its root, or `None` for a root type."""
+    return (ENTITY_TYPES.get(subject_type) or {}).get("root_key")
+
+
+def check_entity_type_declaration():
+    """Violations of the rollup declaration's own rules. Pure; a test is the enforcer.
+
+    The same shape as `check_walk_declaration` and for the same reason: a rollup that can
+    only ever be correct by accident is the decoy declaration again. A `rolls_up_to`
+    naming a type that does not exist, or a `root_key` that is not actually a key part of
+    BOTH types, would produce a query that joins on a jsonb field one side never carries -
+    and that query returns zero extra rows rather than an error, which is indistinguishable
+    from the bug this declaration exists to fix.
+    """
+    violations = []
+    for name, entry in ENTITY_TYPES.items():
+        root = entry.get("rolls_up_to")
+        key = entry.get("root_key")
+        if root is None and key is None:
+            continue
+        if root is None or key is None:
+            violations.append(
+                f"entity type '{name}' declares only one of rolls_up_to/root_key "
+                f"({root!r}/{key!r}); a rollup needs both - the type to fold into and the "
+                f"key to fold on")
+            continue
+        if root not in ENTITY_TYPES:
+            violations.append(
+                f"entity type '{name}' rolls up to '{root}', which is not a declared "
+                f"entity type")
+            continue
+        if root == name:
+            violations.append(f"entity type '{name}' rolls up to itself")
+            continue
+        if key not in (entry.get("keys") or []):
+            violations.append(
+                f"entity type '{name}' declares root_key '{key}', which is not one of its "
+                f"own key parts ({', '.join(entry.get('keys') or [])}) - a read would join "
+                f"on a field its atoms do not carry and quietly return nothing")
+        if key not in (ENTITY_TYPES[root].get("keys") or []):
+            violations.append(
+                f"entity type '{name}' declares root_key '{key}', which is not a key part "
+                f"of its root '{root}' ({', '.join(ENTITY_TYPES[root].get('keys') or [])})")
+        if ENTITY_TYPES[root].get("rolls_up_to"):
+            violations.append(
+                f"entity type '{name}' rolls up to '{root}', which itself rolls up - "
+                f"chained rollups are not implemented and a reader would silently stop "
+                f"after one hop")
     return violations
 
 

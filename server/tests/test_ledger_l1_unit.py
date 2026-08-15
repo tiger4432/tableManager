@@ -148,17 +148,18 @@ def test_v0_vocabulary_is_exactly_seven_words():
     with `since: 3`, which keeps the slice it entered in queryable exactly as slice 2's
     three do.
 
-    🔴 ITS SIBLING `measured` IS DELIBERATELY NOT REGISTERED. §6-bis names both halves of
-    the split (`observed` = a finding exists, `measured` = a quantity has this value) and
-    the growth rule is that a word is registered when a translator needs it, not when the
-    design mentions it. Nothing emits a metrology measurement today. A TWELFTH word still
-    turns this red, which is the whole point of keeping the count here.
+    THE TWELFTH WORD (`measured`, 2026-08-15): the sibling is now opened because the
+    selection investigation has real metrology atoms to consume. It is deliberately
+    distinct from `processed_with`: that word now says only STEP + RECIPE occurrence,
+    while `measured` describes a separate physical-quantity measurement with its own
+    method/run evidence. `measured_as` remains a UI category only. It entered in
+    slice 4 so the vocabulary still records when the need became demonstrated.
     """
     assert set(vocabulary.PREDICATES) == {
         "register", "pin", "same_as",
         "derived_from", "slot_map", "has_wafer", "frame_confirmed",
         "processed_with", "has_param", "transferred",
-        "observed",
+        "observed", "measured",
     }
     # The seven that were v0 are still `since: 1`; nothing was renumbered to make the
     # arithmetic tidy. A word's slice is evidence about when the system learned to say it.
@@ -168,6 +169,9 @@ def test_v0_vocabulary_is_exactly_seven_words():
     }
     assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 3} == {
         "observed",
+    }
+    assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 4} == {
+        "measured",
     }
 
 
@@ -203,8 +207,7 @@ def test_a_value_object_is_checked_against_its_declared_required_fields():
     ruling R-2026-08-13-D killed: a well-formed run lands, and one that forgot which step
     it was about is refused BY NAME.
     """
-    good = {"step": "BONDING", "step_family": "packaging", "eqp": "SYN-BD-02",
-            "recipe": {"id": "SYN-RCP-BOND", "rev": "4"}}
+    good = {"step": "BONDING", "recipe": "SYN-RCP-BOND-R4"}
     assert not vocabulary.check_signature("processed_with", "Wafer", "value", good)
 
     missing_step = dict(good)
@@ -224,6 +227,40 @@ def test_a_value_object_is_checked_against_its_declared_required_fields():
         {"param": "vacuum_assist", "value": False, "unit": "bool"})
 
 
+def test_measured_contract_requires_evidence_and_never_encodes_missing_as_a_value():
+    recorded = {"metric": "film_thickness", "unit": "um", "method": "MI",
+                "state": "recorded", "value": 71.2, "run_uid": "MI:SYN:001"}
+    assert vocabulary.check_signature("measured", "Wafer", "value", recorded) == []
+    assert vocabulary.check_signature(
+        "measured", "WaferLeg", "value",
+        {"metric": "warpage", "unit": "um", "method": "MI",
+         "state": "not_performed"}) == []
+
+    no_value = dict(recorded)
+    no_value.pop("value")
+    assert any("requires field 'value'" in item for item in
+               vocabulary.check_signature("measured", "Wafer", "value", no_value))
+
+    no_run = dict(recorded)
+    no_run.pop("run_uid")
+    assert any("requires field(s) run_uid" in item for item in
+               vocabulary.check_signature("measured", "Wafer", "value", no_run))
+
+    for state in ("missing", "not_performed", "unknown"):
+        payload = {"metric": "film_thickness", "unit": "um", "method": "MI",
+                   "state": state}
+        assert vocabulary.check_signature("measured", "Wafer", "value", payload) == []
+        payload["value"] = None
+        assert any("forbids field 'value'" in item for item in
+                   vocabulary.check_signature("measured", "Wafer", "value", payload))
+
+    assert any("requires state to be one of" in item for item in
+               vocabulary.check_signature(
+                   "measured", "Wafer", "value",
+                   {"metric": "film_thickness", "unit": "um", "method": "MI",
+                    "state": "absent"}))
+
+
 def test_recipe_identity_carries_the_revision():
     """A revision is a new subject, so `rev` is key material and a bare id is refused."""
     assert vocabulary.check_subject_keys("Recipe", {"recipe": "SYN-RCP-BOND"})
@@ -235,6 +272,21 @@ def test_recipe_identity_carries_the_revision():
             != {"recipe": "SYN-RCP-BOND", "rev": "5"})
     assert vocabulary.requires_register("Recipe"), (
         "Recipe is an ISSUED entity - a revision is registered, not constructed")
+
+
+def test_wafer_leg_is_a_declared_composite_subject_not_an_extra_wafer_key():
+    keys = {"wafer": "SYN-CX-BW-006", "bonding_leg": "HBM-B_LOW-P"}
+    assert vocabulary.check_subject_keys("WaferLeg", keys) == []
+    assert vocabulary.check_subject_keys("WaferLeg", {"wafer": keys["wafer"]})
+    assert vocabulary.check_subject_keys("Wafer", keys)
+    assert vocabulary.requires_register("WaferLeg")
+    assert vocabulary.check_signature("register", "WaferLeg", None, None) == []
+    assert vocabulary.check_signature(
+        "processed_with", "WaferLeg", "value",
+        {"step": "FINAL_BOND", "recipe": "SYN-FINAL-BOND"}) == []
+    assert vocabulary.check_signature(
+        "observed", "WaferLeg", "value",
+        {"finding_kind": "void", "method": "sat", "run_uid": "SYN-RUN"}) == []
 
 
 def test_projection_state_words_can_never_be_written():

@@ -126,8 +126,9 @@ conda run -n assy_manager python -m ledger.backfill --source dt_log      # trans
 | **`lineage`** (기본) | **여러 행이 모여** 한 사건(랏이 갈라졌다·합쳐졌다) | `lot_event` | `lot_event_translator.py` | §3.1 |
 | **`observation`** | **한 행이 곧 한 발화**(이 웨이퍼에서 이런 발견을 봤다) | `void_obs`·`delam_obs` | `observation_translator.py` | §3.2 |
 | **`transfer`** | **한 행이 다이 하나**이고 원자 단위는 **잡런** — 행을 선언된 컬럼으로 «묶는다» | `dt_log` | `transfer_translator.py` | §3.3 |
+| ✅ **`declared`** (2026-08-15 신설) | **한 행이 «선언한 대로» 원자 1~N개** — 대장·참조표 | `bonding_map` 류 | 🔴 **없다 — 선언이 곧 번역기다** | §3.4 |
 | (테이블이 아님) | 생성기·계산된 사실·외부 API | `seed_syn_process_ledger.py` | — | 🔴 **`ledger_config.json`에 넣지 마라 → [LEDGER_GUIDE §3-bis](./LEDGER_GUIDE.md)** |
-| ⏳ ~~`derivation`~~ | 규칙이 조건을 평가해 만드는 주장(태그·스킴 분류) | — | — | 🔴 **판정됨 · «미구현»**([R-2026-08-15-M](../process/LEDGER_RULINGS.md) 5) — `SOURCE_KINDS`에 없으므로 오늘 선언하면 **로드 거절**이다. 판정을 기능으로 읽지 말 것 |
+| ⏳ ~~`derivation`~~ | **원장을 «걸어서»** 조건을 평가하는 추론(3류·근거 원자 필수) | — | — | 🔴 **판정됨 · «미구현»**([R-2026-08-15-M](../process/LEDGER_RULINGS.md) ⑤) — `SOURCE_KINDS`에 없어 오늘 선언하면 **로드 거절**. ⚠️ **`declared`와 헷갈리지 말 것**: 소스 «행»을 선언대로 옮기는 것이면 `declared`고 그건 **지금 된다**. 이쪽은 원장을 읽어 «추론»하는 별개 문법이다 |
 
 ⚠️ **`kind`를 안 적으면 `lineage`다.** 기본이 그쪽인 것은 **이 파일이 원래 알던 유일한 모양**이기 때문이지 혈통이 더 근본이어서가 아니다.
 
@@ -181,7 +182,39 @@ conda run -n assy_manager python -m ledger.backfill --source dt_log      # trans
 🔴 **확정됐는지는 파생 이름이 말한다** — `#job_run_to_confirmed_container` 대 `#job_run_to_job`.
 새 컬럼도 새 플래그도 없고 **질의 가능**하다: `WHERE source_translator_ver LIKE '%#job_run_to_job'`이 「목적지가 확정된 적 없는 이동」의 전량이다.
 
-### 3.4 선언을 다 썼으면
+### 3.4 `declared` 키 — 🔴 **번역기가 없는 문법**(2026-08-15 신설)
+
+다른 셋은 「선언 + 파이썬 클래스」인데 이것은 **선언이 곧 번역기다.** 그래서 새 «모양»의 테이블이 와도 코드가 0줄이다 —
+소유자 완성 조건(「다른 스키마의 운영 환경에서 코드 0줄, 선언 교체만으로 발화」)에 실제로 닿는 첫 문법이다.
+
+| 키 | 필수 | 뜻 · 함정 |
+|---|---|---|
+| **`kind`** | ✅ | `"declared"` |
+| **`occurred_at_basis`** | ✅ | `"claim_time"` \| `"row_created"`. 🔴 **기본값 없음**([R-…-15-N](../process/LEDGER_RULINGS.md) ②). 대장의 세계 시각은 **주장이 성립한 때**여야 하는데 대부분의 대장은 `created_at`만 있다. 둘 다 합법이고 **뜻이 다르므로** 어느 쪽인지 말해야 한다 — 안 그러면 「언제 참이 됐나」가 조용히 「언제 적재됐나」가 된다. `row_created`면 그 사실이 **원자 payload에 실린다**(`object_payload->>'occurred_at_basis'`) |
+| **`watermark`** | ✅ | `{columns: [...]}` 키셋 커서. 대장은 UPDATE되므로(N ③: 갱신은 새 원자) **편집에도 단조**여야 한다 — `(updated_at, row_id)` |
+| **`columns`** | ✅ | **`row_identity` 하나뿐.** 나머지 컬럼은 `emit` 안에서 `"$컬럼"`으로 직접 부른다(논리 이름 사전을 또 만들지 않는다) |
+| **`emit`** | ✅ | 🔴 **이 문법의 전부** — 한 행이 낳을 원자의 목록 |
+| `subject_types` / `register_entity_types` | ✅ / ⬜ | 다른 문법과 같다 |
+| ~~`vocabulary`~~ | ❌ | 있으면 로드 에러(분기는 규칙마다 `when`으로 한다) |
+
+**`emit` 규칙 하나 =  원자 하나:**
+
+| 키 | 필수 | 뜻 |
+|---|---|---|
+| `rule` | ✅ | 이 규칙이 찍을 **파생 이름**. `source_translator_ver LIKE '%#<rule>'`로 질의된다. 한 소스 안에서 중복 금지 |
+| `predicate` | ✅ | 술어. **여기서 어휘 대조를 하지 않는다** — 게이트가 원자마다 «살아 있는» 합쳐진 어휘로 검사한다(방금 화면에서 등재한 낱말이 캐시 때문에 거절되지 않도록) |
+| `subject` | ✅ | `{type, keys}`. `keys`는 그 개체 타입의 **키 전부**여야 한다(부분 신원 = 설계 §3의 연결 사고) |
+| `object` | ⬜ | `null`(∅) \| `{kind:"value", payload:{…}}` \| `{kind:"entity_ref", type, keys, qualifiers}` |
+| `when` | ⬜ | 열 값 분기. `{column, <연산자>}` — `equals`·`not_equals`·`in`·`not_in`·`present`·`absent` **중 정확히 하나**. 🔴 **0개도 2개도 거절**이고 **오타난 연산자도 거절**이다: 무시된 연산자는 조건을 «항상 참»으로 만들어 아무도 요청하지 않은 원자를 낳는다 |
+
+**값 규칙**: `"$leg"`는 그 행의 `leg` 컬럼, `"leg"`는 문자열 리터럴, `"$$"`는 «$» 자체.
+🔴 **없는 컬럼을 `$`로 부르면 «거절»이다** — 빈 값으로 풀면 「모양은 멀쩡한데 아무것도 안 가리키는 원자」가 나온다.
+
+⚠️ **범위 밖: 리스트 열 분해·위치 짝짓기.** `lot_event` 한 행이 `slot_numbers`/`wafer_ids`를 위치로 짝지어
+`derived_from` 1 + `has_wafer` 19를 낳는 것이 그 예이고, 그걸 JSON으로 적으면 **디버거도 스택 트레이스도 없는 작은 프로그래밍 언어**가 된다.
+그런 모양은 파이썬 번역기를 계속 쓴다. **경계는 「어려워서」가 아니라 「선언이 코드보다 읽기 쉬운 지점을 지나서」다.**
+
+### 3.5 선언을 다 썼으면
 
 **번역기 «코드»를 쓰는 절차는 여기 없다.** 클래스 모양·게이트 스코프·`#<derivation>` 접미와 그때 빨개지는 테스트·픽스처 규율·검증 기대치는
 [LEDGER_GUIDE §3 ③~⑥](./LEDGER_GUIDE.md)이 소유한다. **선언은 JSON이고 번역기는 파이썬이라, 이 문서는 앞엣것만 소유한다.**
@@ -197,6 +230,15 @@ conda run -n assy_manager python -m ledger.backfill --source dt_log      # trans
 | **정준**(§4.1) | 기록의 문법 — `register`·`pin`·예약 `same_as` | 🔴 **코드 + 판정만.** 화면에 문이 **없다** | 기록의 문법이 조용히 자라면 원장이 원장이 아니게 된다 |
 | **온톨로지**(§4.2) | 세계의 언어 — `derived_from`·`observed`·… | ✅ **admin 화면에서 선언으로**(코드 0줄·재기동 0회) 또는 코드로 | 설계가 이미 「append-only로 성장」이라 적어 둔 층이다 |
 | **개체 타입**(`ENTITY_TYPES`) | `Lot`·`Wafer`·`Recipe`·… | 🔴 **코드 + 판정만** | 주어의 «신원 키»가 바뀌는 일이라 술어 하나 늘리는 것과 급이 다르다 |
+
+🔴 **집계 단위는 자기 «뿌리 키»를 선언한다**([R-2026-08-15-O](../process/LEDGER_RULINGS.md)).
+`WaferLeg`처럼 한 웨이퍼를 더 잘게 나누는 주어는 `rolls_up_to: "Wafer"` + `root_key: "wafer"`를 단다.
+**왜 필요한가**: 다이별로 조건이 다르면 한 웨이퍼에 「저압으로 붙었다」와 「고압으로 붙었다」가 동시에 참인데,
+주어를 웨이퍼로 두면 둘이 경쟁 주장이 되어 **해소기가 하나를 죽인다.** 주어가 갈려야 둘 다 산다 —
+그 대가로 **읽기가 갈라졌고, 조용히 그랬다**(실측: `WaferLeg` 원자 42개가 웨이퍼 스코프 조회에서 안 보였고
+화면은 「본딩 조건 차이 없음」으로 읽혔다). 그래서 읽기는 `subject_type` 하나가 아니라 **뿌리 키로 모은다.**
+⚠️ **키 포함 관계로 «유추»하지 않는다** — `Die`의 키(wafer,x,y)도 `Wafer`의 상위집합이라, 유추했으면 다이 원자가
+전부 웨이퍼 조회로 접혔을 것이다(구성상 1.6억 개). 관계는 **선언**이고 `check_entity_type_declaration()`이 자기 정합을 문다.
 
 - **선언 확장의 자리**: `server/config/ledger_vocabulary.json`. 화면 경로는 `POST /admin/ledger/dry-run` → `POST /admin/ledger/save`이고,
   **저장은 언제나 3단**이다(문법 검증 → 쓰기 0 드라이런 → 저장+리로드+「먹었는가」). 드라이런 없는 저장은 만들지 않은 게 아니라 **불가능**하다 —
@@ -351,13 +393,18 @@ conda run -n assy_manager python -m ledger.backfill --source dt_log      # trans
 - 🔴 **v0 고정 집합 테스트는 유지된다** — 못 박는 것은 «코드가 싣는 집합»(`PREDICATES`)이고, 선언 확장분은 합쳐진 뷰(`all_predicates()`)로 합류하며
   응답과 구조 뷰가 **출처(`origin: code|config`)를 구분해 표시**한다. **「선언으로 늘었다」가 눈에 보인다.**
 
-**①-bis 남은 간극 둘.**
+**①-bis ✅ [2026-08-15 2차 — 「등재한 낱말을 발화할 번역기가 없다」는 닫혔다].**
+직전 판의 이 자리는 「선언으로 술어는 등재되는데 그걸 낼 번역기가 없다」였다. **`declared` 문법(§3.4)이 그 구멍이다** —
+화면에서 낱말을 등재하고, 같은 화면에서 그 낱말을 내는 소스를 선언하면, 코드 0줄로 원자가 나온다.
+실측(2026-08-15, 스크래치 환경): 새 술어 `leg_assigned` 등재 → `bonding_map` 4행 → 원자 5개(`leg_assigned` 4 + `register` 1), 쓰기 0.
+
+**①-ter 남은 간극 둘.**
 - **개체 타입은 여전히 코드다.** 다른 스키마의 배포가 새 «주어»를 필요로 하면(예: `Cassette`) 파이썬을 고쳐야 한다.
   술어와 달리 개체 타입은 **신원 키의 정의**라 서명 완결 검사로 안전해지지 않는다 — 열려면 자기 판정이 필요하다.
-- **넷째 문법 `derivation`(R-M ⑤)은 번역기가 없다.** 판정만 났고, `GET /admin/ledger/sources`가 그것을
-  `unsupported_kinds`에 **사유와 함께** 실어 화면이 「못 한다」가 아니라 「아직 안 왔다」로 읽히게 한다.
-  결과적으로 **오늘 선언으로 등재한 술어를 발화할 번역기가 없다** — `/admin/config/resolve?domain=ledger`가 그 낱말을
-  「효과없음: 발화하는 번역기 없음」으로 이름 대어 보고한다.
+- **`derivation`(R-M ⑤)은 여전히 번역기가 없다** — 그리고 그것은 `declared`와 **다른 것**이다.
+  `declared`는 소스 «행»을 보고 옮기고, `derivation`은 **원장을 걸어서** 조건을 평가해 3류 추론을 만든다(근거 원자 id 필수).
+  두 판정이 하루 차이로 같은 「넷째」 자리를 말했고 나중 것(브리핑 §6-2)이 정본이라, 이름은 그대로 두고 미구현으로 남는다.
+  `GET /admin/ledger/sources`가 `unsupported_kinds`에 **사유와 함께** 실어 화면이 「못 한다」가 아니라 「아직 안 왔다」로 읽히게 한다.
 
 **② 결함 종류는 절반만 열려 있다.** 종류의 **정의**는 `finding_kinds.json`으로 덮어쓸 수 있지만,
 **모집단·런의 «주소»는 코드 상수**다 — `PACKAGE_TABLE = "bonding_log"` · `PACKAGE_COLUMNS = ("base_id","bx","by")` · `RUN_TABLE = "inspection_run"`.

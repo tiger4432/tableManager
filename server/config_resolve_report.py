@@ -1006,7 +1006,15 @@ def _ledger_emitted_predicates(document: dict) -> set:
         if str(name).startswith("__") or not isinstance(declaration, dict):
             continue
         kind = declaration.get("kind", ledger_config.SOURCE_KIND_LINEAGE)
-        if kind == ledger_config.SOURCE_KIND_OBSERVATION:
+        if kind == ledger_config.SOURCE_KIND_DECLARED:
+            # 🔴 이 문법만은 **선언이 직접 말한다** — 다른 셋은 번역기 코드가 낱말을
+            # 소유하므로 여기서 유도해야 하지만, 선언형은 `emit`이 곧 그 목록이다.
+            # 그래서「등재는 했는데 아무도 발화하지 않는다」가 이 문법으로 소스를 하나
+            # 선언하는 순간 «자동으로» 해소된다.
+            out.update(str(rule.get("predicate") or "").strip()
+                       for rule in (declaration.get("emit") or [])
+                       if isinstance(rule, dict) and rule.get("predicate"))
+        elif kind == ledger_config.SOURCE_KIND_OBSERVATION:
             out.add(ledger_config.OBSERVATION_PREDICATE)
         elif kind == ledger_config.SOURCE_KIND_TRANSFER:
             out.add(ledger_config.TRANSFER_PREDICATE)

@@ -127,6 +127,24 @@ def _identifier_positions(source, declaration) -> list:
     else:
         out.append(("occurred_at_column", declaration.get("occurred_at_column"), None))
 
+    if kind == ledger_config.SOURCE_KIND_DECLARED:
+        # 🔴 이 문법은 컬럼 이름을 **`emit` 안에서** `"$col"`로 말하므로, 식별자 검사도
+        # 거기서 걷어 와야 한다. 안 걷으면 화면이 저장한 `$가짜컬럼`이 검증을 통과하고
+        # 백필 때 행마다 거절로 나타난다 — 저장 시점에 알 수 있는 것을 실행 시점으로
+        # 미루는 것이고, 이 라운드가 없애려는 바로 그 지연이다.
+        for index, column in enumerate(
+                (declaration.get("watermark") or {}).get("columns") or []):
+            out.append((f"watermark.columns[{index}]", column, None))
+        for index, rule in enumerate(declaration.get("emit") or []):
+            if not isinstance(rule, dict):
+                continue
+            where = f"emit[{index}]"
+            when = rule.get("when")
+            if isinstance(when, dict) and when.get("column"):
+                out.append((f"{where}.when.column", when["column"], None))
+            for field, value in _column_refs(rule):
+                out.append((f"{where}.{field}", value, None))
+
     if kind == ledger_config.SOURCE_KIND_TRANSFER:
         group = declaration.get("group") or {}
         out.append(("group.column", group.get("column"), None))
@@ -137,6 +155,30 @@ def _identifier_positions(source, declaration) -> list:
             out.append(("container.relation", relation, "__self__"))
             for field in ("key_column", "lot_column", "slot_column"):
                 out.append((f"container.{field}", container.get(field), relation))
+    return out
+
+
+def _column_refs(node, path="") -> list:
+    """`emit` 규칙 안의 `"$col"` 토큰 전부 — `(경로, 컬럼명)` 목록.
+
+    중첩 payload를 재귀로 훑는다. `"$$"`는 리터럴 `$`의 이스케이프이므로 컬럼이 아니다
+    (번역기의 `resolve`와 **같은 규칙**이고, 두 곳이 갈라지면 저장은 통과하는데 실행은
+    거절하는 선언이 생긴다).
+    """
+    from ledger.config import COLUMN_REF_PREFIX
+
+    out = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if str(key).startswith("__"):
+                continue
+            out.extend(_column_refs(value, f"{path}.{key}" if path else str(key)))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            out.extend(_column_refs(value, f"{path}[{index}]"))
+    elif isinstance(node, str) and node.startswith(COLUMN_REF_PREFIX) \
+            and not node.startswith(COLUMN_REF_PREFIX * 2):
+        out.append((path, node[len(COLUMN_REF_PREFIX):]))
     return out
 
 
@@ -416,6 +458,7 @@ KIND_LABELS = {
     "lineage": "랏 이벤트 — 행 쌍 하나가 한 사건(분할·병합·트랙인)",
     "observation": "관측 — 한 행이 한 발화(보이드·박리 등 불량 관측)",
     "transfer": "이동 — 한 그룹(잡 런)이 한 사건(DT 픽킹·본딩)",
+    "declared": "선언형 — 한 행이 «선언한 대로» 원자 1~N개(대장·참조표. 코드 0줄)",
 }
 
 
@@ -438,6 +481,25 @@ def kinds_view() -> list:
          "required_columns": list(ledger_config.TRANSFER_REQUIRED_COLUMNS),
          "optional_columns": list(ledger_config.TRANSFER_OPTIONAL_COLUMNS),
          "required_blocks": ["group", "container"]},
+        # 🔴 넷째 문법. 다른 셋과 달리 **파이썬 클래스가 없다** — 행→원자 사상이 `emit`
+        # 선언 자체다. 그래서 화면이 폼을 만들 재료가 컬럼 목록이 아니라 «문법»이고,
+        # 아래 세 목록이 그 문법의 전부다(연산자·시각 기준·값 참조 규칙).
+        {"kind": ledger_config.SOURCE_KIND_DECLARED,
+         "label_ko": KIND_LABELS["declared"],
+         "required_columns": list(ledger_config.DECLARED_REQUIRED_COLUMNS),
+         "optional_columns": [],
+         "required_blocks": ["watermark", "emit", "occurred_at_basis"],
+         "emit_rule_fields": ["rule", "predicate", "subject", "object", "when"],
+         "when_operators": sorted(ledger_config.WHEN_OPERATORS),
+         "occurred_at_bases": [
+             {"value": "claim_time",
+              "label_ko": "주장 시각 — 이 컬럼이 «배정·승인된 순간»이 맞다"},
+             {"value": "row_created",
+              "label_ko": "행 생성 시각 — 승인 시각이 아니라 행이 생긴 때다(그렇게 실린다)"}],
+         "column_ref_prefix": ledger_config.COLUMN_REF_PREFIX,
+         "note_ko": "값은 `$컬럼`이면 그 행의 컬럼, 아니면 리터럴입니다(`$$`는 «$» 자체). "
+                    "리스트 열 분해·위치 짝짓기는 이 문법의 범위 밖입니다 — 그건 선언이 "
+                    "아니라 작은 프로그래밍 언어가 됩니다."},
     ]
 
 
@@ -445,10 +507,15 @@ def kinds_view() -> list:
 #: 내보낸다: 없는 선택지는 화면이 「이 시스템은 그런 걸 못 한다」로 읽히고, 사유가 붙은
 #: 선택지는 「아직 안 왔다」로 읽힌다. 이 둘은 다른 사실이다.
 UNSUPPORTED_KINDS = (
+    # ⚠️ 이것은 위 `declared`와 **다른 것**이다. `declared`는 소스 «행»을 보고 번역하고,
+    # 이쪽은 원장을 «걸어서» 조건을 평가해 3류 추론을 만든다(근거 원자 id 필수). 두 판정이
+    # 하루 차이로 같은 「넷째」 자리를 말했고, 나중 것(브리핑 §6-2 = `declared`)이 정본이라
+    # 이 항목은 이름을 유지한 채 미구현으로 남는다.
     {"kind": "derivation",
-     "detail_ko": "판정 R-2026-08-15-M ⑤로 신설이 확정됐지만 아직 번역기가 없습니다. "
-                  "규칙이 조건을 평가해 만드는 주장(3류·`#derivation` 접미·근거 원자 필수)은 "
-                  "다음 라운드입니다."},
+     "detail_ko": "원장을 «걸어서» 조건을 평가하는 추론 규칙(3류·근거 원자 필수)은 아직 "
+                  "번역기가 없습니다(판정 R-2026-08-15-M ⑤). 소스 «행»을 선언대로 "
+                  "번역하는 것이 목적이면 그건 `declared` 문법입니다 — 그쪽은 지금 "
+                  "됩니다."},
 )
 
 

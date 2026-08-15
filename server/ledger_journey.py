@@ -86,7 +86,7 @@ import ledger_siblings as sib
 import ledger_trace
 import mechanism_gate
 from ledger_structure import CLASS_LABELS
-from ledger_trace import _fetch, relation_exists
+from ledger_trace import _fetch, relation_exists, rollup_subject_types
 from ledger_walk_contrast import (
     LEDGER_TABLE, WalkRequestError, parse_scope, resolve_marking_axis, _subject_of,
     REASON_LEDGER_ABSENT, REASON_MARKING_RELATION_ABSENT, REASON_NO_SCOPE,
@@ -594,13 +594,21 @@ def _atoms(connection, subject, subjects, predicates, cfg):
            f"e.object_payload, e.occurred_at, e.source_who, "
            f"e.source_translator_ver, e.source_raw_ref, e.supersedes::text "
            f"FROM {LEDGER_TABLE} e "
-           f"WHERE e.subject_type = %(stype)s "
+           f"WHERE e.subject_type = ANY(%(stypes)s) "
            f"AND e.subject_keys->>%(skey)s = ANY(%(ids)s) "
            f"AND e.predicate = ANY(%(preds)s) "
            f"AND e.object_payload IS NOT NULL "
            f"ORDER BY e.occurred_at, e.id")
-    rows = _fetch(connection, sql, {"stype": subject.type, "skey": subject.key,
-                                    "ids": list(subjects), "preds": list(predicates)})
+    # 🔴 ROOT-KEY ROLLUP, NOT A SINGLE TYPE (ruling R-2026-08-15-O). A journey asks what
+    # happened to a WAFER, and a bonding leg is that wafer at a finer grain - so pinning
+    # one `subject_type` dropped `WaferLeg` atoms (MEASURED: 42, of which 12 are
+    # `processed_with` and ALL of those are FINAL_BOND) out of the comparison. The screen
+    # then read「본딩 조건 차이 없음」, which is the one answer the journey contrast exists
+    # to never give falsely. The join key is unchanged: derived types declare the root key
+    # they carry, so `subject_keys->>'wafer'` finds them exactly as it finds the wafer.
+    rows = _fetch(connection, sql,
+                  {"stypes": list(rollup_subject_types(subject.type)), "skey": subject.key,
+                   "ids": list(subjects), "preds": list(predicates)})
     out, seen, truncated = [], {}, set()
     cap = int(cfg["max_atoms_per_subject"])
     for raw in rows:

@@ -171,6 +171,9 @@ def preview(engine, cfg, source, rows: int = DEFAULT_ROWS) -> dict:
             elif kind == ledger_config.SOURCE_KIND_TRANSFER:
                 out = _preview_transfer(store, connection, cfg, source, source_cfg,
                                         rows, notes)
+            elif kind == ledger_config.SOURCE_KIND_DECLARED:
+                out = _preview_declared(store, connection, cfg, source, source_cfg,
+                                        rows, notes)
             else:
                 out = _preview_lineage(store, connection, cfg, source, source_cfg,
                                        rows, notes)
@@ -351,6 +354,74 @@ def _preview_observation(store, connection, cfg, source, source_cfg, rows, notes
             refused += 1
     return _finish(translator_ver, len(source_rows), len(source_rows),
                    refused, 0, kept_all, len(known))
+
+
+# ----------------------------------------------------------------- declared preview
+def _preview_declared(store, connection, cfg, source, source_cfg, rows, notes):
+    """🔴 THE PREVIEW THAT MATTERS MOST, because this kind has no Python class reviewing
+    its output. For the other three grammars a reader can go and read the translator; for
+    this one the declaration IS the translator, so seeing the atoms is the only way to know
+    what was declared. This is the screen the round exists to make honest."""
+    from . import config as ledger_config
+    from . import gate
+    from .backfill import fetch_declared_page, _forget_registers, _plain
+    from .declared_translator import DeclaredMolecule, DeclaredTranslator
+    from .envelope import canonical_keys
+
+    translator_ver = ledger_config.translator_version(cfg, source)
+    declared = ledger_config.declared_derivations(cfg, source)
+    declared_subjects = ledger_config.declared_subject_types(cfg, source)
+
+    source_rows = fetch_declared_page(connection, source, source_cfg, None, rows)
+    translator = DeclaredTranslator(source, source_cfg, translator_ver, declared)
+
+    subjects = set()
+    for row in source_rows:
+        for rule in (source_cfg.get("emit") or []):
+            subject = rule.get("subject") or {}
+            if subject.get("type") not in translator.register_types:
+                continue
+            try:
+                keys = {k: _plain(v, row) for k, v in (subject.get("keys") or {}).items()}
+            except KeyError:
+                continue
+            if all(str(v or "").strip() for v in keys.values()):
+                subjects.add((subject["type"], canonical_keys(keys)))
+    known = _existing_registrations(store, connection, subjects, notes)
+    translator.registered |= known
+
+    kept_all, refused = [], 0
+    for row in source_rows:
+        molecule = DeclaredMolecule(source, row)
+        atoms, was_refused = None, False
+        try:
+            with gate.building_molecule(source):
+                atoms, _report = translator.translate(molecule)
+                was_refused = atoms is None
+                if not was_refused:
+                    kept, was_refused = _screen(gate, source, translator, molecule,
+                                                atoms, declared, declared_subjects, 1)
+                    kept_all.extend(kept)
+        except gate.MoleculeRefused:
+            was_refused = True
+            _forget_registers(translator, atoms)
+        if was_refused:
+            refused += 1
+
+    if translator.rows_matching_nothing:
+        # 🔴 The silent outcome, made loud. A declaration whose `when` clauses match no row
+        # produces zero atoms and NO refusal - it looks exactly like a source with nothing
+        # to say. On a preview of 20 rows that is the single most likely mistake, so it is
+        # a sentence rather than a number the operator has to notice.
+        notes.append(
+            f"읽은 {len(source_rows)}행 중 {translator.rows_matching_nothing}행은 어떤 "
+            f"emit 규칙에도 걸리지 않아 원자를 만들지 않았습니다 — 거절이 아니라 "
+            f"«해당 없음»입니다. 전부 그렇다면 `when` 조건을 다시 보세요.")
+
+    out = _finish(translator_ver, len(source_rows), len(source_rows), refused, 0,
+                  kept_all, len(known))
+    out["rows_matching_nothing"] = translator.rows_matching_nothing
+    return out
 
 
 # ----------------------------------------------------------------- transfer preview

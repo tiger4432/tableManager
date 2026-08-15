@@ -223,6 +223,10 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         return _run_transfer(engine, cfg, source, fetch_rows=fetch_rows,
                              reset_cursor=reset_cursor, start_from=start_from,
                              max_batches=max_batches, probe_lag=probe_lag)
+    if source_cfg.get("kind") == ledger_config.SOURCE_KIND_DECLARED:
+        return _run_declared(engine, cfg, source, fetch_rows=fetch_rows,
+                             reset_cursor=reset_cursor, start_from=start_from,
+                             max_batches=max_batches, probe_lag=probe_lag)
     return _run_lineage(engine, cfg, source, fetch_rows=fetch_rows,
                         reset_cursor=reset_cursor, start_from=start_from,
                         max_batches=max_batches, probe_lag=probe_lag)
@@ -646,6 +650,202 @@ def _run_observation(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,
         return result
     finally:
         read.close()
+
+
+# ------------------------------------------------------------------ declared driver
+def fetch_declared_page(connection, source, source_cfg, after, limit):
+    """One page of rows past the keyset `after`, with EVERY column the row has.
+
+    🔴 `SELECT *`, and it is the one place in this file that does. The other grammars know
+    their columns because a Python class reads named fields; this grammar's columns are
+    named by the OPERATOR inside `emit` (`"$leg"`), and the set of them is not knowable
+    until the declaration is read - which is the whole point of the kind. Building a
+    projection from the declaration instead would mean parsing `$` tokens out of arbitrary
+    nested payloads to decide a SELECT list, and getting that wrong yields a row missing a
+    column, which this translator (correctly) refuses. A registry table is small by nature
+    - `bonding_map` is 1,181 rows - so the wide read costs nothing that matters.
+
+    The keyset, the ordering and the `LIMIT` are the observation driver's, for the same
+    reason: page N costs what page 1 costs.
+    """
+    watermark = list(source_cfg["watermark"]["columns"])
+    identity = source_cfg["columns"]["row_identity"]
+    ordered = ", ".join(watermark)
+    select = ["*", f"{identity} AS row_identity",
+              f"{source_cfg['occurred_at_column']} AS event_time"]
+    select.extend(f"{column} AS __wm{index}__" for index, column in enumerate(watermark))
+    where, params = "", []
+    if after:
+        placeholders = ", ".join(["%s"] * len(watermark))
+        where = f"WHERE ({ordered}) > ({placeholders}) "
+        params.extend(after)
+    params.append(limit)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT {', '.join(select)} FROM {source} {where}"
+            f"ORDER BY {ordered} LIMIT %s", tuple(params))
+        names = [d[0] for d in cursor.description]
+        rows = [dict(zip(names, row)) for row in cursor.fetchall()]
+    for row in rows:
+        row["__watermark__"] = [row.pop(f"__wm{index}__")
+                                for index in range(len(watermark))]
+    return rows
+
+
+def _run_declared(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,
+                  reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
+    """A source whose row -> atom mapping is DECLARED (`ADMIN_SETUP_BRIEF` §6-2).
+
+    Structurally the observation driver: keyset cursor, one row per molecule, molecule
+    scope opened HERE by the driver (ruling R-H-bis 3). What differs is only that the
+    translator reads its rules from the config instead of from its own source.
+    """
+    from . import config as ledger_config
+    from . import gate, observability, schema
+    from .declared_translator import DeclaredMolecule, DeclaredTranslator
+    from .envelope import canonical_keys
+    from .store import LedgerStore
+
+    source_cfg = ledger_config.source_config(cfg, source)
+    translator_ver = ledger_config.translator_version(cfg, source)
+    declared = ledger_config.declared_derivations(cfg, source)
+    declared_subjects = ledger_config.declared_subject_types(cfg, source)
+    batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
+
+    store = LedgerStore(engine)
+    store.ensure_schema()
+
+    read = store.connection()
+    try:
+        existing = store.read_cursor(read, source)
+        if isinstance(start_from, str):
+            start_from = start_from.split("|")
+        after = start_from if start_from is not None else (
+            None if reset_cursor else (existing or {}).get("cursor_value", {}).get(
+                "watermark"))
+
+        logger.info("[Ledger] backfill %s (declared) | translator_ver=%s | rules=%s | "
+                    "cursor=%r%s", source, translator_ver,
+                    [r.get("rule") for r in (source_cfg.get("emit") or [])], after,
+                    " (RESET)" if reset_cursor else "")
+
+        result = BackfillResult(
+            source=source, kind=ledger_config.SOURCE_KIND_DECLARED,
+            translator_ver=translator_ver, started_from=after,
+            molecules=0, refused_molecules=0, incomplete_molecules=0,
+            attempted=0, inserted=0, deduped=0, batches=0, rows_matching_nothing=0,
+            rows_read=0, cursor=after, seconds=0.0)
+        started = time.monotonic()
+
+        translator = DeclaredTranslator(source, source_cfg, translator_ver, declared)
+        refusal_baseline = _refusal_totals(gate, source)
+
+        while True:
+            if max_batches is not None and result["batches"] >= max_batches:
+                break
+            rows = fetch_declared_page(read, source, source_cfg, after, fetch_rows)
+            if not rows:
+                break
+            result["rows_read"] += len(rows)
+
+            # The subjects this page could register, read from the DECLARATION rather than
+            # from a literal - a declared source may speak about any entity type it named.
+            subjects = set()
+            for row in rows:
+                for rule in (source_cfg.get("emit") or []):
+                    subject = rule.get("subject") or {}
+                    subject_type = subject.get("type")
+                    if subject_type not in translator.register_types:
+                        continue
+                    try:
+                        keys = {k: _plain(v, row)
+                                for k, v in (subject.get("keys") or {}).items()}
+                    except KeyError:
+                        continue        # the translator will refuse this row by name
+                    if all(str(v or "").strip() for v in keys.values()):
+                        subjects.add((subject_type, canonical_keys(keys)))
+            translator.registered |= store.existing_registrations(read, subjects)
+
+            read.rollback()
+
+            pending, pending_molecules, pending_refused = [], 0, 0
+            pending_cursor = after
+            for row in rows:
+                molecule = DeclaredMolecule(source, row)
+                atoms, refused = None, False
+                try:
+                    with gate.building_molecule(source):
+                        atoms, _report = translator.translate(molecule)
+                        refused = atoms is None
+                        if not refused:
+                            kept, _screen = gate.screen_molecule(
+                                source, atoms, declared, declared_subjects,
+                                molecule_ref=molecule.ref, source_rows=1)
+                            pending.extend(kept)
+                except gate.MoleculeRefused:
+                    refused = True
+                    _forget_registers(translator, atoms)
+                if refused:
+                    pending_refused += 1
+                    result["refused_molecules"] += 1
+                pending_molecules += 1
+                pending_cursor = molecule.watermark
+
+                if pending_molecules >= batch_size:
+                    _flush(store, source, translator_ver, pending,
+                           {"watermark": _watermark_json(pending_cursor)},
+                           pending_molecules, pending_refused, 0, result, gate,
+                           refusal_baseline)
+                    pending, pending_molecules, pending_refused = [], 0, 0
+
+            if pending_molecules:
+                _flush(store, source, translator_ver, pending,
+                       {"watermark": _watermark_json(pending_cursor)},
+                       pending_molecules, pending_refused, 0, result, gate,
+                       refusal_baseline)
+
+            after = _watermark_json(rows[-1]["__watermark__"])
+            result["cursor"] = after
+            if len(rows) < fetch_rows:
+                break
+
+        result["seconds"] = round(time.monotonic() - started, 3)
+        result["rows_matching_nothing"] = translator.rows_matching_nothing
+        result["census"] = store.census()
+        result["partitions"] = [name for name, _ in schema.partitions(read)]
+
+        cursor_row = store.read_cursor(read, source)
+        result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
+        result["lag"] = observability.lag_report_keyset(
+            store, source, source_cfg, cursor_row,
+            probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
+            force_probe=probe_lag)
+        result["gate_note"] = gate.note()
+        result["lag_note"] = observability.lag_note(result["lag"])
+        return result
+    finally:
+        read.close()
+
+
+def _plain(value, row):
+    """A declared value resolved WITHOUT the gate - for the register pre-fetch only.
+
+    The pre-fetch is an optimisation (one query per page instead of one per row), so a
+    value it cannot resolve must not refuse anything: it raises `KeyError`, the caller
+    skips that row's pre-fetch, and the TRANSLATOR meets the same missing column inside
+    the molecule scope and refuses it by name. Two code paths reaching one refusal, with
+    only the second one counting.
+    """
+    from .config import COLUMN_REF_PREFIX
+
+    if not isinstance(value, str) or not value.startswith(COLUMN_REF_PREFIX):
+        return value
+    if value.startswith(COLUMN_REF_PREFIX * 2):
+        return value[1:]
+    column = value[len(COLUMN_REF_PREFIX):]
+    if column not in row:
+        raise KeyError(column)
+    return row[column]
 
 
 # ------------------------------------------------------------------ transfer driver

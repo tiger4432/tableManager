@@ -94,6 +94,25 @@ def lineage_predicates():
     return _WALK_CACHE["fetch"]
 
 
+def rollup_subject_types(root_type: str) -> tuple:
+    """The subject types a read about `root_type` must include (ruling R-2026-08-15-O).
+
+    🔴 ONE SPELLING FOR EVERY READER, and it lives here because this is already the module
+    that adapts the vocabulary's declarations for the query layer (`lineage_predicates`
+    right above does the same job for the walk's fetch set). `ledger_journey`,
+    `ledger_walk_contrast` and `ledger_selection` all import from this module already, so a
+    per-file copy would have been three lists of one fact - and three lists is how
+    `WaferLeg` came to be visible to one query and invisible to the next in the first place.
+
+    Cached with the walk sets, so `reset_walk_cache()` (wired into `/admin/reload-configs`)
+    drops it too - the vocabulary can gain a derived type without a restart.
+    """
+    key = ("rollup", root_type)
+    if key not in _WALK_CACHE:
+        _WALK_CACHE[key] = tuple(_vocabulary().rollup_subject_types(root_type))
+    return _WALK_CACHE[key]
+
+
 def traversal_predicate():
     """The ONE predicate the recursion follows, checked against what it can execute.
 
