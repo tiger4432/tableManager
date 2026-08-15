@@ -1,8 +1,10 @@
 # 🚀 운영 배포 — 직접 세팅해야 하는 것들 (요약)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-13
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 (8-septies를 셋업 정본으로 이관)
 >
-> **이번 라운드 (2026-08-13 3차)**: **§6에 마이그레이션 단계 둘이 늘었고, 배포 «의존성»이 하나 늘었다.** **8-sexies**(`346aa88` · void 스키마 인덱스 — 🔴 **3단계이지 1단계가 아니다**, 선언 손복사와 리로드가 테이블을 만든 «다음»에만 붙는다. 🔴 `idx_void_obs_area`는 **식 인덱스**이고 **면적 컬럼은 없어야 한다**). **8-septies**(`f896020`+`bee1aeb` · 정준 원장 — **추가 전용·멱등이고 안 돌려도 아무것도 안 깨진다**, 다만 그 상태에서 trace 라우트는 503 + 관계 이름으로 답한다). 🔴 **`environment.yml`에 `tzdata`가 새로 들어왔다** — `Asia/Seoul`은 런타임에 IANA DB에서 해석되고 `UTC`는 그런 적이 없었다. **없으면 폴백하지 않고 예외를 낸다**(조용한 UTC 폴백이 방금 고친 결함의 재현이므로). 🔴 **시간대 판정 «다음»에 원장을 돌려라 — 어긋난 시각도 well-formed해서 어떤 가드도 못 알아챈다.** 그리고 **§1-2에서 `map_doe`·`map_doe_source`가 은퇴했다**(`c0fb735`) — ⚠️ **기존 환경의 gitignore된 `table_config.json`에는 아직 남아 있을 수 있다.** 🔴 §1-2의 제품 소유 **목록**이 세 번째로 낡아, 이번에는 **수도 목록도 적지 않는다**(정본은 `product_tables.py`).
+> **이번 라운드 (2026-08-15 · 🧱 원장·온톨로지 셋업 통폐합 — 소유자 지시)**: **8-septies가 명령을 들고 있던 자리에서 «가리키는» 자리가 됐다.** 같은 절차가 **네 곳**(이 파일 · `LEDGER_GUIDE §4.1·§4.2` · `OPERATOR_RUNBOOK §6` · `CONFIG_GUIDE §1`)에 있었고 **각각 다른 사실을 하나씩만** 들고 있었다 — 이 파일만 `tzdata`를, 런북만 선행 조건을, 가이드만 플래그를. 정본은 **[guide/ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)** 하나이고, **이 파일이 계속 소유하는 것은 「배포 순서에서의 자리」**(tzdata 선행 · 시간대 판정 다음)뿐이다. 🔴 **8-sexies가 이미 같은 모양이었다**(순서는 런북 §4, 여기는 3단계 명령 하나) — 이 저장소에 선례가 있었다.
+>
+> **직전 라운드 (2026-08-13 3차)**: **§6에 마이그레이션 단계 둘이 늘었고, 배포 «의존성»이 하나 늘었다.** **8-sexies**(`346aa88` · void 스키마 인덱스 — 🔴 **3단계이지 1단계가 아니다**, 선언 손복사와 리로드가 테이블을 만든 «다음»에만 붙는다. 🔴 `idx_void_obs_area`는 **식 인덱스**이고 **면적 컬럼은 없어야 한다**). **8-septies**(`f896020`+`bee1aeb` · 정준 원장 — **추가 전용·멱등이고 안 돌려도 아무것도 안 깨진다**, 다만 그 상태에서 trace 라우트는 503 + 관계 이름으로 답한다). 🔴 **`environment.yml`에 `tzdata`가 새로 들어왔다** — `Asia/Seoul`은 런타임에 IANA DB에서 해석되고 `UTC`는 그런 적이 없었다. **없으면 폴백하지 않고 예외를 낸다**(조용한 UTC 폴백이 방금 고친 결함의 재현이므로). 🔴 **시간대 판정 «다음»에 원장을 돌려라 — 어긋난 시각도 well-formed해서 어떤 가드도 못 알아챈다.** 그리고 **§1-2에서 `map_doe`·`map_doe_source`가 은퇴했다**(`c0fb735`) — ⚠️ **기존 환경의 gitignore된 `table_config.json`에는 아직 남아 있을 수 있다.** 🔴 §1-2의 제품 소유 **목록**이 세 번째로 낡아, 이번에는 **수도 목록도 적지 않는다**(정본은 `product_tables.py`).
 >
 > **직전 라운드 (2026-08-13 2차)**: **§6-8의 배너 읽는 법에 `SELF-HEALING` 계급이 늘었다**(`eb700e5`) — config로 선언한 **동적 테이블**의 컬럼은 서버 프로세스 기동이 **스스로 추가**하고 이 점검은 그보다 **먼저** 돌 뿐이다. 🔴 **「할 일 없음」이고 마이그레이션을 쓰면 안 된다** — 종전에는 이것도 「이 테이블을 쓰는 모든 화면이 실패한다」로 나갔고 제품 소유자가 그 값을 냈다. ⚠️ **다만 «두 번째» 목격은 진짜다**(재기동 뒤에도 남으면 그 `ALTER`가 실패 중). **직전 라운드 (2026-08-13 1차)**: **§6에 마이그레이션 단계 둘이 늘었다** — **8-quater**(`ba664c5` · 인제션 원장 tier-1 열쇠. 안 돌리면 그 테이블이 **읽기부터** 죽는다)와 **8-quinquies**(`8bdc136` · `dt_inventory.dt_lot`/`dt_slot` 물리 타입). 🔴 **둘의 성격이 다르다**: 앞엣것은 **코드가 그 컬럼을 요구해서** 안 돌리면 깨지고, 뒤엣것은 **아무것도 안 깨진 채 선언과 물리가 계속 어긋난다** — 그래서 뒤엣것은 배너가 아니라 `audit_schema_canon.py`가 답한다.
 >
@@ -587,18 +589,11 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    순서 전체(선언 손복사 → 리로드/재기동으로 테이블 생성 → **이 인덱스** → 파서 shim 둘 → SAT 파일)는 [process/OPERATOR_RUNBOOK §4](../process/OPERATOR_RUNBOOK.md)가 정본이다. 🔴 **이 파일은 3단계이지 1단계가 아니다** — 선언이 `server/config/table_config.json`(gitignore)에 손복사되고 리로드가 물리 테이블을 만들기 전까지는 붙일 대상이 없다.
    - 🔴 **`idx_void_obs_area`는 «식» 인덱스다** — `pi() * radius_x * radius_y`. **면적 컬럼은 없고 앞으로도 없어야 한다**(합불 임계가 레시피 파라미터라 굳힌 판정은 이력을 다시 판정할 수 없게 만든다). 근거는 [architecture/data_model §1.2-bis](../architecture/data_model.md).
    - 되돌리기: `add_void_schema_indexes_reverse.sql`.
-8-septies. **정준 원장 테이블 — 추가 전용이고 급하지 않다. 🔴 스크립트는 «둘»이다. 단, `tzdata`가 먼저다** (2026-08-13 `f896020`+`bee1aeb`+`0198e7e`)
-   ```bash
-   conda run -n assy_manager python server/migrations/add_ledger_events.py            # --report 로 상태만 보기
-   conda run -n assy_manager python server/migrations/add_ledger_refusal_reasons.py   # --report / --reverse
-   ```
-   - **성질**: 추가 전용·멱등. DROP 없음, 기존 것의 ALTER 없음, 기존 행을 건드리는 문장 없음 — **새 테이블 둘**(`ledger_events`·`ledger_translator_cursor`)만 만든다. **안 돌려도 아무것도 안 깨진다**(부팅 시 `server/ledger`를 import하는 프로세스가 없다). 다만 그 상태에서 `GET /api/ledger/trace`는 **503 + 관계 이름**으로 답한다.
-   - 🔴 **두 번째 스크립트(`0198e7e`)는 커서 표에 `refusal_reasons JSONB` 하나를 붙인다**(열둘 → 열셋) — 거절 사유가 그전까지 **백필 프로세스의 메모리에만** 있어서 **이 DB를 어떻게 읽어도 사유 하나를 낼 수 없었다.** `ALTER TABLE … ADD COLUMN <nullable, DEFAULT 없음>` 한 문장이라 PG 11+에서 **카탈로그만** 바꾸고 힙을 안 건드린다(표 크기와 무관). 게이트가 `pg_attribute`라 **재실행은 DDL도 잠금도 0**이고, **어떤 표의 행도 읽거나 쓰지 않는다.**
-     - 🔴 **이것을 «건너뛰어도» 서버는 500이 아니다 — 양방향으로 방어돼 있다.** 쓰기 쪽은 `ledger.schema.ensure_schema`가 같은 문장을 **모든 백필 첫 단계**에 적용하고, 읽기 쪽 `GET /api/ledger/coverage`는 **카탈로그에 어느 컬럼이 있는지 먼저 묻고** 있는 것만 SELECT한다. 8의 `--preflight-only`가 잡는 계급(`file_ingestion_checkpoints`가 통째로 죽던 8-quater)과 **다른 이유가 이것**이다: 저쪽은 ORM이 컬럼 이름을 모든 문장에 실어서 표가 죽었고, 이쪽은 **읽는 쪽이 물어보고 쓰는 쪽이 스스로 고친다.** 이 스크립트는 **운영자의 진입점이자 감사 기록**이다.
-     - 되돌리기: `--reverse`. **진짜 역방향이다** — 원자도, 커서 위치도, 집계도 잃지 않고 **내역만** 잃는다.
-     - ⚠️ **기존 커서 행은 NULL을 얻고, 그 NULL이 `{}`와 다른 뜻이다** — 「이 행은 컬럼보다 오래됐고 그 `molecules_refused`는 영원히 분해될 수 없다」. `/coverage`가 그것을 **`refusals_unaccounted > 0`**(배포 이력, **결함 아님**)으로 보고한다. 읽는 법은 [guide/LEDGER_GUIDE §4.4·§4.6](./LEDGER_GUIDE.md).
-   - 🔴 **`environment.yml`에 `tzdata`가 새로 들어왔다(2026-08-13).** 원장의 세상 시각 선언이 `Asia/Seoul`이고 `zoneinfo.ZoneInfo("Asia/Seoul")`은 **런타임에 IANA DB에서** 해석된다 — 선언이 `UTC`이던 동안에는 CPython이 tzdata 없이 답했으므로 **진짜로 새 의존성**이다. **없으면 폴백하지 않고 예외를 낸다**(조용히 UTC로 떨어지면 방금 고친 「모든 원자가 9시간 어긋나고 아무것도 항의하지 않는」 상태가 그대로 재현된다). 환경 갱신: `conda env update -f environment.yml`.
-   - 🔴 **시간대 판정 «다음»에 돌려라.** 선언이 틀리면 백필된 원자 전부가 어긋나고, **어긋난 시각도 여전히 well-formed한 시각이라 어떤 가드도 알아채지 못한다.** 정정은 재백필이지 제자리 `UPDATE`가 아니다(해결기가 `occurred_at` 내림차순으로 순위를 매기므로 낡은 원자가 **구성상 정정본을 이긴다**).
+8-septies. **정준 원장·온톨로지 — 🔴 [guide/ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)이 정본이다** (2026-08-15 통폐합)
+   - **이 단계의 명령·순서를 여기 다시 적지 않는다.** 저 문서 하나가 시간대 판정과 `tzdata` → 선행 테이블 → **마이그레이션 둘** → 소스 선언 → 백필 → 화면 층 선언 → 검증을 순서로 답한다.
+     🔴 **사본을 두지 않는 이유**: 같은 절차가 네 곳에 있었고(이 파일 · `LEDGER_GUIDE §4.1·§4.2` · `OPERATOR_RUNBOOK §6` · `CONFIG_GUIDE §1`) **서로 다른 사실을 하나씩만** 들고 있었다.
+   - **이 파일이 계속 소유하는 것은 «배포 순서에서의 자리»뿐이다**: 🔴 **`environment.yml`에 `tzdata`가 들어 있어야 하고**(`conda env update -f environment.yml`) — `Asia/Seoul`은 런타임에 IANA DB에서 해석되며 **없으면 조용히 UTC로 폴백하지 않고 예외를 낸다** — 🔴 **시간대 판정 «다음»에 원장을 돌린다**(어긋난 시각도 well-formed해서 어떤 가드도 못 알아챈다. 정정은 재백필이지 제자리 `UPDATE`가 아니다).
+   - **급하지 않다**: 추가 전용·멱등이고 **안 돌려도 아무것도 안 깨진다**. 다만 그 상태에서 `GET /api/ledger/trace`는 **503 + 관계 이름**으로, `GET /api/ledger/coverage`는 `state: "absent"`로 답한다.
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
    - ⚠️ 런처와 웹서버가 **각자** 드리프트 배너를 한 번씩 찍습니다(약 14 ms). 8을 건너뛰었어도 기동 로그에 남으니 거기서 읽으십시오.
 

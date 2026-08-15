@@ -1,9 +1,14 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 밤 (**§4.9 신설 — `GET /api/ledger/journey`(주어 «둘» 전용 여정 대조, `server/ledger_journey.py` · 갱신 트리거 ⑧)**. 🔴 **이 절이 못박는 계약 넷: ① n=2에 집단 통계가 «부재»(null 아님)이고 관문이 둘 ② 한쪽 값의 상태가 «넷»이며 셋이 「없음」처럼 생겼다 ③ 육하원칙은 봉투→슬롯 매핑 «하나»이고 「왜」만 층이 다르다(선언의 부재 ≠ 기록의 부재) ④ 세그먼트 서수는 «해결 등급 안에서» 매긴다.** 직전: §4.7 ⑤ 기전 층 현행 확정 — `mechanism_models.json` 라이브·소비자 둘·바인딩 규율 `87374a5`. 직전 3차: 관측 번역 — §3.7·§3.7-quinquies·§4.5·§4.8·§5.5-bis·§5.7) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 (`measured` 서명과 selection Process/Measurement 응답 계약 대조) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
-> **이번 라운드 (2026-08-14 3차 · 관측 번역 — R-2026-08-14-D + R-2026-08-14-E ⓐ · 갱신 트리거 ⑦·⑧)** —
+> **이번 라운드 (2026-08-15 · R&D selection 계측 비교)** — `processed_with` required가
+> `step/recipe`로 축소되고 categorical occurrence만 비교한다. 닫힌 어휘에 `measured`
+> (`since:4`)가 열렸으며 상태별 value/run 조건과 무값 상태의 value 금지를 gate가 집행한다.
+> `/selection/resolve`는 원값·상태 수·분모·mark/evidence를 보존한다.
+>
+> **직전 라운드 (2026-08-14 3차 · 관측 번역 — R-2026-08-14-D + R-2026-08-14-E ⓐ · 갱신 트리거 ⑦·⑧)** —
 > **§3.7 어휘가 «열하나»**(`observed` 하나만 추가 — `since: 3`, subject `Wafer`, `value` 목적어의 `required`에 🔴 **`run_uid`**.
 > 🔴 **짝인 `measured`는 «일부러» 미등재**이고 그 부재가 어휘 성장 규율의 적용이다) ·
 > **§3.7-quinquies 신설**(🔴 **걷기 의미론이 코드 목록에서 «선언»으로 올라갔다** — `traversable` 3상태(`True`/`False`/**`None`**)와 `direction`,
@@ -39,7 +44,8 @@
 > | 문서 | 소유 |
 > |---|---|
 > | [architecture/CANONICAL_LEDGER_DESIGN](../architecture/CANONICAL_LEDGER_DESIGN.md) | **WHY** — 왜 이 모양인가 |
-> | [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md) | **HOW** — 소스 붙이는 절차 · 백필 운영 |
+> | [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md) | **WHAT TO DECLARE** — 선언 표 전수 · 순서 · 실물/제안 구분(2026-08-15 신설) |
+> | [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md) | **HOW(코드)** — 번역기 쓰는 절차 · 백필 숫자 읽는 법 |
 > | **이 문서** | **EXACTLY-WHAT** — 변경이 **조용히 깨뜨리면 안 되는 계약** |
 > | [process/LEDGER_RULINGS](../process/LEDGER_RULINGS.md) | **판정** 🔴 정본. 거기 없는 판정은 내려진 적이 없는 것 |
 >
@@ -409,15 +415,17 @@ PostgreSQL이 jsonb를 jsonb와 **의미적으로** 비교하고 쓰는 쪽은 �
 | `slot_map` | ontology | Lot | `entity_ref`→Lot (`from`·`to`·`wafer` 필수) | 1 | active | `False` |
 | `has_wafer` | ontology | Lot | `entity_ref`→Wafer (`slot`) | 1 | active | `False` |
 | `frame_confirmed` | ontology | Wafer | `value`(**`required` 없음**) | 1 | **reserved** | `None` |
-| **`processed_with`** | ontology | Wafer | `value` · `required` = `step`·`step_family`·`eqp`·`recipe` | **2** | active | `None` |
+| **`processed_with`** | ontology | Wafer · WaferLeg | `value` · `required` = `step`·`recipe` | **2** | active | `None` |
 | **`has_param`** | ontology | Recipe | `value` · `required` = `param`·`value`·`unit` | **2** | active | `None` |
 | **`transferred`** | ontology | Wafer | `value` · `required` = `from`·`to` (`die` XOR `qty`는 **발화자 소유**) | **2** | active | `None` |
-| **`observed`** | ontology | **Wafer만** | `value` · `required` = `finding_kind`·`method`·**`run_uid`** | **3** | active | 🔴 **`None`** |
+| **`observed`** | ontology | Wafer · WaferLeg | `value` · `required` = `finding_kind`·`method`·**`run_uid`** | **3** | active | 🔴 **`None`** |
+| **`measured`** | ontology | Wafer · WaferLeg | `value` · 공통 `metric`·`unit`·`method`·`state`; `recorded`만 `value`·`run_uid` | **4** | active | 🔴 **`None`** |
 
 🔴 **수가 통제 장치라는 성질은 «완화되지 않았다».** `test_ledger_l1_unit.py::test_v0_vocabulary_is_exactly_seven_words`는
-**이름을 그대로 둔 채** 지금 **열하나**를 못박고, **원래 일곱이 여전히 `since: 1`인 것까지** 단언한다 —
-열두 번째 낱말은 지금도 그 테스트를 빨갛게 만든다. 이름을 안 바꾼 것이 의도다: 일곱을 지키던 테스트가
-**왜 열하나인지를 적는 자리**여야지, 조용히 완화된 옛 테스트 옆에 새 테스트가 서면 안 된다.
+**이름을 그대로 둔 채** 지금 **열둘**을 못박고, **원래 일곱이 여전히 `since: 1`인 것까지** 단언한다.
+`measured`는 실제 계측 원자가 selection 비교에 필요해진 2026-08-15에 `since: 4`로 열렸다.
+이름을 안 바꾼 것이 의도다: 일곱을 지키던 테스트가 **왜 열둘인지를 적는 자리**여야지,
+조용히 완화된 옛 테스트 옆에 새 테스트가 서면 안 된다.
 그 docstring이 판정 본문을 들고 있고, 이번 라운드분은 [R-2026-08-14-D](../process/LEDGER_RULINGS.md)를 이름으로 적는다.
 
 - ⚠️ **`transferred`(`530fda6`)는 이 표에 «행이 없었다»** — 2026-08-14 3차 정비에서 등재했다.
@@ -706,7 +714,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 어휘가 그 타입을 선언하지 않으므로 「붙을 자리가 없다」가 답이고, **`Model`이 선언되는 날 이 문장은 스스로 거짓이 된다.**
 ✅ **[2026-08-14 · `f52628f`] 앞의 ⚠️ 문단은 «부분적으로» 낡았다** — `server/config/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개 · 코드 0줄 변경**)
 그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재하고 소비자는 **둘**이다 — 이 라우트의 기전 층 + 3관문 랭킹의 기전 관문(`server/mechanism_gate.py`).
-파일은 `models`(방향만 — 방정식은 일부러 없다) · `signatures`(사람용, 로더 무시) · **`bindings`**(필드→물리량. 🔴 **항목 목록이 아니다** — 바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다).
+🔴 **[2026-08-15 정정] 파일에 `models`라는 블록은 «없다»** — 최상위 예약 키는 `__doc`와 `bindings`뿐이고 **나머지 키 하나하나가 모델**이며(`mechanism_gate.KEY_DOC`/`KEY_BINDINGS`), `signatures`는 **모델 «안»의 키**이고 로더가 읽지 않는다(사람용). 모델은 방향만 나른다 — 방정식은 일부러 없다. **`bindings`**는 필드→물리량이고 🔴 **항목 목록이 아니다**(바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다). 선언 방법은 [guide/ONTOLOGY_LEDGER_SETUP §6.1](../guide/ONTOLOGY_LEDGER_SETUP.md).
 🔴 **바인딩은 데이터가 실재하는 날 켠다**(`87374a5` — `post_bond_queue_h`가 그 실례. 공백에 바인딩을 지어내지 않는다). 부재 갈래(`no_declaration_file`)는 파일 없는 박스에서 여전히 발화한다.
 
 **⑥ 🔴 등급 분포를 SQL이 «분류하지 않는다» — 그룹 키만 만든다.**
@@ -844,6 +852,91 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 **부재·깨짐이 예외가 아니라 상태(`labels.state`)인 것은 양쪽 모두 참**이다 — 세부는 [CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md).
 
 ---
+
+### 4.10 R&D Trend와 Composite CHIP 읽기 계약 (2026-08-14)
+
+`GET /api/ledger/trends`는 정식 원장 주어인 **WaferLeg**를 grain으로 삼는다. identity key는
+`{wafer,bonding_leg}`이며 동일 Base WF의 서로 다른 LEG를 절대 합치지 않는다. 선언된 종류와
+subtype 수를 고정하지 않고 `finding_kinds[]`·`series[]`로 내며, 모든 차트 점과 표 행은
+같은 구조화 identity와 `mark_key`를 사용한다. `limit`은 keyset page 예산,
+`max_points`는 series별 DB 다운샘플 예산이다. 둘 다 도메인 cardinality 제한이 아니다.
+시간 창은 필수(미지정 시 90d를 명시 적용, 최대 366d)이고 `observed` 파티션만 읽는다.
+`found_rate` 분자는 원장 `observed`, 분모는 finding 등록부가 선언한 method의
+`inspection_run`을 `(base_wafer_id,base_x,base_y) → bonding_map(base,x,y,leg)`로 정확히
+결합한 값이다. 검사된 wafer+LEG만 양수 `scan_denominator`를 가지며 발견 0이면
+`state=scanned_clean`이다. 관측 부재만으로 clean을 만들지 않으며 numerator/denominator를
+응답에 함께 보존한다.
+선택 목록과 query 조립의 상세 계약은 [TREND_DECLARATION_GUIDE](./TREND_DECLARATION_GUIDE.md)가
+정본이다. 응답은 전체 `selectable_finding_kinds[]`(active/label/subtype/series/metrics)와
+실제 `applied_kinds[]`를 분리한다. 선언 없는 종류, 명시적 빈 선택, 비활성 종류는 SQL 전에
+거절하며 사용자 SQL을 실행하지 않는다.
+Trend Table의 DT/Core 추적 열은 응답 `trace_dimensions[]` 선언과 행별
+`traceability.{dt,core}`로 제공한다. Final Bond Wafer에 명시 귀속된 `transferred` component만
+분모로 삼아 `ready|partial|absent`, count, component denominator, evidence ID를 계산한다.
+page wafer+LEG와 같은 시간창으로 유계화하며 finding 부재를 추적 부재로 해석하지 않는다.
+
+`mark_key`는 `wafer-leg:v1:` 뒤에 canonical UTF-8 JSON 배열
+`["WaferLeg",wafer,bonding_leg]`의 unpadded base64url을 붙인다. decode 뒤 canonical
+재인코딩이 일치해야 하므로 구분자 충돌이 없다. cursor v2도
+`(occurred_at,wafer,bonding_leg)`를 보존한다. 기존 `Wafer` observed atom은 LEG를 추측해
+fan-out하지 않고 복합 Trend에서 제외한다. 이는 JSON identity/vocabulary의 additive 확장이므로
+DDL migration은 없지만, 생산 translator가 `WaferLeg register/observed/processed_with` 원자를
+발화하고 기존 데이터는 declared LEG bridge로 재번역해야 한다.
+
+`GET /api/ledger/composition`은 final CHIP을 `components[]`와 DAG로 답한다. component가
+기본 단위이며 각 항목은 안정 id, Core 출처/종류/역할, bonding layer/position,
+ordered `transfer_events[]`, 방문한 모든 DT collection, 해소 상태, upstream process
+evidence id를 보존한다. `upstream_process.events[]`는 `processed_with`의 step/family,
+equipment, recipe, 실제값·설정값 parameter와 원 payload를 그대로 보존하며, 키가 없는 값은
+만들지 않는다. 과거 `upstream_process.evidence_ids[]` 이벤트 요약은 하위 호환 필드다.
+`core.branch`와 `core.lineage.events[]`는 `has_wafer`/`derived_from`의 다중 parent/path를,
+`final_subject_resolution`은 bond-layer의 명시적 `bond_wafer` 후보 전부와
+`resolved|contested|absent`를 보존한다. fixture의 answer-key/원인 태그는 계약 입력이 아니다.
+**한 CHIP→대표 DT→Core** 모양은 계약 위반이다. assembly는
+many-to-many DAG이고 ordered인 것은 component 하나의 이동 경로뿐이다. component를
+role/type/layer로 대응시킨 뒤에만 upstream process 차이를 정렬할 수 있으며 구성 차이와
+공정 차이는 서로 다른 컬렉션이다.
+
+현행 일반 `transferred` 원자 72,485건 실측에서는 `position`이 null이고 final-chip
+component id가 없어 이 계약으로 역추적할 live bridge가 없다. SYN fixture만 새 payload
+필드(`component`, `sequence`, 위치)를 발화하며 술어는 기존 `transferred` 그대로다.
+새 DDL·구 그래프 저장소는 없다. 다만 물리량 계측을 위해 닫힌 어휘에 `measured`가
+`since: 4`로 추가됐고, UI의 `measured_as`는 원장 술어가 아니다.
+
+`POST /api/ledger/selection/resolve`는 [UNIVERSAL_MARKING_SCHEMA](./UNIVERSAL_MARKING_SCHEMA.md)
+v4 `WaferLeg` Mark를 원장/선언된 map frame 근거로 FinalChip subjects에 해소하며 응답의
+`schemaVersion`과 `schema_version`도 4다. `id/groupId`, 후보 전부,
+evidence ID와 path를 보존하며 이름/좌표 유사도로 주어를 만들지 않는다. `map_cells`는
+`wafer_map_metadata(target_table,map_id)`와 허용된 source table의 정확한 좌표가 모두
+맞아야 한다. 응답 `maps[]`는 frame의 1-based start, `y_invert`, rotation/side 및
+valid-die/process/used/supply-material/defect layer를 그대로 싣는다.
+Bond map cell의 LEG는 `bonding_log(base_id,bx,by)`와 `bonding_map(base,x,y,leg)`의 정확한
+좌표 결합으로만 얻는다. 결과 map projection도 `subject_wafer+subject_leg`로 격리한다. 직접
+LEG 근거가 없는 DT/Core cell과 구 `Wafer` mark는 여러 LEG로 펼치지 않으며, 후자는
+`legacy_wafer_requires_bonding_leg`로 명시 거절한다.
+
+Process facet은 `(step, recipe, occurrence)`의 발생만 비교한다. `equipment`·`step_family`·
+`params_actual`·`params_setpoint`·knob/value는 후보화하지 않으며 수치 비교는 `measured`만 한다.
+발생 차이의 0.5 평활 log-odds는 raw effect와 분모를 보존하지만 categorical Process에
+기전 수치 binding을 붙이지 않는다.
+
+Measurement facet은 signature의 `metric/unit/method`와 실제 존재하는 linkage만 보존한다.
+payload `state`는 `recorded|missing|not_performed|unknown`의 닫힌 집합이고, `recorded`만
+`value/run_uid`를 요구한다. 나머지 셋은 `value` 키가 금지된다. 응답 `groups[]`는
+`state_counts`, 원값 목록 `values[]`, 단일 원값일 때만 `value`, 분모, WaferLeg mark와
+evidence ID를 낸다. 평균·0·null sentinel을 발명하지 않는다. 선택된 주어에 원자가 하나도
+없을 때만 명시적 부재 `{state: absent, reason: measured_evidence_absent}`를 낸다.
+
+공정 비교는 subject grain을 보존한다. Core Wafer의 `processed_with`는 component population과
+Core type/branch signature를 사용한다. `WaferLeg processed_with`(예: FINAL_BOND)는 analysis-unit
+population을 사용하고 Core type/branch를 붙이지 않는다. 후자를 component마다 복제하면
+LEG 조건과 Core 종류의 거짓 cross-product 및 잘못된 분모가 생기므로 금지한다. sequence도
+component sequence와 `analysis_unit_sequence`를 분리해 unit event를 layer 수만큼 증식하지 않는다.
+
+process/context facet은 top-level과 `groups[]`마다 해당 조건의 component가 실제 귀속된
+Final Bond Wafer+LEG `wafer_mark_keys`와 facet별 `evidence_ids`를 함께 낸다. sequence cluster와
+difference도 같은 final-wafer mark를 보존한다. 따라서 비교 행→Trend 역마킹은 클라이언트의
+이름 결합이나 추가 SQL 없이 수행하며, final bond wafer가 증거에 없으면 mark도 부재다.
 
 ## 5. 측정된 특성 — **항목마다 출처 라벨**
 
@@ -1117,3 +1210,4 @@ psycopg2가 첫 `SELECT`에서 트랜잭션을 암묵적으로 열고 명시적�
 - **저장·시각 선언** — [architecture/data_model.md §1.1-ter](../architecture/data_model.md) · **화면** — [architecture/frontend.md §6.1](../architecture/frontend.md)
 - **컬럼·키 정준 형식** — [architecture/SCHEMA_CANON.md](../architecture/SCHEMA_CANON.md)
 - **운영 실행** — [process/OPERATOR_RUNBOOK.md §6 · §8](../process/OPERATOR_RUNBOOK.md)
+- **Trend 종류 선언** — [TREND_DECLARATION_GUIDE](./TREND_DECLARATION_GUIDE.md)

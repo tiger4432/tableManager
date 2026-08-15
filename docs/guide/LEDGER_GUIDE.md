@@ -1,8 +1,13 @@
-# 📒 정준 원장 (Canonical Ledger) — 소스 붙이는 법 · 백필 돌리는 법
+# 📒 정준 원장 (Canonical Ledger) — 번역기 쓰는 법 · 숫자 읽는 법
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 밤 (§4.6-quater 신설 — **`GET /api/ledger/journey` 읽는 법 + step·항목 한국어 이름 «붙이는» 법**. ⚠️ **서버만 착지했고 화면은 아직 없다**) | **Owner:** Server / Ledger | **Source-of-truth:** `server/ledger/` · `server/ledger_trace.py` · `server/ledger_structure.py` · `server/ledger_journey.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 2차 (셋업 통폐합 — 선언·순서 이관, 기전 config 블록 이름 정정) | **Owner:** Server / Ledger | **Source-of-truth:** `server/ledger/` · `server/ledger_trace.py` · `server/ledger_selection.py`
 >
-> **이 문서가 소유하는 것: HOW.** 새 소스에 번역기를 붙이는 절차와, 운영자가 백필을 돌리고 숫자를 읽는 절차.
+> **이 문서가 소유하는 것: HOW(코드).** 번역기를 «쓰는» 절차와, 운영자가 숫자를 읽는 절차.
+> 🔴 **[2026-08-15 분할] 「무엇을 선언하는가」는 이 문서가 더 이상 소유하지 않는다** —
+> `ledger_config.json`의 키 표(종전 §3 ②·②-bis·②-ter)와 마이그레이션·백필의 **순서·명령**은
+> **[guide/ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)** 하나로 옮겼다.
+> 소유자 지시(「온톨로지 원장 셋업 관련 문서 하나로 통폐합」)이고, 근거는 **선언 절차가 두 벌이면 한 벌이 낡는다**는 것이다
+> (같은 날 운영자 가이드 셋이 이미 삭제된 것을 돌리라고 말하고 있었다). **선언은 JSON, 번역기는 파이썬 — 이 문서는 뒤엣것만 소유한다.**
 > **WHY는 여기 없다** — 왜 원자가 7필드인지, 왜 어휘가 닫혀 있는지, 왜 해결 서열이 4계급인지는
 > [architecture/CANONICAL_LEDGER_DESIGN](../architecture/CANONICAL_LEDGER_DESIGN.md)이 소유한다. **다시 쓰지 않는다.**
 > **EXACTLY-WHAT**(컬럼·인덱스·계약)은 [spec/LEDGER_TECHNICAL_SPEC](../spec/LEDGER_TECHNICAL_SPEC.md).
@@ -57,8 +62,8 @@
 
 | 당신이 | 읽을 곳 |
 |---|---|
-| **새 소스를 원장에 붙이려는 개발자** | §1 모듈 지도 → §2 쓰기 경로 → **§3 새 소스 붙이는 법**(이 문서가 존재하는 이유) |
-| **백필을 돌리고 숫자를 읽어야 하는 운영자** | §4 운영자 절 → §2.4(한 트랜잭션이 덮는 것) → [OPERATOR_RUNBOOK](../process/OPERATOR_RUNBOOK.md) |
+| **새 소스를 원장에 붙이려는 개발자** | **선언은 [ONTOLOGY_LEDGER_SETUP §3](./ONTOLOGY_LEDGER_SETUP.md) 먼저** → §1 모듈 지도 → §2 쓰기 경로 → **§3 번역기 쓰는 법** |
+| **백필을 돌리고 숫자를 읽어야 하는 운영자** | **순서·명령은 [ONTOLOGY_LEDGER_SETUP §2](./ONTOLOGY_LEDGER_SETUP.md)** → §4(숫자 읽는 법) → §2.4(한 트랜잭션이 덮는 것) |
 
 🔴 **안 돌아도 아무것도 안 깨진다.** `server/` 안에서 `server/ledger`를 import하는 부팅 경로가 없다.
 원장은 기존 시스템의 **소비자로 태어났다** — `lot_event`를 읽고 **자기 테이블 둘에만** 쓴다.
@@ -75,10 +80,10 @@
 | 모듈 | 한 줄 계약 | 이 모듈이 소유하는 불변식 |
 |---|---|---|
 | `envelope.py` | 설계 §3의 7필드를 파이썬 객체 하나(`Atom`)로. 11컬럼 평탄화는 `ROW_COLUMNS` **한 자리**에서만 | **타입 보존** — payload는 `Json`으로 나가 정수 `0`과 문자열 `"0"`이 갈린다. `freeze_payload`가 못 보존할 모양(이미 문자열로 렌더된 payload · `NaN`/`Inf` · 비문자열 키)을 **고치지 않고 거절**한다. `recorded_at` 컬럼은 **일부러 없다**(uuid7 안에 있다). `molecule_ref`는 메모리에만 있고 **컬럼이 아니다** |
-| `vocabulary.py` | 닫힌 어휘 + 항목별 **기계 검증 가능한 서명** + **걷기 의미론** | **지금 열하나고 그 수는 여전히 통제 장치다**(2026-08-14 3차 — 아홉 + **`observed`**(`since: 3`, subject `Wafer`, `value` 목적어에 `required` = `finding_kind`·`method`·**`run_uid`**). 🔴 **`run_uid`가 required인 것이 분모 규율의 집행 지점**이고, `class`는 **컬럼이 아니라 payload의 주장**이며 합불은 여전히 저장 금지다([MI 통일안 §6-quater](../architecture/MI_LEDGER_SCHEMA_PROPOSAL.md)). ⚠️ **짝인 `measured`는 «등재하지 않았다»** — 발화하는 것이 없으면 낱말을 만들지 않는다는 어휘 성장 규율 그대로. 🔴 **[2026-08-14 3차] 술어마다 `traversable`·`direction`을 «선언»한다**(R-2026-08-14-E ⓐ) — `True` 통과 · `False` 주석(**도달하되 통과 금지**) · **`None`은 걷기가 아예 인출하지 않는다.** `walk_predicates()`/`traversable_predicates()`/`walk_direction()`이 그 선언을 읽고, **`ledger_trace`의 목록은 이제 리터럴이 아니라 이 함수에서 나온다.** `degree_cap`(R-E의 셋째 필드)은 **일부러 아직 선언하지 않았다** — 집행 지점이 재귀 CTE 안이라, 선언만 하고 읽는 곳이 없으면 R-2026-08-13-D가 끝낸 미끼 필드가 된다.<br>이전 라운드분: v0 일곱 + `processed_with`·`has_param`, 둘 다 `since: 2`. `test_ledger_l1_unit.py`가 **이름을 안 바꾼 채** 집합을 못박고, **원래 일곱이 여전히 `since: 1`인 것까지** 단언한다 — 열 번째는 지금도 빨갛다). 개체 타입에 **`Recipe`**가 들어왔고 🔴 **`rev`가 subject 키 재료**다(개정은 편집이 아니라 **새 등록**). `register`만 `object_kind IS NULL`. 🔴 **`value` 목적어는 이제 «검사된다»** — 술어가 `required` 필드를 선언하면 payload가 그것을 **존재로** 만족해야 한다(⚠️ **진리값이 아니다** — `0`·`False`는 정당한 설정값이고 빈 문자열만 거절). 계약은 [spec §3.7](../spec/LEDGER_TECHNICAL_SPEC.md). **투영 상태어**(`resolved`·`contested`·`candidate`·`unresolvable`·`pinned`)는 이름으로 거절된다 — 원장에 절대 안 들어간다. 🔴 **[2026-08-14 2차] 모든 항목에 `label_ko`가 붙었다 — 장식이 아니라 «선언의 일부»다**: 구조 뷰(§4.6)가 어휘를 그림으로 그리면서 라벨을 여기서 읽는다. 렌더러 옆에 라벨 지도를 두면 **어휘의 두 번째 목록**이 되고, 그때 낱말을 더한 사람은 다른 테스트가 전부 초록인 채 화면에서만 맨 식별자를 본다. ⚠️ **읽는 쪽은 라벨이 없으면 원시 이름으로 «폴백»하고 raise하지 않는다** — 그래서 빨개지는 것은 `test_ledger_l1_unit.py::test_every_declared_word_carries_a_label` **하나뿐**이다(라벨 누락은 화면을 영어로 강등시켜야지 비워서는 안 된다) |
+| `vocabulary.py` | 닫힌 어휘 + 항목별 **기계 검증 가능한 서명** + **걷기 의미론** | **현재 열둘**이며 이름 집합은 `test_v0_vocabulary_is_exactly_seven_words`가 통제한다. `processed_with`는 `step/recipe`만 required이고 수치 payload는 후보 계약이 아니다. `measured`(`since:4`)는 `metric/unit/method/state`를 요구하며 `recorded`만 `value/run_uid`, 나머지 상태는 `value` 자체를 금지한다. `measured_as`는 UI category다. 모든 술어의 `traversable/direction`, 모든 항목의 `label_ko`, `value.required` 존재 검증과 투영 상태어 쓰기 거절은 계속 유지된다. 정확한 표는 [spec §3.7](../spec/LEDGER_TECHNICAL_SPEC.md) |
 | `uuid7.py` | 단조 UUIDv7 — 워터마크이자 기록시각 | **구성상 단조**. 밀리초당 4,096(12비트 카운터), 넘치면 **미래를 당겨 쓰고**, 벽시계가 뒤로 가면 **직전 밀리초를 유지**한다. `assert_monotonic`은 **센 개수를 돌려준다**(빈 순회가 성공을 보고하지 못하게) |
 | `gate.py` | 문 앞에서 거절하고 **센다**. 단위는 행이 아니라 **분자** | 설계 §3의 **원자성 검사 넷** + **다섯째 질문**(`subject_types` — R-2026-08-13-D)이 산문에서 코드가 되는 자리. 🔴 **전부 아니면 전무이고, 그 규칙이 «어느 파편에든» 걸린다**(R-2026-08-13-H): `gate.building_molecule(source)` 스코프 안에서는 **사유를 가리지 않고 모든** `gate.refuse`가 세고 나서 `gate.MoleculeRefused`를 **raise**한다. 내년에 추가되는 헬퍼는 이 규칙이 있는 줄 몰라도 자기 분자를 세운다. 🔴 **`screen_molecule`의 거절도 그 문법이다**(2026-08-14 `92547c3` · R-H-bis 1) — 다만 **거절 팔만** 그렇고, **정당하게 할 말이 없던 분자(원자 0개)는 여전히 `[]`를 «반환»**한다. 거절과 무발화를 같은 문법으로 만들면 거절 카운터가 두 가지 뜻을 갖는다. 🔴 **스코프를 «여는» 것은 이 모듈도 번역기도 아니고 드라이버다**(아래 `backfill.py`). 거절 사유는 **닫힌 집합 열둘**이고 호출부가 새 사유를 지어내면 `ValueError` |
-| `config.py` | `ledger_config.json`을 **로드 시점에** 검증 · 🔴 **문법이 «둘»**(2026-08-14 3차) | **선언 없는 것은 기본값이 아니라 거절이다** — 시각 컬럼·시간대가 없으면 소스 전체를 거절한다. `translator_version()`이 **선언 전체를 해시**해 원자마다 어떤 규칙이 만들었는지 남긴다. **런당 1회 읽는다**(행마다 아님). 🔴 **소스는 이제 `kind`를 선언한다**(`lineage` \| `observation` \| **`transfer`**(2026-08-14 4차), **기본 `lineage`** — 그래서 기존 선언 전부가 정확히 옛 뜻을 유지한다). 검증이 그 낱말로 **분기**하고 필수 컬럼 집합이 갈린다 — 관측 소스를 혈통 규칙으로 채점하면 `parent_lot`이 없다는 이유로 거절됐을 것이다(§3 ②-bis). 🔴 **`transfer`는 `group`(묶는 컬럼 + 행 정렬 타이브레이크)과 `container`(목적지 신원을 «확정하는» 관계)를 «추가로» 요구한다** — 확정 관계를 선언 못 하게 하면 번역기가 읽을 것은 행에 있는 추론 대상뿐이고, 그것을 읽으면 **틀린 조인이 조용히 성공한다**(§3 ②-ter) |
+| `config.py` | `ledger_config.json`을 **로드 시점에** 검증 · 🔴 **문법이 «둘»**(2026-08-14 3차) | **선언 없는 것은 기본값이 아니라 거절이다** — 시각 컬럼·시간대가 없으면 소스 전체를 거절한다. `translator_version()`이 **선언 전체를 해시**해 원자마다 어떤 규칙이 만들었는지 남긴다. **런당 1회 읽는다**(행마다 아님). 🔴 **소스는 이제 `kind`를 선언한다**(`lineage` \| `observation` \| **`transfer`**(2026-08-14 4차), **기본 `lineage`** — 그래서 기존 선언 전부가 정확히 옛 뜻을 유지한다). 검증이 그 낱말로 **분기**하고 필수 컬럼 집합이 갈린다 — 관측 소스를 혈통 규칙으로 채점하면 `parent_lot`이 없다는 이유로 거절됐을 것이다(선언 키는 [ONTOLOGY_LEDGER_SETUP §3.2](./ONTOLOGY_LEDGER_SETUP.md)). 🔴 **`transfer`는 `group`(묶는 컬럼 + 행 정렬 타이브레이크)과 `container`(목적지 신원을 «확정하는» 관계)를 «추가로» 요구한다** — 확정 관계를 선언 못 하게 하면 번역기가 읽을 것은 행에 있는 추론 대상뿐이고, 그것을 읽으면 **틀린 조인이 조용히 성공한다**(선언 키는 [ONTOLOGY_LEDGER_SETUP §3.3](./ONTOLOGY_LEDGER_SETUP.md)) |
 | **`transfer_translator.py`** (2026-08-14 4차) | 세 번째 번역기 — **잡런 하나 = 분자 하나**, 원자는 **(잡런 × 소스 웨이퍼)당 하나**에 `qty` · 🔴 **이 원장 최초의 «실데이터» 소스** | 🔴 **「잡런당 원자 하나」와 「subject = Wafer」는 실측 하나에서 만난다**: 한 DT 잡을 **여러 코어 웨이퍼가 먹인다**(396잡 중 83잡이 1장, 83잡이 2장, 8잡이 88장). subject이 웨이퍼 여럿인 원자는 **표현 불가**이므로 잡런은 **소스 웨이퍼마다 원자 하나**를 낸다 — 웨이퍼 한 장짜리 잡은 정확히 하나이므로 선언된 모양 그대로다. 🔴 **다이당 원자를 «안» 낸다**(§2-bis의 `die` XOR `qty`) — 34,939행이 4,669원자가 되고, 다이별 좌표는 `source_raw_ref`가 지목하는 소스 행이 계속 말한다. 🔴 **`source_raw_ref`가 «열거»가 아니라 «술어»다** — 그룹이 최대 150행이라 business key를 늘어놓으면 원자마다 6 KB이고 천만 행에서는 출처가 원장보다 커진다. `dt_log:{"core_wafer":…,"dt_job":…}`는 **그 집합을 정의하는 질의**이고 정렬돼 있어 재번역을 유니크 인덱스가 알아본다. ⚠️ **`synthetic` 마커가 «없다»** — 실데이터이고 원장에는 UPDATE가 없어 잘못 찍은 마커는 오타가 아니라 **영구 거짓**이다(소스 «테이블»에 `SYN-*` 잡이 섞여 있는 것은 테이블의 사실이지 번역의 사실이 아니다) |
 | **`observation_translator.py`** (2026-08-14 3차) | 두 번째 번역기 — **소스 행 하나 = 분자 하나 = 발화 하나** | 🔴 **조립할 것이 없다.** 짝 맞출 이벤트도, 반으로 잘릴 그룹도 없다 — 그래서 `lot_event_translator`의 「한 이벤트 = 두 행」 기계장치가 여기 없는 것이 **누락이 아니라 문법의 차이**다. 🔴 **그래도 문은 하나다**: `gate.building_molecule` 스코프 안에서 `gate.screen_molecule`을 지나 `store.write_batch`로 간다(§3-bis의 규칙이 생성기뿐 아니라 여기에도 그대로). 🔴 **런을 못 찾은 발견은 «거절»**이지 도착 시각으로 도장 찍히지 않는다 — 세상의 시각이 발견 행에 없기 때문이다 |
 | `lot_event_translator.py` | 첫 번째 소스, 그리고 다음 번역기가 베낄 **모양** | **한 이벤트 = 두 행 = 한 분자**. 짝은 `(event_type, event_time, parent, child)`로 맞춘다(소스에 이벤트 id가 없다). 🔴 **한 행이 양쪽을 다 채우면 고립시켜 거절**한다 — 「부모 먼저, 없으면 자식」류 순서는 그 행의 웨이퍼를 소스가 주장한 적 없는 계보에 조용히 붙인다. 🔴 **이 파일은 스코프를 «열지 않고 요구»한다**(2026-08-14 `92547c3` · R-H-bis 3). `translate`는 `gate.building_molecule` **안에서 불려야** 하고, 안 열고 부르면 `_build`의 단언이 **`RuntimeError`**를 내며 그 메시지가 **누가 여는지(`backfill.run`)와 두 줄짜리 철자**를 댄다. 여는 자리가 여기였을 때는 그 규율이 **두 번째 번역기 작성자가 이 파일을 읽고 «알아채야»** 물려받는 구전이었다. 🔴 **번역기 쪽 일방향 문은 여전히 `translate`의 `except MoleculeRefused` 하나**이고 `_build` 안에는 그것을 삼킬 표현식이 없다 — 다만 **게이트 심사의 거절을 받는 두 번째 문이 드라이버에 있다**([spec §3.3-bis 표](../spec/LEDGER_TECHNICAL_SPEC.md)) |
@@ -96,7 +101,7 @@
 |---|---|---|
 | `server/ledger_structure.py` (2026-08-14) | `GET /api/ledger/structure` — **유형 수준 온톨로지 그림 + 선언 지도**. 노드=개체 타입, 엣지=(subject 타입, 술어, 목적어) 삼중항 | 🔴 **손으로 적은 노드·엣지 목록이 이 파일에 «없다»**(제품 소유자 실패 조건: 「하드코딩된 목록이 응답 어디에든 보이면 실패」). **선언된 절반**은 `vocabulary.ENTITY_TYPES` × `PREDICATES`에서, **관측된 절반**은 원장 한 번의 `GROUP BY`에서 생성하고 **둘을 병합**한다 — 병합이 설계 전부다. 선언에만 있는 모양(`declared_only`)과 데이터에만 있는 모양(`undeclared`)은 **손으로 그린 그림이 영원히 못 내는 답 둘**이다. 🔴 **어휘는 «지연» import한다**(호출 «안»에서) — §0의 「`server/`에서 `server/ledger`를 import하는 부팅 경로가 없다」를 *거의* 참이 아니라 **글자 그대로** 참으로 두려고. 🔴 **등급 분포를 SQL이 «분류하지 않는다»** — 그룹 키만 만들고 `ledger_trace.claim_class`/`claim_basis`를 **그대로 부른다**(철자가 둘이면 갈라진다). 🔴 **등록 엣지는 이름이 아니라 «모양»(`object_kind IS NULL`)으로 식별**한다 — `predicate == "register"` 리터럴이 먼저 쓰였고 어휘를 갈아끼우는 테스트가 잡았다 |
 | `server/ledger_trace.py` | **셋이 살고 둘은 서로를 몰라야 한다**: **해결기**(`claim_class`/`claim_rank_key`/`resolve` — 순수 파이썬, SQL·테이블명·커넥션 0) · **조회기**(`ClaimLookup` 계열 — 가져오기만 하고 등급을 모른다) · **보행**(`trace` — 조회기에 한 번 묻고 홉마다 해결기에 한 번 묻는다) | 스타일이 아니라 **구조 요구**다. 슬라이스 1은 **랏 단위**라 질의 시점 해결로 가지만 **슬롯 단위 혈통은 질의 시점에서 죽는다**(인라인 452 ms 대 물질화 0.58 ms — 합성·이 박스). 조회기가 **교체 가능한 객체**라 물질화된 클로저 테이블로 옮기는 것이 **생성자 인자 하나**이고 해결기는 한 줄도 안 바뀐다. `InMemoryClaimLookup`은 그 교체 가능성을 **주장이 아니라 검사된 성질**로 만든다. 🔴 **[2026-08-14 3차] 「무엇을 걷는가」가 이 파일에 더 이상 «적혀» 있지 않다** — `LINEAGE_PREDICATES`는 리터럴 목록이었고 지금은 `vocabulary.walk_predicates()`에서 **파생**되며, 재귀가 따르는 낱말도 `traversal_predicate()`가 대어 **두 CTE 모두 SQL 파라미터로 바인드**한다(`'derived_from'` 리터럴이 없어졌다). 어휘는 **호출 안에서 지연 import**하므로 §0의 부팅 경로 보증은 그대로다. 🔴 **동작 불변이 단언돼 있다**(`test_ledger_observed_unit.py::test_the_walk_vocabulary_is_derived_and_still_says_what_it_said`) — 파생으로 옮기면서 걷기가 **한 낱말도 더 얻거나 잃지 않았다**는 것이 이 이관의 유일한 합격 조건이었다 |
-| `server/ledger_trace_router.py` | `APIRouter(prefix="/api/ledger")` **하나에 라우트 여덟** — `/trace` · `/coverage` · `/siblings` · `/kinds` · `/structure` · **`/lots`** · **`/lot_map`**(뒤 둘은 2026-08-14 놀라움 장치) · **`/journey`**(2026-08-14 밤 · 아래 행). 전부 **읽기 전용**. 🔴 **라우트 계약의 정본은 [backend §2](../architecture/backend.md)이고 이 칸은 색인이다** | 🔴 **SPA catch-all «위»에 등록해야 한다.** FastAPI는 등록 순서로 매칭하므로 catch-all 뒤에 등록된 라우트는 **200으로 `index.html`을 받는다** — 감시자가 죽은 엔드포인트를 살아 있다고 부르게 되는 실패다(`/health`가 실제로 그랬다). 현재 `server/main.py`에서 catch-all 훨씬 위에 등록돼 있다. 🔴 **빈 `hops`는 가능한 답이 아니다** — 어느 홉에서 왜 끊겼는지가 이 화면의 존재 이유다 |
+| `server/ledger_trace_router.py` | `APIRouter(prefix="/api/ledger")` **하나에 라우트 열** — `/trace` · `/coverage` · `/siblings` · `/kinds` · `/structure` · `/lots` · `/lot_map` · `/journey` · **`/trends`** · **`/composition`**. 전부 **읽기 전용**. 🔴 **라우트 계약의 정본은 [backend §2](../architecture/backend.md)이고 이 칸은 색인이다** | 🔴 **SPA catch-all «위»에 등록해야 한다.** FastAPI는 등록 순서로 매칭하므로 catch-all 뒤에 등록된 라우트는 **200으로 `index.html`을 받는다** — 감시자가 죽은 엔드포인트를 살아 있다고 부르게 되는 실패다(`/health`가 실제로 그랬다). 현재 `server/main.py`에서 catch-all 훨씬 위에 등록돼 있다. 🔴 **빈 `hops`는 가능한 답이 아니다** — 어느 홉에서 왜 끊겼는지가 이 화면의 존재 이유다 |
 | `server/ledger_siblings.py` + `server/ledger_walk_contrast.py` (2026-08-14 밤 등재) | `/siblings`의 **엔진 둘** — 축 엔진(선언된 요인 기하 위 케이스-컨트롤, `mode=intersection\|contrast`)과 **걷기 대조**(`scope=` 마킹 시 — 「이 랏/웨이퍼들과 나머지는 뭐가 다른가」). 응답 `engine` 필드가 어느 쪽이 답했는지 말한다. 요인 기하는 전부 `server/config/siblings_axes.json`(.sample 폴백) 선언 | 🔴 **걷기 대조에는 항목 목록이 «한 줄도» 없다** — 후보는 마킹된 주어들의 걷기가 닿는 모든 술어×필드×값이고, 선언(`defaults.walk`)은 필터가 아니라 **예산**이다(CASE는 절대 안 깎고 control만 결정적 표본 · `walk.gate`가 그랬다고 말한다). 🔴 **수치는 주어당 «한 값»으로 접은 뒤 같은 랭킹 사다리를 탄다**(원자 141개 웨이퍼 = 관측 1 — 둘째 임계를 발명하지 않는다. 배율 밴드의 단위 의존성은 화면에 이름이 불린다). 🔴 **요청된 scope 값은 전수 회계된다** — `unnest` LEFT JOIN으로 해소/탈락이 이름 불리고, 전부 탈락이면 `empty`이지 남은 값에 대한 잘 지어진 답이 아니다. 🔴 **기전 관문은 `server/mechanism_gate.py` + `mechanism_models.json`** — 바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다. 세부·수치는 [backend §2 `/siblings`](../architecture/backend.md)가 정본 |
 | **`server/ledger_journey.py`** (2026-08-14 밤) | `/journey`의 **주어 «둘» 전용** 읽기 — 두 주어의 원자를 **공정 구간의 순서**로 재배치한다. 새 사실을 계산하지 않는다. 이름 층은 `server/config/ledger_journey.json`(.sample). 읽는 법 §4.6-quater · 계약 [spec §4.9](../spec/LEDGER_TECHNICAL_SPEC.md) | 🔴 **`/siblings`의 «모드»가 아니라 별도 라우트인 것이 설계 전부다** — 저쪽 계약에는 배수·신뢰구간이 들어 있고 **주어 둘은 그 무엇도 지탱하지 못하므로**, 여기서는 그 키들이 `null`이 아니라 **아예 없다**(관문도 셋이 아니라 둘). 🔴 **주어가 둘로 안 풀리면 강등이 아니라 «거절»**(422)이고 해결된 주어를 이름 댄다. 🔴 **술어 이름으로 분기하는 갈래가 0개** — 육하원칙 여섯 슬롯은 봉투→슬롯 매핑 하나라 **내일 번역된 술어도 같은 카드로** 렌더된다. 🔴 **세그먼트 서수는 «해결 등급 안에서»** 매기고 묶을 때 등급을 뺀다 — 그래야 장비 로그와 레시피 책이 한 물리적 런을 둘로 안 쪼갠다. 🔴 **`claim_rank_key`를 재구현하지 않고 «부른다»** — 한 구간의 두 원자가 한 잎을 다투면 혈통 해결기와 **같은 전순서**가 승자를 정하고 패자는 실려 나간다 |
 | `client2/src/ledger_trace_core.js` | **순수**. DOM·네트워크·import 0. 서버 답을 낱말과 톤에 매핑만 한다 | 🔴 **이 모듈은 원장에 대해 아무것도 판정하지 않는다.** 어느 주장이 이기는지는 서버가 이미 정했다. **여기에 승패 규칙이 나타나면 그건 두 번째 해결기이고 틀린 것이다** |
@@ -125,7 +130,7 @@ ledger_events + ledger_translator_cursor
 번역기를 **손으로 모는 호출부**(테스트·일회성 스크립트)는 **자기가 열어야 한다** — §3 ③.
 
 ⚠️ **관측 소스는 이 그림에서 «`group_molecules` 한 칸»만 다르다**(2026-08-14 3차) — 한 행이 곧 한 분자라 묶을 것이 없다.
-🔴 **나머지 칸은 전부 같고, 그것이 요점이다**: 문법이 둘이어도 **게이트도 저장 경로도 하나**다(§3 ②-bis · §3-bis).
+🔴 **나머지 칸은 전부 같고, 그것이 요점이다**: 문법이 셋이어도 **게이트도 저장 경로도 하나**다([ONTOLOGY_LEDGER_SETUP §3](./ONTOLOGY_LEDGER_SETUP.md) · §3-bis).
 
 ### 2.1 실제 예 하나 — `assy_manager`, 2026-08-13 실측
 
@@ -236,42 +241,21 @@ source_raw_ref        = "lot_event:[\"CL-2601-006-A1|split|…\",\"CL-2601-006|s
 
 ---
 
-## 3. 🔴 새 소스 붙이는 법
+## 3. 🔴 새 소스 붙이는 법 — **코드 쪽**
 
 > 이 절이 이 문서가 존재하는 이유다. `lot_event_translator.py`가 **베낄 모양**이다.
+> 🔴 **선언(JSON) 쪽은 [ONTOLOGY_LEDGER_SETUP §3](./ONTOLOGY_LEDGER_SETUP.md)이고 «거기부터» 한다** — 선언 없이 쓴 번역기는 돌려 볼 수 없다.
 
-🔴 **먼저 «어느 문법인지»부터 정한다** (2026-08-14 3차 · R-2026-08-14-D). 소스 선언의 `kind` 한 낱말이 절차를 가른다:
-
-| `kind` | 소스가 말하는 것 | 베낄 모양 | 선언 키 |
-|---|---|---|---|
-| **`lineage`** (기본) | **여러 행이 모여** 한 사건(랏이 갈라졌다·합쳐졌다) | `lot_event_translator.py` | ② |
-| **`observation`** | **한 행이 곧 한 발화**(이 웨이퍼 이 칩에서 이런 발견을 봤다) | `observation_translator.py` | **②-bis** |
-| **`transfer`** (2026-08-14 4차) | **한 행이 다이 하나**이고 **원자 단위는 잡런** — 그래서 행을 **선언된 컬럼으로 묶는다** | `transfer_translator.py` | **②-ter** |
-| (테이블이 아님) | 생성기·계산된 사실·외부 API | `seed_syn_process_ledger.py` | **§3-bis**(선언이 자기 안에) |
-
-⚠️ **`kind`를 안 적으면 `lineage`다** — 기본값이 그쪽인 것은 기존 선언들이 **정확히 옛 뜻을 유지**해야 하기 때문이지
-혈통이 더 근본이어서가 아니다. 아래 ①·③·④·⑤·⑥은 **문법을 가리지 않고** 적용된다.
+🔴 **먼저 «어느 문법인지»부터 정한다** (R-2026-08-14-D). 소스 선언의 `kind` 한 낱말이 절차를 가른다 —
+**문법 셋(`lineage`·`observation`·`transfer`)과 각각의 선언 키 표는
+[ONTOLOGY_LEDGER_SETUP §3](./ONTOLOGY_LEDGER_SETUP.md)이 소유한다.** 아래 ①·③·④·⑤·⑥은 **문법을 가리지 않고** 적용된다.
 
 🔴 **세 번째 문법이 «필요했던» 이유는 컬럼이 아니라 «단위»다** (`dt_log`). 혈통은 이벤트 키가 정확히 두 행을 짝짓고,
 관측은 아예 안 묶는다. `dt_log`는 **한 잡이 최대 150행**이고 그 전부가 한 사건이므로 **묶어야** 한다 —
 `group.column` 한 낱말이 그것을 선언하고, 배치 경계는 언제나 **온전한 그룹의 정수 개**다(혈통의 그룹 절단을
 `event_time` 대신 **선언된 컬럼**으로 하는 것이고, `backfill.walk_group_pages` **한 함수**를 둘이 공유한다).
 
-🔴 **`transfer` 선언이 «추가로» 요구하는 것 둘, 그리고 왜 그것이 정직 장치인가**:
-
-- **`group`** — `{"column": …, "row_order_column": …}`. 묶는 컬럼과 페이지를 결정적으로 만드는 타이브레이크.
-  ⚠️ **business key로 정렬하면 안 된다** — `dt_log`의 business key는 `<dt_job>_<dt_x>_<dt_y>`라 **어떤 잡 이름도 다른 잡 이름의
-  접두가 아닐 때만** 그룹이 연속한다(오늘 실측 0쌍). **오늘의 데이터가 우연히 만족하는 성질에 배치 경계를 걸면**
-  잡 이름 하나 늘어나는 날 분자가 반으로 착지한다.
-- **`container`** — 목적지의 신원을 **누가 확정하는가**. `dt_log`는 `dt_lot`/`dt_slot`을 자기 행에 들고 있지만
-  `table_config.json`이 그것을 **「추론 대상 — 40% 부재, 10%는 있는데 틀림」**이라고 스스로 적고 있고
-  **「추측이 신원 «안»에 앉아서는 안 된다」**고 규칙까지 적어 뒀다. 그래서 신원은 **확정 관계**(`dt_inventory`)에서 읽고,
-  행이 적어 둔 값은 **`container_recorded`로 payload에 보존하되 신원으로 승격하지 않는다.**
-  🔴 **확정됐는지는 파생 이름이 말한다** — `#job_run_to_confirmed_container` 대 `#job_run_to_job`.
-  `#slot_preserving`과 **같은 장치**이고 새 컬럼도 새 플래그도 없다: `WHERE source_translator_ver LIKE '%#job_run_to_job'`이
-  「목적지가 확정된 적 없는 이동」의 전량이다.
-
-⚠️ **실측이 이 장치의 값을 증명했다 (2026-08-14, `assy_manager`)**: `dt_inventory` 401행 중 `dt_lot`이 비지 않은 것은 **하나**,
+⚠️ **실측이 `container` 선언의 값을 증명했다 (2026-08-14, `assy_manager`)**: `dt_inventory` 401행 중 `dt_lot`이 비지 않은 것은 **하나**,
 그 값이 문자열 **`'DT_LOT'`**(스프레드시트 **헤더가 데이터로 샌 것**)이다. `dt_job` → `dt_inventory` **행 존재**는 396/396으로
 **100%**인데 **확정은 0건**이다 — 🔴 **존재는 확정이 아니다.** 그래서 4,669 원자 중 4,640이 `#job_run_to_job`으로 앉았고,
 원장은 없는 연결을 지어내는 대신 **「이 목적지는 확정된 적 없다」**를 말한다.
@@ -310,93 +294,21 @@ source_raw_ref        = "lot_event:[\"CL-2601-006-A1|split|…\",\"CL-2601-006|s
 - 🔴 **서명 필드를 더하는 것도 어휘 변경이다**(⑦ 트리거). 이번엔 `traversable`·`direction`이 **모든** 술어에 붙었다 —
   낱말은 하나 늘었는데 **선언의 «모양»은 열한 항목 전부가 바뀌었고**, DDL은 여전히 0줄이다.
 
-### ② `ledger_config.json`에 선언 한 장
+### ② 선언 한 장 → 🔴 **[ONTOLOGY_LEDGER_SETUP §3](./ONTOLOGY_LEDGER_SETUP.md)이 소유한다**
 
-`server/config/ledger_config.json`(gitignore. 배포본은 `.json.sample`이고 실 파일이 없으면 **샘플로 폴백**한다).
-`sources.<이름>` 아래 한 장:
+**`server/config/ledger_config.json`의 키 표 셋(문법별 `lineage` · `observation` · `transfer`)은 2026-08-15에 그쪽으로 옮겼다.**
+여기 사본을 두지 않는 이유는 이 문서가 이미 한 번 겪은 것이다 — **선언 절차가 두 벌이면 한 벌이 낡고,
+낡은 쪽을 따른 사람이 손해를 본다.** 저쪽이 답하는 것: 필수/선택 키, 각 키가 없을 때의 거절 이름,
+`kind`가 검증을 어떻게 가르는지, 그리고 **관측·이동 문법에서 `vocabulary` 키가 왜 로드 에러인지**.
 
-| 키 | 필수 | 뜻 · 함정 |
-|---|---|---|
-| `occurred_at_column` | ✅ | **세상의 시각을 담은 소스 컬럼 이름.** 없으면 소스 전체 거절 — 기본값 없음 |
-| `occurred_at_timezone` | ✅ | 소스의 **naive 텍스트**가 무슨 시각인지. 🔴 **`Asia/Seoul`(제품 소유자 판정)**. 오프셋을 달고 온 문자열에는 **다시 먹이지 않는다** |
-| `occurred_at_format` | ⬜ | 기본 `%Y-%m-%dT%H:%M:%S`. 🔴 **구분자만 넓힌다** — 선언된 형식에서 시(hour) 직전 구분자 하나를 바꾼 사본과, 각각에 `%z`를 단 사본까지 **총 4후보**. 문법을 넓히는 것이 아니라 **전송 형태**를 넓히는 것이고, 어떤 문자열도 두 가지로 읽히지 않는다 |
-| **`subject_types`** | ✅ | 🔴 **복수 allow-list이고 «문다».** 이 소스의 번역기가 **말해도 되는 개체 타입들**(예: `["Lot", "Wafer"]`) — 밖에 있는 원자는 `undeclared_subject_type`으로 **이름 대고 거절되고 세어진다.** 멤버는 전부 `vocabulary.ENTITY_TYPES`의 선언된 타입이어야 한다(여기 타입을 더하는 것은 config 결정이 아니라 **어휘 결정**이다). ⚠️ **단수 `subject_type`은 은퇴했고 «에러»다** — 아래 「함정」 |
-| `register_entity_types` | ⬜ | `register` 원자를 낼 **발급형** 타입들. `Die`는 **구성형**이라 일부러 없다(다이당 원자 1개가 된다) |
-| `list_separator` | ⬜ | 기본 `":"`. 위치 대응 리스트의 구분자 |
-| `columns.*` | ✅ | **일곱 개 전부 필수**: `row_identity` · `lot` · `event_type` · `parent_lot` · `child_lot` · `slots` · `wafers`. 논리 이름 → 물리 컬럼. 번역기는 물리 이름을 **절대 안 본다** |
-| `vocabulary.<event_type>` | ✅ | 이 소스가 알아듣는 이벤트 타입들. **여기 없는 event_type은 «건너뛰는» 것이 아니라 거절되고 세어진다** |
-| `vocabulary.*.lineage` | ⬜ | `parent_child` \| `none` |
-| `vocabulary.*.slot_pairing` | ⬜ | `shared_wafer`(추론 0 — 같은 웨이퍼가 양쪽에 발화됐을 때만) \| `slot_preserving`(**운영자의 관례 선언**) \| `none`. 오타는 **로드 시점 에러**다(조용히 `none`으로 떨어지면 슬롯 체인 없는 원장이 항의 없이 생긴다) |
-| `vocabulary.*.emit_has_wafer` / `emit_register` | ⬜ | 기본 `true` |
-| `batch.molecules_per_transaction` | ⬜ | 기본 200. **온전한 소스 이벤트 개수**다 |
-| `lag.probe_interval_seconds` | ⬜ | 기본 60. 티어 2 프로브가 소스에 진짜 `COUNT`를 돌려도 되는 최소 간격 |
+번역기를 «쓰는» 쪽에서 알아야 할 것 둘만 여기 남긴다:
 
-**함정 셋 (실측 2026-08-13):**
-
-- ✅ 🔴 **[닫혔다 — `eb1ae8b` · R-2026-08-13-D] 「검사되지만 어느 원자에도 도달하지 않던 필드」가 이제 «문다».**
-  옛 상태는 이랬다: `subject_type`이 단수였고, 번역기 안에서 **한 번 대입되고 아무 데서도 읽히지 않았으며**,
-  호출부가 `"Lot"`/`"Wafer"` 리터럴을 넘겼다 — 즉 `config.validate()`가 **아무 결과도 없는 값**을 검사했다.
-  🔴 **그리고 단수가 애초에 틀린 모양이었다**: `lot_event` **한 소스**가 개체 타입 **둘**에 대한 원자를 만든다
-  (실측 `Lot` 689 · `Wafer` 220 — 웨이퍼 register 경로는 이미 있고 잘 돈다).
-  지금은 **복수 `subject_types`**이고 게이트가 밖에 있는 원자를 `undeclared_subject_type`으로 거절한다.
-  **리터럴은 그대로 있다** — 코드가 각 원자의 **사실**을 소유하고 선언이 그 사실의 **허용 범위**를 소유한다.
-  - 🔴 **옛 키를 쓰면 «에러»이고 메시지가 새 이름과 예시를 댄다.** 무시하지도, 받아들여 다른 일을 하지도 않는다 —
-    조용히 아무 뜻도 없는 config가 이 판정이 끝내려는 결함 그 자체다.
-  - 🔴 **`screen_molecule`의 인자는 필수이고 기본값이 없다.** 기본값이 있으면 호출부가 **아무 말도 안 함으로써** 옛 동작을
-    유지할 수 있다. **빈 리스트는 전부 거절**하고 그것이 옳은 방향이다.
-  - 🔴 **선언을 바꾸면 `translator_version` 해시가 움직인다** — 이 라운드에 `d8d1c9e0` → `34311f15`.
-    `source_translator_ver`가 dedupe 열쇠 일곱 중 하나이므로, **`--reset-cursor` 재실행은 dedupe가 아니라
-    «옛 원자 옆에 새 원자»를 쓴다**(878행 → 878 «신규»행). 그것이 선언 변경의 설계된 뜻이고,
-    「다시 돌려서 안 변한 걸 확인하자」가 기대하게 만드는 것과 **다르다.** 상세는 §4.3.
-  - **상설 규칙**: 🔴 **선언 필드는 «집행 지점»을 갖거나, 존재하지 않는다.**
-- ⚠️ **`columns`의 일곱은 lineage가 없는 소스도 전부 선언해야 한다.** 로드 검증이 무조건 요구한다 —
-  `parent_lot`/`child_lot`/`slots`/`wafers`를 안 쓰는 소스도 컬럼 이름을 적어야 통과한다.
-- ⚠️ **`columns.equipment`는 선언돼 있고 `server/ledger/` 안에서 아무도 읽지 않는다.** 베낄 때 딸려 오지 않게 할 것.
-
-### ②-bis 🔴 소스가 **관측**일 때 — 두 번째 문법 (`kind: "observation"`, 2026-08-14 3차 · R-2026-08-14-D)
-
-`void_obs`·`delam_obs`가 실물이다(둘 다 `.sample`에 그대로 실려 있다). **②의 키 목록은 여기 적용되지 않는다** —
-검증이 `kind`로 분기하고, 혈통 키를 쓰면 **이름을 대며 거절**한다.
-
-| 키 | 필수 | 뜻 · 함정 |
-|---|---|---|
-| **`kind`** | ✅ | `"observation"`. 없으면 `lineage`로 채점돼 **`parent_lot`이 없다는 이유로** 거절된다 |
-| **`finding_kind`** | ✅ | 이 소스가 번역하는 결함 **종류 하나**. 모든 원자의 payload에 실린다. 🔴 **종류의 «정의»는 여기가 아니라 `server/finding_kinds.py`**가 소유한다(분모 메서드·관측 테이블·닫힌 class 집합) — 이 선언이 소유하는 것은 **어느 소스가 그것을 생산하는가** 하나뿐이다 |
-| **`run`** | ✅ | `{relation, key_column, method_column}`. 🔴 **세상의 시각과 분모가 «둘 다» 여기서 나온다** — `occurred_at`은 발견 행이 아니라 **이 관계**에서 읽고, `method`도 같은 행에서 온다. **런을 못 푸는 발견은 원자 0개**다(도착 시각으로 대체하지 않는다) |
-| **`watermark.columns`** | ✅ | 커서의 **키셋**(예: `["updated_at", "row_id"]`). 🔴 **세계 시각 커서를 쓸 수 없다** — 대량 적재가 `updated_at` 하나를 수만 행에 찍으므로(실측: 91,756행에 **서로 다른 값 92개**) 시각 커서는 **한 번의 적재를 쪼갤 수 없는 한 그룹**으로 만든다. 선언한 키셋은 **유니크 + 인덱스 뒷받침**이어야 한다. ✅ **그 인덱스는 «이미 있다»** — `database/models.py`가 **모든 동적 테이블**에 `idx_<table>_updated (updated_at, row_id)`를 만든다(그래서 `idx_void_obs_updated`·`idx_delam_obs_updated`가 공짜다). 🔴 **키셋을 그 인덱스의 «컬럼 순서 그대로» 고른 것이 판정**이다 — 다른 조합을 고르면 새 인덱스를 요구했을 것이고, 그것은 이 시스템이 이미 할 줄 아는 것을 다시 만드는 일이다 |
-| **`columns`** | ✅ | **필수 셋**: `row_identity` · `wafer` · `run_key`. **선택**: `die_x`·`die_y`·`die_gate`·`inchip_x`·`inchip_y`·`extent_x`·`extent_y`·`unit`·`class`. 🔴 **목록 밖 이름은 «로드 시점 거절»**이다 — 안 읽히는 매핑은 아무도 집행하지 않는 계약을 가르치고, 실제로는 대개 **읽히는 이름의 오타**다 |
-| `synthetic` | ⬜ | 참이면 **모든 원자의 payload에 `"synthetic": true`**가 들어간다. 🔴 **원자가 스스로 말한다** — 「어느 테이블이 씨딩된 것이었나」를 누군가의 기억에 두지 않고 `object_payload->>'synthetic'`로 묻는다. 실물 피드가 오는 날 **이 줄을 지우는 것**이 그 사실의 철회다 |
-| `subject_types` / `register_entity_types` | ✅ / ⬜ | `["Wafer"]`. 🔴 **`Die`가 아니다** — 다이는 **구성형**(웨이퍼 × 격자)이라 등록이 없고, 발견을 웨이퍼 아래 접어야 「이 웨이퍼의 보이드」가 **질의 하나**가 된다. 칩 좌표는 payload로 간다 |
-| `occurred_at_*` · `batch.*` · `lag.*` | ✅ / ⬜ | ②와 같다. 다만 `occurred_at_column`이 가리키는 것은 **런 관계의 컬럼**이다 |
-| ~~`vocabulary`~~ | ❌ | 🔴 **있으면 로드 에러다.** 그것은 이벤트 타입 → 혈통 규칙 지도이고 **관측 소스에는 이벤트 타입이 없다**(한 행이 한 발화). 조용히 무시하면 「선언했는데 아무 일도 안 하는 config」가 된다 |
-
-- **파생은 하나뿐이다**: `observation_row`(소스 행 하나를 있는 그대로 발화). 🔴 **관측 소스는 추론할 것이 없다** —
-  ④의 `#<derivation>` 표(위치 대응·짝 필드·슬롯 관례)는 **혈통 문법의 가정들**이라 여기 해당 항목이 없는 것이 정상이다.
-- 🔴 **`class`는 컬럼이 아니라 «주장»이다**([MI 통일안 §6-quater](../architecture/MI_LEDGER_SCHEMA_PROPOSAL.md)) — 소스가 스캔 시점에 분류를 발화하면
-  그 발화의 일부로 payload에 싣는다. **값 집합은 종류별 닫힌 집합**(`finding_kinds`의 `classes`)이고 **밖의 값은 이름을 대며 거절**된다.
-  사람의 재분류는 이 원자를 고치는 것이 아니라 **별도 주장**(`classified_as`)이고, 그것은 아직 어휘에 없다.
-- 🔴 **합불(pass/fail)은 여전히 저장 금지**다. class는 「무엇인가」이고 등급은 「합격인가」다 — 임계는 레시피 파라미터다.
-
-### ②-ter 🔴 소스가 **이동**일 때 — 세 번째 문법 (`kind: "transfer"`, 2026-08-14 4차)
-
-`dt_log`가 실물이고 **이 원장 최초의 실데이터 소스**다. ②의 키 목록도 ②-bis의 키 목록도 여기 적용되지 않는다.
-
-| 키 | 필수 | 뜻 · 함정 |
-|---|---|---|
-| **`kind`** | ✅ | `"transfer"` |
-| **`group`** | ✅ | `{column, row_order_column}`. 행을 **한 사건으로 묶는 컬럼**과, 페이지를 결정적으로 만드는 타이브레이크. ⚠️ **business key로 정렬하지 마라** — `<group>_<x>_<y>` 꼴이라 **어떤 그룹 이름도 다른 것의 접두가 아닐 때만** 연속하고, 그건 오늘 데이터의 우연이다(실측 0쌍) |
-| **`container`** | ✅ | `{relation, key_column, lot_column, slot_column}` 또는 **`{"relation": null}`**(확정 관계가 아예 없다는 «선언»). 🔴 **목적지의 신원이 어디서 확정되는가**. 선택이 아닌 이유: 확정 관계를 선언 못 하게 하면 번역기가 읽을 것은 **행에 있는 값**뿐인데, `dt_log`에서 그 컬럼은 자기 config가 **「추론 대상 — 10%는 있는데 틀림」**이라 적어 둔 바로 그것이다 |
-| **`columns`** | ✅ | **필수 셋**: `row_identity` · `group_key` · `wafer`. **선택 둘**: `recorded_lot` · `recorded_slot`. 목록 밖 이름은 **로드 시점 거절**(②-bis와 같은 이유). ⚠️ `columns.group_key`와 `group.column`은 **같은 컬럼을 두 쪽에서 부르는 이름**이라 다르면 거절된다 — 드라이버는 하나로 자르고 번역기는 다른 하나로 읽으므로, 어긋나면 **분자 키와 배치 경계가 불일치**한다 |
-| `subject_types` / `register_entity_types` | ✅ / ⬜ | `["Wafer"]`. 🔴 **DT 테이프는 subject이 아니라 «장소»다** — 이동의 `to` 컨테이너로 나타나야 걷기가 단계 이름이 아니라 **위치 연속성**으로 이어진다 |
-| ~~`vocabulary`~~ | ❌ | 있으면 로드 에러(②-bis와 같은 이유 — 잡런 하나가 한 이동이라 이벤트 타입이 없다) |
-
-- **파생은 둘이고, 둘의 차이가 이 문법의 정직성 전부다**: `#job_run_to_confirmed_container`(확정 관계가 목적지를 확정했다) ·
-  `#job_run_to_job`(확정된 적 없어 **취득 단위인 잡을 자기 이름으로** 부른다). 🔴 **새 컬럼도 새 플래그도 없다** —
-  `#slot_preserving`이 세운 장치 그대로이고, 그래서 **질의 가능**하다.
-- 🔴 **`from`/`to` 컨테이너는 `{type, keys, position}` «셋»뿐이다.** 위치 연속성 조인은 **객체 전체를 값으로 비교**하므로
-  (`prove_position_walk`가 `json.dumps(payload["to"], sort_keys=True)`로 색인하고 잔량 폴드가 `object_payload->'to'`로 묶는다)
-  컨테이너 «안»에 필드를 하나 더하면 **모든 연속성 조인이 조용히 어긋난다**. 목적지에 «대해» 할 말은 payload 최상위로 간다
-  (`container_recorded` — 소스 행이 적어 둔 값의 **목록**이고, 목록인 것은 한 잡런의 행들이 서로 다른 값을 적을 수 있기 때문이다).
+- 🔴 **선언을 바꾸면 `translator_version` 해시가 움직인다.** `source_translator_ver`가 dedupe 열쇠 일곱 중 하나이므로,
+  **`--reset-cursor` 재실행은 dedupe가 아니라 «옛 원자 옆에 새 원자»를 쓴다**(실제로 `eb1ae8b`에서 `d8d1c9e0` → `34311f15`,
+  878행 → 878 «신규»행). 「다시 돌려서 안 변한 걸 확인하자」가 기대하게 만드는 것과 **다르다** — 상세는 §4.3.
+- **상설 규칙**: 🔴 **선언 필드는 «집행 지점»을 갖거나, 존재하지 않는다**(R-2026-08-13-D).
+  단수 `subject_type`이 검사만 되고 **어느 원자에도 도달하지 않던** 것이 그 판정의 발단이고,
+  지금은 복수 `subject_types`가 게이트에서 실제로 문다.
 
 ### ③ 번역기 작성 — `lot_event_translator`의 모양을 그대로
 
@@ -537,26 +449,15 @@ conda run -n assy_manager python -m pytest server/tests/test_ledger_l1_unit.py s
 
 ## 4. 운영자 절
 
-> 🔴 **운영에서 무엇을 어느 순서로 돌리는가는 [OPERATOR_RUNBOOK §6·§8](../process/OPERATOR_RUNBOOK.md)이 소유한다.**
-> 이 절은 **명령이 무엇을 하는지·숫자를 어떻게 읽는지**만 적는다. 순서는 저쪽을 보라.
+> 🔴 **무엇을 어느 순서로 돌리는가는 [ONTOLOGY_LEDGER_SETUP §2](./ONTOLOGY_LEDGER_SETUP.md)가 소유한다**(2026-08-15 통폐합).
+> 운영에서 **실제로 돌린 기록**은 [OPERATOR_RUNBOOK §6·§8](../process/OPERATOR_RUNBOOK.md).
+> 이 절은 **명령이 무엇을 하는지·숫자를 어떻게 읽는지**만 적는다.
 
-### 4.1 설치 — 마이그레이션
+### 4.1 설치·백필의 «명령과 순서» → 🔴 **[ONTOLOGY_LEDGER_SETUP §2](./ONTOLOGY_LEDGER_SETUP.md)이 소유한다**
 
-🔴 **마이그레이션은 «둘»이다** (2026-08-13 `0198e7e`부터). 순서는 [OPERATOR_RUNBOOK §6](../process/OPERATOR_RUNBOOK.md).
+**마이그레이션 둘·백필 명령·플래그 표는 2026-08-15에 그쪽으로 옮겼다.** 여기 남는 것은 **그 명령들이 무엇을 하는지**뿐이다.
 
-```bash
-# ① 표 둘을 만든다
-conda run -n assy_manager python server/migrations/add_ledger_events.py            # 만든다
-conda run -n assy_manager python server/migrations/add_ledger_events.py --report   # 아무것도 안 바꾸고 상태만
-conda run -n assy_manager python server/migrations/add_ledger_events.py --months 3 # 파티션 미리 3개월치
-
-# ② 커서 행에 거절 «내역» 컬럼을 붙인다 (열둘 → 열셋)
-conda run -n assy_manager python server/migrations/add_ledger_refusal_reasons.py
-conda run -n assy_manager python server/migrations/add_ledger_refusal_reasons.py --report
-conda run -n assy_manager python server/migrations/add_ledger_refusal_reasons.py --reverse
-```
-
-②에 대해:
+②(`add_ledger_refusal_reasons.py`)에 대해:
 
 - **`ALTER TABLE … ADD COLUMN <nullable, DEFAULT 없음>` 하나뿐이다.** PG 11+에서 **카탈로그만** 바꾸므로
   힙을 안 건드리고 표 크기와 무관하다. 게이트가 `pg_attribute`라 **재실행은 DDL도 잠금도 0**이다.
@@ -569,34 +470,18 @@ conda run -n assy_manager python server/migrations/add_ledger_refusal_reasons.py
   (`molecules_refused = 1`). 읽는 법은 §4.4.
 - **되돌리기(`--reverse`)는 진짜 역방향이다** — 원자도, 커서 위치도, 집계도 잃지 않고 **내역만** 잃는다.
 
-①에 대해:
+①(`add_ledger_events.py`)에 대해:
 
 - **추가 전용·멱등.** DROP 없음, 기존 것의 ALTER 없음, 기존 테이블의 행을 건드리는 문장 없음. **새 테이블 둘만.**
 - **큰 기존 테이블에 컬럼을 붙이지 않으므로 잠금 위험이 없다.** 안 돌아도 아무것도 안 깨진다.
-- **DDL은 이 파일에 없다** — `server/ledger/schema.py`가 유일한 철자이고 마이그레이션은 그것을 부른다.
+- **DDL은 그 파일에 없다** — `server/ledger/schema.py`가 유일한 철자이고 마이그레이션은 그것을 부른다.
   (테스트가 스크래치 스키마에 **같은** 테이블을 짓게 하려면 사본이 있으면 안 된다.)
 - **파티션은 만들지 않는다.** 번역기가 **자기가 쓸 달을 쓰기 직전에** 만든다 — 존재할 달은 배포일이 아니라 **데이터**가 정한다.
-  `--months`는 창을 미리 열어 두고 싶은 운영자를 위한 것.
 
-### 4.2 백필
+### 4.2 백필이 «무엇을 고르는가»
 
-```bash
-conda run -n assy_manager python -m ledger.backfill --source lot_event     # 혈통
-conda run -n assy_manager python -m ledger.backfill --source void_obs      # 관측 — 보이드  (2026-08-14 3차)
-conda run -n assy_manager python -m ledger.backfill --source delam_obs     # 관측 — 계면 박리
-```
-(`server/`에서 실행. `-m`이므로 패키지 경로가 잡힌다.)
-🔴 **명령은 하나이고 «선언»이 경로를 정한다** — `run()`이 선언된 `kind`로 혈통/관측 루프를 고른다(§1.1 `backfill.py`).
-운영자가 외울 것은 소스 이름뿐이고, 순서는 [OPERATOR_RUNBOOK §6](../process/OPERATOR_RUNBOOK.md).
-
-| 플래그 | 뜻 |
-|---|---|
-| `--source <이름>` | 기본 `lot_event`. `ledger_config.json`에 선언이 없으면 **`undeclared_source`로 거절하고 아무것도 안 읽는다** |
-| `--reset-cursor` | 커서를 무시하고 **이미 끝난 일감을 다시 읽는다.** 유니크 인덱스(그물 ②)를 실제로 태우는 방법이고, 규칙을 바꾼 뒤 **재번역**하는 방법이다 |
-| `--from <위치>` | 커서 대신 이 위치 «다음»부터. 🔴 **철자가 문법마다 다르다** — 혈통은 `event_time` 하나(`--from "2026-05-21T20:33:00"`), **관측은 선언된 키셋을 `\|`로 이은 것**(`--from "2026-08-14T08:30:02+09:00\|019ffd76-…"`). 키셋의 조각 수는 `watermark.columns`가 선언한 만큼이다 |
-| `--fetch-rows N` | 소스 페이지 크기(기본 2000). **배치 크기가 아니다** — 트랜잭션 크기는 config의 `batch.molecules_per_transaction` |
-| `--max-batches N` | N 배치 후 멈춘다. 첫 시험 주행용 |
-| `--config <경로>` | 다른 선언 파일로 |
+🔴 **명령은 하나이고 «선언»이 경로를 정한다** — `run()`이 선언된 `kind`로 혈통/관측/이동 루프를 고른다(§1.1 `backfill.py`).
+운영자가 외울 것은 소스 이름뿐이고, **명령줄과 플래그는 [ONTOLOGY_LEDGER_SETUP §2](./ONTOLOGY_LEDGER_SETUP.md)**.
 
 ### 4.3 재실행 의미론 — **왜 재실행이 0을 쓰는가**
 
@@ -821,8 +706,9 @@ GET /api/ledger/coverage  ->  200
   제안을 그 자리에 두면 **착지한 선언으로 오독된다.** 파일이 놓이는 날 코드 변경 없이 렌더된다.
   - ✅ **[2026-08-14 · `f52628f` — 그날이 왔다] 위 두 줄은 낡았다.** `server/config/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개**),
     구조 뷰는 **코드 0줄 변경으로** 그 층을 답한다.
-  - **[2026-08-14 밤 — 현행 확정]** 라이브 `mechanism_models.json`도 실재하고 소비자는 **둘**이다: 이 라우트의 기전 층 + **3관문 랭킹의 기전 관문**(`server/mechanism_gate.py` — 요인→결함 도달 가능성). 파일의 뼈대는 셋 —
-    `models`(방향만 있는 인과 엣지, `dir: '+'/'-'/'u'`. **방정식은 일부러 없다**) · `signatures`(사람용 공간 패턴 문서 — **로더가 무시한다**) · **`bindings`**(필드→물리량. 🔴 **항목 목록이 아니다** —
+  - **[2026-08-14 밤 — 현행 확정]** 라이브 `mechanism_models.json`도 실재하고 소비자는 **둘**이다: 이 라우트의 기전 층 + **3관문 랭킹의 기전 관문**(`server/mechanism_gate.py` — 요인→결함 도달 가능성).
+    🔴 **[2026-08-15 정정] 파일에 `models`라는 블록은 «없다»** — 최상위 예약 키는 `__doc`와 `bindings`뿐이고 **나머지 키 하나하나가 모델**이다(`mechanism_gate`의 `KEY_DOC`/`KEY_BINDINGS`). `signatures`는 **모델 «안»의 키**이고
+    (방향만 있는 인과 엣지 `dir: '+'/'-'/'u'`. **방정식은 일부러 없다**) 사람용 공간 패턴 문서라 **로더가 무시한다**. · **`bindings`**(필드→물리량. 🔴 **항목 목록이 아니다** —
     바인딩 안 된 후보도 대조에서 안 좁혀지고 기전 칸에 `unknown`을 달고 나온다). 🔴 **바인딩은 «데이터가 실재하는 날» 켠다**(`87374a5`) — `post_bond_queue_h`는 측정 필드가 없는 동안 「정직한 공백」으로
     문서화돼 있다가 증강 레인이 필드를 실재로 만든 저녁에 바인딩이 켜졌다(코드 0줄). **화면을 완성돼 보이게 하려고 공백에 바인딩을 지어내지 말 것** — 남은 공백 다섯(`stage_particle`·`humidity` 등)이 그 규율의 현재형이다.
     ⚠️ **`.sample`과 라이브를 «동일하게» 편집한다** — 추적되는 것은 `.sample`뿐이다.
@@ -880,16 +766,45 @@ GET /api/ledger/journey?scope=wafer:SYN-BW-101-06,SYN-BW-101-15&finding=void&win
 - **`six`(육하원칙)**: 여섯 슬롯 전부가 답하거나 **「기록 없음」이라 말한다**(빈칸·생략 없음). 🔴 **「왜」만 다른 층이다** — 「물리 모델에 아직 없음」은 **원장의 결측이 아니라 선언의 부재**이고, 그래서 그 슬롯의 `is_missing_record`는 언제나 `false`다. 화면은 그 둘을 **다른 문구·다른 색**으로 그려야 한다.
 - **`notes[]`에 잘림이 실린다** — 주어당 원자 상한(`atoms_truncated`)·구간 상한(`segments_truncated`). **조용히 잘리는 것이 없다.**
 
-**step·항목의 한국어 이름을 붙이는 법** (선언만이고 파이썬 0줄):
-
-1. `server/config/ledger_journey.json`을 연다(라이브가 없으면 `.json.sample`을 복사해 만든다 — 응답의 `labels.origin`이 `live`\|`sample`\|`absent`로 **지금 어느 쪽을 읽고 있는지** 말한다).
-2. 구간 이름은 `step_labels`에 `<step 값>: "본딩"`, 계열은 `family_labels`.
-3. 항목 이름은 `field_labels`에 `<잎 이름>: "압력"` 또는 `{"label": "압력", "unit": "MPa"}`. **조회 철자가 셋이고 구체적인 것부터**다 — `<술어>:<점 경로>` → `<점 경로>` → **맨 잎 이름**. 맨 잎이 기본값인 이유는 그 한 항목이 `params_actual.pressure_MPa`와 `params_setpoint.pressure_MPa`를 **동시에** 이름 짓기 때문이다(설정/실측 구분은 라벨이 아니라 **원자의 해결 등급**이 나른다). 같은 이름의 잎 둘이 **다른 물리량**일 때만 긴 철자를 쓴다.
-4. 저장하고 **다시 요청한다** — 프로세스 수명 캐시라 서버 재기동 또는 `ledger_journey.load_config(force_reload=True)`가 필요하다.
+🔴 **`server/config/ledger_journey.json`을 «쓰는» 절차는 [ONTOLOGY_LEDGER_SETUP §6.3](./ONTOLOGY_LEDGER_SETUP.md)이 소유한다**(2026-08-15 이관).
+여기 남는 것은 그 선언이 응답에 대해 뜻하는 것이다:
 
 🔴 **이름 블록 셋은 «항목 목록»이 아니다.** 이름을 안 붙인 잎도 **똑같이 비교되고** 원시 경로로 화면에 나온다 — 이름 선언을 지워서 사라지는 것은 **한국어뿐**이고 구간·항목·값은 하나도 안 준다. 「화면에서 빼려고」 거기서 지우는 것은 **아무 효과가 없다.**
 🔴 **새 여정 술어를 붙이는 것은 `segments` 블록의 항목 하나**다 — payload 안 어디에 step 이름과 계열이 있는지를 점 경로로 적으면 되고 파이썬은 0줄이다. **거기에 선언이 없는 술어는 여정 축에 안 나타난다.**
-⚠️ **그래서 `segments`만은 「지워도 이름만 없어지는」 블록이 아니다** — 그 블록이(또는 라이브·`.sample` 둘 다) 없으면 응답은 500이 아니라 200이되 `state: "absent"` · `reason: "no_journey_predicate_declared"` · **`segments: []`**로 «그렇게 말한다». ⚠️ **코드와 `.sample`의 산문은 「파일을 통째로 지워도 구간·항목·값이 안 준다」고 적고 있는데 그 문장은 `segments`에 대해 거짓이다**(총괄 보고 대상 — 문서는 코드의 동작을 적었다).
+⚠️ **그래서 `segments`만은 「지워도 이름만 없어지는」 블록이 아니다** — 그 블록이(또는 라이브·`.sample` 둘 다) 없으면 응답은 500이 아니라 200이되 `state: "absent"` · `reason: "no_journey_predicate_declared"` · **`segments: []`**로 «그렇게 말한다».
+✅ **[2026-08-15 실측] 종전 이 자리의 「코드와 `.sample`의 산문이 거짓이다」는 낡았다** — `ledger_journey.JourneyConfig`의 docstring이 스스로 그 옛 문장을 지목해 정정했고(「AN EARLIER VERSION OF THIS DOCSTRING GOT IT WRONG」), 지금은 코드도 `.sample`도 **두 반쪽이 다르게 실패한다**고 적는다.
+
+#### 4.6-quinquies R&D Trend와 Composite CHIP 읽는 법
+
+- `/api/ledger/trends`의 차트와 표는 `identity.mark_key`가 같으면 같은 웨이퍼다.
+  종류·subtype·차트 수는 배열 길이로 읽고, `max_points`를 전체 개수로 읽지 않는다.
+  표의 다음 페이지는 `table.next_cursor`가 있을 때만 요청한다.
+- `found_rate.state=absent`는 0%가 아니다. 관측 원자 투영에 clean scan 분모가 없다는
+  뜻이다. `event_count`·`found_chip_count`만 현재 수치다.
+- `/api/ledger/composition`은 `components[]`를 먼저 읽는다. `summary.dt_collection_ids`는
+  참여한 DT 전부의 합집합이고 대표값이 아니다. component의 `transfer_events[]`는
+  sequence 순서, component들 사이 관계는 `graph` DAG다. 공정 비교는
+  `upstream_process.events[]`의 step/recipe occurrence만 읽고, Core lot 분기는
+  `core.branch`와 `core.lineage.events[]`를 읽는다. 이 값들은 근거 원자를 보존할 뿐
+  원인을 판정하지 않는다. 최종 wafer 연결은 `final_subject_resolution`의 state와 후보를
+  함께 읽으며 `absent`를 추정값으로 채우지 않는다.
+
+**Selection 비교에서 Process와 Measurement를 읽는 법**
+
+- `comparison.facets.process[]`는 `processed_with`의 STEP+RCP occurrence만 비교한다.
+  signature에 `equipment`·`step_family`·actual/setpoint·parameter/value가 보이면 계약 위반이다.
+- `comparison.facets.measurement[]`의 원장 술어는 `measured`다. `measured_as`는 클라이언트의
+  category 이름일 뿐 적재할 술어가 아니다.
+- 공통 payload는 `metric/unit/method/state`; `recorded`만 `value/run_uid`가 필수다.
+  `missing/not_performed/unknown`에는 `value`를 `null`로도 쓰지 않는다.
+- 그룹은 `state_counts`와 원값 `values[]`를 함께 읽는다. `value`는 원값이 하나일 때만 있고,
+  서버는 평균이나 0 sentinel을 만들지 않는다. `wafer_mark_keys`는 역마킹 대상,
+  `evidence_ids`는 실제 원자 근거다.
+- 선택 범위의 계측 원자가 0개인 경우에만 `state=absent`와
+  `reason=measured_evidence_absent`가 나온다. 이것은 `missing`이나 `not_performed`가 아니다.
+- 개발 SYN 데이터: `conda run -n assy_manager python
+  server/scripts/seed_syn_composite_chip.py`는 dry-run, `--apply`는 추가 전용 적재다.
+  재실행은 unique atom index에서 전량 dedupe된다.
 
 ### 4.7 🔴 합성·픽스처 적재를 걷어내는 법 — **목록이 아니라 술어** (2026-08-14)
 
@@ -960,11 +875,12 @@ DELETE FROM ledger_translator_cursor WHERE source     IN ('void_obs','delam_obs'
 
 ## 관련 문서
 
+- 🔴 **무엇을 선언하나 · 어느 순서로** — [guide/ONTOLOGY_LEDGER_SETUP.md](./ONTOLOGY_LEDGER_SETUP.md) **정본**(2026-08-15 통폐합)
 - **왜** — [architecture/CANONICAL_LEDGER_DESIGN.md](../architecture/CANONICAL_LEDGER_DESIGN.md) (설계 문서. 현행 서술 아님)
 - **정확히 무엇** — [spec/LEDGER_TECHNICAL_SPEC.md](../spec/LEDGER_TECHNICAL_SPEC.md) (스키마·인덱스·계약)
 - **판정** — [process/LEDGER_RULINGS.md](../process/LEDGER_RULINGS.md) 🔴 정본
 - **착수 지시** — [process/LEDGER_SLICE_1_BRIEF.md](../process/LEDGER_SLICE_1_BRIEF.md)
-- **운영 실행 순서** — [process/OPERATOR_RUNBOOK.md](../process/OPERATOR_RUNBOOK.md) §6 · §8
+- **운영에서 «실제로 돌린» 기록** — [process/OPERATOR_RUNBOOK.md](../process/OPERATOR_RUNBOOK.md) §6 · §8
 - **저장·시각 선언** — [architecture/data_model.md §1.1-ter](../architecture/data_model.md)
 - **라우트** — [architecture/backend.md §2](../architecture/backend.md) · **화면** — [architecture/frontend.md §6.1](../architecture/frontend.md)
 - **재사용 관점** — [architecture/PRIMITIVES.md](../architecture/PRIMITIVES.md) §1 · §3 · §6 · §7

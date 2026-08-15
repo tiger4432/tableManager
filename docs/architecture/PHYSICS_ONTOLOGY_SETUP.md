@@ -17,15 +17,16 @@
 > | §1 M1 구조(`BondLine`) | 🟡 **제안** | **착지하지 않았다.** 어휘에 `BondLine`이 없고 구성형 개체는 여전히 `Die` 하나다 |
 > | §1 M2 물리량 사전 | 🟡 **제안** | **착지하지 않았다.** 물리량↔구조 종류의 타입 시스템은 코드에 없다 |
 > | **§2 WF 공정 원장** | ✅ **착지** | `processed_with` v0 등재 — 아래 §2의 착지 블록 |
-> | §2-bis 칩 이동(`transferred`) | 🟡 **제안** | **착지하지 않았다.** `vocabulary.PREDICATES`에 `transferred`도 예약 `consumed`도 **없다**(2026-08-14 실측 — 어휘는 아홉이고 그 둘은 그 아홉에 없다). 어휘를 더하는 것은 [LEDGER_GUIDE §3 ①](../guide/LEDGER_GUIDE.md)의 3문 검사를 지난 **판정**이다 |
+> | §2-bis 칩 이동(`transferred`) | ✅ **착지** | 🔴 **[2026-08-15 정정 — 이 행은 「제안」이라 적고 있었고 그것이 낡았다]** `transferred`는 `vocabulary.PREDICATES`에 **있고**(2026-08-15 실측), `dt_log`가 세 번째 문법 `kind: "transfer"`로 선언돼 번역된다. 선언 방법은 [ONTOLOGY_LEDGER_SETUP §3.3](../guide/ONTOLOGY_LEDGER_SETUP.md). ⚠️ **예약 `consumed`는 여전히 없다** |
 > | **§3 RCP 원장** | ✅ **착지** | `Recipe`(발급형, `rev`가 키) + `has_param` 등재 — 아래 §3의 착지 블록 |
-> | §4 메커니즘 그래프 | 🟡 **제안** | 모델 선언 본문·`validity`는 코드에 없다. 🔴 **[2026-08-14 2차 실측 — 이제 이것을 «재는 도구»가 있다]** `GET /api/ledger/structure`가 기전 층을 `state: "absent"` · `reason: "no_declaration_file"`로 답한다. 부재는 **다섯**이다: config 파일 · 파이썬 dict · 로더 · 라우트 · 어휘의 `Model` 개체 타입 — 그리고 **소비자 0**. 🔴 **엔드포인트는 아래 §4의 제안을 데이터로 «옮겨 적지 않는다»**(그 순간 제안이 선언으로 오독된다). 이음새는 `server/config/mechanism_models.json`이고 **`.sample`은 «일부러» 안 실었다** — 이 저장소에서 `.sample`은 「출하된 선언」이라 제안을 그 자리에 두는 것이 같은 오독이다. **이 행이 ✅로 바뀌는 조건은 문서 수정이 아니라 «그 파일이 놓이고 읽는 것이 생기는 것»이다** |
+> | §4 메커니즘 그래프 | ✅ **착지** | 🔴 **[2026-08-15 정정 — 이 행의 아래 서술은 전부 낡았다]** `server/config/mechanism_models.json`이 **라이브·`.sample` 둘 다 실재**하고 소비자가 **둘**이다(3관문 랭킹의 기전 관문 `server/mechanism_gate.py` + `/structure`의 기전 층). 선언 방법과 🔴 **「`models`라는 블록은 없다」**는 실측은 [ONTOLOGY_LEDGER_SETUP §6.1](../guide/ONTOLOGY_LEDGER_SETUP.md). 아래는 그 착지 이전의 기록이다: ~~모델 선언 본문·`validity`는 코드에 없다. 🔴 **[2026-08-14 2차 실측 — 이제 이것을 «재는 도구»가 있다]** `GET /api/ledger/structure`가 기전 층을 `state: "absent"` · `reason: "no_declaration_file"`로 답한다. 부재는 **다섯**이다: config 파일 · 파이썬 dict · 로더 · 라우트 · 어휘의 `Model` 개체 타입 — 그리고 **소비자 0**. 🔴 **엔드포인트는 아래 §4의 제안을 데이터로 «옮겨 적지 않는다»**(그 순간 제안이 선언으로 오독된다). 이음새는 `server/config/mechanism_models.json`이고 **`.sample`은 «일부러» 안 실었다** — 이 저장소에서 `.sample`은 「출하된 선언」이라 제안을 그 자리에 두는 것이 같은 오독이다. **이 행이 ✅로 바뀌는 조건은 문서 수정이 아니라 «그 파일이 놓이고 읽는 것이 생기는 것»이다**~~ — **그 조건이 `f52628f`로 충족됐다.** |
 > | §5 시나리오 3종 | 🟡 **제안** | S1~S3의 **재료**(공정 원자·개정 diff·분모)는 이제 있지만 **폴드·액션 산출은 없다** |
 > | §5-bis 액션 노드 | 🟡 **제안** | 어휘에 `Action`도 `applies_to`/`based_on`/`released_by`도 **없다** |
 > | **§6 가상 소스 결선** | ✅ **착지** | `server/scripts/seed_syn_process_ledger.py` — 정답지와 `--prove` 포함 |
 >
 > 🔴 **현행 서술의 정본은 이 문서가 아니다** — 어휘 계약은 [spec/LEDGER_TECHNICAL_SPEC §3.7](../spec/LEDGER_TECHNICAL_SPEC.md),
-> 절차는 [guide/LEDGER_GUIDE §3 ①·§3-bis](../guide/LEDGER_GUIDE.md), 저장은 [architecture/data_model §1.1-ter](./data_model.md).
+> **「무엇을 어디에 선언하는가」는 [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)**(2026-08-15 신설 — 🔴 **이 문서의 어느 절이 오늘 실물이고 어느 절이 제안인지도 그 문서 §8이 «실측으로» 답한다**),
+> 번역기 코드 절차는 [guide/LEDGER_GUIDE §3](../guide/LEDGER_GUIDE.md), 저장은 [architecture/data_model §1.1-ter](./data_model.md).
 > **이 문서는 계속 설계이고, 착지 블록은 「제안의 무엇이 실제로 무엇이 됐는가」만 적는다.**
 
 ## 1. 물리 온톨로지 4계층 (raw함의 처방)

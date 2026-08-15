@@ -553,7 +553,7 @@
 
 ### ⭐ **선언 파일에 «두 번째 문법»을 더할 때는 문법 이름을 필드로 두고 기본값을 «기존 뜻»으로 — 검증이 그 낱말로 분기한다** (2026-08-14 등록 · `ledger/config.py`의 `kind`)
 - **무엇**: 한 선언 파일이 지금까지 **한 가지 모양의 소스**만 서술했는데 구조가 다른 두 번째가 오면, 필수 키 집합이 **서로 배타적**이라 한쪽 규칙으로 다른 쪽을 채점하면 **엉뚱한 이유로 거절**된다. 처방은 파일을 쪼개는 것도, 필수 키를 느슨하게 푸는 것도 아니라 **「이 항목은 어느 문법인가」를 필드 하나로 선언**하고 **검증기가 그 낱말로 분기**하게 하는 것이다. 🔴 **기본값은 반드시 «기존 뜻»**이어야 한다 — 그래야 이미 배포된 선언이 **한 글자도 안 바뀌고** 정확히 같은 뜻을 유지한다.
-- **어디**: `server/ledger/config.py` — `SOURCE_KINDS`(`lineage` 기본 · `observation`) · `_validate_observation_source` · `LINEAGE_REQUIRED_COLUMNS` / `OBSERVATION_REQUIRED_COLUMNS`. 절차 [guide/LEDGER_GUIDE §3 ②-bis](../guide/LEDGER_GUIDE.md) · 선언 [CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md).
+- **어디**: `server/ledger/config.py` — `SOURCE_KINDS`(`lineage` 기본 · `observation`) · `_validate_observation_source` · `LINEAGE_REQUIRED_COLUMNS` / `OBSERVATION_REQUIRED_COLUMNS`. 선언 [guide/ONTOLOGY_LEDGER_SETUP §3.2](../guide/ONTOLOGY_LEDGER_SETUP.md) · 코드 절차 [guide/LEDGER_GUIDE §3](../guide/LEDGER_GUIDE.md) · 선언 [CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md).
 - **언제 재사용**: 「이 config 형식에 «다른 종류»의 항목을 넣어야 하는데 필수 키가 안 맞는다」를 만날 때. **파일을 하나 더 만들기 전에** 이것을 먼저 볼 것 — 파일이 둘이 되면 로더·워처·문서·롤백이 전부 둘이 된다.
 - **함정**:
   - 🔴 **다른 문법의 키가 섞여 들어오면 «거절»하라.** 관측 소스에 혈통 전용 `vocabulary` 키가 있으면 무시하지 말고 에러다 — 조용히 무시하면 「선언했는데 아무 일도 안 하는 config」가 되고, 그것이 R-2026-08-13-D가 끝낸 결함이다.
