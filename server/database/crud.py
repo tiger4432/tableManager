@@ -2269,10 +2269,12 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     time. That is what lets `apply_batch_updates` call it up front while
     `apply_row_update_internal` keeps calling it for its own protection.
 
-    ⚠️ TWO SIDE EFFECTS, NOT ONE. It sets `update_item.business_key_val` AND writes the
-    key back into `update_item.updates[key_col]` when that column is absent, so the
-    stored row carries its own key as a value. Callers depend on both; dropping the
-    second would leave the key column NULL on every ingested row.
+    It always sets the framework-owned `update_item.business_key_val`. When the table
+    ALSO declares a physical `business_key` column, it keeps the historical second
+    side effect and writes the key back into `updates[key_col]` when absent. A
+    source-owned schema may instead declare only `composite_key_source`; in that form
+    no synthetic source column is invented and the assembled identity lives only in
+    the framework's `business_key_val` column.
 
     ⚠️ AND ONE ORDERING CONSTRAINT. Writing `updates[key_col]` is visible to
     `derive_replace_map_scope`, whose LEGACY (undeclared `map_key_columns`) branch
@@ -2288,7 +2290,7 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     composite_src = config.get("composite_key_source")
-    if not composite_src or not key_col:
+    if not composite_src:
         return False
     if _unfilled_composite_parts(composite_src, update_item.updates):
         return False
@@ -2296,7 +2298,7 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     vals = [clean_str_value(update_item.updates.get(col)) for col in composite_src]
     computed_key = config.get("composite_key_separator", "_").join(vals)
     update_item.business_key_val = computed_key
-    if key_col not in update_item.updates:
+    if key_col and key_col not in update_item.updates:
         update_item.updates[key_col] = computed_key
     return True
 
@@ -2331,8 +2333,9 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
 
       * the item names a `row_id` or carries a `business_key_val` - it already has an
         identity and the writer will resolve onto it;
-      * the table declares no `business_key` at all - nothing to judge, so judging it
-        would be inventing a policy;
+      * the table declares neither a plain `business_key` nor a
+        `composite_key_source` - nothing to judge, so judging it would be inventing a
+        policy;
       * the table declares a plain (non-composite) business key and the payload supplies
         that column with a value. The row still fails to MATCH an existing one on a later
         push (`_get_or_create_row` reads only `row_id`/`business_key_val`, a pre-existing
@@ -2356,10 +2359,9 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
     declared = isinstance(key_col, str) and bool(key_col.strip())
 
     if composite_src:
-        # No key column declared -> the assembler cannot run either, so there is nothing
-        # this payload could have done differently. Not the sender's defect; not refused.
-        if not declared:
-            return []
+        # A physical business-key column is optional here: the assembler can keep the
+        # joined identity in the framework-owned `business_key_val` without adding a
+        # synthetic column to a source-owned schema.
         return _unfilled_composite_parts(composite_src, update_item.updates)
 
     if declared:
@@ -2431,7 +2433,12 @@ def _update_row_business_key(row: Any, key_col: str, update_item: schemas.Genera
             if row_cache is not None:
                 row_cache[str_val] = row
 
-    if key_col and key_col in update_item.updates:
+    if not key_col and update_item.business_key_val:
+        # Source-exact composite schemas deliberately have no physical key column.
+        # `assemble_composite_business_key` already produced the canonical identity;
+        # persist it in the framework column instead of inventing a source column.
+        _apply(update_item.business_key_val)
+    elif key_col and key_col in update_item.updates:
         _apply(update_item.updates[key_col])
     elif key_col and hasattr(row, key_col):
         existing_val = getattr(row, key_col)

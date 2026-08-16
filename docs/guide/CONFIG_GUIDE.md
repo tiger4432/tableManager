@@ -81,14 +81,16 @@
 ```gitignore
 # 운영 환경 고유 설정 및 인제션 워크스페이스
 server/config/*
-!server/config/*.sample
+!server/config/sample/
+server/config/sample/*
+!server/config/sample/*.sample
 server/mappers/*
 !server/mappers/*.sample
 server/ingestion_workspace/
 server/database/virtual_graph.json
 ```
 
-즉 **git에 올라가는 것은 `*.sample`뿐**이고, 실제 값은 각 운영 환경의 로컬 자산입니다. 새 환경을 세팅할 때는 `.sample`을 확장자 없이 복사해 시작합니다.
+즉 config 샘플은 **`server/config/sample/*.sample`만 git에 올라가고**, 실제 값은 `server/config/*.json`인 각 운영 환경의 로컬 자산입니다. 새 환경을 세팅할 때는 샘플을 상위 폴더에 확장자 없이 복사해 시작합니다.
 
 | 파일 (`server/config/`) | 목적 | 소유 | git | 적용 방법 | 소비 프로세스 |
 |---|---|---|---|---|---|
@@ -117,20 +119,22 @@ server/database/virtual_graph.json
 | `scheduler_status.json` | 스케줄러→UI 텔레메트리 | **시스템(자동 생성)** | ignored | — | run_auto_update가 씀, web이 읽음 |
 | `supervisor_status.json` | **[운영]** 자식 프로세스 감시 상태(자식별 state·재시작 횟수·실패 사유, `updated_at`=감시자 생존 신호) | **시스템(자동 생성)** | ignored | — | `run_decoupled_app`이 씀, `/health`가 읽음 |
 | `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동(`watcher`·`chain`·`graph`·`scheduler` — **수를 적지 않습니다**) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
-| **`<이름>_<yymmdd>.json.bak`** | **[운영] C3 주간 config 스냅샷** — 롤백 단계 2의 복원 원본 | **시스템(자동 생성)** | ignored | — | `run_auto_update`가 씀, `/health`가 신선도를 읽음 |
-| `*.json.bak.<ts>`, `*.bak-<ts>`, `*.v1.bak` | 설치 이력·수동 백업 잔재 | 스크립트/사용자 | ignored | — | 아무도 안 읽음 |
+| **`backup/<이름>_<yymmdd>.json.bak`** | **[운영] C3 주간 config 스냅샷** — 롤백 단계 2의 복원 원본 | **시스템(자동 생성)** | ignored | — | `run_auto_update`가 씀, `/health`와 복원 CLI가 읽음 |
+| `backup/*.bak.*` | 설치·어드민 저장 직전 변경 이력 | 스크립트 | ignored | — | 자동 복원 대상은 아니며 수동 비교·증거용 |
+| `backup/*.prerollback.*` | 복원 직전의 현재 파일 | 복원 CLI | ignored | — | 실패한 롤백의 되돌림·증거용 |
 
 > `table_config.json.bak_enrich` · `ontology_mapping.json.v1.bak` 같은 파일은 **코드가 읽지 않습니다**. 파일명이 정확히 일치해야만 로드됩니다.
 
-#### `.bak`가 세 종류다 — 날짜 위치로 구분한다
+#### 백업과 샘플은 live config와 분리한다
 
 ```
-table_config_260728.json.bak          ← ① 주간 스냅샷 (날짜가 확장자 앞)
-table_config.json.bak.20260727-225922 ← ② 제품 테이블 설치 이력 (날짜가 확장자 뒤)
-ontology_mapping.json.v1.bak          ← ③ 손으로 남긴 잔재 (날짜 없음)
+backup/table_config_260728.json.bak                    ← ① 주간 스냅샷
+backup/table_config.json.bak.20260727-225922           ← ② 제품 테이블 설치 이력
+backup/table_config.json.prerollback.<ts>              ← ③ 복원 직전 증거
+sample/table_config.json.sample                        ← 추적되는 시작 템플릿
 ```
 
-**롤백 때 되돌릴 원본은 ①뿐입니다.** ②는 `install_product_tables.py`가 실행된 순간에만 생기므로 **배포 이력이 아니라 설치 이력**이고, 어드민 UI나 에디터로 한 수정은 거기에 없습니다. 판단 기준 전문은 [ROLLBACK_PROCEDURE §3.1 / §3.1-bis](ROLLBACK_PROCEDURE.md).
+**자동 복원 명령이 받는 원본은 ①뿐입니다.** ②는 특정 쓰기 직전 이력이라 주간 배포 이력을 대체하지 않습니다. 판단 기준 전문은 [ROLLBACK_PROCEDURE §3.1 / §3.1-bis](ROLLBACK_PROCEDURE.md).
 
 ①의 규격 — 주 1회 전량, 파일당 1개, **1개월 FIFO**(최신 4개는 나이 무관 보존), 같은 날 두 번째는 내용이 다를 때만 `_260728b`로 글자가 붙습니다(**덮어쓰지 않음**). `yymmdd`가 사전순 = 시간순이라 `ls`의 마지막 줄이 최신입니다.
 
@@ -139,7 +143,7 @@ conda run -n assy_manager python server/scripts/backup_config.py list|check|snap
 conda run -n assy_manager python server/scripts/backup_config.py restore <파일> --yes
 ```
 
-> **대상 선정 규칙**: `server/config/` 바로 아래에서 이름이 정확히 `.json`으로 끝나는 파일 전량. 그래서 `.sample`·`.bak` 계열이 자동으로 빠지고(백업의 백업이 생기지 않음), **새 config 파일은 등록 없이 자동 포함**됩니다. 예외는 산출물인 `scheduler_status.json`·`supervisor_status.json` 2개뿐입니다.
+> **대상 선정 규칙**: `server/config/` 바로 아래에서 이름이 정확히 `.json`으로 끝나는 파일 전량. 출력은 `backup/`에 쓰므로 입력과 이력이 섞이지 않고, **새 config 파일은 등록 없이 자동 포함**됩니다. `sample/`은 하위 폴더라 대상이 아닙니다. 예외는 산출물인 `scheduler_status.json`·`supervisor_status.json` 2개뿐입니다.
 
 > ⚠️ **백업이 멈추면 `/health`가 말합니다** — `checks.config_backup`이 `missing`/`stale`이면 `problems`에 뜨고 상태가 `degraded`(HTTP 200 유지)가 됩니다. 판정 근거는 작업이 자기 손으로 쓴 "마지막 실행" 기록이 아니라 **디스크의 스냅샷 파일 자체**입니다.
 
@@ -275,7 +279,7 @@ S1을 전부 수행한 뒤 추가로:
 
 | # | 할 일 |
 |---|---|
-| 1 | `server/config/ingestion_settings.json.sample`을 `ingestion_settings.json`으로 **복사** |
+| 1 | `server/config/sample/ingestion_settings.json.sample`을 `server/config/ingestion_settings.json`으로 **복사** |
 | 2 | `"heavy_file_mb": <양수>` 설정 |
 | 3 | 저장 즉시 반영 — **다음 파일 이벤트부터**. 재기동·reload 불필요 |
 
@@ -824,7 +828,7 @@ conda run -n assy_manager python server/scripts/list_undeclared_tables.py
 
 ## 7. 새 환경 부트스트랩 (요약)
 
-1. `server/config/*.sample` → 확장자 제거해 복사 (필요한 것만).
+1. `server/config/sample/*.sample` → 상위 `server/config/`에 확장자 제거해 복사 (필요한 것만).
 2. `table_config.json`을 실제 스키마로 채운다. **이미 쓰던 파일이 있으면** 제품 소유 4종은 `install_product_tables.py --apply`로 병합한다(§5.8-ter).
 3. 서버 기동 → 부팅 시 물리 스키마 정합(create_all + ADD COLUMN 동기화)이 1회 수행됨.
 4. `information_schema`로 테이블·컬럼 확인(§4.3).

@@ -92,7 +92,7 @@
 
 ### 3.1 `table_config.json.bak.<ts>` 백업으로 충분한가 — **아니다. 부분적이다**
 
-`install_product_tables.py --apply`가 쓰기 직전에 타임스탬프 백업을 남긴다(`server/config/table_config.json.bak.20260727-225922` 형태). 그 백업의 **정확한 성격**을 알고 써야 한다:
+`install_product_tables.py --apply`가 쓰기 직전에 타임스탬프 백업을 남긴다(`server/config/backup/table_config.json.bak.20260727-225922` 형태). 그 백업의 **정확한 성격**을 알고 써야 한다:
 
 | | |
 |---|---|
@@ -103,8 +103,8 @@
 **올바른 백업을 고르는 법** — 파일명의 타임스탬프는 `YYYYMMDD-HHMMSS`(로컬 시각)다. 되돌리려는 **배포 직전**의 것을 고른다.
 
 ```bash
-ls -t server/config/table_config.json.bak.*        # 최신순
-diff <(python -m json.tool server/config/table_config.json.bak.20260727-225922) \
+ls -t server/config/backup/table_config.json.bak.*        # 최신순
+diff <(python -m json.tool server/config/backup/table_config.json.bak.20260727-225922) \
      <(python -m json.tool server/config/table_config.json)
 ```
 
@@ -117,8 +117,8 @@ diff <(python -m json.tool server/config/table_config.json.bak.20260727-225922) 
 이쪽이 **일반 배포의 정식 복원 원본**이다. 누가 어떻게 고쳤든(어드민 UI·에디터·에이전트) 주 1회 전량 스냅샷을 뜨므로, §3.1의 설치 이력과 달리 **수정 경로를 가리지 않는다.**
 
 ```
-table_config_260728.json.bak          <- 주간 스냅샷 (날짜가 확장자 앞)
-table_config.json.bak.20260727-225922 <- 설치 이력   (날짜가 확장자 뒤)
+backup/table_config_260728.json.bak                   <- 주간 스냅샷
+backup/table_config.json.bak.20260727-225922          <- 설치 이력
 ```
 
 > **이 두 줄의 차이가 새벽 2시에 지켜야 할 전부다.** 날짜가 **앞**이면 주간 스냅샷, **뒤**면 설치 이력이다. 파일을 열지 않고 `ls`만으로 구분된다.
@@ -128,7 +128,7 @@ table_config.json.bak.20260727-225922 <- 설치 이력   (날짜가 확장자 �
 | **주기** | 7일. **크론 시각이 아니라 "디스크의 최신 스냅샷이 7일보다 오래됐는가"**로 판정하므로, 그 시각에 PC가 꺼져 있었어도 다음 기동 때 밀린 스냅샷을 뜬다 |
 | **어디서 도나** | Auto-Update 스케줄러 프로세스(`run_auto_update.py`) 안의 유지보수 작업. 수집기가 **아니다** — raws/로 나가지도, 인제션되지도 않는다 |
 | **범위** | `server/config/*.json` 전량(파일당 1개). `.sample`·`.bak` 계열·`scheduler_status.json`·`supervisor_status.json`은 제외 |
-| **보관** | 1개월 FIFO. 오래된 것부터 밀려나되 **최신 4개는 나이와 무관하게 남는다**(장기간 중단 후 재개가 이력을 통째로 지우는 것을 막는다). 삭제는 로그에 파일명이 찍힌다 |
+| **보관** | `server/config/backup/`. 1개월 FIFO. 오래된 것부터 밀려나되 **최신 4개는 나이와 무관하게 남는다**(장기간 중단 후 재개가 이력을 통째로 지우는 것을 막는다). 삭제는 로그에 파일명이 찍힌다 |
 | **같은 날 두 번** | 내용이 같으면 **건너뛴다**. 다르면 `_260728b` → `c`로 글자가 붙는다. **덮어쓰지 않는다** |
 
 **정렬은 파일명이 한다.** `yymmdd`가 사전순 = 시간순이고 `260728` < `260728b` < `260729`다. `ls`의 마지막 줄이 최신이다 — `mtime`을 볼 필요가 없다(도구도 `mtime`을 보지 않는다).
@@ -144,8 +144,9 @@ conda run -n assy_manager python server/scripts/backup_config.py snapshot # 위�
 ### 3.2 되돌리기 전에 반드시 스스로 백업하라
 
 ```bash
-cp server/config/table_config.json          server/config/table_config.json.prerollback.$(date +%Y%m%d-%H%M%S)
-cp server/config/transfer_plan_config.json  server/config/transfer_plan_config.json.prerollback.$(date +%Y%m%d-%H%M%S)
+mkdir -p server/config/backup
+cp server/config/table_config.json          server/config/backup/table_config.json.prerollback.$(date +%Y%m%d-%H%M%S)
+cp server/config/transfer_plan_config.json  server/config/backup/transfer_plan_config.json.prerollback.$(date +%Y%m%d-%H%M%S)
 ```
 
 **이유**: 롤백이 실패하면 되돌아올 곳이 필요하다. 그리고 사후에 "무엇이 문제였나"를 보려면 **깨진 config 자체가 증거**다. 되돌리면서 지우지 마라.
@@ -193,7 +194,7 @@ conda run -n assy_manager python server/scripts/backup_config.py list
 **배포 직전 날짜의 것을 고른다.** 고른 뒤 반드시 diff를 본다 — 스냅샷이 배포보다 오래됐다면 그 사이의 정당한 현장 수정까지 함께 지워진다(§3.1).
 
 ```bash
-diff <(python -m json.tool server/config/table_config_260728.json.bak) \
+diff <(python -m json.tool server/config/backup/table_config_260728.json.bak) \
      <(python -m json.tool server/config/table_config.json)
 ```
 

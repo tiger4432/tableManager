@@ -38,7 +38,7 @@ from ledger.lot_event_translator import (           # noqa: E402
     LotEventTranslator, group_molecules)
 
 
-CONFIG_SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config",
+CONFIG_SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                              "ledger_config.json.sample")
 
 

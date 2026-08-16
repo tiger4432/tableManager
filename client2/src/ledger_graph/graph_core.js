@@ -134,7 +134,7 @@ export function filterGraph(model, filters = {}) {
 export function subgraphFrom(model, startId, hops = 20) {
   const start = String(startId || '');
   if (!start || !model.nodes.some((node) => node.id === start)) return model;
-  const cap = Math.max(0, Math.min(20, Number(hops) || 0));
+  const cap = Math.max(0, Math.min(40, Number(hops) || 0));
   const adjacency = new Map();
   const link = (a, b) => {
     if (!adjacency.has(a)) adjacency.set(a, new Set());

@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 심야
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 Evidence Graph·표 투영
 > 
 > ⚰️ **[`2ec78b9` · 판정 R-2026-08-14-H] 구 그래프 갈래가 은퇴해 §2·§3·§5·§6·§8이 갱신됐습니다** — 백엔드 자식이 다섯에서 **넷**, 라우트 일곱이 **410**, 저장소 셋이 **DROP**(약 841 MB). 후계는 정준 원장입니다. 토폴로지 변경이라 SSOT가 반드시 말해야 하는 종류의 사실입니다. **⚠️ 총괄 검수 대상** — 이 문서는 사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다.
 > 
@@ -12,7 +12,7 @@
 
 ## 1. 시스템이 하는 일 — 그리고 무엇을 위해
 
-AssyManager는 **전산 인프라가 취약한 R&D 현장**을 위한 데이터 관리 플랫폼입니다. 궁극 목적은 **불완전한 현장 데이터를 사람이 최소 공수로 교정하여, 신뢰할 수 있는 온톨로지/지식 그래프로 축적하는 것**입니다. 그리드·테이블은 최종 산출물이 아니라 **교정 표면(Correction Surface)**입니다.
+AssyManager는 **전산 인프라가 취약한 R&D 현장**을 위한 데이터 관리 플랫폼입니다. 궁극 목적은 **불완전한 현장 데이터를 사람이 최소 공수로 교정하여, 신뢰할 수 있는 온톨로지/지식 그래프로 축적하는 것**입니다. 연구원과 Spotfire·Excel에 보이는 기본 계약은 **표**이고, 온톨로지와 그래프는 관계·근거를 보존하는 배경 엔진이다. 그리드·테이블은 저장 스키마의 사본이 아니라 **교정·분석 표면(Correction/Analysis Surface)**입니다.
 
 **가치 사슬:**
 
@@ -42,7 +42,7 @@ AssyManager는 **전산 인프라가 취약한 R&D 현장**을 위한 데이터 
 
 ## 2. 프로세스 토폴로지 (멀티프로세스)
 
-🔴 **[2026-08-14 `2ec78b9` — 판정 R-2026-08-14-H] 그래프 싱크 워커가 스택에서 빠져 백엔드 자식이 다섯에서 «넷»이 됐습니다.** 사본을 만들던 파이프라인(추출 → 머티리얼라이즈 → 저장)이 은퇴했습니다 — 원장(`ledger_events`)이 개체 층이고, 실측상 그 워커에는 `ledger` 참조가 **0건**이었습니다(두 갈래가 같은 소스 표를 각자 읽으며 서로를 몰랐다는 뜻입니다). 저장소 `graph_nodes`·`graph_edges`·`graph_sync_state`는 **DROP됐고**(약 841 MB), 진입 라우트 **일곱**은 `main.py::_graph_branch_retired`가 **410**으로 거절합니다. 혈통 추적의 후계는 `GET /api/ledger/trace`, 유형 구조는 `GET /api/ledger/structure`입니다. 세부는 [architecture/backend §2](../architecture/backend.md).
+🔴 **[2026-08-14 `2ec78b9` — 판정 R-2026-08-14-H] 그래프 싱크 워커가 스택에서 빠져 백엔드 자식이 다섯에서 «넷»이 됐습니다.** 사본을 만들던 파이프라인(추출 → 머티리얼라이즈 → 저장)이 은퇴했습니다 — 원장(`ledger_events`)이 개체 층이고, 실측상 그 워커에는 `ledger` 참조가 **0건**이었습니다(두 갈래가 같은 소스 표를 각자 읽으며 서로를 몰랐다는 뜻입니다). 저장소 `graph_nodes`·`graph_edges`·`graph_sync_state`는 **DROP됐고**(약 841 MB), 진입 라우트 **일곱**은 `main.py::_graph_branch_retired`가 **410**으로 거절합니다. 혈통 추적의 후계는 `GET /api/ledger/trace`, 유형 구조는 `GET /api/ledger/structure`, 원자 증거 감사는 `GET /api/ledger/subgraph`입니다. 별도 그래프 저장소는 부활하지 않았고 모두 `ledger_events` 읽기 투영입니다. 세부는 [architecture/backend §2](../architecture/backend.md).
 
 `run_decoupled_app.py`가 아래 프로세스를 통합 기동합니다. 프로세스 간 조정은 PostgreSQL **Transactional Outbox** 패턴(`database_outbox` + `LISTEN/NOTIFY` 채널 `outbox_event`)으로 이루어지며, 워커→웹서버 콜백은 HTTP `POST /internal/events/*`를 사용합니다.
 
@@ -97,6 +97,7 @@ graph TD
   | ⚰️ `graph.html` | `graph_viewer.js` | **[2026-08-14 `2ec78b9`] 구 지식그래프 뷰어 — 데이터 소스가 은퇴했습니다.** 페이지는 딥링크로 여전히 열리고 **묘비(tombstone)**를 띄워 원장 구조 뷰로 보냅니다. 🔴 **파일을 지우지 않은 것이 판정입니다** — 삭제하면 SPA catch-all이 index.html을 200으로 답해 「알 수 없는 오류」가 됩니다 |
   | ⚰️ `trace.html` | `trace.js` | **[2026-08-14] 구 추적 리포트 — 같은 은퇴.** 후계는 `ledger.html`의 원장 혈통 추적(`GET /api/ledger/trace`) |
   | `ledger.html` | `ledger_trace.js` 외 | **원장 콘솔** — 혈통 추적 · 케이스-컨트롤 · 유형 구조 뷰 · 트렌드/마킹 대조. 🔴 **[2026-08-14 심야 R-리라이트] 이 페이지의 «화면»은 내일 전면 재작성됩니다** — 서버 계약은 보존, 화면은 계승하지 않습니다([SCENARIO_CONSOLE_BRIEF](../process/SCENARIO_CONSOLE_BRIEF.md)) |
+  | `ledger-graph.html` | `src/ledger_graph/*` | **원장 감사 뷰어** — `Ontology` 유형 구조와 `Evidence` Entity–Source Event–Claim–Enrich Action 증거를 분리한다. Claim에서 `needs_enrichment`로 도달한 Action도 다시 seed로 열고, 같은 투영을 Nodes/Edges/Properties CSV로 내려 Spotfire·Excel에서 조인한다 |
 
   > 🔴 **[2026-08-06 정정] 종전 이 자리는 「진입점 **6개**」였고 표에는 `map_editor2.html`이 **없었습니다.** 그 페이지는 2026-08-05에 출하됐습니다.** 그리고 이 문서가 SSOT라 「상충하면 이 문서가 우선한다」는 규칙이 **틀린 사본을 믿으라고 지시하고 있었습니다** — 정합 감사가 이 한 줄로 문서 전체를 **신뢰 불가**로 판정한 이유입니다. **수는 다시 적지 않았습니다**([frontend §1](../architecture/frontend.md)이 같은 처방을 이미 갖고 있습니다).
 - **그리드:** AG-Grid Community `^35.3.0` (유일한 런타임 의존성). 맵 에디터·그래프 뷰어는 AG-Grid 미사용 — 커스텀 캔버스 렌더링.
@@ -141,7 +142,7 @@ graph TD
 |---|---|
 | `table_config.json` | **스키마 구동 핵심** — 테이블별 컬럼/타입/비즈니스키/복합키/`map_key_columns` |
 | `chain_rules.json` | 체인 인제션 규칙(trigger→target, mapper) |
-| `enrichment_rules.json` | Enrichment Queue 규칙(결손 보정 워크리스트 + dedup 체인 룰 자동 파생) |
+| `enrichment_rules.json` | Enrichment Queue 규칙(결손 보정 + dedup 체인 룰 자동 파생, 선택적 `claim_contract`는 Enrich Action 공급 계약) |
 | `ontology_mapping.json` | **그래프 승격 매핑 v2**(테이블→node/edges, `description` 필수, enrichment 규칙은 `RESOLVED_AS` 엣지로 자동 승격) — 로더 `ontology_config.py` |
 | `maps.json` | 맵 에디터 지오메트리 프리셋 |
 | `scheduler_status.json` | Auto-Update 스케줄러 실시간 상태(쓰기 전용) |
@@ -172,10 +173,10 @@ graph TD
 | 배치 업서트 | [batch_update_technical_specification](../spec/batch_update_technical_specification.md) | `crud.apply_batch_updates` |
 | 실패 관리/재시도 | [FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | `FileIngestionLog`, outbox retry |
 | 이벤트 기반(Outbox/EDA) | [architecture/event_driven_backend](../architecture/event_driven_backend.md) | `database/database.py`, `chain_ingestion_worker.py` |
-| **정준 원장(ledger) — 개체 층의 정본** | [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md) · [spec/LEDGER_TECHNICAL_SPEC](../spec/LEDGER_TECHNICAL_SPEC.md) · 판정 [process/LEDGER_RULINGS](../process/LEDGER_RULINGS.md) | `server/ledger/*`, `server/ledger_trace_router.py`, `server/ledger_siblings.py`, `server/ledger_walk_contrast.py`, `server/ledger_journey.py`, `server/ledger_structure.py`, `server/ledger_lots.py`, `server/config/siblings_axes.json`·`mechanism_models.json`·`ledger_journey.json` |
+| **정준 원장(ledger) — 개체·주장·원천 사건의 정본** | [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md) · [spec/LEDGER_TECHNICAL_SPEC](../spec/LEDGER_TECHNICAL_SPEC.md) · [Evidence Subgraph](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) · 판정 [process/LEDGER_RULINGS](../process/LEDGER_RULINGS.md) | `server/ledger/*`, `server/ledger_trace_router.py`, `server/ledger_subgraph.py`, `server/enrichment_actions.py`(read projection), `server/ledger_selection.py`, `server/ledger_structure.py`, `server/ledger_trends.py`, `server/ledger_composition.py` |
 | ~~**온톨로지 그래프(엣지 스토어 + materializer)**~~ | ⚰️ **[2026-08-14 R-2026-08-14-H] 은퇴** — 후계는 위 원장 행. 설계 배경은 [spec/ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)(🗄️ 부분 대체) | ~~`graph_sync_worker.py`, `graph_materializer.py`~~ · 매핑 선언 `ontology_config.py`/`config/ontology_mapping.json`은 **소비자를 잃었습니다** |
 | ~~**그래프 뷰어·추적 리포트**~~ | ⚰️ **[2026-08-14] 은퇴** — 후계는 `ledger.html`([architecture/frontend §6.1](../architecture/frontend.md)) | ~~`main.py /graph/*`~~(전부 410), `graph.html`은 묘비만 |
-| **Enrichment Queue(결손 보정 워크리스트)** | [spec/ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md) | `enrichment_config.py`, `enrichment_mapper.py`, `client2/src/enrichment.js`, `config/enrichment_rules.json` |
+| **Enrichment Queue(결손 보정 워크리스트)** | [spec/ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md) · [Claim Requirement & Worklist](../spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md) | `enrichment_config.py`, `enrichment_mapper.py`, `enrichment_actions.py`, `client2/src/enrichment.js`, `config/enrichment_rules.json` |
 | 어드민(파이프라인 5탭 + 코드 에디터) | [architecture/frontend §5](../architecture/frontend.md) | `client2/src/admin.js`, `main.py /admin/*` |
 | HTML 토폴로지 파서 | [HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) | `parsers/html_topology_parser.py` |
 
@@ -211,7 +212,7 @@ cd client2 && npm run dev    # :5173 → API/WS는 127.0.0.1:8080로 자동 타�
 - `GET|PUT .../{col}/sources`, `.../priority` — 소스 레이어링/핀
 - `POST /tables/{t}/upload` — 파일 업로드 인제션
 - `WS /ws` — 실시간 브로드캐스트
-- `GET /api/ledger/{trace,coverage,kinds,structure,lots,lot_map,siblings,journey}` — **원장 읽기 면**(read-only). 계약의 정본은 [backend §2](../architecture/backend.md)
+- `GET /api/ledger/*` — **원장 읽기 면**(read-only). 해결 답·분석 projection·raw evidence를 목적별 라우트로 분리하며 전체 목록과 파라미터 계약의 정본은 [backend §2](../architecture/backend.md)
 - ⚰️ `GET /graph/*` + `POST /graph/trace` + `POST /api/graph/sync` — **[2026-08-14] 라우트 일곱이 410**(`Cache-Control: no-store`). 본문은 산문이 아니라 구조화 필드다: `reason: old_graph_branch_retired` · `state: retired` · `successor: /api/ledger/trace` · `ruling: R-2026-08-14-H`. 🔴 **404가 아니라 410인 것이 판정이다** — 404는 「그런 것은 없다」이고 410은 「있었고 의도적으로 은퇴시켰다」이며, 이 화면을 다시 여는 사람이 알아야 하는 것은 후자다. 🔴 **`no-store`도 판정이다** — 410은 HTTP 기본값이 캐시 가능이라 거절이 거절보다 오래 산다
 - `GET /enrichment/rules`, `.../references/{i}` — Enrichment 규칙·참조뷰
 - `GET /api/maps/overlay`, `/api/maps/paint-rules` — **범용 맵 오버레이**(임의 맵을 타깃 맵 프레임으로 정렬) · 페인트 잠금 선언 정본

@@ -40,13 +40,13 @@
 >
 > 🆕⑥ **이 패스가 새로 등재한 것 — 전건**: [§5-H](#5-h-정본-원장-canonical-ledger) 신설 — `server/ledger/` **11파일**(`__init__`/`envelope`/`vocabulary`/`uuid7`/`gate`/`config`/`schema`/`store`/`lot_event_translator`/`backfill`/`observability`, 합 **2,819줄**) · `server/ledger_trace.py`(**1,179**) · `server/ledger_trace_router.py`(**80**) · `server/migrations/add_ledger_events.py`(**96**) · 클라 `ledger_trace_core.js`(**286**)/`ledger_trace_view.js`(**173**)/`ledger_trace.js`(**149**)/`ledger.html`(**393**) · `client2/tests/ledger_trace_harness.mjs`(**674**) · 채점자 5모듈. **§7 도입부의 「6엔트리」도 정정했다**(실측 **7**이고 목록도 틀렸다 — 아래 행).
 >
-> ⚠️ **이 패스가 확인 못 했거나 범위 밖으로 남긴 것**: `docs/architecture/CANONICAL_LEDGER_DESIGN.md`·`DUPLICATION_LEDGER.md`·`docs/process/LEDGER_RULINGS.md`·`LEDGER_SLICE_1_BRIEF.md`는 **리빙 문서라 이 지도의 등재 대상이 아니다**(참조만). `server/config/ledger_config.json.sample`은 **구조만** 적었다(gitignored 운영자 자산의 `.sample`). `server/config/ledger_resolver.json`은 **선택 파일이고 이 박스에 없어도 정상**이라 존재를 주장하지 않는다. 🔴 **`server/ledger/` 밖에서 이 패스가 연 파일은 `main.py`의 라우터 등록 두 줄과 `paths.py`·`crud.py`의 심볼 존재 확인뿐이다** — §1·§2의 나머지 앵커는 여전히 이 패스의 범위 밖이다.
+> ⚠️ **이 패스가 확인 못 했거나 범위 밖으로 남긴 것**: `docs/architecture/CANONICAL_LEDGER_DESIGN.md`·`DUPLICATION_LEDGER.md`·`docs/process/LEDGER_RULINGS.md`·`LEDGER_SLICE_1_BRIEF.md`는 **리빙 문서라 이 지도의 등재 대상이 아니다**(참조만). `server/config/sample/ledger_config.json.sample`은 **구조만** 적었다(gitignored 운영자 자산의 `.sample`). `server/config/ledger_resolver.json`은 **선택 파일이고 이 박스에 없어도 정상**이라 존재를 주장하지 않는다. 🔴 **`server/ledger/` 밖에서 이 패스가 연 파일은 `main.py`의 라우터 등록 두 줄과 `paths.py`·`crud.py`의 심볼 존재 확인뿐이다** — §1·§2의 나머지 앵커는 여전히 이 패스의 범위 밖이다.
 
 > 🆕⑦ **[2026-08-14 원장 콘솔·걷기 대조 패스의 측정 기준]** 이 패스가 잰 것은 **`a729a7f`(HEAD)**의 커밋된 blob이다(`git show a729a7f:<path>` — 워킹트리 아님. 측정 시각에 이 패스의 대상 파일은 `git status` 실측으로 전부 워킹트리와 blob 동일이었다). 범위는 `aeddac8..a729a7f`(**183커밋** — 대부분 docs·보드·리포트이고 소스는 원장 읽기/쓰기 측·콘솔 클라·픽스처 스크립트에 몰려 있다). **삭제부터 훑었다** — 이 구간의 소스 삭제는 **1건**, `server/migrations/migrate_map_meta_to_wafer_id.py`(`.RETIRED.md`로 대체)뿐이고 **이 문서에 등재된 적이 없어 묘비가 필요 없다**(그 밖의 `D`는 `client2/dist/assets/*` 번들뿐). 🔴 **아래 🆕⑦ 행이 이 패스의 범위이고, 그 밖은 이 패스가 열지 않았다.**
 >
-> 🆕⑦ **이 패스가 새로 등재/정정한 것 — 전건**: [§5-H](#5-h-정본-원장-canonical-ledger) 읽기 측 대확장 — `ledger_trace_router.py`(80 → **419줄**, 라우트 1개 → **7개**: `/api/ledger/{trace,siblings,kinds,structure,lots,lot_map,coverage}`) · `ledger_trace.py`(1,179 → **1,937줄** — `STATE_CONTESTED`/`HOP_STATES`/`hop_basis` 구조화 basis, `LINEAGE_PREDICATES`의 PEP 562 전환, `coverage()`/`relation_exists()` 신설) · 신설 서버 모듈 **7종**(`finding_kinds.py`·`ledger_kinds.py`·`ledger_siblings.py`·`ledger_structure.py`·`ledger_lots.py`·`ledger_walk_contrast.py`·`mechanism_gate.py`) · `server/config/mechanism_models.json.sample`(구조만) · 클라 콘솔(`ledger.html` 393 → **2,499** · `ledger_trace.js` 149 → **1,205** · core 286 → **603** · view 173 → **299** · 하니스 674 → **1,556**) · 놀라움 축 4모듈(`surprise_core.js`·`surprise_axis.js`·`surprise_map_core.js`·`surprise_map_view.js`) 실측 등재 · 쓰기 측 `server/ledger/` **11 → 13파일**(신설 `observation_translator.py`·`transfer_translator.py`, 줄 수 전건 재측정) · `vocabulary.PREDICATES` **7 → 11종** 정정 · 「읽기 측은 `server/ledger/`를 import하지 않는다」 정정(이제 **지연 import 한다**).
+> 🆕⑦ **이 패스가 새로 등재/정정한 것 — 전건**: [§5-H](#5-h-정본-원장-canonical-ledger) 읽기 측 대확장 — `ledger_trace_router.py`(80 → **419줄**, 라우트 1개 → **7개**: `/api/ledger/{trace,siblings,kinds,structure,lots,lot_map,coverage}`) · `ledger_trace.py`(1,179 → **1,937줄** — `STATE_CONTESTED`/`HOP_STATES`/`hop_basis` 구조화 basis, `LINEAGE_PREDICATES`의 PEP 562 전환, `coverage()`/`relation_exists()` 신설) · 신설 서버 모듈 **7종**(`finding_kinds.py`·`ledger_kinds.py`·`ledger_siblings.py`·`ledger_structure.py`·`ledger_lots.py`·`ledger_walk_contrast.py`·`mechanism_gate.py`) · `server/config/sample/mechanism_models.json.sample`(구조만) · 클라 콘솔(`ledger.html` 393 → **2,499** · `ledger_trace.js` 149 → **1,205** · core 286 → **603** · view 173 → **299** · 하니스 674 → **1,556**) · 놀라움 축 4모듈(`surprise_core.js`·`surprise_axis.js`·`surprise_map_core.js`·`surprise_map_view.js`) 실측 등재 · 쓰기 측 `server/ledger/` **11 → 13파일**(신설 `observation_translator.py`·`transfer_translator.py`, 줄 수 전건 재측정) · `vocabulary.PREDICATES` **7 → 11종** 정정 · 「읽기 측은 `server/ledger/`를 import하지 않는다」 정정(이제 **지연 import 한다**).
 >
-> ⚠️ **이 패스가 확인 못 했거나 범위 밖으로 남긴 것**: 콘솔의 나머지 클라 9모듈(`case_control_core/view`·`lot_reference_core/view`·`ontology_structure_core/view`·`contrast_core/view`·`surprise_view.js`·`ledger_console.css`)은 **줄 수와 최상위 export 존재만** 실측했고 심볼 표는 미등재다. 쓰기 측 `server/ledger/` 기존 11파일의 **심볼 표는 재측정하지 않았다**(줄 수만 갱신 — `vocabulary.py`의 walk 선언 계열과 `PREDICATES` 키 목록만 실측). 이 구간이 건드린 `server/main.py`(라우터 등록 두 줄만 확인)·`map_alignment.py`·`models.py`·`config_resolve_report.py`·`transfer_plan.py`·`retroactive.py`·`run_auto_update.py`·`client2/src/main.js`·`graph_viewer.js`와 씨앗 스크립트 `scripts/seed_syn_*` 8종·신규 테스트들은 **열지 않았다**. `server/config/*.json.sample` 중 이 패스가 연 것은 `mechanism_models.json.sample` 하나다.
+> ⚠️ **이 패스가 확인 못 했거나 범위 밖으로 남긴 것**: 콘솔의 나머지 클라 9모듈(`case_control_core/view`·`lot_reference_core/view`·`ontology_structure_core/view`·`contrast_core/view`·`surprise_view.js`·`ledger_console.css`)은 **줄 수와 최상위 export 존재만** 실측했고 심볼 표는 미등재다. 쓰기 측 `server/ledger/` 기존 11파일의 **심볼 표는 재측정하지 않았다**(줄 수만 갱신 — `vocabulary.py`의 walk 선언 계열과 `PREDICATES` 키 목록만 실측). 이 구간이 건드린 `server/main.py`(라우터 등록 두 줄만 확인)·`map_alignment.py`·`models.py`·`config_resolve_report.py`·`transfer_plan.py`·`retroactive.py`·`run_auto_update.py`·`client2/src/main.js`·`graph_viewer.js`와 씨앗 스크립트 `scripts/seed_syn_*` 8종·신규 테스트들은 **열지 않았다**. `server/config/sample/*.json.sample` 중 이 패스가 연 것은 `mechanism_models.json.sample` 하나다.
 
 | 절 / 파일 | 상태 | 기준 리비전 | 비고 |
 |---|---|---|---|
@@ -1164,13 +1164,14 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `probe_outbox(db)` | 백로그 나이 + (상한된) 크기. 둘 다 부분 인덱스 `idx_outbox_unprocessed`를 타고, 나이는 `ORDER BY id ASC LIMIT 1`로 **테이블 크기와 무관한 O(1)**, 카운트는 `LIMIT cap+1`로 감싸 1천만 행 테이블에서도 ~1만 인덱스 엔트리를 넘지 않는다 | ~354 |
 
 ### `server/config_backup.py` (**379줄**) — 주간 config 스냅샷 + FIFO 보존 (`b35bc9f` 신설)
-**C3 — 롤백 절차(B4)의 빠져 있던 의존성.** `server/config/*.json`을 파일별로 `config_<yymmdd>.json.bak`(동일 날짜 2회째부터 `b`,`c`,… 접미)으로 스냅샷. **신선도는 cron 슬롯이 아니라 디스크의 최신 스냅샷 나이로 판정**한다(놓친 주가 다음 틱에 자가 치유). 소비자 3곳: `run_auto_update.MultiDiscoveryScheduler.maybe_backup_configs`(주기 실행) · `health.probe_config_backups`(`/health` 프로브) · `server/scripts/backup_config.py`(CLI). 테스트: `tests/test_config_backup.py`(370줄).
+**C3 — 롤백 절차(B4)의 빠져 있던 의존성.** `server/config/*.json`을 파일별로 `backup/config_<yymmdd>.json.bak`(동일 날짜 2회째부터 `b`,`c`,… 접미)으로 스냅샷한다. 설치·어드민 저장 직전 사본과 복원 직전 증거도 같은 `backup/`에 두고 파일명으로 역할을 구분한다. 추적되는 템플릿은 `sample/`에 분리한다. **신선도는 cron 슬롯이 아니라 디스크의 최신 스냅샷 나이로 판정**한다(놓친 주가 다음 틱에 자가 치유). 전환 중 루트와 옛 `_archive/weekly`에 남은 구형 주간 스냅샷도 읽되 새 파일은 항상 `backup/`에 쓴다. 소비자 3곳: `run_auto_update.MultiDiscoveryScheduler.maybe_backup_configs`(주기 실행) · `health.probe_config_backups`(`/health` 프로브) · `server/scripts/backup_config.py`(CLI). 테스트: `tests/test_config_backup.py`.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `INTERVAL_DAYS=7` / `STALE_AFTER_DAYS=10` / `RETENTION_DAYS=31` / **`RETENTION_MIN_KEEP=4`** / `CHECK_INTERVAL_SEC=1800` | 주기·신선 임계·FIFO 보존창·**최신 4개 바닥**(31일 FIFO가 어떤 이유로든 몰아서 지워도 최근 4개는 남는다) / 스케줄러 틱 게이트 | ~96–109 |
 | `RUNTIME_FILES` / `SUFFIX=".json.bak"` / `_SNAPSHOT_RE` | 스냅샷 제외 런타임 파일 목록 / 스냅샷 이름 문법(`<stem>_<yymmdd><seq>.json.bak`) | ~114/119/122 |
-| `snapshot_name` / `source_files` / `list_snapshots` / `newest` | 이름 조립 / 대상 열거 / 스냅샷 열거(오래된 순) / 파일별 최신 | ~131/137/167/188 |
+| `archive_dir` / `weekly_dir` / `changes_dir` / `restore_dir` | live config 밖의 백업 역할별 경로. 모두 `paths.CONFIG_DIR` 상대 | — |
+| `snapshot_name` / `source_files` / `list_snapshots` / `newest` | 이름 조립 / 대상 열거 / archive+legacy 스냅샷 열거(오래된 순) / 파일별 최신 | — |
 | `_same_bytes(a, b)` / `_prune(entries, config_dir, now)` | 바이트 동일하면 새 스냅샷 무쓰기 / FIFO 퇴거(+4개 바닥) | ~202/212 |
 | **`take_snapshot(config_dir=None, now=None)`** / `due` / **`probe`** / **`run_scheduled`** | 스냅샷 1회 실행 / 디스크 기준 기한 판정 / `/health`용 상태(`ok\|missing\|stale\|unknown`) / 스케줄러용 due-체크+실행 래퍼 | ~234/297/306/350 |
 
@@ -1217,7 +1218,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `PRODUCT_TABLE_NAMES` | `tuple(PRODUCT_TABLES.keys())` | **221** |
 | `effective_declaration(entry)` | 주석을 걷어낸 **동작 유발 부분**만 남긴다(drift 판정용) | **224** |
 
-> **왜 두 번째 JSON이 아니라 Python 모듈인가**: `server/config/**`는 gitignored(`*.sample`만 tracked)라 그 안의 정본 JSON은 배포되지 않는다. 이 모듈은 코드이고 tracked이며 소비자는 정확히 둘 — ① `server/scripts/install_product_tables.py` ② `config/table_config.json.sample`(같은 설치기가 `--sample --apply`로 **생성**하고 `tests/test_install_product_tables.py`가 둘의 일치를 단언하므로 샘플이 조용히 어긋날 수 없다).
+> **왜 두 번째 JSON이 아니라 Python 모듈인가**: `server/config/**`는 gitignored(`sample/*.sample`만 tracked)라 그 안의 정본 JSON은 배포되지 않는다. 이 모듈은 코드이고 tracked이며 소비자는 정확히 둘 — ① `server/scripts/install_product_tables.py` ② `config/sample/table_config.json.sample`(같은 설치기가 `--sample --apply`로 **생성**하고 `tests/test_install_product_tables.py`가 둘의 일치를 단언하므로 샘플이 조용히 어긋날 수 없다).
 >
 > ✅ **ZONE 모델 착지 (`269b39e` 선언 + `b35bc9f` 엔드투엔드)** — 값 하나의 층 구조는 **숫자 하나가 함의하는 고정 3구역**이다: `stack` = 총 층수, `mat_1h` = 1층, `mat_top` = `stack`층, `mat_mid` = 그 사이 전부. FROM도 TO도 구간 행도 없다 — **세 구역이 `1..stack`을 구성적으로 덮으므로 겹침·구멍 검사는 옮겨진 게 아니라 어길 방법이 없어졌다.** 정본 서술은 `map_split_registry.__comment`, 스펙은 [`MAP_EDITOR_SPEC.md` **§6.0-bis**](../spec/MAP_EDITOR_SPEC.md)(⚠️ ~~`docs/spec/DOE_ZONE_MODEL.md`~~는 **존재한 적 없는 경로**다 — 코드 주석의 유령 인용도 `95bf072`에서 §6.0-bis로 리포인트됐다), 클라 미러는 `client2/src/map_editor.js` ~301–320 주석.
 > - **`stack`은 `string` 선언이고 그것이 load-bearing이다** (`b35bc9f` — number였던 것을 **첫 실데이터 전에** 정정): number 선언은 물리 컬럼이 `double precision`으로 나왔고, `crud.cast_value_by_type`가 `'0x10'`엔 raise(읽을 수 없는 STACK 하나가 계획 전체 저장을 막았다), `'7.5'`는 조용히 수리 후 다음 읽기에서 **7로 절단**했다 — 화면은 멀쩡하고 숫자만 모자라는 바로 그 결함. 읽을 수 없는 STACK은 왕복에서 **살아남아야** 한다(V5가 차단하고, 패널이 원문을 보여 주고, Excel로 원문이 돌아간다). 가독성 판정은 컬럼 타입이 아니라 **단일 정수 판독기**(`transfer_plan._int_state` / 클라 `bandToState`)가 한다.
@@ -1930,7 +1931,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 ⚠️ **「미상」의 정의는 경계 계약이다** — **두 경우를 모두 덮는다**: ① 오른쪽에 맞는 행이 없다 ② **맞는 행은 있는데 값이 비어 있다**. LEFT 조인만으로는 ②가 보이지 않는다(실측: `bonding_log → core_wafer_map.wafer_id`는 14,436행 **전부**가 행을 찾지만 3,792행 26.27%의 값이 비어 있고, `core_defect_map → core_wafer_map.wafer_id`는 103,040행 전부가 행을 찾지만 **86.25%**가 비어 있다). ②를 미상에서 빼면 분석가는 「값이 있다」고 읽는다. **INNER 조인은 ①을 조용히 지우므로 금지다.**
 
-**테스트**: `server/tests/test_virtual_join_guard.py`(596줄). **선언 샘플**: `server/config/virtual_join_rules.json.sample`(40줄, tracked — 실값 `virtual_join_rules.json`은 gitignored이므로 **구조만** 여기 적는다).
+**테스트**: `server/tests/test_virtual_join_guard.py`(596줄). **선언 샘플**: `server/config/sample/virtual_join_rules.json.sample`(40줄, tracked — 실값 `virtual_join_rules.json`은 gitignored이므로 **구조만** 여기 적는다).
 
 ---
 
@@ -2037,7 +2038,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 >
 > 🪦 **철회된 것들** — 되살리려 하기 전에 이 줄을 읽을 것: 쓰기 거부 `crud.refuse_notation_derived_columns`(묘비 주석 `server/database/crud.py` · CLI `server/scripts/rederive_notation_norm.py` · 이 모듈의 파생 API 일습. ⚠️ **종전 지도가 적던 「`canonical_bind_value`를 모듈 최상단에서 import한다」도 거짓이다 — 지금 이 파일에 그 import가 없다.**
 >
-> 📌 **`server/config/notation_rules.json.sample`(**48줄**)의 구조만 기술한다** — `server/config/*`는 gitignored라 라이브 값은 문서화 대상이 아니다. 최상위 키: `__comment` · `__how_to_enable` · **`rules`**(파일 수준 기본 규칙 집합) · **`tables`**(테이블별 override + 컬럼 선언).
+> 📌 **`server/config/sample/notation_rules.json.sample`(**48줄**)의 구조만 기술한다** — `server/config/*`는 gitignored라 라이브 값은 문서화 대상이 아니다. 최상위 키: `__comment` · `__how_to_enable` · **`rules`**(파일 수준 기본 규칙 집합) · **`tables`**(테이블별 override + 컬럼 선언).
 
 ### 🆕 `server/graph_stale_edges.py` (**549줄**, 신설) — 재유도의 **지울 수 있는 절반**
 
@@ -2187,7 +2188,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 ### 🆕🆕 체인 맵퍼 5종 (`server/mappers/*.py.sample`) — 선언은 `chain_rules.json`
 
-🔴 **맵퍼 본체는 gitignored**(`server/mappers/*.py`). 아래는 `.sample`이 선언하는 **구조**다. 규칙 이름·트리거·타깃은 `server/config/chain_rules.json.sample` 기준.
+🔴 **맵퍼 본체는 gitignored**(`server/mappers/*.py`). 아래는 `.sample`이 선언하는 **구조**다. 규칙 이름·트리거·타깃은 `server/config/sample/chain_rules.json.sample` 기준.
 
 | 규칙 (`chain_rules`) | 트리거 → 타깃 | 맵퍼 모듈 / 함수 | 무엇을 하나 |
 |---|---|---|---|
@@ -2252,11 +2253,12 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `assert_type_preserving(before, after) -> int` | 스칼라마다 **타입까지** 같은지. 🔴 `==`로는 안 된다 — 파이썬에서 `0 == False`·`1.0 == 1`이라 잡으려는 혼동에서 정확히 통과한다. **검사 개수를 반환**하는 이유는 빈 구조를 훑고 공허하게 성공하는 가드를 호출자가 개수로 잡게 하려는 것 |
 | `canonical_keys(keys) -> str` | 구조적 정체성을 **메모 키 하나**로 접는다. 🔴 **저장용 아님** — `subject_keys`는 jsonb로 구조인 채 간다. 값은 프로세스를 나가지 않는다 |
 | `entity_ref(entity_type, keys, **qualifiers)` | `{type, keys{...}[, qualifiers{...}]}`. 🔴 **정체성(`keys`)과 서술(`qualifiers`)을 평평하게 만들지 않는다** — `has_wafer`의 `slot`은 qualifier이고, 접으면 다음 사람이 `slot`을 웨이퍼 정체성의 일부로 읽는다 |
-| `@dataclasses.dataclass class Atom` | 한 주장. 필드 — `subject_type`/`subject_keys`/`predicate`/`object_kind`/`object_payload`/`occurred_at`/`source_who`/`source_translator_ver`/`source_raw_ref`/`supersedes` + **컬럼이 되지 않는 셋** `molecule_ref`(비의미 상관 마커 — 게이트만 읽고 버린다) · `derivation`(선언된 규칙 이름 — 원자성 검사 ③의 기계 형태) · `id` |
+| `@dataclasses.dataclass class Atom` | 한 주장. 의미 봉투 필드 + 원천 사건 상관 `source_event_id`/`source_event_state`. **컬럼이 되지 않는 셋**은 `molecule_ref`(writer가 불투명 Event ID로 접고 버림) · `derivation`(선언된 규칙 이름) · `id`(쓰기 직전 채번) |
 | `Atom.ensure_id()` | 워터마크를 찍는다. 🔴 **`__post_init__`이 아닌 것이 의도** — 구성 시각에 채번하면 「번역기가 만든 순서」로 정렬되고 거절된 분자가 id를 태운다. **쓰기 직전에** 한 번 |
+| `Atom.ensure_source_event_identity()` | 같은 source/time/molecule 또는 source record를 결정적 UUIDv5로 접는다. 해결 우선순위가 아니라 Evidence Graph의 Event→Claim 경계만 서빙한다. 과거 호환은 원자 1개=`legacy_atom` 하나이며 유사 시각 regroup 금지 |
 | `Atom.identity() -> tuple` | 「같은 주장인가」 — `schema.DEDUPE_COLUMNS`의 **파이썬 측 거울**이지 키 자체가 아니다. 해시 키를 쓰지 않는 이유는 파이썬과 jsonb의 JSON 철자가 달라 **조용히** 안 맞기 때문 |
 | `Atom.describe() -> str` | 운영자 로그용 한 줄. **소비자가 파싱할 것 아님** |
-| `ROW_COLUMNS` | 물리 insert의 컬럼 순서 **11개**(`id`…`supersedes`) 한 튜플. writer와 마이그레이션이 같은 것을 쓰므로 한쪽에만 컬럼을 더하면 **문법 오류**가 되지 조용히 밀리지 않는다 |
+| `ROW_COLUMNS` | 물리 insert의 컬럼 순서 **13개**(`id`…`supersedes`, `source_event_id`, `source_event_state`) 한 튜플. writer와 DDL이 같은 철자를 쓰므로 한쪽에만 컬럼을 더하면 문법 오류가 나고 조용히 밀리지 않는다 |
 | `check_envelope(atom) -> list` | 어휘와 무관하게 **모든** 원자에 묻는 것 — 세계 시각이 있는가(aware `datetime`인가) · 출처가 있는가 · 원 발화로 돌아갈 경로가 있는가 · 페이로드가 보존 가능한가 |
 
 #### `vocabulary.py`
@@ -2452,6 +2454,24 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 🆕⑦ `@router.get("/lot_map") ledger_lot_map(row, kind=None, by=None, slot=None, window=None, db)` | 마킹된 행의 불량 칩을 **선언된 축마다** 투영. 🔴 좌표는 오리진 기준 **칸수**(mm 아님 — 피치 안 곱한다). 🔴 닿지 않는 축은 숨기지 않고 `state: "unreachable"` + `reason`. ⚠️ **한 랏 = 한 프레임이 아니다** — 슬롯마다 격자 치수가 달라 `slot` 없이는 그리지 않고 슬롯 목록을 답한다 |
 | `@router.get("/coverage") ledger_coverage(db)` | 🆕⑦ 이제 `ledger_trace.coverage(connection, relation=…, cursor_relation=…)`를 부른다. 🔴 **부재·빈 원장에 에러가 아니라 200 + `state`** — `absent`(마이그레이션 미실행)/`empty`(백필 미실행)/`ready`. 랏 하나의 「없음」 둘(미지의 랏·계보 주장 없는 랏)은 `/trace`가 이미 가르므로 **일부러 중복하지 않는다** — 이 라우트는 화면이 «어느 세계에 있는지»만 말한다 |
 
+### `server/enrichment_actions.py` + Evidence Action 결합 (2026-08-15 가산)
+
+> 이 행은 현재 워킹트리의 심볼 계약만 등재한다. 줄 수·옛 라우트 개수는 다시 세지 않았으므로
+> 위 `a729a7f` 측정값을 현행 수치로 인용하지 않는다.
+
+| 심볼/호출 | 무엇인가 |
+|---|---|
+| `EnrichAction` · `enrich_action_node_id` · `decode_enrich_action_id` · `action_node` | 원장 Entity/Claim이 아닌 재계산 Action projection과 canonical opaque ID. grain은 decision-key `claim_resolution`과 rule-level `source_contract` 둘 |
+| `EnrichmentActionLookup` · `InMemoryEnrichmentActionLookup` | Claim anchor 정확 매칭, target 결손, 공급 source 부재를 순수 평가. 같은 rule-level Meta Action은 decision key마다 복제하지 않음 |
+| `SqlEnrichmentActionLookup` | 요청 범위 decision key의 materialized derived row만 `business_key_val IN (…)`로 읽는다. reference-view candidate SQL은 실행하지 않는다. table 검증 실패 rule은 row read 없이 `repair_enrichment_contract`로 강등 |
+| `ledger_subgraph.subgraph(..., action_lookup=…)` | 새로 읽은 Claim에서 `needs_enrichment` 엣지로 Action에 도달한다. Action은 자동 BFS 말단이고 opaque ID 직접 seed는 유효 |
+| `ledger_trace_router`의 `/subgraph`, `/subgraph/table` | `enrich_actions=true` 기본으로 request-scoped SQL lookup을 연결. false면 순수 원장 증거만 반환 |
+| `enrichment_config._normalize_claim_contract` | 기존 rule에 optional Claim 계약을 가산 검증. 잘못된 계약은 rejection을 남기되 legacy rule 자체는 유지 |
+
+계약 정본은 [CLAIM_REQUIREMENT_WORKLIST_SPEC](../spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md)와
+[LEDGER_EVIDENCE_SUBGRAPH_SPEC](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md), 테스트는
+`server/tests/test_enrichment_actions.py`다.
+
 ### 🆕⑦ 읽기 측 모듈군 — 콘솔의 서버 (2026-08-14 신설 등재, 전부 `a729a7f` 실측)
 
 **공통 규약 셋.** ① 부재·빈 관계는 **답이지 에러가 아니다** — `STATE_ABSENT`/`STATE_EMPTY`/`STATE_READY` 세 낱말이 모듈마다 같은 철자로 반복된다. ② 잘못된 요청은 구조화 본문의 전용 예외(`…RequestError`)로, 선언 결함은 `…ConfigError`/`…Error`로 — 라우터가 각각 422/503으로 번역한다. ③ **읽기 전용** — 어느 모듈도 쓰지 않고 DDL하지 않는다.
@@ -2497,7 +2517,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `_gate_legend()` | 세 열의 뜻을 서빙 — 클라가 어휘를 하드코딩하지 않게 |
 | `_note_high_cardinality` · `_note_flat_but_separated` | 봉투 노트 — 고카디널리티 축·「밴드는 평평한데 산포는 멀다」(`std_diff_note_at`) |
 
-### 🆕⑦ `server/mechanism_gate.py` (**368줄**) + `server/config/mechanism_models.json.sample`
+### 🆕⑦ `server/mechanism_gate.py` (**368줄**) + `server/config/sample/mechanism_models.json.sample`
 
 **무엇인가.** 3관문의 셋째 — 「이 후보가 이 불량에 닿는 **선언된 물리 경로**가 있나」. M4 기전 그래프(방향만 있는 인과 엣지, `PHYSICS_ONTOLOGY_SETUP.md` §4)를 읽는 **순수 조회**다(연결도 질의도 없다).
 
@@ -2579,7 +2599,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 - 🔴 **`server/ledger/__init__.py`의 「Nothing in `server/` imports this package」는 글자 그대로는 거짓이다.** `aeddac8` 전건 grep 실측 — `server/migrations/add_ledger_events.py`가 `from ledger import schema`를, 테스트 5모듈이 `from ledger import …`를 한다. **의도한 뜻(상시 도는 프로세스는 부팅에 이 패키지를 import하지 않는다)은 참이고** `add_ledger_events.py` 자신의 docstring이 그 형태로 적고 있다(「no process imports `server/ledger` at boot」). **어느 쪽도 사실로 등재하지 않고 실측한 import 자리만 적는다.** 🆕⑦ **`a729a7f`에서 그 문장은 더 거짓이 됐다** — 이제 웹 서버가 서빙하는 읽기 측(`ledger_trace._vocabulary` · `ledger_structure._vocabulary`)이 `from ledger import vocabulary`를 **지연 import** 한다(함수 안이라 부팅 경로는 여전히 무접촉 — `ledger_structure._vocabulary`의 docstring이 정확히 그 구분을 적고 있다). docstring의 「읽는 순서」 목록도 신설 번역기 2종(`observation_translator`·`transfer_translator`)을 아직 모른다.
 - 같은 문장의 뒷부분 「`database.database`와 `utils.heartbeat`가 결합의 전부」도 **하나 빠졌다** — `config._config_dir()`이 `import paths`를 한다(실패 시 파일 기준 폴백).
 - 🔴 **`ledger_trace.py`의 `DISPLAY_TIMEZONE_RULING = __doc__`과 `CONVENTION_DERIVATIONS_RULE = __doc__`은 둘 다 *모듈 docstring*에 바인딩된다** — 모듈 스코프의 `__doc__`이 그것이기 때문이다. 즉 **두 상수는 같은 문자열이고, 이름이 가리키는 판정문(바로 위 `#:` 주석)은 어느 쪽에도 들어 있지 않다.** 판정문 자체는 주석으로만 존재한다(파이썬 런타임에 없다). 의도가 「이름 붙은 참조점」인지 「그 텍스트를 담는 상수」인지는 소스에서 판정할 수 없어 **어느 쪽도 사실로 적지 않는다.**
-- `server/config/ledger_config.json.sample`이 **`partitioning` 블록을 선언하는데 저장소 어디에도 읽는 코드가 없다**(전건 grep 0건 — `server/ledger/`도 마이그레이션도). `sources.<name>.columns.equipment`도 마찬가지로 **선언만 되고 읽히지 않는다**(`config.validate`의 필수 7종에 없고 `backfill.fetch_page`의 SELECT에도 없다). 🆕⑦ **`a729a7f`에서 재확인 — 둘 다 여전히 참이다**(`partitioning`의 grep 히트는 sample 자신·마이그레이션 docstring 산문·테스트 1곳뿐이고, `equipment`를 컬럼으로 읽는 코드는 신설 번역기 2종에도 없다).
+- `server/config/sample/ledger_config.json.sample`이 **`partitioning` 블록을 선언하는데 저장소 어디에도 읽는 코드가 없다**(전건 grep 0건 — `server/ledger/`도 마이그레이션도). `sources.<name>.columns.equipment`도 마찬가지로 **선언만 되고 읽히지 않는다**(`config.validate`의 필수 7종에 없고 `backfill.fetch_page`의 SELECT에도 없다). 🆕⑦ **`a729a7f`에서 재확인 — 둘 다 여전히 참이다**(`partitioning`의 grep 히트는 sample 자신·마이그레이션 docstring 산문·테스트 1곳뿐이고, `equipment`를 컬럼으로 읽는 코드는 신설 번역기 2종에도 없다).
 
 ---
 
@@ -2616,7 +2636,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 파일 | 책임 |
 |---|---|
-| `server/scripts/install_product_tables.py` (661줄) | **[제품 소유 테이블 설치기]** `product_tables.PRODUCT_TABLES`를 사이트의 라이브 `table_config.json`에 설치한다. 대상이 **gitignored 사용자 자산**이라 규칙 전부가 그 파일을 지키기 위해 존재한다 — 사이트 소유 엔트리는 **재직렬화하지 않고 바이트 단위 스플라이스**로만 편집해(키 순서·들여쓰기·개행까지 보존) 스크립트가 추가하지 않은 것은 바이트 동일하게 나온다. 부재→추가 / 동일→**무쓰기** / 다름→drift 보고 후 방치(`--overwrite-drift` 필요). **드라이런이 기본**이고 쓰기는 `--apply`, 쓰기 전 타임스탬프 백업, 쓴 뒤 재스캔해 미변경 멤버를 원본과 바이트 비교하고 어긋나면 **백업 복원**. DDL·DB 접속·재기동은 하지 않는다(어느 리로드 경로가 적용되는지 안내만 출력). 종료코드 `0` 할 일 없음 / `1` 조치 필요 / `2` 오류. 핵심 함수: `scan_top_level_members`(~141) `detect_style`(~197) `apply_edits`(~221) `diff_declaration`(~258) **`evaluate(parsed, definitions=None, strict=False)`(~295)** **`build_edits(text, scan, statuses, overwrite_drift, definitions=None)`(~330)** `verify_untouched`(~521) **`run(path, apply_mode=False, overwrite_drift=False, out=None, strict=False)`(~544)** `main(argv=None)`(~617). `--sample --apply`는 tracked 템플릿 `config/table_config.json.sample`을 **생성**한다.<br>**[`0f8d35f` 신설] `--sync-comments`(~637)** — `__comment` 차이도 drift로 취급한다(**실행하려면 `--overwrite-drift`가 함께 필요**). 기본 off인 이유는 주석이 운영자가 손댈 수 있는 유일한 부분이라서이고, 그럼에도 스위치가 필요한 이유는 **낡은 주석이 능동적으로 오도**하기 때문이다(예: 폐기된 바인딩을 여전히 지목). 구현상 `strict = args.sample or args.sync_comments`(~657)이고 `strict`는 정확히 "주석 포함 엔트리 전체 비교"를 뜻한다 — `.sample`이 늘 요구하던 그 판정이다 |
+| `server/scripts/install_product_tables.py` (661줄) | **[제품 소유 테이블 설치기]** `product_tables.PRODUCT_TABLES`를 사이트의 라이브 `table_config.json`에 설치한다. 대상이 **gitignored 사용자 자산**이라 규칙 전부가 그 파일을 지키기 위해 존재한다 — 사이트 소유 엔트리는 **재직렬화하지 않고 바이트 단위 스플라이스**로만 편집해(키 순서·들여쓰기·개행까지 보존) 스크립트가 추가하지 않은 것은 바이트 동일하게 나온다. 부재→추가 / 동일→**무쓰기** / 다름→drift 보고 후 방치(`--overwrite-drift` 필요). **드라이런이 기본**이고 쓰기는 `--apply`, 쓰기 전 타임스탬프 백업, 쓴 뒤 재스캔해 미변경 멤버를 원본과 바이트 비교하고 어긋나면 **백업 복원**. DDL·DB 접속·재기동은 하지 않는다(어느 리로드 경로가 적용되는지 안내만 출력). 종료코드 `0` 할 일 없음 / `1` 조치 필요 / `2` 오류. 핵심 함수: `scan_top_level_members`(~141) `detect_style`(~197) `apply_edits`(~221) `diff_declaration`(~258) **`evaluate(parsed, definitions=None, strict=False)`(~295)** **`build_edits(text, scan, statuses, overwrite_drift, definitions=None)`(~330)** `verify_untouched`(~521) **`run(path, apply_mode=False, overwrite_drift=False, out=None, strict=False)`(~544)** `main(argv=None)`(~617). `--sample --apply`는 tracked 템플릿 `config/sample/table_config.json.sample`을 **생성**한다.<br>**[`0f8d35f` 신설] `--sync-comments`(~637)** — `__comment` 차이도 drift로 취급한다(**실행하려면 `--overwrite-drift`가 함께 필요**). 기본 off인 이유는 주석이 운영자가 손댈 수 있는 유일한 부분이라서이고, 그럼에도 스위치가 필요한 이유는 **낡은 주석이 능동적으로 오도**하기 때문이다(예: 폐기된 바인딩을 여전히 지목). 구현상 `strict = args.sample or args.sync_comments`(~657)이고 `strict`는 정확히 "주석 포함 엔트리 전체 비교"를 뜻한다 — `.sample`이 늘 요구하던 그 판정이다 |
 | **`server/scripts/backup_config.py`** (162줄, `b35bc9f` 신설) | **[config 백업 CLI]** `config_backup.py`([§5](#5-소형-서버-모듈))의 운영자 표면 — 서브커맨드 **4종**: `list`(~40, 전 스냅샷 오래된 순) · `check`(~57, 최신 스냅샷 신선도 — 낡았으면 **exit 1**, 모니터링 훅용) · `snapshot`(~73, 즉시 1회) · **`restore`(~90, 스냅샷을 라이브 config 위로 복원 — 덮기 전 현재본을 자동 스냅샷)**. `main()`(~139) |
 | **`server/scripts/list_undeclared_tables.py`** (301줄, `b35bc9f` 신설) | **[롤백 진단 — 읽기 전용]** `table_config.json`이 더는 선언하지 않는 **물리 스키마 잔재**를 보고한다. 선언은 one-way door다 — config 워처는 CREATE/ALTER만 하고 **아무것도 DROP하지 않으므로**, 선언을 되돌리면 물리 객체가 어디에도 선언되지 않은 채 남는다(실사례: 폐기 모델의 `map_band_registry`가 빈 테이블로 잔존). 보고 3종: `UNDECLARED TABLE`(빈 것=되돌린 선언 / 채워진 것=레거시 — 함부로 DROP 금지) · `UNDECLARED COLUMN` · `DECLARED BUT MISSING`. DROP문은 **출력만** 하고 실행하지 않는다. `run(db_url, schema, out)`(~172)·`main`(~283). 테스트: `tests/test_undeclared_schema_report.py`(168줄) |
 | `server/scripts/dev_env/devenv.py` (372줄) | **[격리 개발환경 CLI]** `DEV_ROOT=<repo>/dev_env`, `isolated_env()`(~71)가 `ASSY_DATA_ROOT`+격리 DB URL을 조립한다. 포트는 `ASSY_DEV_API_PORT`(기본 8081)·`ASSY_DEV_GRAPH_PORT`(기본 8091). 동사: `cmd_bootstrap`(~108, config/워크스페이스 복제 — `SKIP_CONTENT_DIRS={raws,archives,err}`는 구조만 뜨고 내용은 안 뜬다) `cmd_snapshot`(~145) `cmd_up`/`cmd_down`(~217/249) **`cmd_watcher_up`/`cmd_watcher_down`(~256/311 — 워처만 별도 기동)** `cmd_status`(~316) `cmd_env`(~335) |

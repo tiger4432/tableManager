@@ -351,7 +351,7 @@ class AxesConfig:
 
 
 def load_axes_config(force_reload=False):
-    """Read once, cached. Falls back to `<name>.sample`, this project's convention for
+    """Read once, cached. Falls back to ``sample/<name>.sample`` by convention for
     gitignored operator config — it is what lets a fresh checkout answer instead of 500."""
     global _axes_cache
     with _lock:
@@ -360,14 +360,16 @@ def load_axes_config(force_reload=False):
         try:
             import paths
             path = os.path.join(paths.CONFIG_DIR, AXES_CONFIG_FILENAME)
+            sample = paths.config_sample_path(AXES_CONFIG_FILENAME)
         except Exception:                                          # pragma: no cover
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "config", AXES_CONFIG_FILENAME)
+            base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
+            path = os.path.join(base, AXES_CONFIG_FILENAME)
+            sample = os.path.join(base, "sample", AXES_CONFIG_FILENAME + ".sample")
         if not os.path.exists(path):
-            path += ".sample"
+            path = sample
         if not os.path.exists(path):
             raise SiblingsConfigError(
-                f"no factor geometry at {AXES_CONFIG_FILENAME} (and no .sample beside it)")
+                f"no factor geometry at {AXES_CONFIG_FILENAME} or {sample}")
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 raw = json.load(handle)

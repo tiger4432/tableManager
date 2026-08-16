@@ -31,7 +31,11 @@ export default defineConfig({
         // is the canonical ledger walk over `/api/ledger/trace`. Two questions,
         // two answers, and folding them into one page would put a screen that
         // shows WHY a claim won behind a screen that shows what is connected.
-        ledger: resolve(__dirname, 'ledger.html')
+        ledger: resolve(__dirname, 'ledger.html'),
+        // Isolated R&D investigation entry. It does not replace ledger.html until
+        // product-owner cutover approval; keeping both inputs makes rollback trivial.
+        rnd_console: resolve(__dirname, 'rnd-console.html'),
+        ledger_graph: resolve(__dirname, 'ledger-graph.html')
       }
     }
   }

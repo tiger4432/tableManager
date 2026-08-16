@@ -869,8 +869,9 @@ def _resolve_ledger() -> dict:
     # ---- 소스 선언
     document, load_error = {}, None
     read_path = sources_path
-    if not os.path.exists(read_path) and os.path.exists(read_path + ".sample"):
-        read_path = read_path + ".sample"
+    sample_path = ledger_config.sample_path(read_path)
+    if not os.path.exists(read_path) and os.path.exists(sample_path):
+        read_path = sample_path
     try:
         with open(read_path, "r", encoding="utf-8") as handle:
             document = json.load(handle)

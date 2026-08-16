@@ -22,7 +22,7 @@
 --
 -- Recreating the tables is NOT enough to make them work again: the product
 -- declarations were removed from `server/product_tables.py` and from
--- `server/config/table_config.json.sample`, and the two index entries from
+-- `server/config/sample/table_config.json.sample`, and the two index entries from
 -- `server/scripts/setup_transfer_plan_indexes.py`. Without a declaration in the
 -- site's live `table_config.json` the generic table API does not know these
 -- tables exist, so a bare CREATE leaves them invisible to every route. Restore

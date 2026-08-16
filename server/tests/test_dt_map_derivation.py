@@ -1246,7 +1246,7 @@ def test_all_three_declared_rules_ship_disabled():
     import json
     import os
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sample = os.path.join(here, "config", "chain_rules.json.sample")
+    sample = os.path.join(here, "config", "sample", "chain_rules.json.sample")
     with open(sample, encoding="utf-8") as f:
         rules = json.load(f)["rules"]
     dt_rules = [r for r in rules if r.get("target_table") == "dt_map"]

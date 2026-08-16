@@ -232,8 +232,8 @@ class LotEventTranslator:
             source_who=self.who,
             # 🔴 `<source>/<cfg version>/rules:<hash>#<derivation>` - the RULE that made
             # THIS atom, not merely the rule set the run was configured with. No column
-            # is added for it (the slice's contract is eleven columns and adding a
-            # twelfth is a ruling, not an implementation detail), and the field's own
+            # is added for the derivation itself (the source-event pair added later is
+            # structural correlation, not derivation semantics), and the field's own
             # meaning already covers it: "which translator produced this claim".
             #
             # What it buys is the thing the `slot_preserving` judgement most needs -

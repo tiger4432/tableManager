@@ -548,7 +548,7 @@ tape slot → dt slot 매핑은 **개별로는 미지**지만 **순서를 보존
 ## §9. 체인 ― `dt_log` → `dt_map` (사용자 요청 2026-08-01)
 
 > **용도**: 본딩 맵(plan)을 그 위에 그린다. 빈 컬럼은 **`c_bn`**(실제 컬럼명).
-> **산출물**: `server/config/chain_rules.json.sample`(규칙) · `server/mappers/dt_map_mapper.py.sample`(매퍼). `server/config/`는 git 밖이라 **`.sample`로만** 낸다.
+> **산출물**: `server/config/sample/chain_rules.json.sample`(규칙) · `server/mappers/dt_map_mapper.py.sample`(매퍼). `server/config/`의 라이브 파일은 git 밖이라 **`sample/`의 `.sample`로만** 낸다.
 
 **`dt_map`은 파생이다.** `dt_log`가 기록이고 맵은 그 투영이다. 손으로 쓰면 재적용이 조용히 어긋난다.
 

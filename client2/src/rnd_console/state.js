@@ -1,4 +1,4 @@
-export const MARKING_SCHEMA_VERSION = 4;
+export const MARKING_SCHEMA_VERSION = 5;
 export const MARK_KINDS = Object.freeze(['entity_set', 'time_range', 'metric_region', 'map_cells', 'claim_filter']);
 
 const text = (value) => value === null || value === undefined ? '' : String(value);

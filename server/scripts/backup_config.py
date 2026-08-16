@@ -19,7 +19,7 @@ fails **silently**: an atomic write (``mv``, ``os.replace``, most editors' save)
 does not fire the config watcher's ``on_modified``, so a restored
 ``table_config.json`` is never re-read and the operator sees no error at all
 (issue #9). This verb always writes in place, and always leaves a
-``.prerollback`` copy of what it overwrote — because a rollback that goes wrong
+``config/backup/*.prerollback`` copy of what it overwrote — because a rollback that goes wrong
 needs somewhere to come back to, and the broken config is the evidence.
 
 Exit codes: ``0`` ok | ``1`` backups missing or stale (``check``) | ``2`` error.
@@ -40,6 +40,7 @@ import config_backup  # noqa: E402
 def cmd_list(args):
     grouped = config_backup.list_snapshots()
     print(f"config dir: {paths.CONFIG_DIR}")
+    print(f"backups   : {config_backup.backup_dir()}")
     if not grouped:
         print("\n  (no snapshots)")
         return 0
@@ -73,6 +74,7 @@ def cmd_check(args):
 def cmd_snapshot(args):
     result = config_backup.take_snapshot()
     print(f"config dir: {result['config_dir']}   taken at: {result['taken_at']}")
+    print(f"snapshots : {result['snapshot_dir']}")
     for name in result["created"]:
         print(f"  created  {name}")
     for name in result["skipped"]:
@@ -96,7 +98,7 @@ def cmd_restore(args):
         return 2
 
     stem, when, seq, fname = parsed
-    src = os.path.join(paths.CONFIG_DIR, fname)
+    src = config_backup.snapshot_path(fname)
     dest = os.path.join(paths.CONFIG_DIR, f"{stem}.json")
     if not os.path.isfile(src):
         print(f"no such snapshot: {src}", file=sys.stderr)
@@ -108,9 +110,12 @@ def cmd_restore(args):
 
     if os.path.isfile(dest):
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        keep = f"{dest}.prerollback.{stamp}"
+        keep_dir = config_backup.backup_dir()
+        os.makedirs(keep_dir, exist_ok=True)
+        keep = os.path.join(
+            keep_dir, f"{os.path.basename(dest)}.prerollback.{stamp}")
         shutil.copy(dest, keep)
-        print(f"  current file kept as {os.path.basename(keep)}")
+        print(f"  current file kept as {keep}")
         if config_backup._same_bytes(src, dest):
             print("  NOTE: the snapshot is byte-identical to the current file - "
                   "restoring it changes nothing.")

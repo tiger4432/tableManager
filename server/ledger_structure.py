@@ -876,13 +876,15 @@ def _origin(filename):
     try:
         import paths
         base = os.path.join(paths.CONFIG_DIR, filename)
+        sample = paths.config_sample_path(filename)
     except Exception:                                              # pragma: no cover
-        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config",
-                            filename)
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
+        base = os.path.join(root, filename)
+        sample = os.path.join(root, "sample", filename + ".sample")
     if os.path.exists(base):
         return ORIGIN_LIVE, base
-    if os.path.exists(base + ".sample"):
-        return ORIGIN_SAMPLE, base + ".sample"
+    if os.path.exists(sample):
+        return ORIGIN_SAMPLE, sample
     return ORIGIN_ABSENT, base
 
 

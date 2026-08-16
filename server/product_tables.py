@@ -7,13 +7,13 @@ Ownership line (see docs/guide/CONFIG_GUIDE.md 5.8-ter):
 * **site-owned**     the customer's factory data. Table and column names differ
   per deployment. Never declared here, never touched by the installer.
 
-Why a Python module and not a second JSON file: ``server/config/**`` is
-gitignored (only ``*.sample`` is tracked), so a canonical JSON there would not
+Why a Python module and not a second JSON file: live ``server/config/*.json`` is
+gitignored (only ``config/sample/*.sample`` is tracked), so a canonical live JSON would not
 ship. This module is code, tracked, and imported by exactly two consumers:
 
 1. ``server/scripts/install_product_tables.py``  — installs these entries into a
    site's live ``table_config.json``.
-2. ``server/config/table_config.json.sample``    — the tracked template. Its
+2. ``server/config/sample/table_config.json.sample`` — the tracked template. Its
    product section is *generated* by the same installer
    (``install_product_tables.py --sample --apply``) and
    ``server/tests/test_install_product_tables.py`` asserts the two agree, so the

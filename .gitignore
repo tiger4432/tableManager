@@ -25,6 +25,7 @@ server/assy_manager.db
 .bevel/
 agent_workspace/tasks/
 !agent_workspace/reports/
+agent_workspace/*
 
 # OS 생성 파일
 Thumbs.db
@@ -42,7 +43,9 @@ client/*.spec
 
 # 운영 환경 고유 설정 및 인제션 워크스페이스
 server/config/*
-!server/config/*.sample
+!server/config/sample/
+server/config/sample/*
+!server/config/sample/*.sample
 server/mappers/*
 !server/mappers/*.sample
 server/ingestion_workspace/

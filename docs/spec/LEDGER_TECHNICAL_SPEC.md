@@ -1,6 +1,6 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 3차 (선언형 문법 · 뿌리 키 롤업 — 코드 대조) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 Source Event identity·Evidence Graph — 코드 대조 | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(문법 검증) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
 > **이번 라운드 (2026-08-15 3차 · 넷째 문법 `declared` + 뿌리 키 롤업 — R-2026-08-15-N ② · R-2026-08-15-O · 갱신 트리거 ②③⑥⑦)**
@@ -79,9 +79,9 @@
 
 ## 1. 물리 스키마 계약
 
-### 1.1 `ledger_events` — 열한 컬럼
+### 1.1 `ledger_events` — 열세 컬럼
 
-봉투 7필드를 평탄화한 것이다. 평탄화는 `envelope.ROW_COLUMNS` **한 자리**에서만 일어난다
+봉투 7필드에 원천 사건 상관 필드 둘을 더해 평탄화한 것이다. 평탄화는 `envelope.ROW_COLUMNS` **한 자리**에서만 일어난다
 (쓰기와 컬럼 목록이 같은 튜플을 쓰므로, 한쪽에만 컬럼을 더하면 **조용한 값 밀림이 아니라 구문 오류**가 된다).
 
 | 컬럼 | 타입 | NULL | 봉투 필드 |
@@ -97,6 +97,8 @@
 | `source_translator_ver` | `TEXT` | **NOT NULL** | `source.translator_ver` |
 | `source_raw_ref` | `TEXT` | **NOT NULL** | `source.raw_ref` |
 | `supersedes` | `UUID` | NULL 허용 | `supersedes` |
+| `source_event_id` | `UUID` | **NOT NULL** | 같은 원천 발화 묶음의 불투명 UUIDv5. 해결 우선순위가 아니라 증거 구조 |
+| `source_event_state` | `TEXT` | **NOT NULL** | `source_molecule` \| `source_record` \| `legacy_atom` |
 
 🔴 **provenance 셋은 NOT NULL이다.** 누가·어떤 번역기로·어느 원시 행에서 주장했는지 말 못 하는 원자는 증거가 아니다.
 (테스트가 이 셋을 nullable로 손복사해 두고 **아무도 안 가진 테이블을 시험하고 있던** 적이 있다.)
@@ -106,7 +108,7 @@
 | 없는 것 | 어디 있나 |
 |---|---|
 | `recorded_at` | **uuid7 `id` 안의 48비트 밀리초.** 컬럼을 되살리면 한 질문에 답이 둘이 된다. 읽는 법은 `uuid7.timestamp_ms()` |
-| `molecule_ref`(상관 표지) | **메모리에만.** 게이트가 전부-아니면-전무를 정하는 데만 쓰고 버린다. 🔴 컬럼이 아니므로 **새어 나갈 곳이 없다** |
+| `molecule_ref`(원시 상관 표지) | **메모리에만.** 게이트가 전부-아니면-전무를 정하고 writer가 `source + ref + occurred_at`의 불투명 `source_event_id`를 만든 뒤 원문은 버린다. 해결기가 읽는 의미 필드가 아니며 컬럼으로 새지 않는다 |
 | `derivation` | 컬럼이 아니라 **`source_translator_ver`의 `#` 접미**. §3.5 |
 
 ### 1.2 CHECK 제약 — 각각이 «산문으로만 살 뻔한 규칙»이다
@@ -118,6 +120,7 @@
 | `ck_ledger_objectless_has_no_payload` | `object_kind IS NOT NULL OR object_payload IS NULL` |
 | `ck_ledger_subject_keys_is_object` | `jsonb_typeof(subject_keys) = 'object'` — 이어붙인 키가 빈 조각에서 무너져 **운영 17만 행**이 된 사고를 **저장 계층에서**(모든 파이썬 검사 아래에서) 막는다 |
 | `ck_ledger_no_self_supersede` | `supersedes IS NULL OR supersedes <> id` — 자기를 대체하는 정정은 해결기가 영원히 따라가는 순환 |
+| `ck_ledger_source_event_state` | 새 적재의 사건 경계 철자를 세 값으로 닫는다. 과거 선택 호환은 `legacy_atom`이며 유사 시각으로 추정 병합하지 않는다 |
 
 ### 1.3 🔴 `PRIMARY KEY (id, occurred_at)` — 복합인 것이 «선택이 아니다»
 
@@ -214,6 +217,8 @@ override 카운트가 과소보고된 QA D-1.)
 | `idx_ledger_register` | `(subject_type, subject_keys) WHERE predicate='register'` | `store.existing_registrations` — 페이지당 1질의. 개체마다 조회하면 천만 행 백필이 **2차식**이 된다 | **16.6 B/원자, 그리고 감소 중**(부분 인덱스라 register는 O(개체), 테이블은 O(원자)) |
 | `idx_ledger_register_search` | `GIN ((subject_keys::text) gin_trgm_ops) WHERE predicate='register'` | `GET /api/ledger/entities?q=`의 모든 등록 타입 contains 검색. 인덱스가 없으면 소비자가 전량 JSON 스캔을 **거절**한다 | 개발 DB 자식 인덱스 합계 **656 kB**(2026-08-15 실측). register 개체 수에 비례하며 전체 원자 수로 환산하지 않는다 |
 | `idx_ledger_subject_entity` | `(subject_type, subject_keys)` | `GET /api/ledger/explore_entity`의 구조화된 exact subject identity frontier join | 개발 DB 자식 인덱스 합계 **13 MB**(2026-08-15 실측). 모든 원자를 싣는 대가이며 generic entity 탐색의 JSON 전량 스캔을 막는다 |
+| `idx_ledger_source_event` | `(source_event_id, occurred_at, id) WHERE source_event_id IS NOT NULL` | `/api/ledger/subgraph`의 Event→Claim exact batch | 가격 재측정 대기. 기존 파티션에는 child별 CONCURRENTLY 후 parent ATTACH |
+| `idx_ledger_object_entity` | `((object_payload->>'type'), (object_payload->'keys')) WHERE object_kind='entity_ref'` | `/api/ledger/subgraph`의 Entity←object Claim exact reverse lookup | 가격 재측정 대기. JSON text 전량 스캔으로 강등 금지 |
 
 🔴 **`idx_ledger_subject_lot`의 모양은 취향이 아니라 질의의 성질이 강제한다.** 혈통 보행은
 **`occurred_at` 술어를 갖지 않는다**(「이 랏에 대한 전부」에는 시간 경계가 없다) — 그래서
@@ -872,7 +877,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 🔴 **이음새는 `server/config/mechanism_models.json`이고 `.sample`은 «일부러» 안 실었다** — 이 프로젝트에서 `.sample`은 **출하된 선언**이라
 제안을 그 자리에 두면 **착지한 선언으로 오독된다.** 🔴 **`ledger_link`도 «유도»된다**: 기전 노드는 `Model` 개체 타입을 통해 원장에 닿는데
 어휘가 그 타입을 선언하지 않으므로 「붙을 자리가 없다」가 답이고, **`Model`이 선언되는 날 이 문장은 스스로 거짓이 된다.**
-✅ **[2026-08-14 · `f52628f`] 앞의 ⚠️ 문단은 «부분적으로» 낡았다** — `server/config/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개 · 코드 0줄 변경**)
+✅ **[2026-08-14 · `f52628f`] 앞의 ⚠️ 문단은 «부분적으로» 낡았다** — `server/config/sample/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개 · 코드 0줄 변경**)
 그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재하고 소비자는 **둘**이다 — 이 라우트의 기전 층 + 3관문 랭킹의 기전 관문(`server/mechanism_gate.py`).
 🔴 **[2026-08-15 정정] 파일에 `models`라는 블록은 «없다»** — 최상위 예약 키는 `__doc`와 `bindings`뿐이고 **나머지 키 하나하나가 모델**이며(`mechanism_gate.KEY_DOC`/`KEY_BINDINGS`), `signatures`는 **모델 «안»의 키**이고 로더가 읽지 않는다(사람용). 모델은 방향만 나른다 — 방정식은 일부러 없다. **`bindings`**는 필드→물리량이고 🔴 **항목 목록이 아니다**(바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다). 선언 방법은 [guide/ONTOLOGY_LEDGER_SETUP §6.1](../guide/ONTOLOGY_LEDGER_SETUP.md).
 🔴 **바인딩은 데이터가 실재하는 날 켠다**(`87374a5` — `post_bond_queue_h`가 그 실례. 공백에 바인딩을 지어내지 않는다). 부재 갈래(`no_declaration_file`)는 파일 없는 박스에서 여전히 발화한다.

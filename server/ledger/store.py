@@ -137,6 +137,7 @@ class LedgerStore:
         rows = []
         for atom in atoms:
             atom.ensure_id()
+            atom.ensure_source_event_identity()
             rows.append((
                 str(atom.id), atom.subject_type, _json(atom.subject_keys),
                 atom.predicate, atom.object_kind,
@@ -144,6 +145,7 @@ class LedgerStore:
                 atom.occurred_at, atom.source_who, atom.source_translator_ver,
                 atom.source_raw_ref,
                 str(atom.supersedes) if atom.supersedes else None,
+                str(atom.source_event_id), atom.source_event_state,
             ))
         if not rows:
             return 0, 0

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.dataset.theme=t==='dark'?'dark':'light';}catch(e){}})();</script>
+  <title>AssyManager - Ledger Graph</title>
+  <link rel="stylesheet" href="/src/ledger_graph/styles.css" />
+</head>
+<body>
+  <main class="lg-shell">
+    <header class="lg-header">
+      <a class="lg-brand" href="/ledger.html?view=structure">
+        <span class="lg-brand__mark">LG</span>
+        <span><strong>Ledger Graph</strong><small>원장 구조와 실물 혈통 탐색</small></span>
+      </a>
+      <div class="lg-mode" role="group" aria-label="그래프 보기">
+        <button type="button" data-lg-mode="ontology">Ontology</button>
+        <button type="button" data-lg-mode="lineage">Evidence</button>
+      </div>
+      <form class="lg-search" data-lg-search>
+        <label class="sr-only" for="lg-entity-type">개체 종류</label>
+        <select id="lg-entity-type" data-lg-entity-type aria-label="개체 종류"></select>
+        <label class="sr-only" for="lg-entity-query">개체 검색</label>
+        <input id="lg-entity-query" data-lg-entity-query autocomplete="off" placeholder="개체 이름 검색" />
+        <label class="lg-hops">홉
+          <select data-lg-hops>
+            <option value="5">5</option><option value="10">10</option>
+            <option value="20" selected>20</option><option value="30">30</option>
+            <option value="40">40</option>
+          </select>
+        </label>
+        <label class="lg-hops">방향
+          <select data-lg-direction>
+            <option value="both" selected>양쪽</option>
+            <option value="outgoing">나가는 주장</option>
+            <option value="incoming">들어오는 주장</option>
+          </select>
+        </label>
+        <label class="lg-inline-toggle"><input type="checkbox" data-lg-values checked /> 값 노드</label>
+        <button type="submit">Search</button>
+      </form>
+      <div class="lg-status" data-lg-status role="status">개체를 선택하세요</div>
+    </header>
+
+    <section class="lg-workspace">
+      <aside class="lg-panel lg-detail" aria-label="선택 상세">
+        <div class="lg-panel__head"><span>DETAIL</span><strong data-lg-detail-title>선택 없음</strong></div>
+        <div data-lg-detail-body class="lg-panel__body lg-empty-copy">
+          노드나 선을 클릭하면 신원, 관계, 근거를 보여줍니다.
+        </div>
+      </aside>
+
+      <section class="lg-stage" aria-label="원장 그래프">
+        <div class="lg-toolbar">
+          <div data-lg-summary>아직 불러온 그래프가 없습니다</div>
+          <div class="lg-toolbar__actions">
+            <button type="button" data-lg-export="nodes" title="Spotfire/Excel용 노드 표">Nodes CSV</button>
+            <button type="button" data-lg-export="edges" title="Spotfire/Excel용 관계 표">Edges CSV</button>
+            <button type="button" data-lg-export="properties" title="Spotfire/Excel용 동적 속성 표">Properties CSV</button>
+            <button type="button" data-lg-zoom="out" aria-label="축소">−</button>
+            <button type="button" data-lg-fit>Fit</button>
+            <button type="button" data-lg-zoom="in" aria-label="확대">＋</button>
+          </div>
+        </div>
+        <div class="lg-canvas-wrap" data-lg-canvas-wrap>
+          <canvas data-lg-canvas tabindex="0" aria-label="원장 그래프. 노드를 끌어 위치를 조절하고 빈 공간을 끌거나 휠로 이동합니다."></canvas>
+          <div class="lg-overlay" data-lg-overlay>
+            <strong>Ledger Graph</strong>
+            <span>Ontology는 전체 구조를, Evidence는 Entity·Event·Claim 중 어느 노드에서든 최대 40홉까지 펼칩니다.</span>
+          </div>
+        </div>
+        <div class="lg-foot" data-lg-foot>노드를 끌어 위치 조절 · 빈 공간을 끌어 이동 · 휠로 확대/축소</div>
+      </section>
+
+      <aside class="lg-panel lg-filters" aria-label="그래프 필터">
+        <div class="lg-panel__head"><span>FILTERS</span><strong>표시 범위</strong></div>
+        <div class="lg-panel__body">
+          <section class="lg-catalog" data-lg-catalog hidden>
+            <div class="lg-node-browser__head">
+              <h2>ENTITY CATALOG <span data-lg-catalog-count>0</span></h2>
+              <small data-lg-catalog-status>등록 개체</small>
+            </div>
+            <div class="lg-node-list lg-catalog-list" data-lg-catalog-list role="listbox" aria-label="검색 가능한 원장 개체"></div>
+            <button type="button" class="lg-load-more" data-lg-catalog-more hidden>더 보기</button>
+          </section>
+          <label class="lg-filter-search">그래프 안 검색
+            <input data-lg-filter-text placeholder="LOT, WF, 관계" />
+          </label>
+          <label class="lg-empty-toggle"><input type="checkbox" data-lg-show-empty /> 원자 0인 선언 포함</label>
+          <section class="lg-node-browser">
+            <div class="lg-node-browser__head"><h2><span data-lg-node-list-label>NODE LIST</span> <span data-lg-node-list-count>0</span></h2><button type="button" data-lg-clear-focus hidden>전체 보기</button></div>
+            <label class="sr-only" for="lg-node-search">노드 목록 검색</label>
+            <input id="lg-node-search" data-lg-node-search placeholder="노드 이름 또는 종류" />
+            <div class="lg-node-list" data-lg-node-list></div>
+          </section>
+          <section class="lg-filter-group">
+            <h2>NODES <span data-lg-node-count>0</span></h2>
+            <div data-lg-type-filters class="lg-checks"></div>
+          </section>
+          <section class="lg-filter-group">
+            <h2>EDGES <span data-lg-edge-count>0</span></h2>
+            <div data-lg-predicate-filters class="lg-checks"></div>
+          </section>
+          <section class="lg-legend">
+            <h2>READING</h2>
+            <p><i class="lg-line lg-line--solid"></i> 원장이 관측한 관계</p>
+            <p><i class="lg-line lg-line--dash"></i> 추론·관례 근거</p>
+            <p><i class="lg-center-dot"></i> 탐색 시작점</p>
+            <p>Evidence는 해소 전 원시 증거입니다.</p>
+            <p>CSV 3장은 node_id로 Spotfire/Excel에서 조인합니다.</p>
+          </section>
+        </div>
+      </aside>
+    </section>
+  </main>
+  <script type="module" src="/src/ledger_graph/main.js"></script>
+</body>
+</html>

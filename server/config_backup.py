@@ -12,6 +12,18 @@ so a hand edit through the admin UI or an editor leaves no backup at all.
 This takes a snapshot of every config file on a weekly cadence, so that step 2 has
 an origin regardless of who edited what.
 
+STORAGE: ``server/config/backup/``
+------------------------------------
+The live config directory is an operator surface, not a history listing. Only
+active ``*.json`` files and runtime status files belong at its top level.
+Weekly snapshots, one-off change backups and rollback evidence all live under
+``backup/``; their established filenames distinguish their roles. Tracked
+templates live separately under ``sample/``.
+
+Legacy snapshots left directly under ``server/config`` or the retired
+``_archive/weekly`` remain readable so an upgrade never makes the previous
+recovery history disappear. New snapshots are always written to ``backup/``.
+
 NAMING: ``table_config_260728.json.bak``
 ----------------------------------------
 The date sits **before** the extension. ``install_product_tables.py`` writes
@@ -61,10 +73,11 @@ WHAT IS SNAPSHOTTED
 Every ``*.json`` directly in the config directory, minus ``RUNTIME_FILES``.
 
 Requiring the name to end in exactly ``.json`` is what keeps this from feeding on
-itself: ``.sample`` (product-owned, tracked in git), ``.bak.<ts>`` (the install
-script's), ``.bak-<ts>``, and this module's own ``.json.bak`` output all fail that
-test, so none of them is ever snapshotted. A config file added later is picked up
-automatically -- for a backup tool, over-capturing config is the safe direction.
+itself: the product-owned tracked templates are in the ``sample/`` directory,
+while ``.bak.<ts>``, ``.bak-<ts>`` and this module's own ``.json.bak`` output are
+all in ``backup/``. None can be selected as a top-level active ``*.json``. A
+config file added later is picked up automatically -- for a backup tool,
+over-capturing config is the safe direction.
 
 CADENCE IS DERIVED FROM THE FILES, NOT FROM A CRON INSTANT
 ----------------------------------------------------------
@@ -118,6 +131,8 @@ RUNTIME_FILES = frozenset({
 
 SUFFIX = ".json.bak"
 
+BACKUP_DIRNAME = "backup"
+
 # table_config_260728b.json.bak -> stem=table_config date=260728 seq=b
 _SNAPSHOT_RE = re.compile(r"^(?P<stem>.+)_(?P<date>\d{6})(?P<seq>[b-z]?)\.json\.bak$")
 
@@ -126,6 +141,31 @@ _SEQ_LETTERS = "bcdefghijklmnopqrstuvwxyz"
 
 def _config_dir(config_dir=None):
     return config_dir or _paths.CONFIG_DIR
+
+
+def backup_dir(config_dir=None):
+    return os.path.join(_config_dir(config_dir), BACKUP_DIRNAME)
+
+
+def backup_dir_for(path):
+    """Backup directory for a live or ``sample/`` config file."""
+    directory = os.path.dirname(os.path.abspath(path))
+    if os.path.basename(directory).lower() == "sample":
+        directory = os.path.dirname(directory)
+    return backup_dir(directory)
+
+
+def snapshot_path(filename, config_dir=None):
+    """Resolve a weekly snapshot, preferring ``backup/`` over legacy locations."""
+    root = _config_dir(config_dir)
+    for directory in (
+            backup_dir(root),
+            os.path.join(root, "_archive", "weekly"),
+            root):
+        candidate = os.path.join(directory, filename)
+        if os.path.isfile(candidate):
+            return candidate
+    return os.path.join(backup_dir(root), filename)
 
 
 def snapshot_name(source_filename, when, seq=""):
@@ -170,16 +210,27 @@ def list_snapshots(config_dir=None):
     Ordered by the date and sequence letter *in the name*. Never by mtime -- see
     the module docstring.
     """
-    d = _config_dir(config_dir)
-    if not os.path.isdir(d):
+    root = _config_dir(config_dir)
+    if not os.path.isdir(root):
         return {}
     grouped = {}
-    for name in os.listdir(d):
-        parsed = _parse(name)
-        if not parsed:
+    seen = set()
+    # New path first; the two older locations remain readable during upgrades.
+    for directory in (
+            backup_dir(root),
+            os.path.join(root, "_archive", "weekly"),
+            root):
+        if not os.path.isdir(directory):
             continue
-        stem, when, seq, fname = parsed
-        grouped.setdefault(stem, []).append((when, seq, fname))
+        for name in os.listdir(directory):
+            if name in seen:
+                continue
+            parsed = _parse(name)
+            if not parsed:
+                continue
+            seen.add(name)
+            stem, when, seq, fname = parsed
+            grouped.setdefault(stem, []).append((when, seq, fname))
     for stem in grouped:
         grouped[stem].sort(key=lambda t: (t[0], t[1]))
     return grouped
@@ -220,7 +271,7 @@ def _prune(entries, config_dir, now):
         if when >= cutoff:
             continue
         try:
-            os.remove(os.path.join(config_dir, fname))
+            os.remove(snapshot_path(fname, config_dir))
             removed.append(fname)
             logger.info(
                 "[ConfigBackup] pruned '%s' (%d days old; retention window is %d "
@@ -240,12 +291,21 @@ def take_snapshot(config_dir=None, now=None):
     not changed creates nothing.
     """
     d = _config_dir(config_dir)
+    snapshots = backup_dir(d)
     now = now or datetime.now()
     result = {"created": [], "skipped": [], "pruned": [], "errors": [],
-              "config_dir": d, "taken_at": now.strftime("%Y-%m-%d %H:%M:%S")}
+              "config_dir": d, "snapshot_dir": snapshots,
+              "taken_at": now.strftime("%Y-%m-%d %H:%M:%S")}
 
     if not os.path.isdir(d):
         result["errors"].append("config directory does not exist: %s" % d)
+        return result
+
+    try:
+        os.makedirs(snapshots, exist_ok=True)
+    except OSError as e:
+        result["errors"].append(
+            "cannot create snapshot directory %s: %s" % (snapshots, e))
         return result
 
     grouped = list_snapshots(d)
@@ -255,7 +315,7 @@ def take_snapshot(config_dir=None, now=None):
         today = [e for e in grouped.get(stem, []) if e[0].date() == now.date()]
 
         # Same day already covered by an identical snapshot -> nothing to do.
-        if today and _same_bytes(src, os.path.join(d, today[-1][2])):
+        if today and _same_bytes(src, snapshot_path(today[-1][2], d)):
             result["skipped"].append(today[-1][2])
             continue
 
@@ -270,7 +330,7 @@ def take_snapshot(config_dir=None, now=None):
                 continue
 
         dest_name = snapshot_name(name, now, seq)
-        dest = os.path.join(d, dest_name)
+        dest = os.path.join(snapshots, dest_name)
         tmp = dest + ".tmp"
         try:
             # copy, not copy2: the snapshot's mtime should be when it was taken,
@@ -315,6 +375,7 @@ def probe(config_dir=None, now=None):
     now = now or datetime.now()
     d = _config_dir(config_dir)
     out = {"config_dir": d,
+           "snapshot_dir": backup_dir(d),
            "interval_days": INTERVAL_DAYS,
            "stale_after_days": STALE_AFTER_DAYS}
     try:

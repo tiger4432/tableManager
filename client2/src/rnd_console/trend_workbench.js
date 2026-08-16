@@ -574,11 +574,11 @@ class TrendWorkbench {
     const head = element(this.doc, 'div', 'rwb-table__head');
     head.append(element(this.doc, 'h3', 'rwb-table__title', 'Trend Table'));
     const metricColumns = this.options.columns.filter((column) => !['wafer', 'waferId', 'bondingLeg', 'bonding_leg'].includes(column.key));
-    head.append(element(this.doc, 'span', 'rwb-table__count', `${this.data.rows.length.toLocaleString('ko-KR')} WF·LEG · ${metricColumns.length.toLocaleString('ko-KR')} 항목`));
+    head.append(element(this.doc, 'span', 'rwb-table__count', `${this.data.rows.length.toLocaleString('ko-KR')} 실험단위 · ${metricColumns.length.toLocaleString('ko-KR')} 항목`));
     card.append(head);
     const viewport = element(this.doc, 'div', 'rwb-table__viewport');
     viewport.tabIndex = 0;
-    viewport.setAttribute('aria-label', 'WF·LEG 추세 표');
+    viewport.setAttribute('aria-label', '본딩 실험단위 추세 표');
     const template = `180px repeat(${this.data.rows.length}, 140px)`;
     const header = element(this.doc, 'div', 'rwb-table__columns');
     header.style.gridTemplateColumns = template;

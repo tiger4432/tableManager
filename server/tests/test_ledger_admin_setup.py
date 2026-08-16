@@ -490,6 +490,7 @@ def test_saving_twice_leaves_a_backup_because_config_has_no_history(extension):
     second = ledger_admin.save_predicate("scrapped", signature(label_ko="폐기 v2"))
     assert second["replaced"] is True
     assert os.path.exists(second["backup"])
+    assert os.path.basename(os.path.dirname(second["backup"])) == "backup"
     with open(second["backup"], "r", encoding="utf-8") as handle:
         assert json.load(handle)["predicates"]["scrapped"]["label_ko"] == "폐기"
 

@@ -166,8 +166,9 @@ def test_map_key_columns_are_deliberately_absent_so_R3_cannot_bite():
 def test_the_sample_declares_the_same_thing_as_the_live_config():
     """`server/config/*` is gitignored, so `.sample` is what actually ships."""
     here = os.path.join(os.path.dirname(__file__), "..", "config")
-    sample = json.load(io.open(os.path.join(here, "table_config.json.sample"),
-                               encoding="utf-8"))
+    sample = json.load(io.open(os.path.join(
+        here, "sample", "table_config.json.sample"),
+        encoding="utf-8"))
     for table in (VOID, RUN):
         assert table in sample, f"{table} is missing from table_config.json.sample"
         assert sample[table]["column_types"] == DECLARED[table]["column_types"]

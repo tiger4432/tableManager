@@ -5,7 +5,7 @@
 
 ## 시작하기 전에 (전 파일 공통)
 
-- `server/config/`의 실파일은 **전부 gitignored·현장 소유**입니다. 처음이면 `.sample`을 확장자 없이 복사해 시작합니다 (`.sample`·`.bak` 편집은 아무 효과 없음).
+- `server/config/`의 실파일은 **전부 gitignored·현장 소유**입니다. 처음이면 `server/config/sample/`의 `.sample`을 상위 폴더에 확장자 없이 복사해 시작합니다. 백업은 `server/config/backup/`에 있으며, `.sample`·`.bak` 편집은 실행 설정에 아무 효과가 없습니다.
 - **편집 전 스냅샷**: `conda run -n assy_manager python server/scripts/backup_config.py snapshot`
 - `ASSY_ADMIN_TOKEN`이 설정된 서버는 **모든 `/admin/*` 호출에 `X-Admin-Token` 헤더**가 필요합니다 → [DEPLOY_SETUP §1-4](../DEPLOY_SETUP.md).
 - `scheduler_status.json` · `supervisor_status.json` · `worker_heartbeats/*.json`은 **시스템이 쓰는 상태 파일**입니다 — 운영자 config가 아니며 **절대 손편집하지 마십시오**(다음 틱에 덮어써지고, 없는 것이 정상 상태).

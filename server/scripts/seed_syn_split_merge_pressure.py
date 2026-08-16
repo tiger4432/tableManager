@@ -200,7 +200,8 @@ def _assert_direction():
     """
     path = os.path.join(_SERVER, "config", "mechanism_models.json")
     if not os.path.exists(path):
-        path += ".sample"
+        path = os.path.join(_SERVER, "config", "sample",
+                            "mechanism_models.json.sample")
     with open(path, encoding="utf-8") as fh:
         models = json.load(fh)
 

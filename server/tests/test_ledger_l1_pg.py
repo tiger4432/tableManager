@@ -817,9 +817,11 @@ def test_only_register_may_have_no_object_and_register_may_have_nothing_else(led
 
     base = (f"INSERT INTO {schema.LEDGER_TABLE} (id, subject_type, subject_keys, "
             f"predicate, object_kind, object_payload, occurred_at, source_who, "
-            f"source_translator_ver, source_raw_ref) VALUES "
+            f"source_translator_ver, source_raw_ref, source_event_id, "
+            f"source_event_state) VALUES "
             f"(gen_random_uuid(), 'Lot', %s::jsonb, %s, %s, %s::jsonb, "
-            f"'2026-05-03T00:00:00+00', 'w', 'v', 'r')")
+            f"'2026-05-03T00:00:00+00', 'w', 'v', 'r', gen_random_uuid(), "
+            f"'source_record')")
 
     # a register carrying an object
     _expect_integrity_error(ledger, base,
@@ -950,13 +952,14 @@ def _inject_duplicate_atom_past_the_unique_index(engine):
     connection = engine.raw_connection()
     try:
         st.ensure_partitions(connection, [when])
+        event_id = __import__("uuid").uuid4()
         values = ("Lot", Json({"lot": "DUP"}), "register", None, None, when,
-                  "w", "v", "r", None)
+                  "w", "v", "r", None, event_id, "source_record")
         with connection.cursor() as cursor:
             for _ in range(2):
                 cursor.execute(
                     f"INSERT INTO {schema.LEDGER_TABLE} ({', '.join(ROW_COLUMNS)}) "
-                    f"VALUES (gen_random_uuid(), %s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", values)
+                    f"VALUES (gen_random_uuid(), %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", values)
         connection.commit()
     except psycopg2.errors.UniqueViolation as exc:
         connection.rollback()
@@ -978,9 +981,11 @@ def _inject_register_with_an_object(engine):
             cursor.execute(
                 f"INSERT INTO {schema.LEDGER_TABLE} (id, subject_type, subject_keys, "
                 f"predicate, object_kind, occurred_at, source_who, "
-                f"source_translator_ver, source_raw_ref) VALUES "
+                f"source_translator_ver, source_raw_ref, source_event_id, "
+                f"source_event_state) VALUES "
                 f"(gen_random_uuid(), 'Lot', '{{\"lot\":\"X\"}}'::jsonb, 'register', "
-                f"'value', '2026-05-03T00:00:00+00', 'w', 'v', 'r')")
+                f"'value', '2026-05-03T00:00:00+00', 'w', 'v', 'r', "
+                f"gen_random_uuid(), 'source_record')")
         connection.commit()
     except psycopg2.errors.CheckViolation as exc:
         connection.rollback()
@@ -1006,9 +1011,10 @@ def _inject_atom_outside_every_partition(engine):
             cursor.execute(
                 f"INSERT INTO {schema.LEDGER_TABLE} (id, subject_type, subject_keys, "
                 f"predicate, occurred_at, source_who, source_translator_ver, "
-                f"source_raw_ref) VALUES (gen_random_uuid(), 'Lot', "
+                f"source_raw_ref, source_event_id, source_event_state) VALUES "
+                f"(gen_random_uuid(), 'Lot', "
                 f"'{{\"lot\":\"X\"}}'::jsonb, 'register', '1999-01-01T00:00:00+00', "
-                f"'w', 'v', 'r')")
+                f"'w', 'v', 'r', gen_random_uuid(), 'source_record')")
         connection.commit()
     except psycopg2.Error as exc:
         connection.rollback()

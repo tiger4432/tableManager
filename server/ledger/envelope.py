@@ -1,6 +1,7 @@
 """The 7-field envelope of `CANONICAL_LEDGER_DESIGN.md` §3, as one Python object.
 
-The physical table flattens the envelope into eleven columns; `Atom` is the shape a
+The physical table flattens the envelope plus source-event correlation into thirteen
+columns; `Atom` is the shape a
 translator produces and the gate judges, so the flattening happens in exactly one place
 (`to_row`) instead of at every emitter.
 
@@ -18,11 +19,12 @@ the token `NaN` - valid JavaScript, invalid JSON, rejected by PostgreSQL's jsonb
 **`recorded_at` is absent on purpose.** It lives inside the uuid7 `id` (§3). Adding the
 column back would make two answers to one question.
 
-**The correlation marker is non-semantic.** §3's excluded list says batch/transaction
-identity is a marker, and "해석기가 읽으면 계약 위반" - a consumer that reads it has
-broken the contract. `molecule_ref` therefore exists only in memory, is used only by the
-gate to decide all-or-nothing, and is NOT a column. It cannot leak because there is
-nowhere for it to leak to.
+**The correlation marker is still non-semantic.** §3's excluded list says a raw
+batch/transaction marker is not ontology evidence.  `molecule_ref` therefore still
+never becomes a column and no resolver may rank from it.  The evidence graph does need
+to answer the narrower structural question "which claim atoms landed as one source
+utterance?", so the writer derives an opaque UUID from source + marker + occurrence.
+Only that UUID and its derivation state are stored; the raw marker cannot leak.
 """
 from __future__ import annotations
 
@@ -30,9 +32,15 @@ import dataclasses
 import json
 import math
 import uuid as _uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from . import uuid7 as _uuid7
+
+
+# A repository-owned UUID namespace.  Changing it would give the same source event a
+# second identity on replay, so the literal is a storage contract, not decoration.
+SOURCE_EVENT_NAMESPACE = _uuid.UUID("4128796d-e92b-5c44-b64e-f8bb6d43ab91")
+SOURCE_EVENT_STATES = ("source_molecule", "source_record", "legacy_atom")
 
 
 class PayloadNotPreservable(ValueError):
@@ -142,6 +150,38 @@ def entity_ref(entity_type, keys, **qualifiers):
     return payload
 
 
+def source_event_identity(source_who, occurred_at, *, molecule_ref=None,
+                          source_raw_ref=None):
+    """Return the stable `(uuid, state)` for one source utterance.
+
+    A molecule marker is strongest because all atoms inside the gate share it.  A
+    single-row producer may legitimately have no molecule marker; then its mandatory
+    raw-row reference is the event boundary.  `occurred_at` is included because a
+    source is allowed to reuse a transaction key over time and one source event cannot
+    occur at two world instants.
+
+    This function does *not* claim that two sources describe the same physical event.
+    Cross-source equivalence belongs in ontology claims, never in this storage key.
+    """
+    who = str(source_who or "").strip()
+    if not who:
+        raise ValueError("source event identity requires source_who")
+    if not isinstance(occurred_at, datetime) or occurred_at.tzinfo is None:
+        raise ValueError("source event identity requires timezone-aware occurred_at")
+    instant = occurred_at.astimezone(timezone.utc).isoformat()
+    marker = str(molecule_ref or "").strip()
+    if marker:
+        state, reference = "source_molecule", marker
+    else:
+        reference = str(source_raw_ref or "").strip()
+        if not reference:
+            raise ValueError("source event identity requires molecule_ref or source_raw_ref")
+        state = "source_record"
+    canonical = json.dumps([who, state, reference, instant], ensure_ascii=False,
+                           separators=(",", ":"))
+    return _uuid.uuid5(SOURCE_EVENT_NAMESPACE, canonical), state
+
+
 @dataclasses.dataclass
 class Atom:
     """One claim. The envelope's seven fields, plus the derivation the gate checks.
@@ -167,6 +207,8 @@ class Atom:
     molecule_ref: str = None
     derivation: str = None
     id: _uuid.UUID = None
+    source_event_id: _uuid.UUID = None
+    source_event_state: str = None
 
     def ensure_id(self):
         """Stamp the watermark. Called once, by the writer, immediately before insert.
@@ -179,6 +221,23 @@ class Atom:
         if self.id is None:
             self.id = _uuid7.uuid7()
         return self.id
+
+    def ensure_source_event_identity(self):
+        """Stamp the source-utterance identity without exposing `molecule_ref`.
+
+        Explicit values are accepted for controlled import/replay paths but must be a
+        complete valid pair.  Ordinary translators leave both blank and get the stable
+        UUID derived by :func:`source_event_identity`.
+        """
+        if self.source_event_id is None and self.source_event_state is None:
+            self.source_event_id, self.source_event_state = source_event_identity(
+                self.source_who, self.occurred_at, molecule_ref=self.molecule_ref,
+                source_raw_ref=self.source_raw_ref)
+        if self.source_event_id is None or self.source_event_state not in SOURCE_EVENT_STATES:
+            raise ValueError("source_event_id/state must be a complete valid pair")
+        if not isinstance(self.source_event_id, _uuid.UUID):
+            self.source_event_id = _uuid.UUID(str(self.source_event_id))
+        return self.source_event_id
 
     def identity(self) -> tuple:
         """What makes two atoms THE SAME CLAIM - the tuple `uq_ledger_atom` compares.
@@ -227,7 +286,7 @@ class Atom:
 ROW_COLUMNS = (
     "id", "subject_type", "subject_keys", "predicate", "object_kind",
     "object_payload", "occurred_at", "source_who", "source_translator_ver",
-    "source_raw_ref", "supersedes",
+    "source_raw_ref", "supersedes", "source_event_id", "source_event_state",
 )
 
 

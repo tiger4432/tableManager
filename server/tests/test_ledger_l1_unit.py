@@ -11,6 +11,7 @@ empty loop.
 """
 import contextlib
 import os
+import shutil
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -159,7 +160,7 @@ def test_v0_vocabulary_is_exactly_seven_words():
         "register", "pin", "same_as",
         "derived_from", "slot_map", "has_wafer", "frame_confirmed",
         "processed_with", "has_param", "transferred",
-        "observed", "measured",
+        "observed", "measured", "assigned_to_experiment",
     }
     # The seven that were v0 are still `since: 1`; nothing was renumbered to make the
     # arithmetic tidy. A word's slice is evidence about when the system learned to say it.
@@ -172,6 +173,9 @@ def test_v0_vocabulary_is_exactly_seven_words():
     }
     assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 4} == {
         "measured",
+    }
+    assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 5} == {
+        "assigned_to_experiment",
     }
 
 
@@ -232,9 +236,9 @@ def test_measured_contract_requires_evidence_and_never_encodes_missing_as_a_valu
                 "state": "recorded", "value": 71.2, "run_uid": "MI:SYN:001"}
     assert vocabulary.check_signature("measured", "Wafer", "value", recorded) == []
     assert vocabulary.check_signature(
-        "measured", "WaferLeg", "value",
+        "measured", "Wafer", "value",
         {"metric": "warpage", "unit": "um", "method": "MI",
-         "state": "not_performed"}) == []
+         "state": "not_performed", "bonding_leg": "DOE-A"}) == []
 
     no_value = dict(recorded)
     no_value.pop("value")
@@ -274,19 +278,22 @@ def test_recipe_identity_carries_the_revision():
         "Recipe is an ISSUED entity - a revision is registered, not constructed")
 
 
-def test_wafer_leg_is_a_declared_composite_subject_not_an_extra_wafer_key():
+def test_bonding_leg_is_an_experiment_claim_value_not_an_entity():
     keys = {"wafer": "SYN-CX-BW-006", "bonding_leg": "HBM-B_LOW-P"}
-    assert vocabulary.check_subject_keys("WaferLeg", keys) == []
-    assert vocabulary.check_subject_keys("WaferLeg", {"wafer": keys["wafer"]})
     assert vocabulary.check_subject_keys("Wafer", keys)
-    assert vocabulary.requires_register("WaferLeg")
-    assert vocabulary.check_signature("register", "WaferLeg", None, None) == []
+    assert "WaferLeg" not in vocabulary.ENTITY_TYPES
+    assert not vocabulary.requires_register("WaferLeg")
     assert vocabulary.check_signature(
-        "processed_with", "WaferLeg", "value",
-        {"step": "FINAL_BOND", "recipe": "SYN-FINAL-BOND"}) == []
+        "assigned_to_experiment", "Wafer", "value",
+        {"experiment_type": "bonding_leg", "unit_id": keys["bonding_leg"],
+         "map_ref": {"table": "bonding_map", "base": keys["wafer"]}}) == []
     assert vocabulary.check_signature(
-        "observed", "WaferLeg", "value",
-        {"finding_kind": "void", "method": "sat", "run_uid": "SYN-RUN"}) == []
+        "assigned_to_experiment", "Wafer", "value",
+        {"experiment_type": "bonding_leg", "unit_id": keys["bonding_leg"]})
+    assert vocabulary.check_signature(
+        "observed", "Wafer", "value",
+        {"finding_kind": "void", "method": "sat", "run_uid": "SYN-RUN",
+         "bonding_leg": keys["bonding_leg"]}) == []
 
 
 def test_projection_state_words_can_never_be_written():
@@ -448,7 +455,7 @@ def test_the_shipped_declaration_covers_every_type_the_translator_actually_utter
     deliberate - a hand-written expectation is a copy of the code and copies drift
     (server-pm lessons file: enumerate members, do not count them).
     """
-    path = os.path.join(os.path.dirname(__file__), "..", "config",
+    path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                         "ledger_config.json.sample")
     cfg = ledger_config.load(os.path.abspath(path))
     declared = ledger_config.declared_subject_types(cfg, "lot_event")
@@ -472,11 +479,25 @@ def test_the_shipped_declaration_covers_every_type_the_translator_actually_utter
 
 
 def test_the_shipped_sample_config_validates():
-    path = os.path.join(os.path.dirname(__file__), "..", "config",
+    path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                         "ledger_config.json.sample")
     cfg = ledger_config.load(os.path.abspath(path))
     assert "lot_event" in cfg["sources"]
     assert ledger_config.translator_version(cfg, "lot_event").startswith("lot_event/")
+
+
+def test_missing_live_config_falls_back_to_nested_sample(tmp_path):
+    sample_dir = tmp_path / "sample"
+    sample_dir.mkdir()
+    shipped = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "config", "sample",
+        "ledger_config.json.sample"))
+    nested = sample_dir / "ledger_config.json.sample"
+    shutil.copyfile(shipped, nested)
+
+    cfg = ledger_config.load(str(tmp_path / "ledger_config.json"))
+
+    assert os.path.normcase(cfg["__origin__"]) == os.path.normcase(str(nested))
 
 
 def test_the_translator_version_changes_when_a_RULE_changes():
@@ -602,7 +623,7 @@ def test_the_shipped_declaration_carries_the_product_owner_ruling():
     """The ruling lives in `ledger_config.json.sample`, so the sample is where it can
     rot. Pinning it here means a silent revert to `UTC` fails a test instead of shifting
     every atom by nine hours."""
-    path = os.path.join(os.path.dirname(__file__), "..", "config",
+    path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                         "ledger_config.json.sample")
     cfg = ledger_config.load(os.path.abspath(path))
     declared = cfg["sources"]["lot_event"]

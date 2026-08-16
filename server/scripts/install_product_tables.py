@@ -3,13 +3,13 @@
 Why this exists
 ---------------
 Deploying to a new site used to mean hand-copying four table declarations out of
-``table_config.json.sample``. Those four are **product-owned** — assyManager
+``config/sample/table_config.json.sample``. Those four are **product-owned** — assyManager
 defines their names and their columns — so the product should install them. The
 operator's job is the *site-owned* tables (their factory's log/map tables), whose
 names differ per deployment and which this script never touches.
 
 The declarations live in exactly one place: ``server/product_tables.py``. The
-tracked ``table_config.json.sample`` is generated from that same module by this
+tracked ``config/sample/table_config.json.sample`` is generated from that same module by this
 same script (``--sample --apply``), so there is no second list to drift.
 
 What it protects
@@ -57,9 +57,10 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import paths  # noqa: E402
+import config_backup  # noqa: E402
 import product_tables  # noqa: E402
 
-SAMPLE_PATH = os.path.join(SERVER_DIR, "config", "table_config.json.sample")
+SAMPLE_PATH = paths.config_sample_path("table_config.json")
 
 
 class ConfigFormatError(Exception):
@@ -508,10 +509,13 @@ def write_config_text(path, text, had_bom):
 
 def make_backup(path, original_bytes):
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_path = f"{path}.bak.{stamp}"
+    backup_dir = config_backup.backup_dir_for(path)
+    os.makedirs(backup_dir, exist_ok=True)
+    base = os.path.basename(path)
+    backup_path = os.path.join(backup_dir, f"{base}.bak.{stamp}")
     suffix = 1
     while os.path.exists(backup_path):
-        backup_path = f"{path}.bak.{stamp}.{suffix}"
+        backup_path = os.path.join(backup_dir, f"{base}.bak.{stamp}.{suffix}")
         suffix += 1
     with open(backup_path, "wb") as f:
         f.write(original_bytes)
@@ -546,7 +550,7 @@ def run(path, apply_mode=False, overwrite_drift=False, out=None, strict=False):
 
     if not os.path.exists(path):
         print(f"error: {path} does not exist.", file=out)
-        print("       Copy the template first:  cp server/config/table_config.json.sample "
+        print("       Copy the template first:  cp server/config/sample/table_config.json.sample "
               "server/config/table_config.json", file=out)
         print("       (this script refuses to create the file -- a missing table_config.json means", file=out)
         print("        the deployment has not been set up yet, and silently creating one hides that)", file=out)
@@ -629,7 +633,7 @@ def main(argv=None):
     )
     parser.add_argument("--config", help="target file (default: the active config, honours ASSY_DATA_ROOT)")
     parser.add_argument("--sample", action="store_true",
-                        help="target the tracked template server/config/table_config.json.sample "
+                        help="target the tracked template server/config/sample/table_config.json.sample "
                              "(compared strictly: it is a generated artifact, so comments count too)")
     parser.add_argument("--apply", action="store_true", help="write the changes (default is a dry run)")
     parser.add_argument("--overwrite-drift", action="store_true",

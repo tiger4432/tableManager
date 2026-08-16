@@ -1,8 +1,10 @@
 # 📋 config 참조 스냅샷 (시뮬레이션 환경)
 
-> **Status:** 🟠 스냅샷(사본) | **Snapshot-taken:** 2026-08-01 (부분 재동기화: `chain_rules.json` 2026-08-11) | **Owner:** Lead / Backend
+> **Status:** 🟠 스냅샷(사본) | **Snapshot-taken:** 2026-08-01 (부분 재동기화: `chain_rules.json` 2026-08-11, `enrichment_rules.json` 2026-08-15) | **Owner:** Lead / Backend
 >
 > ⚠️ **2026-08-11 재동기화 — `chain_rules.json` 하나만.** `68db020`이 `.sample`에 `__alignment_thresholds_derivation` 주석 키를 더했는데(트리거 ①) 이 사본이 안 따라갔다. 재복사로 고쳤다(대조: 이 실행 시점 `server/config/chain_rules.json`은 `.sample`과 바이트 동일이었다 — 나머지 9개 config는 대조하지 않았으므로 이 라운드가 "전체 재동기화"를 뜻하지 않는다).
+>
+> ⚠️ **2026-08-15 재동기화 — `enrichment_rules.json` 하나만.** 선택적 `claim_contract`가 추가된 라이브 파일을 다시 복사했고 SHA-256 일치를 확인했다. 다른 config는 대조하지 않았으므로 전체 재동기화가 아니다.
 >
 > **무엇인가**: 2026-08-01 트레이스 픽스처 구축 직후, 시뮬레이션 환경의 `server/config/*.json`을 **있는 그대로 복사**한 것.
 > **왜 있나**: 운영에서 **보고 따라할 수 있게**. `.sample`은 형태만 보여주지만 이쪽은 **실제로 돌아가고 있는 선언 전체**다.

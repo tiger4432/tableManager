@@ -102,7 +102,7 @@ def rollup_subject_types(root_type: str) -> tuple:
     right above does the same job for the walk's fetch set). `ledger_journey`,
     `ledger_walk_contrast` and `ledger_selection` all import from this module already, so a
     per-file copy would have been three lists of one fact - and three lists is how
-    `WaferLeg` came to be visible to one query and invisible to the next in the first place.
+    a derived subject type can become visible to one query and invisible to the next.
 
     Cached with the walk sets, so `reset_walk_cache()` (wired into `/admin/reload-configs`)
     drops it too - the vocabulary can gain a derived type without a restart.

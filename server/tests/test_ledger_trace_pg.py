@@ -99,9 +99,11 @@ def insert(conn, atoms):
     conn.execute(text(
         "INSERT INTO ledger_events (id, subject_type, subject_keys, predicate, "
         "object_kind, object_payload, occurred_at, source_who, "
-        "source_translator_ver, source_raw_ref, supersedes) VALUES "
+        "source_translator_ver, source_raw_ref, supersedes, source_event_id, "
+        "source_event_state) VALUES "
         "(CAST(:id AS uuid), :st, CAST(:sk AS jsonb), :p, :ok, "
-        " CAST(:op AS jsonb), :oa, :who, :ver, :raw, CAST(:sup AS uuid))"),
+        " CAST(:op AS jsonb), :oa, :who, :ver, :raw, CAST(:sup AS uuid), "
+        " CAST(:id AS uuid), 'source_record')"),
         atoms)
 
 
@@ -849,9 +851,11 @@ def _build_synthetic_ledger(conn, relation, n_chains, chain_len=5,
         conn.execute(text(
             f"INSERT INTO {sql_rel} (id, subject_type, subject_keys, predicate, "
             f"object_kind, object_payload, occurred_at, source_who, "
-            f"source_translator_ver, source_raw_ref, supersedes) VALUES "
+            f"source_translator_ver, source_raw_ref, supersedes, source_event_id, "
+            f"source_event_state) VALUES "
             f"(CAST(:id AS uuid), :st, CAST(:sk AS jsonb), :p, :ok, "
-            f" CAST(:op AS jsonb), :oa, :who, :ver, :raw, CAST(:sup AS uuid))"),
+            f" CAST(:op AS jsonb), :oa, :who, :ver, :raw, CAST(:sup AS uuid), "
+            f" CAST(:id AS uuid), 'source_record')"),
             rows[start:start + 2000])
     return len(rows)
 

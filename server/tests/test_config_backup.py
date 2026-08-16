@@ -44,6 +44,17 @@ def write(d, name, content):
     return p
 
 
+def backup_dir(d):
+    path = config_backup.backup_dir(str(d))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def backup_names(d):
+    path = backup_dir(d)
+    return sorted(os.listdir(path))
+
+
 @pytest.fixture
 def cfg(tmp_path):
     """A config directory shaped like the real one, mess included."""
@@ -53,11 +64,14 @@ def cfg(tmp_path):
     write(d, "transfer_plan_config.json", json.dumps({"stages": []}))
     write(d, "maps.json", json.dumps({"m": 1}))
     # Product-owned, tracked in git - recoverable without a backup.
-    write(d, "table_config.json.sample", "{}")
+    sample = d / "sample"
+    sample.mkdir()
+    write(sample, "table_config.json.sample", "{}")
     # The install script's backups: an install history, not a deploy history.
-    write(d, "table_config.json.bak.20260727-225922", "{}")
-    write(d, "transfer_plan_config.json.bak-20260727_004642", "{}")
-    write(d, "ontology_mapping.json.v1.bak", "{}")
+    history = backup_dir(d)
+    write(history, "table_config.json.bak.20260727-225922", "{}")
+    write(history, "transfer_plan_config.json.bak-20260727_004642", "{}")
+    write(history, "ontology_mapping.json.v1.bak", "{}")
     # Written by running processes, not edited by anyone.
     write(d, "scheduler_status.json", json.dumps({"collectors": []}))
     write(d, "supervisor_status.json", json.dumps({"children": {}}))
@@ -70,12 +84,25 @@ def test_snapshot_name_puts_the_date_before_the_extension(cfg):
             == "table_config_260728.json.bak")
 
 
+def test_new_snapshots_leave_the_live_config_root_clean(cfg):
+    config_backup.take_snapshot(cfg, NOW)
+    assert backup_names(cfg)
+    assert not [name for name in os.listdir(cfg) if config_backup._parse(name)]
+
+
+def test_legacy_root_snapshot_remains_readable_during_migration(cfg):
+    name = "table_config_260728.json.bak"
+    legacy = write(cfg, name, "{}")
+    assert config_backup.list_snapshots(cfg)["table_config"][0][2] == name
+    assert config_backup.snapshot_path(name, cfg) == legacy
+
+
 def test_naming_is_distinguishable_from_the_install_scripts(cfg):
     """The whole point: `ls` alone must separate the two kinds of .bak."""
     config_backup.take_snapshot(cfg, NOW)
-    names = sorted(os.listdir(cfg))
-    weekly = [n for n in names if config_backup._parse(n)]
-    install = [n for n in names if ".json.bak." in n or ".json.bak-" in n]
+    weekly = [n for n in backup_names(cfg) if config_backup._parse(n)]
+    install = [n for n in backup_names(cfg)
+               if ".json.bak." in n or ".json.bak-" in n]
     assert weekly, "no weekly snapshot was written"
     assert install, "fixture lost the install-script backups"
     # No filename can be read as both kinds.
@@ -109,7 +136,7 @@ def test_snapshots_are_not_themselves_snapshotted(cfg):
     assert len(second["created"]) == 3
     assert all(config_backup._parse(n) for n in second["created"])
     # Nothing named after a .bak file was ever created.
-    assert not [n for n in os.listdir(cfg) if n.count(".bak") > 1]
+    assert not [n for n in backup_names(cfg) if n.count(".bak") > 1]
 
 
 def test_runtime_status_files_are_never_snapshotted(cfg):
@@ -122,7 +149,8 @@ def test_runtime_status_files_are_never_snapshotted(cfg):
 def test_a_new_config_file_is_picked_up_automatically(cfg):
     write(cfg, "brand_new_config.json", "{}")
     config_backup.take_snapshot(cfg, NOW)
-    assert os.path.exists(os.path.join(cfg, "brand_new_config_260728.json.bak"))
+    assert os.path.exists(os.path.join(
+        config_backup.backup_dir(cfg), "brand_new_config_260728.json.bak"))
 
 
 # ------------------------------------------------------- two snapshots one day
@@ -135,7 +163,8 @@ def test_same_day_identical_content_is_skipped_not_duplicated(cfg):
 
 def test_same_day_changed_content_gets_a_letter_and_never_overwrites(cfg):
     config_backup.take_snapshot(cfg, NOW)
-    original = open(os.path.join(cfg, "table_config_260728.json.bak"),
+    original = open(os.path.join(config_backup.backup_dir(cfg),
+                                 "table_config_260728.json.bak"),
                     encoding="utf-8").read()
 
     write(cfg, "table_config.json", json.dumps({"t": {"columns": ["a", "b"]}}))
@@ -144,7 +173,8 @@ def test_same_day_changed_content_gets_a_letter_and_never_overwrites(cfg):
     assert "table_config_260728b.json.bak" in second["created"]
     # The first one is untouched - this is the "overwriting silently is not
     # acceptable" requirement.
-    assert open(os.path.join(cfg, "table_config_260728.json.bak"),
+    assert open(os.path.join(config_backup.backup_dir(cfg),
+                             "table_config_260728.json.bak"),
                 encoding="utf-8").read() == original
 
     write(cfg, "table_config.json", json.dumps({"t": {"columns": ["a", "b", "c"]}}))
@@ -155,7 +185,8 @@ def test_same_day_changed_content_gets_a_letter_and_never_overwrites(cfg):
 # ------------------------------------------------------------------ retention
 def seed_history(cfg, dates, stem="table_config"):
     for d in dates:
-        write(cfg, f"{stem}_{d:%y%m%d}.json.bak", json.dumps({"as_of": f"{d:%Y-%m-%d}"}))
+        write(backup_dir(cfg), f"{stem}_{d:%y%m%d}.json.bak",
+              json.dumps({"as_of": f"{d:%Y-%m-%d}"}))
 
 
 def test_retention_drops_what_is_older_than_a_month_fifo(cfg):
@@ -164,7 +195,7 @@ def test_retention_drops_what_is_older_than_a_month_fifo(cfg):
     seed_history(cfg, dates)
     result = config_backup.take_snapshot(cfg, NOW)
 
-    kept = sorted(n for n in os.listdir(cfg)
+    kept = sorted(n for n in backup_names(cfg)
                   if config_backup._parse(n)
                   and config_backup._parse(n)[0] == "table_config")
     ages = [(NOW - config_backup._parse(n)[1]).days for n in kept]
@@ -183,7 +214,7 @@ def test_retention_floor_survives_a_long_outage(cfg):
     # this stem beyond today's snapshot.
     config_backup.take_snapshot(cfg, NOW)
 
-    kept = [n for n in os.listdir(cfg)
+    kept = [n for n in backup_names(cfg)
             if config_backup._parse(n)
             and config_backup._parse(n)[0] == "table_config"]
     assert len(kept) >= config_backup.RETENTION_MIN_KEEP, \
@@ -195,7 +226,7 @@ def test_prune_reports_every_file_it_removed(cfg):
     seed_history(cfg, [NOW - timedelta(days=40 + 7 * i) for i in range(8)])
     result = config_backup.take_snapshot(cfg, NOW)
     for name in result["pruned"]:
-        assert not os.path.exists(os.path.join(cfg, name))
+        assert not os.path.exists(os.path.join(config_backup.backup_dir(cfg), name))
 
 
 # -------------------------------------------------------------------- cadence
@@ -253,7 +284,8 @@ def test_probe_ignores_the_install_scripts_backups(cfg):
 def test_probe_reads_names_not_mtimes(cfg):
     """An old snapshot touched today must not look fresh."""
     seed_history(cfg, [NOW - timedelta(days=30)])
-    path = os.path.join(cfg, f"table_config_{(NOW - timedelta(days=30)):%y%m%d}.json.bak")
+    path = os.path.join(config_backup.backup_dir(cfg),
+                        f"table_config_{(NOW - timedelta(days=30)):%y%m%d}.json.bak")
     os.utime(path, None)  # mtime = now
     status = config_backup.probe(cfg, NOW)
     assert status["status"] == "stale"
@@ -345,7 +377,8 @@ def test_scheduler_takes_the_snapshot(tmp_path, cfg, monkeypatch):
     result = sched.maybe_backup_configs(now=NOW)
     assert result is not None, "the first tick must check, not wait 30 minutes"
     assert result["snapshot"]["created"], "the scheduler ran but wrote nothing"
-    assert os.path.exists(os.path.join(cfg, "table_config_260728.json.bak"))
+    assert os.path.exists(os.path.join(
+        config_backup.backup_dir(cfg), "table_config_260728.json.bak"))
     assert result["probe"]["status"] == "ok"
 
 

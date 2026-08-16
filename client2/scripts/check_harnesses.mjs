@@ -475,6 +475,9 @@ const FLOORS = new Map([
   // resolver output with NO DATABASE behind it: `contested` needs a cross-class disagreement
   // and the natural ledger has ZERO in 278 hops, so `fixtures/gen_ledger_trace_contested.py`
   // declares the atoms and runs the shipped `trace()` over `InMemoryClaimLookup`.
+  // New 2026-08-15 with the independent ledger lineage viewer. Protects response
+  // parsing, deterministic radial layout, type/predicate filtering and the page seams.
+  ['ledger_graph_harness.mjs', 42],
   ['ledger_trace_harness.mjs', 380],
   // New 2026-08-06 with `opts.restoreDraft` (e34d57d, 「맵을 로드하면 로드한 맵이 나온다」).
   // Same rule as the other new entries: the floor is the count it reports on the commit that

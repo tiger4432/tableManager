@@ -345,22 +345,31 @@ def config_path(filename: str = CONFIG_FILENAME) -> str:
     return os.path.join(_config_dir(), filename)
 
 
+def sample_path(path: str = None) -> str:
+    active = path or config_path()
+    return os.path.join(
+        os.path.dirname(os.path.abspath(active)),
+        "sample",
+        os.path.basename(active) + ("" if active.endswith(".sample") else ".sample"),
+    )
+
+
 def load(path: str = None) -> dict:
-    """Load and validate. Falls back to `<name>.sample` when the live file is absent.
+    """Load and validate. Falls back to ``sample/<name>.sample`` when live is absent.
 
     The `.sample` fallback is this project's convention for gitignored operator config
-    (`server/config/*.json` is the operator's, `*.json.sample` is what ships). Without it
+    (`server/config/*.json` is the operator's, `sample/*.json.sample` ships). Without it
     a fresh checkout could not run the backfill at all, and "it works on the box that has
     the untracked file" is not a deployable state.
     """
     path = path or config_path()
     if not os.path.exists(path):
-        sample = path + ".sample"
+        sample = sample_path(path)
         if os.path.exists(sample):
             path = sample
         else:
             raise LedgerConfigError(
-                f"no ledger configuration at {path} (and no .sample beside it). The "
+                f"no ledger configuration at {path} (and no sample at {sample}). The "
                 f"translator refuses to run rather than guess a time column.")
     with open(path, "r", encoding="utf-8") as handle:
         raw = json.load(handle)

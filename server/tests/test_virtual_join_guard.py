@@ -473,7 +473,8 @@ def test_non_object_root_is_rejected(tmp_path):
 
 
 def test_the_shipped_sample_documents_the_index_requirement():
-    sample = os.path.join(_SERVER, "config", "virtual_join_rules.json.sample")
+    sample = os.path.join(_SERVER, "config", "sample",
+                          "virtual_join_rules.json.sample")
     raw = json.loads(open(sample, encoding="utf-8").read())
     blob = json.dumps(raw, ensure_ascii=False)
     assert "UNIQUE" in blob, "the sample must state the accepting condition"

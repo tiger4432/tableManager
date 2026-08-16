@@ -24,7 +24,7 @@
   ontology promotion: server/ontology_config.py:218 (RESOLVED_AS)
   web query API per-request: server/main.py:3442
   query_ref dir: enrichment_config.py:43 config/enrichment_queries/<ref>.sql (dir absent by default)
-  worked example source: server/config/enrichment_rules.json.sample (bonding_wafer_attribution)
+  worked example source: server/config/sample/enrichment_rules.json.sample (bonding_wafer_attribution)
 -->
 
 ## 1. 언제 이 파일을 만지는가
@@ -182,11 +182,53 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `enabled` | | 기본 `true` |
 | `auto_confirm` | | **기본 `false`** — 후보가 1개일 때 사람 없이 자동 확정(§7) |
 | `alignment` | | **맵 정렬 화면(Map Editor 2)이 다룰 수 있는 규칙**임을 선언합니다. `true`(JSON 불리언)만 인정하며 `"true"`·`1` 같은 오타는 선언이 아닙니다(`map_push_ok`와 같은 규율). `GET /enrichment/rules`가 이 값을 그대로 실어 보내고, 화면은 이 표시가 있는 규칙만 고를 수 있게 합니다.<br>🔴 **미선언 = 정렬 대상 아님**이고, 이것은 기본값이 아니라 **사실**입니다 - 아무도 그 규칙이 정렬 가능하다고 주장한 적이 없다는 뜻입니다.<br>🔴 서버는 이 값을 **유도하지 않습니다.** `target_fields` 이름에 `frame`이 들어 있다는 것은 근거가 아닙니다 - 그 추론이야말로 이 화면이 다른 모든 자리에서 거부하는 것입니다(그럴듯한 기본값이 선언을 사칭). 정렬 화면을 쓰려면 **현장이 직접 켜야 합니다.** |
+| `claim_contract` | | 기존 column 결손을 원장 Claim 요구와 `Enrich Action`으로 읽는 선택 계약. 아래 §6-bis. 미선언이면 legacy 동작 그대로 |
 | `reference_views[]` | | `{label, query, limit}` 또는 `{label, query_ref}` — `query`·`limit`은 **서버에만 존재**하고 `GET /enrichment/rules`가 클라에 내보내는 것은 **`label`과 아래 `candidate_for` 둘뿐**입니다(2026-07-30 [F9]에서 `candidate_for`가 가산 노출됐습니다 — 종전 이 칸은 「클라엔 `label`만」이었고 바로 다음 줄과 어긋났습니다). `limit` 기본 200 · 최대 1000 |
 | `reference_views[].candidate_for` | | `{target_field: 뷰 결과 컬럼}` — 이 뷰의 어느 컬럼이 어느 target의 **후보값**인지 선언(§7). 없으면 그 뷰는 **표시 전용** |
 
 - 거부는 규칙 단위 + 조용함 — 워크리스트가 조용히 비면 로그의 검증 에러부터.
 - `RESOLVED_AS`를 온톨로지에 중복 선언하지 마십시오(자동 승격).
+
+## 6-bis. `claim_contract` — Enrich Action 선언
+
+```json
+{
+  "version": 1,
+  "label_ko": "DT 결과물 신원",
+  "anchor": {
+    "predicate": "transferred",
+    "payload_path": "to",
+    "object_type": "dt_job",
+    "decision_key_map": {"dt_job": "dt_job"}
+  },
+  "slots": [
+    {"target_field": "dt_lot_confirmed", "predicate": "transferred", "payload_path": "to.keys.dt_lot"}
+  ],
+  "sources": [
+    {"kind": "reference_view", "view_index": 3, "authority": "candidate", "targets": ["dt_lot_confirmed"]}
+  ]
+}
+```
+
+| 키 | 계약 |
+|---|---|
+| `version` | 1 이상의 정수. Action ID에 들어가므로 의미를 바꾸면 version을 올립니다 |
+| `label_ko` | 사람이 읽는 요구 이름 |
+| `anchor.predicate` | 어떤 원장 Claim을 anchor로 삼는지. 등록 vocabulary의 정확한 술어 |
+| `anchor.payload_path` / `object_type` | Claim payload에서 `{type, keys}` 객체를 찾는 정확한 경로와 type |
+| `anchor.decision_key_map` | `{rule decision_key: anchor keys의 컬럼}`. decision key 전부를 정확히 한 번 덮어야 함 |
+| `slots[]` | 모든 `target_fields`를 정확히 한 번 덮고, 충족될 Claim의 canonical predicate/payload path를 선언 |
+| `sources[]` | `kind=reference_view|human|translator`, `authority=candidate|observe|confirm`, `targets[]` |
+| `sources[].view_index` | reference view 배열의 0-based index. 그 view의 `candidate_for`가 target을 실제로 선언해야 함 |
+
+중요한 경계:
+
+- 이름·컬럼·payload 모양으로 source를 추측하지 않습니다. `sources: []`면 “후보 없음”이 아니라
+  rule-level `declare_claim_source` Meta Action입니다.
+- 잘못된 `claim_contract`는 rejection에 기록되고 계약만 빠집니다. legacy Enrichment rule은 계속 작동합니다.
+- `GET /api/ledger/subgraph?...&enrich_actions=true`가 anchor Claim에서 Action까지 걷습니다.
+- Evidence Graph는 reference query를 돌리지 않습니다. `resolve_claim` Action을 고른 뒤 별도 후보 조회를 해야 합니다.
+- target이 채워지면 Action projection은 사라집니다. Action을 `done=true`로 수정하는 API는 없습니다.
 
 ## 7. `candidate_for` + `auto_confirm` — 후보가 1개면 판단이 아니라 확인 (2026-07-30, ①)
 

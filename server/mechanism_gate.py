@@ -243,13 +243,15 @@ def _config_path():
     try:
         import paths
         base = paths.CONFIG_DIR
+        sample = paths.config_sample_path(CONFIG_FILENAME)
     except Exception:                                            # pragma: no cover
         base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
+        sample = os.path.join(base, "sample", CONFIG_FILENAME + ".sample")
     path = os.path.join(base, CONFIG_FILENAME)
     if os.path.exists(path):
         return path, "config"
-    if os.path.exists(path + ".sample"):
-        return path + ".sample", "sample"
+    if os.path.exists(sample):
+        return sample, "sample"
     return path, "absent"
 
 

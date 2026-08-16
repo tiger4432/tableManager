@@ -58,7 +58,11 @@ def run(path, **kw):
 
 
 def backups(tmp_path):
-    return sorted(p for p in os.listdir(tmp_path) if ".bak." in p)
+    root = tmp_path / "backup"
+    if not root.is_dir():
+        return []
+    return sorted(str(p.relative_to(tmp_path)) for p in root.iterdir()
+                  if ".bak." in p.name)
 
 
 # A site-owned declaration that is deliberately awkward: keys in a non-standard
@@ -438,8 +442,8 @@ class TestWriteMechanics:
         path = config_with_site_only(tmp_path)
         code, report = run(path, apply_mode=True)
         assert code == 0, report
-        names = set(os.listdir(tmp_path))
-        assert names == {"table_config.json"} | set(backups(tmp_path))
+        assert set(os.listdir(tmp_path)) == {"table_config.json", "backup"}
+        assert len(backups(tmp_path)) == 1
 
     def test_the_script_opens_no_database(self):
         """A config installer that issued DDL as a side effect would be a hazard.
@@ -456,7 +460,8 @@ class TestWriteMechanics:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".")[0])
         assert imported <= {"argparse", "codecs", "json", "os", "sys", "collections",
-                            "datetime", "paths", "product_tables"}, sorted(imported)
+                            "datetime", "paths", "config_backup", "product_tables"}, \
+            sorted(imported)
 
 
 class TestMalformedInput:
@@ -740,5 +745,6 @@ class TestPathResolution:
         assert paths.config_path("table_config.json").startswith(paths.CONFIG_DIR)
 
     def test_sample_path_is_the_tracked_template(self):
-        assert ipt.SAMPLE_PATH.endswith(os.path.join("config", "table_config.json.sample"))
+        assert ipt.SAMPLE_PATH.endswith(os.path.join(
+            "config", "sample", "table_config.json.sample"))
         assert os.path.exists(ipt.SAMPLE_PATH)

@@ -62,7 +62,7 @@
 
 **방법 — 이 순서대로:**
 
-1. `server/config/table_config.json.sample`의 **`void_obs`·`inspection_run` 두 선언**을 `server/config/table_config.json`으로 **손복사**.
+1. `server/config/sample/table_config.json.sample`의 **`void_obs`·`inspection_run` 두 선언**을 `server/config/table_config.json`으로 **손복사**.
    🔴 **config는 gitignore라 `git pull`이 안 실어온다** — 이건 설계다(배포가 운영자 설정을 덮어쓰지 못하게).
 2. 재기동 또는 `POST /admin/reload-configs` → **물리 테이블 생성 + 워크스페이스 자동 프로비저닝**(`scripts/` 포함).
 3. `psql "<운영URL>" -f server/migrations/add_void_schema_indexes.sql` — **반드시 2번 «다음»**(테이블이 있어야 인덱스가 붙는다).
@@ -104,6 +104,8 @@
 | **번역 소스가 «셋»이 됐다 (2026-08-14 3차 · `0a86651`)** | 결함 관측이 원장에 들어왔습니다(판정 R-2026-08-14-D). 마이그레이션은 **추가로 없습니다** — 표도 컬럼도 안 늘고 **행만** 늘어납니다:<br>③ `conda run -n assy_manager python -m ledger.backfill --source void_obs`<br>④ `conda run -n assy_manager python -m ledger.backfill --source delam_obs`<br>**순서는 상관없고**(서로 독립) ①·② 뒤이기만 하면 됩니다. 🔴 **선행 조건은 4번 항목**입니다 — `inspection_run`·`void_obs`·`delam_obs`가 있어야 하고, **분모(`inspection_run`)가 없으면 발견이 전부 거절**됩니다(원자 0). 개발 박스 실측: **91,756 + 10,421 = 102,177 원자, 거절 0 · 불완전 0**(20.8 s / 2.9 s). 되돌리기는 [LEDGER_GUIDE §4.7](../guide/LEDGER_GUIDE.md)의 술어 둘 |
 | **⚠️ 이 박스의 소스는 «합성»입니다** | `void_obs`·`delam_obs`가 생성기 산물이라 번역된 원자 payload에 **`"synthetic": true`**가 붙습니다(선언의 `synthetic` 한 줄). 🔴 **운영에 실물 피드가 들어오는 날 그 줄을 «지우고» 백필해야 합니다** — 안 지우면 진짜 관측이 합성으로 표시된 채 영구히 남습니다(원장은 UPDATE가 없어 정정이 재번역입니다) |
 | **🔴 스크립트가 «둘»이다 (2026-08-13 추가 · `0198e7e`)** | ②는 커서 표에 **`refusal_reasons`** 컬럼 하나를 붙인다(열둘 → 열셋). 거절 «사유»가 그전까지 백필 프로세스의 **메모리에만** 있어서 **DB를 어떻게 읽어도 사유 하나를 낼 수 없었다.** `ADD COLUMN <nullable, DEFAULT 없음>` 한 문장이라 PG 11+에서 **카탈로그만** 바꾸고 표 크기와 무관하며, 게이트가 `pg_attribute`라 **재실행은 DDL도 잠금도 0**이다. 되돌리기는 `--reverse`(내역만 잃고 원자·커서·집계는 안 잃는다) |
+| **Source Event 전환 (2026-08-15)** | 새로 만드는 원장과 새로 재적재하는 원자는 writer가 `source_event_id`·`source_event_state`를 처음부터 기록하므로 **별도 작업이 없다. 이것이 권장 경로다.** 기존 원장을 잠시 유지해야 할 때만 `conda run -n assy_manager python server/migrations/add_ledger_source_events.py --apply`를 실행한다(`--report`는 읽기 전용). 과거 원자를 억지로 묶지 않고 **원자 1개 = `legacy_atom` 사건 1개**로만 보존한다. 곧 재적재할 환경에서는 이 호환 백필에 시간을 쓰지 않는다 |
+| **Evidence Graph 확인** | 배포 게이트는 두 컬럼과 `idx_ledger_source_event`·`idx_ledger_object_entity`를 모두 확인한다. 빠지면 `/api/ledger/subgraph`가 빈 200이 아니라 `503 source_event_projection_not_deployed`와 `missing[]`을 답한다. 재적재 후 `GET /api/ledger/subgraph?id=<opaque-id>&hops=3`에서 `raw_claims:true`, `resolver_applied:false`를 확인한다 |
 | **⚠️ 건너뛰어도 500은 안 난다** | ②를 안 돌려도 **웹서버는 죽지 않는다** — 읽는 쪽(`/coverage`)이 카탈로그에 컬럼 존재를 먼저 묻고, 쓰는 쪽(`ensure_schema`)이 백필 첫 단계에 같은 문장을 스스로 적용한다. 잃는 것은 **화면이 거절 사유를 이름으로 보여 주는 능력**이다. 1번 항목처럼 「안 돌리면 라우트가 죽는」 계급이 **아니다** |
 | **성질** | **추가 전용·멱등.** DROP 없음, 기존 것의 ALTER 없음, 기존 테이블의 행을 건드리는 문장 없음. ①은 **새 테이블 둘만**, ②는 **컬럼 하나만** 만든다 |
 | **급하지 않은 이유** | 안 돌아도 **아무것도 안 깨진다** — 부팅 시 `server/ledger`를 import하는 프로세스가 없다. 2번과 달리 큰 기존 테이블에 컬럼을 붙이지 않아 **잠금 위험도 없다** |

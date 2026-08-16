@@ -227,7 +227,7 @@ function normaliseMap(raw, index) {
       : (source.subject_identity && typeof source.subject_identity === 'object' ? structuredClone(source.subject_identity) : null),
     markKey: text(source.wafer_mark_key || source.mark_key || source.identity?.mark_key || source.subject_identity?.mark_key),
     wafer: text(source.identity?.keys?.wafer || source.subject_identity?.keys?.wafer || source.subject_wafer),
-    bondingLeg: text(source.identity?.keys?.bonding_leg || source.subject_identity?.keys?.bonding_leg
+    bondingLeg: text(source.identity?.context?.bonding_leg || source.subject_identity?.context?.bonding_leg
       || source.subject_leg || source.bonding_leg),
     resolutionState: normaliseResolutionState(source.resolution_state || 'resolved'),
     meta: {

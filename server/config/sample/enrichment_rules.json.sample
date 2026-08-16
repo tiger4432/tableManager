@@ -11,6 +11,19 @@
     },
     "enabled": true,
     "auto_confirm": true,
+    "claim_contract": {
+      "version": 1,
+      "label_ko": "DT 결과물 신원",
+      "anchor": {"predicate": "transferred", "payload_path": "to", "object_type": "dt_job", "decision_key_map": {"dt_job": "dt_job"}},
+      "slots": [
+        {"target_field": "dt_lot_confirmed", "predicate": "transferred", "payload_path": "to.keys.dt_lot"},
+        {"target_field": "dt_slot_confirmed", "predicate": "transferred", "payload_path": "to.keys.dt_slot"}
+      ],
+      "sources": [
+        {"kind": "reference_view", "view_index": 3, "authority": "candidate", "targets": ["dt_lot_confirmed"]},
+        {"kind": "reference_view", "view_index": 4, "authority": "candidate", "targets": ["dt_slot_confirmed"]}
+      ]
+    },
     "reference_views": [
       {
         "label": "이 job의 원본 셀",
@@ -54,6 +67,13 @@
     "aggregations": {},
     "enabled": true,
     "auto_confirm": false,
+    "claim_contract": {
+      "version": 1,
+      "label_ko": "DT 좌표 프레임",
+      "anchor": {"predicate": "transferred", "payload_path": "to", "object_type": "dt_job", "decision_key_map": {"dt_job": "dt_job"}},
+      "slots": [{"target_field": "dt_frame", "predicate": "frame_confirmed", "payload_path": "map_ref"}],
+      "sources": []
+    },
     "reference_views": [],
     "alignment": true
   },
@@ -67,6 +87,13 @@
     "aggregations": {},
     "enabled": true,
     "auto_confirm": false,
+    "claim_contract": {
+      "version": 1,
+      "label_ko": "Core 좌표 프레임",
+      "anchor": {"predicate": "transferred", "payload_path": "to", "object_type": "dt_job", "decision_key_map": {"dt_job": "dt_job"}},
+      "slots": [{"target_field": "core_frame", "predicate": "frame_confirmed", "payload_path": "map_ref"}],
+      "sources": []
+    },
     "reference_views": [],
     "alignment": true
   }

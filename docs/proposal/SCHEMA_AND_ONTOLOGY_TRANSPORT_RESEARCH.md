@@ -174,7 +174,7 @@ then record the column here naming that migration."*
 
 ### ④ 정의가 일부러 버전 관리 밖에 있다 — **맞다. 그러나 실측이 문제의 성격을 바꾼다**
 
-규칙은 실재한다. `.gitignore`: `server/config/*` + `!server/config/*.sample`.
+규칙은 실재한다. `.gitignore`: `server/config/*` 아래에서 `server/config/sample/*.sample`만 추적한다.
 `LEAD_PM_HANDOFF.md` §2: *"`server/config/`·`ingestion_workspace/`는 **일부러** git 밖 —
 운영 패치 시 오염 방지. `.sample`은 git 안이다."* `ontology_mapping.json`이 그중 하나인 것도 맞다.
 

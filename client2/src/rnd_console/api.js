@@ -123,7 +123,7 @@ export function createLedgerApi({ fetchImpl = globalThis.fetch, base = DEFAULT_B
     },
     async resolveCompositionScope(markKeys, options = {}) {
       return this.resolveSelection((markKeys || []).map((mark_key) => ({
-        kind: 'wafer', identity: { type: 'WaferLeg', keys: {}, mark_key }, operation: 'add', group: 'A',
+        kind: 'wafer', identity: { type: 'Wafer', keys: {}, mark_key }, operation: 'add', group: 'A',
       })), options);
     },
     loadCompositions(finalChipIds, params = {}, options = {}) {
@@ -141,7 +141,7 @@ export function markingSnapshotToSelection(snapshot, identities = new Map()) {
     for (const mark of group.marks || []) {
       if (mark.kind === 'entity_set') {
         for (const id of mark.selector?.ids || []) output.push({
-          kind: 'wafer', identity: identities.get(id) || { type: mark.subjectType || 'WaferLeg', keys: {}, mark_key: id },
+          kind: 'wafer', identity: identities.get(id) || { type: mark.subjectType || 'Wafer', keys: {}, mark_key: id },
           operation: 'add', group: group.id, group_id: group.id,
           finding_kind: mark.selector.findingKind || undefined,
           // One visual entity_set expands to many atomic resolver selections.  The
@@ -185,9 +185,9 @@ export function normaliseSelectionResolution(raw = {}) {
     id: String(group.group_id || group.id),
     label: group.label || (group.group_id === 'A' ? 'Defect' : group.group_id === 'B' ? 'Reference' : String(group.group_id || group.id)),
     color: group.color || palette[group.group_id] || '#667085',
-    // The investigation population is WaferLeg, not the many Core components
-    // carried by each unit.  Keep component_count as evidence in the raw payload.
-    count: Number(group.analysis_unit_count ?? group.count ?? group.component_count ?? 0),
+    // The investigation population is Wafer x planned experiment-unit aggregation,
+    // not a second entity type and not the many Core components carried by each unit.
+    count: Number(group.aggregation_unit_count ?? group.count ?? group.component_count ?? 0),
   }));
   const facetLabel = (facet, category) => {
     const signature = facet.signature || {};
@@ -345,11 +345,12 @@ export function normaliseSelectionResolution(raw = {}) {
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const identityFields = (identity = {}) => {
   const keys = identity.keys || {};
+  const context = identity.context || {};
   const wafer = keys.wafer == null ? '' : String(keys.wafer);
-  const bondingLeg = keys.bonding_leg == null ? '' : String(keys.bonding_leg);
+  const bondingLeg = context.bonding_leg == null ? '' : String(context.bonding_leg);
   return {
     identity: structuredClone(identity), wafer, bondingLeg,
-    subjectLabel: bondingLeg ? `WF ${wafer} · LEG ${bondingLeg}` : `WF ${wafer}`,
+    subjectLabel: bondingLeg ? `WF ${wafer} · 실험단위 ${bondingLeg}` : `WF ${wafer}`,
   };
 };
 
@@ -429,7 +430,7 @@ export function normaliseTrendResponse(raw) {
     rows,
     columns: [
       { key: 'wafer', label: 'BASE WAFER-ID', width: 148 },
-      { key: 'bondingLeg', label: 'BONDING LEG', width: 132 },
+      { key: 'bondingLeg', label: '본딩 실험단위', width: 160 },
       { key: 'occurredAt', label: '관측 시각', width: 154, format: (value) => value ? new Date(value).toLocaleString('ko-KR') : '기록 없음' },
       ...traceDimensions.map((dimension) => ({ key: `trace:${dimension.id}`, label: dimension.label, width: 112, kind: 'trace', ontologyPath: dimension.ontologyPath, states: dimension.states, format: traceDisplay })),
       ...seriesIds.map((id) => ({ key: id, label: definitions.get(id)?.label || id, width: 112 })),

@@ -51,8 +51,8 @@
 
 | | |
 |---|---|
-| **테이블** | `ledger_events` + `ledger_translator_cursor`. **`models.py`에 없습니다** — DDL의 유일한 철자는 `server/ledger/schema.py`이고 **마이그레이션 «둘»이 그것을 부릅니다**: `add_ledger_events.py`(표 둘 생성)와 **`add_ledger_refusal_reasons.py`**(2026-08-13 `0198e7e` — 커서에 컬럼 하나 추가). 사본이 없으니 드리프트할 자리도 없습니다. 🔴 **후자에만 있는 문장은 «역방향»뿐입니다** — `schema.py`는 계약상 추가 전용이라 `DROP`이 거기 있을 일이 없습니다. 부팅 시 `server/ledger`를 import하는 프로세스는 **없습니다** — 마이그레이션을 안 돌려도 아무것도 안 깨집니다 |
-| **`ledger_events` 컬럼** | 열하나 — 7필드 봉투를 편 것입니다: `id`(uuid7) · `subject_type` · `subject_keys`(JSONB) · `predicate` · `object_kind` · `object_payload`(JSONB) · `occurred_at` · `source_who` · `source_translator_ver` · `source_raw_ref` · `supersedes` |
+| **테이블** | `ledger_events` + `ledger_translator_cursor`. **`models.py`에 없습니다** — DDL의 유일한 철자는 `server/ledger/schema.py`다. 새 원장은 `add_ledger_events.py`, 기존 커서 호환은 `add_ledger_refusal_reasons.py`, 기존 원장의 선택적 Source Event 호환은 `add_ledger_source_events.py`가 담당한다. 곧 재적재할 환경은 마지막 호환 백필을 건너뛰고 새 writer 출력을 적재한다 |
+| **`ledger_events` 컬럼** | **13개** — 7필드 의미 봉투를 편 기존 11개(`id`…`supersedes`) + 원천 발화 상관 `source_event_id`·`source_event_state`. 뒤의 둘은 resolver/Candidate 의미가 아니라 Evidence Graph의 Event→Claim 경계다 |
 | **`ledger_translator_cursor` 컬럼** | **열셋**(2026-08-13 `0198e7e`로 열둘 → 열셋). 소스당 한 행이고 카운터는 **SET이 아니라 누적**입니다. 새로 붙은 것은 **`refusal_reasons JSONB`** — `molecules_refused`의 내역(`{사유: {count, last_at}}`)이며 **같은 트랜잭션에서 그 집계와 함께** 쓰입니다. 🔴 **NULL은 `{}`가 아닙니다**: NULL = 「이 행은 컬럼보다 오래됐고 그 집계는 영원히 분해될 수 없다」(개발 두 DB 모두 그런 행을 갖고 있었습니다), `{}` = 「현재 쓰기가 이 행을 소유했고 거절 0건」. 필드별 의미론의 정본은 [spec/LEDGER_TECHNICAL_SPEC §1.5·§1.5-bis](../spec/LEDGER_TECHNICAL_SPEC.md) |
 | **컬럼 추가의 순서 위험** | 🔴 **양방향으로 방어돼 있어 순서에 의존하지 않습니다.** 쓰기 쪽은 `schema.ensure_schema`가 같은 추가 문장을 **모든 백필의 첫 단계**에 적용하고(번역기가 못 쓰는 표를 만날 수 없습니다), 읽기 쪽 `ledger_trace.coverage`는 **`pg_attribute`에 어느 컬럼이 있는지 먼저 묻고** 있는 것만 SELECT합니다 — 마이그레이션보다 앞서 뜬 웹서버가 500 대신 **그 필드 없이 답합니다.** 이 프로젝트가 `add_frame_confirmation.py`에서 이미 값을 치른 위험입니다 |
 | **파티션** | `occurred_at` RANGE, **월 단위**. 🔴 **첫날부터입니다** — 이미 채워진 테이블에 파티션을 붙이는 `ALTER`는 없고 전면 재작성입니다. 번역기가 자기가 쓸 달을 먼저 만듭니다 |
@@ -60,7 +60,7 @@
 | **중복 판정** | 유니크 인덱스는 **해시가 아니라 컬럼 일곱**에 겁니다(`occurred_at`·`predicate`·`subject_type`·`subject_keys`·`coalesce(object_payload,'{}')`·`source_translator_ver`·`source_raw_ref`). 해시 키는 파이썬의 `json.dumps`와 jsonb의 `::text`가 **다르게 철자**하므로, 어긋나면 모든 행이 새 행으로 보이면서 **조용히** 실패합니다. `coalesce(...,'{}')`인 이유는 PG 15 미만에서 인덱스의 NULL이 서로 **구별되기** 때문입니다 |
 | **CHECK로 올라간 산문** | `register`의 목적어는 ∅이고 pin된 `object_kind` enum에 ∅ 철자가 없으므로 `object_kind IS NULL`을 **`register`에만** 합법으로 만듭니다(양방향). `subject_keys`는 객체여야 합니다(연결 문자열 키가 한 조각이 빌 때 붕괴한 사고를 저장 계층에서 막습니다). 자기를 `supersedes`하는 원자는 해결기가 영원히 따라갑니다 |
 | **`recorded_at` 없음** | uuid7 `id` 안에 있습니다. 컬럼을 되살리면 한 질문에 답이 둘이 됩니다 |
-| **상관 표식 없음** | 배치·트랜잭션 신원(`molecule_ref`)은 **메모리에만** 있고 컬럼이 아닙니다 — 새어 나갈 자리가 없어야 계약 위반이 구조적으로 불가능합니다 |
+| **원천 사건 상관** | 원시 `molecule_ref`는 **메모리에만** 있고 writer가 source/time과 함께 불투명 `source_event_id`로 접은 뒤 버린다. 일반 배치·트랜잭션 의미가 아니며 resolver가 읽으면 계약 위반이다. Evidence Graph만 Source Event→Claim 감사 경계로 읽는다 |
 | **어휘·개체 타입** | **컬럼이 아니라 코드의 선언**입니다(`server/ledger/vocabulary.py`) — 저장 계층은 술어를 **문자열**로 받고 CHECK 둘(`register`의 ∅, `subject_keys`가 객체)만 압니다. 2026-08-14에 술어가 **일곱 → 아홉**(`processed_with`·`has_param`), 개체 타입에 **`Recipe`**(키 `["recipe","rev"]`)가 들어왔고, **3차에 `observed`까지 «열하나»**가 됐습니다(`transferred` 포함). 🔴 **스키마 변경은 매번 0줄입니다** — 어휘 확장이 DDL을 건드리지 않는 것이 이 설계가 사려던 것이고, 그래서 **마이그레이션도 재배포도 필요 없습니다.** 계약은 [spec §3.7](../spec/LEDGER_TECHNICAL_SPEC.md) |
 | **원장에 무엇이 사는가** (2026-08-14 3차) | 세 갈래입니다 — **혈통**(`lot_event`: `register`·`has_wafer`·`slot_map`·`derived_from`) · **공정·레시피**(생성기: `processed_with`·`has_param`) · **결함 관측**(`void_obs`·`delam_obs`: **`observed` 102,177건**). 🔴 **관측 원자의 저장 사실 셋**: ① `occurred_at`은 **`inspection_run.observed_at`**에서 옵니다(발견 행의 `updated_at`은 **도착 시각**이라 쓰이지 않습니다) ② payload에 `finding_kind`·`method`·**`run_uid`**가 **필수**로 들어갑니다 — 분모 규율이 원장 안에서도 서는 자리입니다 ③ 칩 좌표·기하·`class`·`unit`은 **payload**이지 컬럼이 아닙니다. ⚠️ **합성 소스라 payload에 `"synthetic": true`가 함께 들어 있습니다** — 걷어내는 술어는 [LEDGER_GUIDE §4.7](../guide/LEDGER_GUIDE.md) |
 | **파티션 실측** (2026-08-14 3차) | 관측 번역으로 **`2026_09`·`2026_10`·`2026_11` 셋이 더 생겨 다섯**이 됐고 원장이 **186,924원자 / 101,326,848 바이트**가 됐습니다. 🔴 **또 번역기가 만든 것이지 마이그레이션이 아닙니다.** ⚠️ **구조 뷰 센서스가 85 ms → 438 ms**로 올랐지만 **여전히 256 MB 게이트 아래**라 창은 강제되지 않았습니다([spec §5.7](../spec/LEDGER_TECHNICAL_SPEC.md)) |
@@ -340,9 +340,11 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 ## 3. 비즈니스 키 & 복합 키
 
-- `business_key` — 테이블의 자연 키 컬럼. `business_key_val`(인덱스 컬럼)에 저장되어 고성능 정렬·업서트 매칭에 사용.
-- `composite_key_source` + `composite_key_separator` — 여러 컬럼을 합쳐 복합 비즈니스 키 생성.
-  - 예: `bonding_map` = `base_x_y`, `wafer_map_metadata` = `target_table_map_id`.
+- `business_key` — 테이블의 단일 자연 키 컬럼. `business_key_val`(프레임워크 인덱스 컬럼)에 저장되어 고성능 업서트 매칭에 사용.
+- `composite_key_source` + `composite_key_separator` — 여러 물리 컬럼을 합쳐 복합 비즈니스 키 생성.
+  - 원천에 별도의 합성 키 물리 컬럼이 **없으면 `business_key`를 생략**합니다. 조립값은 프레임워크 소유 `business_key_val`에만 저장되고 원천 컬럼 집합은 바뀌지 않습니다.
+  - 제품 소유 표처럼 합성 키 물리 컬럼(`map_pk`, `cell_key`)이 실제로 있으면 `business_key`도 함께 선언하며, 그 컬럼에도 같은 조립값을 씁니다.
+  - 예: 원천 `bonding_map`은 `(base_wafer_id, base_x, base_y)`만 선언하고, 제품 소유 `wafer_map_metadata`는 `map_pk = target_table_map_id`를 함께 저장합니다.
 - `map_key_columns` — 맵 저장(`replace_map`) 시 어떤 행 집합을 purge할지 범위 결정.
 
 ### 3.1 「업무 키 하나에 행 하나」는 **데이터베이스가 강제한다** · 2026-08-07 D3

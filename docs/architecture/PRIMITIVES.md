@@ -516,7 +516,7 @@
 
 ### ⭐ **관례에 기댄 파생은 «분리 가능»하게 표시하라 — 버전 문자열의 접미가 열두 번째 컬럼보다 낫다** (2026-08-13 등록 · `f896020`+`01452d5`)
 - **무엇**: 소스가 **말하지 않은 것**을 config 선언으로 메워 만든 값과, 소스가 **실제로 발화한** 값을 한 저장소에 섞어 넣어야 할 때가 있다. 둘을 가르는 방법은 새 컬럼이 아니라 **버전 문자열의 접미**다 — 번역기가 자기 config 선언을 해시해 `source_translator_ver`에 싣고, 관례로 만들어진 원자는 그 값이 `#<derivation>`으로 끝난다. 그러면 `WHERE source_translator_ver LIKE '%#slot_preserving'` 하나로 **관례발 원자만** 떼어낼 수 있고, 스키마는 한 칸도 안 넓어진다.
-- **어디**: `server/ledger/lot_event_translator.py`(접미 부여) · `server/config/ledger_config.json.sample`의 `vocabulary.<event>.slot_pairing`(관례 «선언») · `server/ledger_trace.py`의 `inference_derivations`(해결기가 그 접미를 읽어 3류로 내린다). 판정은 [process/LEDGER_RULINGS](../process/LEDGER_RULINGS.md).
+- **어디**: `server/ledger/lot_event_translator.py`(접미 부여) · `server/config/sample/ledger_config.json.sample`의 `vocabulary.<event>.slot_pairing`(관례 «선언») · `server/ledger_trace.py`의 `inference_derivations`(해결기가 그 접미를 읽어 3류로 내린다). 판정은 [process/LEDGER_RULINGS](../process/LEDGER_RULINGS.md).
 - **언제 재사용**: **「이 값이 데이터에 있었나, 우리가 그렇게 «치기로» 했나」가 나중에 물어질 모든 자리.** 실측 근거의 모양이 이 항목을 만들었다 — 분할(split)의 두 행은 **둘 다 사후 스냅샷**이라 웨이퍼 겹침이 14건 전부 **0**이었다. 즉 그 사슬은 「분할은 슬롯을 유지한다」는 **믿음 위에서만** 존재하고, 그 믿음은 데이터에 없다.
 - **함정**:
   - 🔴 **관례를 번역기 코드에 넣지 마라 — 선언으로 빼면 «반대 입장»이 config 한 줄이 된다.** `shared_wafer`로 바꾸면 같은 소스가 슬롯 원자를 **0개** 낸다. 그리고 어느 쪽이든 접미가 붙으므로 **원자마다 자기를 만든 관례가 남고**, `source_raw_ref`가 있으므로 관례가 나중에 거짓으로 밝혀져도 **재번역이 가능하다.**
@@ -556,7 +556,7 @@
 
 ### ⭐ **주어 «자체»를 축으로 선언하면 「이 둘 vs 나머지」가 표현 가능해진다 — 마킹 축은 코드가 아니라 선언이다** (2026-08-14 등록 · `5ea29b6` · `siblings_axes.json`)
 - **무엇**: 대조·집계의 선언된 축이 전부 그룹 수준(랏·장비·레시피)이면 「마킹한 «그 대상» vs 나머지」는 **표현 불가**이고, 화면은 마킹을 부모 그룹으로 **불리는** 것 말고 수가 없다(웨이퍼 2장을 마킹했는데 50장에 대해 답한 소유자 실측이 그 모양이다). 처방은 새 엔진이 아니라 **모집단 단위의 신원 컬럼을 축으로 «선언»하는 것** — 관계 자신의 신원 철자와 기하의 주어 선언 사이 번역은 이미 그 위의 `join` 블록이 들고 있으므로 **파이썬 0줄**이다.
-- **어디**: `server/config/siblings_axes.json.sample`의 `attribution[].axes[]` `wafer` 항목 ↔ `server/ledger_walk_contrast.py`(`scope=wafer:<id>`). 계약 [backend §2 `/siblings`](./backend.md), 선언 [CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md).
+- **어디**: `server/config/sample/siblings_axes.json.sample`의 `attribution[].axes[]` `wafer` 항목 ↔ `server/ledger_walk_contrast.py`(`scope=wafer:<id>`). 계약 [backend §2 `/siblings`](./backend.md), 선언 [CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md).
 - **언제 재사용**: 「이 N개와 나머지」 질문이 그룹 축으로만 표현될 때. **새 비교 장치를 설계하기 전에** — 축 엔진이 이미 있으면 선언 한 항목이 먼저다.
 - **함정**:
   - 🔴 **선언된 축은 요인 랭킹에도 제공된다** — 구성원당 한 값인 축은 요인이 아니라 **식별자**라(실측 2,600값) 랭킹을 오염시킨다. 마킹 쪽은 무해하다(걷기 대조는 자기가 마킹한 축을 랭킹하지 않는다) — 요인 쪽은 `axes=`로 좁히거나 소비자가 요인 축을 명시해야 하고, **엔진에 고카디널리티 가드는 아직 없다**(보고만 됨).

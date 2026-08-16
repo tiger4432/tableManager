@@ -400,6 +400,140 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
     return views
 
 
+def _normalize_claim_contract(rule_name: str, raw, decision_key: list,
+                              target_fields: list, reference_views: list,
+                              rejections: list = None):
+    """Validate the optional ontology/action projection contract.
+
+    A bad additive contract must not disable the legacy Enrichment rule.  It is dropped
+    by name and reported, while dedup/queue/reference behaviour remains unchanged.
+    Nothing is inferred from field spelling: the Claim anchor, slot semantics and supply
+    sources are all declarations.
+    """
+    if raw is None:
+        return None
+
+    def reject(detail):
+        message = f"claim_contract ignored: {detail}"
+        logger.warning(f"[Enrichment:{rule_name}] {message}")
+        _record(rejections, "claim_contract", rule_name, message)
+        return None
+
+    if not isinstance(raw, dict):
+        return reject("must be an object")
+    version = raw.get("version")
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        return reject("version must be an integer >= 1")
+    label = raw.get("label_ko")
+    if not isinstance(label, str) or not label.strip():
+        return reject("label_ko must be a non-empty string")
+    anchor = raw.get("anchor")
+    if not isinstance(anchor, dict):
+        return reject("anchor must be an object")
+    predicate = anchor.get("predicate")
+    payload_path = anchor.get("payload_path")
+    object_type = anchor.get("object_type")
+    key_map = anchor.get("decision_key_map")
+    for name, value in (("predicate", predicate), ("payload_path", payload_path),
+                        ("object_type", object_type)):
+        if not isinstance(value, str) or not value.strip():
+            return reject(f"anchor.{name} must be a non-empty string")
+    from ledger import vocabulary as ledger_vocabulary
+    known_predicates = set(ledger_vocabulary.PREDICATES)
+    if predicate.strip() not in known_predicates:
+        return reject("anchor.predicate is not in the canonical ledger vocabulary")
+    if not all(_CANDIDATE_COLUMN_RE.match(part)
+               for part in payload_path.strip().split(".")):
+        return reject("anchor.payload_path must be a dot path of plain identifiers")
+    if not isinstance(key_map, dict) or set(key_map) != set(decision_key):
+        return reject("anchor.decision_key_map must cover every decision_key exactly")
+    if not all(isinstance(value, str) and _CANDIDATE_COLUMN_RE.match(value)
+               for value in key_map.values()):
+        return reject("anchor.decision_key_map values must be plain key names")
+
+    raw_slots = raw.get("slots")
+    if not isinstance(raw_slots, list) or not raw_slots:
+        return reject("slots must be a non-empty list")
+    slots = []
+    for index, slot in enumerate(raw_slots):
+        if not isinstance(slot, dict):
+            return reject(f"slots[{index}] must be an object")
+        target = slot.get("target_field")
+        slot_predicate = slot.get("predicate")
+        slot_path = slot.get("payload_path")
+        if target not in target_fields:
+            return reject(f"slots[{index}].target_field is not a rule target_field")
+        if not isinstance(slot_predicate, str) or not slot_predicate.strip():
+            return reject(f"slots[{index}].predicate must be a non-empty string")
+        if slot_predicate.strip() not in known_predicates:
+            return reject(
+                f"slots[{index}].predicate is not in the canonical ledger vocabulary")
+        if (not isinstance(slot_path, str) or not slot_path.strip()
+                or not all(_CANDIDATE_COLUMN_RE.match(part)
+                           for part in slot_path.strip().split("."))):
+            return reject(f"slots[{index}].payload_path must be a dot path of identifiers")
+        slots.append({
+            "target_field": target,
+            "predicate": slot_predicate.strip(),
+            "payload_path": slot_path.strip(),
+        })
+    slot_targets = [slot["target_field"] for slot in slots]
+    if len(slot_targets) != len(set(slot_targets)):
+        return reject("slots must not repeat a target_field")
+    if set(slot_targets) != set(target_fields):
+        return reject("slots must cover every target_field exactly")
+
+    raw_sources = raw.get("sources") or []
+    if not isinstance(raw_sources, list):
+        return reject("sources must be a list")
+    sources = []
+    for index, source in enumerate(raw_sources):
+        if not isinstance(source, dict):
+            return reject(f"sources[{index}] must be an object")
+        kind = source.get("kind")
+        if kind not in {"reference_view", "human", "translator"}:
+            return reject(
+                f"sources[{index}].kind must be reference_view, human, or translator")
+        targets = source.get("targets")
+        if not _is_str_list(targets) or not set(targets).issubset(target_fields):
+            return reject(f"sources[{index}].targets must name rule target_fields")
+        authority = source.get("authority")
+        if authority not in {"candidate", "observe", "confirm"}:
+            return reject(
+                f"sources[{index}].authority must be candidate, observe, or confirm")
+        normalized = {"kind": kind, "targets": list(targets),
+                      "authority": authority}
+        if kind == "reference_view":
+            view_index = source.get("view_index")
+            if (not isinstance(view_index, int) or isinstance(view_index, bool)
+                    or view_index < 0 or view_index >= len(reference_views)):
+                return reject(f"sources[{index}].view_index is out of range")
+            declared = set(reference_views[view_index].get("candidate_for") or {})
+            if authority == "candidate" and not set(targets).issubset(declared):
+                return reject(
+                    f"sources[{index}] candidate targets are not declared by that view")
+            normalized["view_index"] = view_index
+        else:
+            source_name = source.get("source")
+            if not isinstance(source_name, str) or not source_name.strip():
+                return reject(f"sources[{index}].source must be a non-empty string")
+            normalized["source"] = source_name.strip()
+        sources.append(normalized)
+
+    return {
+        "version": version,
+        "label_ko": label.strip(),
+        "anchor": {
+            "predicate": predicate.strip(),
+            "payload_path": payload_path.strip(),
+            "object_type": object_type.strip(),
+            "decision_key_map": dict(key_map),
+        },
+        "slots": slots,
+        "sources": sources,
+    }
+
+
 def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = None,
                    caps: dict = None) -> tuple:
     """규칙 1건을 검증·정규화한다. 반환: (normalized|None, 실패사유|None)."""
@@ -480,6 +614,9 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
                 "or business_key ∈ decision_key (dedup upsert key contract)"
             )
 
+    reference_views = _normalize_reference_views(
+        name, raw.get("reference_views"), decision_key, target_fields,
+        rejections=rejections, caps=caps)
     normalized = {
         "name": name,
         # ① auto-confirm opt-in. Carried through RAW (not coerced) so
@@ -506,9 +643,10 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         "target_fields": list(target_fields),
         "list_columns": list(list_columns),
         "aggregations": aggregations,
-        "reference_views": _normalize_reference_views(
-            name, raw.get("reference_views"), decision_key, target_fields,
-            rejections=rejections, caps=caps),
+        "reference_views": reference_views,
+        "claim_contract": _normalize_claim_contract(
+            name, raw.get("claim_contract"), decision_key, target_fields,
+            reference_views, rejections=rejections),
     }
     return normalized, None
 

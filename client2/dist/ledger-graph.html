@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.dataset.theme=t==='dark'?'dark':'light';}catch(e){}})();</script>
   <title>AssyManager - Ledger Graph</title>
-  <script type="module" crossorigin src="/assets/ledger_graph-Dl3vetrI.js"></script>
+  <script type="module" crossorigin src="/assets/ledger_graph-3ptat2M4.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CXYS4egR.js">
   <link rel="stylesheet" crossorigin href="/assets/config-ZCVo3oho.css">
-  <link rel="stylesheet" crossorigin href="/assets/ledger_graph-BWtrJDhS.css">
+  <link rel="stylesheet" crossorigin href="/assets/ledger_graph-DUe8gh7N.css">
 </head>
 <body>
   <main class="lg-shell">
@@ -20,7 +20,7 @@
       </a>
       <div class="lg-mode" role="group" aria-label="그래프 보기">
         <button type="button" data-lg-mode="ontology">Ontology</button>
-        <button type="button" data-lg-mode="lineage">Instances</button>
+        <button type="button" data-lg-mode="lineage">Evidence</button>
       </div>
       <form class="lg-search" data-lg-search>
         <label class="sr-only" for="lg-entity-type">개체 종류</label>
@@ -30,12 +30,21 @@
         <label class="lg-hops">홉
           <select data-lg-hops>
             <option value="5">5</option><option value="10">10</option>
-            <option value="20" selected>20</option>
+            <option value="20" selected>20</option><option value="30">30</option>
+            <option value="40">40</option>
           </select>
         </label>
+        <label class="lg-hops">방향
+          <select data-lg-direction>
+            <option value="both" selected>양쪽</option>
+            <option value="outgoing">나가는 주장</option>
+            <option value="incoming">들어오는 주장</option>
+          </select>
+        </label>
+        <label class="lg-inline-toggle"><input type="checkbox" data-lg-values checked /> 값 노드</label>
         <button type="submit">Search</button>
       </form>
-      <div class="lg-status" data-lg-status role="status">LOT을 입력하세요</div>
+      <div class="lg-status" data-lg-status role="status">개체를 선택하세요</div>
     </header>
 
     <section class="lg-workspace">
@@ -50,6 +59,9 @@
         <div class="lg-toolbar">
           <div data-lg-summary>아직 불러온 그래프가 없습니다</div>
           <div class="lg-toolbar__actions">
+            <button type="button" data-lg-export="nodes" title="Spotfire/Excel용 노드 표">Nodes CSV</button>
+            <button type="button" data-lg-export="edges" title="Spotfire/Excel용 관계 표">Edges CSV</button>
+            <button type="button" data-lg-export="properties" title="Spotfire/Excel용 동적 속성 표">Properties CSV</button>
             <button type="button" data-lg-zoom="out" aria-label="축소">−</button>
             <button type="button" data-lg-fit>Fit</button>
             <button type="button" data-lg-zoom="in" aria-label="확대">＋</button>
@@ -59,7 +71,7 @@
           <canvas data-lg-canvas tabindex="0" aria-label="원장 그래프. 노드를 끌어 위치를 조절하고 빈 공간을 끌거나 휠로 이동합니다."></canvas>
           <div class="lg-overlay" data-lg-overlay>
             <strong>Ledger Graph</strong>
-            <span>Ontology는 전체 구조를, Instances는 선택한 개체의 주장과 관계를 최대 20홉까지 펼칩니다.</span>
+            <span>Ontology는 전체 구조를, Evidence는 Entity·Event·Claim 중 어느 노드에서든 최대 40홉까지 펼칩니다.</span>
           </div>
         </div>
         <div class="lg-foot" data-lg-foot>노드를 끌어 위치 조절 · 빈 공간을 끌어 이동 · 휠로 확대/축소</div>
@@ -99,6 +111,8 @@
             <p><i class="lg-line lg-line--solid"></i> 원장이 관측한 관계</p>
             <p><i class="lg-line lg-line--dash"></i> 추론·관례 근거</p>
             <p><i class="lg-center-dot"></i> 탐색 시작점</p>
+            <p>Evidence는 해소 전 원시 증거입니다.</p>
+            <p>CSV 3장은 node_id로 Spotfire/Excel에서 조인합니다.</p>
           </section>
         </div>
       </aside>

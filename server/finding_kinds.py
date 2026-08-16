@@ -159,6 +159,9 @@ def load(force_reload: bool = False) -> dict:
                     raise FindingKindError(f"{CONFIG_FILENAME}.{name} must be an object")
                 merged.setdefault(name, {}).update(spec)
         for name, spec in merged.items():
+            if "active" in spec and not isinstance(spec["active"], bool):
+                raise FindingKindError(
+                    f"finding kind {name!r} declares `active` that is not boolean")
             for field in ("label", "observation_table", "extent_columns"):
                 if not spec.get(field):
                     raise FindingKindError(

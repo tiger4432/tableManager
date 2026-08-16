@@ -10,20 +10,29 @@ The response shape is pinned by the lead PM and a client lane is being built
 against it. Changing it is an escalation, not an edit.
 """
 
+import csv
+import io
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from database.database import get_db
 
 import finding_kinds
+import enrichment_actions
+import ledger_catalog
+import ledger_composition
+import ledger_explorer
 import ledger_journey
 import ledger_kinds
 import ledger_lots
+import ledger_selection
 import ledger_siblings
 import ledger_structure
+import ledger_subgraph
 import ledger_trace
+import ledger_trends
 import ledger_walk_contrast
 
 logger = logging.getLogger(__name__)
@@ -110,16 +119,251 @@ def trace_lineage(
         raise
     except Exception as exc:                       # noqa: BLE001 - see below
         # BACKSTOP for the race the gate cannot close: the relation is dropped
-        # between the catalogue lookup and the walk. Judged on SQLSTATE `42P01`
-        # (`undefined_table`), which is the same five characters in every locale
-        # and every driver. PROVEN by disabling the gate above and re-running
-        # `test_the_trace_route_names_an_absent_ledger_in_a_field_not_in_prose`:
-        # it still answered 503 with the structured body, from here.
+        # between the catalogue lookup and the walk.
         if _is_undefined_table(exc):
             raise _relation_absent()
         raise
 
 
+@router.get("/explore")
+def explore_lineage(
+    lot: str = Query(..., description="그래프 탐색을 시작할 랏"),
+    hops: int = Query(20, ge=1, le=20, description="혈통 관계 탐색 깊이"),
+    node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
+    edge_limit: int = Query(1200, ge=20, le=3000, description="응답 엣지 상한"),
+    db: Session = Depends(get_db),
+):
+    """해결 전의 분기 전체를 원장 개체 그래프로 답한다. 읽기 전용."""
+    lot = (lot or "").strip()
+    if not lot:
+        raise HTTPException(status_code=422, detail={
+            "reason": "lot_required", "message": "탐색 시작 랏이 필요합니다"})
+    try:
+        if not ledger_trace.relation_exists(db.connection(), LEDGER_RELATION):
+            raise _relation_absent()
+        return ledger_explorer.explore(
+            lot, _lookup_for(db), hops=hops,
+            node_limit=node_limit, edge_limit=edge_limit)
+    except ledger_trace.ResolverConfigError as exc:
+        raise HTTPException(status_code=503, detail={
+            "reason": "resolver_config_refused", "message": str(exc)})
+    except Exception as exc:                       # noqa: BLE001 - same backstop as trace
+        if _is_undefined_table(exc):
+            raise _relation_absent()
+        raise
+
+
+@router.get("/entities")
+def registered_entity_catalog(
+    subject_type: str = Query("Lot", alias="type", description="어휘에 등록된 issued 개체 타입"),
+    q: str = Query(None, max_length=120, description="구조화 신원 전체의 부분 문자열"),
+    after: str = Query(None, description="직전 응답의 불투명 keyset 커서"),
+    limit: int = Query(40, ge=1, le=100, description="한 페이지 개체 수"),
+    db: Session = Depends(get_db),
+):
+    """원장에 register된 모든 issued 개체를 타입별로 나열한다. OFFSET 없음."""
+    try:
+        if not ledger_trace.relation_exists(db.connection(), LEDGER_RELATION):
+            raise _relation_absent()
+        return ledger_catalog.entity_catalog(
+            db.connection(), subject_type=subject_type, q=q, after=after, limit=limit,
+            relation=LEDGER_RELATION)
+    except ledger_catalog.CatalogRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except ledger_catalog.CatalogUnavailable as exc:
+        raise HTTPException(status_code=503, detail=exc.detail)
+    except Exception as exc:                       # noqa: BLE001 - same DDL-race backstop
+        if _is_undefined_table(exc):
+            raise _relation_absent()
+        raise
+
+
+@router.get("/explore_entity")
+def explore_registered_entity(
+    entity_id: str = Query(..., alias="id", description="/entities가 반환한 불투명 개체 id"),
+    hops: int = Query(20, ge=1, le=20, description="개체 참조 탐색 깊이"),
+    node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
+    edge_limit: int = Query(1200, ge=20, le=3000, description="응답 엣지 상한"),
+    db: Session = Depends(get_db),
+):
+    """어떤 registered 개체든 그 개체의 주장과 전방 참조를 그래프로 답한다."""
+    try:
+        if not ledger_trace.relation_exists(db.connection(), LEDGER_RELATION):
+            raise _relation_absent()
+        subject_type, keys = ledger_explorer.decode_entity_id(entity_id)
+        if subject_type == "Lot":
+            return ledger_explorer.explore(
+                keys["lot"], _lookup_for(db), hops=hops,
+                node_limit=node_limit, edge_limit=edge_limit)
+        return ledger_explorer.explore_entity(
+            subject_type, keys, db.connection(), hops=hops,
+            node_limit=node_limit, edge_limit=edge_limit,
+            relation=LEDGER_RELATION)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={
+            "reason": "entity_id_invalid", "message": str(exc)})
+    except ledger_trace.ResolverConfigError as exc:
+        raise HTTPException(status_code=503, detail={
+            "reason": "resolver_config_refused", "message": str(exc)})
+    except Exception as exc:                       # noqa: BLE001 - DDL-race backstop
+        if _is_undefined_table(exc):
+            raise _relation_absent()
+        raise
+
+
+def _subgraph_contract_state(connection):
+    """Name missing deployment pieces before the evidence query can scan slowly."""
+    rows = ledger_trace._fetch(connection, """
+        SELECT
+          EXISTS (SELECT 1 FROM pg_attribute
+                  WHERE attrelid = to_regclass(%(relation)s)
+                    AND attname = 'source_event_id'
+                    AND attnum > 0 AND NOT attisdropped),
+          EXISTS (SELECT 1 FROM pg_attribute
+                  WHERE attrelid = to_regclass(%(relation)s)
+                    AND attname = 'source_event_state'
+                    AND attnum > 0 AND NOT attisdropped),
+          to_regclass('idx_ledger_source_event') IS NOT NULL,
+          to_regclass('idx_ledger_object_entity') IS NOT NULL
+    """, {"relation": LEDGER_RELATION})
+    names = ("source_event_id", "source_event_state",
+             "idx_ledger_source_event", "idx_ledger_object_entity")
+    return [name for name, present in zip(names, rows[0]) if not present]
+
+
+@router.get("/subgraph")
+def evidence_subgraph(
+    node_id: str = Query(..., alias="id",
+                         description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
+    hops: int = Query(12, ge=1, le=40, description="증거 그래프 탐색 깊이"),
+    direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
+                           description="Entity 주장 방향; 구조 엣지는 항상 양쪽 보존"),
+    include_values: bool = Query(True, description="값 목적어를 Value 노드로 표시"),
+    observations: str = Query(
+        "summary", pattern="^(summary|claims)$",
+        description="summary=Finding Collection으로 접기, claims=개별 관측 펼치기"),
+    include_actions: bool = Query(
+        True, alias="enrich_actions",
+        description="관련된 미완 Enrichment를 terminal Action 노드로 투영"),
+    node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
+    edge_limit: int = Query(1200, ge=20, le=3000, description="응답 엣지 상한"),
+    shape: str = Query("graph", pattern="^(graph|tables)$",
+                       description="graph 또는 Spotfire/Excel용 tables"),
+    property_limit: int = Query(10000, ge=100, le=20000,
+                                description="tables.properties 행 상한"),
+    db: Session = Depends(get_db),
+):
+    """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
+    try:
+        graph = _evidence_graph(
+            db.connection(), node_id=node_id,
+            hops=hops, direction=direction, include_values=include_values,
+            node_limit=node_limit, edge_limit=edge_limit,
+            observation_mode=observations,
+            action_lookup=(enrichment_actions.SqlEnrichmentActionLookup(db)
+                           if include_actions else None))
+        return (ledger_subgraph.tabular_projection(graph, property_limit)
+                if shape == "tables" else graph)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={
+            "reason": "subgraph_request_invalid", "message": str(exc)})
+    except HTTPException:
+        raise
+    except Exception as exc:                       # noqa: BLE001 - DDL race backstop
+        if _is_undefined_table(exc):
+            raise _relation_absent()
+        raise
+
+
+def _evidence_graph(connection, *, node_id, hops, direction, include_values,
+                    node_limit, edge_limit, observation_mode="summary",
+                    action_lookup=None):
+    if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
+        raise _relation_absent()
+    missing = _subgraph_contract_state(connection)
+    if missing:
+        raise HTTPException(status_code=503, detail={
+            "reason": "source_event_projection_not_deployed",
+            "state": "not_deployed", "missing": missing,
+            "message": ("Source Event 그래프 마이그레이션이 필요합니다: "
+                        "server/migrations/add_ledger_source_events.py --apply"),
+        })
+    return ledger_subgraph.subgraph(
+        node_id, ledger_subgraph.SqlEvidenceLookup(
+        connection, relation=LEDGER_RELATION),
+        hops=hops, direction=direction, include_values=include_values,
+        node_limit=node_limit, edge_limit=edge_limit,
+        observation_mode=observation_mode, action_lookup=action_lookup)
+
+
+def _csv_safe(value):
+    """Prevent spreadsheet formula execution without stringifying real numbers."""
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
+@router.get("/subgraph/table")
+def evidence_subgraph_table(
+    node_id: str = Query(..., alias="id", description="불투명 그래프 노드 id"),
+    table: str = Query("nodes", pattern="^(nodes|edges|properties)$"),
+    output_format: str = Query("json", alias="format", pattern="^(json|csv)$"),
+    hops: int = Query(12, ge=1, le=40),
+    direction: str = Query("both", pattern="^(outgoing|incoming|both)$"),
+    include_values: bool = Query(True),
+    observations: str = Query("summary", pattern="^(summary|claims)$"),
+    include_actions: bool = Query(True, alias="enrich_actions"),
+    node_limit: int = Query(400, ge=10, le=1000),
+    edge_limit: int = Query(1200, ge=20, le=3000),
+    property_limit: int = Query(10000, ge=100, le=20000),
+    db: Session = Depends(get_db),
+):
+    """Spotfire/Excel이 직접 소비할 한 장표를 JSON 또는 UTF-8 CSV로 답한다."""
+    try:
+        graph = _evidence_graph(
+            db.connection(), node_id=node_id, hops=hops, direction=direction,
+            include_values=include_values, node_limit=node_limit,
+            edge_limit=edge_limit, observation_mode=observations,
+            action_lookup=(enrichment_actions.SqlEnrichmentActionLookup(db)
+                           if include_actions else None))
+        projection = ledger_subgraph.tabular_projection(graph, property_limit)
+        selected = projection["tables"][table]
+        body = {
+            "schema_version": projection["schema_version"],
+            "state": projection["state"], "generated_at": projection["generated_at"],
+            "seed_id": projection["seed_id"], "table": table,
+            "columns": selected["columns"], "rows": selected["rows"],
+            "walk": projection["walk"], "limits": projection["limits"],
+            "truncated": projection["truncated"],
+            "provenance": projection["provenance"],
+        }
+        if output_format == "json":
+            return body
+        stream = io.StringIO(newline="")
+        writer = csv.DictWriter(
+            stream, fieldnames=selected["columns"], extrasaction="ignore",
+            lineterminator="\r\n")
+        writer.writeheader()
+        for row in selected["rows"]:
+            writer.writerow({key: _csv_safe(row.get(key))
+                             for key in selected["columns"]})
+        csv_bytes = ("\ufeff" + stream.getvalue()).encode("utf-8")
+        return Response(
+            content=csv_bytes, media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="ledger_subgraph_{table}.csv"',
+                "X-Ledger-Generated-At": str(projection["generated_at"] or ""),
+            })
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={
+            "reason": "subgraph_request_invalid", "message": str(exc)})
+    except HTTPException:
+        raise
+    except Exception as exc:                       # noqa: BLE001 - DDL race backstop
+        if _is_undefined_table(exc):
+            raise _relation_absent()
+        raise
 #: PostgreSQL `undefined_table`. The one fact about a missing relation that is
 #: not translated.
 SQLSTATE_UNDEFINED_TABLE = "42P01"
@@ -265,6 +509,75 @@ def ledger_journey_route(
             "reason": "finding_kind_registry_refused",
             "message": f"관측 종류 등록부 거절: {exc}"})
     except Exception as exc:                       # noqa: BLE001 - same backstop
+        if _is_undefined_table(exc):
+            raise _relation_absent()
+        raise
+
+
+@router.get("/trends")
+def ledger_trends_route(
+    kinds: str = Query(None, description="불량 종류 CSV. 미지정 시 선언된 전부"),
+    window: str = Query(None, description="기본 90d, 최대 366일"),
+    cursor: str = Query(None, description="Trend Table keyset cursor"),
+    limit: int = Query(None, description="표 행 수, 최대 200"),
+    max_points: int = Query(None, description="series별 표시점 상한, 최대 500"),
+    db: Session = Depends(get_db),
+):
+    """여러 불량 series와 Trend Table을 한 stable marking 계약으로 답한다.
+
+    ``limit``와 ``max_points``는 표시 예산이지 도메인 cardinality가 아니다. 종류와
+    subtype은 가변 길이 컬렉션이며, 표는 offset이 아니라 keyset cursor로 잇는다.
+    """
+    try:
+        return ledger_trends.trends(
+            db.connection(), kinds=kinds, window=window, cursor=cursor,
+            limit=limit, max_points=max_points)
+    except ledger_trends.TrendRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except ledger_siblings.SiblingsRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except finding_kinds.FindingKindError as exc:
+        raise HTTPException(status_code=422, detail={
+            "reason": "unknown_finding_kind", "message": str(exc)})
+    except Exception as exc:                       # noqa: BLE001 - same SQLSTATE backstop
+        if _is_undefined_table(exc):
+            raise _relation_absent()
+        raise
+
+
+@router.get("/composition")
+def ledger_composition_route(
+    final_chip_id: str = Query(..., description="최종 CHIP 안정 식별자"),
+    window: str = Query(None, description="기본 365d, 최대 730일"),
+    db: Session = Depends(get_db),
+):
+    """최종 CHIP을 구성한 모든 component/DT/TRANSFER 분기를 역추적한다."""
+    try:
+        return ledger_composition.composition(
+            db.connection(), final_chip_id=final_chip_id, window=window)
+    except ledger_composition.CompositionRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except ledger_siblings.SiblingsRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except Exception as exc:                       # noqa: BLE001
+        if _is_undefined_table(exc):
+            raise _relation_absent()
+        raise
+
+
+@router.post("/selection/resolve")
+def ledger_selection_resolve_route(
+    payload: dict = Body(..., description="typed selection schema v5 (Wafer + experiment context)"),
+    db: Session = Depends(get_db),
+):
+    """Trend/map/time marking을 원장 증거로 final CHIP과 비교 facet에 해소한다."""
+    try:
+        return ledger_selection.resolve(db.connection(), payload)
+    except ledger_selection.SelectionRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except ledger_siblings.SiblingsRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
+    except Exception as exc:                       # noqa: BLE001
         if _is_undefined_table(exc):
             raise _relation_absent()
         raise

@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟠 부분 최신 (§1~§5 Living · **§6.1~§6.4는 🗄️ 대체됨 — R-리라이트**) | **Last-verified:** 2026-08-14 심야
+> **Status:** 🟠 부분 최신 (§1~§5·§6.5 Living · **§6.1~§6.4는 🗄️ 대체됨 — R-리라이트**) | **Last-verified:** 2026-08-15 R&D Console + Ledger Graph
 >
 > 🔴 **[R-리라이트 · 소유자 최종] 콘솔 클라이언트 화면은 내일 «전면 재작성»됩니다** — §6 배너가 「무엇이 살아남고 무엇이 계승되지 않는가」의 정본입니다. **서버 계약은 전부 보존**([backend §2](./backend.md)), **화면은 계승하지 않습니다.** 이 문서의 §6 서술을 새 화면의 설계 근거로 쓰지 마십시오.
 > ⚰️ **[`2ec78b9` · R-2026-08-14-H] 구 지식그래프 뷰어(`graph.html`·`trace.html`)는 은퇴**했습니다 — §6.0 신설, 진입점 표·§7 갱신. nav 링크 삭제, 행 선택 버튼은 **활성 판정 라우트가 410이 되어 클라 변경 0줄로 자기 치유**.
@@ -120,6 +120,8 @@
 | ⚰️ `graph.html` | `src/graph_viewer.js` | **[2026-08-14 `2ec78b9`] 데이터 소스가 은퇴했다.** 페이지는 **딥링크로 여전히 열리고 묘비(tombstone)**를 띄워 원장 구조 뷰(`ledger.html?view=structure`)로 보낸다. 🔴 **파일을 지우지 않은 것이 판정이다** — 지우면 SPA catch-all이 `index.html`을 200으로 답해 `res.ok`가 참이 되고 클라가 HTML을 JSON으로 파싱하다 죽는다(은퇴가 「알 수 없는 오류」로 보인다). ⚠️ **이 레인은 작업 «중»에 정정 `c7ad95d`를 읽고 자기 계획을 뒤집었다** — 살아남는 것은 **능력이지 파일이 아니다** |
 | ⚰️ `trace.html` | `src/trace.js` | **[2026-08-14] 같은 은퇴.** `POST /graph/trace`가 410이다. 후계는 `ledger.html`의 원장 혈통 추적(§6.1) |
 | `ledger.html` | `src/ledger_trace.js` (+ `ledger_trace_core.js`·`ledger_trace_view.js` · `case_control_*.js` · `ontology_structure_*.js`) | **원장 화면 — 한 페이지, 질문 셋**(2026-08-13 `d9b98ab` 신설 — §7). 랏 하나(`LOT/02`·`LOT 02`도 받는다)를 치면 `GET /api/ledger/trace`의 홉을 카드 사슬로 그린다(§6.1). 같은 페이지 위쪽이 케이스-컨트롤 콘솔(§6.2), `?view=structure`가 유형 구조 뷰(§6.3). 🔴 **복잡도 예산: 앱 전체에서 폼 컨트롤 «+1»**(빌드된 페이지에서 `querySelectorAll('input,select,textarea,button').length === 1` 실측) + nav 앵커. **모달 없음·모드 없음** — 뷰 전환도 URL이지 상태가 아니다 |
+
+| `ledger-graph.html` | `src/ledger_graph/{main,graph_core,entity_catalog,styles}` | **Ledger Graph — 원장 구조·전체 등록 개체·증거 탐색기**(2026-08-15). `Ontology`는 `/api/ledger/structure`의 선언×실제 원자 흐름, `Evidence`는 Entity/Event/Claim/Finding/Value/Enrich Action 어느 노드든 `/api/ledger/subgraph`의 seed로 재사용한다. Claim에서 `needs_enrichment`로 도달한 Action은 육각형이며, 좌측에서 부족 target·예상 Claim·공급 경로를 읽는다. pan/zoom/Fit과 Spotfire/Excel용 Nodes/Edges/Properties CSV를 제공한다. 은퇴한 `graph.html`과 `/graph/*`를 부활시키지 않는다. |
 
 빌드 산출물 `dist/`는 FastAPI(:8080)가 서빙. `define`로 빌드 타임에 `import.meta.env.VITE_USER`(OS 사용자명) 주입 → `config.js`의 `CURRENT_USER`.
 
@@ -582,6 +584,15 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - **컨트롤 0개 추가**: 계층 필터·엣지 선택·선언 지도 링크가 전부 앵커이고, 뷰 전환도 헤더 링크 둘(`?` / `?view=structure`)입니다. 구조 뷰에서는 랏 입력의 Enter가 **렌더가 아니라 이동**입니다(그릴 패널이 화면에 없으므로).
 - ✅ **[2026-08-14 밤 정정] 소비 라우트 `GET /api/ledger/structure`는 «착지했습니다»** — 계약의 정본은 [backend §2](./backend.md)(유형 센서스 + 두 층 — `ledger`·`mechanism`. **기전 층도 `mechanism_models.json` 착지로 이제 렌더됩니다**). 소비 형태는 여전히 `ontology_structure_core.js` 헤더에 pin돼 있고 **바꾸는 것은 편집이 아니라 에스컬레이션**입니다. 404 폴백 문장(「구조 집계 API 미배포 — 화면만 준비됨」)은 구 서버용으로 남습니다.
 
+### 6.3-bis Ledger Graph (`ledger-graph.html`) — 2026-08-15
+
+- **두 모드다.** `Ontology`는 `/api/ledger/structure`를 읽어 개체 타입과 술어 계약을 실제 원자 수·기간·출처와 함께 그린다. `Evidence`는 LOT 전용도 Entity 전용도 아니다. 어휘가 `register`를 요구하는 모든 타입을 `ENTITY CATALOG`에 자동 생성하고, 선택 뒤에는 **Entity·Source Event·Claim·Finding Collection/Point·Value·Enrich Action 어느 노드든** 그 불투명 ID를 `/api/ledger/subgraph`에 되먹여 재중심한다. 캔버스는 분석 결론이 아니라 `raw_claims:true/resolver_applied:false` 증거 검사 화면이고 하단이 「해소 전 원시 증거」라고 말한다.
+- 홉은 5/10/20/30/40 중 고르고 기본 20(UI)이며 서버 기본은 12다. Entity 방향은 양쪽/나가는 주장/들어오는 주장, 값 노드는 표시 여부를 고른다. 노드·엣지·깊이·claim·action 절단은 하단에 이름 대어 표시하며 절단을 root나 빈 그래프로 렌더하지 않는다.
+- 캔버스는 이벤트 구동 방사형 배치다. **노드를 직접 끌어 수동 배치**하고, 빈 공간 drag는 pan, 커서 기준 wheel은 zoom이다. 수동 월드 좌표는 필터 재배치 뒤에도 보존하고 새 응답/새 시작점에서만 버린다. Fit·노드/엣지 hit-test를 제공하며 `ResizeObserver`와 DPR backing store를 사용한다.
+- 좌측은 Entity 정준 키, Event의 경계상태/출처/발생시각, Claim의 술어/목적어 종류/원문 참조/payload, Action의 상태·행동·부족 target·예상 Claim·공급 source를 읽는다. 모든 증거 노드에 「이 노드 중심으로 탐색」이 있고 캔버스 더블클릭도 같은 서버 재질의다. Ontology 상세은 목적어 형태·필수 필드·실제 원자 수·근거 등급을 읽는다.
+- 우측 맨 위는 **검색 가능한 전체 등록 개체 목록**이다. 먼저 유형을 고르면 해당 유형의 등록 개체 40개가 나타나고 `더 보기`는 구조화된 키 커서로 다음 페이지를 잇는다. 검색은 부분 trigram 인덱스가 없으면 전량 JSON 스캔으로 강등하지 않고 503으로 거절한다. 그 아래는 현재 응답에서 유도한 타입/술어 필터와 그래프 노드 목록이다. 어느 목록의 개체를 눌러도 서버에 그 개체 중심 그래프를 다시 요청한다. 목록과 필터에는 개체·술어 이름을 하드코딩하지 않는다. 합성 신원이라 `register`가 금지된 `Die`는 카탈로그에 나오지 않는다.
+- `AbortController`와 요청 세션 번호가 이전 응답을 폐기한다. 클라이언트 필터는 최대 400노드/1200엣지의 이미 유계화된 응답에만 적용한다. Toolbar의 Nodes/Edges/Properties CSV는 같은 seed·hops·direction을 `/subgraph/table`에 보내며 세 장은 stable node ID로 외부 도구에서 join한다. 캔버스와 CSV가 서로 다른 해석기를 갖지 않는다.
+
 ### 6.4 🗄️ **[대체됨 — R-리라이트]** 놀라움 장치 — 트렌드 화면 + 마킹 대조 (`ledger.html?view=surprise` · `src/surprise_*.js` + `src/contrast_*.js`) — 2026-08-14
 
 > 🔴 **이 절이 서술하는 화면은 내일 폐기됩니다**(위 §6 배너). 아래는 **「무엇이 있었고 어떤 결함을 실제로 밟았나」**의 기록이고, 재작성이 **소비**해야 할 것은 서버 계약과 원칙뿐입니다.
@@ -606,6 +617,17 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - **유효 다이 플로어는 실물이다** — `surprise_axis.js`가 등록 프레임 선언과 `valid_die_ref` 행 존재(= 마스크)를 읽고, 부분 마스크는 그리지 않고 수를 대며 거절한다(구멍 뚫린 웨이퍼는 데이터처럼 보이는 거짓말). 서버가 `valid_die_ref.map_id`를 싣게 된 것(`60c7c93`)과 R-K의 「존재 확인까지」 단서는 [backend §2 `/lot_map`](./backend.md)이 정본. ⚠️ `surprise_axis.js` 헤더의 「불량 오버레이 라우트 미배포(`lot_axis_map`)」 문단은 **낡았다** — 실제 소비 라우트는 `/api/ledger/lot_map`이다(코드 주석이라 문서가 아니라 총괄 보고 대상).
 - ⏳ **설계 확정 · 미구현 셋** (정본 [SCENARIO_CONSOLE_BRIEF P0-2/P0-3/P0-4](../process/SCENARIO_CONSOLE_BRIEF.md) — **기능으로 읽지 말 것**): ① P0-2-1 마킹 단위 승격 — 웨이퍼 클릭=웨이퍼 마킹, 비교 모집단은 마킹 집합 그대로(서버 절반은 `scope=wafer:<id>`로 오늘 표현 가능 — [backend §2 `/siblings`](./backend.md)) ② P0-3 여정 대조(위 레일 항목 — **서버 절반은 2026-08-14 밤에 착지했고 `GET /api/ledger/journey`로 오늘 호출 가능하다. 클라 소비자는 0개**) ③ P0-4 대치 사다리 + 스텝 서브그래프 탐색기(소유자: «내일», 공동 설계 후 착수).
 
+### 6.5 R&D Investigation Console (`rnd-console.html` · `src/rnd_console/*`) — 2026-08-15
+
+폐기된 §6.4 화면을 계승하지 않고 별도 진입점으로 다시 쓴 Living 화면이다. 서버의 `GET /api/ledger/trends`, `POST /api/ledger/selection/resolve`, `GET /api/ledger/composition`을 소비하며 분석 단위는 `WaferLeg(Base WF × BONDING LEG)`다. 클라는 신원을 추측 확장하지 않고 서버의 opaque `mark_key`를 그대로 시공간 마킹에 쓴다.
+
+- **Trend Chart → Trend Table 순서:** 차트는 선언된 series 중 사용자가 고른 것만 표시한다. 표의 metric 행 제목도 선택기이며, 클릭하면 그 series 한 장으로 차트와 `charts=` URL이 즉시 바뀌고 `Trend Config` 체크 상태가 동기화된다. 표 셀 클릭은 종전대로 WaferLeg 모집단 마킹이다.
+- **Candidates:** `Process`와 `Measurement` 두 열에 서버 facet을 상한 없이 전부 싣는다. Process 제목은 `STEP · RCP명`만, Measurement 제목은 `metric · unit · method`이고 결측·미실시·미상 건수도 원값 옆에 표시한다. 모든 집단에서 상태가 `recorded`이고 값 또는 비율이 같은 행만 닫힌 `동일 N개`로 접는다. 별개 evidence라도 제목·상태·A/B 값·점수가 같아 화면상 중복인 행은 `같은 기록 N건`으로 접고 내부 행은 전부 보존한다. 결측·미실시·미상·모순은 같은 철자여도 `동일`로 접지 않는다. 행 클릭은 근거 WaferLeg를 overlay group으로 역마킹한다.
+- **Maps:** 응답에 있는 맵은 대표 한 장으로 줄이지 않고 전부 SVG로 그린다. `BONDING → DT → CORE` 계층은 세로 구획, 같은 계층의 서로 다른 WF 맵은 가로 스트립이다. 각 맵은 `valid_die → process_area → used_area → supply_material → defect` layer 순서와 서버 좌표 선언을 보존한다. component 선택은 맵을 숨기는 필터가 아니다.
+- **상세 압축:** 기본 화면은 Trend·Table·Maps·Comparison·Candidates·Action 순서이고, CHIP 구성·가변 길이 Transfer·20+ 공정열 증거는 `Evidence Details`에서 펼친다. 같은 공정열은 anchor로 압축하지만 Candidate facet 자체를 자르지는 않는다.
+
+알고리즘 정본은 [R&D Surprise Investigation Algorithm](../spec/RND_SURPRISE_INVESTIGATION_ALGORITHM.md), 마킹 계약은 [Universal Marking Schema](../spec/UNIVERSAL_MARKING_SCHEMA.md), 라우트 계약은 [backend §2](./backend.md)다.
+
 ---
 
 ## 7. 백엔드 계약
@@ -613,5 +635,5 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - REST + WebSocket at `127.0.0.1:8080` (FastAPI). 엔드포인트: [backend.md](./backend.md)
 - 셀 데이터 형태: `data[col] = {value, is_overwrite, priority_source}` (grid.js `ensureCellObject`가 정규화). **가상 조인 셀도 같은 형태**다 — 서버 `attach`가 같은 키를 채우므로 클라에 두 번째 리더가 없다(§3.4)
 - 스키마 형태: `GET /tables/{t}/schema` → `{table_name, columns, column_types, business_key, composite_key_source, map_key_columns, map_push_ok, virtual_columns}`. **`columns`는 저장 컬럼만**이고 `virtual_columns`는 별도 배열이다 — 둘을 합치는 순간 「저장하는가」에 기대는 소비자 넷이 조용히 틀린다([backend §2.2](./backend.md))
-- 원장 읽기: `GET /api/ledger/{trace,coverage,kinds,structure,lots,lot_map,siblings,journey}` (read-only) — 계약 정본 [backend §2](./backend.md)
+- 원장 읽기: `GET /api/ledger/{trace,coverage,kinds,structure,lots,lot_map,siblings,journey,entities,explore,explore_entity,subgraph,subgraph/table}` (read-only) — 계약 정본 [backend §2](./backend.md)
 - ⚰️ 구 그래프 조회: `GET /graph/*` + `POST /graph/trace` + `POST /api/graph/sync` — **[2026-08-14] 전부 410**(`Cache-Control: no-store`). 본문은 구조화 필드(`detail.reason === "old_graph_branch_retired"`)이므로 **화면은 「은퇴」와 「일시적 장애」를 분기할 수 있고**, 그래서 「다시 시도」 버튼을 띄우지 않습니다

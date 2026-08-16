@@ -1,13 +1,22 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **593개** 이력. (거버넌스 규칙 #4)
+> 총 **602개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-16 12:20** — [Config Archive And Semantic Compiler Backlog](./20260816_122011_config_archive_and_semantic_compiler_backlog.md)
+- **2026-08-16 11:55** — [Source Config Table Setup](./20260816_115534_source_config_table_setup.md)
+- **2026-08-15 22:36** — [Enrich Action Node](./20260815_223656_enrich_action_node.md)
+- **2026-08-15 18:43** — [Ledger Evidence Graph And Tabular Projection](./20260815_184315_ledger_evidence_graph_and_tabular_projection.md)
+- **2026-08-15 10:33** — [Ledger Graph Entity Catalog](./20260815_103312_ledger_graph_entity_catalog.md)
+- **2026-08-15 09:34** — [Ledger Graph Viewer](./20260815_093424_ledger_graph_viewer.md)
+- **2026-08-15 08:33** — [Selection Measurement Contract](./20260815_083343_selection_measurement_contract.md)
+- **2026-08-15 08:11** — [Rnd Candidates Core Maps Acceptance](./20260815_081103_rnd_candidates_core_maps_acceptance.md)
+- **2026-08-14 23:04** — [Rnd Trends And Composite Chip Trace](./20260814_230421_rnd_trends_and_composite_chip_trace.md)
 - **2026-08-14 19:28** — [P0 4 Borrowed Values And The Explorer That Waits For Tomorrow](./20260814_192846_p0_4_borrowed_values_and_the_explorer_that_waits_for_tomorrow.md)
 - **2026-08-14 19:24** — [Numbers Can Be Causes A Wafer Can Be Marked And A Scope Stops Absorbing](./20260814_192406_numbers_can_be_causes_a_wafer_can_be_marked_and_a_scope_stops_absorbing.md)
 - **2026-08-14 19:22** — [Six Questions Then The Envelope Then Five](./20260814_192247_six_questions_then_the_envelope_then_five.md)
@@ -614,4 +623,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-14 by gen_index.py*
+*Last generated: 2026-08-16 by gen_index.py*

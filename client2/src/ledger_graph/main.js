@@ -7,6 +7,7 @@ import { createEntityCatalog } from './entity_catalog.js';
 const $ = (selector) => document.querySelector(selector);
 const els = {
   form: $('[data-lg-search]'), entityType: $('[data-lg-entity-type]'), entityQuery: $('[data-lg-entity-query]'), hops: $('[data-lg-hops]'),
+  direction: $('[data-lg-direction]'), values: $('[data-lg-values]'),
   status: $('[data-lg-status]'), summary: $('[data-lg-summary]'), canvas: $('[data-lg-canvas]'),
   wrap: $('[data-lg-canvas-wrap]'), overlay: $('[data-lg-overlay]'), foot: $('[data-lg-foot]'),
   detailTitle: $('[data-lg-detail-title]'), detailBody: $('[data-lg-detail-body]'),
@@ -27,12 +28,13 @@ let entityCatalog = null;
 const state = {
   source: readGraph(null), visible: readGraph(null), positions: new Map(), curves: new Map(),
   selected: null, hoverId: null, typeSet: new Set(), predicateSet: new Set(),
-  request: 0, aborter: null, drag: null, mode: 'ontology', manualPositions: new Map(), focusNodeId: null,
+  request: 0, aborter: null, drag: null, mode: 'ontology', manualPositions: new Map(), focusNodeId: null, currentSeedId: null,
   view: { scale: 1, tx: 0, ty: 0, width: 0, height: 0, dpr: 1 },
 };
 
 const palette = ['#2563eb', '#7c3aed', '#0891b2', '#db2777', '#d97706', '#059669', '#dc2626'];
 const typeColor = (type) => {
+  if(String(type)==='Enrich Action')return '#ea580c';
   let hash = 0;
   for (const ch of String(type)) hash = ((hash * 31) + ch.charCodeAt(0)) >>> 0;
   return palette[hash % palette.length];
@@ -108,7 +110,11 @@ function draw() {
     const hovered=state.hoverId===node.id; const center=node.id===state.source.seedId;
     if(center){ctx.strokeStyle='#f59e0b';ctx.lineWidth=4/scale;ctx.beginPath();ctx.arc(point.x,point.y,24/scale,0,Math.PI*2);ctx.stroke();}
     const radius=(selected||hovered?18:14)/scale;ctx.fillStyle=typeColor(node.type);ctx.beginPath();
-    if(node.schema_kind==='claim_shape')ctx.roundRect(point.x-radius,point.y-radius,radius*2,radius*2,4/scale);else ctx.arc(point.x,point.y,radius,0,Math.PI*2);ctx.fill();
+    if(node.node_kind==='event'){ctx.moveTo(point.x,point.y-radius*1.2);ctx.lineTo(point.x+radius*1.2,point.y);ctx.lineTo(point.x,point.y+radius*1.2);ctx.lineTo(point.x-radius*1.2,point.y);ctx.closePath();}
+    else if(node.node_kind==='action'){for(let i=0;i<6;i++){const angle=Math.PI/3*i;const x=point.x+Math.cos(angle)*radius*1.2;const y=point.y+Math.sin(angle)*radius*1.2;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();ctx.fill();}
+    else if(node.node_kind==='claim'||node.schema_kind==='claim_shape')ctx.roundRect(point.x-radius,point.y-radius,radius*2,radius*2,4/scale);
+    else ctx.arc(point.x,point.y,radius,0,Math.PI*2);ctx.fill();
+    if(node.node_kind==='event')ctx.fill();
     ctx.strokeStyle='#fff';ctx.lineWidth=2/scale;ctx.stroke();
     if(scale>.34){ctx.font=`600 ${13/scale}px system-ui`;ctx.textAlign='center';ctx.fillStyle='#1e293b';ctx.fillText(short(node.label,26),point.x,point.y+34/scale);ctx.font=`${11/scale}px system-ui`;ctx.fillStyle='#64748b';ctx.fillText(node.type,point.x,point.y+49/scale);}
   }
@@ -140,9 +146,10 @@ function renderDetail(){
       els.detailBody.innerHTML=`<span class="lg-type-chip" style="--chip:${typeColor(n.type)}">${escapeHtml(entity?'Entity Type':n.type)}</span>${keyRows(n.keys)}<div class="lg-section"><h3>${entity?'원장 현황':'주장 형태'}</h3>${entity?`<p>주어 원자 <b>${fmt(n.atoms_as_subject)}</b></p><p>목적어 원자 <b>${fmt(n.atoms_as_object)}</b></p><p>등록 <b>${n.registered===null?'해당 없음':fmt(n.registered)}</b></p><p>상태 <b>${escapeHtml(n.node_state||'미보고')}</b></p>`:`<p>목적어 종류 <b>${escapeHtml(n.object_kind||'없음')}</b></p><p>원자 <b>${fmt(n.claim_count)}</b></p>`}</div><div class="lg-section"><h3>연결된 술어</h3>${predicates.map((p)=>`<p>${escapeHtml(p.label||p.predicate)} <b>${fmt(p.count)}</b></p>`).join('')||`<p>연결 ${fmt(connections.length)}개</p>`}</div>`;
       return;
     }
-    const recenter=n.id.startsWith('ledger-entity:v1:')?`<button class="lg-recenter" data-lg-recenter="${escapeHtml(n.id)}">이 개체 중심으로 탐색</button>`:'';
-    els.detailBody.innerHTML=`<span class="lg-type-chip" style="--chip:${typeColor(n.type)}">${escapeHtml(n.type)}</span>${keyRows(n.keys)}<div class="lg-section"><h3>원장 요약</h3><p>주장 ${fmt(n.claim_count)}건 · 연결 ${fmt(connections.length)}개 · 시작점에서 ${n.depth??'—'}홉</p></div><div class="lg-section"><h3>술어</h3>${(n.predicates||[]).map((p)=>`<p>${escapeHtml(p.predicate)} <b>${fmt(p.count)}</b></p>`).join('')||'<p>없음</p>'}</div>${recenter}`;
-    const btn=els.detailBody.querySelector('[data-lg-recenter]');if(btn)btn.addEventListener('click',()=>exploreEntity({id:btn.dataset.lgRecenter,type:n.type,label:n.label}));
+    const meta=n.node_kind==='event'?`<div class="lg-section"><h3>원천 이벤트</h3><p>경계 <b>${escapeHtml(n.source_event_state||'미보고')}</b></p><p>출처 <b>${escapeHtml(n.source_who||'미보고')}</b></p><p>${escapeHtml(n.occurred_at||'—')}</p></div>`:n.node_kind==='claim'?`<div class="lg-section"><h3>주장 원자</h3><p>술어 <b>${escapeHtml(n.predicate||'미보고')}</b></p><p>목적어 <b>${escapeHtml(n.object_kind||'없음')}</b></p><p>출처 <b>${escapeHtml(n.source_who||'미보고')}</b></p><p>${escapeHtml(n.occurred_at||'—')}</p></div><details class="lg-section"><summary>원문 근거와 목적어</summary><p>${escapeHtml(n.source_raw_ref||'원문 참조 없음')}</p><pre>${escapeHtml(JSON.stringify(n.object_payload||{},null,2))}</pre></details>`:n.node_kind==='action'?`<div class="lg-section"><h3>Enrich Action</h3><p>상태 <b>${escapeHtml(n.state||'미보고')}</b></p><p>행동 <b>${escapeHtml(n.action_kind||'미보고')}</b></p><p>부족한 항목 <b>${escapeHtml((n.missing_targets||[]).join(', ')||'없음')}</b></p><p>${escapeHtml(n.suggested_action||'')}</p></div><details class="lg-section"><summary>예상 Claim과 공급 경로</summary><pre>${escapeHtml(JSON.stringify({expected_claims:n.expected_claims||[],supply_sources:n.supply_sources||[]},null,2))}</pre></details>`:'';
+    const recenter=n.id.startsWith('ledger-')?`<button class="lg-recenter" data-lg-recenter="${escapeHtml(n.id)}">이 노드 중심으로 탐색</button>`:'';
+    els.detailBody.innerHTML=`<span class="lg-type-chip" style="--chip:${typeColor(n.type)}">${escapeHtml(n.type)}</span>${keyRows(n.keys)}${meta}<div class="lg-section"><h3>원장 요약</h3><p>주장 ${fmt(n.claim_count)}건 · 연결 ${fmt(connections.length)}개 · 시작점에서 ${n.depth??'—'}홉</p></div><div class="lg-section"><h3>술어</h3>${(n.predicates||[]).map((p)=>`<p>${escapeHtml(p.predicate)} <b>${fmt(p.count)}</b></p>`).join('')||'<p>없음</p>'}</div>${recenter}`;
+    const btn=els.detailBody.querySelector('[data-lg-recenter]');if(btn)btn.addEventListener('click',()=>exploreNode(btn.dataset.lgRecenter,n));
   }else{
     const e=state.selected.value;els.detailTitle.textContent=e.predicate;
     const from=state.source.nodes.find((n)=>n.id===e.source);const to=state.source.nodes.find((n)=>n.id===e.target);
@@ -185,7 +192,7 @@ function renderNodeList(){
 
 function startFromNode(id){
   const node=state.source.nodes.find((item)=>item.id===id);if(!node)return;
-  if(state.mode==='lineage'&&node.id.startsWith('ledger-entity:v1:')){exploreEntity(node);return;}
+  if(state.mode==='lineage'&&node.id.startsWith('ledger-')){exploreNode(node.id,node);return;}
   state.focusNodeId=node.id;state.manualPositions.clear();select('node',node);applyFilters();renderNodeList();
 }
 
@@ -204,7 +211,7 @@ function renderGraph(){
     state.selected=null;renderDetail();fit();return;
   }
   const cuts=Object.entries(state.source.truncated).filter(([k,v])=>k!=='reason'&&v).map(([k])=>k);
-  els.foot.textContent=cuts.length?`절단됨: ${cuts.join(' · ')} · ${state.source.truncated.reason||'표시 상한 도달'}`:`전체 응답 · ${state.source.walk.direction||'subject_to_object'} · ${state.source.generatedAt||''}`;
+  els.foot.textContent=cuts.length?`절단됨: ${cuts.join(' · ')} · ${state.source.truncated.reason||'표시 상한 도달'}`:`해소 전 원시 증거 · ${state.source.walk.direction||'both'} · ${state.source.generatedAt||''}`;
   state.selected=null;renderDetail();fit();
 }
 
@@ -212,15 +219,18 @@ async function loadInstanceGraph(endpoint, selection, urlState){
   state.mode='lineage';paintMode();
   state.aborter?.abort();state.aborter=new AbortController();const mine=++state.request;
   els.status.textContent='조회 중';els.overlay.hidden=false;els.overlay.innerHTML='<strong>개체 탐색 중</strong><span>선택한 개체의 주장과 관계를 읽고 있습니다.</span>';
-  try{const response=await fetch(endpoint,{signal:state.aborter.signal});const body=await response.json();if(mine!==state.request)return;if(!response.ok)throw new Error(body?.detail?.message||body?.detail||`HTTP ${response.status}`);state.source=readGraph(body);state.manualPositions.clear();els.nodeSearch.value='';els.filterText.value='';if(selection?.type)entityCatalog?.setType(selection.type);const url=new URL(location.href);url.searchParams.set('view','lineage');url.searchParams.delete('lot');url.searchParams.delete('entity');url.searchParams.delete('type');Object.entries(urlState||{}).forEach(([key,value])=>url.searchParams.set(key,value));url.searchParams.set('hops',els.hops.value);history.replaceState({},'',url);renderGraph();}
+  try{const response=await fetch(endpoint,{signal:state.aborter.signal});const body=await response.json();if(mine!==state.request)return;if(!response.ok)throw new Error(body?.detail?.message||body?.detail||`HTTP ${response.status}`);state.source=readGraph(body);state.currentSeedId=body?.seed?.id||null;state.manualPositions.clear();els.nodeSearch.value='';els.filterText.value='';if(selection?.type&&selection?.node_kind==='entity')entityCatalog?.setType(selection.type);const url=new URL(location.href);url.searchParams.set('view','lineage');url.searchParams.delete('lot');url.searchParams.delete('entity');url.searchParams.delete('type');Object.entries(urlState||{}).forEach(([key,value])=>url.searchParams.set(key,value));url.searchParams.set('hops',els.hops.value);url.searchParams.set('direction',els.direction.value);url.searchParams.set('values',els.values.checked?'1':'0');history.replaceState({},'',url);renderGraph();}
   catch(error){if(error.name==='AbortError'||mine!==state.request)return;els.status.textContent='조회 실패';els.overlay.hidden=false;els.overlay.innerHTML=`<strong>그래프를 불러오지 못했습니다</strong><span>${escapeHtml(error.message)}</span>`;}
 }
 
+function exploreNode(value,selection={}){
+  const id=String(value?.id||value||'').trim();if(!id)return;
+  const params=new URLSearchParams({id,hops:els.hops.value,direction:els.direction.value,include_values:String(els.values.checked),enrich_actions:'true',node_limit:'400',edge_limit:'1200'});
+  return loadInstanceGraph(`${API_BASE}/api/ledger/subgraph?${params}`,selection,{node:id});
+}
+
 function exploreEntity(entity){
-  const id=String(entity?.id||entity||'').trim();if(!id)return;
-  const params=new URLSearchParams({id,hops:els.hops.value,node_limit:'400',edge_limit:'1200'});
-  const urlState={entity:id};if(entity?.type)urlState.type=entity.type;
-  return loadInstanceGraph(`${API_BASE}/api/ledger/explore_entity?${params}`,entity,urlState);
+  return exploreNode(entity?.id||entity,{...entity,node_kind:'entity'});
 }
 
 function exploreLot(lotValue){
@@ -246,7 +256,7 @@ async function loadOntology(){
 }
 
 function enterInstances(){
-  state.request+=1;state.aborter?.abort();state.aborter=null;state.mode='lineage';paintMode();state.source=readGraph(null);state.manualPositions.clear();els.nodeSearch.value='';els.filterText.value='';renderGraph();els.status.textContent='개체를 선택하세요';els.overlay.hidden=false;els.overlay.innerHTML='<strong>Instances</strong><span>오른쪽 전체 개체 목록에서 항목을 고르면 그 개체의 서브그래프를 엽니다.</span>';els.entityQuery.focus();
+  state.request+=1;state.aborter?.abort();state.aborter=null;state.mode='lineage';state.currentSeedId=null;paintMode();state.source=readGraph(null);state.manualPositions.clear();els.nodeSearch.value='';els.filterText.value='';renderGraph();els.status.textContent='개체를 선택하세요';els.overlay.hidden=false;els.overlay.innerHTML='<strong>Evidence</strong><span>전체 개체 목록에서 시작한 뒤 Entity·Event·Claim 어느 노드든 다시 중심으로 열 수 있습니다.</span>';els.entityQuery.focus();
 }
 
 els.form.addEventListener('submit',(event)=>{event.preventDefault();entityCatalog?.searchNow();});
@@ -256,16 +266,23 @@ els.nodeSearch.addEventListener('input',renderNodeList);
 els.nodeList.addEventListener('click',(event)=>{const button=event.target.closest('[data-lg-node-pick]');if(button)startFromNode(button.dataset.lgNodePick);});
 els.clearFocus.addEventListener('click',()=>{state.focusNodeId=null;state.manualPositions.clear();applyFilters();renderNodeList();});
 els.showEmpty.addEventListener('change',()=>{if(state.mode==='ontology'){state.manualPositions.clear();renderGraph();}});
+els.direction.addEventListener('change',()=>{if(state.mode==='lineage'&&state.currentSeedId)exploreNode(state.currentSeedId);});
+els.values.addEventListener('change',()=>{if(state.mode==='lineage'&&state.currentSeedId)exploreNode(state.currentSeedId);});
 document.addEventListener('change',(event)=>{const input=event.target.closest('[data-lg-filter-kind]');if(!input)return;const set=input.dataset.lgFilterKind==='type'?state.typeSet:state.predicateSet;input.checked?set.add(input.value):set.delete(input.value);applyFilters();});
 els.fit.addEventListener('click',fit);document.querySelectorAll('[data-lg-zoom]').forEach((button)=>button.addEventListener('click',()=>{state.view.scale=Math.max(.12,Math.min(3,state.view.scale*(button.dataset.lgZoom==='in'?1.2:1/1.2)));draw();}));
+document.querySelectorAll('[data-lg-export]').forEach((button)=>button.addEventListener('click',()=>{
+  if(state.mode!=='lineage'||!state.currentSeedId)return;
+  const params=new URLSearchParams({id:state.currentSeedId,table:button.dataset.lgExport,format:'csv',hops:els.hops.value,direction:els.direction.value,include_values:String(els.values.checked),enrich_actions:'true',node_limit:'400',edge_limit:'1200',property_limit:'10000'});
+  const link=document.createElement('a');link.href=`${API_BASE}/api/ledger/subgraph/table?${params}`;link.download=`ledger_subgraph_${button.dataset.lgExport}.csv`;document.body.appendChild(link);link.click();link.remove();
+}));
 els.canvas.addEventListener('mousedown',(event)=>{const node=nodeAt(event.offsetX,event.offsetY);if(node){const point=state.positions.get(node.id);state.drag={kind:'node',nodeId:node.id,x:event.clientX,y:event.clientY,px:point.x,py:point.y,moved:false};els.canvas.style.cursor='move';}else state.drag={kind:'view',x:event.clientX,y:event.clientY,tx:state.view.tx,ty:state.view.ty,moved:false};});
 window.addEventListener('mousemove',(event)=>{if(!state.drag)return;const dx=event.clientX-state.drag.x;const dy=event.clientY-state.drag.y;if(Math.hypot(dx,dy)>3)state.drag.moved=true;if(state.drag.kind==='node'){const point={x:state.drag.px+dx/state.view.scale,y:state.drag.py+dy/state.view.scale,depth:state.positions.get(state.drag.nodeId)?.depth??0};state.positions.set(state.drag.nodeId,point);state.manualPositions.set(state.drag.nodeId,{...point});}else{state.view.tx=state.drag.tx+dx;state.view.ty=state.drag.ty+dy;}draw();});
 window.addEventListener('mouseup',(event)=>{if(!state.drag)return;const moved=state.drag.moved;state.drag=null;els.canvas.style.cursor='grab';if(!moved){const rect=els.canvas.getBoundingClientRect();const x=event.clientX-rect.left;const y=event.clientY-rect.top;const node=nodeAt(x,y);if(node)select('node',node);else{const edge=edgeAt(x,y);if(edge)select('edge',edge);}}});
 els.canvas.addEventListener('mousemove',(event)=>{if(state.drag)return;const hit=nodeAt(event.offsetX,event.offsetY);const id=hit?.id||null;if(id!==state.hoverId){state.hoverId=id;els.canvas.style.cursor=hit?'move':'grab';draw();}});
-els.canvas.addEventListener('dblclick',(event)=>{const node=nodeAt(event.offsetX,event.offsetY);if(node?.id.startsWith('ledger-entity:v1:'))exploreEntity(node);});
+els.canvas.addEventListener('dblclick',(event)=>{const node=nodeAt(event.offsetX,event.offsetY);if(node?.id.startsWith('ledger-'))exploreNode(node.id,node);});
 els.canvas.addEventListener('wheel',(event)=>{event.preventDefault();const next=Math.max(.12,Math.min(3,state.view.scale*(event.deltaY<0?1.14:1/1.14)));const ratio=next/state.view.scale;state.view.tx=event.offsetX-(event.offsetX-state.view.tx)*ratio;state.view.ty=event.offsetY-(event.offsetY-state.view.ty)*ratio;state.view.scale=next;draw();},{passive:false});
 
 initTheme();new ResizeObserver(resizeCanvas).observe(els.wrap);resizeCanvas();
 entityCatalog=createEntityCatalog({apiBase:API_BASE,typeSelect:els.entityType,queryInput:els.entityQuery,section:els.catalog,listElement:els.catalogList,countElement:els.catalogCount,statusElement:els.catalogStatus,moreButton:els.catalogMore,onPick:exploreEntity});
-const query=new URLSearchParams(location.search);if(query.get('hops'))els.hops.value=query.get('hops');if(query.get('type'))entityCatalog.setType(query.get('type'));
-if(query.get('entity'))exploreEntity({id:query.get('entity'),type:query.get('type')||undefined});else if(query.get('lot'))exploreLot(query.get('lot'));else if(query.get('view')==='lineage')enterInstances();else loadOntology();
+const query=new URLSearchParams(location.search);if(query.get('hops'))els.hops.value=query.get('hops');if(query.get('direction'))els.direction.value=query.get('direction');if(query.get('values'))els.values.checked=query.get('values')!=='0';if(query.get('type'))entityCatalog.setType(query.get('type'));
+if(query.get('node'))exploreNode(query.get('node'));else if(query.get('entity'))exploreEntity({id:query.get('entity'),type:query.get('type')||undefined});else if(query.get('lot'))exploreLot(query.get('lot'));else if(query.get('view')==='lineage')enterInstances();else loadOntology();

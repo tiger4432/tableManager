@@ -4,6 +4,7 @@
 > **연관 핵심가치:** #1 최소 공수 교정(주) · #2 온톨로지/지식 그래프 기반(직결) — [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md)
 > **v1 구성 (2026-07-25, 출하 당시):** 서버(`enrichment_config.py`·`enrichment_mapper.py`·API 2종) + 클라(~~`enrichment.html` 컨베이어~~ + ~~참조뷰 탭~~ + ~~메인 그리드 결손 배지~~ — **셋 다 2026-08-11에 재배치/삭제**, 아래 참조). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
 > **UI 현황 (2026-08-11):** 컨베이어(입력)는 **소멸**(그리드 직접 편집으로 흡수, 대체 화면 없음). 참조뷰(조회)는 **메인 그리드 History 패널의 사이드바 탭**으로 이식(`client2/src/enrichment_reference_view.js` — 셀 선택 기반, 같은 백엔드 API). 결손 배지는 **삭제**(그리드 필터 `?enrichment_queue=<규칙명>`은 URL로는 여전히 유효, 전용 UI 컨트롤 없음).
+> **2026-08-15 가산:** 선택적 `claim_contract`와 `server/enrichment_actions.py`가 착지했다. 기존 column queue는 그대로이고, 계약이 있는 rule의 결손은 Evidence Graph에서 `Claim --needs_enrichment--> Enrich Action`으로도 보인다. Action은 원장 저장물이 아닌 재계산 투영이며 통합 `/enrichment/worklist` API는 아직 미구현이다.
 
 ---
 
@@ -75,6 +76,20 @@
 - ♻️ 워크리스트/결손 카운트/진행률 — 기존 `GET /tables/{derived}/data` 재사용(신규 엔드포인트 없음). **[2026-08-05] 큐 조건은 필터 dict가 아니라 라우트 파라미터 `?enrichment_queue=<규칙명>`이다**(§5.1-bis). 「판단키 없음 N건」도 차분이 아니라 `&enrichment_queue_scope=blank_key`의 `total`로 직접 읽는다.
 - 🆕 `GET /enrichment/rules/{rule}/references/{i}?params=...` — 참조뷰 조회(서버측 쿼리 정의·LIMIT).
 - ♻️ 입력 저장 — 기존 `PUT /tables/{derived}/data/updates`(셀 계약 불변).
+
+### 5.0-bis `claim_contract` — column 결손을 Claim 행동으로 읽는 선택 계약 (2026-08-15)
+
+기존 rule에 선택적으로 `claim_contract`를 붙일 수 있다. 최소 계약은 `version`, `label_ko`,
+원장 Claim과 decision key를 정확히 연결하는 `anchor`, 모든 target을 덮는 `slots`, 각 target의
+공급 경로를 선언하는 `sources`다. 상세 스키마는
+[Claim Requirement & Worklist §3](./CLAIM_REQUIREMENT_WORKLIST_SPEC.md)가 소유한다.
+
+- 계약이 없으면 legacy column Enrichment로 그대로 작동한다.
+- 계약이 잘못되면 그 계약만 rejection에 남기고 rule 자체는 유지한다.
+- 공급 source가 선언된 빈 target은 decision key별 `resolve_claim` Action이 된다.
+- 공급 source가 없는 target은 row마다 반복하지 않고 rule-level `declare_claim_source` Meta Action이 된다.
+- table 계약이 배포 검증에 실패하면 derived row를 읽지 않고 `repair_enrichment_contract` Action이 된다.
+- 그래프 읽기는 candidate reference SQL을 실행하지 않는다. 후보 조회·확정은 명시적 다음 행동이다.
 
 ### 5.1 `queue_filters` — "큐 항목"의 단일 술어는 서버가 조성한다 (2026-07-28 · `1fefd12`, **2026-08-04 재정**)
 

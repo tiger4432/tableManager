@@ -512,7 +512,7 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
 ## 6. 순서 요약
 
 1. PostgreSQL 준비 → `DATABASE_URL` 설정
-2. `server/config/*.sample` → 확장자 떼고 복사 (**기존 환경이면** `install_product_tables.py --apply`로 제품 소유 테이블만 병합 — §1-2)
+2. `server/config/sample/*.sample` → 상위 `server/config/`에 확장자 떼고 복사 (**기존 환경이면** `install_product_tables.py --apply`로 제품 소유 테이블만 병합 — §1-2)
 3. **`table_config.json`에 우리 현장 테이블 선언** (여기가 대부분의 작업)
    - 🔴 **DT/Core 프레임 체인의 "잡" 컬럼 이름을 현장 철자(예: `dt_job_id`)로 여기서 바꾼다면**, 그 리네임을 **체인 리졸버가 모르는 파일 둘**과 같은 변경에서 손으로 맞춰라 — 안 맞추면 조용히 안 따라온다(2026-08-11, `5b09d69`): `server/migrations/add_dt_log_trigger_indexes.sql`의 `CREATE INDEX ... (dt_job)` 두 문(재실행하지 않으면 새 컬럼명 위에 인덱스가 없다), `server/config/enrichment_rules.json`의 자유 SQL 다섯 곳(`WHERE dt_job = :dt_job` — 리졸버 밖이라 옛 이름을 계속 찾고 매번 0행). 절차 정본은 [guide/DT_CORE_FRAME_CHAINS_GUIDE §1-bis](./DT_CORE_FRAME_CHAINS_GUIDE.md#1-bis-잡-컬럼-이름-2026-08-11).
 4. `server/ingestion_workspace/<테이블>/` 디렉터리 생성

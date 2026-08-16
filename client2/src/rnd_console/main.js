@@ -189,10 +189,10 @@ export function bootRNDConsole(doc = document, { fetchImpl = globalThis.fetch } 
           const payloads = await api.loadCompositions(chips, { window: '365d' }, { signal });
           const workspace = compositionToWorkspace(payloads, { selection: resolution.wafer_mark_keys, finalChipIds: chips, populationByChip });
           const candidate = physicsCandidate(resolution);
-          const analysisUnitCount = (resolution.groups || []).reduce((sum, group) => sum + Number(group.count || 0), 0);
+          const aggregationUnitCount = (resolution.groups || []).reduce((sum, group) => sum + Number(group.count || 0), 0);
           return {
             ...workspace,
-            headline: analysisUnitCount ? `${analysisUnitCount}개 WF·LEG 비교` : workspace.headline,
+            headline: aggregationUnitCount ? `${aggregationUnitCount}개 본딩 실험단위 비교` : workspace.headline,
             groups: resolution.groups, comparisons: resolution.comparisons,
             maps: (resolution.maps || []).length ? resolution.maps : workspace.maps,
             actions: [...(resolution.actions || []), ...(workspace.actions || [])],
@@ -217,11 +217,12 @@ export function bootRNDConsole(doc = document, { fetchImpl = globalThis.fetch } 
         return;
       }
       if (mark.markKey) identities.set(mark.markKey, {
-        type: 'WaferLeg', mark_key: mark.markKey,
-        keys: { wafer: mark.wafer, bonding_leg: mark.bondingLeg },
+        type: 'Wafer', mark_key: mark.markKey,
+        keys: { wafer: mark.wafer },
+        context: { role: 'planned_bonding_experiment_unit', bonding_leg: mark.bondingLeg },
       });
       marking.apply({
-        kind: 'map_cells', groupId: marking.activeGroupId, subjectType: 'WaferLeg',
+        kind: 'map_cells', groupId: marking.activeGroupId, subjectType: 'Wafer',
         selector: {
           frame: {
             table: mark.table, mapId: mark.mapId, stage: mark.stage,
@@ -241,7 +242,7 @@ export function bootRNDConsole(doc = document, { fetchImpl = globalThis.fetch } 
       const key = `${predicate}:${JSON.stringify(signature)}`;
       const groupId = marking.ensureOverlayGroup(key, mark.label || '비교 마킹', 'comparison:group');
       marking.replaceKind('claim_filter', [{
-        kind: 'claim_filter', groupId, subjectType: 'WaferLeg',
+        kind: 'claim_filter', groupId, subjectType: 'Wafer',
         selector: { predicate, signature, ids, evidenceIds },
         origin: { viewId: 'investigation-workspace', source: mark.id || predicate }, createdAt: now(),
       }], groupId, 'comparison:mark');
@@ -267,7 +268,8 @@ export function bootRNDConsole(doc = document, { fetchImpl = globalThis.fetch } 
     const cells = marks.filter((mark) => mark.kind === 'map_cells').reduce((sum, mark) => sum + mark.selector.cells.length, 0);
     const subjects = [...entities].map((id) => identities.get(id)).filter(Boolean).map((identity) => {
       const keys = identity.keys || {};
-      return keys.bonding_leg ? `WF ${keys.wafer} / LEG ${keys.bonding_leg}` : `WF ${keys.wafer || '-'}`;
+      const leg = identity.context?.bonding_leg;
+      return leg ? `WF ${keys.wafer} / 실험단위 ${leg}` : `WF ${keys.wafer || '-'}`;
     });
     const subjectText = subjects.length ? `${subjects.slice(0, 2).join(', ')}${subjects.length > 2 ? ` +${subjects.length - 2}` : ''}` : '선택 없음';
     contextNode.textContent = [subjectText, `시간 ${times}`, `다이 ${cells}`].join(' · ');
@@ -295,16 +297,16 @@ export function bootRNDConsole(doc = document, { fetchImpl = globalThis.fetch } 
     const visibleFindingKind = visibleChartIds.length === 1 ? findingKindForChart(visibleChartIds[0]) : '';
     const findingKind = isTraceMark ? '' : findingKindForChart(chartId) || visibleFindingKind || (selectedKinds.length === 1 ? selectedKinds[0] : '');
     marking.replaceKind('entity_set', ids.length ? [{
-      kind: 'entity_set', groupId, subjectType: 'WaferLeg', selector: { ids, findingKind },
+      kind: 'entity_set', groupId, subjectType: 'Wafer', selector: { ids, findingKind },
       origin: { viewId: 'trend-workbench', source: meta.source }, createdAt: now(),
     }] : [], groupId, meta.source);
     if (meta.mark?.kind === 'time_range' && meta.mark.from && meta.mark.to) marking.replaceKind('time_range', [{
-      kind: 'time_range', groupId, subjectType: 'WaferLeg',
+      kind: 'time_range', groupId, subjectType: 'Wafer',
       selector: { from: meta.mark.from, to: meta.mark.to, timezone: 'UTC', seriesId: meta.mark.chartId, findingKind, ids },
       origin: { viewId: 'trend-workbench', source: meta.source }, createdAt: now(),
     }], groupId, meta.source);
     if (meta.mark?.kind === 'metric_region' && meta.mark.from && meta.mark.to) marking.replaceKind('metric_region', [{
-      kind: 'metric_region', groupId, subjectType: 'WaferLeg',
+      kind: 'metric_region', groupId, subjectType: 'Wafer',
       selector: {
         seriesId: meta.mark.chartId, metricId: meta.mark.metricId || meta.mark.chartId,
         xFrom: meta.mark.from, xTo: meta.mark.to, yMin: meta.mark.yMin, yMax: meta.mark.yMax,

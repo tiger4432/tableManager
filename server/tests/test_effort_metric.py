@@ -358,10 +358,11 @@ def test_shipped_sample_config_matches_the_documented_defaults():
     import json, os
     import effort_metric
     sample = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
-        effort_metric.__file__))), "server", "config", "effort_metric.json.sample")
+        effort_metric.__file__))), "server", "config", "sample",
+        "effort_metric.json.sample")
     if not os.path.exists(sample):     # layout differs when run from server/
         sample = os.path.join(os.path.dirname(os.path.abspath(effort_metric.__file__)),
-                              "config", "effort_metric.json.sample")
+                              "config", "sample", "effort_metric.json.sample")
     with open(sample, encoding="utf-8") as f:
         raw = json.load(f)
     assert effort_metric.resolve_weights(raw) == DEFAULT_W

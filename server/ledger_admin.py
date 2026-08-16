@@ -36,6 +36,8 @@ import re
 import shutil
 from datetime import datetime
 
+import config_backup
+
 logger = logging.getLogger("Ledger.Admin")
 
 #: 저장 대상 둘. 화면의 층 1(소스)과 층 2(어휘)에 각각 대응한다.
@@ -367,10 +369,13 @@ def source_raw_view(source: str = None) -> dict:
     The whole file is still READABLE here (`document`) so the operator can see their edit
     in context; it is simply not the unit of writing.
     """
+    from ledger import config as ledger_config
+
     path = sources_path()
     read_path = path
-    if not os.path.exists(read_path) and os.path.exists(read_path + ".sample"):
-        read_path = read_path + ".sample"
+    sample = ledger_config.sample_path(read_path)
+    if not os.path.exists(read_path) and os.path.exists(sample):
+        read_path = sample
     document, error = {}, None
     try:
         document = _read_json(read_path, {})
@@ -458,7 +463,12 @@ def _atomic_write(path: str, payload: dict) -> str:
     """
     backup = ""
     if os.path.exists(path):
-        backup = f"{path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        backup_dir = config_backup.backup_dir_for(path)
+        os.makedirs(backup_dir, exist_ok=True)
+        backup = os.path.join(
+            backup_dir,
+            f"{os.path.basename(path)}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        )
         shutil.copy2(path, backup)       # 사본이 곧 undo (R-2026-08-13-G)
     temporary = f"{path}.tmp.{os.getpid()}"
     with open(temporary, "w", encoding="utf-8") as handle:
@@ -670,9 +680,10 @@ def sources_view() -> dict:
     document, error = {}, None
     try:
         document = _read_json(path, {})
-        if not os.path.exists(path) and os.path.exists(path + ".sample"):
-            document = _read_json(path + ".sample", {})
-            path = path + ".sample"
+        sample = ledger_config.sample_path(path)
+        if not os.path.exists(path) and os.path.exists(sample):
+            document = _read_json(sample, {})
+            path = sample
     except Exception as exc:
         error = f"{exc.__class__.__name__}: {exc}"
     return {

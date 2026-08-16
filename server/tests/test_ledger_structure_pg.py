@@ -222,8 +222,9 @@ def _insert(cur, predicate, subject, object_kind, payload, who, ver, when):
     cur.execute(
         "INSERT INTO ledger_events (id, subject_type, subject_keys, predicate, "
         "object_kind, object_payload, occurred_at, source_who, source_translator_ver, "
-        "source_raw_ref) VALUES (gen_random_uuid(), %s, %s::jsonb, %s, %s, %s::jsonb, "
-        "%s, %s, %s, 'ref')",
+        "source_raw_ref, source_event_id, source_event_state) VALUES "
+        "(gen_random_uuid(), %s, %s::jsonb, %s, %s, %s::jsonb, "
+        "%s, %s, %s, 'ref', gen_random_uuid(), 'source_record')",
         (subject, json.dumps({"k": "1"}), predicate, object_kind,
          json.dumps(payload) if payload is not None else None, when, who, ver))
 

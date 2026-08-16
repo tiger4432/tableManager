@@ -97,8 +97,9 @@ ENTITY_TYPES = {
                   "label_ko": "랏"},
     "Wafer":     {"class": "issued",   "keys": ["wafer"],     "semi_ref": "E90 substrate",
                   "label_ko": "웨이퍼"},
-    # Analysis grain: one physical base wafer can participate in several bonding legs.
-    # This is a new issued subject, never an undeclared extra key on `Wafer`.
+    # REJECTED MODEL (superseded by the owner's experiment-plan ruling): a physical base
+    # wafer was once split into issued subjects.  The rationale below is retained only to
+    # document why that tempting model was implemented and then removed.
     # 🔴 AN AGGREGATION UNIT, AND ITS ROOT KEY IS DECLARED (ruling R-2026-08-15-O).
     # The owner's definition: 「본딩 시 다이별로 조건이 달라서 생기는, 본딩 후 자재에만
     # 성립하는 집계 단위」. Its existence as a separate subject is FORCED - a wafer bonded
@@ -117,9 +118,9 @@ ENTITY_TYPES = {
     # atom into wafer-scope reads - 160M of them by construction. The relationship being an
     # explicit statement is the difference between an aggregation unit and a coincidence of
     # spelling.
-    "WaferLeg":  {"class": "issued",   "keys": ["wafer", "bonding_leg"],
-                  "semi_ref": "E90/E142 process context", "label_ko": "웨이퍼-본딩 레그",
-                  "rolls_up_to": "Wafer", "root_key": "wafer"},
+    # ⚠️ `leg` is not an entity.  It is a human-planned experiment-unit value
+    # asserted by bonding_map for a region of this Wafer.  The claim predicate below keeps
+    # that provenance while the physical map retains cell membership.
     "Product":   {"class": "issued",   "keys": ["product"],   "semi_ref": None,
                   "label_ko": "제품"},
     "Equipment": {"class": "issued",   "keys": ["equipment"], "semi_ref": "E10",
@@ -149,7 +150,7 @@ PREDICATES = {
     "register": {
         "label_ko": "등록",
         "status": "active", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe"],
+        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe"],
         "object": None,                       # ∅ - see module docstring
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
@@ -160,7 +161,7 @@ PREDICATES = {
     "pin": {
         "label_ko": "핀(사람 확정)",
         "status": "active", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe", "Die"],
+        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"],
         "object": {"kind": "event_ref"},
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
@@ -169,9 +170,9 @@ PREDICATES = {
     "same_as": {
         "label_ko": "동일 개체",
         "status": "reserved", "since": 1, "layer": "canonical",
-        "subject": ["Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe", "Die"],
+        "subject": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"],
         "object": {"kind": "entity_ref",
-                   "types": ["Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe", "Die"]},
+                   "types": ["Lot", "Wafer", "Product", "Equipment", "Recipe", "Die"]},
         "qualifiers": [],
         "unit": None, "semi_ref": "local", "superseded_by": None,
         # 🔴 Identity merge WILL be traversable the day it is emitted - a walk that stops
@@ -249,7 +250,7 @@ PREDICATES = {
     "processed_with": {
         "label_ko": "공정 처리",
         "status": "active", "since": 2, "layer": "ontology",
-        "subject": ["Wafer", "WaferLeg"],
+        "subject": ["Wafer"],
         # `required` is checked by `check_signature`; see the note there. Without it a
         # `value` object would be structurally unchecked, and a signature that checks
         # nothing is the decoy declaration ruling R-2026-08-13-D put an end to.
@@ -377,10 +378,24 @@ PREDICATES = {
     # source utters one and re-assertable by a human later, so it is a payload field and
     # never a column), and any pass/fail (the threshold is a recipe parameter; storing a
     # verdict makes history un-re-judgeable).
+    # A human experiment plan assigns regions of one physical Wafer to bonding units.
+    # ``unit_id`` is a VALUE in that assertion, not a second entity identity.  ``map_ref``
+    # points back to the physical bonding_map whose cells define the region; cells are not
+    # expanded into ledger atoms.
+    "assigned_to_experiment": {
+        "label_ko": "실험 단위 배정",
+        "status": "active", "since": 5, "layer": "ontology",
+        "subject": ["Wafer"],
+        "object": {"kind": "value",
+                   "required": ["experiment_type", "unit_id", "map_ref"]},
+        "qualifiers": [],
+        "unit": None, "semi_ref": "DOE bonding map", "superseded_by": None,
+        "traversable": None, "direction": None,
+    },
     "observed": {
         "label_ko": "관측",
         "status": "active", "since": 3, "layer": "ontology",
-        "subject": ["Wafer", "WaferLeg"],
+        "subject": ["Wafer"],
         "object": {"kind": "value",
                    "required": ["finding_kind", "method", "run_uid"]},
         "qualifiers": [],
@@ -405,7 +420,7 @@ PREDICATES = {
     "measured": {
         "label_ko": "계측",
         "status": "active", "since": 4, "layer": "ontology",
-        "subject": ["Wafer", "WaferLeg"],
+        "subject": ["Wafer"],
         "object": {
             "kind": "value",
             "required": ["metric", "unit", "method", "state"],

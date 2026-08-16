@@ -1,5 +1,27 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-15 현재 — R&D 분석면·Evidence Graph 구현 완료, 통합 커밋 대기
+>
+> **커밋 기준선:** `main`/`origin/main`은 `a0092f3`이고 선언형 온톨로지·원장 관리면까지 착지했다.
+> 아래 R&D 분석면과 Evidence Graph는 현재 워킹트리에서 집중 검증됐지만 **아직 커밋되지 않았다**.
+>
+> **현재 구현된 미커밋 묶음:**
+> - 독립 `rnd-console.html`: WaferLeg 단위 Trend 마킹, 표, 공간 맵, Process·Measurement·Sequence Candidate,
+>   Bond→다중 DT→이종 Core composition 추적.
+> - 복합 SYN-CX fixture: 6 Base Wafer×2 Leg, split/rework/resort/merge, 다중 DT·Core, 결측 상태와
+>   explicit scan denominator.
+> - `ledger-graph.html`의 `Ontology`/`Evidence`: Entity·Source Event·Claim·Value 임의 seed, 최대 40홉,
+>   방향 탐색과 raw evidence 상세.
+> - Spotfire/Excel 호환: 같은 graph snapshot을 `nodes`·`edges`·typed long `properties` 표/CSV로 투영.
+>   외부 도구에는 표를 보이고 온톨로지·그래프는 배경 엔진으로 둔다.
+>
+> **검증:** Evidence Graph 서버 집중 **103 passed, 1 skipped**, UI harness **39/39**, Vite production
+> **103 modules build 성공**. PostgreSQL 전용 3파일은 격리 test DB 미선언으로 **1 passed, 82 skipped**.
+> 현재 `:8080` 서버는 내려가 있고, 활성 하위 에이전트는 없다.
+>
+> **즉시 다음:** ① 혼재한 워킹트리를 기능별 원자 커밋으로 분리 ② Candidate·Process·Measurement·Spatial도
+> stable table/mark/evidence ID 계약으로 통일 ③ 서버 기동 후 최종 브라우저/CSV 수락 검증.
+
 > ## 🌙 2026-08-14 밤 마감 — **소유자 판정: 콘솔 클라 전면 재작성 (내일 아침)**
 >
 > 「지금 구현 좀 망했어」 → 「처음부터 다시, 다 폐기」. 정본 = 브리프 맨 끝 4블록
@@ -1028,9 +1050,10 @@
 > `raws/` 양쪽에** 넣는다(파일 하나가 사실 둘을 말하고 워처는 테이블당 핸들러 1개).
 > 깨끗한 스캔은 파생할 행이 없으므로 **체인으로 대신할 수 없다.**
 >
-> **원장 계약(총괄이 못박음)**: `ledger_events`의 물리 컬럼 11개 = 봉투 7필드를 편 것
+> **원장 계약(2026-08-15 갱신)**: `ledger_events`의 물리 컬럼 13개 = 봉투 7필드를 편 기존 11개
 > (`id`·`subject_type`·`subject_keys`·`predicate`·`object_kind`·`object_payload`·
-> `occurred_at`·`source_who`·`source_translator_ver`·`source_raw_ref`·`supersedes`),
+> `occurred_at`·`source_who`·`source_translator_ver`·`source_raw_ref`·`supersedes`) + 원천 발화 상관
+> (`source_event_id`·`source_event_state`). 뒤의 둘은 resolver 우선순위가 아니라 Evidence Graph 감사 경계다.
 > `occurred_at` 시간 파티션, 라우트 `GET /api/ledger/trace?lot=&slot=` → `hops[]`에
 > `state: resolved|candidate|unresolvable` + `reason`. **L3(화면)은 L2 착지 후.**
 >

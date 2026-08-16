@@ -41,6 +41,9 @@ DATA_ROOT = os.path.abspath(os.environ.get("ASSY_DATA_ROOT") or SERVER_DIR)
 CONFIG_DIR = os.path.join(DATA_ROOT, "config")
 WORKSPACE_DIR = os.path.join(DATA_ROOT, "ingestion_workspace")
 
+CONFIG_BACKUP_DIRNAME = "backup"
+CONFIG_SAMPLE_DIRNAME = "sample"
+
 # True when running against an isolated data root (dev/QA), False in production.
 IS_ISOLATED = os.path.normcase(DATA_ROOT) != os.path.normcase(SERVER_DIR)
 
@@ -48,6 +51,26 @@ IS_ISOLATED = os.path.normcase(DATA_ROOT) != os.path.normcase(SERVER_DIR)
 def config_path(*parts):
     """Path inside the (possibly relocated) config directory."""
     return os.path.join(CONFIG_DIR, *parts)
+
+
+def config_backup_path(*parts):
+    """Path inside the config backup directory."""
+    return config_path(CONFIG_BACKUP_DIRNAME, *parts)
+
+
+def config_sample_path(filename):
+    """Tracked sample path; filenames keep the explicit ``.sample`` suffix."""
+    name = filename if str(filename).endswith(".sample") else f"{filename}.sample"
+    return config_path(CONFIG_SAMPLE_DIRNAME, name)
+
+
+def sample_for_config(path):
+    """Sample counterpart of an active config path, including isolated roots."""
+    absolute = os.path.abspath(path)
+    name = os.path.basename(absolute)
+    if not name.endswith(".sample"):
+        name += ".sample"
+    return os.path.join(os.path.dirname(absolute), CONFIG_SAMPLE_DIRNAME, name)
 
 
 def workspace_path(*parts):

@@ -130,6 +130,13 @@ def test_the_observation_table_name_can_never_become_a_statement():
         finding_kinds.observation_table("x")
 
 
+def test_active_declaration_is_boolean_not_truthy_text():
+    with pytest.raises(finding_kinds.FindingKindError) as exc:
+        _load_with({"x": {"label": "X", "active": "false", "observed_by": ["xray"],
+                          "observation_table": "x_obs", "extent_columns": ["span"]}})
+    assert "active" in str(exc.value)
+
+
 def test_clean_is_scanned_minus_found_and_never_absence_of_a_finding():
     """🔴 THE NON-NEGOTIABLE. A never-scanned package may not drift into the clean side.
 

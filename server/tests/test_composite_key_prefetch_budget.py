@@ -14,10 +14,13 @@ The intent was already proven in exactly one caller: `enrichment_mapper` pre-ass
 the key itself with the comment that the bulk prefetch is keyed on
 `business_key_val`. Every other caller paid.
 
-WHAT MOVED IS *WHEN*, NOT *WHAT*. Same function, same guard, same two side effects
-(it sets `business_key_val` AND writes the key into `updates[key_col]`). The tests
-below pin the value, both side effects, and every arm of the guard - not just the
-budget - because a faster wrong key is the worst possible outcome here.
+WHAT MOVED IS *WHEN*, NOT *WHAT*. Same function and same guard. For the historical
+shape that declares a physical `business_key` column it keeps both side effects (it
+sets `business_key_val` AND writes the key into `updates[key_col]`). A source-exact
+shape may now omit that synthetic physical column; its identity is stored only in the
+framework-owned `business_key_val`. The tests below pin both forms and every arm of
+the guard - not just the budget - because a faster wrong key is the worst possible
+outcome here.
 
 TWO THINGS THIS DELIBERATELY DOES NOT FIX, pinned so the numbers are executable:
   * `test_inserting_new_rows_still_probes_once_per_row` - a batch whose rows do not
@@ -41,6 +44,7 @@ ROWS = 200
 
 DECLARED = "p6key_test_map"    # declares map_key_columns -> declared replace_map scope
 LEGACY = "p6legacy_test_meta"  # no map_key_columns -> legacy derived replace_map scope
+SOURCE_EXACT = "p6source_exact_map"  # composite source, no synthetic key column
 
 CONFIG = {
     DECLARED: {
@@ -57,6 +61,12 @@ CONFIG = {
         "composite_key_separator": "_",
         "column_types": {"meta_pk": "string", "target_table": "string",
                          "map_id": "string", "note": "string"},
+    },
+    SOURCE_EXACT: {
+        "composite_key_source": ["wafer", "x", "y"],
+        "map_key_columns": ["wafer"],
+        "column_types": {"wafer": "string", "x": "string", "y": "string",
+                         "value": "string"},
     },
 }
 
@@ -174,6 +184,43 @@ def test_the_key_is_also_written_into_the_row_as_a_value(key_db):
 
     row = key_db.query(_model(DECLARED)).one()
     assert row.pkg_id == "A_0_0" == row.business_key_val
+
+
+def test_source_exact_composite_key_needs_no_synthetic_physical_column(key_db):
+    """A source workbook may define only the tuple that identifies a row.
+
+    The tuple must still make re-ingestion idempotent, while the payload and dynamic
+    table remain byte-for-byte faithful to the source columns rather than gaining a
+    fabricated ``cell_key``/``map_pk`` column.
+    """
+    first = schemas.GeneralUpdateItem(
+        updates={"wafer": "W1", "x": "2", "y": "3", "value": "A"},
+        source_name="pipeline_parser", updated_by="watcher")
+    before_columns = set(first.updates)
+
+    assert crud.assemble_composite_business_key(SOURCE_EXACT, first) is True
+    assert first.business_key_val == "W1_2_3"
+    assert set(first.updates) == before_columns, "no synthetic physical column was added"
+
+    crud.apply_batch_updates(key_db, SOURCE_EXACT, schemas.GeneralUpdateBatch(updates=[first]))
+    second = schemas.GeneralUpdateItem(
+        updates={"wafer": "W1", "x": "2", "y": "3", "value": "B"},
+        source_name="pipeline_parser", updated_by="watcher")
+    crud.apply_batch_updates(
+        key_db, SOURCE_EXACT, schemas.GeneralUpdateBatch(updates=[second]))
+
+    rows = key_db.query(_model(SOURCE_EXACT)).all()
+    assert len(rows) == 1
+    assert rows[0].business_key_val == "W1_2_3"
+    assert rows[0].value == "B"
+
+
+def test_source_exact_composite_key_still_refuses_an_incomplete_tuple(key_db):
+    item = schemas.GeneralUpdateItem(
+        updates={"wafer": "W1", "x": "2", "value": "A"})
+
+    assert crud.unfilled_key_columns(SOURCE_EXACT, item) == ["y"]
+    assert crud.assemble_composite_business_key(SOURCE_EXACT, item) is False
 
 
 @pytest.mark.parametrize("item, why", [

@@ -571,7 +571,7 @@ def test_the_shipped_sample_is_valid_json_and_declares_nothing():
     """The sample must parse, and must ship inert."""
     import os
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "config", "notation_rules.json.sample")
+                        "config", "sample", "notation_rules.json.sample")
     with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
     rejections = []

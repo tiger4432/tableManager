@@ -23,7 +23,7 @@ available to be copied from.
 
 WHAT IT JUDGES - BOTH SOURCES, AND THEIR DISAGREEMENT
 -----------------------------------------------------
-1. `server/config/table_config.json.sample` - production INTENT.
+1. `server/config/sample/table_config.json.sample` - production INTENT.
 2. the physical catalogue of whatever database `--url` names - production REALITY.
 3. **the two disagreeing**, which is its own report section, because that disagreement is
    literally R1's incident: `dt_inventory.dt_lot` declared `number` while the value it
@@ -1658,7 +1658,7 @@ def print_rule(res, max_members):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--url", help="SQLAlchemy URL. Default: the app's configured database.")
-    ap.add_argument("--config", help="table_config to judge. Default: table_config.json.sample")
+    ap.add_argument("--config", help="table_config to judge. Default: sample/table_config.json.sample")
     ap.add_argument("--rule", help="comma separated subset, e.g. R1,R3,MISMATCH")
     ap.add_argument("--self-test", action="store_true", dest="self_test",
                     help="fault injection only. Touches no database.")
@@ -1672,14 +1672,14 @@ def main(argv=None):
         return 1 if self_test() else 0
 
     import paths
-    cfg_path = args.config or paths.config_path("table_config.json.sample")
+    cfg_path = args.config or paths.config_sample_path("table_config.json")
     if not os.path.exists(cfg_path):
         print(f"[canon] no such config: {cfg_path}")
         return 2
     decl = Declarations.load(
         cfg_path,
-        chain_rules_path=paths.config_path("chain_rules.json.sample"),
-        overlay_path=paths.config_path("map_overlay_config.json.sample"))
+        chain_rules_path=paths.config_sample_path("chain_rules.json"),
+        overlay_path=paths.config_sample_path("map_overlay_config.json"))
 
     phys, label = None, "(none)"
     if not args.no_db:

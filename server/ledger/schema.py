@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
     source_translator_ver TEXT        NOT NULL,
     source_raw_ref        TEXT        NOT NULL,
     supersedes            UUID,
+    source_event_id       UUID        NOT NULL,
+    source_event_state    TEXT        NOT NULL,
     CONSTRAINT ck_ledger_object_kind CHECK (
         object_kind IS NULL OR object_kind IN ('value', 'entity_ref', 'event_ref')),
     CONSTRAINT ck_ledger_register_has_no_object CHECK (
@@ -84,6 +86,8 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
         jsonb_typeof(subject_keys) = 'object'),
     CONSTRAINT ck_ledger_no_self_supersede CHECK (
         supersedes IS NULL OR supersedes <> id),
+    CONSTRAINT ck_ledger_source_event_state CHECK (
+        source_event_state IN ('source_molecule', 'source_record', 'legacy_atom')),
     PRIMARY KEY (id, occurred_at)
 ) PARTITION BY RANGE (occurred_at)
 """
@@ -126,6 +130,44 @@ CREATE TABLE IF NOT EXISTS {CURSOR_TABLE} (
 #: than rendering an empty breakdown that reads as "no refusals". `{}` means the writer
 #: has owned this row and nothing has been refused.
 REFUSAL_REASONS_COLUMN = "refusal_reasons"
+
+# Ledger Graph's global entity catalogue and entity-centred subgraph are the named
+# consumers that admit these indexes.  The first is partial—registrations are O(entities),
+# not O(atoms).  The second pays per atom because an arbitrary issued entity must be able
+# to retrieve every claim about itself without scanning all monthly partitions.
+REGISTER_SEARCH_INDEX = "idx_ledger_register_search"
+SUBJECT_ENTITY_INDEX = "idx_ledger_subject_entity"
+SOURCE_EVENT_INDEX = "idx_ledger_source_event"
+OBJECT_ENTITY_INDEX = "idx_ledger_object_entity"
+REGISTER_SEARCH_INDEX_SQL = (
+    f"CREATE INDEX IF NOT EXISTS {REGISTER_SEARCH_INDEX} ON {LEDGER_TABLE} "
+    f"USING gin ((subject_keys::text) gin_trgm_ops) WHERE predicate = 'register'")
+SUBJECT_ENTITY_INDEX_SQL = (
+    f"CREATE INDEX IF NOT EXISTS {SUBJECT_ENTITY_INDEX} ON {LEDGER_TABLE} "
+    f"(subject_type, subject_keys)")
+SOURCE_EVENT_INDEX_SPECS = (
+    (SOURCE_EVENT_INDEX, "(source_event_id, occurred_at, id)",
+     "WHERE source_event_id IS NOT NULL"),
+    (OBJECT_ENTITY_INDEX,
+     "((object_payload->>'type'), (object_payload->'keys'))",
+     "WHERE object_kind = 'entity_ref'"),
+)
+SOURCE_EVENT_INDEX_SQL = (
+    f"CREATE INDEX IF NOT EXISTS {SOURCE_EVENT_INDEX} ON {LEDGER_TABLE} "
+    f"{SOURCE_EVENT_INDEX_SPECS[0][1]} {SOURCE_EVENT_INDEX_SPECS[0][2]}")
+OBJECT_ENTITY_INDEX_SQL = (
+    f"CREATE INDEX IF NOT EXISTS {OBJECT_ENTITY_INDEX} ON {LEDGER_TABLE} "
+    f"{SOURCE_EVENT_INDEX_SPECS[1][1]} {SOURCE_EVENT_INDEX_SPECS[1][2]}")
+
+# Existing ledgers receive only nullable columns during ordinary startup.  That is a
+# metadata-only additive change; the bounded operator migration owns the historical
+# backfill and constraint validation.  New writes always populate both columns.
+LEDGER_ADDITIONS = (
+    ("source_event_id",
+     f"ALTER TABLE {LEDGER_TABLE} ADD COLUMN source_event_id UUID"),
+    ("source_event_state",
+     f"ALTER TABLE {LEDGER_TABLE} ADD COLUMN source_event_state TEXT"),
+)
 
 #: Columns added to an EXISTING cursor table. `ensure_schema` applies them, so a
 #: translator can never meet a table it cannot write into - the ordering hazard that
@@ -189,7 +231,24 @@ INDEXES = (
     # growing long before the table does. PRICE: 16.6 B/atom and falling.
     f"CREATE INDEX IF NOT EXISTS idx_ledger_register ON {LEDGER_TABLE} "
     f"(subject_type, subject_keys) WHERE predicate = 'register'",
+
+    # CONSUMER: `GET /api/ledger/entities?q=...`. Partial trigram over structured
+    # identities: a contains search is useful in the picker, but casting every ledger
+    # atom to text at request time is forbidden. `pg_trgm` is a database bootstrap
+    # prerequisite (`setup/init_db.py`); the migration names its absence rather than
+    # silently running the slow query.
+    REGISTER_SEARCH_INDEX_SQL,
+
+    # CONSUMER: the generic entity-centred graph. Exact (type, structured keys) probes
+    # occur once per bounded frontier and can use this B-tree on every partition.
+    SUBJECT_ENTITY_INDEX_SQL,
 )
+
+# Built inline only for a brand-new empty ledger.  On an existing ledger these are
+# intentionally owned by `add_ledger_source_events.py`, which uses CONCURRENTLY.  Letting
+# ordinary writer startup build them synchronously would turn a read feature deployment
+# into an unbounded write-path lock.
+SOURCE_EVENT_INDEXES = (SOURCE_EVENT_INDEX_SQL, OBJECT_ENTITY_INDEX_SQL)
 
 
 def month_bounds(when: datetime):
@@ -267,8 +326,13 @@ def ensure_schema(connection):
     spelling of the DDL (the rule `add_ledger_events.py` states).
     """
     with connection.cursor() as cursor:
+        ledger_existed = _relation_exists(cursor, LEDGER_TABLE)
         cursor.execute(CREATE_LEDGER)
         cursor.execute(CREATE_CURSOR)
+        for column, statement in LEDGER_ADDITIONS:
+            if not column_exists(cursor, LEDGER_TABLE, column):
+                logger.info("[Ledger] adding %s.%s", LEDGER_TABLE, column)
+                cursor.execute(statement)
         for column, statement in CURSOR_ADDITIONS:
             # Gated rather than `ADD COLUMN IF NOT EXISTS`: that spelling still takes
             # ACCESS EXCLUSIVE on the table to decide it has nothing to do, and this runs
@@ -278,6 +342,9 @@ def ensure_schema(connection):
                 cursor.execute(statement)
         for statement in INDEXES:
             cursor.execute(statement)
+        if not ledger_existed:
+            for statement in SOURCE_EVENT_INDEXES:
+                cursor.execute(statement)
     connection.commit()
 
 

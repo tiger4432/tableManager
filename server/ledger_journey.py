@@ -241,20 +241,22 @@ _cache = None
 def _config_path():
     """Live file, else the shipped sample, else absent — `mechanism_gate`'s rule verbatim.
 
-    `server/config/*.json` is the operator's (gitignored) and `*.json.sample` is what
-    ships; a screen that cannot tell them apart lets an operator believe they configured
+    `server/config/*.json` is the operator's (gitignored) and `sample/*.json.sample` ships;
+    a screen that cannot tell them apart lets an operator believe they configured
     something they did not, so `origin` travels in the response.
     """
     try:
         import paths
         base = paths.CONFIG_DIR
+        sample = paths.config_sample_path(CONFIG_FILENAME)
     except Exception:                                            # pragma: no cover
         base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
+        sample = os.path.join(base, "sample", CONFIG_FILENAME + ".sample")
     path = os.path.join(base, CONFIG_FILENAME)
     if os.path.exists(path):
         return path, "live"
-    if os.path.exists(path + ".sample"):
-        return path + ".sample", "sample"
+    if os.path.exists(sample):
+        return sample, "sample"
     return path, "absent"
 
 
@@ -600,11 +602,9 @@ def _atoms(connection, subject, subjects, predicates, cfg):
            f"AND e.object_payload IS NOT NULL "
            f"ORDER BY e.occurred_at, e.id")
     # 🔴 ROOT-KEY ROLLUP, NOT A SINGLE TYPE (ruling R-2026-08-15-O). A journey asks what
-    # happened to a WAFER, and a bonding leg is that wafer at a finer grain - so pinning
-    # one `subject_type` dropped `WaferLeg` atoms (MEASURED: 42, of which 12 are
-    # `processed_with` and ALL of those are FINAL_BOND) out of the comparison. The screen
-    # then read「본딩 조건 차이 없음」, which is the one answer the journey contrast exists
-    # to never give falsely. The join key is unchanged: derived types declare the root key
+    # happened to a WAFER. Derived subject rollup remains generic for future declared
+    # types, but bonding ``leg`` is now a value in a Wafer experiment-assignment claim,
+    # not a derived subject. The join key is unchanged: derived types declare the root key
     # they carry, so `subject_keys->>'wafer'` finds them exactly as it finds the wafer.
     rows = _fetch(connection, sql,
                   {"stypes": list(rollup_subject_types(subject.type)), "skey": subject.key,
