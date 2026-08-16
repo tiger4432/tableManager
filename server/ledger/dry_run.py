@@ -263,7 +263,7 @@ def _preview_lineage(store, connection, cfg, source, source_cfg, rows, notes):
         complete = page
         break                      # ONE page - a preview, not a sweep
 
-    translator = LotEventTranslator(source_cfg, translator_ver, declared)
+    translator = LotEventTranslator(source_cfg, translator_ver, declared, who=source)
     molecules = group_molecules(complete)
 
     subjects = set()

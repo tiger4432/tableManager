@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 구 그래프 실행 갈래 제거 — 코드 대조
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 Source Ontology Profile v1 — 코드 대조
 > 
 > ⚰️ **[`2ec78b9` · 판정 R-2026-08-14-H] 구 그래프 갈래가 은퇴해 §2·§3·§5·§6·§8이 갱신됐습니다** — 백엔드 자식이 다섯에서 **넷**, 라우트 일곱이 **410**, 저장소 셋이 **DROP**(약 841 MB). 후계는 정준 원장입니다. 토폴로지 변경이라 SSOT가 반드시 말해야 하는 종류의 사실입니다. **⚠️ 총괄 검수 대상** — 이 문서는 사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다.
 > 
@@ -150,6 +150,10 @@ graph TD
 | `map_overlay_config.json` | **범용 맵 오버레이** — `table_bindings`(맵 좌표 컬럼)·`paint_lock`(페인트 잠금 정본). **`align_overrides`는 2026-07-27 폐지** — 정렬의 근거는 `wafer_map_metadata` 하나뿐이다 |
 | `bonding_plan_config.json` / `transfer_plan_config.json` | 계획 엔진 역할 바인딩 — 역할(role)→실테이블·컬럼, stage 선언(`target_map`), `plan_store` |
 
+`ledger_config.json`은 기존 실행 선언 `sources` 옆에 상위 `profiles`를 함께 둘 수 있다.
+현재 `profiles`는 순수 검증·직렬화 계약이며 실행 loader는 아직 `sources`만 소비한다.
+계약과 단계 경계는 [LEDGER_TECHNICAL_SPEC §3.10](../spec/LEDGER_TECHNICAL_SPEC.md)에 있다.
+
 **설정 파일 전수 지도와 시나리오별 온보딩 절차(무엇을 어떤 순서로 넣고 어떻게 검증하는가)는 [guide/CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)를 참조하세요.**
 
 변경은 `config_watcher.py` + `SYSTEM_RELOAD` outbox 이벤트로 무중단 반영됩니다. 신규 테이블은 리로드 시 물리 CREATE까지 자동 수행(`refresh_dynamic_models`, 이슈 #7)되고 워크스페이스 폴더도 자동 보충되므로, **온보딩은 "config 추가 → 리로드 → 즉시 사용"으로 완결**됩니다(파서 스크립트 없이도 std parser 폴백으로 적재 가능).
@@ -172,8 +176,8 @@ graph TD
 | 배치 업서트 | [batch_update_technical_specification](../spec/batch_update_technical_specification.md) | `crud.apply_batch_updates` |
 | 실패 관리/재시도 | [FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | `FileIngestionLog`, outbox retry |
 | 이벤트 기반(Outbox/EDA) | [architecture/event_driven_backend](../architecture/event_driven_backend.md) | `database/database.py`, `chain_ingestion_worker.py` |
-| **정준 원장(ledger) — 개체·주장·원천 사건의 정본** | [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md) · [spec/LEDGER_TECHNICAL_SPEC](../spec/LEDGER_TECHNICAL_SPEC.md) · [Evidence Subgraph](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) · 판정 [process/LEDGER_RULINGS](../process/LEDGER_RULINGS.md) | `server/ledger/*`, `server/ledger_trace_router.py`, `server/ledger_subgraph.py`, `server/enrichment_actions.py`(read projection), `server/ledger_selection.py`, `server/ledger_structure.py`, `server/ledger_trends.py`, `server/ledger_composition.py` |
-| ~~**온톨로지 그래프(엣지 스토어 + materializer)**~~ | ⚰️ **[2026-08-14 R-2026-08-14-H] 은퇴** — 후계는 위 원장 행. 설계 배경은 [spec/ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)(🗄️ 부분 대체) | ~~`graph_sync_worker.py`, `graph_materializer.py`~~ · 매핑 선언 `ontology_config.py`/`config/ontology_mapping.json`은 **소비자를 잃었습니다** |
+| **정준 원장(ledger) — 개체·주장·원천 사건의 정본** | 작성 순서 [ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md) · 구현법 [LEDGER_GUIDE](../guide/LEDGER_GUIDE.md) · 계약 [LEDGER_TECHNICAL_SPEC](../spec/LEDGER_TECHNICAL_SPEC.md) · [Evidence Subgraph](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) · 판정 [LEDGER_RULINGS](../process/LEDGER_RULINGS.md) | `server/ledger/*` — 특히 `source_profile.py`(범용 상위 Profile 계약)·`source_profile_builtins.py`(v1 template/type 등록), `source_contract.py`(수동 선언→번역 프로필→가능 Claim→live vocabulary 결합), `translator_pattern.py`(복잡한 소스용 안전 수명주기), `server/ledger_trace_router.py`, `server/ledger_subgraph.py`, `server/enrichment_actions.py`(read projection), `server/ledger_selection.py`, `server/ledger_structure.py`, `server/ledger_trends.py`, `server/ledger_composition.py` |
+| ~~**온톨로지 그래프(엣지 스토어 + materializer)**~~ | ⚰️ **[2026-08-16 코드 제거 완료]** — 후계는 위 원장 행. 설계 배경과 옛 설정 예시는 [archive](../_archive/retired_graph_sync/README.md) | 실행 코드·`ontology_mapping.json` 샘플·로더 제거 |
 | ~~**그래프 뷰어·추적 리포트**~~ | ⚰️ **[2026-08-14] 은퇴** — 후계는 `ledger.html`([architecture/frontend §6.1](../architecture/frontend.md)) | ~~`main.py /graph/*`~~(전부 410), `graph.html`은 묘비만 |
 | **Enrichment Queue(결손 보정 워크리스트)** | [spec/ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md) · [Claim Requirement & Worklist](../spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md) | `enrichment_config.py`, `enrichment_mapper.py`, `enrichment_actions.py`, `client2/src/enrichment.js`, `config/enrichment_rules.json` |
 | 어드민(파이프라인 5탭 + 코드 에디터) | [architecture/frontend §5](../architecture/frontend.md) | `client2/src/admin.js`, `main.py /admin/*` |

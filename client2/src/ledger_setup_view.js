@@ -70,6 +70,13 @@ export const LEDGER_CHROME = Object.freeze({
   DRY_RUN_REFUSALS: '거절',
   DRY_RUN_STALE: '폼이 바뀌었습니다 — 다시 드라이런',
   READ_ONLY_ENFORCED: 'read_only_enforced',
+  SOURCE_CONTRACT: 'Source Contract',
+  TRANSLATOR_PROFILE: '번역 프로필',
+  MOLECULE: '분자 단위',
+  OPERATOR: '변환 방식',
+  POSSIBLE_CLAIMS: '생성 가능 Claim',
+  CONFIGURED_BY: '설정 위치',
+  VOCABULARY_SIGNATURE: 'vocabulary 서명',
 
   SAVE: '저장',
   SAVING: '저장 중…',
@@ -209,6 +216,8 @@ export function buildSourcesView(payload) {
   const kinds = namedList(payload && payload.kinds).map((kind) => {
     const raw = kind.raw && typeof kind.raw === 'object' ? kind.raw : {};
     const blocks = namedList(raw.required_blocks);
+    const translator = raw.translator && typeof raw.translator === 'object'
+      ? raw.translator : {};
     return {
       key: kind.name,
       label: kind.label,
@@ -216,6 +225,12 @@ export function buildSourcesView(payload) {
       required: namedList(raw.required_columns),
       optional: namedList(raw.optional_columns),
       blocks,
+      translator: {
+        profile: val(translator.profile),
+        molecule: translator.molecule != null ? srv(translator.molecule) : null,
+        operator: translator.operator != null ? srv(translator.operator) : null,
+        implementation: val(translator.implementation),
+      },
       // Drawn by the standard sections below the column grid; not repeated as JSON boxes.
       extraBlocks: blocks.filter((b) => !STANDARD_BLOCKS.includes(b.name)),
       standardBlocks: blocks.filter((b) => STANDARD_BLOCKS.includes(b.name)).map((b) => b.name),
@@ -326,6 +341,53 @@ function parseTriState(word) {
 const DRY_RUN_COUNTERS = Object.freeze(
   ['rows_read', 'molecules', 'atoms', 'refused_molecules', 'writes']);
 
+/** Source declaration + executable translator + live vocabulary, compiled by the server.
+ *
+ * This is intentionally a read model.  The client does not infer what a translator can emit
+ * from sampled atoms: a branch may simply be absent from the first 20 rows.  `emissions` is the
+ * server's complete profile contract; the atoms remain the empirical preview beneath it.
+ */
+export function buildSourceContractView(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const translator = payload.translator && typeof payload.translator === 'object'
+    ? payload.translator : {};
+  return {
+    title: chrome(LEDGER_CHROME.SOURCE_CONTRACT),
+    sentence: payload.sentence_ko != null ? srv(payload.sentence_ko) : null,
+    state: val(payload.state),
+    translator: {
+      profile: val(translator.profile),
+      molecule: translator.molecule != null ? srv(translator.molecule) : null,
+      operator: translator.operator != null ? srv(translator.operator) : null,
+      implementation: val(translator.implementation),
+    },
+    labels: {
+      profile: chrome(LEDGER_CHROME.TRANSLATOR_PROFILE),
+      molecule: chrome(LEDGER_CHROME.MOLECULE),
+      operator: chrome(LEDGER_CHROME.OPERATOR),
+      claims: chrome(LEDGER_CHROME.POSSIBLE_CLAIMS),
+      configuredBy: chrome(LEDGER_CHROME.CONFIGURED_BY),
+      signature: chrome(LEDGER_CHROME.VOCABULARY_SIGNATURE),
+    },
+    emissions: list(payload.emissions).map((entry) => ({
+      predicate: val(entry && entry.predicate),
+      state: val(entry && entry.state),
+      subjects: val(entry && entry.subject_types),
+      objectKind: val(entry && entry.object_kind),
+      objectTypes: val(entry && entry.object_types),
+      qualifiers: val(entry && entry.qualifiers),
+      derivations: val(entry && entry.derivations),
+      eventTypes: val(entry && entry.event_types),
+      configuredBy: val(entry && entry.configured_by),
+      vocabulary: val(entry && entry.vocabulary),
+      issues: list(entry && entry.issues).map((issue) => ({
+        code: val(issue && issue.code),
+        detail: issue && issue.detail_ko != null ? srv(issue.detail_ko) : null,
+      })),
+    })),
+  };
+}
+
 export function buildDryRunView(payload) {
   const p = payload || {};
   return {
@@ -372,6 +434,7 @@ export function buildDryRunView(payload) {
       detail: r && r.detail_ko != null ? srv(r.detail_ko) : null,
       moleculeRef: r && r.molecule_ref != null ? val(r.molecule_ref) : null,
     })),
+    sourceContract: buildSourceContractView(p.source_contract),
     // Not rendered. The proof that a dry run of THIS declaration happened.
     token: p.token != null ? String(p.token) : '',
   };

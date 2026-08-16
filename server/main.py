@@ -4875,6 +4875,11 @@ def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)
     result["ok"] = True
     result["target"] = target
     result["name"] = name
+    # One authoring answer: the physical declaration, the translator's complete possible
+    # emissions (including branches absent from this sample), and the LIVE vocabulary
+    # signatures they must satisfy.  The atom preview below remains the empirical half.
+    from ledger.source_contract import compile_source
+    result["source_contract"] = compile_source(name, declaration)
     result["token"] = ledger_admin.declaration_token(target, name, declaration)
     result["sentence_ko"] = (
         f"이 선언은 {result['rows_read']}행을 읽어 분자 {result['molecules']}개를 만들고 "

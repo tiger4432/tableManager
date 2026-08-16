@@ -408,12 +408,16 @@ def probe_source_head(store, source, source_cfg, position):
     connection = store.connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT max({time_column}), "
-                f"       count(*) FILTER (WHERE {time_column} > %s) "
-                f"FROM {source}",
-                (position or "",))
+            if position is None:
+                cursor.execute(
+                    f"SELECT max({time_column}), count(*) FROM {source}")
+            else:
+                cursor.execute(
+                    f"SELECT max({time_column}), "
+                    f"       count(*) FILTER (WHERE {time_column} > %s) "
+                    f"FROM {source}", (position,))
             head, behind = cursor.fetchone()
+        head = head.isoformat() if hasattr(head, "isoformat") else head
         return head, int(behind or 0)
     finally:
         connection.close()

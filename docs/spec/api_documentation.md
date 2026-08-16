@@ -1,6 +1,6 @@
 # assyManager Data Update Server API Documentation
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-31 | **Owner:** Backend
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-16 Source Contract 가산 필드 | **Owner:** Backend
 > **범위 주의:** 이 문서는 **행·셀 쓰기 계약**의 상세 레퍼런스이고 **전체 라우트 지도가 아니다.** 엔드포인트 전수는 [architecture/backend §2](../architecture/backend.md)가 정본이다.
 > ⚠️ **본문이 영어인 것은 이 파일의 기존 관례다**(나머지 `docs/`는 한국어). 한 파일 안에서 언어를 섞지 않으려고 신규 절도 영어로 썼다 — 언어 통일은 총괄 판단 대기.
 
@@ -454,3 +454,51 @@ All three routes are behind the shared admin token (`X-Admin-Token`). `POST .../
 - **One run at a time.** A second trigger while one is in flight is refused by the scheduler and logged, and its outbox row is left unprocessed for a later tick rather than silently queued.
 - **Parameter validation happens in exactly one place** (`retroactive.validate`), so the route and the worker cannot disagree about what a valid request is.
 - **The safety properties live in the operations, not here.** R2's two refusals — the `user` source, and cells a human pinned via `manual_priority_source` — are inside `chain_replay.withdraw_source`, and this path routes *into* that function. The route re-states the first refusal only so the operator gets a `400` instead of a queued job that dies in a worker log.
+
+---
+
+## 7. Ledger Source Contract (additive fields)
+
+The complete ledger route inventory remains [architecture/backend §2](../architecture/backend.md).
+This section owns only the Source Contract fields added to the existing authoring routes.
+Both routes require the shared `X-Admin-Token` gate.
+
+### 7.1 Translator profile inventory
+
+- **HTTP Method**: `GET`
+- **Route**: `/admin/ledger/sources`
+- **Query Parameters**: none.
+- **Additive Response Field**: every `kinds[]` entry keeps its outer `kind` and includes
+  `translator: {profile, implementation, molecule, operator}`.
+- **Meaning**: the selected source grammar and the executable translator profile are joined
+  in one response. Clients must render this server-owned metadata instead of maintaining a
+  second kind-to-translator map.
+
+### 7.2 Compile and exercise one source declaration
+
+- **HTTP Method**: `POST`
+- **Route**: `/admin/ledger/dry-run`
+- **Request Body**:
+  - `target`: must be `"source"` for a Source Contract response.
+  - `name`: source/relation name.
+  - `declaration`: parsed source declaration object. Alternatively send `raw`, containing
+    the JSON text for one declaration; the server parses it through the same refusal gate.
+  - `rows`: optional sample budget, default `20`, clamped to `1..200`.
+- **Additive Response Field**:
+  `source_contract: {source, state, translator, columns, emissions, issues, sentence_ko}`.
+  Each `emissions[]` item carries the possible predicate, subject and object shape, payload
+  fields, derivations, `configured_by`, event types, the matched live vocabulary signature,
+  compatibility state, and issues.
+- **Static versus empirical evidence**: `source_contract.emissions[]` is the complete static
+  set for the selected profile, including branches absent from the sample. Existing
+  `atoms_rendered[]` is the empirical result of running the real translator on sampled rows.
+  Neither replaces the other.
+- **Refusal**: a source/translator/vocabulary mismatch returns `400` with violation code
+  `translator_vocabulary_mismatch` before source rows are read. Syntax, table and column
+  errors continue to use the existing named violations.
+- **Writes**: zero. The real preview runs inside a PostgreSQL read-only transaction and
+  reports `read_only_enforced: true`.
+
+`POST /admin/ledger/save` still requires the declaration token returned by this dry run.
+The Source Contract therefore participates in the existing validate → dry-run → fingerprint
+→ atomic save workflow; it does not add a second save path.

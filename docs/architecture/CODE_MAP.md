@@ -2230,6 +2230,8 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 🆕⑦ **[2026-08-14] 11 → 13파일.** 줄 수는 `a729a7f` 재측정값이고, ⚠️ **아래 각 파일의 심볼 표는 `aeddac8` 기준 그대로다** — 자란 파일의 신설 심볼은 이 표에 없다.
 
+🆕⑧ **[2026-08-16] 13 → 19파일.** 이번 패스는 새 작성 경로 여섯 파일만 코드 대조했다. 기존 행의 줄 수와 심볼은 재검증하지 않았다.
+
 | 파일 | 줄 | 한 줄 |
 |---|---|---|
 | `__init__.py` | **27** | 코드 0줄, docstring만. 읽는 순서를 선언한다(vocabulary → envelope → gate → schema → config → lot_event_translator → backfill → observability — 🆕⑦ 신설 번역기 2종은 이 목록에 아직 없다). ⚠️ 결합 서술 1건이 실측과 어긋난다 — 아래 「소스가 이 절을 반박하는 자리」 |
@@ -2238,11 +2240,18 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `uuid7.py` | **123** | 단조 UUIDv7 — `id`이자 워터마크이자 기록 시각 (🆕⑦ 무변동) |
 | `gate.py` | 🆕⑦ **468** | 문 앞에서 거절하고 **센다**. 단위는 행이 아니라 **분자(molecule)** |
 | `config.py` | 🆕⑦ **623** | `ledger_config.json` 로더/검증 + 번역기 버전 해시 |
+| 🆕⑧ `declared_translator.py` | **258** | 한 행을 `emit[]` 선언대로 Claim 1~N개로 만드는 선언 실행기 |
+| 🆕⑧ `dry_run.py` | **416** | 실제 번역기를 PostgreSQL 읽기 전용 트랜잭션에서 실행하는 미리보기 |
+| 🆕⑧ `source_contract.py` | **281** | 소스 선언·번역 프로필·가능 Claim 전수·live vocabulary를 한 작성 계약으로 컴파일 |
+| 🆕⑧ `translator_pattern.py` | **164** | 복잡한 Python 번역기의 시각·출처·register·게이트·롤백 공통 수명주기 |
+| 🆕⑧ `source_profile.py` | **658** | 범용 `SourceOntologyProfile` 모델, 엄격 검증, 결정적 직렬화, template/type registry 계약. DB·compiler·translator 호출 없음 |
+| 🆕⑧ `source_profile_builtins.py` | **83** | v1 `lot_lineage`·`transfer` template과 entity/container type 등록 데이터 |
 | `schema.py` | 🆕⑦ **360** | 물리 DDL — **첫날부터 시간 파티션**. 유일한 철자 |
 | `store.py` | 🆕⑦ **442** | 원자 append와 커서 전진을 **한 트랜잭션**으로 |
 | `lot_event_translator.py` | 🆕⑦ **526** | 첫 소스. 두 행 = 한 분자 |
 | 🆕⑦ `observation_translator.py` | **362** | **신설.** 관측(검사 발견) 소스의 번역기 — `class ObservationMolecule` · `class ObservationTranslator`(`source_cfg["columns"]`의 논리 이름으로만 컬럼을 읽는다) · `raw_ref(source, rows)`. **심볼 표 미등재**(이 패스는 존재·최상위 심볼만 실측) |
 | 🆕⑦ `transfer_translator.py` | **395** | **신설.** 이송(transfer) 소스의 번역기 — `class TransferMolecule` · `class TransferTranslator` · `raw_ref(source, columns, group_key, extra=None)`. **심볼 표 미등재**(〃) |
+| 🆕⑧ `examples/grouped_translator_template.py` | **72** | 런타임 미등록 복사 예제. `CUSTOMIZE` 네 블록만 교체하며 복사만 해서는 0행을 쓴다 |
 | `backfill.py` | 🆕⑦ **1,002** | 커서 루프 + CLI. **분자를 반으로 자르지 않는다** |
 | `observability.py` | 🆕⑦ **424** | 하트비트 note + **2계층 lag 보고** |
 

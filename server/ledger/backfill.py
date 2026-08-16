@@ -105,11 +105,15 @@ def fetch_page(connection, source, columns, after, limit):
         f"{time_column} AS event_time",
     ]
     with connection.cursor() as cursor:
+        where, params = "", []
+        if after is not None:
+            where = f"WHERE {time_column} > %s "
+            params.append(after)
+        params.append(limit)
         cursor.execute(
             f"SELECT {', '.join(select)} FROM {source} "
-            f"WHERE {time_column} > %s "
-            f"ORDER BY {time_column}, {identity} "
-            f"LIMIT %s", (after or "", limit))
+            f"{where}ORDER BY {time_column}, {identity} "
+            f"LIMIT %s", tuple(params))
         names = [d[0] for d in cursor.description]
         return [dict(zip(names, row)) for row in cursor.fetchall()]
 
@@ -280,7 +284,7 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
             rows_read=0, cursor=after, seconds=0.0)
         started = time.monotonic()
 
-        translator = LotEventTranslator(source_cfg, translator_ver, declared)
+        translator = LotEventTranslator(source_cfg, translator_ver, declared, who=source)
         pending, pending_cursor, pending_molecules = [], after, 0
         pending_refused, pending_incomplete = 0, 0
 
@@ -382,7 +386,7 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
 
                 if pending_molecules >= batch_size:
                     _flush(store, source, translator_ver, pending,
-                           {"event_time": pending_cursor},
+                           {"event_time": _cursor_json(pending_cursor)},
                            pending_molecules, pending_refused, pending_incomplete,
                            result, gate, refusal_baseline)
                     pending, pending_molecules = [], 0
@@ -390,7 +394,7 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
 
             if pending_molecules:
                 _flush(store, source, translator_ver, pending,
-                       {"event_time": pending_cursor},
+                       {"event_time": _cursor_json(pending_cursor)},
                        pending_molecules, pending_refused, pending_incomplete, result,
                        gate, refusal_baseline)
                 pending, pending_molecules = [], 0
@@ -499,6 +503,11 @@ def _watermark_json(values):
     from datetime import datetime as _dt
     return [v.isoformat() if isinstance(v, _dt) else (None if v is None else str(v))
             for v in values]
+
+
+def _cursor_json(value):
+    """A lineage cursor suitable for jsonb while preserving timestamptz ordering."""
+    return value.isoformat() if hasattr(value, "isoformat") else value
 
 
 def _run_observation(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,

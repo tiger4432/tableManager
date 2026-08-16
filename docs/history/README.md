@@ -1,14 +1,21 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **603개** 이력. (거버넌스 규칙 #4)
+> 총 **610개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-17 00:17** — [Dt Log Core Coordinate Pairing Fix](./20260817_001742_dt_log_core_coordinate_pairing_fix.md)
+- **2026-08-17 00:05** — [Dt Points Valid Die Reference Fix](./20260817_000522_dt_points_valid_die_reference_fix.md)
+- **2026-08-16 23:37** — [Synthetic Dt Log Multi Core Seed](./20260816_233737_synthetic_dt_log_multi_core_seed.md)
+- **2026-08-16 23:36** — [Source Ontology Profile V1](./20260816_233630_source_ontology_profile_v1.md)
+- **2026-08-16 23:16** — [Root Lot Valid Die Ref Seed](./20260816_231613_root_lot_valid_die_ref_seed.md)
 - **2026-08-16 22:27** — [Remove Retired Graph Sync Branch](./20260816_222702_remove_retired_graph_sync_branch.md)
+- **2026-08-16 19:33** — [Ledger Source Contract Translator Template](./20260816_193304_ledger_source_contract_translator_template.md)
+- **2026-08-16 18:45** — [Synthetic Lot Split Merge Sources](./20260816_184549_synthetic_lot_split_merge_sources.md)
 - **2026-08-16 12:20** — [Config Archive And Semantic Compiler Backlog](./20260816_122011_config_archive_and_semantic_compiler_backlog.md)
 - **2026-08-16 11:55** — [Source Config Table Setup](./20260816_115534_source_config_table_setup.md)
 - **2026-08-15 22:36** — [Enrich Action Node](./20260815_223656_enrich_action_node.md)
@@ -624,4 +631,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-16 by gen_index.py*
+*Last generated: 2026-08-17 by gen_index.py*

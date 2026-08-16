@@ -81,6 +81,13 @@ logger = logging.getLogger("Ledger.LotEvent")
 SOURCE = "lot_event"
 
 
+def _json_value(value):
+    """A stable JSON spelling for source-native scalar values used only in refs."""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
+
+
 class Molecule:
     """One source event: its key, its rows, and where it sits in the cursor's order."""
 
@@ -109,7 +116,7 @@ class Molecule:
         """
         return json.dumps([self.event_type, self.event_time, self.parent, self.child,
                            self.ambiguous],
-                          ensure_ascii=False, separators=(",", ":"))
+                          ensure_ascii=False, separators=(",", ":"), default=_json_value)
 
     @property
     def is_complete(self) -> bool:
@@ -244,7 +251,7 @@ class LotEventTranslator:
             # is only recoverable by going back through `raw_ref` to the source row and
             # re-deriving its event type.
             source_translator_ver=f"{self.translator_ver}#{derivation}",
-            source_raw_ref=raw_ref(raw_rows),
+            source_raw_ref=raw_ref(raw_rows, self.who),
             molecule_ref=molecule.ref,
             derivation=derivation,
         )
@@ -353,7 +360,7 @@ class LotEventTranslator:
 
         if molecule.ambiguous:
             row = molecule.rows[0] if molecule.rows else {}
-            gate.refuse(SOURCE, gate.REFUSE_AMBIGUOUS_PAIR,
+            gate.refuse(self.who, gate.REFUSE_AMBIGUOUS_PAIR,
                         f"row {molecule.ambiguous!r} fills BOTH "
                         f"{self.cfg['columns']['parent_lot']}="
                         f"{row.get('parent_lot')!r} and "
@@ -367,7 +374,7 @@ class LotEventTranslator:
 
         rule = (self.cfg.get("vocabulary") or {}).get(molecule.event_type)
         if rule is None:
-            gate.refuse(SOURCE, gate.REFUSE_UNDECLARED_VOCABULARY,
+            gate.refuse(self.who, gate.REFUSE_UNDECLARED_VOCABULARY,
                         f"event_type={molecule.event_type!r} is not declared for this "
                         f"source (declared: "
                         f"{', '.join(sorted(self.cfg.get('vocabulary') or {}))}); "
@@ -378,7 +385,7 @@ class LotEventTranslator:
         occurred_at = parse_occurred_at(molecule.event_time, self.time_format,
                                         self.timezone_name)
         if occurred_at is None:
-            gate.refuse(SOURCE, gate.REFUSE_MISSING_OCCURRED_AT,
+            gate.refuse(self.who, gate.REFUSE_MISSING_OCCURRED_AT,
                         f"{self.time_column}={molecule.event_time!r} does not parse as "
                         f"{self.time_format!r}; arrival time is NOT substituted "
                         f"(design §10 risk 1)",
@@ -387,19 +394,20 @@ class LotEventTranslator:
         atoms = []
         lineage = rule.get("lineage", "none")
         pairing = rule.get("slot_pairing", "none")
+        emit_register = rule.get("emit_register", True)
 
         # --- identity of the lots this molecule talks about -----------------------
         lots = [lot for lot in ({row["lot"] for row in molecule.rows}
                                 | {molecule.parent, molecule.child}) if lot]
         if not lots:
-            gate.refuse(SOURCE, gate.REFUSE_NO_IDENTITY,
+            gate.refuse(self.who, gate.REFUSE_NO_IDENTITY,
                         f"no lot value on any of the {len(molecule.rows)} row(s) of "
                         f"molecule {molecule.ref}",
                         rows=len(molecule.rows))
 
         for lot in sorted(lots):
-            atom = self._register(molecule, "Lot", {"lot": lot}, occurred_at,
-                                  molecule.rows)
+            atom = (self._register(molecule, "Lot", {"lot": lot}, occurred_at,
+                                   molecule.rows) if emit_register else None)
             if atom:
                 atoms.append(atom)
 
@@ -415,8 +423,9 @@ class LotEventTranslator:
                         # `raw_ref` points at that row.
                         self.blank_wafer_positions += 1
                         continue
-                    register = self._register(molecule, "Wafer", {"wafer": wafer},
-                                              occurred_at, [row])
+                    register = (self._register(
+                        molecule, "Wafer", {"wafer": wafer}, occurred_at, [row])
+                        if emit_register else None)
                     if register:
                         atoms.append(register)
                     atoms.append(self._atom(
@@ -453,7 +462,7 @@ class LotEventTranslator:
         slots = _split_list(row["slots"], self.separator)
         wafers = _split_list(row["wafers"], self.separator)
         if len(slots) != len(wafers):
-            gate.refuse(SOURCE, gate.REFUSE_ATOMICITY,
+            gate.refuse(self.who, gate.REFUSE_ATOMICITY,
                         f"row {row['row_identity']!r}: {self.cfg['columns']['slots']} has "
                         f"{len(slots)} entries but "
                         f"{self.cfg['columns']['wafers']} has {len(wafers)}; a positional "
@@ -511,7 +520,7 @@ class LotEventTranslator:
         return []
 
 
-def raw_ref(rows) -> str:
+def raw_ref(rows, source=SOURCE) -> str:
     """`lot_event:["<row id>", ...]` - the ONLY route back to re-translation (§3).
 
     A JSON array rather than a delimiter-joined string, and that is not style. The source
@@ -522,5 +531,5 @@ def raw_ref(rows) -> str:
     the value is identical on every run and the unique index recognises a re-translation.
     """
     identities = sorted({str(row["row_identity"]) for row in rows})
-    return SOURCE + ":" + json.dumps(identities, ensure_ascii=False,
+    return source + ":" + json.dumps(identities, ensure_ascii=False,
                                      separators=(",", ":"))

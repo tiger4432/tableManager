@@ -54,7 +54,7 @@ REFUSAL_CODES = (
     "canonical_layer_forbidden", "not_editable", "unsupported_kind",
     "declaration_rejected", "dry_run_stale", "retire_target_unknown", "invalid_value",
     "traversable_true_unavailable", "duplicate_source", "undeclared_table",
-    "stale_base",
+    "stale_base", "translator_vocabulary_mismatch",
 )
 
 #: PostgreSQL의 «따옴표 없는» 식별자. 소문자·숫자·밑줄만, 문자로 시작. 큰따옴표 식별자를
@@ -297,6 +297,23 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
                 "undeclared_entity_type", "subject_types",
                 f"'{member}'는 선언된 개체 타입이 아닙니다.",
                 f"{member!r} is not a declared entity type"))
+
+    # ---- 번역기 ↔ vocabulary 결합.  문법이 맞는 선언도 번역기가
+    #      `Product --observed--> value`를 만들고 vocabulary가 `Wafer`만 받으면
+    #      실행 때 분자마다 거절된다. 이 충돌은 샘플 행에 해당 분기가
+    #      없어도 이미 선언에 존재하므로, 저장 전에 전체 발화 계약을
+    #      컴파일해 검사한다. 이것이 `ledger_config` · 번역기 · vocabulary를
+    #      한 작성 워크플로로 묶는 서버 관문이다.
+    from ledger.source_contract import compile_source
+    contract = compile_source(source, declaration)
+    for issue in contract.get("issues") or []:
+        predicate = issue.get("predicate") or "?"
+        out.append(violation(
+            "translator_vocabulary_mismatch",
+            issue.get("configured_by") or "vocabulary",
+            issue.get("detail_ko") or
+            f"번역기가 발화할 '{predicate}' Claim이 vocabulary 서명과 맞지 않습니다.",
+            f"translator emission {predicate!r} does not match the live vocabulary"))
 
     return out
 
@@ -605,20 +622,28 @@ KIND_LABELS = {
 
 def kinds_view() -> list:
     from ledger import config as ledger_config
+    from ledger.source_contract import PROFILE_META
+
+    def profile(kind):
+        """The executable translator profile attached to one authoring grammar."""
+        return dict(PROFILE_META.get(kind) or {})
 
     return [
         {"kind": ledger_config.SOURCE_KIND_LINEAGE,
          "label_ko": KIND_LABELS["lineage"],
+         "translator": profile(ledger_config.SOURCE_KIND_LINEAGE),
          "required_columns": list(ledger_config.LINEAGE_REQUIRED_COLUMNS),
          "optional_columns": ["equipment"],
          "required_blocks": ["vocabulary"]},
         {"kind": ledger_config.SOURCE_KIND_OBSERVATION,
          "label_ko": KIND_LABELS["observation"],
+         "translator": profile(ledger_config.SOURCE_KIND_OBSERVATION),
          "required_columns": list(ledger_config.OBSERVATION_REQUIRED_COLUMNS),
          "optional_columns": list(ledger_config.OBSERVATION_OPTIONAL_COLUMNS),
          "required_blocks": ["finding_kind", "run", "watermark"]},
         {"kind": ledger_config.SOURCE_KIND_TRANSFER,
          "label_ko": KIND_LABELS["transfer"],
+         "translator": profile(ledger_config.SOURCE_KIND_TRANSFER),
          "required_columns": list(ledger_config.TRANSFER_REQUIRED_COLUMNS),
          "optional_columns": list(ledger_config.TRANSFER_OPTIONAL_COLUMNS),
          "required_blocks": ["group", "container"]},
@@ -627,6 +652,7 @@ def kinds_view() -> list:
         # 아래 세 목록이 그 문법의 전부다(연산자·시각 기준·값 참조 규칙).
         {"kind": ledger_config.SOURCE_KIND_DECLARED,
          "label_ko": KIND_LABELS["declared"],
+         "translator": profile(ledger_config.SOURCE_KIND_DECLARED),
          "required_columns": list(ledger_config.DECLARED_REQUIRED_COLUMNS),
          "optional_columns": [],
          "required_blocks": ["watermark", "emit", "occurred_at_basis"],

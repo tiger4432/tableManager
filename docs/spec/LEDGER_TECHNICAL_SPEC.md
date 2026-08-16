@@ -1,7 +1,7 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 Source Event identity·Evidence Graph — 코드 대조 | **Owner:** Server / Ledger
-> **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(문법 검증) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 Source Ontology Profile v1 — 코드 대조 | **Owner:** Server / Ledger
+> **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(상위 Profile 계약·검증·직렬화) · **`server/ledger/source_profile_builtins.py`**(v1 template/type 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/translator_pattern.py`**(복잡한 소스의 공통 수명주기) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
 > **이번 라운드 (2026-08-15 3차 · 넷째 문법 `declared` + 뿌리 키 롤업 — R-2026-08-15-N ② · R-2026-08-15-O · 갱신 트리거 ②③⑥⑦)**
 > **코드 대조 기준 리비전은 `8c236bc`다.**
@@ -680,6 +680,115 @@ v0 고정 테스트(`test_ledger_l1_unit.py`)는 **코드 집합에 대해** 그
 
 ⚠️ **드라이버는 관측 문법의 것을 «구조 그대로» 쓴다**(키셋 커서 · 한 행 = 한 분자 · 분자 스코프를 **드라이버가** 연다 — R-H-bis 3).
 그리고 **소스 «이름»이 곧 관계명**이라(`FROM {source}`) 🔴 **이 문법이 「테이블 아닌 소스」의 문을 열지는 않는다**([LEDGER_GUIDE §3-bis](../guide/LEDGER_GUIDE.md)).
+
+### 3.9 Source Contract — 선언·번역기·어휘의 결합 계약 (2026-08-16)
+
+`ledger_config.json`, 번역기 Python, `vocabulary.py`는 실행 책임이 서로 다르지만
+운영자가 답해야 할 질문은 하나다: **「이 소스가 어떤 Claim을 만들 수 있고, 지금 합법인가」**.
+`server/ledger/source_contract.py`는 셋을 한 읽기 모델로 컴파일한다.
+
+- `translator`: 선택된 프로필, 분자 단위, 변환 방식, 구현 위치
+- `emissions[]`: 표본에 나오지 않은 분기까지 포함한 술어·주어·목적어·payload·파생 전수
+- `vocabulary`: 각 가능 발화가 대조된 **현재** 서명
+- `configured_by`: 틀렸을 때 고칠 선언 위치
+- `state`: 전부 맞으면 `ready`, 하나라도 다르면 `incompatible`
+
+검사는 두 겹이다. 먼저 가능 발화가 해당 소스의 `subject_types`와 허용 파생 안에
+있는지 보고, 다음으로 live vocabulary의 주어·목적어 종류·목적어 타입·qualifier·필수
+payload와 맞는지 본다. 한 행도 읽지 않고 확정할 수 있는 모순은
+`translator_vocabulary_mismatch`로 **드라이런 전** 거절한다.
+
+🔴 **드라이런의 실제 `atoms_rendered`와 Source Contract는 대체 관계가 아니다.** 전자는
+선택한 표본에서 진짜 번역기를 실행한 경험적 증거이고, 후자는 표본이 우연히 밟지 않은
+갈래까지 포함한 정적 계약이다. 둘 중 하나만 있으면 각각 「죽은 코드」 또는 「표본 밖
+오류」를 놓친다.
+
+복잡한 새 모양은 `translator_pattern.py`의 Template Method를 쓰고
+`examples/grouped_translator_template.py`의 `CUSTOMIZE 1/4`~`4/4`만 교체한다.
+그 프로필을 런타임 문법에 등록할 때 `POSSIBLE_EMISSIONS` 전수를 Source Contract에
+연결해야 한다. **예제 파일 자체는 등록되지 않으며 복사만 해서는 0행을 쓴다.**
+
+### 3.10 `SourceOntologyProfile` v1 — 상위 작성 계약 (2026-08-16)
+
+Profile은 `ledger_config.json`의 기존 `sources`와 나란한 `profiles.<name>`에 놓는다.
+`sources`는 현행 실행 계약이고 `profiles`는 다음 compiler가 읽을 상위 계약이다. v1의
+`validate_profile_section()`은 Profile만 명시적으로 검사하며 `config.load()`의 실행
+디스패치에는 연결되지 않았다. 같은 파일에 둘이 함께 있어도 기존 loader와 API의 동작은
+바뀌지 않는다.
+
+```json
+{
+  "schema_version": 1,
+  "source": {"relation": "movement_rows", "related": {"destination": "inventory_rows"}},
+  "entity": {"type": "Wafer", "keys": {"wafer": "wafer"}},
+  "event": {"template": "transfer", "timezone": "Asia/Seoul"},
+  "roles": {
+    "row_identity": {"column": "row_id", "status": "human_approved"},
+    "occurred_at": {"column": "moved_at", "status": "human_approved"},
+    "wafer": {"column": "material_id", "status": "human_approved"},
+    "event_key": {"column": "movement_id", "status": "human_approved"},
+    "row_order": {"column": "row_id", "status": "human_approved"},
+    "destination_lookup_key": {
+      "column": "movement_id", "relation": "destination", "status": "human_approved"
+    },
+    "destination_lot": {
+      "column": "lot_id", "relation": "destination", "status": "human_approved"
+    },
+    "destination_slot": {
+      "column": "slot_id", "relation": "destination", "status": "human_approved"
+    }
+  },
+  "containers": {
+    "from": {"type": "wafer_grid", "keys": {"wafer": "wafer"}},
+    "to": {
+      "type": "dt_slot",
+      "keys": {"lot": "destination_lot", "slot": "destination_slot"},
+      "lookup": {"event_role": "event_key", "container_role": "destination_lookup_key"}
+    }
+  }
+}
+```
+
+| 경로 | 계약 |
+|---|---|
+| `schema_version` | 정수 `1`만 수용. 부재·다른 버전·boolean은 거절 |
+| `source.relation` | 주 원천 관계의 비어 있지 않은 이름 |
+| `source.related.<alias>` | 보조 관계. role의 `relation`이 이 alias를 가리킨다. `primary`는 주 관계 예약어 |
+| `entity.type` | `vocabulary.ENTITY_TYPES`에 등록되고 선택 template이 허용한 타입 |
+| `entity.keys.<key>` | 해당 entity type의 신원 키 전부를 role 이름에 연결. role과 그 column이 비면 거절 |
+| `event.template` | v1 등록값 `lot_lineage` 또는 `transfer` |
+| `event.timezone` | 비어 있지 않은 유효 IANA 시간대. 묵시적 UTC·로컬 기본값 없음 |
+| `roles.<role>.column` | template role에 대응하는 물리 컬럼. 빈 값 거절 |
+| `roles.<role>.status` | `human_approved` 또는 `inferred`; 기본값 없음 |
+| `roles.<role>.reason` | `inferred`일 때 필수인 자동 추정 근거 |
+| `roles.<role>.relation` | 생략하면 주 관계, 적으면 `source.related`의 등록 alias 또는 `primary` |
+| `containers.<slot>.type` | 닫힌 container type 등록부의 이름 |
+| `containers.<slot>.keys` | container type의 신원 키 전부를 role에 연결 |
+| `containers.<slot>.lookup` | 선택적 `{event_role, container_role}`. 주 사건과 보조 관계의 확인 키 연결 |
+
+Template registry 공개 계약:
+
+| template | entity | 필수 role | container slot |
+|---|---|---|---|
+| `lot_lineage` | `Lot` | `row_identity`, `occurred_at`, `event_type`, `lot`, `parent_lot`, `child_lot`, `slots`, `wafers` | 없음 |
+| `transfer` | `Wafer` | `row_identity`, `occurred_at`, `event_key`, `row_order`, `wafer` | `from`, `to` |
+
+`transfer`의 출발·도착 key나 보조 확인에 필요한 role은 등록된 선택 role로 더한다.
+v1 container type 등록값은 현행 위치 철자 `wafer_grid`, `dt_slot`, `dt_job`이며 각각
+신원 키가 `(wafer)`, `(lot, slot)`, `(job)`이다. template·role·entity·container·key와
+모든 객체 필드는 닫힌 집합이고, 알 수 없는 이름은 무시하지 않고 그 필드의 정확한
+Profile 경로를 가진 `ProfileValidationError`로 거절한다.
+
+`serialize_profile()`은 검증 후 객체 키를 정렬한 UTF-8 JSON을 만들어 입력 dict의 순서와
+무관하게 같은 Profile을 같은 바이트로 직렬화한다. 입력 객체를 수정하지 않는다.
+`public_profile_schema()`가 내보내는 화면용 metadata에는 template, label, entity type,
+role 필수 여부, container slot, 신원 키만 있다. predicate signature, atom 분해, Claim
+계급 번호, translator/derivation 내부명, canonical key 직렬화, provenance envelope는
+Profile 계약과 공개 metadata에 없다.
+
+🔴 **v1 경계:** compiler, runtime adapter, translator 호출, DB 연결, migration, write가
+없다. 다음 단계는 검증된 Profile을 기존 수동 config 모양으로 결정적으로 바꾸고 기존
+translator를 그대로 호출해야 하며, 이 절의 공개 모델에 런타임 내부 필드를 보태지 않는다.
 
 ---
 

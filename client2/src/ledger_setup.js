@@ -403,6 +403,25 @@ function renderSourceForm() {
 
   const columnNames = pickedRelation.columns.map((c) => c.key);
 
+  // The selected grammar and its executable profile are one authoring choice. Show the
+  // server-owned molecule/operator description before asking for mappings, so an operator
+  // does not fill a lineage form and discover only at dry run that it groups two rows.
+  const translator = group(LC.TRANSLATOR_PROFILE);
+  const translatorFacts = el('div', 'retro-extras');
+  [
+    [LC.TRANSLATOR_PROFILE, kind.translator.profile],
+    [LC.MOLECULE, kind.translator.molecule],
+    [LC.OPERATOR, kind.translator.operator],
+  ].forEach(([label, value]) => {
+    if (!value) return;
+    const item = el('span', 'retro-extra');
+    item.appendChild(el('span', 'cfg-path', label));
+    item.appendChild(el('span', 'cfg-jsonval', value.text));
+    translatorFacts.appendChild(item);
+  });
+  translator.appendChild(translatorFacts);
+  ids.sourceForm.appendChild(translator);
+
   // — column mapping: one input per role the KIND declared. Required and optional are the
   //   server's own split; the screen does not decide which is which.
   const cols = group(`${LC.COLUMNS} · ${LC.REQUIRED}`);
@@ -1357,6 +1376,8 @@ function renderDryRun(container, view) {
   facts.appendChild(ro);
   box.appendChild(facts);
 
+  if (view.sourceContract) renderSourceContract(box, view.sourceContract);
+
   if (view.truncated) box.appendChild(chip(t(view.truncatedText), 'warn'));
 
   if (view.refusals.length) {
@@ -1408,6 +1429,67 @@ function renderDryRun(container, view) {
     box.appendChild(atoms);
   }
   container.appendChild(box);
+}
+
+/** Draw the server-compiled authoring contract before the sample atoms.
+ *
+ * A sample answers "what fired in these rows".  This block answers the more important setup
+ * question: "what can this translator ever say, and will the live vocabulary accept it?".
+ */
+function renderSourceContract(container, contract) {
+  const wrap = el('details', 'cfg-views ls-source-contract');
+  wrap.open = true;
+  const summary = el('summary', null, t(contract.title));
+  summary.appendChild(chip(contract.state.text,
+    contract.state.raw === 'ready' ? 'ok' : 'danger'));
+  wrap.appendChild(summary);
+  if (contract.sentence) wrap.appendChild(el('div', 'cfg-detail', t(contract.sentence)));
+
+  const profile = el('div', 'retro-extras');
+  [
+    [contract.labels.profile, contract.translator.profile],
+    [contract.labels.molecule, contract.translator.molecule],
+    [contract.labels.operator, contract.translator.operator],
+  ].forEach(([label, value]) => {
+    if (!value) return;
+    const item = el('span', 'retro-extra');
+    item.appendChild(el('span', 'cfg-path', t(label)));
+    item.appendChild(el('span', 'cfg-jsonval', value.text));
+    profile.appendChild(item);
+  });
+  wrap.appendChild(profile);
+
+  const claims = el('div');
+  claims.appendChild(el('div', 'cfg-group-label', t(contract.labels.claims)));
+  contract.emissions.forEach((claim) => {
+    const row = el('div', 'cfg-row');
+    if (claim.state.raw !== 'ready') row.dataset.tone = 'danger';
+    const head = el('div', 'cfg-row-head');
+    head.appendChild(el('span', 'cfg-subject', claim.predicate.text));
+    head.appendChild(chip(claim.state.text, claim.state.raw === 'ready' ? 'ok' : 'danger'));
+    head.appendChild(el('span', 'cfg-path', `${claim.subjects.text} → ${claim.objectKind.text}`));
+    row.appendChild(head);
+
+    const source = el('div', 'cfg-detail');
+    source.appendChild(el('span', 'cfg-path', `${t(contract.labels.configuredBy)} `));
+    source.appendChild(document.createTextNode(claim.configuredBy.text));
+    row.appendChild(source);
+
+    const signature = el('details', 'cfg-views');
+    signature.appendChild(el('summary', null, t(contract.labels.signature)));
+    signature.appendChild(el('pre', 'ls-atom', JSON.stringify(claim.vocabulary.raw, null, 2)));
+    row.appendChild(signature);
+    claim.issues.forEach((issue) => {
+      const line = el('div', 'cfg-detail');
+      line.dataset.tone = 'danger';
+      line.appendChild(el('span', 'cfg-path', `${issue.code.text} `));
+      if (issue.detail) line.appendChild(document.createTextNode(t(issue.detail)));
+      row.appendChild(line);
+    });
+    claims.appendChild(row);
+  });
+  wrap.appendChild(claims);
+  container.appendChild(wrap);
 }
 
 function renderSaveResult(container, view) {

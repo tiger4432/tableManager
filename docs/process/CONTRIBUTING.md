@@ -1,8 +1,6 @@
 # 🛠️ CONTRIBUTING — 개발·문서 갱신 규율 (Docs-as-Code)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 | **Owner:** Lead / PM
->
-> **이번 라운드 (2026-07-31)**: §2-bis의 클라 게이트 행에 **`check:harnesses`**를 추가했습니다(`5656fa7` — `client2/tests/*.mjs` 발견식 스캔. 그전까지 **15개 중 14개를 아무도 부르지 않았습니다**). 게이트 목록의 정본이 `package.json`의 `prebuild` 한 줄임을 못박고, **`KNOWN_RED`가 skip 목록이 아니라 부채 목록**이라는 규율을 명기했습니다.
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 | **Owner:** Lead / PM
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · SOP: [starting_prompt](../prompts/starting_prompt.md)
 
 이 문서는 AssyManager를 **지속 관리 가능한 상태로 유지**하기 위한 최소한의 규율을 정의합니다. 문서 드리프트(코드는 진화하는데 문서는 과거에 멈추는 현상)를 구조적으로 방지하는 것이 목적입니다.
@@ -30,6 +28,14 @@
 | 모든 주요 변경 | `docs/history/YYYYMMDD_HHMMSS_summary.md` 이력 작성(코드 스니펫 포함) |
 
 > **판단 기준:** "다음 사람이 이 변경을 알아야 하는가?" 예이면 리빙 문서를 고칩니다. 히스토리 기록만으로는 부족합니다 — 히스토리는 append-only 로그일 뿐, 리빙 문서가 현재 상태를 말합니다.
+
+### 2.1 리빙 가이드는 현재 사용법만 쓴다
+
+- 가이드에는 **선택 기준, 실행 순서, 확인 방법, 현재 제약**만 둔다.
+- 커밋 해시, 사고 타임라인, 과거 실측 숫자, 변경 전후 서사는 `docs/history/`로 보낸다.
+- 정확한 필드·DDL·API 응답은 `spec/` 또는 `architecture/` 한 곳이 소유하고 가이드는 링크한다.
+- 같은 규칙을 두 문서에 다시 쓰지 않는다. 두 번째 문장은 링크로 바꾼다.
+- 새 변경을 가이드 맨 위에 계속 덧붙이지 않는다. 기존 현재형 문장을 고쳐 문서 길이가 누적되지 않게 한다.
 
 ## 2-bis. 이 저장소가 자기를 검증하는 자리 (2026-07-30 `5a14e77`)
 

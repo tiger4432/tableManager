@@ -1,6 +1,8 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 Evidence Graph·Spotfire/Excel 표 투영 — 코드 대조
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 구 그래프 실행 갈래 제거 — 코드 대조
+>
+> **이번 라운드 (2026-08-16 · Source Contract)** — 소스 선언, 실행 번역 프로필, 가능한 Claim 전수, live vocabulary 서명을 `source_contract` 하나로 결합했다. 표본 dry-run은 실제 행의 경험적 증거로 그대로 두고, 표본에 안 나온 분기까지 저장 전에 정적으로 거절한다. 상세 필드와 파라미터는 [api_documentation §7](../spec/api_documentation.md), 작성 절차는 [ONTOLOGY_LEDGER_SETUP §3.5](../guide/ONTOLOGY_LEDGER_SETUP.md)가 소유한다.
 >
 > **이번 라운드 (2026-08-15 3차 · 선언형 소스 문법 + 뿌리 키 롤업)** — ① **`GET /admin/ledger/sources`가 `kind` «넷»을 서빙하고 넷째는 컬럼 목록으로 설명되지 않는다**: `declared`에는 베낄 파이썬 번역기가 없어 **폼의 재료가 «문법»**이고(`emit_rule_fields`·`when_operators`·`occurred_at_bases`·`column_ref_prefix`) 🔴 **클라가 그 목록을 복사하면 서버가 연산자를 하나 늘리는 날 화면만 모르는 사본이 된다.** ⚠️ **`unsupported_kinds`의 `derivation`은 그것과 «다른 것»이고 여전히 미구현**이다(2류 발화 대 3류 추론 — 섞으면 규율이 엉뚱한 주장에 붙는다). ② 🔴 **읽기 «셋»이 `subject_type` 하나가 아니라 뿌리 키로 모은다**(R-2026-08-15-O · `/journey`와 `/siblings?scope=`의 걷기 대조 둘) — **응답 형태는 한 바이트도 안 바뀌었고 채워진 것은 빈칸**이다(실측: `WaferLeg` 원자 42개가 웨이퍼 스코프 조회에서 안 보여 「본딩 조건 차이 없음」으로 읽혔다).
 >
@@ -355,11 +357,24 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | 🔒 `GET /admin/ledger/vocabulary` | **[원장 셋업 어드민 · 2026-08-15 · R-2026-08-15-M · `server/ledger_admin.py`]** 「이 원장이 아는 «말» 전부」 — 항목마다 **`origin`(`code` 또는 `config`)**와 **`editable`**를 함께 낸다(정준 층은 `editable: false`이고, 화면에 그 층을 늘리는 «문이 없다»는 것이 테스트로 고정돼 있다). 🔴 **폼을 만들 재료가 여기서 «전부» 나간다** — 개체 타입 · 목적어 종류 · 걷기 방향 · `traversable` 삼상태의 **한국어 라벨** · `signature_fields` · 상태 낱말 · **닫힌 거절 코드 집합**(`vocabulary.DECL_REFUSALS`). 🔴 **클라가 이 목록들을 자기 쪽에 복사하면 서버가 상태를 하나 늘리는 날 «화면만 모르는 사본»이 된다.** 읽기 전용 |
 | 🔒 `GET /admin/ledger/sources` | **[원장 셋업 어드민 · 2026-08-15]** 소스 선언 + **`kind`별 필수/선택 컬럼 목록**(폼이 그 선언에서 생성된다) + **`unsupported_kinds`**. 🔴 **[2026-08-15 3차] `kind`가 «넷»이 됐고 넷째는 컬럼 목록으로 설명되지 않는다** — `declared`에는 베낄 파이썬 번역기가 없어 **폼의 재료가 컬럼이 아니라 «문법»**이고, 그래서 이 응답이 그 문법을 통째로 싣는다: **`emit_rule_fields`**(`rule`·`predicate`·`subject`·`object`·`when`) · **`when_operators`**(`ledger_config.WHEN_OPERATORS` — 닫힌 집합) · **`occurred_at_bases`**(`claim_time`/`row_created`에 각각 **한국어 라벨**) · `column_ref_prefix` · `note_ko`. 🔴 **클라가 이 목록들을 자기 쪽에 복사하면 서버가 연산자를 하나 늘리는 날 «화면만 모르는 사본»이 된다**(같은 규율이 `/vocabulary` 행에도 적혀 있다). 🔴 **`unsupported_kinds`가 비어 있지 않은 것이 계약이다** — 오늘 거기 든 것은 `derivation`(R-2026-08-15-M ⑤: 판정만 났고 번역기가 없다)이고, **목록에서 지우면 화면이 「이 시스템은 그걸 못 한다」로 읽히지만 사유와 함께 실으면 「아직 안 왔다」로 읽힌다.** ⚠️ **그 `derivation`은 넷째 `kind` `declared`와 «다른 것»이다** — 이쪽은 소스 «행»을 선언대로 옮기고(2류·지금 된다), 저쪽은 **원장을 걸어서** 추론한다(3류·근거 원자 필수·미구현). 응답의 `detail_ko`가 그 구별을 화면에서 직접 말한다. 읽기 전용 |
 | 🔒 `GET /admin/ledger/relations?q=&limit=` | **[원장 셋업 어드민 · 2026-08-15]** 실재하는 관계와 컬럼(`information_schema`). 🔴 **카탈로그만 읽으므로 비용이 테이블 «행 수»와 무관하다** — 소스 선언 폼이 컬럼 이름을 손타자에 맡기지 않게 하는 것이 목적이고, 그 편의를 위해 대상 테이블을 스캔하면 그 자체가 사고다 |
-| 🔒 `POST /admin/ledger/dry-run` | **[원장 셋업 어드민 · 2026-08-15 · `server/ledger/dry_run.py`]** 1단(문법 검증) + 2단(**쓰기 0 미리보기**). 🔴 **가짜 미리보기는 조용한 거짓말이라 «진짜 번역기»를 태운다** — 백필 자신의 페치 함수 · 분자 조립 · 번역기 세 클래스 · `gate.screen_molecule`이 전부 그대로 돌고, 다른 것은 **커넥션의 트랜잭션이 `SET TRANSACTION READ ONLY`로 열려 있다는 것 하나**다. 🔴 **세션이 아니라 «트랜잭션» 스코프인 것이 판정이다** — 커넥션이 풀링이라 `SET SESSION …`은 커넥션을 따라 풀로 돌아가 **남의 쓰기를 죽인다.** 🔴 **요청한 것이 아니라 PostgreSQL이 답한 것을 읽는다**(`SHOW transaction_read_only`) — 못 걸면 `read_only_enforced` 없이 **거절**한다. 원자는 **봉투 형태 그대로** 돌아간다 — 이름을 고치지도 요약하지도 않고, **`derivation`과 `molecule_ref`가 «함께»** 실린다(게이트가 그 원자를 «무엇으로» 판정했는지가 그 둘이라, 선언 안 된 규칙이 거절되는 자리도 정확히 거기다) 돌아가고 응답에 `rows_read`·`molecules`·`molecules_refused`·`molecules_incomplete`·`atoms`·`atoms_by_predicate`가 붙는다. 🔴 **미리보기의 거절은 `gate.captured()`로 «격리»된다** — 안 그러면 시험 삼아 눌러 본 드라이런이 `/health`가 보고하는 프로세스 거절 계수기를 올린다 |
+| 🔒 `POST /admin/ledger/dry-run` | **[원장 셋업 어드민 · `server/ledger/dry_run.py`]** 문법·Source Contract 검증 뒤 **쓰기 0 미리보기**를 수행한다. 가짜 미리보기를 만들지 않고 백필의 페치·분자 조립·실제 번역기·`gate.screen_molecule`을 그대로 실행하며, PostgreSQL 트랜잭션에 `SET TRANSACTION READ ONLY`를 건 뒤 `SHOW transaction_read_only`로 확인한다. 응답은 `rows_read`·`molecules`·거절/불완전 수·`atoms`·`atoms_by_predicate`·`atoms_rendered[]`와 정적 `source_contract`를 함께 싣는다. 미리보기의 거절은 `gate.captured()`로 운영 계수기와 격리한다 |
 | **🔒[STRICT]** `POST /admin/ledger/save` | **[원장 셋업 어드민 · 2026-08-15]** 1+2+3단. 🔴 **드라이런 없는 저장은 «만들지 않은» 것이 아니라 «불가능»하다** — 저장이 **그 선언의** 드라이런 지문을 요구하고, 선언이 바뀌면 지문이 어긋나 `dry_run_stale`로 거절된다. 백업(사본이 곧 undo) → 임시 파일 → `os.replace` 원자적 교체. 🔴 **config 파일은 설계상 gitignore라 이력이 없으므로**(R-2026-08-13-G) **되돌릴 사본을 남기는 것이 이 경로가 존재해도 되는 조건**이다. 저장 뒤 `/admin/reload-configs`와 **같은 함수**로 캐시를 교체하고(`SYSTEM_RELOAD`가 나머지 프로세스로 퍼진다) **「먹었는가」를 `/admin/config/resolve?domain=ledger`로 되물어 한 문장으로** 답한다 — **재기동 0회** |
 | **🔒[STRICT]** `POST /admin/ledger/vocabulary/retire` | **[원장 셋업 어드민 · 2026-08-15]** `status: "retired"` + `superseded_by`. 🔴 **`/admin/ledger` 아래에 DELETE 라우트가 «0개»이고 그 부재를 테스트가 단언한다** — 원자가 이미 그 낱말로 누워 있다. 🔴 **은퇴는 «발화»를 막지 «읽기»를 막지 않는다**(`emittable()`에서만 빠진다). ⚠️ **성공의 판정문이 저장과 «반대»다** — 은퇴는 유효 목록에서 **빠지는 것**이 성공이라, 저장과 같은 문장을 쓰면 성공한 은퇴가 실패처럼 읽힌다 |
 | `WS /ws` | `ConnectionManager` 브로드캐스트 허브 |
 | `GET /`, `/admin`, `/map-editor`, `/enrichment`, `/{file:path}` | SPA 서빙 + fallback(`graph.html`/`trace.html`/**`ledger.html`**(2026-08-13 `d9b98ab`)은 catch-all 경유) |
+
+🔴 **[2026-08-16 · Source Contract 가산 확장]** `GET /admin/ledger/sources`의
+`kinds[].translator`는 `{profile, implementation, molecule, operator}`를 싣는다. 따라서 kind
+선택과 실제 파이썬 번역 프로필이 동일 응답에서 연결된다.
+
+🔴 **[2026-08-16 · `POST /admin/ledger/dry-run` 소스 응답 가산 확장]**
+`source_contract` = `{source,state,translator,columns,emissions[],issues[],sentence_ko}`.
+`emissions[]`는 표본 행에서 실제로 나온 원자가 아니라 **번역 프로필이 낼 수 있는
+Claim 전수**다. 각 항목은 `predicate`·주어/목적어 모양·`derivations`·설정
+위치·live vocabulary 서명·결합 상태를 싣는다. 불일치는 소스 행을 읽기 전
+400 `translator_vocabulary_mismatch`로 거절되므로, dry-run 첫 N행에 없는 분기도
+저장되지 않는다. 실제 `atoms_rendered[]`는 그 정적 계약을 진짜 데이터에 대입한
+결과로 그대로 유지된다.
 
 ---
 
