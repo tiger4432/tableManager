@@ -213,11 +213,27 @@ def _merge_path_identity(row: dict, path_data: dict, *, row_label: str) -> dict:
             f"finding to one plausible-but-unknown wafer.")
     out["base_wafer_id"] = path_wafer
 
+    # The directory is the feed's identity contract, not merely a fallback.
+    # Accept a body timestamp only as a redundant assertion of the same instant;
+    # allowing it to override WORK_DATETIME would make one path name two runs.
+    path_stamp = path_data["observed_at"]
     stamp = out.get("observed_at")
-    if stamp is None or not str(stamp).strip():
-        out["observed_at"] = path_data["observed_at"]
-    else:
-        out["observed_at"] = declare_offset(str(stamp))[0]
+    if stamp is not None and str(stamp).strip():
+        declared = declare_offset(str(stamp))[0]
+        try:
+            declared_dt = datetime.fromisoformat(declared.replace("Z", "+00:00"))
+            path_dt = datetime.fromisoformat(path_stamp.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(
+                f"{row_label}: body observed_at {stamp!r} is not an ISO datetime."
+            ) from exc
+        if declared_dt != path_dt:
+            raise ValueError(
+                f"{row_label}: body observed_at {stamp!r} conflicts with path work "
+                f"datetime {path_data['work_datetime']!r}. Refusing rather than "
+                f"assigning the row to one plausible-but-unknown run."
+            )
+    out["observed_at"] = path_stamp
     return out
 
 

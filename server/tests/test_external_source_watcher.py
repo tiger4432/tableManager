@@ -5,6 +5,7 @@ import sys
 import time
 
 import pytest
+from watchdog.events import DirModifiedEvent, FileModifiedEvent
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 server_dir = os.path.abspath(os.path.join(test_dir, ".."))
@@ -206,6 +207,19 @@ def test_empty_file_and_wafer_conflict_are_loud(tmp_path):
             str(conflict), rel_path="WF-001/WORK_20260817_031405/voids.json",
             table_name="void_obs")
 
+    time_conflict = _write_voids(tmp_path, body={
+        "unit": "um",
+        "voids": [{
+            "observed_at": "2026-08-17T04:14:05+09:00",
+            "base_x": 1, "base_y": 2, "gate": 3,
+            "inchip_x": 4, "inchip_y": 5, "radius_x": 6, "radius_y": 7,
+        }],
+    })
+    with pytest.raises(ValueError, match="conflicts with path work datetime"):
+        parse_voids_json(
+            str(time_conflict), rel_path="WF-001/WORK_20260817_031405/voids.json",
+            table_name="void_obs")
+
 
 def test_external_config_allows_one_root_to_feed_both_tables(tmp_path):
     external = tmp_path / "outside" / "void"
@@ -280,8 +294,10 @@ def test_modified_event_is_enabled_only_for_external_adapter(tmp_path, monkeypat
     monkeypatch.setattr(handler, "_handle_event", lambda path: calls.append(path))
     adapter = ExternalSourceEventHandler(handler, spec[0])
 
-    event = type("Event", (), {"is_directory": False, "src_path": str(file_path)})()
-    adapter.on_modified(event)
+    # Exercise watchdog's real contract.  Calling on_modified directly would not
+    # detect an accidental override of FileSystemEventHandler.dispatch(event).
+    adapter.dispatch(DirModifiedEvent(str(external)))
+    adapter.dispatch(FileModifiedEvent(str(file_path)))
     assert calls == [str(file_path)]
     assert handler._consume_external_force_hash(str(file_path)) is True
     assert handler._consume_external_force_hash(str(file_path)) is False
@@ -304,6 +320,8 @@ def test_external_relative_path_is_the_parser_metadata(tmp_path):
     assert meta["rel_path"] == "WF-001/WORK_20260817_031405/voids.json"
     assert meta["external_source"]["source_root"] == os.path.realpath(str(external))
     assert handler.is_managed_source(str(file_path)) is False
+    assert handler._external_cell_source_name(str(file_path), meta) == (
+        f"external:voids_json:{os.path.realpath(os.path.abspath(file_path))}")
 
 
 def test_handler_passes_external_full_path_and_relative_path_to_builtin_parser(tmp_path):

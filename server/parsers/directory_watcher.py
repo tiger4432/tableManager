@@ -276,7 +276,7 @@ def _safe_relative_path(path: str, root: str) -> str | None:
         if os.path.commonpath((real_path, real_root)) != real_root:
             return None
         rel = os.path.relpath(real_path, real_root)
-    except (OSError, ValueError):
+    except (OSError, TypeError, ValueError):
         return None
     if os.path.isabs(rel) or rel == os.pardir or rel.startswith(os.pardir + os.sep):
         return None
@@ -842,6 +842,22 @@ class IngestionHandler(FileSystemEventHandler):
         if context is None:
             return {"rel_path": None}
         return {"rel_path": context["rel_path"], "external_source": context}
+
+    @staticmethod
+    def _external_cell_source_name(file_path: str, parse_meta: dict | None) -> str | None:
+        """Stable, traceable CellSource name for an external file.
+
+        Every producer artifact is named ``voids.json``.  Using only that basename
+        collapses all wafers and work times into one opaque source label.  Preserve
+        the full watcher-supplied path so a displayed cell can be traced back to the
+        exact external artifact that asserted it.
+        """
+        external = (parse_meta or {}).get("external_source")
+        if external is None:
+            return None
+        parser_name = external.get("parser") or "external"
+        canonical_path = os.path.realpath(os.path.abspath(file_path))
+        return f"external:{parser_name}:{canonical_path}"
 
     def mark_external_modified(self, file_path: str):
         if self.external_source_context(file_path) is None:
@@ -1468,7 +1484,11 @@ class IngestionHandler(FileSystemEventHandler):
 
                 # 매칭 및 실행 성공 (빈 결과일 수도 있음)
                 if has_rows:
-                    self._send_to_upsert(rows, uploader=uploader, filename=basename, total_rows=total_rows, t_name=t_name, table_info=table_info, checkpoint=plan)
+                    self._send_to_upsert(
+                        rows, uploader=uploader, filename=basename,
+                        source_name=self._external_cell_source_name(abs_path, parse_meta),
+                        total_rows=total_rows, t_name=t_name,
+                        table_info=table_info, checkpoint=plan)
 
                 # 3. Archive the file. None = a foreign (read-only) source that
                 #    was deliberately left where it lies; the ingestion record
@@ -1941,7 +1961,11 @@ class IngestionHandler(FileSystemEventHandler):
                 file_stat=read_file_stat(os.path.abspath(filepath)),
             )
             if has_rows:
-                self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath), total_rows=total_rows, t_name=t_name, table_info=table_info, checkpoint=plan)
+                self._send_to_upsert(
+                    rows, uploader=uploader, filename=os.path.basename(filepath),
+                    source_name=self._external_cell_source_name(filepath, parse_meta),
+                    total_rows=total_rows, t_name=t_name,
+                    table_info=table_info, checkpoint=plan)
             self._finalize_checkpoint(plan, effective_total)
 
             # If successful, update the log entry to SUCCESS
@@ -2303,7 +2327,10 @@ class IngestionHandler(FileSystemEventHandler):
                 pass
         return "system"
 
-    def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None, total_rows: int = None, t_name: str = None, table_info: dict = None, checkpoint=None):
+    def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None,
+                        total_rows: int = None, t_name: str = None,
+                        table_info: dict = None, checkpoint=None,
+                        source_name: str = None):
         """파싱된 행 컬렉션을 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다.
 
         rows: list[dict](기존 파이프라인 경로) 또는 이터레이터(std parser 스트리밍 경로).
@@ -2330,8 +2357,9 @@ class IngestionHandler(FileSystemEventHandler):
         defined_cols = table_info.get("display_columns", [])
         
         # Determine source_name based on real original filename
-        real_source = "batch_ingester"
-        if filename:
+        if source_name:
+            real_source = source_name
+        elif filename:
             try:
                 from pipeline_base import BasePipelineParser
                 real_source = BasePipelineParser.get_basename(filename)
@@ -2555,7 +2583,15 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
         expected = str((self.spec.get("options") or {}).get("filename", "voids.json"))
         return os.path.basename(file_path).lower() == expected.lower()
 
-    def dispatch(self, file_path: str):
+    def dispatch_path(self, file_path: str):
+        """Dispatch one already-resolved filesystem path through ingestion.
+
+        This must not be named ``dispatch``: watchdog owns
+        ``FileSystemEventHandler.dispatch(event)`` and uses it to route an event
+        object to ``on_created``/``on_modified``/``on_moved``.  Overriding that
+        method with a string-path contract kills the observer thread on its first
+        directory event.
+        """
         if not self.accepted_path(file_path):
             return False
         try:
@@ -2568,11 +2604,11 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
 
     def on_created(self, event):
         if not event.is_directory:
-            self.dispatch(event.src_path)
+            self.dispatch_path(event.src_path)
 
     def on_moved(self, event):
         if not event.is_directory:
-            self.dispatch(event.dest_path)
+            self.dispatch_path(event.dest_path)
 
     def on_modified(self, event):
         # Managed raws/ deliberately ignores modified storms because the file is
@@ -2582,7 +2618,7 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
         # content signature dedup absorb duplicate event bursts.
         if not event.is_directory:
             self.ingestion_handler.mark_external_modified(event.src_path)
-            self.dispatch(event.src_path)
+            self.dispatch_path(event.src_path)
 
 
 class WorkspaceWatcher:
