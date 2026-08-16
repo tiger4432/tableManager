@@ -29,8 +29,11 @@ from ledger.source_profile import (
     ProfileValidationError,
     RoleDescriptor,
     default_binding_kind_registry,
+    profile_readiness_errors,
     public_profile_schema,
+    require_executable_profile,
     serialize_profile,
+    validate_legacy_profile,
     validate_profile,
     validate_profile_errors,
     validate_profile_section,
@@ -155,6 +158,32 @@ def movement_profile(source="movement_rows", subject_column="ITEM_ID"):
     }
 
 
+def executable_movement_profile():
+    profile = movement_profile()
+    bind = profile["mappings"][0]["bind"]
+    bind["from"].update({
+        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
+        "approval_status": APPROVAL_STATUS_APPROVED,
+    })
+    bind["occurred_at"] = {
+        "kind": "column",
+        "column": "EVENT_TIME",
+        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
+        "approval_status": APPROVAL_STATUS_APPROVED,
+    }
+    bind["to"].update({
+        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
+        "approval_status": APPROVAL_STATUS_APPROVED,
+        "key": {
+            "kind": "column",
+            "column": "MOVE_ID",
+            "binding_origin": BINDING_ORIGIN_USER_DECLARED,
+            "approval_status": APPROVAL_STATUS_APPROVED,
+        },
+    })
+    return profile
+
+
 def one_error(profile):
     errors = validate_profile_errors(profile)
     assert len(errors) == 1, [error.to_mapping() for error in errors]
@@ -167,13 +196,23 @@ def one_error_with_registries(profile, registries):
     return errors[0].to_mapping()
 
 
-def test_version_one_registers_only_the_two_requested_templates():
+def serialize_legacy_profile(profile):
+    return validate_legacy_profile(profile).serialize()
+
+
+def test_public_canonical_schema_exposes_packs_but_not_legacy_templates():
     registries = default_profile_registries()
     assert registries.templates.names() == ("lot_lineage", "transfer")
-    assert public_profile_schema(registries)["schema_version"] == 1
+    public = public_profile_schema(registries)
+    assert public["profile_version"] == 1
+    assert "schema_version" not in public
+    assert "mapping_statuses" not in public
+    assert "templates" not in public
+    assert "entity_types" not in public
+    assert "container_types" not in public
 
 
-def test_same_profile_has_the_same_serialization_regardless_of_mapping_order():
+def test_explicit_legacy_validator_is_deterministic_but_not_canonical():
     first = lineage_profile()
     second = {
         "containers": {},
@@ -183,16 +222,17 @@ def test_same_profile_has_the_same_serialization_regardless_of_mapping_order():
         "source": dict(reversed(list(first["source"].items()))),
         "schema_version": 1,
     }
-    assert serialize_profile(first) == serialize_profile(first)
-    assert serialize_profile(first) == serialize_profile(second)
-    assert json.loads(serialize_profile(first)) == validate_profile(first).to_mapping()
+    assert serialize_legacy_profile(first) == serialize_legacy_profile(first)
+    assert serialize_legacy_profile(first) == serialize_legacy_profile(second)
+    assert json.loads(serialize_legacy_profile(first)) == (
+        validate_legacy_profile(first).to_mapping())
 
 
 def test_missing_required_role_is_rejected_at_its_exact_profile_path():
     profile = lineage_profile()
     profile["roles"].pop("event_type")
     with pytest.raises(ProfileValidationError) as caught:
-        validate_profile(profile, path="profiles.history")
+        validate_legacy_profile(profile, path="profiles.history")
     assert caught.value.code == "missing_required_role"
     assert caught.value.path == "profiles.history.roles.event_type"
 
@@ -209,7 +249,7 @@ def test_unregistered_entity_template_and_container_are_rejected(mutation, path,
     profile = transfer_profile()
     mutation(profile)
     with pytest.raises(ProfileValidationError) as caught:
-        validate_profile(profile, path="profiles.sample")
+        validate_legacy_profile(profile, path="profiles.sample")
     assert caught.value.path == path
     assert caught.value.code == code
 
@@ -218,7 +258,7 @@ def test_blank_entity_key_role_is_rejected_at_the_key_path():
     profile = lineage_profile()
     profile["entity"]["keys"]["lot"] = ""
     with pytest.raises(ProfileValidationError) as caught:
-        validate_profile(profile, path="profiles.history")
+        validate_legacy_profile(profile, path="profiles.history")
     assert caught.value.path == "profiles.history.entity.keys.lot"
     assert caught.value.code == "blank_value"
 
@@ -227,7 +267,7 @@ def test_blank_column_used_by_an_identity_key_is_rejected_before_it_can_compile(
     profile = lineage_profile()
     profile["roles"]["lot"]["column"] = "  "
     with pytest.raises(ProfileValidationError) as caught:
-        validate_profile(profile, path="profiles.history")
+        validate_legacy_profile(profile, path="profiles.history")
     assert caught.value.path == "profiles.history.roles.lot.column"
     assert caught.value.code == "blank_value"
 
@@ -236,7 +276,7 @@ def test_timezone_has_no_implicit_default():
     profile = lineage_profile()
     profile["event"].pop("timezone")
     with pytest.raises(ProfileValidationError) as caught:
-        validate_profile(profile, path="profiles.history")
+        validate_legacy_profile(profile, path="profiles.history")
     assert caught.value.path == "profiles.history.event.timezone"
     assert caught.value.code == "missing_field"
 
@@ -245,15 +285,16 @@ def test_invalid_timezone_is_rejected_instead_of_using_machine_local_time():
     profile = lineage_profile()
     profile["event"]["timezone"] = "Factory/Local"
     with pytest.raises(ProfileValidationError) as caught:
-        validate_profile(profile, path="profiles.history")
+        validate_legacy_profile(profile, path="profiles.history")
     assert caught.value.path == "profiles.history.event.timezone"
     assert caught.value.code == "invalid_timezone"
 
 
 @pytest.mark.parametrize("factory", [lineage_profile, transfer_profile])
 def test_one_template_accepts_renamed_source_and_physical_columns(factory):
-    original = validate_profile(factory())
-    renamed = validate_profile(factory(source="renamed_relation", prefix="site_"))
+    original = validate_legacy_profile(factory())
+    renamed = validate_legacy_profile(
+        factory(source="renamed_relation", prefix="site_"))
     assert renamed.event.template == original.event.template
     assert set(renamed.roles) == set(original.roles)
     assert all(role.column.startswith("site_") for role in renamed.roles.values())
@@ -266,7 +307,7 @@ def test_inferred_and_human_approved_column_mappings_are_distinct():
         "status": MAPPING_STATUS_INFERRED,
         "reason": "the declared source key has one column",
     }
-    validated = validate_profile(profile)
+    validated = validate_legacy_profile(profile)
     assert validated.roles["row_identity"].status == MAPPING_STATUS_INFERRED
     assert validated.roles["lot"].status == MAPPING_STATUS_HUMAN_APPROVED
 
@@ -276,7 +317,7 @@ def test_inferred_mapping_without_a_reason_is_rejected():
     profile["roles"]["row_identity"] = {
         "column": "record_id", "status": MAPPING_STATUS_INFERRED}
     with pytest.raises(ProfileValidationError) as caught:
-        validate_profile(profile, path="profiles.history")
+        validate_legacy_profile(profile, path="profiles.history")
     assert caught.value.path == "profiles.history.roles.row_identity.reason"
     assert caught.value.code == "missing_inference_reason"
 
@@ -285,7 +326,7 @@ def test_unknown_fields_are_rejected_instead_of_being_silently_ignored():
     profile = lineage_profile()
     profile["event"]["translator"] = "something"
     with pytest.raises(ProfileValidationError) as caught:
-        validate_profile(profile, path="profiles.history")
+        validate_legacy_profile(profile, path="profiles.history")
     assert caught.value.path == "profiles.history.event.translator"
     assert caught.value.code == "unknown_field"
 
@@ -298,9 +339,36 @@ def test_public_contract_does_not_expose_runtime_implementation_details():
         assert hidden not in public_text
 
 
+def test_legacy_six_field_profile_is_rejected_by_every_canonical_entry_point():
+    legacy = lineage_profile()
+    errors = validate_profile_errors(legacy)
+    assert errors
+    with pytest.raises(ProfileValidationError):
+        validate_profile(legacy)
+    with pytest.raises(ProfileValidationError):
+        serialize_profile(legacy)
+    with pytest.raises(ProfileValidationError):
+        validate_profile_section({PROFILE_CONFIG_SECTION: {"legacy": legacy}})
+
+    explicit = validate_legacy_profile(legacy)
+    with pytest.raises(ProfileValidationError):
+        serialize_profile(explicit)
+
+
+@pytest.mark.parametrize("profile", [lineage_profile(), movement_profile()])
+def test_validate_profile_and_error_collection_have_the_same_verdict(profile):
+    errors = validate_profile_errors(profile)
+    if errors:
+        with pytest.raises(ProfileValidationError) as caught:
+            validate_profile(profile)
+        assert caught.value.to_mapping() == errors[0].to_mapping()
+    else:
+        assert validate_profile(profile).to_mapping()
+
+
 def test_profiles_coexist_beside_legacy_sources_without_changing_legacy_loader(tmp_path):
     config = legacy_lineage_config()
-    config[PROFILE_CONFIG_SECTION] = {"future_history": lineage_profile()}
+    config[PROFILE_CONFIG_SECTION] = {"future_history": movement_profile()}
     profiles = validate_profile_section(config)
     assert list(profiles) == ["future_history"]
 
@@ -313,7 +381,7 @@ def test_profiles_coexist_beside_legacy_sources_without_changing_legacy_loader(t
 
 
 def test_profile_validation_is_pure_and_does_not_mutate_its_input():
-    profile = transfer_profile()
+    profile = movement_profile()
     before = copy.deepcopy(profile)
     validate_profile(profile)
     serialize_profile(profile)
@@ -646,6 +714,57 @@ def test_approved_binding_does_not_create_or_raise_a_claim_epistemic_class():
         assert "claim_class" not in mapping_text
         assert '"pin"' not in mapping_text
         assert '"confirmed"' not in mapping_text
+
+
+def test_pending_binding_is_structurally_valid_but_not_executable():
+    profile = executable_movement_profile()
+    profile["mappings"][0]["bind"]["from"]["approval_status"] = (
+        APPROVAL_STATUS_PENDING)
+    validated = validate_profile(profile)
+    errors = profile_readiness_errors(validated)
+    assert [error.to_mapping() for error in errors] == [{
+        "code": "binding_not_approved",
+        "path": "mappings[0].bind.from.approval_status",
+        "message": "binding must be approved before execution; got 'pending'",
+    }]
+    with pytest.raises(ProfileValidationError) as caught:
+        require_executable_profile(validated)
+    assert caught.value.to_mapping() == errors[0].to_mapping()
+
+
+def test_rejected_binding_is_structurally_valid_but_not_executable():
+    profile = executable_movement_profile()
+    profile["mappings"][0]["bind"]["subject"]["approval_status"] = (
+        APPROVAL_STATUS_REJECTED)
+    validated = validate_profile(profile)
+    assert [error.to_mapping() for error in profile_readiness_errors(validated)] == [{
+        "code": "binding_not_approved",
+        "path": "mappings[0].bind.subject.approval_status",
+        "message": "binding must be approved before execution; got 'rejected'",
+    }]
+
+
+def test_nested_lookup_key_pending_blocks_execution_at_its_exact_path():
+    profile = executable_movement_profile()
+    profile["mappings"][0]["bind"]["to"]["key"]["approval_status"] = (
+        APPROVAL_STATUS_PENDING)
+    validated = validate_profile(profile)
+    assert [error.to_mapping() for error in profile_readiness_errors(validated)] == [{
+        "code": "binding_not_approved",
+        "path": "mappings[0].bind.to.key.approval_status",
+        "message": "binding must be approved before execution; got 'pending'",
+    }]
+
+
+def test_only_an_all_approved_profile_is_executable():
+    validated = validate_profile(executable_movement_profile())
+    assert profile_readiness_errors(validated) == ()
+    assert require_executable_profile(validated) is validated
+
+
+def test_readiness_gate_requires_structural_validation_first():
+    with pytest.raises(TypeError, match="validated SourceOntologyProfile"):
+        profile_readiness_errors(executable_movement_profile())
 
 
 def test_role_kind_and_allowed_binding_kinds_both_gate_validation():

@@ -27,7 +27,11 @@
   - `RoleDescriptor.kind`와 `allowed_binding_kinds` 이중 검사, Pack 등록 symbolic
     constant에 의한 `source_position` fail-closed 검증
   - 입력 순서와 무관한 결정적 JSON 직렬화
-  - 기존 수동 `sources` 옆 `profiles` 선택 섹션 검증
+  - canonical 진입점은 `profile_version/source/packs/mappings` 네 필드만 수용하고 구형
+    6필드 draft는 명시적 `validate_legacy_profile()`로 격리
+  - 구조 검증과 실행 준비 판정을 분리한 순수 readiness gate
+    (`binding_not_approved`; 중첩 `declared_lookup.key` 포함)
+  - 기존 수동 `sources` 옆 canonical `profiles` 선택 섹션 검증
 - `server/ledger/source_profile_builtins.py`
   - `lot-lineage@1`, `transfer@1` Pack 등록 데이터
   - `transfer/movement` 등 Claim과 Role 계약
@@ -52,9 +56,24 @@
         "approval_status": "approved",
         "suggestion_reason": "matched the declared source identity"
       },
-      "from": {"kind": "constant", "value": "source_position"},
-      "to": "column:DESTINATION",
-      "occurred_at": "column:EVENT_TIME"
+      "from": {
+        "kind": "constant",
+        "value": "source_position",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
+      },
+      "to": {
+        "kind": "column",
+        "column": "DESTINATION",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
+      },
+      "occurred_at": {
+        "kind": "column",
+        "column": "EVENT_TIME",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
+      }
     }
   }]
 }
@@ -63,6 +82,8 @@
 `use`는 `pack_id/claim_id`이고 `bind`는 그 Claim이 등록한 Role만 받을 수 있다.
 Binding 승인 상태는 Profile 설정에 대한 metadata이며 원장 Claim의 `confirmed`·`pin`
 등 epistemic class와 별개다. `declared_lookup`은 2단계에서 구조만 검사하고 실행하지 않는다.
+구조적으로 유효한 초안도 모든 최상위·중첩 Binding이 `approved`가 아니면 실행 준비 상태가
+아니다. readiness gate는 compiler나 translator를 호출하지 않고 이 상태만 판정한다.
 
 ## 경계
 
@@ -78,10 +99,10 @@ Binding 승인 상태는 Profile 설정에 대한 metadata이며 원장 Claim의
 conda run -n assy_manager python -m pytest \
   server/tests/test_source_ontology_profile.py -q -p no:cacheprovider
 
-48 passed
+56 passed
 ```
 
-`test_ledger_source_contract.py` 9개를 함께 실행한 집중 결과는 **57 passed**다.
+`test_ledger_source_contract.py` 9개를 함께 실행한 집중 결과는 **65 passed**다.
 
 작업 전후 ledger 결과는 모두 **7 failed, 396 passed, 119 skipped**로 신규 실패는 0이다.
 실패 5개는 폐기된

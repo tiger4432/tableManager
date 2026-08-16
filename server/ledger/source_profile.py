@@ -4,9 +4,9 @@ This module is deliberately a pure configuration boundary.  It knows how to vali
 and serialize a user's source description, but it does not compile that description,
 run a translator, inspect a database, or write anything.
 
-The generic engine lives here; concrete templates and type registrations live in
-``source_profile_builtins`` so new registrations do not require source-name branches in
-the validator.
+The generic engine lives here; canonical Pack registrations and explicitly quarantined
+legacy template/type registrations live in ``source_profile_builtins`` so new
+registrations do not require source-name branches in the validator.
 """
 from __future__ import annotations
 
@@ -622,18 +622,16 @@ class SourceOntologyProfile:
 
 def validate_profile(profile: Mapping[str, Any], *, path: str = "",
                      registries: Optional[ProfileRegistries] = None
-                     ) -> SourceOntologyProfile | LegacySourceOntologyProfile:
-    """Validate a canonical mapping Profile or the prior unapproved draft shape."""
+                     ) -> SourceOntologyProfile:
+    """Validate only the canonical four-field Claim Mapping Profile."""
     if registries is None:
         registries = _default_registries()
     raw = _expect_mapping(profile, path or "profile")
-    if {"profile_version", "packs", "mappings"} & set(raw):
-        normalized, issues = _normalize_claim_mapping_profile(raw, path, registries)
-        if issues:
-            raise issues[0]
-        assert normalized is not None
-        return normalized
-    return _validate_legacy_profile(raw, path or "profile", registries)
+    normalized, issues = _normalize_claim_mapping_profile(raw, path, registries)
+    if issues:
+        raise issues[0]
+    assert normalized is not None
+    return normalized
 
 
 def validate_profile_errors(profile: Mapping[str, Any], *, path: str = "",
@@ -647,6 +645,19 @@ def validate_profile_errors(profile: Mapping[str, Any], *, path: str = "",
         return (error,)
     _, issues = _normalize_claim_mapping_profile(raw, path, registries)
     return issues
+
+
+def validate_legacy_profile(profile: Mapping[str, Any], *, path: str = "",
+                            registries: Optional[ProfileRegistries] = None
+                            ) -> LegacySourceOntologyProfile:
+    """Explicit compatibility validator for the retired six-field draft shape.
+
+    Canonical entry points never dispatch here.  Keeping this function separate makes
+    legacy acceptance a caller decision instead of an input-shape side effect.
+    """
+    registries = registries or _default_registries()
+    raw = _expect_mapping(profile, path or "legacy_profile")
+    return _validate_legacy_profile(raw, path or "legacy_profile", registries)
 
 
 def _validate_legacy_profile(raw: Mapping[str, Any], path: str,
@@ -692,21 +703,78 @@ def _validate_legacy_profile(raw: Mapping[str, Any], path: str,
     )
 
 
-def serialize_profile(profile: (Mapping[str, Any] | SourceOntologyProfile
-                                | LegacySourceOntologyProfile), *,
+def serialize_profile(profile: Mapping[str, Any] | SourceOntologyProfile, *,
                       path: str = "",
                       registries: Optional[ProfileRegistries] = None) -> str:
-    validated = (profile if isinstance(
-        profile, (SourceOntologyProfile, LegacySourceOntologyProfile))
+    validated = (profile if isinstance(profile, SourceOntologyProfile)
                  else validate_profile(profile, path=path, registries=registries))
     return validated.serialize()
+
+
+def profile_readiness_errors(
+        profile: SourceOntologyProfile) -> tuple[ProfileValidationError, ...]:
+    """Return deterministic execution-readiness issues for a validated Profile.
+
+    Structural validation and execution readiness deliberately remain separate.  This
+    function performs no compilation, lookup, translation, I/O, or database work.
+    """
+    if not isinstance(profile, SourceOntologyProfile):
+        raise TypeError(
+            "readiness gate requires a validated SourceOntologyProfile")
+    issues: list[ProfileValidationError] = []
+    for mapping_index, mapping in enumerate(profile.mappings):
+        bind_path = f"mappings[{mapping_index}].bind"
+        for role_id in sorted(mapping.bind):
+            issues.extend(_binding_readiness_issues(
+                mapping.bind[role_id], _path(bind_path, role_id)))
+    return _sort_issues(issues)
+
+
+def require_executable_profile(
+        profile: SourceOntologyProfile) -> SourceOntologyProfile:
+    """Return ``profile`` only when every top-level and nested Binding is approved."""
+    issues = profile_readiness_errors(profile)
+    if issues:
+        raise issues[0]
+    return profile
+
+
+def _binding_readiness_issues(
+        binding: BindingDefinition, path: str) -> list[ProfileValidationError]:
+    issues: list[ProfileValidationError] = []
+    if binding.approval_status != APPROVAL_STATUS_APPROVED:
+        issues.append(ProfileValidationError(
+            _path(path, "approval_status"),
+            "binding must be approved before execution; "
+            f"got {binding.approval_status!r}",
+            "binding_not_approved",
+        ))
+    for name in sorted(binding.values):
+        issues.extend(_nested_binding_readiness_issues(
+            binding.values[name], _path(path, name)))
+    return issues
+
+
+def _nested_binding_readiness_issues(
+        value: Any, path: str) -> list[ProfileValidationError]:
+    if isinstance(value, BindingDefinition):
+        return _binding_readiness_issues(value, path)
+    issues: list[ProfileValidationError] = []
+    if isinstance(value, Mapping):
+        for name in sorted(value):
+            issues.extend(_nested_binding_readiness_issues(
+                value[name], _path(path, str(name))))
+    elif isinstance(value, tuple):
+        for index, item in enumerate(value):
+            issues.extend(_nested_binding_readiness_issues(
+                item, f"{path}[{index}]"))
+    return issues
 
 
 def validate_profile_section(config: Mapping[str, Any], *,
                              path: str = "ledger_config",
                              registries: Optional[ProfileRegistries] = None
-                             ) -> dict[str, (SourceOntologyProfile
-                                            | LegacySourceOntologyProfile)]:
+                             ) -> dict[str, SourceOntologyProfile]:
     """Validate optional ``ledger_config.profiles`` beside legacy ``sources``.
 
     This is intentionally opt-in in schema phase 1: the existing runtime loader keeps
@@ -718,7 +786,7 @@ def validate_profile_section(config: Mapping[str, Any], *,
         return {}
     section_path = _path(path, PROFILE_CONFIG_SECTION)
     profiles = _expect_mapping(raw_config[PROFILE_CONFIG_SECTION], section_path)
-    result: dict[str, SourceOntologyProfile | LegacySourceOntologyProfile] = {}
+    result: dict[str, SourceOntologyProfile] = {}
     for name in sorted(profiles):
         name_path = _path(section_path, str(name))
         if not isinstance(name, str) or not name.strip():
@@ -734,16 +802,11 @@ def public_profile_schema(registries: Optional[ProfileRegistries] = None) -> dic
     registries = registries or _default_registries()
     return {
         "profile_version": PROFILE_SCHEMA_VERSION,
-        "schema_version": PROFILE_SCHEMA_VERSION,
         "config_section": PROFILE_CONFIG_SECTION,
-        "mapping_statuses": sorted(MAPPING_STATUSES),
         "binding_origins": sorted(BINDING_ORIGINS),
         "approval_statuses": sorted(APPROVAL_STATUSES),
         "packs": registries.packs.public_metadata(),
         "binding_kinds": registries.binding_kinds.public_metadata(),
-        "templates": registries.templates.public_metadata(),
-        "entity_types": registries.entities.public_metadata(),
-        "container_types": registries.containers.public_metadata(),
     }
 
 
@@ -1077,7 +1140,7 @@ def _normalize_lookup_binding(
         return None, _sort_issues(issues)
     return {
         "lookup_id": lookup_id,
-        "key": key_binding.to_mapping(),
+        "key": key_binding,
         "select": select,
     }, ()
 
@@ -1107,6 +1170,8 @@ def _freeze_json(value: Any) -> Any:
 
 
 def _thaw_json(value: Any) -> Any:
+    if isinstance(value, BindingDefinition):
+        return value.to_mapping()
     if isinstance(value, Mapping):
         return {name: _thaw_json(value[name]) for name in sorted(value)}
     if isinstance(value, tuple):

@@ -2244,7 +2244,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 🆕⑧ `dry_run.py` | **416** | 실제 번역기를 PostgreSQL 읽기 전용 트랜잭션에서 실행하는 미리보기 |
 | 🆕⑧ `source_contract.py` | **281** | 소스 선언·번역 프로필·가능 Claim 전수·live vocabulary를 한 작성 계약으로 컴파일 |
 | 🆕⑧ `translator_pattern.py` | **164** | 복잡한 Python 번역기의 시각·출처·register·게이트·롤백 공통 수명주기 |
-| 🆕⑧ `source_profile.py` | **1,447** | **2단계 `IN_PROGRESS` / `NOT_APPROVED`.** 범용 `SourceOntologyProfile`, Pack→Claim→Role 및 Binding kind registry, Binding 출처/승인 분리, Role kind·symbolic constant fail-closed 검증, 전용 오류, 결정적 직렬화. DB·compiler·translator 호출 없음 |
+| 🆕⑧ `source_profile.py` | **1,512** | **2단계 `IN_PROGRESS` / `NOT_APPROVED`.** canonical 4필드 `SourceOntologyProfile`, 격리된 명시적 legacy validator, Pack→Claim→Role 및 Binding kind registry, Binding 출처/승인 분리, 중첩 Binding readiness gate, Role kind·symbolic constant fail-closed 검증, 전용 오류, 결정적 직렬화. DB·compiler·translator 호출 없음 |
 | 🆕⑧ `source_profile_builtins.py` | **146** | `lot-lineage@1`, `transfer@1` Pack/Claim/Role 및 `source_position` symbolic constant 등록 데이터. 사례 이름은 이 등록 파일에만 허용 |
 | `schema.py` | 🆕⑦ **360** | 물리 DDL — **첫날부터 시간 파티션**. 유일한 철자 |
 | `store.py` | 🆕⑦ **442** | 원자 append와 커서 전진을 **한 트랜잭션**으로 |

@@ -186,14 +186,31 @@ Profile은 업무별 고정 필드가 아니라 Pack Claim의 Role과 원천 bin
         "approval_status": "approved",
         "suggestion_reason": "matched the declared source identity"
       },
-      "from": {"kind": "constant", "value": "source_position"},
+      "from": {
+        "kind": "constant",
+        "value": "source_position",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
+      },
       "to": {
         "kind": "declared_lookup",
         "lookup_id": "destination_inventory",
-        "key": "column:MOVE_ID",
-        "select": "container"
+        "key": {
+          "kind": "column",
+          "column": "MOVE_ID",
+          "binding_origin": "user_declared",
+          "approval_status": "approved"
+        },
+        "select": "container",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
       },
-      "occurred_at": "column:EVENT_TIME"
+      "occurred_at": {
+        "kind": "column",
+        "column": "EVENT_TIME",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
+      }
     }
   }]
 }
@@ -206,6 +223,12 @@ Profile은 업무별 고정 필드가 아니라 Pack Claim의 Role과 원천 bin
 - `serialize_profile`: 정규화된 Profile의 결정적 JSON 생성
 - `validate_profile_section`: 수동 `sources`를 건드리지 않고 `profiles`만 검사
 - `public_profile_schema`: Pack/Claim/Role/Binding 공개 metadata
+- `profile_readiness_errors`: 검증된 Profile의 미승인 Binding을 결정적으로 열거
+- `require_executable_profile`: 모든 중첩 Binding까지 `approved`일 때만 통과
+
+위 다섯 canonical 진입점은 `profile_version/source/packs/mappings` 네 필드만 받는다.
+구형 6필드 draft는 자동 수용되지 않으며 필요하면 `validate_legacy_profile`을 명시적으로
+호출한다. 구형 Template/type/status는 `public_profile_schema`에도 나오지 않는다.
 
 지원 binding은 `column`, `constant`, `declared_lookup`뿐이다. 정규화 결과에는
 `binding_origin`(`user_declared|system_suggested|imported`)과
@@ -215,6 +238,10 @@ Profile은 업무별 고정 필드가 아니라 Pack Claim의 Role과 원천 bin
 `from`의 `source_position`은 Pack에 등록된 symbolic constant이며 임의 위치 문자열은
 거절된다. `declared_lookup`은 여기서 구조만 검사하고 실행·반환 형상 검사는 3단계다.
 임의 Python·SQL·JavaScript·expression 실행은 없다.
+
+구조 검증 통과가 실행 승인을 뜻하지 않는다. `pending` 또는 `rejected` Binding이 하나라도
+있거나 `declared_lookup.key`가 미승인이면 readiness gate가 `binding_not_approved`와 정확한
+경로로 차단한다. 이 gate는 실행하지 않고 상태만 검사한다.
 
 ⚠️ `config.load()`는 계속 기존 `sources`만 실행한다. Profile compiler·runtime adapter·
 translator 실행은 아직 없으므로 수동 선언을 제거하거나 Profile만 두고 백필하면 안 된다.

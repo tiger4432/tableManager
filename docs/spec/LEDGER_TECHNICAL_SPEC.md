@@ -734,14 +734,31 @@ Profile은 `ledger_config.json`의 기존 `sources`와 나란한 `profiles.<name
         "approval_status": "approved",
         "suggestion_reason": "matched the declared source identity"
       },
-      "from": {"kind": "constant", "value": "source_position"},
+      "from": {
+        "kind": "constant",
+        "value": "source_position",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
+      },
       "to": {
         "kind": "declared_lookup",
         "lookup_id": "destination_inventory",
-        "key": "column:MOVE_ID",
-        "select": "container"
+        "key": {
+          "kind": "column",
+          "column": "MOVE_ID",
+          "binding_origin": "user_declared",
+          "approval_status": "approved"
+        },
+        "select": "container",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
       },
-      "occurred_at": "column:EVENT_TIME"
+      "occurred_at": {
+        "kind": "column",
+        "column": "EVENT_TIME",
+        "binding_origin": "user_declared",
+        "approval_status": "approved"
+      }
     }
   }]
 }
@@ -779,8 +796,11 @@ Binding kind 등록부:
 별도 필드로 보존한다. 입력에서 생략하면 각각 `user_declared`, `pending`으로 정규화한다.
 `system_suggested`에는 `suggestion_reason`이 필수다. 이 승인은 컬럼 Mapping에만 적용되며
 생성될 Claim의 epistemic class를 `confirmed` 또는 `pin`으로 승격시키지 않는다.
-기존 비정본 draft Profile의 `status=human_approved|inferred`는 병행 로더 호환용으로만
-남으며 canonical Claim Mapping Binding은 그 필드를 해석하지 않는다.
+정본 Profile의 루트는 `profile_version/source/packs/mappings` 네 필드만 허용한다.
+`validate_profile`, `validate_profile_errors`, `serialize_profile`, `validate_profile_section`,
+`public_profile_schema`는 이 canonical 계약만 다루며 입력 모양으로 구형 draft를 자동
+판별하지 않는다. 구형 6필드 draft는 명시적 `validate_legacy_profile()`에만 격리되어 있고
+canonical metadata에도 노출되지 않는다.
 
 `allowed_binding_kinds`는 Role별 허용 binding을 좁히고, Binding kind descriptor의
 `allowed_role_kinds`는 `RoleDescriptor.kind` 호환성을 별도로 검사한다. `transfer/movement`
@@ -794,10 +814,19 @@ Python·SQL·JavaScript·eval/exec와 범용 expression DSL은 지원하지 않�
 `unsupported_profile_version`이며 모두 `code/path/message`를 가진다.
 `validate_profile_errors()`는 여러 오류를 경로·code·message 기준으로 결정적으로 정렬한다.
 `validate_profile()`은 그 첫 오류를 `ProfileValidationError`로 발생시킨다.
+같은 입력은 두 함수에서 항상 같은 수락/거절 판정을 갖는다.
+
+구조 검증과 실행 가능 판정은 분리한다. `profile_readiness_errors()`와
+`require_executable_profile()`은 이미 검증된 `SourceOntologyProfile`만 받고 모든 최상위
+Binding과 `declared_lookup.key` 같은 중첩 Binding의 `approval_status`가 `approved`인지
+재귀적으로 검사한다. `pending|rejected`는 `binding_not_approved`와 정확한
+`mappings[i].bind.<role>[...].approval_status` 경로로 차단한다. 이 gate는 순수 판정이며
+compiler·lookup·translator·DB를 호출하지 않는다.
 
 `serialize_profile()`은 Pack, mapping, role, 객체 키를 정규화해 같은 Profile을 같은 UTF-8
-JSON 바이트로 직렬화하며 입력을 수정하지 않는다. `public_profile_schema()`는
-Pack/Claim/Role/Binding metadata만 공개한다. predicate signature, atom 분해, Claim 계급
+JSON 바이트로 직렬화하며 입력을 수정하지 않는다. `public_profile_schema()`는 canonical
+Pack/Claim/Role/Binding metadata만 공개하고 구형 Template/type/status metadata를 내보내지
+않는다. predicate signature, atom 분해, Claim 계급
 번호, translator/derivation 내부명, canonical key 직렬화, provenance envelope는 없다.
 
 🔴 **2단계 경계:** compiler, runtime adapter, translator 호출, atom 생성, UI, Trace,
