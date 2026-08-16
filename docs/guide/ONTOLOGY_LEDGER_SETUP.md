@@ -1,6 +1,6 @@
 # Ontology Ledger 셋업 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 | **Owner:** Server / Ledger + Ontology
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Source Profile 2단계 `IN_PROGRESS` / `NOT_APPROVED` | **Owner:** Server / Ledger + Ontology
 > **Source-of-truth:** `server/ledger/config.py` · `server/ledger/source_profile.py` · `server/ledger/source_profile_builtins.py` · `server/ledger/vocabulary.py` · `server/config/`
 
 이 문서는 **어떤 선언을 어떤 순서로 준비해야 원장이 도는지**만 설명한다.
@@ -161,29 +161,63 @@ dry-run의 실제 원자는 표본 증거이고 Source Contract는 전체 가능
 
 새 Python 모양은 [LEDGER_GUIDE §3 ③](./LEDGER_GUIDE.md)의 Template Method를 사용한다.
 
-### 3.6 Source Ontology Profile v1
+### 3.6 Source Ontology Profile 2단계
 
-새 상위 선언은 `ledger_config.json`의 기존 `sources` **옆** `profiles`에 둔다.
-한 Profile에서 작성자가 직접 고르는 것은 source 관계, 대상 entity, event template,
-role별 물리 column, 위치 container뿐이다. 정확한 JSON 계약은
-[LEDGER_TECHNICAL_SPEC §3.10](../spec/LEDGER_TECHNICAL_SPEC.md)이 소유한다.
+> **status:** `IN_PROGRESS` · **approval:** `NOT_APPROVED`
+> **remaining_acceptance:** 사용자 재승인
 
-현재 등록된 event template은 `lot_lineage`와 `transfer`뿐이다. role-column 매핑마다
-`status`를 `human_approved` 또는 `inferred`로 반드시 적고, `inferred`면 `reason`도
-필수다. `event.timezone`에는 IANA 시간대를 직접 선언하며 시스템 지역 시간으로
-기본 설정되지 않는다.
+새 상위 선언은 `ledger_config.json`의 기존 `sources` **옆** `profiles`에 둘 수 있다.
+Profile은 업무별 고정 필드가 아니라 Pack Claim의 Role과 원천 binding을 연결한다.
+정확한 계약은 [LEDGER_TECHNICAL_SPEC §3.10](../spec/LEDGER_TECHNICAL_SPEC.md)이 소유한다.
+
+```json
+{
+  "profile_version": 1,
+  "source": "movement_rows",
+  "packs": ["transfer@1"],
+  "mappings": [{
+    "mapping_id": "movement",
+    "use": "transfer/movement",
+    "bind": {
+      "subject": {
+        "kind": "column",
+        "column": "ITEM_ID",
+        "binding_origin": "system_suggested",
+        "approval_status": "approved",
+        "suggestion_reason": "matched the declared source identity"
+      },
+      "from": {"kind": "constant", "value": "source_position"},
+      "to": {
+        "kind": "declared_lookup",
+        "lookup_id": "destination_inventory",
+        "key": "column:MOVE_ID",
+        "select": "container"
+      },
+      "occurred_at": "column:EVENT_TIME"
+    }
+  }]
+}
+```
 
 검증·직렬화 진입점:
 
-- `validate_profile`: 닫힌 template·entity·container 등록부와 필수 role 검사
-- `serialize_profile`: 키 순서와 무관한 결정적 JSON 생성
+- `validate_profile`: Pack/Claim/Role와 binding 계약 검사, 첫 오류 예외 반환
+- `validate_profile_errors`: 모든 오류를 `code/path/message` 순서가 결정적인 목록으로 반환
+- `serialize_profile`: 정규화된 Profile의 결정적 JSON 생성
 - `validate_profile_section`: 수동 `sources`를 건드리지 않고 `profiles`만 검사
-- `public_profile_schema`: 다음 설정 화면이 읽을 공개 metadata
+- `public_profile_schema`: Pack/Claim/Role/Binding 공개 metadata
 
-⚠️ 이 단계는 **스키마만 착지**했다. `config.load()`는 계속 기존 `sources`를 실행하고,
-Profile compiler·runtime adapter·translator 실행은 아직 없다. 따라서 동일 source의
-수동 선언을 제거하거나 Profile만 두고 백필하면 안 된다. 다음 단계에서 Profile을 기존
-런타임 선언으로 변환하고, 수동 경로와 의미가 같은지 dry-run parity로 확인한다.
+지원 binding은 `column`, `constant`, `declared_lookup`뿐이다. 정규화 결과에는
+`binding_origin`(`user_declared|system_suggested|imported`)과
+`approval_status`(`pending|approved|rejected`)가 항상 별도로 남는다. 생략 기본값은
+`user_declared`와 `pending`이고, `system_suggested`에는 `suggestion_reason`이 필수다.
+`approved`는 컬럼 Mapping 승인일 뿐 Claim을 `confirmed`나 `pin`으로 올리지 않는다.
+`from`의 `source_position`은 Pack에 등록된 symbolic constant이며 임의 위치 문자열은
+거절된다. `declared_lookup`은 여기서 구조만 검사하고 실행·반환 형상 검사는 3단계다.
+임의 Python·SQL·JavaScript·expression 실행은 없다.
+
+⚠️ `config.load()`는 계속 기존 `sources`만 실행한다. Profile compiler·runtime adapter·
+translator 실행은 아직 없으므로 수동 선언을 제거하거나 Profile만 두고 백필하면 안 된다.
 
 ## 4. Vocabulary
 

@@ -3,18 +3,77 @@ from __future__ import annotations
 
 from . import config, vocabulary
 from .source_profile import (
+    ClaimDescriptor,
     ContainerSlotDefinition,
+    PackDescriptor,
+    PackRegistry,
     ProfileRegistries,
     RoleDefinition,
+    RoleDescriptor,
     TemplateDefinition,
     TemplateRegistry,
     TypeDefinition,
     TypeRegistry,
+    default_binding_kind_registry,
 )
 
 
 def default_profile_registries() -> ProfileRegistries:
     """Return fresh, sealed registries so callers cannot mutate global validation."""
+    packs = PackRegistry((
+        PackDescriptor(
+            pack_id="lot-lineage",
+            version=1,
+            claims=(ClaimDescriptor(
+                claim_id="transition",
+                roles=(
+                    RoleDescriptor("subject", "entity"),
+                    RoleDescriptor("parent", "entity"),
+                    RoleDescriptor("child", "entity"),
+                    RoleDescriptor("occurred_at", "time"),
+                    RoleDescriptor(
+                        "event_type", "attribute", required=False,
+                        allowed_binding_kinds=(
+                            "column", "constant", "declared_lookup"),
+                        allowed_constant_types=("string",)),
+                ),
+            ),),
+        ),
+        PackDescriptor(
+            pack_id="transfer",
+            version=1,
+            claims=(ClaimDescriptor(
+                claim_id="movement",
+                roles=(
+                    RoleDescriptor("subject", "entity",
+                                   allowed_binding_kinds=(
+                                       "column", "declared_lookup")),
+                    RoleDescriptor("from", "position",
+                                   allowed_binding_kinds=(
+                                       "column", "constant", "declared_lookup"),
+                                   symbolic_constants=("source_position",)),
+                    RoleDescriptor("to", "position",
+                                   allowed_binding_kinds=(
+                                       "column", "declared_lookup")),
+                    RoleDescriptor("occurred_at", "time",
+                                   allowed_binding_kinds=(
+                                       "column", "declared_lookup")),
+                    RoleDescriptor("event_key", "identity", required=False,
+                                   allowed_binding_kinds=(
+                                       "column", "declared_lookup")),
+                    RoleDescriptor("row_order", "order", required=False,
+                                   allowed_binding_kinds=(
+                                       "column", "constant", "declared_lookup"),
+                                   allowed_constant_types=("integer",)),
+                    RoleDescriptor("qty", "quantity", required=False,
+                                   allowed_binding_kinds=(
+                                       "column", "constant", "declared_lookup"),
+                                   allowed_constant_types=("integer", "number")),
+                ),
+            ),),
+        ),
+    )).seal()
+
     entity_types = TypeRegistry(
         "entity",
         [TypeDefinition(name=name,
@@ -78,6 +137,10 @@ def default_profile_registries() -> ProfileRegistries:
         ),
     ]).seal()
 
-    return ProfileRegistries(templates=templates, entities=entity_types,
-                             containers=container_types)
-
+    return ProfileRegistries(
+        templates=templates,
+        entities=entity_types,
+        containers=container_types,
+        packs=packs,
+        binding_kinds=default_binding_kind_registry(),
+    )

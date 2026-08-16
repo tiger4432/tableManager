@@ -1,7 +1,7 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 Source Ontology Profile v1 — 코드 대조 | **Owner:** Server / Ledger
-> **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(상위 Profile 계약·검증·직렬화) · **`server/ledger/source_profile_builtins.py`**(v1 template/type 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/translator_pattern.py`**(복잡한 소스의 공통 수명주기) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Source Ontology Profile 2단계 `IN_PROGRESS` / `NOT_APPROVED` — 코드 대조 | **Owner:** Server / Ledger
+> **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(Pack/Claim/Role/Binding Profile 계약·검증·직렬화) · **`server/ledger/source_profile_builtins.py`**(Pack·Claim 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/translator_pattern.py`**(복잡한 소스의 공통 수명주기) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
 > **이번 라운드 (2026-08-15 3차 · 넷째 문법 `declared` + 뿌리 키 롤업 — R-2026-08-15-N ② · R-2026-08-15-O · 갱신 트리거 ②③⑥⑦)**
 > **코드 대조 기준 리비전은 `8c236bc`다.**
@@ -708,87 +708,100 @@ payload와 맞는지 본다. 한 행도 읽지 않고 확정할 수 있는 모�
 그 프로필을 런타임 문법에 등록할 때 `POSSIBLE_EMISSIONS` 전수를 Source Contract에
 연결해야 한다. **예제 파일 자체는 등록되지 않으며 복사만 해서는 0행을 쓴다.**
 
-### 3.10 `SourceOntologyProfile` v1 — 상위 작성 계약 (2026-08-16)
+### 3.10 `SourceOntologyProfile` 2단계 — Claim Mapping 계약 (2026-08-17)
 
-Profile은 `ledger_config.json`의 기존 `sources`와 나란한 `profiles.<name>`에 놓는다.
-`sources`는 현행 실행 계약이고 `profiles`는 다음 compiler가 읽을 상위 계약이다. v1의
-`validate_profile_section()`은 Profile만 명시적으로 검사하며 `config.load()`의 실행
-디스패치에는 연결되지 않았다. 같은 파일에 둘이 함께 있어도 기존 loader와 API의 동작은
-바뀌지 않는다.
+> **status:** `IN_PROGRESS` · **approval:** `NOT_APPROVED`
+> **remaining_acceptance:** 사용자 재승인
+
+Profile은 `ledger_config.json`의 기존 `sources`와 나란한 `profiles.<name>`에 둘 수 있다.
+`sources`는 현행 실행 계약이고 `profiles`는 실행되지 않는 상위 작성 계약이다.
+`validate_profile_section()`은 Profile만 검사하며 `config.load()`의 실행 디스패치에는
+연결되지 않는다.
 
 ```json
 {
-  "schema_version": 1,
-  "source": {"relation": "movement_rows", "related": {"destination": "inventory_rows"}},
-  "entity": {"type": "Wafer", "keys": {"wafer": "wafer"}},
-  "event": {"template": "transfer", "timezone": "Asia/Seoul"},
-  "roles": {
-    "row_identity": {"column": "row_id", "status": "human_approved"},
-    "occurred_at": {"column": "moved_at", "status": "human_approved"},
-    "wafer": {"column": "material_id", "status": "human_approved"},
-    "event_key": {"column": "movement_id", "status": "human_approved"},
-    "row_order": {"column": "row_id", "status": "human_approved"},
-    "destination_lookup_key": {
-      "column": "movement_id", "relation": "destination", "status": "human_approved"
-    },
-    "destination_lot": {
-      "column": "lot_id", "relation": "destination", "status": "human_approved"
-    },
-    "destination_slot": {
-      "column": "slot_id", "relation": "destination", "status": "human_approved"
+  "profile_version": 1,
+  "source": "movement_rows",
+  "packs": ["transfer@1"],
+  "mappings": [{
+    "mapping_id": "movement",
+    "use": "transfer/movement",
+    "bind": {
+      "subject": {
+        "kind": "column",
+        "column": "ITEM_ID",
+        "binding_origin": "system_suggested",
+        "approval_status": "approved",
+        "suggestion_reason": "matched the declared source identity"
+      },
+      "from": {"kind": "constant", "value": "source_position"},
+      "to": {
+        "kind": "declared_lookup",
+        "lookup_id": "destination_inventory",
+        "key": "column:MOVE_ID",
+        "select": "container"
+      },
+      "occurred_at": "column:EVENT_TIME"
     }
-  },
-  "containers": {
-    "from": {"type": "wafer_grid", "keys": {"wafer": "wafer"}},
-    "to": {
-      "type": "dt_slot",
-      "keys": {"lot": "destination_lot", "slot": "destination_slot"},
-      "lookup": {"event_role": "event_key", "container_role": "destination_lookup_key"}
-    }
-  }
+  }]
 }
+```
+
+Registry 구조:
+
+```text
+PackRegistry
+└─ PackDescriptor(pack_id, version)
+   └─ ClaimDescriptor(claim_id)
+      └─ RoleDescriptor(role_id, kind, required, allowed_binding_kinds,
+                        allow_null, symbolic_constants, allowed_constant_types)
 ```
 
 | 경로 | 계약 |
 |---|---|
-| `schema_version` | 정수 `1`만 수용. 부재·다른 버전·boolean은 거절 |
-| `source.relation` | 주 원천 관계의 비어 있지 않은 이름 |
-| `source.related.<alias>` | 보조 관계. role의 `relation`이 이 alias를 가리킨다. `primary`는 주 관계 예약어 |
-| `entity.type` | `vocabulary.ENTITY_TYPES`에 등록되고 선택 template이 허용한 타입 |
-| `entity.keys.<key>` | 해당 entity type의 신원 키 전부를 role 이름에 연결. role과 그 column이 비면 거절 |
-| `event.template` | v1 등록값 `lot_lineage` 또는 `transfer` |
-| `event.timezone` | 비어 있지 않은 유효 IANA 시간대. 묵시적 UTC·로컬 기본값 없음 |
-| `roles.<role>.column` | template role에 대응하는 물리 컬럼. 빈 값 거절 |
-| `roles.<role>.status` | `human_approved` 또는 `inferred`; 기본값 없음 |
-| `roles.<role>.reason` | `inferred`일 때 필수인 자동 추정 근거 |
-| `roles.<role>.relation` | 생략하면 주 관계, 적으면 `source.related`의 등록 alias 또는 `primary` |
-| `containers.<slot>.type` | 닫힌 container type 등록부의 이름 |
-| `containers.<slot>.keys` | container type의 신원 키 전부를 role에 연결 |
-| `containers.<slot>.lookup` | 선택적 `{event_role, container_role}`. 주 사건과 보조 관계의 확인 키 연결 |
+| `profile_version` | 정수 `1`만 수용. 다른 값은 `unsupported_profile_version` |
+| `source` | 비어 있지 않은 원천 이름. 특정 업무 이름에 대한 분기 없음 |
+| `packs[]` | `pack_id@version`; 미등록 Pack과 미지원 버전을 구분 |
+| `mappings[].mapping_id` | 필수, 공백 금지, Profile 안에서 고유 |
+| `mappings[].use` | `pack_id/claim_id`; `packs[]`가 버전을 고정 |
+| `mappings[].bind` | Claim이 등록한 Role만 허용하고 required Role 전부 요구 |
 
-Template registry 공개 계약:
+Binding kind 등록부:
 
-| template | entity | 필수 role | container slot |
-|---|---|---|---|
-| `lot_lineage` | `Lot` | `row_identity`, `occurred_at`, `event_type`, `lot`, `parent_lot`, `child_lot`, `slots`, `wafers` | 없음 |
-| `transfer` | `Wafer` | `row_identity`, `occurred_at`, `event_key`, `row_order`, `wafer` | `from`, `to` |
+| kind | 필수 필드 | 검사 |
+|---|---|---|
+| `column` | `column` | 비어 있지 않은 컬럼명 |
+| `constant` | `value` | 키의 명시적 존재; `null`은 Role의 `allow_null`, 나머지는 Role의 symbolic constant 또는 허용 JSON type 계약을 따름 |
+| `declared_lookup` | `lookup_id`, `key`, `select` | 2단계에서는 식별자·column/constant key binding·출력 선택의 구조만 검사. 실행과 반환 형상 검사는 3단계 |
 
-`transfer`의 출발·도착 key나 보조 확인에 필요한 role은 등록된 선택 role로 더한다.
-v1 container type 등록값은 현행 위치 철자 `wafer_grid`, `dt_slot`, `dt_job`이며 각각
-신원 키가 `(wafer)`, `(lot, slot)`, `(job)`이다. template·role·entity·container·key와
-모든 객체 필드는 닫힌 집합이고, 알 수 없는 이름은 무시하지 않고 그 필드의 정확한
-Profile 경로를 가진 `ProfileValidationError`로 거절한다.
+모든 정규화 Binding은 설정 출처 `binding_origin`(`user_declared`, `system_suggested`,
+`imported`)과 Mapping 승인 상태 `approval_status`(`pending`, `approved`, `rejected`)를
+별도 필드로 보존한다. 입력에서 생략하면 각각 `user_declared`, `pending`으로 정규화한다.
+`system_suggested`에는 `suggestion_reason`이 필수다. 이 승인은 컬럼 Mapping에만 적용되며
+생성될 Claim의 epistemic class를 `confirmed` 또는 `pin`으로 승격시키지 않는다.
+기존 비정본 draft Profile의 `status=human_approved|inferred`는 병행 로더 호환용으로만
+남으며 canonical Claim Mapping Binding은 그 필드를 해석하지 않는다.
 
-`serialize_profile()`은 검증 후 객체 키를 정렬한 UTF-8 JSON을 만들어 입력 dict의 순서와
-무관하게 같은 Profile을 같은 바이트로 직렬화한다. 입력 객체를 수정하지 않는다.
-`public_profile_schema()`가 내보내는 화면용 metadata에는 template, label, entity type,
-role 필수 여부, container slot, 신원 키만 있다. predicate signature, atom 분해, Claim
-계급 번호, translator/derivation 내부명, canonical key 직렬화, provenance envelope는
-Profile 계약과 공개 metadata에 없다.
+`allowed_binding_kinds`는 Role별 허용 binding을 좁히고, Binding kind descriptor의
+`allowed_role_kinds`는 `RoleDescriptor.kind` 호환성을 별도로 검사한다. `transfer/movement`
+의 `from`은 `kind=position`이며 `source_position`이 Pack에 등록된 symbolic constant라서
+통과한다. 다른 임의 문자열은 거절한다. Binding kind 추가는 `BindingKindDescriptor`
+등록으로 이루어지고 validator에 source별 조건문을 추가하지 않는다. 임의
+Python·SQL·JavaScript·eval/exec와 범용 expression DSL은 지원하지 않는다.
 
-🔴 **v1 경계:** compiler, runtime adapter, translator 호출, DB 연결, migration, write가
-없다. 다음 단계는 검증된 Profile을 기존 수동 config 모양으로 결정적으로 바꾸고 기존
-translator를 그대로 호출해야 하며, 이 절의 공개 모델에 런타임 내부 필드를 보태지 않는다.
+전용 오류는 `unknown_pack`, `unsupported_pack_version`, `unknown_claim`,
+`missing_required_role`, `unknown_role`, `invalid_binding`, `duplicate_mapping_id`,
+`unsupported_profile_version`이며 모두 `code/path/message`를 가진다.
+`validate_profile_errors()`는 여러 오류를 경로·code·message 기준으로 결정적으로 정렬한다.
+`validate_profile()`은 그 첫 오류를 `ProfileValidationError`로 발생시킨다.
+
+`serialize_profile()`은 Pack, mapping, role, 객체 키를 정규화해 같은 Profile을 같은 UTF-8
+JSON 바이트로 직렬화하며 입력을 수정하지 않는다. `public_profile_schema()`는
+Pack/Claim/Role/Binding metadata만 공개한다. predicate signature, atom 분해, Claim 계급
+번호, translator/derivation 내부명, canonical key 직렬화, provenance envelope는 없다.
+
+🔴 **2단계 경계:** compiler, runtime adapter, translator 호출, atom 생성, UI, Trace,
+DB 연결, migration, write가 없다. 3단계는 2단계 재승인 전 시작하지 않는다.
 
 ---
 

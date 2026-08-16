@@ -1,47 +1,68 @@
-# Source Ontology Profile v1 계약 착지
+# Source Ontology Profile 2단계 — 수락 보완 진행 중
 
 > **Date:** 2026-08-16 | **Area:** Canonical Ledger / Ontology Setup
+> **status:** `IN_PROGRESS`
+> **approval:** `NOT_APPROVED`
+> **remaining_acceptance:** 사용자 재승인
 
 ## 배경
 
 새 소스를 원장에 연결하려면 운영자가 `ledger_config`, 번역기 구현, vocabulary의 내부
 계약을 함께 이해해야 했다. 설정 단순화 계획의 2단계로, 이 내부 구조를 직접 노출하지
-않는 상위 `SourceOntologyProfile` 스키마를 추가했다.
+않는 상위 `SourceOntologyProfile` 스키마를 작성 중이다. 이 기록은 구현 이력이지 승인
+기록이 아니며, 사용자 재승인 전에는 완료 상태로 해석하지 않는다.
 
 ## 변경
 
 - `server/ledger/source_profile.py`
-  - version `1` Profile 모델
-  - 닫힌 필드·role·template·entity/container type 엄격 검증
-  - 정확한 Profile 경로와 안정된 오류 code
-  - role-column 매핑의 `human_approved`/`inferred` 구분
-  - 추정 매핑의 `reason` 필수화
-  - IANA timezone 명시 강제
+  - `profile_version/source/packs/mappings` Profile 모델
+  - `PackRegistry → PackDescriptor → ClaimDescriptor → RoleDescriptor`
+  - `column`, `constant`, `declared_lookup` binding kind registry
+  - `mapping_id` 필수·공백·중복 검사
+  - 정확한 mapping/role 경로와 전용 오류 code
+  - Binding 설정 출처(`user_declared|system_suggested|imported`)와 Mapping 승인 상태
+    (`pending|approved|rejected`) 분리 및 결정적 보존
+  - `system_suggested`의 `suggestion_reason` 필수 검사와 승인 상태가 Claim class에
+    영향을 주지 않는 경계
+  - `RoleDescriptor.kind`와 `allowed_binding_kinds` 이중 검사, Pack 등록 symbolic
+    constant에 의한 `source_position` fail-closed 검증
   - 입력 순서와 무관한 결정적 JSON 직렬화
   - 기존 수동 `sources` 옆 `profiles` 선택 섹션 검증
 - `server/ledger/source_profile_builtins.py`
-  - v1 template `lot_lineage`, `transfer` 등록
-  - 현행 entity type과 transfer container type 등록 데이터
+  - `lot-lineage@1`, `transfer@1` Pack 등록 데이터
+  - `transfer/movement` 등 Claim과 Role 계약
 - `server/tests/test_source_ontology_profile.py`
-  - 스키마 수락 조건과 기존 loader 병행을 19개 테스트로 고정
+  - Pack/Claim/Role/Binding과 기존 loader 병행 수락 테스트
 
 대표 Profile 구조:
 
 ```json
 {
-  "schema_version": 1,
-  "source": {"relation": "source_rows"},
-  "entity": {"type": "Lot", "keys": {"lot": "lot"}},
-  "event": {"template": "lot_lineage", "timezone": "Asia/Seoul"},
-  "roles": {
-    "lot": {"column": "lot_id", "status": "human_approved"}
-  },
-  "containers": {}
+  "profile_version": 1,
+  "source": "source_rows",
+  "packs": ["transfer@1"],
+  "mappings": [{
+    "mapping_id": "movement",
+    "use": "transfer/movement",
+    "bind": {
+      "subject": {
+        "kind": "column",
+        "column": "ITEM_ID",
+        "binding_origin": "system_suggested",
+        "approval_status": "approved",
+        "suggestion_reason": "matched the declared source identity"
+      },
+      "from": {"kind": "constant", "value": "source_position"},
+      "to": "column:DESTINATION",
+      "occurred_at": "column:EVENT_TIME"
+    }
+  }]
 }
 ```
 
-위 코드는 구조 예시이고 실제 `lot_lineage` Profile은 등록부가 요구하는 필수 role 전부를
-매핑해야 한다.
+`use`는 `pack_id/claim_id`이고 `bind`는 그 Claim이 등록한 Role만 받을 수 있다.
+Binding 승인 상태는 Profile 설정에 대한 metadata이며 원장 Claim의 `confirmed`·`pin`
+등 epistemic class와 별개다. `declared_lookup`은 2단계에서 구조만 검사하고 실행하지 않는다.
 
 ## 경계
 
@@ -57,13 +78,15 @@
 conda run -n assy_manager python -m pytest \
   server/tests/test_source_ontology_profile.py -q -p no:cacheprovider
 
-19 passed
+48 passed
 ```
 
-수동 config·어드민·Source Contract 회귀 묶음은 **170 passed**였다. 전체 묶음에서는
-은퇴한 `WaferLeg` entity를 다시 기대하는 기존 테스트 4개가 실패했으며, 제품 판정상
-`leg`는 Wafer 위의 사람 계획 실험 조건이므로 이 작업에서 entity를 복구하지 않았다.
+`test_ledger_source_contract.py` 9개를 함께 실행한 집중 결과는 **57 passed**다.
 
-다음 단계는 검증된 Profile을 기존 수동 runtime config로 결정적으로 바꾸는 compiler와
-source adapter를 추가하고, 두 경로가 기존 translator에서 의미상 같은 원자를 만드는지
-쓰기 없는 dry-run parity로 고정하는 것이다.
+작업 전후 ledger 결과는 모두 **7 failed, 396 passed, 119 skipped**로 신규 실패는 0이다.
+실패 5개는 폐기된
+`WaferLeg` entity 계약, 2개는 현재 live config에 없는 `void_obs`·`dt_log`를 기대한다.
+skip 117개는 격리 PostgreSQL URL 부재, 2개는 명시적 cost probe다. 실행할 수 없던
+테스트를 통과로 세지 않았다.
+
+3단계 compiler/runtime adapter는 시작하지 않았다. 2단계 재승인 뒤에만 검토한다.
