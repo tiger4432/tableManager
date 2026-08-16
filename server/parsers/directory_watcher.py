@@ -259,6 +259,145 @@ def load_ingestion_settings() -> dict:
     return {}
 
 
+# ── External read-only source registration ─────────────────────────────────
+SUPPORTED_EXTERNAL_PARSERS = frozenset({"voids_json"})
+
+
+def _safe_relative_path(path: str, root: str) -> str | None:
+    """Real-path-contained POSIX relative path, or ``None`` when outside.
+
+    External trees can contain junctions/symlinks owned by another system.  An
+    ``abspath`` prefix check is not a containment check there, so both sides are
+    resolved before the relative path is accepted.
+    """
+    try:
+        real_path = os.path.realpath(os.path.abspath(path))
+        real_root = os.path.realpath(os.path.abspath(root))
+        if os.path.commonpath((real_path, real_root)) != real_root:
+            return None
+        rel = os.path.relpath(real_path, real_root)
+    except (OSError, ValueError):
+        return None
+    if os.path.isabs(rel) or rel == os.pardir or rel.startswith(os.pardir + os.sep):
+        return None
+    return rel.replace(os.sep, "/")
+
+
+def validate_external_source_specs(settings: dict, table_config: dict,
+                                   workspace_base: str):
+    """Validate ``external_sources`` and return ``(valid_specs, errors)``.
+
+    Invalid entries are excluded but named; one bad optional share must not stop
+    every managed ``raws/`` workspace.  The caller logs every error at ERROR.
+    """
+    raw_specs = settings.get("external_sources", []) if isinstance(settings, dict) else []
+    if raw_specs is None:
+        raw_specs = []
+    if not isinstance(raw_specs, list):
+        return [], ["ingestion_settings.json 'external_sources' must be a JSON array."]
+
+    valid, errors = [], []
+    workspace_real = os.path.realpath(os.path.abspath(workspace_base))
+    for index, raw in enumerate(raw_specs):
+        where = f"external_sources[{index}]"
+        if not isinstance(raw, dict):
+            errors.append(f"{where} must be a JSON object.")
+            continue
+        enabled = raw.get("enabled", True)
+        if not isinstance(enabled, bool):
+            errors.append(f"{where}.enabled must be a JSON boolean.")
+            continue
+        if not enabled:
+            continue
+
+        source_path = raw.get("path")
+        table_name = raw.get("table_name")
+        parser_name = raw.get("parser")
+        recursive = raw.get("recursive", True)
+        options = raw.get("options", {})
+        if not isinstance(source_path, str) or not source_path.strip():
+            errors.append(f"{where}.path must be a non-empty absolute path.")
+            continue
+        expanded = os.path.expandvars(os.path.expanduser(source_path.strip()))
+        if not os.path.isabs(expanded):
+            errors.append(f"{where}.path must be absolute, got {source_path!r}.")
+            continue
+        root = os.path.realpath(os.path.abspath(expanded))
+        try:
+            common = os.path.commonpath((root, workspace_real))
+        except ValueError:
+            common = None
+        if common in (root, workspace_real):
+            errors.append(
+                f"{where}.path overlaps the managed ingestion workspace; use its "
+                f"raws/ registration instead of external_sources: {root}")
+            continue
+        if not isinstance(table_name, str) or table_name not in table_config:
+            errors.append(
+                f"{where}.table_name must name a table declared in table_config.json, "
+                f"got {table_name!r}.")
+            continue
+        table_info = table_config.get(table_name) or {}
+        if not table_info.get("business_key") and not table_info.get("composite_key_source"):
+            errors.append(
+                f"{where} targets unkeyed table {table_name!r}; a watched file can be "
+                f"delivered again, so update-safe ingestion requires business_key or "
+                f"composite_key_source.")
+            continue
+        if parser_name not in SUPPORTED_EXTERNAL_PARSERS:
+            errors.append(
+                f"{where}.parser must be one of {sorted(SUPPORTED_EXTERNAL_PARSERS)}, "
+                f"got {parser_name!r}.")
+            continue
+        if parser_name == "voids_json" and table_name not in ("void_obs", "inspection_run"):
+            errors.append(
+                f"{where}: parser 'voids_json' targets only 'void_obs' or "
+                f"'inspection_run', got {table_name!r}.")
+            continue
+        if not isinstance(recursive, bool):
+            errors.append(f"{where}.recursive must be a JSON boolean.")
+            continue
+        if not isinstance(options, dict):
+            errors.append(f"{where}.options must be a JSON object.")
+            continue
+        filename = options.get("filename", "voids.json")
+        if not isinstance(filename, str) or not filename.strip() or os.path.basename(filename) != filename:
+            errors.append(f"{where}.options.filename must be one plain filename.")
+            continue
+        spec = {
+            "source_id": f"{table_name}@{os.path.normcase(root)}",
+            "root": root,
+            "table_name": table_name,
+            "parser": parser_name,
+            "recursive": recursive,
+            "options": {**options, "filename": filename},
+        }
+        valid.append(spec)
+
+    # The same root MAY feed two tables (void_obs + inspection_run).  Within one
+    # table overlapping roots make one file carry two contradictory rel_paths.
+    accepted = []
+    for spec in valid:
+        conflict = None
+        for prior in accepted:
+            if prior["table_name"] != spec["table_name"]:
+                continue
+            try:
+                common = os.path.commonpath((prior["root"], spec["root"]))
+            except ValueError:
+                continue
+            if common in (prior["root"], spec["root"]):
+                conflict = prior
+                break
+        if conflict:
+            errors.append(
+                f"external source {spec['root']!r} overlaps {conflict['root']!r} for "
+                f"table {spec['table_name']!r}; one file would have two relative paths.")
+        else:
+            accepted.append(spec)
+    return accepted, errors
+
+
 def warn_invalid_heavy_threshold_once(value):
     """`heavy_file_mb`에 양수(int/float) 외 값이 오면 무시하고 1회만 경고한다."""
     key = ("heavy_file_mb", repr(value))
@@ -655,6 +794,69 @@ class IngestionHandler(FileSystemEventHandler):
         # Guarded by _processing_lock; makes tree triggers idempotent and
         # re-entrant (event + sweep firing on the same tree never race).
         self._ingesting_dirs = set()
+        # External roots are read-only contexts for this handler.  They affect
+        # parser metadata only; ownership remains raws/-only (`is_managed_source`).
+        self._external_sources = {}
+        # A modified event is stronger evidence than an unchanged coarse file
+        # stat.  Keep a one-shot bypass so same-size/mtime overwrites still reach
+        # content hashing instead of being hidden by tier 1.
+        self._external_force_hash = set()
+
+    def register_external_source(self, spec: dict):
+        """Attach one validated external-source context to this table handler."""
+        source_id = spec["source_id"]
+        current = self._external_sources.get(source_id)
+        if current is not None and current != spec:
+            raise ValueError(
+                f"external source {source_id!r} changed while the watcher is running; "
+                f"restart is required to change root/parser/options safely.")
+        self._external_sources[source_id] = dict(spec)
+
+    def external_source_context(self, file_path: str, source_id: str | None = None):
+        """Parser context for an external file, or ``None`` when it escapes/root-misses."""
+        specs = self._external_sources.values()
+        if source_id is not None:
+            spec = self._external_sources.get(source_id)
+            specs = (spec,) if spec is not None else ()
+        matches = []
+        for spec in specs:
+            rel_path = _safe_relative_path(file_path, spec["root"])
+            if rel_path is not None:
+                matches.append((len(spec["root"]), spec, rel_path))
+        if not matches:
+            return None
+        _length, spec, rel_path = max(matches, key=lambda item: item[0])
+        return {
+            "source_id": spec["source_id"],
+            "source_root": spec["root"],
+            "rel_path": rel_path,
+            "parser": spec["parser"],
+            "options": dict(spec.get("options") or {}),
+        }
+
+    def _parse_meta_for(self, abs_path: str) -> dict:
+        managed_rel = self.relative_source_path(abs_path, os.path.abspath(self.raws_path))
+        if managed_rel is not None:
+            return {"rel_path": managed_rel}
+        context = self.external_source_context(abs_path)
+        if context is None:
+            return {"rel_path": None}
+        return {"rel_path": context["rel_path"], "external_source": context}
+
+    def mark_external_modified(self, file_path: str):
+        if self.external_source_context(file_path) is None:
+            return False
+        with self._processing_lock:
+            self._external_force_hash.add(os.path.normcase(os.path.abspath(file_path)))
+        return True
+
+    def _consume_external_force_hash(self, file_path: str) -> bool:
+        key = os.path.normcase(os.path.abspath(file_path))
+        with self._processing_lock:
+            if key not in self._external_force_hash:
+                return False
+            self._external_force_hash.discard(key)
+            return True
 
     def _load_legacy_config(self) -> dict:
         """[하위호환] 레거시 워크스페이스 config.json을 읽는다 (삭제하지 않음 — 사용자 파일).
@@ -1203,7 +1405,13 @@ class IngestionHandler(FileSystemEventHandler):
         if file_stat is None:
             logger.debug(f"File vanished before processing: {file_path}")
             return
-        if self._try_path_stat_skip(abs_path, basename, t_name, file_stat):
+        force_content_check = self._consume_external_force_hash(abs_path)
+        if force_content_check:
+            logger.debug(
+                f"[{t_name}] External modified event bypassed tier-1 path/stat; "
+                f"content signature will decide: {basename}")
+        if (not force_content_check
+                and self._try_path_stat_skip(abs_path, basename, t_name, file_stat)):
             return
 
         # Initial debounce to allow file copy to finish
@@ -1240,9 +1448,7 @@ class IngestionHandler(FileSystemEventHandler):
                 # here, at the same boundary as the config snapshot — one file, one
                 # answer. None when the file is not under raws/ (foreign source in
                 # a later round supplies its own root).
-                parse_meta = {
-                    "rel_path": self.relative_source_path(abs_path, os.path.abspath(self.raws_path))
-                }
+                parse_meta = self._parse_meta_for(abs_path)
                 rows, total_rows, skipped_no_key = self._resolve_rows(
                     file_path, t_name=t_name, table_info=table_info, meta=parse_meta
                 )
@@ -1718,7 +1924,7 @@ class IngestionHandler(FileSystemEventHandler):
             #   - IN_PROGRESS(중단됨) → 기록된 오프셋에서 재개
             #   - DONE(이미 완료) → 사용자가 굳이 다시 눌렀으므로 0부터 전량 재적재
             signature = compute_file_signature(filepath)
-            parse_meta = {}
+            parse_meta = self._parse_meta_for(os.path.abspath(filepath))
             rows, total_rows, skipped_no_key = self._resolve_rows(
                 filepath, t_name=t_name, table_info=table_info, meta=parse_meta
             )
@@ -1969,6 +2175,10 @@ class IngestionHandler(FileSystemEventHandler):
                                 parser_instance.rel_path = (
                                     meta.get("rel_path") if meta is not None else None
                                 )
+                                parser_instance.source_root = (
+                                    (meta.get("external_source") or {}).get("source_root")
+                                    if meta is not None else None
+                                )
                                 # [P2] 파서 정체성 — 체크포인트 재개 가부 판정용(파서가 바뀌면
                                 # 같은 파일이라도 행 순서·건수가 달라질 수 있어 재개 불가).
                                 if meta is not None:
@@ -2020,6 +2230,21 @@ class IngestionHandler(FileSystemEventHandler):
         """
         if t_name is None and table_info is None:
             t_name, table_info = self._snapshot_table_context()
+
+        external = (meta or {}).get("external_source")
+        if external is not None:
+            parser_name = external.get("parser")
+            if parser_name == "voids_json":
+                from voids_json_format import parse_voids_json
+                if meta is not None:
+                    meta["source_kind"] = "external:voids_json:v1"
+                return parse_voids_json(
+                    file_path,
+                    rel_path=external.get("rel_path"),
+                    table_name=t_name,
+                    options=external.get("options"),
+                )
+            raise ValueError(f"Unsupported external parser {parser_name!r}.")
 
         rows = self._discover_and_execute_pipeline(file_path, meta=meta)
         if rows is not None:
@@ -2315,6 +2540,51 @@ class IngestionHandler(FileSystemEventHandler):
             # token would make the NEXT writer on this thread collapse silently.
             request_outbox_mode.reset(_outbox_token)
 
+class ExternalSourceEventHandler(FileSystemEventHandler):
+    """Read-only watchdog adapter for one external root/table binding."""
+
+    def __init__(self, ingestion_handler: IngestionHandler, spec: dict):
+        self.ingestion_handler = ingestion_handler
+        self.spec = dict(spec)
+
+    def accepted_path(self, file_path: str) -> bool:
+        context = self.ingestion_handler.external_source_context(
+            file_path, self.spec["source_id"])
+        if context is None:
+            return False
+        expected = str((self.spec.get("options") or {}).get("filename", "voids.json"))
+        return os.path.basename(file_path).lower() == expected.lower()
+
+    def dispatch(self, file_path: str):
+        if not self.accepted_path(file_path):
+            return False
+        try:
+            if not os.path.isfile(file_path):
+                return False
+        except OSError:
+            return False
+        self.ingestion_handler._handle_event(file_path)
+        return True
+
+    def on_created(self, event):
+        if not event.is_directory:
+            self.dispatch(event.src_path)
+
+    def on_moved(self, event):
+        if not event.is_directory:
+            self.dispatch(event.dest_path)
+
+    def on_modified(self, event):
+        # Managed raws/ deliberately ignores modified storms because the file is
+        # moved away after one pass.  External files stay in place and are often
+        # overwritten at the same path, so modified is a required signal here.
+        # The handler's processing lock, stability wait, path-stat gate and
+        # content signature dedup absorb duplicate event bursts.
+        if not event.is_directory:
+            self.ingestion_handler.mark_external_modified(event.src_path)
+            self.dispatch(event.src_path)
+
+
 class WorkspaceWatcher:
     """
     Monitors all ingestion workspaces for new files.
@@ -2337,11 +2607,90 @@ class WorkspaceWatcher:
         self._sweep_lock = threading.Lock()  # 스윕 동시 실행(기동+주기 등) 직렬화
         # path → (mtime, size): 동일 시그니처 재시도 차단(처리 실패 잔류 파일 무한 루프 방지)
         self._sweep_attempted = {}
+        # source_id -> {spec, handler, event_handler, scheduled}.  External
+        # sources are never provisioned or mutated; unavailable roots remain in
+        # this registry so the periodic sweep can recover when they reappear.
+        self.external_targets = {}
+        self._external_sweep_lock = threading.Lock()
+        self._external_sweep_attempted = {}
+        self._external_availability = {}
         self._stop_event = threading.Event()
         self._periodic_sweep_thread = None
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
         self.on_progress_callback = on_progress_callback
+
+    def _try_schedule_external(self, target: dict) -> bool:
+        if target.get("scheduled"):
+            return True
+        spec = target["spec"]
+        root = spec["root"]
+        if not os.path.isdir(root):
+            if self._external_availability.get(spec["source_id"]) is not False:
+                logger.warning(
+                    f"External source unavailable - polling will keep retrying, no "
+                    f"managed ingestion is stopped: {root} -> {spec['table_name']}")
+            self._external_availability[spec["source_id"]] = False
+            return False
+        try:
+            self.observer.schedule(
+                target["event_handler"], root, recursive=spec["recursive"])
+        except Exception as e:
+            logger.warning(
+                f"External source event registration failed for {root} -> "
+                f"{spec['table_name']}: {e}. Periodic recursive polling remains active.")
+            return False
+        target["scheduled"] = True
+        self.watch_count += 1
+        was = self._external_availability.get(spec["source_id"])
+        self._external_availability[spec["source_id"]] = True
+        logger.info(
+            f"Watching external read-only source: {root} -> {spec['table_name']} "
+            f"(parser={spec['parser']}, recursive={spec['recursive']})")
+        if was is False:
+            logger.info(f"External source recovered: {root} -> {spec['table_name']}")
+        return True
+
+    def _register_external_sources(self, table_config: dict):
+        specs, errors = validate_external_source_specs(
+            load_ingestion_settings(), table_config, self.base_dir)
+        for error in errors:
+            logger.error(f"External source config rejected: {error}")
+
+        added = []
+        for spec in specs:
+            source_id = spec["source_id"]
+            existing = self.external_targets.get(source_id)
+            if existing is not None:
+                if existing["spec"] != spec:
+                    logger.error(
+                        f"External source config changed for {source_id}; the running "
+                        f"binding is unchanged. Restart the watcher to apply it.")
+                continue
+            try:
+                workspace = resolve_workspace_root(
+                    self.base_dir, spec["table_name"], table_config)
+                raws_root = os.path.abspath(os.path.join(workspace, "raws"))
+                handler = self.handlers_by_raw_path.get(raws_root)
+                if handler is None:
+                    raise ValueError(
+                        f"target table workspace is not registered: {raws_root}")
+                handler.register_external_source(spec)
+                event_handler = ExternalSourceEventHandler(handler, spec)
+                target = {
+                    "spec": spec,
+                    "handler": handler,
+                    "event_handler": event_handler,
+                    "scheduled": False,
+                }
+                self.external_targets[source_id] = target
+                self._try_schedule_external(target)
+                added.append(source_id)
+            except Exception as e:
+                logger.error(
+                    f"External source registration failed for {spec['root']} -> "
+                    f"{spec['table_name']}: {e}")
+        return added
 
     def _provision_workspaces(self) -> list:
         """[테이블 온보딩 자동화] table_config.json에 등록된 각 테이블에 대해
@@ -2446,6 +2795,7 @@ class WorkspaceWatcher:
         for root, dirs, files in os.walk(self.base_dir):
             if os.path.basename(root) == "raws":
                 self._register_workspace(root, table_config)
+        self._register_external_sources(table_config)
 
     def sync_new_workspaces(self) -> int:
         """[SYSTEM_RELOAD] table_config 재로드 후 신규 테이블 워크스페이스를 보충 생성하고,
@@ -2468,12 +2818,18 @@ class WorkspaceWatcher:
                     if self._register_workspace(root, table_config):
                         added += 1
                         new_raw_paths.append(os.path.abspath(root))
+            new_external_ids = self._register_external_sources(table_config)
             if added:
                 logger.info(f"🔄 Runtime workspace sync: {added} new raws/ folder(s) now being watched.")
                 self._ensure_observer_running()
                 # [Startup Sweep] 신규 등록 raws/에 이미 존재하던 파일 처리 (백그라운드 —
                 # 임베디드 모드에서 /admin/reload-configs 응답을 스윕이 블로킹하지 않도록).
                 self.sweep_existing_files_async(new_raw_paths, reason="runtime-registration")
+                self._ensure_periodic_sweep_running()
+            if new_external_ids:
+                self.sweep_external_sources_async(
+                    new_external_ids, reason="runtime-external-registration")
+                self._ensure_observer_running()
                 self._ensure_periodic_sweep_running()
             return added
 
@@ -2597,11 +2953,122 @@ class WorkspaceWatcher:
                 )
             return processed
 
+    def sweep_external_sources(self, source_ids=None) -> int:
+        """Recursively poll configured read-only sources and dispatch changed files.
+
+        The cache key includes the binding id, not only the absolute filename:
+        one ``voids.json`` deliberately feeds both ``inspection_run`` and
+        ``void_obs`` and each table must reach its own ledger verdict.
+        """
+        with self._external_sweep_lock:
+            if source_ids is None:
+                targets = list(self.external_targets.items())
+            else:
+                wanted = set(source_ids)
+                targets = [item for item in self.external_targets.items()
+                           if item[0] in wanted]
+
+            candidates = []
+            seen_keys = set()
+            for source_id, target in targets:
+                spec = target["spec"]
+                root = spec["root"]
+                if not os.path.isdir(root):
+                    if self._external_availability.get(source_id) is not False:
+                        logger.warning(
+                            f"External source unavailable during sweep; it will be "
+                            f"retried: {root} -> {spec['table_name']}")
+                    self._external_availability[source_id] = False
+                    continue
+                if self._external_availability.get(source_id) is False:
+                    logger.info(
+                        f"External source available again: {root} -> {spec['table_name']}")
+                self._external_availability[source_id] = True
+                self._try_schedule_external(target)
+
+                if spec["recursive"]:
+                    iterator = (
+                        os.path.join(dirpath, filename)
+                        for dirpath, _dirnames, filenames in os.walk(root)
+                        for filename in filenames
+                    )
+                else:
+                    try:
+                        iterator = (os.path.join(root, name) for name in os.listdir(root))
+                    except OSError as e:
+                        logger.warning(f"External sweep cannot list {root}: {e}")
+                        continue
+
+                for file_path in iterator:
+                    if not target["event_handler"].accepted_path(file_path):
+                        continue
+                    try:
+                        if not os.path.isfile(file_path):
+                            continue
+                        stat = os.stat(file_path)
+                    except OSError:
+                        continue
+                    abs_path = os.path.abspath(file_path)
+                    cache_key = (source_id, abs_path)
+                    seen_keys.add(cache_key)
+                    signature = (stat.st_mtime, stat.st_size)
+                    if self._external_sweep_attempted.get(cache_key) == signature:
+                        continue
+                    candidates.append((
+                        stat.st_mtime, source_id, abs_path, target["handler"],
+                        signature,
+                        (mtime_ns_to_datetime(stat.st_mtime_ns), int(stat.st_size)),
+                    ))
+
+            # Bound the cache when a producer removes old work directories.
+            active_ids = {source_id for source_id, _target in targets}
+            for cache_key in list(self._external_sweep_attempted):
+                source_id, path = cache_key
+                if source_id in active_ids and cache_key not in seen_keys and not os.path.exists(path):
+                    self._external_sweep_attempted.pop(cache_key, None)
+
+            candidates.sort(key=lambda item: item[0])
+            cleared = set()
+            by_handler = {}
+            for _mtime, _source_id, abs_path, handler, _sig, file_stat in candidates:
+                by_handler.setdefault(handler, []).append((abs_path, file_stat))
+            for handler, entries in by_handler.items():
+                if self._stop_event.is_set():
+                    break
+                try:
+                    for path in handler.settle_already_terminal(entries):
+                        cleared.add((handler, path))
+                except Exception as e:
+                    logger.warning(
+                        f"External sweep tier-1 lookup failed for {handler.table_name} "
+                        f"({len(entries)} file(s)); dispatching individually: {e}")
+
+            processed = 0
+            for _mtime, source_id, abs_path, handler, signature, _file_stat in candidates:
+                if self._stop_event.is_set():
+                    break
+                self._external_sweep_attempted[(source_id, abs_path)] = signature
+                if (handler, abs_path) in cleared:
+                    continue
+                handler._handle_event(abs_path)
+                processed += 1
+            if candidates or cleared:
+                logger.info(
+                    f"External sweep: {len(candidates)} candidate binding(s) - "
+                    f"{len(cleared)} already concluded (tier-1, batched), "
+                    f"{processed} dispatched; source files left untouched.")
+            return processed
+
     def _sweep_safely(self, raw_paths=None, reason=""):
         try:
             self.sweep_existing_files(raw_paths)
         except Exception as e:
-            logger.error(f"Sweep failed ({reason or 'unspecified'}): {e}")
+            logger.error(f"Managed workspace sweep failed ({reason or 'unspecified'}): {e}")
+        if raw_paths is None:
+            try:
+                self.sweep_external_sources()
+            except Exception as e:
+                logger.error(f"External source sweep failed ({reason or 'unspecified'}): {e}")
 
     def sweep_existing_files_async(self, raw_paths=None, reason=""):
         """스윕을 데몬 스레드로 실행 (기동·reload 경로를 파일 처리가 블로킹하지 않도록)."""
@@ -2609,6 +3076,17 @@ class WorkspaceWatcher:
             target=self._sweep_safely, args=(raw_paths, reason),
             name="watcher-sweep", daemon=True,
         )
+        t.start()
+        return t
+
+    def sweep_external_sources_async(self, source_ids=None, reason=""):
+        def run():
+            try:
+                self.sweep_external_sources(source_ids)
+            except Exception as e:
+                logger.error(f"External sweep failed ({reason or 'unspecified'}): {e}")
+
+        t = threading.Thread(target=run, name="watcher-external-sweep", daemon=True)
         t.start()
         return t
 
@@ -2648,7 +3126,7 @@ class WorkspaceWatcher:
         self.observer.join()
 
     def start(self, blocking: bool = True):
-        if self.watch_count == 0:
+        if self.watch_count == 0 and not self.external_targets:
             # [F3] 이 시점에 미기동이어도 sync_new_workspaces의 _ensure_observer_running이
             # 런타임 등록 시 기동을 시도한다. (스윕·주기 재스캔도 sync 경로에서 함께 기동됨)
             logger.error("No valid 'raws' folders found to watch.")
@@ -2656,7 +3134,9 @@ class WorkspaceWatcher:
 
         if not self.observer.is_alive():
             self.observer.start()
-        logger.info(f"Started observer with {self.watch_count} watches.")
+        logger.info(
+            f"Started observer with {self.watch_count} active watch(es) and "
+            f"{len(self.external_targets)} configured external binding(s).")
 
         # [Startup Sweep] 워처 다운타임 중 raws/에 이미 도착해 있던 파일 처리.
         # observer 기동 '이후'에 스윕하므로 스윕 중 새로 떨어지는 파일 이벤트도 유실되지 않고,

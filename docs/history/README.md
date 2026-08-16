@@ -1,13 +1,15 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **610개** 이력. (거버넌스 규칙 #4)
+> 총 **612개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-17 02:27** — [External Void Directory Watch](./20260817_022726_external_void_directory_watch.md)
+- **2026-08-17 02:03** — [Canonical Profile Readiness Boundary](./20260817_020357_canonical_profile_readiness_boundary.md)
 - **2026-08-17 00:17** — [Dt Log Core Coordinate Pairing Fix](./20260817_001742_dt_log_core_coordinate_pairing_fix.md)
 - **2026-08-17 00:05** — [Dt Points Valid Die Reference Fix](./20260817_000522_dt_points_valid_die_reference_fix.md)
 - **2026-08-16 23:37** — [Synthetic Dt Log Multi Core Seed](./20260816_233737_synthetic_dt_log_multi_core_seed.md)

@@ -1,6 +1,6 @@
 # 📥 AssyManager 인제션 파이프라인 가이드 (Ingestion Pipeline Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-13 (2차 배치 — **§1.11 신설: 한 파일이 두 사실을 말할 때(void SAT)**, `346aa88`. 🔴 **워처는 테이블당 핸들러 하나라 같은 파일을 두 `raws/`에 모두 넣는다** · 🔴 **체인으로 대신할 수 없다**(깨끗한 스캔은 파생할 행이 0개다) · 로직은 추적되는 `void_sat_format.py`에 있고 손복사는 세 줄 shim 둘뿐 · **검증이 찾은 결함 둘은 둘 다 오라클 없던 자리에서 나왔다** — 깨끗한 스캔이 런을 하나도 못 만들던 무음 결함과, **어떤 수치 검사도 발화할 수 없는** 소수점 쉼표 칼럼 시프트. 직전 **§1.8-ter 신설 — tier 1을 «어디서» 묻는가**, `831ab68`. tier 1은 `_process_with_retry` 안에 있어서 **HIT조차 파일당 세션 1개 + `table_config.json` 디스크 재독 2회**를 냈다. 지금은 스윕과 트리 워크가 **이미 든 `stat`으로 500개씩 묶어** 묻고(`settle_already_terminal` → `find_terminal_by_path_stat_batch`) 걸러진 파일을 거기서 종결한다. 🔴 **술어는 다시 쓰지 않았고**(같은 `and_` 세 쌍을 OR로) **단일 조회는 무변경**이며 **걸러진 파일도 이동 재시도는 갚는다**. 실측 재스윕 26.432초→0.602초(43.9배), 콜드 스윕 1.0배(= 아무것도 안 건너뛴다는 대조군). ⚠️ **「~92 ms/file·≈35분」은 `assy_manager`에서 잰 «이전» 값**이고 그 격리 측정과 같은 실행이 아니다. 직전 **§1.8-bis 두 층 원장 신설**(`ba664c5`). 직전 2026-07-30 **§1.9 전면 대체 + §1.9-bis 신설** — `600b49d`+`a5eb934` 소스 대조: `directory_watcher.request_tree_ingest`/`_ingest_directory_tree`/`relative_source_path`/`is_managed_source`/`_unique_dest`/`nested_dirs_enabled`, `advanced_ingester.extract_path_metadata`/`_merge_row`/`process_file`/`REASON_*`/`ALLOWED_RULE_KEYS`. ① **평탄화가 사라졌습니다** — 파일은 승격되지 않고 **자기 중첩 경로 그대로** 적재되며 상대 POSIX 경로가 파서에 `self.rel_path`로 전달됩니다. `_build_collision_name`·`_resolve_flatten_dest`·`_sanitize_flatten_component`·`FLATTEN_SEP` 및 `~` 구분자·`__force__` 조작 방어가 **함께 소멸**(접합하는 코드가 없으면 조작할 토큰이 없음). 함께 신설: 조건부 아카이브(`is_managed_source` — 외부 읽기 전용 트리는 이동·삭제 없음), `_unique_dest`(동명 파일 아카이브 충돌 — 종전 `_<epoch>` 1회 시도는 같은 초에 POSIX에서 **덮어썼습니다**). 🔴 **`flatten_nested_dirs`는 뜻이 바뀐 채 이름을 유지**합니다(개명하면 운영자의 off 스위치가 조용히 무력화) — 로그 문구도 "파일이 적재되지 않는다"로 정정됐습니다. ② **§1.9-bis `filename_rules` 선언 규격 신설** — 이 스키마는 **어느 문서에도 없었습니다**: 허용 키 5개(미지 키는 거절)·명명 상태 4종(`no_match`/`ambiguous_reference`/`cast_failed`/**`path_value_discarded`** ← `path_overrides_header`에서 개명)·`required` 기본 false·로드 시점 거절(캡처 그룹 없는 정규식 포함)·대상은 **상대 POSIX 경로**·`^` 앵커 주의(살아 있는 규칙 0건이라 무피해). 🔴 **우선순위는 사용자 판정 `filename < header < row`** — 「파일이 정본」이 경로까지 확장됩니다. ⚠️ `600b49d`의 커밋 메시지는 `header < filename < row`로 적혀 있으나 그것은 `a5eb934`에서 **뒤집혔습니다**. 직전 2026-07-29: §1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py`, `advanced_ingester.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 (§1.12 외부 읽기 전용 voids.json 감시 — 실제 경로 확인, 본문은 0바이트라 합성 계약) | **Previous verification:** 2026-08-13 (2차 배치 — **§1.11 신설: 한 파일이 두 사실을 말할 때(void SAT)**, `346aa88`. 🔴 **워처는 테이블당 핸들러 하나라 같은 파일을 두 `raws/`에 모두 넣는다** · 🔴 **체인으로 대신할 수 없다**(깨끗한 스캔은 파생할 행이 0개다) · 로직은 추적되는 `void_sat_format.py`에 있고 손복사는 세 줄 shim 둘뿐 · **검증이 찾은 결함 둘은 둘 다 오라클 없던 자리에서 나왔다** — 깨끗한 스캔이 런을 하나도 못 만들던 무음 결함과, **어떤 수치 검사도 발화할 수 없는** 소수점 쉼표 칼럼 시프트. 직전 **§1.8-ter 신설 — tier 1을 «어디서» 묻는가**, `831ab68`. tier 1은 `_process_with_retry` 안에 있어서 **HIT조차 파일당 세션 1개 + `table_config.json` 디스크 재독 2회**를 냈다. 지금은 스윕과 트리 워크가 **이미 든 `stat`으로 500개씩 묶어** 묻고(`settle_already_terminal` → `find_terminal_by_path_stat_batch`) 걸러진 파일을 거기서 종결한다. 🔴 **술어는 다시 쓰지 않았고**(같은 `and_` 세 쌍을 OR로) **단일 조회는 무변경**이며 **걸러진 파일도 이동 재시도는 갚는다**. 실측 재스윕 26.432초→0.602초(43.9배), 콜드 스윕 1.0배(= 아무것도 안 건너뛴다는 대조군). ⚠️ **「~92 ms/file·≈35분」은 `assy_manager`에서 잰 «이전» 값**이고 그 격리 측정과 같은 실행이 아니다. 직전 **§1.8-bis 두 층 원장 신설**(`ba664c5`). 직전 2026-07-30 **§1.9 전면 대체 + §1.9-bis 신설** — `600b49d`+`a5eb934` 소스 대조: `directory_watcher.request_tree_ingest`/`_ingest_directory_tree`/`relative_source_path`/`is_managed_source`/`_unique_dest`/`nested_dirs_enabled`, `advanced_ingester.extract_path_metadata`/`_merge_row`/`process_file`/`REASON_*`/`ALLOWED_RULE_KEYS`. ① **평탄화가 사라졌습니다** — 파일은 승격되지 않고 **자기 중첩 경로 그대로** 적재되며 상대 POSIX 경로가 파서에 `self.rel_path`로 전달됩니다. `_build_collision_name`·`_resolve_flatten_dest`·`_sanitize_flatten_component`·`FLATTEN_SEP` 및 `~` 구분자·`__force__` 조작 방어가 **함께 소멸**(접합하는 코드가 없으면 조작할 토큰이 없음). 함께 신설: 조건부 아카이브(`is_managed_source` — 외부 읽기 전용 트리는 이동·삭제 없음), `_unique_dest`(동명 파일 아카이브 충돌 — 종전 `_<epoch>` 1회 시도는 같은 초에 POSIX에서 **덮어썼습니다**). 🔴 **`flatten_nested_dirs`는 뜻이 바뀐 채 이름을 유지**합니다(개명하면 운영자의 off 스위치가 조용히 무력화) — 로그 문구도 "파일이 적재되지 않는다"로 정정됐습니다. ② **§1.9-bis `filename_rules` 선언 규격 신설** — 이 스키마는 **어느 문서에도 없었습니다**: 허용 키 5개(미지 키는 거절)·명명 상태 4종(`no_match`/`ambiguous_reference`/`cast_failed`/**`path_value_discarded`** ← `path_overrides_header`에서 개명)·`required` 기본 false·로드 시점 거절(캡처 그룹 없는 정규식 포함)·대상은 **상대 POSIX 경로**·`^` 앵커 주의(살아 있는 규칙 0건이라 무피해). 🔴 **우선순위는 사용자 판정 `filename < header < row`** — 「파일이 정본」이 경로까지 확장됩니다. ⚠️ `600b49d`의 커밋 메시지는 `header < filename < row`로 적혀 있으나 그것은 `a5eb934`에서 **뒤집혔습니다**. 직전 2026-07-29: §1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py`, `advanced_ingester.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 `assyManager`의 핵심 자동화 모듈인 **Directory Watcher**의 작동 원리와, 새로운 데이터를 DB로 적재하기 위한 **Pandas 기반 파이프라인(Pipeline) 구성 방법**을 설명합니다.
 
@@ -283,6 +283,32 @@ SAT 보이드 출력 하나가 **두 테이블**을 채웁니다 — `inspection
 - 🔴 **소수점 쉼표가 그 뒤 모든 컬럼을 한 칸씩 밀었습니다.** CSV에서 `1,25`는 **두 필드**이고, 밀린 값들도 전부 유효한 숫자로 파싱되며, `radius_x`가 `radius_y`의 값을 들게 됩니다. **어떤 수치 검사도 발화할 수 없습니다** — 지금은 **행 arity 검사**가 잡습니다.
 
 > **재사용 관점**: 「한 소스가 여러 테이블을 채운다」·「분모를 자기 행으로 갖는다」의 카탈로그 항목은 [architecture/PRIMITIVES §1·§7](../architecture/PRIMITIVES.md).
+
+---
+
+## 1.12 외부 읽기 전용 `voids.json` — 경로가 웨이퍼를 말한다 (2026-08-17)
+
+`ingestion_settings.json.external_sources`가 다른 시스템 소유 디렉터리를 기존 테이블 핸들러에 연결합니다. 현재 연결 대상은 `C:/Users/kk980/void`이고 파일 계약은 다음 하나입니다.
+
+```text
+C:/Users/kk980/void/
+└── WAFERID/
+    └── WORK_YYYYMMDD_HHMMSS/
+        └── voids.json
+```
+
+- **파서는 전체 `file_path`와 외부 루트 기준 상대 POSIX 경로를 함께 받습니다.** 웨이퍼 ID는 파일명 문자열을 자르지 않고 상대 경로의 첫 구성요소에서 읽습니다. `WORK_DATETIME`은 KST(`+09:00`)의 `observed_at`으로 바뀝니다. 구성요소가 셋이 아니거나 시각이 유효하지 않으면 파일 전체를 거절합니다.
+- **경로 웨이퍼와 본문 `base_wafer_id`가 다르면 거절합니다.** 둘 중 하나를 임의로 고르면 모든 좌표가 그럴듯한 다른 웨이퍼에 붙습니다. 본문에 ID가 없을 때만 경로 값이 채워집니다.
+- **한 파일을 두 바인딩이 읽습니다.** `inspection_run`은 스캔 분모를, `void_obs`는 발견을 기록합니다. 한 루트를 서로 다른 테이블에 연결하는 것은 허용하고, 같은 테이블에 겹치는 루트 둘은 상대경로가 둘이 되므로 설정 단계에서 거절합니다.
+- **외부 원본은 읽기 전용입니다.** 성공·실패·중복 스킵 어느 경우에도 archives/·err/로 이동하거나 삭제하지 않습니다. 기록의 `filepath`는 원본 위치입니다.
+- **신규·이동·수정 이벤트를 받으며 300초 재귀 스윕이 안전망입니다.** 수정 이벤트는 `(mtime,size)`가 우연히 그대로여도 tier-1을 한 번 우회하고 내용 sha256까지 확인합니다. 네트워크 드라이브에서 watchdog 등록이 실패하거나 이벤트를 잃어도 스윕은 계속됩니다. 스윕만 놓고 보면 `(table binding, path, mtime, size)`가 같은 잔류 파일은 다시 보내지 않습니다. ⚠️ 따라서 **수정 이벤트까지 유실되고 크기·mtime도 보존된 덮어쓰기**는 다음 스윕이 발견하지 못합니다. 이 실패 방향을 없애려면 전 파일 주기 해시 비용을 지불하는 별도 노브 판정이 필요하며 현재는 없습니다.
+- **업데이트 안전 때문에 대상 테이블에 업무 키가 필수입니다.** 키 없는 legacy `void`는 재전달 때 새 행을 만들 수 있어 설정에서 거절하고, canonical `inspection_run`/`void_obs`만 받습니다.
+
+JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...], "unit": "um"}`)입니다. 배열/`voids`의 각 행에는 `base_x`, `base_y`, `gate`(또는 `stack_gate`/`layer`), `inchip_x`, `inchip_y`, `radius_x`, `radius_y`가 필요합니다. `unit`은 행·파일 루트·설정 옵션 중 한 곳에서 `um|px|mm`로 선언해야 하며 추측하지 않습니다. 깨끗한 스캔은 `voids: []`와 함께 `runs`/`scans`에 검사한 `base_x`, `base_y`, `gate`를 적어야 합니다. 빈 0바이트 파일은 정상적인 0건과 복사 중단을 구분할 수 없어 거절합니다.
+
+> ⚠️ **관측과 결측 (2026-08-17):** 실제 경로와 `SAMPLE-01/WORK_20260101_000000/voids.json` 한 건은 확인했지만 그 파일은 **0바이트**였습니다. 따라서 경로·감시·두 테이블 배선은 자동 테스트로 확정했고, 위 JSON 본문 철자는 합성 픽스처 계약입니다. 생산 파일 첫 유효 표본이 도착하면 필드 철자·단위·clean-run 메타가 일치하는지 다시 검증해야 합니다. 현재 상태를 “실파일 형식 검증 완료”라고 보고하면 안 됩니다.
+
+설정 예시는 [config/ingestion_settings](./config/ingestion_settings.md)와 `server/config/sample/ingestion_settings.json.sample`에 있습니다. 바인딩 추가·경로·파서·옵션 변경은 watcher 재기동 후 반영됩니다.
 
 ---
 

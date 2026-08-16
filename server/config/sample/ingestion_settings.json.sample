@@ -15,6 +15,32 @@
   "_flatten_nested_dirs_doc": "raws/에 폴더(다중 층위 포함)가 들어오면 트리가 안정된 뒤 파일만 raws/ 루트로 승격하고 빈 폴더 트리를 제거합니다(기본 true). 이름 충돌 시 상대경로 접두(구분자 ~)로 개명하며 절대 덮어쓰지 않습니다. Thumbs.db/desktop.ini/.DS_Store/._* 는 폴더와 함께 폐기됩니다. false로 두면 폴더를 건드리지 않습니다(종전 동작: 무시). 핫리로드: 다음 폴더 트리거부터 반영.",
   "flatten_nested_dirs": true,
 
+  "_external_sources_doc": "외부 읽기 전용 디렉터리를 테이블 핸들러에 연결합니다. 워처는 원본을 이동·삭제하지 않으며 created/moved/modified 이벤트와 300초 재귀 스윕을 함께 사용합니다. 설정 변경은 watcher 재기동 후 반영됩니다. 아래 두 항목은 같은 voids.json이 inspection_run(분모)과 void_obs(관측) 두 사실을 말하기 때문에 한 쌍입니다. 실제로 켜기 전에 table_config에 두 canonical 테이블이 선언·물리 반영됐고 JSON unit이 선언됐는지 확인하세요.",
+  "external_sources": [
+    {
+      "enabled": false,
+      "path": "C:/Users/kk980/void",
+      "table_name": "inspection_run",
+      "parser": "voids_json",
+      "recursive": true,
+      "options": {
+        "filename": "voids.json",
+        "max_file_mb": 128
+      }
+    },
+    {
+      "enabled": false,
+      "path": "C:/Users/kk980/void",
+      "table_name": "void_obs",
+      "parser": "voids_json",
+      "recursive": true,
+      "options": {
+        "filename": "voids.json",
+        "max_file_mb": 128
+      }
+    }
+  ],
+
   "_enrichment_auto_confirm_doc": "[Enrichment ①] 자동 확정의 전역 킬 스위치와 작업단위 키 예산. enabled=false면 규칙별 auto_confirm이 true라도 전부 멈춥니다(기본 true = 막지 않음, 규칙별 opt-in은 여전히 필요). max_keys는 한 작업단위에서 프로브할 판단키 개수 상한입니다(기본 200) — 🔴 이것은 **키 개수** 예산이고 읽기 하나의 폭과 무관합니다. 절단(truncated) 거절을 쫓고 있다면 이 값이 아니라 아래 enrichment_read_caps를 보세요.",
   "enrichment_auto_confirm_enabled": true,
   "enrichment_auto_confirm_max_keys": 200,
