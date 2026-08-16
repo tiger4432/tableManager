@@ -504,7 +504,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 🔴 **도장을 `source_name`에 철자하지 마십시오.** `frame_confirm:<uid>` 쪽이 자연스러워 보이지만 틀립니다 — `crud.get_source_priority`는 정확 일치 dict 조회이고 미등재는 99이므로, 확정마다 새로 나는 이름은 `SOURCE_PRIORITY`에 미리 등재될 수 없습니다. 도장 찍힌 셀이 전부 `custom_script`·`chain_ingestion` 아래로 가라앉아 **도장이 자기가 도장한 값을 강등**합니다. 확정은 값을 공급하지 않고 값이 계산된 **프레임을 지목**합니다 — 다른 축이므로 다른 컬럼입니다.
 
-🔴 **최약 기여자는 두 번째 규칙이 아닙니다.** `frame_confirmation.weakest_contributor`는 `graph_materializer`가 셀 레이어 진실을 고를 때 쓰는 것과 **같은 식**(`max(..., key=(priority, name))`)이고 둘 다 `crud.get_source_priority`에 도달하므로 서열의 원천이 하나입니다. 넷 중 하나가 미확정이면 그 확정도 미확정입니다(스펙 §0.2 ⑨).
+🔴 **최약 기여자는 두 번째 규칙이 아닙니다.** `frame_confirmation.weakest_contributor`는 셀 레이어 진실을 고르는 공통 서열 `crud.get_source_priority`를 사용합니다. 넷 중 하나가 미확정이면 그 확정도 미확정입니다(스펙 §0.2 ⑨).
 
 ⚠️ **이 기록은 재파생을 하지 않습니다.** 어느 줄을 다시 만들지는 이미 `frame_trigger_scope`+`SCOPE_ROW_CAP` · `chain_replay` R1/R2 · `plan_retraction` 셋이 풀어 놓았고 **넷째 철자를 만들지 않습니다**. `derived_cell_scope`는 그 셋이 범위로 쓸 셀 집합을 **질의로만** 돌려주며, 회수는 그대로 `chain_replay.withdraw_source`입니다. `superseded_by`도 삭제가 아니라 포인터입니다 — 지난 판과 그 아래 파생 셀은 남습니다.
 
@@ -557,11 +557,11 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 ### 5.0-bis 다른 config가 좌표/키 컬럼을 생략하면 `table_config`에서 상속한다 · 2026-08-11 `68db020`
 
-`map_overlay_config.json`의 `table_bindings`와 `ontology_mapping.json`의 `node.identity`는 둘 다 이 파일의 `map_key_columns`/좌표 선언을 **또 요구할 필요가 없다** — 키를 생략하면 **키마다** `local declaration > table_config에서 파생 > 이름을 대며 거절` 순서로 판정된다(관례 상수로 조용히 대체하던 것은 삭제). `ontology_config`는 자체 좌표 유도 로직을 갖지 않고 `map_overlay.derive_binding_parts`를 그대로 호출하므로, **그래프와 맵이 구조적으로 같은 답**을 낸다(둘이 따로 계산해서 우연히 같은 답이 아니다). `ontology_mapping.json`은 신규 키 `@map_key_columns`를 얻었고, `node.identity`를 아예 생략하면 그 자체가 "상속하라"는 뜻이다.
+`map_overlay_config.json`의 `table_bindings`는 이 파일의 `map_key_columns`/좌표 선언을 **또 요구할 필요가 없다** — 키를 생략하면 **키마다** `local declaration > table_config에서 파생 > 이름을 대며 거절` 순서로 판정된다(관례 상수로 조용히 대체하던 것은 삭제).
 
 - **예외**: `val`(값 컬럼)은 상속하지 않는다 — 좌표가 선언된 맵에서 `val`을 생략하는 것은 "이 맵은 값이 없다"는 적극적 선언이라, 상속하면 occupancy 맵이 조용히 value 맵으로 뒤집힌다.
 - **검증**: 이미 완전히 선언된 19/19 라이브 테이블은 `resolve_binding`/`resolve_binding_info` 응답이 이 변경으로 한 글자도 안 움직인다.
-- 상세 메커니즘·함정은 [PRIMITIVES §3](./PRIMITIVES.md)의 「키를 지우면 상속한다」 항목 · 엔드포인트 계약은 [backend §2](./backend.md) `GET /api/maps/paint-rules`의 `binding` 필드 · 세팅 절차는 [CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)의 `map_overlay_config.json`/`ontology_mapping.json` 행.
+- 상세 메커니즘·함정은 [PRIMITIVES §3](./PRIMITIVES.md)의 「키를 지우면 상속한다」 항목 · 엔드포인트 계약은 [backend §2](./backend.md) `GET /api/maps/paint-rules`의 `binding` 필드 · 세팅 절차는 [CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)의 `map_overlay_config.json` 행.
 
 > **watcher가 처리하는 저장 형태**(🔴 **수를 적지 않습니다 — 아래 목록이 정본입니다**) (2026-07-29 #9/H2/H3). `on_modified`(제자리 쓰기) · `on_moved`(같은 디렉터리 temp + rename) · `on_created`(**다른** 디렉터리 temp + rename — 이 경우 `moved`가 아예 없고 `deleted`+`created`만 옵니다. `tempfile.mkstemp()`의 기본이 시스템 temp 디렉터리라 흔한 형태입니다). 측정 기준 watchdog 6.0.0/Windows.
 >

@@ -632,7 +632,7 @@ class TestInternalEventsAreGated:
         assert admin_auth.internal_event_headers() == {}
 
     def test_every_sender_path_attaches_them(self):
-        """All THREE daemons post to /internal/events/*, not just one.
+        """All daemons that post to /internal/events/* attach the header.
 
         A previous incident in this repo was re-introduced daemon by daemon
         because only one sender was fixed; the memory file records it. Assert
@@ -642,11 +642,9 @@ class TestInternalEventsAreGated:
         import inspect
         import run_watcher
         import chain_ingestion_worker
-        import graph_sync_worker
 
         for mod, fn in ((run_watcher, "post_event"),
-                        (chain_ingestion_worker, "post_event_async"),
-                        (graph_sync_worker, "post_event_async")):
+                        (chain_ingestion_worker, "post_event_async")):
             src = inspect.getsource(getattr(mod, fn))
             assert "internal_event_headers" in src, (
                 f"{mod.__name__}.{fn} posts to /internal/events/* without the "
@@ -1069,10 +1067,10 @@ def _drive_sender(monkeypatch, module_name, response):
     return cap
 
 
-#: All three daemons that POST to /internal/events/*. A fix applied to one sender
+#: Every daemon that POSTs to /internal/events/*. A fix applied to one sender
 #: only is a defect this repo has already shipped on this exact endpoint, which is
 #: why every case below is parametrized across all three rather than spot-checked.
-SENDERS = ["run_watcher", "chain_ingestion_worker", "graph_sync_worker"]
+SENDERS = ["run_watcher", "chain_ingestion_worker"]
 
 
 class TestEverySenderLogsWhoRefused:
@@ -1206,7 +1204,6 @@ class TestEveryDaemonAnnouncesItsFingerprintAtStartup:
     @pytest.mark.parametrize("module_name,func_name", [
         ("run_watcher", "main"),
         ("chain_ingestion_worker", "start_chain_ingestion_worker"),
-        ("graph_sync_worker", "startup_event"),
     ])
     def test_each_daemon_startup_path_logs_the_banner(self, module_name, func_name):
         import importlib
@@ -1286,31 +1283,6 @@ class TestInternalCallsNeverConsultProxyConfiguration:
             assert banned not in src, (
                 f"{module_name}.{fn} builds its own HTTP client ({banned}), which "
                 "defaults to trusting proxy environment variables")
-
-    def test_the_web_servers_own_loopback_hop_is_covered_too(self):
-        """`/api/graph/sync` forwards to 127.0.0.1:8090 with httpx.
-
-        Same shape, same defect: httpx also honours HTTP_PROXY by default. Fixing
-        only the three worker senders would have left a fourth loopback hop that
-        fails identically and surfaces as a graph-sync error with a healthy worker.
-
-        ⚠️ [R-2026-08-14-H] THIS TEST IS NOW GREEN FOR A STALE REASON. It reads
-        the SOURCE of `manual_graph_sync`, and that source still contains
-        `trust_env=False` - but the function raises `_graph_branch_retired()`
-        before reaching it, so the loopback hop it describes no longer happens
-        and :8090 has no listener. It is left in place, and not rewritten,
-        because the route body and this assertion have to die in the SAME change:
-        ruling item ④ (retire the old-graph-only code paths) owns both. A test
-        that passes by inspecting unreachable code is not evidence about running
-        behaviour, and it must not be cited as such in the meantime.
-        """
-        import inspect
-
-        import main
-
-        src = inspect.getsource(main.manual_graph_sync)
-        assert "trust_env=False" in src, (
-            "the graph-sync forward trusts proxy environment variables")
 
     def test_a_proxy_url_with_credentials_is_not_logged(self, monkeypatch):
         """The summary goes into a log file; proxy URLs routinely carry passwords."""

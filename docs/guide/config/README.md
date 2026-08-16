@@ -21,7 +21,6 @@
 | `bonding_plan_config.json` | M1 본딩 계획 — role→실테이블 바인딩 | 요청마다 재읽기 | `GET /api/bonding-plan/core-summary` | [bonding_plan_config.md](./bonding_plan_config.md) |
 | `map_overlay_config.json` | 맵 오버레이 바인딩 + 페인트 잠금 정본 | 요청마다 재읽기 | `GET /api/maps/paint-rules` | [map_overlay_config.md](./map_overlay_config.md) |
 | `maps.json` | 웨이퍼 물리 규격 프리셋 (**UI/API로 관리**) | 요청마다 재읽기 | `GET /api/map-presets` | [maps.md](./maps.md) |
-| 🗄️ `ontology_mapping.json` | ⚰️ **[2026-08-14 `2ec78b9`] 소비자 0 — 고쳐도 아무 일도 안 일어납니다.** ~~그래프 노드/엣지 매핑 v2~~ | `POST /admin/reload-configs` | 서버 로그 + `GET /graph/neighbors` | [ontology_mapping.md](./ontology_mapping.md) |
 | `enrichment_rules.json` | 결손 보정 워크리스트 + 파생·승격 | 조회 즉시 / 파생·승격은 `reload-configs` | `GET /enrichment/rules` + 워커 로그 | [enrichment_rules.md](./enrichment_rules.md) |
 | `chain_rules.json` | 체인 인제션 룰 | `POST /admin/reload-configs` | `GET /admin/chain/rules` | [chain_rules.md](./chain_rules.md) |
 | `auto_update_control.json` | 수집기 on/off (**API로만 쓰기**) | 즉시(매 사이클·매 요청 재계산) | `GET /admin/auto-update/status` | [auto_update_control.md](./auto_update_control.md) |

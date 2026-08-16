@@ -420,11 +420,11 @@ All three routes are behind the shared admin token (`X-Admin-Token`). `POST .../
 
 - **HTTP Method**: `GET`
 - **Route**: `/admin/retroactive/operations`
-- **Response**: `{"operations": [...]}`, one entry per operation (`chain_replay`, `withdraw`, `enrichment_backfill`, `enrichment_confirm`, `graph_orphans`), each carrying `op`, `label`, `what_is_missing`, `params`, `cli`, `cli_only`, and three facts a client must not guess:
+- **Response**: `{"operations": [...]}`, one entry per operation (`chain_replay`, `withdraw`, `enrichment_backfill`, `enrichment_confirm`), each carrying `op`, `label`, `what_is_missing`, `params`, `cli`, `cli_only`, and three facts a client must not guess:
   - `deletes` — `null`, or a phrase naming what is deleted.
   - `restartable` — whether an interrupted run resumes from where it stopped.
   - `commit_granularity` — in words.
-- **Why those three travel in the payload**: one confirmation wording cannot fit five buttons. Four operations write values and commit per chunk; `graph_orphans` deletes rows and issues its single commit **after** the delete loop, so an interrupted run rolls back entirely — including chunks already deleted.
+- **Why those three travel in the payload**: the client must render confirmation and recovery guidance from the operation contract instead of guessing execution semantics.
 - Config only, **no DB query**, so it can sit on any request path.
 
 ### 6.2 Count (read-only)

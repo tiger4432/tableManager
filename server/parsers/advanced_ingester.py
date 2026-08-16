@@ -9,9 +9,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Declaration schema (the single source of "what may be declared")
 # ---------------------------------------------------------------------------
-# A key that is not here is REJECTED with a reason rather than ignored, the same
-# way ontology_config._unknown_keys does: a typo must not silently disable the
-# declaration it was meant to make.
+# A key that is not here is REJECTED with a reason rather than ignored: a typo
+# must not silently disable the declaration it was meant to make.
 ALLOWED_RULE_KEYS = {"column", "regex", "type", "default", "required"}
 ALLOWED_CAST_TYPES = {"str", "int", "float", "bool"}
 
@@ -243,9 +242,8 @@ class AdvancedIngester:
     def _record(issues: Optional[list], **fields) -> dict:
         """Append one named observation to the optional collector and return it.
 
-        Same shape as ontology_config._record: the return value is identical
-        whether or not a collector was passed, so callers that want none pay
-        nothing.
+        The return value is identical whether or not a collector was passed, so
+        callers that want none pay nothing.
         """
         if issues is not None:
             issues.append(fields)

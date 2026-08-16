@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 Evidence Graph·표 투영
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 구 그래프 실행 갈래 제거 — 코드 대조
 > 
 > ⚰️ **[`2ec78b9` · 판정 R-2026-08-14-H] 구 그래프 갈래가 은퇴해 §2·§3·§5·§6·§8이 갱신됐습니다** — 백엔드 자식이 다섯에서 **넷**, 라우트 일곱이 **410**, 저장소 셋이 **DROP**(약 841 MB). 후계는 정준 원장입니다. 토폴로지 변경이라 SSOT가 반드시 말해야 하는 종류의 사실입니다. **⚠️ 총괄 검수 대상** — 이 문서는 사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다.
 > 
@@ -78,7 +78,7 @@ graph TD
 | **File Ingestion Watcher** | `run_watcher.py` → `parsers/directory_watcher.py` | `ingestion_workspace/*/raws/` 감시·파싱·적재·아카이빙. 커스텀 스크립트 없으면 **std parser 폴백**(헤더 검증 기반 CSV/TSV/TXT). 크기 임계(기본 10MB) 초과 파일은 **heavy 레인**(전용 큐/워커)으로 격리해 타 테이블 비차단 — 워크스페이스 내 순서는 보존, 진행 상태는 웹서버 push로 admin에 가시화(P1). 파일 전체 sha256 시그니처로 **동일 파일 재투입 skip**과 **오프셋 체크포인트 재개**(재기동 시 전량 재처리 제거) 수행(P2) | [INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) |
 | **Auto-Update Scheduler** | `run_auto_update.py` | `auto_update/*.py` 주석기반 크론 실행 → `raws/`에 CSV 드롭 | [AUTO_UPDATE_GUIDE](../guide/AUTO_UPDATE_GUIDE.md) |
 | **Chain Ingestion Worker** | `run_chain_worker.py` → `chain_ingestion_worker.py` | outbox 소비(LISTEN/NOTIFY), 규칙별 맵퍼로 파생 데이터 생성. SLO 100ms | [chain_ingestion_guide](../guide/chain_ingestion_guide.md) |
-| ~~**Graph Sync Worker (materializer)**~~ | ~~`run_graph_sync.py` → `graph_sync_worker.py`~~ | ⚰️ **[2026-08-14 `2ec78b9`] 스택에서 제거됐습니다.** 모듈 파일과 라우트 몸통은 다음 정리 라운드까지 트리에 남지만 **아무도 기동하지 않고 아무 포트도 바인드하지 않습니다**(:8090 배너도 삭제). 되살리려면 저장소 재생성 + 봉인된 진입 셋(부팅 `create_all`·핫리로드 `ensure_graph_tables`·고아 스윕)을 함께 여는 결정이 필요합니다 | [architecture/backend §4](../architecture/backend.md) |
+| ~~**Graph Sync Worker (materializer)**~~ | 실행 파일 제거 | ⚰️ **[2026-08-16]** `graph_sync_worker.py`·`run_graph_sync.py`·materializer·sweep 코드와 전용 테스트를 제거했습니다. 옛 주소는 정적 catch-all의 HTML 200 오인을 막기 위한 410 계약만 남습니다 | [architecture/backend §2](../architecture/backend.md) |
 
 > `DECOUPLED=True` 환경변수는 `main.py`가 워처·체인 워커를 인라인으로 띄우지 않게 하여, **위 표의 프로세스를 완전히 분리 실행**합니다(운영 기본값). **수를 적지 않습니다 — 표가 목록이고 정본은 `run_decoupled_app.py`의 `specs`입니다**(`--server-only`가 아니면 데스크톱 셸이 자식으로 하나 더 붙습니다).
 
@@ -143,7 +143,6 @@ graph TD
 | `table_config.json` | **스키마 구동 핵심** — 테이블별 컬럼/타입/비즈니스키/복합키/`map_key_columns` |
 | `chain_rules.json` | 체인 인제션 규칙(trigger→target, mapper) |
 | `enrichment_rules.json` | Enrichment Queue 규칙(결손 보정 + dedup 체인 룰 자동 파생, 선택적 `claim_contract`는 Enrich Action 공급 계약) |
-| `ontology_mapping.json` | **그래프 승격 매핑 v2**(테이블→node/edges, `description` 필수, enrichment 규칙은 `RESOLVED_AS` 엣지로 자동 승격) — 로더 `ontology_config.py` |
 | `maps.json` | 맵 에디터 지오메트리 프리셋 |
 | `scheduler_status.json` | Auto-Update 스케줄러 실시간 상태(쓰기 전용) |
 | `auto_update_control.json` | Auto-Update 수집기별 active 토글(어드민이 쓰고 스케줄러가 매 틱 읽음 — 핫 반영, 부재 시 전부 active) — IO `utils/auto_update_control.py` |

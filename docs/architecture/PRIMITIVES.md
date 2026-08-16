@@ -1005,7 +1005,7 @@
 
 ### ⭐ 같은 기계 안의 HTTP는 **소유자 하나에서 받는다** — `internal_event_session()` (2026-07-30 등록 · `23a346d`)
 - **무엇**: 워커→웹서버처럼 **같은 박스 안에서 도는 HTTP 호출**의 클라이언트를 **한 함수에서만** 얻는다. 그 함수가 `trust_env = False`를 세워, loopback 호출이 **프록시 설정(환경변수·Windows 프록시 레지스트리)을 아예 참조하지 못하게** 한다. 세션은 **스레드 로컬**이다(`requests.Session`은 스레드 세이프가 아니고 쿠키 자·커넥션 풀이 변이한다).
-- **어디**: `server/internal_event_client.py` — `internal_event_session()` · 주소는 `api_base_url()`(`API_BASE_URL` 환경변수, **호출 시점 읽기**라 테스트·격리 스택이 재임포트 없이 갈아끼운다) · 진단 4종 `proxy_environment_summary()`/`is_loopback()`/**`own_health_payload(response)`**/`check_api_reachable()` · 기동 로그 묶음 `startup_lines(process_label)` · 유실 통지 마커 `record_undelivered_notification(...)`. 소비자: `run_watcher`·`chain_ingestion_worker`·`graph_sync_worker`.
+- **어디**: `server/internal_event_client.py` — `internal_event_session()` · 주소는 `api_base_url()`(`API_BASE_URL` 환경변수, **호출 시점 읽기**라 테스트·격리 스택이 재임포트 없이 갈아끼운다) · 진단 4종 `proxy_environment_summary()`/`is_loopback()`/**`own_health_payload(response)`**/`check_api_reachable()` · 기동 로그 묶음 `startup_lines(process_label)` · 유실 통지 마커 `record_undelivered_notification(...)`. 소비자: `run_watcher`·`chain_ingestion_worker`.
 - **언제 재사용**: 프로세스 간 IPC를 HTTP로 하는 모든 자리 — 통지·헬스 프로브·내부 API. **"이 호출은 박스를 떠나지 않는다"가 참인 모든 호출.**
 - 🔴 **"네 번째 발신자가 놓칠 수 없다"는 관례가 아니라 테스트다.** 같은 결함이 **발신자별로 세 번 재발**했기 때문에, `server/tests/test_admin_auth.py`가 **세션을 직접 만드는 발신자가 생기면 실패**한다. 규칙을 주석으로 적는 것과 파라미터화된 테스트로 못박는 것의 차이가 이 항목의 요점이다 — **네 번째 사람이 기억해야 하는 규칙은 규칙이 아니다.**
 - **함정**:
@@ -1017,7 +1017,7 @@
 
 ### ⭐ **「import되는가」는 공유 인터프리터 안에서 테스트할 수 없다 — `server/scripts`는 한 방향 문** (2026-07-31 등록 · `9c6a1c9`)
 - **무엇**: `server/scripts/`는 **어느 운영 프로세스의 `sys.path`에도 없다.** 각 스크립트가 `__main__`으로 돌 때 자기 힘으로 `server/`를 부트스트랩하므로 **스크립트 → `server/`는 되고 그 반대는 안 된다.** 그래서 규율은 하나다 — **의미론은 `server/`에, argparse와 보고서 서식만 `scripts/`에.**
-- **어디**: 이미 이 형태인 짝들(**수를 적지 않는다 — `backend.md`가 「세 번」, `BACKFILL_GUIDE`가 「셋」, 여기가 「네 쌍」이라 적어 한 사실이 세 수로 갈려 있었다**) — `graph_orphans.py` ↔ `scripts/graph_orphan_sweep.py` · `chain_replay.py` ↔ `scripts/chain_replay_cli.py` · `enrichment_analysis.py` ↔ `scripts/enrichment_insights.py` · `enrichment_backfill.py` ↔ `scripts/backfill_enrichment.py`(2026-07-31 분리). 판정기는 `server/tests/prod_import_check.py`(진입 `test_prod_import_env.py`).
+- **어디**: 이미 이 형태인 짝들 — `chain_replay.py` ↔ `scripts/chain_replay_cli.py` · `enrichment_analysis.py` ↔ `scripts/enrichment_insights.py` · `enrichment_backfill.py` ↔ `scripts/backfill_enrichment.py`. 판정기는 `server/tests/prod_import_check.py`(진입 `test_prod_import_env.py`).
 - **언제 재사용**: **CLI에만 있던 기능에 라우트·워커·스케줄러가 붙는 모든 순간.** 「이미 있는 함수를 부르기만 하면 된다」가 참인 자리에서 정확히 이 결함이 난다.
 - **함정**:
   - 🔴 **증상이 최악의 모양이다 — 초록 버튼, 쓰인 행 0, 표면에 에러 없음.** 트리거가 아웃박스에 한 줄 쓰고 즉시 반환하는 형태(§6 Outbox)라면 **검증은 통과하고 200 `queued`가 나가며** import 실패는 **워커 스레드 안**에서 로그로만 끝난다. 실패가 **요청과 다른 프로세스에서** 일어나는 설계일수록 이 계급이 비싸다.

@@ -65,7 +65,7 @@
 
 현장마다 테이블·컬럼·설비 이름이 다르다. 이 파일들은 **「이 환경에서는 이렇게 선언했다」**는 예시지 배포물이 아니다. 덮어쓰면 그쪽 선언이 사라진다.
 
-**읽는 순서**: `table_config` → `maps` / `map_overlay_config` → `chain_rules` → `enrichment_rules` → `virtual_join_rules` → `ontology_mapping` → `auto_update_control`.
+**읽는 순서**: `table_config` → `maps` / `map_overlay_config` → `chain_rules` → `enrichment_rules` → `virtual_join_rules` → `auto_update_control`.
 선언이 **테이블 → 규칙** 순인 이유는 아래 함정 ①이다.
 
 ---
@@ -89,7 +89,7 @@
 
 ### ③ 선언을 지웠는데 다른 config가 아직 가리키면 조용히 열화한다
 
-테이블 선언을 뺄 때 `map_overlay_config` · `bonding_plan_config` · `transfer_plan_config` · `ontology_mapping` · `virtual_join_rules`가 그것을 참조하는지 확인한다. 매달린 참조는 **에러가 아니라 침묵**으로 나타난다.
+테이블 선언을 뺄 때 `map_overlay_config` · `bonding_plan_config` · `transfer_plan_config` · `virtual_join_rules`가 그것을 참조하는지 확인한다. 매달린 참조는 **에러가 아니라 침묵**으로 나타난다.
 
 ### ④ 선언이 있고, 형태가 옳고, 테이블도 맞고, 역할도 다 있는데 — **컬럼 철자 하나가 틀렸다** (2026-08-04 신설)
 
@@ -111,7 +111,6 @@
 | `chain_rules.json` | 한 테이블 쓰기가 다른 테이블로 파생되는 규칙 |
 | `enrichment_rules.json` | 결손 보정 ― 참조뷰·후보 선언·자동확정 노브 |
 | `virtual_join_rules.json` | 조회 시점 조인(저장 안 함). ⚠️ **조인 키에 UNIQUE 인덱스가 없으면 선언을 거부**하고 만들 DDL을 알려준다 |
-| `ontology_mapping.json` | 행 → 그래프 노드·엣지 승격 |
 | `bonding_plan_config.json` · `transfer_plan_config.json` | 계획 화면의 역할 바인딩. 🔴 **이 두 사본은 현재 해석되지 않는다**(헤더의 「알려진 고장」) · 수용 여부를 묻는 자리는 `GET /admin/transfer-plan/dry-run` |
 | `auto_update_control.json` | 수집기별 on/off. **데이터를 계속 만드는 자리이자 옛 수집기를 끄는 자리** |
 

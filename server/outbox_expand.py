@@ -100,8 +100,7 @@ def load_rows_by_ids(db, table_name: str, row_ids, chunk_size: int = OUTBOX_COLL
     """{row_id: ORM row} for the named ids, in `chunk_size` batches.
 
     [확장성] `row_id` is the primary key, so each chunk is an index lookup; the
-    chunking keeps the IN list (and its query plan) stable at 10M-row scale
-    exactly as `graph_materializer.resync_table` does for the same job.
+    chunking keeps the IN list (and its query plan) stable at 10M-row scale.
     """
     from database.models import DYNAMIC_TABLES
 

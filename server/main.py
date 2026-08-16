@@ -13,6 +13,7 @@ import time
 from fastapi import UploadFile, File, Body, HTTPException, BackgroundTasks, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # Setup Unified Logger & Hook Uvicorn Loggers
 import logging
@@ -500,11 +501,6 @@ async def startup_event():
         # 비차단 모드(blocking=False)로 기동
         global_watcher.start(blocking=False)
         logger.info(f"Directory Watcher started with {global_watcher.watch_count} watches.")
-        
-        # Start Graph DB Sync Worker (Disabled for manual sync mode)
-        # from graph_sync_worker import start_graph_sync_worker
-        # main_loop.create_task(start_graph_sync_worker(SessionLocal))
-        # logger.info("Graph DB Sync Worker background task spawned.")
         
         # Start Chained Ingestion Worker
         from chain_ingestion_worker import start_chain_ingestion_worker
@@ -2978,910 +2974,65 @@ async def apply_batch_updates_endpoint(
 
 
 
-from pydantic import BaseModel
-
-class GraphSyncRequest(BaseModel):
-    table_name: str
-    row_ids: Optional[list[str]] = None
-
-@app.post("/api/graph/sync")
-async def manual_graph_sync(req: Optional[GraphSyncRequest] = None, db: Session = Depends(get_db)):
-    """관리자 수동 트리거 그래프 DB 동기화 API (상시 가동 GraphSync 서버 호출 위임)"""
-    # ⚰️ R-2026-08-14-H — 아래는 도달 불가. 이것은 «읽기»가 아니라 사본을 만드는
-    # 파이프라인으로 들어가는 «쓰기» 진입점이므로, 조회 라우트들과 같은 라운드에
-    # 같이 막는다. 대상 워커(:8090)는 스택에서 빠졌으니 통과시켜 봐야 503이고,
-    # 503은 「잠깐 죽었다」로 읽혀 운영자를 재기동으로 보낸다 — 그 재기동은 이제
-    # 아무것도 되살리지 않는다. 은퇴는 은퇴라고 말해야 한다.
-    # (`_graph_branch_retired`는 이 함수보다 아래에 정의되지만 이름 해석은 호출
-    #  시점이라 문제되지 않는다.)
-    raise _graph_branch_retired()
-    import httpx
-
-    table_name = req.table_name if req else "all"
-    row_ids = req.row_ids if req and req.row_ids else []
-    
-    port = int(os.getenv("GRAPH_SYNC_PORT", "8090"))
-    url = f"http://127.0.0.1:{port}/sync"
-    
-    logger.info(f"[GraphSync Routing] Forwarding sync request to worker service at {url}")
-    
-    # [F8] trust_env=False for the same reason the workers' session sets it: this
-    # is a loopback hop between two of our own processes, and httpx honours
-    # HTTP_PROXY / ALL_PROXY by default. On 2026-07-30 that default sent the chain
-    # worker's 127.0.0.1 notifications to the corporate proxy, which refused them
-    # with 403; this call has the identical shape and would fail the identical way,
-    # surfacing to the operator as "그래프 동기화 서버 에러" with a healthy worker.
-    # A proxy can never be a legitimate hop between two processes on one machine.
-    async with httpx.AsyncClient(trust_env=False) as client:
-        try:
-            res = await client.post(
-                url,
-                json={"table_name": table_name, "row_ids": row_ids},
-                timeout=120.0
-            )
-            if res.status_code == 200:
-                resp_data = res.json()
-                if resp_data.get("status") == "accepted":
-                    return {
-                        "status": "success",
-                        "mode": "accepted",
-                        "synced_count": len(row_ids) if row_ids else 0,
-                        "deleted_count": 0,
-                        "message": resp_data.get("message", "")
-                    }
-                return resp_data
-            else:
-                try:
-                    err_detail = res.json().get("detail", "알 수 없는 오류")
-                except Exception:
-                    err_detail = res.text
-                logger.error(f"[GraphSync Routing] Sync worker failed: {res.status_code} - {err_detail}")
-                raise HTTPException(status_code=res.status_code, detail=f"그래프 동기화 서버 에러: {err_detail}")
-        except httpx.RequestError as e:
-            logger.error(f"[GraphSync Routing] Failed to connect to sync worker service: {e}")
-            raise HTTPException(
-                status_code=503,
-                detail="그래프 동기화 서비스가 가동 중이 아닙니다. graph_sync_worker.py 가 실행되어 있는지 확인하세요."
-            )
-
-
 # ================== 구 그래프 갈래 은퇴 — 판정 R-2026-08-14-H ==================
-# 소유자 결정(2026-08-14): 사본을 만들던 파이프라인(추출 → 머티리얼라이즈 → 저장)을
-# 폐기한다. `graph_nodes`/`graph_edges`/`graph_sync_state`는 DROP되고,
-# `graph_sync_worker`는 프로세스 스택에서 빠졌다. 근거는 실측이었다: 워커에
-# `ledger` 참조가 0건이고 `server/ledger/`에 그래프 결합이 0건 — 두 갈래가 같은 소스
-# 표를 각자 읽으면서 서로를 몰랐고, 원장이 개체 층인데 옛 파이프라인이 사본을 하나 더
-# 들고 있었다.
-#
-# 🔴 왜 라우트를 «지우지» 않고 거절로 바꾸는가 — 두 가지 이유가 있고 둘 다 실측이다.
-#   ① 이 앱의 정적 catch-all(`@app.get("/{file_name:path}")`)은 «없는 경로에
-#      HTML을 200으로» 돌려준다. 라우트를 삭제하면 `/graph/stats`가 404가 아니라
-#      index.html 200이 되고, 클라의 `res.ok`가 참이 되어 JSON 파싱에서 터진다 —
-#      은퇴가 «알 수 없는 오류»로 보이는, 이 판정이 정확히 금지한 부정직한 상태다.
-#   ② 판정 ④에 따라 «구 그래프 전용 코드 경로 제거»는 자기 라운드를 갖는다. 여기서는
-#      진입만 막고 몸통은 다음 라운드가 걷어낸다.
-#
-# 410이지 404가 아니다. 404는 「그런 것은 없다」이고 410은 「있었고, 의도적으로
-# 은퇴시켰다」이다. 이 화면을 다시 여는 사람이 알아야 하는 것은 후자다. 판정문의
-# 낱말은 "404"였고 이 선택은 그 letter에서 벗어나므로 보고서에 명시한다.
+# 과거 extract → materialize → graph storage 파이프라인의 실행 코드는 제거됐다.
+# 라우트를 없애면 정적 SPA catch-all이 HTML 200을 반환하므로, 옛 주소는 명시적인
+# 410과 후계 주소를 계속 제공한다. 410은 기본 캐시 가능하므로 no-store가 필수다.
 RETIRED_GRAPH_TABLES = ("graph_nodes", "graph_edges", "graph_sync_state")
 GRAPH_BRANCH_RETIRED_REASON = "old_graph_branch_retired"
 GRAPH_BRANCH_SUCCESSOR = "/api/ledger/trace"
 
 
 def _graph_branch_retired() -> HTTPException:
-    """구 그래프 갈래의 거절 — 한 철자로, 모든 라우트가 공유한다.
-
-    🔴 본문은 산문이 아니라 구조화 필드다(판정 R-2026-08-13-C: `reason`은 사람을
-    위한 산문이고, 화면이 «분기»해야 하는 사실은 반드시 구조화 필드로 나간다).
-    클라는 `detail.reason`을 읽어 「은퇴」와 「일시적 장애」를 가른다 — 이 구분이
-    없으면 뷰어가 「다시 시도」 버튼을 띄우고, 그 버튼은 영원히 성공하지 않는다.
-    `successor`는 이 질문의 새 주소이므로 화면이 사용자를 그리로 보낼 수 있다.
-    """
-    # 🔴 `no-store`가 붙는 이유는 실측에서 나왔다. **410은 HTTP 기본값이 캐시
-    # 가능**이라, 브라우저가 이 거절을 붙들고 있으면 «거절이 거절보다 오래 산다»:
-    # 이 라운드에서 문구를 고쳤는데 화면은 옛 문구를 계속 보여 줬고(캐시된 본문),
-    # 같은 기전이면 나중에 이 갈래를 되살려도 브라우저는 한동안 410을 답한다.
-    # 은퇴 화면이 은퇴 사실보다 오래 남는 것은 이 판정이 순서를 못 박아 가며
-    # 막으려던 그 부정직한 상태와 같은 부류다.
-    return HTTPException(status_code=410, headers={"Cache-Control": "no-store"}, detail={
-        "reason": GRAPH_BRANCH_RETIRED_REASON,
-        "state": "retired",
-        "successor": GRAPH_BRANCH_SUCCESSOR,
-        "ruling": "R-2026-08-14-H",
-        # 뷰어가 이 문장을 제목 «아래»에 붙이므로 제목을 되풀이하지 않는다
-        # (초안은 "구 그래프 저장소는 은퇴했습니다"로 시작해 화면에서 같은 문장이
-        #  두 번 보였다). curl로 이걸 직접 보는 운영자에게도 `reason` 필드가 이미
-        #  정체를 말하므로, 여기서는 «무엇이 없어졌고 어디로 갔는지»만 싣는다.
-        "message": ("노드·엣지 테이블이 폐기되고 동기화 워커가 스택에서 "
-                    "제거되었습니다. 혈통 추적은 원장 구조 뷰로 옮겨졌습니다."),
-    })
+    return HTTPException(
+        status_code=410,
+        headers={"Cache-Control": "no-store"},
+        detail={
+            "reason": GRAPH_BRANCH_RETIRED_REASON,
+            "state": "retired",
+            "successor": GRAPH_BRANCH_SUCCESSOR,
+            "ruling": "R-2026-08-14-H",
+            "message": (
+                "구 그래프 저장소와 동기화 코드는 제거되었습니다. "
+                "혈통 추적은 원장 구조 뷰를 사용하세요."
+            ),
+        },
+    )
 
 
-# ----------------- [Ontology 뷰어] read-only 그래프 조회 API (경계 계약 — 총괄 승인) -----------------
-# ⚰️ 아래 라우트 본문은 전부 도달 불가다 — 각 함수 첫 줄이 `_graph_branch_retired()`를
-# raise한다(위 블록). 다음 라운드(판정 ④)가 몸통과 헬퍼를 함께 걷어낸다.
-# graph_nodes/graph_edges를 웹서버가 직접 조회한다(read-only — 워커 경유 불필요).
-# G2 추적 리포트가 같은 응답 형태를 공유할 예정이므로 필드는 최소로 유지(과설계 금지).
-
-GRAPH_NEIGHBOR_NODE_CAP = 500        # limit 하드캡 — 무제한 로드 금지(C-7 교훈)
-GRAPH_NEIGHBOR_EDGE_FETCH_CAP = 2000  # 홉·방향당 엣지 페치 상한 (수퍼노드 방어)
-GRAPH_SEARCH_LIMIT_CAP = 50
-GRAPH_LABEL_LIST_LIMIT_CAP = 200     # 빈 q + label 리스팅 페이지 하드캡 (뷰어 200 규율과 동일)
-GRAPH_TRACE_NODE_CAP = 1000          # [G2] trace 노드 하드캡 (경계 계약 — 총괄 고정)
-GRAPH_TRACE_DEPTH_CAP = 3            # [G2] trace depth 하드캡
-GRAPH_TRACE_DEFAULT_LIMIT = 500
-
-# ----------------- chip trace: the declared walk (see get_chip_trace) -----------------
-# This is a SHAPE, not a BFS. The wafer is a hard scope, and the shape is what
-# enforces decision (2) - "Knob/Recipe/Eqp are leaves" - because the mapping
-# config has no channel to declare a class on a stub label (that channel is
-# G2.5). Measured grounds for refusing to reach this with a filtered BFS:
-# blocking `Core -FROM_CORE->` made the flood WORSE (1,341 -> 11,549 nodes)
-# because it reroutes through Eqp (degree 10,284) and Wafer.
-#
-# Every (edge type, target label) pair below is ALSO declared in
-# ontology_mapping.json. `_chip_trace_declared_pairs` cross-checks them per
-# request so that a config rename surfaces as `not_declared` instead of masquerading
-# as `none_recorded` - conflating "the ontology moved" with "this chip has no dt
-# event" is the same declaration-dies-quietly class as spatial-on-an-edge-prop.
-GRAPH_CHIP_TRACE_SEED_LABEL = "CoreCell"          # the chip identity ledger
-GRAPH_CHIP_TRACE_SCOPE_EDGE = ("FROM_CORE", "Core")     # seed -> its wafer (the scope)
-# Leg 1 - the chip itself: destinations of the SEED CELL ONLY. These are the one
-# place the answer is allowed to leave the wafer scope, because they ARE the
-# chip's own history. Sibling cells of the same core are never included.
-GRAPH_CHIP_TRACE_CHIP_LEGS = (
-    ("BONDED_TO", "BaseCell"),
-    ("TRANSFERRED_TO", "DtCell"),
-)
-# Leg 2 - the wafer: events performed on the scope core. The edge runs
-# ProcessEvent -> Core, so this leg is traversed INBOUND, and what the mapping
-# declares is (PERFORMED_ON, Core) - the anchor's label, not the collected one.
-GRAPH_CHIP_TRACE_EVENT_EDGE = ("PERFORMED_ON", "ProcessEvent")
-GRAPH_CHIP_TRACE_EVENT_DECLARED = ("PERFORMED_ON", "Core")
-# Leg 3 - terminals: reached FROM the core's events and never expanded from.
-GRAPH_CHIP_TRACE_TERMINAL_LEGS = (
-    ("USED_KNOB", "Knob"),
-    ("USED_RECIPE", "Recipe"),
-    ("EXECUTED_BY", "Eqp"),
-)
-GRAPH_CHIP_TRACE_EVENT_CAP = 500     # live max ProcessEvents on one core = 206 (LOT-A|05)
-GRAPH_CHIP_TRACE_TARGET_CAP = 200    # per CHIP leg; live max BONDED_TO on one cell = 6
-# A terminal leg is anchored on EVERY event of the core, so its claim count scales
-# with the event count, not with the number of terminal entities: LOT-A|05 yields
-# 206 EXECUTED_BY claims that resolve to 8 Eqp. Sharing TARGET_CAP=200 truncated
-# that 8-entity answer - found by the loud-truncation flag on the first live run,
-# which is the argument for having the flag. Sized off EVENT_CAP because that is
-# what actually bounds it (one edge per event per source claim).
-GRAPH_CHIP_TRACE_TERMINAL_CAP = 4 * GRAPH_CHIP_TRACE_EVENT_CAP
-GRAPH_CHIP_TRACE_ID_CHUNK = 500      # IN-list chunk (idx_graph_edges_from_type lookup)
-# [QA 2026-07-30, LOW] These two are NOT independent, and nothing said so. The
-# leg applies `limit(remaining)` PER ANCHOR CHUNK and then slices, so the
-# documented "truncated by (identity_key, edge id) order" only holds while every
-# anchor set fits in one chunk. Raise EVENT_CAP above ID_CHUNK and the terminal
-# legs would truncate by chunk-arrival order instead, which is not a stated order
-# at all. Asserted at import rather than commented, so the coupling cannot be
-# broken by editing one number.
-assert GRAPH_CHIP_TRACE_EVENT_CAP <= GRAPH_CHIP_TRACE_ID_CHUNK, (
-    "chip-trace anchor sets must fit in one IN-list chunk, or the leg's truncation "
-    "order is no longer (identity_key, edge id) - see _chip_trace_leg"
-)
-
-
-# [F3] `_escape_like_term` is GONE. Its only caller was the graph node prefix
-# search, which no longer uses LIKE at all: `value_suggest.prefix_conditions`
-# expresses a prefix as a byte-order RANGE, where '%' and '_' are ordinary
-# characters and there is nothing to escape. Reintroducing a LIKE escaper would
-# mean reintroducing the un-indexable `ILIKE 'x%'` it was written for.
-
-
-def _expand_graph_subgraph(
-    db: Session,
-    seed_nodes: list,
-    depth: int,
-    node_cap: int,
-    edge_types: Optional[list] = None,
-    time_from=None,
-    time_to=None,
-):
-    """시드 노드 집합에서 k-hop BFS로 서브그래프를 수집한다 (뷰어/추적 공용 코어).
-
-    - 엣지 접근은 (from,type)/(to,type) 인덱스 경로만 사용(방향별 2쿼리).
-    - edge_types: 지정(비어있지 않은 리스트) 시 해당 타입 엣지만 확장.
-    - time_from/time_to: 엣지 event_time 범위 필터 — event_time이 NULL인 엣지는
-      구조 엣지이므로 항상 통과(경계 계약 — 배제 금지).
-    - node_cap 도달로 일부가 잘리면 truncated=True. 잘린 노드로 향하는 엣지는 응답에서 제외.
-    반환: (nodes {id: GraphNode}, edges_out [직렬화 dict], truncated)
-    """
-    from sqlalchemy import and_, or_
-
-    nodes = {n.id: n for n in seed_nodes}
-    collected_edges = []
-    seen_edge_ids = set()
-    truncated = False
-    frontier = list(nodes.keys())
-
-    time_conds = []
-    if time_from is not None:
-        time_conds.append(models.GraphEdge.event_time >= time_from)
-    if time_to is not None:
-        time_conds.append(models.GraphEdge.event_time <= time_to)
-
-    for _hop in range(depth):
-        if not frontier:
-            break
-        hop_edges = []
-        # idx_graph_edges_from_type / idx_graph_edges_to_type 프리픽스 룩업
-        for endpoint_col in (models.GraphEdge.from_node, models.GraphEdge.to_node):
-            query = db.query(models.GraphEdge).filter(endpoint_col.in_(frontier))
-            if edge_types:
-                query = query.filter(models.GraphEdge.type.in_(edge_types))
-            if time_conds:
-                query = query.filter(
-                    or_(models.GraphEdge.event_time.is_(None), and_(*time_conds))
-                )
-            rows = (
-                query.order_by(models.GraphEdge.id.asc())
-                .limit(GRAPH_NEIGHBOR_EDGE_FETCH_CAP)
-                .all()
-            )
-            if len(rows) >= GRAPH_NEIGHBOR_EDGE_FETCH_CAP:
-                truncated = True
-            hop_edges.extend(rows)
-
-        new_ids = []
-        new_seen = set()
-        for e in hop_edges:
-            if e.id in seen_edge_ids:
-                continue
-            seen_edge_ids.add(e.id)
-            collected_edges.append(e)
-            for nid in (e.from_node, e.to_node):
-                if nid not in nodes and nid not in new_seen:
-                    new_seen.add(nid)
-                    new_ids.append(nid)
-
-        capacity = node_cap - len(nodes)
-        if len(new_ids) > capacity:
-            truncated = True
-            new_ids = new_ids[: max(capacity, 0)]
-
-        for i in range(0, len(new_ids), 500):
-            chunk = new_ids[i : i + 500]
-            for n in db.query(models.GraphNode).filter(models.GraphNode.id.in_(chunk)).all():
-                nodes[n.id] = n
-        frontier = new_ids
-
-    node_ids = set(nodes.keys())
-    edges_out = [
-        _serialize_graph_edge(e)
-        for e in collected_edges
-        if e.from_node in node_ids and e.to_node in node_ids   # 캡으로 잘린 노드의 엣지 제외
-    ]
-    return nodes, edges_out, truncated
-
-
-def _serialize_graph_edge(e, include_props: bool = False) -> dict:
-    """Single definition of the edge shape shared by viewer / trace / chip trace.
-
-    `include_props` is additive - the same keys are always present, chip trace
-    just adds one. It needs the props because the event properties ARE the answer
-    there (eventtime, dt_eqp): without them the three BONDED_TO dates on one chip
-    are an unordered set instead of a rework sequence.
-    """
-    out = {
-        "from": e.from_node,
-        "to": e.to_node,
-        "type": e.type,
-        "source_name": e.source_name,
-        "updated_by": e.updated_by,
-        "event_time": e.event_time.isoformat() if e.event_time else None,
-    }
-    if include_props:
-        out["props"] = e.props or {}
-    return out
-
-
-def _serialize_graph_nodes(nodes: dict) -> list:
-    """노드 형태 계약 {id, label, identity_key, props} — 뷰어/추적 공용."""
-    return [
-        {"id": n.id, "label": n.label, "identity_key": n.identity_key, "props": n.props or {}}
-        for n in nodes.values()
-    ]
+@app.post("/api/graph/sync")
+async def manual_graph_sync():
+    raise _graph_branch_retired()
 
 
 @app.get("/graph/stats")
-def get_graph_stats(db: Session = Depends(get_db)):
-    """뷰어 첫 화면 + 라이브 검증용 — label/edge_type별 카운트와 마지막 동기화 시각."""
-    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
-    from sqlalchemy import func as sa_func
-
-    label_rows = (
-        db.query(models.GraphNode.label, sa_func.count(models.GraphNode.id))
-        .group_by(models.GraphNode.label)
-        .order_by(sa_func.count(models.GraphNode.id).desc())
-        .all()
-    )
-    type_rows = (
-        db.query(models.GraphEdge.type, sa_func.count(models.GraphEdge.id))
-        .group_by(models.GraphEdge.type)
-        .order_by(sa_func.count(models.GraphEdge.id).desc())
-        .all()
-    )
-    state = db.query(models.GraphSyncState).filter(models.GraphSyncState.id == 1).first()
-    return {
-        "labels": [{"label": lbl, "count": cnt} for lbl, cnt in label_rows],
-        "edge_types": [{"type": typ, "count": cnt} for typ, cnt in type_rows],
-        "last_sync": state.updated_at.isoformat() if state and state.updated_at else None,
-    }
+def get_graph_stats():
+    raise _graph_branch_retired()
 
 
 @app.get("/graph/neighbors")
-def get_graph_neighbors(
-    label: str,
-    identity: str,
-    depth: int = 1,
-    limit: int = 200,
-    db: Session = Depends(get_db),
-):
-    """중심 노드 (label, identity)에서 k-hop 이웃 서브그래프를 반환한다.
-
-    - limit = 응답 노드 총수 상한(중심 포함), 하드캡 GRAPH_NEIGHBOR_NODE_CAP.
-    - 엣지 접근은 (from,type)/(to,type) 인덱스 경로만 사용(방향별 2쿼리).
-    - 상한 도달로 일부가 잘리면 truncated=True.
-    """
-    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
-    if depth not in (1, 2):
-        raise HTTPException(status_code=400, detail="depth는 1 또는 2만 허용됩니다.")
-    limit = max(1, min(int(limit), GRAPH_NEIGHBOR_NODE_CAP))
-
-    center = (
-        db.query(models.GraphNode)
-        .filter(models.GraphNode.label == label, models.GraphNode.identity_key == identity)
-        .first()
-    )
-    if center is None:
-        raise HTTPException(status_code=404, detail=f"노드를 찾을 수 없습니다: ({label}, {identity})")
-
-    nodes, edges_out, truncated = _expand_graph_subgraph(db, [center], depth, limit)
-
-    return {
-        "nodes": _serialize_graph_nodes(nodes),
-        "edges": edges_out,
-        "truncated": truncated,
-    }
+def get_graph_neighbors():
+    raise _graph_branch_retired()
 
 
 @app.get("/graph/nodes/search")
-def search_graph_nodes(
-    q: str = "",
-    label: Optional[str] = None,
-    limit: int = 20,
-    offset: int = 0,
-    db: Session = Depends(get_db),
-):
-    """identity_key 시작일치 자동완성 (label 지정 시 (label, identity_key) 인덱스 경로).
-
-    - 빈 q + label → 해당 라벨 전체 리스팅 (Stats 라벨 카드 → 노드 리스트,
-      limit/offset 페이지네이션, 캡 GRAPH_LABEL_LIST_LIMIT_CAP).
-    - 빈 q + label 없음 → 빈 결과 (전 테이블 덤프 금지 — C-7 무제한 로드 금지).
-    - offset은 두 모드 공통 지원 (identity_key 오름차순 안정 정렬 전제).
-    """
-    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
-    term = (q or "").strip()
-    if not term and not label:
-        return {"results": []}
-    cap = GRAPH_SEARCH_LIMIT_CAP if term else GRAPH_LABEL_LIST_LIMIT_CAP
-    limit = max(1, min(int(limit), cap))
-    offset = max(0, int(offset))
-
-    query = db.query(models.GraphNode.id, models.GraphNode.label, models.GraphNode.identity_key)
-    if label:
-        query = query.filter(models.GraphNode.label == label)
-    if term:
-        # [F3] Second consumer of the SAME prefix predicate as the unique-value
-        # lookup. The old `ILIKE 'term%'` could never use an index: this database
-        # is Korean_Korea.949, and outside the C collation a btree does not serve
-        # a LIKE prefix at all - it degrades to a full scan with a Filter.
-        # `lower(col) >= term AND < term+1` in byte order keeps the previous
-        # case-insensitive semantics and becomes a real range on
-        # idx_suggest_graph_nodes_identity_key. LIKE escaping is gone with the
-        # LIKE: '%' and '_' are ordinary characters in a range comparison.
-        #
-        # This route has NO second filter behind the predicate - whatever the
-        # range says IS the answer - so it must fold through `db_fold` like the
-        # other consumer. Folding here with Python's `.lower()` instead would
-        # both miss rows the index holds and (before the upper bound learned to
-        # carry) return everything at or above the term.
-        is_pg = bool(db.bind is not None and db.bind.dialect.name == "postgresql")
-        query = query.filter(
-            *value_suggest.prefix_conditions(
-                models.GraphNode.identity_key,
-                value_suggest.db_fold(db, term),
-                is_pg,
-            )
-        )
-    rows = (
-        query.order_by(models.GraphNode.label.asc(), models.GraphNode.identity_key.asc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    return {
-        "results": [
-            {"id": r.id, "label": r.label, "identity_key": r.identity_key} for r in rows
-        ]
-    }
-
-
-# ----------------- [Ontology G2] 추적(trace) API (경계 계약 — 총괄 고정) -----------------
-# 킬러 유스케이스: 그리드에서 불량 개체들 선택 → 멀티 시드 BFS 합집합으로 연관 전체 추적.
-# 응답 노드/엣지 형태는 뷰어(/graph/neighbors)와 동일 계약을 공유한다.
-
-class GraphTraceSeed(BaseModel):
-    label: str
-    identity: str
-
-
-class GraphTraceRequest(BaseModel):
-    seeds: list[GraphTraceSeed]
-    depth: int = 2
-    # 시간 필터는 문자열로 받아 핸들러에서 파싱 — 형식 오류를 계약대로 400으로 응답하기 위함
-    time_from: Optional[str] = None
-    time_to: Optional[str] = None
-    edge_types: Optional[list[str]] = None
-    limit: int = GRAPH_TRACE_DEFAULT_LIMIT
-
-
-def _parse_trace_time(value: Optional[str], field: str):
-    """ISO 8601 문자열 → datetime. 형식 오류는 400 (경계 계약: 검증 실패 400)."""
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return None
-    try:
-        return datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
-    except ValueError:
-        raise HTTPException(
-            status_code=400, detail=f"{field}은(는) ISO 8601 형식이어야 합니다: {value!r}"
-        )
+def search_graph_nodes():
+    raise _graph_branch_retired()
 
 
 @app.post("/graph/trace")
-def post_graph_trace(req: GraphTraceRequest, db: Session = Depends(get_db)):
-    """멀티 시드 k-hop 추적 — 시드별 BFS의 합집합 서브그래프를 반환한다.
-
-    - depth 1..3 (기본 2), 노드 하드캡 GRAPH_TRACE_NODE_CAP(수퍼노드 방어 — 뷰어 패턴 준용).
-    - time_from/to: 엣지 event_time 범위 필터. event_time이 NULL인 구조 엣지는 항상 통과.
-    - edge_types 지정 시 해당 타입 엣지만 확장.
-    - 존재하지 않는 시드는 무시하고 missing_seeds로 보고. 전부 미존재여도 404가 아니라
-      빈 nodes로 200 응답(경계 계약).
-    """
-    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
-    if not req.seeds:
-        raise HTTPException(status_code=400, detail="seeds는 1개 이상이어야 합니다.")
-    if not (1 <= req.depth <= GRAPH_TRACE_DEPTH_CAP):
-        raise HTTPException(
-            status_code=400, detail=f"depth는 1..{GRAPH_TRACE_DEPTH_CAP}만 허용됩니다."
-        )
-    time_from = _parse_trace_time(req.time_from, "time_from")
-    time_to = _parse_trace_time(req.time_to, "time_to")
-    limit = max(1, min(int(req.limit), GRAPH_TRACE_NODE_CAP))
-
-    # 시드 해석 — 요청 순서 보존 dedup 후 label 그룹별 (label, identity_key) 인덱스 조회(500 청킹)
-    requested = []
-    seen_pairs = set()
-    for s in req.seeds:
-        pair = (s.label, s.identity)
-        if pair not in seen_pairs:
-            seen_pairs.add(pair)
-            requested.append(pair)
-
-    identities_by_label = {}
-    for lbl, ident in requested:
-        identities_by_label.setdefault(lbl, []).append(ident)
-    found = {}
-    for lbl, identities in identities_by_label.items():
-        for i in range(0, len(identities), 500):
-            chunk = identities[i : i + 500]
-            rows = (
-                db.query(models.GraphNode)
-                .filter(
-                    models.GraphNode.label == lbl,
-                    models.GraphNode.identity_key.in_(chunk),
-                )
-                .all()
-            )
-            for n in rows:
-                found[(n.label, n.identity_key)] = n
-
-    missing_seeds = [
-        {"label": lbl, "identity": ident}
-        for (lbl, ident) in requested
-        if (lbl, ident) not in found
-    ]
-    seed_nodes = [found[p] for p in requested if p in found]
-
-    truncated = False
-    if len(seed_nodes) > limit:   # 시드 자체가 캡 초과 — 하드캡 우선(무제한 로드 금지)
-        seed_nodes = seed_nodes[:limit]
-        truncated = True
-
-    if seed_nodes:
-        nodes, edges_out, bfs_truncated = _expand_graph_subgraph(
-            db, seed_nodes, req.depth, limit,
-            edge_types=req.edge_types, time_from=time_from, time_to=time_to,
-        )
-        truncated = truncated or bfs_truncated
-    else:
-        nodes, edges_out = {}, []
-
-    return {
-        "nodes": _serialize_graph_nodes(nodes),
-        "edges": edges_out,
-        "seed_ids": [n.id for n in seed_nodes],
-        "missing_seeds": missing_seeds,
-        "truncated": truncated,
-    }
-
-
-# ----------------- chip trace — wafer-scoped, shape-bounded (경계 계약) -----------------
-
-# Closed status vocabulary. Every leg reports exactly one of these, and a reader
-# can tell "the source says nothing" from "the ontology moved" from "we refused to
-# guess". A silently empty hop is the failure mode this endpoint exists to close.
-CHIP_TRACE_RECORDED = "recorded"                # declared, rows found
-CHIP_TRACE_NONE = "none_recorded"               # declared, zero rows (the 8,493 bonding-only chips)
-CHIP_TRACE_NOT_DECLARED = "not_declared"        # the mapping no longer declares this (type, target)
-CHIP_TRACE_SCOPE_UNRESOLVED = "scope_unresolved"  # 0 or >1 distinct Core claimed - we do not pick
-# [QA 2026-07-30, HIGH] "we could not read the declaration" is NOT "the ontology
-# moved". Measured: with the mapping file mid-save (`json.load` raises ->
-# `raw_config = {}`) the declared-pair set collapses to the enrichment-promoted
-# pairs alone, and the endpoint answered 200 with every leg `not_declared` - i.e.
-# it asserted that BONDED_TO->BaseCell is no longer declared for a chip whose
-# three BONDED_TO edges are sitting in `graph_edges`. That window is reachable:
-# main.py's config writers use a plain `open(..., "w")`, not temp+rename.
-CHIP_TRACE_MAPPING_UNAVAILABLE = "mapping_unavailable"
-# [QA 2026-07-30, MEDIUM] A leg anchored on a leg that never ran must not report
-# `none_recorded` ("declared, zero rows"). Nothing was asked.
-CHIP_TRACE_NOT_REACHED = "not_reached"
-
-
-def _chip_trace_declaration():
-    """-> (declared pairs, report). The report says whether the set can be trusted.
-
-    WHY NOT 503 (the alternative QA offered, and why this instead)
-        Refusing the request would discard the half of the answer that is still
-        true: the edges are in `graph_edges` and the walk is computable - only the
-        question "is this shape currently declared?" is unanswerable. This endpoint's
-        premise is a CLOSED PER-LEG VOCABULARY, so the honest place for "unknown" is
-        inside that vocabulary, where the client's existing per-leg rendering shows
-        it; a transport-level 503 moves it into HTTP where nothing displays it, on a
-        read-only idempotent request the caller has nothing to retry *for*.
-
-    WHAT DEGRADES, AND WHY ONLY THAT
-        `degraded` replaces exactly one status: `not_declared`. It is the only status
-        that makes a claim ABOUT THE DECLARATION'S ABSENCE. `recorded` and
-        `none_recorded` are conclusions from rows we actually read and stay true
-        whatever the config file is doing.
-
-        Degraded when the file is unreadable (a `file`-scope rejection), when a table
-        mapping was rejected (a renamed column silently drops that table's whole
-        mapping - the same conflation one notch down), or when the file is ABSENT.
-        Absence is the case QA measured, and it logged nothing at all: a system whose
-        graph holds BONDED_TO edges and whose mapping file has vanished is a config
-        accident, not an ontology decision.
-
-        Same rule as `graph_orphans.declaration_blockers`: a declaration that did not
-        load cleanly does not get to be the authority on what is declared.
-    """
-    import ontology_config
-    known = crud.TABLE_CONFIG if crud.TABLE_CONFIG else None
-    rejections = []
-    mappings = ontology_config.load_ontology_mappings(
-        known_tables=known, rejections=rejections
-    )
-    path = ontology_config.ONTOLOGY_PATH
-    exists = os.path.exists(path)
-    degraded = bool(rejections) or not exists
-    if degraded:
-        # Previously silent. The absent-file branch in particular logged nothing.
-        logger.warning(
-            "[ChipTrace] the ontology declaration did not load cleanly "
-            f"(exists={exists}, rejections={len(rejections)}) — legs that would "
-            "have said 'not_declared' will say 'mapping_unavailable' instead: "
-            f"{rejections or 'file absent at ' + path}"
-        )
-    pairs = {
-        (e["type"], e["target_label"])
-        for m in mappings.values()
-        for e in m.get("edges", [])
-    }
-    report = {
-        "status": "degraded" if degraded else "ok",
-        "path": path,
-        "exists": exists,
-        "rejected": rejections,
-    }
-    return pairs, report
-
-
-def _chip_trace_sort_key(pair):
-    """Time order for readability; NULL event_time last, then identity, then edge id.
-
-    Sorted in Python rather than SQL because `NULLS LAST` is not portable to the
-    SQLite path the suite runs on, and the caps make the cost nil.
-    """
-    edge, node = pair
-    return (edge.event_time is None, edge.event_time, node.identity_key, edge.id)
-
-
-def _chip_trace_leg(db, anchor_ids, edge_type, other_label, cap, inbound, declared,
-                    declared_pair=None, declaration_degraded=False,
-                    anchor_leg=None):
-    """One typed leg of the walk. Returns a (leg dict, [(edge, node)]) pair.
-
-    `declared_pair` is the (type, target_label) the ontology mapping declares, which
-    differs from (type, other_label) on an INBOUND leg: PERFORMED_ON is declared as
-    (PERFORMED_ON, Core) but collects ProcessEvent nodes.
-
-    `anchor_leg` is the leg this one hangs off, when there is one. An empty anchor
-    means two different things and they must not share a status:
-      * the anchor was `none_recorded` -> zero events genuinely implies zero knobs
-        REACHED THROUGH events, so `none_recorded` here is a sound inference.
-      * the anchor was `not_declared` / `mapping_unavailable` -> no query ran, and
-        "this wafer used no knobs" would be a fabrication. -> `not_reached`.
-
-    Index path only: idx_graph_edges_from_type (outbound) / idx_graph_edges_to_type
-    (inbound), anchor ids chunked. No recursive CTE and no unindexed edge access -
-    a set join per leg is the right primitive on a relational edge store.
-
-    Truncation is by (identity_key, edge id) order and is always reported; `cap+1`
-    is fetched so that "exactly at the cap" is not mistaken for truncated.
-    """
-    leg = {
-        "edge_type": edge_type,
-        "target_label": other_label,
-        "status": CHIP_TRACE_RECORDED,
-        "count": 0,
-        "node_ids": [],
-        "truncated": False,
-        "capped_at": cap,
-    }
-    if (declared_pair or (edge_type, other_label)) not in declared:
-        # The negative assertion is only safe when the declaration loaded cleanly.
-        leg["status"] = (CHIP_TRACE_MAPPING_UNAVAILABLE if declaration_degraded
-                         else CHIP_TRACE_NOT_DECLARED)
-        return leg, []
-    if anchor_leg is not None and anchor_leg["status"] in (
-            CHIP_TRACE_NOT_DECLARED, CHIP_TRACE_MAPPING_UNAVAILABLE):
-        leg["status"] = CHIP_TRACE_NOT_REACHED
-        leg["blocked_by"] = {"edge_type": anchor_leg["edge_type"],
-                             "status": anchor_leg["status"]}
-        return leg, []
-    if not anchor_ids:
-        leg["status"] = CHIP_TRACE_NONE
-        return leg, []
-
-    Edge, Node = models.GraphEdge, models.GraphNode
-    anchor_col = Edge.to_node if inbound else Edge.from_node
-    other_col = Edge.from_node if inbound else Edge.to_node
-
-    collected = []
-    ids = list(anchor_ids)
-    for i in range(0, len(ids), GRAPH_CHIP_TRACE_ID_CHUNK):
-        remaining = (cap + 1) - len(collected)
-        if remaining <= 0:
-            break
-        chunk = ids[i:i + GRAPH_CHIP_TRACE_ID_CHUNK]
-        collected.extend(
-            db.query(Edge, Node)
-            .join(Node, Node.id == other_col)
-            .filter(
-                anchor_col.in_(chunk),
-                Edge.type == edge_type,
-                Node.label == other_label,
-            )
-            .order_by(Node.identity_key.asc(), Edge.id.asc())
-            .limit(remaining)
-            .all()
-        )
-
-    if len(collected) > cap:
-        leg["truncated"] = True
-        collected = collected[:cap]
-    collected.sort(key=_chip_trace_sort_key)
-
-    # count counts EDGE claims, node_ids counts distinct entities. They differ on
-    # purpose: 2,687 cells carry more than one FROM_CORE edge (one per source
-    # file) for a single Core, and the three BONDED_TO edges of a reworked chip
-    # are three separate events. Collapsing either would hide a fact.
-    seen = set()
-    for _e, n in collected:
-        if n.id not in seen:
-            seen.add(n.id)
-            leg["node_ids"].append(n.id)
-    leg["count"] = len(collected)
-    if not collected:
-        leg["status"] = CHIP_TRACE_NONE
-    return leg, collected
+def post_graph_trace():
+    raise _graph_branch_retired()
 
 
 @app.get("/graph/chip-trace")
-def get_chip_trace(identity: str, db: Session = Depends(get_db)):
-    """한 칩(CoreCell)의 이력을 **웨이퍼 스코프**로 추적한다 — BFS가 아니라 고정 형상 질의.
-
-    - 파라미터는 `identity` 하나. **depth는 없다** — 형상이 알려져 있고, depth를 노출하면
-      홍수가 되돌아온다(실측: BFS depth 3 = 2,142노드 중 1,763개가 남의 칩).
-    - 스코프는 웨이퍼(Core). 스코프 밖 노드는 **시드 셀 자신의 직접 목적지**(BaseCell·DtCell)
-      로만 도달한다. 같은 코어의 형제 셀은 포함하지 않는다 — 칩의 이력에 형제는 없다.
-    - Knob·Recipe·Eqp는 **잎**이다. 코어의 ProcessEvent에서 도달하고 되확장하지 않는다
-      (결정 ② — 정책 엔진 G2.5가 없으므로 질의 형상이 강제한다).
-    - 빈 홉은 없다. 모든 홉이 recorded / none_recorded / not_declared 중 하나를 말한다.
-    """
-    raise _graph_branch_retired()   # ⚰️ R-2026-08-14-H — 아래는 도달 불가
-    seed = (
-        db.query(models.GraphNode)
-        .filter(
-            models.GraphNode.label == GRAPH_CHIP_TRACE_SEED_LABEL,
-            models.GraphNode.identity_key == identity,
-        )
-        .first()
-    )
-    if seed is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"칩 노드를 찾을 수 없습니다: ({GRAPH_CHIP_TRACE_SEED_LABEL}, {identity})",
-        )
-
-    declared, declaration = _chip_trace_declaration()
-    degraded = declaration["status"] == "degraded"
-    nodes = {seed.id: seed}
-    edges_out = []
-    truncated = False
-
-    def _absorb(pairs):
-        for e, n in pairs:
-            nodes.setdefault(n.id, n)
-            edges_out.append(_serialize_graph_edge(e, include_props=True))
-
-    # --- leg 1: the chip itself - where this die went ---
-    chip_legs = {}
-    for edge_type, target_label in GRAPH_CHIP_TRACE_CHIP_LEGS:
-        leg, pairs = _chip_trace_leg(
-            db, [seed.id], edge_type, target_label,
-            GRAPH_CHIP_TRACE_TARGET_CAP, inbound=False, declared=declared,
-            declaration_degraded=degraded,
-        )
-        _absorb(pairs)
-        truncated = truncated or leg["truncated"]
-        chip_legs[edge_type] = leg
-
-    # --- the scope: this die's wafer. Resolved, never guessed. ---
-    scope_type, scope_label = GRAPH_CHIP_TRACE_SCOPE_EDGE
-    scope_leg, scope_pairs = _chip_trace_leg(
-        db, [seed.id], scope_type, scope_label,
-        GRAPH_CHIP_TRACE_TARGET_CAP, inbound=False, declared=declared,
-        declaration_degraded=degraded,
-    )
-    _absorb(scope_pairs)
-    truncated = truncated or scope_leg["truncated"]
-
-    wafer = {"scope_edge": scope_leg}
-    scope_node = None
-    # [QA 2026-07-30] `not truncated` is a required conjunct, not a nicety. The leg
-    # fetches cap+1 in (identity_key, edge id) order, so 201 claims to LOT-A|05 fill
-    # the buffer before a single claim to LOT-Z|01 is read: length 1, scope
-    # "resolved", and the entire wafer half computed for the WRONG core. That is the
-    # LIMIT 1 winner-pick this design refuses, reached by a different road.
-    if len(scope_leg["node_ids"]) == 1 and not scope_leg["truncated"]:
-        scope_node = nodes[scope_leg["node_ids"][0]]
-    else:
-        # 0 -> the cell claims no wafer; >1 -> it claims two, and a chip has one
-        # core; truncated -> the set we can see is not the set that exists. In every
-        # case the wafer half is unanswerable and we say so rather than take the
-        # first row ("the count was right but it pointed at another node" is a defect
-        # this repository has actually shipped).
-        wafer["status"] = CHIP_TRACE_SCOPE_UNRESOLVED
-        wafer["scope_candidates"] = [
-            {"label": nodes[i].label, "identity": nodes[i].identity_key, "id": i}
-            for i in scope_leg["node_ids"]
-        ]
-
-    # --- leg 2/3: what the wafer went through, and the terminals it used ---
-    if scope_node is not None:
-        event_type, event_label = GRAPH_CHIP_TRACE_EVENT_EDGE
-        event_leg, event_pairs = _chip_trace_leg(
-            db, [scope_node.id], event_type, event_label,
-            GRAPH_CHIP_TRACE_EVENT_CAP, inbound=True, declared=declared,
-            declared_pair=GRAPH_CHIP_TRACE_EVENT_DECLARED,
-            declaration_degraded=degraded,
-        )
-        _absorb(event_pairs)
-        truncated = truncated or event_leg["truncated"]
-        wafer["status"] = event_leg["status"]
-        wafer["events"] = event_leg
-
-        terminals = {}
-        for edge_type, target_label in GRAPH_CHIP_TRACE_TERMINAL_LEGS:
-            # anchor_leg: rename PERFORMED_ON and `events` correctly says
-            # `not_declared`, but every terminal used to report `USED_KNOB:
-            # none_recorded, count 0` - "this wafer used no knobs" when no knob
-            # query ran (QA 2026-07-30).
-            leg, pairs = _chip_trace_leg(
-                db, event_leg["node_ids"], edge_type, target_label,
-                GRAPH_CHIP_TRACE_TERMINAL_CAP, inbound=False, declared=declared,
-                declaration_degraded=degraded, anchor_leg=event_leg,
-            )
-            _absorb(pairs)
-            truncated = truncated or leg["truncated"]
-            terminals[edge_type] = leg
-        wafer["terminals"] = terminals
-
-    return {
-        "seed": {"label": seed.label, "identity": seed.identity_key, "id": seed.id},
-        "scope": (
-            {"label": scope_node.label, "identity": scope_node.identity_key,
-             "id": scope_node.id}
-            if scope_node is not None else None
-        ),
-        # What the leg statuses were judged against. Without this a reader cannot
-        # tell a `mapping_unavailable` leg's cause from the outside.
-        "declaration": declaration,
-        "walk": {"chip": chip_legs, "wafer": wafer},
-        "nodes": _serialize_graph_nodes(nodes),
-        "edges": edges_out,
-        "counts": {"nodes": len(nodes), "edges": len(edges_out)},
-        "truncated": truncated,
-    }
+def get_chip_trace():
+    raise _graph_branch_retired()
 
 
 @app.get("/graph/mapping-summary")
 def get_graph_mapping_summary():
-    """현재 로드된 온톨로지 매핑(enrichment RESOLVED_AS 자동 승격 포함) 요약 + **거부된 매핑**.
-
-    클라이언트가 그리드 선택 행 → trace 시드 변환에 사용한다(경계 계약).
-    materializer(_load_graph_mappings)와 같은 로더를 태워 같은 신호원을 보장하고,
-    config 파일이 작으므로 요청 시마다 디스크에서 읽는다(무중단 반영 — enrichment 패턴).
-
-    `rejected`는 로드되지 **않은** 선언과 그 사유다. 로더의 계약은 "무효 테이블은 로깅 후
-    스킵"인데, 그 스킵이 로그에만 있으면 **컬럼 하나를 rename한 순간 그 테이블의 온톨로지가
-    통째로 사라지고 표면에는 아무 것도 안 나온다** — 성공 개수만 보면 "안 늘었다"와
-    "죽었다"가 구별되지 않는다. 그래서 성공 목록과 **같은 응답**에 실어 보낸다: 이것은 새
-    엔드포인트를 만들 자리가 아니라 이미 조회하는 응답에 태울 자리다(PRIMITIVES §3).
-    `tables`의 형태는 바뀌지 않았다 — 추가 필드이므로 기존 클라 계약은 그대로다.
-    """
-    # ⚰️ R-2026-08-14-H — 아래는 도달 불가.
-    # 🔴 이 라우트의 거절은 클라에서 «자기 치유»로 작동한다. `trace_launch.js`가
-    # 이것을 그리드의 「🕸️ 추적」 버튼 노출 게이트로 쓰고 있고, 실패하면 진입점을
-    # 스스로 감춘다. 즉 이 한 줄이 구 trace 화면으로 가는 유일한 사용자 경로를
-    # 닫는다 — 클라 코드를 고쳐서가 아니라 이미 있던 게이트가 정직하게 동작해서다.
     raise _graph_branch_retired()
-    import ontology_config
-    known = crud.TABLE_CONFIG if crud.TABLE_CONFIG else None
-    rejections = []
-    mappings = ontology_config.load_ontology_mappings(
-        known_tables=known, rejections=rejections
-    )
-    mapping_path = ontology_config.ONTOLOGY_PATH
-    return {
-        "tables": [
-            {
-                "table": table_name,
-                "node_label": m["node"]["label"],
-                "identity_columns": list(m["node"]["identity"]),
-            }
-            for table_name, m in sorted(mappings.items())
-        ],
-        # scope: "table" (그 테이블만 스킵) | "file" (파일 전체가 안 읽힘/v1 형식)
-        #      | "enrichment" (RESOLVED_AS 자동 승격이 죽음)
-        "rejected": rejections,
-        "rejected_count": len(rejections),
-        "source": {
-            "path": mapping_path,
-            # 파일 부재는 "거부"가 아니라 "선언이 없다"다 — 둘을 섞으면 사유 목록이
-            # 정상 상태에서도 비어있지 않게 되어 곧 무시당한다.
-            "exists": os.path.exists(mapping_path),
-        },
-    }
 
 
 @app.websocket("/ws")
@@ -4541,12 +3692,6 @@ def reload_local_process_cache():
     except Exception as e:
         print(f"[Reload] Failed to reload table_config.json: {e}")
         
-    # [Ontology G1] 온톨로지 매핑 캐시 무효화(핫리로드 대상 — check_needs_rollback 판정용)
-    try:
-        crud._ontology_cache = None
-    except Exception:
-        pass
-
     # [Virtual join] Verified-declaration cache. It carries a TTL of its own for worker
     # processes that never reach this hook, but the web server must not wait it out:
     # a declaration edited in the admin UI has to take effect on the next read.
@@ -6094,23 +5239,18 @@ def get_enrichment_auto_confirm_dry_run(
 # -----------------------------------------------------------------------------
 # [Queue 25] 소급 적용(retroactive/backfill) 어드민 표면 — 「몇 건인가」와 「실행」
 #
-#   다섯 경로 전부 이미 CLI로 존재하고, 전부 드라이런이 기본이며, 전부 진짜 매퍼·진짜
+#   네 경로 전부 이미 CLI로 존재하고, 전부 드라이런이 기본이며, 전부 진짜 매퍼·진짜
 #   쓰기 경로를 쓴다. 여기서 새로 구현하는 연산은 **하나도 없다** — 등록부는
 #   `server/retroactive.py`이고 이 라우트들은 그 위의 얇은 껍질이다.
 #
-#   카운트가 값싸지 않다는 사실을 숨기지 않는다: 다섯 중 셋은 「몇 건인가」가 곧
+#   카운트가 값싸지 않다는 사실을 숨기지 않는다: 일부는 「몇 건인가」가 곧
 #   드라이런 자체(테이블 전수 + 매퍼)라서 요청 경로에 앉을 수 없다. 그래서 모든 카운트는
 #   `count_kind`(exact / sample / upper_bound)를 **함께** 반환하고, 표본이면 `truncated`와
 #   `scanned`를 실어 「테이블에 대한 수」가 아니라 「표본에 대한 수」임을 서버가 문장으로
 #   말한다(`detail`). 클라이언트는 그 문장을 그대로 렌더하고 스스로 판정하지 않는다 —
 #   `/admin/config/resolve`·auto-confirm 드라이런과 같은 규율.
 #
-#   ⚠️ 다섯이 **같은 종류의 연산이 아니다.** 넷은 값을 쓰고 청크 단위로 커밋되어 중단돼도
-#   이어서 재실행되지만, `graph_orphans`는 노드를 **삭제**하고 삭제 루프가 끝난 뒤에야
-#   한 번 커밋한다 — 중단되면 이미 지운 청크까지 통째로 롤백된다(2026-07-31 소스 확인:
-#   `graph_orphans.py`의 유일한 commit). 그래서 인벤토리·카운트 응답이 `deletes` ·
-#   `restartable` · `commit_granularity`를 실어 나른다. 확인 문구 하나로 다섯 버튼을
-#   덮으면 그 하나가 틀린다.
+#   각 연산의 삭제 여부·재시작 가능성·커밋 단위는 인벤토리 응답이 명시한다.
 # -----------------------------------------------------------------------------
 
 @app.get("/admin/retroactive/operations", dependencies=[Depends(require_admin_token)])

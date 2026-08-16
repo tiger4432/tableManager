@@ -224,7 +224,7 @@ resolved  = 모든 target notBlank AND 모든 key notBlank
 - **워크리스트 = 파생 테이블의 결손 필터 뷰**: 별도 저장소가 아니라 `target IS NULL` 필터. 전용 페이지가 이 필터 + 참조뷰 + 컨베이어 입력을 제공.
 - **레이어링**: 채운 값은 `CellSource`(source=user, priority 0) + 필요 시 `CellOverwrite`. 자동 재인제션이 사람 값을 덮지 않음(핵심가치 불변식).
 - **실시간(#3)**: 워크리스트 소진·파급은 기존 WS 브로드캐스트(`batch_row_*`/`batch_refresh_required`)로 반영. (신규 이벤트 최소화.)
-- **온톨로지(#2)**: 채워진 링크(wafer_id)는 `ontology_mapping.json` 경로로 그래프에 반영 → 객체 추적 가능.
+- **온톨로지(#2)**: 채워진 링크는 원장 fact/claim으로 번역되어 `/api/ledger/trace` 걷기에서 객체 관계로 해석됩니다.
 - **확장성(1000만행)**: dedup 집계는 판단키 인덱스 + LIMIT/청킹. 원본 전량 로드 금지(뷰포트 가상 로딩).
 
 ## 7. 성공 지표 (최소 공수의 정량화)

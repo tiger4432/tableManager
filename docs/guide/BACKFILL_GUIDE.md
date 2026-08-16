@@ -29,7 +29,7 @@
 > (신설 근거: 진입점 전부의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain_replay.py` · `server/enrichment_analysis.py` · `server/enrichment_candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
 > **대상:** 규칙을 바꿔 놓고 **「과거 데이터는 왜 그대로지?」**를 만난 운영자.
 > **먼저 알아야 할 것:** 이 시스템의 규칙은 **증분(outbox) 구동**이다. 규칙은 **자기가 선언된 이후에 바뀐 행만** 본다. 규칙을 고쳐도 과거는 옛 규칙이 남긴 상태 그대로 있고, 그것을 움직이는 유일한 방법이 이 문서의 경로들이다. ⓕ가 그 원리의 가장 순수한 사례다 — **해결 규칙 자체를 고쳐도** 이미 확정된 표시값은 그대로 남는다.
-> **관련:** 개발자 계약은 [chain_ingestion_guide §5](./chain_ingestion_guide.md) · 인리치먼트 선언은 [config/enrichment_rules §7](./config/enrichment_rules.md) · 고아 스윕의 정본은 [AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)
+> **관련:** 개발자 계약은 [chain_ingestion_guide §5](./chain_ingestion_guide.md) · 인리치먼트 선언은 [config/enrichment_rules §7](./config/enrichment_rules.md). 제거된 그래프 고아 스윕의 배경은 [archive](../_archive/retired_graph_sync/README.md)에만 남깁니다.
 
 ---
 
@@ -213,7 +213,7 @@ conda run -n assy_manager python server/scripts/backfill_enrichment.py <룰> --c
 * `--limit N`은 **새로 만들 파생 정체성의 수**를 자릅니다(스캔 행 수가 아닙니다). 잘린 만큼은 `skipped by --limit`로 보고되고 **다시 돌리면 이어서** 갑니다.
 * `--force-disabled`는 `"enabled": false`인 규칙도 돌립니다. 규칙을 아직 켜지 않은 채 규모만 재 보고 싶을 때 씁니다.
 
-> ℹ️ **2026-07-31 `9c6a1c9` — 이 도구의 알맹이는 `server/enrichment_backfill.py`로 옮겨졌고, `scripts/backfill_enrichment.py`는 그 위의 CLI가 됐습니다.** **경로·진입점·플래그는 하나도 바뀌지 않았으므로 위 명령은 전부 그대로 동작합니다.** 옮긴 이유는 어드민 라우트(§7)가 이 로직을 불러야 하는데 **`server/scripts/`는 어느 운영 프로세스의 `sys.path`에도 없어서**입니다 — 그대로 뒀다면 버튼이 초록으로 「queued」를 돌려주고 **아무 행도 쓰이지 않았습니다.** 같은 분리가 이미 셋 있습니다(`graph_orphans` ↔ `graph_orphan_sweep` · `chain_replay` ↔ `chain_replay_cli` · `enrichment_analysis` ↔ `enrichment_insights`).
+> ℹ️ **2026-07-31 `9c6a1c9` — 이 도구의 알맹이는 `server/enrichment_backfill.py`로 옮겨졌고, `scripts/backfill_enrichment.py`는 그 위의 CLI가 됐습니다.** **경로·진입점·플래그는 하나도 바뀌지 않았으므로 위 명령은 전부 그대로 동작합니다.** 의미론은 `server/`에, argparse와 출력은 `server/scripts/`에 두는 분리가 `chain_replay`와 enrichment 도구에 적용됩니다.
 
 ---
 
@@ -265,7 +265,7 @@ conda run -n assy_manager python server/scripts/enrichment_insights.py propose  
 
 - **어드민 API에서 «등록 해제»됐습니다.** `server/retroactive.py`의 `OPERATIONS`는 이제 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm` **넷**입니다. `GET /admin/retroactive/operations`에 ⓔ 행이 없고, `POST /admin/retroactive/graph_orphans/run`은 미등재 연산으로 거절됩니다. 이 문서에서 **「다섯」이라 적힌 자리는 전부 「넷」으로 읽으십시오.**
 - **스케줄 호출도 제거됐습니다**([AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)) — 🔴 **그것은 정리가 아니라 필수였습니다**: `graph_orphans.run_scheduled`가 첫 동작으로 `ensure_graph_tables`를 불러 **DROP된 표를 되살렸을** 것입니다.
-- **CLI 파일 `server/scripts/graph_orphan_sweep.py`는 트리에 남아 있지만**(판정 ④의 코드 제거 라운드 몫) **대상 테이블이 없어 정상 동작하지 않습니다.**
+- **CLI와 런타임 모듈은 2026-08-16 트리에서 제거됐습니다.** 옛 설명과 설정 예시는 [archive](../_archive/retired_graph_sync/README.md)에만 남습니다.
 - ⚠️ **§1의 「ⓔ만 페이지 커밋이 아니다」·§6.2·§6.3(종료 코드 3)·§7의 `--allow-production` 서술은 전부 이 연산에 대한 것이라 «함께 은퇴»합니다.** ⓐ~ⓓ에 대한 서술은 **한 줄도 영향받지 않았습니다.**
 
 <details>
@@ -355,9 +355,9 @@ CLI로 돌리는 **완전한** 백필은 「새로운가」를 **파생 테이�
 
 ## 7. 어드민 API로도 됩니다(**ⓐ~ⓔ만**) — **화면은 아직 없습니다** (2026-07-31 `fbc1053`)
 
-ⓐ~ⓔ에 **건수 조회 라우트와 실행 라우트**가 생겼습니다. 다만 **어드민 화면의 버튼은 이 커밋 시점(`77d27d3`)에 아직 없습니다** — 착지한 것은 API 세 개이고, 그것을 그리는 클라 코드는 커밋 트리에 없습니다. **지금 눌러서 쓰려면 `curl`입니다.**
+ⓐ~ⓓ에 **건수 조회 라우트와 실행 라우트**가 있습니다. 현재 목록의 정본은 `GET /admin/retroactive/operations` 응답입니다.
 
-> ⚠️ **ⓕ(R3 `resolve`)는 이 표면에 없습니다** — 등록부 `server/retroactive.py`의 `OPERATIONS`는 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans`뿐입니다(2026-08-11 실측). **CLI 전용**이고, `GET /admin/retroactive/operations`의 목록에 안 나오는 것이 정상입니다.
+> ⚠️ **ⓕ(R3 `resolve`)는 이 표면에 없습니다** — 등록부 `server/retroactive.py`의 `OPERATIONS`는 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`입니다. **CLI 전용**이고, `GET /admin/retroactive/operations`의 목록에 안 나오는 것이 정상입니다.
 
 > ⚠️ **이 문장은 곧 낡습니다** — 화면 작업이 별도 레인에서 **진행 중**입니다. 인용하기 전에 `client2/src`에서 `retroactive`를 grep해 확인하십시오. 착지하면 **§7 서두 · §7.4 · §0 결정표 아래 안내**를 함께 고쳐야 합니다.
 
@@ -377,13 +377,13 @@ curl -X POST -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" -H "Content-Type: application
 
 ### 7.1 CLI가 없어진 것이 아닙니다 — 버튼은 **흔한 형태**만 덮습니다
 
-라우트는 각 연산의 **파라미터 필수분**만 받습니다. 나머지는 CLI에 남아 있고, 그 목록을 `operations` 응답의 **`cli_only`**가 직접 들고 있습니다 — `replay-all` · `--limit` · `--chunk-size` · `--force-disabled` · `--ignore-knob` · `classify`/`propose` · `--label` · `--max-fraction` · `--min-population` · `--ignore-rejected` · `--allow-production`.
+라우트는 각 연산의 **파라미터 필수분**만 받습니다. 나머지는 CLI에 남아 있고, 그 목록을 `operations` 응답의 **`cli_only`**가 직접 들고 있습니다 — `replay-all` · `--limit` · `--chunk-size` · `--force-disabled` · `--ignore-knob` · `classify`/`propose`.
 
 🔴 **`--allow-production`은 CLI에만 있고, 그 사실이 중요합니다.** 격리 관문(§5)은 `scripts/graph_orphan_sweep.py` 안에 있지 `graph_orphans.run_scheduled` 안에 있지 않습니다. 어드민 버튼과 **매일 도는 스케줄러가 부르는 것은 후자**이므로, 이 라우트는 데몬이 이미 하고 있는 것 이상의 권한을 주지 않습니다 — 다만 **CLI가 묻는 확인을 재현하지도 않습니다.** CLI를 아는 운영자는 물어볼 것을 기대합니다.
 
 ### 7.2 카운트는 **어떤 종류의 수인지 함께 말합니다**
 
-「몇 건인가」는 다섯 중 셋에서 **드라이런 그 자체**(테이블 전수 + 매퍼)라 요청 경로에 앉을 수 없습니다. 그래서 응답은 수 하나가 아니라 **수 + 그 수의 종류(`count_kind`)**입니다.
+「몇 건인가」는 연산에 따라 **드라이런 그 자체**(테이블 전수 + 매퍼)라 요청 경로에 앉을 수 없습니다. 그래서 응답은 수 하나가 아니라 **수 + 그 수의 종류(`count_kind`)**입니다.
 
 | `count_kind` | 뜻 | 함께 오는 것 |
 |---|---|---|

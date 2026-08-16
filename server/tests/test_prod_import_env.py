@@ -123,7 +123,7 @@ def test_the_check_fails_on_a_new_scripts_import(tmp_path):
     # "tripped over a symptom". Detection is deliberately doubly covered; the
     # message is what makes the covering branch identifiable.
     assert "server/scripts" in r.stdout
-    assert "graph_orphan_sweep" in r.stdout, (
+    assert "operator entry points" in r.stdout, (
         "the failure does not point at the established split, so the next reader "
         "is likely to reach for sys.path instead:\n" + r.stdout)
 
@@ -131,9 +131,8 @@ def test_the_check_fails_on_a_new_scripts_import(tmp_path):
 def test_a_guarded_optional_import_is_not_a_failure(tmp_path):
     """The other direction: don't cry wolf on a declared-optional dependency.
 
-    `graph_sync_worker.py` imports `neo4j` inside `try/except ImportError` and logs
-    "running in Mock Mode". That absence is handled, so it is not an outage. An
-    UNGUARDED import of the same missing module is.
+    A dependency imported inside `try/except ImportError` is explicitly optional.
+    That absence is handled, so it is not an outage. An UNGUARDED import is.
     """
     fake = tmp_path / "server"
     (fake / "scripts").mkdir(parents=True)

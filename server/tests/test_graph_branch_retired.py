@@ -18,6 +18,8 @@ test below is the one that keeps it that way.
 The status is 410, not 404: 404 says "there is no such thing", 410 says "there
 was, and it was retired on purpose". Only the second is true here.
 """
+from pathlib import Path
+
 import pytest
 
 import main
@@ -32,6 +34,25 @@ RETIRED_GET_ROUTES = [
     "/graph/chip-trace?identity=X",
     "/graph/mapping-summary",
 ]
+
+
+def test_retired_graph_execution_files_stay_removed():
+    """A later cleanup must not accidentally restore the retired pipeline."""
+    server_root = Path(__file__).resolve().parents[1]
+    removed_paths = (
+        "graph_sync_worker.py",
+        "run_graph_sync.py",
+        "ontology_config.py",
+        "graph_materializer.py",
+        "graph_orphans.py",
+        "graph_stale_edges.py",
+        "scripts/graph_orphan_sweep.py",
+        "scripts/graph_stale_edge_sweep.py",
+        "config/sample/ontology_mapping.json.sample",
+    )
+
+    restored = [path for path in removed_paths if (server_root / path).exists()]
+    assert restored == [], f"retired graph files were restored: {restored}"
 
 
 def _details(response):

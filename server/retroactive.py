@@ -1,112 +1,18 @@
-"""The five retroactive (backfill) operations, as ONE registry.
+"""Retroactive (backfill) operation registry.
 
-WHAT THIS IS NOT
-----------------
-Not an implementation. Every operation here already exists and already defaults to
-dry-run. This module is the *directory*: it names them, validates their parameters,
-calls their existing dry-run for a count, and publishes an outbox event to make the
-worker call their existing apply. A second executor is exactly the failure this
-repository has already paid for (three `compose_map_id` implementations, three
-answers).
+This module names four existing operations, validates their parameters, calls the
+same implementation in dry-run mode for previews, and publishes an outbox event
+for apply mode. It does not implement a second executor.
 
-    id                     count comes from                run comes from
-    ---------------------- ------------------------------- --------------------------
-    chain_replay      (R1)  chain_replay.replay_rule        same, apply=True
-    withdraw          (R2)  chain_replay.count_withdrawable chain_replay.withdraw_source
-    enrichment_backfill     enrichment_backfill.run_backfill same, apply=True
-    enrichment_confirm      enrichment_analysis.run_auto_confirm_sweep  same, apply=True
-    graph_orphans           graph_orphans.count_zero_edge_nodes  graph_orphans.run_scheduled
+Operations:
+- chain_replay (R1)
+- withdraw (R2)
+- enrichment_backfill
+- enrichment_confirm
 
-THE FIVE ARE NOT ONE KIND OF THING, AND SAYING THEY ARE IS A LIE THAT COSTS DATA
---------------------------------------------------------------------------------
-An earlier draft of this docstring asserted, of all five, that they "commit per
-page so a large run is restartable". **That is false for `graph_orphans`**, and it
-is the dangerous direction to be wrong in - an operator who reads it will
-interrupt a long run believing the completed chunks are safe.
-
-VERIFIED AT SOURCE 2026-07-31, per operation:
-
-* ``chain_replay`` (R1), ``enrichment_backfill``, ``enrichment_confirm`` write via
-  ``crud.apply_batch_updates``, which commits inside each call, and each of the
-  three calls it once per write chunk. Interrupting loses at most the chunk in
-  flight.
-* ``withdraw`` (R2) commits explicitly once per row chunk, in its own loop.
-* ``graph_orphans`` does NOT. ``graph_orphans.apply_sweep`` deletes in 1000-id
-  chunks but issues its single ``commit()`` **after the loop** (the only commit in
-  that file). Interrupt it and the whole deletion rolls back. That is survivable
-  precisely because it is a delete of derived data - nothing is half-swept, and a
-  resync remints anything that should exist - but it is NOT restartable in the
-  sense the other four are, and progress made is not progress kept.
-
-Two further ways ``graph_orphans`` is not the same kind of operation, both of
-which the surface has to carry so a client cannot word one confirmation for five
-buttons:
-
-* It is the only one that deletes an ENTITY (``graph_nodes`` rows). R2 also
-  deletes, but it deletes one source's CLAIM on a cell (``cell_sources`` rows) and
-  then recomputes and audit-logs the revealed value, so a human can see what
-  happened and why. A swept node leaves no per-node record.
-* Its CLI refuses ``--apply`` against a non-isolated data root without
-  ``--allow-production``. That gate lives in ``scripts/graph_orphan_sweep.py``, NOT
-  in ``graph_orphans.run_scheduled``, which is what this module calls and what the
-  auto-update scheduler has been running daily against production all along. So the
-  button grants no capability the daemon does not already exercise - but it does
-  NOT reproduce the CLI's prompt, and an operator who knows the CLI will expect one.
-
-"LIMIT" MEANS THREE DIFFERENT THINGS IN THE FIVE CLIs, SO THIS SURFACE AVOIDS THE WORD
----------------------------------------------------------------------------------------
-``chain_replay_cli --limit`` bounds rows scanned. ``backfill_enrichment.py --limit``
-bounds NEW derived identities created while the source scan runs to the end of the
-table regardless. ``enrichment_insights --limit`` bounds rows examined.
-``graph_orphan_sweep`` has no ``--limit`` at all (``--limit-print`` is output
-formatting). One word, three meanings, and a surface that presented them under a
-single "limit" control would be presenting three contracts as one.
-
-So the parameter here is called ``scan_limit``, it is NOT exposed as an operation
-parameter, it exists only to bound the PREVIEW, and it is reported back as ``null``
-for the two operations whose count does not scan rows - because echoing a number
-that did nothing is how a reader concludes it did something.
-
-THE COUNT IS NOT FREE, AND THIS MODULE SAYS SO INSTEAD OF PRETENDING
---------------------------------------------------------------------
-"How many would this affect?" is, for three of the five, *the dry-run itself* —
-a full walk of a table through a mapper. At 10M rows that is minutes to hours and
-cannot sit on a request path. Rather than ship a route that times out, every count
-declares which of three kinds of number it produced:
-
-``COUNT_EXACT``
-    A cheap query answered the whole question. Cost is independent of table size.
-``COUNT_SAMPLE``
-    A bounded scan of the first ``limit`` rows. ``truncated`` says whether the
-    population ran out before the budget did. The number is about the sample, not
-    the table, and ``detail`` says so in words the client renders verbatim.
-``COUNT_UPPER_BOUND``
-    A cheap query answered a *superset*. The exact number needs the expensive pass
-    the run itself performs. Stated as a ceiling, never as the answer.
-
-This is the `GET /admin/enrichment/auto-confirm/dry-run` posture (F9) generalised:
-that route already looks at a 200-row sample and declares `truncated` rather than
-passing a partial count off as a queue depth.
-
-WHAT THE NUMBER MEANS IS PART OF THE ANSWER
--------------------------------------------
-R1 produces two counts that must never be added together: cells it WOULD WRITE
-(`cells_proposed`) and cells whose value vanished under the current rule
-(`skipped_blank_cells`). The second is a WITHDRAWAL CANDIDATE list — R1 refuses to
-write a blank, because "the rule produces nothing here" and "the value is empty"
-are different statements and only R2 can make the first. A surface that reported
-their sum would overstate the writing operation with the count of the one thing R1
-deliberately will not do. So `affected` is the write count alone, and the
-withdrawal candidates travel in a separately named field.
-
-THE USER LAYER IS NOT REACHABLE FROM HERE
------------------------------------------
-R2 refuses `chain_replay.PROTECTED_SOURCES` outright and skips any cell a human
-pinned via `manual_priority_source`. Both refusals live in `withdraw_source` and
-this module routes INTO that function, so admin cannot bypass them. The parameter
-check below re-states the first refusal only so the operator gets a 400 instead of
-a queued job that fails in a worker log — it reads `chain_replay.PROTECTED_SOURCES`
-rather than repeating the literal, because two lists drift and one does not.
+All four write in bounded chunks. scan_limit bounds only previews and each
+response names whether its count is exact or sampled. Protected/user-pinned values
+remain guarded by the underlying operation.
 """
 import json
 import logging
@@ -321,40 +227,6 @@ def _count_enrichment_confirm(db, params, scan_limit):
     }
 
 
-def _count_graph_orphans(db, params, scan_limit):
-    import graph_orphans
-
-    n = graph_orphans.count_zero_edge_nodes(db)
-    return {
-        "affected": n,
-        "affected_label": "고아 후보 노드 (최대)",
-        "count_kind": COUNT_UPPER_BOUND,
-        "scanned": None,
-        "scan_limit": None,   # one aggregate; no rows are walked
-        "truncated": False,
-        "detail": (
-            f"엣지가 하나도 없는 노드가 {n}개입니다. 실제 삭제 대상은 이보다 적습니다 — "
-            f"스윕은 '지금 어떤 매핑으로도 다시 만들 수 없는' 노드만 지우고, 한 라벨이 "
-            f"인구의 절반 넘게 사라지면 그 라벨을 통째로 거부합니다. 그 두 판정은 매핑된 "
-            f"테이블을 전부 훑어야 나오므로 요청 경로에서 계산하지 않습니다. "
-            f"⚠️ 이 연산만 성격이 다릅니다: 노드를 **삭제**하고, 중간에 끊기면 "
-            f"완료된 청크까지 포함해 **전부 롤백**됩니다(다른 넷은 청크 단위로 커밋되어 "
-            f"이어서 재실행할 수 있습니다)."
-        ),
-        "extra": {
-            "why_upper_bound": (
-                "엣지 0개는 고아의 필요조건이지 충분조건이 아닙니다 — SplitCondition 같은 "
-                "DOE 어휘는 정상적으로 엣지가 없습니다. 생산 가능성 판정이 그 차이를 "
-                "만들고, 그것이 비싼 절반입니다."
-            ),
-        },
-    }
-
-
-# ---------------------------------------------------------------------------
-# Runs. apply=True on the SAME functions, called from the scheduler process.
-# ---------------------------------------------------------------------------
-
 def _run_chain_replay(db, params, log):
     import chain_replay
 
@@ -395,32 +267,6 @@ def _run_enrichment_confirm(db, params, log):
             "queue_size": s.get("queue_size", 0)}
 
 
-def _run_graph_orphans(db, params, log):
-    import graph_orphans
-
-    # `run_scheduled` opens its own session (it is the scheduler's own entry point)
-    # and already logs its outcome, refusals included.
-    out = graph_orphans.run_scheduled(apply_deletions=True)
-    plan = out.get("plan") or {}
-    declined = plan.get("declined") or {}
-    # The DECLINED set is reported, never dropped. `graph_orphans`' own docstring
-    # says why: "A sweep whose skipped set is invisible reads as 'nothing to do'."
-    # The CLI encodes the same thing as exit code 3, which is a BUDGET REFUSAL and
-    # not a failure - so it is surfaced here as its own field rather than folded
-    # into `status`, where a caller would read it as an error.
-    return {
-        "status": out["status"],
-        "deleted": out.get("applied"),
-        "blockers": out.get("blockers") or [],
-        "declined_labels": sorted(declined),
-        "declined_nodes": sum(d.get("orphans", 0) for d in declined.values()),
-        "declined_detail": {k: {"orphans": v.get("orphans"),
-                                "population": v.get("population"),
-                                "reason": v.get("reason")}
-                            for k, v in sorted(declined.items())},
-    }
-
-
 def _enrichment_rule(name):
     import enrichment_config
     from database import crud
@@ -440,11 +286,8 @@ def _enrichment_rule(name):
 
 #: Per-operation facts a client cannot infer from the id, and must not guess.
 #:
-#: `deletes` and `restartable` exist because one confirmation wording cannot fit
-#: all five: four add or overwrite values and resume from where an interruption
-#: left them, and `graph_orphans` deletes rows and rolls the whole run back. Every
-#: value here was checked against source on 2026-07-31 (see the module docstring),
-#: not inferred from the CLI help text - the CLI help is what was wrong.
+#: `deletes` and `restartable` are explicit so a client never infers mutation
+#: semantics from an operation id.
 OPERATIONS = {
     "chain_replay": {
         "label": "체인 규칙 소급 적용 (R1)",
@@ -501,14 +344,6 @@ OPERATIONS = {
         "cli_only": ["--limit", "--ignore-knob (measure a rule whose knob is off)",
                      "classify / propose subcommands", "all rules at once"],
     },
-    # ⚰️ [R-2026-08-14-H] `graph_orphans` 항목이 여기 있었다 — 등록에서 뺀다.
-    # 이 dict는 어드민 화면의 «버튼 목록»이다(`GET /admin/retroactive/operations`).
-    # 남겨 두면 운영자에게 은퇴한 저장소를 청소하는 버튼이 계속 보이고, 그 버튼은
-    # `graph_orphans.run_scheduled` → `ensure_graph_tables`를 타서 DROP된 표를
-    # 되살린 뒤 「고아 0건」이라고 보고한다. 즉 화면이 「깨끗하다」고 말하는데
-    # 사실은 「방금 빈 표를 다시 만들었다」인 상태 — 판정이 막으려는 부정직이다.
-    # `_count_graph_orphans`/`_run_graph_orphans` 함수와 `graph_orphans` 모듈은
-    # 남는다(판정 ④의 코드 제거 라운드 몫). 여기서 죽는 것은 «진입»이다.
 }
 
 
@@ -670,7 +505,7 @@ def execute(payload: dict, log=logger.info) -> dict:
     hold them.
 
     Never raises: a failed retroactive run must not take the scheduler daemon down
-    (same rule as `config_backup.run_scheduled` and `graph_orphans.run_scheduled`).
+    (same rule as `config_backup.run_scheduled`).
     """
     from database import crud, models
     from database.database import SessionLocal

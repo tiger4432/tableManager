@@ -18,8 +18,8 @@ reach it.
 
 WHAT A RUNTIME PROCESS ACTUALLY HAS ON sys.path
 -----------------------------------------------
-``server/`` and ``server/parsers`` (``main.py``), or ``server/`` alone (the four
-worker entry points: ``run_auto_update``, ``run_chain_worker``, ``run_graph_sync``,
+``server/`` and ``server/parsers`` (``main.py``), or ``server/`` alone (the
+remaining worker entry points: ``run_auto_update``, ``run_chain_worker``,
 ``run_watcher`` - each appends its own directory, which is ``server/``).
 ``server/scripts`` is on NOBODY's path. Every file in there bootstraps itself with
 ``sys.path.insert(0, <server dir>)`` when run as ``__main__``, which makes
@@ -38,8 +38,8 @@ THE TWO CHECKS
    "imports something that is not there at all", which is the same outage with a
    different cause.
 
-Resolution is by ``find_spec``, never by executing the import: ``_run_graph_orphans``
-deletes ``graph_nodes`` rows and must not be called to find out whether it parses.
+Resolution is by ``find_spec``, never by executing the import: resolving a module
+must never execute its administrative operation.
 
 USAGE
     conda run -n assy_manager python server/tests/prod_import_check.py
@@ -61,8 +61,7 @@ NON_RUNTIME_DIRS = ("scripts/", "tests/", "setup/", "scratch/", "migrations/")
 #: An unresolvable import is only a defect if the process would die on it. Where
 #: the source wraps the import in `try/except ImportError` and carries on, the
 #: absence is a declared, handled state and this check must not call it a failure -
-#: `graph_sync_worker.py`'s `from neo4j import GraphDatabase` is exactly that
-#: (gated on NEO4J_ENABLED, and its handler logs "running in Mock Mode").
+#: A guarded optional dependency is a declared, handled state.
 #:
 #: This is detected from the SOURCE rather than kept as a name allowlist on
 #: purpose: an allowlist has to be maintained, and the maintenance always goes the
@@ -225,7 +224,7 @@ def main(argv=None):
             print(f"         server/{rel}:{lineno}   import {mod}"
                   f"   -> server/scripts/{mod}.py")
         print("       Fix: move the importable half into server/ and leave the CLI in")
-        print("       scripts/ (the graph_orphans.py <-> scripts/graph_orphan_sweep.py")
+        print("       scripts/ (operator entry points are not runtime-importable")
         print("       split). Do NOT put scripts/ on sys.path - that makes all "
               f"{len(script_modules)} of them importable from the runtime.")
     if unresolved:

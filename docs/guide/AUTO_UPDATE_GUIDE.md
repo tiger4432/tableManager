@@ -1,6 +1,6 @@
 # 📅 AssyManager Ingestion Auto Update & Scheduler 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-14 (⚰️ **[`2ec78b9` · R-2026-08-14-H] §4-ter 그래프 고아 스윕이 스케줄에서 «제거»됐습니다** — 이 데몬의 「수집기가 아닌 일」이 셋에서 **둘**이 됐습니다. 🔴 **호출 한 줄을 빼는 것이 정리가 아니라 «필수»였습니다**: 그래프 워커는 스택에서 빠졌지만 이 스케줄러는 남고, 스윕이 첫 동작으로 `ensure_graph_tables`를 불러 **DROP된 표를 빈 채로 되살렸을** 것입니다 — 살아남은 프로세스가 죽은 저장소를 복원하는 이 경로가 「워커만 멈추면 된다」가 틀린 이유입니다. 직전 2026-07-31: **§4-quater 신설 — 소급 적용 실행**(`fbc1053`). 이 데몬이 하는 「수집기가 아닌 일」이 **셋**이 됐습니다. 🔴 앞의 둘과 달리 **전용 스레드**에서 도는데, 인라인이면 실행 내내 박동이 멈춰 `/health`가 이 데몬을 `wedged`로 보고하기 때문입니다. 동시 1건이고 두 번째 요청은 조용히 큐잉하지 않고 **거절 + 아웃박스 행 미처리 유지**입니다. 직전 2026-07-30: **§4-ter 신설 + §4-bis의 "유지보수 작업 1건" 정정** — `server/run_auto_update.py`(`maybe_sweep_graph_orphans`·`run()`의 틱 4번 항목)·`server/graph_orphans.py`(`due`/`declaration_blockers`/`run_scheduled`·`CHECK_INTERVAL_SEC`·`SWEEP_INTERVAL_SEC`·`ENABLE_ENV`) 실측. `530fdfd`가 그래프 고아 노드 스윕을 이 데몬의 틱에 올렸으므로 유지보수 작업은 **2건**이다. 요점은 삭제가 아니라 **거절**(선언에 거부가 하나라도 있으면 `status: refused`로 전체 거절 — `min_population` 미만 라벨은 예산 가드가 못 막기 때문). 주기 상태의 출처가 config 백업과 다르다는 것(파일 vs 프로세스 monotonic → **재기동마다 1회 실행**)도 등재. 직전 2026-07-27) | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · `server/graph_orphans.py`(§4-ter) · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 디렉토리는 각 테이블별 실시간 인제션 파일 수집 및 백업 스케줄링을 독립적이고 완벽하게 관리할 수 있는 **하이브리드 동적 다중 감지 수집 시스템**입니다.
 
@@ -135,7 +135,7 @@ out = build_rows()
 
 ## 🧰 4-bis. 이 프로세스가 하는 "수집기가 아닌 일" — 주간 config 스냅샷 (2026-07-28 추가)
 
-> **⚠️ 2026-07-30: 유지보수 작업은 이제 2건입니다.** 이 절이 첫째(config 스냅샷)이고 **아래 §4-ter**가 둘째(그래프 고아 노드 스윕)입니다. 종전의 "**유지보수 작업 1건**" 서술은 `530fdfd` 이후 거짓이었습니다.
+> 현재 수집 외 작업은 주간 config 스냅샷과 §4-quater 소급 적용 실행입니다. §4-ter는 제거된 그래프 갈래의 역사 기록입니다.
 
 스케줄러 데몬은 수집기 외에 **유지보수 작업**을 함께 돌립니다. 첫째는 `server/config/*.json`의 주 1회 스냅샷(C3 백업)입니다. 구현은 `server/config_backup.py`, 호출부는 `MultiDiscoveryScheduler.maybe_backup_configs()`입니다.
 
@@ -157,7 +157,7 @@ out = build_rows()
 
 🔴 **그리고 이 한 줄을 빼는 것이 «필수»였지 정리가 아니었습니다.** 그래프 워커는 스택에서 빠졌지만 **이 스케줄러는 남습니다.** `graph_orphans.run_scheduled`는 첫 동작으로 `ensure_graph_tables`를 부르므로, 호출을 두면 **살아남은 프로세스가 죽은 저장소를 빈 채로 복원**하고 화면은 「그래프가 아직 비어 있습니다」를 답합니다 — 은퇴가 「아직 안 채워짐」의 옷을 입는 것. **이것이 「워커만 멈추면 된다」가 틀린 이유**이고, 봉인된 부활 경로 셋 중 하나입니다.
 
-⚠️ **이 데몬의 「수집기가 아닌 일」은 이제 «둘»입니다** — §4-bis 주간 config 스냅샷 · §4-quater 소급 적용 실행. 스윕 메서드와 `graph_orphans` 모듈 자체는 판정 ④의 코드 제거 라운드 몫이라 트리에 남아 있지만 **부르는 사람이 없습니다.**
+⚠️ **이 데몬의 「수집기가 아닌 일」은 이제 «둘»입니다** — §4-bis 주간 config 스냅샷 · §4-quater 소급 적용 실행. 스윕 메서드와 `graph_orphans` 모듈은 2026-08-16 코드에서 제거됐습니다.
 
 <details>
 <summary>⚪ 이하 원문(역사 기록) — 「무엇이 있었나」를 읽을 때만 펼치십시오</summary>
@@ -193,7 +193,7 @@ out = build_rows()
 > 소급 실행은 **테이블을 전수로 걷습니다.** 인라인으로 돌리면 실행 내내 `heartbeat.beat("scheduler")`가 멈추고, 정체 임계가 **60초**이므로 `/health`가 이 데몬을 **`wedged`로 보고**합니다([backend §1.3](../architecture/backend.md)). 제품이 제안한 버튼을 누른 운영자가 **그 결과로 감시 표면을 죽이는** 형태이고, 같은 시간 동안 크론도 멈춥니다. 그래서 `start_retroactive_run`이 `retroactive-run` 스레드를 띄우고 **틱은 계속 박동합니다.**
 
 * **동시 1건입니다.** 같은 룰의 재적용 둘이 같은 셀을 두 세션에서 쓰는 것, 그리고 같은 테이블에서 재적용과 회수가 경합하는 것은 **사후에 아무도 추론할 수 없는 순서**입니다. 실행 중 두 번째 요청은 **조용히 큐잉하지 않고 거절 + 로그**하며, 아웃박스 행을 **미처리로 남겨** 다음 틱이 집습니다.
-* **실패해도 데몬은 죽지 않습니다** — `retroactive.execute`는 예외를 삼키고 결과 dict로 답합니다(`config_backup.run_scheduled`·`graph_orphans.run_scheduled`와 같은 규칙). 스레드 자체가 던지는 경우까지 러너가 한 겹 더 잡아 **조용한 스레드 죽음**을 막습니다.
+* **실패해도 데몬은 죽지 않습니다** — `retroactive.execute`는 예외를 삼키고 결과 dict로 답합니다(`config_backup.run_scheduled`와 같은 규칙). 스레드 자체가 던지는 경우까지 러너가 한 겹 더 잡아 **조용한 스레드 죽음**을 막습니다.
 * **결과는 이 데몬의 로그에 있습니다**(`[Retroactive] run_id=…`). 트리거 응답에는 `run_id`만 있고 결과가 없습니다.
 * ⚠️ **이 이벤트는 체인 워커가 건드리면 안 됩니다.** 제어 이벤트가 체인의 그룹핑 로직에 닿으면 **데이터 트랜잭션으로 읽힙니다.** 그래서 타입 상수는 `server/event_constants.py`의 `CONTROL_EVENT_TYPES`에 있고(`SCHEDULER_RUN_NOW`와 나란히), 체인 워커는 **이름을 하드코딩하지 않고 그 집합을** 봅니다.
 

@@ -16,8 +16,8 @@ WHY IT IS A RUNTIME MODULE AND NOT ONLY A SCRIPT
     day it was written and was in no boot path, so the product owner still found
     the outages by using the product. The logic lives here so the web server and
     the launcher can call it; `server/scripts/check_schema_drift.py` is the CLI
-    over the same code. That is the split `graph_orphans.py` /
-    `scripts/graph_orphan_sweep.py` already uses, and the one
+    over the same code. This is the split `chain_replay.py` /
+    `scripts/chain_replay_cli.py` uses, and the one
     `server/tests/test_prod_import_env.py` requires - a runtime module may never
     import from `server/scripts`.
 
@@ -217,8 +217,8 @@ def _sync_repairs(table, column_name, actual_columns, dynamic_names):
     """Will `models.sync_dynamic_tables_schema` add this column by itself?
 
     WHY THIS QUESTION HAS TO BE ASKED AT ALL
-        The launcher checks for drift BEFORE it spawns the children, and three of
-        those children - run_watcher.py, run_chain_worker.py, run_graph_sync.py -
+        The launcher checks for drift BEFORE it spawns the children, and two of
+        those children - run_watcher.py and run_chain_worker.py -
         call `sync_dynamic_tables_schema(engine)` on their own boot, as does the
         web server through `bootstrap_database_schema`. So the launcher reports a
         state that the startup it is beginning then repairs, seconds later. That is

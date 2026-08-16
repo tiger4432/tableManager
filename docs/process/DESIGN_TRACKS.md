@@ -303,5 +303,5 @@
 >
 > ⚠️ **내가 이 세션에 낸 사고 — `27e9faf`가 이 파일의 한글을 통째로 깼다.** PowerShell 리다이렉션으로 썼고 시스템 ANSI가 CP949라 UTF-8이 손상됐다. 되돌려도 U+FFFD 5,372자가 남아 **복구 불가**였고 `20f806a`에서 복원했다. `27e9faf`가 담았던 F5 설계 서술은 server-pm이 `guide/config/map_overlay_config §2-bis`에 정본으로 남겼으므로 손실 아님. **규칙: 문서는 Write/Edit 도구로만 쓴다. PowerShell 리다이렉션 금지.**
 >
-> **사용자 실행 대기**: 라이브 `ontology_mapping.json` 편집안(보고서 §6) · 선언 없는 테이블 물리 `DROP` 목록 · `.claude/settings.local.json`의 `-rs` 허용목록
+> **사용자 실행 대기**: 선언 없는 테이블 물리 `DROP` 목록 · `.claude/settings.local.json`의 `-rs` 허용목록. `ontology_mapping.json` 편집안은 그래프 sync 갈래 제거로 폐기됐습니다.
 

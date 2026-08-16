@@ -1,9 +1,9 @@
 # CONFIG 상속 지도 — 무엇이 무엇에서 오고, 무엇이 무엇을 이기는가
 
-> **측정 시각:** 2026-08-14 (이 박스 `assy_manager` 개발 사본, 읽기 전용).
+> **측정 시각:** 2026-08-16 (이 박스 `assy_manager` 개발 사본, 읽기 전용).
 > **측정 방법:** 재구현 없이 **제품의 실제 해석기를 그대로 호출**했다 —
 > `bonding_plan.explain_binding_refusal` · `map_overlay.resolve_binding_parts` ·
-> `chain_bindings.resolve_column` · `ontology_config.load_ontology_mappings` ·
+> `chain_bindings.resolve_column` ·
 > `transfer_plan.dry_run` · `config_resolve_report.resolve_report(["binding"])`.
 > 재현 절차는 §7.
 >
@@ -88,13 +88,12 @@
 
 | 파일 | 무엇을 선언하는가 | 대표 읽는 자리 | 언제 읽히는가 |
 |---|---|---|---|
-| **`table_config.json`** | 동적 테이블의 **정본** — 테이블 목록, `column_types`, `business_key`, `composite_key_source`, `display_columns`, `map_key_columns` | `crud.py:717` 로더 · `main.py:69,74` · `run_watcher.py:25` · `run_chain_worker.py:22` · `run_graph_sync.py:21` | **기동 시 싱글턴**(`crud.py:803`) **+ 파일 감시 리로드**(`config_watcher.py:126-156`, 1초 디바운스). ⚠️ **감시되는 파일은 이것 하나뿐**(`config_watcher.py:80`의 basename 필터) |
+| **`table_config.json`** | 동적 테이블의 **정본** — 테이블 목록, `column_types`, `business_key`, `composite_key_source`, `display_columns`, `map_key_columns` | `crud.py` 로더 · `main.py` · `run_watcher.py` · `run_chain_worker.py` | **기동 시 싱글턴** + 파일 감시 리로드(1초 디바운스). ⚠️ **감시되는 파일은 이것 하나뿐** |
 | **`map_overlay_config.json`** | 맵 좌표·값·정체성 바인딩의 **예외 선언**(`table_bindings`), 기본 legend, 값컬럼 후보, paint_lock, 정렬 임계값 | `map_overlay.py:89` 로더 · `main.py:4701,5005,5056,5081,5113` · `bonding_plan.py:506` | **호출마다 디스크 재읽기**. 단 `bonding_plan`만 **(mtime_ns, size) 메모**(`bonding_plan.py:518-524`) |
 | **`transfer_plan_config.json`** | M2 전사 단계(stage) 선언 — 소스/타깃 종류, `source_config_ref`, `bin_map`, `target_map.preset`, `plan_store` | `transfer_plan.py:282` 로더 · `main.py:5141,5166,5206,5249` | 호출마다 재읽기, **요청당 1스냅샷** |
 | **`bonding_plan_config.json`** | M1 코어 요약 소스 — `defect`/`eds_fail`/`total_chips`/`used_chips`/`process_history`, `map_metadata`, `core_identity` | `bonding_plan.py:79` 로더 · `main.py:4659` · `transfer_plan.py:419,2271,3547` | 호출마다 재읽기 |
 | **`chain_rules.json`** | 체인 인제션 규칙 — `trigger_table`→`target_table`, 매퍼 모듈/함수, 컬럼 바인딩 키 | `chain_ingestion_worker.py:307` 로더 · `:1294`(기동) · `:1381`(SYSTEM_RELOAD) | **워커 기동 시 고정**. `POST /admin/reload-configs`가 발행하는 `SYSTEM_RELOAD` outbox 행으로만 갱신 |
 | **`enrichment_rules.json`** | 파생/확정 규칙 — `source_table`→`derived_table`, `decision_key`, `target_fields`, `aggregations`, `reference_views` | `enrichment_config.py:550,573` · `main.py`(6곳) · `retroactive.py:428` | **호출마다 재읽기**(모듈 캐시 없음) |
-| ⚰️ **`ontology_mapping.json`** | **[2026-08-14 `2ec78b9` · R-2026-08-14-H] 소비자 0 — 이 상속 사슬은 아무 데도 닿지 않습니다.** ~~그래프 노드/엣지 사상 — 테이블별 `node.label/identity/props`, `edges[]`, `event_time_column` | `ontology_config.py:494`(검증 v2) · `graph_sync_worker.py:19`(원시 v1) · `crud.py:4676`(캐시) | **읽는 길이 셋, 의미도 셋.** 머티리얼라이저 루프는 메모리 보관 후 `SYSTEM_RELOAD`에만 교체 |
 | **`virtual_join_rules.json`** | 가상 조인 — `left_table`/`right_table`/`join_key`/`expose`. **`_`로 시작하는 키는 무시**(`virtual_join_config.py:411`) | `virtual_join_config.py:424,606` · `virtual_join_executor.py:128` | **TTL 5초 캐시**(`virtual_join_executor.py:86`). `/admin/reload-configs`가 즉시 무효화 |
 | **`ingestion_settings.json`** | 인제션 스위치 — `archive_processed_files`, `dedup_by_path_stat`, heavy 임계값, 읽기 상한 | **로더가 넷, 각자 독립**: `directory_watcher.py:248` · `enrichment_config.py:133` · `enrichment_candidates.py:239` · `map_meta_registrar.py:96` | 호출마다 재읽기 — 「다음 파일부터」 적용 |
 | **`maps.json`** | 웨이퍼 프리셋 기하 — `phys_wafer_dia`, `phys_chip_x/y`, `rotation`, `side` | `main.py:4545` 로더/기록기 · `map_preset_routing.py:261,318` | **API가 읽고 쓴다**(손으로 편집하는 파일이 아니다) |
@@ -122,8 +121,8 @@
 `ledger_config.json`도 같은 `.sample` 폴백을 갖는다(`ledger/config.py:105-108`) — 이 박스엔
 라이브 파일이 있어 폴백이 안 걸린다.
 
-> 🔴 **`/admin/reload-configs`는 이름보다 좁다.** 갱신하는 것은 넷뿐이다 — 동적 모델
-> (table_config), `crud._ontology_cache`, `virtual_join_executor` 캐시, `notation_norm` 캐시,
+> 🔴 **`/admin/reload-configs`는 이름보다 좁다.** 갱신 대상은 동적 모델
+> (table_config), `virtual_join_executor` 캐시, `notation_norm` 캐시,
 > 그리고 `mappers.*` 모듈 축출(`main.py:4441-4492`). **`ledger_siblings._axes_cache`는
 > 무효화 훅이 아예 없다** — `siblings_axes.json`을 고치면 웹서버 재기동이 필요하다.
 
@@ -145,7 +144,7 @@
    │  chain_rules.json         │   │  map_overlay_config.json         │
    │  enrichment_rules.json    │   │  .table_bindings.<표>.columns    │
    │  virtual_join_rules.json  │   │  키별로: 선언 > 유도 > 부재       │
-   │  ontology_mapping.json    │   └──────────────────────────────────┘
+   │                           │   └──────────────────────────────────┘
    └───────────────────────────┘        │              ▲
               │                          │ 상속(inherit)│ @map_key_columns
               │ 「@map_key_columns」      ▼              │ (명시 토큰)
@@ -167,7 +166,6 @@
 |---|---|---|---|---|
 | 맵 바인딩 (키별) | `map_overlay_config` 선언 | `table_config` 유도 | 🟢 **이름으로 거절** — 바인딩 전체가 `None`이 되고 로그가 「고치지 말고 **지워라**」라고 말한다 | `map_overlay.py:1778-1791, 1815-1821` |
 | 체인 규칙 컬럼 | 규칙의 선언 | `table_config` 유도(단일 `map_key_columns` → `business_key`) | 🟢 **예외 발생** `ColumnBindingRefused` | `chain_bindings.py:159-197` |
-| 온톨로지 정체성 | 명시 값 | `@map_key_columns` 토큰(명시적으로 적어야 확장됨) | 🟢 **이름 붙은 에러**, 추측하지 않음 | `ontology_config.py:138,160-175` |
 | **계획 config 역할** | **선언** | **맵 바인딩 유도** | 🔴 **조용히 이긴다 — 검증이 없다.** 나중에 `missing` 한 단어로만 나타난다 | `bonding_plan.py:565-586` |
 | stage 소스 위임 | `bonding_plan_config.json` | stage 자기 `source.*`(**전혀 안 읽힘**) | 🟡 `not_reached`로 **이름 붙여** 알려줌 | `transfer_plan.py:417-427, 693-715` |
 | DB 접속 | `env DATABASE_URL` | `database.json` > 기본값 | — | `paths.py:159-165` |
@@ -236,7 +234,6 @@
 | 자리 | 상속되나 | 비고 |
 |---|---|---|
 | 체인 규칙의 job 컬럼 | **예** | 규칙 선언 > `map_key_columns`가 **정확히 하나**일 때 그것 > `composite_key_source`가 없을 때 `business_key` > **거절**. 「`dt_job`이겠지」라는 추측 폴백은 **일부러 없다**(`chain_bindings.py:186-192`) |
-| 온톨로지 노드 정체성 | **예 — 단, 명시 토큰으로만** | `"@map_key_columns"`를 **적어야** 확장된다. 생략은 상속이 아니다 — 노드 정체성은 보통 「맵 정체성 **+ 무언가**」라서 «생략=상속»으로는 합성을 표현할 수 없다(`ontology_config.py:130-133`) |
 | stage 소스 블록 | **예 — 블록 통째로** | `source_config_ref: "bonding_plan"`이면 그 stage의 `source.*`는 **한 줄도 읽히지 않는다**. `bin_map`과 `target_map`만 stage에 남는다 |
 | enrichment 규칙 컬럼 | **아니오** | 전부 문자 그대로 적어야 하고, `table_config`에 대고 **검증만** 한다(위반 시 규칙 스킵) |
 | 가상 조인 컬럼 | **아니오** | 문자 그대로. 승인에는 우측 표의 UNIQUE 인덱스까지 필요 |
@@ -247,8 +244,8 @@
 
 ## 5. 지금 틀린 선언 전수 (2026-08-14 이 박스 실측)
 
-방법: 모든 라이브 config의 `{table, columns}` 선언 **45개**를 훑고, `map_overlay`
-바인딩 26개, ontology 컬럼 참조 80개, chain 규칙 8개, enrichment 규칙 3개를 각각 그
+방법: 모든 라이브 config의 `{table, columns}` 선언을 훑고, `map_overlay`
+바인딩, chain 규칙, enrichment 규칙을 각각 그
 **해석기 자신에게** 물었다.
 
 ### 5.1 🔴 M1 코어 요약이 «통째로» 죽어 있다 — 소스 다섯 전부 거절
@@ -324,8 +321,7 @@
 `derived_table: "dt_job_attribution"`이 라이브 `table_config`에 없다. 이 경우 검증기는
 **거절하지 않고 「판단할 수 없다」로 통과시킨다**(`chain_bindings.declared_columns`가
 `None`을 돌려주는 설계 — 미선언 표를 쓰는 규칙이 계속 돌게 하려는 의도).
-같은 이유로 `ontology_mapping`의 `dt_job_attribution`·`eqp_frame_attribution` 사상도
-로드는 되지만 컬럼 검증을 받지 못한다. §5.2의 `.sample` 차이와 **같은 뿌리**다.
+이 상태는 §5.2의 `.sample` 차이와 **같은 뿌리**다.
 
 ### 5.5 🟡 집행 지점이 없는 선언 둘
 
@@ -347,8 +343,6 @@
 - `transfer_plan_config.plan_store.registry` 7역할 + `bin_map` 5역할 — 전부 해석됨
   (`bin_map`의 x/y는 **유도로** `dt_x`/`dt_y`를 받았다. 상속이 실제로 도는 것을 확인한 자리다).
 - `virtual_join_rules.json`: **활성 규칙 0개**(모든 키가 `_` 접두라 로더가 무시). 의도된 상태.
-- `ontology_mapping` 컬럼 참조 80개 **실패 0건.** `@map_key_columns` 4곳은 정상 확장된다
-  (`dt_log` → `dt_job`, `bonding_log` → `bond_lot`,`bond_slot` 등) — 실제 로더를 돌려 확인했다.
 
 ---
 

@@ -4,18 +4,12 @@ WHY THIS EXISTS
     Four places need "read a whole table in bounded pages without OFFSET":
     `backfill_enrichment` (replay a rule over pre-existing rows),
     `enrichment_analysis` (walk the queue and its resolved complement),
-    `chain_replay` (R1 recompute), and the graph materialiser's `resync_table`.
-    They were about to become four hand-rolled `while True: ... row_id > last`
+    and `chain_replay` (R1 recompute).
+    They were about to become hand-rolled `while True: ... row_id > last`
     loops, and this codebase already knows how that ends - `compose_map_id` had
     three implementations giving three answers.
 
-    `graph_materializer.resync_table` got there first and its traversal is the
-    right shape, but the function is welded to graph work: it calls
-    `attach_col_sources` + `materialize_rows` and stamps `is_graph_synced`, and
-    its `chunk_hook` is an addition to that work rather than a replacement. It
-    also belongs to the concurrent ontology round, so it cannot be refactored
-    from here. Hence: the TRAVERSAL is extracted, and resync keeps its own copy
-    for now (noted for consolidation when that file is free).
+    The traversal is centralized here so callers share one bounded keyset walk.
 
 WHY row_id
     `row_id` is the primary key on every dynamic table, so ordering by it is

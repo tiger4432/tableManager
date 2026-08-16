@@ -29,9 +29,8 @@ reverse. So the route's lazy `import backfill_enrichment` raised
 test suite stayed green because a test file had put `server/scripts` on `sys.path`
 for its own use and pytest shares one interpreter.
 
-The split is the one `graph_orphans.py` <-> `scripts/graph_orphan_sweep.py`
-already established for exactly this reason, and the one `chain_replay.py` <->
-`scripts/chain_replay_cli.py` and `enrichment_analysis.py` <->
+The split is the one `chain_replay.py` <-> `scripts/chain_replay_cli.py` and
+`enrichment_analysis.py` <->
 `scripts/enrichment_insights.py` follow: **semantics in `server/`, argparse and
 report formatting in `scripts/`.** The alternative - putting `server/scripts` on
 `sys.path` - would make all fifteen scripts importable from the runtime, which is

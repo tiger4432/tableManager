@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **602개** 이력. (거버넌스 규칙 #4)
+> 총 **603개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-16 22:27** — [Remove Retired Graph Sync Branch](./20260816_222702_remove_retired_graph_sync_branch.md)
 - **2026-08-16 12:20** — [Config Archive And Semantic Compiler Backlog](./20260816_122011_config_archive_and_semantic_compiler_backlog.md)
 - **2026-08-16 11:55** — [Source Config Table Setup](./20260816_115534_source_config_table_setup.md)
 - **2026-08-15 22:36** — [Enrich Action Node](./20260815_223656_enrich_action_node.md)

@@ -115,7 +115,7 @@ import os, sys, json
 sys.path.insert(0, os.environ["PROBE_SERVER_DIR"])
 import paths
 from database import crud
-import map_overlay, bonding_plan, transfer_plan, enrichment_config, ontology_config
+import map_overlay, bonding_plan, transfer_plan, enrichment_config
 import chain_ingestion_worker
 from utils import auto_update_control as auc
 print("@@" + json.dumps({
@@ -128,7 +128,6 @@ print("@@" + json.dumps({
     "bonding_plan.CONFIG_PATH": bonding_plan.CONFIG_PATH,
     "transfer_plan.CONFIG_PATH": transfer_plan.CONFIG_PATH,
     "enrichment_config.CONFIG_DIR": enrichment_config.CONFIG_DIR,
-    "ontology_config.CONFIG_DIR": ontology_config.CONFIG_DIR,
     "chain.RULES_PATH": chain_ingestion_worker.RULES_PATH,
     "auc.control_path": auc.get_control_path(),
     "auc.script_file": auc.resolve_script_file("wsprobe/scriptprobe.py"),
@@ -493,50 +492,6 @@ class TestProcessLogsFollowTheDataRoot:
         got = _probe_paths(None)
         assert os.path.normcase(got["paths.log_path"]) == os.path.normcase(
             os.path.join(SERVER_DIR, "server.log"))
-
-
-# --------------------------------------------------------------------------- 5
-# The sibling the log bug pointed at: graph_sync_worker built VIRTUAL_GRAPH_PATH
-# from its own __file__ while the module's ONTOLOGY_PATH right above it already
-# went through paths.py. Worse than the log: save_virtual_graph() *overwrites*
-# it, and run_graph_sync.py is one of the three processes `devenv up` starts.
-_GRAPH_PROBE = r"""
-import os, sys, json
-sys.path.insert(0, os.environ["PROBE_SERVER_DIR"])
-import paths
-import graph_sync_worker
-print("@@" + json.dumps({
-    "DATA_ROOT": paths.DATA_ROOT,
-    "VIRTUAL_GRAPH_PATH": graph_sync_worker.VIRTUAL_GRAPH_PATH,
-    "ONTOLOGY_PATH": graph_sync_worker.ONTOLOGY_PATH,
-}))
-"""
-
-
-class TestVirtualGraphFollowsTheDataRoot:
-    """Guards the one data file the graph worker writes outside config/."""
-
-    def test_isolated_graph_worker_does_not_write_the_live_virtual_graph(self, tmp_path):
-        root = tmp_path / "isolated_root"
-        env = os.environ.copy()
-        env["PROBE_SERVER_DIR"] = SERVER_DIR
-        env["ASSY_DATA_ROOT"] = str(root)
-        env["DATABASE_URL"] = "sqlite:///:memory:"
-        env["PYTHONIOENCODING"] = "utf-8"
-
-        proc = subprocess.run([sys.executable, "-c", _GRAPH_PROBE], cwd=SERVER_DIR,
-                              env=env, capture_output=True, text=True,
-                              errors="replace")
-        assert proc.returncode == 0, f"probe failed:\n{proc.stdout}\n{proc.stderr}"
-        line = [l for l in proc.stdout.splitlines() if l.startswith("@@")]
-        assert line, f"probe produced no result:\n{proc.stdout}\n{proc.stderr}"
-        got = json.loads(line[-1][2:])
-
-        root_nc = os.path.normcase(str(root)) + os.sep
-        assert os.path.normcase(got["VIRTUAL_GRAPH_PATH"]).startswith(root_nc), (
-            "an isolated graph worker still writes the LIVE virtual graph: "
-            f"{got['VIRTUAL_GRAPH_PATH']}")
-        assert os.path.normcase(got["ONTOLOGY_PATH"]).startswith(root_nc)
 
 
 # --------------------------------------------------------------------------- 6

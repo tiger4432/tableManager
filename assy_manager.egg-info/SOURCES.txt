@@ -6,10 +6,8 @@ assy_manager.egg-info/requires.txt
 assy_manager.egg-info/top_level.txt
 server/audit_cache.py
 server/chain_ingestion_worker.py
-server/graph_sync_worker.py
 server/main.py
 server/run_chain_worker.py
-server/run_graph_sync.py
 server/run_watcher.py
 server/database/config_watcher.py
 server/database/context.py

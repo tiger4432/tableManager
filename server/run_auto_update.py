@@ -19,7 +19,6 @@ from utils import heartbeat
 import paths  # single override point (ASSY_DATA_ROOT)
 import config_backup
 import event_constants
-import graph_orphans
 logger = get_process_logger("Scheduler", "auto_update.log")
 
 
@@ -405,9 +404,6 @@ class MultiDiscoveryScheduler:
         # 0.0 = "check on the very first tick", so a scheduler that starts after
         # a week of downtime takes the missed snapshot at boot rather than waiting.
         self._last_backup_check = 0.0
-        # Same convention for the graph orphan sweep (see maybe_sweep_graph_orphans).
-        self._last_orphan_check = 0.0
-        self._last_orphan_sweep = 0.0
         # One retroactive run at a time (see start_retroactive_run).
         self._retroactive_thread = None
         self._retroactive_last = None
@@ -669,41 +665,6 @@ class MultiDiscoveryScheduler:
             logger.error(f"[ConfigBackup] maintenance cycle raised: {e}")
             return None
 
-    def maybe_sweep_graph_orphans(self, now=None):
-        """Graph orphan sweep — a maintenance job, NOT a collector.
-
-        [Why it lives here] Same reasoning as ``maybe_backup_configs`` above: this
-        is the system's only time-driven process, it has no table and must never be
-        ingested, and a collector that produces nothing now reports FAIL by design.
-
-        [Why it is scheduled at all] ``graph_materializer._retarget_stale_edges``
-        deletes edges; nothing deletes the node an edge left behind. So **every
-        cell edit that changes an identity leaks a node** — the propagation is
-        right and the cleanup was never attached to anything. Measured on live
-        2026-07-30: 12,761 degree-zero nodes surviving repeated resyncs.
-
-        [What it will and will not do] It deletes only nodes that have zero edges
-        AND that no current mapping can produce, per label, and it DECLINES any
-        label that would lose more than half its population — a mapping typo looks
-        exactly like a retired label. It refuses outright if the ontology
-        declaration did not load cleanly. Every cycle logs both sets with counts,
-        because a sweep whose skipped set is invisible reads as "nothing to do".
-        Off switch: ``GRAPH_ORPHAN_SWEEP_ENABLED=false``.
-        """
-        now_wall = time.time()
-        if now_wall - self._last_orphan_check < graph_orphans.CHECK_INTERVAL_SEC:
-            return None
-        self._last_orphan_check = now_wall
-        if not graph_orphans.due(self._last_orphan_sweep, time.monotonic()):
-            return None
-        self._last_orphan_sweep = time.monotonic()
-        try:
-            return graph_orphans.run_scheduled()
-        except Exception as e:
-            # Never let a sweep failure stop the collectors from running.
-            logger.error(f"[GraphOrphans] maintenance cycle raised: {e}")
-            return None
-
     def retroactive_busy(self) -> bool:
         t = self._retroactive_thread
         return bool(t and t.is_alive())
@@ -868,15 +829,6 @@ class MultiDiscoveryScheduler:
 
                 # 3. 주간 config 스냅샷 (수집기가 아닌 유지보수 작업 — maybe_backup_configs 참조)
                 self.maybe_backup_configs()
-
-                # 4. ⚰️ [R-2026-08-14-H] 그래프 고아 노드 스윕 호출이 여기 있었다.
-                # 스윕의 «대상»이 은퇴했다. 그리고 이 스케줄러는 그래프 워커와 달리
-                # 스택에 남으므로, 이 한 줄을 두면 은퇴가 성립하지 않는다:
-                # `graph_orphans.run_scheduled`는 첫 동작으로 `ensure_graph_tables`를
-                # 부르고, 그것이 DROP된 세 표를 빈 채로 되살린다. 살아남은
-                # 프로세스가 죽은 저장소를 복원하는 이 경로가, 이번 판정에서
-                # 「워커만 멈추면 된다」가 틀린 이유다.
-                # 스윕 메서드와 `graph_orphans` 모듈은 판정 ④의 코드 제거 라운드 몫.
 
                 time.sleep(self.check_interval)
         except KeyboardInterrupt:

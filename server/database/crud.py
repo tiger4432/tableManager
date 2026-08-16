@@ -1256,8 +1256,7 @@ def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
 def resolve_priority_map(table_name: str = None) -> dict:
     """[QA G1-⑥] 소스 서열 맵 해석의 단일 원천 — 테이블별 source_priority 커스텀 포함.
 
-    compute_priority_value(표시값 레이어링)와 graph_materializer(엣지 provenance)가
-    같은 맵을 공유한다(서열 이원화 금지).
+    표시값 레이어링과 provenance 판정이 같은 맵을 공유한다(서열 이원화 금지).
     """
     priority_map = SOURCE_PRIORITY
     if table_name:
@@ -1670,8 +1669,7 @@ def get_effort_stats(db: Session, weights: dict,
 
 
 #: [P3] Rows per statement for the cell-metadata bulk helpers. Same value and same
-#: loop shape as `graph_materializer.CHUNK_SIZE`, which already chunks the graph
-#: upserts, and the size the charter names.
+#: 1000-row statements follow the repository's established batch convention.
 #:
 #: ⚠️ THIS COMMENT USED TO SAY THIS BOUND WAS A CORRECTNESS BOUND ENFORCED BY THE
 #: DRIVER - "the wire protocol carries a statement's parameter count in an int16, so
@@ -3181,12 +3179,6 @@ def apply_row_update_internal(
             # is the same `now()` in the same transaction, and setting it explicitly is
             # what forced one statement per row (see `_get_or_create_row`).
             row.updated_at = func.now()
-        row.is_graph_synced = False
-        if is_new:
-            row.needs_graph_rollback = False
-        else:
-            row.needs_graph_rollback = row.needs_graph_rollback or check_needs_rollback(table_name, changed_cols)
-
     return row, is_new, changed_cols
 
 
@@ -4646,10 +4638,6 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         if row not in changed_rows:
             changed_rows.append(row)
 
-    for r in changed_rows:
-        r.is_graph_synced = False
-        r.needs_graph_rollback = True
-            
     # 3. 벌크 갱신 및 삭제 수행
     if logs_to_cache:
         bulk_insert_audit_logs(db, logs_to_cache)
@@ -4675,88 +4663,4 @@ def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name
     """수동 소스 우선순위(Pin)를 설정합니다."""
     changed_rows, logs, deleted_row_ids = set_cell_manual_priority_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name, updated_by)
     return changed_rows[0] if changed_rows else None, [col_name] if logs else [], deleted_row_ids
-
-
-# ----------------- 그래프 싱크 메타 관리 헬퍼 -----------------
-_ontology_cache = None
-
-def get_ontology_mapping():
-    """온톨로지 매핑 캐시 조회 (check_needs_rollback 판정용).
-
-    [QA G1-④] v2 항목은 검증·정규화 + enrichment RESOLVED_AS 자동 승격을 적용해
-    graph materializer가 보는 매핑과 **같은 신호원**을 쓴다(enrichment target 컬럼 변경이
-    rollback 신호에 잡히도록). v1 키(tables/default)는 원본 그대로 보존(레거시 폴백).
-    """
-    global _ontology_cache
-    if _ontology_cache is not None:
-        return _ontology_cache
-
-    import os, json
-    ont_path = _paths.config_path("ontology_mapping.json")
-    raw = {}
-    if os.path.exists(ont_path):
-        try:
-            with open(ont_path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except Exception:
-            raw = {}
-
-    merged = {}
-    if isinstance(raw, dict):
-        # v1 레거시 키는 원본 유지 (check_needs_rollback의 v1 폴백 경로)
-        for k in ("tables", "default"):
-            if k in raw:
-                merged[k] = raw[k]
-    try:
-        import ontology_config
-        from enrichment_config import load_enrichment_rules
-        normalized = ontology_config.validate_ontology_mapping(raw, known_tables=None)
-        normalized = ontology_config.synthesize_enrichment_mappings(
-            normalized, load_enrichment_rules(known_tables=None)
-        )
-        merged.update(normalized)
-    except Exception:
-        # 검증/승격 실패 시에도 v1 폴백은 유지 — 판정 신호가 전멸하지 않게
-        pass
-
-    _ontology_cache = merged
-    return _ontology_cache
-
-def check_needs_rollback(table_name: str, modified_cols: list) -> bool:
-    """변경된 컬럼 중 그래프 관계(엣지/identity) 형성에 영향을 주는 컬럼이 있는지 판별합니다.
-
-    [Ontology G1] v2 형식({table: {node, edges}})과 v1 형식({tables: {..relationships..}})을
-    모두 인식한다. v2에서는 노드 identity 또는 엣지 target_identity_from 컬럼 변경 시 True.
-    """
-    if not modified_cols:
-        return False
-    ontology = get_ontology_mapping()
-
-    # v2 형식: 최상위 {table_name: {node/edges}} 항목
-    v2_cfg = ontology.get(table_name)
-    if isinstance(v2_cfg, dict) and isinstance(v2_cfg.get("node"), dict):
-        relation_cols = set()
-        identity = v2_cfg["node"].get("identity")
-        if isinstance(identity, str):
-            relation_cols.add(identity)
-        elif isinstance(identity, list):
-            relation_cols.update(c for c in identity if isinstance(c, str))
-        for edge in v2_cfg.get("edges") or []:
-            if not isinstance(edge, dict):
-                continue
-            t_from = edge.get("target_identity_from")
-            if isinstance(t_from, str):
-                relation_cols.add(t_from)
-            elif isinstance(t_from, list):
-                relation_cols.update(c for c in t_from if isinstance(c, str))
-        return any(col in relation_cols for col in modified_cols)
-
-    # v1 형식(구 Neo4j 경로) 폴백
-    table_cfg = ontology.get("tables", {}).get(table_name, ontology.get("default", {}))
-    rel_cfgs = table_cfg.get("relationships", {})
-
-    for col in modified_cols:
-        if col in rel_cfgs:
-            return True
-    return False
 

@@ -94,10 +94,9 @@ def weakest_contributor(contributors: list, table_name: str = None) -> tuple:
     스펙 §0.2 ⑨: 합쳐진 셀은 가장 약한 기여자를 따라간다. 넷 중 셋이 확정이어도 그 셀은
     미확정이다.
 
-    ⚠️ 여기서 새 규칙을 만들지 않는다. `graph_materializer`가 셀 레이어 진실을 고를 때 쓰는
-    식과 **같은 식**이다 (`max(candidates, key=lambda s: (_source_priority(s, t), s))`).
-    그쪽 `_source_priority`도 결국 `crud.get_source_priority`로 위임하므로, 이 함수와
-    그 함수는 같은 서열표를 본다. 동률일 때 이름으로 가르는 두 번째 키까지 같은 이유는
+    ⚠️ 여기서 새 규칙을 만들지 않는다.
+    `max(candidates, key=lambda s: (priority(s, table), s))`로
+    `crud.get_source_priority`의 서열표를 쓴다. 동률일 때 이름으로 가르는 두 번째 키는
     같은 입력이 실행마다 다른 답을 내면 안 되기 때문이다.
     """
     from database import crud

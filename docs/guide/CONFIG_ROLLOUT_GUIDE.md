@@ -1,11 +1,11 @@
 # 🧾 CONFIG 전개 런북 (Config Rollout Runbook)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-02 | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*.json.sample` · 각 로더 소스
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/sample/*.json.sample` · 각 로더 소스
 >
 > **이 문서의 자리** ― [CONFIG_GUIDE](./CONFIG_GUIDE.md)가 「**무엇을** 설정해야 하는가」의 지도이고 [config/](./config/README.md)가 「파일 **하나**의 키 사전」이라면, 이 문서는 **「빈 환경에 선언 한 벌을 어떤 순서로 올리고, 각 단계가 실제로 먹었음을 어떻게 증명하는가」** 하나에만 답합니다.
 > 리로드 매트릭스·watcher 발화 조건·물리 반영 검증의 **정본은 [CONFIG_GUIDE §4](./CONFIG_GUIDE.md)**이고 여기서는 링크만 합니다. 키 하나하나의 뜻은 [config/](./config/README.md)입니다.
 >
-> **범위 (2026-08-02).** §3이 다루는 것은 **샘플이 실 파일과 일치하는 여섯**(`table_config` · `map_overlay_config` · `chain_rules` · `enrichment_rules` · `virtual_join_rules` · `ontology_mapping`)입니다. **`auto_update_control`을 포함한 넷은 샘플이 낡아 아직 못 썼고 §6에 그 목록과 이유가 있습니다** ― 특히 `auto_update_control`이 빠져 있는 동안에는 이 문서만으로 「데이터를 계속 만드는 상태」까지 재현할 수 없습니다.
+> **범위.** §3은 `table_config` · `map_overlay_config` · `chain_rules` · `enrichment_rules` · `virtual_join_rules`의 전개를 다룹니다. 원장 선언 순서는 [ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)이 소유합니다.
 >
 > **왜 목록이 아니라 순서인가.** 파일 목록은 이미 [CONFIG_GUIDE §1](./CONFIG_GUIDE.md)에 있습니다. 운영에서 실제로 깨지는 것은 목록이 아니라 **순서**와 **조용히 안 먹는 방식**입니다 ― 아래 §4의 셋은 전부 2026-08-02에 실제로 밟은 것입니다.
 
@@ -38,20 +38,17 @@ AUTH="X-Admin-Token: $ASSY_ADMIN_TOKEN"
        ├─② map_overlay_config.json   맵 좌표 컬럼 바인딩
        ├─③ chain_rules.json          쓰기 → 쓰기 투영
        ├─④ enrichment_rules.json     사람이 판정할 워크리스트
-       ├─⑤ virtual_join_rules.json   저장하지 않는 조인   (⑤는 오른쪽 테이블의 UNIQUE 인덱스가 먼저)
-       └─⑥ ontology_mapping.json     ⚰️ 은퇴(2026-08-14) — 소비자 0
+       └─⑤ virtual_join_rules.json   저장하지 않는 조인   (⑤는 오른쪽 테이블의 UNIQUE 인덱스가 먼저)
 ```
-
-> ⚰️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] ⑥는 더 이상 롤아웃 단계가 아닙니다.** 그 선언을 읽던 워커가 스택에서 빠졌고 검증에 쓰던 `GET /graph/neighbors`를 포함한 라우트 일곱이 **410**입니다. 이 문서의 §⑥ 절차·`curl` 확인은 전부 실패합니다 — **돌리지 마십시오.** ①~⑤는 한 줄도 영향받지 않았습니다.
 
 
 > 🔴 **[2026-08-15] 원장·온톨로지의 선언 다섯(`ledger_config`·`finding_kinds`·`siblings_axes`·`mechanism_models`·`ledger_journey`)은 이 순서도에 «없고, 없는 것이 맞습니다»** —
 > 그 다섯은 ①(`table_config.json`)을 전제하지만 **자기들끼리의 순서가 따로 있고**, 그 순서는 [guide/ONTOLOGY_LEDGER_SETUP §2](./ONTOLOGY_LEDGER_SETUP.md)가 소유합니다.
 > 여기에 항목을 더하면 **순서가 두 곳에 적히게 됩니다.**
 
-**②~⑥은 서로 독립이지만 전부 ①을 전제합니다.** ①에 없는 테이블·컬럼을 가리키면 그 선언은 **로드 시점에 거부**되고, 거부는 대개 **그 파일이 통째로 죽는 것이 아니라 그 항목 하나만 빠지는** 형태라 표면에서는 「아직 아무 일도 안 일어난 것」과 구별되지 않습니다.
+**②~⑤는 서로 독립이지만 전부 ①을 전제합니다.** ①에 없는 테이블·컬럼을 가리키면 그 선언은 **로드 시점에 거부**되고, 거부는 대개 **그 파일이 통째로 죽는 것이 아니라 그 항목 하나만 빠지는** 형태라 표면에서는 「아직 아무 일도 안 일어난 것」과 구별되지 않습니다.
 
-🔴 **①과 ②~⑥ 사이에 반영을 끼워 넣으십시오.** 한 번에 여섯 파일을 저장하고 리로드를 한 번 누르면, 워커가 ④를 읽는 시점에 자기 `TABLE_CONFIG`가 아직 옛것일 수 있습니다 ― §4.1이 그 이야기입니다.
+🔴 **①과 ②~⑤ 사이에 반영을 끼워 넣으십시오.** 여러 파일을 한 번에 저장하고 리로드를 한 번 누르면, 워커가 ④를 읽는 시점에 자기 `TABLE_CONFIG`가 아직 옛것일 수 있습니다 ― §4.1이 그 이야기입니다.
 
 의존 관계의 전체 그림은 [CONFIG_GUIDE §2](./CONFIG_GUIDE.md), 각 시나리오의 체크리스트는 [CONFIG_GUIDE §3](./CONFIG_GUIDE.md)입니다.
 
@@ -67,10 +64,8 @@ AUTH="X-Admin-Token: $ASSY_ADMIN_TOKEN"
 | `chain_rules.json` | ✅ `__comment` (로더는 `rules`만 읽습니다) | ✅ `__comment` |
 | `enrichment_rules.json` | 🔴 **없습니다.** 최상위 `__comment`는 `rule must be an object`로 **거부**됩니다 | ✅ `__comment` |
 | `virtual_join_rules.json` | ✅ **`_`로 시작하는 이름**은 선언이 아니라 주석으로 건너뜁니다 | ― |
-| `ontology_mapping.json` | ✅ **`__`(밑줄 둘)로 시작하는 이름**만 건너뜁니다 | 🔴 **불가.** 매핑 안의 허용 키는 `description`/`event_time_column`/`node`/`edges` 넷뿐이고 그 밖의 키는 **거부**입니다 |
 | `map_overlay_config.json` | ✅ 읽지 않는 키는 무시됩니다 | ✅ `table_bindings` 조회는 테이블 이름으로만 하므로 `__derived_note` 같은 키가 섞여도 무해합니다 |
 
-> `ontology_mapping.json`은 `description`이 **필수**입니다(노드·엣지 양쪽). 그것이 사실상 그 파일의 주석 채널입니다 ― 장식이 아니라 검증되는 필드라 비면 그 매핑이 거부됩니다.
 
 ---
 
@@ -316,54 +311,6 @@ curl -s -H "$AUTH" "$API/admin/config/virtual-join/verify"
 
 ---
 
-### ⑥ ⚰️ ~~`ontology_mapping.json` ― 그래프 노드와 엣지~~ — **은퇴. 아래 절차를 실행하지 마십시오**
-
-> ⚰️ **R-2026-08-14-H** — 이 절의 선언·확인·`curl`은 **전부 실패합니다**(§1의 배너와 같은 판정). 역사 기록으로만 남깁니다.
-> **오늘 온톨로지를 선언하는 자리는 [guide/ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)입니다.**
-
-**무엇을 선언하나:** 테이블 한 행이 어떤 노드가 되고 어떤 엣지를 뻗는지.
-
-```json
-{
-  "dt_job_attribution": {
-    "description": "추론 ①의 판정 결과. 확정 전에는 타깃이 비어 있다",
-    "node": {
-      "label": "DtJob",
-      "identity": ["dt_job"],
-      "node_class": "static",
-      "props": ["cell_count"]
-    },
-    "edges": [
-      {
-        "type": "RESOLVED_TO_LOT",
-        "target_label": "Lot",
-        "target_identity_from": ["dt_lot_confirmed"],
-        "description": "확정된 DT 랏. 미확정이면 엣지 없음"
-      }
-    ]
-  }
-}
-```
-
-- **`description`은 노드에도 엣지에도 필수**입니다(LLM 그라운딩). 없으면 그 매핑이 거부됩니다.
-- 매핑 안에 쓸 수 있는 키는 **`description` · `event_time_column` · `node` · `edges` 넷뿐**이고, 그 밖의 키는 오타를 조용히 넘기지 않기 위해 **거부**됩니다.
-- 🔴 **빈 값은 엣지를 만들지 않습니다.** `target_identity_from`의 컬럼이 하나라도 비면 그 엣지는 생기지 않습니다. 이것이 설계입니다 ― 「아직 모른다」가 「없다」로 둔갑하지 않고, 사람의 확정은 **값이 조용히 바뀌는 것이 아니라 엣지가 나타나는 것**으로 보입니다.
-- 🔴 **없는 쪽을 `-` 같은 리터럴로 채우지 마십시오.** 그것은 완벽하게 유효한 식별자라 노드 하나가 만들어지고, 그 노드에 **모든** 관계가 매달려 무관한 두 개체가 두 홉 거리로 보이게 됩니다.
-
-**먹었는지 확인**
-
-```bash
-curl -s "$API/graph/mapping-summary"
-```
-
-성공 목록과 **같은 응답**에 `rejected`가 실려 옵니다 ― 성공 개수만 보면 「안 늘었다」와 「죽었다」가 구별되지 않기 때문입니다. 컬럼 하나를 개명한 순간 그 테이블의 온톨로지가 통째로 사라질 수 있고, 그때 표면에 남는 것이 이 배열입니다.
-
-**반영:** `POST /admin/reload-configs`.
-
-→ [config/ontology_mapping](./config/ontology_mapping.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)
-
----
-
 ## 4. 조용히 실패하는 세 가지 (전부 실측)
 
 ### 4.1 🔴 규칙은 **디스크에서 유효하면서 워커 안에서는 죽어 있을 수** 있다
@@ -416,17 +363,16 @@ SELECT column_name FROM information_schema.columns WHERE table_name = '<t>';
 
 ### 4.3 🔴 선언을 **지우면**, 그것을 가리키던 다른 선언이 조용히 반쯤 돈다
 
-테이블 선언을 제거할 때 **다섯 곳을 먼저 훑으십시오.**
+테이블 선언을 제거할 때 **네 곳을 먼저 훑으십시오.**
 
 | 훑을 곳 | 남아 있으면 |
 |---|---|
 | `map_overlay_config.json` | 해당 맵이 「해석할 수 없음」으로 명시 실패 |
-| `ontology_mapping.json` | 매핑이 거부됩니다 ― `/graph/mapping-summary`의 `rejected`에 뜹니다 |
 | `virtual_join_rules.json` | 선언이 거부됩니다 ― `/admin/config/virtual-join/verify`에 뜹니다 |
 | `enrichment_rules.json` · `chain_rules.json` | 규칙이 빠집니다(§4.1의 모양) |
 | 🔴 `bonding_plan_config.json` · `transfer_plan_config.json` | **아무 데도 안 뜹니다.** 이 둘의 테이블 참조를 **검증하는 코드가 없습니다** ― `load_config`가 실패 시 빈 dict를 돌려주고 그것이 「부분 가동, 에러 아님」으로 문서화돼 있습니다. 매달린 참조는 **에러가 아니라 반쯤 작동하는 화면**을 만듭니다 |
 
-**그래서 순서는 「지우기 전에 감사」입니다.** 앞의 넷은 라우트가 말해 주지만, **마지막 줄은 사람이 열어 보는 것 말고 방법이 없습니다.**
+**그래서 순서는 「지우기 전에 감사」입니다.** 앞의 셋은 라우트나 로그가 말해 주지만, **마지막 줄은 사람이 열어 보는 것 말고 방법이 없습니다.**
 
 ```bash
 grep -n "<지울테이블>" server/config/*.json

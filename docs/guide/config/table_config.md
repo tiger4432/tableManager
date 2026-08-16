@@ -127,7 +127,6 @@ restore는 **일부러 in-place로 써서 watcher를 발화**시킵니다(현재
    - 계획 config 역할 바인딩 — `bonding_plan_config.json`·`transfer_plan_config.json`의 모든 `"table":` 값(`plan_store.registry` 포함)
    - `map_overlay_config.json` — `table_bindings`·`paint_lock` 등 테이블 키
    - `chain_rules.json` — `trigger_table`·`target_table` / `enrichment_rules.json` — `source_table`·`derived_table`
-   - `ontology_mapping.json` — 테이블 키
    - **`ingestion_workspace/` 폴더명** — 폴더명=테이블명 규약이므로 폴더도 개명(또는 `workspace_name` 별칭 선언). Windows는 대소문자 비구분이라 폴더는 멀쩡해 보여도, 워처의 테이블 매칭은 문자열 비교입니다
 5. **테이블명을 값으로 담는 DATA 두 곳 UPDATE** — config가 아니라 **행 데이터**라 4에서 안 잡힙니다:
    ```sql

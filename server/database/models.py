@@ -469,7 +469,7 @@ class GraphNode(Base):
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
     label = Column(String(100), nullable=False)
-    # 복수 컬럼 identity는 "|" 조인 문자열로 정규화(graph_materializer.compose_identity 참조)
+    # 복수 컬럼 identity는 "|" 조인 문자열로 정규화(은퇴 저장소 호환용).
     identity_key = Column(String, nullable=False)
     props = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -647,8 +647,8 @@ class FrameConfirmation(Base):
     discriminating = Column(Integer, nullable=True)
 
     # [가장 약한 기여자] 스펙 §0.2 ⑨: 합쳐진 셀은 최약 기여자를 따라간다. 산출은
-    # graph_materializer의 규칙과 **같은 식**이고, 둘 다 crud.get_source_priority를
-    # 부르므로 서열의 원천이 하나다. 여기 저장하는 것은 그 계산의 결과이지 두 번째 규칙이
+    # crud.get_source_priority를 부르므로 서열의 원천이 하나다.
+    # 여기 저장하는 것은 그 계산의 결과이지 두 번째 규칙이
     # 아니다 — 매번 다시 세지 않으려고 굳혀 둘 뿐이다.
     weakest_source = Column(String, nullable=False)
     weakest_priority = Column(Integer, nullable=False)

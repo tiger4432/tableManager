@@ -7,9 +7,8 @@ run behind ``POST /admin/retroactive/enrichment_backfill/run`` call, so this scr
 and the admin button can never drift into two different definitions of "new derived
 identity".
 
-This file is the human path: argparse, the printed report, and the exit code. It is
-the ``scripts/graph_orphan_sweep.py`` <-> ``graph_orphans.py`` split, applied here
-for the reason that split exists - ``server/scripts`` is on no runtime process's
+This file is the human path: argparse, the printed report, and the exit code.
+``server/scripts`` is on no runtime process's
 ``sys.path``, so anything a route needs has to live in ``server/``.
 
 Usage (dry-run is the default - report first, act only on explicit flag):

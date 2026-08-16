@@ -212,12 +212,11 @@ def reset_cap_warnings():
 def _record(rejections, scope: str, subject, detail: str):
     """무효 선언 1건을 수집기에 남긴다(수집기 미제공 시 기존 동작 = 로그만).
 
-    `ontology_config._record`와 같은 자세이고 같은 이유다 — 로그에만 있는 스킵은
-    아무도 보지 못하는 스킵이다. 형태는 `{scope, subject, detail}`이며 **명명된 사유는
+    로그에만 있는 스킵은 아무도 보지 못하는 스킵이다.
+    형태는 `{scope, subject, detail}`이며 **명명된 사유는
     싣지 않는다**: 닫힌 어휘(`config_resolve_report.REASONS`)로의 사상은 보고서 계층의
     책임이고, 로더는 사람이 읽을 구체적 사유만 만든다.
-    (ontology_config는 같은 자리를 `table`로 부른다 — enrichment의 주체는 규칙/뷰라
-    `subject`로 일반화했다.)
+    enrichment의 주체는 규칙/뷰라 `subject`로 일반화했다.
     """
     if rejections is None:
         return
