@@ -2,7 +2,9 @@
 
 The directory names are source data.  The watcher passes the path relative to
 the configured external root; this module never infers a wafer from the host's
-absolute directory layout.
+absolute directory layout.  The middle directory is ``{workid}_YYYYMMDD_HHMMSS``
+in production; see ``parse_relative_source_path`` for the accepted forms and for
+what the work id is (a descriptive column) and is not (key material).
 
 One file states two facts and is therefore read by two table handlers:
 
@@ -47,7 +49,13 @@ from void_sat_format import (
 
 
 DEFAULT_MAX_FILE_MB = 128
-_WORK_DATETIME_RE = re.compile(r"^(?:WORK_)?(\d{8})_(\d{6})$")
+# The producer's real folder is ``{workid}_YYYYMMDD_HHMMSS``; the work id is an
+# arbitrary token, so it cannot be spelled out here.  The timestamp is anchored to
+# the END of the name and everything before the last underscore-separated
+# ``YYYYMMDD_HHMMSS`` is the work id - which makes the two forms this reader
+# already accepted special cases rather than separate branches: ``WORK_...`` is
+# simply a work id that reads ``WORK``, and a bare timestamp has no work id at all.
+_WORK_DATETIME_RE = re.compile(r"^(?:(?P<work_id>.+)_)?(?P<date>\d{8})_(?P<time>\d{6})$")
 _KEY_ALIASES = {
     "basewaferid": "base_wafer_id",
     "basewfid": "base_wafer_id",
@@ -103,6 +111,19 @@ def parse_relative_source_path(rel_path: str, expected_filename: str = "voids.js
 
     Exactly three components are required.  Accepting an arbitrary deeper path
     would make it unclear which directory is the wafer identifier.
+
+    The middle directory must END with ``YYYYMMDD_HHMMSS``.  Three forms are
+    therefore accepted, and they are one rule rather than three:
+
+    ``{workid}_YYYYMMDD_HHMMSS``
+        The production shape.  ``workid`` is an arbitrary token and is returned
+        verbatim as ``work_id``; it is descriptive only and is not key material.
+    ``WORK_YYYYMMDD_HHMMSS``
+        The sample/doc shape.  Its work id is literally ``WORK`` - not stripped
+        away, because this reader cannot know that some producer's work ids are
+        not spelled that way.
+    ``YYYYMMDD_HHMMSS``
+        No work id at all; ``work_id`` is ``None``.
     """
     if not isinstance(rel_path, str) or not rel_path.strip():
         raise ValueError(
@@ -122,10 +143,14 @@ def parse_relative_source_path(rel_path: str, expected_filename: str = "voids.js
     match = _WORK_DATETIME_RE.fullmatch(work_datetime)
     if not match:
         raise ValueError(
-            f"work datetime directory must be WORK_YYYYMMDD_HHMMSS (or "
+            f"work datetime directory must end with YYYYMMDD_HHMMSS "
+            f"(WORKID_YYYYMMDD_HHMMSS, WORK_YYYYMMDD_HHMMSS or "
             f"YYYYMMDD_HHMMSS), got {work_datetime!r}.")
     try:
-        local = datetime.strptime("".join(match.groups()), "%Y%m%d%H%M%S")
+        # Named groups, not `match.groups()`: the work id is a third group and
+        # joining all of them would feed it to strptime.
+        local = datetime.strptime(
+            match.group("date") + match.group("time"), "%Y%m%d%H%M%S")
     except ValueError as exc:
         raise ValueError(
             f"work datetime directory contains an invalid calendar value: "
@@ -133,6 +158,7 @@ def parse_relative_source_path(rel_path: str, expected_filename: str = "voids.js
     observed_at = declare_offset(local.isoformat())[0]
     return {
         "base_wafer_id": wafer_id.strip(),
+        "work_id": match.group("work_id"),
         "work_datetime": work_datetime,
         "observed_at": observed_at,
         "filename": filename,
@@ -234,6 +260,16 @@ def _merge_path_identity(row: dict, path_data: dict, *, row_label: str) -> dict:
                 f"assigning the row to one plausible-but-unknown run."
             )
     out["observed_at"] = path_stamp
+
+    # Merged HERE, beside the other two path facts, so that every caller -
+    # void rows, run carriers and explicit runs - reads one value from one
+    # place and the run tables cannot disagree with the observation table.
+    # Unlike base_wafer_id/observed_at this one does NOT refuse a conflicting
+    # body field: the work id is descriptive, never key material, so a
+    # disagreement can only mislabel a column, and refusing the whole file over
+    # it would break exactly the production feed this reader exists to accept.
+    # The directory wins.
+    out["work_id"] = path_data.get("work_id")
     return out
 
 
@@ -295,6 +331,7 @@ def _normalise_run_carriers(raw_rows: list, path_data: dict) -> list[dict]:
             raise ValueError(f"{label}: stack_gate must be a whole layer, got {gate!r}.")
         rows.append({
             "base_wafer_id": row["base_wafer_id"],
+            "work_id": row["work_id"],
             "base_x": row["base_x"],
             "base_y": row["base_y"],
             "stack_gate": int(gate),
@@ -330,6 +367,7 @@ def _normalise_explicit_runs(raw_runs: list, path_data: dict, metadata: dict) ->
         rows.append({
             "method": METHOD,
             "base_wafer_id": row["base_wafer_id"],
+            "work_id": row["work_id"],
             "base_x": row["base_x"],
             "base_y": row["base_y"],
             "stack_gate": row["stack_gate"],
@@ -350,6 +388,10 @@ def _derived_runs(void_rows: list[dict], metadata: dict) -> list[dict]:
         candidate = {
             "method": METHOD,
             "base_wafer_id": key[0],
+            # Not in `key`: the work id comes from the one directory this file
+            # was read from, so it is constant across the file and adding it
+            # would only lengthen the identity tuple the coverage check reads.
+            "work_id": row.get("work_id"),
             "base_x": key[1],
             "base_y": key[2],
             "stack_gate": key[3],

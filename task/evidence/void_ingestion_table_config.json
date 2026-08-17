@@ -20,7 +20,8 @@
       "stack_gate": "number",
       "recipe_id": "string",
       "eqp_id": "string",
-      "observed_at": "datetime"
+      "observed_at": "datetime",
+      "work_id": "string"
     },
     "display_columns": [
       "run_uid",
@@ -31,7 +32,8 @@
       "stack_gate",
       "recipe_id",
       "eqp_id",
-      "observed_at"
+      "observed_at",
+      "work_id"
     ]
   },
   "void_obs": {
@@ -54,7 +56,8 @@
       "inchip_y": "number",
       "radius_x": "number",
       "radius_y": "number",
-      "unit": "string"
+      "unit": "string",
+      "work_id": "string"
     },
     "display_columns": [
       "void_uid",
@@ -67,7 +70,8 @@
       "inchip_y",
       "radius_x",
       "radius_y",
-      "unit"
+      "unit",
+      "work_id"
     ]
   }
 }

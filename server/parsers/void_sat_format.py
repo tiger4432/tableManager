@@ -279,7 +279,11 @@ def compose_business_key(table_name: str, row: dict):
 
 
 def compose_run_uid(base_wafer_id, base_x, base_y, stack_gate, observed_at) -> str:
-    """`inspection_run`'s key for one scan, as `crud` would assemble it."""
+    """`inspection_run`'s key for one scan, as `crud` would assemble it.
+
+    🔴 This argument list mirrors `composite_key_source`: if `work_id` is ever
+    added there, it must be added here IN THE SAME COMMIT or the two disagree.
+    """
     return compose_business_key(RUN_TABLE, {
         "method": METHOD,
         "base_wafer_id": base_wafer_id,
