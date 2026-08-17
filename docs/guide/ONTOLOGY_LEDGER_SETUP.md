@@ -1233,6 +1233,7 @@ http://127.0.0.1:8080/admin.html#ontology
 Admin 인증은 두 상태다.
 
 - `ASSY_ADMIN_TOKEN`이 설정돼 있으면 모든 Admin 요청에 정확한 `X-Admin-Token`이 필요하다.
+  header가 없으면 `401`, 값이 설정된 token과 다르면 `403`이다.
 - token이 설정되지 않으면 ordinary read route(예: active `/view`)는 열릴 수 있지만,
   draft/write 같은 strict route는 `503`으로 fail-closed한다.
 
@@ -1270,7 +1271,7 @@ conda run -n assy_manager python -m pytest server/tests/test_ledger_setup_bundle
 conda run -n assy_manager python -m pytest server/tests/test_ledger_setup_registry.py -q --basetemp .test_tmp/ledger_setup_registry
 conda run -n assy_manager python -m pytest server/tests/test_ledger_roleframe.py -q --basetemp .test_tmp/ledger_roleframe
 conda run -n assy_manager python -m pytest server/tests/test_ledger_source_preparation.py -q --basetemp .test_tmp/ledger_source_preparation
-conda run -n assy_manager python -m pytest server/tests/test_ledger_runtime_v2.py -q --basetemp .test_tmp/ledger_runtime_v2
+conda run -n assy_manager python -m pytest server/tests/test_ledger_v2_runtime.py -q --basetemp .test_tmp/ledger_v2_runtime
 ```
 
 실제 파일명은 변경 범위와 현재 test inventory를 확인한 뒤 선택한다. 존재하지 않는 명령을
@@ -1309,7 +1310,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | `Profile packs`는 맞는데 mapper 오류 | `mappers.emits`와 `mappings.use` 불일치 | 양쪽 Claim 집합을 정확히 맞춤 |
 | join 결과 0건 | inventory 늦은 도착/키 불일치 | 원천·표기·dependency replay 후보 확인; 가짜 값 생성 금지 |
 | join 결과 다건 | 오른쪽 유일성 위반 | 물리 중복 해소와 exact UNIQUE proof; 첫 행 임의 선택 금지 |
-| 화면이 비어 있음 | Admin auth 상태 오해 | token 설정 여부에 따른 2상태 계약과 401/503 응답 확인 |
+| 화면이 비어 있음 | Admin auth 상태 오해 | token 설정 시 header 누락 `401`·값 불일치 `403`, token 미설정 strict route `503`을 구분 |
 | `--config`가 거절됨 | 기본 V2 mode에서 legacy config 전달 | V2는 manifest 단일 진입점 사용; legacy만 명시적 `--legacy` |
 | reset/from이 거절됨 | 파괴적 replay 선행 gate | 우회하지 말고 별도 사용자 승인과 작업 범위 확정 |
 

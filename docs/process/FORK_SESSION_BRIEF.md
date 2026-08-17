@@ -151,8 +151,8 @@ full server suite와 Explorer PostgreSQL E2E는 사용자 지시에 따라 생�
   해당 테이블을 만들거나 migration하지 말고, 실제로 구 그래프 기능이 다시 필요할 때 별도
   범위와 승인을 받는다.
 - 화면이 비어 있으면 `ASSY_ADMIN_TOKEN` 설정 여부와 응답 상태를 함께 확인한다. token이
-  설정된 환경의 `401`은 header 누락/불일치이고, token 미설정 환경의 strict route `503`은
-  쓰기 인증을 구성하지 않은 상태를 안전하게 거절한 것이다.
+  설정된 환경에서 header 누락은 `401`, 설정값과 다른 token은 `403`이다. token 미설정
+  환경의 strict route `503`은 쓰기 인증을 구성하지 않은 상태를 안전하게 거절한 것이다.
 - task의 HTML은 시각 기준본이지 runtime JavaScript 정본이 아니다.
 
 ## 8. 다음 합법적 작업 순서
