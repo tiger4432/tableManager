@@ -1,0 +1,809 @@
+<div id="ontology-reference-explorer">
+  <style>
+    #ontology-reference-explorer {
+      --oe-bg: light-dark(#f4f6f8, #111419);
+      --oe-surface: light-dark(#ffffff, #191d23);
+      --oe-surface-2: light-dark(#f8fafb, #20252c);
+      --oe-text: light-dark(#1c232b, #eef2f6);
+      --oe-muted: light-dark(#647180, #aeb8c4);
+      --oe-line: light-dark(#d8dee5, #343b45);
+      --oe-accent: light-dark(#1769aa, #79b8f3);
+      --oe-accent-soft: light-dark(#e8f2fb, #183248);
+      --oe-ok: light-dark(#1f7a4d, #71d6a3);
+      --oe-warn: light-dark(#9b6516, #efbe63);
+      color-scheme: light dark;
+      color: var(--oe-text);
+      font-family: Inter, Pretendard, "Noto Sans KR", system-ui, sans-serif;
+      background: transparent;
+      width: 100%;
+    }
+    #ontology-reference-explorer * { box-sizing: border-box; }
+    #ontology-reference-explorer button,
+    #ontology-reference-explorer input { font: inherit; }
+    #ontology-reference-explorer .oe-window {
+      background: var(--oe-bg);
+      border: 1px solid var(--oe-line);
+      border-radius: 12px;
+      overflow: hidden;
+      min-width: 0;
+    }
+    #ontology-reference-explorer .oe-topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--oe-surface);
+      border-bottom: 1px solid var(--oe-line);
+    }
+    #ontology-reference-explorer .oe-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: max-content;
+      font-weight: 500;
+    }
+    #ontology-reference-explorer .oe-snapshot {
+      color: var(--oe-ok);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    #ontology-reference-explorer .oe-search-wrap {
+      position: relative;
+      margin-left: auto;
+      width: min(330px, 45%);
+    }
+    #ontology-reference-explorer .oe-search-wrap i {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--oe-muted);
+      pointer-events: none;
+    }
+    #ontology-reference-explorer .oe-search {
+      width: 100%;
+      border: 1px solid var(--oe-line);
+      border-radius: 7px;
+      background: var(--oe-surface-2);
+      color: var(--oe-text);
+      padding: 8px 10px 8px 34px;
+    }
+    #ontology-reference-explorer .oe-main {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      min-height: 610px;
+    }
+    #ontology-reference-explorer .oe-tree {
+      background: var(--oe-surface);
+      border-right: 1px solid var(--oe-line);
+      padding: 12px 9px;
+    }
+    #ontology-reference-explorer .oe-tree-title {
+      color: var(--oe-muted);
+      font-size: 12px;
+      padding: 2px 8px 9px;
+    }
+    #ontology-reference-explorer .oe-tree-group { margin-bottom: 10px; }
+    #ontology-reference-explorer .oe-tree-heading {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--oe-muted);
+      font-size: 12px;
+      padding: 6px 8px;
+    }
+    #ontology-reference-explorer .oe-tree-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--oe-text);
+      padding: 7px 8px 7px 25px;
+      text-align: left;
+      cursor: pointer;
+    }
+    #ontology-reference-explorer .oe-tree-item:hover,
+    #ontology-reference-explorer .oe-tree-item[aria-current="true"] {
+      background: var(--oe-accent-soft);
+      color: var(--oe-accent);
+    }
+    #ontology-reference-explorer .oe-tree-item[hidden] { display: none; }
+    #ontology-reference-explorer .oe-workspace { min-width: 0; }
+    #ontology-reference-explorer .oe-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      min-height: 43px;
+      padding: 9px 14px;
+      background: var(--oe-surface);
+      border-bottom: 1px solid var(--oe-line);
+      color: var(--oe-muted);
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-crumb-button {
+      border: 0;
+      background: transparent;
+      color: var(--oe-accent);
+      padding: 0;
+      cursor: pointer;
+    }
+    #ontology-reference-explorer .oe-flow-area {
+      padding: 16px 14px 12px;
+    }
+    #ontology-reference-explorer .oe-section-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    #ontology-reference-explorer .oe-section-heading h2,
+    #ontology-reference-explorer .oe-section-heading h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    #ontology-reference-explorer .oe-section-heading span {
+      color: var(--oe-muted);
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-flow {
+      display: grid;
+      grid-template-columns: minmax(110px, 1fr) 22px minmax(130px, 1.15fr) 22px minmax(140px, 1.25fr) 22px minmax(130px, 1.1fr);
+      align-items: stretch;
+      gap: 6px;
+    }
+    #ontology-reference-explorer .oe-flow-node {
+      border: 1px solid var(--oe-line);
+      border-radius: 8px;
+      background: var(--oe-surface);
+      color: var(--oe-text);
+      min-width: 0;
+      padding: 10px;
+      text-align: left;
+      cursor: pointer;
+    }
+    #ontology-reference-explorer .oe-flow-node:hover,
+    #ontology-reference-explorer .oe-flow-node[aria-pressed="true"] {
+      border-color: var(--oe-accent);
+      background: var(--oe-accent-soft);
+    }
+    #ontology-reference-explorer .oe-node-kind {
+      color: var(--oe-muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    #ontology-reference-explorer .oe-node-name {
+      overflow-wrap: anywhere;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-arrow {
+      display: grid;
+      place-items: center;
+      color: var(--oe-muted);
+    }
+    #ontology-reference-explorer .oe-detail-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(220px, .65fr);
+      gap: 12px;
+      padding: 0 14px 14px;
+    }
+    #ontology-reference-explorer .oe-panel {
+      background: var(--oe-surface);
+      border: 1px solid var(--oe-line);
+      border-radius: 9px;
+      min-width: 0;
+    }
+    #ontology-reference-explorer .oe-panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 13px 14px 10px;
+      border-bottom: 1px solid var(--oe-line);
+    }
+    #ontology-reference-explorer .oe-title-block h1 {
+      margin: 0 0 4px;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 16px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+    #ontology-reference-explorer .oe-title-block p {
+      margin: 0;
+      color: var(--oe-muted);
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-status {
+      color: var(--oe-ok);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    #ontology-reference-explorer .oe-head-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #ontology-reference-explorer .oe-edit-action,
+    #ontology-reference-explorer .oe-editor-action {
+      border: 1px solid var(--oe-line);
+      border-radius: 6px;
+      background: var(--oe-surface-2);
+      color: var(--oe-text);
+      padding: 7px 10px;
+      cursor: pointer;
+    }
+    #ontology-reference-explorer .oe-edit-action:hover,
+    #ontology-reference-explorer .oe-editor-action:hover {
+      border-color: var(--oe-accent);
+      color: var(--oe-accent);
+    }
+    #ontology-reference-explorer .oe-editor-action-primary {
+      background: var(--oe-accent);
+      border-color: var(--oe-accent);
+      color: light-dark(#ffffff, #0e1820);
+    }
+    #ontology-reference-explorer .oe-tabs {
+      display: flex;
+      gap: 16px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--oe-line);
+    }
+    #ontology-reference-explorer .oe-tab {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--oe-muted);
+      padding: 10px 0 8px;
+      cursor: pointer;
+    }
+    #ontology-reference-explorer .oe-tab[aria-selected="true"] {
+      color: var(--oe-accent);
+      border-bottom-color: var(--oe-accent);
+    }
+    #ontology-reference-explorer .oe-tab-panel { padding: 14px; }
+    #ontology-reference-explorer .oe-signature {
+      display: grid;
+      grid-template-columns: 104px minmax(0, 1fr);
+      gap: 9px 12px;
+      align-items: start;
+    }
+    #ontology-reference-explorer .oe-label {
+      color: var(--oe-muted);
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-value {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+    }
+    #ontology-reference-explorer .oe-ref {
+      border: 0;
+      background: transparent;
+      color: var(--oe-accent);
+      padding: 0;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-color: color-mix(in srgb, var(--oe-accent) 40%, transparent);
+      text-underline-offset: 3px;
+    }
+    #ontology-reference-explorer .oe-ref + .oe-ref::before {
+      content: ", ";
+      color: var(--oe-muted);
+      text-decoration: none;
+    }
+    #ontology-reference-explorer .oe-code {
+      margin: 0;
+      padding: 12px;
+      background: var(--oe-surface-2);
+      border-radius: 7px;
+      color: var(--oe-text);
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-editor {
+      display: grid;
+      gap: 12px;
+    }
+    #ontology-reference-explorer .oe-editor-context {
+      display: grid;
+      grid-template-columns: 105px minmax(0, 1fr);
+      gap: 8px 12px;
+      padding: 10px 12px;
+      background: var(--oe-surface-2);
+      border-radius: 7px;
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-editor-label {
+      color: var(--oe-muted);
+    }
+    #ontology-reference-explorer .oe-editor-path {
+      overflow-wrap: anywhere;
+      font-family: "Cascadia Code", Consolas, monospace;
+    }
+    #ontology-reference-explorer .oe-editor-textarea {
+      width: 100%;
+      min-height: 235px;
+      resize: vertical;
+      border: 1px solid var(--oe-line);
+      border-radius: 7px;
+      background: var(--oe-surface-2);
+      color: var(--oe-text);
+      padding: 11px;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-editor-validation {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      color: var(--oe-ok);
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-editor-validation[data-valid="false"] {
+      color: var(--oe-warn);
+    }
+    #ontology-reference-explorer .oe-editor-impact {
+      border-top: 1px solid var(--oe-line);
+      padding-top: 11px;
+      color: var(--oe-muted);
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-editor-impact strong {
+      color: var(--oe-text);
+      font-weight: 500;
+    }
+    #ontology-reference-explorer .oe-editor-controls {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    #ontology-reference-explorer .oe-side-body { padding: 12px 13px; }
+    #ontology-reference-explorer .oe-side-section + .oe-side-section {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--oe-line);
+    }
+    #ontology-reference-explorer .oe-side-section h3 {
+      margin: 0 0 9px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    #ontology-reference-explorer .oe-usage-list {
+      display: grid;
+      gap: 8px;
+    }
+    #ontology-reference-explorer .oe-usage {
+      border: 0;
+      background: transparent;
+      color: var(--oe-text);
+      padding: 0;
+      text-align: left;
+      cursor: pointer;
+    }
+    #ontology-reference-explorer .oe-usage:hover { color: var(--oe-accent); }
+    #ontology-reference-explorer .oe-usage small {
+      display: block;
+      color: var(--oe-muted);
+      margin-top: 2px;
+    }
+    #ontology-reference-explorer .oe-check-list {
+      display: grid;
+      gap: 7px;
+      color: var(--oe-muted);
+      font-size: 12px;
+    }
+    #ontology-reference-explorer .oe-check {
+      display: flex;
+      gap: 7px;
+      align-items: flex-start;
+    }
+    #ontology-reference-explorer .oe-check i { color: var(--oe-ok); flex: 0 0 auto; }
+    #ontology-reference-explorer .oe-empty {
+      color: var(--oe-muted);
+      padding: 10px 8px;
+      font-size: 12px;
+    }
+    @media (max-width: 700px) {
+      #ontology-reference-explorer .oe-topbar { flex-wrap: wrap; }
+      #ontology-reference-explorer .oe-search-wrap { width: 100%; margin-left: 0; }
+      #ontology-reference-explorer .oe-main { grid-template-columns: 1fr; }
+      #ontology-reference-explorer .oe-tree {
+        border-right: 0;
+        border-bottom: 1px solid var(--oe-line);
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px 8px;
+      }
+      #ontology-reference-explorer .oe-tree-title { grid-column: 1 / -1; }
+      #ontology-reference-explorer .oe-flow {
+        grid-template-columns: 1fr;
+      }
+      #ontology-reference-explorer .oe-arrow { transform: rotate(90deg); min-height: 18px; }
+      #ontology-reference-explorer .oe-detail-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+
+  <section class="oe-window" aria-label="온톨로지 참조 탐색기 목업">
+    <header class="oe-topbar">
+      <div class="oe-brand"><i data-lucide="network" aria-hidden="true"></i>Ontology Explorer</div>
+      <span class="oe-snapshot">● compiled snapshot · 8e4f7c</span>
+      <label class="oe-search-wrap">
+        <span class="sr-only">정의 검색</span>
+        <i data-lucide="search" aria-hidden="true"></i>
+        <input class="oe-search" type="search" placeholder="predicate, entity, pack 검색" autocomplete="off">
+      </label>
+    </header>
+
+    <div class="oe-main">
+      <nav class="oe-tree" aria-label="온톨로지 구성 트리">
+        <div class="oe-tree-title">구성 요소</div>
+        <div class="oe-tree-group">
+          <div class="oe-tree-heading"><i data-lucide="package" aria-hidden="true"></i>Packs</div>
+          <button class="oe-tree-item" type="button" data-node="pack"><i data-lucide="box" aria-hidden="true"></i>process-material-flow@1</button>
+          <button class="oe-tree-item" type="button" data-node="claim"><i data-lucide="corner-down-right" aria-hidden="true"></i>material_to_cell</button>
+        </div>
+        <div class="oe-tree-group">
+          <div class="oe-tree-heading"><i data-lucide="book-open" aria-hidden="true"></i>Vocabulary</div>
+          <button class="oe-tree-item" type="button" data-node="predicate" aria-current="true"><i data-lucide="arrow-right" aria-hidden="true"></i>transferred_to@1</button>
+          <button class="oe-tree-item" type="button" data-node="processed"><i data-lucide="arrow-right" aria-hidden="true"></i>processed_in@1</button>
+          <button class="oe-tree-item" type="button" data-node="material"><i data-lucide="arrow-right" aria-hidden="true"></i>has_output_material@1</button>
+        </div>
+        <div class="oe-tree-group">
+          <div class="oe-tree-heading"><i data-lucide="shapes" aria-hidden="true"></i>Entities</div>
+          <button class="oe-tree-item" type="button" data-node="core"><i data-lucide="circle-dot" aria-hidden="true"></i>CoreDie@1</button>
+          <button class="oe-tree-item" type="button" data-node="cell"><i data-lucide="circle-dot" aria-hidden="true"></i>ProcessCell@1</button>
+          <button class="oe-tree-item" type="button" data-node="occurrence"><i data-lucide="circle-dot" aria-hidden="true"></i>ProcessOccurrence@1</button>
+        </div>
+        <div class="oe-tree-group">
+          <div class="oe-tree-heading"><i data-lucide="git-branch" aria-hidden="true"></i>Bindings</div>
+          <button class="oe-tree-item" type="button" data-node="profile"><i data-lucide="file-input" aria-hidden="true"></i>dt-log@1</button>
+          <button class="oe-tree-item" type="button" data-node="source"><i data-lucide="database" aria-hidden="true"></i>dt_log</button>
+        </div>
+        <div class="oe-empty" hidden>일치하는 정의가 없습니다.</div>
+      </nav>
+
+      <main class="oe-workspace">
+        <div class="oe-breadcrumb" aria-label="탐색 경로">
+          <button class="oe-crumb-button" type="button" data-node="source">dt_log</button>
+          <span>›</span>
+          <button class="oe-crumb-button" type="button" data-node="profile">dt-log@1</button>
+          <span>›</span>
+          <button class="oe-crumb-button" type="button" data-node="pack">process-material-flow@1</button>
+          <span>›</span>
+          <button class="oe-crumb-button" type="button" data-node="claim">material_to_cell</button>
+          <span>›</span>
+          <strong>transferred_to@1</strong>
+        </div>
+
+        <section class="oe-flow-area" aria-labelledby="oe-flow-title">
+          <div class="oe-section-heading">
+            <h2 id="oe-flow-title">이 참조가 연결되는 방식</h2>
+            <span>노드를 선택해 정의로 이동</span>
+          </div>
+          <div class="oe-flow">
+            <button class="oe-flow-node" type="button" data-node="source" aria-pressed="false">
+              <div class="oe-node-kind">Source</div><div class="oe-node-name">dt_log</div>
+            </button>
+            <div class="oe-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></div>
+            <button class="oe-flow-node" type="button" data-node="profile" aria-pressed="false">
+              <div class="oe-node-kind">Profile mapping</div><div class="oe-node-name">material_to_cell</div>
+            </button>
+            <div class="oe-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></div>
+            <button class="oe-flow-node" type="button" data-node="claim" aria-pressed="false">
+              <div class="oe-node-kind">Pack claim</div><div class="oe-node-name">process-material-flow@1/material_to_cell</div>
+            </button>
+            <div class="oe-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></div>
+            <button class="oe-flow-node" type="button" data-node="predicate" aria-pressed="true">
+              <div class="oe-node-kind">Predicate</div><div class="oe-node-name">transferred_to@1</div>
+            </button>
+          </div>
+        </section>
+
+        <section class="oe-detail-grid">
+          <article class="oe-panel" aria-live="polite">
+            <div class="oe-panel-head">
+              <div class="oe-title-block">
+                <h1 class="oe-selected-title">transferred_to@1</h1>
+                <p class="oe-selected-kind">Vocabulary · entity_ref predicate</p>
+              </div>
+              <div class="oe-head-actions">
+                <span class="oe-status">● active · valid</span>
+                <button class="oe-edit-action" type="button" data-edit-toggle><i data-lucide="pencil" aria-hidden="true"></i> 초안 편집</button>
+              </div>
+            </div>
+            <div class="oe-tabs" role="tablist" aria-label="정의 보기">
+              <button class="oe-tab" type="button" role="tab" aria-selected="true" data-tab="definition">정의</button>
+              <button class="oe-tab" type="button" role="tab" aria-selected="false" data-tab="usage">사용처</button>
+              <button class="oe-tab" type="button" role="tab" aria-selected="false" data-tab="raw">원본 JSON</button>
+            </div>
+            <div class="oe-tab-panel"></div>
+          </article>
+
+          <aside class="oe-panel">
+            <div class="oe-panel-head">
+              <div class="oe-title-block"><h1>참조 무결성</h1><p>compiled snapshot 기준</p></div>
+            </div>
+            <div class="oe-side-body">
+              <section class="oe-side-section">
+                <h3>이 정의를 사용하는 곳</h3>
+                <div class="oe-usage-list"></div>
+              </section>
+              <section class="oe-side-section">
+                <h3>검증 결과</h3>
+                <div class="oe-check-list">
+                  <div class="oe-check"><i data-lucide="check-circle-2" aria-hidden="true"></i><span>subject Entity가 허용 범위 안에 있음</span></div>
+                  <div class="oe-check"><i data-lucide="check-circle-2" aria-hidden="true"></i><span>object Entity가 허용 범위 안에 있음</span></div>
+                  <div class="oe-check"><i data-lucide="check-circle-2" aria-hidden="true"></i><span>필수 qualifier 누락 없음</span></div>
+                  <div class="oe-check"><i data-lucide="check-circle-2" aria-hidden="true"></i><span>끊어진 참조 0건</span></div>
+                </div>
+              </section>
+              <section class="oe-side-section">
+                <h3>정본 위치</h3>
+                <div class="oe-value oe-config-path">ledger_config.json#/vocabulary/transferred_to@1</div>
+              </section>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <script>
+    (() => {
+      const root = document.getElementById('ontology-reference-explorer');
+      const nodes = {
+        predicate: {
+          title: 'transferred_to@1', kind: 'Vocabulary · entity_ref predicate', status: '● active · valid',
+          path: 'ledger_config.json#/vocabulary/transferred_to@1',
+          definition: [
+            ['Layer', 'ontology'],
+            ['Subjects', '<button class="oe-ref" data-node="core">CoreDie@1</button><button class="oe-ref" data-node="cell">ProcessCell@1</button>'],
+            ['Object kind', 'entity_ref'],
+            ['Object types', '<button class="oe-ref" data-node="cell">ProcessCell@1</button> BondCell@1'],
+            ['Qualifiers', 'required: 없음 · optional: 없음']
+          ],
+          usage: [
+            ['process-material-flow@1/material_to_cell', 'Pack emission', 'claim'],
+            ['dt-log@1/material_to_cell', 'Profile binding', 'profile']
+          ],
+          raw: '{\n  "status": "active",\n  "layer": "ontology",\n  "subjects": ["CoreDie@1", "ProcessCell@1"],\n  "object": {\n    "kind": "entity_ref",\n    "types": ["ProcessCell@1", "BondCell@1"],\n    "qualifiers": {"required": [], "optional": []}\n  }\n}'
+        },
+        pack: {
+          title: 'process-material-flow@1', kind: 'Pack · 3 claims', status: '● compiled · valid',
+          path: 'ledger_config.json#/packs/process-material-flow@1',
+          definition: [['Claims', 'material_to_cell · cell_in_occurrence · occurrence_output_material'], ['Purpose', '원천과 독립된 공정 자재 흐름 발화']],
+          usage: [['dt-log@1', 'Profile', 'profile'], ['dt-inventory@1', 'Profile', 'profile']],
+          raw: '{\n  "claims": {\n    "material_to_cell": { "roles": "…", "emit": "…" },\n    "cell_in_occurrence": { "roles": "…", "emit": "…" },\n    "occurrence_output_material": { "roles": "…", "emit": "…" }\n  }\n}'
+        },
+        claim: {
+          title: 'material_to_cell', kind: 'Pack claim · process-material-flow@1', status: '● compiled · valid',
+          path: 'ledger_config.json#/packs/process-material-flow@1/claims/material_to_cell',
+          definition: [['Roles', 'material: entity · target_cell: entity · occurred_at: time'], ['Emits', '<button class="oe-ref" data-node="predicate">transferred_to@1</button>'], ['Subject', '$material'], ['Object', 'entity_ref($target_cell)'], ['Time', '$occurred_at']],
+          usage: [['dt-log@1/material_to_cell', 'Profile mapping', 'profile']],
+          raw: '{\n  "roles": {\n    "material": {"kind": "entity", "required": true},\n    "target_cell": {"kind": "entity", "required": true},\n    "occurred_at": {"kind": "time", "required": true}\n  },\n  "emit": {\n    "predicate": "transferred_to@1",\n    "subject": "$material",\n    "object": {"kind": "entity_ref", "entity": "$target_cell", "qualifiers": {}},\n    "occurred_at": "$occurred_at"\n  }\n}'
+        },
+        core: {
+          title: 'CoreDie@1', kind: 'Entity · material unit', status: '● compiled · valid',
+          path: 'ledger_config.json#/entities/CoreDie@1',
+          definition: [['Identity keys', 'core_wafer · core_x · core_y'], ['Allowed as subject', '<button class="oe-ref" data-node="predicate">transferred_to@1</button>']],
+          usage: [['transferred_to@1', 'Allowed subject', 'predicate'], ['dt-log@1/material_to_cell', 'Profile binding', 'profile']],
+          raw: '{\n  "keys": ["core_wafer", "core_x", "core_y"]\n}'
+        },
+        cell: {
+          title: 'ProcessCell@1', kind: 'Entity · process-local cell', status: '● compiled · valid',
+          path: 'ledger_config.json#/entities/ProcessCell@1',
+          definition: [['Identity keys', 'process_kind · occurrence_id · cell_x · cell_y'], ['Produced by', '<button class="oe-ref" data-node="predicate">transferred_to@1</button>'], ['Connects through', '<button class="oe-ref" data-node="processed">processed_in@1</button>']],
+          usage: [['transferred_to@1', 'Allowed object/subject', 'predicate'], ['processed_in@1', 'Allowed subject', 'processed']],
+          raw: '{\n  "keys": ["process_kind", "occurrence_id", "cell_x", "cell_y"]\n}'
+        },
+        occurrence: {
+          title: 'ProcessOccurrence@1', kind: 'Entity · process occurrence', status: '● compiled · valid',
+          path: 'ledger_config.json#/entities/ProcessOccurrence@1',
+          definition: [['Identity keys', 'process_kind · occurrence_id'], ['Input edge', '<button class="oe-ref" data-node="processed">processed_in@1</button>'], ['Output edge', '<button class="oe-ref" data-node="material">has_output_material@1</button>']],
+          usage: [['processed_in@1', 'Allowed object', 'processed'], ['has_output_material@1', 'Allowed subject', 'material']],
+          raw: '{\n  "keys": ["process_kind", "occurrence_id"]\n}'
+        },
+        processed: {
+          title: 'processed_in@1', kind: 'Vocabulary · entity_ref predicate', status: '● active · valid',
+          path: 'ledger_config.json#/vocabulary/processed_in@1',
+          definition: [['Subjects', '<button class="oe-ref" data-node="cell">ProcessCell@1</button>'], ['Object types', '<button class="oe-ref" data-node="occurrence">ProcessOccurrence@1</button>'], ['Qualifiers', '없음']],
+          usage: [['process-material-flow@1/cell_in_occurrence', 'Pack emission', 'pack']],
+          raw: '{\n  "status": "active",\n  "subjects": ["ProcessCell@1"],\n  "object": {"kind": "entity_ref", "types": ["ProcessOccurrence@1"], "qualifiers": {"required": [], "optional": []}}\n}'
+        },
+        material: {
+          title: 'has_output_material@1', kind: 'Vocabulary · entity_ref predicate', status: '● active · valid',
+          path: 'ledger_config.json#/vocabulary/has_output_material@1',
+          definition: [['Subjects', '<button class="oe-ref" data-node="occurrence">ProcessOccurrence@1</button>'], ['Object types', 'Lot@1'], ['Required qualifier', 'slot']],
+          usage: [['process-material-flow@1/occurrence_output_material', 'Pack emission', 'pack'], ['dt-inventory@1', 'Profile binding', 'profile']],
+          raw: '{\n  "status": "active",\n  "subjects": ["ProcessOccurrence@1"],\n  "object": {"kind": "entity_ref", "types": ["Lot@1"], "qualifiers": {"required": ["slot"], "optional": []}}\n}'
+        },
+        profile: {
+          title: 'dt-log@1', kind: 'Profile · source bindings', status: '● approved · valid',
+          path: 'ledger_config.json#/profiles/dt-log@1',
+          definition: [['Source', '<button class="oe-ref" data-node="source">dt_log</button>'], ['Uses', '<button class="oe-ref" data-node="claim">process-material-flow@1/material_to_cell</button>'], ['Constant binding', 'process_kind = "DT"'], ['Column bindings', 'occurrence_id←dt_job · cell_x←dt_x · cell_y←dt_y']],
+          usage: [['dt_log', 'Source plan', 'source']],
+          raw: '{\n  "source": "dt_log",\n  "packs": ["process-material-flow@1"],\n  "mappings": [{"mapping_id": "material_to_cell", "use": "process-material-flow@1/material_to_cell", "bind": "…"}]\n}'
+        },
+        source: {
+          title: 'dt_log', kind: 'Source plan · physical relation binding', status: '● ready · valid',
+          path: 'ledger_config.json#/sources/dt_log',
+          definition: [['Relation', 'dt_log'], ['Profile', '<button class="oe-ref" data-node="profile">dt-log@1</button>'], ['Unit', 'group by dt_job'], ['Cursor', 'event_time · dt_cell_key']],
+          usage: [['dt-log@1', 'Profile source', 'profile']],
+          raw: '{\n  "relation": "dt_log",\n  "driver": {"unit": "group", "group_by": ["dt_job"], "cursor": {"columns": ["event_time", "dt_cell_key"]}},\n  "profile_id": "dt-log@1"\n}'
+        }
+      };
+
+      let selected = 'predicate';
+      let activeTab = 'definition';
+      let editing = false;
+      const title = root.querySelector('.oe-selected-title');
+      const kind = root.querySelector('.oe-selected-kind');
+      const status = root.querySelector('.oe-status');
+      const panel = root.querySelector('.oe-tab-panel');
+      const usageList = root.querySelector('.oe-usage-list');
+      const configPath = root.querySelector('.oe-config-path');
+
+      function renderDefinition(item) {
+        return '<div class="oe-signature">' + item.definition.map(([label, value]) =>
+          '<div class="oe-label">' + label + '</div><div class="oe-value">' + value + '</div>'
+        ).join('') + '</div>';
+      }
+
+      function renderUsage(item) {
+        if (!item.usage.length) return '<div class="oe-empty">직접 사용처가 없습니다.</div>';
+        return '<div class="oe-usage-list">' + item.usage.map(([name, relation, target]) =>
+          '<button class="oe-usage" type="button" data-node="' + target + '"><strong>' + name + '</strong><small>' + relation + '</small></button>'
+        ).join('') + '</div>';
+      }
+
+      function validateEditorValue(value) {
+        try {
+          const parsed = JSON.parse(value);
+          if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return { valid: false, message: '정의는 JSON object여야 합니다.' };
+          const forbidden = ['module', 'function', 'path', 'python', 'sql', 'javascript', 'expression', 'eval', 'exec'];
+          const stack = [parsed];
+          while (stack.length) {
+            const current = stack.pop();
+            if (current && typeof current === 'object') {
+              Object.keys(current).forEach(key => {
+                if (forbidden.includes(key.toLowerCase())) throw new Error('금지된 실행 필드: ' + key);
+                stack.push(current[key]);
+              });
+            }
+          }
+          return { valid: true, message: 'JSON 문법 통과 · 저장 시 전체 참조를 다시 컴파일합니다.' };
+        } catch (error) {
+          return { valid: false, message: error.message };
+        }
+      }
+
+      function renderEditor(item) {
+        panel.innerHTML = '<div class="oe-editor">' +
+          '<div class="oe-editor-context"><div class="oe-editor-label">편집 대상</div><div class="oe-editor-path"></div>' +
+          '<div class="oe-editor-label">활성 정본</div><div>compiled snapshot은 그대로 유지</div></div>' +
+          '<label><span class="oe-label">Working draft JSON</span><textarea class="oe-editor-textarea" spellcheck="false"></textarea></label>' +
+          '<div class="oe-editor-validation" data-valid="true"><i data-lucide="check-circle-2" aria-hidden="true"></i><span></span></div>' +
+          '<div class="oe-editor-impact"><strong>영향 범위</strong> · 직접 참조 ' + item.usage.length + '곳을 저장 전에 재검증합니다. 활성 설정과 runtime은 검토 승인 전까지 바뀌지 않습니다.</div>' +
+          '<div class="oe-editor-controls"><button class="oe-editor-action" type="button" data-edit-cancel>취소</button>' +
+          '<button class="oe-editor-action" type="button" data-edit-save>초안 저장</button>' +
+          '<button class="oe-editor-action oe-editor-action-primary" type="button" data-edit-review>검토 요청</button></div></div>';
+        panel.querySelector('.oe-editor-path').textContent = item.path;
+        const textarea = panel.querySelector('.oe-editor-textarea');
+        textarea.value = item.raw;
+        const refreshValidation = () => {
+          const result = validateEditorValue(textarea.value);
+          const validation = panel.querySelector('.oe-editor-validation');
+          validation.dataset.valid = String(result.valid);
+          validation.querySelector('span').textContent = result.message;
+          panel.querySelector('[data-edit-save]').disabled = !result.valid;
+          panel.querySelector('[data-edit-review]').disabled = !result.valid;
+        };
+        textarea.addEventListener('input', refreshValidation);
+        refreshValidation();
+      }
+
+      function render() {
+        const item = nodes[selected];
+        title.textContent = item.title;
+        kind.textContent = item.kind;
+        status.textContent = item.status;
+        configPath.textContent = item.path;
+        root.querySelector('[data-edit-toggle]').innerHTML = editing ? '<i data-lucide="x" aria-hidden="true"></i> 편집 닫기' : '<i data-lucide="pencil" aria-hidden="true"></i> 초안 편집';
+        if (editing) renderEditor(item);
+        if (!editing && activeTab === 'definition') panel.innerHTML = renderDefinition(item);
+        if (!editing && activeTab === 'usage') panel.innerHTML = renderUsage(item);
+        if (!editing && activeTab === 'raw') panel.innerHTML = '<pre class="oe-code"><code></code></pre>', panel.querySelector('code').textContent = item.raw;
+        usageList.innerHTML = renderUsage(item);
+        root.querySelectorAll('[data-node]').forEach(button => {
+          if (button.classList.contains('oe-flow-node')) button.setAttribute('aria-pressed', String(button.dataset.node === selected));
+          if (button.classList.contains('oe-tree-item')) button.setAttribute('aria-current', String(button.dataset.node === selected));
+        });
+        if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+      }
+
+      root.addEventListener('click', event => {
+        const editToggle = event.target.closest('[data-edit-toggle]');
+        if (editToggle && root.contains(editToggle)) {
+          editing = !editing;
+          render();
+          return;
+        }
+        const editCancel = event.target.closest('[data-edit-cancel]');
+        if (editCancel && root.contains(editCancel)) {
+          editing = false;
+          render();
+          return;
+        }
+        const editSave = event.target.closest('[data-edit-save]');
+        if (editSave && root.contains(editSave)) {
+          const value = panel.querySelector('.oe-editor-textarea').value;
+          const validation = validateEditorValue(value);
+          if (validation.valid) {
+            nodes[selected].raw = JSON.stringify(JSON.parse(value), null, 2);
+            nodes[selected].status = '● draft · not active';
+            editing = false;
+            activeTab = 'raw';
+            root.querySelectorAll('.oe-tab').forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.tab === activeTab)));
+            render();
+          }
+          return;
+        }
+        const editReview = event.target.closest('[data-edit-review]');
+        if (editReview && root.contains(editReview)) {
+          const value = panel.querySelector('.oe-editor-textarea').value;
+          const validation = validateEditorValue(value);
+          if (validation.valid) {
+            nodes[selected].raw = JSON.stringify(JSON.parse(value), null, 2);
+            nodes[selected].status = '● draft · review requested';
+            editing = false;
+            activeTab = 'usage';
+            root.querySelectorAll('.oe-tab').forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.tab === activeTab)));
+            render();
+          }
+          return;
+        }
+        const nodeButton = event.target.closest('[data-node]');
+        if (nodeButton && root.contains(nodeButton) && nodes[nodeButton.dataset.node]) {
+          selected = nodeButton.dataset.node;
+          editing = false;
+          activeTab = 'definition';
+          root.querySelectorAll('.oe-tab').forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.tab === activeTab)));
+          render();
+          return;
+        }
+        const tab = event.target.closest('[data-tab]');
+        if (tab && root.contains(tab)) {
+          activeTab = tab.dataset.tab;
+          root.querySelectorAll('.oe-tab').forEach(item => item.setAttribute('aria-selected', String(item === tab)));
+          render();
+        }
+      });
+
+      const search = root.querySelector('.oe-search');
+      search.addEventListener('input', () => {
+        const query = search.value.trim().toLocaleLowerCase();
+        let visible = 0;
+        root.querySelectorAll('.oe-tree-item').forEach(item => {
+          const match = !query || item.textContent.toLocaleLowerCase().includes(query);
+          item.hidden = !match;
+          if (match) visible += 1;
+        });
+        root.querySelector('.oe-tree > .oe-empty').hidden = visible !== 0;
+      });
+
+      render();
+    })();
+  </script>
+</div>

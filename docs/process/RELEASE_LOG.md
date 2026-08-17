@@ -1,6 +1,6 @@
 # 📦 RELEASE_LOG — 릴리스 요약
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 | **Owner:** Lead / PM
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 규율: [CONTRIBUTING](./CONTRIBUTING.md)
 
 불연속 `Phase N.x` 번호 체계를 대체하는 릴리스 요약입니다. 상세 이력은 [history/](../history/README.md)에 있으며, 이 문서는 **큰 흐름의 마일스톤**만 시맨틱하게 기록합니다.
@@ -8,6 +8,10 @@
 **형식:** `YYYY-MM-DD | 영역 | 요약` (최신순). 상세가 필요하면 history 링크.
 
 ---
+
+## 2026-08 — Ledger V2 & Ontology Config Explorer
+
+- **2026-08-18 | Ledger/Ontology** | **Ledger V2 1~7단계와 Ontology Config Explorer 전체 계약 승인 완료.** manifest 단일 진입점, config-only Registry, verified batch join, RoleFrame/Pack compiler, 기존 gate/store/cursor transaction, 비파괴 `lot_event` cutover를 확정했다. Explorer는 compiled 참조 그래프·Used by·단일 context history·draft preview/review/revise/CAS activation과 반응형 3단 UI를 제공한다. 운영 reset/replay·migration·legacy 삭제는 별도 승인 전 금지. [인수인계](./FORK_SESSION_BRIEF.md) · [Ledger V2](../../ledger_v2_redesign_plan_20260817/README.md) · [Explorer 근거](../../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md)
 
 ## 2026-07 — 웨이퍼 맵 에디터 & 물리 지오메트리
 

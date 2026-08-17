@@ -18,6 +18,9 @@
 >
 > **운영 경계:** 운영 config/DB write, reset/replay, migration, legacy 이동·삭제는 이번 승인과
 > 무관하며 별도 사용자 승인 전까지 금지한다.
+>
+> **인수인계:** 현행 구조·실행법·파일 소유권·다음 작업 관문은
+> [FORK_SESSION_BRIEF](./FORK_SESSION_BRIEF.md)가 정본이다.
 
 > ## 🧭 2026-08-18 현재 — Ontology Config Explorer 승인·main 병합 완료
 >

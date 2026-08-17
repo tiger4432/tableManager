@@ -1,85 +1,168 @@
-# 포크(온톨로지) 세션 인수 지시문 (2026-08-14 심야 작성 — 토큰 소진 교대용)
+# Ledger V2 · Ontology Config Explorer 인수인계
 
-> 너는 **온톨로지 포크 = 기획부장**이다. 설계·판정·검수를 하고 **코드는 쓰지
-> 않는다**(구현은 「구현자」 세션, 데이터 증강은 「Data Manager」 세션). 사용자
-> = 제품 소유자, 한국어로 소통. **판정·지시의 정본은 파일**이고 메시지는
-> 포인터다. 보고는 자연어로, 코드명 금지.
+> **상태:** `COMPLETE / APPROVED`
+> **작성 기준:** 2026-08-18 main `cbe139e1`
+> **독립 Audit:** `01a00f3f-4249-7bf0-ab96-6d32c27273fe`
+> **운영 파괴 작업:** 별도 사용자 승인 전 금지
 
-## 0. 먼저 읽을 것 (순서대로 — 이것만 읽으면 이어갈 수 있다)
+이 문서는 2026-08-14의 구 포크/구현자/Data Manager 세션 운영 지시를 대체한다. 현재는 별도
+구현 세션 이름이나 휘발성 메시지 큐가 정본이 아니다. 설계·구현·검수의 정본은 아래 파일과
+Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출한다.
 
-1. **`docs/process/SCENARIO_CONSOLE_BRIEF.md` 맨 끝부터 거꾸로** — 최신 블록들이
-   현재 법이다: R-리라이트(전면 재작성 판정) · 거절 사다리(「말하는 실패도
-   실패」) · 문구 다이어트 · R-아침 정본 동선 · 상설 원칙들(랏 단위 잊기 ·
-   노브 1급 · 차트=작업대 · 3초 짚기 · 육하=원장 5문+기전의 왜) · 내일 씨앗 6개.
-2. **`docs/process/PROJECT_STATUS.md` 최상단** — 밤 마감 블록(폐기/보존 경계).
-3. **`docs/process/LEDGER_RULINGS.md`** — R-K(유효다이 플로어 보류)·R-L(다부모
-   홉: 주소 구체성 우선, 내일 수리) 포함 R-A~L.
-4. `docs/process/AUGMENTATION_SESSION_BRIEF.md` — DM 축 1~8 (축 8 = 전공정
-   100스텝, 진행 중일 수 있음).
-5. 메모리 인덱스(자동 로드) — 특히 오늘 신설: 「자막 단 실패도 실패다」·「관통
-   단위 전환은 통째로 착지」.
+## 1. 지금 어디까지 왔나
 
-## 1. 내일(2026-08-15) 아침 안건 — 이 순서
+- Ledger V2 1~7단계: `COMPLETE / APPROVED`
+- Ontology Config Explorer 전체 계약: `COMPLETE / APPROVED`
+- production authoring root: `server/config/ontology/`
+- 현재 V2 cutover source: `lot_event`
+- UI: `http://127.0.0.1:8080/admin.html#ontology`
+- active snapshot 기준: `57d36c07271a019242722cc4627f1c0a9c6b477e632f29f32034e331928b0da0`
 
-1. **콘솔 클라 전면 재작성 착공 준비**: 포크가 화면 골격 와이어 시안 제시 →
-   소유자 승인 → 구현자 착공. 착공 조건 3(정본): 문구 다이어트 + 거절 사다리 +
-   웨이퍼 단위, 그리고 **스모크 1본을 첫 화면과 같은 커밋에**. 정보 구조 =
-   정본 동선 하나(R-아침 블록). 생김새 정본 =
-   `agent_workspace/ui_preview/JOURNEY_CONTRAST_MOCKUP.html`(소유자 승인 원본).
-2. **서브그래프 탐색기 공동 설계** (= 소유자가 말해 온 «구조뷰»의 실체, 인스턴스
-   층) — 소유자와 천천히, 씨앗 6개에서 시작(브리프 수집함).
-3. **서버 묶음: enrich + 오토컨펌 + 액션 발급** — 결측 대치 사다리(3류 추론
-   원자·직전랏은 걷기 순서·실측 오면 자동 은퇴), 오토컨펌 = 유일해+관문 통과 시
-   1류 확정 원자 게이트 발급, R-L 수리(slot_map 우선)·lot_event 워커 등재 포함.
-4. **DM 축 8 수락 검수**: 본딩 랏 마킹 대조가 전공정 CMP 챔버 갈림을 선언 0개로
-   찾고 기전 열이 core_cmp_nonuniform 경로로 설명 + 코어 맵 엣지 링 + 100스텝
-   트레이스 시간 유지.
-5. R-K 플로어 수리 설계(방향을 참조 주장에), 구 화면·구 그래프 사체 정리(대충).
+승인 구현 커밋:
 
-**이월된 수락 기준**: 포크가 «화면만으로» 보이드 분석 완주 → 결론 보고서 제출.
+| 범위 | exact commit |
+|---|---|
+| Stage 2 Bundle/validator | `ac380e4b26ac19b7e5d96529cfd37478cd5b2f6b` |
+| Stage 3 Registry/snapshot | `135a440fa2cbbfba83b8964b0dfc159ca0e1b4f2` |
+| Stage 4 RoleFrame/Pack compiler | `1d9bd4aa2f1b0ca5012c959e4647d8feab956ee1` |
+| Stage 5 Source Preparer | `4508c12c5acad6b3a48affde61220a5e2e1709a9` |
+| Stage 6 runtime/parity | `b98f0c3804f5bdfc6653670da571f8fef0e9e129` |
+| Stage 7 manifest cutover | `f516268eadae5505c586ce5235e76dd729c1e573` |
+| Explorer 전체 완료 | `2d1ad863106fc228566cab1a386265957f5c3587` |
+| 최종 상태 동기화 | `cbe139e1adae1c808bfb5774f24ae22ede1cf2ea` |
 
-## 2. 3자 체계와 채널 (실사고 기반 규칙 — 어기면 하루가 샌다)
+## 2. 시스템의 본질
 
-- 세션: **구현자** `local_00d8df53-bfdd-4acf-9bb4-9881d23ee388`(트랜스크립트
-  `e47e3a33-….jsonl`) · **Data Manager** `local_3f76da94-65dc-4634-886d-2c99ad31ed31`
-  (트랜스크립트 `85569730-….jsonl`). ⚠️ **세션 id ≠ 파일명**이고 재시작/컴팩트로
-  바뀐다 — "not found"면 `list_sessions` 제목으로 재해석.
-- **메시지는 상대 턴 경계에만 배달되고, 큐에서 유실된다**(하루 8건 실증) —
-  판정은 파일 커밋 먼저, 메시지는 포인터만. 상대가 유휴인데 안 읽으면
-  트랜스크립트를 grep해 배달 여부부터 확인. 즉시 개입은 소유자 직접 입력만 가능.
-- **소유자는 양쪽에 직접 지시한다** — 순서 위반처럼 보이면 먼저 물을 것.
-  소유자 직접 지시 > 포크 판정. 연속 설계 발화는 즉시 릴레이 말고 **모아서
-  정본 블록 하나**로.
-- 커밋은 반드시 경로 지정(`git add <경로>` + `git commit -- <경로>`), 커밋 후 push.
+R&D 사용자가 보는 기본 계약은 표이고, 온톨로지/그래프는 관계·근거를 보존하는 배경 엔진이다.
+목표는 불완전한 소스에서 놀라움을 줄이는 다음 행동을 산출하는 것이다. Ledger V2는 이를 위해
+새 소스의 의미를 Python 하드코딩에 흩뜨리지 않고 선언과 제한된 mapper hook으로 분리한다.
 
-## 3. 검수 규율 (완료라는 말의 조건)
+```text
+manifest.json
+  → ledger_config + catalog + dataflows
+  → strict LedgerSetupBundle
+  → immutable Registry/Snapshot
+  → 기존 cursor의 bounded physical batch
+  → Source Preparer의 verified batch join
+  → pandas EventFrame
+  → BaseLedgerMapper / RoleEmission / RoleFrame
+  → Pack-owned LedgerFrame
+  → 기존 gate → LedgerStore → cursor transaction
+```
 
-- **완료 선언 전 포크가 브라우저로 사용자 여정을 직접 걷는다** — API 200 ≠ 화면.
-  브라우저: `preview_start {name:"assy-stack"}`(localhost:8080 attach, launch.json
-  존재) → navigate가 정책에 막히면 `javascript_tool`로 `location.assign()`.
-  스크린샷은 패널이 화면에 떠 있을 때만 가능 — 텍스트 검증(read_page·JS)이 기본.
-- **레인 자기 보고는 검수가 아니다** — 독립 실측 후 합격/반려. 판별 콜(두 답이
-  갈리는 입력)로 잰다. «받고-무시»류는 전부 배제되는 입력으로 판별.
-- **검수 지표**: 거절문 조우 횟수(동선 완주에 0~1 목표) · 3초 짚기 · 단위=웨이퍼 ·
-  약속 문구에 그림이 따르는가.
-- PowerShell 5.1 함정: `Invoke-RestMethod`가 charset 없으면 Latin-1로 깨짐 —
-  한국어 응답은 UTF-8 파일로 덤프 후 Read. `&&` 없음, 한 줄 체이닝은 `;`.
-- 서버 코드 착지 ≠ 서빙 — 러닝 프로세스가 옛것일 수 있다. 재기동은 구현자 소관
-  (런처 워치독 때문에 포크가 직접 죽이지 말 것). 반영 감지는 판별 콜 폴링
-  백그라운드로.
+핵심 불변식:
 
-## 4. 세션 장치 재무장 (새 세션에서 다시 걸 것)
+1. Pack/Profile/Registry 작성은 `ledger_config.json`에서 함께 본다.
+2. cursor는 base physical column만 읽는다.
+3. join은 physical UNIQUE 검증을 통과한 descriptor만 사용한다.
+4. mapper는 Atom이나 object payload를 직접 만들지 않고 Role만 해석한다.
+5. dry-run과 execute는 같은 snapshot/compiler를 사용한다.
+6. 한 source event의 Claim은 전부 통과하거나 Atom 0·cursor 미이동이다.
+7. Position/lookup을 V2 의미 계층에 다시 만들지 않는다.
 
-- **크론**: 15분 현황 보고(매시 4·19·34·49) · 매시 시나리오 스트레스(:43,
-  결과는 `docs/process/SCENARIO_STRESS_LOG.md`에 S-번호로).
-- **감시(Monitor)**: ① 본 레포 새 커밋(git log 폴링) ② 구현자 상황(트랜스크립트
-  tail) ③ DM 발신(트랜스크립트에서 `local_<내 세션 id 앞 8자>` grep 카운트 증가).
-- 브라우저 preview attach(8080) 복구.
+## 3. 먼저 읽을 정본
 
-## 5. 하지 말 것 (오늘 밤의 수업료)
+1. `docs/overview/SYSTEM_OVERVIEW.md`
+2. `docs/process/PROJECT_STATUS.md` 최상단
+3. `ledger_v2_redesign_plan_20260817/README.md`
+4. `ledger_v2_redesign_plan_20260817/00_MASTER_PLAN.md`
+5. `ledger_v2_redesign_plan_20260817/CONFIG_CANON.md`
+6. 해당 단계의 `STAGE_*_ACCEPTANCE_EVIDENCE.md`
+7. `ontology_config_explorer_plan/01_DISCOVERY_AND_STATE_CONTRACT.md`
+8. `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md`
+9. `task/ontology_config_explorer_pending.md` — 완료된 원 요구사항
+10. `task/ontology_config_explorer_reference.html` — CSS·3단 배치 시각 기준본
 
-- 관통 개념(단위·좌표·신원) 변경을 조각으로 착지시키지 말 것.
-- 소유자가 지금 못 쓰는 상태를 어떤 라운드 규율보다 뒤에 두지 말 것.
-- 거절문·해설로 화면을 채우는 구현을 «정직»으로 합격시키지 말 것.
-- 레인의 「~하겠습니다」 후 15분 무소식이면 재개 신호를 보낼 것(멈춤형 레인).
-- 이 지시문 자체도 낡는다 — 정본은 언제나 브리프·판정집·보드의 최신 블록.
+## 4. 파일 소유권
+
+### Ledger V2
+
+| 책임 | 파일 |
+|---|---|
+| manifest와 authoring 선언 | `server/config/ontology/` |
+| Bundle strict validation | `server/ledger/setup_bundle.py` |
+| immutable Registry/Snapshot | `server/ledger/setup_registry.py` |
+| RoleFrame/Pack compiler | `server/ledger/roleframe.py` |
+| verified batch preparation | `server/ledger/source_preparation.py` |
+| preview/execute와 기존 transaction 연결 | `server/ledger/runtime_v2.py` |
+| legacy↔V2 의미 비교 | `server/ledger/shadow_parity.py` |
+| selector와 비파괴 cutover | `server/ledger/cutover_v2.py`, `server/ledger/backfill.py` |
+
+### Ontology Config Explorer
+
+| 책임 | 파일 |
+|---|---|
+| compiled graph/read model | `server/ledger/config_explorer.py` |
+| active/draft context service | `server/ledger/config_explorer_service.py` |
+| draft/review/revise/CAS activation | `server/ledger/config_drafts.py` |
+| strict Admin API | `server/ontology_config_explorer_router.py` |
+| 단일 client state/history | `client2/src/ontology_explorer_store.js` |
+| 화면·interaction | `client2/src/ontology_explorer.js`, `ontology_explorer_view.js`, `ontology_explorer.css` |
+| file-backed 이종 계보 예제 | `server/config/sample/ontology/transfer_explorer/` |
+
+## 5. Explorer 사용·검증
+
+서버 실행:
+
+```powershell
+conda activate assy_manager
+python run_decoupled_app.py --server-only
+```
+
+`--server-only`는 데스크톱 셸을 띄우지 않는다는 뜻이며 백엔드 보조 프로세스는 launcher가 함께
+감독한다. Explorer는 Admin Token 입력 뒤 `admin.html#ontology`에서 연다.
+
+승인된 집중 검증:
+
+- backend 직접군: `165 passed`
+- client Explorer harness: `35 assertions / 0 failed`
+- client contracts: `7 passed`
+- production build: Vite `107 modules`
+- 브라우저: 1920×1080, 700×900, 320×800
+- 10,000-node fixture: `<2s`, 응답 `<=213 nodes`, payload `<1.5MB`
+- dirty save→reedit→keep→back→forward→back에서 editor bytes/cursor 보존
+- file-backed 계보: `CoreDie → DTDie → BondComponent → FinalChip`
+
+현재 HEAD에서 마지막 집중 재검증은 Explorer backend `21 passed`, client state `35/0`이다.
+full server suite와 Explorer PostgreSQL E2E는 사용자 지시에 따라 생략했으며 통과로 표현하지
+않는다.
+
+## 6. 절대 자동으로 하지 말 것
+
+- 운영 Ledger/cursor reset 또는 source replay
+- 운영 DB migration/write
+- legacy config/translator/template 이동·삭제
+- DT/observation source를 parity 승인 없이 V2로 전환
+- raw mapping이나 임의 index 문자열로 VerifiedJoinDescriptor 발급
+- active config 직접 편집 또는 manifest 밖 경로 쓰기
+- 기준본과 다른 dashboard/graph 중심 Explorer 재디자인
+
+이 항목은 기능 미완료가 아니라 별도 사용자 승인이 필요한 운영 경계다.
+
+## 7. 알려진 환경 상태
+
+- 2026-08-18 로컬 서버 기동에서 `graph_nodes`, `graph_edges`, `graph_sync_state` 세 구 그래프
+  테이블 누락 경고가 보였다. 서버와 Explorer `/health`, `admin.html`은 200으로 기동했다.
+  해당 테이블을 만들거나 migration하지 말고, 실제로 구 그래프 기능이 다시 필요할 때 별도
+  범위와 승인을 받는다.
+- Admin API는 `X-Admin-Token`이 필수다. 화면이 비어 있으면 코드보다 토큰 입력을 먼저 확인한다.
+- task의 HTML은 시각 기준본이지 runtime JavaScript 정본이 아니다.
+
+## 8. 다음 합법적 작업 순서
+
+1. 사용자가 지정한 새 source/Pack을 `server/config/ontology/` 선언으로 추가한다.
+2. manifest dry-run과 해당 source 집중 테스트로 readiness를 확인한다.
+3. legacy↔V2 shadow parity에서 설명 없는 차이 0을 증명한다.
+4. 지정 Audit task에 단계·상태·exact commit·테스트 범위를 명시해 검수를 요청한다.
+5. Audit REJECT면 해당 반례만 최소 수정해 재검수하고, APPROVE면 제품 상태를 동기화한다.
+
+DT/observation cutover, dependency replay worklist, 운영 reset/legacy retirement는 각각 별도 범위다.
+사용자 승인 없이 다음 항목으로 묶지 않는다.
+
+## 9. 종료 체크
+
+- 관련 집중 테스트만 실행하고 full suite를 통과했다고 과장하지 않는다.
+- `docs/history/YYYYMMDD_HHMMSS_*.md`와 리빙 문서를 함께 갱신한다.
+- `python docs/history/gen_index.py`를 실행한다.
+- 사용자 파일을 명시 없이 reset/stash/delete하지 않는다.
+- commit 후 지정 Audit task에 exact SHA를 보고한다.

@@ -1,11 +1,16 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Explorer completion `APPROVED` | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ledger/Explorer handoff | **Owner:** Lead / PM
 >
 > 🔴 **행을 더하거나 고치면 이 헤더의 「이번 라운드」도 함께 쓴다** — 직전에 F9 행이 추가될 때 그것을 어겼고, 그래서 새 행이 어느 라운드의 것인지 알 수 없었습니다.
 > 🔴 **소유 행이 없는 문서·계약은 조용히 낡습니다.** 새 문서를 만들거나 새 계약(`contracts/<name>/`)을 추가하면 **그 자리에서 행을 만드십시오.**
 >
-> **이번 라운드 (2026-08-18 · Ontology Config Explorer 전체 완료·승인·main 병합)**
+> **이번 라운드 (2026-08-18 · Ledger V2·Ontology Config Explorer 인수인계 정비)**
+> - **[인수인계 소유권]** `docs/process/FORK_SESSION_BRIEF.md`가 승인 상태, 정본 읽기 순서,
+>   Ledger/Explorer 파일 소유권, 실행·집중 검증, 파괴 금지 경계와 다음 Audit 절차를 한 장에서
+>   소유한다. 2026-08-14의 구 세션명·구 작업 목록은 현행 지시에서 제거했고 당시 상세는 Git
+>   history로 보존한다. 완료된 원 요구사항과 시각 기준본은 `task/ontology_config_explorer_*`가
+>   소유하며, 구현·수락 의미의 정본은 Explorer plan이다.
 > - **[Ontology Config Explorer 소유권]** `server/ledger/config_explorer.py`가 compiled Registry
 >   identity·Binding·SourcePlan과 정/역참조 index, `config_explorer_service.py`가 active/draft
 >   한-context 응답 cache·normalized node/edge diff, `config_drafts.py`가 manifest-owned 선언의

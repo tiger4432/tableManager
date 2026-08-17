@@ -12,6 +12,7 @@
 | 문서 | 내용 |
 |---|---|
 | 🟢 **[overview/SYSTEM_OVERVIEW.md](./overview/SYSTEM_OVERVIEW.md)** | **SSOT** — 현재 시스템의 전체 아키텍처. 무엇이든 여기서 시작 |
+| 🟢 **[process/FORK_SESSION_BRIEF.md](./process/FORK_SESSION_BRIEF.md)** | **현재 인수인계 정본** — Ledger V2·Explorer 상태, 파일 소유권, 실행법, 금지 경계, 다음 작업 절차 |
 | 🟢 **[architecture/PRIMITIVES.md](./architecture/PRIMITIVES.md)** | **만들기 전에 여기부터** — 이 시스템이 이미 할 줄 아는 연산·패턴 카탈로그. "이건 무엇과 구조적으로 같은가"에 답하지 못하면 아직 설계할 준비가 안 된 것 |
 | 🟢 [process/PROJECT_STATUS.md](./process/PROJECT_STATUS.md) | **「지금 무엇이 열려 있나」 단일 보드** — 다음 할 일과 살아 있는 결함. 🔴 **2026-08-01에 679줄에서 쪼갰다**(낡은 한 줄이 총괄의 위험 판정을 반대로 뒤집은 사고가 실제로 났다). 아래 셋이 그 분가다 |
 | 🟢 [process/DESIGN_TRACKS.md](./process/DESIGN_TRACKS.md) | **진행 중인 설계와 그 근거** — 모호값 사전화 + 결측 온톨로지 · 쓰기 리디렉션 · 목적별 작은 온톨로지 · `map_editor.js` 리팩토링 계획. 대화에서 확정된 것이라 **다시 걸어오지 말 것** |
@@ -19,6 +20,7 @@
 | 🟢 [process/BACKLOG_ARCHIVE.md](./process/BACKLOG_ARCHIVE.md) | **옛 대기열·현재 초점·완료 롤업·장기 백로그** — 미완 항목의 정본은 보드로 승격되었다 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로. **§2-bis = 이 저장소가 자기를 검증하는 자리**(pytest = 서버 절반 · `npm run build` = 클라 절반 **세 채점자**, 둘 다 돌려야 한다. 목록의 정본은 `package.json`의 `prebuild` 한 줄) |
 | 🟢 [guide/CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | 설정 파일 지도, 의존 순서, 대표 시나리오, 리로드·효과 확인 |
+| 🟢 [Ledger V2 Plan](../ledger_v2_redesign_plan_20260817/README.md) · [Explorer Acceptance](../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md) | 승인된 원장 설정/compiler 구조와 Ontology Config Explorer 전체 수락 근거 |
 
 ## 🏛️ 2. 아키텍처 (architecture/)
 
