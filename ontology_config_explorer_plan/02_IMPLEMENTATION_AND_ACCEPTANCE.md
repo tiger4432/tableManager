@@ -1,10 +1,10 @@
 # Ontology Config Explorer — 구현·수락 근거
 
-> 상태: `COMPLETION_IN_REVIEW / NOT_APPROVED`
+> 상태: `COMPLETE / APPROVED`
 > 기준 active snapshot: `57d36c07271a019242722cc4627f1c0a9c6b477e632f29f32034e331928b0da0`
 > 파괴 작업: 운영 config/DB write, reset/replay, migration, legacy 이동·삭제 0
 > Audit round 1: `1860714`는 dirty history 버퍼 유실·샘플 계보 단절·edge modified
-> 미구현으로 REJECT. 세 반례를 닫은 후속 커밋을 재검수한다.
+> 미구현으로 REJECT. 세 반례를 닫은 `2d1ad863`을 독립 Audit이 APPROVE했고 main에 병합했다.
 
 ## 1. 이번 완료 후보가 닫은 계약
 
@@ -75,7 +75,8 @@ strict Admin token을 요구하고 임의 파일 경로·pointer를 받지 않�
 ## 5. 상태와 다음 관문
 
 기존 `bea0484` Audit 승인은 제한된 초기 범위에 대한 역사로 유지한다. 전체 완료 후보
-`1860714`의 첫 Audit은 위 세 반례로 REJECT됐고, 이번 후속도 재승인 전까지
-`COMPLETION_IN_REVIEW / NOT_APPROVED`다. exact commit을 Audit task
-`01a00f3f-4249-7bf0-ab96-6d32c27273fe`에 재제출하고 APPROVE 뒤에만 main 병합과 최종
-`COMPLETE / APPROVED` 상태 동기화를 수행한다.
+`1860714`의 첫 Audit은 위 세 반례로 REJECT됐고, 후속 exact commit
+`2d1ad863106fc228566cab1a386265957f5c3587`을 지정 Audit task
+`01a00f3f-4249-7bf0-ab96-6d32c27273fe`가 독립 재검수해 APPROVE했다. 구현은 main에
+fast-forward 병합됐고 제품 상태는 `COMPLETE / APPROVED`다. 운영 config/DB write,
+reset/replay, migration, legacy 이동·삭제 금지는 별도 승인 전까지 유지한다.

@@ -1,6 +1,6 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ontology Config Explorer `IN_REVIEW` | **Owner:** Integrity/QA | 갱신 **doc-keeper 전담** · 정합 감사 **doc-auditor**
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ontology Config Explorer `APPROVED` | **Owner:** Integrity/QA | 갱신 **doc-keeper 전담** · 정합 감사 **doc-auditor**
 >
 > **이번 라운드 (2026-08-11 2차 · `3d43a6c`)**: ⚠️ **Map Editor 2에는 여전히 §1/§2 행이 없습니다**(2026-08-05 결정 유지 — 화면이 매일 바뀌는 중이라 지금 쓰면 내일 낡는다). 다만 이번 커밋이 고친 것은 적어 둔다: 확정 키 조립이 **룰 선언을 arity 무관하게** 따르게 됐다(옛 코드는 arity 2 전용이라 컬럼 1개짜리 운영 룰을 한 번도 확정시키지 못했다) · 룰 채택 실패가 빈 목록 대신 사유(`정렬 규칙 없음`/`규칙 선택 필요`)를 낸다. 설계 서술은 [architecture/frontend §4.2](../architecture/frontend.md), 계약은 [spec/MAP_ALIGNMENT_SPEC §5](../spec/MAP_ALIGNMENT_SPEC.md).
 >
