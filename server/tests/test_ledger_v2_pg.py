@@ -18,7 +18,8 @@ from sqlalchemy import Column, DateTime, String, create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import NullPool
 
-from ledger import gate, schema
+from ledger import backfill, gate, schema
+from ledger.cutover_v2 import DEFAULT_ONTOLOGY_ROOT
 from ledger.runtime_v2 import execute_cursor_batch, preview_cursor_batch
 from ledger.roleframe import DeclarativeRoleMapper, RoleMapperImplementationRegistry
 from ledger.setup_bundle import LedgerSetupValidationError, validate_bundle
@@ -462,3 +463,51 @@ def test_postgres_right_unique_index_is_used_by_the_join_probe(clean_pg_v2):
             "WHERE join_id = 'J-0001'")))
     assert UNIQUE_INDEX in plan
     assert "Index Scan" in plan
+
+
+def test_stage7_manifest_selected_lot_event_uses_existing_store_cursor_transaction(
+        clean_pg_v2):
+    case = clean_pg_v2
+    with case["runtime"].begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE lot_event (
+                lot_id TEXT NOT NULL,
+                event_time TIMESTAMPTZ NOT NULL,
+                txn_seq TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                parent_lot TEXT,
+                child_lot TEXT,
+                slotnumbers TEXT,
+                waferids TEXT
+            )
+        """))
+        connection.execute(text("""
+            INSERT INTO lot_event
+                (lot_id, event_time, txn_seq, event_type, parent_lot,
+                 child_lot, slotnumbers, waferids)
+            VALUES
+                ('P', :event_at, 'R1', 'split', '', 'C', '1:2', 'W1:W2'),
+                ('C', :event_at, 'R2', 'split', 'P', '', '3', 'W3')
+        """), {"event_at": NOW})
+
+    first = backfill.run(
+        case["runtime"], {}, source="lot_event", fetch_rows=100,
+        max_batches=1, ontology_root=DEFAULT_ONTOLOGY_ROOT)
+    second = backfill.run(
+        case["runtime"], {}, source="lot_event", fetch_rows=100,
+        max_batches=1, ontology_root=DEFAULT_ONTOLOGY_ROOT)
+
+    assert first["molecules"] == 1
+    assert first["inserted"] == 10
+    assert first["cursor"]["txn_seq"] == "R2"
+    assert second["rows_read"] == 0
+    assert second["inserted"] == 0
+    with case["runtime"].connect() as connection:
+        assert connection.execute(text(
+            f"SELECT count(*) FROM {schema.LEDGER_TABLE}"
+        )).scalar() == 10
+        cursor = connection.execute(text(
+            f"SELECT cursor_value FROM {schema.CURSOR_TABLE} "
+            "WHERE source='lot_event'"
+        )).scalar_one()
+    assert cursor["txn_seq"] == "R2"

@@ -1,5 +1,9 @@
 # 7단계 — Cutover, 선택적 원장 Reset, Legacy 은퇴
 
+> 구현 상태: `IN_REVIEW` · 승인: `NOT_APPROVED`
+> 비파괴 범위: manifest/config root, `lot_event` selector, dry-run·existing cursor/store 연결
+> 별도 승인 대기: 운영 Ledger/cursor reset, legacy config/code 이동·삭제
+
 ## 전제
 
 다음이 전부 충족돼야 착수한다.
@@ -87,3 +91,20 @@ legacy 코드 삭제와 데이터 reset은 같은 커밋/작업으로 묶지 않
 - 되돌림 중 v2/legacy를 같은 cursor version으로 섞지 않음
 
 완료 후 최종 승인을 받고서만 계획을 `COMPLETE`로 표시한다.
+
+## 현재 구현 판정
+
+- `server/config/ontology/manifest.json`만으로 현재 live Ledger source `lot_event`의 ready
+  snapshot을 만든다.
+- operator CLI의 기본은 manifest selector이며 `--legacy`는 별도 은퇴 승인 전 compatibility
+  escape hatch다.
+- physical `lot_event` 열을 `LiveLotEventSourcePreparer`가 Stage 6에서 검증된 logical
+  EventFrame으로 정규화한다. compiler core에는 source 이름 분기가 없다.
+- 기존 cursor가 legacy의 `{event_time}` 모양이면 v2 `{event_time, txn_seq}`와 섞지 않고
+  `legacy_cursor_reset_required`로 Atom 0·cursor 미이동한다.
+- cursor reset/replay 옵션은 `destructive_approval_required`로 실행 전에 차단한다.
+- 기존 config 이동, legacy 코드 삭제, DB reset은 실행하지 않았다. 이 선택 항목은 정확한
+  대상·백업·복구 절차에 대한 별도 승인 뒤에만 수행한다.
+
+세부 근거는 [STAGE_7_ACCEPTANCE_EVIDENCE](./STAGE_7_ACCEPTANCE_EVIDENCE.md)와
+[LEGACY_CONFIG_CONVERSION_REPORT](./LEGACY_CONFIG_CONVERSION_REPORT.md)에 있다.

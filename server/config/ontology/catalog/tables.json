@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "tables": {
+    "lot_event": {
+      "columns": {
+        "lot_id": "string",
+        "event_time": "datetime",
+        "txn_seq": "string",
+        "event_type": "string",
+        "parent_lot": "string",
+        "child_lot": "string",
+        "slotnumbers": "string",
+        "waferids": "string"
+      },
+      "business_key": "txn_seq"
+    }
+  }
+}

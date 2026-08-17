@@ -228,7 +228,8 @@ def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
 
 
 def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
-        reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
+        reset_cursor=False, start_from=None, max_batches=None, probe_lag=True,
+        ontology_root=None):
     """Translate everything past the cursor. Returns a `BackfillResult`.
 
     Dispatches on the source's DECLARED grammar (`kind`), which defaults to `lineage` -
@@ -243,6 +244,16 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     """
     from . import config as ledger_config
     from . import gate
+
+    if ontology_root is not None:
+        from .cutover_v2 import load_cutover_setup
+        cutover = load_cutover_setup(ontology_root)
+        selection = cutover.selection(source)
+        if selection.mode == "v2":
+            return _run_v2_lineage(
+                engine, cutover, source=source, fetch_rows=fetch_rows,
+                reset_cursor=reset_cursor, start_from=start_from,
+                max_batches=max_batches)
 
     source_cfg = ledger_config.source_config(cfg, source)
     if source_cfg is None:
@@ -266,6 +277,180 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     return _run_lineage(engine, cfg, source, fetch_rows=fetch_rows,
                         reset_cursor=reset_cursor, start_from=start_from,
                         max_batches=max_batches, probe_lag=probe_lag)
+
+
+def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
+                    reset_cursor=False, start_from=None, max_batches=None):
+    """Run one manifest-selected v2 lineage source on the existing Store/cursor.
+
+    The caller must explicitly provide ``ontology_root`` to :func:`run`.  Legacy remains
+    the compatibility default.  Reset/re-read controls are refused here because Stage 7
+    requires a separate destructive approval for changing an existing source cursor.
+    """
+    from .cutover_v2 import (
+        LedgerV2CutoverError,
+        execute_selected_cursor_batch,
+    )
+    from .source_preparation import VerifiedJoinBatchReader
+    from .store import LedgerStore
+
+    if reset_cursor or start_from is not None:
+        path = "reset_cursor" if reset_cursor else "start_from"
+        raise LedgerV2CutoverError(
+            "destructive_approval_required", path,
+            "v2 cursor reset or replay requires a separate destructive approval",
+        )
+    if not isinstance(fetch_rows, int) or isinstance(fetch_rows, bool) or fetch_rows < 1:
+        raise LedgerV2CutoverError(
+            "invalid_fetch_rows", "fetch_rows", "must be a positive integer")
+
+    class NoJoinReader(VerifiedJoinBatchReader):
+        def read_chunk(self, descriptor, keys):
+            raise LedgerV2CutoverError(
+                "verified_join_reader_required", "source_preparation.join_reader",
+                "selected source inherits a verified join but no reader was supplied",
+            )
+
+    plan = setup.snapshot.source_plans[source]
+    if plan.driver.preparation.verified_join_descriptors:
+        raise LedgerV2CutoverError(
+            "verified_join_reader_required", "source_preparation.join_reader",
+            "the backfill entry requires a registered read-only join reader",
+        )
+    store = LedgerStore(engine)
+    store.ensure_schema()
+    read = store.connection()
+    try:
+        existing = store.read_cursor(read, source)
+        cursor_value = (existing or {}).get("cursor_value") or {}
+        expected_version = f"ledger-v2:{setup.snapshot.snapshot_sha256}"
+        if existing and set(cursor_value) != set(plan.driver.cursor_columns):
+            raise LedgerV2CutoverError(
+                "legacy_cursor_reset_required", f"ledger_cursor.{source}.cursor_value",
+                "existing cursor shape does not match the v2 physical cursor; "
+                "inspect, back up, and obtain separate reset approval",
+            )
+        if existing and existing.get("translator_ver") != expected_version:
+            raise LedgerV2CutoverError(
+                "cursor_snapshot_reset_required",
+                f"ledger_cursor.{source}.translator_ver",
+                "existing cursor belongs to a different setup snapshot; inspect, "
+                "back up, and obtain separate reset or replay approval",
+            )
+        after_time = cursor_value.get(plan.driver.occurred_at.column)
+        result = BackfillResult(
+            source=source,
+            translator_ver=expected_version,
+            started_from=dict(cursor_value) if cursor_value else None,
+            molecules=0, refused_molecules=0, incomplete_molecules=0,
+            attempted=0, inserted=0, deduped=0, batches=0,
+            rows_read=0, cursor=dict(cursor_value) if cursor_value else None,
+            seconds=0.0,
+        )
+        started = time.monotonic()
+        pages = walk_group_pages(
+            lambda position: _fetch_v2_lineage_page(
+                read, plan, position, fetch_rows),
+            lambda event_time: _fetch_v2_lineage_group(read, plan, event_time),
+            plan.driver.occurred_at.column, after_time, fetch_rows,
+        )
+        for complete, next_after, _last_page in pages:
+            if max_batches is not None and result["batches"] >= max_batches:
+                break
+            frame = _v2_frame(complete)
+            result["rows_read"] += len(frame)
+            subjects = _v2_lot_event_subjects(frame)
+            known = store.existing_registrations(read, subjects)
+            # End every SELECT-only transaction before LedgerStore opens its existing
+            # Atom+cursor write transaction.  This is the same lock boundary as legacy.
+            read.rollback()
+            ordered = frame.sort_values(list(plan.driver.cursor_columns))
+            last = ordered.iloc[-1]
+            next_cursor = {
+                column: last[column] for column in plan.driver.cursor_columns}
+            executed = execute_selected_cursor_batch(
+                setup, source, frame, next_cursor, NoJoinReader(), store,
+                known_registrations=known,
+            )
+            written = executed.store_result
+            result["molecules"] += executed.preview.molecule_count
+            result["incomplete_molecules"] += executed.preview.incomplete_count
+            result["attempted"] += int(written.get("attempted", 0))
+            result["inserted"] += int(written.get("inserted", 0))
+            result["deduped"] += int(written.get("deduped", 0))
+            result["batches"] += 1
+            result["cursor"] = dict(executed.preview.cursor_value)
+            after_time = next_after
+        result["seconds"] = round(time.monotonic() - started, 3)
+        return result
+    finally:
+        read.close()
+
+
+def _v2_frame(rows):
+    import pandas as pd
+    return pd.DataFrame(rows)
+
+
+def _fetch_v2_lineage_page(connection, plan, after, limit):
+    return _fetch_v2_lineage_rows(connection, plan, after=after, limit=limit)
+
+
+def _fetch_v2_lineage_group(connection, plan, occurred_at):
+    return _fetch_v2_lineage_rows(
+        connection, plan, group_value=occurred_at, limit=None)
+
+
+def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
+                           limit=None):
+    """Read physical catalog columns with identifier-safe psycopg2 composition."""
+    from psycopg2 import sql
+
+    from .source_preparation import base_select_columns
+    columns = base_select_columns(plan)
+    occurred = plan.driver.occurred_at.column
+    order = tuple(dict.fromkeys((occurred, *plan.driver.order_by)))
+    select_sql = sql.SQL(", ").join(sql.Identifier(column) for column in columns)
+    relation_sql = sql.SQL(".").join(
+        sql.Identifier(part) for part in plan.relation.split("."))
+    where_sql = sql.SQL("")
+    params = []
+    if group_value is not None:
+        where_sql = sql.SQL(" WHERE {} = %s").format(sql.Identifier(occurred))
+        params.append(group_value)
+    elif after is not None:
+        where_sql = sql.SQL(" WHERE {} > %s").format(sql.Identifier(occurred))
+        params.append(after)
+    query = sql.SQL("SELECT {} FROM {}{} ORDER BY {}").format(
+        select_sql, relation_sql, where_sql,
+        sql.SQL(", ").join(sql.Identifier(column) for column in order),
+    )
+    if limit is not None:
+        query += sql.SQL(" LIMIT %s")
+        params.append(limit)
+    with connection.cursor() as cursor:
+        cursor.execute(query, tuple(params))
+        names = [description[0] for description in cursor.description]
+        return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+
+def _v2_lot_event_subjects(frame):
+    """One batched first-sight query for the source-specific live lot event shape."""
+    from .envelope import canonical_keys
+    subjects = set()
+    lots = set(frame["lot_id"].tolist())
+    lots.update(frame["parent_lot"].tolist())
+    lots.update(frame["child_lot"].tolist())
+    for lot in lots:
+        text = str(lot or "").strip()
+        if text:
+            subjects.add(("Lot", canonical_keys({"lot": text})))
+    for value in frame["waferids"].tolist():
+        for wafer in str(value or "").split(":"):
+            text = wafer.strip()
+            if text:
+                subjects.add(("Wafer", canonical_keys({"wafer": text})))
+    return subjects
 
 
 def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
@@ -1321,6 +1506,8 @@ def beat(result):
 
 def main(argv=None):
     _bootstrap_path()
+    from .cutover_v2 import DEFAULT_ONTOLOGY_ROOT
+
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", default="lot_event")
     parser.add_argument("--reset-cursor", action="store_true",
@@ -1332,6 +1519,12 @@ def main(argv=None):
     parser.add_argument("--fetch-rows", type=int, default=DEFAULT_FETCH_ROWS)
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument("--config", default=None)
+    parser.add_argument(
+        "--ontology-root", default=str(DEFAULT_ONTOLOGY_ROOT),
+        help="manifest-selected Ledger v2 config root (the default operator path)")
+    parser.add_argument(
+        "--legacy", action="store_true",
+        help="temporary compatibility escape hatch; bypass the v2 manifest selector")
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -1344,7 +1537,8 @@ def main(argv=None):
     cfg = ledger_config.load(args.config)
     result = run(engine, cfg, source=args.source, fetch_rows=args.fetch_rows,
                  reset_cursor=args.reset_cursor, start_from=args.start_from,
-                 max_batches=args.max_batches)
+                 max_batches=args.max_batches,
+                 ontology_root=None if args.legacy else args.ontology_root)
     beat(result)
 
     logger.info("[Ledger] %s", {k: v for k, v in result.items() if k != "census"})

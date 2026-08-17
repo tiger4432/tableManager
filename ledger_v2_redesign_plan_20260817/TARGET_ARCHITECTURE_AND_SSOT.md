@@ -1,6 +1,6 @@
 # Ledger v2 목표 구조와 정본 목록
 
-> 상태: `TARGET_CONTRACT` · 구현 전 단계별 승인 필요
+> 상태: `IMPLEMENTED / STAGE_7_IN_REVIEW` · 승인: `NOT_APPROVED`
 > 결정일: 2026-08-17
 > 금지: 이 문서를 현행 구현 완료로 읽지 말 것
 
@@ -194,6 +194,12 @@ server/config/ontology/
 `ledger_vocabulary.json`, `chain_rules.json`, `enrichment_rules.json`은 전환 기간 compatibility
 input이다. 목표 정본과 동시에 편집하지 않는다. 단계 7에서 호출부 전수 검사와 함께 새 경로로
 전환하고, 구 파일은 `_archive`로 이동한다.
+
+현재 구현은 `manifest.json`과 열거된 다섯 파일로 legacy Ledger의 유일한 live source
+`lot_event`를 전수 선언한다. CLI는 manifest selector를 기본으로 사용하며 legacy cursor
+shape/version이 남으면 자동 변환하지 않고 reset 별도 승인을 요구한다. legacy config 이동과
+삭제는 아직 승인되지 않아 compatibility input으로 보존한다. 실제 상태와 미완료 목록은
+[Stage 7 Evidence](./STAGE_7_ACCEPTANCE_EVIDENCE.md)가 소유한다.
 
 ## 9. 문서 정본
 

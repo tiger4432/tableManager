@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "chains": {
+    "ledger_v2_execution": {
+      "sources": {
+        "lot_event": {
+          "mode": "v2",
+          "parity_status": "approved",
+          "approval_ref": "stage6:b98f0c3804f5bdfc6653670da571f8fef0e9e129"
+        }
+      }
+    }
+  }
+}

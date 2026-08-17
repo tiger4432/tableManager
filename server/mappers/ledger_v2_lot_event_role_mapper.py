@@ -36,6 +36,16 @@ LOT_EVENT_COLUMNS = (
     "row_identity", "event_time",
 )
 EVENT_GROUP_COLUMN = "event_group_key"
+LIVE_LOT_EVENT_INPUT_COLUMNS = (
+    "lot_id", "event_type", "slotnumbers", "waferids", "parent_lot",
+    "child_lot", "txn_seq", "event_time",
+)
+LIVE_LOT_EVENT_OUTPUT_MAP = MappingProxyType({
+    "lot": "lot_id",
+    "slots": "slotnumbers",
+    "wafers": "waferids",
+    "row_identity": "txn_seq",
+})
 
 
 class LotEventSourcePreparer(BaseSourcePreparer):
@@ -68,25 +78,55 @@ class LotEventSourcePreparer(BaseSourcePreparer):
                 "source_batch.columns",
                 f"lot_event source columns are missing: {missing}",
             )
-        keys = tuple(
-            _event_key(base_frame.iloc[position], path=f"source_batch.rows[{position}]")
-            for position in range(len(base_frame))
-        )
-        groups: dict[str, list[int]] = {}
-        for position, key in enumerate(keys):
-            groups.setdefault(key, []).append(position)
-        incomplete_by_key = {}
-        for key, positions in groups.items():
-            event_type, _time, parent, child, ambiguous = _decode_event_key(key)
-            lots = {_text(base_frame.iloc[position]["lot"]) for position in positions}
-            incomplete_by_key[key] = bool(
-                ambiguous is None and event_type in {"split", "merge"}
-                and (not parent or not child or parent not in lots or child not in lots))
-        return MappingProxyType({
-            EVENT_GROUP_COLUMN: keys,
-            SOURCE_EVENT_INCOMPLETE_COLUMN: tuple(
-                incomplete_by_key[key] for key in keys),
+        return _event_outputs(base_frame)
+
+
+class LiveLotEventSourcePreparer(BaseSourcePreparer):
+    """Normalize the production physical lot_event columns before event grouping.
+
+    The mapping is source-specific implementation code, not compiler logic.  Catalog and
+    cursor plans continue to name only physical columns while Profile/Mapper contracts use
+    the stable logical event vocabulary proven during Stage 6 parity.
+    """
+
+    def prepare_outputs(
+        self,
+        context: SourcePreparationContext,
+        base_frame: pd.DataFrame,
+        joins: Mapping[str, PreparedJoin],
+    ) -> Mapping[str, Sequence[Any]]:
+        if joins:
+            raise SourcePreparationError(
+                "unsupported_source_preparation",
+                "source_preparation.join_rules",
+                "lot_event preparation does not accept virtual joins",
+            )
+        missing = sorted(set(LIVE_LOT_EVENT_INPUT_COLUMNS) - set(base_frame.columns))
+        if missing:
+            raise SourcePreparationError(
+                "source_preparation_incomplete",
+                "source_batch.columns",
+                f"live lot_event source columns are missing: {missing}",
+            )
+        normalized = base_frame.copy(deep=False).rename(columns={
+            physical: logical
+            for logical, physical in LIVE_LOT_EVENT_OUTPUT_MAP.items()
         })
+        group_outputs = _event_outputs(normalized)
+        outputs = {
+            logical: tuple(base_frame[physical].tolist())
+            for logical, physical in LIVE_LOT_EVENT_OUTPUT_MAP.items()
+        }
+        outputs.update(group_outputs)
+        declared = set(
+            context.source_plan.driver.preparation.preparer.output_columns)
+        if set(outputs) != declared:
+            raise SourcePreparationError(
+                "unsupported_source_preparer_output",
+                "source_preparation.outputs",
+                "live lot_event preparer declaration disagrees with its normalized outputs",
+            )
+        return MappingProxyType(outputs)
 
 
 class LotEventRoleMapper(BaseLedgerMapper):
@@ -344,6 +384,28 @@ def _entity_for_role(
         )
     key = next(iter(keys))
     return {"type": entity_type, "keys": {key: value}}
+
+
+def _event_outputs(frame: pd.DataFrame) -> Mapping[str, Sequence[Any]]:
+    keys = tuple(
+        _event_key(frame.iloc[position], path=f"source_batch.rows[{position}]")
+        for position in range(len(frame))
+    )
+    groups: dict[str, list[int]] = {}
+    for position, key in enumerate(keys):
+        groups.setdefault(key, []).append(position)
+    incomplete_by_key = {}
+    for key, positions in groups.items():
+        event_type, _time, parent, child, ambiguous = _decode_event_key(key)
+        lots = {_text(frame.iloc[position]["lot"]) for position in positions}
+        incomplete_by_key[key] = bool(
+            ambiguous is None and event_type in {"split", "merge"}
+            and (not parent or not child or parent not in lots or child not in lots))
+    return MappingProxyType({
+        EVENT_GROUP_COLUMN: keys,
+        SOURCE_EVENT_INCOMPLETE_COLUMN: tuple(
+            incomplete_by_key[key] for key in keys),
+    })
 
 
 def _event_key(row: Mapping[str, Any] | pd.Series, *, path: str) -> str:

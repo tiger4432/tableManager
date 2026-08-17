@@ -1,6 +1,6 @@
 # Ledger v2 Config Canon
 
-> 상태: `TARGET_CONTRACT` · 구현 전 계획
+> 상태: `IMPLEMENTED_FOR_LIVE_LEDGER_SOURCES` · Stage 7 `IN_REVIEW / NOT_APPROVED`
 > Config root: `server/config/ontology/`
 > 핵심: Pack/Profile/Registry는 `ledger_config.json` 한 파일 안에서 함께 작성한다.
 
@@ -174,3 +174,15 @@ Pack compiler에 replay/supersession/deletion detection을 넣지 않는다.
 - deterministic normalization/hash
 - 정확한 file/section/path 오류
 - legacy와 새 정본 동시 편집 0
+
+## 10. Stage 7 구현 상태
+
+`server/config/ontology/manifest.json`과 열거된 다섯 파일이 실제 authoring root다. 현재 legacy
+`ledger_config.json`이 선언하는 live Ledger source는 `lot_event` 하나이며 새 root도 그 source
+하나를 physical catalog → live preparer → Role mapper → Pack/Profile/Source로 전수 선언한다.
+16개 system table 중 나머지 15개는 현행 Ledger source가 아니므로 Ledger catalog에 복사하지
+않았다. 이는 전역 `table_config.json`을 동시에 편집하는 이중 정본을 만들지 않기 위함이다.
+
+실행 selector는 `dataflows/chains.json`에 있고 `server/ledger/cutover_v2.py`가 닫힌 구조로
+검증한다. CLI는 manifest root를 기본 선택하고 `--legacy`는 reset/legacy 은퇴가 별도 승인될
+때까지 compatibility 경계로 유지한다. 기존 legacy config는 변경·이동하지 않았다.

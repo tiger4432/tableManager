@@ -1,5 +1,26 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-18 현재 — Ledger V2 7단계 비파괴 cutover 구현 완료, 독립 Audit 대기
+>
+> **현재 단계/상태:** `STAGE_7_IN_REVIEW / NOT_APPROVED`.
+>
+> **구현:** `server/config/ontology/manifest.json` 한 진입점에서 현재 legacy Ledger의 유일한
+> live source `lot_event`를 ready snapshot으로 만든다. physical source 열은 live preparer가
+> Stage 6 logical EventFrame으로 정규화하고 CLI 기본 selector는 v2다. preview/execute는 기존
+> gate/store/cursor transaction을 그대로 사용한다.
+>
+> **안전:** legacy cursor `{event_time}` 또는 다른 snapshot version은 자동 변환하지 않고
+> 구조화 오류로 Atom 0·cursor 미이동한다. reset/replay 옵션도 별도 파괴 승인 전 차단한다.
+> legacy config/code 이동·삭제와 운영 DB reset은 실행하지 않았다.
+>
+> **검증:** Stage 7 집중 `17 passed`; 직접 영향군 `359 passed, 10 skipped`. skip은 안전한 PG
+> URL 미설정 9건과 기존 Windows symlink 권한 1건이다. 격리 PostgreSQL 생성은 대상 host의
+> 비운영성이 증명되지 않아 안전 정책이 거절했으며 통과로 주장하지 않는다. 전체 server suite는
+> 사용자 지시에 따라 실행하지 않았다.
+>
+> **다음 관문:** exact commit을 지정 Audit 세션에 제출한다. APPROVE면 상설 승인에 따라
+> main 병합과 Stage 7 제품 완료를 동기화한다. CHANGES_REQUESTED면 Stage 7만 보완한다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 6단계 승인·main 병합, 7단계 비파괴 전환 착수
 >
 > **현재 단계/상태:** Stage 6 `APPROVED`; Stage 7 `IN_PROGRESS / NOT_APPROVED`.
