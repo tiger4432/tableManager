@@ -7,9 +7,11 @@ from dataclasses import FrozenInstanceError
 import hashlib
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import notation_norm
+import virtual_join_config as virtual_join_config_module
 
 from ledger import setup_bundle as setup_bundle_module
 from ledger import setup_registry as setup_registry_module
@@ -31,7 +33,10 @@ from ledger.setup_registry import (
     snapshot_compile_errors,
 )
 from test_ledger_setup_bundle import logical_bundle, reverse_mappings, write_tree
-from verified_join_contract import VerifiedJoinDescriptor
+from verified_join_contract import (
+    VerifiedJoinDescriptor,
+    _bind_physical_verifier_issuer,
+)
 
 
 def trusted_implementations():
@@ -42,14 +47,14 @@ def trusted_implementations():
 
 
 def physically_verified_joins(bundle=None, *, unique_index="uq_reference_join_id"):
-    """Test-side stand-in for virtual_join_config's physical catalog verifier."""
+    """Obtain test descriptors through the production physical-verifier boundary."""
     raw = bundle or logical_bundle()
-    descriptors = []
+    normalized_rules = []
     for rule_id, rule in sorted(raw["virtual_joins"].items()):
         if not rule.get("enabled"):
             continue
         fold = rule.get("fold") or None
-        descriptors.append(VerifiedJoinDescriptor.from_verified_rule({
+        normalized_rules.append({
             "name": rule_id,
             "left_table": rule["left_table"],
             "right_table": rule["right_table"],
@@ -59,9 +64,26 @@ def physically_verified_joins(bundle=None, *, unique_index="uq_reference_join_id
             ],
             "expose": list(rule["expose"]),
             "join_cardinality": rule["join_cardinality"],
-            "unique_index": unique_index,
-        }))
-    return tuple(descriptors)
+        })
+    # The loader is the production issuance path.  Only its physical DB probe is
+    # replaced: Stage 3 registry tests do not own a PostgreSQL session.
+    with (
+        patch.object(
+            virtual_join_config_module,
+            "load_virtual_join_rules",
+            return_value=normalized_rules,
+        ),
+        patch.object(
+            virtual_join_config_module,
+            "verify_uniqueness",
+            return_value={
+                "unique_index": unique_index,
+                "refused": False,
+                "code": None,
+            },
+        ),
+    ):
+        return tuple(virtual_join_config_module.load_verified_rules(object()))
 
 
 def snapshot(bundle=None, trusted=None):
@@ -188,19 +210,60 @@ def test_snapshot_compile_refuses_join_without_physical_verification():
 def test_catalog_mapping_cannot_construct_a_verified_descriptor_directly():
     with pytest.raises(TypeError):
         VerifiedJoinDescriptor({"name": "catalog_only"})
+    assert not hasattr(VerifiedJoinDescriptor, "from_verified_rule")
+    with pytest.raises(
+            TypeError,
+            match="only available to virtual_join_config"):
+        _bind_physical_verifier_issuer()
+    with pytest.raises(
+            TypeError,
+            match="only be issued inside virtual_join_config.load_verified_rules"):
+        virtual_join_config_module._VERIFIED_JOIN_ISSUER.issue({"name": "raw"})
 
 
-def test_snapshot_compile_rejects_mismatched_physical_descriptor_exactly():
+def test_fake_index_name_cannot_bypass_the_physical_verifier():
     raw = logical_bundle()
-    descriptor = VerifiedJoinDescriptor.from_verified_rule({
+    fake_catalog_rule = {
         "name": "input_to_reference",
-        "left_table": "different_rows",
+        "left_table": "input_rows",
         "right_table": "reference_rows",
         "join_key": [{"left": "join_id", "right": "join_id", "fold": None}],
         "expose": ["target_id"],
         "join_cardinality": "one",
-        "unique_index": "uq_reference_join_id",
-    })
+        "unique_index": "NOT_PROBED_FAKE_INDEX",
+    }
+
+    # The former public promotion API is absent.  Passing the same raw declaration to
+    # the compiler is also rejected as a non-physical descriptor.
+    assert not hasattr(VerifiedJoinDescriptor, "from_verified_rule")
+    errors = snapshot_compile_errors(
+        validate_bundle(raw), trusted_implementations(), (fake_catalog_rule,))
+
+    assert [error.to_mapping() for error in errors] == [
+        {
+            "code": "unverified_join",
+            "path": "bundle.virtual_joins.input_to_reference",
+            "message": (
+                "join rule 'input_to_reference' requires a physical UNIQUE "
+                "verification descriptor"
+            ),
+        },
+        {
+            "code": "invalid_verified_join",
+            "path": "verified_joins[0]",
+            "message": (
+                "must be a VerifiedJoinDescriptor produced by physical verification"
+            ),
+        },
+    ]
+
+
+def test_snapshot_compile_rejects_mismatched_physical_descriptor_exactly():
+    raw = logical_bundle()
+    descriptor_source = logical_bundle()
+    descriptor_source["virtual_joins"]["input_to_reference"][
+        "left_table"] = "different_rows"
+    descriptor = physically_verified_joins(descriptor_source)[0]
 
     errors = snapshot_compile_errors(
         validate_bundle(raw), trusted_implementations(), (descriptor,))

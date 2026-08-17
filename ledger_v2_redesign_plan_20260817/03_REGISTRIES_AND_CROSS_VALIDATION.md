@@ -142,7 +142,12 @@ Catalog 선언은 `verified=True`가 될 수 없다. 기존
 `virtual_join_config.load_verified_rules()`가 PostgreSQL UNIQUE index를 물리 검증한 뒤 만든
 neutral immutable `VerifiedJoinDescriptor`만 compiler에 외부 주입할 수 있다. 현행 UI executor와
 Source Plan은 같은 descriptor type과 검증 결과를 소비하며, Source Plan은 Registry의 같은
-descriptor 인스턴스를 복사 없이 참조한다. compiler 자체의 DB import/read는 0이다.
+descriptor 인스턴스를 복사 없이 참조한다. `VerifiedJoinDescriptor`에는 raw mapping을 승격하는
+public constructor/factory가 없다. 생성 capability는 `virtual_join_config`의 private issuer가
+소유하고 issuer 자체도 `load_verified_rules()` 호출 위치 밖에서는 발급을 거절한다. 물리 검증
+성공 분기에서만 descriptor를 만든다. 따라서 catalog 선언에
+임의 `unique_index` 문자열을 붙여 compiler-ready descriptor로 바꿀 수 없다. compiler 자체의
+DB import/read는 0이다.
 
 컴파일 진입점은 Bundle 구조·교차 계약을 다시 검증하고 모든 중첩 Binding의 readiness를 먼저
 강제한다. source row, pandas, mapper 실행, Claim/LedgerFrame 생성, DB read/write, cursor,

@@ -1,5 +1,23 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 3단계 3차 감사 보완, 재검수 대기
+>
+> **현재 단계/상태:** `STAGE_3_IN_REVIEW` / `NOT_APPROVED`. main 병합과 Stage 4 착수는
+> 금지 상태다.
+>
+> **이번 보완:** 2차 audit가 재현한 `VerifiedJoinDescriptor.from_verified_rule()` public
+> 우회를 제거했다. raw catalog mapping과 임의 `unique_index` 문자열은 더 이상 verified
+> descriptor가 되지 않으며, 생성 capability는 `virtual_join_config.load_verified_rules()`의
+> 물리 검증 성공 경로만 소유한다.
+>
+> **검증:** exact 가짜 index 반례는 `unverified_join` + `invalid_verified_join`으로 닫혔다.
+> Registry 단독 `43 passed`, Ledger/virtual join 영향군 `216 passed, 1 skipped`, 동결 mapper
+> `29 passed`. 사용자 지시에 따라 전체 서버 suite는 이번 fix에서 재실행하지 않았다.
+> DB read/write/migration과 Stage 4 변경은 0이다.
+>
+> **다음 관문:** 별도 fix 커밋을 audit 세션에 제출한다. audit가 APPROVE하기 전에는 현재
+> 상태를 유지한다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 3단계 2차 감사 보완, 재검수 대기
 >
 > **현재 단계/상태:** `STAGE_3_IN_REVIEW` / `NOT_APPROVED`. 1·2단계만 승인됐고

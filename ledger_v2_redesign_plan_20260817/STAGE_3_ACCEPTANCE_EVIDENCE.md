@@ -3,7 +3,7 @@
 > 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
 > 기준: `main@ac380e4` 위 `feature/ledger-v2-stage3-registries`
 
-## 이번 2차 보완의 결론
+## 이번 3차 보완의 결론
 
 1. Vocabulary가 object qualifier의 required/optional 닫힌 계약을 소유한다.
 2. `kind=symbolic` Role이 `allowed_values`를 소유하고 미등록 constant를 거절한다.
@@ -12,6 +12,8 @@
 4. `bundle_sha256`과 compiled semantic content의 `snapshot_sha256`을 분리했다.
 5. `main@ac380e4`와 현재 브랜치의 전체 서버 스위트를 같은 Conda 환경·명령으로 비교했고,
    최종 현재 실행의 신규 실패/오류 node ID는 `0`이다.
+6. 2차 audit가 재현한 public raw factory 우회를 제거했다. 이제 catalog mapping과 임의
+   `unique_index` 문자열은 descriptor를 만들지 못하고 compiler에서도 구조화 거절된다.
 
 Stage 4, source row, pandas, mapper 실행, Claim/RoleFrame 생성, cursor, gate/store, DB
 read/write/migration은 구현하지 않았다.
@@ -82,7 +84,8 @@ LedgerSetupSnapshot
 catalog declaration
   → virtual_join_config shape validation
   → PostgreSQL UNIQUE index physical proof
-  → VerifiedJoinDescriptor.from_verified_rule()
+  → virtual_join_config private issuance capability
+  → VerifiedJoinDescriptor
   ├─ virtual_join_executor
   └─ compile_setup_snapshot(..., verified_joins)
       → VerifiedJoinRegistry
@@ -91,9 +94,23 @@ catalog declaration
 
 - compiler는 catalog 선언으로 descriptor를 만들지 않는다.
 - descriptor는 mapping-compatible이지만 재귀 immutable이다.
-- direct constructor는 닫혀 있고 factory가 필요한 물리 proof 필드를 검증한다.
+- direct constructor와 raw mapping public factory가 모두 닫혀 있다.
+- private issuance capability는 `virtual_join_config.load_verified_rules()`의 물리 검증 성공
+  분기에서만 사용한다. capability를 직접 참조하더라도 loader 호출 위치 밖의 발급은 거절된다.
 - compiler에 descriptor가 없거나 Bundle 선언과 다르면 구조화 오류로 거절한다.
 - `setup_registry.py`와 neutral descriptor module은 DB/sqlalchemy/pandas를 import하지 않는다.
+
+2차 audit의 exact 반례였던 `NOT_PROBED_FAKE_INDEX` raw mapping을 주입하면 ready snapshot이
+생성되지 않고 다음 결정적 오류 두 건이 발생한다.
+
+```json
+{"code":"unverified_join","path":"bundle.virtual_joins.input_to_reference","message":"join rule 'input_to_reference' requires a physical UNIQUE verification descriptor"}
+{"code":"invalid_verified_join","path":"verified_joins[0]","message":"must be a VerifiedJoinDescriptor produced by physical verification"}
+```
+
+`VerifiedJoinDescriptor.from_verified_rule`은 더 이상 존재하지 않는다. Registry test의 정상
+descriptor도 raw factory가 아니라 production `load_verified_rules()` 경로에서 물리 probe만
+stub으로 대체해 얻는다.
 
 ## Snapshot hash
 
@@ -164,13 +181,20 @@ skip은 이번 단계에서 통과했다고 표현하지 않는다.
 
 ## 집중 검증
 
-- Stage 2+3 Bundle/Registry: `146 passed, 1 skipped`
-- qualifier/Registry/virtual join 영향군: `215 passed, 1 skipped`
+- Stage 2+3 Bundle/Registry: 직전 보완 `146 passed, 1 skipped`; 이번 변경이 직접 닿는 Registry
+  단독 `43 passed`
+- qualifier/Registry/virtual join 영향군: `216 passed, 1 skipped`
 - 동결 LedgerFrame chain mapper: `29 passed`
 - 수정 Python `py_compile`: 통과
 - `git diff --check`: 통과
 - PostgreSQL 운영/격리 DB: 연결·실행하지 않음
 - DB read/write/migration: `0`
+
+사용자 지시에 따라 이번 3차 보완에서는 전체 서버 suite를 다시 실행하지 않았다. 직전 대상
+커밋 `ecbb335`의 독립 audit full-suite는
+`4063 passed, 145 failed, 23 errors, 207 skipped, 1 xfailed`로 완주했으며, 장시간
+`ac380e4` baseline 중복 실행은 사용자 요청으로 중단했다. 위의 과거 동일환경 baseline 비교
+근거는 보존하되 이번 fix에 대해 full-suite 신규 통과를 주장하지 않는다.
 
 ## 아직 미완료
 

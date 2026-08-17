@@ -99,7 +99,12 @@ import logging
 import os
 import re
 
-from verified_join_contract import VerifiedJoinDescriptor
+from verified_join_contract import (
+    VerifiedJoinDescriptor,
+    _bind_physical_verifier_issuer,
+)
+
+_VERIFIED_JOIN_ISSUER = _bind_physical_verifier_issuer()
 
 logger = logging.getLogger("VirtualJoinConfig")
 
@@ -635,7 +640,7 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
             continue
         rule = dict(rule)
         rule["unique_index"] = result["unique_index"]
-        verified.append(VerifiedJoinDescriptor.from_verified_rule(rule))
+        verified.append(_VERIFIED_JOIN_ISSUER.issue(rule))
     return verified
 
 

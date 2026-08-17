@@ -120,6 +120,9 @@ data preparation이며, verified virtual join 선언을 상속한다.
 UI executor와 Ledger preparer는 같은 `VerifiedJoinDescriptor`를 소비해야 한다. 둘이 join key를
 각자 조립하면 수락 실패다. 이 descriptor는 catalog 선언만으로 만들 수 없고, 기존
 `virtual_join_config.load_verified_rules()`가 물리 UNIQUE index를 확인한 뒤에만 생성한다.
+공용 descriptor type은 raw mapping용 public constructor/factory를 제공하지 않으며, private
+issuance capability는 이 verifier 모듈만 소유한다. issuer는 `load_verified_rules()` 호출 위치
+밖에서 사용해도 거절한다. 임의 index 이름은 물리 proof가 아니다.
 
 ## 6. 실패 계약
 

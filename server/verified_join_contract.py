@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
+import inspect
 from types import MappingProxyType
 from typing import Any
+
+__all__ = ["VerifiedJoinDescriptor"]
 
 
 def _freeze(value: Any) -> Any:
@@ -41,7 +44,18 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
     _data: Mapping[str, Any]
 
     @classmethod
-    def from_verified_rule(cls, rule: Mapping[str, Any]) -> "VerifiedJoinDescriptor":
+    def _issue(cls, rule: Mapping[str, Any], *, issuer: object) -> "VerifiedJoinDescriptor":
+        """Build one descriptor for the private physical-verifier issuer only.
+
+        There is deliberately no public raw-mapping factory.  Production callers obtain
+        descriptors from ``virtual_join_config.load_verified_rules()`` after its catalog
+        probe.  Keeping issuance behind the private capability prevents a catalog
+        declaration (or a claimed index name) from promoting itself to verified state.
+        """
+        if (not isinstance(issuer, _PhysicalVerifierIssuer)
+                or issuer._token is not _ISSUER_BIND_TOKEN):
+            raise TypeError(
+                "VerifiedJoinDescriptor can only be issued by the physical verifier")
         if not isinstance(rule, Mapping):
             raise TypeError("verified join rule must be a mapping")
         required = (
@@ -125,3 +139,41 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
 
     def to_mapping(self) -> dict[str, Any]:
         return _plain(self._data)
+
+
+class _PhysicalVerifierIssuer:
+    """Private capability bound to ``virtual_join_config`` production code."""
+
+    __slots__ = ("_token",)
+
+    def __init__(self, token: object) -> None:
+        if token is not _ISSUER_BIND_TOKEN:
+            raise TypeError("physical verifier issuer cannot be constructed directly")
+        self._token = token
+
+    def issue(self, rule: Mapping[str, Any]) -> VerifiedJoinDescriptor:
+        frame = inspect.currentframe()
+        caller = frame.f_back if frame is not None else None
+        module_name = caller.f_globals.get("__name__") if caller is not None else None
+        loader = caller.f_globals.get("load_verified_rules") if caller is not None else None
+        if (module_name not in {"virtual_join_config", "server.virtual_join_config"}
+                or loader is None
+                or caller.f_code is not getattr(loader, "__code__", None)):
+            raise TypeError(
+                "verified join descriptors can only be issued inside "
+                "virtual_join_config.load_verified_rules")
+        return VerifiedJoinDescriptor._issue(rule, issuer=self)
+
+
+_ISSUER_BIND_TOKEN = object()
+
+
+def _bind_physical_verifier_issuer() -> _PhysicalVerifierIssuer:
+    """Bind the private issuer only while the production verifier imports this module."""
+    frame = inspect.currentframe()
+    caller = frame.f_back if frame is not None else None
+    module_name = caller.f_globals.get("__name__") if caller is not None else None
+    if module_name not in {"virtual_join_config", "server.virtual_join_config"}:
+        raise TypeError(
+            "physical verifier issuer is only available to virtual_join_config")
+    return _PhysicalVerifierIssuer(_ISSUER_BIND_TOKEN)
