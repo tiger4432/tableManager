@@ -36,6 +36,7 @@ from test_ledger_setup_bundle import logical_bundle, reverse_mappings, write_tre
 from verified_join_contract import (
     VerifiedJoinDescriptor,
     _bind_physical_verifier_issuer,
+    is_physically_verified_descriptor,
 )
 
 
@@ -210,6 +211,8 @@ def test_snapshot_compile_refuses_join_without_physical_verification():
 def test_catalog_mapping_cannot_construct_a_verified_descriptor_directly():
     with pytest.raises(TypeError):
         VerifiedJoinDescriptor({"name": "catalog_only"})
+    with pytest.raises(TypeError):
+        VerifiedJoinDescriptor()
     assert not hasattr(VerifiedJoinDescriptor, "from_verified_rule")
     with pytest.raises(
             TypeError,
@@ -219,6 +222,53 @@ def test_catalog_mapping_cannot_construct_a_verified_descriptor_directly():
             TypeError,
             match="only be issued inside virtual_join_config.load_verified_rules"):
         virtual_join_config_module._VERIFIED_JOIN_ISSUER.issue({"name": "raw"})
+
+
+def test_former_internal_issue_cannot_use_the_bound_capability_directly():
+    with pytest.raises(
+            TypeError,
+            match="direct VerifiedJoinDescriptor issuance is not allowed"):
+        VerifiedJoinDescriptor._issue(
+            {
+                "name": "input_to_reference",
+                "left_table": "input_rows",
+                "right_table": "reference_rows",
+                "join_key": [
+                    {"left": "join_id", "right": "join_id", "fold": None}
+                ],
+                "expose": ["target_id"],
+                "join_cardinality": "one",
+                "unique_index": "NOT_PROBED_FAKE_INDEX",
+            },
+            issuer=virtual_join_config_module._VERIFIED_JOIN_ISSUER,
+        )
+
+
+def test_unissued_instance_is_not_accepted_as_physical_proof():
+    forged = object.__new__(VerifiedJoinDescriptor)
+    object.__setattr__(forged, "_data", {"name": "input_to_reference"})
+
+    assert is_physically_verified_descriptor(forged) is False
+    errors = snapshot_compile_errors(
+        validate_bundle(logical_bundle()),
+        trusted_implementations(),
+        (forged,),
+    )
+    assert errors[0].to_mapping() == {
+        "code": "unverified_join",
+        "path": "bundle.virtual_joins.input_to_reference",
+        "message": (
+            "join rule 'input_to_reference' requires a physical UNIQUE "
+            "verification descriptor"
+        ),
+    }
+    assert errors[1].to_mapping() == {
+        "code": "invalid_verified_join",
+        "path": "verified_joins[0]",
+        "message": (
+            "must be a VerifiedJoinDescriptor produced by physical verification"
+        ),
+    }
 
 
 def test_fake_index_name_cannot_bypass_the_physical_verifier():

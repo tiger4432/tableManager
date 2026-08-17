@@ -11,8 +11,9 @@ from dataclasses import dataclass
 import inspect
 from types import MappingProxyType
 from typing import Any
+from weakref import WeakSet
 
-__all__ = ["VerifiedJoinDescriptor"]
+__all__ = ["VerifiedJoinDescriptor", "is_physically_verified_descriptor"]
 
 
 def _freeze(value: Any) -> Any:
@@ -33,7 +34,7 @@ def _plain(value: Any) -> Any:
     return value
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True, init=False, eq=False)
 class VerifiedJoinDescriptor(Mapping[str, Any]):
     """One shape-valid join with a named physical UNIQUE-index proof.
 
@@ -42,20 +43,23 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
     """
 
     _data: Mapping[str, Any]
+    __eq__ = object.__eq__
+    __hash__ = object.__hash__
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> "VerifiedJoinDescriptor":
+        raise TypeError(
+            "VerifiedJoinDescriptor cannot be constructed directly; "
+            "use virtual_join_config.load_verified_rules")
 
     @classmethod
-    def _issue(cls, rule: Mapping[str, Any], *, issuer: object) -> "VerifiedJoinDescriptor":
-        """Build one descriptor for the private physical-verifier issuer only.
+    def _issue(cls, *args: Any, **kwargs: Any) -> "VerifiedJoinDescriptor":
+        """Reject the former raw issuance API, including callers holding the issuer."""
+        raise TypeError(
+            "direct VerifiedJoinDescriptor issuance is not allowed; "
+            "use virtual_join_config.load_verified_rules")
 
-        There is deliberately no public raw-mapping factory.  Production callers obtain
-        descriptors from ``virtual_join_config.load_verified_rules()`` after its catalog
-        probe.  Keeping issuance behind the private capability prevents a catalog
-        declaration (or a claimed index name) from promoting itself to verified state.
-        """
-        if (not isinstance(issuer, _PhysicalVerifierIssuer)
-                or issuer._token is not _ISSUER_BIND_TOKEN):
-            raise TypeError(
-                "VerifiedJoinDescriptor can only be issued by the physical verifier")
+    @staticmethod
+    def _validated_data(rule: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(rule, Mapping):
             raise TypeError("verified join rule must be a mapping")
         required = (
@@ -102,9 +106,7 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
         normalized = dict(rule)
         normalized["verified"] = True
         normalized["verification_basis"] = "physical_unique_index"
-        descriptor = object.__new__(cls)
-        object.__setattr__(descriptor, "_data", _freeze(normalized))
-        return descriptor
+        return _freeze(normalized)
 
     @property
     def rule_id(self) -> str:
@@ -141,6 +143,14 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
         return _plain(self._data)
 
 
+_ISSUED_DESCRIPTORS: WeakSet[VerifiedJoinDescriptor] = WeakSet()
+
+
+def is_physically_verified_descriptor(value: object) -> bool:
+    """Return true only for an instance issued by the physical verifier boundary."""
+    return isinstance(value, VerifiedJoinDescriptor) and value in _ISSUED_DESCRIPTORS
+
+
 class _PhysicalVerifierIssuer:
     """Private capability bound to ``virtual_join_config`` production code."""
 
@@ -162,7 +172,11 @@ class _PhysicalVerifierIssuer:
             raise TypeError(
                 "verified join descriptors can only be issued inside "
                 "virtual_join_config.load_verified_rules")
-        return VerifiedJoinDescriptor._issue(rule, issuer=self)
+        descriptor = object.__new__(VerifiedJoinDescriptor)
+        object.__setattr__(
+            descriptor, "_data", VerifiedJoinDescriptor._validated_data(rule))
+        _ISSUED_DESCRIPTORS.add(descriptor)
+        return descriptor
 
 
 _ISSUER_BIND_TOKEN = object()

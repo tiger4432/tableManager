@@ -3,7 +3,7 @@
 > 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
 > 기준: `main@ac380e4` 위 `feature/ledger-v2-stage3-registries`
 
-## 이번 3차 보완의 결론
+## 이번 4차 보완의 결론
 
 1. Vocabulary가 object qualifier의 required/optional 닫힌 계약을 소유한다.
 2. `kind=symbolic` Role이 `allowed_values`를 소유하고 미등록 constant를 거절한다.
@@ -14,6 +14,8 @@
    최종 현재 실행의 신규 실패/오류 node ID는 `0`이다.
 6. 2차 audit가 재현한 public raw factory 우회를 제거했다. 이제 catalog mapping과 임의
    `unique_index` 문자열은 descriptor를 만들지 못하고 compiler에서도 구조화 거절된다.
+7. 3차 audit가 재현한 private `_issue(..., issuer=...)` 우회와 무인자 constructor도 닫았다.
+   compiler는 verifier가 실제 발급 등록한 object identity만 신뢰한다.
 
 Stage 4, source row, pandas, mapper 실행, Claim/RoleFrame 생성, cursor, gate/store, DB
 read/write/migration은 구현하지 않았다.
@@ -97,6 +99,10 @@ catalog declaration
 - direct constructor와 raw mapping public factory가 모두 닫혀 있다.
 - private issuance capability는 `virtual_join_config.load_verified_rules()`의 물리 검증 성공
   분기에서만 사용한다. capability를 직접 참조하더라도 loader 호출 위치 밖의 발급은 거절된다.
+- 과거 `_issue` 진입점은 어떤 issuer를 넘겨도 항상 `TypeError`다. 무인자 constructor도
+  `TypeError`다.
+- compiler는 `isinstance`만 보지 않고 physical verifier가 발급 레지스트리에 등록한 object
+  identity인지 확인한다. `object.__new__`로 만든 미발급 인스턴스도 거절한다.
 - compiler에 descriptor가 없거나 Bundle 선언과 다르면 구조화 오류로 거절한다.
 - `setup_registry.py`와 neutral descriptor module은 DB/sqlalchemy/pandas를 import하지 않는다.
 
@@ -108,7 +114,8 @@ catalog declaration
 {"code":"invalid_verified_join","path":"verified_joins[0]","message":"must be a VerifiedJoinDescriptor produced by physical verification"}
 ```
 
-`VerifiedJoinDescriptor.from_verified_rule`은 더 이상 존재하지 않는다. Registry test의 정상
+`VerifiedJoinDescriptor.from_verified_rule`은 더 이상 존재하지 않는다. `_issue`는 항상
+거절하며 정상 생성에 사용되지 않는다. Registry test의 정상
 descriptor도 raw factory가 아니라 production `load_verified_rules()` 경로에서 물리 probe만
 stub으로 대체해 얻는다.
 
@@ -182,8 +189,8 @@ skip은 이번 단계에서 통과했다고 표현하지 않는다.
 ## 집중 검증
 
 - Stage 2+3 Bundle/Registry: 직전 보완 `146 passed, 1 skipped`; 이번 변경이 직접 닿는 Registry
-  단독 `43 passed`
-- qualifier/Registry/virtual join 영향군: `216 passed, 1 skipped`
+  단독 `45 passed`
+- qualifier/Registry/virtual join 영향군: `218 passed, 1 skipped`
 - 동결 LedgerFrame chain mapper: `29 passed`
 - 수정 Python `py_compile`: 통과
 - `git diff --check`: 통과

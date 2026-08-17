@@ -14,7 +14,10 @@ import json
 from types import MappingProxyType
 from typing import Any, Generic, TypeVar
 
-from verified_join_contract import VerifiedJoinDescriptor
+from verified_join_contract import (
+    VerifiedJoinDescriptor,
+    is_physically_verified_descriptor,
+)
 
 from .setup_bundle import (
     LedgerSetupBundle,
@@ -446,7 +449,7 @@ def _verified_join_errors(
     supplied: dict[str, VerifiedJoinDescriptor] = {}
     for index, descriptor in enumerate(verified_joins):
         path = f"verified_joins[{index}]"
-        if not isinstance(descriptor, VerifiedJoinDescriptor):
+        if not is_physically_verified_descriptor(descriptor):
             issues.append(LedgerSetupValidationError(
                 "invalid_verified_join", path,
                 "must be a VerifiedJoinDescriptor produced by physical verification"))
