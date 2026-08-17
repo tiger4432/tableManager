@@ -1,5 +1,22 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 2단계 승인·main 병합, 3단계 Registry 검수 대기
+>
+> **기준선:** 사용자가 2단계를 승인해 `ac380e4`를 `main`에 fast-forward 병합했다. 현재
+> `feature/ledger-v2-stage3-registries`에서 3단계만 구현했으며 상태는
+> `STAGE_3_IN_REVIEW` / `NOT_APPROVED`다. 4단계는 시작하지 않았다.
+>
+> **3단계 범위:** config-only Vocabulary/Entity/Preparer/Mapper/Pack/Profile/VerifiedJoin/SourcePlan
+> Registry와 immutable `LedgerSetupSnapshot`, trusted implementation ID/version 대조를 추가했다.
+> Snapshot은 승인된 Bundle만 받으며 source row·pandas·RoleFrame·Pack compiler·DB·cursor·store를
+> 실행하지 않는다.
+>
+> **현재 검증:** 3단계 `35 passed`, 2+3단계 계약 `128 passed, 1 skipped`, 동결 mapper
+> `29 passed`. 전체 서버는 `4040 passed, 143 failed, 23 errors, 204 skipped, 1 xfailed`이며
+> 실패는 현재 config/fixture·map·audit 등 기존 범위에 집중되고 새 Setup 테스트에는 없다.
+> 같은 환경의 main 전체 기준선은 재실행하지 않았으므로 전체 신규 실패 0으로 단언하지 않는다.
+> PostgreSQL과 운영 DB는 접근하지 않았다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 2단계 validator 후속 보완, 재검수 대기
 >
 > **기준선:** `f03b165`에서 `fix/ledger-v2-stage2-validation` 브랜치를 분기했다. 2단계 상태는

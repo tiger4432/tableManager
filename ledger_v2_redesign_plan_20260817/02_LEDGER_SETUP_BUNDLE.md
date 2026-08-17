@@ -1,6 +1,6 @@
 # 2단계 — 모듈형 Config Directory와 단일 Logical LedgerSetupBundle 계약
 
-> 실행 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
+> 실행 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-17 사용자 승인
 > 구현 근거: [`STAGE_2_ACCEPTANCE_EVIDENCE.md`](./STAGE_2_ACCEPTANCE_EVIDENCE.md)
 
 ## 목표
@@ -283,7 +283,7 @@ binding_not_approved
 - virtual join rule 변경이 snapshot hash에 반영
 - compiler/runtime/DB migration/write 0
 
-완료 후 멈추고 2단계 승인을 기다린다.
+2단계는 사용자 승인을 받아 `ac380e4`까지 `main`에 fast-forward 병합됐다.
 
 ## 현재 구현 상태
 
@@ -304,5 +304,6 @@ EventFrame schema로 entity/leaf column을 검사하도록 선택 Profile과 같
 `order_by`와 `cursor.columns`는 각각 catalog의 business/composite/UNIQUE index 전체 열로
 동률 제거를 증명해야 하며, non-unique index나 identity 자체는 근거가 아니다. `chains`와
 `enrichments`의 금지 실행 키는 중첩 JSON 배열을 포함해 완전 탐색하고, Entity `key_types`의
-각 값은 trimmed non-blank string으로 닫았다. 이 변경은 순수 validator와 테스트뿐이며
-Registry/snapshot/compiler/runtime/DB/cursor 실행 구현은 여전히 시작하지 않았다.
+각 값은 trimmed non-blank string으로 닫았다. 이 변경은 순수 validator와 테스트뿐이었다.
+Registry/snapshot은 승인된 3단계 범위에서 별도 모듈로 구현했다. RoleFrame, Pack compiler,
+source row/runtime/DB/cursor 실행 연결은 여전히 후속 단계다.

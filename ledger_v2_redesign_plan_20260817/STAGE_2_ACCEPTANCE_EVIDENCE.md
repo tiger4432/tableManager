@@ -1,6 +1,6 @@
 # Ledger v2 2단계 수락 근거
 
-> 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
+> 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-17 사용자 승인
 
 ## 변경 파일과 역할
 
@@ -101,4 +101,5 @@ Binding은 `column`, `constant`, `entity`만 허용한다. 모든 Binding은
 - virtual join의 물리 UNIQUE와 실제 relation 검증은 DB 없는 2단계에서 수행하지 않는다.
 - Registry/snapshot, compiler, RoleFrame, runtime 연결은 승인 후 후속 단계다.
 
-자체 판정: 재승인 조건을 포함한 2단계 범위는 검수 가능하다. 승인 전 3단계를 시작하지 않는다.
+사용자 승인 후 `ac380e4`를 `main`에 fast-forward 병합했다. 이 승인은 순수 Bundle 경계에
+한정되며 runtime/DB 연결을 승인한 것이 아니다.

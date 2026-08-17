@@ -40,6 +40,8 @@ _FORBIDDEN_EXECUTABLE_KEYS = frozenset({
 })
 _BINDING_ORIGINS = frozenset({"user_declared", "system_suggested", "imported"})
 _APPROVAL_STATUSES = frozenset({"pending", "approved", "rejected"})
+_JOIN_FOLD_RULES = frozenset({"separator", "case", "zero_pad"})
+_IMPLEMENTED_JOIN_FOLD_RULES = frozenset({"separator", "case"})
 _ROLE_KINDS = frozenset({
     "entity", "time", "quantity", "identity", "order", "attribute",
 })
@@ -136,6 +138,16 @@ def public_bundle_schema() -> dict[str, Any]:
         "approval_status": sorted(_APPROVAL_STATUSES),
         "forbidden_sections": ["frames", "lookups", "positions"],
     }
+
+
+def role_binding_kinds(role: Mapping[str, Any]) -> tuple[str, ...]:
+    """Resolve one validated Role's effective binding kinds from the Pack contract."""
+    if not isinstance(role, Mapping):
+        raise TypeError("role must be a mapping")
+    declared = role.get("allowed_binding_kinds")
+    if _is_list(declared):
+        return tuple(declared)
+    return _default_binding_kinds(role.get("kind"))
 
 
 def validate_bundle(value: Mapping[str, Any]) -> LedgerSetupBundle:
@@ -403,8 +415,32 @@ def _validate_virtual_joins(section: Mapping[str, Any], problems: _Problems) -> 
                 "Ledger v2 requires join_cardinality 'one'")
         if not isinstance(rule.get("enabled"), bool):
             problems.add("invalid_type", f"{path}.enabled", "must be boolean")
-        if "fold" in rule and not isinstance(rule.get("fold"), Mapping):
-            problems.add("invalid_join", f"{path}.fold", "must be an object")
+        if "fold" in rule:
+            _validate_join_fold(rule.get("fold"), f"{path}.fold", problems)
+
+
+def _validate_join_fold(value: Any, path: str, problems: _Problems) -> None:
+    if not isinstance(value, Mapping):
+        problems.add("invalid_join", path, "must be an object of notation rule toggles")
+        return
+    _scan_unsafe_keys(value, path, problems)
+    for name in sorted(value, key=str):
+        rule_path = f"{path}.{name}"
+        if str(name).lower() in _FORBIDDEN_EXECUTABLE_KEYS:
+            continue
+        if name not in _JOIN_FOLD_RULES:
+            problems.add(
+                "invalid_join", rule_path,
+                f"unknown notation rule {name!r}; known rules are "
+                f"{sorted(_JOIN_FOLD_RULES)}")
+            continue
+        enabled = value[name]
+        if not isinstance(enabled, bool):
+            problems.add("invalid_type", rule_path, "notation rule toggle must be boolean")
+        elif enabled and name not in _IMPLEMENTED_JOIN_FOLD_RULES:
+            problems.add(
+                "invalid_join", rule_path,
+                f"notation rule {name!r} is not implemented")
 
 
 def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -862,6 +898,18 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
             elif rule.get("left_table") != relation:
                 problems.add("invalid_driver", rpath,
                              f"join rule left_table must be {relation!r}")
+            elif isinstance(preparer, Mapping):
+                declared_inputs = set(preparer.get("input_columns", []))
+                left_keys = {
+                    pair.get("left") for pair in rule.get("join_key", [])
+                    if isinstance(pair, Mapping)
+                }
+                missing_inputs = sorted(left_keys - declared_inputs)
+                if missing_inputs:
+                    problems.add(
+                        "invalid_driver", rpath,
+                        f"join rule {rule_id!r} left key column(s) {missing_inputs!r} "
+                        f"must be declared by preparer {preparer_id!r} input_columns")
 
         mapper_id = driver.get("mapper_id")
         mapper = mappers.get(mapper_id)
@@ -1030,9 +1078,7 @@ def _cross_profile_contract(profile_id: str, profile: Mapping[str, Any],
                 problems.add("unknown_role", f"{mpath}.bind.{role}",
                              f"role {role!r} is not declared by Claim")
             if role in roles:
-                allowed = roles[role].get("allowed_binding_kinds")
-                if not _is_list(allowed):
-                    allowed = _default_binding_kinds(roles[role]["kind"])
+                allowed = role_binding_kinds(roles[role])
                 if bindings[role].get("kind") not in allowed:
                     problems.add("invalid_binding", f"{mpath}.bind.{role}.kind",
                                  f"binding kind is not allowed for role {role!r}")

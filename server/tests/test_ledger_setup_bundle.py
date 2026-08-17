@@ -883,7 +883,7 @@ def test_same_pack_validates_with_completely_different_source_and_column_names()
 def test_virtual_join_change_changes_canonical_bundle():
     first = logical_bundle()
     second = copy.deepcopy(first)
-    second["virtual_joins"]["input_to_reference"]["fold"] = {"mode": "casefold"}
+    second["virtual_joins"]["input_to_reference"]["fold"] = {"case": True}
     assert validate_bundle(first).serialize() != validate_bundle(second).serialize()
 
 

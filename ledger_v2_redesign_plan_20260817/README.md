@@ -1,6 +1,6 @@
 # Ledger v2 재설계 계획 — Kernel 유지, Setup/Compiler 재작성
 
-> 상태: `STAGE_2_IN_REVIEW` · 1단계 승인 · 2단계 구현 완료/검수 대기 · 3단계 코드 변경 금지
+> 상태: `STAGE_3_IN_REVIEW` · 1·2단계 승인 · 3단계 구현 완료/검수 대기 · 4단계 코드 변경 금지
 > 작성일: 2026-08-17
 > 범위: Source → pandas event frame → Pack compiler → LedgerFrame
 > 유지: 기존 Ledger gate/store/cursor/read API
@@ -59,8 +59,8 @@ source stage entity에서 target stage entity로 향하는 Claim은 Pack emissio
 | 단계 | 산출물 | 현재 |
 |---|---|---|
 | 1 | 동결 경계·하드코딩 전수표·baseline | 승인 (`APPROVED`) |
-| 2 | 단일 `LedgerSetupBundle` 계약 | 검수 대기 (`IN_REVIEW` / `NOT_APPROVED`) |
-| 3 | Entity/Pack/Source Registry·교차 검증·결정적 snapshot | 미착수 |
+| 2 | 단일 `LedgerSetupBundle` 계약 | 승인 (`APPROVED`) |
+| 3 | Entity/Pack/Source Registry·교차 검증·결정적 snapshot | 검수 대기 (`IN_REVIEW` / `NOT_APPROVED`) |
 | 4 | RoleFrame·Pack compiler·generic emitter | 미착수 |
 | 5 | 기존 driver/cursor + pandas source preparation 연결 | 미착수 |
 | 6 | shadow parity·PostgreSQL E2E·scale 검증 | 미착수 |
@@ -75,6 +75,9 @@ legacy 코드 삭제를 하지 않는다.
 
 2단계 근거: [수락 근거](./STAGE_2_ACCEPTANCE_EVIDENCE.md) ·
 구현 `server/ledger/setup_bundle.py` · 테스트 `server/tests/test_ledger_setup_bundle.py`.
+
+3단계 근거: [수락 근거](./STAGE_3_ACCEPTANCE_EVIDENCE.md) ·
+구현 `server/ledger/setup_registry.py` · 테스트 `server/tests/test_ledger_setup_registry.py`.
 
 ## 기존 계획과의 관계
 
