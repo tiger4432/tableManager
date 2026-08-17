@@ -1,6 +1,6 @@
 # `ingestion_settings.json` 세팅 — 인제션 런타임 노브
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-13 2차 (**키 변화 없음** — `831ab68`이 tier 1을 **묶어서 더 이른 자리에서** 묻게 했지만 노브는 늘지 않았고 `dedup_by_path_stat`가 그 관문도 통제합니다. 직전 **키 2개 추가** — `dedup_by_path_stat`(tier-1 경로+stat 빠른 스킵)과 `archive_processed_files`(처리된 파일을 옮길지). 둘 다 `.sample` 기본값은 **종전 동작**이고, `archive_processed_files: false`는 마이그레이션 `add_ingestion_ledger_path_stat.sql`이 **선행 조건**입니다) | **이전:** 2026-07-30 (**`flatten_nested_dirs`의 뜻 정정** — `600b49d` 실측(`directory_watcher.nested_dirs_enabled` / `DEFAULT_FLATTEN_NESTED_DIRS` 주석 / `_ingest_directory_tree`): 키 이름은 **그대로인데 동작이 「루트 승격」에서 「제자리 적재」로 바뀌었고**, `~` 접두 개명과 `__force__` 조작 방어는 함께 사라졌으며, `false`의 로그 문구가 **"그 안의 파일은 적재되지 않는다"**로 정정됐습니다. 개명하지 않은 이유(운영자의 off 스위치가 조용히 무력화되는 것을 막기 위해)를 규율로 기록. `filename_rules`가 이 파일의 키가 **아니라는** 안내 추가. 직전 **키 2개 추가** — `enrichment_auto_confirm_enabled`/`enrichment_auto_confirm_max_keys`, ① 자동 확정) | **이전:** 2026-07-29 (**키 2개 누락 보충** — `auto_register_map_meta`(M3 `ab6ac02`)와 `flatten_nested_dirs`(`0c6ac1a`, 직전 사이클 누락분)가 sample·코드에는 있는데 이 표에 없었습니다) | **Owner:** Ingester
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 (**`external_sources` 신설** — 외부 읽기 전용 디렉터리의 절대경로·대상 테이블·내장 파서를 선언합니다. created/moved/modified 이벤트 + 300초 재귀 스윕, 원본 이동·삭제 없음. 바인딩 변경은 watcher 재기동 필요) | **이전:** 2026-08-13 2차 (`dedup_by_path_stat` 묶음 관문 정합 확인) | **Owner:** Ingester
 > 상위: [폴더 인덱스](./README.md) · 파이프라인 정본은 [INGESTION_GUIDE §1.8](../INGESTION_GUIDE.md) · 절차 요약은 [CONFIG_GUIDE §3-S5](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -30,6 +30,7 @@
 - **스윕이 매번 트리 전체를 다시 읽어 느릴 때** — `dedup_by_path_stat`(기본 `true`)가 그것을 막는 층입니다. 끄면 항상 전체 해시로 돌아갑니다
 - **인제션이 맵 정렬 메타를 자동으로 만드는 것을 멈추고 싶을 때** — `auto_register_map_meta`를 `false`로(§5의 주의 참조)
 - **enrichment 자동 확정을 전부 멈추거나, 작업 단위당 탐색량을 조절할 때** — `enrichment_auto_confirm_enabled` / `enrichment_auto_confirm_max_keys`(정본 [config/enrichment_rules §7](./enrichment_rules.md))
+- **다른 시스템이 소유한 폴더를 읽기 전용으로 감시할 때** — `external_sources`. 원본은 성공·실패 어느 쪽에서도 이동·삭제하지 않으며, 대상 테이블은 재전달에 안전한 업무 키를 선언해야 합니다.
 - **파일이 없어도 정상입니다** — 전 항목 기본값으로 동작합니다(현 저장소 상태가 그렇습니다).
 
 ## 2. 세팅 절차
@@ -46,12 +47,13 @@
      "archive_processed_files": true,
      "resume_from_checkpoint": true,
      "flatten_nested_dirs": true,
-     "auto_register_map_meta": true
+     "auto_register_map_meta": true,
+     "external_sources": []
    }
    ```
 
    `heavy_file_mb`는 **양수 숫자만**(bool·문자열·0 이하는 경고 1회 후 기본 10), **나머지 boolean 6개는 JSON boolean만**(문자열 `"false"`는 경고 1회 후 기본값 — 오타가 스위치를 조용히 뒤집지 않습니다).
-4. 저장 — 반영은 자동입니다: **다음 작업 단위부터** 디스크에서 다시 읽습니다(재기동·reload 불필요). 단위는 키마다 다르지만 규율은 같습니다 — **한 작업 단위 안에서는 값이 갈리지 않습니다**: `heavy_file_mb`·`dedup_by_signature`·`dedup_by_path_stat`·`archive_processed_files`·`resume_from_checkpoint`는 **다음 파일 이벤트**, `flatten_nested_dirs`는 **다음 폴더 트리거**, `auto_register_map_meta`는 **다음 파일 / 다음 체인 트랜잭션 그룹**, `enrichment_auto_confirm_*`은 **다음 체인 트랜잭션 그룹**.
+4. 저장 — 수치·boolean 노브는 **다음 작업 단위부터** 반영됩니다. 단위는 키마다 다르지만 한 작업 단위 안에서는 값이 갈리지 않습니다: `heavy_file_mb`·`dedup_by_signature`·`dedup_by_path_stat`·`archive_processed_files`·`resume_from_checkpoint`는 **다음 파일 이벤트**, `flatten_nested_dirs`는 **다음 폴더 트리거**, `auto_register_map_meta`는 **다음 파일 / 다음 체인 트랜잭션 그룹**, `enrichment_auto_confirm_*`은 **다음 체인 트랜잭션 그룹**. 🔴 **`external_sources`의 추가·경로·파서·옵션 변경은 watcher 재기동 후 반영**됩니다. 런타임 reload는 새 바인딩 추가를 시도하지만 기존 바인딩 교체·해제는 하지 않습니다.
 
 ## 3. 반영 확인
 
@@ -61,6 +63,7 @@
   ```
 - **dedup**: 같은 파일을 다시 떨어뜨렸을 때 — `true`면 `GET /admin/file-ingestion/logs`에 `SKIPPED`(사유 포함)가 남고, `false`면 재적재됩니다. 스킵은 무음이 아닙니다.
 - **잘못된 값**: 워처 로그에 `Ignoring invalid 'heavy_file_mb' ...` / `Ignoring non-boolean ...` 경고(값당 1회)가 뜨면 설정이 무시되고 기본값으로 돌고 있다는 뜻입니다.
+- **외부 소스**: 워처 로그의 `Watching external read-only source: <경로> -> <테이블>` 두 줄(`inspection_run`, `void_obs`)을 확인합니다. 경로가 잠시 없으면 `External source unavailable`이 한 번 남고 300초 스윕이 계속 복구를 시도합니다.
 
 ## 4. 잘못됐을 때
 
@@ -82,6 +85,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore ingesti
 | `archive_processed_files` | boolean, 기본 `true` | **[2026-08-13]** 성공한 파일을 `archives/`로, 실패한 파일을 `err/`로 **옮길지**. `true` = 종전 동작. `false` = 파일은 떨어진 자리에 남고 재처리 방지는 전적으로 원장(`file_ingestion_checkpoints`)이 맡습니다. 🔴 **`false`로 가기 전 셋**: ① 마이그레이션 `server/migrations/add_ingestion_ledger_path_stat.sql`을 먼저 돌리십시오 — 없으면 원장 **읽기부터** `UndefinedColumn`으로 죽고 워처는 dedup을 통째로 끈 채 살아남아 **매 스윕 전량 재적재**합니다 ② 「무엇이 왜 실패했나」의 답이 `err/` 폴더에서 원장의 `status='FAILED'` 행(`filepath`·`note`)으로 옮겨 갑니다(트레이스는 종전대로 `file_ingestion_logs`) ③ `raws/`가 무한히 자랍니다 — 워처는 아무것도 지우지 않으므로 보관 정리는 운영자 몫이고, `__force__` 파일은 치우지 않으면 **매 스윕 재적재**됩니다. 정본 [INGESTION_GUIDE §1.8-bis](../INGESTION_GUIDE.md) |
 | `resume_from_checkpoint` | boolean, 기본 `true` | 중단된 적재를 커밋된 오프셋부터 재개. 재개 불가 시 사유를 남기고 처음부터 |
 | `flatten_nested_dirs` | boolean, 기본 `true` | 🔴 **이름은 그대로, 뜻이 바뀌었습니다**(`600b49d` · 2026-07-30). `raws/`에 폴더(다중 층위)가 들어오면 트리가 정온해진 뒤 **각 파일을 자기 중첩 경로 그대로 적재**하고(승격 아님) 비게 된 폴더만 제거합니다. 접두 개명(`~`)과 `__force__` 조작 방어는 **함께 사라졌습니다** — 파일명을 건드리지 않으므로 조작할 접합부가 없습니다. `false` = 디렉터리를 **손대지 않고 그 안의 파일도 적재하지 않습니다**(로그가 그렇게 말합니다). 반영은 **다음 폴더 트리거부터**. 정본 [INGESTION_GUIDE §1.9](../INGESTION_GUIDE.md) |
+| `external_sources` | 배열, 기본 `[]` | **외부 읽기 전용 바인딩**. 항목은 `enabled`(기본 true)·절대 `path`·`table_name`·`parser`·`recursive`(기본 true)·`options`입니다. 대상 테이블은 업무 키를 선언해야 하며 관리 워크스페이스와 겹치는 경로는 거절합니다. 같은 루트가 서로 다른 테이블을 먹이는 것은 허용하지만 같은 테이블의 겹치는 루트는 거절합니다. 현재 내장 파서는 `voids_json` 하나이며 대상은 `inspection_run`/`void_obs`입니다. **기존 DB에는 `add_ingestion_ledger_path_stat.sql` 선행 필수**, 설정은 **재기동 반영**. 상세·JSON 형태는 [INGESTION_GUIDE §1.12](../INGESTION_GUIDE.md) |
 | `auto_register_map_meta` | boolean, 기본 `true` | 인제션(**파일 워처·체인 워커 양쪽**)이 `map_key_columns` 선언 맵 테이블에 적재할 때, 그 맵 키의 `wafer_map_metadata` 행이 **없으면** 자동 생성(있으면 절대 건드리지 않음). `false` = 종전 동작(수동 에디터 push만 메타를 등록 → 미등록 맵이 '화면기준' 폴백으로 열림). 반영은 **다음 파일 / 다음 체인 트랜잭션 그룹부터**. 정본 [INGESTION_GUIDE §1.10](../INGESTION_GUIDE.md) |
 | `enrichment_auto_confirm_enabled` | boolean, 기본 `true` | **전역 킬 스위치**(2026-07-30 ①). `false`면 규칙별 `auto_confirm`이 켜져 있어도 자동 확정을 전부 멈춥니다. 기본 `true`는 "막지 않는다"는 뜻일 뿐이고 **실제로 쓰려면 규칙별 옵트인이 필요**합니다(기본 OFF) — 즉 기본 상태의 동작은 종전과 같습니다. 정본 [config/enrichment_rules §7](./enrichment_rules.md) |
 | `enrichment_auto_confirm_max_keys` | 양의 정수, 기본 `200` | 작업 단위(체인 트랜잭션 그룹)당 참조뷰로 **탐색할 판단키 상한**. 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 대량 인제션에서 쿼리 폭주를 막는 유일한 장치입니다. 상한을 넘은 키는 **쓰지 않고 워크리스트에 그대로 남으며** 건수가 로그에 남습니다(정직한 열화 — 조용히 버리지 않음). 🔴 **이것은 「키 개수」 예산이고 읽기 하나의 폭과 무관합니다** — 절단 거절을 쫓는 중이라면 아래 `enrichment_read_caps`입니다 |

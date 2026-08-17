@@ -57,6 +57,7 @@ graph TD
     subgraph "Backend (run_decoupled_app.py)"
         API["main.py — Web API + WS 허브 :8080"]
         WATCH["Directory Watcher"]
+        EXT["External read-only sources"]
         SCHED["Auto-Update Scheduler"]
         CHAIN["Chain Ingestion Worker"]
         OUTBOX[("database_outbox\nLISTEN/NOTIFY")]
@@ -64,6 +65,7 @@ graph TD
 
     WEB <-->|REST + WS| API
     SCHED -->|CSV drop| WATCH
+    EXT -->|created / moved / modified + 300s sweep| WATCH
     WATCH -->|apply_batch_updates| DB[("PostgreSQL / JSONB")]
     API --> DB
     CHAIN <--> OUTBOX
@@ -137,6 +139,8 @@ graph TD
 ---
 
 ## 5. 설정 주도 (`server/config/`)
+
+> **2026-08-17:** `ingestion_settings.json.external_sources[]`가 관리 워크스페이스 밖의 읽기 전용 루트를 선언합니다. 현재 `voids_json` 바인딩은 `C:/Users/kk980/void/WAFERID/WORK_DATETIME/voids.json`을 `inspection_run`과 `void_obs`에 각각 연결하고, 원본은 이동·삭제하지 않습니다. 바인딩 변경은 watcher 재기동 후 반영합니다. 상세 정본은 [INGESTION_GUIDE §1.12](../guide/INGESTION_GUIDE.md)입니다.
 
 | 파일 | 역할 |
 |---|---|

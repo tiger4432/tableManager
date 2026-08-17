@@ -1,10 +1,12 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 구 그래프 실행 갈래 제거 — 코드 대조
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 외부 읽기 전용 인제션 소스 추가 — 코드 대조
 >
-> **이번 라운드 (2026-08-16 · Source Contract)** — 소스 선언, 실행 번역 프로필, 가능한 Claim 전수, live vocabulary 서명을 `source_contract` 하나로 결합했다. 표본 dry-run은 실제 행의 경험적 증거로 그대로 두고, 표본에 안 나온 분기까지 저장 전에 정적으로 거절한다. 상세 필드와 파라미터는 [api_documentation §7](../spec/api_documentation.md), 작성 절차는 [ONTOLOGY_LEDGER_SETUP §3.5](../guide/ONTOLOGY_LEDGER_SETUP.md)가 소유한다.
+> **이번 라운드 (2026-08-17 · 외부 읽기 전용 인제션)** — `external_sources[]` 절대경로 바인딩, modified 이벤트 + 300초 재귀 스윕, 외부 원본 이동·삭제 금지, `voids_json` 경로 웨이퍼 ID와 `inspection_run`/`void_obs` 두 테이블 배선을 §4에 등재했습니다. 실제 생산 JSON은 0바이트 표본뿐이라 본문 계약은 합성 검증 상태입니다.
 >
-> **이번 라운드 (2026-08-15 3차 · 선언형 소스 문법 + 뿌리 키 롤업)** — ① **`GET /admin/ledger/sources`가 `kind` «넷»을 서빙하고 넷째는 컬럼 목록으로 설명되지 않는다**: `declared`에는 베낄 파이썬 번역기가 없어 **폼의 재료가 «문법»**이고(`emit_rule_fields`·`when_operators`·`occurred_at_bases`·`column_ref_prefix`) 🔴 **클라가 그 목록을 복사하면 서버가 연산자를 하나 늘리는 날 화면만 모르는 사본이 된다.** ⚠️ **`unsupported_kinds`의 `derivation`은 그것과 «다른 것»이고 여전히 미구현**이다(2류 발화 대 3류 추론 — 섞으면 규율이 엉뚱한 주장에 붙는다). ② 🔴 **읽기 «셋»이 `subject_type` 하나가 아니라 뿌리 키로 모은다**(R-2026-08-15-O · `/journey`와 `/siblings?scope=`의 걷기 대조 둘) — **응답 형태는 한 바이트도 안 바뀌었고 채워진 것은 빈칸**이다(실측: `WaferLeg` 원자 42개가 웨이퍼 스코프 조회에서 안 보여 「본딩 조건 차이 없음」으로 읽혔다).
+> **직전 라운드 (2026-08-16 · Source Contract)** — 소스 선언, 실행 번역 프로필, 가능한 Claim 전수, live vocabulary 서명을 `source_contract` 하나로 결합했다. 표본 dry-run은 실제 행의 경험적 증거로 그대로 두고, 표본에 안 나온 분기까지 저장 전에 정적으로 거절한다. 상세 필드와 파라미터는 [api_documentation §7](../spec/api_documentation.md), 작성 절차는 [ONTOLOGY_LEDGER_SETUP §3.5](../guide/ONTOLOGY_LEDGER_SETUP.md)가 소유한다.
+>
+> **이전 라운드 (2026-08-15 3차 · 선언형 소스 문법 + 뿌리 키 롤업)** — ① **`GET /admin/ledger/sources`가 `kind` «넷»을 서빙하고 넷째는 컬럼 목록으로 설명되지 않는다**: `declared`에는 베낄 파이썬 번역기가 없어 **폼의 재료가 «문법»**이고(`emit_rule_fields`·`when_operators`·`occurred_at_bases`·`column_ref_prefix`) 🔴 **클라가 그 목록을 복사하면 서버가 연산자를 하나 늘리는 날 화면만 모르는 사본이 된다.** ⚠️ **`unsupported_kinds`의 `derivation`은 그것과 «다른 것»이고 여전히 미구현**이다(2류 발화 대 3류 추론 — 섞으면 규율이 엉뚱한 주장에 붙는다). ② 🔴 **읽기 «셋»이 `subject_type` 하나가 아니라 뿌리 키로 모은다**(R-2026-08-15-O · `/journey`와 `/siblings?scope=`의 걷기 대조 둘) — **응답 형태는 한 바이트도 안 바뀌었고 채워진 것은 빈칸**이다(실측: `WaferLeg` 원자 42개가 웨이퍼 스코프 조회에서 안 보여 「본딩 조건 차이 없음」으로 읽혔다).
 >
 > ⚰️ **[`2ec78b9` · R-2026-08-14-H] §2에 «구 그래프 조회 은퇴 블록» 신설 — 라우트 일곱이 410이다.** 🔴 **404가 아니라 410인 것이 판정이고**(404는 「그런 것은 없다」, 410은 「있었고 의도적으로 은퇴시켰다」), 🔴 **라우트를 «지우지» 않은 것도 판정이다**(삭제하면 SPA catch-all이 index.html을 200으로 답해 클라가 HTML 파싱에서 죽고, 은퇴가 「알 수 없는 오류」로 보인다). 🔴 **`Cache-Control: no-store`가 계약의 일부다** — 410은 HTTP 기본값이 캐시 가능이라 붙이지 않으면 **거절이 거절보다 오래 산다**(실측). 본문은 산문이 아니라 구조화 필드(`reason`/`state`/`successor`/`ruling`)라 화면이 「은퇴」와 「일시적 장애」를 분기한다. 함께: **§1.3-bis의 `refuse_if_ports_are_taken(…, graph_port)` 서명과 「ports 8080 and 8090 are free.」 배너 문구가 «거짓이 되어» 정정**됐고, §1.3-ter의 「그래프 포트(:8090)」 항목·§4의 워커 행·`/internal/events/*`의 워커 목록이 은퇴 표기됐다. 🔴 **워커를 멈추는 것만으로는 부족했다** — 부활 경로 셋(부팅 `create_all`·핫리로드 `ensure_graph_tables`·**스케줄러의 고아 스윕**)이 각각 변이 주입으로 증명·봉인됐다.
 >
@@ -522,6 +524,8 @@ Claim 전수**다. 각 항목은 `predicate`·주어/목적어 모양·`derivati
 ---
 
 ## 4. 백그라운드 워커
+
+> **2026-08-17 외부 읽기 전용 소스 확장:** `ingestion_settings.json.external_sources[]`가 절대경로를 기존 테이블 핸들러에 붙입니다. `ExternalSourceEventHandler`는 created/moved/**modified**를 받고 `WorkspaceWatcher.sweep_external_sources`가 300초 재귀 폴링 안전망을 제공합니다. 외부 파일은 `is_managed_source=false`라 성공·실패 모두 이동·삭제되지 않습니다. 현재 내장 `voids_json`은 상대경로 `WAFERID/WORK_DATETIME/voids.json`을 `voids_json_format.parse_voids_json(file_path, rel_path, table_name, options)`에 전달하고 같은 파일을 `inspection_run`과 `void_obs` 두 바인딩이 각각 읽습니다. 대상 테이블은 업무 키 필수, 관리 워크스페이스 중첩·같은 테이블 겹침 루트는 기동 시 거절합니다. 계약 정본은 [INGESTION_GUIDE §1.12](../guide/INGESTION_GUIDE.md)입니다.
 
 | 워커 | 트리거 | 동작 요약 |
 |---|---|---|

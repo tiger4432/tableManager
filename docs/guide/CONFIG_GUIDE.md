@@ -1,6 +1,6 @@
 # AssyManager 설정 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 | **Owner:** Lead / Backend
 > **Source-of-truth:** `server/config/` · 각 config loader
 
 이 문서는 **설정 파일의 위치, 의존 순서, 반영 확인 방법**만 설명한다.
@@ -132,6 +132,7 @@ auto-confirm dry-run으로 효과와 예상 건수를 확인한다.
 | 변경 | 일반 반영 방식 |
 |---|---|
 | `table_config.json` | watcher 또는 `/admin/reload-configs`; 물리 ALTER 여부 별도 확인 |
+| `ingestion_settings.json`의 `external_sources` | watcher **재기동**. 런타임 reload는 새 바인딩 추가만 시도하며 기존 경로·파서·옵션 교체와 제거는 하지 않음 |
 | 규칙·바인딩 config | `/admin/reload-configs` 후 resolve 조회 |
 | 프로세스 수명 캐시 | 강제 reload 지원 여부 확인, 없으면 해당 프로세스 재기동 |
 | `database.json`·환경 변수 | 전체 프로세스 재기동 |
