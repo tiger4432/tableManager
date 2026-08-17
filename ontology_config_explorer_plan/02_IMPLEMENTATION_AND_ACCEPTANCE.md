@@ -1,6 +1,6 @@
 # Ontology Config Explorer — 구현·수락 근거
 
-> 상태: `IN_REVIEW / NOT_APPROVED`
+> 상태: `COMPLETE / APPROVED`
 > 기준 active snapshot: `57d36c07271a019242722cc4627f1c0a9c6b477e632f29f32034e331928b0da0`
 > 파괴 작업: DB write/reset/replay, legacy 이동·삭제 모두 0
 
@@ -59,8 +59,10 @@
 - PostgreSQL 전용 테스트와 full server suite는 실행하지 않았다. 이 기능은 DB를 읽지 않으며,
   사용자 지시에 따라 직접 영향군만 검증한다.
 
-## 5. Audit 전 남은 판정
+## 5. Audit 판정
 
 현재 active config에 없는 `transferred_to@1`·VerifiedJoin을 운영 선언으로 추가하지 않은 판단과,
 활성화 뒤 지속 snapshot 소비자가 Explorer API 하나이고 backfill은 실행 경계마다 재compile하는
-현행 convergence 계약은 독립 Audit이 검수한다. Audit 승인 전 상태는 `IN_REVIEW / NOT_APPROVED`다.
+현행 convergence 계약을 독립 Audit이 exact commit `bea0484cd8ab99aab8b4155e7dd5c1178df1b22a`
+에서 검수해 `APPROVE`했다. 제품 상태도 사용자 상설 승인 규칙에 따라 `COMPLETE / APPROVED`로
+동기화했으며 main에 fast-forward 병합했다.

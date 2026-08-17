@@ -1,8 +1,8 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
-> ## 🧭 2026-08-18 현재 — Ontology Config Explorer 구현 완료·독립 Audit 대기
+> ## 🧭 2026-08-18 현재 — Ontology Config Explorer 승인·main 병합 완료
 >
-> **현재 단계/상태:** `ONTOLOGY_CONFIG_EXPLORER_IN_REVIEW / NOT_APPROVED`.
+> **현재 단계/상태:** `ONTOLOGY_CONFIG_EXPLORER_COMPLETE / APPROVED`.
 >
 > **구현:** Ledger V2 compiled snapshot을 Registry identity로 인덱싱해 Source/Profile/Mapping/
 > Pack/Claim/Vocabulary/Entity/Preparer/Mapper/VerifiedJoin/Table을 검색·참조 이동·Used by·독립
@@ -14,8 +14,10 @@
 > `411 passed, 1 skipped`, client2는 7 contracts와 gated harness 전체가 통과했다.
 > full server suite와 PostgreSQL 전용 테스트는 사용자 지시에 따라 실행하지 않는다.
 >
-> **다음 관문:** exact commit을 지정 Audit 세션에 제출한다. APPROVE 전 제품 승인으로
-> 표현하지 않는다. 운영 config/DB/reset/replay/legacy 삭제는 수행하지 않았다.
+> **승인 근거:** exact commit `bea0484cd8ab99aab8b4155e7dd5c1178df1b22a`을 지정 Audit이
+> `APPROVE`했다. exact archive 직접 영향군 `158 passed`, Explorer harness `17/0`, client
+> contracts `7/7`, production build를 독립 재확인했다. 승인 커밋은 main에 fast-forward
+> 병합했다. 운영 config/DB/reset/replay/legacy 삭제는 수행하지 않았고 별도 승인 전 금지다.
 
 > ## 🧭 2026-08-18 현재 — Ledger V2 1~7단계 승인·main 병합 완료
 >

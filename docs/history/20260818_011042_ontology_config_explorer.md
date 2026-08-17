@@ -50,8 +50,10 @@ legacy source/predicate 편집기라 V2 Registry identity, 역참조, draft prev
 - 운영 ontology config, DB schema/data, mapper/translator/cursor/gate/store, reset/replay/legacy 파일은
   변경하지 않았다.
 
-## 현재 상태
+## 최종 상태
 
-`ONTOLOGY_CONFIG_EXPLORER_IN_REVIEW / NOT_APPROVED`. exact commit을 지정 독립 Audit에 제출한 뒤
-승인 여부를 동기화한다. 현재 active config에 없는 DT/transfer/VerifiedJoin을 시연 목적으로
-추가하지 않았고 범용 fixture에서만 그 identity 경로를 검증했다.
+exact commit `bea0484cd8ab99aab8b4155e7dd5c1178df1b22a`을 지정 독립 Audit이 `APPROVE`했다.
+`ONTOLOGY_CONFIG_EXPLORER_COMPLETE / APPROVED`로 동기화하고 main에 fast-forward 병합했다.
+현재 active config에 없는 DT/transfer/VerifiedJoin은 시연 목적으로 추가하지 않았고 범용
+fixture에서만 identity 경로를 검증했다. 파괴적 운영 config/DB/reset/replay/legacy 삭제는
+별도 사용자 승인 전까지 계속 금지한다.

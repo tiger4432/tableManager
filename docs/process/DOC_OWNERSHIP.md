@@ -1,18 +1,19 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ontology Config Explorer `IN_REVIEW` | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ontology Config Explorer `APPROVED` | **Owner:** Lead / PM
 >
 > 🔴 **행을 더하거나 고치면 이 헤더의 「이번 라운드」도 함께 쓴다** — 직전에 F9 행이 추가될 때 그것을 어겼고, 그래서 새 행이 어느 라운드의 것인지 알 수 없었습니다.
 > 🔴 **소유 행이 없는 문서·계약은 조용히 낡습니다.** 새 문서를 만들거나 새 계약(`contracts/<name>/`)을 추가하면 **그 자리에서 행을 만드십시오.**
 >
-> **이번 라운드 (2026-08-18 · Ontology Config Explorer 구현·독립 검수 대기)**
+> **이번 라운드 (2026-08-18 · Ontology Config Explorer 승인·main 병합)**
 > - **[Ontology Config Explorer 소유권]** `server/ledger/config_explorer.py`가 compiled Registry
 >   identity와 정/역참조 index, `config_explorer_service.py`가 active/draft 한-context 응답 cache,
 >   `config_drafts.py`가 manifest-owned 선언의 초안·preview·review·CAS activation을 소유한다.
 >   `client2/src/ontology_explorer_{store,view}.js`는 단일 상태 축과 기준본 3단 UI를 소유하고
 >   `admin.js`는 인증 fetch와 `#ontology` 탭 배선만 소유한다. 정본과 수락 근거는
 >   [Explorer plan](../../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md)이다.
->   현재 `IN_REVIEW / NOT_APPROVED`; mapper/translator/cursor/DB와 운영 ontology config는 무변경이다.
+>   exact commit `bea0484`가 Audit·제품 승인되어 main에 병합됐다. mapper/translator/cursor/DB와
+>   운영 ontology config는 무변경이다.
 >
 > **직전 라운드 (2026-08-18 · Ledger v2 Stage 7 manifest/cutover 구현·검수 대기 · 외부 읽기 전용 void 디렉터리 인제션 · Ledger v2 Mapper 디자인 패턴 정본 추가)**
 > - **[Ledger v2 Stage 7 config/cutover 소유권]** `server/config/ontology/manifest.json`이 authoring 파일 다섯 개의 유일한 진입점이고 `server/ledger/cutover_v2.py`가 source selector, readiness, trusted implementation registry와 dry-run/execute handoff를 소유한다. `server/ledger/backfill.py`는 CLI 기본 manifest 선택과 기존 physical cursor read만 소유하며 legacy cursor shape/version 자동 변환과 reset/replay를 거절한다. 정본은 [7단계 계약](../../ledger_v2_redesign_plan_20260817/07_CUTOVER_RESET_AND_RETIREMENT.md), 근거는 [Stage 7 Evidence](../../ledger_v2_redesign_plan_20260817/STAGE_7_ACCEPTANCE_EVIDENCE.md)다. Stage 7은 `APPROVED`; DB reset과 legacy 이동·삭제는 별도 승인 전까지 금지다.
