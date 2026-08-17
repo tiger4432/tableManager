@@ -1,5 +1,23 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 6단계 구현 완료, 독립 Audit 대기
+>
+> **현재 단계/상태:** `STAGE_6_IN_REVIEW` / `NOT_APPROVED`. Stage 7은 시작하지 않았다.
+>
+> **구현:** 동일 snapshot/preparer/Role mapper/Pack compiler를 쓰는 preview·execute adapter,
+> existing gate/store/cursor transaction, cursor version conflict rollback, 결정적 shadow comparator,
+> lot_event split·merge·track-in Role mapper와 first-sight register snapshot, pair incomplete 통계를
+> 연결했다. 운영 config·DB에는 쓰지 않았다.
+>
+> **검증:** lot_event legacy↔v2 Claim 26개 정규화 equal, 설명 없는 차이 0. Ledger 직접
+> 영향군 `370 passed, 9 skipped`; skip은 PG 미선언 8건과 기존 Windows symlink 권한 1건이다.
+> 별도 안전한 임시 PostgreSQL에서 `8 passed` 후 정확한 임시 DB를 DROP했다. 전체 server
+> suite는 사용자 지시에 따라 실행하지 않았다.
+>
+> **다음 관문:** exact commit을 지정 Audit 세션에 `Stage 6 / IN_REVIEW / NOT_APPROVED`로
+> 제출한다. APPROVE면 상설 승인에 따라 main 병합 후 Stage 7을 시작하고, CHANGES_REQUESTED면
+> Stage 6만 보완한다. Stage 7의 reset은 별도 파괴 승인 전에는 실행하지 않는다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 5단계 승인·main 병합, 6단계 착수
 >
 > **현재 단계/상태:** Stage 5 `APPROVED`; Stage 6 `IN_PROGRESS / NOT_APPROVED`.

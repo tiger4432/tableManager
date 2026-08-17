@@ -1,6 +1,6 @@
 # Ledger v2 재설계 계획 — Kernel 유지, Setup/Compiler 재작성
 
-> 상태: `STAGE_6_IN_PROGRESS` · 승인: `NOT_APPROVED` · 1·2·3·4·5단계 승인
+> 상태: `STAGE_6_IN_REVIEW` · 승인: `NOT_APPROVED` · 1·2·3·4·5단계 승인
 > 작성일: 2026-08-17
 > 범위: Source → pandas event frame → Pack compiler → LedgerFrame
 > 유지: 기존 Ledger gate/store/cursor/read API
@@ -63,7 +63,7 @@ source stage entity에서 target stage entity로 향하는 Claim은 Pack emissio
 | 3 | Entity/Pack/Source Registry·교차 검증·결정적 snapshot | 승인 (`APPROVED`) |
 | 4 | RoleFrame·Pack compiler·generic emitter | 승인 (`APPROVED`) |
 | 5 | 기존 driver/cursor + pandas source preparation 연결 | 승인 (`APPROVED`) |
-| 6 | shadow parity·PostgreSQL E2E·scale 검증 | 진행 중 (`IN_PROGRESS` / `NOT_APPROVED`) |
+| 6 | shadow parity·PostgreSQL E2E·scale 검증 | 검수 중 (`IN_REVIEW` / `NOT_APPROVED`) |
 | 7 | 설정 전환·선택적 DB reset·legacy 은퇴 | 미착수 |
 
 각 단계는 별도 승인을 받은 뒤 시작한다. 7단계 전에는 원장 데이터 삭제, cursor reset,
@@ -81,6 +81,13 @@ legacy 코드 삭제를 하지 않는다.
 
 4단계 근거: [수락 근거](./STAGE_4_ACCEPTANCE_EVIDENCE.md) ·
 구현 `server/ledger/roleframe.py` · 테스트 `server/tests/test_ledger_roleframe.py`.
+
+5단계 근거: [수락 근거](./STAGE_5_ACCEPTANCE_EVIDENCE.md) ·
+구현 `server/ledger/source_preparation.py` · 테스트 `server/tests/test_ledger_source_preparation.py`.
+
+6단계 근거: [수락 근거](./STAGE_6_ACCEPTANCE_EVIDENCE.md) ·
+구현 `server/ledger/runtime_v2.py`·`server/ledger/shadow_parity.py` ·
+테스트 `server/tests/test_ledger_v2_*.py`·`server/tests/test_ledger_shadow_parity.py`.
 
 ## 기존 계획과의 관계
 

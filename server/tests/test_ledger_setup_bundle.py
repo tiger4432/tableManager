@@ -187,6 +187,39 @@ def add_unused_profile(bundle):
     return profile
 
 
+def objectless_register_bundle():
+    raw = logical_bundle()
+    raw["vocabulary"]["register@1"] = {
+        "status": "active", "layer": "ontology",
+        "subjects": ["InputEntity@1"],
+        "object": {
+            "kind": "none",
+            "qualifiers": {"required": [], "optional": []},
+        },
+    }
+    raw["packs"]["registration@1"] = {"claims": {"register": {
+        "roles": {
+            "subject": {"kind": "entity", "required": True},
+            "occurred_at": {"kind": "time", "required": True},
+        },
+        "emit": {
+            "predicate": "register@1", "subject": "$subject",
+            "object": {"kind": "none"}, "occurred_at": "$occurred_at",
+        },
+    }}}
+    raw["profiles"]["input-transition@1"]["packs"].append("registration@1")
+    raw["profiles"]["input-transition@1"]["mappings"].append({
+        "mapping_id": "register_input", "use": "registration@1/register",
+        "bind": {
+            "subject": entity("InputEntity@1", "input_id", "source_id"),
+            "occurred_at": binding("event_at"),
+        },
+    })
+    raw["mappers"]["map-transition@1"]["emits"].append(
+        "registration@1/register")
+    return raw
+
+
 def reverse_mappings(value):
     if isinstance(value, dict):
         return {key: reverse_mappings(value[key]) for key in reversed(list(value))}
@@ -272,6 +305,41 @@ def test_public_schema_is_the_single_logical_contract():
     assert schema["logical_fields"] == ["setup_version", *LOGICAL_SECTIONS]
     assert schema["binding_kinds"] == ["column", "constant", "entity"]
     assert schema["forbidden_sections"] == ["frames", "lookups", "positions"]
+
+
+def test_objectless_predicate_and_pack_emission_have_one_closed_spelling():
+    validated = validate_bundle(objectless_register_bundle())
+    normalized = validated.to_mapping()
+
+    assert normalized["vocabulary"]["register@1"]["object"] == {
+        "kind": "none", "qualifiers": {"required": [], "optional": []}}
+    assert normalized["packs"]["registration@1"]["claims"]["register"][
+        "emit"]["object"] == {"kind": "none"}
+
+
+@pytest.mark.parametrize(
+    ("mutation", "path"),
+    [
+        (lambda raw: raw["vocabulary"]["register@1"]["object"].update(
+            {"types": ["InputEntity@1"]}),
+         "bundle.vocabulary.register@1.object.types"),
+        (lambda raw: raw["vocabulary"]["register@1"]["object"][
+            "qualifiers"]["optional"].append("unexpected"),
+         "bundle.vocabulary.register@1.object.qualifiers"),
+        (lambda raw: raw["packs"]["registration@1"]["claims"]["register"][
+            "emit"]["object"].update({"value": "$subject"}),
+         "bundle.packs.registration@1.claims.register.emit.object"),
+    ],
+)
+def test_objectless_contract_rejects_every_payload_surface(mutation, path):
+    raw = objectless_register_bundle()
+    mutation(raw)
+
+    errors = validate_bundle_errors(raw)
+
+    assert any(item.path == path and item.code in {
+        "invalid_predicate", "invalid_emission", "unknown_field"}
+               for item in errors)
 
 
 def test_same_bundle_normalizes_and_serializes_deterministically():

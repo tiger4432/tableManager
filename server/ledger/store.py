@@ -57,6 +57,10 @@ _REASONS_REQUIRED = (
     "would be shown to the operator as an old one.")
 
 
+class CursorVersionConflict(RuntimeError):
+    """The stored cursor belongs to a different compiled execution contract."""
+
+
 def _json(value):
     from psycopg2.extras import Json
     return Json(value)
@@ -226,7 +230,8 @@ class LedgerStore:
         """
 
     def _advance_cursor(self, connection, source, translator_ver, cursor_value,
-                        molecules, atoms, deduped, refused, incomplete, *, reasons):
+                        molecules, atoms, deduped, refused, incomplete, *, reasons,
+                        enforce_translator_version=False):
         """Issue the cursor UPDATE on the caller's OPEN transaction. No commit.
 
         `reasons` is this batch's `{reason: molecules}` DELTA - never a running total,
@@ -237,6 +242,11 @@ class LedgerStore:
         """
         if reasons is None:
             raise TypeError(_REASONS_REQUIRED)
+        version_guard = ""
+        if enforce_translator_version:
+            version_guard = (
+                f" WHERE {schema.CURSOR_TABLE}.translator_ver = EXCLUDED.translator_ver"
+                " RETURNING source")
         with connection.cursor() as cursor:
             cursor.execute(f"""
                 INSERT INTO {schema.CURSOR_TABLE} (
@@ -259,11 +269,17 @@ class LedgerStore:
                                            + EXCLUDED.incomplete_molecules,
                     {schema.REFUSAL_REASONS_COLUMN} = {self._merge_reasons_sql()},
                     updated_at           = now()
+                {version_guard}
             """, (source, translator_ver, _json(cursor_value), molecules, atoms,
                   deduped, refused, incomplete, _json(dict(reasons))))
+            if enforce_translator_version and cursor.fetchone() is None:
+                raise CursorVersionConflict(
+                    f"source {source!r} cursor belongs to a different "
+                    "translator/setup snapshot; explicit replay/reset is required")
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
-                    refused=0, incomplete=0, *, reasons):
+                    refused=0, incomplete=0, *, reasons,
+                    enforce_translator_version=False):
         """🔴 The atomic unit. Atoms in, cursor forward, ONE commit, or nothing at all.
 
         🔴 `reasons` HAS NO DEFAULT, and that is ruling R-2026-08-13-H-bis 2. It used to
@@ -304,7 +320,8 @@ class LedgerStore:
             attempted, inserted = self.insert_atoms(connection, atoms)
             self._advance_cursor(connection, source, translator_ver, cursor_value,
                                  molecules, inserted, attempted - inserted,
-                                 refused, incomplete, reasons=reasons)
+                                 refused, incomplete, reasons=reasons,
+                                 enforce_translator_version=enforce_translator_version)
             connection.commit()
             return {"attempted": attempted, "inserted": inserted,
                     "deduped": attempted - inserted, "molecules": molecules}

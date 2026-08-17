@@ -1,5 +1,8 @@
 # 6단계 — Shadow parity와 PostgreSQL E2E
 
+> 구현 상태: `IN_REVIEW` · 승인: `NOT_APPROVED`
+> 구현 근거: [STAGE_6_ACCEPTANCE_EVIDENCE](./STAGE_6_ACCEPTANCE_EVIDENCE.md)
+
 ## 목표
 
 운영 config나 원장을 바꾸기 전에 동일 source event를 legacy와 v2 양쪽에 읽기 전용으로
@@ -111,5 +114,17 @@ Bundle load/validate
 - cutover go/no-go 자체 판정
 
 dependency replay가 없거나 미검증이면 다른 테스트가 초록이어도 cutover 판정은 `NO-GO`다.
+
+## 구현 판정 보충
+
+- parity는 source별로 판정한다. 검증되지 않은 source 하나를 다른 source의 GO 결과로 전환하지
+  않는다.
+- object가 없는 `register`는 Pack/Vocabulary의 닫힌 `none` object 계약으로 표현하고, 물리
+  Ledger에서는 기존대로 NULL object다.
+- first-sight register는 Mapper의 DB 상태가 아니다. 기존 Ledger의 batched registration
+  snapshot을 실행 adapter에 명시적으로 전달하며 누락 시 fail-closed다.
+- pair row 결손으로 현재 사실은 말할 수 있는 경우는 `incomplete` 상태로 기록한다. Entity
+  identity/join 결손처럼 Claim 자체를 말할 수 없는 `source_preparation_incomplete`와 구분한다.
+- Stage 6 구현은 새 worker/cursor/store를 만들지 않고 기존 transaction을 재사용한다.
 
 완료 후 멈추고 6단계 및 reset 가능 여부 승인을 기다린다.

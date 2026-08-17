@@ -134,6 +134,7 @@ class instance는 받지 않는다. 발급 identity 저장소와 token은 closur
 | right row 0건 | `source_preparation_missing` | 0 | 해당 event를 넘지 않음 |
 | right row 2건 이상 | `source_preparation_ambiguous` | 0 | 해당 event를 넘지 않음 |
 | lot/slot/frame/좌표 결측 | `source_preparation_incomplete` | 0 | 해당 event를 넘지 않음 |
+| split/merge pair row 일부만 도착했지만 현재 Claim은 참 | `source_event_incomplete` | 보이는 Claim 기록 | 전진 + incomplete 누적 |
 | Binding pending/rejected | readiness 거절 | 0 | 미이동 |
 | Pack/gate/store 실패 | 기존 원자적 거절/rollback | 0 | 미이동 |
 

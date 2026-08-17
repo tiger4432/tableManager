@@ -55,6 +55,8 @@ EVENT_FRAME_REQUIRED_ATTRS = (
     "source_raw_ref",
     "setup_snapshot_hash",
 )
+SOURCE_EVENT_INCOMPLETE_ATTR = "assy_manager.source_event_incomplete"
+EVENT_FRAME_PASSTHROUGH_ATTRS = (SOURCE_EVENT_INCOMPLETE_ATTR,)
 SOURCE_ROW_REF_COLUMN = "__source_row_ref"
 UNIT_SOURCE_ROW_REFS_ATTR = "assy_manager.unit_source_row_refs"
 
@@ -528,6 +530,9 @@ def _role_frame_from_emissions(
     frame.attrs[ROLE_FRAME_ATTR] = ROLE_FRAME_SCHEMA_VERSION
     for name in EVENT_FRAME_REQUIRED_ATTRS:
         frame.attrs[name] = event_attrs[name]
+    for name in EVENT_FRAME_PASSTHROUGH_ATTRS:
+        if name in event_attrs:
+            frame.attrs[name] = event_attrs[name]
     return frame
 
 
@@ -640,6 +645,9 @@ def validate_role_frame(
     out.attrs[ROLE_FRAME_ATTR] = ROLE_FRAME_SCHEMA_VERSION
     for name in EVENT_FRAME_REQUIRED_ATTRS:
         out.attrs[name] = value.attrs[name]
+    for name in EVENT_FRAME_PASSTHROUGH_ATTRS:
+        if name in value.attrs:
+            out.attrs[name] = value.attrs[name]
     return out
 
 
@@ -654,6 +662,17 @@ def _claim(snapshot: LedgerSetupSnapshot, claim_ref: str, path: str) -> ClaimDes
         raise RoleFrameError(
             "unknown_claim", path, f"unknown Claim {claim_ref!r}")
     return pack.claims[claim_id]
+
+
+def _runtime_id(versioned_id: str) -> str:
+    """Config/Registry addresses are versioned; the existing Ledger API is not.
+
+    The version remains in the immutable snapshot hash and translator version.  The
+    physical predicate/entity spellings stay compatible with the existing LedgerStore
+    and read APIs (`register`, `Lot`, ...), rather than leaking Registry addresses such
+    as `register@1` into the evidence graph.
+    """
+    return versioned_id.rsplit("@", 1)[0]
 
 
 def _validate_role_value(
@@ -747,7 +766,8 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
         roles = row["roles"]
         subject = roles[emission.subject.role_id]
         occurred_at = roles[emission.occurred_at.role_id]
-        obj_value = roles.get(emission.object_role.role_id)
+        obj_value = (None if emission.object_role is None
+                     else roles.get(emission.object_role.role_id))
         qualifiers = {
             name: roles[reference.role_id]
             for name, reference in emission.qualifiers.items()
@@ -788,14 +808,20 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
                 "unknown_payload_field", f"{claim.config_path}.emit.object."
                 f"qualifiers.{unknown}",
                 f"predicate does not allow qualifier {unknown!r}")
-        if emission.object_kind == "entity_ref":
+        if emission.object_kind == "none":
+            object_kind = None
+            object_payload = None
+        elif emission.object_kind == "entity_ref":
+            object_kind = "entity_ref"
             object_payload = {
-                "type": obj_value["type"],
+                "type": _runtime_id(obj_value["type"]),
                 "keys": _plain(obj_value["keys"]),
             }
         elif emission.object_kind == "value":
+            object_kind = "value"
             object_payload = {"value": _plain(obj_value)}
         elif emission.object_kind == "event_ref":
+            object_kind = "event_ref"
             object_payload = {"event": _plain(obj_value)}
         else:
             raise RoleFrameError(
@@ -818,10 +844,10 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
         rows.append({
             "source_event_id": expected_id,
             "source_event_state": event_state,
-            "subject_type": subject["type"],
+            "subject_type": _runtime_id(subject["type"]),
             "subject_keys": _plain(subject["keys"]),
-            "predicate": emission.predicate_id,
-            "object_kind": emission.object_kind,
+            "predicate": _runtime_id(emission.predicate_id),
+            "object_kind": object_kind,
             "object_payload": object_payload,
             "occurred_at": occurred_at,
             "source_who": context.source_plan.source_id,

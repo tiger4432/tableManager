@@ -25,7 +25,11 @@ from verified_join_contract import (
     is_physically_verified_descriptor,
 )
 from .envelope import source_event_identity
-from .roleframe import EVENT_FRAME_REQUIRED_ATTRS, SOURCE_ROW_REF_COLUMN
+from .roleframe import (
+    EVENT_FRAME_REQUIRED_ATTRS,
+    SOURCE_EVENT_INCOMPLETE_ATTR,
+    SOURCE_ROW_REF_COLUMN,
+)
 from .setup_registry import (
     ImplementationKey,
     LedgerSetupSnapshot,
@@ -37,6 +41,7 @@ DEFAULT_JOIN_CHUNK_SIZE = 1000
 PREPARATION_PROVENANCE_ATTR = "assy_manager.preparation_provenance"
 PREPARATION_METRICS_ATTR = "assy_manager.preparation_metrics"
 SOURCE_PREPARER_ATTR = "assy_manager.source_preparer"
+SOURCE_EVENT_INCOMPLETE_COLUMN = "__source_event_incomplete"
 
 
 class SourcePreparationError(ValueError):
@@ -408,8 +413,8 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     """Physical columns the existing cursor must SELECT before preparation."""
     driver = source_plan.driver
     outputs = set(driver.preparation.preparer.output_columns)
-    columns = set(driver.identity)
-    columns.update(driver.group_by)
+    columns = set(driver.identity) - outputs
+    columns.update(set(driver.group_by) - outputs)
     columns.update(driver.order_by)
     columns.update(driver.cursor_columns)
     columns.add(driver.occurred_at.column)
@@ -463,7 +468,8 @@ def _validate_base_frame(
             f"prepared outputs cannot overwrite base values: {collisions}",
         )
     driver = context.source_plan.driver
-    required_physical = set(driver.identity) | set(driver.group_by)
+    outputs = set(driver.preparation.preparer.output_columns)
+    required_physical = (set(driver.identity) | set(driver.group_by)) - outputs
     required_physical.update(driver.order_by)
     required_physical.update(driver.cursor_columns)
     required_physical.add(driver.occurred_at.column)
@@ -675,16 +681,46 @@ def _event_frames(
     else:
         grouped: dict[str, list[int]] = {}
         for position in range(len(prepared)):
-            identity = {column: prepared.iloc[position][column]
-                        for column in driver.group_by}
+            identity = {}
+            for column in driver.group_by:
+                value = prepared.iloc[position][column]
+                if _is_missing(value) or (isinstance(value, str) and not value.strip()):
+                    raise SourcePreparationError(
+                        "source_preparation_incomplete",
+                        f"event_frame.rows[{position}].{column}",
+                        "prepared event group identity is missing",
+                    )
+                identity[column] = value
             token = _canonical(identity, path=f"source_batch.rows[{position}]")
             grouped.setdefault(token, []).append(position)
-        groups = [grouped[token] for token in sorted(grouped)]
+        # The existing cursor supplies rows in declared order_by order.  Preserve the
+        # first occurrence of each complete event so stateful kernel concerns such as
+        # first-sight registration follow the same deterministic driver order.
+        groups = list(grouped.values())
     events = []
     for positions in groups:
         event = prepared.iloc[positions].copy(deep=True).reset_index(drop=True)
+        incomplete = False
+        if SOURCE_EVENT_INCOMPLETE_COLUMN in event.columns:
+            values = event[SOURCE_EVENT_INCOMPLETE_COLUMN].tolist()
+            if (any(not isinstance(value, bool) for value in values)
+                    or len(set(values)) != 1):
+                raise SourcePreparationError(
+                    "source_preparation_incomplete",
+                    f"event_frame.{SOURCE_EVENT_INCOMPLETE_COLUMN}",
+                    "event incomplete marker must be one consistent boolean",
+                )
+            incomplete = values[0]
         identity: dict[str, Any] = {}
         for column in driver.identity:
+            for position in positions:
+                value = prepared.iloc[position][column]
+                if _is_missing(value) or (isinstance(value, str) and not value.strip()):
+                    raise SourcePreparationError(
+                        "source_preparation_incomplete",
+                        f"event_frame.rows[{position}].{column}",
+                        "prepared event identity is missing",
+                    )
             values = {
                 _canonical(prepared.iloc[position][column],
                            path=f"source_batch.rows[{position}].{column}")
@@ -780,6 +816,7 @@ def _event_frames(
                 f"{driver.preparation.preparer.implementation.implementation_id}@"
                 f"{driver.preparation.preparer.implementation.implementation_version}"
             ),
+            SOURCE_EVENT_INCOMPLETE_ATTR: incomplete,
         })
         missing_attrs = [name for name in EVENT_FRAME_REQUIRED_ATTRS
                          if name not in event.attrs]

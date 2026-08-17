@@ -30,7 +30,7 @@ from .setup_bundle import (
 
 
 _DescriptorT = TypeVar("_DescriptorT")
-SNAPSHOT_COMPILER_VERSION = 2
+SNAPSHOT_COMPILER_VERSION = 3
 
 
 def _versioned_parts(identifier: str) -> tuple[str, int]:
@@ -173,7 +173,7 @@ class EmissionDescriptor:
     predicate_id: str
     subject: RoleReferenceDescriptor
     object_kind: str
-    object_role: RoleReferenceDescriptor
+    object_role: RoleReferenceDescriptor | None
     qualifiers: Mapping[str, RoleReferenceDescriptor]
     occurred_at: RoleReferenceDescriptor
     config_path: str
@@ -656,7 +656,8 @@ def _compile_packs(section: Mapping[str, Any]) -> PackRegistry:
                     predicate_id=emission["predicate"],
                     subject=_role_reference(emission["subject"]),
                     object_kind=obj["kind"],
-                    object_role=_role_reference(object_ref),
+                    object_role=(None if object_ref is None
+                                 else _role_reference(object_ref)),
                     qualifiers=_freeze({
                         key: _role_reference(value)
                         for key, value in obj.get("qualifiers", {}).items()

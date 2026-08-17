@@ -507,3 +507,75 @@ def screen_molecule(source: str, atoms, declared_derivations, declared_subject_t
         return [], report
 
     return atoms, report
+
+
+def screen_compiled_molecule(source: str, atoms, declared_derivations,
+                             declared_subject_types, molecule_ref=None,
+                             source_rows: int = 1):
+    """Gate a Stage-4-compiled molecule without reintroducing legacy vocabulary.
+
+    Pack/Vocabulary/Entity semantics were already checked while producing the closed
+    LedgerFrame.  This existing gate module still owns the live atomicity boundary:
+    source/derivation scope, envelope preservation, molecule membership, refusal
+    accounting, and the unwind signal are applied here.  Accepting a raw mapper output
+    is not supported; the Stage 6 runtime calls this only after the Pack compiler and
+    ``atoms_from_ledger_frame`` validator.
+    """
+    atoms = list(atoms or ())
+    report = {
+        "source": source,
+        "molecule_ref": molecule_ref,
+        "atoms": len(atoms),
+        "refused": False,
+        "reason": None,
+        "violations": [],
+    }
+    if not atoms:
+        return [], report
+
+    declared = frozenset(declared_derivations or ())
+    allowed_subjects = frozenset(declared_subject_types or ())
+    for index, atom in enumerate(atoms):
+        where = f"atom[{index}] {atom.describe()}"
+        if atom.subject_type not in allowed_subjects:
+            report.update(refused=True, reason=REFUSE_UNDECLARED_SUBJECT_TYPE)
+            report["violations"].append(
+                f"{where}: subject type {atom.subject_type!r} is outside the "
+                "compiled source contract")
+            break
+        if atom.derivation not in declared:
+            report.update(refused=True, reason=REFUSE_UNDECLARED_DERIVATION)
+            report["violations"].append(
+                f"{where}: derivation {atom.derivation!r} is outside the compiled "
+                "source contract")
+            break
+        envelope_violations = envelope.check_envelope(atom)
+        if envelope_violations:
+            reason = REFUSE_NOT_TRUE_ALONE
+            for violation in envelope_violations:
+                if "raw_ref" in violation:
+                    reason = REFUSE_NO_RAW_REF
+                elif "occurred_at" in violation:
+                    reason = REFUSE_MISSING_OCCURRED_AT
+                elif ("NaN" in violation or "no JSON spelling" in violation
+                      or "non-string key" in violation):
+                    reason = REFUSE_PAYLOAD_NOT_PRESERVABLE
+                break
+            report.update(refused=True, reason=reason)
+            report["violations"].extend(
+                f"{where}: {violation}" for violation in envelope_violations)
+            break
+        if molecule_ref is not None and atom.molecule_ref != molecule_ref:
+            report.update(refused=True, reason=REFUSE_ATOMICITY)
+            report["violations"].append(
+                f"{where}: molecule_ref {atom.molecule_ref!r} does not belong to "
+                f"transaction unit {molecule_ref!r}")
+            break
+
+    if report["refused"]:
+        refuse(source, report["reason"],
+               f"molecule={molecule_ref} :: " +
+               " ; ".join(report["violations"][:3]),
+               atoms=len(atoms), rows=source_rows)
+        return [], report
+    return atoms, report

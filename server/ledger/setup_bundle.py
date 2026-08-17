@@ -48,7 +48,7 @@ _ROLE_KINDS = frozenset({
 _SCALAR_ROLE_KINDS = frozenset({
     "quantity", "identity", "order", "attribute", "symbolic",
 })
-_OBJECT_KINDS = frozenset({"entity_ref", "value", "event_ref"})
+_OBJECT_KINDS = frozenset({"none", "entity_ref", "value", "event_ref"})
 _SOURCE_UNITS = frozenset({"row", "group"})
 _MAPPER_UNITS = frozenset({"event", "row", "group_by"})
 
@@ -488,6 +488,11 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
                     problems.add(
                         "invalid_predicate", qpath,
                         f"qualifier names must not be both required and optional: {overlap!r}")
+                if (kind == "none"
+                        and (_column_values(required) or _column_values(optional))):
+                    problems.add(
+                        "invalid_predicate", qpath,
+                        "none object cannot declare payload qualifiers")
 
 
 def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -886,9 +891,8 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
         relation = source.get("relation")
         driver = source["driver"]
         base_columns = []
-        for field in ("identity", "group_by", "order_by"):
-            if _is_list(driver.get(field)):
-                base_columns.extend(driver[field])
+        if _is_list(driver.get("order_by")):
+            base_columns.extend(driver["order_by"])
         if isinstance(driver.get("cursor"), Mapping) and _is_list(driver["cursor"].get("columns")):
             base_columns.extend(driver["cursor"]["columns"])
         if isinstance(driver.get("occurred_at"), Mapping):
@@ -967,6 +971,13 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
                         "invalid_driver", rpath,
                         f"join rule {rule_id!r} left key column(s) {missing_inputs!r} "
                         f"must be declared by preparer {preparer_id!r} input_columns")
+
+        for field in ("identity", "group_by"):
+            for index, column in enumerate(driver.get(field, [])):
+                if column not in available:
+                    problems.add(
+                        "unknown_column", f"{path}.driver.{field}[{index}]",
+                        f"column {column!r} is not in prepared EventFrame schema")
 
         mapper_id = driver.get("mapper_id")
         mapper = mappers.get(mapper_id)
@@ -1080,6 +1091,11 @@ def _cross_packs(packs: Mapping[str, Any], vocabulary: Mapping[str, Any],
                     _cross_emission_role(
                         roles, obj["value"], f"{path}.emit.object.value", expected,
                         problems, required_endpoint=True)
+            elif object_kind == "none":
+                if set(obj) != {"kind"}:
+                    problems.add(
+                        "invalid_emission", f"{path}.emit.object",
+                        "none object must contain only kind")
             for qualifier, role_ref in obj.get("qualifiers", {}).items():
                 _cross_emission_role(
                     roles, role_ref, f"{path}.emit.object.qualifiers.{qualifier}",

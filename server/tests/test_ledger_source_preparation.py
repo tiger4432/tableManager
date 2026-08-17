@@ -289,6 +289,72 @@ def test_existing_cursor_selects_only_base_physical_columns():
     assert "target_id" not in columns
 
 
+def test_preparer_output_can_own_event_identity_without_entering_cursor_select():
+    raw = logical_bundle()
+    raw["source_preparers"]["prepare-input@1"]["output_columns"][
+        "prepared_event_key"] = "string"
+    raw["sources"]["input_rows"]["driver"]["identity"] = [
+        "prepared_event_key"]
+    raw["sources"]["input_rows"]["driver"]["group_by"] = [
+        "prepared_event_key"]
+    compiled = snapshot(raw)
+
+    class DerivedEventPreparer(BaseSourcePreparer):
+        def prepare_outputs(self, context, base_frame, joins):
+            joined = joins["input_to_reference"]
+            return {
+                "target_id": tuple(
+                    joined.value(index, "target_id")
+                    for index in range(len(base_frame))),
+                "prepared_event_key": tuple("PAIR-1" for _ in range(len(base_frame))),
+            }
+
+    base = base_rows(2)
+    base["event_at"] = [NOW, NOW]
+    assert "prepared_event_key" not in v2_base_select_columns(
+        compiled, "input_rows")
+
+    event, = prepare_v2_cursor_batch(
+        compiled, "input_rows", base, reader_for(base),
+        preparers(DerivedEventPreparer))
+
+    assert len(event) == 2
+    assert event["prepared_event_key"].tolist() == ["PAIR-1", "PAIR-1"]
+    assert '"prepared_event_key":"PAIR-1"' in event.attrs["molecule_ref"]
+
+
+def test_missing_prepared_event_identity_is_structured_and_fail_closed():
+    raw = logical_bundle()
+    raw["source_preparers"]["prepare-input@1"]["output_columns"][
+        "prepared_event_key"] = "string"
+    raw["sources"]["input_rows"]["driver"]["identity"] = [
+        "prepared_event_key"]
+    raw["sources"]["input_rows"]["driver"]["group_by"] = [
+        "prepared_event_key"]
+    compiled = snapshot(raw)
+
+    class MissingEventPreparer(BaseSourcePreparer):
+        def prepare_outputs(self, context, base_frame, joins):
+            joined = joins["input_to_reference"]
+            return {
+                "target_id": tuple(
+                    joined.value(index, "target_id")
+                    for index in range(len(base_frame))),
+                "prepared_event_key": tuple(None for _ in range(len(base_frame))),
+            }
+
+    with pytest.raises(SourcePreparationError) as exc:
+        prepare_v2_cursor_batch(
+            compiled, "input_rows", base_rows(), reader_for(base_rows()),
+            preparers(MissingEventPreparer))
+
+    assert issue(exc) == {
+        "code": "source_preparation_incomplete",
+        "path": "event_frame.rows[0].prepared_event_key",
+        "message": "prepared event group identity is missing",
+    }
+
+
 def test_direct_preparer_builds_eventframe_then_the_stage4_compiler_path():
     compiled = snapshot()
     base = base_rows()
@@ -318,9 +384,9 @@ def test_direct_preparer_builds_eventframe_then_the_stage4_compiler_path():
     result = dry_run_event_frame(
         MapperContext(compiled, compiled.source_plans["input_rows"]), event, mappers())
     assert len(result.role_frame) == 1
-    assert result.ledger_frame.iloc[0]["predicate"] == "moves_to@1"
+    assert result.ledger_frame.iloc[0]["predicate"] == "moves_to"
     assert result.ledger_frame.iloc[0]["object_payload"] == {
-        "type": "OutputEntity@1",
+        "type": "OutputEntity",
         "keys": {"output_id": "OUT-J-0000"},
         "qualifiers": {"event_key": "E-0000"},
     }
@@ -594,24 +660,24 @@ def test_multi_core_dt_inventory_builds_stage_local_identity_and_direction_claim
     assert event["inventory_dt_lot"].tolist() == ["DT-CONFIRMED"] * 3
     assert len(event.attrs[PREPARATION_PROVENANCE_ATTR]) == 1
     assert len(ledger) == 9
-    assert set(ledger["predicate"]) == {"transferred_to@1", "component_of@1"}
+    assert set(ledger["predicate"]) == {"transferred_to", "component_of"}
     assert "same_as" not in set(ledger["predicate"])
 
-    transfers = ledger[ledger["predicate"] == "transferred_to@1"]
-    assert set(transfers["subject_type"]) == {"CoreDie@1", "DTDie@1"}
+    transfers = ledger[ledger["predicate"] == "transferred_to"]
+    assert set(transfers["subject_type"]) == {"CoreDie", "DTDie"}
     assert {payload["type"] for payload in transfers["object_payload"]} == {
-        "DTDie@1", "BondComponent@1"}
-    core_to_dt = transfers[transfers["subject_type"] == "CoreDie@1"]
+        "DTDie", "BondComponent"}
+    core_to_dt = transfers[transfers["subject_type"] == "CoreDie"]
     assert {payload["keys"]["dt_lot"]
             for payload in core_to_dt["object_payload"]} == {"DT-CONFIRMED"}
     assert {payload["keys"]["dt_x"]
             for payload in core_to_dt["object_payload"]} == {100, 101, 102}
 
-    components = ledger[ledger["predicate"] == "component_of@1"]
+    components = ledger[ledger["predicate"] == "component_of"]
     assert len(components) == 3
-    assert set(components["subject_type"]) == {"CoreDie@1"}
+    assert set(components["subject_type"]) == {"CoreDie"}
     assert {payload["type"] for payload in components["object_payload"]} == {
-        "FinalChip@1"}
+        "FinalChip"}
     assert {payload["keys"]["chip_id"]
             for payload in components["object_payload"]} == {"FINAL-CHIP-1"}
 

@@ -32,7 +32,12 @@ from ledger.setup_registry import (
     compile_setup_snapshot,
     snapshot_compile_errors,
 )
-from test_ledger_setup_bundle import logical_bundle, reverse_mappings, write_tree
+from test_ledger_setup_bundle import (
+    logical_bundle,
+    objectless_register_bundle,
+    reverse_mappings,
+    write_tree,
+)
 from verified_join_contract import (
     VerifiedJoinDescriptor,
     _bind_physical_verifier_issuer,
@@ -115,6 +120,16 @@ def test_registry_tree_compiles_pack_claim_role_and_source_plan():
     assert isinstance(source, SourcePlan)
     assert source.driver.mapper is compiled.mappers["map-transition@1"]
     assert source.profile is compiled.profiles["input-transition@1"]
+
+
+def test_objectless_emission_compiles_without_an_object_role():
+    compiled = snapshot(objectless_register_bundle())
+    emission = compiled.packs["registration@1"].claims["register"].emission
+
+    assert compiled.compiler_contract_version == 3
+    assert compiled.vocabulary["register@1"].object_kind == "none"
+    assert emission.object_kind == "none"
+    assert emission.object_role is None
 
 
 def test_role_binding_kinds_use_the_same_pack_contract_as_validation():

@@ -22,7 +22,7 @@ from ledger.roleframe import (
     map_event_frame,
     mapper_context,
 )
-from test_ledger_setup_bundle import logical_bundle
+from test_ledger_setup_bundle import logical_bundle, objectless_register_bundle
 from test_ledger_setup_registry import snapshot
 
 
@@ -158,17 +158,31 @@ def test_pack_compiler_is_the_only_entity_ref_payload_builder():
 
     ledger_frame = compile_role_frame(context, role_frame)
 
-    assert ledger_frame.iloc[0]["subject_type"] == "InputEntity@1"
+    assert ledger_frame.iloc[0]["subject_type"] == "InputEntity"
     assert ledger_frame.iloc[0]["subject_keys"] == {"input_id": "IN-1"}
-    assert ledger_frame.iloc[0]["predicate"] == "moves_to@1"
+    assert ledger_frame.iloc[0]["predicate"] == "moves_to"
     assert ledger_frame.iloc[0]["object_kind"] == "entity_ref"
     assert ledger_frame.iloc[0]["object_payload"] == {
-        "type": "OutputEntity@1",
+        "type": "OutputEntity",
         "keys": {"output_id": "OUT-1"},
         "qualifiers": {"event_key": "E-1"},
     }
     assert ledger_frame.iloc[0]["derivation"] == "main_transition"
     assert ledger_frame.iloc[0]["source_translator_ver"].endswith("#main_transition")
+
+
+def test_pack_compiler_maps_closed_none_object_to_existing_physical_nulls():
+    compiled = snapshot(objectless_register_bundle())
+    result = dry_run_event_frame(
+        mapper_context(compiled, "input_rows"), event_frame(compiled),
+        implementations())
+    register = result.ledger_frame[
+        result.ledger_frame["predicate"] == "register"].iloc[0]
+
+    assert register["subject_type"] == "InputEntity"
+    assert register["subject_keys"] == {"input_id": "IN-1"}
+    assert register["object_kind"] is None
+    assert register["object_payload"] is None
 
 
 @pytest.mark.parametrize(
@@ -396,7 +410,7 @@ def test_dry_run_returns_role_ledger_gate_preview_and_provenance_without_runtime
         "atom_count": 1,
         "source_event_id": str(result.role_frame.iloc[0]["source_event_id"]),
         "declared_derivations": ("main_transition",),
-        "declared_subject_types": ("InputEntity@1",),
+        "declared_subject_types": ("InputEntity",),
     }
     assert result.provenance["mapping_ids"] == ("main_transition",)
     assert not hasattr(context, "db")
