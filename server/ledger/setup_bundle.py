@@ -558,11 +558,33 @@ def _validate_mappers(section: Mapping[str, Any], problems: _Problems) -> None:
                           "input_columns", "emits")):
             continue
         _implementation(item, path, problems)
-        if problems.exact(item.get("unit"), f"{path}.unit", required=("kind",)):
+        if problems.exact(
+                item.get("unit"), f"{path}.unit", required=("kind",),
+                optional=("columns",)):
             kind = item["unit"].get("kind")
             if not isinstance(kind, str) or kind not in _MAPPER_UNITS:
                 problems.add("invalid_mapper", f"{path}.unit.kind",
                              f"must be one of {sorted(_MAPPER_UNITS)}")
+            columns = item["unit"].get("columns")
+            if kind == "group_by":
+                if columns is None:
+                    problems.add(
+                        "missing_field", f"{path}.unit.columns",
+                        "group_by mapper unit requires columns")
+                else:
+                    _nonblank_list(columns, f"{path}.unit.columns", problems)
+                    if (_is_list(columns)
+                            and isinstance(item.get("input_columns"), list)):
+                        missing = sorted(set(_column_values(columns))
+                                         - set(_column_values(item["input_columns"])))
+                        if missing:
+                            problems.add(
+                                "invalid_mapper", f"{path}.unit.columns",
+                                f"group_by columns must be mapper input columns: {missing}")
+            elif columns is not None:
+                problems.add(
+                    "invalid_mapper", f"{path}.unit.columns",
+                    "unit.columns is only valid for group_by")
         _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
                        allow_empty=True)
         _nonblank_list(item.get("emits"), f"{path}.emits", problems)

@@ -353,12 +353,14 @@ def test_physical_verification_result_changes_snapshot_not_bundle_hash():
 
 def test_compiler_contract_version_changes_snapshot_hash(monkeypatch):
     first = snapshot()
-    monkeypatch.setattr(setup_registry_module, "SNAPSHOT_COMPILER_VERSION", 2)
+    monkeypatch.setattr(
+        setup_registry_module, "SNAPSHOT_COMPILER_VERSION",
+        first.compiler_contract_version + 1)
     second = snapshot()
 
     assert first.bundle_sha256 == second.bundle_sha256
     assert first.snapshot_sha256 != second.snapshot_sha256
-    assert second.compiler_contract_version == 2
+    assert second.compiler_contract_version == first.compiler_contract_version + 1
 
 
 def test_virtual_join_change_changes_snapshot_hash():
@@ -795,3 +797,15 @@ def test_compiler_does_not_mutate_the_validated_bundle():
         physically_verified_joins(before.to_mapping()))
 
     assert before.serialize() == expected
+
+
+def test_mapper_group_by_columns_are_compiled_into_snapshot():
+    raw = logical_bundle()
+    raw["mappers"]["map-transition@1"]["unit"] = {
+        "kind": "group_by", "columns": ["target_id"]}
+
+    compiled = snapshot(raw)
+
+    mapper = compiled.mappers["map-transition@1"]
+    assert mapper.unit_kind == "group_by"
+    assert mapper.unit_columns == ("target_id",)

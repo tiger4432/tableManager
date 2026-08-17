@@ -30,7 +30,7 @@ from .setup_bundle import (
 
 
 _DescriptorT = TypeVar("_DescriptorT")
-SNAPSHOT_COMPILER_VERSION = 1
+SNAPSHOT_COMPILER_VERSION = 2
 
 
 def _versioned_parts(identifier: str) -> tuple[str, int]:
@@ -212,6 +212,7 @@ class MapperDescriptor:
     version: int
     implementation: ImplementationKey
     unit_kind: str
+    unit_columns: tuple[str, ...]
     input_columns: tuple[str, ...]
     emits: tuple[str, ...]
     config_path: str
@@ -701,6 +702,7 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
             implementation=ImplementationKey(
                 item["implementation_id"], item["implementation_version"]),
             unit_kind=item["unit"]["kind"],
+            unit_columns=tuple(item["unit"].get("columns", ())),
             input_columns=tuple(item["input_columns"]),
             emits=tuple(item["emits"]),
             config_path=f"bundle.mappers.{mapper_id}",

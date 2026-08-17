@@ -1,5 +1,8 @@
 # 4단계 — pandas RoleFrame과 범용 Pack Compiler
 
+> 구현 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
+> 구현 근거: [`STAGE_4_ACCEPTANCE_EVIDENCE.md`](./STAGE_4_ACCEPTANCE_EVIDENCE.md)
+
 ## 목표
 
 live mapper가 raw Atom/payload를 직접 만들지 못하게 한다. generic binding evaluator와
@@ -71,6 +74,10 @@ class CustomRoleMapper(BaseLedgerMapper):
 공통 수행하고 최종 pandas RoleFrame을 반환한다. 하위 클래스는 `map()`을 재정의할 수 없다.
 Python mapper도 `claim_ref`와 Role 값만 내며 Pack emission을 우회할 수 없다.
 
+Mapper 내부 `group_by`는 `mappers.*.unit.columns`에 선언한 Mapper input columns만 사용한다.
+Source Driver의 event identity/group_by는 transaction 경계이므로 이 내부 partition에 재사용하지
+않는다.
+
 ## Pack Compiler
 
 ```text
@@ -124,3 +131,13 @@ snapshot hash
 - DB write/cursor advance 0
 
 완료 후 멈추고 4단계 승인을 기다린다.
+
+## 현재 구현 상태
+
+`server/ledger/roleframe.py`가 EventFrame context 검증, `event|row|group_by` unit partition,
+`RoleEmission` 조립, `DeclarativeRoleMapper`, sealed Python mapper implementation registry,
+RoleFrame 검증, Pack/Vocabulary/Entity 기반 LedgerFrame compiler와 순수 dry-run을 구현한다.
+
+Mapper context에는 Snapshot과 SourcePlan만 있으며 DB/session/cursor/gate/store capability가 없다.
+기존 driver, Chain mapper, translator, gate/store/cursor는 수정하거나 연결하지 않았다. 현재는
+독립 Audit 검수 대기이며 5단계는 시작하지 않는다.

@@ -67,7 +67,9 @@ RoleEmission
 | 결정적 행 정렬 | 없음 이외의 값을 추측하지 않기 |
 | event 경계 이탈·빈/추가 열 거절 |  |
 
-공통 unit strategy v1은 `event`, `row`, `group_by`만 지원한다. 새 strategy는 등록 구현과
+공통 unit strategy v1은 `event`, `row`, `group_by`만 지원한다. `group_by`는 Mapper의 내부
+해석 단위이므로 `mappers.*.unit.columns`에 Mapper input column을 닫힌 목록으로 선언하고,
+Source Driver의 event `group_by`를 재사용하지 않는다. 새 strategy는 등록 구현과
 테스트를 추가해야 하며 source/table 이름 분기를 core에 넣지 않는다. Source Driver의
 event boundary는 cursor·transaction 원자성 단위이고, Mapper unit은 그 EventFrame 내부의
 해석 단위다. 둘을 같은 선언으로 중복 작성하지 않는다.

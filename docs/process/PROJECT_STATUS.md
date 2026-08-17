@@ -1,5 +1,21 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 4단계 구현 완료, 독립 Audit 대기
+>
+> **현재 단계/상태:** `STAGE_4_IN_REVIEW` / `NOT_APPROVED`. Stage 5는 시작하지 않았다.
+>
+> **구현:** `server/ledger/roleframe.py` 한 모듈에 EventFrame context 검증,
+> `event|row|group_by` 공통 partition, 선언형/등록 Python mapper의 RoleFrame 단일 출력,
+> Pack/Vocabulary/Entity 기반 LedgerFrame compiler, write 없는 dry-run을 추가했다. 기존
+> driver/translator/gate/store/cursor/DB 코드는 변경하지 않았다.
+>
+> **검증:** Stage 4 직접 테스트 `23 passed`; Setup/Registry/LedgerFrame 직접 영향군 합계
+> `205 passed, 1 skipped`. skip은 Windows symlink 생성 권한 부재 1건이다. 전체 서버 suite는
+> 사용자 지시에 따라 생략했다.
+>
+> **다음 관문:** exact commit을 지정 Audit 세션에 제출한다. `APPROVE`면 사용자 상설 승인에
+> 따라 main 병합 후 Stage 5로 진행하고, `CHANGES_REQUESTED`면 Stage 4만 보완한다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 3단계 승인·main 병합, 4단계 착수 승인
 >
 > **현재 단계/상태:** Stage 3 `APPROVED`; 구현 최종 커밋 `135a440`은 독립 Audit

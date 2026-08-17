@@ -1144,3 +1144,38 @@ def test_stage_two_has_no_db_migration_write_runtime_or_compiler_surface():
     public = {name for name in dir(module) if not name.startswith("_")}
     assert not {"execute", "compile", "translate", "write", "migrate", "advance_cursor"} & public
     assert not (Path(__file__).resolve().parents[1] / "migrations" / "ledger_setup_bundle.py").exists()
+
+
+def test_group_by_mapper_unit_requires_closed_input_columns():
+    missing = logical_bundle()
+    missing["mappers"]["map-transition@1"]["unit"] = {"kind": "group_by"}
+    errors = validate_bundle_errors(missing)
+    assert any(error.to_mapping() == {
+        "code": "missing_field",
+        "path": "bundle.mappers.map-transition@1.unit.columns",
+        "message": "group_by mapper unit requires columns",
+    } for error in errors)
+
+    unknown = logical_bundle()
+    unknown["mappers"]["map-transition@1"]["unit"] = {
+        "kind": "group_by", "columns": ["not_an_input"]}
+    errors = validate_bundle_errors(unknown)
+    assert any(error.code == "invalid_mapper"
+               and error.path == "bundle.mappers.map-transition@1.unit.columns"
+               for error in errors)
+
+    valid = logical_bundle()
+    valid["mappers"]["map-transition@1"]["unit"] = {
+        "kind": "group_by", "columns": ["target_id"]}
+    assert validate_bundle(valid).section("mappers")["map-transition@1"]["unit"] == {
+        "kind": "group_by", "columns": ("target_id",)}
+
+
+def test_non_group_mapper_unit_rejects_columns():
+    raw = logical_bundle()
+    raw["mappers"]["map-transition@1"]["unit"] = {
+        "kind": "event", "columns": ["event_key"]}
+    errors = validate_bundle_errors(raw)
+    assert any(error.code == "invalid_mapper"
+               and error.path == "bundle.mappers.map-transition@1.unit.columns"
+               for error in errors)
