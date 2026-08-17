@@ -1,5 +1,20 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 2단계 validator 후속 보완, 재검수 대기
+>
+> **기준선:** `f03b165`에서 `fix/ledger-v2-stage2-validation` 브랜치를 분기했다. 2단계 상태는
+> 계속 `STAGE_2_IN_REVIEW` / `NOT_APPROVED`이며 3단계는 시작하지 않았다.
+>
+> **이번 보완:** 미사용 Profile entity/leaf column 전수 검증, catalog UNIQUE 근거가 있는
+> cursor/order 전순서, `chains`/`enrichments` 중첩 배열의 금지 실행 키 완전 탐색,
+> Entity `key_types` leaf 형상 검증을 추가했다. Registry/snapshot/compiler/runtime/DB와
+> 운영 manifest/config는 변경하지 않았다.
+>
+> **검증:** f03b165 기존 전용 기준선 `63 passed, 1 skipped`; 반례 RED
+> `72 passed, 16 failed, 1 skipped`; 보완 후 전용 `93 passed, 1 skipped`; 동결 mapper
+> `29 passed`. `ASSY_PG_TEST_DATABASE_URL`이 미설정이라 PostgreSQL 테스트는 실행하지 않았고
+> 통과로 기록하지 않는다. 이 보완은 단일 후속 fix 커밋으로 고정한 뒤 사용자 재승인을 기다린다.
+
 > ## 🧭 2026-08-15 현재 — R&D 분석면·Evidence Graph 구현 완료, 통합 커밋 대기
 >
 > **커밋 기준선:** `main`/`origin/main`은 `a0092f3`이고 선언형 온톨로지·원장 관리면까지 착지했다.

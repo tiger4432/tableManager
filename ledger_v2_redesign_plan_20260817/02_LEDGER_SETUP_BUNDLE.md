@@ -298,3 +298,11 @@ Vocabulary/Pack과 미사용 Profile/Mapper도 전수 교차 검증한다. Pack 
 Profile packs/mapping/Mapper emits, Mapper/Profile/Preparer 열, Source unit/group, catalog
 key/index와 선언된 exact UNIQUE 근거가 자동 반례로 고정됐다. 물리 DB에서 그 UNIQUE가 실제로
 존재하는지 확인하는 일만 후속 단계에 남는다.
+
+f03b165 후속 보완에서는 미사용 Profile도 `Profile.source`의 physical relation과 Preparer
+EventFrame schema로 entity/leaf column을 검사하도록 선택 Profile과 같은 검증 경로에 합쳤다.
+`order_by`와 `cursor.columns`는 각각 catalog의 business/composite/UNIQUE index 전체 열로
+동률 제거를 증명해야 하며, non-unique index나 identity 자체는 근거가 아니다. `chains`와
+`enrichments`의 금지 실행 키는 중첩 JSON 배열을 포함해 완전 탐색하고, Entity `key_types`의
+각 값은 trimmed non-blank string으로 닫았다. 이 변경은 순수 validator와 테스트뿐이며
+Registry/snapshot/compiler/runtime/DB/cursor 실행 구현은 여전히 시작하지 않았다.

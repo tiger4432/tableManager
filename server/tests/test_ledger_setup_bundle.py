@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import ast
 import copy
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
+from ledger import setup_bundle as setup_bundle_module
 from ledger.setup_bundle import (
     LedgerSetupValidationError,
     LOGICAL_SECTIONS,
@@ -175,6 +177,12 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
     }
 
 
+def add_unused_profile(bundle):
+    profile = copy.deepcopy(bundle["profiles"]["input-transition@1"])
+    bundle["profiles"]["unused-profile@1"] = profile
+    return profile
+
+
 def reverse_mappings(value):
     if isinstance(value, dict):
         return {key: reverse_mappings(value[key]) for key in reversed(list(value))}
@@ -267,6 +275,8 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     second = validate_bundle(reverse_mappings(logical_bundle()))
     assert first.serialize() == second.serialize()
     assert first.to_mapping() == second.to_mapping()
+    assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
+        "b843cc9c3662d48a377a289818570d0ad66f951e574cf104cd3809654ffb090d")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -425,6 +435,33 @@ def test_retired_root_sections_are_unknown_and_unsafe(field):
                for item in errors)
 
 
+@pytest.mark.parametrize(
+    ("section", "steps", "suffix"),
+    [
+        ("chains", [{"sql": "DROP"}], "steps[0].sql"),
+        ("chains", [[{"sql": "DROP"}]], "steps[0][0].sql"),
+        ("enrichments", [{"sql": "DROP"}], "steps[0].sql"),
+        ("enrichments", [[[{"sql": "DROP"}]]], "steps[0][0][0].sql"),
+    ],
+)
+def test_unsafe_execution_keys_are_found_through_nested_arrays(section, steps, suffix):
+    bundle = logical_bundle()
+    bundle[section]["bad"] = {"steps": steps}
+
+    errors = validate_bundle_errors(bundle)
+
+    assert_structured_errors(errors)
+    assert any(
+        error.code == "unsafe_declaration"
+        and error.path == f"bundle.{section}.bad.{suffix}"
+        for error in errors)
+
+
+@pytest.mark.parametrize("value", ["text", b"bytes", bytearray(b"bytes")])
+def test_text_and_binary_values_are_not_treated_as_json_arrays(value):
+    assert setup_bundle_module._is_list(value) is False
+
+
 def test_declared_lookup_binding_is_rejected():
     bundle = logical_bundle()
     target = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"]
@@ -465,6 +502,43 @@ def test_entity_binding_requires_exact_registered_identity_keys():
     keys["extra"] = binding("source_id")
     error = issue(bundle, "invalid_entity_ref")
     assert error.path.endswith("bind.subject.keys")
+
+
+@pytest.mark.parametrize("invalid", [
+    {"bad": True}, [], None, True, 1, "", "   ", " string ",
+])
+def test_entity_key_types_values_are_trimmed_nonblank_strings(invalid):
+    bundle = logical_bundle()
+    bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": invalid}
+
+    errors = validate_bundle_errors(bundle)
+
+    assert_structured_errors(errors)
+    assert any(
+        error.path == "bundle.entities.InputEntity@1.key_types.input_id"
+        and error.code == "invalid_type"
+        for error in errors)
+
+
+@pytest.mark.parametrize("invalid", [[], None, True, 1, "string"])
+def test_entity_key_types_optional_branch_requires_an_object(invalid):
+    bundle = logical_bundle()
+    bundle["entities"]["InputEntity@1"]["key_types"] = invalid
+
+    errors = validate_bundle_errors(bundle)
+
+    assert_structured_errors(errors)
+    assert any(
+        error.path == "bundle.entities.InputEntity@1.key_types"
+        and error.code == "invalid_type"
+        for error in errors)
+
+
+def test_entity_key_types_optional_branch_accepts_matching_string_types():
+    bundle = logical_bundle()
+    bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": "string"}
+    bundle["entities"]["OutputEntity@1"]["key_types"] = {"output_id": "string"}
+    assert validate_bundle_errors(bundle) == ()
 
 
 def test_pack_vocabulary_subject_and_object_mismatch_are_rejected():
@@ -529,6 +603,39 @@ def test_unused_vocabulary_pack_profile_and_mapper_are_still_cross_validated():
                and error.path.startswith("bundle.profiles.unused-profile@1") for error in errors)
     assert any(error.code == "unknown_pack"
                and error.path.startswith("bundle.mappers.unused-mapper@1") for error in errors)
+
+
+def test_unused_profile_entity_binding_is_cross_validated_against_its_source():
+    bundle = logical_bundle()
+    profile = add_unused_profile(bundle)
+    profile["mappings"][0]["bind"]["subject"]["entity_type"] = "Missing@1"
+
+    errors = validate_bundle_errors(bundle)
+
+    assert_structured_errors(errors)
+    matches = [error for error in errors if error.code == "unknown_entity_type"]
+    assert [error.path for error in matches] == [
+        "bundle.profiles.unused-profile@1.mappings[0].bind.subject.entity_type"]
+
+
+def test_unused_profile_leaf_column_is_cross_validated_against_event_frame():
+    bundle = logical_bundle()
+    profile = add_unused_profile(bundle)
+    profile["mappings"][0]["bind"]["subject"]["keys"]["input_id"][
+        "column"] = "missing_column"
+
+    errors = validate_bundle_errors(bundle)
+
+    assert_structured_errors(errors)
+    matches = [error for error in errors if error.code == "unknown_column"]
+    assert [error.path for error in matches] == [
+        "bundle.profiles.unused-profile@1.mappings[0].bind.subject.keys.input_id.column"]
+
+
+def test_normal_unused_profile_still_validates_without_duplicate_errors():
+    bundle = logical_bundle()
+    add_unused_profile(bundle)
+    assert validate_bundle_errors(bundle) == ()
 
 
 @pytest.mark.parametrize(
@@ -621,6 +728,64 @@ def test_catalog_key_index_columns_and_join_uniqueness_are_validated():
     bundle["tables"]["reference_rows"].pop("business_key")
     error = issue(bundle, "invalid_join")
     assert error.path.endswith("join_key")
+
+
+def test_order_and_cursor_reject_columns_without_catalog_unique_proof():
+    bundle = logical_bundle()
+    driver = bundle["sources"]["input_rows"]["driver"]
+    driver["order_by"] = ["event_at"]
+    driver["cursor"]["columns"] = ["event_at"]
+
+    errors = validate_bundle_errors(bundle)
+
+    assert_structured_errors(errors)
+    assert [(error.code, error.path) for error in errors
+            if error.code == "invalid_cursor"] == [
+        ("invalid_cursor", "bundle.sources.input_rows.driver.cursor.columns"),
+        ("invalid_cursor", "bundle.sources.input_rows.driver.order_by"),
+    ]
+
+
+def test_business_key_tie_breaker_keeps_normal_source_valid():
+    assert validate_bundle_errors(logical_bundle()) == ()
+
+
+def test_complete_composite_unique_key_proves_total_order():
+    bundle = logical_bundle()
+    table = bundle["tables"]["input_rows"]
+    table.pop("business_key")
+    table["composite_key"] = ["event_key", "record_id"]
+    driver = bundle["sources"]["input_rows"]["driver"]
+    driver["order_by"] = ["event_at", "event_key", "record_id"]
+    driver["cursor"]["columns"] = ["event_at", "event_key", "record_id"]
+    assert validate_bundle_errors(bundle) == ()
+
+
+def test_partial_composite_unique_key_does_not_prove_total_order():
+    bundle = logical_bundle()
+    table = bundle["tables"]["input_rows"]
+    table.pop("business_key")
+    table["composite_key"] = ["event_key", "record_id"]
+    driver = bundle["sources"]["input_rows"]["driver"]
+    driver["order_by"] = ["event_at", "event_key"]
+    driver["cursor"]["columns"] = ["event_at", "event_key"]
+    errors = validate_bundle_errors(bundle)
+    assert_structured_errors(errors)
+    assert sum(error.code == "invalid_cursor" for error in errors) == 2
+
+
+def test_nonunique_index_is_not_a_total_order_proof():
+    bundle = logical_bundle()
+    table = bundle["tables"]["input_rows"]
+    table.pop("business_key")
+    table["indexes"] = [{"name": "idx_event_at", "columns": ["event_at"],
+                         "unique": False}]
+    driver = bundle["sources"]["input_rows"]["driver"]
+    driver["order_by"] = ["event_at"]
+    driver["cursor"]["columns"] = ["event_at"]
+    errors = validate_bundle_errors(bundle)
+    assert_structured_errors(errors)
+    assert sum(error.code == "invalid_cursor" for error in errors) == 2
 
 
 def test_missing_required_role_and_disallowed_binding_kind_are_rejected():
@@ -744,6 +909,28 @@ def test_errors_have_deterministic_order():
     bundle["profiles"]["input-transition@1"]["mappings"][0]["use"] = "missing@1/nope"
     first = [item.to_mapping() for item in validate_bundle_errors(bundle)]
     second = [item.to_mapping() for item in validate_bundle_errors(reverse_mappings(bundle))]
+    assert first == second
+    assert first == sorted(first, key=lambda item: (item["path"], item["code"], item["message"]))
+
+
+def test_followup_validation_errors_have_deterministic_order():
+    bundle = logical_bundle()
+    profile = add_unused_profile(bundle)
+    profile["mappings"][0]["bind"]["subject"]["entity_type"] = "Missing@1"
+    profile["mappings"][0]["bind"]["subject"]["keys"]["input_id"][
+        "column"] = "missing_column"
+    bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": {"bad": True}}
+    driver = bundle["sources"]["input_rows"]["driver"]
+    driver["order_by"] = ["event_at"]
+    driver["cursor"]["columns"] = ["event_at"]
+    bundle["chains"]["bad"] = {"steps": [[{"sql": "DROP"}]]}
+
+    first_errors = validate_bundle_errors(bundle)
+    second_errors = validate_bundle_errors(reverse_mappings(bundle))
+    first = [item.to_mapping() for item in first_errors]
+    second = [item.to_mapping() for item in second_errors]
+
+    assert_structured_errors(first_errors)
     assert first == second
     assert first == sorted(first, key=lambda item: (item["path"], item["code"], item["message"]))
 

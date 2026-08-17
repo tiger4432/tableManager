@@ -451,10 +451,18 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         if "key_types" in item:
             if not isinstance(item["key_types"], Mapping):
                 problems.add("invalid_type", f"{path}.key_types", "must be an object")
-            elif (_is_list(keys)
-                  and set(item["key_types"]) != set(_column_values(keys))):
-                problems.add("invalid_entity_ref", f"{path}.key_types",
-                             "key_types must name exactly the identity keys")
+            else:
+                if (_is_list(keys)
+                        and set(item["key_types"]) != set(_column_values(keys))):
+                    problems.add("invalid_entity_ref", f"{path}.key_types",
+                                 "key_types must name exactly the identity keys")
+                for key in sorted(item["key_types"], key=str):
+                    value = item["key_types"][key]
+                    if (not isinstance(value, str) or not value.strip()
+                            or value != value.strip()):
+                        problems.add(
+                            "invalid_type", f"{path}.key_types.{key}",
+                            "key type must be a non-blank trimmed string")
         if "allow_null" in item and not isinstance(item["allow_null"], bool):
             problems.add("invalid_type", f"{path}.allow_null", "must be boolean")
 
@@ -751,6 +759,7 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
     preparers = bundle["source_preparers"]
     mappers = bundle["mappers"]
     sources = bundle["sources"]
+    event_frame_columns: dict[str, set[str]] = {}
 
     _cross_vocabulary(vocabulary, entities, problems)
     _cross_packs(packs, vocabulary, problems)
@@ -793,6 +802,20 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
             base_columns.append(driver["occurred_at"].get("column"))
         _relation_columns(relation, base_columns, tables, f"{path}.relation", problems)
         physical = set(_table_columns(tables, relation))
+        table = tables.get(relation)
+        if isinstance(table, Mapping):
+            ordering_contracts = (
+                (driver.get("order_by"), f"{path}.driver.order_by"),
+                (driver.get("cursor", {}).get("columns"),
+                 f"{path}.driver.cursor.columns"),
+            )
+            for columns, order_path in ordering_contracts:
+                if (_is_list(columns)
+                        and not _columns_cover_declared_unique_key(table, columns)):
+                    problems.add(
+                        "invalid_cursor", order_path,
+                        "ordering must include every column of a catalog-declared "
+                        "business_key, composite_key, or UNIQUE index")
 
         profile_id = source.get("profile_id")
         profile = profiles.get(profile_id)
@@ -854,9 +877,7 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
                     and not driver.get("group_by")):
                 problems.add("invalid_mapper", f"bundle.mappers.{mapper_id}.unit.kind",
                              "group_by mapper requires source group_by columns")
-        if isinstance(profile, Mapping):
-            _cross_profile_source(profile_id, profile, packs, entities, vocabulary,
-                                  available, problems)
+        event_frame_columns[source_id] = set(available)
         if isinstance(profile, Mapping) and isinstance(mapper, Mapping):
             profile_uses = [mapping["use"] for mapping in profile["mappings"]]
             mapper_emits = list(mapper.get("emits", []))
@@ -878,13 +899,20 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
                         "invalid_mapper", f"bundle.mappers.{mapper_id}.input_columns",
                         f"Profile column {column!r} at {column_path} is missing")
 
-    for profile_id in profiles:
-        if not any(source.get("profile_id") == profile_id for source in sources.values()
-                   if isinstance(source, Mapping)):
-            source_name = profiles[profile_id].get("source") if isinstance(profiles[profile_id], Mapping) else None
-            if source_name not in sources:
-                problems.add("unknown_source", f"bundle.profiles.{profile_id}.source",
-                             f"unknown source {source_name!r}")
+    # Every Profile is an authoring contract, including Profiles not selected by a
+    # Source.  Resolve its declared source once and apply the same entity/column
+    # validation used for selected Profiles; keeping this outside the source loop
+    # also prevents duplicate errors for selected Profiles.
+    for profile_id in sorted(profiles, key=str):
+        profile = profiles[profile_id]
+        source_name = profile.get("source")
+        if source_name not in sources:
+            problems.add("unknown_source", f"bundle.profiles.{profile_id}.source",
+                         f"unknown source {source_name!r}")
+            continue
+        available = event_frame_columns.get(source_name, set())
+        _cross_profile_source(profile_id, profile, packs, entities, vocabulary,
+                              available, problems)
 
 
 def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any],
@@ -1146,6 +1174,21 @@ def _table_has_unique_key(table: Mapping[str, Any], columns: Sequence[str]) -> b
     )
 
 
+def _columns_cover_declared_unique_key(table: Mapping[str, Any],
+                                       columns: Sequence[str]) -> bool:
+    candidate = {column for column in columns if isinstance(column, str)}
+    declared: list[tuple[str, ...]] = []
+    for field in ("business_key", "composite_key"):
+        if field in table:
+            declared.append(tuple(_column_values(table[field])))
+    declared.extend(
+        tuple(index.get("columns", ()))
+        for index in table.get("indexes", [])
+        if isinstance(index, Mapping) and index.get("unique") is True
+    )
+    return any(key and set(key).issubset(candidate) for key in declared)
+
+
 def _relation_columns(relation: Any, columns: Sequence[Any], tables: Mapping[str, Any],
                       path: str, problems: _Problems) -> None:
     if relation not in tables:
@@ -1195,18 +1238,19 @@ def _default_binding_kinds(role_kind: Any) -> tuple[str, ...]:
     return ("entity",) if role_kind == "entity" else ("column", "constant")
 
 
-def _scan_unsafe_keys(value: Mapping[str, Any], path: str, problems: _Problems) -> None:
-    for key in sorted(value, key=str):
-        child_path = _path(path, str(key))
-        if str(key).lower() in _FORBIDDEN_EXECUTABLE_KEYS:
-            problems.add("unsafe_declaration", child_path, "field is not allowed")
-        child = value[key]
-        if isinstance(child, Mapping):
-            _scan_unsafe_keys(child, child_path, problems)
-        elif _is_list(child):
-            for index, item in enumerate(child):
-                if isinstance(item, Mapping):
-                    _scan_unsafe_keys(item, f"{child_path}[{index}]", problems)
+def _scan_unsafe_keys(value: Any, path: str, problems: _Problems) -> None:
+    stack: list[tuple[Any, str]] = [(value, path)]
+    while stack:
+        current, current_path = stack.pop()
+        if isinstance(current, Mapping):
+            for key in sorted(current, key=str, reverse=True):
+                child_path = _path(current_path, str(key))
+                if str(key).lower() in _FORBIDDEN_EXECUTABLE_KEYS:
+                    problems.add("unsafe_declaration", child_path, "field is not allowed")
+                stack.append((current[key], child_path))
+        elif _is_list(current):
+            for index in range(len(current) - 1, -1, -1):
+                stack.append((current[index], f"{current_path}[{index}]"))
 
 
 def _read_json(path: Path, logical_path: str) -> Mapping[str, Any]:

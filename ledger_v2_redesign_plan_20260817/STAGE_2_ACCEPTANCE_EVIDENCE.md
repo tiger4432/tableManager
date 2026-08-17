@@ -63,21 +63,41 @@ Binding은 `column`, `constant`, `entity`만 허용한다. 모든 Binding은
 - Source unit은 `row|group`, Mapper unit은 `event|row|group_by`로 닫고 group 계약을 검사한다.
 - catalog business/composite/index 열의 존재와 join 오른쪽 exact UNIQUE 근거를 검사한다.
 
+### f03b165 후속 validator 보완
+
+- **모든 Profile 참조:** Source가 직접 선택하지 않은 Profile도 `Profile.source`가 가리키는
+  Source의 physical relation과 Preparer EventFrame schema로 entity type과 모든 leaf column을
+  검사한다. 선택 여부와 무관하게 같은 `_cross_profile_source` 경로를 정확히 한 번 통과한다.
+- **cursor 결정적 전순서:** `order_by`와 `cursor.columns`는 각각 catalog가 선언한
+  `business_key`, `composite_key`, 또는 `unique: true` index 중 하나의 전체 열을 포함해야 한다.
+  identity/group/일반 index/단순 열 존재는 UNIQUE 근거가 아니다.
+- **금지 실행 키 완전 탐색:** `chains`와 `enrichments`를 Mapping과 JSON 배열의 임의 중첩까지
+  반복 탐색하며 `sql` 등 금지 키를 실제 leaf path의 `unsafe_declaration`으로 거절한다.
+  문자열·bytes·bytearray는 배열로 취급하지 않는다.
+- **Entity `key_types` leaf:** key 집합은 `keys`와 정확히 같아야 하고 각 값은 trimmed non-blank
+  string이어야 한다. 새 타입 enum은 만들지 않았으며 객체·배열·null·bool·숫자·공백은 leaf
+  path의 구조화 오류로 거절한다.
+
 ## 검증 결과
 
-- 2단계 전용: `63 passed, 1 skipped`
-- Ledger 핵심 합산: `310 passed, 1 skipped`
-- 신규 실패: `0`
+- f03b165 기존 2단계 전용 기준선: `63 passed, 1 skipped`
+- 신규 반례를 먼저 추가한 RED 기준선: `72 passed, 16 failed, 1 skipped`
+- 보완 후 2단계 전용: `93 passed, 1 skipped`
+- 동결 mapper 회귀: `29 passed`
+- 기존 테스트 대비 신규 실패: `0`
 - skip 1건: 현재 Windows 계정이 symlink 생성을 허용하지 않아 symlink escape fixture 생성 불가
 - malformed 반례: valid fixture의 모든 JSON node shape 파괴 + 각 node에 JSON 값 종류 6종을
   대입한 900건 이상을 검사하며, 모든 거절이 `code/path/message`를 갖는지 확인
-- 정적 검사: `py_compile` 통과, 변경 파일 `git diff --check` 통과
+- 정상 Bundle canonical serialization SHA-256:
+  `b843cc9c3662d48a377a289818570d0ad66f951e574cf104cd3809654ffb090d` 유지
+- PostgreSQL: `ASSY_PG_TEST_DATABASE_URL` 미설정으로 실행하지 않았으며 통과로 기록하지 않음
+- 정적 검사: 수정 Python `py_compile` 통과
 - DB migration/write/read, compiler, translator, mapper 실행, cursor 변경: `0`
 
 ## 남은 경계
 
 - `chains`/`enrichments` 개별 실행 문법은 기존 소유 계약이 아직 확정되지 않아 이 단계에서는
-  object와 실행 코드 금지 key만 검사한다.
+  object와 실행 코드 금지 key만 검사한다. 금지 key 탐색은 중첩 깊이와 무관하게 완전하다.
 - virtual join의 물리 UNIQUE와 실제 relation 검증은 DB 없는 2단계에서 수행하지 않는다.
 - Registry/snapshot, compiler, RoleFrame, runtime 연결은 승인 후 후속 단계다.
 
