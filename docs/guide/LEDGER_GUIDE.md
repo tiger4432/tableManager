@@ -9,6 +9,13 @@
 [CANONICAL_LEDGER_DESIGN](../architecture/CANONICAL_LEDGER_DESIGN.md), 변경 이력은
 [history](../history/README.md)가 소유한다.
 
+> **Ledger V2 전환 주의:** 이 문서의 구 translator/source-kind/migration/reset 설명은 legacy
+> 호환 경로의 역사와 조회 의미를 이해하기 위한 것이다. 새 Source 설정은 반드시
+> [ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)의 V2 manifest 6파일과
+> Preparer → Role mapper → Pack/Profile 경로를 따른다. 공개 CLI의 `--reset-cursor`와
+> `--from`은 현재 별도 승인 없이 `destructive_approval_required`로 거절되며, 이 문서의 옛
+> 예를 실행 허가로 읽지 않는다.
+
 ---
 
 ## 0. 먼저 고를 것

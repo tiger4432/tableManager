@@ -5,7 +5,15 @@
 > 🔴 **행을 더하거나 고치면 이 헤더의 「이번 라운드」도 함께 쓴다** — 직전에 F9 행이 추가될 때 그것을 어겼고, 그래서 새 행이 어느 라운드의 것인지 알 수 없었습니다.
 > 🔴 **소유 행이 없는 문서·계약은 조용히 낡습니다.** 새 문서를 만들거나 새 계약(`contracts/<name>/`)을 추가하면 **그 자리에서 행을 만드십시오.**
 >
-> **이번 라운드 (2026-08-18 · Ledger V2·Ontology Config Explorer 인수인계 정비)**
+> **이번 라운드 (2026-08-18 · Ledger V2 설정 가이드·Explorer 인수인계 정비)**
+> - **[Ledger V2 설정 가이드 소유권]**
+>   [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)이 production manifest 6파일,
+>   `ledger_config`의 7개 Registry, physical catalog/verified join, Profile binding approval,
+>   trusted Preparer/Mapper, source cursor 전순서, cutover selector와 비파괴 preview 절차를
+>   소유한다. copy 기준은 `server/config/ontology/`, 이종 transfer 예제는
+>   `server/config/sample/ontology/transfer_explorer/`이며, 구 flat ledger config·translator
+>   문법·migration/reset 절차를 새 V2 설정으로 재사용하지 않는다. 실제 필드 계약이 바뀌면
+>   validator·테스트·가이드가 한 커밋에서 함께 바뀌어야 한다.
 > - **[인수인계 소유권]** `docs/process/FORK_SESSION_BRIEF.md`가 승인 상태, 정본 읽기 순서,
 >   Ledger/Explorer 파일 소유권, 실행·집중 검증, 파괴 금지 경계와 다음 Audit 절차를 한 장에서
 >   소유한다. 2026-08-14의 구 세션명·구 작업 목록은 현행 지시에서 제거했고 당시 상세는 Git

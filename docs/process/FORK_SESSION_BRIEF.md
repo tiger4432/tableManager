@@ -64,14 +64,15 @@ manifest.json
 
 1. `docs/overview/SYSTEM_OVERVIEW.md`
 2. `docs/process/PROJECT_STATUS.md` 최상단
-3. `ledger_v2_redesign_plan_20260817/README.md`
-4. `ledger_v2_redesign_plan_20260817/00_MASTER_PLAN.md`
-5. `ledger_v2_redesign_plan_20260817/CONFIG_CANON.md`
-6. 해당 단계의 `STAGE_*_ACCEPTANCE_EVIDENCE.md`
-7. `ontology_config_explorer_plan/01_DISCOVERY_AND_STATE_CONTRACT.md`
-8. `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md`
-9. `task/ontology_config_explorer_pending.md` — 완료된 원 요구사항
-10. `task/ontology_config_explorer_reference.html` — CSS·3단 배치 시각 기준본
+3. `docs/guide/ONTOLOGY_LEDGER_SETUP.md` — V2 설정 파일·필드·샘플·검증 절차
+4. `ledger_v2_redesign_plan_20260817/README.md`
+5. `ledger_v2_redesign_plan_20260817/00_MASTER_PLAN.md`
+6. `ledger_v2_redesign_plan_20260817/CONFIG_CANON.md`
+7. 해당 단계의 `STAGE_*_ACCEPTANCE_EVIDENCE.md`
+8. `ontology_config_explorer_plan/01_DISCOVERY_AND_STATE_CONTRACT.md`
+9. `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md`
+10. `task/ontology_config_explorer_pending.md` — 완료된 원 요구사항
+11. `task/ontology_config_explorer_reference.html` — CSS·3단 배치 시각 기준본
 
 ## 4. 파일 소유권
 
@@ -110,7 +111,11 @@ python run_decoupled_app.py --server-only
 ```
 
 `--server-only`는 데스크톱 셸을 띄우지 않는다는 뜻이며 백엔드 보조 프로세스는 launcher가 함께
-감독한다. Explorer는 Admin Token 입력 뒤 `admin.html#ontology`에서 연다.
+감독한다. Explorer는 `admin.html#ontology`에서 연다. 인증은 두 상태다.
+
+- `ASSY_ADMIN_TOKEN`이 설정돼 있으면 모든 Admin 요청에 정확한 `X-Admin-Token`이 필요하다.
+- token이 설정되지 않으면 ordinary read route(예: active `/view`)는 열릴 수 있지만,
+  draft/write 같은 strict route는 `503`으로 fail-closed한다.
 
 승인된 집중 검증:
 
@@ -145,7 +150,9 @@ full server suite와 Explorer PostgreSQL E2E는 사용자 지시에 따라 생�
   테이블 누락 경고가 보였다. 서버와 Explorer `/health`, `admin.html`은 200으로 기동했다.
   해당 테이블을 만들거나 migration하지 말고, 실제로 구 그래프 기능이 다시 필요할 때 별도
   범위와 승인을 받는다.
-- Admin API는 `X-Admin-Token`이 필수다. 화면이 비어 있으면 코드보다 토큰 입력을 먼저 확인한다.
+- 화면이 비어 있으면 `ASSY_ADMIN_TOKEN` 설정 여부와 응답 상태를 함께 확인한다. token이
+  설정된 환경의 `401`은 header 누락/불일치이고, token 미설정 환경의 strict route `503`은
+  쓰기 인증을 구성하지 않은 상태를 안전하게 거절한 것이다.
 - task의 HTML은 시각 기준본이지 runtime JavaScript 정본이 아니다.
 
 ## 8. 다음 합법적 작업 순서

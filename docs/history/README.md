@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **654개** 이력. (거버넌스 규칙 #4)
+> 총 **655개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-18 07:01** — [Ledger V2 Setup Guide](./20260818_070104_ledger_v2_setup_guide.md)
 - **2026-08-18 06:41** — [Ledger V2 Explorer Handoff](./20260818_064143_ledger_v2_explorer_handoff.md)
 - **2026-08-18 02:57** — [Ontology Config Explorer Completion Approved](./20260818_025727_ontology_config_explorer_completion_approved.md)
 - **2026-08-18 02:42** — [Ontology Config Explorer Completion Audit Followup](./20260818_024236_ontology_config_explorer_completion_audit_followup.md)

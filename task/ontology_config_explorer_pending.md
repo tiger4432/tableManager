@@ -326,7 +326,12 @@ IN_REVIEW이며 DONE/APPROVED로 보고하지 않는다.
 
 ### E. 회귀·성능·증거
 
-- [x] server 관련 단위·계약·PostgreSQL 테스트와 기존 Ledger V2 회귀 테스트가 통과한다.
+- [x] 실행 가능한 server 직접 단위·계약군, Ledger V2 직접 회귀, client harness/build gate가
+      통과했다. 실제 수치는 승인 Evidence에 기록했다.
+
+  **미실행 범위:** Explorer PostgreSQL E2E와 full server suite는 사용자 지시에 따라
+  재실행하지 않았다. 통과로 주장하지 않으며, 안전한 격리 DB와 별도 실행 요청이 있을 때만
+  수행한다.
 - [x] client2 interaction harness와 package.json의 전체 prebuild/build gate가 통과한다.
 - [x] reference graph 조회가 요청당 config 전체 재파싱 또는 N+1을 만들지 않는다.
 - [x] 대량 Registry fixture에서 검색·Used by·flow 응답의 시간과 payload 상한을 기록한다.
