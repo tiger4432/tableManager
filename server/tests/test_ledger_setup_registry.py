@@ -4,6 +4,8 @@ from __future__ import annotations
 import ast
 import copy
 from dataclasses import FrozenInstanceError
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -29,6 +31,7 @@ from ledger.setup_registry import (
     snapshot_compile_errors,
 )
 from test_ledger_setup_bundle import logical_bundle, reverse_mappings, write_tree
+from verified_join_contract import VerifiedJoinDescriptor
 
 
 def trusted_implementations():
@@ -38,10 +41,35 @@ def trusted_implementations():
     )
 
 
+def physically_verified_joins(bundle=None, *, unique_index="uq_reference_join_id"):
+    """Test-side stand-in for virtual_join_config's physical catalog verifier."""
+    raw = bundle or logical_bundle()
+    descriptors = []
+    for rule_id, rule in sorted(raw["virtual_joins"].items()):
+        if not rule.get("enabled"):
+            continue
+        fold = rule.get("fold") or None
+        descriptors.append(VerifiedJoinDescriptor.from_verified_rule({
+            "name": rule_id,
+            "left_table": rule["left_table"],
+            "right_table": rule["right_table"],
+            "join_key": [
+                {"left": pair["left"], "right": pair["right"], "fold": fold}
+                for pair in rule["join_key"]
+            ],
+            "expose": list(rule["expose"]),
+            "join_cardinality": rule["join_cardinality"],
+            "unique_index": unique_index,
+        }))
+    return tuple(descriptors)
+
+
 def snapshot(bundle=None, trusted=None):
+    raw = bundle or logical_bundle()
     return compile_setup_snapshot(
-        validate_bundle(bundle or logical_bundle()),
+        validate_bundle(raw),
         trusted or trusted_implementations(),
+        physically_verified_joins(raw),
     )
 
 
@@ -77,6 +105,20 @@ def test_role_binding_kinds_use_the_same_pack_contract_as_validation():
         "event_key"].allowed_binding_kinds == ("column",)
 
 
+def test_vocabulary_and_symbolic_role_contracts_survive_compilation():
+    from test_ledger_setup_bundle import symbolic_bundle
+
+    compiled = snapshot(symbolic_bundle("pick"))
+    predicate = compiled.vocabulary["moves_to@1"]
+    role = compiled.packs["movement@1"].claims["transition"].roles[
+        "movement_kind"]
+
+    assert predicate.required_qualifiers == ()
+    assert predicate.optional_qualifiers == ("event_key", "movement_kind")
+    assert role.kind == "symbolic"
+    assert role.allowed_values == ("pick", "place")
+
+
 def test_registries_and_descriptors_are_recursively_immutable():
     compiled = snapshot()
 
@@ -99,22 +141,103 @@ def test_source_plan_reuses_registry_join_descriptor_without_copying_it():
     registry_descriptor = compiled.verified_joins["input_to_reference"]
 
     assert source_descriptor is registry_descriptor
-    assert source_descriptor.verified is True
-    assert source_descriptor.verification_basis == "catalog_declared_unique"
-    assert source_descriptor.fold_verified is False
-    assert source_descriptor.fold_verification_basis == "not_declared"
-    assert source_descriptor.join_key == (("join_id", "join_id"),)
+    assert source_descriptor["verified"] is True
+    assert source_descriptor.verification_basis == "physical_unique_index"
+    assert source_descriptor.join_key_pairs == (("join_id", "join_id"),)
 
 
 def test_snapshot_hash_and_serialization_are_deterministic():
     first = snapshot(logical_bundle())
     second = snapshot(reverse_mappings(logical_bundle()))
 
-    assert first.sha256 == second.sha256
-    assert first.canonical_json == second.canonical_json
+    assert first.snapshot_sha256 == second.snapshot_sha256
+    assert first.canonical_content_json == second.canonical_content_json
     assert first.serialize() == second.serialize()
-    assert first.sha256 == "b843cc9c3662d48a377a289818570d0ad66f951e574cf104cd3809654ffb090d"
+    assert first.bundle_sha256 == second.bundle_sha256
     assert first.readiness == "ready"
+
+
+def test_snapshot_hash_binds_compiled_semantic_content():
+    compiled = snapshot(logical_bundle())
+
+    assert hashlib.sha256(
+        compiled.canonical_content_json.encode("utf-8")
+    ).hexdigest() == compiled.snapshot_sha256
+    assert hashlib.sha256(
+        compiled.bundle_canonical_json.encode("utf-8")
+    ).hexdigest() == compiled.bundle_sha256
+    assert json.loads(compiled.canonical_content_json)[
+        "bundle_sha256"] == compiled.bundle_sha256
+    assert compiled.snapshot_sha256 != compiled.bundle_sha256
+
+
+def test_snapshot_compile_refuses_join_without_physical_verification():
+    errors = snapshot_compile_errors(
+        validate_bundle(logical_bundle()), trusted_implementations())
+
+    assert [error.to_mapping() for error in errors] == [{
+        "code": "unverified_join",
+        "path": "bundle.virtual_joins.input_to_reference",
+        "message": (
+            "join rule 'input_to_reference' requires a physical UNIQUE "
+            "verification descriptor"
+        ),
+    }]
+
+
+def test_catalog_mapping_cannot_construct_a_verified_descriptor_directly():
+    with pytest.raises(TypeError):
+        VerifiedJoinDescriptor({"name": "catalog_only"})
+
+
+def test_snapshot_compile_rejects_mismatched_physical_descriptor_exactly():
+    raw = logical_bundle()
+    descriptor = VerifiedJoinDescriptor.from_verified_rule({
+        "name": "input_to_reference",
+        "left_table": "different_rows",
+        "right_table": "reference_rows",
+        "join_key": [{"left": "join_id", "right": "join_id", "fold": None}],
+        "expose": ["target_id"],
+        "join_cardinality": "one",
+        "unique_index": "uq_reference_join_id",
+    })
+
+    errors = snapshot_compile_errors(
+        validate_bundle(raw), trusted_implementations(), (descriptor,))
+
+    assert [error.to_mapping() for error in errors] == [{
+        "code": "verified_join_mismatch",
+        "path": "bundle.virtual_joins.input_to_reference",
+        "message": (
+            "physical verification descriptor does not match join rule "
+            "'input_to_reference'"
+        ),
+    }]
+
+
+def test_physical_verification_result_changes_snapshot_not_bundle_hash():
+    raw = logical_bundle()
+    validated = validate_bundle(raw)
+    first = compile_setup_snapshot(
+        validated, trusted_implementations(),
+        physically_verified_joins(raw, unique_index="uq_reference_a"))
+    second = compile_setup_snapshot(
+        validated, trusted_implementations(),
+        physically_verified_joins(raw, unique_index="uq_reference_b"))
+
+    assert first.bundle_sha256 == second.bundle_sha256
+    assert first.snapshot_sha256 != second.snapshot_sha256
+    assert first.canonical_content_json != second.canonical_content_json
+
+
+def test_compiler_contract_version_changes_snapshot_hash(monkeypatch):
+    first = snapshot()
+    monkeypatch.setattr(setup_registry_module, "SNAPSHOT_COMPILER_VERSION", 2)
+    second = snapshot()
+
+    assert first.bundle_sha256 == second.bundle_sha256
+    assert first.snapshot_sha256 != second.snapshot_sha256
+    assert second.compiler_contract_version == 2
 
 
 def test_virtual_join_change_changes_snapshot_hash():
@@ -123,10 +246,9 @@ def test_virtual_join_change_changes_snapshot_hash():
         "separator": True, "case": False}
 
     compiled = snapshot(changed)
-    assert compiled.sha256 != snapshot().sha256
+    assert compiled.snapshot_sha256 != snapshot().snapshot_sha256
     descriptor = compiled.verified_joins["input_to_reference"]
-    assert descriptor.fold_verified is True
-    assert descriptor.fold_verification_basis == "notation_rule_vocabulary"
+    assert descriptor.pair_folds == ({"case": False, "separator": True},)
 
 
 @pytest.mark.parametrize(
@@ -168,16 +290,17 @@ def test_dataflow_declaration_change_also_changes_snapshot_hash():
     changed = logical_bundle()
     changed["chains"]["safe-chain"] = {"steps": [{"kind": "declared"}]}
 
-    assert snapshot(changed).sha256 != snapshot().sha256
+    assert snapshot(changed).snapshot_sha256 != snapshot().snapshot_sha256
 
 
 def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic():
     bundle = validate_bundle(logical_bundle())
     none_trusted = TrustedImplementationCatalog.build()
 
-    first = snapshot_compile_errors(bundle, none_trusted)
+    verified = physically_verified_joins(bundle.to_mapping())
+    first = snapshot_compile_errors(bundle, none_trusted, verified)
     second = snapshot_compile_errors(
-        validate_bundle(reverse_mappings(logical_bundle())), none_trusted)
+        validate_bundle(reverse_mappings(logical_bundle())), none_trusted, verified)
 
     assert [issue.to_mapping() for issue in first] == [
         {
@@ -195,7 +318,7 @@ def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic()
         issue.to_mapping() for issue in second
     ]
     with pytest.raises(LedgerSetupValidationError) as caught:
-        compile_setup_snapshot(bundle, none_trusted)
+        compile_setup_snapshot(bundle, none_trusted, verified)
     assert caught.value.to_mapping() == first[0].to_mapping()
 
 
@@ -209,7 +332,9 @@ def test_unused_config_implementations_are_also_checked():
         bundle["mappers"]["map-transition@1"])
     bundle["mappers"]["unused-mapper@1"]["implementation_id"] = "unused-mapper"
 
-    errors = snapshot_compile_errors(validate_bundle(bundle), trusted_implementations())
+    errors = snapshot_compile_errors(
+        validate_bundle(bundle), trusted_implementations(),
+        physically_verified_joins(bundle))
 
     assert [(issue.code, issue.path) for issue in errors] == [
         ("untrusted_implementation", "bundle.mappers.unused-mapper@1.implementation_id"),
@@ -245,7 +370,9 @@ def test_unused_config_implementations_are_also_checked():
 )
 def test_known_implementation_with_untrusted_version_has_exact_error_path(
         section, entry_id, trusted, path):
-    errors = snapshot_compile_errors(validate_bundle(logical_bundle()), trusted)
+    raw = logical_bundle()
+    errors = snapshot_compile_errors(
+        validate_bundle(raw), trusted, physically_verified_joins(raw))
 
     assert [issue.code for issue in errors] == ["unsupported_implementation_version"]
     assert [issue.path for issue in errors] == [path]
@@ -380,7 +507,10 @@ def test_new_config_entity_predicate_and_pack_need_no_compiler_change():
         "status": "active",
         "layer": "ontology",
         "subjects": ["NewSubject@1"],
-        "object": {"kind": "entity_ref", "types": ["NewTarget@1"]},
+        "object": {
+            "kind": "entity_ref", "types": ["NewTarget@1"],
+            "qualifiers": {"required": [], "optional": []},
+        },
     }
     bundle["packs"]["linkage@1"] = {
         "claims": {
@@ -482,10 +612,16 @@ def test_config_root_path_does_not_enter_snapshot_hash(tmp_path):
 
     from ledger.setup_bundle import load_setup_bundle
 
-    first = compile_setup_snapshot(load_setup_bundle(first_root), trusted_implementations())
-    second = compile_setup_snapshot(load_setup_bundle(second_root), trusted_implementations())
+    first_bundle = load_setup_bundle(first_root)
+    second_bundle = load_setup_bundle(second_root)
+    first = compile_setup_snapshot(
+        first_bundle, trusted_implementations(),
+        physically_verified_joins(first_bundle.to_mapping()))
+    second = compile_setup_snapshot(
+        second_bundle, trusted_implementations(),
+        physically_verified_joins(second_bundle.to_mapping()))
 
-    assert first.sha256 == second.sha256
+    assert first.snapshot_sha256 == second.snapshot_sha256
     assert first.serialize() == second.serialize()
 
 
@@ -533,6 +669,8 @@ def test_compiler_does_not_mutate_the_validated_bundle():
     before = validate_bundle(logical_bundle())
     expected = before.serialize()
 
-    compile_setup_snapshot(before, trusted_implementations())
+    compile_setup_snapshot(
+        before, trusted_implementations(),
+        physically_verified_joins(before.to_mapping()))
 
     assert before.serialize() == expected

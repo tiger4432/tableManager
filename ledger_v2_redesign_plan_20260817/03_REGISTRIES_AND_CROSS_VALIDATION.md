@@ -40,26 +40,22 @@ Registry는 config의 compiled view다. `VocabularyRegistry`, `EntityTypeRegistr
 - emission predicate가 존재하고 active인지
 - subject Role의 entity type이 predicate 허용 subject인지
 - object kind가 일치하는지
-- v1의 닫힌 object 형상(`entity_ref`/`value`/`event_ref`)에 필요한 Role이
-  emission에 존재하는지
-- emission field가 선언 Role만 참조하고 object kind가 닫힌 enum인지
+- Vocabulary required payload field가 emission에 전부 있는지
+- emission field가 선언 Role 또는 닫힌 literal만 참조하는지
 - optional Role은 `$role?`로만 생략 가능한지
 
-v1 Vocabulary에는 임의 payload-field 스키마가 없다. 따라서 Registry가 존재하지 않는
-required payload field 계약을 만들어 검증하는 것은 3단계 범위가 아니다. 후속 확장은
-Bundle schema 승인을 먼저 받아야 한다.
+현재 v1은 object payload 중 `qualifiers`를 `required`/`optional` 닫힌 목록으로 선언한다.
+Pack emission은 required qualifier를 빠짐없이 제공하고 목록 밖 qualifier를 만들 수 없다.
 
 ### Role ↔ Entity
 
 - entity Role 값은 등록 Entity type과 정확한 key를 가져야 함
-- constant Binding은 v1에서 deterministic JSON literal이며 Role의
-  `allowed_binding_kinds`에 `constant`가 있을 때만 허용
+- symbolic constant는 Role에 등록된 값만 허용
 - transfer Claim의 subject와 target은 Vocabulary가 허용한 stage-local Entity type이어야 함
 - 좌표는 Entity key이며 Position 구조나 좌표 payload를 별도로 허용하지 않음
 
-symbolic constant Registry와 Role별 literal domain은 v1 계약에 없다. 현재는 임의 실행식이
-아니라 JSON literal의 결정적 형상만 허용하며, 값 domain을 닫는 기능은 후속
-Bundle schema 변경과 승인 없이 3단계에 추가하지 않는다.
+`kind=symbolic` Role은 정렬·중복 없는 `allowed_values`를 필수로 소유한다. 다른 Role의
+constant는 기존 deterministic JSON 계약을 유지하며 symbolic domain으로 오인하지 않는다.
 
 ### Source ↔ Profile/Driver
 
@@ -80,8 +76,7 @@ Bundle schema 변경과 승인 없이 3단계에 추가하지 않는다.
 - rule의 `left_table`이 source base relation과 같은지
 - join left key가 cursor SELECT 물리 column에 포함되는지
 - right join key와 expose column이 table config에 존재하는지
-- UNIQUE는 catalog의 exact UNIQUE 선언으로, notation fold는 닫힌 규칙
-  vocabulary와 구현 상태로 각각 검증되는지
+- UNIQUE/notation-folding 검증은 기존 virtual join verifier의 결과만 소비하는지
 - source preparer가 relation/key/expose/folding을 다시 선언하지 않는지
 - EventFrame output schema가 Profile binding column을 전부 제공하는지
 - EventFrame output schema가 Mapper input contract를 전부 제공하는지
@@ -94,8 +89,11 @@ Bundle schema 변경과 승인 없이 3단계에 추가하지 않는다.
 
 ```text
 setup_version
-canonical_json
-sha256
+bundle_canonical_json
+bundle_sha256
+canonical_content_json
+snapshot_sha256
+compiler_contract_version
 registries
 source_plans
 readiness
@@ -106,7 +104,7 @@ readiness
 
 ## 수락 테스트
 
-- Pack/Vocabulary object kind·고정 endpoint Role 불일치 거절
+- Pack/Vocabulary required field 불일치 거절
 - stage-local Entity에 잘못된 identity key 형상 거절
 - Entity identity key 불일치 거절
 - source preparer 미등록/output schema 불일치 거절
@@ -118,7 +116,7 @@ readiness
 - Bundle/Registry에 lookup section/kind가 없음
 - vocabulary/entity/pack/source/preparer/mapper 등록 항목이 config에서만 유래함
 - 새 config entry 등록 시 Registry/compiler core 수정 불필요
-- Source Plan이 Registry의 같은 immutable `VerifiedJoinDescriptor` 인스턴스를 소비
+- UI executor와 source preparer가 같은 immutable `VerifiedJoinDescriptor`를 소비
 - 여러 오류의 순서 결정성
 - 동일 Bundle snapshot hash 결정성
 - Registry compiler의 DB connection/read/write 0
@@ -130,19 +128,21 @@ readiness
 `server/ledger/setup_registry.py`가 승인된 `LedgerSetupBundle`을 config-only descriptor와 sealed
 Registry로 컴파일한다. `VocabularyRegistry`, `EntityTypeRegistry`, `SourcePreparerRegistry`,
 `MapperRegistry`, `PackRegistry`, `ProfileRegistry`, `VerifiedJoinRegistry`,
-`SourcePlanRegistry`를 한 `LedgerSetupSnapshot`에 봉인한다. Snapshot hash는 Bundle canonical
-JSON만 사용하므로 파일 경로·dict 삽입 순서·현재 시각·Python object identity가 들어가지 않는다.
+`SourcePlanRegistry`를 한 `LedgerSetupSnapshot`에 봉인한다. `bundle_sha256`은 입력 Bundle을,
+`snapshot_sha256`은 compiler contract version, compiled Registry/Source Plan, readiness,
+선택 implementation version, 물리 join 검증 결과, chain/enrichment 선언을 묶는다. 파일 경로,
+dict 삽입 순서, 현재 시각, Python object identity는 두 해시에 들어가지 않는다.
 
 Source Plan은 같은 Snapshot의 `SourcePreparerDescriptor`, `MapperDescriptor`,
 `ProfileDescriptor`, `VerifiedJoinDescriptor` 객체를 직접 참조한다. trusted implementation은
 module/function/path가 아니라 호출자가 제공한 닫힌 `(implementation_id, version)` 집합과만
 대조한다. config의 모든 사용·미사용 preparer/mapper가 이 대조를 통과해야 한다.
 
-`VerifiedJoinDescriptor.verified`는 이 DB-free 단계에서 catalog의 exact UNIQUE 선언까지
-검증했다는 뜻이며 `verification_basis=catalog_declared_unique`로 못박는다. 현행 UI executor의
-DB 실측 결과와 동일 객체로 수렴시키는 runtime 연결은 후속 단계 소유다.
-fold가 있으면 닫힌 notation rule vocabulary, boolean toggle, 구현 상태를 검증하고
-`fold_verified`/`fold_verification_basis` 정보를 descriptor에 보존한다.
+Catalog 선언은 `verified=True`가 될 수 없다. 기존
+`virtual_join_config.load_verified_rules()`가 PostgreSQL UNIQUE index를 물리 검증한 뒤 만든
+neutral immutable `VerifiedJoinDescriptor`만 compiler에 외부 주입할 수 있다. 현행 UI executor와
+Source Plan은 같은 descriptor type과 검증 결과를 소비하며, Source Plan은 Registry의 같은
+descriptor 인스턴스를 복사 없이 참조한다. compiler 자체의 DB import/read는 0이다.
 
 컴파일 진입점은 Bundle 구조·교차 계약을 다시 검증하고 모든 중첩 Binding의 readiness를 먼저
 강제한다. source row, pandas, mapper 실행, Claim/LedgerFrame 생성, DB read/write, cursor,

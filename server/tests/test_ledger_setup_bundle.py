@@ -88,7 +88,11 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                 "status": "active",
                 "layer": "ontology",
                 "subjects": ["InputEntity@1"],
-                "object": {"kind": "entity_ref", "types": ["OutputEntity@1"]},
+                "object": {
+                    "kind": "entity_ref",
+                    "types": ["OutputEntity@1"],
+                    "qualifiers": {"required": [], "optional": ["event_key"]},
+                },
             },
         },
         "entities": {
@@ -276,7 +280,7 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     assert first.serialize() == second.serialize()
     assert first.to_mapping() == second.to_mapping()
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "b843cc9c3662d48a377a289818570d0ad66f951e574cf104cd3809654ffb090d")
+        "93bb700979a48a105153b6d1ae025a006bfd2531bd426519c8550333f693b38b")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -580,7 +584,10 @@ def test_unused_vocabulary_pack_profile_and_mapper_are_still_cross_validated():
     bundle = logical_bundle()
     bundle["vocabulary"]["unused@1"] = {
         "status": "active", "layer": "ontology", "subjects": ["MissingEntity@1"],
-        "object": {"kind": "entity_ref", "types": ["OutputEntity@1"]},
+        "object": {
+            "kind": "entity_ref", "types": ["OutputEntity@1"],
+            "qualifiers": {"required": [], "optional": []},
+        },
     }
     bundle["packs"]["unused@1"] = {
         "claims": {"claim": copy.deepcopy(
@@ -668,6 +675,47 @@ def test_emission_roles_must_exist_and_have_purpose_specific_kinds(mutation, suf
     assert any(error.path.endswith(suffix)
                and error.code in {"unknown_role", "invalid_role_kind"}
                for error in errors)
+
+
+def test_vocabulary_required_qualifier_missing_is_rejected_exactly():
+    bundle = logical_bundle()
+    bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
+        "required": ["event_key"], "optional": []}
+    del bundle["packs"]["movement@1"]["claims"]["transition"]["emit"][
+        "object"]["qualifiers"]["event_key"]
+
+    errors = validate_bundle_errors(bundle)
+
+    assert [error.to_mapping() for error in errors] == [{
+        "code": "missing_required_payload",
+        "path": (
+            "bundle.packs.movement@1.claims.transition.emit.object."
+            "qualifiers.event_key"
+        ),
+        "message": "predicate 'moves_to@1' requires qualifier 'event_key'",
+    }]
+
+
+def test_vocabulary_undeclared_qualifier_is_rejected_exactly():
+    bundle = logical_bundle()
+    bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
+        "required": [], "optional": ["event_key"]}
+    bundle["packs"]["movement@1"]["claims"]["transition"]["emit"][
+        "object"]["qualifiers"]["undeclared_payload"] = "$event_key?"
+
+    errors = validate_bundle_errors(bundle)
+
+    assert [error.to_mapping() for error in errors] == [{
+        "code": "unknown_payload_field",
+        "path": (
+            "bundle.packs.movement@1.claims.transition.emit.object."
+            "qualifiers.undeclared_payload"
+        ),
+        "message": (
+            "predicate 'moves_to@1' does not allow qualifier "
+            "'undeclared_payload'"
+        ),
+    }]
 
 
 def test_profile_packs_mapping_use_and_mapper_emits_are_mutually_closed():
@@ -837,6 +885,95 @@ def test_constant_binding_must_be_finite_deterministic_json():
     })
     error = issue(bundle, "invalid_binding")
     assert error.path.endswith("bind.event_key.value")
+
+
+def test_unregistered_symbolic_constant_is_rejected_exactly():
+    bundle = symbolic_bundle("NOT_REGISTERED_ANYWHERE")
+
+    errors = validate_bundle_errors(bundle)
+
+    assert [error.to_mapping() for error in errors] == [{
+        "code": "invalid_symbolic_constant",
+        "path": (
+            "bundle.profiles.input-transition@1.mappings[0].bind."
+            "movement_kind.value"
+        ),
+        "message": (
+            "constant 'NOT_REGISTERED_ANYWHERE' is not registered by symbolic role "
+            "'movement_kind'"
+        ),
+    }]
+
+
+def symbolic_bundle(value="pick"):
+    bundle = logical_bundle()
+    bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
+        "required": [], "optional": ["event_key", "movement_kind"]}
+    claim = bundle["packs"]["movement@1"]["claims"]["transition"]
+    claim["roles"]["movement_kind"] = {
+        "kind": "symbolic",
+        "required": False,
+        "allowed_values": ["pick", "place"],
+    }
+    claim["emit"]["object"]["qualifiers"]["movement_kind"] = "$movement_kind?"
+    claim_binding = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]
+    claim_binding["movement_kind"] = {
+        "kind": "constant",
+        "value": value,
+        "binding_origin": "user_declared",
+        "approval_status": "approved",
+    }
+    return bundle
+
+
+def test_registered_symbolic_constant_is_accepted():
+    assert validate_bundle_errors(symbolic_bundle("pick")) == ()
+
+
+@pytest.mark.parametrize(
+    ("allowed_values", "code"),
+    [
+        (None, "invalid_type"),
+        ({"pick": True}, "invalid_type"),
+        ([True], "blank_value"),
+        ([""], "blank_value"),
+        (["pick", "pick"], "duplicate_id"),
+        (["place", "pick"], "invalid_role_kind"),
+    ],
+)
+def test_symbolic_allowed_values_fail_closed(allowed_values, code):
+    bundle = symbolic_bundle()
+    role = bundle["packs"]["movement@1"]["claims"]["transition"]["roles"][
+        "movement_kind"]
+    role["allowed_values"] = allowed_values
+
+    errors = validate_bundle_errors(bundle)
+
+    assert any(
+        error.code == code
+        and error.path.startswith(
+            "bundle.packs.movement@1.claims.transition.roles."
+            "movement_kind.allowed_values")
+        and error.message
+        for error in errors
+    )
+
+
+def test_general_time_constant_is_not_treated_as_symbolic():
+    bundle = logical_bundle()
+    bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
+        "required": [], "optional": ["event_key"]}
+    occurred = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"][
+        "occurred_at"]
+    occurred.clear()
+    occurred.update({
+        "kind": "constant",
+        "value": "2026-08-17T00:00:00+09:00",
+        "binding_origin": "user_declared",
+        "approval_status": "approved",
+    })
+
+    assert validate_bundle_errors(bundle) == ()
 
 
 def test_binding_approval_never_adds_a_claim_epistemic_class():

@@ -1,11 +1,12 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Ledger v2 1·2단계 승인; 3단계 config-only Registry·immutable snapshot `STAGE_3_IN_REVIEW` / `NOT_APPROVED` | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Ledger v2 1·2단계 승인; 3단계 Registry·물리 검증 join descriptor·compiled-content snapshot hash `STAGE_3_IN_REVIEW` / `NOT_APPROVED` | **Owner:** Lead / PM
 >
 > 🔴 **행을 더하거나 고치면 이 헤더의 「이번 라운드」도 함께 쓴다** — 직전에 F9 행이 추가될 때 그것을 어겼고, 그래서 새 행이 어느 라운드의 것인지 알 수 없었습니다.
 > 🔴 **소유 행이 없는 문서·계약은 조용히 낡습니다.** 새 문서를 만들거나 새 계약(`contracts/<name>/`)을 추가하면 **그 자리에서 행을 만드십시오.**
 >
-> **이번 라운드 (2026-08-17 · 외부 읽기 전용 void 디렉터리 인제션 · Ledger v2 Mapper 디자인 패턴 정본 추가)**
+> **이번 라운드 (2026-08-17 · Ledger v2 Stage 3 2차 검수 보완 · 외부 읽기 전용 void 디렉터리 인제션 · Ledger v2 Mapper 디자인 패턴 정본 추가)**
+> - **[Ledger v2 Registry 소유권 보완]** `server/ledger/setup_bundle.py`가 Vocabulary qualifier와 symbolic Role domain을 검증하고, `server/verified_join_contract.py`의 immutable descriptor는 `server/virtual_join_config.py`의 물리 UNIQUE 검증 뒤에만 생성된다. `server/ledger/setup_registry.py`는 이 외부 결과를 받아 compiled Registry/SourcePlan/compiler version까지 묶은 snapshot hash를 만든다. 정본은 [3단계 계약](../../ledger_v2_redesign_plan_20260817/03_REGISTRIES_AND_CROSS_VALIDATION.md), 검수 근거는 [Stage 3 Evidence](../../ledger_v2_redesign_plan_20260817/STAGE_3_ACCEPTANCE_EVIDENCE.md)다. 상태는 `IN_REVIEW`/`NOT_APPROVED`; runtime·DB write·Stage 4는 미착수다.
 > - **[신규 소유 행 하나]** `directory_watcher`의 외부 루트 등록·이벤트/스윕과 `voids_json_format`의 경로 파서를 파일 인제션 소유권 아래 등재했습니다. 정본은 `INGESTION_GUIDE §1.12`; live 설정 반영은 `config/ingestion_settings`가 소유합니다. 실제 표본은 0바이트라 JSON 본문 검증 결측을 행 자체에 남겼습니다.
 >
 > **직전 라운드 (2026-08-15 · Ledger Evidence Graph + Enrich Action)**

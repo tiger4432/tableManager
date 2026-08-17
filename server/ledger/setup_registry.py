@@ -14,6 +14,8 @@ import json
 from types import MappingProxyType
 from typing import Any, Generic, TypeVar
 
+from verified_join_contract import VerifiedJoinDescriptor
+
 from .setup_bundle import (
     LedgerSetupBundle,
     LedgerSetupValidationError,
@@ -25,6 +27,7 @@ from .setup_bundle import (
 
 
 _DescriptorT = TypeVar("_DescriptorT")
+SNAPSHOT_COMPILER_VERSION = 1
 
 
 def _versioned_parts(identifier: str) -> tuple[str, int]:
@@ -45,18 +48,37 @@ def _freeze(value: Any) -> Any:
 def _plain(value: Any) -> Any:
     if isinstance(value, _SealedRegistry):
         return value.to_mapping()
+    if isinstance(value, Mapping):
+        return {str(key): _plain(value[key]) for key in sorted(value, key=str)}
     if is_dataclass(value):
         return {
             field.name: _plain(getattr(value, field.name))
             for field in fields(value)
             if not field.name.startswith("_")
         }
-    if isinstance(value, Mapping):
-        return {str(key): _plain(value[key]) for key in sorted(value, key=str)}
     if isinstance(value, (tuple, list)):
         return [_plain(item) for item in value]
     if isinstance(value, frozenset):
         return [_plain(item) for item in sorted(value)]
+    return value
+
+
+def _semantic_plain(value: Any) -> Any:
+    if isinstance(value, _SealedRegistry):
+        return {key: _semantic_plain(value[key]) for key in value}
+    if isinstance(value, Mapping):
+        return {str(key): _semantic_plain(value[key])
+                for key in sorted(value, key=str)}
+    if is_dataclass(value):
+        return {
+            field.name: _semantic_plain(getattr(value, field.name))
+            for field in fields(value)
+            if not field.name.startswith("_") and field.name != "config_path"
+        }
+    if isinstance(value, (tuple, list)):
+        return [_semantic_plain(item) for item in value]
+    if isinstance(value, frozenset):
+        return [_semantic_plain(item) for item in sorted(value)]
     return value
 
 
@@ -112,6 +134,8 @@ class PredicateDescriptor:
     subject_entity_types: tuple[str, ...]
     object_kind: str
     object_entity_types: tuple[str, ...]
+    required_qualifiers: tuple[str, ...]
+    optional_qualifiers: tuple[str, ...]
     config_path: str
 
 
@@ -131,6 +155,7 @@ class RoleDescriptor:
     kind: str
     required: bool
     allowed_binding_kinds: tuple[str, ...]
+    allowed_values: tuple[str, ...]
     config_path: str
 
 
@@ -204,22 +229,6 @@ class ProfileDescriptor:
     source_id: str
     pack_ids: tuple[str, ...]
     mappings: tuple[ProfileMappingDescriptor, ...]
-    config_path: str
-
-
-@dataclass(frozen=True)
-class VerifiedJoinDescriptor:
-    rule_id: str
-    left_table: str
-    right_table: str
-    join_key: tuple[tuple[str, str], ...]
-    expose: tuple[str, ...]
-    join_cardinality: str
-    fold: Mapping[str, Any]
-    verified: bool
-    verification_basis: str
-    fold_verified: bool
-    fold_verification_basis: str
     config_path: str
 
 
@@ -334,9 +343,12 @@ class _RegistryBuilder(Generic[_DescriptorT]):
 
 @dataclass(frozen=True)
 class LedgerSetupSnapshot:
+    compiler_contract_version: int
     setup_version: int
-    canonical_json: str
-    sha256: str
+    bundle_canonical_json: str
+    bundle_sha256: str
+    canonical_content_json: str
+    snapshot_sha256: str
     vocabulary: VocabularyRegistry
     entities: EntityTypeRegistry
     source_preparers: SourcePreparerRegistry
@@ -362,9 +374,12 @@ class LedgerSetupSnapshot:
 
     def to_mapping(self) -> dict[str, Any]:
         return {
+            "compiler_contract_version": self.compiler_contract_version,
             "setup_version": self.setup_version,
-            "canonical_json": self.canonical_json,
-            "sha256": self.sha256,
+            "bundle_canonical_json": self.bundle_canonical_json,
+            "bundle_sha256": self.bundle_sha256,
+            "canonical_content_json": self.canonical_content_json,
+            "snapshot_sha256": self.snapshot_sha256,
             "readiness": self.readiness,
             "registries": {
                 key: self.registries[key].to_mapping()
@@ -382,6 +397,7 @@ class LedgerSetupSnapshot:
 def snapshot_compile_errors(
     bundle: LedgerSetupBundle,
     trusted: TrustedImplementationCatalog,
+    verified_joins: Sequence[VerifiedJoinDescriptor] = (),
 ) -> tuple[LedgerSetupValidationError, ...]:
     """Return deterministic compile/readiness errors without creating a snapshot."""
     if not isinstance(bundle, LedgerSetupBundle):
@@ -397,7 +413,8 @@ def snapshot_compile_errors(
     if readiness:
         return readiness
 
-    issues: list[LedgerSetupValidationError] = []
+    issues: list[LedgerSetupValidationError] = list(
+        _verified_join_errors(validated, verified_joins))
     for preparer_id, item in validated.section("source_preparers").items():
         key = ImplementationKey(
             item["implementation_id"], item["implementation_version"])
@@ -418,6 +435,63 @@ def snapshot_compile_errors(
                 key=key,
                 trusted_keys=trusted.mappers,
             ))
+    return tuple(sorted(issues, key=lambda issue: (issue.path, issue.code, issue.message)))
+
+
+def _verified_join_errors(
+    bundle: LedgerSetupBundle,
+    verified_joins: Sequence[VerifiedJoinDescriptor],
+) -> tuple[LedgerSetupValidationError, ...]:
+    issues: list[LedgerSetupValidationError] = []
+    supplied: dict[str, VerifiedJoinDescriptor] = {}
+    for index, descriptor in enumerate(verified_joins):
+        path = f"verified_joins[{index}]"
+        if not isinstance(descriptor, VerifiedJoinDescriptor):
+            issues.append(LedgerSetupValidationError(
+                "invalid_verified_join", path,
+                "must be a VerifiedJoinDescriptor produced by physical verification"))
+            continue
+        if descriptor.rule_id in supplied:
+            issues.append(LedgerSetupValidationError(
+                "duplicate_verified_join", path,
+                f"verified join {descriptor.rule_id!r} is duplicated"))
+            continue
+        supplied[descriptor.rule_id] = descriptor
+
+    declared = bundle.section("virtual_joins")
+    enabled = {rule_id: rule for rule_id, rule in declared.items() if rule["enabled"]}
+    for rule_id in sorted(enabled):
+        path = f"bundle.virtual_joins.{rule_id}"
+        descriptor = supplied.get(rule_id)
+        if descriptor is None:
+            issues.append(LedgerSetupValidationError(
+                "unverified_join", path,
+                f"join rule {rule_id!r} requires a physical UNIQUE "
+                "verification descriptor"))
+            continue
+        rule = enabled[rule_id]
+        expected_pairs = tuple(
+            (pair["left"], pair["right"]) for pair in rule["join_key"])
+        expected_fold = rule.get("fold") or {}
+        actual_folds = tuple(dict(item) for item in descriptor.pair_folds)
+        expected_folds = tuple(dict(expected_fold) for _ in expected_pairs)
+        matches = (
+            descriptor["left_table"] == rule["left_table"]
+            and descriptor["right_table"] == rule["right_table"]
+            and descriptor.join_key_pairs == expected_pairs
+            and tuple(descriptor["expose"]) == tuple(rule["expose"])
+            and descriptor["join_cardinality"] == rule["join_cardinality"]
+            and actual_folds == expected_folds
+            and descriptor.verification_basis == "physical_unique_index"
+        )
+        if not matches:
+            issues.append(LedgerSetupValidationError(
+                "verified_join_mismatch", path,
+                f"physical verification descriptor does not match join rule {rule_id!r}"))
+    for rule_id in sorted(set(supplied) - set(enabled)):
+        issues.append(LedgerSetupValidationError(
+            "unknown_verified_join", f"verified_joins.{rule_id}",
+            f"verified join {rule_id!r} has no enabled Bundle declaration"))
     return tuple(sorted(issues, key=lambda issue: (issue.path, issue.code, issue.message)))
 
 
@@ -443,9 +517,10 @@ def _untrusted_implementation_issue(
 def compile_setup_snapshot(
     bundle: LedgerSetupBundle,
     trusted: TrustedImplementationCatalog,
+    verified_joins: Sequence[VerifiedJoinDescriptor] = (),
 ) -> LedgerSetupSnapshot:
     """Compile one validated, approved Bundle without source or database execution."""
-    issues = snapshot_compile_errors(bundle, trusted)
+    issues = snapshot_compile_errors(bundle, trusted, verified_joins)
     if issues:
         raise issues[0]
     bundle = validate_bundle(bundle.to_mapping())
@@ -456,22 +531,53 @@ def compile_setup_snapshot(
     mappers = _compile_mappers(bundle.section("mappers"))
     packs = _compile_packs(bundle.section("packs"))
     profiles = _compile_profiles(bundle.section("profiles"))
-    verified_joins = _compile_verified_joins(bundle.section("virtual_joins"))
+    verified_join_registry = _compile_verified_joins(verified_joins)
     source_plans = _compile_source_plans(
-        bundle.section("sources"), preparers, mappers, profiles, verified_joins)
+        bundle.section("sources"), preparers, mappers, profiles,
+        verified_join_registry)
 
-    canonical_json = bundle.serialize()
+    bundle_canonical_json = bundle.serialize()
+    bundle_sha256 = sha256(bundle_canonical_json.encode("utf-8")).hexdigest()
+    registries = {
+        "entities": entities,
+        "mappers": mappers,
+        "packs": packs,
+        "profiles": profiles,
+        "source_preparers": preparers,
+        "sources": source_plans,
+        "verified_joins": verified_join_registry,
+        "vocabulary": vocabulary,
+    }
+    content = {
+        "compiler_contract_version": SNAPSHOT_COMPILER_VERSION,
+        "setup_version": bundle.setup_version,
+        "bundle_sha256": bundle_sha256,
+        "readiness": "ready",
+        "declarations": {
+            "chains": _semantic_plain(bundle.section("chains")),
+            "enrichments": _semantic_plain(bundle.section("enrichments")),
+        },
+        "registries": {
+            key: _semantic_plain(registries[key]) for key in sorted(registries)
+        },
+    }
+    canonical_content_json = json.dumps(
+        content, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False)
     return LedgerSetupSnapshot(
+        compiler_contract_version=SNAPSHOT_COMPILER_VERSION,
         setup_version=bundle.setup_version,
-        canonical_json=canonical_json,
-        sha256=sha256(canonical_json.encode("utf-8")).hexdigest(),
+        bundle_canonical_json=bundle_canonical_json,
+        bundle_sha256=bundle_sha256,
+        canonical_content_json=canonical_content_json,
+        snapshot_sha256=sha256(canonical_content_json.encode("utf-8")).hexdigest(),
         vocabulary=vocabulary,
         entities=entities,
         source_preparers=preparers,
         mappers=mappers,
         packs=packs,
         profiles=profiles,
-        verified_joins=verified_joins,
+        verified_joins=verified_join_registry,
         source_plans=source_plans,
         readiness="ready",
     )
@@ -490,6 +596,8 @@ def _compile_vocabulary(section: Mapping[str, Any]) -> VocabularyRegistry:
             subject_entity_types=tuple(item["subjects"]),
             object_kind=obj["kind"],
             object_entity_types=tuple(obj.get("types", ())),
+            required_qualifiers=tuple(obj["qualifiers"]["required"]),
+            optional_qualifiers=tuple(obj["qualifiers"]["optional"]),
             config_path=f"bundle.vocabulary.{predicate_id}",
         ))
     return builder.seal()
@@ -531,6 +639,7 @@ def _compile_packs(section: Mapping[str, Any]) -> PackRegistry:
                     kind=role["kind"],
                     required=role["required"],
                     allowed_binding_kinds=role_binding_kinds(role),
+                    allowed_values=tuple(role.get("allowed_values", ())),
                     config_path=f"{claim_path}.roles.{role_id}",
                 )
             emission = claim["emit"]
@@ -617,26 +726,12 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
     return builder.seal()
 
 
-def _compile_verified_joins(section: Mapping[str, Any]) -> VerifiedJoinRegistry:
+def _compile_verified_joins(
+    descriptors: Sequence[VerifiedJoinDescriptor],
+) -> VerifiedJoinRegistry:
     builder = _RegistryBuilder(VerifiedJoinRegistry)
-    for rule_id, item in section.items():
-        if not item["enabled"]:
-            continue
-        builder.add(rule_id, VerifiedJoinDescriptor(
-            rule_id=rule_id,
-            left_table=item["left_table"],
-            right_table=item["right_table"],
-            join_key=tuple((pair["left"], pair["right"]) for pair in item["join_key"]),
-            expose=tuple(item["expose"]),
-            join_cardinality=item["join_cardinality"],
-            fold=_freeze(item.get("fold", {})),
-            verified=True,
-            verification_basis="catalog_declared_unique",
-            fold_verified=bool(item.get("fold")),
-            fold_verification_basis=(
-                "notation_rule_vocabulary" if item.get("fold") else "not_declared"),
-            config_path=f"bundle.virtual_joins.{rule_id}",
-        ))
+    for descriptor in sorted(descriptors, key=lambda item: item.rule_id):
+        builder.add(descriptor.rule_id, descriptor)
     return builder.seal()
 
 

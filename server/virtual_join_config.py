@@ -99,6 +99,8 @@ import logging
 import os
 import re
 
+from verified_join_contract import VerifiedJoinDescriptor
+
 logger = logging.getLogger("VirtualJoinConfig")
 
 from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
@@ -609,6 +611,9 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
 
     `load_virtual_join_rules`(모양만)를 직접 소비하면 유일성이 검사되지 않은 선언이
     그대로 실행된다 ― 그 차이가 1억 3천만 행이다.
+
+    반환 항목은 UI executor와 Ledger setup compiler가 함께 소비하는 immutable
+    `VerifiedJoinDescriptor`다. catalog 선언 dict 자체에는 verified 등급을 부여하지 않는다.
     """
     rules = load_virtual_join_rules(path=path, known_tables=known_tables,
                                     rejections=rejections)
@@ -630,7 +635,7 @@ def load_verified_rules(db, path: str = None, known_tables: dict = None,
             continue
         rule = dict(rule)
         rule["unique_index"] = result["unique_index"]
-        verified.append(rule)
+        verified.append(VerifiedJoinDescriptor.from_verified_rule(rule))
     return verified
 
 

@@ -1,6 +1,6 @@
 # Ledger v2 재설계 계획 — Kernel 유지, Setup/Compiler 재작성
 
-> 상태: `STAGE_3_IN_REVIEW` · 1·2단계 승인 · 3단계 구현 완료/검수 대기 · 4단계 코드 변경 금지
+> 상태: `STAGE_3_IN_REVIEW` · 승인: `NOT_APPROVED` · 1·2단계 승인 · 3단계 2차 감사 보완/재검수 대기 · 4단계 코드 변경 금지
 > 작성일: 2026-08-17
 > 범위: Source → pandas event frame → Pack compiler → LedgerFrame
 > 유지: 기존 Ledger gate/store/cursor/read API

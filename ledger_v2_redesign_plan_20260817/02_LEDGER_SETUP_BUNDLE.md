@@ -69,7 +69,11 @@ escape, glob, 미등재 파일 자동 발견을 금지한다.
       "subjects": ["CoreDie@1", "DTDie@1"],
       "object": {
         "kind": "entity_ref",
-        "types": ["DTDie@1", "BondComponent@1"]
+        "types": ["DTDie@1", "BondComponent@1"],
+        "qualifiers": {
+          "required": [],
+          "optional": ["event_key", "qty"]
+        }
       }
     }
   },

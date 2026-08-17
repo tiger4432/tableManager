@@ -118,7 +118,8 @@ data preparation이며, verified virtual join 선언을 상속한다.
 | right UNIQUE 승인 결과 | UI cache/serialization |
 
 UI executor와 Ledger preparer는 같은 `VerifiedJoinDescriptor`를 소비해야 한다. 둘이 join key를
-각자 조립하면 수락 실패다.
+각자 조립하면 수락 실패다. 이 descriptor는 catalog 선언만으로 만들 수 없고, 기존
+`virtual_join_config.load_verified_rules()`가 물리 UNIQUE index를 확인한 뒤에만 생성한다.
 
 ## 6. 실패 계약
 

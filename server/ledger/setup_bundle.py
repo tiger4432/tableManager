@@ -43,9 +43,11 @@ _APPROVAL_STATUSES = frozenset({"pending", "approved", "rejected"})
 _JOIN_FOLD_RULES = frozenset({"separator", "case", "zero_pad"})
 _IMPLEMENTED_JOIN_FOLD_RULES = frozenset({"separator", "case"})
 _ROLE_KINDS = frozenset({
-    "entity", "time", "quantity", "identity", "order", "attribute",
+    "entity", "time", "quantity", "identity", "order", "attribute", "symbolic",
 })
-_SCALAR_ROLE_KINDS = frozenset({"quantity", "identity", "order", "attribute"})
+_SCALAR_ROLE_KINDS = frozenset({
+    "quantity", "identity", "order", "attribute", "symbolic",
+})
 _OBJECT_KINDS = frozenset({"entity_ref", "value", "event_ref"})
 _SOURCE_UNITS = frozenset({"row", "group"})
 _MAPPER_UNITS = frozenset({"event", "row", "group_by"})
@@ -456,7 +458,9 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         _nonblank_text(item.get("layer"), f"{path}.layer", problems)
         _nonblank_list(item.get("subjects"), f"{path}.subjects", problems)
         obj = item.get("object")
-        if problems.exact(obj, f"{path}.object", required=("kind",), optional=("types",)):
+        if problems.exact(
+                obj, f"{path}.object", required=("kind", "qualifiers"),
+                optional=("types",)):
             kind = obj.get("kind")
             if not isinstance(kind, str) or kind not in _OBJECT_KINDS:
                 problems.add("invalid_predicate", f"{path}.object.kind",
@@ -470,6 +474,20 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
             elif "types" in obj:
                 problems.add("invalid_predicate", f"{path}.object.types",
                              f"{kind!r} object must not declare entity types")
+            qualifiers = obj.get("qualifiers")
+            qpath = f"{path}.object.qualifiers"
+            if problems.exact(
+                    qualifiers, qpath, required=("required", "optional")):
+                required = qualifiers.get("required")
+                optional = qualifiers.get("optional")
+                _nonblank_list(required, f"{qpath}.required", problems, allow_empty=True)
+                _nonblank_list(optional, f"{qpath}.optional", problems, allow_empty=True)
+                overlap = sorted(set(_column_values(required)) &
+                                 set(_column_values(optional)))
+                if overlap:
+                    problems.add(
+                        "invalid_predicate", qpath,
+                        f"qualifier names must not be both required and optional: {overlap!r}")
 
 
 def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -577,7 +595,7 @@ def _validate_packs(section: Mapping[str, Any], problems: _Problems) -> None:
                     role = roles[role_id]
                     if problems.exact(
                             role, rpath, required=("kind", "required"),
-                            optional=("allowed_binding_kinds",)):
+                            optional=("allowed_binding_kinds", "allowed_values")):
                         role_kind = role.get("kind")
                         if not isinstance(role_kind, str) or role_kind not in _ROLE_KINDS:
                             problems.add("invalid_role_kind", f"{rpath}.kind",
@@ -593,6 +611,23 @@ def _validate_packs(section: Mapping[str, Any], problems: _Problems) -> None:
                                 problems.add(
                                     "invalid_role_kind", f"{rpath}.allowed_binding_kinds",
                                     f"binding kinds must be a subset of {sorted(compatible)}")
+                        if role_kind == "symbolic":
+                            if "allowed_values" not in role:
+                                problems.add(
+                                    "missing_field", f"{rpath}.allowed_values",
+                                    "symbolic role requires allowed_values")
+                            else:
+                                values = role["allowed_values"]
+                                _nonblank_list(values, f"{rpath}.allowed_values", problems)
+                                if (_is_list(values)
+                                        and list(values) != sorted(values, key=str)):
+                                    problems.add(
+                                        "invalid_role_kind", f"{rpath}.allowed_values",
+                                        "symbolic allowed_values must be sorted")
+                        elif "allowed_values" in role:
+                            problems.add(
+                                "invalid_role_kind", f"{rpath}.allowed_values",
+                                "allowed_values is only valid for symbolic roles")
             _validate_emission(claim.get("emit"), f"{cpath}.emit", problems)
 
 
@@ -1027,6 +1062,22 @@ def _cross_packs(packs: Mapping[str, Any], vocabulary: Mapping[str, Any],
                 _cross_emission_role(
                     roles, role_ref, f"{path}.emit.object.qualifiers.{qualifier}",
                     _SCALAR_ROLE_KINDS, problems, required_endpoint=False)
+            if predicate is not None:
+                qualifier_contract = predicate["object"]["qualifiers"]
+                required_qualifiers = set(qualifier_contract["required"])
+                optional_qualifiers = set(qualifier_contract["optional"])
+                emitted_qualifiers = set(obj.get("qualifiers", {}))
+                for qualifier in sorted(required_qualifiers - emitted_qualifiers):
+                    problems.add(
+                        "missing_required_payload",
+                        f"{path}.emit.object.qualifiers.{qualifier}",
+                        f"predicate {predicate_id!r} requires qualifier {qualifier!r}")
+                allowed_qualifiers = required_qualifiers | optional_qualifiers
+                for qualifier in sorted(emitted_qualifiers - allowed_qualifiers):
+                    problems.add(
+                        "unknown_payload_field",
+                        f"{path}.emit.object.qualifiers.{qualifier}",
+                        f"predicate {predicate_id!r} does not allow qualifier {qualifier!r}")
 
 
 def _cross_emission_role(roles: Mapping[str, Any], role_ref: str, path: str,
@@ -1082,6 +1133,14 @@ def _cross_profile_contract(profile_id: str, profile: Mapping[str, Any],
                 if bindings[role].get("kind") not in allowed:
                     problems.add("invalid_binding", f"{mpath}.bind.{role}.kind",
                                  f"binding kind is not allowed for role {role!r}")
+                if (roles[role].get("kind") == "symbolic"
+                        and bindings[role].get("kind") == "constant"
+                        and bindings[role].get("value") not in
+                        roles[role].get("allowed_values", [])):
+                    problems.add(
+                        "invalid_symbolic_constant", f"{mpath}.bind.{role}.value",
+                        f"constant {bindings[role].get('value')!r} is not registered "
+                        f"by symbolic role {role!r}")
         for role in sorted(roles):
             descriptor = roles[role]
             if descriptor.get("required") and role not in bindings:

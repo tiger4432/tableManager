@@ -32,6 +32,7 @@ import pytest
 import virtual_join_config as vjc
 import virtual_join_executor as vjx
 from database import crud, models, schemas
+from verified_join_contract import VerifiedJoinDescriptor
 
 JOIN_TABLES = {
     # 왼쪽 ― 로그 모양. 키당 여러 행이 정상이다(그것이 조인의 용도).
@@ -196,6 +197,7 @@ def test_the_two_unresolved_cases_stay_separately_observable(join_env, approved)
     ])
     rules = vjx.rules_for(db, "vjx_test_log")
     assert len(rules) == 1
+    assert isinstance(rules[0], VerifiedJoinDescriptor)
     model = models.DYNAMIC_TABLES["vjx_test_log"]
     ids = {r.business_key_val: r.row_id for r in db.query(model).all()}
     out = vjx.execute_rule(db, rules[0], list(ids.values()))

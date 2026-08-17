@@ -30,6 +30,7 @@ if _SERVER not in sys.path:
 
 import config_resolve_report as crr          # noqa: E402
 import virtual_join_config as vjc            # noqa: E402
+from verified_join_contract import VerifiedJoinDescriptor  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +307,8 @@ def test_load_verified_rules_drops_what_has_no_index(tmp_path):
     rej = []
     out = vjc.load_verified_rules(db, path=str(p), known_tables=TABLES, rejections=rej)
     assert [r["name"] for r in out] == ["ok"]
+    assert isinstance(out[0], VerifiedJoinDescriptor)
+    assert out[0]["verification_basis"] == "physical_unique_index"
     assert out[0]["unique_index"] == "uq_vjoin_vjoin_wafer_map_lot_slot"
     assert _codes(rej) == [vjc.CODE_NO_UNIQUE_INDEX]
     assert rej[0]["facts"]["required_index_ddl"].startswith("CREATE UNIQUE INDEX")

@@ -88,8 +88,11 @@ Binding은 `column`, `constant`, `entity`만 허용한다. 모든 Binding은
 - skip 1건: 현재 Windows 계정이 symlink 생성을 허용하지 않아 symlink escape fixture 생성 불가
 - malformed 반례: valid fixture의 모든 JSON node shape 파괴 + 각 node에 JSON 값 종류 6종을
   대입한 900건 이상을 검사하며, 모든 거절이 `code/path/message`를 갖는지 확인
-- 정상 Bundle canonical serialization SHA-256:
-  `b843cc9c3662d48a377a289818570d0ad66f951e574cf104cd3809654ffb090d` 유지
+- 2단계 승인 커밋(`ac380e4`)의 정상 Bundle canonical serialization SHA-256:
+  `b843cc9c3662d48a377a289818570d0ad66f951e574cf104cd3809654ffb090d`. 3단계에서
+  Vocabulary qualifier/symbolic Role 계약을 추가한 현재 schema fixture hash는
+  `93bb700979a48a105153b6d1ae025a006bfd2531bd426519c8550333f693b38b`이며, 이 행은
+  승인 당시 2단계 기준선을 보존한다.
 - PostgreSQL: `ASSY_PG_TEST_DATABASE_URL` 미설정으로 실행하지 않았으며 통과로 기록하지 않음
 - 정적 검사: 수정 Python `py_compile` 통과
 - DB migration/write/read, compiler, translator, mapper 실행, cursor 변경: `0`

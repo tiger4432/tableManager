@@ -84,6 +84,11 @@ immutable Registry를 만든다.
 Registry는 section의 immutable compiled view다. 도메인 등록값을 Python builtin과 병합하지
 않는다. Python에는 schema/validator/compiler와 trusted preparer implementation만 둔다.
 
+`vocabulary.<predicate>.object.qualifiers`는 `required`와 `optional`의 닫힌 목록을 소유한다.
+Pack emission은 required qualifier를 모두 제공하고 두 목록 밖의 qualifier를 만들 수 없다.
+Role의 값 domain을 닫아야 할 때는 `kind: "symbolic"`과 정렬·중복 없는
+`allowed_values`를 함께 선언한다. Binding의 constant가 이 목록 밖이면 compile 전에 거절한다.
+
 ### Section 간 참조
 
 ```text

@@ -1,5 +1,25 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 3단계 2차 감사 보완, 재검수 대기
+>
+> **현재 단계/상태:** `STAGE_3_IN_REVIEW` / `NOT_APPROVED`. 1·2단계만 승인됐고
+> Stage 4는 시작하지 않았다.
+>
+> **이번 보완:** Vocabulary required/optional qualifier 계약, symbolic Role의 등록 literal
+> domain, 기존 virtual join 물리 UNIQUE verifier가 생성하는 공용 immutable
+> `VerifiedJoinDescriptor`, Bundle hash와 compiled semantic snapshot hash를 구현했다. 감사에서
+> 삭제·완화됐다고 지적한 3단계 승인 기준 5개도 원래 의미로 복구했다.
+>
+> **검증:** Stage 2+3 `146 passed, 1 skipped`, 조인 영향군 포함 `215 passed, 1 skipped`,
+> 동결 mapper `29 passed`. 전체 서버의 `main@ac380e4` 기준선은
+> `4010 passed, 145 failed, 23 errors, 207 skipped, 1 xfailed`, 현재 브랜치 최종 재실행은
+> `4069 passed, 142 failed, 23 errors, 204 skipped, 1 xfailed`다. JUnit bad node 집합 기준
+> 신규 failure/error는 `0`; 기존 165개 bad node를 통과로 표현하지 않는다. 운영/격리
+> PostgreSQL은 연결하지 않았고 DB read/write/migration은 0이다.
+>
+> **다음 관문:** 집중 fix 커밋을 지정 audit 세션에 제출해 Stage 3 독립 재검수를 받는다.
+> audit 승인 전에는 Stage 4 코드 변경을 금지한다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 2단계 승인·main 병합, 3단계 Registry 검수 대기
 >
 > **기준선:** 사용자가 2단계를 승인해 `ac380e4`를 `main`에 fast-forward 병합했다. 현재
