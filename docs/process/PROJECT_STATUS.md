@@ -1,5 +1,19 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-18 현재 — Ledger V2 7단계 Audit round-1 보완, 재검수 준비
+>
+> **현재 단계/상태:** `STAGE_7_IN_REVIEW / NOT_APPROVED`.
+>
+> **Audit 지적:** 초기 exact commit `e567778201e84984719f4a8dfcdecac5ae50fa2c`은 기본 V2
+> CLI에서도 legacy config를 먼저 읽었고, `--legacy`가 reset/replay 승인 gate를 우회했다.
+>
+> **보완:** 기본 V2는 manifest 외 legacy config I/O를 하지 않는다. `--config`는 명시적
+> `--legacy` 전용이며, reset/replay는 모든 CLI mode에서 config·DB·source/store보다 먼저
+> 구조화 거절한다. 집중 `22 passed`, 직접 영향군 `364 passed, 10 skipped`, 신규 실패 0이다.
+>
+> **다음 관문:** 후속 exact commit을 동일 독립 Audit 세션에 재제출한다. APPROVE 전 main
+> 병합·제품 COMPLETE·ontology config explorer 착수는 금지한다.
+
 > ## 🧭 2026-08-18 현재 — Ledger V2 7단계 비파괴 cutover 구현 완료, 독립 Audit 대기
 >
 > **현재 단계/상태:** `STAGE_7_IN_REVIEW / NOT_APPROVED`.

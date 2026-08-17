@@ -96,13 +96,16 @@ legacy 코드 삭제와 데이터 reset은 같은 커밋/작업으로 묶지 않
 
 - `server/config/ontology/manifest.json`만으로 현재 live Ledger source `lot_event`의 ready
   snapshot을 만든다.
-- operator CLI의 기본은 manifest selector이며 `--legacy`는 별도 은퇴 승인 전 compatibility
-  escape hatch다.
+- operator CLI의 기본은 manifest selector이며 이 경로는 legacy flat config를 import/load하지
+  않는다. `--config`는 명시적 `--legacy`에서만 허용된다.
+- `--legacy`는 별도 은퇴 승인 전 compatibility escape hatch지만 destructive approval 경계를
+  우회할 수 없다.
 - physical `lot_event` 열을 `LiveLotEventSourcePreparer`가 Stage 6에서 검증된 logical
   EventFrame으로 정규화한다. compiler core에는 source 이름 분기가 없다.
 - 기존 cursor가 legacy의 `{event_time}` 모양이면 v2 `{event_time, txn_seq}`와 섞지 않고
   `legacy_cursor_reset_required`로 Atom 0·cursor 미이동한다.
-- cursor reset/replay 옵션은 `destructive_approval_required`로 실행 전에 차단한다.
+- cursor reset/replay 옵션은 모든 공개 CLI mode에서 v2/legacy dispatch와 config/DB/source/store
+  접근 전에 `destructive_approval_required`로 차단한다.
 - 기존 config 이동, legacy 코드 삭제, DB reset은 실행하지 않았다. 이 선택 항목은 정확한
   대상·백업·복구 절차에 대한 별도 승인 뒤에만 수행한다.
 

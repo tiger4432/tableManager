@@ -242,7 +242,6 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     rule change (the new `source_translator_ver` makes the new atoms distinct from the
     old ones, which is correct: they are different claims made by different rules).
     """
-    from . import config as ledger_config
     from . import gate
 
     if ontology_root is not None:
@@ -254,6 +253,8 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                 engine, cutover, source=source, fetch_rows=fetch_rows,
                 reset_cursor=reset_cursor, start_from=start_from,
                 max_batches=max_batches)
+
+    from . import config as ledger_config
 
     source_cfg = ledger_config.source_config(cfg, source)
     if source_cfg is None:
@@ -1506,7 +1507,7 @@ def beat(result):
 
 def main(argv=None):
     _bootstrap_path()
-    from .cutover_v2 import DEFAULT_ONTOLOGY_ROOT
+    from .cutover_v2 import DEFAULT_ONTOLOGY_ROOT, LedgerV2CutoverError
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", default="lot_event")
@@ -1527,14 +1528,34 @@ def main(argv=None):
         help="temporary compatibility escape hatch; bypass the v2 manifest selector")
     args = parser.parse_args(argv)
 
+    # This is the public operator boundary.  Until a separate destructive approval
+    # capability exists, neither execution mode may reset or replay a cursor.  Keep
+    # the gate ahead of config, database, source, and store access.
+    if args.reset_cursor or args.start_from is not None:
+        path = "reset_cursor" if args.reset_cursor else "start_from"
+        raise LedgerV2CutoverError(
+            "destructive_approval_required", path,
+            "cursor reset or replay requires a separate destructive approval",
+        )
+    if not args.legacy and args.config is not None:
+        raise LedgerV2CutoverError(
+            "legacy_config_requires_legacy_mode", "config",
+            "--config is a legacy-only option and requires --legacy",
+        )
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s")
 
     from database.database import engine
-    from . import config as ledger_config
 
-    cfg = ledger_config.load(args.config)
+    if args.legacy:
+        from . import config as ledger_config
+        cfg = ledger_config.load(args.config)
+    else:
+        # The manifest is the complete v2 authoring root.  Do not read or validate
+        # the retired flat config on this path.
+        cfg = {}
     result = run(engine, cfg, source=args.source, fetch_rows=args.fetch_rows,
                  reset_cursor=args.reset_cursor, start_from=args.start_from,
                  max_batches=args.max_batches,

@@ -337,19 +337,76 @@ def test_operator_cli_defaults_to_manifest_and_legacy_is_explicit(monkeypatch):
     import ledger.config as legacy_config
 
     calls = []
+    legacy_loads = []
     monkeypatch.setattr(database_module, "engine", object())
-    monkeypatch.setattr(legacy_config, "load", lambda path=None: {})
+    monkeypatch.setattr(
+        legacy_config, "load",
+        lambda path=None: legacy_loads.append(path) or {"legacy": True})
     monkeypatch.setattr(backfill, "beat", lambda result: None)
     monkeypatch.setattr(
         backfill, "run",
-        lambda engine, cfg, **kwargs: calls.append(kwargs) or {},
+        lambda engine, cfg, **kwargs: calls.append((cfg, kwargs)) or {},
     )
 
     assert backfill.main(["--max-batches", "0"]) == 0
-    assert calls[-1]["ontology_root"] == str(DEFAULT_ONTOLOGY_ROOT)
+    assert legacy_loads == []
+    assert calls[-1][0] == {}
+    assert calls[-1][1]["ontology_root"] == str(DEFAULT_ONTOLOGY_ROOT)
 
     assert backfill.main(["--legacy", "--max-batches", "0"]) == 0
-    assert calls[-1]["ontology_root"] is None
+    assert legacy_loads == [None]
+    assert calls[-1][0] == {"legacy": True}
+    assert calls[-1][1]["ontology_root"] is None
+
+
+@pytest.mark.parametrize(
+    ("argv", "path"),
+    [
+        (["--reset-cursor"], "reset_cursor"),
+        (["--from", "2026-08-17T00:00:00"], "start_from"),
+        (["--legacy", "--reset-cursor"], "reset_cursor"),
+        (["--legacy", "--from", "2026-08-17T00:00:00"], "start_from"),
+    ],
+)
+def test_operator_cli_blocks_reset_and_replay_before_io(
+        monkeypatch, argv, path):
+    import ledger.backfill as backfill
+    import ledger.config as legacy_config
+
+    monkeypatch.setattr(
+        legacy_config, "load",
+        lambda path=None: pytest.fail("legacy config must not be read"))
+    monkeypatch.setattr(
+        backfill, "run", lambda *args, **kwargs: pytest.fail("source must not run"))
+
+    with pytest.raises(LedgerV2CutoverError) as exc:
+        backfill.main(argv)
+
+    assert exc.value.to_mapping() == {
+        "code": "destructive_approval_required",
+        "path": path,
+        "message": "cursor reset or replay requires a separate destructive approval",
+    }
+
+
+def test_operator_cli_rejects_legacy_config_option_in_v2_mode(monkeypatch):
+    import ledger.backfill as backfill
+    import ledger.config as legacy_config
+
+    monkeypatch.setattr(
+        legacy_config, "load",
+        lambda path=None: pytest.fail("legacy config must not be read"))
+    monkeypatch.setattr(
+        backfill, "run", lambda *args, **kwargs: pytest.fail("source must not run"))
+
+    with pytest.raises(LedgerV2CutoverError) as exc:
+        backfill.main(["--config", "legacy.json"])
+
+    assert exc.value.to_mapping() == {
+        "code": "legacy_config_requires_legacy_mode",
+        "path": "config",
+        "message": "--config is a legacy-only option and requires --legacy",
+    }
 
 
 def test_existing_other_snapshot_cursor_blocks_before_source_read(monkeypatch):
