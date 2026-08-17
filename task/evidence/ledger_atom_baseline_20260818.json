@@ -164,6 +164,38 @@
         }
       ]
     },
+    "refuse_ambiguous_row": {
+      "code": "ambiguous_source_event",
+      "error_type": "RoleFrameError",
+      "message": "one row declares both parent_lot and child_lot",
+      "path": "event_frame",
+      "refused": true,
+      "rows": 1
+    },
+    "refuse_naive_timestamp": {
+      "code": "invalid_time_role",
+      "error_type": "RoleFrameError",
+      "message": "time Role must be a timezone-aware datetime",
+      "path": "role_frame.rows[0].roles.occurred_at",
+      "refused": true,
+      "rows": 1
+    },
+    "refuse_slot_wafer_length_mismatch": {
+      "code": "invalid_positional_list",
+      "error_type": "RoleFrameError",
+      "message": "slots has 3 entries but wafers has 2",
+      "path": "event_frame.rows[0]",
+      "refused": true,
+      "rows": 1
+    },
+    "refuse_unknown_event_type": {
+      "code": "undeclared_source_vocabulary",
+      "error_type": "RoleFrameError",
+      "message": "unsupported lot event type 'TRACK_IN'",
+      "path": "event_frame.event_type",
+      "refused": true,
+      "rows": 1
+    },
     "split_complete": {
       "atoms": 9,
       "incomplete": 0,
