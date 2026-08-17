@@ -1,7 +1,8 @@
 # Ledger v2 7단계 수락 근거
 
-> 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-18
-> 검수 대상: Audit round-1 지적을 닫은 Stage 7 후속 exact commit
+> 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-18
+> 승인 대상: Audit round-1 지적을 닫은 exact commit `f516268eadae5505c586ce5235e76dd729c1e573`
+> 독립 Audit: `APPROVE` · 집중 `22 passed` · 직접 영향군 `364 passed, 10 skipped`
 
 ## 구현 결과
 
@@ -89,5 +90,5 @@ gate를 우회하는 두 경계를 거절했다. 후속 구현은 legacy import/
 - DT/observation Profile과 parity
 
 위 항목은 구현 누락을 숨긴 것이 아니라 7단계 정본이 별도 사용자 승인을 요구하는 선택적
-파괴/은퇴 범위다. Audit은 비파괴 cutover 구현을 검수한다. 승인 전 제품 상태는
-`NOT_APPROVED`이며 계획을 `COMPLETE`로 표시하지 않는다.
+파괴/은퇴 범위다. 비파괴 cutover는 독립 Audit과 사용자 상설 승인을 통과했다. 이 승인은
+선택적 reset/replay나 legacy 삭제의 별도 파괴 승인을 대신하지 않는다.

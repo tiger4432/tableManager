@@ -1,6 +1,6 @@
 # Ledger v2 Ontology Config Root
 
-> 상태: `STAGE_7_IN_REVIEW` / `MANIFEST_ACTIVE_FOR_LOT_EVENT`
+> 상태: `STAGE_7_APPROVED` / `MANIFEST_ACTIVE_FOR_LOT_EVENT`
 > loader/compiler: `server/ledger/setup_bundle.py` → `server/ledger/cutover_v2.py`
 
 이 디렉터리는 Ledger v2 authoring 정본의 단일 root다. `manifest.json`이 열거한 다섯 파일만

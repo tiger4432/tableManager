@@ -1,6 +1,6 @@
 # 7단계 — Cutover, 선택적 원장 Reset, Legacy 은퇴
 
-> 구현 상태: `IN_REVIEW` · 승인: `NOT_APPROVED`
+> 구현 상태: `COMPLETE` · 승인: `APPROVED` · exact commit `f516268eadae5505c586ce5235e76dd729c1e573`
 > 비파괴 범위: manifest/config root, `lot_event` selector, dry-run·existing cursor/store 연결
 > 별도 승인 대기: 운영 Ledger/cursor reset, legacy config/code 이동·삭제
 
@@ -90,7 +90,8 @@ legacy 코드 삭제와 데이터 reset은 같은 커밋/작업으로 묶지 않
 - reset을 실행했다면 승인된 backup 또는 source 재백필로 복구
 - 되돌림 중 v2/legacy를 같은 cursor version으로 섞지 않음
 
-완료 후 최종 승인을 받고서만 계획을 `COMPLETE`로 표시한다.
+비파괴 cutover는 독립 Audit과 사용자 상설 승인을 통과했다. 선택적 reset과 legacy 삭제는
+별도 파괴 승인 없이는 실행하지 않는다.
 
 ## 현재 구현 판정
 

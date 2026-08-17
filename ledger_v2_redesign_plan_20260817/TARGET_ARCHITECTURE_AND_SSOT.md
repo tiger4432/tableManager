@@ -1,8 +1,8 @@
 # Ledger v2 목표 구조와 정본 목록
 
-> 상태: `IMPLEMENTED / STAGE_7_IN_REVIEW` · 승인: `NOT_APPROVED`
+> 상태: `IMPLEMENTED / COMPLETE` · 승인: `APPROVED`
 > 결정일: 2026-08-17
-> 금지: 이 문서를 현행 구현 완료로 읽지 말 것
+> 경계: 비파괴 cutover 구현 완료. reset/replay·legacy 삭제는 별도 파괴 승인 필요
 
 ## 1. 목표 한 문장
 

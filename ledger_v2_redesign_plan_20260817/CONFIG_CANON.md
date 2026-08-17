@@ -1,6 +1,6 @@
 # Ledger v2 Config Canon
 
-> 상태: `IMPLEMENTED_FOR_LIVE_LEDGER_SOURCES` · Stage 7 `IN_REVIEW / NOT_APPROVED`
+> 상태: `IMPLEMENTED_FOR_LIVE_LEDGER_SOURCES` · Stage 7 `APPROVED`
 > Config root: `server/config/ontology/`
 > 핵심: Pack/Profile/Registry는 `ledger_config.json` 한 파일 안에서 함께 작성한다.
 

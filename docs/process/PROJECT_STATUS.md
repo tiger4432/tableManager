@@ -1,5 +1,21 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-18 현재 — Ledger V2 1~7단계 승인·main 병합 완료
+>
+> **현재 단계/상태:** `COMPLETE / APPROVED`.
+>
+> **승인 근거:** Stage 7 후속 exact commit
+> `f516268eadae5505c586ce5235e76dd729c1e573`을 지정 독립 Audit이 `APPROVE`했다. exact
+> archive에서 manifest ready·snapshot hash 일치, 집중 `22 passed`, 직접 영향군
+> `364 passed, 10 skipped`, F1/F2 CLI 반례 폐쇄를 재현했다.
+>
+> **운영 경계:** 기본 v2 CLI는 legacy config를 읽지 않으며 reset/replay는 모든 mode에서
+> 선행 차단한다. 운영 DB/cursor reset, replay, legacy 이동·삭제는 별도 파괴 승인 전까지
+> 계속 금지한다.
+>
+> **다음 작업:** 사용자 소유 `task/ontology_config_explorer_pending.md` 지시서에 따라 ontology
+> config explorer를 착수한다.
+
 > ## 🧭 2026-08-18 현재 — Ledger V2 7단계 Audit round-1 보완, 재검수 준비
 >
 > **현재 단계/상태:** `STAGE_7_IN_REVIEW / NOT_APPROVED`.
