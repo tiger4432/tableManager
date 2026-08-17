@@ -1,0 +1,147 @@
+# [Task] Ontology Config — 작성 모드(단계별 셋업)
+
+> **상태:** 제안(대기) — 착수 승인 필요
+> **우선순위:** 소유자 판정 대기
+> **등록:** 2026-08-18
+> **선행:** Ontology Config Explorer(탐색·편집) 완료 — `2d1ad86`
+> **요구사항 출처:** 2026-08-18 소유자 직접 셋업 세션(백지에서 손으로 JSON 작성)
+
+## 이 과제가 별건인 이유
+
+기존 Explorer 과제는 "이미 있는 선언의 정의와 사용처를 한 화면에서 탐색하고 안전하게
+편집"으로 범위가 못 박혀 있고, 그 범위 안에서 완료됐다. 실측한 경계는 다음과 같다.
+
+- 새 predicate·entity·pack·profile·source·preparer·mapper를 **생성할 수 없다**
+  (`config_drafts.py:172` — 컴파일되지 않은 대상은 `unknown_selection`으로 거절)
+- 선언 **삭제·이름 변경이 불가**하다 (`config_drafts.py:156` `_set_path`는 기존 잎만 교체)
+- `catalog/*`는 **읽기 전용**, `dataflows/chains.json`은 **화면에 존재하지 않는다**
+- config가 없거나 깨져 있으면 화면은 **HTTP 500 + 빈 3단 패널**이다
+  (`ontology_config_explorer_router.py:53` — `ConfigExplorerError`만 잡음)
+
+즉 백지에서 시작하는 사용자는 이 화면에 **들어올 수조차 없다.** 셋업 여정의 입구가 없다.
+
+## 완수 목표 (사용자 여정)
+
+> 소유자가 소스 테이블 하나를 정하고, 어드민 화면만으로 entities → vocabulary → packs →
+> preparers/mappers → profiles → sources → 실행 선택자까지 순서대로 채운 뒤, 그 화면에서
+> 백필 실행 준비 완료 상태를 확인한다. 도중에 JSON 파일을 직접 열지 않는다.
+
+완료 보고는 이 여정을 **직접 브라우저로 한 바퀴 돌아 본 뒤에만** 한다.
+
+## 일곱 걸음
+
+각 걸음이 한 화면이다. 걸음 순서는 의존 방향과 같다(뒤 걸음이 앞 걸음을 참조).
+
+| # | 걸음 | 사용자가 정하는 것 | 다음 걸음 조건 |
+|---|---|---|---|
+| 1 | Entities | 이름을 붙여 부를 대상과 식별키 | 최소 1개 |
+| 2 | Vocabulary | 낱말·주어 타입·목적어 종류·qualifier | 주어/목적어가 1의 엔터티를 가리킴 |
+| 3 | Packs | 낱말을 쓰는 문장 양식(역할·필수 여부) | emit이 2의 낱말과 서명 일치 |
+| 4 | Preparers / Mappers | 등록된 구현 선택 + 입출력 컬럼 | 구현이 신뢰 목록에 있음 |
+| 5 | Profiles | 역할 ↔ 실제 컬럼 결선 | 모든 바인딩 `approved` |
+| 6 | Sources | 관계·단위·커서·시각·순서 | driver 8칸 충족, group_by ⊆ identity |
+| 7 | 실행 선택자 | mode / parity / 승인 근거 | 선언한 모든 소스가 열거됨 |
+
+> 7걸음은 `dataflows/chains.json`이 남아 있을 때의 이야기다. 소유자 지시로 chains 제거가
+> 판정됐으므로(`task/ledger_config_single_file_pending.md`), 그 작업이 먼저 착지하면
+> **여섯 걸음**이 되고 마지막 걸음은 «선언이 곧 활성화»로 사라진다. 작성 모드는 여섯 걸음
+> 기준으로 설계한다.
+
+## 모든 걸음 화면이 반드시 보여야 하는 세 가지
+
+### 1. 고를 수 있는 것 — 닫힌 목록은 전부 선택지로
+
+자유 기입 금지. 아래는 전부 코드에 상수로 존재하므로 **API가 내보내고 UI가 렌더한다.**
+UI가 목록을 자기 소스에 하드코딩하면 선언이 늘어나는 날 조용히 어긋난다.
+
+| 목록 | 값 | 위치 |
+|---|---|---|
+| predicate status | active / retired | `setup_bundle.py:456` |
+| object kind | none / entity_ref / value / event_ref | `_OBJECT_KINDS:51` |
+| role kind | entity / time / quantity / identity / order / attribute / symbolic | `_ROLE_KINDS:45` |
+| binding kind | column / constant / entity | `public_bundle_schema:138` |
+| binding origin | user_declared / system_suggested / imported | `_BINDING_ORIGINS:41` |
+| approval status | pending / approved / rejected | `_APPROVAL_STATUSES:42` |
+| source unit | row / group | `_SOURCE_UNITS:52` |
+| mapper unit | event / row / group_by | `_MAPPER_UNITS:53` |
+| 실행 mode / parity | legacy·v2 / pending·approved·rejected | `cutover_v2.py:44` |
+| 등록된 구현 | preparer·mapper 이름과 버전 | `cutover_v2.py:90` |
+| 컬럼 후보 | 해당 relation의 실제 컬럼 | `catalog/tables.json` |
+
+`public_bundle_schema()`가 이미 이 역할의 씨앗이지만 현재 노출 범위가 목록 일부뿐이고
+**테스트 외 호출자가 없다.** 이것을 전 목록으로 확장해 작성 모드의 단일 공급원으로 삼는다.
+
+### 2. 고정돼 있어 못 고르는 것 — 이유와 함께
+
+닫힌 목록이 아니라 **코드가 요구하는 철자**가 있다. 지금은 화면에 아무 표시가 없고,
+틀리면 검증은 통과하고 실행 때 터진다. 이 비대칭이 셋업의 가장 큰 함정이다.
+
+- 낱말 base 이름 4개: `register` / `has_wafer` / `derived_from` / `slot_map`
+- 주어 타입 base 이름: `Lot` / `Wafer` (버전은 무시됨 — `_base()`가 `@N`을 뗌)
+- profile mapping_id 6개: `first_sight_lot` / `first_sight_wafer` / `positional_row` /
+  `pair_field` / `slot_preserving` / `shared_wafer`
+- qualifier 집합: `has_wafer`→`{slot}`, `slot_map`→`{from,to,wafer}`, 나머지 없음
+  (`ledger_v2_lot_event_role_mapper.py:209`에서 집합 동일성 대조)
+
+화면은 이들을 **선택 불가 항목으로 미리 채우고**, 왜 못 바꾸는지("현재 매퍼 구현이 이
+이름을 요구합니다")를 그 자리에 적는다. 사용자가 다른 이름을 원하면 그건 코드 작업임을
+같은 자리에서 알린다.
+
+### 3. 지금 빠진 것 — 결핍은 이름으로, 행동은 버튼으로
+
+검증기는 이미 **안정된 오류 코드 + 정확한 작성 경로**를 낸다
+(예: `bundle.sources.lot_event.driver.group_by: group_by columns must be included in
+identity`). 화면은 이것을 그대로 보여주면 되고, 문구를 새로 발명하지 않는다.
+
+각 걸음 상단에 "이 걸음이 끝나려면 남은 것"을 목록으로 두고, 항목마다 그 자리로 가는
+버튼을 둔다. 조용한 빈 목록·빈 패널을 남기지 않는다.
+
+## 필수 능력 (없으면 작성 모드가 성립하지 않음)
+
+0. **매퍼까지 화면 안에서** (소유자 지시 2026-08-18: 「유기적으로 생성, 삭제, 맵퍼까지
+   다 할 수 있게」). 매퍼 «구현»은 파이썬이지만, 범용 구현
+   (`DeclarativeRoleMapper`·`DirectJoinSourcePreparer`)이 등록되면 **단순 소스는 파이썬
+   0줄로 개통된다** — 화면에서 준비기·매퍼를 고르고 입출력 컬럼과 emits를 선언하면 끝이다.
+   split/merge처럼 코드가 필요한 경우에만 «이 소스는 전용 구현이 필요합니다»를 화면이
+   명시하고, 어떤 계약(UNIT/입력/emits)을 만족해야 하는지 그 자리에서 보여준다.
+   → 선행: `task/ledger_config_single_file_pending.md`의 자기 등록 전환.
+1. **선언 생성·삭제·이름 변경** — 현재 없음. 1순위.
+2. **백지 입구** — config root/manifest가 없거나 깨졌을 때 500 대신, 무엇이 없는지 이름을
+   대고 최초 뼈대를 만드는 화면. (`ConfigExplorerError`로 감싸 명명된 결핍으로 렌더)
+3. **`dataflows/chains.json` 편집** — 소스가 실제로 도는지 결정하는 마지막 칸. 현재 화면에
+   존재하지 않아 셋업이 화면 안에서 끝나지 않는다.
+4. **`catalog/tables.json` 작성** — 컬럼 후보의 공급원. 최소한 스키마 시트 업로드로 초안
+   생성(`server/scripts/table_config_from_schema.py`와 같은 계열).
+5. **서식 보존** — 활성화가 파일 전체를 `indent=2`로 재작성해 손으로 잡은 서식과 diff를
+   파괴한다(`config_drafts.py:483`). 변경 잎만 갱신하거나 기존 서식을 유지한다.
+
+## 같이 걷어낼 거짓 초록
+
+작성 중 사용자가 근거로 삼게 되는 자리라 이 과제에 함께 넣는다.
+
+- 무결성 패널 6항목 중 5개가 계산 없이 `valid` 리터럴 (`config_explorer.py:749`)
+- 모든 virtual join에 "물리 UNIQUE 검증을 거친" 단언 — 검증 레지스트리는 항상 비어 있음
+  (`config_explorer.py:133`)
+- 활성화 시 "runtime convergence 확인됨" — 자기 인자를 돌려주는 함수와 비교
+  (`config_explorer_service.py:34`)
+- 한 섹션만 비면 그 그룹 제목 자체가 사라져 "없음"과 "다음 쪽"이 구분되지 않음
+  (`ontology_explorer_view.js:51`)
+- 100개 초과 선언은 화면에서 도달 불가(페이지 이동 컨트롤 없음)
+
+## 완료 판정
+
+- [ ] 백지 상태(config root 없음)에서 화면에 들어가 일곱 걸음을 끝내고 lot_event가
+      실행 준비 상태로 표시된다. 도중에 파일을 직접 열지 않는다.
+- [ ] 위 여정을 포크(총괄)가 직접 브라우저로 한 바퀴 돌았다.
+- [ ] 닫힌 목록은 전부 서버 공급이며, UI 소스에 목록 리터럴이 없다.
+- [ ] 고정 철자 항목은 선택 불가 + 이유 표시로 렌더된다.
+- [ ] 각 걸음의 결핍이 이름과 행동 버튼으로 보이고, 조용한 빈 화면이 없다.
+- [ ] 활성화 후 파일 서식이 보존되고 diff가 변경 잎에 국한된다.
+- [ ] 거짓 초록 5건이 제거되거나 실제 계산으로 대체됐다.
+- [ ] 렌더 결과를 검사하는 테스트가 존재한다(행을 전부 지우면 빨개진다).
+
+## 비범위
+
+- 매퍼·준비기 신규 구현(파이썬). 이 과제는 **등록된 구현을 고르는 화면**까지다.
+- 백필 실행·커서 이동·DB reset.
+- 기준본 CSS·3단 배치의 재디자인. 작성 모드는 기존 시각 정본을 따른다.

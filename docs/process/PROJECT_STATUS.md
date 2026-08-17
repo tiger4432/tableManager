@@ -1,5 +1,32 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🔥 2026-08-18 최신 — Ledger 단순화 프로그램 착수 (소유자 승인)
+>
+> **소유자 목표:** 「ledger_config랑 mapper 함수만 바라보면 되게」. 셋업하는 사람이
+> `ledger_config.json` 하나와 매퍼 함수 하나만 보면 되고, 단순 소스는 매퍼조차 필요 없다.
+>
+> **정본:** [`task/ledger_simplification_program.md`](../../task/ledger_simplification_program.md)
+> (구성 과제 3건: 단일 파일·자기 등록 / 매퍼 개주 / explorer 작성 모드)
+>
+> **소유자가 config를 직접 다시 씀 (2026-08-18).** 백지에서 손으로 작성해 확정했다.
+> 확정 스냅샷 `363c693e9fd2...`, readiness `ready`, lot_event v2/approved.
+> 원자 기준선: [`task/evidence/ledger_atom_baseline_20260818.json`](../../task/evidence/ledger_atom_baseline_20260818.json)
+> — split 9 / split-불완전 7 / merge 11 / track_in 7. **모든 라운드의 게이트는 이 표 디프 0.**
+>
+> **판정 (실측 근거):**
+> - `chains`는 제거 가능. `mode:"legacy"`는 아무 일도 않고 정상 종료하며(`backfill.py:1570`
+>   → 빈 config → refuse), `parity_status`/`approval_ref`는 대조되지 않는 문자열이다.
+>   `enrichments`(소비자 0)·`virtual_joins`(켜면 실행 거절)도 함께 제거. **선언이 곧 활성화.**
+> - `cutover_v2`의 신뢰 목록은 임의 코드 실행 차단 경계라 **경계는 유지, 목록만 제거**
+>   (자기 등록). 이미 존재하나 등록 누락으로 잠긴 `DeclarativeRoleMapper`·
+>   `DirectJoinSourcePreparer`가 열리면 단순 소스는 파이썬 0줄.
+> - lot-event 매퍼 475줄 중 업무 해석은 ~75줄, 나머지는 배선. 판정 기준은
+>   「매퍼 파일에 `mapping_id`·`claim_ref` 문자열 0개」.
+>
+> **레인:** 1라운드 구현자 세션 착수 지시 완료. 3라운드(explorer UI)는 소유자가 다른 레인에
+> 지시한 **explorer UI 감사 결과 도착 후** 병합해 시작 — 총괄이 전달한다.
+> **검수 등급 T1.** DB reset·커서 이동·백필 실행은 범위 밖.
+
 > ## 🧭 2026-08-18 현재 — Ontology Config Explorer 전체 완료·승인·main 병합
 >
 > **현재 단계/상태:** `ONTOLOGY_CONFIG_EXPLORER_COMPLETE / APPROVED`.
