@@ -134,6 +134,64 @@ False(닿으면 주석으로 가져오되 통과 금지 — has_wafer) / None(�
 | `mechanism_models.json` | **왜**: 물리량 그래프 + bindings(잎→물리량) | 기전 관문이 전부 «모름» — 원인이어도 설명 못 함 |
 | `ledger_journey.json` | **이름·구간**: 어느 술어가 여정을 싣나(segments), 한국어 라벨 | 여정이 원시 경로로 렌더(못생기게 — 의도) |
 
+**실물 예시** (라이브/샘플 파일에서 인용):
+
+```jsonc
+// siblings_axes.json — 기하: 모집단 단위와 «원장으로 가는 다리»
+"geometry": {
+  "unit_columns": ["base_wafer_id", "base_x", "base_y"],   // 모집단의 낱개 = 칩
+  "ledger_subject": {                                       // 이 다리가 없으면 걷기 대조 불가
+    "type": "Wafer", "key": "wafer", "column": "base_wafer_id"
+  }                                                         // 「이 표의 base_wafer_id가 곧 Wafer 주어의 wafer 키다」
+},
+"attribution": [{ "relation": "bonding_log",
+  "join": { "base_wafer_id": "base_id", "base_x": "bx", "base_y": "by" },
+  "axes": [
+    { "name": "bond_lot", "label": "본딩 랏", "column": "bond_lot" },   // 마킹·묶음 축
+    { "name": "wafer",    "label": "웨이퍼",  "column": "base_id" }     // 주어 자체를 축으로 (WF 마킹)
+  ]}]
+
+// mechanism_models.json — 「왜」: 잎→물리량 바인딩 + 방향 엣지
+"bindings": {
+  "processed_with:params_actual.pressure_MPa": ["bond_pressure"]   // 이 잎은 본딩 압력을 잰다
+},
+"void_formation": { "edges": [
+  { "from": "bond_pressure",   "to": "interface_unfill", "dir": "-" },  // 저압 → 미충전↑
+  { "from": "interface_unfill", "to": "void",            "dir": "+" }   // 미충전 → 보이드↑
+]}
+
+// ledger_journey.json — 구간·이름
+"segments":    { "processed_with": { "name_path": "step",          // 이 술어가 여정을 싣고,
+                                     "family_path": "step_family" } }  // payload의 이 잎이 스텝 이름이다
+"step_labels": { "BONDING": "본딩", "CMP": "연마" },
+"field_labels": { "pressure_MPa": { "label": "압력", "unit": "MPa" } }
+```
+
+주의 하나: 세 파일 다 **원장 잎의 철자를 인용**한다(`params_actual.pressure_MPa`,
+`step`…). 철자가 틀려도 오류가 아니라 침묵이다 — §5-3의 비대칭이 정확히 여기서
+문다.
+
+### 5-2-bis. 읽기 = 서브그래프 추출 (소유자 정식화)
+
+다섯 해석기는 사실 한 기계의 다섯 얼굴이다:
+
+```
+① 추출 — 증언 더미에서 서브그래프를 오려낸다 (무엇을 기준으로 오리는지만 다름)
+② 재판 — 해소기가 경쟁 주장을 판정한다 (전부 공유)
+③ 렌더 — 오려낸 것을 질문 모양으로 그린다
+```
+
+| 해석기 | 추출 기준 | 렌더 |
+|---|---|---|
+| 걷기 | 한 대상에서 traversable 엣지로 닿는 것 | 홉 사슬 |
+| 대조 | 마킹 집합 vs 나머지, 각각의 잎 전부 | 관문 붙은 후보 순위 |
+| 여정 | 대상 «둘»의 공정 주석 | 구간 접힘/카드 |
+| 맵 | 한 프레임에 앉는 칩들 | 좌표 투영 |
+| 구조 뷰 | 전체 (유형 수준으로 접어서) | 유형 그래프 |
+
+그래서 «서브그래프 탐색기»(보류 중 계획)가 이 다섯의 일반형이다 — 추출 기준을
+사용자가 직접 쥐는 여섯째 얼굴.
+
 ### 5-3. 쓰기측과의 결정적 비대칭 (함정의 뿌리)
 
 - **쓰기측 선언이 틀리면 → 게이트가 거절한다.** 시끄럽고, 즉시고, 이름이 붙는다.
