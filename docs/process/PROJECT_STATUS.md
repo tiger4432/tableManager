@@ -1,5 +1,18 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 5단계 승인·main 병합, 6단계 착수
+>
+> **현재 단계/상태:** Stage 5 `APPROVED`; Stage 6 `IN_PROGRESS / NOT_APPROVED`.
+>
+> **승인 근거:** exact commit `4508c12c5acad6b3a48affde61220a5e2e1709a9`을 독립 Audit이
+> `APPROVE`했다. 물리열 cursor, verified batch join, fail-closed preparation,
+> provenance/replay, 직접 영향군 `339 passed, 1 skipped`를 확인했다. 사용자 상설 승인에
+> 따라 main에 병합했다.
+>
+> **다음 범위:** legacy↔v2 semantic shadow parity를 고정하고 격리 PostgreSQL에서 동일
+> snapshot의 dry-run→gate→LedgerStore→cursor 단일 transaction과 실패 시 Atom0/cursor 불변을
+> 검증한다. 전체 서버 suite는 사용자 지시에 따라 생략한다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 5단계 구현 완료, 독립 Audit 대기
 >
 > **현재 단계/상태:** `STAGE_5_IN_REVIEW` / `NOT_APPROVED`. Stage 6은 시작하지 않았다.

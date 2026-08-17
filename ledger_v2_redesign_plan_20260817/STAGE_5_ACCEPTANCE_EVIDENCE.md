@@ -1,7 +1,7 @@
 # Ledger v2 5단계 수락 근거
 
-> 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
-> 브랜치: `feature/ledger-v2-stage5-source-driver`
+> 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-17
+> 승인 커밋: `4508c12c5acad6b3a48affde61220a5e2e1709a9`
 
 ## 변경 파일과 역할
 
@@ -80,5 +80,10 @@ CoreDie × 3 → component_of → FinalChip
 - dependency replay 후보의 DB worklist 적재와 supersede 실행
 - 운영 cutover/reset/legacy 제거
 
-자체 판정: Stage 5 독립 Audit을 요청할 수 있다. 승인 전 상태는
-`STAGE_5_IN_REVIEW / NOT_APPROVED`이고 Stage 6을 시작하지 않는다.
+## 독립 Audit 승인
+
+Audit은 exact commit `4508c12c5acad6b3a48affde61220a5e2e1709a9`에서 물리열 cursor,
+sealed SourcePreparer, issued descriptor 공유, 1001-key/2-query, fail-closed 준비 오류,
+provenance/replay와 다층 fixture를 확인했다. 독립 직접 영향군은 `339 passed, 1 skipped`였고
+skip은 기존 Windows symlink 권한 항목이다. 차단 사항 없이 `APPROVE`됐으며 사용자 상설
+승인에 따라 main 병합과 Stage 6 착수를 진행한다.
