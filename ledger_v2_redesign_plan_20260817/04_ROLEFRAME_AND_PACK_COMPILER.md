@@ -1,6 +1,6 @@
 # 4단계 — pandas RoleFrame과 범용 Pack Compiler
 
-> 구현 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
+> 구현 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-17
 > 구현 근거: [`STAGE_4_ACCEPTANCE_EVIDENCE.md`](./STAGE_4_ACCEPTANCE_EVIDENCE.md)
 
 ## 목표
@@ -140,4 +140,5 @@ RoleFrame 검증, Pack/Vocabulary/Entity 기반 LedgerFrame compiler와 순수 d
 
 Mapper context에는 Snapshot과 SourcePlan만 있으며 DB/session/cursor/gate/store capability가 없다.
 기존 driver, Chain mapper, translator, gate/store/cursor는 수정하거나 연결하지 않았다. 현재는
-독립 Audit 검수 대기이며 5단계는 시작하지 않는다.
+독립 Audit은 exact commit `1d9bd4aa2f1b0ca5012c959e4647d8feab956ee1`을
+`APPROVE`했다. 사용자 상설 승인에 따라 main에 병합했으며 5단계 착수가 승인됐다.

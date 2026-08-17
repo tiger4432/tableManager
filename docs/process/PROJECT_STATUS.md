@@ -1,5 +1,17 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 4단계 승인·main 병합, 5단계 착수
+>
+> **현재 단계/상태:** Stage 4 `APPROVED`; Stage 5 `IN_PROGRESS / NOT_APPROVED`.
+>
+> **승인 근거:** exact commit `1d9bd4aa2f1b0ca5012c959e4647d8feab956ee1`을 독립 Audit이
+> `APPROVE`했다. 정본 EventFrame→RoleFrame→Pack compiler 경계와 runtime/DB 비침범,
+> 직접 영향군 `205 passed, 1 skipped`를 확인했다. 사용자 상설 승인에 따라 main에 병합했다.
+>
+> **다음 범위:** 기존 source reader/cursor의 base DataFrame을 등록 pandas SourcePreparer가
+> 동일 immutable VerifiedJoinDescriptor로 batch join하여 완성 EventFrame으로 반환하는 경계를
+> 구현한다. 전체 서버 suite는 사용자 지시에 따라 생략하고 직접 영향군만 검증한다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 4단계 구현 완료, 독립 Audit 대기
 >
 > **현재 단계/상태:** `STAGE_4_IN_REVIEW` / `NOT_APPROVED`. Stage 5는 시작하지 않았다.

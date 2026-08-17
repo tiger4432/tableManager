@@ -1,7 +1,7 @@
 # Ledger v2 4단계 수락 근거
 
-> 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
-> 브랜치: `feature/ledger-v2-stage4-roleframe`
+> 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-17
+> 승인 커밋: `1d9bd4aa2f1b0ca5012c959e4647d8feab956ee1`
 
 ## 변경 파일과 역할
 
@@ -107,5 +107,10 @@ Binding의 `binding_origin` 변경은 위 의미 필드를 바꾸지 않는다. 
 - PostgreSQL E2E와 legacy parity
 - 운영 config·cutover·reset
 
-자체 판정: Stage 4 독립 Audit을 요청할 수 있다. 승인 전 상태는 계속
-`STAGE_4_IN_REVIEW / NOT_APPROVED`이고 Stage 5를 시작하지 않는다.
+## 독립 Audit 승인
+
+Audit은 exact commit `1d9bd4aa2f1b0ca5012c959e4647d8feab956ee1`에서 정본 경로,
+sealed mapper registry, `compiler_contract_version=2`, runtime/DB 비침범을 확인했다.
+독립 직접 영향군 결과는 `205 passed, 1 skipped`였고 skip은 기존 Windows symlink 권한
+항목이다. 차단 사항 없이 `APPROVE`됐으며 사용자 상설 승인에 따라 main 병합과 Stage 5
+착수를 진행한다.
