@@ -1,0 +1,73 @@
+{
+  "inspection_run": {
+    "__comment": "[VOID SCHEMA — the DENOMINATOR] One row = one scan that HAPPENED. It exists so that 'no void rows' can be told apart from 'never scanned'; a void_yn column on bonding_log cannot tell those apart and both read false (DEFECT_SCHEMA_PROPOSAL §1). Yield needs a denominator: '3 voids' means nothing without 'out of how many scans'. | KEY = (method, base_wafer_id, base_x, base_y, stack_gate, observed_at). A scan is 'this method looked at this package layer at this instant', and a package cannot be in two machines at once, so that tuple is unique by physics. recipe_id/eqp_id are RECORDED BUT NOT KEY MATERIAL, deliberately: a re-delivered file that corrects a typo'd recipe must UPDATE the run, not mint a second one and orphan its voids. 🔴 The cost, named: if a source's observed_at is coarser than the re-scan interval (date-only, and the package is scanned twice in a day) the second run COLLIDES with the first and the denominator silently loses a run. The remedy when a real file shows a scan/job id exists is one line — add it to composite_key_source. | observed_at is 'datetime' -> physical timestamptz (R5), and it is the SOURCE's inspection time, never arrival. ⚠️ crud.cast_value_by_type has NO datetime branch, so this column receives a STRING at the write boundary; PostgreSQL coerces it. Measured on assy_qa: an offset-bearing string lands correctly, garbage is REFUSED (DataError), and a NAIVE string is silently reinterpreted in the session TimeZone — which is exactly the value R5 forbids. The parser therefore emits an explicit offset and never a naive stamp. | base_x/base_y are QUANTITIES (R1 'do you do arithmetic on it') and base_wafer_id is an assigned NAME, so string (R1). stack_gate is 'number' because layer order is arithmetic and '10' < '3' lexicographically; the physical column is double precision, which cannot forbid 3.5, so the PARSER enforces integrality. | NO subject_kind column: every accepted row is package-scoped BY CONSTRUCTION (base_x is key material and the gate refuses a blank one), so the column would be a constant. NO source_file column: cell_sources.source_name already carries the originating filename per cell, and a second home for one fact is the ROOT_DEFECTS '대조 안 함' root. | NO map_key_columns: a run is not a wafer grid. Declaring them would opt this table into replace_map purge scoping and SCHEMA_CANON R3's scope-widening incident for nothing.",
+    "business_key": "run_uid",
+    "composite_key_source": [
+      "method",
+      "base_wafer_id",
+      "base_x",
+      "base_y",
+      "stack_gate",
+      "observed_at"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "run_uid": "string",
+      "method": "string",
+      "base_wafer_id": "string",
+      "base_x": "number",
+      "base_y": "number",
+      "stack_gate": "number",
+      "recipe_id": "string",
+      "eqp_id": "string",
+      "observed_at": "datetime"
+    },
+    "display_columns": [
+      "run_uid",
+      "method",
+      "base_wafer_id",
+      "base_x",
+      "base_y",
+      "stack_gate",
+      "recipe_id",
+      "eqp_id",
+      "observed_at"
+    ]
+  },
+  "void_obs": {
+    "__comment": "[VOID SCHEMA — the OBSERVATION] One row = one void seen by one scan. Columns are the eight the real SAT output carries (product owner 2026-08-13): base wafer id, base_x, base_y, inchip_x, inchip_y, gate, radius_x, radius_y. They say exactly two things — WHERE (which package, which stack layer, where inside the die) and HOW BIG (an elliptical extent). | 🔴 THE GRADE IS NEVER STORED. Pass/fail is `area > threshold` and the threshold is a RECIPE parameter, so a stored verdict makes history un-re-judgeable and drops a 5%-recipe FAIL into the same cell as a 10%-recipe FAIL. Area is π·rx·ry and is NOT a column either — a 'larger than X' query gets an EXPRESSION INDEX (server/migrations/add_void_schema_indexes.sql), not a materialised number. This is ROOT_DEFECTS' '박제' root and DEFECT_SCHEMA_PROPOSAL §2-bis rejects it by name. b_bn is what this table exists NOT to be: a grade with no geometry and no threshold recorded. | KEY = (run_uid, inchip_x, inchip_y). run_uid already encodes the package, the layer, the method and the time, so repeating them in the key would only lengthen it. 🔴 WHAT THIS KEY CANNOT DO: it does not re-identify a void ACROSS runs. Two scans of the same package that both find 'the same' void produce two rows, because voids are found by an algorithm and its centroid will not repeat to the bit. That is deliberate — an observation belongs to the scan that made it — but nobody should read a void's history across runs out of this table. | Within one run, two rows at the same centroid would silently merge into one upsert, so the PARSER refuses the later ones and names the collision (reason `duplicate_location`); the UNIQUE index on business_key_val is the same refusal enforced by the database. | base_wafer_id/base_x/base_y/stack_gate are ALSO stored here although run_uid encodes them: the grid read path (GET /tables/{t}/data) is per-table and never joins, so a row that cannot say where it is would be unreadable on its own. They cannot drift from run_uid because ONE function derives both (parsers/void_sat_format.compose_run_uid). | `unit` is per-row and not on inspection_run for the same reason: a number whose unit is only reachable by a join is a number the grid shows without one, and unit-less numeric columns silently mix two machines' values (proposal §3). Cost, named: nothing forbids two rows of one run disagreeing about the unit — the parser takes one declaration per file, so it cannot happen from ingestion, but it is not enforced. | NO map_key_columns — see inspection_run. A void is a point with continuous coordinates, not a cell in a grid.",
+    "business_key": "void_uid",
+    "composite_key_source": [
+      "run_uid",
+      "inchip_x",
+      "inchip_y"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "void_uid": "string",
+      "run_uid": "string",
+      "base_wafer_id": "string",
+      "base_x": "number",
+      "base_y": "number",
+      "stack_gate": "number",
+      "inchip_x": "number",
+      "inchip_y": "number",
+      "radius_x": "number",
+      "radius_y": "number",
+      "unit": "string"
+    },
+    "display_columns": [
+      "void_uid",
+      "run_uid",
+      "base_wafer_id",
+      "base_x",
+      "base_y",
+      "stack_gate",
+      "inchip_x",
+      "inchip_y",
+      "radius_x",
+      "radius_y",
+      "unit"
+    ]
+  }
+}
