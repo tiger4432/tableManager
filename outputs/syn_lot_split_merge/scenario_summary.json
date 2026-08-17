@@ -1,0 +1,114 @@
+{
+  "seed": 20260816,
+  "root_lots": [
+    "NAB123",
+    "NAB115",
+    "NAB122",
+    "NAB163",
+    "NAB539"
+  ],
+  "wafers_per_root": 25,
+  "total_wafers": 125,
+  "step_seq": {
+    "from": 1,
+    "to": 100
+  },
+  "logical_events_per_root": 8,
+  "lot_event_rows": 80,
+  "process_event_rows": 12500,
+  "event_steps": {
+    "NAB123": [
+      6,
+      41,
+      49,
+      52,
+      64,
+      65,
+      79,
+      96
+    ],
+    "NAB115": [
+      8,
+      35,
+      36,
+      41,
+      51,
+      71,
+      76,
+      81
+    ],
+    "NAB122": [
+      14,
+      16,
+      42,
+      48,
+      51,
+      80,
+      91,
+      96
+    ],
+    "NAB163": [
+      34,
+      36,
+      37,
+      53,
+      75,
+      83,
+      86,
+      90
+    ],
+    "NAB539": [
+      5,
+      21,
+      51,
+      55,
+      67,
+      72,
+      85,
+      96
+    ]
+  },
+  "child_lots": {
+    "NAB123": [
+      "NAB123TA",
+      "NAB123TB",
+      "NAB123TC",
+      "NAB123TD"
+    ],
+    "NAB115": [
+      "NAB115TA",
+      "NAB115TB",
+      "NAB115TC",
+      "NAB115TD"
+    ],
+    "NAB122": [
+      "NAB122TA",
+      "NAB122TB",
+      "NAB122TC",
+      "NAB122TD"
+    ],
+    "NAB163": [
+      "NAB163TA",
+      "NAB163TB",
+      "NAB163TC",
+      "NAB163TD"
+    ],
+    "NAB539": [
+      "NAB539TA",
+      "NAB539TB",
+      "NAB539TC",
+      "NAB539TD"
+    ]
+  },
+  "event_order": [
+    "split",
+    "split",
+    "merge",
+    "split",
+    "split",
+    "merge",
+    "merge",
+    "merge"
+  ],
+  "event_application": "before process_event rows at the same event_time"
+}

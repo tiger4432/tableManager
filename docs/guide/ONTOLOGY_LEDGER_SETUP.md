@@ -1,6 +1,6 @@
 # Ontology Ledger 셋업 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Profile 2단계 승인 · LedgerFrame Chain mapper 3단계 `AWAITING_REVIEW` / `NOT_APPROVED` | **Owner:** Server / Ledger + Ontology
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Profile 2단계 승인 · LedgerFrame Chain mapper 3단계 `FROZEN_FOR_REDESIGN` / `NOT_APPROVED` | **Owner:** Server / Ledger + Ontology
 > **Source-of-truth:** `server/ledger/config.py` · `server/ledger/source_profile.py` · `server/ledger/source_profile_builtins.py` · `server/ledger/vocabulary.py` · `server/config/`
 
 이 문서는 **어떤 선언을 어떤 순서로 준비해야 원장이 도는지**만 설명한다.
@@ -244,13 +244,24 @@ Profile은 업무별 고정 필드가 아니라 Pack Claim의 Role과 원천 bin
 
 ### 3.7 LedgerFrame Chain mapper 3단계
 
-> **status:** `AWAITING_REVIEW` · **approval:** `NOT_APPROVED`
+> **status:** `FROZEN_FOR_REDESIGN` · **approval:** `NOT_APPROVED`
+
+추가 구현은 중지됐다. 이후 정본은
+[`ledger_v2_redesign_plan_20260817`](../../ledger_v2_redesign_plan_20260817/README.md)이며,
+Ledger Kernel을 유지한 채 Setup/Compiler 계층만 단계별로 재작성한다.
+
+v2 목표에서는 아래 현행 `declared_lookup` 실행 계약을 폐기한다. cursor는 base physical
+relation만 읽고, pandas source preparer가 verified virtual-join rule을 ID로 상속한다.
+Vocabulary/Entity/Pack/Source/Preparer Registry 등록값은 `server/config/ontology/` 아래 config가
+정본이다. 파일 목록·소유권·DT 예시는
+[TARGET_ARCHITECTURE_AND_SSOT](../../ledger_v2_redesign_plan_20260817/TARGET_ARCHITECTURE_AND_SSOT.md)를 따른다.
 
 정본은 [LedgerFrame Chain Mapper](../architecture/LEDGER_FRAME_CHAIN_MAPPER.md)다. 기존 Ledger
 reader/cursor가 입력을 고르고 등록 mapper가 `(db, payload, rule=None)` 모양으로 pandas
 LedgerFrame을 반환한다. 이후에는 기존 gate와 `LedgerStore.write_batch`만 사용한다.
 
-`lot_event`가 첫 명시적 Python mapper 전환 source다. selector는 다음 두 필드만 받는다.
+`lot_event`가 첫 명시적 Python mapper 전환 source다. 일반 Python mapper selector는 다음
+두 필드만 받는다.
 
 ```json
 "chain_mapper": {"mapper_id": "lot-event", "version": 1}
@@ -261,6 +272,28 @@ module/function/path는 허용되지 않는다. selector가 없는 source는 기
 `declared_lookup`을 실행할 수 있지만 Profile만 config에 둔다고 source reader/cursor가
 자동 생성되지는 않는다. source adapter가 명시적으로 Profile과 사건 provenance를 mapper에
 전달해야 한다.
+
+canonical Profile 실행은 같은 source 아래서 Profile ID를 명시적으로 선택한다.
+
+```json
+"chain_mapper": {
+  "mapper_id": "canonical-profile",
+  "version": 1,
+  "profile_id": "lot-transfer-v1"
+}
+```
+
+`profiles.lot-transfer-v1.source`가 source 이름과 다르거나 ID가 없으면 config load에서
+거절된다. 선택된 Profile의 serialization hash는 cursor 실행 version에 포함된다.
+
+현재 `destination_inventory` lookup adapter의 배포 계약은
+`row_id TEXT`, `business_key_val TEXT`, `container JSON/JSONB`다. 조회는 1000 key 단위의
+별도 read-only transaction이며 Profile의 `select`는 현재 `container`만 허용한다. 0건과
+다건은 실행 실패이고 Atom과 cursor를 남기지 않는다.
+
+일반 mapper 경로는 `legacy_atom`을 받지 않는다. 과거 데이터 복원 도구만 코드에서
+`ledger.legacy_import.run_registered_legacy_import_mapper()`를 명시적으로 선택해야 하며,
+그 API가 자동으로 원장에 쓰거나 cursor를 이동시키지는 않는다.
 
 ## 4. Vocabulary
 

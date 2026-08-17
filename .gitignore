@@ -26,6 +26,12 @@ server/assy_manager.db
 agent_workspace/tasks/
 !agent_workspace/reports/
 agent_workspace/*
+_archive/*
+/.codex_tmp/
+/.test_tmp/
+/.pnpm-store/
+/.pytest_cache/
+/.claude/settings.local.json
 
 # OS 생성 파일
 Thumbs.db
@@ -34,6 +40,7 @@ Desktop.ini
 
 # 로그 파일
 *.log
+*.log.*
 server/*.log
 
 # 빌드 결과물

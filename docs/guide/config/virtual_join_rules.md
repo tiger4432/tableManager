@@ -26,6 +26,12 @@
 두 테이블을 **저장하지 않고 조회 시점에** 잇는다. `/api/maps/overlay`가 좌표로 하는 일의
 행(row) 버전이고, 잇는 기준은 좌표가 아니라 선언된 조인 키다.
 
+> **Ledger v2 목표 경계(아직 미구현):** Ledger cursor는 virtual column을 직접 읽지 않는다.
+> cursor가 base relation을 읽은 뒤 pandas source preparer가 이 선언의 verified descriptor를
+> rule ID로 상속해 batch join한다. `attach()`의 UI absent-only/`미상`/셀 표시 계약은 상속하지
+> 않는다. 목표 정본은
+> [TARGET_ARCHITECTURE_AND_SSOT](../../../ledger_v2_redesign_plan_20260817/TARGET_ARCHITECTURE_AND_SSOT.md)다.
+
 분석가는 REST API로 두 테이블을 Spotfire에 끌어와 거기서 잇는다. DB 뷰를 만들지 않는
 이유가 그것이다 — 서빙 계층은 API다.
 

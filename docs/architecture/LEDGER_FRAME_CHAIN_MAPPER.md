@@ -1,9 +1,17 @@
 # LedgerFrame Chain Mapper
 
-> **Status:** `AWAITING_REVIEW` · **Approval:** `NOT_APPROVED`
+> **Status:** `FROZEN_FOR_REDESIGN` · **Approval:** `NOT_APPROVED`
 >
 > **단계 경계:** 2단계 canonical Profile 계약은 승인됨. 이 문서는 3단계 실행 경로이며
-> 사용자 승인 전에는 4단계·Frame 계산·`dt_map` change-log·`frame_confirmed`를 시작하지 않는다.
+> 2026-08-17 사용자 판정으로 추가 구현을 중지했다. 재개 정본은
+> [`ledger_v2_redesign_plan_20260817`](../../ledger_v2_redesign_plan_20260817/README.md)이며,
+> 사용자 승인 전에는 재설계 1단계 코드도 시작하지 않는다.
+>
+> **v2 목표 판정:** 이 문서 아래의 `declared_lookup`/adapter는 동결된 현행 구현 설명이지
+> 재사용 목표가 아니다. v2는 lookup/Position을 제거하고, cursor 뒤 pandas source preparer가
+> verified virtual-join rule ID를 상속한다. Registry 등록값은 `server/config/ontology/`의
+> config에서만 컴파일한다. 정확한 목표 구조와 config 목록은
+> [TARGET_ARCHITECTURE_AND_SSOT](../../ledger_v2_redesign_plan_20260817/TARGET_ARCHITECTURE_AND_SSOT.md)가 정본이다.
 
 ## 1. 결론
 
@@ -101,6 +109,21 @@ frame으로 묶고 split/merge/track-in 의미를 LedgerFrame으로 반환한다
 - 정상 empty: cursor 이동 여부는 기존 source driver의 처리 정책이 결정
 - selector가 없는 observation/transfer/declared 및 다른 lineage source: 기존 runtime 유지
 
+같은 기존 lineage driver가 canonical Profile을 선택할 때는 Profile ID까지 명시한다.
+
+```json
+"chain_mapper": {
+  "mapper_id": "canonical-profile",
+  "version": 1,
+  "profile_id": "lot-transfer-v1"
+}
+```
+
+`profile_id`는 `profiles.<profile_id>`를 가리키며 그 Profile의 `source`는 driver source와
+정확히 같아야 한다. config load가 Profile section 전체를 검증한 뒤 이 연결을 확인한다.
+Profile의 결정적 serialization hash는 기존 cursor의 실행 version에 포함된다. 따라서 같은
+ID의 Profile 내용이 바뀌어도 과거 cursor version으로 조용히 건너뛰지 않는다.
+
 ## 6. Canonical Profile mapper
 
 `server/ledger/profile_chain_mapper.py`는 승인된 2단계 Profile을 같은 mapper 함수 모양으로
@@ -119,6 +142,16 @@ Lookup은 binding별 고유 key를 모아 한 번에 호출하며 0건은 `looku
 raw SQL, 임의 Python/JavaScript/expression은 없다. Binding의 `approval_status`와
 `binding_origin`은 실행 허용만 결정하며 Claim의 derivation/epistemic class를 승격하지 않는다.
 
+현재 등록된 실제 adapter `destination_inventory`는 표준 동적 테이블의
+`row_id`, `business_key_val`, `container`를 읽는다. key를 최대 1000개씩 조회하고, 별도
+connection에서 `SET TRANSACTION READ ONLY`를 먼저 실행한 뒤 항상 rollback/close한다.
+다건 판정을 보전하기 위해 business key당 최대 두 행을 반환한다. 조회 실행과 반환 형상
+검사는 이 adapter 경계가 소유하고 Profile에는 lookup ID/key/select만 남는다.
+
+driver는 pandas index나 처리 순서가 아니라 선언된 `row_identity` 집합으로 결정적
+`source_event` context를 만든다. mapper에는 선택된 Profile과 함께 `molecule_ref`,
+`source_raw_ref`를 전달한다. dry-run과 execute가 같은 생성 함수를 사용한다.
+
 ## 7. Dry-run과 transaction
 
 `dry_run._preview_lineage`와 `backfill._run_lineage`는 동일한 registry와 mapper 함수,
@@ -128,6 +161,11 @@ LedgerFrame validator, 기존 gate를 사용한다. dry-run은 PostgreSQL read-o
 실제 저장은 계속 `LedgerStore.write_batch` 하나뿐이다. 새 코드에는 `LedgerStore`, INSERT,
 commit, rollback, cursor update가 없다. 따라서 저장 실패 시 기존 transaction이 Atom과
 cursor를 함께 rollback한다.
+
+일반 `run_registered_mapper()`는 `source_event_state=legacy_atom`을
+`legacy_atom_forbidden`으로 거절한다. 과거 export의 명시적 복원만
+`ledger.legacy_import.run_registered_legacy_import_mapper()`를 호출할 수 있다. 이 import
+API 자체는 reader, gate, store, cursor, transaction을 소유하지 않는다.
 
 ## 8. 테스트와 검증 결과
 
@@ -143,21 +181,14 @@ cursor를 함께 rollback한다.
 - PostgreSQL E2E: 기존 cursor → mapper → LedgerFrame → gate → store → 조회,
   dry-run parity, replay dedupe, mapper/schema/gate 실패 시 cursor 미이동
 
-2026-08-17에 production DB가 아닌 격리 `assy_qa`에서 실제 실행했다.
+2026-08-17에 production DB가 아닌 격리 PostgreSQL에서 다시 실행했다.
 
-- 신규 집중 단위: `25 passed`
-- 신규 집중 + 기존 Ledger L1 unit: `116 passed`
-- 격리 PostgreSQL mapper 경로: `8 passed, 27 deselected`
-- 격리 PostgreSQL 기존 Ledger L1 전체: `35 passed`
-- 격리 PostgreSQL 기존 multi-row upsert: `36 passed`
-- Profile/transfer/observation/L1 묶음, 신규 포함: `227 passed, 2 failed`
-- 같은 묶음, 신규 파일 제외 baseline: `202 passed, 2 failed` — **신규 실패 0**
-- 기존 Chain mapper: `73 passed`; 7일 outbox: `28 passed`
-
-동일한 두 실패는 사용자가 재작성하려고 비워 둔 live Ledger config의 `dt_log`와 `void_obs`
-부재다. table sink 관련 비-PostgreSQL 묶음의 기존 실패 둘도 live `dt_slot` 타입과 sample
-`dt_map` rule 수가 현재 테스트의 옛 기대와 다른 config 상태다. 이 파일들은 Phase 3가
-수정하지 않았다.
+- Profile/mapper 집중 단위: `29 passed`
+- PostgreSQL 기존 Ledger L1 전체와 신규 canonical Profile E2E: `40 passed`
+- 신규 E2E는 dry-run/execute 후보 parity, gate/store/cursor 착지, nested Binding
+  `pending|rejected`, lookup 0건/다건에서 Atom 0·cursor 미이동을 검사한다.
+- 관련 회귀 묶음: `321 passed, 6 failed`; 여섯 실패는 live config의 `void_obs`/`dt_log`
+  부재와 기존 WaferLeg/root-key 기대에 묶여 있고 이번 변경 파일과 무관하다.
 
 참고로 현재 dirty/config 상태의 `server/tests` 전체 실행은 `3897 passed, 146 failed,
 198 skipped, 1 xfailed, 23 errors`였다. 대표 오류는 table config에서 지워진 `void_obs`를
