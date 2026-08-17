@@ -1,17 +1,18 @@
 # Ontology Config Explorer — 조사·상태 계약
 
-> 상태: `COMPLETION_IN_REVIEW / NOT_APPROVED`
-> 기준: Ledger V2 `COMPLETE / APPROVED`; Explorer의 제한 범위 승인 기준 `af2a1d3`
+> 상태: `COMPLETE / APPROVED`
+> 기준: Ledger V2 `COMPLETE / APPROVED`; Explorer 전체 완료 승인 `2d1ad863`
 > 시각 정본: `task/ontology_config_explorer_reference.html`
 
-## 1. 완료 범위를 다시 연 이유
+## 1. 완료 범위를 다시 열고 닫은 이유
 
 `bea0484`/`af2a1d3`은 compiled Registry 탐색과 기본 draft lifecycle을 승인했다. 그러나
 `task/ontology_config_explorer_pending.md`의 전체 계약에는 Binding·SourcePlan, 참조 오류의 세부
 분류, 정확한 경로 history, dirty 이동 3선택, active/draft 비교, immutable review→revise,
 activation consumer convergence, file-backed transfer 예제, payload·반응형 근거가 추가로 있다.
-따라서 이전 승인은 역사로 보존하되 이 전체 계약은 새 exact commit의 Audit 전까지 완료로
-표현하지 않는다.
+따라서 이전 승인은 역사로 보존하고 전체 계약을 별도 exact commit으로 재검수했다. 세 차단
+반례를 닫은 `2d1ad863106fc228566cab1a386265957f5c3587`을 지정 독립 Audit이 APPROVE했고
+main에 병합했으므로 현재 전체 계약은 `COMPLETE / APPROVED`다.
 
 ## 2. 소유 경계
 
