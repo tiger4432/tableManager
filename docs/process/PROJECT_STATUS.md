@@ -1,5 +1,18 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 6단계 승인·main 병합, 7단계 비파괴 전환 착수
+>
+> **현재 단계/상태:** Stage 6 `APPROVED`; Stage 7 `IN_PROGRESS / NOT_APPROVED`.
+>
+> **승인 근거:** exact commit `b98f0c3804f5bdfc6653670da571f8fef0e9e129`을 독립 Audit이
+> `APPROVE`했다. exact archive 직접 영향군 `375 passed, 9 skipped`, lot_event 26개 정규화
+> equal·설명 없는 regression 0을 확인했다. Audit 환경에는 안전한 PG URL이 없어 PG 8건을
+> 재실행하지 않았고, Main의 별도 임시 PostgreSQL `8 passed` 근거를 코드와 함께 검토했다.
+>
+> **Stage 7 경계:** authoring root/manifest, source selector, validation·dry-run과 lot_event의
+> 비파괴 cutover 준비를 진행한다. DT/observation은 NO-GO를 유지한다. 원장/cursor reset,
+> 데이터 삭제, legacy config/code 이동·삭제는 별도 파괴 승인 전에는 실행하지 않는다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 6단계 구현 완료, 독립 Audit 대기
 >
 > **현재 단계/상태:** `STAGE_6_IN_REVIEW` / `NOT_APPROVED`. Stage 7은 시작하지 않았다.

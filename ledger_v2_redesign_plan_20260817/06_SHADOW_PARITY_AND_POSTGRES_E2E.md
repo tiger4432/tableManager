@@ -1,6 +1,6 @@
 # 6단계 — Shadow parity와 PostgreSQL E2E
 
-> 구현 상태: `IN_REVIEW` · 승인: `NOT_APPROVED`
+> 구현 상태: `COMPLETE` · 승인: `APPROVED` · exact commit `b98f0c3804f5bdfc6653670da571f8fef0e9e129`
 > 구현 근거: [STAGE_6_ACCEPTANCE_EVIDENCE](./STAGE_6_ACCEPTANCE_EVIDENCE.md)
 
 ## 목표
@@ -127,4 +127,5 @@ dependency replay가 없거나 미검증이면 다른 테스트가 초록이어�
   identity/join 결손처럼 Claim 자체를 말할 수 없는 `source_preparation_incomplete`와 구분한다.
 - Stage 6 구현은 새 worker/cursor/store를 만들지 않고 기존 transaction을 재사용한다.
 
-완료 후 멈추고 6단계 및 reset 가능 여부 승인을 기다린다.
+Stage 6은 독립 Audit과 사용자 상설 승인을 통과했다. 이 승인은 Stage 7 착수를 허용하지만
+운영 DB reset이나 legacy 삭제를 허용하지 않는다. 해당 파괴 작업은 별도 승인을 받는다.

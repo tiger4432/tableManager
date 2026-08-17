@@ -1,7 +1,8 @@
 # Ledger v2 6단계 수락 근거
 
-> 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
-> 검수 대상: 본 문서를 포함한 Stage 6 구현 exact commit
+> 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-17
+> 승인 대상: Stage 6 구현 exact commit `b98f0c3804f5bdfc6653670da571f8fef0e9e129`
+> 독립 Audit: `APPROVE` · exact-archive 직접 영향군 `375 passed, 9 skipped`
 
 ## 구현 경계
 
@@ -105,5 +106,7 @@ dependency replay는 후보 산출까지 검증됐다. 실제 worklist 적재/su
 - DT/observation source의 실제 legacy↔v2 parity 승인
 - dependency replay 후보의 운영 worklist/supersede 실행
 
-따라서 Stage 6 자체 구현은 독립 Audit 검수 대상이나, Stage 7에서도 `lot_event`만 cutover 후보이며
-나머지 source는 NO-GO 상태를 유지한다.
+Stage 6은 독립 Audit과 사용자 상설 승인을 통과했다. Stage 7에서도 `lot_event`만 cutover
+후보이며 나머지 source는 NO-GO 상태를 유지한다. Audit 환경에서는 안전한 PG URL이 없어
+PG 8건을 재실행하지 않았고, Main의 별도 임시 PostgreSQL `8 passed` 결과와 테스트 경계를
+코드로 검토했다. 이 구분은 PostgreSQL 미실행을 Audit 통과로 과장하지 않기 위함이다.
