@@ -7,7 +7,10 @@
       "subjects": ["Lot@1", "Wafer@1"],
       "object": {
         "kind": "none",
-        "qualifiers": {"required": [], "optional": []}
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
       }
     },
     "has_wafer@1": {
@@ -17,7 +20,10 @@
       "object": {
         "kind": "entity_ref",
         "types": ["Wafer@1"],
-        "qualifiers": {"required": ["slot"], "optional": []}
+        "qualifiers": {
+          "required": ["slot"],
+          "optional": []
+        }
       }
     },
     "derived_from@1": {
@@ -27,7 +33,10 @@
       "object": {
         "kind": "entity_ref",
         "types": ["Lot@1"],
-        "qualifiers": {"required": [], "optional": []}
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
       }
     },
     "slot_map@1": {
@@ -45,16 +54,26 @@
     }
   },
   "entities": {
-    "Lot@1": {"keys": ["lot"]},
-    "Wafer@1": {"keys": ["wafer"]}
+    "Lot@1": {
+      "keys": ["lot"]
+    },
+    "Wafer@1": {
+      "keys": ["wafer"]
+    }
   },
   "source_preparers": {
     "lot-event-live-frame@1": {
       "implementation_id": "lot-event-live-frame",
       "implementation_version": 1,
       "input_columns": [
-        "lot_id", "event_type", "slotnumbers", "waferids",
-        "parent_lot", "child_lot", "txn_seq", "event_time"
+        "lot_id",
+        "event_type",
+        "slotnumbers",
+        "waferids",
+        "parent_lot",
+        "child_lot",
+        "txn_seq",
+        "event_time"
       ],
       "output_columns": {
         "lot": "string",
@@ -71,55 +90,70 @@
     "lot-event-role@1": {
       "implementation_id": "lot-event-role",
       "implementation_version": 1,
-      "unit": {"kind": "event"},
+      "unit": {
+        "kind": "event"
+      },
       "input_columns": [
-        "lot", "event_type", "slots", "wafers", "parent_lot", "child_lot",
-        "row_identity", "event_time", "event_group_key",
+        "lot",
+        "event_type",
+        "slots",
+        "wafers",
+        "parent_lot",
+        "child_lot",
+        "row_identity",
+        "event_time",
+        "event_group_key",
         "__source_event_incomplete"
       ],
       "emits": [
-        "lot-lineage@1/register_lot",
-        "lot-lineage@1/register_wafer",
+        "lot-lineage@1/register",
         "lot-lineage@1/membership",
         "lot-lineage@1/lineage",
-        "lot-lineage@1/split_slot",
-        "lot-lineage@1/merge_slot"
+        "lot-lineage@1/slot_map"
       ]
     }
   },
   "packs": {
     "lot-lineage@1": {
       "claims": {
-        "register_lot": {
+        "register": {
           "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true}
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
           },
           "emit": {
             "predicate": "register@1",
             "subject": "$subject",
-            "object": {"kind": "none"},
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "register_wafer": {
-          "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true}
-          },
-          "emit": {
-            "predicate": "register@1",
-            "subject": "$subject",
-            "object": {"kind": "none"},
+            "object": {
+              "kind": "none"
+            },
             "occurred_at": "$occurred_at"
           }
         },
         "membership": {
           "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true},
-            "slot": {"kind": "attribute", "required": true}
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "slot": {
+              "kind": "attribute",
+              "required": true
+            }
           },
           "emit": {
             "predicate": "has_wafer@1",
@@ -127,52 +161,65 @@
             "object": {
               "kind": "entity_ref",
               "entity": "$target",
-              "qualifiers": {"slot": "$slot"}
+              "qualifiers": {
+                "slot": "$slot"
+              }
             },
             "occurred_at": "$occurred_at"
           }
         },
         "lineage": {
           "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true}
+            "child": {
+              "kind": "entity",
+              "required": true
+            },
+            "parent": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
           },
           "emit": {
             "predicate": "derived_from@1",
-            "subject": "$subject",
-            "object": {"kind": "entity_ref", "entity": "$target", "qualifiers": {}},
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "split_slot": {
-          "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true},
-            "from": {"kind": "attribute", "required": true},
-            "to": {"kind": "attribute", "required": true},
-            "wafer": {"kind": "attribute", "required": true}
-          },
-          "emit": {
-            "predicate": "slot_map@1",
-            "subject": "$subject",
+            "subject": "$child",
             "object": {
               "kind": "entity_ref",
-              "entity": "$target",
-              "qualifiers": {"from": "$from", "to": "$to", "wafer": "$wafer"}
+              "entity": "$parent",
+              "qualifiers": {}
             },
             "occurred_at": "$occurred_at"
           }
         },
-        "merge_slot": {
+        "slot_map": {
           "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true},
-            "from": {"kind": "attribute", "required": true},
-            "to": {"kind": "attribute", "required": true},
-            "wafer": {"kind": "attribute", "required": true}
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "from": {
+              "kind": "attribute",
+              "required": true
+            },
+            "to": {
+              "kind": "attribute",
+              "required": true
+            },
+            "wafer": {
+              "kind": "attribute",
+              "required": true
+            }
           },
           "emit": {
             "predicate": "slot_map@1",
@@ -180,7 +227,11 @@
             "object": {
               "kind": "entity_ref",
               "entity": "$target",
-              "qualifiers": {"from": "$from", "to": "$to", "wafer": "$wafer"}
+              "qualifiers": {
+                "from": "$from",
+                "to": "$to",
+                "wafer": "$wafer"
+              }
             },
             "occurred_at": "$occurred_at"
           }
@@ -195,69 +246,256 @@
       "mappings": [
         {
           "mapping_id": "first_sight_lot",
-          "use": "lot-lineage@1/register_lot",
+          "use": "lot-lineage@1/register",
           "bind": {
             "subject": {
-              "kind": "entity", "entity_type": "Lot@1",
-              "keys": {"lot": {"kind": "column", "column": "lot", "binding_origin": "user_declared", "approval_status": "approved"}},
-              "binding_origin": "user_declared", "approval_status": "approved"
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
             },
-            "occurred_at": {"kind": "column", "column": "event_time", "binding_origin": "user_declared", "approval_status": "approved"}
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "first_sight_wafer",
-          "use": "lot-lineage@1/register_wafer",
+          "use": "lot-lineage@1/register",
           "bind": {
             "subject": {
-              "kind": "entity", "entity_type": "Wafer@1",
-              "keys": {"wafer": {"kind": "column", "column": "wafers", "binding_origin": "user_declared", "approval_status": "approved"}},
-              "binding_origin": "user_declared", "approval_status": "approved"
+              "kind": "entity",
+              "entity_type": "Wafer@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "wafers",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
             },
-            "occurred_at": {"kind": "column", "column": "event_time", "binding_origin": "user_declared", "approval_status": "approved"}
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "positional_row",
           "use": "lot-lineage@1/membership",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "Lot@1", "keys": {"lot": {"kind": "column", "column": "lot", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "Wafer@1", "keys": {"wafer": {"kind": "column", "column": "wafers", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_time", "binding_origin": "user_declared", "approval_status": "approved"},
-            "slot": {"kind": "column", "column": "slots", "binding_origin": "user_declared", "approval_status": "approved"}
+            "subject": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "Wafer@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "wafers",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "slot": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "pair_field",
           "use": "lot-lineage@1/lineage",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "Lot@1", "keys": {"lot": {"kind": "column", "column": "lot", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "Lot@1", "keys": {"lot": {"kind": "column", "column": "lot", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_time", "binding_origin": "user_declared", "approval_status": "approved"}
+            "child": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "parent": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "slot_preserving",
-          "use": "lot-lineage@1/split_slot",
+          "use": "lot-lineage@1/slot_map",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "Lot@1", "keys": {"lot": {"kind": "column", "column": "lot", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "Lot@1", "keys": {"lot": {"kind": "column", "column": "lot", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_time", "binding_origin": "user_declared", "approval_status": "approved"},
-            "from": {"kind": "column", "column": "slots", "binding_origin": "user_declared", "approval_status": "approved"},
-            "to": {"kind": "column", "column": "slots", "binding_origin": "user_declared", "approval_status": "approved"},
-            "wafer": {"kind": "column", "column": "wafers", "binding_origin": "user_declared", "approval_status": "approved"}
+            "subject": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "from": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "to": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "wafer": {
+              "kind": "column",
+              "column": "wafers",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "shared_wafer",
-          "use": "lot-lineage@1/merge_slot",
+          "use": "lot-lineage@1/slot_map",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "Lot@1", "keys": {"lot": {"kind": "column", "column": "lot", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "Lot@1", "keys": {"lot": {"kind": "column", "column": "lot", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_time", "binding_origin": "user_declared", "approval_status": "approved"},
-            "from": {"kind": "column", "column": "slots", "binding_origin": "user_declared", "approval_status": "approved"},
-            "to": {"kind": "column", "column": "slots", "binding_origin": "user_declared", "approval_status": "approved"},
-            "wafer": {"kind": "column", "column": "wafers", "binding_origin": "user_declared", "approval_status": "approved"}
+            "subject": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "from": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "to": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "wafer": {
+              "kind": "column",
+              "column": "wafers",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         }
       ]
@@ -271,8 +509,13 @@
         "identity": ["event_group_key"],
         "group_by": ["event_group_key"],
         "order_by": ["txn_seq"],
-        "occurred_at": {"column": "event_time", "timezone": "Asia/Seoul"},
-        "cursor": {"columns": ["event_time", "txn_seq"]},
+        "occurred_at": {
+          "column": "event_time",
+          "timezone": "Asia/Seoul"
+        },
+        "cursor": {
+          "columns": ["event_time", "txn_seq"]
+        },
         "preparation": {
           "preparer_id": "lot-event-live-frame@1",
           "inherit_virtual_join_rules": []
