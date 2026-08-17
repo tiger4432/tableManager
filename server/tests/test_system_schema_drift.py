@@ -230,9 +230,10 @@ SYSTEM_TABLE_COLUMNS = {
     # geometry_basis: migrations/add_frame_confirmation.py (same round - which SOURCE stood
     # on the borrowed spec, since the header flag alone cannot name it)
     "frame_confirmation_source": ('agreement', 'applied_frame', 'confirmation_uid', 'discriminating', 'excluded_reason', 'geometry_basis', 'id', 'map_id', 'role', 'shift_dx', 'shift_dy', 'source_name', 'source_priority', 'source_table'),
-    "graph_edges": ('created_at', 'event_time', 'from_node', 'id', 'props', 'source_name', 'source_row_ref', 'to_node', 'type', 'updated_by'),
-    "graph_nodes": ('created_at', 'id', 'identity_key', 'label', 'props', 'updated_at'),
-    "graph_sync_state": ('id', 'last_outbox_id', 'updated_at'),
+    # ⚰️ graph_edges / graph_nodes / graph_sync_state were here until 2026-08-18.
+    # The models are gone, so the live side of this comparison no longer offers
+    # them - leaving them declared here would fail as "the build lost a system
+    # table", which is the opposite of what happened.
     "interaction_effort_logs": ('id', 'key_count', 'mouse_count', 'nav_count', 'nav_preserved_count', 'session_id', 'timestamp', 'transaction_id'),
 }
 

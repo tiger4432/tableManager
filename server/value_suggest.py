@@ -20,8 +20,9 @@ WHY IT IS NOT `SELECT DISTINCT col WHERE col LIKE 'p%'`
        The fix is an index whose ordering IS byte order, so the prefix becomes
        a real range: `(lower(col) COLLATE "C", col COLLATE "C")`. Same query,
        same data: `Index Cond: (lower(base) >= 'c' AND lower(base) < 'd')`,
-       0.2 ms. This module owns that index's definition; the graph node search
-       (`/graph/nodes/search`, the second consumer) uses the same predicate.
+       0.2 ms. This module owns that index's definition. It once had a second
+       consumer, the graph node search (`/graph/nodes/search`), which is retired
+       as of 2026-08-18 — so the dropdown is the only caller today.
 
     2. **DISTINCT costs O(rows scanned to fill the page), not O(answers).**
        Even with the right index, filling 51 rows means walking until 51 are
@@ -181,7 +182,14 @@ LIST_MAP_KEYS = ("index_columns", "index_exclude")
 # Columns outside `table_config` that need the same prefix index. Kept here so
 # the index NAME has exactly one derivation, shared by the builder script and
 # by the "why did this fail" diagnosis below.
-SYSTEM_PREFIX_INDEX_TARGETS = (("graph_nodes", "identity_key"),)
+#
+# ⚰️ EMPTY since 2026-08-18. Its one entry was `("graph_nodes", "identity_key")`,
+# for the retired graph node search. The table is dropped and its route answers
+# 410, so the entry described an index on nothing. The tuple and the loop that
+# reads it stay: this is the declared extension point for system tables, and a
+# future one is declared by adding a pair here rather than by rebuilding the
+# naming rule somewhere else.
+SYSTEM_PREFIX_INDEX_TARGETS = ()
 
 INDEX_PREFIX = "idx_suggest_"
 _MAX_IDENTIFIER = 63  # PostgreSQL NAMEDATALEN - 1
@@ -289,7 +297,11 @@ def _resolve_column_map(value, key) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# The shared prefix predicate — consumer #1 (this module) and #2 (graph search)
+# The prefix predicate. It had two consumers — this module's dropdown and the
+# graph node search — and the graph one retired 2026-08-18. The exactness
+# argument below is kept as WRITTEN, not softened to "the dropdown re-filters
+# anyway": that re-filter is a property of one caller, and the next caller to
+# reuse this predicate would inherit the leak, not the re-filter.
 # ---------------------------------------------------------------------------
 
 _MAX_CODE_POINT = 0x10FFFF
@@ -305,12 +317,12 @@ def prefix_upper_bound(prefix: str):
     "the last code point that has one" — not simply the last one. Incrementing
     only the final character gives up as soon as that character is U+10FFFF, and
     the old code then returned None for `'L\\U0010FFFF'`, leaving the caller with
-    a lower bound that matches EVERYTHING at or above the term. `/graph/nodes/
-    search` has no second filter behind it, so that query really did return every
-    node from `MEAS` onward (measured; the old `ILIKE` returned 0 rows). The real
-    bound there is `'M'` — carry into the earlier character, exactly like
-    incrementing a number. Trailing U+10FFFF characters are the digits that roll
-    over.
+    a lower bound that matches EVERYTHING at or above the term. Measured on the
+    then-live `/graph/nodes/search` (retired 2026-08-18), which had no second
+    filter behind it: that query really did return every node from `MEAS` onward,
+    where the old `ILIKE` returned 0 rows. The real bound there is `'M'` — carry
+    into the earlier character, exactly like incrementing a number. Trailing
+    U+10FFFF characters are the digits that roll over.
 
     None therefore means ONE thing now: the prefix is entirely U+10FFFF, and
     then every string `>= prefix` provably starts with it (its first character
@@ -379,16 +391,16 @@ def prefix_conditions(col, folded: str, is_postgres: bool) -> list:
 
     Case-INsensitive is deliberate: the live data is upper-case codes
     (`CDIE`, `BASE-29`) and a dropdown that ignores what a user typed in lower
-    case is a dropdown nobody uses. It also keeps `/graph/nodes/search`'s
-    existing ILIKE semantics intact while making it index-backed.
+    case is a dropdown nobody uses.
 
     The returned range is EXACT, not merely a narrowing superset:
     `f <= lower(col) < succ(f)` is equivalent to `lower(col).startswith(f)` in
     byte order, and `prefix_upper_bound` returns None only where the lower bound
-    is exact on its own. That matters because consumer #2
-    (`/graph/nodes/search`) has no second filter behind this one — a predicate
-    that is only a superset would leak rows there, which is exactly what a
-    missing upper bound used to do.
+    is exact on its own. The caller that PROVED this matters — `/graph/nodes/
+    search`, which had no second filter behind this one and leaked whole ranges
+    when the upper bound went missing — is retired as of 2026-08-18. The
+    guarantee stays anyway: it is a property this function promises to any
+    caller, and the next one to arrive will not come with a re-filter attached.
     """
     if not folded:
         return []

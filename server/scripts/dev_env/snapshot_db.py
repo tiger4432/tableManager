@@ -237,9 +237,9 @@ def copy_rows(src, dst, table, cols, where_sql, params, limit=None, order_by=Non
 def fix_sequences(dst, tables):
     """Re-point every serial/identity sequence past the copied max(id).
 
-    Ids are copied verbatim (graph_edges.from_node/to_node reference
-    graph_nodes.id), so the sequences must be advanced or the first insert in the
-    isolated env collides on the primary key.
+    Ids are copied verbatim - a row can be referenced by id from elsewhere - so
+    the sequences must be advanced or the first insert in the isolated env
+    collides on the primary key.
     """
     fixed = 0
     for t in tables:
@@ -392,12 +392,10 @@ def run(args):
             note += f" [capped: {', '.join(starved)}]"
         report[t] = (note, total)
 
-    # -- graph cursor: the snapshot's outbox is empty, so start the worker at 0 -
-    if "graph_sync_state" in shared:
-        dst.execute(text("DELETE FROM graph_sync_state"))
-        dst.execute(text("INSERT INTO graph_sync_state (id, last_outbox_id) VALUES (1, 0)"))
-        dst.commit()
-        report["graph_sync_state"] = ("reset to 0 (empty outbox)", 1)
+    # ⚰️ The graph materializer's cursor was reset to 0 here, so a fresh isolated
+    # env would not replay a source outbox it does not have. Worker, tables and
+    # cursor are all retired (2026-08-18); nothing consumes an outbox by cursor
+    # any more.
 
     n_seq = fix_sequences(dst, shared)
     log(f"sequences advanced: {n_seq}")

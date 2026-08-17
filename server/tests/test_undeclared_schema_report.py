@@ -139,10 +139,12 @@ class TestSystemTables:
         path = _write_config(tmp_path, {DRILL_TABLE: {"column_types": {"a": "string"}}})
         models = script.build_models(path)
         system = script.system_tables(models)
+        # graph_nodes / graph_edges / graph_sync_state were in this list until
+        # 2026-08-18. They are not system tables any more because they are not
+        # tables any more - the models went with the retirement.
         for name in ("audit_logs", "cell_sources", "cell_overwrites",
                      "database_outbox", "file_ingestion_logs",
-                     "file_ingestion_checkpoints",
-                     "graph_nodes", "graph_edges", "graph_sync_state"):
+                     "file_ingestion_checkpoints"):
             assert name in system, f"{name} would be reported as residue"
 
     def test_dynamic_tables_are_not_system_tables(self, script, tmp_path):

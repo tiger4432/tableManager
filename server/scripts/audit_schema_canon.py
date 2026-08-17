@@ -1119,8 +1119,10 @@ def rule_r7(findings):
 # instead of assumed - an exception nobody can see is indistinguishable from a bug.
 ENGINE_TABLES = frozenset({
     "audit_logs", "cell_sources", "cell_overwrites", "database_outbox",
-    "file_ingestion_checkpoints", "file_ingestion_logs", "graph_edges", "graph_nodes",
-    "graph_sync_state", "interaction_effort_logs", "line_model_registry",
+    # graph_edges / graph_nodes / graph_sync_state dropped from this list 2026-08-18
+    # along with the tables themselves.
+    "file_ingestion_checkpoints", "file_ingestion_logs",
+    "interaction_effort_logs", "line_model_registry",
     "frame_confirmation", "frame_confirmation_source",
 })
 STAGE_PREFIXES = ("core_", "dt_", "bond_")

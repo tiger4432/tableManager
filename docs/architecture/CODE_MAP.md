@@ -1232,22 +1232,22 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 > ⚠️ zone 규칙(V1–V6)·토큰 문법·수요 산술은 **양쪽 구현이 공유 벡터로 고정**돼 있다 — [§6-2 `contracts/doe_band_rules/`](#6-2-교차-구현-계약-contracts) 참조 (레거시 `bands` 산술은 `contracts/band_arithmetic/`). **[`2baf9ff` U9] `stack`의 명시적 `'0'`은 marker(상태 표시 값)** — 층·구역·수요 없는 조건 선언이고, 구역 자재와 공존하면 V6이 차단한다(blank와 다르다 — blank는 V5).
 
 ### `server/database/models.py` (**636줄** — 종전 지도의 550줄은 낡은 값) — ORM + 동적 모델/런타임 DDL
-정적 ORM 클래스(`AuditLog` ~11 / **`InteractionEffortLog` ~51** / `DatabaseOutbox` ~118 / `FileIngestionLog` ~186 / `FileIngestionCheckpoint` ~200 / `CellOverwrite` ~247 / `CellSource` ~264)와 **그래프 3모델**, config 주도 동적 테이블 관리 함수.
+정적 ORM 클래스(`AuditLog` ~11 / **`InteractionEffortLog` ~51** / `DatabaseOutbox` ~118 / `FileIngestionLog` ~186 / `FileIngestionCheckpoint` ~200 / `CellOverwrite` ~247 / `CellSource` ~264)와 config 주도 동적 테이블 관리 함수. **그래프 3모델은 2026-08-18에 제거됐습니다**(아래 취소선 행).
+
+> ⚠️ **이 절 아래 `server/ontology_config.py` 항목은 그 파일이 2026-08-16 은퇴에서 «삭제»된 뒤에도 남아 있습니다** — 오늘 라운드가 만든 드리프트가 아니라 그 라운드의 잔여입니다. 지도 재대조가 필요합니다.
 
 > ⚠️ **두 패스 연속으로 이 절이 밀렸다.** 2026-07-29 오전: `AuditLog`를 뺀 전 앵커가 `+21`(범위가 이 파일을 건드리지도 않았다). 같은 날 오후 `2a9f6c4`가 **`InteractionEffortLog`(~51–116)를 `AuditLog` 바로 뒤에 끼워 넣어** `DatabaseOutbox` 이하가 다시 `+67`. 구 앵커 `~51`은 이제 **실재하는 다른 클래스**를 가리킨다 — 도착지가 멀쩡해 보이는 바로 그 함정이다.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | **`class InteractionEffortLog`** | **[V1 `2a9f6c4` 신설]** 교정 1건의 **원시 상호작용 카운트**(`transaction_id`·`session_id`·`key`·`mouse`·`nav`·`nav_preserved`). **점수 컬럼이 없는 것이 설계다** — 가중치는 config이고 점수는 읽는 시점에 계산되므로, 가중치를 재조정하면 과거 tx가 전부 새 가중치로 재해석된다(선언 절반은 이 절 아래 `server/effort_metric.py`) | ~51 |
-| `class GraphNode` | 그래프 노드 — `(label, identity_key)` UNIQUE, props JSONB | ~286 |
-| `class GraphEdge` | 그래프 엣지 — (from,type)/(to,type) 인덱스, `(from,type,to,source_name)` UNIQUE, `idx_graph_edges_row_ref(source_row_ref)` | ~303 |
-| `class GraphSyncState` | materializer outbox 소비 커서(id=1 단일 행, `last_outbox_id`) | ~331 |
+| ~~`class GraphNode` / `GraphEdge` / `GraphSyncState`~~ | ⚰️ **[2026-08-18] 클래스가 트리에서 제거됐습니다.** 물리 표는 2026-08-16에 DROP됐지만 클래스는 남아 있었고, 그 중간 상태가 **재기동마다 「SCHEMA DRIFT: missing 3 table(s)」를 찍었습니다** — 부팅 점검은 `Base.metadata`를 「이 빌드가 요구하는 것」으로 읽기 때문입니다. 즉 은퇴가 «고장»으로 보였습니다. 자리에 묘비 주석 | ~463 |
 | `DYNAMIC_TABLES` | 동적 테이블 싱글턴(`sys._dynamic_tables_singleton`) | ~347 |
 | `init_dynamic_models(config_dict)` | config → 동적 ORM 클래스 생성·등록. `column_types`/`business_key`/`composite_key_*`만 읽는다(그 외 키는 무시 — `product_tables.ANNOTATION_KEYS`의 근거). 테이블당 인덱스 2종 부착(~416–417) | ~352 |
 | `sync_dynamic_tables_schema(engine)` | ⚠️ 이름과 달리 **존재하는 테이블의 ALTER 전용**(`has_table` 아니면 skip — 신규 CREATE 안 함). 부팅 경로에서만 호출 | ~439 |
 | `_runtime_ddl_lock` | in-process DDL 직렬화 락(watchdog 스레드 vs reload-configs 요청 스레드) | ~476 |
 | `create_missing_dynamic_tables(engine) -> list[str]` | **신규 테이블 한정 물리 CREATE**(이슈 #7) — information_schema 게이트 + `checkfirst=True` + 테이블별 독립 트랜잭션(실패 자체 rollback). 기존 테이블 런타임 ALTER는 범위 밖(C-8) | ~479 |
-| `ensure_graph_tables(engine) -> list` | 그래프 3테이블 생성(#7 패턴: 게이트+checkfirst+락+실패 격리) | ~520 |
+| ~~`ensure_graph_tables(engine) -> list`~~ | ⚰️ **[2026-08-18] 제거.** 마지막까지 남은 이유는 그래프 단위 테스트의 픽스처 생성뿐이었고, 그 테스트들과 함께 걷혔습니다 | — |
 | `ensure_ingestion_checkpoint_table(engine)` | [P2] `file_ingestion_checkpoints` 생성(동일 패턴) | ~557 |
 | `refresh_dynamic_models(engine=None) -> list[str]` | **핫리로드 공용 진입점** — config 디스크 재로드 → `crud.TABLE_CONFIG` 싱글턴 갱신(빈/손상 config 시 기존 보존) → `init_dynamic_models` → engine 지정 시 물리 CREATE(+그래프 테이블 보장). 호출처: main `reload_local_process_cache` / config_watcher(간접) / run_watcher·chain worker·graph worker SYSTEM_RELOAD | ~590 |
 

@@ -2414,7 +2414,8 @@ def _update_row_business_key(row: Any, key_col: str, update_item: schemas.Genera
     Blanking a displayed key cell therefore leaves `business_key_val` stale rather than
     destroying it. That is the deliberate trade: a stale-but-unique handle is
     recoverable by typing a new key, whereas dropping the identity of a live row
-    orphans everything keyed to it (`FrameConfirmation.unit_key`, `GraphNode.identity_key`)
+    orphans everything keyed to it (`FrameConfirmation.unit_key`, and the ledger's
+    subject keys; `GraphNode.identity_key` was a third until 2026-08-18)
     and `''` additionally collides. Re-keying happens through the routes that KNOW a new
     key - a non-blank value here, or the composite reassembly below.
     """

@@ -460,66 +460,16 @@ class CellSource(Base):
     )
 
 
-# ----------------- [Ontology G1] PG 엣지 스토어 (docs/spec/ONTOLOGY_GRAPH_SPEC.md §2) -----------------
-# 저장소 중립 속성 그래프의 PostgreSQL 물리화. table_config과 무관한 **시스템 테이블**이며
-# 부팅 create_all + ensure_graph_tables(핫리로드/워커 부팅 경로)로 항상 존재가 보장된다.
-
-class GraphNode(Base):
-    __tablename__ = "graph_nodes"
-
-    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
-    label = Column(String(100), nullable=False)
-    # 복수 컬럼 identity는 "|" 조인 문자열로 정규화(은퇴 저장소 호환용).
-    identity_key = Column(String, nullable=False)
-    props = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    __table_args__ = (
-        # [인덱스 규율 §2] (label, identity_key) UNIQUE — 정확 일치 MERGE의 물리적 실체.
-        Index("idx_graph_nodes_identity", "label", "identity_key", unique=True),
-    )
-
-
-class GraphEdge(Base):
-    __tablename__ = "graph_edges"
-
-    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
-    type = Column(String(100), nullable=False)
-    from_node = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
-    to_node = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
-    props = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
-    # 엣지 provenance = 셀 레이어링의 그래프 확장(§2). G1은 저장까지 — 표시 우선순위 계산은 G2.
-    source_name = Column(String, nullable=False, default="unknown")
-    source_row_ref = Column(String, nullable=True)   # "table_name:row_id"
-    updated_by = Column(String, nullable=True)
-    event_time = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    __table_args__ = (
-        # [인덱스 규율 §2] k-hop 순회가 인덱스 룩업의 연쇄가 되도록 — 인덱스 없는 엣지 접근 경로 금지.
-        Index("idx_graph_edges_from_type", "from_node", "type"),
-        Index("idx_graph_edges_to_type", "to_node", "type"),
-        # 멱등 UPSERT 키: 동일 (from, type, to, source_name) 엣지는 1개만 존재.
-        # source_name은 nullable=False(기본 "unknown") — NULL 중복 우회를 구조적으로 차단.
-        Index("idx_graph_edges_upsert", "from_node", "type", "to_node", "source_name", unique=True),
-        # [QA H2] 재교정(retarget) 시 같은 원본 로우가 과거에 주장한 구 엣지 조회용 —
-        # source_row_ref 기반 stale 엣지 삭제가 인덱스 룩업이 되도록.
-        Index("idx_graph_edges_row_ref", "source_row_ref"),
-    )
-
-
-class GraphSyncState(Base):
-    """[Ontology G1] materializer의 outbox 소비 커서 (프로세스 재시작에도 durable).
-
-    outbox의 processed_chain 플래그는 체인 워커 전용이므로, 그래프 materializer는
-    자체 keyset 커서(last_outbox_id)로 증분 소비한다. id=1 단일 행 규약.
-    """
-    __tablename__ = "graph_sync_state"
-
-    id = Column(Integer, primary_key=True)
-    last_outbox_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False, default=0)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+# ⚰️ [R-2026-08-14-H, 제거 라운드 2026-08-18] 구 그래프 엣지 스토어의 «모델»이 여기 있었다:
+# `GraphNode` / `GraphEdge` / `GraphSyncState` (graph_nodes / graph_edges / graph_sync_state).
+#
+# 물리 표는 2026-08-16에 DROP됐고, 그때는 클래스를 남긴 채 부팅 create_all에서만 제외했다.
+# 그 중간 상태의 대가가 이번에 드러났다: 부팅 스키마 점검이 `Base.metadata`를 「이 빌드가
+# 요구하는 것」으로 읽으므로, 매 재기동마다 **없어야 할 표 셋을 결손으로 신고**했다
+# ("SCHEMA DRIFT: the database is missing 3 thing(s)"). 즉 은퇴가 «고장»으로 보였다.
+# 모델이 사라지면 요구 자체가 사라지므로 결손도 사라진다 — 예외 목록으로 덮는 것이 아니다.
+#
+# 옛 주소(`/graph/*`)는 계속 410으로 답한다(main.py). 후계는 `/api/ledger/trace`.
 
 
 # --------- [맵 정렬 스펙 §0.2 층 ⑧] 좌표계 확정 기록 — 사슬에서 쓰는 유일한 층 ---------
@@ -1057,41 +1007,10 @@ def create_missing_dynamic_tables(engine):
     return created
 
 
-def ensure_graph_tables(engine):
-    """[Ontology G1] 그래프 시스템 테이블(graph_nodes/graph_edges/graph_sync_state)의 존재를 보장한다.
-
-    table_config과 무관한 시스템 테이블이므로 부팅 create_all(웹서버) 외에도
-    핫리로드(refresh_dynamic_models)와 그래프 워커 부팅 경로에서 항상 호출된다.
-    #7 패턴 준용: information_schema 게이트 + checkfirst + engine 단위 독립 트랜잭션
-    (실패가 공유 세션을 오염시키지 않음).
-
-    반환: 새로 CREATE한 테이블명 리스트.
-    """
-    from sqlalchemy import inspect
-
-    created = []
-    graph_models = (GraphNode, GraphEdge, GraphSyncState)
-    with _runtime_ddl_lock:
-        try:
-            inspector = inspect(engine)
-        except Exception as err:
-            print(f"[Graph Schema] Failed to inspect database for graph tables: {err}")
-            return created
-
-        for model_class in graph_models:
-            table_name = model_class.__tablename__
-            try:
-                if inspector.has_table(table_name):
-                    continue
-                Base.metadata.create_all(
-                    bind=engine, tables=[model_class.__table__], checkfirst=True
-                )
-                created.append(table_name)
-                print(f"[Graph Schema] Created graph system table '{table_name}'.")
-            except Exception as err:
-                # CREATE 경합(DuplicateTable 등) 포함 — 실패를 격리하고 계속 진행
-                print(f"[Graph Schema] Failed to create graph table '{table_name}': {err}")
-    return created
+# ⚰️ [제거 라운드 2026-08-18] `ensure_graph_tables(engine)`가 여기 있었다 — 은퇴한 세 표를
+# 「없으면 만든다」로 보장하던 함수. 호출자는 2026-08-14에 전부 끊었고, 마지막으로 남아 있던
+# 이유는 그래프 «단위 테스트»가 픽스처 생성에 쓴다는 것뿐이었다. 그 테스트들도 이번에 함께
+# 걷어냈으므로 함수와 모델이 같은 커밋에서 사라진다.
 
 
 def ensure_ingestion_checkpoint_table(engine):
@@ -1152,9 +1071,8 @@ def refresh_dynamic_models(engine=None):
         # ⚰️ [R-2026-08-14-H] `ensure_graph_tables(engine)` 호출이 여기 있었다.
         # 구 그래프 저장소가 은퇴하면서 «되살리는 경로»로 뒤집혔다: 웹서버는 살아
         # 있고 핫리로드는 운영자가 아무 때나 누르므로, 이 한 줄이 남아 있으면
-        # DROP된 세 표가 다음 리로드에 빈 채로 돌아온다. 함수 자체는 남겨 둔다 —
-        # 그래프 단위 테스트가 픽스처 생성에 쓰고, 판정 ④의 코드 제거 라운드가
-        # 함수와 호출자를 함께 걷어낸다.
+        # DROP된 세 표가 다음 리로드에 빈 채로 돌아왔다. 2026-08-18에 함수 자체가
+        # 사라져서 이제는 되살릴 수단이 없다.
         # [P2] 인제션 체크포인트 테이블도 동일 보장 (워처가 부팅 전 이 경로로 먼저 도달할 수 있음)
         created.extend(ensure_ingestion_checkpoint_table(engine))
         return created

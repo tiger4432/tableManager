@@ -116,20 +116,13 @@ def bootstrap_database_schema(bind=None):
         context="boot-time DDL (Base.metadata.create_all)",
         production_url=DEFAULT_PG_URL,
     )
-    # 🔴 [R-2026-08-14-H] 은퇴한 그래프 표는 부팅이 다시 만들지 않는다.
-    # 이게 없으면 DROP 스크립트는 «아무 일도 하지 않은 것»이 된다: 다음 재기동의
-    # create_all이 세 표를 빈 채로 되살리고, 뷰어는 「그래프가 아직 비어 있습니다」를
-    # 띄운다 — 즉 「은퇴했다」가 「아직 안 쌓였다」로 둔갑한다. 판정이 순서를 못 박아
-    # 가며 막으려던 부정직한 중간 상태가 정확히 이 모양이다.
-    # 클래스 자체는 남겨 둔다(판정 ④가 자기 라운드에서 걷어낸다). 여기서 «메타데이터를
-    # 변형»하지 않고 이 호출에서만 제외하는 이유는, `Base.metadata`가 테스트 픽스처가
-    # 표를 만드는 통로이기도 하기 때문이다 — 공유 메타데이터를 지우면 은퇴와 무관한
-    # 그래프 단위 테스트가 「no such table」로 죽는다.
-    models.Base.metadata.create_all(
-        bind=target,
-        tables=[t for t in models.Base.metadata.sorted_tables
-                if t.name not in RETIRED_GRAPH_TABLES],
-    )
+    # 🔴 [R-2026-08-14-H → 제거 라운드 2026-08-18] 은퇴한 그래프 표는 부팅이 다시
+    # 만들지 않는다. 2026-08-14~17 사이에는 여기서 `RETIRED_GRAPH_TABLES`를 «제외»하는
+    # 방식이었다 — 모델 클래스가 아직 살아 있었기 때문이다. 그 중간 상태가 낸 대가:
+    # 부팅 스키마 점검은 `Base.metadata`를 「이 빌드가 요구하는 표」로 읽으므로, 매
+    # 재기동이 세 표를 결손으로 신고했다(SCHEMA DRIFT 3건). 은퇴가 고장으로 보였다.
+    # 이제 모델이 없으므로 «요구» 자체가 없다: 제외 목록이 아니라 부재가 보장한다.
+    models.Base.metadata.create_all(bind=target)
     try:
         models.sync_dynamic_tables_schema(target)
     except Exception as e:

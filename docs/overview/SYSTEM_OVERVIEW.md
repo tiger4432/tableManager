@@ -125,7 +125,7 @@ graph TD
 | `AuditLog` | 셀 단위 변경 이력(old/new, source, tx_id) |
 | `DatabaseOutbox` | 프로세스 간 이벤트(event_uuid, status, processed_chain) |
 | `FileIngestionLog` | 파일 적재 로그(FAILED/SUCCESS/PENDING_RETRY) |
-| ~~`GraphNode` / `GraphEdge` / `GraphSyncState`~~ | ⚰️ **[2026-08-14] 물리 테이블이 DROP됐습니다**(`server/migrations/drop_graph_storage.py` — 엣지 1,034,472행 517 MB · 노드 590,885행 324 MB · 합계 약 841 MB). ORM 클래스는 트리에 남지만 **부팅 `create_all`이 더는 만들지 않습니다.** 되돌리는 SQL은 `drop_graph_storage_reverse.sql`이고 🔴 **모양만 복원할 뿐 갈래를 되살리지 않습니다**(그 docstring이 함께 되돌려야 할 코드 변경 다섯을 나열합니다) |
+| ~~`GraphNode` / `GraphEdge` / `GraphSyncState`~~ | ⚰️ **[2026-08-14] 물리 테이블이 DROP됐습니다**(`server/migrations/drop_graph_storage.py` — 엣지 1,034,472행 517 MB · 노드 590,885행 324 MB · 합계 약 841 MB). 🔴 **[2026-08-18] ORM 클래스도 트리에서 제거됐습니다.** 표만 DROP하고 클래스를 남긴 중간 상태는 **재기동마다 「SCHEMA DRIFT: the database is missing 3 thing(s)」를 찍었습니다** — 부팅 스키마 점검은 `Base.metadata`를 「이 빌드가 요구하는 표」로 읽으므로, 없어야 할 표 셋을 **결손**으로 신고한 것입니다. 예외 목록으로는 못 고칩니다: **요구를 만드는 것이 선언 자체**라 선언이 사라져야 요구가 사라집니다. 되돌리는 SQL은 `drop_graph_storage_reverse.sql`이고 🔴 **모양만 복원할 뿐 갈래를 되살리지 않습니다**(그 docstring이 함께 되돌려야 할 코드 변경 다섯을 나열합니다) |
 | `FileIngestionCheckpoint` | 파일 인제션 오프셋 체크포인트 + 해시 dedup(`file_ingestion_checkpoints`, `UNIQUE(table_name, file_signature)`) |
 | `InteractionEffortLog` | **핵심가치 #1 정본 계기** — 교정 tx당 사람의 상호작용 원시 카운트(`interaction_effort_logs`, `UNIQUE(transaction_id)`) |
 | `DataRow` | 레거시 JSON blob 저장(동적 테이블로 대체됨) |

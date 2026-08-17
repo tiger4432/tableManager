@@ -478,9 +478,10 @@ def test_prefix_upper_bound_carries_past_a_maxed_out_character():
     Incrementing only the LAST character gave up here and returned None, which
     left `prefix_conditions` emitting a lower bound alone — a filter matching
     everything at or above the term. That is harmless for the seek loop (it
-    re-tests in Python) and wrong for `/graph/nodes/search`, which has no second
-    filter. Measured on the live database: `q='L\\U0010FFFF'` returned MEAS,
-    PHOTO, ... where the old ILIKE returned nothing.
+    re-tests in Python) and was wrong for `/graph/nodes/search`, which had no
+    second filter and is retired as of 2026-08-18. Measured on the live database
+    while it ran: `q='L\\U0010FFFF'` returned MEAS, PHOTO, ... where the old
+    ILIKE returned nothing.
 
     Counter-injection: restoring the single-character increment makes the first
     two assertions return None.
@@ -493,14 +494,20 @@ def test_prefix_upper_bound_carries_past_a_maxed_out_character():
 
 
 def test_prefix_conditions_is_an_exact_range_not_just_a_narrowing():
-    """Consumer #2 has no Python re-test behind this predicate, so "superset" is
-    not good enough — every prefix that HAS a bound must emit both ends.
+    """"Superset" is not good enough — every prefix that HAS a bound must emit
+    both ends.
+
+    The caller that made this observable, `/graph/nodes/search`, is retired
+    (2026-08-18) and its column went with the table, so the probe below now uses
+    an ordinary indexed String column. The assertion is unchanged on purpose:
+    the exactness is a property of THIS function, and the surviving caller's
+    Python re-test is not a licence to emit a leaky range to the next one.
 
     Counter-injection: dropping the `conds.append(lk < upper)` branch leaves one
-    condition here and turns the graph search into an "everything from here on"
-    query.
+    condition here and turns any caller without a re-test into an "everything
+    from here on" query.
     """
-    col = models.GraphNode.identity_key
+    col = models.AuditLog.table_name
     assert value_suggest.prefix_conditions(col, "", False) == []
     assert len(value_suggest.prefix_conditions(col, "ab", False)) == 2
     assert len(value_suggest.prefix_conditions(col, "L\U0010ffff", False)) == 2
@@ -631,14 +638,21 @@ def test_index_name_is_what_postgres_will_actually_store():
     assert name != value_suggest.suggest_index_name("inventory_master", "max")
 
 
-def test_index_targets_policy():
+def test_index_targets_policy(monkeypatch):
     cfg = {
         "big": {"column_types": {"a": "string", "n": "number", "d": "datetime"}},
         "small": {"column_types": {"a": "string"}},
         "absent": {"column_types": {"a": "string"}},
     }
     settings = value_suggest.resolve_settings({"index_min_rows": 1000})
-    rows = {"big": 5000, "small": 10, "graph_nodes": 1}
+    # 🔴 The system-target list is EMPTY in the product since 2026-08-18 (its one
+    # entry named the retired `graph_nodes`). Asserting against the live tuple
+    # would therefore assert nothing at all, so the probe below installs one -
+    # the mechanism is what this line guards, not today's membership. Note it
+    # rides along BELOW `index_min_rows`: a system target is unconditional.
+    monkeypatch.setattr(value_suggest, "SYSTEM_PREFIX_INDEX_TARGETS",
+                        (("probe_system_table", "probe_key"),))
+    rows = {"big": 5000, "small": 10, "probe_system_table": 1}
     got = {(t, c) for t, c, _, _ in value_suggest.index_targets(cfg, settings, rows)}
     assert ("big", "a") in got
     # datetime is refused by the endpoint, so an index for it would be dead weight
@@ -647,7 +661,21 @@ def test_index_targets_policy():
     assert ("small", "a") not in got
     assert ("absent", "a") not in got
     # the system target rides along
-    assert ("graph_nodes", "identity_key") in got
+    assert ("probe_system_table", "probe_key") in got
+
+
+def test_no_system_prefix_index_target_names_a_retired_table():
+    """The list is empty today; what matters is that nothing in it is dead.
+
+    A pair here makes the builder script issue CREATE INDEX against a table it
+    does not otherwise know about, so a stale entry fails at DDL time on a live
+    database rather than in the suite.
+    """
+    from database import models
+
+    for table, _column in value_suggest.SYSTEM_PREFIX_INDEX_TARGETS:
+        assert table in models.Base.metadata.tables, (
+            f"suggest index target '{table}' is not a table this build declares")
 
 
 def test_number_columns_are_indexed_too(client, db_session):
@@ -697,12 +725,17 @@ def test_index_targets_explicit_declaration_beats_the_threshold():
     assert ("small", "b") not in got
 
 
-def test_index_targets_exclusion_always_wins():
+def test_index_targets_exclusion_always_wins(monkeypatch):
+    # Same reason as `test_index_targets_policy`: the exclusion has to be shown
+    # beating a system target, and there is no live system target to beat.
+    monkeypatch.setattr(value_suggest, "SYSTEM_PREFIX_INDEX_TARGETS",
+                        (("probe_system_table", "probe_key"),))
     cfg = {"big": {"column_types": {"a": "string", "b": "string"}}}
     settings = value_suggest.resolve_settings(
-        {"index_min_rows": 10, "index_exclude": {"big": ["b"], "graph_nodes": ["identity_key"]}})
+        {"index_min_rows": 10,
+         "index_exclude": {"big": ["b"], "probe_system_table": ["probe_key"]}})
     got = {(t, c) for t, c, _, _ in
-           value_suggest.index_targets(cfg, settings, {"big": 100, "graph_nodes": 5})}
+           value_suggest.index_targets(cfg, settings, {"big": 100, "probe_system_table": 5})}
     assert got == {("big", "a")}
 
 

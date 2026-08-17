@@ -128,6 +128,32 @@ def test_a_retired_path_does_not_fall_through_to_the_spa_catch_all():
     assert "text/html" not in r.headers.get("content-type", "")
 
 
+def test_no_model_declares_the_retired_tables_any_more():
+    """The removal round's load-bearing fact, asserted at its source.
+
+    Until 2026-08-18 the three ORM classes were still declared and boot merely
+    SKIPPED them in `create_all`. That middle state had a cost nobody predicted
+    when the ruling was written: the startup schema check reads `Base.metadata`
+    as "what this build requires", so every restart reported the three tables as
+    MISSING - a red `SCHEMA DRIFT` block naming tables that are gone on purpose.
+    The retirement read as a fault, which is the same class of lie the ruling
+    sequenced the DROP to avoid.
+
+    A skip list cannot fix that, because the requirement is the declaration.
+    So the declaration is what has to be absent - and this is the test for it.
+    """
+    from database import models
+
+    declared = set(models.Base.metadata.tables)
+    still_there = sorted(set(main.RETIRED_GRAPH_TABLES) & declared)
+    assert still_there == [], (
+        f"{still_there} are declared again; boot will report them as missing "
+        "schema on every restart")
+    # Non-vacuous: the metadata is populated, so the absence above is an absence
+    # and not an empty registry that agrees with everything.
+    assert len(declared) > 5, "Base.metadata is empty; the check above proves nothing"
+
+
 def test_the_boot_schema_step_will_not_recreate_the_dropped_tables(tmp_path):
     """Without this the DROP script is a no-op with extra steps.
 
@@ -136,11 +162,10 @@ def test_the_boot_schema_step_will_not_recreate_the_dropped_tables(tmp_path):
     "it was retired" into "it has not filled up yet". The ruling ordered the
     execution sequence specifically to prevent states that lie like that.
 
-    🔴 THIS RUNS THE BOOT STEP; it does not read a constant. An earlier draft
-    only asserted the membership of `RETIRED_GRAPH_TABLES`, which would have
-    stayed green if `bootstrap_database_schema` stopped passing the filter to
-    `create_all` - i.e. it proved the list existed, not that anything used it.
-    A landed constant with no consumer is not a landed guard.
+    🔴 THIS RUNS THE BOOT STEP; it does not read a constant. It stays after the
+    declaration test above because the two can fail apart: a fixture or a future
+    module could re-register these names on the shared metadata, and boot would
+    then build them again even though no model file mentions them.
     """
     from sqlalchemy import create_engine, inspect
 
@@ -185,3 +210,8 @@ def test_the_hot_reload_path_no_longer_recreates_them_either():
     src = _code_only(inspect.getsource(models.refresh_dynamic_models))
     assert "ensure_graph_tables" not in src, (
         "config hot-reload still ensures the retired graph tables exist")
+    # Since 2026-08-18 there is no such function to call from anywhere - the
+    # caller check above is now the weaker of the two, kept because a revival
+    # would restore the call site before it restored the name.
+    assert not hasattr(models, "ensure_graph_tables"), (
+        "the resurrection helper is back on the models module")
