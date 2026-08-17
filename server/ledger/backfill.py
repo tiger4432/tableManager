@@ -363,8 +363,9 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
                 break
             frame = _v2_frame(complete)
             result["rows_read"] += len(frame)
-            subjects = _v2_lot_event_subjects(frame)
-            known = store.existing_registrations(read, subjects)
+            subjects = _v2_registration_subjects(plan, frame)
+            known = (None if subjects is None
+                     else store.existing_registrations(read, subjects))
             # End every SELECT-only transaction before LedgerStore opens its existing
             # Atom+cursor write transaction.  This is the same lock boundary as legacy.
             read.rollback()
@@ -438,22 +439,44 @@ def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
         return [dict(zip(names, row)) for row in cursor.fetchall()]
 
 
-def _v2_lot_event_subjects(frame):
-    """One batched first-sight query for the source-specific live lot event shape."""
+def _v2_registration_subjects(plan, frame):
+    """One batched first-sight query, driven by the source's declared probe.
+
+    This function used to be `_v2_lot_event_subjects` and named `lot_id`, `parent_lot`,
+    `child_lot`, `waferids`, `"Lot"`, `"Wafer"` and `":"` as literals -- so `run()` sent
+    EVERY v2 source down a branch that could only work for one table. That is why no
+    second source could be stood up on v2 at all, and it is what this replaces.
+
+    Returns `None` when the source declares no probe. `None` is not "no subjects": it is
+    "this source did not answer the question", and `runtime_v2._filtered_event_atoms`
+    refuses with `registration_context_required` if the source emits `register` anyway. A
+    source that emits no `register` needs no probe and is unaffected. Returning an empty
+    set instead would claim nothing is registered yet, which SUPPRESSES nothing and
+    duplicates every first-sight atom -- the unsafe direction (see
+    `setup_bundle._validate_registration_probe` for why the error is one-sided).
+    """
     from .envelope import canonical_keys
+
+    probes = plan.driver.registration_probe
+    if not probes:
+        return None
     subjects = set()
-    lots = set(frame["lot_id"].tolist())
-    lots.update(frame["parent_lot"].tolist())
-    lots.update(frame["child_lot"].tolist())
-    for lot in lots:
-        text = str(lot or "").strip()
-        if text:
-            subjects.add(("Lot", canonical_keys({"lot": text})))
-    for value in frame["waferids"].tolist():
-        for wafer in str(value or "").split(":"):
-            text = wafer.strip()
-            if text:
-                subjects.add(("Wafer", canonical_keys({"wafer": text})))
+    for probe in probes:
+        values = []
+        for column in probe.columns:
+            if column in frame.columns:
+                values.extend(frame[column].tolist())
+        for value in values:
+            text = str(value or "").strip()
+            if not text:
+                continue
+            parts = (text.split(probe.list_separator) if probe.list_separator
+                     else [text])
+            for part in parts:
+                key = part.strip()
+                if key:
+                    subjects.add((probe.subject_type,
+                                  canonical_keys({probe.identity_key: key})))
     return subjects
 
 

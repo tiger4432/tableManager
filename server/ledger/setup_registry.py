@@ -249,6 +249,21 @@ class OccurredAtPlan:
 
 
 @dataclass(frozen=True)
+class RegistrationProbePlan:
+    """One entity type's first-sight probe over BASE (pre-preparation) columns."""
+
+    entity_type: str
+    identity_key: str
+    columns: tuple[str, ...]
+    list_separator: str | None
+
+    @property
+    def subject_type(self) -> str:
+        """The unversioned name atoms carry, e.g. ``Lot@1`` -> ``Lot``."""
+        return self.entity_type.split("@", 1)[0]
+
+
+@dataclass(frozen=True)
 class SourceDriverPlan:
     unit: str
     identity: tuple[str, ...]
@@ -258,6 +273,7 @@ class SourceDriverPlan:
     cursor_columns: tuple[str, ...]
     preparation: SourcePreparationPlan
     mapper: MapperDescriptor
+    registration_probe: tuple[RegistrationProbePlan, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -538,7 +554,7 @@ def compile_setup_snapshot(
     verified_join_registry = _compile_verified_joins(verified_joins)
     source_plans = _compile_source_plans(
         bundle.section("sources"), preparers, mappers, profiles,
-        verified_join_registry)
+        verified_join_registry, entities)
 
     bundle_canonical_json = bundle.serialize()
     bundle_sha256 = sha256(bundle_canonical_json.encode("utf-8")).hexdigest()
@@ -741,12 +757,37 @@ def _compile_verified_joins(
     return builder.seal()
 
 
+def _compile_registration_probe(
+    value: Any,
+    entities: EntityTypeRegistry,
+) -> tuple[RegistrationProbePlan, ...]:
+    """The identity key comes from the ENTITY declaration, never from the probe.
+
+    Stating the key in both places would let them disagree, and the probe is the half
+    nobody would re-read. ``_cross_registration_probe`` has already refused a composite-key
+    entity, so exactly one key is available here.
+    """
+    if not value:
+        return ()
+    out = []
+    for item in value:
+        entity = entities[item["entity_type"]]
+        out.append(RegistrationProbePlan(
+            entity_type=item["entity_type"],
+            identity_key=entity.identity_keys[0],
+            columns=tuple(item["columns"]),
+            list_separator=item.get("list_separator"),
+        ))
+    return tuple(sorted(out, key=lambda probe: probe.entity_type))
+
+
 def _compile_source_plans(
     section: Mapping[str, Any],
     preparers: SourcePreparerRegistry,
     mappers: MapperRegistry,
     profiles: ProfileRegistry,
     verified_joins: VerifiedJoinRegistry,
+    entities: EntityTypeRegistry,
 ) -> SourcePlanRegistry:
     builder = _RegistryBuilder(SourcePlanRegistry)
     for source_id, item in section.items():
@@ -774,6 +815,8 @@ def _compile_source_plans(
                     ),
                 ),
                 mapper=mappers[driver["mapper_id"]],
+                registration_probe=_compile_registration_probe(
+                    driver.get("registration_probe"), entities),
             ),
             profile=profiles[item["profile_id"]],
             config_path=path,

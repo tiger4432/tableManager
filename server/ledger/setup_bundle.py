@@ -788,8 +788,12 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         if not problems.exact(
                 driver, f"{path}.driver",
                 required=("unit", "identity", "group_by", "order_by", "occurred_at",
-                          "cursor", "preparation", "mapper_id")):
+                          "cursor", "preparation", "mapper_id"),
+                optional=("registration_probe",)):
             continue
+        _validate_registration_probe(
+            driver.get("registration_probe"), f"{path}.driver.registration_probe",
+            problems)
         source_unit = driver.get("unit")
         if not isinstance(source_unit, str) or source_unit not in _SOURCE_UNITS:
             problems.add("invalid_driver", f"{path}.driver.unit",
@@ -838,6 +842,59 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         _versioned_id(driver.get("mapper_id"), f"{path}.driver.mapper_id", problems)
 
 
+def _validate_registration_probe(value: Any, path: str, problems: _Problems) -> None:
+    """Which BASE columns can name an entity that might already be registered.
+
+    🔴 WHY THIS IS A DECLARATION AND NOT AN INFERENCE.
+    The driver asks the store, once per page, which of this batch's subjects already exist,
+    so a `register` atom is emitted only on FIRST sight.  That question is asked BEFORE
+    preparation, on physical column names, while the Profile binds POST-preparation logical
+    names -- so the answer cannot be read off the bindings.  Until this declaration existed
+    the driver hard-coded one source's column names, which is why exactly one source could
+    run at all.
+
+    🔴 THE DIRECTION OF ERROR IS NOT SYMMETRIC, AND THAT IS THE WHOLE SAFETY ARGUMENT.
+    The probe result is used only to SUPPRESS a register atom for a subject already in the
+    store.  Naming a column that contributes no subject is therefore free -- it yields
+    candidates no atom mentions, and they match nothing.  MISSING a column is not free: a
+    subject that is already registered goes unsuppressed and the batch emits a duplicate
+    `register`.  So the declaration must be a SUPERSET of the subjects the atoms can
+    mention, and over-declaring is the safe side to err on.
+
+    `list_separator` exists because a column may carry a positional list of ids in one
+    string.  Probing for the unsplit string would find none of them -- an
+    under-approximation, the unsafe direction.  The retired grammar declared this as
+    `list_separator` too; the current one had lost it into a hard-coded separator.
+    """
+    if value is None:
+        return
+    if not _is_list(value):
+        problems.add("invalid_registration_probe", path, "must be a list")
+        return
+    seen: set[str] = set()
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not problems.exact(
+                item, item_path, required=("entity_type", "columns"),
+                optional=("list_separator",)):
+            continue
+        entity_type = item.get("entity_type")
+        _versioned_id(entity_type, f"{item_path}.entity_type", problems)
+        if isinstance(entity_type, str):
+            if entity_type in seen:
+                problems.add(
+                    "duplicate_registration_probe", f"{item_path}.entity_type",
+                    f"entity type {entity_type!r} is probed twice; merge the columns")
+            seen.add(entity_type)
+        _nonblank_list(item.get("columns"), f"{item_path}.columns", problems)
+        if "list_separator" in item:
+            separator = item.get("list_separator")
+            if not isinstance(separator, str) or not separator:
+                problems.add(
+                    "invalid_registration_probe", f"{item_path}.list_separator",
+                    "must be a non-empty string")
+
+
 def _validate_opaque_declarations(section: Mapping[str, Any], path: str,
                                   problems: _Problems) -> None:
     for name in sorted(section, key=str):
@@ -846,6 +903,44 @@ def _validate_opaque_declarations(section: Mapping[str, Any], path: str,
             problems.add("invalid_type", f"{path}.{name}", "must be an object")
         else:
             _scan_unsafe_keys(section[name], f"{path}.{name}", problems)
+
+
+def _cross_registration_probe(value: Any, path: str, relation: Any,
+                              physical: set[str], tables: Mapping[str, Any],
+                              entities: Mapping[str, Any],
+                              problems: _Problems) -> None:
+    """The probed entity must exist, be single-keyed, and name real base columns."""
+    if not _is_list(value):
+        return
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping):
+            continue
+        item_path = f"{path}[{index}]"
+        entity_type = item.get("entity_type")
+        entity = entities.get(entity_type) if isinstance(entity_type, str) else None
+        if entity is None:
+            problems.add(
+                "unknown_entity_type", f"{item_path}.entity_type",
+                f"entity type {entity_type!r} is not declared")
+            continue
+        keys = entity.get("keys")
+        if _is_list(keys) and len(keys) != 1:
+            # A composite-key entity needs one column per key part, and guessing which
+            # declared column feeds which part is exactly the kind of inference this
+            # declaration exists to remove. Refuse rather than probe a partial identity:
+            # a partial probe under-approximates, which is the direction that duplicates
+            # `register` atoms.
+            problems.add(
+                "unsupported_registration_probe", f"{item_path}.entity_type",
+                f"entity type {entity_type!r} has {len(keys)} identity keys; the probe "
+                f"supports single-keyed entities only")
+            continue
+        if isinstance(relation, str) and _is_list(item.get("columns")) and tables.get(relation):
+            for column in item["columns"]:
+                if isinstance(column, str) and column not in physical:
+                    problems.add(
+                        "unknown_column", f"{item_path}.columns",
+                        f"{relation!r} has no column {column!r}")
 
 
 def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
@@ -899,6 +994,9 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
             base_columns.append(driver["occurred_at"].get("column"))
         _relation_columns(relation, base_columns, tables, f"{path}.relation", problems)
         physical = set(_table_columns(tables, relation))
+        _cross_registration_probe(
+            driver.get("registration_probe"), f"{path}.driver.registration_probe",
+            relation, physical, tables, entities, problems)
         table = tables.get(relation)
         if isinstance(table, Mapping):
             ordering_contracts = (
