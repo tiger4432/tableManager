@@ -328,7 +328,7 @@ def test_existing_legacy_cursor_shape_blocks_v2_before_source_read(monkeypatch):
 
     with pytest.raises(LedgerV2CutoverError) as exc:
         backfill.run(
-            object(), {}, source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT)
+            object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT)
 
     assert exc.value.to_mapping() == {
         "code": "legacy_cursor_reset_required",
@@ -418,7 +418,7 @@ def test_existing_other_snapshot_cursor_blocks_before_source_read(monkeypatch):
 
     with pytest.raises(LedgerV2CutoverError) as exc:
         backfill.run(
-            object(), {}, source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT)
+            object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT)
 
     assert exc.value.to_mapping() == {
         "code": "cursor_snapshot_reset_required",

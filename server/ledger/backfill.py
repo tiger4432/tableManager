@@ -1,50 +1,33 @@
 """The backfill drivers - cursor loops that never cut a molecule in half.
 
     conda run -n assy_manager python -m ledger.backfill --source lot_event
-    conda run -n assy_manager python -m ledger.backfill --source void_obs
-    conda run -n assy_manager python -m ledger.backfill --source dt_log
 
-🔴 ONE GRAMMAR, ONE ENTRY POINT (owner ruling, 2026-08-18: "remove legacy")
+🔴 ONE GRAMMAR, ONE DRIVER (owner ruling, 2026-08-18: "remove legacy")
 -----------------------------------------------------------------------------
-`run()` no longer dispatches on a declared `kind`. It loads the ontology root, requires
-that the source is selected for v2, and runs it. There is one execution path.
+`run()` loads the ontology root, requires that the source is selected for v2, and drives
+it through `_run_v2_lineage`. There is one execution path and one driver.
 
-⚠️ THE FOUR DRIVERS DESCRIBED BELOW ARE NO LONGER REACHABLE FROM `run()`.
-`_run_lineage`, `_run_observation`, `_run_transfer` and `_run_declared` each lazily import
-a translator module the owner deleted on 2026-08-18 (`lot_event_translator`,
-`observation_translator`, `transfer_translator`, `declared_translator`), so every one of
-them could only raise `ImportError`. Their entry point is now blocked; the bodies are
-retired in a separate step, together with `ledger/config.py`, once the admin authoring
-screen that still speaks that grammar has a v2 replacement. Until then the paragraphs
-below describe code that is present and dead - do not read them as behaviour.
+⚠️ THE FOUR GRAMMAR DRIVERS ARE GONE (this commit, 798 lines).
+`_run_lineage`, `_run_observation`, `_run_transfer` and `_run_declared` each lazily
+imported a translator module the owner deleted on 2026-08-18 (`lot_event_translator`,
+`observation_translator`, `transfer_translator`, `declared_translator`), so each could
+only raise `ImportError` where a refusal belonged. Their private helpers went with them
+(`_flush`, `_refusal_totals`, `_refusal_delta`, `_watermark_json`, `_cursor_json`) and so
+did `run()`'s `cfg` parameter, which existed to carry the legacy declaration into them.
+
+🔴 The `fetch_*` helpers below OUTLIVED their drivers on purpose, and that is not
+leftovers. `ledger/dry_run.py` imports `fetch_observation_page`, `fetch_runs`,
+`fetch_declared_page`, `fetch_transfer_page`, `fetch_transfer_group`, `fetch_containers`,
+`_group_transfer_rows`, `_plain` and `_forget_registers` for the admin dry-run, which is a
+separate entry point behind `POST /admin/ledger/dry-run` and is retired with
+`ledger/config.py` rather than here. Deleting them in this commit would have taken down a
+live route to tidy a module.
 
 🔴 The count in this header used to be maintained by hand and went stale silently: it said
 THREE until 2026-08-18, having missed `_run_declared`, and the wrong count propagated into
 four documents before anyone re-read `run()`. Prose that COUNTS something the code also
-counts will go stale, because nothing executes the prose.
-
-The four dead branches were:
-
-  * `_run_lineage` - `lot_event` and its kin. A molecule is a GROUP of source rows sharing
-    an `event_time`, so the cursor is a world time and the batch has to be cut on a group
-    boundary (everything below).
-  * `_run_observation` - `void_obs`, `delam_obs`. One row IS one utterance, so there is no
-    group to cut; what those sources need instead is a cursor that works when a bulk load
-    stamps ONE `updated_at` on ninety thousand rows, which a time cursor cannot. See
-    `_run_observation` for the keyset that does.
-  * `_run_transfer` - `dt_log`. One row is one DIE and the atom unit is the JOB-RUN, so
-    rows are grouped by a DECLARED column and the cursor is that column's value. It is the
-    lineage driver's group cut with the group named by the declaration instead of being
-    the time column - `_cut_on_group_boundary` is shared between them for exactly that
-    reason.
-  * `_run_declared` - the declarative row-to-atom mapping. This grammar belongs to a SHAPE
-    rather than to a named source, so a new table of that shape needs a declaration and no
-    code at all. See `declared_translator`.
-
-They share everything that carries a rule: the molecule scope is opened by the DRIVER in
-all four (ruling R-H-bis 3), registrations are looked up once per page in all four, and
-all four write through `store.write_batch`, so "atoms and cursor in one transaction" has
-one implementation rather than one per grammar.
+counts will go stale, because nothing executes the prose. The count is now one, and it is
+one because there is one function.
 
 WHERE THE BATCH IS CUT, AND WHY IT MATTERS MORE THAN THE BATCH SIZE
 --------------------------------------------------------------------
@@ -247,7 +230,7 @@ def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
             return
 
 
-def run(engine, cfg=None, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
+def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         reset_cursor=False, start_from=None, max_batches=None, probe_lag=True,
         ontology_root=None):
     """Translate everything past the cursor. Returns a `BackfillResult`.
@@ -261,9 +244,10 @@ def run(engine, cfg=None, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     a source that the ontology root does not select for v2 is REFUSED here, by name, and
     the reason is the declaration rather than a missing file.
 
-    `cfg` is retained only so that the not-yet-removed legacy drivers below keep a caller
-    shape while their retirement is decided; nothing on this path reads it. It is removed
-    with them.
+    The `cfg` parameter went with the drivers. It carried the parsed legacy declaration
+    and nothing else ever read it; keeping it as an ignored argument would have left a
+    name that answers for a body that no longer decides anything, which is the failure
+    this retirement is cleaning up.
 
     `reset_cursor=True` deliberately re-reads work that is already done - it is how net 2
     of the idempotency argument gets exercised, and how an operator re-translates after a
@@ -271,8 +255,20 @@ def run(engine, cfg=None, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     old ones, which is correct: they are different claims made by different rules).
     """
     from .cutover_v2 import (
-        DEFAULT_ONTOLOGY_ROOT, _require_v2_selection, load_cutover_setup)
+        DEFAULT_ONTOLOGY_ROOT, LedgerV2CutoverError, _require_v2_selection,
+        load_cutover_setup)
 
+    # 🔴 Positional guard, not a type nicety. `run()` used to be `run(engine, cfg, source=…)`
+    # and the second POSITION now means `source`. Without this, a caller written against
+    # the old shape passes a declaration dict straight into the selector and gets
+    # `TypeError: unhashable type: 'dict'` from three frames down - a removal that reports
+    # itself as a crash in unrelated code instead of as a retired argument.
+    if not isinstance(source, str):
+        raise LedgerV2CutoverError(
+            "invalid_source_argument", "source",
+            f"source must be a source id string, got {type(source).__name__}; "
+            f"run() no longer takes a legacy config as its second positional argument",
+        )
     cutover = load_cutover_setup(
         DEFAULT_ONTOLOGY_ROOT if ontology_root is None else ontology_root)
     # 🔴 Checked HERE and not left to the write boundary. `execute_selected_cursor_batch`
@@ -289,11 +285,11 @@ def run(engine, cfg=None, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
 
 def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                     reset_cursor=False, start_from=None, max_batches=None):
-    """Run one manifest-selected v2 lineage source on the existing Store/cursor.
+    """Run one selected source on the existing Store/cursor.
 
-    The caller must explicitly provide ``ontology_root`` to :func:`run`.  Legacy remains
-    the compatibility default.  Reset/re-read controls are refused here because Stage 7
-    requires a separate destructive approval for changing an existing source cursor.
+    ``run()`` is the only caller and there is no longer an alternative driver to fall back
+    to.  Reset/re-read controls are refused here because changing an existing source
+    cursor requires a separate destructive approval.
     """
     from .cutover_v2 import (
         LedgerV2CutoverError,
@@ -461,311 +457,6 @@ def _v2_lot_event_subjects(frame):
     return subjects
 
 
-def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
-                 reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
-    """The ``lot_event`` reader/cursor, with an opt-in registered mapper boundary."""
-    from . import config as ledger_config
-    from . import gate, observability, schema
-    from .chain_mapper import (
-        LedgerMapperContext,
-        LedgerMapperError,
-        LedgerMapperRefused,
-        configured_mapper,
-        deterministic_source_event_context,
-        mapper_execution_version,
-        run_registered_mapper,
-    )
-    from .envelope import canonical_keys
-    from .ledger_frame import atoms_from_ledger_frame
-    from .store import LedgerStore
-    from mappers.ledger_lot_event_mapper import group_lot_event_frames
-
-    source_cfg = ledger_config.source_config(cfg, source)
-    if source_cfg is None:
-        gate.refuse(source, gate.REFUSE_UNDECLARED_SOURCE,
-                    f"source {source!r} has no declaration in "
-                    f"{cfg.get('__origin__', 'ledger_config.json')}; nothing was read")
-        return BackfillResult(source=source, refused_source=True, atoms=0, molecules=0)
-
-    translator_ver = ledger_config.translator_version(cfg, source)
-    mapper_descriptor = configured_mapper(source_cfg)
-    selected_profile = ledger_config.selected_profile(cfg, source)
-    if mapper_descriptor is None:
-        from .lot_event_translator import LotEventTranslator, group_molecules
-    profile_id = ((source_cfg.get("chain_mapper") or {}).get("profile_id")
-                  if selected_profile is not None else None)
-    execution_ver = mapper_execution_version(
-        translator_ver, mapper_descriptor,
-        profile_id=profile_id, profile=selected_profile)
-    mapper_context = LedgerMapperContext()
-    if selected_profile is not None:
-        from .profile_lookup_adapters import default_profile_lookup_adapters
-        mapper_context = LedgerMapperContext(
-            lookups=default_profile_lookup_adapters(engine))
-    declared = ledger_config.declared_derivations(cfg, source)
-    declared_subjects = ledger_config.declared_subject_types(cfg, source)
-    batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
-
-    store = LedgerStore(engine)
-    store.ensure_schema()
-
-    columns = dict(source_cfg["columns"])
-    columns["event_time_column"] = source_cfg["occurred_at_column"]
-
-    read = store.connection()
-    try:
-        existing = store.read_cursor(read, source)
-        after = start_from if start_from is not None else (
-            None if reset_cursor else (existing or {}).get("cursor_value", {}).get(
-                "event_time"))
-
-        logger.info(
-            "[Ledger] backfill %s | translator_ver=%s | rules=%s | cursor=%r%s",
-            source, execution_ver,
-            {k: {kk: vv for kk, vv in v.items() if not kk.startswith("__")}
-             for k, v in (source_cfg.get("vocabulary") or {}).items()},
-            after, " (RESET)" if reset_cursor else "")
-
-        result = BackfillResult(
-            source=source, translator_ver=execution_ver, started_from=after,
-            molecules=0, refused_molecules=0, incomplete_molecules=0,
-            attempted=0, inserted=0, deduped=0, batches=0, blank_wafer_positions=0,
-            rows_read=0, cursor=after, seconds=0.0)
-        started = time.monotonic()
-
-        translator = (None if mapper_descriptor is not None else
-                      LotEventTranslator(source_cfg, translator_ver, declared, who=source))
-        mapper_registered = set()
-        mapper_blank_wafer_positions = 0
-        pending, pending_cursor, pending_molecules = [], after, 0
-        pending_refused, pending_incomplete = 0, 0
-
-        # 🔴 THE BASELINE IS TAKEN FROM THE GATE AS IT IS NOW, NOT FROM ZERO.
-        # `gate._refusals` lives for the whole PROCESS, so a second `run()` in one
-        # process (every test file does this, and so does an operator sweeping two
-        # sources) would otherwise re-attribute the first run's refusals to this run's
-        # first batch - the breakdown would then exceed the aggregate it explains, which
-        # is precisely the disagreement ruling R-2026-08-13-F exists to prevent.
-        refusal_baseline = _refusal_totals(gate, source)
-
-        # The page rule - whole groups, and the dropped one comes back - is
-        # `walk_group_pages`, shared with the transfer driver. What is left here is what is
-        # actually about lineage.
-        pages = walk_group_pages(
-            lambda position: fetch_page(read, source, columns, position, fetch_rows),
-            lambda event_time: fetch_group(read, source, columns, event_time),
-            "event_time", after, fetch_rows)
-        for complete, next_after, _last_page in pages:
-            if max_batches is not None and result["batches"] >= max_batches:
-                break
-            result["rows_read"] += len(complete)
-
-            molecules = (group_lot_event_frames(complete)
-                         if mapper_descriptor is not None
-                         else group_molecules(complete))
-
-            # One query for the whole page: which lots/wafers already have a register.
-            # Doing it per molecule is what makes a ten-million row backfill quadratic.
-            subjects = set()
-            for molecule in molecules:
-                source_rows = (molecule.to_dict(orient="records")
-                               if mapper_descriptor is not None else molecule.rows)
-                lots = {row["lot"] for row in source_rows}
-                if mapper_descriptor is not None:
-                    lots.update(row["parent_lot"] for row in source_rows)
-                    lots.update(row["child_lot"] for row in source_rows)
-                else:
-                    lots.update({molecule.parent, molecule.child})
-                for lot in lots:
-                    if lot:
-                        subjects.add(("Lot", canonical_keys({"lot": lot})))
-                for row in source_rows:
-                    for wafer in str(row["wafers"] or "").split(
-                            source_cfg.get("list_separator", ":")):
-                        wafer = wafer.strip()
-                        if wafer:
-                            subjects.add(("Wafer", canonical_keys({"wafer": wafer})))
-            known_registrations = store.existing_registrations(read, subjects)
-            if mapper_descriptor is not None:
-                mapper_registered |= known_registrations
-            else:
-                translator.registered |= known_registrations
-
-            # 🔴 END THE READ TRANSACTION BEFORE WRITING ANYTHING.
-            # psycopg2 opens one implicitly on the first SELECT and holds it until told
-            # otherwise, which means this connection sits idle-in-transaction holding
-            # ACCESS SHARE on `ledger_events` for the whole molecule loop below. The
-            # first statement of that loop's first write is `CREATE TABLE ... PARTITION
-            # OF ledger_events`, which needs ACCESS EXCLUSIVE on the same table - so the
-            # process blocks on ITSELF, forever, with no error and no output. That
-            # happened on this lane's first run. Rolling back here (nothing to commit -
-            # every statement above is a SELECT) releases the lock and costs one round
-            # trip per page.
-            read.rollback()
-
-            for molecule in molecules:
-                atoms, molecule_report = None, None
-                source_rows = (molecule.to_dict(orient="records")
-                               if mapper_descriptor is not None else molecule.rows)
-                event_time = (molecule.iloc[0]["event_time"]
-                              if mapper_descriptor is not None else molecule.event_time)
-                try:
-                    # 🔴 THE MOLECULE SCOPE IS OPENED HERE, BY THE SHARED DRIVER, and
-                    # this is the whole of ruling R-H-bis 3. It used to be opened inside
-                    # `LotEventTranslator.translate`, which meant a SECOND translator
-                    # inherited the all-or-nothing rule only if its author read the first
-                    # translator and noticed the `with`. Opened by the loop that walks
-                    # molecules, every translator this driver drives is born inside the
-                    # scope whether or not anyone tells its author the rule exists.
-                    #
-                    # SCREENING IS INSIDE THE SAME SCOPE on purpose (R-H-bis 1): since
-                    # `screen_molecule` refuses through `gate.refuse` like every other
-                    # refusal site, a molecule the GATE rejects unwinds to the handler
-                    # below instead of handing back an `[]` that a future edit could
-                    # merge away.
-                    with gate.building_molecule(source):
-                        if mapper_descriptor is not None:
-                            input_frame = molecule
-                            source_event = deterministic_source_event_context(
-                                source, source_rows,
-                                identity_fields=("row_identity",))
-                            mapper_rule = {
-                                "source": source,
-                                "source_config": source_cfg,
-                                "translator_version": translator_ver,
-                                "declared_derivations": declared,
-                                "registered_entities": tuple(mapper_registered),
-                                "source_event": source_event,
-                            }
-                            if selected_profile is not None:
-                                mapper_rule.update({
-                                    "profile_id": profile_id,
-                                    "profile": selected_profile,
-                                })
-                            mapped = run_registered_mapper(
-                                mapper_descriptor.mapper_id,
-                                mapper_descriptor.version,
-                                input_frame,
-                                context=mapper_context,
-                                rule=mapper_rule,
-                            )
-                            molecule_report = dict(
-                                mapped.attrs.get("mapper_report") or {})
-                            atoms = atoms_from_ledger_frame(mapped)
-                        else:
-                            atoms, molecule_report = translator.translate(molecule)
-                        refused = atoms is None
-                        if not refused:
-                            gate_derivations = declared
-                            gate_subject_types = declared_subjects
-                            if selected_profile is not None:
-                                contract = mapped.attrs.get("gate_contract")
-                                if not isinstance(contract, Mapping):
-                                    raise LedgerMapperError(
-                                        "mapper_gate_contract_missing",
-                                        "ledger_frame.attrs.gate_contract",
-                                        "canonical Profile mapper must declare its gate contract")
-                                gate_derivations = frozenset(
-                                    contract.get("declared_derivations") or ())
-                                gate_subject_types = frozenset(
-                                    contract.get("declared_subject_types") or ())
-                                if atoms and (
-                                        not gate_derivations or not gate_subject_types):
-                                    raise LedgerMapperError(
-                                        "mapper_gate_contract_invalid",
-                                        "ledger_frame.attrs.gate_contract",
-                                        "canonical Profile gate contract must name derivations and subjects")
-                            kept, _screen_report = gate.screen_molecule(
-                                source, atoms, gate_derivations, gate_subject_types,
-                                molecule_ref=(molecule_report or {}).get("molecule"),
-                                source_rows=len(source_rows))
-                            pending.extend(kept)
-                            if mapper_descriptor is not None:
-                                for atom in kept:
-                                    if atom.predicate == "register":
-                                        mapper_registered.add((
-                                            atom.subject_type,
-                                            canonical_keys(atom.subject_keys),
-                                        ))
-                                mapper_blank_wafer_positions += int(
-                                    molecule_report.get("blank_wafer_positions") or 0)
-                except LedgerMapperRefused as refusal:
-                    # A converted source treats typed mapper refusal as an execution
-                    # failure: no partial pending atoms are flushed and this event's
-                    # existing Ledger cursor does not move. Legacy sources keep their
-                    # established counted-refusal policy until explicitly migrated.
-                    reason = (refusal.code if refusal.code in gate.REFUSAL_REASONS
-                              else gate.REFUSE_ATOMICITY)
-                    gate.refuse(
-                        source, reason, refusal.message,
-                        rows=len(source_rows))
-                    raise
-                except gate.MoleculeRefused:
-                    # The gate refused after the translator had already built (and
-                    # counted) atoms. Nothing of this molecule is pending - the unwind
-                    # happened before `pending.extend` - but its registers must be given
-                    # back: nothing was written, so the next molecule that mentions the
-                    # same lot has to be free to register it.
-                    if mapper_descriptor is not None:
-                        raise
-                    refused = True
-                    _forget_registers(translator, atoms)
-                if refused:
-                    pending_refused += 1
-                    result["refused_molecules"] += 1
-                elif molecule_report.get("incomplete"):
-                    # Only a molecule that actually LANDED can be incomplete. Counting a
-                    # refused one in both buckets makes the two numbers overlap, and an
-                    # operator adding them up gets a total larger than the source.
-                    gate.record_incomplete(source)
-                    pending_incomplete += 1
-                    result["incomplete_molecules"] += 1
-                pending_molecules += 1
-                pending_cursor = event_time
-
-                if pending_molecules >= batch_size:
-                    _flush(store, source, execution_ver, pending,
-                           {"event_time": _cursor_json(pending_cursor)},
-                           pending_molecules, pending_refused, pending_incomplete,
-                           result, gate, refusal_baseline)
-                    pending, pending_molecules = [], 0
-                    pending_refused, pending_incomplete = 0, 0
-
-            if pending_molecules:
-                _flush(store, source, execution_ver, pending,
-                       {"event_time": _cursor_json(pending_cursor)},
-                       pending_molecules, pending_refused, pending_incomplete, result,
-                       gate, refusal_baseline)
-                pending, pending_molecules = [], 0
-                pending_refused, pending_incomplete = 0, 0
-
-            after = next_after
-            result["cursor"] = after
-
-        result["seconds"] = round(time.monotonic() - started, 3)
-        result["blank_wafer_positions"] = (
-            mapper_blank_wafer_positions if mapper_descriptor is not None
-            else translator.blank_wafer_positions)
-        result["census"] = store.census()
-        result["partitions"] = [name for name, _ in schema.partitions(read)]
-
-        cursor_row = store.read_cursor(read, source)
-        # Read back rather than reported from memory: the point of the column is that
-        # somebody OTHER than this process can see the breakdown, so the run's own log
-        # quotes what a reader would actually get.
-        result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
-        result["lag"] = observability.lag_report(
-            store, source, source_cfg, cursor_row,
-            probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
-            force_probe=probe_lag)
-        result["gate_note"] = gate.note()
-        result["lag_note"] = observability.lag_note(result["lag"])
-        return result
-    finally:
-        read.close()
-
-
-# --------------------------------------------------------------- observation driver
 def fetch_observation_page(connection, source, source_cfg, after, limit):
     """One page of finding rows past the keyset `after`, as dicts with LOGICAL names.
 
@@ -833,176 +524,6 @@ def fetch_runs(connection, source_cfg, keys):
         return {row[0]: dict(zip(names, row)) for row in cursor.fetchall()}
 
 
-def _watermark_json(values):
-    """The watermark as something `jsonb` can hold and `>` can read back.
-
-    Datetimes go to ISO-8601 text. On resume they are bound straight back into the
-    row-value comparison and PostgreSQL coerces them to the column's own type - which is
-    why the ISO spelling matters: it is the one text form that means the same instant to
-    the database as the value it came from.
-    """
-    from datetime import datetime as _dt
-    return [v.isoformat() if isinstance(v, _dt) else (None if v is None else str(v))
-            for v in values]
-
-
-def _cursor_json(value):
-    """A lineage cursor suitable for jsonb while preserving timestamptz ordering."""
-    return value.isoformat() if hasattr(value, "isoformat") else value
-
-
-def _run_observation(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,
-                     reset_cursor=False, start_from=None, max_batches=None,
-                     probe_lag=True):
-    """`void_obs` / `delam_obs` -> `observed` atoms. Ruling R-2026-08-14-D.
-
-    🔴 THE MOLECULE SCOPE IS OPENED HERE, BY THIS DRIVER, exactly as the lineage driver
-    opens it (ruling R-H-bis 3). One row is one molecule in this grammar, so the
-    all-or-nothing rule is trivially satisfied - and that is precisely why the scope is
-    still opened rather than skipped: the day this driver grows a second atom per row, the
-    rule is already holding it.
-    """
-    from . import config as ledger_config
-    from . import gate, observability, schema
-    from .envelope import canonical_keys
-    from .observation_translator import ObservationMolecule, ObservationTranslator
-    from .store import LedgerStore
-
-    source_cfg = ledger_config.source_config(cfg, source)
-    translator_ver = ledger_config.translator_version(cfg, source)
-    declared = ledger_config.declared_derivations(cfg, source)
-    declared_subjects = ledger_config.declared_subject_types(cfg, source)
-    batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
-    finding_kind = source_cfg.get("finding_kind")
-
-    # 🔴 THE CLOSED CLASS SET COMES FROM THE KIND REGISTRY, NOT FROM THIS DECLARATION
-    # (§6-quater). `ledger_config` says WHICH COLUMN utters a class; `finding_kinds` says
-    # WHICH VALUES a class may take, because that set is a property of the kind and the
-    # console builds its slice axis from the same list. Two declarations of one closed set
-    # is how a value that is legal on one screen is refused on the other.
-    declared_classes = ()
-    if (source_cfg.get("columns") or {}).get("class"):
-        try:
-            import finding_kinds
-            declared_classes = finding_kinds.classes(finding_kind)
-        except Exception as exc:
-            logger.warning("[Ledger] %s declares a class column but the kind registry "
-                           "could not be read (%s); every uttered class will be refused",
-                           source, exc)
-
-    store = LedgerStore(engine)
-    store.ensure_schema()
-
-    read = store.connection()
-    try:
-        existing = store.read_cursor(read, source)
-        if isinstance(start_from, str):
-            # `--from "2026-08-14T08:30:02+09:00|019ffd76-…"`. A keyset has as many parts
-            # as the declaration has columns, so the operator's string is split rather
-            # than guessed at, and a wrong arity is a loud IndexError at the first page
-            # instead of a comparison that quietly matches everything.
-            start_from = start_from.split("|")
-        after = start_from if start_from is not None else (
-            None if reset_cursor else (existing or {}).get("cursor_value", {}).get(
-                "watermark"))
-
-        logger.info("[Ledger] backfill %s (observation) | translator_ver=%s | "
-                    "finding_kind=%s | classes=%s | cursor=%r%s",
-                    source, translator_ver, finding_kind, list(declared_classes), after,
-                    " (RESET)" if reset_cursor else "")
-
-        result = BackfillResult(
-            source=source, kind=ledger_config.SOURCE_KIND_OBSERVATION,
-            translator_ver=translator_ver, started_from=after,
-            molecules=0, refused_molecules=0, incomplete_molecules=0,
-            attempted=0, inserted=0, deduped=0, batches=0, blank_geometry=0,
-            rows_read=0, cursor=after, seconds=0.0)
-        started = time.monotonic()
-
-        translator = ObservationTranslator(source, source_cfg, translator_ver, declared,
-                                           declared_classes=declared_classes)
-        refusal_baseline = _refusal_totals(gate, source)
-
-        while True:
-            if max_batches is not None and result["batches"] >= max_batches:
-                break
-            rows = fetch_observation_page(read, source, source_cfg, after, fetch_rows)
-            if not rows:
-                break
-            result["rows_read"] += len(rows)
-
-            runs = fetch_runs(read, source_cfg, {r["run_key"] for r in rows
-                                                 if r.get("run_key")})
-            subjects = {("Wafer", canonical_keys({"wafer": str(r["wafer"]).strip()}))
-                        for r in rows if str(r.get("wafer") or "").strip()}
-            translator.registered |= store.existing_registrations(read, subjects)
-
-            # END THE READ TRANSACTION BEFORE WRITING - same reason as the lineage
-            # driver: this connection holds ACCESS SHARE on `ledger_events` and the first
-            # write may need ACCESS EXCLUSIVE to create a partition, so the process would
-            # block on itself.
-            read.rollback()
-
-            pending, pending_molecules, pending_refused = [], 0, 0
-            pending_cursor = after
-            for row in rows:
-                molecule = ObservationMolecule(source, row)
-                atoms, refused = None, False
-                try:
-                    with gate.building_molecule(source):
-                        atoms, _report = translator.translate(molecule, runs)
-                        refused = atoms is None
-                        if not refused:
-                            kept, _screen = gate.screen_molecule(
-                                source, atoms, declared, declared_subjects,
-                                molecule_ref=molecule.ref, source_rows=1)
-                            pending.extend(kept)
-                except gate.MoleculeRefused:
-                    refused = True
-                    _forget_registers(translator, atoms)
-                if refused:
-                    pending_refused += 1
-                    result["refused_molecules"] += 1
-                pending_molecules += 1
-                pending_cursor = molecule.watermark
-
-                if pending_molecules >= batch_size:
-                    _flush(store, source, translator_ver, pending,
-                           {"watermark": _watermark_json(pending_cursor)},
-                           pending_molecules, pending_refused, 0, result, gate,
-                           refusal_baseline)
-                    pending, pending_molecules, pending_refused = [], 0, 0
-
-            if pending_molecules:
-                _flush(store, source, translator_ver, pending,
-                       {"watermark": _watermark_json(pending_cursor)},
-                       pending_molecules, pending_refused, 0, result, gate,
-                       refusal_baseline)
-
-            after = _watermark_json(rows[-1]["__watermark__"])
-            result["cursor"] = after
-            if len(rows) < fetch_rows:
-                break
-
-        result["seconds"] = round(time.monotonic() - started, 3)
-        result["blank_geometry"] = translator.blank_geometry
-        result["census"] = store.census()
-        result["partitions"] = [name for name, _ in schema.partitions(read)]
-
-        cursor_row = store.read_cursor(read, source)
-        result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
-        result["lag"] = observability.lag_report_keyset(
-            store, source, source_cfg, cursor_row,
-            probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
-            force_probe=probe_lag)
-        result["gate_note"] = gate.note()
-        result["lag_note"] = observability.lag_note(result["lag"])
-        return result
-    finally:
-        read.close()
-
-
-# ------------------------------------------------------------------ declared driver
 def fetch_declared_page(connection, source, source_cfg, after, limit):
     """One page of rows past the keyset `after`, with EVERY column the row has.
 
@@ -1040,141 +561,6 @@ def fetch_declared_page(connection, source, source_cfg, after, limit):
         row["__watermark__"] = [row.pop(f"__wm{index}__")
                                 for index in range(len(watermark))]
     return rows
-
-
-def _run_declared(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,
-                  reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
-    """A source whose row -> atom mapping is DECLARED (`ADMIN_SETUP_BRIEF` §6-2).
-
-    Structurally the observation driver: keyset cursor, one row per molecule, molecule
-    scope opened HERE by the driver (ruling R-H-bis 3). What differs is only that the
-    translator reads its rules from the config instead of from its own source.
-    """
-    from . import config as ledger_config
-    from . import gate, observability, schema
-    from .declared_translator import DeclaredMolecule, DeclaredTranslator
-    from .envelope import canonical_keys
-    from .store import LedgerStore
-
-    source_cfg = ledger_config.source_config(cfg, source)
-    translator_ver = ledger_config.translator_version(cfg, source)
-    declared = ledger_config.declared_derivations(cfg, source)
-    declared_subjects = ledger_config.declared_subject_types(cfg, source)
-    batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
-
-    store = LedgerStore(engine)
-    store.ensure_schema()
-
-    read = store.connection()
-    try:
-        existing = store.read_cursor(read, source)
-        if isinstance(start_from, str):
-            start_from = start_from.split("|")
-        after = start_from if start_from is not None else (
-            None if reset_cursor else (existing or {}).get("cursor_value", {}).get(
-                "watermark"))
-
-        logger.info("[Ledger] backfill %s (declared) | translator_ver=%s | rules=%s | "
-                    "cursor=%r%s", source, translator_ver,
-                    [r.get("rule") for r in (source_cfg.get("emit") or [])], after,
-                    " (RESET)" if reset_cursor else "")
-
-        result = BackfillResult(
-            source=source, kind=ledger_config.SOURCE_KIND_DECLARED,
-            translator_ver=translator_ver, started_from=after,
-            molecules=0, refused_molecules=0, incomplete_molecules=0,
-            attempted=0, inserted=0, deduped=0, batches=0, rows_matching_nothing=0,
-            rows_read=0, cursor=after, seconds=0.0)
-        started = time.monotonic()
-
-        translator = DeclaredTranslator(source, source_cfg, translator_ver, declared)
-        refusal_baseline = _refusal_totals(gate, source)
-
-        while True:
-            if max_batches is not None and result["batches"] >= max_batches:
-                break
-            rows = fetch_declared_page(read, source, source_cfg, after, fetch_rows)
-            if not rows:
-                break
-            result["rows_read"] += len(rows)
-
-            # The subjects this page could register, read from the DECLARATION rather than
-            # from a literal - a declared source may speak about any entity type it named.
-            subjects = set()
-            for row in rows:
-                for rule in (source_cfg.get("emit") or []):
-                    subject = rule.get("subject") or {}
-                    subject_type = subject.get("type")
-                    if subject_type not in translator.register_types:
-                        continue
-                    try:
-                        keys = {k: _plain(v, row)
-                                for k, v in (subject.get("keys") or {}).items()}
-                    except KeyError:
-                        continue        # the translator will refuse this row by name
-                    if all(str(v or "").strip() for v in keys.values()):
-                        subjects.add((subject_type, canonical_keys(keys)))
-            translator.registered |= store.existing_registrations(read, subjects)
-
-            read.rollback()
-
-            pending, pending_molecules, pending_refused = [], 0, 0
-            pending_cursor = after
-            for row in rows:
-                molecule = DeclaredMolecule(source, row)
-                atoms, refused = None, False
-                try:
-                    with gate.building_molecule(source):
-                        atoms, _report = translator.translate(molecule)
-                        refused = atoms is None
-                        if not refused:
-                            kept, _screen = gate.screen_molecule(
-                                source, atoms, declared, declared_subjects,
-                                molecule_ref=molecule.ref, source_rows=1)
-                            pending.extend(kept)
-                except gate.MoleculeRefused:
-                    refused = True
-                    _forget_registers(translator, atoms)
-                if refused:
-                    pending_refused += 1
-                    result["refused_molecules"] += 1
-                pending_molecules += 1
-                pending_cursor = molecule.watermark
-
-                if pending_molecules >= batch_size:
-                    _flush(store, source, translator_ver, pending,
-                           {"watermark": _watermark_json(pending_cursor)},
-                           pending_molecules, pending_refused, 0, result, gate,
-                           refusal_baseline)
-                    pending, pending_molecules, pending_refused = [], 0, 0
-
-            if pending_molecules:
-                _flush(store, source, translator_ver, pending,
-                       {"watermark": _watermark_json(pending_cursor)},
-                       pending_molecules, pending_refused, 0, result, gate,
-                       refusal_baseline)
-
-            after = _watermark_json(rows[-1]["__watermark__"])
-            result["cursor"] = after
-            if len(rows) < fetch_rows:
-                break
-
-        result["seconds"] = round(time.monotonic() - started, 3)
-        result["rows_matching_nothing"] = translator.rows_matching_nothing
-        result["census"] = store.census()
-        result["partitions"] = [name for name, _ in schema.partitions(read)]
-
-        cursor_row = store.read_cursor(read, source)
-        result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
-        result["lag"] = observability.lag_report_keyset(
-            store, source, source_cfg, cursor_row,
-            probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
-            force_probe=probe_lag)
-        result["gate_note"] = gate.note()
-        result["lag_note"] = observability.lag_note(result["lag"])
-        return result
-    finally:
-        read.close()
 
 
 def _plain(value, row):
@@ -1278,151 +664,6 @@ def fetch_containers(connection, source_cfg, keys):
         return {row[0]: {"lot": row[1], "slot": row[2]} for row in cursor.fetchall()}
 
 
-def _run_transfer(engine, cfg, source, fetch_rows=DEFAULT_FETCH_ROWS,
-                  reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
-    """`dt_log` -> `transferred` atoms. The third grammar.
-
-    🔴 THE MOLECULE SCOPE IS OPENED HERE, BY THIS DRIVER (ruling R-H-bis 3), exactly as the
-    other two open it. This grammar is the one where it bites hardest: a job-run folds up
-    to 150 source rows into several atoms, so a refusal discovered while building the fifth
-    wafer's atom has to unwind the first four - and it does, because every `gate.refuse`
-    under this `with` raises.
-    """
-    from . import config as ledger_config
-    from . import gate, observability, schema
-    from .envelope import canonical_keys
-    from .store import LedgerStore
-    from .transfer_translator import TransferTranslator
-
-    source_cfg = ledger_config.source_config(cfg, source)
-    translator_ver = ledger_config.translator_version(cfg, source)
-    declared = ledger_config.declared_derivations(cfg, source)
-    declared_subjects = ledger_config.declared_subject_types(cfg, source)
-    batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
-    group_column = source_cfg["group"]["column"]
-
-    store = LedgerStore(engine)
-    store.ensure_schema()
-
-    read = store.connection()
-    try:
-        existing = store.read_cursor(read, source)
-        after = start_from if start_from is not None else (
-            None if reset_cursor else (existing or {}).get("cursor_value", {}).get(
-                "group_key"))
-
-        logger.info("[Ledger] backfill %s (transfer) | translator_ver=%s | group=%s | "
-                    "container=%s | cursor=%r%s",
-                    source, translator_ver, group_column,
-                    (source_cfg.get("container") or {}).get("relation"), after,
-                    " (RESET)" if reset_cursor else "")
-
-        result = BackfillResult(
-            source=source, kind=ledger_config.SOURCE_KIND_TRANSFER,
-            translator_ver=translator_ver, started_from=after,
-            molecules=0, refused_molecules=0, incomplete_molecules=0,
-            attempted=0, inserted=0, deduped=0, batches=0,
-            unanchored_rows=0, confirmed_groups=0, unconfirmed_groups=0,
-            rows_read=0, cursor=after, seconds=0.0)
-        started = time.monotonic()
-
-        translator = TransferTranslator(source, source_cfg, translator_ver, declared)
-        refusal_baseline = _refusal_totals(gate, source)
-
-        # 🔴 THE SAME PAGE RULE AS THE LINEAGE DRIVER, FROM THE SAME FUNCTION. A group
-        # larger than a page is fetched whole rather than folded as a fragment - and a
-        # fragment here would be worse than elsewhere, because it produces a `qty` that is
-        # wrong and looks right.
-        pages = walk_group_pages(
-            lambda position: fetch_transfer_page(read, source, source_cfg, position,
-                                                 fetch_rows),
-            lambda group_key: fetch_transfer_group(read, source, source_cfg, group_key),
-            "group_key", after, fetch_rows)
-        for complete, next_after, _last_page in pages:
-            if max_batches is not None and result["batches"] >= max_batches:
-                break
-            result["rows_read"] += len(complete)
-
-            molecules = _group_transfer_rows(source, complete)
-            containers = fetch_containers(read, source_cfg,
-                                          {m.group_key for m in molecules})
-            subjects = {("Wafer", canonical_keys({"wafer": str(r["wafer"]).strip()}))
-                        for r in complete if str(r.get("wafer") or "").strip()}
-            translator.registered |= store.existing_registrations(read, subjects)
-
-            # END THE READ TRANSACTION BEFORE WRITING - same reason as the other two
-            # drivers: this connection holds ACCESS SHARE on `ledger_events` and the first
-            # write may need ACCESS EXCLUSIVE to create a partition.
-            read.rollback()
-
-            pending, pending_molecules = [], 0
-            pending_refused, pending_incomplete = 0, 0
-            pending_cursor = after
-            for molecule in molecules:
-                atoms, molecule_report, refused = None, None, False
-                try:
-                    with gate.building_molecule(source):
-                        atoms, molecule_report = translator.translate(molecule, containers)
-                        refused = atoms is None
-                        if not refused:
-                            kept, _screen = gate.screen_molecule(
-                                source, atoms, declared, declared_subjects,
-                                molecule_ref=molecule.ref,
-                                source_rows=len(molecule.rows))
-                            pending.extend(kept)
-                except gate.MoleculeRefused:
-                    refused = True
-                    _forget_registers(translator, atoms)
-                if refused:
-                    pending_refused += 1
-                    result["refused_molecules"] += 1
-                elif molecule_report.get("incomplete"):
-                    # Only a molecule that actually LANDED can be incomplete - counting a
-                    # refused one in both buckets makes an operator's sum exceed the
-                    # source.
-                    gate.record_incomplete(source)
-                    pending_incomplete += 1
-                    result["incomplete_molecules"] += 1
-                pending_molecules += 1
-                pending_cursor = molecule.group_key
-
-                if pending_molecules >= batch_size:
-                    _flush(store, source, translator_ver, pending,
-                           {"group_key": pending_cursor},
-                           pending_molecules, pending_refused, pending_incomplete,
-                           result, gate, refusal_baseline)
-                    pending, pending_molecules = [], 0
-                    pending_refused, pending_incomplete = 0, 0
-
-            if pending_molecules:
-                _flush(store, source, translator_ver, pending,
-                       {"group_key": pending_cursor},
-                       pending_molecules, pending_refused, pending_incomplete, result,
-                       gate, refusal_baseline)
-
-            after = next_after
-            result["cursor"] = after
-
-        result["seconds"] = round(time.monotonic() - started, 3)
-        result["unanchored_rows"] = translator.unanchored_rows
-        result["confirmed_groups"] = translator.confirmed_groups
-        result["unconfirmed_groups"] = translator.unconfirmed_groups
-        result["census"] = store.census()
-        result["partitions"] = [name for name, _ in schema.partitions(read)]
-
-        cursor_row = store.read_cursor(read, source)
-        result["refusal_reasons"] = (cursor_row or {}).get("refusal_reasons")
-        result["lag"] = observability.lag_report_group(
-            store, source, source_cfg, cursor_row,
-            probe_interval=(cfg.get("lag") or {}).get("probe_interval_seconds", 60),
-            force_probe=probe_lag)
-        result["gate_note"] = gate.note()
-        result["lag_note"] = observability.lag_note(result["lag"])
-        return result
-    finally:
-        read.close()
-
-
 def _group_transfer_rows(source, rows):
     """Rows already in group order -> molecules, order preserved.
 
@@ -1452,49 +693,6 @@ def _forget_registers(translator, atoms):
         if atom.predicate == "register":
             translator.registered.discard(
                 (atom.subject_type, canonical_keys(atom.subject_keys)))
-
-
-def _refusal_totals(gate, source):
-    """`{reason: molecules}` the gate has counted for `source` SO FAR IN THIS PROCESS."""
-    return {reason: total for (src, reason), total in gate.refusals().items()
-            if src == source}
-
-
-def _refusal_delta(gate, source, baseline):
-    """This batch's refusals BY NAME - the totals now, minus the baseline.
-
-    Does NOT advance the baseline: `_flush` does that only after the write commits, so a
-    batch that raises leaves its refusals to be attributed to the retry rather than
-    silently dropped from the breakdown while `molecules_refused` still counts them.
-    """
-    totals = _refusal_totals(gate, source)
-    delta = {reason: total - baseline.get(reason, 0) for reason, total in totals.items()
-             if total > baseline.get(reason, 0)}
-    return delta, totals
-
-
-def _flush(store, source, translator_ver, atoms, cursor_value, molecules, refused,
-           incomplete, result, gate, refusal_baseline):
-    """One batch: atoms, the cursor, the aggregates AND their breakdown, in one commit.
-
-    🔴 The breakdown is computed HERE, immediately before the write, so the names and the
-    integer beside them come from the same instant. `sum(delta) == refused` is the
-    contract `store.write_batch` documents; where the two could disagree is a defect in
-    the refusal PATHS rather than in this arithmetic, so it is asserted by a test against
-    the database rather than enforced here - telemetry must never be able to roll back a
-    batch of atoms (`observability.lag_report` takes the same stance).
-    """
-    delta, totals = _refusal_delta(gate, source, refusal_baseline)
-    written = store.write_batch(
-        source, translator_ver, atoms, cursor_value, molecules,
-        refused=refused, incomplete=incomplete, reasons=delta)
-    refusal_baseline.clear()
-    refusal_baseline.update(totals)
-    result["molecules"] += molecules
-    result["attempted"] += written["attempted"]
-    result["inserted"] += written["inserted"]
-    result["deduped"] += written["deduped"]
-    result["batches"] += 1
 
 
 def beat(result):
