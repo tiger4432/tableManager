@@ -3,7 +3,7 @@ from sqlalchemy.orm import (sessionmaker, declarative_base, Session,
                             SessionTransactionOrigin)
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 
 # Database connection URL. Precedence (pinned by test_database_url_config.py):
 #   env DATABASE_URL  >  <config dir>/database.json  >  DEFAULT_PG_URL
@@ -274,6 +274,14 @@ def stage_event(session, event_type, table_name, data_row):
     for col in data_row.__table__.columns:
         if col.name not in _EXCLUDED:
             val = getattr(data_row, col.name, None)
+            # Dynamic rows can contain temporal/UUID values (for example dt_log's
+            # event_time).  The ORM accepts them as native objects, but the outbox
+            # payload is JSONB and must be JSON-safe before this before_flush hook
+            # adds it to the same transaction.
+            if isinstance(val, (datetime, date)):
+                val = val.isoformat()
+            elif isinstance(val, uuid.UUID):
+                val = str(val)
             data_dict[col.name] = {
                 "value": val,
                 "is_overwrite": False,

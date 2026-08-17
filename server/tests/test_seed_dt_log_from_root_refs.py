@@ -31,3 +31,23 @@ def test_generated_frames_point_to_the_root_valid_die_floor():
         "table": "valid_die_ref",
         "map_id": "NAB115_WF",
     }
+
+
+def test_floor_partition_covers_every_die_once():
+    floor = list(range(11))
+    parts = seed._partition_floor_cells(floor, 3)
+    assert sorted(value for part in parts for value in part) == floor
+    assert max(map(len, parts)) - min(map(len, parts)) <= 1
+
+
+def test_dt_coverage_mix_contains_full_and_deterministic_partial_jobs():
+    floor = [(0, 0), (2, 0), (4, 0), (1, 1), (3, 1), (0, 2)]
+    assert seed._snake_floor_cells(floor) == [
+        (4, 0), (2, 0), (0, 0), (1, 1), (3, 1), (0, 2)
+    ]
+    full, full_mode = seed._coverage_cells(floor, 1)
+    partial, partial_mode = seed._coverage_cells(floor, seed.PARTIAL_JOB_PERIOD)
+    assert full_mode == "full" and full == seed._snake_floor_cells(floor)
+    assert partial_mode == "partial"
+    assert partial == full[:len(full) // 2]
+    assert 0 < len(partial) < len(full)

@@ -387,6 +387,17 @@ def validate(cfg: dict, origin: str = "<memory>"):
     if not isinstance(sources, dict) or not sources:
         raise LedgerConfigError(f"{origin}: 'sources' must declare at least one source")
 
+    # Canonical Profiles remain a separate, versioned contract, but a source that opts
+    # into the canonical mapper must point at one validated Profile by ID.  Resolve the
+    # complete section once here so a misspelled ID or a source/profile disagreement is
+    # rejected at declaration load rather than after the cursor loop has started.
+    from .source_profile import ProfileValidationError, validate_profile_section
+    try:
+        profiles = validate_profile_section(cfg, path=origin)
+    except ProfileValidationError as exc:
+        raise LedgerConfigError(
+            f"{exc.path}: {exc.message} [{exc.code}]") from exc
+
     for name, source in sources.items():
         where = f"{origin}: sources.{name}"
         if not isinstance(source, dict):
@@ -439,7 +450,8 @@ def validate(cfg: dict, origin: str = "<memory>"):
                 f"{where}.kind {kind!r} is not one of {sorted(SOURCE_KINDS)}. The kind "
                 f"selects which grammar this source's translator speaks, so a misspelling "
                 f"would validate the declaration against the wrong required columns.")
-        _validate_chain_mapper_selection(source, where, kind)
+        _validate_chain_mapper_selection(
+            source, where, kind, source_name=name, profiles=profiles)
         if kind == SOURCE_KIND_OBSERVATION:
             _validate_observation_source(source, where)
             continue
@@ -491,7 +503,8 @@ def validate(cfg: dict, origin: str = "<memory>"):
     return cfg
 
 
-def _validate_chain_mapper_selection(source: dict, where: str, kind: str):
+def _validate_chain_mapper_selection(source: dict, where: str, kind: str, *,
+                                      source_name: str, profiles: dict):
     """Validate only the declarative selector; the trusted registry resolves it.
 
     An absent selector deliberately preserves every source that has not been migrated.
@@ -506,11 +519,11 @@ def _validate_chain_mapper_selection(source: dict, where: str, kind: str):
             "existing lineage reader currently has a Chain-mapper call site")
     if not isinstance(selection, dict):
         raise LedgerConfigError(f"{where}.chain_mapper must be an object")
-    unknown = sorted(set(selection) - {"mapper_id", "version"})
+    unknown = sorted(set(selection) - {"mapper_id", "version", "profile_id"})
     if unknown:
         raise LedgerConfigError(
             f"{where}.chain_mapper contains unsupported fields {unknown}; only a "
-            "trusted mapper_id and version may be declared")
+            "trusted mapper_id, version, and canonical profile_id may be declared")
     mapper_id = selection.get("mapper_id")
     version = selection.get("version")
     if not isinstance(mapper_id, str) or not mapper_id.strip():
@@ -519,6 +532,25 @@ def _validate_chain_mapper_selection(source: dict, where: str, kind: str):
     if isinstance(version, bool) or not isinstance(version, int) or version < 1:
         raise LedgerConfigError(
             f"{where}.chain_mapper.version must be a positive integer")
+    profile_id = selection.get("profile_id")
+    if mapper_id == "canonical-profile":
+        if not isinstance(profile_id, str) or not profile_id.strip():
+            raise LedgerConfigError(
+                f"{where}.chain_mapper.profile_id must explicitly name one validated "
+                "canonical Profile")
+        profile_id = profile_id.strip()
+        profile = profiles.get(profile_id)
+        if profile is None:
+            raise LedgerConfigError(
+                f"{where}.chain_mapper.profile_id names unknown Profile {profile_id!r}")
+        if profile.source != source_name:
+            raise LedgerConfigError(
+                f"{where}.chain_mapper.profile_id selects Profile {profile_id!r} for "
+                f"source {profile.source!r}, not driver source {source_name!r}")
+    elif profile_id is not None:
+        raise LedgerConfigError(
+            f"{where}.chain_mapper.profile_id is only valid with mapper_id "
+            "'canonical-profile'")
 
 
 def _validate_observation_source(source: dict, where: str):
@@ -892,6 +924,39 @@ def source_kind(cfg: dict, source: str) -> str:
 def source_config(cfg: dict, source: str) -> dict:
     """The declaration for one source, or `None`. `None` is a refusal, not a default."""
     return (cfg.get("sources") or {}).get(source)
+
+
+def selected_profile(cfg: dict, source: str):
+    """Return the canonical Profile explicitly selected by one source, or ``None``.
+
+    ``validate()`` proves the ID and source agreement at config load.  Runtime callers
+    resolve again from the same immutable run snapshot instead of retaining a process
+    cache, so hot reload can only take effect at the next run boundary.
+    """
+    source_cfg = source_config(cfg, source) or {}
+    selection = source_cfg.get("chain_mapper")
+    if not isinstance(selection, dict):
+        return None
+    if selection.get("mapper_id") != "canonical-profile":
+        return None
+    profile_id = selection.get("profile_id")
+    from .source_profile import ProfileValidationError, validate_profile_section
+    try:
+        profiles = validate_profile_section(
+            cfg, path=str(cfg.get("__origin__") or "ledger_config"))
+    except ProfileValidationError as exc:
+        raise LedgerConfigError(
+            f"{exc.path}: {exc.message} [{exc.code}]") from exc
+    profile = profiles.get(profile_id)
+    if profile is None:
+        raise LedgerConfigError(
+            f"sources.{source}.chain_mapper.profile_id names unknown Profile "
+            f"{profile_id!r}")
+    if profile.source != source:
+        raise LedgerConfigError(
+            f"sources.{source}.chain_mapper.profile_id selects Profile for "
+            f"{profile.source!r}")
+    return profile
 
 
 def translator_version(cfg: dict, source: str) -> str:

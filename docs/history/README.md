@@ -1,7 +1,7 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **613개** 이력. (거버넌스 규칙 #4)
+> 총 **618개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
@@ -11,6 +11,11 @@
 - **2026-08-17 03:14** — [Ledgerframe Chain Mapper Phase3](./20260817_031457_ledgerframe_chain_mapper_phase3.md)
 - **2026-08-17 02:27** — [External Void Directory Watch](./20260817_022726_external_void_directory_watch.md)
 - **2026-08-17 02:03** — [Canonical Profile Readiness Boundary](./20260817_020357_canonical_profile_readiness_boundary.md)
+- **2026-08-17 01:07** — [Dt Snake Index Order](./20260817_010700_dt_snake_index_order.md)
+- **2026-08-17 01:01** — [Dt Mixed Full Partial Coverage](./20260817_010100_dt_mixed_full_partial_coverage.md)
+- **2026-08-17 00:57** — [Dt Origin Alignment And Dt Map Guard](./20260817_005725_dt_origin_alignment_and_dt_map_guard.md)
+- **2026-08-17 00:42** — [Dt Full Valid Die Coverage](./20260817_004201_dt_full_valid_die_coverage.md)
+- **2026-08-17 00:24** — [Dt Frames Front Only](./20260817_002410_dt_frames_front_only.md)
 - **2026-08-17 00:17** — [Dt Log Core Coordinate Pairing Fix](./20260817_001742_dt_log_core_coordinate_pairing_fix.md)
 - **2026-08-17 00:05** — [Dt Points Valid Die Reference Fix](./20260817_000522_dt_points_valid_die_reference_fix.md)
 - **2026-08-16 23:37** — [Synthetic Dt Log Multi Core Seed](./20260816_233737_synthetic_dt_log_multi_core_seed.md)

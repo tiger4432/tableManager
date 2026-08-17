@@ -8,7 +8,9 @@ the source tuples ``(core_wafer_id, c_wx, c_wy, c_bn)`` written to ``dt_log``. T
 
 For every root lot, its 25 core wafers are partitioned as ``3,2,3,2,...`` into ten DT
 jobs. Thus every DT job contains at least two distinct core wafers and every core wafer
-is used exactly once. DT/core frame tokens rotate independently across the four front-side
+is used exactly once. Most jobs contain the complete valid-die floor, while every third
+job intentionally contains a deterministic half-floor slice so full and partial DT maps
+are present together. DT/core frame tokens rotate independently across the four front-side
 rotation spellings. ``dt_inventory`` receives one identity row per job; exactly half of the
 rows intentionally omit both frame JSON values and all equation fields, preserving the
 job identity while simulating an unresolved inventory chain.
@@ -43,8 +45,8 @@ UPDATED_BY = "seed_dt_log_from_root_refs"
 FRAME_TOKENS = (
     "rot0_front", "rot90_front", "rot180_front", "rot270_front",
 )
+PARTIAL_JOB_PERIOD = 3
 CORE_BINS = ("B1", "B2", "B3", "B4")
-CELLS_PER_CORE = 30
 MAX_SOURCE_ROWS = 10_000
 EXPECTED_ROOTS = {"NAB115", "NAB122", "NAB123", "NAB163", "NAB539"}
 WAFER_RE = re.compile(r"^(?P<root>.+)-W\d+$")
@@ -197,6 +199,34 @@ def _valid_die_pointer(root: str) -> dict:
     return {"table": VALID_TABLE, "map_id": f"{root}_WF"}
 
 
+def _partition_floor_cells(floor_cells, core_count):
+    """Round-robin partition that preserves every floor cell exactly once."""
+    if core_count < 1:
+        raise ValueError("core_count must be positive")
+    return [list(floor_cells[i::core_count]) for i in range(core_count)]
+
+
+def _snake_floor_cells(floor_cells):
+    """Order cells from the upper-right in alternating left/right row sweeps."""
+    by_row = {}
+    for x, y in floor_cells:
+        by_row.setdefault(y, []).append((x, y))
+    ordered = []
+    for row_index, y in enumerate(sorted(by_row)):
+        row = sorted(by_row[y], key=lambda cell: cell[0],
+                     reverse=(row_index % 2 == 0))
+        ordered.extend(row)
+    return ordered
+
+
+def _coverage_cells(floor_cells, global_job):
+    """Return a contiguous full/partial prefix of the DT snake path."""
+    ordered = _snake_floor_cells(floor_cells)
+    if global_job % PARTIAL_JOB_PERIOD == 0:
+        return ordered[:(len(ordered) + 1) // 2], "partial"
+    return ordered, "full"
+
+
 def build_plans(roots, wafers_by_root, metas, cells_by_root):
     """Build pure plans; no DB mutation occurs here."""
     from dt_frame_transform import core_equations, dt_equations
@@ -206,7 +236,7 @@ def build_plans(roots, wafers_by_root, metas, cells_by_root):
     base_time = datetime(2026, 2, 1, 8, 0, tzinfo=timezone.utc)
     for root, wafers in wafers_by_root.items():
         base_meta = metas[root]
-        floor_cells = sorted(cells_by_root[root])
+        floor_cells = _snake_floor_cells(cells_by_root[root])
         jobs = _groups(wafers)
         for local_slot, core_wafers in enumerate(jobs, start=1):
             global_job += 1
@@ -226,6 +256,10 @@ def build_plans(roots, wafers_by_root, metas, cells_by_root):
             dt_meta["valid_die_ref"] = _valid_die_pointer(root)
             core_meta["valid_die_ref"] = _valid_die_pointer(root)
 
+            selected_cells, coverage_mode = _coverage_cells(floor_cells, global_job)
+            dt_meta["synthetic_coverage"] = coverage_mode
+            core_meta["synthetic_coverage"] = coverage_mode
+
             # Each core WF gets its own full arbitrary bin map.  The DT floor slice is
             # the shared physical die selection: both coordinate pairs are projections
             # of the same reference cell, while the core-specific map supplies c_bn.
@@ -236,23 +270,17 @@ def build_plans(roots, wafers_by_root, metas, cells_by_root):
                 core_map = _core_map(wafer_id, floor_cells)
                 maps_by_core[wafer_id] = core_map
 
-            cells_per_core = min(CELLS_PER_CORE, len(floor_cells))
-            total = cells_per_core * len(core_wafers)
-            destination = floor_cells[:total]
-            dt_raw = _express(destination, base_meta, dt_token)
             rows = []
-            index = 0
-            dest_cursor = 0
-            for wafer_id in core_wafers:
-                assigned = destination[dest_cursor:dest_cursor + cells_per_core]
-                dt_segment = dt_raw[dest_cursor:dest_cursor + cells_per_core]
-                core_raw = _express(assigned, base_meta, core_token)
+            # Keep dt_index continuous along the snake path.  Core wafers take turns
+            # owning cells, which preserves the composite B-key uniqueness while the
+            # visible DT progression remains upper-right -> alternating row sweeps.
+            dt_segment = _express(selected_cells, base_meta, dt_token)
+            core_raw = _express(selected_cells, base_meta, core_token)
+            for index, ((bx, by), (cx, cy), reference_cell) in enumerate(
+                    zip(dt_segment, core_raw, selected_cells), start=1):
+                wafer_id = core_wafers[(index - 1) % len(core_wafers)]
                 core_slot = int(wafer_id.rsplit("-W", 1)[1])
-                for (bx, by), (cx, cy), reference_cell in zip(
-                        dt_segment, core_raw, assigned):
-                    dest_cursor += 1
-                    index += 1
-                    rows.append({
+                rows.append({
                         "dt_event_id": f"SYN-DTE-{root}-{local_slot:02d}-{index:04d}",
                         "dt_job_id": job_id,
                         "event_time": base_time + timedelta(minutes=global_job, seconds=index),
@@ -267,7 +295,7 @@ def build_plans(roots, wafers_by_root, metas, cells_by_root):
                         "c_wx": cx,
                         "c_wy": cy,
                         "c_bn": maps_by_core[wafer_id][reference_cell],
-                    })
+                })
 
             equations = {
                 **dt_equations(dt_meta, base_meta, floor_cells),
@@ -302,6 +330,9 @@ def build_plans(roots, wafers_by_root, metas, cells_by_root):
                 "core_token": core_token,
                 "core_wafers": tuple(core_wafers),
                 "rows": rows,
+                "coverage_mode": coverage_mode,
+                "coverage_cells": len(selected_cells),
+                "floor_cells": len(floor_cells),
                 "metadata": dt_meta,
                 "inventory": inventory,
                 "complete_inventory": complete,
@@ -358,7 +389,15 @@ def _dt_replacement_payload(db, rows):
             # again would look changed even though the instant is identical.
             payload.append({k: v for k, v in updates.items() if k != "event_time"})
         else:
-            payload.append(updates)
+            # ``event_time`` is a Python datetime in the ORM row, but the shared
+            # outbox payload is JSONB.  New coordinates after a frame/origin fix
+            # legitimately take this branch, so normalize the instant before the
+            # batch reaches the outbox serializer.
+            normalized = dict(updates)
+            event_time = normalized.get("event_time")
+            if isinstance(event_time, datetime):
+                normalized["event_time"] = event_time.isoformat()
+            payload.append(normalized)
     return payload
 
 

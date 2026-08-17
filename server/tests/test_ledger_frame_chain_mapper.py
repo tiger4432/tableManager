@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import json
 from pathlib import Path
+import uuid
 
 import pandas as pd
 import pytest
@@ -20,6 +21,9 @@ from ledger.chain_mapper import (
     LedgerMapperRegistry,
     default_ledger_mapper_registry,
     describe_mapper,
+    deterministic_source_event_context,
+    mapper_execution_version,
+    mapper_provenance,
     run_registered_mapper,
 )
 from ledger.envelope import Atom, source_event_identity
@@ -43,6 +47,7 @@ from ledger.source_profile import (
     APPROVAL_STATUS_REJECTED,
     BINDING_ORIGIN_IMPORTED,
     BINDING_ORIGIN_USER_DECLARED,
+    validate_profile,
 )
 
 
@@ -131,6 +136,18 @@ def test_dataframe_index_never_changes_source_event_identity():
     assert second.iloc[0]["source_event_id"] == first.iloc[0]["source_event_id"]
     assert atoms_from_ledger_frame(second)[0].source_event_id == (
         atoms_from_ledger_frame(first)[0].source_event_id)
+
+
+def test_driver_source_event_context_is_deterministic_and_index_free():
+    first = [
+        {"row_identity": "R2", "ignored": 2},
+        {"row_identity": "R1", "ignored": 1},
+    ]
+    second = list(reversed(first))
+    assert deterministic_source_event_context(
+        "source", first, identity_fields=("row_identity",)) == (
+            deterministic_source_event_context(
+                "source", second, identity_fields=("row_identity",)))
 
 
 def test_one_explicit_source_event_cannot_be_split_by_time_or_partially_gated():
@@ -354,6 +371,7 @@ def profile_input():
 
 def profile_rule(profile=None, **changes):
     out = {
+        "profile_id": "simple-moves",
         "profile": profile or movement_profile(),
         "source": "simple_moves",
         "source_event": {
@@ -388,6 +406,20 @@ def test_profile_mapper_evaluates_column_constant_and_nested_lookup_key():
     assert "mapper:canonical-profile@1:" in row["source_translator_ver"]
     assert frame.attrs["gate_contract"]["declared_derivations"] == (
         "profile_transfer_movement",)
+
+
+def test_profile_content_is_part_of_the_existing_cursor_execution_version():
+    descriptor = default_ledger_mapper_registry().get("canonical-profile", 1)
+    first = validate_profile(movement_profile())
+    changed_raw = movement_profile()
+    changed_raw["mappings"][0]["bind"]["qty"]["value"] = 3
+    changed = validate_profile(changed_raw)
+    first_version = mapper_execution_version(
+        "base", descriptor, profile_id="simple-moves", profile=first)
+    changed_version = mapper_execution_version(
+        "base", descriptor, profile_id="simple-moves", profile=changed)
+    assert first_version != changed_version
+    assert "profile:simple-moves:" in first_version
 
 
 def test_profile_declared_lookup_batches_unique_keys_without_n_plus_one():
@@ -463,6 +495,7 @@ def test_profile_mapper_can_explicitly_return_normal_empty_ledger_frame():
         pd.DataFrame([{"anything": 1}], dtype=object),
         context=LedgerMapperContext(),
         rule={
+            "profile_id": "silent-profile",
             "profile": silent,
             "source": "silent_source",
             "source_event": {
@@ -588,6 +621,59 @@ def test_source_transition_is_explicit_and_config_cannot_execute_module_paths():
         ledger_config.validate(ignored)
 
 
+def test_canonical_mapper_selects_one_validated_profile_by_explicit_id():
+    cfg = {
+        "version": 1,
+        "profiles": {"simple-moves-v1": movement_profile()},
+        "sources": {"simple_moves": copy.deepcopy(LOT_SOURCE_CONFIG)},
+    }
+    cfg["sources"]["simple_moves"]["chain_mapper"] = {
+        "mapper_id": "canonical-profile", "version": 1,
+        "profile_id": "simple-moves-v1",
+    }
+    assert ledger_config.validate(copy.deepcopy(cfg))
+    selected = ledger_config.selected_profile(cfg, "simple_moves")
+    assert selected.source == "simple_moves"
+
+    missing = copy.deepcopy(cfg)
+    missing["sources"]["simple_moves"]["chain_mapper"].pop("profile_id")
+    with pytest.raises(ledger_config.LedgerConfigError, match="profile_id"):
+        ledger_config.validate(missing)
+
+    unknown = copy.deepcopy(cfg)
+    unknown["sources"]["simple_moves"]["chain_mapper"]["profile_id"] = "missing"
+    with pytest.raises(ledger_config.LedgerConfigError, match="unknown Profile"):
+        ledger_config.validate(unknown)
+
+    mismatch = copy.deepcopy(cfg)
+    mismatch["profiles"]["simple-moves-v1"]["source"] = "other_source"
+    with pytest.raises(ledger_config.LedgerConfigError, match="not driver source"):
+        ledger_config.validate(mismatch)
+
+
+def test_legacy_atom_is_refused_by_general_mapper_and_allowed_only_by_import_api():
+    def historical(_db, _payload, rule=None):
+        return ledger_frame_from_atoms([atom(
+            source_translator_ver=(mapper_provenance("historical-v1", rule)
+                                   + "#pair_field"),
+            source_event_id=uuid.uuid4(),
+            source_event_state="legacy_atom",
+        )])
+
+    registry = LedgerMapperRegistry((
+        describe_mapper("historical-import", 1, historical),
+    )).seal()
+    with pytest.raises(LedgerMapperError) as exc:
+        run_registered_mapper(
+            "historical-import", 1, {}, registry=registry)
+    assert exc.value.code == "legacy_atom_forbidden"
+
+    from ledger.legacy_import import run_registered_legacy_import_mapper
+    imported = run_registered_legacy_import_mapper(
+        "historical-import", 1, {}, registry=registry)
+    assert imported.iloc[0]["source_event_state"] == "legacy_atom"
+
+
 def test_migrated_lot_mapper_has_no_legacy_translator_or_runtime_capability():
     source = (Path(__file__).parents[1] / "mappers" /
               "ledger_lot_event_mapper.py").read_text(encoding="utf-8")
@@ -603,7 +689,9 @@ def test_migrated_lot_mapper_has_no_legacy_translator_or_runtime_capability():
     phase3_modules = [
         Path(__file__).parents[1] / "ledger" / "ledger_frame.py",
         Path(__file__).parents[1] / "ledger" / "chain_mapper.py",
+        Path(__file__).parents[1] / "ledger" / "legacy_import.py",
         Path(__file__).parents[1] / "ledger" / "profile_chain_mapper.py",
+        Path(__file__).parents[1] / "ledger" / "profile_lookup_adapters.py",
         Path(__file__).parents[1] / "mappers" / "ledger_lot_event_mapper.py",
     ]
     joined = "\n".join(path.read_text(encoding="utf-8") for path in phase3_modules)

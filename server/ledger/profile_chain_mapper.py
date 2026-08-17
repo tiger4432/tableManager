@@ -139,6 +139,7 @@ def map_profile_to_ledger_frame(db, payload, rule=None):
         event.get("molecule_ref"), "rule.source_event.molecule_ref")
     source_raw_ref = _required_text(
         event.get("source_raw_ref"), "rule.source_event.source_raw_ref")
+    profile_id = _required_text(rule.get("profile_id"), "rule.profile_id")
     source = profile.source
     if "source" in rule and rule.get("source") != source:
         raise LedgerMapperError(
@@ -151,7 +152,19 @@ def map_profile_to_ledger_frame(db, payload, rule=None):
             "invalid_mapper_rule", "rule.emitter_registry",
             "emitter registry must be ClaimEmitterRegistry")
     if payload.empty or not profile.mappings:
-        return empty_ledger_frame()
+        frame = empty_ledger_frame()
+        frame.attrs["gate_contract"] = {
+            "declared_derivations": (),
+            "declared_subject_types": (),
+            "source_rows": len(payload),
+        }
+        frame.attrs["mapper_report"] = {
+            "profile_id": profile_id,
+            "molecule": molecule_ref,
+            "atoms": 0,
+            "incomplete": False,
+        }
+        return frame
 
     rows = [{str(name): _plain(payload.iloc[position][name])
              for name in payload.columns}
@@ -159,7 +172,7 @@ def map_profile_to_ledger_frame(db, payload, rule=None):
     pack_versions = {pack.pack_id: pack.version for pack in profile.packs}
     profile_hash = hashlib.sha256(profile.serialize().encode("utf-8")).hexdigest()
     provenance_base = mapper_provenance(
-        f"profile-v{profile.profile_version}:{profile_hash[:16]}", rule)
+        f"profile:{profile_id}:v{profile.profile_version}:{profile_hash[:16]}", rule)
 
     atoms: list[Atom] = []
     declared_derivations: set[str] = set()
@@ -204,6 +217,12 @@ def map_profile_to_ledger_frame(db, payload, rule=None):
         "declared_derivations": tuple(sorted(declared_derivations)),
         "declared_subject_types": tuple(sorted(declared_subject_types)),
         "source_rows": len(rows),
+    }
+    frame.attrs["mapper_report"] = {
+        "profile_id": profile_id,
+        "molecule": molecule_ref,
+        "atoms": len(atoms),
+        "incomplete": False,
     }
     return frame
 

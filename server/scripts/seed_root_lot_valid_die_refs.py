@@ -63,8 +63,10 @@ def grid_meta(cols: int, rows: int) -> dict:
     return {
         "grid_cols": cols,
         "grid_rows": rows,
-        "grid_start_x": 0,
-        "grid_start_y": 0,
+        # The circular floor's first valid die is (1, 1); START is the
+        # declared minimum valid-die coordinate, not the zero-based canvas edge.
+        "grid_start_x": 1,
+        "grid_start_y": 1,
         "grid_y_invert": False,
         "rotation": 0,
         "side": "front",

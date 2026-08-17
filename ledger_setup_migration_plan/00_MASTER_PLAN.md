@@ -1,7 +1,9 @@
 # 0단계 — 맵퍼 일괄 전환과 셋업 개혁, 전체 실행계획
 
-`ontology_codex_plan_v2`의 `COMMON_ARCHITECTURE_RULES.md`와 이 폴더의
-`COMMON_RULES_DELTA.md`를 모든 단계에 적용한다.
+`ontology_codex_plan_v2`의 `COMMON_ARCHITECTURE_RULES.md`, 이 폴더의
+`COMMON_RULES_DELTA.md`, 그리고 **`MAPPER_STANDARD.md`(소유자 지정 디자인 패턴 —
+고정 파이프라인·UNIT/EMITS/REQUIRES 자기 서술·payload 세 입구)**를 모든 단계에
+적용한다. 용어·개념의 입문은 `PRIMER.md`가 정본이다.
 
 ## 배경 (소유자 결정, 2026-08-17)
 
@@ -27,7 +29,7 @@
 
 | 단계 | 파일 | 산출 |
 |---|---|---|
-| 1 | `01_CUTOVER_INVENTORY.md` | 소스별 전환표 + **등가성 디프 하니스** |
+| 1 | `01_CUTOVER_INVENTORY.md` | 전환표 + **등가 하니스** + lot-event 표준 개주(표준 첫 실증) |
 | 2 | `02_PACK_LIBRARY.md` | 현행 세계를 덮는 Pack 7종 계약 |
 | 3 | `03_DICTIONARY_CAPABILITIES.md` | 사전 API + 「답할 수 있는 질문」 렌더 |
 | 4 | `04_WIZARD_EXTENSIONS.md` | v2 04 마법사에 인터뷰 정문·문장 판정 |

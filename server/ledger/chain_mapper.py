@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import hashlib
 import inspect
+import json
 from types import MappingProxyType
 from typing import Any, Callable, Optional
 
@@ -159,6 +160,21 @@ def run_registered_mapper(
         rule: Optional[Mapping[str, Any]] = None,
         registry: Optional[LedgerMapperRegistry] = None):
     """Call one trusted mapper and fail closed on result or provenance drift."""
+    return _run_registered_mapper(
+        mapper_id, version, payload, context=context, rule=rule,
+        registry=registry, allow_legacy_atom=False)
+
+
+def _run_registered_mapper(
+        mapper_id: str,
+        version: int,
+        payload,
+        *,
+        context: Optional[LedgerMapperContext] = None,
+        rule: Optional[Mapping[str, Any]] = None,
+        registry: Optional[LedgerMapperRegistry] = None,
+        allow_legacy_atom: bool = False):
+    """Shared implementation; only ``ledger.legacy_import`` may opt into old IDs."""
     registry = registry or default_ledger_mapper_registry()
     descriptor = registry.get(mapper_id, version)
     if descriptor is None:
@@ -178,6 +194,13 @@ def run_registered_mapper(
             "mapper_failed", "mapper",
             f"{mapper_id}@{version} raised {exc.__class__.__name__}: {exc}") from exc
     frame = validate_ledger_frame(result)
+    if not allow_legacy_atom:
+        for position in range(len(frame)):
+            if frame.iloc[position]["source_event_state"] == "legacy_atom":
+                raise LedgerMapperError(
+                    "legacy_atom_forbidden",
+                    f"ledger_frame.rows[{position}].source_event_state",
+                    "legacy_atom is accepted only by the explicit historical import API")
     token = descriptor.provenance_token
     for position in range(len(frame)):
         translator_ver = frame.iloc[position]["source_translator_ver"]
@@ -243,11 +266,82 @@ def configured_mapper(source_config: Mapping[str, Any], *,
 
 
 def mapper_execution_version(base_version: str,
-                             descriptor: Optional[LedgerMapperDescriptor]) -> str:
+                             descriptor: Optional[LedgerMapperDescriptor], *,
+                             profile_id: Optional[str] = None,
+                             profile=None) -> str:
     """Version stored on the existing Ledger cursor for the selected execution."""
     if descriptor is None:
         return base_version
-    return f"{base_version}|{descriptor.provenance_token}"
+    version = f"{base_version}|{descriptor.provenance_token}"
+    if descriptor.mapper_id == "canonical-profile":
+        if (not isinstance(profile_id, str) or not profile_id.strip()
+                or profile is None or not callable(getattr(profile, "serialize", None))):
+            raise LedgerMapperError(
+                "missing_profile_selection", "chain_mapper.profile_id",
+                "canonical-profile cursor identity requires an explicit validated Profile")
+        digest = hashlib.sha256(profile.serialize().encode("utf-8")).hexdigest()[:16]
+        version += f"|profile:{profile_id.strip()}:{digest}"
+    return version
+
+
+def deterministic_source_event_context(
+        source: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        identity_fields: Sequence[str]) -> Mapping[str, str]:
+    """Build one source-event boundary from declared row identities, never indexes.
+
+    The result depends only on the source name and the complete set of declared identity
+    values.  Row order and pandas indexes therefore cannot change source-event identity.
+    """
+    if not isinstance(source, str) or not source.strip():
+        raise LedgerMapperError(
+            "invalid_source_event", "source", "source name must not be blank")
+    fields = tuple(identity_fields)
+    if (not fields or any(not isinstance(name, str) or not name.strip()
+                          for name in fields)):
+        raise LedgerMapperError(
+            "invalid_source_event", "identity_fields",
+            "at least one non-blank source identity field is required")
+    identities = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            raise LedgerMapperError(
+                "invalid_source_event", f"rows[{index}]", "source row must be a mapping")
+        missing = [name for name in fields if name not in row]
+        if missing:
+            raise LedgerMapperError(
+                "invalid_source_event", f"rows[{index}]",
+                f"source event identity fields are missing: {missing}")
+        identity = {name: row[name] for name in fields}
+        try:
+            rendered = json.dumps(
+                identity, ensure_ascii=False, sort_keys=True,
+                separators=(",", ":"), allow_nan=False, default=_event_json_value)
+        except (TypeError, ValueError) as exc:
+            raise LedgerMapperError(
+                "invalid_source_event", f"rows[{index}]",
+                f"source event identity is not deterministic JSON: {exc}") from exc
+        identities.append(rendered)
+    if not identities:
+        raise LedgerMapperError(
+            "invalid_source_event", "rows", "source event must contain at least one row")
+    body = json.dumps(
+        {"identity_fields": fields, "rows": sorted(identities)},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    return MappingProxyType({
+        "molecule_ref": f"{source}:event:{digest}",
+        "source_raw_ref": f"{source}:{body}",
+    })
+
+
+def _event_json_value(value):
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        return value.item()
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
 
 @lru_cache(maxsize=1)

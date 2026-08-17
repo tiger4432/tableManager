@@ -4,7 +4,9 @@
 일괄 전환**. 이 폴더는 그 전환과, 셋업 실사용 고통(P-01~04)의 근본 개선을 한
 줄기로 묶은 단계별 지시서다.
 
-읽는 순서: `00_MASTER_PLAN.md` → `COMMON_RULES_DELTA.md` → 각 단계.
+읽는 순서: `PRIMER.md`(입문 — 한 행의 여행·읽기측·용어) → `00_MASTER_PLAN.md` →
+`COMMON_RULES_DELTA.md` + `MAPPER_STANDARD.md`(전 단계 적용 계약) → 각 단계.
+현재 상태에서 실제로 세팅하려면: `RUNBOOK_AS_IS.md`(as-is 7걸음 + to-be 지도).
 승인 게이트: `APPROVAL_MESSAGES.md`.
 
 | 파일 | 내용 |
@@ -18,6 +20,9 @@
 | 05_PIPELINE_BOARD_BACKFILL | 현황판 + 백필 라우트 |
 | 06_AGREEMENT_CHECKER | 철자 합의·라이브 잎 실측·은퇴 유산 표지 |
 | 07_LEGACY_RETIREMENT | 등가 증명 후 legacy 일괄 은퇴 |
+| PRIMER | 입문 — 한 행의 여행, vocabulary·읽기측 상세, 읽기=서브그래프 추출 |
+| MAPPER_STANDARD | 표준 계약: 고정 파이프라인·UNIT/EMITS/REQUIRES·payload 세 입구 |
+| RUNBOOK_AS_IS | 현재 걷는 길(7걸음·두 갈래·함정 8)과 to-be 지도 |
 
 관련 정본: `ontology_codex_plan_v2`(Pack/Profile/마법사의 기반 계약) ·
 `docs/process/SETUP_PAIN_LOG.md`(요구사항 원천) ·

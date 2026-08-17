@@ -101,6 +101,14 @@ CREATE TABLE lot_event (
 )
 """
 
+DESTINATION_INVENTORY_DDL = """
+CREATE TABLE destination_inventory (
+    row_id           TEXT PRIMARY KEY,
+    business_key_val TEXT,
+    container        JSONB
+)
+"""
+
 
 def _seed(connection, rows):
     with connection.cursor() as cursor:
@@ -198,6 +206,7 @@ def pg():
                 f'CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA "{SCRATCH_SCHEMA}"'))
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
+            conn.execute(text(DESTINATION_INVENTORY_DDL))
         try:
             yield engine
         finally:
@@ -224,6 +233,7 @@ def ledger(pg):
             with connection.cursor() as cursor:
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.LEDGER_TABLE} CASCADE")
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.CURSOR_TABLE} CASCADE")
+                cursor.execute("TRUNCATE destination_inventory")
             connection.commit()
             _seed(connection, BASE_ROWS)
         finally:
@@ -270,6 +280,87 @@ def _mapper_cfg():
         "mapper_id": "lot-event", "version": 1,
     }
     return cfg
+
+
+PROFILE_EVENT_TIME = "2026-08-17T01:02:03+00:00"
+PROFILE_SOURCE_ROW = src(
+    "PROFILE", event_type="track_in", slots="01", wafers="W-PROFILE",
+    event_time=PROFILE_EVENT_TIME)
+PROFILE_ROW_ID = (
+    f"{PROFILE_SOURCE_ROW['lot']}|{PROFILE_SOURCE_ROW['event_type']}|"
+    f"{PROFILE_SOURCE_ROW['event_time']}")
+
+
+def _approved_binding(kind, *, status="approved", **values):
+    return {
+        "kind": kind,
+        **values,
+        "binding_origin": "user_declared",
+        "approval_status": status,
+    }
+
+
+def _profile_mapper_cfg(*, nested_key_status="approved"):
+    cfg = copy.deepcopy(CFG)
+    cfg["profiles"] = {"lot-transfer-v1": {
+        "profile_version": 1,
+        "source": "lot_event",
+        "packs": ["transfer@1"],
+        "mappings": [{
+            "mapping_id": "movement",
+            "use": "transfer/movement",
+            "bind": {
+                "subject": _approved_binding("column", column="wafers"),
+                "from": _approved_binding(
+                    "constant", value="source_position"),
+                "to": _approved_binding(
+                    "declared_lookup",
+                    lookup_id="destination_inventory",
+                    key=_approved_binding(
+                        "column", status=nested_key_status,
+                        column="row_identity"),
+                    select="container"),
+                "occurred_at": _approved_binding(
+                    "column", column="event_time"),
+            },
+        }],
+    }}
+    cfg["sources"]["lot_event"]["chain_mapper"] = {
+        "mapper_id": "canonical-profile",
+        "version": 1,
+        "profile_id": "lot-transfer-v1",
+    }
+    return cfg
+
+
+def _seed_profile_source_and_destination(engine, matches):
+    connection = engine.raw_connection()
+    try:
+        _seed(connection, [PROFILE_SOURCE_ROW])
+        with connection.cursor() as cursor:
+            cursor.execute("TRUNCATE destination_inventory")
+            for index in range(matches):
+                cursor.execute(
+                    "INSERT INTO destination_inventory "
+                    "(row_id, business_key_val, container) "
+                    "VALUES (%s, %s, %s::jsonb)",
+                    (f"destination-{index}", PROFILE_ROW_ID,
+                     '{"type":"dt_slot","keys":{"dt_lot":"D1",'
+                     '"dt_slot":"01"},"position":null}'),
+                )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _destination_count(engine):
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM destination_inventory")
+            return cursor.fetchone()[0]
+    finally:
+        connection.close()
 
 
 @contextlib.contextmanager
@@ -387,6 +478,110 @@ def test_lot_event_chain_mapper_runs_the_existing_cursor_gate_and_store_end_to_e
     assert replay["inserted"] == 0
     assert replay["deduped"] == replay["attempted"]
     assert count(ledger) == before
+
+
+def test_canonical_profile_dry_run_execute_gate_store_and_cursor_end_to_end(
+        ledger, monkeypatch):
+    """One validated Profile drives the real PostgreSQL path without a second cursor."""
+    import pandas as pd
+    from ledger import chain_mapper, config as ledger_config, dry_run
+
+    _seed_profile_source_and_destination(ledger, matches=1)
+    cfg = _profile_mapper_cfg()
+    ledger_config.validate(cfg)
+
+    mapped_frames = []
+    real_run = chain_mapper.run_registered_mapper
+
+    def capture(*args, **kwargs):
+        frame = real_run(*args, **kwargs)
+        mapped_frames.append(frame.copy(deep=True))
+        return frame
+
+    monkeypatch.setattr(chain_mapper, "run_registered_mapper", capture)
+    url, _ = _resolve_url()
+    with _declared_as_test_database(url):
+        preview = dry_run.preview(ledger, cfg, "lot_event", rows=20)
+        preview_frames = list(mapped_frames)
+        landed = backfill.run(ledger, cfg, source="lot_event")
+        execute_frames = mapped_frames[len(preview_frames):]
+
+    assert preview["writes"] == 0 and preview["read_only_enforced"] is True
+    assert preview["atoms"] == landed["attempted"] == landed["inserted"] == 1
+    assert len(preview_frames) == len(execute_frames) == 1
+    pd.testing.assert_frame_equal(
+        preview_frames[0].reset_index(drop=True),
+        execute_frames[0].reset_index(drop=True))
+    assert _destination_count(ledger) == 1, "lookup adapter mutated its source table"
+
+    cursor = read_cursor_row(ledger)
+    assert cursor["cursor_value"] == {"event_time": PROFILE_EVENT_TIME}
+    assert "mapper:canonical-profile@1:" in cursor["translator_ver"]
+    assert "profile:lot-transfer-v1:" in cursor["translator_ver"]
+    connection = ledger.raw_connection()
+    try:
+        with connection.cursor() as sql_cursor:
+            sql_cursor.execute(
+                f"SELECT predicate, subject_keys, object_payload, source_raw_ref, "
+                f"source_event_id::text, source_event_state "
+                f"FROM {schema.LEDGER_TABLE}")
+            stored = sql_cursor.fetchone()
+    finally:
+        connection.close()
+    assert stored[0] == "transferred"
+    assert stored[1] == {"wafer": "W-PROFILE"}
+    assert stored[2]["to"] == {
+        "type": "dt_slot", "keys": {"dt_lot": "D1", "dt_slot": "01"},
+        "position": None,
+    }
+    assert stored[3].startswith("lot_event:")
+    assert stored[5] == "source_molecule"
+    assert {row["source_event_id"] for row in preview["atoms_rendered"]} == {stored[4]}
+
+
+@pytest.mark.parametrize("status", ["pending", "rejected"])
+def test_canonical_profile_unapproved_binding_writes_no_atom_and_no_cursor(
+        ledger, status):
+    from ledger import config as ledger_config, dry_run
+    from ledger.chain_mapper import LedgerMapperError
+
+    _seed_profile_source_and_destination(ledger, matches=1)
+    cfg = _profile_mapper_cfg(nested_key_status=status)
+    ledger_config.validate(cfg)  # structurally valid draft; readiness is runtime-only
+    url, _ = _resolve_url()
+    with _declared_as_test_database(url):
+        with pytest.raises(LedgerMapperError) as preview_error:
+            dry_run.preview(ledger, cfg, "lot_event", rows=20)
+        with pytest.raises(LedgerMapperError) as execute_error:
+            backfill.run(ledger, cfg, source="lot_event")
+    assert preview_error.value.code == execute_error.value.code == "binding_not_approved"
+    assert count(ledger) == 0
+    assert read_cursor_row(ledger) is None
+    assert _destination_count(ledger) == 1
+
+
+@pytest.mark.parametrize(("matches", "code"), [
+    (0, "lookup_not_found"),
+    (2, "lookup_not_unique"),
+])
+def test_canonical_profile_lookup_cardinality_failure_writes_no_atom_and_no_cursor(
+        ledger, matches, code):
+    from ledger import config as ledger_config, dry_run
+    from ledger.chain_mapper import LedgerMapperError
+
+    _seed_profile_source_and_destination(ledger, matches=matches)
+    cfg = _profile_mapper_cfg()
+    ledger_config.validate(cfg)
+    url, _ = _resolve_url()
+    with _declared_as_test_database(url):
+        with pytest.raises(LedgerMapperError) as preview_error:
+            dry_run.preview(ledger, cfg, "lot_event", rows=20)
+        with pytest.raises(LedgerMapperError) as execute_error:
+            backfill.run(ledger, cfg, source="lot_event")
+    assert preview_error.value.code == execute_error.value.code == code
+    assert count(ledger) == 0
+    assert read_cursor_row(ledger) is None
+    assert _destination_count(ledger) == matches
 
 
 def test_chain_mapper_crash_writes_no_atom_and_does_not_move_cursor(

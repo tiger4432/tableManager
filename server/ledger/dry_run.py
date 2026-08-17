@@ -43,6 +43,7 @@ they would be in a real run, so `registers_suppressed` is reported.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 
 logger = logging.getLogger("Ledger.DryRun")
@@ -256,8 +257,10 @@ def _preview_lineage(store, connection, cfg, source, source_cfg, rows, notes):
     from .backfill import fetch_page, fetch_group, walk_group_pages, _forget_registers
     from .chain_mapper import (
         LedgerMapperContext,
+        LedgerMapperError,
         LedgerMapperRefused,
         configured_mapper,
+        deterministic_source_event_context,
         mapper_execution_version,
         run_registered_mapper,
     )
@@ -267,9 +270,19 @@ def _preview_lineage(store, connection, cfg, source, source_cfg, rows, notes):
 
     translator_ver = ledger_config.translator_version(cfg, source)
     mapper_descriptor = configured_mapper(source_cfg)
+    selected_profile = ledger_config.selected_profile(cfg, source)
     if mapper_descriptor is None:
         from .lot_event_translator import LotEventTranslator, group_molecules
-    execution_ver = mapper_execution_version(translator_ver, mapper_descriptor)
+    profile_id = ((source_cfg.get("chain_mapper") or {}).get("profile_id")
+                  if selected_profile is not None else None)
+    execution_ver = mapper_execution_version(
+        translator_ver, mapper_descriptor,
+        profile_id=profile_id, profile=selected_profile)
+    mapper_context = LedgerMapperContext()
+    if selected_profile is not None:
+        from .profile_lookup_adapters import default_profile_lookup_adapters
+        mapper_context = LedgerMapperContext(
+            lookups=default_profile_lookup_adapters(store.engine))
     declared = ledger_config.declared_derivations(cfg, source)
     declared_subjects = ledger_config.declared_subject_types(cfg, source)
 
@@ -322,18 +335,27 @@ def _preview_lineage(store, connection, cfg, source, source_cfg, rows, notes):
             with gate.building_molecule(source):
                 if mapper_descriptor is not None:
                     input_frame = molecule
+                    source_event = deterministic_source_event_context(
+                        source, source_rows, identity_fields=("row_identity",))
+                    mapper_rule = {
+                        "source": source,
+                        "source_config": source_cfg,
+                        "translator_version": translator_ver,
+                        "declared_derivations": declared,
+                        "registered_entities": tuple(mapper_registered),
+                        "source_event": source_event,
+                    }
+                    if selected_profile is not None:
+                        mapper_rule.update({
+                            "profile_id": profile_id,
+                            "profile": selected_profile,
+                        })
                     mapped = run_registered_mapper(
                         mapper_descriptor.mapper_id,
                         mapper_descriptor.version,
                         input_frame,
-                        context=LedgerMapperContext(),
-                        rule={
-                            "source": source,
-                            "source_config": source_cfg,
-                            "translator_version": translator_ver,
-                            "declared_derivations": declared,
-                            "registered_entities": tuple(mapper_registered),
-                        },
+                        context=mapper_context,
+                        rule=mapper_rule,
                     )
                     report = dict(mapped.attrs.get("mapper_report") or {})
                     atoms = atoms_from_ledger_frame(mapped)
@@ -342,8 +364,27 @@ def _preview_lineage(store, connection, cfg, source, source_cfg, rows, notes):
                 was_refused = atoms is None
                 if not was_refused:
                     if mapper_descriptor is not None:
+                        gate_derivations = declared
+                        gate_subject_types = declared_subjects
+                        if selected_profile is not None:
+                            contract = mapped.attrs.get("gate_contract")
+                            if not isinstance(contract, Mapping):
+                                raise LedgerMapperError(
+                                    "mapper_gate_contract_missing",
+                                    "ledger_frame.attrs.gate_contract",
+                                    "canonical Profile mapper must declare its gate contract")
+                            gate_derivations = frozenset(
+                                contract.get("declared_derivations") or ())
+                            gate_subject_types = frozenset(
+                                contract.get("declared_subject_types") or ())
+                            if atoms and (
+                                    not gate_derivations or not gate_subject_types):
+                                raise LedgerMapperError(
+                                    "mapper_gate_contract_invalid",
+                                    "ledger_frame.attrs.gate_contract",
+                                    "canonical Profile gate contract must name derivations and subjects")
                         kept, _screen_report = gate.screen_molecule(
-                            source, atoms, declared, declared_subjects,
+                            source, atoms, gate_derivations, gate_subject_types,
                             molecule_ref=(report or {}).get("molecule"),
                             source_rows=len(source_rows))
                         was_refused = False
