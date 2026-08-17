@@ -1,5 +1,21 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 3단계 5차 감사 보완, 재검수 대기
+>
+> **현재 단계/상태:** `STAGE_3_IN_REVIEW` / `NOT_APPROVED`. main 병합과 Stage 4 착수는
+> 계속 금지다.
+>
+> **이번 보완:** verifier 발급 object identity를 보관하던 module-level WeakSet을 제거했다.
+> 발급 집합·issuer class·bind token을 closure 내부에 가두고 외부 등록 handle을 제공하지 않는다.
+> compiler에는 읽기 전용 membership predicate만 노출한다.
+>
+> **검증:** Registry `46 passed`, Ledger/virtual join 영향군 `219 passed, 1 skipped`, 동결
+> mapper `29 passed`. 사용자 지시에 따라 전체 서버 suite는 실행하지 않았다. DB
+> read/write/migration과 Stage 4 변경은 0이다.
+>
+> **다음 관문:** 별도 후속 fix 커밋을 같은 독립 audit 세션에 제출한다. APPROVE 전까지
+> 현재 상태를 유지한다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 3단계 4차 감사 보완, 재검수 대기
 >
 > **현재 단계/상태:** `STAGE_3_IN_REVIEW` / `NOT_APPROVED`. main 병합과 Stage 4 착수는

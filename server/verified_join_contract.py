@@ -143,51 +143,59 @@ class VerifiedJoinDescriptor(Mapping[str, Any]):
         return _plain(self._data)
 
 
-_ISSUED_DESCRIPTORS: WeakSet[VerifiedJoinDescriptor] = WeakSet()
+def _build_verification_boundary():
+    """Create a closed issuer registry with no module-level mutation handle."""
+    issued_descriptors: WeakSet[VerifiedJoinDescriptor] = WeakSet()
+    issuer_token = object()
 
+    class _PhysicalVerifierIssuer:
+        """Capability bound to ``virtual_join_config`` production code."""
 
-def is_physically_verified_descriptor(value: object) -> bool:
-    """Return true only for an instance issued by the physical verifier boundary."""
-    return isinstance(value, VerifiedJoinDescriptor) and value in _ISSUED_DESCRIPTORS
+        __slots__ = ("_token",)
 
+        def __init__(self, token: object) -> None:
+            if token is not issuer_token:
+                raise TypeError("physical verifier issuer cannot be constructed directly")
+            self._token = token
 
-class _PhysicalVerifierIssuer:
-    """Private capability bound to ``virtual_join_config`` production code."""
+        def issue(self, rule: Mapping[str, Any]) -> VerifiedJoinDescriptor:
+            frame = inspect.currentframe()
+            caller = frame.f_back if frame is not None else None
+            module_name = (
+                caller.f_globals.get("__name__") if caller is not None else None)
+            loader = (
+                caller.f_globals.get("load_verified_rules")
+                if caller is not None else None)
+            if (module_name not in {"virtual_join_config", "server.virtual_join_config"}
+                    or loader is None
+                    or caller.f_code is not getattr(loader, "__code__", None)):
+                raise TypeError(
+                    "verified join descriptors can only be issued inside "
+                    "virtual_join_config.load_verified_rules")
+            descriptor = object.__new__(VerifiedJoinDescriptor)
+            object.__setattr__(
+                descriptor, "_data", VerifiedJoinDescriptor._validated_data(rule))
+            issued_descriptors.add(descriptor)
+            return descriptor
 
-    __slots__ = ("_token",)
+    def is_issued(value: object) -> bool:
+        return (
+            isinstance(value, VerifiedJoinDescriptor)
+            and value in issued_descriptors
+        )
 
-    def __init__(self, token: object) -> None:
-        if token is not _ISSUER_BIND_TOKEN:
-            raise TypeError("physical verifier issuer cannot be constructed directly")
-        self._token = token
-
-    def issue(self, rule: Mapping[str, Any]) -> VerifiedJoinDescriptor:
+    def bind_issuer():
         frame = inspect.currentframe()
         caller = frame.f_back if frame is not None else None
         module_name = caller.f_globals.get("__name__") if caller is not None else None
-        loader = caller.f_globals.get("load_verified_rules") if caller is not None else None
-        if (module_name not in {"virtual_join_config", "server.virtual_join_config"}
-                or loader is None
-                or caller.f_code is not getattr(loader, "__code__", None)):
+        if module_name not in {"virtual_join_config", "server.virtual_join_config"}:
             raise TypeError(
-                "verified join descriptors can only be issued inside "
-                "virtual_join_config.load_verified_rules")
-        descriptor = object.__new__(VerifiedJoinDescriptor)
-        object.__setattr__(
-            descriptor, "_data", VerifiedJoinDescriptor._validated_data(rule))
-        _ISSUED_DESCRIPTORS.add(descriptor)
-        return descriptor
+                "physical verifier issuer is only available to virtual_join_config")
+        return _PhysicalVerifierIssuer(issuer_token)
+
+    return is_issued, bind_issuer
 
 
-_ISSUER_BIND_TOKEN = object()
-
-
-def _bind_physical_verifier_issuer() -> _PhysicalVerifierIssuer:
-    """Bind the private issuer only while the production verifier imports this module."""
-    frame = inspect.currentframe()
-    caller = frame.f_back if frame is not None else None
-    module_name = caller.f_globals.get("__name__") if caller is not None else None
-    if module_name not in {"virtual_join_config", "server.virtual_join_config"}:
-        raise TypeError(
-            "physical verifier issuer is only available to virtual_join_config")
-    return _PhysicalVerifierIssuer(_ISSUER_BIND_TOKEN)
+is_physically_verified_descriptor, _bind_physical_verifier_issuer = (
+    _build_verification_boundary())
+del _build_verification_boundary

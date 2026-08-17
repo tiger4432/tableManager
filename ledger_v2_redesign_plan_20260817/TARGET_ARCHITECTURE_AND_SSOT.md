@@ -123,7 +123,8 @@ UI executor와 Ledger preparer는 같은 `VerifiedJoinDescriptor`를 소비해�
 공용 descriptor type은 raw mapping용 public constructor/factory를 제공하지 않으며, private
 issuance capability는 이 verifier 모듈만 소유한다. issuer는 `load_verified_rules()` 호출 위치
 밖에서 사용해도 거절한다. compiler도 verifier가 발급 등록한 object identity만 받으며 단순
-class instance는 받지 않는다. 임의 index 이름은 물리 proof가 아니다.
+class instance는 받지 않는다. 발급 identity 저장소와 token은 closure 내부에 있고 모듈에서
+수정할 수 있는 등록 handle을 노출하지 않는다. 임의 index 이름은 물리 proof가 아니다.
 
 ## 6. 실패 계약
 

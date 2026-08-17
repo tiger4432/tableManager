@@ -149,7 +149,9 @@ public constructor/factory가 없다. 생성 capability는 `virtual_join_config`
 임의 `unique_index` 문자열을 붙여 compiler-ready descriptor로 바꿀 수 없다. compiler 자체의
 DB import/read는 0이다. compiler는 단순 `isinstance`가 아니라 physical verifier가 발급한
 object identity인지도 확인한다. direct constructor, 무인자 constructor, 과거 `_issue` 진입점,
-`object.__new__`로 만든 미발급 인스턴스는 모두 compiler-ready proof가 될 수 없다.
+`object.__new__`로 만든 미발급 인스턴스는 모두 compiler-ready proof가 될 수 없다. 발급 identity
+집합·issuer class·bind token은 module attribute가 아니라 closure 내부 상태이며 외부 등록
+함수를 제공하지 않는다.
 
 컴파일 진입점은 Bundle 구조·교차 계약을 다시 검증하고 모든 중첩 Binding의 readiness를 먼저
 강제한다. source row, pandas, mapper 실행, Claim/LedgerFrame 생성, DB read/write, cursor,

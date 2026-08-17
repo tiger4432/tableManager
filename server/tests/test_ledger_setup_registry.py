@@ -271,6 +271,14 @@ def test_unissued_instance_is_not_accepted_as_physical_proof():
     }
 
 
+def test_issuer_registry_has_no_module_level_mutation_handle():
+    import verified_join_contract as contract
+
+    assert not hasattr(contract, "_ISSUED_DESCRIPTORS")
+    assert not hasattr(contract, "_PhysicalVerifierIssuer")
+    assert not hasattr(contract, "_ISSUER_BIND_TOKEN")
+
+
 def test_fake_index_name_cannot_bypass_the_physical_verifier():
     raw = logical_bundle()
     fake_catalog_rule = {
