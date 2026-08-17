@@ -194,7 +194,19 @@ def mapper_context(snapshot: LedgerSetupSnapshot, source_id: str) -> MapperConte
 
 
 class BaseLedgerMapper:
-    """Template Method for all Stage 4 RoleFrame-producing mappers."""
+    """Template Method for all Stage 4 RoleFrame-producing mappers.
+
+    A concrete mapper declares its OWN trusted identity through ``implementation_id`` and
+    ``implementation_version``.  ``ledger.implementations`` discovers those declarations
+    and builds both the trusted catalog and the executable registry from them, so adding a
+    mapper is one file and edits no list.  A subclass that leaves them ``None`` (a test
+    double, an abstract intermediate) is simply not addressable from config, which keeps
+    the boundary the whitelist existed for: config names an ID, never a module or path.
+    """
+
+    #: Self-declared trusted identity; ``None`` means "not addressable from config".
+    implementation_id: str | None = None
+    implementation_version: int | None = None
 
     @final
     def map(
@@ -244,7 +256,15 @@ class BaseLedgerMapper:
 
 
 class DeclarativeRoleMapper(BaseLedgerMapper):
-    """Evaluate approved column/constant/entity Profile bindings without DB access."""
+    """Evaluate approved column/constant/entity Profile bindings without DB access.
+
+    This is the GENERIC mapper: it executes the Profile's declared bindings and holds no
+    knowledge of any particular source.  A source whose business reading is fully
+    expressible as bindings needs no mapper code at all -- it names this implementation.
+    """
+
+    implementation_id = "declarative-role"
+    implementation_version = 1
 
     def interpret_unit(
         self,

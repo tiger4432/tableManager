@@ -27,7 +27,7 @@ from .config_explorer import (
     build_explorer_index,
     definition_diff,
 )
-from .cutover_v2 import trusted_cutover_implementations
+from .implementations import trusted_implementations
 from .setup_bundle import (
     LedgerSetupValidationError,
     require_ready_bundle,
@@ -134,14 +134,14 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
         bundle = require_ready_bundle(validate_bundle(logical))
         verified = tuple(active_setup.snapshot.verified_joins.values())
         compile_issues = snapshot_compile_errors(
-            bundle, trusted_cutover_implementations(), verified)
+            bundle, trusted_implementations(), verified)
         if compile_issues:
             return DraftPreview(
                 False, None, None,
                 tuple(_decorate_issue(issue.to_mapping()) for issue in compile_issues),
             )
         snapshot = compile_setup_snapshot(
-            bundle, trusted_cutover_implementations(), verified)
+            bundle, trusted_implementations(), verified)
         preview_setup = SimpleNamespace(
             config_root=active_setup.config_root,
             bundle=bundle,

@@ -289,7 +289,16 @@ class SourcePreparationContext:
 
 
 class BaseSourcePreparer:
-    """Template Method: bounded DataFrame in, complete EventFrames out."""
+    """Template Method: bounded DataFrame in, complete EventFrames out.
+
+    A concrete preparer declares its OWN trusted identity through ``implementation_id``
+    and ``implementation_version``; see :class:`ledger.roleframe.BaseLedgerMapper` for why
+    the declaration lives on the class rather than in a hand-kept list.
+    """
+
+    #: Self-declared trusted identity; ``None`` means "not addressable from config".
+    implementation_id: str | None = None
+    implementation_version: int | None = None
 
     @final
     def prepare_batch(
@@ -323,7 +332,15 @@ class BaseSourcePreparer:
 
 
 class DirectJoinSourcePreparer(BaseSourcePreparer):
-    """Default implementation for one-to-one exposed columns with no calculation."""
+    """Default implementation for one-to-one exposed columns with no calculation.
+
+    This is the GENERIC preparer: every declared output column must be exposed by exactly
+    one inherited verified join, so it computes nothing and a source that only needs
+    joined columns needs no preparer code.
+    """
+
+    implementation_id = "direct-join"
+    implementation_version = 1
 
     def prepare_outputs(
         self,

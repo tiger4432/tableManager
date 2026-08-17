@@ -7,8 +7,9 @@ from unittest.mock import patch
 
 import virtual_join_config as virtual_join_config_module
 
+from ledger.implementations import trusted_implementations
 from ledger.setup_bundle import load_setup_bundle, require_ready_bundle
-from ledger.setup_registry import TrustedImplementationCatalog, compile_setup_snapshot
+from ledger.setup_registry import compile_setup_snapshot
 
 
 SAMPLE_ROOT = (
@@ -44,9 +45,9 @@ def load_transfer_sample_setup(_root: str | Path = SAMPLE_ROOT):
             }),
     ):
         verified = tuple(virtual_join_config_module.load_verified_rules(object()))
-    trusted = TrustedImplementationCatalog.build(
-        source_preparers=(("sample-direct-join", 1),),
-        mappers=(("sample-declarative-role", 1),),
-    )
-    snapshot = compile_setup_snapshot(bundle, trusted, verified)
+    # The sample names the GENERIC implementations the repository ships; the trusted set
+    # is discovered from those classes rather than restated here.  This support module
+    # used to carry a fourth hand-kept trust list, which is how the sample came to name
+    # two implementations that existed nowhere.
+    snapshot = compile_setup_snapshot(bundle, trusted_implementations(), verified)
     return SimpleNamespace(config_root=SAMPLE_ROOT, bundle=bundle, snapshot=snapshot)

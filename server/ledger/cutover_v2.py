@@ -23,19 +23,16 @@ from .runtime_v2 import (
     execute_cursor_batch,
     preview_cursor_batch,
 )
-from .setup_bundle import LedgerSetupBundle, load_setup_bundle, require_ready_bundle
-from .setup_registry import (
-    LedgerSetupSnapshot,
-    TrustedImplementationCatalog,
-    compile_setup_snapshot,
+from .implementations import (
+    role_mapper_registry,
+    source_preparer_registry,
+    trusted_implementations,
 )
+from .setup_bundle import LedgerSetupBundle, load_setup_bundle, require_ready_bundle
+from .setup_registry import LedgerSetupSnapshot, compile_setup_snapshot
 from .source_preparation import (
     SourcePreparerImplementationRegistry,
     VerifiedJoinBatchReader,
-)
-from mappers.ledger_v2_lot_event_role_mapper import (
-    LiveLotEventSourcePreparer,
-    LotEventRoleMapper,
 )
 
 
@@ -85,26 +82,6 @@ class LedgerV2CutoverSetup:
             ) from exc
 
 
-def trusted_cutover_implementations() -> TrustedImplementationCatalog:
-    """Code-owned executable implementations; all domain contracts remain config."""
-    return TrustedImplementationCatalog.build(
-        source_preparers=(("lot-event-live-frame", 1),),
-        mappers=(("lot-event-role", 1),),
-    )
-
-
-def cutover_preparer_registry() -> SourcePreparerImplementationRegistry:
-    registry = SourcePreparerImplementationRegistry()
-    registry.register("lot-event-live-frame", 1, LiveLotEventSourcePreparer)
-    return registry.seal()
-
-
-def cutover_mapper_registry() -> RoleMapperImplementationRegistry:
-    registry = RoleMapperImplementationRegistry()
-    registry.register("lot-event-role", 1, LotEventRoleMapper)
-    return registry.seal()
-
-
 def load_cutover_setup(
     root: str | Path = DEFAULT_ONTOLOGY_ROOT,
     *,
@@ -115,14 +92,14 @@ def load_cutover_setup(
     bundle = require_ready_bundle(load_setup_bundle(root_path))
     selections = _validate_selector(bundle)
     snapshot = compile_setup_snapshot(
-        bundle, trusted_cutover_implementations(), verified_joins)
+        bundle, trusted_implementations(), verified_joins)
     return LedgerV2CutoverSetup(
         config_root=root_path,
         bundle=bundle,
         snapshot=snapshot,
         selections=MappingProxyType(selections),
-        preparers=cutover_preparer_registry(),
-        mappers=cutover_mapper_registry(),
+        preparers=source_preparer_registry(),
+        mappers=role_mapper_registry(),
     )
 
 

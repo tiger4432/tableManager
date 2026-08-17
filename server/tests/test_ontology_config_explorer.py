@@ -23,11 +23,8 @@ from ledger.config_explorer import (
     reference_diff,
 )
 from ledger.config_explorer_service import OntologyExplorerService
-from ledger.cutover_v2 import (
-    DEFAULT_ONTOLOGY_ROOT,
-    load_cutover_setup,
-    trusted_cutover_implementations,
-)
+from ledger.cutover_v2 import DEFAULT_ONTOLOGY_ROOT, load_cutover_setup
+from ledger.implementations import trusted_implementations
 from ledger.setup_bundle import require_ready_bundle, validate_bundle
 from ledger.setup_registry import compile_setup_snapshot
 import ontology_config_explorer_router as explorer_router
@@ -372,7 +369,7 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
     }
     bundle = require_ready_bundle(validate_bundle(logical))
     snapshot = compile_setup_snapshot(
-        bundle, trusted_cutover_implementations(),
+        bundle, trusted_implementations(),
         tuple(active_setup.snapshot.verified_joins.values()))
     fixture_setup = SimpleNamespace(
         config_root=active_setup.config_root, bundle=bundle, snapshot=snapshot)
@@ -400,8 +397,11 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "claim|dt-assembly@1/core_to_dt",
         "claim|dt-assembly@1/bond_component",
         "profile|dt-transfer@1",
-        "preparer|sample-direct-join@1",
-        "mapper|sample-declarative-role@1",
+        # The sample names the GENERIC implementations the repository ships.  Before
+        # self-registration it named "sample-*" ids no class declared, so this round trip
+        # only compiled because the support module carried a private trust list.
+        "preparer|direct-join@1",
+        "mapper|declarative-role@1",
         "verified_join|dt_job_to_inventory",
         "source_plan|dt_log",
         "table|dt_log",

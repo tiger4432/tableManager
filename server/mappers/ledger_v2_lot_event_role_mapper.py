@@ -89,6 +89,9 @@ class LiveLotEventSourcePreparer(BaseSourcePreparer):
     the stable logical event vocabulary proven during Stage 6 parity.
     """
 
+    implementation_id = "lot-event-live-frame"
+    implementation_version = 1
+
     def prepare_outputs(
         self,
         context: SourcePreparationContext,
@@ -131,6 +134,9 @@ class LiveLotEventSourcePreparer(BaseSourcePreparer):
 
 class LotEventRoleMapper(BaseLedgerMapper):
     """Interpret split, merge, and track-in EventFrames as registered Pack Roles."""
+
+    implementation_id = "lot-event-role"
+    implementation_version = 1
 
     def interpret_unit(
         self,

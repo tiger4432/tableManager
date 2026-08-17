@@ -51,8 +51,8 @@
     "FinalChip@1": {"keys": ["chip_id"]}
   },
   "source_preparers": {
-    "sample-direct-join@1": {
-      "implementation_id": "sample-direct-join",
+    "direct-join@1": {
+      "implementation_id": "direct-join",
       "implementation_version": 1,
       "input_columns": ["dt_job_id"],
       "output_columns": {
@@ -70,8 +70,8 @@
     }
   },
   "mappers": {
-    "sample-declarative-role@1": {
-      "implementation_id": "sample-declarative-role",
+    "declarative-role@1": {
+      "implementation_id": "declarative-role",
       "implementation_version": 1,
       "unit": {"kind": "row"},
       "input_columns": [
@@ -226,10 +226,10 @@
         "occurred_at": {"column": "event_at", "timezone": "Asia/Seoul"},
         "cursor": {"columns": ["event_at", "record_id"]},
         "preparation": {
-          "preparer_id": "sample-direct-join@1",
+          "preparer_id": "direct-join@1",
           "inherit_virtual_join_rules": ["dt_job_to_inventory"]
         },
-        "mapper_id": "sample-declarative-role@1"
+        "mapper_id": "declarative-role@1"
       }
     }
   }
