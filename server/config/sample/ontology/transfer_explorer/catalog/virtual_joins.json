@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "rules": {
+    "dt_job_to_inventory": {
+      "left_table": "dt_log",
+      "right_table": "dt_inventory",
+      "join_key": [{"left": "dt_job_id", "right": "dt_job_id"}],
+      "expose": [
+        "dt_lot", "dt_slot", "dt_offset_x", "dt_offset_y",
+        "bond_wafer", "bond_offset_x", "bond_offset_y", "bond_layer", "final_chip"
+      ],
+      "join_cardinality": "one",
+      "enabled": true
+    }
+  }
+}

@@ -26,7 +26,8 @@ def configure_service(service: OntologyExplorerService) -> None:
 def _refusal(exc: ConfigExplorerError) -> HTTPException:
     status = 409 if exc.code in {
         "stale_base_snapshot", "stale_draft", "stale_revision",
-        "stale_context", "review_revision_locked", "activation_locked",
+        "conflict_draft", "stale_context", "review_revision_locked",
+        "activation_locked", "convergence_mismatch", "convergence_unproven",
     } else 400
     return HTTPException(status_code=status, detail=exc.to_mapping())
 
@@ -41,12 +42,13 @@ def explorer_view(
     context_token: str | None = Query(default=None),
     draft_id: str | None = Query(default=None),
     revision: int | None = Query(default=None),
+    view_mode: str = Query(default="active"),
 ):
     try:
         return _service.view(
             selection=selection, query=q, page=page, limit=limit,
             reference_limit=reference_limit, expected_context_token=context_token,
-            draft_id=draft_id, revision=revision)
+            draft_id=draft_id, revision=revision, view_mode=view_mode)
 
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
@@ -80,6 +82,16 @@ def save_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
 def review_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
     try:
         return _service.review_draft(
+            draft_id, expected_revision=payload.get("expected_revision"))
+    except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
+@router.post("/drafts/{draft_id}/revise",
+             dependencies=[Depends(require_admin_token_strict)])
+def revise_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
+    try:
+        return _service.revise_draft(
             draft_id, expected_revision=payload.get("expected_revision"))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import shutil
 import time
 from types import MappingProxyType
@@ -17,9 +16,11 @@ from ledger.config_explorer import (
     ExplorerIndex,
     ExplorerNode,
     ReferenceEdge,
+    _IndexBuilder,
     build_explorer_index,
     definition_diff,
     explorer_view,
+    reference_diff,
 )
 from ledger.config_explorer_service import OntologyExplorerService
 from ledger.cutover_v2 import (
@@ -30,6 +31,7 @@ from ledger.cutover_v2 import (
 from ledger.setup_bundle import require_ready_bundle, validate_bundle
 from ledger.setup_registry import compile_setup_snapshot
 import ontology_config_explorer_router as explorer_router
+from tests.support.ontology_explorer_sample import load_transfer_sample_setup
 
 
 @pytest.fixture(scope="module")
@@ -44,8 +46,38 @@ def copied_root(tmp_path):
     return target
 
 
+@pytest.fixture(scope="module")
+def transfer_sample_setup():
+    return load_transfer_sample_setup()
+
+
 def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     index = build_explorer_index(active_setup)
+    bundle = active_setup.bundle.to_mapping()
+    by_kind = {
+        kind: {node.canonical_id for node in index.nodes.values() if node.kind == kind}
+        for kind in {
+            "predicate", "entity", "pack", "claim", "profile", "mapping",
+            "binding", "preparer", "mapper", "source_plan", "verified_join", "table",
+        }
+    }
+    assert by_kind["predicate"] == set(active_setup.snapshot.registries["vocabulary"])
+    assert by_kind["entity"] == set(active_setup.snapshot.registries["entities"])
+    assert by_kind["pack"] == set(active_setup.snapshot.registries["packs"])
+    assert by_kind["profile"] == set(active_setup.snapshot.registries["profiles"])
+    assert by_kind["preparer"] == set(active_setup.snapshot.registries["source_preparers"])
+    assert by_kind["mapper"] == set(active_setup.snapshot.registries["mappers"])
+    assert by_kind["source_plan"] == set(active_setup.snapshot.registries["sources"])
+    assert by_kind["verified_join"] == set(active_setup.snapshot.registries["verified_joins"])
+    assert by_kind["table"] == set(bundle["tables"])
+    assert len(by_kind["claim"]) == sum(
+        len(pack["claims"]) for pack in bundle["packs"].values())
+    assert len(by_kind["mapping"]) == sum(
+        len(profile["mappings"]) for profile in bundle["profiles"].values())
+    assert len(by_kind["binding"]) == sum(
+        len(mapping["bind"])
+        for profile in bundle["profiles"].values()
+        for mapping in profile["mappings"])
     expected = {
         "predicate|slot_map@1",
         "entity|Lot@1",
@@ -55,11 +87,12 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         "mapping|lot-event@1#mapping:slot_preserving",
         "preparer|lot-event-live-frame@1",
         "mapper|lot-event-role@1",
-        "source|lot_event",
+        "source_plan|lot_event",
+        "binding|lot-event@1#mapping:slot_preserving#binding:subject",
         "table|lot_event",
     }
     assert expected.issubset(index.nodes)
-    assert len(index.nodes) == 24
+    assert len(index.nodes) == 47
 
 
 def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setup):
@@ -85,7 +118,7 @@ def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setu
 def test_actual_round_trip_source_profile_claim_predicate(active_setup):
     index = build_explorer_index(active_setup)
     edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
-    assert ("source|lot_event", "profile|lot-event@1", "source_profile") in edges
+    assert ("source_plan|lot_event", "profile|lot-event@1", "source_profile") in edges
     assert (
         "mapping|lot-event@1#mapping:slot_preserving",
         "claim|lot-lineage@1/split_slot",
@@ -95,6 +128,95 @@ def test_actual_round_trip_source_profile_claim_predicate(active_setup):
         "claim|lot-lineage@1/split_slot", "predicate|slot_map@1",
         "emits_predicate",
     ) in edges
+    assert (
+        "mapping|lot-event@1#mapping:slot_preserving",
+        "binding|lot-event@1#mapping:slot_preserving#binding:subject",
+        "mapping_binding",
+    ) in edges
+
+
+def test_reference_statuses_are_closed_and_version_aware():
+    builder = _IndexBuilder("a" * 64, "b" * 64)
+    source = builder.add_node(
+        "mapping", "source@1", {}, {}, ("source",),
+        config_file="ledger_config.json", json_pointer="/source", version=1)
+    builder.add_node(
+        "entity", "Target@1", {"keys": ["id"]}, {"keys": ["id"]},
+        ("entities", "Target@1"), config_file="ledger_config.json",
+        json_pointer="/entities/Target@1", version=1)
+    builder.add_node(
+        "predicate", "WrongKind@1", {}, {}, ("vocabulary", "WrongKind@1"),
+        config_file="ledger_config.json", json_pointer="/vocabulary/WrongKind@1",
+        version=1)
+    builder.add_edge(source, "Target@2", "entity", "version", "/ref/version")
+    builder.add_edge(source, "WrongKind@1", "entity", "kind", "/ref/kind")
+    builder.add_edge(source, "Missing@1", "entity", "missing", "/ref/missing")
+    builder.add_edge(
+        source, "Target@1", "entity", "signature", "/ref/signature",
+        status="signature_mismatch")
+    index = builder.finish()
+
+    statuses = {edge.reference_kind: edge.status for edge in index.edges}
+    assert statuses == {
+        "kind": "wrong_kind",
+        "missing": "unresolved",
+        "signature": "signature_mismatch",
+        "version": "wrong_version",
+    }
+    assert all(edge.message for edge in index.edges)
+
+
+def test_definition_and_reference_diff_keep_all_four_normalized_states():
+    def make_index(specs, edges=()):
+        nodes = {
+            key: ExplorerNode(
+                key=key, canonical_id=key.split("|", 1)[1], kind=key.split("|", 1)[0],
+                version=1, config_file="ledger_config.json", json_pointer=f"/{key}",
+                config_path=f"ledger_config.json#/{key}", raw={}, compiled={},
+                definition_hash=digest, bundle_path=(key,),
+            )
+            for key, digest in specs.items()
+        }
+        outbound = {key: [] for key in nodes}
+        inbound = {key: [] for key in nodes}
+        for edge in edges:
+            outbound[edge.from_key].append(edge)
+            if edge.to_key:
+                inbound[edge.to_key].append(edge)
+        return ExplorerIndex(
+            snapshot_hash="a" * 64, bundle_hash="b" * 64,
+            nodes=MappingProxyType(nodes), edges=tuple(edges),
+            outbound=MappingProxyType({key: tuple(value) for key, value in outbound.items()}),
+            inbound=MappingProxyType({key: tuple(value) for key, value in inbound.items()}),
+        )
+
+    shared = ReferenceEdge(
+        edge_id="shared", from_key="entity|same@1", to_key="entity|changed@1",
+        target_id="changed@1", expected_kind="entity", reference_kind="test",
+        json_pointer="/shared", status="resolved")
+    removed = ReferenceEdge(
+        edge_id="removed", from_key="entity|same@1", to_key="entity|removed@1",
+        target_id="removed@1", expected_kind="entity", reference_kind="test",
+        json_pointer="/removed", status="resolved")
+    added = ReferenceEdge(
+        edge_id="added", from_key="entity|same@1", to_key="entity|added@1",
+        target_id="added@1", expected_kind="entity", reference_kind="test",
+        json_pointer="/added", status="resolved")
+    active = make_index({
+        "entity|same@1": "1", "entity|changed@1": "2", "entity|removed@1": "3",
+    }, (shared, removed))
+    preview = make_index({
+        "entity|same@1": "1", "entity|changed@1": "9", "entity|added@1": "4",
+    }, (shared, added))
+
+    assert dict(definition_diff(active, preview)) == {
+        "entity|added@1": "added",
+        "entity|changed@1": "modified",
+        "entity|removed@1": "removed",
+        "entity|same@1": "unchanged",
+    }
+    assert dict(reference_diff(active, preview)) == {
+        "added": "added", "removed": "removed", "shared": "unchanged"}
 
 
 def test_view_uses_one_context_token_and_kind_specific_integrity(active_setup):
@@ -108,6 +230,8 @@ def test_view_uses_one_context_token_and_kind_specific_integrity(active_setup):
     assert all(item["context_token"] == token for item in payload["nodes"])
     assert all(item["context_token"] == token for item in payload["outbound"])
     assert all(item["context_token"] == token for item in payload["used_by"])
+    assert all(item["context_token"] == token for item in payload["path_candidates"])
+    assert all(item["context_token"] == token for item in payload["integrity"])
     assert {item["code"] for item in payload["integrity"]} == {
         "reference_resolution", "entity_identity"}
     assert "predicate_signature" not in {
@@ -235,6 +359,51 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
     assert index.nodes["entity|CoreDie@1"].kind == "entity"
 
 
+def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
+    transfer_sample_setup,
+):
+    index = build_explorer_index(transfer_sample_setup)
+    required = {
+        "predicate|transferred_to@1",
+        "entity|CoreDie@1",
+        "entity|DTDie@1",
+        "entity|DTJob@1",
+        "entity|LotSlot@1",
+        "pack|dt-assembly@1",
+        "claim|dt-assembly@1/core_to_dt",
+        "profile|dt-transfer@1",
+        "preparer|sample-direct-join@1",
+        "mapper|sample-declarative-role@1",
+        "verified_join|dt_job_to_inventory",
+        "source_plan|dt_log",
+        "table|dt_log",
+        "binding|dt-transfer@1#mapping:core_to_dt#binding:subject",
+    }
+    assert required.issubset(index.nodes)
+    edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
+    assert (
+        "source_plan|dt_log", "profile|dt-transfer@1", "source_profile") in edges
+    assert (
+        "mapping|dt-transfer@1#mapping:core_to_dt",
+        "claim|dt-assembly@1/core_to_dt", "mapping_claim") in edges
+    assert (
+        "claim|dt-assembly@1/core_to_dt",
+        "predicate|transferred_to@1", "emits_predicate") in edges
+    assert (
+        "source_plan|dt_log", "verified_join|dt_job_to_inventory",
+        "source_verified_join") in edges
+    assert index.nodes["predicate|transferred_to@1"].config_path == (
+        "ledger_config.json#/vocabulary/transferred_to@1")
+
+    token = f"active:{index.snapshot_hash}"
+    view = explorer_view(
+        index, context_token=token,
+        selection="predicate|transferred_to@1", query="transferred")
+    assert view["total"] == 1
+    assert len(view["path_candidates"]) >= 2
+    assert all(path["context_token"] == token for path in view["path_candidates"])
+
+
 def test_draft_save_keeps_active_bytes_and_valid_preview_is_separate(copied_root, tmp_path):
     service = OntologyExplorerService(
         config_root=copied_root, draft_root=tmp_path / "drafts")
@@ -257,11 +426,46 @@ def test_draft_save_keeps_active_bytes_and_valid_preview_is_separate(copied_root
     assert saved["preview_snapshot_hash"] != index.snapshot_hash
     view = service.view(
         draft_id=draft["draft_id"], revision=1,
-        selection="predicate|derived_from@1")
+        selection="predicate|derived_from@1", view_mode="draft_preview")
     assert view["view_context"]["mode"] == "draft_preview"
     assert view["context_token"].startswith(f"draft:{draft['draft_id']}:1:")
     assert view["active_snapshot"]["snapshot_hash"] == index.snapshot_hash
     assert view["selection"]["change_status"] == "modified"
+    assert view["draft"]["affected_definitions"]
+    assert all(
+        {"key", "canonical_id", "kind", "json_pointer", "change_status"}
+        <= set(item) for item in view["changes"])
+    assert all(
+        item["context_token"] == view["context_token"]
+        for item in view["changes"] + view["edge_changes"])
+
+    active_view = service.view(
+        draft_id=draft["draft_id"], revision=1,
+        selection="predicate|derived_from@1", view_mode="active")
+    assert active_view["view_context"]["mode"] == "active"
+    assert active_view["context_token"] == f"active:{index.snapshot_hash}"
+    assert active_view["draft"]["draft_id"] == draft["draft_id"]
+    assert active_view["selection"]["change_status"] == "active"
+
+
+def test_invalid_signature_is_classified_with_json_pointer(copied_root, tmp_path):
+    service = OntologyExplorerService(
+        config_root=copied_root, draft_root=tmp_path / "drafts")
+    _, index, _ = service.active()
+    draft = service.create_draft(
+        target_key="predicate|has_wafer@1", base_snapshot_hash=index.snapshot_hash)
+    raw = json.loads(json.dumps(draft["raw"]))
+    raw["object"]["qualifiers"]["required"].append("new_required_value")
+    saved = service.save_draft(
+        draft["draft_id"], expected_revision=0, raw=json.dumps(raw))
+
+    assert saved["lifecycle_status"] == "invalid"
+    classified = [
+        item for item in saved["validation_errors"]
+        if item.get("reference_status") == "signature_mismatch"
+    ]
+    assert classified
+    assert all(item["json_pointer"].startswith("/") for item in classified)
 
 
 def test_catalog_declaration_is_read_only_and_unknown_selection_fails_closed(
@@ -298,7 +502,7 @@ def test_invalid_draft_falls_back_to_active_without_fake_preview(copied_root, tm
     assert saved["preview_valid"] is False
     view = service.view(
         draft_id=draft["draft_id"], revision=1,
-        selection="predicate|derived_from@1")
+        selection="predicate|derived_from@1", view_mode="draft_preview")
     assert view["context_token"] == f"active:{index.snapshot_hash}"
     assert view["view_context"]["mode"] == "active_fallback"
     assert view["view_context"]["preview_snapshot_hash"] is None
@@ -319,11 +523,31 @@ def test_stale_draft_is_labeled_stale_in_active_fallback(copied_root, tmp_path):
 
     view = service.view(
         draft_id=draft["draft_id"], revision=0,
-        selection="predicate|derived_from@1")
+        selection="predicate|derived_from@1", view_mode="draft_preview")
 
     assert view["view_context"]["mode"] == "active_fallback"
     assert view["view_context"]["fallback_reason"] == "stale_draft"
     assert view["draft"]["lifecycle_status"] == "stale"
+
+
+def test_changed_target_is_labeled_conflict_not_plain_stale(copied_root, tmp_path):
+    service = OntologyExplorerService(
+        config_root=copied_root, draft_root=tmp_path / "drafts")
+    _, index, _ = service.active()
+    draft = service.create_draft(
+        target_key="predicate|derived_from@1", base_snapshot_hash=index.snapshot_hash)
+    record_path = service.draft_store._record_path(draft["draft_id"])
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["base_snapshot_hash"] = "0" * 64
+    record["base_definition_hash"] = "1" * 64
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    view = service.view(
+        draft_id=draft["draft_id"], revision=0,
+        selection="predicate|derived_from@1", view_mode="draft_preview")
+    assert view["view_context"]["mode"] == "active_fallback"
+    assert view["view_context"]["fallback_reason"] == "conflict_draft"
+    assert view["draft"]["lifecycle_status"] == "conflict"
 
 
 def test_review_revision_is_immutable(copied_root, tmp_path):
@@ -339,16 +563,28 @@ def test_review_revision_is_immutable(copied_root, tmp_path):
     reviewed = service.review_draft(draft["draft_id"], expected_revision=1)
     assert reviewed["lifecycle_status"] == "review_requested"
     assert reviewed["review_revision"] == 1
+    repeated = service.review_draft(draft["draft_id"], expected_revision=1)
+    assert len(repeated["review_history"]) == 1
     with pytest.raises(ConfigExplorerError) as exc:
         service.save_draft(
             draft["draft_id"], expected_revision=1,
             raw=json.dumps(draft["raw"]))
     assert exc.value.code == "review_revision_locked"
+    revised = service.revise_draft(
+        draft["draft_id"], expected_revision=1)
+    assert revised["revision"] == 2
+    assert revised["lifecycle_status"] == "editing"
+    assert revised["review_revision"] is None
+    assert revised["review_history"][0]["revision"] == 1
 
 
 def test_activation_is_cas_atomic_and_matches_reviewed_preview(copied_root, tmp_path):
     service = OntologyExplorerService(
-        config_root=copied_root, draft_root=tmp_path / "drafts")
+        config_root=copied_root, draft_root=tmp_path / "drafts",
+        convergence_probe=lambda expected: {
+            "ontology-explorer-api": expected,
+            "ledger-persistent-reader": expected,
+        })
     _, index, _ = service.active()
     draft = service.create_draft(
         target_key="predicate|derived_from@1",
@@ -364,8 +600,43 @@ def test_activation_is_cas_atomic_and_matches_reviewed_preview(copied_root, tmp_
         draft["draft_id"], expected_revision=1, reload_callback=lambda: None)
     assert result["active_snapshot_hash"] == saved["preview_snapshot_hash"]
     assert result["runtime_convergence"]["status"] == "confirmed"
+    assert result["runtime_convergence"]["confirmed_consumers"] == [
+        "ledger-persistent-reader", "ontology-explorer-api"]
     reloaded, _, _ = service.active(force=True)
     assert reloaded.snapshot.snapshot_sha256 == saved["preview_snapshot_hash"]
+
+
+@pytest.mark.parametrize(
+    ("probe_mode", "expected_code"),
+    (("empty", "convergence_unproven"), ("mismatch", "convergence_mismatch")),
+)
+def test_activation_rolls_back_until_every_declared_consumer_converges(
+    copied_root, tmp_path, probe_mode, expected_code,
+):
+    def convergence(expected):
+        if probe_mode == "empty":
+            return {}
+        return {"ontology-explorer-api": expected, "ledger-worker": "0" * 64}
+
+    service = OntologyExplorerService(
+        config_root=copied_root, draft_root=tmp_path / "drafts",
+        convergence_probe=convergence)
+    _, index, _ = service.active()
+    active_path = copied_root / "ledger_config.json"
+    before = active_path.read_bytes()
+    draft = service.create_draft(
+        target_key="predicate|derived_from@1", base_snapshot_hash=index.snapshot_hash)
+    raw = json.loads(json.dumps(draft["raw"]))
+    raw["object"]["qualifiers"]["optional"] = ["reason"]
+    service.save_draft(
+        draft["draft_id"], expected_revision=0, raw=json.dumps(raw))
+    service.review_draft(draft["draft_id"], expected_revision=1)
+
+    with pytest.raises(ConfigExplorerError) as refused:
+        service.activate_draft(
+            draft["draft_id"], expected_revision=1, reload_callback=lambda: None)
+    assert refused.value.code == expected_code
+    assert active_path.read_bytes() == before
 
 
 def test_api_returns_structured_context_and_strict_draft_contract(copied_root, tmp_path):
@@ -393,3 +664,17 @@ def test_api_returns_structured_context_and_strict_draft_contract(copied_root, t
         json={"expected_revision": 9, "raw": json.dumps(draft["raw"])})
     assert refused.status_code == 409
     assert refused.json()["detail"]["code"] == "stale_revision"
+    saved = client.put(
+        f"/admin/ontology-explorer/drafts/{draft['draft_id']}",
+        json={"expected_revision": 0, "raw": json.dumps(draft["raw"])})
+    assert saved.status_code == 200
+    reviewed = client.post(
+        f"/admin/ontology-explorer/drafts/{draft['draft_id']}/review",
+        json={"expected_revision": 1})
+    assert reviewed.status_code == 200
+    revised = client.post(
+        f"/admin/ontology-explorer/drafts/{draft['draft_id']}/revise",
+        json={"expected_revision": 1})
+    assert revised.status_code == 200
+    assert revised.json()["revision"] == 2
+    assert revised.json()["lifecycle_status"] == "editing"

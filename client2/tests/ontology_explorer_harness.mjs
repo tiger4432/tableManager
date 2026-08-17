@@ -2,6 +2,7 @@
 // Run: node client2/tests/ontology_explorer_harness.mjs
 import {
   initialExplorerState, reduceExplorerState, assertOneContext, canLeaveSelection,
+  dirtyNavigationDecision, isDraftRevisionEditable,
 } from '../src/ontology_explorer_store.js';
 
 let ran = 0;
@@ -23,6 +24,7 @@ const payload = (token, selected = 'entity|A@1') => ({
   items: [node('entity|A@1', token), node('entity|B@1', token)],
   nodes: [node(selected, token)],
   outbound: [], used_by: [], path_candidates: [], integrity: [], page: 1, total: 2,
+  changes: [], edge_changes: [],
 });
 
 {
@@ -33,6 +35,22 @@ const payload = (token, selected = 'entity|A@1') => ({
   let rejected = false;
   try { assertOneContext(bad); } catch (_) { rejected = true; }
   check('C2 mixed snapshot token rejected', rejected);
+  const badIntegrity = payload('active:aaa');
+  badIntegrity.integrity = [{ code: 'x', context_token: 'active:bbb' }];
+  rejected = false;
+  try { assertOneContext(badIntegrity); } catch (_) { rejected = true; }
+  check('C3 mixed validation token rejected', rejected);
+  rejected = false;
+  try {
+    reduceExplorerState(
+      { ...initialExplorerState, requestGeneration: 1 },
+      {
+        type: 'RESPONSE_RECEIVED', generation: 1, payload: payload('active:aaa'),
+        expectedSelection: 'entity|B@1',
+      },
+    );
+  } catch (_) { rejected = true; }
+  check('C4 mismatched requested selection rejected', rejected);
 }
 
 {
@@ -49,8 +67,10 @@ const payload = (token, selected = 'entity|A@1') => ({
   state = reduceExplorerState(state, { type: 'REQUEST_STARTED', generation: 3 });
   state = reduceExplorerState(state, {
     type: 'REQUEST_FAILED', generation: 3, code: 'unknown_selection', message: 'removed',
+    selection: 'entity|A@1',
   });
   check('R4 removed selection cannot leave stale Inspector', state.selection === null && state.nodes.length === 0);
+  check('R5 removed selection has explicit state', state.removedSelection.status === 'removed_or_unresolved');
 }
 
 {
@@ -69,7 +89,11 @@ const payload = (token, selected = 'entity|A@1') => ({
 
   const custom = {
     key: 'entity|A@1', query: 'lot', detailTab: 'usage',
-    treeScroll: 120, workspaceScroll: 340, viaEdge: 'edge-7',
+    treeScroll: 120, workspaceScroll: 340, editorSelectionStart: 7,
+    editorSelectionEnd: 11, viewPreference: 'draft_preview',
+    route: { path_id: 'edge:7', node_keys: ['entity|A@1', 'entity|B@1'], edge_ids: ['edge-7'] },
+    contextToken: 'draft:d1:4:preview',
+    viaEdge: 'edge-7',
   };
   state = reduceExplorerState({ ...state, navigation: { back: [custom], forward: [] } }, {
     type: 'NAVIGATE_BACK', current: { key: 'entity|B@1' },
@@ -77,6 +101,12 @@ const payload = (token, selected = 'entity|A@1') => ({
   check('N5 history preserves tab and scroll', state.pendingNavigation.detailTab === 'usage'
     && state.pendingNavigation.treeScroll === 120 && state.pendingNavigation.workspaceScroll === 340);
   check('N6 history preserves route edge evidence', state.pendingNavigation.viaEdge === 'edge-7');
+  check('N7 history preserves active/draft mode and editor cursor',
+    state.pendingNavigation.viewPreference === 'draft_preview'
+      && state.pendingNavigation.editorSelectionStart === 7
+      && state.pendingNavigation.editorSelectionEnd === 11);
+  check('N8 history preserves exact compiled route', state.pendingNavigation.route.path_id === 'edge:7');
+  check('N9 history preserves exact context token', state.pendingNavigation.contextToken === 'draft:d1:4:preview');
 }
 
 {
@@ -90,6 +120,17 @@ const payload = (token, selected = 'entity|A@1') => ({
   check('D4 draft editor uses deterministic JSON', opened.editorText === '{\n  "status": "active"\n}');
   const edited = reduceExplorerState(opened, { type: 'EDITOR_CHANGED', text: '{}' });
   check('D5 editor change marks draft dirty', edited.dirty && edited.editorText === '{}');
+  check('D6 dirty move can keep draft', dirtyNavigationDecision(edited, () => 'keep') === 'keep');
+  check('D7 dirty move can discard draft', dirtyNavigationDecision(edited, () => 'discard') === 'discard');
+  check('D8 dirty move can cancel', dirtyNavigationDecision(edited, () => 'cancel') === 'cancel');
+  check('D9 unknown dirty decision fails closed', dirtyNavigationDecision(edited, () => 'other') === 'cancel');
+  const reviewed = {
+    ...opened,
+    draft: { ...opened.draft, lifecycle_status: 'review_requested' },
+  };
+  check('D10 reviewed revision is not editable', !isDraftRevisionEditable(reviewed.draft));
+  const attemptedEdit = reduceExplorerState(reviewed, { type: 'EDITOR_CHANGED', text: '{"changed":true}' });
+  check('D11 reviewed revision ignores editor mutations', attemptedEdit.editorText === reviewed.editorText && !attemptedEdit.dirty);
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);

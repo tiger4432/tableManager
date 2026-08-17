@@ -13,6 +13,7 @@ from .config_explorer import (
     build_explorer_index,
     definition_diff,
     explorer_view,
+    reference_diff,
 )
 from .cutover_v2 import DEFAULT_ONTOLOGY_ROOT, load_cutover_setup
 
@@ -24,11 +25,14 @@ class OntologyExplorerService:
         config_root: str | Path = DEFAULT_ONTOLOGY_ROOT,
         draft_root: str | Path | None = None,
         setup_loader: Callable[[str | Path], Any] = load_cutover_setup,
+        convergence_probe: Callable[[str], dict[str, str]] | None = None,
     ):
         self.config_root = Path(config_root)
         self.draft_store = OntologyDraftStore(
             draft_root or self.config_root.parent / "backup" / "ontology_drafts")
         self._setup_loader = setup_loader
+        self._convergence_probe = convergence_probe or (
+            lambda expected: {"ontology-explorer-api": expected})
         self._lock = RLock()
         self._stamp: tuple[Any, ...] | None = None
         self._setup: Any | None = None
@@ -65,7 +69,18 @@ class OntologyExplorerService:
         expected_context_token: str | None = None,
         draft_id: str | None = None,
         revision: int | None = None,
+        view_mode: str = "active",
     ) -> dict[str, Any]:
+        if view_mode not in {"active", "draft_preview"}:
+            raise ConfigExplorerError(
+                "invalid_view_mode", "view_mode",
+                "view mode must be active or draft_preview",
+            )
+        if view_mode == "draft_preview" and draft_id is None:
+            raise ConfigExplorerError(
+                "draft_required", "draft_id",
+                "draft_preview mode requires a draft id",
+            )
         setup, active_index, compiled_at = self.active()
         active_token = f"active:{active_index.snapshot_hash}"
         context = {
@@ -78,6 +93,7 @@ class OntologyExplorerService:
         index = active_index
         token = active_token
         diff = None
+        edge_changes = None
         draft = None
 
         if draft_id is not None:
@@ -87,14 +103,15 @@ class OntologyExplorerService:
                     "stale_revision", "revision",
                     f"requested revision {revision}, current is {record['revision']}",
                 )
-            preview = self.draft_store.preview(record, setup, active_index)
             draft = self.draft_store.public(record)
-            if preview.valid and preview.index is not None:
+            preview = self.draft_store.preview(record, setup, active_index)
+            if view_mode == "draft_preview" and preview.valid and preview.index is not None:
                 index = preview.index
                 token = (
                     f"draft:{record['draft_id']}:{record['revision']}:"
                     f"{index.snapshot_hash}")
                 diff = definition_diff(active_index, index)
+                edge_changes = reference_diff(active_index, index)
                 context = {
                     "mode": "draft_preview",
                     "context_token": token,
@@ -102,12 +119,12 @@ class OntologyExplorerService:
                     "preview_snapshot_hash": index.snapshot_hash,
                     "fallback_reason": None,
                 }
-            else:
+            elif view_mode == "draft_preview":
                 reason = preview.errors[0]["code"] if preview.errors else "draft_invalid"
-                if reason == "stale_draft":
+                if reason in {"stale_draft", "conflict_draft"}:
                     # A read does not rewrite draft history, but its public lifecycle must
                     # describe the current active-base relationship, not the old saved state.
-                    draft["lifecycle_status"] = "stale"
+                    draft["lifecycle_status"] = reason.removesuffix("_draft")
                 context = {
                     "mode": "active_fallback",
                     "context_token": active_token,
@@ -116,10 +133,36 @@ class OntologyExplorerService:
                     "fallback_reason": reason,
                 }
                 draft["validation_errors"] = [dict(item) for item in preview.errors]
+            elif not preview.valid and preview.errors:
+                reason = preview.errors[0]["code"]
+                if reason in {"stale_draft", "conflict_draft"}:
+                    draft["lifecycle_status"] = reason.removesuffix("_draft")
 
         payload = explorer_view(
             index, context_token=token, selection=selection, query=query,
-            page=page, limit=limit, reference_limit=reference_limit, diff=diff)
+            page=page, limit=limit, reference_limit=reference_limit, diff=diff,
+            edge_diff=edge_changes)
+        if diff is not None:
+            payload["changes"] = [
+                self._definition_change(
+                    key, status, token=token,
+                    active=active_index, preview=index,
+                )
+                for key, status in sorted(diff.items())
+                if status != "unchanged"
+            ]
+        if edge_changes is not None:
+            active_edges = {edge.edge_id: edge for edge in active_index.edges}
+            preview_edges = {edge.edge_id: edge for edge in index.edges}
+            payload["edge_changes"] = [
+                {
+                    **(preview_edges.get(edge_id) or active_edges[edge_id]).to_mapping(),
+                    "change_status": status,
+                    "context_token": token,
+                }
+                for edge_id, status in sorted(edge_changes.items())
+                if status != "unchanged"
+            ]
         payload["active_snapshot"] = {
             "snapshot_hash": active_index.snapshot_hash,
             "compiled_at": compiled_at,
@@ -127,6 +170,12 @@ class OntologyExplorerService:
         }
         payload["view_context"] = context
         payload["draft"] = draft
+        if draft is not None:
+            draft["context_token"] = token
+            draft["affected_definitions"] = payload["changes"]
+            draft["affected_edges"] = payload["edge_changes"]
+            for error in draft.get("validation_errors") or []:
+                error["context_token"] = token
         self._assert_context(payload)
         if expected_context_token is not None and expected_context_token != token:
             raise ConfigExplorerError(
@@ -134,6 +183,22 @@ class OntologyExplorerService:
                 "requested view context no longer matches the compiled response context",
             )
         return payload
+
+    @staticmethod
+    def _definition_change(
+        key: str,
+        status: str,
+        *,
+        token: str,
+        active: ExplorerIndex,
+        preview: ExplorerIndex,
+    ) -> dict[str, Any]:
+        node = preview.nodes.get(key) or active.nodes[key]
+        return {
+            **node.to_mapping(include_definition=False),
+            "change_status": status,
+            "context_token": token,
+        }
 
     def create_draft(self, *, target_key: str, base_snapshot_hash: str) -> dict[str, Any]:
         setup, index, _ = self.active()
@@ -159,6 +224,10 @@ class OntologyExplorerService:
         return self.draft_store.request_review(
             draft_id, expected_revision=expected_revision)
 
+    def revise_draft(self, draft_id: str, *, expected_revision: int) -> dict[str, Any]:
+        return self.draft_store.revise(
+            draft_id, expected_revision=expected_revision)
+
     def discard_draft(self, draft_id: str, *, expected_revision: int) -> dict[str, Any]:
         return self.draft_store.discard(
             draft_id, expected_revision=expected_revision)
@@ -179,7 +248,8 @@ class OntologyExplorerService:
         result = self.draft_store.activate(
             draft_id, expected_revision=expected_revision,
             active_setup=setup, active_index=index,
-            reload_callback=reload_callback, refreshed_setup=refreshed)
+            reload_callback=reload_callback, refreshed_setup=refreshed,
+            convergence_probe=self._convergence_probe)
         self.invalidate()
         return result
 
@@ -204,7 +274,10 @@ class OntologyExplorerService:
                 "context_mismatch", "view_context.context_token",
                 "view context token does not match the response token",
             )
-        for field in ("items", "nodes", "outbound", "used_by"):
+        for field in (
+            "items", "nodes", "outbound", "used_by", "path_candidates",
+            "integrity", "changes", "edge_changes",
+        ):
             for index, item in enumerate(payload[field]):
                 if item.get("context_token") != token:
                     raise ConfigExplorerError(
@@ -216,3 +289,17 @@ class OntologyExplorerService:
                 "context_mismatch", "selection.context_token",
                 "selection token does not match the response token",
             )
+        draft = payload.get("draft")
+        if draft is not None:
+            if draft.get("context_token") != token:
+                raise ConfigExplorerError(
+                    "context_mismatch", "draft.context_token",
+                    "draft metadata must describe the rendered view context",
+                )
+            for index, error in enumerate(draft.get("validation_errors") or []):
+                if error.get("context_token") != token:
+                    raise ConfigExplorerError(
+                        "context_mismatch",
+                        f"draft.validation_errors[{index}].context_token",
+                        "draft validation must describe the rendered view context",
+                    )

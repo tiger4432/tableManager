@@ -1,0 +1,12 @@
+{
+  "setup_version": 2,
+  "ledger": "ledger_config.json",
+  "catalog": {
+    "tables": "catalog/tables.json",
+    "virtual_joins": "catalog/virtual_joins.json"
+  },
+  "dataflows": {
+    "chains": "dataflows/chains.json",
+    "enrichments": "dataflows/enrichments.json"
+  }
+}

@@ -79,6 +79,7 @@ STRICT_ADMIN_ROUTES = {
     ("POST", "/admin/ontology-explorer/drafts"),
     ("PUT", "/admin/ontology-explorer/drafts/{draft_id}"),
     ("POST", "/admin/ontology-explorer/drafts/{draft_id}/review"),
+    ("POST", "/admin/ontology-explorer/drafts/{draft_id}/revise"),
     ("POST", "/admin/ontology-explorer/drafts/{draft_id}/activate"),
     ("DELETE", "/admin/ontology-explorer/drafts/{draft_id}"),
 }

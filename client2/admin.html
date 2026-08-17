@@ -96,6 +96,29 @@
       transform: translateY(-1px);
     }
 
+    @media (max-width: 480px) {
+      header {
+        padding: 10px 12px;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .brand-section { min-width: 0; }
+      .brand-section h1 { font-size: 1.1rem; }
+      .brand-section p { display: none; }
+      .header-actions {
+        width: 100%;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .header-actions .glass-btn {
+        max-width: 100%;
+        padding: 7px 9px;
+        font-size: .75rem;
+        white-space: normal;
+      }
+      main { padding: 8px; }
+    }
+
     .glass-btn.btn-primary {
       background: var(--success-weak);
       border-color: var(--success);

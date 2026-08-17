@@ -1,5 +1,24 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-18 현재 — Ontology Config Explorer 전체 완료 조건 보완·Audit 대기
+>
+> **현재 단계/상태:** `ONTOLOGY_CONFIG_EXPLORER_COMPLETION_IN_REVIEW / NOT_APPROVED`.
+>
+> **재개 사유:** `bea0484`/`af2a1d3`의 승인은 compiled Registry 탐색과 기본 draft lifecycle
+> 범위였다. 사용자 소유 pending 문서의 Binding·SourcePlan, 세분된 참조 오류, exact route
+> history, dirty 3선택, normalized node/edge diff, review→revise, consumer convergence,
+> file-backed transfer 예제·반응형 근거까지를 전체 완료 조건으로 다시 열었다.
+>
+> **완료 후보:** active graph 47개 선언과 file-backed `CoreDie → DTDie → BondComponent →
+> FinalChip` 예제를 같은 production loader/compiler로 탐색한다. 10,000-node 상한과 1920/700/320
+> 브라우저, ACTIVE/DRAFT·keyboard·dirty 이동·reviewed revision 읽기 전용을 확인했다.
+> 직접 범위 `165 passed`, Explorer harness `29/0`, client contract `7/7`, production build가
+> 통과했다. full server suite/PostgreSQL은 사용자 지시에 따라 미실행이다.
+>
+> **다음 관문:** exact commit을 지정 Audit task에 제출한다. APPROVE 전에는 main 병합과
+> 최종 `COMPLETE / APPROVED` 전환을 하지 않는다. 운영 config/DB write, reset/replay,
+> migration, legacy 이동·삭제 금지는 유지한다.
+
 > ## 🧭 2026-08-18 현재 — Ontology Config Explorer 승인·main 병합 완료
 >
 > **현재 단계/상태:** `ONTOLOGY_CONFIG_EXPLORER_COMPLETE / APPROVED`.

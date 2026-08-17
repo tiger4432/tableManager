@@ -40,6 +40,21 @@ from .setup_registry import compile_setup_snapshot, snapshot_compile_errors
 _DRAFT_ID = re.compile(r"^[0-9a-f]{32}$")
 _EDITABLE_FILE = "ledger_config.json"
 
+_UNRESOLVED_CODES = {
+    "unknown_entity_type", "unknown_pack", "unknown_claim", "unknown_source",
+    "unknown_preparer", "unknown_mapper", "unknown_table", "unknown_virtual_join",
+}
+_WRONG_VERSION_CODES = {
+    "unsupported_pack_version", "unsupported_profile_version",
+    "unsupported_preparer_version", "unsupported_mapper_version",
+}
+_WRONG_KIND_CODES = {"invalid_entity_ref", "invalid_reference_kind"}
+_SIGNATURE_CODES = {
+    "missing_required_payload", "unknown_payload_field", "invalid_binding",
+    "missing_required_role", "unknown_role", "invalid_emission",
+    "invalid_symbolic_constant", "predicate_signature_mismatch",
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -52,6 +67,33 @@ def _issue(error: Exception) -> dict[str, str]:
         return error.to_mapping()
     return {"code": "preview_compile_failed", "path": "draft.raw",
             "message": str(error)}
+
+
+def _decorate_issue(value: Mapping[str, Any]) -> dict[str, Any]:
+    issue = dict(value)
+    code = str(issue.get("code", ""))
+    if code in _UNRESOLVED_CODES:
+        issue["reference_status"] = "unresolved"
+    elif code in _WRONG_VERSION_CODES:
+        issue["reference_status"] = "wrong_version"
+    elif code in _WRONG_KIND_CODES:
+        issue["reference_status"] = "wrong_kind"
+    elif code in _SIGNATURE_CODES:
+        issue["reference_status"] = "signature_mismatch"
+    issue["json_pointer"] = _error_pointer(str(issue.get("path", "")))
+    return issue
+
+
+def _error_pointer(path: str) -> str:
+    if path.startswith("/"):
+        return path
+    parts: list[str] = []
+    for name, index in re.findall(r"(?:^|\.)([^.\[\]]+)|\[([0-9]+)\]", path):
+        value = name or index
+        if value == "bundle" and not parts:
+            continue
+        parts.append(str(value).replace("~", "~0").replace("/", "~1"))
+    return "/" + "/".join(parts) if parts else "/"
 
 
 @dataclass(frozen=True)
@@ -84,7 +126,10 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
 
     issues = validate_bundle_errors(logical)
     if issues:
-        return DraftPreview(False, None, None, tuple(issue.to_mapping() for issue in issues))
+        return DraftPreview(
+            False, None, None,
+            tuple(_decorate_issue(issue.to_mapping()) for issue in issues),
+        )
     try:
         bundle = require_ready_bundle(validate_bundle(logical))
         verified = tuple(active_setup.snapshot.verified_joins.values())
@@ -93,7 +138,7 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
         if compile_issues:
             return DraftPreview(
                 False, None, None,
-                tuple(issue.to_mapping() for issue in compile_issues),
+                tuple(_decorate_issue(issue.to_mapping()) for issue in compile_issues),
             )
         snapshot = compile_setup_snapshot(
             bundle, trusted_cutover_implementations(), verified)
@@ -105,7 +150,7 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
         return DraftPreview(
             True, preview_setup, build_explorer_index(preview_setup), tuple())
     except (LedgerSetupValidationError, ConfigExplorerError, TypeError, ValueError) as exc:
-        return DraftPreview(False, None, None, (_issue(exc),))
+        return DraftPreview(False, None, None, (_decorate_issue(_issue(exc)),))
 
 
 def _set_path(document: Any, path: Sequence[Any], value: Any) -> None:
@@ -138,6 +183,7 @@ class OntologyDraftStore:
             "target_id": node.canonical_id,
             "target_kind": node.kind,
             "base_snapshot_hash": active_setup.snapshot.snapshot_sha256,
+            "base_definition_hash": node.definition_hash,
             "revision": 0,
             "lifecycle_status": "editing",
             "raw": node.raw,
@@ -145,6 +191,7 @@ class OntologyDraftStore:
             "preview_valid": False,
             "validation_errors": [],
             "review_revision": None,
+            "review_history": [],
             "activated_snapshot_hash": None,
             "created_at": now,
             "updated_at": now,
@@ -187,11 +234,12 @@ class OntologyDraftStore:
                 raise ConfigExplorerError(
                     "draft_already_activated", "draft_id", "draft is already active")
             if record["base_snapshot_hash"] != active_setup.snapshot.snapshot_sha256:
-                record["lifecycle_status"] = "stale"
+                stale_status = self.stale_status(record, active_index)
+                record["lifecycle_status"] = stale_status
                 record["updated_at"] = _now()
                 self._write_record(record)
                 raise ConfigExplorerError(
-                    "stale_draft", "base_snapshot_hash",
+                    f"{stale_status}_draft", "base_snapshot_hash",
                     "active snapshot changed; rebase before saving",
                 )
             node = active_index.node(record["target_key"])
@@ -222,8 +270,39 @@ class OntologyDraftStore:
                     "invalid_draft_state", "lifecycle_status",
                     "draft must be saved before requesting review",
                 )
+            if (record["lifecycle_status"] == "review_requested"
+                    and record.get("review_revision") == record["revision"]):
+                return self.public(record)
             record["lifecycle_status"] = "review_requested"
             record["review_revision"] = record["revision"]
+            history = list(record.get("review_history") or [])
+            history.append({
+                "revision": record["revision"],
+                "preview_snapshot_hash": record["preview_snapshot_hash"],
+                "raw": record["raw"],
+                "requested_at": _now(),
+            })
+            record["review_history"] = history
+            record["updated_at"] = _now()
+            self._write_record(record)
+            return self.public(record)
+
+    def revise(self, draft_id: str, *, expected_revision: int) -> dict[str, Any]:
+        """Open a new editable revision without mutating the reviewed revision."""
+        with self._lock:
+            record = self._read_record(draft_id)
+            self._require_revision(record, expected_revision)
+            if record["lifecycle_status"] != "review_requested":
+                raise ConfigExplorerError(
+                    "review_revision_not_locked", "lifecycle_status",
+                    "only a review-requested draft needs a new editable revision",
+                )
+            record["revision"] += 1
+            record["lifecycle_status"] = "editing"
+            record["preview_valid"] = False
+            record["preview_snapshot_hash"] = None
+            record["validation_errors"] = []
+            record["review_revision"] = None
             record["updated_at"] = _now()
             self._write_record(record)
             return self.public(record)
@@ -250,6 +329,7 @@ class OntologyDraftStore:
         active_index: ExplorerIndex,
         reload_callback: Callable[[], None],
         refreshed_setup: Callable[[], Any],
+        convergence_probe: Callable[[str], Mapping[str, str]],
     ) -> dict[str, Any]:
         with self._lock:
             record = self._read_record(draft_id)
@@ -261,11 +341,12 @@ class OntologyDraftStore:
                     "the exact revision must be review requested before activation",
                 )
             if record["base_snapshot_hash"] != active_setup.snapshot.snapshot_sha256:
-                record["lifecycle_status"] = "stale"
+                stale_status = self.stale_status(record, active_index)
+                record["lifecycle_status"] = stale_status
                 record["updated_at"] = _now()
                 self._write_record(record)
                 raise ConfigExplorerError(
-                    "stale_draft", "base_snapshot_hash",
+                    f"{stale_status}_draft", "base_snapshot_hash",
                     "active snapshot changed; activation compare-and-swap refused",
                 )
             node = active_index.node(record["target_key"])
@@ -296,6 +377,21 @@ class OntologyDraftStore:
                         "activation_hash_mismatch", "active_snapshot_hash",
                         "reloaded active snapshot does not match the reviewed preview",
                     )
+                consumer_hashes = dict(convergence_probe(actual_hash))
+                if not consumer_hashes:
+                    raise ConfigExplorerError(
+                        "convergence_unproven", "runtime_convergence",
+                        "activation requires at least one declared persistent consumer",
+                    )
+                mismatched = {
+                    consumer: value for consumer, value in consumer_hashes.items()
+                    if value != actual_hash
+                }
+                if mismatched:
+                    raise ConfigExplorerError(
+                        "convergence_mismatch", "runtime_convergence",
+                        "not every declared persistent consumer reports the activated snapshot",
+                    )
             except Exception:
                 shutil.copy2(backup, config_path)
                 reload_callback()
@@ -310,11 +406,13 @@ class OntologyDraftStore:
                 "active_snapshot_hash": actual_hash,
                 "runtime_convergence": {
                     "status": "confirmed",
-                    "required_consumers": ["ontology-explorer-api"],
-                    "confirmed_consumers": ["ontology-explorer-api"],
+                    "snapshot_hash": actual_hash,
+                    "required_consumers": sorted(consumer_hashes),
+                    "confirmed_consumers": sorted(consumer_hashes),
+                    "consumer_hashes": dict(sorted(consumer_hashes.items())),
                     "note": (
-                        "persistent Ledger v2 snapshot consumer confirmed; backfill "
-                        "consumers compile the manifest at each run boundary"),
+                        "all declared persistent Ledger v2 consumers confirmed; "
+                        "backfill consumers compile the manifest at each run boundary"),
                 },
                 "backup": str(backup),
             }
@@ -326,8 +424,9 @@ class OntologyDraftStore:
         active_index: ExplorerIndex,
     ) -> DraftPreview:
         if record["base_snapshot_hash"] != active_setup.snapshot.snapshot_sha256:
+            stale_status = self.stale_status(record, active_index)
             return DraftPreview(False, None, None, ({
-                "code": "stale_draft",
+                "code": f"{stale_status}_draft",
                 "path": "base_snapshot_hash",
                 "message": "active snapshot changed; draft preview is stale",
             },))
@@ -338,10 +437,23 @@ class OntologyDraftStore:
     def public(record: Mapping[str, Any]) -> dict[str, Any]:
         return {key: record.get(key) for key in (
             "draft_id", "target_key", "target_id", "target_kind",
-            "base_snapshot_hash", "revision", "lifecycle_status", "raw",
+            "base_snapshot_hash", "base_definition_hash", "revision",
+            "lifecycle_status", "raw",
             "preview_snapshot_hash", "preview_valid", "validation_errors",
-            "review_revision", "activated_snapshot_hash", "created_at", "updated_at",
+            "review_revision", "review_history", "activated_snapshot_hash",
+            "created_at", "updated_at",
         )}
+
+    @staticmethod
+    def stale_status(record: Mapping[str, Any], active_index: ExplorerIndex) -> str:
+        current = active_index.nodes.get(str(record.get("target_key")))
+        if current is None:
+            return "conflict"
+        return (
+            "conflict"
+            if current.definition_hash != record.get("base_definition_hash")
+            else "stale"
+        )
 
     def _activate_file(self, path: Path, bundle_path: Sequence[Any], value: Any) -> Path:
         lock_path = path.with_name(f".{path.name}.ontology-explorer.lock")

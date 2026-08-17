@@ -235,13 +235,15 @@
 
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
-| **Compiled config 탐색** | Ledger V2 snapshot의 모든 Registry entry를 server-side 검색하고 실제 reference/Used by/JSON pointer/독립 경로를 표시한다. 현재 active 24개를 실측했으며 없는 DT/transfer 선언을 꾸며내지 않는다 | `/admin.html#ontology` | `server/ledger/config_explorer.py` · `client2/src/ontology_explorer*` |
-| **안전한 초안 lifecycle** | active와 draft를 분리해 저장(활성 무변경) → 동일 compiler preview → exact revision review → base/hash CAS 활성화. invalid/stale은 active fallback이고 catalog/임의 경로는 read-only | 같은 화면의 `초안 편집` | `server/ledger/config_drafts.py` · `/admin/ontology-explorer/*` |
+| **Compiled config 탐색** | SourcePlan·Registry·Mapping·Binding을 server-side 검색하고 실제 reference/Used by/leaf pointer/current route와 다른 path를 표시한다. wrong kind/version/signature/unresolved를 구별한다 | `/admin.html#ontology` | `server/ledger/config_explorer.py` · `client2/src/ontology_explorer*` |
+| **File-backed transfer 왕복** | 운영 밖 sample을 production loader/compiler로 열어 `CoreDie→DTDie→BondComponent→FinalChip`, DTJob/LotSlot, transferred_to, VerifiedJoin, SourcePlan을 모두 왕복한다 | QA sample app | `server/config/sample/ontology/transfer_explorer/` · `server/tests/support/ontology_explorer_sample.py` |
+| **안전한 초안 lifecycle** | active/draft 분리 → 동일 compiler preview → immutable review → explicit revise → base/hash CAS + consumer convergence. dirty 이동은 유지/폐기/취소, invalid/stale은 active fallback | 같은 화면의 `초안 편집` | `server/ledger/config_drafts.py` · `/admin/ontology-explorer/*` |
 
 자동 점검: mixed context token과 늦은 응답이 Inspector를 바꾸지 않는지, 정/역참조가 1:1인지,
-10,000-node에서 검색/Used by payload 상한이 지켜지는지, strict-token route 목록에 초안 5개가 모두
-포함되는지 확인한다. 수동 점검: 1920×1080 정보 위계, 700/320px Explorer overflow 0,
-키보드 탭/참조 이동, ACTIVE/DRAFT 문구가 색 없이도 구별되는지 확인한다.
+10,000-node에서 검색/Used by payload 상한이 지켜지는지, strict-token route 목록에 revise 포함
+초안 route가 모두 포함되는지, empty/mismatched consumer 수렴이 rollback하는지 확인한다.
+수동 점검: 1920×1080·700×900·320×800 overflow 0, hover/focus, keyboard, exact back/forward,
+dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확인한다.
 
 ### 1.10 듀얼 테마 / 실시간 동기화 / 데스크톱 래퍼
 

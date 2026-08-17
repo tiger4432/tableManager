@@ -1,68 +1,73 @@
 # Ontology Config Explorer — 구현·수락 근거
 
-> 상태: `COMPLETE / APPROVED`
+> 상태: `COMPLETION_IN_REVIEW / NOT_APPROVED`
 > 기준 active snapshot: `57d36c07271a019242722cc4627f1c0a9c6b477e632f29f32034e331928b0da0`
-> 파괴 작업: DB write/reset/replay, legacy 이동·삭제 모두 0
+> 파괴 작업: 운영 config/DB write, reset/replay, migration, legacy 이동·삭제 0
 
-## 1. 구현 결과
+## 1. 이번 완료 후보가 닫은 계약
 
-- `config_explorer.py`: 승인된 Ledger V2 snapshot에서 Registry entry와 실제 참조를 한 번
-  인덱싱한다. 정방향/역참조는 같은 edge identity와 JSON pointer를 공유한다.
-- `config_explorer_service.py`: 파일 stamp가 바뀔 때만 active setup/index를 다시 만든다.
-  한 응답의 active/draft context token을 전수 검사한다.
-- `config_drafts.py`: manifest가 고른 `ledger_config.json` 선언만 초안화한다. 저장은 active
-  파일을 바꾸지 않고, 같은 compiler로 전체 Bundle preview를 만든다. 검토 revision을 동결하고
-  활성화는 base hash CAS, 백업, atomic replace, reload, 결과 hash 확인 순서다.
-- `ontology_config_explorer_router.py`: 읽기 1개와 strict-token 초안 lifecycle API를 제공한다.
-- `ontology_explorer_store.js`: active snapshot, view context, selection, navigation, draft를 분리한
-  단일 reducer다. request generation과 context token이 다른 응답은 성공 렌더하지 않는다.
-- `ontology_explorer_view.js`: 검색 목록, 독립 경로 flow, Inspector, Used by, kind별 integrity,
-  draft 편집을 같은 selection으로 렌더한다. 문자열을 HTML로 주입하지 않는다.
+- compiled node를 SourcePlan과 모든 Profile Binding까지 열거한다.
+- wrong kind/version/signature와 unresolved를 서로 다른 status·message·leaf pointer로 답한다.
+- current route와 다른 path 후보를 분리하고 breadcrumb/뒤/앞 history가 exact edge route, tab,
+  active/draft mode, tree/workspace scroll, editor cursor, context token을 함께 복원한다.
+- node hover/focus popover, keyboard Enter/Space, ACTIVE/DRAFT 비색상 문구를 제공한다.
+- dirty draft 이동은 유지/폐기/취소 3선택이며 초안 target은 이동해도 바뀌지 않는다.
+- draft diff는 normalized node/edge의 added/modified/removed를 별도 collection으로 보존한다.
+- review_requested revision은 UI·store·server에서 불변이며 `/revise`로만 새 revision을 연다.
+- activation은 base/hash CAS, atomic replace, reload 뒤 선언된 모든 persistent consumer의 새 hash
+  일치를 요구하고 empty/mismatch를 rollback한다.
 
-## 2. API
+## 2. API와 오류 경계
 
 | Method | Path | 계약 |
 |---|---|---|
-| GET | `/admin/ontology-explorer/view` | `selection,q,page,limit,reference_limit,context_token,draft_id,revision`; active 또는 valid draft preview 한 context |
-| POST | `/admin/ontology-explorer/drafts` | `{target_key,base_snapshot_hash}`; target/base 고정 |
-| PUT | `/admin/ontology-explorer/drafts/{id}` | `{expected_revision,raw}`; JSON parse + 전체 Bundle compile |
-| POST | `/admin/ontology-explorer/drafts/{id}/review` | `{expected_revision}`; exact revision 동결 |
-| DELETE | `/admin/ontology-explorer/drafts/{id}` | `expected_revision`; 활성화 전 초안 폐기 |
-| POST | `/admin/ontology-explorer/drafts/{id}/activate` | `{expected_revision}`; review/base/hash CAS |
+| GET | `/admin/ontology-explorer/view` | `selection,q,page,limit,reference_limit,context_token,draft_id,revision,view_mode`; 한 context |
+| POST | `/admin/ontology-explorer/drafts` | target/base 고정 |
+| PUT | `/admin/ontology-explorer/drafts/{id}` | JSON parse + 동일 compiler preview |
+| POST | `.../{id}/review` | exact revision 동결 |
+| POST | `.../{id}/revise` | immutable review에서 새 editing revision |
+| DELETE | `.../{id}` | expected revision 폐기 |
+| POST | `.../{id}/activate` | review/base/hash/convergence CAS |
 
-읽기 응답은 `active:<hash>` 또는 `draft:<id>:<revision>:<preview-hash>` 하나만 사용한다.
-검색 목록은 `limit≤500`, 직접 참조는 `reference_limit≤500`이며 전체 수와 잘림 여부를 별도로
-답한다. 임의 파일 경로나 임의 JSON pointer는 쓰기 입력이 아니다.
+`stale_draft`, `draft_conflict`, `consumer_convergence_failed`는 409로 분리한다. 쓰기 route는
+strict Admin token을 요구하고 임의 파일 경로·pointer를 받지 않는다.
 
-## 3. 실제·범용 검증
+## 3. 실제 데이터와 file-backed sample
 
-- 실제 운영 선언 24개를 화면에 열거했다: source 1, profile 1, mappings 6, pack 1,
-  claims 6, vocabulary 4, entities 2, preparer 1, mapper 1, table 1.
-- 실제 왕복: `lot_event → lot-event@1 → lot-lineage@1/<claim> → predicate@1`.
-- 현재 active config에는 VerifiedJoin과 DT/transfer 선언이 없다. 거짓 운영 선언을 추가하지
-  않았다. 범용 fixture에서 `CoreDie@1`, `ProcessCell@1`, `transferred_to@1`과 별도 Pack/Claim을
-  같은 Registry 경로로 compile·탐색한다.
-- 10,000-node/9,999-inbound fixture에서 search total은 10,000, Used by total은 9,999를
-  보존하고 응답은 200 edge, 213 node 이하, JSON 1.5 MB 미만으로 제한한다. 테스트 시간 상한은
-  2초다.
-- 브라우저 실측: 1920×1080에서 기준본의 3단 정보 위계, 실제 24개 목록, 독립 flow,
-  Inspector/Integrity를 확인했다. 700px과 320px에서 Explorer root의 가로 overflow는 0이다.
-  320px의 기존 Admin header는 이 기능 밖의 기존 410px 최소 폭을 유지한다.
+- 현재 active graph는 47개 declaration을 열거한다. SourcePlan, Profile, Mapping, Binding,
+  Pack/Claim/Vocabulary/Entity/Preparer/Mapper/Table을 모두 같은 snapshot에서 왕복한다.
+- `server/config/sample/ontology/transfer_explorer/`는 운영 manifest와 격리된 6개 JSON 정본이다.
+  production loader/compiler를 통해 `CoreDie -> DTDie -> BondComponent -> FinalChip`, `DTJob`,
+  `LotSlot`, `transferred_to@1`, VerifiedJoin, SourcePlan을 재현한다. physical UNIQUE verifier만
+  테스트 adapter로 격리한다.
+- sample의 custom implementation을 운영 trusted registry에 몰래 등록하지 않는다. 따라서
+  샘플을 운영 draft로 활성화하려는 시도는 `untrusted_implementation`으로 fail-closed한다.
 
-## 4. 안전 경계
+## 4. 실제 검증 수치
 
-- active cache는 draft save/review로 바뀌지 않는다.
-- invalid/stale draft는 active fallback만 보여 주며 draft flow를 꾸미지 않는다.
-- catalog/physical verified join 파일은 read-only다.
-- 활성화 전 strict token, review revision, base snapshot, fresh preview hash를 모두 확인한다.
-- mapper/translator/cursor/gate/store/DB schema와 운영 ontology config는 변경하지 않았다.
-- PostgreSQL 전용 테스트와 full server suite는 실행하지 않았다. 이 기능은 DB를 읽지 않으며,
-  사용자 지시에 따라 직접 영향군만 검증한다.
+- backend 직접 범위: `165 passed` (`test_ontology_config_explorer.py` + `test_admin_auth.py`)
+- Explorer client harness: `29 assertions, 0 failed`
+- client contracts: `7/7`; clipboard convention: pass
+- production build: Vite 107 modules, success
+- performance fixture: 10,000 nodes/9,999 inbound, `<2s`, `<=213 nodes`, `<1.5MB`
+- browser: 1920×1080, 700×900, 320×800; Explorer root/body horizontal overflow 0
+- browser journeys: transfer 7 routes, exact breadcrumb/back/forward, hover, keyboard, dirty 3선택,
+  active/draft preview, review→revise, reviewed textarea read-only
 
-## 5. Audit 판정
+증거 화면:
 
-현재 active config에 없는 `transferred_to@1`·VerifiedJoin을 운영 선언으로 추가하지 않은 판단과,
-활성화 뒤 지속 snapshot 소비자가 Explorer API 하나이고 backfill은 실행 경계마다 재compile하는
-현행 convergence 계약을 독립 Audit이 exact commit `bea0484cd8ab99aab8b4155e7dd5c1178df1b22a`
-에서 검수해 `APPROVE`했다. 제품 상태도 사용자 상설 승인 규칙에 따라 `COMPLETE / APPROVED`로
-동기화했으며 main에 fast-forward 병합했다.
+- `evidence/transfer_explorer_1920x1080.png`
+- `evidence/transfer_explorer_700x900.png`
+- `evidence/transfer_explorer_320x800.png`
+- `evidence/active_draft_preview_1920x1080.png`
+
+샘플 browser app에서 Explorer 이외 Admin overview API의 의도된 404는 발생하지만 Explorer API
+요청은 성공했다. full server suite와 PostgreSQL E2E는 사용자 지시에 따라 실행하지 않았고
+통과로 표현하지 않는다.
+
+## 5. 상태와 다음 관문
+
+기존 `bea0484` Audit 승인은 제한된 초기 범위에 대한 역사로 유지한다. 이번 전체 pending 계약은
+아직 독립 Audit 전이므로 `COMPLETION_IN_REVIEW / NOT_APPROVED`다. exact commit을 Audit task
+`01a00f3f-4249-7bf0-ab96-6d32c27273fe`에 제출하고 APPROVE 뒤에만 main 병합과 최종
+`COMPLETE / APPROVED` 상태 동기화를 수행한다.

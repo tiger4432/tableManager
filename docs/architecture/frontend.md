@@ -464,7 +464,7 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 | **Chain** | Rules 현황 + **Chain 실패(Outbox Transactions)** 재시도 + Mappers(행별 🛠️ Edit) + 실패 진단→맵퍼 편집 딥링크 |
 | **Auto Update** | 상태/Run Now + **산출물 인제션 실패 연계**(auto-update 대상 ∩ 파일 실패 교집합) |
 | **Enrichment** | 규칙 표 + 결손 카운트 — 규칙 편집은 read-only 안내(CRUD API는 백로그). ⚠️ **[2026-08-11 `5116f67`] Queue 딥링크(`enrichment.html?rule=`) 4건 삭제** — 대상 페이지 자체가 없어졌다. 규칙 포커스는 행 클릭 핸들러로 생존하지만, **특정 규칙의 결손 입력 워크리스트를 여는 경로는 대체되지 않았다** |
-| **Ontology Explorer** | `#ontology` 전폭 탭. Ledger V2 compiled snapshot의 모든 Registry 정의를 서버 검색하고, 독립 참조 flow·Used by·정확한 JSON pointer·kind별 integrity를 같은 context token으로 표시한다. 초안은 active 배지와 분리된 저장/preview/review/CAS 활성화 흐름이다. |
+| **Ontology Explorer** | `#ontology` 전폭 탭. Ledger V2 SourcePlan·Registry·Mapping·Binding을 서버 검색하고, current route/다른 path·Used by·정확한 pointer·세분화된 참조 상태를 같은 context token으로 표시한다. hover/focus 설명과 keyboard 탐색을 제공한다. 초안은 ACTIVE/DRAFT 분리, dirty 유지/폐기/취소, normalized node/edge diff, immutable review→revise→consumer-converged CAS 흐름이다. |
 
 - **핵심가치 #1 계기 두 줄 (Overview 상단, `renderRecorrection` + `renderEffort`, 갱신은 `refreshCoreValueLines` 하나)**: 두 줄은 **같은 `/dashboard/summary` 응답 한 번**에서 나온다.
   - **재교정률**: 사람이 같은 셀을 두 번 이상 고친 비율 — **보조 계기**([backend](./backend.md#재교정률-dashboardsummary--recorrection) · 2026-07-29 강등).
@@ -495,8 +495,10 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - **Code Editor는 독립 탭 폐지** → 편집 딥링크 공용 뷰(Monaco cdnjs, 파일 피커, dirty 가드). `#editor=<encoded path>`로 직접 오픈 가능.
 - **해시 라우터**: `#overview/#file/#chain/#autoupdate/#enrichment/#ledger/#ontology` + 구 탭 별칭 호환(`#outbox→Chain`, `#workspace→File`, `#mapper→Chain`).
 - **Ontology Explorer 상태 경계:** `ontology_explorer_store.js` reducer 하나가 active snapshot,
-  view context, selection, navigation, draft를 분리한다. 각 응답은 context token 하나뿐이고
-  request generation이 지난 응답은 폐기한다. `ontology_explorer_view.js`는 DOM과 ARIA만,
+  view context, selection, navigation, draft를 분리한다. history entry는 exact compiled route,
+  tab, active/draft mode, tree/workspace scroll, editor cursor, context token을 함께 보존한다.
+  dirty 이동은 유지/폐기/취소를 명시하고 reviewed textarea는 read-only다. 각 응답은 context
+  token 하나뿐이고 request generation이 지난 응답은 폐기한다. `ontology_explorer_view.js`는 DOM과 ARIA만,
   `ontology_explorer.js`는 API·stale guard·초안 lifecycle만 소유한다. API는 [backend §2](./backend.md),
   상세 근거는 [Explorer acceptance](../../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md).
 - **🔒 어드민 토큰 (2026-07-27)**: 서버가 `/admin/*`을 공유 토큰으로 잠근다([backend §API](./backend.md)). 클라 측 구현은 `admin.js`의 `adminFetch()` 하나뿐 — **로그인 화면도, 새 탭·모드·설정 패널도 없다.** `localStorage['assy.adminToken']`에 보관하고 `X-Admin-Token` 헤더로 전송한다. 서버에 토큰이 미설정이면 게이트가 열려 있어 프롬프트 자체가 뜨지 않는다. 판정 규칙 4가지가 **모두 필요**하다(각각 실제 오작동을 막는다):

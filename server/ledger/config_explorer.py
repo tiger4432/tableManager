@@ -10,23 +10,27 @@ from collections import deque
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import re
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 
 KIND_ORDER = {
-    "source": 0,
+    "source_plan": 0,
     "profile": 1,
     "mapping": 2,
-    "pack": 3,
-    "claim": 4,
-    "predicate": 5,
-    "entity": 6,
-    "preparer": 7,
-    "mapper": 8,
-    "verified_join": 9,
-    "table": 10,
+    "binding": 3,
+    "pack": 4,
+    "claim": 5,
+    "predicate": 6,
+    "entity": 7,
+    "preparer": 8,
+    "mapper": 9,
+    "verified_join": 10,
+    "table": 11,
 }
+
+_VERSIONED_ID = re.compile(r"^(?P<prefix>.+)@(?P<version>[0-9]+)(?P<suffix>(?:[/#].*)?)$")
 
 
 class ConfigExplorerError(ValueError):
@@ -70,6 +74,69 @@ def _hash(value: Any) -> str:
     return sha256(material.encode("utf-8")).hexdigest()
 
 
+def _version_family(canonical_id: str) -> tuple[str, str] | None:
+    match = _VERSIONED_ID.match(str(canonical_id))
+    if match is None:
+        return None
+    return match.group("prefix"), match.group("suffix")
+
+
+def _has_other_version(
+    canonical_by_kind: Mapping[tuple[str, str], str],
+    expected_kind: str,
+    target_id: str,
+) -> bool:
+    family = _version_family(target_id)
+    if family is None:
+        return False
+    return any(
+        kind == expected_kind
+        and candidate != target_id
+        and _version_family(candidate) == family
+        for kind, candidate in canonical_by_kind
+    )
+
+
+def _edge_status_message(status: str, target_id: str, expected_kind: str) -> str:
+    if status == "resolved":
+        return "같은 compiled snapshot에서 참조가 해소됨"
+    if status == "wrong_kind":
+        return f"{target_id!r}가 존재하지만 {expected_kind} 선언이 아님"
+    if status == "wrong_version":
+        return f"{expected_kind} {target_id!r}의 요청 버전이 등록되지 않음"
+    if status == "signature_mismatch":
+        return f"{target_id!r} 참조의 signature가 선언과 일치하지 않음"
+    return f"{expected_kind} {target_id!r}를 같은 snapshot에서 찾을 수 없음"
+
+
+def _node_description(kind: str, raw: Any) -> str:
+    if not isinstance(raw, Mapping):
+        return f"{kind} 선언"
+    if kind == "predicate":
+        return f"{raw.get('layer', 'ontology')} predicate · {raw.get('status', 'status 없음')}"
+    if kind == "entity":
+        return f"identity keys: {', '.join(map(str, raw.get('keys', []))) or '없음'}"
+    if kind == "pack":
+        return f"claims {len(raw.get('claims', {}))}개"
+    if kind == "claim":
+        return f"roles {len(raw.get('roles', {}))}개"
+    if kind == "profile":
+        return f"source {raw.get('source', '없음')} · mappings {len(raw.get('mappings', []))}개"
+    if kind == "mapping":
+        return f"claim {raw.get('use', '없음')}"
+    if kind == "binding":
+        return f"{raw.get('kind', 'unknown')} binding"
+    if kind in {"preparer", "mapper"}:
+        return f"implementation {raw.get('implementation_id', '없음')}"
+    if kind == "source_plan":
+        return f"relation {raw.get('relation', '없음')}"
+    if kind == "verified_join":
+        return "물리 UNIQUE 검증을 거친 virtual join"
+    if kind == "table":
+        return f"columns {len(raw.get('columns', {}))}개"
+    return f"{kind} 선언"
+
+
 @dataclass(frozen=True)
 class ExplorerNode:
     key: str
@@ -95,6 +162,7 @@ class ExplorerNode:
             "config_path": self.config_path,
             "definition_hash": self.definition_hash,
             "compile_status": "valid",
+            "description": _node_description(self.kind, self.raw),
         }
         if include_definition:
             result["raw"] = _plain(self.raw)
@@ -112,6 +180,7 @@ class ReferenceEdge:
     reference_kind: str
     json_pointer: str
     status: str
+    message: str | None = None
 
     def to_mapping(self) -> dict[str, Any]:
         return {
@@ -123,6 +192,7 @@ class ReferenceEdge:
             "reference_kind": self.reference_kind,
             "json_pointer": self.json_pointer,
             "status": self.status,
+            "message": self.message,
         }
 
 
@@ -150,7 +220,7 @@ class _IndexBuilder:
         self.snapshot_hash = snapshot_hash
         self.bundle_hash = bundle_hash
         self.nodes: dict[str, ExplorerNode] = {}
-        self.edge_specs: list[tuple[str, str, str, str, str]] = []
+        self.edge_specs: list[tuple[str, str, str, str, str, str | None]] = []
 
     def add_node(
         self,
@@ -192,9 +262,11 @@ class _IndexBuilder:
         expected_kind: str,
         reference_kind: str,
         json_pointer: str,
+        *,
+        status: str | None = None,
     ) -> None:
         self.edge_specs.append(
-            (from_key, str(target_id), expected_kind, reference_kind, json_pointer))
+            (from_key, str(target_id), expected_kind, reference_kind, json_pointer, status))
 
     def finish(self) -> ExplorerIndex:
         canonical_by_kind = {
@@ -206,15 +278,19 @@ class _IndexBuilder:
 
         edges: list[ReferenceEdge] = []
         seen: set[tuple[str, str | None, str, str]] = set()
-        for from_key, target_id, expected_kind, ref_kind, ref_pointer in sorted(
+        for from_key, target_id, expected_kind, ref_kind, ref_pointer, forced_status in sorted(
             self.edge_specs,
-            key=lambda item: (item[0], item[4], item[3], item[1]),
+            key=lambda item: (item[0], item[4], item[3], item[1], item[5] or ""),
         ):
             to_key = canonical_by_kind.get((expected_kind, target_id))
-            if to_key is not None:
+            if forced_status is not None:
+                status = forced_status
+            elif to_key is not None:
                 status = "resolved"
             elif target_id in keys_by_canonical:
                 status = "wrong_kind"
+            elif _has_other_version(canonical_by_kind, expected_kind, target_id):
+                status = "wrong_version"
             else:
                 status = "unresolved"
             identity = (from_key, to_key, ref_kind, ref_pointer)
@@ -237,6 +313,7 @@ class _IndexBuilder:
                 reference_kind=ref_kind,
                 json_pointer=ref_pointer,
                 status=status,
+                message=_edge_status_message(status, target_id, expected_kind),
             ))
 
         outbound: dict[str, list[ReferenceEdge]] = {key: [] for key in self.nodes}
@@ -354,7 +431,7 @@ def build_explorer_index(setup: Any) -> ExplorerIndex:
             version=compiled.get("version"),
         )
         builder.add_edge(
-            profile_key, raw.get("source", ""), "source", "profile_source",
+            profile_key, raw.get("source", ""), "source_plan", "profile_source",
             pointer("profiles", profile_id, "source"),
         )
         for index, pack_id in enumerate(raw.get("packs", [])):
@@ -380,14 +457,29 @@ def build_explorer_index(setup: Any) -> ExplorerIndex:
                 mapping_key, mapping.get("use", ""), "claim", "mapping_claim",
                 pointer("profiles", profile_id, "mappings", index, "use"),
             )
-            for binding_pointer, entity_id in _entity_binding_refs(
-                mapping.get("bind"),
-                ("profiles", profile_id, "mappings", index, "bind"),
-            ):
+            compiled_bindings = compiled["mappings"][index].get("bindings", {})
+            for role_id, binding in sorted(mapping.get("bind", {}).items()):
+                binding_ref = f"{mapping_ref}#binding:{role_id}"
+                binding_pointer = pointer(
+                    "profiles", profile_id, "mappings", index, "bind", role_id)
+                binding_key = builder.add_node(
+                    "binding", binding_ref, binding,
+                    compiled_bindings.get(role_id, binding),
+                    ("profiles", profile_id, "mappings", index, "bind", role_id),
+                    config_file=ledger_file, json_pointer=binding_pointer,
+                )
                 builder.add_edge(
-                    mapping_key, entity_id, "entity", "binding_entity",
+                    mapping_key, binding_ref, "binding", "mapping_binding",
                     binding_pointer,
                 )
+                for entity_pointer, entity_id in _entity_binding_refs(
+                    binding,
+                    ("profiles", profile_id, "mappings", index, "bind", role_id),
+                ):
+                    builder.add_edge(
+                        binding_key, entity_id, "entity", "binding_entity",
+                        entity_pointer,
+                    )
 
     table_file = "catalog/tables.json"
     for table_id, raw in sorted(bundle["tables"].items()):
@@ -410,7 +502,7 @@ def build_explorer_index(setup: Any) -> ExplorerIndex:
     for source_id, raw in sorted(bundle["sources"].items()):
         compiled = source_compiled[source_id]
         source_key = builder.add_node(
-            "source", source_id, raw, compiled, ("sources", source_id),
+            "source_plan", source_id, raw, compiled, ("sources", source_id),
             config_file=ledger_file, json_pointer=pointer("sources", source_id),
         )
         builder.add_edge(
@@ -475,6 +567,21 @@ def definition_diff(
     return MappingProxyType(result)
 
 
+def reference_diff(
+    active: ExplorerIndex,
+    preview: ExplorerIndex,
+) -> Mapping[str, str]:
+    active_ids = {edge.edge_id for edge in active.edges}
+    preview_ids = {edge.edge_id for edge in preview.edges}
+    return MappingProxyType({
+        edge_id: (
+            "unchanged" if edge_id in active_ids and edge_id in preview_ids
+            else "added" if edge_id in preview_ids else "removed"
+        )
+        for edge_id in sorted(active_ids | preview_ids)
+    })
+
+
 def _path_candidates(index: ExplorerIndex, selection: str, limit: int = 12
                      ) -> list[dict[str, Any]]:
     """Return separate inbound paths; never merge branches into a fictional chain."""
@@ -518,6 +625,7 @@ def explorer_view(
     limit: int = 100,
     reference_limit: int = 200,
     diff: Mapping[str, str] | None = None,
+    edge_diff: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     if page < 1:
         raise ConfigExplorerError("invalid_page", "page", "must be at least 1")
@@ -545,6 +653,7 @@ def explorer_view(
             "empty_snapshot", "selection", "snapshot contains no explorer declarations")
     selected = index.node(selection)
     node_diff = diff or {}
+    ref_diff = edge_diff or {}
 
     def node_summary(node: ExplorerNode) -> dict[str, Any]:
         value = node.to_mapping(include_definition=False)
@@ -574,6 +683,12 @@ def explorer_view(
     ]
     outbound_mappings = [edge.to_mapping() for edge in visible_outbound]
     inbound_mappings = [edge.to_mapping() for edge in visible_inbound]
+    for item in (*outbound_mappings, *inbound_mappings):
+        item["change_status"] = ref_diff.get(item["edge_id"], "active")
+    for item in paths:
+        item["context_token"] = context_token
+    for item in checks:
+        item["context_token"] = context_token
     for collection in (
         item_mappings, neighborhood_mappings, outbound_mappings, inbound_mappings,
     ):
@@ -597,6 +712,14 @@ def explorer_view(
         "path_candidates": paths,
         "nodes": neighborhood_mappings,
         "integrity": checks,
+        "changes": [
+            {"key": key, "change_status": status, "context_token": context_token}
+            for key, status in sorted(node_diff.items()) if status != "unchanged"
+        ],
+        "edge_changes": [
+            {"edge_id": key, "change_status": status, "context_token": context_token}
+            for key, status in sorted(ref_diff.items()) if status != "unchanged"
+        ],
     }
 
 
@@ -621,7 +744,7 @@ def integrity_checks(index: ExplorerIndex, selection: str) -> list[dict[str, str
     elif node.kind in {"profile", "mapping"}:
         common.append({"code": "profile_binding", "status": "valid",
                        "message": "source·Pack·Role binding이 compile됨"})
-    elif node.kind == "source":
+    elif node.kind == "source_plan":
         common.append({"code": "source_plan", "status": "valid",
                        "message": "relation·cursor·preparer·mapper 계약이 compile됨"})
     else:

@@ -1,10 +1,54 @@
 import './ontology_explorer.css';
 import {
-  initialExplorerState, reduceExplorerState, canLeaveSelection,
+  initialExplorerState, reduceExplorerState, dirtyNavigationDecision,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 
 let controller = null;
+
+function chooseDirtyNavigation(root) {
+  return new Promise((resolve) => {
+    root.querySelector('.oe-dirty-dialog-backdrop')?.remove();
+    const backdrop = document.createElement('div');
+    backdrop.className = 'oe-dirty-dialog-backdrop';
+    const dialog = document.createElement('section');
+    dialog.className = 'oe-dirty-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'oe-dirty-dialog-title');
+    const title = document.createElement('h2');
+    title.id = 'oe-dirty-dialog-title';
+    title.textContent = '저장하지 않은 초안이 있습니다';
+    const message = document.createElement('p');
+    message.textContent = '초안을 유지해 다른 선언을 보거나, 폐기하거나, 이동을 취소하세요.';
+    const actions = document.createElement('div');
+    actions.className = 'oe-dirty-dialog-actions';
+    const finish = (choice) => {
+      backdrop.remove();
+      resolve(choice);
+    };
+    for (const [choice, label] of [
+      ['keep', '초안 유지'], ['discard', '초안 폐기'], ['cancel', '이동 취소'],
+    ]) {
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.dataset.dirtyChoice = choice;
+      action.textContent = label;
+      action.addEventListener('click', () => finish(choice), { once: true });
+      actions.append(action);
+    }
+    dialog.append(title, message, actions);
+    backdrop.append(dialog);
+    backdrop.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') finish('cancel');
+    });
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) finish('cancel');
+    });
+    root.append(backdrop);
+    requestAnimationFrame(() => actions.querySelector('button')?.focus());
+  });
+}
 
 function errorMessage(error) {
   return error?.detail?.message || error?.message || String(error);
@@ -27,6 +71,11 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     detailTab: state.detailTab,
     treeScroll: root.querySelector('.oe-tree')?.scrollTop || 0,
     workspaceScroll: root.querySelector('.oe-workspace')?.scrollTop || 0,
+    editorSelectionStart: root.querySelector('.oe-editor-textarea')?.selectionStart || 0,
+    editorSelectionEnd: root.querySelector('.oe-editor-textarea')?.selectionEnd || 0,
+    viewPreference: state.viewPreference,
+    route: state.currentPath,
+    contextToken: state.viewContext?.context_token || null,
     viaEdge,
   });
 
@@ -35,6 +84,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     const workspace = root.querySelector('.oe-workspace');
     if (tree) tree.scrollTop = saved.treeScroll || 0;
     if (workspace) workspace.scrollTop = saved.workspaceScroll || 0;
+    const editor = root.querySelector('.oe-editor-textarea');
+    if (editor) editor.setSelectionRange(
+      saved.editorSelectionStart || 0, saved.editorSelectionEnd || 0,
+    );
   });
 
   const jsonRequest = async (path, init) => {
@@ -53,29 +106,50 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   const load = async ({
     selection = state.selection?.key,
     draft = state.draft,
+    viewMode = state.viewPreference,
+    route = null,
+    preserveEditor = false,
     allowContextSwitch = false,
+    expectedContextToken = null,
   } = {}) => {
     const requestId = ++generation;
     dispatch({ type: 'REQUEST_STARTED', generation: requestId });
     const params = new URLSearchParams({
       q: state.query, page: String(state.page), limit: '100',
+      view_mode: viewMode,
     });
     if (selection) params.set('selection', selection);
-    if (!allowContextSwitch && state.viewContext?.context_token) {
-      params.set('context_token', state.viewContext.context_token);
+    const expectedToken = expectedContextToken
+      || (!allowContextSwitch ? state.viewContext?.context_token : null);
+    if (expectedToken) {
+      params.set('context_token', expectedToken);
     }
     if (draft?.draft_id) {
       params.set('draft_id', draft.draft_id);
       params.set('revision', String(draft.revision));
     }
+    const previousEditor = preserveEditor && state.dirty
+      ? { draft: state.draft, editorText: state.editorText } : null;
     try {
       const payload = await jsonRequest(`/view?${params}`);
-      dispatch({ type: 'RESPONSE_RECEIVED', generation: requestId, payload });
+      dispatch({
+        type: 'RESPONSE_RECEIVED', generation: requestId, payload, route,
+        expectedSelection: selection,
+      });
+      if (requestId !== state.requestGeneration) return;
+      if (previousEditor) {
+        state = {
+          ...state, draft: previousEditor.draft, editorText: previousEditor.editorText,
+          dirty: true, viewPreference: 'active',
+        };
+        renderOntologyExplorer(root, state);
+      }
     } catch (error) {
       dispatch({
         type: 'REQUEST_FAILED', generation: requestId,
         code: error?.detail?.code || error?.code,
         message: errorMessage(error),
+        selection,
       });
     }
   };
@@ -96,23 +170,62 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     }
   };
 
-  const select = async (key, recordHistory = true, viaEdge = null) => {
+  const routeFor = (key, viaEdge, direct, pathId) => {
+    if (direct) return { path_id: 'root', node_keys: [key], edge_ids: [] };
+    const candidate = [state.currentPath, ...state.paths]
+      .find((path) => path?.path_id === pathId);
+    const position = candidate?.node_keys?.lastIndexOf(key) ?? -1;
+    if (position >= 0) {
+      return {
+        path_id: candidate.path_id,
+        node_keys: candidate.node_keys.slice(0, position + 1),
+        edge_ids: candidate.edge_ids.slice(0, position),
+      };
+    }
+    if (!viaEdge) return { path_id: 'root', node_keys: [key], edge_ids: [] };
+    const edge = [...state.outbound, ...state.usedBy].find((item) => item.edge_id === viaEdge);
+    if (!edge?.to_key || ![edge.from_key, edge.to_key].includes(key)) {
+      return { path_id: 'root', node_keys: [key], edge_ids: [] };
+    }
+    return {
+      path_id: `edge:${edge.edge_id}`,
+      node_keys: [state.selection.key, key],
+      edge_ids: [edge.edge_id],
+    };
+  };
+
+  const select = async (
+    key, recordHistory = true, viaEdge = null, direct = false, pathId = null,
+  ) => {
     if (!key || key === state.selection?.key) return;
-    if (!canLeaveSelection(state, () => window.confirm('저장하지 않은 초안을 폐기하고 이동할까요?'))) return;
+    const choice = state.dirty ? await chooseDirtyNavigation(root) : 'keep';
+    const decision = dirtyNavigationDecision(state, () => choice);
+    if (decision === 'cancel') return;
+    const preserveEditor = decision === 'keep' && state.dirty;
+    const keptDraft = decision === 'keep' ? state.draft : null;
     const leftDraftContext = Boolean(state.draft);
-    if (state.draft && !(await discardDraft({ ask: !state.dirty }))) return;
+    if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;
+    const route = routeFor(key, viaEdge, direct, pathId);
     if (recordHistory) dispatch({
       type: 'NAVIGATE_TO', key, current: checkpoint(viaEdge), viaEdge,
     });
-    await load({ selection: key, draft: null, allowContextSwitch: leftDraftContext });
+    await load({
+      selection: key, draft: keptDraft,
+      viewMode: preserveEditor ? 'active' : state.viewPreference,
+      route, preserveEditor, allowContextSwitch: leftDraftContext,
+    });
   };
 
-  const mutateDraft = async (path, init, action = 'DRAFT_SAVED') => {
+  const mutateDraft = async (
+    path, init, action = 'DRAFT_SAVED', nextViewMode = state.viewPreference,
+  ) => {
     try {
       const draft = await jsonRequest(path, init);
       dispatch({ type: action, draft: draft.draft || draft });
+      dispatch({ type: 'VIEW_MODE_CHANGED', mode: nextViewMode });
       await load({
         selection: state.selection?.key, draft: draft.draft || draft,
+        viewMode: nextViewMode,
         allowContextSwitch: true,
       });
       return draft;
@@ -122,11 +235,22 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     }
   };
 
+  root.addEventListener('keydown', (event) => {
+    const target = event.target.closest('button[data-action]');
+    if (!target || target.disabled || !['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    target.click();
+  });
+
   root.addEventListener('click', async (event) => {
     const target = event.target.closest('[data-action]');
     if (!target || target.disabled) return;
     const action = target.dataset.action;
-    if (action === 'select') await select(target.dataset.value, true, target.dataset.edgeId || null);
+    if (action === 'select') await select(
+      target.dataset.value, true, target.dataset.edgeId || null,
+      target.dataset.direct === 'true',
+      target.dataset.pathId || null,
+    );
     else if (action === 'tab') dispatch({ type: 'TAB_CHANGED', tab: target.dataset.value });
     else if (action === 'back' || action === 'forward') {
       dispatch({
@@ -138,7 +262,14 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       if (saved?.key) {
         state = reduceExplorerState(state, { type: 'QUERY_CHANGED', query: saved.query || '' });
         state = reduceExplorerState(state, { type: 'TAB_CHANGED', tab: saved.detailTab || 'definition' });
-        await select(saved.key, false);
+        state = reduceExplorerState(state, {
+          type: 'VIEW_MODE_CHANGED', mode: saved.viewPreference || 'active',
+        });
+        await load({
+          selection: saved.key, draft: state.draft,
+          viewMode: saved.viewPreference || 'active', route: saved.route,
+          allowContextSwitch: true, expectedContextToken: saved.contextToken,
+        });
         restoreScroll(saved);
       }
     } else if (action === 'create-draft') {
@@ -151,19 +282,29 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
           }),
         });
         dispatch({ type: 'DRAFT_OPENED', draft });
-        await load({ draft, allowContextSwitch: true });
+        dispatch({ type: 'VIEW_MODE_CHANGED', mode: 'active' });
+        await load({ draft, viewMode: 'active', allowContextSwitch: true });
       } catch (error) { showToast(errorMessage(error), 'error'); }
     } else if (action === 'save-draft') {
       await mutateDraft(`/drafts/${state.draft.draft_id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expected_revision: state.draft.revision, raw: state.editorText }),
-      });
+      }, 'DRAFT_SAVED', 'draft_preview');
     } else if (action === 'review-draft') {
       if (state.dirty) { showToast('먼저 초안을 저장해 주세요.', 'warning'); return; }
       await mutateDraft(`/drafts/${state.draft.draft_id}/review`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expected_revision: state.draft.revision }),
       });
+    } else if (action === 'revise-draft') {
+      await mutateDraft(`/drafts/${state.draft.draft_id}/revise`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expected_revision: state.draft.revision }),
+      }, 'DRAFT_SAVED', 'active');
+    } else if (action === 'view-active' || action === 'view-draft') {
+      const mode = action === 'view-draft' ? 'draft_preview' : 'active';
+      dispatch({ type: 'VIEW_MODE_CHANGED', mode });
+      await load({ draft: state.draft, viewMode: mode, allowContextSwitch: true });
     } else if (action === 'activate-draft') {
       if (state.dirty) { showToast('먼저 초안을 저장해 주세요.', 'warning'); return; }
       if (!window.confirm('검토 요청한 정확한 revision을 활성 설정으로 교체할까요?')) return;
