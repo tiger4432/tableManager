@@ -1,5 +1,8 @@
 # 5단계 — 기존 Source Driver·Cursor와 pandas Join 경계
 
+> 구현 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
+> 구현 근거: [`STAGE_5_ACCEPTANCE_EVIDENCE.md`](./STAGE_5_ACCEPTANCE_EVIDENCE.md)
+
 ## 목표
 
 새 worker/runtime 없이 기존 Ledger source reader와 cursor가 base relation을 읽고, 그 결과를
@@ -149,4 +152,12 @@ existing reader/cursor → base DataFrame
 - generic과 Python Role mapper가 같은 Pack compiler 사용
 - 기존 store/cursor transaction 경계 불변
 
-완료 후 멈추고 5단계 승인을 기다린다.
+## 현재 구현 상태
+
+`server/ledger/source_preparation.py`가 existing cursor batch의 물리열 검증, sealed
+SourcePreparer registry, verified descriptor 기반 1000-key batch read, 0/다건/결측 거절,
+event partition과 preparation provenance, dependency replay 후보 산출을 소유한다.
+`server/ledger/backfill.py`에는 새 cursor를 만들지 않고 기존 driver가 이 경계를 호출하는
+두 개의 얇은 adapter만 추가했다. gate/store/cursor advance와 운영 config 전환은 하지 않았다.
+
+완료 후 독립 Audit에 exact commit을 제출하고 5단계 승인을 기다린다.

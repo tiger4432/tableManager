@@ -1,5 +1,21 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 5단계 구현 완료, 독립 Audit 대기
+>
+> **현재 단계/상태:** `STAGE_5_IN_REVIEW` / `NOT_APPROVED`. Stage 6은 시작하지 않았다.
+>
+> **구현:** existing cursor의 base physical DataFrame 뒤에 sealed pandas SourcePreparer,
+> physically verified descriptor 기반 1000-key batch reader, fail-closed 0/다건/결측 처리,
+> EventFrame join provenance와 right-change dependency replay 후보를 연결했다. 새 cursor나
+> store transaction은 만들지 않았다.
+>
+> **검증:** Stage 5 직접 테스트 `18 passed`; Setup/Registry/RoleFrame/SourcePreparer/backfill/
+> 동결 mapper/L1 unit 직접 영향군 `339 passed, 1 skipped`. skip은 기존 Windows symlink 생성
+> 권한 부재다. 전체 서버 suite는 사용자 지시에 따라 생략했다.
+>
+> **다음 관문:** exact commit을 지정 Audit 세션에 제출한다. `APPROVE`면 사용자 상설 승인에
+> 따라 main 병합 후 Stage 6으로 진행하고, `CHANGES_REQUESTED`면 Stage 5만 보완한다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 4단계 승인·main 병합, 5단계 착수
 >
 > **현재 단계/상태:** Stage 4 `APPROVED`; Stage 5 `IN_PROGRESS / NOT_APPROVED`.

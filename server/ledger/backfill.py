@@ -87,6 +87,37 @@ class BackfillResult(dict):
     """A plain dict, named so a caller can see what a run reports without reading code."""
 
 
+def v2_base_select_columns(snapshot, source_id):
+    """Stage 5 hand-off: columns the existing cursor reads from the base relation.
+
+    This is deliberately a small adapter on the established driver module.  It does not
+    create a second cursor or reader; Stage 6 will exercise its PostgreSQL transaction.
+    """
+    from .source_preparation import base_select_columns
+    try:
+        source_plan = snapshot.source_plans[source_id]
+    except (AttributeError, KeyError) as exc:
+        raise ValueError(f"unknown Ledger v2 source {source_id!r}") from exc
+    return base_select_columns(source_plan)
+
+
+def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations):
+    """Convert one complete existing-cursor batch into prepared EventFrames.
+
+    The function has no store/cursor mutation.  A preparation refusal propagates before
+    any Role mapper/compiler call, so the caller keeps its current cursor unchanged.
+    """
+    import pandas as pd
+    from .source_preparation import SourcePreparationContext, prepare_source_batch
+    try:
+        source_plan = snapshot.source_plans[source_id]
+    except (AttributeError, KeyError) as exc:
+        raise ValueError(f"unknown Ledger v2 source {source_id!r}") from exc
+    frame = rows if isinstance(rows, pd.DataFrame) else pd.DataFrame(rows)
+    return prepare_source_batch(
+        SourcePreparationContext(snapshot, source_plan), frame, reader, implementations)
+
+
 def fetch_page(connection, source, columns, after, limit):
     """One page of source rows past `after`, as dicts with LOGICAL key names.
 
