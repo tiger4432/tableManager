@@ -1,6 +1,6 @@
 # 3단계 — Registry와 교차 계약 검증
 
-> 구현 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
+> 구현 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-17
 > 구현 근거: [`STAGE_3_ACCEPTANCE_EVIDENCE.md`](./STAGE_3_ACCEPTANCE_EVIDENCE.md)
 
 ## 목표
@@ -155,4 +155,5 @@ object identity인지도 확인한다. direct constructor, 무인자 constructor
 
 컴파일 진입점은 Bundle 구조·교차 계약을 다시 검증하고 모든 중첩 Binding의 readiness를 먼저
 강제한다. source row, pandas, mapper 실행, Claim/LedgerFrame 생성, DB read/write, cursor,
-gate/store 연결은 구현하지 않았다. 4단계는 3단계 재승인 전 시작하지 않는다.
+gate/store 연결은 구현하지 않았다. 독립 Audit은 exact commit `135a440`을 승인했고 사용자는
+main 병합과 4단계 착수를 승인했다.

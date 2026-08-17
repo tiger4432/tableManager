@@ -1,5 +1,18 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-17 현재 — Ledger V2 3단계 승인·main 병합, 4단계 착수 승인
+>
+> **현재 단계/상태:** Stage 3 `APPROVED`; 구현 최종 커밋 `135a440`은 독립 Audit
+> `APPROVE` 뒤 `main`에 fast-forward 병합됐다. Stage 4 RoleFrame·Pack compiler는 착수가
+> 승인됐으며 구현 전 상태다.
+>
+> **검수 근거:** Audit은 exact commit `135a440fa2cbbfba83b8964b0dfc159ca0e1b4f2`의
+> Registry와 직접 virtual-join 소비자 테스트 `115 passed`를 재확인했다. 사용자 정책에 따라
+> 전체 서버 suite는 반복하지 않고 단계 변경 직접 영향군만 검증한다.
+>
+> **다음 범위:** pandas EventFrame → RoleFrame, generic binder, Python mapper 공통 골격,
+> Pack compiler, dry-run을 구현한다. source driver/cursor/store/DB 연결은 Stage 5 이후다.
+
 > ## 🧭 2026-08-17 현재 — Ledger V2 3단계 5차 감사 보완, 재검수 대기
 >
 > **현재 단계/상태:** `STAGE_3_IN_REVIEW` / `NOT_APPROVED`. main 병합과 Stage 4 착수는

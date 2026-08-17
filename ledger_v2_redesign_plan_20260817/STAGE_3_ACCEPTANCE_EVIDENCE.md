@@ -1,7 +1,7 @@
 # Ledger v2 3단계 수락 근거
 
-> 상태: `IN_REVIEW` · 승인: `NOT_APPROVED` · 2026-08-17
-> 기준: `main@ac380e4` 위 `feature/ledger-v2-stage3-registries`
+> 상태: `COMPLETE` · 승인: `APPROVED` · 2026-08-17
+> 최종 구현: `135a440fa2cbbfba83b8964b0dfc159ca0e1b4f2` · main 병합 완료
 
 ## 이번 5차 보완의 결론
 
@@ -207,13 +207,17 @@ skip은 이번 단계에서 통과했다고 표현하지 않는다.
 `ac380e4` baseline 중복 실행은 사용자 요청으로 중단했다. 위의 과거 동일환경 baseline 비교
 근거는 보존하되 이번 fix에 대해 full-suite 신규 통과를 주장하지 않는다.
 
-## 아직 미완료
+## 최종 승인
 
-- Stage 3 사용자·독립 audit 최종 승인
+- 독립 Audit: exact commit `135a440fa2cbbfba83b8964b0dfc159ca0e1b4f2` `APPROVE`
+- 독립 재검증: Registry 및 직접 virtual-join 소비자 테스트 `115 passed`
+- 사용자 제품 승인: Stage 3 승인, main 병합과 Stage 4 착수 승인
+
+## 이후 단계
+
 - Stage 4 RoleFrame/Pack compiler
 - Stage 5 SourcePreparer/runtime 연결
 - Stage 6 PostgreSQL E2E와 cursor/gate/store
 - Stage 7 cutover/legacy retirement
 
-자체 판정: Stage 3 재검수를 요청할 수 있다. 승인 전 상태는 계속
-`STAGE_3_IN_REVIEW / NOT_APPROVED`이며 Stage 4를 시작하지 않는다.
+최종 판정: Stage 3는 승인·main 병합 완료. Stage 4 착수가 승인됐다.
