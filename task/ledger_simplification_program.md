@@ -38,6 +38,41 @@ manifest·chains·enrichments·virtual_joins·신뢰 목록·cutover라는 이�
 `load_cutover_setup(root)` → `preview_selected_cursor_batch(...)`.
 DB·gate·store·cursor를 건드리지 않는다.
 
+## 2026-08-18 갱신 — legacy 은퇴가 소유자 손으로 시작됐다
+
+소유자가 legacy 번역기 6개를 직접 삭제했다(작업 트리):
+`declared_translator.py` · `lot_event_translator.py` · `observation_translator.py` ·
+`transfer_translator.py` · `translator_pattern.py` · `mappers/ledger_lot_event_mapper.py`.
+
+**따라서 「legacy 은퇴는 별건」이라는 이 문서의 앞 서술은 폐기한다.** 잔재 정리가
+1라운드에 들어온다.
+
+실측한 여파:
+
+- **v2 실행 경로는 무사하다.** 지운 모듈은 전부 함수 안에서 늦게 import되며
+  `ledger.backfill`과 `ledger.cutover_v2`는 정상 import된다.
+- **테스트 스위트가 통째로 멈춘다.** 수집 단계에서 8개 파일이 오류를 내고 pytest가
+  전체 실행을 중단한다 — 4,335개가 한 개도 돌지 않는다.
+  `test_ledger_declared_kind` · `test_ledger_frame_chain_mapper` · `test_ledger_l1_unit` ·
+  `test_ledger_observed_unit` · `test_ledger_source_contract` · `test_ledger_trace_contract` ·
+  `test_ledger_transfer_unit` · `test_ledger_v2_lot_event_parity`
+- **아직 지운 모듈을 부르는 자리**: `chain_mapper.py:353`, `dry_run.py:269·275·426·483·549`,
+  `backfill.py:497·510·884·1071·1311·1451`(구현자가 손보는 중),
+  `examples/grouped_translator_template.py:12`, `ledger/__init__.py:24`(서술).
+- **거짓이 된 선언**: `source_contract.py:21-39`이 지운 모듈 경로를 문자열로 가리킨다.
+  import 오류는 안 나지만 내용이 거짓이다.
+- **parity 근거가 소멸했다.** `test_ledger_v2_lot_event_parity`는 v2를 legacy와 대조하는
+  테스트다. 비교 대상이 없어졌으므로 chains의 `parity_status: approved`는 이제 영구히
+  증명 불가다 — chains 제거 판정을 뒷받침한다.
+
+1라운드에 추가되는 것:
+
+- 위 잔재를 전부 정리하고, 지운 것을 부르는 코드 경로를 제거한다.
+- 수집 오류 8건을 해소한다. **legacy를 검증하던 테스트는 지우고, v2를 검증하던 부분은
+  살려 옮긴다.** 「지웠더니 초록」이 되지 않도록 무엇을 왜 지웠는지 라운드 보고에 적는다.
+- `--legacy` CLI 플래그와 `ledger/config.py`(63KB) 처리는 **판정 요청 대상**이다.
+  플래그가 부를 대상이 없어졌으므로 남겨 두면 「있는데 죽은 문」이 된다.
+
 ## 실행 순서 — 셋이 맞물린다
 
 ### 1라운드. 자기 등록 + 단일 파일 (`ledger_config_single_file_pending.md`)
