@@ -277,7 +277,7 @@ class _IndexBuilder:
             keys_by_canonical.setdefault(node.canonical_id, []).append(node.key)
 
         edges: list[ReferenceEdge] = []
-        seen: set[tuple[str, str | None, str, str]] = set()
+        seen: set[tuple[str, str, str]] = set()
         for from_key, target_id, expected_kind, ref_kind, ref_pointer, forced_status in sorted(
             self.edge_specs,
             key=lambda item: (item[0], item[4], item[3], item[1], item[5] or ""),
@@ -293,7 +293,7 @@ class _IndexBuilder:
                 status = "wrong_version"
             else:
                 status = "unresolved"
-            identity = (from_key, to_key, ref_kind, ref_pointer)
+            identity = (from_key, ref_kind, ref_pointer)
             if identity in seen:
                 raise ConfigExplorerError(
                     "duplicate_reference_edge", ref_pointer,
@@ -571,15 +571,29 @@ def reference_diff(
     active: ExplorerIndex,
     preview: ExplorerIndex,
 ) -> Mapping[str, str]:
-    active_ids = {edge.edge_id for edge in active.edges}
-    preview_ids = {edge.edge_id for edge in preview.edges}
-    return MappingProxyType({
-        edge_id: (
-            "unchanged" if edge_id in active_ids and edge_id in preview_ids
-            else "added" if edge_id in preview_ids else "removed"
+    def slot(edge: ReferenceEdge) -> tuple[str, str, str]:
+        return edge.from_key, edge.reference_kind, edge.json_pointer
+
+    def content(edge: ReferenceEdge) -> tuple[str | None, str, str, str, str | None]:
+        return (
+            edge.to_key, edge.target_id, edge.expected_kind, edge.status, edge.message,
         )
-        for edge_id in sorted(active_ids | preview_ids)
-    })
+
+    active_by_slot = {slot(edge): edge for edge in active.edges}
+    preview_by_slot = {slot(edge): edge for edge in preview.edges}
+    result: dict[str, str] = {}
+    for logical_slot in sorted(set(active_by_slot) | set(preview_by_slot)):
+        active_edge = active_by_slot.get(logical_slot)
+        preview_edge = preview_by_slot.get(logical_slot)
+        if active_edge is None:
+            result[preview_edge.edge_id] = "added"
+        elif preview_edge is None:
+            result[active_edge.edge_id] = "removed"
+        elif content(active_edge) != content(preview_edge):
+            result[preview_edge.edge_id] = "modified"
+        else:
+            result[preview_edge.edge_id] = "unchanged"
+    return MappingProxyType(dict(sorted(result.items())))
 
 
 def _path_candidates(index: ExplorerIndex, selection: str, limit: int = 12

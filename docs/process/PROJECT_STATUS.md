@@ -1,21 +1,22 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
-> ## 🧭 2026-08-18 현재 — Ontology Config Explorer 전체 완료 조건 보완·Audit 대기
+> ## 🧭 2026-08-18 현재 — Ontology Config Explorer Completion Audit round-1 보완·재검수 대기
 >
 > **현재 단계/상태:** `ONTOLOGY_CONFIG_EXPLORER_COMPLETION_IN_REVIEW / NOT_APPROVED`.
 >
-> **재개 사유:** `bea0484`/`af2a1d3`의 승인은 compiled Registry 탐색과 기본 draft lifecycle
-> 범위였다. 사용자 소유 pending 문서의 Binding·SourcePlan, 세분된 참조 오류, exact route
-> history, dirty 3선택, normalized node/edge diff, review→revise, consumer convergence,
-> file-backed transfer 예제·반응형 근거까지를 전체 완료 조건으로 다시 열었다.
+> **Audit 판정:** 전체 완료 후보 `18607142b1462fa7cb7e25f9ddb05f7cf8a84276`은
+> REJECT됐다. 정상 keep→이동→back에서 unsaved editor buffer가 유실됐고, file-backed
+> sample의 마지막이 `CoreDie→FinalChip`으로 갈라졌으며 reference edge `modified` 상태가
+> 없었다.
 >
-> **완료 후보:** active graph 47개 선언과 file-backed `CoreDie → DTDie → BondComponent →
-> FinalChip` 예제를 같은 production loader/compiler로 탐색한다. 10,000-node 상한과 1920/700/320
-> 브라우저, ACTIVE/DRAFT·keyboard·dirty 이동·reviewed revision 읽기 전용을 확인했다.
-> 직접 범위 `165 passed`, Explorer harness `29/0`, client contract `7/7`, production build가
+> **후속 보완:** history checkpoint가 unsaved text/dirty/cursor와 draft id/revision/target을
+> 보존하고 active context까지 일치할 때만 복원한다. sample은 실제
+> `CoreDie→DTDie→BondComponent→FinalChip` Mapping으로 연결했으며 edge diff는 안정된 논리
+> 위치와 비교 내용을 분리해 `modified`를 낸다. 직접 범위 `165 passed`, Explorer harness
+> `35/0`, client contract `7/7`, production build와 실제 save→reedit→keep→back/forward가
 > 통과했다. full server suite/PostgreSQL은 사용자 지시에 따라 미실행이다.
 >
-> **다음 관문:** exact commit을 지정 Audit task에 제출한다. APPROVE 전에는 main 병합과
+> **다음 관문:** 후속 exact commit을 지정 Audit task에 재제출한다. APPROVE 전에는 main 병합과
 > 최종 `COMPLETE / APPROVED` 전환을 하지 않는다. 운영 config/DB write, reset/replay,
 > migration, legacy 이동·삭제 금지는 유지한다.
 

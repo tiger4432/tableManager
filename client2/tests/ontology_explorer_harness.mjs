@@ -2,7 +2,7 @@
 // Run: node client2/tests/ontology_explorer_harness.mjs
 import {
   initialExplorerState, reduceExplorerState, assertOneContext, canLeaveSelection,
-  dirtyNavigationDecision, isDraftRevisionEditable,
+  dirtyNavigationDecision, isDraftRevisionEditable, restoreDirtyEditorCheckpoint,
 } from '../src/ontology_explorer_store.js';
 
 let ran = 0;
@@ -71,6 +71,22 @@ const payload = (token, selected = 'entity|A@1') => ({
   });
   check('R4 removed selection cannot leave stale Inspector', state.selection === null && state.nodes.length === 0);
   check('R5 removed selection has explicit state', state.removedSelection.status === 'removed_or_unresolved');
+
+  const changedEdge = {
+    edge_id: 'edge-modified', from_key: 'entity|A@1', to_key: 'entity|B@1',
+    status: 'resolved', change_status: 'modified', context_token: 'draft:d1:1:preview',
+  };
+  const changedPayload = payload('draft:d1:1:preview');
+  changedPayload.view_context.mode = 'draft_preview';
+  changedPayload.outbound = [changedEdge];
+  changedPayload.edge_changes = [changedEdge];
+  state = reduceExplorerState(
+    { ...initialExplorerState, requestGeneration: 4 },
+    { type: 'RESPONSE_RECEIVED', generation: 4, payload: changedPayload },
+  );
+  check('R6 modified edge survives API state for flow and change list',
+    state.outbound[0].change_status === 'modified'
+      && state.edgeChanges[0].change_status === 'modified');
 }
 
 {
@@ -131,6 +147,49 @@ const payload = (token, selected = 'entity|A@1') => ({
   check('D10 reviewed revision is not editable', !isDraftRevisionEditable(reviewed.draft));
   const attemptedEdit = reduceExplorerState(reviewed, { type: 'EDITOR_CHANGED', text: '{"changed":true}' });
   check('D11 reviewed revision ignores editor mutations', attemptedEdit.editorText === reviewed.editorText && !attemptedEdit.dirty);
+
+  const activeDraftState = {
+    ...edited,
+    draft: {
+      draft_id: 'draft-1', revision: 4, target_key: 'entity|A@1',
+      raw: { status: 'active' }, lifecycle_status: 'saved',
+    },
+    viewContext: { mode: 'active', context_token: 'active:aaa' },
+    viewPreference: 'active',
+    editorText: '{"AUDIT_UNSAVED_KEEP_MARKER":true}',
+    dirty: true,
+  };
+  const dirtyCheckpoint = {
+    editorText: activeDraftState.editorText, dirty: true,
+    editorSelectionStart: 8, editorSelectionEnd: 20,
+    draftId: 'draft-1', draftRevision: 4, draftTargetKey: 'entity|A@1',
+    viewPreference: 'active', contextToken: 'active:aaa',
+  };
+  const serverReloaded = {
+    ...activeDraftState,
+    editorText: '{"status":"last-server-save"}', dirty: false,
+  };
+  const restored = restoreDirtyEditorCheckpoint(serverReloaded, dirtyCheckpoint);
+  check('D12 keep/back restores exact unsaved editor buffer',
+    restored.dirty && restored.editorText === activeDraftState.editorText);
+  check('D13 keep/back preserves pinned draft identity',
+    restored.draft.draft_id === 'draft-1'
+      && restored.draft.revision === 4
+      && restored.draft.target_key === 'entity|A@1');
+  const restoredAgain = restoreDirtyEditorCheckpoint(
+    { ...restored, editorText: '{"status":"last-server-save"}', dirty: false },
+    dirtyCheckpoint,
+  );
+  check('D14 repeated forward/back restores the same buffer',
+    restoredAgain.dirty && restoredAgain.editorText === dirtyCheckpoint.editorText);
+  check('D15 stale context cannot restore a dirty buffer',
+    restoreDirtyEditorCheckpoint(serverReloaded, {
+      ...dirtyCheckpoint, contextToken: 'draft:draft-1:4:stale',
+    }).editorText === serverReloaded.editorText);
+  check('D16 changed draft revision cannot restore a dirty buffer',
+    restoreDirtyEditorCheckpoint(serverReloaded, {
+      ...dirtyCheckpoint, draftRevision: 3,
+    }).editorText === serverReloaded.editorText);
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);

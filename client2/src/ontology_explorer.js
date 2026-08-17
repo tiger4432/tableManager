@@ -1,6 +1,7 @@
 import './ontology_explorer.css';
 import {
   initialExplorerState, reduceExplorerState, dirtyNavigationDecision,
+  restoreDirtyEditorCheckpoint,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 
@@ -65,19 +66,28 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     return state;
   };
 
-  const checkpoint = (viaEdge = null) => ({
-    key: state.selection?.key,
-    query: state.query,
-    detailTab: state.detailTab,
-    treeScroll: root.querySelector('.oe-tree')?.scrollTop || 0,
-    workspaceScroll: root.querySelector('.oe-workspace')?.scrollTop || 0,
-    editorSelectionStart: root.querySelector('.oe-editor-textarea')?.selectionStart || 0,
-    editorSelectionEnd: root.querySelector('.oe-editor-textarea')?.selectionEnd || 0,
-    viewPreference: state.viewPreference,
-    route: state.currentPath,
-    contextToken: state.viewContext?.context_token || null,
-    viaEdge,
-  });
+  const checkpoint = (viaEdge = null) => {
+    const dirtyContextToken = state.dirty && state.activeSnapshot?.snapshot_hash
+      ? `active:${state.activeSnapshot.snapshot_hash}` : null;
+    return {
+      key: state.selection?.key,
+      query: state.query,
+      detailTab: state.detailTab,
+      treeScroll: root.querySelector('.oe-tree')?.scrollTop || 0,
+      workspaceScroll: root.querySelector('.oe-workspace')?.scrollTop || 0,
+      editorSelectionStart: root.querySelector('.oe-editor-textarea')?.selectionStart || 0,
+      editorSelectionEnd: root.querySelector('.oe-editor-textarea')?.selectionEnd || 0,
+      viewPreference: state.dirty ? 'active' : state.viewPreference,
+      route: state.currentPath,
+      contextToken: dirtyContextToken || state.viewContext?.context_token || null,
+      editorText: state.dirty ? state.editorText : null,
+      dirty: state.dirty,
+      draftId: state.draft?.draft_id || null,
+      draftRevision: state.draft?.revision ?? null,
+      draftTargetKey: state.draft?.target_key || null,
+      viaEdge,
+    };
+  };
 
   const restoreScroll = (saved) => requestAnimationFrame(() => {
     const tree = root.querySelector('.oe-tree');
@@ -108,7 +118,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     draft = state.draft,
     viewMode = state.viewPreference,
     route = null,
-    preserveEditor = false,
+    editorCheckpoint = null,
     allowContextSwitch = false,
     expectedContextToken = null,
   } = {}) => {
@@ -128,8 +138,6 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       params.set('draft_id', draft.draft_id);
       params.set('revision', String(draft.revision));
     }
-    const previousEditor = preserveEditor && state.dirty
-      ? { draft: state.draft, editorText: state.editorText } : null;
     try {
       const payload = await jsonRequest(`/view?${params}`);
       dispatch({
@@ -137,11 +145,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         expectedSelection: selection,
       });
       if (requestId !== state.requestGeneration) return;
-      if (previousEditor) {
-        state = {
-          ...state, draft: previousEditor.draft, editorText: previousEditor.editorText,
-          dirty: true, viewPreference: 'active',
-        };
+      if (editorCheckpoint) {
+        state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
         renderOntologyExplorer(root, state);
       }
     } catch (error) {
@@ -202,17 +207,20 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     const decision = dirtyNavigationDecision(state, () => choice);
     if (decision === 'cancel') return;
     const preserveEditor = decision === 'keep' && state.dirty;
+    const leavingCheckpoint = checkpoint(viaEdge);
     const keptDraft = decision === 'keep' ? state.draft : null;
     const leftDraftContext = Boolean(state.draft);
     if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;
     const route = routeFor(key, viaEdge, direct, pathId);
     if (recordHistory) dispatch({
-      type: 'NAVIGATE_TO', key, current: checkpoint(viaEdge), viaEdge,
+      type: 'NAVIGATE_TO', key, current: leavingCheckpoint, viaEdge,
     });
     await load({
       selection: key, draft: keptDraft,
       viewMode: preserveEditor ? 'active' : state.viewPreference,
-      route, preserveEditor, allowContextSwitch: leftDraftContext,
+      route, editorCheckpoint: preserveEditor ? leavingCheckpoint : null,
+      allowContextSwitch: leftDraftContext,
+      expectedContextToken: preserveEditor ? leavingCheckpoint.contextToken : null,
     });
   };
 
@@ -268,6 +276,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         await load({
           selection: saved.key, draft: state.draft,
           viewMode: saved.viewPreference || 'active', route: saved.route,
+          editorCheckpoint: saved.dirty ? saved : null,
           allowContextSwitch: true, expectedContextToken: saved.contextToken,
         });
         restoreScroll(saved);

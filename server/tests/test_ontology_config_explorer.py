@@ -202,12 +202,23 @@ def test_definition_and_reference_diff_keep_all_four_normalized_states():
         edge_id="added", from_key="entity|same@1", to_key="entity|added@1",
         target_id="added@1", expected_kind="entity", reference_kind="test",
         json_pointer="/added", status="resolved")
+    modified_active = ReferenceEdge(
+        edge_id="modified-active", from_key="entity|same@1",
+        to_key="entity|removed@1", target_id="removed@1",
+        expected_kind="entity", reference_kind="test",
+        json_pointer="/modified", status="resolved")
+    modified_preview = ReferenceEdge(
+        edge_id="modified-preview", from_key="entity|same@1",
+        to_key="entity|added@1", target_id="added@1",
+        expected_kind="entity", reference_kind="test",
+        json_pointer="/modified", status="signature_mismatch",
+        message="target signature changed")
     active = make_index({
         "entity|same@1": "1", "entity|changed@1": "2", "entity|removed@1": "3",
-    }, (shared, removed))
+    }, (shared, removed, modified_active))
     preview = make_index({
         "entity|same@1": "1", "entity|changed@1": "9", "entity|added@1": "4",
-    }, (shared, added))
+    }, (shared, added, modified_preview))
 
     assert dict(definition_diff(active, preview)) == {
         "entity|added@1": "added",
@@ -216,7 +227,23 @@ def test_definition_and_reference_diff_keep_all_four_normalized_states():
         "entity|same@1": "unchanged",
     }
     assert dict(reference_diff(active, preview)) == {
-        "added": "added", "removed": "removed", "shared": "unchanged"}
+        "added": "added",
+        "modified-preview": "modified",
+        "removed": "removed",
+        "shared": "unchanged",
+    }
+    preview_view = explorer_view(
+        preview, context_token="draft:d1:1:preview",
+        selection="entity|same@1", edge_diff=reference_diff(active, preview),
+    )
+    assert next(
+        edge for edge in preview_view["outbound"]
+        if edge["edge_id"] == "modified-preview"
+    )["change_status"] == "modified"
+    assert {
+        item["edge_id"]: item["change_status"]
+        for item in preview_view["edge_changes"]
+    }["modified-preview"] == "modified"
 
 
 def test_view_uses_one_context_token_and_kind_specific_integrity(active_setup):
@@ -371,6 +398,7 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "entity|LotSlot@1",
         "pack|dt-assembly@1",
         "claim|dt-assembly@1/core_to_dt",
+        "claim|dt-assembly@1/bond_component",
         "profile|dt-transfer@1",
         "preparer|sample-direct-join@1",
         "mapper|sample-declarative-role@1",
@@ -392,8 +420,36 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
     assert (
         "source_plan|dt_log", "verified_join|dt_job_to_inventory",
         "source_verified_join") in edges
+    assert (
+        "mapping|dt-transfer@1#mapping:bond_component",
+        "claim|dt-assembly@1/bond_component", "mapping_claim") in edges
     assert index.nodes["predicate|transferred_to@1"].config_path == (
         "ledger_config.json#/vocabulary/transferred_to@1")
+
+    logical = transfer_sample_setup.bundle.to_mapping()
+    mappings = {
+        item["mapping_id"]: item
+        for item in logical["profiles"]["dt-transfer@1"]["mappings"]
+    }
+    lineage = [
+        (
+            mappings[mapping_id]["bind"]["subject"]["entity_type"],
+            mappings[mapping_id]["bind"]["target"]["entity_type"],
+        )
+        for mapping_id in ("core_to_dt", "dt_to_bond", "bond_component")
+    ]
+    assert lineage == [
+        ("CoreDie@1", "DTDie@1"),
+        ("DTDie@1", "BondComponent@1"),
+        ("BondComponent@1", "FinalChip@1"),
+    ]
+    assert ("CoreDie@1", "FinalChip@1") not in lineage
+    bond_subject = mappings["bond_component"]["bind"]["subject"]
+    assert set(bond_subject["keys"]) == {
+        "bond_wafer", "bond_x", "bond_y", "layer",
+    }
+    assert logical["vocabulary"]["component_of@1"]["subjects"] == [
+        "BondComponent@1"]
 
     token = f"active:{index.snapshot_hash}"
     view = explorer_view(

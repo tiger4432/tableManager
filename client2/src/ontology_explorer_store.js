@@ -220,6 +220,27 @@ export function dirtyNavigationDecision(state, choose) {
   return ['keep', 'discard'].includes(choice) ? choice : 'cancel';
 }
 
+export function restoreDirtyEditorCheckpoint(state, checkpoint) {
+  const draft = state.draft;
+  const restorable = Boolean(
+    checkpoint?.dirty
+      && checkpoint.viewPreference === 'active'
+      && state.viewContext?.mode === 'active'
+      && checkpoint.contextToken === state.viewContext?.context_token
+      && checkpoint.draftId === draft?.draft_id
+      && checkpoint.draftRevision === draft?.revision
+      && checkpoint.draftTargetKey === draft?.target_key
+      && typeof checkpoint.editorText === 'string',
+  );
+  if (!restorable) return state;
+  return {
+    ...state,
+    editorText: checkpoint.editorText,
+    dirty: true,
+    viewPreference: 'active',
+  };
+}
+
 export function isDraftRevisionEditable(draft) {
   return Boolean(draft) && draft.lifecycle_status !== 'review_requested';
 }

@@ -5,17 +5,18 @@
 > 🔴 **행을 더하거나 고치면 이 헤더의 「이번 라운드」도 함께 쓴다** — 직전에 F9 행이 추가될 때 그것을 어겼고, 그래서 새 행이 어느 라운드의 것인지 알 수 없었습니다.
 > 🔴 **소유 행이 없는 문서·계약은 조용히 낡습니다.** 새 문서를 만들거나 새 계약(`contracts/<name>/`)을 추가하면 **그 자리에서 행을 만드십시오.**
 >
-> **이번 라운드 (2026-08-18 · Ontology Config Explorer 전체 완료 조건 보완·Audit 대기)**
+> **이번 라운드 (2026-08-18 · Ontology Config Explorer Completion Audit round-1 보완·재검수)**
 > - **[Ontology Config Explorer 소유권]** `server/ledger/config_explorer.py`가 compiled Registry
 >   identity·Binding·SourcePlan과 정/역참조 index, `config_explorer_service.py`가 active/draft
 >   한-context 응답 cache·normalized node/edge diff, `config_drafts.py`가 manifest-owned 선언의
 >   초안·preview·immutable review/revise·consumer-converged CAS activation을 소유한다.
 >   `client2/src/ontology_explorer_{store,view}.js`는 exact route history·dirty 3선택·ACTIVE/DRAFT
->   분리·ARIA 3단 UI를 소유하고 `admin.js`는 인증 fetch와 `#ontology` 탭 배선만 소유한다.
+>   분리·ARIA 3단 UI를 소유하며 history의 unsaved editor buffer는 draft identity와 active
+>   context가 모두 맞을 때만 복원한다. `admin.js`는 인증 fetch와 `#ontology` 탭 배선만 소유한다.
 >   file-backed 예제는 `server/config/sample/ontology/transfer_explorer/`가 소유하며 운영 manifest와
 >   분리한다. 정본과 수락 근거는
 >   [Explorer plan](../../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md)이다.
->   `bea0484`의 제한 범위 승인은 역사로 보존하되 전체 pending 계약은 새 Audit 전까지
+>   `bea0484`의 제한 범위 승인은 역사로 보존하되 전체 pending 계약은 후속 Audit 전까지
 >   `IN_REVIEW / NOT_APPROVED`다. mapper/translator/cursor/DB와 운영 ontology config는 무변경이다.
 >
 > **직전 라운드 (2026-08-18 · Ledger v2 Stage 7 manifest/cutover 구현·검수 대기 · 외부 읽기 전용 void 디렉터리 인제션 · Ledger v2 Mapper 디자인 패턴 정본 추가)**

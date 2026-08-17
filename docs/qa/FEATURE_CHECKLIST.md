@@ -242,8 +242,12 @@
 자동 점검: mixed context token과 늦은 응답이 Inspector를 바꾸지 않는지, 정/역참조가 1:1인지,
 10,000-node에서 검색/Used by payload 상한이 지켜지는지, strict-token route 목록에 revise 포함
 초안 route가 모두 포함되는지, empty/mismatched consumer 수렴이 rollback하는지 확인한다.
+file-backed Mapping의 entity role이 `CoreDie→DTDie→BondComponent→FinalChip`으로 연속인지,
+같은 reference leaf의 target/status 교체가 `modified`인지도 직접 단언한다.
 수동 점검: 1920×1080·700×900·320×800 overflow 0, hover/focus, keyboard, exact back/forward,
-dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확인한다.
+dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확인한다. 저장 후 다시
+편집한 buffer는 keep→다른 선언→back→forward→back에서도 text/cursor/dirty/draft target이
+동일해야 한다.
 
 ### 1.10 듀얼 테마 / 실시간 동기화 / 데스크톱 래퍼
 

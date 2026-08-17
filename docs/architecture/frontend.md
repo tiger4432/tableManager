@@ -496,8 +496,10 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - **해시 라우터**: `#overview/#file/#chain/#autoupdate/#enrichment/#ledger/#ontology` + 구 탭 별칭 호환(`#outbox→Chain`, `#workspace→File`, `#mapper→Chain`).
 - **Ontology Explorer 상태 경계:** `ontology_explorer_store.js` reducer 하나가 active snapshot,
   view context, selection, navigation, draft를 분리한다. history entry는 exact compiled route,
-  tab, active/draft mode, tree/workspace scroll, editor cursor, context token을 함께 보존한다.
-  dirty 이동은 유지/폐기/취소를 명시하고 reviewed textarea는 read-only다. 각 응답은 context
+  tab, active/draft mode, tree/workspace scroll, editor text/cursor, draft id/revision/target,
+  context token을 함께 보존한다. dirty buffer 복원은 active context와 pinned draft identity가
+  모두 같은 경우만 허용한다. dirty 이동은 유지/폐기/취소를 명시하고 reviewed textarea는
+  read-only다. 각 응답은 context
   token 하나뿐이고 request generation이 지난 응답은 폐기한다. `ontology_explorer_view.js`는 DOM과 ARIA만,
   `ontology_explorer.js`는 API·stale guard·초안 lifecycle만 소유한다. API는 [backend §2](./backend.md),
   상세 근거는 [Explorer acceptance](../../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md).
