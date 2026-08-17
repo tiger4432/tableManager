@@ -1,0 +1,613 @@
+"""Phase 3: Chain mappers return one validated pandas LedgerFrame contract."""
+from __future__ import annotations
+
+import copy
+from datetime import datetime, timezone
+import hashlib
+import inspect
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from ledger import gate
+from ledger import config as ledger_config
+from ledger.chain_mapper import (
+    LedgerMapperContext,
+    LedgerMapperError,
+    LedgerMapperRefused,
+    LedgerMapperRegistry,
+    default_ledger_mapper_registry,
+    describe_mapper,
+    run_registered_mapper,
+)
+from ledger.envelope import Atom, source_event_identity
+from ledger.ledger_frame import (
+    LEDGER_FRAME_ATTR,
+    LEDGER_FRAME_COLUMNS,
+    LedgerFrameError,
+    atoms_from_ledger_frame,
+    empty_ledger_frame,
+    ledger_frame_from_atoms,
+    validate_ledger_frame,
+)
+from ledger.lot_event_translator import LotEventTranslator, group_molecules
+from ledger.profile_chain_mapper import (
+    ClaimEmitterRegistry,
+    DeclaredLookupAdapter,
+)
+from ledger.source_profile import (
+    APPROVAL_STATUS_APPROVED,
+    APPROVAL_STATUS_PENDING,
+    APPROVAL_STATUS_REJECTED,
+    BINDING_ORIGIN_IMPORTED,
+    BINDING_ORIGIN_USER_DECLARED,
+)
+
+
+WORLD_TIME = datetime(2026, 8, 17, 1, 2, 3, tzinfo=timezone.utc)
+
+
+def atom(**changes):
+    values = {
+        "subject_type": "Lot",
+        "subject_keys": {"lot": "L1"},
+        "predicate": "derived_from",
+        "object_kind": "entity_ref",
+        "object_payload": {"type": "Lot", "keys": {"lot": "P1"}},
+        "occurred_at": WORLD_TIME,
+        "source_who": "test_source",
+        "source_translator_ver": "test-v1#pair_field",
+        "source_raw_ref": "test_source:{\"row\":1}",
+        "molecule_ref": "event-1",
+        "derivation": "pair_field",
+    }
+    values.update(changes)
+    return Atom(**values)
+
+
+def test_valid_ledger_frame_round_trips_existing_atom_without_flattening():
+    original = atom(object_payload={"type": "Lot", "keys": {"lot": "P1"},
+                                    "qualifiers": {"slot": 0}})
+    frame = ledger_frame_from_atoms([original])
+    assert validate_ledger_frame(frame) is frame
+    assert tuple(frame.columns) == LEDGER_FRAME_COLUMNS
+    assert frame.iloc[0]["subject_keys"] == {"lot": "L1"}
+    assert frame.iloc[0]["object_payload"]["qualifiers"]["slot"] == 0
+    rebuilt = atoms_from_ledger_frame(frame)[0]
+    assert rebuilt.subject_keys == original.subject_keys
+    assert rebuilt.object_payload == original.object_payload
+
+
+def test_ledger_frame_missing_field_wrong_type_and_bad_structures_fail_closed():
+    frame = ledger_frame_from_atoms([atom()])
+    missing = frame.drop(columns=["derivation"])
+    with pytest.raises(LedgerFrameError) as exc:
+        validate_ledger_frame(missing)
+    assert exc.value.code == "invalid_ledger_frame_schema"
+
+    wrong_time = frame.copy(deep=True)
+    wrong_time.attrs.update(frame.attrs)
+    wrong_time.at[0, "occurred_at"] = "2026-08-17"
+    with pytest.raises(LedgerFrameError) as exc:
+        validate_ledger_frame(wrong_time)
+    assert exc.value.code == "invalid_occurred_at"
+
+    flat_identity = frame.copy(deep=True)
+    flat_identity.attrs.update(frame.attrs)
+    flat_identity.at[0, "subject_keys"] = "lot=L1"
+    with pytest.raises(LedgerFrameError) as exc:
+        validate_ledger_frame(flat_identity)
+    assert exc.value.code == "invalid_structured_identity"
+
+    flat_payload = frame.copy(deep=True)
+    flat_payload.attrs.update(frame.attrs)
+    flat_payload.at[0, "object_payload"] = '{"lot":"P1"}'
+    with pytest.raises(LedgerFrameError) as exc:
+        validate_ledger_frame(flat_payload)
+    assert exc.value.code == "invalid_structured_payload"
+
+
+def test_none_arbitrary_frame_and_explicit_empty_are_three_different_results():
+    with pytest.raises(LedgerFrameError) as exc:
+        validate_ledger_frame(None)
+    assert exc.value.code == "missing_ledger_frame"
+    with pytest.raises(LedgerFrameError) as exc:
+        validate_ledger_frame(pd.DataFrame(columns=LEDGER_FRAME_COLUMNS))
+    assert exc.value.code == "unmarked_ledger_frame"
+    empty = empty_ledger_frame()
+    assert empty.empty
+    assert empty.attrs[LEDGER_FRAME_ATTR] == 1
+    assert validate_ledger_frame(empty) is empty
+
+
+def test_dataframe_index_never_changes_source_event_identity():
+    first = ledger_frame_from_atoms([atom()])
+    second = first.copy(deep=True)
+    second.attrs.update(first.attrs)
+    second.index = [987654321]
+    validate_ledger_frame(second)
+    assert second.iloc[0]["source_event_id"] == first.iloc[0]["source_event_id"]
+    assert atoms_from_ledger_frame(second)[0].source_event_id == (
+        atoms_from_ledger_frame(first)[0].source_event_id)
+
+
+def test_one_explicit_source_event_cannot_be_split_by_time_or_partially_gated():
+    later = datetime(2026, 8, 17, 1, 2, 4, tzinfo=timezone.utc)
+    with pytest.raises(LedgerFrameError) as exc:
+        ledger_frame_from_atoms([atom(), atom(occurred_at=later)])
+    assert exc.value.code == "inconsistent_source_event"
+
+    frame = ledger_frame_from_atoms([
+        atom(),
+        atom(predicate="word_not_in_vocabulary", subject_keys={"lot": "L2"}),
+    ])
+    atoms = atoms_from_ledger_frame(frame)
+    assert len({item.source_event_id for item in atoms}) == 1
+    with gate.building_molecule("test_source"):
+        with pytest.raises(gate.MoleculeRefused):
+            gate.screen_molecule(
+                "test_source", atoms, {"pair_field"}, {"Lot"},
+                molecule_ref="event-1", source_rows=1)
+
+
+LOT_SOURCE_CONFIG = {
+    "kind": "lineage",
+    "occurred_at_column": "event_time",
+    "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
+    "occurred_at_timezone": "Asia/Seoul",
+    "subject_types": ["Lot", "Wafer"],
+    "register_entity_types": ["Lot", "Wafer"],
+    "list_separator": ":",
+    "columns": {
+        "row_identity": "row_id", "lot": "lot", "event_type": "event_type",
+        "parent_lot": "parent_lot", "child_lot": "child_lot",
+        "slots": "slots", "wafers": "wafers",
+    },
+    "vocabulary": {
+        "split": {"lineage": "parent_child", "slot_pairing": "slot_preserving",
+                  "emit_has_wafer": True, "emit_register": True},
+        "merge": {"lineage": "parent_child", "slot_pairing": "shared_wafer",
+                  "emit_has_wafer": True, "emit_register": True},
+        "track_in": {"lineage": "none", "slot_pairing": "none",
+                     "emit_has_wafer": True, "emit_register": True},
+    },
+}
+LOT_DERIVATIONS = frozenset({
+    "first_sight", "pair_field", "positional_row", "slot_preserving",
+    "shared_wafer",
+})
+
+
+def lot_rows(index=(3, 9)):
+    rows = [
+        {"lot": "P", "event_type": "split", "slots": "1:2",
+         "wafers": "W1:W2", "parent_lot": "", "child_lot": "C",
+         "row_identity": "R1", "event_time": "2026-08-17T10:00:00"},
+        {"lot": "C", "event_type": "split", "slots": "3",
+         "wafers": "W3", "parent_lot": "P", "child_lot": "",
+         "row_identity": "R2", "event_time": "2026-08-17T10:00:00"},
+    ]
+    return pd.DataFrame(rows, dtype=object, index=list(index))
+
+
+def lot_mapper_rule():
+    return {
+        "source": "lot_event",
+        "source_config": LOT_SOURCE_CONFIG,
+        "translator_version": "lot-event-test-v1",
+        "declared_derivations": LOT_DERIVATIONS,
+        "registered_entities": (),
+    }
+
+
+def test_registered_lot_event_python_mapper_returns_deterministic_ledger_frame():
+    with gate.building_molecule("lot_event"):
+        first = run_registered_mapper(
+            "lot-event", 1, lot_rows(), context=LedgerMapperContext(),
+            rule=lot_mapper_rule())
+    with gate.building_molecule("lot_event"):
+        second = run_registered_mapper(
+            "lot-event", 1, lot_rows(index=(100, 400)),
+            context=LedgerMapperContext(), rule=lot_mapper_rule())
+    pd.testing.assert_frame_equal(first.reset_index(drop=True),
+                                  second.reset_index(drop=True))
+    versions = set(first["source_translator_ver"])
+    assert all("mapper:lot-event@1:" in value for value in versions)
+    assert len(set(first["source_event_id"])) == 1
+    expected_id, expected_state = source_event_identity(
+        "lot_event", first.iloc[0]["occurred_at"],
+        molecule_ref=first.iloc[0]["molecule_ref"],
+        source_raw_ref=first.iloc[0]["source_raw_ref"])
+    assert set(first["source_event_id"]) == {expected_id}
+    assert set(first["source_event_state"]) == {expected_state}
+
+
+def test_mapper_fingerprint_covers_the_complete_module_artifact():
+    import mappers.ledger_lot_event_mapper as mapper_module
+
+    descriptor = describe_mapper(
+        "lot-event", 1, mapper_module.map_lot_event_to_ledger_frame)
+    material = (
+        "lot-event\n1\n"
+        f"{mapper_module.__name__}\n{inspect.getsource(mapper_module)}"
+    ).encode("utf-8")
+    assert descriptor.fingerprint == hashlib.sha256(material).hexdigest()
+    assert descriptor.fingerprint == describe_mapper(
+        "lot-event", 1, mapper_module.map_lot_event_to_ledger_frame).fingerprint
+
+
+@pytest.mark.parametrize("frame", [
+    lot_rows(),
+    pd.DataFrame([
+        {"lot": "P", "event_type": "merge", "slots": "1:2",
+         "wafers": "W1:W2", "parent_lot": "", "child_lot": "C",
+         "row_identity": "M1", "event_time": "2026-08-17T10:01:00"},
+        {"lot": "C", "event_type": "merge", "slots": "5:6",
+         "wafers": "W1:W3", "parent_lot": "P", "child_lot": "",
+         "row_identity": "M2", "event_time": "2026-08-17T10:01:00"},
+    ], dtype=object),
+    pd.DataFrame([
+        {"lot": "T", "event_type": "track_in", "slots": "7:8",
+         "wafers": "W7:W8", "parent_lot": "", "child_lot": "",
+         "row_identity": "T1", "event_time": "2026-08-17T10:02:00"},
+    ], dtype=object),
+], ids=["split", "merge", "track-in"])
+def test_lot_event_mapper_has_semantic_and_provenance_parity_with_legacy_fixture(
+        frame):
+    rows = frame.to_dict(orient="records")
+    molecule = group_molecules(rows)[0]
+    legacy = LotEventTranslator(
+        LOT_SOURCE_CONFIG, "lot-event-test-v1", LOT_DERIVATIONS, who="lot_event")
+    with gate.building_molecule("lot_event"):
+        legacy_atoms, legacy_report = legacy.translate(molecule)
+    with gate.building_molecule("lot_event"):
+        mapped = run_registered_mapper(
+            "lot-event", 1, frame, context=LedgerMapperContext(),
+            rule=lot_mapper_rule())
+    mapped_atoms = atoms_from_ledger_frame(mapped)
+    assert mapped.attrs["mapper_report"]["incomplete"] == legacy_report["incomplete"]
+    assert len(mapped_atoms) == len(legacy_atoms)
+    for old, new in zip(legacy_atoms, mapped_atoms):
+        assert (new.subject_type, new.subject_keys, new.predicate,
+                new.object_kind, new.object_payload, new.occurred_at,
+                new.source_who, new.source_raw_ref, new.molecule_ref,
+                new.derivation) == (
+                    old.subject_type, old.subject_keys, old.predicate,
+                    old.object_kind, old.object_payload, old.occurred_at,
+                    old.source_who, old.source_raw_ref, old.molecule_ref,
+                    old.derivation)
+        assert new.source_translator_ver.startswith(
+            old.source_translator_ver.rsplit("#", 1)[0] + "|mapper:lot-event@1:")
+        assert new.source_translator_ver.endswith("#" + old.derivation)
+
+
+def test_mapper_refusal_failure_unknown_mapper_and_capability_boundary_are_explicit():
+    ambiguous = lot_rows().iloc[[0]].copy()
+    ambiguous.at[ambiguous.index[0], "parent_lot"] = "OTHER"
+    with gate.building_molecule("lot_event"):
+        with pytest.raises(LedgerMapperRefused):
+            run_registered_mapper(
+                "lot-event", 1, ambiguous, context=LedgerMapperContext(),
+                rule=lot_mapper_rule())
+    with pytest.raises(LedgerMapperError) as exc:
+        run_registered_mapper("not-registered", 1, lot_rows())
+    assert exc.value.code == "unknown_mapper"
+    context = LedgerMapperContext()
+    assert not hasattr(context, "commit")
+    assert not hasattr(context, "cursor")
+    assert not hasattr(context, "engine")
+
+
+def approved(kind, **values):
+    return {
+        "kind": kind,
+        **values,
+        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
+        "approval_status": APPROVAL_STATUS_APPROVED,
+    }
+
+
+def movement_profile():
+    return {
+        "profile_version": 1,
+        "source": "simple_moves",
+        "packs": ["transfer@1"],
+        "mappings": [{
+            "mapping_id": "move",
+            "use": "transfer/movement",
+            "bind": {
+                "subject": approved("column", column="ITEM_ID"),
+                "from": approved("constant", value="source_position"),
+                "to": approved(
+                    "declared_lookup", lookup_id="destination",
+                    key=approved("column", column="MOVE_ID"), select="container"),
+                "occurred_at": approved("column", column="EVENT_TIME"),
+                "qty": approved("constant", value=2),
+            },
+        }],
+    }
+
+
+def destination_lookup(result_count=1):
+    def resolve_many(_values, keys):
+        return {
+            json.dumps(key, ensure_ascii=False, sort_keys=True,
+                       separators=(",", ":")): [
+                {"container": {"type": "dt_slot",
+                               "keys": {"dt_lot": "D1", "dt_slot": "01"},
+                               "position": None}}
+                for _ in range(result_count)
+            ]
+            for key in keys
+        }
+    return DeclaredLookupAdapter("destination", ("container",), resolve_many)
+
+
+def profile_input():
+    return pd.DataFrame([{
+        "ITEM_ID": "W1", "MOVE_ID": "M1",
+        "EVENT_TIME": "2026-08-17T01:02:03+00:00",
+    }], index=[778], dtype=object)
+
+
+def profile_rule(profile=None, **changes):
+    out = {
+        "profile": profile or movement_profile(),
+        "source": "simple_moves",
+        "source_event": {
+            "molecule_ref": "simple_moves:M1",
+            "source_raw_ref": "simple_moves:{\"MOVE_ID\":\"M1\"}",
+        },
+    }
+    out.update(changes)
+    return out
+
+
+def profile_context(adapter=None):
+    adapter = adapter or destination_lookup()
+    return LedgerMapperContext(lookups={adapter.lookup_id: adapter})
+
+
+def test_profile_mapper_evaluates_column_constant_and_nested_lookup_key():
+    frame = run_registered_mapper(
+        "canonical-profile", 1, profile_input(),
+        context=profile_context(), rule=profile_rule())
+    assert len(frame) == 1
+    row = frame.iloc[0]
+    assert row["subject_keys"] == {"wafer": "W1"}
+    assert row["object_payload"] == {
+        "from": {"type": "wafer_grid", "keys": {"wafer": "W1"},
+                 "position": None},
+        "to": {"type": "dt_slot", "keys": {"dt_lot": "D1", "dt_slot": "01"},
+               "position": None},
+        "qty": 2,
+    }
+    assert row["occurred_at"] == WORLD_TIME
+    assert "mapper:canonical-profile@1:" in row["source_translator_ver"]
+    assert frame.attrs["gate_contract"]["declared_derivations"] == (
+        "profile_transfer_movement",)
+
+
+def test_profile_declared_lookup_batches_unique_keys_without_n_plus_one():
+    calls = []
+
+    def resolve_many(_values, keys):
+        calls.append(keys)
+        return {
+            json.dumps(key, ensure_ascii=False, sort_keys=True,
+                       separators=(",", ":")): [{
+                           "container": {
+                               "type": "dt_slot",
+                               "keys": {"dt_lot": "D1", "dt_slot": str(key)},
+                               "position": None,
+                           },
+                       }]
+            for key in keys
+        }
+
+    frame = pd.DataFrame([
+        {"ITEM_ID": "W1", "MOVE_ID": "M1", "EVENT_TIME": WORLD_TIME.isoformat()},
+        {"ITEM_ID": "W2", "MOVE_ID": "M2", "EVENT_TIME": WORLD_TIME.isoformat()},
+        {"ITEM_ID": "W3", "MOVE_ID": "M1", "EVENT_TIME": WORLD_TIME.isoformat()},
+    ], dtype=object)
+    adapter = DeclaredLookupAdapter("destination", ("container",), resolve_many)
+    mapped = run_registered_mapper(
+        "canonical-profile", 1, frame,
+        context=profile_context(adapter), rule=profile_rule())
+    assert len(mapped) == 3
+    assert calls == [("M1", "M2")]
+
+
+def test_profile_emitter_fails_closed_on_malformed_entity_and_position_shapes():
+    malformed_subject = profile_input()
+    malformed_subject.at[malformed_subject.index[0], "ITEM_ID"] = {
+        "type": "Lot", "keys": {"lot": "L1"},
+    }
+    with pytest.raises(LedgerMapperError) as exc:
+        run_registered_mapper(
+            "canonical-profile", 1, malformed_subject,
+            context=profile_context(), rule=profile_rule())
+    assert exc.value.code == "invalid_claim_value"
+    assert exc.value.path.endswith("bind.subject")
+
+    invalid_position = DeclaredLookupAdapter(
+        "destination", ("container",),
+        lambda _values, keys: {
+            json.dumps(key, ensure_ascii=False, sort_keys=True,
+                       separators=(",", ":")): [{
+                           "container": {"type": "dt_slot", "keys": {"": "D1"},
+                                         "position": None},
+                       }]
+            for key in keys
+        },
+    )
+    with pytest.raises(LedgerMapperError) as exc:
+        run_registered_mapper(
+            "canonical-profile", 1, profile_input(),
+            context=profile_context(invalid_position), rule=profile_rule())
+    assert exc.value.code == "invalid_claim_value"
+    assert exc.value.path.endswith("bind.to")
+
+
+def test_profile_mapper_can_explicitly_return_normal_empty_ledger_frame():
+    silent = {
+        "profile_version": 1,
+        "source": "silent_source",
+        "packs": [],
+        "mappings": [],
+    }
+    frame = run_registered_mapper(
+        "canonical-profile", 1,
+        pd.DataFrame([{"anything": 1}], dtype=object),
+        context=LedgerMapperContext(),
+        rule={
+            "profile": silent,
+            "source": "silent_source",
+            "source_event": {
+                "molecule_ref": "silent:1",
+                "source_raw_ref": "silent:{\"id\":1}",
+            },
+        },
+    )
+    assert frame.empty
+    assert validate_ledger_frame(frame) is frame
+
+
+@pytest.mark.parametrize("status", [APPROVAL_STATUS_PENDING,
+                                    APPROVAL_STATUS_REJECTED])
+def test_profile_mapper_reuses_readiness_gate_for_pending_and_rejected(status):
+    profile = movement_profile()
+    profile["mappings"][0]["bind"]["to"]["key"]["approval_status"] = status
+    with pytest.raises(LedgerMapperError) as exc:
+        run_registered_mapper(
+            "canonical-profile", 1, profile_input(),
+            context=profile_context(), rule=profile_rule(profile))
+    assert exc.value.code == "binding_not_approved"
+    assert exc.value.path.endswith("bind.to.key.approval_status")
+
+
+@pytest.mark.parametrize(("count", "code"), [
+    (0, "lookup_not_found"),
+    (2, "lookup_not_unique"),
+])
+def test_profile_lookup_zero_and_many_are_fail_closed(count, code):
+    with pytest.raises(LedgerMapperError) as exc:
+        run_registered_mapper(
+            "canonical-profile", 1, profile_input(),
+            context=profile_context(destination_lookup(count)), rule=profile_rule())
+    assert exc.value.code == code
+
+
+def test_profile_claim_without_registered_emitter_is_rejected():
+    with pytest.raises(LedgerMapperError) as exc:
+        run_registered_mapper(
+            "canonical-profile", 1, profile_input(), context=profile_context(),
+            rule=profile_rule(emitter_registry=ClaimEmitterRegistry().seal()))
+    assert exc.value.code == "unsupported_claim_execution"
+
+
+def test_binding_approval_metadata_never_promotes_claim_epistemic_derivation():
+    user_profile = movement_profile()
+    imported_profile = copy.deepcopy(user_profile)
+    imported_profile["mappings"][0]["bind"]["subject"]["binding_origin"] = (
+        BINDING_ORIGIN_IMPORTED)
+    user_frame = run_registered_mapper(
+        "canonical-profile", 1, profile_input(), context=profile_context(),
+        rule=profile_rule(user_profile))
+    imported_frame = run_registered_mapper(
+        "canonical-profile", 1, profile_input(), context=profile_context(),
+        rule=profile_rule(imported_profile))
+    assert user_frame.iloc[0]["derivation"] == "profile_transfer_movement"
+    assert imported_frame.iloc[0]["derivation"] == "profile_transfer_movement"
+    assert user_frame.iloc[0]["predicate"] == imported_frame.iloc[0]["predicate"]
+
+
+def test_mapper_result_must_be_ledger_frame_and_crashes_are_typed():
+    def arbitrary(_db, _payload, rule=None):
+        del rule
+        return pd.DataFrame()
+
+    def crashes(_db, _payload, rule=None):
+        del rule
+        raise ZeroDivisionError("boom")
+
+    def schema_error(_db, _payload, rule=None):
+        del rule
+        return ledger_frame_from_atoms([atom(occurred_at="not-a-time")])
+
+    arbitrary_registry = LedgerMapperRegistry((
+        describe_mapper("arbitrary", 1, arbitrary),
+        describe_mapper("crashes", 1, crashes),
+        describe_mapper("schema-error", 1, schema_error),
+    )).seal()
+    with pytest.raises(LedgerFrameError) as exc:
+        run_registered_mapper(
+            "arbitrary", 1, {}, registry=arbitrary_registry)
+    assert exc.value.code == "unmarked_ledger_frame"
+    with pytest.raises(LedgerMapperError) as exc:
+        run_registered_mapper("crashes", 1, {}, registry=arbitrary_registry)
+    assert exc.value.code == "mapper_failed"
+    with pytest.raises(LedgerFrameError) as exc:
+        run_registered_mapper("schema-error", 1, {}, registry=arbitrary_registry)
+    assert exc.value.code == "invalid_source_event"
+
+
+def test_default_registry_exposes_logical_ids_not_module_paths():
+    registry = default_ledger_mapper_registry()
+    metadata = registry.public_metadata()
+    assert [item["mapper_id"] for item in metadata] == [
+        "canonical-profile", "lot-event"]
+    assert all("module" not in item and "path" not in item and "function" not in item
+               for item in metadata)
+    assert default_ledger_mapper_registry() is registry
+
+
+def test_source_transition_is_explicit_and_config_cannot_execute_module_paths():
+    base = {
+        "version": 1,
+        "sources": {"lot_event": copy.deepcopy(LOT_SOURCE_CONFIG)},
+    }
+    # No selector means the unconverted legacy path; adding the logical registry key is
+    # the complete source-by-source transition declaration.
+    assert ledger_config.validate(copy.deepcopy(base))
+    selected = copy.deepcopy(base)
+    selected["sources"]["lot_event"]["chain_mapper"] = {
+        "mapper_id": "lot-event", "version": 1,
+    }
+    assert ledger_config.validate(selected)
+    unsafe = copy.deepcopy(selected)
+    unsafe["sources"]["lot_event"]["chain_mapper"]["module"] = "evil.path"
+    with pytest.raises(ledger_config.LedgerConfigError):
+        ledger_config.validate(unsafe)
+
+    ignored = copy.deepcopy(selected)
+    ignored["sources"]["lot_event"]["kind"] = "transfer"
+    with pytest.raises(ledger_config.LedgerConfigError, match="not executable"):
+        ledger_config.validate(ignored)
+
+
+def test_migrated_lot_mapper_has_no_legacy_translator_or_runtime_capability():
+    source = (Path(__file__).parents[1] / "mappers" /
+              "ledger_lot_event_mapper.py").read_text(encoding="utf-8")
+    executable = "\n".join(
+        line for line in source.splitlines() if not line.lstrip().startswith("#"))
+    assert "LotEventTranslator" not in executable.replace(
+        "old Molecule and LotEventTranslator are parity", "")
+    assert "LedgerStore" not in executable
+    assert "write_batch" not in executable
+    assert "read_cursor" not in executable
+    assert "commit(" not in executable and "rollback(" not in executable
+
+    phase3_modules = [
+        Path(__file__).parents[1] / "ledger" / "ledger_frame.py",
+        Path(__file__).parents[1] / "ledger" / "chain_mapper.py",
+        Path(__file__).parents[1] / "ledger" / "profile_chain_mapper.py",
+        Path(__file__).parents[1] / "mappers" / "ledger_lot_event_mapper.py",
+    ]
+    joined = "\n".join(path.read_text(encoding="utf-8") for path in phase3_modules)
+    assert "chain_ingestion_worker" not in joined
+    assert "LedgerStore(" not in joined
+    assert "write_batch(" not in joined
+    assert "INSERT INTO" not in joined and "UPDATE " not in joined

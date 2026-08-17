@@ -189,6 +189,13 @@ def pg():
             # Reclaim a leftover from a run that was killed mid-suite, then build fresh.
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{SCRATCH_SCHEMA}" CASCADE'))
             conn.execute(text(f'CREATE SCHEMA "{SCRATCH_SCHEMA}"'))
+            # Ledger's existing text-search indexes use ``gin_trgm_ops``.  ``public`` is
+            # deliberately absent from this test engine's search_path, so the extension
+            # must live inside the same disposable schema as the ledger objects.  Dropping
+            # the schema at teardown drops the extension too; nothing is installed into
+            # the isolated database's public schema and production is never connected.
+            conn.execute(text(
+                f'CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA "{SCRATCH_SCHEMA}"'))
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
         try:
@@ -255,6 +262,269 @@ def test_the_cursor_makes_a_second_run_read_nothing(ledger):
     assert second["rows_read"] == 0
     assert second["attempted"] == 0
     assert count(ledger) == total
+
+
+def _mapper_cfg():
+    cfg = copy.deepcopy(CFG)
+    cfg["sources"]["lot_event"]["chain_mapper"] = {
+        "mapper_id": "lot-event", "version": 1,
+    }
+    return cfg
+
+
+@contextlib.contextmanager
+def _rebuilt_mapper_registry():
+    """Let fault-injection tests fingerprint their temporary mapper, then forget it."""
+    from ledger.chain_mapper import default_ledger_mapper_registry
+
+    default_ledger_mapper_registry.cache_clear()
+    try:
+        yield
+    finally:
+        default_ledger_mapper_registry.cache_clear()
+
+
+def test_lot_event_chain_mapper_runs_the_existing_cursor_gate_and_store_end_to_end(
+        ledger, monkeypatch):
+    """The required migrated source path, against isolated PostgreSQL."""
+    from datetime import timezone
+    from ledger import dry_run
+    from ledger import chain_mapper
+    import pandas as pd
+
+    # Capture the actual validated LedgerFrame on both sides of the dry-run/execute
+    # fork.  This proves parity at the requested boundary rather than inferring it from
+    # atom counts after storage has discarded molecule_ref/derivation.
+    mapped_frames = []
+    run_mapper = chain_mapper.run_registered_mapper
+
+    def capture_mapper(*args, **kwargs):
+        frame = run_mapper(*args, **kwargs)
+        mapped_frames.append(frame.copy(deep=True))
+        return frame
+
+    monkeypatch.setattr(chain_mapper, "run_registered_mapper", capture_mapper)
+
+    cfg = _mapper_cfg()
+    url, _ = _resolve_url()
+    with _declared_as_test_database(url):
+        preview = dry_run.preview(ledger, cfg, "lot_event", rows=20)
+        preview_frames = list(mapped_frames)
+        preview_check = ledger.raw_connection()
+        try:
+            with preview_check.cursor() as cursor_sql:
+                cursor_sql.execute(
+                    "SELECT count(*) FROM information_schema.tables "
+                    "WHERE table_schema = current_schema() AND table_name IN (%s, %s)",
+                    (schema.LEDGER_TABLE, schema.CURSOR_TABLE))
+                assert cursor_sql.fetchone()[0] == 0
+        finally:
+            preview_check.close()
+        landed = backfill.run(ledger, cfg, source="lot_event")
+        execute_frames = mapped_frames[len(preview_frames):]
+
+    assert preview["writes"] == 0 and preview["read_only_enforced"] is True
+    assert preview["atoms"] == landed["attempted"]
+    assert landed["inserted"] > 0
+    assert "mapper:lot-event@1:" in landed["translator_ver"]
+    cursor = read_cursor_row(ledger)
+    assert cursor["translator_ver"] == landed["translator_ver"]
+    assert cursor["cursor_value"] == {"event_time": BASE_ROWS[-1]["event_time"]}
+    assert len(preview_frames) == len(execute_frames) == 2
+    for dry_frame, execute_frame in zip(preview_frames, execute_frames):
+        pd.testing.assert_frame_equal(
+            dry_frame.reset_index(drop=True), execute_frame.reset_index(drop=True))
+
+    connection = ledger.raw_connection()
+    try:
+        with connection.cursor() as cursor_sql:
+            cursor_sql.execute(
+                f"SELECT count(DISTINCT source_event_id), "
+                f"bool_and(source_event_state = 'source_molecule'), "
+                f"bool_and(source_translator_ver LIKE %s) "
+                f"FROM {schema.LEDGER_TABLE}",
+                ("%|mapper:lot-event@1:%",))
+            events, all_molecules, provenance = cursor_sql.fetchone()
+            cursor_sql.execute(
+                f"SELECT predicate, subject_type, subject_keys, object_kind, "
+                f"object_payload, occurred_at, source_who, source_translator_ver, "
+                f"source_raw_ref, source_event_id::text, source_event_state "
+                f"FROM {schema.LEDGER_TABLE}")
+            columns = [item[0] for item in cursor_sql.description]
+            stored = [dict(zip(columns, row)) for row in cursor_sql.fetchall()]
+            cursor_sql.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = current_schema() AND table_name LIKE '%cursor%' "
+                "ORDER BY table_name")
+            cursor_tables = [row[0] for row in cursor_sql.fetchall()]
+    finally:
+        connection.close()
+    assert events == preview["molecules"] == 2
+    assert all_molecules is True and provenance is True
+    assert cursor_tables == [schema.CURSOR_TABLE], (
+        "the migrated source created a second/Chain cursor table")
+    assert len(stored) == preview["atoms"]
+    assert all(row["source_who"] == "lot_event" for row in stored)
+    assert all(row["source_raw_ref"].startswith("lot_event:") for row in stored)
+    assert all(row["source_event_state"] == "source_molecule" for row in stored)
+    derived = next(row for row in stored if row["predicate"] == "derived_from")
+    assert derived["subject_type"] == "Lot"
+    assert derived["subject_keys"] == {"lot": "C"}
+    assert derived["object_kind"] == "entity_ref"
+    assert derived["object_payload"] == {"type": "Lot", "keys": {"lot": "P"}}
+    assert derived["occurred_at"].astimezone(timezone.utc).isoformat() == (
+        "2026-05-03T02:17:00+00:00")
+    preview_ids = {row["source_event_id"] for row in preview["atoms_rendered"]}
+    stored_ids = {row["source_event_id"] for row in stored}
+    assert stored_ids == preview_ids
+
+    # Reset exercises the same mapper and the existing unique index. No second ledger
+    # or Chain cursor exists, and replay does not duplicate the same claims.
+    before = count(ledger)
+    with _declared_as_test_database(url):
+        replay = backfill.run(ledger, cfg, source="lot_event", reset_cursor=True)
+    assert replay["attempted"] > 0
+    assert replay["inserted"] == 0
+    assert replay["deduped"] == replay["attempted"]
+    assert count(ledger) == before
+
+
+def test_chain_mapper_crash_writes_no_atom_and_does_not_move_cursor(
+        ledger, monkeypatch):
+    """An unexpected Python mapper failure is typed and consumes no source event."""
+    import mappers.ledger_lot_event_mapper as mapper_module
+    from ledger.chain_mapper import LedgerMapperError
+
+    def crashes(_db, _payload, rule=None):
+        del rule
+        raise RuntimeError("injected mapper crash")
+
+    monkeypatch.setattr(mapper_module, "map_lot_event_to_ledger_frame", crashes)
+    cfg = _mapper_cfg()
+    url, _ = _resolve_url()
+    with _rebuilt_mapper_registry():
+        with _declared_as_test_database(url):
+            with pytest.raises(LedgerMapperError) as exc:
+                backfill.run(ledger, cfg, source="lot_event")
+    assert exc.value.code == "mapper_failed"
+    assert count(ledger) == 0
+    assert read_cursor_row(ledger) is None
+
+
+def test_chain_mapper_schema_failure_writes_no_atom_and_does_not_move_cursor(
+        ledger, monkeypatch):
+    """A bad mapper result cannot reach gate/store or consume the source event."""
+    import pandas as pd
+    import mappers.ledger_lot_event_mapper as mapper_module
+    from ledger.ledger_frame import LedgerFrameError
+
+    def invalid_result(_db, _payload, rule=None):
+        del rule
+        return pd.DataFrame()
+
+    monkeypatch.setattr(
+        mapper_module, "map_lot_event_to_ledger_frame", invalid_result)
+    cfg = _mapper_cfg()
+    url, _ = _resolve_url()
+    with _rebuilt_mapper_registry():
+        with _declared_as_test_database(url):
+            with pytest.raises(LedgerFrameError):
+                backfill.run(ledger, cfg, source="lot_event")
+    assert count(ledger) == 0
+    assert read_cursor_row(ledger) is None
+
+
+def test_chain_mapper_semantic_refusal_writes_no_atom_and_does_not_move_cursor(ledger):
+    """The converted source stops on a mapper refusal instead of consuming it."""
+    connection = ledger.raw_connection()
+    try:
+        _seed(connection, [AMBIGUOUS_ROW])
+    finally:
+        connection.close()
+    cfg = _mapper_cfg()
+    url, _ = _resolve_url()
+    from ledger.chain_mapper import LedgerMapperRefused
+
+    with _declared_as_test_database(url):
+        with pytest.raises(LedgerMapperRefused):
+            backfill.run(ledger, cfg, source="lot_event")
+    assert count(ledger) == 0
+    assert read_cursor_row(ledger) is None
+
+
+def test_chain_mapper_later_event_failure_discards_prior_unflushed_event(ledger):
+    """A later mapper refusal cannot make an earlier event in the batch land alone."""
+    good = src(
+        "GOOD", event_type="track_in", slots="01", wafers="WG",
+        event_time="2026-06-01 00:00:00")
+    connection = ledger.raw_connection()
+    try:
+        _seed(connection, [good, AMBIGUOUS_ROW])
+    finally:
+        connection.close()
+    cfg = _mapper_cfg()
+    url, _ = _resolve_url()
+    from ledger.chain_mapper import LedgerMapperRefused
+
+    with _declared_as_test_database(url):
+        with pytest.raises(LedgerMapperRefused):
+            backfill.run(ledger, cfg, source="lot_event")
+    assert count(ledger) == 0
+    assert read_cursor_row(ledger) is None
+
+
+def test_chain_mapper_gate_rejection_writes_no_atom_and_does_not_move_cursor(ledger):
+    """A valid frame rejected by the existing gate cannot land partially."""
+    cfg = _mapper_cfg()
+    cfg["sources"]["lot_event"]["subject_types"] = ["Lot"]
+    url, _ = _resolve_url()
+    with _declared_as_test_database(url):
+        with pytest.raises(gate.MoleculeRefused):
+            backfill.run(ledger, cfg, source="lot_event")
+    assert count(ledger) == 0
+    assert read_cursor_row(ledger) is None
+
+
+def test_chain_mapper_store_failure_rolls_back_atoms_and_cursor(ledger, monkeypatch):
+    """The mapper path retains LedgerStore's one-transaction atom/cursor boundary."""
+    from ledger.store import LedgerStore
+
+    def fail_cursor(*_args, **_kwargs):
+        raise RuntimeError("injected cursor write failure")
+
+    monkeypatch.setattr(LedgerStore, "_advance_cursor", fail_cursor)
+    cfg = _mapper_cfg()
+    url, _ = _resolve_url()
+    with _declared_as_test_database(url):
+        with pytest.raises(RuntimeError, match="injected cursor write failure"):
+            backfill.run(ledger, cfg, source="lot_event")
+    assert count(ledger) == 0
+    assert read_cursor_row(ledger) is None
+
+
+def test_chain_mapper_normal_empty_event_advances_the_existing_source_cursor(ledger):
+    """A deliberate 0-Claim event follows the lineage source's existing cursor policy."""
+    empty_row = src(
+        "EMPTY", event_type="track_in", event_time="2026-07-01 00:00:00")
+    connection = ledger.raw_connection()
+    try:
+        _seed(connection, [empty_row])
+    finally:
+        connection.close()
+    cfg = _mapper_cfg()
+    cfg["sources"]["lot_event"]["vocabulary"]["track_in"].update({
+        "emit_register": False,
+        "emit_has_wafer": False,
+    })
+    url, _ = _resolve_url()
+    with _declared_as_test_database(url):
+        result = backfill.run(ledger, cfg, source="lot_event")
+    assert result["rows_read"] == 1 and result["molecules"] == 1
+    assert result["attempted"] == result["inserted"] == 0
+    assert count(ledger) == 0
+    cursor = read_cursor_row(ledger)
+    assert cursor["cursor_value"] == {"event_time": empty_row["event_time"]}
+    assert cursor["molecules_done"] == 1
 
 
 def test_the_unique_index_holds_when_the_cursor_is_reset(ledger):

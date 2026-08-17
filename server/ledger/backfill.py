@@ -238,12 +238,20 @@ def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
 
 def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                  reset_cursor=False, start_from=None, max_batches=None, probe_lag=True):
-    """The `lot_event` driver. Unchanged by ruling R-2026-08-14-D except for its name."""
+    """The ``lot_event`` reader/cursor, with an opt-in registered mapper boundary."""
     from . import config as ledger_config
     from . import gate, observability, schema
+    from .chain_mapper import (
+        LedgerMapperContext,
+        LedgerMapperRefused,
+        configured_mapper,
+        mapper_execution_version,
+        run_registered_mapper,
+    )
     from .envelope import canonical_keys
-    from .lot_event_translator import LotEventTranslator, group_molecules
+    from .ledger_frame import atoms_from_ledger_frame
     from .store import LedgerStore
+    from mappers.ledger_lot_event_mapper import group_lot_event_frames
 
     source_cfg = ledger_config.source_config(cfg, source)
     if source_cfg is None:
@@ -253,6 +261,10 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         return BackfillResult(source=source, refused_source=True, atoms=0, molecules=0)
 
     translator_ver = ledger_config.translator_version(cfg, source)
+    mapper_descriptor = configured_mapper(source_cfg)
+    if mapper_descriptor is None:
+        from .lot_event_translator import LotEventTranslator, group_molecules
+    execution_ver = mapper_execution_version(translator_ver, mapper_descriptor)
     declared = ledger_config.declared_derivations(cfg, source)
     declared_subjects = ledger_config.declared_subject_types(cfg, source)
     batch_size = int((cfg.get("batch") or {}).get("molecules_per_transaction", 200))
@@ -272,19 +284,22 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
 
         logger.info(
             "[Ledger] backfill %s | translator_ver=%s | rules=%s | cursor=%r%s",
-            source, translator_ver,
+            source, execution_ver,
             {k: {kk: vv for kk, vv in v.items() if not kk.startswith("__")}
              for k, v in (source_cfg.get("vocabulary") or {}).items()},
             after, " (RESET)" if reset_cursor else "")
 
         result = BackfillResult(
-            source=source, translator_ver=translator_ver, started_from=after,
+            source=source, translator_ver=execution_ver, started_from=after,
             molecules=0, refused_molecules=0, incomplete_molecules=0,
             attempted=0, inserted=0, deduped=0, batches=0, blank_wafer_positions=0,
             rows_read=0, cursor=after, seconds=0.0)
         started = time.monotonic()
 
-        translator = LotEventTranslator(source_cfg, translator_ver, declared, who=source)
+        translator = (None if mapper_descriptor is not None else
+                      LotEventTranslator(source_cfg, translator_ver, declared, who=source))
+        mapper_registered = set()
+        mapper_blank_wafer_positions = 0
         pending, pending_cursor, pending_molecules = [], after, 0
         pending_refused, pending_incomplete = 0, 0
 
@@ -308,23 +323,36 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                 break
             result["rows_read"] += len(complete)
 
-            molecules = group_molecules(complete)
+            molecules = (group_lot_event_frames(complete)
+                         if mapper_descriptor is not None
+                         else group_molecules(complete))
 
             # One query for the whole page: which lots/wafers already have a register.
             # Doing it per molecule is what makes a ten-million row backfill quadratic.
             subjects = set()
             for molecule in molecules:
-                for lot in {r["lot"] for r in molecule.rows} | {molecule.parent,
-                                                                molecule.child}:
+                source_rows = (molecule.to_dict(orient="records")
+                               if mapper_descriptor is not None else molecule.rows)
+                lots = {row["lot"] for row in source_rows}
+                if mapper_descriptor is not None:
+                    lots.update(row["parent_lot"] for row in source_rows)
+                    lots.update(row["child_lot"] for row in source_rows)
+                else:
+                    lots.update({molecule.parent, molecule.child})
+                for lot in lots:
                     if lot:
                         subjects.add(("Lot", canonical_keys({"lot": lot})))
-                for row in molecule.rows:
+                for row in source_rows:
                     for wafer in str(row["wafers"] or "").split(
                             source_cfg.get("list_separator", ":")):
                         wafer = wafer.strip()
                         if wafer:
                             subjects.add(("Wafer", canonical_keys({"wafer": wafer})))
-            translator.registered |= store.existing_registrations(read, subjects)
+            known_registrations = store.existing_registrations(read, subjects)
+            if mapper_descriptor is not None:
+                mapper_registered |= known_registrations
+            else:
+                translator.registered |= known_registrations
 
             # 🔴 END THE READ TRANSACTION BEFORE WRITING ANYTHING.
             # psycopg2 opens one implicitly on the first SELECT and holds it until told
@@ -340,6 +368,10 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
 
             for molecule in molecules:
                 atoms, molecule_report = None, None
+                source_rows = (molecule.to_dict(orient="records")
+                               if mapper_descriptor is not None else molecule.rows)
+                event_time = (molecule.iloc[0]["event_time"]
+                              if mapper_descriptor is not None else molecule.event_time)
                 try:
                     # 🔴 THE MOLECULE SCOPE IS OPENED HERE, BY THE SHARED DRIVER, and
                     # this is the whole of ruling R-H-bis 3. It used to be opened inside
@@ -355,20 +387,61 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                     # below instead of handing back an `[]` that a future edit could
                     # merge away.
                     with gate.building_molecule(source):
-                        atoms, molecule_report = translator.translate(molecule)
+                        if mapper_descriptor is not None:
+                            input_frame = molecule
+                            mapped = run_registered_mapper(
+                                mapper_descriptor.mapper_id,
+                                mapper_descriptor.version,
+                                input_frame,
+                                context=LedgerMapperContext(),
+                                rule={
+                                    "source": source,
+                                    "source_config": source_cfg,
+                                    "translator_version": translator_ver,
+                                    "declared_derivations": declared,
+                                    "registered_entities": tuple(mapper_registered),
+                                },
+                            )
+                            molecule_report = dict(
+                                mapped.attrs.get("mapper_report") or {})
+                            atoms = atoms_from_ledger_frame(mapped)
+                        else:
+                            atoms, molecule_report = translator.translate(molecule)
                         refused = atoms is None
                         if not refused:
                             kept, _screen_report = gate.screen_molecule(
                                 source, atoms, declared, declared_subjects,
-                                molecule_ref=molecule.ref,
-                                source_rows=len(molecule.rows))
+                                molecule_ref=(molecule_report or {}).get("molecule"),
+                                source_rows=len(source_rows))
                             pending.extend(kept)
+                            if mapper_descriptor is not None:
+                                for atom in kept:
+                                    if atom.predicate == "register":
+                                        mapper_registered.add((
+                                            atom.subject_type,
+                                            canonical_keys(atom.subject_keys),
+                                        ))
+                                mapper_blank_wafer_positions += int(
+                                    molecule_report.get("blank_wafer_positions") or 0)
+                except LedgerMapperRefused as refusal:
+                    # A converted source treats typed mapper refusal as an execution
+                    # failure: no partial pending atoms are flushed and this event's
+                    # existing Ledger cursor does not move. Legacy sources keep their
+                    # established counted-refusal policy until explicitly migrated.
+                    reason = (refusal.code if refusal.code in gate.REFUSAL_REASONS
+                              else gate.REFUSE_ATOMICITY)
+                    gate.refuse(
+                        source, reason, refusal.message,
+                        rows=len(source_rows))
+                    raise
                 except gate.MoleculeRefused:
                     # The gate refused after the translator had already built (and
                     # counted) atoms. Nothing of this molecule is pending - the unwind
                     # happened before `pending.extend` - but its registers must be given
                     # back: nothing was written, so the next molecule that mentions the
                     # same lot has to be free to register it.
+                    if mapper_descriptor is not None:
+                        raise
                     refused = True
                     _forget_registers(translator, atoms)
                 if refused:
@@ -382,10 +455,10 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                     pending_incomplete += 1
                     result["incomplete_molecules"] += 1
                 pending_molecules += 1
-                pending_cursor = molecule.event_time
+                pending_cursor = event_time
 
                 if pending_molecules >= batch_size:
-                    _flush(store, source, translator_ver, pending,
+                    _flush(store, source, execution_ver, pending,
                            {"event_time": _cursor_json(pending_cursor)},
                            pending_molecules, pending_refused, pending_incomplete,
                            result, gate, refusal_baseline)
@@ -393,7 +466,7 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                     pending_refused, pending_incomplete = 0, 0
 
             if pending_molecules:
-                _flush(store, source, translator_ver, pending,
+                _flush(store, source, execution_ver, pending,
                        {"event_time": _cursor_json(pending_cursor)},
                        pending_molecules, pending_refused, pending_incomplete, result,
                        gate, refusal_baseline)
@@ -404,7 +477,9 @@ def _run_lineage(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
             result["cursor"] = after
 
         result["seconds"] = round(time.monotonic() - started, 3)
-        result["blank_wafer_positions"] = translator.blank_wafer_positions
+        result["blank_wafer_positions"] = (
+            mapper_blank_wafer_positions if mapper_descriptor is not None
+            else translator.blank_wafer_positions)
         result["census"] = store.census()
         result["partitions"] = [name for name, _ in schema.partitions(read)]
 

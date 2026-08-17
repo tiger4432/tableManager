@@ -1,6 +1,6 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Source Ontology Profile 2단계 `IN_PROGRESS` / `NOT_APPROVED` — 코드 대조 | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Profile 2단계 승인 · LedgerFrame Chain mapper 3단계 `AWAITING_REVIEW` / `NOT_APPROVED` — 코드 대조 | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(Pack/Claim/Role/Binding Profile 계약·검증·직렬화) · **`server/ledger/source_profile_builtins.py`**(Pack·Claim 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/translator_pattern.py`**(복잡한 소스의 공통 수명주기) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
 > **이번 라운드 (2026-08-15 3차 · 넷째 문법 `declared` + 뿌리 키 롤업 — R-2026-08-15-N ② · R-2026-08-15-O · 갱신 트리거 ②③⑥⑦)**
@@ -710,8 +710,7 @@ payload와 맞는지 본다. 한 행도 읽지 않고 확정할 수 있는 모�
 
 ### 3.10 `SourceOntologyProfile` 2단계 — Claim Mapping 계약 (2026-08-17)
 
-> **status:** `IN_PROGRESS` · **approval:** `NOT_APPROVED`
-> **remaining_acceptance:** 사용자 재승인
+> **status:** `COMPLETE` · **approval:** `APPROVED`
 
 Profile은 `ledger_config.json`의 기존 `sources`와 나란한 `profiles.<name>`에 둘 수 있다.
 `sources`는 현행 실행 계약이고 `profiles`는 실행되지 않는 상위 작성 계약이다.
@@ -829,8 +828,36 @@ Pack/Claim/Role/Binding metadata만 공개하고 구형 Template/type/status met
 않는다. predicate signature, atom 분해, Claim 계급
 번호, translator/derivation 내부명, canonical key 직렬화, provenance envelope는 없다.
 
-🔴 **2단계 경계:** compiler, runtime adapter, translator 호출, atom 생성, UI, Trace,
-DB 연결, migration, write가 없다. 3단계는 2단계 재승인 전 시작하지 않는다.
+🔴 **2단계 경계:** 이 계약 자체에는 compiler, runtime adapter, translator 호출, atom 생성,
+UI, Trace, DB 연결, migration, write가 없다. 실행은 다음 3단계 절이 별도로 소유한다.
+
+### 3.11 LedgerFrame Chain mapper 3단계 (2026-08-17)
+
+> **status:** `AWAITING_REVIEW` · **approval:** `NOT_APPROVED`
+
+정확한 열·실행·실패·마이그레이션 계약은
+[LEDGER_FRAME_CHAIN_MAPPER](../architecture/LEDGER_FRAME_CHAIN_MAPPER.md)가 소유한다.
+
+`LedgerFrame v1`은 schema marker와 고정 14열을 가진 pandas DataFrame이다. 각 행은 기존
+`Atom` 후보 하나이며 structured identity/payload, source world time, raw provenance,
+derivation, deterministic `source_event_id/state`를 보존한다. pandas index는 identity가 아니다.
+`None`, 임의 DataFrame, 열/형식 위반은 `LedgerFrameError(code,path,message)`로 거절하며
+`empty_ledger_frame()`만 정상 0-Claim 결과다.
+
+등록 mapper는 기존 Chain 함수 모양 `(db, payload, rule=None)`을 따르되 Ledger worker를
+사용하지 않는다. config에는 trusted `mapper_id/version`만 선언하며 entry 함수가 속한 mapper
+모듈 전체 artifact의 SHA-256이 `source_translator_ver`에 남는다. 기본 registry는 프로세스당
+한 번만 구성한다. mapper context에는 등록 lookup과 snapshot 값만 있고 DB
+session/cursor/commit은 없다.
+
+canonical Profile mapper는 승인된 Profile의 `column|constant|declared_lookup`을 평가한다.
+lookup은 `resolve_many` 등록 adapter만 사용하며 0건·다건을 각각 `lookup_not_found`와
+`lookup_not_unique`로 거절한다. Profile 승인 metadata는 Claim epistemic class를 바꾸지 않는다.
+
+첫 실제 전환 source는 `lot_event`다. 기존 Ledger reader와 `event_time` cursor는 그대로이고
+`lot-event@1` Python mapper가 DataFrame을 LedgerFrame으로 변환한다. 이후 gate와
+`LedgerStore.write_batch`는 기존 경로다. mapper/schema/gate 실패는 현재 처리 단위를
+저장하지 않고 cursor도 이동하지 않는다. 미전환 source는 기존 translator를 유지한다.
 
 ---
 

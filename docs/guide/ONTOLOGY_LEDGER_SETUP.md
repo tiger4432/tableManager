@@ -1,6 +1,6 @@
 # Ontology Ledger 셋업 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Source Profile 2단계 `IN_PROGRESS` / `NOT_APPROVED` | **Owner:** Server / Ledger + Ontology
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Profile 2단계 승인 · LedgerFrame Chain mapper 3단계 `AWAITING_REVIEW` / `NOT_APPROVED` | **Owner:** Server / Ledger + Ontology
 > **Source-of-truth:** `server/ledger/config.py` · `server/ledger/source_profile.py` · `server/ledger/source_profile_builtins.py` · `server/ledger/vocabulary.py` · `server/config/`
 
 이 문서는 **어떤 선언을 어떤 순서로 준비해야 원장이 도는지**만 설명한다.
@@ -163,8 +163,7 @@ dry-run의 실제 원자는 표본 증거이고 Source Contract는 전체 가능
 
 ### 3.6 Source Ontology Profile 2단계
 
-> **status:** `IN_PROGRESS` · **approval:** `NOT_APPROVED`
-> **remaining_acceptance:** 사용자 재승인
+> **status:** `COMPLETE` · **approval:** `APPROVED`
 
 새 상위 선언은 `ledger_config.json`의 기존 `sources` **옆** `profiles`에 둘 수 있다.
 Profile은 업무별 고정 필드가 아니라 Pack Claim의 Role과 원천 binding을 연결한다.
@@ -236,15 +235,32 @@ Profile은 업무별 고정 필드가 아니라 Pack Claim의 Role과 원천 bin
 `user_declared`와 `pending`이고, `system_suggested`에는 `suggestion_reason`이 필수다.
 `approved`는 컬럼 Mapping 승인일 뿐 Claim을 `confirmed`나 `pin`으로 올리지 않는다.
 `from`의 `source_position`은 Pack에 등록된 symbolic constant이며 임의 위치 문자열은
-거절된다. `declared_lookup`은 여기서 구조만 검사하고 실행·반환 형상 검사는 3단계다.
+거절된다. `declared_lookup`의 구조 검사는 이 단계가 소유한다.
 임의 Python·SQL·JavaScript·expression 실행은 없다.
 
 구조 검증 통과가 실행 승인을 뜻하지 않는다. `pending` 또는 `rejected` Binding이 하나라도
 있거나 `declared_lookup.key`가 미승인이면 readiness gate가 `binding_not_approved`와 정확한
 경로로 차단한다. 이 gate는 실행하지 않고 상태만 검사한다.
 
-⚠️ `config.load()`는 계속 기존 `sources`만 실행한다. Profile compiler·runtime adapter·
-translator 실행은 아직 없으므로 수동 선언을 제거하거나 Profile만 두고 백필하면 안 된다.
+### 3.7 LedgerFrame Chain mapper 3단계
+
+> **status:** `AWAITING_REVIEW` · **approval:** `NOT_APPROVED`
+
+정본은 [LedgerFrame Chain Mapper](../architecture/LEDGER_FRAME_CHAIN_MAPPER.md)다. 기존 Ledger
+reader/cursor가 입력을 고르고 등록 mapper가 `(db, payload, rule=None)` 모양으로 pandas
+LedgerFrame을 반환한다. 이후에는 기존 gate와 `LedgerStore.write_batch`만 사용한다.
+
+`lot_event`가 첫 명시적 Python mapper 전환 source다. selector는 다음 두 필드만 받는다.
+
+```json
+"chain_mapper": {"mapper_id": "lot-event", "version": 1}
+```
+
+module/function/path는 허용되지 않는다. selector가 없는 source는 기존 translator 경로를
+유지한다. canonical Profile은 `canonical-profile@1` mapper로 `column`, `constant`,
+`declared_lookup`을 실행할 수 있지만 Profile만 config에 둔다고 source reader/cursor가
+자동 생성되지는 않는다. source adapter가 명시적으로 Profile과 사건 provenance를 mapper에
+전달해야 한다.
 
 ## 4. Vocabulary
 

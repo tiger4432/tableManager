@@ -6,6 +6,9 @@
     "lot_event": {
       "__comment": "lot_event is already an event table, so no state-to-event inference is needed and event_time gives occurred_at directly (design section 10, step 1). ONE logical event is TWO source rows: the parent row carries child_lot with parent_lot blank, the child row carries parent_lot with child_lot blank, and the pair is matched by (event_type, event_time, parent, child) because the source has no event id of its own. That pair is the transaction unit.",
 
+      "chain_mapper": {"mapper_id": "lot-event", "version": 1},
+      "__comment_chain_mapper": "Explicit source-by-source migration selector. The existing Ledger reader and event_time cursor still own input; this trusted mapper only converts one driver-delimited event into LedgerFrame. Module paths and function names are not executable config.",
+
       "occurred_at_column": "event_time",
       "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
       "occurred_at_timezone": "Asia/Seoul",

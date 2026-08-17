@@ -99,7 +99,17 @@ def envelope_of(atom) -> dict:
     preview needs to see which declared rule claimed the atom, and that field is exactly
     where a rule the config did not declare would be refused.
     """
+    source_event_id = atom.source_event_id
+    source_event_state = atom.source_event_state
+    if source_event_id is None and source_event_state is None:
+        from .envelope import source_event_identity
+        source_event_id, source_event_state = source_event_identity(
+            atom.source_who, atom.occurred_at,
+            molecule_ref=atom.molecule_ref,
+            source_raw_ref=atom.source_raw_ref)
     return {
+        "source_event_id": str(source_event_id),
+        "source_event_state": source_event_state,
         "subject_type": atom.subject_type,
         "subject_keys": atom.subject_keys,
         "predicate": atom.predicate,
@@ -244,10 +254,22 @@ def _preview_lineage(store, connection, cfg, source, source_cfg, rows, notes):
     from . import config as ledger_config
     from . import gate
     from .backfill import fetch_page, fetch_group, walk_group_pages, _forget_registers
+    from .chain_mapper import (
+        LedgerMapperContext,
+        LedgerMapperRefused,
+        configured_mapper,
+        mapper_execution_version,
+        run_registered_mapper,
+    )
     from .envelope import canonical_keys
-    from .lot_event_translator import LotEventTranslator, group_molecules
+    from .ledger_frame import atoms_from_ledger_frame
+    from mappers.ledger_lot_event_mapper import group_lot_event_frames
 
     translator_ver = ledger_config.translator_version(cfg, source)
+    mapper_descriptor = configured_mapper(source_cfg)
+    if mapper_descriptor is None:
+        from .lot_event_translator import LotEventTranslator, group_molecules
+    execution_ver = mapper_execution_version(translator_ver, mapper_descriptor)
     declared = ledger_config.declared_derivations(cfg, source)
     declared_subjects = ledger_config.declared_subject_types(cfg, source)
 
@@ -263,42 +285,94 @@ def _preview_lineage(store, connection, cfg, source, source_cfg, rows, notes):
         complete = page
         break                      # ONE page - a preview, not a sweep
 
-    translator = LotEventTranslator(source_cfg, translator_ver, declared, who=source)
-    molecules = group_molecules(complete)
+    translator = (None if mapper_descriptor is not None else
+                  LotEventTranslator(source_cfg, translator_ver, declared, who=source))
+    molecules = (group_lot_event_frames(complete)
+                 if mapper_descriptor is not None else group_molecules(complete))
 
     subjects = set()
     for molecule in molecules:
-        for lot in {r["lot"] for r in molecule.rows} | {molecule.parent, molecule.child}:
+        source_rows = (molecule.to_dict(orient="records")
+                       if mapper_descriptor is not None else molecule.rows)
+        lots = {row["lot"] for row in source_rows}
+        if mapper_descriptor is not None:
+            lots.update(row["parent_lot"] for row in source_rows)
+            lots.update(row["child_lot"] for row in source_rows)
+        else:
+            lots.update({molecule.parent, molecule.child})
+        for lot in lots:
             if lot:
                 subjects.add(("Lot", canonical_keys({"lot": lot})))
-        for row in molecule.rows:
+        for row in source_rows:
             for wafer in str(row["wafers"] or "").split(
                     source_cfg.get("list_separator", ":")):
                 if wafer.strip():
                     subjects.add(("Wafer", canonical_keys({"wafer": wafer.strip()})))
     known = _existing_registrations(store, connection, subjects, notes)
-    translator.registered |= known
+    mapper_registered = set(known)
+    if mapper_descriptor is None:
+        translator.registered |= known
 
     kept_all, refused, incomplete = [], 0, 0
     for molecule in molecules:
         atoms, report, was_refused = None, None, False
+        source_rows = (molecule.to_dict(orient="records")
+                       if mapper_descriptor is not None else molecule.rows)
         try:
             with gate.building_molecule(source):
-                atoms, report = translator.translate(molecule)
+                if mapper_descriptor is not None:
+                    input_frame = molecule
+                    mapped = run_registered_mapper(
+                        mapper_descriptor.mapper_id,
+                        mapper_descriptor.version,
+                        input_frame,
+                        context=LedgerMapperContext(),
+                        rule={
+                            "source": source,
+                            "source_config": source_cfg,
+                            "translator_version": translator_ver,
+                            "declared_derivations": declared,
+                            "registered_entities": tuple(mapper_registered),
+                        },
+                    )
+                    report = dict(mapped.attrs.get("mapper_report") or {})
+                    atoms = atoms_from_ledger_frame(mapped)
+                else:
+                    atoms, report = translator.translate(molecule)
                 was_refused = atoms is None
                 if not was_refused:
-                    kept, was_refused = _screen(gate, source, translator, molecule,
-                                                atoms, declared, declared_subjects,
-                                                len(molecule.rows))
+                    if mapper_descriptor is not None:
+                        kept, _screen_report = gate.screen_molecule(
+                            source, atoms, declared, declared_subjects,
+                            molecule_ref=(report or {}).get("molecule"),
+                            source_rows=len(source_rows))
+                        was_refused = False
+                    else:
+                        kept, was_refused = _screen(
+                            gate, source, translator, molecule, atoms, declared,
+                            declared_subjects, len(molecule.rows))
                     kept_all.extend(kept)
+                    if mapper_descriptor is not None:
+                        for atom in kept:
+                            if atom.predicate == "register":
+                                mapper_registered.add((
+                                    atom.subject_type,
+                                    canonical_keys(atom.subject_keys),
+                                ))
+        except LedgerMapperRefused as refusal:
+            was_refused = True
+            reason = (refusal.code if refusal.code in gate.REFUSAL_REASONS
+                      else gate.REFUSE_ATOMICITY)
+            gate.refuse(source, reason, refusal.message, rows=len(source_rows))
         except gate.MoleculeRefused:
             was_refused = True
-            _forget_registers(translator, atoms)
+            if mapper_descriptor is None:
+                _forget_registers(translator, atoms)
         if was_refused:
             refused += 1
         elif report and report.get("incomplete"):
             incomplete += 1
-    return _finish(translator_ver, len(complete), len(molecules), refused,
+    return _finish(execution_ver, len(complete), len(molecules), refused,
                    incomplete, kept_all, len(known))
 
 

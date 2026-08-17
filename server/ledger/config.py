@@ -439,6 +439,7 @@ def validate(cfg: dict, origin: str = "<memory>"):
                 f"{where}.kind {kind!r} is not one of {sorted(SOURCE_KINDS)}. The kind "
                 f"selects which grammar this source's translator speaks, so a misspelling "
                 f"would validate the declaration against the wrong required columns.")
+        _validate_chain_mapper_selection(source, where, kind)
         if kind == SOURCE_KIND_OBSERVATION:
             _validate_observation_source(source, where)
             continue
@@ -488,6 +489,36 @@ def validate(cfg: dict, origin: str = "<memory>"):
     if size < 1:
         raise LedgerConfigError(f"{origin}: batch.molecules_per_transaction must be >= 1")
     return cfg
+
+
+def _validate_chain_mapper_selection(source: dict, where: str, kind: str):
+    """Validate only the declarative selector; the trusted registry resolves it.
+
+    An absent selector deliberately preserves every source that has not been migrated.
+    No module name, function name or file path is accepted here.
+    """
+    selection = source.get("chain_mapper")
+    if selection is None:
+        return
+    if kind != SOURCE_KIND_LINEAGE:
+        raise LedgerConfigError(
+            f"{where}.chain_mapper is not executable for source kind {kind!r}; only the "
+            "existing lineage reader currently has a Chain-mapper call site")
+    if not isinstance(selection, dict):
+        raise LedgerConfigError(f"{where}.chain_mapper must be an object")
+    unknown = sorted(set(selection) - {"mapper_id", "version"})
+    if unknown:
+        raise LedgerConfigError(
+            f"{where}.chain_mapper contains unsupported fields {unknown}; only a "
+            "trusted mapper_id and version may be declared")
+    mapper_id = selection.get("mapper_id")
+    version = selection.get("version")
+    if not isinstance(mapper_id, str) or not mapper_id.strip():
+        raise LedgerConfigError(
+            f"{where}.chain_mapper.mapper_id must be a non-blank trusted registry ID")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise LedgerConfigError(
+            f"{where}.chain_mapper.version must be a positive integer")
 
 
 def _validate_observation_source(source: dict, where: str):
