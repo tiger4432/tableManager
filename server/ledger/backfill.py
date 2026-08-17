@@ -4,9 +4,26 @@
     conda run -n assy_manager python -m ledger.backfill --source void_obs
     conda run -n assy_manager python -m ledger.backfill --source dt_log
 
-🔴 THREE GRAMMARS, ONE ENTRY POINT (ruling R-2026-08-14-D)
-------------------------------------------------------------
-`run()` dispatches on the source's declared `kind` and there are three drivers under it:
+🔴 ONE GRAMMAR, ONE ENTRY POINT (owner ruling, 2026-08-18: "remove legacy")
+-----------------------------------------------------------------------------
+`run()` no longer dispatches on a declared `kind`. It loads the ontology root, requires
+that the source is selected for v2, and runs it. There is one execution path.
+
+⚠️ THE FOUR DRIVERS DESCRIBED BELOW ARE NO LONGER REACHABLE FROM `run()`.
+`_run_lineage`, `_run_observation`, `_run_transfer` and `_run_declared` each lazily import
+a translator module the owner deleted on 2026-08-18 (`lot_event_translator`,
+`observation_translator`, `transfer_translator`, `declared_translator`), so every one of
+them could only raise `ImportError`. Their entry point is now blocked; the bodies are
+retired in a separate step, together with `ledger/config.py`, once the admin authoring
+screen that still speaks that grammar has a v2 replacement. Until then the paragraphs
+below describe code that is present and dead - do not read them as behaviour.
+
+🔴 The count in this header used to be maintained by hand and went stale silently: it said
+THREE until 2026-08-18, having missed `_run_declared`, and the wrong count propagated into
+four documents before anyone re-read `run()`. Prose that COUNTS something the code also
+counts will go stale, because nothing executes the prose.
+
+The four dead branches were:
 
   * `_run_lineage` - `lot_event` and its kin. A molecule is a GROUP of source rows sharing
     an `event_time`, so the cursor is a world time and the batch has to be cut on a group
@@ -20,10 +37,13 @@
     lineage driver's group cut with the group named by the declaration instead of being
     the time column - `_cut_on_group_boundary` is shared between them for exactly that
     reason.
+  * `_run_declared` - the declarative row-to-atom mapping. This grammar belongs to a SHAPE
+    rather than to a named source, so a new table of that shape needs a declaration and no
+    code at all. See `declared_translator`.
 
 They share everything that carries a rule: the molecule scope is opened by the DRIVER in
-all three (ruling R-H-bis 3), registrations are looked up once per page in all three, and
-all three write through `store.write_batch`, so "atoms and cursor in one transaction" has
+all four (ruling R-H-bis 3), registrations are looked up once per page in all four, and
+all four write through `store.write_batch`, so "atoms and cursor in one transaction" has
 one implementation rather than one per grammar.
 
 WHERE THE BATCH IS CUT, AND WHY IT MATTERS MORE THAN THE BATCH SIZE
@@ -227,57 +247,44 @@ def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
             return
 
 
-def run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
+def run(engine, cfg=None, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         reset_cursor=False, start_from=None, max_batches=None, probe_lag=True,
         ontology_root=None):
     """Translate everything past the cursor. Returns a `BackfillResult`.
 
-    Dispatches on the source's DECLARED grammar (`kind`), which defaults to `lineage` -
-    so every call written before ruling R-2026-08-14-D reaches the same driver it always
-    did. An undeclared source is refused here, before either driver runs, because the
-    refusal is about the DECLARATION and neither grammar owns it.
+    🔴 ONE EXECUTION PATH (owner ruling, 2026-08-18: "remove legacy")
+    ------------------------------------------------------------------
+    This function used to dispatch on the source's declared `kind` and fall through to one
+    of four legacy grammar drivers. Every one of those drivers lazily imported a
+    translator module the owner has since deleted, so the fallthrough could only ever
+    raise `ImportError` - a traceback where a refusal belonged. The fallthrough is gone:
+    a source that the ontology root does not select for v2 is REFUSED here, by name, and
+    the reason is the declaration rather than a missing file.
+
+    `cfg` is retained only so that the not-yet-removed legacy drivers below keep a caller
+    shape while their retirement is decided; nothing on this path reads it. It is removed
+    with them.
 
     `reset_cursor=True` deliberately re-reads work that is already done - it is how net 2
     of the idempotency argument gets exercised, and how an operator re-translates after a
     rule change (the new `source_translator_ver` makes the new atoms distinct from the
     old ones, which is correct: they are different claims made by different rules).
     """
-    from . import gate
+    from .cutover_v2 import (
+        DEFAULT_ONTOLOGY_ROOT, _require_v2_selection, load_cutover_setup)
 
-    if ontology_root is not None:
-        from .cutover_v2 import load_cutover_setup
-        cutover = load_cutover_setup(ontology_root)
-        selection = cutover.selection(source)
-        if selection.mode == "v2":
-            return _run_v2_lineage(
-                engine, cutover, source=source, fetch_rows=fetch_rows,
-                reset_cursor=reset_cursor, start_from=start_from,
-                max_batches=max_batches)
-
-    from . import config as ledger_config
-
-    source_cfg = ledger_config.source_config(cfg, source)
-    if source_cfg is None:
-        gate.refuse(source, gate.REFUSE_UNDECLARED_SOURCE,
-                    f"source {source!r} has no declaration in "
-                    f"{cfg.get('__origin__', 'ledger_config.json')}; nothing was read")
-        return BackfillResult(source=source, refused_source=True, atoms=0, molecules=0)
-
-    if source_cfg.get("kind") == ledger_config.SOURCE_KIND_OBSERVATION:
-        return _run_observation(engine, cfg, source, fetch_rows=fetch_rows,
-                                reset_cursor=reset_cursor, start_from=start_from,
-                                max_batches=max_batches, probe_lag=probe_lag)
-    if source_cfg.get("kind") == ledger_config.SOURCE_KIND_TRANSFER:
-        return _run_transfer(engine, cfg, source, fetch_rows=fetch_rows,
-                             reset_cursor=reset_cursor, start_from=start_from,
-                             max_batches=max_batches, probe_lag=probe_lag)
-    if source_cfg.get("kind") == ledger_config.SOURCE_KIND_DECLARED:
-        return _run_declared(engine, cfg, source, fetch_rows=fetch_rows,
-                             reset_cursor=reset_cursor, start_from=start_from,
-                             max_batches=max_batches, probe_lag=probe_lag)
-    return _run_lineage(engine, cfg, source, fetch_rows=fetch_rows,
-                        reset_cursor=reset_cursor, start_from=start_from,
-                        max_batches=max_batches, probe_lag=probe_lag)
+    cutover = load_cutover_setup(
+        DEFAULT_ONTOLOGY_ROOT if ontology_root is None else ontology_root)
+    # 🔴 Checked HERE and not left to the write boundary. `execute_selected_cursor_batch`
+    # does re-check, but only once a batch exists: an empty source would then return a
+    # clean zero instead of the refusal, and a selector left on `legacy` would look like a
+    # source with nothing to do. A refusal that only fires when there is work is not a
+    # refusal. Reuses the cutover module's own predicate so there is one spelling of it.
+    _require_v2_selection(cutover, source)
+    return _run_v2_lineage(
+        engine, cutover, source=source, fetch_rows=fetch_rows,
+        reset_cursor=reset_cursor, start_from=start_from,
+        max_batches=max_batches)
 
 
 def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
@@ -1519,13 +1526,9 @@ def main(argv=None):
                              "(updated_at|row_id) for an observation source")
     parser.add_argument("--fetch-rows", type=int, default=DEFAULT_FETCH_ROWS)
     parser.add_argument("--max-batches", type=int, default=None)
-    parser.add_argument("--config", default=None)
     parser.add_argument(
         "--ontology-root", default=str(DEFAULT_ONTOLOGY_ROOT),
-        help="manifest-selected Ledger v2 config root (the default operator path)")
-    parser.add_argument(
-        "--legacy", action="store_true",
-        help="temporary compatibility escape hatch; bypass the v2 manifest selector")
+        help="the Ledger config root (the only operator path)")
     args = parser.parse_args(argv)
 
     # This is the public operator boundary.  Until a separate destructive approval
@@ -1537,29 +1540,15 @@ def main(argv=None):
             "destructive_approval_required", path,
             "cursor reset or replay requires a separate destructive approval",
         )
-    if not args.legacy and args.config is not None:
-        raise LedgerV2CutoverError(
-            "legacy_config_requires_legacy_mode", "config",
-            "--config is a legacy-only option and requires --legacy",
-        )
-
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s")
 
     from database.database import engine
 
-    if args.legacy:
-        from . import config as ledger_config
-        cfg = ledger_config.load(args.config)
-    else:
-        # The manifest is the complete v2 authoring root.  Do not read or validate
-        # the retired flat config on this path.
-        cfg = {}
-    result = run(engine, cfg, source=args.source, fetch_rows=args.fetch_rows,
+    result = run(engine, source=args.source, fetch_rows=args.fetch_rows,
                  reset_cursor=args.reset_cursor, start_from=args.start_from,
-                 max_batches=args.max_batches,
-                 ontology_root=None if args.legacy else args.ontology_root)
+                 max_batches=args.max_batches, ontology_root=args.ontology_root)
     beat(result)
 
     logger.info("[Ledger] %s", {k: v for k, v in result.items() if k != "census"})
