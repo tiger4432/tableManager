@@ -1,13 +1,21 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **618개** 이력. (거버넌스 규칙 #4)
+> 총 **626개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-17 12:28** — [Ledger Primer Row Journey](./20260817_122838_ledger_primer_row_journey.md)
+- **2026-08-17 12:18** — [Mapper Standard Template Method](./20260817_121844_mapper_standard_template_method.md)
+- **2026-08-17 12:14** — [Translation Unit Molecule Taxonomy](./20260817_121419_translation_unit_molecule_taxonomy.md)
+- **2026-08-17 12:12** — [Pack Maturity Extraction Discipline](./20260817_121234_pack_maturity_extraction_discipline.md)
+- **2026-08-17 12:05** — [Canonical Profile Driver E2e](./20260817_120500_canonical_profile_driver_e2e.md)
+- **2026-08-17 12:01** — [Source Setup Runbook As Is To Be](./20260817_120121_source_setup_runbook_as_is_to_be.md)
+- **2026-08-17 11:58** — [Source To Ledger First Scope Revision](./20260817_115848_source_to_ledger_first_scope_revision.md)
+- **2026-08-17 11:28** — [Ledger Setup Migration Plan Brief](./20260817_112831_ledger_setup_migration_plan_brief.md)
 - **2026-08-17 03:14** — [Ledgerframe Chain Mapper Phase3](./20260817_031457_ledgerframe_chain_mapper_phase3.md)
 - **2026-08-17 02:27** — [External Void Directory Watch](./20260817_022726_external_void_directory_watch.md)
 - **2026-08-17 02:03** — [Canonical Profile Readiness Boundary](./20260817_020357_canonical_profile_readiness_boundary.md)
