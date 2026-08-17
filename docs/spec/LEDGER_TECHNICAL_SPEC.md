@@ -1,7 +1,7 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Profile 2단계 승인 · LedgerFrame Chain mapper 3단계 `AWAITING_REVIEW` / `NOT_APPROVED` — 코드 대조 | **Owner:** Server / Ledger
-> **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(Pack/Claim/Role/Binding Profile 계약·검증·직렬화) · **`server/ledger/source_profile_builtins.py`**(Pack·Claim 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/translator_pattern.py`**(복잡한 소스의 공통 수명주기) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Ledger v2 2단계 malformed-safe 전수 교차검증 `IN_REVIEW` / `NOT_APPROVED`; 현행 실행 경로 `FROZEN_FOR_REDESIGN` — 코드 대조 | **Owner:** Server / Ledger
+> **Source-of-truth:** `server/ledger/schema.py`(DDL) · **`server/ledger/setup_bundle.py`**(v2 authoring schema/manifest loader — runtime 미연결) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(현행 동결 Profile 계약) · **`server/ledger/source_profile_builtins.py`**(현행 동결 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/translator_pattern.py`**(복잡한 소스의 공통 수명주기) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
 > **이번 라운드 (2026-08-15 3차 · 넷째 문법 `declared` + 뿌리 키 롤업 — R-2026-08-15-N ② · R-2026-08-15-O · 갱신 트리거 ②③⑥⑦)**
 > **코드 대조 기준 리비전은 `8c236bc`다.**
@@ -833,7 +833,16 @@ UI, Trace, DB 연결, migration, write가 없다. 실행은 다음 3단계 절�
 
 ### 3.11 LedgerFrame Chain mapper 3단계 (2026-08-17)
 
-> **status:** `AWAITING_REVIEW` · **approval:** `NOT_APPROVED`
+> **status:** `FROZEN_FOR_REDESIGN` · **approval:** `NOT_APPROVED`
+
+이 절의 추가 구현은 중지됐다. 다음 실행 계약은
+[`ledger_v2_redesign_plan_20260817`](../../ledger_v2_redesign_plan_20260817/README.md)의
+단계별 승인 뒤에만 변경한다.
+
+v2 목표는 현행 `declared_lookup`/Position 계약을 계승하지 않는다. cursor 뒤 pandas source
+preparer가 verified virtual-join rule ID를 상속하고, 완성 EventFrame 이후 compiler는 DB를
+읽지 않는다. Registry 등록 데이터는 `server/config/ontology/` config에서만 온다. 목표 계약은
+[TARGET_ARCHITECTURE_AND_SSOT](../../ledger_v2_redesign_plan_20260817/TARGET_ARCHITECTURE_AND_SSOT.md)가 정본이다.
 
 정확한 열·실행·실패·마이그레이션 계약은
 [LEDGER_FRAME_CHAIN_MAPPER](../architecture/LEDGER_FRAME_CHAIN_MAPPER.md)가 소유한다.
@@ -854,10 +863,32 @@ canonical Profile mapper는 승인된 Profile의 `column|constant|declared_looku
 lookup은 `resolve_many` 등록 adapter만 사용하며 0건·다건을 각각 `lookup_not_found`와
 `lookup_not_unique`로 거절한다. Profile 승인 metadata는 Claim epistemic class를 바꾸지 않는다.
 
+기존 source driver가 canonical 실행을 택하려면
+`chain_mapper={mapper_id:"canonical-profile",version:1,profile_id:<id>}`를 선언한다.
+`validate_profile_section()` 결과의 `<id>`와 driver source가 config load에서 직접 연결되며,
+Profile source 불일치와 미등록 ID는 실행 전에 거절된다. 기존 cursor version에는 mapper
+fingerprint뿐 아니라 Profile ID와 결정적 serialization hash도 포함한다.
+
+driver가 mapper에 넘기는 `source_event`는 선언된 `row_identity` 집합을 정렬해 계산하므로
+행 순서와 pandas index에 독립적이다. dry-run과 execute가 동일한 Profile, lookup registry,
+event context 생성 경로를 사용한다.
+
+`destination_inventory` adapter는 표준 `row_id/business_key_val/container` 표를 별도
+read-only transaction에서 최대 1000 key씩 읽는다. 다건 판정을 잃지 않도록 key당 최대
+두 결과를 보존하며 실제 lookup 실행·반환 형상 검증만 담당한다. migration이나 write는 없다.
+
+일반 `run_registered_mapper()`는 `legacy_atom`을 `legacy_atom_forbidden`으로 거절한다.
+허용 문은 명시적 과거 데이터 import 함수 하나이며, 그 함수는 저장·gate·cursor를 소유하지
+않는다.
+
 첫 실제 전환 source는 `lot_event`다. 기존 Ledger reader와 `event_time` cursor는 그대로이고
 `lot-event@1` Python mapper가 DataFrame을 LedgerFrame으로 변환한다. 이후 gate와
 `LedgerStore.write_batch`는 기존 경로다. mapper/schema/gate 실패는 현재 처리 단위를
 저장하지 않고 cursor도 이동하지 않는다. 미전환 source는 기존 translator를 유지한다.
+
+격리 PostgreSQL 수락 검사는 canonical Profile의 dry-run → 동일 mapper 후보 → gate →
+`LedgerStore` → 기존 cursor를 한 경로에서 통과시킨다. nested Binding의 pending/rejected와
+lookup 0건/다건은 dry-run/execute 모두 같은 오류를 내며 Atom 0·cursor 미이동이어야 한다.
 
 ---
 

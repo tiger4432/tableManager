@@ -1,13 +1,20 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **626개** 이력. (거버넌스 규칙 #4)
+> 총 **633개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-17 15:28** — [Ledger V2 Stage2 Reapproval Validation](./20260817_152801_ledger_v2_stage2_reapproval_validation.md)
+- **2026-08-17 14:47** — [Ledger V2 Stage2 Setup Bundle](./20260817_144731_ledger_v2_stage2_setup_bundle.md)
+- **2026-08-17 14:18** — [Ledger V2 Phase1 Inventory Baseline](./20260817_141859_ledger_v2_phase1_inventory_baseline.md)
+- **2026-08-17 13:47** — [Ledger V2 Mapper Roleframe Pattern](./20260817_134709_ledger_v2_mapper_roleframe_pattern.md)
+- **2026-08-17 13:39** — [Ledger V2 Lookup Removed And Config Canon](./20260817_133932_ledger_v2_lookup_removed_and_config_canon.md)
+- **2026-08-17 13:15** — [Ledger V2 Position Removed](./20260817_131528_ledger_v2_position_removed.md)
+- **2026-08-17 13:05** — [Ledger V2 Redesign Plan](./20260817_130552_ledger_v2_redesign_plan.md)
 - **2026-08-17 12:28** — [Ledger Primer Row Journey](./20260817_122838_ledger_primer_row_journey.md)
 - **2026-08-17 12:18** — [Mapper Standard Template Method](./20260817_121844_mapper_standard_template_method.md)
 - **2026-08-17 12:14** — [Translation Unit Molecule Taxonomy](./20260817_121419_translation_unit_molecule_taxonomy.md)
