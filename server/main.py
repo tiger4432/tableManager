@@ -186,6 +186,12 @@ app.add_middleware(
 import ledger_trace_router  # noqa: E402
 app.include_router(ledger_trace_router.router)
 
+# --- Ledger v2 ontology config explorer (admin read/draft surface) --------
+# Registered above the SPA catch-all; write endpoints carry the strict admin gate inside
+# their router and never expose a caller-supplied filesystem path.
+import ontology_config_explorer_router  # noqa: E402
+app.include_router(ontology_config_explorer_router.router)
+
 # --- Health endpoint -------------------------------------------------------
 # Registered HERE, far above the SPA catch-all `@app.get("/{file_name:path}")` at
 # the bottom of this file. That ordering is the whole point: FastAPI matches in

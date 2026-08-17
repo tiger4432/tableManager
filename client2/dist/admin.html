@@ -1103,14 +1103,14 @@
       pointer-events: none !important;
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-D5R5oVul.js"></script>
+  <script type="module" crossorigin src="/assets/admin-D2nzGYAI.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
   <link rel="modulepreload" crossorigin href="/assets/ontology_structure_view-oe81kcPZ.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CXYS4egR.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-BNln0JiC.js">
   <link rel="stylesheet" crossorigin href="/assets/ontology_structure_view-xGvHhDSm.css">
   <link rel="stylesheet" crossorigin href="/assets/config-ZCVo3oho.css">
-  <link rel="stylesheet" crossorigin href="/assets/admin-B9I9KcKS.css">
+  <link rel="stylesheet" crossorigin href="/assets/admin-DSZxibA0.css">
 </head>
 <body>
   <header>
@@ -1166,6 +1166,7 @@
           <button id="tab-autoupdate-btn" class="tab-btn">Auto Update</button>
           <button id="tab-enrichment-btn" class="tab-btn">Enrichment</button>
           <button id="tab-ledger-btn" class="tab-btn">원장 선언</button>
+          <button id="tab-ontology-btn" class="tab-btn">Ontology Explorer</button>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <span id="last-refreshed" style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);"></span>
@@ -1523,6 +1524,12 @@
              주소 체계다 — 지도의 앵커는 `?view=structure&layer=&edge=`로 남고
              admin의 라우터가 그것을 배운다. -->
         <div id="ledger-tab-wrapper" style="flex: 1; overflow: auto; display: none;"></div>
+
+        <!-- Ledger V2 compiled snapshot을 읽는 구성 탐색기. DOM/상태/편집 흐름은
+             ontology_explorer 모듈이 전담하고 admin은 인증 fetch와 탭 자리만 제공한다. -->
+        <div id="ontology-tab-wrapper" style="flex: 1; min-height: 0; overflow: hidden; display: none;">
+          <div id="ontology-explorer-root"></div>
+        </div>
       </div>
 
       <!-- Left Panel Footer: Pagination Controls (File 로그 / Chain 실패 목록 전용) -->

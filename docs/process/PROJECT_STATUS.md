@@ -1,5 +1,22 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧭 2026-08-18 현재 — Ontology Config Explorer 구현 완료·독립 Audit 대기
+>
+> **현재 단계/상태:** `ONTOLOGY_CONFIG_EXPLORER_IN_REVIEW / NOT_APPROVED`.
+>
+> **구현:** Ledger V2 compiled snapshot을 Registry identity로 인덱싱해 Source/Profile/Mapping/
+> Pack/Claim/Vocabulary/Entity/Preparer/Mapper/VerifiedJoin/Table을 검색·참조 이동·Used by·독립
+> flow로 보여 준다. active/draft/selection/navigation을 분리하고, 초안은 저장→동일 compiler
+> preview→revision 검토→base/hash CAS 활성화만 허용한다.
+>
+> **검증:** 기능 테스트 14건, UI 상태 계약 17단언, 10,000-node payload 상한, 실제 active
+> snapshot 24개와 1920×1080/700px/320px 브라우저를 확인했다. Ledger V2 직접 영향군은
+> `411 passed, 1 skipped`, client2는 7 contracts와 gated harness 전체가 통과했다.
+> full server suite와 PostgreSQL 전용 테스트는 사용자 지시에 따라 실행하지 않는다.
+>
+> **다음 관문:** exact commit을 지정 Audit 세션에 제출한다. APPROVE 전 제품 승인으로
+> 표현하지 않는다. 운영 config/DB/reset/replay/legacy 삭제는 수행하지 않았다.
+
 > ## 🧭 2026-08-18 현재 — Ledger V2 1~7단계 승인·main 병합 완료
 >
 > **현재 단계/상태:** `COMPLETE / APPROVED`.

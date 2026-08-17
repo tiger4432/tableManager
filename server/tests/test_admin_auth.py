@@ -73,6 +73,14 @@ STRICT_ADMIN_ROUTES = {
     ("POST", "/admin/ledger/save"),
     # Same file, same reach: retirement changes what the gate will emit.
     ("POST", "/admin/ledger/vocabulary/retire"),
+    # Ledger V2 ontology drafts write durable review state, and activation can
+    # atomically replace the manifest-owned live declaration. Keep the whole
+    # lifecycle strict so an open-token deployment remains read-only.
+    ("POST", "/admin/ontology-explorer/drafts"),
+    ("PUT", "/admin/ontology-explorer/drafts/{draft_id}"),
+    ("POST", "/admin/ontology-explorer/drafts/{draft_id}/review"),
+    ("POST", "/admin/ontology-explorer/drafts/{draft_id}/activate"),
+    ("DELETE", "/admin/ontology-explorer/drafts/{draft_id}"),
 }
 
 

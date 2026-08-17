@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟠 부분 최신 (§1~§5·§6.5 Living · **§6.1~§6.4는 🗄️ 대체됨 — R-리라이트**) | **Last-verified:** 2026-08-15 R&D Console + Ledger Graph
+> **Status:** 🟠 부분 최신 (§1~§5·§6.5 Living · **§6.1~§6.4는 🗄️ 대체됨 — R-리라이트**) | **Last-verified:** 2026-08-18 Ontology Config Explorer
 >
 > 🔴 **[R-리라이트 · 소유자 최종] 콘솔 클라이언트 화면은 내일 «전면 재작성»됩니다** — §6 배너가 「무엇이 살아남고 무엇이 계승되지 않는가」의 정본입니다. **서버 계약은 전부 보존**([backend §2](./backend.md)), **화면은 계승하지 않습니다.** 이 문서의 §6 서술을 새 화면의 설계 근거로 쓰지 마십시오.
 > ⚰️ **[`2ec78b9` · R-2026-08-14-H] 구 지식그래프 뷰어(`graph.html`·`trace.html`)는 은퇴**했습니다 — §6.0 신설, 진입점 표·§7 갱신. nav 링크 삭제, 행 선택 버튼은 **활성 판정 라우트가 410이 되어 클라 변경 0줄로 자기 치유**.
@@ -464,6 +464,7 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 | **Chain** | Rules 현황 + **Chain 실패(Outbox Transactions)** 재시도 + Mappers(행별 🛠️ Edit) + 실패 진단→맵퍼 편집 딥링크 |
 | **Auto Update** | 상태/Run Now + **산출물 인제션 실패 연계**(auto-update 대상 ∩ 파일 실패 교집합) |
 | **Enrichment** | 규칙 표 + 결손 카운트 — 규칙 편집은 read-only 안내(CRUD API는 백로그). ⚠️ **[2026-08-11 `5116f67`] Queue 딥링크(`enrichment.html?rule=`) 4건 삭제** — 대상 페이지 자체가 없어졌다. 규칙 포커스는 행 클릭 핸들러로 생존하지만, **특정 규칙의 결손 입력 워크리스트를 여는 경로는 대체되지 않았다** |
+| **Ontology Explorer** | `#ontology` 전폭 탭. Ledger V2 compiled snapshot의 모든 Registry 정의를 서버 검색하고, 독립 참조 flow·Used by·정확한 JSON pointer·kind별 integrity를 같은 context token으로 표시한다. 초안은 active 배지와 분리된 저장/preview/review/CAS 활성화 흐름이다. |
 
 - **핵심가치 #1 계기 두 줄 (Overview 상단, `renderRecorrection` + `renderEffort`, 갱신은 `refreshCoreValueLines` 하나)**: 두 줄은 **같은 `/dashboard/summary` 응답 한 번**에서 나온다.
   - **재교정률**: 사람이 같은 셀을 두 번 이상 고친 비율 — **보조 계기**([backend](./backend.md#재교정률-dashboardsummary--recorrection) · 2026-07-29 강등).
@@ -492,8 +493,12 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
     이 문구들은 **서버가 만들 수 없는 유일한 문장**이라(라우트가 없는 서버는 「나에겐 그 라우트가 없다」를 답할 수 없다) 위의 🔴 규율의 **유일한 예외**이고, 그래서 클라가 지어내는 대신 **고정 `CHROME` 표**에 chrome으로 들어가 계약 하네스의 채점을 그대로 받는다. 분기는 `fetchFailureLine(failure, fallback)` **하나**뿐 — 드라이런 버튼도 같은 함수를 쓴다(같은 커밋에서 난 라우트라 구 서버에선 똑같이 404고, 같은 포트라 같은 프록시가 답한다).
   - **⏱ 실패는 스로틀 시각을 찍지 않는다 (2026-07-31).** 1분 스로틀은 **성공적인** 폴링이 화면을 계속 다시 그리는 것을 막으려고 있는 것이고, 실패한 시도는 그 일을 하지 않았다. 시각을 진입부에서 찍으면 **실패가 침묵 1분을 사 버려서**, 원인이 해소된 뒤에도 화면이 옛 문장을 그대로 들고 있다 — 운영자가 문장이 시킨 대로 토큰을 넣고도 「토큰은 이미 넣었는데」가 되는 경로다(실제 신고). 그래서 시각은 **읽기에 성공한 뒤**에만 찍는다(응답이 직전과 같아 다시 그리지 않는 경로도 성공이므로 찍는다 — 안 찍으면 정상 상태에서 요청이 2배가 된다). 여기에 더해 **`adminTokenGeneration`이 움직였으면**(= 토큰이 새로 들어왔으면) 창이 안 지났어도 다음 갱신을 통과시킨다 — 타이머가 아니라 **원인이 바뀌었을 때** 한 번 다시 읽는 것이고, 새 폴링은 만들지 않는다.
 - **Code Editor는 독립 탭 폐지** → 편집 딥링크 공용 뷰(Monaco cdnjs, 파일 피커, dirty 가드). `#editor=<encoded path>`로 직접 오픈 가능.
-- **해시 라우터**: `#overview/#file/#chain/#autoupdate/#enrichment` + 구 탭 별칭 호환(`#outbox→Chain`, `#workspace→File`, `#mapper→Chain`).
-- 신규 서버 API 0건 — 기존 `/admin/*`·`/enrichment/rules`만 소비. 함수 목록: [CODE_MAP §7](./CODE_MAP.md#7-client2src--웹-클라이언트).
+- **해시 라우터**: `#overview/#file/#chain/#autoupdate/#enrichment/#ledger/#ontology` + 구 탭 별칭 호환(`#outbox→Chain`, `#workspace→File`, `#mapper→Chain`).
+- **Ontology Explorer 상태 경계:** `ontology_explorer_store.js` reducer 하나가 active snapshot,
+  view context, selection, navigation, draft를 분리한다. 각 응답은 context token 하나뿐이고
+  request generation이 지난 응답은 폐기한다. `ontology_explorer_view.js`는 DOM과 ARIA만,
+  `ontology_explorer.js`는 API·stale guard·초안 lifecycle만 소유한다. API는 [backend §2](./backend.md),
+  상세 근거는 [Explorer acceptance](../../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md).
 - **🔒 어드민 토큰 (2026-07-27)**: 서버가 `/admin/*`을 공유 토큰으로 잠근다([backend §API](./backend.md)). 클라 측 구현은 `admin.js`의 `adminFetch()` 하나뿐 — **로그인 화면도, 새 탭·모드·설정 패널도 없다.** `localStorage['assy.adminToken']`에 보관하고 `X-Admin-Token` 헤더로 전송한다. 서버에 토큰이 미설정이면 게이트가 열려 있어 프롬프트 자체가 뜨지 않는다. 판정 규칙 4가지가 **모두 필요**하다(각각 실제 오작동을 막는다):
   1. **상태코드가 아니라 `WWW-Authenticate: X-Admin-Token` 헤더로 판정한다.** `_resolve_admin_script_path`가 격리 사유로 내는 403이 있어, 상태코드만 보면 그것을 "토큰이 틀렸다"로 오해해 **정상 토큰을 사용자 입력으로 덮어썼다.**
   2. **토큰 세대 카운터** — 프롬프트 도중 이미 교체된 토큰에 대해 **먼저 날아간 응답**이 뒤늦게 도착하면 조용히 재시도한다. 이게 없으면 "동시 7건 → 프롬프트 1회"는 타이밍 운이고, 두 번째 모달이 **올바른 토큰을 두고** "거부되었습니다"라고 말한다.

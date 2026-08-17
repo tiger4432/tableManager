@@ -1,0 +1,630 @@
+"""Immutable read model for the Ledger v2 ontology configuration explorer.
+
+The explorer never guesses links from ``@1``-looking strings.  Every resolved edge is
+checked against the registries in one compiled :class:`LedgerSetupSnapshot`, and every
+edge keeps the JSON pointer at which the reference was declared.
+"""
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
+from hashlib import sha256
+import json
+from types import MappingProxyType
+from typing import Any, Iterable, Mapping, Sequence
+
+
+KIND_ORDER = {
+    "source": 0,
+    "profile": 1,
+    "mapping": 2,
+    "pack": 3,
+    "claim": 4,
+    "predicate": 5,
+    "entity": 6,
+    "preparer": 7,
+    "mapper": 8,
+    "verified_join": 9,
+    "table": 10,
+}
+
+
+class ConfigExplorerError(ValueError):
+    def __init__(self, code: str, path: str, message: str):
+        self.code = code
+        self.path = path
+        self.message = message
+        super().__init__(f"{path}: {message}")
+
+    def to_mapping(self) -> dict[str, str]:
+        return {"code": self.code, "path": self.path, "message": self.message}
+
+
+def node_key(kind: str, canonical_id: str) -> str:
+    return f"{kind}|{canonical_id}"
+
+
+def pointer_escape(value: str) -> str:
+    return str(value).replace("~", "~0").replace("/", "~1")
+
+
+def pointer(*parts: Any) -> str:
+    return "/" + "/".join(pointer_escape(str(part)) for part in parts)
+
+
+def _plain(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _plain(value[key]) for key in sorted(value, key=str)}
+    if isinstance(value, tuple):
+        return [_plain(item) for item in value]
+    if isinstance(value, list):
+        return [_plain(item) for item in value]
+    return value
+
+
+def _hash(value: Any) -> str:
+    material = json.dumps(
+        _plain(value), ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False,
+    )
+    return sha256(material.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class ExplorerNode:
+    key: str
+    canonical_id: str
+    kind: str
+    version: int | None
+    config_file: str
+    json_pointer: str
+    config_path: str
+    raw: Any
+    compiled: Any
+    definition_hash: str
+    bundle_path: tuple[Any, ...]
+
+    def to_mapping(self, *, include_definition: bool = True) -> dict[str, Any]:
+        result = {
+            "key": self.key,
+            "canonical_id": self.canonical_id,
+            "kind": self.kind,
+            "version": self.version,
+            "config_file": self.config_file,
+            "json_pointer": self.json_pointer,
+            "config_path": self.config_path,
+            "definition_hash": self.definition_hash,
+            "compile_status": "valid",
+        }
+        if include_definition:
+            result["raw"] = _plain(self.raw)
+            result["compiled"] = _plain(self.compiled)
+        return result
+
+
+@dataclass(frozen=True)
+class ReferenceEdge:
+    edge_id: str
+    from_key: str
+    to_key: str | None
+    target_id: str
+    expected_kind: str
+    reference_kind: str
+    json_pointer: str
+    status: str
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "edge_id": self.edge_id,
+            "from_key": self.from_key,
+            "to_key": self.to_key,
+            "target_id": self.target_id,
+            "expected_kind": self.expected_kind,
+            "reference_kind": self.reference_kind,
+            "json_pointer": self.json_pointer,
+            "status": self.status,
+        }
+
+
+@dataclass(frozen=True)
+class ExplorerIndex:
+    snapshot_hash: str
+    bundle_hash: str
+    nodes: Mapping[str, ExplorerNode]
+    edges: tuple[ReferenceEdge, ...]
+    outbound: Mapping[str, tuple[ReferenceEdge, ...]]
+    inbound: Mapping[str, tuple[ReferenceEdge, ...]]
+
+    def node(self, key: str) -> ExplorerNode:
+        try:
+            return self.nodes[key]
+        except KeyError as exc:
+            raise ConfigExplorerError(
+                "unknown_selection", "selection",
+                f"selection {key!r} does not exist in this snapshot",
+            ) from exc
+
+
+class _IndexBuilder:
+    def __init__(self, snapshot_hash: str, bundle_hash: str):
+        self.snapshot_hash = snapshot_hash
+        self.bundle_hash = bundle_hash
+        self.nodes: dict[str, ExplorerNode] = {}
+        self.edge_specs: list[tuple[str, str, str, str, str]] = []
+
+    def add_node(
+        self,
+        kind: str,
+        canonical_id: str,
+        raw: Any,
+        compiled: Any,
+        bundle_path: Sequence[Any],
+        *,
+        config_file: str,
+        json_pointer: str,
+        version: int | None = None,
+    ) -> str:
+        key = node_key(kind, canonical_id)
+        if key in self.nodes:
+            raise ConfigExplorerError(
+                "duplicate_registry_identity", json_pointer,
+                f"duplicate explorer identity {key!r}",
+            )
+        self.nodes[key] = ExplorerNode(
+            key=key,
+            canonical_id=canonical_id,
+            kind=kind,
+            version=version,
+            config_file=config_file,
+            json_pointer=json_pointer,
+            config_path=f"{config_file}#{json_pointer}",
+            raw=_plain(raw),
+            compiled=_plain(compiled),
+            definition_hash=_hash(compiled),
+            bundle_path=tuple(bundle_path),
+        )
+        return key
+
+    def add_edge(
+        self,
+        from_key: str,
+        target_id: str,
+        expected_kind: str,
+        reference_kind: str,
+        json_pointer: str,
+    ) -> None:
+        self.edge_specs.append(
+            (from_key, str(target_id), expected_kind, reference_kind, json_pointer))
+
+    def finish(self) -> ExplorerIndex:
+        canonical_by_kind = {
+            (node.kind, node.canonical_id): node.key for node in self.nodes.values()
+        }
+        keys_by_canonical: dict[str, list[str]] = {}
+        for node in self.nodes.values():
+            keys_by_canonical.setdefault(node.canonical_id, []).append(node.key)
+
+        edges: list[ReferenceEdge] = []
+        seen: set[tuple[str, str | None, str, str]] = set()
+        for from_key, target_id, expected_kind, ref_kind, ref_pointer in sorted(
+            self.edge_specs,
+            key=lambda item: (item[0], item[4], item[3], item[1]),
+        ):
+            to_key = canonical_by_kind.get((expected_kind, target_id))
+            if to_key is not None:
+                status = "resolved"
+            elif target_id in keys_by_canonical:
+                status = "wrong_kind"
+            else:
+                status = "unresolved"
+            identity = (from_key, to_key, ref_kind, ref_pointer)
+            if identity in seen:
+                raise ConfigExplorerError(
+                    "duplicate_reference_edge", ref_pointer,
+                    "the same reference edge was extracted more than once",
+                )
+            seen.add(identity)
+            edge_id = sha256(json.dumps(
+                [from_key, to_key, target_id, expected_kind, ref_kind, ref_pointer],
+                ensure_ascii=False, separators=(",", ":"),
+            ).encode("utf-8")).hexdigest()[:20]
+            edges.append(ReferenceEdge(
+                edge_id=edge_id,
+                from_key=from_key,
+                to_key=to_key,
+                target_id=target_id,
+                expected_kind=expected_kind,
+                reference_kind=ref_kind,
+                json_pointer=ref_pointer,
+                status=status,
+            ))
+
+        outbound: dict[str, list[ReferenceEdge]] = {key: [] for key in self.nodes}
+        inbound: dict[str, list[ReferenceEdge]] = {key: [] for key in self.nodes}
+        for edge in edges:
+            outbound[edge.from_key].append(edge)
+            if edge.to_key is not None:
+                inbound[edge.to_key].append(edge)
+        return ExplorerIndex(
+            snapshot_hash=self.snapshot_hash,
+            bundle_hash=self.bundle_hash,
+            nodes=MappingProxyType(dict(sorted(self.nodes.items()))),
+            edges=tuple(edges),
+            outbound=MappingProxyType({
+                key: tuple(value) for key, value in sorted(outbound.items())
+            }),
+            inbound=MappingProxyType({
+                key: tuple(value) for key, value in sorted(inbound.items())
+            }),
+        )
+
+
+def build_explorer_index(setup: Any) -> ExplorerIndex:
+    """Build one deterministic graph from one compiled cutover setup."""
+    snapshot = setup.snapshot
+    bundle = setup.bundle.to_mapping()
+    builder = _IndexBuilder(snapshot.snapshot_sha256, snapshot.bundle_sha256)
+    registries = snapshot.registries
+    ledger_file = "ledger_config.json"
+
+    for predicate_id, raw in sorted(bundle["vocabulary"].items()):
+        compiled = registries["vocabulary"].to_mapping()[predicate_id]
+        p = pointer("vocabulary", predicate_id)
+        key = builder.add_node(
+            "predicate", predicate_id, raw, compiled,
+            ("vocabulary", predicate_id), config_file=ledger_file,
+            json_pointer=p, version=compiled.get("version"),
+        )
+        for index, entity_id in enumerate(raw.get("subjects", [])):
+            builder.add_edge(
+                key, entity_id, "entity", "subject_entity",
+                pointer("vocabulary", predicate_id, "subjects", index),
+            )
+        obj = raw.get("object") or {}
+        for index, entity_id in enumerate(obj.get("types", [])):
+            builder.add_edge(
+                key, entity_id, "entity", "object_entity",
+                pointer("vocabulary", predicate_id, "object", "types", index),
+            )
+
+    for entity_id, raw in sorted(bundle["entities"].items()):
+        compiled = registries["entities"].to_mapping()[entity_id]
+        builder.add_node(
+            "entity", entity_id, raw, compiled, ("entities", entity_id),
+            config_file=ledger_file, json_pointer=pointer("entities", entity_id),
+            version=compiled.get("version"),
+        )
+
+    pack_compiled = registries["packs"].to_mapping()
+    for pack_id, raw in sorted(bundle["packs"].items()):
+        compiled = pack_compiled[pack_id]
+        pack_key = builder.add_node(
+            "pack", pack_id, raw, compiled, ("packs", pack_id),
+            config_file=ledger_file, json_pointer=pointer("packs", pack_id),
+            version=compiled.get("version"),
+        )
+        for claim_id, claim in sorted(raw.get("claims", {}).items()):
+            claim_ref = f"{pack_id}/{claim_id}"
+            claim_pointer = pointer("packs", pack_id, "claims", claim_id)
+            claim_compiled = compiled["claims"][claim_id]
+            claim_key = builder.add_node(
+                "claim", claim_ref, claim, claim_compiled,
+                ("packs", pack_id, "claims", claim_id),
+                config_file=ledger_file, json_pointer=claim_pointer,
+            )
+            builder.add_edge(
+                pack_key, claim_ref, "claim", "contains_claim", claim_pointer)
+            predicate_id = claim.get("emit", {}).get("predicate")
+            if predicate_id is not None:
+                builder.add_edge(
+                    claim_key, predicate_id, "predicate", "emits_predicate",
+                    pointer("packs", pack_id, "claims", claim_id, "emit", "predicate"),
+                )
+
+    preparer_compiled = registries["source_preparers"].to_mapping()
+    for preparer_id, raw in sorted(bundle["source_preparers"].items()):
+        compiled = preparer_compiled[preparer_id]
+        builder.add_node(
+            "preparer", preparer_id, raw, compiled,
+            ("source_preparers", preparer_id), config_file=ledger_file,
+            json_pointer=pointer("source_preparers", preparer_id),
+            version=compiled.get("version"),
+        )
+
+    mapper_compiled = registries["mappers"].to_mapping()
+    for mapper_id, raw in sorted(bundle["mappers"].items()):
+        compiled = mapper_compiled[mapper_id]
+        mapper_key = builder.add_node(
+            "mapper", mapper_id, raw, compiled, ("mappers", mapper_id),
+            config_file=ledger_file, json_pointer=pointer("mappers", mapper_id),
+            version=compiled.get("version"),
+        )
+        for index, claim_ref in enumerate(raw.get("emits", [])):
+            builder.add_edge(
+                mapper_key, claim_ref, "claim", "mapper_emits",
+                pointer("mappers", mapper_id, "emits", index),
+            )
+
+    profile_compiled = registries["profiles"].to_mapping()
+    for profile_id, raw in sorted(bundle["profiles"].items()):
+        compiled = profile_compiled[profile_id]
+        profile_key = builder.add_node(
+            "profile", profile_id, raw, compiled, ("profiles", profile_id),
+            config_file=ledger_file, json_pointer=pointer("profiles", profile_id),
+            version=compiled.get("version"),
+        )
+        builder.add_edge(
+            profile_key, raw.get("source", ""), "source", "profile_source",
+            pointer("profiles", profile_id, "source"),
+        )
+        for index, pack_id in enumerate(raw.get("packs", [])):
+            builder.add_edge(
+                profile_key, pack_id, "pack", "profile_pack",
+                pointer("profiles", profile_id, "packs", index),
+            )
+        for index, mapping in enumerate(raw.get("mappings", [])):
+            mapping_id = str(mapping.get("mapping_id", index))
+            mapping_ref = f"{profile_id}#mapping:{mapping_id}"
+            mapping_pointer = pointer("profiles", profile_id, "mappings", index)
+            mapping_key = builder.add_node(
+                "mapping", mapping_ref, mapping,
+                compiled["mappings"][index],
+                ("profiles", profile_id, "mappings", index),
+                config_file=ledger_file, json_pointer=mapping_pointer,
+            )
+            builder.add_edge(
+                profile_key, mapping_ref, "mapping", "contains_mapping",
+                mapping_pointer,
+            )
+            builder.add_edge(
+                mapping_key, mapping.get("use", ""), "claim", "mapping_claim",
+                pointer("profiles", profile_id, "mappings", index, "use"),
+            )
+            for binding_pointer, entity_id in _entity_binding_refs(
+                mapping.get("bind"),
+                ("profiles", profile_id, "mappings", index, "bind"),
+            ):
+                builder.add_edge(
+                    mapping_key, entity_id, "entity", "binding_entity",
+                    binding_pointer,
+                )
+
+    table_file = "catalog/tables.json"
+    for table_id, raw in sorted(bundle["tables"].items()):
+        builder.add_node(
+            "table", table_id, raw, raw, ("tables", table_id),
+            config_file=table_file, json_pointer=pointer("tables", table_id),
+        )
+
+    join_compiled = registries["verified_joins"].to_mapping()
+    join_file = "catalog/virtual_joins.json"
+    for join_id, raw in sorted(bundle["virtual_joins"].items()):
+        compiled = join_compiled.get(join_id, raw)
+        builder.add_node(
+            "verified_join", join_id, raw, compiled,
+            ("virtual_joins", join_id), config_file=join_file,
+            json_pointer=pointer("virtual_joins", join_id),
+        )
+
+    source_compiled = registries["sources"].to_mapping()
+    for source_id, raw in sorted(bundle["sources"].items()):
+        compiled = source_compiled[source_id]
+        source_key = builder.add_node(
+            "source", source_id, raw, compiled, ("sources", source_id),
+            config_file=ledger_file, json_pointer=pointer("sources", source_id),
+        )
+        builder.add_edge(
+            source_key, raw.get("relation", ""), "table", "source_relation",
+            pointer("sources", source_id, "relation"),
+        )
+        builder.add_edge(
+            source_key, raw.get("profile_id", ""), "profile", "source_profile",
+            pointer("sources", source_id, "profile_id"),
+        )
+        driver = raw.get("driver", {})
+        builder.add_edge(
+            source_key, driver.get("mapper_id", ""), "mapper", "source_mapper",
+            pointer("sources", source_id, "driver", "mapper_id"),
+        )
+        preparation = driver.get("preparation", {})
+        builder.add_edge(
+            source_key, preparation.get("preparer_id", ""), "preparer",
+            "source_preparer",
+            pointer("sources", source_id, "driver", "preparation", "preparer_id"),
+        )
+        for index, join_id in enumerate(
+            preparation.get("inherit_virtual_join_rules", []),
+        ):
+            builder.add_edge(
+                source_key, join_id, "verified_join", "source_verified_join",
+                pointer(
+                    "sources", source_id, "driver", "preparation",
+                    "inherit_virtual_join_rules", index,
+                ),
+            )
+    return builder.finish()
+
+
+def _entity_binding_refs(value: Any, base: Sequence[Any]) -> Iterable[tuple[str, str]]:
+    if isinstance(value, Mapping):
+        entity_type = value.get("entity_type")
+        if isinstance(entity_type, str):
+            yield pointer(*base, "entity_type"), entity_type
+        for key in sorted(value, key=str):
+            yield from _entity_binding_refs(value[key], (*base, key))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _entity_binding_refs(item, (*base, index))
+
+
+def definition_diff(
+    active: ExplorerIndex,
+    preview: ExplorerIndex,
+) -> Mapping[str, str]:
+    result: dict[str, str] = {}
+    all_keys = sorted(set(active.nodes) | set(preview.nodes))
+    for key in all_keys:
+        if key not in active.nodes:
+            result[key] = "added"
+        elif key not in preview.nodes:
+            result[key] = "removed"
+        elif active.nodes[key].definition_hash != preview.nodes[key].definition_hash:
+            result[key] = "modified"
+        else:
+            result[key] = "unchanged"
+    return MappingProxyType(result)
+
+
+def _path_candidates(index: ExplorerIndex, selection: str, limit: int = 12
+                     ) -> list[dict[str, Any]]:
+    """Return separate inbound paths; never merge branches into a fictional chain."""
+    queue = deque([((selection,), tuple())])
+    paths: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
+    while queue and len(paths) < limit:
+        nodes, edge_ids = queue.popleft()
+        current = nodes[0]
+        # Only `limit` paths can be returned. Enqueuing an unbounded high-degree inbound
+        # fan-in would inflate memory even though every item after the limit is discarded.
+        inbound = [
+            edge for edge in index.inbound[current] if edge.status == "resolved"
+        ][:limit]
+        if not inbound or len(nodes) >= 7:
+            paths.append((nodes, edge_ids))
+            continue
+        expanded = False
+        for edge in inbound:
+            if edge.from_key in nodes:
+                continue
+            queue.append(((edge.from_key, *nodes), (edge.edge_id, *edge_ids)))
+            expanded = True
+        if not expanded:
+            paths.append((nodes, edge_ids))
+    if not paths:
+        paths = [((selection,), tuple())]
+    return [
+        {"path_id": _hash([list(nodes), list(edges)])[:16],
+         "node_keys": list(nodes), "edge_ids": list(edges)}
+        for nodes, edges in paths
+    ]
+
+
+def explorer_view(
+    index: ExplorerIndex,
+    *,
+    context_token: str,
+    selection: str | None = None,
+    query: str = "",
+    page: int = 1,
+    limit: int = 100,
+    reference_limit: int = 200,
+    diff: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    if page < 1:
+        raise ConfigExplorerError("invalid_page", "page", "must be at least 1")
+    if limit < 1 or limit > 500:
+        raise ConfigExplorerError("invalid_limit", "limit", "must be between 1 and 500")
+    if reference_limit < 1 or reference_limit > 500:
+        raise ConfigExplorerError(
+            "invalid_reference_limit", "reference_limit", "must be between 1 and 500")
+    ordered = sorted(
+        index.nodes.values(),
+        key=lambda node: (KIND_ORDER.get(node.kind, 99), node.canonical_id, node.key),
+    )
+    needle = query.strip().casefold()
+    if needle:
+        ordered = [node for node in ordered if needle in node.canonical_id.casefold()
+                   or needle in node.kind.casefold()]
+    total = len(ordered)
+    start = (page - 1) * limit
+    items = ordered[start:start + limit]
+    if selection is None:
+        selection = items[0].key if items else (
+            next(iter(index.nodes)) if index.nodes else None)
+    if selection is None:
+        raise ConfigExplorerError(
+            "empty_snapshot", "selection", "snapshot contains no explorer declarations")
+    selected = index.node(selection)
+    node_diff = diff or {}
+
+    def node_summary(node: ExplorerNode) -> dict[str, Any]:
+        value = node.to_mapping(include_definition=False)
+        value["change_status"] = node_diff.get(node.key, "active")
+        return value
+
+    all_outbound = index.outbound[selected.key]
+    all_inbound = index.inbound[selected.key]
+    visible_outbound = all_outbound[:reference_limit]
+    visible_inbound = all_inbound[:reference_limit]
+    neighborhood_keys = {selected.key}
+    for edge in (*visible_outbound, *visible_inbound):
+        neighborhood_keys.add(edge.from_key)
+        if edge.to_key:
+            neighborhood_keys.add(edge.to_key)
+    paths = _path_candidates(index, selected.key)
+    for path_item in paths:
+        neighborhood_keys.update(path_item["node_keys"])
+
+    checks = integrity_checks(index, selected.key)
+    selection_mapping = selected.to_mapping(include_definition=True)
+    selection_mapping["context_token"] = context_token
+    selection_mapping["change_status"] = node_diff.get(selected.key, "active")
+    item_mappings = [node_summary(node) for node in items]
+    neighborhood_mappings = [
+        node_summary(index.nodes[key]) for key in sorted(neighborhood_keys)
+    ]
+    outbound_mappings = [edge.to_mapping() for edge in visible_outbound]
+    inbound_mappings = [edge.to_mapping() for edge in visible_inbound]
+    for collection in (
+        item_mappings, neighborhood_mappings, outbound_mappings, inbound_mappings,
+    ):
+        for item in collection:
+            item["context_token"] = context_token
+    return {
+        "context_token": context_token,
+        "snapshot_hash": index.snapshot_hash,
+        "selection": selection_mapping,
+        "items": item_mappings,
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "outbound": outbound_mappings,
+        "used_by": inbound_mappings,
+        "outbound_total": len(all_outbound),
+        "used_by_total": len(all_inbound),
+        "reference_limit": reference_limit,
+        "references_truncated": (
+            len(all_outbound) > reference_limit or len(all_inbound) > reference_limit),
+        "path_candidates": paths,
+        "nodes": neighborhood_mappings,
+        "integrity": checks,
+    }
+
+
+def integrity_checks(index: ExplorerIndex, selection: str) -> list[dict[str, str]]:
+    node = index.node(selection)
+    edges = (*index.outbound[selection], *index.inbound[selection])
+    unresolved = sum(edge.status != "resolved" for edge in edges)
+    common = [{
+        "code": "reference_resolution",
+        "status": "valid" if unresolved == 0 else "invalid",
+        "message": f"직접 참조 {len(edges)}건 · 미해소 {unresolved}건",
+    }]
+    if node.kind == "predicate":
+        common.append({"code": "predicate_signature", "status": "valid",
+                       "message": "subject/object/qualifier signature가 compile됨"})
+    elif node.kind == "entity":
+        common.append({"code": "entity_identity", "status": "valid",
+                       "message": "identity key와 사용처가 compile됨"})
+    elif node.kind in {"pack", "claim"}:
+        common.append({"code": "pack_emission", "status": "valid",
+                       "message": "Role과 emission 계약이 compile됨"})
+    elif node.kind in {"profile", "mapping"}:
+        common.append({"code": "profile_binding", "status": "valid",
+                       "message": "source·Pack·Role binding이 compile됨"})
+    elif node.kind == "source":
+        common.append({"code": "source_plan", "status": "valid",
+                       "message": "relation·cursor·preparer·mapper 계약이 compile됨"})
+    else:
+        common.append({"code": "kind_specific", "status": "not_applicable",
+                       "message": f"{node.kind}에는 추가 signature 검사가 적용되지 않음"})
+    return common

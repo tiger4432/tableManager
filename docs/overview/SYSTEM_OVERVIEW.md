@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ledger v2 1~7단계 `APPROVED`
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ontology Config Explorer `IN_REVIEW`
 > 
 > ⚰️ **[`2ec78b9` · 판정 R-2026-08-14-H] 구 그래프 갈래가 은퇴해 §2·§3·§5·§6·§8이 갱신됐습니다** — 백엔드 자식이 다섯에서 **넷**, 라우트 일곱이 **410**, 저장소 셋이 **DROP**(약 841 MB). 후계는 정준 원장입니다. 토폴로지 변경이라 SSOT가 반드시 말해야 하는 종류의 사실입니다. **⚠️ 총괄 검수 대상** — 이 문서는 사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다.
 > 
@@ -92,7 +92,7 @@ graph TD
   | 엔트리 | 모듈 | 페이지 |
   |---|---|---|
   | `index.html` | `main.js` | 데이터 그리드(메인, AG-Grid). ⚰️ **[2026-08-14] 「🕸️ 추적」 nav 진입점은 삭제**됐고, 행 선택 버튼은 판정 라우트가 410이 되어 **스스로 숨습니다**(클라 변경 0줄) |
-  | `admin.html` | `admin.js` | 어드민 — **파이프라인 생애주기 5탭**(Overview/File/Chain/AutoUpdate/Enrichment) + 코드 에디터 공용 뷰(Monaco CDN, `#editor=<path>` 딥링크) |
+  | `admin.html` | `admin.js` | 어드민 — **파이프라인 생애주기 5탭**(Overview/File/Chain/AutoUpdate/Enrichment) + 원장 선언 + **Ledger V2 Ontology Explorer**(`#ontology`, compiled Registry 참조/초안 CAS) + 코드 에디터 공용 뷰(Monaco CDN, `#editor=<path>` 딥링크) |
   | `map_editor.html` | `map_editor.js` (+ `transfer_plan.js`) | 웨이퍼 맵 에디터(커스텀 캔버스) + **오버레이 레이어** + **전사 계획 사이드바**(계획 = 지금 열어 편집 중인 그 맵) |
   | `map_editor2.html` | `map_editor2.js` (+ `src/map2/*`) | **맵 정렬 화면(좌표계 확정) — 개발 중.** 🔴 **레거시 에디터를 대체하지 않고 *옆에 섭니다***(`vite.config.js`가 그렇게 적고 있습니다). 켜는 데 필요한 선언은 [CONFIG_GUIDE §3 S9](../guide/CONFIG_GUIDE.md), 층 경계는 [frontend §4.2](../architecture/frontend.md) |
   | ~~`enrichment.html`~~ | ~~`enrichment.js`~~ | 🗄️ **[2026-08-11] 삭제됨** — 결손 보정 워크리스트 조회는 지금 메인 그리드 History 패널의 사이드바 **참조뷰** 탭(`enrichment_reference_view.js`). 결손 target을 순차 입력하던 컨베이어 자체는 대체 없이 소멸(그리드 직접 편집으로 흡수) → [architecture/frontend](../architecture/frontend.md) |
@@ -184,7 +184,7 @@ graph TD
 | ~~**온톨로지 그래프(엣지 스토어 + materializer)**~~ | ⚰️ **[2026-08-16 코드 제거 완료]** — 후계는 위 원장 행. 설계 배경과 옛 설정 예시는 [archive](../_archive/retired_graph_sync/README.md) | 실행 코드·`ontology_mapping.json` 샘플·로더 제거 |
 | ~~**그래프 뷰어·추적 리포트**~~ | ⚰️ **[2026-08-14] 은퇴** — 후계는 `ledger.html`([architecture/frontend §6.1](../architecture/frontend.md)) | ~~`main.py /graph/*`~~(전부 410), `graph.html`은 묘비만 |
 | **Enrichment Queue(결손 보정 워크리스트)** | [spec/ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md) · [Claim Requirement & Worklist](../spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md) | `enrichment_config.py`, `enrichment_mapper.py`, `enrichment_actions.py`, `client2/src/enrichment.js`, `config/enrichment_rules.json` |
-| 어드민(파이프라인 5탭 + 코드 에디터) | [architecture/frontend §5](../architecture/frontend.md) | `client2/src/admin.js`, `main.py /admin/*` |
+| 어드민(파이프라인 5탭 + 원장 선언/Explorer + 코드 에디터) | [architecture/frontend §5](../architecture/frontend.md) | `client2/src/admin.js`, `client2/src/ontology_explorer*`, `main.py /admin/*` |
 | HTML 토폴로지 파서 | [HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) | `parsers/html_topology_parser.py` |
 
 > **정정:** 맵 에디터는 WebSocket이 아니라 REST(`loadExistingMap`/`pushMapData`) + `localStorage`(레전드)로 동기화합니다. 실시간 WS는 메인 그리드 페이지에만 있습니다.

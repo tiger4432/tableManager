@@ -31,6 +31,7 @@ import {
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
 import { initLedgerMap, renderLedgerMap, parseMapQuestion, STRUCTURE_VIEW } from './ledger_map_panel.js';
+import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -223,6 +224,7 @@ const TAB_ALIASES = {
   autoupdate: 'autoupdate',
   enrichment: 'enrichment',
   ledger: 'ledger',
+  ontology: 'ontology',
   outbox: 'chain',      // 구 Outbox Failures 탭 (outbox fail = chain fail)
   workspace: 'file',    // 구 Workspaces 탭
   mapper: 'chain'       // 구 Mappers 탭
@@ -236,6 +238,7 @@ const tabChainBtn = byId('tab-chain-btn');
 const tabAutoUpdateBtn = byId('tab-autoupdate-btn');
 const tabEnrichmentBtn = byId('tab-enrichment-btn');
 const tabLedgerBtn = byId('tab-ledger-btn');
+const tabOntologyBtn = byId('tab-ontology-btn');
 
 const overviewWrapper = byId('overview-wrapper');
 const fileTabWrapper = byId('file-tab-wrapper');
@@ -243,6 +246,8 @@ const chainTabWrapper = byId('chain-tab-wrapper');
 const autoUpdateTabWrapper = byId('autoupdate-tab-wrapper');
 const enrichmentTabWrapper = byId('enrichment-tab-wrapper');
 const ledgerTabWrapper = byId('ledger-tab-wrapper');
+const ontologyTabWrapper = byId('ontology-tab-wrapper');
+const ontologyExplorerRoot = byId('ontology-explorer-root');
 
 const overviewGrid = byId('overview-grid');
 const healthStripEl = byId('health-strip');
@@ -329,6 +334,12 @@ document.addEventListener('DOMContentLoaded', () => {
     adminFetch,
     failureFactOf,
     renderResolveInto,
+  });
+  initOntologyExplorer({
+    root: ontologyExplorerRoot,
+    apiBase: API_BASE,
+    adminFetch,
+    showToast,
   });
 
   // 해시/쿼리 라우팅 적용 (기본 Overview) — switchTab이 fetchData + 스트립 갱신 수행
@@ -466,7 +477,7 @@ function isEditorViewOpen() {
 
 // 좌패널 전폭으로 도는 탭 — 우패널의 진단·에디터를 쓰지 않고 자기 본문이 넓어야 하는 것들.
 // 원장 선언 지도는 `os-panel--wide` 패널을 여러 개 나란히 그리는 화면이라 여기 속한다.
-const FULL_BLEED_TABS = ['overview', 'ledger'];
+const FULL_BLEED_TABS = ['overview', 'ledger', 'ontology'];
 
 function updatePanelLayout() {
   // 전폭 탭은 우패널·리사이저를 숨긴다. 단, 에디터 뷰가 열리면 우패널을 되살린다.
@@ -534,10 +545,12 @@ function switchTab(tabName, opts = {}) {
     pendingMapQuestion = opts.mapQuestion || mapQuestionFromLocation()
       || { view: STRUCTURE_VIEW, layer: '', edge: '' };
   }
+  else if (t.tab === 'ontology') history.replaceState(null, '', '#ontology');
   else history.replaceState(null, '', `#${t.tab}`);
 
   if (!FULL_BLEED_TABS.includes(t.tab)) refreshHealthStrip();
-  fetchData();
+  if (t.tab === 'ontology') refreshOntologyExplorer();
+  else fetchData();
 }
 
 // ── Event Listeners ────────────────────────────────────────
@@ -549,7 +562,8 @@ function setupEventListeners() {
     { btn: tabChainBtn, tab: 'chain', wrapper: chainTabWrapper },
     { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTabWrapper },
     { btn: tabEnrichmentBtn, tab: 'enrichment', wrapper: enrichmentTabWrapper },
-    { btn: tabLedgerBtn, tab: 'ledger', wrapper: ledgerTabWrapper }
+    { btn: tabLedgerBtn, tab: 'ledger', wrapper: ledgerTabWrapper },
+    { btn: tabOntologyBtn, tab: 'ontology', wrapper: ontologyTabWrapper }
   ];
 
   tabDefs.forEach(t => {

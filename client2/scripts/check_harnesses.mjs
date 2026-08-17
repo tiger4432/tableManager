@@ -869,6 +869,9 @@ const FLOORS = new Map([
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],
+  // Ontology Config Explorer: one-context response, stale-response rejection,
+  // navigation restoration and dirty-draft movement decision.
+  ['ontology_explorer_harness.mjs', 17],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this
