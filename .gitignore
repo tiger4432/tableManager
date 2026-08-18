@@ -55,6 +55,12 @@ server/config/sample/*
 !server/config/sample/*.sample
 server/mappers/*
 !server/mappers/*.sample
+# A Ledger v2 mapper is not an operator's local script. It is the half of the declaration
+# config cannot express, and `ledger.implementations` imports it BY THIS PREFIX to decide
+# what a config may name -- so a checkout without it has a config it cannot run. The same
+# boundary that decides what executes therefore decides what is tracked.
+# Two were force-added before this line existed; the third would have been too.
+!server/mappers/ledger_v2_*.py
 # void 파이프라인 파서 하나만 예외로 둔다 — 그 스크립트가 voids.json 인제션의 실제
 # 구현이고, 운영과 개발이 같은 것을 봐야 한다.
 # 🔴 `server/ingestion_workspace/`처럼 디렉터리를 통째로 무시하면 git이 그 안으로 내려가지
