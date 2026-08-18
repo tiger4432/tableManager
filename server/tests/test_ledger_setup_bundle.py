@@ -176,8 +176,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                 "profile_id": profile,
             },
         },
-        "chains": {},
-        "enrichments": {},
     }
 
 
@@ -262,32 +260,8 @@ def assert_structured_errors(errors):
 def write_tree(root: Path, bundle=None, *, manifest=None):
     bundle = copy.deepcopy(bundle or logical_bundle())
     files = {
-        "ledger_config.json": {
-            "schema_version": 2,
-            **{name: bundle[name] for name in (
-                "vocabulary", "entities", "source_preparers", "mappers", "packs",
-                "profiles", "sources")},
-        },
-        "catalog/tables.json": {"schema_version": 1, "tables": bundle["tables"]},
-        "catalog/virtual_joins.json": {
-            "schema_version": 1, "rules": bundle["virtual_joins"]},
-        "dataflows/chains.json": {"schema_version": 1, "chains": bundle["chains"]},
-        "dataflows/enrichments.json": {
-            "schema_version": 1, "enrichments": bundle["enrichments"]},
+        "ledger_config.json": dict(bundle),
     }
-    manifest = manifest or {
-        "setup_version": 2,
-        "ledger": "ledger_config.json",
-        "catalog": {
-            "tables": "catalog/tables.json",
-            "virtual_joins": "catalog/virtual_joins.json",
-        },
-        "dataflows": {
-            "chains": "dataflows/chains.json",
-            "enrichments": "dataflows/enrichments.json",
-        },
-    }
-    files["manifest.json"] = manifest
     for relative, value in files.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)

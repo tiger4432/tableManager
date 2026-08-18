@@ -481,7 +481,10 @@ def build_explorer_index(setup: Any) -> ExplorerIndex:
                         entity_pointer,
                     )
 
-    table_file = "catalog/tables.json"
+    # `tables` moved into the one file, so it is no longer a different `config_file`
+    # than everything else -- which also makes it editable in the explorer, since
+    # `config_drafts` gates drafting on `config_file == "ledger_config.json"`.
+    table_file = ledger_file
     for table_id, raw in sorted(bundle["tables"].items()):
         builder.add_node(
             "table", table_id, raw, raw, ("tables", table_id),
@@ -489,7 +492,7 @@ def build_explorer_index(setup: Any) -> ExplorerIndex:
         )
 
     join_compiled = registries["verified_joins"].to_mapping()
-    join_file = "catalog/virtual_joins.json"
+    join_file = ledger_file
     for join_id, raw in sorted(bundle["virtual_joins"].items()):
         compiled = join_compiled.get(join_id, raw)
         builder.add_node(

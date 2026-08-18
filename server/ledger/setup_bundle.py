@@ -1,4 +1,4 @@
-"""Pure Ledger v2 authoring bundle schema and manifest loader.
+"""Pure Ledger authoring bundle schema and single-file loader.
 
 This module deliberately has no database, translator, mapper, compiler, cursor, or store
 imports.  Stage 2 owns only the authoring boundary: strict files in one root become one
@@ -16,16 +16,30 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-SETUP_VERSION = 2
-LEDGER_FILE_VERSION = 2
-CATALOG_FILE_VERSION = 1
-DATAFLOW_FILE_VERSION = 1
+SETUP_VERSION = 3
 
+#: The one authoring file. The path does not move: the operator writes here.
+CONFIG_FILENAME = "ledger_config.json"
+
+#: The whole authoring surface, in the order the file declares it.  All eight are
+#: REQUIRED even when empty: a missing key and an empty one mean different things to a
+#: reader, and "the section does not apply to me" is a decision worth writing down.
 LOGICAL_SECTIONS = (
-    "tables", "virtual_joins", "vocabulary", "entities",
-    "source_preparers", "mappers", "packs", "profiles", "sources",
-    "chains", "enrichments",
+    "tables", "vocabulary", "entities", "packs",
+    "source_preparers", "mappers", "profiles", "sources",
 )
+
+#: 🔴 OPTIONAL, AND THE DISTINCTION IS DELIBERATE.  The operator root stops carrying a
+#: `virtual_joins` section -- it was empty there, and an enabled rule is refused unless a
+#: caller supplies a physically verified descriptor, so nothing was lost by dropping it.
+#: But the LOADER keeps the ability to read one, because a different root does use it:
+#: `server/config/sample/ontology/transfer_explorer/` supplies real descriptors and
+#: `docs/qa/FEATURE_CHECKLIST.md` lists that round trip as a capability.  Removing the
+#: section from a FILE and removing support from the LOADER are not the same act, and
+#: only the first was asked for.
+OPTIONAL_SECTIONS = ("virtual_joins",)
+
+ALL_SECTIONS = (*LOGICAL_SECTIONS, *OPTIONAL_SECTIONS)
 
 _VERSIONED_ID = re.compile(r"^[^@/\s]+@[1-9][0-9]*$")
 _CLAIM_REF = re.compile(r"^(?P<pack>[^@/\s]+@[1-9][0-9]*)/(?P<claim>[^/\s]+)$")
@@ -77,7 +91,7 @@ class LedgerSetupBundle:
         return int(self._data["setup_version"])
 
     def section(self, name: str) -> Mapping[str, Any]:
-        if name not in LOGICAL_SECTIONS:
+        if name not in ALL_SECTIONS:
             raise KeyError(name)
         return self._data[name]
 
@@ -133,12 +147,14 @@ def public_bundle_schema() -> dict[str, Any]:
     """Small public contract; no runtime registry or implementation details."""
     return {
         "setup_version": SETUP_VERSION,
-        "manifest_fields": ["setup_version", "ledger", "catalog", "dataflows"],
+        "config_file": CONFIG_FILENAME,
         "logical_fields": ["setup_version", *LOGICAL_SECTIONS],
+        "optional_fields": list(OPTIONAL_SECTIONS),
         "binding_kinds": ["column", "constant", "entity"],
         "binding_origin": sorted(_BINDING_ORIGINS),
         "approval_status": sorted(_APPROVAL_STATUSES),
-        "forbidden_sections": ["frames", "lookups", "positions"],
+        "forbidden_sections": ["frames", "lookups", "positions",
+                               "manifest", "chains", "enrichments"],
     }
 
 
@@ -156,7 +172,8 @@ def validate_bundle(value: Mapping[str, Any]) -> LedgerSetupBundle:
     issues = validate_bundle_errors(value)
     if issues:
         raise issues[0]
-    normalized = _normalize(value)
+    filled = {name: {} for name in OPTIONAL_SECTIONS if name not in value} | dict(value)
+    normalized = _normalize(filled)
     return LedgerSetupBundle(_freeze(normalized))
 
 
@@ -164,15 +181,21 @@ def validate_bundle_errors(value: Mapping[str, Any]
                            ) -> tuple[LedgerSetupValidationError, ...]:
     problems = _Problems()
     if not problems.exact(
-            value, "bundle", required=("setup_version", *LOGICAL_SECTIONS)):
+            value, "bundle", required=("setup_version", *LOGICAL_SECTIONS),
+            optional=OPTIONAL_SECTIONS):
         return problems.finish()
     if value.get("setup_version") != SETUP_VERSION:
         problems.add(
             "unsupported_setup_version", "bundle.setup_version",
             f"supported setup_version is {SETUP_VERSION}")
-    for section in LOGICAL_SECTIONS:
+    for section in ALL_SECTIONS:
         if section in value and not isinstance(value[section], Mapping):
             problems.add("invalid_type", f"bundle.{section}", "must be an object")
+    # An omitted optional section is the same bundle as an empty one, resolved ONCE here
+    # so every reader below -- and the compiler after it -- sees one shape. Leaving the
+    # key absent for later code to `.get()` around is how two readers come to disagree
+    # about whether "no joins" and "no joins section" are the same thing.
+    value = {name: {} for name in OPTIONAL_SECTIONS if name not in value} | dict(value)
 
     if isinstance(value.get("tables"), Mapping):
         _validate_tables(value["tables"], problems)
@@ -192,16 +215,13 @@ def validate_bundle_errors(value: Mapping[str, Any]
         _validate_profiles(value["profiles"], problems)
     if isinstance(value.get("sources"), Mapping):
         _validate_sources(value["sources"], problems)
-    for section in ("chains", "enrichments"):
-        if isinstance(value.get(section), Mapping):
-            _validate_opaque_declarations(value[section], f"bundle.{section}", problems)
 
     # Cross-validation only consumes structurally sound descriptors.  This makes every
     # malformed JSON shape a stable validation result instead of an AttributeError or
     # TypeError from a later semantic lookup.
     if problems.items:
         return problems.finish()
-    if all(isinstance(value.get(name), Mapping) for name in LOGICAL_SECTIONS):
+    if all(isinstance(value.get(name), Mapping) for name in ALL_SECTIONS):
         _cross_validate(value, problems)
     return problems.finish()
 
@@ -226,115 +246,221 @@ def require_ready_bundle(bundle: LedgerSetupBundle) -> LedgerSetupBundle:
     return bundle
 
 
-def load_setup_bundle(root: str | Path, *, manifest_name: str = "manifest.json"
+def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME
                       ) -> LedgerSetupBundle:
-    """Load exactly the files named by one manifest under ``root``."""
+    """Load the ONE authoring file under ``root``.
+
+    This replaced a manifest naming five files across three directories.  The manifest
+    existed to enumerate them; with one file there is nothing to enumerate, and
+    `setup_version` alone states the grammar generation that five `schema_version` fields
+    used to state five times.
+
+    🔴 THE "NO OTHER JSON" REFUSAL IS THE SINGLE-FILE PROMISE, NOT TIDINESS.
+    The old loader refused a JSON file the manifest did not list, so a stray file could
+    never be silently half-read.  The same refusal is what now makes "open one file and you
+    have seen everything" true: a leftover `catalog/tables.json` beside the new file would
+    otherwise sit there looking authoritative while nothing read it.  A converted root that
+    still contains the originals is therefore refused BY NAME, which is exactly the state
+    the converter leaves behind on purpose.
+    """
     root_path = Path(root).resolve(strict=True)
     if not root_path.is_dir():
         raise LedgerSetupValidationError(
             "invalid_config_root", "config_root", "must be a directory")
-    manifest_path = _resolve_config_path(
-        root_path, manifest_name, "manifest", require_json=True)
-    manifest = _read_json(manifest_path, "manifest")
-    _validate_manifest(manifest)
-
-    slots = {
-        "ledger": manifest["ledger"],
-        "catalog.tables": manifest["catalog"]["tables"],
-        "catalog.virtual_joins": manifest["catalog"]["virtual_joins"],
-        "dataflows.chains": manifest["dataflows"]["chains"],
-        "dataflows.enrichments": manifest["dataflows"]["enrichments"],
-    }
-    resolved: dict[str, Path] = {}
-    seen_paths: dict[Path, str] = {}
-    for slot, relative in slots.items():
-        path = _resolve_config_path(root_path, relative, f"manifest.{slot}",
-                                    require_json=True)
-        if path in seen_paths:
-            raise LedgerSetupValidationError(
-                "duplicate_manifest_path", f"manifest.{slot}",
-                f"same file is already owned by manifest.{seen_paths[path]}")
-        seen_paths[path] = slot
-        resolved[slot] = path
-
-    declared = {manifest_path, *resolved.values()}
+    config_path = _resolve_config_path(
+        root_path, config_name, "config_root", require_json=True)
     extras = sorted(
         path.resolve() for path in root_path.rglob("*.json")
-        if path.resolve() not in declared)
+        if path.resolve() != config_path)
     if extras:
         relative = extras[0].relative_to(root_path).as_posix()
         raise LedgerSetupValidationError(
             "unlisted_config_file", f"config_root.{relative}",
-            "JSON file is not listed by manifest")
+            f"the setup is one file ({config_name}); this root also contains "
+            f"{relative!r}")
 
-    ledger = _read_json(resolved["ledger"], "ledger_config")
-    tables = _read_json(resolved["catalog.tables"], "catalog.tables")
-    joins = _read_json(resolved["catalog.virtual_joins"], "catalog.virtual_joins")
-    chains = _read_json(resolved["dataflows.chains"], "dataflows.chains")
-    enrichments = _read_json(
-        resolved["dataflows.enrichments"], "dataflows.enrichments")
-    _validate_file_root(
-        ledger, "ledger_config", LEDGER_FILE_VERSION,
-        ("vocabulary", "entities", "source_preparers", "mappers", "packs",
-         "profiles", "sources"))
-    _validate_file_root(tables, "catalog.tables", CATALOG_FILE_VERSION, ("tables",))
-    _validate_file_root(
-        joins, "catalog.virtual_joins", CATALOG_FILE_VERSION, ("rules",))
-    _validate_file_root(chains, "dataflows.chains", DATAFLOW_FILE_VERSION, ("chains",))
-    _validate_file_root(
-        enrichments, "dataflows.enrichments", DATAFLOW_FILE_VERSION,
-        ("enrichments",))
-
-    logical = {
-        "setup_version": manifest["setup_version"],
-        "tables": tables["tables"],
-        "virtual_joins": joins["rules"],
-        "vocabulary": ledger["vocabulary"],
-        "entities": ledger["entities"],
-        "source_preparers": ledger["source_preparers"],
-        "mappers": ledger["mappers"],
-        "packs": ledger["packs"],
-        "profiles": ledger["profiles"],
-        "sources": ledger["sources"],
-        "chains": chains["chains"],
-        "enrichments": enrichments["enrichments"],
-    }
-    return validate_bundle(logical)
-
-
-def _validate_manifest(value: Any) -> None:
+    document = _read_json(config_path, "ledger_config")
     problems = _Problems()
     if problems.exact(
-            value, "manifest", required=("setup_version", "ledger", "catalog", "dataflows")):
-        if value.get("setup_version") != SETUP_VERSION:
+            document, "ledger_config",
+            required=("setup_version", *LOGICAL_SECTIONS),
+            optional=OPTIONAL_SECTIONS):
+        if document.get("setup_version") != SETUP_VERSION:
             problems.add(
-                "unsupported_setup_version", "manifest.setup_version",
+                "unsupported_setup_version", "ledger_config.setup_version",
                 f"supported setup_version is {SETUP_VERSION}")
-        problems.exact(
-            value.get("catalog"), "manifest.catalog",
-            required=("tables", "virtual_joins"))
-        problems.exact(
-            value.get("dataflows"), "manifest.dataflows",
-            required=("chains", "enrichments"))
     issues = problems.finish()
     if issues:
         raise issues[0]
+    return validate_bundle(document)
 
 
-def _validate_file_root(value: Any, path: str, expected_version: int,
-                        sections: Sequence[str]) -> None:
-    problems = _Problems()
-    if problems.exact(value, path, required=("schema_version", *sections)):
-        if value.get("schema_version") != expected_version:
-            problems.add(
-                "unsupported_file_version", f"{path}.schema_version",
-                f"supported schema_version is {expected_version}")
-        for section in sections:
-            if section in value and not isinstance(value[section], Mapping):
-                problems.add("invalid_type", f"{path}.{section}", "must be an object")
-    issues = problems.finish()
-    if issues:
-        raise issues[0]
+def _resolve_config_path(root: Path, relative: Any, path: str, *, require_json: bool) -> Path:
+    if not isinstance(relative, str) or not relative.strip():
+        raise LedgerSetupValidationError("unsafe_config_path", path,
+                                         "must be a non-blank relative path")
+    if relative != relative.strip() or "\\" in relative or any(c in relative for c in "*?[]"):
+        raise LedgerSetupValidationError("unsafe_config_path", path,
+                                         "must be a canonical relative path without glob syntax")
+    candidate = Path(relative)
+    if candidate.is_absolute() or ":" in relative or any(part in ("", ".", "..")
+                                                          for part in candidate.parts):
+        raise LedgerSetupValidationError("unsafe_config_path", path,
+                                         "path must stay below the config root")
+    if require_json and candidate.suffix.lower() != ".json":
+        raise LedgerSetupValidationError("unsafe_config_path", path,
+                                         "config path must end in .json")
+    try:
+        resolved = (root / candidate).resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise LedgerSetupValidationError("missing_config_file", path,
+                                         f"file {relative!r} does not exist") from exc
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise LedgerSetupValidationError("unsafe_config_path", path,
+                                         "resolved path escapes config root") from exc
+    if not resolved.is_file():
+        raise LedgerSetupValidationError("missing_config_file", path,
+                                         "config path must name a file")
+    return resolved
+
+
+def _versioned_id(value: Any, path: str, problems: _Problems) -> None:
+    if not isinstance(value, str) or not _VERSIONED_ID.fullmatch(value):
+        problems.add("invalid_versioned_id", path, "must use nonblank-id@positive-version")
+
+
+def _claim_ref(value: Any, path: str, problems: _Problems) -> None:
+    if _parse_claim_ref(value) is None:
+        problems.add("invalid_claim_ref", path, "must use pack@version/claim")
+
+
+def _parse_claim_ref(value: Any) -> Optional[tuple[str, str]]:
+    if not isinstance(value, str):
+        return None
+    matched = _CLAIM_REF.fullmatch(value)
+    return None if matched is None else (matched.group("pack"), matched.group("claim"))
+
+
+def _role_ref(value: Any, path: str, problems: _Problems, *, optional: bool = False) -> None:
+    if not isinstance(value, str) or not value.startswith("$"):
+        problems.add("invalid_role_ref", path, "must be a $role reference")
+        return
+    body = value[1:]
+    if body.endswith("?"):
+        body = body[:-1]
+    elif optional:
+        problems.add("invalid_role_ref", path, "optional qualifier must use $role?")
+    if not body or any(char.isspace() for char in body):
+        problems.add("invalid_role_ref", path, "role reference must not be blank")
+
+
+def _role_name(value: Any) -> Optional[str]:
+    if not isinstance(value, str) or not value.startswith("$"):
+        return None
+    return value[1:].removesuffix("?") or None
+
+
+def _nonblank_id(value: Any, path: str, problems: _Problems) -> None:
+    if not isinstance(value, str) or not value.strip() or value != value.strip():
+        problems.add("invalid_id", path, "ID must be a non-blank trimmed string")
+
+
+def _deterministic_json(value: Any, path: str, problems: _Problems) -> None:
+    if isinstance(value, Mapping):
+        for key in sorted(value, key=str):
+            if not isinstance(key, str):
+                problems.add("invalid_binding", path,
+                             "constant object keys must be strings")
+                return
+            _deterministic_json(value[key], f"{path}.{key}", problems)
+        return
+    if _is_list(value):
+        for index, item in enumerate(value):
+            _deterministic_json(item, f"{path}[{index}]", problems)
+        return
+    if value is None or isinstance(value, (str, bool, int)):
+        return
+    if isinstance(value, float):
+        try:
+            json.dumps(value, allow_nan=False)
+        except ValueError:
+            problems.add("invalid_binding", path,
+                         "constant must be finite deterministic JSON")
+        return
+    problems.add("invalid_binding", path, "constant must be deterministic JSON")
+
+
+def _nonblank_text(value: Any, path: str, problems: _Problems) -> None:
+    if not isinstance(value, str) or not value.strip():
+        problems.add("blank_value", path, "must be a non-blank string")
+
+
+def _nonblank_list(value: Any, path: str, problems: _Problems,
+                   *, allow_empty: bool = False) -> None:
+    if not _is_list(value) or (not value and not allow_empty):
+        problems.add("invalid_type", path,
+                     "must be a list" + ("" if allow_empty else " with at least one item"))
+        return
+    for index, item in enumerate(value):
+        _nonblank_text(item, f"{path}[{index}]", problems)
+    if _has_duplicate_strings(value):
+        problems.add("duplicate_id", path, "list values must be unique")
+
+
+def _column_list_or_text(value: Any, path: str, problems: _Problems) -> None:
+    if isinstance(value, str):
+        _nonblank_text(value, path, problems)
+    else:
+        _nonblank_list(value, path, problems)
+
+
+def _column_values(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    if _is_list(value):
+        return tuple(item for item in value if isinstance(item, str))
+    return ()
+
+
+def _has_duplicate_strings(value: Any) -> bool:
+    strings = _column_values(value)
+    return len(strings) != len(set(strings))
+
+
+def _is_list(value: Any) -> bool:
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+
+
+def _path(base: str, child: str) -> str:
+    return f"{base}.{child}" if base else child
+
+
+def _normalize(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _normalize(value[key]) for key in sorted(value, key=str)}
+    if _is_list(value):
+        return [_normalize(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(f"value {value!r} is not deterministic JSON")
+
+
+def _freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _thaw(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(item) for item in value]
+    return value
 
 
 def _validate_tables(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -893,16 +1019,6 @@ def _validate_registration_probe(value: Any, path: str, problems: _Problems) -> 
                 problems.add(
                     "invalid_registration_probe", f"{item_path}.list_separator",
                     "must be a non-empty string")
-
-
-def _validate_opaque_declarations(section: Mapping[str, Any], path: str,
-                                  problems: _Problems) -> None:
-    for name in sorted(section, key=str):
-        _nonblank_id(name, f"{path}.{name}", problems)
-        if not isinstance(section[name], Mapping):
-            problems.add("invalid_type", f"{path}.{name}", "must be an object")
-        else:
-            _scan_unsafe_keys(section[name], f"{path}.{name}", problems)
 
 
 def _cross_registration_probe(value: Any, path: str, relation: Any,
@@ -1538,171 +1654,3 @@ def _unique_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
 
 def _reject_json_constant(value: str) -> None:
     raise _InvalidJsonConstant(f"non-standard JSON constant {value!r} is not allowed")
-
-
-def _resolve_config_path(root: Path, relative: Any, path: str, *, require_json: bool) -> Path:
-    if not isinstance(relative, str) or not relative.strip():
-        raise LedgerSetupValidationError("unsafe_manifest_path", path,
-                                         "must be a non-blank relative path")
-    if relative != relative.strip() or "\\" in relative or any(c in relative for c in "*?[]"):
-        raise LedgerSetupValidationError("unsafe_manifest_path", path,
-                                         "must be a canonical relative path without glob syntax")
-    candidate = Path(relative)
-    if candidate.is_absolute() or ":" in relative or any(part in ("", ".", "..")
-                                                          for part in candidate.parts):
-        raise LedgerSetupValidationError("unsafe_manifest_path", path,
-                                         "path must stay below the config root")
-    if require_json and candidate.suffix.lower() != ".json":
-        raise LedgerSetupValidationError("unsafe_manifest_path", path,
-                                         "config path must end in .json")
-    try:
-        resolved = (root / candidate).resolve(strict=True)
-    except FileNotFoundError as exc:
-        raise LedgerSetupValidationError("missing_config_file", path,
-                                         f"file {relative!r} does not exist") from exc
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise LedgerSetupValidationError("unsafe_manifest_path", path,
-                                         "resolved path escapes config root") from exc
-    if not resolved.is_file():
-        raise LedgerSetupValidationError("missing_config_file", path,
-                                         "config path must name a file")
-    return resolved
-
-
-def _versioned_id(value: Any, path: str, problems: _Problems) -> None:
-    if not isinstance(value, str) or not _VERSIONED_ID.fullmatch(value):
-        problems.add("invalid_versioned_id", path, "must use nonblank-id@positive-version")
-
-
-def _claim_ref(value: Any, path: str, problems: _Problems) -> None:
-    if _parse_claim_ref(value) is None:
-        problems.add("invalid_claim_ref", path, "must use pack@version/claim")
-
-
-def _parse_claim_ref(value: Any) -> Optional[tuple[str, str]]:
-    if not isinstance(value, str):
-        return None
-    matched = _CLAIM_REF.fullmatch(value)
-    return None if matched is None else (matched.group("pack"), matched.group("claim"))
-
-
-def _role_ref(value: Any, path: str, problems: _Problems, *, optional: bool = False) -> None:
-    if not isinstance(value, str) or not value.startswith("$"):
-        problems.add("invalid_role_ref", path, "must be a $role reference")
-        return
-    body = value[1:]
-    if body.endswith("?"):
-        body = body[:-1]
-    elif optional:
-        problems.add("invalid_role_ref", path, "optional qualifier must use $role?")
-    if not body or any(char.isspace() for char in body):
-        problems.add("invalid_role_ref", path, "role reference must not be blank")
-
-
-def _role_name(value: Any) -> Optional[str]:
-    if not isinstance(value, str) or not value.startswith("$"):
-        return None
-    return value[1:].removesuffix("?") or None
-
-
-def _nonblank_id(value: Any, path: str, problems: _Problems) -> None:
-    if not isinstance(value, str) or not value.strip() or value != value.strip():
-        problems.add("invalid_id", path, "ID must be a non-blank trimmed string")
-
-
-def _deterministic_json(value: Any, path: str, problems: _Problems) -> None:
-    if isinstance(value, Mapping):
-        for key in sorted(value, key=str):
-            if not isinstance(key, str):
-                problems.add("invalid_binding", path,
-                             "constant object keys must be strings")
-                return
-            _deterministic_json(value[key], f"{path}.{key}", problems)
-        return
-    if _is_list(value):
-        for index, item in enumerate(value):
-            _deterministic_json(item, f"{path}[{index}]", problems)
-        return
-    if value is None or isinstance(value, (str, bool, int)):
-        return
-    if isinstance(value, float):
-        try:
-            json.dumps(value, allow_nan=False)
-        except ValueError:
-            problems.add("invalid_binding", path,
-                         "constant must be finite deterministic JSON")
-        return
-    problems.add("invalid_binding", path, "constant must be deterministic JSON")
-
-
-def _nonblank_text(value: Any, path: str, problems: _Problems) -> None:
-    if not isinstance(value, str) or not value.strip():
-        problems.add("blank_value", path, "must be a non-blank string")
-
-
-def _nonblank_list(value: Any, path: str, problems: _Problems,
-                   *, allow_empty: bool = False) -> None:
-    if not _is_list(value) or (not value and not allow_empty):
-        problems.add("invalid_type", path,
-                     "must be a list" + ("" if allow_empty else " with at least one item"))
-        return
-    for index, item in enumerate(value):
-        _nonblank_text(item, f"{path}[{index}]", problems)
-    if _has_duplicate_strings(value):
-        problems.add("duplicate_id", path, "list values must be unique")
-
-
-def _column_list_or_text(value: Any, path: str, problems: _Problems) -> None:
-    if isinstance(value, str):
-        _nonblank_text(value, path, problems)
-    else:
-        _nonblank_list(value, path, problems)
-
-
-def _column_values(value: Any) -> tuple[str, ...]:
-    if isinstance(value, str):
-        return (value,)
-    if _is_list(value):
-        return tuple(item for item in value if isinstance(item, str))
-    return ()
-
-
-def _has_duplicate_strings(value: Any) -> bool:
-    strings = _column_values(value)
-    return len(strings) != len(set(strings))
-
-
-def _is_list(value: Any) -> bool:
-    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
-
-
-def _path(base: str, child: str) -> str:
-    return f"{base}.{child}" if base else child
-
-
-def _normalize(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _normalize(value[key]) for key in sorted(value, key=str)}
-    if _is_list(value):
-        return [_normalize(item) for item in value]
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    raise TypeError(f"value {value!r} is not deterministic JSON")
-
-
-def _freeze(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
-    if isinstance(value, list):
-        return tuple(_freeze(item) for item in value)
-    return value
-
-
-def _thaw(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _thaw(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw(item) for item in value]
-    return value

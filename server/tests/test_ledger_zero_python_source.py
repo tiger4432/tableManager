@@ -46,7 +46,7 @@ def _column(name):
 #: One whole source. No module, no function, no path -- `setup_bundle` forbids those keys,
 #: and nothing here needs them.
 SHIPMENT_SETUP = {
-    "setup_version": 2,
+    "setup_version": 3,
     "tables": {"shipment": {
         "columns": {"shipment_id": "string", "box": "string",
                     "shipped_at": "datetime"},
@@ -94,7 +94,7 @@ SHIPMENT_SETUP = {
             "registration_probe": [
                 {"entity_type": "Box@1", "columns": ["box"]}],
         }}},
-    "chains": {}, "enrichments": {},
+
 }
 
 

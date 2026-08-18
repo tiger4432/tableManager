@@ -573,10 +573,11 @@ def compile_setup_snapshot(
         "setup_version": bundle.setup_version,
         "bundle_sha256": bundle_sha256,
         "readiness": "ready",
-        "declarations": {
-            "chains": _semantic_plain(bundle.section("chains")),
-            "enrichments": _semantic_plain(bundle.section("enrichments")),
-        },
+        # `declarations` used to carry `chains` and `enrichments` into the snapshot hash.
+        # Neither reached execution, so editing an approval-reference string moved the
+        # hash and blocked the cursor with `cursor_snapshot_reset_required` for a change
+        # that could not alter one atom. Both sections are gone; the hash now covers only
+        # what can change an atom.
         "registries": {
             key: _semantic_plain(registries[key]) for key in sorted(registries)
         },

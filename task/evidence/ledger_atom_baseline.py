@@ -40,7 +40,12 @@ def _resolve():
 
 _MODULE, load_cutover_setup, preview_selected_cursor_batch = _resolve()
 
-ROOT = r"C:\Users\kk980\Developments\assyManager\server\config\ontology"
+# argv[2] optionally points at a DIFFERENT setup root. The default is unchanged, so a
+# caller passing only a destination measures the live root exactly as before. It exists
+# because the single-file transition must be measured on the CONVERTED content before the
+# operator's root is overwritten -- and the operator is hand-editing that file today.
+_LIVE_ROOT = r"C:\Users\kk980\Developments\assyManager\server\config\ontology"
+ROOT = sys.argv[2] if len(sys.argv) > 2 else _LIVE_ROOT
 T = lambda s: pd.Timestamp(s, tz="Asia/Seoul")
 
 class NoJoin(VerifiedJoinBatchReader):

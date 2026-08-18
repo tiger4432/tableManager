@@ -1,60 +1,312 @@
 {
-  "schema_version": 2,
+  "setup_version": 3,
+  "tables": {
+    "dt_log": {
+      "columns": {
+        "record_id": "string",
+        "event_at": "datetime",
+        "dt_job_id": "string",
+        "core_wafer": "string",
+        "core_x": "number",
+        "core_y": "number"
+      },
+      "business_key": "record_id"
+    },
+    "dt_inventory": {
+      "columns": {
+        "dt_job_id": "string",
+        "dt_lot": "string",
+        "dt_slot": "number",
+        "dt_offset_x": "number",
+        "dt_offset_y": "number",
+        "bond_wafer": "string",
+        "bond_offset_x": "number",
+        "bond_offset_y": "number",
+        "bond_layer": "number",
+        "final_chip": "string"
+      },
+      "business_key": "dt_job_id",
+      "indexes": [
+        {
+          "name": "uq_dt_inventory_job",
+          "columns": [
+            "dt_job_id"
+          ],
+          "unique": true
+        }
+      ]
+    }
+  },
   "vocabulary": {
     "transferred_to@1": {
       "status": "active",
       "layer": "ontology",
-      "subjects": ["CoreDie@1", "DTDie@1"],
+      "subjects": [
+        "CoreDie@1",
+        "DTDie@1"
+      ],
       "object": {
         "kind": "entity_ref",
-        "types": ["DTDie@1", "BondComponent@1"],
-        "qualifiers": {"required": ["job"], "optional": []}
+        "types": [
+          "DTDie@1",
+          "BondComponent@1"
+        ],
+        "qualifiers": {
+          "required": [
+            "job"
+          ],
+          "optional": []
+        }
       }
     },
     "contains_dt_die@1": {
       "status": "active",
       "layer": "ontology",
-      "subjects": ["DTJob@1"],
+      "subjects": [
+        "DTJob@1"
+      ],
       "object": {
         "kind": "entity_ref",
-        "types": ["DTDie@1"],
-        "qualifiers": {"required": [], "optional": []}
+        "types": [
+          "DTDie@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
       }
     },
     "occupies_slot@1": {
       "status": "active",
       "layer": "ontology",
-      "subjects": ["DTJob@1"],
+      "subjects": [
+        "DTJob@1"
+      ],
       "object": {
         "kind": "entity_ref",
-        "types": ["LotSlot@1"],
-        "qualifiers": {"required": [], "optional": []}
+        "types": [
+          "LotSlot@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
       }
     },
     "component_of@1": {
       "status": "active",
       "layer": "ontology",
-      "subjects": ["BondComponent@1"],
+      "subjects": [
+        "BondComponent@1"
+      ],
       "object": {
         "kind": "entity_ref",
-        "types": ["FinalChip@1"],
-        "qualifiers": {"required": [], "optional": []}
+        "types": [
+          "FinalChip@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
       }
     }
   },
   "entities": {
-    "CoreDie@1": {"keys": ["core_wafer", "core_x", "core_y"]},
-    "DTDie@1": {"keys": ["dt_lot", "dt_slot", "dt_x", "dt_y"]},
-    "DTJob@1": {"keys": ["job_id"]},
-    "LotSlot@1": {"keys": ["lot", "slot"]},
-    "BondComponent@1": {"keys": ["bond_wafer", "bond_x", "bond_y", "layer"]},
-    "FinalChip@1": {"keys": ["chip_id"]}
+    "CoreDie@1": {
+      "keys": [
+        "core_wafer",
+        "core_x",
+        "core_y"
+      ]
+    },
+    "DTDie@1": {
+      "keys": [
+        "dt_lot",
+        "dt_slot",
+        "dt_x",
+        "dt_y"
+      ]
+    },
+    "DTJob@1": {
+      "keys": [
+        "job_id"
+      ]
+    },
+    "LotSlot@1": {
+      "keys": [
+        "lot",
+        "slot"
+      ]
+    },
+    "BondComponent@1": {
+      "keys": [
+        "bond_wafer",
+        "bond_x",
+        "bond_y",
+        "layer"
+      ]
+    },
+    "FinalChip@1": {
+      "keys": [
+        "chip_id"
+      ]
+    }
+  },
+  "packs": {
+    "dt-assembly@1": {
+      "claims": {
+        "core_to_dt": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "job": {
+              "kind": "identity",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "transferred_to@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {
+                "job": "$job"
+              }
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "dt_to_bond": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "job": {
+              "kind": "identity",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "transferred_to@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {
+                "job": "$job"
+              }
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "job_contains_die": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "contains_dt_die@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {}
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "job_occupies_slot": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "occupies_slot@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {}
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "bond_component": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "component_of@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {}
+            },
+            "occurred_at": "$occurred_at"
+          }
+        }
+      }
+    }
   },
   "source_preparers": {
     "direct-join@1": {
       "implementation_id": "direct-join",
       "implementation_version": 1,
-      "input_columns": ["dt_job_id"],
+      "input_columns": [
+        "dt_job_id"
+      ],
       "output_columns": {
         "dt_lot": "string",
         "dt_slot": "number",
@@ -73,142 +325,360 @@
     "declarative-role@1": {
       "implementation_id": "declarative-role",
       "implementation_version": 1,
-      "unit": {"kind": "row"},
+      "unit": {
+        "kind": "row"
+      },
       "input_columns": [
-        "record_id", "event_at", "dt_job_id", "core_wafer", "core_x", "core_y",
-        "dt_lot", "dt_slot", "dt_offset_x", "dt_offset_y", "bond_wafer",
-        "bond_offset_x", "bond_offset_y", "bond_layer", "final_chip"
+        "record_id",
+        "event_at",
+        "dt_job_id",
+        "core_wafer",
+        "core_x",
+        "core_y",
+        "dt_lot",
+        "dt_slot",
+        "dt_offset_x",
+        "dt_offset_y",
+        "bond_wafer",
+        "bond_offset_x",
+        "bond_offset_y",
+        "bond_layer",
+        "final_chip"
       ],
       "emits": [
-        "dt-assembly@1/core_to_dt", "dt-assembly@1/dt_to_bond",
-        "dt-assembly@1/job_contains_die", "dt-assembly@1/job_occupies_slot",
+        "dt-assembly@1/core_to_dt",
+        "dt-assembly@1/dt_to_bond",
+        "dt-assembly@1/job_contains_die",
+        "dt-assembly@1/job_occupies_slot",
         "dt-assembly@1/bond_component"
       ]
-    }
-  },
-  "packs": {
-    "dt-assembly@1": {
-      "claims": {
-        "core_to_dt": {
-          "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true},
-            "job": {"kind": "identity", "required": true}
-          },
-          "emit": {
-            "predicate": "transferred_to@1",
-            "subject": "$subject",
-            "object": {"kind": "entity_ref", "entity": "$target", "qualifiers": {"job": "$job"}},
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "dt_to_bond": {
-          "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true},
-            "job": {"kind": "identity", "required": true}
-          },
-          "emit": {
-            "predicate": "transferred_to@1",
-            "subject": "$subject",
-            "object": {"kind": "entity_ref", "entity": "$target", "qualifiers": {"job": "$job"}},
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "job_contains_die": {
-          "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true}
-          },
-          "emit": {
-            "predicate": "contains_dt_die@1",
-            "subject": "$subject",
-            "object": {"kind": "entity_ref", "entity": "$target", "qualifiers": {}},
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "job_occupies_slot": {
-          "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true}
-          },
-          "emit": {
-            "predicate": "occupies_slot@1",
-            "subject": "$subject",
-            "object": {"kind": "entity_ref", "entity": "$target", "qualifiers": {}},
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "bond_component": {
-          "roles": {
-            "subject": {"kind": "entity", "required": true},
-            "target": {"kind": "entity", "required": true},
-            "occurred_at": {"kind": "time", "required": true}
-          },
-          "emit": {
-            "predicate": "component_of@1",
-            "subject": "$subject",
-            "object": {"kind": "entity_ref", "entity": "$target", "qualifiers": {}},
-            "occurred_at": "$occurred_at"
-          }
-        }
-      }
     }
   },
   "profiles": {
     "dt-transfer@1": {
       "source": "dt_log",
-      "packs": ["dt-assembly@1"],
+      "packs": [
+        "dt-assembly@1"
+      ],
       "mappings": [
         {
           "mapping_id": "core_to_dt",
           "use": "dt-assembly@1/core_to_dt",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "CoreDie@1", "keys": {"core_wafer": {"kind": "column", "column": "core_wafer", "binding_origin": "user_declared", "approval_status": "approved"}, "core_x": {"kind": "column", "column": "core_x", "binding_origin": "user_declared", "approval_status": "approved"}, "core_y": {"kind": "column", "column": "core_y", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "DTDie@1", "keys": {"dt_lot": {"kind": "column", "column": "dt_lot", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_slot": {"kind": "column", "column": "dt_slot", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_x": {"kind": "column", "column": "dt_offset_x", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_y": {"kind": "column", "column": "dt_offset_y", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_at", "binding_origin": "user_declared", "approval_status": "approved"},
-            "job": {"kind": "column", "column": "dt_job_id", "binding_origin": "user_declared", "approval_status": "approved"}
+            "subject": {
+              "kind": "entity",
+              "entity_type": "CoreDie@1",
+              "keys": {
+                "core_wafer": {
+                  "kind": "column",
+                  "column": "core_wafer",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "core_x": {
+                  "kind": "column",
+                  "column": "core_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "core_y": {
+                  "kind": "column",
+                  "column": "core_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "DTDie@1",
+              "keys": {
+                "dt_lot": {
+                  "kind": "column",
+                  "column": "dt_lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_slot": {
+                  "kind": "column",
+                  "column": "dt_slot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_x": {
+                  "kind": "column",
+                  "column": "dt_offset_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_y": {
+                  "kind": "column",
+                  "column": "dt_offset_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_at",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "job": {
+              "kind": "column",
+              "column": "dt_job_id",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "dt_to_bond",
           "use": "dt-assembly@1/dt_to_bond",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "DTDie@1", "keys": {"dt_lot": {"kind": "column", "column": "dt_lot", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_slot": {"kind": "column", "column": "dt_slot", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_x": {"kind": "column", "column": "dt_offset_x", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_y": {"kind": "column", "column": "dt_offset_y", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "BondComponent@1", "keys": {"bond_wafer": {"kind": "column", "column": "bond_wafer", "binding_origin": "user_declared", "approval_status": "approved"}, "bond_x": {"kind": "column", "column": "bond_offset_x", "binding_origin": "user_declared", "approval_status": "approved"}, "bond_y": {"kind": "column", "column": "bond_offset_y", "binding_origin": "user_declared", "approval_status": "approved"}, "layer": {"kind": "column", "column": "bond_layer", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_at", "binding_origin": "user_declared", "approval_status": "approved"},
-            "job": {"kind": "column", "column": "dt_job_id", "binding_origin": "user_declared", "approval_status": "approved"}
+            "subject": {
+              "kind": "entity",
+              "entity_type": "DTDie@1",
+              "keys": {
+                "dt_lot": {
+                  "kind": "column",
+                  "column": "dt_lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_slot": {
+                  "kind": "column",
+                  "column": "dt_slot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_x": {
+                  "kind": "column",
+                  "column": "dt_offset_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_y": {
+                  "kind": "column",
+                  "column": "dt_offset_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "BondComponent@1",
+              "keys": {
+                "bond_wafer": {
+                  "kind": "column",
+                  "column": "bond_wafer",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "bond_x": {
+                  "kind": "column",
+                  "column": "bond_offset_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "bond_y": {
+                  "kind": "column",
+                  "column": "bond_offset_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "layer": {
+                  "kind": "column",
+                  "column": "bond_layer",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_at",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "job": {
+              "kind": "column",
+              "column": "dt_job_id",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "job_contains_die",
           "use": "dt-assembly@1/job_contains_die",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "DTJob@1", "keys": {"job_id": {"kind": "column", "column": "dt_job_id", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "DTDie@1", "keys": {"dt_lot": {"kind": "column", "column": "dt_lot", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_slot": {"kind": "column", "column": "dt_slot", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_x": {"kind": "column", "column": "dt_offset_x", "binding_origin": "user_declared", "approval_status": "approved"}, "dt_y": {"kind": "column", "column": "dt_offset_y", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_at", "binding_origin": "user_declared", "approval_status": "approved"}
+            "subject": {
+              "kind": "entity",
+              "entity_type": "DTJob@1",
+              "keys": {
+                "job_id": {
+                  "kind": "column",
+                  "column": "dt_job_id",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "DTDie@1",
+              "keys": {
+                "dt_lot": {
+                  "kind": "column",
+                  "column": "dt_lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_slot": {
+                  "kind": "column",
+                  "column": "dt_slot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_x": {
+                  "kind": "column",
+                  "column": "dt_offset_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "dt_y": {
+                  "kind": "column",
+                  "column": "dt_offset_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_at",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "job_occupies_slot",
           "use": "dt-assembly@1/job_occupies_slot",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "DTJob@1", "keys": {"job_id": {"kind": "column", "column": "dt_job_id", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "LotSlot@1", "keys": {"lot": {"kind": "column", "column": "dt_lot", "binding_origin": "user_declared", "approval_status": "approved"}, "slot": {"kind": "column", "column": "dt_slot", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_at", "binding_origin": "user_declared", "approval_status": "approved"}
+            "subject": {
+              "kind": "entity",
+              "entity_type": "DTJob@1",
+              "keys": {
+                "job_id": {
+                  "kind": "column",
+                  "column": "dt_job_id",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "LotSlot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "dt_lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "slot": {
+                  "kind": "column",
+                  "column": "dt_slot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_at",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         },
         {
           "mapping_id": "bond_component",
           "use": "dt-assembly@1/bond_component",
           "bind": {
-            "subject": {"kind": "entity", "entity_type": "BondComponent@1", "keys": {"bond_wafer": {"kind": "column", "column": "bond_wafer", "binding_origin": "user_declared", "approval_status": "approved"}, "bond_x": {"kind": "column", "column": "bond_offset_x", "binding_origin": "user_declared", "approval_status": "approved"}, "bond_y": {"kind": "column", "column": "bond_offset_y", "binding_origin": "user_declared", "approval_status": "approved"}, "layer": {"kind": "column", "column": "bond_layer", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "target": {"kind": "entity", "entity_type": "FinalChip@1", "keys": {"chip_id": {"kind": "column", "column": "final_chip", "binding_origin": "user_declared", "approval_status": "approved"}}, "binding_origin": "user_declared", "approval_status": "approved"},
-            "occurred_at": {"kind": "column", "column": "event_at", "binding_origin": "user_declared", "approval_status": "approved"}
+            "subject": {
+              "kind": "entity",
+              "entity_type": "BondComponent@1",
+              "keys": {
+                "bond_wafer": {
+                  "kind": "column",
+                  "column": "bond_wafer",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "bond_x": {
+                  "kind": "column",
+                  "column": "bond_offset_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "bond_y": {
+                  "kind": "column",
+                  "column": "bond_offset_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "layer": {
+                  "kind": "column",
+                  "column": "bond_layer",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "FinalChip@1",
+              "keys": {
+                "chip_id": {
+                  "kind": "column",
+                  "column": "final_chip",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_at",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
           }
         }
       ]
@@ -220,17 +690,58 @@
       "profile_id": "dt-transfer@1",
       "driver": {
         "unit": "group",
-        "identity": ["dt_job_id"],
-        "group_by": ["dt_job_id"],
-        "order_by": ["record_id"],
-        "occurred_at": {"column": "event_at", "timezone": "Asia/Seoul"},
-        "cursor": {"columns": ["event_at", "record_id"]},
+        "identity": [
+          "dt_job_id"
+        ],
+        "group_by": [
+          "dt_job_id"
+        ],
+        "order_by": [
+          "record_id"
+        ],
+        "occurred_at": {
+          "column": "event_at",
+          "timezone": "Asia/Seoul"
+        },
+        "cursor": {
+          "columns": [
+            "event_at",
+            "record_id"
+          ]
+        },
         "preparation": {
           "preparer_id": "direct-join@1",
-          "inherit_virtual_join_rules": ["dt_job_to_inventory"]
+          "inherit_virtual_join_rules": [
+            "dt_job_to_inventory"
+          ]
         },
         "mapper_id": "declarative-role@1"
       }
+    }
+  },
+  "virtual_joins": {
+    "dt_job_to_inventory": {
+      "left_table": "dt_log",
+      "right_table": "dt_inventory",
+      "join_key": [
+        {
+          "left": "dt_job_id",
+          "right": "dt_job_id"
+        }
+      ],
+      "expose": [
+        "dt_lot",
+        "dt_slot",
+        "dt_offset_x",
+        "dt_offset_y",
+        "bond_wafer",
+        "bond_offset_x",
+        "bond_offset_y",
+        "bond_layer",
+        "final_chip"
+      ],
+      "join_cardinality": "one",
+      "enabled": true
     }
   }
 }
