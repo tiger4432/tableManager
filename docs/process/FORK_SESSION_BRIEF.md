@@ -20,7 +20,7 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
   (단일 파일 접기 이후 실측. 이전 값 `57d36c07…`은 manifest 시절이다)
 - 🔴 **스냅샷 해시는 게이트가 아니다.** 컴파일러를 고치면 뜻이 그대로여도 움직인다
   (2026-08-18 실측: `363c693e`→`fd51baaf`→`f6223d6c`, 세 번 다 원자 디프 0).
-  판정은 **원자**로 한다 — 기준선 `task/evidence/ledger_atom_baseline_20260818.json`,
+  판정은 **원자**로 한다 — 기준선 `task/evidence/ledger_atom_baseline_20260819.json`,
   뜨는 도구 `task/evidence/ledger_atom_baseline.py`, 비교 `task/evidence/ledger_atom_diff.py`.
   변환·이관 때 섹션이 조용히 빠지지 않았는지는 `task/evidence/ledger_config_section_diff.py`.
 - 진행 중 프로그램: `task/ledger_simplification_program.md`

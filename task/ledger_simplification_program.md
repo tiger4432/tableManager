@@ -21,7 +21,7 @@ manifest·chains·enrichments·virtual_joins·신뢰 목록·cutover라는 이�
 ## 기준선 — 이미 떠 뒀다
 
 - 확정 config 스냅샷: `363c693e9fd2dfe5391fbdc67247bcd46372910bf573bae289ff788495a757b3`
-- 원자 기준선: `task/evidence/ledger_atom_baseline_20260818.json`
+- 원자 기준선: `task/evidence/ledger_atom_baseline_20260819.json`
 
 | 사건 | 분자 | 원자 | incomplete |
 |---|---|---|---|

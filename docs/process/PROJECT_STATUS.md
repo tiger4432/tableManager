@@ -190,8 +190,15 @@
 >
 > **소유자가 config를 직접 다시 씀 (2026-08-18).** 백지에서 손으로 작성해 확정했다.
 > 확정 스냅샷 `363c693e9fd2...`, readiness `ready`, lot_event v2/approved.
-> 원자 기준선: [`task/evidence/ledger_atom_baseline_20260818.json`](../../task/evidence/ledger_atom_baseline_20260818.json)
-> — split 9 / split-불완전 7 / merge 11 / track_in 7. **모든 라운드의 게이트는 이 표 디프 0.**
+> 원자 기준선: [`task/evidence/ledger_atom_baseline_20260819.json`](../../task/evidence/ledger_atom_baseline_20260819.json)
+> — **케이스 11건.** split 9 / split-불완전 7 / merge 11 / track_in 7 + 아래 셋.
+> **모든 라운드의 게이트는 이 표 디프 0.**
+>
+> 🔴 **8건 → 11건은 «재기준선»이 아니다. 기존 8건은 글자 하나 안 움직였다**(JSON 대조로 확인,
+> CHANGED 0 · REMOVED 0). 늘어난 셋은 어제까지 **기준선이 한 줄도 안 지나던 갈래**를 덮는다 —
+> 그룹이 한 적재시각일 때 / 두 적재시각에 걸칠 때 / **세상 시각을 쓰는 소스는 여전히 거절하는지.**
+> 그 공백이 `basis` 결함 12건을 통과시킨 이유였다. 「원자 디프 0」은 자기가 «지나는» 갈래만 덮는다.
+> 8건짜리 `..._20260818.json`은 **그날의 기록으로 남긴다**(지우지 않는다). 정본 포인터만 옮겼다.
 >
 > **판정 (실측 근거):**
 > - `chains`는 제거 가능. `mode:"legacy"`는 아무 일도 않고 정상 종료하며(`backfill.py:1570`
