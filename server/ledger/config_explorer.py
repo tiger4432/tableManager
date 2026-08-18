@@ -36,14 +36,28 @@ _VERSIONED_ID = re.compile(r"^(?P<prefix>.+)@(?P<version>[0-9]+)(?P<suffix>(?:[/
 
 
 class ConfigExplorerError(ValueError):
-    def __init__(self, code: str, path: str, message: str):
+    """A refusal.  `details` carries the rows an operator needs in order to ACT on it.
+
+    A refusal that only states a fault ("this is referenced") leaves the operator with no
+    next move; the rows that made the refusal true have to travel with it.  Absent details
+    stay out of `to_mapping` entirely, so the wire shape of an ordinary refusal does not
+    grow a null field.
+    """
+
+    def __init__(self, code: str, path: str, message: str,
+                 details: Sequence[Mapping[str, Any]] | None = None):
         self.code = code
         self.path = path
         self.message = message
+        self.details = tuple(dict(item) for item in details) if details else tuple()
         super().__init__(f"{path}: {message}")
 
-    def to_mapping(self) -> dict[str, str]:
-        return {"code": self.code, "path": self.path, "message": self.message}
+    def to_mapping(self) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "code": self.code, "path": self.path, "message": self.message}
+        if self.details:
+            value["details"] = [dict(item) for item in self.details]
+        return value
 
 
 def node_key(kind: str, canonical_id: str) -> str:
@@ -84,6 +98,61 @@ def authorable_bundle_path(kind: str, canonical_id: str) -> tuple[str, str]:
             f"declarations of kind {kind!r} cannot be created or removed on this screen",
         )
     return (section, canonical_id)
+
+
+def referrers(index: "ExplorerIndex", key: str) -> tuple[dict[str, Any], ...]:
+    """Who points AT `key`, named precisely enough to go and repoint them.
+
+    `inbound` is the only place that knows this.  A count would not do: an operator cannot
+    repoint what the screen will not name, so each row carries the referring declaration's
+    id AND the exact json pointer at which the reference was declared.
+
+    Only `resolved` edges count.  An unresolved inbound edge names a target that does not
+    exist in this snapshot -- it is already dangling, and treating it as a referrer would
+    make a declaration undeletable because something ELSE is broken.
+    """
+    rows: list[dict[str, Any]] = []
+    for edge in index.inbound.get(key, ()):
+        if edge.status != "resolved":
+            continue
+        source = index.nodes.get(edge.from_key)
+        rows.append({
+            "key": edge.from_key,
+            "canonical_id": source.canonical_id if source is not None else edge.from_key,
+            "kind": source.kind if source is not None else "unknown",
+            "reference_kind": edge.reference_kind,
+            "json_pointer": edge.json_pointer,
+        })
+    rows.sort(key=lambda row: (row["kind"], row["canonical_id"], row["json_pointer"]))
+    return tuple(rows)
+
+
+def require_no_referrers(index: "ExplorerIndex", key: str, action: str) -> None:
+    """Refuse to `action` a declaration that something else still points at.
+
+    🔴 THIS IS THE GUARD THE AUTHORING SCREEN EXISTS FOR.  Removing or renaming a
+    referenced declaration does not fail at write time: the file is written, and the
+    breakage surfaces later as a loader error about a reference nobody remembers making.
+    That silent dangling reference is exactly what this screen was built to prevent.
+
+    Repointing the referrers is NOT done here.  Rewriting somebody else's declaration as a
+    side effect of a delete is a second, unreviewed edit riding on one activation, and the
+    operator never saw its diff.  The refusal says so rather than leaving it implied.
+
+    The message names the ACTION, not only the fault -- "this is referenced" tells an
+    operator nothing about which of their two buttons just refused them.
+    """
+    rows = referrers(index, key)
+    if not rows:
+        return
+    node = index.nodes.get(key)
+    subject = node.canonical_id if node is not None else key
+    raise ConfigExplorerError(
+        "declaration_is_referenced", "target_key",
+        f"{action} refused: {subject!r} is still referenced by {len(rows)} declaration(s); "
+        f"repoint them first (this screen does not rewrite referrers for you)",
+        rows,
+    )
 
 
 def pointer_escape(value: str) -> str:

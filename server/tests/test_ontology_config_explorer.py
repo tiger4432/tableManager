@@ -20,6 +20,7 @@ from ledger.config_explorer import (
     build_explorer_index,
     definition_diff,
     explorer_view,
+    node_key,
     reference_diff,
 )
 from ledger.config_explorer_service import OntologyExplorerService
@@ -825,3 +826,125 @@ def test_authorable_sections_match_where_the_index_actually_puts_things(active_s
     # And the two kinds deliberately left out must NOT become creatable by accident.
     for excluded in ("table", "verified_join"):
         assert excluded not in AUTHORABLE_SECTIONS
+
+
+def test_referenced_declaration_refuses_removal_and_names_who_points_at_it(active_setup):
+    """A delete or rename of a referenced declaration must refuse BY NAME.
+
+    Writing it anyway does not fail at write time -- the file is written, and the breakage
+    surfaces later as a loader error about a reference nobody remembers making.  So the
+    guard is scored on two things a count could not give: that it refuses at all, and that
+    the refusal hands back rows an operator can act on (id + the exact json pointer).
+    """
+    from ledger.config_explorer import referrers, require_no_referrers
+
+    index = build_explorer_index(active_setup)
+    resolved_inbound = {
+        key: [edge for edge in edges if edge.status == "resolved"]
+        for key, edges in index.inbound.items()
+    }
+    referenced = sorted(
+        (key for key, edges in resolved_inbound.items() if edges),
+        key=lambda key: (-len(resolved_inbound[key]), key),
+    )
+    # Non-vacuous: the live setup really does have referenced declarations, so the rest of
+    # this test is comparing things rather than iterating an empty list.
+    assert referenced
+
+    subject = referenced[0]
+    rows = referrers(index, subject)
+    assert len(rows) == len(resolved_inbound[subject])
+    # The rows must BE the inbound edges, not a plausible-looking summary of them.
+    assert {(row["key"], row["json_pointer"]) for row in rows} == {
+        (edge.from_key, edge.json_pointer) for edge in resolved_inbound[subject]
+    }
+    assert all(row["canonical_id"] and row["json_pointer"].startswith("/") for row in rows)
+    assert list(rows) == sorted(
+        rows, key=lambda row: (row["kind"], row["canonical_id"], row["json_pointer"]))
+
+    for action in ("delete", "rename"):
+        with pytest.raises(ConfigExplorerError) as refused:
+            require_no_referrers(index, subject, action)
+        mapping = refused.value.to_mapping()
+        assert mapping["code"] == "declaration_is_referenced"
+        # The refusal names the ACTION, not only the fault: "this is referenced" does not
+        # tell an operator which of their two buttons just refused them.
+        assert mapping["message"].startswith(f"{action} refused:")
+        assert index.node(subject).canonical_id in mapping["message"]
+        assert mapping["details"] == [dict(row) for row in rows]
+
+
+def test_an_already_dangling_inbound_edge_does_not_make_a_declaration_undeletable():
+    """Only `resolved` inbound edges are referrers.
+
+    This is the case the two candidate rules disagree on.  An inbound edge whose status is
+    not `resolved` names a target it did not actually reach -- it is ALREADY broken, and
+    counting it would make a declaration permanently undeletable because something else is
+    wrong.  A fixture with only healthy edges cannot tell the two rules apart, so build one
+    that has exactly the awkward edge and nothing else.
+
+    The healthy half at the bottom is what makes the first half a decision rather than a
+    guard that never fires: on the live root every declaration is referenced, so a guard
+    that always returned "no referrers" would look identical there.
+    """
+    from ledger.config_explorer import referrers, require_no_referrers
+
+    def two_node_index(status):
+        builder = _IndexBuilder("a" * 64, "b" * 64)
+        source = builder.add_node(
+            "mapping", "source@1", {}, {}, ("source",),
+            config_file="ledger_config.json", json_pointer="/source", version=1)
+        builder.add_node(
+            "entity", "Target@1", {"keys": ["id"]}, {"keys": ["id"]},
+            ("entities", "Target@1"), config_file="ledger_config.json",
+            json_pointer="/entities/Target@1", version=1)
+        builder.add_edge(
+            source, "Target@1", "entity", "subject", "/ref/subject", status=status)
+        return builder.finish()
+
+    dangling = two_node_index("signature_mismatch")
+    # The edge really is inbound on the target -- otherwise this proves nothing.
+    assert [edge.status for edge in dangling.inbound["entity|Target@1"]] == [
+        "signature_mismatch"]
+    assert referrers(dangling, "entity|Target@1") == tuple()
+    require_no_referrers(dangling, "entity|Target@1", "delete")
+
+    healthy = two_node_index(None)
+    assert [edge.status for edge in healthy.inbound["entity|Target@1"]] == ["resolved"]
+    with pytest.raises(ConfigExplorerError) as refused:
+        require_no_referrers(healthy, "entity|Target@1", "rename")
+    assert refused.value.to_mapping()["details"] == [{
+        "key": "mapping|source@1",
+        "canonical_id": "source@1",
+        "kind": "mapping",
+        "reference_kind": "subject",
+        "json_pointer": "/ref/subject",
+    }]
+
+
+def test_a_source_plan_and_its_profile_reference_each_other_in_both_directions(active_setup):
+    """🔴 A REFERENTIAL GUARD ALONE CANNOT DELETE A SOURCE PLAN OR ITS PROFILE.
+
+    Found by RUNNING the guard over the live index rather than reading it: every single
+    declaration there has at least one resolved referrer, and for this pair the reason is
+    structural rather than incidental.  `build_explorer_index` extracts an edge in each
+    direction -- `profiles.<id>.source` names the source plan, and
+    `sources.<id>.profile_id` names the profile -- so each is the other's only referrer.
+
+    "Refuse while referenced, repoint first" therefore deadlocks: neither can be deleted
+    until the other is, and the other cannot be deleted either.  Whoever wires delete and
+    rename needs an owner ruling here (exempt a mutual pair? accept a set of declarations
+    in one draft? require the profile's `source` to be repointed first?).  It is asserted
+    rather than written in a comment because a future edge change that breaks the deadlock
+    should make this test speak up rather than pass silently.
+    """
+    index = build_explorer_index(active_setup)
+    pairs = [
+        (node.key, node_key("profile", node.raw["profile_id"]))
+        for node in index.nodes.values() if node.kind == "source_plan"
+    ]
+    assert pairs, "no source plan declared; this test would otherwise be vacuous"
+    for source_key, profile_key in pairs:
+        assert profile_key in index.nodes
+        assert profile_key in {edge.from_key for edge in index.inbound[source_key]}
+        assert source_key in {edge.from_key for edge in index.inbound[profile_key]}
