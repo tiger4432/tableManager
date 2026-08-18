@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from admin_auth import require_admin_token, require_admin_token_strict
 from database.database import get_db
+from ledger.column_stats import ColumnStatsError
 from ledger.config_explorer import ConfigExplorerError
 from ledger.config_explorer_service import OntologyExplorerService
 from ledger.setup import DEFAULT_ONTOLOGY_ROOT
@@ -23,7 +24,7 @@ def configure_service(service: OntologyExplorerService) -> None:
     _service = service
 
 
-def _refusal(exc: ConfigExplorerError) -> HTTPException:
+def _refusal(exc: ConfigExplorerError | ColumnStatsError) -> HTTPException:
     status = 409 if exc.code in {
         "stale_base_snapshot", "stale_draft", "stale_revision",
         "conflict_draft", "stale_context", "review_revision_locked",
@@ -51,6 +52,28 @@ def explorer_view(
             draft_id=draft_id, revision=revision, view_mode=view_mode)
 
     except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
+@router.get("/columns", dependencies=[Depends(require_admin_token)])
+def column_picker(
+    relation: str = Query(...),
+    combination: list[str] | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Candidate columns for `relation`, each with how many rows actually carry a value.
+
+    A read, and an EXPENSIVE one by design: the population counts are exact and cost one
+    table scan. `estimated_rows` comes back with them so a caller can see what it asked
+    for. Nothing is written and no cursor moves.
+
+    `combination` may be repeated to measure one ordering's real uniqueness on the same
+    call -- the question that is otherwise answered mid-backfill.
+    """
+    try:
+        return _service.column_picker(
+            db, relation=relation, combination=combination or [])
+    except (ColumnStatsError, ConfigExplorerError) as exc:
         raise _refusal(exc) from exc
 
 

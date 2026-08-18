@@ -4,8 +4,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
+from .column_stats import (
+    ColumnStatsError, combination_uniqueness, estimated_rows, ordering_candidates,
+    population,
+)
 from .config_drafts import OntologyDraftStore
 from .config_explorer import (
     ConfigExplorerError,
@@ -231,6 +235,46 @@ class OntologyExplorerService:
         for field in ("removed", "released", "blocked"):
             for row in payload[field]:
                 row["context_token"] = token
+        return payload
+
+    def column_picker(
+        self,
+        db: Any,
+        *,
+        relation: str,
+        combination: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Candidate columns WITH the numbers that decide between them.
+
+        🔴 THE NUMBERS ARE THE FEATURE.  A picker that lists 38 column names is a spelling
+        aid; a picker that says `dt_job_id  0 / 34,939` is the thing that stops a config
+        which validates, compiles, runs, and yields nothing.  Both defects of 2026-08-18
+        were invisible to every refusal in the system and visible in one glance here.
+
+        `combination` is optional and answers the second question on the same surface:
+        given these columns, is the ordering actually unique?  The compile-time check only
+        asks whether an ordering covers a DECLARED key, and the declaration can be wrong --
+        `dt_log` declares one made of three empty columns.
+
+        The relation must be declared in `table_config.json`, which this reads and never
+        writes.  Undeclared tables are refused by name rather than silently offered: a
+        relation the rest of the system does not know has no keys, no ingestion and no
+        chains, and binding the ledger to it produces atoms about rows nobody can address.
+        """
+        setup, _, _ = self.active()
+        catalog = getattr(setup, "catalog", None)
+        if not isinstance(catalog, Mapping) or relation not in catalog:
+            raise ColumnStatsError(
+                "undeclared_relation", "relation",
+                f"relation {relation!r} is not declared in table_config.json; declare it "
+                f"there first -- an undeclared table has no keys, no ingestion and no "
+                f"chains, so the ledger cannot address its rows")
+        payload = population(db, relation)
+        payload["estimated_rows"] = estimated_rows(db, relation)
+        payload["ordering"] = ordering_candidates(db, relation, catalog[relation])
+        payload["combination"] = (
+            combination_uniqueness(db, relation, list(combination))
+            if combination else None)
         return payload
 
     def create_draft(self, *, target_key: str, base_snapshot_hash: str) -> dict[str, Any]:
