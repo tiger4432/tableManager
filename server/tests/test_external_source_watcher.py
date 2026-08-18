@@ -140,6 +140,9 @@ def test_same_json_produces_the_run_denominator(tmp_path):
         "base_y": 4.0, "stack_gate": 2,
         "observed_at": "2026-08-17T03:14:05+09:00",
         "recipe_id": "SAT-R1", "eqp_id": None,
+        # The folder name carries a work id and it is recorded on the row. Here the
+        # directory is the legacy `WORK_<stamp>` form, so the work id reads "WORK".
+        "work_id": "WORK",
     }]
 
 
