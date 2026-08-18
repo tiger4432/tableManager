@@ -96,6 +96,113 @@ identity`). 화면은 이것을 그대로 보여주면 되고, 문구를 새로 
 각 걸음 상단에 "이 걸음이 끝나려면 남은 것"을 목록으로 두고, 항목마다 그 자리로 가는
 버튼을 둔다. 조용한 빈 목록·빈 패널을 남기지 않는다.
 
+## 강제 관계표 — 화면이 «파생»할 것과 «물어볼» 것 (2026-08-19, 검증기에서 도출)
+
+> **규칙: 한 선언이 강제하는 것은 화면이 채운다. 진짜로 자유로운 것만 묻는다.**
+>
+> 소유자 판정(2026-08-19): 화면의 본질은 서식 작성이 아니라 **연결의 도출**이다. entity type이
+> `DTJob@1`이면 binding의 `keys`는 그 엔터티의 식별키일 수밖에 없고 — 검증기가 이미 그렇게
+> **강제한다**. 작성자가 그것을 다시 적을 때 자유도는 0이다. 더 낫게 쓸 수는 없고 틀리게만 쓸 수 있다.
+>
+> **이 표는 기억이 아니라 `setup_bundle.py`의 검사에서 도출했고, 모든 행은 실제로 «어겨 보고»
+> 나온 거절 코드·경로를 달고 있다.** 근거를 못 단 행은 표에 넣지 않았다. (이 규율의 이유:
+> 같은 날 밤 기억으로 댄 필드명 `payload`·`pack_ids`가 둘 다 존재하지 않았고 각각 한 번의
+> 저장-거절을 태웠다. 표에 그 오류가 들어가면 훨씬 비싸다.)
+
+### A. 낱말 ↔ 엔터티
+
+| 강제되는 것 | 무엇이 강제하나 | 거절 (code @ path) | 화면 |
+|---|---|---|---|
+| `vocabulary.<p>.subjects[]`·`object.types[]`는 선언된 entity type | `entities` 선언 집합 | `unknown_entity_type` @ `...subjects[i]` | **묻는다**(닫힌 목록 = 선언된 엔터티) |
+| Claim이 emit하는 predicate은 `status: active` | predicate 선언 | `inactive_predicate` @ `packs...emit.predicate` | retired는 **선택지에서 제외** |
+
+### B. Pack/Claim ↔ 낱말 — 여기가 파생이 가장 많다
+
+| 강제되는 것 | 무엇이 강제하나 | 거절 (code @ path) | 화면 |
+|---|---|---|---|
+| `emit.object.kind` == predicate의 `object.kind` | predicate | `invalid_predicate` @ `...emit.object.kind` | **파생(자유도 0)** |
+| kind별 허용 키: `entity_ref`→`entity`만, `value`/`event_ref`→`value`만, `none`→`kind`만 | 위 kind | `invalid_emission` @ `...emit.object` | **파생** — 화면이 칸 자체를 바꾼다 |
+| predicate의 **required qualifier 전부** emit | predicate qualifier 계약 | `missing_required_payload` @ `...qualifiers.<q>` | **파생** — 칸을 미리 만들어 둔다 |
+| emit qualifier ⊆ required ∪ optional | 같은 계약 | `unknown_payload_field` @ `...qualifiers.<q>` | optional만 **묻는다**, 목록은 파생 |
+| `emit.subject`·`occurred_at`·`object.entity|value`는 `required: true`이고 비-optional인 Role | Role 선언 | `invalid_role_ref` @ `...emit.subject` | **파생** — 후보 Role이 결정됨 |
+| qualifier의 Role 참조 철자 `$r` vs `$r?` == Role의 `required` | Role 선언 | `invalid_role_ref` @ `...qualifiers.<q>` | **파생(자유도 0)** — 작성자가 물음표를 칠 이유가 없다 |
+| endpoint별 허용 Role kind (subject→entity, occurred_at→time, value→scalar, event_ref→identity) | endpoint 위치 | `invalid_role_kind` | **묻는다**, 목록 파생 |
+
+### C. Profile ↔ Pack/Claim
+
+| 강제되는 것 | 무엇이 강제하나 | 거절 (code @ path) | 화면 |
+|---|---|---|---|
+| `profile.packs` == mappings의 `use`가 쓰는 pack 집합 (**양방향**) | mappings | `invalid_profile` @ `...use` / `...packs[i]` | **파생(자유도 0)** — 칸을 없앤다 |
+| Claim의 **required Role 전부** bind | Claim roles | `missing_required_role` @ `...bind.<role>` | **할 일 목록의 본체** |
+| bind 키 ∈ Claim의 roles | Claim roles | `unknown_role` @ `...bind.<role>` | **파생** — 행을 미리 깐다 |
+| binding `kind` ∈ Role의 `allowed_binding_kinds`, 없으면 기본값(`entity`→`entity`, 그 외→`column`/`constant`) | Role 선언 | `invalid_binding` @ `...bind.<role>.kind` | **묻는다**, 목록 파생 |
+| symbolic Role + constant → `value` ∈ `allowed_values` | Role 선언 | `invalid_symbolic_constant` | **묻는다**, 닫힌 목록 파생 |
+| **entity binding의 `keys` 집합 == 그 entity 선언의 `keys` 집합 (정확히)** | entity 선언 | `invalid_entity_ref` @ `...bind.<role>.keys` | **파생 — 오늘의 발단.** 남는 질문은 «각 key에 어느 컬럼» 하나뿐 |
+| subject의 entity_type ∈ predicate `subjects`; object의 entity_type ∈ predicate `object.types` | predicate | `invalid_entity_ref` @ `...emit.subject` | **묻는다**, 후보 파생 |
+| 모든 binding의 `approval_status` == `approved` | 준비성 단계 | `binding_not_approved` (**`bundle_readiness_errors` — `validate_bundle_errors`엔 없다**) | 자유도 0 |
+| 두 mapping의 sentence signature가 같으면 `sentence` 필요 | 다른 mapping | `_ambiguous_sentences` | **조건부로만** 묻는다 |
+
+### D. Source ↔ Profile/Mapper/Preparer
+
+| 강제되는 것 | 무엇이 강제하나 | 거절 (code @ path) | 화면 |
+|---|---|---|---|
+| `sources.<s>.profile_id` ↔ `profiles.<p>.source` == 그 source id | 서로 | `invalid_profile` @ `profiles.<p>.source` | **파생(자유도 0)** — 한쪽 고르면 반대쪽 확정 |
+| `mapper.emits` == profile mappings의 `use` (**집합 동일, 양방향**) | 서로 | `invalid_mapper` @ `mappers.<m>.emits[i]` · `invalid_profile` @ `...mappings[i].use` | **파생(자유도 0)** |
+| profile이 bind한 모든 컬럼 ⊆ `mapper.input_columns` | profile bindings | `invalid_mapper` @ `mappers.<m>.input_columns` | **파생(최소 집합)** |
+| `unit: row` → `group_by` 비어야, `unit: group` → 최소 1개 | `driver.unit` | `invalid_driver` @ `...driver.group_by` | **파생** — 칸의 존재 자체 |
+| `group_by` ⊆ `identity` | identity | `invalid_driver` @ `...driver.group_by` | **파생(후보 제한)** |
+| mapper `unit.kind: group_by` → source `group_by` 비면 안 됨 | mapper unit | `invalid_mapper` @ `mappers.<m>.unit.kind` | **파생** |
+| mapper `unit.columns`는 `group_by`일 때만 존재하고 ⊆ `input_columns` | `unit.kind` | `missing_field`/`invalid_mapper` @ `...unit.columns` | **파생** — 칸의 존재와 후보 |
+| `order_by`·`cursor.columns`는 카탈로그가 선언한 business/composite/UNIQUE 키 하나를 **전부 포함** | `table_config.json` | `invalid_cursor` @ `...driver.order_by` | **기본값을 파생해 채운다**(추가는 자유) |
+| `occurred_at`은 `column`과 `basis` 중 **정확히 하나** | — | `invalid_driver` @ `...driver.occurred_at` | **묻는다.** 표에 시각 컬럼이 없으면 `basis`만 남는다 |
+| `inherit_virtual_join_rules`가 있으면 preparer의 `accepts_verified_join_rules`가 true | 상속 선언 | `invalid_driver` @ `source_preparers.<p>.accepts_verified_join_rules` | **파생** |
+| join rule의 `left_table` == source `relation` | relation | `invalid_driver` @ `...inherit_virtual_join_rules[i]` | **파생(후보 필터)** |
+| join rule의 left key 컬럼 ⊆ preparer `input_columns` | rule | `invalid_driver` @ 같은 경로 | **파생(최소 집합)** |
+| preparer `output_columns` ∩ relation 컬럼 == ∅ | relation | `output_column_collision` | **파생(금지 목록)** |
+| `registration_probe.entity_type`은 **단일 key** 엔터티만 | entity 선언 | `unsupported_registration_probe` | **묻는다**, 후보 필터 |
+
+### E. 🔴 「컬럼」은 한 집합이 아니라 **세 집합**이다 — 실측으로 갈랐다
+
+| 우주 | 무엇이 여기서 고르나 |
+|---|---|
+| **RELATION** = `table_config.json`의 그 relation 컬럼 | `driver.order_by` · `driver.cursor.columns` · `driver.occurred_at.column` · preparer `input_columns` · `registration_probe.columns` |
+| **PREPARED** = RELATION ∪ preparer `output_columns` | `driver.identity` · `driver.group_by` · mapper `input_columns` |
+| **MAPPER INPUT** = 그 mapper의 `input_columns` | profile의 **모든** column binding |
+
+판별 실측: preparer가 만들어 내는 `target_id`(relation에는 **없다**)를 —
+`driver.identity`에 쓰면 **통과**, `driver.order_by`에 쓰면
+`unknown_column: column 'target_id' is not in relation 'input_rows'`. 같은 이름, 다른 답.
+**화면의 컬럼 드롭다운은 칸마다 다른 집합을 먹여야 한다.** 하나로 합치면 반은 없는 컬럼을
+보여 주고 반은 있는 컬럼을 숨긴다.
+
+### F. 할 일 목록은 이 표에서 바로 떨어진다
+
+같은 정보를 반대편에서 보면 «거절 목록»이 «할 일 목록»이 된다. 반쯤 쓰인 선언 앞에서
+화면은 세 갈래로 나눌 수 있다.
+
+- **파생됨** — 화면이 이미 채웠다. 작성자에게 보여 주되 **묻지 않는다.**
+- **빠짐(MISSING)** — 강제되는데 없다. required Role 미bind, required qualifier 누락,
+  `profile.packs` 불일치. → 할 일 항목 + 그 자리로 가는 버튼.
+- **미답(UNANSWERED)** — 진짜 자유인데 아직 안 골랐다. 「각 key에 어느 컬럼」,
+  optional qualifier를 쓸지, `column` vs `basis`.
+
+이 구분은 화면이 **어느 필드가 파생 가능한지 알기 때문에** 가능하고, 그것이 이 표의 값어치다.
+
+### 🔴 오늘 표를 만들며 뒤집힌 것 둘 (지시받은 목록과 다르다)
+
+1. **엔터티 선언의 식별키 필드 이름은 `keys`다. `identity_keys`가 아니다.**
+   `identity_keys`를 넣어 보면 `unknown_field @ bundle.entities.<e>.identity_keys` +
+   `missing_field @ ...keys`가 나온다. (`_validate_entities`: `required=("keys",)`,
+   `optional=("key_types","allow_null")`.)
+2. **「어디서 이름된 컬럼이든 relation에 있어야 한다」는 틀렸다** — E절의 세 집합이다.
+   이 한 줄을 그대로 구현하면 preparer가 만든 컬럼을 쓰는 모든 소스가 화면에서 막힌다.
+
+### 검증 안 된 것 (표에 넣지 않음)
+
+- 매퍼 «구현»이 요구하는 고정 철자(낱말 base 이름 4개·주어 타입·mapping_id 6개·qualifier 집합)는
+  `setup_bundle.py`가 **아니라** `server/mappers/`의 구현이 강제한다. 위 표는 선언 검증기만
+  훑었으므로 그쪽은 별도 도출이 필요하다. 이 문서 §2가 말하는 목록은 그 출처를 다시 확인할 것.
+
 ## 필수 능력 (없으면 작성 모드가 성립하지 않음)
 
 0. **매퍼까지 화면 안에서** (소유자 지시 2026-08-18: 「유기적으로 생성, 삭제, 맵퍼까지

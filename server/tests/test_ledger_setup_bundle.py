@@ -1533,3 +1533,55 @@ def test_a_root_shape_problem_is_reported_without_its_downstream_consequences(tm
     issues = setup_bundle_module.setup_bundle_errors(tmp_path, catalog=DEFAULT_CATALOG)
     assert [item.path for item in issues] == ["ledger_config.packs"]
     assert issues[0].code == "missing_field"
+
+
+def test_a_column_name_is_judged_against_three_different_universes():
+    """🔴 "EVERY COLUMN MUST EXIST IN THE RELATION" IS FALSE, AND THE SCREEN DEPENDS ON IT.
+
+    Derived 2026-08-19 while writing the authoring screen's forced-relationship table.  The
+    same column name gets opposite answers depending on which field names it:
+
+      * RELATION  = the catalog's columns          -- order_by, cursor.columns,
+                                                      occurred_at.column, preparer
+                                                      input_columns, registration_probe
+      * PREPARED  = RELATION + preparer outputs    -- driver.identity, driver.group_by,
+                                                      mapper input_columns
+      * MAPPER IN = that mapper's input_columns    -- every profile column binding
+
+    A screen that fed one list to every column dropdown would offer columns that do not
+    exist in half the fields and hide legal ones in the other half.  So this is pinned by
+    the DISCRIMINATING case: one name, accepted in one field and refused in another.  A
+    fixture where the three universes coincide would prove nothing, which is why the column
+    used here is a preparer OUTPUT -- a column that exists downstream and not upstream.
+    """
+    base = logical_bundle()
+    produced = sorted(base["source_preparers"]["prepare-input@1"]["output_columns"])
+    assert produced, "the fixture must have a preparer that produces a column"
+    column = produced[0]
+    assert column not in DEFAULT_CATALOG["input_rows"]["columns"], (
+        f"{column!r} must NOT be a relation column or the two universes coincide here")
+
+    prepared = copy.deepcopy(base)
+    prepared["sources"]["input_rows"]["driver"]["identity"] = [column]
+    prepared["sources"]["input_rows"]["driver"]["group_by"] = []
+    assert not [
+        item for item in validate_bundle_errors(prepared)
+        if item.code == "unknown_column"
+    ], "driver.identity reads the PREPARED frame, so a preparer output is legal there"
+
+    relation = copy.deepcopy(base)
+    relation["sources"]["input_rows"]["driver"]["order_by"] = [column]
+    refused = [
+        item for item in validate_bundle_errors(relation)
+        if item.code == "unknown_column"
+    ]
+    assert refused, "order_by reads the RELATION, so a preparer output must be refused"
+    assert "is not in relation" in refused[0].message
+
+    # And the third universe: a profile binds only what its mapper declares as input.
+    narrowed = copy.deepcopy(base)
+    narrowed["mappers"]["map-transition@1"]["input_columns"] = ["source_id"]
+    assert [
+        item for item in validate_bundle_errors(narrowed)
+        if item.code == "invalid_mapper" and "is missing" in item.message
+    ], "profile column bindings are judged against the mapper's input_columns"
