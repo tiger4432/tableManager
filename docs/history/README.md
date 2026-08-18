@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **677개** 이력. (거버넌스 규칙 #4)
+> 총 **678개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-19 07:45** — [The Cursor Was Written With One Key And Read With Another](./20260819_074500_the_cursor_was_written_with_one_key_and_read_with_another.md)
 - **2026-08-19 07:00** — [The Group Had Two Ingestion Times And The Gate Could Not See That Path](./20260819_070000_the_group_had_two_ingestion_times_and_the_gate_could_not_see_that_path.md)
 - **2026-08-19 03:00** — [The Check Compared Names And The Type It Could Not See Was Killing A Table](./20260819_030000_the_check_compared_names_and_the_type_it_could_not_see_was_killing_a_table.md)
 - **2026-08-19 02:20** — [The Defect Was A Number Nobody Could See While Choosing](./20260819_022000_the_defect_was_a_number_nobody_could_see_while_choosing.md)
