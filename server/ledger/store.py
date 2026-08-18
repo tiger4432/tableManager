@@ -150,6 +150,7 @@ class LedgerStore:
                 atom.source_raw_ref,
                 str(atom.supersedes) if atom.supersedes else None,
                 str(atom.source_event_id), atom.source_event_state,
+                atom.occurred_at_basis,
             ))
         if not rows:
             return 0, 0

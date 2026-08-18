@@ -242,10 +242,27 @@ class SourcePreparationPlan:
     verified_join_descriptors: tuple[VerifiedJoinDescriptor, ...]
 
 
+#: What each declared basis reads INSTEAD of a world-time column. ``created_at`` is put on
+#: every table by the schema builder, so it exists wherever a source can be declared at all,
+#: and it is STORED - re-running a backfill reads back the same instant instead of inventing
+#: a fresh one, which is what makes an atom reproducible.
+OCCURRED_AT_BASIS_COLUMNS = {"ingested": "created_at"}
+
+
 @dataclass(frozen=True)
 class OccurredAtPlan:
+    """Where one source's time came from.
+
+    ``column`` is always a column the engine can read, so the runtime never learns about
+    this distinction. ``basis`` is None when that column IS world time as the table records
+    it, and names the admission otherwise. The atom carries the admission because atoms
+    outlive declarations - a reader months from now cannot re-read a config that has since
+    changed to find out whether a timestamp meant "when it happened" or "when we saw it".
+    """
+
     column: str
     timezone: str
+    basis: str | None = None
 
 
 @dataclass(frozen=True)
@@ -773,6 +790,25 @@ def _compile_verified_joins(
     return builder.seal()
 
 
+def _occurred_at_plan(declared: Mapping) -> OccurredAtPlan:
+    """Resolve a declared time origin down to a column the engine can read.
+
+    The bundle validator has already refused anything that is neither shape, so exactly
+    one of the two branches applies here.
+    """
+    basis = declared.get("basis")
+    if isinstance(basis, str):
+        return OccurredAtPlan(
+            column=OCCURRED_AT_BASIS_COLUMNS[basis],
+            timezone=declared["timezone"],
+            basis=basis,
+        )
+    return OccurredAtPlan(
+        column=declared["column"],
+        timezone=declared["timezone"],
+    )
+
+
 def _compile_registration_probe(
     value: Any,
     entities: EntityTypeRegistry,
@@ -818,10 +854,7 @@ def _compile_source_plans(
                 identity=tuple(driver["identity"]),
                 group_by=tuple(driver["group_by"]),
                 order_by=tuple(driver["order_by"]),
-                occurred_at=OccurredAtPlan(
-                    column=driver["occurred_at"]["column"],
-                    timezone=driver["occurred_at"]["timezone"],
-                ),
+                occurred_at=_occurred_at_plan(driver["occurred_at"]),
                 cursor_columns=tuple(driver["cursor"]["columns"]),
                 preparation=SourcePreparationPlan(
                     preparer=preparers[preparation["preparer_id"]],

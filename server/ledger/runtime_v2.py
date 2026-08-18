@@ -131,6 +131,7 @@ def execute_cursor_batch(
     kept_all = []
     event_atoms = _filtered_event_atoms(
         preview.event_results, preview.known_registrations)
+    _stamp_occurred_at_basis(_source_plan(snapshot, source_id), event_atoms)
     for result, atoms in zip(preview.event_results, event_atoms):
         molecule_ref = result.role_frame.attrs["molecule_ref"]
         with gate.building_molecule(source_id):
@@ -264,6 +265,25 @@ def _filtered_event_atoms(
         filtered.append(tuple(kept))
     return tuple(filtered)
 
+
+def _stamp_occurred_at_basis(source_plan, event_atoms) -> None:
+    """Mark every atom of a source that admitted where its time came from.
+
+    Stamped HERE rather than threaded through the LedgerFrame on purpose: the frame is an
+    interchange contract that refuses extra columns, so carrying this there would bump its
+    version and oblige every mapper to restate a value that is constant for the whole
+    source. It is stamped BEFORE the gate so the gate screens the atom that will actually
+    be written, not a version of it missing a field.
+
+    A source whose table carries world time leaves this None, which is what every atom
+    written before this field existed also has - absence keeps meaning "world time".
+    """
+    basis = source_plan.driver.occurred_at.basis
+    if basis is None:
+        return
+    for atoms in event_atoms:
+        for atom in atoms:
+            atom.occurred_at_basis = basis
 
 def _source_plan(snapshot: LedgerSetupSnapshot, source_id: str):
     if not isinstance(snapshot, LedgerSetupSnapshot) or snapshot.readiness != "ready":

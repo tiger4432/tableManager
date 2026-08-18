@@ -14,7 +14,7 @@
 - 새 predicate·entity·pack·profile·source·preparer·mapper를 **생성할 수 없다**
   (`config_drafts.py:172` — 컴파일되지 않은 대상은 `unknown_selection`으로 거절)
 - 선언 **삭제·이름 변경이 불가**하다 (`config_drafts.py:156` `_set_path`는 기존 잎만 교체)
-- `catalog/*`는 **읽기 전용**, `dataflows/chains.json`은 **화면에 존재하지 않는다**
+- 물리 스키마(`table_config.json`)는 **읽기 전용**, chains는 **제거됐다**(선언이 곧 활성화)
 - config가 없거나 깨져 있으면 화면은 **HTTP 500 + 빈 3단 패널**이다
   (`ontology_config_explorer_router.py:53` — `ConfigExplorerError`만 잡음)
 
@@ -66,7 +66,7 @@ UI가 목록을 자기 소스에 하드코딩하면 선언이 늘어나는 날 �
 | mapper unit | event / row / group_by | `_MAPPER_UNITS:53` |
 | 실행 mode / parity | legacy·v2 / pending·approved·rejected | `cutover_v2.py:44` |
 | 등록된 구현 | preparer·mapper 이름과 버전 | `cutover_v2.py:90` |
-| 컬럼 후보 | 해당 relation의 실제 컬럼 | `catalog/tables.json` |
+| 컬럼 후보 | 해당 relation의 실제 컬럼 | `server/config/table_config.json` (읽기 전용) |
 
 `public_bundle_schema()`가 이미 이 역할의 씨앗이지만 현재 노출 범위가 목록 일부뿐이고
 **테스트 외 호출자가 없다.** 이것을 전 목록으로 확장해 작성 모드의 단일 공급원으로 삼는다.
@@ -108,10 +108,15 @@ identity`). 화면은 이것을 그대로 보여주면 되고, 문구를 새로 
 1. **선언 생성·삭제·이름 변경** — 현재 없음. 1순위.
 2. **백지 입구** — config root/manifest가 없거나 깨졌을 때 500 대신, 무엇이 없는지 이름을
    대고 최초 뼈대를 만드는 화면. (`ConfigExplorerError`로 감싸 명명된 결핍으로 렌더)
-3. **`dataflows/chains.json` 편집** — 소스가 실제로 도는지 결정하는 마지막 칸. 현재 화면에
-   존재하지 않아 셋업이 화면 안에서 끝나지 않는다.
-4. **`catalog/tables.json` 작성** — 컬럼 후보의 공급원. 최소한 스키마 시트 업로드로 초안
-   생성(`server/scripts/table_config_from_schema.py`와 같은 계열).
+3. ~~`dataflows/chains.json` 편집~~ — **삭제 (2026-08-18 판정).** chains는 제거됐고
+   **선언이 곧 활성화**다. 소스가 도는 이유는 선언됐기 때문이고 스위치는
+   `sources.<id>.enabled` 하나뿐이다. 화면에 만들 칸이 없다 — 두 번째 켜는 자리를 만들면
+   오늘 지운 이중 선언이 그대로 되살아난다.
+4. **컬럼 후보의 공급원 = `server/config/table_config.json`** (종전 `catalog/tables.json`).
+   **화면은 이 파일을 읽기만 한다.** 물리 스키마의 정본은 스키마·인제션 쪽 소유이고, 두 번째
+   기록자를 만드는 순간 오늘 없앤 「사본 두 벌」이 돌아온다. 작성자가 필요한 컬럼이 거기
+   없으면 화면은 **파일 이름을 대며 없다고 말하고 끝낸다** — 추가를 제안하지 않는다.
+   (주의: 이 파일은 이 박스에서 git 추적 대상이 아니다.)
 5. **서식 보존** — 활성화가 파일 전체를 `indent=2`로 재작성해 손으로 잡은 서식과 diff를
    파괴한다(`config_drafts.py:483`). 변경 잎만 갱신하거나 기존 서식을 유지한다.
 

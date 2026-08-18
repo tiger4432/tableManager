@@ -200,6 +200,11 @@ class Atom:
     object_kind: str = None
     object_payload: dict = None
     occurred_at: datetime = None
+    # NULL means `occurred_at` is world time, as it has been for every atom written
+    # before this column existed. A value names what the time actually is when the
+    # source table carries no world time - the atom says so itself, because atoms
+    # outlive the declaration that produced them.
+    occurred_at_basis: str = None
     source_who: str = None
     source_translator_ver: str = None
     source_raw_ref: str = None
@@ -287,6 +292,7 @@ ROW_COLUMNS = (
     "id", "subject_type", "subject_keys", "predicate", "object_kind",
     "object_payload", "occurred_at", "source_who", "source_translator_ver",
     "source_raw_ref", "supersedes", "source_event_id", "source_event_state",
+    "occurred_at_basis",
 )
 
 

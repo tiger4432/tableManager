@@ -887,7 +887,11 @@ class로 승격하지 않는다.
 | `driver.group_by` | group event 조립 컬럼. row이면 빈 배열 |
 | `driver.order_by` | physical read order. catalog UNIQUE key 전체를 포함해야 함 |
 | `driver.occurred_at.column` | 세계 시각을 담은 physical column |
+| `driver.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
 | `driver.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
+
+`column`과 `basis`는 **정확히 하나**여야 한다. 둘 다 적거나 둘 다 없으면 거절된다.
+자세한 것은 §7.9.
 | `driver.cursor.columns` | physical keyset cursor 컬럼. UNIQUE key 전체를 포함해야 함 |
 | `driver.preparation.preparer_id` | 등록된 Preparer descriptor ID |
 | `inherit_virtual_join_rules` | 이 Source가 물려받을 verified join rule ID 목록 |
@@ -903,6 +907,42 @@ Timezone은 “DB session timezone을 쓰겠지”라고 추측하지 않는다.
 단계에서 거절한다.
 
 ---
+
+### 7.9 시각 컬럼이 없는 표
+
+세상에는 **언제인지 말하지 않는 표**가 있다. 어디에 얼마만 한 것이 있는지만 적고 시각은
+적지 않는 관측 표가 그렇다. 원장 봉투의 `occurred_at`은 없앨 수 없으므로(`ledger_events`가
+시간 분할이고 PK가 `(id, occurred_at)`이다) 종전에는 그런 표를 붙이려면 **거짓을 선언**해야
+했다 — 시각이 아닌 컬럼을 시각으로 지목하거나, 프로필에 `1970-01-01` 같은 상수를 박거나.
+
+둘 다 **읽는 쪽에서 구분할 수 없다.** 「그때 생겼다」로 읽히고 여정·대조가 그 값을 세계
+시각으로 취급한다. §15의 「가짜 값 생성 금지」와 정면으로 어긋난다.
+
+그래서 시각을 없애는 대신 **시각의 출처를 선언**한다.
+
+```jsonc
+"occurred_at": { "column": "event_time", "timezone": "Asia/Seoul" }  // 세계 시각
+"occurred_at": { "basis": "ingested",    "timezone": "Asia/Seoul" }  // 적재 시각
+```
+
+- `basis: "ingested"`는 그 행의 **적재 시각**(`created_at`)을 읽는다. 모든 적재 표가 갖는
+  시스템 컬럼이라 어디서든 성립하고, **저장된 값**이라 백필을 다시 돌려도 같은 원자가 나온다.
+  `created_at`을 `column`에 직접 적을 필요는 없다 — 적으면 그건 「이 표의 세계 시각이
+  적재 시각이다」라는 **다른 주장**이 된다.
+- 허용값은 `"ingested"` 하나다. 닫힌 목록이라 오타는 이름을 대며 거절된다.
+- `timezone`은 두 형태 모두 필수다.
+
+**원자가 스스로 말한다.** 이렇게 선언된 소스의 원자는 `occurred_at_basis` 컬럼에 그 값을
+싣는다. 종전 원자는 이 값이 비어 있고, **비어 있음이 곧 「세계 시각」**이다. config를 다시
+읽지 않아도 구분되는 것이 요점이다 — 원자는 선언보다 오래 살고, 그때의 선언은 이미 바뀌어
+있다.
+
+물리 컬럼 추가는 `server/migrations/add_ledger_occurred_at_basis.py`가 한다(널 허용,
+행 재작성 없음, 백필 없음).
+
+**팩·프로필은 안 바뀐다.** `occurred_at` 역할은 여전히 필수이고 `$role` 참조여야 한다.
+바뀌는 것은 그 역할에 **무엇이 들어오느냐**뿐이라, 프로필에 시각 리터럴이 등장할 이유가
+사라진다.
 
 ## 8. 선언이 곧 활성화다 — 실행 스위치는 없다
 

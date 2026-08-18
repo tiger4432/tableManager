@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
     object_kind           TEXT,
     object_payload        JSONB,
     occurred_at           TIMESTAMPTZ NOT NULL,
+    occurred_at_basis     TEXT,
     source_who            TEXT        NOT NULL,
     source_translator_ver TEXT        NOT NULL,
     source_raw_ref        TEXT        NOT NULL,
@@ -88,6 +89,8 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
         supersedes IS NULL OR supersedes <> id),
     CONSTRAINT ck_ledger_source_event_state CHECK (
         source_event_state IN ('source_molecule', 'source_record', 'legacy_atom')),
+    CONSTRAINT ck_ledger_occurred_at_basis CHECK (
+        occurred_at_basis IS NULL OR occurred_at_basis IN ('ingested')),
     PRIMARY KEY (id, occurred_at)
 ) PARTITION BY RANGE (occurred_at)
 """

@@ -623,6 +623,54 @@ def test_timezone_must_be_explicit_and_valid():
     assert issue(bundle, "invalid_timezone").path.endswith("occurred_at.timezone")
 
 
+def test_time_origin_requires_exactly_one_of_column_or_basis():
+    """A source says WHERE its time came from, and says it once.
+
+    Before this, the only legal shape named a column, so a table carrying no world time
+    could only be declared by pointing at a non-time column or pinning a constant into the
+    profile - both of which produce atoms that READ as world time. Declaring the absence is
+    the honest form; declaring BOTH would leave a reader guessing which one won.
+    """
+    bundle = logical_bundle()
+    del bundle["sources"]["input_rows"]["driver"]["occurred_at"]["column"]
+    neither = issue(bundle, "invalid_driver")
+    assert neither.path.endswith("driver.occurred_at")
+    assert "neither" in neither.message
+
+    bundle = logical_bundle()
+    bundle["sources"]["input_rows"]["driver"]["occurred_at"]["basis"] = "ingested"
+    both = issue(bundle, "invalid_driver")
+    assert both.path.endswith("driver.occurred_at")
+    assert "both" in both.message
+
+
+def test_time_basis_is_a_closed_list():
+    """An open string here would let a typo become a silent claim about time."""
+    bundle = logical_bundle()
+    occurred = bundle["sources"]["input_rows"]["driver"]["occurred_at"]
+    del occurred["column"]
+    occurred["basis"] = "guessed"
+    error = issue(bundle, "invalid_driver")
+    assert error.path.endswith("driver.occurred_at.basis")
+    assert "guessed" in error.message
+    assert "ingested" in error.message
+
+
+def test_a_declared_basis_names_no_source_column():
+    """The basis reads the row's own ingestion stamp, so it must not be column-checked.
+
+    Without this the cross-check would look for a column named ``None`` in the relation and
+    report a missing column that the author never declared.
+    """
+    bundle = logical_bundle()
+    occurred = bundle["sources"]["input_rows"]["driver"]["occurred_at"]
+    del occurred["column"]
+    occurred["basis"] = "ingested"
+    codes = {item.code for item in validate_bundle_errors(bundle)}
+    assert "unknown_column" not in codes
+    assert "invalid_driver" not in codes
+
+
 def test_entity_binding_requires_exact_registered_identity_keys():
     bundle = logical_bundle()
     keys = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["subject"]["keys"]

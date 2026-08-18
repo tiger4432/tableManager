@@ -93,6 +93,9 @@ _SCALAR_ROLE_KINDS = frozenset({
 _OBJECT_KINDS = frozenset({"none", "entity_ref", "value", "event_ref"})
 _SOURCE_UNITS = frozenset({"row", "group"})
 _MAPPER_UNITS = frozenset({"event", "row", "group_by"})
+# A source whose table carries no world time declares that instead of naming a column.
+# Closed on purpose: an open string here would let a typo become a silent claim about time.
+_OCCURRED_AT_BASES = frozenset({"ingested"})
 
 
 class LedgerSetupValidationError(ValueError):
@@ -568,6 +571,34 @@ def _deterministic_json(value: Any, path: str, problems: _Problems) -> None:
 def _nonblank_text(value: Any, path: str, problems: _Problems) -> None:
     if not isinstance(value, str) or not value.strip():
         problems.add("blank_value", path, "must be a non-blank string")
+
+
+def _occurred_at_origin(occurred: Mapping, path: str, problems: _Problems) -> None:
+    """A source says WHERE its time came from - a world column, or an admitted basis.
+
+    Before this, every source had to name a column. A table with no time column could only
+    be declared by pointing at something that is not a time, or by pinning a constant into
+    the profile - both of which produce atoms that READ as world time and cannot be told
+    apart afterwards. Declaring the absence is the honest form, so exactly one of the two
+    must be present: naming both would leave the reader guessing which one won.
+    """
+    has_column = "column" in occurred
+    has_basis = "basis" in occurred
+    if has_column == has_basis:
+        both = "both" if has_column else "neither"
+        problems.add(
+            "invalid_driver", path,
+            f"declare exactly one of 'column' (the table carries world time) or 'basis' "
+            f"(it does not - one of {sorted(_OCCURRED_AT_BASES)}); {both} was declared")
+        return
+    if has_column:
+        _nonblank_text(occurred.get("column"), f"{path}.column", problems)
+        return
+    basis = occurred.get("basis")
+    if not isinstance(basis, str) or basis not in _OCCURRED_AT_BASES:
+        problems.add(
+            "invalid_driver", f"{path}.basis",
+            f"must be one of {sorted(_OCCURRED_AT_BASES)}, got {basis!r}")
 
 
 def _nonblank_list(value: Any, path: str, problems: _Problems,
@@ -1064,9 +1095,9 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
                          "group_by columns must be included in identity")
         occurred = driver.get("occurred_at")
         if problems.exact(
-                occurred, f"{path}.driver.occurred_at", required=("column", "timezone")):
-            _nonblank_text(occurred.get("column"),
-                           f"{path}.driver.occurred_at.column", problems)
+                occurred, f"{path}.driver.occurred_at",
+                required=("timezone",), optional=("column", "basis")):
+            _occurred_at_origin(occurred, f"{path}.driver.occurred_at", problems)
             timezone = occurred.get("timezone")
             _nonblank_text(timezone, f"{path}.driver.occurred_at.timezone", problems)
             if isinstance(timezone, str) and timezone.strip():
@@ -1252,7 +1283,11 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         if isinstance(driver.get("cursor"), Mapping) and _is_list(driver["cursor"].get("columns")):
             base_columns.extend(driver["cursor"]["columns"])
         if isinstance(driver.get("occurred_at"), Mapping):
-            base_columns.append(driver["occurred_at"].get("column"))
+            # A declared basis names no source column - its time comes from the row's own
+            # ingestion stamp, which the schema builder puts on every table.
+            occurred_column = driver["occurred_at"].get("column")
+            if isinstance(occurred_column, str):
+                base_columns.append(occurred_column)
         _relation_columns(relation, base_columns, tables, f"{path}.relation", problems)
         physical = set(_table_columns(tables, relation))
         _cross_registration_probe(
