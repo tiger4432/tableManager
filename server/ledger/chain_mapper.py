@@ -349,11 +349,15 @@ def default_ledger_mapper_registry() -> LedgerMapperRegistry:
     """Process-scoped sealed registry: the only executable mapper list for Ledger v1.
 
     Artifact inspection and SHA-256 hashing happen once, never once per source event.
+
+    ``lot-event``@1 was removed on 2026-08-18 together with its module
+    (``mappers/ledger_lot_event_mapper.py``); the live ``lot_event`` source runs the v2
+    driver mapper ``lot-event-role@1`` instead.  Leaving the registration behind turned
+    every call into ``ModuleNotFoundError``, which is a crash where the registry already
+    has a named answer: a source still naming a retired mapper now gets ``unknown_mapper``.
     """
-    from mappers.ledger_lot_event_mapper import map_lot_event_to_ledger_frame
     from .profile_chain_mapper import map_profile_to_ledger_frame
 
     return LedgerMapperRegistry((
-        describe_mapper("lot-event", 1, map_lot_event_to_ledger_frame),
         describe_mapper("canonical-profile", 1, map_profile_to_ledger_frame),
     )).seal()

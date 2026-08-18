@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime, timezone
-import hashlib
-import inspect
 import json
 from pathlib import Path
 import uuid
@@ -17,7 +15,6 @@ from ledger import config as ledger_config
 from ledger.chain_mapper import (
     LedgerMapperContext,
     LedgerMapperError,
-    LedgerMapperRefused,
     LedgerMapperRegistry,
     default_ledger_mapper_registry,
     describe_mapper,
@@ -26,7 +23,7 @@ from ledger.chain_mapper import (
     mapper_provenance,
     run_registered_mapper,
 )
-from ledger.envelope import Atom, source_event_identity
+from ledger.envelope import Atom
 from ledger.ledger_frame import (
     LEDGER_FRAME_ATTR,
     LEDGER_FRAME_COLUMNS,
@@ -36,7 +33,6 @@ from ledger.ledger_frame import (
     ledger_frame_from_atoms,
     validate_ledger_frame,
 )
-from ledger.lot_event_translator import LotEventTranslator, group_molecules
 from ledger.profile_chain_mapper import (
     ClaimEmitterRegistry,
     DeclaredLookupAdapter,
@@ -191,10 +187,6 @@ LOT_SOURCE_CONFIG = {
                      "emit_has_wafer": True, "emit_register": True},
     },
 }
-LOT_DERIVATIONS = frozenset({
-    "first_sight", "pair_field", "positional_row", "slot_preserving",
-    "shared_wafer",
-})
 
 
 def lot_rows(index=(3, 9)):
@@ -209,105 +201,7 @@ def lot_rows(index=(3, 9)):
     return pd.DataFrame(rows, dtype=object, index=list(index))
 
 
-def lot_mapper_rule():
-    return {
-        "source": "lot_event",
-        "source_config": LOT_SOURCE_CONFIG,
-        "translator_version": "lot-event-test-v1",
-        "declared_derivations": LOT_DERIVATIONS,
-        "registered_entities": (),
-    }
-
-
-def test_registered_lot_event_python_mapper_returns_deterministic_ledger_frame():
-    with gate.building_molecule("lot_event"):
-        first = run_registered_mapper(
-            "lot-event", 1, lot_rows(), context=LedgerMapperContext(),
-            rule=lot_mapper_rule())
-    with gate.building_molecule("lot_event"):
-        second = run_registered_mapper(
-            "lot-event", 1, lot_rows(index=(100, 400)),
-            context=LedgerMapperContext(), rule=lot_mapper_rule())
-    pd.testing.assert_frame_equal(first.reset_index(drop=True),
-                                  second.reset_index(drop=True))
-    versions = set(first["source_translator_ver"])
-    assert all("mapper:lot-event@1:" in value for value in versions)
-    assert len(set(first["source_event_id"])) == 1
-    expected_id, expected_state = source_event_identity(
-        "lot_event", first.iloc[0]["occurred_at"],
-        molecule_ref=first.iloc[0]["molecule_ref"],
-        source_raw_ref=first.iloc[0]["source_raw_ref"])
-    assert set(first["source_event_id"]) == {expected_id}
-    assert set(first["source_event_state"]) == {expected_state}
-
-
-def test_mapper_fingerprint_covers_the_complete_module_artifact():
-    import mappers.ledger_lot_event_mapper as mapper_module
-
-    descriptor = describe_mapper(
-        "lot-event", 1, mapper_module.map_lot_event_to_ledger_frame)
-    material = (
-        "lot-event\n1\n"
-        f"{mapper_module.__name__}\n{inspect.getsource(mapper_module)}"
-    ).encode("utf-8")
-    assert descriptor.fingerprint == hashlib.sha256(material).hexdigest()
-    assert descriptor.fingerprint == describe_mapper(
-        "lot-event", 1, mapper_module.map_lot_event_to_ledger_frame).fingerprint
-
-
-@pytest.mark.parametrize("frame", [
-    lot_rows(),
-    pd.DataFrame([
-        {"lot": "P", "event_type": "merge", "slots": "1:2",
-         "wafers": "W1:W2", "parent_lot": "", "child_lot": "C",
-         "row_identity": "M1", "event_time": "2026-08-17T10:01:00"},
-        {"lot": "C", "event_type": "merge", "slots": "5:6",
-         "wafers": "W1:W3", "parent_lot": "P", "child_lot": "",
-         "row_identity": "M2", "event_time": "2026-08-17T10:01:00"},
-    ], dtype=object),
-    pd.DataFrame([
-        {"lot": "T", "event_type": "track_in", "slots": "7:8",
-         "wafers": "W7:W8", "parent_lot": "", "child_lot": "",
-         "row_identity": "T1", "event_time": "2026-08-17T10:02:00"},
-    ], dtype=object),
-], ids=["split", "merge", "track-in"])
-def test_lot_event_mapper_has_semantic_and_provenance_parity_with_legacy_fixture(
-        frame):
-    rows = frame.to_dict(orient="records")
-    molecule = group_molecules(rows)[0]
-    legacy = LotEventTranslator(
-        LOT_SOURCE_CONFIG, "lot-event-test-v1", LOT_DERIVATIONS, who="lot_event")
-    with gate.building_molecule("lot_event"):
-        legacy_atoms, legacy_report = legacy.translate(molecule)
-    with gate.building_molecule("lot_event"):
-        mapped = run_registered_mapper(
-            "lot-event", 1, frame, context=LedgerMapperContext(),
-            rule=lot_mapper_rule())
-    mapped_atoms = atoms_from_ledger_frame(mapped)
-    assert mapped.attrs["mapper_report"]["incomplete"] == legacy_report["incomplete"]
-    assert len(mapped_atoms) == len(legacy_atoms)
-    for old, new in zip(legacy_atoms, mapped_atoms):
-        assert (new.subject_type, new.subject_keys, new.predicate,
-                new.object_kind, new.object_payload, new.occurred_at,
-                new.source_who, new.source_raw_ref, new.molecule_ref,
-                new.derivation) == (
-                    old.subject_type, old.subject_keys, old.predicate,
-                    old.object_kind, old.object_payload, old.occurred_at,
-                    old.source_who, old.source_raw_ref, old.molecule_ref,
-                    old.derivation)
-        assert new.source_translator_ver.startswith(
-            old.source_translator_ver.rsplit("#", 1)[0] + "|mapper:lot-event@1:")
-        assert new.source_translator_ver.endswith("#" + old.derivation)
-
-
-def test_mapper_refusal_failure_unknown_mapper_and_capability_boundary_are_explicit():
-    ambiguous = lot_rows().iloc[[0]].copy()
-    ambiguous.at[ambiguous.index[0], "parent_lot"] = "OTHER"
-    with gate.building_molecule("lot_event"):
-        with pytest.raises(LedgerMapperRefused):
-            run_registered_mapper(
-                "lot-event", 1, ambiguous, context=LedgerMapperContext(),
-                rule=lot_mapper_rule())
+def test_mapper_failure_unknown_mapper_and_capability_boundary_are_explicit():
     with pytest.raises(LedgerMapperError) as exc:
         run_registered_mapper("not-registered", 1, lot_rows())
     assert exc.value.code == "unknown_mapper"
@@ -590,8 +484,9 @@ def test_mapper_result_must_be_ledger_frame_and_crashes_are_typed():
 def test_default_registry_exposes_logical_ids_not_module_paths():
     registry = default_ledger_mapper_registry()
     metadata = registry.public_metadata()
-    assert [item["mapper_id"] for item in metadata] == [
-        "canonical-profile", "lot-event"]
+    # Members, not a count: ``lot-event``@1 was retired with its module on 2026-08-18
+    # and a bare length assertion would go green again the day anything replaces it.
+    assert [item["mapper_id"] for item in metadata] == ["canonical-profile"]
     assert all("module" not in item and "path" not in item and "function" not in item
                for item in metadata)
     assert default_ledger_mapper_registry() is registry
@@ -674,25 +569,20 @@ def test_legacy_atom_is_refused_by_general_mapper_and_allowed_only_by_import_api
     assert imported.iloc[0]["source_event_state"] == "legacy_atom"
 
 
-def test_migrated_lot_mapper_has_no_legacy_translator_or_runtime_capability():
-    source = (Path(__file__).parents[1] / "mappers" /
-              "ledger_lot_event_mapper.py").read_text(encoding="utf-8")
-    executable = "\n".join(
-        line for line in source.splitlines() if not line.lstrip().startswith("#"))
-    assert "LotEventTranslator" not in executable.replace(
-        "old Molecule and LotEventTranslator are parity", "")
-    assert "LedgerStore" not in executable
-    assert "write_batch" not in executable
-    assert "read_cursor" not in executable
-    assert "commit(" not in executable and "rollback(" not in executable
+def test_mapper_layer_has_no_store_cursor_or_worker_capability():
+    """The mapper layer may not reach the store, the cursor, or the worker.
 
+    The ``mappers/ledger_lot_event_mapper.py`` half of this assertion went with that
+    module on 2026-08-18.  The ``ledger/`` half below is the live boundary and is the
+    reason this test is trimmed rather than deleted: nothing else asserts that these
+    five modules stay free of the writing layer.
+    """
     phase3_modules = [
         Path(__file__).parents[1] / "ledger" / "ledger_frame.py",
         Path(__file__).parents[1] / "ledger" / "chain_mapper.py",
         Path(__file__).parents[1] / "ledger" / "legacy_import.py",
         Path(__file__).parents[1] / "ledger" / "profile_chain_mapper.py",
         Path(__file__).parents[1] / "ledger" / "profile_lookup_adapters.py",
-        Path(__file__).parents[1] / "mappers" / "ledger_lot_event_mapper.py",
     ]
     joined = "\n".join(path.read_text(encoding="utf-8") for path in phase3_modules)
     assert "chain_ingestion_worker" not in joined
