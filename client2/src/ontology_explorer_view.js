@@ -1,4 +1,5 @@
 import { isDraftRevisionEditable } from './ontology_explorer_store.js';
+import { commitTree } from './dom_patch.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings', binding: 'Bindings', pack: 'Packs',
@@ -21,8 +22,12 @@ const button = (text, action, value, cls = '') => {
   return el;
 };
 
+// The one place the panel reaches the screen. It used to be `replaceChildren`, which
+// threw away the operator's scroll, focus, expand state and half-typed text on every
+// state change -- see `dom_patch.js` for the owner report that named it. Every render
+// function above still builds a fresh detached tree; only the commit changed.
 function replace(root, child) {
-  root.replaceChildren(child);
+  commitTree(root, child);
 }
 
 function nodeMap(state) {

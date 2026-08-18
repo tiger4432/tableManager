@@ -872,6 +872,26 @@ const FLOORS = new Map([
   // Ontology Config Explorer: one-context response, stale-response rejection,
   // navigation restoration and dirty-draft movement decision.
   ['ontology_explorer_harness.mjs', 35],
+  // New 2026-08-19. The explorer panel committed every state change with
+  // `replaceChildren`, which is correct output that destroys the operator's scroll,
+  // focus, expand state and half-typed text -- the owner reported it as "refreshed to
+  // see the list update and got thrown back to the top". The floor is the count on the
+  // commit that introduces it.
+  //
+  // 🔴 A DROP HERE IS ALMOST CERTAINLY THE COUNTER-TESTS DYING, NOT THE FEATURE. Section F
+  // re-runs the OLD `replaceChildren` commit against the same cases and REQUIRES it to
+  // fail them. Without F, every survival assertion in A-E is satisfied by a reconciler
+  // that does nothing at all, and this harness would have stayed green throughout the
+  // defect it exists to prevent.
+  // 20 -> 27 the same day: section G. The browser walk found a defect this harness had
+  // stayed green through -- an error banner inserted ahead of `.oe-main` renumbered it
+  // under absolute-index keying and the tree was rebuilt. Sections A-F all rendered the
+  // SAME SHAPE twice, so none of them could shift a sibling.
+  ['dom_patch_harness.mjs', 27],
+  // New 2026-08-19 with the authoring panels (what one declaration forces, and its
+  // ground). Counts are taken INSIDE each bucket element, never off the page, so a
+  // legend using the same words cannot satisfy them.
+  ['ontology_authoring_panel_harness.mjs', 36],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this
