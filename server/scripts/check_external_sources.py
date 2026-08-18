@@ -11,6 +11,10 @@ and without touching the database or the files.
 Accepted here means the declaration is well-formed and the table is declared with a key.
 It does not mean files have arrived; for that, look at the folder shape and the ledger
 (`file_ingestion_checkpoints`).
+
+An entry that omits `parser` is resolved from the target table's workspace `scripts/`
+folder, so checking it imports those plugin modules -- the same import the watcher does
+when a file arrives.  Nothing else is executed.
 """
 from __future__ import annotations
 
@@ -58,8 +62,10 @@ def main() -> int:
     print(f"=== 워처가 받아들인 것: {len(specs)}개 ===")
     for spec in specs:
         print(f"  ✔ {spec['table_name']:18s} {spec['root']}")
-        print(f"      parser={spec['parser']}  recursive={spec['recursive']}  "
-              f"options={spec['options']}")
+        # parser=None means the declaration omitted `parser` and the watcher
+        # resolved it from that table's workspace scripts/ folder.
+        print(f"      parser={spec['parser'] or '(워크스페이스 scripts/ 플러그인)'}  "
+              f"recursive={spec['recursive']}  options={spec['options']}")
 
     print()
     print(f"=== 거절된 것: {len(errors)}개 ===")

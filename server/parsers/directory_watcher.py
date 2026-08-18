@@ -344,10 +344,37 @@ def validate_external_source_specs(settings: dict, table_config: dict,
                 f"delivered again, so update-safe ingestion requires business_key or "
                 f"composite_key_source.")
             continue
-        if parser_name not in SUPPORTED_EXTERNAL_PARSERS:
+        if parser_name is None or (isinstance(parser_name, str) and not parser_name.strip()):
+            # `parser` omitted -> ONE resolution point with the managed raws/ path:
+            # the target table's workspace scripts/ folder.  The whitelist drew the
+            # boundary "config cannot name arbitrary code"; that boundary is now
+            # drawn by the workspace itself -- config names a TABLE, never a code
+            # location, and only a plugin that really exists in that table's
+            # workspace can run.  Which plugin takes a given file is a runtime
+            # match() decision, so registration checks existence only.
+            scripts_dir = os.path.join(
+                resolve_workspace_root(workspace_base, table_name, table_config), "scripts")
+            plugin_names, plugin_load_errors = workspace_pipeline_parser_names(scripts_dir)
+            if not plugin_names:
+                detail = ""
+                if plugin_load_errors:
+                    detail = (f" Script(s) that failed to load: "
+                              f"{', '.join(sorted(plugin_load_errors))}.")
+                errors.append(
+                    f"{where} declares no 'parser' and table {table_name!r} has no "
+                    f"BasePipelineParser plugin in {scripts_dir} to read the file "
+                    f"with.{detail}")
+                continue
+            parser_name = None
+        elif (not isinstance(parser_name, str)
+                or parser_name not in SUPPORTED_EXTERNAL_PARSERS):
+            # `isinstance` first: an unhashable value (list/dict) in `parser` makes
+            # the frozenset membership test raise, which would take down the whole
+            # registration instead of refusing one entry.
             errors.append(
                 f"{where}.parser must be one of {sorted(SUPPORTED_EXTERNAL_PARSERS)}, "
-                f"got {parser_name!r}.")
+                f"got {parser_name!r}. Omit 'parser' to use the plugin in the table's "
+                f"workspace scripts/ folder.")
             continue
         if parser_name == "voids_json" and table_name not in ("void_obs", "inspection_run"):
             errors.append(
@@ -760,6 +787,111 @@ def _register_legacy_import_shim():
         if parent_mod is not None:
             setattr(parent_mod, child, mod)
 
+
+# Returned by `scan_workspace_pipeline_parsers` when the folder cannot be scanned
+# at all (no scripts/ folder, or BasePipelineParser is not importable).  Distinct
+# from `None` ("scanned, nobody claimed the file"), because the managed raws/ path
+# must keep falling back to the standard parser in the first case only.
+SCAN_UNAVAILABLE = object()
+
+
+def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict | None = None):
+    """Load every plugin under ``scripts_path`` and offer each parser class to ``visit``.
+
+    THE single place a workspace parser is resolved.  A file arriving in the managed
+    ``raws/`` folder and a file arriving in an external read-only root that declares
+    no ``parser`` must find the operator's plugin in the same folder, by the same
+    rule; that only stays true if there is one loader instead of two.
+
+    ``visit(filename, cls)`` returns ``None`` to keep scanning, or a 1-tuple to claim
+    the file (a 1-tuple, not the bare value, so a parser may legitimately claim with
+    a ``None`` payload).  ``visit`` runs INSIDE the per-script guard deliberately:
+    an exception raised while matching or parsing has always been reported as that
+    script's error, and hoisting it out would quietly change how the managed path
+    reports a broken plugin.
+
+    Returns ``SCAN_UNAVAILABLE``, the ``visit`` claim tuple, or ``None``.
+    Script load failures are recorded in ``load_errors`` (filename -> traceback).
+    """
+    if not os.path.exists(scripts_path):
+        return SCAN_UNAVAILABLE
+
+    import importlib.util
+    import inspect
+    import traceback
+
+    # Add server/parsers to sys.path if not there so plugins can import BasePipelineParser
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+
+    try:
+        # [C-2 Fix] 플러그인 스크립트(run_watcher 포함)와 동일한 최상위 모듈명(pipeline_base)으로
+        # import하여 BasePipelineParser의 이중 모듈 정체성(issubclass 불일치)을 방지한다.
+        from pipeline_base import BasePipelineParser
+        # [C-2 하위호환] 구식 `server.parsers.*` import를 쓰는 기존 사용자 스크립트 지원(동일 객체 별칭).
+        _register_legacy_import_shim()
+    except ImportError:
+        logger.error("Failed to import BasePipelineParser. Check sys.path.")
+        return SCAN_UNAVAILABLE
+
+    if load_errors is None:
+        load_errors = {}
+
+    for filename in os.listdir(scripts_path):
+        if filename.endswith(".py") and filename != "__init__.py":
+            script_path = os.path.join(scripts_path, filename)
+            try:
+                module_name = f"pipeline_plugin_{filename[:-3]}"
+                spec = importlib.util.spec_from_file_location(module_name, script_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+                for name, obj in inspect.getmembers(module, inspect.isclass):
+                    is_sub = False
+                    try:
+                        if issubclass(obj, BasePipelineParser):
+                            is_sub = True
+                    except TypeError:
+                        pass
+
+                    if not is_sub:
+                        for parent in getattr(obj, "__mro__", []):
+                            if parent.__name__ == "BasePipelineParser":
+                                is_sub = True
+                                break
+
+                    if is_sub and obj.__name__ != "BasePipelineParser":
+                        claim = visit(filename, obj)
+                        if claim is not None:
+                            return claim
+            except Exception as e:
+                load_error_detail = traceback.format_exc()
+                logger.error(f"Failed to load plugin script {script_path}: {e}")
+                load_errors[filename] = load_error_detail
+
+    return None
+
+
+def workspace_pipeline_parser_names(scripts_path: str):
+    """``(names, load_errors)`` for the plugins that live under ``scripts_path``.
+
+    Existence only — ``match()`` is NOT evaluated here because there is no file yet.
+    An external source declares a table at config time and the actual file arrives
+    later, so registration can only answer "is there a plugin in this workspace at
+    all"; which one takes a given file stays a runtime ``match()`` decision, exactly
+    as in the managed raws/ path.
+    """
+    names = []
+    load_errors = {}
+
+    def _collect(filename, obj):
+        names.append(f"{filename}::{obj.__name__}")
+        return None  # never claim: walk every script so the census is complete
+
+    scan_workspace_pipeline_parsers(scripts_path, _collect, load_errors)
+    return names, load_errors
+
+
 class IngestionHandler(FileSystemEventHandler):
     """
     Handles file system events and triggers ingestion.
@@ -855,7 +987,8 @@ class IngestionHandler(FileSystemEventHandler):
         external = (parse_meta or {}).get("external_source")
         if external is None:
             return None
-        parser_name = external.get("parser") or "external"
+        # No declared parser == resolved from the table's workspace scripts/ folder.
+        parser_name = external.get("parser") or "workspace"
         canonical_path = os.path.realpath(os.path.abspath(file_path))
         return f"external:{parser_name}:{canonical_path}"
 
@@ -2129,89 +2262,52 @@ class IngestionHandler(FileSystemEventHandler):
         scripts 폴더 내의 모든 파이썬 파일을 검색하여
         BasePipelineParser를 상속받은 클래스 중 match()가 True인 첫 번째 파서를 실행합니다.
         """
-        if not os.path.exists(self.scripts_path):
-            return None
-
-        import importlib.util
-        import inspect
         import traceback
-        
-        # Add server/parsers to sys.path if not there so plugins can import BasePipelineParser
-        if script_dir not in sys.path:
-            sys.path.insert(0, script_dir)
-            
-        try:
-            # [C-2 Fix] 플러그인 스크립트(run_watcher 포함)와 동일한 최상위 모듈명(pipeline_base)으로
-            # import하여 BasePipelineParser의 이중 모듈 정체성(issubclass 불일치)을 방지한다.
-            from pipeline_base import BasePipelineParser
-            # [C-2 하위호환] 구식 `server.parsers.*` import를 쓰는 기존 사용자 스크립트 지원(동일 객체 별칭).
-            _register_legacy_import_shim()
-        except ImportError:
-            logger.error("Failed to import BasePipelineParser. Check sys.path.")
-            return None
 
         load_errors = {}
         match_errors = {}
 
-        for filename in os.listdir(self.scripts_path):
-            if filename.endswith(".py") and filename != "__init__.py":
-                script_path = os.path.join(self.scripts_path, filename)
-                try:
-                    module_name = f"pipeline_plugin_{filename[:-3]}"
-                    spec = importlib.util.spec_from_file_location(module_name, script_path)
-                    module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(module)
-                    
-                    for name, obj in inspect.getmembers(module, inspect.isclass):
-                        is_sub = False
-                        try:
-                            if issubclass(obj, BasePipelineParser):
-                                is_sub = True
-                        except TypeError:
-                            pass
-                        
-                        if not is_sub:
-                            for parent in getattr(obj, "__mro__", []):
-                                if parent.__name__ == "BasePipelineParser":
-                                    is_sub = True
-                                    break
-                                    
-                        if is_sub and obj.__name__ != "BasePipelineParser":
-                            try:
-                                is_match = obj.match(file_path)
-                            except Exception as e:
-                                match_error_detail = traceback.format_exc()
-                                logger.error(f"[{self.table_name}] ❌ Error evaluating match() in {obj.__name__}: {e}")
-                                match_errors[f"{filename}::{obj.__name__}"] = match_error_detail
-                                continue
-                                
-                            if is_match:
-                                logger.info(f"[{self.table_name}] 🚀 Pipeline Matched: \033[1;36m{obj.__name__}\033[0m in {filename}")
-                                parser_instance = obj()
-                                # The folder names are data, and the parser is the
-                                # thing that turns them into columns. Handed in as
-                                # an ATTRIBUTE, not a parse() argument: parse(path)
-                                # is a contract user scripts already subclass, so
-                                # widening its signature would break every existing
-                                # script. A script that wants the path reads
-                                # `self.rel_path` (POSIX, relative to raws/); one
-                                # that does not is unaffected.
-                                parser_instance.rel_path = (
-                                    meta.get("rel_path") if meta is not None else None
-                                )
-                                parser_instance.source_root = (
-                                    (meta.get("external_source") or {}).get("source_root")
-                                    if meta is not None else None
-                                )
-                                # [P2] 파서 정체성 — 체크포인트 재개 가부 판정용(파서가 바뀌면
-                                # 같은 파일이라도 행 순서·건수가 달라질 수 있어 재개 불가).
-                                if meta is not None:
-                                    meta["source_kind"] = f"pipeline:{filename}::{obj.__name__}"
-                                return parser_instance.parse(file_path)
-                except Exception as e:
-                    load_error_detail = traceback.format_exc()
-                    logger.error(f"Failed to load plugin script {script_path}: {e}")
-                    load_errors[filename] = load_error_detail
+        def _claim_first_match(filename, obj):
+            try:
+                is_match = obj.match(file_path)
+            except Exception as e:
+                match_error_detail = traceback.format_exc()
+                logger.error(f"[{self.table_name}] ❌ Error evaluating match() in {obj.__name__}: {e}")
+                match_errors[f"{filename}::{obj.__name__}"] = match_error_detail
+                return None
+
+            if not is_match:
+                return None
+
+            logger.info(f"[{self.table_name}] 🚀 Pipeline Matched: \033[1;36m{obj.__name__}\033[0m in {filename}")
+            parser_instance = obj()
+            # The folder names are data, and the parser is the
+            # thing that turns them into columns. Handed in as
+            # an ATTRIBUTE, not a parse() argument: parse(path)
+            # is a contract user scripts already subclass, so
+            # widening its signature would break every existing
+            # script. A script that wants the path reads
+            # `self.rel_path` (POSIX, relative to raws/); one
+            # that does not is unaffected.
+            parser_instance.rel_path = (
+                meta.get("rel_path") if meta is not None else None
+            )
+            parser_instance.source_root = (
+                (meta.get("external_source") or {}).get("source_root")
+                if meta is not None else None
+            )
+            # [P2] 파서 정체성 — 체크포인트 재개 가부 판정용(파서가 바뀌면
+            # 같은 파일이라도 행 순서·건수가 달라질 수 있어 재개 불가).
+            if meta is not None:
+                meta["source_kind"] = f"pipeline:{filename}::{obj.__name__}"
+            return (parser_instance.parse(file_path),)
+
+        claim = scan_workspace_pipeline_parsers(
+            self.scripts_path, _claim_first_match, load_errors)
+        if claim is SCAN_UNAVAILABLE:
+            return None
+        if claim is not None:
+            return claim[0]
 
         if load_errors or match_errors:
             error_details = []
@@ -2268,7 +2364,25 @@ class IngestionHandler(FileSystemEventHandler):
                     table_name=t_name,
                     options=external.get("options"),
                 )
-            raise ValueError(f"Unsupported external parser {parser_name!r}.")
+            if parser_name:
+                raise ValueError(f"Unsupported external parser {parser_name!r}.")
+            # No declared parser: resolve the file exactly where a managed raws/
+            # file is resolved -- this handler's own workspace scripts/ folder,
+            # by the same match() rule.  The handler an external root is bound to
+            # IS the target table's handler, so `self.scripts_path` is already the
+            # right folder; nothing extra has to be carried on the spec.
+            rows = self._discover_and_execute_pipeline(file_path, meta=meta)
+            if rows is None:
+                # No std-parser fallback here on purpose.  Registration already
+                # proved a plugin exists in this workspace, so reaching this line
+                # means every plugin declined THIS file -- silently handing it to
+                # the standard parser would ingest an external artifact under a
+                # shape nobody declared.
+                raise ValueError(
+                    f"No workspace pipeline parser accepted the external file "
+                    f"'{os.path.basename(file_path)}' for table {t_name!r} "
+                    f"(searched {self.scripts_path}).")
+            return rows, None, 0
 
         rows = self._discover_and_execute_pipeline(file_path, meta=meta)
         if rows is not None:
@@ -2682,14 +2796,27 @@ class WorkspaceWatcher:
         self._external_availability[spec["source_id"]] = True
         logger.info(
             f"Watching external read-only source: {root} -> {spec['table_name']} "
-            f"(parser={spec['parser']}, recursive={spec['recursive']})")
+            f"(parser={spec['parser'] or 'workspace scripts/'}, "
+            f"recursive={spec['recursive']})")
         if was is False:
             logger.info(f"External source recovered: {root} -> {spec['table_name']}")
         return True
 
     def _register_external_sources(self, table_config: dict):
+        settings = load_ingestion_settings()
         specs, errors = validate_external_source_specs(
-            load_ingestion_settings(), table_config, self.base_dir)
+            settings, table_config, self.base_dir)
+
+        # A disabled entry is neither accepted nor refused, so without this line
+        # "declared but switched off" and "never declared" look identical in the
+        # log and the table just reads 0 rows with nothing to explain it.
+        raw_specs = settings.get("external_sources") or []
+        if isinstance(raw_specs, list) and raw_specs:
+            disabled = sum(1 for raw in raw_specs
+                           if isinstance(raw, dict) and raw.get("enabled", True) is False)
+            logger.info(
+                f"External sources declared: {len(raw_specs)} ({disabled} disabled).")
+
         for error in errors:
             logger.error(f"External source config rejected: {error}")
 

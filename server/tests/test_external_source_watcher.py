@@ -324,6 +324,187 @@ def test_external_relative_path_is_the_parser_metadata(tmp_path):
         f"external:voids_json:{os.path.realpath(os.path.abspath(file_path))}")
 
 
+PLUGIN_SOURCE = """
+from pipeline_base import BasePipelineParser
+
+
+class ExternalProbeParser(BasePipelineParser):
+    @classmethod
+    def match(cls, file_path):
+        return file_path.lower().endswith("{suffix}")
+
+    def parse(self, file_path):
+        # rel_path/source_root are the attributes the managed raws/ path hands a
+        # plugin; an external file must arrive carrying the same two.
+        return [{{
+            "void_uid": "probe-1",
+            "rel_path": self.rel_path,
+            "source_root": self.source_root,
+        }}]
+"""
+
+
+def _make_workspace_with_plugin(root, table="void_obs", suffix=".json",
+                                script_name="external_probe_parser.py"):
+    """A managed workspace for `table` whose scripts/ folder holds one plugin."""
+    workspace = root / table
+    (workspace / "raws").mkdir(parents=True)
+    (workspace / "archives").mkdir()
+    scripts = workspace / "scripts"
+    scripts.mkdir()
+    (scripts / script_name).write_text(
+        PLUGIN_SOURCE.format(suffix=suffix), encoding="utf-8")
+    return workspace
+
+
+_NO_PARSER_KEY = object()
+
+
+def _external_spec(root, table="void_obs", parser=_NO_PARSER_KEY):
+    """One declaration; `parser` is left OUT of the JSON unless given."""
+    entry = {
+        "path": str(root), "table_name": table,
+        "recursive": True, "options": {"filename": "voids.json"},
+    }
+    if parser is not _NO_PARSER_KEY:
+        entry["parser"] = parser
+    return {"external_sources": [entry]}
+
+
+def test_external_source_without_parser_resolves_the_table_workspace_plugin(tmp_path):
+    """The owner's plugin must be reachable from an external root, not only raws/."""
+    base = tmp_path / "ingestion_workspace"
+    workspace = _make_workspace_with_plugin(base)
+    external = tmp_path / "external"
+    file_path = _write_voids(external)
+
+    specs, errors = validate_external_source_specs(
+        _external_spec(external), TABLES, str(base))
+    assert errors == []
+    assert len(specs) == 1 and specs[0]["parser"] is None
+
+    handler = IngestionHandler(
+        str(workspace), None, str(workspace / "archives"), default_table_name="void_obs")
+    handler.register_external_source(specs[0])
+    meta = handler._parse_meta_for(str(file_path))
+    rows, total, refused = handler._resolve_rows(
+        str(file_path), t_name="void_obs", table_info=VOID_INFO, meta=meta)
+
+    assert (total, refused) == (None, 0)
+    assert rows == [{
+        "void_uid": "probe-1",
+        "rel_path": "WF-001/WORK_20260817_031405/voids.json",
+        "source_root": os.path.realpath(str(external)),
+    }]
+    # Parser identity is the plugin's, exactly as on the managed raws/ path.
+    assert meta["source_kind"] == "pipeline:external_probe_parser.py::ExternalProbeParser"
+    assert handler._external_cell_source_name(str(file_path), meta) == (
+        f"external:workspace:{os.path.realpath(os.path.abspath(file_path))}")
+
+
+def test_external_source_without_parser_is_refused_naming_table_and_folder(tmp_path):
+    base = tmp_path / "ingestion_workspace"
+    external = tmp_path / "external"
+    external.mkdir()
+
+    # (a) the table has no workspace scripts/ folder at all
+    _spec, errors = validate_external_source_specs(
+        _external_spec(external), TABLES, str(base))
+    scripts_dir = os.path.join(str(base), "void_obs", "scripts")
+    assert len(errors) == 1
+    assert "void_obs" in errors[0] and scripts_dir in errors[0]
+
+    # (b) scripts/ exists but holds nothing that subclasses BasePipelineParser
+    (base / "void_obs" / "scripts").mkdir(parents=True)
+    (base / "void_obs" / "scripts" / "not_a_parser.py").write_text(
+        "VALUE = 1\n", encoding="utf-8")
+    _spec, errors = validate_external_source_specs(
+        _external_spec(external), TABLES, str(base))
+    assert len(errors) == 1 and scripts_dir in errors[0]
+
+    # (c) a plugin that cannot even be imported is named in the refusal
+    (base / "void_obs" / "scripts" / "broken_parser.py").write_text(
+        "import a_module_that_does_not_exist\n", encoding="utf-8")
+    _spec, errors = validate_external_source_specs(
+        _external_spec(external), TABLES, str(base))
+    assert len(errors) == 1 and "broken_parser.py" in errors[0]
+
+
+def test_declared_whitelist_parser_still_wins_over_a_workspace_plugin(tmp_path):
+    """Regression guard: `parser: voids_json` must not start resolving plugins."""
+    base = tmp_path / "ingestion_workspace"
+    workspace = _make_workspace_with_plugin(base)
+    external = tmp_path / "external"
+    file_path = _write_voids(external)
+
+    specs, errors = validate_external_source_specs(
+        _external_spec(external, parser="voids_json"), TABLES, str(base))
+    assert errors == []
+    assert specs[0]["parser"] == "voids_json"
+
+    handler = IngestionHandler(
+        str(workspace), None, str(workspace / "archives"), default_table_name="void_obs")
+    handler.register_external_source(specs[0])
+    meta = handler._parse_meta_for(str(file_path))
+    rows, total, refused = handler._resolve_rows(
+        str(file_path), t_name="void_obs", table_info=VOID_INFO, meta=meta)
+
+    assert meta["source_kind"] == "external:voids_json:v1"
+    assert total == 1 and refused == 0 and rows[0]["base_wafer_id"] == "WF-001"
+
+
+def test_unknown_parser_name_is_still_refused_and_points_at_the_other_way_in(tmp_path):
+    base = tmp_path / "ingestion_workspace"
+    _make_workspace_with_plugin(base)
+    external = tmp_path / "external"
+    external.mkdir()
+
+    for bad in ("void", ["voids_json"]):
+        _spec, errors = validate_external_source_specs(
+            _external_spec(external, parser=bad), TABLES, str(base))
+        assert len(errors) == 1
+        assert "must be one of ['voids_json']" in errors[0]
+        assert "Omit 'parser'" in errors[0]
+
+
+def test_external_file_no_plugin_accepts_is_refused_naming_the_folder(tmp_path):
+    """Registration proved a plugin exists; this file is one none of them takes."""
+    base = tmp_path / "ingestion_workspace"
+    workspace = _make_workspace_with_plugin(base, suffix=".csv")
+    external = tmp_path / "external"
+    file_path = _write_voids(external)
+
+    specs, errors = validate_external_source_specs(
+        _external_spec(external), TABLES, str(base))
+    assert errors == []
+
+    handler = IngestionHandler(
+        str(workspace), None, str(workspace / "archives"), default_table_name="void_obs")
+    handler.register_external_source(specs[0])
+    meta = handler._parse_meta_for(str(file_path))
+    with pytest.raises(ValueError) as excinfo:
+        handler._resolve_rows(
+            str(file_path), t_name="void_obs", table_info=VOID_INFO, meta=meta)
+    message = str(excinfo.value)
+    assert "void_obs" in message
+    assert str(workspace / "scripts") in message
+
+
+def test_disabled_entries_are_counted_at_registration(tmp_path, monkeypatch, caplog):
+    workspace = tmp_path / "ingestion_workspace"
+    external = tmp_path / "external" / "void"
+    workspace.mkdir()
+    settings = _specs(external)
+    settings["external_sources"][1]["enabled"] = False
+    monkeypatch.setattr(directory_watcher, "load_ingestion_settings", lambda: settings)
+    monkeypatch.setattr(IngestionHandler, "settle_already_terminal", lambda self, entries: set())
+
+    watcher = WorkspaceWatcher(str(workspace))
+    with caplog.at_level("INFO", logger="Watcher.DirectoryWatcher"):
+        watcher.discover_and_watch()
+    assert "External sources declared: 2 (1 disabled)." in caplog.text
+
+
 def test_handler_passes_external_full_path_and_relative_path_to_builtin_parser(tmp_path):
     workspace = tmp_path / "ingestion_workspace" / "void_obs"
     external = tmp_path / "external"
