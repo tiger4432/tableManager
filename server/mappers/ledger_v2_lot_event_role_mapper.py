@@ -50,39 +50,6 @@ LIVE_LOT_EVENT_OUTPUT_MAP = MappingProxyType({
 })
 
 
-class LotEventSourcePreparer(BaseSourcePreparer):
-    """Derive one stable group key for both rows of a split or merge."""
-
-    def prepare_outputs(
-        self,
-        context: SourcePreparationContext,
-        base_frame: pd.DataFrame,
-        joins: Mapping[str, PreparedJoin],
-    ) -> Mapping[str, Sequence[Any]]:
-        if joins:
-            raise SourcePreparationError(
-                "unsupported_source_preparation",
-                "source_preparation.join_rules",
-                "lot_event preparation does not accept virtual joins",
-            )
-        declared = set(
-            context.source_plan.driver.preparation.preparer.output_columns)
-        if declared != {EVENT_GROUP_COLUMN, SOURCE_EVENT_INCOMPLETE_COLUMN}:
-            raise SourcePreparationError(
-                "unsupported_source_preparer_output",
-                "source_preparation.outputs",
-                "lot_event preparer requires event group and incomplete outputs",
-            )
-        missing = sorted(set(LOT_EVENT_COLUMNS) - set(base_frame.columns))
-        if missing:
-            raise SourcePreparationError(
-                "source_preparation_incomplete",
-                "source_batch.columns",
-                f"lot_event source columns are missing: {missing}",
-            )
-        return _event_outputs(base_frame)
-
-
 class LiveLotEventSourcePreparer(BaseSourcePreparer):
     """Normalize the production physical lot_event columns before event grouping.
 

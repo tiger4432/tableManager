@@ -32,6 +32,8 @@ from ledger.setup_bundle import SETUP_VERSION, validate_bundle
 from ledger.setup_registry import TrustedImplementationCatalog, compile_setup_snapshot
 from ledger.source_preparation import (
     SOURCE_EVENT_INCOMPLETE_COLUMN,
+    BaseSourcePreparer,
+    SourcePreparationError,
     SourcePreparerImplementationRegistry,
     VerifiedJoinBatchReader,
 )
@@ -39,8 +41,47 @@ from mappers.ledger_v2_lot_event_role_mapper import (
     EVENT_GROUP_COLUMN,
     LOT_EVENT_COLUMNS,
     LotEventRoleMapper,
-    LotEventSourcePreparer,
+    # The module private on purpose: the event-grouping rule is what the production
+    # preparer and the double below must share, and reaching for it here is the signal
+    # that this file -- not `server/mappers/` -- is where the double belongs.
+    _event_outputs,
 )
+
+
+class LotEventSourcePreparer(BaseSourcePreparer):
+    """Group split/merge rows that already carry the LOGICAL column names.
+
+    Test-only, and it lives here for that reason.  It sat in
+    ``mappers/ledger_v2_lot_event_role_mapper.py`` next to the production
+    ``LiveLotEventSourcePreparer``, nearly identical in shape and never registered, so
+    nothing in that file said which of the two actually runs.  It declares no
+    ``implementation_id``, so ``ledger.implementations`` never made it addressable from
+    config -- these tests register it by hand, which is the only way it has ever run.
+    """
+
+    def prepare_outputs(self, context, base_frame, joins):
+        if joins:
+            raise SourcePreparationError(
+                "unsupported_source_preparation",
+                "source_preparation.join_rules",
+                "lot_event preparation does not accept virtual joins",
+            )
+        declared = set(
+            context.source_plan.driver.preparation.preparer.output_columns)
+        if declared != {EVENT_GROUP_COLUMN, SOURCE_EVENT_INCOMPLETE_COLUMN}:
+            raise SourcePreparationError(
+                "unsupported_source_preparer_output",
+                "source_preparation.outputs",
+                "lot_event preparer requires event group and incomplete outputs",
+            )
+        missing = sorted(set(LOT_EVENT_COLUMNS) - set(base_frame.columns))
+        if missing:
+            raise SourcePreparationError(
+                "source_preparation_incomplete",
+                "source_batch.columns",
+                f"lot_event source columns are missing: {missing}",
+            )
+        return _event_outputs(base_frame)
 
 
 NOW = datetime(2026, 8, 17, 10, 0, tzinfo=ZoneInfo("Asia/Seoul"))
