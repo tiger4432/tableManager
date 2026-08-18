@@ -2740,9 +2740,18 @@ d8d8e08 chore(client): sync admin.js/admin.html to main baseline for toggle work
    client2/src/admin.js 2166 +++++-----
 ```
 
-**버려진 클라 작업이다.** 병합할지 폐기할지 판정이 필요하고, 미루면 비싸진다 — 화면 레인이
-지금 `admin.js`·`admin.html`을 고쳐 쓰고 있어서 **하루 지날 때마다 충돌이 커진다.**
-남은 워크트리 일곱은 전부 미커밋 0·미병합 0이라 언제 지워도 잃을 게 없다.
+**정정 — 판정 필요 없다. 중복이었다.** 나는 이걸 「버려진 작업, 소유자 판정 필요」로
+보드에 올렸고 **그건 틀렸다.** 그 기능은 **이미 main에 있다**: `69262ef feat(admin):
+auto-update collector active toggle (UI) + dist`. 라이브 소스에 `au-switch`·`row-inactive`·
+`activeToggle`·`badge-muted`가 다 있고, 커밋 제목이 말하는 나머지 절반(Overview 활성 지표)도
+`activeCount` 19곳으로 살아 있다.
+
+**「main에 없는 커밋」과 「main에 없는 작업」은 다른 말이다.** 커밋 조상 관계만 보고 앞의
+것을 뒤의 것으로 읽었고, 그래서 없는 결정을 소유자에게 올릴 뻔했다. 판별한 축은 조상 관계가
+아니라 **그 작업이 만든 식별자를 라이브 소스에서 세는 것**이었다.
+
+워크트리는 제거했다. **브랜치 `worktree-agent-a20e7cf603e201f0c`(`f8355fa`)는 남아 있어
+커밋은 언제든 회수 가능**하다 — 워크트리 제거는 체크아웃만 지운다. 25 → **7**.
 
 ## 🐞 열린 문제 (Open Problems)
 
