@@ -31,6 +31,12 @@ export const initialExplorerState = Object.freeze({
   error: null,
   removedSelection: null,
   requestGeneration: 0,
+  // Authoring plan and the closed lists it offers. Deliberately OUTSIDE the compiled
+  // context contract above: the plan reads the authoring file, not a snapshot, because
+  // it has to answer while the bundle is half-written and `/view` cannot compile.
+  authoring: null,
+  authoringSchema: null,
+  authoringError: null,
 });
 
 const CONTEXT_COLLECTIONS = [
@@ -205,6 +211,19 @@ export function reduceExplorerState(state = initialExplorerState, action) {
       };
     case 'DRAFT_CLOSED':
       return { ...state, draft: null, editorText: '', dirty: false };
+    case 'AUTHORING_RECEIVED':
+      return {
+        ...state,
+        authoring: action.plan ?? state.authoring,
+        authoringSchema: action.schema ?? state.authoringSchema,
+        authoringError: null,
+      };
+    case 'AUTHORING_FAILED':
+      // Keep the last good plan on screen and SAY it is stale. Blanking the panel would
+      // read as "nothing left to author", which is the silent empty panel again.
+      return { ...state, authoringError: action.message };
+    case 'AUTHORING_INVALIDATED':
+      return { ...state, authoring: null, authoringError: null };
     default:
       return state;
   }

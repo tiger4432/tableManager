@@ -145,6 +145,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         expectedSelection: selection,
       });
       if (requestId !== state.requestGeneration) return;
+      // Not awaited: the authoring plan annotates the view, it does not gate it.
+      void loadAuthoring(payload.selection?.key || selection || null);
       if (editorCheckpoint) {
         state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
         renderOntologyExplorer(root, state);
@@ -156,6 +158,29 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         message: errorMessage(error),
         selection,
       });
+      // A blank or broken root is precisely when `/view` cannot answer and the authoring
+      // plan can. Loading it here is what gives a from-scratch operator a way in.
+      void loadAuthoring(null);
+    }
+  };
+
+  // The authoring plan is fetched per selection (the server filters it) and the closed
+  // lists exactly once -- they change only when the validator's constants change, which
+  // is a deploy, not a click. Failure never blanks the panel; it annotates it.
+  const loadAuthoring = async (selection) => {
+    try {
+      const params = new URLSearchParams();
+      if (selection) params.set('selection', selection);
+      const [plan, schema] = await Promise.all([
+        jsonRequest(`/authoring/plan?${params}`),
+        state.authoringSchema
+          ? Promise.resolve(state.authoringSchema)
+          : jsonRequest('/authoring/schema'),
+      ]);
+      dispatch({ type: 'AUTHORING_RECEIVED', plan, schema });
+    } catch (error) {
+      console.warn('[ontology] authoring plan unavailable', error);
+      dispatch({ type: 'AUTHORING_FAILED', message: errorMessage(error) });
     }
   };
 
@@ -323,6 +348,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
           body: JSON.stringify({ expected_revision: state.draft.revision }),
         });
         dispatch({ type: 'DRAFT_CLOSED' });
+        dispatch({ type: 'AUTHORING_INVALIDATED' });
         showToast('검토한 초안을 활성화했습니다.', 'success');
         await load({ draft: null, allowContextSwitch: true });
       } catch (error) { showToast(errorMessage(error), 'error'); }

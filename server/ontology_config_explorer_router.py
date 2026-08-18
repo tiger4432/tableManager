@@ -77,6 +77,30 @@ def column_picker(
         raise _refusal(exc) from exc
 
 
+@router.get("/authoring/schema", dependencies=[Depends(require_admin_token)])
+def authoring_schema():
+    """Every closed list the authoring screen offers, from the validator's own constants.
+
+    The screen owns no copy.  This is what keeps "고를 수 있는 것" correct on the day a
+    declaration is added instead of the day somebody notices the dropdown is short.
+    """
+    return _service.authoring_schema()
+
+
+@router.get("/authoring/plan", dependencies=[Depends(require_admin_token)])
+def authoring_plan_view(selection: str | None = Query(default=None)):
+    """What one declaration forces (filled, WITH its ground), and what is still asked.
+
+    A read of the authoring FILE, not of the compiled snapshot -- so it answers on a
+    blank or half-written root, which is exactly when `/view` cannot.
+    """
+    try:
+        return _service.authoring(
+            selection_prefix=_service.authoring_prefix(selection))
+    except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
 @router.get("/deletion-preview", dependencies=[Depends(require_admin_token)])
 def deletion_preview(
     targets: list[str] | None = Query(default=None),

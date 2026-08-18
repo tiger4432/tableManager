@@ -1,6 +1,7 @@
 """Cached application service for the ontology config explorer."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
@@ -10,17 +11,20 @@ from .column_stats import (
     ColumnStatsError, combination_uniqueness, estimated_rows, ordering_candidates,
     population,
 )
+from .config_authoring import authoring_plan, closed_lists
 from .config_drafts import OntologyDraftStore
 from .config_explorer import (
     ConfigExplorerError,
     ExplorerIndex,
+    authorable_bundle_path,
     build_explorer_index,
     definition_diff,
     deletion_plan,
     explorer_view,
     reference_diff,
 )
-from .setup import DEFAULT_ONTOLOGY_ROOT, load_setup
+from .setup import DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup
+from .setup_bundle import CONFIG_FILENAME
 
 
 class OntologyExplorerService:
@@ -30,8 +34,10 @@ class OntologyExplorerService:
         config_root: str | Path = DEFAULT_ONTOLOGY_ROOT,
         draft_root: str | Path | None = None,
         setup_loader: Callable[[str | Path], Any] = load_setup,
+        catalog_loader: Callable[[], Mapping[str, Any]] = live_physical_catalog,
         convergence_probe: Callable[[str], dict[str, str]] | None = None,
     ):
+        self._catalog_loader = catalog_loader
         self.config_root = Path(config_root)
         self.draft_store = OntologyDraftStore(
             draft_root or self.config_root.parent / "backup" / "ontology_drafts")
@@ -275,6 +281,65 @@ class OntologyExplorerService:
         payload["combination"] = (
             combination_uniqueness(db, relation, list(combination))
             if combination else None)
+        return payload
+
+    def authoring_schema(self) -> dict[str, Any]:
+        """Every closed list the authoring screen may offer.
+
+        Served from the constants the VALIDATOR enforces, so the screen never carries a
+        copy.  A list literal in the UI is a second author for a value whose first author
+        is a refusal, and the two diverge in silence the day a declaration is added.
+        """
+        return closed_lists()
+
+    @staticmethod
+    def authoring_prefix(selection: str | None) -> str | None:
+        """`kind|id` -> the bundle path prefix its authoring rows live under.
+
+        Lenient by design.  Sub-declaration kinds (`claim`, `mapping`, `binding`) have no
+        entry in `AUTHORABLE_SECTIONS`, and a selection this cannot place must widen the
+        plan to everything rather than refuse -- a screen that answers "no rows" for a
+        claim would read as "nothing left to do", which is the silent-empty-panel failure
+        this whole round exists to remove.
+        """
+        if not selection or "|" not in selection:
+            return None
+        kind, canonical_id = selection.split("|", 1)
+        try:
+            section, name = authorable_bundle_path(kind, canonical_id)
+        except ConfigExplorerError:
+            return None
+        return f"bundle.{section}.{name}"
+
+    def authoring(self, *, selection_prefix: str | None = None) -> dict[str, Any]:
+        """What is filled by force, what is missing, and what is still a real question.
+
+        🔴 THIS DELIBERATELY DOES NOT GO THROUGH `active()`.  A compiled snapshot exists
+        only for a bundle that already validates, and the authoring screen is needed
+        exactly when it does not -- a half-written source, or a blank root that makes
+        `/view` answer 500.  So the plan reads the authoring FILE, tolerates any shape it
+        finds, and lets `authoring_plan` name the deficits instead of raising.
+        """
+        path = self.config_root / CONFIG_FILENAME
+        if not path.is_file():
+            # A named absence, not an empty plan: the operator needs the file name.
+            bundle: Mapping[str, Any] = {}
+            source = {"file": str(path), "state": "absent"}
+        else:
+            try:
+                bundle = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise ConfigExplorerError(
+                    "unreadable_config", CONFIG_FILENAME,
+                    f"{path} could not be read as JSON: {exc}") from exc
+            if not isinstance(bundle, Mapping):
+                raise ConfigExplorerError(
+                    "unreadable_config", CONFIG_FILENAME,
+                    f"{path} must contain a JSON object")
+            source = {"file": str(path), "state": "present"}
+        payload = authoring_plan(
+            bundle, self._catalog_loader(), selection_prefix=selection_prefix)
+        payload["config_source"] = source
         return payload
 
     def create_draft(self, *, target_key: str, base_snapshot_hash: str) -> dict[str, Any]:

@@ -257,3 +257,113 @@
   #ontology-explorer-root .oe-panel-head { flex-direction: column; }
   #ontology-explorer-root .oe-signature { grid-template-columns: 1fr; }
 }
+
+/* --- 작성 모드: 걸음 표시와 파생/빠짐/미답 패널 ------------------------------- */
+/* Every card here can hold a long identifier or JSON pointer. `min-width: 0` on flex
+   children plus `overflow-wrap: anywhere` is what keeps text inside the box; wide
+   things scroll in their own container and never push the page sideways. */
+#ontology-explorer-root .oe-steps {
+  display: flex; gap: 6px; flex-wrap: wrap; min-width: 0;
+  padding: 10px 14px; border-bottom: 1px solid var(--oe-line);
+  background: var(--oe-surface);
+}
+#ontology-explorer-root .oe-step {
+  display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  padding: 5px 10px; border: 1px solid var(--oe-line); border-radius: 999px;
+  font-size: 12px; background: var(--oe-surface-2); color: var(--oe-muted);
+}
+#ontology-explorer-root .oe-step b { color: var(--oe-text); font-weight: 600; }
+#ontology-explorer-root .oe-step.is-here {
+  border-color: var(--oe-accent); background: var(--oe-accent-soft);
+}
+#ontology-explorer-root .oe-step.is-blocked b { color: var(--oe-warn); }
+#ontology-explorer-root .oe-step.is-empty { opacity: 0.65; }
+#ontology-explorer-root .oe-step-tally { display: flex; gap: 6px; flex-wrap: wrap; }
+#ontology-explorer-root .oe-tally { font-style: normal; font-size: 11px; }
+#ontology-explorer-root .oe-tally--missing { color: var(--oe-warn); }
+#ontology-explorer-root .oe-tally--derived { color: var(--oe-ok); }
+
+#ontology-explorer-root .oe-authoring { display: grid; gap: 14px; min-width: 0; padding: 4px; }
+#ontology-explorer-root .oe-bucket { min-width: 0; }
+#ontology-explorer-root .oe-bucket h3 {
+  margin: 0 0 8px; font-size: 12px; letter-spacing: 0.03em;
+  text-transform: uppercase; color: var(--oe-muted);
+}
+#ontology-explorer-root .oe-bucket--missing h3 { color: var(--oe-warn); }
+#ontology-explorer-root .oe-bucket--derived h3 { color: var(--oe-ok); }
+#ontology-explorer-root .oe-field {
+  min-width: 0; margin-bottom: 8px; padding: 9px 11px;
+  border: 1px solid var(--oe-line); border-left-width: 3px; border-radius: 7px;
+  background: var(--oe-surface); overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-field.is-missing { border-left-color: var(--oe-warn); }
+#ontology-explorer-root .oe-field.is-derived { border-left-color: var(--oe-ok); }
+#ontology-explorer-root .oe-field.is-unanswered { border-left-color: var(--oe-accent); }
+#ontology-explorer-root .oe-field-head {
+  display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap;
+}
+#ontology-explorer-root .oe-field-head b { font-size: 13px; }
+#ontology-explorer-root .oe-tier {
+  font-style: normal; font-size: 10px; letter-spacing: 0.04em;
+  padding: 1px 6px; border-radius: 999px; color: var(--oe-muted);
+  border: 1px solid var(--oe-line);
+}
+#ontology-explorer-root .oe-tier--structural { color: var(--oe-ok); border-color: currentColor; }
+#ontology-explorer-root .oe-field-path {
+  display: block; margin: 3px 0; font-size: 11px; color: var(--oe-muted);
+  font-family: "Cascadia Code", Consolas, monospace; overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-field .oe-value { display: flex; flex-wrap: wrap; gap: 4px; }
+#ontology-explorer-root .oe-chip {
+  font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 5px;
+  background: var(--oe-surface-2); border: 1px solid var(--oe-line);
+  font-family: "Cascadia Code", Consolas, monospace; overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-chip.is-none { color: var(--oe-muted); font-family: inherit; }
+#ontology-explorer-root .oe-ground {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; min-width: 0;
+  margin-top: 6px; padding: 5px 8px; border-radius: 5px;
+  background: var(--oe-accent-soft); font-size: 11px;
+}
+#ontology-explorer-root .oe-ground-text { color: var(--oe-text); font-weight: 600; }
+#ontology-explorer-root .oe-ground code {
+  font-size: 10px; color: var(--oe-muted); overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-field-conflict {
+  display: flex; gap: 7px; flex-wrap: wrap; margin-top: 6px;
+  font-size: 11px; color: var(--oe-warn);
+}
+#ontology-explorer-root .oe-candidates {
+  display: flex; gap: 4px; flex-wrap: wrap; align-items: baseline;
+  margin-top: 6px; max-height: 132px; overflow: auto;
+}
+#ontology-explorer-root .oe-candidates small { color: var(--oe-muted); font-size: 10px; }
+#ontology-explorer-root .oe-candidates.is-forbidden .oe-chip {
+  color: var(--oe-warn); text-decoration: line-through;
+}
+#ontology-explorer-root .oe-field-refusal {
+  display: flex; gap: 7px; flex-wrap: wrap; margin-top: 5px; font-size: 11px;
+}
+#ontology-explorer-root .oe-field-refusal b { color: var(--oe-warn); font-weight: 600; }
+#ontology-explorer-root .oe-field-note {
+  display: block; margin-top: 5px; font-size: 11px; color: var(--oe-muted);
+}
+@media (max-width: 720px) {
+  #ontology-explorer-root .oe-steps { gap: 4px; padding: 8px 10px; }
+  #ontology-explorer-root .oe-step { padding: 4px 8px; }
+}
+#ontology-explorer-root .oe-field-act {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-top: 6px; font-size: 11px; color: var(--oe-muted);
+}
+#ontology-explorer-root .oe-jump {
+  border: 1px solid var(--oe-line); background: var(--oe-surface-2);
+  color: var(--oe-accent); border-radius: 5px; padding: 2px 8px;
+  font-size: 11px; cursor: pointer; overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-jump:hover { background: var(--oe-accent-soft); }
+#ontology-explorer-root .oe-note {
+  padding: 7px 10px; border-radius: 6px; font-size: 12px;
+  background: var(--oe-surface-2); border: 1px solid var(--oe-line);
+  color: var(--oe-muted);
+}

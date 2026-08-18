@@ -249,7 +249,9 @@ function renderInspector(state) {
 
   const tabs = h('div', 'oe-tabs');
   tabs.setAttribute('role', 'tablist');
-  for (const [id, label] of [['definition', '정의'], ['usage', '사용처'], ['raw', '원본 JSON']]) {
+  for (const [id, label] of [
+    ['definition', '정의'], ['authoring', '작성'], ['usage', '사용처'], ['raw', '원본 JSON'],
+  ]) {
     const tab = button(label, 'tab', id, 'oe-tab');
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', String(state.detailTab === id));
@@ -261,9 +263,188 @@ function renderInspector(state) {
   panel.setAttribute('role', 'tabpanel');
   if (state.detailTab === 'usage') panel.append(renderUsage(state));
   else if (state.detailTab === 'raw') panel.append(renderRaw(state));
+  else if (state.detailTab === 'authoring') panel.append(renderAuthoring(state));
   else panel.append(renderDefinition(state));
   article.append(tabs, panel);
   return article;
+}
+
+// ---------------------------------------------------------------- authoring panels
+//
+// 🔴 NO LIST LITERALS BELOW. Every step, tier, state name, candidate and closed list is
+// read from the server payload. The one place this file may name a value is a CSS class
+// derived from a server-supplied id. A copy here would go stale the day a declaration is
+// added and would go stale SILENTLY, which is the failure the whole round is about.
+
+function renderStepBar(state) {
+  const plan = state.authoring;
+  const bar = h('nav', 'oe-steps');
+  bar.setAttribute('aria-label', '셋업 걸음');
+  if (!plan) {
+    bar.append(h('div', 'oe-empty', state.authoringError || '작성 계획 불러오는 중…'));
+    return bar;
+  }
+  const here = state.selection?.config_path || '';
+  for (const step of plan.steps) {
+    const item = h('div', `oe-step is-${step.status}`);
+    // The step the current selection belongs to, decided by the server's section list.
+    if (step.sections.some((name) => here.includes(name))) item.classList.add('is-here');
+    item.append(h('b', '', step.label));
+    const tally = h('span', 'oe-step-tally');
+    for (const [key, mark] of [['missing', '빠짐'], ['unanswered', '미답'], ['derived', '파생']]) {
+      if (!step[key]) continue;
+      tally.append(h('i', `oe-tally oe-tally--${key}`, `${mark} ${step[key]}`));
+    }
+    if (!step.declared) tally.append(h('i', 'oe-tally', '비었음'));
+    item.append(tally);
+    bar.append(item);
+  }
+  return bar;
+}
+
+function renderGround(row) {
+  // The ground goes NEXT TO the value, never in a tooltip: a fill whose reason is one
+  // hover away is a fill nobody reads, and an unread reason is a silent default.
+  const ground = row.ground;
+  if (!ground) return null;
+  const box = h('div', 'oe-ground');
+  box.append(h('span', 'oe-ground-text', ground.text));
+  for (const path of ground.from_paths.slice(0, 2)) box.append(h('code', '', path));
+  if (ground.from_paths.length > 2) {
+    box.append(h('small', '', `외 ${ground.from_paths.length - 2}곳`));
+  }
+  return box;
+}
+
+function renderValue(row) {
+  const value = row.value;
+  if (value === null || value === undefined) return h('span', 'oe-value is-none', '없음');
+  if (Array.isArray(value)) {
+    const list = h('span', 'oe-value');
+    if (!value.length) list.append(h('i', 'oe-chip is-none', '비움'));
+    for (const item of value) {
+      list.append(h('i', 'oe-chip', typeof item === 'string' ? item : JSON.stringify(item)));
+    }
+    return list;
+  }
+  if (typeof value === 'object') return h('code', 'oe-value', JSON.stringify(value));
+  return h('span', 'oe-value', String(value));
+}
+
+function renderAuthoringRow(row) {
+  const card = h('div', `oe-field is-${row.state}`);
+  const head = h('div', 'oe-field-head');
+  head.append(h('b', '', row.label));
+  head.append(h('i', `oe-tier oe-tier--${row.tier}`, row.tier));
+  card.append(head);
+  card.append(h('code', 'oe-field-path', row.path));
+  if (row.state !== 'missing') card.append(renderValue(row));
+  const ground = renderGround(row);
+  if (ground) card.append(ground);
+  if (row.conflicts) {
+    const clash = h('div', 'oe-field-conflict');
+    clash.append(h('b', '', '선언과 불일치'));
+    clash.append(h('code', '', JSON.stringify(row.declared)));
+    card.append(clash);
+  }
+  // 🔴 NO GREYED BOXES. A filled value a person cannot act on is force wearing the
+  // costume of a choice. Each disposition gets a real action instead: for a value fixed
+  // by another declaration the lever is ON that declaration, so the row sends you there.
+  if (row.state === 'derived' && row.disposition) {
+    const act = h('div', 'oe-field-act');
+    if (row.disposition === 'grammar_requires_it') {
+      act.append(h('span', '', '강제 · 이 자리에서 못 바꿈'));
+    } else if (row.disposition === 'remove_from_file') {
+      act.append(h('span', '', '강제 · 파일에서 뺄 수 있음'));
+    } else if (row.disposition === 'default_overridable') {
+      act.append(h('span', '', '기본값 · 덮어쓸 수 있음'));
+    } else if (row.disposition === 'unmeasured') {
+      act.append(h('span', '', '거절이 남아 있어 제거 가능 여부 미측정'));
+    }
+    for (const key of row.ground?.from_keys || []) {
+      const jump = button(`근거 · ${key.split('|')[1] || key}`, 'select', key, 'oe-jump');
+      jump.dataset.direct = 'true';
+      act.append(jump);
+    }
+    card.append(act);
+  }
+  if (row.candidates && row.state !== 'derived') {
+    const box = h('div', 'oe-candidates');
+    const label = row.universe ? `${row.universe} · ${row.universe_note}` : '고를 수 있는 값';
+    box.append(h('small', '', `${label} · ${row.candidates.length}`));
+    for (const item of row.candidates.slice(0, 24)) {
+      box.append(h('i', 'oe-chip', typeof item === 'string' ? item : JSON.stringify(item)));
+    }
+    if (row.candidates.length > 24) {
+      box.append(h('small', '', `외 ${row.candidates.length - 24}개 · 접힘`));
+    }
+    card.append(box);
+  }
+  if (row.forbidden?.length) {
+    const box = h('div', 'oe-candidates is-forbidden');
+    box.append(h('small', '', `쓸 수 없는 이름 · ${row.forbidden.length}`));
+    for (const item of row.forbidden.slice(0, 12)) box.append(h('i', 'oe-chip', item));
+    if (row.forbidden.length > 12) {
+      box.append(h('small', '', `외 ${row.forbidden.length - 12}개 · 접힘`));
+    }
+    card.append(box);
+  }
+  for (const refusal of row.refusals) {
+    const line = h('div', 'oe-field-refusal');
+    line.append(h('b', '', refusal.code), h('span', '', refusal.message));
+    card.append(line);
+  }
+  if (row.note) card.append(h('small', 'oe-field-note', row.note));
+  return card;
+}
+
+function renderAuthoring(state) {
+  const wrap = h('div', 'oe-authoring');
+  const plan = state.authoring;
+  if (!plan) {
+    wrap.append(h('div', 'oe-empty', state.authoringError || '작성 계획 불러오는 중…'));
+    return wrap;
+  }
+  if (state.authoringError) wrap.append(h('div', 'oe-warning', state.authoringError));
+  // The blocked strongest tier, stated rather than absorbed: fields whose value is fully
+  // determined AND that the grammar still demands as a key. Each is a question the screen
+  // can answer but cannot remove, and that is a config-grammar item, not a UI one.
+  const blocked = plan.force_summary?.grammar_requires_it || 0;
+  if (blocked) {
+    wrap.append(h('div', 'oe-note',
+      `자유도 0인데 문법이 요구하는 칸 ${blocked}개 · 화면이 채우고 근거로 보낸다`));
+  }
+  if (plan.config_source?.state !== 'present') {
+    wrap.append(h('div', 'oe-warning',
+      `${plan.config_source?.file || plan.physical_schema_file} 없음 · 백지 상태`));
+  }
+  // Bucket order is the reading order: what must be done, what is still asked, what was
+  // filled for you. Groups are always rendered, empty or not -- a vanished heading is
+  // indistinguishable from "nothing to do".
+  const buckets = [
+    ['missing', '빠짐'], ['unanswered', '미답'],
+    ['derived', '파생됨 · 묻지 않음'], ['answered', '답함'],
+  ];
+  for (const [stateId, label] of buckets) {
+    const rows = plan.fields.filter((row) => row.state === stateId);
+    const section = h('section', `oe-bucket oe-bucket--${stateId}`);
+    section.append(h('h3', '', `${label} · ${rows.length}`));
+    if (!rows.length) section.append(h('div', 'oe-empty', '없음'));
+    for (const row of rows) section.append(renderAuthoringRow(row));
+    wrap.append(section);
+  }
+  if (plan.unattached_refusals?.length) {
+    const section = h('section', 'oe-bucket oe-bucket--missing');
+    section.append(h('h3', '', `필드에 붙지 않은 거절 · ${plan.unattached_refusals.length}`));
+    for (const refusal of plan.unattached_refusals) {
+      const line = h('div', 'oe-field-refusal');
+      line.append(h('b', '', refusal.code), h('code', '', refusal.path),
+        h('span', '', refusal.message));
+      section.append(line);
+    }
+    wrap.append(section);
+  }
+  return wrap;
 }
 
 function renderIntegrity(state) {
@@ -361,11 +542,17 @@ export function renderOntologyExplorer(root, state) {
   const main = h('div', 'oe-main');
   main.append(renderTree(state));
   const workspace = h('main', 'oe-workspace');
+  // Always first, always one line: "지금 어느 걸음인가" is the one element the owner
+  // asked to keep and strengthen, and it must survive the no-selection case too --
+  // that is the from-scratch entry, where it is the only thing on screen.
+  workspace.append(renderStepBar(state));
   if (state.selection) {
     workspace.append(renderBreadcrumb(state), renderPaths(state));
     const detail = h('section', 'oe-detail-grid');
     detail.append(renderInspector(state), renderIntegrity(state));
     workspace.append(detail);
+  } else if (state.authoring) {
+    workspace.append(renderAuthoring(state));
   } else {
     workspace.append(h('div', 'oe-empty', state.loading ? '불러오는 중…' : '표시할 정의가 없습니다.'));
   }
