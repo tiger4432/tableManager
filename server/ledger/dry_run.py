@@ -1,5 +1,14 @@
 """「이 선언이 낳을 원자」 - the REAL translators, over a connection that cannot write.
 
+⚠️ AS OF 2026-08-18 THIS MODULE NO LONGER DOES THAT FOR SOURCES. The four v1
+translator classes were retired, so `preview()` raises `DryRunUnavailable` and the
+route answers a named refusal. Everything below describes the design the restored
+preview must satisfy - it is a specification now, not a description. Read it that way.
+`ledger.setup.preview_selected_cursor_batch` already previews with zero writes (the
+atom-baseline harness drives it); no HTTP route calls it yet. `begin_read_only` and
+its two PostgreSQL tests were deliberately kept, because that is the structural
+zero-writes guarantee the v2 preview will need.
+
 Ruling R-2026-08-15-M ⑥ makes the dry run the second of three save steps and the brief
 spells out what it may not be: 「드라이런을 «샘플 미리보기»로 대충 하지 말 것 - 실제
 번역기를 태운다. 가짜 미리보기는 조용한 거짓말이다.」 A preview that renders what the
@@ -171,9 +180,17 @@ def preview(engine, cfg, source, rows: int = DEFAULT_ROWS) -> dict:
     that created this module forbids.
     """
     del engine, cfg, rows
+    # The sentence below said "1단과 3단은 그대로 동작합니다" until 2026-08-18, and it was
+    # FALSE for sources: `/admin/ledger/save` requires `declaration_token`, and that token is
+    # only ever minted in a successful dry-run response - i.e. on the line this raise skips.
+    # So a source cannot be saved either; the save refuses with `dry_run_stale`. A refusal
+    # that misstates what still works sends the operator to hit a second, different-looking
+    # failure, which is worse than the one it was reporting.  Predicates are genuinely
+    # unaffected: `main._ledger_predicate_dry_run` returns before this function is called.
     raise DryRunUnavailable(
-        f"'{source}' 드라이런을 실행할 번역기가 없습니다 — v1 번역기 4종이 "
-        f"2026-08-18에 은퇴했고, v2 미리보기는 아직 이 화면에 연결되지 않았습니다. "
-        f"선언 검증(1단)과 저장(3단)은 그대로 동작합니다.",
+        f"'{source}' 드라이런을 실행할 번역기가 없습니다 - v1 번역기 4종이 "
+        f"2026-08-18에 은퇴했고 v2 미리보기는 아직 이 화면에 연결되지 않았습니다. "
+        f"저장(3단)도 함께 막힙니다 - 저장 토큰이 드라이런에서만 나옵니다. "
+        f"선언 검증(1단)과 술어 드라이런은 그대로 동작합니다.",
         f"no executor for dry-run of source {source!r}: the v1 translators were retired "
         f"on 2026-08-18 and the v2 preview is not wired to this route yet")

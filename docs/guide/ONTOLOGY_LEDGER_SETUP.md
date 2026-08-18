@@ -1424,7 +1424,8 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 - [ ] 모든 nested binding까지 origin/approval metadata가 있다.
 - [ ] system suggestion마다 suggestion reason이 있다.
 - [ ] 실행 전 모든 binding이 approved다.
-- [ ] `python -m ledger.setup` dry-run이 `readiness: "ready"`이고 write 0이다.
+- [ ] `python -m ledger.setup` dry-run이 `readiness: "ready"`이고 write 0이다. **초안이면
+      `--root <초안폴더>`로 먼저 돌리고, 답의 `config_root`가 그 초안을 가리키는지 본다**(§13.2).
 - [ ] config root에 `ledger_config.json` 말고 다른 `.json`이 없다.
 - [ ] preview/execute parity와 all-or-nothing을 검증했다.
 - [ ] 미실행 full/PG 테스트를 통과로 표현하지 않았다.

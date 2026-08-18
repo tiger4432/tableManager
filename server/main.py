@@ -4835,6 +4835,13 @@ def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)
     조립·번역·게이트 심사 전부 백필이 쓰는 바로 그 코드이고, 다른 것은 **커넥션의
     트랜잭션이 READ ONLY로 열려 있다는 것 하나**다 — 그래서 쓰기 0은 이 코드가 쓰기를
     안 부른다는 약속이 아니라 PostgreSQL이 쓰기를 거절한다는 사실이다.
+
+    ⚠️ **[2026-08-18] 위 문단은 `target: "source"`에 대해 더는 사실이 아니다.** v1 번역기
+    4종이 은퇴해 `preview()`가 `DryRunUnavailable`을 던지고, 이 라우트는 이름 붙은 거절로
+    답한다. 위 문단은 **복구될 미리보기가 만족해야 할 사양**으로 남겨 둔다.
+    🔴 그리고 그 거절은 «저장까지» 막는다 — `token`이 이 함수의 성공 경로에서만 발급되므로
+    소스는 저장이 `dry_run_stale`로 거절된다. `target: "predicate"`는 영향 없다(위쪽에서
+    `_ledger_predicate_dry_run`이 먼저 반환한다).
     """
     import ledger_admin
     from ledger import dry_run as ledger_dry_run

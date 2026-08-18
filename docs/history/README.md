@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **658개** 이력. (거버넌스 규칙 #4)
+> 총 **662개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-18 12:23** — [Verify Before Editing Was Impossible Until The Command Took An Argument](./20260818_122354_verify_before_editing_was_impossible_until_the_command_took_an_argument.md)
+- **2026-08-18 12:18** — [An Empty Database Does Not Refuse It Answers Nothing There](./20260818_121829_an_empty_database_does_not_refuse_it_answers_nothing_there.md)
+- **2026-08-18 11:24** — [The Census Reads Its Name Sets From The Live Config Because A Hand List Drifts](./20260818_112408_the_census_reads_its_name_sets_from_the_live_config_because_a_hand_list_drifts.md)
+- **2026-08-18 11:19** — [The Import Three Lines Above The Guard Took All Four Grammars Down To 500](./20260818_111934_the_import_three_lines_above_the_guard_took_all_four_grammars_down_to_500.md)
 - **2026-08-18 07:32** — [The Explorer Approval Was Reopened An Hour After A History Entry Called It Final](./20260818_073200_the_explorer_approval_was_reopened_an_hour_after_a_history_entry_called_it_final.md)
 - **2026-08-18 07:31** — [The Setup Guide Shipped A Command Naming A File That Did Not Exist](./20260818_073100_the_setup_guide_shipped_a_command_naming_a_file_that_did_not_exist.md)
 - **2026-08-18 07:30** — [The Declaration Was The Requirement So A Skip List Could Not Silence The Drift Banner](./20260818_073000_the_declaration_was_the_requirement_so_a_skip_list_could_not_silence_the_drift_banner.md)

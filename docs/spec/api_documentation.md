@@ -1,6 +1,6 @@
 # assyManager Data Update Server API Documentation
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-16 Source Contract 가산 필드 | **Owner:** Backend
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-18 §7.2-bis(원장 dry-run 거절) | **Owner:** Backend
 > **범위 주의:** 이 문서는 **행·셀 쓰기 계약**의 상세 레퍼런스이고 **전체 라우트 지도가 아니다.** 엔드포인트 전수는 [architecture/backend §2](../architecture/backend.md)가 정본이다.
 > ⚠️ **본문이 영어인 것은 이 파일의 기존 관례다**(나머지 `docs/`는 한국어). 한 파일 안에서 언어를 섞지 않으려고 신규 절도 영어로 썼다 — 언어 통일은 총괄 판단 대기.
 
@@ -476,6 +476,11 @@ Both routes require the shared `X-Admin-Token` gate.
 
 ### 7.2 Compile and exercise one source declaration
 
+> 🗄️ **[2026-08-18 `ab8657f`] For `target: "source"` this route no longer previews anything.**
+> Everything under "Additive Response Field", "Static versus empirical evidence" and
+> "Writes" below describes the shape as of 2026-08-16 and is kept as the record of what a
+> restored preview must produce. See **7.2-bis** for what the route answers today.
+
 - **HTTP Method**: `POST`
 - **Route**: `/admin/ledger/dry-run`
 - **Request Body**:
@@ -484,21 +489,44 @@ Both routes require the shared `X-Admin-Token` gate.
   - `declaration`: parsed source declaration object. Alternatively send `raw`, containing
     the JSON text for one declaration; the server parses it through the same refusal gate.
   - `rows`: optional sample budget, default `20`, clamped to `1..200`.
-- **Additive Response Field**:
+- **Additive Response Field** (🗄️ not produced today):
   `source_contract: {source, state, translator, columns, emissions, issues, sentence_ko}`.
   Each `emissions[]` item carries the possible predicate, subject and object shape, payload
   fields, derivations, `configured_by`, event types, the matched live vocabulary signature,
   compatibility state, and issues.
-- **Static versus empirical evidence**: `source_contract.emissions[]` is the complete static
-  set for the selected profile, including branches absent from the sample. Existing
-  `atoms_rendered[]` is the empirical result of running the real translator on sampled rows.
-  Neither replaces the other.
+- **Static versus empirical evidence** (🗄️ not produced today):
+  `source_contract.emissions[]` is the complete static set for the selected profile,
+  including branches absent from the sample. `atoms_rendered[]` is the empirical result of
+  running the real translator on sampled rows. Neither replaces the other.
 - **Refusal**: a source/translator/vocabulary mismatch returns `400` with violation code
   `translator_vocabulary_mismatch` before source rows are read. Syntax, table and column
-  errors continue to use the existing named violations.
-- **Writes**: zero. The real preview runs inside a PostgreSQL read-only transaction and
-  reports `read_only_enforced: true`.
+  errors continue to use the existing named violations. 🗄️ These fire only once a preview
+  exists again — the refusal in 7.2-bis is reached first.
+- **Writes**: zero. The real preview ran inside a PostgreSQL read-only transaction and
+  reported `read_only_enforced: true`.
+
+### 7.2-bis What `target: "source"` answers today (2026-08-18)
+
+- **Step 1 still runs.** `target` validation, `raw` parsing and
+  `ledger_admin.check_source_declaration(...)` are unchanged, so a malformed declaration
+  still comes back as its own named violation.
+- **Step 2 refuses by name.** `ledger.dry_run.preview(...)` raises `DryRunUnavailable`
+  and the route renders it as a `declaration_rejected` violation — a sentence, not a `500`.
+  The four v1 translators this preview drove were retired on 2026-08-18; the v2 path that
+  can do the same work with zero writes is `ledger.setup.preview_selected_cursor_batch`,
+  and **no HTTP route calls it yet**.
+- **No `token` is issued for this target.** Everything after the `preview(...)` call —
+  `source_contract`, `atoms_rendered[]`, `sentence_ko` and `token` — is unreachable.
+- 🔴 **Consequence for `POST /admin/ledger/save`**: that route requires a `token` equal to
+  `declaration_token(target, name, declaration)` and refuses otherwise with
+  `dry_run_stale`. With no source dry-run token available, **saving a source declaration
+  through this surface is currently blocked.** This is recorded here as an observation, not
+  as an approved contract change; it awaits a lead-PM ruling.
+- **`target: "predicate"` is unaffected.** `_ledger_predicate_dry_run` returns before
+  `preview(...)` is called and still produces `signature_probes` and a `token`, so the
+  predicate validate → dry-run → save workflow is intact.
 
 `POST /admin/ledger/save` still requires the declaration token returned by this dry run.
 The Source Contract therefore participates in the existing validate → dry-run → fingerprint
+→ atomic save workflow; it does not add a second save path.
 → atomic save workflow; it does not add a second save path.

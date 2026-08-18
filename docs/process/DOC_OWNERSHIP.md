@@ -1,6 +1,6 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ledger/Explorer handoff | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 원장 단순화 정비 | **Owner:** Lead / PM
 >
 > 🔴 **행을 더하거나 고치면 이 헤더의 「이번 라운드」도 함께 쓴다** — 직전에 F9 행이 추가될 때 그것을 어겼고, 그래서 새 행이 어느 라운드의 것인지 알 수 없었습니다.
 > 🔴 **소유 행이 없는 문서·계약은 조용히 낡습니다.** 새 문서를 만들거나 새 계약(`contracts/<name>/`)을 추가하면 **그 자리에서 행을 만드십시오.**
@@ -36,9 +36,18 @@
 >   `bea0484`의 제한 범위 승인은 역사로 보존한다. 전체 완료 exact commit `2d1ad863`은 지정
 >   독립 Audit이 APPROVE했고 main에 병합돼 `COMPLETE / APPROVED`다. mapper/translator/
 >   cursor/DB와 운영 ontology config는 무변경이며 파괴 작업 금지는 유지한다.
+> - **[어드민 드라이런 서술 소유권 · 2026-08-18 오후]** `POST /admin/ledger/dry-run`의 현행
+>   동작(소스 타깃 미리보기 은퇴 → `declaration_rejected` 거절)은
+>   [architecture/backend §2](../architecture/backend.md)의 라우트 행과
+>   [spec/api_documentation §7.2-bis](../spec/api_documentation.md)가 소유한다. `dry_run.py`
+>   행 자체는 아래 「원장 Source Profile·LedgerFrame mapper」 행에 그대로 있다. 🔴 **소스
+>   선언의 «저장»이 드라이런 토큰에 묶여 있어 함께 막힌다는 관찰은 총괄 판정 대기**이며,
+>   문서는 그것을 승인된 계약 변경으로 적지 않는다. 갱신 트리거: v2 미리보기
+>   (`ledger/setup.py`의 `preview_selected_cursor_batch`)가 HTTP 라우트에 배선되는 날.
 >
 > **직전 라운드 (2026-08-18 · Ledger v2 Stage 7 manifest/cutover 구현·검수 대기 · 외부 읽기 전용 void 디렉터리 인제션 · Ledger v2 Mapper 디자인 패턴 정본 추가)**
-> - **[Ledger v2 Stage 7 config/cutover 소유권]** `server/config/ontology/manifest.json`이 authoring 파일 다섯 개의 유일한 진입점이고 `server/ledger/cutover_v2.py`가 source selector, readiness, trusted implementation registry와 dry-run/execute handoff를 소유한다. `server/ledger/backfill.py`는 CLI 기본 manifest 선택과 기존 physical cursor read만 소유하며 legacy cursor shape/version 자동 변환과 reset/replay를 거절한다. 정본은 [7단계 계약](../../ledger_v2_redesign_plan_20260817/07_CUTOVER_RESET_AND_RETIREMENT.md), 근거는 [Stage 7 Evidence](../../ledger_v2_redesign_plan_20260817/STAGE_7_ACCEPTANCE_EVIDENCE.md)다. Stage 7은 `APPROVED`; DB reset과 legacy 이동·삭제는 별도 승인 전까지 금지다.
+> - 🗄️ **[Ledger v2 Stage 7 config/cutover 소유권 — 2026-08-18 후속 라운드가 대체]** 아래는 그 라운드의 기록이며 **현행 소유 서술이 아니다** — `manifest.json` 다섯 파일 모양과 `server/ledger/cutover_v2.py`는 둘 다 사라졌다(단일 `ledger_config.json` + `server/ledger/setup.py`의 `load_setup`). 현행은 아래 소유 표가 말한다.
+>   · (아래 원문)  **[Ledger v2 Stage 7 config/cutover 소유권]** `server/config/ontology/manifest.json`이 authoring 파일 다섯 개의 유일한 진입점이고 `server/ledger/cutover_v2.py`가 source selector, readiness, trusted implementation registry와 dry-run/execute handoff를 소유한다. `server/ledger/backfill.py`는 CLI 기본 manifest 선택과 기존 physical cursor read만 소유하며 legacy cursor shape/version 자동 변환과 reset/replay를 거절한다. 정본은 [7단계 계약](../../ledger_v2_redesign_plan_20260817/07_CUTOVER_RESET_AND_RETIREMENT.md), 근거는 [Stage 7 Evidence](../../ledger_v2_redesign_plan_20260817/STAGE_7_ACCEPTANCE_EVIDENCE.md)다. Stage 7은 `APPROVED`; DB reset과 legacy 이동·삭제는 별도 승인 전까지 금지다.
 > - **[Ledger v2 Stage 6 실행·parity 소유권]** `server/ledger/runtime_v2.py`는 기존 cursor가 읽은 bounded batch를 Stage 5/4의 동일 compiler 경로로 preview/execute하고 existing gate→`LedgerStore.write_batch()` transaction만 호출한다. `server/ledger/shadow_parity.py`는 닫힌 의미 필드·outcome 비교와 설명 없는 차이의 regression 판정을 소유한다. `server/mappers/ledger_v2_lot_event_role_mapper.py`는 lot_event의 source-specific grouping/Role 해석만 소유하며 Atom/payload/DB/cursor를 소유하지 않는다. 정본은 [6단계 계약](../../ledger_v2_redesign_plan_20260817/06_SHADOW_PARITY_AND_POSTGRES_E2E.md), 검수 근거는 [Stage 6 Evidence](../../ledger_v2_redesign_plan_20260817/STAGE_6_ACCEPTANCE_EVIDENCE.md)다. exact commit `b98f0c3`가 Audit·제품 승인되어 main에 병합됐고 Stage 7은 비파괴 전환 범위만 진행한다.
 > - **[Ledger v2 SourcePreparer 소유권]** `server/ledger/source_preparation.py`가 cursor 이후 bounded pandas batch, physically verified join descriptor의 1000-key read, output 충돌 방지, EventFrame/provenance와 dependency replay 후보를 소유한다. `server/ledger/backfill.py`는 기존 cursor가 호출할 얇은 adapter만 소유한다. preparer에는 gate/store/cursor/commit 권한이 없다. exact commit `4508c12`가 Audit·제품 승인되어 main에 병합됐고 Stage 6 E2E는 진행 중이다.
 > - **[Ledger v2 RoleFrame/Pack compiler 소유권]** `server/ledger/roleframe.py`가 EventFrame context, 공통 unit partition, RoleEmission/RoleFrame, registered Python mapper 실행, Pack/Vocabulary/Entity 검증과 LedgerFrame payload 조립, write 없는 dry-run을 소유한다. mapper는 raw Atom/LedgerFrame을 반환할 수 없고 DB/cursor/gate/store capability를 받지 않는다. 검증은 `server/tests/test_ledger_roleframe.py`, 정본은 [4단계 계약](../../ledger_v2_redesign_plan_20260817/04_ROLEFRAME_AND_PACK_COMPILER.md), 근거는 [Stage 4 Evidence](../../ledger_v2_redesign_plan_20260817/STAGE_4_ACCEPTANCE_EVIDENCE.md)다. exact commit `1d9bd4a`가 Audit·제품 승인되어 main에 병합됐고 Stage 5 연결은 진행 중이다.

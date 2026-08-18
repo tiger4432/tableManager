@@ -168,9 +168,14 @@ full server suite와 Explorer PostgreSQL E2E는 사용자 지시에 따라 생�
 
 ## 8. 다음 합법적 작업 순서
 
-1. 사용자가 지정한 새 source/Pack을 `server/config/ontology/ledger_config.json`에 추가한다
-   (`sources`는 **마지막**에 — 그것이 켜는 행위다).
-2. `python -m ledger.setup` dry-run과 해당 source 집중 테스트로 readiness를 확인한다.
+1. 사용자가 지정한 새 source/Pack을 `ledger_config.json`에 적는다 — **초안 폴더의 사본에
+   먼저**(`server/config/ontology/`를 폴더째 복사해 두면 된다). `sources`는 **마지막**에
+   적는다 — 그것이 켜는 행위다.
+2. **초안을 먼저 검증한다** — 운영 파일을 덮어쓰기 «전»에:
+   `conda run -n assy_manager python -m ledger.setup --root <초안폴더>`(`server`에서, 쓰기 없음).
+   `--root`는 `ledger_config.json`을 **담은 디렉터리**를 가리키고, 답의 `config_root`가
+   초안을 검증했는지 운영을 검증했는지를 말한다. 착지 뒤에는 인자 없이 한 번 더 돌려
+   `readiness`와 해당 source 집중 테스트로 확인한다.
 3. 지정 Audit task에 단계·상태·exact commit·테스트 범위를 명시해 검수를 요청한다.
 4. Audit REJECT면 해당 반례만 최소 수정해 재검수하고, APPROVE면 제품 상태를 동기화한다.
 

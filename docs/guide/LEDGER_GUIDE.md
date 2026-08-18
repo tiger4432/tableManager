@@ -61,7 +61,7 @@
 | `gate.py` | 분자 단위 전부-아니면-전무 검사와 거절 계수 |
 | `store.py` | 원자 append와 커서 전진을 한 트랜잭션으로 저장 |
 | `backfill.py` | 페이지·분자 경계와 **유일한** 실행 드라이버 |
-| `dry_run.py` | `POST /admin/ledger/dry-run` 전용. 레거시 선언(`ledger/config.py`)과 함께 은퇴할 별개 진입점이며 백필 경로가 아니다 |
+| ⚰️ `dry_run.py` | `POST /admin/ledger/dry-run` 전용. 백필 경로가 **아니다**. 🔴 **[2026-08-18 `ab8657f`] 소스 미리보기는 여기서 사라졌다** — 태우던 v1 번역기 넷이 은퇴하면서 `preview()`가 `DryRunUnavailable`을 던지고 화면은 거절 문장을 받는다. 남은 실물은 `begin_read_only`(쓰기 0을 DB의 거절로 거는 자리)이고, 쓰기 없는 v2 미리보기는 `ledger/setup.py`의 `preview_selected_cursor_batch`인데 **부르는 라우트가 아직 없다** |
 
 ### 1.2 읽기 쪽
 

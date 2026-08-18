@@ -1,8 +1,10 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 Ontology Config Explorer API
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 원장 어드민 드라이런 은퇴
 >
-> **이번 라운드 (2026-08-17 · 외부 읽기 전용 인제션)** — `external_sources[]` 절대경로 바인딩, modified 이벤트 + 300초 재귀 스윕, 외부 원본 이동·삭제 금지, `voids_json` 경로 웨이퍼 ID와 `inspection_run`/`void_obs` 두 테이블 배선을 §4에 등재했습니다. 실제 생산 JSON은 0바이트 표본뿐이라 본문 계약은 합성 검증 상태입니다.
+> **이번 라운드 (2026-08-18 오후 · 원장 어드민 드라이런 은퇴)** — `POST /admin/ledger/dry-run`의 `target: "source"` 미리보기가 내려갔습니다(`ab8657f`). 라우트는 500 대신 `declaration_rejected` 거절 문장을 답하고, `source_contract`·`atoms_rendered[]`·`token`은 그 타깃에서 나오지 않습니다. `target: "predicate"`는 영향 없음. 🔴 **토큰이 안 나오므로 소스 선언의 «저장»도 `dry_run_stale`에 걸립니다 — 총괄 판정 대기**([api_documentation §7.2-bis](../spec/api_documentation.md)).
+>
+> **직전 라운드 (2026-08-17 · 외부 읽기 전용 인제션)** — `external_sources[]` 절대경로 바인딩, modified 이벤트 + 300초 재귀 스윕, 외부 원본 이동·삭제 금지, `voids_json` 경로 웨이퍼 ID와 `inspection_run`/`void_obs` 두 테이블 배선을 §4에 등재했습니다. 실제 생산 JSON은 0바이트 표본뿐이라 본문 계약은 합성 검증 상태입니다.
 >
 > **직전 라운드 (2026-08-16 · Source Contract)** — 소스 선언, 실행 번역 프로필, 가능한 Claim 전수, live vocabulary 서명을 `source_contract` 하나로 결합했다. 표본 dry-run은 실제 행의 경험적 증거로 그대로 두고, 표본에 안 나온 분기까지 저장 전에 정적으로 거절한다. 상세 필드와 파라미터는 [api_documentation §7](../spec/api_documentation.md), 작성 절차는 [ONTOLOGY_LEDGER_SETUP §3.5](../guide/ONTOLOGY_LEDGER_SETUP.md)가 소유한다.
 >
@@ -359,7 +361,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | 🔒 `GET /admin/ledger/vocabulary` | **[원장 셋업 어드민 · 2026-08-15 · R-2026-08-15-M · `server/ledger_admin.py`]** 「이 원장이 아는 «말» 전부」 — 항목마다 **`origin`(`code` 또는 `config`)**와 **`editable`**를 함께 낸다(정준 층은 `editable: false`이고, 화면에 그 층을 늘리는 «문이 없다»는 것이 테스트로 고정돼 있다). 🔴 **폼을 만들 재료가 여기서 «전부» 나간다** — 개체 타입 · 목적어 종류 · 걷기 방향 · `traversable` 삼상태의 **한국어 라벨** · `signature_fields` · 상태 낱말 · **닫힌 거절 코드 집합**(`vocabulary.DECL_REFUSALS`). 🔴 **클라가 이 목록들을 자기 쪽에 복사하면 서버가 상태를 하나 늘리는 날 «화면만 모르는 사본»이 된다.** 읽기 전용 |
 | 🔒 `GET /admin/ledger/sources` | **[원장 셋업 어드민 · 2026-08-15]** 소스 선언 + **`kind`별 필수/선택 컬럼 목록**(폼이 그 선언에서 생성된다) + **`unsupported_kinds`**. 🔴 **[2026-08-15 3차] `kind`가 «넷»이 됐고 넷째는 컬럼 목록으로 설명되지 않는다** — `declared`에는 베낄 파이썬 번역기가 없어 **폼의 재료가 컬럼이 아니라 «문법»**이고, 그래서 이 응답이 그 문법을 통째로 싣는다: **`emit_rule_fields`**(`rule`·`predicate`·`subject`·`object`·`when`) · **`when_operators`**(`ledger_config.WHEN_OPERATORS` — 닫힌 집합) · **`occurred_at_bases`**(`claim_time`/`row_created`에 각각 **한국어 라벨**) · `column_ref_prefix` · `note_ko`. 🔴 **클라가 이 목록들을 자기 쪽에 복사하면 서버가 연산자를 하나 늘리는 날 «화면만 모르는 사본»이 된다**(같은 규율이 `/vocabulary` 행에도 적혀 있다). 🔴 **`unsupported_kinds`가 비어 있지 않은 것이 계약이다** — 오늘 거기 든 것은 `derivation`(R-2026-08-15-M ⑤: 판정만 났고 번역기가 없다)이고, **목록에서 지우면 화면이 「이 시스템은 그걸 못 한다」로 읽히지만 사유와 함께 실으면 「아직 안 왔다」로 읽힌다.** ⚠️ **그 `derivation`은 넷째 `kind` `declared`와 «다른 것»이다** — 이쪽은 소스 «행»을 선언대로 옮기고(2류·지금 된다), 저쪽은 **원장을 걸어서** 추론한다(3류·근거 원자 필수·미구현). 응답의 `detail_ko`가 그 구별을 화면에서 직접 말한다. 읽기 전용 |
 | 🔒 `GET /admin/ledger/relations?q=&limit=` | **[원장 셋업 어드민 · 2026-08-15]** 실재하는 관계와 컬럼(`information_schema`). 🔴 **카탈로그만 읽으므로 비용이 테이블 «행 수»와 무관하다** — 소스 선언 폼이 컬럼 이름을 손타자에 맡기지 않게 하는 것이 목적이고, 그 편의를 위해 대상 테이블을 스캔하면 그 자체가 사고다 |
-| 🔒 `POST /admin/ledger/dry-run` | **[원장 셋업 어드민 · `server/ledger/dry_run.py`]** 문법·Source Contract 검증 뒤 **쓰기 0 미리보기**를 수행한다. 가짜 미리보기를 만들지 않고 백필의 페치·분자 조립·실제 번역기·`gate.screen_molecule`을 그대로 실행하며, PostgreSQL 트랜잭션에 `SET TRANSACTION READ ONLY`를 건 뒤 `SHOW transaction_read_only`로 확인한다. 응답은 `rows_read`·`molecules`·거절/불완전 수·`atoms`·`atoms_by_predicate`·`atoms_rendered[]`와 정적 `source_contract`를 함께 싣는다. 미리보기의 거절은 `gate.captured()`로 운영 계수기와 격리한다 |
+| 🔒 `POST /admin/ledger/dry-run` | **[원장 셋업 어드민 · `server/ledger/dry_run.py`]** ⚰️ **[2026-08-18 `ab8657f`] `target: "source"`의 미리보기는 내려가 있고, 이 줄은 그 사실을 말한다.** 종전 이 라우트는 백필의 페치·분자 조립·실제 번역기·`gate.screen_molecule`을 읽기 전용 트랜잭션에서 그대로 태우는 「쓰기 0 미리보기」였다. 그 번역기 넷이 같은 날 은퇴하면서 `ledger_dry_run.preview()`는 `DryRunUnavailable`을 던지고, 라우트는 그것을 **`declaration_rejected` 거절 한 문장**으로 렌더한다(500이 아니다). 따라서 `rows_read`·`molecules`·`atoms`·`atoms_by_predicate`·`atoms_rendered[]`·`source_contract`·`token`은 **이 타깃에서 더 이상 나오지 않는다.** `target: "predicate"`는 **영향이 없다** — `_ledger_predicate_dry_run`이 `preview()`보다 앞에서 반환하며 `signature_probes`와 `token`을 그대로 낸다. 구조적 쓰기 0 보장(`begin_read_only` — `SET TRANSACTION READ ONLY` 뒤 `SHOW transaction_read_only`로 되묻기)과 `gate.captured()` 격리는 **모듈에 그대로 남아 있다** — v2 미리보기가 바로 그것을 쓴다. 쓰기 없는 v2 미리보기를 할 수 있는 함수는 `ledger/setup.py`의 `preview_selected_cursor_batch`이고, 현재 **그것을 부르는 HTTP 라우트가 없다** |
 | **🔒[STRICT]** `POST /admin/ledger/save` | **[원장 셋업 어드민 · 2026-08-15]** 1+2+3단. 🔴 **드라이런 없는 저장은 «만들지 않은» 것이 아니라 «불가능»하다** — 저장이 **그 선언의** 드라이런 지문을 요구하고, 선언이 바뀌면 지문이 어긋나 `dry_run_stale`로 거절된다. 백업(사본이 곧 undo) → 임시 파일 → `os.replace` 원자적 교체. 🔴 **config 파일은 설계상 gitignore라 이력이 없으므로**(R-2026-08-13-G) **되돌릴 사본을 남기는 것이 이 경로가 존재해도 되는 조건**이다. 저장 뒤 `/admin/reload-configs`와 **같은 함수**로 캐시를 교체하고(`SYSTEM_RELOAD`가 나머지 프로세스로 퍼진다) **「먹었는가」를 `/admin/config/resolve?domain=ledger`로 되물어 한 문장으로** 답한다 — **재기동 0회** |
 | **🔒[STRICT]** `POST /admin/ledger/vocabulary/retire` | **[원장 셋업 어드민 · 2026-08-15]** `status: "retired"` + `superseded_by`. 🔴 **`/admin/ledger` 아래에 DELETE 라우트가 «0개»이고 그 부재를 테스트가 단언한다** — 원자가 이미 그 낱말로 누워 있다. 🔴 **은퇴는 «발화»를 막지 «읽기»를 막지 않는다**(`emittable()`에서만 빠진다). ⚠️ **성공의 판정문이 저장과 «반대»다** — 은퇴는 유효 목록에서 **빠지는 것**이 성공이라, 저장과 같은 문장을 쓰면 성공한 은퇴가 실패처럼 읽힌다 |
 | 🔒 `GET /admin/ontology-explorer/view?selection=&q=&page=&limit=&reference_limit=&context_token=&draft_id=&revision=&view_mode=` | **[Ledger V2 Config Explorer · 2026-08-18]** compiled snapshot의 SourcePlan·Registry·Mapping·Binding과 정방향/Used by·exact flow·kind별 integrity를 한 context token으로 답한다. `view_mode=active\|draft_preview`; invalid preview는 fallback reason과 active context를 명시한다. node/edge diff는 added/modified/removed를 답하며 edge의 같은 from/reference-kind/leaf pointer에서 target/status가 바뀌면 `modified`다. 목록/직접 참조는 상한·total·잘림을 따로 답하며 stale context는 409다. |
@@ -371,14 +373,14 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 `kinds[].translator`는 `{profile, implementation, molecule, operator}`를 싣는다. 따라서 kind
 선택과 실제 파이썬 번역 프로필이 동일 응답에서 연결된다.
 
-🔴 **[2026-08-16 · `POST /admin/ledger/dry-run` 소스 응답 가산 확장]**
-`source_contract` = `{source,state,translator,columns,emissions[],issues[],sentence_ko}`.
-`emissions[]`는 표본 행에서 실제로 나온 원자가 아니라 **번역 프로필이 낼 수 있는
-Claim 전수**다. 각 항목은 `predicate`·주어/목적어 모양·`derivations`·설정
-위치·live vocabulary 서명·결합 상태를 싣는다. 불일치는 소스 행을 읽기 전
-400 `translator_vocabulary_mismatch`로 거절되므로, dry-run 첫 N행에 없는 분기도
-저장되지 않는다. 실제 `atoms_rendered[]`는 그 정적 계약을 진짜 데이터에 대입한
-결과로 그대로 유지된다.
+🗄️ **[2026-08-16 · `POST /admin/ledger/dry-run` 소스 응답 가산 확장 — 2026-08-18 `ab8657f`로 도달 불가]**
+아래는 그 확장이 무엇이었는지의 기록이며 **현재 응답 서술이 아니다.** `source_contract`
+= `{source,state,translator,columns,emissions[],issues[],sentence_ko}`였고, `emissions[]`는
+표본 행에서 실제로 나온 원자가 아니라 **번역 프로필이 낼 수 있는 Claim 전수**였다.
+🔴 **`preview()`가 그보다 «앞에서» 거절하므로 `source_contract`도 `atoms_rendered[]`도
+지금은 응답에 실리지 않는다** — `main.py`의 `compile_source(...)` 호출은 `preview()`
+아래에 있어 도달하지 않는다. 정적 계약(`translator_vocabulary_mismatch` 400 포함)을
+다시 세우는 일은 v2 미리보기 배선과 같은 자리에 있다.
 
 ---
 
