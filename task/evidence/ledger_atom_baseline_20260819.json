@@ -1,0 +1,586 @@
+{
+  "cases": {
+    "dtjob_group_one_ingest_time": {
+      "atoms": 2,
+      "incomplete": 0,
+      "molecules": 1,
+      "occurred_at": [
+        "2026-08-01 09:30:00+09:00"
+      ],
+      "rows": 3,
+      "semantics": [
+        {
+          "object_kind": "value",
+          "object_payload": {
+            "value": 3
+          },
+          "predicate": "has_netdie",
+          "subject_keys": {
+            "dt_job": "BASE-J1"
+          },
+          "subject_type": "DTJob"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "dt_job": "BASE-J1"
+          },
+          "subject_type": "DTJob"
+        }
+      ]
+    },
+    "dtjob_group_straddles_two_ingest_times": {
+      "atoms": 2,
+      "incomplete": 0,
+      "molecules": 1,
+      "occurred_at": [
+        "2026-08-02 09:30:00+09:00"
+      ],
+      "rows": 3,
+      "semantics": [
+        {
+          "object_kind": "value",
+          "object_payload": {
+            "value": 3
+          },
+          "predicate": "has_netdie",
+          "subject_keys": {
+            "dt_job": "BASE-J2"
+          },
+          "subject_type": "DTJob"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "dt_job": "BASE-J2"
+          },
+          "subject_type": "DTJob"
+        }
+      ]
+    },
+    "merge_complete": {
+      "atoms": 11,
+      "incomplete": 0,
+      "molecules": 1,
+      "rows": 2,
+      "semantics": [
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "lot": "CL-2601-008"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "lot": "CL-2601-008-M"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W21"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W22"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "lot": "CL-2601-008"
+            },
+            "type": "Lot"
+          },
+          "predicate": "derived_from",
+          "subject_keys": {
+            "lot": "CL-2601-008-M"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W21"
+            },
+            "qualifiers": {
+              "slot": "1"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-008"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W21"
+            },
+            "qualifiers": {
+              "slot": "5"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-008-M"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W22"
+            },
+            "qualifiers": {
+              "slot": "2"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-008"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W22"
+            },
+            "qualifiers": {
+              "slot": "6"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-008-M"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "lot": "CL-2601-008-M"
+            },
+            "qualifiers": {
+              "from": "1",
+              "to": "5",
+              "wafer": "W21"
+            },
+            "type": "Lot"
+          },
+          "predicate": "slot_map",
+          "subject_keys": {
+            "lot": "CL-2601-008"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "lot": "CL-2601-008-M"
+            },
+            "qualifiers": {
+              "from": "2",
+              "to": "6",
+              "wafer": "W22"
+            },
+            "type": "Lot"
+          },
+          "predicate": "slot_map",
+          "subject_keys": {
+            "lot": "CL-2601-008"
+          },
+          "subject_type": "Lot"
+        }
+      ]
+    },
+    "refuse_ambiguous_row": {
+      "code": "ambiguous_source_event",
+      "error_type": "RoleFrameError",
+      "message": "one row declares both parent_lot and child_lot",
+      "path": "event_frame",
+      "refused": true,
+      "rows": 1
+    },
+    "refuse_naive_timestamp": {
+      "code": "invalid_time_role",
+      "error_type": "RoleFrameError",
+      "message": "time Role must be a timezone-aware datetime",
+      "path": "role_frame.rows[0].roles.occurred_at",
+      "refused": true,
+      "rows": 1
+    },
+    "refuse_slot_wafer_length_mismatch": {
+      "code": "invalid_positional_list",
+      "error_type": "RoleFrameError",
+      "message": "slots has 3 entries but wafers has 2",
+      "path": "event_frame.rows[0]",
+      "refused": true,
+      "rows": 1
+    },
+    "refuse_two_world_times_in_one_group": {
+      "code": "source_preparation_incomplete",
+      "error_type": "SourcePreparationError",
+      "message": "one source event must have exactly one occurred_at instant",
+      "path": "event_frame.occurred_at",
+      "refused": true,
+      "rows": 3
+    },
+    "refuse_unknown_event_type": {
+      "code": "undeclared_source_vocabulary",
+      "error_type": "RoleFrameError",
+      "message": "unsupported lot event type 'TRACK_IN'",
+      "path": "event_frame.event_type",
+      "refused": true,
+      "rows": 1
+    },
+    "split_complete": {
+      "atoms": 9,
+      "incomplete": 0,
+      "molecules": 1,
+      "rows": 2,
+      "semantics": [
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "lot": "CL-2601-006"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "lot": "CL-2601-006-A1"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W01"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W02"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "lot": "CL-2601-006"
+            },
+            "type": "Lot"
+          },
+          "predicate": "derived_from",
+          "subject_keys": {
+            "lot": "CL-2601-006-A1"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W01"
+            },
+            "qualifiers": {
+              "slot": "1"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-006"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W01"
+            },
+            "qualifiers": {
+              "slot": "1"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-006-A1"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W02"
+            },
+            "qualifiers": {
+              "slot": "2"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-006"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "lot": "CL-2601-006-A1"
+            },
+            "qualifiers": {
+              "from": "1",
+              "to": "1",
+              "wafer": "W01"
+            },
+            "type": "Lot"
+          },
+          "predicate": "slot_map",
+          "subject_keys": {
+            "lot": "CL-2601-006"
+          },
+          "subject_type": "Lot"
+        }
+      ]
+    },
+    "split_incomplete_child_missing": {
+      "atoms": 7,
+      "incomplete": 1,
+      "molecules": 1,
+      "rows": 1,
+      "semantics": [
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "lot": "CL-2601-007"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "lot": "CL-2601-007-A1"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W11"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W12"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "lot": "CL-2601-007"
+            },
+            "type": "Lot"
+          },
+          "predicate": "derived_from",
+          "subject_keys": {
+            "lot": "CL-2601-007-A1"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W11"
+            },
+            "qualifiers": {
+              "slot": "1"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-007"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W12"
+            },
+            "qualifiers": {
+              "slot": "2"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-007"
+          },
+          "subject_type": "Lot"
+        }
+      ]
+    },
+    "track_in": {
+      "atoms": 7,
+      "incomplete": 0,
+      "molecules": 1,
+      "rows": 1,
+      "semantics": [
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "lot": "CL-2601-009"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W31"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W32"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": null,
+          "object_payload": null,
+          "predicate": "register",
+          "subject_keys": {
+            "wafer": "W33"
+          },
+          "subject_type": "Wafer"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W31"
+            },
+            "qualifiers": {
+              "slot": "1"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-009"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W32"
+            },
+            "qualifiers": {
+              "slot": "2"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-009"
+          },
+          "subject_type": "Lot"
+        },
+        {
+          "object_kind": "entity_ref",
+          "object_payload": {
+            "keys": {
+              "wafer": "W33"
+            },
+            "qualifiers": {
+              "slot": "3"
+            },
+            "type": "Wafer"
+          },
+          "predicate": "has_wafer",
+          "subject_keys": {
+            "lot": "CL-2601-009"
+          },
+          "subject_type": "Lot"
+        }
+      ]
+    }
+  },
+  "snapshot_sha256": "39ebb419d15d84b0146a52b5a94bccb1e692cc9ea9682abd320d73d99de81eb3"
+}
