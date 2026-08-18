@@ -15,7 +15,9 @@
   "_flatten_nested_dirs_doc": "raws/에 폴더(다중 층위 포함)가 들어오면 트리가 안정된 뒤 파일만 raws/ 루트로 승격하고 빈 폴더 트리를 제거합니다(기본 true). 이름 충돌 시 상대경로 접두(구분자 ~)로 개명하며 절대 덮어쓰지 않습니다. Thumbs.db/desktop.ini/.DS_Store/._* 는 폴더와 함께 폐기됩니다. false로 두면 폴더를 건드리지 않습니다(종전 동작: 무시). 핫리로드: 다음 폴더 트리거부터 반영.",
   "flatten_nested_dirs": true,
 
-  "_external_sources_doc": "외부 읽기 전용 디렉터리를 테이블 핸들러에 연결합니다. 워처는 원본을 이동·삭제하지 않으며 created/moved/modified 이벤트와 300초 재귀 스윕을 함께 사용합니다. 설정 변경은 watcher 재기동 후 반영됩니다. 아래 두 항목은 같은 voids.json이 inspection_run(분모)과 void_obs(관측) 두 사실을 말하기 때문에 한 쌍입니다. 실제로 켜기 전에 table_config에 두 canonical 테이블이 선언·물리 반영됐고 JSON unit이 선언됐는지 확인하세요.",
+  "_external_sources_doc": "외부 읽기 전용 디렉터리를 테이블 핸들러에 연결합니다. 워처는 원본을 이동·삭제하지 않으며 created/moved/modified 이벤트와 300초 재귀 스윕을 함께 사용합니다. 아래 두 항목은 같은 voids.json이 inspection_run(분모)과 void_obs(관측) 두 사실을 말하기 때문에 한 쌍입니다 — 분모가 없으면 「void 0건」과 「스캔한 적 없음」이 구분되지 않습니다. 실제로 켜기 전에 table_config에 두 canonical 테이블이 선언·물리 반영됐는지 확인하세요. 🔴 반영 시점: **새 항목 추가**는 /admin/reload-configs로 재기동 없이 등록되고 초기 스윕까지 돕니다. 반면 **기존 항목의 path·parser·options 변경**은 워처가 도는 중이면 거절되어 프로세스 재기동이 필요합니다 — 운영에서는 고치기보다 새 항목으로 추가하는 편이 무중단입니다.",
+  "_external_sources_folder_doc": "🔴 폴더 구조가 고정 규격입니다: <외부 루트>/<WAFERID>/<WORKID>_<YYYYMMDD>_<HHMMSS>/voids.json — 정확히 세 단계여야 하고 그보다 깊거나 얕으면 그 파일은 거절됩니다(깊이를 허용하면 어느 폴더가 웨이퍼 식별자인지 알 수 없기 때문). 웨이퍼 식별자와 스캔 시각은 JSON 안이 아니라 **폴더 이름에서** 옵니다. 시각은 이름 끝에 있으면 되고 그 앞의 것은 무엇이든 work_id 컬럼으로 기록됩니다: 'JOB1234_20260818_143000'→work_id 'JOB1234', 'WORK_20260818_143000'→'WORK', '20260818_143000'→없음. recursive:true는 이 세 단계를 훑는다는 뜻이지 임의 깊이를 받는다는 뜻이 아닙니다. work_id는 기록만 되고 키가 아닙니다 — 키에 넣으려면 table_config의 composite_key_source와 void_sat_format.compose_run_uid를 같은 커밋에서 함께 바꿔야 합니다.",
+  "_external_sources_refusal_doc": "🔴 한 행이 키 게이트에 걸리면 그 파일은 통째로 안 들어갑니다(부분 적재 없음). 행 거절 사유: 필수 필드 누락, stack_gate가 정수가 아님, 숫자가 유한하지 않음, 단위 미상, 같은 run 안 같은 좌표 중복(duplicate_location). 파일 단위 거절 둘: void가 0건인 「깨끗한 스캔」인데 runs/scans를 선언하지 않은 경우, 그리고 선언한 runs가 void 행이 가리키는 층을 빠뜨린 경우. 단위는 추측하지 않습니다 — 행 > 파일 root > options.unit 순으로 찾고 없으면 거절하므로, 파일이 unit을 안 실어 오면 options에 'unit': 'um'처럼 선언하십시오.",
   "external_sources": [
     {
       "enabled": false,
