@@ -33,9 +33,12 @@ PHYS = {"phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
 
 # The production shape: ONE decision column, and a target field that is a metadata blob
 # rather than a frame name.
+# `alignment: true` is the flag `alignment_view_service.declared_alignment_rule` gates
+# on; without it every route call 400s before reaching the single-key behaviour this
+# file measures. Same boolean the real `enrichment_rules.json` declarations carry.
 RULE = {"name": "sk1_test_rule", "source_table": SRC, "derived_table": DERIVED,
         "decision_key": ["job_id"], "target_fields": ["map_metadata"],
-        "list_columns": ["cell_count"]}
+        "list_columns": ["cell_count"], "alignment": True}
 
 # Same unit, but the derived table satisfies the key contract the OTHER way
 # (`business_key` in decision_key rather than `composite_key_source`). Both spellings are

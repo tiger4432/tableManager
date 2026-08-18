@@ -29,9 +29,15 @@ GUESS = "colsel_test_guess"        # derivable x/y, but the value column can onl
 PHYS = {"phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
         "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0}
 
+# `alignment: true` is what makes this an alignment rule. `alignment_view_service.
+# declared_alignment_rule` refuses any rule without it, so a fixture missing the flag
+# dies at that gate before reaching anything this file measures. The real declarations
+# in `enrichment_rules.json` carry the same boolean (`enrichment_config` normalises it
+# with `raw.get("alignment") is True`), so this is the product's shape, not a test-only
+# escape hatch.
 RULE = {"name": "colsel_test_rule", "source_table": SRC,
         "derived_table": "colsel_test_unit", "decision_key": ["eqp", "product"],
-        "target_fields": ["core_frame", "dt_frame"]}
+        "target_fields": ["core_frame", "dt_frame"], "alignment": True}
 
 TABLES = {
     SRC: {"business_key": "cell_key",
