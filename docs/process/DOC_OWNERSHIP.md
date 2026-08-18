@@ -30,6 +30,14 @@
 >   identity·Binding·SourcePlan과 정/역참조 index, `config_explorer_service.py`가 active/draft
 >   한-context 응답 cache·normalized node/edge diff, `config_drafts.py`가 config root 소유 선언의
 >   초안·preview·immutable review/revise·consumer-converged CAS activation을 소유한다.
+>   `server/ledger/column_stats.py`(2026-08-19)가 **컬럼 후보의 실측치**를 소유한다 —
+>   컬럼당 값 개수(한 번의 스캔), 조합의 실측 유일성, 카탈로그 선언 키의 실측 검증.
+>   후보 목록은 `information_schema`가 답하고 `table_config.json`은 «어느 relation을
+>   제시할지»만 정한다(읽기 전용, 종전 `relations_view`의 판정과 같은 규칙).
+>   `GET /admin/ontology-explorer/columns`와 `server/scripts/check_source_ordering.py`가
+>   같은 계산을 화면/명령 두 입구로 낸다. 🔴 **수단 등급은 ③ 제약 입력이다** — 빈 컬럼에
+>   키를 걸면 거절문이 «없고», 중복 order_by는 백필 «도중»에야 거절되므로 ④ 진단으로는
+>   못 잡는다(근거: `task/ontology_setup_friction_observed.md`).
 >   `config_explorer.py`의 `deletion_plan`(2026-08-19)이 «삭제 단위»를 소유한다 — 단위는 노드가
 >   아니라 참조 컴포넌트이고, 판정은 in-degree가 아니라 삭제 «후» 도달성이다(실측: 라이브 루트에서
 >   referrer 0인 선언은 0건, source↔profile은 서로를 가리켜 in-degree가 0이 되지 않는다).
