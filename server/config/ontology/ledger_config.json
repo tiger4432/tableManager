@@ -411,6 +411,7 @@
         },
         {
           "mapping_id": "slot_preserving",
+          "sentence": "split_slot_carry",
           "use": "lot-lineage@1/slot_map",
           "bind": {
             "subject": {
@@ -469,6 +470,7 @@
         },
         {
           "mapping_id": "shared_wafer",
+          "sentence": "merge_slot_join",
           "use": "lot-lineage@1/slot_map",
           "bind": {
             "subject": {

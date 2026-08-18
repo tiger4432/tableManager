@@ -220,10 +220,23 @@ class MapperDescriptor:
 
 @dataclass(frozen=True)
 class ProfileMappingDescriptor:
+    """One Profile mapping.
+
+    ``sentence`` is the mapper-vocabulary name this mapping realizes, and it is OPTIONAL:
+    a mapping whose shape is already unique needs no such statement.  It exists so the
+    naming runs config -> mapper.  The mapper owns its own words (as it already owns
+    qualifier names) and the declaration says which mapping speaks them; a mapper that
+    instead reached for ``mapping_id`` would break at RUN TIME on a config rename, which
+    is exactly the hole this closes.  ``setup_bundle._ambiguous_sentences`` refuses, by
+    name and at compile time, any shape class where this is left unset by more than one
+    member.
+    """
+
     mapping_id: str
     claim_ref: str
     bindings: Mapping[str, Any]
     config_path: str
+    sentence: str | None = None
 
 
 @dataclass(frozen=True)
@@ -769,6 +782,7 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
             claim_ref=mapping["use"],
             bindings=_freeze(mapping["bind"]),
             config_path=f"bundle.profiles.{profile_id}.mappings[{index}]",
+            sentence=(mapping.get("sentence") or None),
         ) for index, mapping in enumerate(item["mappings"]))
         builder.add(profile_id, ProfileDescriptor(
             profile_id=profile_id,

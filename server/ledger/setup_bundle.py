@@ -975,9 +975,11 @@ def _validate_profiles(section: Mapping[str, Any], problems: _Problems) -> None:
             problems.add("invalid_profile", f"{path}.mappings", "must be a non-empty list")
             continue
         seen = set()
+        said = set()
         for index, mapping in enumerate(mappings):
             mpath = f"{path}.mappings[{index}]"
-            if not problems.exact(mapping, mpath, required=("mapping_id", "use", "bind")):
+            if not problems.exact(mapping, mpath, required=("mapping_id", "use", "bind"),
+                                  optional=("sentence",)):
                 continue
             mapping_id = mapping.get("mapping_id")
             _nonblank_text(mapping_id, f"{mpath}.mapping_id", problems)
@@ -986,6 +988,12 @@ def _validate_profiles(section: Mapping[str, Any], problems: _Problems) -> None:
                     problems.add("duplicate_id", f"{mpath}.mapping_id",
                                  f"mapping_id {mapping_id!r} is duplicated")
                 seen.add(mapping_id)
+            if "sentence" in mapping:
+                _nonblank_text(mapping.get("sentence"), f"{mpath}.sentence", problems)
+                if mapping.get("sentence") in said:
+                    problems.add("duplicate_id", f"{mpath}.sentence",
+                                 f"sentence {mapping['sentence']!r} is claimed twice")
+                said.add(mapping.get("sentence"))
             _claim_ref(mapping.get("use"), f"{mpath}.use", problems)
             bindings = mapping.get("bind")
             if not isinstance(bindings, Mapping) or not bindings:
@@ -1587,6 +1595,87 @@ def _cross_profile_contract(profile_id: str, profile: Mapping[str, Any],
         if pack_id in packs and pack_id not in used_packs:
             problems.add("invalid_profile", f"{path}.packs[{index}]",
                          f"Pack {pack_id!r} is declared but unused by mappings")
+    _ambiguous_sentences(profile_id, profile, packs, problems)
+
+
+def _sentence_signature(mapping: Mapping[str, Any],
+                        claim: Mapping[str, Any]) -> Optional[tuple[Any, ...]]:
+    """How a mapper tells one sentence from another, computed from the declaration.
+
+    This MUST stay the expression ``ledger.roleframe.ProfileSentences._resolve`` matches
+    on, or the two disagree and the disagreement is invisible: a signature computed
+    slightly differently here would either refuse a config that runs fine, or -- far
+    worse -- let an ambiguous one compile and be resolved arbitrarily at run time, which
+    is the failure this check exists to prevent.
+
+    ``None`` means the mapping is unreachable through :class:`ProfileSentences` at all
+    (its subject is not an Entity binding), so it cannot collide with anything.
+    """
+    emission = claim.get("emit")
+    if not isinstance(emission, Mapping):
+        return None
+    obj = emission.get("object") if isinstance(emission.get("object"), Mapping) else {}
+    subject_role = _role_name(emission.get("subject"))
+    binding = mapping["bind"].get(subject_role) if subject_role else None
+    if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+        return None
+    object_role = _role_name(obj.get("entity"))
+    object_binding = mapping["bind"].get(object_role) if object_role else None
+    return (
+        # mirrors EmissionDescriptor.object_role is not None
+        obj.get("entity", obj.get("value")) is not None,
+        tuple(sorted(obj.get("qualifiers", {}))),
+        binding.get("entity_type"),
+        # MEASURED 2026-08-18: leaving this out made the check refuse the shipped transfer
+        # sample, whose `job_contains_die`/`job_occupies_slot` differ by OBJECT type
+        # (DTDie@1 vs LotSlot@1) and are perfectly distinguishable.  A signature coarser
+        # than the resolver's discriminators refuses configs that run fine.
+        object_binding.get("entity_type")
+        if isinstance(object_binding, Mapping) else None,
+    )
+
+
+def _ambiguous_sentences(profile_id: str, profile: Mapping[str, Any],
+                         packs: Mapping[str, Any], problems: _Problems) -> None:
+    """Two mappings a mapper cannot tell apart, and neither says which sentence it is.
+
+    A mapper names the sentence it said in its OWN vocabulary; ``sentence`` is where a
+    Profile says which mapping realizes that sentence.  It is optional because a mapping
+    whose shape is already unique needs no such statement -- restating the obvious is how
+    declarations rot.
+
+    🔴 The refusal is the point.  Resolving a tie by taking the first match would elect a
+    representative from an unordered set: everything keeps working until a third mapping
+    joins the class, at which point the representative changes and EVERYTHING THAT
+    ALREADY WORKED breaks, with nothing naming the config that caused it.  So a tie is a
+    named compile-time error and never a run-time coin flip.
+    """
+    path = f"bundle.profiles.{profile_id}"
+    classes: dict[tuple[Any, ...], list[int]] = {}
+    for index, mapping in enumerate(profile.get("mappings", [])):
+        use = _parse_claim_ref(mapping.get("use"))
+        if (use is None or use[0] not in packs
+                or use[1] not in packs[use[0]].get("claims", {})):
+            continue
+        signature = _sentence_signature(mapping, packs[use[0]]["claims"][use[1]])
+        if signature is not None:
+            classes.setdefault(signature, []).append(index)
+    for signature, indexes in sorted(classes.items(), key=lambda item: item[1]):
+        if len(indexes) < 2:
+            continue
+        unnamed = [index for index in indexes
+                   if not str(profile["mappings"][index].get("sentence") or "").strip()]
+        if not unnamed:
+            continue
+        peers = ", ".join(repr(profile["mappings"][index]["mapping_id"])
+                          for index in indexes)
+        for index in unnamed:
+            problems.add(
+                "ambiguous_sentence", f"{path}.mappings[{index}].sentence",
+                f"mappings {peers} are indistinguishable to a mapper "
+                f"(object={signature[0]}, qualifiers={list(signature[1])}, "
+                f"subject={signature[2]!r}, object_type={signature[3]!r}); "
+                f"each must declare the sentence it realizes")
 
 
 def _cross_profile_source(profile_id: str, profile: Mapping[str, Any],

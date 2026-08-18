@@ -425,8 +425,18 @@ class ProfileSentences:
         shape: SentenceShape,
         *,
         subject_type: str | None = None,
-        variant: str | None = None,
+        object_type: str | None = None,
+        sentence: str | None = None,
     ) -> tuple[Any, ClaimDescriptor]:
+        """Find the one Profile mapping that realizes this sentence.
+
+        ``sentence`` is the MAPPER's word, matched against what each mapping declares it
+        realizes -- the naming runs config -> mapper, so renaming a ``mapping_id`` cannot
+        reach this file.  A shape class that needs the tiebreak and does not declare it is
+        refused at compile time by ``setup_bundle._ambiguous_sentences``, so reaching a
+        tie here means the two disagree; that is a broken invariant, not a coin flip, and
+        it raises rather than picking a representative.
+        """
         matches = []
         for mapping in self._profile.mappings:
             claim = self._claim_of(mapping)
@@ -442,7 +452,13 @@ class ProfileSentences:
                 continue
             if subject_type is not None and binding.get("entity_type") != subject_type:
                 continue
-            if variant is not None and mapping.mapping_id != variant:
+            if object_type is not None:
+                object_binding = mapping.bindings.get(
+                    emission.object_role.role_id) if emission.object_role else None
+                if (not isinstance(object_binding, Mapping)
+                        or object_binding.get("entity_type") != object_type):
+                    continue
+            if sentence is not None and mapping.sentence != sentence:
                 continue
             matches.append((mapping, claim))
         if len(matches) != 1:
@@ -451,7 +467,8 @@ class ProfileSentences:
                 f"expected one Profile mapping for a sentence with "
                 f"object={shape.has_object} qualifiers={list(shape.qualifiers)}"
                 f"{'' if subject_type is None else f' subject={subject_type!r}'}"
-                f"{'' if variant is None else f' variant={variant!r}'}, "
+                f"{'' if object_type is None else f' object={object_type!r}'}"
+                f"{'' if sentence is None else f' sentence={sentence!r}'}, "
                 f"found {len(matches)}",
             )
         return matches[0]

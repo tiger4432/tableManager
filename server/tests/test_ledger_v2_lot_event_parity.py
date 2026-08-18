@@ -28,7 +28,11 @@ from ledger.runtime_v2 import (
     execute_cursor_batch,
     preview_cursor_batch,
 )
-from ledger.setup_bundle import SETUP_VERSION, validate_bundle
+from ledger.setup_bundle import (
+    SETUP_VERSION,
+    LedgerSetupValidationError,
+    validate_bundle,
+)
 from ledger.setup_registry import TrustedImplementationCatalog, compile_setup_snapshot
 from ledger.source_preparation import (
     SOURCE_EVENT_INCOMPLETE_COLUMN,
@@ -196,11 +200,16 @@ def lot_event_bundle():
          "bind": bind(lot, wafer, (("slot", "slots"),))},
         {"mapping_id": "pair_field", "use": "lot-lineage@1/lineage",
          "bind": bind(child, parent)},
-        {"mapping_id": "slot_preserving",
+        # The only shape class with two members: both say the same sentence and differ
+        # only in the rule that computed it, so each declares which mapper sentence it
+        # realizes.  Drop either `sentence` and the bundle is refused (`ambiguous_sentence`)
+        # -- see the compile-time test below.
+        {"mapping_id": "slot_preserving", "sentence": "split_slot_carry",
          "use": "lot-lineage@1/split_slot",
          "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
                                       ("wafer", "wafers")))},
-        {"mapping_id": "shared_wafer", "use": "lot-lineage@1/merge_slot",
+        {"mapping_id": "shared_wafer", "sentence": "merge_slot_join",
+         "use": "lot-lineage@1/merge_slot",
          "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
                                       ("wafer", "wafers")))},
     ]
@@ -358,6 +367,9 @@ FOREIGN_SPELLINGS = {
     "membership": "carriage", "lineage": "descent",
     "first_sight_lot": "m_one", "first_sight_wafer": "m_two",
     "positional_row": "m_three", "pair_field": "m_four",
+    # Nothing is exempt any more: the last two mapping ids are renamed here too, because
+    # the mapper now names the SENTENCE and the config says which mapping realizes it.
+    "slot_preserving": "m_five", "shared_wafer": "m_six",
 }
 UNSPELL = {new.split("@")[0]: old.split("@")[0]
            for old, new in FOREIGN_SPELLINGS.items()}
@@ -387,10 +399,10 @@ def test_a_foreign_deployments_spellings_change_nothing_the_mapper_emits():
     This is the test the old mapper could not pass: it carried `"Lot"`, `"Wafer"`,
     `"has_wafer"`, `"positional_row"` and friends as literals, and against this bundle it
     refused every case with `invalid_lot_event_contract` instead of emitting anything.
-    Two mapping ids survive the rename on purpose (`slot_preserving`/`shared_wafer`) --
-    they are structurally identical to each other, so nothing in the declaration can tell
-    them apart and the mapper still has to name one.  When a Profile mapping gains a field
-    that says which mapper sentence it realizes, add them here and the test tightens.
+
+    NOTHING is exempt: all six mapping ids are renamed too.  The mapper names the
+    SENTENCE in its own vocabulary and each mapping declares which sentence it realizes,
+    so the naming runs config -> mapper and a rename cannot reach the mapper at all.
     """
     foreign = compile_setup_snapshot(
         validate_bundle(respell(lot_event_bundle()), catalog=LOT_EVENT_CATALOG),
@@ -508,3 +520,40 @@ def test_incomplete_pair_lands_visible_claims_and_updates_existing_cursor_metric
     assert calls[0]["incomplete"] == 1
     assert gate.incomplete_molecules()["lot_event"] == 1
     gate.reset_counters()
+
+
+def test_two_shape_identical_mappings_with_no_sentence_are_refused_at_compile_time():
+    """The tie is a NAMED config error, never a run-time coin flip.
+
+    `slot_preserving` and `shared_wafer` are indistinguishable to a mapper: same object
+    kind, same three qualifiers, same subject Entity type.  Whichever one a resolver
+    "found first" would be an election from an unordered set -- correct today, and wrong
+    the day a third mapping joins the class, at which point everything that already worked
+    starts emitting a different `derivation` with nothing naming the cause.
+
+    So dropping `sentence` must fail validation, at the path of the mapping that is
+    missing it, before anything runs.
+    """
+    bundle = lot_event_bundle()
+    mappings = bundle["profiles"]["lot-event@1"]["mappings"]
+    ambiguous = [index for index, mapping in enumerate(mappings)
+                 if mapping.get("sentence")]
+    assert len(ambiguous) == 2, "the fixture must still contain the ambiguous pair"
+
+    for index in ambiguous:
+        broken = lot_event_bundle()
+        del broken["profiles"]["lot-event@1"]["mappings"][index]["sentence"]
+        with pytest.raises(LedgerSetupValidationError) as exc:
+            validate_bundle(broken, catalog=LOT_EVENT_CATALOG)
+        assert exc.value.code == "ambiguous_sentence", exc.value.code
+        assert exc.value.path == (
+            f"bundle.profiles.lot-event@1.mappings[{index}].sentence"), exc.value.path
+        # the message must name the peers, or a reader cannot find the other half
+        assert "slot_preserving" in exc.value.message
+        assert "shared_wafer" in exc.value.message
+
+    # ...and a mapping whose shape is already unique must NOT be forced to restate itself.
+    unique = next(index for index, mapping in enumerate(mappings)
+                  if not mapping.get("sentence"))
+    assert "sentence" not in mappings[unique]
+    validate_bundle(lot_event_bundle(), catalog=LOT_EVENT_CATALOG)
