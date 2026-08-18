@@ -1,12 +1,27 @@
 {
   "setup_version": 3,
   "vocabulary": {
+    "has_netdie@1": {
+      "status": "active",
+      "layer": "ontology",
+      "subjects": [
+        "DTJob@1"
+      ],
+      "object": {
+        "kind": "value",
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
     "register@1": {
       "status": "active",
       "layer": "ontology",
       "subjects": [
         "Lot@1",
-        "Wafer@1"
+        "Wafer@1",
+        "DTJob@1"
       ],
       "object": {
         "kind": "none",
@@ -75,6 +90,11 @@
     }
   },
   "entities": {
+    "DTJob@1": {
+      "keys": [
+        "dt_job"
+      ]
+    },
     "Lot@1": {
       "keys": [
         "lot"
@@ -87,6 +107,55 @@
     }
   },
   "packs": {
+    "dt-job@1": {
+      "claims": {
+        "register": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "register@1",
+            "subject": "$subject",
+            "occurred_at": "$occurred_at",
+            "object": {
+              "kind": "none"
+            }
+          }
+        },
+        "die_count": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "count": {
+              "kind": "quantity",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "has_netdie@1",
+            "subject": "$subject",
+            "occurred_at": "$occurred_at",
+            "object": {
+              "kind": "value",
+              "value": "$count"
+            }
+          }
+        }
+      }
+    },
     "lot-lineage@1": {
       "claims": {
         "register": {
@@ -213,6 +282,13 @@
     }
   },
   "source_preparers": {
+    "direct-join@1": {
+      "implementation_id": "direct-join",
+      "implementation_version": 1,
+      "input_columns": [],
+      "output_columns": {},
+      "accepts_verified_join_rules": false
+    },
     "lot-event-live-frame@1": {
       "implementation_id": "lot-event-live-frame",
       "implementation_version": 1,
@@ -238,6 +314,25 @@
     }
   },
   "mappers": {
+    "dt-job-role@1": {
+      "implementation_id": "dt-job-role",
+      "implementation_version": 1,
+      "unit": {
+        "kind": "group_by",
+        "columns": [
+          "dt_job"
+        ]
+      },
+      "input_columns": [
+        "dt_index",
+        "dt_job",
+        "event_time"
+      ],
+      "emits": [
+        "dt-job@1/register",
+        "dt-job@1/die_count"
+      ]
+    },
     "lot-event-role@1": {
       "implementation_id": "lot-event-role",
       "implementation_version": 1,
@@ -265,6 +360,72 @@
     }
   },
   "profiles": {
+    "dt-job@1": {
+      "source": "dt_job",
+      "packs": [
+        "dt-job@1"
+      ],
+      "mappings": [
+        {
+          "mapping_id": "job_register",
+          "use": "dt-job@1/register",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "DTJob@1",
+              "keys": {
+                "dt_job": {
+                  "kind": "column",
+                  "column": "dt_job",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        },
+        {
+          "mapping_id": "job_die_count",
+          "use": "dt-job@1/die_count",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "DTJob@1",
+              "keys": {
+                "dt_job": {
+                  "kind": "column",
+                  "column": "dt_job",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "count": {
+              "kind": "column",
+              "column": "dt_index",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        }
+      ]
+    },
     "lot-event@1": {
       "source": "lot_event",
       "packs": [
@@ -531,6 +692,46 @@
     }
   },
   "sources": {
+    "dt_job": {
+      "relation": "dt_log",
+      "profile_id": "dt-job@1",
+      "driver": {
+        "unit": "group",
+        "identity": [
+          "dt_job"
+        ],
+        "group_by": [
+          "dt_job"
+        ],
+        "order_by": [
+          "dt_job",
+          "dt_cell_key"
+        ],
+        "occurred_at": {
+          "basis": "ingested",
+          "timezone": "Asia/Seoul"
+        },
+        "cursor": {
+          "columns": [
+            "dt_job",
+            "dt_cell_key"
+          ]
+        },
+        "preparation": {
+          "preparer_id": "direct-join@1",
+          "inherit_virtual_join_rules": []
+        },
+        "mapper_id": "dt-job-role@1",
+        "registration_probe": [
+          {
+            "entity_type": "DTJob@1",
+            "columns": [
+              "dt_job"
+            ]
+          }
+        ]
+      }
+    },
     "lot_event": {
       "relation": "lot_event",
       "driver": {
