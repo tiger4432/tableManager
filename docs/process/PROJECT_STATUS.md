@@ -2726,6 +2726,24 @@ push1: 4행 · NULL 0 · 키 4     push2: 4행 · NULL 4 · 키 0(전멸)     pu
 
 # 📌 다음 이어서 할 일
 
+## 🧹 워크트리 정리 — 25 → 8, 그리고 하나가 나왔다 (2026-08-19)
+
+에이전트 자동 생성 워크트리 18개 중 **17개를 제거**(전부 미커밋 0 · main에 병합됨 · 3시간 내
+쓰인 흔적 없음). 지우기 «전에» 그 셋을 다 쟀다 — 깨끗해 보이는 것과 잃을 게 없는 것은 다르다.
+
+🔴 **하나는 남겼다: `agent-a20e7cf603e201f0c`에 main에 없는 커밋 둘이 있다.**
+
+```
+f8355fa feat(client/admin): Auto Update collector active toggle + Overview active metrics
+d8d8e08 chore(client): sync admin.js/admin.html to main baseline for toggle work
+   client2/admin.html    885 ++++--
+   client2/src/admin.js 2166 +++++-----
+```
+
+**버려진 클라 작업이다.** 병합할지 폐기할지 판정이 필요하고, 미루면 비싸진다 — 화면 레인이
+지금 `admin.js`·`admin.html`을 고쳐 쓰고 있어서 **하루 지날 때마다 충돌이 커진다.**
+남은 워크트리 일곱은 전부 미커밋 0·미병합 0이라 언제 지워도 잃을 게 없다.
+
 ## 🐞 열린 문제 (Open Problems)
 
 | #   | 심각도                               | 문제                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 도메인              | 상태                             |
