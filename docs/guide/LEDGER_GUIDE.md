@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/` · `server/ledger_trace_router.py`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -10,17 +10,33 @@
 [history](../history/README.md)가 소유한다.
 
 > **Ledger V2 전환 주의:** 이 문서의 구 translator/source-kind/migration/reset 설명은 legacy
-> 호환 경로의 역사와 조회 의미를 이해하기 위한 것이다. 새 Source 설정은 반드시
-> [ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)의 V2 manifest 6파일과
-> Preparer → Role mapper → Pack/Profile 경로를 따른다. 공개 CLI의 `--reset-cursor`와
-> `--from`은 현재 별도 승인 없이 `destructive_approval_required`로 거절되며, 이 문서의 옛
+> 경로의 **역사**와 조회 의미를 이해하기 위한 것이다. 새 Source 설정은 반드시
+> [ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)의 단일 `ledger_config.json`과
+> Preparer → Role mapper → Pack/Profile 경로를 따른다.
+>
+> 🔴 **[2026-08-18] 백필 실행 경로는 하나뿐이다.** 문법별 드라이버 넷과 그것을 고르던
+> `mode` selector가 함께 은퇴했다. **선언이 곧 활성화다** — `server/config/ontology/ledger_config.json`의
+> `sources`에 있는 소스가 돌고, 없으면 `undeclared_source`로 거절된다. 무엇이 선언돼
+> 있는지는 쓰기 없는 dry-run이 답한다(`server/`에서):
+> `conda run -n assy_manager python -m ledger.setup` → `config_root`·`setup_version`·
+> `readiness`·`sources`를 JSON 한 줄로 낸다.
+>
+> 아래 §0·§1.1·§4.2에서 「레거시」라 표시한 서술은 **은퇴한 경로의 역사**이며, 남아 있는 이유는
+> 옛 원장 행을 읽을 때 필요하기 때문이다. 실행 지시로 읽지 않는다. 공개 CLI의 `--reset-cursor`와
+> `--from`은 별도 승인 없이 `destructive_approval_required`로 거절되며, 이 문서의 옛
 > 예를 실행 허가로 읽지 않는다.
 
 ---
 
 ## 0. 먼저 고를 것
 
-| 소스 모양 | 선택 |
+⚠️ **[2026-08-18] 이 표는 은퇴한 «레거시» 경로(`kind` 문법)의 선택표이고, 새 소스에는
+적용되지 않는다.** 남겨 둔 이유는 그 문법으로 적재된 옛 원장 행을 읽을 때 쓰이기
+때문이다. Ledger v2 선언에는 `kind`가 **없고** `driver`·`preparer_id`·`mapper_id`·`profile_id`로
+조립한다 — **새 소스는 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md)의 Step 1~9를
+따른다.**
+
+| 소스 모양 | 선택(레거시 `kind`) |
 |---|---|
 | 한 행에서 Claim 1~N개를 만들 수 있음 | `kind: "declared"` — Python 작성 없음 |
 | 여러 행을 묶거나 위치를 짝지어야 함 | 기존 `lineage`·`transfer`, 또는 Template Method |
@@ -37,13 +53,15 @@
 |---|---|
 | `config.py` | 소스 문법 검증과 버전 해시 |
 | `source_contract.py` | 선언 → 번역 프로필 → 가능한 Claim → live vocabulary 결합 검사 |
-| `declared_translator.py` | `emit` 선언 실행 |
-| `translator_pattern.py` | Python 번역기의 공통 안전 수명주기 |
-| `examples/grouped_translator_template.py` | 새 그룹형 번역기의 복사 템플릿 |
+| `runtime_v2.py` · `source_preparation.py` · `roleframe.py` · `source_profile*.py` | **v2 실행 경로** — Preparer → RoleFrame → Pack/Profile |
+| `setup_bundle.py` · `setup_registry.py` · `setup.py` | 단일 `ledger_config.json` 검증·compile과 로드 경계(`load_setup`) |
+| `implementations.py` | 어떤 `implementation_id`가 실행 가능한지 **코드에서 발견**해 답한다 |
+| ⚰️ `*_translator.py` · `translator_pattern.py` | **[2026-08-18] 부르는 코드가 없다.** 이들을 지연 import하던 문법 드라이버 넷이 `backfill.py`에서 삭제됐다(`d7bfcd0`). 이 이름을 찾고 있다면 은퇴한 경로다 |
+| ⚰️ `examples/grouped_translator_template.py` | 은퇴한 레거시 경로의 템플릿. 새 소스에 쓰지 않는다 |
 | `gate.py` | 분자 단위 전부-아니면-전무 검사와 거절 계수 |
 | `store.py` | 원자 append와 커서 전진을 한 트랜잭션으로 저장 |
-| `backfill.py` | 페이지·분자 경계·번역기 실행 |
-| `dry_run.py` | 실제 번역기를 읽기 전용 트랜잭션에서 미리 실행 |
+| `backfill.py` | 페이지·분자 경계와 **유일한** 실행 드라이버 |
+| `dry_run.py` | `POST /admin/ledger/dry-run` 전용. 레거시 선언(`ledger/config.py`)과 함께 은퇴할 별개 진입점이며 백필 경로가 아니다 |
 
 ### 1.2 읽기 쪽
 
@@ -142,18 +160,37 @@ PostgreSQL 전용 테스트는 skip 수를 확인하고 별도로 실행한다.
 
 ### 4.1 설치·백필
 
-마이그레이션과 선언 순서는 [ONTOLOGY_LEDGER_SETUP §2](./ONTOLOGY_LEDGER_SETUP.md)가
-소유한다. 백필 명령은 소스 문법과 무관하게 하나다.
+선언 작성 순서는 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md)이 소유하고,
+**마이그레이션 명령은 [OPERATOR_RUNBOOK §6](../process/OPERATOR_RUNBOOK.md)이 소유한다**
+(설정 가이드는 v2 선언 작성 전용이라 마이그레이션을 다루지 않는다). 백필 명령은 소스
+문법과 무관하게 하나다.
 
 ```bash
 cd server
 conda run -n assy_manager python -m ledger.backfill --source <source>
 ```
 
-### 4.2 어떤 경로가 도는가
+### 4.2 어떤 경로가 도는가 — 하나뿐이다
 
-`--source`는 이름만 고른다. 실제 드라이버는 해당 선언의 `kind`가 정한다.
-운영자가 번역기 클래스 이름을 지정하지 않는다.
+`--source`는 **이름만** 고른다. 운영자가 번역기 클래스 이름을 지정하는 일은 없다.
+🔴 **[2026-08-18] 드라이버는 하나다.** 문법별 드라이버 넷과 그것을 고르던 selector가 함께
+은퇴했다. 백필은 `server/config/ontology/ledger_config.json`의 `sources`를 보고, 이름이
+거기 있으면 그 소스를 돌린다.
+
+**선언이 곧 활성화다** — `sources`에 있으면 돈다. 「선언은 해 두고 꺼 놓기」를 하던
+`dataflows/chains.json`의 `mode`/`parity_status`는 없다.
+
+이름이 `sources`에 없으면 `REFUSE_UNDECLARED_SOURCE`(`"undeclared_source"`)로 **거절**된다
+(원자 0 · 커서 미이동 — 조용한 0건 성공이 아니다).
+
+무엇이 선언돼 있는지는 쓰기 없는 dry-run이 답한다.
+
+```bash
+cd server
+conda run -n assy_manager python -m ledger.setup
+```
+
+이 문서는 소스 이름도 개수도 적지 않는다 — 위 명령의 `sources` 배열이 정본이다.
 
 ### 4.3 재실행 의미
 

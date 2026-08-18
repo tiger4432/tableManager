@@ -3,13 +3,19 @@
 > **Status:** 🟢 Living
 > **Last-verified:** 2026-08-18
 > **Owner:** Server / Ledger
-> **정본 구현:** `server/ledger/setup_bundle.py`, `setup_registry.py`, `cutover_v2.py`
-> **운영 선언 루트:** `server/config/ontology/`
+> **정본 구현:** `server/ledger/setup_bundle.py`(파일 문법), `setup_registry.py`(compile), `setup.py`(로드 경계)
+> **운영 선언 루트:** `server/config/ontology/` — 파일 **하나**, `ledger_config.json`
 
-이 문서는 새 원천 테이블을 Ledger V2에 연결할 때 **어떤 JSON을 어떤 순서로 작성하고,
+이 문서는 새 원천 테이블을 Ledger V2에 연결할 때 **무엇을 어떤 순서로 작성하고,
 각 필드가 왜 필요한지** 설명하는 단일 설정 가이드다. 구형
-`server/config/ledger_config.json`, translator 종류, `declared_lookup`, Position/Frame,
-마이그레이션·cursor reset 중심의 옛 설정 절차는 이 문서의 대상이 아니다.
+`server/config/ledger_config.json`(flat legacy 선언), translator 종류, `declared_lookup`,
+Position/Frame, 마이그레이션·cursor reset 중심의 옛 설정 절차는 이 문서의 대상이 아니다.
+
+> 🔴 **셋업은 파일 하나다.** 소스 하나를 붙이는 사람이 여는 것은 `ledger_config.json`과 —
+> 필요하다면 — mapper 함수 하나뿐이고, **단순한 소스는 mapper조차 필요 없다**(§7.4의
+> `declarative-role@1`, §7.3의 `direct-join@1`). 예전에는 `manifest.json`이 열거하는
+> 다섯 파일을 세 디렉터리에 나눠 썼다. 그 모양은 **은퇴했다** — 옛 내용은 지워지지 않고
+> 보존돼 있지만 **로드되지 않으며 지원 경로가 아니다.** 어디에 무엇이 남았는지는 §2.3.
 
 설정은 DB 테이블을 만들지 않고, 데이터를 쓰지 않으며, Python 구현을 config 문자열로
 불러오지 않는다. 물리 테이블과 인제션이 먼저 존재해야 한다. 설정은 그 데이터를 어떻게
@@ -20,19 +26,17 @@
 ## 1. 먼저 이해할 전체 흐름
 
 ```text
-server/config/ontology/manifest.json
-  ├─ ledger_config.json
-  │    ├─ vocabulary      낼 수 있는 술어와 목적어 모양
-  │    ├─ entities        개체의 정체성과 키
-  │    ├─ source_preparers 물리 행 → EventFrame
-  │    ├─ mappers         EventFrame → RoleEmission
-  │    ├─ packs           Role → Claim/LedgerFrame
-  │    ├─ profiles        소스 컬럼 → Pack Role binding
-  │    └─ sources         위 선언을 한 실행 단위로 조립
-  ├─ catalog/tables.json          물리 relation/column/key
-  ├─ catalog/virtual_joins.json   물리 UNIQUE로 검증할 batch join
-  ├─ dataflows/chains.json        source별 legacy/V2 cutover 선택
-  └─ dataflows/enrichments.json   예약된 enrichment 선언 영역
+server/config/ontology/ledger_config.json
+  ├─ setup_version      현재 정확히 3
+  ├─ tables             물리 relation/column/key/index
+  ├─ vocabulary         낼 수 있는 술어와 목적어 모양
+  ├─ entities           개체의 정체성과 키
+  ├─ packs              Role → Claim/LedgerFrame
+  ├─ source_preparers   물리 행 → EventFrame
+  ├─ mappers            EventFrame → RoleEmission
+  ├─ profiles           소스 컬럼 → Pack Role binding
+  ├─ sources            위 선언을 한 실행 단위로 조립 — 여기 있으면 «돈다»
+  └─ virtual_joins      (선택) 물리 UNIQUE로 검증할 batch join
 
 strict Bundle validation
   → trusted implementation 대조
@@ -45,13 +49,14 @@ strict Bundle validation
   → 기존 gate → LedgerStore → cursor transaction
 ```
 
-핵심은 세 층을 분리하는 것이다.
+핵심은 세 층을 분리하는 것이다. 파일이 하나가 됐다고 층이 섞이는 것은 아니다 — 층은
+이제 **section**으로 나뉜다.
 
-| 층 | 질문 | 소유 파일 |
+| 층 | 질문 | 소유 section |
 |---|---|---|
-| 물리 | 어느 테이블의 어느 컬럼을 어떤 키로 읽나? | `catalog/*.json`, `sources` |
+| 물리 | 어느 테이블의 어느 컬럼을 어떤 키로 읽나? | `tables`, `virtual_joins`, `sources` |
 | 의미 | 무엇을 개체·관계·시각으로 말하나? | `vocabulary`, `entities`, `packs`, `profiles` |
-| 실행 | 누가 행을 준비하고 Role로 해석하며 어느 경로를 켜나? | `source_preparers`, `mappers`, `chains` |
+| 실행 | 누가 행을 준비하고 Role로 해석하나? | `source_preparers`, `mappers`, `sources` |
 
 `Profile`은 Pack이 아니다. Pack은 재사용 가능한 Claim 문법이고, Profile은 특정 Source의
 컬럼을 그 문법의 Role에 연결하는 배선이다.
@@ -60,31 +65,31 @@ strict Bundle validation
 
 ## 2. 실제 파일 위치와 복사 가능한 기준 샘플
 
-### 2.1 현재 승인된 `lot_event` 운영 샘플
-
-다음 여섯 파일이 현재 production authoring root다. 새 설정을 만들 때 가장 먼저 이 구조를
-복사한다.
+### 2.1 현재 승인된 `lot_event` 운영 root
 
 ```text
 server/config/ontology/
-├─ manifest.json
-├─ ledger_config.json
-├─ catalog/
-│  ├─ tables.json
-│  └─ virtual_joins.json
-└─ dataflows/
-   ├─ chains.json
-   └─ enrichments.json
+├─ ledger_config.json   ← 셋업 전부
+└─ README.md
 ```
 
-이 파일들은 예시 사본이 아니라 현재 운영 정본이다. 수정 전에는 별도 작업 브랜치에서
+이 파일은 예시 사본이 아니라 현재 운영 정본이다. 수정 전에는 별도 작업 브랜치에서
 전체 Bundle 검증과 preview를 먼저 수행한다.
+
+🔴 **root에 다른 `.json`이 있으면 로더가 «거절»한다**(`unlisted_config_file`). 이것은
+정돈 취향이 아니라 「이 파일 하나를 열면 전부 본 것」이라는 약속의 집행이다. 남겨 둔
+`catalog/tables.json`은 아무도 읽지 않으면서 권위 있어 보이는 자리에 앉아 있게 된다.
+검사는 **재귀한다** — 백업 폴더를 root **안에** 두어도 걸린다. 거절 메시지가
+「move it outside the config root」로 끝나는 이유가 그것이다.
 
 ### 2.2 이종 transfer와 virtual join 샘플
 
 ```text
-server/config/sample/ontology/transfer_explorer/
+server/config/sample/ontology/transfer_explorer/ledger_config.json
 ```
+
+같은 단일 파일 모양이고, 운영 root가 쓰지 않는 **선택 section `virtual_joins`**를 실제로
+쓰는 유일한 예제다(§6).
 
 이 샘플은 다음을 보여준다.
 
@@ -93,10 +98,48 @@ server/config/sample/ontology/transfer_explorer/
 - `CoreDie@1 → DTDie@1 → BondComponent@1 → FinalChip@1` 연속 계보를 선언한다.
 - 오른쪽 relation의 `dt_job_id`는 business key와 UNIQUE index로 단일성을 증명한다.
 
-주의: 이 샘플의 Preparer/Mapper 구현 ID는 Explorer와 테스트용이다. 파일을 production
-폴더에 복사하는 것만으로 trusted implementation이 생기지 않는다. 운영 실행을 하려면
-코드의 trusted catalog와 Preparer/Mapper registry에 같은 `implementation_id@version`이
-명시적으로 등록돼 있어야 한다.
+주의: config가 이름으로 부를 수 있는 구현은 **코드에 실재하는 클래스**뿐이다. 파일을
+production root에 복사하는 것만으로 trusted implementation이 생기지 않는다. 어떤 이름이
+실행 가능한지는 `server/ledger/implementations.py`가 **코드에서 발견해** 답한다(§7.3·§7.4).
+
+### 2.3 옛 다섯 파일을 찾고 있다면
+
+2026-08-18 이전 root는 `manifest.json`이 열거하는 다섯 파일이었다. 찾는 것에 따라 자리가
+다르다.
+
+**① 은퇴한 «주변» 파일 넷 + manifest** — 지워지지 않고 옮겨졌다.
+
+```text
+server/config/_ontology_pre_single_file_20260818/
+├─ manifest.json
+├─ catalog/{tables,virtual_joins}.json
+└─ dataflows/{chains,enrichments}.json
+```
+
+⚠️ **여기에 `ledger_config.json`은 «없다».** 그 파일은 옮겨진 것이 아니라 **제자리에서 새
+모양으로 다시 쓰였다** — 지금 `server/config/ontology/ledger_config.json`이 그것이다.
+
+**② 접기 «직전»의 다섯 파일 전부(옛 `ledger_config.json` 포함)** — 변환 근거로 통째 보존돼
+있다.
+
+```text
+task/evidence/ontology_root_before_20260818/
+```
+
+둘 다 **내용을 대조할 때만** 본다. **지원되는 config 경로가 아니다** — 로더는 이 모양을 읽지
+않고, 어느 쪽이든 config root 안으로 되돌리면 §2.1의 거절이 난다.
+
+아직 옛 모양의 root를 들고 있다면 일회용 변환기가 있다.
+
+```powershell
+conda run -n assy_manager python server/scripts/convert_ontology_to_single_file.py --root <다섯 파일이 다 있는 옛 root> --out <빈 디렉터리>/ledger_config.json
+```
+
+원본을 지우지 않고 **새 파일 하나**를 쓴 뒤 무엇이 어디로 갔는지 표로 출력한다. 옮길 자리가
+없는 선언(비어 있지 않은 `enrichments`, `v2`가 아닌 selector 항목)은 조용히 버리지 않고
+**멈춘다**. 옛 root와 새 파일이 한 디렉터리에 공존하면 로드되지 않으므로 출력은 빈
+디렉터리에 쓴다. 🔴 `--root`는 **다섯 파일이 다 있는** root여야 한다 — 위 ①은
+`ledger_config.json`이 없어 이 변환기의 입력이 아니다(②는 입력이 된다).
 
 ---
 
@@ -104,15 +147,16 @@ server/config/sample/ontology/transfer_explorer/
 
 설정을 열기 전에 아래 질문에 답한다.
 
-1. **물리 relation은 이미 존재하는가?** `tables.json`은 DDL이 아니다.
+1. **물리 relation은 이미 존재하는가?** `tables` section은 DDL이 아니다.
 2. **한 source event는 한 행인가, 여러 행의 group인가?**
 3. **세계 시각 컬럼은 무엇이며 timezone은 무엇인가?** 묵시적 기본 timezone은 없다.
 4. **cursor 동률을 제거할 catalog-declared UNIQUE key는 무엇인가?**
 5. **Preparer 출력만으로 신원이 완성되는가?** 아니면 verified virtual join이 필요한가?
 6. **기존 trusted Preparer/Mapper를 재사용할 수 있는가?**
 7. **기존 Vocabulary/Entity/Pack으로 말할 수 있는가?** 새 의미가 아니면 중복 선언하지 않는다.
-8. **legacy 결과와 parity를 비교할 수 있는가?** 설명 없는 차이 0이 되기 전 `chains`를 V2
-   approved로 바꾸지 않는다.
+8. **이 소스를 지금 돌려도 되는가?** 🔴 `sources`에 적는 순간 **돈다**. 「적어 두고 나중에
+   켜기」를 해 주는 별도 스위치는 없다(§8). 준비가 덜 됐다면 `sources`에 아직 적지
+   않는다.
 
 ### row와 group 선택
 
@@ -127,71 +171,83 @@ physical relation 컬럼이어야 한다.
 
 ---
 
-## 4. `manifest.json` — 파일 묶음의 유일한 진입점
+## 4. `ledger_config.json` — 하나뿐인 파일과 그 최상위 모양
 
-현재 운영 파일을 그대로 옮기면 다음과 같다.
+최상위는 `setup_version` 하나와 section 여덟, 그리고 선택 section 하나다.
 
 ```json
 {
-  "setup_version": 2,
-  "ledger": "ledger_config.json",
-  "catalog": {
-    "tables": "catalog/tables.json",
-    "virtual_joins": "catalog/virtual_joins.json"
-  },
-  "dataflows": {
-    "chains": "dataflows/chains.json",
-    "enrichments": "dataflows/enrichments.json"
-  }
+  "setup_version": 3,
+  "tables": {},
+  "vocabulary": {},
+  "entities": {},
+  "packs": {},
+  "source_preparers": {},
+  "mappers": {},
+  "profiles": {},
+  "sources": {}
 }
 ```
 
-| 필드 | 필수 | 값/용도 |
+| 최상위 키 | 필수 | 용도 |
 |---|---:|---|
-| `setup_version` | 예 | 현재 정확히 `2`. 다른 버전은 거절한다. |
-| `ledger` | 예 | Vocabulary부터 Source까지 담은 파일의 상대 경로 |
-| `catalog.tables` | 예 | 물리 relation catalog 상대 경로 |
-| `catalog.virtual_joins` | 예 | verified join 후보 선언 상대 경로 |
-| `dataflows.chains` | 예 | source별 실행 모드 selector 상대 경로 |
-| `dataflows.enrichments` | 예 | enrichment 선언 상대 경로 |
+| `setup_version` | 예 | 문법 세대. 현재 정확히 `3`. 다른 값은 `unsupported_setup_version` |
+| `tables` | 예 | 물리 relation/column/key/index (§5) |
+| `vocabulary` | 예 | 술어의 닫힌 서명 (§7.1) |
+| `entities` | 예 | 개체 ID와 key shape (§7.2) |
+| `packs` | 예 | Role → Claim 문법 (§7.5) |
+| `source_preparers` | 예 | 물리 batch → EventFrame (§7.3) |
+| `mappers` | 예 | EventFrame → RoleEmission (§7.4) |
+| `profiles` | 예 | source 컬럼 → Pack Role binding (§7.6) |
+| `sources` | 예 | 실행 계약 조립 (§7.7) |
+| `virtual_joins` | **아니오** | verified read-only batch join (§6) |
 
-경로는 manifest가 있는 root 아래의 상대 경로만 허용한다. 절대 경로, `..` 탈출, glob,
-동일 파일 중복 참조는 거절된다. manifest에 없는 일곱 번째 설정 파일은 로더가 알아서
-발견하지 않는다.
+🔴 **여덟은 비어 있어도 «있어야» 한다.** 키가 없는 것과 `{}`인 것은 읽는 사람에게 다른
+뜻이고, 「이 section은 나에게 해당 없음」은 적어 둘 값어치가 있는 결정이다. 키 자체가
+빠지면 `missing_field`다.
+
+`setup_version` 하나가 예전 다섯 파일의 `schema_version` 다섯 개가 하던 말을 한다. 파일별
+버전 필드는 **없다** — `schema_version`을 최상위에 적으면 `unknown_field`로 거절된다.
+표 밖의 다른 키도 마찬가지다.
+
+section 여덟은 사용 여부와 관계없이 전수 검증된다. “아직 Source가 선택하지 않은 Profile”도
+unknown Entity/column을 숨길 수 없다. 모든 오류는 `code`, 정확한 JSON `path`, `message`로
+돌아오며 여러 오류의 순서도 결정적이다.
+
+### 4.1 root에 다른 JSON을 두지 않는다
+
+로더는 config root **아래 어디든** `ledger_config.json`이 아닌 `.json`이 있으면
+`unlisted_config_file`로 거절한다. 근거는 §2.1에 있다. 백업·초안·변환 결과는 root 밖에
+둔다.
 
 ---
 
-## 5. `catalog/tables.json` — 물리 스키마와 유일성 근거
+## 5. `tables` — 물리 스키마와 유일성 근거
 
-현재 `lot_event` 샘플 전체다.
+현재 `lot_event` 운영 선언 전체다(파일 안 `tables` 값).
 
 ```json
 {
-  "schema_version": 1,
-  "tables": {
-    "lot_event": {
-      "columns": {
-        "lot_id": "string",
-        "event_time": "datetime",
-        "txn_seq": "string",
-        "event_type": "string",
-        "parent_lot": "string",
-        "child_lot": "string",
-        "slotnumbers": "string",
-        "waferids": "string"
-      },
-      "business_key": "txn_seq"
-    }
+  "lot_event": {
+    "columns": {
+      "lot_id": "string",
+      "event_time": "datetime",
+      "txn_seq": "string",
+      "event_type": "string",
+      "parent_lot": "string",
+      "child_lot": "string",
+      "slotnumbers": "string",
+      "waferids": "string"
+    },
+    "business_key": "txn_seq"
   }
 }
 ```
 
-### 5.1 파일 필드
+### 5.1 section 모양
 
-| 필드 | 필수 | 설명 |
-|---|---:|---|
-| `schema_version` | 예 | 현재 정확히 `1` |
-| `tables` | 예 | relation 이름 → descriptor. 한 개 이상이어야 한다. |
+`tables`는 relation 이름 → descriptor 맵이다. Source를 선언하려면 그 base relation이 여기
+있어야 한다.
 
 ### 5.2 table descriptor
 
@@ -206,29 +262,26 @@ physical relation 컬럼이어야 한다.
 
 ```json
 {
-  "schema_version": 1,
-  "tables": {
-    "measurement_log": {
-      "columns": {
-        "event_at": "datetime",
-        "machine_id": "string",
-        "sequence_no": "number",
-        "value": "number"
+  "measurement_log": {
+    "columns": {
+      "event_at": "datetime",
+      "machine_id": "string",
+      "sequence_no": "number",
+      "value": "number"
+    },
+    "composite_key": ["machine_id", "sequence_no"],
+    "indexes": [
+      {
+        "name": "uq_measurement_machine_sequence",
+        "columns": ["machine_id", "sequence_no"],
+        "unique": true
       },
-      "composite_key": ["machine_id", "sequence_no"],
-      "indexes": [
-        {
-          "name": "uq_measurement_machine_sequence",
-          "columns": ["machine_id", "sequence_no"],
-          "unique": true
-        },
-        {
-          "name": "ix_measurement_event_at",
-          "columns": ["event_at"],
-          "unique": false
-        }
-      ]
-    }
+      {
+        "name": "ix_measurement_event_at",
+        "columns": ["event_at"],
+        "unique": false
+      }
+    ]
   }
 }
 ```
@@ -244,43 +297,40 @@ Catalog 선언은 물리 DB를 만들거나 UNIQUE index를 생성하지 않는�
 
 ---
 
-## 6. `catalog/virtual_joins.json` — verified read-only batch join
+## 6. `virtual_joins` — verified read-only batch join (선택 section)
 
-join이 없는 현재 production 파일은 다음처럼 빈 registry다.
+🔴 **이 section만 선택이다.** 운영 root(`server/config/ontology/ledger_config.json`)는
+`virtual_joins`를 **갖고 있지 않다** — 그 자리에 있던 registry가 비어 있었고, enabled rule은
+어차피 호출자가 물리 검증된 descriptor를 공급해야 승인되므로 잃은 것이 없다. 그러나
+**로더는 이 section을 읽을 줄 안다**: `server/config/sample/ontology/transfer_explorer/`가
+실제 descriptor를 공급한다. **파일에서 section을 뺀 것과 로더에서 지원을 뺀 것은 다른
+일이고, 일어난 것은 앞의 것뿐이다.**
+
+join이 필요 없으면 이 키를 아예 쓰지 않는다. 빈 `{}`를 두어도 되지만 없는 편이 낫다.
+
+`transfer_explorer` 샘플의 실제 선언은 다음과 같다(파일 안 `virtual_joins` 값).
 
 ```json
 {
-  "schema_version": 1,
-  "rules": {}
-}
-```
-
-`transfer_explorer`의 실제 join 샘플은 다음과 같다.
-
-```json
-{
-  "schema_version": 1,
-  "rules": {
-    "dt_job_to_inventory": {
-      "left_table": "dt_log",
-      "right_table": "dt_inventory",
-      "join_key": [
-        {"left": "dt_job_id", "right": "dt_job_id"}
-      ],
-      "expose": [
-        "dt_lot",
-        "dt_slot",
-        "dt_offset_x",
-        "dt_offset_y",
-        "bond_wafer",
-        "bond_offset_x",
-        "bond_offset_y",
-        "bond_layer",
-        "final_chip"
-      ],
-      "join_cardinality": "one",
-      "enabled": true
-    }
+  "dt_job_to_inventory": {
+    "left_table": "dt_log",
+    "right_table": "dt_inventory",
+    "join_key": [
+      {"left": "dt_job_id", "right": "dt_job_id"}
+    ],
+    "expose": [
+      "dt_lot",
+      "dt_slot",
+      "dt_offset_x",
+      "dt_offset_y",
+      "bond_wafer",
+      "bond_offset_x",
+      "bond_offset_y",
+      "bond_layer",
+      "final_chip"
+    ],
+    "join_cardinality": "one",
+    "enabled": true
   }
 }
 ```
@@ -298,7 +348,7 @@ join이 없는 현재 production 파일은 다음처럼 빈 registry다.
 
 ### 6.1 join이 승인되려면
 
-1. 왼쪽·오른쪽 relation과 모든 컬럼이 `tables.json`에 존재해야 한다.
+1. 왼쪽·오른쪽 relation과 모든 컬럼이 `tables` section에 존재해야 한다.
 2. 오른쪽 `join_key.right` 전체를 정확히 덮는 catalog 유일 키 또는 UNIQUE index가 있어야
    한다.
 3. 실제 PostgreSQL의 해당 UNIQUE index를 physical verifier가 확인해야 한다.
@@ -325,26 +375,10 @@ config의 `unique: true`만으로 `VerifiedJoinDescriptor`를 만들 수 없다.
 
 ---
 
-## 7. `ledger_config.json` — 의미와 실행 조립
+## 7. 의미와 실행 section
 
-최상위 모양은 다음과 같다.
-
-```json
-{
-  "schema_version": 2,
-  "vocabulary": {},
-  "entities": {},
-  "source_preparers": {},
-  "mappers": {},
-  "packs": {},
-  "profiles": {},
-  "sources": {}
-}
-```
-
-일곱 registry는 사용 여부와 관계없이 전수 검증된다. “아직 Source가 선택하지 않은 Profile”도
-unknown Entity/column을 숨길 수 없다. 모든 오류는 `code`, 정확한 JSON `path`, `message`로
-돌아오며 여러 오류의 순서도 결정적이다.
+여기부터는 §4 표의 나머지 일곱 section을 하나씩 본다. 아래의 JSON 블록은 모두
+`ledger_config.json` 안 해당 키의 **값**이다.
 
 ### 7.1 `vocabulary` — 술어의 닫힌 서명
 
@@ -519,8 +553,16 @@ Config는 Python module/function/path를 지정할 수 없다. 다음은 금지�
 }
 ```
 
-새로운 실행 모양이 필요하면 `BaseSourcePreparer` 구현을 코드로 추가하고 trusted catalog와
-sealed registry에 명시적으로 등록한 뒤 그 ID를 config에서 선택한다.
+🔴 **먼저 `direct-join@1`을 본다 — 대개 Preparer 코드는 필요 없다.**
+`ledger.source_preparation.DirectJoinSourcePreparer`는 계산을 하지 않는 범용 Preparer로,
+선언한 출력 컬럼 각각이 상속한 verified join 정확히 하나에 의해 expose되면 그대로 쓴다.
+`transfer_explorer` 샘플이 이것을 쓴다. 정규화·그룹 조립처럼 **계산이 필요할 때만** 새
+구현을 만든다.
+
+새로운 실행 모양이 필요하면 `BaseSourcePreparer` 하위 클래스를 코드에 추가한다. 클래스가
+자기 `implementation_id`/`implementation_version`을 스스로 선언하고
+`server/ledger/implementations.py`가 그것을 **코드에서 발견해** 신뢰 집합을 만든다. 별도
+목록에 이름을 다시 적을 곳은 없다.
 
 ### 7.4 `mappers` — EventFrame에서 Role만 해석
 
@@ -572,6 +614,18 @@ shape는 Pack compiler가 소유한다.
 `emits`는 단순 설명이 아니다. Profile `mappings[].use`와 양방향으로 대조된다. Mapper가
 말한 Claim을 Profile이 전혀 매핑하지 않거나, Profile이 Mapper의 emits 밖 Claim을 사용하면
 compile이 실패한다.
+
+🔴 **단순한 소스는 mapper 코드를 쓰지 않는다.** `ledger.roleframe.DeclarativeRoleMapper`
+(`implementation_id: "declarative-role"`, version 1)는 Profile이 선언한 column/constant/entity
+binding을 그대로 평가하는 범용 mapper다. 어느 특정 source도 알지 못하고 DB에 접근하지
+않는다. **업무적 읽기가 binding만으로 표현되는 소스는 이 이름을 적으면 끝이다** —
+`transfer_explorer` 샘플이 그렇게 한다. 위 `lot-event-role@1`처럼 전용 mapper가 필요한 것은
+행을 쪼개거나 도메인 규칙으로 해석해야 할 때뿐이다.
+
+전용 mapper를 새로 만든다면 **파일 하나**다: `server/mappers/ledger_v2_*.py`에
+`BaseLedgerMapper` 하위 클래스를 쓰고 클래스가 자기 `implementation_id`와
+`implementation_version`을 선언한다. `server/ledger/implementations.py`는 편집하지 않는다 —
+그 모듈이 발견해 간다.
 
 ### 7.5 `packs` — Role을 Vocabulary Claim으로 만드는 문법
 
@@ -686,7 +740,7 @@ type과 qualifier 필드가 닫힌 서명에 맞는지를 전수 대조한다.
 ```
 
 이 블록은 Profile 문법 설명을 위한 section fragment다. 실제 `lot-event@1`에는 여섯 mapping이
-있고, 전체 파일은 `server/config/ontology/ledger_config.json`이 정본이다.
+있고, 정본은 `server/config/ontology/ledger_config.json`의 `profiles` section이다.
 
 | Profile 필드 | 설명 |
 |---|---|
@@ -819,8 +873,8 @@ class로 승격하지 않는다.
 
 | 필드 | 설명 |
 |---|---|
-| source ID | `profiles.<id>.source`와 `chains`가 참조하는 이름 |
-| `relation` | `tables.json`의 base physical relation |
+| source ID | `profiles.<id>.source`가 참조하는 이름. **여기 있으면 이 소스는 돈다**(§8) |
+| `relation` | `tables` section의 base physical relation |
 | `driver.unit` | `row` 또는 `group` |
 | `driver.identity` | 결정적인 source event identity 컬럼 |
 | `driver.group_by` | group event 조립 컬럼. row이면 빈 배열 |
@@ -843,73 +897,54 @@ Timezone은 “DB session timezone을 쓰겠지”라고 추측하지 않는다.
 
 ---
 
-## 8. `dataflows/chains.json` — source별 cutover selector
+## 8. 선언이 곧 활성화다 — 실행 스위치는 없다
 
-현재 production 전체 파일이다.
+🔴 **`sources`에 있는 source는 «돈다».** 「돈다」고 다시 말해 주는 두 번째 자리는 없다.
 
-```json
-{
-  "schema_version": 1,
-  "chains": {
-    "ledger_v2_execution": {
-      "sources": {
-        "lot_event": {
-          "mode": "v2",
-          "parity_status": "approved",
-          "approval_ref": "stage6:b98f0c3804f5bdfc6653670da571f8fef0e9e129"
-        }
-      }
-    }
-  }
-}
-```
+예전에는 `dataflows/chains.json`의 `ledger_v2_execution` selector가 source마다 `mode`,
+`parity_status`, `approval_ref`를 들고 있었다. 셋 다 은퇴했다. 그 파일도, 그 문법도 없다.
 
-| 필드 | 허용값/용도 |
-|---|---|
-| `schema_version` | 현재 `1` |
-| `ledger_v2_execution.sources` | `ledger_config.sources`의 모든 source를 정확히 한 번 열거 |
-| `mode` | `legacy` 또는 `v2` |
-| `parity_status` | `pending`, `approved`, `rejected` |
-| `approval_ref` | 승인 근거 commit/stage/문서 식별자. trimmed nonblank 문자열 |
+**왜 느슨해진 것이 아닌가.** selector는 애초에 「선언은 됐지만 돌 준비는 안 됨」을 붙들고
+있지 않았다. binding이 전부 `approved`가 아닌 Profile은 **로드 시점에** readiness gate가
+거절하므로, 절반만 쓴 소스는 스위치가 무슨 말을 하든 돌 수 없었다. 그리고 스위치의 다른
+쪽 위치(`legacy`)는 이제 **아무것도 연결되지 않은 config**를 가리켰다. 남겨 두면 새 소스를
+**두 번** 적어야 하고, 그중 하나는 Explorer가 보여 주지도 않는 파일이었다 — 실제로 그렇게
+한 소스를 적는 것을 잊은 적이 있다.
 
-`mode: "v2"`는 `parity_status: "approved"`일 때만 허용한다. 새 source는 처음부터 V2로
-켠다고 가정하지 말고, preview와 legacy shadow parity 증거를 만든 뒤 selector를 바꾼다.
-설명 없는 Claim/molecule/refusal/incomplete 차이가 하나라도 있으면 approved가 아니다.
+따라서 준비의 표현은 이렇게 한다.
 
-`chains` 안에 `sql`, `python`, `exec` 같은 실행 키를 중첩 배열 깊숙이 숨겨도 완전 재귀
-검사에서 `unsafe_declaration`으로 거절한다.
+- **아직 돌리면 안 되는 소스** → `sources`에 아직 적지 않는다. 나머지 section(Pack, Profile,
+  Entity)은 먼저 적어도 되고, 전수 검증도 받는다.
+- **다 됐는데 잠시 꺼 두고 싶다** → 그런 요구가 실제로 생기면 그 소스 **자기 선언 안**
+  (`sources.<id>.enabled`)에 들어갈 자리다. 드리프트하는 별도 파일이 아니다. 🔴 **현재
+  그런 필드는 구현돼 있지 않다** — 지금 필요하면 총괄에 가져간다.
+
+`sources` 안에 `sql`, `python`, `exec` 같은 실행 키를 중첩 배열 깊숙이 숨겨도 완전 재귀
+검사에서 `unsafe_declaration`으로 거절한다. 이 검사는 파일 전체에 걸린다.
 
 ---
 
-## 9. `dataflows/enrichments.json` — 현재의 안전한 경계
+## 9. enrichment는 이 셋업에 없다
 
-현재 production 전체 파일이다.
+`dataflows/enrichments.json`은 은퇴했고 대체 section도 없다. 그 파일은 항상 비어 있었고
+읽는 코드가 없었다.
 
-```json
-{
-  "schema_version": 1,
-  "enrichments": {}
-}
-```
+결측 Claim 후보, dependency replay, enrich action/worklist가 필요하면 **별도 승인된 계약**을
+통해 구현한다. 특히 다음은 하지 않는다.
 
-현재 Ledger V2에서 이 파일은 manifest와 Bundle에 포함되는 선언 영역이지만, 이 가이드가
-보장할 범용 runtime enrichment 문법은 아직 없다. 빈 객체가 정상이다. 결측 Claim 후보,
-dependency replay, enrich action/worklist는 별도 승인된 계약을 통해 구현해야 한다.
-
-따라서 다음을 하지 않는다.
-
-- `enrichments`에 임의 SQL/Python/expression을 넣어 실행될 것으로 기대
-- virtual join을 enrichment에 중복 선언
+- `ledger_config.json`에 임의 SQL/Python/expression을 넣어 실행될 것으로 기대
 - 미완성 값을 자동 confirmed Claim으로 승격
-- cursor 재실행이나 삭제를 enrichment 부작용으로 숨김
-
-안전하지 않은 실행 키는 `chains`와 동일한 완전 재귀 검사로 거절된다.
+- cursor 재실행이나 삭제를 부작용으로 숨김
 
 ---
 
 ## 10. 새 Source를 추가하는 실제 순서
 
-아래 순서를 바꾸면 뒤 단계의 오류가 앞 단계 결함을 가린다.
+전부 `server/config/ontology/ledger_config.json` **한 파일 안**에서 일어난다. 아래 순서를
+바꾸면 뒤 단계의 오류가 앞 단계 결함을 가린다.
+
+🔴 **`sources`(Step 9)를 마지막에 적는다.** 그것이 「켠다」이기 때문이다(§8). 앞의 여덟
+단계는 아직 아무것도 돌리지 않는다.
 
 ### Step 1. 물리 표와 인제션을 먼저 확정
 
@@ -923,10 +958,10 @@ dependency replay, enrich action/worklist는 별도 승인된 계약을 통해 �
 이 단계는 Ledger config 작업이 아니라 Source 소유 작업이다. Ledger config가 relation을
 생성하거나 데이터 품질을 고쳐 주지 않는다.
 
-### Step 2. `tables.json`에 physical contract 등록
+### Step 2. `tables` section에 physical contract 등록
 
 새 relation의 모든 physical column을 적고, cursor 전순서와 join 단일성을 증명할 key/index를
-선언한다. 다른 설정에서 컬럼을 먼저 참조하지 않는다.
+선언한다. 다른 section에서 컬럼을 먼저 참조하지 않는다.
 
 검토 질문:
 
@@ -935,14 +970,14 @@ dependency replay, enrich action/worklist는 별도 승인된 계약을 통해 �
 - 비-unique index를 cursor 증거로 쓰지 않았는가?
 - catalog 선언과 실제 DB가 같은가?
 
-### Step 3. 필요한 경우 `virtual_joins.json` 등록
+### Step 3. 필요한 경우 `virtual_joins` section 추가
 
 신원이나 목적지 정보가 다른 inventory relation에 있을 때만 사용한다. join 없이 Preparer가
-EventFrame을 완성할 수 있으면 빈 registry를 유지한다.
+EventFrame을 완성할 수 있으면 이 선택 section을 아예 쓰지 않는다.
 
 join을 추가할 때:
 
-1. 오른쪽 relation도 `tables.json`에 등록한다.
+1. 오른쪽 relation도 `tables` section에 등록한다.
 2. 오른쪽 key 전체의 catalog UNIQUE 근거를 선언한다.
 3. `join_key`, `expose`, `join_cardinality: "one"`을 작성한다.
 4. physical verifier가 실제 index를 찾을 수 있는 테스트 환경을 준비한다.
@@ -987,14 +1022,21 @@ object, qualifier인지 Pack이 선언하므로 Mapper는 Role 값만 반환한�
 
 ### Step 7. Preparer/Mapper descriptor 작성
 
-기존 implementation을 재사용할 경우 config descriptor ID만 새로 만들 필요가 있는지 먼저
-검토한다. 새 구현이라면 다음 코드 경계를 따른다.
+🔴 **먼저 범용 구현으로 끝나는지 본다.** 다음 둘이면 Python을 한 줄도 쓰지 않는다.
 
-- Preparer: `BaseSourcePreparer.prepare_batch()` 최종 경계
-- Mapper: `BaseLedgerMapper.map()` 최종 경계
-- 구현 등록: sealed implementation registry + trusted catalog
+- Preparer `direct-join@1` — 출력 컬럼이 상속한 verified join에서 그대로 오는 경우
+- Mapper `declarative-role@1` — 업무적 읽기가 Profile binding만으로 표현되는 경우
 
-설정에 module path를 넣어 우회하지 않는다. `implementation_id`가 code registry에 없으면
+전용 구현이 정말 필요하면 다음 코드 경계를 따른다.
+
+- Preparer: `BaseSourcePreparer.prepare_batch()` 최종 경계(하위 클래스는
+  `prepare_outputs()`를 구현한다)
+- Mapper: `BaseLedgerMapper.map()` 최종 경계(하위 클래스는 `interpret_unit()`을 구현한다)
+- 위치: mapper는 `server/mappers/ledger_v2_*.py`, preparer는 `server/ledger/`
+- 신뢰 등록: **없다.** 클래스가 `implementation_id`/`implementation_version`을 자기 자신에
+  선언하면 `server/ledger/implementations.py`가 발견한다. 손으로 유지하는 목록은 없다.
+
+설정에 module path를 넣어 우회하지 않는다. `implementation_id`가 발견되지 않으면
 `untrusted_implementation` 또는 unknown implementation 오류가 정상이다.
 
 ### Step 8. Profile 작성
@@ -1009,7 +1051,18 @@ object, qualifier인지 Pack이 선언하므로 Mapper는 Role 값만 반환한�
 초기 검토 중에는 `approval_status: "pending"`을 사용할 수 있다. 하지만 preview/execute
 readiness를 확인하려면 전부 `approved`여야 한다.
 
-### Step 9. Source driver 조립
+### Step 9. Source driver 조립 — 이것이 「켠다」이다
+
+🔴 **`sources`에 항목을 적는 순간 그 소스는 실행 대상이다.** 앞의 여덟 단계를 끝내고 아래
+증거를 만든 뒤에 적는다.
+
+- Bundle validation 성공
+- immutable snapshot compile 성공
+- preview candidate/refusal/incomplete 결과
+- failure 시 Atom 0/cursor 미이동
+- 필요한 경우 안전한 격리 PostgreSQL E2E
+
+적을 때 확인할 것:
 
 - relation과 row/group 단위를 정한다.
 - identity/group_by를 EventFrame schema에 맞춘다.
@@ -1017,20 +1070,7 @@ readiness를 확인하려면 전부 `approved`여야 한다.
 - occurred_at physical column과 timezone을 명시한다.
 - Preparer, inherited join, Mapper, Profile ID를 연결한다.
 
-Source 이름, `Profile.source`, `chains.sources` key는 정확히 일치해야 한다.
-
-### Step 10. `chains.json`은 마지막에 전환
-
-먼저 source를 `legacy` 또는 parity pending 상태로 두고 다음 증거를 만든다.
-
-- Bundle validation 성공
-- immutable snapshot compile 성공
-- preview candidate/refusal/incomplete 결과
-- 기존 translator와 shadow parity
-- failure 시 Atom 0/cursor 미이동
-- 필요한 경우 안전한 격리 PostgreSQL E2E
-
-그 뒤에만 `mode: "v2"`, `parity_status: "approved"`, 실제 `approval_ref`를 기록한다.
+Source 이름과 `Profile.source`는 정확히 일치해야 한다.
 
 ---
 
@@ -1067,10 +1107,10 @@ profile
 pack
   Role
   → register@1 / has_wafer@1 / derived_from@1 / slot_map@1 LedgerFrame
-
-chains
-  lot_event = v2, parity approved
 ```
+
+`sources.lot_event`가 존재한다는 것이 곧 「이 소스는 돈다」이다. 그 위에 얹힌 selector는
+없다.
 
 예를 들어 `membership`은 다음 연결로 완성된다.
 
@@ -1100,7 +1140,7 @@ Vocabulary has_wafer@1
 샘플 위치:
 
 ```text
-server/config/sample/ontology/transfer_explorer/
+server/config/sample/ontology/transfer_explorer/ledger_config.json
 ```
 
 물리 흐름은 다음과 같다.
@@ -1138,9 +1178,10 @@ CoreDie@1
 - dependency가 늦게 도착하면 replay 후보로 남길 수 있지만 cursor reset을 자동 실행하지
   않는다.
 
-샘플의 전체 `ledger_config.json`은 각 Entity, Pack, Profile mapping을 함께 보여 주므로 새
-transfer source를 설계할 때 복사 가능한 출발점이다. 다만 sample implementation ID를 운영
-trusted ID로 오인하지 않는다.
+샘플의 `ledger_config.json` 하나가 `tables`·`virtual_joins`·각 Entity·Pack·Profile mapping을
+함께 보여 주므로 새 transfer source를 설계할 때 복사 가능한 출발점이다. 🔴 이 샘플은
+Preparer `direct-join@1`과 Mapper `declarative-role@1`을 쓴다 — **전용 Python이 0줄인 소스가
+실제로 어떤 모양인지**가 여기 있다.
 
 ---
 
@@ -1150,7 +1191,8 @@ trusted ID로 오인하지 않는다.
 
 검증은 다음을 모두 전수 대조한다.
 
-- manifest exact shape와 경로 경계
+- 최상위 exact shape(필수 section 여덟 + `setup_version`, 여분 키 금지)와 config root에 다른
+  JSON이 없음
 - 모든 catalog relation/column/key/index
 - 모든 Vocabulary/Entity/Pack/Profile
 - Pack ↔ Vocabulary subject/object/qualifier
@@ -1193,8 +1235,8 @@ malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거�
 
 | code | 뜻 | 먼저 볼 곳 |
 |---|---|---|
-| `unsupported_setup_version` | manifest version 불일치 | `manifest.json` |
-| `unsupported_file_version` | ledger/catalog/dataflow file schema version 불일치 | 각 JSON의 `schema_version` |
+| `unlisted_config_file` | config root에 `ledger_config.json` 말고 다른 `.json`이 있음(재귀) | root 밖으로 옮긴다 |
+| `unsupported_setup_version` | `setup_version`이 `3`이 아님 | 파일 최상위 |
 | `unknown_source` | Profile/source/join이 없는 source 참조 | source ID와 `Profile.source` |
 | `unknown_pack` / `unknown_claim` | Profile `use`가 registry 밖 | Pack/Claim ID와 version |
 | `missing_required_role` | Claim required Role binding 누락 | `mappings[].bind` |
@@ -1208,19 +1250,24 @@ malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거�
 | `untrusted_implementation` | config ID가 코드 trusted catalog 밖 | Preparer/Mapper 등록 |
 | `destructive_approval_required` | reset/from replay 시도 | 별도 사용자 승인 필요 |
 
-### 13.2 write-free manifest dry-run
+### 13.2 write-free dry-run
 
 `server` 디렉터리에서 실행한다.
 
 ```powershell
-conda run -n assy_manager python -m ledger.cutover_v2
+conda run -n assy_manager python -m ledger.setup
 ```
 
-이 명령은 production manifest를 로드하고 Bundle/Snapshot readiness와 source selector를
-보고한다. 정상 dry-run은 DB write, cursor advance, reset, migration을 수행하지 않는다.
+운영 config root를 로드하고 결정적인 JSON 한 줄을 낸다 — `config_root`, `setup_version`,
+`snapshot_sha256`, `readiness`, 선언된 `sources`(각 `source_id`/`relation`), 그리고
+`destructive_actions`가 전부 false임. 정상 dry-run은 DB write, cursor advance, reset,
+migration을 수행하지 않는다.
 
-주의: nonempty virtual join을 가진 source는 physical verifier가 발급한 descriptor가 필요하다.
-Catalog JSON만 맞는다고 physical proof를 생략해 ready라고 주장하지 않는다.
+🔴 **`mode`도 `parity_status`도 이 출력에 없다.** 그런 필드는 은퇴했다(§8). 「이 소스가
+도는가」의 답은 `sources` 목록에 있느냐다.
+
+주의: `virtual_joins`를 가진 source는 physical verifier가 발급한 descriptor가 필요하다.
+선언 JSON만 맞는다고 physical proof를 생략해 ready라고 주장하지 않는다.
 
 ### 13.3 Explorer draft preview
 
@@ -1252,10 +1299,12 @@ conda run -n assy_manager python -m ledger.backfill --source lot_event --max-bat
 사용자 승인을 받은 경우에만 실행한다. 한 source event의 Claim은 전부 통과하거나 전부
 거절되며, 실패 시 Atom 0·cursor 미이동이어야 한다.
 
-공개 CLI의 `--reset-cursor`와 `--from` replay는 V2/legacy 모두
-`destructive_approval_required`로 선행 차단된다. 이 가이드만 보고 우회하거나 lower-level
-helper를 직접 호출하지 않는다. legacy 실행은 명시적 `--legacy` 경로에 격리돼 있으며 기본
-V2 mode는 legacy config를 읽지 않는다.
+공개 CLI의 `--reset-cursor`와 `--from` replay는 `destructive_approval_required`로 선행
+차단된다. 이 가이드만 보고 우회하거나 lower-level helper를 직접 호출하지 않는다.
+
+CLI가 받는 나머지 플래그는 `--source`, `--fetch-rows`, `--max-batches`, 그리고 config root를
+가리키는 `--ontology-root`(기본값 `server/config/ontology`)뿐이다. **실행 경로는 하나이고
+`--legacy`나 `--config` 같은 갈래는 없다.**
 
 ---
 
@@ -1264,18 +1313,31 @@ V2 mode는 legacy config를 읽지 않는다.
 새 Source가 건드린 직접 범위만 우선 실행한다. 긴 full server suite와 PostgreSQL E2E는
 사용자 지시에 따라 생략할 수 있지만, 실행하지 않은 테스트를 통과했다고 기록하지 않는다.
 
-기본 집중군 예시:
+🔴 **파일명 목록을 여기 박아 두지 않는다.** 이 문서가 들고 있던 목록은 테스트가 개명되는
+날 조용히 낡고, 없는 파일을 지목한 명령은 「돌렸다」는 근거로 재사용된다. 아래 첫 명령은
+**패턴**이라 실행 시점에 실재하는 파일로 풀린다.
+
+⚠️ **경로가 `server/tests/`이므로 이 절의 명령은 «저장소 루트»에서 실행한다** — §13의
+dry-run/backfill 명령이 `server/`에서 도는 것과 다르다.
 
 ```powershell
-conda run -n assy_manager python -m pytest server/tests/test_ledger_setup_bundle.py -q --basetemp .test_tmp/ledger_setup_bundle
-conda run -n assy_manager python -m pytest server/tests/test_ledger_setup_registry.py -q --basetemp .test_tmp/ledger_setup_registry
-conda run -n assy_manager python -m pytest server/tests/test_ledger_roleframe.py -q --basetemp .test_tmp/ledger_roleframe
-conda run -n assy_manager python -m pytest server/tests/test_ledger_source_preparation.py -q --basetemp .test_tmp/ledger_source_preparation
-conda run -n assy_manager python -m pytest server/tests/test_ledger_v2_runtime.py -q --basetemp .test_tmp/ledger_v2_runtime
+conda run -n assy_manager python -m pytest server/tests/test_ledger_setup_*.py -q --basetemp .test_tmp/ledger_setup
 ```
 
-실제 파일명은 변경 범위와 현재 test inventory를 확인한 뒤 선택한다. 존재하지 않는 명령을
-복사해 통과 근거로 쓰지 않는다.
+범용 구현으로 Python 0줄 소스를 붙였다면 다음 둘이 그 경로의 직접 범위다.
+
+```powershell
+conda run -n assy_manager python -m pytest server/tests/test_ledger_zero_python_source.py server/tests/test_ledger_implementations.py -q --basetemp .test_tmp/ledger_zero_python
+```
+
+변경 범위가 더 넓으면 **먼저 수집만 해서** 무엇이 걸리는지 본다. 수집 오류가 섞여 나오면
+그 자체가 정보다 — 없는 것을 돌린 셈 치지 말고 원인을 본다.
+
+```powershell
+conda run -n assy_manager python -m pytest server/tests/ -q --collect-only -k ledger
+```
+
+존재하지 않는 명령을 복사해 통과 근거로 쓰지 않는다.
 
 PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리키고 safety guard를
 통과할 때만 실행한다. URL이 없으면 skip 수와 이유를 그대로 보고한다.
@@ -1290,8 +1352,8 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 - preview/execute 후보 parity
 - source event all-or-nothing
 - failure에서 Atom 0/cursor 미이동
-- legacy shadow parity의 설명 없는 차이 0
-- 운영 config/DB migration/reset/legacy 삭제 0
+- config root에 다른 JSON을 두면 `unlisted_config_file`로 거절
+- 운영 config/DB migration/reset 0
 
 ---
 
@@ -1299,7 +1361,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `unknown_column` | physical/EventFrame 층 혼동 | physical은 catalog/Preparer input, prepared는 output/Mapper/Profile에서 확인 |
+| `unknown_column` | physical/EventFrame 층 혼동 | physical은 `tables`/Preparer input, prepared는 output/Mapper/Profile에서 확인 |
 | `invalid_cursor` | order/cursor가 UNIQUE key 전체를 안 포함 | business/composite/UNIQUE index 전체 컬럼 추가 |
 | join은 선언됐는데 compile 실패 | left key가 Preparer input에 없거나 physical proof 없음 | input_columns와 실제 UNIQUE index 확인 |
 | `untrusted_implementation` | sample ID를 production에 복사 | trusted code registry 등록 또는 기존 구현 재사용 |
@@ -1311,7 +1373,10 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | join 결과 0건 | inventory 늦은 도착/키 불일치 | 원천·표기·dependency replay 후보 확인; 가짜 값 생성 금지 |
 | join 결과 다건 | 오른쪽 유일성 위반 | 물리 중복 해소와 exact UNIQUE proof; 첫 행 임의 선택 금지 |
 | 화면이 비어 있음 | Admin auth 상태 오해 | token 설정 시 header 누락 `401`·값 불일치 `403`, token 미설정 strict route `503`을 구분 |
-| `--config`가 거절됨 | 기본 V2 mode에서 legacy config 전달 | V2는 manifest 단일 진입점 사용; legacy만 명시적 `--legacy` |
+| `unlisted_config_file` | config root 안에 다른 `.json`이 있음(백업 폴더 포함 — 검사는 재귀한다) | root **밖**으로 옮긴다. 옛 다섯 파일은 §2.3 |
+| `unsupported_setup_version` | 파일에 `setup_version: 3`이 없거나 옛 `schema_version`을 씀 | §4의 최상위 모양 |
+| 안 켠 소스가 돌았다 | `sources`에 적는 것이 곧 켜는 것 | §8. 준비 전이면 `sources`에서 뺀다 |
+| `--legacy`/`--config`가 없다 | 실행 경로가 하나가 됨 | `--ontology-root`로 config root를 지정한다(§13.4) |
 | reset/from이 거절됨 | 파괴적 replay 선행 gate | 우회하지 말고 별도 사용자 승인과 작업 범위 확정 |
 
 ---
@@ -1338,20 +1403,22 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 - [ ] config에 module/path/SQL/Python/expression을 넣지 않았다.
 - [ ] Preparer input/output과 Mapper input이 exact하게 맞는다.
-- [ ] trusted implementation ID/version이 코드에 실제 등록돼 있다.
+- [ ] `implementation_id`/version을 가진 클래스가 코드에 실제 있다(범용 `direct-join@1`·
+      `declarative-role@1`으로 끝나는지 먼저 확인했다).
 - [ ] Mapper emits와 Profile mapping use가 양방향 일치한다.
-- [ ] Source/Profile/chain source ID가 일치한다.
+- [ ] Source ID와 `Profile.source`가 일치한다.
+- [ ] 이 소스를 **지금 돌려도 되는 상태**에서만 `sources`에 적었다.
 
 ### 승인/검증
 
 - [ ] 모든 nested binding까지 origin/approval metadata가 있다.
 - [ ] system suggestion마다 suggestion reason이 있다.
 - [ ] 실행 전 모든 binding이 approved다.
-- [ ] manifest dry-run이 ready이고 write 0이다.
+- [ ] `python -m ledger.setup` dry-run이 `readiness: "ready"`이고 write 0이다.
+- [ ] config root에 `ledger_config.json` 말고 다른 `.json`이 없다.
 - [ ] preview/execute parity와 all-or-nothing을 검증했다.
-- [ ] legacy shadow parity의 설명 없는 차이가 0이다.
 - [ ] 미실행 full/PG 테스트를 통과로 표현하지 않았다.
-- [ ] reset/replay/migration/legacy 삭제를 수행하지 않았다.
+- [ ] reset/replay/migration을 수행하지 않았다.
 
 ---
 
@@ -1360,15 +1427,17 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | 목적 | 문서/코드 |
 |---|---|
 | 현재 시스템 상태와 인수인계 | [FORK_SESSION_BRIEF](../process/FORK_SESSION_BRIEF.md) |
-| V2 파일 정본과 디렉터리 | [CONFIG_CANON](../../ledger_v2_redesign_plan_20260817/CONFIG_CANON.md) |
+| 최상위 section 목록과 필수/선택 구분 | `server/ledger/setup_bundle.py`의 `LOGICAL_SECTIONS`·`OPTIONAL_SECTIONS`·`SETUP_VERSION` |
 | Bundle exact validation | `server/ledger/setup_bundle.py` |
 | Registry/Snapshot compile | `server/ledger/setup_registry.py` |
-| RoleFrame/Pack compile | `server/ledger/roleframe.py` |
-| Source preparation | `server/ledger/source_preparation.py` |
+| RoleFrame/Pack compile · 범용 mapper | `server/ledger/roleframe.py` |
+| Source preparation · 범용 preparer | `server/ledger/source_preparation.py` |
+| 어떤 `implementation_id`가 실행 가능한가 | `server/ledger/implementations.py` |
 | preview/execute | `server/ledger/runtime_v2.py` |
-| manifest dry-run/cutover | `server/ledger/cutover_v2.py` |
-| 현재 production 선언 | `server/config/ontology/` |
-| transfer file-backed sample | `server/config/sample/ontology/transfer_explorer/` |
+| 로드 경계와 dry-run 보고 | `server/ledger/setup.py` |
+| 옛 다섯 파일 → 한 파일 변환 | `server/scripts/convert_ontology_to_single_file.py` |
+| 현재 production 선언 | `server/config/ontology/ledger_config.json` |
+| transfer file-backed sample | `server/config/sample/ontology/transfer_explorer/ledger_config.json` |
 | Explorer 전체 계약 | `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md` |
 
 정확한 필드가 이 문서와 validator에서 충돌하면 코드와 승인된 V2 acceptance evidence를 먼저

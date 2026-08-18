@@ -2,8 +2,15 @@
 -- REVERSE of server/migrations/drop_graph_storage.py (ruling R-2026-08-14-H).
 --
 -- Recreates `graph_nodes`, `graph_edges` and `graph_sync_state` EMPTY, with the
--- column set and indexes taken from server/database/models.py (GraphNode ~467,
--- GraphEdge ~484, GraphSyncState ~512).
+-- column set and indexes as they stood in server/database/models.py.
+--
+-- ⚠️ THOSE CLASSES NO LONGER EXIST. `311ab36` (2026-08-18) deleted GraphNode,
+-- GraphEdge and GraphSyncState, so the line anchors this header used to carry
+-- (~467 / ~484 / ~512) now point at unrelated code. Read the definitions at
+-- `git show 2ec78b9:server/database/models.py` instead - that is the last
+-- revision where the shape below and the ORM agreed. This matters more than a
+-- stale anchor usually would: the DDL below is now the ONLY surviving statement
+-- of that shape in the tree, so it cannot be regenerated from the models.
 --
 -- IT RESTORES THE SHAPE. IT CANNOT BRING ROWS BACK. There was no archive - the
 -- owner re-confirmed that in the ruling, on the grounds that every row here was

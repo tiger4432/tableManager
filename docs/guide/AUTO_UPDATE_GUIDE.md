@@ -1,6 +1,6 @@
 # 📅 AssyManager Ingestion Auto Update & Scheduler 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-16 | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 디렉토리는 각 테이블별 실시간 인제션 파일 수집 및 백업 스케줄링을 독립적이고 완벽하게 관리할 수 있는 **하이브리드 동적 다중 감지 수집 시스템**입니다.
 
@@ -155,7 +155,7 @@ out = build_rows()
 
 🔴 **이 데몬은 더 이상 그래프 고아 스윕을 돌리지 않습니다. 아래는 역사 기록입니다.** 스윕의 **대상**(`graph_nodes`/`graph_edges`)이 은퇴하고 DROP됐습니다.
 
-🔴 **그리고 이 한 줄을 빼는 것이 «필수»였지 정리가 아니었습니다.** 그래프 워커는 스택에서 빠졌지만 **이 스케줄러는 남습니다.** `graph_orphans.run_scheduled`는 첫 동작으로 `ensure_graph_tables`를 부르므로, 호출을 두면 **살아남은 프로세스가 죽은 저장소를 빈 채로 복원**하고 화면은 「그래프가 아직 비어 있습니다」를 답합니다 — 은퇴가 「아직 안 채워짐」의 옷을 입는 것. **이것이 「워커만 멈추면 된다」가 틀린 이유**이고, 봉인된 부활 경로 셋 중 하나입니다.
+🔴 **그리고 이 한 줄을 빼는 것이 «필수»였지 정리가 아니었습니다.** 그래프 워커는 스택에서 빠졌지만 **이 스케줄러는 남습니다.** `graph_orphans.run_scheduled`는 첫 동작으로 `ensure_graph_tables`를 **불렀고**, 호출을 남겨 뒀다면 **살아남은 프로세스가 죽은 저장소를 빈 채로 복원**하고 화면이 「그래프가 아직 비어 있습니다」를 답했을 것입니다 — 은퇴가 「아직 안 채워짐」의 옷을 입는 것. (⚰️ 그 모듈도 `ensure_graph_tables`도 지금은 트리에 없습니다 — 각각 2026-08-16·2026-08-18 제거.) **이것이 「워커만 멈추면 된다」가 틀린 이유**이고, 봉인된 부활 경로 셋 중 하나입니다.
 
 ⚠️ **이 데몬의 「수집기가 아닌 일」은 이제 «둘»입니다** — §4-bis 주간 config 스냅샷 · §4-quater 소급 적용 실행. 스윕 메서드와 `graph_orphans` 모듈은 2026-08-16 코드에서 제거됐습니다.
 

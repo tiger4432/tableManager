@@ -463,7 +463,9 @@ class CellSource(Base):
 # ⚰️ [R-2026-08-14-H, 제거 라운드 2026-08-18] 구 그래프 엣지 스토어의 «모델»이 여기 있었다:
 # `GraphNode` / `GraphEdge` / `GraphSyncState` (graph_nodes / graph_edges / graph_sync_state).
 #
-# 물리 표는 2026-08-16에 DROP됐고, 그때는 클래스를 남긴 채 부팅 create_all에서만 제외했다.
+# 물리 표는 2026-08-14(`2ec78b9`)에 DROP됐고, 그때는 클래스를 남긴 채 부팅 create_all에서만
+# 제외했다. (2026-08-16 `9851374`는 워커·실행 파일을 걷어낸 라운드이지 표를 지운 라운드가 아니다 —
+# 커밋 311ab36의 메시지가 이 둘을 뭉쳐 「2026-08-16 DROP」이라 적었고, 그것이 틀렸다.)
 # 그 중간 상태의 대가가 이번에 드러났다: 부팅 스키마 점검이 `Base.metadata`를 「이 빌드가
 # 요구하는 것」으로 읽으므로, 매 재기동마다 **없어야 할 표 셋을 결손으로 신고**했다
 # ("SCHEMA DRIFT: the database is missing 3 thing(s)"). 즉 은퇴가 «고장»으로 보였다.

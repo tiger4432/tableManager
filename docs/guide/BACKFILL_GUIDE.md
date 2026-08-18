@@ -1,6 +1,6 @@
 # 🔁 소급 적용 가이드 — 규칙을 「이미 쌓인 데이터」에 적용하는 길들
 
-> **Status:** 🟢 Living | **작성:** 2026-07-31 · doc-keeper | **Last-verified:** 2026-08-14
+> **Status:** 🟢 Living | **작성:** 2026-07-31 · doc-keeper | **Last-verified:** 2026-08-18
 >
 > **이번 라운드 (2026-08-14 · `2ec78b9` · R-2026-08-14-H — ⓔ가 «없어졌습니다»)**
 > - ⚰️ **ⓔ 그래프 고아 스윕 은퇴** — 지울 대상(`graph_nodes`/`graph_edges`/`graph_sync_state`)이 **DROP**됐습니다(약 841 MB). `server/retroactive.py`의 `OPERATIONS`가 다섯에서 **넷**(`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`)이 되어 어드민 API에서도 **등록 해제**됐고, 스케줄러의 자동 호출도 제거됐습니다.
@@ -16,7 +16,7 @@
 > **직전 라운드 (2026-08-11 · 해결 순서 수리 + R3 착지)**
 > - **신규 경로 ⓕ — R3 `chain_replay_cli.py resolve`**(§2.5). 같은 CLI의 **세 번째 연산**이라 **스크립트 수는 그대로 넷**이고, 결정표·§1의 공통 규율에 행이 하나 늘었습니다.
 > - 🔴 **제목의 「다섯 가지 길」을 여섯으로 고치지 않고 기수를 지웠습니다** — 목록 옆의 수는 목록의 두 번째 사본이고, 이 문서에서 그 수는 **§0 결정표·§1 서두·§7 서두** 세 자리에 사본이 있었습니다. 목록이 정본입니다.
-> - 🔴 **ⓕ만 어드민 API에 없습니다** — `server/retroactive.py`의 `OPERATIONS`는 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans` **다섯**이고 R3는 등재돼 있지 않습니다(실측). §0과 §7의 「전부 어드민 API로도 됩니다」는 **ⓐ~ⓔ에 대해서만** 참입니다.
+> - 🔴 **ⓕ만 어드민 API에 없습니다** — `server/retroactive.py`의 `OPERATIONS`는 ~~`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans` **다섯**~~이고 R3는 등재돼 있지 않습니다(실측). §0과 §7의 「전부 어드민 API로도 됩니다」는 **ⓐ~ⓔ에 대해서만** 참입니다. → ⚠️ **[2026-08-18 정정] 지금은 `graph_orphans`가 빠져 «넷»입니다**(§5 참조). 이 줄의 「다섯」은 2026-08-11 시점의 실측이고, **현재 수는 §5가 정본**입니다.
 > - **§1.1 레이어링 표 갱신** — 표시값 결정이 **등재 우선순위 → `ingested_at` 내림차순 → `source_name` 오름차순**의 전순서가 됐습니다. 종전에는 미등재 이름이 전부 99로 **동점**이었고 승자가 삽입 순서로 떨어졌습니다(ⓒ·ⓓ가 둘 다 99인 것은 그대로이며, 이제 그 둘 사이도 결정적으로 갈립니다).
 > - **§6.1 갱신** — `--limit`의 뜻 표에 ⓕ 행 추가(**훑는 행 수** 상한).
 >

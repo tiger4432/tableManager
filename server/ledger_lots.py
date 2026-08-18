@@ -57,10 +57,27 @@ client is trusted to get right (ruling R-2026-08-13-C).
 
 🔴 THE ROW AXIS IS DECLARED, AND IT SAYS WHAT IT IS
 -----------------------------------------------------
-The brief asked for 「행 = 코어 랏」. MEASURED, and it is not available: `bonding_log`'s
-`core_lot`/`core_slot`/`cx`/`cy` are NULL in all 357,796 rows, and `dt_map.core_lot` is
-NULL in all 5,619. There is no core axis in this data at all. The lead PM's ruling
-(2026-08-14) is therefore `bond_lot`, WITH the screen saying so — hence `row_axis.label`
+The brief asked for 「행 = 코어 랏」. It is not available, and the RULING below stands — but
+the sentence that used to be here overstated its evidence in two ways, corrected 2026-08-18:
+
+  * It read as a present-tense invariant ("are NULL in all 357,796 rows"). That was one
+    measurement of one dataset on one box. Row counts are not properties of the code, and
+    a docstring that states them as if they were goes stale silently. Re-measure before
+    citing: `SELECT count(*) FILTER (WHERE core_lot IS NOT NULL) FROM bonding_log`.
+  * 🔴 It named columns this build does not have. On the dev box today `bonding_log` has
+    `c_wx`/`c_wy`, NOT `cx`/`cy`, and `dt_map` has no `core_lot` column at all (it carries
+    `dt_lot`/`dt_slot`/`dt_x`/`dt_y`/`value`). So the axis is unreachable partly because
+    those columns were never THERE — which is a different fact from "they are all NULL",
+    and this project has already paid for confusing the two (`absent-zero-is-not-inert-zero`
+    above). ⚠️ Column sets are per-environment via `table_config`, so treat this as "check
+    yours", not as a second invariant to replace the first.
+
+The dev box cannot settle the data question either way right now: `bonding_log` has 0 rows
+on it. That is stated rather than skipped, because "I could not check" and "I checked and
+it was empty" are different, and only one of them licenses a conclusion.
+
+The lead PM's ruling (2026-08-14) is therefore `bond_lot`, WITH the screen saying so —
+hence `row_axis.label`
 carries 「본딩 랏」 and the client is expected to render it, so nobody reads a bonding lot
 as a core lot.
 
@@ -933,9 +950,11 @@ def _envelope(state, columns, axis, source, config, axis_kind, raw_rows,
 #: `transferred` atom carries a chip coordinate (`position` is None at every emit site) and
 #: `ledger_trace.LINEAGE_PREDICATES` does not contain `transferred` at all.
 #:
-#: 🔴 THE CORE AXIS IS DECLARED AND UNREACHABLE, AND SAYS SO. `bonding_log.core_lot`,
-#: `core_slot`, `cx`, `cy` are NULL in all 357,796 rows and `dt_map.core_lot` is NULL in
-#: all 5,619, so there is no core coordinate to project onto. Reaching one would need a
+#: 🔴 THE CORE AXIS IS DECLARED AND UNREACHABLE, AND SAYS SO. There is no core coordinate
+#: to project onto — see the module docstring for what that rests on and, since 2026-08-18,
+#: for what it does NOT rest on: the old count here ("NULL in all 357,796 / 5,619 rows")
+#: was a dated one-dataset measurement stated as an invariant, and it named `cx`/`cy` and
+#: `dt_map.core_lot`, none of which are columns in this build. Reaching one would need a
 #: NEW side join into `dt_log`, which ruling R-2026-08-14-D forbids. It is therefore listed
 #: — not hidden — at `state: "unreachable"`, because an axis missing from the screen and an
 #: axis with no data are different answers and the operator would read the second from the

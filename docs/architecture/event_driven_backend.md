@@ -2,7 +2,7 @@
 
 > ⚰️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] §4(그래프 승격)는 은퇴했고 접혀 있습니다.** outbox 소비자는 셋에서 **둘**(체인 워커 · 스케줄러)이 됐습니다. §1~§3(Outbox · 체인 인제션)은 **한 줄도 영향받지 않았고 여전히 정본**입니다. §1의 아키텍처 다이어그램과 §2의 「그래프 워커 예산(`GRAPH_BATCH_LIMIT`)」 서술은 **더 이상 도는 코드에 대한 서술이 아닙니다** — 이벤트 축약 설계의 근거로만 읽으십시오.
 >
-> **Status:** 🟠 부분 최신 (§1~§3 Living · §4 🗄️ 은퇴) | **Last-verified:** 2026-08-14 (**§2.2에 「`request_source`는 채널 라벨이지 레이어 소스명이 아니다」 + 「컨텍스트를 안 세우는 자동 경로는 사람의 편집으로 나간다」 신설** — `ffb23d6`+`53f9187`. 실제 사고: 소급 수리 패스 **둘**(R3·R2)의 아웃박스 이벤트가 `user`/`system`+이벤트마다 uuid4로 나가 하류 매퍼 전원을 깨우고 tx id가 안 묶여 N개 직렬 그룹이 됐다. **R1은 라벨이 구성상 옳은데 tx id는 페이지당 하나로 남아 있다 — 두 필드는 서로를 함의하지 않는다.** 🔴 **라벨이 쓰기/삭제 대상을 바꾸지 않는다는 것은 경로마다 따로 확인한다**(R2는 층을 지우므로 R3와 질문이 달랐고, 판정은 스냅샷 해시였다). 직전 2026-08-06 **[`2fc4f00`] §3.6에 「삭제 id 목록도 `BROADCAST_ITEM_LIMIT`을 받고, 잘렸다는 사실이 같이 나간다」 신설** — `batch_refresh_required`의 `deleted_row_ids_omitted`. 이 팔에는 상한이 아예 없었는데 `deleted_row_ids`가 collision-merge 껍데기 몇 건만 나르던 동안은 도달 불가능한 결함이었다. 직전 [`25de4ae`] **§2.3에 「NOTIFY는 트랜잭션당 1회」**(그 레인이 직접 기입). 직전 2026-08-04 **[`2aab7e2`] 브로드캐스트 복구 두 갈래** — ① **스윕의 재발사 집합이 넓어졌다**: `refresh_targets = affected_targets | source_tables`. 종전에는 체인 규칙에 걸리지 않는 미전달 행(규칙 비활성·트리거 아님·워처 마커)이 **아무것도 발사되지 않은 채 확정만** 찍혀 조용히 소각됐다 — 「무한 스윕을 막는 것은 발사 안 함이 아니라 확정을 찍는 것」. ② **워처의 실패한 통지가 durable 마커를 남긴다**(`record_undelivered_notification` → `EVENT_BROADCAST_RECOVERY`): 예전엔 로그하고 버려서 허브가 몇 초 깜박이는 것만으로 통지가 영구 유실됐다. **새 큐가 아니라 기존 스윕이 이미 줍는 모양**으로 쓴다. 함께: `/health` 도달성 판정이 상태코드에서 **응답 BODY**로 바뀌었다(`own_health_payload`). 직전 2026-07-30: **[F8] 통지 전송 계층 항목 신설** — loopback 통지가 사내 프록시로 나가 403으로 거절된 운영 장애의 근본 수리. `internal_event_client.internal_event_session()`(`trust_env=False`) 단일 팩토리, 발신자 자체 클라이언트 생성 금지를 테스트로 강제, 실패 줄에 `admin-gate=yes|no` 판정 + 조치 명시. 직전: 2026-07-25) | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py`, `graph_materializer.py`, `ontology_config.py`, **`server/internal_event_client.py`**
+> **Status:** 🟠 부분 최신 (§1~§3 Living · §4 🗄️ 은퇴) | **Last-verified:** 2026-08-18 (**§2.2에 「`request_source`는 채널 라벨이지 레이어 소스명이 아니다」 + 「컨텍스트를 안 세우는 자동 경로는 사람의 편집으로 나간다」 신설** — `ffb23d6`+`53f9187`. 실제 사고: 소급 수리 패스 **둘**(R3·R2)의 아웃박스 이벤트가 `user`/`system`+이벤트마다 uuid4로 나가 하류 매퍼 전원을 깨우고 tx id가 안 묶여 N개 직렬 그룹이 됐다. **R1은 라벨이 구성상 옳은데 tx id는 페이지당 하나로 남아 있다 — 두 필드는 서로를 함의하지 않는다.** 🔴 **라벨이 쓰기/삭제 대상을 바꾸지 않는다는 것은 경로마다 따로 확인한다**(R2는 층을 지우므로 R3와 질문이 달랐고, 판정은 스냅샷 해시였다). 직전 2026-08-06 **[`2fc4f00`] §3.6에 「삭제 id 목록도 `BROADCAST_ITEM_LIMIT`을 받고, 잘렸다는 사실이 같이 나간다」 신설** — `batch_refresh_required`의 `deleted_row_ids_omitted`. 이 팔에는 상한이 아예 없었는데 `deleted_row_ids`가 collision-merge 껍데기 몇 건만 나르던 동안은 도달 불가능한 결함이었다. 직전 [`25de4ae`] **§2.3에 「NOTIFY는 트랜잭션당 1회」**(그 레인이 직접 기입). 직전 2026-08-04 **[`2aab7e2`] 브로드캐스트 복구 두 갈래** — ① **스윕의 재발사 집합이 넓어졌다**: `refresh_targets = affected_targets | source_tables`. 종전에는 체인 규칙에 걸리지 않는 미전달 행(규칙 비활성·트리거 아님·워처 마커)이 **아무것도 발사되지 않은 채 확정만** 찍혀 조용히 소각됐다 — 「무한 스윕을 막는 것은 발사 안 함이 아니라 확정을 찍는 것」. ② **워처의 실패한 통지가 durable 마커를 남긴다**(`record_undelivered_notification` → `EVENT_BROADCAST_RECOVERY`): 예전엔 로그하고 버려서 허브가 몇 초 깜박이는 것만으로 통지가 영구 유실됐다. **새 큐가 아니라 기존 스윕이 이미 줍는 모양**으로 쓴다. 함께: `/health` 도달성 판정이 상태코드에서 **응답 BODY**로 바뀌었다(`own_health_payload`). 직전 2026-07-30: **[F8] 통지 전송 계층 항목 신설** — loopback 통지가 사내 프록시로 나가 403으로 거절된 운영 장애의 근본 수리. `internal_event_client.internal_event_session()`(`trust_env=False`) 단일 팩토리, 발신자 자체 클라이언트 생성 금지를 테스트로 강제, 실패 줄에 `admin-gate=yes|no` 판정 + 조치 명시. 직전: 2026-07-25) | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, **`server/internal_event_client.py`** (⚰️ 종전 이 목록에 있던 `graph_sync_worker.py`·`graph_materializer.py`·`ontology_config.py`는 **2026-08-16 트리에서 제거**됐습니다 — §4의 정본이 사라진 것이지 §1~§3에는 영향이 없습니다)
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 개괄 [backend.md](./backend.md)
 > 관련: [chain_ingestion_guide](../guide/chain_ingestion_guide.md)(맵퍼 개발) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)(그래프 트랙 스펙)
 >
@@ -14,7 +14,7 @@
 
 ## 1. 전체 시스템 아키텍처 개요
 
-본 시스템은 데이터베이스의 변경 사항을 100% 신뢰성 있게 추적하고 연쇄 반응을 일으키기 위해 **이벤트 기반 아키텍처(EDA)**와 **Transactional Outbox 패턴**을 채택하고 있습니다. outbox는 두 독립 소비자를 가지며, 각자 자기 진도 표식을 씁니다 — 체인 워커는 행별 `processed_chain` 플래그, graph materializer는 keyset 커서(`graph_sync_state.last_outbox_id`).
+본 시스템은 데이터베이스의 변경 사항을 100% 신뢰성 있게 추적하고 연쇄 반응을 일으키기 위해 **이벤트 기반 아키텍처(EDA)**와 **Transactional Outbox 패턴**을 채택하고 있습니다. outbox 소비자는 **체인 워커와 스케줄러 둘**이고, 체인 워커는 행별 `processed_chain` 플래그로 자기 진도를 씁니다. ⚰️ **[2026-08-14] 종전 이 자리에는 세 번째 소비자인 graph materializer와 그 keyset 커서(`graph_sync_state.last_outbox_id`)가 적혀 있었습니다** — 그 워커도 커서 표도 은퇴했고(표는 2026-08-16 DROP, ORM 클래스는 2026-08-18 제거) **지금은 존재하지 않습니다.**
 
 ```mermaid
 graph TD
@@ -324,9 +324,9 @@ Neo4j 반영 경로는 청크 훅 인터페이스(`_neo4j_chunk_hook_factory`)�
 
 ## 5. 모니터링 및 문제 해결 (Troubleshooting)
 
-Outbox 테이블(`database_outbox`)과 `graph_sync_state`를 조회하여 동기화 상태를 모니터링할 수 있습니다.
+Outbox 테이블(`database_outbox`)을 조회하여 동기화 상태를 모니터링할 수 있습니다.
 
-* **그래프 소비 진도**: `graph_sync_state.last_outbox_id` vs `max(database_outbox.id)` — 격차가 크면 materializer 정지/지연([GraphLatency] 로그 확인). (구 `status` 필드의 PENDING/DISPATCHED 의미는 레거시 그래프 워커 시대의 것으로, materializer는 사용하지 않습니다.)
+* ⚰️ **~~그래프 소비 진도~~ — 은퇴.** 🔴 **`graph_sync_state`를 조회하지 마십시오 — 표가 없습니다**(2026-08-16 DROP, ORM 클래스는 2026-08-18 제거). 종전 이 항목은 `graph_sync_state.last_outbox_id`와 `max(database_outbox.id)`의 격차로 materializer 지연을 봤는데, **그 커서 표도 그 소비자도 지금은 존재하지 않습니다.** 원장 쪽 진도는 `GET /api/ledger/coverage`가 답합니다
 * **체인 처리 필드 (`processed_chain`)**:
   * `False`: 체인 인제션 워커가 아직 검토하지 않은 상태.
   * `True`: 체인 인제션 규칙 매칭 및 연쇄 실행이 완결된 상태.

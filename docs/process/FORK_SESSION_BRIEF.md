@@ -13,8 +13,8 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
 
 - Ledger V2 1~7단계: `COMPLETE / APPROVED`
 - Ontology Config Explorer 전체 계약: `COMPLETE / APPROVED`
-- production authoring root: `server/config/ontology/`
-- 현재 V2 cutover source: `lot_event`
+- production authoring root: `server/config/ontology/` — 🔴 **[2026-08-18] 파일 «하나»**(`ledger_config.json`, `setup_version: 3`). `manifest.json`·`catalog/`·`dataflows/`는 은퇴했고 옮겨진 원본은 `server/config/_ontology_pre_single_file_20260818/`(지원 경로 아님)
+- 현재 선언된 source: `lot_event` — 🔴 **선언이 곧 활성화**라 `mode` selector는 없다. 확인은 `conda run -n assy_manager python -m ledger.setup`(`server/`에서, 쓰기 없음)
 - UI: `http://127.0.0.1:8080/admin.html#ontology`
 - active snapshot 기준: `57d36c07271a019242722cc4627f1c0a9c6b477e632f29f32034e331928b0da0`
 
@@ -27,7 +27,9 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
 | Stage 4 RoleFrame/Pack compiler | `1d9bd4aa2f1b0ca5012c959e4647d8feab956ee1` |
 | Stage 5 Source Preparer | `4508c12c5acad6b3a48affde61220a5e2e1709a9` |
 | Stage 6 runtime/parity | `b98f0c3804f5bdfc6653670da571f8fef0e9e129` |
-| Stage 7 manifest cutover | `f516268eadae5505c586ce5235e76dd729c1e573` |
+| Stage 7 config/cutover(당시 manifest 모양) | `f516268eadae5505c586ce5235e76dd729c1e573` |
+| 단일 파일 셋업으로 접기 | `141d95e` · 라이브 root 접기 `caba302` |
+| 셋업 경계 개명(`cutover_v2`→`setup`) | `b4c5870` · 구 모듈 삭제 `382b78c` |
 | Explorer 전체 완료 | `2d1ad863106fc228566cab1a386265957f5c3587` |
 | 최종 상태 동기화 | `cbe139e1adae1c808bfb5774f24ae22ede1cf2ea` |
 
@@ -38,8 +40,7 @@ R&D 사용자가 보는 기본 계약은 표이고, 온톨로지/그래프는 �
 새 소스의 의미를 Python 하드코딩에 흩뜨리지 않고 선언과 제한된 mapper hook으로 분리한다.
 
 ```text
-manifest.json
-  → ledger_config + catalog + dataflows
+server/config/ontology/ledger_config.json   (파일 하나)
   → strict LedgerSetupBundle
   → immutable Registry/Snapshot
   → 기존 cursor의 bounded physical batch
@@ -52,7 +53,7 @@ manifest.json
 
 핵심 불변식:
 
-1. Pack/Profile/Registry 작성은 `ledger_config.json`에서 함께 본다.
+1. Pack/Profile/Registry/catalog 작성은 `ledger_config.json` **한 파일**에서 함께 본다. config root에 다른 `.json`이 있으면 로더가 `unlisted_config_file`로 거절한다(검사는 재귀한다).
 2. cursor는 base physical column만 읽는다.
 3. join은 physical UNIQUE 검증을 통과한 descriptor만 사용한다.
 4. mapper는 Atom이나 object payload를 직접 만들지 않고 Role만 해석한다.
@@ -80,14 +81,16 @@ manifest.json
 
 | 책임 | 파일 |
 |---|---|
-| manifest와 authoring 선언 | `server/config/ontology/` |
+| authoring 선언 전부 | `server/config/ontology/ledger_config.json` (파일 하나) |
 | Bundle strict validation | `server/ledger/setup_bundle.py` |
 | immutable Registry/Snapshot | `server/ledger/setup_registry.py` |
 | RoleFrame/Pack compiler | `server/ledger/roleframe.py` |
 | verified batch preparation | `server/ledger/source_preparation.py` |
 | preview/execute와 기존 transaction 연결 | `server/ledger/runtime_v2.py` |
 | legacy↔V2 의미 비교 | `server/ledger/shadow_parity.py` |
-| selector와 비파괴 cutover | `server/ledger/cutover_v2.py`, `server/ledger/backfill.py` |
+| 로드 경계(`load_setup`)와 비파괴 dry-run | `server/ledger/setup.py` |
+| 실행 드라이버(하나) | `server/ledger/backfill.py` |
+| 실행 가능한 `implementation_id` 발견 | `server/ledger/implementations.py` |
 
 ### Ontology Config Explorer
 
@@ -137,9 +140,9 @@ full server suite와 Explorer PostgreSQL E2E는 사용자 지시에 따라 생�
 - 운영 Ledger/cursor reset 또는 source replay
 - 운영 DB migration/write
 - legacy config/translator/template 이동·삭제
-- DT/observation source를 parity 승인 없이 V2로 전환
+- 🔴 준비가 끝나지 않은 source를 `sources`에 적기 — **선언이 곧 활성화**라 그 순간 돈다
 - raw mapping이나 임의 index 문자열로 VerifiedJoinDescriptor 발급
-- active config 직접 편집 또는 manifest 밖 경로 쓰기
+- active config 직접 편집, config root 안에 다른 `.json`(백업·초안 포함) 두기
 - 기준본과 다른 dashboard/graph 중심 Explorer 재디자인
 
 이 항목은 기능 미완료가 아니라 별도 사용자 승인이 필요한 운영 경계다.
@@ -157,11 +160,11 @@ full server suite와 Explorer PostgreSQL E2E는 사용자 지시에 따라 생�
 
 ## 8. 다음 합법적 작업 순서
 
-1. 사용자가 지정한 새 source/Pack을 `server/config/ontology/` 선언으로 추가한다.
-2. manifest dry-run과 해당 source 집중 테스트로 readiness를 확인한다.
-3. legacy↔V2 shadow parity에서 설명 없는 차이 0을 증명한다.
-4. 지정 Audit task에 단계·상태·exact commit·테스트 범위를 명시해 검수를 요청한다.
-5. Audit REJECT면 해당 반례만 최소 수정해 재검수하고, APPROVE면 제품 상태를 동기화한다.
+1. 사용자가 지정한 새 source/Pack을 `server/config/ontology/ledger_config.json`에 추가한다
+   (`sources`는 **마지막**에 — 그것이 켜는 행위다).
+2. `python -m ledger.setup` dry-run과 해당 source 집중 테스트로 readiness를 확인한다.
+3. 지정 Audit task에 단계·상태·exact commit·테스트 범위를 명시해 검수를 요청한다.
+4. Audit REJECT면 해당 반례만 최소 수정해 재검수하고, APPROVE면 제품 상태를 동기화한다.
 
 DT/observation cutover, dependency replay worklist, 운영 reset/legacy retirement는 각각 별도 범위다.
 사용자 승인 없이 다음 항목으로 묶지 않는다.
