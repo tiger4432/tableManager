@@ -581,8 +581,11 @@ def _outcomes(connection, plan, subject, subjects):
 
 
 # --------------------------------------------------------------------- atoms -> segments
-_ATOM_COLS = ("id", "subject", "predicate", "payload", "occurred_at", "source_who",
-              "source_translator_ver", "source_raw_ref", "supersedes")
+# `occurred_at_basis` rides along so a reader can tell an observation time from a world
+# time WITHOUT re-reading the config that produced the atom. NULL - which is every atom
+# written before the column existed - means world time.
+_ATOM_COLS = ("id", "subject", "predicate", "payload", "occurred_at", "occurred_at_basis",
+              "source_who", "source_translator_ver", "source_raw_ref", "supersedes")
 
 
 def _atoms(connection, subject, subjects, predicates, cfg):
@@ -593,7 +596,7 @@ def _atoms(connection, subject, subjects, predicates, cfg):
     cannot decide the response size, and truncation is REPORTED rather than silent.
     """
     sql = (f"SELECT e.id::text, e.subject_keys->>%(skey)s, e.predicate, "
-           f"e.object_payload, e.occurred_at, e.source_who, "
+           f"e.object_payload, e.occurred_at, e.occurred_at_basis, e.source_who, "
            f"e.source_translator_ver, e.source_raw_ref, e.supersedes::text "
            f"FROM {LEDGER_TABLE} e "
            f"WHERE e.subject_type = ANY(%(stypes)s) "
