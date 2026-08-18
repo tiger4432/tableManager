@@ -1,0 +1,427 @@
+{
+  "tables": {
+    "void": {
+      "columns": {
+        "base_wafer_id": "string",
+        "base_x": "number",
+        "base_y": "number",
+        "layer": "number",
+        "inchip_x": "number",
+        "inchip_y": "number",
+        "radius_x": "number",
+        "radius_y": "number",
+        "classname": "string"
+      },
+      "composite_key": [
+        "base_wafer_id",
+        "base_x",
+        "base_y",
+        "layer",
+        "inchip_x",
+        "inchip_y"
+      ],
+      "indexes": [
+        {
+          "name": "uq_void_site",
+          "columns": [
+            "base_wafer_id",
+            "base_x",
+            "base_y",
+            "layer",
+            "inchip_x",
+            "inchip_y"
+          ],
+          "unique": true
+        }
+      ]
+    }
+  },
+  "vocabulary": {
+    "on_wafer@1": {
+      "status": "active",
+      "layer": "ontology",
+      "subjects": [
+        "BaseDie@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "Wafer@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "observed_void@1": {
+      "status": "active",
+      "layer": "ontology",
+      "subjects": [
+        "BaseDie@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "Void@1"
+        ],
+        "qualifiers": {
+          "required": [
+            "classname",
+            "radius_x",
+            "radius_y"
+          ],
+          "optional": []
+        }
+      }
+    }
+  },
+  "entities": {
+    "BaseDie@1": {
+      "keys": [
+        "wafer",
+        "x",
+        "y"
+      ],
+      "key_types": {
+        "wafer": "string",
+        "x": "number",
+        "y": "number"
+      },
+      "allow_null": false
+    },
+    "Void@1": {
+      "keys": [
+        "wafer",
+        "x",
+        "y",
+        "layer",
+        "inchip_x",
+        "inchip_y"
+      ],
+      "key_types": {
+        "wafer": "string",
+        "x": "number",
+        "y": "number",
+        "layer": "number",
+        "inchip_x": "number",
+        "inchip_y": "number"
+      },
+      "allow_null": false
+    }
+  },
+  "packs": {
+    "void-observation@1": {
+      "claims": {
+        "die_on_wafer": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "on_wafer@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {}
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "void_seen": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "classname": {
+              "kind": "attribute",
+              "required": true
+            },
+            "radius_x": {
+              "kind": "quantity",
+              "required": true
+            },
+            "radius_y": {
+              "kind": "quantity",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "observed_void@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {
+                "classname": "$classname",
+                "radius_x": "$radius_x",
+                "radius_y": "$radius_y"
+              }
+            },
+            "occurred_at": "$occurred_at"
+          }
+        }
+      }
+    }
+  },
+  "source_preparers": {
+    "void-passthrough@1": {
+      "implementation_id": "direct-join",
+      "implementation_version": 1,
+      "input_columns": [],
+      "output_columns": {},
+      "accepts_verified_join_rules": false
+    }
+  },
+  "mappers": {
+    "void-role@1": {
+      "implementation_id": "declarative-role",
+      "implementation_version": 1,
+      "unit": {
+        "kind": "row"
+      },
+      "input_columns": [
+        "base_wafer_id",
+        "base_x",
+        "base_y",
+        "layer",
+        "inchip_x",
+        "inchip_y",
+        "radius_x",
+        "radius_y",
+        "classname"
+      ],
+      "emits": [
+        "void-observation@1/die_on_wafer",
+        "void-observation@1/void_seen"
+      ]
+    }
+  },
+  "profiles": {
+    "void@1": {
+      "source": "void",
+      "packs": [
+        "void-observation@1"
+      ],
+      "mappings": [
+        {
+          "mapping_id": "die_on_wafer",
+          "use": "void-observation@1/die_on_wafer",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "BaseDie@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "base_wafer_id",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "x": {
+                  "kind": "column",
+                  "column": "base_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "y": {
+                  "kind": "column",
+                  "column": "base_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "Wafer@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "base_wafer_id",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "constant",
+              "value": "1970-01-01T00:00:00+09:00",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        },
+        {
+          "mapping_id": "void_seen",
+          "use": "void-observation@1/void_seen",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "BaseDie@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "base_wafer_id",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "x": {
+                  "kind": "column",
+                  "column": "base_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "y": {
+                  "kind": "column",
+                  "column": "base_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "Void@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "base_wafer_id",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "x": {
+                  "kind": "column",
+                  "column": "base_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "y": {
+                  "kind": "column",
+                  "column": "base_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "layer": {
+                  "kind": "column",
+                  "column": "layer",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "inchip_x": {
+                  "kind": "column",
+                  "column": "inchip_x",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                },
+                "inchip_y": {
+                  "kind": "column",
+                  "column": "inchip_y",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "classname": {
+              "kind": "column",
+              "column": "classname",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "radius_x": {
+              "kind": "column",
+              "column": "radius_x",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "radius_y": {
+              "kind": "column",
+              "column": "radius_y",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "constant",
+              "value": "1970-01-01T00:00:00+09:00",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "sources": {
+    "void": {
+      "relation": "void",
+      "driver": {
+        "unit": "row",
+        "identity": [
+          "base_wafer_id",
+          "base_x",
+          "base_y",
+          "layer",
+          "inchip_x",
+          "inchip_y"
+        ],
+        "group_by": [],
+        "order_by": [
+          "base_wafer_id",
+          "base_x",
+          "base_y",
+          "layer",
+          "inchip_x",
+          "inchip_y"
+        ],
+        "occurred_at": {
+          "column": "base_wafer_id",
+          "timezone": "Asia/Seoul"
+        },
+        "cursor": {
+          "columns": [
+            "base_wafer_id",
+            "base_x",
+            "base_y",
+            "layer",
+            "inchip_x",
+            "inchip_y"
+          ]
+        },
+        "preparation": {
+          "preparer_id": "void-passthrough@1",
+          "inherit_virtual_join_rules": []
+        },
+        "mapper_id": "void-role@1"
+      },
+      "profile_id": "void@1"
+    }
+  }
+}
