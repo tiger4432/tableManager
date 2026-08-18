@@ -1,5 +1,41 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🧾 2026-08-18 오후 — 「가이드냐 UI냐」에 근거로 답했다 + 판정 2건
+>
+> **가이드만으로 새 소스가 선다 — 파이썬 0줄로.** 이 코드베이스를 모르는 상태로
+> `docs/guide/ONTOLOGY_LEDGER_SETUP.md`만 읽고 `void` 표를 원장에 붙여 보게 했고,
+> 낱말·엔터티·팩·프로필·소스를 전부 선언해 `readiness: ready`까지 갔다. 범용 구현
+> (`direct-join`·`declarative-role`)이 그대로 먹혔다 — 오전에 연 문이 실제로 열린다.
+>
+> **막힌 여섯 가지가 3라운드(화면)의 존재 이유다.** 초안 검증 불가 · 시각 없는 표 ·
+> binding 가능 컬럼 규칙이 문서에 없음 · 실물 DB 대조 없음 · 타입 미강제 · 역할 kind 뜻 없음.
+> 화면 범위를 이 여섯으로 못 박았다(`task/ontology_config_authoring_mode_pending.md`).
+> **문서는 「무엇을 하는가」에 충분하고, 화면은 「틀리지 않게」에 필요하다.**
+>
+> **소유자 판정 ①「시각 없음 선언」** — 시각 컬럼 없는 표를 지금은 거짓말로만 붙일 수 있다
+> (문자열 컬럼을 시각으로 지목하거나 팩에 상수를 박거나). 사양
+> `task/ledger_declared_timeless_source.md`: `occurred_at`에 `{basis:"ingested"}` 형태를
+> 추가하되 **원자만 보고** 세계 시각 원자와 구분되게 한다. 종전 원자는 표식 없음 = 세계 시각.
+>
+> **소유자 판정 ② config 복원** — 「연습용으로 지운 것」이라 백업에서 7개 복원
+> (`chain_rules`·`map_overlay_config`·`maps`·`transfer_plan_config`·`bonding_plan_config`·
+> `virtual_join_rules`·`enrichment_rules`). `ledger_config.json`(v1, 은퇴 중)과
+> `ontology_mapping.json`(이름이 온톨로지)은 보류 — 소유자 한 마디 대기.
+>
+> **🔴 DB 접속이 틀려 있었다.** `database.json`이 빈 `postgres`를 가리켰다. 진짜는
+> `assy_manager`(테이블 54, `ledger_events` 220,771행, 커서 11소스, `void_obs` 102,976행).
+> 소유자 승인으로 고쳤고 진짜 DB 기준 드리프트는 **차단 0 / 정보 6**. 그 전에 이 박스 DB로
+> 내린 판단은 전부 무효였다 — 자세한 것은 메모리 「빈 DB는 모든 질문에 「없다」로 답한다」.
+> ⚠️ `lot_event` 커서가 **v1 모양**(원자 1,195)이라 v2 백필은 `legacy_cursor_reset_required`로
+> 거절된다. 의도된 안전장치이고 전환 판정은 소유자 몫. **백필 금지.**
+>
+> **테스트 7건(WaferLeg)은 오늘 작업과 무관** — 2026-08-16 `244312a`가 vocabulary에서
+> `WaferLeg`를 지웠는데 테스트를 안 고쳤다. 이틀째 빨간 것이 수집 오류에 가려 안 보였을 뿐.
+> 처리(테스트를 현재 어휘에 맞출지, `WaferLeg`를 되살릴지)는 **소유자 판정 대기**.
+>
+> **레인 순서:** `ledger/config.py` 제거 → `ledger.setup --root` 인자 → 시각 없음 선언 →
+> 2라운드 매퍼 개주 → 3라운드 화면.
+
 > ## ✅ 2026-08-18 오전 — 온톨로지 셋업이 **파일 하나**로 줄었다 (마감 준수)
 >
 > **소유자 마감:** 「온톨로지 셋업 간소화 오전 내로」. 11시 전 완료.
