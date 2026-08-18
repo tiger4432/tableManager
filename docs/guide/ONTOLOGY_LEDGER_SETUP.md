@@ -1253,13 +1253,25 @@ malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거�
 `server` 디렉터리에서 실행한다.
 
 ```powershell
-conda run -n assy_manager python -m ledger.setup
+conda run -n assy_manager python -m ledger.setup                 # 운영 config root
+conda run -n assy_manager python -m ledger.setup --root <초안폴더>  # 초안 검증
 ```
 
 운영 config root를 로드하고 결정적인 JSON 한 줄을 낸다 — `config_root`, `setup_version`,
 `snapshot_sha256`, `readiness`, 선언된 `sources`(각 `source_id`/`relation`), 그리고
 `destructive_actions`가 전부 false임. 정상 dry-run은 DB write, cursor advance, reset,
 migration을 수행하지 않는다.
+
+🔴 **`--root`는 「고치기 전에 확인하라」를 실제로 지킬 수 있게 하는 인자다** (2026-08-18
+신설). 이전에는 이 명령이 운영 root에 고정돼 있어서, 초안을 확인하는 **유일한** 방법이
+운영 파일을 먼저 덮어쓰는 것이었다 — 이 문서가 금지하는 바로 그 순서다. `--root <폴더>`는
+같은 읽기 전용 검증을 아무 config root에나 겨눈다. 생략하면 종전과 똑같이 운영 root를 본다.
+
+- `--root`는 **`ledger_config.json`을 «담은 폴더»**를 가리킨다. 파일 자체를 가리키면
+  그렇게 말해 주고 멈춘다(종료코드 2). 없는 경로·config 없는 폴더도 각각 한 줄로 거절한다.
+- 답의 `config_root`가 **어느 파일을 검증했는지**를 말한다. 초안을 확인했는지 운영을
+  확인했는지는 이 값으로 가른다 — `readiness: "ready"`만 보고 넘어가지 말 것.
+- 초안 검증은 운영 `ledger_config.json`을 **바이트 하나 건드리지 않는다**(테스트로 고정).
 
 🔴 **`mode`도 `parity_status`도 이 출력에 없다.** 그런 필드는 은퇴했다(§8). 「이 소스가
 도는가」의 답은 `sources` 목록에 있느냐다.
