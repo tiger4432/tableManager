@@ -17,11 +17,16 @@ server/config/ontology/
 
 ## `ledger_config.json`의 칸
 
-필수 여덟, 그리고 선택 하나.
+필수 일곱, 그리고 선택 하나.
+
+🔴 `tables`는 **여기 없습니다.** 물리 스키마는 `server/config/table_config.json`에
+한 번만 선언되고 원장이 그것을 읽습니다(2026-08-18). 사본을 여기 만들지 마십시오 —
+두 벌이 되는 순간 아무도 둘을 대조하지 않고, 어긋나도 실행할 때까지 조용합니다.
+필요한 표가 거기 없으면 **거기에** 선언하십시오. 그러면 드리프트 점검과 그리드가
+함께 따라옵니다.
 
 | 칸 | 담는 것 |
 |---|---|
-| `tables` | 물리 relation·column·key·index **사실** |
 | `vocabulary` | 술어 |
 | `entities` | 개체 유형과 그 identity key |
 | `packs` | 술어 묶음 |

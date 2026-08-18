@@ -1,7 +1,7 @@
 # Ledger V2 설정 작성 가이드
 
 > **Status:** 🟢 Living
-> **Last-verified:** 2026-08-18
+> **Last-verified:** 2026-08-19
 > **Owner:** Server / Ledger
 > **정본 구현:** `server/ledger/setup_bundle.py`(파일 문법), `setup_registry.py`(compile), `setup.py`(로드 경계)
 > **운영 선언 루트:** `server/config/ontology/` — 파일 **하나**, `ledger_config.json`
@@ -64,7 +64,7 @@ strict Bundle validation
 
 ## 2. 실제 파일 위치와 복사 가능한 기준 샘플
 
-### 2.1 현재 승인된 `lot_event` 운영 root
+### 2.1 운영 root
 
 ```text
 server/config/ontology/
@@ -74,6 +74,11 @@ server/config/ontology/
 
 이 파일은 예시 사본이 아니라 현재 운영 정본이다. 수정 전에는 별도 작업 브랜치에서
 전체 Bundle 검증과 preview를 먼저 수행한다.
+
+🔴 **이 문서는 그 파일 안의 «개수»를 적지 않는다.** 소스도 술어도 개체도 늘어난다 —
+2026-08-19 기준으로 소스는 이미 하나가 아니다. 아래 §7의 JSON 블록은 전부 **발췌**이고,
+지금 무엇이 선언돼 있는지는 §13.2의 쓰기 없는 dry-run이 답한다. 여기에 목록을 베껴 두면
+그 목록이 낡는다.
 
 🔴 **root에 다른 `.json`이 있으면 로더가 «거절»한다**(`unlisted_config_file`). 이것은
 정돈 취향이 아니라 「이 파일 하나를 열면 전부 본 것」이라는 약속의 집행이다. 남겨 둔
@@ -391,7 +396,7 @@ config의 `unique: true`만으로 `VerifiedJoinDescriptor`를 만들 수 없다.
 
 ### 7.1 `vocabulary` — 술어의 닫힌 서명
 
-현재 `lot_event`가 쓰는 실제 Vocabulary다.
+`lot_event`가 쓰는 술어 넷의 **발췌**다(파일에는 다른 소스가 쓰는 술어도 함께 있다).
 
 ```json
 {
@@ -463,7 +468,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 
 ### 7.2 `entities` — 개체 ID와 key shape
 
-현재 실제 선언은 다음과 같다.
+`lot_event`가 쓰는 두 개체의 실제 선언이다.
 
 ```json
 {
@@ -472,7 +477,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 }
 ```
 
-이 역시 `entities` section fragment다.
+이 역시 `entities` section fragment다 — 파일에는 다른 소스의 개체도 함께 선언돼 있다.
 
 | 필드 | 필수 | 설명 |
 |---|---:|---|
@@ -506,7 +511,7 @@ column 이름이 바뀌어도 Pack을 재사용할 수 있는 이유다.
 
 ### 7.3 `source_preparers` — 물리 batch를 EventFrame으로 준비
 
-현재 `lot_event` Preparer descriptor 전체다.
+`lot_event`의 Preparer descriptor다. 파일에는 범용 `direct-join@1` 선언도 함께 있다.
 
 ```json
 {
@@ -575,7 +580,7 @@ Config는 Python module/function/path를 지정할 수 없다. 다음은 금지�
 
 ### 7.4 `mappers` — EventFrame에서 Role만 해석
 
-현재 mapper descriptor 전체다.
+`lot_event`의 mapper descriptor다(파일의 `mappers` section에는 다른 소스의 것도 있다).
 
 ```json
 {
@@ -757,6 +762,7 @@ type과 qualifier 필드가 닫힌 서명에 맞는지를 전수 대조한다.
 | `mappings` | source EventFrame → Claim Role 배선 목록 |
 | `mapping_id` | Profile 안에서 필수·비공백·유일 |
 | `use` | 정확한 `Pack@version/claim_id` |
+| `sentence` | **(선택)** 이 mapping이 실현하는 **문장의 이름**. 아래 「모양이 같은 mapping 둘」 |
 | `bind` | Claim이 선언한 Role 이름 → binding |
 
 `mappings`는 비어 있을 수 없다. `packs`에 적은 Pack은 적어도 한 mapping의 `use`에서 실제로
@@ -847,9 +853,39 @@ class로 승격하지 않는다.
 수 있지만 실행 진입점마다 readiness gate가 차단한다. nested Entity key 하나라도 approved가
 아니면 Atom 0, cursor 미이동이다.
 
+#### 모양이 같은 mapping 둘 — `sentence`
+
+전용 mapper는 **선언의 이름을 모른다.** predicate 철자도, entity type 철자도, `mapping_id`도
+mapper 코드에 없다 — 그것들은 배포마다 바뀌는 운영자의 낱말이기 때문이다. mapper가 아는
+것은 **문장의 모양**(`ledger.roleframe.SentenceShape`)이고, 그 모양으로 Profile mapping을
+찾아 주는 것이 `ProfileSentences`다. 그래서 이름을 바꿔도 mapper는 그대로다.
+
+모양은 선언에서 계산되며 네 가지로 이뤄진다 — **목적어가 있는가 · qualifier 이름 집합 ·
+subject entity type · object entity type**(`setup_bundle._sentence_signature`). 이 넷이
+같은 mapping이 한 Profile 안에 둘 이상 있으면 mapper가 갈라 볼 수 없다. 그때 각 mapping이
+선택 필드 `sentence`로 **자기가 실현하는 문장의 이름**을 적는다.
+
+```json
+{
+  "mapping_id": "slot_preserving",
+  "use": "lot-lineage@1/slot_map",
+  "sentence": "split_slot_carry",
+  "bind": { }
+}
+```
+
+- 이름은 **mapper의 낱말**이지 config의 낱말이 아니다. `LotEventRoleMapper`의
+  `SPLIT_SLOT_CARRY`·`MERGE_SLOT_JOIN` 같은 클래스 속성명을 소문자로 딴 것이고, 그 목록의
+  정본은 mapper 파일이다.
+- **모양이 이미 유일한 mapping은 적지 않는다.** 뻔한 것을 다시 적는 것이 선언이 썩는 방식이다.
+- 모양이 같은 무리에서 하나라도 `sentence`가 비면 **compile 시점에** `ambiguous_sentence`로
+  거절된다(§13.1). 🔴 먼저 걸린 쪽을 대표로 뽑지 않는 이유: 그러면 셋째 mapping이 그 무리에
+  들어오는 날 대표가 조용히 바뀌고, 깨지는 것은 **이미 돌던 전부**다.
+
 ### 7.7 `sources` — 한 source 실행 계약으로 조립
 
-현재 `lot_event` source 전체다.
+`lot_event` source 선언 전체다. `sources`에는 다른 소스도 함께 있다 — 지금 무엇이
+선언돼 있는지는 §13.2의 dry-run이 답한다.
 
 ```json
 {
@@ -1288,12 +1324,22 @@ malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거�
 }
 ```
 
+🔴 **거절은 「무엇이 허용되는지」까지 말한다** (2026-08-19). 세 가지가 메시지에 붙는다.
+
+- `unknown_field`는 그 자리에 **허용되는 키 목록**을 뒤에 붙인다(필수 표시 포함).
+- `unknown_*`(pack·entity type·claim …)은 철자가 가까우면 **`did you mean '...'?`**,
+  가깝지 않으면 **선언된 것들의 목록**, 아무것도 선언돼 있지 않으면 **「아직 없다」**를 붙인다.
+  이 셋은 다음에 할 일이 서로 다르고, 종전 메시지는 그것을 한 문장으로 뭉개고 있었다.
+- 참조 목록의 `invalid_type`은 **항목의 철자 형식**(`<pack>@<version>/<claim>`)을 이름으로 댄다.
+
 그 밖에 자주 보는 code:
 
 | code | 뜻 | 먼저 볼 곳 |
 |---|---|---|
 | `unlisted_config_file` | config root에 `ledger_config.json` 말고 다른 `.json`이 있음(재귀) | root 밖으로 옮긴다 |
 | `unsupported_setup_version` | `setup_version`이 `3`이 아님 | 파일 최상위 |
+| `unknown_relation` | `sources.<id>.relation`이 `table_config.json`에 없음 | 🔴 **다른 컬럼 오류보다 먼저 본다**(§5.3) |
+| `ambiguous_sentence` | 한 Profile 안에 mapper가 갈라 볼 수 없는 mapping이 둘 이상인데 `sentence`가 빔 | §7.6의 「모양이 같은 mapping 둘」 |
 | `unknown_source` | Profile/source/join이 없는 source 참조 | source ID와 `Profile.source` |
 | `unknown_pack` / `unknown_claim` | Profile `use`가 registry 밖 | Pack/Claim ID와 version |
 | `missing_required_role` | Claim required Role binding 누락 | `mappings[].bind` |
@@ -1332,6 +1378,22 @@ migration을 수행하지 않는다.
   확인했는지는 이 값으로 가른다 — `readiness: "ready"`만 보고 넘어가지 말 것.
 - 초안 검증은 운영 `ledger_config.json`을 **바이트 하나 건드리지 않는다**(테스트로 고정).
 
+🔴 **이 명령은 문제를 «전부» 보고한다** (2026-08-19 신설). 거절이 있으면 stderr에
+`code<TAB>path<TAB>message` 한 줄씩과 마지막에 `N problem(s) in <root>`를 내고 종료코드 1로
+끝난다. 순서는 **세 단계**다 — ① 파일 문법(Bundle) ② binding readiness ③ snapshot compile.
+뒤 단계는 앞 단계가 통과해야 판정할 수 있으므로 섞지 않는다. 한 단계 «안에서는» 전부 나온다.
+
+- 🔴 **런타임 경로는 바뀌지 않았고 여전히 첫 거절에서 멈춘다.** 원자를 쓰기 직전인 소스에게
+  결함 목록은 쓸모가 없다. 「전부 보고」는 **작성 경로**의 성질이고, 그것이 이 명령이
+  「고치기 전에 확인하라」를 실제로 지킬 수 있게 하는 두 번째 이유다.
+- 종료코드: `0` 통과 · `1` config 문제 · `2` `--root` 인자 자체가 틀림.
+- 🔴 **`--root`는 «의미» root만 바꾼다 — 물리 카탈로그는 언제나 라이브 `table_config.json`이다.**
+  그래서 **다른 공장의 root를 이 명령에 겨누면 컬럼 거절이 쏟아진다.** 2026-08-19 실측:
+  `--root ./config/sample/ontology/transfer_explorer`는 문제 22건을 낸다 — 그 배포의 물리
+  스키마는 `server/tests/support/transfer_explorer_table_config.json`이고 이 박스의
+  `table_config.json`이 아니기 때문이다(§5.4). **이것은 그 샘플의 결함이 아니다.**
+  초안 검증에 이 명령을 쓸 때는 초안이 **이 배포의** 물리 스키마를 겨누고 있어야 한다.
+
 🔴 **`mode`도 `parity_status`도 이 출력에 없다.** 그런 필드는 은퇴했다(§8). 「이 소스가
 도는가」의 답은 `sources` 목록에 있느냐다.
 
@@ -1355,6 +1417,35 @@ Admin 인증은 두 상태다.
 
 draft 저장은 runtime activation이 아니다. draft preview도 같은 compiler를 사용하며 검토·승인,
 CAS activation 전까지 active snapshot을 바꾸지 않는다.
+
+#### 13.3-bis 아직 화면이 없는 작성 도구 둘 (2026-08-19)
+
+라우터 `/admin/ontology-explorer` 아래에 **읽기 전용** 엔드포인트 둘이 있다. 계약은
+착지했고 **아직 부르는 화면이 없다** — 지금 쓰려면 HTTP로 직접 부른다.
+
+| 엔드포인트 | 무엇을 답하나 |
+|---|---|
+| `GET /deletion-preview?targets=<key>&…` | 이 선언들을 지우면 **무엇이 함께 가는지**를, 남는 것을 걸어서 이름으로 나열한다. 지우지 않고 초안도 만들지 않는다 |
+| `GET /columns?relation=<표>[&combination=<컬럼>…]` | 그 표의 후보 컬럼 각각에 **실제로 값이 든 행 수**를, `combination`을 주면 그 정렬의 **실측 유일성**을 함께 답한다 |
+
+🔴 **`/columns`의 값어치는 목록이 아니라 «숫자»다.** 2026-08-18에 실측된 두 결함은 둘 다
+컴파일 검사를 **통과했다** — 개체를 `dt_job_id`로 키잉했는데 그 컬럼은 `dt_log`에서
+34,939행 중 **0행**만 값을 갖고(값은 `dt_job`에 있다), `order_by: [dt_job, dt_index]`는
+중복이 8,580행이라 정렬 계약이 **백필 도중에** 깨진다. 앞의 것은 거절이 **아예 나오지
+않고**, 뒤의 것은 몇 시간 뒤에야 난다. 숫자를 후보 옆에 보여 주면 둘 다 고르는 순간
+사라진다 — 이것은 오타 방지 기능이 **아니다**. (위 두 수의 출처는
+`server/ledger/column_stats.py` 모듈 docstring의 2026-08-18 실측이고, 다시 재는 방법은 같은
+표를 `/columns`로 부르는 것이다. 이 문서는 그 수를 스스로 주장하지 않는다.)
+
+⚠️ **`/columns`는 비싼 읽기다.** population은 추정이 아니라 정확한 수고 표 스캔 한 번이
+든다. 응답의 `estimated_rows`는 무엇에 대해 물었는지 되돌려 주는 값이다. 표가
+`table_config.json`에 선언돼 있지 않으면 조용히 후보를 내놓지 않고 `undeclared_relation`으로
+이름을 대며 거절한다.
+
+🔴 **거절과 삭제는 다른 자리다.** in-degree(참조 개수)는 삭제를 **막는** 기준이 아니다 —
+같이 죽을 것들만 가리키는 참조는 막을 이유가 없기 때문이다. `deletion_plan`이 「남는 것」을
+걸어 판정하고, `require_no_referrers`는 그것이 없을 때의 fallback이다. 참조를 다른 곳으로
+**옮겨 주는 일은 이 화면이 하지 않는다**(남의 선언을 대신 고쳐 쓰는 일이다).
 
 ### 13.4 실제 execute — 쓰기 경계
 
@@ -1477,6 +1568,8 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 - [ ] `implementation_id`/version을 가진 클래스가 코드에 실제 있다(범용 `direct-join@1`·
       `declarative-role@1`으로 끝나는지 먼저 확인했다).
 - [ ] Mapper emits와 Profile mapping use가 양방향 일치한다.
+- [ ] **모양이 같은 mapping**(목적어 유무·qualifier 집합·subject/object entity type이 모두 같은 것)이
+      둘 이상이면 각자 `sentence`를 적었다 — 안 적으면 `ambiguous_sentence`(§7.6).
 - [ ] Source ID와 `Profile.source`가 일치한다.
 - [ ] 이 소스를 **지금 돌려도 되는 상태**에서만 `sources`에 적었다.
 
@@ -1502,7 +1595,9 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | 최상위 section 목록과 필수/선택 구분 | `server/ledger/setup_bundle.py`의 `LOGICAL_SECTIONS`·`OPTIONAL_SECTIONS`·`SETUP_VERSION` |
 | Bundle exact validation | `server/ledger/setup_bundle.py` |
 | Registry/Snapshot compile | `server/ledger/setup_registry.py` |
-| RoleFrame/Pack compile · 범용 mapper | `server/ledger/roleframe.py` |
+| RoleFrame/Pack compile · 범용 mapper · 문장 모양(`SentenceShape`/`ProfileSentences`) | `server/ledger/roleframe.py` |
+| 컬럼 실측(작성 화면) | `server/ledger/column_stats.py` |
+| 삭제가 데려가는 것 | `server/ledger/config_explorer.py`(`deletion_plan`·`referrers`) |
 | Source preparation · 범용 preparer | `server/ledger/source_preparation.py` |
 | 어떤 `implementation_id`가 실행 가능한가 | `server/ledger/implementations.py` |
 | preview/execute | `server/ledger/runtime_v2.py` |

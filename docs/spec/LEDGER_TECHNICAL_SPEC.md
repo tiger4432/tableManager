@@ -1,7 +1,7 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 Ledger v2 2단계 malformed-safe 전수 교차검증 `IN_REVIEW` / `NOT_APPROVED`; 현행 실행 경로 `FROZEN_FOR_REDESIGN` — 코드 대조 | **Owner:** Server / Ledger
-> **Source-of-truth:** `server/ledger/schema.py`(DDL) · **`server/ledger/setup_bundle.py`**(🔴 **[2026-08-18] 단일 `ledger_config.json` 문법 — `setup_version: 3`, 필수 section 여덟 + 선택 `virtual_joins`. `manifest.json` 다섯 파일 모양은 은퇴했고, 이 셋업은 이제 **백필 실행 경로에 연결돼 있다**) · `server/ledger/setup.py`(로드 경계 `load_setup` — 구 `cutover_v2.py`/`load_cutover_setup`은 삭제) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(현행 동결 Profile 계약) · **`server/ledger/source_profile_builtins.py`**(현행 동결 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/translator_pattern.py`**(복잡한 소스의 공통 수명주기) · **`server/ledger/declared_translator.py`**(🔴 **선언이 곧 번역기인 넷째 문법**) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-19 — 이 라운드에 대조한 것은 **Source-of-truth 목록·§3.8·§3.9·§3.11의 은퇴 서술뿐**이다(단일 파일 셋업·번역기 은퇴 반영). 나머지 절은 2026-08-17 Ledger v2 2단계 malformed-safe 전수 교차검증 `IN_REVIEW` / `NOT_APPROVED`; 현행 실행 경로 `FROZEN_FOR_REDESIGN` — 코드 대조 | **Owner:** Server / Ledger
+> **Source-of-truth:** `server/ledger/schema.py`(DDL) · **`server/ledger/setup_bundle.py`**(🔴 **[2026-08-18] 단일 `ledger_config.json` 문법 — `setup_version: 3`, 필수 section **일곱**(`LOGICAL_SECTIONS`) + 선택 `virtual_joins`. **`tables`는 그 일곱에 없다** — 물리 스키마의 정본은 `server/config/table_config.json` 하나다. `manifest.json` 다섯 파일 모양은 은퇴했고, 이 셋업은 이제 **백필 실행 경로에 연결돼 있다**) · `server/ledger/setup.py`(로드 경계 `load_setup` — 구 `cutover_v2.py`/`load_cutover_setup`은 삭제) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(현행 동결 Profile 계약) · **`server/ledger/source_profile_builtins.py`**(현행 동결 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/roleframe.py`**(RoleFrame/Pack compile · 범용 mapper · `SentenceShape`/`ProfileSentences`) · ⚰️ **`translator_pattern.py`·`declared_translator.py`는 트리에 없다**(`e47d325`로 번역기 다섯과 함께 삭제 — §3.8·§3.9의 그 서술은 은퇴한 경로다) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
 > **이번 라운드 (2026-08-15 3차 · 넷째 문법 `declared` + 뿌리 키 롤업 — R-2026-08-15-N ② · R-2026-08-15-O · 갱신 트리거 ②③⑥⑦)**
 > **코드 대조 기준 리비전은 `8c236bc`다.**
@@ -640,7 +640,16 @@ v0 고정 테스트(`test_ledger_l1_unit.py`)는 **코드 집합에 대해** 그
 그 모습은 **이 선언이 고치려던 결함과 구별되지 않는다.**
 🔴 **이 검사가 없으면 「선언은 있는데 아무 데도 안 닿는 필드」가 되고, 그것이 R-2026-08-13-D가 끝낸 미끼 필드의 재발이다.**
 
-### 3.8 🔴 `declared` — **파이썬 클래스가 «없는» 문법** (2026-08-15 3차 · `server/ledger/declared_translator.py` · 브리핑 §6-2 · 갱신 트리거 ②③⑥)
+### 3.8 ⚰️ `declared` — **파이썬 클래스가 «없는» 문법** (2026-08-15 3차 · 브리핑 §6-2 · 갱신 트리거 ②③⑥)
+
+> ⚰️ **[2026-08-18/19 은퇴] 이 절 전체가 이제 «역사»다.** `server/ledger/declared_translator.py`는
+> 트리에 **없고**(`e47d325`), 그것을 고르던 `kind` 디스패치와 `_run_declared`도
+> `backfill.py`에서 빠졌다(`d7bfcd0`). 아래 ①~⑧의 계약을 **집행하는 실행 경로가 없다**
+> — `rows_matching_nothing`도 `server/`에 없다. **선언만으로 코드 0줄 소스를 세우는 오늘의
+> 자리는 이것이 아니라** 범용 구현 둘이다: Preparer `direct-join@1`, Mapper
+> `declarative-role@1`([ONTOLOGY_LEDGER_SETUP §7.3·§7.4](../guide/ONTOLOGY_LEDGER_SETUP.md)).
+> 남겨 둔 이유는 이 문법으로 적재된 옛 원자를 읽을 때 그 payload의 뜻이 여기 적혀 있기
+> 때문이다 — **실행 지시로 읽지 않는다.**
 
 **소스 문법이 넷이 됐다**(`SOURCE_KINDS` = `lineage`·`observation`·`transfer`·**`declared`**).
 앞의 셋은 「선언 + 번역기 클래스」인데 이것은 **선언이 곧 번역기다** — 새 «모양»의 테이블에 코드가 **0줄**이다.
@@ -703,10 +712,18 @@ payload와 맞는지 본다. 한 행도 읽지 않고 확정할 수 있는 모�
 갈래까지 포함한 정적 계약이다. 둘 중 하나만 있으면 각각 「죽은 코드」 또는 「표본 밖
 오류」를 놓친다.
 
-복잡한 새 모양은 `translator_pattern.py`의 Template Method를 쓰고
-`examples/grouped_translator_template.py`의 `CUSTOMIZE 1/4`~`4/4`만 교체한다.
-그 프로필을 런타임 문법에 등록할 때 `POSSIBLE_EMISSIONS` 전수를 Source Contract에
-연결해야 한다. **예제 파일 자체는 등록되지 않으며 복사만 해서는 0행을 쓴다.**
+⚰️ **[2026-08-18/19] 이 절의 Template Method 경로는 은퇴했다.** `translator_pattern.py`도
+`examples/grouped_translator_template.py`도 트리에 없고 `POSSIBLE_EMISSIONS`는 `server/`
+어디에도 없다(`e47d325`). 복잡한 새 모양의 오늘 자리는 `server/mappers/ledger_v2_*.py`의
+`BaseLedgerMapper` 하위 클래스 **파일 하나**이고, 낼 수 있는 문장은
+`POSSIBLE_EMISSIONS` 리스트가 아니라 `SentenceShape` 클래스 속성으로 선언한다
+([LEDGER_GUIDE §3 ③](../guide/LEDGER_GUIDE.md)).
+
+⚠️ **`translator_vocabulary_mismatch`를 「드라이런 전 거절」로 읽지 말 것.** `source_contract.py`의
+컴파일은 그대로 살아 있지만, 그 앞의 `POST /admin/ledger/dry-run`은 소스 미리보기에 대해
+`DryRunUnavailable`을 먼저 던진다(`ab8657f` — 태우던 v1 번역기 넷이 은퇴). 그래서 오늘
+그 거절에 **도달하는 호출 경로가 없다.** 쓰기 없는 v2 미리보기는
+`ledger/setup.py`의 `preview_selected_cursor_batch`이고 **부르는 라우트가 아직 없다.**
 
 ### 3.10 `SourceOntologyProfile` 2단계 — Claim Mapping 계약 (2026-08-17)
 
@@ -884,7 +901,9 @@ read-only transaction에서 최대 1000 key씩 읽는다. 다건 판정을 잃�
 첫 실제 전환 source는 `lot_event`다. 기존 Ledger reader와 `event_time` cursor는 그대로이고
 `lot-event@1` Python mapper가 DataFrame을 LedgerFrame으로 변환한다. 이후 gate와
 `LedgerStore.write_batch`는 기존 경로다. mapper/schema/gate 실패는 현재 처리 단위를
-저장하지 않고 cursor도 이동하지 않는다. 미전환 source는 기존 translator를 유지한다.
+저장하지 않고 cursor도 이동하지 않는다. ⚰️ **[2026-08-18/19] 「미전환 source는 기존
+translator를 유지한다」는 더 이상 참이 아니다** — 유지할 translator가 없다(`e47d325`).
+`ledger_config.json`의 `sources`에 없는 이름은 백필이 `undeclared_source`로 거절한다.
 
 격리 PostgreSQL 수락 검사는 canonical Profile의 dry-run → 동일 mapper 후보 → gate →
 `LedgerStore` → 기존 cursor를 한 경로에서 통과시킨다. nested Binding의 pending/rejected와

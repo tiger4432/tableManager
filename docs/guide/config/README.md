@@ -5,7 +5,10 @@
 
 ## 시작하기 전에 (전 파일 공통)
 
-- `server/config/`의 실파일은 **전부 gitignored·현장 소유**입니다. 처음이면 `server/config/sample/`의 `.sample`을 상위 폴더에 확장자 없이 복사해 시작합니다. 백업은 `server/config/backup/`에 있으며, `.sample`·`.bak` 편집은 실행 설정에 아무 효과가 없습니다.
+- `server/config/`의 실파일은 **대부분 gitignored·현장 소유**입니다. 처음이면 `server/config/sample/`의 `.sample`을 상위 폴더에 확장자 없이 복사해 시작합니다. 백업은 `server/config/backup/`에 있으며, `.sample`·`.bak` 편집은 실행 설정에 아무 효과가 없습니다.
+  - 🔴 **[2026-08-19] 「전부」는 더 이상 참이 아닙니다 — 예외가 «둘» 있습니다.** `server/config/ontology/ledger_config.json`과 그 옆의 `README.md`는 **저장소에 추적됩니다**(`git ls-files server/config/`로 확인). 2026-08-18에 원장 셋업이 단일 파일이 되면서 그렇게 됐고, 그래서 **이 root에는 위의 「`.sample`을 복사해 확장자를 떼라」가 적용되지 않습니다.** 출발점은 `server/config/sample/ontology/transfer_explorer/ledger_config.json`이며 그것도 **`.sample` 확장자가 없는 추적 파일**입니다.
+  - 🔴 **그 root에 다른 `.json`을 두지 마십시오** — 로더가 `unlisted_config_file`로 거절하고 검사는 **하위 디렉터리까지 재귀**합니다. 백업 폴더도 root **밖**에 둡니다.
+  - **반영 확인**: (`server/`에서) `conda run -n assy_manager python -m ledger.setup` — 쓰기 없이 `config_root`·`setup_version`·`readiness`·선언된 `sources`를 JSON 한 줄로 답합니다. 초안은 `--root <폴더>`로 **운영 파일을 건드리지 않고** 확인합니다. 절차의 정본은 [ONTOLOGY_LEDGER_SETUP](../ONTOLOGY_LEDGER_SETUP.md).
 - **편집 전 스냅샷**: `conda run -n assy_manager python server/scripts/backup_config.py snapshot`
 - `ASSY_ADMIN_TOKEN`이 설정된 서버는 **모든 `/admin/*` 호출에 `X-Admin-Token` 헤더**가 필요합니다 → [DEPLOY_SETUP §1-4](../DEPLOY_SETUP.md).
 - `scheduler_status.json` · `supervisor_status.json` · `worker_heartbeats/*.json`은 **시스템이 쓰는 상태 파일**입니다 — 운영자 config가 아니며 **절대 손편집하지 마십시오**(다음 틱에 덮어써지고, 없는 것이 정상 상태).

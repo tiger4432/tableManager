@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-19 | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/` · `server/ledger_trace_router.py`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -21,8 +21,8 @@
 > `conda run -n assy_manager python -m ledger.setup` → `config_root`·`setup_version`·
 > `readiness`·`sources`를 JSON 한 줄로 낸다.
 >
-> 아래 §0·§1.1·§4.2에서 「레거시」라 표시한 서술은 **은퇴한 경로의 역사**이며, 남아 있는 이유는
-> 옛 원장 행을 읽을 때 필요하기 때문이다. 실행 지시로 읽지 않는다. 공개 CLI의 `--reset-cursor`와
+> 아래 §0·§1.1·§4.2에서 ⚰️로 표시한 이름은 **은퇴한 경로**다. 남아 있는 이유는 그 이름을
+> 찾는 사람을 여기서 돌려세우기 위해서이고, 실행 지시로 읽지 않는다. 공개 CLI의 `--reset-cursor`와
 > `--from`은 별도 승인 없이 `destructive_approval_required`로 거절되며, 이 문서의 옛
 > 예를 실행 허가로 읽지 않는다.
 
@@ -30,20 +30,24 @@
 
 ## 0. 먼저 고를 것
 
-⚠️ **[2026-08-18] 이 표는 은퇴한 «레거시» 경로(`kind` 문법)의 선택표이고, 새 소스에는
-적용되지 않는다.** 남겨 둔 이유는 그 문법으로 적재된 옛 원장 행을 읽을 때 쓰이기
-때문이다. Ledger v2 선언에는 `kind`가 **없고** `driver`·`preparer_id`·`mapper_id`·`profile_id`로
-조립한다 — **새 소스는 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md)의 Step 1~9를
-따른다.**
+새 소스는 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md)의 Step 1~9를 따른다.
+v2 선언에는 소스 「문법(`kind`)」이 **없다** — `driver`·`preparer_id`·`mapper_id`·`profile_id`로
+조립한다. 고르는 것은 문법이 아니라 **Python을 쓸지 말지**다.
 
-| 소스 모양 | 선택(레거시 `kind`) |
+| 소스 모양 | 선택 |
 |---|---|
-| 한 행에서 Claim 1~N개를 만들 수 있음 | `kind: "declared"` — Python 작성 없음 |
-| 여러 행을 묶거나 위치를 짝지어야 함 | 기존 `lineage`·`transfer`, 또는 Template Method |
-| 외부 관계를 조회해 시각·신원을 확정해야 함 | 기존 `observation`, 또는 Template Method |
-| 원장을 걸어 새 사실을 추론 | 아직 미구현인 `derivation`; 소스 번역과 구분 |
+| 출력 컬럼이 상속한 verified join에서 그대로 온다 | Preparer `direct-join@1` — Python 0줄 |
+| 업무적 읽기가 Profile binding만으로 표현된다 | Mapper `declarative-role@1` — Python 0줄 |
+| 행을 쪼개거나 도메인 규칙으로 해석해야 한다 | `server/mappers/ledger_v2_*.py`에 전용 mapper 파일 **하나** |
+| 정규화·그룹 조립처럼 계산이 필요하다 | `server/ledger/`에 `BaseSourcePreparer` 하위 클래스 |
 
-기본 원칙은 **가능하면 `declared`, 필요한 경우에만 Python 번역기**다.
+기본 원칙은 **먼저 범용 구현 둘로 끝나는지 보고, 안 되는 부분만 코드로 쓴다**이다.
+구현 클래스는 자기 `implementation_id`/`implementation_version`을 선언하고
+`server/ledger/implementations.py`가 **코드에서 발견**한다 — 손으로 유지하는 등록 목록은 없다.
+
+⚰️ **[2026-08-18] 옛 `kind` 문법(`declared`/`lineage`/`transfer`/`observation`)은 백필 경로에서
+은퇴했다.** `server/ledger/config.py`의 `SOURCE_KINDS`가 남아 있는 곳은 레거시 선언을 읽는
+어드민 dry-run 쪽이고, 백필 드라이버는 하나다. 그 이름을 찾고 있다면 은퇴한 경로다.
 
 ## 1. 모듈 지도
 
@@ -56,8 +60,7 @@
 | `runtime_v2.py` · `source_preparation.py` · `roleframe.py` · `source_profile*.py` | **v2 실행 경로** — Preparer → RoleFrame → Pack/Profile |
 | `setup_bundle.py` · `setup_registry.py` · `setup.py` | 단일 `ledger_config.json` 검증·compile과 로드 경계(`load_setup`) |
 | `implementations.py` | 어떤 `implementation_id`가 실행 가능한지 **코드에서 발견**해 답한다 |
-| ⚰️ `*_translator.py` · `translator_pattern.py` | **[2026-08-18] 부르는 코드가 없다.** 이들을 지연 import하던 문법 드라이버 넷이 `backfill.py`에서 삭제됐다(`d7bfcd0`). 이 이름을 찾고 있다면 은퇴한 경로다 |
-| ⚰️ `examples/grouped_translator_template.py` | 은퇴한 레거시 경로의 템플릿. 새 소스에 쓰지 않는다 |
+| ⚰️ `*_translator.py` · `translator_pattern.py` · `examples/grouped_translator_template.py` | **파일이 없다.** 이들을 지연 import하던 문법 드라이버 넷이 `backfill.py`에서 빠지고(`d7bfcd0`), 이어서 번역기 다섯과 그것을 재던 테스트가 함께 지워졌다(`e47d325`). `SafeTranslatorTemplate`·`POSSIBLE_EMISSIONS`도 트리에 없다. 이 이름을 찾고 있다면 은퇴한 경로다 — 지금의 대체물은 §0 표의 네 갈래 |
 | `gate.py` | 분자 단위 전부-아니면-전무 검사와 거절 계수 |
 | `store.py` | 원자 append와 커서 전진을 한 트랜잭션으로 저장 |
 | `backfill.py` | 페이지·분자 경계와 **유일한** 실행 드라이버 |
@@ -103,22 +106,38 @@ source rows
 
 ### ② 선언 작성
 
-[ONTOLOGY_LEDGER_SETUP §3](./ONTOLOGY_LEDGER_SETUP.md)에 따라 소스 한 장을 작성한다.
-물리 컬럼명은 `columns`에만 두고 번역기 코드에는 넣지 않는다.
+[ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md)의 Step 1~9에 따라
+`ledger_config.json`을 작성한다. 물리 컬럼명은 preparer/mapper descriptor의
+`input_columns`와 `sources.<id>.driver`에만 두고 **구현 코드에는 넣지 않는다.**
 
-### ③ 번역기 작성 — Template Method
+### ③ 전용 mapper 작성 — 파일 하나
 
-`declared`로 표현할 수 없을 때만
-`server/ledger/examples/grouped_translator_template.py`를 복사하고 네 블록만 바꾼다.
+범용 `declarative-role@1`로 표현할 수 없을 때만 쓴다. `server/mappers/ledger_v2_*.py`에
+`BaseLedgerMapper` 하위 클래스를 두고 세 가지만 쓴다.
 
-1. 소스·프로필 이름
-2. `POSSIBLE_EMISSIONS` — 낼 수 있는 Claim 전수
-3. `iter_molecules` — 행을 분자로 묶는 규칙
-4. `claim_drafts` — 분자에서 도메인 Claim을 만드는 규칙
+1. `implementation_id` / `implementation_version` — 클래스가 자기를 선언한다
+2. **말할 수 있는 문장들** — `SentenceShape` 클래스 속성. 목적어를 갖는가와 qualifier 이름만
+   적는다
+3. `interpret_unit()` — 한 source event를 읽어 `RoleEmission`을 낸다
 
-시각 해석, raw reference, first-sight register, 게이트 호출, 늦은 거절 시 register
-메모 롤백은 `SafeTranslatorTemplate`이 맡는다. 예제는 런타임에 등록돼 있지 않으므로
-복사만 해서는 0행을 쓴다. 새 프로필 등록과 backfill 페이지 경계 연결은 명시적으로 한다.
+🔴 **mapper는 선언의 이름을 하나도 모른다.** predicate 철자(`has_wafer@1`), entity type
+이름(`Lot@1`), `mapping_id` 어느 것도 이 파일에 없다 — 그것들은 배포마다 바뀌는 운영자의
+낱말이고, 「다른 스키마의 운영 환경에서 코드 0줄」이 완성 조건이기 때문이다. mapper가 아는
+것은 **문장의 «모양»**이고, 그 모양을 실현하는 Profile mapping을 찾아 주는 것은
+`ledger.roleframe.ProfileSentences`다. 이 배포가 그것을 무엇이라 부르는지 알아야 하면
+`subject_type_of()`/`object_type_of()`로 **묻는다** — 철자를 적어 두지 않는다.
+
+⚠️ **모양이 같은 문장이 둘이면 config가 갈라 준다.** `lot_event`의 split slot-carry와
+merge slot-join은 predicate·주어·목적어·qualifier 셋이 전부 같고 계산 규칙만 다르다. 그래서
+각자 자기 `SentenceShape`를 갖고(이름은 바인딩된 속성명을 소문자로 딴다:
+`split_slot_carry`·`merge_slot_join`), Profile mapping이 선택 필드
+**`sentence`**로 「내가 그 문장을 실현한다」고 적는다. 모양이 같은 mapping 둘 중 하나라도
+`sentence`가 없으면 **compile 시점에** `ambiguous_sentence`로 거절된다 — 먼저 걸린 쪽을
+대표로 뽑으면, 셋째 mapping이 들어오는 날 대표가 바뀌면서 **이미 돌던 전부**가 깨진다.
+
+시각 해석·raw reference·게이트 호출·거절 격리는 `BaseLedgerMapper.map()` 경계와 공유
+드라이버(`backfill.run`)가 맡는다. `server/ledger/implementations.py`는 편집하지 않는다 —
+그 모듈이 클래스를 **발견**한다.
 
 ### ④ 파생과 출처
 
@@ -151,10 +170,11 @@ PostgreSQL 전용 테스트는 skip 수를 확인하고 별도로 실행한다.
 
 ## 3-bis. 테이블이 아닌 소스
 
-생성기·계산 결과·외부 API처럼 관계명이 없는 소스는 `ledger_config.json`의 테이블
-문법으로 위장하지 않는다. 생산 코드가 자기 source 선언과 `POSSIBLE_EMISSIONS`를
-소유하되, 출력은 같은 `gate → store` 경로를 통과시킨다. 원천 참조는 재현 가능한
-질의나 입력 식별자를 담아야 한다.
+생성기·계산 결과·외부 API처럼 관계명이 없는 소스는 `ledger_config.json`의 relation
+문법으로 위장하지 않는다. `sources.<id>.relation`은 `table_config.json`에 선언된 표여야
+하고, 없는 이름을 적으면 `unknown_relation`으로 거절된다. 생산 코드가 자기 source 선언과
+낼 수 있는 Claim 전수를 소유하되, 출력은 같은 `gate → store` 경로를 통과시킨다. 원천
+참조는 재현 가능한 질의나 입력 식별자를 담아야 한다.
 
 ## 4. 운영
 
@@ -215,7 +235,7 @@ conda run -n assy_manager python -m ledger.setup
 
 ### 4.5 정정
 
-원장은 append-only다. 번역 오류는 과거 행을 UPDATE하지 않고 선언·번역기를 고친 뒤
+원장은 append-only다. 해석 오류는 과거 행을 UPDATE하지 않고 선언·mapper를 고친 뒤
 새 provenance로 재백필한다. 기존 주장을 읽기에서 어떻게 밀어낼지는 해결 규칙이나
 `supersedes` 계약으로 다룬다.
 

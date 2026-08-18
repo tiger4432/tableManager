@@ -1,6 +1,6 @@
 # AssyManager 설정 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-17 | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-19 (§1 원장 config 행만 재대조) | **Owner:** Lead / Backend
 > **Source-of-truth:** `server/config/` · 각 config loader
 
 이 문서는 **설정 파일의 위치, 의존 순서, 반영 확인 방법**만 설명한다.
@@ -34,7 +34,7 @@
 | `maps.json` | 맵 프리셋 | [maps](./config/maps.md) |
 | `bonding_plan_config.json` | 본딩 계획 역할 | [bonding_plan](./config/bonding_plan_config.md) |
 | `transfer_plan_config.json` | DT/본딩 단계·역할 | [transfer_plan](./config/transfer_plan_config.md) |
-| `ledger_config.json` 및 원장 보조 선언 | Source→Ledger→Ontology | [ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md) |
+| **`ontology/ledger_config.json`** (🔴 파일이 아니라 **디렉터리 `server/config/ontology/`가 root**이고 그 안에 `.json`은 **이 하나뿐**이어야 한다 — 다른 `.json`이 있으면 `unlisted_config_file`로 로드가 거절되며 검사는 **재귀한다**. ⚠️ **이 파일은 gitignored가 아니라 «추적»된다** — 위 「대부분 gitignored」의 예외다) | Source→Ledger→Ontology | [ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md) |
 | `effort_metric.json` | 화면 교정 공수 계기 | [effort_metric](./config/effort_metric.md) |
 | `suggest_config.json` | 컬럼 추천 | [suggest_config](./config/suggest_config.md) |
 | `audit_history_config.json` | 감사 이력 정책 | [audit_history](./config/audit_history_config.md) |

@@ -1,5 +1,8 @@
 # 입문 — 한 행의 여행: 모든 구성요소의 역할과 실물 예시
 
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-19 | **Owner:** Server / Ledger
+> **Source-of-truth:** `server/ledger/vocabulary.py` · `server/ledger/roleframe.py` · 선언 절차 [ONTOLOGY_LEDGER_SETUP](../ONTOLOGY_LEDGER_SETUP.md)
+
 > 실제 DB의 스플릿 행 하나가 원장 원자가 되기까지. 각 요소가 «언제 등장해
 > 무엇을 하는지»를 실물로. (03 사전 화면의 원고이기도 하다)
 
@@ -19,9 +22,9 @@ event_time=2026-05-03 02:17
 |---|---|---|---|---|
 | 1 | **소스 테이블** | 세계의 수첩 | 사실이 행으로 눕는 곳. 뜻 없음 | 위의 행 |
 | 2 | **table_config** | 표의 주민등록 | 이 표의 행을 «하나»로 세는 법 | business_key = lot\|event_type\|event_time |
-| 3 | **PROFILE** | 이 소스의 독해 지침서 | 「이 표를 어떻게 읽는가」 전부: 묶음·문장 선택·컬럼 잇기·시각·전제 | unit=row_pair(lot,event_type,event_time) · use lineage/split · occurred_at=event_time(Asia/Seoul) |
+| 3 | **PROFILE** | 이 소스의 독해 지침서 | 「이 표를 어떻게 읽는가」 전부: 묶음·문장 선택·컬럼 잇기·시각·전제. **모양이 똑같은 문장이 둘이면 mapping마다 `sentence`로 「내가 그 문장이다」를 적는다** — 안 적으면 compile 시점 `ambiguous_sentence` | unit=row_pair(lot,event_type,event_time) · use lineage/split · occurred_at=event_time(Asia/Seoul) |
 | 4 | **엔진 group** | 제본기 | Profile의 UNIT대로 행들을 «분자(한 사건)»로 묶음 — 코드 아닌 선언이 구동 | 부모행+자식행 2행 → 스플릿 분자 1개 |
-| 5 | **MAPPER 훅** | 통역사 | (구조 변환일 때만) 분자가 «무슨 뜻»인지 해석해 Claim들로 | split 분자 → Claim(갈라짐: 자식→부모) 1 + Claim(소속: 랏·슬롯·웨이퍼) ×19 |
+| 5 | **MAPPER 훅** | 통역사 | (구조 변환일 때만) 분자가 «무슨 뜻»인지 해석해 Claim들로. 🔴 **통역사는 선언의 «낱말»을 모른다** — 자기가 하는 말의 «모양»만 알고, 그 모양을 실현하는 Profile mapping을 엔진이 찾아 준다(`SentenceShape`/`ProfileSentences`). 그래서 이 배포가 랏을 Batch라 불러도 mapper는 안 바뀐다 | split 분자 → Claim(갈라짐: 자식→부모) 1 + Claim(소속: 랏·슬롯·웨이퍼) ×19 |
 | 6 | **PACK** | 표준 문장 양식집 | Claim의 빈칸(role)을 받아 **payload 철자로 컴파일**. 사람 문장↔문법의 다리 | 소속 Claim → 술어 has_wafer, payload {keys:{wafer}, qualifiers:{slot}} 로 접기 |
 | 7 | **vocabulary.py** | **국어사전 + 문법책** | 아래 §2 상세 | has_wafer 항목: 주어는 Lot만, 목적어는 Wafer ref, 걷기는 「도달만·통과 금지」 |
 | 8 | **게이트** | 검문소 | 원자마다 사전(7)의 서명과 대조 — 하나라도 틀리면 **분자 전체** 거절 | has_wafer의 목적어가 Wafer ref인가? qualifiers에 slot 있는가? |
@@ -33,10 +36,14 @@ event_time=2026-05-03 02:17
 
 **원장 언어의 국어사전 + 문법책**이다. 딱 세 가지를 담는다:
 
-**① 낱말 목록 (닫힌 집합)** — 이 원장이 말할 수 있는 동사 전부. 지금 11개
+**① 낱말 목록 (닫힌 집합)** — 이 원장이 말할 수 있는 동사 전부
 (register, pin, derived_from, has_wafer, slot_map, processed_with, transferred,
-observed, measured, has_param + 예약 same_as/frame_confirmed).
+observed, measured, has_param, assigned_to_experiment + 예약 same_as/frame_confirmed).
 목록이 닫혀 있는 이유: 아무나 낱말을 만들면 읽는 쪽이 해석 불능이 된다.
+🔴 **개수는 여기 적지 않는다** — 이 목록은 코드 절반(`vocabulary.PREDICATES`)과 선언 절반
+(`server/config/ledger_vocabulary.json`)의 병합이라 배포마다 다르고, 이 자리에 숫자를
+박아 두면 낱말이 하나 늘 때마다 조용히 낡는다. 지금 이 환경이 아는 낱말을 세는 것은
+`vocabulary.all_predicates()`다.
 
 **② 낱말마다 문형(서명)** — 실물 항목:
 

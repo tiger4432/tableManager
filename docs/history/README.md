@@ -1,17 +1,30 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **662개** 이력. (거버넌스 규칙 #4)
+> 총 **675개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-19 02:20** — [The Defect Was A Number Nobody Could See While Choosing](./20260819_022000_the_defect_was_a_number_nobody_could_see_while_choosing.md)
+- **2026-08-19 01:30** — [The Second Source Stood Up By Hand And Its Mapper Is Not In The Repository](./20260819_013000_the_second_source_stood_up_by_hand_and_its_mapper_is_not_in_the_repository.md)
+- **2026-08-19 01:20** — [The Validator Was Holding The Answer At The Moment It Refused](./20260819_012000_the_validator_was_holding_the_answer_at_the_moment_it_refused.md)
+- **2026-08-19 01:15** — [The Rename Moved The Word And The Fixtures Kept The Axis That No Longer Existed](./20260819_011500_the_rename_moved_the_word_and_the_fixtures_kept_the_axis_that_no_longer_existed.md)
+- **2026-08-19 00:15** — [In Degree Refused Every Delete So The Question Changed To What Remains](./20260819_001500_in_degree_refused_every_delete_so_the_question_changed_to_what_remains.md)
+- **2026-08-18 23:30** — [The Mapper Stopped Knowing What The Config Calls Things](./20260818_233000_the_mapper_stopped_knowing_what_the_config_calls_things.md)
+- **2026-08-18 23:20** — [A Pathless Add Swept A Parked Lane Into The Suite And It Failed Fifteen Times A Run](./20260818_232000_a_pathless_add_swept_a_parked_lane_into_the_suite_and_it_failed_fifteen_times_a_run.md)
+- **2026-08-18 22:55** — [The Screen Learned To Unmake A Declaration And A Source Learned To Admit It Has No World Time](./20260818_225500_the_screen_learned_to_unmake_a_declaration_and_a_source_learned_to_admit_it_has_no_world_time.md)
+- **2026-08-18 14:40** — [An External Directory Enters Through The Tables Own Parser And The Walls I Named Were This Box](./20260818_144000_an_external_directory_enters_through_the_tables_own_parser_and_the_walls_i_named_were_this_box.md)
+- **2026-08-18 13:30** — [The Physical Schema Had Two Authors And Only One Was Checked Against The Database](./20260818_133000_the_physical_schema_had_two_authors_and_only_one_was_checked_against_the_database.md)
+- **2026-08-18 12:50** — [The Refusal Told The Operator Saving Still Worked And It Did Not](./20260818_125000_the_refusal_told_the_operator_saving_still_worked_and_it_did_not.md)
 - **2026-08-18 12:23** — [Verify Before Editing Was Impossible Until The Command Took An Argument](./20260818_122354_verify_before_editing_was_impossible_until_the_command_took_an_argument.md)
 - **2026-08-18 12:18** — [An Empty Database Does Not Refuse It Answers Nothing There](./20260818_121829_an_empty_database_does_not_refuse_it_answers_nothing_there.md)
 - **2026-08-18 11:24** — [The Census Reads Its Name Sets From The Live Config Because A Hand List Drifts](./20260818_112408_the_census_reads_its_name_sets_from_the_live_config_because_a_hand_list_drifts.md)
 - **2026-08-18 11:19** — [The Import Three Lines Above The Guard Took All Four Grammars Down To 500](./20260818_111934_the_import_three_lines_above_the_guard_took_all_four_grammars_down_to_500.md)
+- **2026-08-18 11:00** — [Legacy Left By The Owners Hand And The Suite Stopped Collecting Before It Could Be Read](./20260818_110000_legacy_left_by_the_owners_hand_and_the_suite_stopped_collecting_before_it_could_be_read.md)
+- **2026-08-18 10:15** — [The Five File Root Folded Into One And The Converter Refused Rather Than Dropped](./20260818_101500_the_five_file_root_folded_into_one_and_the_converter_refused_rather_than_dropped.md)
 - **2026-08-18 07:32** — [The Explorer Approval Was Reopened An Hour After A History Entry Called It Final](./20260818_073200_the_explorer_approval_was_reopened_an_hour_after_a_history_entry_called_it_final.md)
 - **2026-08-18 07:31** — [The Setup Guide Shipped A Command Naming A File That Did Not Exist](./20260818_073100_the_setup_guide_shipped_a_command_naming_a_file_that_did_not_exist.md)
 - **2026-08-18 07:30** — [The Declaration Was The Requirement So A Skip List Could Not Silence The Drift Banner](./20260818_073000_the_declaration_was_the_requirement_so_a_skip_list_could_not_silence_the_drift_banner.md)
@@ -683,4 +696,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-18 by gen_index.py*
+*Last generated: 2026-08-19 by gen_index.py*
