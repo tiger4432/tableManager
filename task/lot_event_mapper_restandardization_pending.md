@@ -116,6 +116,26 @@ def lot_event(event):
 - 매퍼가 모르는 것: mapping_id, claim_ref, role_id, 컬럼 이름, 엔터티 타입 철자
 - 판정 기준: 매퍼 파일에서 `mapping_id`·`claim_ref` 문자열이 **0개**가 되는가
 
+### 착수 전 실측 (2026-08-18, 481줄 기준)
+
+「0개가 되는가」는 지금이 몇 개인지 재 두지 않으면 확인할 수 없다. AST로 문자열 상수를 센 결과:
+
+| 종류 | 개수 | 위치 |
+|---|---|---|
+| `mapping_id` | **6** | `:255` positional_row · `:265` pair_field · `:279` slot_preserving · `:299` shared_wafer · `:320` first_sight_lot · `:321` first_sight_wafer |
+| `claim_ref` | 0 | 매퍼는 claim 참조를 직접 쓰지 않는다 — 프로필에서 찾아 온다 |
+| predicate | **5** | `:252` has_wafer · `:263` derived_from · `:276`·`:294` slot_map · `:319` register |
+| entity type | **11** | `Lot`/`Wafer`가 `:238`부터 열한 곳 |
+| qualifier | **7** | `:254` slot · `:278`·`:297` from/to/wafer |
+| **합계** | **29** | |
+
+**개주 후 목표: mapping_id 6 → 0, predicate 5 → 0, entity type 11 → 0.**
+qualifier 이름은 업무 어휘(「슬롯」·「어디서 어디로」)라 매퍼에 남아도 된다 — 다만 그 집합이
+claim 선언과 일치하는지는 엔진이 대조해야 하고, 지금은 매퍼가 스스로 대조한다
+(`:209`의 집합 동일성 검사).
+
+세는 도구는 이 표를 만든 것과 같은 방식(문자열 상수를 AST로 수집해 위 네 목록과 대조)을 쓴다.
+
 이 경계를 지키면 config는 그대로 권위를 갖고, 매퍼는 업무 지식만 남는다.
 
 ## 합격 기준 — 전/후 원자 디프 0
