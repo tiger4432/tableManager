@@ -36,7 +36,19 @@ from dt_map_derivation import source_meta_for_frame          # noqa: E402
 import seed_valid_die_ref_floor as floor                     # noqa: E402
 import seed_dt_index_walk as seed                            # noqa: E402
 
-FRONT_FRAMES = ["rot0_tl", "rot90_tl", "rot180_tl", "rot270_tl"]
+# 🔴 THE META VOCABULARY, AND THAT IS NOT A TYPO FOR THE CANDIDATE ONE. Two spellings of a
+#    frame coexist by design and this file lives entirely in the first:
+#      · `frame_text` -> `rot90_front` / `rot90_back` - the PHYSICAL SIDE. `seed.JOBS` writes
+#        its `dt_frame`/`core_frame` truths in it, `parse_frame` reads it, and
+#        `source_meta_for_frame` needs a side to build a meta at all.
+#      · `candidate_text` -> `rot90_tl` / `rot90_tr` - the WALK START CORNER, all side front.
+#        That is what `score_candidates` enumerates.
+#    They are different axes and both are live, so they are not interchangeable: this list is
+#    compared against job truths and passed to `source_meta_for_frame`, and it also has to
+#    have a `_back` counterpart (see the last test), which the candidate axis does not carry.
+#    It read `_tl` from 2026-08-08 until 2026-08-19 - a textual rename that crossed the two
+#    axes - and every assertion below that touched it was red for that whole time.
+FRONT_FRAMES = ["rot0_front", "rot90_front", "rot180_front", "rot270_front"]
 
 
 @pytest.fixture(scope="module")
@@ -83,9 +95,9 @@ def _back_core_jobs():
 
 def test_the_core_truths_cover_every_front_rotation():
     """Before the CORE jobs were added, truth across every run was only ever
-    `{rot0_tl, rot0_tr, rot90_tl, rot180_tr}` - 4 of 8 candidates, with the
-    270 pair and `rot270_tr`/`rot180_tl` never the answer anywhere. A systematic bias
-    against a frame nobody plants leaves any pass count fully green."""
+    `{rot0_front, rot0_back, rot90_front, rot180_back}` - 4 of the 8 rotation/side frames,
+    with the 270 pair and `rot270_back`/`rot180_front` never the answer anywhere. A
+    systematic bias against a frame nobody plants leaves any pass count fully green."""
     assert set(FRONT_FRAMES) <= {j["core_frame"] for j in seed.JOBS}
 
 
