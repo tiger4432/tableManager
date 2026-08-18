@@ -33,6 +33,12 @@ OLD_LAYOUT = {
 RETIRED = {"virtual_joins", "chains", "enrichments"}
 EXPECTED_DROP = {"chains"}
 
+# `tables` did not disappear -- it MOVED.  The ledger stopped keeping a second copy of
+# the physical schema and reads server/config/table_config.json instead (owner ruling,
+# 2026-08-18).  Reporting it as lost would make this tool cry wolf on the very landing
+# it exists to check, so it is announced as a move and the destination is named.
+MOVED = {"tables": "server/config/table_config.json"}
+
 
 def _load(path):
     return json.loads(pathlib.Path(path).read_text(encoding='utf-8'))
@@ -70,6 +76,24 @@ def main():
                          "- refuse the conversion rather than drop these")
                 problems += 1
             print(f"  {section:18s} {state}")
+            continue
+        if section in MOVED and after is None:
+            # The ledger stopped keeping this and reads the named file instead. Verify
+            # the destination actually carries what the old root declared, so "moved"
+            # cannot quietly mean "dropped".
+            dest = pathlib.Path(MOVED[section])
+            if not dest.is_absolute():
+                dest = pathlib.Path(
+                    r"C:\Users\kk980\Developments\assyManager") / dest
+            landed = _load(dest) if dest.exists() else {}
+            absent = sorted(k for k in (before or {}) if k not in landed)
+            if absent:
+                print(f"  {section:18s} MOVED to {MOVED[section]} but it does NOT "
+                      f"declare {absent}")
+                problems += 1
+            else:
+                print(f"  {section:18s} moved to {MOVED[section]} "
+                      f"({len(before or {})} declaration(s) present there)")
             continue
         if after is None:
             print(f"  {section:18s} MISSING from the new file "
