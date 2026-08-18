@@ -25,6 +25,22 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
   변환·이관 때 섹션이 조용히 빠지지 않았는지는 `task/evidence/ledger_config_section_diff.py`.
 - 진행 중 프로그램: `task/ledger_simplification_program.md`
   (1라운드 단일 파일·자기 등록 — 대부분 착지 / 2라운드 매퍼 개주 / 3라운드 explorer 작성 모드)
+- 🎯 **목적지를 한 번에 보려면** `task/evidence/ledger_config_final_form_example.jsonc`
+  — lot_event 부분은 지금 실제로 도는 선언, void 부분은 「시각 없음 선언」 착지 후의 모양.
+  명세 일곱 개를 조립하지 않고 최종 형태를 읽을 수 있다.
+- 2026-08-18 착지분 요약: 셋업이 **파일 하나·일곱 칸**(`tables`는 은퇴, 물리 스키마는
+  `table_config.json`이 정본) · **선언이 곧 활성화**(chains 폐기) · 신뢰 목록을 코드에서
+  도출(`ledger/implementations.py`) · 첫 등장 탐침 선언화 · legacy 번역기 5개와 문법
+  드라이버 4개 은퇴 · 모듈 개명(`cutover_v2`→`setup`) · `ledger.setup --root`로 초안 검증.
+  **열 번의 착지 모두 원자 디프 0.**
+- 인제션 쪽 도구(같은 날): `scripts/ledger_deploy_preflight.py`(배포 전 상태 판정) ·
+  `scripts/check_external_sources.py`(외부 디렉터리 등록 확인) ·
+  `scripts/replay_ingestion.py`(읽기 전용 소스의 파일 하나 재적재) ·
+  `scripts/seed_void_sample_tree.py`(폴더 규격 실물 생성). 외부 소스는 이제 `parser`를
+  비우면 그 표의 워크스페이스 플러그인으로 들어간다(`401dc72`).
+- ⚠️ **이 박스의 표 모양·DB·config를 운영 사실로 인용하지 말 것.** 2026-08-18 하루에 세 번
+  틀렸다(빈 DB 접속 / 지워진 config / `void` 표의 스키마). 운영 `void`는 키가
+  `x·y·waferid·tkouttime·void_index`이고 정상 가동 중이다 — 이 박스의 `void`와 다른 표다.
 
 승인 구현 커밋:
 
