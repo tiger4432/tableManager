@@ -17,11 +17,13 @@ import pandas as pd
 from ledger.roleframe import (
     BaseLedgerMapper,
     MapperContext,
+    ProfileSentences,
     RoleEmission,
     RoleFrameError,
+    SentenceShape,
     SOURCE_ROW_REF_COLUMN,
 )
-from ledger.setup_registry import ClaimDescriptor, ProfileDescriptor, ProfileMappingDescriptor
+from ledger.setup_registry import ProfileDescriptor
 from ledger.source_preparation import (
     BaseSourcePreparer,
     PreparedJoin,
@@ -133,10 +135,44 @@ class LiveLotEventSourcePreparer(BaseSourcePreparer):
 
 
 class LotEventRoleMapper(BaseLedgerMapper):
-    """Interpret split, merge, and track-in EventFrames as registered Pack Roles."""
+    """Interpret split, merge, and track-in EventFrames as registered Pack Roles.
+
+    THE SENTENCES THIS MAPPER CAN SAY, in the mapper's own words.  Each is a shape, not a
+    name: it says what the sentence must be able to carry, and the engine finds whichever
+    Profile mapping realizes it.  Rename ``has_wafer@1`` to anything, call a Lot a Batch,
+    renumber every ``mapping_id`` -- none of it reaches this file.
+
+    Qualifier names stay because they ARE the business vocabulary: a slot is a slot, and
+    "from where, to where, which wafer" is what a slot map means.  The engine checks them
+    against the Claim, so a deployment that spells them differently gets a named refusal
+    instead of a wrong atom.
+    """
 
     implementation_id = "lot-event-role"
     implementation_version = 1
+
+    #: "this identity exists" -- no object, no qualifiers.
+    FIRST_SIGHT = SentenceShape(has_object=False)
+    #: "this holder carries that item, in this slot".
+    IN_SLOT = SentenceShape(has_object=True, qualifiers=("slot",))
+    #: "this lot came out of that lot" -- object, nothing qualified.
+    DESCENT = SentenceShape(has_object=True)
+    #: "this wafer moved from that slot to this one, between two lots".
+    SLOT_TRACE = SentenceShape(has_object=True, qualifiers=("from", "to", "wafer"))
+
+    # 🔴 THE ONLY DECLARATION SPELLINGS LEFT IN THIS FILE, and they are here because the
+    # declaration gives the engine nothing else to tell them apart with.  Split slot-carry
+    # and merge slot-join emit the SAME sentence -- same predicate, same subject/object
+    # types, same three qualifiers -- and differ only in the rule that computed it.  The
+    # live config expresses that as two mappings on one Claim, the parity bundle as two
+    # Claims; in BOTH the two candidates are structurally identical, so shape matching
+    # returns two and something has to name one.  That distinction is real (it is what
+    # each atom's ``derivation`` records), it is business knowledge this mapper owns, and
+    # there is no config key to declare it in.  Escalated 2026-08-18: either the Profile
+    # mapping gains a field naming the mapper sentence it realizes -- which is a
+    # ``setup_registry`` change another session owns -- or these two stay.
+    SPLIT_SLOT_TRACE = "slot_preserving"
+    MERGE_SLOT_TRACE = "shared_wafer"
 
     def interpret_unit(
         self,
@@ -178,53 +214,20 @@ class LotEventRoleMapper(BaseLedgerMapper):
             )
 
         refs = tuple(str(value) for value in unit[SOURCE_ROW_REF_COLUMN].tolist())
-        occurred_at = unit.iloc[0]["event_time"]
         all_refs = tuple(sorted(refs))
-        emissions: list[RoleEmission] = []
-        registered: set[tuple[str, str]] = set()
+        sentences = ProfileSentences(
+            context, profile, occurred_at=unit.iloc[0]["event_time"])
+        # What THIS deployment calls the thing that holds items in slots, and the thing it
+        # holds.  Learned from the one sentence where both appear together, so the two
+        # spellings never have to be written down here.
+        holder = sentences.subject_type_of(self.IN_SLOT)
+        item = sentences.object_type_of(self.IN_SLOT)
 
-        def emit(
-            predicate: str,
-            subject_type: str,
-            subject_value: Any,
-            source_refs: Sequence[str],
-            *,
-            object_type: str | None = None,
-            object_value: Any = None,
-            qualifiers: Mapping[str, Any] | None = None,
-            mapping_hint: str | None = None,
-        ) -> None:
-            mapping, claim = _resolve_mapping(
-                context, profile, predicate=predicate, subject_type=subject_type,
-                mapping_hint=mapping_hint)
-            roles: dict[str, Any] = {
-                claim.emission.subject.role_id: _entity_for_role(
-                    mapping, claim.emission.subject.role_id, subject_value),
-                claim.emission.occurred_at.role_id: occurred_at,
-            }
-            if claim.emission.object_role is not None:
-                if object_type is None:
-                    raise RoleFrameError(
-                        "invalid_lot_event_contract", mapping.config_path,
-                        f"predicate {predicate!r} requires an object Entity",
-                    )
-                roles[claim.emission.object_role.role_id] = _entity_for_role(
-                    mapping, claim.emission.object_role.role_id, object_value,
-                    expected_type=object_type)
-            qualifier_values = dict(qualifiers or {})
-            if set(qualifier_values) != set(claim.emission.qualifiers):
-                raise RoleFrameError(
-                    "invalid_lot_event_contract", mapping.config_path,
-                    f"predicate {predicate!r} qualifier contract disagrees with mapper",
-                )
-            for name, reference in claim.emission.qualifiers.items():
-                roles[reference.role_id] = qualifier_values[name]
-            emissions.append(RoleEmission(
-                mapping_id=mapping.mapping_id,
-                claim_ref=mapping.claim_ref,
-                roles=roles,
-                source_row_refs=tuple(source_refs),
-            ))
+        emissions: list[RoleEmission] = []
+
+        def keep(emission: RoleEmission | None) -> None:
+            if emission is not None:
+                emissions.append(emission)
 
         lots = sorted({value for value in (
             {_text(row["lot"]) for row in rows} | {parent, child}) if value})
@@ -234,9 +237,8 @@ class LotEventRoleMapper(BaseLedgerMapper):
                 "lot event names no Lot identity",
             )
         for lot in lots:
-            _register_once(
-                registered, emissions, context, profile, "Lot", lot,
-                occurred_at, all_refs)
+            keep(sentences.first_sight(
+                self.FIRST_SIGHT, lot, all_refs, subject_type=holder))
 
         pairs_by_row: list[list[tuple[str, str]]] = []
         for position, row in enumerate(rows):
@@ -245,25 +247,15 @@ class LotEventRoleMapper(BaseLedgerMapper):
             for slot, wafer in pairs:
                 if not wafer:
                     continue
-                _register_once(
-                    registered, emissions, context, profile, "Wafer", wafer,
-                    occurred_at, (refs[position],))
-                emit(
-                    "has_wafer", "Lot", _text(row["lot"]), (refs[position],),
-                    object_type="Wafer", object_value=wafer,
-                    qualifiers={"slot": slot},
-                    mapping_hint="positional_row",
-                )
+                keep(sentences.first_sight(
+                    self.FIRST_SIGHT, wafer, (refs[position],), subject_type=item))
+                keep(sentences.say(
+                    self.IN_SLOT, _text(row["lot"]), (refs[position],),
+                    obj=wafer, qualifiers={"slot": slot}, subject_type=holder))
 
-        if event_type in {"split", "merge"}:
-            if not parent or not child:
-                pass
-            else:
-                emit(
-                    "derived_from", "Lot", child, all_refs,
-                    object_type="Lot", object_value=parent,
-                    mapping_hint="pair_field",
-                )
+        if event_type in {"split", "merge"} and parent and child:
+            keep(sentences.say(
+                self.DESCENT, child, all_refs, obj=parent, subject_type=holder))
 
         if event_type == "split":
             child_position = next(
@@ -272,12 +264,11 @@ class LotEventRoleMapper(BaseLedgerMapper):
             if child_position is not None:
                 for slot, wafer in pairs_by_row[child_position]:
                     if wafer and slot:
-                        emit(
-                            "slot_map", "Lot", parent, (refs[child_position],),
-                            object_type="Lot", object_value=child,
+                        keep(sentences.say(
+                            self.SLOT_TRACE, parent, (refs[child_position],),
+                            obj=child,
                             qualifiers={"from": slot, "to": slot, "wafer": wafer},
-                            mapping_hint="slot_preserving",
-                        )
+                            subject_type=holder, variant=self.SPLIT_SLOT_TRACE))
         elif event_type == "merge":
             parent_position = next(
                 (index for index, row in enumerate(rows)
@@ -290,106 +281,14 @@ class LotEventRoleMapper(BaseLedgerMapper):
                     wafer: slot for slot, wafer in pairs_by_row[parent_position] if wafer}
                 for slot, wafer in pairs_by_row[child_position]:
                     if wafer and wafer in parent_slots:
-                        emit(
-                            "slot_map", "Lot", parent,
+                        keep(sentences.say(
+                            self.SLOT_TRACE, parent,
                             (refs[parent_position], refs[child_position]),
-                            object_type="Lot", object_value=child,
+                            obj=child,
                             qualifiers={"from": parent_slots[wafer], "to": slot,
                                         "wafer": wafer},
-                            mapping_hint="shared_wafer",
-                        )
+                            subject_type=holder, variant=self.MERGE_SLOT_TRACE))
         return tuple(emissions)
-
-
-def _register_once(
-    memo: set[tuple[str, str]],
-    emissions: list[RoleEmission],
-    context: MapperContext,
-    profile: ProfileDescriptor,
-    entity_type: str,
-    value: Any,
-    occurred_at: Any,
-    refs: Sequence[str],
-) -> None:
-    token = (entity_type, json.dumps(value, ensure_ascii=False, sort_keys=True))
-    if token in memo:
-        return
-    memo.add(token)
-    mapping, claim = _resolve_mapping(
-        context, profile, predicate="register", subject_type=entity_type,
-        mapping_hint=("first_sight_lot" if entity_type == "Lot"
-                      else "first_sight_wafer"))
-    roles = {
-        claim.emission.subject.role_id: _entity_for_role(
-            mapping, claim.emission.subject.role_id, value),
-        claim.emission.occurred_at.role_id: occurred_at,
-    }
-    emissions.append(RoleEmission(
-        mapping_id=mapping.mapping_id,
-        claim_ref=mapping.claim_ref,
-        roles=roles,
-        source_row_refs=tuple(refs),
-    ))
-
-
-def _resolve_mapping(
-    context: MapperContext,
-    profile: ProfileDescriptor,
-    *,
-    predicate: str,
-    subject_type: str,
-    mapping_hint: str | None = None,
-) -> tuple[ProfileMappingDescriptor, ClaimDescriptor]:
-    matches: list[tuple[ProfileMappingDescriptor, ClaimDescriptor]] = []
-    for mapping in profile.mappings:
-        pack_id, claim_id = mapping.claim_ref.split("/", 1)
-        pack = context.snapshot.packs.get(pack_id)
-        if pack is None or claim_id not in pack.claims:
-            continue
-        claim = pack.claims[claim_id]
-        subject_binding = mapping.bindings.get(claim.emission.subject.role_id)
-        if (_base(claim.emission.predicate_id) == predicate
-                and isinstance(subject_binding, Mapping)
-                and subject_binding.get("kind") == "entity"
-                and _base(subject_binding.get("entity_type")) == subject_type):
-            matches.append((mapping, claim))
-    if mapping_hint is not None:
-        matches = [item for item in matches if item[0].mapping_id == mapping_hint]
-    if len(matches) != 1:
-        raise RoleFrameError(
-            "invalid_lot_event_contract", profile.config_path,
-            f"expected one {predicate!r}/{subject_type!r} mapping, found {len(matches)}",
-        )
-    return matches[0]
-
-
-def _entity_for_role(
-    mapping: ProfileMappingDescriptor,
-    role_id: str,
-    value: Any,
-    *,
-    expected_type: str | None = None,
-) -> Mapping[str, Any]:
-    binding = mapping.bindings.get(role_id)
-    if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
-        raise RoleFrameError(
-            "invalid_lot_event_contract", f"{mapping.config_path}.bind.{role_id}",
-            "lot_event Entity Role requires an entity binding",
-        )
-    entity_type = binding.get("entity_type")
-    if expected_type is not None and _base(entity_type) != expected_type:
-        raise RoleFrameError(
-            "invalid_lot_event_contract", f"{mapping.config_path}.bind.{role_id}",
-            f"expected Entity type {expected_type!r}",
-        )
-    keys = binding.get("keys")
-    if not isinstance(keys, Mapping) or len(keys) != 1:
-        raise RoleFrameError(
-            "invalid_lot_event_contract", f"{mapping.config_path}.bind.{role_id}.keys",
-            "lot_event v1 supports one identity key per Lot/Wafer Entity",
-        )
-    key = next(iter(keys))
-    return {"type": entity_type, "keys": {key: value}}
 
 
 def _event_outputs(frame: pd.DataFrame) -> Mapping[str, Sequence[Any]]:
@@ -475,7 +374,3 @@ def _plain(value: Any) -> Any:
     if isinstance(missing, bool) and missing:
         return None
     return value
-
-
-def _base(value: Any) -> str:
-    return str(value or "").rsplit("@", 1)[0]

@@ -297,12 +297,86 @@ def track_rows(at=NOW + timedelta(minutes=2), prefix="T"):
     ], dtype=object)
 
 
-def preview(frame, *, known=()):
+def preview(frame, *, known=(), snapshot=None):
     row = frame.iloc[-1]
     return preview_cursor_batch(
-        compiled_lot_event(), "lot_event", frame,
+        snapshot or compiled_lot_event(), "lot_event", frame,
         {"event_time": row["event_time"], "row_identity": row["row_identity"]},
         NoJoinReader(), preparers(), mappers(), known_registrations=known)
+
+
+#: Every declaration spelling the mapper used to carry as a Python literal, respelled.
+#: Entity IDENTITY KEYS (`lot`, `wafer`) and qualifier names (`slot`, `from`, `to`,
+#: `wafer`) are deliberately NOT renamed: those are business vocabulary that the mapper is
+#: allowed to know, and renaming them here would make the test pass for the wrong reason.
+FOREIGN_SPELLINGS = {
+    "Lot@1": "Batch@1", "Wafer@1": "Slice@1",
+    "has_wafer@1": "carries_slice@1", "derived_from@1": "descends_from@1",
+    "slot_map@1": "slot_trace@1", "register@1": "first_seen@1",
+    "register_lot": "mid_a", "register_wafer": "mid_b",
+    "membership": "carriage", "lineage": "descent",
+    "first_sight_lot": "m_one", "first_sight_wafer": "m_two",
+    "positional_row": "m_three", "pair_field": "m_four",
+}
+UNSPELL = {new.split("@")[0]: old.split("@")[0]
+           for old, new in FOREIGN_SPELLINGS.items()}
+
+
+def respell(value):
+    if isinstance(value, dict):
+        return {FOREIGN_SPELLINGS.get(k, k): respell(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [respell(item) for item in value]
+    if isinstance(value, str):
+        for old, new in FOREIGN_SPELLINGS.items():
+            if value == old or value.endswith(f"/{old}"):
+                return value[:len(value) - len(old)] + new
+        return value
+    return value
+
+
+def test_a_foreign_deployments_spellings_change_nothing_the_mapper_emits():
+    """The owner's definition of done, executed: a different-schema environment needs
+    ZERO lines of Python.
+
+    Everything the declaration names is renamed -- both entity types, all four
+    predicates, four of the six mappings, and the claim ids -- and the mapper is asked
+    for the same split.  It must emit the same sentences.
+
+    This is the test the old mapper could not pass: it carried `"Lot"`, `"Wafer"`,
+    `"has_wafer"`, `"positional_row"` and friends as literals, and against this bundle it
+    refused every case with `invalid_lot_event_contract` instead of emitting anything.
+    Two mapping ids survive the rename on purpose (`slot_preserving`/`shared_wafer`) --
+    they are structurally identical to each other, so nothing in the declaration can tell
+    them apart and the mapper still has to name one.  When a Profile mapping gains a field
+    that says which mapper sentence it realizes, add them here and the test tightens.
+    """
+    foreign = compile_setup_snapshot(
+        validate_bundle(respell(lot_event_bundle()), catalog=LOT_EVENT_CATALOG),
+        TrustedImplementationCatalog.build(
+            source_preparers=[("lot-event-frame", 1)],
+            mappers=[("lot-event-role", 1)]),
+        catalog=LOT_EVENT_CATALOG)
+
+    def sentences(result):
+        return sorted(
+            (UNSPELL.get(item["subject_type"], item["subject_type"]),
+             canonical_keys(item["subject_keys"]),
+             UNSPELL.get(item["predicate"], item["predicate"]),
+             canonical_keys(respell_back(item["object_payload"])))
+            for item in result.candidate_semantics)
+
+    def respell_back(payload):
+        if not isinstance(payload, dict):
+            return {} if payload is None else {"value": payload}
+        out = dict(payload)
+        if "type" in out:
+            out["type"] = UNSPELL.get(out["type"], out["type"])
+        return out
+
+    native = sentences(preview(split_rows(), known=()))
+    assert native, "the native bundle must emit something to compare against"
+    assert sentences(preview(split_rows(), known=(), snapshot=foreign)) == native
 
 
 def test_registration_snapshot_is_required_and_dedupes_across_events():

@@ -289,6 +289,202 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
         return out
 
 
+@dataclass(frozen=True)
+class SentenceShape:
+    """What a mapper needs a sentence to be ABLE TO SAY -- never what it is called.
+
+    A business reading knows things like "a wafer sits in a slot of a lot".  That sentence
+    needs an object, and it carries one qualifier the business calls ``slot``.  It does NOT
+    know that this deployment's declaration spells the predicate ``has_wafer@1``, names the
+    mapping ``positional_row``, calls the two entity types ``Lot@1``/``Wafer@1``, or files
+    the values under role ids ``subject``/``target``.  Those are one operator's words for
+    the sentence and they are exactly what changes in a different-schema environment; the
+    shape does not change.
+
+    :class:`ProfileSentences` matches shapes against the Profile, so a mapper carries the
+    business vocabulary (qualifier names) and the engine carries the wiring.
+    """
+
+    has_object: bool
+    qualifiers: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "qualifiers", tuple(sorted(self.qualifiers)))
+
+
+class ProfileSentences:
+    """Turn one mapper unit's sentences into RoleEmissions using only the declaration.
+
+    This is the wiring that used to be copied into every custom mapper: find the Profile
+    mapping, read the Claim's role ids, assemble the Entity references, and remember which
+    identities have already been announced in this unit.  A mapper that owns this code
+    inevitably names the declaration to steer it -- which is how ``mapping_id``, predicate
+    spellings and entity-type spellings ended up as Python literals in a file whose only
+    job was domain interpretation.
+
+    Selection here is by SHAPE, not by name.  Two things follow:
+
+    * a deployment may rename any predicate, entity type or mapping and the mapper is
+      untouched, which is the owner's definition of done ("a different-schema production
+      environment needs zero lines of code");
+    * entity-type spellings are LEARNED rather than asserted -- ask
+      :meth:`subject_type_of` / :meth:`object_type_of` what this Profile calls the thing
+      that holds items in slots, instead of writing ``"Lot"`` and hoping.
+
+    Versions are compared WHOLE.  The retired mapper compared ``_base()`` spellings, so
+    ``Wafer@1`` and ``Wafer@2`` matched each other; two Entity versions with different
+    identity keys would have been silently interchangeable.
+    """
+
+    def __init__(
+        self,
+        context: MapperContext,
+        profile: ProfileDescriptor,
+        *,
+        occurred_at: Any,
+    ) -> None:
+        self._context = context
+        self._profile = profile
+        self._occurred_at = occurred_at
+        self._announced: set[tuple[str, str]] = set()
+
+    def subject_type_of(self, shape: SentenceShape, **selectors: Any) -> str:
+        """What THIS Profile calls the subject of that sentence."""
+        mapping, claim = self._resolve(shape, **selectors)
+        return self._entity_binding(mapping, claim.emission.subject.role_id)["entity_type"]
+
+    def object_type_of(self, shape: SentenceShape, **selectors: Any) -> str:
+        """What THIS Profile calls the object of that sentence."""
+        mapping, claim = self._resolve(shape, **selectors)
+        if claim.emission.object_role is None:
+            raise RoleFrameError(
+                "invalid_sentence_contract", mapping.config_path,
+                "sentence has no object Entity")
+        return self._entity_binding(
+            mapping, claim.emission.object_role.role_id)["entity_type"]
+
+    def say(
+        self,
+        shape: SentenceShape,
+        subject: Any,
+        refs: Sequence[str],
+        *,
+        obj: Any = None,
+        qualifiers: Mapping[str, Any] | None = None,
+        **selectors: Any,
+    ) -> RoleEmission:
+        mapping, claim = self._resolve(shape, **selectors)
+        emission = claim.emission
+        values = dict(qualifiers or {})
+        if set(values) != set(shape.qualifiers):
+            raise RoleFrameError(
+                "invalid_sentence_contract", mapping.config_path,
+                "qualifier values disagree with the declared sentence shape")
+        roles: dict[str, Any] = {
+            emission.subject.role_id: self._entity_value(
+                mapping, emission.subject.role_id, subject),
+            emission.occurred_at.role_id: self._occurred_at,
+        }
+        if emission.object_role is not None:
+            roles[emission.object_role.role_id] = self._entity_value(
+                mapping, emission.object_role.role_id, obj)
+        for name, reference in emission.qualifiers.items():
+            roles[reference.role_id] = values[name]
+        return RoleEmission(
+            mapping_id=mapping.mapping_id,
+            claim_ref=mapping.claim_ref,
+            roles=roles,
+            source_row_refs=tuple(refs),
+        )
+
+    def first_sight(
+        self,
+        shape: SentenceShape,
+        subject: Any,
+        refs: Sequence[str],
+        **selectors: Any,
+    ) -> RoleEmission | None:
+        """Announce an identity the first time this unit mentions it, else ``None``.
+
+        The de-duplication is the engine's because it is not domain knowledge: every
+        source that announces identities wants exactly this, and a mapper that reimplements
+        it has to name the mapping to find it.
+        """
+        mapping, _claim = self._resolve(shape, **selectors)
+        token = (
+            mapping.mapping_id,
+            json.dumps(_plain(subject), ensure_ascii=False, sort_keys=True),
+        )
+        if token in self._announced:
+            return None
+        self._announced.add(token)
+        return self.say(shape, subject, refs, **selectors)
+
+    def _resolve(
+        self,
+        shape: SentenceShape,
+        *,
+        subject_type: str | None = None,
+        variant: str | None = None,
+    ) -> tuple[Any, ClaimDescriptor]:
+        matches = []
+        for mapping in self._profile.mappings:
+            claim = self._claim_of(mapping)
+            if claim is None:
+                continue
+            emission = claim.emission
+            if (emission.object_role is not None) != shape.has_object:
+                continue
+            if tuple(sorted(emission.qualifiers)) != shape.qualifiers:
+                continue
+            binding = mapping.bindings.get(emission.subject.role_id)
+            if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+                continue
+            if subject_type is not None and binding.get("entity_type") != subject_type:
+                continue
+            if variant is not None and mapping.mapping_id != variant:
+                continue
+            matches.append((mapping, claim))
+        if len(matches) != 1:
+            raise RoleFrameError(
+                "unresolved_sentence", self._profile.config_path,
+                f"expected one Profile mapping for a sentence with "
+                f"object={shape.has_object} qualifiers={list(shape.qualifiers)}"
+                f"{'' if subject_type is None else f' subject={subject_type!r}'}"
+                f"{'' if variant is None else f' variant={variant!r}'}, "
+                f"found {len(matches)}",
+            )
+        return matches[0]
+
+    def _claim_of(self, mapping: Any) -> ClaimDescriptor | None:
+        try:
+            pack_id, claim_id = mapping.claim_ref.split("/", 1)
+        except (AttributeError, ValueError):
+            return None
+        pack = self._context.snapshot.packs.get(pack_id)
+        if pack is None:
+            return None
+        return pack.claims.get(claim_id)
+
+    def _entity_binding(self, mapping: Any, role_id: str) -> Mapping[str, Any]:
+        binding = mapping.bindings.get(role_id)
+        if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+            raise RoleFrameError(
+                "invalid_sentence_contract", f"{mapping.config_path}.bind.{role_id}",
+                "Entity Role requires an entity binding")
+        return binding
+
+    def _entity_value(self, mapping: Any, role_id: str, value: Any) -> Mapping[str, Any]:
+        binding = self._entity_binding(mapping, role_id)
+        keys = binding.get("keys")
+        if not isinstance(keys, Mapping) or len(keys) != 1:
+            raise RoleFrameError(
+                "invalid_sentence_contract",
+                f"{mapping.config_path}.bind.{role_id}.keys",
+                "a mapper-supplied Entity reference carries one identity key")
+        return {"type": binding.get("entity_type"), "keys": {next(iter(keys)): value}}
+
+
 class RoleMapperImplementationRegistry:
     """Closed executable mapper classes keyed only by trusted implementation ID/version."""
 
