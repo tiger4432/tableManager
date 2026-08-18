@@ -128,12 +128,35 @@ def referrers(index: "ExplorerIndex", key: str) -> tuple[dict[str, Any], ...]:
 
 
 def require_no_referrers(index: "ExplorerIndex", key: str, action: str) -> None:
-    """Refuse to `action` a declaration that something else still points at.
+    """Refuse to `action` a declaration that something OUTSIDE the deletion still reaches.
 
-    🔴 THIS IS THE GUARD THE AUTHORING SCREEN EXISTS FOR.  Removing or renaming a
-    referenced declaration does not fail at write time: the file is written, and the
-    breakage surfaces later as a loader error about a reference nobody remembers making.
-    That silent dangling reference is exactly what this screen was built to prevent.
+    🔴 READ THIS BEFORE WIRING IT TO THE DELETE BUTTON.  This function is the FALLBACK,
+    not the decision procedure, and its name does not say so -- a name is a poor carrier
+    for "this is the last resort".  Wire it as THE gate and the screen deadlocks: measured
+    on the live root, the number of declarations with no referrer is ZERO, and a source and
+    its profile name each OTHER (`sources.<id>.profile_id` and `profiles.<id>.source`), so
+    neither ever reaches an in-degree of zero.  A screen guarded this way refuses every
+    delete and reads to the author as "this screen cannot delete anything".
+
+    The ruling (2026-08-18) is that in-degree is the wrong instrument and the right question
+    is REACHABILITY AFTER the deletion, over the whole reference component:
+
+      * the deletable unit is the component, not the node -- a source and the profile only
+        it uses go together, because neither is meaningful alone;
+      * walk from the sources that REMAIN; whatever is then unreachable was only held up by
+        what is going away, and goes with it;
+      * `referrers()` is what the screen SHOWS before the confirm.  Listing the casualties
+        is the guard that actually prevents the orphan.  This refusal is the fallback for
+        the case where a reacher survives outside the set being deleted.
+
+    🔴 The regression to watch: if the screen ever refuses a delete whose only referrers are
+    INSIDE the set being deleted, the instrument is wrong again.  Do not special-case the
+    source-profile pair -- the mutual reference is structural and a third kind will join the
+    cycle, at which point a hardcoded pair check dies quietly.
+
+    What the whole thing is for: removing or renaming a referenced declaration does not fail
+    at write time.  The file is written, and the breakage surfaces later as a loader error
+    about a reference nobody remembers making.  That silent dangling reference is the defect.
 
     Repointing the referrers is NOT done here.  Rewriting somebody else's declaration as a
     side effect of a delete is a second, unreviewed edit riding on one activation, and the
