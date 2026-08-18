@@ -1,6 +1,30 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
-> ## 🔥 2026-08-18 최신 — Ledger 단순화 프로그램 착수 (소유자 승인)
+> ## ✅ 2026-08-18 오전 — 온톨로지 셋업이 **파일 하나**로 줄었다 (마감 준수)
+>
+> **소유자 마감:** 「온톨로지 셋업 간소화 오전 내로」. 11시 전 완료.
+>
+> 라이브 `server/config/ontology/`는 이제 `ledger_config.json` + `README.md` 둘뿐이다.
+> manifest·catalog·dataflows 소멸, `setup_version: 3`, 여덟 섹션
+> (tables·vocabulary·entities·packs·source_preparers·mappers·profiles·sources).
+> **선언이 곧 활성화** — 실행 선택자(chains)는 판정으로 폐기됐다.
+>
+> **총괄이 라이브 config로 직접 확인한 네 가지:**
+> ① 변환기 산출물이 **독립 작성한 정답지와 완전히 동일**
+>   (`task/evidence/ontology_root_before_20260818/`에서 사양대로 손으로 합친 것과 `==`)
+> ② **섹션 디프 0** (`task/evidence/ledger_config_section_diff.py`)
+> ③ **원자 디프 0** — split 9 / split-불완전 7 / merge 11 / track_in 7 + 거절 4종,
+>   스냅샷 `f6223d6cbd24` (`task/evidence/ledger_atom_diff.py`)
+> ④ **explorer 정상** — 선언 45개, `table` 종류까지 렌더
+>
+> 은퇴 5파일은 **지우지 않고** `server/config/_ontology_pre_single_file_20260818/`로 이동.
+> ⚠️ 백업을 **설정 루트 안에** 두면 `unlisted_config_file`로 로드가 거절된다(루트 하위를
+> 재귀로 보는 규칙, 의도된 동작). 백업은 루트 밖에 둘 것.
+>
+> 관련 커밋: `141d95e`(전환·변환기) · `caba302`(라이브 변환 착지).
+> 남은 것: 모듈 개명(`cutover_v2`→`setup`) → legacy 사체 제거 → 수집 오류 8건 → 3라운드.
+
+> ## 🔥 2026-08-18 — Ledger 단순화 프로그램 착수 (소유자 승인)
 >
 > **소유자 목표:** 「ledger_config랑 mapper 함수만 바라보면 되게」. 셋업하는 사람이
 > `ledger_config.json` 하나와 매퍼 함수 하나만 보면 되고, 단순 소스는 매퍼조차 필요 없다.
