@@ -2273,7 +2273,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 🆕⑦ `observation_translator.py` | **362** | **신설.** 관측(검사 발견) 소스의 번역기 — `class ObservationMolecule` · `class ObservationTranslator`(`source_cfg["columns"]`의 논리 이름으로만 컬럼을 읽는다) · `raw_ref(source, rows)`. **심볼 표 미등재**(이 패스는 존재·최상위 심볼만 실측) |
 | 🆕⑦ `transfer_translator.py` | **395** | **신설.** 이송(transfer) 소스의 번역기 — `class TransferMolecule` · `class TransferTranslator` · `raw_ref(source, columns, group_key, extra=None)`. **심볼 표 미등재**(〃) |
 | 🆕⑧ `examples/grouped_translator_template.py` | **72** | 런타임 미등록 복사 예제. `CUSTOMIZE` 네 블록만 교체하며 복사만 해서는 0행을 쓴다 |
-| `backfill.py` | 🆕⑦ **1,002** | 커서 루프 + CLI. **분자를 반으로 자르지 않는다** |
+| `backfill.py` | **895**(2026-08-19 실측 — 구 표기 1,002) | 커서 루프 + CLI. **분자를 반으로 자르지 않는다** |
 | `observability.py` | 🆕⑦ **424** | 하트비트 note + **2계층 lag 보고** |
 
 #### `envelope.py`
@@ -2398,16 +2398,18 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 심볼 | 무엇인가 |
 |---|---|
-| CLI | `conda run -n assy_manager python -m ledger.backfill --source lot_event` · `--reset-cursor` · `--from` · `--fetch-rows` · `--max-batches` · `--config` |
+| CLI | `conda run -n assy_manager python -m ledger.backfill --source dt_job` · `--fetch-rows` · `--max-batches` · **`--ontology-root`**(구 표기 `--config`는 파서에 없다). 🔴 **`--reset-cursor`와 `--from`은 파서에 있지만 실행되지 않는다** — `main()`이 config·DB·소스 접근 **앞에서** `destructive_approval_required`로 거절한다 |
 | `DEFAULT_FETCH_ROWS = 2000` · `class BackfillResult(dict)` · `_bootstrap_path()` | |
 | `fetch_page(connection, source, columns, after, limit)` / `fetch_group(connection, source, columns, event_time)` | 논리 이름으로 별칭한 dict를 낸다 — **번역기는 물리 컬럼명을 못 본다**. 두 번째 함수는 한 페이지보다 큰 `event_time` 그룹의 탈출구 |
-| `_cut_on_group_boundary(rows, page_limit)` | 🔴 **커서는 행 오프셋이 아니라 `event_time`이고, 배치는 언제나 `event_time` 그룹의 정수 개다.** 페이지가 찼으면 **마지막 그룹을 버린다**(잘렸을 수 있고 페이지 안에서는 알 방법이 없다). 반환은 `(complete_rows, trailing_event_time_or_None)` |
-| `run(engine, cfg, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS, reset_cursor=False, start_from=None, max_batches=None, probe_lag=True)` | 🔴 **쓰기 전에 읽기 트랜잭션을 끝낸다(`read.rollback()`)** — psycopg2가 첫 SELECT에서 암묵 트랜잭션을 열고 유지하므로 이 연결이 `ledger_events`에 ACCESS SHARE를 쥔 채 idle-in-transaction으로 앉고, 루프의 첫 쓰기가 `CREATE TABLE … PARTITION OF`(ACCESS EXCLUSIVE)라서 **프로세스가 자기 자신에 영원히 막힌다.** 이 레인의 첫 실행에서 실제로 발생 |
+| `_cut_on_group_boundary(rows, page_limit, key="event_time")` | 커서는 행 오프셋이 아니라 **키**이고, 배치는 언제나 **그 키 그룹의 정수 개**다. 페이지가 찼으면 **마지막 그룹을 버린다**(잘렸을 수 있고 페이지 안에서는 알 방법이 없다). 반환은 `(complete_rows, trailing_key_value_or_None)`. 기본값 `"event_time"`은 첫 문법의 잔재이고 **호출자는 항상 명시한다** |
+| 🆕 `walk_group_pages(fetch_page, fetch_group, key, after, page_limit)` | 🔴 **페이지 규칙이 사는 한 자리**(2026-08-14 신설 — 두 곳에 있었고 둘 다 같은 방식으로 틀렸다). 규칙 셋: ① 찬 페이지는 마지막 그룹을 버린다 ② 페이지가 통째로 한 그룹이면 그 그룹을 따로 통째로 읽는다 ③ **커서는 «온전히 처리된» 마지막 그룹으로만 전진한다**(버린 그룹의 키로 전진하면 그 그룹을 통째로 건너뛴다 — 실측 당시 17그룹 1,862행이 조용히 사라졌다) |
+| 🆕 `_page_key(plan)` | **`plan.driver.cursor_columns[0]`.** 🔴 **커서를 «쓰는» 키로 자른다** — 2026-08-19까지 커서는 `cursor_columns`로 쓰면서 페이지는 `occurred_at.column`으로 잘랐고, 그 인자 하나가 증상 셋을 만들었다(그룹이 페이지에 걸쳐 쪼개짐 26개 중 24개 · `after`를 커서에 없는 키로 읽어 매 실행이 1행부터 · 유일한 소스에서 두 키가 같은 컬럼이라 조용함). `lot_event`엔 `event_time`이라 **동작 무변화**. ⚠️ **「페이지 키가 그룹 안에서 상수」는 컴파일러가 검사할 수 없다** — `lot_event`에서 참인 이유가 매퍼(`_event_key`)가 그 컬럼을 그룹 키에 품기 때문이고 선언에는 안 보인다 |
+| `run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS, reset_cursor=False, start_from=None, max_batches=None, probe_lag=True, ontology_root=None)` 🔴 **`cfg`는 없다**(2026-08-18 문법 드라이버 넷과 함께 삭제) — 두 번째 «위치»가 이제 `source`라, 옛 모양으로 부르면 `invalid_source_argument`로 이름 대고 거절한다 | 🔴 **쓰기 전에 읽기 트랜잭션을 끝낸다(`read.rollback()`)** — psycopg2가 첫 SELECT에서 암묵 트랜잭션을 열고 유지하므로 이 연결이 `ledger_events`에 ACCESS SHARE를 쥔 채 idle-in-transaction으로 앉고, 루프의 첫 쓰기가 `CREATE TABLE … PARTITION OF`(ACCESS EXCLUSIVE)라서 **프로세스가 자기 자신에 영원히 막힌다.** 이 레인의 첫 실행에서 실제로 발생 |
 | `_forget_registers(translator, atoms)` | 🔴 거절된 분자는 **등록 메모를 남기면 안 된다** — 아무것도 안 쓰였으므로 같은 lot을 말하는 다음 분자가 등록할 수 있어야 한다 |
-| `_flush(store, source, translator_ver, atoms, cursor_value, molecules, refused, incomplete, result)` | `store.write_batch` 한 번 = 배치 하나 |
+| 🆕 쪼갬 가드(`_run_v2_lineage`의 `completed_groups`) | 이번 **런에서 통째로 처리한 그룹 키**를 들고 있다가 뒤 페이지에 다시 나오면 `source_event_split_across_batches`로 거절한다. 원인이 아니라 **증상**을 재므로 페이지 키·ORDER BY·새 문법 무엇이 깨지든 잡힌다. **쓰기 전에** 루프가 이미 들고 있는 base 프레임에서 읽는다(분자 ref를 다시 얻으려면 준비를 한 번 더 돌아야 하고 그것은 배치당 preview의 **61%**다). ⚠️ 그룹이 **돌아올 때** 터지므로 첫 조각은 이미 커밋된 뒤다 — 막지 못하고 한 분자로 **묶어 두고 시끄럽게** 만든다. 그룹 키가 파생이라 base 행에서 못 읽는 소스에서는 **「가드 꺼짐」을 런이 말한다** |
 | `beat(result)` | `utils.heartbeat.beat("ledger", note=observability.note(...), force=True)`. `force`인 이유는 스로틀이 빠른 루프를 막으려는 것이지 **한 런이 내는 유일한 비트를 버리라는 것이 아니기** 때문 |
 | 멱등성 그물 **둘** | ① **커서** — 두 번째 런은 0행을 읽는다 ② **`uq_ledger_atom`** — 커서를 리셋하면 행은 읽히고 원자도 만들어지지만 DB가 하나도 받지 않는다. 🔴 **한쪽만 고치고 성공을 보고한 전례**가 있어 `test_ledger_l1_pg.py`가 둘을 **따로** 채점한다 |
-| ⚠️ 커서가 `event_time`인 대가 | **세계 시각이라 늦게 도착한 오래된 행은 커서 뒤에 떨어지고 이 백필이 못 본다.** 일회성 백필에는 허용, **뒤따르는 라이브 구독에는 허용 안 됨**(그쪽은 outbox 구동이어야 한다). `--from`이 임의 구간을 다시 돌린다 |
+| ⚠️ 커서가 **세계 시각**일 때의 대가 | 늦게 도착한 오래된 행은 커서 뒤에 떨어지고 이 백필이 못 본다(`lot_event`가 그 경우다). 일회성 백필에는 허용, **뒤따르는 라이브 구독에는 허용 안 됨**(그쪽은 outbox 구동이어야 한다). 🔴 **`--from`은 이 대가를 갚아 주지 않는다** — 거절된다. `basis` 소스(`dt_job`)의 커서는 그룹 키라 이 대가가 없고, 대신 **커서가 뒤의 것을 배제한다**(2026-08-19: 커서 뒤 5개 job이 전진 실행으로는 복구 불가였다) |
 
 #### `observability.py`
 
@@ -2668,7 +2670,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 |---|---|---|
 | `server/ledger/setup_registry.py` | **781** | 순수 v2 **레지스트리 컴파일러 + 불변 setup 스냅샷** |
 | `server/ledger/roleframe.py` | **931** | v2 Stage 4 **EventFrame → RoleFrame → LedgerFrame 컴파일러** |
-| `server/ledger/source_preparation.py` | **899** | v2 Stage 5 **pandas 소스 준비 경계** |
+| `server/ledger/source_preparation.py` | **968**(2026-08-19 실측 — 구 표기 899) | v2 Stage 5 **pandas 소스 준비 경계**. 🆕 **`_event_frames`가 그룹 사건의 시각을 «선언별로» 정한다**(2026-08-19 판정) — `occurred_at.basis`가 있으면 그룹의 `min`으로 접고(적재 시각은 한 사건 안에서 여럿일 수 있다), `column`이면 종전대로 «정확히 하나»를 요구하며 거절한다(세계 시각이 둘이면 그룹이 틀린 것이라 어떤 집계도 못 고친다) |
 | `server/ledger/runtime_v2.py` | **365** | v2 Stage 6 — 기존 gate/store 트랜잭션 **위의** 실행 어댑터 |
 | `server/ledger/setup.py` | **251** (2026-08-18 실측) | **셋업 경계 — config root 하나를 읽어 스냅샷 하나로 컴파일한다.** 🔴 **구 `cutover_v2.py`(삭제 시점 185줄)의 개명이다**(`b4c5870` 개명 · `382b78c` 구 경로 삭제) — 진입 함수도 `load_cutover_setup` → **`load_setup(root)`**. `DEFAULT_ONTOLOGY_ROOT` 소유. **선언이 곧 활성화**라 `mode`/`parity_status` selector는 없다. 그 밖의 최상위 심볼: `LedgerSetupError` · `LedgerSetup` · `preview_selected_cursor_batch` · `execute_selected_cursor_batch` · `dry_run_report` · `_resolve_cli_root` · `main(argv=None)`. 🆕 **[`4ff500e`] CLI가 `--root <디렉터리>`를 받는다** — 초안 config root를 운영 파일을 덮어쓰지 않고 검증한다. 생략하면 종전대로 운영 root. 인자 거절 셋(없는 경로 · config 없는 디렉터리 · 디렉터리 대신 파일)은 stderr 한 줄 + 종료코드 2이고, **나쁜 config는 여전히 raise한다**(그것이 검증의 답이므로) |
 | `server/ledger/shadow_parity.py` | **241** | 레거시 ↔ v2 **결정적 의미 그림자 대조** |
