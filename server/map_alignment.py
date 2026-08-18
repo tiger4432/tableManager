@@ -2242,7 +2242,17 @@ _DIAG_LOG_FILENAME = "align.log"
 #: would open contains dozens of synthetic blocks. Detection reuses the existing
 #: primitive (`db_safety.under_pytest`) rather than adding a second spelling —
 #: and the handler is still exercised, just against a different name.
-_DIAG_LOG_FILENAME_TEST = "align_test.log"
+#:
+#: 🔴 [2026-08-19] AND IT CARRIES THE PID, IN THE OS TEMP DIRECTORY, NOT IN `server/`.
+#: A rotating handler opens its file for append and renames it on rollover, so two
+#: pytest processes sharing one name collide on Windows with
+#: `PermissionError: [WinError 32] the file is being used by another process` -
+#: which surfaces as an unrelated test failing in whichever run lost the race, and
+#: has already corrupted one measurement in this project. The name is per PROCESS
+#: because that is the unit that owns the file handle; it lands in `tempfile.
+#: gettempdir()` because a diagnostic drill's output is not a working-tree artefact
+#: and `server/` is a shared, watched directory.
+_DIAG_LOG_FILENAME_TEST = "assy_align_test_%d.log"
 #: Bounded on purpose, and the file says at the cut what it dropped
 #: (`_RollNoticeHandler`). Two generations survive: the live file and one backup,
 #: i.e. at most ~16 MB. Anything older than the backup is gone for good.
@@ -2589,15 +2599,24 @@ def _diag_logger():
     con.setFormatter(fmt)
     lg.addHandler(con)
     name = _DIAG_LOG_FILENAME
+    under_test = False
     try:
         import db_safety
-        if db_safety.under_pytest():
-            name = _DIAG_LOG_FILENAME_TEST
+        under_test = bool(db_safety.under_pytest())
     except Exception:
         pass
+    if under_test:
+        name = _DIAG_LOG_FILENAME_TEST % os.getpid()
     try:
         import paths
-        _DIAG_FILE_PATH = paths.log_path(name)
+        # A test process writes beside the OS's other scratch files, keyed by PID, so
+        # concurrent suites never share a file handle (§`_DIAG_LOG_FILENAME_TEST`). The
+        # production path is untouched: same `paths.log_path`, same data root, same name.
+        if under_test:
+            import tempfile
+            _DIAG_FILE_PATH = os.path.join(tempfile.gettempdir(), name)
+        else:
+            _DIAG_FILE_PATH = paths.log_path(name)
         fh = _RollNoticeHandler(_DIAG_FILE_PATH, maxBytes=_DIAG_MAX_BYTES,
                                 backupCount=_DIAG_BACKUPS, encoding="utf-8")
         fh.setFormatter(fmt)
