@@ -35,6 +35,14 @@
 >   identity·Binding·SourcePlan과 정/역참조 index, `config_explorer_service.py`가 active/draft
 >   한-context 응답 cache·normalized node/edge diff, `config_drafts.py`가 config root 소유 선언의
 >   초안·preview·immutable review/revise·consumer-converged CAS activation을 소유한다.
+>   `server/ledger/config_authoring.py`(2026-08-19)가 **「한 선언이 무엇을 강제하는가」**를
+>   소유한다 — 필드마다 파생/빠짐/미답/답함과 «근거»(값을 채운 선언 경로 + 화면 문장), 닫힌
+>   목록의 단일 공급(`closed_lists()`, 검증기 상수에서 직접), 컬럼 후보의 **세 우주**
+>   (RELATION / PREPARED), 그리고 🔴 **제거 가능 여부의 실측**(각 강제 필드를 지워 보고
+>   재검증 — 라이브 루트에서 28개 전부 «문법이 여전히 요구»로 나왔다. 이 수는 세지 말고
+>   `force_summary`에서 읽을 것). 파생값을 근거 없이 채우는 것은 생성자가 거절한다
+>   (`AuthoringGroundError`). `GET /admin/ontology-explorer/authoring/{plan,schema}`가
+>   내보내고 화면은 목록 사본을 갖지 않는다.
 >   `server/ledger/column_stats.py`(2026-08-19)가 **컬럼 후보의 실측치**를 소유한다 —
 >   컬럼당 값 개수(한 번의 스캔), 조합의 실측 유일성, 카탈로그 선언 키의 실측 검증.
 >   후보 목록은 `information_schema`가 답하고 `table_config.json`은 «어느 relation을
