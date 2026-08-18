@@ -57,24 +57,27 @@ client is trusted to get right (ruling R-2026-08-13-C).
 
 🔴 THE ROW AXIS IS DECLARED, AND IT SAYS WHAT IT IS
 -----------------------------------------------------
-The brief asked for 「행 = 코어 랏」. It is not available, and the RULING below stands — but
-the sentence that used to be here overstated its evidence in two ways, corrected 2026-08-18:
+The brief asked for 「행 = 코어 랏」. The RULING below stands, but the evidence sentence has
+now been wrong twice and the second time was worse than the first.
 
-  * It read as a present-tense invariant ("are NULL in all 357,796 rows"). That was one
-    measurement of one dataset on one box. Row counts are not properties of the code, and
-    a docstring that states them as if they were goes stale silently. Re-measure before
-    citing: `SELECT count(*) FILTER (WHERE core_lot IS NOT NULL) FROM bonding_log`.
-  * 🔴 It named columns this build does not have. On the dev box today `bonding_log` has
-    `c_wx`/`c_wy`, NOT `cx`/`cy`, and `dt_map` has no `core_lot` column at all (it carries
-    `dt_lot`/`dt_slot`/`dt_x`/`dt_y`/`value`). So the axis is unreachable partly because
-    those columns were never THERE — which is a different fact from "they are all NULL",
-    and this project has already paid for confusing the two (`absent-zero-is-not-inert-zero`
-    above). ⚠️ Column sets are per-environment via `table_config`, so treat this as "check
-    yours", not as a second invariant to replace the first.
+  * Originally: "`core_lot`/`core_slot`/`cx`/`cy` are NULL in all 357,796 rows". A one-off
+    measurement written as a present-tense invariant. Row counts are not properties of the
+    code, so a docstring asserting one goes stale in silence.
+  * 🔴 Then, on 2026-08-18, that was "corrected" to say those columns do not exist here at
+    all — **and that correction was measured against the wrong database.** `server/config/
+    database.json` was pointing at an empty `postgres` instance rather than `assy_manager`.
+    An empty database answers every question with "nothing there", which reads exactly like
+    "the thing you are asking about does not exist". It does exist.
 
-The dev box cannot settle the data question either way right now: `bonding_log` has 0 rows
-on it. That is stated rather than skipped, because "I could not check" and "I checked and
-it was empty" are different, and only one of them licenses a conclusion.
+Measured on `assy_manager` (2026-08-18, after the connection was fixed): `bonding_log` has
+**376,043 rows**; `core_lot`, `core_slot`, `cx` and `cy` all exist and each carries **88,888
+non-NULL values** (~24%). `dt_map` does have `core_lot`. So the axis is not absent — it is
+SPARSE, which is a third thing again, and neither of the two earlier sentences.
+
+Re-measure before citing any of this; the numbers belong to a dataset, not to this file:
+`SELECT count(*) FILTER (WHERE core_lot IS NOT NULL), count(*) FROM bonding_log`.
+And check what `database.json` resolves to first — a number measured against the wrong
+database is not a weaker fact, it is a different fact wearing this one's clothes.
 
 The lead PM's ruling (2026-08-14) is therefore `bond_lot`, WITH the screen saying so —
 hence `row_axis.label`
@@ -950,11 +953,11 @@ def _envelope(state, columns, axis, source, config, axis_kind, raw_rows,
 #: `transferred` atom carries a chip coordinate (`position` is None at every emit site) and
 #: `ledger_trace.LINEAGE_PREDICATES` does not contain `transferred` at all.
 #:
-#: 🔴 THE CORE AXIS IS DECLARED AND UNREACHABLE, AND SAYS SO. There is no core coordinate
-#: to project onto — see the module docstring for what that rests on and, since 2026-08-18,
-#: for what it does NOT rest on: the old count here ("NULL in all 357,796 / 5,619 rows")
-#: was a dated one-dataset measurement stated as an invariant, and it named `cx`/`cy` and
-#: `dt_map.core_lot`, none of which are columns in this build. Reaching one would need a
+#: 🔴 THE CORE AXIS IS DECLARED AND UNREACHABLE FROM HERE, AND SAYS SO. See the module
+#: docstring for the measurement history — including a 2026-08-18 "correction" that claimed
+#: these columns do not exist, which was taken against an empty database and is wrong. On
+#: `assy_manager` they exist and are ~24% populated. The axis is unreachable not because the
+#: coordinate is absent but because reaching it needs a
 #: NEW side join into `dt_log`, which ruling R-2026-08-14-D forbids. It is therefore listed
 #: — not hidden — at `state: "unreachable"`, because an axis missing from the screen and an
 #: axis with no data are different answers and the operator would read the second from the
