@@ -765,11 +765,36 @@ def _event_frames(
             )
             for position, value in zip(positions, occurred_cells)
         ]
-        instants = {value.timestamp() for value in occurred_values}
-        if len(instants) != 1:
-            raise SourcePreparationError(
-                "source_preparation_incomplete", "event_frame.occurred_at",
-                "one source event must have exactly one occurred_at instant",
+        # WHICH of the group's reads IS the event's instant.  The two declarations answer
+        # differently because they are not the same kind of time.
+        #
+        # A `column` source names a WORLD time.  Two different world instants inside one
+        # event mean the GROUPING is wrong, and no aggregate can repair that -- so this
+        # refusal stays exactly as it was, and stays the only behaviour on this path.
+        #
+        # A `basis` source names when WE FIRST SAW the rows, and nothing promises that one
+        # event's rows arrive in one ingestion batch.  `dt_job` was the first grouped
+        # `basis` user and 26 of its 396 jobs are written by two batches; demanding one
+        # instant there split single jobs into two atoms whose counts were INGESTION BATCH
+        # SIZES ("59 dies" and "13 dies" for a 72-row job) -- a boundary with no business
+        # meaning.  The group's time is `min` (owner ruling 2026-08-19): the earliest
+        # sighting is the only aggregate that does not MOVE when a later piece of the same
+        # event arrives, and the event id is minted from this instant, so a moving one
+        # would re-mint the same event under a new id and duplicate the atom on the next
+        # backfill.  `min` returns the FIRST position holding that instant, so a re-run
+        # over the same group publishes the same cell.
+        if driver.occurred_at.basis is None:
+            instants = {value.timestamp() for value in occurred_values}
+            if len(instants) != 1:
+                raise SourcePreparationError(
+                    "source_preparation_incomplete", "event_frame.occurred_at",
+                    "one source event must have exactly one occurred_at instant",
+                )
+            earliest = 0
+        else:
+            earliest = min(
+                range(len(occurred_values)),
+                key=lambda index: occurred_values[index].timestamp(),
             )
         row_refs = []
         for position in positions:
@@ -789,7 +814,7 @@ def _event_frames(
         # declaration to a column is this boundary's job, and now it is only this
         # boundary's job.
         #
-        # The published cell is the value AS READ, not `occurred_values[0]`.  The two
+        # The published cell is the value AS READ, not `occurred_values[earliest]`.  The two
         # differ in exactly one case: a naive cell, which `_aware_time` localizes with the
         # declared timezone for the id while the Role validator refuses it outright
         # ("time Role must be a timezone-aware datetime").  Publishing the localized
@@ -801,7 +826,7 @@ def _event_frames(
         # object dtype so the exact cell survives instead of being re-derived through a
         # pandas datetime64 conversion.
         event[SOURCE_OCCURRED_AT_COLUMN] = pd.Series(
-            [occurred_cells[0]] * len(event), index=event.index, dtype=object)
+            [occurred_cells[earliest]] * len(event), index=event.index, dtype=object)
         molecule_ref = _canonical(
             {"source": plan.source_id, "identity": identity},
             path="event_frame.molecule_ref",
@@ -839,7 +864,7 @@ def _event_frames(
             path="event_frame.source_raw_ref",
         )
         event_id, _state = source_event_identity(
-            plan.source_id, occurred_values[0], molecule_ref=molecule_ref,
+            plan.source_id, occurred_values[earliest], molecule_ref=molecule_ref,
             source_raw_ref=source_raw_ref,
         )
         provenance = tuple({
