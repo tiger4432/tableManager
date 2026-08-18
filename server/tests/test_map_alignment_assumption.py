@@ -47,6 +47,19 @@ COLS, ROWS = 45, 39
 
 THRESHOLDS = {"min_margin_dies": 1, "min_discriminating_dies": 1}
 
+
+def _geometric_frames():
+    """The candidates a run WITHOUT index values actually scores: the four rotations.
+
+    Every fixture in this file plants a frame by MOVING COORDINATES (`_place`) and none of
+    them carries an index column, so `rot0_tr` here would be a `rot0_tl` map wearing the
+    other label - the start corner is a claim about the order dies were numbered in, and
+    there is no number here to make it with. The scorer narrows to these four for exactly
+    that reason. The long version lives beside the same helper in `test_map_alignment.py`.
+    """
+    return tuple(ma.candidate_text(rot, ma.START_TOP_LEFT) for rot in ma.FRAME_ROTATIONS)
+
+
 RULE = {"name": "asum_test_rule", "source_table": SRC,
         "derived_table": "asum_test_unit", "decision_key": ["eqp", "product"],
         "target_fields": ["core_frame", "dt_frame"]}
@@ -245,14 +258,14 @@ def test_borrowing_the_orientation_axes_would_move_every_cell():
 
     own_start = _meta(start_x=4, start_y=7)
     cells = _cells_of(own_start)
-    kept = _place(source_meta_for_frame(own_start, "rot270_tr"), floor, cells)
-    lent = _place(source_meta_for_frame(_meta(start_x=1, start_y=1), "rot270_tr"),
+    kept = _place(source_meta_for_frame(own_start, "rot270_tl"), floor, cells)
+    lent = _place(source_meta_for_frame(_meta(start_x=1, start_y=1), "rot270_tl"),
                   floor, cells)
     assert _moved(kept, lent) == len(cells), "start is not a wafer property"
 
     cells = _cells_of(_meta())
-    kept = _place(source_meta_for_frame(_meta(y_invert=True), "rot270_tr"), floor, cells)
-    lent = _place(source_meta_for_frame(_meta(y_invert=False), "rot270_tr"), floor, cells)
+    kept = _place(source_meta_for_frame(_meta(y_invert=True), "rot270_tl"), floor, cells)
+    lent = _place(source_meta_for_frame(_meta(y_invert=False), "rot270_tl"), floor, cells)
     assert _moved(kept, lent) > len(cells) * 0.9, "y-invert is not a wafer property"
 
 
@@ -261,7 +274,16 @@ def test_the_shared_wafer_spec_is_not_a_no_op_which_is_why_it_is_labelled():
     identity on the die index. MEASURED: that holds only for the two candidates whose
     composition is the identity. For the other six the shared value moves hundreds of cells
     even after the per-candidate shift is solved - so the assumption has real content, and
-    the label on it is not decoration."""
+    the label on it is not decoration.
+
+    🔴 THE TWO ARE `rot0_tl` AND `rot0_tr`, WHICH IS THE SAME COMPOSITION SPELLED TWICE.
+       `_place` builds a transform, and a transform never reads the walk start corner, so
+       the eight candidates cover four distinct compositions here and the identity one is
+       reached under both of its spellings. The census is deliberately still run over all
+       eight - it is the list the scorer would rank - so this is a fact about the candidate
+       list and not a shortened loop. (Before 2026-08-08 the second member was a genuinely
+       different composition, a mirror; the 2026-08-08 rename left `rot90_tr` here, which
+       is neither the identity nor the old member's equivalent.)"""
     import numpy as np
     floor = _meta()
     cells = _cells_of(floor)
@@ -275,7 +297,7 @@ def test_the_shared_wafer_spec_is_not_a_no_op_which_is_why_it_is_labelled():
         moved_by_candidate[cand] = len(cells) - int(hit)
 
     unaffected = [f for f, n in moved_by_candidate.items() if n == 0]
-    assert sorted(unaffected) == ["rot0_tl", "rot90_tr"], moved_by_candidate
+    assert sorted(unaffected) == ["rot0_tl", "rot0_tr"], moved_by_candidate
     assert all(moved_by_candidate[f] > 0 for f in ma.CANDIDATE_FRAMES
                if f not in unaffected), moved_by_candidate
 
@@ -348,7 +370,7 @@ def test_a_map_cropped_differently_from_the_floor_is_excluded_alone_not_the_whol
     ref = _asymmetric_subset()
     floor = _meta()
     good = _place(source_meta_for_frame(floor, "rot0_tl"),
-                  source_meta_for_frame(floor, "rot270_tr"), ref)
+                  source_meta_for_frame(floor, "rot270_tl"), ref)
     cands, excluded, ruling, stats = ma.score_candidates(
         [{"map_id": "FITS", "meta": _meta(), "cells": good},
          {"map_id": "CROPPED", "meta": _meta(cols=25, rows=19), "cells": ref}],
@@ -356,14 +378,16 @@ def test_a_map_cropped_differently_from_the_floor_is_excluded_alone_not_the_whol
 
     assert [r["reason_code"] for r in excluded.as_list()] == [ma.EXCLUDE_GRID_DIMS_DIFFER]
     assert stats["source_maps_usable"] == 1
-    assert ruling["winner"] == "rot270_tr", "the fitting map still gets its answer"
+    assert ruling["winner"] == "rot270_tl", "the fitting map still gets its answer"
 
 
 # ---------------------------------------------------------------------------
 # 3. the unlock actually works - the load-bearing assertion
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("planted", ma.CANDIDATE_FRAMES)
+# The four GEOMETRIC frames - `_place` moves coordinates and nothing else, so the walk-start
+# half of the candidate spelling cannot be planted here. See `_geometric_frames`.
+@pytest.mark.parametrize("planted", _geometric_frames())
 def test_a_planted_frame_is_recovered_under_the_assumption(planted):
     """Re-express the floor in a KNOWN frame, strip the source's geometry to exactly what the
     registrar leaves behind, and require the scorer to name that frame back. This runs the
@@ -401,7 +425,7 @@ def test_the_verdict_itself_carries_the_assumption_not_only_a_field_beside_it():
     ref = _asymmetric_subset()
     floor = _meta()
     src = _place(source_meta_for_frame(floor, "rot0_tl"),
-                 source_meta_for_frame(floor, "rot270_tr"), ref)
+                 source_meta_for_frame(floor, "rot270_tl"), ref)
 
     on_declared = ma.score_candidates(
         [{"map_id": "M", "meta": _meta(), "cells": src}], ref, floor,
@@ -497,7 +521,7 @@ def env(db_session):
     return db_session
 
 
-def _seed(db, src_meta, planted="rot270_tr"):
+def _seed(db, src_meta, planted="rot270_tl"):
     s = models.DYNAMIC_TABLES[SRC]
     r = models.DYNAMIC_TABLES[REFT]
     mm = models.DYNAMIC_TABLES[map_overlay.META_TABLE]
@@ -556,7 +580,7 @@ def test_taking_the_offer_scores_the_unit_and_the_payload_labels_every_layer(env
     v = _view(env, assume_reference_geometry=True)
 
     assert v["state"] == ma.STATE_SCORED
-    assert v["ruling"]["winner"] == "rot270_tr"
+    assert v["ruling"]["winner"] == "rot270_tl"
     assert v["ruling"]["geometry_assumed"] is True
     assert v["assumption"]["state"] == ma.ASSUMPTION_APPLIED
     assert v["assumption"]["requested"] is True
@@ -738,7 +762,7 @@ def _partial_grid_meta(**kw):
     return _meta(cols=30, rows=25, **kw)
 
 
-def _planted_cells(planted="rot270_tr"):
+def _planted_cells(planted="rot270_tl"):
     """Cells written in the FLOOR's frame - i.e. a map whose coordinates span the real grid
     while its metadata under-declares it. That is the shape the ruling is about."""
     floor = _meta()
@@ -967,7 +991,7 @@ def test_the_offer_and_the_borrow_reach_the_payload_end_to_end(env):
 
     v2 = _view(env, assume_reference_geometry=True)
     assert v2["state"] == ma.STATE_SCORED
-    assert v2["ruling"]["winner"] == "rot270_tr"
+    assert v2["ruling"]["winner"] == "rot270_tl"
     assert v2["assumption"]["state"] == ma.ASSUMPTION_APPLIED
     m = v2["sources"]["maps"][0]
     # two facts, and the payload must not fold them: its phys IS a measurement, and this run

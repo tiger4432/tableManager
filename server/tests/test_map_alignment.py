@@ -31,6 +31,36 @@ PHYS = {"phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
 THRESHOLDS = {"min_margin_dies": 1, "min_discriminating_dies": 1}
 
 
+def _geometric_frames():
+    """The candidates a run WITHOUT index values actually scores: the four rotations, all
+    starting top-left.
+
+    🔴 `_tl` AND `_tr` ARE THE SAME MAP. The start corner is a claim about the order the
+       equipment numbered its dies in, not about where a die sits, so with no index value
+       to rank there is nothing that could tell the two apart. The scorer narrows to these
+       four for exactly that reason (`map_alignment.score_candidates`, the `index_mode`
+       branch), and a fixture that plants `rot0_tr` by moving coordinates alone has planted
+       a `rot0_tl` map - the scorer answering `rot0_tl` there is RIGHT.
+
+    Assembled from the module's own axes rather than written out as four literals, so a
+    change to the rotation axis cannot leave this list behind. `test_the_geometric_frames_
+    helper_matches_what_the_scorer_runs` proves it still equals what a real occupancy run
+    scores, so this is not a second spelling of the narrowing rule.
+    """
+    return tuple(ma.candidate_text(rot, ma.START_TOP_LEFT) for rot in ma.FRAME_ROTATIONS)
+
+
+def _meta_frames():
+    """The eight META frames: four rotations x two physical SIDES.
+
+    A different axis from the candidates and still live - `frame_text` spells this one and
+    `declared_frame_of` reports in it, because a stored map really can be a back-side map.
+    The candidates dropped the mirror; the metadata never did.
+    """
+    return tuple(ma.frame_text(rot, side)
+                 for rot in ma.FRAME_ROTATIONS for side in ma.FRAME_SIDES)
+
+
 def _meta(rotation=0, side="front", cols=13, rows=13, start_x=1, start_y=1):
     return {"grid_cols": cols, "grid_rows": rows, "rotation": rotation, "side": side,
             "grid_y_invert": False, "grid_start_x": start_x, "grid_start_y": start_y, **PHYS}
@@ -67,6 +97,31 @@ def test_candidate_text_is_the_inverse_of_parse_candidate():
     for f in ma.CANDIDATE_FRAMES:
         rot, start = ma.parse_candidate(f)
         assert ma.candidate_text(rot, start) == f
+
+
+def test_the_geometric_frames_helper_matches_what_the_scorer_runs():
+    """`_geometric_frames()` is used all over this file as "the candidates an index-less run
+    scores". That sentence is a claim about the SCORER, so it is asserted against the scorer
+    rather than trusted - otherwise the helper is a second, drifting spelling of the
+    narrowing rule and every fixture standing on it inherits the drift.
+
+    Both halves are pinned: an index-less run scores exactly these four, and a run carrying
+    index values scores all eight. A narrowing that stopped narrowing, or one that started
+    narrowing when it should not, fails here first and loudly instead of showing up as a
+    puzzling winner three hundred lines away.
+    """
+    ref_meta = _meta()
+    ref = _ref_cells()
+    no_index, _e, _r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref}], ref, ref_meta,
+        thresholds=THRESHOLDS)
+    assert [c["frame"] for c in no_index] == list(_geometric_frames())
+
+    ks = _indices_for_frame(ref_meta, ref, "rot0_tl")
+    with_index, _e, _r, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref, "indices": ks}], ref, ref_meta,
+        thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+    assert [c["frame"] for c in with_index] == list(ma.CANDIDATE_FRAMES)
 
 
 def test_the_legacy_spellings_still_parse():
@@ -132,8 +187,13 @@ def test_the_fixture_has_no_symmetry():
         % (8 - len(set(images)) + 1))
 
 
-@pytest.mark.parametrize("planted", ["rot90_tl", "rot180_tl", "rot270_tl",
-                                     "rot0_tr"])
+# 🔴 THE FOUR GEOMETRIC FRAMES, NOT FOUR OF THE EIGHT CANDIDATES. This fixture plants a
+#    frame by MOVING COORDINATES and carries no index column, so `rot0_tr` here would be a
+#    `rot0_tl` map wearing the other label - and the scorer, which narrows to these four
+#    when nothing carries an index, would be right to answer `rot0_tl`. The start corner
+#    gets its own load-bearing test where it can actually be measured
+#    (`test_the_index_axis_separates_the_frames_on_a_partial_map`).
+@pytest.mark.parametrize("planted", list(_geometric_frames()))
 def test_the_planted_frame_wins(planted):
     """Express the reference in a known frame, then require the scorer to name that frame.
 
@@ -166,11 +226,20 @@ def test_the_planted_frame_wins(planted):
 
 def test_all_eight_are_scored_in_one_call():
     """The hard requirement: candidate switching must be a client repaint, so every candidate is
-    scored in the SAME pass. A payload carrying fewer than 8 forces a fetch per candidate."""
+    scored in the SAME pass. A payload carrying fewer than 8 forces a fetch per candidate.
+
+    🔴 THE SOURCE CARRIES INDICES ON PURPOSE. All eight candidates exist only when something
+       can tell `_tl` from `_tr`, and only an index value can - so an index-less payload here
+       would be asserting 8 against a run whose real space is 4, and the only way to make
+       that green would be to break the narrowing. The index-less half of the same contract
+       is asserted in `test_the_geometric_frames_helper_matches_what_the_scorer_runs`.
+    """
     ref_meta = _meta()
     ref = _ref_cells()
+    ks = _indices_for_frame(ref_meta, ref, "rot0_tl")
     cands, _e, _r, _s = ma.score_candidates(
-        [{"map_id": "M1", "meta": ref_meta, "cells": ref}], ref, ref_meta)
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref, "indices": ks}], ref, ref_meta,
+        index_thresholds=THRESHOLDS)
     assert [c["frame"] for c in cands] == list(ma.CANDIDATE_FRAMES)
     assert all(c["state"] == ma.STATE_SCORED for c in cands)
     assert all(c["shift"] is not None for c in cands)
@@ -234,7 +303,11 @@ def test_each_candidate_gets_its_own_full_meta_through_the_transform_stack(monke
     ref_meta = _meta()
     ref = _ref_cells()
     ma.score_candidates([{"map_id": "M1", "meta": ref_meta, "cells": ref}], ref, ref_meta)
-    assert set(seen) == {(r, s) for r in (0, 90, 180, 270) for s in ("front", "back")}, (
+    # 🔴 EVERY CANDIDATE NAMES `front`. The second axis is the walk start corner, which the
+    #    transform never sees - so the set of metas that reach the builder is the four
+    #    ROTATIONS, and a scorer that built one transform and post-composed the rest would
+    #    still collapse this to a single entry, which is the defect this guards.
+    assert set(seen) == {(r, ma.CANDIDATE_SIDE) for r in ma.FRAME_ROTATIONS}, (
         "every candidate must go through the transform builder with its OWN rotation/side")
 
 
@@ -574,7 +647,10 @@ def test_the_scorer_writes_nothing_and_needs_no_session():
 def test_empty_source_and_empty_reference_do_not_raise():
     cands, excluded, ruling, _s = ma.score_candidates([], [], _meta())
     assert ruling["winner"] is None
-    assert len(cands) == 8
+    # No source means no index value, so the run scores the four geometric frames - see
+    # `_geometric_frames`. The point of this test is that nothing raises and every score is
+    # an honest zero, not the size of the list.
+    assert [c["frame"] for c in cands] == list(_geometric_frames())
     assert all(c["agreement"] == 0 for c in cands)
 
 
@@ -586,10 +662,17 @@ def test_a_defaulted_frame_does_not_earn_the_current_badge():
     """THE point of this block. `rotation:0, side:"front"` is what the registrar and the
     ingestion scripts write without anyone looking, so a badge driven by the raw value would put
     `현재` on maps nobody ever measured - a plausible default impersonating a declaration (I4).
+
+    🔴 THE SPELLING HERE IS THE META VOCABULARY, NOT THE CANDIDATE ONE. `declared_frame_of`
+       reports what a map WROTE DOWN, and a map writes `rotation` + `side` - so it spells
+       through `frame_text` (`rot0_front` / `rot90_back`), which is a live and deliberately
+       separate axis from the candidates' `_tl`/`_tr` walk-start spelling. A back-side map is
+       a real physical fact this function has to be able to report; the candidate space
+       merely stopped searching for mirrors.
     """
     auto = _auto_meta()
     info = ma.declared_frame_of(auto)
-    assert info["frame"] == "rot0_tl", "still reports what the transform will use"
+    assert info["frame"] == "rot0_front", "still reports what the transform will use"
     assert info["source"] == map_overlay.GEOMETRY_AUTO_REGISTERED
 
     silent = _meta(rotation=0, side="front")          # unmarked, but 0/front
@@ -597,14 +680,14 @@ def test_a_defaulted_frame_does_not_earn_the_current_badge():
 
     real = _meta(rotation=90, side="back")
     info = ma.declared_frame_of(real)
-    assert info["frame"] == "rot270_tr"
+    assert info["frame"] == "rot90_back"
     assert info["source"] == map_overlay.GEOMETRY_DECLARED
     assert info["axes"] == {"rotation": map_overlay.GEOMETRY_DECLARED,
                             "side": map_overlay.GEOMETRY_DECLARED}
 
 
 def test_a_half_declared_frame_still_reports_the_declared_axis():
-    """Measured on the only live unit: 40 of 40 maps write `rot90_tl`, where rotation 90 IS a
+    """Measured on the only live unit: 40 of 40 maps write `rot90_front`, where rotation 90 IS a
     declaration (no default path emits it) and `side: "front"` is not. The combined answer is
     honestly 'not a declaration', but collapsing to that alone would throw away a real rotation
     declaration that on its own narrows 8 candidates to 2. The verdict uses the combined token;
@@ -622,7 +705,7 @@ def test_a_half_declared_frame_follows_its_weakest_axis():
     follows its weakest contributor (spec section 0.2 layer 9)."""
     half = _meta(rotation=270, side="front")
     info = ma.declared_frame_of(half)
-    assert info["frame"] == "rot270_tl"
+    assert info["frame"] == "rot270_front"
     assert info["source"] == map_overlay.ORIENTATION_INDETERMINATE
 
 
@@ -662,7 +745,13 @@ def _unique_values(cells):
 
 
 def _plant(ref_meta, ref, planted):
-    """Re-express `ref` in `planted`'s frame, carrying each die's value with it."""
+    """Re-express `ref` in `planted`'s frame, carrying each die's value with it.
+
+    ⚠️ THIS MOVES COORDINATES AND NOTHING ELSE, so it can only plant a GEOMETRY - the four
+    rotations. Handing it `rot0_tr` produces a `rot0_tl` map, because the start corner is a
+    statement about index ORDER and there is no index here to state it in. Fixtures that
+    need the start corner planted must number the walk too (`_indices_for_frame`).
+    """
     fwd = map_overlay.make_frame_transform(ref_meta, source_meta_for_frame(ref_meta, planted))
     return [fwd(x, y) for (x, y) in ref]
 
@@ -682,8 +771,9 @@ def test_the_value_fixture_is_occupancy_blind():
     assert len(occ) == 1, "occupancy separates this fixture, so it is the wrong fixture: %s" % occ
 
 
-@pytest.mark.parametrize("planted", ["rot90_tl", "rot180_tl", "rot270_tl",
-                                     "rot0_tr"])
+# The four GEOMETRIC frames - values move cells, and moving cells is all this fixture has.
+# See `_geometric_frames`: with no index column `rot0_tr` would be a `rot0_tl` map.
+@pytest.mark.parametrize("planted", list(_geometric_frames()))
 def test_values_settle_what_occupancy_cannot_see(planted):
     """The measured case, reproduced: all eight candidates occupy the SAME dies and only the
     values move. `core_defect_map LOT-A/05` is the real instance - occupancy reported an
@@ -949,12 +1039,19 @@ def _tie_on_two_different_sets():
     """
     ref_meta = _meta()
     block = _symmetric_ref()
-    perm = {f: _block_permutation(ref_meta, block, f) for f in ma.CANDIDATE_FRAMES}
+    # 🔴 THE GEOMETRIC FRAMES, because a permutation is geometry. `_block_permutation` builds
+    #    a transform, and a transform never sees the start corner - so over all eight
+    #    spellings `_unique_under` can never be true for any cell (every frame has a `_tr`
+    #    twin landing p in the same place) and the search for `a` raises StopIteration. The
+    #    run this fixture feeds carries no index either, so four is also the space the
+    #    scorer will rank.
+    frames = _geometric_frames()
+    perm = {f: _block_permutation(ref_meta, block, f) for f in frames}
 
     def _unique_under(frame, p):
         """`frame` is the ONLY candidate that lands p where it does - otherwise a second frame
         would collect the planted match too and the tie would not be between these two."""
-        return sum(1 for f in ma.CANDIDATE_FRAMES if perm[f][p] == perm[frame][p]) == 1
+        return sum(1 for f in frames if perm[f][p] == perm[frame][p]) == 1
 
     a = next(p for p in block if _unique_under(_W_HEAVY, p))
     b = next(p for p in block if p != a and _unique_under(_W_PLAIN, p)
@@ -1273,17 +1370,24 @@ def test_the_index_refusal_does_not_name_a_remedy_that_cannot_exist():
 
 
 def _half_symmetric_ref():
-    """Invariant under the transpose and NOTHING else, so exactly two of the eight frames land
-    on the same dies while the other six do not.
+    """Invariant under the HALF TURN and nothing else, so exactly two of the four scored
+    candidates land on the same dies while the other two do not.
 
     This is the only shape that produces a TIE in the strict sense: the evidence is real (it
-    separates six candidates) and it still cannot choose between the top two. Every other
-    "tie" this suite used to build was a symmetric footprint, where the eight scores are equal
-    because the reference carries no orientation at all - a different fact with a different
-    repair, and now a different reason code.
+    separates the other candidates) and it still cannot choose between the top two. Every
+    other "tie" this suite used to build was a symmetric footprint, where every score is
+    equal because the reference carries no orientation at all - a different fact with a
+    different repair, and now a different reason code.
+
+    🔴 IT USED TO BE TRANSPOSE-SYMMETRIC, AND A TRANSPOSE IS A MIRROR. That worked while the
+       candidate space was four rotations x two SIDES; the second axis is now the walk start
+       corner, so no candidate mirrors anything and a transpose-symmetric footprint has a
+       sole winner rather than a tie. The half turn IS in the rotation group, so the same
+       property is now built on it: a 5x5 square with one centrally-symmetric pair of dies
+       removed. Measured on this fixture: rot0 23, rot180 23, rot90 21, rot270 21,
+       discriminating 2.
     """
-    return sorted(({(x, y) for x in range(4, 9) for y in range(4, 9)}
-                   - {(4, 5), (5, 4)}) | {(9, 9)})
+    return sorted({(x, y) for x in range(4, 9) for y in range(4, 9)} - {(4, 5), (8, 7)})
 
 
 def test_a_structural_refusal_is_named_before_the_thresholds_are_blamed():
@@ -1320,7 +1424,7 @@ def test_a_tie_is_reported_only_when_the_evidence_separates_something():
     assert len(ruling["tied"]) == 2, ruling["tied"]
     assert ruling["discriminating"] > 0, (
         "a tie with nothing discriminating is not a tie - it is an unusable reference")
-    # and the fixture really does separate the other six, so the tie is between two REAL scores
+    # and the fixture really does separate the rest, so the tie is between two REAL scores
     assert len({c["agreement"] for c in cands}) > 1
 
 
@@ -2015,8 +2119,14 @@ def test_the_floors_own_frame_does_not_displace_the_placement(ref_frame, planted
     ref_meta = _meta(cols=41, rows=41, start_x=0, start_y=0)
     ref_meta.update(ref_frame)
     floor = _valid_die_floor(ref_meta)
-    cells, ks = _partial_job(ref_meta, floor, 200)
+    cells, _unused_floor_walk = _partial_job(ref_meta, floor, 200)
     recorded = _plant(ref_meta, cells, planted)
+    # 🔴 THE INDICES ARE NUMBERED IN THE PLANTED FRAME, not in the floor's. `_partial_job`
+    #    numbers a left-to-right walk of the FLOOR, which is a `_tl` claim - handing that to
+    #    a `_tr` fixture plants a map whose geometry says one thing and whose walk says
+    #    another, and the scorer answering `_tl` there is right. The start corner is only
+    #    plantable through the numbers (`_indices_for_frame`).
+    ks = _indices_for_frame(ref_meta, recorded, planted)
 
     cands, _e, ruling, _s = ma.score_candidates(
         [{"map_id": "M1", "meta": dict(ref_meta), "cells": recorded, "indices": ks}],
@@ -2045,10 +2155,16 @@ def _confirm_and_rescore(ref_start, src_start, planted, n=_ROUNDTRIP_CELLS):
     """
     ref_meta = _meta(cols=41, rows=41, start_x=ref_start[0], start_y=ref_start[1])
     floor = _valid_die_floor(ref_meta)
-    cells, ks = _partial_job(ref_meta, floor, n)
+    cells, _unused_floor_walk = _partial_job(ref_meta, floor, n)
     src_meta = dict(ref_meta, grid_start_x=src_start[0], grid_start_y=src_start[1])
     d = (src_start[0] - ref_start[0], src_start[1] - ref_start[1])
-    recorded = [(x + d[0], y + d[1]) for (x, y) in _plant(ref_meta, cells, planted)]
+    planted_cells = _plant(ref_meta, cells, planted)
+    # Numbered in the frame being planted, then translated with the cells. A serpentine RANK
+    # is invariant under a uniform translation - the rows shift together - so numbering
+    # before the offset and numbering after it are the same list, and doing it before keeps
+    # the walk fixture identical to `test_the_index_axis_separates_the_frames_on_a_partial_map`.
+    ks = _indices_for_frame(ref_meta, planted_cells, planted)
+    recorded = [(x + d[0], y + d[1]) for (x, y) in planted_cells]
 
     def score(meta):
         c, _e, r, _s = ma.score_candidates(
@@ -2462,12 +2578,23 @@ def test_the_written_start_is_where_the_editor_redraws_it(planted, src_inv, floo
 #:    while swapping WHICH twelve, and the four that do NOT move are the whole reason this
 #:    census exists: on those four the circle-box answer is already right, so a test that only
 #:    ever sampled one of them would call the defect fixed before it was.
+#:
+#: 🔴 RE-MEASURED 2026-08-19, on a fixture whose walk is numbered per combination. The 2026-08-08
+#:    rename carried the old `_front`/`_back` census across textually, and it could not have been
+#:    right: the sweep numbered every combination with the FLOOR's left-to-right walk, so no
+#:    `_tr` was ever the winner and the `_tr` members of the old set named runs that never
+#:    happened. Numbering the walk in the combination being swept makes each of the 16 its own
+#:    run (the sweep now asserts that the winner IS the planted frame), and the answer becomes
+#:    the same 12 of 16 arranged coherently: `_tl` and `_tr` agree on every rotation, which they
+#:    must - the origin the confirmation writes stands on `rotation`/`side`/`grid_y_invert`, and
+#:    the walk start corner is not one of those. That agreement is the check on this re-measure;
+#:    the old set disagreed with itself (`rot180_tl` moved on invertY alone while `rot180_tr`
+#:    moved on both), which is the shape a textual rename leaves behind.
 MASK_BOX_MOVES_THE_ORIGIN = frozenset({
-    ("rot0_tl", False), ("rot0_tl", True), ("rot0_tr", False),
-    ("rot90_tl", False), ("rot270_tr", True),
-    ("rot180_tl", True), ("rot180_tr", False), ("rot180_tr", True),
-    ("rot270_tl", False), ("rot270_tl", True),
-    ("rot90_tr", False), ("rot90_tr", True),
+    ("rot0_tl", False), ("rot0_tl", True), ("rot0_tr", False), ("rot0_tr", True),
+    ("rot90_tl", False), ("rot90_tr", False),
+    ("rot180_tl", True), ("rot180_tr", True),
+    ("rot270_tl", False), ("rot270_tl", True), ("rot270_tr", False), ("rot270_tr", True),
 })
 
 
@@ -2501,9 +2628,19 @@ def test_the_mask_box_defect_is_reachable():
             recorded = [map_overlay.make_frame_transform(floor_meta, src_true)(x, y)
                         for (x, y) in cells]
             stored = dict(floor_meta, grid_y_invert=inv)
+            # 🔴 NUMBERED IN THE COMBINATION BEING SWEPT. `_partial_job` numbers a
+            #    left-to-right walk of the FLOOR, which is a `_tl` claim, so the `_tr` half
+            #    of this sweep used to be the `_tl` half run a second time - 16 rows, 8
+            #    distinct runs, and a census keyed on `ruling["winner"]` that could never
+            #    name a `_tr`. Frame-aware numbering makes each of the 16 its own run and
+            #    makes the winner the frame that was actually planted.
+            ks_f = _indices_for_frame(stored, recorded, planted)
             cands, _e, ruling, _s = ma.score_candidates(
-                [{"map_id": "M1", "meta": dict(stored), "cells": recorded, "indices": ks}],
+                [{"map_id": "M1", "meta": dict(stored), "cells": recorded, "indices": ks_f}],
                 floor, floor_meta, thresholds=THRESHOLDS, index_thresholds=THRESHOLDS)
+            assert ruling["winner"] == planted, (
+                "the sweep must actually visit the combination it names: planted %s/inv=%s, "
+                "scorer said %s" % (planted, inv, ruling["winner"]))
             win = next(c for c in cands if c["frame"] == ruling["winner"])
             args = (dict(stored), floor_meta, {"table": "valid_die_ref", "map_id": "F"},
                     ruling["winner"], {"confirmation_uid": "U", "confirmed_by": "t"},
@@ -2590,7 +2727,9 @@ def _seats_from_placement(placement, cells):
 #    of 266), and it is the only reason the "plus the shift exactly as scoring applied it"
 #    half of the contract is under test at all.
 @pytest.mark.parametrize("offset", [(0, 0), (5, -4)])
-@pytest.mark.parametrize("planted", list(ma.CANDIDATE_FRAMES))
+# The four GEOMETRIC frames: this fixture deliberately carries no index, so `_tl` and `_tr`
+# would be the same run twice (see `_geometric_frames`).
+@pytest.mark.parametrize("planted", list(_geometric_frames()))
 def test_the_screen_can_draw_when_no_die_carries_an_index(planted, offset):
     """THE REPORTED CASE. No index anywhere, so the anchor never stands and the shift is
     searched - and that is exactly the run where the screen was handed nothing to draw with.
@@ -2615,8 +2754,22 @@ def test_the_screen_can_draw_when_no_die_carries_an_index(planted, offset):
 
     # ⓐ The fixture must actually be on the branch under test. Without this the test can go
     #    green by taking the anchor path and never touching a line that was written today.
-    assert ruling["anchor"] is None and ruling["placement"] == ma.PLACEMENT_SEARCH, ruling
+    #
+    # 🔴 THIS USED TO READ `ruling["anchor"] is None` AND THAT KEY NO LONGER MEANS THAT.
+    #    `ruling["anchor"]` carried the winner's placement pair ONLY on the anchor branch
+    #    until 2026-08-08, when the gate was deliberately withdrawn (`map_alignment.py`,
+    #    §「게이트 철회」): the search branch's pair is `(pivot, tf(pivot) + shift)`, which
+    #    already has the shift added, so it too states where a source cell seats and
+    #    `start_from_placement` can solve an origin from it. The key is now non-None
+    #    whenever there is a winner, which is exactly the case this fixture produces at
+    #    offset (0,0) - so the old conjunct would demand this test have no winner, which is
+    #    not what "no die carries an index" means. What still separates the two branches is
+    #    `placement` / `placement_basis`, and those are what is asserted.
+    assert ruling["placement"] == ma.PLACEMENT_SEARCH, ruling
     assert ruling["index_axis"] == ma.INDEX_AXIS_ABSENT, ruling
+    assert all(c["placement_basis"] == ma.PLACEMENT_SEARCH for c in cands), (
+        "a candidate seated by the anchor is not on the branch under test: %s"
+        % [(c["frame"], c["placement_basis"]) for c in cands])
     # ⓑ And the shift term must be live on the offset fixture, or the "plus the shift" half
     #    of the contract is not being tested here (see the note above the parametrize).
     if offset != (0, 0):
@@ -2744,13 +2897,20 @@ def test_y_invert_inverts_which_frames_are_mirrors():
     """The finding itself, pinned. A client that suppresses `invertY` does not lose a flag - it
     gets the mirror SET backwards, which is why `front` reads correct and `back` displaced on a
     symmetric map, and why the error grows with distance from the mirror axis while cells on the
-    anchor's own row look fine."""
+    anchor's own row look fine.
+
+    🔴 SWEPT OVER THE META FRAMES, NOT THE CANDIDATES. "Which frames are mirrors" is a
+       question about the SIDE axis, and no candidate carries a side other than `front` any
+       more - over `CANDIDATE_FRAMES` this sweep finds all eight or none of them, which
+       makes the disjointness claim vacuous rather than false. The fact being pinned is
+       about stored metadata, which still spells `front`/`back`, so the sweep runs there.
+    """
     def mirrors(inv):
         out = set()
         src = _meta(cols=41, rows=41, start_x=0, start_y=0)
         src["grid_y_invert"] = inv
         tgt = _meta(cols=41, rows=41, start_x=0, start_y=0)
-        for frame in ma.CANDIDATE_FRAMES:
+        for frame in _meta_frames():
             L = map_overlay.frame_linear_part(source_meta_for_frame(src, frame), tgt)
             if L[0][0] * L[1][1] - L[0][1] * L[1][0] == -1:
                 out.add(frame)
@@ -2759,16 +2919,19 @@ def test_y_invert_inverts_which_frames_are_mirrors():
     a, b = mirrors(False), mirrors(True)
     assert a and b and a.isdisjoint(b), (
         "y-invert must swap the mirror set entirely, not merely alter it: %s vs %s" % (a, b))
-    assert "rot0_tl" in b and "rot0_tr" in a
+    assert a | b == set(_meta_frames()), (a, b)
+    assert "rot0_front" in b and "rot0_back" in a
 
 
 def test_adjacency_cannot_tell_the_eight_frames_apart():
     """A FACT ABOUT THE PROBLEM, pinned so no future diagnostic re-learns it the hard way.
 
-    The eight candidates are isometries of the stored-coordinate lattice - four rotations times
-    two mirrors - and an isometry preserves distance by definition. So EVERY statistic derived
-    from distances between cells is identical across all eight: neighbour distance, adjacency
-    counts, clustering, perimeter.
+    The eight candidates place cells by an isometry of the stored-coordinate lattice - four
+    rotations, each spelled twice because the walk start corner does not move a die - and an
+    isometry preserves distance by definition. So EVERY statistic derived from distances
+    between cells is identical across all eight: neighbour distance, adjacency counts,
+    clustering, perimeter. (The second axis makes this MORE true, not less: `_tl` and `_tr`
+    are the same point set, so they agree on every geometric statistic there is.)
 
     Measured by the client lane 2026-08-06 across all eight: mean neighbour distance identical
     to three decimals, one value; orientation signatures 8 of 8 distinct on the same data. Their
@@ -2797,8 +2960,13 @@ def test_adjacency_cannot_tell_the_eight_frames_apart():
         "if adjacency ever separates the eight, the isometry argument is wrong and every "
         "diagnostic resting on it needs revisiting: %s" % seen)
 
-    # and the axis that IS built for this separates them completely, on the same data
-    walks = {f: tuple(ma.serpentine_index(_plant(ref_meta, cells, f)).items())
+    # and the axis that IS built for this separates them completely, on the same data.
+    # 🔴 THE WALK HAS TO BE ASKED IN THE CANDIDATE'S OWN DIRECTION. `left_to_right` is the
+    #    second axis; leaving it at its default asks all eight candidates the `_tl` question
+    #    and gets four answers back, which would read as "the walk cannot separate them
+    #    either" - the exact opposite of the fact being pinned.
+    walks = {f: tuple(ma.serpentine_index(_plant(ref_meta, cells, f),
+                                          left_to_right=ma.left_to_right_of(f)).items())
              for f in ma.CANDIDATE_FRAMES}
     assert len(set(walks.values())) == 8, "the walk order is a non-isometric quantity"
 
@@ -2840,9 +3008,16 @@ def test_direction_narrows_a_tie_that_order_alone_cannot():
     m, floor, y, xs = _floor_row_probe()
     x0 = xs[len(xs) // 2]
 
+    # 🔴 `rot270_tr`, NOT `rot90_tr`. The four that agree on ORDER are the two whose walk
+    #    steps rightward (`rot0_tl`, `rot180_tr`) and BOTH spellings of the rotation whose
+    #    walk steps downward - a vertical pair sits in two different rows, and rows are
+    #    ordered by y whichever corner the walk starts from, so the start corner cannot
+    #    separate `rot270_tl` from `rot270_tr` here. The list read `rot90_tr` beside
+    #    `rot270_tl`, which is a pairing no symmetry of a single horizontal step produces;
+    #    it came from the 2026-08-08 rename, where `_back` -> `_tr` also had to swap 90 and
+    #    270 and this line kept the old rotation.
     _c, r, on_order, after = _score_pair(m, floor, [(x0, y), (x0 + 1, y)], [1, 2])
-    assert on_order == sorted(["rot0_tl", "rot180_tr", "rot270_tl", "rot90_tr"]) \
-        or set(on_order) == {"rot0_tl", "rot180_tr", "rot270_tl", "rot90_tr"}, on_order
+    assert set(on_order) == {"rot0_tl", "rot180_tr", "rot270_tl", "rot270_tr"}, on_order
     assert set(after) == {"rot0_tl", "rot180_tr"}, (
         "direction must eliminate the two frames whose step is not rightward: %s" % after)
 
@@ -3030,15 +3205,30 @@ def test_a_shipped_offset_that_is_not_the_scored_one_is_caught():
 
 
 @pytest.mark.parametrize("mutate,reason", [
-    (lambda ks: [None] * len(ks), ma.ANCHOR_NO_INDEX),
+    # 🔴 UNREADABLE, NOT ABSENT. `[None] * len(ks)` used to be this leg and it no longer
+    #    reaches the anchor at all: a source where NOTHING carries an index does not enter
+    #    index mode, so `_anchor_shift` is never called and there is no anchor to refuse
+    #    (that case is its own leg below). A column that is populated with values the walk
+    #    cannot read as numbers is the shape that still lands on `ANCHOR_NO_INDEX`, and it
+    #    is also the shape an operator actually produces - a text column mapped by mistake.
+    (lambda ks: ["-"] * len(ks), ma.ANCHOR_NO_INDEX),
     # 🔴 the mutation must actually DUPLICATE the minimum. `[1] + ks[1:]` looks like a mutation
     #    and is a no-op, because `_partial_job` already numbers from 1 - the first version of
     #    this parametrisation asserted nothing and passed for the wrong reason.
     (lambda ks: [ks[0], ks[0]] + ks[2:], ma.ANCHOR_MIN_NOT_UNIQUE),
+    # And the third fact, which is NOT a refusal: with no index value anywhere the run leaves
+    # index mode, the anchor is never consulted, and naming a reason would be reporting a
+    # gate that never ran. The placement is still the search.
+    (lambda ks: [None] * len(ks), None),
 ])
 def test_an_unusable_anchor_falls_back_and_names_which(mutate, reason):
     """An absent or ambiguous anchor is a legitimate refusal AS LONG AS IT SAYS WHICH - the
-    repairs differ (declare an index column / fix duplicate numbers / narrow the unit)."""
+    repairs differ (declare an index column / fix duplicate numbers / narrow the unit).
+
+    🔴 A GATE THAT REJECTED EVERYTHING AND A GATE THAT NEVER RAN ARE DIFFERENT FACTS, and
+       this parametrisation now carries both. `anchor_reason` names the first; it is `None`
+       for the second, because the run never asked the anchor anything.
+    """
     floor_meta = _meta(cols=41, rows=41)
     floor = _valid_die_floor(floor_meta)
     cells, ks = _partial_job(floor_meta, floor, 80)

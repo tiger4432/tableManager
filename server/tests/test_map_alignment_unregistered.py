@@ -164,7 +164,13 @@ def test_a_planted_frame_is_recovered_for_a_map_that_has_no_meta_row():
     planted frame; the scorer must name that frame back."""
     floor = _meta()
     ref = _asymmetric_subset(floor)
-    for planted in ("rot90_tl", "rot180_tl", "rot90_tr"):
+    # 🔴 THREE ROTATIONS, NOT TWO ROTATIONS AND A START CORNER. The cells here are produced
+    #    by a transform and carry no index, so `rot90_tr` was a `rot90_tl` map under another
+    #    name and the scorer - which narrows to the four rotations when nothing is numbered -
+    #    was right to answer `rot90_tl`. What this test is for is that an unlocked population
+    #    is scored RIGHT, and a third distinct rotation exercises that better than a second
+    #    spelling of the first one.
+    for planted in ("rot90_tl", "rot180_tl", "rot270_tl"):
         from dt_map_derivation import source_meta_for_frame
         map_overlay._FRAME_TF_CACHE.clear()
         planted_meta = source_meta_for_frame(_meta(), planted)
@@ -452,8 +458,15 @@ def test_a_source_offset_from_the_floors_origin_is_still_scorable():
     assert src_w < 26 - (-4) + 1, "the source must be SMALLER than the grid it is refused by"
 
     src = {"map_id": "NOROW", "meta": None, "cells": stored, "indices": indices}
+    # 🔴 `index_thresholds` IS WHAT TURNS THE WALK ON. A populated index column is not index
+    #    MODE: the scorer refuses to rank on an axis whose acceptance thresholds were never
+    #    declared, so without this the indices ride along unread, the eight candidates narrow
+    #    to the four rotations, and the anchor - the whole mechanism this test names - never
+    #    runs. Declared here rather than defaulted in `_score`, because the two tests below
+    #    that carry no walk must stay on the value/occupancy path.
     cands, excluded, ruling, stats = _score([src], _cells_of(floor), floor,
-                                            assume_reference_geometry=True)
+                                            assume_reference_geometry=True,
+                                            index_thresholds=THRESHOLDS)
     assert stats["usable_map_ids"] == ["NOROW"], list(_reasons(excluded))
     assert list(_reasons(excluded)) == []
 
@@ -478,8 +491,14 @@ def test_the_origin_offset_does_not_have_to_be_small():
     for off in (6, 40, 100000):
         truth, stored, indices = _origin_shifted_source(floor, off=off)
         src = {"map_id": "NOROW", "meta": None, "cells": stored, "indices": indices}
+        # The anchor READS the translation off the walk instead of searching a +-3 window for
+        # it, and that is the entire reason an offset of 100000 is as answerable as one of 6.
+        # Without `index_thresholds` the walk is not ranked, the search window is all there is,
+        # and the three offsets give three different answers - which is this test failing for
+        # the reason it exists to rule out rather than finding one.
         cands, excluded, _r, stats = _score([src], _cells_of(floor), floor,
-                                           assume_reference_geometry=True)
+                                           assume_reference_geometry=True,
+                                           index_thresholds=THRESHOLDS)
         assert stats["usable_map_ids"] == ["NOROW"], (off, list(_reasons(excluded)))
         got.append(tuple(sorted((c["frame"], c.get("agreement")) for c in cands)))
     assert got[0] == got[1] == got[2], "the stored origin leaked into the score"
@@ -489,22 +508,44 @@ def test_a_map_that_is_not_this_wafer_is_refused_by_the_RULING_not_before_it():
     """🔴 The vocabulary must not go silent. Retiring the guard does not mean a mismatched
     map now passes - it means the refusal moves to the place that can actually see it.
 
-    A solid 20x20 block is not this wafer's footprint. It reaches the scorer (no exclusion),
-    and scoring refuses it BY NAME: two frames tie at 400, so there is no sole best and the
-    ruling reports `tie` with no winner. That is the same information the guard claimed to
-    carry, arrived at by measurement instead of by an origin coincidence."""
+    A solid 20x20 block carries no orientation. It reaches the scorer (no exclusion), every
+    candidate seats all 400 dies on valid dies, and scoring refuses BY NAME: no candidate's
+    answer differs from any other's, so the ruling reports `no_discrimination` with no
+    winner. That is the same information the guard claimed to carry, arrived at by
+    measurement instead of by an origin coincidence.
+
+    🔴 TWO THINGS IN THIS FIXTURE WERE WRONG UNTIL 2026-08-19, AND THE TEST WAS GREEN.
+       ① It asserted `tie`, which held because the old candidate space contained MIRRORS and
+          a square is transpose-symmetric, so exactly two of the eight landed alike. The
+          second axis is the walk start corner now, so the square is invariant under all
+          FOUR scored rotations - which is `no_discrimination`, and this module's own rule
+          says so (`test_a_tie_is_reported_only_when_the_evidence_separates_something`): a
+          tie means the evidence is real and still cannot choose, and there is no evidence
+          here at all.
+       ② It handed the block a serpentine walk over its own cells, which is exactly what a
+          `rot0_tl` map WOULD carry - so once the walk axis went live the scorer had real
+          evidence and named `rot0_tl` at 400 of 400, correctly. A map claimed not to be
+          this wafer must not be given the numbers of a map that is. The walk is gone, and
+          the refusal is measured on occupancy, which is all this footprint has.
+       ⚠️ The test's NAME overstates what the fixture shows: a 20x20 block of dies is a
+          perfectly possible partial map of this wafer, and the scorer would be right to
+          align one that carried a walk. What is pinned here is the weaker and still
+          load-bearing half - a footprint that cannot pick a frame is refused by the ruling,
+          by name, rather than by a guard that ran before the loop.
+    """
     floor = _meta(**_ORIGIN_FLOOR)
     block = [(x, y) for x in range(-4, 16) for y in range(-4, 16)]
-    walk = ma.serpentine_index(block, top_is_min_y=True)
-    rank = {xy: k for k, xy in walk.items()}
-    src = {"map_id": "NOROW", "meta": None, "cells": block,
-           "indices": [rank.get(tuple(p)) for p in block]}
+    src = {"map_id": "NOROW", "meta": None, "cells": block}
 
-    _c, excluded, ruling, stats = _score([src], _cells_of(floor), floor,
-                                         assume_reference_geometry=True)
+    cands, excluded, ruling, stats = _score([src], _cells_of(floor), floor,
+                                            assume_reference_geometry=True)
     assert stats["usable_map_ids"] == ["NOROW"], list(_reasons(excluded))
     assert ruling.get("winner") is None, ruling
-    assert ruling.get("reason_code") == ma.RULING_TIE, ruling
+    assert ruling.get("reason_code") == ma.RULING_NO_DISCRIMINATION, ruling
+    # and the refusal is the one this footprint earns: everybody seats every die, so there is
+    # nothing to choose ON, rather than a low score nobody could act on
+    assert {c["agreement"] for c in cands} == {len(block)}, (
+        [(c["frame"], c["agreement"]) for c in cands])
 
 
 def test_a_rotated_full_map_reaches_the_scorer():
