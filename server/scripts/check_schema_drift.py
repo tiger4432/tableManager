@@ -22,7 +22,8 @@ from sqlalchemy import create_engine, text  # noqa: E402
 
 # Re-exported so anything already importing them from this script keeps working.
 from schema_drift import (  # noqa: E402,F401
-    MIGRATION_OWNER, SEVERITY_ORDER, banner_lines, check, run_at_startup,
+    MIGRATION_OWNER, SEVERITY_ORDER, TYPE_KINDS, banner_lines, check,
+    finding_label, run_at_startup,
 )
 
 
@@ -64,12 +65,25 @@ def main():
     blocking = [f for f in findings if f["severity"] != "INFO"]
     for f in findings:
         target = f"{f['table']}.{f['column']}" if f["column"] else f["table"]
-        print(f"  [{f['severity']}] {target}")
+        print(f"  [{finding_label(f)}] {target}")
         print(f"      breaks: {f['breaks']}")
         print(f"      do:     {f['remedy']}")
         print()
 
     print(f"[drift] {len(blocking)} blocking, {len(findings) - len(blocking)} informational.")
+    # Type findings are INFO and deliberately do NOT move the exit code - the
+    # remedy is a human decision (see schema_drift._sync_repairs) and a gate that
+    # went red on one would stay red until somebody made it. But a breaking one
+    # means that table answers nothing right now, so it gets its own line rather
+    # than being one of N informational.
+    breaking_types = [f for f in findings if f.get("kind") == "type-breaking"]
+    if breaking_types:
+        print(f"[drift] {len(breaking_types)} of the informational findings are "
+              f"BREAKING type mismatches: numeric is declared over a column that is "
+              f"not numeric, so EVERY query of "
+              f"{', '.join(sorted({f['table'] for f in breaking_types}))} raises "
+              f"'Unknown PG numeric type'. Not counted as blocking on purpose - no "
+              f"automatic repair exists - but nothing on those tables works.")
     if any(f["severity"] == "TABLE-DOWN" for f in findings):
         print("[drift] a TABLE-DOWN finding means that table is unusable right now, for "
               "every screen that touches it, until the column exists.")

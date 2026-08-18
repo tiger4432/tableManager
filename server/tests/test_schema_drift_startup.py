@@ -335,8 +335,17 @@ def test_the_prediction_is_scored_against_what_the_sync_actually_does(drifted_dy
     assert predicted <= present, (
         f"predicted self-healing but the sync did not add: {sorted(predicted - present)}. "
         f"The banner is now telling operators to wait for a repair that never comes.")
-    assert not [f for f in drift.check(engine) if f["table"] == DYN_TABLE], \
-        "the drift survived the very sync that was supposed to own it"
+    after = [f for f in drift.check(engine) if f["table"] == DYN_TABLE]
+    assert not [f for f in after if f.get("kind") not in drift.TYPE_KINDS], \
+        f"name drift survived the very sync that was supposed to own it: {after}"
+    # TYPE drift survives, and it has to. `_narrow_copy` builds every kept column
+    # as VARCHAR, so the fixture itself leaves `stock_qty` declared numeric over a
+    # varchar column. The sync only ever issues ADD COLUMN; an empty list here
+    # would mean it had started casting types, which is the one repair
+    # `_sync_repairs` records a measurement against.
+    assert [f for f in after if f.get("kind") == "type-breaking"], (
+        "the fixture no longer leaves a type mismatch behind, so the assertion "
+        "above is no longer distinguishing ADD COLUMN from ALTER TYPE")
 
 
 # ------------------------------------------------- the regression that matters
@@ -488,46 +497,230 @@ def test_the_predicate_reads_the_dict_the_repairer_iterates(db_session):
         f"{DRIFT_TABLE} is a system table and must not be in the repairer's scope"
 
 
-# ------------------------------------------------------------------- the gap
+# ============================================================================
+# TYPE DRIFT. What used to be here was a LIMITATION pin -
+# `test_the_check_still_cannot_see_a_type_mismatch_at_all` - which asserted that
+# a column existing with the wrong type read as healthy. It died in the same
+# commit as the code it measured, because on 2026-08-18 that limitation cost a
+# real outage: `dt_log` was declared `number` over a varchar column and EVERY
+# query of the table had been raising
+#
+#     sqlalchemy.exc.InvalidRequestError: Unknown PG numeric type: 1043
+#
+# for an unknown length of time, with nothing anywhere reporting it. A sweep then
+# found three more breaking columns and one lying declaration.
+#
+# The old pin left a note saying that if type comparison were added, its severity
+# should be "not SELF-HEALING and not INFO". Half of that stands and half was
+# overruled. NOT SELF-HEALING stands, and is asserted below: the sync issues ADD
+# COLUMN and can never repair a type. NOT INFO was overruled by the product owner
+# on 2026-08-19, and the reason is in `_sync_repairs`: there is no automatic
+# repair for a type mismatch at all, so a gate that went red on one would stay
+# red until a human made a judgement call about 4,567 rows. INFO that is PRINTED
+# at every boot was the ruling. `test_type_drift_is_visible_at_boot_without
+# _opening_the_red_block` is where that lands.
+# ============================================================================
 
-def test_the_check_still_cannot_see_a_type_mismatch_at_all():
-    """A LIMITATION, pinned so it is not mistaken for coverage.
+TYPE_DRIFT_TABLE = "inventory_master"
+TYPE_BREAKING_COLUMN = "stock_qty"       # config says "number" -> Float
+TYPE_LYING_COLUMN = "graph_synced_at"    # the framework's own DateTime column
+TYPE_CONTROL_COLUMN = "unit_price"       # also "number", and built correctly
 
-    The brief for this round assumed a type mismatch produces the full-severity
-    banner. It does not, and it did not before this change either: `check` compares
-    NAMES only, so a column that exists with the wrong type reads as healthy and
-    nothing is printed. That is stated in the module docstring and is asserted here
-    because the assumption is easy to make and expensive.
 
-    Nothing about the self-healing classification touched this. If type comparison
-    is ever added, `test_a_drift_kind_nobody_has_classified_yet_is_loud` above is
-    the one that says the new severity arrives loud.
+@pytest.fixture
+def type_drifted_db(db_session, tmp_path):
+    """One table, built with two planted type mismatches and everything else right.
+
+    Deliberately NOT the flatten-everything shortcut `_narrow_copy` uses. A
+    database where every column is the wrong type cannot tell a detector that
+    reports the planted columns from one that reports every column it sees, and
+    the control column below is the whole reason this fixture builds the other
+    types faithfully instead.
+
+    `db_session` is requested for its side effect: it calls `init_dynamic_models`
+    with conftest's fixture config, so `stock_qty` is known to be declared
+    `number` here rather than being whatever the operator's gitignored config
+    happens to say.
     """
+    from database import models
     from database.database import Base
-    engine = create_engine(f"sqlite://")
-    Base.metadata.create_all(bind=engine)
+
+    assert TYPE_DRIFT_TABLE in models.DYNAMIC_TABLES, (
+        f"{TYPE_DRIFT_TABLE} is not a dynamic table in this process")
+    declared = Base.metadata.tables[TYPE_DRIFT_TABLE]
+    engine = create_engine(f"sqlite:///{tmp_path / 'types.db'}")
+    planted = {TYPE_BREAKING_COLUMN: "VARCHAR", TYPE_LYING_COLUMN: "VARCHAR"}
+    body = ", ".join(
+        f'"{c.name}" {planted.get(c.name) or c.type.compile(engine.dialect)}'
+        for c in declared.columns)
     with engine.connect() as conn:
-        conn.execute(text('DROP TABLE "interaction_effort_logs"'))
-        # Every declared name, all of them the wrong type.
-        cols = ", ".join(
-            f'"{c.name}" BLOB'
-            for c in Base.metadata.tables["interaction_effort_logs"].columns)
-        conn.execute(text(f'CREATE TABLE "interaction_effort_logs" ({cols})'))
+        conn.execute(text(f'CREATE TABLE "{TYPE_DRIFT_TABLE}" ({body})'))
         conn.commit()
+    Base.metadata.create_all(bind=engine)   # skips the table that already exists
+    return engine
 
-    # The fixture bites: without this the test passes against a healthy table and
-    # asserts nothing about types at all.
+
+def test_the_type_fixture_plants_two_mismatches_and_leaves_a_control(type_drifted_db):
+    """Assertion first, on both halves.
+
+    The planted columns must really be varchar, AND the control column must
+    really be numeric - otherwise every assertion below is satisfied by a check
+    that flags the entire table.
+    """
     from sqlalchemy import inspect
-    types = {str(c["type"]).upper() for c in inspect(engine).get_columns(
-        "interaction_effort_logs")}
-    assert types == {"BLOB"}, f"the fixture did not change any type: {types}"
+    from database.database import Base
 
-    findings = [f for f in drift.check(engine)
-                if f["table"] == "interaction_effort_logs"]
-    assert findings == [], (
-        "the check has learned to see type drift. That is an improvement - but "
-        "confirm the new severity is not SELF-HEALING and not INFO, because the "
-        "sync only ever issues ADD COLUMN and can never repair a type.")
+    cols = {c["name"]: str(c["type"]).upper()
+            for c in inspect(type_drifted_db).get_columns(TYPE_DRIFT_TABLE)}
+    for name in (TYPE_BREAKING_COLUMN, TYPE_LYING_COLUMN):
+        assert "CHAR" in cols[name], f"{name} was not planted as varchar: {cols[name]}"
+    assert "FLOAT" in cols[TYPE_CONTROL_COLUMN], \
+        f"the control column is not numeric either: {cols[TYPE_CONTROL_COLUMN]}"
+
+    declared = Base.metadata.tables[TYPE_DRIFT_TABLE].columns
+    assert str(declared[TYPE_BREAKING_COLUMN].type).upper().startswith("FLOAT"), \
+        "the config no longer declares the planted column numeric"
+    assert "DATETIME" in str(declared[TYPE_LYING_COLUMN].type).upper(), \
+        "the lying column is no longer declared as a datetime"
+
+
+def test_a_number_declared_over_varchar_is_reported_and_named(type_drifted_db):
+    """The 2026-08-18 outage, reproduced and detected. Table and column both."""
+    hits = [f for f in drift.check(type_drifted_db)
+            if f.get("kind") == "type-breaking"]
+    assert [(f["table"], f["column"]) for f in hits] == \
+        [(TYPE_DRIFT_TABLE, TYPE_BREAKING_COLUMN)], \
+        f"expected exactly the planted breaking column, got {hits}"
+    assert hits[0]["severity"] == "INFO", \
+        "the owner's ruling is INFO - anything else moves a deploy gate"
+    assert "EVERY query" in hits[0]["breaks"]
+    assert "Unknown PG numeric type" in hits[0]["breaks"], \
+        "the finding does not name the error an operator will actually see"
+
+
+def test_a_lying_declaration_is_reported_and_ranked_below_the_breaking_one(type_drifted_db):
+    """The second bucket. Queries work; the declaration is false. Both are INFO,
+    so the ONLY thing that tells an operator which one to act on first is the
+    kind and the order - and `dt_log` is the reason the order has to be this way
+    round."""
+    findings = drift.check(type_drifted_db)
+    lying = [f for f in findings if f.get("kind") == "type-mismatch"]
+    assert [(f["table"], f["column"]) for f in lying] == \
+        [(TYPE_DRIFT_TABLE, TYPE_LYING_COLUMN)], \
+        f"expected exactly the planted lying column, got {lying}"
+    assert lying[0]["severity"] == "INFO"
+    assert "nothing today" in lying[0]["breaks"], \
+        "a merely-wrong declaration is being described as an outage"
+
+    kinds = [f.get("kind") for f in findings]
+    assert kinds.index("type-breaking") < kinds.index("type-mismatch"), \
+        "the finding that takes a table down is sorted below the one that does not"
+
+
+def test_a_column_whose_type_matches_produces_no_finding(type_drifted_db):
+    """The control, and the test that makes the two above mean anything.
+
+    `unit_price` is declared `number` by the same config line shape as
+    `stock_qty` and is built numeric. A comparison that reported every declared
+    column, or every numeric one, passes both tests above and fails here.
+    """
+    flagged = {f["column"] for f in drift.check(type_drifted_db)
+               if f.get("kind") in drift.TYPE_KINDS}
+    assert TYPE_CONTROL_COLUMN not in flagged, \
+        f"a correctly typed numeric column was reported as drift: {flagged}"
+    assert flagged == {TYPE_BREAKING_COLUMN, TYPE_LYING_COLUMN}, \
+        f"the comparison flagged columns nobody planted: {flagged}"
+
+
+def test_type_drift_is_visible_at_boot_without_opening_the_red_block(type_drifted_db):
+    """The ruling, as an operator experiences it.
+
+    INFO used to mean "computed and never printed", and a detector nobody sees is
+    the exact state `dt_log` sat in. So both halves are asserted here: it PRINTS,
+    and it does not turn a working boot red.
+    """
+    findings = drift.check(type_drifted_db)
+    lines = drift.banner_lines(findings, "target-db")
+    out = "\n".join(t for _l, t in lines)
+
+    assert f"{TYPE_DRIFT_TABLE}.{TYPE_BREAKING_COLUMN}" in out, \
+        "a breaking type mismatch is computed and never shown to anybody"
+    assert f"{TYPE_DRIFT_TABLE}.{TYPE_LYING_COLUMN}" in out
+    assert "type-breaking" in out and "type-mismatch" in out, \
+        "the two kinds are printed under one indistinguishable tag"
+
+    assert "SCHEMA DRIFT" not in out and "=====" not in out, \
+        "an INFO finding opened the red block"
+    assert not any(lvl == "error" for lvl, _t in lines), \
+        "an INFO finding was logged at error level"
+    assert any(lvl == "warning" for lvl, _t in lines), \
+        "a BREAKING type mismatch was logged as quietly as an unmapped column"
+
+
+def test_type_findings_never_move_the_deploy_gate(type_drifted_db):
+    """Exit codes, both halves of the expression that produces them.
+
+    The CLI feeds deploy gates. Adding a detector that turned a previously-green
+    gate red would be a regression, not a feature - and the reason is in
+    `_sync_repairs`: there is no automatic repair, so the gate would stay red
+    until somebody made a judgement call.
+    """
+    findings = drift.check(type_drifted_db)
+    assert [f for f in findings if f.get("kind") in drift.TYPE_KINDS], \
+        "no type finding was produced, so this proves nothing about the gate"
+    # The CLI's own definition of blocking, applied to the same list.
+    assert [f for f in findings if f["severity"] != "INFO"] == [], \
+        "a type finding carries a severity that the deploy gate counts as blocking"
+
+    # And the CLI still derives its exit code from that definition, not from a
+    # count of findings. Source, because importing the CLI here would put
+    # server/scripts on this suite's sys.path - see the module docstring.
+    cli = _source(os.path.join("server", "scripts", "check_schema_drift.py"))
+    assert 'blocking = [f for f in findings if f["severity"] != "INFO"]' in cli
+    assert "return 1 if blocking else 0" in cli
+
+
+def test_the_breaking_bucket_is_scored_against_what_psycopg2_actually_raises():
+    """The classification is this module's reading of a SQLAlchemy internal, and a
+    reading goes stale in silence. So this does not re-read it - it calls the
+    result processor the way a live query would and checks that it raises.
+
+    OID 1043 is `varchar`; 701 is `float8`. The message is the one the product
+    owner was handed on 2026-08-18.
+    """
+    from sqlalchemy import Float, exc as sa_exc
+    from sqlalchemy.dialects.postgresql.psycopg2 import PGDialect_psycopg2
+
+    dialect = PGDialect_psycopg2()
+    impl = Float().dialect_impl(dialect)
+
+    with pytest.raises(sa_exc.InvalidRequestError, match="Unknown PG numeric type"):
+        impl.result_processor(dialect, 1043)
+    # The control: over a genuinely numeric column nothing is raised, which is why
+    # a correctly typed column must not be flagged.
+    impl.result_processor(dialect, 701)
+
+
+def test_no_automatic_cast_is_ever_proposed(type_drifted_db):
+    """The 2026-08-18 ruling, made executable.
+
+    `dt_log.core_slot` holds `C14`, `S18` - prefixed identifiers, 4,567 rows of
+    them - and `event_time` parses cleanly while carrying three formats on mixed
+    timezone bases. A cast either refuses or silently stores the wrong value. So
+    the remedy names the DECLARATION and never hands over a statement that would
+    rewrite the column.
+    """
+    for f in drift.check(type_drifted_db):
+        if f.get("kind") not in drift.TYPE_KINDS:
+            continue
+        remedy = f["remedy"]
+        assert "ALTER COLUMN" not in remedy.upper(), \
+            f"an automatic type repair was proposed for {f['column']}: {remedy}"
+        assert "CAST(" not in remedy.upper() and "::" not in remedy, \
+            f"a cast was proposed for {f['column']}: {remedy}"
+        assert "do NOT cast" in remedy, "nothing warns the reader off the cast"
+        assert "table_config.json" in remedy, \
+            "the remedy does not say where the declaration that is wrong lives"
 
 
 # ------------------------------------------------------- it names the migration
