@@ -948,3 +948,296 @@ def test_a_source_plan_and_its_profile_reference_each_other_in_both_directions(a
         assert profile_key in index.nodes
         assert profile_key in {edge.from_key for edge in index.inbound[source_key]}
         assert source_key in {edge.from_key for edge in index.inbound[profile_key]}
+
+
+def _linked_index(nodes, edges):
+    """A hand-built index with exactly the shape under test and nothing else.
+
+    The live root has one source and one profile, so it cannot tell "the pair is exempt"
+    apart from "the component is computed".  These fixtures can.
+    """
+    from ledger.config_explorer import pointer
+
+    builder = _IndexBuilder("a" * 64, "b" * 64)
+    for kind, canonical_id in nodes:
+        builder.add_node(
+            kind, canonical_id, {}, {}, (kind, canonical_id),
+            config_file="ledger_config.json",
+            json_pointer=pointer(kind, canonical_id))
+    for from_kind, from_id, to_kind, to_id, reference_kind in edges:
+        builder.add_edge(
+            node_key(from_kind, from_id), to_id, to_kind, reference_kind,
+            pointer(from_kind, from_id, reference_kind))
+    return builder.finish()
+
+
+def test_deleting_a_source_with_the_profile_only_it_uses_succeeds(transfer_sample_setup):
+    """🔴 THE REGRESSION GUARD.  A suite that only asserts refusals stays green while the
+    instrument is broken -- that is exactly how this defect would come back.
+
+    The ruling (2026-08-18): in-degree is the wrong instrument, the deletable unit is the
+    reference component, and the question is reachability AFTER the deletion.  So the
+    scoring case is a SUCCESS: a source and the profile only it uses go together, and the
+    screen must let them.
+
+    The contrast at the bottom is what makes this a test about the instrument rather than
+    about this config: on the very same subject the in-degree fallback still refuses.  If
+    someone ever wires that as the gate, this test fails and says why.
+
+    Scored on the transfer SAMPLE, not the live root: the live `ledger_config.json` is
+    gitignored and hand-edited, so a test that pins its exact component would go red for a
+    reason that has nothing to do with this instrument.  The sample carries the same mutual
+    pair (`sources.dt_log.profile_id` and `profiles.dt-transfer@1.source`), which is the
+    property under test, and the assertions below derive the pair rather than name it.
+    """
+    from ledger.config_explorer import (
+        deletion_plan, require_deletable, require_no_referrers)
+
+    index = build_explorer_index(transfer_sample_setup)
+    source = next(
+        node.key for node in index.nodes.values() if node.kind == "source_plan")
+    profile = node_key("profile", index.nodes[source].raw["profile_id"])
+    # Non-vacuous: this really is the mutual pair that defeats in-degree.
+    assert source in {edge.from_key for edge in index.inbound[profile]}
+    assert profile in {edge.from_key for edge in index.inbound[source]}
+
+    plan = deletion_plan(index, [source])
+    assert plan.blocked == tuple(), (
+        "a delete whose only referrers are inside the deletion set must SUCCEED")
+    require_deletable(index, plan, "delete")            # must not raise
+
+    removed = plan.removed_keys
+    assert source in removed and profile in removed
+    rows = {row["key"]: row for row in plan.removed}
+    assert rows[source]["reason"] == "selected"
+    assert rows[profile]["reason"] == "orphaned"
+    # The plan says WHY the profile is going, by naming what was holding it up.
+    assert source in rows[profile]["held_by"]
+    # Every mapping and binding of that profile goes with it -- the component, not the node.
+    assert {key for key in removed if key.startswith("mapping|")}
+    assert all(key in removed for key, node in index.nodes.items()
+               if node.kind in {"mapping", "binding"})
+
+    # And the in-degree fallback, on the same subject, still refuses. This is the exact
+    # wiring the ruling forbids; the two must not be confused.
+    with pytest.raises(ConfigExplorerError) as refused:
+        require_no_referrers(index, source, "delete")
+    assert refused.value.code == "declaration_is_referenced"
+
+
+def test_deleting_a_profile_alone_is_blocked_and_names_the_surviving_reacher(transfer_sample_setup):
+    """The fallback's real job: a reacher that SURVIVES the deletion.
+
+    Deleting the profile without its source would leave `sources.<id>.profile_id` naming
+    a declaration that no longer exists -- the silent dangling reference this whole thing
+    exists to prevent.  The refusal has to name the source, because "add it to the
+    selection" is the operator's next move and a count cannot carry it.
+    """
+    from ledger.config_explorer import deletion_plan, require_deletable
+
+    index = build_explorer_index(transfer_sample_setup)
+    source = next(
+        node.key for node in index.nodes.values() if node.kind == "source_plan")
+    profile = node_key("profile", index.nodes[source].raw["profile_id"])
+
+    plan = deletion_plan(index, [profile])
+    assert [row["key"] for row in plan.blocked] == [profile]
+    reachers = plan.blocked[0]["reached_by"]
+    assert [row["key"] for row in reachers] == [source]
+    assert reachers[0]["json_pointer"].endswith("/profile_id")
+
+    with pytest.raises(ConfigExplorerError) as refused:
+        require_deletable(index, plan, "delete")
+    mapping = refused.value.to_mapping()
+    assert mapping["code"] == "declaration_is_referenced"
+    assert mapping["message"].startswith("delete refused:")
+    assert mapping["details"][0]["blocked_key"] == profile
+    assert mapping["details"][0]["key"] == source
+
+    # Selecting BOTH is the move the refusal describes, and it must then succeed.
+    both = deletion_plan(index, [profile, source])
+    assert both.blocked == tuple()
+    require_deletable(index, both, "delete")
+
+
+def test_a_third_kind_in_the_cycle_goes_with_it_without_a_pair_special_case():
+    """🔴 The mutual reference is STRUCTURAL, so a hardcoded source-profile check dies
+    the day a third kind joins the cycle.  This is that day, built on purpose.
+
+    source -> profile -> mapper -> source.  No node has in-degree zero, so an in-degree
+    gate refuses all three and a pair exemption saves only two.  Reachability from the
+    remaining roots takes the whole cycle, and the procedure never mentions a kind.
+    """
+    from ledger.config_explorer import deletion_plan, self_standing_keys
+
+    index = _linked_index(
+        [("source_plan", "s"), ("profile", "p"), ("mapper", "m")],
+        [("source_plan", "s", "profile", "p", "source_profile"),
+         ("profile", "p", "mapper", "m", "profile_pack"),
+         ("mapper", "m", "source_plan", "s", "mapper_emits")],
+    )
+    assert self_standing_keys(index) == frozenset(), (
+        "every node must have a referrer or this fixture proves nothing")
+
+    plan = deletion_plan(index, ["source_plan|s"])
+    assert plan.blocked == tuple()
+    assert set(plan.removed_keys) == {"source_plan|s", "profile|p", "mapper|m"}
+
+
+def test_a_half_wired_declaration_survives_an_unrelated_deletion():
+    """Two things a deletion must NOT take: a declaration shared with a survivor, and a
+    declaration nothing points at yet.
+
+    The second is the normal state of the screen this feeds -- an author creates a pack
+    minutes before any profile uses it.  If in-degree zero were not a walk root, the first
+    unrelated deletion would find that pack unreachable and quietly sweep it.
+    """
+    from ledger.config_explorer import deletion_plan
+
+    index = _linked_index(
+        [("source_plan", "a"), ("profile", "pa"), ("source_plan", "b"),
+         ("profile", "pb"), ("mapper", "shared"), ("pack", "fresh"),
+         ("claim", "fresh/one")],
+        [("source_plan", "a", "profile", "pa", "source_profile"),
+         ("profile", "pa", "source_plan", "a", "profile_source"),
+         ("source_plan", "a", "mapper", "shared", "source_mapper"),
+         ("source_plan", "b", "profile", "pb", "source_profile"),
+         ("profile", "pb", "source_plan", "b", "profile_source"),
+         ("source_plan", "b", "mapper", "shared", "source_mapper"),
+         ("pack", "fresh", "claim", "fresh/one", "contains_claim")],
+    )
+
+    plan = deletion_plan(index, ["source_plan|a"])
+    assert plan.blocked == tuple()
+    assert set(plan.removed_keys) == {"source_plan|a", "profile|pa"}, (
+        "the shared mapper and the half-wired pack are held up by survivors")
+
+    # And deleting the half-wired pack ITSELF must still take what it holds up.  This is
+    # the half that needs the zero-in-degree walk root: without it the pack is outside
+    # every walk, the plan reports only the pack, and the claim inside it disappears from
+    # the file having never been named on the confirm screen.
+    fresh = deletion_plan(index, ["pack|fresh"])
+    assert fresh.blocked == tuple()
+    assert set(fresh.removed_keys) == {"pack|fresh", "claim|fresh/one"}
+
+
+def test_pre_existing_garbage_is_not_swept_into_an_unrelated_deletion():
+    """A deletion may only take what it is actually holding up.
+
+    An orphaned cycle -- unreachable from any root BEFORE the deletion too -- is already
+    garbage, and it is somebody else's problem.  Subtracting the after-walk from every
+    node instead of from the before-walk would hand it to whoever deletes next, in a list
+    they have no reason to expect.
+    """
+    from ledger.config_explorer import deletion_plan
+
+    index = _linked_index(
+        [("source_plan", "s"), ("profile", "p"),
+         ("entity", "GhostA"), ("entity", "GhostB")],
+        [("source_plan", "s", "profile", "p", "source_profile"),
+         ("profile", "p", "source_plan", "s", "profile_source"),
+         ("entity", "GhostA", "entity", "GhostB", "subject_entity"),
+         ("entity", "GhostB", "entity", "GhostA", "subject_entity")],
+    )
+
+    plan = deletion_plan(index, ["source_plan|s"])
+    assert set(plan.removed_keys) == {"source_plan|s", "profile|p"}
+    assert not any(key.startswith("entity|Ghost") for key in plan.removed_keys)
+
+
+def test_a_table_is_released_rather_than_deleted_and_cannot_be_selected(transfer_sample_setup):
+    """`table_config.json` is read here and written elsewhere.
+
+    A table that stops being referenced is not a casualty -- nothing is written for it, and
+    folding it into `removed` would tell the author their physical schema is about to be
+    deleted.  Selecting one outright is refused by the file it lives in, not by its kind.
+    """
+    from ledger.config_explorer import deletion_plan
+
+    index = build_explorer_index(transfer_sample_setup)
+    source = next(
+        node.key for node in index.nodes.values() if node.kind == "source_plan")
+    table = node_key("table", index.nodes[source].raw["relation"])
+    assert index.nodes[table].config_file == "table_config.json"
+
+    plan = deletion_plan(index, [source])
+    assert table in {row["key"] for row in plan.released}
+    assert table not in plan.removed_keys
+    assert all(row["config_file"] == "ledger_config.json" for row in plan.removed)
+
+    with pytest.raises(ConfigExplorerError) as refused:
+        deletion_plan(index, [table])
+    assert refused.value.to_mapping()["code"] == "undeletable_declaration"
+
+    with pytest.raises(ConfigExplorerError) as empty:
+        deletion_plan(index, [])
+    assert empty.value.to_mapping()["code"] == "empty_deletion"
+
+    with pytest.raises(ConfigExplorerError) as unknown:
+        deletion_plan(index, ["entity|NoSuchThing@9"])
+    assert unknown.value.to_mapping()["code"] == "unknown_selection"
+
+
+def test_deletion_preview_endpoint_names_the_casualties_and_shows_the_blockage(
+    transfer_sample_setup, tmp_path,
+):
+    """The screen has to render the list, so the API has to carry it.
+
+    A blocked target comes back 200 WITH its reacher rather than as a refusal: an operator
+    who gets only a 400 cannot see the list they were asked to confirm, and the whole point
+    of this preview is that the casualties are visible before the confirm.
+
+    Served from the sample rather than a copy of the live root, whose `ledger_config.json`
+    is hand-edited and gitignored -- `setup_loader` is the seam that makes that possible
+    without the service reaching for a file at all.
+    """
+    service = OntologyExplorerService(
+        config_root=tmp_path / "absent", draft_root=tmp_path / "drafts",
+        setup_loader=lambda root: transfer_sample_setup)
+    explorer_router.configure_service(service)
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[require_admin_token_strict] = lambda: None
+    app.include_router(explorer_router.router)
+    client = TestClient(app)
+
+    _, index, _ = service.active()
+    source = next(
+        node.key for node in index.nodes.values() if node.kind == "source_plan")
+    profile = node_key("profile", index.nodes[source].raw["profile_id"])
+
+    ok = client.get(
+        "/admin/ontology-explorer/deletion-preview", params={"targets": [source]})
+    assert ok.status_code == 200
+    plan = ok.json()
+    assert plan["blocked"] == []
+    keys = {row["key"] for row in plan["removed"]}
+    assert source in keys and profile in keys
+    assert plan["removed_total"] == len(plan["removed"]) > 1
+    assert plan["context_token"] == f"active:{index.snapshot_hash}"
+    for field in ("removed", "released", "blocked"):
+        assert all(row["context_token"] == plan["context_token"]
+                   for row in plan[field])
+
+    blocked = client.get(
+        "/admin/ontology-explorer/deletion-preview",
+        params={"targets": [profile]}).json()
+    assert [row["key"] for row in blocked["blocked"]] == [profile]
+    assert [row["key"] for row in blocked["blocked"][0]["reached_by"]] == [source]
+
+    # Both together is the operator's next move, and the API must accept the pair.
+    pair = client.get(
+        "/admin/ontology-explorer/deletion-preview",
+        params={"targets": [profile, source]}).json()
+    assert pair["blocked"] == []
+    assert {row["key"] for row in pair["removed"]} == keys
+
+    stale = client.get(
+        "/admin/ontology-explorer/deletion-preview",
+        params={"targets": [source], "context_token": "active:" + "0" * 64})
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "stale_context"
+
+    empty = client.get("/admin/ontology-explorer/deletion-preview")
+    assert empty.status_code == 400
+    assert empty.json()["detail"]["code"] == "empty_deletion"

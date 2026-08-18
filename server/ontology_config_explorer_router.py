@@ -54,6 +54,23 @@ def explorer_view(
         raise _refusal(exc) from exc
 
 
+@router.get("/deletion-preview", dependencies=[Depends(require_admin_token)])
+def deletion_preview(
+    targets: list[str] | None = Query(default=None),
+    context_token: str | None = Query(default=None),
+):
+    """Name every declaration a deletion would take, BEFORE the author confirms.
+
+    A read: nothing is written and no draft is created, which is why it sits behind the
+    same token as `/view` rather than the strict one.
+    """
+    try:
+        return _service.deletion_preview(
+            targets=targets or [], expected_context_token=context_token)
+    except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
 @router.post("/drafts", dependencies=[Depends(require_admin_token_strict)])
 def create_draft(payload: dict[str, Any] = Body(...)):
     try:

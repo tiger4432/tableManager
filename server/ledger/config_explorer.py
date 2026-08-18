@@ -130,9 +130,10 @@ def referrers(index: "ExplorerIndex", key: str) -> tuple[dict[str, Any], ...]:
 def require_no_referrers(index: "ExplorerIndex", key: str, action: str) -> None:
     """Refuse to `action` a declaration that something OUTSIDE the deletion still reaches.
 
-    🔴 READ THIS BEFORE WIRING IT TO THE DELETE BUTTON.  This function is the FALLBACK,
-    not the decision procedure, and its name does not say so -- a name is a poor carrier
-    for "this is the last resort".  Wire it as THE gate and the screen deadlocks: measured
+    🔴 READ THIS BEFORE WIRING IT TO THE DELETE BUTTON.  The decision procedure is
+    `deletion_plan` below; this function is the FALLBACK it is built out of, and its name
+    does not say so -- a name is a poor carrier for "this is the last resort".  Wire it as
+    THE gate and the screen deadlocks: measured
     on the live root, the number of declarations with no referrer is ZERO, and a source and
     its profile name each OTHER (`sources.<id>.profile_id` and `profiles.<id>.source`), so
     neither ever reaches an in-degree of zero.  A screen guarded this way refuses every
@@ -174,6 +175,186 @@ def require_no_referrers(index: "ExplorerIndex", key: str, action: str) -> None:
         "declaration_is_referenced", "target_key",
         f"{action} refused: {subject!r} is still referenced by {len(rows)} declaration(s); "
         f"repoint them first (this screen does not rewrite referrers for you)",
+        rows,
+    )
+
+
+def self_standing_keys(index: "ExplorerIndex") -> frozenset[str]:
+    """Declarations nothing points at -- the entry points a walk has to start from.
+
+    In-degree is the wrong GATE (see `require_no_referrers`) but it is the right way to
+    name this set, and the two uses must not be confused.  A half-wired declaration is the
+    normal state of the screen this feeds: an author creates a pack minutes before any
+    profile uses it.  If such a pack were not a walk root, the first unrelated deletion
+    would find it unreachable and sweep it away.
+
+    Measured 2026-08-18: the live root has ZERO of these, and the transfer sample has one
+    (`table|dt_inventory`).  That is why sources are roots too -- on a fully wired config
+    this set is empty and a walk seeded only from it would mark the entire graph dead.
+    """
+    return frozenset(
+        key for key in index.nodes
+        if not any(edge.status == "resolved" for edge in index.inbound.get(key, ()))
+    )
+
+
+def _reachable(index: "ExplorerIndex", roots: Iterable[str]) -> set[str]:
+    seen: set[str] = set()
+    stack = [key for key in roots if key in index.nodes]
+    while stack:
+        key = stack.pop()
+        if key in seen:
+            continue
+        seen.add(key)
+        for edge in index.outbound.get(key, ()):
+            if edge.status == "resolved" and edge.to_key is not None:
+                stack.append(edge.to_key)
+    return seen
+
+
+def _walk_roots(index: "ExplorerIndex") -> frozenset[str]:
+    """Where a reachability walk starts: sources, plus anything nothing points at.
+
+    A `source_plan` is a root because it is the only declaration that stands on its own
+    reason -- everything else in the bundle exists to serve one.  It is a root even though
+    its profile points AT it, which is the whole reason the walk survives the mutual
+    reference that defeats in-degree.
+    """
+    return frozenset(
+        key for key, node in index.nodes.items() if node.kind == "source_plan"
+    ) | self_standing_keys(index)
+
+
+@dataclass(frozen=True)
+class DeletionPlan:
+    """What actually goes when the author deletes `targets`, and what refuses to.
+
+    `removed` is the reference COMPONENT, not the selected nodes.  A source and the
+    profile only it uses go together because neither is meaningful alone; listing the
+    casualties before the confirm is the guard that prevents the orphan.
+    """
+
+    targets: tuple[str, ...]
+    removed: tuple[dict[str, Any], ...]
+    released: tuple[dict[str, Any], ...]
+    blocked: tuple[dict[str, Any], ...]
+
+    @property
+    def removed_keys(self) -> tuple[str, ...]:
+        return tuple(row["key"] for row in self.removed)
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "targets": list(self.targets),
+            "removed": [dict(row) for row in self.removed],
+            "released": [dict(row) for row in self.released],
+            "blocked": [dict(row) for row in self.blocked],
+            "removed_total": len(self.removed),
+            "blocked_total": len(self.blocked),
+        }
+
+
+def deletion_plan(index: "ExplorerIndex", targets: Iterable[str]) -> DeletionPlan:
+    """The deletable unit is the reference COMPONENT, and the question is reachability
+    AFTER the deletion.
+
+    🔴 IN-DEGREE IS NOT THE INSTRUMENT.  Measured on the live root: every declaration has
+    a referrer, and a source and its profile name each other, so a screen gated on
+    in-degree refuses every delete and reads as "this screen cannot delete anything".
+
+    The procedure, which never mentions a kind and so cannot rot when a third kind joins
+    the cycle:
+
+      1. walk from the roots that REMAIN (`_walk_roots` minus the targets);
+      2. whatever was reachable BEFORE and is not reachable after was only held up by what
+         is going away -- it is a casualty and goes with the deletion;
+      3. a target that is STILL reachable is blocked: something outside the deletion set
+         points at it, and the plan names the reacher rather than silently widening.
+
+    Step 2 subtracts against the BEFORE walk rather than against every node, so garbage
+    that was already unreachable -- an orphaned cycle nothing enters -- is left exactly
+    where it was.  A deletion may only take what it is actually holding up.
+
+    `released` is separate from `removed` because a `table` node is authored in
+    `table_config.json`, which this screen only reads.  Such a node stops being referenced
+    and nothing is written for it; folding it into `removed` would tell the author their
+    physical schema is about to be deleted.
+    """
+    requested: list[str] = []
+    for key in targets:
+        node = index.node(key)          # refuses an unknown selection by name
+        if node.config_file != setup_bundle.CONFIG_FILENAME:
+            raise ConfigExplorerError(
+                "undeletable_declaration", "targets",
+                f"{node.canonical_id!r} is declared in {node.config_file}, which this "
+                f"screen only reads; it cannot be deleted here",
+            )
+        if key not in requested:
+            requested.append(key)
+    if not requested:
+        raise ConfigExplorerError(
+            "empty_deletion", "targets", "no declaration was selected for deletion")
+
+    target_set = set(requested)
+    roots = _walk_roots(index)
+    before = _reachable(index, roots)
+    after = _reachable(index, roots - target_set)
+    dead = (target_set | (before - after)) - after
+
+    def order(key: str) -> tuple[int, str, str]:
+        node = index.nodes[key]
+        return (KIND_ORDER.get(node.kind, 99), node.canonical_id, key)
+
+    removed: list[dict[str, Any]] = []
+    released: list[dict[str, Any]] = []
+    for key in sorted(dead, key=order):
+        node = index.nodes[key]
+        row = node.to_mapping(include_definition=False)
+        row["reason"] = "selected" if key in target_set else "orphaned"
+        # Why this one is going: the referrers that are themselves dying.  An author who
+        # cannot see what was holding a casualty up has no way to check the plan.
+        row["held_by"] = [
+            item["key"] for item in referrers(index, key) if item["key"] in dead
+        ]
+        (removed if node.config_file == setup_bundle.CONFIG_FILENAME
+         else released).append(row)
+
+    blocked: list[dict[str, Any]] = []
+    for key in sorted(target_set & after, key=order):
+        node = index.nodes[key]
+        row = node.to_mapping(include_definition=False)
+        row["reason"] = "still_referenced"
+        row["reached_by"] = [
+            dict(item) for item in referrers(index, key) if item["key"] not in target_set
+        ]
+        blocked.append(row)
+
+    return DeletionPlan(
+        targets=tuple(sorted(target_set, key=order)),
+        removed=tuple(removed),
+        released=tuple(released),
+        blocked=tuple(blocked),
+    )
+
+
+def require_deletable(index: "ExplorerIndex", plan: DeletionPlan, action: str) -> None:
+    """Refuse a plan whose targets something OUTSIDE the deletion still reaches.
+
+    The rows travel with the refusal for the same reason as in `require_no_referrers`: a
+    refusal that only states a fault leaves the operator with no next move.  Here the move
+    is usually "add the reacher to the selection", which is why the reacher is named.
+    """
+    if not plan.blocked:
+        return
+    subjects = ", ".join(repr(row["canonical_id"]) for row in plan.blocked)
+    rows = [
+        {**reacher, "blocked_key": row["key"]}
+        for row in plan.blocked for reacher in row["reached_by"]
+    ]
+    raise ConfigExplorerError(
+        "declaration_is_referenced", "targets",
+        f"{action} refused: {subjects} would still be referenced from outside the "
+        f"deletion; select the referring declaration too, or repoint it first",
         rows,
     )
 
@@ -490,7 +671,9 @@ def build_explorer_index(setup: Any) -> ExplorerIndex:
     bundle = setup.bundle.to_mapping()
     builder = _IndexBuilder(snapshot.snapshot_sha256, snapshot.bundle_sha256)
     registries = snapshot.registries
-    ledger_file = "ledger_config.json"
+    # Same constant `deletion_plan` classifies against, so "this screen writes that file"
+    # cannot drift apart from "this screen produced that node".
+    ledger_file = setup_bundle.CONFIG_FILENAME
 
     for predicate_id, raw in sorted(bundle["vocabulary"].items()):
         compiled = registries["vocabulary"].to_mapping()[predicate_id]

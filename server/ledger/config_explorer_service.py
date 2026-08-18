@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from .config_drafts import OntologyDraftStore
 from .config_explorer import (
@@ -12,6 +12,7 @@ from .config_explorer import (
     ExplorerIndex,
     build_explorer_index,
     definition_diff,
+    deletion_plan,
     explorer_view,
     reference_diff,
 )
@@ -199,6 +200,38 @@ class OntologyExplorerService:
             "change_status": status,
             "context_token": token,
         }
+
+    def deletion_preview(
+        self,
+        *,
+        targets: Sequence[str],
+        expected_context_token: str | None = None,
+    ) -> dict[str, Any]:
+        """What would go with this deletion -- READ ONLY, and it does not refuse.
+
+        The blockage belongs in the payload, not in an exception: the screen has to render
+        "this one is still referenced, by that one" next to the casualties, and an operator
+        who only gets a 400 cannot see the list they were asked to confirm.  The write path
+        is where `require_deletable` turns the same rows into a refusal.
+
+        Computed against the ACTIVE index only.  A draft preview compiles a DIFFERENT
+        snapshot, and naming casualties from one snapshot for a deletion applied to another
+        is how a confirm screen ends up listing declarations that are not there.
+        """
+        _, index, _ = self.active()
+        token = f"active:{index.snapshot_hash}"
+        if expected_context_token is not None and expected_context_token != token:
+            raise ConfigExplorerError(
+                "stale_context", "context_token",
+                "requested deletion context no longer matches the active snapshot",
+            )
+        payload = deletion_plan(index, targets).to_mapping()
+        payload["context_token"] = token
+        payload["snapshot_hash"] = index.snapshot_hash
+        for field in ("removed", "released", "blocked"):
+            for row in payload[field]:
+                row["context_token"] = token
+        return payload
 
     def create_draft(self, *, target_key: str, base_snapshot_hash: str) -> dict[str, Any]:
         setup, index, _ = self.active()
