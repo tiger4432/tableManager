@@ -1,10 +1,44 @@
-"""Baseline atom snapshot for the live ledger config. No DB, no gate, no cursor write."""
-import sys, json
+"""Baseline atom snapshot for the live ledger config. No DB, no gate, no cursor write.
+
+The entry point is resolved by search rather than by a fixed import: the module is
+being renamed out of its cutover-era name while this harness is the gate on that very
+refactor.  A hard import would make the gate disappear exactly when it matters, and a
+silent skip would read as "nothing changed" -- so a miss aborts loudly and names what
+it looked for.
+"""
+import sys, json, importlib
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, r"C:\Users\kk980\Developments\assyManager\server")
 import pandas as pd
-from ledger.cutover_v2 import load_cutover_setup, preview_selected_cursor_batch
 from ledger.source_preparation import VerifiedJoinBatchReader
+
+_MODULES = ("ledger.setup", "ledger.cutover_v2", "ledger.setup_boundary")
+_LOADERS = ("load_setup", "load_cutover_setup", "load_ledger_setup")
+_PREVIEWS = ("preview_selected_cursor_batch", "preview_selected_batch")
+
+
+def _resolve():
+    tried = []
+    for name in _MODULES:
+        try:
+            module = importlib.import_module(name)
+        except ModuleNotFoundError:
+            tried.append(f"{name} (absent)")
+            continue
+        load = next((getattr(module, n) for n in _LOADERS if hasattr(module, n)), None)
+        preview = next((getattr(module, n) for n in _PREVIEWS if hasattr(module, n)), None)
+        if load and preview:
+            return name, load, preview
+        tried.append(f"{name} (loader={bool(load)} preview={bool(preview)})")
+    raise SystemExit(
+        "BASELINE HARNESS BROKEN: no setup loader + preview entry point found.\n"
+        f"  looked in: {tried}\n"
+        f"  loader names: {_LOADERS}\n  preview names: {_PREVIEWS}\n"
+        "Fix this harness before reading any diff as a pass -- a harness that cannot "
+        "run is not a zero diff.")
+
+
+_MODULE, load_cutover_setup, preview_selected_cursor_batch = _resolve()
 
 ROOT = r"C:\Users\kk980\Developments\assyManager\server\config\ontology"
 T = lambda s: pd.Timestamp(s, tz="Asia/Seoul")
