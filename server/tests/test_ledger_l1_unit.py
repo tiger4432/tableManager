@@ -23,8 +23,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from ledger import config as ledger_config          # noqa: E402
 from ledger import store as ledger_store            # noqa: E402
 from ledger import envelope, gate, schema, uuid7, vocabulary   # noqa: E402
-from ledger.lot_event_translator import (           # noqa: E402
-    LotEventTranslator, group_molecules, molecule_key)
 
 WHEN = datetime(2026, 5, 3, 2, 17, tzinfo=timezone.utc)
 
@@ -70,43 +68,6 @@ def row(lot, event_type="split", parent_lot=None, child_lot=None, slots="", wafe
             "child_lot": child_lot, "slots": slots, "wafers": wafers,
             "event_time": event_time}
 
-
-def translator(cfg=None):
-    cfg = cfg or full_cfg()
-    return LotEventTranslator(
-        ledger_config.source_config(cfg, "lot_event"),
-        ledger_config.translator_version(cfg, "lot_event"),
-        ledger_config.declared_derivations(cfg, "lot_event"))
-
-
-def translate_one(rows, cfg=None):
-    """Group `rows` into ONE molecule, translate it, and screen it. `(atoms, report)`.
-
-    🔴 SHAPED LIKE `backfill.run`'s molecule loop, deliberately. The driver opens
-    `gate.building_molecule` and screens INSIDE it (rulings R-H-bis 1 and 3), so a helper
-    that opened no scope - or that screened outside one - would be testing a control flow
-    production does not have: `_build` would refuse to run at all, and a gate refusal
-    would come back as `([], report)` instead of unwinding.
-    """
-    cfg = cfg or full_cfg()
-    tr = translator(cfg)
-    molecules = group_molecules(rows)
-    assert len(molecules) == 1, f"expected one molecule, got {len(molecules)}"
-    try:
-        with gate.building_molecule("lot_event"):
-            atoms, report = tr.translate(molecules[0])
-            if atoms is None:
-                return None, report
-            kept, screen = gate.screen_molecule(
-                "lot_event", atoms,
-                ledger_config.declared_derivations(cfg, "lot_event"),
-                ledger_config.declared_subject_types(cfg, "lot_event"),
-                molecule_ref=molecules[0].ref, source_rows=len(rows))
-    except gate.MoleculeRefused as refusal:
-        return None, {"source": refusal.source, "molecule_ref": molecules[0].ref,
-                      "refused": True, "reason": refusal.reason,
-                      "violations": [refusal.detail]}
-    return kept, screen
 
 
 # ------------------------------------------------------------------------- vocabulary
@@ -446,38 +407,6 @@ def test_a_subject_type_outside_the_vocabulary_is_refused_at_load():
         ledger_config.validate(cfg)
 
 
-def test_the_shipped_declaration_covers_every_type_the_translator_actually_utters():
-    """The declaration and the literals must agree, and this is the direction that
-    matters most: the translator names each atom's type in code, so a type it utters
-    that the SHIPPED config does not declare would refuse real production molecules.
-
-    Reading the extension out of the atoms rather than asserting a list here is
-    deliberate - a hand-written expectation is a copy of the code and copies drift
-    (server-pm lessons file: enumerate members, do not count them).
-    """
-    path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
-                        "ledger_config.json.sample")
-    cfg = ledger_config.load(os.path.abspath(path))
-    declared = ledger_config.declared_subject_types(cfg, "lot_event")
-    assert declared, "the shipped config declares no subject types - the check is vacuous"
-
-    tr = LotEventTranslator(
-        ledger_config.source_config(cfg, "lot_event"),
-        ledger_config.translator_version(cfg, "lot_event"),
-        ledger_config.declared_derivations(cfg, "lot_event"))
-    rows = [row("P", child_lot="C", slots="07:08", wafers="W7:W8",
-                event_time="2026-05-03T02:17:00"),
-            row("C", parent_lot="P", slots="01:02", wafers="W1:W2",
-                event_time="2026-05-03T02:17:00")]
-    with gate.building_molecule("lot_event"):     # the driver's job (ruling R-H-bis 3)
-        atoms, _ = tr.translate(group_molecules(rows)[0])
-    uttered = {atom.subject_type for atom in atoms}
-    assert uttered, "the translator produced no atoms - the check is vacuous"
-    assert uttered <= set(declared), (
-        f"the translator utters {sorted(uttered - set(declared))} but the shipped config "
-        f"declares only {sorted(declared)}; every molecule of that shape would be refused")
-
-
 def test_the_shipped_sample_config_validates():
     path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                         "ledger_config.json.sample")
@@ -519,6 +448,15 @@ def test_the_translator_version_changes_when_a_RULE_changes():
 # `store.parse_occurred_at` and requires it to go red. A timezone rule that has never
 # been seen to fail is the most expensive kind of sentence in this file: a wrong instant
 # is still a well-formed one, so every atom looks fine and nothing downstream complains.
+#
+# 🔴 WHO STILL READS THIS RULE, MEASURED 2026-08-18 — AND IT IS NOT THE v2 RUNTIME.
+# `LotEventTranslator` used to be the caller and was deleted; the v2 runtime never calls
+# `parse_occurred_at` at all. The one remaining non-test caller in the tree is the lag
+# probe, `ledger/observability.py:131-132`. So this block is filed under OBSERVABILITY,
+# not under v2: labelling it a v2 contract is what would get it swept away by the next
+# v2 refactor, and the lag probe would silently lose its only cover.
+# (`observability.py` also reads `DEFAULT_OCCURRED_AT_FORMAT` from `ledger/config.py`, so
+# whoever retires that module has to re-home this call site rather than follow it down.)
 
 SEOUL = "Asia/Seoul"
 ISO_T = "%Y-%m-%dT%H:%M:%S"
@@ -630,262 +568,6 @@ def test_the_shipped_declaration_carries_the_product_owner_ruling():
     assert declared["occurred_at_timezone"] == "Asia/Seoul"
     assert declared["occurred_at_format"] == "%Y-%m-%dT%H:%M:%S"
 
-
-def _check_the_declared_zone_reaches_the_ATOM():
-    """🔴 The parser being right proves nothing about what LANDS.
-
-    `parse_occurred_at` is reached through `LotEventTranslator`, which reads the format
-    and the zone off the source declaration itself. This is the check that fails if the
-    translator ever stops passing one of them down.
-    """
-    cfg = full_cfg(occurred_at_format=ISO_T, occurred_at_timezone=SEOUL)
-    rows = [row("P", event_type="track_in", slots="01", wafers="W1",
-                event_time="2026-08-13T13:45:00")]
-    atoms, report = translate_one(rows, cfg)
-    assert atoms, f"nothing was translated: {report}"
-    stamps = {_instant_and_offset(a.occurred_at) for a in atoms}
-    assert stamps == {(datetime(2026, 8, 13, 4, 45), timedelta(hours=9))}
-
-
-def test_the_declared_zone_reaches_the_ATOM_not_only_the_parser():
-    _check_the_declared_zone_reaches_the_ATOM()
-
-
-# ------------------------------------------------------------------ molecule assembly
-def test_the_two_rows_of_one_split_form_one_molecule():
-    rows = [row("P", child_lot="C", slots="01:02", wafers="W1:W2"),
-            row("C", parent_lot="P", slots="03", wafers="W3")]
-    molecules = group_molecules(rows)
-    assert len(molecules) == 1
-    assert (molecules[0].parent, molecules[0].child) == ("P", "C")
-    assert len(molecules[0].rows) == 2
-
-
-def test_a_row_naming_both_sides_is_isolated_and_refused():
-    """Real data: a grid edit put a value in `child_lot` on a row that already had
-    `parent_lot`. Reading one field first and ignoring the other attaches that row's
-    wafers to a lineage the source never asserted."""
-    bad = row("C", parent_lot="P", child_lot="OTHER", slots="01", wafers="W1")
-    key = molecule_key(bad)
-    assert key[-1] == bad["row_identity"]
-
-    atoms, report = translate_one([bad])
-    assert atoms is None
-    assert report["reason"] == gate.REFUSE_AMBIGUOUS_PAIR
-    assert gate.refusals()[("lot_event", gate.REFUSE_AMBIGUOUS_PAIR)] == 1
-    assert gate.rows_refused()["lot_event"] == 1
-
-
-# ------------------------------------------------------------------------ translation
-def test_a_blank_wafer_id_makes_no_has_wafer_atom():
-    """The brief: a blank makes no atom. 'There is a wafer here, I do not know which'
-    is not a claim, so there is nothing to record."""
-    rows = [row("P", event_type="track_in", slots="01:02:03", wafers="W1::W3")]
-    atoms, _ = translate_one(rows)
-    has_wafer = [a for a in atoms if a.predicate == "has_wafer"]
-    assert len(has_wafer) == 2
-    assert {a.object_payload["keys"]["wafer"] for a in has_wafer} == {"W1", "W3"}
-    assert "02" not in {a.object_payload["qualifiers"]["slot"] for a in has_wafer}
-
-
-def test_unequal_slot_and_wafer_lists_refuse_the_whole_molecule():
-    """An unequal pairing does not raise downstream - it reattributes wafers to the
-    wrong slots and still looks well formed (`trace_fixture/world.py` says so in the
-    generator). That is an atomicity violation, not a warning."""
-    rows = [row("P", event_type="track_in", slots="01:02:03", wafers="W1:W2")]
-    atoms, report = translate_one(rows)
-    assert atoms is None
-    assert report["reason"] == gate.REFUSE_ATOMICITY
-    assert gate.refusals()[("lot_event", gate.REFUSE_ATOMICITY)] == 1
-
-
-def test_an_undeclared_event_type_is_refused_and_counted_never_skipped():
-    rows = [row("P", event_type="scrap", slots="01", wafers="W1")]
-    atoms, report = translate_one(rows)
-    assert atoms is None
-    assert report["reason"] == gate.REFUSE_UNDECLARED_VOCABULARY
-    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_VOCABULARY)] == 1
-    assert gate.note() is not None and "undeclared_vocabulary" in gate.note()
-
-
-def test_an_unparseable_event_time_is_refused_and_arrival_time_is_not_substituted():
-    rows = [row("P", event_type="track_in", slots="01", wafers="W1",
-                event_time="not a timestamp")]
-    atoms, report = translate_one(rows)
-    assert atoms is None
-    assert report["reason"] == gate.REFUSE_MISSING_OCCURRED_AT
-
-
-def test_split_slot_map_uses_the_declared_convention_and_says_so_in_the_atom():
-    rows = [row("P", child_lot="C", slots="07:08", wafers="W7:W8"),
-            row("C", parent_lot="P", slots="01:02", wafers="W1:W2")]
-    atoms, _ = translate_one(rows)
-    slot_maps = [a for a in atoms if a.predicate == "slot_map"]
-    assert len(slot_maps) == 2
-    for atom in slot_maps:
-        q = atom.object_payload["qualifiers"]
-        assert q["from"] == q["to"]
-        assert atom.subject_keys == {"lot": "P"}
-        assert atom.object_payload["keys"] == {"lot": "C"}
-        assert atom.source_translator_ver.endswith("#slot_preserving")
-
-
-def test_merge_slot_map_needs_no_convention_because_the_source_utters_both_slots():
-    rows = [row("P", event_type="merge", child_lot="C", slots="10:13", wafers="W7:W9"),
-            row("C", event_type="merge", parent_lot="P", slots="02:03:04",
-                wafers="W7:W9:WX")]
-    atoms, _ = translate_one(rows)
-    pairs = {(a.object_payload["qualifiers"]["from"],
-              a.object_payload["qualifiers"]["to"],
-              a.object_payload["qualifiers"]["wafer"])
-             for a in atoms if a.predicate == "slot_map"}
-    assert pairs == {("10", "02", "W7"), ("13", "03", "W9")}
-    for atom in atoms:
-        if atom.predicate == "slot_map":
-            assert atom.source_translator_ver.endswith("#shared_wafer")
-
-
-def test_shared_wafer_emits_nothing_where_the_source_is_silent():
-    """A split's two rows share no wafer, so the zero-inference strategy correctly
-    produces no slot_map at all. Stated as a test because it is the cost of the
-    zero-inference position and must not surprise anyone later."""
-    cfg = full_cfg()
-    cfg["sources"]["lot_event"]["vocabulary"]["split"]["slot_pairing"] = "shared_wafer"
-    rows = [row("P", child_lot="C", slots="07:08", wafers="W7:W8"),
-            row("C", parent_lot="P", slots="01:02", wafers="W1:W2")]
-    atoms, _ = translate_one(rows, cfg)
-    assert [a for a in atoms if a.predicate == "slot_map"] == []
-    assert [a for a in atoms if a.predicate == "derived_from"]
-
-
-# ============================================== HALF REFUSAL (ruling R-2026-08-13-H)
-#
-# The measured defect: `_slot_map` refused through the gate, returned `None`, and
-# `translate` merged it with `... or []`. The gate counted `atomicity_violation`, the log
-# said "1 source row(s) produced nothing", and THREE atoms of that same molecule landed.
-#
-# 🔴 THE ROUTE MATTERS. Reaching `_slot_map`'s refusal needs the has_wafer loop NOT to
-# refuse first, because that loop reads the same rows through the same `_positional_pairs`
-# and would refuse before the slot map is ever built. `emit_has_wafer: false` is that
-# route, and it is the one the ruling names.
-
-#: `emit_has_wafer: false` + a pairing strategy that reads BOTH rows. The measured shape.
-SLOT_MAP_ONLY = {"lineage": "parent_child", "slot_pairing": "shared_wafer",
-                 "emit_has_wafer": False}
-
-#: The same declaration with nothing to pair. The CONTROL: it proves the refusal below
-#: comes from the slot map path specifically, rather than from anything else about these
-#: rows or this configuration.
-NO_PAIRING = {"lineage": "parent_child", "slot_pairing": "none", "emit_has_wafer": False}
-
-
-def _split_rule_cfg(rule):
-    cfg = full_cfg()
-    cfg["sources"]["lot_event"]["vocabulary"]["split"] = dict(rule)
-    return cfg
-
-
-def _unequal_split_rows():
-    """One split whose PARENT row lists two slots and one wafer.
-
-    The unequal row is the parent's on purpose: under `shared_wafer` the parent row is
-    read only by `_slot_map`, so nothing before it can refuse and the molecule reaches
-    exactly the line the ruling is about.
-    """
-    return [row("P", child_lot="C", slots="07:08", wafers="W7"),
-            row("C", parent_lot="P", slots="01:02", wafers="W7:W8")]
-
-
-def test_a_refusal_inside_slot_map_takes_the_WHOLE_molecule_with_it():
-    """Ruling R-2026-08-13-H, the refusing arm - and the atoms it used to leave behind.
-
-    The control runs FIRST and asserts the three atoms are really there to lose. Without
-    it, "zero atoms" would also be the answer if the fixture produced nothing for some
-    unrelated reason, and this test would pass while proving nothing.
-    """
-    control, _ = translate_one(_unequal_split_rows(), _split_rule_cfg(NO_PAIRING))
-    assert control is not None and len(control) == 3, (
-        f"the control molecule did not produce the three atoms that used to land beside "
-        f"a counted refusal: {control}")
-    assert gate.refusals() == {}, "the control is not supposed to refuse anything"
-    gate.reset_counters()
-
-    atoms, report = translate_one(_unequal_split_rows(), _split_rule_cfg(SLOT_MAP_ONLY))
-
-    # ZERO ATOMS - and, because zero on its own is also what a fixture that translates
-    # nothing produces, the refusal is required to be COUNTED and NAMED as well.
-    assert atoms is None, f"{len(atoms or [])} atom(s) landed from a refused molecule"
-    assert report["reason"] == gate.REFUSE_ATOMICITY
-    assert gate.refusals()[("lot_event", gate.REFUSE_ATOMICITY)] == 1, (
-        "the refusal was not counted, so `molecules_refused` and the breakdown beside it "
-        "would disagree - `refusals_unaccounted = -1`, the measured symptom")
-    assert gate.rows_refused()["lot_event"] == 1
-    assert "atomicity_violation" in (gate.note() or "")
-
-
-def test_the_same_declaration_LANDS_a_well_formed_molecule_whole():
-    """⚠️ THE OTHER ARM. A refusal guard tested only on the refusing side cannot be told
-    apart from a configuration that refuses everything.
-
-    Same `emit_has_wafer: false`, same `shared_wafer`, same lots - equal lists. The
-    molecule lands whole, and the absence of `has_wafer` is what proves the declaration
-    under test is actually in force rather than ignored.
-    """
-    rows = [row("P", child_lot="C", slots="07:08", wafers="W7:W8"),
-            row("C", parent_lot="P", slots="01:02", wafers="W7:W8")]
-    atoms, report = translate_one(rows, _split_rule_cfg(SLOT_MAP_ONLY))
-
-    assert atoms is not None, f"a well formed molecule was refused: {report}"
-    assert sorted(a.predicate for a in atoms) == [
-        "derived_from", "register", "register", "slot_map", "slot_map"]
-    assert not [a for a in atoms if a.predicate == "has_wafer"], (
-        "`emit_has_wafer: false` was ignored, so the refusing arm above did not take the "
-        "route the ruling names")
-    pairs = {(a.object_payload["qualifiers"]["from"],
-              a.object_payload["qualifiers"]["to"],
-              a.object_payload["qualifiers"]["wafer"])
-             for a in atoms if a.predicate == "slot_map"}
-    assert pairs == {("07", "01", "W7"), ("08", "02", "W8")}
-    assert gate.refusals() == {}, "a molecule that landed was counted as a refusal"
-
-
-def test_a_refused_molecule_does_not_consume_its_lots_REGISTER():
-    """The sibling hole the fix would otherwise have opened.
-
-    `registered` is a run-scoped memo, and the register atoms of a molecule are built
-    BEFORE the checks that can refuse it. A refusal that leaves the memo standing means
-    the register was never written and no later molecule will ever write it either - the
-    lot is registered nowhere, which is the same defect one move on: something was
-    refused and it left a mark.
-    """
-    registered = _refused_then_later_registers(translator(
-        _split_rule_cfg(SLOT_MAP_ONLY)))
-    assert registered is not None, (
-        "the first molecule was not refused, so this test would prove nothing")
-    assert registered, (
-        "lot P was memoised by a molecule that landed NOTHING, so nothing ever registers "
-        "it: the memo has to be given back when the molecule is refused")
-
-
-def test_derived_from_points_child_at_parent():
-    rows = [row("P", child_lot="C", slots="01", wafers="W1"),
-            row("C", parent_lot="P", slots="02", wafers="W2")]
-    atoms, _ = translate_one(rows)
-    derived = [a for a in atoms if a.predicate == "derived_from"]
-    assert len(derived) == 1
-    assert derived[0].subject_keys == {"lot": "C"}
-    assert derived[0].object_payload["keys"] == {"lot": "P"}
-
-
-def test_every_atom_carries_a_raw_ref_naming_its_source_rows():
-    rows = [row("P", child_lot="C", slots="01", wafers="W1"),
-            row("C", parent_lot="P", slots="02", wafers="W2")]
-    atoms, _ = translate_one(rows)
-    identities = {r["row_identity"] for r in rows}
-    for atom in atoms:
-        assert atom.source_raw_ref.startswith("lot_event:")
-        named = set(__import__("json").loads(atom.source_raw_ref.split(":", 1)[1]))
-        assert named and named <= identities
 
 
 # ------------------------------------------------------------------------------- gate
@@ -1056,36 +738,6 @@ def test_outside_a_molecule_scope_the_gate_still_refuses_by_RETURNING():
 
 
 # ------------------------------------- ruling R-2026-08-13-H-bis 3: the driver's scope
-
-
-def test_a_translator_run_without_the_DRIVERS_scope_refuses_to_run_at_all():
-    """Ruling R-H-bis 3, both arms in one test.
-
-    `translate` used to open `gate.building_molecule` itself, which made the all-or-nothing
-    rule something a SECOND translator's author inherited only by reading this one and
-    noticing. The scope belongs to the loop that walks molecules now, so the translator
-    asserts it instead of creating it: a driver that forgot gets a `RuntimeError` naming
-    the omission, where before the ruling it would have got counted refusals beside landed
-    atoms.
-
-    The accepting arm is here rather than in a sibling test on purpose - a guard that only
-    ever refuses is indistinguishable from one that refuses everything.
-    """
-    tr = translator()
-    molecule = group_molecules(
-        [row("P", event_type="track_in", slots="01", wafers="W1")])[0]
-
-    assert not gate.molecule_is_open()
-    with pytest.raises(RuntimeError) as caught:
-        tr.translate(molecule)
-    assert "building_molecule" in str(caught.value)
-    assert "backfill.run" in str(caught.value), (
-        "the message has to NAME who opens the scope, or the next author has to go "
-        "reading to find out")
-
-    with gate.building_molecule("lot_event"):
-        atoms, report = tr.translate(molecule)
-    assert atoms, f"the same molecule was refused inside the scope too: {report}"
 
 
 # --------------------------------- ruling R-2026-08-13-H-bis 2: no default for `reasons`
@@ -1273,109 +925,6 @@ def _inject_nan_payload():
     envelope.freeze_payload({"x": float("inf")})
 
 
-def _inject_unequal_slot_and_wafer_lists():
-    gate.reset_counters()
-    rows = [row("P", event_type="track_in", slots="01:02", wafers="W1")]
-    atoms, report = translate_one(rows)
-    if atoms is not None:
-        raise AssertionError("an unequal positional pairing was accepted")
-    raise ValueError(report["reason"])
-
-
-def _inject_slot_map_refusal_swallowed():
-    """`_slot_map(...) or []` of 2026-08-13, in the only spelling the new shape allows.
-
-    The `or []` itself cannot be written any more - `_slot_map` returns a list or unwinds
-    - so the defect is re-created as what a future author would actually type: a helper
-    that CATCHES the refusal and hands back a tidy empty list. If that swallow can still
-    land atoms, the fix was a patch on one line rather than a change of shape.
-
-    🔴 RETURNS NORMALLY when the swallow changes nothing, never `AssertionError`: both
-    shared harnesses below read that as "the guard raised" and would report success for a
-    mutation that did nothing. Two lanes hit exactly this on 2026-08-13.
-    """
-    from ledger import lot_event_translator as translator_module
-    gate.reset_counters()
-    original = translator_module.LotEventTranslator._slot_map
-
-    def swallowing(self, molecule, strategy, occurred_at):
-        try:
-            return original(self, molecule, strategy, occurred_at)
-        except gate.MoleculeRefused:
-            return []
-
-    translator_module.LotEventTranslator._slot_map = swallowing
-    try:
-        atoms, _report = translate_one(_unequal_split_rows(),
-                                       _split_rule_cfg(SLOT_MAP_ONLY))
-    finally:
-        translator_module.LotEventTranslator._slot_map = original
-
-    counted = gate.refusals().get(("lot_event", gate.REFUSE_ATOMICITY), 0)
-    if atoms is None or not counted:
-        return                     # the swallow changed nothing this guard could see
-    raise ValueError(
-        f"the swallow landed {len(atoms)} atom(s) beside {counted} counted refusal(s) - "
-        f"exactly the half-refusal measured on 2026-08-13, and the guard sees it")
-
-
-def _refused_then_later_registers(tr):
-    """Refuse one molecule, then translate a later one naming the same lot.
-
-    Returns the `register` atoms for lot P from the SECOND molecule, or `None` when the
-    first molecule was not refused at all - in which case the fixture proves nothing.
-
-    ⚠️ IT DOES NOT ASSERT. It is shared with the injection below, and an `AssertionError`
-    raised there is read as success by both harnesses, so the one thing this helper must
-    never do is fail loudly on its own.
-    """
-    with gate.building_molecule("lot_event"):     # the driver's job (ruling R-H-bis 3)
-        refused, _ = tr.translate(group_molecules(_unequal_split_rows())[0])
-    if refused is not None:
-        return None
-    later = [row("P", event_type="track_in", slots="01", wafers="W1",
-                 event_time="2026-05-04 09:00:00")]
-    with gate.building_molecule("lot_event"):
-        atoms, _ = tr.translate(group_molecules(later)[0])
-    return [a for a in atoms
-            if a.predicate == "register" and a.subject_keys == {"lot": "P"}]
-
-
-def _inject_refusal_that_keeps_its_register_memo():
-    """The memo rollback removed: a refused molecule keeps its lots marked registered.
-
-    Nothing was written for that molecule, so the register atom does not exist anywhere -
-    and with the memo standing, no later molecule writes one either. Returns normally if
-    the mutation changed nothing (see the note on the entry above).
-    """
-    from ledger import lot_event_translator as translator_module
-    gate.reset_counters()
-    original = translator_module.LotEventTranslator._forget_this_molecules_registers
-    translator_module.LotEventTranslator._forget_this_molecules_registers = (
-        lambda self: None)
-    try:
-        registered = _refused_then_later_registers(translator(
-            _split_rule_cfg(SLOT_MAP_ONLY)))
-    finally:
-        translator_module.LotEventTranslator._forget_this_molecules_registers = original
-
-    if registered is None or registered:
-        # Either the fixture stopped refusing or the mutation changed nothing - both are
-        # "this proves nothing", and both must be a normal return rather than a raise.
-        return
-    raise ValueError(
-        "with the memo kept, lot P is never registered by any molecule - the guard sees "
-        "the register that a refused molecule swallowed")
-
-
-def _inject_ambiguous_pair():
-    gate.reset_counters()
-    atoms, report = translate_one(
-        [row("C", parent_lot="P", child_lot="OTHER", slots="01", wafers="W1")])
-    if atoms is not None:
-        raise AssertionError("a row naming both sides of a pair was accepted")
-    raise ValueError(report["reason"])
-
 
 # ------------------------------------------------------- wrong ways to read a timestamp
 #
@@ -1462,15 +1011,15 @@ def _wrong_only_the_declared_separator(raw, fmt, tzname):
 def _reader_replaced_by(wrong):
     """Swap the real reader for a wrong one on EVERY door that reaches it.
 
-    🔴 `lot_event_translator` did `from .store import parse_occurred_at`, so it holds its
-    own reference. Patching only `ledger.store` would leave the translator running the
-    correct code - and an injection that changes nothing looks exactly like a guard that
-    works (server-pm lessons file, 2026-08-11: "a wrapping key generator", and the
-    two-door identity lookup before it).
+    🔴 THE DOOR LIST IS THE ASSERTION, not a formality. `lot_event_translator` did
+    `from .store import parse_occurred_at`, so it held its own reference and patching only
+    `ledger.store` would have left it running the correct code - an injection that changes
+    nothing looks exactly like a guard that works (server-pm lessons file, 2026-08-11: "a
+    wrapping key generator"). That module was deleted on 2026-08-18 and its door with it,
+    so `ledger.store` is the only door today. Any future module that binds
+    `parse_occurred_at` by value has to be added here or these injections go quietly inert.
     """
-    from ledger import lot_event_translator as translator_module
-    doors = [(ledger_store, ledger_store.parse_occurred_at),
-             (translator_module, translator_module.parse_occurred_at)]
+    doors = [(ledger_store, ledger_store.parse_occurred_at)]
     for module, _ in doors:
         module.parse_occurred_at = wrong
     try:
@@ -1515,8 +1064,7 @@ TIME_INJECTIONS = [
                      [_check_an_offset_that_disagrees_with_the_declaration_wins])),
     ("naive text read as UTC instead of the declared zone",
      _time_injection(_wrong_naive_means_utc,
-                     [_check_naive_text_takes_the_declared_zone,
-                      _check_the_declared_zone_reaches_the_ATOM])),
+                     [_check_naive_text_takes_the_declared_zone])),
     ("arrival time substituted for an unreadable world time",
      _time_injection(_wrong_substitute_arrival_time,
                      [_check_an_unreadable_time_is_refused_by_name])),
@@ -1561,18 +1109,17 @@ INJECTIONS = TIME_INJECTIONS + [
      _inject_atom_about_an_undeclared_subject_type),
     ("refusal reason invented at a call site", _inject_undeclared_refusal_reason),
     ("non-finite number in a payload", _inject_nan_payload),
-    ("unequal slot and wafer lists", _inject_unequal_slot_and_wafer_lists),
-    ("row naming both sides of a pair", _inject_ambiguous_pair),
-    ("a fragment's refusal swallowed by its caller", _inject_slot_map_refusal_swallowed),
-    ("a refused molecule keeping its register memo",
-     _inject_refusal_that_keeps_its_register_memo),
 ]
 
 #: 14 built with this file + 5 added by the 2026-08-13 world-time ruling + 3 added by
 #: ruling R-2026-08-13-D (the `subject_types` allow-list, its two config guards and the
 #: gate refusal itself) + 2 by ruling R-2026-08-13-H (a refusal a caller swallows, and
-#: the register memo a refused molecule used to keep).
-EXPECTED_INJECTIONS = 24
+#: the register memo a refused molecule used to keep) = 24, MINUS the 4 retired on
+#: 2026-08-18 with `ledger/lot_event_translator.py`: unequal slot and wafer lists, a row
+#: naming both sides of a pair, a fragment's refusal swallowed by its caller, and a
+#: refused molecule keeping its register memo. All four drove the deleted translator; the
+#: defects they injected have no reachable implementation left to inject into.
+EXPECTED_INJECTIONS = 20
 
 
 def test_every_guard_has_been_seen_to_fail():

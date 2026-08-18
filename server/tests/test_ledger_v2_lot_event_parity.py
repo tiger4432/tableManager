@@ -1,4 +1,15 @@
-"""Stage 6 source-level parity for split/merge/track-in lot events."""
+"""The only tests of ``mappers/ledger_v2_lot_event_role_mapper.py``.
+
+Named for parity because it began as a legacy-vs-v2 comparison. That arm was removed on
+2026-08-18 with ``ledger/lot_event_translator.py``: there is nothing left to compare
+against, so the comparison could only have been made green by weakening it.
+
+What survives is not leftovers. Each of the four cases below is the sole cover for its
+contract -- the registration snapshot requirement, positional-list failure ordering, the
+mapper-layer import boundary, and incomplete-molecule accounting -- and every other test
+in the suite passes ``known_registrations=()`` or asserts ``incomplete_count == 0``, so
+none of them takes these branches.
+"""
 from __future__ import annotations
 
 import ast
@@ -11,7 +22,6 @@ import pytest
 
 from ledger import gate
 from ledger.envelope import canonical_keys
-from ledger.lot_event_translator import LotEventTranslator, group_molecules
 from ledger.roleframe import RoleMapperImplementationRegistry
 from ledger.runtime_v2 import (
     LedgerV2RuntimeError,
@@ -20,7 +30,6 @@ from ledger.runtime_v2 import (
 )
 from ledger.setup_bundle import SETUP_VERSION, validate_bundle
 from ledger.setup_registry import TrustedImplementationCatalog, compile_setup_snapshot
-from ledger.shadow_parity import compare_shadow
 from ledger.source_preparation import (
     SOURCE_EVENT_INCOMPLETE_COLUMN,
     SourcePreparerImplementationRegistry,
@@ -230,7 +239,6 @@ def lot_event_bundle():
                 "profile_id": "lot-event@1",
             },
         },
-        "chains": {}, "enrichments": {},
     }
 
 
@@ -270,17 +278,6 @@ def split_rows():
     ], dtype=object)
 
 
-def merge_rows():
-    return pd.DataFrame([
-        {"lot": "P", "event_type": "merge", "slots": "1:2",
-         "wafers": "W1:W2", "parent_lot": "", "child_lot": "C",
-         "row_identity": "M1", "event_time": NOW + timedelta(minutes=1)},
-        {"lot": "C", "event_type": "merge", "slots": "5:6",
-         "wafers": "W1:W3", "parent_lot": "P", "child_lot": "",
-         "row_identity": "M2", "event_time": NOW + timedelta(minutes=1)},
-    ], dtype=object)
-
-
 def track_rows(at=NOW + timedelta(minutes=2), prefix="T"):
     return pd.DataFrame([
         {"lot": "T", "event_type": "track_in", "slots": "7:8",
@@ -295,81 +292,6 @@ def preview(frame, *, known=()):
         compiled_lot_event(), "lot_event", frame,
         {"event_time": row["event_time"], "row_identity": row["row_identity"]},
         NoJoinReader(), preparers(), mappers(), known_registrations=known)
-
-
-LEGACY_CONFIG = {
-    "occurred_at_column": "event_time",
-    "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
-    "occurred_at_timezone": "Asia/Seoul",
-    "register_entity_types": ["Lot", "Wafer"],
-    "list_separator": ":",
-    "columns": {
-        "row_identity": "row_identity", "lot": "lot",
-        "event_type": "event_type", "parent_lot": "parent_lot",
-        "child_lot": "child_lot", "slots": "slots", "wafers": "wafers",
-    },
-    "vocabulary": {
-        "split": {"lineage": "parent_child", "slot_pairing": "slot_preserving",
-                  "emit_has_wafer": True, "emit_register": True},
-        "merge": {"lineage": "parent_child", "slot_pairing": "shared_wafer",
-                  "emit_has_wafer": True, "emit_register": True},
-        "track_in": {"lineage": "none", "slot_pairing": "none",
-                     "emit_has_wafer": True, "emit_register": True},
-    },
-}
-
-
-def legacy_atoms(frame):
-    raw = frame.copy(deep=True)
-    raw["event_time"] = [value.strftime("%Y-%m-%dT%H:%M:%S")
-                         for value in raw["event_time"]]
-    translator = LotEventTranslator(
-        LEGACY_CONFIG, "legacy-lot@1",
-        frozenset({"first_sight", "pair_field", "positional_row",
-                   "slot_preserving", "shared_wafer"}),
-        who="lot_event",
-    )
-    with gate.building_molecule("lot_event"):
-        atoms, report = translator.translate(
-            group_molecules(raw.to_dict(orient="records"))[0])
-    for atom in atoms:
-        atom.ensure_source_event_identity()
-    return atoms, report
-
-
-@pytest.mark.parametrize("frame", [split_rows(), merge_rows(), track_rows()],
-                         ids=["split", "merge", "track-in"])
-def test_v2_lot_event_role_path_has_explained_semantic_parity(frame):
-    legacy, legacy_report = legacy_atoms(frame)
-    v2 = preview(frame, known=())
-    normalized = compare_shadow(
-        legacy, [dict(item) for item in v2.candidate_semantics],
-        ignored_fields=(
-            "source_event_id", "source_raw_ref", "source_translator_ver",
-            "molecule_ref", "derivation",
-        ),
-    )
-
-    report = compare_shadow(
-        legacy, [dict(item) for item in v2.candidate_semantics],
-        approved_explanations={
-            "*.source_event_id": "v2 canonical EventFrame identity replaces legacy marker",
-            "*.source_raw_ref": "v2 preserves canonical per-row preparation provenance",
-            "*.source_translator_ver": "v2 snapshot hash replaces legacy translator name",
-            "*.molecule_ref": "v2 canonical source identity replaces legacy tuple marker",
-            "*.derivation": "register uses type-specific unique Profile mapping IDs",
-        },
-        legacy_outcome={"molecules": 1, "refused": 0,
-                        "incomplete": int(legacy_report["incomplete"])},
-        v2_outcome={"molecules": v2.molecule_count, "refused": 0,
-                    "incomplete": 0},
-    )
-
-    assert report.status in {"equal", "explained_difference"}
-    assert report.regressions == 0
-    assert normalized.status == "equal"
-    assert normalized.equal_claims == len(legacy)
-    assert len(legacy) == v2.atom_count
 
 
 def test_registration_snapshot_is_required_and_dedupes_across_events():

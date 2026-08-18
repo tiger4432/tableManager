@@ -8,17 +8,9 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger import gate                                                     # noqa: E402
 from ledger.backfill import fetch_page                                      # noqa: E402
-from ledger.examples.grouped_translator_template import (                  # noqa: E402
-    GroupedProcessJobTranslator, group_rows)
-from ledger import config as ledger_config                                  # noqa: E402
-from ledger.lot_event_translator import (LotEventTranslator,                # noqa: E402
-                                         Molecule, group_molecules)
 from ledger.observability import probe_source_head                          # noqa: E402
 from ledger.source_contract import compile_source                          # noqa: E402
-from ledger.translator_pattern import (ClaimDraft, SafeTranslatorTemplate, # noqa: E402
-                                       SourceMolecule)
 import ledger_admin                                                         # noqa: E402
 
 
@@ -52,7 +44,17 @@ def test_lineage_contract_lists_every_possible_claim_not_only_sampled_branches()
     assert slot_map["vocabulary"]["qualifiers"] == ["from", "to", "wafer"]
 
 
-def test_lineage_emit_register_false_matches_contract_and_real_translator():
+def test_lineage_emit_register_false_removes_register_from_the_contract():
+    """⚠️ HALF OF THIS TEST IS GONE, AND THE MISSING HALF IS NAMED HERE ON PURPOSE.
+
+    It used to compile the contract AND run the real `LotEventTranslator` on one row,
+    asserting both said `has_wafer` and only `has_wafer`. That is a seam test, and its
+    whole value was that the two sides could disagree. The translator was deleted on
+    2026-08-18, so the second side no longer exists and what is left is a one-sided
+    assertion about `compile_source` -- kept because `emit_register: False` is otherwise
+    uncovered, but it can no longer catch a contract that disagrees with an executor.
+    Whatever executes this declaration next needs the second side written back.
+    """
     source = lineage_declaration()
     source["vocabulary"] = {
         "track_in": {"lineage": "none", "slot_pairing": "none",
@@ -60,24 +62,6 @@ def test_lineage_emit_register_false_matches_contract_and_real_translator():
     contract = compile_source("lot_event", source)
     assert contract["state"] == "ready"
     assert [row["predicate"] for row in contract["emissions"]] == ["has_wafer"]
-
-    row = {
-        "row_identity": "r1", "lot": "LOT-1", "event_type": "track_in",
-        "parent_lot": None, "child_lot": None, "slots": "1", "wafers": "WF-1",
-        "event_time": "2026-08-16T10:00:00",
-    }
-    molecule = group_molecules([row])[0]
-    cfg = {"version": 1, "sources": {"lot_event": source}}
-    translator = LotEventTranslator(
-        source, ledger_config.translator_version(cfg, "lot_event"),
-        ledger_config.declared_derivations(cfg, "lot_event"))
-    gate.reset_counters()
-    with gate.building_molecule("lot_event"):
-        atoms, report = translator.translate(molecule)
-    gate.reset_counters()
-
-    assert report["refused"] is False
-    assert [atom.predicate for atom in atoms] == ["has_wafer"]
 
 
 def test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_rule():
@@ -157,62 +141,6 @@ def test_admin_save_gate_rejects_translator_vocabulary_conflict_before_dry_run(
     assert "Product" in violations[0]["detail_ko"]
 
 
-def process_config():
-    return {
-        "occurred_at_column": "event_time",
-        "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
-        "occurred_at_timezone": "Asia/Seoul",
-        "register_entity_types": ["Wafer"],
-    }
-
-
-def test_copyable_grouped_template_only_needs_domain_claim_code():
-    rows = [
-        {"row_identity": "r1", "job_id": "J1", "event_time": "2026-08-16T10:00:00",
-         "wafer": "WF-1", "step": "BOND", "recipe": "R1", "equipment": "EQ-1"},
-        {"row_identity": "r2", "job_id": "J1", "event_time": "2026-08-16T10:00:00",
-         "wafer": "WF-2", "step": "BOND", "recipe": "R1", "equipment": "EQ-1"},
-    ]
-    molecule = group_rows("process_log", rows)[0]
-    translator = GroupedProcessJobTranslator(
-        "process_log", process_config(), "process_log/1/rules:abc",
-        {"first_sight", "job_row_observation"})
-    gate.reset_counters()
-    with gate.building_molecule("process_log"):
-        atoms, report = translator.translate(molecule)
-    gate.reset_counters()
-
-    assert report["refused"] is False
-    assert [atom.predicate for atom in atoms] == [
-        "register", "processed_with", "register", "processed_with"]
-    assert all(atom.source_who == "process_log" for atom in atoms)
-    assert atoms[1].source_raw_ref == 'process_log:["r1"]'
-    assert atoms[1].object_payload == {
-        "step": "BOND", "recipe": "R1", "equipment": "EQ-1"}
-
-
-class _LateRefusalTranslator(SafeTranslatorTemplate):
-    def claim_drafts(self, molecule, occurred_at):
-        yield ClaimDraft("processed_with", "Wafer", {"wafer": "WF-1"}, "rule",
-                         "value", {"step": "BOND", "recipe": "R1"})
-        self.refuse(gate.REFUSE_ATOMICITY, "second half is inconsistent")
-
-
-def test_template_materialises_claims_before_registration_so_late_refusal_leaks_nothing():
-    molecule = SourceMolecule(
-        "custom_source", "J1", [{"row_identity": "r1"}],
-        datetime(2026, 8, 16, 10, 0, 0))
-    translator = _LateRefusalTranslator(
-        "custom_source", process_config(), "v1", {"first_sight", "rule"})
-    gate.reset_counters()
-    with gate.building_molecule("custom_source"):
-        atoms, report = translator.translate(molecule)
-    gate.reset_counters()
-
-    assert atoms is None and report["refused"] is True
-    assert translator.registered == set()
-
-
 class _Cursor:
     def __init__(self, *, rows=(), one=None):
         self.rows = list(rows)
@@ -265,9 +193,10 @@ def test_unstarted_timestamp_cursor_does_not_compare_timestamptz_to_empty_text()
     sql, params = cursor.calls[0]
     assert "WHERE event_time > %s" not in sql
     assert params == (20,)
+    # The datetime survives the page read as a datetime rather than as text. The line
+    # that followed rendered it through `lot_event_translator.Molecule(...).ref`; that
+    # class was deleted on 2026-08-18 and only the `fetch_page` half is asserted here now.
     assert rows[0]["event_time"] == happened
-    assert "2026-08-16T10:00:00" in Molecule(
-        "track_in", happened, None, "LOT-1").ref
 
 
 def test_unstarted_lag_probe_counts_all_rows_and_serialises_datetime_head():

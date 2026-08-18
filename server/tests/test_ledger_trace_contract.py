@@ -1,19 +1,23 @@
-"""The seam between the translator (L1) and the trace query (L2).
+"""The read axis of the trace query (L2): its vocabulary, its classification, its words.
 
 🔴 **THIS FILE EXISTS BECAUSE THE REST OF THE SUITE WAS GREEN WHILE THE
 INTEGRATION WAS BROKEN.** Every fixture in `test_ledger_trace.py` and
 `test_ledger_trace_pg.py` was written by this lane, so they all spelled the
-object payload the way this lane assumed it: flat, `{"lot": ...}`. The translator
-actually emits `envelope.entity_ref` — `{"type", "keys": {...}, "qualifiers":
+object payload the way this lane assumed it: flat, `{"lot": ...}`. The real
+emitter produces `envelope.entity_ref` — `{"type", "keys": {...}, "qualifiers":
 {...}}` — and against a real atom every payload reader here returned `None`, so
 every hop would have come back `[unusable_payload]` on the first real query. Two
-lanes agreeing with themselves is not agreement.
+lanes agreeing with themselves is not agreement. The payload readers are still
+checked against `envelope.entity_ref` itself rather than a hand-written dict.
 
-So the fixtures here are NOT written by hand. They are built by calling the
-translator's own `entity_ref`, and the atoms are produced by driving
-`LotEventTranslator` over `lot_event`-shaped rows with the shipped config. When
-L1 changes the payload shape, the direction of an edge or the name of a
-qualifier, this file goes red — which is the only way this lane finds out.
+⚠️ WHAT THIS FILE NO LONGER DOES. Eight tests drove `LotEventTranslator` over
+`lot_event`-shaped rows and traced the atoms end to end; they went with that module on
+2026-08-18. The write half of this seam is therefore UNGUARDED until the v2 path grows an
+equivalent — nothing here now proves that whatever emits atoms and whatever walks them
+agree on payload shape, edge direction or qualifier names. What remains is entirely the
+read side, and all of it is live code: the declared-derivation census, class-1-by-
+derivation and its rank-over-timestamp rule, the hop basis, and
+`HOP_STATES ⊆ PROJECTION_ONLY_WORDS`.
 """
 
 import json
@@ -31,11 +35,8 @@ import ledger_trace as lt
 ledger_pkg = pytest.importorskip(
     "ledger", reason="the ledger translator package (L1) is not present")
 from ledger import config as ledger_config          # noqa: E402
-from ledger import gate                             # noqa: E402
 from ledger import vocabulary                       # noqa: E402
 from ledger.envelope import Atom, entity_ref        # noqa: E402
-from ledger.lot_event_translator import (           # noqa: E402
-    LotEventTranslator, group_molecules)
 
 
 CONFIG_SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
@@ -95,175 +96,6 @@ def test_a_slot_is_not_mistaken_for_part_of_the_wafers_identity():
     assert lt._object_key(hw, "slot") is None, "slot read as wafer identity"
     assert lt._object_qualifier(hw, "wafer") is None or \
         lt._object_key(hw, "wafer") == "WF.01"
-
-
-# ---------------------------------------------------------------------------
-# Atoms from the real translator, traced
-# ---------------------------------------------------------------------------
-
-def _translator():
-    cfg = ledger_config.load(os.path.abspath(CONFIG_SAMPLE))
-    src = ledger_config.source_config(cfg, "lot_event")
-    return LotEventTranslator(
-        src, ledger_config.translator_version(cfg, "lot_event"),
-        ledger_config.declared_derivations(cfg, "lot_event"))
-
-
-def _row(lot, event_type, parent, child, slots, wafers, when):
-    """A source row in the CANONICAL column names `backfill.fetch_page` aliases to.
-
-    Not the physical `lot_event` column names: the `columns` block of the config
-    is applied in the SQL projection (`slot_numbers AS slots`), so by the time the
-    translator sees a row the mapping has already happened. Building the wrong one
-    of those two shapes is how the first version of this file failed.
-    """
-    return {"row_identity": f"{lot}|{event_type}|{when}", "lot": lot,
-            "event_type": event_type, "parent_lot": parent, "child_lot": child,
-            "slots": slots, "wafers": wafers, "event_time": when}
-
-
-def _split_pair(parent, child, parent_slots, parent_wafers,
-                child_slots, child_wafers, when):
-    """One SPLIT as the source delivers it: two rows, matched into one molecule."""
-    return [_row(parent, "split", "", child, parent_slots, parent_wafers, when),
-            _row(child, "split", parent, "", child_slots, child_wafers, when)]
-
-
-def _atoms_to_claims(atoms):
-    """`Atom` -> `Claim`. Only the eleven contract columns cross; `molecule_ref`
-    and `derivation` are explicitly NOT envelope fields and must not leak in."""
-    claims = []
-    for i, a in enumerate(atoms):
-        assert isinstance(a, Atom)
-        claims.append(lt.Claim(
-            id=f"{i:032d}", subject_type=a.subject_type,
-            subject_keys=a.subject_keys, predicate=a.predicate,
-            object_kind=a.object_kind, object_payload=a.object_payload,
-            occurred_at=a.occurred_at, source_who=a.source_who,
-            source_translator_ver=a.source_translator_ver,
-            source_raw_ref=a.source_raw_ref, supersedes=a.supersedes))
-    return claims
-
-
-def _translate(rows):
-    tr = _translator()
-    atoms = []
-    for molecule in group_molecules(rows):
-        # The molecule scope belongs to whatever drives the translator (ruling R-H-bis
-        # 3); in production that is `backfill.run`, and here it is this loop.
-        with gate.building_molecule("lot_event"):
-            produced, _report = tr.translate(molecule)
-        atoms.extend(produced or [])
-    return _atoms_to_claims(atoms)
-
-
-def test_a_two_hop_chain_from_the_real_translator_traces_end_to_end():
-    """🔴 The integration, on atoms this lane did not write.
-
-    Two SPLITs: L-A -> L-B -> L-C. `slot_preserving` is the declared pairing for
-    a split, so slot 07 stays slot 07 all the way up.
-    """
-    rows = []
-    rows += _split_pair("L-A", "L-B", "07:01", "WF.07:WF.01",
-                        "07:08", "WF.07:WF.08", "2026-05-01 00:00:00")
-    rows += _split_pair("L-B", "L-C", "08", "WF.08",
-                        "07", "WF.07", "2026-05-02 00:00:00")
-    claims = _translate(rows)
-    assert claims, "the translator produced nothing - the fixture is wrong"
-
-    answer = lt.trace("L-C", "07", lookup=lt.InMemoryClaimLookup(claims),
-                      config=lt.DEFAULT_RESOLVER_CONFIG)
-
-    kinds = [(h["predicate"], h["state"]) for h in answer["hops"]]
-    assert ("has_wafer", "unresolvable") not in kinds, (
-        f"a real atom read as missing - the payload readers are wrong: {kinds}")
-    assert ("derived_from", "resolved") in kinds
-
-    lineage = [h["to"]["keys"]["lot"] for h in answer["hops"]
-               if h["predicate"] == "derived_from" and h["to"]]
-    assert lineage == ["L-B", "L-A"], f"lineage walked wrong: {lineage}"
-
-    wafers = [h["to"]["keys"]["wafer"] for h in answer["hops"]
-              if h["predicate"] == "has_wafer" and h["to"]]
-    assert wafers == ["WF.07", "WF.07", "WF.07"], wafers
-
-    slot_hops = [h for h in answer["hops"] if h["predicate"] == "slot_map"]
-    assert [h["state"] for h in slot_hops] == ["resolved", "resolved"], (
-        f"slot_map direction misread: "
-        f"{[(h['state'], h['reason']) for h in slot_hops]}")
-    assert [h["to"]["slot"] for h in slot_hops] == ["7", "7"]
-    assert "root" in answer["terminal_reason"] and "L-A" in answer["terminal_reason"]
-
-
-def test_the_slot_map_direction_is_read_from_the_subject_not_guessed():
-    """The translator makes the PARENT the subject of `slot_map` and the CHILD the
-    object, with `from` on the parent side. The walk goes child -> parent, so it
-    meets every one of those atoms "backwards"; if it assumed subject == child it
-    would find no pairing and report an unbroken chain as broken."""
-    rows = _split_pair("L-P", "L-K", "01", "WF.01", "05", "WF.05",
-                       "2026-05-01 00:00:00")
-    claims = _translate(rows)
-    sm = [c for c in claims if c.predicate == "slot_map"]
-    assert sm, "no slot_map atoms produced"
-    for c in sm:
-        assert c.subject_keys["lot"] == "L-P", "subject is no longer the parent"
-        assert lt._payload_lot(c) == "L-K", "object is no longer the child"
-
-    answer = lt.trace("L-K", "05", lookup=lt.InMemoryClaimLookup(claims),
-                      config=lt.DEFAULT_RESOLVER_CONFIG)
-    hop = [h for h in answer["hops"] if h["predicate"] == "slot_map"][0]
-    assert hop["state"] == "resolved", hop["reason"]
-    assert hop["to"]["slot"] == "5"
-
-
-def test_a_merge_pairs_slots_by_shared_wafer_and_the_walk_follows_it():
-    """A merge declares `shared_wafer`, so `from` and `to` genuinely differ —
-    the case where reading the direction backwards produces a WRONG slot rather
-    than no slot, which no `unresolvable` would warn about."""
-    rows = [
-        _row("L-SRC", "merge", "", "L-DST", "10", "WF.99", "2026-05-03 00:00:00"),
-        _row("L-DST", "merge", "L-SRC", "", "02", "WF.99", "2026-05-03 00:00:00"),
-    ]
-    claims = _translate(rows)
-    sm = [c for c in claims if c.predicate == "slot_map"]
-    assert len(sm) == 1, [c.object_payload for c in sm]
-    assert lt._slot_map_pair(sm[0]) == ("10", "2")
-
-    answer = lt.trace("L-DST", "02", lookup=lt.InMemoryClaimLookup(claims),
-                      config=lt.DEFAULT_RESOLVER_CONFIG)
-    hop = [h for h in answer["hops"] if h["predicate"] == "slot_map"][0]
-    assert hop["state"] == "resolved", hop["reason"]
-    assert hop["to"]["slot"] == "10", (
-        "the walk carried the position to the wrong slot - the direction was "
-        "read backwards and nothing would have told anyone")
-
-
-def test_a_hop_reports_the_derivation_the_translator_stamped_on_the_atom():
-    """🔴 The basis of a hop, from the column that already carries it.
-
-    A SPLIT's `slot_map` atoms exist only because the operator DECLARED
-    `slot_preserving` — the source never uttered the pairing. The translator
-    records that in `source_translator_ver` as a `#<derivation>` suffix, and the
-    hop's reason surfaces it, so an investigator can tell a convention from an
-    observation without a twelfth column and without leaving the screen.
-    """
-    rows = _split_pair("L-A", "L-B", "07:01", "WF.07:WF.01",
-                       "07:08", "WF.07:WF.08", "2026-05-01 00:00:00")
-    claims = _translate(rows)
-
-    sm = [c for c in claims if c.predicate == "slot_map"][0]
-    assert "#" in sm.source_translator_ver, sm.source_translator_ver
-    assert lt.claim_basis(sm) == "slot_preserving"
-
-    answer = lt.trace("L-B", "07", lookup=lt.InMemoryClaimLookup(claims),
-                      config=lt.DEFAULT_RESOLVER_CONFIG)
-    hop = [h for h in answer["hops"] if h["predicate"] == "slot_map"][0]
-    assert "convention:slot_preserving" in hop["reason"], hop["reason"]
-    assert "class=3 inference" in hop["reason"], (
-        "a convention-backed atom must resolve at class 3, not class 2")
-
-    hw = [h for h in answer["hops"] if h["predicate"] == "has_wafer"][0]
-    assert "basis=positional_row" in hw["reason"], hw["reason"]
 
 
 def _declared_configs():
@@ -597,128 +429,3 @@ def test_the_confirmed_derivations_are_ranked_by_the_resolver_not_just_listed():
         "a confirmed derivation is no longer declared by any config")
 
 
-def test_an_observation_overrides_a_convention_with_nobody_unpinning_anything():
-    """🔴 The consequence that decided the ruling, demonstrated.
-
-    A `slot_map` produced under `slot_preserving` says the position stayed at 07.
-    A later real observation says it moved to 21. The observation MUST win — and
-    win automatically, with no human retracting anything — because a config
-    assumption may never outrank measured reality.
-
-    The hop is `candidate`, not `resolved`: the operator is told an assumption
-    was overruled and by what, and the convention is NAMED in the reason.
-    """
-    rows = _split_pair("L-A", "L-B", "07:01", "WF.07:WF.01",
-                       "07:08", "WF.07:WF.08", "2026-05-01 00:00:00")
-    claims = _translate(rows)
-    convention = [c for c in claims if c.predicate == "slot_map"
-                  and lt._slot_map_pair(c) == ("7", "7")]
-    assert convention, [lt._slot_map_pair(c) for c in claims
-                        if c.predicate == "slot_map"]
-    assert lt.claim_class(convention[0],
-                          lt.DEFAULT_RESOLVER_CONFIG) == lt.CLASS_INFERENCE
-
-    # An observed mapping for the same pair, from a source that stamps no
-    # derivation at all - so it is class 2 on the strength of being uttered.
-    observed = lt.Claim(
-        id="00000000-0000-7000-8000-0000000000ff", subject_type="Lot",
-        subject_keys={"lot": "L-A"}, predicate="slot_map",
-        object_kind="entity_ref",
-        object_payload=entity_ref("Lot", {"lot": "L-B"},
-                                  **{"from": "21", "to": "07", "wafer": "WF.07"}),
-        occurred_at=convention[0].occurred_at, source_who="bonding_log",
-        source_translator_ver="bonding_log/1", source_raw_ref="bonding_log:1")
-
-    answer = lt.trace("L-B", "07",
-                      lookup=lt.InMemoryClaimLookup(claims + [observed]),
-                      config=lt.DEFAULT_RESOLVER_CONFIG)
-    hop = [h for h in answer["hops"] if h["predicate"] == "slot_map"][0]
-
-    assert hop["to"]["slot"] == "21", (
-        "the convention outranked a measurement - the exact inversion the "
-        "layering value exists to prevent")
-    assert hop["event_id"] == observed.id
-    # The class DECLARED this winner (class 2 over class 3) and the assumption
-    # still disagrees — `contested`, not `candidate`. R-2026-08-13-B week 2.
-    assert hop["state"] == lt.STATE_CONTESTED
-    assert hop["n"] == 2
-    assert "convention:slot_preserving" in hop["reason"], hop["reason"]
-
-    # 🔴 AND THE STRUCTURED FIELD DESCRIBES THE WINNER, WHICH IS THE MEASUREMENT.
-    # `bonding_log/1` carries no `#derivation`, so the winner has no declared
-    # basis at all — while the word `convention:` sits in the same sentence,
-    # belonging to the claim that lost. A consumer reading the prose gets this
-    # backwards; a consumer reading the field cannot.
-    assert hop["basis"] is None, (
-        f"the losing convention leaked into the winner's basis: {hop['basis']}")
-
-
-def test_a_merge_hop_reports_the_uttered_derivation_not_the_convention():
-    """The counterpart: a merge's pairing IS uttered by the source, so its atoms
-    carry a different derivation. If both read the same, the screen could not
-    tell a judgement from a fact and the field would be decoration."""
-    rows = [
-        _row("L-SRC", "merge", "", "L-DST", "10", "WF.99", "2026-05-03 00:00:00"),
-        _row("L-DST", "merge", "L-SRC", "", "02", "WF.99", "2026-05-03 00:00:00"),
-    ]
-    claims = _translate(rows)
-    sm = [c for c in claims if c.predicate == "slot_map"][0]
-    assert lt.claim_basis(sm) == "shared_wafer"
-
-    answer = lt.trace("L-DST", "02", lookup=lt.InMemoryClaimLookup(claims),
-                      config=lt.DEFAULT_RESOLVER_CONFIG)
-    hop = [h for h in answer["hops"] if h["predicate"] == "slot_map"][0]
-    assert "basis=shared_wafer" in hop["reason"]
-    assert "slot_preserving" not in hop["reason"]
-
-
-def test_a_blank_wafer_makes_no_atom_and_the_walk_says_so_rather_than_lying():
-    """The translator refuses to mint `has_wafer` for a blank wafer id — "there is
-    a wafer here, I do not know which" is not a claim. The screen must then say
-    the position is unknown, not invent one.
-
-    The lists still have EQUAL LENGTH (`03:04` against `:WF.04`): an unequal pair
-    is an atomicity refusal that kills the whole molecule, which would test the
-    gate rather than this.
-    """
-    rows = _split_pair("L-A", "L-B", "01", "WF.01", "03:04", ":WF.04",
-                       "2026-05-01 00:00:00")
-    claims = _translate(rows)
-    b_wafers = [c for c in claims
-                if c.predicate == "has_wafer" and c.subject_keys["lot"] == "L-B"]
-    assert [lt._payload_slot(c) for c in b_wafers] == ["4"], (
-        "the blank position minted an atom, or the filled one did not")
-
-    answer = lt.trace("L-B", "03", lookup=lt.InMemoryClaimLookup(claims),
-                      config=lt.DEFAULT_RESOLVER_CONFIG)
-    hw = [h for h in answer["hops"] if h["predicate"] == "has_wafer"][0]
-    assert hw["state"] == "unresolvable"
-    assert "no_claim" in hw["reason"] and "L-B" in hw["reason"]
-    assert answer["hops"], "the forbidden empty answer"
-
-
-def test_a_split_that_moved_a_wafer_off_the_parents_row_reads_as_unknown():
-    """🔴 A real limit of the source, and the screen must state it rather than
-    paper over it.
-
-    Both rows of a SPLIT are POST-event snapshots (the shipped config says so in
-    its own words), so a wafer that moved to the child is no longer uttered on the
-    parent's row. Walking up the chain therefore reaches a lot where `has_wafer`
-    for that position genuinely does not exist — and the honest answer is
-    `unresolvable` with a reason, not a guess and not a shorter chain.
-
-    The LINEAGE is unaffected: the walk still reaches the root.
-    """
-    rows = _split_pair("L-A", "L-B", "01:02", "WF.01:WF.02",
-                       "07", "WF.07", "2026-05-01 00:00:00")
-    claims = _translate(rows)
-    answer = lt.trace("L-B", "07", lookup=lt.InMemoryClaimLookup(claims),
-                      config=lt.DEFAULT_RESOLVER_CONFIG)
-
-    wafer_hops = [h for h in answer["hops"] if h["predicate"] == "has_wafer"]
-    assert [h["state"] for h in wafer_hops] == ["resolved", "unresolvable"]
-    assert wafer_hops[0]["to"]["keys"]["wafer"] == "WF.07"
-    assert "lot=L-A" in wafer_hops[1]["reason"]
-    assert [h["state"] for h in answer["hops"]
-            if h["predicate"] == "derived_from"] == ["resolved", "unresolvable"]
-    assert "root" in answer["terminal_reason"]

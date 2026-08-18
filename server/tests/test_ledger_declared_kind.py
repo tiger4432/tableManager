@@ -1,19 +1,17 @@
 # -*- coding: utf-8 -*-
-"""The fourth grammar — a translator that is a DECLARATION (`ADMIN_SETUP_BRIEF` §6-2).
+"""The fourth grammar — a source declaration `ledger/config.py` must refuse or accept.
 
-WHY THIS FILE IS DENSER THAN THE OTHER TRANSLATORS' TESTS
-----------------------------------------------------------
-The other three grammars have a Python class a reviewer can read, and a reviewer is a real
-check. This one's behaviour lives in a config file written through a screen, so the only
-reviewer it has is this suite plus the gate. That is the proportionality rule
-(R-2026-08-14-J) pointing straight at it: a declarative write path IS a risky place.
+`ledger/declared_translator.py` was deleted on 2026-08-18, taking the value-resolution and
+translation halves of this file with it. What remains is the DECLARATION GRAMMAR, and that
+code still exists and still runs — so these tests die in the commit that deletes
+`ledger/config.py`, not before it.
 
 Every refusal below is here because the alternative outcome is a WRONG ATOM rather than an
 error — a misspelled `when` operator that silently means "always", a `$column` that
 silently resolves to nothing, a rule name reused so two claims cannot be told apart. None
-of those fail loudly on their own.
+of those fail loudly on their own, which is why the grammar is checked here even though
+the thing that used to execute it is gone.
 """
-import copy
 import os
 import sys
 
@@ -22,9 +20,6 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import config as ledger_config                          # noqa: E402
-from ledger import gate                                             # noqa: E402
-from ledger.declared_translator import (DeclaredMolecule, DeclaredTranslator,  # noqa: E402
-                                        matches, resolve)
 
 
 def declaration(**overrides):
@@ -60,14 +55,6 @@ def refusal_of(source):
     with pytest.raises(ledger_config.LedgerConfigError) as caught:
         validate(source)
     return str(caught.value)
-
-
-def row(**overrides):
-    base = {"row_identity": "r1", "event_time": "2026-08-15T09:00:00",
-            "base": "REF_BASE", "x": 3, "y": 4, "leg": "A", "row_id": "r1",
-            "updated_at": "2026-08-15T09:00:00", "__watermark__": ["t", "r1"]}
-    base.update(overrides)
-    return base
 
 
 # --------------------------------------------------------------- the grammar's shape
@@ -227,196 +214,6 @@ def test_a_column_map_this_grammar_does_not_read_is_refused():
     source["columns"]["wafer"] = "base"
     assert "does not read" in refusal_of(source)
 
-
-# ------------------------------------------------------------- value resolution
-def test_a_dollar_token_reads_the_row_and_a_bare_string_is_a_literal():
-    r = row()
-    assert resolve("$leg", r, "reg", "w") == "A"
-    assert resolve("leg", r, "reg", "w") == "leg"
-    assert resolve("$$leg", r, "reg", "w") == "$leg"
-    assert resolve({"a": "$x", "b": "lit"}, r, "reg", "w") == {"a": 3, "b": "lit"}
-
-
-def test_a_dollar_token_for_a_column_that_is_not_there_REFUSES():
-    """🔴 Not `None`. Resolving to nothing produces an atom that is well formed,
-    plausible, and about nothing — which is the failure every other refusal here prevents."""
-    with pytest.raises(gate.MoleculeRefused) as caught:
-        with gate.building_molecule("reg"):
-            resolve("$ghost", row(), "reg", "emit[0].payload.leg")
-    assert "ghost" in str(caught.value)
-    gate.reset_counters()
-
-
-@pytest.mark.parametrize("when,leg,fires", [
-    ({"column": "leg", "equals": "A"}, "A", True),
-    ({"column": "leg", "equals": "A"}, "B", False),
-    ({"column": "leg", "not_equals": "A"}, "B", True),
-    ({"column": "leg", "in": ["A", "C"]}, "C", True),
-    ({"column": "leg", "in": ["A", "C"]}, "B", False),
-    ({"column": "leg", "not_in": ["A"]}, "B", True),
-    ({"column": "leg", "present": True}, "A", True),
-    ({"column": "leg", "present": True}, "", False),
-    ({"column": "leg", "absent": True}, "", True),
-    (None, "A", True),
-])
-def test_branching_on_a_column_value(when, leg, fires):
-    assert matches(when, row(leg=leg), "reg") is fires
-
-
-def test_branching_on_a_column_that_is_not_there_REFUSES():
-    """A branch on an absent column would take the same arm forever, silently."""
-    with pytest.raises(gate.MoleculeRefused):
-        with gate.building_molecule("reg"):
-            matches({"column": "ghost", "equals": "A"}, row(), "reg")
-    gate.reset_counters()
-
-
-# ----------------------------------------------------------------- the translation
-def translate(source, source_row):
-    cfg = {"version": 1, "sources": {"reg": source}}
-    ledger_config.validate(cfg, origin="<test>")
-    translator = DeclaredTranslator(
-        "reg", source, ledger_config.translator_version(cfg, "reg"),
-        ledger_config.declared_derivations(cfg, "reg"))
-    with gate.building_molecule("reg"):
-        return translator.translate(DeclaredMolecule("reg", source_row)), translator
-
-
-def test_one_row_becomes_the_declared_atoms():
-    gate.reset_counters()
-    (atoms, report), _t = translate(declaration(), row())
-    gate.reset_counters()
-
-    assert report["refused"] is False
-    by_predicate = sorted(a.predicate for a in atoms)
-    assert by_predicate == ["has_param", "register"]
-
-    claim = next(a for a in atoms if a.predicate == "has_param")
-    assert claim.subject_type == "Product"
-    assert claim.subject_keys == {"product": "REF_BASE"}
-    assert claim.object_kind == "value"
-    assert claim.object_payload["param"] == "A"       # $leg
-    assert claim.object_payload["value"] == 3         # $x, type preserved
-    assert claim.object_payload["unit"] == "cell"     # literal
-    assert claim.derivation == "coordinate_leg"
-    assert claim.source_translator_ver.endswith("#coordinate_leg")
-    assert claim.source_raw_ref == 'reg:["r1"]'
-
-
-def test_the_time_basis_rides_in_the_payload_so_it_is_readable_FROM_THE_ATOM():
-    """R-2026-08-15-N ② with an enforcement point. A declaration stating "this is only the
-    row's creation time" in a file nobody reads at query time would bind nothing."""
-    gate.reset_counters()
-    (atoms, _r), _t = translate(declaration(occurred_at_basis="row_created"), row())
-    gate.reset_counters()
-    claim = next(a for a in atoms if a.predicate == "has_param")
-    assert claim.object_payload["occurred_at_basis"] == "row_created"
-
-
-def test_one_row_can_become_SEVERAL_atoms_and_branching_selects_which():
-    source = declaration()
-    source["emit"].append({
-        "rule": "leg_a_note",
-        "predicate": "has_param",
-        "class": "observation",
-        "subject": {"type": "Product", "keys": {"product": "$base"}},
-        "object": {"kind": "value",
-                   "payload": {"param": "note", "value": "leg A", "unit": "text"}},
-        "when": {"column": "leg", "equals": "A"},
-    })
-    gate.reset_counters()
-    (atoms_a, _), _ = translate(source, row(leg="A"))
-    (atoms_b, _), _ = translate(source, row(leg="B", row_identity="r2"))
-    gate.reset_counters()
-
-    # A fires both rules (+ one register); B fires only the unconditional one.
-    assert sorted(a.derivation for a in atoms_a) == ["coordinate_leg", "first_sight",
-                                                     "leg_a_note"]
-    assert sorted(a.derivation for a in atoms_b) == ["coordinate_leg", "first_sight"]
-
-
-def test_a_row_matching_no_rule_is_COUNTED_rather_than_refused():
-    """A registry whose rules cover a subset is a legitimate declaration. But a
-    declaration matching NOTHING looks identical to one that works until somebody counts,
-    so the number exists and the dry run turns it into a sentence."""
-    source = declaration()
-    source["emit"][0]["when"] = {"column": "leg", "equals": "ZZZ"}
-    gate.reset_counters()
-    (atoms, report), translator = translate(source, row(leg="A"))
-    gate.reset_counters()
-
-    assert atoms == []
-    assert report["refused"] is False
-    assert translator.rows_matching_nothing == 1
-
-
-def test_an_unparseable_time_is_REFUSED_never_replaced_with_now():
-    """The brief's risk 2 — arrival time standing in for world time is the defect that
-    never announces itself, because every atom stays well formed and only the ORDER of
-    history is wrong."""
-    gate.reset_counters()
-    (atoms, report), _t = translate(declaration(), row(event_time="not a timestamp"))
-    gate.reset_counters()
-    assert atoms is None
-    assert report["refused"] is True
-    assert report["reason"] == gate.REFUSE_MISSING_OCCURRED_AT
-
-
-def test_a_refused_row_gives_its_registrations_BACK():
-    """Otherwise the next row mentioning the same product emits no register either, and
-    the entity is registered nowhere while the memo says it was."""
-    gate.reset_counters()
-    source = declaration()
-    cfg = {"version": 1, "sources": {"reg": source}}
-    ledger_config.validate(cfg, origin="<test>")
-    translator = DeclaredTranslator("reg", source,
-                                    ledger_config.translator_version(cfg, "reg"),
-                                    ledger_config.declared_derivations(cfg, "reg"))
-    with gate.building_molecule("reg"):
-        atoms, report = translator.translate(
-            DeclaredMolecule("reg", row(event_time="broken")))
-    assert atoms is None and report["refused"] is True
-    assert translator.registered == set(), "a refused row left its product marked registered"
-
-    with gate.building_molecule("reg"):
-        atoms, _report = translator.translate(DeclaredMolecule("reg", row()))
-    assert any(a.predicate == "register" for a in atoms)
-    gate.reset_counters()
-
-
-def test_the_gate_refuses_a_declaration_that_makes_an_ILLEGAL_atom():
-    """🔴 THE SAFETY NET THE BRIEF PROMISES. This grammar has no Python reviewer, so a
-    declaration naming a predicate that does not accept its subject must end in a REFUSAL
-    rather than in a written atom. Proven end to end: the declaration validates, the
-    translator builds, and the gate throws it out by name."""
-    from ledger import vocabulary
-
-    source = declaration()
-    # `observed` accepts Wafer / WaferLeg, never Product.
-    source["emit"][0]["predicate"] = "observed"
-    source["emit"][0]["object"] = {
-        "kind": "value",
-        "payload": {"finding_kind": "void", "method": "map", "run_uid": "$row_id"}}
-    cfg = {"version": 1, "sources": {"reg": source}}
-    ledger_config.validate(cfg, origin="<test>")     # the GRAMMAR is fine
-
-    gate.reset_counters()
-    translator = DeclaredTranslator("reg", source,
-                                    ledger_config.translator_version(cfg, "reg"),
-                                    ledger_config.declared_derivations(cfg, "reg"))
-    molecule = DeclaredMolecule("reg", row())
-    with pytest.raises(gate.MoleculeRefused) as caught:
-        with gate.building_molecule("reg"):
-            atoms, _r = translator.translate(molecule)
-            # The REAL ref, not a placeholder: the gate checks that every atom belongs to
-            # the transaction unit it is screened under, and it refuses a mismatch first.
-            gate.screen_molecule("reg", atoms,
-                                 ledger_config.declared_derivations(cfg, "reg"),
-                                 ledger_config.declared_subject_types(cfg, "reg"),
-                                 molecule_ref=molecule.ref, source_rows=1)
-    assert "does not accept subject type 'Product'" in caught.value.detail
-    gate.reset_counters()
-    assert vocabulary.is_declared("observed")        # the word is fine; the USE was not
 
 
 def test_the_fourth_kind_is_registered_as_a_grammar():
