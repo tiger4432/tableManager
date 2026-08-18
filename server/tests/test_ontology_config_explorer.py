@@ -792,3 +792,36 @@ def test_api_returns_structured_context_and_strict_draft_contract(copied_root, t
     assert revised.status_code == 200
     assert revised.json()["revision"] == 2
     assert revised.json()["lifecycle_status"] == "editing"
+
+
+def test_authorable_sections_match_where_the_index_actually_puts_things(active_setup):
+    """The create path builds a `bundle_path` from a kind; the index builds one from a
+    declaration it already found. Nothing forces those two to agree, and a disagreement
+    would not fail loudly -- it would write a new `mapper` into the wrong section, where
+    the loader would refuse it with an error naming neither the screen nor the mistake.
+
+    So score the map against the index rather than trusting both to be edited together.
+    """
+    from ledger.config_explorer import (AUTHORABLE_SECTIONS, authorable_bundle_path,
+                                        build_explorer_index)
+
+    index = build_explorer_index(active_setup)
+    observed: dict[str, set[str]] = {}
+    for node in index.nodes.values():
+        observed.setdefault(node.kind, set()).add(node.bundle_path[0])
+
+    for kind, section in AUTHORABLE_SECTIONS.items():
+        if kind not in observed:
+            continue          # nothing of this kind declared today; the map is still a claim
+        assert observed[kind] == {section}, (
+            f"the index files {kind!r} under {sorted(observed[kind])} but the authoring "
+            f"path would create it in {section!r}")
+        assert authorable_bundle_path(kind, "probe@1") == (section, "probe@1")
+
+    # Non-vacuous: the live setup really does exercise several of these kinds, so the loop
+    # above is comparing things rather than skipping everything.
+    assert len(set(AUTHORABLE_SECTIONS) & set(observed)) >= 4
+
+    # And the two kinds deliberately left out must NOT become creatable by accident.
+    for excluded in ("table", "verified_join"):
+        assert excluded not in AUTHORABLE_SECTIONS

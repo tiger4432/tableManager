@@ -159,6 +159,22 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
         return DraftPreview(False, None, None, (_decorate_issue(_issue(exc)),))
 
 
+class _Remove:
+    """Sentinel: this operation removes the leaf rather than writing one.
+
+    A distinct object rather than `None`, because `None` is a legal JSON value and a
+    declaration whose body is `null` must stay distinguishable from one that is gone.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:                      # pragma: no cover - diagnostics only
+        return "REMOVE"
+
+
+REMOVE = _Remove()
+
+
 def _set_path(document: Any, path: Sequence[Any], value: Any) -> None:
     if not path:
         raise KeyError("empty target path")
@@ -167,6 +183,25 @@ def _set_path(document: Any, path: Sequence[Any], value: Any) -> None:
         current = current[part]
     current[path[-1]] = json.loads(json.dumps(
         value, ensure_ascii=False, allow_nan=False))
+
+
+def _delete_path(document: Any, path: Sequence[Any]) -> None:
+    """Remove the leaf at `path`. Absent is an ERROR, not a silent success.
+
+    A delete that shrugs at a missing target turns "someone already removed this" and
+    "I removed the wrong thing and the real one is still there" into the same green.
+    """
+    if not path:
+        raise KeyError("empty target path")
+    current = document
+    for part in path[:-1]:
+        current = current[part]
+    if path[-1] not in current:
+        raise ConfigExplorerError(
+            "declaration_absent", "target_key",
+            f"{'/'.join(str(p) for p in path)} is not in the file; nothing was changed",
+        )
+    del current[path[-1]]
 
 
 class OntologyDraftStore:
@@ -373,7 +408,8 @@ class OntologyDraftStore:
                 )
 
             config_path = Path(active_setup.config_root) / node.config_file
-            backup = self._activate_file(config_path, node.bundle_path, record["raw"])
+            backup = self._activate_file(
+                config_path, [(node.bundle_path, record["raw"])])
             try:
                 reload_callback()
                 new_setup = refreshed_setup()
@@ -461,7 +497,15 @@ class OntologyDraftStore:
             else "stale"
         )
 
-    def _activate_file(self, path: Path, bundle_path: Sequence[Any], value: Any) -> Path:
+    def _activate_file(self, path: Path,
+                       operations: Sequence[tuple[Sequence[Any], Any]]) -> Path:
+        """Apply every operation to one document in ONE replace.
+
+        Operations rather than a single value because a RENAME is a removal and a write
+        that must not be separable: two activations would leave a window in which the
+        declaration exists twice, or not at all, and a reader arriving in that window
+        would see a config that no author ever wrote.
+        """
         lock_path = path.with_name(f".{path.name}.ontology-explorer.lock")
         try:
             lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -475,7 +519,11 @@ class OntologyDraftStore:
             os.close(lock_fd)
             with path.open("r", encoding="utf-8") as handle:
                 document = json.load(handle)
-            _set_path(document, bundle_path, value)
+            for op_path, op_value in operations:
+                if isinstance(op_value, _Remove):
+                    _delete_path(document, op_path)
+                else:
+                    _set_path(document, op_path, op_value)
             backup_dir = Path(config_backup.backup_dir_for(str(path)))
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup = backup_dir / (

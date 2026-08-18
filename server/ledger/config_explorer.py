@@ -50,6 +50,42 @@ def node_key(kind: str, canonical_id: str) -> str:
     return f"{kind}|{canonical_id}"
 
 
+#: kind -> the `ledger_config.json` section that OWNS declarations of that kind.
+#:
+#: `build_explorer_index` already encodes this pairing, but only for declarations that
+#: EXIST: it reads a section, then names each member's `bundle_path` as it goes. Creating a
+#: declaration has to go the other way -- from a kind and a not-yet-used id to the place it
+#: will live -- and there is no node to ask. Stated once here so the authoring path and the
+#: index cannot disagree about where a `mapper` lives; `_authorable_bundle_path` below is
+#: the only way to build that path, and `test_config_explorer_sections_match_the_index`
+#: scores this map against the index rather than trusting both to be edited together.
+#:
+#: `table` and `verified_join` are deliberately absent. `table` moved out of this file to
+#: `server/config/table_config.json` on 2026-08-18 and is read-only here; `virtual_joins`
+#: is an optional section this screen does not yet author. Absence from this map is what
+#: makes a kind un-creatable, so adding one is a decision, not a typo.
+AUTHORABLE_SECTIONS: Mapping[str, str] = MappingProxyType({
+    "predicate": "vocabulary",
+    "entity": "entities",
+    "pack": "packs",
+    "preparer": "source_preparers",
+    "mapper": "mappers",
+    "profile": "profiles",
+    "source_plan": "sources",
+})
+
+
+def authorable_bundle_path(kind: str, canonical_id: str) -> tuple[str, str]:
+    """Where a declaration of `kind` named `canonical_id` lives, existing or not."""
+    section = AUTHORABLE_SECTIONS.get(kind)
+    if section is None:
+        raise ConfigExplorerError(
+            "unauthorable_kind", "kind",
+            f"declarations of kind {kind!r} cannot be created or removed on this screen",
+        )
+    return (section, canonical_id)
+
+
 def pointer_escape(value: str) -> str:
     return str(value).replace("~", "~0").replace("/", "~1")
 
