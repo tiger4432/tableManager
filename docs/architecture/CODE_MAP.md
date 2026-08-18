@@ -2686,7 +2686,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 |---|---|---|
 | `server/ontology_config_explorer_router.py` | **129** | `APIRouter(prefix="/admin/ontology-explorer")` — `main.py`가 **`include_router`로 등록하는 두 라우터 중 하나**(다른 하나가 `ledger_trace_router`). 라우트 7종: GET `/view` · POST `/drafts` · PUT `/drafts/{id}` · POST `/drafts/{id}/{review,revise,activate}` · DELETE `/drafts/{id}`. 🔒 **게이트가 갈린다** — 읽기 `/view`만 `require_admin_token`, **쓰기 전부가 `require_admin_token_strict`**. ⚠️ **[§1.4](#14-api-라우트-표--어드민운영그래프맵인리치먼트)의 「`/admin`+`/internal` 게이트 데코레이터 28개」 계수에 이 라우터가 들어 있지 않다** — 그 수는 `main.py`의 `@app.*`만 셌기 때문이다. **이 패스도 다시 세지 않았다** |
 | `server/ledger_admin.py` | **844** | admin으로 소스를 원장에 잇고 어휘를 늘린다 — **문법 검증과 저장(1단·3단)**. 판정 정본은 `docs/process/LEDGER_RULINGS.md` **R-2026-08-15-M** |
-| `server/audit_changeset.py` | **398** | 감사 행의 **CHANGESET 모양 — WRITE 1건당 1행이지 컬럼당 1행이 아니다** |
+| `server/audit_changeset.py` | **416** | 🅿️ **파킹 — 배선 안 됨, 운영 호출자 0개.** 자기 테스트 파일 말고는 import하는 곳이 **레포 전체에 없다**(`crud.py` 쓰기·`main.py` 읽기 둘 다 **리팩터 이전 인코딩 그대로**). 레인은 **2026-08-12에 의도적으로 중단**됐고 `crud.py`/`main.py`/`schemas.py` hunk는 되돌려졌다 — 이 파일이 추적 대상이 된 건 6일 뒤 `1aeda91`의 **경로 없는 `git add`** 때문이다. `server/tests/test_audit_changeset.py`는 **23건 전부 skip**. docstring이 「감사 행의 CHANGESET 모양 — WRITE 1건당 1행」이라 **착지한 것처럼** 적혀 있으나 **제안일 뿐**이니 라이브 감사 모양으로 읽지 말 것. 서술된 결함 5종은 **여전히 열려 있다**(감사 «이력»만 손실, 셀 값은 정상). 판정: `docs/process/PROJECT_STATUS.md:1560-1568` |
 | `server/chain_key_gate.py` | **232** | 체인은 키 컬럼이 안 채워진 행을 낼 수 없다 — **관문 «하나», 일곱 개가 아니라** |
 | `server/verified_join_contract.py` | **201** | 가상 조인 **물리 검증 뒤에만** 만들어지는 불변 인계물. 모양 선언은 여전히 [`virtual_join_config`](#5-c-2026-07-31-신설-서버-모듈-2종) 소유 |
 | `server/launcher_args.py` | **212** | `run_decoupled_app.py`의 **거절 절반**(명령행 파싱) |

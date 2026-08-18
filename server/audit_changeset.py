@@ -1,5 +1,23 @@
 """The CHANGESET shape of an audit row: one row per WRITE, not one per COLUMN.
 
+PARKED - NOT WIRED, ZERO PRODUCTION CALLERS
+    Nothing imports this module except its own test file. The lane that was to
+    adopt it was deliberately halted on 2026-08-12: the `crud.py` / `main.py` /
+    `schemas.py` hunks were REVERTED, and this file plus its test were left
+    behind (they became tracked later only by an unrelated pathless `git add`).
+    `server/tests/test_audit_changeset.py` is skipped in full for that reason.
+
+    THEREFORE: DO NOT READ THIS DOCSTRING AS THE LIVE AUDIT SHAPE. The write
+    path (`crud.py`) and the read path (`server/main.py`) both still run the
+    original pre-refactor encoding described under WHAT CHANGED AND WHY below -
+    the rendered sentence, with all five losses intact. This module is the
+    PROPOSED replacement, and everything past this banner is written in the
+    voice of a change that landed. It did not.
+
+    The five defects are real and still open against the live machine-write
+    path; the loss is confined to audit HISTORY, live cell values are correct.
+    Ruling and revert record: `docs/process/PROJECT_STATUS.md:1560-1568`.
+
 WHAT CHANGED AND WHY
     `audit_logs` used to be written two different ways by the same function.
     A human write (`source_name == 'user'`) emitted ONE ROW PER CHANGED COLUMN.

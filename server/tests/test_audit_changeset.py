@@ -1,5 +1,11 @@
 """One audit row per WRITE, structured — and the five things that proves.
 
+PARKED - EVERY TEST HERE IS SKIPPED (see `pytestmark` below the imports)
+    The module under test is not wired into anything, so this file describes a
+    shape the running server does NOT produce. Read the rest of this docstring
+    as a SPECIFICATION OF A FIX THAT HAS NOT LANDED, not as a description of
+    current behaviour. The defects it pins are still open.
+
 WHAT CHANGED
     `apply_row_update_internal` used to encode the same event two ways. A human
     write emitted ONE ROW PER CHANGED COLUMN; every other writer emitted one
@@ -39,6 +45,34 @@ from sqlalchemy.orm import sessionmaker
 import audit_changeset
 from database import crud, models, schemas
 from database.database import Base
+
+#: PARKED - the whole module is skipped, deliberately, and NOT because the
+#: defects below were fixed. `server/audit_changeset.py` has ZERO production
+#: callers: `crud.py` (write) and `main.py` (read) still run the original
+#: pre-refactor encoding, so 15 of these tests fail against a changeset row
+#: that nothing emits, and several of the rest pass VACUOUSLY - green only
+#: because the endpoint cannot see changesets at all, which reads as coverage
+#: while measuring nothing. Skipping all 23 together is the honest state.
+#:
+#: The specification these tests encode is still correct and the defects they
+#: describe are STILL OPEN on the live machine-write path: an oversized value
+#: drops its neighbours from the audit row, a NULL and a cell holding the word
+#: 비어있음 are indistinguishable, and machine-written cells have no
+#: cell-addressable history. Scope is audit HISTORY only - live cell values are
+#: correct. Do not delete this file: it is the acceptance test for the fix.
+#:
+#: To restart, wire `audit_changeset` into `crud.py` and `main.py` and delete
+#: this mark; the tests should go green as they stand.
+_PARKED = (
+    "PARKED 2026-08-12, not fixed: server/audit_changeset.py has zero production "
+    "callers (crud.py writes and main.py reads the original pre-refactor "
+    "encoding), so these tests either fail against a changeset row nothing emits "
+    "or pass vacuously against an endpoint that cannot see changesets. The "
+    "defects they specify are REAL and STILL OPEN (audit history only; live cell "
+    "values are correct) - keep this file as the acceptance test for the fix. "
+    "Ruling and revert record: docs/process/PROJECT_STATUS.md:1560-1568."
+)
+pytestmark = pytest.mark.skip(reason=_PARKED)
 
 #: Namespaced so it can never collide with a real table in the user's
 #: (gitignored) table_config.json - a collision pre-empts the shared in-memory
