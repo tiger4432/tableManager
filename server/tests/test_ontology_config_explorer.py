@@ -1382,6 +1382,141 @@ def test_deleting_the_last_source_is_allowed_and_reports_itself_as_a_reset():
     assert ordinary.sources_after == 1
 
 
+def test_the_screen_can_author_a_declaration_that_does_not_exist_yet(
+    transfer_sample_setup, tmp_path,
+):
+    """🔴 THE LAST HOLE IN THE WRITE PATH. The screen could EDIT a declaration and could
+    not MAKE one, so a new source had to be typed into `ledger_config.json` by hand -- which
+    is exactly what the owner spent two hours doing.
+
+    The cause was one line: every path into the draft machinery resolved its target with
+    `index.node(key)`, which refuses an id the snapshot has never seen. Everything else
+    already worked -- `_set_path` walks to the section and ASSIGNS the leaf, so it creates
+    a missing key, and the only fields the preview and the activation read off the target
+    are `config_file` and `bundle_path`.
+
+    The scoring assertion is the second one: the new declaration must land in the RIGHT
+    SECTION of a real bundle. A draft that resolved to the wrong place would still create
+    happily and fail much later, somewhere that does not name it.
+    """
+    service = OntologyExplorerService(
+        config_root=tmp_path / "absent", draft_root=tmp_path / "drafts",
+        setup_loader=lambda root: transfer_sample_setup)
+    explorer_router.configure_service(service)
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[require_admin_token_strict] = lambda: None
+    app.include_router(explorer_router.router)
+    client = TestClient(app)
+
+    _, index, _ = service.active()
+    snapshot = index.snapshot_hash
+    assert node_key("pack", "brand-new@1") not in index.nodes, "fixture must not have it"
+
+    made = client.post("/admin/ontology-explorer/drafts/new", json={
+        "kind": "pack", "canonical_id": "brand-new@1", "base_snapshot_hash": snapshot})
+    assert made.status_code == 200, made.text
+    draft = made.json()
+    assert draft["target_key"] == "pack|brand-new@1"
+    assert draft["creates_declaration"] is True
+
+    # 🔴 The path has to reach the wire. `public()` is a WHITELIST, so a field added to the
+    # record is invisible until it is named there -- and invisible reads to the screen as
+    # absent, not as missing. Measured: the first version answered `null` here.
+    assert draft["target_bundle_path"] == ["packs", "brand-new@1"], (
+        "the draft must know where it will be written, and say so")
+
+    # It lands in the real bundle at that path: saving an EMPTY pack must be refused by the
+    # validator naming this pack, which is only possible if it actually landed there.
+    saved = client.put(f"/admin/ontology-explorer/drafts/{draft['draft_id']}", json={
+        "expected_revision": 0, "raw": "{}"})
+    assert saved.status_code == 200, saved.text
+    errors = saved.json()["validation_errors"]
+    assert any("brand-new@1" in str(item.get("path", "")) for item in errors), (
+        f"the refusal must name the new declaration; got {errors}")
+
+
+def test_authoring_a_declaration_refuses_the_three_ways_it_can_be_wrong(
+    transfer_sample_setup, tmp_path,
+):
+    """Each refusal is a different mistake, and a shared code would hide which one.
+
+    🔴 `unauthorable_kind` COMES FROM `authorable_bundle_path` -- the same map
+    `deletion_plan` reads. So "what this screen can create" and "what it can delete" have
+    one author, and the invariant landed on 2026-08-19 holds from the create side for free
+    rather than by a second check that could drift.
+    """
+    service = OntologyExplorerService(
+        config_root=tmp_path / "absent", draft_root=tmp_path / "drafts",
+        setup_loader=lambda root: transfer_sample_setup)
+    explorer_router.configure_service(service)
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[require_admin_token_strict] = lambda: None
+    app.include_router(explorer_router.router)
+    client = TestClient(app)
+
+    _, index, _ = service.active()
+    snapshot = index.snapshot_hash
+    # `_refusal` wraps the mapping in HTTPException.detail -- taken from the router, not
+    # from memory of it.
+    post = lambda kind, cid: client.post(
+        "/admin/ontology-explorer/drafts/new",
+        json={"kind": kind, "canonical_id": cid, "base_snapshot_hash": snapshot})
+    code = lambda response: response.json()["detail"]["code"]
+
+    existing = next(node for node in index.nodes.values() if node.kind == "pack")
+    assert code(post("pack", existing.canonical_id)) == "declaration_exists", (
+        "creating over a live declaration is an edit wearing a create's clothes")
+
+    for kind in ("verified_join", "table"):
+        assert code(post(kind, "brand-new@1")) == "unauthorable_kind", (
+            f"{kind} is deletable-or-not by the same map; it must not be creatable here")
+
+    assert post("pack", "twice@1").status_code == 200
+    assert code(post("pack", "twice@1")) == "declaration_being_created", (
+        "two open drafts on one name means the second activation discards the first")
+
+    stale = client.post("/admin/ontology-explorer/drafts/new", json={
+        "kind": "pack", "canonical_id": "other@1", "base_snapshot_hash": "0" * 64})
+    assert code(stale) == "stale_base_snapshot"
+
+
+def test_an_absent_target_is_normal_for_a_create_and_a_conflict_for_an_edit(
+    transfer_sample_setup, tmp_path,
+):
+    """🔴 THE STALENESS RULE INVERTS, and reading the edit rule onto a create reports a
+    conflict on EVERY create.
+
+    For an edit, an absent target means somebody deleted what we are editing -- a conflict.
+    For a create, absent is the normal state and the entire point; what is a conflict there
+    is the target having APPEARED, because somebody else authored the same name while we
+    typed and activating would overwrite them.
+
+    Left unsplit, the screen answers "conflict" to every attempt to make something, which
+    reads to the operator as "this screen cannot create declarations" -- the defect being
+    fixed, restated as a status string.
+    """
+    from ledger.config_drafts import OntologyDraftStore
+
+    store = OntologyDraftStore(tmp_path / "drafts")
+    index = build_explorer_index(transfer_sample_setup)
+
+    created = store.create_new(transfer_sample_setup, index, "pack", "absent@1")
+    record = store.get(created["draft_id"])
+    assert store.stale_status(record, index) == "stale", (
+        "the declaration it is authoring is absent BY DESIGN")
+
+    # Same record, but now something occupies the name: that IS the conflict.
+    existing = next(node for node in index.nodes.values() if node.kind == "pack")
+    occupied = dict(record, target_key=existing.key)
+    assert store.stale_status(occupied, index) == "conflict"
+
+    # And the edit rule is untouched: an edit whose target vanished is still a conflict.
+    edit = dict(record, creates_declaration=False, target_key="pack|vanished@1")
+    assert store.stale_status(edit, index) == "conflict"
+
+
 def test_deletion_preview_endpoint_names_the_casualties_and_shows_the_blockage(
     transfer_sample_setup, tmp_path,
 ):

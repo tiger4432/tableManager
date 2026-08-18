@@ -129,6 +129,25 @@ def create_draft(payload: dict[str, Any] = Body(...)):
         raise _refusal(exc) from exc
 
 
+@router.post("/drafts/new", dependencies=[Depends(require_admin_token_strict)])
+def create_declaration_draft(payload: dict[str, Any] = Body(...)):
+    """Author a declaration the snapshot has never seen.
+
+    The last hole in the write path: this screen could edit a declaration and could not
+    make one, so a new source had to be typed into the file by hand.  Refusals name the
+    mistake -- `declaration_exists` (open it instead), `unauthorable_kind` (this screen
+    cannot write that section), `declaration_being_created` (another draft holds the name).
+    """
+    try:
+        return _service.create_declaration_draft(
+            kind=str(payload.get("kind", "")),
+            canonical_id=str(payload.get("canonical_id", "")),
+            base_snapshot_hash=str(payload.get("base_snapshot_hash", "")),
+        )
+    except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
 @router.put("/drafts/{draft_id}", dependencies=[Depends(require_admin_token_strict)])
 def save_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
     try:

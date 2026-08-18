@@ -351,6 +351,24 @@ class OntologyExplorerService:
             )
         return self.draft_store.create(setup, index, target_key)
 
+    def create_declaration_draft(self, *, kind: str, canonical_id: str,
+                                 base_snapshot_hash: str) -> dict[str, Any]:
+        """Open a draft for a declaration that does not exist yet.
+
+        Separate from `create_draft` rather than a flag on it, because the two take
+        DIFFERENT ARGUMENTS: editing names an existing node by key, authoring names a kind
+        and an id that nothing has claimed.  Folding them into one endpoint would mean a
+        `target_key` for a node that is not there, which is the shape that made creating
+        impossible in the first place.
+        """
+        setup, index, _ = self.active()
+        if base_snapshot_hash != index.snapshot_hash:
+            raise ConfigExplorerError(
+                "stale_base_snapshot", "base_snapshot_hash",
+                "active snapshot changed before draft creation",
+            )
+        return self.draft_store.create_new(setup, index, kind, canonical_id)
+
     def save_draft(self, draft_id: str, *, expected_revision: int, raw: str
                    ) -> dict[str, Any]:
         setup, index, _ = self.active()

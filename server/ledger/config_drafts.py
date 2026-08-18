@@ -24,8 +24,10 @@ from .config_explorer import (
     ConfigExplorerError,
     ExplorerIndex,
     ExplorerNode,
+    authorable_bundle_path,
     build_explorer_index,
     definition_diff,
+    node_key,
 )
 from .implementations import trusted_implementations
 from .setup_bundle import (
@@ -175,6 +177,41 @@ class _Remove:
 REMOVE = _Remove()
 
 
+def draft_target(record: Mapping[str, Any], index: ExplorerIndex) -> Any:
+    """Where this draft writes -- for a declaration that exists, and for one that does not.
+
+    🔴 A CREATE DRAFT HAS NO NODE TO ASK, AND THAT IS THE WHOLE REASON CREATING WAS
+    IMPOSSIBLE. `index.node(key)` refuses an id the snapshot has never seen, so every path
+    into the draft machinery was gated on the declaration already existing: the screen could
+    edit and it could not author. The owner hit this from the other side -- they wrote a new
+    source by hand in a text editor for two hours.
+
+    Only two fields of the target are ever used downstream (`compile_draft_preview` and
+    `activate` read `config_file` and `bundle_path`), so a create draft carries its own
+    path, stamped at creation by `authorable_bundle_path` -- the same function the explorer
+    index uses, so the two cannot disagree about where a `mapper` lives.
+
+    Records written before this existed have no stored path and fall back to the index,
+    which is exactly right for them: they always target something that exists.
+    """
+    key = str(record.get("target_key"))
+    stored = record.get("target_bundle_path")
+    existing = index.nodes.get(key)
+    if existing is not None:
+        return existing
+    if not stored:
+        return index.node(key)          # refuses by name, as before
+    return SimpleNamespace(
+        key=key,
+        canonical_id=record.get("target_id"),
+        kind=record.get("target_kind"),
+        config_file=_EDITABLE_FILE,
+        bundle_path=tuple(stored),
+        definition_hash=None,
+        raw=record.get("raw"),
+    )
+
+
 def _set_path(document: Any, path: Sequence[Any], value: Any) -> None:
     if not path:
         raise KeyError("empty target path")
@@ -223,8 +260,10 @@ class OntologyDraftStore:
             "target_key": node.key,
             "target_id": node.canonical_id,
             "target_kind": node.kind,
+            "target_bundle_path": list(node.bundle_path),
             "base_snapshot_hash": active_setup.snapshot.snapshot_sha256,
             "base_definition_hash": node.definition_hash,
+            "creates_declaration": False,
             "revision": 0,
             "lifecycle_status": "editing",
             "raw": node.raw,
@@ -240,6 +279,88 @@ class OntologyDraftStore:
         with self._lock:
             self._write_record(record)
         return self.public(record)
+
+    def create_new(self, active_setup: Any, index: ExplorerIndex,
+                   kind: str, canonical_id: str) -> dict[str, Any]:
+        """Open a draft for a declaration that does not exist yet.
+
+        Three refusals, and each one is a different mistake:
+
+          * a kind this screen cannot author -- `authorable_bundle_path` raises, and it is
+            the SAME map `deletion_plan` reads, so what can be created is exactly what can
+            be removed (the invariant landed 2026-08-19);
+          * an id already in the snapshot -- creating would silently overwrite a live
+            declaration, which is an edit wearing a create's clothes;
+          * an id already claimed by another open draft -- two drafts racing to author the
+            same name, where the second activation would quietly discard the first.
+
+        The record stores `target_bundle_path` because there is no node to ask later; see
+        `draft_target`.
+        """
+        section, name = authorable_bundle_path(kind, canonical_id)
+        key = node_key(kind, canonical_id)
+        if key in index.nodes:
+            raise ConfigExplorerError(
+                "declaration_exists", "canonical_id",
+                f"{canonical_id!r} is already declared; open it to edit instead of "
+                f"creating a second one",
+            )
+        now = _now()
+        record = {
+            "draft_id": uuid4().hex,
+            "target_key": key,
+            "target_id": canonical_id,
+            "target_kind": kind,
+            "target_bundle_path": [section, name],
+            # 🔴 None, not the hash of an empty mapping. `stale_status` compares this
+            # against what the index holds now, and a real hash here would make "nobody has
+            # created this yet" indistinguishable from "somebody created it and it happens
+            # to be empty".
+            "base_snapshot_hash": active_setup.snapshot.snapshot_sha256,
+            "base_definition_hash": None,
+            "creates_declaration": True,
+            "revision": 0,
+            "lifecycle_status": "editing",
+            "raw": {},
+            "preview_snapshot_hash": None,
+            "preview_valid": False,
+            "validation_errors": [],
+            "review_revision": None,
+            "review_history": [],
+            "activated_snapshot_hash": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self._lock:
+            self._require_name_unclaimed(key, canonical_id)
+            self._write_record(record)
+        return self.public(record)
+
+    def _require_name_unclaimed(self, key: str, canonical_id: str) -> None:
+        """Refuse a second open draft authoring the same new id.
+
+        Without it two creates race and the second activation quietly discards the first --
+        the file ends up with one declaration and the operator watched two succeed.  Only
+        records that have not activated count: an activated draft's name lives in the
+        snapshot now, where `create_new`'s index check catches it.
+        """
+        if not self.root.is_dir():
+            return
+        for path in sorted(self.root.glob("*.json")):
+            try:
+                with path.open("r", encoding="utf-8") as handle:
+                    other = json.load(handle)
+            except (OSError, json.JSONDecodeError):
+                continue        # a corrupt neighbour must not block authoring
+            if not isinstance(other, dict):
+                continue
+            if (other.get("target_key") == key
+                    and other.get("lifecycle_status") != "activated"):
+                raise ConfigExplorerError(
+                    "declaration_being_created", "canonical_id",
+                    f"another open draft is already authoring {canonical_id!r}; "
+                    f"finish or discard it first",
+                )
 
     def get(self, draft_id: str) -> dict[str, Any]:
         with self._lock:
@@ -283,7 +404,7 @@ class OntologyDraftStore:
                     f"{stale_status}_draft", "base_snapshot_hash",
                     "active snapshot changed; rebase before saving",
                 )
-            node = active_index.node(record["target_key"])
+            node = draft_target(record, active_index)
             preview = compile_draft_preview(active_setup, node, raw)
             record["revision"] += 1
             record["raw"] = json.loads(json.dumps(raw, ensure_ascii=False))
@@ -390,7 +511,7 @@ class OntologyDraftStore:
                     f"{stale_status}_draft", "base_snapshot_hash",
                     "active snapshot changed; activation compare-and-swap refused",
                 )
-            node = active_index.node(record["target_key"])
+            node = draft_target(record, active_index)
             preview = compile_draft_preview(active_setup, node, record["raw"])
             if not preview.valid or preview.setup is None:
                 record["lifecycle_status"] = "invalid"
@@ -472,13 +593,19 @@ class OntologyDraftStore:
                 "path": "base_snapshot_hash",
                 "message": "active snapshot changed; draft preview is stale",
             },))
-        node = active_index.node(record["target_key"])
+        node = draft_target(record, active_index)
         return compile_draft_preview(active_setup, node, record["raw"])
 
     @staticmethod
     def public(record: Mapping[str, Any]) -> dict[str, Any]:
+        # 🔴 THIS IS A WHITELIST, so a field added to the record is INVISIBLE on the wire
+        # until it is named here -- and invisible reads to the screen as absent, not as
+        # missing. `creates_declaration` is what lets the client tell "authoring a new
+        # declaration" from "editing a live one", which is the difference between the
+        # confirm saying 새로 만듦 and 덮어씀.
         return {key: record.get(key) for key in (
             "draft_id", "target_key", "target_id", "target_kind",
+            "target_bundle_path", "creates_declaration",
             "base_snapshot_hash", "base_definition_hash", "revision",
             "lifecycle_status", "raw",
             "preview_snapshot_hash", "preview_valid", "validation_errors",
@@ -488,7 +615,21 @@ class OntologyDraftStore:
 
     @staticmethod
     def stale_status(record: Mapping[str, Any], active_index: ExplorerIndex) -> str:
+        """`stale` -- the file moved under us. `conflict` -- it moved UNDER THIS TARGET.
+
+        🔴 THE TWO CASES INVERT FOR A CREATE DRAFT. For an edit, an absent target means
+        somebody deleted what we are editing -- a conflict. For a create, absent is the
+        NORMAL state and the whole point; what is a conflict there is the target having
+        APPEARED, because somebody else authored the same name while we were typing and
+        activating would overwrite them.
+
+        Reading the edit rule onto a create draft reports a conflict on every single
+        create, which reads to the operator as "this screen cannot make new declarations"
+        -- the defect being fixed, restated as a status string.
+        """
         current = active_index.nodes.get(str(record.get("target_key")))
+        if record.get("creates_declaration"):
+            return "conflict" if current is not None else "stale"
         if current is None:
             return "conflict"
         return (
