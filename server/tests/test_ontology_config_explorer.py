@@ -950,7 +950,30 @@ def test_a_source_plan_and_its_profile_reference_each_other_in_both_directions(a
         assert source_key in {edge.from_key for edge in index.inbound[profile_key]}
 
 
-def _linked_index(nodes, edges):
+#: kind -> the `bundle_path` `build_explorer_index` actually builds for it.
+#:
+#: 🔴 A FIXTURE THAT INVENTS THIS SCORES A SHAPE THAT DOES NOT EXIST.  `deletion_plan` reads
+#: `bundle_path[0]` to decide whether a declaration lives in a section this screen can
+#: write, so a fixture that puts the KIND there (`("pack", "p")` instead of
+#: `("packs", "p")`) makes every synthetic node look un-authorable and every assertion
+#: below meaningless -- green or red for a reason that has nothing to do with the subject.
+#: `test_the_fixture_bundle_paths_match_the_ones_the_index_builds` scores this map against
+#: a real index rather than trusting it.
+_FIXTURE_BUNDLE_PATH = {
+    "predicate": lambda i: ("vocabulary", i),
+    "entity": lambda i: ("entities", i),
+    "pack": lambda i: ("packs", i),
+    "claim": lambda i: ("packs", i.split("/")[0], "claims", i.split("/", 1)[1]),
+    "preparer": lambda i: ("source_preparers", i),
+    "mapper": lambda i: ("mappers", i),
+    "profile": lambda i: ("profiles", i),
+    "source_plan": lambda i: ("sources", i),
+    "verified_join": lambda i: ("virtual_joins", i),
+    "table": lambda i: ("__physical_catalog__", i),
+}
+
+
+def _linked_index(nodes, edges, *, config_files=None):
     """A hand-built index with exactly the shape under test and nothing else.
 
     The live root has one source and one profile, so it cannot tell "the pair is exempt"
@@ -958,12 +981,14 @@ def _linked_index(nodes, edges):
     """
     from ledger.config_explorer import pointer
 
+    config_files = config_files or {}
     builder = _IndexBuilder("a" * 64, "b" * 64)
     for kind, canonical_id in nodes:
+        bundle_path = _FIXTURE_BUNDLE_PATH[kind](canonical_id)
         builder.add_node(
-            kind, canonical_id, {}, {}, (kind, canonical_id),
-            config_file="ledger_config.json",
-            json_pointer=pointer(kind, canonical_id))
+            kind, canonical_id, {}, {}, bundle_path,
+            config_file=config_files.get(kind, "ledger_config.json"),
+            json_pointer=pointer(*bundle_path))
     for from_kind, from_id, to_kind, to_id, reference_kind in edges:
         builder.add_edge(
             node_key(from_kind, from_id), to_id, to_kind, reference_kind,
@@ -1176,6 +1201,185 @@ def test_a_table_is_released_rather_than_deleted_and_cannot_be_selected(transfer
     with pytest.raises(ConfigExplorerError) as unknown:
         deletion_plan(index, ["entity|NoSuchThing@9"])
     assert unknown.value.to_mapping()["code"] == "unknown_selection"
+
+
+def test_the_fixture_bundle_paths_match_the_ones_the_index_builds(transfer_sample_setup):
+    """The fixtures above decide their own `bundle_path`, so they can be wrong on purpose
+    without anybody noticing -- and every deletion assertion is scored through it.
+
+    So score the map against a real index.  Any kind the sample actually declares must land
+    at exactly the path `_FIXTURE_BUNDLE_PATH` claims for it; the day `build_explorer_index`
+    moves a section, this goes red here instead of quietly making the synthetic tests
+    measure a shape the product does not have.
+    """
+    index = build_explorer_index(transfer_sample_setup)
+
+    seen = set()
+    for node in index.nodes.values():
+        builder = _FIXTURE_BUNDLE_PATH.get(node.kind)
+        if builder is None:          # sub-declarations the fixtures never build by hand
+            continue
+        seen.add(node.kind)
+        assert node.bundle_path == builder(node.canonical_id), (
+            f"the fixture builds {node.kind} at {builder(node.canonical_id)} but the index "
+            f"builds it at {node.bundle_path}")
+
+    assert {"source_plan", "profile", "pack", "claim", "entity", "table"} <= seen, (
+        "the sample stopped declaring a kind this map covers -- the check went vacuous")
+
+
+def test_the_deletable_set_is_contained_in_the_creatable_one(transfer_sample_setup):
+    """🔴 THE INVARIANT, NOT A MEMBERSHIP LIST.  Ruling (2026-08-19).
+
+    The bug was an asymmetry: `verified_join` could be DELETED on this screen and not
+    CREATED on it.  The cheap test would name `verified_join` and assert it is refused --
+    and that test goes red for the wrong reason on the day `virtual_joins` is legitimately
+    added to `AUTHORABLE_SECTIONS`, and stays green if a FOURTH un-authorable section shows
+    up.  It scores the example instead of the property.
+
+    So assert the property over every node the index actually holds: anything this screen
+    will delete is something it could have written.  Nothing here names a kind, so a new
+    section added to one side only cannot slip past.
+    """
+    from ledger.config_explorer import (
+        AUTHORABLE_SECTION_NAMES, deletion_plan, owning_section, undeletable_reason)
+
+    index = build_explorer_index(transfer_sample_setup)
+    assert index.nodes, "an empty index would make this vacuous"
+
+    for node in index.nodes.values():
+        if undeletable_reason(node) is None:
+            assert owning_section(node) in AUTHORABLE_SECTION_NAMES, (
+                f"{node.key} is deletable but lives in a section this screen cannot write")
+
+    # And the containment holds for CASUALTIES too, which is the half a check on the
+    # selection alone cannot see: nothing is selected there, the node merely stops being
+    # reachable, and the write path would have taken it anyway.
+    source = next(
+        node.key for node in index.nodes.values() if node.kind == "source_plan")
+    plan = deletion_plan(index, [source])
+    for row in plan.removed:
+        assert owning_section(index.nodes[row["key"]]) in AUTHORABLE_SECTION_NAMES
+
+
+def test_a_verified_join_is_retained_rather_than_deleted():
+    """The asymmetry itself, on a fixture, because the live root cannot show it.
+
+    🔴 THE LIVE ROOT DECLARES ZERO `verified_join`s.  That is why this defect was invisible:
+    every deletion answered correctly, and would have gone on answering correctly until the
+    day somebody declared the first one.  A condition that is false today is not safe -- it
+    is untested.  So the fixture declares one.
+
+    Two directions, and the second is the one a selection-only guard misses:
+      * selecting it outright is refused, and the refusal says where to go instead;
+      * losing its last referrer does NOT delete it -- it lands in `retained`, still in the
+        file, named on the plan, because this screen could not write it back.
+    """
+    from ledger.config_explorer import deletion_plan
+
+    index = _linked_index(
+        [("source_plan", "s"), ("profile", "p"), ("verified_join", "j")],
+        [("source_plan", "s", "profile", "p", "source_profile"),
+         ("profile", "p", "source_plan", "s", "profile_source"),
+         ("source_plan", "s", "verified_join", "j", "source_verified_join")],
+    )
+
+    with pytest.raises(ConfigExplorerError) as refused:
+        deletion_plan(index, ["verified_join|j"])
+    mapping = refused.value.to_mapping()
+    assert mapping["code"] == "undeletable_declaration"
+    assert "virtual_joins" in mapping["message"], (
+        "the refusal has to name the section, or the operator has no next move")
+
+    plan = deletion_plan(index, ["source_plan|s"])
+    assert set(plan.removed_keys) == {"source_plan|s", "profile|p"}
+    assert [row["key"] for row in plan.retained] == ["verified_join|j"]
+    assert plan.retained[0]["reason"] == "unauthorable_here"
+
+
+def test_a_sub_declaration_still_goes_with_the_declaration_that_owns_it():
+    """🔴 THE MIRROR FAULT, and the one that nearly shipped: scoring deletability on the
+    KIND instead of the SECTION.
+
+    `claim`, `mapping` and `binding` have no entry in `AUTHORABLE_SECTIONS` -- they own no
+    section, they are written as part of their owner.  A kind-membership rule calls them
+    un-authorable and strands them in the file when their owner goes, which is the exact
+    orphan `deletion_plan` exists to prevent, arrived at by way of a fix for the opposite
+    bug.  `verified_join` is un-authorable because its SECTION is; a claim's section is
+    `packs`, and `packs` is authorable.
+    """
+    from ledger.config_explorer import deletion_plan
+
+    index = _linked_index(
+        [("pack", "fresh"), ("claim", "fresh/one")],
+        [("pack", "fresh", "claim", "fresh/one", "contains_claim")],
+    )
+
+    plan = deletion_plan(index, ["pack|fresh"])
+    assert set(plan.removed_keys) == {"pack|fresh", "claim|fresh/one"}
+    assert plan.retained == tuple(), "a claim is not stranded; it goes with its pack"
+
+    # Selecting the claim ON ITS OWN is a different question, and the answer today is
+    # "blocked": the surviving pack still points at it, so the reachability instrument
+    # refuses exactly as it would for any other live reference.  Asserted here because it
+    # is the behaviour, not because it is obviously the right product decision -- removing
+    # one claim from a pack is an ordinary authoring move, and today it can only be done by
+    # editing the pack.  That gap is raised as an open item; this test pins what the code
+    # does so a future change to it is deliberate rather than incidental.
+    alone = deletion_plan(index, ["claim|fresh/one"])
+    assert alone.removed_keys == tuple()
+    assert [row["key"] for row in alone.blocked] == ["claim|fresh/one"]
+    assert [r["key"] for r in alone.blocked[0]["reached_by"]] == ["pack|fresh"]
+
+
+def test_deleting_the_last_source_is_allowed_and_reports_itself_as_a_reset():
+    """Ruling (2026-08-19): do not block it -- RENAME it, with a computed number.
+
+    Blocking would leave the config creatable but not un-creatable, the mirror of the
+    asymmetry above.  What is refused instead is calling it "delete": with no source left
+    there is nothing to walk from, so what remains is an empty bundle wearing its old
+    declarations.
+
+    🔴 THE MAGNITUDE IS COMPUTED, NOT FROZEN.  "44 of 45" was one measurement on one day.
+    The second half of this test adds a declaration and asserts the number MOVED -- a
+    hard-coded 44 passes the first half and fails here, which is the only way to tell a
+    rendered count from a remembered one.
+
+    The predicate is structural, not a percentage: `sources_after == 0`, not "over 90%".
+    """
+    from ledger.config_explorer import deletion_plan
+
+    nodes = [("source_plan", "s"), ("profile", "p"), ("mapper", "m")]
+    edges = [("source_plan", "s", "profile", "p", "source_profile"),
+             ("profile", "p", "source_plan", "s", "profile_source"),
+             ("profile", "p", "mapper", "m", "profile_mapper")]
+    index = _linked_index(nodes, edges)
+
+    plan = deletion_plan(index, ["source_plan|s"])
+    assert plan.blocked == tuple(), "the last source is deletable, not blocked"
+    assert plan.is_reset is True
+    assert plan.sources_before == 1 and plan.sources_after == 0
+    assert plan.authored_total == 3
+    assert len(plan.removed) == 3
+    assert plan.to_mapping()["is_reset"] is True
+
+    # One more declaration, and the number the confirm screen renders must move with it.
+    wider = _linked_index(nodes + [("entity", "Wafer")], edges)
+    assert deletion_plan(wider, ["source_plan|s"]).authored_total == 4, (
+        "authored_total is rendered from the index at plan time; a frozen count would "
+        "still say 3 here and would lie on the confirm screen without anybody touching it")
+
+    # A deletion that leaves a source standing is an ordinary delete, and must NOT wear the
+    # reset wording -- otherwise every confirm shouts and the shouting stops meaning
+    # anything.
+    two = _linked_index(
+        nodes + [("source_plan", "t"), ("profile", "q")],
+        edges + [("source_plan", "t", "profile", "q", "source_profile"),
+                 ("profile", "q", "source_plan", "t", "profile_source")],
+    )
+    ordinary = deletion_plan(two, ["source_plan|t"])
+    assert ordinary.is_reset is False
+    assert ordinary.sources_after == 1
 
 
 def test_deletion_preview_endpoint_names_the_casualties_and_shows_the_blockage(

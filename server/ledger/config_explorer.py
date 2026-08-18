@@ -76,8 +76,13 @@ def node_key(kind: str, canonical_id: str) -> str:
 #:
 #: `table` and `verified_join` are deliberately absent. `table` moved out of this file to
 #: `server/config/table_config.json` on 2026-08-18 and is read-only here; `virtual_joins`
-#: is an optional section this screen does not yet author. Absence from this map is what
-#: makes a kind un-creatable, so adding one is a decision, not a typo.
+#: is an optional section this screen does not yet author.
+#:
+#: Absence from this map is what makes a kind un-creatable AND un-deletable -- `deletion_plan`
+#: reads this same map rather than carrying its own list (see `undeletable_reason`), so the
+#: two capabilities cannot drift apart. Adding a kind here therefore grants both at once,
+#: which is a decision, not a typo: it says the screen understands the section well enough
+#: to write it from scratch.
 AUTHORABLE_SECTIONS: Mapping[str, str] = MappingProxyType({
     "predicate": "vocabulary",
     "entity": "entities",
@@ -98,6 +103,63 @@ def authorable_bundle_path(kind: str, canonical_id: str) -> tuple[str, str]:
             f"declarations of kind {kind!r} cannot be created or removed on this screen",
         )
     return (section, canonical_id)
+
+
+#: The sections this screen can write.  Derived, so it cannot disagree with the map above.
+AUTHORABLE_SECTION_NAMES: frozenset[str] = frozenset(AUTHORABLE_SECTIONS.values())
+
+
+def owning_section(node: "ExplorerNode") -> str | None:
+    """The top-level `ledger_config.json` section `node` is written into.
+
+    🔴 THE DISCRIMINATOR IS THE SECTION, NOT THE KIND, and the difference is the whole
+    correctness of this module.  Half the kinds in `KIND_ORDER` are SUB-declarations that
+    own no section of their own -- a `claim` lives at `("packs", p, "claims", c)`, a
+    `binding` five levels down inside a profile -- and they are created and deleted as part
+    of their owner.  Scoring those on kind membership in `AUTHORABLE_SECTIONS` would call a
+    claim un-authorable and strand it in the file when its pack goes, which is exactly the
+    orphan this module exists to prevent.
+
+    `bundle_path` already carries the answer and is built by `build_explorer_index` beside
+    the node itself, so it cannot drift from where the node actually lives: length 2 is a
+    top-level declaration, longer is nested under `bundle_path[0]`.
+    """
+    return str(node.bundle_path[0]) if node.bundle_path else None
+
+
+def undeletable_reason(node: "ExplorerNode") -> str | None:
+    """Why `node` cannot be deleted on this screen, or None if it can.
+
+    🔴 THE DELETABLE SET IS DERIVED FROM THE CREATABLE ONE, never listed beside it.
+    `AUTHORABLE_SECTIONS` is the single author of both, so "deletable ⊆ creatable" holds by
+    CONSTRUCTION and a section added to one side cannot go missing from the other.  The
+    alternative -- a second tuple of undeletable kinds -- is a copy, and a copy of a
+    membership question drifts the day a kind joins one list and not the other.
+
+    The asymmetry this closes (ruling ①, 2026-08-19) was real but not yet REACHABLE: the
+    live root declares zero `verified_join`s, so a screen that could delete one and not
+    create one would have answered correctly every day until the day somebody declared the
+    first one, and been silently wrong from then on.  A condition that is false today is
+    not a condition that is safe -- it is a condition nobody has met yet.
+
+    Two refusals, not one, because the operator's next move differs: a `table` is authored
+    in another file and they should go edit that file; a `verified_join` is hand-written in
+    THIS file and they should edit it here.
+    """
+    if node.config_file != setup_bundle.CONFIG_FILENAME:
+        return (
+            f"{node.canonical_id!r} is declared in {node.config_file}, which this screen "
+            f"only reads; it cannot be deleted here"
+        )
+    section = owning_section(node)
+    if section not in AUTHORABLE_SECTION_NAMES:
+        return (
+            f"{node.canonical_id!r} is declared under {section!r}, a section this screen "
+            f"cannot write; deleting what it cannot author would leave the config somewhere "
+            f"the screen can never bring it back from -- edit "
+            f"{setup_bundle.CONFIG_FILENAME} by hand instead"
+        )
+    return None
 
 
 def referrers(index: "ExplorerIndex", key: str) -> tuple[dict[str, Any], ...]:
@@ -232,25 +294,61 @@ class DeletionPlan:
     `removed` is the reference COMPONENT, not the selected nodes.  A source and the
     profile only it uses go together because neither is meaningful alone; listing the
     casualties before the confirm is the guard that prevents the orphan.
+
+    The counts are part of the plan rather than something the confirm screen works out,
+    because a magnitude computed anywhere else is a magnitude that can be frozen.
     """
 
     targets: tuple[str, ...]
     removed: tuple[dict[str, Any], ...]
     released: tuple[dict[str, Any], ...]
+    retained: tuple[dict[str, Any], ...]
     blocked: tuple[dict[str, Any], ...]
+    #: How many declarations this file holds RIGHT NOW, and how many sources survive.
+    #: These travel with the plan so a confirm screen can state the magnitude without
+    #: counting anything itself -- see `is_reset`.
+    authored_total: int = 0
+    sources_before: int = 0
+    sources_after: int = 0
 
     @property
     def removed_keys(self) -> tuple[str, ...]:
         return tuple(row["key"] for row in self.removed)
+
+    @property
+    def is_reset(self) -> bool:
+        """True when nothing is left to walk from: this is a RESET, not a deletion.
+
+        Ruling ② (2026-08-19): deleting the only source takes almost the whole file with
+        it, and that is allowed -- blocking it would make the config creatable but not
+        un-creatable, the mirror of the bug ruling ① closes.  What is NOT allowed is
+        calling it "delete".  The confirm screen has to say so, and say it with the number
+        this plan just computed.
+
+        🔴 The predicate is structural, not a percentage.  "More than 90% goes" would need
+        a threshold nobody can defend; "no source remains" is the actual fact -- every other
+        declaration in the bundle exists to serve a source, so a bundle with none left is
+        an empty bundle wearing its old declarations.
+        """
+        return self.sources_before > 0 and self.sources_after == 0
 
     def to_mapping(self) -> dict[str, Any]:
         return {
             "targets": list(self.targets),
             "removed": [dict(row) for row in self.removed],
             "released": [dict(row) for row in self.released],
+            "retained": [dict(row) for row in self.retained],
             "blocked": [dict(row) for row in self.blocked],
             "removed_total": len(self.removed),
+            "retained_total": len(self.retained),
             "blocked_total": len(self.blocked),
+            # Rendered, never hard-coded.  "44 of 45" is today's measurement; it is 45 of
+            # 46 the day one declaration is added, and a frozen number lies on that day
+            # without anybody touching the screen.
+            "authored_total": self.authored_total,
+            "sources_before": self.sources_before,
+            "sources_after": self.sources_after,
+            "is_reset": self.is_reset,
         }
 
 
@@ -275,20 +373,22 @@ def deletion_plan(index: "ExplorerIndex", targets: Iterable[str]) -> DeletionPla
     that was already unreachable -- an orphaned cycle nothing enters -- is left exactly
     where it was.  A deletion may only take what it is actually holding up.
 
-    `released` is separate from `removed` because a `table` node is authored in
-    `table_config.json`, which this screen only reads.  Such a node stops being referenced
-    and nothing is written for it; folding it into `removed` would tell the author their
-    physical schema is about to be deleted.
+    Three buckets, because "nothing is written for it" has three different next moves:
+
+      * `removed`   -- this screen authors it and will write it away;
+      * `released`  -- authored in another file (`table_config.json`); it merely stops
+        being referenced, and folding it into `removed` would tell the author their
+        physical schema is about to be deleted;
+      * `retained`  -- authored in THIS file but of a kind this screen cannot create, so
+        deleting it would leave the config somewhere the screen can never bring it back
+        from.  It is left in place, unreferenced, and named.
     """
     requested: list[str] = []
     for key in targets:
         node = index.node(key)          # refuses an unknown selection by name
-        if node.config_file != setup_bundle.CONFIG_FILENAME:
-            raise ConfigExplorerError(
-                "undeletable_declaration", "targets",
-                f"{node.canonical_id!r} is declared in {node.config_file}, which this "
-                f"screen only reads; it cannot be deleted here",
-            )
+        reason = undeletable_reason(node)
+        if reason is not None:
+            raise ConfigExplorerError("undeletable_declaration", "targets", reason)
         if key not in requested:
             requested.append(key)
     if not requested:
@@ -307,6 +407,7 @@ def deletion_plan(index: "ExplorerIndex", targets: Iterable[str]) -> DeletionPla
 
     removed: list[dict[str, Any]] = []
     released: list[dict[str, Any]] = []
+    retained: list[dict[str, Any]] = []
     for key in sorted(dead, key=order):
         node = index.nodes[key]
         row = node.to_mapping(include_definition=False)
@@ -316,8 +417,18 @@ def deletion_plan(index: "ExplorerIndex", targets: Iterable[str]) -> DeletionPla
         row["held_by"] = [
             item["key"] for item in referrers(index, key) if item["key"] in dead
         ]
-        (removed if node.config_file == setup_bundle.CONFIG_FILENAME
-         else released).append(row)
+        if node.config_file != setup_bundle.CONFIG_FILENAME:
+            released.append(row)
+        elif owning_section(node) not in AUTHORABLE_SECTION_NAMES:
+            # The casualty path is the OTHER half of ruling ①, and the half a membership
+            # test on the selection would have missed entirely: nothing was ever selected
+            # here, the node simply stopped being reachable.  Writing it away would delete
+            # a declaration this screen cannot re-create, so it stays in the file and the
+            # plan says so out loud instead.
+            row["reason"] = "unauthorable_here"
+            retained.append(row)
+        else:
+            removed.append(row)
 
     blocked: list[dict[str, Any]] = []
     for key in sorted(target_set & after, key=order):
@@ -329,11 +440,21 @@ def deletion_plan(index: "ExplorerIndex", targets: Iterable[str]) -> DeletionPla
         ]
         blocked.append(row)
 
+    sources = [
+        key for key, node in index.nodes.items() if node.kind == "source_plan"
+    ]
     return DeletionPlan(
         targets=tuple(sorted(target_set, key=order)),
         removed=tuple(removed),
         released=tuple(released),
+        retained=tuple(retained),
         blocked=tuple(blocked),
+        authored_total=sum(
+            1 for node in index.nodes.values()
+            if node.config_file == setup_bundle.CONFIG_FILENAME
+        ),
+        sources_before=len(sources),
+        sources_after=sum(1 for key in sources if key not in dead),
     )
 
 
