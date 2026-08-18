@@ -34,17 +34,22 @@ WHERE THE BATCH IS CUT, AND WHY IT MATTERS MORE THAN THE BATCH SIZE
 The two rows of one source event share an `event_time` and differ in `lot`, so a batch
 boundary drawn at "N rows" can fall BETWEEN them - and then the molecule is split across
 two transactions, which is the exact half-landing the brief forbids. The cursor is
-therefore an `event_time`, not a row offset, and a batch is always a whole number of
-`event_time` GROUPS:
+therefore a KEY, not a row offset, and a batch is always a whole number of that key's
+GROUPS:
 
-  * fetch a page ordered by `(event_time, row identity)`;
+  * fetch a page ordered by `(page key, row identity)`;
   * if the page filled, drop the trailing group - it may be cut, and there is no way to
     tell from inside the page;
   * if dropping it leaves nothing (one group bigger than a page), fetch that whole group
     explicitly and process it alone.
 
-The cursor advances to the last event_time whose group was processed IN FULL. A crash
+The cursor advances to the last page-key value whose group was processed IN FULL. A crash
 between batches re-reads that group's successor and nothing else.
+
+🔴 WHICH column that is has one answer and it is `_page_key()` - the cursor's own first
+column, never the time column. `lot_event` made the two indistinguishable for a year;
+`dt_job` made them different and the difference cost twelve wrong atoms. Read `_page_key`
+before touching any of this.
 
 WHY THE CURSOR IS `event_time` AND WHAT THAT COSTS - stated, not hidden
 -----------------------------------------------------------------------
@@ -341,7 +346,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
                 "existing cursor belongs to a different setup snapshot; inspect, "
                 "back up, and obtain separate reset or replay approval",
             )
-        after_time = cursor_value.get(plan.driver.occurred_at.column)
+        after_key = cursor_value.get(_page_key(plan))
         result = BackfillResult(
             source=source,
             translator_ver=expected_version,
@@ -352,11 +357,46 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
             seconds=0.0,
         )
         started = time.monotonic()
+        # 🔴 THE SPLIT GUARD. One source event must land in ONE batch; if a group this run
+        # already processed IN FULL comes back in a later page, it did not, and every
+        # count taken over it is a count of a page rather than of the event. It asserts
+        # the SYMPTOM, not the cause, so it survives whatever produces the split -- a page
+        # key that stops being group-constant, an ORDER BY that stops making groups
+        # contiguous, a fourth grammar that copies the loop. `_page_key` explains why the
+        # cause cannot be asserted from the declaration at all.
+        #
+        # IT WOULD HAVE FIRED ON DAY ONE. Paging `dt_job` on `created_at` split 24 jobs;
+        # this run would have stopped at the SECOND sighting of the first one instead of
+        # silently writing ingestion-batch counts for all 24.
+        #
+        # 🔴 WHAT IT DOES NOT DO: it fires when the group comes BACK, so the first half is
+        # already committed. It bounds the damage to that one molecule and makes it loud;
+        # it cannot prevent it, because nothing in a page can see the row that follows it.
+        #
+        # Scope is THIS RUN, deliberately. Across runs the pager reads `WHERE page_key >
+        # cursor`, so a completed group is never re-read -- and a run that legitimately
+        # re-reads (a future reset/replay) must not be refused by a guard that remembers
+        # work it was told to redo. Bounded by group count per run, not by row count.
+        guard_columns = tuple(
+            column for column in plan.driver.group_by
+            if column in v2_base_select_columns(setup.snapshot, source))
+        split_guard = len(guard_columns) == len(plan.driver.group_by)
+        if not split_guard:
+            # Said out loud rather than skipped quietly: this source's group identity is
+            # DERIVED by its preparer, so the guard cannot read it from a base row and the
+            # operator is entitled to know the run is unguarded on this axis.
+            derived = sorted(set(plan.driver.group_by) - set(guard_columns))
+            result["split_guard"] = f"inactive: group key is derived ({derived})"
+            logger.warning(
+                "[Ledger] split guard inactive for %s: group columns %s are not base "
+                "columns, so a split molecule cannot be detected from the page", source,
+                derived)
+        completed_groups: set[tuple] = set()
         pages = walk_group_pages(
             lambda position: _fetch_v2_lineage_page(
                 read, plan, position, fetch_rows),
-            lambda event_time: _fetch_v2_lineage_group(read, plan, event_time),
-            plan.driver.occurred_at.column, after_time, fetch_rows,
+            lambda page_value: _fetch_v2_lineage_group(read, plan, page_value),
+            _page_key(plan), after_key, fetch_rows,
         )
         for complete, next_after, _last_page in pages:
             if max_batches is not None and result["batches"] >= max_batches:
@@ -373,6 +413,24 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
             last = ordered.iloc[-1]
             next_cursor = {
                 column: last[column] for column in plan.driver.cursor_columns}
+            # Checked BEFORE the write, so the returning half is refused rather than
+            # committed beside the half that is already there. Read off the base frame the
+            # loop already holds -- a second preparation pass to recover molecule refs
+            # measured 61% of a preview per batch, which is not a price a guard may charge
+            # on every batch forever.
+            batch_groups = set(
+                frame[list(guard_columns)].drop_duplicates()
+                .itertuples(index=False, name=None)) if split_guard else set()
+            repeated = sorted(str(token) for token in batch_groups & completed_groups)
+            if repeated:
+                raise LedgerSetupError(
+                    "source_event_split_across_batches",
+                    f"sources.{source}.driver.cursor.columns",
+                    f"{len(repeated)} source event(s) already processed in full came "
+                    f"back in a later page, so one event is being split across two "
+                    f"batches and its counts describe pages rather than events: "
+                    f"{repeated[:5]}",
+                )
             executed = execute_selected_cursor_batch(
                 setup, source, frame, next_cursor, NoJoinReader(), store,
                 known_registrations=known,
@@ -385,7 +443,8 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
             result["deduped"] += int(written.get("deduped", 0))
             result["batches"] += 1
             result["cursor"] = dict(executed.preview.cursor_value)
-            after_time = next_after
+            completed_groups |= batch_groups
+            after_key = next_after
         result["seconds"] = round(time.monotonic() - started, 3)
         return result
     finally:
@@ -397,13 +456,62 @@ def _v2_frame(rows):
     return pd.DataFrame(rows)
 
 
+def _page_key(plan):
+    """The physical column a page is CUT on: the cursor's first column.
+
+    🔴 IT MUST BE THE COLUMN THE CURSOR IS WRITTEN FROM, and for a while it was not. The
+    cursor is written from `driver.cursor_columns` and validated against
+    `driver.cursor_columns`, while the page was cut on `driver.occurred_at.column` --
+    the read key and the write key disagreed by construction, and that ONE argument
+    produced three symptoms at once:
+
+      * a molecule whose rows span two values of the time column was cut ACROSS pages,
+        each half becoming its own event. MEASURED on `dt_log` 2026-08-19: of the 26
+        `dt_job`s written by two ingestion batches, 24 were split this way, and each
+        half minted an atom counting an INGESTION BATCH ("59 dies" and "13 dies" for a
+        72-row job);
+      * `after` was read from a key the cursor does not carry, so it was always None and
+        every run restarted at row 1;
+      * the two disagreed silently, because on the only source that existed when this
+        was written they are the same column.
+
+    THE INVARIANT IS THAT THE PAGE KEY IS CONSTANT WITHIN A GROUP -- then a page cut on
+    it cannot split a molecule.
+
+    🔴 AND NOTHING HERE CAN CHECK THAT. It is tempting to say the cursor's first column
+    is group-constant "by construction, because the cursor only advances to groups
+    completed in full" -- that does not follow, and the retraction is the reason the
+    guard below this exists. Cursor advancement says nothing about whether a column
+    varies INSIDE a group. What actually makes it true today, measured per source:
+
+      * `dt_job` groups by `dt_job` and pages on `dt_job` -- the same column, so no
+        split is possible;
+      * `lot_event` groups by `event_group_key`, which the PREPARER derives and which no
+        page query can order by (that is also why this is not `group_by[0]`). Paging on
+        `event_time` is safe only because the mapper's `_event_key` EMBEDS `event_time`
+        in that derived key, making the page key a COARSENING of the group -- and a
+        coarsening never splits.
+
+    The second one is a fact about a mapper, INVISIBLE TO THE DECLARATION. The compiler
+    cannot verify it and cannot refuse a future source whose cursor starts on a column
+    that varies within its group; such a config would read as correct right up to the
+    day it silently split a molecule. That is why the run carries a cause-agnostic guard
+    on the SYMPTOM (`completed_groups` in `_run_v2_lineage`) instead of an assertion here
+    on the cause.
+
+    This function returns `event_time` for `lot_event`, the same column as before; only
+    a source whose two keys actually differ changes behaviour.
+    """
+    return plan.driver.cursor_columns[0]
+
+
 def _fetch_v2_lineage_page(connection, plan, after, limit):
     return _fetch_v2_lineage_rows(connection, plan, after=after, limit=limit)
 
 
-def _fetch_v2_lineage_group(connection, plan, occurred_at):
+def _fetch_v2_lineage_group(connection, plan, page_value):
     return _fetch_v2_lineage_rows(
-        connection, plan, group_value=occurred_at, limit=None)
+        connection, plan, group_value=page_value, limit=None)
 
 
 def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
@@ -413,18 +521,21 @@ def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
 
     from .source_preparation import base_select_columns
     columns = base_select_columns(plan)
-    occurred = plan.driver.occurred_at.column
-    order = tuple(dict.fromkeys((occurred, *plan.driver.order_by)))
+    # The page key leads the ORDER BY so that its groups are CONTIGUOUS -- that
+    # contiguity is the whole basis on which `_cut_on_group_boundary` may drop a trailing
+    # group and `walk_group_pages` may resume with `> after`.
+    page_key = _page_key(plan)
+    order = tuple(dict.fromkeys((page_key, *plan.driver.order_by)))
     select_sql = sql.SQL(", ").join(sql.Identifier(column) for column in columns)
     relation_sql = sql.SQL(".").join(
         sql.Identifier(part) for part in plan.relation.split("."))
     where_sql = sql.SQL("")
     params = []
     if group_value is not None:
-        where_sql = sql.SQL(" WHERE {} = %s").format(sql.Identifier(occurred))
+        where_sql = sql.SQL(" WHERE {} = %s").format(sql.Identifier(page_key))
         params.append(group_value)
     elif after is not None:
-        where_sql = sql.SQL(" WHERE {} > %s").format(sql.Identifier(occurred))
+        where_sql = sql.SQL(" WHERE {} > %s").format(sql.Identifier(page_key))
         params.append(after)
     query = sql.SQL("SELECT {} FROM {}{} ORDER BY {}").format(
         select_sql, relation_sql, where_sql,

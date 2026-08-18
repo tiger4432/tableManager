@@ -20,7 +20,11 @@ from ledger.setup import (
     physical_catalog_path,
     preview_selected_cursor_batch,
 )
-from ledger.setup_bundle import LedgerSetupValidationError, load_setup_bundle
+from ledger.setup_bundle import (
+    CONFIG_FILENAME,
+    LedgerSetupValidationError,
+    load_setup_bundle,
+)
 from ledger.source_preparation import VerifiedJoinBatchReader
 
 
@@ -97,8 +101,24 @@ def test_one_file_is_the_only_entry_and_compiles_deterministically():
 
     assert first.snapshot.snapshot_sha256 == second.snapshot.snapshot_sha256
     assert first.snapshot.serialize() == second.snapshot.serialize()
-    assert first.source_ids == ("lot_event",)
-    assert first.require_source("lot_event") == "lot_event"
+    # 🔴 THE INVARIANT, NOT THE MEMBERSHIP. This used to read
+    # `first.source_ids == ("lot_event",)` and went red the day a second source was
+    # legitimately DECLARED -- a failure that says "someone added a source", which is the
+    # config working. An assertion that a correct change breaks gets deleted as noise and
+    # takes the guard with it. What must hold is that compiling neither drops nor invents
+    # a source: the KEY SETS of the declaration and the compiled registry are equal, and
+    # every one of them resolves. Read straight from the file so the declaration is not
+    # being compared against itself.
+    declared = set(json.loads(
+        (DEFAULT_ONTOLOGY_ROOT / CONFIG_FILENAME).read_text(encoding="utf-8")
+    )["sources"])
+    assert declared, "the live config declares no source at all"
+    assert set(first.source_ids) == declared
+    for source_id in declared:
+        assert first.require_source(source_id) == source_id
+    with pytest.raises(LedgerSetupError) as undeclared:
+        first.require_source("no_such_source")
+    assert undeclared.value.code == "unknown_source"
 
 
 # RETIRED: test_manifest_covers_every_current_legacy_ledger_source.
@@ -159,16 +179,22 @@ def test_a_tables_section_in_the_ledger_file_is_refused_by_name(tmp_path):
 
 
 def test_operator_report_is_ready_and_explicitly_non_destructive():
-    report = dry_run_report(load_setup())
+    setup = load_setup()
+    report = dry_run_report(setup)
 
     assert report["readiness"] == "ready"
     # MOVED: the per-source row lost `mode`/`parity_status`/`approval_ref` with the
     # selector and gained the relation it reads. The report's REASON for existing is
     # unchanged -- an operator asking "what will run, and will it destroy anything".
-    assert report["sources"] == ({
-        "source_id": "lot_event",
-        "relation": "lot_event",
-    },)
+    #
+    # 🔴 The rows are asserted as an INVARIANT against the compiled plans, not pinned to
+    # one source's name: an operator report that silently omits a declared source is the
+    # defect worth catching, and a hard-coded tuple stops being able to catch it the
+    # first time a source is legitimately added.
+    assert {row["source_id"] for row in report["sources"]} == set(setup.source_ids)
+    assert all(
+        row["relation"] == setup.snapshot.source_plans[row["source_id"]].relation
+        for row in report["sources"])
     assert dict(report["destructive_actions"]) == {
         "database_reset": False,
         "cursor_reset": False,
