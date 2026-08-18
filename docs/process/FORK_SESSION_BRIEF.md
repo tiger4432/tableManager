@@ -16,7 +16,15 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
 - production authoring root: `server/config/ontology/` — 🔴 **[2026-08-18] 파일 «하나»**(`ledger_config.json`, `setup_version: 3`). `manifest.json`·`catalog/`·`dataflows/`는 은퇴했고 옮겨진 원본은 `server/config/_ontology_pre_single_file_20260818/`(지원 경로 아님)
 - 현재 선언된 source: `lot_event` — 🔴 **선언이 곧 활성화**라 `mode` selector는 없다. 확인은 `conda run -n assy_manager python -m ledger.setup`(`server/`에서, 쓰기 없음)
 - UI: `http://127.0.0.1:8080/admin.html#ontology`
-- active snapshot 기준: `57d36c07271a019242722cc4627f1c0a9c6b477e632f29f32034e331928b0da0`
+- active snapshot 기준: `f6223d6cbd24e2012f8936ecf88447df7b3729039dcd9fc673f96492513c2752`
+  (단일 파일 접기 이후 실측. 이전 값 `57d36c07…`은 manifest 시절이다)
+- 🔴 **스냅샷 해시는 게이트가 아니다.** 컴파일러를 고치면 뜻이 그대로여도 움직인다
+  (2026-08-18 실측: `363c693e`→`fd51baaf`→`f6223d6c`, 세 번 다 원자 디프 0).
+  판정은 **원자**로 한다 — 기준선 `task/evidence/ledger_atom_baseline_20260818.json`,
+  뜨는 도구 `task/evidence/ledger_atom_baseline.py`, 비교 `task/evidence/ledger_atom_diff.py`.
+  변환·이관 때 섹션이 조용히 빠지지 않았는지는 `task/evidence/ledger_config_section_diff.py`.
+- 진행 중 프로그램: `task/ledger_simplification_program.md`
+  (1라운드 단일 파일·자기 등록 — 대부분 착지 / 2라운드 매퍼 개주 / 3라운드 explorer 작성 모드)
 
 승인 구현 커밋:
 
