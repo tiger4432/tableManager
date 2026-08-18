@@ -11,7 +11,7 @@ import pytest
 from ledger.backfill import v2_base_select_columns
 from ledger.setup import (
     DEFAULT_ONTOLOGY_ROOT,
-    LedgerV2CutoverError,
+    LedgerSetupError,
     dry_run_report,
     execute_selected_cursor_batch,
     load_setup,
@@ -83,23 +83,26 @@ def mutate_selector(root: Path, mutate):
     path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
 
 
-def test_manifest_is_the_only_entry_and_compiles_deterministically():
+def test_one_file_is_the_only_entry_and_compiles_deterministically():
+    """MOVED from test_manifest_is_the_only_entry_...
+
+    Determinism survives untouched. What changed is the second half: there is no selector
+    to consult, so "which sources are active" is answered by the declaration itself."""
     first = load_setup()
     second = load_setup()
 
     assert first.snapshot.snapshot_sha256 == second.snapshot.snapshot_sha256
     assert first.snapshot.serialize() == second.snapshot.serialize()
-    assert tuple(first.selections) == ("lot_event",)
-    assert first.selection("lot_event").mode == "v2"
-    assert first.selection("lot_event").parity_status == "approved"
+    assert first.source_ids == ("lot_event",)
+    assert first.require_source("lot_event") == "lot_event"
 
 
-def test_manifest_covers_every_current_legacy_ledger_source():
-    legacy_path = DEFAULT_ONTOLOGY_ROOT.parent / "ledger_config.json"
-    legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
-    setup = load_setup()
-
-    assert set(legacy["sources"]) == set(setup.selections) == {"lot_event"}
+# RETIRED: test_manifest_covers_every_current_legacy_ledger_source.
+# It compared the v2 declaration against the LEGACY `server/config/ledger_config.json` to
+# prove nothing had been left behind in the cutover. That comparison target does not
+# exist -- the file was never present on this box and the legacy grammar is being retired
+# -- so the test measured one side against an absence. Retired because the thing it
+# compared to is gone, not because it stopped passing.
 
 
 def test_lot_event_catalog_matches_current_physical_table_contract():
@@ -116,11 +119,12 @@ def test_operator_report_is_ready_and_explicitly_non_destructive():
     report = dry_run_report(load_setup())
 
     assert report["readiness"] == "ready"
+    # MOVED: the per-source row lost `mode`/`parity_status`/`approval_ref` with the
+    # selector and gained the relation it reads. The report's REASON for existing is
+    # unchanged -- an operator asking "what will run, and will it destroy anything".
     assert report["sources"] == ({
         "source_id": "lot_event",
-        "mode": "v2",
-        "parity_status": "approved",
-        "approval_ref": "stage6:b98f0c3804f5bdfc6653670da571f8fef0e9e129",
+        "relation": "lot_event",
     },)
     assert dict(report["destructive_actions"]) == {
         "database_reset": False,
@@ -183,74 +187,42 @@ def test_selected_execute_reuses_preview_candidates_and_existing_store_transacti
     assert len(store.calls[0]["atoms"]) == preview.atom_count
 
 
-def test_v2_mode_requires_approved_parity(tmp_path):
-    root = copied_root(tmp_path)
-    mutate_selector(root, lambda sources: sources["lot_event"].update(
-        parity_status="pending"))
-
-    with pytest.raises(LedgerV2CutoverError) as exc:
-        load_setup(root)
-
-    assert exc.value.to_mapping() == {
-        "code": "cutover_not_approved",
-        "path": (
-            "bundle.chains.ledger_v2_execution.sources.lot_event.parity_status"),
-        "message": "v2 execution requires approved source parity",
-    }
+# RETIRED: test_v2_mode_requires_approved_parity.
+# `parity_status` was a string the compiler compared against the literal "approved" and
+# against nothing else -- it never referenced a measurement, so it certified only that
+# somebody had typed the word. THE MACHINERY IS GONE. What actually holds a half-written
+# source back is unchanged and earlier: `require_ready_bundle` refuses at load if any
+# profile binding is not approved, which the readiness tests still cover.
 
 
-def test_every_bundle_source_requires_one_selector(tmp_path):
-    root = copied_root(tmp_path)
-    mutate_selector(root, lambda sources: sources.pop("lot_event"))
-
-    with pytest.raises(LedgerV2CutoverError) as exc:
-        load_setup(root)
-
-    assert exc.value.to_mapping() == {
-        "code": "missing_execution_selector",
-        "path": "bundle.chains.ledger_v2_execution.sources.lot_event",
-        "message": "source 'lot_event' requires an explicit execution selector",
-    }
+# RETIRED: test_every_bundle_source_requires_one_selector.
+# It required every declared source to ALSO appear in the selector. Declaration is now
+# activation, so the second place to say so is gone and there is nothing left to omit.
+# Retired because the requirement was removed deliberately, not because it failed.
 
 
-def test_unknown_selector_source_is_rejected(tmp_path):
-    root = copied_root(tmp_path)
-    mutate_selector(root, lambda sources: sources.update({
-        "unknown": {
-            "mode": "legacy", "parity_status": "pending",
-            "approval_ref": "not-cut-over",
-        }}))
+def test_unknown_source_is_rejected_by_name():
+    """MOVED from test_unknown_selector_source_is_rejected.
 
-    with pytest.raises(LedgerV2CutoverError) as exc:
-        load_setup(root)
+    Naming a source that does not exist used to be caught when the selector was
+    cross-checked against `sources`; it is now caught when the source is asked for. The
+    refusal is what matters and it survived the move -- asking for something undeclared
+    must name it rather than return an empty run."""
+    setup = load_setup()
 
-    assert exc.value.to_mapping() == {
-        "code": "unknown_execution_source",
-        "path": "bundle.chains.ledger_v2_execution.sources.unknown",
-        "message": "selector names unknown source 'unknown'",
-    }
+    with pytest.raises(LedgerSetupError) as exc:
+        setup.require_source("unknown")
+
+    assert exc.value.to_mapping()["code"] == "unknown_source"
+    assert exc.value.to_mapping()["path"] == "sources.unknown"
+    assert "unknown" in exc.value.to_mapping()["message"]
 
 
-def test_legacy_selector_cannot_enter_v2_execute(tmp_path):
-    root = copied_root(tmp_path)
-    mutate_selector(root, lambda sources: sources["lot_event"].update(
-        mode="legacy", parity_status="pending", approval_ref="legacy-frozen"))
-    setup = load_setup(root)
-    frame = physical_split_rows()
-    store = RecordingStore()
-
-    with pytest.raises(LedgerV2CutoverError) as exc:
-        execute_selected_cursor_batch(
-            setup, "lot_event", frame, cursor_for(frame), NoJoinReader(), store,
-            known_registrations=(),
-        )
-
-    assert exc.value.to_mapping() == {
-        "code": "legacy_source_selected",
-        "path": "sources.lot_event.mode",
-        "message": "source 'lot_event' remains on the legacy execution path",
-    }
-    assert store.calls == []
+# RETIRED: test_legacy_selector_cannot_enter_v2_execute.
+# It proved a source parked on `mode: "legacy"` could not reach the v2 write path. There
+# is no legacy mode and no legacy path to be parked on. THE MACHINERY IS GONE. The
+# surviving half -- that an undeclared source cannot reach the store -- is covered by
+# test_unknown_source_is_rejected_by_name above.
 
 
 def test_cutover_module_exposes_no_reset_or_legacy_removal_capability():
@@ -290,7 +262,7 @@ def test_backfill_runs_the_ontology_root_without_being_asked_to(monkeypatch):
 def test_v2_backfill_refuses_reset_controls_before_store_access():
     import ledger.backfill as backfill
 
-    with pytest.raises(LedgerV2CutoverError) as exc:
+    with pytest.raises(LedgerSetupError) as exc:
         backfill.run(
             object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
             reset_cursor=True)
@@ -326,7 +298,7 @@ def test_existing_legacy_cursor_shape_blocks_v2_before_source_read(monkeypatch):
 
     monkeypatch.setattr(store_module, "LedgerStore", FakeStore)
 
-    with pytest.raises(LedgerV2CutoverError) as exc:
+    with pytest.raises(LedgerSetupError) as exc:
         backfill.run(
             object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT)
 
@@ -379,7 +351,7 @@ def test_operator_cli_blocks_reset_and_replay_before_io(
     monkeypatch.setattr(
         backfill, "run", lambda *args, **kwargs: pytest.fail("source must not run"))
 
-    with pytest.raises(LedgerV2CutoverError) as exc:
+    with pytest.raises(LedgerSetupError) as exc:
         backfill.main(argv)
 
     assert exc.value.to_mapping() == {
@@ -416,7 +388,7 @@ def test_existing_other_snapshot_cursor_blocks_before_source_read(monkeypatch):
 
     monkeypatch.setattr(store_module, "LedgerStore", FakeStore)
 
-    with pytest.raises(LedgerV2CutoverError) as exc:
+    with pytest.raises(LedgerSetupError) as exc:
         backfill.run(
             object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT)
 

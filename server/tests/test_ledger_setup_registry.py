@@ -424,11 +424,14 @@ def test_join_fold_contract_matches_operational_notation_vocabulary():
         notation_norm.IMPLEMENTED_RULES)
 
 
-def test_dataflow_declaration_change_also_changes_snapshot_hash():
-    changed = logical_bundle()
-    changed["chains"]["safe-chain"] = {"steps": [{"kind": "declared"}]}
-
-    assert snapshot(changed).snapshot_sha256 != snapshot().snapshot_sha256
+# RETIRED: test_dataflow_declaration_change_also_changes_snapshot_hash.
+# It pinned that editing `chains`/`enrichments` moved the snapshot hash. THE MACHINERY IS
+# GONE, and its removal was the point rather than a side effect: neither section could
+# change one atom, so the hash they moved blocked the cursor with
+# `cursor_snapshot_reset_required` over an approval-reference string. The surviving rule
+# is the inverse and is covered by the registry hash tests that remain -- the hash now
+# covers only what can change an atom. Retired because the sections no longer exist, not
+# because it stopped passing.
 
 
 def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic():

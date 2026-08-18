@@ -275,10 +275,16 @@ def issue(bundle, code):
 
 def test_public_schema_is_the_single_logical_contract():
     schema = public_bundle_schema()
-    assert schema["setup_version"] == 2
+    assert schema["setup_version"] == 3
+    assert schema["config_file"] == "ledger_config.json"
     assert schema["logical_fields"] == ["setup_version", *LOGICAL_SECTIONS]
+    assert schema["optional_fields"] == ["virtual_joins"]
     assert schema["binding_kinds"] == ["column", "constant", "entity"]
-    assert schema["forbidden_sections"] == ["frames", "lookups", "positions"]
+    # manifest/chains/enrichments joined the FORBIDDEN list rather than merely
+    # disappearing: a root still carrying one must be refused, not quietly ignored, or a
+    # converted-but-not-cleaned tree looks like it loaded what it did not.
+    assert schema["forbidden_sections"] == [
+        "frames", "lookups", "positions", "manifest", "chains", "enrichments"]
 
 
 def test_objectless_predicate_and_pack_emission_have_one_closed_spelling():
@@ -321,8 +327,14 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     second = validate_bundle(reverse_mappings(logical_bundle()))
     assert first.serialize() == second.serialize()
     assert first.to_mapping() == second.to_mapping()
+    # 🔴 This literal is a FINGERPRINT OF THE FIXTURE, not of the serializer, so it moves
+    # exactly when the fixture's shape moves and never otherwise. It changed here because
+    # `chains` and `enrichments` left the bundle -- two fewer keys to serialize. If it
+    # ever changes without a deliberate shape change, the serializer stopped being
+    # deterministic and THAT is the bug; do not refresh this value to make a red go green.
+    # was 93bb7009... while the bundle still carried chains + enrichments.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "93bb700979a48a105153b6d1ae025a006bfd2531bd426519c8550333f693b38b")
+        "c08e718318a1d8ebbe486036027ff6420b1817c207ccf000d895aba751c6881e")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -340,29 +352,28 @@ def test_loaded_files_produce_the_same_logical_bundle(tmp_path):
     assert loaded.serialize() == validate_bundle(logical_bundle()).serialize()
 
 
-def test_manifest_and_file_key_order_do_not_change_loaded_bundle(tmp_path):
+def test_file_key_order_does_not_change_loaded_bundle(tmp_path):
+    """MOVED from test_manifest_and_file_key_order_...: the manifest half is gone, the
+    property is not. Key order inside the one file must not reach the loaded bundle."""
     one, two = tmp_path / "one", tmp_path / "two"
     write_tree(one)
-    files = write_tree(two, reverse_mappings(logical_bundle()))
-    (two / "manifest.json").write_text(
-        json.dumps(reverse_mappings(files["manifest.json"])), encoding="utf-8")
+    write_tree(two, reverse_mappings(logical_bundle()))
     assert load_setup_bundle(one).serialize() == load_setup_bundle(two).serialize()
 
 
 @pytest.mark.parametrize("unsafe", ["../outside.json", "C:/outside.json", "*.json"])
-def test_manifest_unsafe_paths_are_rejected(tmp_path, unsafe):
-    manifest = {
-        "setup_version": 2, "ledger": unsafe,
-        "catalog": {"tables": "catalog/tables.json",
-                    "virtual_joins": "catalog/virtual_joins.json"},
-        "dataflows": {"chains": "dataflows/chains.json",
-                      "enrichments": "dataflows/enrichments.json"},
-    }
-    write_tree(tmp_path, manifest=manifest)
+def test_unsafe_config_paths_are_rejected(tmp_path, unsafe):
+    """MOVED from test_manifest_unsafe_paths_are_rejected.
+
+    The manifest no longer names a file, but the traversal/absolute/glob guard it fed
+    still stands between a caller and the filesystem: `load_setup_bundle` takes the file
+    name as `config_name`. The escape refused is the same one; only the field carrying it
+    changed."""
+    write_tree(tmp_path)
     with pytest.raises(LedgerSetupValidationError) as caught:
-        load_setup_bundle(tmp_path)
-    assert caught.value.code == "unsafe_manifest_path"
-    assert caught.value.path == "manifest.ledger"
+        load_setup_bundle(tmp_path, config_name=unsafe)
+    assert caught.value.code == "unsafe_config_path"
+    assert caught.value.path == "config_root"
 
 
 def test_unlisted_json_file_is_rejected_not_auto_loaded(tmp_path):
@@ -374,13 +385,15 @@ def test_unlisted_json_file_is_rejected_not_auto_loaded(tmp_path):
     assert caught.value.path == "config_root.extra.json"
 
 
-def test_missing_manifest_file_is_rejected_with_its_slot_path(tmp_path):
+def test_missing_config_file_is_rejected_by_name(tmp_path):
+    """MOVED from test_missing_manifest_file_...: there are no slots left to name, but an
+    absent config is still a refusal rather than an empty bundle."""
     write_tree(tmp_path)
-    (tmp_path / "catalog" / "tables.json").unlink()
+    (tmp_path / "ledger_config.json").unlink()
     with pytest.raises(LedgerSetupValidationError) as caught:
         load_setup_bundle(tmp_path)
     assert caught.value.code == "missing_config_file"
-    assert caught.value.path == "manifest.catalog.tables"
+    assert caught.value.path == "config_root"
 
 
 def test_symlink_escape_is_rejected_when_host_supports_symlinks(tmp_path):
@@ -402,15 +415,10 @@ def test_symlink_escape_is_rejected_when_host_supports_symlinks(tmp_path):
     assert caught.value.path == "manifest.ledger"
 
 
-def test_duplicate_manifest_path_is_rejected(tmp_path):
-    files = write_tree(tmp_path)
-    manifest = files["manifest.json"]
-    manifest["dataflows"]["enrichments"] = "dataflows/chains.json"
-    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    with pytest.raises(LedgerSetupValidationError) as caught:
-        load_setup_bundle(tmp_path)
-    assert caught.value.code == "duplicate_manifest_path"
-    assert caught.value.path == "manifest.dataflows.enrichments"
+# RETIRED: test_duplicate_manifest_path_is_rejected.
+# It proved two manifest slots could not name one file. THE MACHINERY IS GONE -- there are
+# no slots, and one file cannot collide with itself. Retired because the thing it guarded
+# no longer exists, not because it stopped passing.
 
 
 def test_duplicate_json_key_is_rejected_before_normalization(tmp_path):
@@ -457,19 +465,26 @@ def test_excessively_nested_json_has_structured_rejection(tmp_path):
     assert_structured_errors((caught.value,))
 
 
-def test_unsupported_setup_and_file_versions_have_stable_errors(tmp_path):
+def test_unsupported_setup_version_has_a_stable_error(tmp_path):
+    """MOVED from test_unsupported_setup_and_file_versions_...
+
+    The per-file `schema_version` half is RETIRED with the five files it versioned; one
+    `setup_version` now states the grammar generation for the whole document. Checked
+    through both doors on purpose -- a loaded file and an in-memory bundle are two ways
+    into the same compiler and have disagreed before."""
     bundle = logical_bundle()
     bundle["setup_version"] = 9
     assert issue(bundle, "unsupported_setup_version").path == "bundle.setup_version"
+
     write_tree(tmp_path)
-    path = tmp_path / "catalog" / "tables.json"
+    path = tmp_path / "ledger_config.json"
     body = json.loads(path.read_text(encoding="utf-8"))
-    body["schema_version"] = 9
+    body["setup_version"] = 9
     path.write_text(json.dumps(body), encoding="utf-8")
     with pytest.raises(LedgerSetupValidationError) as caught:
         load_setup_bundle(tmp_path)
-    assert caught.value.code == "unsupported_file_version"
-    assert caught.value.path == "catalog.tables.schema_version"
+    assert caught.value.code == "unsupported_setup_version"
+    assert caught.value.path == "ledger_config.setup_version"
 
 
 @pytest.mark.parametrize("field", ["positions", "frames", "lookups"])
@@ -482,24 +497,29 @@ def test_retired_root_sections_are_unknown_and_unsafe(field):
 
 
 @pytest.mark.parametrize(
-    ("section", "steps", "suffix"),
+    ("steps", "suffix"),
     [
-        ("chains", [{"sql": "DROP"}], "steps[0].sql"),
-        ("chains", [[{"sql": "DROP"}]], "steps[0][0].sql"),
-        ("enrichments", [{"sql": "DROP"}], "steps[0].sql"),
-        ("enrichments", [[[{"sql": "DROP"}]]], "steps[0][0][0].sql"),
+        ([{"sql": "DROP"}], "steps[0].sql"),
+        ([[{"sql": "DROP"}]], "steps[0][0].sql"),
+        ([[[{"sql": "DROP"}]]], "steps[0][0][0].sql"),
     ],
 )
-def test_unsafe_execution_keys_are_found_through_nested_arrays(section, steps, suffix):
+def test_unsafe_execution_keys_are_found_through_nested_arrays(steps, suffix):
+    """MOVED off the chains/enrichments vector, which is gone.
+
+    The RECURSION is what is under test -- an executable key hidden several arrays deep
+    must still be found -- and it is still reachable, through a virtual join's `fold`.
+    Deleting this with the sections would have retired a LIVE protection just because its
+    old front door closed."""
     bundle = logical_bundle()
-    bundle[section]["bad"] = {"steps": steps}
+    bundle["virtual_joins"]["input_to_reference"]["fold"] = {"steps": steps}
 
     errors = validate_bundle_errors(bundle)
 
     assert_structured_errors(errors)
     assert any(
         error.code == "unsafe_declaration"
-        and error.path == f"bundle.{section}.bad.{suffix}"
+        and error.path == f"bundle.virtual_joins.input_to_reference.fold.{suffix}"
         for error in errors)
 
 
@@ -1102,7 +1122,9 @@ def test_followup_validation_errors_have_deterministic_order():
     driver = bundle["sources"]["input_rows"]["driver"]
     driver["order_by"] = ["event_at"]
     driver["cursor"]["columns"] = ["event_at"]
-    bundle["chains"]["bad"] = {"steps": [[{"sql": "DROP"}]]}
+    # was `bundle["chains"]["bad"]`; that section is gone, the follow-up error it
+    # contributed is not -- any additional error source exercises the ordering.
+    bundle["virtual_joins"]["input_to_reference"]["fold"] = {"steps": [[{"sql": "DROP"}]]}
 
     first_errors = validate_bundle_errors(bundle)
     second_errors = validate_bundle_errors(reverse_mappings(bundle))

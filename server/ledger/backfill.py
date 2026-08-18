@@ -255,7 +255,7 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     old ones, which is correct: they are different claims made by different rules).
     """
     from .setup import (
-        DEFAULT_ONTOLOGY_ROOT, LedgerV2CutoverError, _require_declared_source,
+        DEFAULT_ONTOLOGY_ROOT, LedgerSetupError, _require_declared_source,
         load_setup)
 
     # 🔴 Positional guard, not a type nicety. `run()` used to be `run(engine, cfg, source=…)`
@@ -264,7 +264,7 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     # `TypeError: unhashable type: 'dict'` from three frames down - a removal that reports
     # itself as a crash in unrelated code instead of as a retired argument.
     if not isinstance(source, str):
-        raise LedgerV2CutoverError(
+        raise LedgerSetupError(
             "invalid_source_argument", "source",
             f"source must be a source id string, got {type(source).__name__}; "
             f"run() no longer takes a legacy config as its second positional argument",
@@ -292,7 +292,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
     cursor requires a separate destructive approval.
     """
     from .setup import (
-        LedgerV2CutoverError,
+        LedgerSetupError,
         execute_selected_cursor_batch,
     )
     from .source_preparation import VerifiedJoinBatchReader
@@ -300,24 +300,24 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
 
     if reset_cursor or start_from is not None:
         path = "reset_cursor" if reset_cursor else "start_from"
-        raise LedgerV2CutoverError(
+        raise LedgerSetupError(
             "destructive_approval_required", path,
             "v2 cursor reset or replay requires a separate destructive approval",
         )
     if not isinstance(fetch_rows, int) or isinstance(fetch_rows, bool) or fetch_rows < 1:
-        raise LedgerV2CutoverError(
+        raise LedgerSetupError(
             "invalid_fetch_rows", "fetch_rows", "must be a positive integer")
 
     class NoJoinReader(VerifiedJoinBatchReader):
         def read_chunk(self, descriptor, keys):
-            raise LedgerV2CutoverError(
+            raise LedgerSetupError(
                 "verified_join_reader_required", "source_preparation.join_reader",
                 "selected source inherits a verified join but no reader was supplied",
             )
 
     plan = setup.snapshot.source_plans[source]
     if plan.driver.preparation.verified_join_descriptors:
-        raise LedgerV2CutoverError(
+        raise LedgerSetupError(
             "verified_join_reader_required", "source_preparation.join_reader",
             "the backfill entry requires a registered read-only join reader",
         )
@@ -329,13 +329,13 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         cursor_value = (existing or {}).get("cursor_value") or {}
         expected_version = f"ledger-v2:{setup.snapshot.snapshot_sha256}"
         if existing and set(cursor_value) != set(plan.driver.cursor_columns):
-            raise LedgerV2CutoverError(
+            raise LedgerSetupError(
                 "legacy_cursor_reset_required", f"ledger_cursor.{source}.cursor_value",
                 "existing cursor shape does not match the v2 physical cursor; "
                 "inspect, back up, and obtain separate reset approval",
             )
         if existing and existing.get("translator_ver") != expected_version:
-            raise LedgerV2CutoverError(
+            raise LedgerSetupError(
                 "cursor_snapshot_reset_required",
                 f"ledger_cursor.{source}.translator_ver",
                 "existing cursor belongs to a different setup snapshot; inspect, "
@@ -735,7 +735,7 @@ def beat(result):
 
 def main(argv=None):
     _bootstrap_path()
-    from .setup import DEFAULT_ONTOLOGY_ROOT, LedgerV2CutoverError
+    from .setup import DEFAULT_ONTOLOGY_ROOT, LedgerSetupError
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", default="lot_event")
@@ -757,7 +757,7 @@ def main(argv=None):
     # the gate ahead of config, database, source, and store access.
     if args.reset_cursor or args.start_from is not None:
         path = "reset_cursor" if args.reset_cursor else "start_from"
-        raise LedgerV2CutoverError(
+        raise LedgerSetupError(
             "destructive_approval_required", path,
             "cursor reset or replay requires a separate destructive approval",
         )

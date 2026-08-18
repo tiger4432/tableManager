@@ -79,7 +79,7 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         "predicate|slot_map@1",
         "entity|Lot@1",
         "pack|lot-lineage@1",
-        "claim|lot-lineage@1/split_slot",
+        "claim|lot-lineage@1/slot_map",
         "profile|lot-event@1",
         "mapping|lot-event@1#mapping:slot_preserving",
         "preparer|lot-event-live-frame@1",
@@ -89,7 +89,24 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         "table|lot_event",
     }
     assert expected.issubset(index.nodes)
-    assert len(index.nodes) == 47
+    # 🔴 DERIVED, not a magic total. This was `== 47`, a literal that went stale the moment
+    # the config's packs were reshaped -- and it went stale INVISIBLY, because the
+    # assertion above it failed first and this line never ran. A number nobody can re-derive
+    # is a number nobody notices is wrong.
+    # What the test's name actually promises is a BIJECTION: every declaration becomes one
+    # node and nothing else does. Summing the sections says that, and it keeps saying it
+    # when a section grows.
+    assert len(index.nodes) == (
+        len(bundle["vocabulary"]) + len(bundle["entities"]) + len(bundle["packs"])
+        + sum(len(pack["claims"]) for pack in bundle["packs"].values())
+        + len(bundle["profiles"])
+        + sum(len(profile["mappings"]) for profile in bundle["profiles"].values())
+        + sum(len(mapping["bind"])
+              for profile in bundle["profiles"].values()
+              for mapping in profile["mappings"])
+        + len(bundle["source_preparers"]) + len(bundle["mappers"])
+        + len(bundle["sources"]) + len(bundle["tables"])
+        + len(active_setup.snapshot.verified_joins))
 
 
 def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setup):
@@ -105,11 +122,11 @@ def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setu
         assert edge.json_pointer.startswith("/")
 
     split = next(edge for edge in index.edges if
-                 edge.from_key == "claim|lot-lineage@1/split_slot"
+                 edge.from_key == "claim|lot-lineage@1/slot_map"
                  and edge.reference_kind == "emits_predicate")
     assert split.to_key == "predicate|slot_map@1"
     assert split.json_pointer == (
-        "/packs/lot-lineage@1/claims/split_slot/emit/predicate")
+        "/packs/lot-lineage@1/claims/slot_map/emit/predicate")
 
 
 def test_actual_round_trip_source_profile_claim_predicate(active_setup):
@@ -118,11 +135,11 @@ def test_actual_round_trip_source_profile_claim_predicate(active_setup):
     assert ("source_plan|lot_event", "profile|lot-event@1", "source_profile") in edges
     assert (
         "mapping|lot-event@1#mapping:slot_preserving",
-        "claim|lot-lineage@1/split_slot",
+        "claim|lot-lineage@1/slot_map",
         "mapping_claim",
     ) in edges
     assert (
-        "claim|lot-lineage@1/split_slot", "predicate|slot_map@1",
+        "claim|lot-lineage@1/slot_map", "predicate|slot_map@1",
         "emits_predicate",
     ) in edges
     assert (

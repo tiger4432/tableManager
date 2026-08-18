@@ -54,7 +54,7 @@ from .source_preparation import (
 DEFAULT_ONTOLOGY_ROOT = Path(__file__).parents[1] / "config" / "ontology"
 
 
-class LedgerV2CutoverError(ValueError):
+class LedgerSetupError(ValueError):
     """Stable Stage 7 config or selection refusal."""
 
     def __init__(self, code: str, path: str, message: str):
@@ -68,7 +68,7 @@ class LedgerV2CutoverError(ValueError):
 
 
 @dataclass(frozen=True)
-class LedgerV2CutoverSetup:
+class LedgerSetup:
     config_root: Path
     bundle: LedgerSetupBundle
     snapshot: LedgerSetupSnapshot
@@ -82,7 +82,7 @@ class LedgerV2CutoverSetup:
     def require_source(self, source_id: str) -> str:
         """Being declared IS being active; the only question left is whether it exists."""
         if source_id not in self.snapshot.source_plans:
-            raise LedgerV2CutoverError(
+            raise LedgerSetupError(
                 "unknown_source", f"sources.{source_id}",
                 f"source {source_id!r} is not declared in {self.config_root.name}",
             )
@@ -93,13 +93,13 @@ def load_setup(
     root: str | Path = DEFAULT_ONTOLOGY_ROOT,
     *,
     verified_joins: Sequence[VerifiedJoinDescriptor] = (),
-) -> LedgerV2CutoverSetup:
+) -> LedgerSetup:
     """Load one file, enforce binding readiness, and compile one snapshot."""
     root_path = Path(root).resolve(strict=True)
     bundle = require_ready_bundle(load_setup_bundle(root_path))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(), verified_joins)
-    return LedgerV2CutoverSetup(
+    return LedgerSetup(
         config_root=root_path,
         bundle=bundle,
         snapshot=snapshot,
@@ -109,7 +109,7 @@ def load_setup(
 
 
 def preview_selected_cursor_batch(
-    setup: LedgerV2CutoverSetup,
+    setup: LedgerSetup,
     source_id: str,
     base_rows: pd.DataFrame,
     cursor_value: Mapping[str, Any],
@@ -126,7 +126,7 @@ def preview_selected_cursor_batch(
 
 
 def execute_selected_cursor_batch(
-    setup: LedgerV2CutoverSetup,
+    setup: LedgerSetup,
     source_id: str,
     base_rows: pd.DataFrame,
     cursor_value: Mapping[str, Any],
@@ -144,7 +144,7 @@ def execute_selected_cursor_batch(
     )
 
 
-def dry_run_report(setup: LedgerV2CutoverSetup) -> Mapping[str, Any]:
+def dry_run_report(setup: LedgerSetup) -> Mapping[str, Any]:
     """Deterministic, write-free operator report for the active config."""
     return MappingProxyType({
         "config_root": setup.config_root.as_posix(),
@@ -163,12 +163,12 @@ def dry_run_report(setup: LedgerV2CutoverSetup) -> Mapping[str, Any]:
     })
 
 
-def _require_declared_source(setup: "LedgerV2CutoverSetup", source_id: str) -> str:
+def _require_declared_source(setup: "LedgerSetup", source_id: str) -> str:
     """Kept as the ONE spelling of "may this source run", now that the answer is
     "is it declared". Callers (`backfill.run`, the preview/execute entries) ask through
     this rather than each testing membership, so a future gate lands in one place."""
-    if not isinstance(setup, LedgerV2CutoverSetup):
-        raise TypeError("setup must be LedgerV2CutoverSetup")
+    if not isinstance(setup, LedgerSetup):
+        raise TypeError("setup must be LedgerSetup")
     return setup.require_source(source_id)
 
 
