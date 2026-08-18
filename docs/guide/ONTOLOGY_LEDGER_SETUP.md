@@ -980,6 +980,18 @@ Timezone은 “DB session timezone을 쓰겠지”라고 추측하지 않는다.
 바뀌는 것은 그 역할에 **무엇이 들어오느냐**뿐이라, 프로필에 시각 리터럴이 등장할 이유가
 사라진다.
 
+**매퍼도 안 바뀐다.** `column`이든 `basis`든 매퍼는 시각을 **`__occurred_at` 한 이름으로**
+읽는다 — 물리 컬럼 이름은 준비 경계가 이미 풀었고, 그 이름을 매퍼가 되물을 자리는 없다.
+
+```python
+sentences = ProfileSentences(context, profile,
+                             occurred_at=unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN])
+```
+
+`__source_row_ref`와 같은 부류다 — **엔진이 얹는 컬럼이라 선언하지 않는다.** `input_columns`에
+적으면 `column '__occurred_at' is not in EventFrame schema`로 거절된다(EventFrame 스키마는
+물리 컬럼 ∪ preparer `output_columns`이고 이 컬럼은 어느 쪽도 아니다).
+
 ## 8. 선언이 곧 활성화다 — 실행 스위치는 없다
 
 🔴 **`sources`에 있는 source는 «돈다».** 「돈다」고 다시 말해 주는 두 번째 자리는 없다.
