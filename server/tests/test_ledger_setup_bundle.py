@@ -1327,8 +1327,13 @@ def test_common_module_has_no_domain_source_branches_or_runtime_imports():
             imported.update(alias.name.split(".")[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
-    assert imported <= {"__future__", "collections", "dataclasses", "json", "pathlib",
-                        "re", "types", "typing", "zoneinfo"}
+    # `difflib` joined on 2026-08-19 so an `unknown_*` refusal can say "did you mean
+    # 'movement@1'?". It is pure stdlib string comparison -- no I/O, no domain, no runtime --
+    # which is the property this allowlist exists to protect. The list stays CLOSED: a new
+    # name here is a decision, and anything that reads data or knows about a source is
+    # still refused by the loop below.
+    assert imported <= {"__future__", "collections", "dataclasses", "difflib", "json",
+                        "pathlib", "re", "types", "typing", "zoneinfo"}
     for forbidden in ("database", "sqlalchemy", "psycopg2", "backfill", "store",
                       "translator", "chain_mapper"):
         assert forbidden not in imported
@@ -1374,3 +1379,157 @@ def test_non_group_mapper_unit_rejects_columns():
     assert any(error.code == "invalid_mapper"
                and error.path == "bundle.mappers.map-transition@1.unit.columns"
                for error in errors)
+
+
+# --- The refusal carries the answer it is already holding -------------------------------
+#
+# Measured 2026-08-19: the owner hand-authored a second source and every one of the three
+# refusals below had to be translated by a human sitting next to them.  Nothing new has to
+# be computed for any of them -- the allowed sets are frozensets and tuples one stack frame
+# away from the `add()` call that refuses.
+
+
+def test_an_unknown_field_refusal_names_what_the_object_does_take(tmp_path):
+    """"field is not allowed" answers WHERE and not WHAT.
+
+    `exact()` has the required and optional tuples in hand at the moment it refuses; the
+    author has to go and find them.  The exact case measured was `emit.object.payload`,
+    where a human had to say "object takes kind / entity / value / qualifiers".
+    """
+    raw = logical_bundle()
+    raw["packs"]["movement@1"]["claims"]["transition"]["emit"]["object"]["payload"] = {"n": 1}
+    refused = issue(raw, "unknown_field")
+
+    assert refused.path == "bundle.packs.movement@1.claims.transition.emit.object.payload"
+    assert refused.message.startswith("field is not allowed")
+    # Every allowed name, and which one is not optional. Scored as a SET so the assertion
+    # does not pin the join text of the sentence.
+    listed = refused.message.split("allowed here: ", 1)[1]
+    assert {part.strip() for part in listed.split(",")} == {
+        "kind (required)", "entity", "value", "qualifiers"}
+
+    # The retired-section help still wins where it applies -- it says what happened and
+    # where the truth moved, which a bare field list would replace with something less
+    # useful. Keyed on the FILE path, which is the one an operator pasting their old
+    # section back in actually hits.
+    retired = logical_bundle()
+    retired["tables"] = {}
+    write_tree(tmp_path, retired)
+    tables = next(
+        item for item in setup_bundle_module.setup_bundle_errors(
+            tmp_path, catalog=DEFAULT_CATALOG)
+        if item.path == "ledger_config.tables")
+    assert "retired on 2026-08-18" in tables.message
+    assert "allowed here" not in tables.message
+
+
+def test_an_unknown_reference_separates_a_typo_from_a_declaration_not_written_yet():
+    """"unknown pack 'dt-job@1'" does not say WHICH mistake this is.
+
+    Misspelling an existing pack and emitting into one that has not been authored yet need
+    opposite next actions -- fix a character, or go write a declaration.  The two fixtures
+    disagree on purpose: a single fixture would pass under either rule.
+    """
+    typo = logical_bundle()
+    typo["mappers"]["map-transition@1"]["emits"] = ["movment@1/transition"]
+    near = issue(typo, "unknown_pack")
+    assert "did you mean 'movement@1'?" in near.message
+
+    absent = logical_bundle()
+    absent["mappers"]["map-transition@1"]["emits"] = ["shipment@9/transition"]
+    far = issue(absent, "unknown_pack")
+    assert "did you mean" not in far.message
+    assert "declared packs: 'movement@1'" in far.message
+
+    # And the claim half of the same reference, scored against the pack it names.
+    wrong_claim = logical_bundle()
+    wrong_claim["mappers"]["map-transition@1"]["emits"] = ["movement@1/transitions"]
+    claim = issue(wrong_claim, "unknown_claim")
+    assert "did you mean 'transition'?" in claim.message
+
+    # Nothing declared at all reads as neither of the above.
+    empty = logical_bundle()
+    empty["packs"] = {}
+    assert "no packs are declared yet" in issue(empty, "unknown_pack").message
+
+
+def test_a_list_of_references_says_what_one_item_looks_like():
+    """"must be a list with at least one item" leaves the item shape to be guessed.
+
+    `emits` takes claim references, and the author who hits this refusal is exactly the one
+    who does not yet know how a claim reference is spelled.
+    """
+    raw = logical_bundle()
+    raw["mappers"]["map-transition@1"]["emits"] = "movement@1/transition"
+    refused = issue(raw, "invalid_type")
+    assert refused.path == "bundle.mappers.map-transition@1.emits"
+    assert "each item is <pack>@<version>/<claim>" in refused.message
+
+    # The item-shape clause is opt-in: a list of plain names has nothing extra to say and
+    # must not grow a clause about claim references.
+    plain = logical_bundle()
+    plain["mappers"]["map-transition@1"]["input_columns"] = "record_id"
+    assert "each item is" not in issue(plain, "invalid_type").message
+
+
+def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tmp_path):
+    """🔴 THE TWO PATHS MUST NOT BE COLLAPSED.
+
+    Authoring needs the whole list -- measured, five save-and-run cycles for five problems
+    that were all present in the first save.  The runtime does NOT: a source about to write
+    atoms should stop at the first refusal, and every later check would be reading a bundle
+    the earlier one already declared broken.
+
+    So this scores both halves against ONE root, which is the only way to state that they
+    differ rather than that each is separately plausible.
+    """
+    raw = logical_bundle()
+    raw["mappers"]["map-transition@1"]["emits"] = "movement@1/transition"
+    raw["packs"]["movement@1"]["claims"]["transition"]["emit"]["object"]["payload"] = 1
+    raw["vocabulary"]["moves_to@1"]["colour"] = "blue"
+    raw["entities"]["InputEntity@1"]["allow_null"] = "yes"
+    raw["sources"]["input_rows"]["driver"]["unit"] = "wafer"
+    write_tree(tmp_path, raw)
+
+    issues = setup_bundle_module.setup_bundle_errors(
+        tmp_path, catalog=DEFAULT_CATALOG)
+    paths = [item.path for item in issues]
+    assert len(set(paths)) >= 5, paths
+    # All five mistakes, from one read. Named individually so a regression that drops one
+    # kind of check cannot hide behind the count.
+    for expected in (
+        "bundle.mappers.map-transition@1.emits",
+        "bundle.packs.movement@1.claims.transition.emit.object.payload",
+        "bundle.vocabulary.moves_to@1.colour",
+        "bundle.entities.InputEntity@1.allow_null",
+        "bundle.sources.input_rows.driver.unit",
+    ):
+        assert expected in paths, expected
+
+    # The runtime loader still stops at the first, and the one it stops at is a MEMBER of
+    # the list above -- the two paths disagree about how many, never about what.
+    with pytest.raises(LedgerSetupValidationError) as refused:
+        load_setup_bundle(tmp_path)
+    assert refused.value.path in paths
+
+    # And a clean root returns an empty list rather than raising on the way there.
+    clean = tmp_path / "clean"
+    write_tree(clean)
+    assert setup_bundle_module.setup_bundle_errors(
+        clean, catalog=DEFAULT_CATALOG) == tuple()
+
+
+def test_a_root_shape_problem_is_reported_without_its_downstream_consequences(tmp_path):
+    """Causes, not consequences.
+
+    A document missing a whole section would make every cross-section check report the
+    absence again in its own words.  The root stage returns alone for the same reason the
+    section stage runs before cross-validation: a list where the cause is buried under
+    thirty consequences is the single-message problem in a new costume.
+    """
+    raw = logical_bundle()
+    del raw["packs"]
+    write_tree(tmp_path, raw)
+    issues = setup_bundle_module.setup_bundle_errors(tmp_path, catalog=DEFAULT_CATALOG)
+    assert [item.path for item in issues] == ["ledger_config.packs"]
+    assert issues[0].code == "missing_field"

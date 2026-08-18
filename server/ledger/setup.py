@@ -48,11 +48,15 @@ from .setup_bundle import (
     CONFIG_FILENAME,
     PHYSICAL_CATALOG_FILENAME,
     LedgerSetupBundle,
+    LedgerSetupValidationError,
+    bundle_readiness_errors,
     load_physical_catalog,
     load_setup_bundle,
     require_ready_bundle,
+    setup_bundle_errors,
 )
-from .setup_registry import LedgerSetupSnapshot, compile_setup_snapshot
+from .setup_registry import (
+    LedgerSetupSnapshot, compile_setup_snapshot, snapshot_compile_errors)
 from .source_preparation import (
     SourcePreparerImplementationRegistry,
     VerifiedJoinBatchReader,
@@ -276,12 +280,53 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"{parser.prog}: {refusal}", file=sys.stderr)
         return 2
 
-    setup = load_setup(root)
+    try:
+        setup = load_setup(root)
+    except LedgerSetupValidationError as refusal:
+        # 🔴 AUTHORING REPORTS EVERY PROBLEM; THE RUNTIME STILL STOPS AT THE FIRST.
+        # `load_setup` above is the runtime path and is unchanged -- it raised, and a
+        # source about to write atoms should stop exactly there. This command is the
+        # AUTHORING path, and the difference was measured 2026-08-19: an author writing a
+        # second source by hand spent five save-and-run cycles discovering five problems
+        # that were all present in the first save. The first refusal is not more true than
+        # the other four; it is only alphabetically first.
+        issues = _authoring_issues(root, refusal)
+        for issue in issues:
+            print(f"{issue.code}	{issue.path}	{issue.message}", file=sys.stderr)
+        print(f"{parser.prog}: {len(issues)} problem(s) in {root}", file=sys.stderr)
+        return 1
+
     print(json.dumps(
         dict(dry_run_report(setup)), ensure_ascii=False, sort_keys=True,
         separators=(",", ":"), default=lambda value: dict(value),
     ))
     return 0
+
+
+def _authoring_issues(
+    root: Path, fallback: LedgerSetupValidationError,
+) -> tuple[LedgerSetupValidationError, ...]:
+    """The whole list, in the three stages a config is judged in.
+
+    Staged rather than concatenated because each stage needs the previous one to have
+    passed: readiness reads a validated bundle, and the compiler reads a ready one.
+    Reporting a later stage's consequences beside an earlier stage's causes would bury the
+    causes.  WITHIN a stage every problem is reported -- that is the change.
+
+    `fallback` is the refusal the loader already raised.  If none of the three stages can
+    reproduce it the loader is still right and the operator still gets an answer; a report
+    that said "0 problems" about a config that just failed to load would be worse than the
+    single message it replaced.
+    """
+    catalog = dict(live_physical_catalog())
+    issues = setup_bundle_errors(root, catalog=catalog)
+    if not issues:
+        bundle = load_setup_bundle(root, catalog=catalog)
+        issues = bundle_readiness_errors(bundle)
+    if not issues:
+        issues = snapshot_compile_errors(
+            bundle, trusted_implementations(), (), catalog=catalog)
+    return issues or (fallback,)
 
 
 if __name__ == "__main__":

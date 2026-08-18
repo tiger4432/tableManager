@@ -6,8 +6,9 @@ deterministically serializable logical bundle.  Runtime registries are a later s
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+import difflib
 import json
 from pathlib import Path
 import re
@@ -71,6 +72,11 @@ PHYSICAL_CATALOG_FILENAME = "table_config.json"
 
 _VERSIONED_ID = re.compile(r"^[^@/\s]+@[1-9][0-9]*$")
 _CLAIM_REF = re.compile(r"^(?P<pack>[^@/\s]+@[1-9][0-9]*)/(?P<claim>[^/\s]+)$")
+#: How a claim reference is SPELLED, next to the pattern that parses it.  Every refusal
+#: about one reads it from here: an operator told "must be a list with at least one item"
+#: still does not know what an item looks like, and that gap was measured -- a human had to
+#: sit next to the author and translate it.
+CLAIM_REF_FORM = "<pack>@<version>/<claim>"
 _FORBIDDEN_DECLARATION_KEYS = frozenset({
     "module", "function", "path", "python", "sql", "javascript",
     "expression", "eval", "exec", "lookup", "lookups", "declared_lookup",
@@ -247,6 +253,49 @@ _RETIRED_FIELD_HELP = {
 }
 
 
+#: How many declared names a refusal will list before it stops.  A message nobody reads to
+#: the end helps nobody; the close-match branch below is the one that usually answers.
+_CANDIDATE_LIMIT = 8
+
+
+def _allowed_note(required: Sequence[str], optional: Sequence[str]) -> str:
+    """What this object DOES take, appended to a refusal that says a field is not allowed.
+
+    🔴 THE VALIDATOR IS HOLDING THE ANSWER AT THE MOMENT IT REFUSES.  `exact()` already has
+    the required and optional tuples in hand; it just was not saying them.  Measured
+    2026-08-19: an author hit `unknown_field` at `...emit.object.payload` and a human sitting
+    beside them had to translate it into "object takes kind / entity / value / qualifiers".
+    That translation is free -- it is two tuples one stack frame away.
+    """
+    names = [f"{name} (required)" for name in required] + list(optional)
+    if not names:
+        return "; no fields are allowed here"
+    return "; allowed here: " + ", ".join(str(name) for name in names)
+
+
+def _did_you_mean(wanted: Any, declared: Iterable[Any], label: str) -> str:
+    """The half of an `unknown_*` refusal that says WHICH mistake this is.
+
+    "unknown pack 'dt-job@1'" does not separate **you misspelled it** from **you have not
+    written it yet**, and those two need opposite next actions -- fix a character, or go
+    author a declaration.  Measured 2026-08-19: an author had a mapper emitting into a pack
+    that did not exist yet and read the refusal as a typo.
+
+    So the message answers the question it raised: nothing declared at all, a near miss to
+    correct, or the declared names to choose from.
+    """
+    names = sorted({str(name) for name in declared})
+    if not names:
+        return f"; no {label} are declared yet"
+    close = difflib.get_close_matches(str(wanted), names, n=3, cutoff=0.6)
+    if close:
+        return "; did you mean " + " or ".join(repr(name) for name in close) + "?"
+    listed = ", ".join(repr(name) for name in names[:_CANDIDATE_LIMIT])
+    if len(names) > _CANDIDATE_LIMIT:
+        listed += f", +{len(names) - _CANDIDATE_LIMIT} more"
+    return f"; declared {label}: {listed}"
+
+
 class _Problems:
     def __init__(self):
         self.items: list[LedgerSetupValidationError] = []
@@ -265,8 +314,8 @@ class _Problems:
             code = ("unsafe_declaration"
                     if str(name).lower() in _FORBIDDEN_DECLARATION_KEYS
                     else "unknown_field")
-            self.add(code, key_path, _RETIRED_FIELD_HELP.get(key_path,
-                                                             "field is not allowed"))
+            self.add(code, key_path, _RETIRED_FIELD_HELP.get(
+                key_path, "field is not allowed" + _allowed_note(required, optional)))
         for name in required:
             if name not in value:
                 self.add("missing_field", _path(path, name), "field is required")
@@ -456,6 +505,14 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME,
             f"{relative!r} — move it outside the config root")
 
     document = _read_json(config_path, "ledger_config")
+    issues = _root_document_errors(document)
+    if issues:
+        raise issues[0]
+    return validate_bundle(document, catalog=catalog)
+
+
+def _root_document_errors(document: Mapping[str, Any]
+                          ) -> tuple[LedgerSetupValidationError, ...]:
     problems = _Problems()
     if problems.exact(
             document, "ledger_config",
@@ -465,10 +522,41 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME,
             problems.add(
                 "unsupported_setup_version", "ledger_config.setup_version",
                 f"supported setup_version is {SETUP_VERSION}")
-    issues = problems.finish()
-    if issues:
-        raise issues[0]
-    return validate_bundle(document, catalog=catalog)
+    return problems.finish()
+
+
+def setup_bundle_errors(root: str | Path, *, config_name: str = CONFIG_FILENAME,
+                        catalog: Mapping[str, Any] | None = None
+                        ) -> tuple[LedgerSetupValidationError, ...]:
+    """EVERY problem in one root, for the AUTHORING path.
+
+    🔴 THIS IS NOT A REPLACEMENT FOR `load_setup_bundle`, AND THE TWO MUST NOT BE MERGED.
+    A source about to write atoms should still stop at the first refusal -- there is no
+    value in enumerating faults in a config that is about to be refused anyway, and every
+    later check would be reading a bundle the earlier one already declared broken.  It is
+    AUTHORING that needs the whole list: measured 2026-08-19, an author hand-writing a
+    second source spent five save-and-run cycles discovering five problems that were all
+    present in the first save.
+
+    Everything here is read-only and nothing is compiled: the file is read, the root shape
+    is checked, and the cross-section validator -- which already returns a list -- is asked
+    for all of it.  I/O-shaped refusals (unreadable file, invalid JSON, a stray second JSON
+    file) still RAISE, because there is no second problem to find in a file that could not
+    be parsed.
+    """
+    root_path = Path(root).resolve(strict=True)
+    if not root_path.is_dir():
+        raise LedgerSetupValidationError(
+            "invalid_config_root", "config_root", "must be a directory")
+    config_path = _resolve_config_path(
+        root_path, config_name, "config_root", require_json=True)
+    document = _read_json(config_path, "ledger_config")
+    root_issues = _root_document_errors(document)
+    if root_issues:
+        # The section-level validator would read sections this one just called absent or
+        # misspelled, and report a second wave of consequences rather than causes.
+        return root_issues
+    return validate_bundle_errors(document, catalog=catalog)
 
 
 def _resolve_config_path(root: Path, relative: Any, path: str, *, require_json: bool) -> Path:
@@ -509,7 +597,7 @@ def _versioned_id(value: Any, path: str, problems: _Problems) -> None:
 
 def _claim_ref(value: Any, path: str, problems: _Problems) -> None:
     if _parse_claim_ref(value) is None:
-        problems.add("invalid_claim_ref", path, "must use pack@version/claim")
+        problems.add("invalid_claim_ref", path, f"must use {CLAIM_REF_FORM}")
 
 
 def _parse_claim_ref(value: Any) -> Optional[tuple[str, str]]:
@@ -602,10 +690,17 @@ def _occurred_at_origin(occurred: Mapping, path: str, problems: _Problems) -> No
 
 
 def _nonblank_list(value: Any, path: str, problems: _Problems,
-                   *, allow_empty: bool = False) -> None:
+                   *, allow_empty: bool = False, item_form: str | None = None) -> None:
+    """`item_form` is the item's SPELLING, for lists whose items are references.
+
+    "must be a list with at least one item" tells an author the container is wrong and
+    leaves them to guess the contents.  Optional because most lists here are plain names
+    and have nothing extra to say.
+    """
     if not _is_list(value) or (not value and not allow_empty):
         problems.add("invalid_type", path,
-                     "must be a list" + ("" if allow_empty else " with at least one item"))
+                     "must be a list" + ("" if allow_empty else " with at least one item")
+                     + (f"; each item is {item_form}" if item_form else ""))
         return
     for index, item in enumerate(value):
         _nonblank_text(item, f"{path}[{index}]", problems)
@@ -871,7 +966,8 @@ def _validate_mappers(section: Mapping[str, Any], problems: _Problems) -> None:
                     "unit.columns is only valid for group_by")
         _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
                        allow_empty=True)
-        _nonblank_list(item.get("emits"), f"{path}.emits", problems)
+        _nonblank_list(item.get("emits"), f"{path}.emits", problems,
+                       item_form=CLAIM_REF_FORM)
 
 
 def _validate_packs(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -1320,7 +1416,8 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         profile = profiles.get(profile_id)
         if profile is None:
             problems.add("unknown_profile", f"{path}.profile_id",
-                         f"unknown profile {profile_id!r}")
+                         f"unknown profile {profile_id!r}"
+                         + _did_you_mean(profile_id, profiles, "profiles"))
         elif isinstance(profile, Mapping) and profile.get("source") != source_id:
             problems.add("invalid_profile", f"bundle.profiles.{profile_id}.source",
                          f"must equal source ID {source_id!r}")
@@ -1331,7 +1428,8 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         available = set(physical)
         if preparer is None:
             problems.add("unknown_source_preparer", f"{path}.driver.preparation.preparer_id",
-                         f"unknown source preparer {preparer_id!r}")
+                         f"unknown source preparer {preparer_id!r}"
+                         + _did_you_mean(preparer_id, preparers, "source preparers"))
         elif isinstance(preparer, Mapping):
             for column in preparer.get("input_columns", []):
                 if column not in physical:
@@ -1385,7 +1483,8 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         mapper = mappers.get(mapper_id)
         if mapper is None:
             problems.add("unknown_mapper", f"{path}.driver.mapper_id",
-                         f"unknown mapper {mapper_id!r}")
+                         f"unknown mapper {mapper_id!r}"
+                         + _did_you_mean(mapper_id, mappers, "mappers"))
         elif isinstance(mapper, Mapping):
             for column in mapper.get("input_columns", []):
                 if column not in available:
@@ -1426,7 +1525,8 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         source_name = profile.get("source")
         if source_name not in sources:
             problems.add("unknown_source", f"bundle.profiles.{profile_id}.source",
-                         f"unknown source {source_name!r}")
+                         f"unknown source {source_name!r}"
+                         + _did_you_mean(source_name, sources, "sources"))
             continue
         if source_name in unresolved_sources:
             # Its EventFrame schema is unknown, not empty. Checking columns against an
@@ -1445,13 +1545,15 @@ def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any]
         for index, entity_type in enumerate(predicate["subjects"]):
             if entity_type not in entities:
                 problems.add("unknown_entity_type", f"{path}.subjects[{index}]",
-                             f"unknown entity type {entity_type!r}")
+                             f"unknown entity type {entity_type!r}"
+                             + _did_you_mean(entity_type, entities, "entity types"))
         obj = predicate["object"]
         if obj["kind"] == "entity_ref":
             for index, entity_type in enumerate(obj["types"]):
                 if entity_type not in entities:
                     problems.add("unknown_entity_type", f"{path}.object.types[{index}]",
-                                 f"unknown entity type {entity_type!r}")
+                                 f"unknown entity type {entity_type!r}"
+                                 + _did_you_mean(entity_type, entities, "entity types"))
 
 
 def _cross_packs(packs: Mapping[str, Any], vocabulary: Mapping[str, Any],
@@ -1465,7 +1567,8 @@ def _cross_packs(packs: Mapping[str, Any], vocabulary: Mapping[str, Any],
             predicate = vocabulary.get(predicate_id)
             if predicate is None:
                 problems.add("unknown_predicate", f"{path}.emit.predicate",
-                             f"unknown predicate {predicate_id!r}")
+                             f"unknown predicate {predicate_id!r}"
+                             + _did_you_mean(predicate_id, vocabulary, "predicates"))
             elif predicate["status"] != "active":
                 problems.add("inactive_predicate", f"{path}.emit.predicate",
                              f"predicate {predicate_id!r} is not active")
@@ -1555,7 +1658,9 @@ def _cross_profile_contract(profile_id: str, profile: Mapping[str, Any],
     used_packs: set[str] = set()
     for index, pack_id in enumerate(profile.get("packs", [])):
         if pack_id not in packs:
-            problems.add("unknown_pack", f"{path}.packs[{index}]", f"unknown pack {pack_id!r}")
+            problems.add("unknown_pack", f"{path}.packs[{index}]",
+                         f"unknown pack {pack_id!r}"
+                         + _did_you_mean(pack_id, packs, "packs"))
     for index, mapping in enumerate(profile.get("mappings", [])):
         mpath = f"{path}.mappings[{index}]"
         parsed = _parse_claim_ref(mapping["use"])
@@ -1572,7 +1677,8 @@ def _cross_profile_contract(profile_id: str, profile: Mapping[str, Any],
         for role in sorted(bindings):
             if role not in roles:
                 problems.add("unknown_role", f"{mpath}.bind.{role}",
-                             f"role {role!r} is not declared by Claim")
+                             f"role {role!r} is not declared by Claim"
+                             + _did_you_mean(role, roles, "roles"))
             if role in roles:
                 allowed = role_binding_kinds(roles[role])
                 if bindings[role].get("kind") not in allowed:
@@ -1761,7 +1867,9 @@ def _known_claim(value: Any, packs: Mapping[str, Any], path: str,
     pack_id, claim_id = parsed
     pack = packs.get(pack_id)
     if pack is None:
-        problems.add("unknown_pack", path, f"unknown pack {pack_id!r}")
+        problems.add("unknown_pack", path,
+                     f"unknown pack {pack_id!r}"
+                     + _did_you_mean(pack_id, packs, "packs"))
         return None
     claims = pack.get("claims", {}) if isinstance(pack, Mapping) else {}
     if not isinstance(claims, Mapping):
@@ -1769,7 +1877,8 @@ def _known_claim(value: Any, packs: Mapping[str, Any], path: str,
     claim = claims.get(claim_id)
     if claim is None:
         problems.add("unknown_claim", path,
-                     f"pack {pack_id!r} has no claim {claim_id!r}")
+                     f"pack {pack_id!r} has no claim {claim_id!r}"
+                     + _did_you_mean(claim_id, claims, f"claims of {pack_id!r}"))
         return None
     return claim
 

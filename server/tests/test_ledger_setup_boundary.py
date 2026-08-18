@@ -495,3 +495,62 @@ def test_a_wrong_root_is_a_named_refusal_not_a_traceback(tmp_path, capsys, bad, 
     captured = capsys.readouterr()
     assert captured.out == "", "a refused verification must not print a report"
     assert fragment in captured.err
+
+
+def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monkeypatch):
+    """🔴 AUTHORING GETS THE WHOLE LIST; THE RUNTIME STILL STOPS AT THE FIRST.
+
+    Measured 2026-08-19: hand-authoring one source took ~20 save-and-refuse cycles, and a
+    large share of them were discovering problems that were all present in the first save.
+    `validate_bundle_errors` already returned the whole list -- the command simply let the
+    loader raise and printed one.
+
+    Scored on the transfer sample rather than a copy of the live root, which is hand-edited
+    and gitignored; the catalog is patched to the sample's plant for the same reason the
+    sample carries its own `table_config.json`.
+    """
+    from ledger import setup as setup_module
+    from ledger.setup_bundle import load_physical_catalog
+    from tests.support.ontology_explorer_sample import SAMPLE_CATALOG, SAMPLE_ROOT
+
+    catalog = load_physical_catalog(SAMPLE_CATALOG)
+    monkeypatch.setattr(setup_module, "live_physical_catalog", lambda: catalog)
+
+    root = tmp_path / "draft"
+    root.mkdir()
+    raw = json.loads((SAMPLE_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+    mapper = sorted(raw["mappers"])[0]
+    pack = sorted(raw["packs"])[0]
+    claim = sorted(raw["packs"][pack]["claims"])[0]
+    predicate = sorted(raw["vocabulary"])[0]
+    entity_type = sorted(raw["entities"])[0]
+    source = sorted(raw["sources"])[0]
+    raw["mappers"][mapper]["emits"] = "one/claim"
+    raw["packs"][pack]["claims"][claim]["emit"]["object"]["payload"] = {"n": 1}
+    raw["vocabulary"][predicate]["colour"] = "blue"
+    raw["entities"][entity_type]["allow_null"] = "yes"
+    raw["sources"][source]["driver"]["unit"] = "wafer"
+    (root / "ledger_config.json").write_text(
+        json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    assert setup_main(["--root", str(root)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "", "a refused verification must not print a report"
+    lines = [line for line in captured.err.splitlines() if line.strip()]
+    # All five, from ONE run. Named individually so a regression that drops one kind of
+    # check cannot hide behind a count.
+    for expected in (
+        f"bundle.mappers.{mapper}.emits",
+        f"bundle.packs.{pack}.claims.{claim}.emit.object.payload",
+        f"bundle.vocabulary.{predicate}.colour",
+        f"bundle.entities.{entity_type}.allow_null",
+        f"bundle.sources.{source}.driver.unit",
+    ):
+        assert any(expected in line for line in lines), expected
+    assert lines[-1].endswith(f"{len(lines) - 1} problem(s) in {root}")
+
+    # The runtime loader, on the same root, still stops at the first -- and the one it
+    # stops at is among the lines above. The two paths differ in HOW MANY, never in WHAT.
+    with pytest.raises(LedgerSetupValidationError) as refused:
+        setup_module.load_setup(root)
+    assert any(refused.value.path in line for line in lines)
