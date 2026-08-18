@@ -48,7 +48,7 @@ class Connection:
 
 def test_catalog_is_generated_for_every_registered_entity_type():
     names = {entry["type"] for entry in ledger_catalog.entity_types()}
-    assert names == {"Lot", "Wafer", "WaferLeg", "Product", "Equipment", "Recipe"}
+    assert names == {"Lot", "Wafer", "Product", "Equipment", "Recipe"}
     assert "Die" not in names  # composed, deliberately no register atom
 
 

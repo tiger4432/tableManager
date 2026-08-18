@@ -566,12 +566,6 @@ def test_the_rollup_declaration_is_self_consistent():
     assert vocabulary.check_entity_type_declaration() == []
 
 
-def test_waferleg_rolls_up_into_wafer():
-    assert vocabulary.rollup_subject_types("Wafer") == ("Wafer", "WaferLeg")
-    assert vocabulary.root_key("WaferLeg") == "wafer"
-    assert vocabulary.root_key("Wafer") is None
-
-
 def test_a_root_type_with_no_derived_types_rolls_up_to_itself_alone():
     """The helper must be safe to call for every subject, not only the one that has a
     derived type today — a reader that special-cased `Wafer` would break the day a second
@@ -605,19 +599,34 @@ def test_a_broken_rollup_declaration_is_caught_by_name(monkeypatch, broken, expe
     assert any(expected in v for v in violations), violations
 
 
-def test_chained_rollups_are_refused_rather_than_silently_truncated():
-    """A reader would follow one hop and stop, so the second hop's atoms would go missing
-    exactly the way `WaferLeg`'s did — the same defect, one level down."""
+def test_chained_rollups_are_refused_rather_than_silently_truncated(monkeypatch):
+    """A reader follows ONE hop and stops, so a second hop's atoms would go missing with
+    no error - the exact shape of the defect the rollup declaration exists to prevent,
+    one level down.
+
+    🔴 THE CHAIN IS BUILT OUT OF SYNTHETIC TYPES ON PURPOSE. An earlier version of this
+    test hung the second hop off a real declared member, and the day that member was
+    retired the test started failing for a reason that had nothing to do with chaining.
+    A rule about SHAPE must be stated in shapes, not in today's membership list.
+    """
     types = dict(vocabulary.ENTITY_TYPES)
-    types["Trial"] = {"class": "issued", "keys": ["wafer", "trial"], "semi_ref": None,
-                      "label_ko": "시험", "rolls_up_to": "WaferLeg", "root_key": "wafer"}
-    original = vocabulary.ENTITY_TYPES
-    vocabulary.ENTITY_TYPES = types
-    try:
-        assert any("chained rollups" in v
-                   for v in vocabulary.check_entity_type_declaration())
-    finally:
-        vocabulary.ENTITY_TYPES = original
+    # Hop 1 - a legal rollup: rolls into a root that does not itself roll up.
+    types["SynthMiddle"] = {"class": "issued", "keys": ["wafer", "middle"],
+                            "semi_ref": None, "label_ko": "중간",
+                            "rolls_up_to": "Wafer", "root_key": "wafer"}
+    # Hop 2 - the same legal shape, but its root is hop 1. That is the chain.
+    types["SynthLeaf"] = {"class": "issued", "keys": ["wafer", "leaf"], "semi_ref": None,
+                          "label_ko": "말단", "rolls_up_to": "SynthMiddle",
+                          "root_key": "wafer"}
+    monkeypatch.setattr(vocabulary, "ENTITY_TYPES", types)
+
+    violations = vocabulary.check_entity_type_declaration()
+    chained = [v for v in violations if "chained rollups" in v]
+    assert chained, violations
+    assert "SynthLeaf" in chained[0], chained
+    # Hop 1 alone is legal - the refusal is aimed at the chain, not at rolling up at all.
+    assert not [v for v in violations if "SynthMiddle" in v and "chained" not in v], (
+        "a single legal rollup was refused; the chain check is over-firing")
 
 
 def test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type():
@@ -643,44 +652,85 @@ def test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type():
             f"{name} no longer asks for the rolled-up set")
 
 
-def test_the_two_grain_arms_each_pin_their_own_subject_type():
+def test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier():
     """🔴 NOT a rollup site — the opposite, and the distinction is the whole defect.
 
     `_process_sql` and `_analysis_process_sql` fill ONE dict at TWO grains (component,
-    keyed by wafer; analysis_unit, keyed by (wafer, bonding_leg)). Leaving the first
-    unpinned let the same `WaferLeg` atom land in both buckets and be counted twice - no
-    error, every downstream number confidently wrong. Both arms must therefore pin, and
-    neither may be widened to the rolled-up set.
+    keyed by wafer; analysis_unit, keyed by (wafer, bonding_leg)). If both arms accepted
+    the same atom it would land in both buckets and be counted twice - no error, every
+    downstream number confidently wrong.
+
+    ⚠️ THE SEPARATOR MOVED, THE REQUIREMENT DID NOT. The two grains used to be two
+    subject TYPES; the bonding leg is now a value carried in the claim payload, so all
+    four arms legitimately pin the same `subject_type = 'Wafer'` and the split is made by
+    the payload qualifier instead: the component arm must EXCLUDE legged evidence, the
+    analysis arm must REQUIRE it. Asserting the retired type name here is what made this
+    test die on a rename; asserting the exclusion/requirement pair is what actually
+    guards against the double count.
 
     Guarded on the SQL text because these are hand-built strings: a future edit that
-    "helpfully" applies the rollup here is exactly the regression to catch.
+    "helpfully" widens either arm is exactly the regression to catch.
     """
     import ledger_selection
 
-    component_arm = ledger_selection._process_sql()
-    unit_arm = ledger_selection._analysis_process_sql()
-    assert "subject_type = 'Wafer'" in component_arm, (
-        "the component arm lost its pin - WaferLeg atoms will be double-counted against "
-        "the analysis arm that already reads them")
-    assert "subject_type = 'WaferLeg'" in unit_arm
-    for arm in (component_arm, unit_arm):
-        assert "ANY(%(stypes)s)" not in arm, (
-            "a two-grain arm was widened to the rollup set, merging what these two "
-            "queries exist to hold apart")
+    pairs = [("process", ledger_selection._process_sql(),
+              ledger_selection._analysis_process_sql()),
+             ("measurement", ledger_selection._measurement_sql(),
+              ledger_selection._analysis_measurement_sql())]
 
-    # Its sibling pair carries the same shape, for the same reason.
-    assert "subject_type = 'Wafer'" in ledger_selection._measurement_sql()
-    assert "subject_type = 'WaferLeg'" in ledger_selection._analysis_measurement_sql()
+    for grain, component_arm, unit_arm in pairs:
+        assert "NOT (object_payload ? 'bonding_leg')" in component_arm, (
+            f"the {grain} component arm no longer excludes legged evidence - the same "
+            f"atom now lands in both buckets and is counted twice")
+        assert "object_payload->>'bonding_leg' = u.bonding_leg" in unit_arm, (
+            f"the {grain} analysis arm no longer requires a bonding leg - it has stopped "
+            f"being the other half of the split and reads component evidence too")
+        for arm in (component_arm, unit_arm):
+            assert "subject_type = 'Wafer'" in arm
+            assert "ANY(%(stypes)s)" not in arm, (
+                f"a {grain} two-grain arm was widened to the rollup set, merging what "
+                f"these two queries exist to hold apart")
 
 
-def test_the_rollup_helper_has_one_spelling_for_every_reader():
-    """Three copies of one fact is how `WaferLeg` came to be visible to one query and
-    invisible to the next in the first place."""
+def test_the_rollup_helper_has_one_spelling_for_every_reader(monkeypatch):
+    """Three copies of one fact is how a derived subject type comes to be visible to one
+    query and invisible to the next.
+
+    🔴 ASSERTED AS AN AGREEMENT BETWEEN THE TWO HELPERS, NOT AGAINST A MEMBER LIST.
+    `ledger_trace.rollup_subject_types` is the query layer's adapter over
+    `vocabulary.rollup_subject_types`, and what must hold is that they answer the SAME for
+    every declared subject - whatever is declared today. A pinned literal list asserted
+    the membership instead of the agreement, and died the day the membership changed
+    while the two helpers were still in perfect agreement.
+
+    The second half asserts the other half of "one spelling": the adapter CACHES, so a
+    vocabulary that gains a derived type must reach it after `reset_walk_cache()` (which
+    `/admin/reload-configs` calls) or the two spellings silently diverge until a restart.
+    """
     import ledger_trace
 
-    assert ledger_trace.rollup_subject_types("Wafer") == ("Wafer", "WaferLeg")
-    ledger_trace.reset_walk_cache()
-    assert ledger_trace.rollup_subject_types("Wafer") == ("Wafer", "WaferLeg")
+    try:
+        for subject in vocabulary.ENTITY_TYPES:
+            assert (ledger_trace.rollup_subject_types(subject)
+                    == vocabulary.rollup_subject_types(subject)), (
+                f"the two rollup spellings disagree for '{subject}'")
+
+        types = dict(vocabulary.ENTITY_TYPES)
+        types["SynthDerived"] = {"class": "issued", "keys": ["wafer", "synth"],
+                                 "semi_ref": None, "label_ko": "합성",
+                                 "rolls_up_to": "Wafer", "root_key": "wafer"}
+        monkeypatch.setattr(vocabulary, "ENTITY_TYPES", types)
+        assert vocabulary.check_entity_type_declaration() == [], (
+            "the fixture itself must be a legal declaration, or this asserts nothing")
+
+        ledger_trace.reset_walk_cache()
+        assert "SynthDerived" in ledger_trace.rollup_subject_types("Wafer"), (
+            "the adapter kept a stale rollup set across reset_walk_cache() - a reload "
+            "would leave the query layer reading a different vocabulary than this one")
+        assert (ledger_trace.rollup_subject_types("Wafer")
+                == vocabulary.rollup_subject_types("Wafer"))
+    finally:
+        ledger_trace.reset_walk_cache()
 
 
 # ------------------------------------------------ the gate's counters survive a preview
