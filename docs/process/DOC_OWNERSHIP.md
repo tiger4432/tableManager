@@ -30,6 +30,13 @@
 >   identity·Binding·SourcePlan과 정/역참조 index, `config_explorer_service.py`가 active/draft
 >   한-context 응답 cache·normalized node/edge diff, `config_drafts.py`가 config root 소유 선언의
 >   초안·preview·immutable review/revise·consumer-converged CAS activation을 소유한다.
+>   `config_explorer.py`의 `deletion_plan`(2026-08-19)이 «삭제 단위»를 소유한다 — 단위는 노드가
+>   아니라 참조 컴포넌트이고, 판정은 in-degree가 아니라 삭제 «후» 도달성이다(실측: 라이브 루트에서
+>   referrer 0인 선언은 0건, source↔profile은 서로를 가리켜 in-degree가 0이 되지 않는다).
+>   `require_no_referrers`는 «살아남은» 도달자에 대한 fallback이지 결정 절차가 아니며, 절차는
+>   어떤 kind도 이름으로 언급하지 않는다(pair 특례 금지 — 세 번째 kind가 순환에 합류하는 날 죽는다).
+>   `GET /admin/ontology-explorer/deletion-preview`가 확정 전 casualty 목록을 공급한다. 실제
+>   삭제·이름변경 쓰기 배선은 아직 없다.
 >   `client2/src/ontology_explorer_{store,view}.js`는 exact route history·dirty 3선택·ACTIVE/DRAFT
 >   분리·ARIA 3단 UI를 소유하며 history의 unsaved editor buffer는 draft identity와 active
 >   context가 모두 맞을 때만 복원한다. `admin.js`는 인증 fetch와 `#ontology` 탭 배선만 소유한다.
