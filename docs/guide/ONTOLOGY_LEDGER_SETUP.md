@@ -587,12 +587,10 @@ Config는 Python module/function/path를 지정할 수 없다. 다음은 금지�
       "__source_event_incomplete"
     ],
     "emits": [
-      "lot-lineage@1/register_lot",
-      "lot-lineage@1/register_wafer",
+      "lot-lineage@1/register",
       "lot-lineage@1/membership",
       "lot-lineage@1/lineage",
-      "lot-lineage@1/split_slot",
-      "lot-lineage@1/merge_slot"
+      "lot-lineage@1/slot_map"
     ]
   }
 }
@@ -635,7 +633,7 @@ binding을 그대로 평가하는 범용 mapper다. 어느 특정 source도 알�
 {
   "lot-lineage@1": {
     "claims": {
-      "register_lot": {
+      "register": {
         "roles": {
           "subject": {"kind": "entity", "required": true},
           "occurred_at": {"kind": "time", "required": true}
@@ -710,7 +708,7 @@ type과 qualifier 필드가 닫힌 서명에 맞는지를 전수 대조한다.
     "mappings": [
       {
         "mapping_id": "first_sight_lot",
-        "use": "lot-lineage@1/register_lot",
+        "use": "lot-lineage@1/register",
         "bind": {
           "subject": {
             "kind": "entity",
@@ -1217,9 +1215,9 @@ malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거�
 
 ```json
 {
-  "code": "unknown_column",
+  "code": "invalid_mapper",
   "path": "bundle.profiles.my-profile@1.mappings[0].bind.subject.keys.input_id.column",
-  "message": "column 'missing_column' is not in EventFrame schema"
+  "message": "Profile column 'missing_column' at bundle.profiles.my-profile@1.mappings[0].bind.subject.keys.input_id.column is missing"
 }
 ```
 
@@ -1361,7 +1359,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `unknown_column` | physical/EventFrame 층 혼동 | physical은 `tables`/Preparer input, prepared는 output/Mapper/Profile에서 확인 |
+| `invalid_mapper` (`Profile column ... is missing`) | physical/EventFrame 층 혼동 | 🔴 **Profile이 binding할 수 있는 컬럼 집합은 정확히 mapper의 `input_columns`다.** `tables`에만 있고 mapper input에 없는 컬럼은 binding할 수 없고, preparer `output_columns`에 있어도 mapper input에 없으면 거절된다 |
 | `invalid_cursor` | order/cursor가 UNIQUE key 전체를 안 포함 | business/composite/UNIQUE index 전체 컬럼 추가 |
 | join은 선언됐는데 compile 실패 | left key가 Preparer input에 없거나 physical proof 없음 | input_columns와 실제 UNIQUE index 확인 |
 | `untrusted_implementation` | sample ID를 production에 복사 | trusted code registry 등록 또는 기존 구현 재사용 |
