@@ -229,6 +229,21 @@ class _InvalidJsonConstant(ValueError):
     pass
 
 
+# A refusal that names the fault without naming the ACTION reads as "unknown error" to the
+# operator who hits it, and the operator who hits this one is on the production box holding
+# a config that was correct yesterday.  So a retired field says three things: what happened,
+# where the truth lives now, and that nothing has to be copied across.
+_RETIRED_FIELD_HELP = {
+    "ledger_config.tables": (
+        "field is not allowed - the 'tables' section retired on 2026-08-18. "
+        "Physical schema is declared once, in server/config/table_config.json, and the "
+        "ledger reads it from there. Delete this section; do NOT copy its contents "
+        "anywhere. If a relation it named is missing from table_config.json, declare the "
+        "relation there - this setup will then name that relation on its own."
+    ),
+}
+
+
 class _Problems:
     def __init__(self):
         self.items: list[LedgerSetupValidationError] = []
@@ -247,7 +262,8 @@ class _Problems:
             code = ("unsafe_declaration"
                     if str(name).lower() in _FORBIDDEN_DECLARATION_KEYS
                     else "unknown_field")
-            self.add(code, key_path, "field is not allowed")
+            self.add(code, key_path, _RETIRED_FIELD_HELP.get(key_path,
+                                                             "field is not allowed"))
         for name in required:
             if name not in value:
                 self.add("missing_field", _path(path, name), "field is required")
