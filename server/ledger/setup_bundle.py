@@ -274,10 +274,16 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME
         if path.resolve() != config_path)
     if extras:
         relative = extras[0].relative_to(root_path).as_posix()
+        # 🔴 The "move it outside" clause is not politeness. `rglob` RECURSES, so keeping
+        # the retired files in a backup folder INSIDE the root still trips this -- and
+        # keeping the originals beside the new file is exactly what a careful operator
+        # does. Without the clause the message says what tripped but not what to do, so
+        # the refusal lands hardest on the most cautious reader. Measured: this is how it
+        # first fired in practice.
         raise LedgerSetupValidationError(
             "unlisted_config_file", f"config_root.{relative}",
             f"the setup is one file ({config_name}); this root also contains "
-            f"{relative!r}")
+            f"{relative!r} — move it outside the config root")
 
     document = _read_json(config_path, "ledger_config")
     problems = _Problems()

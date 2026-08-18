@@ -10,7 +10,7 @@ from admin_auth import require_admin_token, require_admin_token_strict
 from database.database import get_db
 from ledger.config_explorer import ConfigExplorerError
 from ledger.config_explorer_service import OntologyExplorerService
-from ledger.cutover_v2 import DEFAULT_ONTOLOGY_ROOT
+from ledger.setup import DEFAULT_ONTOLOGY_ROOT
 
 
 router = APIRouter(prefix="/admin/ontology-explorer", tags=["ontology-explorer"])

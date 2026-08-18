@@ -19,7 +19,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import NullPool
 
 from ledger import backfill, gate, schema
-from ledger.cutover_v2 import DEFAULT_ONTOLOGY_ROOT
+from ledger.setup import DEFAULT_ONTOLOGY_ROOT
 from ledger.runtime_v2 import execute_cursor_batch, preview_cursor_batch
 from ledger.roleframe import DeclarativeRoleMapper, RoleMapperImplementationRegistry
 from ledger.setup_bundle import LedgerSetupValidationError, validate_bundle

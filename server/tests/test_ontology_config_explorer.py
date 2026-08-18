@@ -23,7 +23,7 @@ from ledger.config_explorer import (
     reference_diff,
 )
 from ledger.config_explorer_service import OntologyExplorerService
-from ledger.cutover_v2 import DEFAULT_ONTOLOGY_ROOT, load_cutover_setup
+from ledger.setup import DEFAULT_ONTOLOGY_ROOT, load_setup
 from ledger.implementations import trusted_implementations
 from ledger.setup_bundle import require_ready_bundle, validate_bundle
 from ledger.setup_registry import compile_setup_snapshot
@@ -33,7 +33,7 @@ from tests.support.ontology_explorer_sample import load_transfer_sample_setup
 
 @pytest.fixture(scope="module")
 def active_setup():
-    return load_cutover_setup()
+    return load_setup()
 
 
 @pytest.fixture

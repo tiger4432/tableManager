@@ -9,12 +9,12 @@ import pandas as pd
 import pytest
 
 from ledger.backfill import v2_base_select_columns
-from ledger.cutover_v2 import (
+from ledger.setup import (
     DEFAULT_ONTOLOGY_ROOT,
     LedgerV2CutoverError,
     dry_run_report,
     execute_selected_cursor_batch,
-    load_cutover_setup,
+    load_setup,
     preview_selected_cursor_batch,
 )
 from ledger.source_preparation import VerifiedJoinBatchReader
@@ -84,8 +84,8 @@ def mutate_selector(root: Path, mutate):
 
 
 def test_manifest_is_the_only_entry_and_compiles_deterministically():
-    first = load_cutover_setup()
-    second = load_cutover_setup()
+    first = load_setup()
+    second = load_setup()
 
     assert first.snapshot.snapshot_sha256 == second.snapshot.snapshot_sha256
     assert first.snapshot.serialize() == second.snapshot.serialize()
@@ -97,7 +97,7 @@ def test_manifest_is_the_only_entry_and_compiles_deterministically():
 def test_manifest_covers_every_current_legacy_ledger_source():
     legacy_path = DEFAULT_ONTOLOGY_ROOT.parent / "ledger_config.json"
     legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
-    setup = load_cutover_setup()
+    setup = load_setup()
 
     assert set(legacy["sources"]) == set(setup.selections) == {"lot_event"}
 
@@ -105,7 +105,7 @@ def test_manifest_covers_every_current_legacy_ledger_source():
 def test_lot_event_catalog_matches_current_physical_table_contract():
     table_path = DEFAULT_ONTOLOGY_ROOT.parent / "table_config.json"
     table_config = json.loads(table_path.read_text(encoding="utf-8"))["lot_event"]
-    setup = load_cutover_setup()
+    setup = load_setup()
     declared = setup.bundle.section("tables")["lot_event"]
 
     assert dict(declared["columns"]) == table_config["column_types"]
@@ -113,7 +113,7 @@ def test_lot_event_catalog_matches_current_physical_table_contract():
 
 
 def test_operator_report_is_ready_and_explicitly_non_destructive():
-    report = dry_run_report(load_cutover_setup())
+    report = dry_run_report(load_setup())
 
     assert report["readiness"] == "ready"
     assert report["sources"] == ({
@@ -130,7 +130,7 @@ def test_operator_report_is_ready_and_explicitly_non_destructive():
 
 
 def test_existing_cursor_selects_only_physical_lot_event_columns():
-    setup = load_cutover_setup()
+    setup = load_setup()
 
     assert v2_base_select_columns(setup.snapshot, "lot_event") == tuple(sorted({
         "lot_id", "event_type", "slotnumbers", "waferids", "parent_lot",
@@ -143,7 +143,7 @@ def test_existing_cursor_selects_only_physical_lot_event_columns():
 
 
 def test_live_physical_batch_normalizes_then_uses_stage6_compiler_path():
-    setup = load_cutover_setup()
+    setup = load_setup()
     frame = physical_split_rows()
 
     preview = preview_selected_cursor_batch(
@@ -162,7 +162,7 @@ def test_live_physical_batch_normalizes_then_uses_stage6_compiler_path():
 
 
 def test_selected_execute_reuses_preview_candidates_and_existing_store_transaction():
-    setup = load_cutover_setup()
+    setup = load_setup()
     frame = physical_split_rows()
     store = RecordingStore()
 
@@ -189,7 +189,7 @@ def test_v2_mode_requires_approved_parity(tmp_path):
         parity_status="pending"))
 
     with pytest.raises(LedgerV2CutoverError) as exc:
-        load_cutover_setup(root)
+        load_setup(root)
 
     assert exc.value.to_mapping() == {
         "code": "cutover_not_approved",
@@ -204,7 +204,7 @@ def test_every_bundle_source_requires_one_selector(tmp_path):
     mutate_selector(root, lambda sources: sources.pop("lot_event"))
 
     with pytest.raises(LedgerV2CutoverError) as exc:
-        load_cutover_setup(root)
+        load_setup(root)
 
     assert exc.value.to_mapping() == {
         "code": "missing_execution_selector",
@@ -222,7 +222,7 @@ def test_unknown_selector_source_is_rejected(tmp_path):
         }}))
 
     with pytest.raises(LedgerV2CutoverError) as exc:
-        load_cutover_setup(root)
+        load_setup(root)
 
     assert exc.value.to_mapping() == {
         "code": "unknown_execution_source",
@@ -235,7 +235,7 @@ def test_legacy_selector_cannot_enter_v2_execute(tmp_path):
     root = copied_root(tmp_path)
     mutate_selector(root, lambda sources: sources["lot_event"].update(
         mode="legacy", parity_status="pending", approval_ref="legacy-frozen"))
-    setup = load_cutover_setup(root)
+    setup = load_setup(root)
     frame = physical_split_rows()
     store = RecordingStore()
 
@@ -254,7 +254,7 @@ def test_legacy_selector_cannot_enter_v2_execute(tmp_path):
 
 
 def test_cutover_module_exposes_no_reset_or_legacy_removal_capability():
-    import ledger.cutover_v2 as module
+    import ledger.setup as module
 
     forbidden = {"reset", "truncate", "drop", "delete", "unlink", "rmtree"}
     public = {name.lower() for name in vars(module) if not name.startswith("_")}

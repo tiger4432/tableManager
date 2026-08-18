@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from admin_auth import require_admin_token, require_admin_token_strict
 from ledger.config_explorer_service import OntologyExplorerService
-from ledger.cutover_v2 import DEFAULT_ONTOLOGY_ROOT
+from ledger.setup import DEFAULT_ONTOLOGY_ROOT
 import ontology_config_explorer_router as explorer_router
 
 

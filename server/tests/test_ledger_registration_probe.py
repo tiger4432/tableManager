@@ -21,7 +21,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ledger.backfill import _v2_registration_subjects                    # noqa: E402
-from ledger.cutover_v2 import load_cutover_setup                         # noqa: E402
+from ledger.setup import load_setup                         # noqa: E402
 from ledger.envelope import canonical_keys                               # noqa: E402
 from ledger.setup_bundle import (                                        # noqa: E402
     LedgerSetupValidationError,
@@ -97,7 +97,7 @@ def _retired_hardcoded_subjects(frame):
 
 
 def _plan_with_probe(probe):
-    setup = load_cutover_setup()
+    setup = load_setup()
     logical = setup.bundle.to_mapping()
     logical["sources"]["lot_event"]["driver"]["registration_probe"] = probe
     bundle = require_ready_bundle(validate_bundle(logical))
@@ -173,7 +173,7 @@ def test_no_probe_answers_None_rather_than_an_empty_set():
      "unsafe_declaration"),
 ])
 def test_a_malformed_probe_is_refused_at_load_with_its_own_code(probe, code):
-    setup = load_cutover_setup()
+    setup = load_setup()
     logical = setup.bundle.to_mapping()
     logical["sources"]["lot_event"]["driver"]["registration_probe"] = probe
     issues = validate_bundle_errors(logical)
@@ -184,5 +184,5 @@ def test_a_malformed_probe_is_refused_at_load_with_its_own_code(probe, code):
 
 def test_the_shipped_config_still_loads_without_a_probe():
     """The field is optional, so adding it did not invalidate the operator's root."""
-    setup = load_cutover_setup()
+    setup = load_setup()
     assert setup.snapshot.source_plans["lot_event"].driver.registration_probe == ()

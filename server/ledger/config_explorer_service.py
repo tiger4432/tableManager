@@ -15,7 +15,7 @@ from .config_explorer import (
     explorer_view,
     reference_diff,
 )
-from .cutover_v2 import DEFAULT_ONTOLOGY_ROOT, load_cutover_setup
+from .setup import DEFAULT_ONTOLOGY_ROOT, load_setup
 
 
 class OntologyExplorerService:
@@ -24,7 +24,7 @@ class OntologyExplorerService:
         *,
         config_root: str | Path = DEFAULT_ONTOLOGY_ROOT,
         draft_root: str | Path | None = None,
-        setup_loader: Callable[[str | Path], Any] = load_cutover_setup,
+        setup_loader: Callable[[str | Path], Any] = load_setup,
         convergence_probe: Callable[[str], dict[str, str]] | None = None,
     ):
         self.config_root = Path(config_root)

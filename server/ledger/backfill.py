@@ -254,9 +254,9 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     rule change (the new `source_translator_ver` makes the new atoms distinct from the
     old ones, which is correct: they are different claims made by different rules).
     """
-    from .cutover_v2 import (
-        DEFAULT_ONTOLOGY_ROOT, LedgerV2CutoverError, _require_v2_selection,
-        load_cutover_setup)
+    from .setup import (
+        DEFAULT_ONTOLOGY_ROOT, LedgerV2CutoverError, _require_declared_source,
+        load_setup)
 
     # 🔴 Positional guard, not a type nicety. `run()` used to be `run(engine, cfg, source=…)`
     # and the second POSITION now means `source`. Without this, a caller written against
@@ -269,14 +269,14 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
             f"source must be a source id string, got {type(source).__name__}; "
             f"run() no longer takes a legacy config as its second positional argument",
         )
-    cutover = load_cutover_setup(
+    cutover = load_setup(
         DEFAULT_ONTOLOGY_ROOT if ontology_root is None else ontology_root)
     # 🔴 Checked HERE and not left to the write boundary. `execute_selected_cursor_batch`
     # does re-check, but only once a batch exists: an empty source would then return a
     # clean zero instead of the refusal, and a selector left on `legacy` would look like a
     # source with nothing to do. A refusal that only fires when there is work is not a
     # refusal. Reuses the cutover module's own predicate so there is one spelling of it.
-    _require_v2_selection(cutover, source)
+    _require_declared_source(cutover, source)
     return _run_v2_lineage(
         engine, cutover, source=source, fetch_rows=fetch_rows,
         reset_cursor=reset_cursor, start_from=start_from,
@@ -291,7 +291,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
     to.  Reset/re-read controls are refused here because changing an existing source
     cursor requires a separate destructive approval.
     """
-    from .cutover_v2 import (
+    from .setup import (
         LedgerV2CutoverError,
         execute_selected_cursor_batch,
     )
@@ -735,7 +735,7 @@ def beat(result):
 
 def main(argv=None):
     _bootstrap_path()
-    from .cutover_v2 import DEFAULT_ONTOLOGY_ROOT, LedgerV2CutoverError
+    from .setup import DEFAULT_ONTOLOGY_ROOT, LedgerV2CutoverError
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", default="lot_event")
