@@ -9,7 +9,7 @@ single owner of LedgerFrame payload construction.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 import json
@@ -307,9 +307,44 @@ class SentenceShape:
 
     has_object: bool
     qualifiers: tuple[str, ...] = ()
+    #: The mapper's own word for this sentence, taken from the class attribute the shape
+    #: was bound to (lowercased).  Never a constructor argument: a shape is named by being
+    #: bound, or it has no name at all.  ``compare=False`` keeps it out of equality and
+    #: hashing, because ``__set_name__`` fills it in AFTER construction and a hash that
+    #: changed under the object would be a trap for any later dict use.
+    sentence: str | None = field(default=None, init=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "qualifiers", tuple(sorted(self.qualifiers)))
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        """A shape bound to a class attribute already HAS a name: the attribute's.
+
+        Two shape-identical sentences used to be told apart by a string the mapper
+        declared twice -- once as a constant, once at the call site -- next to the same
+        word a third time in the Profile.  Two of those three are the mapper's own
+        vocabulary, and Python already records the one that matters, so this takes it
+        rather than asking for it again.  What the declaration says is unchanged: the
+        auto name is matched against ``ProfileMappingDescriptor.sentence``, so a config
+        that names no sentence still cannot resolve a tie, and the compile-time
+        ``ambiguous_sentence`` refusal keeps its whole job.
+
+        🔴 One instance bound to two attribute names is refused HERE, at class creation,
+        because its name could only be one of the two and the other call site would then
+        say a sentence it did not mean -- silently, and correctly for as long as the two
+        happen to resolve the same way.  Sharing one shape between two sentences is what
+        the mapper did before this change; the fix is a shape per sentence, not a name
+        per call.
+        """
+        auto = name.lower()
+        if self.sentence is not None and self.sentence != auto:
+            raise RoleFrameError(
+                "ambiguous_sentence_shape", f"{owner.__qualname__}.{name}",
+                f"one SentenceShape is bound to both {self.sentence!r} and {auto!r}; "
+                f"a shape carries the name of the sentence it says, so two sentences "
+                f"need two shapes",
+            )
+        object.__setattr__(self, "sentence", auto)
 
 
 class ProfileSentences:
@@ -436,6 +471,15 @@ class ProfileSentences:
         refused at compile time by ``setup_bundle._ambiguous_sentences``, so reaching a
         tie here means the two disagree; that is a broken invariant, not a coin flip, and
         it raises rather than picking a representative.
+
+        A caller that passes no ``sentence`` falls back to the shape's OWN name -- the
+        class attribute it was bound to (:meth:`SentenceShape.__set_name__`).  It is a
+        tiebreak and not a filter, and the difference is the whole safety of it: a shape
+        whose match is already unique resolves exactly as before even when the declaration
+        never mentions its name, so no config has to be edited to gain one.  It only
+        narrows an otherwise-ambiguous set, and only when narrowing leaves exactly one --
+        so a declaration that names no sentence still cannot break a tie, and the
+        compile-time refusal is not weakened by any of this.
         """
         matches = []
         for mapping in self._profile.mappings:
@@ -461,6 +505,11 @@ class ProfileSentences:
             if sentence is not None and mapping.sentence != sentence:
                 continue
             matches.append((mapping, claim))
+        if len(matches) > 1 and sentence is None and shape.sentence is not None:
+            narrowed = [item for item in matches
+                        if item[0].sentence == shape.sentence]
+            if len(narrowed) == 1:
+                matches, sentence = narrowed, shape.sentence
         if len(matches) != 1:
             raise RoleFrameError(
                 "unresolved_sentence", self._profile.config_path,
