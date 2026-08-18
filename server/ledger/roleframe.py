@@ -58,6 +58,13 @@ EVENT_FRAME_REQUIRED_ATTRS = (
 SOURCE_EVENT_INCOMPLETE_ATTR = "assy_manager.source_event_incomplete"
 EVENT_FRAME_PASSTHROUGH_ATTRS = (SOURCE_EVENT_INCOMPLETE_ATTR,)
 SOURCE_ROW_REF_COLUMN = "__source_row_ref"
+#: Engine-owned column carrying the one instant the preparer validated for this event.
+#: A mapper reads the time under THIS name whichever way the source declared its origin
+#: (``occurred_at.column`` or ``occurred_at.basis``); resolving a declaration to a physical
+#: column is the plan's job, and a mapper that had to ask for that name was carrying a
+#: deployment detail it has no business knowing.  Like ``__source_row_ref`` this is stamped
+#: by the preparation boundary, never by a source, and therefore is never declared.
+SOURCE_OCCURRED_AT_COLUMN = "__occurred_at"
 UNIT_SOURCE_ROW_REFS_ATTR = "assy_manager.unit_source_row_refs"
 
 

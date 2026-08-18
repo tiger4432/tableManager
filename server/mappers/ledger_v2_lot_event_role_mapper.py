@@ -21,6 +21,7 @@ from ledger.roleframe import (
     RoleEmission,
     RoleFrameError,
     SentenceShape,
+    SOURCE_OCCURRED_AT_COLUMN,
     SOURCE_ROW_REF_COLUMN,
 )
 from ledger.setup_registry import ProfileDescriptor
@@ -148,7 +149,8 @@ class LotEventRoleMapper(BaseLedgerMapper):
         profile: ProfileDescriptor,
     ) -> Sequence[RoleEmission]:
         missing = sorted(
-            (set(LOT_EVENT_COLUMNS) | {SOURCE_ROW_REF_COLUMN}) - set(unit.columns))
+            (set(LOT_EVENT_COLUMNS)
+             | {SOURCE_ROW_REF_COLUMN, SOURCE_OCCURRED_AT_COLUMN}) - set(unit.columns))
         if missing:
             raise RoleFrameError(
                 "missing_mapper_input", "event_frame.columns",
@@ -183,7 +185,7 @@ class LotEventRoleMapper(BaseLedgerMapper):
         refs = tuple(str(value) for value in unit[SOURCE_ROW_REF_COLUMN].tolist())
         all_refs = tuple(sorted(refs))
         sentences = ProfileSentences(
-            context, profile, occurred_at=unit.iloc[0]["event_time"])
+            context, profile, occurred_at=unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN])
         # What THIS deployment calls the thing that holds items in slots, and the thing it
         # holds.  Learned from the one sentence where both appear together, so the two
         # spellings never have to be written down here.

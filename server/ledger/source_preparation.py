@@ -28,6 +28,7 @@ from .envelope import source_event_identity
 from .roleframe import (
     EVENT_FRAME_REQUIRED_ATTRS,
     SOURCE_EVENT_INCOMPLETE_ATTR,
+    SOURCE_OCCURRED_AT_COLUMN,
     SOURCE_ROW_REF_COLUMN,
 )
 from .setup_registry import (
@@ -749,13 +750,20 @@ def _event_frames(
                     "one source event has more than one identity value",
                 )
             identity[column] = prepared.iloc[positions[0]][column]
+        # ONE read of the declared time origin. Both the published cell and the instant
+        # the event id is minted from come off this list, so they cannot be a pair of
+        # reads that disagree.
+        occurred_cells = [
+            prepared.iloc[position][driver.occurred_at.column]
+            for position in positions
+        ]
         occurred_values = [
             _aware_time(
-                prepared.iloc[position][driver.occurred_at.column],
+                value,
                 driver.occurred_at.timezone,
                 f"source_batch.rows[{position}].{driver.occurred_at.column}",
             )
-            for position in positions
+            for position, value in zip(positions, occurred_cells)
         ]
         instants = {value.timestamp() for value in occurred_values}
         if len(instants) != 1:
@@ -775,6 +783,25 @@ def _event_frames(
                 "driver order_by columns do not uniquely identify source rows",
             )
         event[SOURCE_ROW_REF_COLUMN] = row_refs
+        # Publish the event's time under ONE engine-owned name.  A mapper that had to ask
+        # `source_plan.driver.occurred_at.column` was reading a physical column name, so a
+        # source declaring `basis` moved the time out from under it; resolving a
+        # declaration to a column is this boundary's job, and now it is only this
+        # boundary's job.
+        #
+        # The published cell is the value AS READ, not `occurred_values[0]`.  The two
+        # differ in exactly one case: a naive cell, which `_aware_time` localizes with the
+        # declared timezone for the id while the Role validator refuses it outright
+        # ("time Role must be a timezone-aware datetime").  Publishing the localized
+        # instant would make that refusal disappear -- a source whose time column carries
+        # no zone would start minting atoms at a GUESSED instant, silently.  Whether the
+        # declared timezone may interpret a naive column is a separate ruling; this change
+        # moves where a mapper reads the time, not what the time is allowed to be.
+        #
+        # object dtype so the exact cell survives instead of being re-derived through a
+        # pandas datetime64 conversion.
+        event[SOURCE_OCCURRED_AT_COLUMN] = pd.Series(
+            [occurred_cells[0]] * len(event), index=event.index, dtype=object)
         molecule_ref = _canonical(
             {"source": plan.source_id, "identity": identity},
             path="event_frame.molecule_ref",
