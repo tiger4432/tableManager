@@ -386,8 +386,8 @@ class ProfileSentences:
             emission.occurred_at.role_id: self._occurred_at,
         }
         if emission.object_role is not None:
-            roles[emission.object_role.role_id] = self._entity_value(
-                mapping, emission.object_role.role_id, obj)
+            roles[emission.object_role.role_id] = self._object_value(
+                mapping, emission, obj)
         for name, reference in emission.qualifiers.items():
             roles[reference.role_id] = values[name]
         return RoleEmission(
@@ -490,6 +490,37 @@ class ProfileSentences:
                 "invalid_sentence_contract", f"{mapping.config_path}.bind.{role_id}",
                 "Entity Role requires an entity binding")
         return binding
+
+    def _object_value(self, mapping: Any, emission: Any, value: Any) -> Any:
+        """Shape the object a mapper handed over the way the Claim DECLARES it.
+
+        Every object kind the Vocabulary allows (``setup_bundle._OBJECT_KINDS``) is
+        answered here, deliberately and by name:
+
+        * ``entity_ref`` -- the mapper supplies one identity key and the Profile binding
+          supplies the Entity type and the key's name;
+        * ``value`` and ``event_ref`` -- the object IS the value.  What constrains it is
+          the object Role's own kind (``quantity``, ``identity``, ``symbolic``, ...),
+          which :func:`validate_role_frame` already checks against the Claim, and the
+          Pack compiler is still the only thing that wraps it into a payload.  Assembling
+          an Entity reference here was the reason a Claim declaring
+          ``"object": {"kind": "value", ...}`` could not be said by a mapper at all;
+        * ``none`` -- a Claim with no object has no object Role, so this method is never
+          reached for it.  An emission that declares ``none`` and binds an object Role
+          anyway contradicts itself and falls to the refusal below.
+
+        The refusal is the point: a kind added to the Vocabulary and not answered here
+        must fail by name rather than silently take the entity path and mint a wrong atom.
+        """
+        role_id = emission.object_role.role_id
+        kind = emission.object_kind
+        if kind == "entity_ref":
+            return self._entity_value(mapping, role_id, value)
+        if kind in {"value", "event_ref"}:
+            return value
+        raise RoleFrameError(
+            "unsupported_object_kind", f"{emission.config_path}.object.kind",
+            f"a sentence cannot say an object of kind {kind!r}")
 
     def _entity_value(self, mapping: Any, role_id: str, value: Any) -> Mapping[str, Any]:
         binding = self._entity_binding(mapping, role_id)
