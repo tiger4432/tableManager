@@ -1,0 +1,336 @@
+// ============================================================================
+// Ledger 셋업 — 모든 예정 작업이 착지한 뒤의 «최종 형태» 예시
+//
+//   파일:  server/config/ontology/ledger_config.json   ← 이것 하나뿐
+//   상태:  lot_event 부분은 2026-08-18 현재 «실제로 도는» 선언 그대로.
+//          void 부분은 「시각 없음 선언」이 착지한 뒤의 모양(아직 미착지).
+//   주석:  이 파일은 설명용 .jsonc 다. 실제 config 는 주석을 받지 않는다.
+//
+// 여덟 칸이 아니라 «일곱» 칸이다. tables 는 2026-08-18 에 은퇴했고 물리 스키마는
+// server/config/table_config.json 이 정본이다. manifest·catalog/·dataflows/ 도 없다.
+// 실행 스위치도 없다 — sources 에 있으면 돈다.
+// ============================================================================
+{
+  "setup_version": 3,
+
+  // ── 1. 낱말 ──────────────────────────────────────────────────────────────
+  // 원장이 할 수 있는 말의 «닫힌 목록». 여기 없는 술어는 아무도 못 쓴다.
+  // object.kind: none | entity_ref | value | event_ref
+  "vocabulary": {
+    "register@1": {
+      "status": "active", "layer": "ontology",
+      "subjects": ["Lot@1", "Wafer@1"],
+      "object": { "kind": "none", "qualifiers": { "required": [], "optional": [] } }
+    },
+    "has_wafer@1": {
+      "status": "active", "layer": "ontology",
+      "subjects": ["Lot@1"],
+      "object": {
+        "kind": "entity_ref", "types": ["Wafer@1"],
+        "qualifiers": { "required": ["slot"], "optional": [] }
+      }
+    },
+    "derived_from@1": {
+      "status": "active", "layer": "ontology",
+      "subjects": ["Lot@1"],
+      "object": {
+        "kind": "entity_ref", "types": ["Lot@1"],
+        "qualifiers": { "required": [], "optional": [] }
+      }
+    },
+    "slot_map@1": {
+      "status": "active", "layer": "ontology",
+      "subjects": ["Lot@1"],
+      "object": {
+        "kind": "entity_ref", "types": ["Lot@1"],
+        "qualifiers": { "required": ["from", "to", "wafer"], "optional": [] }
+      }
+    },
+
+    // ── void 를 위해 «새로 선언하는» 낱말 두 개 ──
+    "on_wafer@1": {
+      "status": "active", "layer": "ontology",
+      "subjects": ["BaseDie@1"],
+      "object": {
+        "kind": "entity_ref", "types": ["Wafer@1"],
+        "qualifiers": { "required": [], "optional": [] }
+      }
+    },
+    "observed_void@1": {
+      "status": "active", "layer": "ontology",
+      "subjects": ["BaseDie@1"],
+      "object": {
+        "kind": "value",
+        "qualifiers": {
+          "required": ["inchip_x", "inchip_y", "radius_x", "radius_y"],
+          "optional": ["classname"]
+        }
+      }
+    }
+  },
+
+  // ── 2. 이름을 붙여 부를 대상 ──────────────────────────────────────────────
+  // keys 는 소스 컬럼 이름이 아니라 «원장이 쓰는 이름». 실제 컬럼과의 연결은
+  // profiles 의 bind 에서 붙는다.
+  "entities": {
+    "Lot@1":     { "keys": ["lot"] },
+    "Wafer@1":   { "keys": ["wafer"] },
+    "BaseDie@1": { "keys": ["base_wafer_id", "base_x", "base_y", "layer"] }
+  },
+
+  // ── 3. 문장 양식 ─────────────────────────────────────────────────────────
+  // role 이름은 «자유», qualifier 이름은 낱말 선언과 같아야 한다.
+  // role kind: entity | time | quantity | identity | order | attribute | symbolic
+  "packs": {
+    "lot-lineage@1": {
+      "claims": {
+        "register": {
+          "roles": {
+            "subject":     { "kind": "entity", "required": true },
+            "occurred_at": { "kind": "time",   "required": true }
+          },
+          "emit": {
+            "predicate": "register@1", "subject": "$subject",
+            "object": { "kind": "none" }, "occurred_at": "$occurred_at"
+          }
+        },
+        "membership": {
+          "roles": {
+            "subject":     { "kind": "entity",    "required": true },
+            "target":      { "kind": "entity",    "required": true },
+            "occurred_at": { "kind": "time",      "required": true },
+            "slot":        { "kind": "attribute", "required": true }
+          },
+          "emit": {
+            "predicate": "has_wafer@1", "subject": "$subject",
+            "object": {
+              "kind": "entity_ref", "entity": "$target",
+              "qualifiers": { "slot": "$slot" }
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "lineage": {
+          "roles": {
+            "child":       { "kind": "entity", "required": true },
+            "parent":      { "kind": "entity", "required": true },
+            "occurred_at": { "kind": "time",   "required": true }
+          },
+          "emit": {
+            "predicate": "derived_from@1", "subject": "$child",
+            "object": { "kind": "entity_ref", "entity": "$parent", "qualifiers": {} },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "slot_map": {
+          "roles": {
+            "subject":     { "kind": "entity",    "required": true },
+            "target":      { "kind": "entity",    "required": true },
+            "occurred_at": { "kind": "time",      "required": true },
+            "from":        { "kind": "attribute", "required": true },
+            "to":          { "kind": "attribute", "required": true },
+            "wafer":       { "kind": "attribute", "required": true }
+          },
+          "emit": {
+            "predicate": "slot_map@1", "subject": "$subject",
+            "object": {
+              "kind": "entity_ref", "entity": "$target",
+              "qualifiers": { "from": "$from", "to": "$to", "wafer": "$wafer" }
+            },
+            "occurred_at": "$occurred_at"
+          }
+        }
+      }
+    },
+
+    "void-observation@1": {
+      "claims": {
+        "die_on_wafer": {
+          "roles": {
+            "subject":     { "kind": "entity", "required": true },
+            "target":      { "kind": "entity", "required": true },
+            "occurred_at": { "kind": "time",   "required": true }
+          },
+          "emit": {
+            "predicate": "on_wafer@1", "subject": "$subject",
+            "object": { "kind": "entity_ref", "entity": "$target", "qualifiers": {} },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "void_seen": {
+          "roles": {
+            "subject":     { "kind": "entity",   "required": true },
+            "occurred_at": { "kind": "time",     "required": true },
+            "inchip_x":    { "kind": "quantity", "required": true },
+            "inchip_y":    { "kind": "quantity", "required": true },
+            "radius_x":    { "kind": "quantity", "required": true },
+            "radius_y":    { "kind": "quantity", "required": true },
+            "classname":   { "kind": "attribute", "required": false }
+          },
+          "emit": {
+            "predicate": "observed_void@1", "subject": "$subject",
+            "object": {
+              "kind": "value",
+              "qualifiers": {
+                "inchip_x": "$inchip_x", "inchip_y": "$inchip_y",
+                "radius_x": "$radius_x", "radius_y": "$radius_y",
+                "classname": "$classname"
+              }
+            },
+            "occurred_at": "$occurred_at"
+          }
+        }
+      }
+    }
+  },
+
+  // ── 4. 물리 배치를 EventFrame 으로 ────────────────────────────────────────
+  // implementation_id 는 «코드에 실재하는» 구현 이름. 이름을 지어낼 수 없다.
+  // direct-join 은 조인이 필요 없는 소스의 범용 구현 — 파이썬을 쓰지 않는다.
+  "source_preparers": {
+    "lot-event-live-frame@1": {
+      "implementation_id": "lot-event-live-frame", "implementation_version": 1,
+      "input_columns": ["lot_id", "event_type", "slotnumbers", "waferids",
+                        "parent_lot", "child_lot", "txn_seq", "event_time"],
+      "output_columns": {
+        "lot": "string", "slots": "string", "wafers": "string",
+        "row_identity": "string", "event_group_key": "string",
+        "__source_event_incomplete": "boolean"
+      },
+      "accepts_verified_join_rules": false
+    },
+    "void-passthrough@1": {
+      "implementation_id": "direct-join", "implementation_version": 1,
+      "input_columns": [], "output_columns": {},
+      "accepts_verified_join_rules": false
+    }
+  },
+
+  // ── 5. EventFrame 의 «뜻»을 읽는다 ───────────────────────────────────────
+  // declarative-role 은 프로필 바인딩만으로 문장을 만드는 범용 구현이다.
+  // split/merge 처럼 여러 행을 짝지어야 할 때만 전용 구현이 필요하다.
+  "mappers": {
+    "lot-event-role@1": {
+      "implementation_id": "lot-event-role", "implementation_version": 1,
+      "unit": { "kind": "event" },
+      "input_columns": ["lot", "event_type", "slots", "wafers", "parent_lot",
+                        "child_lot", "row_identity", "event_time",
+                        "event_group_key", "__source_event_incomplete"],
+      "emits": ["lot-lineage@1/register", "lot-lineage@1/membership",
+                "lot-lineage@1/lineage", "lot-lineage@1/slot_map"]
+    },
+    "void-role@1": {
+      "implementation_id": "declarative-role", "implementation_version": 1,
+      "unit": { "kind": "row" },
+      "input_columns": ["base_wafer_id", "base_x", "base_y", "layer",
+                        "inchip_x", "inchip_y", "radius_x", "radius_y", "classname"],
+      "emits": ["void-observation@1/die_on_wafer", "void-observation@1/void_seen"]
+    }
+  },
+
+  // ── 6. 역할 ↔ 실제 컬럼 ──────────────────────────────────────────────────
+  // 여기가 «대표님의 판단이 실제로 들어가는» 유일한 자리다.
+  // 모든 바인딩이 approved 여야 로드된다 — 작성 중인 소스는 못 돈다.
+  "profiles": {
+    "lot-event@1": {
+      "source": "lot_event",
+      "packs": ["lot-lineage@1"],
+      "mappings": [
+        // ⚠️ mapping_id 여섯 개는 현재 매퍼 코드가 «이름으로» 찾는다.
+        //    2라운드(매퍼 개주)가 끝나면 이 결합이 사라진다.
+        { "mapping_id": "first_sight_lot", "use": "lot-lineage@1/register",
+          "bind": { "subject": { "kind": "entity", "entity_type": "Lot@1",
+                                 "keys": { "lot": { "kind": "column", "column": "lot",
+                                                    "binding_origin": "user_declared",
+                                                    "approval_status": "approved" } },
+                                 "binding_origin": "user_declared",
+                                 "approval_status": "approved" },
+                    "occurred_at": { "kind": "column", "column": "event_time",
+                                     "binding_origin": "user_declared",
+                                     "approval_status": "approved" } } }
+        // … first_sight_wafer · positional_row · pair_field ·
+        //    slot_preserving · shared_wafer (실제 파일에는 여섯 개가 모두 있다)
+      ]
+    },
+
+    "void@1": {
+      "source": "void",
+      "packs": ["void-observation@1"],
+      "mappings": [
+        { "mapping_id": "die_on_wafer", "use": "void-observation@1/die_on_wafer",
+          "bind": {
+            "subject": { "kind": "entity", "entity_type": "BaseDie@1",
+                         "keys": {
+                           "base_wafer_id": { "kind": "column", "column": "base_wafer_id",
+                                              "binding_origin": "user_declared",
+                                              "approval_status": "approved" },
+                           "base_x": { "kind": "column", "column": "base_x",
+                                       "binding_origin": "user_declared",
+                                       "approval_status": "approved" },
+                           "base_y": { "kind": "column", "column": "base_y",
+                                       "binding_origin": "user_declared",
+                                       "approval_status": "approved" },
+                           "layer":  { "kind": "column", "column": "layer",
+                                       "binding_origin": "user_declared",
+                                       "approval_status": "approved" }
+                         },
+                         "binding_origin": "user_declared",
+                         "approval_status": "approved" },
+            "target": { "kind": "entity", "entity_type": "Wafer@1",
+                        "keys": { "wafer": { "kind": "column", "column": "base_wafer_id",
+                                             "binding_origin": "user_declared",
+                                             "approval_status": "approved" } },
+                        "binding_origin": "user_declared",
+                        "approval_status": "approved" },
+            // 🔴 여기에 «상수 시각»이 없다는 것이 핵심이다.
+            //    소스가 basis:"ingested" 를 선언했으므로 엔진이 채운다.
+            "occurred_at": { "kind": "source_time",
+                             "binding_origin": "user_declared",
+                             "approval_status": "approved" }
+          } }
+        // … void_seen 도 같은 방식으로 inchip_x/y·radius_x/y·classname 을 묶는다
+      ]
+    }
+  },
+
+  // ── 7. 한 소스의 실행 계약 ───────────────────────────────────────────────
+  // 여기 있으면 «돈다». 별도 스위치는 없다.
+  "sources": {
+    "lot_event": {
+      "relation": "lot_event",
+      "driver": {
+        "unit": "group",
+        "identity": ["event_group_key"],
+        "group_by": ["event_group_key"],
+        "order_by": ["txn_seq"],
+        // 세계 시각이 컬럼으로 있는 경우 — 종전 형태
+        "occurred_at": { "column": "event_time", "timezone": "Asia/Seoul" },
+        "cursor": { "columns": ["event_time", "txn_seq"] },
+        "preparation": { "preparer_id": "lot-event-live-frame@1",
+                         "inherit_virtual_join_rules": [] },
+        "mapper_id": "lot-event-role@1"
+      },
+      "profile_id": "lot-event@1"
+    },
+
+    "void": {
+      "relation": "void",
+      "driver": {
+        "unit": "row",
+        // ⚠️ table_config.json 의 void 에 선언된 유일키와 같아야 한다.
+        "identity": ["base_wafer_id", "base_x", "base_y", "layer",
+                     "inchip_x", "inchip_y"],
+        "group_by": [],
+        "order_by": ["base_wafer_id", "base_x", "base_y"],
+        // 🔴 시각 컬럼이 «없는» 표 — 시각의 출처를 선언한다.
+        //    원자는 이 값이 세계 시각이 아니라 적재 시각임을 스스로 말한다.
+        "occurred_at": { "basis": "ingested", "timezone": "Asia/Seoul" },
+        "cursor": { "columns": ["base_wafer_id", "base_x", "base_y"] },
+        "preparation": { "preparer_id": "void-passthrough@1",
+                         "inherit_virtual_join_rules": [] },
+        "mapper_id": "void-role@1"
+      },
+      "profile_id": "void@1"
+    }
+  }
+}
