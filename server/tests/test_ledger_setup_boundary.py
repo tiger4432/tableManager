@@ -15,6 +15,7 @@ from ledger.setup import (
     dry_run_report,
     execute_selected_cursor_batch,
     load_setup,
+    main as setup_main,
     preview_selected_cursor_batch,
 )
 from ledger.source_preparation import VerifiedJoinBatchReader
@@ -399,3 +400,56 @@ def test_existing_other_snapshot_cursor_blocks_before_source_read(monkeypatch):
             "existing cursor belongs to a different setup snapshot; inspect, back up, "
             "and obtain separate reset or replay approval"),
     }
+
+
+# ------------------------------------------------- `--root`: verify a draft, not the live file
+#
+# 🔴 THE GUIDE TELLS AN OPERATOR TO VERIFY BEFORE EDITING. Until `--root` existed,
+# `python -m ledger.setup` was hard-wired to `DEFAULT_ONTOLOGY_ROOT` and took no argument,
+# so the only way to verify a draft was to overwrite the live file first — the one thing
+# the guide forbids. These pin the argument AND the two ways of getting it wrong, because
+# an operator pointing at a draft in production meets both.
+
+def test_verify_without_root_still_reads_the_live_config(capsys):
+    assert setup_main([]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["config_root"] == DEFAULT_ONTOLOGY_ROOT.resolve().as_posix()
+
+
+def test_verify_with_root_reads_the_draft_and_says_which_file_it_read(tmp_path, capsys):
+    draft = copied_root(tmp_path)
+    assert setup_main(["--root", str(draft)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    # Naming the root is what makes a draft run distinguishable from a live one. A report
+    # that did not carry it would let an operator read a PASS for the wrong file.
+    assert report["config_root"] == draft.resolve().as_posix()
+    assert report["config_root"] != DEFAULT_ONTOLOGY_ROOT.resolve().as_posix()
+    assert report["destructive_actions"] == {
+        "database_reset": False, "cursor_reset": False, "legacy_removal": False}
+
+
+def test_verifying_a_draft_does_not_touch_the_live_config(tmp_path, capsys):
+    """READ ONLY, asserted as a fact about the live file rather than as a promise."""
+    live = DEFAULT_ONTOLOGY_ROOT / "ledger_config.json"
+    before = live.read_bytes()
+    draft = copied_root(tmp_path)
+    (draft / "ledger_config.json").write_text(
+        json.dumps({**json.loads((draft / "ledger_config.json").read_text("utf-8")),
+                    "setup_version": 3}, ensure_ascii=False), encoding="utf-8")
+    assert setup_main(["--root", str(draft)]) == 0
+    capsys.readouterr()
+    assert live.read_bytes() == before
+
+
+@pytest.mark.parametrize("bad, fragment", [
+    ("nowhere", "no such path"),
+    ("ontology/ledger_config.json", "point --root at the directory"),
+    ("bare", "holds no ledger_config.json"),
+])
+def test_a_wrong_root_is_a_named_refusal_not_a_traceback(tmp_path, capsys, bad, fragment):
+    copied_root(tmp_path)
+    (tmp_path / "bare").mkdir()
+    assert setup_main(["--root", str(tmp_path / bad)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "", "a refused verification must not print a report"
+    assert fragment in captured.err

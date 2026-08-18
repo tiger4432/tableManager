@@ -25,6 +25,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import sys
 from types import MappingProxyType
 from typing import Any
 
@@ -43,7 +44,12 @@ from .implementations import (
     source_preparer_registry,
     trusted_implementations,
 )
-from .setup_bundle import LedgerSetupBundle, load_setup_bundle, require_ready_bundle
+from .setup_bundle import (
+    CONFIG_FILENAME,
+    LedgerSetupBundle,
+    load_setup_bundle,
+    require_ready_bundle,
+)
 from .setup_registry import LedgerSetupSnapshot, compile_setup_snapshot
 from .source_preparation import (
     SourcePreparerImplementationRegistry,
@@ -172,8 +178,68 @@ def _require_declared_source(setup: "LedgerSetup", source_id: str) -> str:
     return setup.require_source(source_id)
 
 
-def main() -> int:
-    setup = load_setup()
+def _resolve_cli_root(value: str | None) -> Path:
+    """Turn a `--root` argument into a config root, refusing by name rather than by
+    traceback.
+
+    🔴 THE OPERATOR IS POINTING THIS AT A DRAFT, so the two ways of getting the argument
+    wrong are both likely and neither should arrive as a stack trace: a path that is not
+    there yet, and the file itself rather than the directory holding it. The second is
+    the one worth naming explicitly -- `--root .../ledger_config.json` is the reading the
+    word "root" does not obviously exclude.
+    """
+    if value is None:
+        return DEFAULT_ONTOLOGY_ROOT
+    candidate = Path(value).expanduser()
+    if not candidate.exists():
+        raise LedgerSetupError(
+            "config_root_absent", "--root", f"no such path: {candidate}")
+    if candidate.is_file():
+        hint = (" — point --root at the directory that CONTAINS it, not at the file"
+                if candidate.name == CONFIG_FILENAME else "")
+        raise LedgerSetupError(
+            "config_root_not_a_directory", "--root",
+            f"{candidate} is a file{hint}")
+    if not (candidate / CONFIG_FILENAME).is_file():
+        raise LedgerSetupError(
+            "config_root_has_no_config", "--root",
+            f"{candidate} holds no {CONFIG_FILENAME}")
+    return candidate
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Verify a config root and print the write-free report. READ ONLY.
+
+    `--root` exists because the setup guide tells an operator to verify BEFORE editing,
+    and without it the only way to verify a draft was to overwrite the live file first —
+    exactly what the guide forbids. Omitting it keeps the previous behaviour: the live
+    `DEFAULT_ONTOLOGY_ROOT`. The report already carries `config_root`, so the answer says
+    which file it is about and a draft run cannot be mistaken for a live one.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m ledger.setup",
+        description="Load and compile one ledger config root, then print its "
+                    "write-free readiness report. Nothing is written or migrated.")
+    parser.add_argument(
+        "--root", default=None, metavar="PATH",
+        help=f"directory holding {CONFIG_FILENAME}. Default: the live config root "
+             f"({DEFAULT_ONTOLOGY_ROOT.as_posix()}). Use this to verify a DRAFT "
+             f"without touching the live file.")
+    args = parser.parse_args(list(argv) if argv is not None else None)
+
+    # Only the --root ARGUMENT's own refusals are caught here, and only when --root was
+    # given, so the no-argument path is byte-for-byte what it was. A bad config still
+    # raises: that is the report, and swallowing it would turn a failed verification into
+    # a tidy line an operator could mistake for a pass.
+    try:
+        root = _resolve_cli_root(args.root)
+    except LedgerSetupError as refusal:
+        print(f"{parser.prog}: {refusal}", file=sys.stderr)
+        return 2
+
+    setup = load_setup(root)
     print(json.dumps(
         dict(dry_run_report(setup)), ensure_ascii=False, sort_keys=True,
         separators=(",", ":"), default=lambda value: dict(value),
