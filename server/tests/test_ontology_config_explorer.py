@@ -1445,3 +1445,201 @@ def test_deletion_preview_endpoint_names_the_casualties_and_shows_the_blockage(
     empty = client.get("/admin/ontology-explorer/deletion-preview")
     assert empty.status_code == 400
     assert empty.json()["detail"]["code"] == "empty_deletion"
+
+
+# --------------------------------------------------------------------- authoring plan
+
+
+def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_setup):
+    """The acceptance question: does the screen produce the live artifact with less work?
+
+    Every field the plan calls `derived` with `comparison == "equal"` is deleted from the
+    live bundle and put back from the plan alone.  The result must validate.  What this
+    measures is not "the code runs" but "these fields had no degrees of freedom", which
+    is the entire claim behind removing them from the screen.
+    """
+    import copy
+
+    from ledger.config_authoring import authoring_plan
+    from ledger.setup import live_physical_catalog
+    from ledger.setup_bundle import validate_bundle_errors
+
+    catalog = live_physical_catalog()
+    original = json.loads(
+        (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+    assert not validate_bundle_errors(original, catalog=catalog)
+
+    reduced = copy.deepcopy(original)
+    for profile in reduced["profiles"].values():
+        profile.pop("packs", None)
+        profile.pop("source", None)
+    for mapper in reduced["mappers"].values():
+        mapper.pop("emits", None)
+        mapper.pop("input_columns", None)
+    for pack in reduced["packs"].values():
+        for claim in pack["claims"].values():
+            claim["emit"]["object"].pop("kind", None)
+
+    plan = authoring_plan(reduced, catalog)
+    derived = {row["path"]: row for row in plan["fields"] if row["state"] == "derived"}
+    assert derived, "a bundle missing its forced fields must still derive them"
+
+    for path, row in derived.items():
+        assert row["ground"], f"{path} filled a value without naming what filled it"
+        assert row["ground"]["text"] and row["ground"]["from_paths"]
+
+    rebuilt = copy.deepcopy(reduced)
+    for profile_id, profile in rebuilt["profiles"].items():
+        profile["packs"] = derived[f"bundle.profiles.{profile_id}.packs"]["value"]
+        profile["source"] = derived[f"bundle.profiles.{profile_id}.source"]["value"]
+    for mapper_id, mapper in rebuilt["mappers"].items():
+        mapper["emits"] = derived[f"bundle.mappers.{mapper_id}.emits"]["value"]
+        mapper["input_columns"] = derived[
+            f"bundle.mappers.{mapper_id}.input_columns"]["value"]
+    for pack_id, pack in rebuilt["packs"].items():
+        for claim_id, claim in pack["claims"].items():
+            claim["emit"]["object"]["kind"] = derived[
+                f"bundle.packs.{pack_id}.claims.{claim_id}.emit.object.kind"]["value"]
+
+    assert not validate_bundle_errors(rebuilt, catalog=catalog)
+
+
+def test_a_derivation_that_cannot_state_its_ground_refuses_to_fill():
+    """The rule that keeps a screen from repeating the grouped-event `basis` defect.
+
+    A quietly chosen default becomes data.  `Field` therefore cannot be constructed in
+    the `derived` state without a ground, and this is the assertion that keeps that
+    constructor honest rather than decorative.
+    """
+    from ledger.config_authoring import AuthoringGroundError, Field, Ground
+
+    with pytest.raises(AuthoringGroundError):
+        Field(path="bundle.x", step="sources", label="c", state="derived",
+              tier="structural", value=["a"])
+    with pytest.raises(AuthoringGroundError):
+        Field(path="bundle.x", step="sources", label="c", state="derived",
+              tier="structural", value=["a"],
+              ground=Ground("r", "", ("bundle.y",)))
+    with pytest.raises(AuthoringGroundError):
+        Field(path="bundle.x", step="sources", label="c", state="derived",
+              tier="structural", value=["a"], ground=Ground("r", "fill", ()))
+    ok = Field(path="bundle.x", step="sources", label="c", state="derived",
+               tier="structural", value=["a"],
+               ground=Ground("r", "fill", ("bundle.y",)))
+    assert ok.to_mapping()["ground"]["from_paths"] == ["bundle.y"]
+
+
+def test_a_wider_declaration_is_not_a_conflict_when_the_rule_is_containment():
+    """`input_columns` is a derived MINIMUM; calling a legal wider one red is a false red.
+
+    Measured on the live root: `lot-event-role@1` declares ten input columns and the
+    profile binds four, because a custom mapper reads columns no binding names.  An
+    equality comparison painted that legal declaration as a defect.
+    """
+    from ledger.config_authoring import Field, Ground
+
+    ground = Ground("r", "fill", ("bundle.y",))
+    wider = Field(path="p", step="implementations", label="input_columns",
+                  state="derived", tier="derivation", value=["a", "b"],
+                  declared=["a", "b", "c"], ground=ground, comparison="superset")
+    short = Field(path="p", step="implementations", label="input_columns",
+                  state="derived", tier="derivation", value=["a", "b"],
+                  declared=["a"], ground=ground, comparison="superset")
+    exact = Field(path="p", step="profiles", label="packs", state="derived",
+                  tier="structural", value=["a"], declared=["a", "b"], ground=ground)
+    assert not wider.conflicts
+    assert short.conflicts
+    assert exact.conflicts
+
+
+def test_authoring_answers_on_a_blank_root_where_the_compiled_view_cannot(tmp_path):
+    """The from-scratch entry: no config file at all must name the absence, not 500."""
+    from ledger.config_authoring import closed_lists
+
+    empty = tmp_path / "ontology"
+    empty.mkdir()
+    service = OntologyExplorerService(
+        config_root=empty, draft_root=tmp_path / "drafts")
+    plan = service.authoring()
+    assert plan["config_source"]["state"] == "absent"
+    assert plan["config_source"]["file"].endswith("ledger_config.json")
+    # Members, not a magnitude: `6` here would become a lie the day a step is added,
+    # and it would lie silently. The step list is the payload's own.
+    assert {step["status"] for step in plan["steps"]} == {"empty"}
+    assert [step["id"] for step in plan["steps"]] == [
+        step["id"] for step in closed_lists()["steps"]]
+    # The deficits are NAMED, not implied by an empty panel.
+    named = {issue["path"] for issue in plan["unattached_refusals"]}
+    assert "bundle.entities" in named and "bundle.sources" in named
+
+    (empty / "ledger_config.json").write_text("{ not json", encoding="utf-8")
+    with pytest.raises(ConfigExplorerError) as broken:
+        service.authoring()
+    assert broken.value.code == "unreadable_config"
+
+
+def test_closed_lists_come_from_the_validators_own_constants():
+    """A list the screen offers must be the list the validator enforces, not a copy."""
+    from ledger.config_authoring import closed_lists
+    from ledger import setup_bundle
+
+    lists = closed_lists()
+    assert set(lists["object_kind"]) == set(setup_bundle._OBJECT_KINDS)
+    assert set(lists["role_kind"]) == set(setup_bundle._ROLE_KINDS)
+    assert set(lists["source_unit"]) == set(setup_bundle._SOURCE_UNITS)
+    assert set(lists["mapper_unit"]) == set(setup_bundle._MAPPER_UNITS)
+    assert set(lists["occurred_at_basis"]) == set(setup_bundle._OCCURRED_AT_BASES)
+    assert set(lists["approval_status"]) == set(setup_bundle._APPROVAL_STATUSES)
+    assert set(lists["binding_origin"]) == set(setup_bundle._BINDING_ORIGINS)
+    # Steps ship with their labels so the step bar carries no list of its own.
+    assert [step["id"] for step in lists["steps"]] == [
+        "entities", "vocabulary", "packs", "implementations", "profiles", "sources"]
+    assert all(step["label"] for step in lists["steps"])
+
+
+def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_setup):
+    """Holes the operator actually made on 2026-08-18, and where the screen puts them."""
+    from ledger.config_authoring import authoring_plan
+    from ledger.setup import live_physical_catalog
+
+    catalog = live_physical_catalog()
+    bundle = json.loads(
+        (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+    del bundle["profiles"]["dt-job@1"]["mappings"][1]["bind"]["count"]
+    del (bundle["packs"]["lot-lineage@1"]["claims"]["membership"]
+         ["emit"]["object"]["qualifiers"]["slot"])
+
+    plan = authoring_plan(bundle, catalog)
+    by_path = {row["path"]: row for row in plan["fields"]}
+    role = by_path["bundle.profiles.dt-job@1.mappings[1].bind.count"]
+    assert role["state"] == "missing"
+    assert [item["code"] for item in role["refusals"]] == ["missing_required_role"]
+    qualifier = by_path[
+        "bundle.packs.lot-lineage@1.claims.membership.emit.object.qualifiers.slot"]
+    assert qualifier["state"] == "missing"
+    assert "missing_required_payload" in [
+        item["code"] for item in qualifier["refusals"]]
+    # The candidate is offered ALREADY SPELLED, so the `?` is never typed by hand.
+    assert "$slot" in qualifier["candidates"]
+    assert not plan["unattached_refusals"], plan["unattached_refusals"]
+    blocked = {step["id"] for step in plan["steps"] if step["status"] == "blocked"}
+    assert blocked == {"packs", "profiles"}
+
+
+def test_column_candidates_are_three_universes_and_not_one(active_setup):
+    """A preparer-made column is legal in `identity` and refused in `order_by`."""
+    from ledger.config_authoring import authoring_plan
+    from ledger.setup import live_physical_catalog
+
+    catalog = live_physical_catalog()
+    bundle = json.loads(
+        (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+    plan = authoring_plan(bundle, catalog)
+    by_path = {row["path"]: row for row in plan["fields"]}
+    identity = by_path["bundle.sources.lot_event.driver.identity"]
+    ordering = by_path["bundle.sources.lot_event.driver.order_by"]
+    assert identity["universe"] == "PREPARED"
+    assert ordering["universe"] == "RELATION"
+    made = set(bundle["source_preparers"]["lot-event-live-frame@1"]["output_columns"])
+    assert made & set(identity["candidates"]), "preparer output must be offered here"
+    assert not (made & set(ordering["candidates"])), "and never offered here"
