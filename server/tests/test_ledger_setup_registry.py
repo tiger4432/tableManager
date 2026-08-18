@@ -18,7 +18,6 @@ from ledger import setup_registry as setup_registry_module
 from ledger.setup_bundle import (
     LedgerSetupBundle,
     LedgerSetupValidationError,
-    validate_bundle,
 )
 from ledger.setup_registry import (
     EntityTypeDescriptor,
@@ -29,13 +28,19 @@ from ledger.setup_registry import (
     RoleDescriptor,
     SourcePlan,
     TrustedImplementationCatalog,
-    compile_setup_snapshot,
-    snapshot_compile_errors,
 )
+# `validate_bundle` / `load_setup_bundle` here are the bundle suite's catalog-defaulting
+# wrappers, NOT the raw `ledger.setup_bundle` functions -- those now refuse by name when
+# no physical catalog is supplied.  `DEFAULT_CATALOG` is the fixture plant's physical
+# half, written out separately from the bundle under test; see the docstring on
+# `logical_catalog` there for why it must never be derived from the bundle.
 from test_ledger_setup_bundle import (
+    DEFAULT_CATALOG,
+    load_setup_bundle,
     logical_bundle,
     objectless_register_bundle,
     reverse_mappings,
+    validate_bundle,
     write_tree,
 )
 from verified_join_contract import (
@@ -43,6 +48,20 @@ from verified_join_contract import (
     _bind_physical_verifier_issuer,
     is_physically_verified_descriptor,
 )
+
+
+def compile_setup_snapshot(bundle, trusted, verified_joins=(), *, catalog=None):
+    """Fixture-defaulting wrapper. Production callers resolve the catalog once in
+    `ledger.setup`; here the fixture plant's catalog stands in for `table_config.json`."""
+    return setup_registry_module.compile_setup_snapshot(
+        bundle, trusted, verified_joins,
+        catalog=DEFAULT_CATALOG if catalog is None else catalog)
+
+
+def snapshot_compile_errors(bundle, trusted, verified_joins=(), *, catalog=None):
+    return setup_registry_module.snapshot_compile_errors(
+        bundle, trusted, verified_joins,
+        catalog=DEFAULT_CATALOG if catalog is None else catalog)
 
 
 def trusted_implementations():
@@ -92,12 +111,17 @@ def physically_verified_joins(bundle=None, *, unique_index="uq_reference_join_id
         return tuple(virtual_join_config_module.load_verified_rules(object()))
 
 
-def snapshot(bundle=None, trusted=None):
+def snapshot(bundle=None, trusted=None, *, catalog=None):
+    """`catalog` names the physical plant the bundle is judged against; omitting it uses
+    the fixture plant.  A bundle describing a DIFFERENT plant (see the DT chain fixture in
+    `test_ledger_source_preparation`) passes its own, exactly as a different deployment
+    would ship its own `table_config.json`."""
     raw = bundle or logical_bundle()
     return compile_setup_snapshot(
-        validate_bundle(raw),
+        validate_bundle(raw, catalog=catalog),
         trusted or trusted_implementations(),
         physically_verified_joins(raw),
+        catalog=catalog,
     )
 
 
@@ -588,6 +612,7 @@ def test_directly_constructed_invalid_bundle_is_revalidated_fail_closed():
 )
 def test_inherited_join_must_be_present_enabled_and_verified(mutation, code, path):
     raw = logical_bundle()
+    catalog = copy.deepcopy(DEFAULT_CATALOG)
     if mutation == "missing":
         raw["sources"]["input_rows"]["driver"]["preparation"][
             "inherit_virtual_join_rules"] = ["missing-rule"]
@@ -596,10 +621,15 @@ def test_inherited_join_must_be_present_enabled_and_verified(mutation, code, pat
     elif mutation == "left_mismatch":
         raw["virtual_joins"]["input_to_reference"]["left_table"] = "reference_rows"
     else:
-        raw["tables"]["reference_rows"].pop("business_key")
-        raw["tables"]["reference_rows"]["indexes"][0]["unique"] = False
+        # The physical half moved out of the bundle: "the join's right side cannot be
+        # proven unique" is now stated by mutating the CATALOG, which is where relation
+        # keys and unique indexes are declared.  Mutating a copy, so the shared
+        # `DEFAULT_CATALOG` stays intact for the other parameter cases.
+        catalog["reference_rows"].pop("business_key")
+        catalog["reference_rows"]["indexes"][0]["unique"] = False
 
-    errors = snapshot_compile_errors(LedgerSetupBundle(raw), trusted_implementations())
+    errors = snapshot_compile_errors(
+        LedgerSetupBundle(raw), trusted_implementations(), catalog=catalog)
 
     assert errors
     assert all(issue.code and issue.path and issue.message for issue in errors)
@@ -750,8 +780,6 @@ def test_config_root_path_does_not_enter_snapshot_hash(tmp_path):
     second_root = tmp_path / "second"
     write_tree(first_root)
     write_tree(second_root)
-
-    from ledger.setup_bundle import load_setup_bundle
 
     first_bundle = load_setup_bundle(first_root)
     second_bundle = load_setup_bundle(second_root)

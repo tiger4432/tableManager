@@ -46,7 +46,9 @@ from .implementations import (
 )
 from .setup_bundle import (
     CONFIG_FILENAME,
+    PHYSICAL_CATALOG_FILENAME,
     LedgerSetupBundle,
+    load_physical_catalog,
     load_setup_bundle,
     require_ready_bundle,
 )
@@ -58,6 +60,24 @@ from .source_preparation import (
 
 
 DEFAULT_ONTOLOGY_ROOT = Path(__file__).parents[1] / "config" / "ontology"
+
+
+def physical_catalog_path() -> Path:
+    """Where `table_config.json` lives for THIS data root.
+
+    Resolved through `paths`, like every other reader of that file, so an isolated stack
+    (`ASSY_DATA_ROOT`) reads its own catalog instead of the operator's. `setup_bundle`
+    deliberately cannot answer this -- it imports no runtime -- so the deployment question
+    is answered here, once.
+    """
+    import paths
+
+    return Path(paths.config_path(PHYSICAL_CATALOG_FILENAME))
+
+
+def live_physical_catalog() -> Mapping[str, Any]:
+    """The physical relation shape this deployment's `table_config.json` declares."""
+    return load_physical_catalog(physical_catalog_path())
 
 
 class LedgerSetupError(ValueError):
@@ -80,6 +100,11 @@ class LedgerSetup:
     snapshot: LedgerSetupSnapshot
     preparers: SourcePreparerImplementationRegistry
     mappers: RoleMapperImplementationRegistry
+    #: The physical relation shape from `table_config.json` that `bundle` was validated
+    #: against. Carried rather than re-read so that everything downstream -- the explorer
+    #: most of all -- describes the SAME catalog the validation used. Re-reading it later
+    #: would let a screen disagree with the refusal an operator just saw.
+    catalog: Mapping[str, Any] = MappingProxyType({})
 
     @property
     def source_ids(self) -> tuple[str, ...]:
@@ -99,18 +124,30 @@ def load_setup(
     root: str | Path = DEFAULT_ONTOLOGY_ROOT,
     *,
     verified_joins: Sequence[VerifiedJoinDescriptor] = (),
+    catalog: Mapping[str, Any] | None = None,
 ) -> LedgerSetup:
-    """Load one file, enforce binding readiness, and compile one snapshot."""
+    """Load one file, enforce binding readiness, and compile one snapshot.
+
+    `catalog` is the physical relation shape; omitting it reads the live
+    `table_config.json`, which is what production does and the only thing production
+    should do. It is resolved ONCE here and carried on the result so no later reader
+    re-reads the file and gets a different answer.
+    """
     root_path = Path(root).resolve(strict=True)
-    bundle = require_ready_bundle(load_setup_bundle(root_path))
+    resolved_catalog = (
+        dict(live_physical_catalog()) if catalog is None else dict(catalog))
+    bundle = require_ready_bundle(
+        load_setup_bundle(root_path, catalog=resolved_catalog))
     snapshot = compile_setup_snapshot(
-        bundle, trusted_implementations(), verified_joins)
+        bundle, trusted_implementations(), verified_joins,
+        catalog=resolved_catalog)
     return LedgerSetup(
         config_root=root_path,
         bundle=bundle,
         snapshot=snapshot,
         preparers=source_preparer_registry(),
         mappers=role_mapper_registry(),
+        catalog=MappingProxyType(resolved_catalog),
     )
 
 

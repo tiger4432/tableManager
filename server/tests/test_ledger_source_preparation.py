@@ -68,31 +68,38 @@ def entity_binding(entity_type, columns):
     }
 
 
+#: The DT chain fixture describes a plant of its own, so it gets a `table_config.json` of
+#: its own rather than a `tables` section back inside the bundle.  Written out here, apart
+#: from `dt_chain_bundle()` and never derived from it: the point of the physical half
+#: living elsewhere is that the two sides CAN disagree, and a catalog computed from the
+#: bundle would agree by construction.  See `logical_catalog` in `test_ledger_setup_bundle`.
+DT_CHAIN_CATALOG = {
+    "dt_log": {
+        "columns": {
+            "record_id": "string", "dt_job_id": "string",
+            "event_at": "datetime", "core_wafer": "string",
+            "core_x": "number", "core_y": "number",
+            "recorded_dt_lot": "string",
+        },
+        "business_key": "record_id",
+    },
+    "dt_inventory": {
+        "columns": {
+            "dt_job_id": "string", "dt_lot": "string", "dt_slot": "number",
+            "dt_offset_x": "number", "dt_offset_y": "number",
+            "bond_wafer": "string", "bond_offset_x": "number",
+            "bond_offset_y": "number", "bond_layer": "number",
+            "final_chip": "string",
+        },
+        "business_key": "dt_job_id",
+        "indexes": [{"name": "uq_dt_inventory_job", "columns": ["dt_job_id"],
+                     "unique": True}],
+    },
+}
+
+
 def dt_chain_bundle():
     raw = logical_bundle(source_name="dt_log")
-    raw["tables"] = {
-        "dt_log": {
-            "columns": {
-                "record_id": "string", "dt_job_id": "string",
-                "event_at": "datetime", "core_wafer": "string",
-                "core_x": "number", "core_y": "number",
-                "recorded_dt_lot": "string",
-            },
-            "business_key": "record_id",
-        },
-        "dt_inventory": {
-            "columns": {
-                "dt_job_id": "string", "dt_lot": "string", "dt_slot": "number",
-                "dt_offset_x": "number", "dt_offset_y": "number",
-                "bond_wafer": "string", "bond_offset_x": "number",
-                "bond_offset_y": "number", "bond_layer": "number",
-                "final_chip": "string",
-            },
-            "business_key": "dt_job_id",
-            "indexes": [{"name": "uq_dt_inventory_job", "columns": ["dt_job_id"],
-                         "unique": True}],
-        },
-    }
     raw["virtual_joins"] = {
         "dt_job_to_inventory": {
             "left_table": "dt_log", "right_table": "dt_inventory",
@@ -603,7 +610,7 @@ def test_missing_prepared_entity_identity_refuses_before_role_mapper():
 
 
 def test_multi_core_dt_inventory_builds_stage_local_identity_and_direction_claims():
-    compiled = snapshot(dt_chain_bundle())
+    compiled = snapshot(dt_chain_bundle(), catalog=DT_CHAIN_CATALOG)
 
     class AssemblyPreparer(BaseSourcePreparer):
         def prepare_outputs(self, context, base_frame, joins):

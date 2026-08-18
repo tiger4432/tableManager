@@ -158,7 +158,7 @@ graph TD
 
 | 경로 | 무엇 |
 |---|---|
-| `server/config/ontology/ledger_config.json` | **Ledger v2 셋업 정본.** `setup_version: 3`, 필수 section 여덟(`tables`·`vocabulary`·`entities`·`packs`·`source_preparers`·`mappers`·`profiles`·`sources`) + 선택 `virtual_joins`. **이 root에는 다른 `.json`을 두지 못한다.** 작성법은 [ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md) |
+| `server/config/ontology/ledger_config.json` | **Ledger v2 셋업 정본 — «의미»만.** `setup_version: 3`, 필수 section 일곱(`vocabulary`·`entities`·`packs`·`source_preparers`·`mappers`·`profiles`·`sources`) + 선택 `virtual_joins`. **이 root에는 다른 `.json`을 두지 못한다.** 🔴 **[2026-08-18 판정] 물리 스키마는 여기 없다** — `table_config.json` 하나가 정본이고, 옛 `tables` section을 다시 적으면 `unknown_field`로 거절된다(사본 둘을 대조하는 코드가 없어 조용히 갈라졌다). 원장은 그 파일에서 `column_types`·`composite_key_source`·`business_key`를 읽고, **실물 DB 대조는 `schema_drift`가 이미 한다**. 작성법은 [ONTOLOGY_LEDGER_SETUP §5](../guide/ONTOLOGY_LEDGER_SETUP.md) |
 | `server/config/ledger_config.json` | 구 flat legacy 선언(`sources` 옆에 상위 `profiles`를 둘 수 있고, 그 `profiles`는 순수 검증·직렬화 계약이다). 남아 있는 소비자는 어드민 dry-run 경로이며 백필은 읽지 않는다 |
 
 계약과 단계 경계는 [LEDGER_TECHNICAL_SPEC §3.10](../spec/LEDGER_TECHNICAL_SPEC.md)에 있다.

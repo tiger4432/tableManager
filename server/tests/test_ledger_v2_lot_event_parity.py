@@ -61,6 +61,22 @@ def approved_entity(entity_type, key, column):
     }
 
 
+#: The PHYSICAL half of the lot_event deployment -- `table_config.json`'s job.  Written
+#: out apart from `lot_event_bundle()` and never derived from it: the ledger's own
+#: `tables` section was retired because a physical claim checked against nothing drifts in
+#: silence, and a catalog built from the bundle under test would agree by construction.
+LOT_EVENT_CATALOG = {
+    "lot_event": {
+        "columns": {
+            "lot": "string", "event_type": "string", "slots": "string",
+            "wafers": "string", "parent_lot": "string", "child_lot": "string",
+            "row_identity": "string", "event_time": "datetime",
+        },
+        "business_key": "row_identity",
+    },
+}
+
+
 def lot_event_bundle():
     entity_role = {"kind": "entity", "required": True}
     time_role = {"kind": "time", "required": True}
@@ -147,15 +163,8 @@ def lot_event_bundle():
          "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
                                       ("wafer", "wafers")))},
     ]
-    source_columns = {
-        "lot": "string", "event_type": "string", "slots": "string",
-        "wafers": "string", "parent_lot": "string", "child_lot": "string",
-        "row_identity": "string", "event_time": "datetime",
-    }
     return {
         "setup_version": SETUP_VERSION,
-        "tables": {"lot_event": {
-            "columns": source_columns, "business_key": "row_identity"}},
         "virtual_joins": {},
         "vocabulary": {
             "register@1": {
@@ -247,7 +256,9 @@ def compiled_lot_event():
         source_preparers=[("lot-event-frame", 1)],
         mappers=[("lot-event-role", 1)],
     )
-    return compile_setup_snapshot(validate_bundle(lot_event_bundle()), trusted)
+    return compile_setup_snapshot(
+        validate_bundle(lot_event_bundle(), catalog=LOT_EVENT_CATALOG), trusted,
+        catalog=LOT_EVENT_CATALOG)
 
 
 class NoJoinReader(VerifiedJoinBatchReader):

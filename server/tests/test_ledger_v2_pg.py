@@ -8,6 +8,7 @@ catalog before compiling the snapshot.
 from __future__ import annotations
 
 import contextlib
+import copy
 from datetime import datetime, timezone
 import json
 import os
@@ -34,7 +35,7 @@ from ledger.source_preparation import (
 from ledger.store import CursorVersionConflict, LedgerStore
 from ledger_trace import DEFAULT_RESOLVER_CONFIG, SqlClaimLookup, coverage, trace
 from ledger_structure import structure
-from test_ledger_setup_bundle import logical_bundle
+from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
 import virtual_join_config
 
@@ -88,9 +89,6 @@ def _declared(url):
 
 def _bundle():
     raw = logical_bundle()
-    raw["tables"][SOURCE_TABLE] = raw["tables"].pop("input_rows")
-    raw["tables"][RIGHT_TABLE] = raw["tables"].pop("reference_rows")
-    raw["tables"][RIGHT_TABLE]["indexes"][0]["name"] = UNIQUE_INDEX
     join = raw["virtual_joins"]["input_to_reference"]
     join["left_table"] = SOURCE_TABLE
     join["right_table"] = RIGHT_TABLE
@@ -98,10 +96,28 @@ def _bundle():
     return raw
 
 
-def _known_tables(raw):
+def _catalog():
+    """The scratch plant's physical schema, under this run's disposable table names.
+
+    Built from `logical_catalog` -- the fixture's PHYSICAL half -- and never from the
+    bundle `_bundle()` returns.  The ledger stopped carrying a `tables` section precisely
+    so the two halves can disagree; deriving one from the other here would put the
+    unfalsifiable check back.  See the docstring on `logical_catalog`.
+    """
+    catalog = copy.deepcopy(dict(logical_catalog()))
+    catalog[SOURCE_TABLE] = catalog.pop("input_rows")
+    catalog[RIGHT_TABLE] = catalog.pop("reference_rows")
+    catalog[RIGHT_TABLE]["indexes"][0]["name"] = UNIQUE_INDEX
+    return catalog
+
+
+CATALOG = _catalog()
+
+
+def _known_tables(catalog):
     return {
         table: {"column_types": dict(config["columns"])}
-        for table, config in raw["tables"].items()
+        for table, config in catalog.items()
     }
 
 
@@ -171,13 +187,14 @@ def pg_v2(tmp_path_factory):
         try:
             verified = tuple(virtual_join_config.load_verified_rules(
                 verifier_session, path=str(config_path),
-                known_tables=_known_tables(raw)))
+                known_tables=_known_tables(CATALOG)))
         finally:
             verifier_session.close()
         assert len(verified) == 1
         assert verified[0].unique_index == UNIQUE_INDEX
         compiled = compile_setup_snapshot(
-            validate_bundle(raw), trusted_implementations(), verified)
+            validate_bundle(raw, catalog=CATALOG), trusted_implementations(),
+            verified, catalog=CATALOG)
 
         RightBase = declarative_base()
 
@@ -372,8 +389,8 @@ def test_postgres_unapproved_binding_stops_before_atom_or_cursor(clean_pg_v2, st
 
     with pytest.raises(LedgerSetupValidationError) as exc:
         compile_setup_snapshot(
-            validate_bundle(raw), trusted_implementations(),
-            tuple(case["compiled"].verified_joins.values()))
+            validate_bundle(raw, catalog=CATALOG), trusted_implementations(),
+            tuple(case["compiled"].verified_joins.values()), catalog=CATALOG)
     assert exc.value.code == "binding_not_approved"
     assert _counts(case) == (0, 0)
 

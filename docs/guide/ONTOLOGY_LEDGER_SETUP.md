@@ -28,7 +28,6 @@ Position/Frame, 마이그레이션·cursor reset 중심의 옛 설정 절차는 
 ```text
 server/config/ontology/ledger_config.json
   ├─ setup_version      현재 정확히 3
-  ├─ tables             물리 relation/column/key/index
   ├─ vocabulary         낼 수 있는 술어와 목적어 모양
   ├─ entities           개체의 정체성과 키
   ├─ packs              Role → Claim/LedgerFrame
@@ -54,7 +53,7 @@ strict Bundle validation
 
 | 층 | 질문 | 소유 section |
 |---|---|---|
-| 물리 | 어느 테이블의 어느 컬럼을 어떤 키로 읽나? | `tables`, `virtual_joins`, `sources` |
+| 물리 | 어느 테이블의 어느 컬럼을 어떤 키로 읽나? | **`table_config.json`**(§5) · `virtual_joins`, `sources` |
 | 의미 | 무엇을 개체·관계·시각으로 말하나? | `vocabulary`, `entities`, `packs`, `profiles` |
 | 실행 | 누가 행을 준비하고 Role로 해석하나? | `source_preparers`, `mappers`, `sources` |
 
@@ -90,6 +89,10 @@ server/config/sample/ontology/transfer_explorer/ledger_config.json
 
 같은 단일 파일 모양이고, 운영 root가 쓰지 않는 **선택 section `virtual_joins`**를 실제로
 쓰는 유일한 예제다(§6).
+
+⚠️ **이 샘플은 «다른 공장»이다.** 그 배포의 물리 스키마는 그 배포의 `table_config.json`
+(`server/tests/support/transfer_explorer_table_config.json`)이 들고 있고, 이름이 같은
+운영 테이블과 **같은 표가 아니다**(§5.4).
 
 이 샘플은 다음을 보여준다.
 
@@ -147,7 +150,8 @@ conda run -n assy_manager python server/scripts/convert_ontology_to_single_file.
 
 설정을 열기 전에 아래 질문에 답한다.
 
-1. **물리 relation은 이미 존재하는가?** `tables` section은 DDL이 아니다.
+1. **물리 relation은 이미 존재하고 `table_config.json`에 선언돼 있는가?** 그 선언은
+   DDL이 아니다 — 표를 만들어 주지 않는다(§5).
 2. **한 source event는 한 행인가, 여러 행의 group인가?**
 3. **세계 시각 컬럼은 무엇이며 timezone은 무엇인가?** 묵시적 기본 timezone은 없다.
 4. **cursor 동률을 제거할 catalog-declared UNIQUE key는 무엇인가?**
@@ -173,12 +177,11 @@ physical relation 컬럼이어야 한다.
 
 ## 4. `ledger_config.json` — 하나뿐인 파일과 그 최상위 모양
 
-최상위는 `setup_version` 하나와 section 여덟, 그리고 선택 section 하나다.
+최상위는 `setup_version` 하나와 section 일곱, 그리고 선택 section 하나다.
 
 ```json
 {
   "setup_version": 3,
-  "tables": {},
   "vocabulary": {},
   "entities": {},
   "packs": {},
@@ -192,7 +195,6 @@ physical relation 컬럼이어야 한다.
 | 최상위 키 | 필수 | 용도 |
 |---|---:|---|
 | `setup_version` | 예 | 문법 세대. 현재 정확히 `3`. 다른 값은 `unsupported_setup_version` |
-| `tables` | 예 | 물리 relation/column/key/index (§5) |
 | `vocabulary` | 예 | 술어의 닫힌 서명 (§7.1) |
 | `entities` | 예 | 개체 ID와 key shape (§7.2) |
 | `packs` | 예 | Role → Claim 문법 (§7.5) |
@@ -202,15 +204,22 @@ physical relation 컬럼이어야 한다.
 | `sources` | 예 | 실행 계약 조립 (§7.7) |
 | `virtual_joins` | **아니오** | verified read-only batch join (§6) |
 
-🔴 **여덟은 비어 있어도 «있어야» 한다.** 키가 없는 것과 `{}`인 것은 읽는 사람에게 다른
+🔴 **일곱은 비어 있어도 «있어야» 한다.** 키가 없는 것과 `{}`인 것은 읽는 사람에게 다른
 뜻이고, 「이 section은 나에게 해당 없음」은 적어 둘 값어치가 있는 결정이다. 키 자체가
 빠지면 `missing_field`다.
+
+🔴 **`tables`는 이 표에 없다. 없어진 것이 아니라 «옮겨간» 것이다** (소유자 판정,
+2026-08-18: 「ledger json에 tables 왜 또 있어?」). 물리 스키마의 정본은
+**`server/config/table_config.json`** 하나이고 §5가 그 이야기다. 이 파일에 `tables`를
+다시 적으면 `unknown_field`(`ledger_config.tables`)로 거절된다 — 조용히 무시하지 않는
+이유는, 아무도 읽지 않는 물리 선언이 파일 안에 앉아 있는 것이 바로 이 section을 없앤
+이유이기 때문이다.
 
 `setup_version` 하나가 예전 다섯 파일의 `schema_version` 다섯 개가 하던 말을 한다. 파일별
 버전 필드는 **없다** — `schema_version`을 최상위에 적으면 `unknown_field`로 거절된다.
 표 밖의 다른 키도 마찬가지다.
 
-section 여덟은 사용 여부와 관계없이 전수 검증된다. “아직 Source가 선택하지 않은 Profile”도
+section 일곱은 사용 여부와 관계없이 전수 검증된다. “아직 Source가 선택하지 않은 Profile”도
 unknown Entity/column을 숨길 수 없다. 모든 오류는 `code`, 정확한 JSON `path`, `message`로
 돌아오며 여러 오류의 순서도 결정적이다.
 
@@ -222,78 +231,78 @@ unknown Entity/column을 숨길 수 없다. 모든 오류는 `code`, 정확한 J
 
 ---
 
-## 5. `tables` — 물리 스키마와 유일성 근거
+## 5. 물리 스키마는 `table_config.json`이 정본이다
 
-현재 `lot_event` 운영 선언 전체다(파일 안 `tables` 값).
+🔴 **[2026-08-18 판정] `ledger_config.json`에는 `tables` section이 없다.** 원장이 물리
+스키마를 물어야 할 때는 **`server/config/table_config.json`**을 읽는다. 이 절은 그 파일을
+다시 설명하지 않는다 — 그 파일의 정본 설명은 [CONFIG_GUIDE](CONFIG_GUIDE.md)에 있다.
+여기서는 **원장이 그 선언에서 무엇을 읽어 가는지**만 적는다.
 
-```json
-{
-  "lot_event": {
-    "columns": {
-      "lot_id": "string",
-      "event_time": "datetime",
-      "txn_seq": "string",
-      "event_type": "string",
-      "parent_lot": "string",
-      "child_lot": "string",
-      "slotnumbers": "string",
-      "waferids": "string"
-    },
-    "business_key": "txn_seq"
-  }
-}
+### 5.1 왜 옮겼나
+
+`lot_event`를 양쪽에서 대조한 실측(2026-08-18, 제거 직전):
+
+| | `ledger_config.tables` | `table_config.json` |
+|---|---|---|
+| 컬럼 | 8 | 8 |
+| 한쪽에만 있는 컬럼 | 없음 | |
+| 타입이 다른 컬럼 | 없음 (8/8 일치) | |
+| 업무 키 | `txn_seq` | `txn_seq` |
+
+**같은 사실의 두 번째 사본이었다.** 그리고 **도는 코드 중 둘을 대조하는 것이 없었다**
+(테스트 하나가 `lot_event` 한 relation만 못박고 있었을 뿐이고, 그 핀은 다음 relation에
+대해서는 아무 말도 하지 않는다). 실제로 샘플 root 쪽 사본은 이미 **어디에도 없는 컬럼**으로
+갈라져 있었고 아무 검사도 그것을 잡지 못했다.
+
+🔴 **옮기면 실물 DB 대조가 공짜로 따라온다.** `server/schema_drift.py`(`_register_dynamic_models`)가
+SQLAlchemy에 매핑된 표 전부를 훑는데, 여기에 `table_config.json`에서 만들어진 동적 표가
+포함된다. 즉 `table_config.json`에 적힌 컬럼이 DB에 없으면 **이미 잡힌다**. 원장 전용
+「선언 대 DB」 검사는 **만들지 않는다** — 검증기가 둘이면 둘이 어긋날 수 있고, 그것이 이
+변경으로 없앤 바로 그 모양이다.
+
+### 5.2 원장이 `table_config.json`에서 읽어 가는 것
+
+| `table_config.json` 키 | 원장이 쓰는 곳 |
+|---|---|
+| `column_types` | preparer `input_columns`·mapper `input_columns`·`order_by`·`cursor.columns`·`occurred_at.column`·registration probe 컬럼이 **실재하는 컬럼인지** |
+| `composite_key_source` | 그 컬럼 묶음이 **행의 유일 키**다. cursor 전순서 증거로 인정된다 |
+| `business_key` | 그 컬럼이 `column_types`에 실재할 때만 유일 키로 인정된다 |
+
+⚠️ **`map_key_columns`는 유일 키가 아니다.** 한 맵에 여러 행이 들어가는 조회용 접두사이므로
+원장은 이것을 cursor 근거로 받지 않는다. 받으면 유일하지 않은 정렬을 커서로 승인하게 되고,
+그 방향의 오류는 **이벤트를 잃는다**.
+
+`business_key`, `composite_key_source`, 또는 `unique: true` index의 **전체 컬럼 집합**만
+cursor 전순서의 증거가 된다. 컬럼이 존재한다는 사실, `identity`, `group_by`, 비-unique
+index는 유일성 증거가 아니다. 예를 들어 `event_at`만으로 정렬하면 같은 시각의 두 행 순서가
+불안정하므로 `invalid_cursor`다.
+
+### 5.3 인제션이 쓰지 않는 표 — 그래도 `table_config.json`에 선언한다
+
+**원장만 읽고 인제션은 쓰지 않는 표**(`void`가 그 모양이다)가 `table_config.json`에 없을 수
+있다. 그때의 답은 **「`table_config.json`에 선언한다」**이지 「원장에 사본을 만든다」가
+아니다. 그 파일이 이 시스템의 물리 스키마 정본이고, **선언하면 드리프트 검사와 그리드가
+함께 따라온다.**
+
+선언되지 않은 표를 소스가 가리키면 이름을 대며 거절한다.
+
+```
+unknown_relation @ bundle.sources.<id>.relation
+  relation 'xxx' is not declared in table_config.json; declare the table there first
+  — the ledger reads the physical schema from that file and an undeclared table has
+  no columns, no key, and no drift check
 ```
 
-### 5.1 section 모양
+🔴 이 거절은 **다른 컬럼 오류보다 먼저** 나온다. 표가 선언돼 있지 않으면 그 아래의 컬럼
+불평은 전부 파생물이고 **엉뚱한 파일을 고치라고 가리킨다**.
 
-`tables`는 relation 이름 → descriptor 맵이다. Source를 선언하려면 그 base relation이 여기
-있어야 한다.
+### 5.4 다른 스키마의 배포는 자기 `table_config.json`을 가진다
 
-### 5.2 table descriptor
-
-| 필드 | 필수 | 설명 |
-|---|---:|---|
-| `columns` | 예 | 물리 컬럼명 → 비어 있지 않은 타입 문자열 |
-| `business_key` | 아니오 | 한 컬럼 또는 컬럼 배열로 표현한 업무상 유일 키 |
-| `composite_key` | 아니오 | 여러 컬럼을 합친 유일 키 |
-| `indexes` | 아니오 | 물리 index 선언 목록. `name`, `columns`, `unique` 사용 |
-
-예를 들어 두 컬럼 전체가 유일성 근거라면 다음처럼 쓴다.
-
-```json
-{
-  "measurement_log": {
-    "columns": {
-      "event_at": "datetime",
-      "machine_id": "string",
-      "sequence_no": "number",
-      "value": "number"
-    },
-    "composite_key": ["machine_id", "sequence_no"],
-    "indexes": [
-      {
-        "name": "uq_measurement_machine_sequence",
-        "columns": ["machine_id", "sequence_no"],
-        "unique": true
-      },
-      {
-        "name": "ix_measurement_event_at",
-        "columns": ["event_at"],
-        "unique": false
-      }
-    ]
-  }
-}
-```
-
-`business_key`, `composite_key`, 또는 `unique: true` index의 **전체 컬럼 집합**만 cursor
-전순서의 증거가 된다. 컬럼이 존재한다는 사실, `identity`, `group_by`, 비-unique index는
-유일성 증거가 아니다. 예를 들어 `event_at`만으로 정렬하면 같은 시각의 두 행 순서가
-불안정하므로 `invalid_cursor`다. 위 예시는 `machine_id`와 `sequence_no`를 모두 포함해야
-동률이 제거된다.
-
-Catalog 선언은 물리 DB를 만들거나 UNIQUE index를 생성하지 않는다. 실제 DB 구조가 별도로
-존재해야 하며, virtual join의 경우 physical verifier가 그 UNIQUE index를 직접 확인한다.
+샘플 root(`server/config/sample/ontology/transfer_explorer/`)는 **다른 공장**의 선언을
+보여 준다. 그 배포의 물리 스키마는 그 배포의 `table_config.json`이고, 원장 config 안의
+사본이 아니다. 샘플이 쓰는 것은
+`server/tests/support/transfer_explorer_table_config.json`이다 — config root 안에 두지
+않는 이유는 §4.1의 「root에 다른 JSON을 두지 않는다」가 그대로 적용되기 때문이다.
 
 ---
 
@@ -348,7 +357,7 @@ join이 필요 없으면 이 키를 아예 쓰지 않는다. 빈 `{}`를 두어�
 
 ### 6.1 join이 승인되려면
 
-1. 왼쪽·오른쪽 relation과 모든 컬럼이 `tables` section에 존재해야 한다.
+1. 왼쪽·오른쪽 relation과 모든 컬럼이 `table_config.json`에 선언돼 있어야 한다.
 2. 오른쪽 `join_key.right` 전체를 정확히 덮는 catalog 유일 키 또는 UNIQUE index가 있어야
    한다.
 3. 실제 PostgreSQL의 해당 UNIQUE index를 physical verifier가 확인해야 한다.
@@ -872,7 +881,7 @@ class로 승격하지 않는다.
 | 필드 | 설명 |
 |---|---|
 | source ID | `profiles.<id>.source`가 참조하는 이름. **여기 있으면 이 소스는 돈다**(§8) |
-| `relation` | `tables` section의 base physical relation |
+| `relation` | `table_config.json`이 선언한 base physical relation |
 | `driver.unit` | `row` 또는 `group` |
 | `driver.identity` | 결정적인 source event identity 컬럼 |
 | `driver.group_by` | group event 조립 컬럼. row이면 빈 배열 |
@@ -938,8 +947,10 @@ Timezone은 “DB session timezone을 쓰겠지”라고 추측하지 않는다.
 
 ## 10. 새 Source를 추가하는 실제 순서
 
-전부 `server/config/ontology/ledger_config.json` **한 파일 안**에서 일어난다. 아래 순서를
-바꾸면 뒤 단계의 오류가 앞 단계 결함을 가린다.
+의미 선언은 전부 `server/config/ontology/ledger_config.json` **한 파일 안**에서 일어난다.
+🔴 **그 앞에 파일이 하나 더 있다 — Step 2의 `server/config/table_config.json`이다.** 물리
+스키마는 그 파일이 정본이고(§5), 표가 거기 선언되기 전에는 원장이 그 표에 대해 아무 말도
+할 수 없다. 아래 순서를 바꾸면 뒤 단계의 오류가 앞 단계 결함을 가린다.
 
 🔴 **`sources`(Step 9)를 마지막에 적는다.** 그것이 「켠다」이기 때문이다(§8). 앞의 여덟
 단계는 아직 아무것도 돌리지 않는다.
@@ -956,17 +967,25 @@ Timezone은 “DB session timezone을 쓰겠지”라고 추측하지 않는다.
 이 단계는 Ledger config 작업이 아니라 Source 소유 작업이다. Ledger config가 relation을
 생성하거나 데이터 품질을 고쳐 주지 않는다.
 
-### Step 2. `tables` section에 physical contract 등록
+### Step 2. `table_config.json`에 표를 «먼저» 선언한다
 
-새 relation의 모든 physical column을 적고, cursor 전순서와 join 단일성을 증명할 key/index를
-선언한다. 다른 section에서 컬럼을 먼저 참조하지 않는다.
+🔴 **원장 파일을 열기 전에 하는 일이고, 건너뛸 수 없다.** 표가
+`server/config/table_config.json`에 없으면 Step 9에서 `unknown_relation`으로 거절되며,
+그때 나오는 문장이 다시 여기로 보낸다(§5.3).
+
+- `column_types`에 모든 물리 컬럼과 타입을 적는다.
+- 행의 유일 키를 선언한다 — 여러 컬럼을 합쳐 만든다면 `composite_key_source`,
+  한 컬럼이 그대로 신원이면 `business_key`.
+- **인제션이 그 표에 쓰지 않더라도 선언한다.** 원장만 읽는 표도 마찬가지다(`void`가 그
+  모양이다). 선언해야 드리프트 검사와 그리드가 따라온다.
 
 검토 질문:
 
 - 식별자를 `number`로 잘못 선언하지 않았는가?
-- composite key 일부만 unique라고 오인하지 않았는가?
-- 비-unique index를 cursor 증거로 쓰지 않았는가?
-- catalog 선언과 실제 DB가 같은가?
+- 유일 키의 일부만 적어 두고 전체라고 오인하지 않았는가?
+- `map_key_columns`를 유일 키로 착각하지 않았는가? (아니다 — §5.2)
+- 선언한 컬럼이 실제 DB에 있는가? — 여기서만큼은 **직접 대조하지 않아도 된다.**
+  `schema_drift`가 이 파일을 실물 DB와 대조한다. 그것이 원장이 이 파일을 읽는 이유다.
 
 ### Step 3. 필요한 경우 `virtual_joins` section 추가
 
@@ -975,7 +994,7 @@ EventFrame을 완성할 수 있으면 이 선택 section을 아예 쓰지 않는
 
 join을 추가할 때:
 
-1. 오른쪽 relation도 `tables` section에 등록한다.
+1. 오른쪽 relation도 `table_config.json`에 선언한다.
 2. 오른쪽 key 전체의 catalog UNIQUE 근거를 선언한다.
 3. `join_key`, `expose`, `join_cardinality: "one"`을 작성한다.
 4. physical verifier가 실제 index를 찾을 수 있는 테스트 환경을 준비한다.
@@ -1077,7 +1096,7 @@ Source 이름과 `Profile.source`는 정확히 일치해야 한다.
 현재 production 선언을 한 줄로 읽으면 다음과 같다.
 
 ```text
-tables.lot_event
+table_config.json / lot_event
   physical: lot_id/event_time/txn_seq/...
   unique proof: txn_seq business_key
 
@@ -1176,8 +1195,8 @@ CoreDie@1
 - dependency가 늦게 도착하면 replay 후보로 남길 수 있지만 cursor reset을 자동 실행하지
   않는다.
 
-샘플의 `ledger_config.json` 하나가 `tables`·`virtual_joins`·각 Entity·Pack·Profile mapping을
-함께 보여 주므로 새 transfer source를 설계할 때 복사 가능한 출발점이다. 🔴 이 샘플은
+샘플의 `ledger_config.json` 하나가 `virtual_joins`·각 Entity·Pack·Profile mapping을 함께
+보여 주고 그 배포의 물리 스키마는 자기 `table_config.json`이 든다(§5.4). 그러므로 새 transfer source를 설계할 때 복사 가능한 출발점이다. 🔴 이 샘플은
 Preparer `direct-join@1`과 Mapper `declarative-role@1`을 쓴다 — **전용 Python이 0줄인 소스가
 실제로 어떤 모양인지**가 여기 있다.
 
@@ -1189,7 +1208,7 @@ Preparer `direct-join@1`과 Mapper `declarative-role@1`을 쓴다 — **전용 P
 
 검증은 다음을 모두 전수 대조한다.
 
-- 최상위 exact shape(필수 section 여덟 + `setup_version`, 여분 키 금지)와 config root에 다른
+- 최상위 exact shape(필수 section 일곱 + `setup_version`, 여분 키 금지)와 config root에 다른
   JSON이 없음
 - 모든 catalog relation/column/key/index
 - 모든 Vocabulary/Entity/Pack/Profile
@@ -1371,7 +1390,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `invalid_mapper` (`Profile column ... is missing`) | physical/EventFrame 층 혼동 | 🔴 **Profile이 binding할 수 있는 컬럼 집합은 정확히 mapper의 `input_columns`다.** `tables`에만 있고 mapper input에 없는 컬럼은 binding할 수 없고, preparer `output_columns`에 있어도 mapper input에 없으면 거절된다 |
+| `invalid_mapper` (`Profile column ... is missing`) | physical/EventFrame 층 혼동 | 🔴 **Profile이 binding할 수 있는 컬럼 집합은 정확히 mapper의 `input_columns`다.** `table_config.json`에만 있고 mapper input에 없는 컬럼은 binding할 수 없고, preparer `output_columns`에 있어도 mapper input에 없으면 거절된다 |
 | `invalid_cursor` | order/cursor가 UNIQUE key 전체를 안 포함 | business/composite/UNIQUE index 전체 컬럼 추가 |
 | join은 선언됐는데 compile 실패 | left key가 Preparer input에 없거나 physical proof 없음 | input_columns와 실제 UNIQUE index 확인 |
 | `untrusted_implementation` | sample ID를 production에 복사 | trusted code registry 등록 또는 기존 구현 재사용 |
@@ -1393,9 +1412,11 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 ## 16. 작성 완료 체크리스트
 
-### 물리/카탈로그
+### 물리/카탈로그 (`table_config.json` — §5)
 
-- [ ] relation과 physical columns가 실제 DB와 일치한다.
+- [ ] 표가 `server/config/table_config.json`에 선언돼 있다. **원장 파일에 `tables`를 적지
+      않았다**(적으면 `unknown_field`).
+- [ ] relation과 physical columns가 실제 DB와 일치한다. — 이 대조는 `schema_drift`가 한다.
 - [ ] 식별자와 수치 타입을 구분했다.
 - [ ] order/cursor가 catalog-declared UNIQUE key 전체를 포함한다.
 - [ ] join 오른쪽 key는 catalog와 실제 DB 모두에서 UNIQUE다.

@@ -1,0 +1,40 @@
+{
+  "__comment": [
+    "Physical schema of the DEPLOYMENT the transfer sample describes -- NOT this",
+    "repository's plant. It is a `table_config.json` because that is the one file",
+    "shape this system reads physical schema from; a different plant has a different",
+    "one. It lives here, beside the fixture that loads it, rather than inside",
+    "server/config/sample/ontology/transfer_explorer/, because that root is refused",
+    "if it holds any JSON other than ledger_config.json (the single-file promise).",
+    "",
+    "WARNING: dt_log and dt_inventory here are NOT the dt_log and dt_inventory of",
+    "server/config/table_config.json. Same names, different columns. See the round",
+    "report -- the collision predates this file and is not resolved by it."
+  ],
+  "dt_inventory": {
+    "column_types": {
+      "dt_job_id": "string",
+      "dt_lot": "string",
+      "dt_slot": "number",
+      "dt_offset_x": "number",
+      "dt_offset_y": "number",
+      "bond_wafer": "string",
+      "bond_offset_x": "number",
+      "bond_offset_y": "number",
+      "bond_layer": "number",
+      "final_chip": "string"
+    },
+    "business_key": "dt_job_id"
+  },
+  "dt_log": {
+    "column_types": {
+      "record_id": "string",
+      "event_at": "datetime",
+      "dt_job_id": "string",
+      "core_wafer": "string",
+      "core_x": "number",
+      "core_y": "number"
+    },
+    "business_key": "record_id"
+  }
+}

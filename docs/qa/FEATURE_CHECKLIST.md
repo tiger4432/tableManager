@@ -236,7 +236,7 @@
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
 | **Compiled config 탐색** | SourcePlan·Registry·Mapping·Binding을 server-side 검색하고 실제 reference/Used by/leaf pointer/current route와 다른 path를 표시한다. wrong kind/version/signature/unresolved를 구별한다 | `/admin.html#ontology` | `server/ledger/config_explorer.py` · `client2/src/ontology_explorer*` |
-| **File-backed transfer 왕복** | 운영 밖 sample을 production loader/compiler로 열어 `CoreDie→DTDie→BondComponent→FinalChip`, DTJob/LotSlot, transferred_to, VerifiedJoin, SourcePlan을 모두 왕복한다 | QA sample app | `server/config/sample/ontology/transfer_explorer/` · `server/tests/support/ontology_explorer_sample.py` |
+| **File-backed transfer 왕복** | 운영 밖 sample을 production loader/compiler로 열어 `CoreDie→DTDie→BondComponent→FinalChip`, DTJob/LotSlot, transferred_to, VerifiedJoin, SourcePlan을 모두 왕복한다. 🔴 **[2026-08-18] 이 샘플은 「다른 공장」이고 자기 `table_config.json`을 든다** — 이름이 같아도 운영 `dt_log`/`dt_inventory`와 **같은 표가 아니다**(컬럼이 겹치지 않는다). ⚠️ **그 사본이 종전 `ledger_config.tables`에 있을 땐 아무것도 대조하지 않아, 어디에도 없는 컬럼 이름이 초록으로 통과했다** | QA sample app | `server/config/sample/ontology/transfer_explorer/` · `server/tests/support/transfer_explorer_table_config.json` · `server/tests/support/ontology_explorer_sample.py` |
 | **안전한 초안 lifecycle** | active/draft 분리 → 동일 compiler preview → immutable review → explicit revise → base/hash CAS + consumer convergence. dirty 이동은 유지/폐기/취소, invalid/stale은 active fallback | 같은 화면의 `초안 편집` | `server/ledger/config_drafts.py` · `/admin/ontology-explorer/*` |
 
 자동 점검: mixed context token과 늦은 응답이 Inspector를 바꾸지 않는지, 정/역참조가 1:1인지,

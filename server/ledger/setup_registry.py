@@ -418,17 +418,26 @@ def snapshot_compile_errors(
     bundle: LedgerSetupBundle,
     trusted: TrustedImplementationCatalog,
     verified_joins: Sequence[VerifiedJoinDescriptor] = (),
+    *,
+    catalog: Mapping[str, Any] | None = None,
 ) -> tuple[LedgerSetupValidationError, ...]:
-    """Return deterministic compile/readiness errors without creating a snapshot."""
+    """Return deterministic compile/readiness errors without creating a snapshot.
+
+    `catalog` must be the SAME physical catalog the bundle was loaded against.  This
+    function re-validates, and re-validating against a different catalog would let a
+    bundle load clean and then fail to compile for reasons the loader never saw -- two
+    verifiers disagreeing, which is the shape this whole change removes.  `None` means
+    the live `table_config.json`, which is what production loads with.
+    """
     if not isinstance(bundle, LedgerSetupBundle):
         raise TypeError("snapshot compiler requires a LedgerSetupBundle")
     if not isinstance(trusted, TrustedImplementationCatalog):
         raise TypeError("snapshot compiler requires a TrustedImplementationCatalog")
 
-    structural = validate_bundle_errors(bundle.to_mapping())
+    structural = validate_bundle_errors(bundle.to_mapping(), catalog=catalog)
     if structural:
         return structural
-    validated = validate_bundle(bundle.to_mapping())
+    validated = validate_bundle(bundle.to_mapping(), catalog=catalog)
     readiness = bundle_readiness_errors(validated)
     if readiness:
         return readiness
@@ -538,12 +547,18 @@ def compile_setup_snapshot(
     bundle: LedgerSetupBundle,
     trusted: TrustedImplementationCatalog,
     verified_joins: Sequence[VerifiedJoinDescriptor] = (),
+    *,
+    catalog: Mapping[str, Any] | None = None,
 ) -> LedgerSetupSnapshot:
-    """Compile one validated, approved Bundle without source or database execution."""
-    issues = snapshot_compile_errors(bundle, trusted, verified_joins)
+    """Compile one validated, approved Bundle without source or database execution.
+
+    `catalog` is the physical relation shape; see `snapshot_compile_errors`.
+    """
+    issues = snapshot_compile_errors(
+        bundle, trusted, verified_joins, catalog=catalog)
     if issues:
         raise issues[0]
-    bundle = validate_bundle(bundle.to_mapping())
+    bundle = validate_bundle(bundle.to_mapping(), catalog=catalog)
 
     vocabulary = _compile_vocabulary(bundle.section("vocabulary"))
     entities = _compile_entities(bundle.section("entities"))

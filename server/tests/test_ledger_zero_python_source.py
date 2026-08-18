@@ -47,10 +47,6 @@ def _column(name):
 #: and nothing here needs them.
 SHIPMENT_SETUP = {
     "setup_version": 3,
-    "tables": {"shipment": {
-        "columns": {"shipment_id": "string", "box": "string",
-                    "shipped_at": "datetime"},
-        "business_key": "shipment_id"}},
     "virtual_joins": {},
     "vocabulary": {"register@1": {
         "status": "active", "layer": "ontology", "subjects": ["Box@1"],
@@ -98,6 +94,20 @@ SHIPMENT_SETUP = {
 }
 
 
+#: The PHYSICAL half of the same deployment -- what `server/config/table_config.json`
+#: holds for a real one.  It is written out here rather than inside `SHIPMENT_SETUP` and
+#: is never derived from it: the ledger dropped its own `tables` section because a
+#: physical claim it made about itself was checked against nothing, and a catalog computed
+#: from the setup under test would restore exactly that.
+SHIPMENT_CATALOG = {
+    "shipment": {
+        "columns": {"shipment_id": "string", "box": "string",
+                    "shipped_at": "datetime"},
+        "business_key": "shipment_id",
+    },
+}
+
+
 class _NoJoin(VerifiedJoinBatchReader):
     def read_chunk(self, descriptor, keys):
         raise AssertionError("a simple source reads no joins")
@@ -105,8 +115,10 @@ class _NoJoin(VerifiedJoinBatchReader):
 
 @pytest.fixture(scope="module")
 def snapshot():
-    bundle = require_ready_bundle(validate_bundle(SHIPMENT_SETUP))
-    return compile_setup_snapshot(bundle, trusted_implementations(), ())
+    bundle = require_ready_bundle(
+        validate_bundle(SHIPMENT_SETUP, catalog=SHIPMENT_CATALOG))
+    return compile_setup_snapshot(
+        bundle, trusted_implementations(), (), catalog=SHIPMENT_CATALOG)
 
 
 @pytest.fixture

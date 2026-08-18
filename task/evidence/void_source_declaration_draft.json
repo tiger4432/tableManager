@@ -1,41 +1,4 @@
 {
-  "tables": {
-    "void": {
-      "columns": {
-        "base_wafer_id": "string",
-        "base_x": "number",
-        "base_y": "number",
-        "layer": "number",
-        "inchip_x": "number",
-        "inchip_y": "number",
-        "radius_x": "number",
-        "radius_y": "number",
-        "classname": "string"
-      },
-      "composite_key": [
-        "base_wafer_id",
-        "base_x",
-        "base_y",
-        "layer",
-        "inchip_x",
-        "inchip_y"
-      ],
-      "indexes": [
-        {
-          "name": "uq_void_site",
-          "columns": [
-            "base_wafer_id",
-            "base_x",
-            "base_y",
-            "layer",
-            "inchip_x",
-            "inchip_y"
-          ],
-          "unique": true
-        }
-      ]
-    }
-  },
   "vocabulary": {
     "on_wafer@1": {
       "status": "active",

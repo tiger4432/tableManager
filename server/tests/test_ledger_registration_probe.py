@@ -100,10 +100,13 @@ def _plan_with_probe(probe):
     setup = load_setup()
     logical = setup.bundle.to_mapping()
     logical["sources"]["lot_event"]["driver"]["registration_probe"] = probe
-    bundle = require_ready_bundle(validate_bundle(logical))
+    # Re-validating the live bundle must judge it against the SAME physical catalog the
+    # load used -- `setup.catalog` carries it -- or the probe would be checked against one
+    # world and the plan compiled against another.
+    bundle = require_ready_bundle(validate_bundle(logical, catalog=setup.catalog))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(),
-        tuple(setup.snapshot.verified_joins.values()))
+        tuple(setup.snapshot.verified_joins.values()), catalog=setup.catalog)
     return snapshot.source_plans["lot_event"]
 
 
@@ -176,10 +179,10 @@ def test_a_malformed_probe_is_refused_at_load_with_its_own_code(probe, code):
     setup = load_setup()
     logical = setup.bundle.to_mapping()
     logical["sources"]["lot_event"]["driver"]["registration_probe"] = probe
-    issues = validate_bundle_errors(logical)
+    issues = validate_bundle_errors(logical, catalog=setup.catalog)
     assert code in {issue.code for issue in issues}, [i.to_mapping() for i in issues]
     with pytest.raises(LedgerSetupValidationError):
-        validate_bundle(logical)
+        validate_bundle(logical, catalog=setup.catalog)
 
 
 def test_the_shipped_config_still_loads_without_a_probe():

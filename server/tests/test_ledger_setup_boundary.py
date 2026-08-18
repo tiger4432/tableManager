@@ -14,10 +14,13 @@ from ledger.setup import (
     LedgerSetupError,
     dry_run_report,
     execute_selected_cursor_batch,
+    live_physical_catalog,
     load_setup,
     main as setup_main,
+    physical_catalog_path,
     preview_selected_cursor_batch,
 )
+from ledger.setup_bundle import LedgerSetupValidationError, load_setup_bundle
 from ledger.source_preparation import VerifiedJoinBatchReader
 
 
@@ -106,14 +109,53 @@ def test_one_file_is_the_only_entry_and_compiles_deterministically():
 # compared to is gone, not because it stopped passing.
 
 
-def test_lot_event_catalog_matches_current_physical_table_contract():
-    table_path = DEFAULT_ONTOLOGY_ROOT.parent / "table_config.json"
-    table_config = json.loads(table_path.read_text(encoding="utf-8"))["lot_event"]
+# SUPERSEDED: test_lot_event_catalog_matches_current_physical_table_contract.
+# Its subject was the ledger's OWN `tables` section, pinned column-for-column against
+# `table_config.json` so the two copies could not drift apart. That duplicate no longer
+# exists -- `ledger_config.json` has no `tables` section and the ledger reads the physical
+# schema straight from `table_config.json` -- so there is nothing left to compare and the
+# assertion could only ever raise KeyError. It is REPLACED rather than deleted, because
+# the invariant it protected did not disappear with it, it moved: the question is no
+# longer "do the two copies agree" but "is the one copy the thing the ledger actually
+# read". The two tests below answer that -- one that the catalog the setup carries IS the
+# adaptation of `table_config.json`, one that re-introducing a second copy is refused by
+# name instead of being quietly ignored (a silently-ignored section is how a stale
+# duplicate would come back).
+def test_loaded_setup_carries_the_adaptation_of_the_live_table_config():
+    declared = json.loads(
+        physical_catalog_path().read_text(encoding="utf-8"))["lot_event"]
     setup = load_setup()
-    declared = setup.bundle.section("tables")["lot_event"]
 
-    assert dict(declared["columns"]) == table_config["column_types"]
-    assert declared["business_key"] == table_config["business_key"]
+    # The expected adaptation is spelled out here rather than obtained by calling
+    # `load_physical_catalog` on the same file: a test that ran the translator against
+    # itself would pass no matter what the translator did.
+    expected = {"columns": dict(declared["column_types"])}
+    if declared.get("composite_key_source"):
+        expected["composite_key"] = list(declared["composite_key_source"])
+    if declared.get("indexes"):
+        expected["indexes"] = [dict(item) for item in declared["indexes"]]
+    # `business_key` is carried only when it names a column OF the relation; a key
+    # pointing at something that is not a column certifies no ordering.
+    if declared.get("business_key") in expected["columns"]:
+        expected["business_key"] = declared["business_key"]
+
+    assert dict(setup.catalog["lot_event"]) == expected
+    # And it is the catalog the validation used, not one re-read afterwards.
+    assert setup.snapshot.source_plans["lot_event"].relation == "lot_event"
+
+
+def test_a_tables_section_in_the_ledger_file_is_refused_by_name(tmp_path):
+    root = copied_root(tmp_path)
+    config_path = root / "ledger_config.json"
+    document = json.loads(config_path.read_text(encoding="utf-8"))
+    document["tables"] = {"lot_event": {"columns": {"lot_id": "string"}}}
+    config_path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(LedgerSetupValidationError) as exc:
+        load_setup_bundle(root, catalog=live_physical_catalog())
+
+    assert exc.value.code == "unknown_field"
+    assert exc.value.path == "ledger_config.tables"
 
 
 def test_operator_report_is_ready_and_explicitly_non_destructive():

@@ -14,6 +14,8 @@ import re
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
+from . import setup_bundle
+
 
 KIND_ORDER = {
     "source_plan": 0,
@@ -336,6 +338,24 @@ class _IndexBuilder:
         )
 
 
+def _setup_catalog(setup: Any) -> Mapping[str, Any]:
+    """The physical catalog this setup was VALIDATED against, never a fresh guess.
+
+    🔴 NO SILENT FALLBACK TO THE LIVE FILE.  A setup validated against one catalog and
+    displayed against another is a screen that agrees with nothing -- and it would show
+    the operator's production tables underneath a sample's declarations.  A carrier that
+    does not hold one is refused by name, which is a bug report; loading the live file
+    here would have been a false green.
+    """
+    catalog = getattr(setup, "catalog", None)
+    if not isinstance(catalog, Mapping):
+        raise ConfigExplorerError(
+            "physical_catalog_missing", "setup.catalog",
+            f"the setup carries no physical catalog; it must be loaded with the "
+            f"{setup_bundle.PHYSICAL_CATALOG_FILENAME} shape it was validated against")
+    return catalog
+
+
 def build_explorer_index(setup: Any) -> ExplorerIndex:
     """Build one deterministic graph from one compiled cutover setup."""
     snapshot = setup.snapshot
@@ -481,14 +501,42 @@ def build_explorer_index(setup: Any) -> ExplorerIndex:
                         entity_pointer,
                     )
 
-    # `tables` moved into the one file, so it is no longer a different `config_file`
-    # than everything else -- which also makes it editable in the explorer, since
-    # `config_drafts` gates drafting on `config_file == "ledger_config.json"`.
-    table_file = ledger_file
-    for table_id, raw in sorted(bundle["tables"].items()):
+    # 🔴 TABLE NODES COME FROM `table_config.json` NOW, NOT FROM THE LEDGER FILE.
+    # Two consequences worth stating because both are deliberate:
+    #  * `config_file` is no longer `ledger_config.json`, so `config_drafts` routes an
+    #    edit attempt to its existing `unsupported_draft_target` refusal.  A table is not
+    #    editable HERE because it is not authored here -- the operator edits
+    #    `table_config.json`, where the change also reaches ingestion, the grid, and the
+    #    drift check.
+    #  * Only relations this setup actually REFERENCES become nodes.  The catalog declares
+    #    every table in the system; making a node per catalog entry would fill the graph
+    #    with tables the ledger has nothing to say about.  The referenced set is exactly
+    #    what the retired `tables` section held, which is why the graph does not change
+    #    shape for a config that was already correct.
+    table_file = setup_bundle.PHYSICAL_CATALOG_FILENAME
+    catalog = _setup_catalog(setup)
+    referenced: set[str] = set()
+    for raw in bundle["sources"].values():
+        relation = raw.get("relation")
+        if isinstance(relation, str):
+            referenced.add(relation)
+    for raw in bundle["virtual_joins"].values():
+        for field in ("left_table", "right_table"):
+            relation = raw.get(field)
+            if isinstance(relation, str):
+                referenced.add(relation)
+    for table_id in sorted(referenced):
+        # A referenced-but-undeclared relation is already a load-time refusal
+        # (`unknown_relation`), so reaching here with a miss means the caller built an
+        # index from an unvalidated bundle.  Skip rather than invent an empty table: a
+        # node with no columns reads as "declared, and empty", which is the false green
+        # this whole change exists to remove.
+        raw = catalog.get(table_id)
+        if raw is None:
+            continue
         builder.add_node(
-            "table", table_id, raw, raw, ("tables", table_id),
-            config_file=table_file, json_pointer=pointer("tables", table_id),
+            "table", table_id, raw, raw, ("__physical_catalog__", table_id),
+            config_file=table_file, json_pointer=pointer(table_id),
         )
 
     join_compiled = registries["verified_joins"].to_mapping()

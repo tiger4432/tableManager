@@ -48,6 +48,28 @@ def transfer_sample_setup():
     return load_transfer_sample_setup()
 
 
+def referenced_relations(bundle):
+    """The relations a setup REFERENCES: every source's `relation`, plus both sides of
+    every declared virtual join.
+
+    This is what the explorer now turns into `table` nodes.  The physical schema moved out
+    of `ledger_config.json` into `table_config.json`, which declares EVERY table in the
+    system -- ingestion's, the grid's, the chain workers' -- so a node per catalog entry
+    would fill the ledger's graph with tables it has nothing to say about.  The referenced
+    set is exactly what the retired `tables` section used to hold, which is why the node
+    counts below did not move: one table node on the live root, two on the transfer sample.
+    """
+    relations = {
+        raw["relation"] for raw in bundle["sources"].values()
+        if isinstance(raw.get("relation"), str)
+    }
+    for raw in bundle.get("virtual_joins", {}).values():
+        for field in ("left_table", "right_table"):
+            if isinstance(raw.get(field), str):
+                relations.add(raw[field])
+    return relations
+
+
 def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     index = build_explorer_index(active_setup)
     bundle = active_setup.bundle.to_mapping()
@@ -66,7 +88,20 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     assert by_kind["mapper"] == set(active_setup.snapshot.registries["mappers"])
     assert by_kind["source_plan"] == set(active_setup.snapshot.registries["sources"])
     assert by_kind["verified_join"] == set(active_setup.snapshot.registries["verified_joins"])
-    assert by_kind["table"] == set(bundle["tables"])
+    # WAS `== set(bundle["tables"])`. That section no longer exists -- the ledger stopped
+    # keeping a copy of the physical schema -- so the subject of this assertion is now the
+    # set of relations the setup REFERENCES, resolved against the carried catalog.
+    tables = referenced_relations(bundle)
+    assert tables, "a setup that references no relation would make this vacuous"
+    assert by_kind["table"] == tables
+    # And every one of them really came from the physical catalog, not from thin air --
+    # payload and source file both, so "table nodes come from `table_config.json`" is a
+    # claim this test can falsify rather than restate.
+    assert tables <= set(active_setup.catalog)
+    for table_id in tables:
+        node = index.nodes[f"table|{table_id}"]
+        assert node.config_file == "table_config.json"
+        assert dict(node.raw) == dict(active_setup.catalog[table_id])
     assert len(by_kind["claim"]) == sum(
         len(pack["claims"]) for pack in bundle["packs"].values())
     assert len(by_kind["mapping"]) == sum(
@@ -105,7 +140,7 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
               for profile in bundle["profiles"].values()
               for mapping in profile["mappings"])
         + len(bundle["source_preparers"]) + len(bundle["mappers"])
-        + len(bundle["sources"]) + len(bundle["tables"])
+        + len(bundle["sources"]) + len(tables)
         + len(active_setup.snapshot.verified_joins))
 
 
@@ -384,12 +419,18 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
             },
         },
     }
-    bundle = require_ready_bundle(validate_bundle(logical))
+    # The fixture bundle is judged against the SAME physical catalog the live setup was
+    # loaded with, and carries it onto the stand-in setup -- `build_explorer_index` refuses
+    # a setup with no catalog rather than reaching for the live file behind the caller's
+    # back.
+    catalog = active_setup.catalog
+    bundle = require_ready_bundle(validate_bundle(logical, catalog=catalog))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(),
-        tuple(active_setup.snapshot.verified_joins.values()))
+        tuple(active_setup.snapshot.verified_joins.values()), catalog=catalog)
     fixture_setup = SimpleNamespace(
-        config_root=active_setup.config_root, bundle=bundle, snapshot=snapshot)
+        config_root=active_setup.config_root, bundle=bundle, snapshot=snapshot,
+        catalog=catalog)
     index = build_explorer_index(fixture_setup)
     edge = next(edge for edge in index.edges if
                 edge.from_key ==

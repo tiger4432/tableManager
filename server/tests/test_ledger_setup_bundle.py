@@ -15,12 +15,12 @@ from ledger.setup_bundle import (
     LOGICAL_SECTIONS,
     SETUP_VERSION,
     bundle_readiness_errors,
-    load_setup_bundle,
     public_bundle_schema,
     require_ready_bundle,
-    validate_bundle,
-    validate_bundle_errors,
 )
+# `validate_bundle`, `validate_bundle_errors` and `load_setup_bundle` are NOT imported:
+# thin wrappers below supply the fixture plant's catalog, which the real functions now
+# require to answer any physical question. Reached through `setup_bundle_module`.
 
 
 def binding(column, *, status="approved", origin="user_declared", reason=None):
@@ -45,6 +45,73 @@ def entity(entity_type, key_name, column, *, status="approved"):
     }
 
 
+def logical_catalog(*, source_name="input_rows", prefix=""):
+    """The PHYSICAL half of the fixture, in `table_config.json` shape.
+
+    🔴 THIS IS A SEPARATE FUNCTION ON PURPOSE, AND IT MUST NEVER BE DERIVED FROM THE
+    BUNDLE.  The ledger stopped carrying its own `tables` section precisely because a
+    physical fact the ledger states about itself is checked against nothing.  A fixture
+    that built its catalog out of the bundle under test would restore that, and every
+    "unknown column" assertion below would be unfalsifiable -- the two sides would agree
+    by construction.  They are written out twice HERE, in a test, exactly so that a test
+    can make them DISAGREE.
+
+    In production there is no second copy at all: `server/config/table_config.json` is
+    the only author, and `schema_drift` checks it against the database.
+    """
+    record = prefix + "record_id"
+    event = prefix + "event_key"
+    occurred = prefix + "event_at"
+    source_key = prefix + "source_id"
+    target_key = prefix + "target_id"
+    join_key = prefix + "join_id"
+    return {
+        source_name: {
+            "columns": {
+                record: "string", event: "string", occurred: "datetime",
+                source_key: "string", join_key: "string",
+            },
+            "business_key": record,
+        },
+        prefix + "reference_rows": {
+            "columns": {join_key: "string", target_key: "string"},
+            "business_key": join_key,
+            "indexes": [{"name": prefix + "uq_reference", "columns": [join_key],
+                         "unique": True}],
+        },
+    }
+
+
+#: The fixture plant's whole physical schema: the default variant plus every named
+#: variant the suite builds.  One catalog for all of them, because a real deployment has
+#: ONE `table_config.json` and a per-test catalog would let a bundle be validated against
+#: a world shaped to fit it.
+DEFAULT_CATALOG = {
+    **logical_catalog(),
+    **logical_catalog(source_name="dt_log"),
+    **logical_catalog(source_name="arbitrary_rows", prefix="renamed_"),
+    **logical_catalog(source_name="alternate_rows", prefix="z_"),
+}
+
+
+def validate_bundle_errors(value, *, catalog=None):
+    """Fixture-defaulting wrapper. Production callers pass nothing and read the live
+    `table_config.json`; here the fixture plant's catalog stands in for it."""
+    return setup_bundle_module.validate_bundle_errors(
+        value, catalog=DEFAULT_CATALOG if catalog is None else catalog)
+
+
+def validate_bundle(value, *, catalog=None):
+    return setup_bundle_module.validate_bundle(
+        value, catalog=DEFAULT_CATALOG if catalog is None else catalog)
+
+
+def load_setup_bundle(root, *, config_name=None, catalog=None):
+    kwargs = {} if config_name is None else {"config_name": config_name}
+    return setup_bundle_module.load_setup_bundle(
+        root, catalog=DEFAULT_CATALOG if catalog is None else catalog, **kwargs)
+
+
 def logical_bundle(*, source_name="input_rows", prefix=""):
     record = prefix + "record_id"
     event = prefix + "event_key"
@@ -58,21 +125,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
     profile = "input-transition@1"
     return {
         "setup_version": SETUP_VERSION,
-        "tables": {
-            source_name: {
-                "columns": {
-                    record: "string", event: "string", occurred: "datetime",
-                    source_key: "string", join_key: "string",
-                },
-                "business_key": record,
-            },
-            right_relation: {
-                "columns": {join_key: "string", target_key: "string"},
-                "business_key": join_key,
-                "indexes": [{"name": prefix + "uq_reference", "columns": [join_key],
-                             "unique": True}],
-            },
-        },
         "virtual_joins": {
             "input_to_reference": {
                 "left_table": source_name,
@@ -283,8 +335,15 @@ def test_public_schema_is_the_single_logical_contract():
     # manifest/chains/enrichments joined the FORBIDDEN list rather than merely
     # disappearing: a root still carrying one must be refused, not quietly ignored, or a
     # converted-but-not-cleaned tree looks like it loaded what it did not.
+    # `tables` joined them for the same reason (owner, 2026-08-18): a physical
+    # declaration left sitting in this file that nothing reads is exactly the silent
+    # second copy the section was removed for.
     assert schema["forbidden_sections"] == [
-        "frames", "lookups", "positions", "manifest", "chains", "enrichments"]
+        "frames", "lookups", "positions", "manifest", "chains", "enrichments",
+        "tables"]
+    # And the contract SAYS where the physical half went, so a screen can name the file
+    # instead of leaving an operator to work out an absence.
+    assert schema["physical_schema_file"] == "table_config.json"
 
 
 def test_objectless_predicate_and_pack_emission_have_one_closed_spelling():
@@ -333,8 +392,10 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # ever changes without a deliberate shape change, the serializer stopped being
     # deterministic and THAT is the bug; do not refresh this value to make a red go green.
     # was 93bb7009... while the bundle still carried chains + enrichments.
+    # was c08e7183... while it still carried `tables` (owner ruling 2026-08-18 moved the
+    # physical schema to `table_config.json`; one fewer key to serialize).
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "c08e718318a1d8ebbe486036027ff6420b1817c207ccf000d895aba751c6881e")
+        "11571931bd673dea08ce62a36947993ec6cf1eea646528257a15b4d3ff06fbb9")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -823,20 +884,35 @@ def test_source_unit_and_group_contract_is_fail_closed(unit, group_by):
     assert any(error.code == "invalid_driver" for error in validate_bundle_errors(bundle))
 
 
-def test_catalog_key_index_columns_and_join_uniqueness_are_validated():
-    bundle = logical_bundle()
-    bundle["tables"]["input_rows"]["business_key"] = "missing_key"
-    bundle["tables"]["reference_rows"]["indexes"][0]["columns"] = ["missing_index_col"]
-    errors = validate_bundle_errors(bundle)
-    assert any(error.code == "unknown_column" and error.path.endswith("business_key")
-               for error in errors)
-    assert any(error.code == "unknown_column" and ".indexes[0].columns[0]" in error.path
-               for error in errors)
+def test_a_key_naming_a_column_the_relation_lacks_certifies_nothing():
+    """MOVED, not lost: this used to read
+    `test_catalog_key_index_columns_and_join_uniqueness_are_validated` and assert that a
+    `tables` section naming a non-existent key column produced `unknown_column`.  The
+    ledger no longer HAS a `tables` section to be internally inconsistent, so "is the
+    catalog self-consistent" is now `table_config.json`'s own question -- answered by
+    `models.declared_key_columns` (which refuses a partial index by name) and by
+    `schema_drift` against the real database.
 
-    bundle = logical_bundle()
-    bundle["tables"]["reference_rows"]["indexes"][0]["unique"] = False
-    bundle["tables"]["reference_rows"].pop("business_key")
-    error = issue(bundle, "invalid_join")
+    What still has to be true HERE, and is what this asserts, is the LEDGER-side
+    consequence: a key that names a column the relation does not have must not be allowed
+    to certify an ordering as unique.  Silently accepting it is the direction that loses
+    events, so the fail-closed behaviour gets its own test rather than riding on the
+    retired one.
+    """
+    catalog = copy.deepcopy(DEFAULT_CATALOG)
+    catalog["input_rows"]["business_key"] = "missing_key"
+    errors = validate_bundle_errors(logical_bundle(), catalog=catalog)
+    assert_structured_errors(errors)
+    assert sum(error.code == "invalid_cursor" for error in errors) == 2
+
+
+def test_join_right_side_without_an_exact_unique_key_is_refused():
+    catalog = copy.deepcopy(DEFAULT_CATALOG)
+    catalog["reference_rows"]["indexes"][0]["unique"] = False
+    catalog["reference_rows"].pop("business_key")
+    errors = validate_bundle_errors(logical_bundle(), catalog=catalog)
+    assert_structured_errors(errors)
+    error = next(item for item in errors if item.code == "invalid_join")
     assert error.path.endswith("join_key")
 
 
@@ -860,40 +936,42 @@ def test_business_key_tie_breaker_keeps_normal_source_valid():
     assert validate_bundle_errors(logical_bundle()) == ()
 
 
+def _composite_key_catalog():
+    """Catalog where the source relation's identity is a two-column composite."""
+    catalog = copy.deepcopy(DEFAULT_CATALOG)
+    catalog["input_rows"].pop("business_key")
+    catalog["input_rows"]["composite_key"] = ["event_key", "record_id"]
+    return catalog
+
+
 def test_complete_composite_unique_key_proves_total_order():
     bundle = logical_bundle()
-    table = bundle["tables"]["input_rows"]
-    table.pop("business_key")
-    table["composite_key"] = ["event_key", "record_id"]
     driver = bundle["sources"]["input_rows"]["driver"]
     driver["order_by"] = ["event_at", "event_key", "record_id"]
     driver["cursor"]["columns"] = ["event_at", "event_key", "record_id"]
-    assert validate_bundle_errors(bundle) == ()
+    assert validate_bundle_errors(bundle, catalog=_composite_key_catalog()) == ()
 
 
 def test_partial_composite_unique_key_does_not_prove_total_order():
     bundle = logical_bundle()
-    table = bundle["tables"]["input_rows"]
-    table.pop("business_key")
-    table["composite_key"] = ["event_key", "record_id"]
     driver = bundle["sources"]["input_rows"]["driver"]
     driver["order_by"] = ["event_at", "event_key"]
     driver["cursor"]["columns"] = ["event_at", "event_key"]
-    errors = validate_bundle_errors(bundle)
+    errors = validate_bundle_errors(bundle, catalog=_composite_key_catalog())
     assert_structured_errors(errors)
     assert sum(error.code == "invalid_cursor" for error in errors) == 2
 
 
 def test_nonunique_index_is_not_a_total_order_proof():
+    catalog = copy.deepcopy(DEFAULT_CATALOG)
+    catalog["input_rows"].pop("business_key")
+    catalog["input_rows"]["indexes"] = [
+        {"name": "idx_event_at", "columns": ["event_at"], "unique": False}]
     bundle = logical_bundle()
-    table = bundle["tables"]["input_rows"]
-    table.pop("business_key")
-    table["indexes"] = [{"name": "idx_event_at", "columns": ["event_at"],
-                         "unique": False}]
     driver = bundle["sources"]["input_rows"]["driver"]
     driver["order_by"] = ["event_at"]
     driver["cursor"]["columns"] = ["event_at"]
-    errors = validate_bundle_errors(bundle)
+    errors = validate_bundle_errors(bundle, catalog=catalog)
     assert_structured_errors(errors)
     assert sum(error.code == "invalid_cursor" for error in errors) == 2
 
@@ -1160,7 +1238,10 @@ def test_every_json_node_shape_mutation_returns_only_structured_errors():
         errors = validate_bundle_errors(malformed)
         assert_structured_errors(errors)
         checked += 1
-    assert checked >= 150
+    # Floor, not a census: it exists so a fixture that quietly shrank cannot make this
+    # sweep vacuous. It moved 150 -> 145 when `tables` left the bundle (149 nodes today,
+    # was 158). Lower it only alongside a deliberate shape change, and say which one.
+    assert checked >= 145
 
 
 def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
@@ -1179,7 +1260,9 @@ def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
             else:
                 validate_bundle(candidate)
             checked += 1
-    assert checked >= 900
+    # Same floor, times the six replacement kinds. Was 900 while the bundle carried
+    # `tables`; 894 today (149 x 6).
+    assert checked >= 870
 
 
 def test_common_module_has_no_domain_source_branches_or_runtime_imports():

@@ -17,7 +17,10 @@
   refresh entrypoint: server/database/models.py refresh_dynamic_models (empty config -> keep existing singleton)
   tests: server/tests/test_config_reload_integrity.py
   key consumers: crud.py (business_key/composite_key_*/column_types), models.py:287 (dynamic Table build),
-    parsers/directory_watcher.py:96 (workspace_name/std_parse), crud.py:247 (source_priority)
+    parsers/directory_watcher.py:96 (workspace_name/std_parse), crud.py:247 (source_priority),
+    ledger/setup_bundle.py load_physical_catalog (2026-08-18; column_types ->
+      relation columns, composite_key_source -> unique key, business_key -> unique key
+      when it is itself a declared column. map_key_columns is deliberately NOT read.)
   restore in-place on purpose: server/scripts/backup_config.py:122-131
 -->
 
@@ -30,6 +33,16 @@
 - **제품 소유 테이블(`map_split_registry` 등) 설치/업그레이드** — 이때는 손편집이 아니라 `install_product_tables.py`를 씁니다 ([CONFIG_GUIDE §5.8-ter](../CONFIG_GUIDE.md))
 - ~~**표기 정규화 파생 컬럼(`<컬럼>_norm`)을 만들 때**~~ — 🔴 **[2026-08-04 `8d306a5`] 이 항목은 삭제됐습니다.** 표기 정규화는 **파생 컬럼을 만들지 않습니다**(조회 시점에 비교의 양쪽을 접습니다). 이 파일에서 할 일은 **없고**, 유일한 전제는 대상 컬럼이 이미 `column_types`에 **`"string"`으로** 선언돼 있는 것뿐입니다(값을 텍스트로 읽고 있다면 이미 그렇습니다) → [notation_rules_config](./notation_rules_config.md)
 - **같은 키의 행이 항상 「최신본」이어야 할 때** (`version_column` — §7. 철 지난 파일 재투입이 현재 값을 과거로 되돌리는 것을 막습니다. 🔴 **선언 전에 §7.2의 확인 한 줄을 먼저 돌리십시오**)
+- 🔴 **[2026-08-18 신설] 원장(Ledger v2)에 새 소스를 붙일 때 — «가장 먼저»** (소유자 판정).
+  `ledger_config.json`의 `tables` section이 없어졌고, 원장은 물리 스키마를 **이 파일에서**
+  읽습니다. 여기 없는 표를 원장 소스가 가리키면 `unknown_relation`으로 거절되며 그 문장이
+  다시 여기로 보냅니다. ⚠️ **인제션이 그 표에 쓰지 않아도 선언합니다** — 원장만 읽는 표
+  (`void`가 그 모양)도 마찬가지입니다. 선언해야 그리드와 **드리프트 검사**(`schema_drift`)가
+  따라오고, 그 드리프트 검사가 곧 원장 선언의 실물 대조입니다. 원장이 읽는 키는 셋:
+  `column_types`(컬럼 실재) · `composite_key_source`(행의 유일 키) · `business_key`(그 컬럼이
+  `column_types`에 실재할 때만). **`map_key_columns`는 유일 키가 아니라 읽지 않습니다** —
+  한 맵에 여러 행이 들어가므로 커서 근거로 쓰면 이벤트를 잃습니다
+  → [ONTOLOGY_LEDGER_SETUP §5](../ONTOLOGY_LEDGER_SETUP.md)
 - **대문자 이름의 운영 테이블을 소문자로 개명할 때** (§6 — config만이 아니라 물리·데이터·폴더까지 걸린 절차)
 - 🔴 **[2026-08-14 신설] 「그 컬럼에 값이 안 들어온다」는 신고를 받았을 때** — 컬럼이 물리 DB에 있는데 `column_types`에 없으면 **쓰기가 200을 받고 그 셀만 조용히 드롭**됩니다(미선언 컬럼 드롭 → [CONFIG_GUIDE §6](../CONFIG_GUIDE.md)). 화면에는 「데이터가 없다」로 보이므로 **인제션·체인·파서를 먼저 의심하기 쉽습니다.** 실사례 `50a21c7`: `bonding_log`의 `core_lot`/`core_slot`/`cx`/`cy`와 `dt_map`의 코어 컬럼 다섯이 **그 표가 선언된 이래** 빠져 있었고, 두 표의 `__comment`는 그동안 그 컬럼들을 **설명하고** 있었습니다. ⚠️ **`__comment`는 선언이 아니고 코드가 읽지도 않습니다** — 산문과 `column_types`가 어긋나면 언제나 `column_types`가 동작입니다. 확인 한 줄:
   ```sql

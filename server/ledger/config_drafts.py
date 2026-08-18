@@ -124,28 +124,34 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
             "message": str(exc),
         },))
 
-    issues = validate_bundle_errors(logical)
+    # 🔴 THE DRAFT IS JUDGED AGAINST THE CATALOG THE ACTIVE SETUP WAS JUDGED AGAINST.
+    # Re-reading `table_config.json` here instead would let a preview go green (or red)
+    # for a physical reason the operator's live config never saw -- and the preview's
+    # whole job is to answer "what happens if I activate THIS".
+    catalog = active_setup.catalog
+    issues = validate_bundle_errors(logical, catalog=catalog)
     if issues:
         return DraftPreview(
             False, None, None,
             tuple(_decorate_issue(issue.to_mapping()) for issue in issues),
         )
     try:
-        bundle = require_ready_bundle(validate_bundle(logical))
+        bundle = require_ready_bundle(validate_bundle(logical, catalog=catalog))
         verified = tuple(active_setup.snapshot.verified_joins.values())
         compile_issues = snapshot_compile_errors(
-            bundle, trusted_implementations(), verified)
+            bundle, trusted_implementations(), verified, catalog=catalog)
         if compile_issues:
             return DraftPreview(
                 False, None, None,
                 tuple(_decorate_issue(issue.to_mapping()) for issue in compile_issues),
             )
         snapshot = compile_setup_snapshot(
-            bundle, trusted_implementations(), verified)
+            bundle, trusted_implementations(), verified, catalog=catalog)
         preview_setup = SimpleNamespace(
             config_root=active_setup.config_root,
             bundle=bundle,
             snapshot=snapshot,
+            catalog=catalog,
         )
         return DraftPreview(
             True, preview_setup, build_explorer_index(preview_setup), tuple())

@@ -21,11 +21,23 @@ SETUP_VERSION = 3
 #: The one authoring file. The path does not move: the operator writes here.
 CONFIG_FILENAME = "ledger_config.json"
 
-#: The whole authoring surface, in the order the file declares it.  All eight are
+#: The whole authoring surface, in the order the file declares it.  All seven are
 #: REQUIRED even when empty: a missing key and an empty one mean different things to a
 #: reader, and "the section does not apply to me" is a decision worth writing down.
+#:
+#: 🔴 `tables` IS NOT HERE, AND ITS ABSENCE IS THE POINT (owner, 2026-08-18: "why is
+#: `tables` in the ledger json as well?").  It used to be an eighth section restating
+#: the physical schema.  Measured on the live root before removal: its one relation was a
+#: COMPLETE duplicate of the catalog entry -- 8 columns, 8/8 types agreeing, the same
+#: single-column business key -- and no RUNNING code compared them.  (One test did, for
+#: that one relation; a hand-kept pin over one row says nothing about the next one, and
+#: said nothing about the sample root, whose copy had drifted into columns that exist
+#: nowhere.)  Two copies that no code puts side by side do not stay equal; they drift in
+#: silence and disagree only at execution.
+#: The physical schema now has exactly one author, `server/config/table_config.json`,
+#: which `_physical_catalog` reads.  See `PHYSICAL_CATALOG_FILENAME`.
 LOGICAL_SECTIONS = (
-    "tables", "vocabulary", "entities", "packs",
+    "vocabulary", "entities", "packs",
     "source_preparers", "mappers", "profiles", "sources",
 )
 
@@ -40,6 +52,22 @@ LOGICAL_SECTIONS = (
 OPTIONAL_SECTIONS = ("virtual_joins",)
 
 ALL_SECTIONS = (*LOGICAL_SECTIONS, *OPTIONAL_SECTIONS)
+
+#: The physical-schema authority for the WHOLE system -- ingestion, the chain workers, the
+#: grid, and now the ledger read the same file.  The ledger does not get a private copy and
+#: does not get a private checker.
+#:
+#: 🔴 WHY THIS ALSO CLOSES A HOLE RATHER THAN JUST REMOVING A DUPLICATE.
+#: `server/schema_drift.py` (`_register_dynamic_models`) sweeps every SQLAlchemy-mapped
+#: table, and that set INCLUDES the dynamic tables built from this file.  So a column named
+#: here that the database does not have is already reported.  A column named in a ledger-
+#: private `tables` section was checked against nothing, which is how an invented column
+#: name came to pass green (measured 2026-08-18).  Reading this file is therefore not a
+#: tidier spelling of the same check -- it is the difference between a declaration that is
+#: verified against the database and one that is verified against itself.  Adding a second
+#: "declaration vs database" verifier would put the system back where it started: two
+#: verifiers that can disagree.
+PHYSICAL_CATALOG_FILENAME = "table_config.json"
 
 _VERSIONED_ID = re.compile(r"^[^@/\s]+@[1-9][0-9]*$")
 _CLAIM_REF = re.compile(r"^(?P<pack>[^@/\s]+@[1-9][0-9]*)/(?P<claim>[^/\s]+)$")
@@ -78,6 +106,93 @@ class LedgerSetupValidationError(ValueError):
 
     def to_mapping(self) -> dict[str, str]:
         return {"code": self.code, "path": self.path, "message": self.message}
+
+
+def load_physical_catalog(path: str | Path) -> Mapping[str, Any]:
+    """`table_config.json` as the relation shape the cross-validators read.
+
+    🔴 THE PATH IS REQUIRED, AND THIS MODULE DOES NOT KNOW WHERE DATA LIVES.
+    Resolving it would mean importing `paths`, and this module's contract is that it
+    imports no runtime at all -- a contract with a test behind it
+    (`test_common_module_has_no_domain_source_branches_or_runtime_imports`).  "Which data
+    root am I" is a deployment question and an isolated stack must answer it differently
+    from production, so it is answered one level up, in `ledger.setup`.
+
+    The translation, and why each rule is the rule:
+
+    * ``columns``       <- ``column_types``.  Same fact, other spelling.
+    * ``composite_key`` <- ``composite_key_source``.  That list IS the row identity: it is
+      the tuple `crud.assemble_composite_business_key` joins to build `business_key_val`,
+      so covering it is exactly what makes an ordering unique.
+    * ``business_key``  <- ``business_key``, GATED ON IT BEING A DECLARED COLUMN.
+      That membership test, and NOT the `composite_key_source` gate
+      `chain_bindings.identity_column` applies, is the right gate for THIS question --
+      worth stating because the two rules look interchangeable.  That one asks "which
+      column carries the job" and must refuse an assembled CELL key; this one asks "which
+      tuples are unique", and an assembled key MATERIALIZED into its own column is
+      unique, so ordering by it is provably an ordering by identity.  A table declaring
+      both -- and three relations in the live catalog do declare both -- therefore keeps
+      both.  A `business_key` naming something that is not a column of the relation
+      certifies nothing and is dropped.
+
+    ⚠️ `map_key_columns` is NOT translated into a key.  It is a lookup prefix -- one map
+    holds many rows -- and admitting it here would certify a NON-unique ordering as a
+    cursor, which is the one direction that loses events.
+
+    A missing or unreadable catalog is a NAMED refusal, never an empty catalog.  An empty
+    catalog would refuse every source with `unknown_relation`, which points the operator at
+    the wrong file to fix.
+    """
+    catalog_path = Path(path)
+    if not catalog_path.is_file():
+        raise LedgerSetupValidationError(
+            "physical_catalog_absent", PHYSICAL_CATALOG_FILENAME,
+            f"the ledger reads the physical schema from {catalog_path}, which does not "
+            f"exist")
+    try:
+        document = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise LedgerSetupValidationError(
+            "physical_catalog_unreadable", PHYSICAL_CATALOG_FILENAME,
+            f"{catalog_path} could not be read as JSON: {exc}") from exc
+    if not isinstance(document, Mapping):
+        raise LedgerSetupValidationError(
+            "physical_catalog_unreadable", PHYSICAL_CATALOG_FILENAME,
+            f"{catalog_path} must hold a JSON object of table declarations")
+    return _adapt_physical_catalog(document)
+
+
+def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
+    catalog: dict[str, dict[str, Any]] = {}
+    for table_id, declared in document.items():
+        if str(table_id).startswith("__") or not isinstance(declared, Mapping):
+            continue
+        columns = declared.get("column_types")
+        if not isinstance(columns, Mapping) or not columns:
+            continue
+        relation: dict[str, Any] = {
+            "columns": {str(name): str(value) for name, value in columns.items()},
+        }
+        composite = declared.get("composite_key_source")
+        if isinstance(composite, list) and composite:
+            relation["composite_key"] = [str(column) for column in composite]
+        # `table_config.json` declares no `indexes` today, so this passes nothing through
+        # on the live catalog.  It is wired anyway rather than left for later, because the
+        # consumers (`_table_has_unique_key`, `_columns_cover_declared_unique_key`) DO read
+        # unique indexes: without this line they are permanently-empty branches that would
+        # start giving the wrong answer, silently, on the day the catalog grammar gains the
+        # key -- and "wrong answer about which orderings are unique" is the direction that
+        # loses events.
+        indexes = declared.get("indexes")
+        if isinstance(indexes, list) and indexes:
+            relation["indexes"] = [dict(item) for item in indexes
+                                   if isinstance(item, Mapping)]
+        business_key = declared.get("business_key")
+        if (isinstance(business_key, str) and business_key.strip()
+                and business_key in relation["columns"]):
+            relation["business_key"] = business_key
+        catalog[str(table_id)] = relation
+    return catalog
 
 
 @dataclass(frozen=True)
@@ -150,11 +265,17 @@ def public_bundle_schema() -> dict[str, Any]:
         "config_file": CONFIG_FILENAME,
         "logical_fields": ["setup_version", *LOGICAL_SECTIONS],
         "optional_fields": list(OPTIONAL_SECTIONS),
+        # Where the physical half of the setup is authored.  Published so a screen can
+        # SAY which file to open instead of leaving the operator to discover that
+        # `tables` is no longer here.
+        "physical_schema_file": PHYSICAL_CATALOG_FILENAME,
         "binding_kinds": ["column", "constant", "entity"],
         "binding_origin": sorted(_BINDING_ORIGINS),
         "approval_status": sorted(_APPROVAL_STATUSES),
+        # `tables` joins the list: naming it here is what turns "I pasted my old section
+        # back in" from a silent no-op into `unknown_field` at `ledger_config.tables`.
         "forbidden_sections": ["frames", "lookups", "positions",
-                               "manifest", "chains", "enrichments"],
+                               "manifest", "chains", "enrichments", "tables"],
     }
 
 
@@ -168,8 +289,9 @@ def role_binding_kinds(role: Mapping[str, Any]) -> tuple[str, ...]:
     return _default_binding_kinds(role.get("kind"))
 
 
-def validate_bundle(value: Mapping[str, Any]) -> LedgerSetupBundle:
-    issues = validate_bundle_errors(value)
+def validate_bundle(value: Mapping[str, Any], *,
+                    catalog: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
+    issues = validate_bundle_errors(value, catalog=catalog)
     if issues:
         raise issues[0]
     filled = {name: {} for name in OPTIONAL_SECTIONS if name not in value} | dict(value)
@@ -177,9 +299,33 @@ def validate_bundle(value: Mapping[str, Any]) -> LedgerSetupBundle:
     return LedgerSetupBundle(_freeze(normalized))
 
 
-def validate_bundle_errors(value: Mapping[str, Any]
+def validate_bundle_errors(value: Mapping[str, Any], *,
+                           catalog: Mapping[str, Any] | None = None
                            ) -> tuple[LedgerSetupValidationError, ...]:
+    """Every structural and cross-section issue in one pass.
+
+    `catalog` is the physical relation shape from `table_config.json`, and it is
+    REQUIRED -- omitting it refuses by name rather than defaulting.  Two reasons, and the
+    second is the one that cost something:
+
+    * A default would make this function read a file off disk, and this module's whole
+      job is to be the pure authoring boundary.
+    * A silently-defaulted catalog is how a bundle comes to be validated against one
+      world and compiled against another.  When the answer to "does this column exist"
+      can come from a source the caller did not name, nobody can tell which answer they
+      got.  The refusal names the fix.
+
+    It is a parameter for the same reason `trusted_implementations()` and
+    `verified_joins` are parameters on `compile_setup_snapshot`: the caller states which
+    world it is judging against.  Production resolves it once, in `ledger.setup`.
+    """
     problems = _Problems()
+    if catalog is None:
+        return (LedgerSetupValidationError(
+            "physical_catalog_required", PHYSICAL_CATALOG_FILENAME,
+            f"validation needs the physical relation shape; pass "
+            f"catalog=ledger.setup.live_physical_catalog() or an explicit "
+            f"load_physical_catalog(<path to {PHYSICAL_CATALOG_FILENAME}>)"),)
     if not problems.exact(
             value, "bundle", required=("setup_version", *LOGICAL_SECTIONS),
             optional=OPTIONAL_SECTIONS):
@@ -197,8 +343,6 @@ def validate_bundle_errors(value: Mapping[str, Any]
     # about whether "no joins" and "no joins section" are the same thing.
     value = {name: {} for name in OPTIONAL_SECTIONS if name not in value} | dict(value)
 
-    if isinstance(value.get("tables"), Mapping):
-        _validate_tables(value["tables"], problems)
     if isinstance(value.get("virtual_joins"), Mapping):
         _validate_virtual_joins(value["virtual_joins"], problems)
     if isinstance(value.get("vocabulary"), Mapping):
@@ -222,7 +366,7 @@ def validate_bundle_errors(value: Mapping[str, Any]
     if problems.items:
         return problems.finish()
     if all(isinstance(value.get(name), Mapping) for name in ALL_SECTIONS):
-        _cross_validate(value, problems)
+        _cross_validate(value, catalog, problems)
     return problems.finish()
 
 
@@ -246,7 +390,8 @@ def require_ready_bundle(bundle: LedgerSetupBundle) -> LedgerSetupBundle:
     return bundle
 
 
-def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME
+def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME,
+                      catalog: Mapping[str, Any] | None = None
                       ) -> LedgerSetupBundle:
     """Load the ONE authoring file under ``root``.
 
@@ -262,6 +407,12 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME
     otherwise sit there looking authoritative while nothing read it.  A converted root that
     still contains the originals is therefore refused BY NAME, which is exactly the state
     the converter leaves behind on purpose.
+
+    ⚠️ "ONE FILE" IS ABOUT THE SEMANTIC SETUP, NOT THE PHYSICAL SCHEMA.  The physical half
+    is `table_config.json`, which sits in the config root -- OUTSIDE this directory, and so
+    outside the refusal above -- because ingestion, the chain workers and the grid author
+    it too.  It is not a second setup file to keep in step; it is the file the ledger
+    stopped copying.  `catalog` overrides which one is read; see `validate_bundle_errors`.
     """
     root_path = Path(root).resolve(strict=True)
     if not root_path.is_dir():
@@ -298,7 +449,7 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME
     issues = problems.finish()
     if issues:
         raise issues[0]
-    return validate_bundle(document)
+    return validate_bundle(document, catalog=catalog)
 
 
 def _resolve_config_path(root: Path, relative: Any, path: str, *, require_json: bool) -> Path:
@@ -467,57 +618,6 @@ def _thaw(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_thaw(item) for item in value]
     return value
-
-
-def _validate_tables(section: Mapping[str, Any], problems: _Problems) -> None:
-    for table_id in sorted(section, key=str):
-        path = f"bundle.tables.{table_id}"
-        _nonblank_id(table_id, path, problems)
-        table = section[table_id]
-        if not problems.exact(
-                table, path, required=("columns",),
-                optional=("business_key", "composite_key", "indexes")):
-            continue
-        columns = table.get("columns")
-        if not isinstance(columns, Mapping) or not columns:
-            problems.add("invalid_relation", f"{path}.columns", "must be a non-empty object")
-        else:
-            for name in sorted(columns, key=str):
-                _nonblank_text(name, f"{path}.columns.{name}", problems)
-                _nonblank_text(columns[name], f"{path}.columns.{name}", problems)
-        for field in ("business_key", "composite_key"):
-            if field in table:
-                _column_list_or_text(table[field], f"{path}.{field}", problems)
-                for index, column in enumerate(_column_values(table[field])):
-                    if isinstance(columns, Mapping) and column not in columns:
-                        suffix = f"[{index}]" if _is_list(table[field]) else ""
-                        problems.add(
-                            "unknown_column", f"{path}.{field}{suffix}",
-                            f"key column {column!r} is not declared by the relation")
-        indexes = table.get("indexes", [])
-        if not _is_list(indexes):
-            problems.add("invalid_type", f"{path}.indexes", "must be a list")
-        else:
-            index_names: set[str] = set()
-            for index, item in enumerate(indexes):
-                ipath = f"{path}.indexes[{index}]"
-                if problems.exact(item, ipath, required=("name", "columns", "unique")):
-                    name = item.get("name")
-                    _nonblank_text(name, f"{ipath}.name", problems)
-                    if isinstance(name, str):
-                        if name in index_names:
-                            problems.add("duplicate_id", f"{ipath}.name",
-                                         f"index name {name!r} is duplicated")
-                        index_names.add(name)
-                    _nonblank_list(item.get("columns"), f"{ipath}.columns", problems)
-                    for column_index, column in enumerate(_column_values(item.get("columns"))):
-                        if isinstance(columns, Mapping) and column not in columns:
-                            problems.add(
-                                "unknown_column",
-                                f"{ipath}.columns[{column_index}]",
-                                f"index column {column!r} is not declared by the relation")
-                    if not isinstance(item.get("unique"), bool):
-                        problems.add("invalid_type", f"{ipath}.unique", "must be boolean")
 
 
 def _validate_virtual_joins(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -1065,8 +1165,12 @@ def _cross_registration_probe(value: Any, path: str, relation: Any,
                         f"{relation!r} has no column {column!r}")
 
 
-def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
-    tables = bundle["tables"]
+def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
+                    problems: _Problems) -> None:
+    # The physical half of every cross-check below comes from `table_config.json`, not
+    # from the ledger file.  The checks themselves are unchanged: what moved is WHO
+    # ANSWERS "does this relation have this column, and is this ordering unique".
+    tables = catalog
     entities = bundle["entities"]
     vocabulary = bundle["vocabulary"]
     packs = bundle["packs"]
@@ -1103,7 +1207,26 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
                 "invalid_join", f"{path}.join_key",
                 "right join columns require an exact declared UNIQUE key or index")
 
+    # 🔴 THE UNDECLARED RELATION IS THE ROOT REFUSAL, SO IT IS ANSWERED FIRST AND ALONE.
+    # Measured while wiring this: with the relation missing from the catalog, the first
+    # error an operator saw was `unknown_column` on a MAPPER's `input_columns` -- because
+    # `_Problems.finish()` sorts by path and `bundle.mappers.` precedes `bundle.sources.`.
+    # Every one of those complaints is downstream of "the table is not declared" and each
+    # points at the wrong file to fix.  `ledger_admin.check_source_declaration` already
+    # ruled this way for the legacy syntax ("before the column checks, because it is the
+    # ROOT refusal"); this is the same rule, not a second one.  Only the affected source
+    # is skipped -- an unrelated source keeps being validated.
+    unresolved_sources = {
+        source_id for source_id, source in sources.items()
+        if source.get("relation") not in tables
+    }
+    for source_id in sorted(unresolved_sources):
+        _relation_columns(sources[source_id].get("relation"), (), tables,
+                          f"bundle.sources.{source_id}.relation", problems)
+
     for source_id, source in sources.items():
+        if source_id in unresolved_sources:
+            continue
         path = f"bundle.sources.{source_id}"
         relation = source.get("relation")
         driver = source["driver"]
@@ -1245,6 +1368,11 @@ def _cross_validate(bundle: Mapping[str, Any], problems: _Problems) -> None:
         if source_name not in sources:
             problems.add("unknown_source", f"bundle.profiles.{profile_id}.source",
                          f"unknown source {source_name!r}")
+            continue
+        if source_name in unresolved_sources:
+            # Its EventFrame schema is unknown, not empty. Checking columns against an
+            # empty set would report every binding as unknown -- noise under the root
+            # refusal already raised above.
             continue
         available = event_frame_columns.get(source_name, set())
         _cross_profile_source(profile_id, profile, packs, entities, vocabulary,
@@ -1555,7 +1683,19 @@ def _columns_cover_declared_unique_key(table: Mapping[str, Any],
 def _relation_columns(relation: Any, columns: Sequence[Any], tables: Mapping[str, Any],
                       path: str, problems: _Problems) -> None:
     if relation not in tables:
-        problems.add("unknown_relation", path, f"unknown relation {relation!r}")
+        # 🔴 NAME THE TABLE AND THE NEXT ACTION.  A table the ledger reads but ingestion
+        # never writes -- `void` is the live shape of this -- can be missing from
+        # `table_config.json`, and the answer is to DECLARE IT THERE, never to keep a copy
+        # here: that file is the physical authority, and declaring a table in it brings
+        # drift detection and the grid along with it.  Same refusal
+        # `ledger_admin.check_source_declaration` already gives for the legacy syntax, so
+        # an operator meets one sentence rather than two.
+        problems.add(
+            "unknown_relation", path,
+            f"relation {relation!r} is not declared in {PHYSICAL_CATALOG_FILENAME}; "
+            f"declare the table there first — the ledger reads the physical schema from "
+            f"that file and an undeclared table has no columns, no key, and no drift "
+            f"check")
         return
     known = set(_table_columns(tables, relation))
     for column in columns:
