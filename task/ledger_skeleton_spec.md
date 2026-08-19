@@ -110,6 +110,20 @@ leaf     a value                  { hint: … }
 The screen already has this control — an id input + a 「+」 button — from claims and roles. Reuse it;
 do not invent a second one.
 
+🔴 **A `map` control is add AND remove, and it is one control, not two features.** Owner, walking
+the screen himself at 00:40: **「팩 폼에서 역할 삭제가 안되네」**. Counted in the live DOM —
+`add-claim` 1, `add-role` 1, `delete-declaration` 1, and **`remove-claim` 0, `remove-role` 0,
+`remove-qualifier` 0**. Everything a person names can be created and never taken back.
+
+Today that is survivable only because the raw JSON editor is still there, and **that editor is
+being removed in step 5.** Ship the remove with the map node or the screen becomes a trap on the
+day the door closes: a typo in a role name would be permanent. This is the same shape as the
+`lot` entity dead end from the 19th — something namable that nothing could unname.
+
+Removal is a draft edit like any other: drop the key, let the validator say what that broke. It
+refuses nothing, and it asks nothing beyond the single confirm the screen already uses for a
+declaration.
+
 ## Rule 3 — leaf hints name a source, never a value
 
 ```
