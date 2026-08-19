@@ -55,19 +55,19 @@ function renderNewDeclaration(state, kind) {
   const box = h('div', 'oe-new-declaration');
   box.dataset.key = `new:${kind}`;
   const label = h('label', 'oe-new-label');
-  label.append(h('span', 'oe-new-caption', `새 ${KIND_LABELS[kind] || kind}`));
+  label.append(h('span', 'oe-new-caption', `New ${KIND_LABELS[kind] || kind}`));
   const input = h('input', 'oe-new-id');
   input.type = 'text';
   input.dataset.action = 'new-declaration-id';
   input.value = state.newDeclaration?.id || '';
-  input.placeholder = 'id (예: dt-job@1)';
-  input.setAttribute('aria-label', '새 선언 id');
+  input.placeholder = 'id · e.g. dt-job@1';
+  input.setAttribute('aria-label', 'New declaration id');
   label.append(input);
   box.append(label);
   const actions = h('div', 'oe-new-actions');
-  const make = button('만들기', 'create-declaration', kind, 'oe-new-make');
+  const make = button('Create', 'create-declaration', kind, 'oe-new-make');
   make.disabled = !(state.newDeclaration?.id || '').trim();
-  actions.append(make, button('취소', 'cancel-declaration', kind, 'oe-new-cancel'));
+  actions.append(make, button('Cancel', 'cancel-declaration', kind, 'oe-new-cancel'));
   box.append(actions);
   if (state.newDeclaration?.error) {
     box.append(h('div', 'oe-error', state.newDeclaration.error));
@@ -103,8 +103,8 @@ function renderTree(state) {
     const heading = h('div', 'oe-tree-heading');
     heading.append(h('span', 'oe-tree-heading-text', KIND_LABELS[kind] || kind));
     if (authorable.includes(kind)) {
-      const add = button('+ 새로', 'new-declaration', kind, 'oe-tree-add');
-      add.setAttribute('aria-label', `${KIND_LABELS[kind] || kind} 새로 만들기`);
+      const add = button('+ New', 'new-declaration', kind, 'oe-tree-add');
+      add.setAttribute('aria-label', `New ${KIND_LABELS[kind] || kind}`);
       heading.append(add);
     }
     group.append(heading);
@@ -123,7 +123,7 @@ function renderTree(state) {
     // broken screen. Reaching a layer before its members exist is normal -- the layers are
     // declared in order -- so the sentence names the next move instead of an error.
     if (!items.length && state.newDeclaration?.kind !== kind) {
-      group.append(h('div', 'oe-tree-none', '없음'));
+      group.append(h('div', 'oe-tree-none', 'None defined'));
     }
     nav.append(group);
   }
@@ -209,7 +209,7 @@ function renderDefinition(state) {
   grid.append(
     keyValue('종류', selected.kind),
     keyValue('정본 ID', selected.canonical_id),
-    keyValue('버전', selected.version ?? '버전 없음'),
+    keyValue('Version', selected.version ?? 'None'),
     keyValue('설정 파일', selected.config_file),
     keyValue('정확한 위치', selected.json_pointer),
     keyValue('정의 해시', selected.definition_hash),
@@ -361,20 +361,20 @@ function renderStepBar(state) {
     item.append(h('span', 'oe-step-ord', String(index + 1)));
     item.append(h('b', '', step.label));
     const tally = h('span', 'oe-step-tally');
-    // 「정할 것 n개 남음」 -- the one number an operator reads to know where work is left.
+    // The remaining count -- the one number an operator reads to find where work is left.
     // Computed by the SERVER (`is_remaining`), never re-derived here: the collapse rule
     // reads the same predicate, and a screen whose count and whose folding disagree is a
     // screen where neither is believed.
     if (step.remaining) {
-      tally.append(h('i', 'oe-tally oe-tally--remaining', `${step.remaining} 남음`));
+      tally.append(h('i', 'oe-tally oe-tally--remaining', `${step.remaining} remaining`));
     } else if (step.declared) {
-      tally.append(h('i', 'oe-tally oe-tally--done', '다 됨'));
+      tally.append(h('i', 'oe-tally oe-tally--done', 'Complete'));
     }
-    for (const [key, mark] of [['unanswered', '미답'], ['derived', '파생']]) {
+    for (const [key, mark] of [['unanswered', 'Optional'], ['derived', 'Derived']]) {
       if (!step[key]) continue;
       tally.append(h('i', `oe-tally oe-tally--${key}`, `${mark} ${step[key]}`));
     }
-    if (!step.declared) tally.append(h('i', 'oe-tally', '비었음'));
+    if (!step.declared) tally.append(h('i', 'oe-tally', 'None defined'));
     item.append(tally);
     bar.append(item);
   });
@@ -395,9 +395,14 @@ function renderGround(row) {
   return box;
 }
 
+function formatValue(value) {
+  if (value === null || value === undefined) return '—';
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
 function renderValue(row) {
   const value = row.value;
-  if (value === null || value === undefined) return h('span', 'oe-value is-none', '없음');
+  if (value === null || value === undefined) return h('span', 'oe-value is-none', 'None');
   if (Array.isArray(value)) {
     const list = h('span', 'oe-value');
     if (!value.length) list.append(h('i', 'oe-chip is-none', '비움'));
@@ -410,12 +415,70 @@ function renderValue(row) {
   return h('span', 'oe-value', String(value));
 }
 
-function renderAuthoringRow(row) {
-  const card = h('div', `oe-field is-${row.state}`);
+// Does this row fold, and if so what does the folded line SAY?
+//
+// 🔴 FOLDING BY LENGTH WOULD HIDE THE DECISIONS. The whole point of the 164-field screen
+// is the handful of real human judgements in it, and those are exactly the longest rows.
+// So the fold is decided by DEGREES OF FREEDOM, and the precedence below is not
+// negotiable -- it is what keeps the folding from contradicting the remaining count.
+//
+//     remaining -> open · problem -> open · derived/forced -> fold · single candidate ->
+//     fold (reason shown) · otherwise -> open
+//
+// 🔴 `remaining` OUTRANKS EVERYTHING, INCLUDING A SINGLE CANDIDATE AND INCLUDING DERIVED.
+// Without that, the layer header can say "3 remaining" while one of the three is folded out of
+// sight, and an operator who catches that once stops believing both numbers. So a
+// one-candidate field that is not yet FILLED stays open until it is.
+//
+// 🔴 AND A SINGLE CANDIDATE IS NOT THE SAME AS FORCED, which is the ruling this
+// implements. Derived means the SCHEMA fixed it -- true tomorrow too. One candidate means
+// TODAY'S DATA offers one, and declaring a second pack makes it two. Folding the second as
+// if it were the first builds a fold that goes wrong on the day something connects: a
+// genuine choice appears and stays hidden behind a fold nobody re-opened. That is why the
+// count is read HERE, at render time, from the candidate list as it currently is -- never
+// cached, never stamped on the field. When the list grows to two, the row opens by itself.
+function foldDecision(row, expanded = []) {
+  // The operator's own choice wins over every rule below it. A fold nobody can open is
+  // not a fold, it is a deletion.
+  if (expanded.includes(row.path)) return { open: true, reason: '', byHand: true };
+  if (row.remaining) return { open: true, reason: '' };
+  if (row.conflicts || row.refusals?.length) return { open: true, reason: '' };
+  if (row.state === 'derived') {
+    return { open: false, reason: row.disposition === 'grammar_requires_it' ? 'Forced' : 'Derived' };
+  }
+  // Read live. `candidates` is the list the server sent for THIS render.
+  if (Array.isArray(row.candidates) && row.candidates.length === 1) {
+    return { open: false, reason: 'Single candidate' };
+  }
+  return { open: true, reason: '' };
+}
+
+function renderAuthoringRow(row, expanded = []) {
+  const fold = foldDecision(row, expanded);
+  const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`);
+  card.dataset.key = `field:${row.path}`;
   const head = h('div', 'oe-field-head');
   head.append(h('b', '', row.label));
   head.append(h('i', `oe-tier oe-tier--${row.tier}`, row.tier));
   card.append(head);
+  if (!fold.open) {
+    // The folded line is one row: value, and WHY it folded. A fold whose reason is
+    // invisible reads as the screen deciding for the operator, which is the exact thing
+    // the acceptance bar forbids -- so the reason is rendered, not implied.
+    const line = button('', 'toggle-field', row.path, 'oe-field-folded');
+    line.setAttribute('aria-expanded', 'false');
+    line.append(h('code', 'oe-folded-value', formatValue(row.value)));
+    line.append(h('i', 'oe-folded-why', fold.reason));
+    const why = row.ground?.text;
+    if (why) line.append(h('small', 'oe-folded-ground', why));
+    card.append(line);
+    return card;
+  }
+  if (fold.byHand) {
+    const shut = button('Fold', 'toggle-field', row.path, 'oe-field-refold');
+    shut.setAttribute('aria-expanded', 'true');
+    head.append(shut);
+  }
   card.append(h('code', 'oe-field-path', row.path));
   if (row.state !== 'missing') card.append(renderValue(row));
   const ground = renderGround(row);
@@ -495,7 +558,7 @@ function renderAuthoring(state) {
   }
   if (plan.config_source?.state !== 'present') {
     wrap.append(h('div', 'oe-warning',
-      `${plan.config_source?.file || plan.physical_schema_file} 없음 · 백지 상태`));
+      `${plan.config_source?.file || plan.physical_schema_file} not found · blank`));
   }
   // Bucket order is the reading order: what must be done, what is still asked, what was
   // filled for you. Groups are always rendered, empty or not -- a vanished heading is
@@ -508,8 +571,8 @@ function renderAuthoring(state) {
     const rows = plan.fields.filter((row) => row.state === stateId);
     const section = h('section', `oe-bucket oe-bucket--${stateId}`);
     section.append(h('h3', '', `${label} · ${rows.length}`));
-    if (!rows.length) section.append(h('div', 'oe-empty', '없음'));
-    for (const row of rows) section.append(renderAuthoringRow(row));
+    if (!rows.length) section.append(h('div', 'oe-empty', 'None defined'));
+    for (const row of rows) section.append(renderAuthoringRow(row, state.expandedFields));
     wrap.append(section);
   }
   if (plan.unattached_refusals?.length) {
@@ -530,7 +593,7 @@ function renderIntegrity(state) {
   const aside = h('aside', 'oe-panel');
   const head = h('div', 'oe-panel-head');
   const title = h('div', 'oe-title-block');
-  title.append(h('h1', '', 'Integrity'), h('p', '', state.viewContext?.context_token || 'compiled context 없음'));
+  title.append(h('h1', '', 'Integrity'), h('p', '', state.viewContext?.context_token || 'No compiled context'));
   head.append(title);
   const body = h('div', 'oe-side-body');
   const checks = h('section', 'oe-side-section');

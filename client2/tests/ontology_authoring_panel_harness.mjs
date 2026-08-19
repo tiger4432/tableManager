@@ -163,7 +163,27 @@ const stateWith = (plan) => ({
   navigation: { back: [], forward: [] },
 });
 
+// 🔴 THE ASSERTIONS BELOW SCORE AN EXPANDED ROW, so they must expand it.
+//
+// On 2026-08-19 the lead PM ruled the fold: a derived or single-candidate row renders as
+// ONE LINE by default -- value, why it folded, and its ground -- and its disposition,
+// candidate chips and lever-jump appear when it is opened. Everything from B and E below
+// was written before that and describes the OPENED row, which is still exactly right; it
+// just is not what the screen shows first.
+//
+// So `render` opens every row by hand, and `renderFolded` is the new helper that scores
+// the default. Passing every path is deliberate: an assertion that quietly stopped finding
+// its row would otherwise read as "the fold is working".
 const render = (plan) => {
+  const root = element('div');
+  renderOntologyExplorer(root, {
+    ...stateWith(plan),
+    expandedFields: (plan.fields || []).map((row) => row.path),
+  });
+  return root;
+};
+
+const renderFolded = (plan) => {
   const root = element('div');
   renderOntologyExplorer(root, stateWith(plan));
   return root;
@@ -180,7 +200,7 @@ const render = (plan) => {
     at(steps, 1).classList.contains('is-here'),
     steps.map((s) => s.className).join(' | '));
   check('A4 a blocked step is marked blocked', at(steps, 1).classList.contains('is-blocked'));
-  check('A5 an empty step says so', at(steps, 2).textContent.includes('비었음'));
+  check('A5 an empty step says so', at(steps, 2).textContent.includes('None defined'));
   check('A6 the step bar renders with no selection at all', (() => {
     const blank = element('div');
     renderOntologyExplorer(blank, { ...stateWith(PLAN), selection: null });
@@ -243,8 +263,10 @@ const render = (plan) => {
   // false green this round was asked to remove.
   eq('D4 the derived heading survives an empty bucket',
     byClass(empty, 'oe-bucket--derived').length, 1);
-  check('D5 an empty bucket says 없음 rather than showing nothing',
-    at(byClass(empty, 'oe-bucket--derived'), 0).textContent.includes('없음'));
+  // Owner ruled the UI register on 2026-08-19: formal English nouns, never Korean verb
+  // forms. The label moved from 없음 to `None defined`; the property it scores did not.
+  check('D5 an empty bucket says None defined rather than showing nothing',
+    at(byClass(empty, 'oe-bucket--derived'), 0).textContent.includes('None defined'));
   const onlyGround = {
     ...PLAN,
     fields: [{ ...PLAN.fields[0], ground: null }],
@@ -291,6 +313,45 @@ const render = (plan) => {
   check('E8 the blocked structural tier is counted on screen, not absorbed',
     byClass(panel, 'oe-note').length === 1
       && at(byClass(panel, 'oe-note'), 0).textContent.includes('1개'));
+}
+
+// ── F. the fold (lead PM ruling, 2026-08-19) ─────────────────────────────────────
+//
+// Folding by LENGTH would hide the handful of real human judgements, which are the longest
+// rows -- so the fold is decided by DEGREES OF FREEDOM, and the precedence is what keeps
+// it from contradicting the 「n 남음」 count:
+//
+//     remaining -> open · problem -> open · derived/forced -> fold · 1 option -> fold
+{
+  const folded = renderFolded(PLAN);
+  const cards = byClass(folded, 'oe-field');
+  const foldedCards = cards.filter((c) => c._classes.includes('is-folded'));
+
+  check('F1 something folds and something does not -- otherwise this measures nothing',
+    foldedCards.length > 0 && foldedCards.length < cards.length,
+    `${foldedCards.length} folded of ${cards.length}`);
+
+  // Every folded row states WHY. A fold whose reason is invisible reads as the screen
+  // deciding for the operator, which is the thing the acceptance bar forbids.
+  const whys = byClass(folded, 'oe-folded-why').map((n) => n.textContent).filter(Boolean);
+  check('F2 every folded row says why it folded',
+    whys.length === foldedCards.length, `${whys.length} reasons for ${foldedCards.length} folds`);
+  check('F3 the reasons come from the ruled vocabulary',
+    whys.every((w) => ['Derived', 'Forced', 'Single candidate'].includes(w)), whys.join(','));
+
+  // 🔴 `remaining` OUTRANKS THE FOLD. Otherwise the layer header says "3 남음" while one of
+  // the three is folded out of sight, and an operator who notices believes neither number.
+  const owed = (PLAN.fields || []).filter((row) => row.remaining);
+  const foldedPaths = new Set(foldedCards.map(
+    (c) => c.dataset?.key ? String(c.dataset.key).slice('field:'.length) : ''));
+  check('F4 nothing counted as 남음 is ever folded away',
+    owed.every((row) => !foldedPaths.has(row.path)),
+    owed.filter((row) => foldedPaths.has(row.path)).map((row) => row.path).join(','));
+
+  // A fold nobody can open is not a fold, it is a deletion.
+  check('F5 every folded row is a control that opens it',
+    foldedCards.every((card) =>
+      byClass(card, 'oe-field-folded').some((n) => n.dataset?.action === 'toggle-field')));
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);

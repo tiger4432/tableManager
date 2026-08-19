@@ -1196,6 +1196,10 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
             payload["refusals"] = payload["refusals"] + [
                 dict(row) for row in extra
                 if (row["code"], row["path"]) not in seen]
+        # Stamped so the screen never re-derives it. The fold rule and the per-layer count
+        # must answer from ONE predicate: a screen saying "3 남음" while folding one of the
+        # three away is a screen where neither number is believed.
+        payload["remaining"] = is_remaining(payload)
         rows.append(payload)
     if selection_prefix:
         rows = [row for row in rows if row["path"].startswith(selection_prefix)]

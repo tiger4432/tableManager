@@ -42,6 +42,13 @@ export const initialExplorerState = Object.freeze({
   // nobody has accepted yet is not that. Conflating them is how a create that was refused
   // goes on showing in the tree as if it existed.
   newDeclaration: null,
+  // Rows the operator has opened by hand, by path.
+  //
+  // 🔴 IN STATE, NOT IN THE DOM. `<details open>` would be the obvious way and it is the
+  // wrong one here: the commit step syncs attributes from the freshly built tree, so an
+  // `open` the browser set would be removed on the next render and the row would fold
+  // itself shut while being read. Keeping it here means a re-render cannot close it.
+  expandedFields: [],
 });
 
 const CONTEXT_COLLECTIONS = [
@@ -253,6 +260,16 @@ export function reduceNewDeclaration(state, action) {
     return { ...state, newDeclaration: null };
   }
   return state;
+}
+
+// One row opened or closed by hand. A fold the operator cannot open is not a fold, it is
+// a deletion -- so every folded row is reachable, and the choice survives re-renders.
+export function reduceFieldFold(state, action) {
+  if (action.type !== 'FIELD_TOGGLED') return state;
+  const open = new Set(state.expandedFields);
+  if (open.has(action.path)) open.delete(action.path);
+  else open.add(action.path);
+  return { ...state, expandedFields: [...open] };
 }
 
 export function canLeaveSelection(state, confirmDiscard) {

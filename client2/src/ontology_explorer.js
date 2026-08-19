@@ -1,7 +1,7 @@
 import './ontology_explorer.css';
 import {
   initialExplorerState, reduceExplorerState, dirtyNavigationDecision,
-  reduceNewDeclaration, restoreDirtyEditorCheckpoint,
+  reduceFieldFold, reduceNewDeclaration, restoreDirtyEditorCheckpoint,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 
@@ -333,6 +333,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       target.dataset.pathId || null,
     );
     else if (action === 'tab') dispatch({ type: 'TAB_CHANGED', tab: target.dataset.value });
+    else if (action === 'toggle-field') {
+      state = reduceFieldFold(state, { type: 'FIELD_TOGGLED', path: target.dataset.value });
+      renderOntologyExplorer(root, state);
+    }
     else if (action === 'new-declaration') {
       dispatchNaming({ type: 'NEW_DECLARATION_OPENED', kind: target.dataset.value });
     } else if (action === 'cancel-declaration') {

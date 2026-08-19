@@ -895,7 +895,9 @@ const FLOORS = new Map([
   // New 2026-08-19 with the authoring panels (what one declaration forces, and its
   // ground). Counts are taken INSIDE each bucket element, never off the page, so a
   // legend using the same words cannot satisfy them.
-  ['ontology_authoring_panel_harness.mjs', 36],
+  // 36 -> 41 (2026-08-19). Section F: the fold. B and E now open the row by hand first --
+  // they always described the OPENED row, which the screen no longer shows by default.
+  ['ontology_authoring_panel_harness.mjs', 41],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this
