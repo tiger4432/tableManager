@@ -749,13 +749,18 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       const box = root.querySelector(`.oe-role-new-id[data-claim="${claimId}"]`);
       const roleId = (box?.value || '').trim();
       if (!roleId) return;
-      // Empty body again: the row that appears carries the kind dropbox and the required
-      // checkbox, both of which write into it.
-      const claim = draftValueAt(`claims.${claimId}`);
-      const hasRoles = claim && typeof claim === 'object' && claim.roles
-        && typeof claim.roles === 'object' && !Array.isArray(claim.roles);
-      if (hasRoles) editShapeAtPath(`claims.${claimId}.roles.${roleId}`, {});
-      else editShapeAtPath(`claims.${claimId}.roles`, { [roleId]: {} });
+      // 🔴 THE SECOND ROLE USED TO DELETE THE FIRST. This asked `draftValueAt` whether a
+      // `roles` map already existed and wrote the whole map when it said no -- but
+      // `draftValueAt` takes an ABSOLUTE path (`packs.<id>.claims...`; it checks
+      // `steps[0]` against the section) and this passed a relative one, so it answered
+      // `undefined` EVERY time. The map was therefore replaced on every press, and a claim
+      // could never hold two roles. `lot-lineage@1` needs four on one claim.
+      //
+      // The branch is gone rather than repaired: `editShapeAtPath` builds its own missing
+      // parents as plain objects, so writing the whole path is the same write with nothing
+      // left to get wrong. Empty body, as before -- the row that appears carries the kind
+      // dropbox and the required checkbox, and both write into it.
+      editShapeAtPath(`claims.${claimId}.roles.${roleId}`, {});
       if (box) box.value = '';
     }
     else if (action === 'start-field-text' || action === 'start-field-list'
