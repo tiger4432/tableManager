@@ -68,6 +68,21 @@
 }
 #ontology-explorer-root .oe-tree-title { color: var(--oe-muted); font-size: 12px; padding: 2px 8px 9px; }
 #ontology-explorer-root .oe-tree-group { margin-bottom: 10px; }
+/* The spine. Layer number is part of the label, not decoration: the six are a real
+   dependency order, so the operator can see where they are in it. */
+#ontology-explorer-root .oe-step-ord {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; margin-right: 6px; border-radius: 9px;
+  background: var(--oe-line); color: var(--oe-muted); font-size: 12px;
+}
+#ontology-explorer-root .oe-step.is-here .oe-step-ord { background: var(--oe-accent); color: #fff; }
+/* 13px, not the 10px used for passive tallies: this is the number an operator navigates
+   by, and one you have to squint at is worse than absent. */
+#ontology-explorer-root .oe-tally--remaining {
+  color: var(--oe-accent); font-size: 13px; font-style: normal; font-weight: 600;
+}
+#ontology-explorer-root .oe-tally--done { color: var(--oe-muted); font-size: 13px; font-style: normal; }
+
 #ontology-explorer-root .oe-tree-heading {
   display: flex; align-items: center; gap: 8px;
   color: var(--oe-muted); font-size: 12px; padding: 6px 8px;

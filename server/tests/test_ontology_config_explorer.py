@@ -1778,3 +1778,68 @@ def test_column_candidates_are_three_universes_and_not_one(active_setup):
     made = set(bundle["source_preparers"]["lot-event-live-frame@1"]["output_columns"])
     assert made & set(identity["candidates"]), "preparer output must be offered here"
     assert not (made & set(ordering["candidates"])), "and never offered here"
+
+
+def test_remaining_counts_what_a_person_still_has_to_decide():
+    """🔴 `missing` AND `unanswered` ARE NOT THE SAME EMPTY, and only the first is work.
+
+    `config_authoring` spells them `state="missing" if required else "unanswered"`, so
+    `unanswered` means OPTIONAL AND ABSENT -- a question nobody is obliged to answer, and
+    an absence that is itself a decision ("not using it").
+
+    Measured on the live root, which is complete and valid: counting `unanswered` reports
+    **1 remaining** (`source_preparers.direct-join@1.output_columns`), i.e. a finished
+    setup telling the operator there is work left on the first screen they see. An
+    indicator that cries wolf once gets ignored forever after, which is worse than no
+    indicator -- it still costs a glance.
+
+    The last case is the one a state check alone would miss: a field with a VALUE that
+    something refused is still remaining, because the value is one somebody must revisit.
+    """
+    from ledger.config_authoring import is_remaining
+
+    assert is_remaining({"state": "missing"}) is True
+    assert is_remaining({"state": "unanswered"}) is False, (
+        "optional-and-absent is a decision already made, not work outstanding")
+    assert is_remaining({"state": "answered"}) is False
+    assert is_remaining({"state": "derived"}) is False
+
+    # A derived field is never a person's work even when it is in conflict -- the fix is
+    # at the declaration it came from, and counting it would send them to the wrong screen.
+    assert is_remaining({"state": "derived", "conflicts": True}) is False
+    assert is_remaining({"state": "derived", "refusals": [{"code": "x"}]}) is False
+
+    assert is_remaining({"state": "answered", "refusals": [{"code": "x"}]}) is True
+    assert is_remaining({"state": "answered", "conflicts": True}) is True
+
+
+def test_a_complete_config_reports_no_remaining_work_and_a_broken_one_reports_where(
+    transfer_sample_setup,
+):
+    """The sanity check that decides whether the predicate is right at all.
+
+    A valid, fully declared setup must read **0 남음 in every layer**; a declaration
+    showing work outstanding means the predicate is wrong, not the config. Then removing
+    ONE required value must move **exactly the layer that owns it** -- a count that moves
+    everywhere is measuring the file rather than the decision.
+    """
+    import copy
+    from ledger.config_authoring import authoring_plan
+
+    bundle = copy.deepcopy(transfer_sample_setup.bundle.to_mapping())
+    catalog = transfer_sample_setup.catalog
+
+    before = authoring_plan(bundle, catalog)
+    assert all(step["remaining"] == 0 for step in before["steps"]), (
+        f"a complete setup must have nothing outstanding: "
+        f"{[(s['id'], s['remaining']) for s in before['steps']]}")
+
+    broken = copy.deepcopy(bundle)
+    victim = next(name for name, source in broken["sources"].items()
+                  if isinstance(source, dict) and "profile_id" in source)
+    del broken["sources"][victim]["profile_id"]
+
+    after = authoring_plan(broken, catalog)
+    moved = [step["id"] for step in after["steps"] if step["remaining"]]
+    assert moved == ["sources"], f"expected only the sources layer to move, got {moved}"
+    assert sum(step["remaining"] for step in after["steps"]) == 1

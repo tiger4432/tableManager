@@ -277,6 +277,39 @@ def _claim_ref(value: Any) -> tuple[str, str] | None:
     return (pack_id, claim_id) if pack_id and claim_id else None
 
 
+def is_remaining(row: Mapping[str, Any]) -> bool:
+    """Does a PERSON still have to decide this one?
+
+    The number rendered as 「정할 것 n개 남음」, and it is the one thing about a progress
+    indicator that has to be right: an operator who sees work remaining on a finished
+    declaration stops reading the number, and an ignored indicator is worse than an absent
+    one because it costs a glance forever.
+
+    So it counts neither fields nor problems nor the 164 rows:
+
+      * `derived` is never counted -- nobody decides it, that is what derived means;
+      * a person-decided field that is FILLED is done, not remaining;
+      * a field carrying a refusal is remaining even though it has a value, because the
+        value is one somebody has to revisit.
+
+    🔴 `missing` AND `unanswered` ARE NOT THE SAME EMPTY, and only the first counts.
+    `config_authoring` spells them `state="missing" if required else "unanswered"`, so
+    `unanswered` means OPTIONAL AND ABSENT -- a question nobody is obliged to answer.
+    Counting it measured 1 remaining on the live config, which is complete and valid
+    (`source_preparers.direct-join@1.output_columns`), i.e. a finished setup reporting
+    unfinished work on the first screen an operator sees.
+
+    This is also the predicate the collapse rule has to agree with. If the count says 3
+    remain and the folding hides one of the 3, the screen contradicts itself and the
+    operator trusts neither number -- so both read THIS, rather than each deciding.
+    """
+    if row.get("state") == "derived":
+        return False
+    if row.get("state") == "missing":
+        return True
+    return bool(row.get("refusals")) or bool(row.get("conflicts"))
+
+
 def closed_lists() -> dict[str, Any]:
     """Every closed list the authoring screen may offer, from the code that enforces it.
 
@@ -1170,8 +1203,11 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
     counts: dict[str, dict[str, int]] = {
         step: {"derived": 0, "missing": 0, "unanswered": 0, "answered": 0}
         for step, _, _ in STEPS}
+    remaining_by_step: dict[str, int] = {step: 0 for step, _, _ in STEPS}
     for row in rows:
         counts[row["step"]][row["state"]] += 1
+        if is_remaining(row):
+            remaining_by_step[row["step"]] += 1
     steps = []
     for step, label, sections in STEPS:
         tally = counts[step]
@@ -1184,7 +1220,8 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
             status = "ready"
         steps.append({
             "id": step, "label": label, "sections": list(sections),
-            "declared": declared, "status": status, **tally,
+            "declared": declared, "status": status,
+            "remaining": remaining_by_step[step], **tally,
         })
     force = {}
     for row in rows:

@@ -349,20 +349,35 @@ function renderStepBar(state) {
     return bar;
   }
   const here = state.selection?.config_path || '';
-  for (const step of plan.steps) {
+  // 🔴 THE SPINE IS NUMBERED BECAUSE THE ORDER IS REAL, not because numbers look tidy: a
+  // pack cannot name a predicate that does not exist yet, so 낱말 → 엔터티 → 팩 → 프로필 →
+  // 매퍼 → 소스 is a dependency order and arriving at a layer early is normal. The server
+  // sends the layers in that order and the screen does not re-sort them.
+  plan.steps.forEach((step, index) => {
     const item = h('div', `oe-step is-${step.status}`);
+    item.dataset.key = `step:${step.id}`;
     // The step the current selection belongs to, decided by the server's section list.
     if (step.sections.some((name) => here.includes(name))) item.classList.add('is-here');
+    item.append(h('span', 'oe-step-ord', String(index + 1)));
     item.append(h('b', '', step.label));
     const tally = h('span', 'oe-step-tally');
-    for (const [key, mark] of [['missing', '빠짐'], ['unanswered', '미답'], ['derived', '파생']]) {
+    // 「정할 것 n개 남음」 -- the one number an operator reads to know where work is left.
+    // Computed by the SERVER (`is_remaining`), never re-derived here: the collapse rule
+    // reads the same predicate, and a screen whose count and whose folding disagree is a
+    // screen where neither is believed.
+    if (step.remaining) {
+      tally.append(h('i', 'oe-tally oe-tally--remaining', `${step.remaining} 남음`));
+    } else if (step.declared) {
+      tally.append(h('i', 'oe-tally oe-tally--done', '다 됨'));
+    }
+    for (const [key, mark] of [['unanswered', '미답'], ['derived', '파생']]) {
       if (!step[key]) continue;
       tally.append(h('i', `oe-tally oe-tally--${key}`, `${mark} ${step[key]}`));
     }
     if (!step.declared) tally.append(h('i', 'oe-tally', '비었음'));
     item.append(tally);
     bar.append(item);
-  }
+  });
   return bar;
 }
 
