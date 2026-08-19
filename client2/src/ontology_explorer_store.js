@@ -6,6 +6,8 @@ export const initialExplorerState = Object.freeze({
   activeSnapshot: null,
   viewContext: null,
   selection: null,
+  invalid: {},
+  configProblems: [],
   items: [],
   nodes: [],
   outbound: [],
@@ -129,6 +131,11 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         activeSnapshot: p.active_snapshot,
         viewContext: p.view_context,
         selection: p.selection,
+        // What could not be read, keyed the way the tree keys nodes, and the problems no
+        // declaration can be blamed for. Both come from the server; the screen holds no
+        // opinion of its own about what resolves.
+        invalid: p.invalid || {},
+        configProblems: p.config_problems || [],
         items: p.items || [],
         nodes: p.nodes || [],
         outbound: p.outbound || [],

@@ -112,6 +112,18 @@
 #ontology-explorer-root .oe-key-add { align-self: flex-start; color: var(--oe-accent); }
 #ontology-explorer-root .oe-key-none { color: var(--oe-muted); font-size: 13px; }
 
+#ontology-explorer-root .oe-tree-why {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 2px 0 6px 10px; padding: 6px 8px;
+  border-left: 3px solid var(--oe-danger, #c0392b);
+  background: var(--oe-surface); border-radius: 0 6px 6px 0;
+}
+#ontology-explorer-root .oe-tree-why code {
+  font-size: 11px; color: var(--oe-muted);
+  overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-tree-why span { font-size: 13px; color: var(--oe-text); }
+
 #ontology-explorer-root .oe-tree-heading {
   display: flex; align-items: center; gap: 8px;
   color: var(--oe-muted); font-size: 12px; padding: 6px 8px;

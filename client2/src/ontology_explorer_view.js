@@ -118,6 +118,19 @@ function renderTree(state) {
       row.append(h('small', 'oe-change-label', item.change_status));
       addPopover(row, item);
       group.append(row);
+      // 🔴 THE REASON SITS UNDER THE ROW, NOT IN A TOOLTIP. A declaration that could not be
+      // read is one the operator has to go fix; a hover is not a place to read an
+      // instruction from. ONE tag, and the sentence is what separates the two cases --
+      // its own fault, or knocked out by something else that is not read yet. No second
+      // badge and no second colour: 「빨강이 번지면 읽을 수가 없습니다」.
+      const unread = state.invalid?.[item.key];
+      if (unread) {
+        for (const reason of unread.reasons || []) {
+          const why = h('div', 'oe-tree-why');
+          why.append(h('code', '', reason.path), h('span', '', reason.message));
+          group.append(why);
+        }
+      }
     }
     // An empty section SAYS SO rather than rendering as a bare heading, which reads as a
     // broken screen. Reaching a layer before its members exist is normal -- the layers are
@@ -791,6 +804,14 @@ export function renderOntologyExplorer(root, state) {
   if (state.error) windowEl.append(h('div', 'oe-error', state.error));
   if (state.removedSelection) {
     windowEl.append(h('div', 'oe-error', `${state.removedSelection.key} · removed/unresolved`));
+  }
+  // 🔴 ABOVE THE TREE, NOT INSIDE IT. One of these can stop EVERYTHING from loading, and
+  // burying it among per-declaration tags sends a person to fix declarations while the
+  // cause sits in a different layer entirely.
+  for (const problem of state.configProblems || []) {
+    const banner = h('div', 'oe-error');
+    banner.append(h('code', '', problem.path), h('span', '', problem.message));
+    windowEl.append(banner);
   }
   if (state.viewContext?.fallback_reason) {
     windowEl.append(h('div', 'oe-warning', `초안 대신 활성 snapshot 표시: ${state.viewContext.fallback_reason}`));

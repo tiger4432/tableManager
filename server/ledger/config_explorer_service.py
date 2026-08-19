@@ -283,6 +283,35 @@ class OntologyExplorerService:
         # everything from loading, and hiding it among per-declaration tags sends a person
         # to fix declarations while the cause sits in another layer.
         payload["config_problems"] = list(self._config_level)
+        # 🔴 AN UNREAD DECLARATION MUST STILL BE IN THE LIST. The resolver drops it from the
+        # bundle, so `build_explorer_index` never sees it and the tree -- which renders
+        # `items` -- would not show it at all. That is the opposite of what was asked for:
+        #
+        #     안읽히는 엔티티, 팩 등등은 invalid 태그 붙이고
+        #
+        # A half-written declaration you cannot find again is worse than one that refuses,
+        # because there is no way back to it. So the ones that did not load are put back
+        # into the list they were dropped from, carrying the tag instead of a compile.
+        # They are list entries only: not in the index, not selectable as a compiled node,
+        # and nothing downstream is told they resolved.
+        listed = {item["key"] for item in payload["items"]}
+        for key, record in sorted(self._invalid.items()):
+            if key in listed:
+                continue
+            kind, _, canonical_id = key.partition("|")
+            payload["items"].append({
+                "key": key,
+                "canonical_id": canonical_id,
+                "kind": kind,
+                "config_file": CONFIG_FILENAME,
+                "config_path": CONFIG_FILENAME,
+                "change_status": "invalid",
+                "compile_status": "invalid",
+                "description": (record["reasons"][0]["message"]
+                                if record["reasons"] else "읽을 수 없음"),
+                "context_token": token,
+            })
+            payload["total"] += 1
         payload["view_context"] = context
         payload["draft"] = draft
         if draft is not None:
