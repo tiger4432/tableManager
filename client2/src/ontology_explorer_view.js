@@ -319,6 +319,29 @@ function renderEntityKeys(state) {
   return box;
 }
 
+// 🔴 THE RAW JSON EDITOR STAYS, AND THAT IS A RULING, NOT AN OVERSIGHT.
+//
+// The owner's instruction was to remove it, and the fork deliberately put that LAST --
+// after the structured fields could do the same work. On 2026-08-19 it was measured and
+// the day had not arrived. Do not delete this on the strength of the instruction alone;
+// re-measure first.
+//
+// What has no other door today, counted on the live config:
+//
+//   * a NEW pack, mapper, profile or preparer gets **0 authoring rows**. The plan walks
+//     what the document HOLDS, so a declaration whose body is `{}` yields nothing, and
+//     without this textarea there is no way to type the first character.
+//   * a NEW source gets 5 rows and 0 of them editable.
+//   * `source_preparers.*.output_columns` (2 fields) -- no candidates, so no input.
+//   * `sources.*.driver.occurred_at` (2 fields) -- dict-shaped, so chips only.
+//
+// Renaming is NOT on that list: this editor holds a declaration's BODY, not its name, so
+// it never could rename anything. That dead end was closed from the other side, by letting
+// an unread declaration be deleted (`28e2beb`).
+//
+// The removal becomes safe when a new declaration is offered its fields before it has any.
+// The material for that already exists -- the validator emits `missing_field` with the
+// exact path, and the plan already carries them in `unattached_refusals`.
 function renderRaw(state) {
   // 🔴 A CREATE DRAFT HAS NO SELECTION TO MATCH. Its target is not in the snapshot --
   // that is what create means -- so it can never equal a selection, and this guard hid the
