@@ -809,6 +809,66 @@ function writablePrefix(state) {
   return `bundle.${section}.${draft.target_id}.`;
 }
 
+// One claim as a block: the roles it needs, then the sentence it emits.
+//
+// 🔴 THE ROLES COME FROM THE DRAFT, NOT FROM THE PLAN. Measured: a pack's plan carries only
+// `emit.*` rows -- `claims.<id>.roles` is never a field. But the roles are sitting in the
+// draft document, and this screen already has a precedent for reading them straight from
+// there rather than inventing a server field: `renderEntityKeys` renders the identity keys
+// off `editorText`. Same move, so no new endpoint and no second schema.
+//
+// 🔴 AND `$subject` PICKS FROM THE ROLES THIS CLAIM JUST DEFINED -- the first field on this
+// screen whose candidates come from a SIBLING rather than from the document. That is why it
+// has to read the draft: the roles being offered may not be saved yet.
+function renderClaimBlock(state, packId, claimId, claim, planRows, closedListFor) {
+  const box = h('section', 'oe-claim');
+  box.dataset.key = `claim:${claimId}`;
+  box.append(h('h4', 'oe-claim-name', claimId));
+  const base = `claims.${claimId}`;
+  const roles = claim && typeof claim.roles === 'object' && !Array.isArray(claim.roles)
+    ? claim.roles : {};
+  const roleNames = Object.keys(roles);
+
+  const rolesBox = h('div', 'oe-claim-roles');
+  rolesBox.append(h('label', 'oe-label', '역할'));
+  const kindOptions = state.authoringSchema?.role_kind || [];
+  for (const name of roleNames) {
+    const role = roles[name] && typeof roles[name] === 'object' ? roles[name] : {};
+    const line = h('div', 'oe-role-row');
+    line.append(h('code', 'oe-role-name', name));
+    // The kind is a closed list, so it is a dropbox -- and the value already in the file is
+    // always an option, even an unrecognised one. Rendering must never rewrite the file.
+    const select = h('select', 'oe-field-select');
+    select.dataset.action = 'edit-shape';
+    select.dataset.value = `${base}.roles.${name}.kind`;
+    select.setAttribute('aria-label', `${name} 종류`);
+    const current = typeof role.kind === 'string' ? role.kind : '';
+    const options = kindOptions.includes(current) ? kindOptions : [current, ...kindOptions];
+    for (const item of options) {
+      const option = h('option', '', item);
+      option.value = item;
+      if (item === current) option.selected = true;
+      select.append(option);
+    }
+    const required = h('input', 'oe-role-required');
+    required.type = 'checkbox';
+    required.checked = role.required === true;
+    required.dataset.action = 'edit-shape-flag';
+    required.dataset.value = `${base}.roles.${name}.required`;
+    required.setAttribute('aria-label', `${name} 필수`);
+    line.append(select, required, h('span', 'oe-role-required-label', '필수'));
+    rolesBox.append(line);
+  }
+  if (!roleNames.length) rolesBox.append(h('div', 'oe-key-none', 'None defined'));
+  box.append(rolesBox);
+
+  const emitBox = h('div', 'oe-claim-emit');
+  emitBox.append(h('label', 'oe-label', 'emit'));
+  for (const row of planRows) emitBox.append(row);
+  box.append(emitBox);
+  return box;
+}
+
 function renderAuthoring(state) {
   const wrap = h('div', 'oe-authoring');
   const plan = state.authoring;
@@ -896,12 +956,57 @@ function renderAuthoring(state) {
     }
     return null;
   };
+  // Claim grouping: the path already says which claim a row belongs to, so this is the
+  // structure the DATA states, not a layout invented here.
+  const draftClaims = state.draft?.target_kind === 'pack' && draftRaw
+    && draftRaw.claims && typeof draftRaw.claims === 'object' && !Array.isArray(draftRaw.claims)
+    ? draftRaw.claims : null;
+  const claimOf = (path) => {
+    const found = /\.claims\.([^.]+)\./.exec(path);
+    return found ? found[1] : null;
+  };
+  // 🔴 `$subject` OFFERS THE ROLES THIS CLAIM DEFINED, from the draft, so they are offered
+  // BEFORE the claim is saved. The plan cannot answer this: its candidates for these fields
+  // come from the document, and a role typed a moment ago is not in the document yet.
+  const ROLE_REFERENCING = new Set(['subject', 'occurred_at', 'value']);
+  const withSiblingRoles = (row) => {
+    const claimId = draftClaims ? claimOf(row.path) : null;
+    if (!claimId) return row;
+    const leaf = row.path.split('.').pop();
+    if (!ROLE_REFERENCING.has(leaf)) return row;
+    const claim = draftClaims[claimId];
+    const roles = claim && typeof claim.roles === 'object' && !Array.isArray(claim.roles)
+      ? claim.roles : {};
+    const names = Object.keys(roles).map((name) => `$${name}`);
+    return names.length ? { ...row, candidates: names } : row;
+  };
   const buckets = [
     ['missing', '빠짐'], ['unanswered', '미답'],
     ['derived', '파생됨 · 묻지 않음'], ['answered', '답함'],
   ];
+  // A claim is one block, so its rows leave the state buckets and travel with it.
+  const claimed = new Set();
+  if (draftClaims) {
+    const section = h('section', 'oe-bucket oe-bucket--claims');
+    section.append(h('h3', '', `주장 · ${Object.keys(draftClaims).length}`));
+    for (const claimId of Object.keys(draftClaims)) {
+      const rows = plan.fields.filter((row) => claimOf(row.path) === claimId);
+      rows.forEach((row) => claimed.add(row.path));
+      const rendered = rows.map((row) => {
+        const shown = withSiblingRoles(row);
+        return renderAuthoringRow(shown, state.expandedFields, editableFor(shown));
+      });
+      section.append(renderClaimBlock(
+        state, state.draft.target_id, claimId, draftClaims[claimId], rendered, closedListFor));
+    }
+    if (!Object.keys(draftClaims).length) {
+      section.append(h('div', 'oe-empty', 'None defined'));
+    }
+    wrap.append(section);
+  }
   for (const [stateId, label] of buckets) {
-    const rows = plan.fields.filter((row) => row.state === stateId);
+    const rows = plan.fields.filter(
+      (row) => row.state === stateId && !claimed.has(row.path));
     const section = h('section', `oe-bucket oe-bucket--${stateId}`);
     section.append(h('h3', '', `${label} · ${rows.length}`));
     if (!rows.length) section.append(h('div', 'oe-empty', 'None defined'));

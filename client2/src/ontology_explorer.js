@@ -167,6 +167,22 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     editFieldAtPath(path, mutate([...current]));
   };
 
+  // Write a leaf named by a path RELATIVE to the declaration body (the claim form).
+  // The absolute-path writer above is for authoring-plan rows; this one is for fields the
+  // form knows about directly, and both end in the same `EDITOR_CHANGED`.
+  const editShapeAtPath = (relative, value) => {
+    if (!state.draft || !state.editorText) return;
+    let raw;
+    try {
+      raw = JSON.parse(state.editorText);
+    } catch {
+      return;
+    }
+    const next = setAtPath(raw, splitBundlePath(relative), value);
+    if (next === null) return;
+    dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
+  };
+
   // Write the smallest config that validates, so a setup can begin from nothing.
   //
   // 🔴 THE SCREEN OFFERS; THE PERSON DECIDES. This is the only write here that is not a
@@ -763,6 +779,17 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   });
 
   root.addEventListener('input', (event) => {
+    if (event.target.dataset.action === 'edit-shape') {
+      // A relative path inside the declaration body -- `claims.<id>.roles.<name>.kind`.
+      // `splitBundlePath` only strips a leading `bundle.`, so a relative path splits the
+      // same way, brackets included. Same writer, same buffer, same save.
+      editShapeAtPath(event.target.dataset.value, event.target.value);
+      return;
+    }
+    if (event.target.dataset.action === 'edit-shape-flag') {
+      editShapeAtPath(event.target.dataset.value, event.target.checked);
+      return;
+    }
     if (event.target.dataset.action === 'edit-field-item') {
       const at = Number(event.target.dataset.index);
       const typed = event.target.value;
