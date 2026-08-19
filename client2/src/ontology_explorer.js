@@ -4,7 +4,10 @@ import {
   reduceFieldFold, reduceNewDeclaration, restoreDirtyEditorCheckpoint,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
-import { splitBundlePath, setAtPath, getAtPath } from './ontology_path.js';
+import {
+  splitBundlePath, setAtPath, getAtPath, deleteAtPath,
+} from './ontology_path.js';
+import { declarationShape, emptyOf, shapeAt } from './ontology_skeleton.js';
 
 let controller = null;
 
@@ -209,6 +212,39 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       if (value.trim() !== '' && Number.isFinite(asNumber)) written = asNumber;
     }
     const next = setAtPath(raw, steps, written);
+    if (next === null) return;
+    dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
+  };
+
+  // The skeleton node describing a path inside the open declaration, and the value the
+  // draft currently holds there. Both walk the same path the writer would write.
+  const shapeForPath = (relative) => {
+    const skeleton = state.authoringSchema?.skeleton;
+    const section = (state.authoringSchema?.authorable_kinds || [])
+      .find((row) => row.id === state.draft?.target_kind)?.section;
+    if (!skeleton || !section) return null;
+    return shapeAt(declarationShape(skeleton, section), splitBundlePath(relative),
+                   skeleton.defs);
+  };
+
+  const draftShapeAt = (relative) => {
+    if (!state.editorText) return undefined;
+    try {
+      return getAtPath(JSON.parse(state.editorText), splitBundlePath(relative));
+    } catch {
+      return undefined;
+    }
+  };
+
+  const removeShapeAtPath = (relative) => {
+    if (!state.draft || !state.editorText) return;
+    let raw;
+    try {
+      raw = JSON.parse(state.editorText);
+    } catch {
+      return;
+    }
+    const next = deleteAtPath(raw, splitBundlePath(relative));
     if (next === null) return;
     dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
   };
@@ -721,48 +757,6 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'bootstrap-config') {
       await bootstrapConfig();
     }
-    else if (action === 'add-claim') {
-      // The name is read off the input at press time rather than mirrored into state: the
-      // reconciler already keeps a focused control's text across renders, so a second copy
-      // of it would only be something to keep in sync.
-      const box = root.querySelector('.oe-claim-new-id');
-      const claimId = (box?.value || '').trim();
-      if (!claimId) return;
-      // 🔴 THE WHOLE PATH, when `claims` is not there yet. `setAtPath` will not invent a
-      // missing branch -- deliberately -- so writing `claims.<id>` into a body that has no
-      // `claims` would land nowhere. Naming the first claim is exactly that case, and it is
-      // the one the owner walks: 「claims에 hello 치면 바로 hello 하위 폼이 떠야지」.
-      let raw = {};
-      try {
-        raw = JSON.parse(state.editorText || '{}');
-      } catch {
-        return;                    // let the textarea own its own syntax error
-      }
-      const claims = raw.claims && typeof raw.claims === 'object' && !Array.isArray(raw.claims)
-        ? raw.claims : null;
-      if (claims) editShapeAtPath(`claims.${claimId}`, {});
-      else editShapeAtPath('claims', { [claimId]: {} });
-      if (box) box.value = '';
-    }
-    else if (action === 'add-role') {
-      const claimId = target.dataset.value;
-      const box = root.querySelector(`.oe-role-new-id[data-claim="${claimId}"]`);
-      const roleId = (box?.value || '').trim();
-      if (!roleId) return;
-      // 🔴 THE SECOND ROLE USED TO DELETE THE FIRST. This asked `draftValueAt` whether a
-      // `roles` map already existed and wrote the whole map when it said no -- but
-      // `draftValueAt` takes an ABSOLUTE path (`packs.<id>.claims...`; it checks
-      // `steps[0]` against the section) and this passed a relative one, so it answered
-      // `undefined` EVERY time. The map was therefore replaced on every press, and a claim
-      // could never hold two roles. `lot-lineage@1` needs four on one claim.
-      //
-      // The branch is gone rather than repaired: `editShapeAtPath` builds its own missing
-      // parents as plain objects, so writing the whole path is the same write with nothing
-      // left to get wrong. Empty body, as before -- the row that appears carries the kind
-      // dropbox and the required checkbox, and both write into it.
-      editShapeAtPath(`claims.${claimId}.roles.${roleId}`, {});
-      if (box) box.value = '';
-    }
     else if (action === 'start-field-text' || action === 'start-field-list'
              || action === 'start-field-object') {
       // The person picked the shape; the screen never guessed it. An empty value is
@@ -772,6 +766,32 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       editShapeAtPath(target.dataset.value,
                       action === 'start-field-list' ? []
                         : action === 'start-field-object' ? {} : '');
+    }
+    else if (action === 'form-name' || action === 'form-append'
+             || action === 'form-remove') {
+      // 🔴 CRUD IS READ OFF THE NODE, NOT OFF THE DECLARATION. 「폼은 모두 crud
+      // 가능해야함」: every member a person can name, they can take back out. Before this
+      // the screen could create a claim, a role or a qualifier and never remove one, so
+      // three junk roles typed while testing could only be undone in the raw JSON editor
+      // -- the editor this screen exists to stop being necessary.
+      const path = target.dataset.value;
+      if (action === 'form-remove') {
+        removeShapeAtPath(path);
+      } else {
+        const node = shapeForPath(path);
+        if (!node || node.kind !== 'map') return;
+        const empty = emptyOf(node.of, state.authoringSchema?.skeleton?.defs);
+        if (action === 'form-append') {
+          const held = draftShapeAt(path);
+          editShapeAtPath(path, [...(Array.isArray(held) ? held : []), empty]);
+        } else {
+          const box = root.querySelector(`.oe-form-new-id[data-for="${path}"]`);
+          const name = (box?.value || '').trim();
+          if (!name) return;
+          editShapeAtPath(`${path}.${name}`, empty);
+          if (box) box.value = '';
+        }
+      }
     }
     else if (action === 'add-draft-item') {
       editShapeList(target.dataset.value, (items) => [...items, '']);

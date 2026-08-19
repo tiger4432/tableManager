@@ -63,3 +63,30 @@ export function getAtPath(document, steps) {
   }
   return cursor;
 }
+
+/** Remove the leaf at `steps`, returning a NEW document (or `null` if it is not there).
+ *
+ *  A member of a list is spliced out rather than left as a hole: `mappings[1]` gone means
+ *  the list is one shorter, not that it holds an `undefined` the validator would read as
+ *  a mapping with no fields.
+ */
+export function deleteAtPath(document, steps) {
+  if (!steps.length) return null;
+  const next = JSON.parse(JSON.stringify(document));
+  let cursor = next;
+  for (const step of steps.slice(0, -1)) {
+    if (cursor === null || typeof cursor !== 'object') return null;
+    if (!(step in cursor)) return null;
+    cursor = cursor[step];
+  }
+  const leaf = steps[steps.length - 1];
+  if (cursor === null || typeof cursor !== 'object') return null;
+  if (Array.isArray(cursor)) {
+    if (typeof leaf !== 'number' || leaf < 0 || leaf >= cursor.length) return null;
+    cursor.splice(leaf, 1);
+    return next;
+  }
+  if (!(leaf in cursor)) return null;
+  delete cursor[leaf];
+  return next;
+}

@@ -1,7 +1,9 @@
 import { isDraftRevisionEditable } from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
-import { EMIT_SHAPE } from './ontology_shapes.js';
+import {
+  declarationShape, fieldApplies, memberPath, membersOf,
+} from './ontology_skeleton.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings', binding: 'Bindings', pack: 'Packs',
@@ -821,266 +823,150 @@ function writablePrefix(state) {
 // 🔴 AND `$subject` PICKS FROM THE ROLES THIS CLAIM JUST DEFINED -- the first field on this
 // screen whose candidates come from a SIBLING rather than from the document. That is why it
 // has to read the draft: the roles being offered may not be saved yet.
-function renderClaimBlock(state, packId, claimId, claim, rows, renderRow, closedListFor,
-                          fold, prefix, draftRaw) {
-  const byPath = new Map(rows.map((row) => [row.path, row]));
-  const box = h('section', `oe-claim${fold.open ? '' : ' is-folded'}`);
-  box.dataset.key = `claim:${claimId}`;
-  // 🔴 A COMPLETE CLAIM FOLDS; ONE THAT STILL OWES SOMETHING OPENS. Same predicate the
-  // rows already use (`remaining`, plus conflicts and refusals) -- no new rule, and 「남은
-  // 수」 keeps counting only what is actually owed. The owner's complaint was 「복잡해서
-  // 구조를 못 외우겠다」, and half of that answer is showing less at once: a pack with five
-  // claims opens the ones that need a hand, not all five.
-  const toggle = button('', 'toggle-field', fold.key, 'oe-claim-toggle');
-  toggle.setAttribute('aria-expanded', String(fold.open));
-  toggle.append(h('h4', 'oe-claim-name', claimId));
-  if (!fold.open) toggle.append(h('i', 'oe-folded-why', fold.reason));
-  box.append(toggle);
-  if (!fold.open) return box;
-  const base = `claims.${claimId}`;
-  const roles = claim && typeof claim.roles === 'object' && !Array.isArray(claim.roles)
-    ? claim.roles : {};
-  const roleNames = Object.keys(roles);
+// The form, generated from the skeleton. One function for every declaration kind.
+//
+// 🔴 IT ASKS WHAT THE NODE IS, NEVER WHAT THE DECLARATION IS. There is no branch here for
+// packs, none for sources, none "just for emit" -- the owner's finish line for this round
+// is 「다른 스키마 운영 환경에서 코드 0줄, 선언 교체만으로 발화」, and a renderer that asks
+// which kind it is looking at needs code again for the next schema. Add a field to
+// `ledger_skeleton.json` and it appears here; take it out and it stops. That is the test.
+//
+// This replaced three hand-written builders -- a claim block, a starter list, and a
+// leftover-fields block -- which between them knew `claims`, `roles`, `emit`, `mappings`
+// and `pack` by name and still could not express `emit.object.entity`, so the owner's own
+// `lot-lineage@1` was unbuildable through the form.
+//
+// 🔴 THE PLAN STILL WINS WHEREVER IT HAS A ROW. The skeleton describes what EXISTS; the
+// authoring plan describes what the FILE holds, and only its rows carry candidates,
+// refusals and grounds. So a leaf the plan speaks for is rendered by the plan, and the
+// skeleton fills what the plan cannot see -- which is everything absent.
+//
+// CRUD is read off the node kind, per the owner's 「폼은 모두 crud 가능해야함」:
+//   map     name a member / list them / edit inside / REMOVE that member
+//   record  its fields are fixed, so there is nothing to add or remove -- only edit
+//   leaf    edit; and clear it, when the skeleton says the field is optional
+function renderSkeletonForm(context, node, path, value) {
+  if (!node) return null;
+  if (node.kind === 'map') return renderSkeletonMap(context, node, path, value);
+  if (node.kind === 'record') return renderSkeletonRecord(context, node, path, value);
+  return renderSkeletonLeaf(context, node, path, value);
+}
 
-  const rolesBox = h('div', 'oe-claim-roles');
-  rolesBox.append(h('label', 'oe-label', '역할'));
-  const kindOptions = state.authoringSchema?.role_kind || [];
-  for (const name of roleNames) {
-    const role = roles[name] && typeof roles[name] === 'object' ? roles[name] : {};
-    const line = h('div', 'oe-role-row');
-    line.append(h('code', 'oe-role-name', name));
-    // The kind is a closed list, so it is a dropbox -- and the value already in the file is
-    // always an option, even an unrecognised one. Rendering must never rewrite the file.
-    const select = h('select', 'oe-field-select');
-    select.dataset.action = 'edit-shape';
-    select.dataset.value = `${base}.roles.${name}.kind`;
-    select.setAttribute('aria-label', `${name} 종류`);
-    const current = typeof role.kind === 'string' ? role.kind : '';
-    const options = kindOptions.includes(current) ? kindOptions : [current, ...kindOptions];
-    for (const item of options) {
-      const option = h('option', '', item);
-      option.value = item;
-      if (item === current) option.selected = true;
-      select.append(option);
+function renderSkeletonRecord(context, node, path, value) {
+  const box = h('div', 'oe-form-record');
+  const held = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  for (const field of node.fields || []) {
+    const at = path ? `${path}.${field.key}` : field.key;
+    const current = held[field.key];
+    if (!fieldApplies(field, held, current)) continue;
+    const row = h('div', 'oe-form-field');
+    const label = h('label', 'oe-form-label', field.label || field.key);
+    row.append(label);
+    // 🔴 AN OPTIONAL FIELD THE DOCUMENT HOLDS CAN BE TAKEN BACK OUT. Without this the
+    // only way to undo a typo in an optional key is the raw JSON editor, which is the
+    // thing this screen exists to stop being necessary.
+    if (field.required === false && current !== undefined) {
+      row.append(button('−', 'form-clear', at, 'oe-form-remove'));
     }
-    const required = h('input', 'oe-role-required');
-    required.type = 'checkbox';
-    required.checked = role.required === true;
-    required.dataset.action = 'edit-shape-flag';
-    required.dataset.value = `${base}.roles.${name}.required`;
-    required.setAttribute('aria-label', `${name} 필수`);
-    line.append(select, required, h('span', 'oe-role-required-label', '필수'));
-    rolesBox.append(line);
+    const drawn = renderSkeletonForm(context, field.node, at, current);
+    if (drawn) row.append(drawn);
+    box.append(row);
   }
-  if (!roleNames.length) rolesBox.append(h('div', 'oe-key-none', 'None defined'));
-  // A role's NAME is coined by the person -- free text, like the claim's own name. Its kind
-  // is a closed list and stays a dropbox once the row exists.
-  const roleNaming = h('div', 'oe-claim-new');
-  const roleInput = h('input', 'oe-role-new-id');
-  roleInput.type = 'text';
-  roleInput.placeholder = '역할 id · e.g. subject';
-  roleInput.dataset.claim = claimId;
-  roleInput.setAttribute('aria-label', `${claimId} 새 역할 id`);
-  roleNaming.append(roleInput, button('+ 역할', 'add-role', claimId, 'oe-claim-new-go'));
-  rolesBox.append(roleNaming);
-  box.append(rolesBox);
-
-  const emitBox = h('div', 'oe-claim-emit');
-  emitBox.append(h('label', 'oe-label', 'emit'));
-  // 🔴 THE EMIT FORM IS DRAWN EVEN WHEN `emit` IS ABSENT. The plan describes what the
-  // document holds, so a claim named a moment ago has no emit rows at all -- and 「emit」 as
-  // a bare label with nothing under it is the screen stopping one layer in. The shape says
-  // which fields exist; the plan is still preferred wherever it HAS a row, because its row
-  // carries the candidates and the refusals.
-  const roleOptions = roleNames.map((name) => `$${name}`);
-  const drawShape = (fields, base, container) => {
-    for (const field of fields) {
-      const path = `${base}.${field.key}`;
-      const planned = byPath.get(`${prefix}.${path}`);
-      if (planned) {
-        container.append(renderRow(planned));
-        continue;
-      }
-      if (field.kind === 'object') {
-        const nested = h('div', 'oe-claim-emit-nested');
-        nested.append(h('label', 'oe-label', field.label || field.key));
-        drawShape(field.of, path, nested);
-        container.append(nested);
-        continue;
-      }
-      const line = h('div', 'oe-draft-field');
-      line.append(h('code', 'oe-draft-field-name', field.label || field.key));
-      const current = getAtPath(draftRaw, splitBundlePath(path));
-      const value = typeof current === 'string' ? current : '';
-      if (field.kind === 'choice') {
-        const options = state.authoringSchema?.[field.list] || [];
-        const select = h('select', 'oe-field-select');
-        select.dataset.action = 'edit-shape';
-        select.dataset.value = path;
-        select.setAttribute('aria-label', field.label || field.key);
-        // The value in the file is always an option, unrecognised or not -- rendering must
-        // never rewrite it. An absent value shows as blank rather than as the first option.
-        for (const item of (options.includes(value) ? options : [value, ...options])) {
-          const option = h('option', '', item);
-          option.value = item;
-          if (item === value) option.selected = true;
-          select.append(option);
-        }
-        line.append(select);
-      } else {
-        const input = h('input', 'oe-field-input');
-        input.type = 'text';
-        input.value = value;
-        input.dataset.action = 'edit-shape';
-        input.dataset.value = path;
-        input.setAttribute('aria-label', field.label || field.key);
-        if (field.kind === 'roles' && roleOptions.length) {
-          const listId = `oe-dl-${path.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-          const list = h('datalist');
-          list.id = listId;
-          for (const item of roleOptions) {
-            const option = h('option');
-            option.value = item;
-            list.append(option);
-          }
-          input.setAttribute('list', listId);
-          line.append(input, list);
-          container.append(line);
-          continue;
-        }
-        line.append(input);
-      }
-      container.append(line);
-    }
-  };
-  drawShape(EMIT_SHAPE, `${base}.emit`, emitBox);
-  box.append(emitBox);
   return box;
 }
 
-// Fields the draft holds that the PLAN has no row for.
-//
-// 🔴 ONE GENERIC BLOCK, NOT A BRANCH PER KIND. Four per-kind branches would be four places
-// to leak into each other, which is the standing regression risk in this round. This asks
-// one question instead -- "is this top-level key missing from the plan?" -- so a mapper, a
-// profile and a preparer are all handled without naming any of them.
-//
-// Measured on live declarations: exactly 6 such fields exist -- `implementation_id` and
-// `implementation_version` on mappers and preparers, `accepts_verified_join_rules` and
-// `input_columns` on preparers. Objects are skipped (the plan describes what is inside
-// `claims` and `mappings`), and so are lists holding objects.
-//
-// 🔴 NO TYPE IS ASSERTED HERE. The shape rendered follows the value ALREADY in the draft,
-// and the writer preserves that value's type. A field the draft does not hold yet gets no
-// row from this block at all, because guessing its shape is what this screen refuses to do.
-function renderUnplannedDraftFields(state, draftRaw, plannedTopLevel) {
-  if (!draftRaw || typeof draftRaw !== 'object' || Array.isArray(draftRaw)) return null;
-  const rows = [];
-  for (const key of Object.keys(draftRaw)) {
-    if (plannedTopLevel.has(key)) continue;
-    const value = draftRaw[key];
-    const line = h('div', 'oe-draft-field');
-    line.append(h('code', 'oe-draft-field-name', key));
-    if (typeof value === 'boolean') {
-      const box = h('input', 'oe-role-required');
-      box.type = 'checkbox';
-      box.checked = value;
-      box.dataset.action = 'edit-shape-flag';
-      box.dataset.value = key;
-      box.setAttribute('aria-label', key);
-      line.append(box);
-    } else if (typeof value === 'string' || typeof value === 'number') {
-      const input = h('input', 'oe-field-input');
-      input.type = 'text';
-      input.value = String(value);
-      input.dataset.action = 'edit-shape';
-      input.dataset.value = key;
-      input.setAttribute('aria-label', key);
-      line.append(input);
-    } else if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
-      value.forEach((item, index) => {
-        const row = h('div', 'oe-field-row');
-        const input = h('input', 'oe-field-input');
-        input.type = 'text';
-        input.value = item;
-        input.dataset.action = 'edit-draft-item';
-        input.dataset.value = key;
-        input.dataset.index = String(index);
-        input.setAttribute('aria-label', `${key} ${index + 1}`);
-        const drop = button('x', 'remove-draft-item', key, 'oe-field-row-remove');
-        drop.dataset.index = String(index);
-        row.append(input, drop);
-        line.append(row);
-      });
-      if (!value.length) line.append(h('div', 'oe-key-none', 'None defined'));
-      line.append(button('+ Add', 'add-draft-item', key, 'oe-field-row-add'));
-    } else {
-      continue;                 // an object, or a list of objects: the plan speaks for it
-    }
-    rows.push(line);
-  }
-  if (!rows.length) return null;
-  const box = h('section', 'oe-bucket oe-bucket--draft');
-  box.append(h('h3', '', `그 밖의 칸 · ${rows.length}`));
-  for (const row of rows) box.append(row);
-  return box;
-}
-
-// The fields the validator NAMES as missing but the plan has no row for.
-//
-// 🔴 NOTHING IS INVENTED HERE. Every row below comes from a `missing_field` refusal the
-// server already sends -- the validator says 「빈 팩엔 `claims`가 없다」 with the exact path,
-// and this only moves that from a refusal line into a place you can act on. No field is
-// listed that the validator did not name.
-//
-// 🔴 AND THE SCREEN STILL DOES NOT ASSERT A TYPE. The refusal carries `code`, `path` and a
-// prose `message` -- measured -- so the shape is not machine-readable, and a table here
-// saying "`claims` is an object" would be the second author removed from this screen all
-// day. So the PERSON picks the shape: a value, a list, or an object. The screen offers,
-// the person decides, the validator judges. That is the same division as everywhere else.
-//
-// This is a starting point, not a form: it gets the first key into an empty declaration so
-// the plan and the draft-derived rows have something to describe. A new pack begins with
-// `claims`, and from there the claim block takes over.
-function renderMissingStarters(state, plan, prefix, draftRaw, ownedElsewhere = new Set()) {
-  if (!prefix || !draftRaw) return null;
-  const named = new Map();
-  for (const refusal of plan.unattached_refusals || []) {
-    if (refusal.code !== 'missing_field') continue;
-    if (!refusal.path?.startsWith(prefix)) continue;
-    const relative = refusal.path.slice(prefix.length);
-    if (!relative) continue;
-    // 🔴 NESTED LEAVES TOO, BUT ONLY WHERE THERE IS SOMEWHERE TO PUT THEM. Once a claim
-    // exists the validator names `claims.<id>.emit` and `claims.<id>.roles`, and those are
-    // the rows that carry a pack the rest of the way. A leaf whose PARENT does not exist
-    // yet is skipped: writing it would have to invent the branch above it, which is the one
-    // thing the path writer refuses to do.
-    const steps = splitBundlePath(relative);
-    // The claims section asks for this one, and asks the better question (a name, not a
-    // shape), so it must not also appear here as a shape picker.
-    if (ownedElsewhere.has(relative)) continue;
-    if (getAtPath(draftRaw, steps) !== undefined) continue;
-    if (steps.length > 1 && getAtPath(draftRaw, steps.slice(0, -1)) === undefined) continue;
-    named.set(relative, refusal);
-  }
-  if (!named.size) return null;
-  const box = h('section', 'oe-bucket oe-bucket--start');
-  box.append(h('h3', '', `아직 없는 칸 · ${named.size}`));
-  for (const [key, refusal] of named) {
-    const line = h('div', 'oe-starter');
-    line.append(h('code', 'oe-starter-name', key));
-    // The validator's own sentence, carried across unchanged -- it is the only thing that
-    // knows what belongs here, and rewording it would put a second voice on the contract.
-    const hint = (plan.unattached_refusals || []).find(
-      (row) => row.path === refusal.path && row.code !== 'missing_field');
-    if (hint) line.append(h('small', 'oe-starter-why', hint.message));
-    line.append(button('값', 'start-field-text', key, 'oe-starter-go'),
-                button('목록', 'start-field-list', key, 'oe-starter-go'),
-                button('객체', 'start-field-object', key, 'oe-starter-go'));
+function renderSkeletonMap(context, node, path, value) {
+  const box = h('div', 'oe-form-map');
+  // A plan row ABOUT the map itself (rather than a member) says what the grammar expects
+  // of it -- which qualifier slots a predicate opens, for instance. It is the most useful
+  // sentence on the block, so it goes at the top rather than into the leftovers.
+  const own = context.planRow(path);
+  if (own) box.append(context.renderRow(own));
+  const members = membersOf(node, value);
+  for (const key of members) {
+    const at = memberPath(path, key, node.keyed_by);
+    const line = h('div', 'oe-form-member');
+    const head = h('div', 'oe-form-member-head');
+    head.append(h('code', 'oe-form-member-name', String(key)));
+    head.append(button('−', 'form-remove', at, 'oe-form-remove'));
+    line.append(head);
+    const inner = renderSkeletonForm(
+      context, context.deref(node.of), at,
+      node.keyed_by === 'index' ? (value || [])[key] : (value || {})[key]);
+    if (inner) line.append(inner);
     box.append(line);
   }
+  if (!members.length) box.append(h('div', 'oe-key-none', 'None defined'));
+  const naming = h('div', 'oe-form-new');
+  if (node.keyed_by === 'index') {
+    naming.append(button(`+ ${node.member || '항목'}`, 'form-append', path, 'oe-form-add'));
+  } else {
+    const input = h('input', 'oe-form-new-id');
+    input.type = 'text';
+    input.placeholder = node.member || '이름';
+    input.dataset.for = path;
+    input.setAttribute('aria-label', `${node.member || path} 새 이름`);
+    naming.append(input, button(`+ ${node.member || '항목'}`, 'form-name', path,
+                                'oe-form-add'));
+  }
+  box.append(naming);
   return box;
 }
+
+function renderSkeletonLeaf(context, node, path, value) {
+  const planned = context.planRow(path);
+  if (planned) return context.renderRow(context.suggest(planned, node, path));
+  if (node.hint === 'flag') {
+    const box = h('input', 'oe-role-required');
+    box.type = 'checkbox';
+    box.checked = value === true;
+    box.dataset.action = 'edit-shape-flag';
+    box.dataset.value = path;
+    box.setAttribute('aria-label', path);
+    return box;
+  }
+  const text = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+  if (node.hint === 'choice') {
+    const options = context.schema[node.list] || [];
+    const select = h('select', 'oe-field-select');
+    select.dataset.action = 'edit-shape';
+    select.dataset.value = path;
+    select.setAttribute('aria-label', path);
+    // The value in the document is always an option, recognised or not -- rendering must
+    // never rewrite the file. An absent value shows blank, not as the first choice.
+    for (const item of (options.includes(text) ? options : [text, ...options])) {
+      const option = h('option', '', item);
+      option.value = item;
+      if (item === text) option.selected = true;
+      select.append(option);
+    }
+    return select;
+  }
+  const input = h('input', 'oe-field-input');
+  input.type = 'text';
+  input.value = text;
+  input.dataset.action = 'edit-shape';
+  input.dataset.value = path;
+  input.setAttribute('aria-label', path);
+  const suggestions = node.hint === 'ref' ? context.declared(node.section)
+    : node.hint === 'role' ? context.rolesNear(path, node.from) : [];
+  if (suggestions.length) {
+    const listId = `oe-dl-${path.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    const list = h('datalist');
+    list.id = listId;
+    for (const item of suggestions) {
+      const option = h('option');
+      option.value = item;
+      list.append(option);
+    }
+    input.setAttribute('list', listId);
+    const wrap = h('span', 'oe-form-suggested');
+    wrap.append(input, list);
+    return wrap;
+  }
+  return input;
+}
+
 
 function renderAuthoring(state) {
   const wrap = h('div', 'oe-authoring');
@@ -1169,120 +1055,83 @@ function renderAuthoring(state) {
     }
     return null;
   };
-  // Claim grouping: the path already says which claim a row belongs to, so this is the
-  // structure the DATA states, not a layout invented here.
-  // 🔴 A PACK ALWAYS GETS ITS CLAIMS SECTION, even before `claims` exists. The validator
-  // already says 「must be a non-empty object」, so asking the operator to pick a SHAPE for
-  // it is asking a settled question -- the same rule as "a closed list is a dropbox, not a
-  // free field", seen from the other side. What is unsettled is the NAME of each claim, and
-  // that is what this section asks for.
-  const draftClaims = state.draft?.target_kind === 'pack' && draftRaw
-    ? (draftRaw.claims && typeof draftRaw.claims === 'object' && !Array.isArray(draftRaw.claims)
-        ? draftRaw.claims : {})
-    : null;
-  const claimOf = (path) => {
-    const found = /\.claims\.([^.]+)\./.exec(path);
-    return found ? found[1] : null;
-  };
-  // 🔴 `$subject` OFFERS THE ROLES THIS CLAIM DEFINED, from the draft, so they are offered
-  // BEFORE the claim is saved. The plan cannot answer this: its candidates for these fields
-  // come from the document, and a role typed a moment ago is not in the document yet.
-  const ROLE_REFERENCING = new Set(['subject', 'occurred_at', 'value']);
-  const withSiblingRoles = (row) => {
-    const claimId = draftClaims ? claimOf(row.path) : null;
-    if (!claimId) return row;
-    const leaf = row.path.split('.').pop();
-    if (!ROLE_REFERENCING.has(leaf)) return row;
-    const claim = draftClaims[claimId];
-    const roles = claim && typeof claim.roles === 'object' && !Array.isArray(claim.roles)
-      ? claim.roles : {};
-    const names = Object.keys(roles).map((name) => `$${name}`);
-    return names.length ? { ...row, candidates: names } : row;
-  };
   const buckets = [
     ['missing', '빠짐'], ['unanswered', '미답'],
     ['derived', '파생됨 · 묻지 않음'], ['answered', '답함'],
   ];
-  // Top-level keys the plan already speaks for, so the block below does not repeat them.
-  const plannedTopLevel = new Set(
-    plan.fields
-      .filter((row) => prefix && row.path.startsWith(prefix))
-      .map((row) => row.path.slice(prefix.length).split('.')[0])
-      .filter(Boolean));
-  const unplanned = renderUnplannedDraftFields(state, draftRaw, plannedTopLevel);
-  if (unplanned) wrap.append(unplanned);
-  const starters = renderMissingStarters(
-    state, plan, prefix, draftRaw,
-    new Set(state.draft?.target_kind === 'pack' ? ['claims'] : []));
-  if (starters) wrap.append(starters);
 
-  // A claim is one block, so its rows leave the state buckets and travel with it.
-  const claimed = new Set();
-  if (draftClaims) {
-    const section = h('section', 'oe-bucket oe-bucket--claims');
-    section.append(h('h3', '', `주장 · ${Object.keys(draftClaims).length}`));
-    for (const claimId of Object.keys(draftClaims)) {
-      const rows = plan.fields.filter((row) => claimOf(row.path) === claimId);
-      rows.forEach((row) => claimed.add(row.path));
-      const renderRow = (row) => {
-        const shown = withSiblingRoles(row);
-        return renderAuthoringRow(shown, state.expandedFields, editableFor(shown));
-      };
-      const key = `claim:${state.draft.target_id}:${claimId}`;
-      // 🔴 AN EMPTY CLAIM OWES EVERYTHING, and the plan cannot say so: a claim with no
-      // body has no rows, so "does any row still owe something" read as "nothing owed" and
-      // folded the claim shut the instant it was named. The operator typed `hello` and got
-      // 「hello · 채워짐」 -- the opposite of true. Emptiness is asked of the DRAFT, which is
-      // the only thing that knows about a claim that was named a second ago.
-      const body = draftClaims[claimId];
-      const empty = !body || typeof body !== 'object' || Array.isArray(body)
-        || !Object.keys(body).length;
-      // 🔴 AND A CLAIM THE PLAN HAS NEVER SEEN STAYS OPEN. The plan describes the FILE, so
-      // for a claim named a moment ago it has no rows at all -- and "no row still owes
-      // anything" is then vacuously true, which folded the claim shut the instant it gained
-      // its first role. `rows.length === 0` is the honest reading: nothing is known about
-      // this claim yet, so it cannot be reported as finished.
-      const owes = empty || !rows.length || rows.some(
-        (row) => row.remaining || row.conflicts || row.refusals?.length);
-      const fold = {
-        key,
-        open: owes || state.expandedFields.includes(key),
-        reason: owes ? '' : '채워짐',
-      };
-      section.append(renderClaimBlock(
-        state, state.draft.target_id, claimId, draftClaims[claimId], rows, renderRow,
-        closedListFor, fold, prefix.replace(/\.$/, ''), draftRaw));
+  // ---- the form, generated ------------------------------------------------------
+  //
+  // 🔴 WHICH DECLARATION THIS IS NEVER ASKED. The section name comes off the payload
+  // (`authorable_kinds`), the shape comes off the skeleton, and everything below walks
+  // those two. That is the owner's finish line for the round -- 「다른 스키마 운영
+  // 환경에서 코드 0줄」 -- and it is why the pack-shaped code that used to live here
+  // (claims, roles, emit, `ROLE_REFERENCING`) is gone rather than extended.
+  const drawn = new Set();
+  const skeleton = state.authoringSchema?.skeleton || null;
+  const section = (state.authoringSchema?.authorable_kinds || [])
+    .find((row) => row.id === state.draft?.target_kind)?.section || null;
+  const bodyNode = skeleton && section ? declarationShape(skeleton, section) : null;
+  const base = prefix.replace(/\.$/, '');
+  const planRow = (path) => {
+    const row = plan.fields.find((item) => item.path === `${base}.${path}`);
+    if (row) drawn.add(row.path);
+    return row;
+  };
+  // A `$role` is spelled by the ROLE, not by the endpoint: `$r` when it is required and
+  // `$r?` when it is not, which is the server's `_role_reference` and the only spelling
+  // the validator accepts. The skeleton says where to look (`from`), so this knows the
+  // word "roles" only because the document used it.
+  const rolesNear = (path, from) => {
+    const steps = splitBundlePath(path);
+    for (let depth = steps.length - 1; depth >= 0; depth -= 1) {
+      const holder = getAtPath(draftRaw, steps.slice(0, depth));
+      const roles = holder && typeof holder === 'object' && !Array.isArray(holder)
+        ? holder[from] : null;
+      if (roles && typeof roles === 'object' && !Array.isArray(roles)) {
+        return Object.keys(roles).map(
+          (name) => (roles[name]?.required === true ? `$${name}` : `$${name}?`));
+      }
     }
-    if (!Object.keys(draftClaims).length) {
-      section.append(h('div', 'oe-empty', 'None defined'));
-    }
-    // 🔴 A CLAIM HAS TO BE NAMEABLE, or `claims: {}` is a dead end -- measured: an empty
-    // claims map makes the validator name NOTHING, so the screen falls silent exactly
-    // where it just told you to start. Free text is right here for the same reason it is
-    // right on the naming row: the operator is coining a name nothing else holds yet.
-    const naming = h('div', 'oe-claim-new');
-    const input = h('input', 'oe-claim-new-id');
-    input.type = 'text';
-    input.placeholder = '주장 id · e.g. register';
-    input.setAttribute('aria-label', '새 주장 id');
-    naming.append(input, button('+ 주장', 'add-claim', '', 'oe-claim-new-go'));
-    section.append(naming);
-    wrap.append(section);
+    return [];
+  };
+  const context = {
+    schema: state.authoringSchema || {},
+    planRow,
+    deref: (node) => (node && node.use ? (skeleton.defs || {})[node.use] : node),
+    declared: (name) => (state.authoring?.sections || {})[name] || [],
+    rolesNear,
+    // 🔴 THE ROLES A CLAIM DEFINED A MOMENT AGO ARE OFFERED BEFORE IT IS SAVED. The plan
+    // row's own candidates come from the DOCUMENT, so a role typed just now is not among
+    // them -- and this screen exists so that nothing has to be saved to be seen.
+    renderRow: (row) => renderAuthoringRow(row, state.expandedFields, editableFor(row)),
+    suggest: (row, node, path) => {
+      if (!node || node.hint !== 'role') return row;
+      const names = rolesNear(path, node.from);
+      return names.length ? { ...row, candidates: names } : row;
+    },
+  };
+  if (bodyNode && draftRaw) {
+    const body = h('section', 'oe-bucket oe-bucket--form');
+    body.append(h('h3', '', `${state.draft.target_id}`));
+    const form = renderSkeletonForm(context, bodyNode, '', draftRaw);
+    if (form) body.append(form);
+    wrap.append(body);
   }
+
   // 🔴 AN EMPTY BUCKET SAYS NOTHING FOUR TIMES. All four are empty on a declaration that
   // was just created, so the screen answered 「None defined」 four times over and buried the
   // one thing that mattered -- the form beside them. The old rule ("always render, a
   // vanished heading is indistinguishable from nothing to do") is kept where it is TRUE:
   // if the whole panel would be silent, one line still says so. It is only the repetition
   // that goes.
-  const drawn = buckets.map(([stateId, label]) => {
+  const shown = buckets.map(([stateId, label]) => {
     const rows = plan.fields.filter(
-      (row) => row.state === stateId && !claimed.has(row.path));
+      (row) => row.state === stateId && !drawn.has(row.path));
     return { stateId, label, rows };
   });
-  const anythingToShow = drawn.some((bucket) => bucket.rows.length)
-    || Boolean(claimed.size) || Boolean(unplanned) || Boolean(starters);
-  for (const { stateId, label, rows } of drawn) {
+  const anythingToShow = shown.some((bucket) => bucket.rows.length) || Boolean(bodyNode);
+  for (const { stateId, label, rows } of shown) {
     if (!rows.length && anythingToShow) continue;
     const section = h('section', `oe-bucket oe-bucket--${stateId}`);
     section.append(h('h3', '', `${label} · ${rows.length}`));

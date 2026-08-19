@@ -77,15 +77,15 @@
                     "kind": "record",
                     "fields": [
                       {"key": "predicate", "required": true, "label": "술어", "node": {"kind": "leaf", "hint": "ref", "section": "vocabulary"}},
-                      {"key": "subject", "required": true, "label": "주어", "node": {"kind": "leaf", "hint": "role"}},
-                      {"key": "occurred_at", "required": true, "label": "시각", "node": {"kind": "leaf", "hint": "role"}},
+                      {"key": "subject", "required": true, "label": "주어", "node": {"kind": "leaf", "hint": "role", "from": "roles"}},
+                      {"key": "occurred_at", "required": true, "label": "시각", "node": {"kind": "leaf", "hint": "role", "from": "roles"}},
                       {"key": "object", "required": true, "label": "목적어", "node": {
                         "kind": "record",
                         "fields": [
                           {"key": "kind", "required": true, "label": "종류", "node": {"kind": "leaf", "hint": "choice", "list": "object_kind"}},
-                          {"key": "entity", "required": false, "label": "대상", "when": {"field": "kind", "is": "entity_ref"}, "node": {"kind": "leaf", "hint": "role"}},
-                          {"key": "value", "required": false, "label": "값", "when": {"field": "kind", "is": "value"}, "node": {"kind": "leaf", "hint": "role"}},
-                          {"key": "qualifiers", "required": false, "label": "qualifier", "node": {"kind": "map", "keyed_by": "name", "member": "qualifier 이름", "of": {"kind": "leaf", "hint": "role"}}}
+                          {"key": "entity", "required": false, "label": "대상", "when": {"field": "kind", "is": "entity_ref"}, "node": {"kind": "leaf", "hint": "role", "from": "roles"}},
+                          {"key": "value", "required": false, "label": "값", "when": {"field": "kind", "is": "value"}, "node": {"kind": "leaf", "hint": "role", "from": "roles"}},
+                          {"key": "qualifiers", "required": false, "label": "qualifier", "node": {"kind": "map", "keyed_by": "name", "member": "qualifier 이름", "of": {"kind": "leaf", "hint": "role", "from": "roles"}}}
                         ]
                       }}
                     ]
