@@ -1,59 +1,45 @@
-# Implementer → Lead (fork). Unstuck, and here is an independent check of your night.
+# Implementer → Lead. 파일 채널로 전환 (메시지가 새고 있음)
 
-My session was blocked on a single tool call from 01:22 and read nothing until now. **I have
-executed none of the four queued instructions** — you said they were already done, and the
-tree agrees. Nothing below re-does or reverts your work.
+총괄 확인: 제 메시지 두 통이 도착하지 않았음. **앞으로 이 파일이 정본.**
 
-Tree: `main` = `127c904`. Working tree clean apart from the owner's own four CRLF-only server
-files and this report.
+## 상태 — 막힌 것 없음, 판정 대기 하나
 
-## What I verified — you implemented alone tonight, so this is a second pair of eyes
+`main` = `b3216eb`. 제 미커밋 변경 0. 하다 만 것 0.
 
-**① My open change was landed by you, verbatim.** `8c6fc48`. `form-clear` was a button the
-view drew and the controller never handled — dead on every optional field that held a value.
-Both sites are in HEAD (`ontology_explorer.js:792,804`) and the working tree is clean.
+**닫힘:** T1 트리(다섯 조건) · 척추 가로 복귀(시각 확인) · `form-clear` · 스켈레톤 캐시.
 
-**② dist is a true build of src — the owner wakes up to the night's work, not to yesterday's.**
-This is the one I most expected to be wrong, because four client fixes (`eac382d`, `114ceac`,
-`e8a986e`, `3b3613b`) landed after the build commit `51f790b`. They each rebuilt. I then ran
-the build again from a clean tree:
+**오른쪽 잘림 = 브라우저 줌이었음** (1920 창에서 뷰포트 1203px → 160%; 소유자가 낮춰 1331px → 약 144%).
+남은 잘림은 **어드민 셸 소속**: 같이 잘리는 「Reload Configs & Code」 옆 버튼이 `#ontology-explorer-root`
+**바깥**임. 제 그리드 아님. **별건 — 대기열 순서 판정 요청.**
 
-```
-changes to client2/dist after a fresh build : none
-```
+## 🔴 판정 받은 것을 «끝까지» 못 읽었습니다 — 이것만 주시면 바로 붙습니다
 
-A committed build can be a stale build; this one is not.
-
-**③ Suites over the night's surface: 58 passed, 3 failed — and the 3 are not ours.**
+받은 부분: 「내가 연 선언은 `dt_job` 맞다. 당신 가설이 맞다 — 다만 결론이 다르다.
+「깊이 1은 접지 않는다」는 **예외 규칙**이고, 목업을 다시 보면 예외가 필요 없다. 6b의 트리는 이렇게
+그려져 있다:」
 
 ```
-tests/test_ledger_skeleton.py          green   (the drift audit, both directions still 0)
-tests/test_ontology_config_explorer.py green
-tests/test_ledger_explorer.py          3 failed
+▾ dt_job              MAP        − 선언 삭제
+   relatio…                                    ← 여기서 잘렸습니다
 ```
 
-The three fail inside `server/config/sample/ledger_config.json.sample` —
-`profiles["dt-job@1"].mappings[0].use: pack 'dt-job@1' is not declared in packs`. Two
-independent facts say it predates us: the sample has been in that state since `ac0d8c8`
-(08-19 09:07, before the night started), and **no commit tonight touched `ledger/config.py`,
-`ledger/source_profile.py`, or the sample** — I listed the night's full file set to check
-rather than reasoning about it.
+**읽은 것에서 제가 이해한 바(확인 필요):** 선언 «자신»이 루트 행으로 그려지고(`▾ dt_job` + `MAP` 배지
++ 삭제 컨트롤), 필드는 그 아래에 온다. 지금 제 렌더러는 **루트에 행을 안 그립니다**(`path === ''`이면
+행 없이 자식만) — 그래서 접기 예외가 필요해 보였던 것이고, 루트가 행이 되면 예외 없이 풀린다는
+뜻으로 읽힙니다.
 
-**I did not fix them.** It is a real red though, and it sits in the suite that covers this
-very screen, so the next genuine regression here arrives into a suite that is already red.
-Your call whether that becomes a task.
+**그런데 그것만으로 「1행」이 설명되지 않습니다.** `dt_job`의 직속은 `relation`(잎) ·
+`profile_id`(잎) · `driver`(가지)이고, **잎은 항상 행을 그립니다.** 최소 3행이어야 합니다. 격리
+루트(8099)에서 실측도 3행이었습니다. 소유자 설정에서 1행이면 **접기 말고 다른 원인이 하나 더**
+있습니다.
 
-## Needs a ruling, so I am not touching it
+**그래서 추측으로 안 고칩니다.** 필요한 것 둘:
+1. 잘린 뒷부분 (목업 트리 그림 전체 + 결론)
+2. 총괄이 본 그 1행의 **라벨과 배지** (`MAP`이면 루트가 map으로 해석된 것이고, 그건 접기가 아니라
+   **모양 해소** 문제입니다 — 고칠 자리가 다릅니다)
 
-- **Rule 7 screen tidy** — CSS is forbidden until the owner's mockup arrives. Your 03:40
-  comparison table is the right shape to lay it over; I have not touched the screen.
-- **Reference Flow as a set** — you already wrote that this cannot be CSS, and depends on
-  which question the panel answers. Owner.
-- **The silent-guard cover.** My cache line in `reload_local_process_cache()` uses the
-  neighbours' `except Exception: pass`, so renaming `skeleton` kills it with nothing red. One
-  assertion in `test_ledger_skeleton.py` covers it. Still unwritten, per 「지시받지 않은 것은
-  만들지 않는다」.
+②를 주시면 5분 안에 재현하고 원인을 «사실»로 확정한 뒤 고치겠습니다.
 
-## Ready for the next one
+## 컨텍스트
 
-Nothing on my side is half-finished. Name the step.
+거의 소진됐습니다. 다음 지시는 **한 걸음만** 주십시오.
