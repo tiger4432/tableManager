@@ -124,6 +124,34 @@ Removal is a draft edit like any other: drop the key, let the validator say what
 refuses nothing, and it asks nothing beyond the single confirm the screen already uses for a
 declaration.
 
+## Rule 2-b — 🔴 EVERY node is CRUD-complete. No exceptions, no "later"
+
+Owner, 2026-08-20: **「폼은 모두 crud 가능해야함」**. This is the declaration-level ruling
+(「버튼은 생성, 편집, 저장, 삭제 4가지만 · crud!」) applied one level down, to the form's
+interior — and it replaces deciding this node by node.
+
+Read it off the node kind, not off the field name:
+
+| node | C | R | U | D |
+|---|---|---|---|---|
+| `map` | name a member | the members are listed | edit inside it | **remove that member** |
+| `record` | — (its fields are fixed) | rows | type a value | **clear the field** |
+| `list` | add an item | items | edit an item | remove that item |
+
+🔴 **D on a `record` field means REMOVING THE KEY, not writing `""`.** An optional field set to
+an empty string is not absent — it is present and blank, which the validator refuses
+(`must be a non-blank string`). If clearing a box leaves `""` behind, the person has no way back
+to "I never set this", and that is a one-way door on every optional field in the config.
+
+🔴 **Required fields stay on screen after D.** Clearing one does not delete a row; it returns to
+`missing`, which is exactly what that state is for. Only optional fields disappear from the
+document, and their row stays offered because the skeleton — not the document — is what says the
+field exists. This is the whole reason the skeleton is worth building: a form driven by what the
+document HOLDS can never offer back what you just removed.
+
+Nothing beyond the four letters. No rename control (delete + create covers it, and a rename
+would silently orphan every `$role` that pointed at the old name), no reordering, no undo.
+
 ## Rule 3 — leaf hints name a source, never a value
 
 ```
