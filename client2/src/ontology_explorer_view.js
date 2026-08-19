@@ -435,6 +435,12 @@ function renderRaw(state) {
       const keysForm = renderEntityKeys(state);
       if (keysForm) editor.append(keysForm);
     }
+    // 🔴 THE FIELD ROWS LIVE IN THE EDITING AREA, NOT IN A LIST UNDER IT.
+    //     「그거를 편집 영역으로 올려서 폼으로 만들면 되겠네」 (owner, 2026-08-19)
+    // This is a MOVE, not a new surface: the same rows the plan already rendered below,
+    // brought up to where the declaration is being edited, so filling them IS the editing.
+    // No new area, no new mode, no modal -- the owner's standing rule.
+    if (state.authoring) editor.append(renderAuthoring(state));
     editor.append(label, validation, controls);
     return editor;
   }
@@ -721,7 +727,26 @@ function renderAuthoringRow(row, expanded = [], editable = null) {
         input.setAttribute('aria-label', row.label);
         return input;
       };
-      if (editable.kind === 'list') {
+      if (editable.kind === 'closed') {
+        // 🔴 THE CURRENT VALUE IS ALWAYS AN OPTION, even when it is not in the list. A
+        // dropdown that silently swaps an unrecognised value for its first option would
+        // rewrite the operator's file by being rendered -- the same silent-change defect
+        // this screen has been removing all day. A stray value stays visible and stays
+        // wrong until a person changes it.
+        const select = h('select', 'oe-field-select');
+        select.dataset.action = 'edit-field';
+        select.dataset.value = row.path;
+        select.setAttribute('aria-label', row.label);
+        const options = editable.options.includes(editable.value)
+          ? editable.options : [editable.value, ...editable.options];
+        for (const item of options) {
+          const option = h('option', '', item);
+          option.value = item;
+          if (item === editable.value) option.selected = true;
+          select.append(option);
+        }
+        box.append(select);
+      } else if (editable.kind === 'list') {
         // The entity-keys shape, generalised: the rows edit the same draft buffer through
         // the same path tools, so save, dirty-tracking and the revision guard are untouched.
         editable.value.forEach((item, index) => {
@@ -832,10 +857,37 @@ function renderAuthoring(state) {
   // A row is editable only when its leaf actually resolves inside the open draft AND is a
   // string. A leaf that does not resolve belongs to another declaration, and a list or an
   // object is not one input's shape -- both keep the chips they had.
+  // 🔴 A CLOSED LIST GETS A DROPBOX; A NAME GETS A DATALIST. The difference is the whole
+  // point of this round: a predicate or an entity is a name the operator may still be
+  // COINING, so the list must suggest and never constrain -- while a role kind or an object
+  // kind is one of a handful of words the code knows, and there is nothing to coin.
+  //
+  // Which is which is decided by DATA, not by a table written here: if a field's candidate
+  // set is exactly a list the server publishes in `closed_lists()`, it is closed.
+  // `closed_lists()` says it itself -- "The screen renders what this returns and owns no
+  // copy" -- so a hardcoded map of "these paths are dropdowns" would be the second author
+  // it warns about. Measured on the live config: 9 fields match (object_kind 5,
+  // mapper_unit 2, source_unit 2).
+  const closedLists = Object.entries(state.authoringSchema || {}).filter(
+    ([, value]) => Array.isArray(value) && value.length
+      && value.every((item) => typeof item === 'string'));
+  const closedListFor = (candidates) => {
+    if (!Array.isArray(candidates) || !candidates.length) return null;
+    if (!candidates.every((item) => typeof item === 'string')) return null;
+    const want = new Set(candidates);
+    const found = closedLists.find(([, values]) => values.length === want.size
+      && values.every((item) => want.has(item)));
+    return found ? found[1] : null;
+  };
+
   const editableFor = (row) => {
     if (!prefix || !draftRaw || !row.path.startsWith(prefix)) return null;
     const current = getAtPath(draftRaw, splitBundlePath(row.path).slice(2));
-    if (typeof current === 'string') return { kind: 'string', value: current };
+    const closed = closedListFor(row.candidates);
+    if (typeof current === 'string') {
+      return closed ? { kind: 'closed', value: current, options: closed }
+                    : { kind: 'string', value: current };
+    }
     // A list of names is the entity-keys shape: one input per element, each offering the
     // same candidates. Only when every element is a string -- a list holding objects is
     // not a row of name boxes, and pretending otherwise would flatten what it holds.
@@ -1004,13 +1056,7 @@ export function renderOntologyExplorer(root, state) {
   // rendered as absence.
   if (state.draft?.creates_declaration) {
     workspace.append(renderRaw(state));
-    // 🔴 AN UNREAD DECLARATION COMES THROUGH HERE TOO, NOT ONLY A CREATE. `drafts/new` on
-    // something that is in the FILE but does not resolve still reports
-    // `creates_declaration: true`, because the flag means "not in the snapshot" -- and an
-    // unread declaration is not in the snapshot. That is the case the rows exist for, so
-    // they are drawn here as well. For a true create the plan simply has no rows for a
-    // path the document does not hold yet, which is the honest answer, not a blank panel.
-    if (state.authoring) workspace.append(renderAuthoring(state));
+    // The rows are inside `renderRaw`'s editor now, so nothing is appended here.
   } else if (state.selection) {
     workspace.append(renderBreadcrumb(state), renderPaths(state));
     const detail = h('section', 'oe-detail-grid');
@@ -1019,17 +1065,7 @@ export function renderOntologyExplorer(root, state) {
   } else if (state.draft) {
     // An open draft is the thing being worked on; show it even though nothing is selected.
     workspace.append(renderRaw(state));
-    // 🔴 AND ITS AUTHORING ROWS, WHICH IS THE WHOLE POINT FOR AN UNREAD DECLARATION.
-    // A declaration that does not resolve is not in the index, so it has no selection, so
-    // this branch used to hand over the raw JSON textarea and nothing else -- suggestions
-    // were missing from precisely the declaration someone was there to finish. The rows
-    // key off the draft, not the selection (`writablePrefix`), so they light up here.
-    //
-    // The panels that stay away are the ones that would have to INVENT: integrity, 사용처
-    // and the reference paths describe an interpreted declaration, and an unread one has
-    // no interpretation. The authoring plan is different in kind -- it is computed from
-    // the file, so it has real answers about a declaration that never compiled.
-    if (state.authoring) workspace.append(renderAuthoring(state));
+    // The rows are inside `renderRaw`'s editor now, so nothing is appended here.
   } else if (state.authoring) {
     workspace.append(renderAuthoring(state));
   } else {
