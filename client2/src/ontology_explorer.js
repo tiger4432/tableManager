@@ -195,6 +195,39 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     }
   };
 
+  // Open a declaration that is in the file but could not be read, on its own text.
+  const openUnread = async (item) => {
+    try {
+      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/drafts/new`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: item.kind,
+          canonical_id: item.canonical_id,
+          base_snapshot_hash: state.activeSnapshot?.snapshot_hash || '',
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast((body?.detail || body)?.message || errorMessage(
+          new Error(`HTTP ${res.status}`)), 'error');
+        return;
+      }
+      dispatch({ type: 'DRAFT_OPENED', draft: body.draft || body });
+      // 🔴 SEEDED FROM THE FILE, NOT FROM `{}`. A fresh draft's raw is empty; this one is
+      // being FINISHED, so it starts from what the operator already wrote. Saving sends
+      // this buffer, so nothing they typed earlier is lost by opening it again.
+      dispatch({
+        type: 'EDITOR_CHANGED',
+        text: JSON.stringify(item.raw ?? {}, null, 2),
+      });
+      // No re-read: opening a draft writes nothing, and a mirror read here would answer
+      // with the draft's own empty `raw` and wipe the text just seeded from the file.
+    } catch (error) {
+      showToast(errorMessage(error), 'error');
+    }
+  };
+
   const checkpoint = (viaEdge = null) => {
     const dirtyContextToken = state.dirty && state.activeSnapshot?.snapshot_hash
       ? `active:${state.activeSnapshot.snapshot_hash}` : null;
@@ -438,6 +471,15 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'toggle-field') {
       state = reduceFieldFold(state, { type: 'FIELD_TOGGLED', path: target.dataset.value });
       renderOntologyExplorer(root, state);
+    }
+    else if (action === 'edit-unread') {
+      // 🔴 OPEN IT, ALWAYS. Pressing a row that then does nothing -- or answers "does not
+      // exist in this snapshot" about a declaration sitting in the file -- is the 무반응
+      // this screen has been fixing all day. An unread declaration is not in the index, so
+      // there is nothing to select; `drafts/new` is the path that already opens an editor
+      // without one, and the text comes from the row, which carries what is in the file.
+      const item = state.items.find((row) => row.key === target.dataset.value);
+      if (item) await openUnread(item);
     }
     else if (action === 'new-declaration') {
       dispatchNaming({ type: 'NEW_DECLARATION_OPENED', kind: target.dataset.value });

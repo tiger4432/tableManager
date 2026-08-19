@@ -112,7 +112,23 @@ function renderTree(state) {
       group.append(renderNewDeclaration(state, kind));
     }
     for (const item of items) {
-      const row = button(item.canonical_id, 'select', item.key, 'oe-tree-item');
+      // 🔴 READ IT vs FINISH IT, AND THE ROW SAYS WHICH.
+      //
+      // A declaration that resolved is INSPECTED -- selection, definition, 사용처, 참조
+      // 검사, all of which show INTERPRETED facts. A declaration that did not resolve has
+      // no interpreted facts, because it was not interpreted; the only two things true
+      // about it are its text and why it could not be read, and that is exactly what the
+      // draft editor shows. So its row opens the editor rather than selecting it.
+      //
+      // 🔴 AND THAT IS WHY IT IS NOT IN THE INDEX EITHER. Someone will notice the list has
+      // a row that cannot be selected and "tidy" the mismatch by putting unread nodes into
+      // the index. Do not: the list answers "what is in the file", selection answers "what
+      // was interpreted". Different questions, no reason to give the same answer -- and
+      // forcing them together means inventing interpreted facts that do not exist, which
+      // is the failure this whole round exists to remove.
+      const unread = state.invalid?.[item.key];
+      const row = button(item.canonical_id, unread ? 'edit-unread' : 'select',
+                         item.key, 'oe-tree-item');
       row.dataset.direct = 'true';
       row.setAttribute('aria-current', String(item.key === state.selection?.key));
       row.append(h('small', 'oe-change-label', item.change_status));
@@ -123,7 +139,6 @@ function renderTree(state) {
       // instruction from. ONE tag, and the sentence is what separates the two cases --
       // its own fault, or knocked out by something else that is not read yet. No second
       // badge and no second colour: 「빨강이 번지면 읽을 수가 없습니다」.
-      const unread = state.invalid?.[item.key];
       if (unread) {
         for (const reason of unread.reasons || []) {
           const why = h('div', 'oe-tree-why');
@@ -322,6 +337,16 @@ function renderRaw(state) {
       const title = h('div', 'oe-title-block');
       title.append(h('h1', '', state.draft.target_id), h('p', '', state.draft.target_kind));
       editor.append(title);
+    }
+    // 🔴 THE REASONS COME WITH YOU. Shown only in the list, they vanish at the moment the
+    // operator opens the thing to fix it -- which is the one moment they are needed.
+    const unreadHere = state.invalid?.[state.draft.target_key];
+    if (unreadHere) {
+      for (const reason of unreadHere.reasons || []) {
+        const why = h('div', 'oe-tree-why');
+        why.append(h('code', '', reason.path), h('span', '', reason.message));
+        editor.append(why);
+      }
     }
     const context = h('div', 'oe-editor-context');
     context.append(keyValue('초안 상태', state.draft.lifecycle_status));

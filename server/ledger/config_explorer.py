@@ -1362,15 +1362,18 @@ def resolve_declarations(document: Mapping[str, Any], *,
             _, _, canonical_id = key.partition("|")
             for holder in working.values():
                 if isinstance(holder, dict) and canonical_id in holder:
-                    holder.pop(canonical_id)
-                    fell.append((key, per[key]))
+                    # Keep what was written. The declaration leaves the bundle but the
+                    # operator has to be able to open it again and finish it, and this is
+                    # the only place its text is still in hand.
+                    fell.append((key, per[key], holder.pop(canonical_id)))
                     break
         if not fell:
             break
-        for key, issues in fell:
+        for key, issues, raw in fell:
             invalid[key] = {
                 "round": rounds,
                 "reasons": [issue.to_mapping() for issue in issues],
+                "raw": raw,
             }
 
     return {

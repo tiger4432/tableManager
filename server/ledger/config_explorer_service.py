@@ -309,6 +309,9 @@ class OntologyExplorerService:
                 "compile_status": "invalid",
                 "description": (record["reasons"][0]["message"]
                                 if record["reasons"] else "읽을 수 없음"),
+                # The text as written. An unread declaration is opened to be FINISHED, and
+                # the editor has to start from what is in the file, not from `{}`.
+                "raw": record.get("raw"),
                 "context_token": token,
             })
             payload["total"] += 1
