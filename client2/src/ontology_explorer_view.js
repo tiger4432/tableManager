@@ -944,6 +944,13 @@ export function renderOntologyExplorer(root, state) {
   // rendered as absence.
   if (state.draft?.creates_declaration) {
     workspace.append(renderRaw(state));
+    // 🔴 AN UNREAD DECLARATION COMES THROUGH HERE TOO, NOT ONLY A CREATE. `drafts/new` on
+    // something that is in the FILE but does not resolve still reports
+    // `creates_declaration: true`, because the flag means "not in the snapshot" -- and an
+    // unread declaration is not in the snapshot. That is the case the rows exist for, so
+    // they are drawn here as well. For a true create the plan simply has no rows for a
+    // path the document does not hold yet, which is the honest answer, not a blank panel.
+    if (state.authoring) workspace.append(renderAuthoring(state));
   } else if (state.selection) {
     workspace.append(renderBreadcrumb(state), renderPaths(state));
     const detail = h('section', 'oe-detail-grid');
@@ -952,6 +959,17 @@ export function renderOntologyExplorer(root, state) {
   } else if (state.draft) {
     // An open draft is the thing being worked on; show it even though nothing is selected.
     workspace.append(renderRaw(state));
+    // 🔴 AND ITS AUTHORING ROWS, WHICH IS THE WHOLE POINT FOR AN UNREAD DECLARATION.
+    // A declaration that does not resolve is not in the index, so it has no selection, so
+    // this branch used to hand over the raw JSON textarea and nothing else -- suggestions
+    // were missing from precisely the declaration someone was there to finish. The rows
+    // key off the draft, not the selection (`writablePrefix`), so they light up here.
+    //
+    // The panels that stay away are the ones that would have to INVENT: integrity, 사용처
+    // and the reference paths describe an interpreted declaration, and an unread one has
+    // no interpretation. The authoring plan is different in kind -- it is computed from
+    // the file, so it has real answers about a declaration that never compiled.
+    if (state.authoring) workspace.append(renderAuthoring(state));
   } else if (state.authoring) {
     workspace.append(renderAuthoring(state));
   } else {

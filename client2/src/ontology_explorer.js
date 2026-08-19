@@ -320,6 +320,14 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       });
       // No re-read: opening a draft writes nothing, and a mirror read here would answer
       // with the draft's own empty `raw` and wipe the text just seeded from the file.
+      //
+      // 🔴 THE PLAN IS FETCHED HERE ANYWAY, AND IT IS NOT A RE-READ. `/view` is what would
+      // clobber the seeded text; `loadAuthoring` hits a different endpoint and its reducer
+      // touches `authoring`, `authoringSchema` and `authoringError` only -- never
+      // `editorText`. Without this call an unread declaration opens with the raw textarea
+      // and no rows, which is the state the operator was stuck in: suggestions missing
+      // from the one declaration they came here to finish.
+      void loadAuthoring(item.key);
     } catch (error) {
       showToast(errorMessage(error), 'error');
     }
@@ -416,7 +424,19 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       });
       if (requestId !== state.requestGeneration) return;
       // Not awaited: the authoring plan annotates the view, it does not gate it.
-      void loadAuthoring(payload.selection?.key || selection || null);
+      //
+      // 🔴 FALL BACK TO THE DRAFT'S TARGET. An UNREAD declaration is not in the index, so
+      // there is no selection to key on -- and that is exactly the declaration someone is
+      // sitting on, because unread is what 「일단 와꾸 짜놓고 나중에 살 채우는」 leaves
+      // behind. Keyed on the selection alone the server got no prefix and widened the plan
+      // to the whole config, so the one declaration being finished had no rows of its own.
+      //
+      // The plan itself never needed the index: `authoring()` reads the file 「DELIBERATELY
+      // DOES NOT GO THROUGH active()」 and `authoring_prefix` is pure string mapping.
+      // Measured on the live route with three unread declarations: 16, 4 and 9 fields came
+      // back, 11 / 2 / 9 of them carrying candidates.
+      void loadAuthoring(
+        payload.selection?.key || payload.draft?.target_key || selection || null);
       if (editorCheckpoint) {
         state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
         renderOntologyExplorer(root, state);
