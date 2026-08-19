@@ -308,17 +308,26 @@ function renderRaw(state) {
     validation.textContent = errors.length
       ? errors.map((e) => `[${e.reference_status || e.code}] ${e.json_pointer || e.path}: ${e.message}`).join('\n')
       : (state.draft.preview_valid ? '✓ 동일 compiler로 검증된 초안입니다.' : '저장하면 검증합니다.');
+    // 🔴 ONE SAVE, AND THE LIFECYCLE BRANCH IS GONE -- IT WAS THE FLICKER.
+    //
+    //     초안 편집 버튼이 나오다 말다하고 저장검증은 뭐고 검토 요청은 뭔지 모르겠음
+    //
+    // `저장·검증` and `검토 요청` used to swap for `새 revision 편집` the moment a draft
+    // became `review_requested`, so the save control vanished on its own. That is the
+    // "appears and disappears" -- a state bug wearing a layout costume, and removing the
+    // review step removes it rather than repairing it.
+    //
+    // Review is furniture: the sole operator cannot say what it is for. The server paths
+    // stay; they are simply no longer reachable from here.
     const controls = h('div', 'oe-editor-controls');
-    controls.append(button('초안 폐기', 'discard-draft', '', 'oe-editor-action'));
-    if (state.draft.lifecycle_status === 'review_requested') {
-      controls.append(button('새 revision 편집', 'revise-draft', '', 'oe-editor-action'));
-    } else {
-      controls.append(
-        button('저장·검증', 'save-draft', '', 'oe-editor-action'),
-        button('검토 요청', 'review-draft', '', 'oe-editor-action'),
-      );
-    }
-    controls.append(button('활성화', 'activate-draft', '', 'oe-editor-action oe-editor-action-primary'));
+    controls.append(
+      button('Save', 'save-draft', '', 'oe-editor-action'),
+      button('Discard', 'discard-draft', '', 'oe-editor-action'),
+    );
+    // 🔴 KEPT ON PURPOSE, AND ONLY UNTIL ITS REPLACEMENT EXISTS. Activation is moving out
+    // of editing to a control of its own; removing it here first would leave no way to
+    // activate anything at all in between. Flagged rather than decided alone.
+    controls.append(button('Activate', 'activate-draft', '', 'oe-editor-action oe-editor-action-primary'));
     editor.append(context);
     if (state.draft.target_kind === 'entity') {
       const keysForm = renderEntityKeys(state);
