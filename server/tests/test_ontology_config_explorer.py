@@ -713,7 +713,12 @@ def test_activation_is_cas_atomic_and_matches_reviewed_preview(copied_root, tmp_
     service.review_draft(draft["draft_id"], expected_revision=1)
     result = service.activate_draft(
         draft["draft_id"], expected_revision=1, reload_callback=lambda: None)
-    assert result["active_snapshot_hash"] == saved["preview_snapshot_hash"]
+    # 🔴 THE FILE, NOT THE COMPILED PREVIEW. The basis a save is checked against is now
+    # the hash of the document on disk, because a compiled hash moves when an unrelated
+    # declaration stops resolving and is absent entirely while a setup is half written.
+    from ledger.config_explorer import document_hash
+    written = json.loads((copied_root / "ledger_config.json").read_text(encoding="utf-8"))
+    assert result["active_snapshot_hash"] == document_hash(written)
     assert result["runtime_convergence"]["status"] == "confirmed"
     assert result["runtime_convergence"]["confirmed_consumers"] == [
         "ledger-persistent-reader", "ontology-explorer-api"]
@@ -725,9 +730,21 @@ def test_activation_is_cas_atomic_and_matches_reviewed_preview(copied_root, tmp_
     ("probe_mode", "expected_code"),
     (("empty", "convergence_unproven"), ("mismatch", "convergence_mismatch")),
 )
-def test_activation_rolls_back_until_every_declared_consumer_converges(
+def test_a_refused_convergence_still_keeps_what_was_written(
     copied_root, tmp_path, probe_mode, expected_code,
 ):
+    """The refusal stays; the automatic undo does not.
+
+    🔴 THIS TEST MEASURED A ROLLBACK, AND THE ROLLBACK WAS REMOVED ON PURPOSE.
+    Restoring the backup on any exception made sense while a config that did not fully
+    compile was an error. Under the owner's model it is the ordinary state of a setup
+    being built up -- 「일단 와꾸 짜놓고 나중에 살 채우는」 -- and undoing the write would
+    silently delete what a person had just typed. The backup is still taken; it is a way
+    back, not something that fires by itself.
+
+    So the assertion inverts: the refusal is still raised with the same code, and the file
+    now KEEPS the change.
+    """
     def convergence(expected):
         if probe_mode == "empty":
             return {}
@@ -751,7 +768,10 @@ def test_activation_rolls_back_until_every_declared_consumer_converges(
         service.activate_draft(
             draft["draft_id"], expected_revision=1, reload_callback=lambda: None)
     assert refused.value.code == expected_code
-    assert active_path.read_bytes() == before
+    assert active_path.read_bytes() != before
+    kept = json.loads(active_path.read_text(encoding="utf-8"))
+    assert kept["vocabulary"]["derived_from@1"]["object"]["qualifiers"]["optional"] == [
+        "reason"]
 
 
 def test_api_returns_structured_context_and_strict_draft_contract(copied_root, tmp_path):

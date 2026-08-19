@@ -27,6 +27,7 @@ from .config_explorer import (
     authorable_bundle_path,
     build_explorer_index,
     definition_diff,
+    document_hash,
     node_key,
 )
 from .implementations import trusted_implementations
@@ -261,7 +262,7 @@ class OntologyDraftStore:
             "target_id": node.canonical_id,
             "target_kind": node.kind,
             "target_bundle_path": list(node.bundle_path),
-            "base_snapshot_hash": active_setup.snapshot.snapshot_sha256,
+            "base_snapshot_hash": index.snapshot_hash,
             "base_definition_hash": node.definition_hash,
             "creates_declaration": False,
             "revision": 0,
@@ -314,7 +315,7 @@ class OntologyDraftStore:
             # against what the index holds now, and a real hash here would make "nobody has
             # created this yet" indistinguishable from "somebody created it and it happens
             # to be empty".
-            "base_snapshot_hash": active_setup.snapshot.snapshot_sha256,
+            "base_snapshot_hash": index.snapshot_hash,
             "base_definition_hash": None,
             "creates_declaration": True,
             "revision": 0,
@@ -366,7 +367,7 @@ class OntologyDraftStore:
             if record["lifecycle_status"] == "activated":
                 raise ConfigExplorerError(
                     "draft_already_activated", "draft_id", "draft is already active")
-            if record["base_snapshot_hash"] != active_setup.snapshot.snapshot_sha256:
+            if record["base_snapshot_hash"] != active_index.snapshot_hash:
                 stale_status = self.stale_status(record, active_index)
                 record["lifecycle_status"] = stale_status
                 record["updated_at"] = _now()
@@ -461,7 +462,6 @@ class OntologyDraftStore:
         active_setup: Any,
         active_index: ExplorerIndex,
         reload_callback: Callable[[], None],
-        refreshed_setup: Callable[[], Any],
         convergence_probe: Callable[[str], Mapping[str, str]],
     ) -> dict[str, Any]:
         with self._lock:
@@ -472,7 +472,13 @@ class OntologyDraftStore:
             # A separate review step gated a door that no longer has a handle: with the
             # 활성화 button gone, a draft could never reach `review_requested`, so this
             # check would have refused every save the screen could make.
-            if record["base_snapshot_hash"] != active_setup.snapshot.snapshot_sha256:
+            # 🔴 THE BASIS IS THE FILE, NOT THE COMPILED SNAPSHOT. A compare-and-swap
+            # asks "did the file change since I read it?" -- and under partial loading the
+            # compiled hash also moves when an UNRELATED declaration stops resolving, which
+            # would refuse the operator's save for something they did not touch. It is also
+            # simply absent while a setup is mid-construction and compiles to nothing,
+            # which is exactly when this check still has to work.
+            if record["base_snapshot_hash"] != active_index.snapshot_hash:
                 stale_status = self.stale_status(record, active_index)
                 record["lifecycle_status"] = stale_status
                 record["updated_at"] = _now()
@@ -483,52 +489,50 @@ class OntologyDraftStore:
                 )
             node = draft_target(record, active_index)
             preview = compile_draft_preview(active_setup, node, record["raw"])
-            if not preview.valid or preview.setup is None:
-                record["lifecycle_status"] = "invalid"
-                record["preview_valid"] = False
-                record["validation_errors"] = [dict(item) for item in preview.errors]
-                self._write_record(record)
-                raise ConfigExplorerError(
-                    "draft_preview_invalid", "preview_valid",
-                    "draft no longer compiles and cannot be activated",
-                )
-            if preview.setup.snapshot.snapshot_sha256 != record["preview_snapshot_hash"]:
-                raise ConfigExplorerError(
-                    "preview_hash_mismatch", "preview_snapshot_hash",
-                    "stored preview hash does not match a fresh compile",
-                )
+            # 🔴 NOT COMPILING NO LONGER BLOCKS THE WRITE. 「지금은 안읽히면 저장도
+            # 안하네」 -- three gates used to stand here and each presumed a successful
+            # compile, so each refused exactly the state a person is in while building:
+            #
+            #   draft_preview_invalid   refused any declaration whose references do not
+            #                           exist YET -- the pack before its predicate, the
+            #                           mapper before its pack. That is every intermediate
+            #                           step of authoring, not an error.
+            #   preview_hash_mismatch   compared a stored preview hash to a fresh compile.
+            #                           A draft that does not compile has no stored hash
+            #                           (`None`), so this could only ever fire.
+            #   activation_hash_mismatch (below) same presumption after the reload.
+            #
+            # What replaces them is not a weaker check, it is a check in the right place:
+            # the reader resolves declaration by declaration and tags what it cannot read.
+            # `preview` is still compiled -- its errors are what the screen shows -- it just
+            # no longer decides whether the file may be written.
 
             config_path = Path(active_setup.config_root) / node.config_file
             backup = self._activate_file(
                 config_path, [(node.bundle_path, record["raw"])])
-            try:
-                reload_callback()
-                new_setup = refreshed_setup()
-                actual_hash = new_setup.snapshot.snapshot_sha256
-                if actual_hash != record["preview_snapshot_hash"]:
-                    raise ConfigExplorerError(
-                        "activation_hash_mismatch", "active_snapshot_hash",
-                        "reloaded active snapshot does not match the reviewed preview",
-                    )
-                consumer_hashes = dict(convergence_probe(actual_hash))
-                if not consumer_hashes:
-                    raise ConfigExplorerError(
-                        "convergence_unproven", "runtime_convergence",
-                        "activation requires at least one declared persistent consumer",
-                    )
-                mismatched = {
-                    consumer: value for consumer, value in consumer_hashes.items()
-                    if value != actual_hash
-                }
-                if mismatched:
-                    raise ConfigExplorerError(
-                        "convergence_mismatch", "runtime_convergence",
-                        "not every declared persistent consumer reports the activated snapshot",
-                    )
-            except Exception:
-                shutil.copy2(backup, config_path)
-                reload_callback()
-                raise
+            # 🔴 THE WRITE STAYS, EVEN IF WHAT FOLLOWS FAILS. This used to restore the
+            # backup and reload on any exception. Under the new model that would throw away
+            # the operator's work for the ordinary case -- a declaration that does not
+            # resolve yet -- and hand back a file that silently lost what they just typed.
+            # The backup is still taken; it is a way back, not an automatic undo.
+            reload_callback()
+            actual_hash = document_hash(json.loads(
+                config_path.read_text(encoding="utf-8")))
+            consumer_hashes = dict(convergence_probe(actual_hash))
+            if not consumer_hashes:
+                raise ConfigExplorerError(
+                    "convergence_unproven", "runtime_convergence",
+                    "activation requires at least one declared persistent consumer",
+                )
+            mismatched = {
+                consumer: value for consumer, value in consumer_hashes.items()
+                if value != actual_hash
+            }
+            if mismatched:
+                raise ConfigExplorerError(
+                    "convergence_mismatch", "runtime_convergence",
+                    "not every declared persistent consumer reports the activated snapshot",
+                )
 
             record["lifecycle_status"] = "activated"
             record["activated_snapshot_hash"] = actual_hash
@@ -556,7 +560,7 @@ class OntologyDraftStore:
         active_setup: Any,
         active_index: ExplorerIndex,
     ) -> DraftPreview:
-        if record["base_snapshot_hash"] != active_setup.snapshot.snapshot_sha256:
+        if record["base_snapshot_hash"] != active_index.snapshot_hash:
             stale_status = self.stale_status(record, active_index)
             return DraftPreview(False, None, None, ({
                 "code": f"{stale_status}_draft",

@@ -556,15 +556,10 @@ class OntologyExplorerService:
         reload_callback: Callable[[], None],
     ) -> dict[str, Any]:
         setup, index, _ = self.active()
-
-        def refreshed() -> Any:
-            self.invalidate()
-            return self.active(force=True)[0]
-
         result = self.draft_store.activate(
             draft_id, expected_revision=expected_revision,
             active_setup=setup, active_index=index,
-            reload_callback=reload_callback, refreshed_setup=refreshed,
+            reload_callback=reload_callback,
             convergence_probe=self._convergence_probe)
         self.invalidate()
         return result
