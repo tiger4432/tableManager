@@ -7,9 +7,43 @@
 
 ```text
 server/config/ontology/
-├─ ledger_config.json      ← 셋업의 전부
+├─ ledger_config.json      ← 셋업의 전부 · 🔴 git 추적 «안 함»
 └─ README.md               ← 이 파일
 ```
+
+## 🔴 `ledger_config.json`은 저장소에 없다 — 환경마다 다른 «운영 자산»이다
+
+`server/config/*`가 git 밖인 이유와 같다. 이 파일은 그 환경의 표·컬럼·소스를 가리키므로
+다른 환경의 것을 그대로 쓰면 `unknown_column`부터 터진다.
+
+**새 환경에서 만드는 법 — 샘플을 복사한다.**
+
+```bash
+cp server/config/sample/ledger_config.json.sample server/config/ontology/ledger_config.json
+```
+
+샘플은 **도는 설정의 바이트 사본**이다(소스 둘: `dt_job`·`lot_event`). 그대로 복사하면
+로드된다 — 단 그 환경의 `table_config.json`에 같은 표·컬럼이 있어야 한다.
+
+**맨바닥에서 시작하려면** 아래가 검증기를 통과하는 «최소» 뼈대다(실측: 오류 0).
+🔴 값은 비어도 되지만 **일곱 절의 키는 있어야 한다** — 빈 파일이나 `{}`는 **로드가 안 되고**,
+그러면 스냅샷이 안 서서 작성 화면이 「선언 없음」만 내고 새로고침해도 그대로다.
+
+```json
+{
+  "setup_version": 3,
+  "vocabulary": {},
+  "entities": {},
+  "packs": {},
+  "source_preparers": {},
+  "mappers": {},
+  "profiles": {},
+  "sources": {}
+}
+```
+
+**매퍼는 반대다 — 그건 추적한다**(`server/mappers/ledger_v2_*.py`). config가 이름으로
+부르는 코드라, 없으면 «부를 수 없는 선언»이 된다.
 
 🔴 **이 root에 다른 `.json`이 있으면 로드가 거절된다**(`unlisted_config_file`). 검사는 **하위
 디렉터리까지 재귀로** 본다 — 그래서 「원본은 옆에 둬야지」 하고 root **안에** 백업 폴더를

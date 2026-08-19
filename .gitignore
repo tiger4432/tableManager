@@ -53,6 +53,13 @@ server/config/*
 !server/config/sample/
 server/config/sample/*
 !server/config/sample/*.sample
+# 라이브 온톨로지 셋업은 «환경 자산»이라 추적하지 않는다 — 그 환경의 표·컬럼을 가리킨다.
+# 다만 README는 「샘플을 복사해 만든다」를 말하는 유일한 곳이라 지나가야 한다.
+# 🔴 위 규칙(`server/config/*`)이 ontology 디렉터리를 통째로 덮으면 git이 그 안으로 내려가지
+# 않아 아래 예외가 «아무 효과도 없다». 그래서 디렉터리를 먼저 되살리고 내용물을 무시한다.
+!server/config/ontology/
+server/config/ontology/*
+!server/config/ontology/README.md
 server/mappers/*
 !server/mappers/*.sample
 # A Ledger v2 mapper is not an operator's local script. It is the half of the declaration
