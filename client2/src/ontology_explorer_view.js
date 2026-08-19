@@ -820,10 +820,20 @@ function writablePrefix(state) {
 // 🔴 AND `$subject` PICKS FROM THE ROLES THIS CLAIM JUST DEFINED -- the first field on this
 // screen whose candidates come from a SIBLING rather than from the document. That is why it
 // has to read the draft: the roles being offered may not be saved yet.
-function renderClaimBlock(state, packId, claimId, claim, planRows, closedListFor) {
-  const box = h('section', 'oe-claim');
+function renderClaimBlock(state, packId, claimId, claim, planRows, closedListFor, fold) {
+  const box = h('section', `oe-claim${fold.open ? '' : ' is-folded'}`);
   box.dataset.key = `claim:${claimId}`;
-  box.append(h('h4', 'oe-claim-name', claimId));
+  // 🔴 A COMPLETE CLAIM FOLDS; ONE THAT STILL OWES SOMETHING OPENS. Same predicate the
+  // rows already use (`remaining`, plus conflicts and refusals) -- no new rule, and 「남은
+  // 수」 keeps counting only what is actually owed. The owner's complaint was 「복잡해서
+  // 구조를 못 외우겠다」, and half of that answer is showing less at once: a pack with five
+  // claims opens the ones that need a hand, not all five.
+  const toggle = button('', 'toggle-field', fold.key, 'oe-claim-toggle');
+  toggle.setAttribute('aria-expanded', String(fold.open));
+  toggle.append(h('h4', 'oe-claim-name', claimId));
+  if (!fold.open) toggle.append(h('i', 'oe-folded-why', fold.reason));
+  box.append(toggle);
+  if (!fold.open) return box;
   const base = `claims.${claimId}`;
   const roles = claim && typeof claim.roles === 'object' && !Array.isArray(claim.roles)
     ? claim.roles : {};
@@ -996,8 +1006,17 @@ function renderAuthoring(state) {
         const shown = withSiblingRoles(row);
         return renderAuthoringRow(shown, state.expandedFields, editableFor(shown));
       });
+      const key = `claim:${state.draft.target_id}:${claimId}`;
+      const owes = rows.some(
+        (row) => row.remaining || row.conflicts || row.refusals?.length);
+      const fold = {
+        key,
+        open: owes || state.expandedFields.includes(key),
+        reason: owes ? '' : '채워짐',
+      };
       section.append(renderClaimBlock(
-        state, state.draft.target_id, claimId, draftClaims[claimId], rendered, closedListFor));
+        state, state.draft.target_id, claimId, draftClaims[claimId], rendered,
+        closedListFor, fold));
     }
     if (!Object.keys(draftClaims).length) {
       section.append(h('div', 'oe-empty', 'None defined'));
