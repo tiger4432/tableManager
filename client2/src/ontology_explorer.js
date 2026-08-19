@@ -178,9 +178,38 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     } catch {
       return;
     }
-    const next = setAtPath(raw, splitBundlePath(relative), value);
+    const steps = splitBundlePath(relative);
+    // 🔴 THE UI NEVER ASSERTS A TYPE. The plan carries none -- measured, a field record has
+    // no type key and `implementation_version` is not a plan row at all -- so a table here
+    // saying "this one is an integer" would be a second author for the validator's
+    // contract, the exact thing removed from this screen all day.
+    //
+    // Instead: whatever type is already at that leaf is preserved, and a value typed into
+    // an empty leaf goes in as typed. If that is wrong the validator says so, and since
+    // today it says so ON the screen, showing beats blocking.
+    const current = getAtPath(raw, steps);
+    let written = value;
+    if (typeof current === 'number' && typeof value === 'string') {
+      const asNumber = Number(value.trim());
+      if (value.trim() !== '' && Number.isFinite(asNumber)) written = asNumber;
+    }
+    const next = setAtPath(raw, steps, written);
     if (next === null) return;
     dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
+  };
+
+  // A list leaf named by a relative path (the draft-derived rows).
+  const editShapeList = (relative, mutate) => {
+    if (!state.draft || !state.editorText) return;
+    let raw;
+    try {
+      raw = JSON.parse(state.editorText);
+    } catch {
+      return;
+    }
+    const current = getAtPath(raw, splitBundlePath(relative));
+    if (!Array.isArray(current)) return;
+    editShapeAtPath(relative, mutate([...current]));
   };
 
   // Write the smallest config that validates, so a setup can begin from nothing.
@@ -627,6 +656,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'bootstrap-config') {
       await bootstrapConfig();
     }
+    else if (action === 'add-draft-item') {
+      editShapeList(target.dataset.value, (items) => [...items, '']);
+    }
+    else if (action === 'remove-draft-item') {
+      const at = Number(target.dataset.index);
+      editShapeList(target.dataset.value, (items) => items.filter((_, i) => i !== at));
+    }
     else if (action === 'add-field-item') {
       editFieldList(target.dataset.value, (items) => [...items, '']);
     }
@@ -779,6 +815,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   });
 
   root.addEventListener('input', (event) => {
+    if (event.target.dataset.action === 'edit-draft-item') {
+      const at = Number(event.target.dataset.index);
+      const typed = event.target.value;
+      editShapeList(event.target.dataset.value,
+                    (items) => items.map((item, i) => (i === at ? typed : item)));
+      return;
+    }
     if (event.target.dataset.action === 'edit-shape') {
       // A relative path inside the declaration body -- `claims.<id>.roles.<name>.kind`.
       // `splitBundlePath` only strips a leading `bundle.`, so a relative path splits the

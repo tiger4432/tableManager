@@ -879,6 +879,74 @@ function renderClaimBlock(state, packId, claimId, claim, planRows, closedListFor
   return box;
 }
 
+// Fields the draft holds that the PLAN has no row for.
+//
+// 🔴 ONE GENERIC BLOCK, NOT A BRANCH PER KIND. Four per-kind branches would be four places
+// to leak into each other, which is the standing regression risk in this round. This asks
+// one question instead -- "is this top-level key missing from the plan?" -- so a mapper, a
+// profile and a preparer are all handled without naming any of them.
+//
+// Measured on live declarations: exactly 6 such fields exist -- `implementation_id` and
+// `implementation_version` on mappers and preparers, `accepts_verified_join_rules` and
+// `input_columns` on preparers. Objects are skipped (the plan describes what is inside
+// `claims` and `mappings`), and so are lists holding objects.
+//
+// 🔴 NO TYPE IS ASSERTED HERE. The shape rendered follows the value ALREADY in the draft,
+// and the writer preserves that value's type. A field the draft does not hold yet gets no
+// row from this block at all, because guessing its shape is what this screen refuses to do.
+function renderUnplannedDraftFields(state, draftRaw, plannedTopLevel) {
+  if (!draftRaw || typeof draftRaw !== 'object' || Array.isArray(draftRaw)) return null;
+  const rows = [];
+  for (const key of Object.keys(draftRaw)) {
+    if (plannedTopLevel.has(key)) continue;
+    const value = draftRaw[key];
+    const line = h('div', 'oe-draft-field');
+    line.append(h('code', 'oe-draft-field-name', key));
+    if (typeof value === 'boolean') {
+      const box = h('input', 'oe-role-required');
+      box.type = 'checkbox';
+      box.checked = value;
+      box.dataset.action = 'edit-shape-flag';
+      box.dataset.value = key;
+      box.setAttribute('aria-label', key);
+      line.append(box);
+    } else if (typeof value === 'string' || typeof value === 'number') {
+      const input = h('input', 'oe-field-input');
+      input.type = 'text';
+      input.value = String(value);
+      input.dataset.action = 'edit-shape';
+      input.dataset.value = key;
+      input.setAttribute('aria-label', key);
+      line.append(input);
+    } else if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+      value.forEach((item, index) => {
+        const row = h('div', 'oe-field-row');
+        const input = h('input', 'oe-field-input');
+        input.type = 'text';
+        input.value = item;
+        input.dataset.action = 'edit-draft-item';
+        input.dataset.value = key;
+        input.dataset.index = String(index);
+        input.setAttribute('aria-label', `${key} ${index + 1}`);
+        const drop = button('x', 'remove-draft-item', key, 'oe-field-row-remove');
+        drop.dataset.index = String(index);
+        row.append(input, drop);
+        line.append(row);
+      });
+      if (!value.length) line.append(h('div', 'oe-key-none', 'None defined'));
+      line.append(button('+ Add', 'add-draft-item', key, 'oe-field-row-add'));
+    } else {
+      continue;                 // an object, or a list of objects: the plan speaks for it
+    }
+    rows.push(line);
+  }
+  if (!rows.length) return null;
+  const box = h('section', 'oe-bucket oe-bucket--draft');
+  box.append(h('h3', '', `그 밖의 칸 · ${rows.length}`));
+  for (const row of rows) box.append(row);
+  return box;
+}
+
 function renderAuthoring(state) {
   const wrap = h('div', 'oe-authoring');
   const plan = state.authoring;
@@ -994,6 +1062,15 @@ function renderAuthoring(state) {
     ['missing', '빠짐'], ['unanswered', '미답'],
     ['derived', '파생됨 · 묻지 않음'], ['answered', '답함'],
   ];
+  // Top-level keys the plan already speaks for, so the block below does not repeat them.
+  const plannedTopLevel = new Set(
+    plan.fields
+      .filter((row) => prefix && row.path.startsWith(prefix))
+      .map((row) => row.path.slice(prefix.length).split('.')[0])
+      .filter(Boolean));
+  const unplanned = renderUnplannedDraftFields(state, draftRaw, plannedTopLevel);
+  if (unplanned) wrap.append(unplanned);
+
   // A claim is one block, so its rows leave the state buckets and travel with it.
   const claimed = new Set();
   if (draftClaims) {
