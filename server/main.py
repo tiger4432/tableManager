@@ -3734,6 +3734,19 @@ def reload_local_process_cache():
     except Exception:
         pass
 
+    # [Ledger skeleton] The authoring screen GENERATES its form from
+    # `ledger/ledger_skeleton.json`, and the loader caches it for the life of the process.
+    # Without this line every edit to that document needs a restart to show up -- measured:
+    # the lead had to restart the server twice to walk one field into the form and back out
+    # again. The file ships with the code rather than with the operator's data, so this is
+    # not about admin edits; it is so the document can be corrected while the screen it
+    # draws is open.
+    try:
+        from ledger import config_authoring as ledger_authoring
+        ledger_authoring.skeleton.cache_clear()
+    except Exception:
+        pass
+
     # Remove custom mappers from sys.modules cache
     mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
     for k in mapper_keys:
