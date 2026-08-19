@@ -179,6 +179,21 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       return;
     }
     const steps = splitBundlePath(relative);
+    // 🔴 THE FORM'S OWN BRANCHES ARE BUILT, because the form is what promised them.
+    // `setAtPath` refuses a missing parent on purpose -- an authoring-plan row names a leaf
+    // the declaration already has a place for. But the claim form offers `emit.object.kind`
+    // on a claim whose `emit` does not exist yet, and a field that silently does nothing is
+    // the refusing control this screen keeps removing. The shape said those objects exist,
+    // so writing through it creates them -- and only plain objects, never a guessed value.
+    for (let depth = 1; depth < steps.length; depth += 1) {
+      const branch = steps.slice(0, depth);
+      if (branch.some((step) => typeof step === 'number')) break;
+      if (getAtPath(raw, branch) === undefined) {
+        const built = setAtPath(raw, branch, {});
+        if (built === null) break;
+        raw = built;
+      }
+    }
     // 🔴 THE UI NEVER ASSERTS A TYPE. The plan carries none -- measured, a field record has
     // no type key and `implementation_version` is not a plan row at all -- so a table here
     // saying "this one is an integer" would be a second author for the validator's

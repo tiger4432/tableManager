@@ -1,6 +1,7 @@
 import { isDraftRevisionEditable } from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
+import { EMIT_SHAPE } from './ontology_shapes.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings', binding: 'Bindings', pack: 'Packs',
@@ -820,7 +821,9 @@ function writablePrefix(state) {
 // 🔴 AND `$subject` PICKS FROM THE ROLES THIS CLAIM JUST DEFINED -- the first field on this
 // screen whose candidates come from a SIBLING rather than from the document. That is why it
 // has to read the draft: the roles being offered may not be saved yet.
-function renderClaimBlock(state, packId, claimId, claim, planRows, closedListFor, fold) {
+function renderClaimBlock(state, packId, claimId, claim, rows, renderRow, closedListFor,
+                          fold, prefix, draftRaw) {
+  const byPath = new Map(rows.map((row) => [row.path, row]));
   const box = h('section', `oe-claim${fold.open ? '' : ' is-folded'}`);
   box.dataset.key = `claim:${claimId}`;
   // 🔴 A COMPLETE CLAIM FOLDS; ONE THAT STILL OWES SOMETHING OPENS. Same predicate the
@@ -884,7 +887,73 @@ function renderClaimBlock(state, packId, claimId, claim, planRows, closedListFor
 
   const emitBox = h('div', 'oe-claim-emit');
   emitBox.append(h('label', 'oe-label', 'emit'));
-  for (const row of planRows) emitBox.append(row);
+  // 🔴 THE EMIT FORM IS DRAWN EVEN WHEN `emit` IS ABSENT. The plan describes what the
+  // document holds, so a claim named a moment ago has no emit rows at all -- and 「emit」 as
+  // a bare label with nothing under it is the screen stopping one layer in. The shape says
+  // which fields exist; the plan is still preferred wherever it HAS a row, because its row
+  // carries the candidates and the refusals.
+  const roleOptions = roleNames.map((name) => `$${name}`);
+  const drawShape = (fields, base, container) => {
+    for (const field of fields) {
+      const path = `${base}.${field.key}`;
+      const planned = byPath.get(`${prefix}.${path}`);
+      if (planned) {
+        container.append(renderRow(planned));
+        continue;
+      }
+      if (field.kind === 'object') {
+        const nested = h('div', 'oe-claim-emit-nested');
+        nested.append(h('label', 'oe-label', field.label || field.key));
+        drawShape(field.of, path, nested);
+        container.append(nested);
+        continue;
+      }
+      const line = h('div', 'oe-draft-field');
+      line.append(h('code', 'oe-draft-field-name', field.label || field.key));
+      const current = getAtPath(draftRaw, splitBundlePath(path));
+      const value = typeof current === 'string' ? current : '';
+      if (field.kind === 'choice') {
+        const options = state.authoringSchema?.[field.list] || [];
+        const select = h('select', 'oe-field-select');
+        select.dataset.action = 'edit-shape';
+        select.dataset.value = path;
+        select.setAttribute('aria-label', field.label || field.key);
+        // The value in the file is always an option, unrecognised or not -- rendering must
+        // never rewrite it. An absent value shows as blank rather than as the first option.
+        for (const item of (options.includes(value) ? options : [value, ...options])) {
+          const option = h('option', '', item);
+          option.value = item;
+          if (item === value) option.selected = true;
+          select.append(option);
+        }
+        line.append(select);
+      } else {
+        const input = h('input', 'oe-field-input');
+        input.type = 'text';
+        input.value = value;
+        input.dataset.action = 'edit-shape';
+        input.dataset.value = path;
+        input.setAttribute('aria-label', field.label || field.key);
+        if (field.kind === 'roles' && roleOptions.length) {
+          const listId = `oe-dl-${path.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+          const list = h('datalist');
+          list.id = listId;
+          for (const item of roleOptions) {
+            const option = h('option');
+            option.value = item;
+            list.append(option);
+          }
+          input.setAttribute('list', listId);
+          line.append(input, list);
+          container.append(line);
+          continue;
+        }
+        line.append(input);
+      }
+      container.append(line);
+    }
+  };
+  drawShape(EMIT_SHAPE, `${base}.emit`, emitBox);
   box.append(emitBox);
   return box;
 }
@@ -1155,10 +1224,10 @@ function renderAuthoring(state) {
     for (const claimId of Object.keys(draftClaims)) {
       const rows = plan.fields.filter((row) => claimOf(row.path) === claimId);
       rows.forEach((row) => claimed.add(row.path));
-      const rendered = rows.map((row) => {
+      const renderRow = (row) => {
         const shown = withSiblingRoles(row);
         return renderAuthoringRow(shown, state.expandedFields, editableFor(shown));
-      });
+      };
       const key = `claim:${state.draft.target_id}:${claimId}`;
       // 🔴 AN EMPTY CLAIM OWES EVERYTHING, and the plan cannot say so: a claim with no
       // body has no rows, so "does any row still owe something" read as "nothing owed" and
@@ -1181,8 +1250,8 @@ function renderAuthoring(state) {
         reason: owes ? '' : '채워짐',
       };
       section.append(renderClaimBlock(
-        state, state.draft.target_id, claimId, draftClaims[claimId], rendered,
-        closedListFor, fold));
+        state, state.draft.target_id, claimId, draftClaims[claimId], rows, renderRow,
+        closedListFor, fold, prefix.replace(/\.$/, ''), draftRaw));
     }
     if (!Object.keys(draftClaims).length) {
       section.append(h('div', 'oe-empty', 'None defined'));
