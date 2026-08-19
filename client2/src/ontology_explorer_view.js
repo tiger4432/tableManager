@@ -303,6 +303,13 @@ function renderRaw(state) {
           || !state.selection
           || state.selection.key === state.draft.target_key)) {
     const editor = h('div', 'oe-editor');
+    // The heading a create draft would otherwise never get: with the inspector skipped,
+    // this is the only place the new declaration's own name appears on screen.
+    if (state.draft.creates_declaration) {
+      const title = h('div', 'oe-title-block');
+      title.append(h('h1', '', state.draft.target_id), h('p', '', state.draft.target_kind));
+      editor.append(title);
+    }
     const context = h('div', 'oe-editor-context');
     context.append(keyValue('초안 상태', state.draft.lifecycle_status));
     context.append(keyValue('Revision', state.draft.revision));
@@ -795,7 +802,27 @@ export function renderOntologyExplorer(root, state) {
   // asked to keep and strengthen, and it must survive the no-selection case too --
   // that is the from-scratch entry, where it is the only thing on screen.
   workspace.append(renderStepBar(state));
-  if (state.selection) {
+  // 🔴 A CREATE DRAFT IS THE SUBJECT, AND NOTHING AROUND IT BELONGS TO IT YET.
+  //
+  //     lot 생성 후 wafer 생성시 여전히 lot으로 떠있는상태로 key 입력만 초기화됨
+  //
+  // The owner created `wafer@1` and the screen kept every panel pointed at `lot@1` --
+  // title, breadcrumb, paths, integrity, 사용처 -- with only the key box belonging to the
+  // new draft. Counted in the panel's DOM at that moment: `lot@1` 16 times, `wafer@1`
+  // ZERO. An empty key list under a heading that says `lot@1` does not read as "a new
+  // declaration"; it reads as "lot's keys were wiped", which is what was reported.
+  //
+  // The cause is upstream and is not a bug: a create target is NOT in the snapshot, so the
+  // re-read asks for no selection and the server picks one -- and any declaration it picks
+  // is the wrong subject, because the right one does not exist yet.
+  //
+  // 🔴 SO THE PANELS ARE NOT DRAWN, NOT FILLED WITH A PLACEHOLDER. Integrity, 사용처
+  // and the reference paths have nothing to say about a declaration that is not declared;
+  // an empty box with invented copy would be a second thing to read wrong. Absence is
+  // rendered as absence.
+  if (state.draft?.creates_declaration) {
+    workspace.append(renderRaw(state));
+  } else if (state.selection) {
     workspace.append(renderBreadcrumb(state), renderPaths(state));
     const detail = h('section', 'oe-detail-grid');
     detail.append(renderInspector(state), renderIntegrity(state));
