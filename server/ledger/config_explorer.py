@@ -786,11 +786,27 @@ def _setup_catalog(setup: Any) -> Mapping[str, Any]:
     return catalog
 
 
-def build_explorer_index(setup: Any) -> ExplorerIndex:
-    """Build one deterministic graph from one compiled cutover setup."""
+def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> ExplorerIndex:
+    """Build one deterministic graph from one compiled cutover setup.
+
+    🔴 `snapshot_hash` OVERRIDES THE BASIS THE SCREEN COMPARES AGAINST, and the ledger
+    runtime's own `snapshot.snapshot_sha256` is deliberately untouched. They answer
+    different questions and one word was doing both:
+
+      * `snapshot.snapshot_sha256` -- "did what RUNS change?" It covers only what can alter
+        an atom, on purpose (see the cursor-reset note at its compile site).
+      * this override -- "did the FILE change since I read it?" That is what a
+        compare-and-swap must ask, and under partial loading the compiled hash cannot
+        answer it: one unrelated declaration going invalid drops it from the loaded bundle
+        and moves the compiled hash, though the operator changed nothing.
+
+    Measured 2026-08-19: breaking one pack moved the compiled hash 39ebb419 -> 379748b2.
+    Refusing a save on that basis is true of the hash and false of the file.
+    """
     snapshot = setup.snapshot
     bundle = setup.bundle.to_mapping()
-    builder = _IndexBuilder(snapshot.snapshot_sha256, snapshot.bundle_sha256)
+    builder = _IndexBuilder(snapshot_hash or snapshot.snapshot_sha256,
+                            snapshot.bundle_sha256)
     registries = snapshot.registries
     # Same constant `deletion_plan` classifies against, so "this screen writes that file"
     # cannot drift apart from "this screen produced that node".
@@ -1274,3 +1290,129 @@ def integrity_checks(index: ExplorerIndex, selection: str) -> list[dict[str, str
         common.append({"code": "kind_specific", "status": "not_applicable",
                        "message": f"{node.kind}에는 추가 signature 검사가 적용되지 않음"})
     return common
+
+
+# ── resolving a half-written setup ────────────────────────────────────────────────
+#
+# 🔴 WHY THIS EXISTS, IN THE OWNER'S WORDS (2026-08-19):
+#
+#     선언을 저장할때 json 형식만 맞으면 다 저장하고, 읽는쪽에서 시스템에서 resolve되는거만
+#     읽으면 안됨? 일단 와꾸 짜놓고 나중에 살 채우는 형식으로 일함 사람들은.
+#     안읽히는 엔티티, 팩 등등은 invalid 태그 붙이고
+#
+# While a setup is being BUILT UP, every intermediate state is incomplete: the pack that
+# will use a predicate is written before the predicate, the mapper before the pack. An
+# all-or-nothing load makes that impossible -- nothing can be stacked, because nothing
+# validates until everything does.
+#
+# So: resolve DECLARATION BY DECLARATION. What resolves lives. What does not is tagged and
+# stays visible, because a half-written declaration you cannot find again is worse than one
+# that refuses.
+
+def _blame(problems, ground_node_key):
+    """Split one problem list into (per-declaration, config-level).
+
+    Nothing is discarded: `len(problems) == sum(map(len, per.values())) + len(whole)`.
+    """
+    per: dict[str, list] = {}
+    whole: list = []
+    for issue in problems:
+        key = ground_node_key(issue.path)
+        if key:
+            per.setdefault(key, []).append(issue)
+        else:
+            whole.append(issue)
+    return per, whole
+
+
+def resolve_declarations(document: Mapping[str, Any], *,
+                         catalog: Mapping[str, Any] | None = None
+                         ) -> dict[str, Any]:
+    """Which declarations load, which do not, and why -- WITHOUT a new validator.
+
+    🔴 PROPAGATION IS A FIXPOINT OVER THE VALIDATOR WE ALREADY HAVE, NOT AN EDGE WALK.
+    Validate, drop whatever is blamed, validate again. Dropping a declaration is what makes
+    its referrers dangle, and `validate_bundle_errors` already reports a dangling reference
+    on the REFERRER's own path -- so the cascade falls out for free. Measured on the live
+    config: breaking one pack blamed the pack (round 1), then its mapper and profile
+    (round 2), then the source (round 3), reaching a clean bundle in round 4.
+    `build_explorer_index`'s edges are not needed here and must not be duplicated.
+
+    🔴 TERMINATION IS "NOTHING FELL", NOT "NOTHING IS WRONG". A config-level problem --
+    `physical_catalog_required` is the live one -- blames no declaration, so no drop can
+    ever clear it. Looping until the problem list empties would never return.
+
+    🔴 THE DROPS HAPPEN IN A COPY. Nothing here writes, and no caller may persist the
+    reduced document: this computes WHAT TO LOAD, it does not edit the operator's file.
+    """
+    from .config_authoring import ground_node_key
+
+    working = json.loads(json.dumps(document, ensure_ascii=False))
+    invalid: dict[str, dict[str, Any]] = {}
+    config_level: list = []
+    rounds = 0
+
+    while True:
+        rounds += 1
+        problems = list(setup_bundle.validate_bundle_errors(working, catalog=catalog))
+        per, whole = _blame(problems, ground_node_key)
+        config_level = whole
+        fell = []
+        for key in sorted(per):
+            _, _, canonical_id = key.partition("|")
+            for holder in working.values():
+                if isinstance(holder, dict) and canonical_id in holder:
+                    holder.pop(canonical_id)
+                    fell.append((key, per[key]))
+                    break
+        if not fell:
+            break
+        for key, issues in fell:
+            invalid[key] = {
+                "round": rounds,
+                "reasons": [issue.to_mapping() for issue in issues],
+            }
+
+    return {
+        "document": working,
+        "invalid": invalid,
+        "config_level": [issue.to_mapping() for issue in config_level],
+        "rounds": rounds,
+    }
+
+
+def document_hash(document: Mapping[str, Any]) -> str:
+    """The hash of what the operator WROTE, independent of whether it compiles.
+
+    🔴 CANONICAL JSON, NOT FILE BYTES. Reindenting a file is not a change to a declaration,
+    and a basis that moved on whitespace would refuse saves for reformatting. Key order and
+    spacing are dropped; everything a person can mean is kept.
+
+    🔴 AND IT EXISTS EVEN WHEN NOTHING COMPILES. That is the whole reason it is the basis:
+    under the new model a setup may be mid-construction and refuse to compile entirely, so
+    any basis derived from a compile is simply absent exactly when it is needed most.
+    """
+    return sha256(json.dumps(
+        document, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+
+
+def load_resolved_setup(config_root, *, catalog: Mapping[str, Any] | None = None,
+                        setup_from_document: Any = None) -> dict[str, Any]:
+    """Load as much of the setup as resolves, and say what did not.
+
+    Returns the compiled setup for the surviving declarations, the file-derived hash, and
+    the resolution report. Raises nothing for a half-written config -- that is the point.
+    """
+    from pathlib import Path
+
+    path = Path(config_root) / setup_bundle.CONFIG_FILENAME
+    document = json.loads(path.read_text(encoding="utf-8"))
+    report = resolve_declarations(document, catalog=catalog)
+    setup = setup_from_document(report["document"])
+    return {
+        "setup": setup,
+        "snapshot_hash": document_hash(document),
+        "invalid": report["invalid"],
+        "config_level": report["config_level"],
+    }

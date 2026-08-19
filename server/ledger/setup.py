@@ -54,6 +54,7 @@ from .setup_bundle import (
     load_setup_bundle,
     require_ready_bundle,
     setup_bundle_errors,
+    validate_bundle,
 )
 from .setup_registry import (
     LedgerSetupSnapshot, compile_setup_snapshot, snapshot_compile_errors)
@@ -147,6 +148,37 @@ def load_setup(
         catalog=resolved_catalog)
     return LedgerSetup(
         config_root=root_path,
+        bundle=bundle,
+        snapshot=snapshot,
+        preparers=source_preparer_registry(),
+        mappers=role_mapper_registry(),
+        catalog=MappingProxyType(resolved_catalog),
+    )
+
+
+def setup_from_document(
+    document: Mapping[str, Any],
+    *,
+    config_root: str | Path = DEFAULT_ONTOLOGY_ROOT,
+    verified_joins: Sequence[VerifiedJoinDescriptor] = (),
+    catalog: Mapping[str, Any] | None = None,
+) -> LedgerSetup:
+    """`load_setup`, but from a document already in hand instead of from the file.
+
+    🔴 THE CALLER OWNS THE DOCUMENT, AND NOBODY WRITES IT BACK. The explorer resolves a
+    half-written setup by dropping what cannot load from an IN-MEMORY copy and compiling
+    what remains; that reduced document must never reach the disk, so this takes a mapping
+    and returns a setup, and knows nothing about files.
+
+    `load_setup` is unchanged and is still what production calls.
+    """
+    resolved_catalog = (
+        dict(live_physical_catalog()) if catalog is None else dict(catalog))
+    bundle = require_ready_bundle(validate_bundle(document, catalog=resolved_catalog))
+    snapshot = compile_setup_snapshot(
+        bundle, trusted_implementations(), verified_joins, catalog=resolved_catalog)
+    return LedgerSetup(
+        config_root=Path(config_root),
         bundle=bundle,
         snapshot=snapshot,
         preparers=source_preparer_registry(),
