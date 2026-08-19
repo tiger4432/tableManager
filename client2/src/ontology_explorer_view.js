@@ -1,5 +1,6 @@
 import { isDraftRevisionEditable } from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
+import { splitBundlePath, getAtPath } from './ontology_path.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings', binding: 'Bindings', pack: 'Packs',
@@ -593,7 +594,7 @@ function foldDecision(row, expanded = []) {
   return { open: true, reason: '' };
 }
 
-function renderAuthoringRow(row, expanded = []) {
+function renderAuthoringRow(row, expanded = [], editable = null) {
   const fold = foldDecision(row, expanded);
   const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`);
   card.dataset.key = `field:${row.path}`;
@@ -654,11 +655,42 @@ function renderAuthoringRow(row, expanded = []) {
     const box = h('div', 'oe-candidates');
     const label = row.universe ? `${row.universe} · ${row.universe_note}` : '고를 수 있는 값';
     box.append(h('small', '', `${label} · ${row.candidates.length}`));
-    for (const item of row.candidates.slice(0, 24)) {
-      box.append(h('i', 'oe-chip', typeof item === 'string' ? item : JSON.stringify(item)));
-    }
-    if (row.candidates.length > 24) {
-      box.append(h('small', '', `외 ${row.candidates.length - 24}개 · 접힘`));
+    // 🔴 A DATALIST ON THE INPUT, NEVER A `select`. The list SUGGESTS; it must not
+    // constrain, because coining a name that nothing has yet is a thing this screen has
+    // to keep allowing. (owner, 2026-08-19: 「미묘한 오타로 같은 말이 갈라지는거 방지」 --
+    // the defence against a typo is being able to PICK, not being refused.)
+    //
+    // Only where there is somewhere to write: a string leaf, inside the declaration whose
+    // draft is open. With no draft the row keeps its chips -- an input that cannot write
+    // is a control that refuses, which this file already rules is worse than no control.
+    if (editable) {
+      const listId = `oe-dl-${row.path.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      const input = h('input', 'oe-field-input');
+      input.type = 'text';
+      // 🔴 THE DRAFT'S VALUE, NOT THE PLAN'S. `row.value` is what the plan compiled from
+      // the file, so it does not move while a draft is unsaved -- binding the input to it
+      // made every keystroke snap back to the saved value on the next render, which reads
+      // exactly like the screen throwing typing away (`7086056`). Walked and caught here.
+      input.value = editable.value;
+      input.dataset.action = 'edit-field';
+      input.dataset.value = row.path;
+      input.setAttribute('list', listId);
+      input.setAttribute('aria-label', row.label);
+      const list = h('datalist');
+      list.id = listId;
+      for (const item of row.candidates) {
+        const option = h('option');
+        option.value = typeof item === 'string' ? item : JSON.stringify(item);
+        list.append(option);
+      }
+      box.append(input, list);
+    } else {
+      for (const item of row.candidates.slice(0, 24)) {
+        box.append(h('i', 'oe-chip', typeof item === 'string' ? item : JSON.stringify(item)));
+      }
+      if (row.candidates.length > 24) {
+        box.append(h('small', '', `외 ${row.candidates.length - 24}개 · 접힘`));
+      }
     }
     card.append(box);
   }
@@ -678,6 +710,25 @@ function renderAuthoringRow(row, expanded = []) {
   }
   if (row.note) card.append(h('small', 'oe-field-note', row.note));
   return card;
+}
+
+// Which declaration is open for writing right now, as the `bundle.<section>.<id>.` prefix
+// its fields carry -- or '' when nothing is open.
+//
+// 🔴 THE SECTION COMES FROM THE SERVER'S OWN MAP (`authorable_kinds`, sourced from
+// `AUTHORABLE_SECTIONS`), never from a list written here. A kind-to-section table copied
+// into this file would be a second rule to drift.
+//
+// 🔴 AND THE ID ALONE IS NOT ENOUGH. The live config declares BOTH `packs.dt-job@1` and
+// `profiles.dt-job@1`; matching on the id would make a pack's field look writable while a
+// profile's draft was open, and the write would land in the wrong declaration.
+function writablePrefix(state) {
+  const draft = state.draft;
+  if (!draft || !state.editorText) return '';
+  const kinds = state.authoringSchema?.authorable_kinds || [];
+  const section = kinds.find((row) => row.id === draft.target_kind)?.section;
+  if (!section || !draft.target_id) return '';
+  return `bundle.${section}.${draft.target_id}.`;
 }
 
 function renderAuthoring(state) {
@@ -719,6 +770,20 @@ function renderAuthoring(state) {
   // Bucket order is the reading order: what must be done, what is still asked, what was
   // filled for you. Groups are always rendered, empty or not -- a vanished heading is
   // indistinguishable from "nothing to do".
+  const prefix = writablePrefix(state);
+  // Parsed once for the whole panel, not per row: the draft text is one document.
+  let draftRaw = null;
+  if (prefix) {
+    try { draftRaw = JSON.parse(state.editorText); } catch { draftRaw = null; }
+  }
+  // A row is editable only when its leaf actually resolves inside the open draft AND is a
+  // string. A leaf that does not resolve belongs to another declaration, and a list or an
+  // object is not one input's shape -- both keep the chips they had.
+  const editableFor = (row) => {
+    if (!prefix || !draftRaw || !row.path.startsWith(prefix)) return null;
+    const current = getAtPath(draftRaw, splitBundlePath(row.path).slice(2));
+    return typeof current === 'string' ? { value: current } : null;
+  };
   const buckets = [
     ['missing', '빠짐'], ['unanswered', '미답'],
     ['derived', '파생됨 · 묻지 않음'], ['answered', '답함'],
@@ -728,7 +793,9 @@ function renderAuthoring(state) {
     const section = h('section', `oe-bucket oe-bucket--${stateId}`);
     section.append(h('h3', '', `${label} · ${rows.length}`));
     if (!rows.length) section.append(h('div', 'oe-empty', 'None defined'));
-    for (const row of rows) section.append(renderAuthoringRow(row, state.expandedFields));
+    for (const row of rows) {
+      section.append(renderAuthoringRow(row, state.expandedFields, editableFor(row)));
+    }
     wrap.append(section);
   }
   if (plan.unattached_refusals?.length) {

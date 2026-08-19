@@ -4,6 +4,7 @@ import {
   reduceFieldFold, reduceNewDeclaration, restoreDirtyEditorCheckpoint,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
+import { splitBundlePath, setAtPath } from './ontology_path.js';
 
 let controller = null;
 
@@ -110,6 +111,35 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       type: 'EDITOR_CHANGED',
       text: JSON.stringify({ ...raw, keys: next }, null, 2),
     });
+  };
+
+  // Put a picked reference into the draft text at the field's own path.
+  //
+  // 🔴 SAME ROUTE AS THE ENTITY KEYS ABOVE: parse the draft text, change one leaf, hand
+  // the text back through `EDITOR_CHANGED`. No new save path and no new endpoint -- Save
+  // still writes the same buffer, so there is exactly one thing that reaches the file.
+  //
+  // 🔴 THE SECTION AND THE ID ARE BOTH CHECKED BEFORE WRITING. The live config declares
+  // `packs.dt-job@1` AND `profiles.dt-job@1`, so an id-only check would write a pack's
+  // field into a profile's draft. If the prefix does not match the open draft, or the leaf
+  // does not resolve, nothing is written -- the field belongs to something else.
+  const editFieldAtPath = (path, value) => {
+    const draft = state.draft;
+    if (!draft || !state.editorText) return;
+    const kinds = state.authoringSchema?.authorable_kinds || [];
+    const section = kinds.find((row) => row.id === draft.target_kind)?.section;
+    if (!section) return;
+    const steps = splitBundlePath(path);
+    if (steps[0] !== section || steps[1] !== draft.target_id) return;
+    let raw;
+    try {
+      raw = JSON.parse(state.editorText);
+    } catch {
+      return;                      // let the textarea own its own syntax error
+    }
+    const next = setAtPath(raw, steps.slice(2), value);
+    if (next === null) return;
+    dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
   };
 
   // Write the smallest config that validates, so a setup can begin from nothing.
@@ -681,6 +711,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   });
 
   root.addEventListener('input', (event) => {
+    if (event.target.dataset.action === 'edit-field') {
+      // Typing is never refused: whatever is in the box goes into the draft, list or no
+      // list. The datalist offers the declared names; coining a new one stays possible,
+      // which is the entire reason this is an input and not a `select`.
+      editFieldAtPath(event.target.dataset.value, event.target.value);
+      return;
+    }
     if (event.target.dataset.action === 'edit-entity-key') {
       const at = Number(event.target.dataset.value);
       const typed = event.target.value;
