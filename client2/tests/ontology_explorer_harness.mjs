@@ -2,8 +2,8 @@
 // Run: node client2/tests/ontology_explorer_harness.mjs
 import {
   initialExplorerState, reduceExplorerState, assertOneContext, canLeaveSelection,
-  dirtyNavigationDecision, isDraftRevisionEditable, reduceNewDeclaration,
-  restoreDirtyEditorCheckpoint,
+  dirtyNavigationDecision, isDraftRevisionEditable, mirrorLoaded, reduceNewDeclaration,
+  restoreDirtyEditorCheckpoint, sectionMembers,
 } from '../src/ontology_explorer_store.js';
 
 let ran = 0;
@@ -245,6 +245,53 @@ const payload = (token, selected = 'entity|A@1') => ({
       .newDeclaration === null);
   check('E8 an unrelated action leaves the naming state exactly as it was',
     reduceNewDeclaration(typed, { type: 'TAB_CHANGED', tab: 'raw' }) === typed);
+}
+
+// --- F. the mirror: one source for what is declared ------------------------------
+//
+// Every picker from step 5 onward reads `sectionMembers` and holds no copy. These pin the
+// two properties that make that safe, and both are things a plausible implementation gets
+// wrong in a way no test would notice without them.
+{
+  const plan = {
+    sections: { packs: ['a@1', 'b@1'], entities: ['E@1'], vocabulary: [],
+                mappers: [], profiles: [], sources: [], source_preparers: [] },
+    fields: [], steps: [],
+  };
+  // `items` is what the TREE renders: paged at 100 and narrowed by the search box.
+  const state = {
+    ...initialExplorerState, authoring: plan,
+    items: [{ key: 'pack|a@1', kind: 'pack', canonical_id: 'a@1' }],
+    newDeclaration: { kind: 'pack', id: 'typing@1', error: null },
+  };
+
+  check('F1 members come from the plan, unpaged and unfiltered',
+    sectionMembers(state, 'packs').join(',') === 'a@1,b@1');
+
+  // 🔴 THE DEFECT THIS PREVENTS IS SILENT. A picker fed from `state.items` would have
+  // WORKED in every test where nothing was filtered, then offered a subset the moment
+  // somebody typed in the search box -- not an error, not empty, just fewer options than
+  // exist, with nothing on screen to tell the operator.
+  check('F2 members are NOT the filtered tree page',
+    sectionMembers(state, 'packs').length > state.items.length);
+
+  // 🔴 The name being typed is not declared. Merging it would let a profile point at a
+  // pack the server never accepted, and a REFUSED create would keep showing as real.
+  check('F3 the declaration being typed is never offered as existing',
+    !sectionMembers(state, 'packs').includes('typing@1'));
+
+  check('F4 an unknown section is empty rather than undefined',
+    Array.isArray(sectionMembers(state, 'nope')) && sectionMembers(state, 'nope').length === 0);
+  check('F5 called without a section it returns the whole map',
+    Object.keys(sectionMembers(state)).length === 7);
+
+  // "Nothing declared" and "not read yet" render as the same empty list and mean opposite
+  // things -- one is a prerequisite to state, the other is a spinner.
+  check('F6 an unread mirror is distinguishable from an empty one',
+    mirrorLoaded(state) === true && mirrorLoaded(initialExplorerState) === false);
+  check('F7 a mirror with all-empty sections still counts as read',
+    mirrorLoaded({ ...initialExplorerState,
+      authoring: { sections: { packs: [] } } }) === true);
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);

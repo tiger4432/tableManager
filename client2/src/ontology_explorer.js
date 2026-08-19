@@ -75,6 +75,20 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     return state;
   };
 
+  // 🔴 THE ONE WAY THIS SCREEN LEARNS WHAT THE SERVER HAS.
+  //
+  // Every successful write ends here and nothing else refreshes anything. The rule that
+  // matters is what it does NOT take: no argument saying who called it, no flag for
+  // "local save" versus anything else. A path only a local save can call is a path a
+  // message could never reuse, and rebuilding it later is the expensive version of this.
+  //
+  // 🔴 ONLY ON SUCCESS. A failed save must leave the draft exactly as typed -- the
+  // operator's next move is to fix one field, not to retype the declaration -- so no
+  // failure branch calls this.
+  const readMirror = async ({ selection = state.selection?.key || null,
+                             draft = state.draft } = {}) =>
+    load({ selection, draft, allowContextSwitch: true });
+
   // Write the smallest config that validates, so a setup can begin from nothing.
   //
   // 🔴 THE SCREEN OFFERS; THE PERSON DECIDES. This is the only write here that is not a
@@ -96,8 +110,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         return;
       }
       showToast?.(`${body.created} created`);
-      await loadAuthoring(null);
-      await load({ allowContextSwitch: true });
+      // A config coming into existence while the screen is open is not a special case; it
+      // is the ordinary "the server changed, re-read". If this ever needs its own bespoke
+      // refresh again, the mirror has stopped being the single path.
+      await readMirror({ selection: null });
     } catch (error) {
       state = { ...state, authoring: { ...(state.authoring || {}),
         bootstrapError: errorMessage(error) } };
@@ -138,7 +154,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // Re-read the mirror: the declaration is not in the snapshot until activation, but
       // the draft list and the tree's change markers are, and they are stale the moment
       // this returns.
-      await load({ selection: (body.draft || body).target_key, allowContextSwitch: true });
+      await readMirror({ selection: (body.draft || body).target_key });
     } catch (error) {
       dispatchNaming({ type: 'NEW_DECLARATION_FAILED', message: errorMessage(error) });
     }
@@ -442,10 +458,12 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         dispatch({ type: 'DRAFT_CLOSED' });
         dispatch({ type: 'AUTHORING_INVALIDATED' });
         showToast('검토한 초안을 활성화했습니다.', 'success');
-        await load({ draft: null, allowContextSwitch: true });
+        // Activation is the write that changes what is DECLARED, so it re-reads through
+        // the same door as every other write rather than refreshing in its own way.
+        await readMirror({ draft: null });
       } catch (error) { showToast(errorMessage(error), 'error'); }
     } else if (action === 'discard-draft') {
-      if (await discardDraft()) await load({ draft: null, allowContextSwitch: true });
+      if (await discardDraft()) await readMirror({ draft: null });
     }
   });
 

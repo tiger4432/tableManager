@@ -272,6 +272,33 @@ export function reduceFieldFold(state, action) {
   return { ...state, expandedFields: [...open] };
 }
 
+// 🔴 THE ONE PLACE ANYTHING ASKS "WHAT IS DECLARED IN THIS SECTION".
+//
+// Every picker built from step 5 onward reads this and holds no copy of its own. A picker
+// that snapshots at mount is the defect the mirror exists to remove: declare a pack, go to
+// the profile that needs it, and the list it captured a minute ago does not have it.
+//
+// 🔴 IT READS THE PLAN, NOT THE TREE, AND THAT IS THE WHOLE POINT. `state.items` is the
+// obvious source and it is wrong twice over: `/view` is PAGED (100 at a time) and it is
+// FILTERED BY THE SEARCH BOX, so a picker fed from it goes silently short -- and shortest
+// exactly when the operator has typed a filter, which is when they are least likely to
+// notice a name missing. `authoring.sections` is unpaged and unfiltered.
+//
+// 🔴 IT NEVER MERGES `newDeclaration`. The name being typed is not declared yet. Offering
+// it would let a profile point at a pack the server has never accepted, and a create that
+// was REFUSED would go on showing as though it existed.
+export function sectionMembers(state, section) {
+  const all = state.authoring?.sections || {};
+  if (section === undefined) return all;
+  return all[section] || [];
+}
+
+// Is the mirror populated at all? Distinguishes "no declarations" from "not read yet",
+// which render as the same empty list and mean opposite things to an operator.
+export function mirrorLoaded(state) {
+  return Boolean(state.authoring && state.authoring.sections);
+}
+
 export function canLeaveSelection(state, confirmDiscard) {
   return !state.dirty || Boolean(confirmDiscard());
 }

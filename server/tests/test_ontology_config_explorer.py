@@ -1947,3 +1947,44 @@ def test_the_starting_file_is_the_smallest_one_that_validates(tmp_path):
     assert set(bundle) == {"setup_version", *LOGICAL_SECTIONS}, (
         "anything beyond the required keys is a guess the validator may refuse")
     assert all(bundle[name] == {} for name in LOGICAL_SECTIONS)
+
+
+def test_the_plan_lists_every_declaration_unpaged(transfer_sample_setup, tmp_path):
+    """🔴 THE SECTION LIST CANNOT COME FROM THE TREE, and the reason is a silent defect.
+
+    `/view` is PAGED and narrowed by the search box, so a picker fed from it would have
+    worked in every test where nothing was filtered and then offered a SUBSET the moment
+    somebody typed -- not an error, not empty, just fewer options than exist with nothing
+    on screen to say so. `fields` cannot answer either: it is per-field, not
+    per-declaration.
+
+    So the plan carries the sections itself. The scoring assertion is the second one: a
+    query that narrows the tree must not narrow this.
+    """
+    service = OntologyExplorerService(
+        config_root=tmp_path / "absent", draft_root=tmp_path / "drafts",
+        setup_loader=lambda root: transfer_sample_setup,
+        catalog_loader=lambda: transfer_sample_setup.catalog)
+
+    bundle = transfer_sample_setup.bundle.to_mapping()
+    from ledger.config_authoring import authoring_plan
+    from ledger.config_explorer import AUTHORABLE_SECTIONS
+
+    plan = authoring_plan(bundle, transfer_sample_setup.catalog)
+    sections = plan["sections"]
+    assert set(sections) == set(AUTHORABLE_SECTIONS.values()), (
+        "every section the screen can author must be listed, or a picker goes blind")
+
+    for name, members in sections.items():
+        assert sorted(members) == sorted(bundle.get(name) or {}), (
+            f"{name} must list exactly what the bundle declares")
+
+    assert any(sections.values()), "an all-empty fixture would make this vacuous"
+
+    # A selection prefix narrows the FIELDS -- it must not narrow the section lists, or the
+    # picker would offer less whenever the operator had something selected.
+    narrowed = authoring_plan(bundle, transfer_sample_setup.catalog,
+                              selection_prefix="bundle.packs.")
+    assert len(narrowed["fields"]) < len(plan["fields"]), "the prefix must actually narrow"
+    assert narrowed["sections"] == sections, (
+        "🔴 narrowing the view must never narrow what is declared")

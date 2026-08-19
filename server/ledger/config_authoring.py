@@ -1233,6 +1233,17 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
             force[row["disposition"]] = force.get(row["disposition"], 0) + 1
     return {
         "steps": steps,
+        # 🔴 THE ONE SOURCE FOR "WHAT IS DECLARED", AND IT HAS TO COME FROM HERE.
+        # The obvious client-side source is the explorer tree, and it is wrong: `/view` is
+        # PAGED and filtered by the search box, so a picker reading it would offer only
+        # what happens to be on screen -- silently short, and shortest exactly when the
+        # operator has typed a filter. `fields` cannot answer either; it is per-field, not
+        # per-declaration. So the sections are listed here, unpaged and unfiltered,
+        # straight off the bundle the plan already read.
+        "sections": {
+            name: sorted(_section(bundle, name), key=str)
+            for name in AUTHORABLE_SECTIONS.values()
+        },
         "fields": rows,
         # 🔴 SAID OUT LOUD RATHER THAN ABSORBED.  `grammar_requires_it` counts fields whose
         # value is fully determined by another declaration AND that `validate_bundle`

@@ -875,7 +875,10 @@ const FLOORS = new Map([
   // screen could edit and could not create, so a new source had to be typed into the
   // config by hand. E6-E8 are the counter-tests -- without them a reducer that returns
   // `state` unchanged would satisfy everything else.
-  ['ontology_explorer_harness.mjs', 43],
+  // 43 -> 50 (2026-08-19). Section F: the mirror. F2 is the one that matters -- a picker
+  // fed from the paged, search-filtered tree would pass every test where nothing was
+  // filtered and go silently short the moment somebody typed.
+  ['ontology_explorer_harness.mjs', 50],
   // New 2026-08-19. The explorer panel committed every state change with
   // `replaceChildren`, which is correct output that destroys the operator's scroll,
   // focus, expand state and half-typed text -- the owner reported it as "refreshed to
