@@ -454,6 +454,49 @@ class OntologyDraftStore:
             path.unlink()
             return {"draft_id": draft_id, "discarded": True}
 
+    def delete_declaration(
+        self,
+        target_key: str,
+        *,
+        base_snapshot_hash: str,
+        active_setup: Any,
+        active_index: ExplorerIndex,
+        reload_callback: Callable[[], None],
+    ) -> dict[str, Any]:
+        """Remove one declaration from the file. No gate.
+
+        🔴 DELETING SOMETHING OTHERS REFERENCE IS NOT REFUSED, AND THAT IS THE POINT.
+        Before partial loading it had to be: removing a referenced declaration made the
+        WHOLE config unreadable, so "may I delete this?" had to be decided in advance.
+        Now the referrers simply become `invalid` -- listed, explained, and openable -- and
+        that is the same ordinary state as a declaration written before the thing it names.
+
+        🔴 AND DO NOT REBUILD THIS AS A REFERENCE-COUNT GUARD. A source and its profile
+        name each other, so in-degree never reaches zero for either and such a guard
+        refuses every deletion (board `ec9f1c2`; measured: declarations with no referrer,
+        0). The preview exists to SHOW what will stop resolving, not to block.
+
+        The one check kept is the compare-and-swap: deleting against a view of the file
+        that has since changed would remove something the operator never looked at.
+        """
+        with self._lock:
+            if base_snapshot_hash != active_index.snapshot_hash:
+                raise ConfigExplorerError(
+                    "stale_base_snapshot", "base_snapshot_hash",
+                    "active snapshot changed; delete refused against a stale view",
+                )
+            node = active_index.node(target_key)
+            config_path = Path(active_setup.config_root) / node.config_file
+            backup = self._activate_file(
+                config_path, [(node.bundle_path, _Remove())])
+            reload_callback()
+            return {
+                "deleted": target_key,
+                "backup": str(backup),
+                "snapshot_hash": document_hash(json.loads(
+                    config_path.read_text(encoding="utf-8"))),
+            }
+
     def activate(
         self,
         draft_id: str,

@@ -208,6 +208,22 @@ def discard_draft(
         raise _refusal(exc) from exc
 
 
+@router.delete("/declarations/{target_key:path}",
+               dependencies=[Depends(require_admin_token_strict)])
+def delete_declaration(
+    target_key: str,
+    base_snapshot_hash: str,
+    db: Session = Depends(get_db),
+):
+    try:
+        import main as app_main
+        return _service.delete_declaration(
+            target_key, base_snapshot_hash=base_snapshot_hash,
+            reload_callback=lambda: app_main.reload_system_configs(db=db))
+    except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
 @router.post("/drafts/{draft_id}/activate",
              dependencies=[Depends(require_admin_token_strict)])
 def activate_draft(

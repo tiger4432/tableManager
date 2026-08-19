@@ -82,6 +82,14 @@ STRICT_ADMIN_ROUTES = {
     ("POST", "/admin/ontology-explorer/drafts/{draft_id}/revise"),
     ("POST", "/admin/ontology-explorer/drafts/{draft_id}/activate"),
     ("DELETE", "/admin/ontology-explorer/drafts/{draft_id}"),
+    # The authoring routes that write the live file directly rather than through a
+    # draft: bootstrap creates it, `drafts/new` opens one for a declaration that does
+    # not exist yet, and the declaration delete removes one. The first two shipped
+    # earlier today and were never pinned -- this test found that, which is what
+    # pinning MEMBERS rather than a count is for.
+    ("POST", "/admin/ontology-explorer/bootstrap"),
+    ("POST", "/admin/ontology-explorer/drafts/new"),
+    ("DELETE", "/admin/ontology-explorer/declarations/{target_key:path}"),
 }
 
 

@@ -112,6 +112,10 @@
 #ontology-explorer-root .oe-key-add { align-self: flex-start; color: var(--oe-accent); }
 #ontology-explorer-root .oe-key-none { color: var(--oe-muted); font-size: 13px; }
 
+#ontology-explorer-root .oe-editor-action-danger {
+  border-color: var(--oe-danger, #c0392b); color: var(--oe-danger, #c0392b);
+}
+
 #ontology-explorer-root .oe-tree-why {
   display: flex; flex-direction: column; gap: 2px;
   margin: 2px 0 6px 10px; padding: 6px 8px;

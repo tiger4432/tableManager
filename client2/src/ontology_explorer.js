@@ -195,6 +195,40 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     }
   };
 
+  // Remove one declaration. The preview SHOWS; it does not decide.
+  //
+  // 🔴 NO GATE, AND THAT IS THE RULING. Deleting something others reference used to make
+  // the whole config unreadable, so it had to be judged in advance. It no longer does:
+  // the referrers become `invalid`, which is listed, explained and openable -- the same
+  // ordinary state as a declaration written before the thing it names.
+  //
+  // 🔴 AND NEVER A REFERENCE-COUNT GUARD. A source and its profile name each other, so
+  // in-degree never reaches zero for either and such a guard refuses everything
+  // (board `ec9f1c2`).
+  const deleteDeclaration = async (targetKey) => {
+    try {
+      const plan = await jsonRequest(
+        `/deletion-preview?targets=${encodeURIComponent(targetKey)}`);
+      const casualties = (plan.released || []).map((row) => row.canonical_id || row.key);
+      const id = targetKey.split('|')[1] || targetKey;
+      // Terse, nouns and symbols -- the owner's rule for every string on this screen.
+      const message = casualties.length
+        ? `${id} 삭제
+안 읽히게 됨 · ${casualties.length} : ${casualties.join(', ')}`
+        : `${id} 삭제
+영향 없음`;
+      if (!window.confirm(message)) return;
+      await jsonRequest(
+        `/declarations/${encodeURIComponent(targetKey)}`
+        + `?base_snapshot_hash=${encodeURIComponent(state.activeSnapshot?.snapshot_hash || '')}`,
+        { method: 'DELETE' });
+      dispatch({ type: 'DRAFT_CLOSED' });
+      dispatch({ type: 'AUTHORING_INVALIDATED' });
+      showToast(`${id} 삭제됨`, 'success');
+      await readMirror({ draft: null, selection: null, viewMode: 'active' });
+    } catch (error) { showToast(errorMessage(error), 'error'); }
+  };
+
   // Put the editor back on the declaration just saved, so editing continues.
   //
   // Which door depends on what the save produced: a declaration that now resolves is in
@@ -499,6 +533,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'toggle-field') {
       state = reduceFieldFold(state, { type: 'FIELD_TOGGLED', path: target.dataset.value });
       renderOntologyExplorer(root, state);
+    }
+    else if (action === 'delete-declaration') {
+      await deleteDeclaration(target.dataset.value);
     }
     else if (action === 'edit-unread') {
       // 🔴 OPEN IT, ALWAYS. Pressing a row that then does nothing -- or answers "does not

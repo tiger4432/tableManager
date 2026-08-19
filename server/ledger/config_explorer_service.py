@@ -347,6 +347,22 @@ class OntologyExplorerService:
             "context_token": token,
         }
 
+    def delete_declaration(
+        self,
+        target_key: str,
+        *,
+        base_snapshot_hash: str,
+        reload_callback: Callable[[], None],
+    ) -> dict[str, Any]:
+        """Remove one declaration. The preview shows; this writes; nothing gates."""
+        setup, index, _ = self.active()
+        result = self.draft_store.delete_declaration(
+            target_key, base_snapshot_hash=base_snapshot_hash,
+            active_setup=setup, active_index=index,
+            reload_callback=reload_callback)
+        self.invalidate()
+        return result
+
     def deletion_preview(
         self,
         *,
