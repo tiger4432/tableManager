@@ -284,15 +284,13 @@ class OntologyDraftStore:
                    kind: str, canonical_id: str) -> dict[str, Any]:
         """Open a draft for a declaration that does not exist yet.
 
-        Three refusals, and each one is a different mistake:
+        Two refusals, and each one is a different mistake:
 
           * a kind this screen cannot author -- `authorable_bundle_path` raises, and it is
             the SAME map `deletion_plan` reads, so what can be created is exactly what can
             be removed (the invariant landed 2026-08-19);
           * an id already in the snapshot -- creating would silently overwrite a live
             declaration, which is an edit wearing a create's clothes;
-          * an id already claimed by another open draft -- two drafts racing to author the
-            same name, where the second activation would quietly discard the first.
 
         The record stores `target_bundle_path` because there is no node to ask later; see
         `draft_target`.
@@ -332,35 +330,8 @@ class OntologyDraftStore:
             "updated_at": now,
         }
         with self._lock:
-            self._require_name_unclaimed(key, canonical_id)
             self._write_record(record)
         return self.public(record)
-
-    def _require_name_unclaimed(self, key: str, canonical_id: str) -> None:
-        """Refuse a second open draft authoring the same new id.
-
-        Without it two creates race and the second activation quietly discards the first --
-        the file ends up with one declaration and the operator watched two succeed.  Only
-        records that have not activated count: an activated draft's name lives in the
-        snapshot now, where `create_new`'s index check catches it.
-        """
-        if not self.root.is_dir():
-            return
-        for path in sorted(self.root.glob("*.json")):
-            try:
-                with path.open("r", encoding="utf-8") as handle:
-                    other = json.load(handle)
-            except (OSError, json.JSONDecodeError):
-                continue        # a corrupt neighbour must not block authoring
-            if not isinstance(other, dict):
-                continue
-            if (other.get("target_key") == key
-                    and other.get("lifecycle_status") != "activated"):
-                raise ConfigExplorerError(
-                    "declaration_being_created", "canonical_id",
-                    f"another open draft is already authoring {canonical_id!r}; "
-                    f"finish or discard it first",
-                )
 
     def get(self, draft_id: str) -> dict[str, Any]:
         with self._lock:

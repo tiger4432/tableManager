@@ -1473,9 +1473,12 @@ def test_authoring_a_declaration_refuses_the_three_ways_it_can_be_wrong(
         assert code(post(kind, "brand-new@1")) == "unauthorable_kind", (
             f"{kind} is deletable-or-not by the same map; it must not be creatable here")
 
+    # A second draft on the same new name is ALLOWED. A guard against it was added here
+    # on 2026-08-19 and removed the same day: nobody asked for it, no comparable
+    # constraint exists for edit drafts, and it locked the owner out of a name with no way
+    # to see or cancel the draft holding it. A lock with no key is worse than the race.
     assert post("pack", "twice@1").status_code == 200
-    assert code(post("pack", "twice@1")) == "declaration_being_created", (
-        "two open drafts on one name means the second activation discards the first")
+    assert post("pack", "twice@1").status_code == 200
 
     stale = client.post("/admin/ontology-explorer/drafts/new", json={
         "kind": "pack", "canonical_id": "other@1", "base_snapshot_hash": "0" * 64})

@@ -151,7 +151,7 @@ def create_declaration_draft(payload: dict[str, Any] = Body(...)):
     The last hole in the write path: this screen could edit a declaration and could not
     make one, so a new source had to be typed into the file by hand.  Refusals name the
     mistake -- `declaration_exists` (open it instead), `unauthorable_kind` (this screen
-    cannot write that section), `declaration_being_created` (another draft holds the name).
+    cannot write that section).
     """
     try:
         return _service.create_declaration_draft(
