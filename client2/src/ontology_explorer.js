@@ -209,7 +209,12 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     try {
       const plan = await jsonRequest(
         `/deletion-preview?targets=${encodeURIComponent(targetKey)}`);
-      const casualties = (plan.released || []).map((row) => row.canonical_id || row.key);
+      // `unread_after`, not `released`. The latter means "authored in another file and
+      // merely stops being referenced" -- it never answered "what stops resolving", and
+      // reading it for that printed 「영향 없음」 while a pack was about to go unread.
+      // `unread_after` comes from the same resolver the load runs, so the confirm and the
+      // outcome cannot disagree.
+      const casualties = (plan.unread_after || []).map((row) => row.canonical_id || row.key);
       const id = targetKey.split('|')[1] || targetKey;
       // Terse, nouns and symbols -- the owner's rule for every string on this screen.
       const message = casualties.length

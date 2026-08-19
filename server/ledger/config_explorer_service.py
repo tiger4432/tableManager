@@ -20,6 +20,7 @@ from .config_explorer import (
     build_explorer_index,
     document_hash,
     load_resolved_setup,
+    resolve_declarations,
     definition_diff,
     deletion_plan,
     explorer_view,
@@ -388,6 +389,45 @@ class OntologyExplorerService:
                 "requested deletion context no longer matches the active snapshot",
             )
         payload = deletion_plan(index, targets).to_mapping()
+        # 🔴 THE CONFIRM ASKS THE RESOLVER, NOT `released`.
+        #
+        # `removed`/`released`/`blocked` are the OLD model's vocabulary, from when deleting
+        # something others referenced was REFUSED -- so the question was "what blocks, what
+        # is freed". `released` means "authored in another file and merely stops being
+        # referenced". It never answered the question a person now needs answered:
+        # 「이걸 지우면 무엇이 안 읽히게 되나」. Reading it for that said 「영향 없음」 while a
+        # pack was about to go unread -- measured 2026-08-19.
+        #
+        # 🔴 THE PREVIEW AND THE OUTCOME MUST COME OUT OF THE SAME MACHINE. Anything else
+        # can disagree, and a confirm that disagrees with what happens is worse than no
+        # confirm. So: drop the targets from an in-memory copy, run the same fixpoint the
+        # loader runs, and report what falls. `deletion_plan` is untouched.
+        #
+        # 🔴 AND THE READ IS TOLERANT, EXACTLY AS `_resolution` ALREADY READS. A config
+        # root with no file on it is a state this endpoint has to survive: `setup_loader`
+        # is a seam callers inject through, and its whole point is that the service
+        # reaches for no file at all. With no document there is nothing to drop, so
+        # nothing falls, and the honest answer is the empty list.
+        try:
+            document = json.loads(
+                (self.config_root / CONFIG_FILENAME).read_text(encoding="utf-8"))
+        except Exception:
+            document = None                  # injected loader, or no file to read yet
+        unread_after: list[dict[str, str]] = []
+        if document is not None:
+            for key in targets:
+                _, _, canonical_id = str(key).partition("|")
+                for holder in document.values():
+                    if isinstance(holder, dict) and canonical_id in holder:
+                        holder.pop(canonical_id)
+                        break
+            after = resolve_declarations(document, catalog=self._catalog_loader())
+            already = set(self._invalid)
+            unread_after = [
+                {"key": key, "canonical_id": key.partition("|")[2]}
+                for key in sorted(after["invalid"]) if key not in already
+            ]
+        payload["unread_after"] = unread_after
         payload["context_token"] = token
         payload["snapshot_hash"] = index.snapshot_hash
         for field in ("removed", "released", "blocked"):

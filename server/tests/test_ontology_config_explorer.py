@@ -1605,6 +1605,38 @@ def test_deletion_preview_endpoint_names_the_casualties_and_shows_the_blockage(
     assert empty.json()["detail"]["code"] == "empty_deletion"
 
 
+def test_deletion_preview_names_the_pack_that_stops_being_read(copied_root, tmp_path):
+    """The confirm's one job: name what stops being read if you press delete.
+
+    🔴 THE SUITE GOING GREEN SAYS NOTHING ABOUT THIS FIELD, AND THE TEST ABOVE NEVER CAN.
+    That one serves its setup through the `setup_loader` seam against a `config_root` that
+    does not exist -- the service reaches for no file, so `unread_after` is `[]` there BY
+    CONSTRUCTION, correctly and forever, however broken the field is otherwise.  This is
+    the only assertion in the tree that touches it; without it the defect returns silently.
+
+    The case is the one measured lying on 2026-08-19: deleting a predicate that a pack's
+    claim emits printed 「영향 없음」 while that pack was about to go unread.
+
+    The pair is DERIVED from the config rather than spelled out, so an owner hand-edit does
+    not rename this test's subject out from under it; if no pack emits a declared predicate
+    the lookup raises rather than passing on an empty search.
+    """
+    document = json.loads(
+        (copied_root / "ledger_config.json").read_text(encoding="utf-8"))
+    predicate, pack_key = next(
+        (claim["emit"]["predicate"], node_key("pack", pack_id))
+        for pack_id, pack_raw in document["packs"].items()
+        for claim in pack_raw["claims"].values()
+        if claim["emit"]["predicate"] in document["vocabulary"])
+
+    service = OntologyExplorerService(
+        config_root=copied_root, draft_root=tmp_path / "drafts")
+    service.active()
+    plan = service.deletion_preview(targets=[node_key("predicate", predicate)])
+
+    assert pack_key in {row["key"] for row in plan["unread_after"]}
+
+
 # --------------------------------------------------------------------- authoring plan
 
 
