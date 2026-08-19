@@ -467,12 +467,11 @@ class OntologyDraftStore:
         with self._lock:
             record = self._read_record(draft_id)
             self._require_revision(record, expected_revision)
-            if (record["lifecycle_status"] != "review_requested"
-                    or record["review_revision"] != record["revision"]):
-                raise ConfigExplorerError(
-                    "review_required", "lifecycle_status",
-                    "the exact revision must be review requested before activation",
-                )
+            # 🔴 NO REVIEW PRECONDITION. Saving IS the write to the config file -- the
+            # owner's ruling, and the button set that carries it is 생성·편집·저장·삭제.
+            # A separate review step gated a door that no longer has a handle: with the
+            # 활성화 button gone, a draft could never reach `review_requested`, so this
+            # check would have refused every save the screen could make.
             if record["base_snapshot_hash"] != active_setup.snapshot.snapshot_sha256:
                 stale_status = self.stale_status(record, active_index)
                 record["lifecycle_status"] = stale_status

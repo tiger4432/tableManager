@@ -86,8 +86,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // operator's next move is to fix one field, not to retype the declaration -- so no
   // failure branch calls this.
   const readMirror = async ({ selection = state.selection?.key || null,
-                             draft = state.draft } = {}) =>
-    load({ selection, draft, allowContextSwitch: true });
+                             draft = state.draft,
+                             viewMode = state.viewPreference } = {}) =>
+    load({ selection, draft, viewMode, allowContextSwitch: true });
 
   // Rewrite `keys` in the draft text the save button already sends.
   //
@@ -185,7 +186,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // selecting it makes `/view` answer `unknown_selection` and the screen errors
       // immediately after a successful create. The mirror reflects what is DECLARED; the
       // new declaration lives in the draft layer, which `DRAFT_OPENED` above already holds.
-      await readMirror({ selection: null });
+      // 🔴 `viewMode` SPELLED OUT. The comment above promises the active view; with no
+      // argument the read inherits whatever the last action left behind, and a brand-new
+      // draft read in preview mode reports itself invalid the moment it is created.
+      await readMirror({ selection: null, viewMode: 'active' });
     } catch (error) {
       dispatchNaming({ type: 'NEW_DECLARATION_FAILED', message: errorMessage(error) });
     }
@@ -248,10 +252,21 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     expectedContextToken = null,
   } = {}) => {
     const requestId = ++generation;
+    // 🔴 A DRAFT MODE WITHOUT A DRAFT IS A 400, AND IT OUTLIVES ITS MOMENT.
+    //
+    // `viewMode` defaults to `state.viewPreference`, which a save leaves on
+    // `draft_preview`. The draft is gone one action later, so the next read asks for a
+    // draft view with no `draft_id` and is refused -- the screen then never re-reads,
+    // keeps the pre-write snapshot hash, and the SECOND create dies on a stale
+    // compare-and-swap. That is the 「두 번째 무반응」 the owner hit.
+    //
+    // Corrected HERE and not at the call sites: the mode and the draft travel together
+    // through this one door, so every caller is covered and none has to remember.
+    const mode = draft?.draft_id ? viewMode : 'active';
     dispatch({ type: 'REQUEST_STARTED', generation: requestId });
     const params = new URLSearchParams({
       q: state.query, page: String(state.page), limit: '100',
-      view_mode: viewMode,
+      view_mode: mode,
     });
     if (selection) params.set('selection', selection);
     const expectedToken = expectedContextToken
@@ -466,10 +481,34 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         await load({ draft, viewMode: 'active', allowContextSwitch: true });
       } catch (error) { showToast(errorMessage(error), 'error'); }
     } else if (action === 'save-draft') {
-      await mutateDraft(`/drafts/${state.draft.draft_id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expected_revision: state.draft.revision, raw: state.editorText }),
-      }, 'DRAFT_SAVED', 'draft_preview');
+      // 🔴 SAVE IS THE WRITE. 「저장이 곧 설정 파일 반영」 -- the owner's ruling, and the
+      // reason there is no 활성화 button any more. Two calls the server already has, joined
+      // behind one press: NO NEW ENDPOINT, and no confirm dialog on the one control the
+      // operator uses most.
+      //
+      // The order is what makes a failure safe. The save lands first and its record is
+      // dispatched, so if activation refuses -- a stale snapshot, a draft that no longer
+      // compiles -- the config file is untouched (the activation rollback is already
+      // there) and everything typed is still on screen to fix.
+      const draftId = state.draft.draft_id;
+      try {
+        const saved = await jsonRequest(`/drafts/${draftId}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            expected_revision: state.draft.revision, raw: state.editorText,
+          }),
+        });
+        const record = saved.draft || saved;
+        dispatch({ type: 'DRAFT_SAVED', draft: record });
+        await jsonRequest(`/drafts/${draftId}/activate`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expected_revision: record.revision }),
+        });
+        dispatch({ type: 'DRAFT_CLOSED' });
+        dispatch({ type: 'AUTHORING_INVALIDATED' });
+        showToast('저장했습니다.', 'success');
+        await readMirror({ draft: null, viewMode: 'active' });
+      } catch (error) { showToast(errorMessage(error), 'error'); }
     } else if (action === 'review-draft') {
       if (state.dirty) { showToast('먼저 초안을 저장해 주세요.', 'warning'); return; }
       await mutateDraft(`/drafts/${state.draft.draft_id}/review`, {

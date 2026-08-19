@@ -285,11 +285,23 @@ function renderEntityKeys(state) {
 }
 
 function renderRaw(state) {
-  // 🔴 A CREATE DRAFT HAS NO SELECTION TO MATCH. Its target is not in the snapshot -- that
-  // is what create means -- so `state.selection` is null and this guard hid the draft the
-  // operator had just made. He saw the declaration accepted and then could not find it.
+  // 🔴 A CREATE DRAFT HAS NO SELECTION TO MATCH. Its target is not in the snapshot --
+  // that is what create means -- so it can never equal a selection, and this guard hid the
+  // draft the operator had just made. He saw the declaration accepted and could not find it.
+  //
+  // 🔴 `creates_declaration`, NOT `!state.selection`. The second term was a PROXY for "this
+  // is a create", true only while there was nothing to select -- correct on an empty config
+  // and wrong from the first declaration onward. `/view` picks a selection when the caller
+  // names none, so the SECOND create landed with `entity|lot@1` selected, the guard went
+  // false, and the editor vanished: created, 200, and unreachable. First one fine, second
+  // one dead -- which is exactly the walk the owner could not finish.
+  //
+  // The server already answers the real question; the record carries `creates_declaration`
+  // and `public()` already ships it. This asks for the answer instead of the symptom.
   if (state.draft
-      && (!state.selection || state.selection.key === state.draft.target_key)) {
+      && (state.draft.creates_declaration
+          || !state.selection
+          || state.selection.key === state.draft.target_key)) {
     const editor = h('div', 'oe-editor');
     const context = h('div', 'oe-editor-context');
     context.append(keyValue('초안 상태', state.draft.lifecycle_status));
@@ -319,15 +331,16 @@ function renderRaw(state) {
     //
     // Review is furniture: the sole operator cannot say what it is for. The server paths
     // stay; they are simply no longer reachable from here.
+    // 🔴 FOUR BUTTONS ON THIS SCREEN, AND ONLY ONE OF THEM IS HERE.
+    //
+    //     버튼은 생성, 편집, 저장, 삭제 4가지만 · crud!  (owner, 2026-08-19)
+    //
+    // Create and Edit live outside the editor; Delete is its own round. What is left in
+    // here is 저장 -- and 저장 now MEANS the config file changed, because the owner ruled
+    // that saving is the write. `Activate` and `Discard` are gone: the first was a second
+    // name for what Save already does, and the second was a control nobody asked for.
     const controls = h('div', 'oe-editor-controls');
-    controls.append(
-      button('Save', 'save-draft', '', 'oe-editor-action'),
-      button('Discard', 'discard-draft', '', 'oe-editor-action'),
-    );
-    // 🔴 KEPT ON PURPOSE, AND ONLY UNTIL ITS REPLACEMENT EXISTS. Activation is moving out
-    // of editing to a control of its own; removing it here first would leave no way to
-    // activate anything at all in between. Flagged rather than decided alone.
-    controls.append(button('Activate', 'activate-draft', '', 'oe-editor-action oe-editor-action-primary'));
+    controls.append(button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary'));
     editor.append(context);
     if (state.draft.target_kind === 'entity') {
       const keysForm = renderEntityKeys(state);
