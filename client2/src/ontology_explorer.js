@@ -968,6 +968,20 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // A relative path inside the declaration body -- `claims.<id>.roles.<name>.kind`.
       // `splitBundlePath` only strips a leading `bundle.`, so a relative path splits the
       // same way, brackets included. Same writer, same buffer, same save.
+      // 🔴 A NUMBER LEAF WRITES A NUMBER. The skeleton says which leaves those are, the same
+      // way it has always said which are booleans, so nothing here knows a field by name.
+      // Without it `1` lands as `"1"`, the validator refuses it, and retyping cannot help --
+      // measured on a preparer built from nothing.
+      if (event.target.dataset.number === 'true') {
+        const typed = event.target.value.trim();
+        // Blank means "no value here", which is the key leaving -- not an empty string, and
+        // not a 0 nobody asked for.
+        if (typed === '') removeShapeAtPath(event.target.dataset.value);
+        else if (Number.isFinite(Number(typed))) {
+          editShapeAtPath(event.target.dataset.value, Number(typed));
+        }
+        return;
+      }
       editShapeAtPath(event.target.dataset.value, event.target.value);
       return;
     }

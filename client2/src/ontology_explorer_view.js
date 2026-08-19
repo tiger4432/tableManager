@@ -943,7 +943,17 @@ function renderSkeletonLeaf(context, node, path, value) {
     return select;
   }
   const input = h('input', 'oe-field-input');
-  input.type = 'text';
+  // 🔴 A NUMBER FIELD SAYS SO, BECAUSE OTHERWISE IT CANNOT BE FILLED AT ALL. Typing 1 into a
+  // text box stores "1", the validator refuses it (`invalid_version -- must be a positive
+  // integer`), and typing it again produces the same string: a new mapper or preparer could
+  // only be completed in the raw JSON editor. Packs hid this -- they hold no integer.
+  //
+  // The declaration is what carries the type, not this file: `hint: number` sits in
+  // `ledger_skeleton.json` beside `hint: flag`, which has always meant boolean. So this adds
+  // no second author and no branch that knows a field by name -- the same three lines would
+  // type a field this screen has never heard of.
+  input.type = node.hint === 'number' ? 'number' : 'text';
+  if (node.hint === 'number') input.dataset.number = 'true';
   input.value = text;
   input.dataset.action = 'edit-shape';
   input.dataset.value = path;

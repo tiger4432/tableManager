@@ -5,219 +5,1049 @@
     "binding": {
       "kind": "record",
       "fields": [
-        {"key": "kind", "required": true, "label": "바인딩", "node": {"kind": "leaf", "hint": "choice", "list": "binding_kinds"}},
-        {"key": "column", "required": true, "when": {"field": "kind", "is": "column"}, "node": {"kind": "leaf", "hint": "free"}},
-        {"key": "value", "required": true, "when": {"field": "kind", "is": "constant"}, "node": {"kind": "leaf", "hint": "free"}},
-        {"key": "entity_type", "required": true, "when": {"field": "kind", "is": "entity"}, "node": {"kind": "leaf", "hint": "ref", "section": "entities"}},
-        {"key": "keys", "required": true, "when": {"field": "kind", "is": "entity"}, "node": {"kind": "map", "keyed_by": "name", "member": "식별키", "of": {"use": "binding"}}},
-        {"key": "binding_origin", "required": true, "node": {"kind": "leaf", "hint": "choice", "list": "binding_origin"}},
-        {"key": "approval_status", "required": true, "node": {"kind": "leaf", "hint": "choice", "list": "approval_status"}},
-        {"key": "suggestion_reason", "required": false, "node": {"kind": "leaf", "hint": "free"}}
+        {
+          "key": "kind",
+          "required": true,
+          "label": "바인딩",
+          "node": {
+            "kind": "leaf",
+            "hint": "choice",
+            "list": "binding_kinds"
+          }
+        },
+        {
+          "key": "column",
+          "required": true,
+          "when": {
+            "field": "kind",
+            "is": "column"
+          },
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        },
+        {
+          "key": "value",
+          "required": true,
+          "when": {
+            "field": "kind",
+            "is": "constant"
+          },
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        },
+        {
+          "key": "entity_type",
+          "required": true,
+          "when": {
+            "field": "kind",
+            "is": "entity"
+          },
+          "node": {
+            "kind": "leaf",
+            "hint": "ref",
+            "section": "entities"
+          }
+        },
+        {
+          "key": "keys",
+          "required": true,
+          "when": {
+            "field": "kind",
+            "is": "entity"
+          },
+          "node": {
+            "kind": "map",
+            "keyed_by": "name",
+            "member": "식별키",
+            "of": {
+              "use": "binding"
+            }
+          }
+        },
+        {
+          "key": "binding_origin",
+          "required": true,
+          "node": {
+            "kind": "leaf",
+            "hint": "choice",
+            "list": "binding_origin"
+          }
+        },
+        {
+          "key": "approval_status",
+          "required": true,
+          "node": {
+            "kind": "leaf",
+            "hint": "choice",
+            "list": "approval_status"
+          }
+        },
+        {
+          "key": "suggestion_reason",
+          "required": false,
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
       ]
     }
   },
   "root": {
     "kind": "record",
     "fields": [
-      {"key": "setup_version", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-      {"key": "entities", "required": true, "node": {
-        "kind": "map", "keyed_by": "name", "member": "엔터티 id · e.g. Lot@1", "of": {
-          "kind": "record",
-          "fields": [
-            {"key": "keys", "required": true, "label": "식별키", "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-            {"key": "key_types", "required": false, "node": {"kind": "map", "keyed_by": "name", "member": "식별키", "of": {"kind": "leaf", "hint": "free"}}},
-            {"key": "allow_null", "required": false, "node": {"kind": "leaf", "hint": "flag"}}
-          ]
+      {
+        "key": "setup_version",
+        "required": true,
+        "node": {
+          "kind": "leaf",
+          "hint": "number"
         }
-      }},
-      {"key": "vocabulary", "required": true, "node": {
-        "kind": "map", "keyed_by": "name", "member": "낱말 id · e.g. register@1", "of": {
-          "kind": "record",
-          "fields": [
-            {"key": "status", "required": true, "node": {"kind": "leaf", "hint": "choice", "list": "predicate_status"}},
-            {"key": "layer", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "subjects", "required": true, "label": "주어 타입", "node": {"kind": "map", "keyed_by": "index", "member": "엔터티", "of": {"kind": "leaf", "hint": "ref", "section": "entities"}}},
-            {"key": "object", "required": true, "label": "목적어", "node": {
-              "kind": "record",
-              "fields": [
-                {"key": "kind", "required": true, "label": "종류", "node": {"kind": "leaf", "hint": "choice", "list": "object_kind"}},
-                {"key": "types", "required": false, "label": "목적어 엔터티", "when": {"field": "kind", "is": "entity_ref"}, "node": {"kind": "map", "keyed_by": "index", "member": "엔터티", "of": {"kind": "leaf", "hint": "ref", "section": "entities"}}},
-                {"key": "qualifiers", "required": true, "node": {
+      },
+      {
+        "key": "entities",
+        "required": true,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "엔터티 id · e.g. Lot@1",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "keys",
+                "required": true,
+                "label": "식별키",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "컬럼",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
+                "key": "key_types",
+                "required": false,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "name",
+                  "member": "식별키",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
+                "key": "allow_null",
+                "required": false,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "flag"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "key": "vocabulary",
+        "required": true,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "낱말 id · e.g. register@1",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "status",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "choice",
+                  "list": "predicate_status"
+                }
+              },
+              {
+                "key": "layer",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              },
+              {
+                "key": "subjects",
+                "required": true,
+                "label": "주어 타입",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "엔터티",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "ref",
+                    "section": "entities"
+                  }
+                }
+              },
+              {
+                "key": "object",
+                "required": true,
+                "label": "목적어",
+                "node": {
                   "kind": "record",
                   "fields": [
-                    {"key": "required", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "이름", "of": {"kind": "leaf", "hint": "free"}}},
-                    {"key": "optional", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "이름", "of": {"kind": "leaf", "hint": "free"}}}
-                  ]
-                }}
-              ]
-            }}
-          ]
-        }
-      }},
-      {"key": "packs", "required": true, "node": {
-        "kind": "map", "keyed_by": "name", "member": "팩 id · e.g. lot-lineage@1", "of": {
-          "kind": "record",
-          "fields": [
-            {"key": "claims", "required": true, "label": "주장", "node": {
-              "kind": "map", "keyed_by": "name", "member": "주장 id · e.g. register", "of": {
-                "kind": "record",
-                "fields": [
-                  {"key": "roles", "required": true, "label": "역할", "node": {
-                    "kind": "map", "keyed_by": "name", "member": "역할 id · e.g. subject", "of": {
-                      "kind": "record",
-                      "fields": [
-                        {"key": "kind", "required": true, "label": "종류", "node": {"kind": "leaf", "hint": "choice", "list": "role_kind"}},
-                        {"key": "required", "required": true, "label": "필수", "node": {"kind": "leaf", "hint": "flag"}},
-                        {"key": "allowed_binding_kinds", "required": false, "node": {"kind": "map", "keyed_by": "index", "member": "바인딩", "of": {"kind": "leaf", "hint": "choice", "list": "binding_kinds"}}},
-                        {"key": "allowed_values", "required": false, "node": {"kind": "map", "keyed_by": "index", "member": "값", "of": {"kind": "leaf", "hint": "free"}}}
-                      ]
-                    }
-                  }},
-                  {"key": "emit", "required": true, "label": "내는 문장", "node": {
-                    "kind": "record",
-                    "fields": [
-                      {"key": "predicate", "required": true, "label": "술어", "node": {"kind": "leaf", "hint": "ref", "section": "vocabulary"}},
-                      {"key": "subject", "required": true, "label": "주어", "node": {"kind": "leaf", "hint": "role", "from": "roles"}},
-                      {"key": "occurred_at", "required": true, "label": "시각", "node": {"kind": "leaf", "hint": "role", "from": "roles"}},
-                      {"key": "object", "required": true, "label": "목적어", "node": {
+                    {
+                      "key": "kind",
+                      "required": true,
+                      "label": "종류",
+                      "node": {
+                        "kind": "leaf",
+                        "hint": "choice",
+                        "list": "object_kind"
+                      }
+                    },
+                    {
+                      "key": "types",
+                      "required": false,
+                      "label": "목적어 엔터티",
+                      "when": {
+                        "field": "kind",
+                        "is": "entity_ref"
+                      },
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "엔터티",
+                        "of": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "entities"
+                        }
+                      }
+                    },
+                    {
+                      "key": "qualifiers",
+                      "required": true,
+                      "node": {
                         "kind": "record",
                         "fields": [
-                          {"key": "kind", "required": true, "label": "종류", "node": {"kind": "leaf", "hint": "choice", "list": "object_kind"}},
-                          {"key": "entity", "required": false, "label": "대상", "when": {"field": "kind", "is": "entity_ref"}, "node": {"kind": "leaf", "hint": "role", "from": "roles"}},
-                          {"key": "value", "required": false, "label": "값", "when": {"field": "kind", "is": "value"}, "node": {"kind": "leaf", "hint": "role", "from": "roles"}},
-                          {"key": "qualifiers", "required": false, "label": "qualifier", "node": {"kind": "map", "keyed_by": "name", "member": "qualifier 이름", "of": {"kind": "leaf", "hint": "role", "from": "roles"}}}
+                          {
+                            "key": "required",
+                            "required": true,
+                            "node": {
+                              "kind": "map",
+                              "keyed_by": "index",
+                              "member": "이름",
+                              "of": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          },
+                          {
+                            "key": "optional",
+                            "required": true,
+                            "node": {
+                              "kind": "map",
+                              "keyed_by": "index",
+                              "member": "이름",
+                              "of": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          }
                         ]
-                      }}
-                    ]
-                  }}
-                ]
+                      }
+                    }
+                  ]
+                }
               }
-            }}
-          ]
+            ]
+          }
         }
-      }},
-      {"key": "source_preparers", "required": true, "node": {
-        "kind": "map", "keyed_by": "name", "member": "준비기 id", "of": {
-          "kind": "record",
-          "fields": [
-            {"key": "implementation_id", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "implementation_version", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "input_columns", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-            {"key": "output_columns", "required": true, "node": {"kind": "map", "keyed_by": "name", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-            {"key": "accepts_verified_join_rules", "required": true, "node": {"kind": "leaf", "hint": "flag"}}
-          ]
-        }
-      }},
-      {"key": "mappers", "required": true, "node": {
-        "kind": "map", "keyed_by": "name", "member": "매퍼 id", "of": {
-          "kind": "record",
-          "fields": [
-            {"key": "implementation_id", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "implementation_version", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "unit", "required": true, "label": "단위", "node": {
-              "kind": "record",
-              "fields": [
-                {"key": "kind", "required": true, "label": "종류", "node": {"kind": "leaf", "hint": "choice", "list": "mapper_unit"}},
-                {"key": "columns", "required": false, "when": {"field": "kind", "is": "group_by"}, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}}
-              ]
-            }},
-            {"key": "input_columns", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-            {"key": "emits", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "팩/주장", "of": {"kind": "leaf", "hint": "free"}}}
-          ]
-        }
-      }},
-      {"key": "profiles", "required": true, "node": {
-        "kind": "map", "keyed_by": "name", "member": "프로필 id", "of": {
-          "kind": "record",
-          "fields": [
-            {"key": "source", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "packs", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "팩", "of": {"kind": "leaf", "hint": "ref", "section": "packs"}}},
-            {"key": "mappings", "required": true, "node": {
-              "kind": "map", "keyed_by": "index", "member": "매핑", "of": {
-                "kind": "record",
-                "fields": [
-                  {"key": "mapping_id", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-                  {"key": "use", "required": true, "label": "쓰는 주장", "node": {"kind": "leaf", "hint": "free"}},
-                  {"key": "bind", "required": true, "label": "역할 바인딩", "node": {"kind": "map", "keyed_by": "name", "member": "역할", "of": {"use": "binding"}}},
-                  {"key": "sentence", "required": false, "node": {"kind": "leaf", "hint": "free"}}
-                ]
-              }
-            }}
-          ]
-        }
-      }},
-      {"key": "sources", "required": true, "node": {
-        "kind": "map", "keyed_by": "name", "member": "소스 id", "of": {
-          "kind": "record",
-          "fields": [
-            {"key": "relation", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "profile_id", "required": true, "node": {"kind": "leaf", "hint": "ref", "section": "profiles"}},
-            {"key": "driver", "required": true, "node": {
-              "kind": "record",
-              "fields": [
-                {"key": "unit", "required": true, "label": "단위", "node": {"kind": "leaf", "hint": "choice", "list": "source_unit"}},
-                {"key": "identity", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-                {"key": "group_by", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-                {"key": "order_by", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-                {"key": "occurred_at", "required": true, "label": "시각", "node": {
-                  "kind": "record",
-                  "fields": [
-                    {"key": "timezone", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-                    {"key": "column", "required": false, "node": {"kind": "leaf", "hint": "free"}},
-                    {"key": "basis", "required": false, "node": {"kind": "leaf", "hint": "choice", "list": "occurred_at_basis"}}
-                  ]
-                }},
-                {"key": "cursor", "required": true, "node": {
-                  "kind": "record",
-                  "fields": [
-                    {"key": "columns", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}}
-                  ]
-                }},
-                {"key": "preparation", "required": true, "node": {
-                  "kind": "record",
-                  "fields": [
-                    {"key": "preparer_id", "required": true, "node": {"kind": "leaf", "hint": "ref", "section": "source_preparers"}},
-                    {"key": "inherit_virtual_join_rules", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "규칙", "of": {"kind": "leaf", "hint": "ref", "section": "virtual_joins"}}}
-                  ]
-                }},
-                {"key": "mapper_id", "required": true, "node": {"kind": "leaf", "hint": "ref", "section": "mappers"}},
-                {"key": "registration_probe", "required": false, "node": {
-                  "kind": "map", "keyed_by": "index", "member": "탐침", "of": {
+      },
+      {
+        "key": "packs",
+        "required": true,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "팩 id · e.g. lot-lineage@1",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "claims",
+                "required": true,
+                "label": "주장",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "name",
+                  "member": "주장 id · e.g. register",
+                  "of": {
                     "kind": "record",
                     "fields": [
-                      {"key": "entity_type", "required": true, "node": {"kind": "leaf", "hint": "ref", "section": "entities"}},
-                      {"key": "columns", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-                      {"key": "list_separator", "required": false, "node": {"kind": "leaf", "hint": "free"}}
+                      {
+                        "key": "roles",
+                        "required": true,
+                        "label": "역할",
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "역할 id · e.g. subject",
+                          "of": {
+                            "kind": "record",
+                            "fields": [
+                              {
+                                "key": "kind",
+                                "required": true,
+                                "label": "종류",
+                                "node": {
+                                  "kind": "leaf",
+                                  "hint": "choice",
+                                  "list": "role_kind"
+                                }
+                              },
+                              {
+                                "key": "required",
+                                "required": true,
+                                "label": "필수",
+                                "node": {
+                                  "kind": "leaf",
+                                  "hint": "flag"
+                                }
+                              },
+                              {
+                                "key": "allowed_binding_kinds",
+                                "required": false,
+                                "node": {
+                                  "kind": "map",
+                                  "keyed_by": "index",
+                                  "member": "바인딩",
+                                  "of": {
+                                    "kind": "leaf",
+                                    "hint": "choice",
+                                    "list": "binding_kinds"
+                                  }
+                                }
+                              },
+                              {
+                                "key": "allowed_values",
+                                "required": false,
+                                "node": {
+                                  "kind": "map",
+                                  "keyed_by": "index",
+                                  "member": "값",
+                                  "of": {
+                                    "kind": "leaf",
+                                    "hint": "free"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "key": "emit",
+                        "required": true,
+                        "label": "내는 문장",
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "predicate",
+                              "required": true,
+                              "label": "술어",
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "vocabulary"
+                              }
+                            },
+                            {
+                              "key": "subject",
+                              "required": true,
+                              "label": "주어",
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "role",
+                                "from": "roles"
+                              }
+                            },
+                            {
+                              "key": "occurred_at",
+                              "required": true,
+                              "label": "시각",
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "role",
+                                "from": "roles"
+                              }
+                            },
+                            {
+                              "key": "object",
+                              "required": true,
+                              "label": "목적어",
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "kind",
+                                    "required": true,
+                                    "label": "종류",
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "choice",
+                                      "list": "object_kind"
+                                    }
+                                  },
+                                  {
+                                    "key": "entity",
+                                    "required": false,
+                                    "label": "대상",
+                                    "when": {
+                                      "field": "kind",
+                                      "is": "entity_ref"
+                                    },
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "role",
+                                      "from": "roles"
+                                    }
+                                  },
+                                  {
+                                    "key": "value",
+                                    "required": false,
+                                    "label": "값",
+                                    "when": {
+                                      "field": "kind",
+                                      "is": "value"
+                                    },
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "role",
+                                      "from": "roles"
+                                    }
+                                  },
+                                  {
+                                    "key": "qualifiers",
+                                    "required": false,
+                                    "label": "qualifier",
+                                    "node": {
+                                      "kind": "map",
+                                      "keyed_by": "name",
+                                      "member": "qualifier 이름",
+                                      "of": {
+                                        "kind": "leaf",
+                                        "hint": "role",
+                                        "from": "roles"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
                     ]
                   }
-                }}
-              ]
-            }}
-          ]
-        }
-      }},
-      {"key": "virtual_joins", "required": false, "node": {
-        "kind": "map", "keyed_by": "name", "member": "조인 규칙 id", "of": {
-          "kind": "record",
-          "fields": [
-            {"key": "left_table", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "right_table", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "join_key", "required": true, "node": {
-              "kind": "map", "keyed_by": "index", "member": "키 짝", "of": {
-                "kind": "record",
-                "fields": [
-                  {"key": "left", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-                  {"key": "right", "required": true, "node": {"kind": "leaf", "hint": "free"}}
-                ]
+                }
               }
-            }},
-            {"key": "expose", "required": true, "node": {"kind": "map", "keyed_by": "index", "member": "컬럼", "of": {"kind": "leaf", "hint": "free"}}},
-            {"key": "join_cardinality", "required": true, "node": {"kind": "leaf", "hint": "free"}},
-            {"key": "enabled", "required": true, "node": {"kind": "leaf", "hint": "flag"}},
-            {"key": "fold", "required": false, "node": {"kind": "map", "keyed_by": "name", "member": "규칙", "of": {"kind": "leaf", "hint": "flag"}}}
-          ]
+            ]
+          }
         }
-      }}
+      },
+      {
+        "key": "source_preparers",
+        "required": true,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "준비기 id",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "implementation_id",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              },
+              {
+                "key": "implementation_version",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "number"
+                }
+              },
+              {
+                "key": "input_columns",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "컬럼",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
+                "key": "output_columns",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "name",
+                  "member": "컬럼",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
+                "key": "accepts_verified_join_rules",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "flag"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "key": "mappers",
+        "required": true,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "매퍼 id",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "implementation_id",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              },
+              {
+                "key": "implementation_version",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "number"
+                }
+              },
+              {
+                "key": "unit",
+                "required": true,
+                "label": "단위",
+                "node": {
+                  "kind": "record",
+                  "fields": [
+                    {
+                      "key": "kind",
+                      "required": true,
+                      "label": "종류",
+                      "node": {
+                        "kind": "leaf",
+                        "hint": "choice",
+                        "list": "mapper_unit"
+                      }
+                    },
+                    {
+                      "key": "columns",
+                      "required": false,
+                      "when": {
+                        "field": "kind",
+                        "is": "group_by"
+                      },
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "컬럼",
+                        "of": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "key": "input_columns",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "컬럼",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
+                "key": "emits",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "팩/주장",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "key": "profiles",
+        "required": true,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "프로필 id",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "source",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              },
+              {
+                "key": "packs",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "팩",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "ref",
+                    "section": "packs"
+                  }
+                }
+              },
+              {
+                "key": "mappings",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "매핑",
+                  "of": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "mapping_id",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "use",
+                        "required": true,
+                        "label": "쓰는 주장",
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "bind",
+                        "required": true,
+                        "label": "역할 바인딩",
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "역할",
+                          "of": {
+                            "use": "binding"
+                          }
+                        }
+                      },
+                      {
+                        "key": "sentence",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "key": "sources",
+        "required": true,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "소스 id",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "relation",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              },
+              {
+                "key": "profile_id",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "ref",
+                  "section": "profiles"
+                }
+              },
+              {
+                "key": "driver",
+                "required": true,
+                "node": {
+                  "kind": "record",
+                  "fields": [
+                    {
+                      "key": "unit",
+                      "required": true,
+                      "label": "단위",
+                      "node": {
+                        "kind": "leaf",
+                        "hint": "choice",
+                        "list": "source_unit"
+                      }
+                    },
+                    {
+                      "key": "identity",
+                      "required": true,
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "컬럼",
+                        "of": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    },
+                    {
+                      "key": "group_by",
+                      "required": true,
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "컬럼",
+                        "of": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    },
+                    {
+                      "key": "order_by",
+                      "required": true,
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "컬럼",
+                        "of": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    },
+                    {
+                      "key": "occurred_at",
+                      "required": true,
+                      "label": "시각",
+                      "node": {
+                        "kind": "record",
+                        "fields": [
+                          {
+                            "key": "timezone",
+                            "required": true,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          },
+                          {
+                            "key": "column",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          },
+                          {
+                            "key": "basis",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "choice",
+                              "list": "occurred_at_basis"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": "cursor",
+                      "required": true,
+                      "node": {
+                        "kind": "record",
+                        "fields": [
+                          {
+                            "key": "columns",
+                            "required": true,
+                            "node": {
+                              "kind": "map",
+                              "keyed_by": "index",
+                              "member": "컬럼",
+                              "of": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": "preparation",
+                      "required": true,
+                      "node": {
+                        "kind": "record",
+                        "fields": [
+                          {
+                            "key": "preparer_id",
+                            "required": true,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "ref",
+                              "section": "source_preparers"
+                            }
+                          },
+                          {
+                            "key": "inherit_virtual_join_rules",
+                            "required": true,
+                            "node": {
+                              "kind": "map",
+                              "keyed_by": "index",
+                              "member": "규칙",
+                              "of": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "virtual_joins"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": "mapper_id",
+                      "required": true,
+                      "node": {
+                        "kind": "leaf",
+                        "hint": "ref",
+                        "section": "mappers"
+                      }
+                    },
+                    {
+                      "key": "registration_probe",
+                      "required": false,
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "탐침",
+                        "of": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "entity_type",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "entities"
+                              }
+                            },
+                            {
+                              "key": "columns",
+                              "required": true,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "컬럼",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            },
+                            {
+                              "key": "list_separator",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "key": "virtual_joins",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "조인 규칙 id",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "left_table",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              },
+              {
+                "key": "right_table",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              },
+              {
+                "key": "join_key",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "키 짝",
+                  "of": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "left",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "right",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "expose",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "컬럼",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
+                "key": "join_cardinality",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              },
+              {
+                "key": "enabled",
+                "required": true,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "flag"
+                }
+              },
+              {
+                "key": "fold",
+                "required": false,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "name",
+                  "member": "규칙",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "flag"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
     ]
   }
 }
