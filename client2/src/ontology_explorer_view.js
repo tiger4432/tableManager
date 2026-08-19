@@ -655,12 +655,16 @@ function foldDecision(row, expanded = []) {
   return { open: true, reason: '' };
 }
 
-function renderAuthoringRow(row, expanded = [], editable = null) {
+function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
   const fold = foldDecision(row, expanded);
-  const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`);
+  const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`
+                        + (bare ? ' is-bare' : ''));
   card.dataset.key = `field:${row.path}`;
   const head = h('div', 'oe-field-head');
-  head.append(h('b', '', row.label));
+  // In the tree the name lives in the row's own label column, at its own indent. Repeating
+  // it inside the card would put the same word twice on one line and, worse, at a second
+  // x-position -- the thing the mockup's fixed columns exist to stop.
+  if (!bare) head.append(h('b', '', row.label));
   head.append(h('i', `oe-tier oe-tier--${row.tier}`, row.tier));
   card.append(head);
   if (!fold.open) {
@@ -863,77 +867,159 @@ function writablePrefix(state) {
 //   map     name a member / list them / edit inside / REMOVE that member
 //   record  its fields are fixed, so there is nothing to add or remove -- only edit
 //   leaf    edit; and clear it, when the skeleton says the field is optional
-function renderSkeletonForm(context, node, path, value) {
-  if (!node) return null;
-  if (node.kind === 'map') return renderSkeletonMap(context, node, path, value);
-  if (node.kind === 'record') return renderSkeletonRecord(context, node, path, value);
-  return renderSkeletonLeaf(context, node, path, value);
+// The tree. One renderer walks the skeleton, and every declaration in the setup is drawn
+// by it -- owner, mockup 6b: the tree is what makes the screen answer to ANY layer.
+//
+// 🔴 IT ASKS WHAT THE NODE IS, NEVER WHICH DECLARATION IT IS IN. A source's `driver` four
+// deep and a profile's `mappings[0].bind.subject` five deep come out of these same
+// functions. That is what makes 6b fit where 1b did not: 1b's "claims in pack" column
+// existed for only two of the seven kinds (measured -- pack->claims, profile->mappings; the
+// other five have no such layer), so it needed a branch per kind. A tree needs none.
+//
+// 🔴 A ROW IS THREE COLUMNS: label | value | state. The indent moves the LABEL column only
+// (-16px per depth) while the state column keeps a fixed width, so value and state stand on
+// the same vertical line at every depth. Indenting the whole row would step the columns
+// sideways instead, which is what the owner's 「잘 정돈되게」 rules out.
+
+/** The plan paths that still owe something -- the server's predicate, not a second one. */
+function attentionPaths(plan) {
+  const hot = [];
+  for (const row of plan.fields || []) {
+    if (row.remaining || row.conflicts || row.refusals?.length) hot.push(row.path);
+  }
+  return hot;
 }
 
-function renderSkeletonRecord(context, node, path, value) {
-  const box = h('div', 'oe-form-record');
+/** Does anything at or under this absolute path still owe something? */
+function needsAttention(hot, absolute) {
+  return hot.some((item) => item === absolute
+    || item.startsWith(absolute + '.') || item.startsWith(absolute + '['));
+}
+
+function treeRow(depth, label, extras, valueEl, stateEl, cls) {
+  const row = h('div', 'oe-node-row' + (cls ? ' ' + cls : ''));
+  // Depth is DATA; the formula turning it into a width lives in the stylesheet.
+  row.style.setProperty('--oe-depth', String(depth));
+  const name = h('div', 'oe-node-label');
+  name.append(h('span', 'oe-node-name', label));
+  for (const extra of extras || []) name.append(extra);
+  row.append(name);
+  const value = h('div', 'oe-node-value');
+  if (valueEl) value.append(valueEl);
+  row.append(value);
+  const state = h('div', 'oe-node-state');
+  if (stateEl) state.append(stateEl);
+  row.append(state);
+  return row;
+}
+
+/** One node: its own row, and -- when it is a branch that is open -- its children below. */
+function renderSkeletonForm(context, node, path, value, depth = 0, label = null) {
+  const shape = context.deref(node);
+  if (!shape) return null;
+  if (shape.kind === 'leaf') return renderTreeLeaf(context, shape, path, value, depth, label);
+  const open = !path || needsAttention(context.hot, context.absolute(path))
+    || context.expanded.includes(path);
+  const box = h('div', 'oe-node');
+  const kind = h('i', 'oe-node-badge', shape.kind === 'map' ? 'MAP' : 'RECORD');
+  const children = shape.kind === 'map'
+    ? renderSkeletonMap(context, shape, path, value, depth)
+    : renderSkeletonRecord(context, shape, path, value, depth);
+  if (path) {
+    // 🔴 A FOLD SHOWS ITS COUNT. Folding without saying how many were folded is deleting
+    // with extra steps -- the mockup's rule is 「접힌 것은 개수를 보인다」, and it is the
+    // same fault this round has been removing everywhere else: an absence nobody can tell
+    // apart from an emptiness.
+    const hidden = children.childElementCount;
+    const toggle = button(open ? '−' : '접힘 · ' + hidden, 'toggle-field', path,
+                          open ? 'oe-node-fold' : 'oe-node-folded');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    box.append(treeRow(depth, label || path, [kind], null, toggle,
+                       open ? 'is-branch' : 'is-branch is-folded'));
+  }
+  if (open || !path) box.append(children);
+  return box;
+}
+
+function renderSkeletonRecord(context, node, path, value, depth) {
+  const box = h('div', 'oe-node-children');
   const held = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   for (const field of node.fields || []) {
-    const at = path ? `${path}.${field.key}` : field.key;
+    const at = path ? path + '.' + field.key : field.key;
     const current = held[field.key];
     if (!fieldApplies(field, held, current)) continue;
-    const row = h('div', 'oe-form-field');
-    const label = h('label', 'oe-form-label', field.label || field.key);
-    row.append(label);
-    // 🔴 AN OPTIONAL FIELD THE DOCUMENT HOLDS CAN BE TAKEN BACK OUT. Without this the
-    // only way to undo a typo in an optional key is the raw JSON editor, which is the
-    // thing this screen exists to stop being necessary.
+    const drawn = renderSkeletonForm(context, field.node, at, current,
+                                     path ? depth + 1 : depth, field.label || field.key);
+    if (!drawn) continue;
+    // An optional field the document holds can be taken back out. The tree row owns the
+    // chrome now, so the control rides in the label column beside the name.
     if (field.required === false && current !== undefined) {
-      row.append(button('−', 'form-clear', at, 'oe-form-remove'));
+      const slot = drawn.querySelector('.oe-node-label');
+      if (slot) slot.append(button('−', 'form-clear', at, 'oe-form-remove'));
     }
-    const drawn = renderSkeletonForm(context, field.node, at, current);
-    if (drawn) row.append(drawn);
-    box.append(row);
+    box.append(drawn);
   }
   return box;
 }
 
-function renderSkeletonMap(context, node, path, value) {
-  const box = h('div', 'oe-form-map');
-  // A plan row ABOUT the map itself (rather than a member) says what the grammar expects
-  // of it -- which qualifier slots a predicate opens, for instance. It is the most useful
-  // sentence on the block, so it goes at the top rather than into the leftovers.
+function renderSkeletonMap(context, node, path, value, depth) {
+  const box = h('div', 'oe-node-children');
+  // A plan row ABOUT the map itself says what the grammar expects OF it -- which qualifier
+  // slots a predicate opens, for instance. It stays at the top of the block.
   const own = context.planRow(path);
-  if (own) box.append(context.renderRow(own));
+  if (own) box.append(treeRow(depth + 1, '이 자리', [], context.renderRow(own, true), null));
   const members = membersOf(node, value);
   for (const key of members) {
     const at = memberPath(path, key, node.keyed_by);
-    const line = h('div', 'oe-form-member');
-    const head = h('div', 'oe-form-member-head');
-    head.append(h('code', 'oe-form-member-name', String(key)));
-    head.append(button('−', 'form-remove', at, 'oe-form-remove'));
-    line.append(head);
-    const inner = renderSkeletonForm(
-      context, context.deref(node.of), at,
-      node.keyed_by === 'index' ? (value || [])[key] : (value || {})[key]);
-    if (inner) line.append(inner);
-    box.append(line);
+    const drawn = renderSkeletonForm(
+      context, node.of, at,
+      node.keyed_by === 'index' ? (value || [])[key] : (value || {})[key],
+      depth + 1, String(key));
+    if (!drawn) continue;
+    const slot = drawn.querySelector('.oe-node-label');
+    if (slot) slot.append(button('−', 'form-remove', at, 'oe-form-remove'));
+    box.append(drawn);
   }
-  if (!members.length) box.append(h('div', 'oe-key-none', 'None defined'));
   const naming = h('div', 'oe-form-new');
   if (node.keyed_by === 'index') {
-    naming.append(button(`+ ${node.member || '항목'}`, 'form-append', path, 'oe-form-add'));
+    naming.append(button('+ ' + (node.member || '항목'), 'form-append', path, 'oe-form-add'));
   } else {
     const input = h('input', 'oe-form-new-id');
     input.type = 'text';
     input.placeholder = node.member || '이름';
     input.dataset.for = path;
-    input.setAttribute('aria-label', `${node.member || path} 새 이름`);
-    naming.append(input, button(`+ ${node.member || '항목'}`, 'form-name', path,
+    input.setAttribute('aria-label', (node.member || path) + ' 새 이름');
+    naming.append(input, button('+ ' + (node.member || '항목'), 'form-name', path,
                                 'oe-form-add'));
   }
-  box.append(naming);
+  box.append(treeRow(depth + 1, '', [], naming, null, 'is-new'));
   return box;
 }
 
-function renderSkeletonLeaf(context, node, path, value) {
+/** A leaf row. The control itself is unchanged -- only the chrome around it is new. */
+function renderTreeLeaf(context, node, path, value, depth, label) {
   const planned = context.planRow(path);
-  if (planned) return context.renderRow(context.suggest(planned, node, path), node);
+  const control = planned
+    ? context.renderRow(context.suggest(planned, node, path), node, true)
+    : renderSkeletonLeaf(context, node, path, value);
+  const box = h('div', 'oe-node');
+  let state = null;
+  let cls = '';
+  if (planned) {
+    const fold = foldDecision(planned, context.expanded);
+    state = h('i', 'oe-tier oe-tier--' + planned.tier,
+              fold.open ? planned.tier : fold.reason);
+    cls = planned.remaining ? 'is-remaining'
+      : planned.refusals && planned.refusals.length ? 'is-refused' : '';
+  }
+  box.append(treeRow(depth, label || path, [], control, state, cls));
+  return box;
+}
+
+// The control for an UNPLANNED leaf. A leaf the plan speaks for is drawn by the plan row
+// instead (see `renderTreeLeaf`) -- that row is the only thing carrying candidates,
+// refusals and grounds, so the skeleton fills exactly what the plan cannot see.
+function renderSkeletonLeaf(context, node, path, value) {
   if (node.hint === 'flag') {
     const box = h('input', 'oe-role-required');
     box.type = 'checkbox';
@@ -1157,8 +1243,13 @@ function renderAuthoring(state) {
     // 🔴 THE ROLES A CLAIM DEFINED A MOMENT AGO ARE OFFERED BEFORE IT IS SAVED. The plan
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among
     // them -- and this screen exists so that nothing has to be saved to be seen.
-    renderRow: (row, node) => renderAuthoringRow(row, state.expandedFields,
-                                                editableFor(row, node)),
+    renderRow: (row, node, bare = false) => renderAuthoringRow(
+      row, state.expandedFields, editableFor(row, node), bare),
+    // The tree reads folding off the SAME rows the layer counts are computed from, so a
+    // branch can never sit folded over a field the spine is still counting as remaining.
+    hot: attentionPaths(plan),
+    expanded: state.expandedFields || [],
+    absolute: (path) => (base ? base + '.' + path : path),
     suggest: (row, node, path) => {
       if (!node || node.hint !== 'role') return row;
       const names = rolesNear(path, node.from);
