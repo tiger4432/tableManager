@@ -768,14 +768,19 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
                         : action === 'start-field-object' ? {} : '');
     }
     else if (action === 'form-name' || action === 'form-append'
-             || action === 'form-remove') {
+             || action === 'form-remove' || action === 'form-clear') {
       // 🔴 CRUD IS READ OFF THE NODE, NOT OFF THE DECLARATION. 「폼은 모두 crud
       // 가능해야함」: every member a person can name, they can take back out. Before this
       // the screen could create a claim, a role or a qualifier and never remove one, so
       // three junk roles typed while testing could only be undone in the raw JSON editor
       // -- the editor this screen exists to stop being necessary.
       const path = target.dataset.value;
-      if (action === 'form-remove') {
+      // Taking a member out of a map and clearing an optional field are the same write:
+      // the path stops being in the document. They are separate ACTIONS only because they
+      // are separate sentences on screen -- `-` beside a named member means "not this
+      // member", beside an optional field it means "no value here" -- and a reader of this
+      // branch should not have to hold that they are two writes, because they are not.
+      if (action === 'form-remove' || action === 'form-clear') {
         removeShapeAtPath(path);
       } else {
         const node = shapeForPath(path);
