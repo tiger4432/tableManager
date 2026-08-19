@@ -1146,8 +1146,34 @@ def explorer_view(
         selection = items[0].key if items else (
             next(iter(index.nodes)) if index.nodes else None)
     if selection is None:
-        raise ConfigExplorerError(
-            "empty_snapshot", "selection", "snapshot contains no explorer declarations")
+        # 🔴 AN EMPTY SNAPSHOT IS A STATE, NOT A FAULT -- AND IT IS THE FIRST ONE.
+        #
+        # This used to refuse, and it was right for as long as a config always had
+        # declarations in it: nothing to select meant something had gone wrong. Bootstrap
+        # made "empty" the STARTING state, and the refusal turned into the thing standing
+        # between an operator and their first declaration. Measured on the owner's config
+        # (file present, all seven sections `{}`): `/view` answered 400, so the screen
+        # never received a `snapshot_hash`, the create button sent an empty one, and the
+        # draft was refused as `stale_base_snapshot` -- "active snapshot changed", about a
+        # snapshot that had never been read and had not changed. Three layers away from
+        # the cause, and none of them said "the config is empty".
+        #
+        # A condition that was false for as long as it was correct is exactly the shape
+        # this project has been bitten by before; here it became true the day bootstrap
+        # shipped, which is the same day it started being wrong.
+        #
+        # So: answer with an empty view. `snapshot_hash` is what the create path needs and
+        # it exists for an empty bundle, so the screen can go straight to authoring.
+        return {
+            "context_token": context_token,
+            "snapshot_hash": index.snapshot_hash,
+            "selection": None,
+            "items": [], "page": page, "limit": limit, "total": 0,
+            "outbound": [], "used_by": [], "outbound_total": 0, "used_by_total": 0,
+            "reference_limit": reference_limit, "references_truncated": False,
+            "path_candidates": [], "nodes": [], "integrity": [],
+            "changes": [], "edge_changes": [],
+        }
     selected = index.node(selection)
     node_diff = diff or {}
     ref_diff = edge_diff or {}

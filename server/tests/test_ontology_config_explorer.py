@@ -1988,3 +1988,64 @@ def test_the_plan_lists_every_declaration_unpaged(transfer_sample_setup, tmp_pat
     assert len(narrowed["fields"]) < len(plan["fields"]), "the prefix must actually narrow"
     assert narrowed["sections"] == sections, (
         "🔴 narrowing the view must never narrow what is declared")
+
+
+def test_the_whole_walk_works_on_a_freshly_bootstrapped_config(tmp_path):
+    """🔴 THE OWNER'S ACTUAL WALK, END TO END, ON THE STATE HE WAS IN.
+
+    Bootstrap shipped claiming a setup could be built from nothing. It could not: with the
+    file present and all seven sections `{}`, `/view` answered **400 `empty_snapshot`**, so
+    the screen never received a `snapshot_hash`, the create button sent an empty one, and
+    the draft came back `stale_base_snapshot` -- "active snapshot changed", about a
+    snapshot that had never been read and had not changed.
+
+    Three layers between the cause and the message, and not one of them said "the config is
+    empty". The lead PM told him to reload, which could not have helped; then gave him a
+    skeleton to paste, which put him in exactly the state that fails.
+
+    🔴 THE GUARD WAS CORRECT FOR AS LONG AS IT WAS UNREACHABLE. "No declarations" did mean
+    something had gone wrong -- until bootstrap made it the STARTING state. It began being
+    wrong on the day it started being reachable, which is the shape that has bitten this
+    project before.
+
+    Scored as the walk rather than as three unit assertions, because each layer passed its
+    own tests while the sequence was broken.
+    """
+    from ledger.config_explorer_service import OntologyExplorerService
+
+    service = OntologyExplorerService(
+        config_root=tmp_path / "ontology", draft_root=tmp_path / "drafts",
+        catalog_loader=lambda: {})
+    explorer_router.configure_service(service)
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[require_admin_token_strict] = lambda: None
+    app.include_router(explorer_router.router)
+    client = TestClient(app)
+    base = "/admin/ontology-explorer"
+
+    assert client.post(f"{base}/bootstrap").status_code == 200
+
+    view = client.get(f"{base}/view", params={"q": "", "page": 1, "limit": 100})
+    assert view.status_code == 200, f"an empty config must render, got {view.text}"
+    body = view.json()
+    assert body["items"] == [] and body["total"] == 0
+    assert body["selection"] is None, "nothing is selected because nothing exists yet"
+
+    # 🔴 THE HASH IS THE WHOLE POINT. Without it the create button has nothing to send and
+    # the refusal blames staleness.
+    snapshot = (body.get("active_snapshot") or {}).get("snapshot_hash")
+    assert snapshot, "the screen cannot create a declaration without a snapshot to quote"
+
+    plan = client.get(f"{base}/authoring/plan").json()
+    assert set(plan["sections"]) and all(not v for v in plan["sections"].values())
+
+    made = client.post(f"{base}/drafts/new", json={
+        "kind": "entity", "canonical_id": "DTJob@1", "base_snapshot_hash": snapshot})
+    assert made.status_code == 200, f"creating into a skeleton must work: {made.text}"
+    assert made.json()["target_bundle_path"] == ["entities", "DTJob@1"]
+
+    # And the empty view still refuses a selection that genuinely does not exist, so the
+    # fix did not turn the whole endpoint permissive.
+    unknown = client.get(f"{base}/view", params={"selection": "entity|Nope@9"})
+    assert unknown.status_code == 400

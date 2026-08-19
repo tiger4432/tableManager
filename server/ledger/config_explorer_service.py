@@ -498,7 +498,12 @@ class OntologyExplorerService:
                         "context_mismatch", f"{field}[{index}].context_token",
                         "response objects must use one context token",
                     )
-        if payload["selection"].get("context_token") != token:
+        # 🔴 AN EMPTY SNAPSHOT HAS NO SELECTION, AND THAT IS LEGAL SINCE BOOTSTRAP. The
+        # one-context rule is about objects that CARRY a token disagreeing with the
+        # response; a selection that does not exist carries nothing to disagree. Reading
+        # absence as a mismatch turned the first screen of a fresh config into a 500.
+        selection = payload["selection"]
+        if selection is not None and selection.get("context_token") != token:
             raise ConfigExplorerError(
                 "context_mismatch", "selection.context_token",
                 "selection token does not match the response token",
