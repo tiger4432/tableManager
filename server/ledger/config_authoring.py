@@ -39,8 +39,11 @@ authoring path that applies a choice is `config_drafts`, unchanged by this modul
 from __future__ import annotations
 
 import copy
+import json
 import re
 from dataclasses import dataclass, field as dataclass_field
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .column_stats import declared_unique_keys
@@ -310,6 +313,34 @@ def is_remaining(row: Mapping[str, Any]) -> bool:
     return bool(row.get("refusals")) or bool(row.get("conflicts"))
 
 
+# 🔴 NOT IN THE CONFIG ROOT. `_config_root_errors` refuses any file beside
+# `ledger_config.json` there -- "the setup is one file" -- so a skeleton parked next to the
+# operator's config takes the whole setup down. Measured: 12 errors across the explorer
+# suite the moment it landed there. It belongs beside the validator anyway; it describes
+# the grammar that module enforces, and it ships with the code rather than with the data.
+SKELETON_PATH = Path(__file__).parent / "ledger_skeleton.json"
+
+
+@lru_cache(maxsize=1)
+def skeleton() -> dict[str, Any]:
+    """The shape of a ledger config, as a document.
+
+    Owner's ruling, 2026-08-20: 「관리문서 = 스켈레톤」.  The screen generates its form from
+    this instead of carrying a hand-written table of the grammar -- a second author of a
+    contract drifts in silence, which is how `emit.object` came to offer `kind` and `value`
+    while the validator had allowed `entity` and `qualifiers` all along, with nothing red.
+
+    It is a GUIDE, not a gate: the validator still decides what is good, and this only
+    decides what the form OFFERS.  `test_ledger_skeleton.py` counts the drift in both
+    directions against the validator's own field tuples and requires both counts to be 0.
+
+    Read from beside the module rather than through `config_path()`: this ships with the
+    code, it is not operator data, so a stack pointed at another data root still finds it
+    -- and the config root will not have it, by that root's own rule.
+    """
+    return json.loads(SKELETON_PATH.read_text(encoding="utf-8"))
+
+
 def closed_lists() -> dict[str, Any]:
     """Every closed list the authoring screen may offer, from the code that enforces it.
 
@@ -333,6 +364,10 @@ def closed_lists() -> dict[str, Any]:
         "column_universes": [
             {"id": name, "note": note} for name, note in _UNIVERSE_NOTE.items()],
         "steps": [{"id": step, "label": label} for step, label, _ in STEPS],
+        # 🔴 THE FORM'S SHAPE RIDES THE PAYLOAD THE SCREEN ALREADY FETCHES. Rule 5 of the
+        # skeleton spec: one more key here, rather than an endpoint and a request the
+        # client would have to learn to sequence against the plan it already waits for.
+        "skeleton": skeleton(),
         # 🔴 WHAT THE SCREEN MAY AUTHOR, FROM THE MAP THAT DECIDES IT. The tree only
         # renders kinds that already have members, so an empty section had no entry point
         # at all -- you could not create the first pack because there was nowhere to click.
