@@ -8,6 +8,27 @@ ledger config is made of**, and the form is generated from it.
 
 ---
 
+## Rule 0 — this is the no-hardcoding principle, and it sets the finish line
+
+Owner, the last thing he said before sleeping: **「스켈레톤은 결국 하드코딩 금지 원칙과 일맥상통함」.**
+
+His standing definition of done for that principle is not "the code reads a config" — it is
+**「다른 스키마 운영 환경에서 코드 0줄, 선언 교체만으로 발화」**. Applied here, that is sharper
+than "the form renders from the skeleton", and it is what makes the round checkable:
+
+> **Add a field to the skeleton and the form offers it, with zero lines of client change.
+> Remove one and the form stops offering it. Same for a whole section.**
+
+Which forbids one thing outright: **no per-kind branch anywhere in the form.** Not for packs, not
+for sources, not "just for `emit`". The moment the renderer asks *which kind is this*, the next
+schema needs code again, and the skeleton has become a config-shaped hardcode.
+
+Walk it before reporting: put a junk optional field into the skeleton, reload, see it on screen,
+take it out again. That walk is 30 seconds and it is the only proof that the wiring is real —
+「착지는 배선이 아니다」.
+
+---
+
 ## Destination
 
 **A person rebuilds `lot-lineage@1` — all four claims, exactly — using only the form.**
