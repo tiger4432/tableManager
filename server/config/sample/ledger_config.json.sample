@@ -1,199 +1,767 @@
 {
-  "__doc": "Canonical-ledger translator declarations. One entry per SOURCE (design section 1). See server/ledger/config.py for what every field is a declaration OF, and why each one is config rather than code.",
-  "version": 1,
-
-  "sources": {
-    "lot_event": {
-      "__comment": "lot_event is already an event table, so no state-to-event inference is needed and event_time gives occurred_at directly (design section 10, step 1). ONE logical event is TWO source rows: the parent row carries child_lot with parent_lot blank, the child row carries parent_lot with child_lot blank, and the pair is matched by (event_type, event_time, parent, child) because the source has no event id of its own. That pair is the transaction unit.",
-
-      "chain_mapper": {"mapper_id": "lot-event", "version": 1},
-      "__comment_chain_mapper": "Explicit source-by-source migration selector. The existing Ledger reader and event_time cursor still own input; this trusted mapper only converts one driver-delimited event into LedgerFrame. Module paths and function names are not executable config.",
-
-      "occurred_at_column": "event_time",
-      "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
-      "occurred_at_timezone": "Asia/Seoul",
-      "__comment_time": "MANDATORY. Design section 10 risk 1 / brief risk 2: arrival time may never stand in for world time. Remove either of these two and the translator refuses the whole source instead of guessing. | PRODUCT OWNER RULING 2026-08-13: fab timestamps are LOCAL time (Asia/Seoul), written ISO 8601 with the 'T' separator -- '2026-08-13T13:45:00'. This declaration was 'UTC' until that date; every atom written before it is nine hours late and NOTHING COMPLAINS, because a wrong instant is still a well-formed one. That is the whole reason this is a declaration and not a constant. | The zone is declared because event_time is naive TEXT (stored as text on purpose so it sorts lexicographically) -- with no declaration the stored instant would be whatever the translating machine's TZ happened to be. It applies ONLY to naive text: a value that carries its own offset ('...T13:45:00+09:00') has already said which instant it is, and store.parse_occurred_at honours it rather than re-applying this zone on top. | The format names what production emits; the reader also accepts the RFC 3339 space spelling of this SAME shape ('2026-08-13 13:45:00'), which is what a development box and the trace fixture hold. That is one shape in two transports, not two formats -- see store._candidate_formats.",
-
-      "subject_types": ["Lot", "Wafer"],
-      "__comment_subject_types": "The EXTENSION of this translator: the entity types its atoms are allowed to be ABOUT. It is enforced -- an atom whose subject_type is outside this list is refused by name ('undeclared_subject_type') and counted like every other refusal, so a translator that starts minting a new type without a vocabulary review shows up as a named refusal instead of as a surprise in a column. | This was singular 'subject_type' until ruling R-2026-08-13-D, and it was read by NOTHING: the translator names each atom's type as a literal (Lot for the lot's own claims, Wafer for a wafer register), so validate() was checking a value that reached no atom -- a declaration that teaches the reader a contract nobody enforces. The literals stay where they are, because the code owns the FACT of each atom and this declaration owns its allowed RANGE. | Adding a type here is a deliberate act: every member must be a declared entity type in server/ledger/vocabulary.py, and adding one THERE is a vocabulary decision.",
-      "register_entity_types": ["Lot", "Wafer"],
-      "__comment_register": "Issued entity types get a register atom on first sight (design section 5 rule 3). Die is COMPOSED and is deliberately absent -- registering it would mean an atom per die.",
-
-      "list_separator": ":",
-      "__comment_list": "slot_numbers and wafer_ids are colon-delimited and correspond POSITIONALLY with EQUAL LENGTH. A length mismatch does not fail loudly downstream, it silently reattributes wafers to the wrong slots, so the gate treats it as an atomicity violation and refuses the whole molecule.",
-
-      "columns": {
-        "row_identity": "business_key_val",
-        "lot": "lot",
-        "event_type": "event_type",
-        "parent_lot": "parent_lot",
-        "child_lot": "child_lot",
-        "slots": "slot_numbers",
-        "wafers": "wafer_ids",
-        "equipment": "equipment"
-      },
-
-      "vocabulary": {
-        "split": {
-          "lineage": "parent_child",
-          "slot_pairing": "slot_preserving",
-          "emit_has_wafer": true,
-          "emit_register": true,
-          "__comment": "slot_preserving is an OPERATOR DECLARATION, not something the translator inferred: on this source a split's wafers keep their slot numbers (product owner's own worked example). The two rows of a split are both POST-event snapshots, so the moved wafers have already left the parent's row and no wafer is uttered on both sides -- with slot_pairing 'shared_wafer' a split produces ZERO slot_map atoms. Switch to 'shared_wafer' to take the zero-inference position; the declaration is hashed into source_translator_ver either way, so every atom says which convention made it, and source_raw_ref allows re-translation if the convention is later found false."
-        },
-        "merge": {
-          "lineage": "parent_child",
-          "slot_pairing": "shared_wafer",
-          "emit_has_wafer": true,
-          "emit_register": true,
-          "__comment": "A merge's source-lot row is a PRE-move snapshot and its destination row is POST-move, so the moved wafers ARE uttered on both sides. shared_wafer therefore needs no convention at all here: the from-slot and the to-slot are both read straight off the source."
-        },
-        "track_in": {
-          "lineage": "none",
-          "slot_pairing": "none",
-          "emit_has_wafer": true,
-          "emit_register": true,
-          "__comment": "No parent or child -- a track_in utters membership only. An event_type that is NOT listed in this map is refused at the door and counted; it is never skipped."
+  "setup_version": 3,
+  "vocabulary": {
+    "has_netdie@1": {
+      "status": "active",
+      "layer": "ontology",
+      "subjects": [
+        "DTJob@1"
+      ],
+      "object": {
+        "kind": "value",
+        "qualifiers": {
+          "required": [],
+          "optional": []
         }
       }
     },
-
-    "void_obs": {
-      "__comment": "OBSERVATION grammar (ruling R-2026-08-14-D, MI_LEDGER_SCHEMA_PROPOSAL section 6-bis). One row is ONE utterance -- a finding names its own wafer, chip, extent and run -- so there is no molecule to assemble and no event pair to match. That is why `kind` exists: validating this declaration against the lineage required columns would have refused it for having no parent_lot.",
-
-      "kind": "observation",
-      "finding_kind": "void",
-      "__comment_kind": "The finding kind this source translates, and the value that lands in every atom's payload. It must be a kind server/finding_kinds.py declares -- that registry owns what a kind IS (its denominator methods, its observation table, its closed class set) and this declaration owns only which source produces it.",
-
-      "synthetic": true,
-      "__comment_synthetic": "THIS SOURCE IS 100% GENERATED on this box (the answer-key fixture: void_obs, delam_obs and inspection_run alike), so every atom translated from it is fabricated too. The flag rides in the payload, which makes the fact readable FROM THE ATOM -- object_payload->>'synthetic' -- instead of from somebody's memory of which tables were seeded. Remove this line on the day a real feed arrives and the next translation stops claiming it.",
-
-      "occurred_at_column": "observed_at",
-      "occurred_at_timezone": "Asia/Seoul",
-      "__comment_time": "THE COLUMN IS ON THE RUN RELATION, NOT ON THE FINDING ROW. void_obs carries created_at and updated_at and both are ARRIVAL times stamped by the ingester; the instant a void was found is the instant of the scan that found it, which is inspection_run.observed_at. A finding whose run cannot be resolved therefore produces NOTHING rather than an atom timestamped by when a file happened to load -- design section 10 risk 1, one table over. The column is timestamptz, so it already carries its instant and the declared zone applies only if that ever becomes naive text.",
-
-      "subject_types": ["Wafer"],
-      "register_entity_types": ["Wafer"],
-      "__comment_subject": "Section 6-bis: subject = Wafer, with the chip coordinates carried in the payload. Die is COMPOSED (wafer x grid) so it has no registration and nothing to hang an observation on, and folding every chip's findings under one substrate is what makes 'this wafer's voids' a single query. Registering a wafer from an observation feed is legitimate -- seeing a defect on a substrate is first-hand evidence it exists -- and it is a declaration either way: empty this list and the feed mints no entities.",
-
-      "watermark": {"columns": ["updated_at", "row_id"]},
-      "__comment_watermark": "The cursor, as a KEYSET. It cannot be a world time: this source's world time is not on the row, and its own updated_at is stamped in bulk (MEASURED 2026-08-14: 91,756 rows across 92 distinct values), so a time cursor would make one load a single indivisible group. (updated_at, row_id) is unique, monotone under insert AND edit -- an operator's correction bumps updated_at and the row is revisited, which is how a re-utterance reaches the ledger -- and it is index-backed by idx_void_obs_updated, which the page fetch and the lag probe both use.",
-
-      "run": {
-        "relation": "inspection_run",
-        "key_column": "run_uid",
-        "method_column": "method",
-        "__comment": "The denominator, named. '3 voids' means nothing without 'out of how many scans', so `observed` REQUIRES run_uid in its payload and this declaration is where the translator reads it from. method comes from the same row because it is HOW the finding was looked for, and it is what finding_kinds.observed_by defines the denominator against."
-      },
-
-      "columns": {
-        "row_identity": "row_id",
-        "wafer": "base_wafer_id",
-        "run_key": "run_uid",
-        "die_x": "base_x",
-        "die_y": "base_y",
-        "die_gate": "stack_gate",
-        "inchip_x": "inchip_x",
-        "inchip_y": "inchip_y",
-        "extent_x": "radius_x",
-        "extent_y": "radius_y",
-        "unit": "unit",
-        "__comment": "Three of these are required (row_identity, wafer, run_key) and the rest are optional, because a source that does not utter a thing must be able to stay silent about it rather than declare a column that is not there. A name this translator does not read is REFUSED at load -- it would usually be a typo for one that is. NOTE: void_obs utters no class, so no class mapping appears here; delam_obs does, and its declaration says so."
+    "register@1": {
+      "status": "active",
+      "layer": "ontology",
+      "subjects": [
+        "Lot@1",
+        "Wafer@1",
+        "DTJob@1"
+      ],
+      "object": {
+        "kind": "none",
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
       }
     },
-
-    "delam_obs": {
-      "__comment": "The SECOND kind, and the reason the console's generalisation is testable at all: delamination is found by a DIFFERENT method (scat) than a void (sat), so the denominator actually swings when the kind parameter changes. If both kinds shared one method every kind would be counted against the same rows and a hardcoded 'void' would pass every test.",
-
-      "kind": "observation",
-      "finding_kind": "delam",
-      "synthetic": true,
-      "__comment_synthetic": "Same as void_obs: generated source, fabricated atoms, and the atom says so.",
-
-      "occurred_at_column": "observed_at",
-      "occurred_at_timezone": "Asia/Seoul",
-
-      "subject_types": ["Wafer"],
-      "register_entity_types": ["Wafer"],
-
-      "watermark": {"columns": ["updated_at", "row_id"]},
-
-      "run": {
-        "relation": "inspection_run",
-        "key_column": "run_uid",
-        "method_column": "method"
-      },
-
-      "columns": {
-        "row_identity": "row_id",
-        "wafer": "base_wafer_id",
-        "run_key": "run_uid",
-        "die_x": "base_x",
-        "die_y": "base_y",
-        "die_gate": "stack_gate",
-        "inchip_x": "inchip_x",
-        "inchip_y": "inchip_y",
-        "extent_x": "extent_x",
-        "extent_y": "extent_y",
-        "unit": "unit",
-        "class": "interface",
-        "__comment_class": "THE CLASS COLUMN, AND IT IS A CLAIM RATHER THAN AN ATTRIBUTE (section 6-quater, product owner: class에 대한 주장이지). interface is the TOOL's classification, uttered at scan time, so it rides in the same atom as part of the same utterance. A human who later looks at the image and disagrees does not edit it -- they assert classified_as against this atom's id and the layering rules resolve the contest. THIS DECLARATION SAYS ONLY WHERE THE CLASS COMES FROM; which values are legal is the kind registry's (server/finding_kinds.py classes), because that set is a property of the kind and the console builds its slice axis from the same list. A value outside it is refused BY NAME."
+    "has_wafer@1": {
+      "status": "active",
+      "layer": "ontology",
+      "subjects": [
+        "Lot@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "Wafer@1"
+        ],
+        "qualifiers": {
+          "required": [
+            "slot"
+          ],
+          "optional": []
+        }
       }
     },
-
-    "dt_log": {
-      "__comment": "TRANSFER grammar (the third one). One dt_log row is one DIE moved into one DT tape cell, and the declared atom unit is the JOB-RUN -- so rows are GROUPED, which neither of the other two grammars does (lineage groups a PAIR by an event key, observation does not group at all). One whole dt_job is one molecule; it utters one `transferred` atom per SOURCE WAFER, carrying qty. Subject = Wafer because a die is COMPOSED (wafer x grid) and the wafer is the die's permanent identity root -- PHYSICS_ONTOLOGY_SETUP section 2-bis.",
-
-      "__comment_real_data": "🔴 THIS IS THE FIRST NON-SYNTHETIC SOURCE THIS LEDGER TRANSLATES. void_obs and delam_obs declare `synthetic: true` because they are 100% generated; dt_log is the operator's own table, so THERE IS NO synthetic FLAG HERE and there must never be one added by reflex. The ledger has no UPDATE: a wrong synthetic flag is not a typo, it is a permanent mark on real observations that can only be removed by re-translating. dt_log DOES hold seeded rows beside the real ones (the SYN-* job families -- MEASURED 2026-08-14: of 396 jobs, 120 are DT-EQP-* real-data jobs holding 8,700 rows and the rest are SYN-*), and that is a fact about the SOURCE TABLE, not about this translation.",
-
-      "kind": "transfer",
-
-      "occurred_at_column": "event_time",
-      "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
-      "occurred_at_timezone": "Asia/Seoul",
-      "__comment_time": "MANDATORY, same rule as every other source: arrival time may never stand in for world time. dt_log's event_time is TEXT and this box holds THREE spellings of it -- '2026-05-11 00:00:00' (naive, RFC 3339 space), '2026-08-09T00:00:00Z' and '2026-08-10T00:07:00+09:00'. store._candidate_formats reads all three under this ONE declaration: the space is the same shape in a different transport, and a trailing offset is admitted so it can be HONOURED (a value carrying its own offset has already said which instant it is, so the declared zone is applied only to the naive spelling). MEASURED 2026-08-14: 8 of 396 jobs carry a blank event_time on every row and are refused as missing_occurred_at; 0 jobs carry more than one distinct event_time.",
-
-      "subject_types": ["Wafer"],
-      "register_entity_types": ["Wafer"],
-      "__comment_subject": "Wafer only. The DT tape is a PLACE in this grammar, not a subject -- it appears as the `to` container of the movement, which is what keeps the chain walkable by position rather than by step name. Registering a core wafer from a handler log is first-hand evidence it exists, and it is a declaration either way: empty register_entity_types and this feed mints no entities.",
-
-      "group": {
-        "column": "dt_job",
-        "row_order_column": "row_id",
-        "__comment": "The column whose value makes ONE molecule, and the tiebreak that makes a page deterministic. dt_job is also this table's declared map_key_columns, so server/database/models.py already declares an index for it (idx_dt_log_declared_key, INDEX_POLICY tier 1) -- the page fetch needs no index of its own. ⚠️ MEASURED 2026-08-14 on assy_manager: that declared index does NOT physically exist yet (create_all does not add indexes to existing tables), so today's page fetch sorts. At 34,939 rows that is free; before this source reaches millions the declared index has to be materialised. | The order is (dt_job, row_id) and NOT business_key_val: business_key_val is '<dt_job>_<dt_x>_<dt_y>', so ordering by it groups by job only as long as no job name is a prefix of another (measured: 0 such pairs TODAY). A batch boundary that rests on an accident of the current data is the half-landing waiting for one new job name."
-      },
-
-      "container": {
-        "relation": "dt_inventory",
-        "key_column": "dt_job",
-        "lot_column": "dt_lot",
-        "slot_column": "dt_slot",
-        "__comment": "WHERE THE DESTINATION'S IDENTITY IS CONFIRMED, and this is the honesty of the whole declaration. dt_log carries dt_lot/dt_slot of its own and table_config.json says what they are in its own words: 'the INFERENCE TARGETS -- 40% absent, and 10% PRESENT BUT WRONG, which is worse than absent because a wrong value makes a join succeed quietly', and 'a guess must never sit inside an identity'. So the container's identity is read from dt_inventory (dt_job is its business key) and NEVER from the row. An atom whose destination was confirmed carries derivation #job_run_to_confirmed_container and a `to` of type dt_slot; one that was not carries #job_run_to_job and a `to` of type dt_job -- the ACQUISITION unit, named as itself so an unjoinable hop reads as unjoinable instead of matching nothing under a name that promised to match. | 🔴 MEASURED 2026-08-14 on assy_manager: dt_inventory holds 401 rows, all 396 dt_jobs of dt_log have a row in it (100% PRESENCE -- which is what an earlier round measured), and exactly ONE row has a non-blank dt_lot: the string 'DT_LOT', a spreadsheet HEADER ingested as data, on job 'SYN-TL-R0-N033-H6B051FE5-190173579598445683512727345364142736600'. So the confirmed path resolves for ZERO jobs today and every atom lands unconfirmed. Presence is not confirmation."
-      },
-
-      "columns": {
-        "row_identity": "business_key_val",
-        "group_key": "dt_job",
-        "wafer": "core_wafer",
-        "recorded_lot": "dt_lot",
-        "recorded_slot": "dt_slot",
-        "__comment": "Three are required (row_identity, group_key, wafer) and two are optional. recorded_lot/recorded_slot are what the SOURCE ROW wrote down about the destination; they are carried into the payload as `container_recorded` -- a LIST, outside the `to` container, never identity -- so the confirmation flow has evidence to argue with and a reader can see the source's own claim beside the ledger's refusal to promote it. | core_wafer is the subject and 6,731 of 34,939 rows do not have one (6,209 of those carry core_lot+core_slot instead). Those rows produce no atom and their job-run is counted `incomplete`: composing a wafer id out of lot and slot would be the concatenated-identity incident design section 3 is built from."
+    "derived_from@1": {
+      "status": "active",
+      "layer": "ontology",
+      "subjects": [
+        "Lot@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "Lot@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "slot_map@1": {
+      "status": "active",
+      "layer": "ontology",
+      "subjects": [
+        "Lot@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "Lot@1"
+        ],
+        "qualifiers": {
+          "required": [
+            "from",
+            "to",
+            "wafer"
+          ],
+          "optional": []
+        }
       }
     }
   },
-
-  "batch": {
-    "molecules_per_transaction": 200,
-    "__comment": "How many WHOLE source events share one transaction. Never a fraction of one: a molecule that landed half would leave a lineage that looks complete and is not."
+  "entities": {
+    "DTJob@1": {
+      "keys": [
+        "dt_job"
+      ]
+    },
+    "Lot@1": {
+      "keys": [
+        "lot"
+      ]
+    },
+    "Wafer@1": {
+      "keys": [
+        "wafer"
+      ]
+    }
   },
-
-  "partitioning": {
-    "interval": "month",
-    "__comment": "ledger_events is RANGE partitioned on occurred_at from day one -- adding partitioning to a populated table is a full rewrite, measured in this session. The translator creates the month it needs before it writes into it."
+  "packs": {
+    "dt-job@1": {
+      "claims": {
+        "register": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "register@1",
+            "subject": "$subject",
+            "occurred_at": "$occurred_at",
+            "object": {
+              "kind": "none"
+            }
+          }
+        },
+        "die_count": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "count": {
+              "kind": "quantity",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "has_netdie@1",
+            "subject": "$subject",
+            "occurred_at": "$occurred_at",
+            "object": {
+              "kind": "value",
+              "value": "$count"
+            }
+          }
+        }
+      }
+    },
+    "lot-lineage@1": {
+      "claims": {
+        "register": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "register@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "none"
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "membership": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "slot": {
+              "kind": "attribute",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "has_wafer@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {
+                "slot": "$slot"
+              }
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "lineage": {
+          "roles": {
+            "child": {
+              "kind": "entity",
+              "required": true
+            },
+            "parent": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "derived_from@1",
+            "subject": "$child",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$parent",
+              "qualifiers": {}
+            },
+            "occurred_at": "$occurred_at"
+          }
+        },
+        "slot_map": {
+          "roles": {
+            "subject": {
+              "kind": "entity",
+              "required": true
+            },
+            "target": {
+              "kind": "entity",
+              "required": true
+            },
+            "occurred_at": {
+              "kind": "time",
+              "required": true
+            },
+            "from": {
+              "kind": "attribute",
+              "required": true
+            },
+            "to": {
+              "kind": "attribute",
+              "required": true
+            },
+            "wafer": {
+              "kind": "attribute",
+              "required": true
+            }
+          },
+          "emit": {
+            "predicate": "slot_map@1",
+            "subject": "$subject",
+            "object": {
+              "kind": "entity_ref",
+              "entity": "$target",
+              "qualifiers": {
+                "from": "$from",
+                "to": "$to",
+                "wafer": "$wafer"
+              }
+            },
+            "occurred_at": "$occurred_at"
+          }
+        }
+      }
+    }
   },
-
-  "lag": {
-    "probe_interval_seconds": 60,
-    "__comment": "How often the cursor-vs-source-head probe may run a real COUNT against the source. The cheap half of the lag report (world-time lag, cursor age) costs no query at all and is always on."
+  "source_preparers": {
+    "direct-join@1": {
+      "implementation_id": "direct-join",
+      "implementation_version": 1,
+      "input_columns": [],
+      "output_columns": {},
+      "accepts_verified_join_rules": false
+    },
+    "lot-event-live-frame@1": {
+      "implementation_id": "lot-event-live-frame",
+      "implementation_version": 1,
+      "input_columns": [
+        "lot_id",
+        "event_type",
+        "slotnumbers",
+        "waferids",
+        "parent_lot",
+        "child_lot",
+        "txn_seq",
+        "event_time"
+      ],
+      "output_columns": {
+        "lot": "string",
+        "slots": "string",
+        "wafers": "string",
+        "row_identity": "string",
+        "event_group_key": "string",
+        "__source_event_incomplete": "boolean"
+      },
+      "accepts_verified_join_rules": false
+    }
+  },
+  "mappers": {
+    "dt-job-role@1": {
+      "implementation_id": "dt-job-role",
+      "implementation_version": 1,
+      "unit": {
+        "kind": "group_by",
+        "columns": [
+          "dt_job"
+        ]
+      },
+      "input_columns": [
+        "dt_index",
+        "dt_job",
+        "event_time"
+      ],
+      "emits": [
+        "dt-job@1/register",
+        "dt-job@1/die_count"
+      ]
+    },
+    "lot-event-role@1": {
+      "implementation_id": "lot-event-role",
+      "implementation_version": 1,
+      "unit": {
+        "kind": "event"
+      },
+      "input_columns": [
+        "lot",
+        "event_type",
+        "slots",
+        "wafers",
+        "parent_lot",
+        "child_lot",
+        "row_identity",
+        "event_time",
+        "event_group_key",
+        "__source_event_incomplete"
+      ],
+      "emits": [
+        "lot-lineage@1/register",
+        "lot-lineage@1/membership",
+        "lot-lineage@1/lineage",
+        "lot-lineage@1/slot_map"
+      ]
+    }
+  },
+  "profiles": {
+    "dt-job@1": {
+      "source": "dt_job",
+      "packs": [
+        "dt-job@1"
+      ],
+      "mappings": [
+        {
+          "mapping_id": "job_register",
+          "use": "dt-job@1/register",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "DTJob@1",
+              "keys": {
+                "dt_job": {
+                  "kind": "column",
+                  "column": "dt_job",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        },
+        {
+          "mapping_id": "job_die_count",
+          "use": "dt-job@1/die_count",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "DTJob@1",
+              "keys": {
+                "dt_job": {
+                  "kind": "column",
+                  "column": "dt_job",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "count": {
+              "kind": "column",
+              "column": "dt_index",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        }
+      ]
+    },
+    "lot-event@1": {
+      "source": "lot_event",
+      "packs": [
+        "lot-lineage@1"
+      ],
+      "mappings": [
+        {
+          "mapping_id": "first_sight_lot",
+          "use": "lot-lineage@1/register",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        },
+        {
+          "mapping_id": "first_sight_wafer",
+          "use": "lot-lineage@1/register",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "Wafer@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "wafers",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        },
+        {
+          "mapping_id": "positional_row",
+          "use": "lot-lineage@1/membership",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "Wafer@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "wafers",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "slot": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        },
+        {
+          "mapping_id": "pair_field",
+          "use": "lot-lineage@1/lineage",
+          "bind": {
+            "child": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "parent": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        },
+        {
+          "mapping_id": "slot_preserving",
+          "sentence": "split_slot_carry",
+          "use": "lot-lineage@1/slot_map",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "from": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "to": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "wafer": {
+              "kind": "column",
+              "column": "wafers",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        },
+        {
+          "mapping_id": "shared_wafer",
+          "sentence": "merge_slot_join",
+          "use": "lot-lineage@1/slot_map",
+          "bind": {
+            "subject": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "Lot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot",
+                  "binding_origin": "user_declared",
+                  "approval_status": "approved"
+                }
+              },
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "from": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "to": {
+              "kind": "column",
+              "column": "slots",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            },
+            "wafer": {
+              "kind": "column",
+              "column": "wafers",
+              "binding_origin": "user_declared",
+              "approval_status": "approved"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "sources": {
+    "dt_job": {
+      "relation": "dt_log",
+      "profile_id": "dt-job@1",
+      "driver": {
+        "unit": "group",
+        "identity": [
+          "dt_job"
+        ],
+        "group_by": [
+          "dt_job"
+        ],
+        "order_by": [
+          "dt_job",
+          "dt_cell_key"
+        ],
+        "occurred_at": {
+          "basis": "ingested",
+          "timezone": "Asia/Seoul"
+        },
+        "cursor": {
+          "columns": [
+            "dt_job",
+            "dt_cell_key"
+          ]
+        },
+        "preparation": {
+          "preparer_id": "direct-join@1",
+          "inherit_virtual_join_rules": []
+        },
+        "mapper_id": "dt-job-role@1",
+        "registration_probe": [
+          {
+            "entity_type": "DTJob@1",
+            "columns": [
+              "dt_job"
+            ]
+          }
+        ]
+      }
+    },
+    "lot_event": {
+      "relation": "lot_event",
+      "driver": {
+        "unit": "group",
+        "identity": [
+          "event_group_key"
+        ],
+        "group_by": [
+          "event_group_key"
+        ],
+        "order_by": [
+          "txn_seq"
+        ],
+        "occurred_at": {
+          "column": "event_time",
+          "timezone": "Asia/Seoul"
+        },
+        "cursor": {
+          "columns": [
+            "event_time",
+            "txn_seq"
+          ]
+        },
+        "preparation": {
+          "preparer_id": "lot-event-live-frame@1",
+          "inherit_virtual_join_rules": []
+        },
+        "mapper_id": "lot-event-role@1"
+      },
+      "profile_id": "lot-event@1"
+    }
   }
 }
