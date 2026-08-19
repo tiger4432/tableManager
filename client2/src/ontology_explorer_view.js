@@ -522,6 +522,22 @@ function renderStepBar(state) {
     return bar;
   }
   const here = state.selection?.config_path || '';
+  // 🔴 THE TOTAL IS SAID ONCE, AT THE TOP, and each layer says only its own share. The
+  // owner's mockup (1b) leads with a single 「N REMAINING」, and that is Rule 7 applied to
+  // the spine: a number the operator reads to decide WHETHER to look, before six numbers
+  // telling him where.
+  const totalRemaining = plan.steps.reduce((sum, step) => sum + (step.remaining || 0), 0);
+  // 🔴 AND WHEN EVERY LAYER IS COMPLETE, THAT IS ONE FACT, NOT SIX. Counted on the owner's
+  // live config: `Complete` appeared six times, each of them true and none of them adding
+  // anything to the one before. The sentence belongs to the group.
+  const allDone = plan.steps.length > 0
+    && plan.steps.every((step) => step.declared && !step.remaining);
+  const head = h('div', 'oe-spine-head');
+  head.append(h('span', 'oe-spine-title', '셋업'));
+  head.append(h('span', 'oe-spine-count',
+                allDone ? `${plan.steps.length} layers · complete`
+                        : `${totalRemaining} remaining`));
+  bar.append(head);
   // 🔴 THE SPINE IS NUMBERED BECAUSE THE ORDER IS REAL, not because numbers look tidy: a
   // pack cannot name a predicate that does not exist yet, so 낱말 → 엔터티 → 팩 → 프로필 →
   // 매퍼 → 소스 is a dependency order and arriving at a layer early is normal. The server
@@ -540,7 +556,9 @@ function renderStepBar(state) {
     // screen where neither is believed.
     if (step.remaining) {
       tally.append(h('i', 'oe-tally oe-tally--remaining', `${step.remaining} remaining`));
-    } else if (step.declared) {
+    } else if (step.declared && !allDone) {
+      // Said per layer only while the layers DISAGREE. When they all read the same, the
+      // head above has already said it once and repeating it here is six copies of one fact.
       tally.append(h('i', 'oe-tally oe-tally--done', 'Complete'));
     }
     for (const [key, mark] of [['unanswered', 'Optional'], ['derived', 'Derived']]) {
@@ -1297,12 +1315,16 @@ export function renderOntologyExplorer(root, state) {
     windowEl.append(h('div', 'oe-warning', `초안 대신 활성 snapshot 표시: ${state.viewContext.fallback_reason}`));
   }
   const main = h('div', 'oe-main');
+  // 🔴 THE LAYERS ARE THE FIRST COLUMN, not a strip above the work. Owner's ruling on the
+  // mockup: 「1b의 구조만 가져와」 — 1b makes the six layers the primary axis, so the screen
+  // reads 층 → 선언 → 폼 left to right instead of asking the operator to look up at a bar
+  // and back down. The bar's data is unchanged; only where it sits is.
+  main.append(renderStepBar(state));
   main.append(renderTree(state));
   const workspace = h('main', 'oe-workspace');
   // Always first, always one line: "지금 어느 걸음인가" is the one element the owner
   // asked to keep and strengthen, and it must survive the no-selection case too --
   // that is the from-scratch entry, where it is the only thing on screen.
-  workspace.append(renderStepBar(state));
   // 🔴 A CREATE DRAFT IS THE SUBJECT, AND NOTHING AROUND IT BELONGS TO IT YET.
   //
   //     lot 생성 후 wafer 생성시 여전히 lot으로 떠있는상태로 key 입력만 초기화됨

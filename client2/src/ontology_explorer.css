@@ -17,6 +17,17 @@
   min-width: 0;
   position: relative;
 }
+
+/* 🔴 THIS SCREEN FOLLOWS THE SITE'S TOGGLE, NOT THE OPERATING SYSTEM'S.
+   `light-dark()` resolves against `color-scheme`, and `light dark` means "ask the OS" --
+   so the admin's own 라이트/다크 switch stamped `data-theme` on <html> and this panel
+   ignored it. Measured: data-theme=light, and every token here still resolved dark.
+   The owner's ruling on the mockup was 「톤은 현재 ui 다크모드, 브라이트모드 컬러셋 이용」,
+   which cannot be true while one of the two is unreachable. Palette unchanged; only which
+   half of each `light-dark()` pair applies. */
+:root[data-theme="light"] #ontology-explorer-root { color-scheme: light; }
+:root[data-theme="dark"] #ontology-explorer-root { color-scheme: dark; }
+
 #ontology-explorer-root * { box-sizing: border-box; }
 #ontology-explorer-root button,
 #ontology-explorer-root input,
@@ -59,7 +70,9 @@
   background: var(--oe-surface-2); color: var(--oe-text); padding: 8px 10px;
 }
 #ontology-explorer-root .oe-main {
-  display: grid; grid-template-columns: 230px minmax(0, 1fr);
+  /* 층(척추) · 선언 · 작업. Owner's 1b: the six layers are the primary axis, so they are
+     a column and not a strip -- the eye goes left to right instead of up and back down. */
+  display: grid; grid-template-columns: 186px 230px minmax(0, 1fr);
   flex: 1; min-height: 0; overflow: hidden;
 }
 #ontology-explorer-root .oe-tree {
@@ -338,6 +351,14 @@
   #ontology-explorer-root .oe-topbar { flex-wrap: wrap; }
   #ontology-explorer-root .oe-search-wrap { width: 100%; margin-left: 0; }
   #ontology-explorer-root .oe-main { grid-template-columns: 1fr; overflow: auto; }
+  /* Narrow: the spine lies back down rather than eating a third of the width. */
+  #ontology-explorer-root .oe-steps {
+    flex-direction: row; flex-wrap: wrap; gap: 6px;
+    border-right: 0; border-bottom: 1px solid var(--oe-line); padding: 8px 10px;
+  }
+  #ontology-explorer-root .oe-spine-head { flex-direction: row; align-items: baseline; gap: 8px; padding: 0 4px 0 0; }
+  #ontology-explorer-root .oe-spine-count { font-size: 13px; }
+  #ontology-explorer-root .oe-step { border-color: var(--oe-line); }
   #ontology-explorer-root .oe-tree {
     max-height: 230px; border-right: 0; border-bottom: 1px solid var(--oe-line);
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px;
@@ -361,15 +382,25 @@
    children plus `overflow-wrap: anywhere` is what keeps text inside the box; wide
    things scroll in their own container and never push the page sideways. */
 #ontology-explorer-root .oe-steps {
-  display: flex; gap: 6px; flex-wrap: wrap; min-width: 0;
-  padding: 10px 14px; border-bottom: 1px solid var(--oe-line);
-  background: var(--oe-surface);
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  padding: 12px 8px; border-right: 1px solid var(--oe-line);
+  background: var(--oe-surface); overflow: auto;
 }
+#ontology-explorer-root .oe-spine-head {
+  display: flex; flex-direction: column; gap: 2px; padding: 0 8px 10px;
+}
+#ontology-explorer-root .oe-spine-title {
+  font-size: 12px; color: var(--oe-muted); letter-spacing: 0.04em;
+}
+/* The one number read before the six: whether to look at all. */
+#ontology-explorer-root .oe-spine-count { font-size: 16px; color: var(--oe-text); font-weight: 600; }
 #ontology-explorer-root .oe-step {
-  display: flex; align-items: baseline; gap: 8px; min-width: 0;
-  padding: 5px 10px; border: 1px solid var(--oe-line); border-radius: 999px;
-  font-size: 12px; background: var(--oe-surface-2); color: var(--oe-muted);
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px;
+  align-items: baseline; min-width: 0;
+  padding: 7px 8px; border: 1px solid transparent; border-radius: 7px;
+  font-size: 12px; background: transparent; color: var(--oe-muted);
 }
+#ontology-explorer-root .oe-step .oe-step-tally { grid-column: 2; }
 #ontology-explorer-root .oe-step b { color: var(--oe-text); font-weight: 600; }
 #ontology-explorer-root .oe-step.is-here {
   border-color: var(--oe-accent); background: var(--oe-accent-soft);
