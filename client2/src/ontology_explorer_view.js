@@ -1269,9 +1269,21 @@ function renderAuthoring(state) {
     section.append(naming);
     wrap.append(section);
   }
-  for (const [stateId, label] of buckets) {
+  // 🔴 AN EMPTY BUCKET SAYS NOTHING FOUR TIMES. All four are empty on a declaration that
+  // was just created, so the screen answered 「None defined」 four times over and buried the
+  // one thing that mattered -- the form beside them. The old rule ("always render, a
+  // vanished heading is indistinguishable from nothing to do") is kept where it is TRUE:
+  // if the whole panel would be silent, one line still says so. It is only the repetition
+  // that goes.
+  const drawn = buckets.map(([stateId, label]) => {
     const rows = plan.fields.filter(
       (row) => row.state === stateId && !claimed.has(row.path));
+    return { stateId, label, rows };
+  });
+  const anythingToShow = drawn.some((bucket) => bucket.rows.length)
+    || Boolean(claimed.size) || Boolean(unplanned) || Boolean(starters);
+  for (const { stateId, label, rows } of drawn) {
+    if (!rows.length && anythingToShow) continue;
     const section = h('section', `oe-bucket oe-bucket--${stateId}`);
     section.append(h('h3', '', `${label} · ${rows.length}`));
     if (!rows.length) section.append(h('div', 'oe-empty', 'None defined'));
