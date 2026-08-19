@@ -870,6 +870,16 @@ function renderClaimBlock(state, packId, claimId, claim, planRows, closedListFor
     rolesBox.append(line);
   }
   if (!roleNames.length) rolesBox.append(h('div', 'oe-key-none', 'None defined'));
+  // A role's NAME is coined by the person -- free text, like the claim's own name. Its kind
+  // is a closed list and stays a dropbox once the row exists.
+  const roleNaming = h('div', 'oe-claim-new');
+  const roleInput = h('input', 'oe-role-new-id');
+  roleInput.type = 'text';
+  roleInput.placeholder = '역할 id · e.g. subject';
+  roleInput.dataset.claim = claimId;
+  roleInput.setAttribute('aria-label', `${claimId} 새 역할 id`);
+  roleNaming.append(roleInput, button('+ 역할', 'add-role', claimId, 'oe-claim-new-go'));
+  rolesBox.append(roleNaming);
   box.append(rolesBox);
 
   const emitBox = h('div', 'oe-claim-emit');
@@ -963,7 +973,7 @@ function renderUnplannedDraftFields(state, draftRaw, plannedTopLevel) {
 // This is a starting point, not a form: it gets the first key into an empty declaration so
 // the plan and the draft-derived rows have something to describe. A new pack begins with
 // `claims`, and from there the claim block takes over.
-function renderMissingStarters(state, plan, prefix, draftRaw) {
+function renderMissingStarters(state, plan, prefix, draftRaw, ownedElsewhere = new Set()) {
   if (!prefix || !draftRaw) return null;
   const named = new Map();
   for (const refusal of plan.unattached_refusals || []) {
@@ -977,6 +987,9 @@ function renderMissingStarters(state, plan, prefix, draftRaw) {
     // yet is skipped: writing it would have to invent the branch above it, which is the one
     // thing the path writer refuses to do.
     const steps = splitBundlePath(relative);
+    // The claims section asks for this one, and asks the better question (a name, not a
+    // shape), so it must not also appear here as a shape picker.
+    if (ownedElsewhere.has(relative)) continue;
     if (getAtPath(draftRaw, steps) !== undefined) continue;
     if (steps.length > 1 && getAtPath(draftRaw, steps.slice(0, -1)) === undefined) continue;
     named.set(relative, refusal);
@@ -1089,9 +1102,15 @@ function renderAuthoring(state) {
   };
   // Claim grouping: the path already says which claim a row belongs to, so this is the
   // structure the DATA states, not a layout invented here.
+  // 🔴 A PACK ALWAYS GETS ITS CLAIMS SECTION, even before `claims` exists. The validator
+  // already says 「must be a non-empty object」, so asking the operator to pick a SHAPE for
+  // it is asking a settled question -- the same rule as "a closed list is a dropbox, not a
+  // free field", seen from the other side. What is unsettled is the NAME of each claim, and
+  // that is what this section asks for.
   const draftClaims = state.draft?.target_kind === 'pack' && draftRaw
-    && draftRaw.claims && typeof draftRaw.claims === 'object' && !Array.isArray(draftRaw.claims)
-    ? draftRaw.claims : null;
+    ? (draftRaw.claims && typeof draftRaw.claims === 'object' && !Array.isArray(draftRaw.claims)
+        ? draftRaw.claims : {})
+    : null;
   const claimOf = (path) => {
     const found = /\.claims\.([^.]+)\./.exec(path);
     return found ? found[1] : null;
@@ -1123,7 +1142,9 @@ function renderAuthoring(state) {
       .filter(Boolean));
   const unplanned = renderUnplannedDraftFields(state, draftRaw, plannedTopLevel);
   if (unplanned) wrap.append(unplanned);
-  const starters = renderMissingStarters(state, plan, prefix, draftRaw);
+  const starters = renderMissingStarters(
+    state, plan, prefix, draftRaw,
+    new Set(state.draft?.target_kind === 'pack' ? ['claims'] : []));
   if (starters) wrap.append(starters);
 
   // A claim is one block, so its rows leave the state buckets and travel with it.
@@ -1139,7 +1160,20 @@ function renderAuthoring(state) {
         return renderAuthoringRow(shown, state.expandedFields, editableFor(shown));
       });
       const key = `claim:${state.draft.target_id}:${claimId}`;
-      const owes = rows.some(
+      // 🔴 AN EMPTY CLAIM OWES EVERYTHING, and the plan cannot say so: a claim with no
+      // body has no rows, so "does any row still owe something" read as "nothing owed" and
+      // folded the claim shut the instant it was named. The operator typed `hello` and got
+      // 「hello · 채워짐」 -- the opposite of true. Emptiness is asked of the DRAFT, which is
+      // the only thing that knows about a claim that was named a second ago.
+      const body = draftClaims[claimId];
+      const empty = !body || typeof body !== 'object' || Array.isArray(body)
+        || !Object.keys(body).length;
+      // 🔴 AND A CLAIM THE PLAN HAS NEVER SEEN STAYS OPEN. The plan describes the FILE, so
+      // for a claim named a moment ago it has no rows at all -- and "no row still owes
+      // anything" is then vacuously true, which folded the claim shut the instant it gained
+      // its first role. `rows.length === 0` is the honest reading: nothing is known about
+      // this claim yet, so it cannot be reported as finished.
+      const owes = empty || !rows.length || rows.some(
         (row) => row.remaining || row.conflicts || row.refusals?.length);
       const fold = {
         key,

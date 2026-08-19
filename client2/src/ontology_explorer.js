@@ -713,9 +713,34 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       const box = root.querySelector('.oe-claim-new-id');
       const claimId = (box?.value || '').trim();
       if (!claimId) return;
-      // An empty body on purpose: with the claim present the validator names `emit` and
-      // `roles`, and those become the next rows. Same move as starting a field.
-      editShapeAtPath(`claims.${claimId}`, {});
+      // 🔴 THE WHOLE PATH, when `claims` is not there yet. `setAtPath` will not invent a
+      // missing branch -- deliberately -- so writing `claims.<id>` into a body that has no
+      // `claims` would land nowhere. Naming the first claim is exactly that case, and it is
+      // the one the owner walks: 「claims에 hello 치면 바로 hello 하위 폼이 떠야지」.
+      let raw = {};
+      try {
+        raw = JSON.parse(state.editorText || '{}');
+      } catch {
+        return;                    // let the textarea own its own syntax error
+      }
+      const claims = raw.claims && typeof raw.claims === 'object' && !Array.isArray(raw.claims)
+        ? raw.claims : null;
+      if (claims) editShapeAtPath(`claims.${claimId}`, {});
+      else editShapeAtPath('claims', { [claimId]: {} });
+      if (box) box.value = '';
+    }
+    else if (action === 'add-role') {
+      const claimId = target.dataset.value;
+      const box = root.querySelector(`.oe-role-new-id[data-claim="${claimId}"]`);
+      const roleId = (box?.value || '').trim();
+      if (!roleId) return;
+      // Empty body again: the row that appears carries the kind dropbox and the required
+      // checkbox, both of which write into it.
+      const claim = draftValueAt(`claims.${claimId}`);
+      const hasRoles = claim && typeof claim === 'object' && claim.roles
+        && typeof claim.roles === 'object' && !Array.isArray(claim.roles);
+      if (hasRoles) editShapeAtPath(`claims.${claimId}.roles.${roleId}`, {});
+      else editShapeAtPath(`claims.${claimId}.roles`, { [roleId]: {} });
       if (box) box.value = '';
     }
     else if (action === 'start-field-text' || action === 'start-field-list'
