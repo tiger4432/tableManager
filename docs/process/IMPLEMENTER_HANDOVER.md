@@ -1,143 +1,128 @@
-# Implementer handover — 2026-08-19, end of the ontology-screen day
+# Implementer handover — 2026-08-19 night, the ontology screen becomes a form
 
-Written by the outgoing implementer session (`00d8df53`) for its successor. The lead PM is
-the fork session "Ontology Manager"; it rules, you build. The owner writes in Korean.
+Rewritten by the implementer session working through the night (session id
+`local_769337c4-2976-4adf-98cd-c4f53a621908`; its transcript file is `64851641-….jsonl` —
+the two differ, which matters if anyone greps transcripts). The lead PM is the fork session
+"Ontology Manager". It rules, you build. The owner writes in Korean.
 
 ---
 
 ## 1. Where the tree stands RIGHT NOW
 
-`main` = `65e9823`, pushed. **Plus uncommitted work in flight — read §2 before touching it.**
+`main` = `804b51f`, pushed. The working tree carries only things you must NOT stage:
 
 ```
- M server/ledger/config_explorer_service.py     <- in flight (delete confirm)
- M client2/src/ontology_explorer.js             <- in flight (delete confirm)
- M server/dt_map_derivation.py                  <- NOT MINE, 0-line diff (CRLF noise)
+ M server/dt_map_derivation.py                  <- NOT MINE, 0-line diff (CRLF)
  M server/map_alignment.py                      <- same
  M server/map_overlay.py                        <- same
  M server/scripts/seed_dt_index_walk.py         <- same
-?? task/ontology_screen_walk_report.md          <- the day's evidence, fork-owned, DO NOT COMMIT
-?? task/ontology_picker_spec.md                 <- the fork's, not mine
+ M server/config/ontology/ledger_config.json    <- THE OWNER'S. They hand-edit it.
+?? task/ontology_screen_walk_report.md          <- the fork's, do not commit
+?? task/implementer_pickup_report.md            <- mine, the night's measurements
 ```
 
-Today's commits, oldest first: `9485095` (the walk works twice) · `4487ce0` (the screen
-names what you are editing) · `ade81ef` `2386296` `9e4b471` `6346152` `427b19b` `9ceb8ca`
-`34340a2` (partial loading, six steps) · `7086056` (typing is not discarded; saving keeps
-the editor) · `afe8249` (delete button) · `65e9823` (a clean draft stops following the
-selection).
+Tonight's commits, oldest first: `deda789` (the delete confirm asks the resolver) ·
+`1ca9e58` (a new name lower-cases, visibly) · `73e3b12` (reference fields get a datalist) ·
+`b936f38` (unread declarations get suggestions) · `ee33670` (a no-match search still lets
+you create) · `28e2beb` (an unread declaration can be deleted) · `4ed14bc` (list fields
+become rows) · `efbcb22` (why the JSON editor stays) · `e1b28a2` (rows move INTO the editor,
+closed list becomes a dropbox) · `55e796f` (a pack becomes a form) · `9d1121c` (a finished
+claim folds) · `e484f0d` (fields the plan has no row for) · `ef0cc97` (the form follows the
+draft) · `77b052c` (missing fields become starting points) · `5d3c366` (create is 와꾸 짜기) ·
+`76b7faf` (a claim can be named) · `77bf35a` (naming a claim opens its form) · `b7c5ce8`
+(a dev-server entry) · `804b51f` (the empty form goes all the way down).
 
-**doc-keeper counter is at 49 commits.** Not run today.
+**doc-keeper counter is at 77.** Not run.
 
-## 2. The work you are holding, mid-air
+## 2. The destination, and what is still short of it
 
-**Task: the delete confirm lied.** It printed 「영향 없음」 while deleting a predicate was
-about to make a pack unread. The cause is not a bug in `deletion_plan` — it is misuse:
-`removed`/`released`/`blocked` are the OLD model's vocabulary, from when deleting a
-referenced declaration was *refused*. `released` means "authored in another file and merely
-stops being referenced". It never answered 「무엇이 안 읽히게 되나」.
+The fork's standing bar, which replaced "is this a reasonable next increment":
 
-**Fork's ruling:** do not touch `deletion_plan`. Make the confirm ask the **resolver** —
-drop the target from an in-memory copy, run the same fixpoint the loader runs, report what
-falls. Preview and outcome then come out of one machine and cannot disagree.
+> The screen shows WHAT to enter and HOW. Nobody memorises the structure.
 
-**What I already wrote (uncommitted):** `deletion_preview` in `config_explorer_service.py`
-adds `unread_after`, and the client confirm reads it instead of `released`.
+**Reached.** A pack can be created, named, given claims, roles and an emit — three levels
+deep, with no save in between and no shape questions asked. Closed lists are dropboxes,
+names are datalists that never constrain, and unread declarations are editable and
+deletable.
 
-**🔴 IT IS RED. One test, and the failure is real, not cosmetic:**
+**Still short, and for one reason.** The empty-form rule is general, but only the pack path
+(claims → roles → emit → object) is wired, through `client2/src/ontology_shapes.js`.
+Mappers, profiles, preparers and sources get their top-level fields (`e484f0d`) and their
+starter rows (`77b052c`), but no nested empty form. Extending the shape file to them is the
+open question; it needs the fork.
 
-```
-tests/test_ontology_config_explorer.py::test_deletion_preview_endpoint_names_the_casualties_and_shows_the_blockage
-FileNotFoundError: ...\test_deletion_preview_endpoint0\absent\ledger_config.json
-```
+**So the raw JSON editor stays.** `efbcb22` records why, next to `renderRaw`, with numbers.
+Re-measure before removing it — do not delete it on the strength of the instruction alone.
 
-My code reads the config file unconditionally to build the copy. That fixture points at a
-config root with **no file** — a state the preview is expected to survive. Fix it by asking
-the already-loaded document instead of re-reading the path, or by answering with an empty
-`unread_after` when there is nothing to read. 53 of 54 pass.
+## 3. Things that cost real time tonight
 
-**Counted before changing anything, as the fork required:** production consumers of
-`deletion_plan` = **1** (`config_explorer_service.deletion_preview`), reached by **1** route
-(`/deletion-preview`), read by **1** client site (the confirm). Every other hit is a
-comment. So changing what the confirm reads breaks nothing else.
+* **Built is not loaded, and the SERVER half is the sneaky one.** A delete silently did
+  nothing because the client was new and the backend was running pre-fix code. The fork
+  later confirmed it on the owner's box: the server booted at 21:41, the fix landed at
+  21:59, and **19 server commits** had landed since it started. `.claude/launch.json` now
+  runs the vite dev server (5173), which removes the client half entirely — it serves `src/`
+  directly. The client already calls `127.0.0.1:8080` on that port and the backend already
+  allows it in CORS, so no config change was needed.
+* **"Whose rows are these?" is the question I keep forgetting.** The form filled with
+  `sources.dt_job` while its own heading named a new pack, because `/view` PICKS a selection
+  when the caller names none, and a create draft names none. I had SEEN it half an hour
+  earlier — "plan rows: 9, not this pack's" — and filed it under "empty body". Ask whose
+  rows rendered, not just whether rows rendered.
+* **In the file is not in the snapshot.** An empty declaration does not resolve, so it lands
+  unread, and asking `/view` for it by name answers `unknown_selection`. The comment warning
+  about this was already in `createDeclaration`; I replaced it and rediscovered the trap.
+* **The plan describes the FILE; the draft is ahead of it.** Anything drawn from the plan
+  needs a save to appear; anything drawn from the draft appears at once. That single fact
+  decides which half of this screen a feature belongs in.
+* **A fold predicate can call a brand-new thing "finished".** Twice: an empty claim owes
+  nothing, and a claim the plan has never seen makes "no row still owes anything" vacuously
+  true. The operator typed `hello` and the screen answered 「hello · 채워짐」. Both now ask
+  the draft.
+* **0 and "not allowed to look" render identically.** The explorer showed 「구성 요소 · 0개」
+  on the dev server; it was a 401, visible only in the network log.
 
-**Delete checks still not run: 3** (refresh + **server restart**) and **4** (re-declare the
-deleted thing → its referrers revive). Checks 1 and 2 passed, and 2 was the decision line:
-deleting something another declaration references is **not refused**; the referrer becomes
-`invalid`.
+## 4. The two halves of this screen, so you do not re-derive them
 
-## 3. What the screen does now, so you do not re-derive it
+**From the plan** (server, reads the file): field rows, candidates, refusals, and the
+`missing_field` starter rows. Needs a save to reflect anything typed.
 
-The owner's model, in their words: 「선언을 저장할때 json 형식만 맞으면 다 저장하고, 읽는쪽에서
-시스템에서 resolve되는거만 읽으면 안됨? 일단 와꾸 짜놓고 나중에 살 채우는 형식으로 일함 사람들은.
-안읽히는 엔티티, 팩 등등은 invalid 태그 붙이고」
+**From the draft** (client, reads `editorText`): entity keys, claim blocks, role rows, the
+emit form, and `$role` candidates. Appears immediately. `ontology_path.js` mirrors the
+server's `_split_path`/`_set_path` — 164 live paths compared, 89 of them bracketed, 0
+mismatches, and a naive dot-split fails 89 of the same fixture, so that zero discriminates.
 
-* **Buttons are CRUD only** — 생성 · 편집 · 저장 · 삭제. No Activate, no Discard, no review
-  step. **저장 IS the write to the config file** (save chains PUT + activate; no new
-  endpoint was added for it).
-* **Saving no longer requires the setup to compile.** Four gates were removed; each had
-  refused a state that is normal while building.
-* **Loading resolves declaration by declaration.** `resolve_declarations` in
-  `config_explorer.py`: validate, drop what is blamed, validate again, until **nothing
-  falls** — NOT until nothing is wrong. A config-level problem blames no declaration and a
-  `problems == 0` condition would never return. Propagation *is* that fixpoint; there is no
-  edge walk, and none should be added.
-* **Unread declarations stay on the list**, tagged `invalid`, with reasons under the row and
-  inside the editor. Their row opens the **editor** (`edit-unread`), not a selection.
-* **The list has rows that cannot be selected, and that is correct.** The list answers "what
-  is in the file"; selection answers "what was interpreted". Do NOT "tidy" this by putting
-  unread nodes into the index — the panels around a selection show interpreted facts, and an
-  unread declaration has none, so filling them means inventing facts.
-* **The compare-and-swap basis is the FILE's hash** (`document_hash`, canonical JSON), not
-  the compiled snapshot's. The compiled hash moves when an unrelated declaration stops
-  resolving, and is absent entirely while a setup is half-written.
-  `snapshot.snapshot_sha256` is untouched and still answers "did what runs change?".
+**Rules that held all night and should keep holding:** the screen offers and the person
+decides; the validator is the only judge; no closed list is copied into the UI
+(`closed_lists()` publishes them and its docstring is the rule); the UI asserts no type — it
+preserves the type already at a leaf; and a rendered control must never rewrite the file
+just by rendering, which is why every dropbox carries the current value even when it is not
+in the list.
 
-## 4. Traps that cost real time today
+## 5. How to walk it
 
-* **Built is not loaded.** After a rebuild the browser kept serving the previous bundle and
-  the measurement came back *identical to the unfixed screen* — I nearly reverted a correct
-  fix. Check `script[src]` on the live page against the build output **before** measuring.
-  Same for the server: a stale process held port 8099 and I measured old code.
-* **Fix one site, then sweep for its siblings.** Three times today: six copies of "no
-  selection means wrong", four copies of the snapshot-hash basis, two of the discarded
-  editor. The suite caught the second; nothing caught the first.
-* **A proxy one layer below the claim passes.** I asserted "the editor appeared" and never
-  asked "what does the screen say it is editing" — it said `lot@1` sixteen times while the
-  operator was editing `wafer@1`.
-* **Measure before building.** Two designs shrank to almost nothing this way: propagation is
-  a fixpoint over the existing validator, and "which declaration is invalid" falls out of
-  the error list that already exists.
+**Writes go to the isolated server, never the owner's config.** `walk_server.py` in the
+scratchpad serves `client2/dist` with the explorer router against `WALK_ROOT`; the token is
+`admin`, set with `localStorage.setItem('assy.adminToken','admin')`. **Restart it after any
+server-side change** — that is the trap above.
 
-## 5. How to walk the screen (you will need this)
+**Reads of the owner's real screen** go through the dev server: `preview_start` the
+`client2-dev` entry, then `http://localhost:5173/admin.html`. No build, so no bundle to
+compare. Do not create or delete declarations there.
 
-`%TEMP%\claude\...\scratchpad\walk_server.py` — a uvicorn on **8099** serving `client2/dist`
-with the explorer router against an **empty temp config root**, so the owner's live config
-is never touched. `WALK_ROOT=<path>` reuses a root, which is how the **server restart** check
-is done. The admin token is **`admin`** (the owner's own; they gave it and said to use it);
-set it with `localStorage.setItem('assy.adminToken','admin')` — the preview pane does not
-support `prompt()`.
+The preview pane does not composite: drive it with `element.click()` and the native value
+setter plus a bubbling `input` event. Do not loop clicks — it hangs the pane. Ask the API
+which field to open instead of clicking blindly.
 
-The pane does not composite, so synthetic mouse events and keystrokes do not land: drive it
-with `element.click()` and the native value setter plus a bubbling `input` event. The code
-under test is the shipped bundle; only the hand is different.
+## 6. Standing rules you will be judged against
 
-## 6. Next, in the fork's order
+`CLAUDE.md`'s gate, **as the owner corrected it tonight**: ①②③ are about the CODE. The
+destination is fixed and is the owner's; what you minimise is the EDIT. 「목표달성 못하면
+말짱꽝」 — an edit that does not arrive is not small, it is zero. Write the destination down
+before each round, compare against it, and say what is still missing **before** being asked.
 
-1. Finish the delete confirm (§2), then delete checks 3 and 4.
-2. **datalist round.** The spec is in `task/ontology_picker_spec.md`, sections 0-a/0-b/0-c —
-   read it first. Owner's ruling: **`datalist` on the input, not a `select`** —
-   「미묘한 오타로 같은 말이 갈라지는거 방지」. It must SUGGEST, never constrain: coining a new
-   name has to stay possible. The primitive already exists in `ledger_setup.js` and
-   `map_editor.js`, with a harness. Do not build a new one.
-3. Still deferred by ruling: distinguishing 「was reading, now is not」 from 「never
-   finished」. The risk is real — one typo now takes one source dark while everything else
-   keeps running.
-
-## 7. Standing rules you will be judged against
-
-CLAUDE.md's gate: ① minimal edit ② simplest logic ③ **never build what was not asked for**.
-Report in plain language, no codenames. `git add` AND `git commit` both take explicit paths —
-four foreign files are sitting dirty in this tree. Do not write
-`server/config/ontology/ledger_config.json`; the owner hand-edits it.
-`docs/process/PROJECT_STATUS.md` is the fork's. Report to the fork by **writing a file and
-sending one line** — messages arrive truncated.
+Report to the fork by message AND file — it does not watch files reliably, and messages
+arrive truncated, so put the ruling-relevant part first. **State which state you walked**
+(unsaved create / saved empty / unread / existing): the fork walked a different state than I
+reported once and we both lost a round. `git add` AND `git commit` both take explicit paths.
+Write commit messages to a file and use `-F`; backticks inside `-m` get shell-expanded and
+ate several identifiers out of `b936f38`'s body.
