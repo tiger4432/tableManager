@@ -116,7 +116,23 @@ def _declarations(base: type) -> dict[tuple[str, int], type]:
         if identity is None:
             continue
         existing = found.get(identity)
-        if existing is not None and existing is not implementation:
+        # 🔴 COMPARE WHERE IT CAME FROM, NOT THE OBJECT. `is not` was object identity, and a
+        # module imported a second time produces a SECOND class object for the same source
+        # -- same module, same qualname, different identity. Activation reloads the app, so
+        # the first activation made this fire on the class against ITSELF:
+        #
+        #     'lot-event-live-frame'@1 is declared by both
+        #       mappers.ledger_v2_lot_event_role_mapper.LiveLotEventSourcePreparer and
+        #       mappers.ledger_v2_lot_event_role_mapper.LiveLotEventSourcePreparer
+        #
+        # and it kept firing on every load afterwards, so the operator could not open the
+        # screen at all -- including to repair whatever he thought he had broken. The
+        # config was never damaged; the registry refused to build.
+        #
+        # The guard's real job is two DIFFERENT classes claiming one id. Same origin is the
+        # same declaration, re-imported.
+        origin = (implementation.__module__, implementation.__qualname__)
+        if existing is not None and (existing.__module__, existing.__qualname__) != origin:
             raise ImplementationDeclarationError(
                 f"{identity[0]!r}@{identity[1]} is declared by both "
                 f"{existing.__module__}.{existing.__qualname__} and "
