@@ -468,7 +468,15 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     if (decision === 'cancel') return;
     const preserveEditor = decision === 'keep' && state.dirty;
     const leavingCheckpoint = checkpoint(viaEdge);
-    const keptDraft = decision === 'keep' ? state.draft : null;
+    // 🔴 A CLEAN DRAFT DOES NOT FOLLOW YOU TO ANOTHER DECLARATION, and this is a defect
+    // I introduced: since saving keeps the editor open, a draft is now ALWAYS open, so
+    // carrying it here meant every other declaration rendered the read-only 「초안 대상은
+    // X로 고정」 notice and `초안 편집` never appeared -- no way to move the editor at all,
+    // with Discard removed by ruling.
+    //
+    // `keep` exists to protect UNSAVED typing. With nothing unsaved there is nothing to
+    // protect, and holding the record only blocks the screen.
+    const keptDraft = decision === 'keep' && state.dirty ? state.draft : null;
     const leftDraftContext = Boolean(state.draft);
     if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;
     const route = routeFor(key, viaEdge, direct, pathId);
