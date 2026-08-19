@@ -45,6 +45,18 @@ tab : 839164602   ·   http://localhost:8080/admin.html#ontology → "Ontology E
 2. **서버 프로세스가 그 커밋 이후에 떴는가.** `Get-NetTCPConnection -LocalPort 8080` → `StartTime`.
    2026-08-19에 이 둘로 네 번 헛돌았다
 
+🔴 **그리고 이건 «가끔»이 아니라 «항상»이다 (2026-08-20 실측).** 실행 명령을 읽어 보니
+`python -m uvicorn main:app --host "" --port 8080` — **`--reload`가 없다.** 즉 파이썬을 고치면
+**무조건** 재시작 전까지 안 들어간다. 「이번엔 괜찮겠지」가 성립하는 경우가 없다.
+
+```powershell
+(Get-CimInstance Win32_Process -Filter "ProcessId = <pid>").CommandLine
+```
+
+⚠️ **`/admin/reload-configs`로는 안 된다.** 그건 table_config·동적 매퍼 모듈·이름 붙은 캐시
+몇 개를 비운다. **프로세스 시작 시점에 없던 «함수»는 캐시를 비운다고 생기지 않는다.**
+5173 개발 서버도 구제해 주지 않는다 — 클라만 최신이고 API는 같은 낡은 프로세스다.
+
 **규율:** 구현자가 「걸었다」고 하면 **같은 걸음을 내가 다시 걷고** 나서 소유자에게 올린다.
 오늘 결함 둘이 보고서가 아니라 화면에서 나왔다.
 
