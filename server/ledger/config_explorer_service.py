@@ -110,6 +110,31 @@ class OntologyExplorerService:
             "config_level": config_level,
         }
 
+    def _knocked_out_reasons(self, key: str, record: Mapping[str, Any]) -> list[dict[str, Any]]:
+        """Say what actually happened to a declaration that was dropped for someone else.
+
+        The blamed id is only ever taken from `self._invalid`, so this can name something
+        that is genuinely unread and can never invent a name. When nothing matches, the
+        sentence stays unnamed rather than guessing -- an unnamed cause is a smaller
+        failure than a wrong one.
+        """
+        dropped_first = [
+            other.partition("|")[2] for other, entry in self._invalid.items()
+            if other != key and entry["round"] < record["round"]
+        ]
+        out = []
+        for reason in record["reasons"]:
+            culprit = next(
+                (name for name in dropped_first if name in reason.get("message", "")
+                 or name in reason.get("path", "")), None)
+            out.append({
+                "code": "blocked_by_unread_declaration",
+                "path": reason["path"],
+                "message": (f"`{culprit}`이(가) 아직 안 읽혀서 함께 보류됨"
+                            if culprit else "참조하는 선언이 아직 안 읽혀서 함께 보류됨"),
+            })
+        return out
+
     def active(self, *, force: bool = False) -> tuple[Any, ExplorerIndex, str]:
         with self._lock:
             stamp = self._file_stamp()
@@ -231,8 +256,33 @@ class OntologyExplorerService:
         payload["active_snapshot"] = {
             "snapshot_hash": active_index.snapshot_hash,
             "compiled_at": compiled_at,
-            "valid": True,
+            "valid": not self._invalid and not self._config_level,
         }
+        # 🔴 ONE TAG, TWO SENTENCES -- AND THE SECOND ONE IS REWRITTEN.
+        #
+        # A declaration blamed in round 1 is at fault itself, and its own refusal text is
+        # the right thing to read. A declaration dropped in a later round was knocked out
+        # because something it names was dropped first -- and its raw text says "unknown
+        # pack 'dt-job@1'" about a pack that is sitting right there on the screen, because
+        # we removed it from a WORKING COPY. Showing that would send the operator hunting
+        # for something that is not missing. The path is kept (it names the right field);
+        # the sentence is replaced.
+        #
+        # Not a second state, not a second badge: 「빨강이 번지면 읽을 수가 없습니다」.
+        payload["invalid"] = {
+            key: {
+                "blames_itself": record["round"] == 1,
+                "reasons": (
+                    record["reasons"] if record["round"] == 1
+                    else self._knocked_out_reasons(key, record)),
+            }
+            for key, record in sorted(self._invalid.items())
+        }
+        # Problems no declaration can be blamed for -- a missing physical catalog is the
+        # live one. They belong ABOVE the tree, not inside it: one of these can stop
+        # everything from loading, and hiding it among per-declaration tags sends a person
+        # to fix declarations while the cause sits in another layer.
+        payload["config_problems"] = list(self._config_level)
         payload["view_context"] = context
         payload["draft"] = draft
         if draft is not None:
