@@ -206,6 +206,36 @@ everything absent.
 
 ---
 
+## Rule 7 — nothing renders as nothing, and uniform renders once
+
+The screen-cleanup work was four items on my list. It is one rule, and stating it that way is the
+owner's standing instruction: **「이렇게 일반화 해서 일하란 말이야」**.
+
+> **A section with nothing to say says nothing. A state every member shares is said once, at the
+> group — never on each member.**
+
+Everything I had listed separately falls out of it, and the counts are from the live screen:
+
+| what I saw | which half of the rule |
+|---|---|
+| `None defined` × 4 on a new pack | absence drawn as four things |
+| `{}` shown as content | absence drawn as content |
+| `Complete` × 6 across the step bar | uniform state repeated |
+| `active · valid` × 6 in Reference Flow | uniform state repeated |
+| the definition tab's JSON **and** the raw JSON tab | the same thing drawn twice |
+| `Revision 0`, a 64-char snapshot hash, at the top of an editor | machine values where a person looks first |
+
+So Reference Flow is not a separate task either: 「a set, not an enumeration」 is this rule applied
+to a list whose members are all `active · valid` — say it once, show how many were folded, and
+name only the exceptional ones.
+
+🔴 **The counting matters more than the tidying.** Eleven of the 19th's failures were one disease
+wearing eleven faces — reading absence as breakage or as progress — and each instance was correct
+where it was written, which is why review never caught any of them. Fixing four cleanup items
+leaves the fifth. Fixing the rule ends the class.
+
+---
+
 ## Order
 
 1. **The role bug first** — it is five minutes and nothing can be walked until it is gone.
