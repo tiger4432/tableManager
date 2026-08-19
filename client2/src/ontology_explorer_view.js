@@ -1410,7 +1410,6 @@ export function renderOntologyExplorer(root, state) {
   // mockup: 「1b의 구조만 가져와」 — 1b makes the six layers the primary axis, so the screen
   // reads 층 → 선언 → 폼 left to right instead of asking the operator to look up at a bar
   // and back down. The bar's data is unchanged; only where it sits is.
-  main.append(renderStepBar(state));
   main.append(renderTree(state));
   const workspace = h('main', 'oe-workspace');
   // Always first, always one line: "지금 어느 걸음인가" is the one element the owner
@@ -1452,6 +1451,12 @@ export function renderOntologyExplorer(root, state) {
     workspace.append(h('div', 'oe-empty', state.loading ? '불러오는 중…' : '표시할 정의가 없습니다.'));
   }
   main.append(workspace);
+  // 🔴 THE SPINE IS A BAND ABOVE THE BODY, NOT A COLUMN INSIDE IT. It was appended into
+  // `.oe-main` for 1b, where the layers were the left column; 6b makes them a horizontal
+  // band and the CSS was moved to match, but this line was not -- so the band was laid out
+  // as `repeat(6, 1fr)` inside a 240px grid slot, 40px per layer, and every layer label
+  // broke one character per line. Two arrangements from two mockups, meeting in one file.
+  windowEl.append(renderStepBar(state));
   windowEl.append(main);
   replace(root, windowEl);
 }
