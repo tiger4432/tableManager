@@ -4,7 +4,7 @@ import {
   reduceFieldFold, reduceNewDeclaration, restoreDirtyEditorCheckpoint,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
-import { splitBundlePath, setAtPath } from './ontology_path.js';
+import { splitBundlePath, setAtPath, getAtPath } from './ontology_path.js';
 
 let controller = null;
 
@@ -140,6 +140,31 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     const next = setAtPath(raw, steps.slice(2), value);
     if (next === null) return;
     dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
+  };
+
+  // Read the leaf the writer would write, under the SAME guards -- section, id and
+  // resolvability. Two different notions of "is this field mine" would eventually disagree.
+  const draftValueAt = (path) => {
+    const draft = state.draft;
+    if (!draft || !state.editorText) return undefined;
+    const kinds = state.authoringSchema?.authorable_kinds || [];
+    const section = kinds.find((row) => row.id === draft.target_kind)?.section;
+    if (!section) return undefined;
+    const steps = splitBundlePath(path);
+    if (steps[0] !== section || steps[1] !== draft.target_id) return undefined;
+    try {
+      return getAtPath(JSON.parse(state.editorText), steps.slice(2));
+    } catch {
+      return undefined;
+    }
+  };
+
+  // One element of a list field. The whole list is rewritten through `editFieldAtPath`, so
+  // there is still exactly one writer and one save path.
+  const editFieldList = (path, mutate) => {
+    const current = draftValueAt(path);
+    if (!Array.isArray(current)) return;
+    editFieldAtPath(path, mutate([...current]));
   };
 
   // Write the smallest config that validates, so a setup can begin from nothing.
@@ -586,6 +611,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'bootstrap-config') {
       await bootstrapConfig();
     }
+    else if (action === 'add-field-item') {
+      editFieldList(target.dataset.value, (items) => [...items, '']);
+    }
+    else if (action === 'remove-field-item') {
+      const at = Number(target.dataset.index);
+      editFieldList(target.dataset.value, (items) => items.filter((_, i) => i !== at));
+    }
     else if (action === 'add-entity-key') {
       editEntityKeys((keys) => [...keys, '']);
     }
@@ -731,6 +763,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   });
 
   root.addEventListener('input', (event) => {
+    if (event.target.dataset.action === 'edit-field-item') {
+      const at = Number(event.target.dataset.index);
+      const typed = event.target.value;
+      editFieldList(event.target.dataset.value,
+                    (items) => items.map((item, i) => (i === at ? typed : item)));
+      return;
+    }
     if (event.target.dataset.action === 'edit-field') {
       // Typing is never refused: whatever is in the box goes into the draft, list or no
       // list. The datalist offers the declared names; coining a new one stays possible,

@@ -676,17 +676,6 @@ function renderAuthoringRow(row, expanded = [], editable = null) {
     // is a control that refuses, which this file already rules is worse than no control.
     if (editable) {
       const listId = `oe-dl-${row.path.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-      const input = h('input', 'oe-field-input');
-      input.type = 'text';
-      // 🔴 THE DRAFT'S VALUE, NOT THE PLAN'S. `row.value` is what the plan compiled from
-      // the file, so it does not move while a draft is unsaved -- binding the input to it
-      // made every keystroke snap back to the saved value on the next render, which reads
-      // exactly like the screen throwing typing away (`7086056`). Walked and caught here.
-      input.value = editable.value;
-      input.dataset.action = 'edit-field';
-      input.dataset.value = row.path;
-      input.setAttribute('list', listId);
-      input.setAttribute('aria-label', row.label);
       const list = h('datalist');
       list.id = listId;
       for (const item of row.candidates) {
@@ -694,7 +683,37 @@ function renderAuthoringRow(row, expanded = [], editable = null) {
         option.value = typeof item === 'string' ? item : JSON.stringify(item);
         list.append(option);
       }
-      box.append(input, list);
+      const nameInput = (value, action, index) => {
+        const input = h('input', 'oe-field-input');
+        input.type = 'text';
+        // 🔴 THE DRAFT'S VALUE, NOT THE PLAN'S. `row.value` is what the plan compiled from
+        // the file, so it does not move while a draft is unsaved -- binding the input to
+        // it made every keystroke snap back to the saved value on the next render, which
+        // reads exactly like the screen throwing typing away (`7086056`). Caught by walking.
+        input.value = value;
+        input.dataset.action = action;
+        input.dataset.value = row.path;
+        if (index !== undefined) input.dataset.index = String(index);
+        input.setAttribute('list', listId);
+        input.setAttribute('aria-label', row.label);
+        return input;
+      };
+      if (editable.kind === 'list') {
+        // The entity-keys shape, generalised: the rows edit the same draft buffer through
+        // the same path tools, so save, dirty-tracking and the revision guard are untouched.
+        editable.value.forEach((item, index) => {
+          const line = h('div', 'oe-field-row');
+          const drop = button('x', 'remove-field-item', row.path, 'oe-field-row-remove');
+          drop.dataset.index = String(index);
+          line.append(nameInput(item, 'edit-field-item', index), drop);
+          box.append(line);
+        });
+        if (!editable.value.length) box.append(h('div', 'oe-key-none', 'None defined'));
+        box.append(button('+ Add', 'add-field-item', row.path, 'oe-field-row-add'));
+      } else {
+        box.append(nameInput(editable.value, 'edit-field'));
+      }
+      box.append(list);
     } else {
       for (const item of row.candidates.slice(0, 24)) {
         box.append(h('i', 'oe-chip', typeof item === 'string' ? item : JSON.stringify(item)));
@@ -793,7 +812,14 @@ function renderAuthoring(state) {
   const editableFor = (row) => {
     if (!prefix || !draftRaw || !row.path.startsWith(prefix)) return null;
     const current = getAtPath(draftRaw, splitBundlePath(row.path).slice(2));
-    return typeof current === 'string' ? { value: current } : null;
+    if (typeof current === 'string') return { kind: 'string', value: current };
+    // A list of names is the entity-keys shape: one input per element, each offering the
+    // same candidates. Only when every element is a string -- a list holding objects is
+    // not a row of name boxes, and pretending otherwise would flatten what it holds.
+    if (Array.isArray(current) && current.every((item) => typeof item === 'string')) {
+      return { kind: 'list', value: current };
+    }
+    return null;
   };
   const buckets = [
     ['missing', '빠짐'], ['unanswered', '미답'],
