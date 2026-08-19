@@ -15,6 +15,7 @@ from .config_authoring import authoring_plan, closed_lists
 from .config_drafts import OntologyDraftStore
 from .config_explorer import (
     ConfigExplorerError,
+    DeletionPlan,
     ExplorerIndex,
     authorable_bundle_path,
     build_explorer_index,
@@ -388,7 +389,24 @@ class OntologyExplorerService:
                 "stale_context", "context_token",
                 "requested deletion context no longer matches the active snapshot",
             )
-        payload = deletion_plan(index, targets).to_mapping()
+        # 🔴 A TARGET THAT IS NOT IN THE INDEX STILL GETS A PREVIEW. `deletion_plan` walks
+        # the reference graph, so it can only speak about declarations that resolved -- and
+        # asking it about an unread one raised `unknown_selection`, which meant the confirm
+        # blew up before the delete was even attempted. The reachability buckets are simply
+        # empty for something that is not in the graph: it holds nothing up, because it is
+        # not holding anything at all.
+        #
+        # `unread_after` below is unaffected -- it drops the targets from the DOCUMENT and
+        # re-runs the resolver, which never needed the index.
+        # `or not targets` is load-bearing: asking to delete NOTHING must still refuse
+        # (`empty_deletion`), and without it the empty-plan branch below turned that 400
+        # into a 200 that reported no casualties. "Nothing was selected" and "what was
+        # selected is unread" are different questions and only the second one has an answer.
+        known = [key for key in targets if key in index.nodes]
+        payload = (
+            deletion_plan(index, known).to_mapping() if known or not targets
+            else DeletionPlan(targets=tuple(targets), removed=(), released=(),
+                              retained=(), blocked=()).to_mapping())
         # 🔴 THE CONFIRM ASKS THE RESOLVER, NOT `released`.
         #
         # `removed`/`released`/`blocked` are the OLD model's vocabulary, from when deleting

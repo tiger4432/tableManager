@@ -32,6 +32,7 @@ from .config_explorer import (
 )
 from .implementations import trusted_implementations
 from .setup_bundle import (
+    CONFIG_FILENAME,
     LedgerSetupValidationError,
     require_ready_bundle,
     validate_bundle,
@@ -485,10 +486,31 @@ class OntologyDraftStore:
                     "stale_base_snapshot", "base_snapshot_hash",
                     "active snapshot changed; delete refused against a stale view",
                 )
-            node = active_index.node(target_key)
-            config_path = Path(active_setup.config_root) / node.config_file
+            # 🔴 AN UNREAD DECLARATION CAN BE DELETED TOO, AND THE INDEX IS ONLY THE
+            # ADDRESS BOOK. A declaration that does not resolve is not in the snapshot, so
+            # `node()` refuses -- and the operator was left with something they could see,
+            # could not repair (the editor changes a declaration's BODY, not its key) and
+            # could not remove. A live entity typed as `lot` instead of `lot@1` was exactly
+            # that dead end.
+            #
+            # Nothing about the write needs the index: it removes one leaf from one file,
+            # and `authorable_bundle_path` maps kind + id to that leaf without a node. It
+            # exists for precisely this shape -- its own comment says the authoring path
+            # has to go "from a kind and a not-yet-used id to the place it will live, and
+            # there is no node to ask". Same question here, different reason for no node.
+            #
+            # `_delete_path` still raises `declaration_absent` if nothing is at the leaf, so
+            # a wrong address refuses rather than silently succeeding.
+            try:
+                node = active_index.node(target_key)
+                config_file, bundle_path = node.config_file, node.bundle_path
+            except ConfigExplorerError:
+                kind, _, canonical_id = target_key.partition("|")
+                config_file = CONFIG_FILENAME
+                bundle_path = authorable_bundle_path(kind, canonical_id)
+            config_path = Path(active_setup.config_root) / config_file
             backup = self._activate_file(
-                config_path, [(node.bundle_path, _Remove())])
+                config_path, [(bundle_path, _Remove())])
             reload_callback()
             return {
                 "deleted": target_key,

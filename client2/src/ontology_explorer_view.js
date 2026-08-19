@@ -393,12 +393,17 @@ function renderRaw(state) {
     // name for what Save already does, and the second was a control nobody asked for.
     const controls = h('div', 'oe-editor-controls');
     controls.append(button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary'));
-    // 🔴 DELETE ONLY WHERE THE SERVER CAN FIND IT. The write path resolves the target
-    // through the active index, so a declaration that is not in the index -- a create
-    // draft, or one that did not resolve -- has nothing to delete by that route. Showing
-    // the button there would be a control that refuses, which is worse than no control.
-    // Deleting an unread declaration is a real need and is NOT built here; flagged.
-    if (!state.draft.creates_declaration && state.selection) {
+    // 🔴 DELETE WHERE THE FILE HOLDS IT, WHICH IS NOT THE SAME AS "IN THE INDEX".
+    // This used to require a selection, so an UNREAD declaration -- visible, in the file,
+    // not in the snapshot -- had no delete button. That was a dead end with no other exit:
+    // the editor changes a declaration's BODY, so a name typed wrong (`lot` for `lot@1`)
+    // could not be repaired either. The owner hit exactly that tonight.
+    //
+    // The server no longer needs the index for the address; `state.invalid` is the screen's
+    // own record of "in the file, did not resolve", the same map the unread rows render
+    // from. A create draft still gets no button: nothing is written for it yet.
+    if ((!state.draft.creates_declaration && state.selection)
+        || state.invalid?.[state.draft.target_key]) {
       controls.append(button('Delete', 'delete-declaration', state.draft.target_key,
                              'oe-editor-action oe-editor-action-danger'));
     }
