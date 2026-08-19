@@ -300,6 +300,14 @@ export function reduceFieldFold(state, action) {
 // 🔴 IT NEVER MERGES `newDeclaration`. The name being typed is not declared yet. Offering
 // it would let a profile point at a pack the server has never accepted, and a create that
 // was REFUSED would go on showing as though it existed.
+// 🔴 IT ANSWERS FOR THE SEVEN SECTIONS AND NOTHING ELSE, and the picker round will hit
+// that. Derived from the live config on 2026-08-19: every reference edge carries
+// `expected_kind`, so `AUTHORABLE_SECTIONS[expected_kind]` gives the section a picker
+// draws from -- entities, vocabulary, packs, profiles, sources, mappers, source_preparers.
+// Four expected kinds have no section of their own: `claim`, `mapping`, `binding` (they
+// live INSIDE an owner -- a mapper's `emits` picks claims from across all packs) and
+// `table` (physical, read-only here, its own column universes). Those need a second
+// source that does not exist yet. This is a gap in what is here, not a defect in it.
 export function sectionMembers(state, section) {
   const all = state.authoring?.sections || {};
   if (section === undefined) return all;
