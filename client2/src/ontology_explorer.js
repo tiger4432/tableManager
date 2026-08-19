@@ -150,12 +150,11 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     const relative = steps.slice(2);
     for (let depth = 1; depth < relative.length; depth += 1) {
       const branch = relative.slice(0, depth);
-      if (branch.some((step) => typeof step === 'number')) break;
-      if (getAtPath(raw, branch) === undefined) {
-        const built = setAtPath(raw, branch, {});
-        if (built === null) break;
-        raw = built;
-      }
+      if (getAtPath(raw, branch) !== undefined) continue;
+      if (typeof branch[branch.length - 1] === 'number') break;
+      const built = setAtPath(raw, branch, {});
+      if (built === null) break;
+      raw = built;
     }
     const next = setAtPath(raw, relative, value);
     if (next === null) return;
@@ -205,14 +204,19 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     // on a claim whose `emit` does not exist yet, and a field that silently does nothing is
     // the refusing control this screen keeps removing. The shape said those objects exist,
     // so writing through it creates them -- and only plain objects, never a guessed value.
+    // 🔴 A LIST SLOT IS NEVER INVENTED, BUT WHAT LIVES INSIDE ONE STILL GETS BUILT. Refusing
+    // the whole path as soon as it held a number was too wide: `mappings[0].bind` sits under
+    // an element that EXISTS, and naming a binding there wrote nothing at all -- the button
+    // was silent, which is the failure this screen keeps closing. So the refusal is narrowed
+    // to what it always meant: a missing INDEX is a member nobody added, and inventing it
+    // would put an empty slot in somebody's list.
     for (let depth = 1; depth < steps.length; depth += 1) {
       const branch = steps.slice(0, depth);
-      if (branch.some((step) => typeof step === 'number')) break;
-      if (getAtPath(raw, branch) === undefined) {
-        const built = setAtPath(raw, branch, {});
-        if (built === null) break;
-        raw = built;
-      }
+      if (getAtPath(raw, branch) !== undefined) continue;
+      if (typeof branch[branch.length - 1] === 'number') break;
+      const built = setAtPath(raw, branch, {});
+      if (built === null) break;
+      raw = built;
     }
     // 🔴 THE UI NEVER ASSERTS A TYPE. The plan carries none -- measured, a field record has
     // no type key and `implementation_version` is not a plan row at all -- so a table here
