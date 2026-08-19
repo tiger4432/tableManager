@@ -241,7 +241,11 @@ function renderUsage(state) {
 }
 
 function renderRaw(state) {
-  if (state.draft && state.selection.key === state.draft.target_key) {
+  // 🔴 A CREATE DRAFT HAS NO SELECTION TO MATCH. Its target is not in the snapshot -- that
+  // is what create means -- so `state.selection` is null and this guard hid the draft the
+  // operator had just made. He saw the declaration accepted and then could not find it.
+  if (state.draft
+      && (!state.selection || state.selection.key === state.draft.target_key)) {
     const editor = h('div', 'oe-editor');
     const context = h('div', 'oe-editor-context');
     context.append(keyValue('초안 상태', state.draft.lifecycle_status));
@@ -725,6 +729,9 @@ export function renderOntologyExplorer(root, state) {
     const detail = h('section', 'oe-detail-grid');
     detail.append(renderInspector(state), renderIntegrity(state));
     workspace.append(detail);
+  } else if (state.draft) {
+    // An open draft is the thing being worked on; show it even though nothing is selected.
+    workspace.append(renderRaw(state));
   } else if (state.authoring) {
     workspace.append(renderAuthoring(state));
   } else {
