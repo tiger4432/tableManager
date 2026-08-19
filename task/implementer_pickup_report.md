@@ -1,60 +1,59 @@
-# Implementer → Lead (fork). The gap you named is closed.
+# Implementer → Lead (fork). Unstuck, and here is an independent check of your night.
 
-Tree: `main` = `037947d`, pushed.
+My session was blocked on a single tool call from 01:22 and read nothing until now. **I have
+executed none of the four queued instructions** — you said they were already done, and the
+tree agrees. Nothing below re-does or reverts your work.
 
-## ① The one open item from your walk — the cached skeleton — is fixed
+Tree: `main` = `127c904`. Working tree clean apart from the owner's own four CRLF-only server
+files and this report.
 
-`server/main.py`, inside `reload_local_process_cache()`, beside the four ledger caches
-already dropped there for the same reason:
+## What I verified — you implemented alone tonight, so this is a second pair of eyes
 
-```python
-    try:
-        from ledger import config_authoring as ledger_authoring
-        ledger_authoring.skeleton.cache_clear()
-    except Exception:
-        pass
-```
+**① My open change was landed by you, verbatim.** `8c6fc48`. `form-clear` was a button the
+view drew and the controller never handled — dead on every optional field that held a value.
+Both sites are in HEAD (`ontology_explorer.js:792,804`) and the working tree is clean.
 
-`skeleton()` is an `lru_cache`, so the clear already existed — what was missing was the hook
-calling it. One line, no new symbol, no new endpoint.
-
-**Measured rather than asserted**, because a cache fix that does nothing looks exactly like a
-cache fix that works:
+**② dist is a true build of src — the owner wakes up to the night's work, not to yesterday's.**
+This is the one I most expected to be wrong, because four client fixes (`eac382d`, `114ceac`,
+`e8a986e`, `3b3613b`) landed after the build commit `51f790b`. They each rebuilt. I then ran
+the build again from a clean tree:
 
 ```
-sections the served skeleton carries, cold : 9
-after editing the file, WITHOUT the clear  : 9   <- the stale read, reproduced
-after the clear                            : 10
-the new section is served                  : True
+changes to client2/dist after a fresh build : none
 ```
 
-The file was restored byte-identical afterwards. `tests/test_ledger_skeleton.py` still 2
-passed; `main.py` compiles.
+A committed build can be a stale build; this one is not.
 
-**This needs a restart to take effect** — it is a Python change, same as everything else
-tonight. After that restart, no further restart is needed to edit the skeleton.
+**③ Suites over the night's surface: 58 passed, 3 failed — and the 3 are not ours.**
 
-## ② One thing I did NOT build, and want your ruling on
+```
+tests/test_ledger_skeleton.py          green   (the drift audit, both directions still 0)
+tests/test_ontology_config_explorer.py green
+tests/test_ledger_explorer.py          3 failed
+```
 
-That `except Exception: pass` is the neighbours' convention, so I followed it (minimal edit).
-It also means that if `skeleton` is ever renamed, this line dies **silently** and we are back
-to "edit the document, nothing happens" with nothing red anywhere. That is the shape of
-`a-guard-goes-wrong-the-day-it-becomes-reachable`.
+The three fail inside `server/config/sample/ledger_config.json.sample` —
+`profiles["dt-job@1"].mappings[0].use: pack 'dt-job@1' is not declared in packs`. Two
+independent facts say it predates us: the sample has been in that state since `ac0d8c8`
+(08-19 09:07, before the night started), and **no commit tonight touched `ledger/config.py`,
+`ledger/source_profile.py`, or the sample** — I listed the night's full file set to check
+rather than reasoning about it.
 
-The cheap cover is one assertion in `test_ledger_skeleton.py` — that `skeleton.cache_clear`
-exists and that `reload_local_process_cache`'s source names it. **I did not write it**, per
-「지시받지 않은 것은 만들지 않는다」. Say the word and it is two minutes.
+**I did not fix them.** It is a real red though, and it sits in the suite that covers this
+very screen, so the next genuine regression here arrives into a suite that is already red.
+Your call whether that becomes a task.
 
-## ③ Still waiting on you, from before
+## Needs a ruling, so I am not touching it
 
-- **The role-survival regression harness.** No controller-level harness exists; tonight's
-  evidence is the browser walk, which does not run again by itself. Build it, or move on?
-- **Next step.** Your board lists three: 화면 정리 (Rule 7, half landed) · Reference Flow ·
-  원본 JSON 제거 (last). I will take whichever you name; my own reading is that 화면 정리 is
-  the one the owner sees, and 원본 JSON 제거 is gated on the "JSON 없이 못 하는 것" count
-  reaching 0, which has not been recounted since the form landed.
+- **Rule 7 screen tidy** — CSS is forbidden until the owner's mockup arrives. Your 03:40
+  comparison table is the right shape to lay it over; I have not touched the screen.
+- **Reference Flow as a set** — you already wrote that this cannot be CSS, and depends on
+  which question the panel answers. Owner.
+- **The silent-guard cover.** My cache line in `reload_local_process_cache()` uses the
+  neighbours' `except Exception: pass`, so renaming `skeleton` kills it with nothing red. One
+  assertion in `test_ledger_skeleton.py` covers it. Still unwritten, per 「지시받지 않은 것은
+  만들지 않는다」.
 
-## Housekeeping
+## Ready for the next one
 
-doc-keeper counter is at 94 commits since the last documentation cycle. Not urgent, and it is
-a quiet job I can run in a lull — but I am not starting it mid-round without you saying so.
+Nothing on my side is half-finished. Name the step.
