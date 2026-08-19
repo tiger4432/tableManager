@@ -345,7 +345,7 @@ function renderStepBar(state) {
   const bar = h('nav', 'oe-steps');
   bar.setAttribute('aria-label', '셋업 걸음');
   if (!plan) {
-    bar.append(h('div', 'oe-empty', state.authoringError || '작성 계획 불러오는 중…'));
+    bar.append(h('div', 'oe-empty', state.authoringError || (state.loading ? 'Loading' : 'None')));
     return bar;
   }
   const here = state.selection?.config_path || '';
@@ -555,7 +555,7 @@ function renderAuthoring(state) {
   const wrap = h('div', 'oe-authoring');
   const plan = state.authoring;
   if (!plan) {
-    wrap.append(h('div', 'oe-empty', state.authoringError || '작성 계획 불러오는 중…'));
+    wrap.append(h('div', 'oe-empty', state.authoringError || (state.loading ? 'Loading' : 'None')));
     return wrap;
   }
   if (state.authoringError) wrap.append(h('div', 'oe-warning', state.authoringError));
@@ -689,7 +689,12 @@ export function renderOntologyExplorer(root, state) {
   forward.setAttribute('aria-label', '다음 선택');
   history.append(back, forward);
   top.append(history, h('div', 'oe-brand', 'Ontology Config Explorer'));
-  const snap = state.activeSnapshot?.snapshot_hash?.slice(0, 8) || '불러오는 중';
+  // 🔴 ABSENCE IS NOT PROGRESS. This read `불러오는 중` whenever there was no hash, so an
+  // empty config announced a load that would never finish and the operator waited for it.
+  // In-flight and absent are different states and only one of them ends -- `state.loading`
+  // already tells them apart, so the fallback asks it instead of assuming.
+  const snap = state.activeSnapshot?.snapshot_hash?.slice(0, 8)
+    || (state.loading ? 'Loading' : 'None');
   top.append(h('span', 'oe-snapshot', `● snapshot · ${snap}`));
   const searchLabel = h('label', 'oe-search-wrap');
   searchLabel.append(h('span', 'sr-only', '정의 검색'));
