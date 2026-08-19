@@ -505,8 +505,21 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // DOES NOT GO THROUGH active()」 and `authoring_prefix` is pure string mapping.
       // Measured on the live route with three unread declarations: 16, 4 and 9 fields came
       // back, 11 / 2 / 9 of them carrying candidates.
+      // 🔴 THE DRAFT WINS OVER THE SELECTION, ALWAYS. `/view` PICKS a selection when the
+      // caller names none, and a create draft names none -- so asking for the selection
+      // first fetched the plan for whatever the server happened to pick (`source_plan|
+      // dt_job` on the live config) and the editor filled with somebody else's fields
+      // while its own heading said the new declaration. Reported as 「무엇을 새로 생성하든
+      // 폼이 소스 dt_job으로 collapse 됨」.
+      //
+      // Same defect as this morning's `wafer@1` create showing `lot@1`, and the same cure:
+      // ask for the subject the operator is editing, not the one the server chose. It only
+      // became visible tonight because the rows moved INTO the editor -- as a list below,
+      // a foreign declaration's fields read as background.
+      //
+      // For an edit draft the two are the same key, so preferring the draft is safe there.
       void loadAuthoring(
-        payload.selection?.key || payload.draft?.target_key || selection || null);
+        payload.draft?.target_key || payload.selection?.key || selection || null);
       if (editorCheckpoint) {
         state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
         renderOntologyExplorer(root, state);
