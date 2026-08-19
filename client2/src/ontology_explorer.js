@@ -140,7 +140,24 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     } catch {
       return;                      // let the textarea own its own syntax error
     }
-    const next = setAtPath(raw, steps.slice(2), value);
+    // 🔴 THE BRANCH IS BUILT, BECAUSE THE ROW WAS OFFERED. `setAtPath` refuses a missing
+    // parent on purpose, and that was right while a plan row only ever named a leaf the
+    // declaration already had a place for. It no longer is: a row is now offered for a
+    // field nobody has filled in yet, so `driver.unit` gets a dropbox on a source that has
+    // no `driver` at all -- and walked, choosing a unit wrote NOTHING. A control that
+    // silently does nothing is the refusing control this screen keeps removing.
+    // Plain objects only, never a guessed value, and never through a list index.
+    const relative = steps.slice(2);
+    for (let depth = 1; depth < relative.length; depth += 1) {
+      const branch = relative.slice(0, depth);
+      if (branch.some((step) => typeof step === 'number')) break;
+      if (getAtPath(raw, branch) === undefined) {
+        const built = setAtPath(raw, branch, {});
+        if (built === null) break;
+        raw = built;
+      }
+    }
+    const next = setAtPath(raw, relative, value);
     if (next === null) return;
     dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
   };

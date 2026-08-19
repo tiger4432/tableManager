@@ -1063,6 +1063,24 @@ function renderAuthoring(state) {
     if (Array.isArray(current) && current.every((item) => typeof item === 'string')) {
       return { kind: 'list', value: current };
     }
+    // 🔴 A FIELD NOBODY HAS FILLED IN YET IS STILL A FIELD. Everything above asks what the
+    // draft HOLDS, so an absent value produced no control at all -- and the skeleton hands
+    // this row over precisely because the plan knows the path, which left the empty case
+    // owned by the one renderer that cannot draw it. Measured on a source built from
+    // nothing: `relation`, `profile_id` and `driver.unit` had no input anywhere, so a new
+    // source could not be given the two names that identify it. Packs hid this too; they
+    // have no plan-owned leaf.
+    //
+    // Kept on the plan's row rather than falling back to the skeleton's own control,
+    // because the row is what carries the candidates and the refusal -- `relation` offers
+    // the tables, `profile_id` the profiles. Losing those would trade one silence for another.
+    //
+    // Only where the person is the one who owes the value: `derived` is the system's to
+    // write, and an input there would invite a fight with whatever computes it.
+    if (current === undefined && (row.state === 'missing' || row.state === 'unanswered')) {
+      return closed ? { kind: 'closed', value: '', options: closed }
+                    : { kind: 'string', value: '' };
+    }
     return null;
   };
   const buckets = [
