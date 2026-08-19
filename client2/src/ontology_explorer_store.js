@@ -157,8 +157,21 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         total: p.total || 0,
         draft: p.draft || null,
         viewPreference: p.view_context?.mode === 'draft_preview' ? 'draft_preview' : 'active',
-        editorText: p.draft ? JSON.stringify(p.draft.raw, null, 2) : '',
-        dirty: false,
+        // 🔴 A RESPONSE DOES NOT GET TO DELETE WHAT SOMEBODY IS TYPING.
+        //
+        // This rebuilt `editorText` from the draft record on EVERY response and cleared
+        // `dirty` with it. An unsaved draft's `raw` is still `{}` on the server, so any
+        // request that came back while the operator was mid-edit -- the search debounce,
+        // a refresh -- silently replaced what they had typed with `{}`, and clearing
+        // `dirty` meant not even a leave warning fired. Measured: key `wafer_id` typed,
+        // `lot` typed into the search box, editor back to `{}` with no message.
+        //
+        // Corrected HERE rather than only at the call sites that forgot to carry the
+        // editor: this is the one place the answer arrives, so a caller added later
+        // cannot reintroduce the hole by not knowing about it.
+        editorText: state.dirty ? state.editorText
+          : (p.draft ? JSON.stringify(p.draft.raw, null, 2) : ''),
+        dirty: state.dirty,
         loading: false,
         error: null,
         removedSelection: null,

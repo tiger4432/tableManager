@@ -195,6 +195,34 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     }
   };
 
+  // Put the editor back on the declaration just saved, so editing continues.
+  //
+  // Which door depends on what the save produced: a declaration that now resolves is in
+  // the snapshot and takes the ordinary edit path; one that still cannot be read is not in
+  // the snapshot at all, and takes the same door the tree row uses.
+  const reopenForEditing = async (targetKey, kind, canonicalId) => {
+    try {
+      if (state.invalid?.[targetKey]) {
+        const item = state.items.find((row) => row.key === targetKey);
+        if (item) await openUnread(item);
+        return;
+      }
+      const reopened = await jsonRequest('/drafts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_key: targetKey,
+          base_snapshot_hash: state.activeSnapshot?.snapshot_hash || '',
+        }),
+      });
+      dispatch({ type: 'DRAFT_OPENED', draft: reopened.draft || reopened });
+      await load({ selection: targetKey, draft: reopened.draft || reopened,
+                   viewMode: 'active', allowContextSwitch: true });
+    } catch (error) {
+      // The save itself succeeded; failing to re-open is not a reason to say it did not.
+      showToast(errorMessage(error), 'warning');
+    }
+  };
+
   // Open a declaration that is in the file but could not be read, on its own text.
   const openUnread = async (item) => {
     try {
@@ -533,6 +561,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // compiles -- the config file is untouched (the activation rollback is already
       // there) and everything typed is still on screen to fix.
       const draftId = state.draft.draft_id;
+      const targetKey = state.draft.target_key;
+      const targetKind = state.draft.target_kind;
+      const targetId = state.draft.target_id;
       try {
         const saved = await jsonRequest(`/drafts/${draftId}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -549,7 +580,20 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         dispatch({ type: 'DRAFT_CLOSED' });
         dispatch({ type: 'AUTHORING_INVALIDATED' });
         showToast('저장했습니다.', 'success');
-        await readMirror({ draft: null, viewMode: 'active' });
+        await readMirror({ draft: null, selection: null, viewMode: 'active' });
+        // 🔴 STAY ON WHAT YOU WERE EDITING. 「저장하고 계속 편집하던거 떠있게」 --
+        // building a setup up is MANY saves, and losing your place at each one makes that
+        // way of working impossible.
+        //
+        // 🔴 IT IS A NEW DRAFT, NOT THE OLD ONE KEPT OPEN. Saving consumes the record: it
+        // is activated, its revision is spent. Holding it would make the SECOND save fail
+        // on a stale revision -- and today's failures were all at the second and third
+        // action, never the first.
+        //
+        // The re-read above happens FIRST so the new draft is based on the snapshot hash
+        // the write just produced. A draft opened on the pre-write hash is refused by the
+        // compare-and-swap, which is exactly this morning's 409.
+        await reopenForEditing(targetKey, targetKind, targetId);
       } catch (error) { showToast(errorMessage(error), 'error'); }
     } else if (action === 'review-draft') {
       if (state.dirty) { showToast('먼저 초안을 저장해 주세요.', 'warning'); return; }
@@ -614,12 +658,21 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       searchTimer = setTimeout(() => load({
         selection: state.selection?.key,
         draft: state.draft,
+        // Carries the editor like `select` and back/forward already do. The reducer
+        // refuses to overwrite a dirty buffer regardless; this keeps every `load` caller
+        // spelling the same contract, so the two do not drift apart.
+        editorCheckpoint: state.dirty ? checkpoint() : null,
       }), 180);
     }
   });
 
   return {
-    refresh: () => load({ allowContextSwitch: true }),
+    // The second caller that never carried the editor. A refresh is not a decision to
+    // throw away what is being typed -- nobody asked for anything to be discarded.
+    refresh: () => load({
+      allowContextSwitch: true,
+      editorCheckpoint: state.dirty ? checkpoint() : null,
+    }),
     destroy: () => clearTimeout(searchTimer),
     getState: () => state,
   };
