@@ -154,7 +154,12 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // Re-read the mirror: the declaration is not in the snapshot until activation, but
       // the draft list and the tree's change markers are, and they are stale the moment
       // this returns.
-      await readMirror({ selection: (body.draft || body).target_key });
+      // 🔴 DO NOT ASK THE MIRROR FOR THE THING JUST CREATED. A create draft's target is by
+      // definition NOT in the active snapshot -- that is what "create" means -- so
+      // selecting it makes `/view` answer `unknown_selection` and the screen errors
+      // immediately after a successful create. The mirror reflects what is DECLARED; the
+      // new declaration lives in the draft layer, which `DRAFT_OPENED` above already holds.
+      await readMirror({ selection: null });
     } catch (error) {
       dispatchNaming({ type: 'NEW_DECLARATION_FAILED', message: errorMessage(error) });
     }

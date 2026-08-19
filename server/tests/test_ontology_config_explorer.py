@@ -2045,6 +2045,21 @@ def test_the_whole_walk_works_on_a_freshly_bootstrapped_config(tmp_path):
     assert made.status_code == 200, f"creating into a skeleton must work: {made.text}"
     assert made.json()["target_bundle_path"] == ["entities", "DTJob@1"]
 
+    # 🔴 AND THE STEP AFTER THE CREATE, which is where the walk broke next. The client
+    # re-reads the mirror as soon as a create succeeds. Asking for the declaration it just
+    # made is `unknown_selection`: a create draft's target is BY DEFINITION not in the
+    # active snapshot -- that is what create means -- so the mirror must be re-read with
+    # nothing selected. Both halves are asserted, because only the pair shows why.
+    new_key = made.json()["target_key"]
+    too_soon = client.get(f"{base}/view", params={"selection": new_key})
+    assert too_soon.status_code == 400, (
+        "a draft target is not in the snapshot; asking for it must still refuse")
+    assert too_soon.json()["detail"]["code"] == "unknown_selection"
+
+    after = client.get(f"{base}/view", params={"q": "", "page": 1, "limit": 100})
+    assert after.status_code == 200, "the re-read after a create must succeed"
+    assert after.json()["selection"] is None
+
     # And the empty view still refuses a selection that genuinely does not exist, so the
     # fix did not turn the whole endpoint permissive.
     unknown = client.get(f"{base}/view", params={"selection": "entity|Nope@9"})

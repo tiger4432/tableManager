@@ -878,7 +878,10 @@ const FLOORS = new Map([
   // 43 -> 50 (2026-08-19). Section F: the mirror. F2 is the one that matters -- a picker
   // fed from the paged, search-filtered tree would pass every test where nothing was
   // filtered and go silently short the moment somebody typed.
-  ['ontology_explorer_harness.mjs', 50],
+  // 50 -> 56 (2026-08-19). Section G: an empty config through the whole client path.
+  // Four separate places read "there is no selection" as "the selection is wrong" or
+  // dereferenced it anyway; every one was found by the owner, not by a test.
+  ['ontology_explorer_harness.mjs', 56],
   // New 2026-08-19. The explorer panel committed every state change with
   // `replaceChildren`, which is correct output that destroys the operator's scroll,
   // focus, expand state and half-typed text -- the owner reported it as "refreshed to

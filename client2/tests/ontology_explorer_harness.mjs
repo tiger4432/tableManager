@@ -294,5 +294,55 @@ const payload = (token, selected = 'entity|A@1') => ({
       authoring: { sections: { packs: [] } } }) === true);
 }
 
+// --- G. the empty config must survive the whole client path -----------------------
+//
+// 🔴 THE SAME MISTAKE IN FOUR PLACES, and each one was found by the owner rather than by a
+// test. "There is no selection" was read as "the selection is wrong" by the context check,
+// and as "read `.key` off it" by the reducer. Both were correct for as long as a config
+// always had declarations; both broke the day bootstrap made empty the STARTING state.
+//
+// Scored on the payload the server actually sends for an empty config, not on a
+// hand-trimmed one, so a field appearing there later is covered too.
+{
+  const token = 'active:abc12345';
+  const emptyPayload = {
+    context_token: token,
+    view_context: { mode: 'active', context_token: token },
+    active_snapshot: { snapshot_hash: 'abc12345', compiled_at: 'now', valid: true },
+    selection: null,
+    items: [], nodes: [], outbound: [], used_by: [],
+    outbound_total: 0, used_by_total: 0, reference_limit: 200,
+    references_truncated: false, path_candidates: [], integrity: [],
+    changes: [], edge_changes: [], page: 1, limit: 100, total: 0,
+  };
+
+  let accepted = true;
+  try { assertOneContext(emptyPayload); } catch { accepted = false; }
+  check('G1 an absent selection is not a mismatched one', accepted);
+
+  let next = null, threw = null;
+  try {
+    next = reduceExplorerState(initialExplorerState,
+      { type: 'RESPONSE_RECEIVED', generation: 0, payload: emptyPayload });
+  } catch (error) { threw = error; }
+  check('G2 the reducer survives a response with nothing selected',
+    threw === null, threw && threw.message);
+  check('G3 and it keeps the snapshot, which is what the create button needs',
+    next?.activeSnapshot?.snapshot_hash === 'abc12345');
+  check('G4 no selection means no root path, rather than a path to nothing',
+    next?.currentPath === null);
+  check('G5 the empty view is empty, not unread',
+    Array.isArray(next?.items) && next.items.length === 0 && next.total === 0);
+
+  // 🔴 The counter-half: a selection that IS present and DOES disagree must still be
+  // refused, or the fix traded one silent failure for another.
+  let refused = false;
+  try {
+    assertOneContext({ ...emptyPayload,
+      selection: { key: 'entity|E@1', context_token: 'active:other' } });
+  } catch { refused = true; }
+  check('G6 a selection carrying the wrong token is still refused', refused);
+}
+
 console.log(`ASSERTIONS ${ran} ${failed}`);
 if (failed) process.exit(1);

@@ -66,7 +66,17 @@ export function assertOneContext(payload) {
   if (!token || payload?.view_context?.context_token !== token) {
     mismatch('응답의 snapshot context가 일치하지 않습니다.');
   }
-  if (payload?.selection?.context_token !== token) {
+  // 🔴 AN ABSENT SELECTION IS NOT A MISMATCHED ONE, and the difference is the whole first
+  // screen of a fresh config. On an empty config `selection` is `null`, so
+  // `payload?.selection?.context_token` is `undefined`, `undefined !== token` is true, and
+  // this refused the response before anything could be rendered -- 「선택 항목이 다른
+  // snapshot에서 왔습니다」 about a selection that does not exist.
+  //
+  // The rule is about objects that CARRY a token and disagree with it. Nothing that does
+  // not exist can disagree. The server-side copy of this same rule had the same defect and
+  // was fixed in ce81568; this is the second copy, and looking for it only after the
+  // owner hit it is the lesson worth keeping.
+  if (payload?.selection != null && payload.selection.context_token !== token) {
     mismatch('선택 항목이 다른 snapshot에서 왔습니다.');
   }
   for (const field of CONTEXT_COLLECTIONS) {
@@ -127,9 +137,12 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         outboundTotal: p.outbound_total || 0,
         referencesTruncated: Boolean(p.references_truncated),
         paths: p.path_candidates || [],
-        currentPath: action.route || {
+        // 🔴 THE ROOT PATH IS A PATH TO THE SELECTION, so with nothing selected there is
+        // no path -- not an empty one. This ran on EVERY response, so on an empty config
+        // it threw before a single node was rendered.
+        currentPath: action.route || (p.selection ? {
           path_id: 'root', node_keys: [p.selection.key], edge_ids: [],
-        },
+        } : null),
         changes: p.changes || [],
         edgeChanges: p.edge_changes || [],
         integrity: p.integrity || [],
