@@ -915,7 +915,7 @@ function renderSkeletonMap(context, node, path, value) {
 
 function renderSkeletonLeaf(context, node, path, value) {
   const planned = context.planRow(path);
-  if (planned) return context.renderRow(context.suggest(planned, node, path));
+  if (planned) return context.renderRow(context.suggest(planned, node, path), node);
   if (node.hint === 'flag') {
     const box = h('input', 'oe-role-required');
     box.type = 'checkbox';
@@ -1049,7 +1049,7 @@ function renderAuthoring(state) {
     return found ? found[1] : null;
   };
 
-  const editableFor = (row) => {
+  const editableFor = (row, node) => {
     if (!prefix || !draftRaw || !row.path.startsWith(prefix)) return null;
     const current = getAtPath(draftRaw, splitBundlePath(row.path).slice(2));
     const closed = closedListFor(row.candidates);
@@ -1077,7 +1077,14 @@ function renderAuthoring(state) {
     //
     // Only where the person is the one who owes the value: `derived` is the system's to
     // write, and an input there would invite a fight with whatever computes it.
-    if (current === undefined && (row.state === 'missing' || row.state === 'unanswered')) {
+    // 🔴 ONLY FOR A LEAF, AND THE SKELETON IS WHAT SAYS SO. Without the node this offered a
+    // text box for every absent field, including the list ones -- typing into `subjects` wrote
+    // `"Lot@1"` where `["Lot@1"]` belongs, a wrong type in the owner's file put there by the
+    // screen. Which is the same fault this round has been closing, introduced by the fix for
+    // it. A map or a list already has its own control (a member namer, an append), so this
+    // fallback has nothing to add there anyway.
+    if (node && node.kind === 'leaf' && current === undefined
+        && (row.state === 'missing' || row.state === 'unanswered')) {
       return closed ? { kind: 'closed', value: '', options: closed }
                     : { kind: 'string', value: '' };
     }
@@ -1132,7 +1139,8 @@ function renderAuthoring(state) {
     // 🔴 THE ROLES A CLAIM DEFINED A MOMENT AGO ARE OFFERED BEFORE IT IS SAVED. The plan
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among
     // them -- and this screen exists so that nothing has to be saved to be seen.
-    renderRow: (row) => renderAuthoringRow(row, state.expandedFields, editableFor(row)),
+    renderRow: (row, node) => renderAuthoringRow(row, state.expandedFields,
+                                                editableFor(row, node)),
     suggest: (row, node, path) => {
       if (!node || node.hint !== 'role') return row;
       const names = rolesNear(path, node.from);
