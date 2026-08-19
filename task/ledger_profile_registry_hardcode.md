@@ -76,3 +76,73 @@ walk saved a rebuilt pack with zero complaints while this was true the whole tim
 Whether `validate()` builds the registry from the config's own `packs` section, or whether the
 built-in registry stays authoritative and the config's `packs` are something else entirely.
 That is a contract question about what a pack IS, not a patch — hence no code in this commit.
+
+---
+
+# The two branches, measured (lead, 06:25). No code, no decision.
+
+The implementer went quiet again after the diagnosis, so I measured this myself. Every line
+below is a count or a `file:line`, not an expectation.
+
+## Branch B collapses first, so measure it first
+
+**B was: the built-in registry is authoritative and the file's `packs` means something else.**
+
+It does not survive one question — *who reads the file's `packs`?*
+
+```
+server/ledger/config_authoring.py     12 sites   the authoring plan, i.e. the screen
+server/ledger/setup_bundle.py         validates it (_validate_packs)
+server/ledger/source_profile.py       never
+```
+
+So the file's `packs` is what the screen writes, what the setup validator judges, and what the
+owner has been authoring all night. Calling it "something else" would mean the screen has spent
+this round authoring a section no profile validator ever consults — which is the situation, and
+is the thing being reported as a bug rather than a design.
+
+## Branch A costs two test files. Nothing else.
+
+**A was: `validate()` builds the registry from the file's own `packs`.**
+
+Every configuration on disk already declares the packs it uses:
+
+```
+config/ontology/ledger_config.json            packs: dt-job@1, lot-lineage@1     refs 8/8 declared
+config/sample/ledger_config.json.sample       same shape                          refs 8/8 declared
+config/sample/ontology/transfer_explorer/…    packs: dt-assembly@1                refs 5/5 declared
+```
+
+🔴 **And that third one does not use `transfer@1` at all** — the built-in pack that looked like
+a live dependency is referenced by no configuration anywhere.
+
+What relies on the built-in registry is exactly two test files, which name a pack in a profile's
+`packs` list and declare no `packs` section:
+
+```
+server/tests/test_ledger_frame_chain_mapper.py:227   "packs": ["transfer@1"]   no packs section
+server/tests/test_ledger_l1_pg.py:308                "packs": ["transfer@1"]   no packs section
+```
+
+Both already call the validator, so either they declare a minimal pack, or they pass the
+`registries` argument that has existed unused all along.
+
+## The shape maps directly — no information is missing
+
+```
+PackDescriptor  (pack_id, version, claims)      <- the file's key splits into id@version
+ClaimDescriptor (claim_id, roles)               <- file claim holds roles (and emit, unused here)
+RoleDescriptor  (role_id, kind, required, allowed_binding_kinds, allow_null,
+                 symbolic_constants, allowed_constant_types)
+                                                <- file role holds kind, required
+                                                   (+ allowed_binding_kinds, allowed_values
+                                                    where declared; the rest default)
+```
+
+## What is still open, and it is the owner's
+
+The measurement says B is untenable and A is cheap. It does **not** say what a pack IS — whether
+a profile may only use packs the same file declares, or whether some registry of shared packs is
+meant to exist across configs. A answers the first; nobody has asked the second out loud.
+
+**Not built. Two test files is a small number, and a wrong contract is not.**
