@@ -337,7 +337,10 @@ const renderFolded = (plan) => {
   check('F2 every folded row says why it folded',
     whys.length === foldedCards.length, `${whys.length} reasons for ${foldedCards.length} folds`);
   check('F3 the reasons come from the ruled vocabulary',
-    whys.every((w) => ['Derived', 'Forced', 'Single candidate', 'Set', 'Optional'].includes(w)), whys.join(','));
+    // `Set` became 「선언됨」 by the owner's 6b ruling (answered 접힘 → 「선언됨」 한 마디).
+    // The set stays CLOSED -- that is what this checks; only a member was renamed, and it
+    // is renamed here in the same commit as the code, not left to fail later as a mystery.
+    whys.every((w) => ['Derived', 'Forced', 'Single candidate', '선언됨', 'Optional'].includes(w)), whys.join(','));
 
   // 🔴 `remaining` OUTRANKS THE FOLD. Otherwise the layer header says "3 남음" while one of
   // the three is folded out of sight, and an operator who notices believes neither number.

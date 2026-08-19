@@ -650,7 +650,7 @@ function foldDecision(row, expanded = []) {
   // the short ones -- the tall ones are the filled choices, carrying their whole candidate
   // list. Folding by "is anything still owed here" instead of by tier is what turns a
   // complete config into a short page, which is the state it should read as.
-  if (row.state === 'answered') return { open: false, reason: 'Set' };
+  if (row.state === 'answered') return { open: false, reason: '선언됨' };
   if (row.state === 'unanswered') return { open: false, reason: 'Optional' };
   return { open: true, reason: '' };
 }
@@ -925,19 +925,22 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
   const children = shape.kind === 'map'
     ? renderSkeletonMap(context, shape, path, value, depth)
     : renderSkeletonRecord(context, shape, path, value, depth);
-  if (path) {
+  {
     // 🔴 A FOLD SHOWS ITS COUNT. Folding without saying how many were folded is deleting
     // with extra steps -- the mockup's rule is 「접힌 것은 개수를 보인다」, and it is the
     // same fault this round has been removing everywhere else: an absence nobody can tell
     // apart from an emptiness.
     const hidden = children.childElementCount;
-    const toggle = button(open ? '−' : '접힘 · ' + hidden, 'toggle-field', path,
-                          open ? 'oe-node-fold' : 'oe-node-folded');
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const toggle = path
+      ? button(open ? '−' : '접힘 · ' + hidden, 'toggle-field', path,
+               open ? 'oe-node-fold' : 'oe-node-folded')
+      : null;
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     box.append(treeRow(depth, label || path, [kind], null, toggle,
-                       open ? 'is-branch' : 'is-branch is-folded'));
+                       (path ? 'is-branch' : 'is-branch is-root')
+                       + (open ? '' : ' is-folded')));
   }
-  if (open || !path) box.append(children);
+  if (open) box.append(children);
   return box;
 }
 
@@ -948,8 +951,11 @@ function renderSkeletonRecord(context, node, path, value, depth) {
     const at = path ? path + '.' + field.key : field.key;
     const current = held[field.key];
     if (!fieldApplies(field, held, current)) continue;
-    const drawn = renderSkeletonForm(context, field.node, at, current,
-                                     path ? depth + 1 : depth, field.label || field.key);
+    // Always one level in: the node drawing these children has its own row now, including
+    // the root. While the root drew no row, its fields had to stay at its depth or the whole
+    // declaration would have been indented under nothing.
+    const drawn = renderSkeletonForm(context, field.node, at, current, depth + 1,
+                                     field.label || field.key);
     if (!drawn) continue;
     // An optional field the document holds can be taken back out. The tree row owns the
     // chrome now, so the control rides in the label column beside the name.
@@ -1258,8 +1264,8 @@ function renderAuthoring(state) {
   };
   if (bodyNode && draftRaw) {
     const body = h('section', 'oe-bucket oe-bucket--form');
-    body.append(h('h3', '', `${state.draft.target_id}`));
-    const form = renderSkeletonForm(context, bodyNode, '', draftRaw);
+    const form = renderSkeletonForm(context, bodyNode, '', draftRaw, 0,
+                                   state.draft.target_id);
     if (form) body.append(form);
     wrap.append(body);
   }
@@ -1451,6 +1457,10 @@ export function renderOntologyExplorer(root, state) {
     workspace.append(h('div', 'oe-empty', state.loading ? '불러오는 중…' : '표시할 정의가 없습니다.'));
   }
   main.append(workspace);
+  // 6b's third column. It holds Integrity today; what the mockup eventually puts here
+  // (「이 소스가 만드는 것」, the physical prerequisites) is T3 and needs data that does
+  // not exist yet, so this step claims the SLOT and moves the panel that already fits it.
+  main.append(renderIntegrity(state));
   // 🔴 THE SPINE IS A BAND ABOVE THE BODY, NOT A COLUMN INSIDE IT. It was appended into
   // `.oe-main` for 1b, where the layers were the left column; 6b makes them a horizontal
   // band and the CSS was moved to match, but this line was not -- so the band was laid out

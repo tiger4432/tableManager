@@ -72,7 +72,7 @@
 #ontology-explorer-root .oe-main {
   /* 6b body: a flat declaration index, then the tree. The spine is no longer a column
      here -- it is the band above. 240px is the mockup's own figure for the index. */
-  display: grid; grid-template-columns: 240px minmax(0, 1fr);
+  display: grid; grid-template-columns: 240px minmax(0, 1fr) 330px;
   flex: 1; min-height: 0; overflow: hidden;
 }
 #ontology-explorer-root .oe-tree {
@@ -566,3 +566,16 @@
 }
 #ontology-explorer-root .oe-field.is-bare .oe-field-head { margin: 0; }
 #ontology-explorer-root .oe-field.is-bare .oe-field-path { display: none; }
+
+/* The declaration's own row. It is the tree's root, so it never folds and carries no fold
+   control -- 「접기 대상은 노드가 아니라 자식」. Before this the root drew no row at all,
+   which is why a fully-answered declaration could open onto a single folded line. */
+#ontology-explorer-root .oe-node-row.is-root {
+  background: var(--oe-surface-2); border-top: 1px solid var(--oe-line);
+}
+#ontology-explorer-root .oe-node-row.is-root .oe-node-name {
+  font-weight: 600; font-size: 14px;
+}
+#ontology-explorer-root .oe-main > .oe-panel {
+  overflow: auto; border-left: 1px solid var(--oe-line); background: var(--oe-surface);
+}
