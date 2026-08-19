@@ -450,6 +450,17 @@ function foldDecision(row, expanded = []) {
   if (Array.isArray(row.candidates) && row.candidates.length === 1) {
     return { open: false, reason: 'Single candidate' };
   }
+  // 🔴 A SETTLED DECISION IS NOT A PENDING ONE. A person-decided field that is already
+  // filled and carries no problem is done -- keeping it open spends the operator's
+  // attention re-reading answers nobody is asking for.
+  //
+  // This is what makes the page short. Measured: folding only the derived and the
+  // single-candidate rows cut 23.5% and left 16 screens, because those rows were ALREADY
+  // the short ones -- the tall ones are the filled choices, carrying their whole candidate
+  // list. Folding by "is anything still owed here" instead of by tier is what turns a
+  // complete config into a short page, which is the state it should read as.
+  if (row.state === 'answered') return { open: false, reason: 'Set' };
+  if (row.state === 'unanswered') return { open: false, reason: 'Optional' };
   return { open: true, reason: '' };
 }
 
@@ -556,9 +567,25 @@ function renderAuthoring(state) {
     wrap.append(h('div', 'oe-note',
       `자유도 0인데 문법이 요구하는 칸 ${blocked}개 · 화면이 채우고 근거로 보낸다`));
   }
-  if (plan.config_source?.state !== 'present') {
+  // 🔴 ABSENT AND UNREADABLE ARE NOT THE SAME CASE. Absent gets an OFFER; a file that
+  // exists but will not parse gets its error and nothing else, because it is almost
+  // certainly somebody's work with a bad comma in it. Writing a skeleton over that would
+  // destroy hours and look like a feature. The server refuses on `exists()` rather than on
+  // "does it parse", so this is a rendering of that rule, not a second copy of it.
+  if (plan.config_source?.state === 'absent') {
+    const offer = h('div', 'oe-bootstrap');
+    offer.append(h('b', '', 'No configuration file'));
+    offer.append(h('code', '', plan.config_source.file || ''));
+    // The screen OFFERS. Writing a file is a side effect and this screen does not take
+    // those on its own, so nothing happens until a person presses it.
+    offer.append(h('small', '',
+      `Create a starting file: setup_version + ${(plan.steps || []).length} empty sections`));
+    offer.append(button('Create starting file', 'bootstrap-config', '', 'oe-bootstrap-go'));
+    if (plan.bootstrapError) offer.append(h('div', 'oe-error', plan.bootstrapError));
+    wrap.append(offer);
+  } else if (plan.config_source?.state !== 'present') {
     wrap.append(h('div', 'oe-warning',
-      `${plan.config_source?.file || plan.physical_schema_file} not found · blank`));
+      `${plan.config_source?.file || plan.physical_schema_file} not readable`));
   }
   // Bucket order is the reading order: what must be done, what is still asked, what was
   // filled for you. Groups are always rendered, empty or not -- a vanished heading is

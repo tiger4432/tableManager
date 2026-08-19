@@ -75,6 +75,36 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     return state;
   };
 
+  // Write the smallest config that validates, so a setup can begin from nothing.
+  //
+  // 🔴 THE SCREEN OFFERS; THE PERSON DECIDES. This is the only write here that is not a
+  // draft, so it happens on a press and never because the screen noticed the file was
+  // missing. The server refuses if anything is at the path -- including a file that will
+  // not parse, which is somebody's work with a bad comma in it rather than an absence.
+  const bootstrapConfig = async () => {
+    try {
+      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/bootstrap`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = body?.detail || body;
+        // Kept on the offer, not floated as a toast: the next move is to read it and act.
+        state = { ...state, authoring: { ...(state.authoring || {}),
+          bootstrapError: detail?.message || `HTTP ${res.status}` } };
+        renderOntologyExplorer(root, state);
+        return;
+      }
+      showToast?.(`${body.created} created`);
+      await loadAuthoring(null);
+      await load({ allowContextSwitch: true });
+    } catch (error) {
+      state = { ...state, authoring: { ...(state.authoring || {}),
+        bootstrapError: errorMessage(error) } };
+      renderOntologyExplorer(root, state);
+    }
+  };
+
   // Author a declaration that does not exist yet, then open its draft.
   //
   // 🔴 THE REFUSAL STAYS ON THE NAMING ROW rather than becoming a toast. The operator's
@@ -333,6 +363,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       target.dataset.pathId || null,
     );
     else if (action === 'tab') dispatch({ type: 'TAB_CHANGED', tab: target.dataset.value });
+    else if (action === 'bootstrap-config') {
+      await bootstrapConfig();
+    }
     else if (action === 'toggle-field') {
       state = reduceFieldFold(state, { type: 'FIELD_TOGGLED', path: target.dataset.value });
       renderOntologyExplorer(root, state);

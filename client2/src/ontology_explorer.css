@@ -83,6 +83,20 @@
 }
 #ontology-explorer-root .oe-tally--done { color: var(--oe-muted); font-size: 13px; font-style: normal; }
 
+/* The blank-root offer. Prominent on purpose: with no config there is nothing else on
+   the screen to do, and the operator arrived here to start. */
+#ontology-explorer-root .oe-bootstrap {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  margin: 12px 0; padding: 14px; border-radius: 8px;
+  border: 1px solid var(--oe-accent); background: var(--oe-accent-soft);
+}
+#ontology-explorer-root .oe-bootstrap b { font-size: 15px; }
+#ontology-explorer-root .oe-bootstrap small { font-size: 13px; color: var(--oe-muted); }
+#ontology-explorer-root .oe-bootstrap-go {
+  border: 1px solid var(--oe-accent); border-radius: 6px; padding: 7px 14px;
+  font-size: 14px; cursor: pointer; background: var(--oe-surface); color: var(--oe-accent);
+}
+
 #ontology-explorer-root .oe-tree-heading {
   display: flex; align-items: center; gap: 8px;
   color: var(--oe-muted); font-size: 12px; padding: 6px 8px;

@@ -24,7 +24,9 @@ from .config_explorer import (
     reference_diff,
 )
 from .setup import DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup
-from .setup_bundle import CONFIG_FILENAME
+from .setup_bundle import (
+    CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, validate_bundle_errors,
+)
 
 
 class OntologyExplorerService:
@@ -341,6 +343,58 @@ class OntologyExplorerService:
             bundle, self._catalog_loader(), selection_prefix=selection_prefix)
         payload["config_source"] = source
         return payload
+
+    def bootstrap_config(self) -> dict[str, Any]:
+        """Write the smallest file that validates, so a setup can start from nothing.
+
+        Until this existed the screen could not be used from a blank root at all: every
+        authoring path needs a config to read, so the first declaration had to be typed
+        into a text editor by hand. That is the trip this removes.
+
+        🔴 REFUSES IF ANYTHING IS AT THE PATH, and the reason is not tidiness. An
+        UNREADABLE config is not an absent one -- it is very likely a file somebody spent
+        hours on with one bad comma in it, and writing a skeleton over that destroys the
+        work while looking like a feature. Absence is the only state this may act on, so
+        the check is `exists()`, not "does it parse": a file that fails to parse still
+        exists, and that is exactly the case that must be refused rather than repaired.
+        The operator is told to fix the file; `authoring()` already reports the parse error
+        with its position.
+
+        🔴 THE SKELETON IS MEASURED, NOT INVENTED. `setup_version` and the section names
+        come from `setup_bundle`'s own constants, so a section added to the grammar appears
+        here without anyone remembering to add it. Nothing else is written: every extra
+        field would be a guess, and `validate_bundle_errors` refuses guesses. Verified
+        against the live catalog -- this exact object produces 0 issues, while `{}`
+        produces 9, so the check is not vacuous.
+        """
+        path = self.config_root / CONFIG_FILENAME
+        if path.exists():
+            raise ConfigExplorerError(
+                "config_already_present", CONFIG_FILENAME,
+                f"{path} already exists; this screen never overwrites a config. If it "
+                f"does not load, fix the reported parse error -- a file that cannot be "
+                f"read is still a file somebody wrote",
+            )
+        skeleton = {
+            "setup_version": SETUP_VERSION,
+            **{name: {} for name in LOGICAL_SECTIONS},
+        }
+        # Checked BEFORE it is written, against the same validator the loader uses. A
+        # skeleton that does not validate would hand the operator a file to repair, which
+        # is the trip this whole path exists to remove.
+        issues = validate_bundle_errors(skeleton, catalog=self._catalog_loader())
+        if issues:
+            raise ConfigExplorerError(
+                "bootstrap_invalid", CONFIG_FILENAME,
+                "the starting file did not validate and was not written",
+                [issue.to_mapping() for issue in issues],
+            )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(skeleton, ensure_ascii=False, indent=2, sort_keys=True) + chr(10),
+            encoding="utf-8")
+        self.invalidate()
+        return {"created": str(path), "bundle": skeleton, "sections": list(LOGICAL_SECTIONS)}
 
     def create_draft(self, *, target_key: str, base_snapshot_hash: str) -> dict[str, Any]:
         setup, index, _ = self.active()

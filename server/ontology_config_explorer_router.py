@@ -129,6 +129,21 @@ def create_draft(payload: dict[str, Any] = Body(...)):
         raise _refusal(exc) from exc
 
 
+@router.post("/bootstrap", dependencies=[Depends(require_admin_token_strict)])
+def bootstrap_config():
+    """Create the smallest config that validates, so a setup can start from nothing.
+
+    A write, and the only one this screen performs without a draft -- so it is a POST the
+    operator confirms, never something the screen does on its own when it notices the file
+    is missing. Refuses if anything exists at the path, including a file that fails to
+    parse: an unreadable config is somebody's work with a bad comma in it, not an absence.
+    """
+    try:
+        return _service.bootstrap_config()
+    except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
 @router.post("/drafts/new", dependencies=[Depends(require_admin_token_strict)])
 def create_declaration_draft(payload: dict[str, Any] = Body(...)):
     """Author a declaration the snapshot has never seen.

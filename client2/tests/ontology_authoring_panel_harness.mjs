@@ -337,7 +337,7 @@ const renderFolded = (plan) => {
   check('F2 every folded row says why it folded',
     whys.length === foldedCards.length, `${whys.length} reasons for ${foldedCards.length} folds`);
   check('F3 the reasons come from the ruled vocabulary',
-    whys.every((w) => ['Derived', 'Forced', 'Single candidate'].includes(w)), whys.join(','));
+    whys.every((w) => ['Derived', 'Forced', 'Single candidate', 'Set', 'Optional'].includes(w)), whys.join(','));
 
   // 🔴 `remaining` OUTRANKS THE FOLD. Otherwise the layer header says "3 남음" while one of
   // the three is folded out of sight, and an operator who notices believes neither number.

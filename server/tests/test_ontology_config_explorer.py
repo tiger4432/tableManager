@@ -1843,3 +1843,107 @@ def test_a_complete_config_reports_no_remaining_work_and_a_broken_one_reports_wh
     moved = [step["id"] for step in after["steps"] if step["remaining"]]
     assert moved == ["sources"], f"expected only the sources layer to move, got {moved}"
     assert sum(step["remaining"] for step in after["steps"]) == 1
+
+
+def test_a_setup_can_be_started_from_nothing(tmp_path, monkeypatch):
+    """🔴 THE BLANK-ROOT TRIP. Until this existed the screen could not be used from an empty
+    root at all: every authoring path needs a config to read, so the FIRST declaration had
+    to be typed into a text editor by hand. That is the trip this removes.
+
+    The scoring assertion is not that a file appeared -- it is that the file appeared and
+    VALIDATES, because a skeleton that does not is a file handed back to the operator to
+    repair, which is the thing being removed. The counter-check lives in
+    `test_the_starting_file_is_the_smallest_one_that_validates`.
+    """
+    from ledger.config_explorer_service import OntologyExplorerService
+    from ledger.setup_bundle import CONFIG_FILENAME, validate_bundle_errors
+
+    root = tmp_path / "ontology"
+    service = OntologyExplorerService(
+        config_root=root, draft_root=tmp_path / "drafts",
+        catalog_loader=lambda: {})
+    assert not (root / CONFIG_FILENAME).exists()
+
+    result = service.bootstrap_config()
+    written = root / CONFIG_FILENAME
+    assert written.is_file(), "the offer has to actually produce the file"
+
+    bundle = json.loads(written.read_text(encoding="utf-8"))
+    # `validate_bundle_errors` answers with a TUPLE; asserting `== []` compares the
+    # shape rather than the emptiness and fails on a green result.
+    assert not validate_bundle_errors(bundle, catalog={}), (
+        "a starting file that does not validate is a file handed back to be repaired")
+    assert bundle["setup_version"] == 3
+    assert set(result["sections"]) <= set(bundle), "every section it names must be present"
+
+    # And the plan reads it afterwards, which is what the operator sees next.
+    plan = service.authoring()
+    assert plan["config_source"]["state"] == "present"
+
+
+def test_bootstrap_never_overwrites_a_file_that_merely_fails_to_parse(tmp_path):
+    """🔴 ABSENT AND UNREADABLE ARE NOT THE SAME CASE, and conflating them is destructive.
+
+    A config that will not parse is almost never an absence -- it is a file somebody spent
+    hours on with one bad comma in it. A screen that "helpfully" writes a skeleton over it
+    destroys that work and looks like a feature while doing so.
+
+    So the guard is `exists()`, NOT "does it parse". This test is the one that would catch
+    a future refactor rewriting the check as "load it; if that fails, treat as absent",
+    which reads reasonable and is the destructive version.
+    """
+    from ledger.config_explorer_service import OntologyExplorerService
+    from ledger.setup_bundle import CONFIG_FILENAME
+
+    root = tmp_path / "ontology"
+    root.mkdir(parents=True)
+    hand_written = '{"setup_version": 3, "vocabulary": {},,}'      # one bad comma
+    (root / CONFIG_FILENAME).write_text(hand_written, encoding="utf-8")
+
+    service = OntologyExplorerService(
+        config_root=root, draft_root=tmp_path / "drafts", catalog_loader=lambda: {})
+
+    with pytest.raises(ConfigExplorerError) as refused:
+        service.bootstrap_config()
+    assert refused.value.to_mapping()["code"] == "config_already_present"
+    assert (root / CONFIG_FILENAME).read_text(encoding="utf-8") == hand_written, (
+        "🔴 THE OPERATOR'S FILE MUST BE BYTE-IDENTICAL AFTER THE REFUSAL")
+
+    # And the operator is told what is wrong with it rather than left guessing.
+    with pytest.raises(ConfigExplorerError) as unreadable:
+        service.authoring()
+    assert unreadable.value.to_mapping()["code"] == "unreadable_config"
+
+    # A valid file is refused for the same reason, by the same code.
+    (root / CONFIG_FILENAME).write_text('{"setup_version": 3}', encoding="utf-8")
+    with pytest.raises(ConfigExplorerError) as present:
+        service.bootstrap_config()
+    assert present.value.to_mapping()["code"] == "config_already_present"
+
+
+def test_the_starting_file_is_the_smallest_one_that_validates(tmp_path):
+    """The skeleton is measured against the validator, not composed by hand.
+
+    Two halves, and the second is what stops the first being vacuous: the written object
+    validates, AND an empty object does not. Without the counter-check, a validator that
+    accepted anything would make this test pass while the screen wrote garbage.
+
+    Nothing extra is written either. Every additional field would be a guess, and a guess
+    the validator later refuses turns the starting file into a repair job.
+    """
+    from ledger.config_explorer_service import OntologyExplorerService
+    from ledger.setup_bundle import (
+        CONFIG_FILENAME, LOGICAL_SECTIONS, validate_bundle_errors)
+
+    root = tmp_path / "ontology"
+    service = OntologyExplorerService(
+        config_root=root, draft_root=tmp_path / "drafts", catalog_loader=lambda: {})
+    service.bootstrap_config()
+    bundle = json.loads((root / CONFIG_FILENAME).read_text(encoding="utf-8"))
+
+    assert not validate_bundle_errors(bundle, catalog={})
+    assert validate_bundle_errors({}, catalog={}), (
+        "if an empty object also validated, the assertion above would prove nothing")
+    assert set(bundle) == {"setup_version", *LOGICAL_SECTIONS}, (
+        "anything beyond the required keys is a guess the validator may refuse")
+    assert all(bundle[name] == {} for name in LOGICAL_SECTIONS)
