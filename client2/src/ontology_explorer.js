@@ -272,7 +272,44 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         return;
       }
       dispatchNaming({ type: 'NEW_DECLARATION_CLOSED' });
-      dispatch({ type: 'DRAFT_OPENED', draft: body.draft || body });
+      const created = body.draft || body;
+      dispatch({ type: 'DRAFT_OPENED', draft: created });
+      // 🔴 CREATING IS 「와꾸 짜기」: THE EMPTY DECLARATION GOES INTO THE FILE NOW.
+      //
+      // Nothing describes a declaration that is not in the file -- measured: for an unsaved
+      // create draft the plan has 0 rows for it, and even the draft preview reports
+      // `validation_errors: 0` while calling itself invalid. So a fresh pack showed 「None
+      // defined」 four times and never said what to make. Telling the operator "save first
+      // and I will tell you" would be one more procedure to memorise, which is the thing
+      // being removed.
+      //
+      // So it is written, and then the validator can name what it needs. Same shape as
+      // 「저장 = 저장 + 반영」: two calls the server already has, joined behind one press.
+      // NO NEW ENDPOINT. Possible only because saving stopped requiring the setup to
+      // compile -- this morning an empty declaration would have been refused.
+      const saved = await jsonRequest(`/drafts/${created.draft_id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expected_revision: created.revision, raw: '{}' }),
+      });
+      const record = saved.draft || saved;
+      await jsonRequest(`/drafts/${record.draft_id}/activate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expected_revision: record.revision }),
+      });
+      dispatch({ type: 'DRAFT_CLOSED' });
+      dispatch({ type: 'AUTHORING_INVALIDATED' });
+      // 🔴 IN THE FILE IS NOT IN THE SNAPSHOT. An empty declaration does not resolve, so it
+      // lands UNREAD -- and asking `/view` for it by name answers `unknown_selection`, which
+      // is the trap the comment below has always warned about. Walked: the pack was in the
+      // file and the screen showed nothing until a reload.
+      //
+      // So the mirror is read with no selection, and then the declaration is opened through
+      // the same door its unread row uses. That path already seeds the editor from the file
+      // and fetches the plan for the right subject.
+      await readMirror({ selection: null, draft: null, viewMode: 'active' });
+      const row = state.items.find((item) => item.key === created.target_key);
+      if (row) await openUnread(row);
+      return;
       // 🔴 NOT draft_preview. A brand-new draft's raw is `{}` and cannot compile BY
       // DEFINITION, so preview mode always falls back to the active snapshot and reports
       // the first validation error as the reason -- 「초안 대신 활성 snapshot 표시 ·
