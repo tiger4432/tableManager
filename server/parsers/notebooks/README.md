@@ -5,6 +5,8 @@
 두면 그 폴더가 통째로 gitignore라 도구가 커밋되지 않는다.
 
 - `parser_workbench.ipynb` — 샘플 파일 하나로 `BasePipelineParser` 파서를 개발·검증·내보내기.
+  초안 파서의 모양은 `../custom_parser.py.sample`(클래스형)을 그대로 따른다 — 예시가 둘로
+  갈라지면 둘 다 낡는다. 함수형(`parse_file()`)은 다른 방식이고 `../custom_parser_template.py`다.
 
 **여는 법:** VS Code/Cursor의 노트북 편집기 + 커널 `assy_manager`(conda). 이 박스에는
 `jupyter notebook`/`jupyterlab`이 설치돼 있지 않다(`ipykernel`·`jupyter_client`는 있어서 IDE

@@ -788,6 +788,25 @@ def _register_legacy_import_shim():
             setattr(parent_mod, child, mod)
 
 
+#: The same function under a name a caller may depend on.
+#:
+#: `_register_legacy_import_shim` is CALLED, never overridden, so a public name costs
+#: nothing and buys a contract: preparing this process to load workspace parsers is a
+#: legitimate thing for something other than the watcher to ask for, and the parser
+#: workbench notebook (`server/parsers/notebooks/`) asks for exactly that before it
+#: touches `pipeline_base`.  A caller reaching for the underscore name is a dependency
+#: the next refactor is entitled to ignore; this alias makes it one the refactor has to
+#: keep.  The old name stays valid — it is the same object, and it is used inside this
+#: module and possibly by scripts we cannot see.
+#:
+#: 🔴 WHY A NOTEBOOK NEEDS THIS AT ALL: the base class must be imported under the SAME
+#: top-level module name the plugins use (`pipeline_base`).  Import it as
+#: `server.parsers.pipeline_base` as well and there are two class objects, `issubclass`
+#: goes False, and the loader stops recognising parsers **silently** — it does not raise,
+#: it just reports that the folder contains none.
+prepare_plugin_imports = _register_legacy_import_shim
+
+
 # Returned by `scan_workspace_pipeline_parsers` when the folder cannot be scanned
 # at all (no scripts/ folder, or BasePipelineParser is not importable).  Distinct
 # from `None` ("scanned, nobody claimed the file"), because the managed raws/ path

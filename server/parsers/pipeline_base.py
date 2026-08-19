@@ -31,6 +31,14 @@ class BasePipelineParser:
         파일을 읽어 DataFrame으로 반환합니다.
         기본적으로 .csv는 pd.read_csv, .xlsx는 pd.read_excel을 사용합니다.
         필요 시 자식 클래스에서 오버라이딩하여 인코딩이나 구분자를 설정할 수 있습니다.
+
+        🔴 **밑줄로 시작하지만 «공개 확장점»이다. 이름을 바꾸지 말 것.**
+        구분자·인코딩·헤더 위치가 다른 소스는 이 메서드를 오버라이드해서 대응하고, 그런
+        파서들이 `server/ingestion_workspace/*/scripts/`에 산다 — **그 트리는 gitignore
+        대상이라 저장소 검색에 안 잡히고, 운영 박스에는 이 박스에서 보이는 것보다 더 있을 수
+        있다.** 개명하면 그 파서들은 오버라이드가 «조용히 무시된 채» 베이스의 read_csv로
+        떨어진다 — 예외도 안 나고, 우리가 고칠 수도 없는 곳에서.
+        그래서 밑줄은 남기고 계약으로 승격한다: **부르는 것도 오버라이드하는 것도 정상이다.**
         """
         try:
             if file_path.lower().endswith('.csv') or file_path.lower().endswith('.txt'):

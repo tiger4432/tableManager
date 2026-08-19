@@ -1,3 +1,16 @@
+"""[클래스형 파이프라인 파서] `BasePipelineParser`를 상속하는 방식 — **표 형태 파일의 기본 선택.**
+
+작성자가 쓰는 것은 `match()`와 `process_dataframe()` **둘뿐**이고, 읽기·NaN 정리·DB 전달은
+베이스가 한다:  파일 → `_read_file_to_dataframe` → `process_dataframe` → `clean_for_postgres`
+
+  * 개발·검증·내보내기 → `server/parsers/notebooks/parser_workbench.ipynb`
+    (이 파일의 모양을 그대로 따른다 — 예시가 둘로 갈라지지 않게 하려는 것이다)
+  * 다른 방식 → `custom_parser_template.py` (함수형 `parse_file()`. pandas를 안 쓰거나
+    행/열 구조가 아닌 입력용)
+
+이 파일은 `.sample`이라 로드되지 않는다. 실제 파서는
+`server/ingestion_workspace/<테이블>/scripts/` 에 둔다.
+"""
 import pandas as pd
 import random
 from pipeline_base import BasePipelineParser
