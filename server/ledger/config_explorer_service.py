@@ -18,12 +18,16 @@ from .config_explorer import (
     ExplorerIndex,
     authorable_bundle_path,
     build_explorer_index,
+    document_hash,
+    load_resolved_setup,
     definition_diff,
     deletion_plan,
     explorer_view,
     reference_diff,
 )
-from .setup import DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup
+from .setup import (
+    DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup, setup_from_document,
+)
 from .setup_bundle import (
     CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, validate_bundle_errors,
 )
@@ -51,6 +55,8 @@ class OntologyExplorerService:
         self._setup: Any | None = None
         self._index: ExplorerIndex | None = None
         self._compiled_at: str | None = None
+        self._invalid: dict[str, Any] = {}
+        self._config_level: list[Any] = []
 
     def invalidate(self) -> None:
         with self._lock:
@@ -58,15 +64,61 @@ class OntologyExplorerService:
             self._setup = None
             self._index = None
             self._compiled_at = None
+            self._invalid = {}
+            self._config_level = []
+
+    def _resolution(self) -> dict[str, Any]:
+        """What loaded, what did not, and the basis the screen compares against.
+
+        🔴 THE WHOLE-CONFIG LOAD IS TRIED FIRST AND IS UNCHANGED. A setup that
+        compiles takes exactly the path it took before this existed -- same loader, same
+        seam the tests inject through. The resolver runs ONLY when that refuses, which is
+        the state the owner asked for: 「일단 와꾸 짜놓고 나중에 살 채우는」.
+
+        🔴 AND THE BASIS COMES FROM THE FILE EITHER WAY. `document_hash` is what the
+        operator wrote; it exists whether or not anything compiles, which is precisely why
+        a compile-derived basis cannot be the one a half-written setup is saved against.
+        """
+        document = None
+        try:
+            document = json.loads(
+                (self.config_root / CONFIG_FILENAME).read_text(encoding="utf-8"))
+        except Exception:
+            document = None                      # injected loader, or no file to read yet
+
+        try:
+            setup = self._setup_loader(self.config_root)
+            invalid: dict[str, Any] = {}
+            config_level: list[Any] = []
+        except Exception:
+            if document is None:
+                raise
+            resolved = load_resolved_setup(
+                self.config_root, catalog=self._catalog_loader(),
+                setup_from_document=lambda doc: setup_from_document(
+                    doc, config_root=self.config_root,
+                    catalog=self._catalog_loader()))
+            setup = resolved["setup"]
+            invalid = resolved["invalid"]
+            config_level = resolved["config_level"]
+
+        basis = document_hash(document) if document is not None else None
+        return {
+            "setup": setup,
+            "index": build_explorer_index(setup, snapshot_hash=basis),
+            "invalid": invalid,
+            "config_level": config_level,
+        }
 
     def active(self, *, force: bool = False) -> tuple[Any, ExplorerIndex, str]:
         with self._lock:
             stamp = self._file_stamp()
             if force or self._setup is None or stamp != self._stamp:
-                setup = self._setup_loader(self.config_root)
-                index = build_explorer_index(setup)
-                self._setup = setup
-                self._index = index
+                resolved = self._resolution()
+                self._setup = resolved["setup"]
+                self._index = resolved["index"]
+                self._invalid = resolved["invalid"]
+                self._config_level = resolved["config_level"]
                 self._stamp = stamp
                 self._compiled_at = datetime.now(timezone.utc).isoformat()
             return self._setup, self._index, self._compiled_at
