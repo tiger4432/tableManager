@@ -97,6 +97,21 @@
   font-size: 14px; cursor: pointer; background: var(--oe-surface); color: var(--oe-accent);
 }
 
+#ontology-explorer-root .oe-keys { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+#ontology-explorer-root .oe-key-row { display: flex; gap: 6px; align-items: center; }
+#ontology-explorer-root .oe-key-input {
+  flex: 1; padding: 6px 8px; font-size: 13px; border: 1px solid var(--oe-line);
+  border-radius: 6px; background: var(--oe-surface); color: var(--oe-text);
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+#ontology-explorer-root .oe-key-remove,
+#ontology-explorer-root .oe-key-add {
+  border: 1px solid var(--oe-line); border-radius: 6px; padding: 5px 10px;
+  font-size: 13px; cursor: pointer; background: var(--oe-surface); color: var(--oe-text);
+}
+#ontology-explorer-root .oe-key-add { align-self: flex-start; color: var(--oe-accent); }
+#ontology-explorer-root .oe-key-none { color: var(--oe-muted); font-size: 13px; }
+
 #ontology-explorer-root .oe-tree-heading {
   display: flex; align-items: center; gap: 8px;
   color: var(--oe-muted); font-size: 12px; padding: 6px 8px;

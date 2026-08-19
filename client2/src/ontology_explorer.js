@@ -89,6 +89,28 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
                              draft = state.draft } = {}) =>
     load({ selection, draft, allowContextSwitch: true });
 
+  // Rewrite `keys` in the draft text the save button already sends.
+  //
+  // 🔴 IT EDITS `editorText`, NOT A SECOND SOURCE. The rows are another way to type into
+  // the same buffer the textarea holds, so save, validation, dirty-tracking and the
+  // revision guard all keep working untouched. A separate keys-state would be a second
+  // author for one value, which is the merge question the mirror exists to avoid.
+  const editEntityKeys = (mutate) => {
+    let raw;
+    try {
+      raw = JSON.parse(state.editorText || '{}');
+    } catch {
+      return;                      // let the textarea own its own syntax error
+    }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    const keys = Array.isArray(raw.keys) ? [...raw.keys] : [];
+    const next = mutate(keys);
+    dispatch({
+      type: 'EDITOR_CHANGED',
+      text: JSON.stringify({ ...raw, keys: next }, null, 2),
+    });
+  };
+
   // Write the smallest config that validates, so a setup can begin from nothing.
   //
   // 🔴 THE SCREEN OFFERS; THE PERSON DECIDES. This is the only write here that is not a
@@ -391,6 +413,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'bootstrap-config') {
       await bootstrapConfig();
     }
+    else if (action === 'add-entity-key') {
+      editEntityKeys((keys) => [...keys, '']);
+    }
+    else if (action === 'remove-entity-key') {
+      const at = Number(target.dataset.value);
+      editEntityKeys((keys) => keys.filter((_, i) => i !== at));
+    }
     else if (action === 'toggle-field') {
       state = reduceFieldFold(state, { type: 'FIELD_TOGGLED', path: target.dataset.value });
       renderOntologyExplorer(root, state);
@@ -477,6 +506,12 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   });
 
   root.addEventListener('input', (event) => {
+    if (event.target.dataset.action === 'edit-entity-key') {
+      const at = Number(event.target.dataset.value);
+      const typed = event.target.value;
+      editEntityKeys((keys) => keys.map((k, i) => (i === at ? typed : k)));
+      return;
+    }
     if (event.target.dataset.action === 'new-declaration-id') {
       // Safe to re-render on every keystroke now: the reconciler keeps the focused control
       // and what is in it (`dom_patch.js`). Before it, this had to skip rendering to

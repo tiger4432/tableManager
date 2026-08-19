@@ -240,6 +240,50 @@ function renderUsage(state) {
   return wrap;
 }
 
+// The entity identity keys, as repeatable free-text rows.
+//
+// 🔴 FREE TEXT IS CORRECT HERE, and it is the only field so far where that is true. An
+// entity key is ONTOLOGY -- the operator invents it. `Lot@1 -> keys: ["lot"]` names what
+// identifies the concept; the physical column that feeds it (`dt_job`) is declared
+// separately on the source. `DTJob@1` spells its key and its column the same way, which is
+// exactly what makes the two look like one thing.
+//
+// A picker here would look right on today's data and be wrong in principle: it would limit
+// the concepts he may have to the columns that happen to exist, making the ontology
+// subordinate to the physical tables.
+//
+// `x` per row is not decoration. A `+` with no way back makes a misclick permanent, which
+// is the same dead end as a lock with no key. No reordering: atom identity serialises
+// `subject_keys` sorted, so `["lot","wafer"]` and `["wafer","lot"]` are the same subject.
+function renderEntityKeys(state) {
+  let raw;
+  try {
+    raw = JSON.parse(state.editorText || '{}');
+  } catch {
+    return null;        // unparseable text is the textarea's problem, not this form's
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const keys = Array.isArray(raw.keys) ? raw.keys : [];
+
+  const box = h('div', 'oe-keys');
+  box.append(h('label', 'oe-label', 'Identity keys'));
+  keys.forEach((value, index) => {
+    const row = h('div', 'oe-key-row');
+    row.dataset.key = `key:${index}`;
+    const input = h('input', 'oe-key-input');
+    input.type = 'text';
+    input.value = value === null || value === undefined ? '' : String(value);
+    input.dataset.action = 'edit-entity-key';
+    input.dataset.value = String(index);
+    input.setAttribute('aria-label', `Identity key ${index + 1}`);
+    row.append(input, button('x', 'remove-entity-key', String(index), 'oe-key-remove'));
+    box.append(row);
+  });
+  if (!keys.length) box.append(h('div', 'oe-key-none', 'None defined'));
+  box.append(button('+ Add key', 'add-entity-key', '', 'oe-key-add'));
+  return box;
+}
+
 function renderRaw(state) {
   // 🔴 A CREATE DRAFT HAS NO SELECTION TO MATCH. Its target is not in the snapshot -- that
   // is what create means -- so `state.selection` is null and this guard hid the draft the
@@ -275,7 +319,12 @@ function renderRaw(state) {
       );
     }
     controls.append(button('활성화', 'activate-draft', '', 'oe-editor-action oe-editor-action-primary'));
-    editor.append(context, label, validation, controls);
+    editor.append(context);
+    if (state.draft.target_kind === 'entity') {
+      const keysForm = renderEntityKeys(state);
+      if (keysForm) editor.append(keysForm);
+    }
+    editor.append(label, validation, controls);
     return editor;
   }
   if (state.draft) {
