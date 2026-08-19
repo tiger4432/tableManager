@@ -947,6 +947,52 @@ function renderUnplannedDraftFields(state, draftRaw, plannedTopLevel) {
   return box;
 }
 
+// The fields the validator NAMES as missing but the plan has no row for.
+//
+// 🔴 NOTHING IS INVENTED HERE. Every row below comes from a `missing_field` refusal the
+// server already sends -- the validator says 「빈 팩엔 `claims`가 없다」 with the exact path,
+// and this only moves that from a refusal line into a place you can act on. No field is
+// listed that the validator did not name.
+//
+// 🔴 AND THE SCREEN STILL DOES NOT ASSERT A TYPE. The refusal carries `code`, `path` and a
+// prose `message` -- measured -- so the shape is not machine-readable, and a table here
+// saying "`claims` is an object" would be the second author removed from this screen all
+// day. So the PERSON picks the shape: a value, a list, or an object. The screen offers,
+// the person decides, the validator judges. That is the same division as everywhere else.
+//
+// This is a starting point, not a form: it gets the first key into an empty declaration so
+// the plan and the draft-derived rows have something to describe. A new pack begins with
+// `claims`, and from there the claim block takes over.
+function renderMissingStarters(state, plan, prefix, draftRaw) {
+  if (!prefix || !draftRaw) return null;
+  const named = new Map();
+  for (const refusal of plan.unattached_refusals || []) {
+    if (refusal.code !== 'missing_field') continue;
+    if (!refusal.path?.startsWith(prefix)) continue;
+    const relative = refusal.path.slice(prefix.length);
+    if (!relative || relative.includes('.') || relative.includes('[')) continue;
+    if (Object.prototype.hasOwnProperty.call(draftRaw, relative)) continue;
+    named.set(relative, refusal);
+  }
+  if (!named.size) return null;
+  const box = h('section', 'oe-bucket oe-bucket--start');
+  box.append(h('h3', '', `아직 없는 칸 · ${named.size}`));
+  for (const [key, refusal] of named) {
+    const line = h('div', 'oe-starter');
+    line.append(h('code', 'oe-starter-name', key));
+    // The validator's own sentence, carried across unchanged -- it is the only thing that
+    // knows what belongs here, and rewording it would put a second voice on the contract.
+    const hint = (plan.unattached_refusals || []).find(
+      (row) => row.path === refusal.path && row.code !== 'missing_field');
+    if (hint) line.append(h('small', 'oe-starter-why', hint.message));
+    line.append(button('값', 'start-field-text', key, 'oe-starter-go'),
+                button('목록', 'start-field-list', key, 'oe-starter-go'),
+                button('객체', 'start-field-object', key, 'oe-starter-go'));
+    box.append(line);
+  }
+  return box;
+}
+
 function renderAuthoring(state) {
   const wrap = h('div', 'oe-authoring');
   const plan = state.authoring;
@@ -1070,6 +1116,8 @@ function renderAuthoring(state) {
       .filter(Boolean));
   const unplanned = renderUnplannedDraftFields(state, draftRaw, plannedTopLevel);
   if (unplanned) wrap.append(unplanned);
+  const starters = renderMissingStarters(state, plan, prefix, draftRaw);
+  if (starters) wrap.append(starters);
 
   // A claim is one block, so its rows leave the state buckets and travel with it.
   const claimed = new Set();

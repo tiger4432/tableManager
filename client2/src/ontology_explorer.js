@@ -669,6 +669,16 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'bootstrap-config') {
       await bootstrapConfig();
     }
+    else if (action === 'start-field-text' || action === 'start-field-list'
+             || action === 'start-field-object') {
+      // The person picked the shape; the screen never guessed it. An empty value is
+      // deliberately what lands -- the validator will now say what is missing INSIDE it,
+      // and that becomes the next row. Starting a pack means `claims: {}`, and from there
+      // the claim block takes over.
+      editShapeAtPath(target.dataset.value,
+                      action === 'start-field-list' ? []
+                        : action === 'start-field-object' ? {} : '');
+    }
     else if (action === 'add-draft-item') {
       editShapeList(target.dataset.value, (items) => [...items, '']);
     }
