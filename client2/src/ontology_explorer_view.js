@@ -93,8 +93,14 @@ function renderTree(state) {
   //
   // Only when nothing is being searched: during a search the tree answers the query, and
   // padding it with empty sections would bury the matches.
+  //
+  // 🔴 UNLESS THE SEARCH FOUND NOTHING, WHICH IS WHEN CREATING MATTERS MOST. With no
+  // matches there are no groups, so every `+ New` disappeared -- and the operator's flow is
+  // exactly: search the name, see it is free, create it. The screen answered 「일치하는
+  // 정의가 없습니다」 and removed the way to act on that answer in the same breath (measured:
+  // 0 groups, 0 buttons). Nothing is being buried here, because there is nothing to bury.
   const authorable = (state.authoringSchema?.authorable_kinds || []).map((row) => row.id);
-  const ordered = state.query.trim()
+  const ordered = state.query.trim() && groups.size
     ? [...groups.keys()]
     : [...new Set([...authorable, ...groups.keys()])];
   for (const kind of ordered) {
