@@ -691,7 +691,24 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // Safe to re-render on every keystroke now: the reconciler keeps the focused control
       // and what is in it (`dom_patch.js`). Before it, this had to skip rendering to
       // protect the caret -- which is why the two handlers below still do.
-      dispatchNaming({ type: 'NEW_DECLARATION_TYPED', id: event.target.value });
+      // 🔴 A NEW NAME NORMALISES TO LOWER CASE, AND VISIBLY (picker spec 0-b rule 3).
+      // Visibly is the whole of it: normalising only in state would leave the input
+      // showing what was typed while something else got saved -- the same defect as the
+      // editor that silently discarded typing (`7086056`). The caret is put back because
+      // the text is the same length; without that, typing into the middle of a name
+      // jumps to the end on every keystroke.
+      //
+      // Only NEW names. Nothing here renames anything: `Lot@1` in the file stays `Lot@1`,
+      // because entity and predicate spellings are atom identity (`DEDUPE_COLUMNS`).
+      const typed = event.target.value;
+      const normalised = typed.toLowerCase();
+      if (normalised !== typed) {
+        const from = event.target.selectionStart;
+        const to = event.target.selectionEnd;
+        event.target.value = normalised;
+        if (from !== null) event.target.setSelectionRange(from, to);
+      }
+      dispatchNaming({ type: 'NEW_DECLARATION_TYPED', id: normalised });
       return;
     }
     if (event.target.dataset.action === 'edit-raw') {
