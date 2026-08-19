@@ -970,8 +970,15 @@ function renderMissingStarters(state, plan, prefix, draftRaw) {
     if (refusal.code !== 'missing_field') continue;
     if (!refusal.path?.startsWith(prefix)) continue;
     const relative = refusal.path.slice(prefix.length);
-    if (!relative || relative.includes('.') || relative.includes('[')) continue;
-    if (Object.prototype.hasOwnProperty.call(draftRaw, relative)) continue;
+    if (!relative) continue;
+    // 🔴 NESTED LEAVES TOO, BUT ONLY WHERE THERE IS SOMEWHERE TO PUT THEM. Once a claim
+    // exists the validator names `claims.<id>.emit` and `claims.<id>.roles`, and those are
+    // the rows that carry a pack the rest of the way. A leaf whose PARENT does not exist
+    // yet is skipped: writing it would have to invent the branch above it, which is the one
+    // thing the path writer refuses to do.
+    const steps = splitBundlePath(relative);
+    if (getAtPath(draftRaw, steps) !== undefined) continue;
+    if (steps.length > 1 && getAtPath(draftRaw, steps.slice(0, -1)) === undefined) continue;
     named.set(relative, refusal);
   }
   if (!named.size) return null;
@@ -1146,6 +1153,17 @@ function renderAuthoring(state) {
     if (!Object.keys(draftClaims).length) {
       section.append(h('div', 'oe-empty', 'None defined'));
     }
+    // 🔴 A CLAIM HAS TO BE NAMEABLE, or `claims: {}` is a dead end -- measured: an empty
+    // claims map makes the validator name NOTHING, so the screen falls silent exactly
+    // where it just told you to start. Free text is right here for the same reason it is
+    // right on the naming row: the operator is coining a name nothing else holds yet.
+    const naming = h('div', 'oe-claim-new');
+    const input = h('input', 'oe-claim-new-id');
+    input.type = 'text';
+    input.placeholder = '주장 id · e.g. register';
+    input.setAttribute('aria-label', '새 주장 id');
+    naming.append(input, button('+ 주장', 'add-claim', '', 'oe-claim-new-go'));
+    section.append(naming);
     wrap.append(section);
   }
   for (const [stateId, label] of buckets) {

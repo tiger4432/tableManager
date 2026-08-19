@@ -706,6 +706,18 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'bootstrap-config') {
       await bootstrapConfig();
     }
+    else if (action === 'add-claim') {
+      // The name is read off the input at press time rather than mirrored into state: the
+      // reconciler already keeps a focused control's text across renders, so a second copy
+      // of it would only be something to keep in sync.
+      const box = root.querySelector('.oe-claim-new-id');
+      const claimId = (box?.value || '').trim();
+      if (!claimId) return;
+      // An empty body on purpose: with the claim present the validator names `emit` and
+      // `roles`, and those become the next rows. Same move as starting a field.
+      editShapeAtPath(`claims.${claimId}`, {});
+      if (box) box.value = '';
+    }
     else if (action === 'start-field-text' || action === 'start-field-list'
              || action === 'start-field-object') {
       // The person picked the shape; the screen never guessed it. An empty value is
