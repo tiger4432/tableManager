@@ -150,7 +150,11 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       }
       dispatchNaming({ type: 'NEW_DECLARATION_CLOSED' });
       dispatch({ type: 'DRAFT_OPENED', draft: body.draft || body });
-      dispatch({ type: 'VIEW_MODE_CHANGED', mode: 'draft_preview' });
+      // 🔴 NOT draft_preview. A brand-new draft's raw is `{}` and cannot compile BY
+      // DEFINITION, so preview mode always falls back to the active snapshot and reports
+      // the first validation error as the reason -- 「초안 대신 활성 snapshot 표시 ·
+      // invalid_type」 on a declaration that was just created successfully. Preview is for
+      // seeing what a draft would CHANGE; a fresh create has nothing to compare yet.
       // Re-read the mirror: the declaration is not in the snapshot until activation, but
       // the draft list and the tree's change markers are, and they are stale the moment
       // this returns.
