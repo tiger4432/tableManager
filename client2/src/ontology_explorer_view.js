@@ -48,6 +48,33 @@ function addPopover(target, node) {
   return target;
 }
 
+// The naming row. Free text HERE is correct and is the one place it is: the operator is
+// COINING a name that nothing else in the file has yet, so there is no set to pick from.
+// Every LATER use of that name is a dropdown over what was coined.
+function renderNewDeclaration(state, kind) {
+  const box = h('div', 'oe-new-declaration');
+  box.dataset.key = `new:${kind}`;
+  const label = h('label', 'oe-new-label');
+  label.append(h('span', 'oe-new-caption', `새 ${KIND_LABELS[kind] || kind}`));
+  const input = h('input', 'oe-new-id');
+  input.type = 'text';
+  input.dataset.action = 'new-declaration-id';
+  input.value = state.newDeclaration?.id || '';
+  input.placeholder = 'id (예: dt-job@1)';
+  input.setAttribute('aria-label', '새 선언 id');
+  label.append(input);
+  box.append(label);
+  const actions = h('div', 'oe-new-actions');
+  const make = button('만들기', 'create-declaration', kind, 'oe-new-make');
+  make.disabled = !(state.newDeclaration?.id || '').trim();
+  actions.append(make, button('취소', 'cancel-declaration', kind, 'oe-new-cancel'));
+  box.append(actions);
+  if (state.newDeclaration?.error) {
+    box.append(h('div', 'oe-error', state.newDeclaration.error));
+  }
+  return box;
+}
+
 function renderTree(state) {
   const nav = h('nav', 'oe-tree');
   nav.setAttribute('aria-label', '온톨로지 구성 트리');
@@ -57,9 +84,33 @@ function renderTree(state) {
     if (!groups.has(item.kind)) groups.set(item.kind, []);
     groups.get(item.kind).push(item);
   }
-  for (const [kind, items] of groups) {
+  // 🔴 EVERY AUTHORABLE KIND GETS A GROUP, EVEN AN EMPTY ONE. The tree used to render only
+  // kinds that already had members, so an empty section had no node -- and therefore no
+  // way to create its FIRST member. "Declare a pack" was impossible until a pack existed.
+  // The list comes from the server (`authorable_kinds`, read off the same map that decides
+  // what may be deleted), so the screen never offers to create what it could not remove.
+  //
+  // Only when nothing is being searched: during a search the tree answers the query, and
+  // padding it with empty sections would bury the matches.
+  const authorable = (state.authoringSchema?.authorable_kinds || []).map((row) => row.id);
+  const ordered = state.query.trim()
+    ? [...groups.keys()]
+    : [...new Set([...authorable, ...groups.keys()])];
+  for (const kind of ordered) {
+    const items = groups.get(kind) || [];
     const group = h('section', 'oe-tree-group');
-    group.append(h('div', 'oe-tree-heading', KIND_LABELS[kind] || kind));
+    group.dataset.key = `group:${kind}`;
+    const heading = h('div', 'oe-tree-heading');
+    heading.append(h('span', 'oe-tree-heading-text', KIND_LABELS[kind] || kind));
+    if (authorable.includes(kind)) {
+      const add = button('+ 새로', 'new-declaration', kind, 'oe-tree-add');
+      add.setAttribute('aria-label', `${KIND_LABELS[kind] || kind} 새로 만들기`);
+      heading.append(add);
+    }
+    group.append(heading);
+    if (state.newDeclaration?.kind === kind) {
+      group.append(renderNewDeclaration(state, kind));
+    }
     for (const item of items) {
       const row = button(item.canonical_id, 'select', item.key, 'oe-tree-item');
       row.dataset.direct = 'true';
@@ -68,9 +119,17 @@ function renderTree(state) {
       addPopover(row, item);
       group.append(row);
     }
+    // An empty section SAYS SO rather than rendering as a bare heading, which reads as a
+    // broken screen. Reaching a layer before its members exist is normal -- the layers are
+    // declared in order -- so the sentence names the next move instead of an error.
+    if (!items.length && state.newDeclaration?.kind !== kind) {
+      group.append(h('div', 'oe-tree-none', '없음'));
+    }
     nav.append(group);
   }
-  if (!state.items.length) nav.append(h('div', 'oe-empty', '일치하는 정의가 없습니다.'));
+  if (state.query.trim() && !state.items.length) {
+    nav.append(h('div', 'oe-empty', '일치하는 정의가 없습니다.'));
+  }
   return nav;
 }
 

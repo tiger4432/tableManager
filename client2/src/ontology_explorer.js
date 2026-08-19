@@ -1,7 +1,7 @@
 import './ontology_explorer.css';
 import {
   initialExplorerState, reduceExplorerState, dirtyNavigationDecision,
-  restoreDirtyEditorCheckpoint,
+  reduceNewDeclaration, restoreDirtyEditorCheckpoint,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 
@@ -64,6 +64,54 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     state = reduceExplorerState(state, action);
     renderOntologyExplorer(root, state);
     return state;
+  };
+
+  // The naming step has its own reducer: it touches one local field and never the mirrored
+  // server context, and routing it through the big switch would put a not-yet-accepted
+  // name next to the collections that mirror what the server actually has.
+  const dispatchNaming = (action) => {
+    state = reduceNewDeclaration(state, action);
+    renderOntologyExplorer(root, state);
+    return state;
+  };
+
+  // Author a declaration that does not exist yet, then open its draft.
+  //
+  // 🔴 THE REFUSAL STAYS ON THE NAMING ROW rather than becoming a toast. The operator's
+  // next move is to change the name they just typed, and a message that floats away leaves
+  // them retyping against a rule they can no longer read.
+  const createDeclaration = async (kind) => {
+    const canonicalId = (state.newDeclaration?.id || '').trim();
+    if (!canonicalId) return;
+    try {
+      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/drafts/new`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind,
+          canonical_id: canonicalId,
+          base_snapshot_hash: state.activeSnapshot?.snapshot_hash || '',
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = body?.detail || body;
+        dispatchNaming({
+          type: 'NEW_DECLARATION_FAILED',
+          message: detail?.message || errorMessage(new Error(`HTTP ${res.status}`)),
+        });
+        return;
+      }
+      dispatchNaming({ type: 'NEW_DECLARATION_CLOSED' });
+      dispatch({ type: 'DRAFT_OPENED', draft: body.draft || body });
+      dispatch({ type: 'VIEW_MODE_CHANGED', mode: 'draft_preview' });
+      // Re-read the mirror: the declaration is not in the snapshot until activation, but
+      // the draft list and the tree's change markers are, and they are stale the moment
+      // this returns.
+      await load({ selection: (body.draft || body).target_key, allowContextSwitch: true });
+    } catch (error) {
+      dispatchNaming({ type: 'NEW_DECLARATION_FAILED', message: errorMessage(error) });
+    }
   };
 
   const checkpoint = (viaEdge = null) => {
@@ -285,6 +333,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       target.dataset.pathId || null,
     );
     else if (action === 'tab') dispatch({ type: 'TAB_CHANGED', tab: target.dataset.value });
+    else if (action === 'new-declaration') {
+      dispatchNaming({ type: 'NEW_DECLARATION_OPENED', kind: target.dataset.value });
+    } else if (action === 'cancel-declaration') {
+      dispatchNaming({ type: 'NEW_DECLARATION_CLOSED' });
+    } else if (action === 'create-declaration') {
+      await createDeclaration(target.dataset.value);
+    }
     else if (action === 'back' || action === 'forward') {
       dispatch({
         type: action === 'back' ? 'NAVIGATE_BACK' : 'NAVIGATE_FORWARD',
@@ -358,6 +413,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   });
 
   root.addEventListener('input', (event) => {
+    if (event.target.dataset.action === 'new-declaration-id') {
+      // Safe to re-render on every keystroke now: the reconciler keeps the focused control
+      // and what is in it (`dom_patch.js`). Before it, this had to skip rendering to
+      // protect the caret -- which is why the two handlers below still do.
+      dispatchNaming({ type: 'NEW_DECLARATION_TYPED', id: event.target.value });
+      return;
+    }
     if (event.target.dataset.action === 'edit-raw') {
       // Do not replace the textarea on every keystroke. The controller state changes,
       // while the focused DOM control remains the immediate rendered value.

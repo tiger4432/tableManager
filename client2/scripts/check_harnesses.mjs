@@ -871,7 +871,11 @@ const FLOORS = new Map([
   ['offset_pitch_guard_harness.mjs', 94],
   // Ontology Config Explorer: one-context response, stale-response rejection,
   // navigation restoration and dirty-draft movement decision.
-  ['ontology_explorer_harness.mjs', 35],
+  // 35 -> 43 (2026-08-19). Section E: naming a declaration that does not exist yet. The
+  // screen could edit and could not create, so a new source had to be typed into the
+  // config by hand. E6-E8 are the counter-tests -- without them a reducer that returns
+  // `state` unchanged would satisfy everything else.
+  ['ontology_explorer_harness.mjs', 43],
   // New 2026-08-19. The explorer panel committed every state change with
   // `replaceChildren`, which is correct output that destroys the operator's scroll,
   // focus, expand state and half-typed text -- the owner reported it as "refreshed to

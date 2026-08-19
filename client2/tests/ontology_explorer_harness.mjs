@@ -2,7 +2,8 @@
 // Run: node client2/tests/ontology_explorer_harness.mjs
 import {
   initialExplorerState, reduceExplorerState, assertOneContext, canLeaveSelection,
-  dirtyNavigationDecision, isDraftRevisionEditable, restoreDirtyEditorCheckpoint,
+  dirtyNavigationDecision, isDraftRevisionEditable, reduceNewDeclaration,
+  restoreDirtyEditorCheckpoint,
 } from '../src/ontology_explorer_store.js';
 
 let ran = 0;
@@ -190,6 +191,60 @@ const payload = (token, selected = 'entity|A@1') => ({
     restoreDirtyEditorCheckpoint(serverReloaded, {
       ...dirtyCheckpoint, draftRevision: 3,
     }).editorText === serverReloaded.editorText);
+}
+
+// --- E. Naming a declaration that does not exist yet ------------------------------
+//
+// The screen could EDIT a declaration and could not MAKE one, so a new source had to be
+// typed into `ledger_config.json` by hand. These score the LOCAL half -- the name being
+// chosen, before any server has accepted it.
+//
+// 🔴 THE NAME BEING TYPED IS NOT PART OF THE MIRROR. `items` reflects what the server has;
+// a name nobody has accepted is not that, and merging them is how a REFUSED create goes on
+// showing in the tree as though it existed. E1 and E6 pin the separation.
+//
+// The rendered half -- an entry point on every authorable section including empty ones,
+// and the caret surviving a keystroke re-render -- is verified in a real browser rather
+// than here: a shim models `activeElement` and `selectionStart` as plain properties, so it
+// would report them preserved whatever the code did.
+{
+  const base = { ...initialExplorerState, items: [{ key: 'pack|only@1', kind: 'pack' }] };
+
+  const opened = reduceNewDeclaration(base, { type: 'NEW_DECLARATION_OPENED', kind: 'entity' });
+  check('E1 opening names a kind and touches nothing the server mirrors',
+    opened.newDeclaration.kind === 'entity' && opened.newDeclaration.id === ''
+    && opened.items === base.items);
+
+  const typed = reduceNewDeclaration(opened, { type: 'NEW_DECLARATION_TYPED', id: 'DTJob@1' });
+  check('E2 typing keeps the kind and records the id',
+    typed.newDeclaration.kind === 'entity' && typed.newDeclaration.id === 'DTJob@1');
+
+  const refused = reduceNewDeclaration(typed, {
+    type: 'NEW_DECLARATION_FAILED', message: '이미 선언됨' });
+  check('E3 a refusal stays ON the row, with the name still there to edit',
+    refused.newDeclaration.error === '이미 선언됨'
+    && refused.newDeclaration.id === 'DTJob@1');
+
+  // The operator's next move after a refusal is to change the name. A message about the
+  // PREVIOUS name, still on screen while they retype, is worse than none.
+  const retyped = reduceNewDeclaration(refused, { type: 'NEW_DECLARATION_TYPED', id: 'DTJob@2' });
+  check('E4 editing the name clears the refusal it was about',
+    retyped.newDeclaration.error === null && retyped.newDeclaration.id === 'DTJob@2');
+
+  check('E5 closing drops the whole naming state',
+    reduceNewDeclaration(retyped, { type: 'NEW_DECLARATION_CLOSED' }).newDeclaration === null);
+
+  // 🔴 The counter-test: without this the reducer could simply return `state` for
+  // everything and E1-E5 would still need it to do something. Typing with nothing open
+  // must NOT invent a naming state out of a stray event.
+  check('E6 typing with nothing open invents no declaration',
+    reduceNewDeclaration(base, { type: 'NEW_DECLARATION_TYPED', id: 'ghost@1' })
+      .newDeclaration === null);
+  check('E7 a failure with nothing open invents no declaration',
+    reduceNewDeclaration(base, { type: 'NEW_DECLARATION_FAILED', message: 'x' })
+      .newDeclaration === null);
+  check('E8 an unrelated action leaves the naming state exactly as it was',
+    reduceNewDeclaration(typed, { type: 'TAB_CHANGED', tab: 'raw' }) === typed);
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);

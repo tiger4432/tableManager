@@ -37,6 +37,11 @@ export const initialExplorerState = Object.freeze({
   authoring: null,
   authoringSchema: null,
   authoringError: null,
+  // The declaration being NAMED, before the server has a draft for it. Local only, and
+  // deliberately not merged into `items`: `items` mirrors what the server has, and a name
+  // nobody has accepted yet is not that. Conflating them is how a create that was refused
+  // goes on showing in the tree as if it existed.
+  newDeclaration: null,
 });
 
 const CONTEXT_COLLECTIONS = [
@@ -227,6 +232,27 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     default:
       return state;
   }
+}
+
+// The naming step, kept out of the big reducer switch because it touches exactly one
+// field and never the mirrored context. `error` is cleared on every keystroke: a refusal
+// about the previous name is worse than silence once the operator starts changing it.
+export function reduceNewDeclaration(state, action) {
+  if (action.type === 'NEW_DECLARATION_OPENED') {
+    return { ...state, newDeclaration: { kind: action.kind, id: '', error: null } };
+  }
+  if (action.type === 'NEW_DECLARATION_TYPED') {
+    if (!state.newDeclaration) return state;
+    return { ...state, newDeclaration: { ...state.newDeclaration, id: action.id, error: null } };
+  }
+  if (action.type === 'NEW_DECLARATION_FAILED') {
+    if (!state.newDeclaration) return state;
+    return { ...state, newDeclaration: { ...state.newDeclaration, error: action.message } };
+  }
+  if (action.type === 'NEW_DECLARATION_CLOSED') {
+    return { ...state, newDeclaration: null };
+  }
+  return state;
 }
 
 export function canLeaveSelection(state, confirmDiscard) {

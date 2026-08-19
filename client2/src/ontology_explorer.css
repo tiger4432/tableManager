@@ -68,7 +68,45 @@
 }
 #ontology-explorer-root .oe-tree-title { color: var(--oe-muted); font-size: 12px; padding: 2px 8px 9px; }
 #ontology-explorer-root .oe-tree-group { margin-bottom: 10px; }
-#ontology-explorer-root .oe-tree-heading { color: var(--oe-muted); font-size: 12px; padding: 6px 8px; }
+#ontology-explorer-root .oe-tree-heading {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--oe-muted); font-size: 12px; padding: 6px 8px;
+}
+#ontology-explorer-root .oe-tree-heading-text { flex: 1; }
+/* The create entry. 13px, not the 10-12px used for passive labels: this is a control a
+   person has to find and press, and a label you squint at is worse than absent. */
+#ontology-explorer-root .oe-tree-add {
+  border: 1px solid var(--oe-line); border-radius: 6px; background: transparent;
+  color: var(--oe-accent); font-size: 13px; line-height: 1.4; padding: 2px 8px;
+  cursor: pointer; white-space: nowrap;
+}
+#ontology-explorer-root .oe-tree-add:hover { background: var(--oe-accent-soft); }
+/* An empty section says so. A bare heading with nothing under it reads as a broken
+   screen; reaching a layer before its members exist is normal, so it gets a word. */
+#ontology-explorer-root .oe-tree-none {
+  color: var(--oe-muted); font-size: 13px; padding: 4px 8px 8px 18px;
+}
+#ontology-explorer-root .oe-new-declaration {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 2px 8px 8px; padding: 8px; border-radius: 6px;
+  background: var(--oe-accent-soft);
+}
+#ontology-explorer-root .oe-new-label { display: flex; flex-direction: column; gap: 4px; }
+#ontology-explorer-root .oe-new-caption { color: var(--oe-muted); font-size: 12px; }
+#ontology-explorer-root .oe-new-id {
+  width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 13px;
+  border: 1px solid var(--oe-line); border-radius: 6px;
+  background: var(--oe-surface); color: var(--oe-text);
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+#ontology-explorer-root .oe-new-actions { display: flex; gap: 6px; }
+#ontology-explorer-root .oe-new-make,
+#ontology-explorer-root .oe-new-cancel {
+  border: 1px solid var(--oe-line); border-radius: 6px; padding: 5px 12px;
+  font-size: 13px; cursor: pointer; background: var(--oe-surface); color: var(--oe-text);
+}
+#ontology-explorer-root .oe-new-make { border-color: var(--oe-accent); color: var(--oe-accent); }
+#ontology-explorer-root .oe-new-make:disabled { opacity: .45; cursor: default; }
 #ontology-explorer-root .oe-tree-item {
   width: 100%; display: flex; align-items: center; border: 0; border-radius: 6px;
   background: transparent; color: var(--oe-text); padding: 7px 8px 7px 18px;

@@ -300,6 +300,15 @@ def closed_lists() -> dict[str, Any]:
         "column_universes": [
             {"id": name, "note": note} for name, note in _UNIVERSE_NOTE.items()],
         "steps": [{"id": step, "label": label} for step, label, _ in STEPS],
+        # 🔴 WHAT THE SCREEN MAY AUTHOR, FROM THE MAP THAT DECIDES IT. The tree only
+        # renders kinds that already have members, so an empty section had no entry point
+        # at all -- you could not create the first pack because there was nowhere to click.
+        # Sourced from `AUTHORABLE_SECTIONS`, which is also what `deletion_plan` reads, so
+        # the screen cannot offer to create something it could not then remove.
+        "authorable_kinds": [
+            {"id": kind, "section": section}
+            for kind, section in sorted(AUTHORABLE_SECTIONS.items())
+        ],
         "tiers": [
             {"id": TIER_STRUCTURAL, "label": "구조적 제거"},
             {"id": TIER_DERIVATION, "label": "유도"},
