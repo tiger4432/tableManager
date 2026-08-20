@@ -219,3 +219,42 @@
 - 시각 디자인·색·간격 — `ui-designer` 소관. 여기서 재는 것은 **마찰**이지 미감이 아니다
 - 삭제·이름변경 경로 — 판정 5건이 아직 열려 있다(보드 구현자 레인 절)
 - 성능 — 왕복이 5회면 1초가 늦어도 어젯밤보다 낫다
+
+---
+
+# 2026-08-20 오후 — 재설계된 화면에서 `lot-lineage@1`을 다시 지었다 (총괄, 소유자 지시)
+
+> 「이제 저 ui로 lot lineage 똑같이 만들어봐 브라우저조작으로」
+
+소유자 실화면 8080. 기존 `lot-lineage@1`은 **건드리지 않고** `zz-lineage-walk@1`로 지었다가
+UI로 지웠다. 파일은 걷기 전과 **정규화 기준 동일**, 지문 5/3/2/2/2/2/2 그대로.
+
+## 결과 — 53 / 54 잎 일치, 차이 1건
+
+```
+팩 만들기        + New → id → Create
+주장 4개          register · membership · lineage · slot_map      폼에서
+역할 15개         kind(select) · required(flag)                   폼에서
+내는 문장 4개      predicate · subject · occurred_at · object      폼에서
+qualifier 4개     membership.slot · slot_map.from/to/wafer        폼에서
+저장             Save → 파일에 착지
+삭제             Delete → 파일이 걷기 전으로
+```
+
+**차이는 하나뿐이고 결함이 아니다:** 실제 팩의 `lineage.emit.object.qualifiers`는 `{}`(빈 맵)인데
+내 것엔 그 키가 없다. 스켈레톤에서 그 자리는 **`required: false`**(`ledger_skeleton.json:446`)이므로
+없는 것과 빈 것이 같은 뜻이다. 폼은 «멤버를 넣어야» 맵을 만든다 — 빈 선택 맵을 굳이 만들 이유가 없다.
+
+## 🔴 화면은 팩이 무엇인지 여전히 모른다
+
+`claims` · `roles` · `emit` · `object` · `qualifiers` 다섯 층이 **전부 스켈레톤에서 나왔다.**
+`object.kind`를 `entity_ref`로 고른 «순간» `object.entity` 칸이 생겼고, `none`인 register에는
+끝까지 안 생겼다 — 조건부 필드(`when`)가 산다. 클라에 팩을 아는 갈래는 여전히 0이다.
+
+## ⚠️ 계측 사고 하나 — 내 쪽이었다
+
+select와 체크박스를 `change` 이벤트로만 넣었더니 **한 건도 저장되지 않았다.** 하마터면
+「드롭다운이 안 먹는다」로 보고할 뻔했다. 화면은 `input`만 듣는다
+(`ontology_explorer.js:980` — 위임 리스너가 `input` 하나뿐). 진짜 사용자의 클릭은 두 이벤트를
+모두 쏘므로 **결함이 아니다.** 보고 전에 소스를 본 것이 세웠다.
+
