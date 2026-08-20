@@ -22,6 +22,29 @@ cd server && python -m uvicorn main:app --host "" --port 8080
 
 ---
 
+## ⓪ 재시작 «했다» — 그리고 여기까지 통과했다 (19:16)
+
+```
+:8080  PID 42488 · 19:16:54 기동   ← 이관·병합 «뒤». 화면 살아났다
+```
+**위 「0개로 보이면 고장이 아니다」는 이제 해소된 상태다.** 다시 0개로 보이면 그때는 진짜로 볼 것.
+
+**일곱 확인 중 이미 통과한 것:**
+```
+4번  좌측 인덱스   Entities·Packs·Vocabulary·Profiles·Source plans·Tables
+                   준비기·매퍼 그룹 «없음» · 선언 16개 (이전 20 − 준비기2 − 매퍼2)
+5번  척추          5층 · 엔터티·낱말·팩·프로필·소스 · 「5 layers · complete」
+③   versioned     authorable = entity@ pack@ predicate@ profile@ source_plan
+                   → 준비기·매퍼가 «코드 0줄로» 빠졌다. 설계가 옳았다. 고칠 것 없음
+```
+
+**아직 안 본 것: 1·2·3·6·7번.** 특히 **3번**(매퍼 후보 = relation ∪ 준비기.output_columns)과
+**7번** backfill. 그리고 **경로 후보 제거**.
+
+⚠️ 마지막 측정에서 트리 행 68개는 떴는데 `preparation`·`mapper` 이름을 못 찾았다.
+**이건 결함이 아니라 내 선택자가 틀렸을 가능성이 높다** — 이름은 `.oe-node-label` «안»에 있고
+`:scope > .oe-node-name`으로 찾았다. **결함으로 적기 전에 선택자부터 고쳐 다시 셀 것.**
+
 ## ① 지금 어디까지 왔나 — 소스플랜 병합
 
 **지시서(정본): `task/ledger_source_plan_merge_brief.md`** — 소유자 판정, 실측, 일곱 확인,
