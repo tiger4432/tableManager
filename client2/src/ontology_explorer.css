@@ -135,7 +135,18 @@
 }
 #ontology-explorer-root .oe-snapshot { color: var(--oe-ok); font-size: 12px; white-space: nowrap; }
 #ontology-explorer-root .oe-history-actions { display: flex; gap: 3.4px; }
-#ontology-explorer-root .oe-search-wrap { position: relative; margin-left: auto; width: min(360px, 42%); }
+/* The mockup's search box, to its own figures: 230px wide, 5x9 padding, 11.5px, mono.
+   Colour stays ours per 「컬러만 기존거」 -- the mockup's box sits on a dark accent header
+   band that this screen does not have, so its accent-800 ground has nothing to map onto. */
+#ontology-explorer-root .oe-search-wrap { position: relative; margin-left: auto; width: 230px; }
+/* 🔴 THE LABEL WAS MARKED HIDDEN AND WAS NEVER HIDDEN. `sr-only` is the author's intent --
+   readable to a screen reader, not to the eye -- but the class was never defined in this
+   stylesheet, so 「정의 검색」 rendered at 63x18px beside a box whose placeholder already
+   says the same thing. The mockup shows no label. Defining the class honours both. */
+#ontology-explorer-root .sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
 #ontology-explorer-root .oe-main {
   /* 6b body: a flat declaration index, then the tree. The spine is no longer a column
      here -- it is the band above. 240px is the mockup's own figure for the index. */
@@ -879,3 +890,11 @@
 #ontology-explorer-root .oe-tree-item,
 #ontology-explorer-root .oe-step-ord,
 #ontology-explorer-root .oe-dirty-dialog { border-radius: 0; }
+
+/* 🔴 AFTER the shared input block, not before it. Declared earlier, the generic
+   `.oe-search, .oe-key-input, .oe-field-input ...` rule that follows simply won its
+   14px/6x10 back -- measured: width and family took, size and padding did not. Same
+   shape as the 13px override that had already swallowed the input spec once. */
+#ontology-explorer-root .oe-search {
+  font-family: var(--oe-font-mono); font-size: 11.5px; padding: 5px 9px; min-height: 0;
+}
