@@ -3532,6 +3532,73 @@ auto-update collector active toggle (UI) + dist`. 라이브 소스에 `au-switch
 워크트리는 제거했다. **브랜치 `worktree-agent-a20e7cf603e201f0c`(`f8355fa`)는 남아 있어
 커밋은 언제든 회수 가능**하다 — 워크트리 제거는 체크아웃만 지운다. 25 → **7**.
 
+## 🔗 소스플랜이 준비기·매퍼를 갖는다 — 착지 (2026-08-20 밤, `087e7d8`)
+
+소유자 판정(「아니다 소스플랜 준비기 맵퍼」 → 「1로 하면 table까지 안닿잖나」)대로 **그릇은 소스**다.
+`source_preparers`·`mappers` 두 절이 사라지고 본문이 `driver.preparation`·`driver.mapper`로 들어갔다.
+지시서 정본: `task/ledger_source_plan_merge_brief.md`(맨 끝에 착지 판정 절).
+
+**목표는 이것이었고, 도달했다:**
+```
+lot_event   준비기 입력   RELATION   8개    물리 표
+            매퍼 입력     PREPARED  14개    물리 8 ∪ 준비기.output_columns 6
+```
+🔴 **판별식은 `lot_event` 하나뿐이다.** `dt_job`은 준비기가 통과형이라 두 규칙이 «같은 23»을 낸다 —
+그 표본으로는 아무것도 증명되지 않는다. 총괄이 `dt_job`으로 재고 통과를 보고했고 구현자가 잡았다.
+
+**딸려서 닫힌 것:** 척추 6→5층 · 좌측 인덱스에서 준비기·매퍼 그룹 소멸(선언 16) ·
+`@`버전 대상에서 둘이 **코드 0줄로** 빠짐(V1 설계가 옳았다는 시험) · **경로 후보 제거**
+(소유자 「딱히 쓸데가 없네」). 후보 제거는 잃은 게 없다 — 라이브에서 후보 재료 92엣지 중
+Integrity `used_by`에 없던 것 **0개**, 62선택 중 48이 후보 1개뿐, 게다가 후보는 `resolved`만 걸러
+**미해소를 보여줄 수가 없었다**(Integrity는 항상 보여준다).
+
+### ⚠️ 커서가 막힌다 — 실행은 증명됐고, 재개는 판정 대기
+
+```
+읽기 경로 실행   ✅ 진짜 lot_event 40행 → 분자 20 · 원자 696 · incomplete 0 · DB 쓰기 0
+                    HEAD 워크트리 기준선 대조: lot_event 거절은 «기존» 상태, 회귀 아님
+dt_job 재개      ⬜ cursor_snapshot_reset_required — 병합이 snapshot_sha256 을 움직인다
+                    `--reset-cursor` 는 승인 장치가 없어 «무조건» 거절(backfill.py:869)
+```
+**총괄이 「해시 재료에서 준비기·매퍼 레지스트리를 빼자」고 제안했고, 구현자가 반박해 죽었다** —
+① `preparer_id`가 `provenance_base` → `source_raw_ref` → `source_event_id`로 샌다(verified join이
+있는 날). 「오늘 안 닿으니 빼도 된다」는 **도달 가능해지는 날 틀리는** 모양이다.
+② `bundle_sha256`이 재료에 남아 구조 변경만으로 해시가 움직인다 — 빼도 해결 안 된다.
+
+**소유자 판정에 필요한 두 측정(미완):**
+```
+A  관계 없는 선언을 고치면 snapshot_sha256 이 움직이는가 · 남의 커서까지 막는가
+   ← 화면과 원장이 «공존 가능한가»가 여기서 갈린다. 매번 선다면 화면의 전제가 무너진다
+B  ledger_atom 에서 source_id='dt_job' 행 수 · distinct source_translator_ver 개수
+   ← `source_translator_ver`가 `uq_ledger_atom` 재료라(schema.py:60) 리플레이는 «append»다.
+     200행 append 와 600만행 append 는 다른 결정
+```
+
+### 🔴 6번은 «통과 아님» — 그리고 새로 찾은 마찰
+
+「소스 하나를 폼만으로 새로 만들어 저장 → 거절 0」은 **아직 미달**이다. 총괄이 **부분 저장을
+완성으로 보고**했다(relation 하나만 넣고 저장된 것). 실제로는 거절 6 → 2, 남은 둘은 `profile_id`.
+소스와 프로필은 **서로를 가리킨다**(`setup_bundle.py:1176` 필수 셋 · `:1432` `profile.source`).
+
+**「역할 추가 컨트롤이 막힌다」는 총괄 재현 실패 — 눌러 보니 `subject`가 바로 들어갔다.**
+
+🔴 **진짜 마찰은 이것이다 — 첫 저장 전에는 후보가 «하나도» 안 뜬다.**
+`/authoring/plan`이 «파일»을 읽기 때문이다(설계 의도: 반쯤 쓴 config에서도 답하려고).
+그래서 새 선언은 한 바퀴를 **맹목으로** 채워 저장해야 그다음부터 안내가 시작된다.
+```
+저장 전   쓰는 주장·역할·팩 전부 후보 0
+저장 후   쓰는 주장 6개(dt-job@1/die_count · lot-lineage@1/lineage …) + 거절 3줄로 정확히 지목
+```
+소스도 같다 — `relation`을 저장해야 준비기 입력 23 · identity 23 · order_by 23이 붙는다.
+**소유자 판정 대기.** 「무엇을 어떻게 입력하는지 UI로」라는 목표에 이 첫 바퀴가 걸린다.
+
+### 계측기 사고 — 오늘 일곱 번째, 총괄 것
+
+**브라우저 `navigate`가 리로드가 아니었다.** 같은 URL로 보내면 SPA 상태가 그대로 살아 있고,
+화면이 «옛 스냅샷 해시»를 든 채로 저장을 시도해 서버가 정당하게 거절했다. 총괄이 그것을
+제품 결함으로 판단할 뻔했다. **`location.reload()` 후 `performance.timing.navigationStart`가
+실제로 갱신됐는지 보고 나서 화면 상태를 잰다.**
+
 ## 🐞 열린 문제 (Open Problems)
 
 | #   | 심각도                               | 문제                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 도메인              | 상태                             |
