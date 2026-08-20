@@ -25,7 +25,7 @@
 `mapping_id` cannot reach this file」. **config 이름이 mapper 로 새는 걸 막으려던 것인데,
 `sentence` 는 config 이름이 아니라 mapper «자신의» 이름이라 그 걱정이 애초에 없다.**
 
-## 🔴 그리고 구조 매칭은 이미 «금 가 있다» (실측)
+## ~~그리고 구조 매칭은 이미 «금 가 있다» (실측)~~ ← 🔴 총괄 정정: 죽은 파일에서 쟀다
 
 ```
 ledger_dt_job_mapper.py:24-25
@@ -228,3 +228,34 @@ mappings 목록 → 별명 키 맵 · mapping_id 제거
 
 🔴 **이 절이 위의 모든 「696」 문구를 대체한다.** 숫자를 쫓지 말고 «전후가 같은지»를 본다.
 [[presence-is-not-confirmation]] 의 사촌이다 — 조건을 안 적은 수는 사실이 아니라 일화다.
+
+---
+
+## 🔴 총괄 정정 — 위 「금 가 있다」 근거는 «등록되지 않는 파일»에서 쟀다 (2026-08-21 02:3x)
+
+지시서가 `ledger_dt_job_mapper.py:24-25` 의 `COUNTED`·`FIRST_WORK` 구조 동일을 근거로 들었다.
+**그 파일은 등록되지 않는다.** v2 실행 경로가 쓰는 것은 `ledger_v2_dt_job_mapper.py` 이고,
+등록기(`ledger.implementations.mapper_declarations`)가 아는 매퍼는 셋뿐이다:
+```
+dt-job-role@1      <- mappers.ledger_v2_dt_job_mapper          REGISTER · COUNTED   둘 다 쓰임
+lot-event-role@1   <- mappers.ledger_v2_lot_event_role_mapper  shape 5개 전부 쓰임
+declarative-role@1 <- ledger.roleframe
+```
+**총괄이 `dt-job-role` 로 grep 해 세 파일을 얻고 «어느 것이 등록되는지» 안 보고 골랐다.**
+[[grep-skips-the-config-that-actually-runs]] · [[my-filename-is-not-my-address]] — 세 번째다.
+
+⚠️ **그 근거는 지워지지만 라운드는 그대로 선다.** 본론은 「이름이 양쪽에 이미 있는데 매칭에서
+4순위로 쓰인다」이고, 그건 죽은 파일과 무관하다.
+
+## ✅ 착수 전 관문 A·B·C — 통과 (구현자 실측)
+
+```
+A  갈린다.  살아 있는 shape 7 → mapping 8.  FIRST_SIGHT 를 «둘로» 이름 붙이면 8:8
+            지금 sentence 보유 8 중 2 → 8/8 이 되어야 한다
+B  has_object   매칭(:503)·에러 문구(:530) 말고 «소비자 없음»  → SentenceShape 에서 «제거»
+   qualifiers   say() 자기검사(:428) 가 매칭과 무관하게 쓴다   → «남긴다»
+C  살아 있는 매퍼에 안 쓰이는 shape «없음»
+```
+🔴 **B 의 판정: `has_object` 는 매칭을 위해 존재했으므로 매칭이 이름으로 바뀌면 같이 사라진다.**
+`qualifiers` 는 자기검사라 남는다. 구현자가 「둘이 대칭이 아니다」로 가른 것이 정확하다.
+
