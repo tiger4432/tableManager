@@ -964,8 +964,24 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
   const shape = context.deref(node);
   if (!shape) return null;
   if (shape.kind === 'leaf') return renderTreeLeaf(context, shape, path, value, depth, label);
-  const open = !path || needsAttention(context.hot, context.absolute(path))
-    || context.expanded.includes(path);
+  // 🔴 THE DECLARATION'S OUTLINE IS ALWAYS DRAWN; FOLDING STARTS BELOW IT. Owner opened a
+  // finished pack and saw two lines -- `lot-lineage@1` and 「주장 MAP 접힘 · 5」 -- and asked
+  // whether it had been pushed. The tree was there and the fold rule was doing exactly what
+  // it was told; the result was still not a tree. Folding hides DETAIL, not the shape: the
+  // mockup draws `dt_job`'s relation / profile_id / driver as rows, answered ones included.
+  //
+  // This bites hardest on a FINISHED declaration. An unfinished one opens itself because
+  // 「남음」 forces it, so the emptiness only shows up on the declarations that are done --
+  // which are most of the ones anybody opens.
+  //
+  // Not an exception to the fold rule. This decides the INITIAL state, and 「남은 칸과 거절은
+  // 펼침」 still only ever opens MORE. A person can still fold anything by hand: membership in
+  // `expandedFields` FLIPS whatever the default was, so the toggle works in both directions
+  // instead of being a control that only ever agrees with the screen.
+  const byDefault = depth <= 1
+    || needsAttention(context.hot, context.absolute(path));
+  const open = !path ? true
+    : (context.expanded.includes(path) ? !byDefault : byDefault);
   const box = h('div', 'oe-node');
   const kind = h('i', 'oe-node-badge', shape.kind === 'map' ? 'MAP' : 'RECORD');
   const children = shape.kind === 'map'
