@@ -635,11 +635,16 @@ function foldDecision(row, expanded = []) {
   if (row.remaining) return { open: true, reason: '' };
   if (row.conflicts || row.refusals?.length) return { open: true, reason: '' };
   if (row.state === 'derived') {
-    return { open: false, reason: row.disposition === 'grammar_requires_it' ? 'Forced' : 'Derived' };
+    // 🔴 THE WORDS ARE NOT NEW. Each is already this screen's word for the same thing --
+    // 「파생됨 · 묻지 않음」 on the bucket heading, 「강제 · …」 on the row's own action line,
+    // 「비움」 on an empty list chip, 「후보」 across the client. Nothing here was translated
+    // into existence; the state column had simply been left in the language the mockup did
+    // not rule on, so 「선언됨」 stood beside four English words in one column.
+    return { open: false, reason: row.disposition === 'grammar_requires_it' ? '강제' : '파생됨' };
   }
   // Read live. `candidates` is the list the server sent for THIS render.
   if (Array.isArray(row.candidates) && row.candidates.length === 1) {
-    return { open: false, reason: 'Single candidate' };
+    return { open: false, reason: '단일 후보' };
   }
   // 🔴 A SETTLED DECISION IS NOT A PENDING ONE. A person-decided field that is already
   // filled and carries no problem is done -- keeping it open spends the operator's
@@ -651,7 +656,7 @@ function foldDecision(row, expanded = []) {
   // list. Folding by "is anything still owed here" instead of by tier is what turns a
   // complete config into a short page, which is the state it should read as.
   if (row.state === 'answered') return { open: false, reason: '선언됨' };
-  if (row.state === 'unanswered') return { open: false, reason: 'Optional' };
+  if (row.state === 'unanswered') return { open: false, reason: '비움' };
   return { open: true, reason: '' };
 }
 
