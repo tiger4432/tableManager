@@ -1077,7 +1077,17 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
   const open = !path ? true
     : (context.expanded.includes(path) ? !byDefault : byDefault);
   const box = h('div', 'oe-node');
-  const kind = h('i', 'oe-node-badge', shape.kind === 'map' ? 'MAP' : 'RECORD');
+  // 🔴 THREE SHAPES, NOT TWO. Owner, looking at the badge: 「편집창에서 map으로 떠있는건
+  // 머야」 -- and asking is the verdict, because two different things wore one word. A
+  // name-keyed map asks you for a NAME before it can hold anything; an index-keyed one just
+  // appends. Same badge, opposite actions.
+  //
+  // The words are the screen's own, not coined here: the naming control already asks for
+  // 「이름」 and the append control already says 「+ 항목」. `RECORD` is unchanged -- the
+  // mockup drew it, and it was not what was asked about.
+  const kind = h('i', 'oe-node-badge',
+                 shape.kind !== 'map' ? 'RECORD'
+                   : shape.keyed_by === 'index' ? '항목' : '이름');
   const children = shape.kind === 'map'
     ? renderSkeletonMap(context, shape, path, value, depth)
     : renderSkeletonRecord(context, shape, path, value, depth);
