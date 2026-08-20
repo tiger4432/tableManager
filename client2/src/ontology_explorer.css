@@ -568,7 +568,14 @@
   color: var(--oe-muted);
 }
 
-/* --- 6b: the tree ------------------------------------------------------------------
+/* 288px, not the mockup's 214. Owner released the mockup for this ONE column after the
+   badge fix started truncating names: 「이름잘림 라벨 열넓혀」. The number is measured, not
+   chosen -- the widest label is `allowed_binding_kinds` at depth 5, needing 205px for name
+   plus badge plus gap, so a base of 285px; 288 rounds that up and stays a multiple of the
+   16px step. Nothing else moved: the stair is still -16px a level, and the value and state
+   columns still each stand on one vertical line.
+
+   --- 6b: the tree ------------------------------------------------------------------
    🔴 THE INDENT MOVES THE LABEL COLUMN ONLY. Depth shortens the first column by 16px a
    level while the value column absorbs the difference and the state column stays 92px, so
    value and state stand on ONE vertical line at every depth. Indenting the whole row --
@@ -578,7 +585,7 @@
 #ontology-explorer-root .oe-node-row {
   display: grid;
   grid-template-columns:
-    calc(214px - 16px * var(--oe-depth, 0)) minmax(0, 1fr) 92px;
+    calc(288px - 16px * var(--oe-depth, 0)) minmax(0, 1fr) 92px;
   gap: 10px; align-items: baseline; min-width: 0;
   /* The indent is padding, and the label column loses exactly what the padding gains --
      so `value` starts at the same x at every depth. Measured before this line existed:
