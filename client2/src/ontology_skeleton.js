@@ -92,10 +92,24 @@ export function emptyOf(node, defs, depth = 0) {
     // `missing_field`, which asks the operator to fill it, while a seeded `''` would look
     // like a value they chose. And no field is known by name: the skeleton is asked whether
     // it is required and whether it is a container.
+    //
+    // 🔴 REQUIRED IS NOT UNCONDITIONAL: `when` SAYS WHO IT IS REQUIRED OF. Four fields of
+    // `defs.binding` are `required: true` behind a gate on `kind` -- and a brand-new binding
+    // has no `kind` yet, so none of them is required OF IT. Seeding the one that happens to
+    // be a container gave every new binding a `keys: {}` its own kind forbids, which the
+    // form cannot take out again because the control that removes a field is the one drawn
+    // for `required: false`.
+    //
+    // The gate is ASKED through `fieldApplies` -- the same predicate the renderer decides
+    // with, so what a new member holds and what it shows can no longer disagree -- and never
+    // by a list of kinds here, which would be a second author for the skeleton and would go
+    // stale in silence. An UNGATED required container still lands exactly as before, which
+    // is the complaint this seeding exists for.
     if (depth > 6) return {};                     // a def that holds its own kind, bounded
     const seeded = {};
     for (const field of shape.fields || []) {
       if (field.required !== true) continue;
+      if (!fieldApplies(field, seeded)) continue;
       const child = deref(field.node, defs);
       if (!child || child.kind === 'leaf') continue;
       seeded[field.key] = emptyOf(field.node, defs, depth + 1);

@@ -372,6 +372,21 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     chose.  And nothing here knows a field by name -- it asks the skeleton whether the field
     is required and whether it is a container, so the next section with the same shape is
     covered without being mentioned.
+
+    🔴 REQUIRED IS NOT UNCONDITIONAL: `when` SAYS WHO IT IS REQUIRED OF.  Four fields of
+    `defs.binding` are `required: true` behind a `when` gate on `kind` -- `column`, `value`,
+    `entity_type`, `keys` -- and a brand-new binding has no `kind` at all, so none of them
+    is required OF IT yet.  Seeding the one that happens to be a container gave every new
+    binding a `keys: {}` its own kind forbids, and the form has no control that takes a
+    REQUIRED field back out; building a source through the form ended at two
+    `unknown_field` refusals nobody could clear.
+
+    So the gate is ASKED, never listed.  `when` appears at eight sites in the skeleton and
+    names four different kinds; a set of kinds written here would be a second author for
+    the grammar and would go stale the first time the skeleton changes its mind -- silently,
+    which is the failure this module keeps removing.  The gate is read against the record as
+    it is being seeded, so an ungated required container (`qualifiers`, the complaint this
+    function exists for) still lands exactly as before.
     """
     shape = _deref(node, defs, seen)
     if not isinstance(shape, Mapping):
@@ -383,6 +398,9 @@ def empty_value(node: Any, defs: Mapping[str, Any],
         seeded: dict[str, Any] = {}
         for field in shape.get("fields") or []:
             if field.get("required") is not True:
+                continue
+            gate = field.get("when")
+            if isinstance(gate, Mapping) and seeded.get(gate.get("field")) != gate.get("is"):
                 continue
             child = _deref(field.get("node"), defs, seen)
             if not isinstance(child, Mapping) or child.get("kind") == "leaf":
