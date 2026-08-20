@@ -82,9 +82,44 @@ function renderNewDeclaration(state, kind) {
 function renderTree(state) {
   const nav = h('nav', 'oe-tree');
   nav.setAttribute('aria-label', '온톨로지 구성 트리');
-  nav.append(h('div', 'oe-tree-title', `구성 요소 · ${state.total}개`));
+  // 🔴 THE DEFAULT LIST IS TOP-LEVEL DECLARATIONS ONLY, AND THE TEST IS THE PATH'S LENGTH.
+  // A `mapping` or a `binding` is not a declaration -- its id is synthesised from a pointer
+  // (`<profile>#mapping:<id>#binding:<role>`), it lives INSIDE a profile, and
+  // `authorable_bundle_path` refuses it: "cannot be created or removed on this screen".
+  // Measured on the owner's config: 62 nodes = 20 declarations + 42 positions, and those 42
+  // were taking three and four lines each in a 240px column.
+  //
+  // Not a list of kinds to exclude. `owning_section`'s own comment says why -- "THE
+  // DISCRIMINATOR IS THE SECTION, NOT THE KIND ... length 2 is a top-level declaration,
+  // longer is nested" -- and a blacklist leaks the day another nesting appears. Length
+  // covers `claim` and `role` and whatever comes next without being told about them.
+  //
+  // The positions are not lost: the tree in the middle draws them inside their declaration,
+  // which is where they live, and a SEARCH still lists them so they can be found by name.
+  // 🔴 NOT `json_pointer.length === 2`, WHICH IS THE SAME RULE MEASURED IN THE WRONG UNIT.
+  // That is true of `ledger_config.json`, where a declaration is `/<section>/<id>` -- but a
+  // `table` comes from `table_config.json`, whose declarations sit at `/dt_log`, ONE segment.
+  // The literal length test dropped both physical tables off the index. Measured before
+  // shipping it: pointer depths across the owner's config are 1×2, 2×18, 4×14, 6×28.
+  //
+  // A position is exactly a node whose path EXTENDS another node's path, so that is the test.
+  // It needs no length, no kind and no file: it stays true for `claim`, for `role`, and for
+  // whatever file is added next.
+  const owned = state.items.map((row) => row.config_path).filter(Boolean);
+  const declarationOnly = (item) => {
+    const path = item.config_path;
+    if (!path) return true;
+    return !owned.some((other) => other !== path && path.startsWith(`${other}/`));
+  };
+  const searching = Boolean(state.query.trim());
+  const listed = searching ? state.items : state.items.filter(declarationOnly);
+  // 🔴 THE COUNT COUNTS WHAT IS ON SCREEN. It used to say `state.total`, every node in the
+  // index -- which was true of the index and false of the list, and would now read 62 above
+  // 20 rows. A heading that disagrees with the list under it is the quiet kind of lie.
+  nav.append(h('div', 'oe-tree-title',
+                searching ? `검색 결과 · ${listed.length}개` : `선언 · ${listed.length}개`));
   const groups = new Map();
-  for (const item of state.items) {
+  for (const item of listed) {
     if (!groups.has(item.kind)) groups.set(item.kind, []);
     groups.get(item.kind).push(item);
   }
