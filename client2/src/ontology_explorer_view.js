@@ -979,7 +979,19 @@ function renderSkeletonMap(context, node, path, value, depth) {
   // A plan row ABOUT the map itself says what the grammar expects OF it -- which qualifier
   // slots a predicate opens, for instance. It stays at the top of the block.
   const own = context.planRow(path);
-  if (own) box.append(treeRow(depth + 1, '이 자리', [], context.renderRow(own, true), null));
+  if (own) {
+    // 🔴 THREE ARGUMENTS, NOT TWO. `renderRow` is `(row, node, bare)`, so the bare `true`
+    // that used to sit here landed in `node` and left `bare` false -- these four rows drew
+    // their own card head while every sibling was a flat line, and said their state twice.
+    // The other call site got the third argument in the same commit; this one did not.
+    // Passing `bare` also means the row must supply the state element itself, exactly as
+    // `renderTreeLeaf` does -- otherwise the only place that stated it disappears.
+    const fold = foldDecision(own, context.expanded);
+    const state = h('i', 'oe-tier oe-tier--' + own.tier,
+                    fold.open ? own.tier : fold.reason);
+    box.append(treeRow(depth + 1, '이 자리', [],
+                       context.renderRow(own, null, true), state));
+  }
   const members = membersOf(node, value);
   for (const key of members) {
     const at = memberPath(path, key, node.keyed_by);
