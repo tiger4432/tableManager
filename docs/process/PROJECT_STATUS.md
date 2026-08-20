@@ -3847,6 +3847,34 @@ a55f3059^ 샘플(이미 «반쯤» 이관된 세대)로 태우니
 ```
 **막는 방향의 거절이라 안전하지만, 어제 오후 백업을 되돌리면 이 자리에 걸린다.** 구현자 판정 필요.
 
+#### 🔴 5번이 못 넘는 진짜 이유 — 필수 칸 «하나»를 화면에서 채울 수가 없다 (총괄 실측 2026-08-21 08:0x)
+
+별명 라운드 착지 뒤 총괄이 폼만으로 소스를 끝까지 만들어 봤다. **거절 21 → 2.**
+남은 둘은 «같은 칸»이고, 그 칸은 **사람이 폼으로 채울 방법이 없다.**
+
+```
+검증기   missing_field @ bind.mappings.<별명>.bind.occurred_at.column
+화면     <div class="oe-field is-answered">  ← «답해졌다»고 표시
+         <span class="oe-value is-none">None</span>        ← 그런데 값은 None
+         <div class="oe-candidates"><small>PREPARED · 23</small>
+            <i class="oe-chip">…</i> × 23                  ← «칩만». input 도 select 도 없다
+```
+**같은 종류의 다른 칸은 편집기가 뜬다** — `relation` 은 `input+datalist`, `read.unit` 은 `select`,
+`subject.keys.<키>.column` 도 총괄이 채웠다. **이 칸만 계획이 `answered` 로 분류해 렌더러가
+편집기를 안 그린다.** 화면과 검증기가 같은 칸을 두고 «다른 말»을 한다.
+
+🔴 **「거절이 남았다」가 아니라 「그 거절을 폼으로 풀 방법이 없다」다.** 소유자 목표
+(「설정을 화면에서 직접 만든다」)에 직접 걸리는 자리이고, 커서 라운드보다 «작다».
+
+**원인 후보 둘 — 구현자가 재는 중:**
+```
+① 계획이 값 None 인 칸을 answered 로 분류한다      ← 계획(config_authoring) 쪽
+② 렌더러가 answered 면 편집기를 안 그린다          ← 화면(ontology_explorer_view) 쪽
+```
+
+**한편 별명 키 맵은 폼에서 «정상 동작»한다** — `form-name` 으로 별명을 받아 매핑을 만들고,
+그 안에 `use`·역할 바인딩이 생기며 `mapping_id`·`sentence` 칸은 «없다». 설계대로다.
+
 ### 소유자 판정 대기 (넷)
 
 ```
