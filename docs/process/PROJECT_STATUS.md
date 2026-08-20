@@ -3812,6 +3812,41 @@ dt_job         job_register        register  · subject=DTJob@1         → regi
 ⚠️ **총괄이 대조로 만든 표이고 구현자 확인을 받지 않았다.** 별명을 실제로 지은 쪽이 맞는지
 한 번 봐야 한다 — 특히 `first_sight_holder`/`item` 이 lot/wafer 와 «반대로» 붙지 않았는지.
 
+#### ✅ 마이그레이션 검증 — 총괄이 «다른 config» 로 태워 봤다 (2026-08-21 06:1x)
+
+지시서가 정한 시험을 실제로 돌렸다. **대상은 `transfer_explorer` 샘플** — 소스 이름도 mapping 도
+`lot_event`/`dt_job` 과 «전혀 다른» config 다. 스크립트가 특정 소스에 박혀 있지 않은지가 여기서 갈린다.
+
+```
+입력   087e7d8^ 의 샘플 — 7절 (vocabulary·entities·packs·source_preparers·mappers·profiles·sources·virtual_joins)
+출력   migrated (setup_version 3 -> 4)
+       절        vocabulary · entities · packs · sources · virtual_joins   ← 세 절 소멸
+       소스 키    bind · map · prepare · read · relation
+       mappings  dict, 별명 키 — bond_component · core_to_dt · dt_to_bond ·
+                 job_contains_die · job_occupies_slot     ← «처음 보는» 5개를 스스로 도출
+       binding_origin 0 · emits 0 · mapping_id 0
+```
+**한 스크립트가 오늘 세 라운드를 «한 번에» 접었고, 처음 보는 config 에서 별명 다섯을 도출했다.**
+
+**거절도 확인했다 — 지어내지 않는다:**
+```
+a55f3059^ 샘플(이미 «반쯤» 이관된 세대)로 태우니
+   REFUSED sources.dt_log.driver.preparation.preparer_id: no source_preparers entry named None
+   → 파일을 «건드리지 않고» 자리를 대고 멈춘다
+```
+
+### ⚠️ 다만 «멱등/세대 독립»이 지시서 요구만큼은 아니다
+
+브리프: 「세대별로 독립 … 이미 새 모양인 파일에 돌리면 「할 것 없음」이라 말하고 끝난다」.
+실제로는 **「병합은 됐고 흡수는 안 된」 중간 세대에서 «거절»한다** — 건너뛰지 않는다.
+
+```
+전체 옛 모양(7절)          → 이관 ✅
+중간 세대(준비기·매퍼만 병합) → 거절 ⚠️   ← 어제 낮의 백업이 정확히 이 모양이다
+이미 v4                    → 미확인
+```
+**막는 방향의 거절이라 안전하지만, 어제 오후 백업을 되돌리면 이 자리에 걸린다.** 구현자 판정 필요.
+
 ### 소유자 판정 대기 (넷)
 
 ```
