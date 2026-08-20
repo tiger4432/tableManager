@@ -1,5 +1,42 @@
 # 구현자 인수 — 컴팩트 직전 상태 (2026-08-20)
 
+## 🔴 커서 재스탬프 라운드가 «먼저 알아야 할» 사실 — 원장 유일 인덱스가 번역기 버전을 문다
+
+별명 라운드를 지켜보다 확인했다. **이 라운드의 결함이 «아니고», 다음 라운드의 재료다.**
+
+```sql
+uq_ledger_atom ON ledger_events
+  (occurred_at, predicate, subject_type, subject_keys,
+   COALESCE(object_payload,'{}'), source_translator_ver, source_raw_ref)
+                                   ↑ 여기 «번역기 버전»이 들어 있다
+```
+그리고 그 값은
+```
+source_translator_ver = f"ledger-v2:{snapshot_sha256}#{row['sentence']}"   roleframe.py:1171
+```
+**두 조각 다 라운드마다 움직인다** — 해시는 설정 모양이 바뀔 때마다, 접미사는 별명 라운드가
+`mapping_id`(`job_die_count`)를 `sentence`(`counted`)로 바꾸면서.
+
+```
+DB 실측: 기존 v2 792행이 무는 값
+   ledger-v2:39ebb419…#job_register     396
+   ledger-v2:39ebb419…#job_die_count    396
+앞으로 만들어질 값
+   ledger-v2:<새 해시>#register · #counted · #first_sight_holder …
+```
+
+**그래서 재개하면 «중복 제거가 안 걸린다».** 같은 주장이 옛 버전으로 한 번, 새 버전으로 한 번
+들어간다. `ON CONFLICT DO NOTHING` 은 인덱스가 같다고 볼 때만 막는다.
+
+⚠️ **이건 별명 라운드가 만든 게 아니다.** 해시가 이미 재료라서 오늘 세 라운드가 각각 같은 일을
+했다. **그리고 그게 커서 게이트가 승인 없이 재개를 «거절하는» 이유다** — 게이트는 지금 제 일을
+하고 있다.
+
+**그러니 「소스별 지문」 라운드는 지문만 세우면 끝나지 않는다.** 기존 792행을 어떻게 할지가
+같이 정해져야 한다 — 그대로 두고 새 버전으로 다시 쌓을지, 옛 행을 재스탬프할지, 지울지.
+**셋 다 소유자 판정이다. 내가 고르지 않는다.**
+
+
 ## ▶ 별명 라운드 착수 전 관문 A·B·C — 재고 보고 (2026-08-21 02:2x)
 
 지시서 `task/ledger_sentence_alias_brief.md`(소유자 「맵퍼 별명문장 부르기 1순위」).
