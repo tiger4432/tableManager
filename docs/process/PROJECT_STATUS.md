@@ -3622,6 +3622,42 @@ dt_job 재개      ⬜ cursor_snapshot_reset_required — 병합이 snapshot_sha
 제품 결함으로 판단할 뻔했다. **`location.reload()` 후 `performance.timing.navigationStart`가
 실제로 갱신됐는지 보고 나서 화면 상태를 잰다.**
 
+## 🔴 매퍼 «구현»이 컬럼 이름을 들고 있다 — 완성 조건 위배 (2026-08-20 밤, 실측)
+
+소유자 DoD: 「다른 스키마 운영 환경에서 **코드 0줄**, 선언 교체만으로 발화」.
+`server/mappers/ledger_v2_lot_event_role_mapper.py` (347줄) 가 이것을 깬다.
+
+```
+:38   "lot", "event_type", "slots", "wafers", "parent_lot", "child_lot",
+      "row_identity", "event_time"          ← 기대 컬럼 목록
+:43   "lot_id", "slotnumbers", "waferids", "txn_seq" …   ← «다른 이름» 목록
+:47   {"lot": "lot_id", "wafers": "waferids", …}         ← 둘 사이 별칭 표
+:202  {_text(row["lot"]) for row in rows}                ← 이름으로 꺼낸다
+등장 횟수  "lot" 9 · event_time 3 · wafers 3 · slots 3 · parent_lot 3 · child_lot 3 · event_type 3
+```
+
+**별칭 표가 있다는 것 자체가 증거다** — 이름이 두 벌인 환경을 이미 겪고 손으로 대응했다.
+컬럼 이름이 또 다른 환경이 오면 **이 파일을 고쳐야 한다.**
+
+⚠️ **계측 주의 — 총괄이 여기서 아홉 번째로 당했다.** 첫 탐침이 작은따옴표만 봐서 **0건**이 나왔다.
+이 파일은 큰따옴표를 쓴다. **「없다」를 보고하기 전에 따옴표 두 종류를 다 훑을 것.**
+
+**부류로 봐야 한다** — 응용 세션이 잡은 하드코딩(`ledger_trace` 가 술어 이름을 리터럴로 부른다,
+걷기가 `Lot` 에 묶여 있다)과 **같은 계열**이다. 이름이 코드에 박혀 선언을 갈아도 안 따라온다.
+
+**대기열 4번** (앞: 설정 모양 ①② · 커서 소스별 지문 · 어휘 통일). 지시서 미작성.
+
+### 곁들여 확인된 경계 — 매퍼와 프로필은 «같은 것»을 하지 않는다
+
+```
+매퍼가 내는 것    역할 «값» (RoleEmission → role frame)      roleframe.py:227-253
+mapper.emits      「내가 낼 주장은 이 넷」이라는 «계약»          검증기가 프로필과 대조한다
+루프를 «도는» 것   for mapping in profile.mappings            roleframe.py:284
+매핑이 하는 것    use = 어느 주장 · bind = 그 주장의 역할 ← PREPARED 의 컬럼
+```
+**즉 문장을 만드는 주체는 프로필이고, 매퍼는 재료를 댄다.** `emits` 는 그 둘이 어긋나지 않게
+하는 선언일 뿐 실행의 주체가 아니다.
+
 ## 🐞 열린 문제 (Open Problems)
 
 | #   | 심각도                               | 문제                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 도메인              | 상태                             |
