@@ -3708,7 +3708,7 @@ lot-lineage@1/register  ← 동일
 | 순 | 무엇 | 지시서 | 상태 |
 |---|---|---|---|
 | **1** | 설정 모양 ①②③ — 승인 메타 생략 · `driver`→`read·prepare·map·bind` · `emits`·`packs`·`claim_ref` 삭제 | `task/ledger_config_shape_brief.md` | ✅ **착지 `a55f3059` · 총괄이 화면으로 확인 (2026-08-21 02:00)** |
-| **2** | 맵퍼 «별명 문장» — 매칭을 별명 1순위로 · `mappings` 를 별명 키 맵으로 · `mapping_id` 제거 · **마이그레이션 + `setup_version` 4** | `task/ledger_sentence_alias_brief.md` | 🔵 대기 — 소유자 「1순위」 |
+| **2** | 맵퍼 «별명 문장» — 매칭을 별명 1순위로 · `mappings` 를 별명 키 맵으로 · `mapping_id` 제거 · **마이그레이션 + `setup_version` 4** | `task/ledger_sentence_alias_brief.md` | 🟡 **트리에서 «돌고 있음», 커밋 안 됨** — 총괄이 화면·체크포인트·마이그레이션까지 검증 완료(아래 절들). 구현자 세션이 04:51 이후 굳어 커밋만 못 찍었다 |
 | **3** | 커서 «소스별 지문» + 재스탬프 (읽기 없이) | `task/ledger_per_source_version_brief.md` | 🔵 대기 — 모양 변경이 «다 끝난 뒤» |
 | **4** | `vocabulary.py` 버리기 — 판정·측정 완료, 지시서 미작성 | — | 🔵 대기 |
 | **5** | 매퍼가 컬럼 이름을 들고 있다 (`lot-event-role`) | — | 🔵 대기 |
