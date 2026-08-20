@@ -407,6 +407,39 @@ def empty_declaration(section: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+@lru_cache(maxsize=1)
+def versioned_sections() -> frozenset[str]:
+    """Which sections does the validator require `id@version` of? ASKED, not listed.
+
+    🔴 SIX OF THE SEVEN REQUIRE IT AND ONE DOES NOT -- sources are keyed `dt_job`, no `@`.
+    So "always append @1" breaks sources, and a hand-written list of the other six is the
+    hardcode this round keeps removing: it would go stale the day the grammar changes its
+    mind, and go stale SILENTLY.
+
+    So the answer is measured. Each section is handed a declaration named without a version
+    and the validator is asked what it thinks; the sections that come back with
+    `invalid_versioned_id` against that name are the ones that carry versions. The screen
+    never decides this -- it reads the answer.
+    """
+    from .setup_bundle import validate_bundle_errors
+
+    probe = "zzprobeid"                      # deliberately unversioned
+    carries: set[str] = set()
+    for section in AUTHORABLE_SECTIONS.values():
+        # `catalog` is required by name -- omitting it refuses before any section is read,
+        # which is how the first version of this probe measured 0 for all seven.
+        errors = validate_bundle_errors(
+            {section: {probe: empty_declaration(section)}}, catalog={})
+        # The path must END at the declaration's own name. A source refuses
+        # `...zzprobeid.driver.mapper_id` -- that is a REFERENCE it holds, not its own key,
+        # and counting it would have made every section look versioned.
+        if any(error.code == "invalid_versioned_id"
+               and error.path == f"bundle.{section}.{probe}"
+               for error in errors):
+            carries.add(section)
+    return frozenset(carries)
+
+
 def closed_lists() -> dict[str, Any]:
     """Every closed list the authoring screen may offer, from the code that enforces it.
 
@@ -439,8 +472,13 @@ def closed_lists() -> dict[str, Any]:
         # at all -- you could not create the first pack because there was nowhere to click.
         # Sourced from `AUTHORABLE_SECTIONS`, which is also what `deletion_plan` reads, so
         # the screen cannot offer to create something it could not then remove.
+        # 🔴 `versioned` RIDES ALONG SO THE SCREEN NEVER HOLDS THE LIST. Six of the seven
+        # need `id@version` and sources do not, so "always append @1" breaks sources and a
+        # list of the other six in the client is a hardcode that goes stale in silence.
+        # `versioned_sections()` asks the validator instead of asserting -- see its comment.
         "authorable_kinds": [
-            {"id": kind, "section": section}
+            {"id": kind, "section": section,
+             "versioned": section in versioned_sections()}
             for kind, section in sorted(AUTHORABLE_SECTIONS.items())
         ],
         "tiers": [

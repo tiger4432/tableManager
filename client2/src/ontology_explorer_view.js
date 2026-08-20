@@ -1,4 +1,4 @@
-import { isDraftRevisionEditable } from './ontology_explorer_store.js';
+import { isDraftRevisionEditable, declarationIdFor } from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
 import {
@@ -64,10 +64,18 @@ function renderNewDeclaration(state, kind) {
   input.type = 'text';
   input.dataset.action = 'new-declaration-id';
   input.value = state.newDeclaration?.id || '';
-  input.placeholder = 'id · e.g. dt-job@1';
+  input.placeholder = 'id · e.g. dt-job';
   input.setAttribute('aria-label', 'New declaration id');
   label.append(input);
   box.append(label);
+  // 🔴 THE VERSION IS SHOWN BEFORE IT IS COMMITTED. This is the one moment a version has to
+  // be visible -- 「lot@1 이 이미 있으면 lot@2 를 «제안»」 -- because appending it silently
+  // would mean the operator learns their declaration's real name after creating it.
+  const typed = (state.newDeclaration?.id || '').trim();
+  const willBe = declarationIdFor(state, kind, typed);
+  if (typed && willBe !== typed) {
+    box.append(h('div', 'oe-new-caption', `→ ${willBe}`));
+  }
   const actions = h('div', 'oe-new-actions');
   const make = button('Create', 'create-declaration', kind, 'oe-new-make');
   make.disabled = !(state.newDeclaration?.id || '').trim();

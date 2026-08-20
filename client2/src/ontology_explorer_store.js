@@ -374,3 +374,29 @@ export function restoreDirtyEditorCheckpoint(state, checkpoint) {
 export function isDraftRevisionEditable(draft) {
   return Boolean(draft) && draft.lifecycle_status !== 'review_requested';
 }
+
+/** The id a new declaration will actually be created under.
+ *
+ *  Owner: 「new하면 @도 자동으로 안붙네」. Typing `lot` should make `lot@1`; if `lot@1` is
+ *  taken it should offer `lot@2`; and `lot@3` typed by hand stays `lot@3` -- what a person
+ *  wrote is not rewritten.
+ *
+ *  🔴 SIX OF THE SEVEN KINDS CARRY A VERSION AND SOURCES DO NOT (`dt_job`, no `@`), so
+ *  "always append @1" would break sources. The screen does not hold that list: the server
+ *  measures it off the validator and sends `versioned` on `authorable_kinds`. If the answer
+ *  is missing, nothing is appended -- an absent flag must not invent a version.
+ *
+ *  The stored value is unchanged: `lot@1` is still exactly what lands in the file. This is
+ *  typing, not format -- a format change would not match atoms already written.
+ */
+export function declarationIdFor(state, kind, typed) {
+  const name = String(typed || '').trim();
+  if (!name || name.includes('@')) return name;
+  const row = (state.authoringSchema?.authorable_kinds || [])
+    .find((item) => item.id === kind);
+  if (!row?.versioned) return name;
+  const taken = new Set((state.authoring?.sections || {})[row.section] || []);
+  let version = 1;
+  while (taken.has(`${name}@${version}`)) version += 1;
+  return `${name}@${version}`;
+}

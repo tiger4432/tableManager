@@ -2,6 +2,7 @@ import './ontology_explorer.css';
 import {
   initialExplorerState, reduceExplorerState, dirtyNavigationDecision,
   reduceFieldFold, reduceNewDeclaration, restoreDirtyEditorCheckpoint,
+  declarationIdFor,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 import {
@@ -322,7 +323,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // next move is to change the name they just typed, and a message that floats away leaves
   // them retyping against a rule they can no longer read.
   const createDeclaration = async (kind) => {
-    const canonicalId = (state.newDeclaration?.id || '').trim();
+    // Same rule the naming box previewed, from the same function -- so what was shown as
+    // 「→ lot@2」 is what gets created, rather than two guesses that agree today.
+    const canonicalId = declarationIdFor(state, kind, state.newDeclaration?.id);
     if (!canonicalId) return;
     try {
       const res = await adminFetch(`${apiBase}/admin/ontology-explorer/drafts/new`, {
