@@ -1,0 +1,103 @@
+# 소스플랜이 준비기·매퍼를 «안에» 갖는다 — 소유자 판정 2026-08-20
+
+> 「프로필 준비기 맵퍼는 그냥 한몸으로 다녀야겠는데」 → 「**아니다 소스플랜 준비기 맵퍼**」
+> → 「**1로 하면 table까지 안닿잖나**」 → 「**ㅇㅇ 소스 맞네**」 → 「**ㅇㅇ 진행해**」
+
+**그릇은 소스플랜. 프로필은 밖에 남는다.**
+
+---
+
+## 🔴 왜 소스인가 — 소유자가 한 문장으로 잘랐다
+
+물리 테이블에 닿는 것은 `relation`이고, `relation`은 **소스에만** 있다. 코드가 이미 그렇게 짜여
+있다 — `prepared_columns()`의 출발점이 `relation_columns(catalog, _driver_relation(source))`
+(`config_authoring.py:508`). 프로필이 흡수하면 준비기가 자기 `input_columns`를 검사할 테이블이
+**다시 한 홉 밖**이 된다. 구멍이 없어지는 게 아니라 자리만 옮긴다.
+
+```
+소스플랜
+ ├ relation   → table_config 의 컬럼                     ← 물리에 닿는 유일한 지점
+ ├ 준비기       input_columns  ⊆ relation 컬럼
+ │              output_columns → 새로 만드는 것
+ └ 매퍼         input_columns  ⊆ relation ∪ 준비기.output_columns
+```
+
+**실측이 이 순서를 확인한다:**
+```
+준비기 lot-event-live-frame@1 inputs ⊆ lot_event 물리 컬럼   True
+매퍼   dt-job-role@1          inputs ⊆ dt_log   물리 컬럼   True  (준비기가 통과형이라)
+매퍼   lot-event-role@1       inputs ⊆ lot_event 물리 컬럼   False
+       물리에 없는 것: lot · slots · wafers · row_identity ·
+                       event_group_key · __source_event_incomplete
+```
+**준비기는 테이블을 읽고, 매퍼는 준비기가 내놓은 것을 읽는다.**
+
+---
+
+## 바뀌는 모양 — 새 자리를 «만들지 않는다»
+
+두 `*_id` 참조가 **이미 그것을 가리키던 자리에서** 본문으로 바뀐다. 중첩을 새로 짓지 않는다.
+
+```
+전                                            후
+driver.preparation.preparer_id: "direct-join@1"   driver.preparation: { 준비기 본문 그대로,
+driver.mapper_id: "dt-job-role@1"                                        inherit_virtual_join_rules }
+                                                  driver.mapper:      { 매퍼 본문 그대로 }
+source_preparers: { ... }   ← 절이 사라진다
+mappers:          { ... }   ← 절이 사라진다
+```
+
+🔴 **`implementation_id` · `implementation_version`은 그대로 남는다.** 재사용되는 것은 «코드»이지
+선언이 아니다(`source_preparation.py:343`). 선언은 그 구현의 소스별 설정이다.
+실측: 준비기·매퍼 둘 다 **1:1**이라 오늘 공유 사례가 하나도 없다.
+
+---
+
+## 딸려 오는 것 — 전부 «강제되는» 것이지 덤이 아니다
+
+```
+① 척추가 여섯 → 다섯      「준비기·매퍼」 층이 비어 없어진다
+② authorable_kinds        preparer · mapper 가 빠진다 → 좌측 인덱스 그룹 둘이 사라진다
+③ @버전                   준비기·매퍼 id 가 사라지므로 versioned 종류가 둘 줄어든다
+                          🔴 서버가 «검증기에 물어» 계산하므로 코드 수정 0이어야 한다 —
+                             그렇지 않으면 V1이 목록을 박아 둔 것이고, 그건 결함이다
+④ 라이브 설정 이관         소스 2 · 준비기 2 · 매퍼 2. 샘플도 같이
+⑤ 스켈레톤                 두 절을 지우고 그 본문을 소스 아래로
+⑥ 검증기                  `setup_bundle.py` 22곳 · `config_authoring.py` 9곳이 두 이름을 안다
+```
+
+⚠️ **③은 이 라운드가 세운 설계의 시험이다.** V1이 「목록을 박지 말고 검증기에 물어라」로 착지했다.
+이 변경에서 **코드 한 줄도 안 고치고 `versioned`가 저절로 맞으면** 그 설계가 옳았던 것이고,
+고쳐야 하면 그때 박힌 자리가 어디인지 보고할 것.
+
+---
+
+## 🔴 통째로 착지한다 — 조각으로 나누지 말 것
+
+소유자 상설: **관통 단위 전환은 통째로 착지한다.** 절을 지우는 변경이 반만 들어가면 라이브 설정이
+어느 쪽으로도 안 읽힌다. 스켈레톤·검증기·이관·화면·테스트가 **한 커밋**이고, 그 커밋 안에
+「소스 하나를 폼으로 끝까지 만들어 저장된다」는 확인이 들어간다.
+
+**착지 전 확인 (화면으로):**
+```
+1. dt_job 을 열면 준비기·매퍼가 «그 안에» 트리로 뜬다
+2. 준비기의 input_columns 후보가 relation(dt_log) 컬럼에서 나온다
+3. 매퍼의 input_columns 후보가 relation ∪ 준비기.output_columns 에서 나온다   ← 이게 목표다
+4. 좌측 인덱스에 준비기·매퍼 그룹이 없다
+5. 척추가 다섯 층이고 라벨이 맞다
+6. 소스 하나를 폼만으로 새로 만들어 저장 → 거절 0
+7. `python -m ledger.backfill --source lot_event --max-batches 1` 이 돈다
+```
+
+⚠️ **7번을 빼지 말 것.** 이 셋은 읽기 경로의 실행 단위다. 화면에서 저장된다고 백필이 도는 것은
+아니고, 오늘 이 화면에서 「착지는 배선이 아니다」를 이미 한 번 겪었다.
+
+---
+
+## 이번에 «하지 않는» 것
+
+| | 무엇 | 왜 |
+|---|---|---|
+| A | `input_columns`를 바인딩에서 «유도» | `prepared_columns` 주석이 그 방향을 적어 뒀지만, 그건 이 변경이 끝난 «뒤»에 볼 것. 한 번에 둘을 바꾸면 어느 쪽이 깼는지 모른다 |
+| B | 프로필 흡수 | 소유자가 명시적으로 뺐다 |
+| C | 척추 층 이름 재설계 | 층이 하나 비는 것만 처리한다. 남은 다섯의 «뜻»을 다시 정하는 건 별건 |
