@@ -36,6 +36,10 @@ from ledger.setup_registry import (
 # `logical_catalog` there for why it must never be derived from the bundle.
 from test_ledger_setup_bundle import (
     DEFAULT_CATALOG,
+    MAPPER_PATH,
+    PREPARATION_PATH,
+    driver_mapper,
+    driver_preparation,
     load_setup_bundle,
     logical_bundle,
     objectless_register_bundle,
@@ -142,7 +146,9 @@ def test_registry_tree_compiles_pack_claim_role_and_source_plan():
     assert isinstance(role, RoleDescriptor)
     assert role.allowed_binding_kinds == ("entity",)
     assert isinstance(source, SourcePlan)
-    assert source.driver.mapper is compiled.mappers["map-transition@1"]
+    # Keyed by the SOURCE now: the mapper is that source's clause, not a named
+    # declaration it points at.
+    assert source.driver.mapper is compiled.mappers["input_rows"]
     assert source.profile is compiled.profiles["input-transition@1"]
 
 
@@ -470,12 +476,12 @@ def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic()
     assert [issue.to_mapping() for issue in first] == [
         {
             "code": "untrusted_implementation",
-            "path": "bundle.mappers.map-transition@1.implementation_id",
+            "path": f"{MAPPER_PATH}.implementation_id",
             "message": "mapper implementation 'map-transition-role' version 1 is not trusted",
         },
         {
             "code": "untrusted_implementation",
-            "path": "bundle.source_preparers.prepare-input@1.implementation_id",
+            "path": f"{PREPARATION_PATH}.implementation_id",
             "message": "source preparer implementation 'prepare-input' version 1 is not trusted",
         },
     ]
@@ -487,49 +493,36 @@ def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic()
     assert caught.value.to_mapping() == first[0].to_mapping()
 
 
-def test_unused_config_implementations_are_also_checked():
-    bundle = logical_bundle()
-    bundle["source_preparers"]["unused-preparer@1"] = copy.deepcopy(
-        bundle["source_preparers"]["prepare-input@1"])
-    bundle["source_preparers"]["unused-preparer@1"]["implementation_id"] = (
-        "unused-preparer")
-    bundle["mappers"]["unused-mapper@1"] = copy.deepcopy(
-        bundle["mappers"]["map-transition@1"])
-    bundle["mappers"]["unused-mapper@1"]["implementation_id"] = "unused-mapper"
-
-    errors = snapshot_compile_errors(
-        validate_bundle(bundle), trusted_implementations(),
-        physically_verified_joins(bundle))
-
-    assert [(issue.code, issue.path) for issue in errors] == [
-        ("untrusted_implementation", "bundle.mappers.unused-mapper@1.implementation_id"),
-        (
-            "untrusted_implementation",
-            "bundle.source_preparers.unused-preparer@1.implementation_id",
-        ),
-    ]
+# RETIRED: test_unused_config_implementations_are_also_checked.
+# It pinned that a preparer or mapper NO SOURCE SELECTS is still trust-checked -- the
+# checker walked the two sections rather than what was reachable from a source. THE SHAPE
+# IS GONE: since 2026-08-20 both bodies live at `sources.*.driver.*`, so an unselected one
+# cannot be written. What the test guarded (both clauses of every declared body are
+# checked, in a deterministic order) is exactly what
+# `test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic` above pins.
+# Retired because the shape no longer exists, not because it stopped passing.
 
 
 @pytest.mark.parametrize(
     ("section", "entry_id", "trusted", "path"),
     [
         (
-            "source_preparers",
-            "prepare-input@1",
+            "preparation",
+            "input_rows",
             TrustedImplementationCatalog.build(
                 source_preparers=[("prepare-input", 2)],
                 mappers=[("map-transition-role", 1)],
             ),
-            "bundle.source_preparers.prepare-input@1.implementation_version",
+            f"{PREPARATION_PATH}.implementation_version",
         ),
         (
-            "mappers",
-            "map-transition@1",
+            "mapper",
+            "input_rows",
             TrustedImplementationCatalog.build(
                 source_preparers=[("prepare-input", 1)],
                 mappers=[("map-transition-role", 2)],
             ),
-            "bundle.mappers.map-transition@1.implementation_version",
+            f"{MAPPER_PATH}.implementation_version",
         ),
     ],
 )
@@ -638,7 +631,7 @@ def test_inherited_join_must_be_present_enabled_and_verified(mutation, code, pat
 
 def test_inherited_join_left_keys_must_be_preparer_inputs():
     raw = logical_bundle()
-    raw["source_preparers"]["prepare-input@1"]["input_columns"] = []
+    driver_preparation(raw)["input_columns"] = []
 
     errors = snapshot_compile_errors(LedgerSetupBundle(raw), trusted_implementations())
 
@@ -650,7 +643,7 @@ def test_inherited_join_left_keys_must_be_preparer_inputs():
         ),
         "message": (
             "join rule 'input_to_reference' left key column(s) ['join_id'] must be "
-            "declared by preparer 'prepare-input@1' input_columns"
+            "declared by bundle.sources.input_rows.driver.preparation.input_columns"
         ),
     }]
 
@@ -663,10 +656,17 @@ def test_source_preparation_cannot_redeclare_join_contract():
 
     errors = snapshot_compile_errors(LedgerSetupBundle(raw), trusted_implementations())
 
+    # The preparer's fields are the driver clause's fields now, so the refusal lists
+    # them -- which is the `_Problems.exact` behaviour, not a new message.
     assert [issue.to_mapping() for issue in errors] == [{
         "code": "unknown_field",
         "path": "bundle.sources.input_rows.driver.preparation.join_key",
-        "message": "field is not allowed",
+        "message": (
+            "field is not allowed; allowed here: implementation_id (required), "
+            "implementation_version (required), input_columns (required), "
+            "output_columns (required), accepts_verified_join_rules (required), "
+            "inherit_virtual_join_rules (required)"
+        ),
     }]
 
 
@@ -744,25 +744,11 @@ def test_registry_builder_refuses_add_after_seal():
         builder.seal()
 
 
-def test_trusted_unused_preparer_and_mapper_are_included_in_registries():
-    bundle = logical_bundle()
-    bundle["source_preparers"]["unused-preparer@1"] = copy.deepcopy(
-        bundle["source_preparers"]["prepare-input@1"])
-    bundle["source_preparers"]["unused-preparer@1"]["implementation_id"] = (
-        "unused-preparer")
-    bundle["mappers"]["unused-mapper@1"] = copy.deepcopy(
-        bundle["mappers"]["map-transition@1"])
-    bundle["mappers"]["unused-mapper@1"]["implementation_id"] = "unused-mapper"
-    trusted = TrustedImplementationCatalog.build(
-        source_preparers=[("prepare-input", 1), ("unused-preparer", 1)],
-        mappers=[("map-transition-role", 1), ("unused-mapper", 1)],
-    )
-
-    compiled = snapshot(bundle, trusted)
-
-    assert compiled.source_preparers["unused-preparer@1"].implementation == (
-        setup_registry_module.ImplementationKey("unused-preparer", 1))
-    assert isinstance(compiled.mappers["unused-mapper@1"], MapperDescriptor)
+# RETIRED: test_trusted_unused_preparer_and_mapper_are_included_in_registries.
+# Same reason as `test_unused_config_implementations_are_also_checked` above: a preparer
+# or mapper no source selects can no longer be declared. The registries are now keyed by
+# source id and are populated by walking `sources`, so "in the registry" and "declared"
+# are the same statement -- see `test_registry_tree_compiles_pack_claim_role_and_source_plan`.
 
 
 def test_same_pack_compiles_for_completely_renamed_source_and_columns():
@@ -847,11 +833,11 @@ def test_compiler_does_not_mutate_the_validated_bundle():
 
 def test_mapper_group_by_columns_are_compiled_into_snapshot():
     raw = logical_bundle()
-    raw["mappers"]["map-transition@1"]["unit"] = {
+    driver_mapper(raw)["unit"] = {
         "kind": "group_by", "columns": ["target_id"]}
 
     compiled = snapshot(raw)
 
-    mapper = compiled.mappers["map-transition@1"]
+    mapper = compiled.mappers["input_rows"]
     assert mapper.unit_kind == "group_by"
     assert mapper.unit_columns == ("target_id",)

@@ -262,17 +262,22 @@ function renderPaths(state) {
   heading.append(h('h2', '', 'Reference Flow'), h('span', '', mode));
   area.append(heading);
   const nodes = nodeMap(state);
-  const current = state.currentPath || {
+  // 🔴 ONE LANE: WHERE THIS THING STANDS. The 「경로 후보 1..N」 enumeration went on
+  // 2026-08-20 (owner: 「우측 패널 경로 후보는 딱히 쓸데가 없네」) together with the merge that
+  // emptied it -- with a preparer and a mapper no longer separate declarations, the routes
+  // that ran THROUGH them stopped existing. It is not a loss of information: the lanes were
+  // built from `index.inbound` filtered to `resolved`, and Integrity below lists that same
+  // relation WITH each edge's status, so it says strictly more (measured: 92 of 92 path
+  // edges already appear in some node's 사용처, and 48 of 62 selections had one lane).
+  const paths = [state.currentPath || {
     path_id: 'root', node_keys: [state.selection.key], edge_ids: [],
-  };
-  const alternatives = state.paths.filter((path) => path.path_id !== current.path_id);
-  const paths = [current, ...alternatives];
+  }];
   const edgeMap = new Map([...state.outbound, ...state.usedBy].map((edge) => [edge.edge_id, edge]));
-  paths.forEach((path, pathIndex) => {
+  paths.forEach((path) => {
     const lane = h('div', 'oe-flow');
     lane.dataset.pathId = path.path_id;
-    lane.dataset.current = String(pathIndex === 0);
-    lane.append(h('span', 'oe-flow-label', pathIndex === 0 ? '현재 경로' : `경로 후보 ${pathIndex}`));
+    lane.dataset.current = 'true';
+    lane.append(h('span', 'oe-flow-label', '현재 경로'));
     path.node_keys.forEach((key, index) => {
       const node = nodes.get(key);
       const card = button('', 'select', key, 'oe-flow-node');
@@ -310,9 +315,6 @@ function renderBreadcrumb(state) {
     trail.append(crumb);
     if (index < path.length - 1) trail.append(h('span', 'oe-crumb-separator', '›'));
   });
-  if (state.paths.length > 1) {
-    trail.append(h('span', 'oe-path-count', `외 ${state.paths.length - 1}개 경로`));
-  }
   return trail;
 }
 
@@ -452,11 +454,13 @@ function renderEntityKeys(state) {
 //
 // What has no other door today, counted on the live config:
 //
-//   * a NEW pack, mapper, profile or preparer gets **0 authoring rows**. The plan walks
-//     what the document HOLDS, so a declaration whose body is `{}` yields nothing, and
-//     without this textarea there is no way to type the first character.
+//   * a NEW pack or profile gets **0 authoring rows**. The plan walks what the document
+//     HOLDS, so a declaration whose body is `{}` yields nothing, and without this textarea
+//     there is no way to type the first character. (It read "pack, mapper, profile or
+//     preparer" until 2026-08-20; the last two are positions inside a source now, so they
+//     arrive with their source rather than as an empty declaration of their own.)
 //   * a NEW source gets 5 rows and 0 of them editable.
-//   * `source_preparers.*.output_columns` (2 fields) -- no candidates, so no input.
+//   * `sources.*.driver.preparation.output_columns` (2 fields) -- no candidates, no input.
 //   * `sources.*.driver.occurred_at` (2 fields) -- dict-shaped, so chips only.
 //
 // Renaming is NOT on that list: this editor holds a declaration's BODY, not its name, so

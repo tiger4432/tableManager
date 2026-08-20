@@ -24,7 +24,7 @@ const payload = (token, selected = 'entity|A@1') => ({
   selection: node(selected, token),
   items: [node('entity|A@1', token), node('entity|B@1', token)],
   nodes: [node(selected, token)],
-  outbound: [], used_by: [], path_candidates: [], integrity: [], page: 1, total: 2,
+  outbound: [], used_by: [], integrity: [], page: 1, total: 2,
   changes: [], edge_changes: [],
 });
 
@@ -312,7 +312,7 @@ const payload = (token, selected = 'entity|A@1') => ({
     selection: null,
     items: [], nodes: [], outbound: [], used_by: [],
     outbound_total: 0, used_by_total: 0, reference_limit: 200,
-    references_truncated: false, path_candidates: [], integrity: [],
+    references_truncated: false, integrity: [],
     changes: [], edge_changes: [], page: 1, limit: 100, total: 0,
   };
 

@@ -474,26 +474,22 @@ def snapshot_compile_errors(
 
     issues: list[LedgerSetupValidationError] = list(
         _verified_join_errors(validated, verified_joins))
-    for preparer_id, item in validated.section("source_preparers").items():
-        key = ImplementationKey(
-            item["implementation_id"], item["implementation_version"])
-        if key not in trusted.source_preparers:
-            issues.append(_untrusted_implementation_issue(
-                kind="source preparer",
-                path=f"bundle.source_preparers.{preparer_id}",
-                key=key,
-                trusted_keys=trusted.source_preparers,
-            ))
-    for mapper_id, item in validated.section("mappers").items():
-        key = ImplementationKey(
-            item["implementation_id"], item["implementation_version"])
-        if key not in trusted.mappers:
-            issues.append(_untrusted_implementation_issue(
-                kind="mapper",
-                path=f"bundle.mappers.{mapper_id}",
-                key=key,
-                trusted_keys=trusted.mappers,
-            ))
+    for source_id, source in validated.section("sources").items():
+        driver = source["driver"]
+        for kind, clause, trusted_keys in (
+            ("source preparer", "preparation", trusted.source_preparers),
+            ("mapper", "mapper", trusted.mappers),
+        ):
+            item = driver[clause]
+            key = ImplementationKey(
+                item["implementation_id"], item["implementation_version"])
+            if key not in trusted_keys:
+                issues.append(_untrusted_implementation_issue(
+                    kind=kind,
+                    path=f"bundle.sources.{source_id}.driver.{clause}",
+                    key=key,
+                    trusted_keys=trusted_keys,
+                ))
     return tuple(sorted(issues, key=lambda issue: (issue.path, issue.code, issue.message)))
 
 
@@ -592,8 +588,8 @@ def compile_setup_snapshot(
 
     vocabulary = _compile_vocabulary(bundle.section("vocabulary"))
     entities = _compile_entities(bundle.section("entities"))
-    preparers = _compile_preparers(bundle.section("source_preparers"))
-    mappers = _compile_mappers(bundle.section("mappers"))
+    preparers = _compile_preparers(bundle.section("sources"))
+    mappers = _compile_mappers(bundle.section("sources"))
     packs = _compile_packs(bundle.section("packs"))
     profiles = _compile_profiles(bundle.section("profiles"))
     verified_join_registry = _compile_verified_joins(verified_joins)
@@ -739,36 +735,48 @@ def _compile_packs(section: Mapping[str, Any]) -> PackRegistry:
 
 
 def _compile_preparers(section: Mapping[str, Any]) -> SourcePreparerRegistry:
+    """One preparer per SOURCE, keyed by the source it prepares.
+
+    🔴 THE KEY IS THE SOURCE ID BECAUSE THE DECLARATION NO LONGER HAS ONE.  The body moved
+    inline to `sources.<id>.driver.preparation` on 2026-08-20, so "which preparer" and
+    "which source" are the same question and there is nothing else to key on.  The registry
+    itself stays: `LedgerSetupSnapshot.registries` publishes it, the explorer reads it, and
+    the trust check walks it -- only what identifies a member changed.
+
+    `version` therefore tracks the IMPLEMENTATION's version, which is the only version the
+    body still carries.
+    """
     builder = _RegistryBuilder(SourcePreparerRegistry)
-    for preparer_id, item in section.items():
-        _, version = _versioned_parts(preparer_id)
-        builder.add(preparer_id, SourcePreparerDescriptor(
-            preparer_id=preparer_id,
-            version=version,
+    for source_id, source in section.items():
+        item = source["driver"]["preparation"]
+        builder.add(source_id, SourcePreparerDescriptor(
+            preparer_id=source_id,
+            version=item["implementation_version"],
             implementation=ImplementationKey(
                 item["implementation_id"], item["implementation_version"]),
             input_columns=tuple(item["input_columns"]),
             output_columns=_freeze(item["output_columns"]),
             accepts_verified_join_rules=item["accepts_verified_join_rules"],
-            config_path=f"bundle.source_preparers.{preparer_id}",
+            config_path=f"bundle.sources.{source_id}.driver.preparation",
         ))
     return builder.seal()
 
 
 def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
+    """One mapper per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
     builder = _RegistryBuilder(MapperRegistry)
-    for mapper_id, item in section.items():
-        _, version = _versioned_parts(mapper_id)
-        builder.add(mapper_id, MapperDescriptor(
-            mapper_id=mapper_id,
-            version=version,
+    for source_id, source in section.items():
+        item = source["driver"]["mapper"]
+        builder.add(source_id, MapperDescriptor(
+            mapper_id=source_id,
+            version=item["implementation_version"],
             implementation=ImplementationKey(
                 item["implementation_id"], item["implementation_version"]),
             unit_kind=item["unit"]["kind"],
             unit_columns=tuple(item["unit"].get("columns", ())),
             input_columns=tuple(item["input_columns"]),
             emits=tuple(item["emits"]),
-            config_path=f"bundle.mappers.{mapper_id}",
+            config_path=f"bundle.sources.{source_id}.driver.mapper",
         ))
     return builder.seal()
 
@@ -871,13 +879,13 @@ def _compile_source_plans(
                 occurred_at=_occurred_at_plan(driver["occurred_at"]),
                 cursor_columns=tuple(driver["cursor"]["columns"]),
                 preparation=SourcePreparationPlan(
-                    preparer=preparers[preparation["preparer_id"]],
+                    preparer=preparers[source_id],
                     verified_join_descriptors=tuple(
                         verified_joins[rule_id]
                         for rule_id in preparation["inherit_virtual_join_rules"]
                     ),
                 ),
-                mapper=mappers[driver["mapper_id"]],
+                mapper=mappers[source_id],
                 registration_probe=_compile_registration_probe(
                     driver.get("registration_probe"), entities),
             ),

@@ -692,7 +692,7 @@ class OntologyExplorerService:
                 "view context token does not match the response token",
             )
         for field in (
-            "items", "nodes", "outbound", "used_by", "path_candidates",
+            "items", "nodes", "outbound", "used_by",
             "integrity", "changes", "edge_changes",
         ):
             for index, item in enumerate(payload[field]):

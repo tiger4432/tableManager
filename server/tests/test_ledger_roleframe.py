@@ -22,7 +22,8 @@ from ledger.roleframe import (
     map_event_frame,
     mapper_context,
 )
-from test_ledger_setup_bundle import logical_bundle, objectless_register_bundle
+from test_ledger_setup_bundle import (
+    driver_mapper, logical_bundle, objectless_register_bundle)
 from test_ledger_setup_registry import snapshot
 
 
@@ -208,7 +209,7 @@ def test_pack_compiler_supports_closed_scalar_object_kinds(
     mapping["bind"].pop("target")
     mapping["bind"].pop("event_key")
     mapping["bind"]["result"] = constant(value)
-    raw["mappers"]["map-transition@1"]["emits"] = ["movement@1/transition"]
+    driver_mapper(raw)["emits"] = ["movement@1/transition"]
     compiled = snapshot(raw)
 
     result = dry_run_event_frame(
@@ -293,7 +294,7 @@ def test_raw_dataframe_or_atom_mapper_output_is_rejected(mapper_type):
 
 def test_role_and_ledger_frames_are_deterministic_under_row_reordering():
     raw = logical_bundle()
-    raw["mappers"]["map-transition@1"]["unit"] = {"kind": "row"}
+    driver_mapper(raw)["unit"] = {"kind": "row"}
     compiled = snapshot(raw)
     rows = [
         {"source_id": "IN-2", "target_id": "OUT-2",
@@ -319,7 +320,7 @@ def test_role_and_ledger_frames_are_deterministic_under_row_reordering():
 
 def test_duplicate_derived_row_identity_requires_explicit_source_row_ref():
     raw = logical_bundle()
-    raw["mappers"]["map-transition@1"]["unit"] = {"kind": "row"}
+    driver_mapper(raw)["unit"] = {"kind": "row"}
     compiled = snapshot(raw)
     row = {"source_id": "IN-1", "target_id": "OUT-1",
            "event_at": OCCURRED_AT, "event_key": "E-1"}
@@ -333,7 +334,7 @@ def test_duplicate_derived_row_identity_requires_explicit_source_row_ref():
 
 def test_group_by_mapper_units_are_internal_and_deterministic():
     raw = logical_bundle()
-    raw["mappers"]["map-transition@1"]["unit"] = {
+    driver_mapper(raw)["unit"] = {
         "kind": "group_by", "columns": ["target_id"]}
     compiled = snapshot(raw)
     rows = [

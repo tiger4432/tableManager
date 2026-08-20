@@ -52,15 +52,6 @@ SHIPMENT_SETUP = {
         "status": "active", "layer": "ontology", "subjects": ["Box@1"],
         "object": {"kind": "none", "qualifiers": {"required": [], "optional": []}}}},
     "entities": {"Box@1": {"keys": ["box"]}},
-    "source_preparers": {"plain@1": {
-        "implementation_id": "direct-join", "implementation_version": 1,
-        "input_columns": [], "output_columns": {},
-        "accepts_verified_join_rules": False}},
-    "mappers": {"plain-role@1": {
-        "implementation_id": "declarative-role", "implementation_version": 1,
-        "unit": {"kind": "row"},
-        "input_columns": ["shipment_id", "box", "shipped_at"],
-        "emits": ["shipping@1/first_sight"]}},
     "packs": {"shipping@1": {"claims": {"first_sight": {
         "roles": {"subject": {"kind": "entity", "required": True},
                   "occurred_at": {"kind": "time", "required": True}},
@@ -84,9 +75,16 @@ SHIPMENT_SETUP = {
             "order_by": ["shipment_id"],
             "occurred_at": {"column": "shipped_at", "timezone": "Asia/Seoul"},
             "cursor": {"columns": ["shipped_at", "shipment_id"]},
-            "preparation": {"preparer_id": "plain@1",
-                            "inherit_virtual_join_rules": []},
-            "mapper_id": "plain-role@1",
+            "preparation": {
+                "implementation_id": "direct-join", "implementation_version": 1,
+                "input_columns": [], "output_columns": {},
+                "accepts_verified_join_rules": False,
+                "inherit_virtual_join_rules": []},
+            "mapper": {
+                "implementation_id": "declarative-role", "implementation_version": 1,
+                "unit": {"kind": "row"},
+                "input_columns": ["shipment_id", "box", "shipped_at"],
+                "emits": ["shipping@1/first_sight"]},
             "registration_probe": [
                 {"entity_type": "Box@1", "columns": ["box"]}],
         }}},

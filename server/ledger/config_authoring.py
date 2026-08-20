@@ -75,11 +75,15 @@ TIER_DIAGNOSTIC = "diagnostic"
 
 #: The authoring order, which is also the dependency order: a later step references
 #: earlier ones.  Published (id AND label) so the step bar has no list literal in the UI.
+#:
+#: 🔴 FIVE, NOT SIX, SINCE 2026-08-20. The 「준비기·매퍼」 layer named two sections that no
+#: longer exist -- both bodies live inside a source plan now -- so the layer had nothing to
+#: count and would have rendered as a permanently empty band. Their FIELDS did not vanish
+#: with it: they moved to the `sources` step, which is where the operator now writes them.
 STEPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("entities", "엔터티", ("entities",)),
     ("vocabulary", "낱말", ("vocabulary",)),
     ("packs", "팩", ("packs",)),
-    ("implementations", "준비기·매퍼", ("source_preparers", "mappers")),
     ("profiles", "프로필", ("profiles",)),
     ("sources", "소스", ("sources",)),
 )
@@ -299,7 +303,7 @@ def is_remaining(row: Mapping[str, Any]) -> bool:
     `config_authoring` spells them `state="missing" if required else "unanswered"`, so
     `unanswered` means OPTIONAL AND ABSENT -- a question nobody is obliged to answer.
     Counting it measured 1 remaining on the live config, which is complete and valid
-    (`source_preparers.direct-join@1.output_columns`), i.e. a finished setup reporting
+    (`sources.dt_job.driver.preparation.output_columns`), i.e. a finished setup reporting
     unfinished work on the first screen an operator sees.
 
     This is also the predicate the collapse rule has to agree with. If the count says 3
@@ -411,8 +415,8 @@ def empty_declaration(section: str) -> dict[str, Any]:
 def versioned_sections() -> frozenset[str]:
     """Which sections does the validator require `id@version` of? ASKED, not listed.
 
-    🔴 SIX OF THE SEVEN REQUIRE IT AND ONE DOES NOT -- sources are keyed `dt_job`, no `@`.
-    So "always append @1" breaks sources, and a hand-written list of the other six is the
+    🔴 FOUR OF THE FIVE REQUIRE IT AND ONE DOES NOT -- sources are keyed `dt_job`, no `@`.
+    So "always append @1" breaks sources, and a hand-written list of the other four is the
     hardcode this round keeps removing: it would go stale the day the grammar changes its
     mind, and go stale SILENTLY.
 
@@ -420,6 +424,12 @@ def versioned_sections() -> frozenset[str]:
     and the validator is asked what it thinks; the sections that come back with
     `invalid_versioned_id` against that name are the ones that carry versions. The screen
     never decides this -- it reads the answer.
+
+    🔴 AND THE 2026-08-20 MERGE IS THE PROOF THAT WAS WORTH IT. `source_preparers` and
+    `mappers` were two of the six; both moved inside a source plan and stopped having ids
+    at all. This function was not edited, no list of kinds was edited, and the answer went
+    from six sections to four on its own. A hardcoded list would have kept publishing
+    `versioned: true` for two kinds that no longer exist.
     """
     from .setup_bundle import validate_bundle_errors
 
@@ -427,11 +437,11 @@ def versioned_sections() -> frozenset[str]:
     carries: set[str] = set()
     for section in AUTHORABLE_SECTIONS.values():
         # `catalog` is required by name -- omitting it refuses before any section is read,
-        # which is how the first version of this probe measured 0 for all seven.
+        # which is how the first version of this probe measured 0 for all of them.
         errors = validate_bundle_errors(
             {section: {probe: empty_declaration(section)}}, catalog={})
         # The path must END at the declaration's own name. A source refuses
-        # `...zzprobeid.driver.mapper_id` -- that is a REFERENCE it holds, not its own key,
+        # `...zzprobeid.profile_id` -- that is a REFERENCE it holds, not its own key,
         # and counting it would have made every section look versioned.
         if any(error.code == "invalid_versioned_id"
                and error.path == f"bundle.{section}.{probe}"
@@ -472,9 +482,9 @@ def closed_lists() -> dict[str, Any]:
         # at all -- you could not create the first pack because there was nowhere to click.
         # Sourced from `AUTHORABLE_SECTIONS`, which is also what `deletion_plan` reads, so
         # the screen cannot offer to create something it could not then remove.
-        # 🔴 `versioned` RIDES ALONG SO THE SCREEN NEVER HOLDS THE LIST. Six of the seven
+        # 🔴 `versioned` RIDES ALONG SO THE SCREEN NEVER HOLDS THE LIST. Four of the five
         # need `id@version` and sources do not, so "always append @1" breaks sources and a
-        # list of the other six in the client is a hardcode that goes stale in silence.
+        # list of the other four in the client is a hardcode that goes stale in silence.
         # `versioned_sections()` asks the validator instead of asserting -- see its comment.
         "authorable_kinds": [
             {"id": kind, "section": section,
@@ -514,11 +524,13 @@ def prepared_columns(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     `input_columns`.  Once `input_columns` is derived from the bindings, PREPARED is the
     only universe a person picks from, and offering RELATION there would hide every
     preparer-made column.
+
+    `bundle` is no longer read -- the preparer is a clause of `source` itself as of
+    2026-08-20 -- and stays in the signature because every caller has it and the parameter
+    names what this set is derived FROM.
     """
     columns = set(relation_columns(catalog, _driver_relation(source)))
-    preparer_id = _preparer_id(source)
-    preparer = _section(bundle, "source_preparers").get(preparer_id)
-    outputs = preparer.get("output_columns") if isinstance(preparer, Mapping) else None
+    outputs = _preparation(source).get("output_columns")
     if isinstance(outputs, Mapping):
         columns.update(str(name) for name in outputs)
     return tuple(sorted(columns))
@@ -533,9 +545,14 @@ def _driver_relation(source: Any) -> Any:
     return source.get("relation") if isinstance(source, Mapping) else None
 
 
-def _preparer_id(source: Any) -> Any:
+def _preparation(source: Any) -> Mapping[str, Any]:
     prep = _driver(source).get("preparation")
-    return prep.get("preparer_id") if isinstance(prep, Mapping) else None
+    return prep if isinstance(prep, Mapping) else {}
+
+
+def _mapper(source: Any) -> Mapping[str, Any]:
+    mapper = _driver(source).get("mapper")
+    return mapper if isinstance(mapper, Mapping) else {}
 
 
 def _binding_columns(binding: Any, path: str) -> list[tuple[str, str]]:
@@ -750,37 +767,77 @@ def _claim_fields(bundle: Mapping[str, Any], vocabulary: Mapping[str, Any],
 
 def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                            ) -> Iterable[Field]:
+    """The preparer and mapper clauses of every source, walked FROM the source.
+
+    🔴 THE OWNER LOOKUP IS GONE, AND THAT IS THE POINT OF THE 2026-08-20 MOVE.  This
+    function used to walk two sections and search backwards for the source that selected
+    each member -- which is why an unselected mapper got a 「소스 미연결」 diagnostic row: it
+    was a shape the file could hold and nothing could interpret.  A body inside a source
+    always has its source, its `relation`, and therefore its column universes.
+    """
     sources = _section(bundle, "sources")
     profiles = _section(bundle, "profiles")
-    mapper_owner: dict[str, tuple[str, str]] = {}
-    preparer_owner: dict[str, str] = {}
     for source_id in sorted(sources, key=str):
         source = sources[source_id]
-        driver = _driver(source)
-        mapper_id = driver.get("mapper_id")
-        profile_id = source.get("profile_id") if isinstance(source, Mapping) else None
-        if isinstance(mapper_id, str) and isinstance(profile_id, str):
-            mapper_owner[mapper_id] = (source_id, profile_id)
-        preparer_id = _preparer_id(source)
-        if isinstance(preparer_id, str):
-            preparer_owner.setdefault(preparer_id, source_id)
+        if not isinstance(source, Mapping):
+            continue
+        profile_id = source.get("profile_id")
+        profile = profiles.get(profile_id) if isinstance(profile_id, str) else None
+        relation = _driver_relation(source)
+        physical = relation_columns(catalog, relation)
+        prepared = prepared_columns(bundle, catalog, source)
 
-    for mapper_id in sorted(_section(bundle, "mappers"), key=str):
-        mapper = _section(bundle, "mappers")[mapper_id]
-        if not isinstance(mapper, Mapping):
-            continue
-        base = f"bundle.mappers.{mapper_id}"
-        owner = mapper_owner.get(mapper_id)
-        if owner is None:
+        # ------------------------------------------------------------------ preparer
+        preparation = _preparation(source)
+        prep_base = f"bundle.sources.{source_id}.driver.preparation"
+        if physical:
+            inputs = list(_listed(preparation.get("input_columns")))
+            # 🔴 THE ONE UNIVERSE THAT MADE THIS MOVE NECESSARY.  A preparer reads the
+            # PHYSICAL table and nothing else -- it runs before anything has been
+            # prepared -- so its candidates are `relation`'s columns.  While the body
+            # lived in its own section this field had no relation to point at and the
+            # screen offered a bare text box.
             yield Field(
-                path=base, step="implementations", label="소스 미연결",
-                state="unanswered", tier=TIER_DIAGNOSTIC,
-                note="이 매퍼를 driver.mapper_id로 고르는 소스가 없어 emits·"
-                     "input_columns를 유도할 근거가 없다.",
+                path=f"{prep_base}.input_columns", step="sources",
+                label="준비기 input_columns",
+                state="answered" if inputs else "unanswered", tier=TIER_CONSTRAINED,
+                value=inputs, declared=inputs if inputs else _ABSENT,
+                candidates=tuple(physical), universe=UNIVERSE_RELATION,
+                note="준비기는 준비 전에 돌기 때문에 물리 표 컬럼만 읽을 수 있다.",
             )
-            continue
-        source_id, profile_id = owner
-        profile = profiles.get(profile_id)
+            outputs = preparation.get("output_columns")
+            names = sorted(outputs, key=str) if isinstance(outputs, Mapping) else []
+            # NOT a derived value.  The relation's columns are what this field may not
+            # BE; filling the field with them would declare exactly the collisions
+            # `output_column_collision` refuses.
+            yield Field(
+                path=f"{prep_base}.output_columns", step="sources",
+                label="준비기 output_columns",
+                state="answered" if names else "unanswered", tier=TIER_CONSTRAINED,
+                value=names, declared=names if names else _ABSENT,
+                forbidden=tuple(physical),
+                ground=Ground(
+                    "preparer_output_collision_from_relation",
+                    f"제한: relation {relation}의 컬럼 {len(physical)}개와 이름이 겹칠 수 없음",
+                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(physical)),
+                note="준비기가 새로 만드는 컬럼 이름. 물리 표에 있는 이름은 쓸 수 없다.",
+            )
+        inherited = _listed(preparation.get("inherit_virtual_join_rules"))
+        if inherited:
+            yield Field(
+                path=f"{prep_base}.accepts_verified_join_rules", step="sources",
+                label="accepts_verified_join_rules", state="derived",
+                tier=TIER_DERIVATION, value=True,
+                declared=preparation.get("accepts_verified_join_rules", _ABSENT),
+                ground=Ground(
+                    "accepts_join_rules_from_inheritance",
+                    f"채움: 소스 {source_id}가 join rule {len(inherited)}건 상속",
+                    (f"{prep_base}.inherit_virtual_join_rules",), True),
+            )
+
+        # -------------------------------------------------------------------- mapper
+        mapper = _mapper(source)
+        base = f"bundle.sources.{source_id}.driver.mapper"
         uses = [mapping.get("use") for mapping in _mappings(profile)]
         use_paths = tuple(
             f"bundle.profiles.{profile_id}.mappings[{index}].use"
@@ -788,7 +845,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         if use_paths:
             # ① Set equality is checked in BOTH directions; degrees of freedom: zero.
             yield Field(
-                path=f"{base}.emits", step="implementations", label="emits",
+                path=f"{base}.emits", step="sources", label="매퍼 emits",
                 state="derived", tier=TIER_STRUCTURAL,
                 value=sorted({use for use in uses if isinstance(use, str)}),
                 declared=sorted(_listed(mapper.get("emits")), key=str)
@@ -798,11 +855,11 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                     f"채움: 프로필 {profile_id}의 mappings.use {len(use_paths)}건",
                     use_paths, [use for use in uses if isinstance(use, str)]),
             )
-        binding_columns = profile_binding_columns(profile_id, profile)
+        binding_columns = profile_binding_columns(profile_id, profile) if profile else ()
         if binding_columns:
             yield Field(
-                path=f"{base}.input_columns", step="implementations",
-                label="input_columns", state="derived", tier=TIER_DERIVATION,
+                path=f"{base}.input_columns", step="sources",
+                label="매퍼 input_columns", state="derived", tier=TIER_DERIVATION,
                 value=sorted({column for column, _ in binding_columns}),
                 declared=list(_listed(mapper.get("input_columns")))
                 if "input_columns" in mapper else _ABSENT,
@@ -813,73 +870,34 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                     tuple(path for _, path in binding_columns),
                     sorted({column for column, _ in binding_columns})),
                 comparison="superset",
+                # 🔴 RELATION ∪ 준비기.output_columns, WHICH THE MAPPER COULD NOT BE TOLD
+                # BEFORE.  The mapper runs AFTER preparation, so a preparer-made column is
+                # legal here and a physical one still is too -- the widening the move was
+                # for. The derived value is a MINIMUM; the universe is what a person may
+                # widen it to.
+                candidates=tuple(prepared), universe=UNIVERSE_PREPARED,
                 note="최소 집합. 더 넓게 선언해도 통과하지만 물어볼 이유가 없다.",
             )
         unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
         kind = unit.get("kind")
         yield Field(
-            path=f"{base}.unit.kind", step="implementations", label="매퍼 단위",
+            path=f"{base}.unit.kind", step="sources", label="매퍼 단위",
             state="answered" if kind else "missing", tier=TIER_CONSTRAINED,
             value=kind, declared=kind if kind else _ABSENT,
             candidates=tuple(sorted(_MAPPER_UNITS)),
         )
         if kind == "group_by":
-            source = sources.get(source_id)
             group_by = list(_listed(_driver(source).get("group_by")))
             columns = list(_listed(unit.get("columns")))
             derived_inputs = sorted({column for column, _ in binding_columns})
             yield Field(
-                path=f"{base}.unit.columns", step="implementations",
+                path=f"{base}.unit.columns", step="sources",
                 label="unit.columns",
                 state="answered" if columns else "missing",
                 tier=TIER_CONSTRAINED,
                 value=columns, declared=columns if columns else _ABSENT,
                 candidates=tuple(derived_inputs),
                 note=f"kind=group_by일 때만 존재. 소스 group_by={group_by}",
-            )
-
-    for preparer_id in sorted(_section(bundle, "source_preparers"), key=str):
-        preparer = _section(bundle, "source_preparers")[preparer_id]
-        if not isinstance(preparer, Mapping):
-            continue
-        base = f"bundle.source_preparers.{preparer_id}"
-        source_id = preparer_owner.get(preparer_id)
-        source = sources.get(source_id) if source_id else None
-        relation = _driver_relation(source)
-        physical = relation_columns(catalog, relation)
-        if physical:
-            outputs = preparer.get("output_columns")
-            names = sorted(outputs, key=str) if isinstance(outputs, Mapping) else []
-            # NOT a derived value.  The relation's columns are what this field may not
-            # BE; filling the field with them would declare exactly the collisions
-            # `output_column_collision` refuses.
-            yield Field(
-                path=f"{base}.output_columns", step="implementations",
-                label="output_columns",
-                state="answered" if names else "unanswered", tier=TIER_CONSTRAINED,
-                value=names, declared=names if names else _ABSENT,
-                forbidden=tuple(physical),
-                ground=Ground(
-                    "preparer_output_collision_from_relation",
-                    f"제한: relation {relation}의 컬럼 {len(physical)}개와 이름이 겹칠 수 없음",
-                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(physical)),
-                note="준비기가 새로 만드는 컬럼 이름. 물리 표에 있는 이름은 쓸 수 없다.",
-            )
-        preparation = _driver(source).get("preparation")
-        inherited = _listed(
-            preparation.get("inherit_virtual_join_rules")
-            if isinstance(preparation, Mapping) else None)
-        if inherited:
-            yield Field(
-                path=f"{base}.accepts_verified_join_rules", step="implementations",
-                label="accepts_verified_join_rules", state="derived",
-                tier=TIER_DERIVATION, value=True,
-                declared=preparer.get("accepts_verified_join_rules", _ABSENT),
-                ground=Ground(
-                    "accepts_join_rules_from_inheritance",
-                    f"채움: 소스 {source_id}가 join rule {len(inherited)}건 상속",
-                    (f"bundle.sources.{source_id}.driver.preparation."
-                     f"inherit_virtual_join_rules",), True),
             )
 
 

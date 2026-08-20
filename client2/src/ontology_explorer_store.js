@@ -15,7 +15,6 @@ export const initialExplorerState = Object.freeze({
   usedByTotal: 0,
   outboundTotal: 0,
   referencesTruncated: false,
-  paths: [],
   currentPath: null,
   changes: [],
   edgeChanges: [],
@@ -54,7 +53,7 @@ export const initialExplorerState = Object.freeze({
 });
 
 const CONTEXT_COLLECTIONS = [
-  'items', 'nodes', 'outbound', 'used_by', 'path_candidates', 'integrity',
+  'items', 'nodes', 'outbound', 'used_by', 'integrity',
   'changes', 'edge_changes',
 ];
 
@@ -110,7 +109,7 @@ export function reduceExplorerState(state = initialExplorerState, action) {
       if (action.code === 'unknown_selection' || action.code === 'context_mismatch') {
         return {
           ...state, loading: false, error: action.message, selection: null,
-          nodes: [], outbound: [], usedBy: [], paths: [], integrity: [],
+          nodes: [], outbound: [], usedBy: [], integrity: [],
           currentPath: null,
           removedSelection: action.selection
             ? { key: action.selection, status: 'removed_or_unresolved' } : null,
@@ -143,7 +142,6 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         usedByTotal: p.used_by_total || 0,
         outboundTotal: p.outbound_total || 0,
         referencesTruncated: Boolean(p.references_truncated),
-        paths: p.path_candidates || [],
         // 🔴 THE ROOT PATH IS A PATH TO THE SELECTION, so with nothing selected there is
         // no path -- not an empty one. This ran on EVERY response, so on an empty config
         // it threw before a single node was rendered.
@@ -320,14 +318,17 @@ export function reduceFieldFold(state, action) {
 // 🔴 IT NEVER MERGES `newDeclaration`. The name being typed is not declared yet. Offering
 // it would let a profile point at a pack the server has never accepted, and a create that
 // was REFUSED would go on showing as though it existed.
-// 🔴 IT ANSWERS FOR THE SEVEN SECTIONS AND NOTHING ELSE, and the picker round will hit
-// that. Derived from the live config on 2026-08-19: every reference edge carries
+// 🔴 IT ANSWERS FOR THE AUTHORABLE SECTIONS AND NOTHING ELSE, and the picker round will
+// hit that. Derived from the live config on 2026-08-19: every reference edge carries
 // `expected_kind`, so `AUTHORABLE_SECTIONS[expected_kind]` gives the section a picker
-// draws from -- entities, vocabulary, packs, profiles, sources, mappers, source_preparers.
-// Four expected kinds have no section of their own: `claim`, `mapping`, `binding` (they
-// live INSIDE an owner -- a mapper's `emits` picks claims from across all packs) and
-// `table` (physical, read-only here, its own column universes). Those need a second
-// source that does not exist yet. This is a gap in what is here, not a defect in it.
+// draws from -- entities, vocabulary, packs, profiles, sources. (`mappers` and
+// `source_preparers` were on that list until 2026-08-20, when both moved inside a source
+// plan and joined the kinds below.)
+// The rest of the expected kinds have no section of their own: `claim`, `mapping`,
+// `binding`, `preparer` and `mapper` (they live INSIDE an owner -- a mapper's `emits`
+// picks claims from across all packs) and `table` (physical, read-only here, its own
+// column universes). Those need a second source that does not exist yet. This is a gap in
+// what is here, not a defect in it.
 export function sectionMembers(state, section) {
   const all = state.authoring?.sections || {};
   if (section === undefined) return all;

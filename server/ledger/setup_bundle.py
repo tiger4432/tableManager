@@ -22,10 +22,18 @@ SETUP_VERSION = 3
 #: The one authoring file. The path does not move: the operator writes here.
 CONFIG_FILENAME = "ledger_config.json"
 
-#: The whole authoring surface, in the order the file declares it.  All seven are
+#: The whole authoring surface, in the order the file declares it.  All five are
 #: REQUIRED even when empty: a missing key and an empty one mean different things to a
 #: reader, and "the section does not apply to me" is a decision worth writing down.
 #:
+#: 🔴 `source_preparers` AND `mappers` ARE NOT HERE EITHER (owner, 2026-08-20: 「소스플랜
+#: 준비기 맵퍼」).  A preparer's `input_columns` must be columns of a PHYSICAL relation, and
+#: `relation` is declared only by a source -- so a preparer sitting in its own section was
+#: always one hop away from the only declaration that could check it.  Both bodies now live
+#: inline at `sources.*.driver.preparation` and `sources.*.driver.mapper`, where the
+#: relation is one key away.  Measured before the move: both were 1:1 with their source, so
+#: no sharing was lost.  What is reused is CODE, not declaration, and that reuse is still
+#: spelled `implementation_id` + `implementation_version`, which both bodies still carry.
 #: 🔴 `tables` IS NOT HERE, AND ITS ABSENCE IS THE POINT (owner, 2026-08-18: "why is
 #: `tables` in the ledger json as well?").  It used to be an eighth section restating
 #: the physical schema.  Measured on the live root before removal: its one relation was a
@@ -38,8 +46,7 @@ CONFIG_FILENAME = "ledger_config.json"
 #: The physical schema now has exactly one author, `server/config/table_config.json`,
 #: which `_physical_catalog` reads.  See `PHYSICAL_CATALOG_FILENAME`.
 LOGICAL_SECTIONS = (
-    "vocabulary", "entities", "packs",
-    "source_preparers", "mappers", "profiles", "sources",
+    "vocabulary", "entities", "packs", "profiles", "sources",
 )
 
 #: 🔴 OPTIONAL, AND THE DISTINCTION IS DELIBERATE.  The operator root stops carrying a
@@ -342,8 +349,12 @@ def public_bundle_schema() -> dict[str, Any]:
         "approval_status": sorted(_APPROVAL_STATUSES),
         # `tables` joins the list: naming it here is what turns "I pasted my old section
         # back in" from a silent no-op into `unknown_field` at `ledger_config.tables`.
+        # `source_preparers` and `mappers` join it for the same reason on 2026-08-20 --
+        # they retired into `sources.*.driver`, and every config written before that day
+        # still has them.
         "forbidden_sections": ["frames", "lookups", "positions",
-                               "manifest", "chains", "enrichments", "tables"],
+                               "manifest", "chains", "enrichments", "tables",
+                               "source_preparers", "mappers"],
     }
 
 
@@ -417,10 +428,6 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
         _validate_vocabulary(value["vocabulary"], problems)
     if isinstance(value.get("entities"), Mapping):
         _validate_entities(value["entities"], problems)
-    if isinstance(value.get("source_preparers"), Mapping):
-        _validate_preparers(value["source_preparers"], problems)
-    if isinstance(value.get("mappers"), Mapping):
-        _validate_mappers(value["mappers"], problems)
     if isinstance(value.get("packs"), Mapping):
         _validate_packs(value["packs"], problems)
     if isinstance(value.get("profiles"), Mapping):
@@ -900,74 +907,77 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
             problems.add("invalid_type", f"{path}.allow_null", "must be boolean")
 
 
-def _validate_preparers(section: Mapping[str, Any], problems: _Problems) -> None:
-    for preparer_id in sorted(section, key=str):
-        path = f"bundle.source_preparers.{preparer_id}"
-        _versioned_id(preparer_id, path, problems)
-        item = section[preparer_id]
-        if not problems.exact(
-                item, path,
-                required=("implementation_id", "implementation_version", "input_columns",
-                          "output_columns", "accepts_verified_join_rules")):
-            continue
-        _implementation(item, path, problems)
-        _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
-                       allow_empty=True)
-        _column_types(item.get("output_columns"), f"{path}.output_columns", problems)
-        inputs = set(_column_values(item.get("input_columns")))
-        outputs = item.get("output_columns")
-        if isinstance(outputs, Mapping):
-            for column in sorted(set(outputs) & inputs):
-                problems.add(
-                    "output_column_collision", f"{path}.output_columns.{column}",
-                    "preparer output must not overwrite an input column")
-        if not isinstance(item.get("accepts_verified_join_rules"), bool):
-            problems.add("invalid_type", f"{path}.accepts_verified_join_rules",
-                         "must be boolean")
+def _validate_preparation(item: Any, path: str, problems: _Problems) -> None:
+    """One source's preparer body, at `sources.<id>.driver.preparation`.
+
+    No `_versioned_id` here and no id at all: the declaration is not named any more, it IS
+    the source's preparation clause.  `implementation_id`/`implementation_version` stay,
+    because the thing that is shared and versioned is the CODE the body selects, never the
+    body itself.
+    """
+    if not problems.exact(
+            item, path,
+            required=("implementation_id", "implementation_version", "input_columns",
+                      "output_columns", "accepts_verified_join_rules",
+                      "inherit_virtual_join_rules")):
+        return
+    _implementation(item, path, problems)
+    _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
+                   allow_empty=True)
+    _column_types(item.get("output_columns"), f"{path}.output_columns", problems)
+    _nonblank_list(item.get("inherit_virtual_join_rules"),
+                   f"{path}.inherit_virtual_join_rules", problems, allow_empty=True)
+    inputs = set(_column_values(item.get("input_columns")))
+    outputs = item.get("output_columns")
+    if isinstance(outputs, Mapping):
+        for column in sorted(set(outputs) & inputs):
+            problems.add(
+                "output_column_collision", f"{path}.output_columns.{column}",
+                "preparer output must not overwrite an input column")
+    if not isinstance(item.get("accepts_verified_join_rules"), bool):
+        problems.add("invalid_type", f"{path}.accepts_verified_join_rules",
+                     "must be boolean")
 
 
-def _validate_mappers(section: Mapping[str, Any], problems: _Problems) -> None:
-    for mapper_id in sorted(section, key=str):
-        path = f"bundle.mappers.{mapper_id}"
-        _versioned_id(mapper_id, path, problems)
-        item = section[mapper_id]
-        if not problems.exact(
-                item, path,
-                required=("implementation_id", "implementation_version", "unit",
-                          "input_columns", "emits")):
-            continue
-        _implementation(item, path, problems)
-        if problems.exact(
-                item.get("unit"), f"{path}.unit", required=("kind",),
-                optional=("columns",)):
-            kind = item["unit"].get("kind")
-            if not isinstance(kind, str) or kind not in _MAPPER_UNITS:
-                problems.add("invalid_mapper", f"{path}.unit.kind",
-                             f"must be one of {sorted(_MAPPER_UNITS)}")
-            columns = item["unit"].get("columns")
-            if kind == "group_by":
-                if columns is None:
-                    problems.add(
-                        "missing_field", f"{path}.unit.columns",
-                        "group_by mapper unit requires columns")
-                else:
-                    _nonblank_list(columns, f"{path}.unit.columns", problems)
-                    if (_is_list(columns)
-                            and isinstance(item.get("input_columns"), list)):
-                        missing = sorted(set(_column_values(columns))
-                                         - set(_column_values(item["input_columns"])))
-                        if missing:
-                            problems.add(
-                                "invalid_mapper", f"{path}.unit.columns",
-                                f"group_by columns must be mapper input columns: {missing}")
-            elif columns is not None:
+def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
+    """One source's mapper body, at `sources.<id>.driver.mapper`."""
+    if not problems.exact(
+            item, path,
+            required=("implementation_id", "implementation_version", "unit",
+                      "input_columns", "emits")):
+        return
+    _implementation(item, path, problems)
+    if problems.exact(
+            item.get("unit"), f"{path}.unit", required=("kind",),
+            optional=("columns",)):
+        kind = item["unit"].get("kind")
+        if not isinstance(kind, str) or kind not in _MAPPER_UNITS:
+            problems.add("invalid_mapper", f"{path}.unit.kind",
+                         f"must be one of {sorted(_MAPPER_UNITS)}")
+        columns = item["unit"].get("columns")
+        if kind == "group_by":
+            if columns is None:
                 problems.add(
-                    "invalid_mapper", f"{path}.unit.columns",
-                    "unit.columns is only valid for group_by")
-        _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
-                       allow_empty=True)
-        _nonblank_list(item.get("emits"), f"{path}.emits", problems,
-                       item_form=CLAIM_REF_FORM)
+                    "missing_field", f"{path}.unit.columns",
+                    "group_by mapper unit requires columns")
+            else:
+                _nonblank_list(columns, f"{path}.unit.columns", problems)
+                if (_is_list(columns)
+                        and isinstance(item.get("input_columns"), list)):
+                    missing = sorted(set(_column_values(columns))
+                                     - set(_column_values(item["input_columns"])))
+                    if missing:
+                        problems.add(
+                            "invalid_mapper", f"{path}.unit.columns",
+                            f"group_by columns must be mapper input columns: {missing}")
+        elif columns is not None:
+            problems.add(
+                "invalid_mapper", f"{path}.unit.columns",
+                "unit.columns is only valid for group_by")
+    _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
+                   allow_empty=True)
+    _nonblank_list(item.get("emits"), f"{path}.emits", problems,
+                   item_form=CLAIM_REF_FORM)
 
 
 def _validate_packs(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -1171,7 +1181,7 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         if not problems.exact(
                 driver, f"{path}.driver",
                 required=("unit", "identity", "group_by", "order_by", "occurred_at",
-                          "cursor", "preparation", "mapper_id"),
+                          "cursor", "preparation", "mapper"),
                 optional=("registration_probe",)):
             continue
         _validate_registration_probe(
@@ -1213,16 +1223,9 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         cursor = driver.get("cursor")
         if problems.exact(cursor, f"{path}.driver.cursor", required=("columns",)):
             _nonblank_list(cursor.get("columns"), f"{path}.driver.cursor.columns", problems)
-        prep = driver.get("preparation")
-        if problems.exact(
-                prep, f"{path}.driver.preparation",
-                required=("preparer_id", "inherit_virtual_join_rules")):
-            _versioned_id(prep.get("preparer_id"),
-                          f"{path}.driver.preparation.preparer_id", problems)
-            _nonblank_list(prep.get("inherit_virtual_join_rules"),
-                           f"{path}.driver.preparation.inherit_virtual_join_rules",
-                           problems, allow_empty=True)
-        _versioned_id(driver.get("mapper_id"), f"{path}.driver.mapper_id", problems)
+        _validate_preparation(
+            driver.get("preparation"), f"{path}.driver.preparation", problems)
+        _validate_mapper(driver.get("mapper"), f"{path}.driver.mapper", problems)
 
 
 def _validate_registration_probe(value: Any, path: str, problems: _Problems) -> None:
@@ -1326,17 +1329,22 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     vocabulary = bundle["vocabulary"]
     packs = bundle["packs"]
     profiles = bundle["profiles"]
-    preparers = bundle["source_preparers"]
-    mappers = bundle["mappers"]
     sources = bundle["sources"]
     event_frame_columns: dict[str, set[str]] = {}
 
     _cross_vocabulary(vocabulary, entities, problems)
     _cross_packs(packs, vocabulary, problems)
-    for mapper_id, mapper in mappers.items():
+    # Emitted claim refs are checked for EVERY source, including one whose relation is
+    # undeclared -- "does this pack own this claim" is a question about the ledger file
+    # alone, so skipping it under the relation refusal below would hide a real typo.
+    for source_id, source in sources.items():
+        mapper = source["driver"].get("mapper")
+        if not isinstance(mapper, Mapping):
+            continue
         for index, claim_ref in enumerate(mapper.get("emits", [])):
-            _known_claim(claim_ref, packs, f"bundle.mappers.{mapper_id}.emits[{index}]",
-                         problems)
+            _known_claim(
+                claim_ref, packs,
+                f"bundle.sources.{source_id}.driver.mapper.emits[{index}]", problems)
     for profile_id, profile in profiles.items():
         _cross_profile_contract(profile_id, profile, packs, problems)
 
@@ -1361,7 +1369,9 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     # 🔴 THE UNDECLARED RELATION IS THE ROOT REFUSAL, SO IT IS ANSWERED FIRST AND ALONE.
     # Measured while wiring this: with the relation missing from the catalog, the first
     # error an operator saw was `unknown_column` on a MAPPER's `input_columns` -- because
-    # `_Problems.finish()` sorts by path and `bundle.mappers.` precedes `bundle.sources.`.
+    # `_Problems.finish()` sorted by path and `bundle.mappers.` preceded `bundle.sources.`.
+    # (Both bodies now sit UNDER the source, so that particular ordering no longer applies;
+    # the skip below is still what keeps the column complaints from burying the root.)
     # Every one of those complaints is downstream of "the table is not declared" and each
     # points at the wrong file to fix.  `ledger_admin.check_source_declaration` already
     # ruled this way for the legacy syntax ("before the column checks, because it is the
@@ -1423,35 +1433,28 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                          f"must equal source ID {source_id!r}")
 
         prep = driver.get("preparation") if isinstance(driver.get("preparation"), Mapping) else {}
-        preparer_id = prep.get("preparer_id")
-        preparer = preparers.get(preparer_id)
+        prep_path = f"{path}.driver.preparation"
         available = set(physical)
-        if preparer is None:
-            problems.add("unknown_source_preparer", f"{path}.driver.preparation.preparer_id",
-                         f"unknown source preparer {preparer_id!r}"
-                         + _did_you_mean(preparer_id, preparers, "source preparers"))
-        elif isinstance(preparer, Mapping):
-            for column in preparer.get("input_columns", []):
+        if prep:
+            for column in prep.get("input_columns", []):
                 if column not in physical:
-                    problems.add("unknown_column",
-                                 f"bundle.source_preparers.{preparer_id}.input_columns",
+                    problems.add("unknown_column", f"{prep_path}.input_columns",
                                  f"column {column!r} is not in relation {relation!r}")
-            if isinstance(preparer.get("output_columns"), Mapping):
-                for column in sorted(set(preparer["output_columns"]) & physical):
+            if isinstance(prep.get("output_columns"), Mapping):
+                for column in sorted(set(prep["output_columns"]) & physical):
                     problems.add(
                         "output_column_collision",
-                        f"bundle.source_preparers.{preparer_id}.output_columns.{column}",
+                        f"{prep_path}.output_columns.{column}",
                         f"preparer output collides with physical relation {relation!r}")
-                available.update(preparer["output_columns"])
+                available.update(prep["output_columns"])
             inherited_rules = prep.get("inherit_virtual_join_rules", [])
-            if inherited_rules and not preparer.get("accepts_verified_join_rules"):
+            if inherited_rules and not prep.get("accepts_verified_join_rules"):
                 problems.add(
-                    "invalid_driver",
-                    f"bundle.source_preparers.{preparer_id}.accepts_verified_join_rules",
+                    "invalid_driver", f"{prep_path}.accepts_verified_join_rules",
                     "must be true when the source inherits virtual join rules")
         for index, rule_id in enumerate(prep.get("inherit_virtual_join_rules", [])):
             rule = bundle["virtual_joins"].get(rule_id)
-            rpath = f"{path}.driver.preparation.inherit_virtual_join_rules[{index}]"
+            rpath = f"{prep_path}.inherit_virtual_join_rules[{index}]"
             if rule is None:
                 problems.add("unknown_join_rule", rpath, f"unknown rule {rule_id!r}")
             elif not rule.get("enabled"):
@@ -1459,8 +1462,8 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             elif rule.get("left_table") != relation:
                 problems.add("invalid_driver", rpath,
                              f"join rule left_table must be {relation!r}")
-            elif isinstance(preparer, Mapping):
-                declared_inputs = set(preparer.get("input_columns", []))
+            else:
+                declared_inputs = set(prep.get("input_columns", []))
                 left_keys = {
                     pair.get("left") for pair in rule.get("join_key", [])
                     if isinstance(pair, Mapping)
@@ -1470,7 +1473,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                     problems.add(
                         "invalid_driver", rpath,
                         f"join rule {rule_id!r} left key column(s) {missing_inputs!r} "
-                        f"must be declared by preparer {preparer_id!r} input_columns")
+                        f"must be declared by {prep_path}.input_columns")
 
         for field in ("identity", "group_by"):
             for index, column in enumerate(driver.get(field, [])):
@@ -1479,20 +1482,16 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                         "unknown_column", f"{path}.driver.{field}[{index}]",
                         f"column {column!r} is not in prepared EventFrame schema")
 
-        mapper_id = driver.get("mapper_id")
-        mapper = mappers.get(mapper_id)
-        if mapper is None:
-            problems.add("unknown_mapper", f"{path}.driver.mapper_id",
-                         f"unknown mapper {mapper_id!r}"
-                         + _did_you_mean(mapper_id, mappers, "mappers"))
-        elif isinstance(mapper, Mapping):
+        mapper = driver.get("mapper") if isinstance(driver.get("mapper"), Mapping) else None
+        mapper_path = f"{path}.driver.mapper"
+        if mapper is not None:
             for column in mapper.get("input_columns", []):
                 if column not in available:
-                    problems.add("unknown_column", f"bundle.mappers.{mapper_id}.input_columns",
+                    problems.add("unknown_column", f"{mapper_path}.input_columns",
                                  f"column {column!r} is not in EventFrame schema")
             if (mapper.get("unit", {}).get("kind") == "group_by"
                     and not driver.get("group_by")):
-                problems.add("invalid_mapper", f"bundle.mappers.{mapper_id}.unit.kind",
+                problems.add("invalid_mapper", f"{mapper_path}.unit.kind",
                              "group_by mapper requires source group_by columns")
         event_frame_columns[source_id] = set(available)
         if isinstance(profile, Mapping) and isinstance(mapper, Mapping):
@@ -1501,19 +1500,20 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             for index, claim_ref in enumerate(mapper_emits):
                 if claim_ref not in profile_uses:
                     problems.add(
-                        "invalid_mapper", f"bundle.mappers.{mapper_id}.emits[{index}]",
+                        "invalid_mapper", f"{mapper_path}.emits[{index}]",
                         f"Claim {claim_ref!r} has no mapping in profile {profile_id!r}")
             for index, mapping in enumerate(profile["mappings"]):
                 if mapping["use"] not in mapper_emits:
                     problems.add(
                         "invalid_profile",
                         f"bundle.profiles.{profile_id}.mappings[{index}].use",
-                        f"Claim {mapping['use']!r} is not declared by mapper {mapper_id!r}")
+                        f"Claim {mapping['use']!r} is not declared by "
+                        f"{source_id!r}'s mapper")
             mapper_inputs = set(mapper.get("input_columns", []))
             for column, column_path in _profile_binding_columns(profile_id, profile):
                 if column not in mapper_inputs:
                     problems.add(
-                        "invalid_mapper", f"bundle.mappers.{mapper_id}.input_columns",
+                        "invalid_mapper", f"{mapper_path}.input_columns",
                         f"Profile column {column!r} at {column_path} is missing")
 
     # Every Profile is an authoring contract, including Profiles not selected by a

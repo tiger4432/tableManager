@@ -263,60 +263,6 @@
       }
     }
   },
-  "source_preparers": {
-    "direct-join@1": {
-      "implementation_id": "direct-join",
-      "implementation_version": 1,
-      "input_columns": [
-        "dt_job_id"
-      ],
-      "output_columns": {
-        "dt_lot": "string",
-        "dt_slot": "number",
-        "dt_offset_x": "number",
-        "dt_offset_y": "number",
-        "bond_wafer": "string",
-        "bond_offset_x": "number",
-        "bond_offset_y": "number",
-        "bond_layer": "number",
-        "final_chip": "string"
-      },
-      "accepts_verified_join_rules": true
-    }
-  },
-  "mappers": {
-    "declarative-role@1": {
-      "implementation_id": "declarative-role",
-      "implementation_version": 1,
-      "unit": {
-        "kind": "row"
-      },
-      "input_columns": [
-        "record_id",
-        "event_at",
-        "dt_job_id",
-        "core_wafer",
-        "core_x",
-        "core_y",
-        "dt_lot",
-        "dt_slot",
-        "dt_offset_x",
-        "dt_offset_y",
-        "bond_wafer",
-        "bond_offset_x",
-        "bond_offset_y",
-        "bond_layer",
-        "final_chip"
-      ],
-      "emits": [
-        "dt-assembly@1/core_to_dt",
-        "dt-assembly@1/dt_to_bond",
-        "dt-assembly@1/job_contains_die",
-        "dt-assembly@1/job_occupies_slot",
-        "dt-assembly@1/bond_component"
-      ]
-    }
-  },
   "profiles": {
     "dt-transfer@1": {
       "source": "dt_log",
@@ -673,12 +619,58 @@
           ]
         },
         "preparation": {
-          "preparer_id": "direct-join@1",
+          "implementation_id": "direct-join",
+          "implementation_version": 1,
+          "input_columns": [
+            "dt_job_id"
+          ],
+          "output_columns": {
+            "dt_lot": "string",
+            "dt_slot": "number",
+            "dt_offset_x": "number",
+            "dt_offset_y": "number",
+            "bond_wafer": "string",
+            "bond_offset_x": "number",
+            "bond_offset_y": "number",
+            "bond_layer": "number",
+            "final_chip": "string"
+          },
+          "accepts_verified_join_rules": true,
           "inherit_virtual_join_rules": [
             "dt_job_to_inventory"
           ]
         },
-        "mapper_id": "declarative-role@1"
+        "mapper": {
+          "implementation_id": "declarative-role",
+          "implementation_version": 1,
+          "unit": {
+            "kind": "row"
+          },
+          "input_columns": [
+            "record_id",
+            "event_at",
+            "dt_job_id",
+            "core_wafer",
+            "core_x",
+            "core_y",
+            "dt_lot",
+            "dt_slot",
+            "dt_offset_x",
+            "dt_offset_y",
+            "bond_wafer",
+            "bond_offset_x",
+            "bond_offset_y",
+            "bond_layer",
+            "final_chip"
+          ],
+          "emits": [
+            "dt-assembly@1/core_to_dt",
+            "dt-assembly@1/dt_to_bond",
+            "dt-assembly@1/job_contains_die",
+            "dt-assembly@1/job_occupies_slot",
+            "dt-assembly@1/bond_component"
+          ]
+        }
       }
     }
   },

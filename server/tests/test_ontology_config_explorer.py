@@ -85,8 +85,15 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     assert by_kind["entity"] == set(active_setup.snapshot.registries["entities"])
     assert by_kind["pack"] == set(active_setup.snapshot.registries["packs"])
     assert by_kind["profile"] == set(active_setup.snapshot.registries["profiles"])
-    assert by_kind["preparer"] == set(active_setup.snapshot.registries["source_preparers"])
-    assert by_kind["mapper"] == set(active_setup.snapshot.registries["mappers"])
+    # Both registries are keyed by the SOURCE they belong to since 2026-08-20, and the
+    # nodes are positions inside it -- `<source>#preparation` / `<source>#mapper` -- so the
+    # pairing is stated rather than assumed equal.
+    assert by_kind["preparer"] == {
+        f"{source_id}#preparation"
+        for source_id in active_setup.snapshot.registries["source_preparers"]}
+    assert by_kind["mapper"] == {
+        f"{source_id}#mapper"
+        for source_id in active_setup.snapshot.registries["mappers"]}
     assert by_kind["source_plan"] == set(active_setup.snapshot.registries["sources"])
     assert by_kind["verified_join"] == set(active_setup.snapshot.registries["verified_joins"])
     # WAS `== set(bundle["tables"])`. That section no longer exists -- the ledger stopped
@@ -118,8 +125,8 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         "claim|lot-lineage@1/slot_map",
         "profile|lot-event@1",
         "mapping|lot-event@1#mapping:slot_preserving",
-        "preparer|lot-event-live-frame@1",
-        "mapper|lot-event-role@1",
+        "preparer|lot_event#preparation",
+        "mapper|lot_event#mapper",
         "source_plan|lot_event",
         "binding|lot-event@1#mapping:slot_preserving#binding:subject",
         "table|lot_event",
@@ -140,7 +147,8 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         + sum(len(mapping["bind"])
               for profile in bundle["profiles"].values()
               for mapping in profile["mappings"])
-        + len(bundle["source_preparers"]) + len(bundle["mappers"])
+        # one preparer and one mapper per source, inline in its driver
+        + 2 * len(bundle["sources"])
         + len(bundle["sources"]) + len(tables)
         + len(active_setup.snapshot.verified_joins))
 
@@ -307,7 +315,6 @@ def test_view_uses_one_context_token_and_kind_specific_integrity(active_setup):
     assert all(item["context_token"] == token for item in payload["nodes"])
     assert all(item["context_token"] == token for item in payload["outbound"])
     assert all(item["context_token"] == token for item in payload["used_by"])
-    assert all(item["context_token"] == token for item in payload["path_candidates"])
     assert all(item["context_token"] == token for item in payload["integrity"])
     assert {item["code"] for item in payload["integrity"]} == {
         "reference_resolution", "entity_identity"}
@@ -459,8 +466,8 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         # The sample names the GENERIC implementations the repository ships.  Before
         # self-registration it named "sample-*" ids no class declared, so this round trip
         # only compiled because the support module carried a private trust list.
-        "preparer|direct-join@1",
-        "mapper|declarative-role@1",
+        "preparer|dt_log#preparation",
+        "mapper|dt_log#mapper",
         "verified_join|dt_job_to_inventory",
         "source_plan|dt_log",
         "table|dt_log",
@@ -515,8 +522,12 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         index, context_token=token,
         selection="predicate|transferred_to@1", query="transferred")
     assert view["total"] == 1
-    assert len(view["path_candidates"]) >= 2
-    assert all(path["context_token"] == token for path in view["path_candidates"])
+    # WAS `len(view["path_candidates"]) >= 2`. The enumeration was retired on 2026-08-20;
+    # the fact it pinned -- this predicate is reached from more than one place -- is now
+    # read off the panel that survives, which reports the same inbound edges WITH their
+    # status and pointer.
+    assert view["used_by_total"] >= 2
+    assert all(edge["context_token"] == token for edge in view["used_by"])
 
 
 def test_draft_save_keeps_active_bytes_and_valid_preview_is_separate(copied_root, tmp_path):
@@ -984,8 +995,9 @@ _FIXTURE_BUNDLE_PATH = {
     "entity": lambda i: ("entities", i),
     "pack": lambda i: ("packs", i),
     "claim": lambda i: ("packs", i.split("/")[0], "claims", i.split("/", 1)[1]),
-    "preparer": lambda i: ("source_preparers", i),
-    "mapper": lambda i: ("mappers", i),
+    # Positions inside a source since 2026-08-20, keyed `<source>#preparation`.
+    "preparer": lambda i: ("sources", i.split("#")[0], "driver", "preparation"),
+    "mapper": lambda i: ("sources", i.split("#")[0], "driver", "mapper"),
     "profile": lambda i: ("profiles", i),
     "source_plan": lambda i: ("sources", i),
     "verified_join": lambda i: ("virtual_joins", i),
@@ -1116,17 +1128,21 @@ def test_a_third_kind_in_the_cycle_goes_with_it_without_a_pair_special_case():
     from ledger.config_explorer import deletion_plan, self_standing_keys
 
     index = _linked_index(
-        [("source_plan", "s"), ("profile", "p"), ("mapper", "m")],
+        # The third kind is a `pack`: it is the procedure that is under test, not the
+        # kind, and `mapper` stopped being a top-level declaration on 2026-08-20 -- a
+        # position inside a source is `unauthorable_here` and would have made this pass
+        # for the wrong reason.
+        [("source_plan", "s"), ("profile", "p"), ("pack", "k")],
         [("source_plan", "s", "profile", "p", "source_profile"),
-         ("profile", "p", "mapper", "m", "profile_pack"),
-         ("mapper", "m", "source_plan", "s", "mapper_emits")],
+         ("profile", "p", "pack", "k", "profile_pack"),
+         ("pack", "k", "source_plan", "s", "mapper_emits")],
     )
     assert self_standing_keys(index) == frozenset(), (
         "every node must have a referrer or this fixture proves nothing")
 
     plan = deletion_plan(index, ["source_plan|s"])
     assert plan.blocked == tuple()
-    assert set(plan.removed_keys) == {"source_plan|s", "profile|p", "mapper|m"}
+    assert set(plan.removed_keys) == {"source_plan|s", "profile|p", "pack|k"}
 
 
 def test_a_half_wired_declaration_survives_an_unrelated_deletion():
@@ -1141,21 +1157,21 @@ def test_a_half_wired_declaration_survives_an_unrelated_deletion():
 
     index = _linked_index(
         [("source_plan", "a"), ("profile", "pa"), ("source_plan", "b"),
-         ("profile", "pb"), ("mapper", "shared"), ("pack", "fresh"),
+         ("profile", "pb"), ("pack", "shared"), ("pack", "fresh"),
          ("claim", "fresh/one")],
         [("source_plan", "a", "profile", "pa", "source_profile"),
          ("profile", "pa", "source_plan", "a", "profile_source"),
-         ("source_plan", "a", "mapper", "shared", "source_mapper"),
+         ("source_plan", "a", "pack", "shared", "profile_pack"),
          ("source_plan", "b", "profile", "pb", "source_profile"),
          ("profile", "pb", "source_plan", "b", "profile_source"),
-         ("source_plan", "b", "mapper", "shared", "source_mapper"),
+         ("source_plan", "b", "pack", "shared", "profile_pack"),
          ("pack", "fresh", "claim", "fresh/one", "contains_claim")],
     )
 
     plan = deletion_plan(index, ["source_plan|a"])
     assert plan.blocked == tuple()
     assert set(plan.removed_keys) == {"source_plan|a", "profile|pa"}, (
-        "the shared mapper and the half-wired pack are held up by survivors")
+        "the shared pack and the half-wired pack are held up by survivors")
 
     # And deleting the half-wired pack ITSELF must still take what it holds up.  This is
     # the half that needs the zero-in-degree walk root: without it the pack is outside
@@ -1369,10 +1385,12 @@ def test_deleting_the_last_source_is_allowed_and_reports_itself_as_a_reset():
     """
     from ledger.config_explorer import deletion_plan
 
-    nodes = [("source_plan", "s"), ("profile", "p"), ("mapper", "m")]
+    # `pack`, not `mapper`: the third declaration only has to be top-level and authorable,
+    # and a mapper is a position inside a source since 2026-08-20.
+    nodes = [("source_plan", "s"), ("profile", "p"), ("pack", "k")]
     edges = [("source_plan", "s", "profile", "p", "source_profile"),
              ("profile", "p", "source_plan", "s", "profile_source"),
-             ("profile", "p", "mapper", "m", "profile_mapper")]
+             ("profile", "p", "pack", "k", "profile_pack")]
     index = _linked_index(nodes, edges)
 
     plan = deletion_plan(index, ["source_plan|s"])
@@ -1663,9 +1681,9 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
     for profile in reduced["profiles"].values():
         profile.pop("packs", None)
         profile.pop("source", None)
-    for mapper in reduced["mappers"].values():
-        mapper.pop("emits", None)
-        mapper.pop("input_columns", None)
+    for source in reduced["sources"].values():
+        source["driver"]["mapper"].pop("emits", None)
+        source["driver"]["mapper"].pop("input_columns", None)
     for pack in reduced["packs"].values():
         for claim in pack["claims"].values():
             claim["emit"]["object"].pop("kind", None)
@@ -1682,10 +1700,11 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
     for profile_id, profile in rebuilt["profiles"].items():
         profile["packs"] = derived[f"bundle.profiles.{profile_id}.packs"]["value"]
         profile["source"] = derived[f"bundle.profiles.{profile_id}.source"]["value"]
-    for mapper_id, mapper in rebuilt["mappers"].items():
-        mapper["emits"] = derived[f"bundle.mappers.{mapper_id}.emits"]["value"]
-        mapper["input_columns"] = derived[
-            f"bundle.mappers.{mapper_id}.input_columns"]["value"]
+    for source_id, source in rebuilt["sources"].items():
+        base = f"bundle.sources.{source_id}.driver.mapper"
+        source["driver"]["mapper"]["emits"] = derived[f"{base}.emits"]["value"]
+        source["driver"]["mapper"]["input_columns"] = derived[
+            f"{base}.input_columns"]["value"]
     for pack_id, pack in rebuilt["packs"].items():
         for claim_id, claim in pack["claims"].items():
             claim["emit"]["object"]["kind"] = derived[
@@ -1782,8 +1801,10 @@ def test_closed_lists_come_from_the_validators_own_constants():
     assert set(lists["approval_status"]) == set(setup_bundle._APPROVAL_STATUSES)
     assert set(lists["binding_origin"]) == set(setup_bundle._BINDING_ORIGINS)
     # Steps ship with their labels so the step bar carries no list of its own.
+    # Five since 2026-08-20: the 「준비기·매퍼」 layer named two sections that no longer
+    # exist, and its fields moved into `sources`.
     assert [step["id"] for step in lists["steps"]] == [
-        "entities", "vocabulary", "packs", "implementations", "profiles", "sources"]
+        "entities", "vocabulary", "packs", "profiles", "sources"]
     assert all(step["label"] for step in lists["steps"])
 
 
@@ -1830,7 +1851,7 @@ def test_column_candidates_are_three_universes_and_not_one(active_setup):
     ordering = by_path["bundle.sources.lot_event.driver.order_by"]
     assert identity["universe"] == "PREPARED"
     assert ordering["universe"] == "RELATION"
-    made = set(bundle["source_preparers"]["lot-event-live-frame@1"]["output_columns"])
+    made = set(bundle["sources"]["lot_event"]["driver"]["preparation"]["output_columns"])
     assert made & set(identity["candidates"]), "preparer output must be offered here"
     assert not (made & set(ordering["candidates"])), "and never offered here"
 

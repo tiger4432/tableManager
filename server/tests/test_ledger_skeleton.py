@@ -43,9 +43,11 @@ ANCHORS = {
     ("_validate_vocabulary", "f'{path}.object'"): "vocabulary.*.object",
     ("_validate_vocabulary", "qpath"): "vocabulary.*.object.qualifiers",
     ("_validate_entities", "path"): "entities.*",
-    ("_validate_preparers", "path"): "source_preparers.*",
-    ("_validate_mappers", "path"): "mappers.*",
-    ("_validate_mappers", "f'{path}.unit'"): "mappers.*.unit",
+    # Both bodies moved inside the driver on 2026-08-20; the validator functions kept their
+    # rules and lost their sections, so only the anchor moved.
+    ("_validate_preparation", "path"): "sources.*.driver.preparation",
+    ("_validate_mapper", "path"): "sources.*.driver.mapper",
+    ("_validate_mapper", "f'{path}.unit'"): "sources.*.driver.mapper.unit",
     ("_validate_packs", "path"): "packs.*",
     ("_validate_packs", "cpath"): "packs.*.claims.*",
     ("_validate_packs", "rpath"): "packs.*.claims.*.roles.*",
@@ -59,8 +61,6 @@ ANCHORS = {
     ("_validate_sources", "f'{path}.driver.occurred_at'"):
         "sources.*.driver.occurred_at",
     ("_validate_sources", "f'{path}.driver.cursor'"): "sources.*.driver.cursor",
-    ("_validate_sources", "f'{path}.driver.preparation'"):
-        "sources.*.driver.preparation",
     ("_validate_registration_probe", "item_path"):
         "sources.*.driver.registration_probe.*",
 }

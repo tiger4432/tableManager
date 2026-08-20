@@ -6,7 +6,6 @@ edge keeps the JSON pointer at which the reference was declared.
 """
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -83,12 +82,14 @@ def node_key(kind: str, canonical_id: str) -> str:
 #: two capabilities cannot drift apart. Adding a kind here therefore grants both at once,
 #: which is a decision, not a typo: it says the screen understands the section well enough
 #: to write it from scratch.
+#: `preparer` and `mapper` are deliberately absent as of 2026-08-20, for the same reason
+#: `claim` and `binding` are: their bodies moved INSIDE the source plan
+#: (`sources.*.driver.preparation` and `sources.*.driver.mapper`), so they are created and
+#: deleted with their owner and have no section of their own to be written into.
 AUTHORABLE_SECTIONS: Mapping[str, str] = MappingProxyType({
     "predicate": "vocabulary",
     "entity": "entities",
     "pack": "packs",
-    "preparer": "source_preparers",
-    "mapper": "mappers",
     "profile": "profiles",
     "source_plan": "sources",
 })
@@ -866,30 +867,6 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
                     pointer("packs", pack_id, "claims", claim_id, "emit", "predicate"),
                 )
 
-    preparer_compiled = registries["source_preparers"].to_mapping()
-    for preparer_id, raw in sorted(bundle["source_preparers"].items()):
-        compiled = preparer_compiled[preparer_id]
-        builder.add_node(
-            "preparer", preparer_id, raw, compiled,
-            ("source_preparers", preparer_id), config_file=ledger_file,
-            json_pointer=pointer("source_preparers", preparer_id),
-            version=compiled.get("version"),
-        )
-
-    mapper_compiled = registries["mappers"].to_mapping()
-    for mapper_id, raw in sorted(bundle["mappers"].items()):
-        compiled = mapper_compiled[mapper_id]
-        mapper_key = builder.add_node(
-            "mapper", mapper_id, raw, compiled, ("mappers", mapper_id),
-            config_file=ledger_file, json_pointer=pointer("mappers", mapper_id),
-            version=compiled.get("version"),
-        )
-        for index, claim_ref in enumerate(raw.get("emits", [])):
-            builder.add_edge(
-                mapper_key, claim_ref, "claim", "mapper_emits",
-                pointer("mappers", mapper_id, "emits", index),
-            )
-
     profile_compiled = registries["profiles"].to_mapping()
     for profile_id, raw in sorted(bundle["profiles"].items()):
         compiled = profile_compiled[profile_id]
@@ -998,6 +975,8 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
         )
 
     source_compiled = registries["sources"].to_mapping()
+    preparer_compiled = registries["source_preparers"].to_mapping()
+    mapper_compiled = registries["mappers"].to_mapping()
     for source_id, raw in sorted(bundle["sources"].items()):
         compiled = source_compiled[source_id]
         source_key = builder.add_node(
@@ -1013,16 +992,40 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
             pointer("sources", source_id, "profile_id"),
         )
         driver = raw.get("driver", {})
-        builder.add_edge(
-            source_key, driver.get("mapper_id", ""), "mapper", "source_mapper",
-            pointer("sources", source_id, "driver", "mapper_id"),
-        )
+        # 🔴 THE PREPARER AND THE MAPPER ARE POSITIONS INSIDE THE SOURCE, exactly like a
+        # `claim` inside a pack: their `bundle_path` EXTENDS the source's, which is what
+        # `owning_section` and the left index both read to tell a declaration from a
+        # position. So they keep their kinds (and their edges) and stop being rows in the
+        # index -- no list of kinds anywhere had to learn about the change.
         preparation = driver.get("preparation", {})
-        builder.add_edge(
-            source_key, preparation.get("preparer_id", ""), "preparer",
-            "source_preparer",
-            pointer("sources", source_id, "driver", "preparation", "preparer_id"),
+        preparer_ref = f"{source_id}#preparation"
+        builder.add_node(
+            "preparer", preparer_ref, preparation,
+            preparer_compiled.get(source_id, preparation),
+            ("sources", source_id, "driver", "preparation"), config_file=ledger_file,
+            json_pointer=pointer("sources", source_id, "driver", "preparation"),
         )
+        builder.add_edge(
+            source_key, preparer_ref, "preparer", "source_preparer",
+            pointer("sources", source_id, "driver", "preparation"),
+        )
+        mapper_raw = driver.get("mapper", {})
+        mapper_ref = f"{source_id}#mapper"
+        mapper_key = builder.add_node(
+            "mapper", mapper_ref, mapper_raw,
+            mapper_compiled.get(source_id, mapper_raw),
+            ("sources", source_id, "driver", "mapper"), config_file=ledger_file,
+            json_pointer=pointer("sources", source_id, "driver", "mapper"),
+        )
+        builder.add_edge(
+            source_key, mapper_ref, "mapper", "source_mapper",
+            pointer("sources", source_id, "driver", "mapper"),
+        )
+        for index, claim_ref in enumerate(mapper_raw.get("emits", [])):
+            builder.add_edge(
+                mapper_key, claim_ref, "claim", "mapper_emits",
+                pointer("sources", source_id, "driver", "mapper", "emits", index),
+            )
         for index, join_id in enumerate(
             preparation.get("inherit_virtual_join_rules", []),
         ):
@@ -1095,37 +1098,22 @@ def reference_diff(
     return MappingProxyType(dict(sorted(result.items())))
 
 
-def _path_candidates(index: ExplorerIndex, selection: str, limit: int = 12
-                     ) -> list[dict[str, Any]]:
-    """Return separate inbound paths; never merge branches into a fictional chain."""
-    queue = deque([((selection,), tuple())])
-    paths: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
-    while queue and len(paths) < limit:
-        nodes, edge_ids = queue.popleft()
-        current = nodes[0]
-        # Only `limit` paths can be returned. Enqueuing an unbounded high-degree inbound
-        # fan-in would inflate memory even though every item after the limit is discarded.
-        inbound = [
-            edge for edge in index.inbound[current] if edge.status == "resolved"
-        ][:limit]
-        if not inbound or len(nodes) >= 7:
-            paths.append((nodes, edge_ids))
-            continue
-        expanded = False
-        for edge in inbound:
-            if edge.from_key in nodes:
-                continue
-            queue.append(((edge.from_key, *nodes), (edge.edge_id, *edge_ids)))
-            expanded = True
-        if not expanded:
-            paths.append((nodes, edge_ids))
-    if not paths:
-        paths = [((selection,), tuple())]
-    return [
-        {"path_id": _hash([list(nodes), list(edges)])[:16],
-         "node_keys": list(nodes), "edge_ids": list(edges)}
-        for nodes, edges in paths
-    ]
+# RETIRED 2026-08-20: `_path_candidates`, and with it the `path_candidates` response key.
+#
+# Owner: 「우측 패널 경로 후보는 딱히 쓸데가 없네」. It enumerated every resolved inbound chain
+# reaching the selection -- up to 12 of them, 7 hops deep -- and the panel drew each as its
+# own lane. This merge is what emptied it: a preparer and a mapper stopped being separate
+# declarations, so the routes that passed THROUGH them stopped existing.
+#
+# 🔴 NOTHING WENT WITH IT, AND THAT WAS MEASURED BEFORE IT WENT. Integrity's
+# 「이 정의를 사용하는 곳 · N」 lists `index.inbound` with each edge's `status` and pointer.
+# The enumeration was built from the SAME relation and filtered to `status == "resolved"`,
+# so it could never show an unresolved reference while Integrity always can. On the live
+# config: 92 edges went into building candidate paths and 0 of them were absent from some
+# node's `used_by`; 0 nodes were named that the index did not already hold; and 48 of 62
+# selections had exactly one candidate, i.e. the enumeration added no lane at all.
+# What it uniquely rendered was the multi-hop COMPOSITION of edges Integrity lists one hop
+# at a time -- reachable by clicking, and each hop's own panel answers for it.
 
 
 def explorer_view(
@@ -1187,7 +1175,7 @@ def explorer_view(
             "items": [], "page": page, "limit": limit, "total": 0,
             "outbound": [], "used_by": [], "outbound_total": 0, "used_by_total": 0,
             "reference_limit": reference_limit, "references_truncated": False,
-            "path_candidates": [], "nodes": [], "integrity": [],
+            "nodes": [], "integrity": [],
             "changes": [], "edge_changes": [],
         }
     selected = index.node(selection)
@@ -1208,10 +1196,6 @@ def explorer_view(
         neighborhood_keys.add(edge.from_key)
         if edge.to_key:
             neighborhood_keys.add(edge.to_key)
-    paths = _path_candidates(index, selected.key)
-    for path_item in paths:
-        neighborhood_keys.update(path_item["node_keys"])
-
     checks = integrity_checks(index, selected.key)
     selection_mapping = selected.to_mapping(include_definition=True)
     selection_mapping["context_token"] = context_token
@@ -1224,8 +1208,6 @@ def explorer_view(
     inbound_mappings = [edge.to_mapping() for edge in visible_inbound]
     for item in (*outbound_mappings, *inbound_mappings):
         item["change_status"] = ref_diff.get(item["edge_id"], "active")
-    for item in paths:
-        item["context_token"] = context_token
     for item in checks:
         item["context_token"] = context_token
     for collection in (
@@ -1248,7 +1230,6 @@ def explorer_view(
         "reference_limit": reference_limit,
         "references_truncated": (
             len(all_outbound) > reference_limit or len(all_inbound) > reference_limit),
-        "path_candidates": paths,
         "nodes": neighborhood_mappings,
         "integrity": checks,
         "changes": [

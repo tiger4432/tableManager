@@ -545,13 +545,12 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
     root = tmp_path / "draft"
     root.mkdir()
     raw = json.loads((SAMPLE_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
-    mapper = sorted(raw["mappers"])[0]
     pack = sorted(raw["packs"])[0]
     claim = sorted(raw["packs"][pack]["claims"])[0]
     predicate = sorted(raw["vocabulary"])[0]
     entity_type = sorted(raw["entities"])[0]
     source = sorted(raw["sources"])[0]
-    raw["mappers"][mapper]["emits"] = "one/claim"
+    raw["sources"][source]["driver"]["mapper"]["emits"] = "one/claim"
     raw["packs"][pack]["claims"][claim]["emit"]["object"]["payload"] = {"n": 1}
     raw["vocabulary"][predicate]["colour"] = "blue"
     raw["entities"][entity_type]["allow_null"] = "yes"
@@ -566,7 +565,7 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
     # All five, from ONE run. Named individually so a regression that drops one kind of
     # check cannot hide behind a count.
     for expected in (
-        f"bundle.mappers.{mapper}.emits",
+        f"bundle.sources.{source}.driver.mapper.emits",
         f"bundle.packs.{pack}.claims.{claim}.emit.object.payload",
         f"bundle.vocabulary.{predicate}.colour",
         f"bundle.entities.{entity_type}.allow_null",

@@ -249,28 +249,6 @@ def lot_event_bundle():
             "Lot@1": {"keys": ["lot"]},
             "Wafer@1": {"keys": ["wafer"]},
         },
-        "source_preparers": {
-            "lot-event-frame@1": {
-                "implementation_id": "lot-event-frame",
-                "implementation_version": 1,
-                "input_columns": list(LOT_EVENT_COLUMNS),
-                "output_columns": {
-                    EVENT_GROUP_COLUMN: "string",
-                    SOURCE_EVENT_INCOMPLETE_COLUMN: "boolean",
-                },
-                "accepts_verified_join_rules": False,
-            },
-        },
-        "mappers": {
-            "lot-event-role@1": {
-                "implementation_id": "lot-event-role",
-                "implementation_version": 1,
-                "unit": {"kind": "event"},
-                "input_columns": [*LOT_EVENT_COLUMNS, EVENT_GROUP_COLUMN,
-                                  SOURCE_EVENT_INCOMPLETE_COLUMN],
-                "emits": [mapping["use"] for mapping in mappings],
-            },
-        },
         "packs": packs,
         "profiles": {
             "lot-event@1": {
@@ -290,10 +268,24 @@ def lot_event_bundle():
                         "column": "event_time", "timezone": "Asia/Seoul"},
                     "cursor": {"columns": ["event_time", "row_identity"]},
                     "preparation": {
-                        "preparer_id": "lot-event-frame@1",
+                        "implementation_id": "lot-event-frame",
+                        "implementation_version": 1,
+                        "input_columns": list(LOT_EVENT_COLUMNS),
+                        "output_columns": {
+                            EVENT_GROUP_COLUMN: "string",
+                            SOURCE_EVENT_INCOMPLETE_COLUMN: "boolean",
+                        },
+                        "accepts_verified_join_rules": False,
                         "inherit_virtual_join_rules": [],
                     },
-                    "mapper_id": "lot-event-role@1",
+                    "mapper": {
+                        "implementation_id": "lot-event-role",
+                        "implementation_version": 1,
+                        "unit": {"kind": "event"},
+                        "input_columns": [*LOT_EVENT_COLUMNS, EVENT_GROUP_COLUMN,
+                                          SOURCE_EVENT_INCOMPLETE_COLUMN],
+                        "emits": [mapping["use"] for mapping in mappings],
+                    },
                 },
                 "profile_id": "lot-event@1",
             },

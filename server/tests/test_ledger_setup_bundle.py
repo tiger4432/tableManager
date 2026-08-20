@@ -120,8 +120,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
     target_key = prefix + "target_id"
     join_key = prefix + "join_id"
     right_relation = prefix + "reference_rows"
-    preparer = "prepare-input@1"
-    mapper = "map-transition@1"
     profile = "input-transition@1"
     return {
         "setup_version": SETUP_VERSION,
@@ -150,24 +148,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
         "entities": {
             "InputEntity@1": {"keys": ["input_id"]},
             "OutputEntity@1": {"keys": ["output_id"]},
-        },
-        "source_preparers": {
-            preparer: {
-                "implementation_id": "prepare-input",
-                "implementation_version": 1,
-                "input_columns": [join_key],
-                "output_columns": {target_key: "string"},
-                "accepts_verified_join_rules": True,
-            },
-        },
-        "mappers": {
-            mapper: {
-                "implementation_id": "map-transition-role",
-                "implementation_version": 1,
-                "unit": {"kind": "event"},
-                "input_columns": [source_key, target_key, occurred, event],
-                "emits": ["movement@1/transition"],
-            },
         },
         "packs": {
             "movement@1": {
@@ -220,15 +200,40 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                     "occurred_at": {"column": occurred, "timezone": "Asia/Seoul"},
                     "cursor": {"columns": [occurred, record]},
                     "preparation": {
-                        "preparer_id": preparer,
+                        "implementation_id": "prepare-input",
+                        "implementation_version": 1,
+                        "input_columns": [join_key],
+                        "output_columns": {target_key: "string"},
+                        "accepts_verified_join_rules": True,
                         "inherit_virtual_join_rules": ["input_to_reference"],
                     },
-                    "mapper_id": mapper,
+                    "mapper": {
+                        "implementation_id": "map-transition-role",
+                        "implementation_version": 1,
+                        "unit": {"kind": "event"},
+                        "input_columns": [source_key, target_key, occurred, event],
+                        "emits": ["movement@1/transition"],
+                    },
                 },
                 "profile_id": profile,
             },
         },
     }
+
+
+#: The preparer and the mapper have no section and no id of their own since 2026-08-20 --
+#: they are clauses of a source.  These two say so once, so a test that pokes at a body
+#: reads as "this source's mapper" rather than repeating a five-key path.
+MAPPER_PATH = "bundle.sources.input_rows.driver.mapper"
+PREPARATION_PATH = "bundle.sources.input_rows.driver.preparation"
+
+
+def driver_mapper(bundle, source_name="input_rows"):
+    return bundle["sources"][source_name]["driver"]["mapper"]
+
+
+def driver_preparation(bundle, source_name="input_rows"):
+    return bundle["sources"][source_name]["driver"]["preparation"]
 
 
 def add_unused_profile(bundle):
@@ -265,7 +270,7 @@ def objectless_register_bundle():
             "occurred_at": binding("event_at"),
         },
     })
-    raw["mappers"]["map-transition@1"]["emits"].append(
+    driver_mapper(raw)["emits"].append(
         "registration@1/register")
     return raw
 
@@ -338,9 +343,12 @@ def test_public_schema_is_the_single_logical_contract():
     # `tables` joined them for the same reason (owner, 2026-08-18): a physical
     # declaration left sitting in this file that nothing reads is exactly the silent
     # second copy the section was removed for.
+    # `source_preparers`/`mappers` joined on 2026-08-20 for the third time in the same
+    # shape: both moved INTO `sources.*.driver`, so a file still carrying them at the root
+    # has to be named, not skipped.
     assert schema["forbidden_sections"] == [
         "frames", "lookups", "positions", "manifest", "chains", "enrichments",
-        "tables"]
+        "tables", "source_preparers", "mappers"]
     # And the contract SAYS where the physical half went, so a screen can name the file
     # instead of leaving an operator to work out an absence.
     assert schema["physical_schema_file"] == "table_config.json"
@@ -394,8 +402,11 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # was 93bb7009... while the bundle still carried chains + enrichments.
     # was c08e7183... while it still carried `tables` (owner ruling 2026-08-18 moved the
     # physical schema to `table_config.json`; one fewer key to serialize).
+    # was 11571931... while `source_preparers` and `mappers` were still root sections
+    # (owner ruling 2026-08-20 folded both bodies into `sources.*.driver`; two fewer keys
+    # at the root, the same bodies one level down).
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "11571931bd673dea08ce62a36947993ec6cf1eea646528257a15b4d3ff06fbb9")
+        "2a21fed86c21138f3ab6f275775636d21a48b6dd8f54e4313d9c84bfdcb7c204")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -486,8 +497,7 @@ def test_duplicate_json_key_is_rejected_before_normalization(tmp_path):
     write_tree(tmp_path)
     (tmp_path / "ledger_config.json").write_text(
         '{"schema_version":2,"vocabulary":{},"vocabulary":{},'
-        '"entities":{},"source_preparers":{},"mappers":{},'
-        '"packs":{},"profiles":{},"sources":{}}', encoding="utf-8")
+        '"entities":{},"packs":{},"profiles":{},"sources":{}}', encoding="utf-8")
     with pytest.raises(LedgerSetupValidationError) as caught:
         load_setup_bundle(tmp_path)
     assert caught.value.code == "duplicate_id"
@@ -727,7 +737,7 @@ def test_pack_vocabulary_subject_and_object_mismatch_are_rejected():
     assert obj.path.endswith("emit.object.kind")
 
 
-def test_unknown_pack_claim_role_preparer_mapper_and_join_are_named():
+def test_unknown_pack_claim_role_and_join_are_named():
     cases = []
     bundle = logical_bundle()
     bundle["profiles"]["input-transition@1"]["mappings"][0]["use"] = "absent@1/transition"
@@ -738,12 +748,9 @@ def test_unknown_pack_claim_role_preparer_mapper_and_join_are_named():
     bundle = logical_bundle()
     bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["absent"] = binding("event_key")
     cases.append((bundle, "unknown_role"))
-    bundle = logical_bundle()
-    bundle["sources"]["input_rows"]["driver"]["preparation"]["preparer_id"] = "absent@1"
-    cases.append((bundle, "unknown_source_preparer"))
-    bundle = logical_bundle()
-    bundle["sources"]["input_rows"]["driver"]["mapper_id"] = "absent@1"
-    cases.append((bundle, "unknown_mapper"))
+    # RETIRED 2026-08-20 with the references they measured: the preparer and the mapper
+    # are bodies inside the driver now, so there is no id left to misspell and no
+    # `unknown_source_preparer` / `unknown_mapper` refusal to raise.
     bundle = logical_bundle()
     bundle["sources"]["input_rows"]["driver"]["preparation"]["inherit_virtual_join_rules"] = ["absent"]
     cases.append((bundle, "unknown_join_rule"))
@@ -751,7 +758,7 @@ def test_unknown_pack_claim_role_preparer_mapper_and_join_are_named():
         assert any(item.code == code for item in validate_bundle_errors(value)), code
 
 
-def test_unused_vocabulary_pack_profile_and_mapper_are_still_cross_validated():
+def test_unused_vocabulary_pack_and_profile_are_still_cross_validated():
     bundle = logical_bundle()
     bundle["vocabulary"]["unused@1"] = {
         "status": "active", "layer": "ontology", "subjects": ["MissingEntity@1"],
@@ -769,9 +776,6 @@ def test_unused_vocabulary_pack_profile_and_mapper_are_still_cross_validated():
         bundle["profiles"]["input-transition@1"])
     bundle["profiles"]["unused-profile@1"]["packs"] = ["missing@1"]
     bundle["profiles"]["unused-profile@1"]["mappings"][0]["use"] = "missing@1/claim"
-    bundle["mappers"]["unused-mapper@1"] = copy.deepcopy(
-        bundle["mappers"]["map-transition@1"])
-    bundle["mappers"]["unused-mapper@1"]["emits"] = ["missing@1/claim"]
     errors = validate_bundle_errors(bundle)
     assert any(error.code == "unknown_entity_type"
                and error.path.startswith("bundle.vocabulary.unused@1") for error in errors)
@@ -779,8 +783,6 @@ def test_unused_vocabulary_pack_profile_and_mapper_are_still_cross_validated():
                and error.path.startswith("bundle.packs.unused@1") for error in errors)
     assert any(error.code == "unknown_pack"
                and error.path.startswith("bundle.profiles.unused-profile@1") for error in errors)
-    assert any(error.code == "unknown_pack"
-               and error.path.startswith("bundle.mappers.unused-mapper@1") for error in errors)
 
 
 def test_unused_profile_entity_binding_is_cross_validated_against_its_source():
@@ -896,7 +898,7 @@ def test_profile_packs_mapping_use_and_mapper_emits_are_mutually_closed():
     bundle["profiles"]["input-transition@1"]["packs"] = ["alternate@1"]
     alternate_claim = copy.deepcopy(alternate["claims"]["transition"])
     bundle["packs"]["movement@1"]["claims"]["secondary"] = alternate_claim
-    bundle["mappers"]["map-transition@1"]["emits"] = ["movement@1/secondary"]
+    driver_mapper(bundle)["emits"] = ["movement@1/secondary"]
     errors = validate_bundle_errors(bundle)
     assert any(error.code == "invalid_profile" and error.path.endswith("mappings[0].use")
                and "profile.packs" in error.message for error in errors)
@@ -908,13 +910,13 @@ def test_profile_packs_mapping_use_and_mapper_emits_are_mutually_closed():
 
 def test_mapper_inputs_cover_profile_columns_and_preparer_outputs_do_not_collide():
     bundle = logical_bundle()
-    bundle["mappers"]["map-transition@1"]["input_columns"].remove("event_key")
+    driver_mapper(bundle)["input_columns"].remove("event_key")
     errors = validate_bundle_errors(bundle)
     assert any(error.code == "invalid_mapper"
                and "Profile column 'event_key'" in error.message for error in errors)
 
     bundle = logical_bundle()
-    bundle["source_preparers"]["prepare-input@1"]["output_columns"]["source_id"] = "string"
+    driver_preparation(bundle)["output_columns"]["source_id"] = "string"
     errors = validate_bundle_errors(bundle)
     assert any(error.code == "output_column_collision"
                and error.path.endswith("output_columns.source_id") for error in errors)
@@ -1220,7 +1222,7 @@ def test_virtual_join_fold_must_be_an_object():
 
 def test_preparer_must_explicitly_accept_inherited_join_rules():
     bundle = logical_bundle()
-    bundle["source_preparers"]["prepare-input@1"]["accepts_verified_join_rules"] = False
+    driver_preparation(bundle)["accepts_verified_join_rules"] = False
     errors = validate_bundle_errors(bundle)
     assert any(
         item.code == "invalid_driver"
@@ -1287,9 +1289,12 @@ def test_every_json_node_shape_mutation_returns_only_structured_errors():
         assert_structured_errors(errors)
         checked += 1
     # Floor, not a census: it exists so a fixture that quietly shrank cannot make this
-    # sweep vacuous. It moved 150 -> 145 when `tables` left the bundle (149 nodes today,
-    # was 158). Lower it only alongside a deliberate shape change, and say which one.
-    assert checked >= 145
+    # sweep vacuous. It moved 150 -> 145 when `tables` left the bundle, and 145 -> 140
+    # when the preparer and mapper folded into the driver on 2026-08-20: two section nodes,
+    # two id-keyed nodes and the two `*_id` leaves went, `driver.mapper` arrived, net -5
+    # (144 nodes today, was 149). Lower it only alongside a deliberate shape change, and
+    # say which one.
+    assert checked >= 140
 
 
 def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
@@ -1309,8 +1314,9 @@ def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
                 validate_bundle(candidate)
             checked += 1
     # Same floor, times the six replacement kinds. Was 900 while the bundle carried
-    # `tables`; 894 today (149 x 6).
-    assert checked >= 870
+    # `tables`, 894 while the preparer and mapper had their own sections; 864 today
+    # (144 x 6).
+    assert checked >= 840
 
 
 def test_common_module_has_no_domain_source_branches_or_runtime_imports():
@@ -1348,36 +1354,37 @@ def test_stage_two_has_no_db_migration_write_runtime_or_compiler_surface():
 
 def test_group_by_mapper_unit_requires_closed_input_columns():
     missing = logical_bundle()
-    missing["mappers"]["map-transition@1"]["unit"] = {"kind": "group_by"}
+    driver_mapper(missing)["unit"] = {"kind": "group_by"}
     errors = validate_bundle_errors(missing)
     assert any(error.to_mapping() == {
         "code": "missing_field",
-        "path": "bundle.mappers.map-transition@1.unit.columns",
+        "path": f"{MAPPER_PATH}.unit.columns",
         "message": "group_by mapper unit requires columns",
     } for error in errors)
 
     unknown = logical_bundle()
-    unknown["mappers"]["map-transition@1"]["unit"] = {
+    driver_mapper(unknown)["unit"] = {
         "kind": "group_by", "columns": ["not_an_input"]}
     errors = validate_bundle_errors(unknown)
     assert any(error.code == "invalid_mapper"
-               and error.path == "bundle.mappers.map-transition@1.unit.columns"
+               and error.path == f"{MAPPER_PATH}.unit.columns"
                for error in errors)
 
     valid = logical_bundle()
-    valid["mappers"]["map-transition@1"]["unit"] = {
+    driver_mapper(valid)["unit"] = {
         "kind": "group_by", "columns": ["target_id"]}
-    assert validate_bundle(valid).section("mappers")["map-transition@1"]["unit"] == {
+    compiled = validate_bundle(valid).section("sources")
+    assert compiled["input_rows"]["driver"]["mapper"]["unit"] == {
         "kind": "group_by", "columns": ("target_id",)}
 
 
 def test_non_group_mapper_unit_rejects_columns():
     raw = logical_bundle()
-    raw["mappers"]["map-transition@1"]["unit"] = {
+    driver_mapper(raw)["unit"] = {
         "kind": "event", "columns": ["event_key"]}
     errors = validate_bundle_errors(raw)
     assert any(error.code == "invalid_mapper"
-               and error.path == "bundle.mappers.map-transition@1.unit.columns"
+               and error.path == f"{MAPPER_PATH}.unit.columns"
                for error in errors)
 
 
@@ -1431,19 +1438,19 @@ def test_an_unknown_reference_separates_a_typo_from_a_declaration_not_written_ye
     disagree on purpose: a single fixture would pass under either rule.
     """
     typo = logical_bundle()
-    typo["mappers"]["map-transition@1"]["emits"] = ["movment@1/transition"]
+    driver_mapper(typo)["emits"] = ["movment@1/transition"]
     near = issue(typo, "unknown_pack")
     assert "did you mean 'movement@1'?" in near.message
 
     absent = logical_bundle()
-    absent["mappers"]["map-transition@1"]["emits"] = ["shipment@9/transition"]
+    driver_mapper(absent)["emits"] = ["shipment@9/transition"]
     far = issue(absent, "unknown_pack")
     assert "did you mean" not in far.message
     assert "declared packs: 'movement@1'" in far.message
 
     # And the claim half of the same reference, scored against the pack it names.
     wrong_claim = logical_bundle()
-    wrong_claim["mappers"]["map-transition@1"]["emits"] = ["movement@1/transitions"]
+    driver_mapper(wrong_claim)["emits"] = ["movement@1/transitions"]
     claim = issue(wrong_claim, "unknown_claim")
     assert "did you mean 'transition'?" in claim.message
 
@@ -1460,15 +1467,15 @@ def test_a_list_of_references_says_what_one_item_looks_like():
     who does not yet know how a claim reference is spelled.
     """
     raw = logical_bundle()
-    raw["mappers"]["map-transition@1"]["emits"] = "movement@1/transition"
+    driver_mapper(raw)["emits"] = "movement@1/transition"
     refused = issue(raw, "invalid_type")
-    assert refused.path == "bundle.mappers.map-transition@1.emits"
+    assert refused.path == f"{MAPPER_PATH}.emits"
     assert "each item is <pack>@<version>/<claim>" in refused.message
 
     # The item-shape clause is opt-in: a list of plain names has nothing extra to say and
     # must not grow a clause about claim references.
     plain = logical_bundle()
-    plain["mappers"]["map-transition@1"]["input_columns"] = "record_id"
+    driver_mapper(plain)["input_columns"] = "record_id"
     assert "each item is" not in issue(plain, "invalid_type").message
 
 
@@ -1484,7 +1491,7 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     differ rather than that each is separately plausible.
     """
     raw = logical_bundle()
-    raw["mappers"]["map-transition@1"]["emits"] = "movement@1/transition"
+    driver_mapper(raw)["emits"] = "movement@1/transition"
     raw["packs"]["movement@1"]["claims"]["transition"]["emit"]["object"]["payload"] = 1
     raw["vocabulary"]["moves_to@1"]["colour"] = "blue"
     raw["entities"]["InputEntity@1"]["allow_null"] = "yes"
@@ -1498,7 +1505,7 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     # All five mistakes, from one read. Named individually so a regression that drops one
     # kind of check cannot hide behind the count.
     for expected in (
-        "bundle.mappers.map-transition@1.emits",
+        f"{MAPPER_PATH}.emits",
         "bundle.packs.movement@1.claims.transition.emit.object.payload",
         "bundle.vocabulary.moves_to@1.colour",
         "bundle.entities.InputEntity@1.allow_null",
@@ -1555,7 +1562,7 @@ def test_a_column_name_is_judged_against_three_different_universes():
     used here is a preparer OUTPUT -- a column that exists downstream and not upstream.
     """
     base = logical_bundle()
-    produced = sorted(base["source_preparers"]["prepare-input@1"]["output_columns"])
+    produced = sorted(driver_preparation(base)["output_columns"])
     assert produced, "the fixture must have a preparer that produces a column"
     column = produced[0]
     assert column not in DEFAULT_CATALOG["input_rows"]["columns"], (
@@ -1580,7 +1587,7 @@ def test_a_column_name_is_judged_against_three_different_universes():
 
     # And the third universe: a profile binds only what its mapper declares as input.
     narrowed = copy.deepcopy(base)
-    narrowed["mappers"]["map-transition@1"]["input_columns"] = ["source_id"]
+    driver_mapper(narrowed)["input_columns"] = ["source_id"]
     assert [
         item for item in validate_bundle_errors(narrowed)
         if item.code == "invalid_mapper" and "is missing" in item.message

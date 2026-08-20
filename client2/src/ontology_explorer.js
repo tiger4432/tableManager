@@ -695,8 +695,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
 
   const routeFor = (key, viaEdge, direct, pathId) => {
     if (direct) return { path_id: 'root', node_keys: [key], edge_ids: [] };
-    const candidate = [state.currentPath, ...state.paths]
-      .find((path) => path?.path_id === pathId);
+    // Only the current route: nothing on screen carries a candidate `pathId` any more.
+    const candidate = [state.currentPath].find((path) => path?.path_id === pathId);
     const position = candidate?.node_keys?.lastIndexOf(key) ?? -1;
     if (position >= 0) {
       return {

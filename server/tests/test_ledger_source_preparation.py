@@ -32,7 +32,8 @@ from ledger.source_preparation import (
     right_value_fingerprint,
 )
 from ledger.setup_bundle import LedgerSetupValidationError
-from test_ledger_setup_bundle import binding, logical_bundle
+from test_ledger_setup_bundle import (
+    binding, driver_mapper, driver_preparation, logical_bundle)
 from test_ledger_setup_registry import snapshot
 
 
@@ -137,34 +138,31 @@ def dt_chain_bundle():
             "keys": ["bond_wafer", "bond_x", "bond_y", "layer"]},
         "FinalChip@1": {"keys": ["chip_id"]},
     }
-    raw["source_preparers"] = {
-        "prepare-input@1": {
-            "implementation_id": "prepare-input", "implementation_version": 1,
-            "input_columns": ["dt_job_id", "core_x", "core_y"],
-            "output_columns": {
+    preparation = {
+        "implementation_id": "prepare-input", "implementation_version": 1,
+        "input_columns": ["dt_job_id", "core_x", "core_y"],
+        "output_columns": {
                 "inventory_dt_lot": "string", "inventory_dt_slot": "number",
                 "resolved_dt_x": "number", "resolved_dt_y": "number",
-                "inventory_bond_wafer": "string", "resolved_bond_x": "number",
-                "resolved_bond_y": "number", "inventory_bond_layer": "number",
-                "inventory_final_chip": "string",
-            },
-            "accepts_verified_join_rules": True,
+            "inventory_bond_wafer": "string", "resolved_bond_x": "number",
+            "resolved_bond_y": "number", "inventory_bond_layer": "number",
+            "inventory_final_chip": "string",
         },
+        "accepts_verified_join_rules": True,
+        "inherit_virtual_join_rules": ["dt_job_to_inventory"],
     }
-    raw["mappers"] = {
-        "map-transition@1": {
-            "implementation_id": "map-transition-role", "implementation_version": 1,
-            "unit": {"kind": "row"},
-            "input_columns": [
-                "core_wafer", "core_x", "core_y", "dt_job_id", "event_at",
-                "inventory_dt_lot", "inventory_dt_slot", "resolved_dt_x",
-                "resolved_dt_y", "inventory_bond_wafer", "resolved_bond_x",
-                "resolved_bond_y", "inventory_bond_layer", "inventory_final_chip",
-            ],
-            "emits": [
-                "assembly@1/core_to_dt", "assembly@1/dt_to_bond",
-                "assembly@1/core_component"],
-        },
+    mapper = {
+        "implementation_id": "map-transition-role", "implementation_version": 1,
+        "unit": {"kind": "row"},
+        "input_columns": [
+            "core_wafer", "core_x", "core_y", "dt_job_id", "event_at",
+            "inventory_dt_lot", "inventory_dt_slot", "resolved_dt_x",
+            "resolved_dt_y", "inventory_bond_wafer", "resolved_bond_x",
+            "resolved_bond_y", "inventory_bond_layer", "inventory_final_chip",
+        ],
+        "emits": [
+            "assembly@1/core_to_dt", "assembly@1/dt_to_bond",
+            "assembly@1/core_component"],
     }
     entity_role = {"kind": "entity", "required": True}
     time_role = {"kind": "time", "required": True}
@@ -239,9 +237,8 @@ def dt_chain_bundle():
                 "group_by": ["dt_job_id"], "order_by": ["record_id"],
                 "occurred_at": {"column": "event_at", "timezone": "Asia/Seoul"},
                 "cursor": {"columns": ["event_at", "record_id"]},
-                "preparation": {"preparer_id": "prepare-input@1",
-                                "inherit_virtual_join_rules": ["dt_job_to_inventory"]},
-                "mapper_id": "map-transition@1",
+                "preparation": preparation,
+                "mapper": mapper,
             },
         },
     }
@@ -298,7 +295,7 @@ def test_existing_cursor_selects_only_base_physical_columns():
 
 def test_preparer_output_can_own_event_identity_without_entering_cursor_select():
     raw = logical_bundle()
-    raw["source_preparers"]["prepare-input@1"]["output_columns"][
+    driver_preparation(raw)["output_columns"][
         "prepared_event_key"] = "string"
     raw["sources"]["input_rows"]["driver"]["identity"] = [
         "prepared_event_key"]
@@ -332,7 +329,7 @@ def test_preparer_output_can_own_event_identity_without_entering_cursor_select()
 
 def test_missing_prepared_event_identity_is_structured_and_fail_closed():
     raw = logical_bundle()
-    raw["source_preparers"]["prepare-input@1"]["output_columns"][
+    driver_preparation(raw)["output_columns"][
         "prepared_event_key"] = "string"
     raw["sources"]["input_rows"]["driver"]["identity"] = [
         "prepared_event_key"]
@@ -691,9 +688,9 @@ def test_multi_core_dt_inventory_builds_stage_local_identity_and_direction_claim
 
 def test_custom_preparer_free_hook_can_rename_and_calculate_only_declared_outputs():
     raw = logical_bundle()
-    raw["source_preparers"]["prepare-input@1"]["output_columns"] = {
+    driver_preparation(raw)["output_columns"] = {
         "resolved_target": "string"}
-    raw["mappers"]["map-transition@1"]["input_columns"] = [
+    driver_mapper(raw)["input_columns"] = [
         "source_id", "resolved_target", "event_at", "event_key"]
     raw["profiles"]["input-transition@1"]["mappings"][0]["bind"]["target"][
         "keys"]["output_id"]["column"] = "resolved_target"
