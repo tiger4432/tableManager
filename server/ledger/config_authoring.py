@@ -341,6 +341,72 @@ def skeleton() -> dict[str, Any]:
     return json.loads(SKELETON_PATH.read_text(encoding="utf-8"))
 
 
+def _deref(node: Any, defs: Mapping[str, Any], seen: frozenset[str]) -> Any:
+    """Follow `{use}` to a real node, refusing to chase a definition through itself."""
+    while isinstance(node, Mapping) and isinstance(node.get("use"), str):
+        name = node["use"]
+        if name in seen:
+            return None
+        seen = seen | {name}
+        node = defs.get(name)
+    return node
+
+
+def empty_value(node: Any, defs: Mapping[str, Any],
+                seen: frozenset[str] = frozenset()) -> Any:
+    """The emptiest document of this node's shape, with required CONTAINERS already there.
+
+    🔴 A CONTAINER THE GRAMMAR REQUIRES CANNOT WAIT FOR ITS FIRST MEMBER.  Owner, on a new
+    predicate: 「qualifier 안넣을건데 이거 기본으로 키 안들어가 있어서 에러남」.  The form built a
+    map only when somebody added a member to it, so a person who wants NO qualifiers had no
+    way to produce `qualifiers: {...}` -- the validator asked for a key that the screen could
+    only create by adding something and taking it away again.
+
+    Only containers.  A required LEAF stays absent on purpose: absent is `missing_field`,
+    which tells the operator to fill it, while a seeded `""` would read as a value they
+    chose.  And nothing here knows a field by name -- it asks the skeleton whether the field
+    is required and whether it is a container, so the next section with the same shape is
+    covered without being mentioned.
+    """
+    shape = _deref(node, defs, seen)
+    if not isinstance(shape, Mapping):
+        return ""
+    kind = shape.get("kind")
+    if kind == "map":
+        return [] if shape.get("keyed_by") == "index" else {}
+    if kind == "record":
+        seeded: dict[str, Any] = {}
+        for field in shape.get("fields") or []:
+            if field.get("required") is not True:
+                continue
+            child = _deref(field.get("node"), defs, seen)
+            if not isinstance(child, Mapping) or child.get("kind") == "leaf":
+                continue
+            seeded[field["key"]] = empty_value(field.get("node"), defs, seen)
+        return seeded
+    return False if shape.get("hint") == "flag" else ""
+
+
+def empty_declaration(section: str) -> dict[str, Any]:
+    """What a brand-new declaration of `section` starts as, per the skeleton."""
+    doc = skeleton()
+    node = doc.get("root", {})
+    for step in (section, "*"):
+        node = _deref(node, doc.get("defs", {}), frozenset())
+        if not isinstance(node, Mapping):
+            return {}
+        if node.get("kind") == "record":
+            field = next((item for item in node.get("fields") or []
+                          if item.get("key") == step), None)
+            node = field.get("node") if field else None
+        elif node.get("kind") == "map":
+            node = node.get("of")
+        else:
+            return {}
+    value = empty_value(node, doc.get("defs", {}))
+    return value if isinstance(value, dict) else {}
+
+
 def closed_lists() -> dict[str, Any]:
     """Every closed list the authoring screen may offer, from the code that enforces it.
 

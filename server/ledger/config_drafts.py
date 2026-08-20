@@ -60,6 +60,16 @@ _SIGNATURE_CODES = {
 }
 
 
+def _empty_declaration(section: str) -> dict:
+    """The skeleton's empty document for a section.
+
+    Imported at call time: `config_authoring` reads this module's neighbours, so binding it
+    here at module load would close a cycle.
+    """
+    from .config_authoring import empty_declaration
+    return empty_declaration(section)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -321,7 +331,10 @@ class OntologyDraftStore:
             "creates_declaration": True,
             "revision": 0,
             "lifecycle_status": "editing",
-            "raw": {},
+            # Not `{}`.  The skeleton says which containers the grammar requires, and those
+            # exist from the start -- see `empty_declaration`.  A person who wants no
+            # qualifiers could otherwise only make the key by adding one and removing it.
+            "raw": _empty_declaration(section),
             "preview_snapshot_hash": None,
             "preview_valid": False,
             "validation_errors": [],

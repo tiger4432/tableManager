@@ -78,11 +78,30 @@ export function fieldApplies(field, siblings, held) {
 }
 
 /** The emptiest value of this node's kind -- what a newly named member starts as. */
-export function emptyOf(node, defs) {
+export function emptyOf(node, defs, depth = 0) {
   const shape = deref(node, defs);
   if (!shape) return '';
-  if (shape.kind === 'record') return {};
   if (shape.kind === 'map') return shape.keyed_by === 'index' ? [] : {};
+  if (shape.kind === 'record') {
+    // 🔴 A REQUIRED CONTAINER IS THERE FROM THE START, NOT WHEN SOMEBODY FILLS IT. Same
+    // rule the server seeds a new declaration with (`empty_declaration`), applied to a
+    // member added later: a claim added to a pack needs its own required containers, or the
+    // person who wants none of something has no way to say so.
+    //
+    // Containers only. A required LEAF stays absent on purpose -- absent reads as
+    // `missing_field`, which asks the operator to fill it, while a seeded `''` would look
+    // like a value they chose. And no field is known by name: the skeleton is asked whether
+    // it is required and whether it is a container.
+    if (depth > 6) return {};                     // a def that holds its own kind, bounded
+    const seeded = {};
+    for (const field of shape.fields || []) {
+      if (field.required !== true) continue;
+      const child = deref(field.node, defs);
+      if (!child || child.kind === 'leaf') continue;
+      seeded[field.key] = emptyOf(field.node, defs, depth + 1);
+    }
+    return seeded;
+  }
   return shape.hint === 'flag' ? false : '';
 }
 
