@@ -59,34 +59,32 @@ SHIPMENT_SETUP = {
                  "object": {"kind": "none"}, "occurred_at": "$occurred_at"}}}}},
     "sources": {"shipment": {
         "relation": "shipment",
-        "profile": {
-            "packs": ["shipping@1"],
-            "mappings": [{
-                "mapping_id": "first_sight_box", "use": "shipping@1/first_sight",
-                "bind": {
-                    "subject": _approved(kind="entity", entity_type="Box@1",
-                                         keys={"box": _column("box")}),
-                    "occurred_at": _column("shipped_at")}}]},
-        "driver": {
+        "read": {
             "unit": "row",
             "identity": ["shipment_id"],
             "group_by": [],
             "order_by": ["shipment_id"],
             "occurred_at": {"column": "shipped_at", "timezone": "Asia/Seoul"},
             "cursor": {"columns": ["shipped_at", "shipment_id"]},
-            "preparation": {
-                "implementation_id": "direct-join", "implementation_version": 1,
-                "input_columns": [], "output_columns": {},
-                "accepts_verified_join_rules": False,
-                "inherit_virtual_join_rules": []},
-            "mapper": {
-                "implementation_id": "declarative-role", "implementation_version": 1,
-                "unit": {"kind": "row"},
-                "input_columns": ["shipment_id", "box", "shipped_at"],
-                "emits": ["shipping@1/first_sight"]},
             "registration_probe": [
                 {"entity_type": "Box@1", "columns": ["box"]}],
-        }}},
+        },
+        "prepare": {
+            "implementation_id": "direct-join", "implementation_version": 1,
+            "input_columns": [], "output_columns": {},
+            "accepts_verified_join_rules": False,
+            "inherit_virtual_join_rules": []},
+        "map": {
+            "implementation_id": "declarative-role", "implementation_version": 1,
+            "unit": {"kind": "row"},
+            "input_columns": ["shipment_id", "box", "shipped_at"]},
+        "bind": {
+            "mappings": [{
+                "mapping_id": "first_sight_box", "use": "shipping@1/first_sight",
+                "bind": {
+                    "subject": _approved(kind="entity", entity_type="Box@1",
+                                         keys={"box": _column("box")}),
+                    "occurred_at": _column("shipped_at")}}]}}},
 
 }
 

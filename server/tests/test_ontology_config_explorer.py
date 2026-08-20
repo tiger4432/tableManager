@@ -114,7 +114,7 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         assert dict(node.raw) == dict(active_setup.catalog[table_id])
     assert len(by_kind["claim"]) == sum(
         len(pack["claims"]) for pack in bundle["packs"].values())
-    profiles = [source["profile"] for source in bundle["sources"].values()]
+    profiles = [source["bind"] for source in bundle["sources"].values()]
     assert len(by_kind["mapping"]) == sum(
         len(profile["mappings"]) for profile in profiles)
     assert len(by_kind["binding"]) == sum(
@@ -497,7 +497,7 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
     logical = transfer_sample_setup.bundle.to_mapping()
     mappings = {
         item["mapping_id"]: item
-        for item in logical["sources"]["dt_log"]["profile"]["mappings"]
+        for item in logical["sources"]["dt_log"]["bind"]["mappings"]
     }
     lineage = [
         (
@@ -977,7 +977,7 @@ def test_a_source_plan_holds_its_profile_and_nothing_points_back(active_setup):
         profile_key = node_key("profile", f"{node.canonical_id}#profile")
         assert profile_key in index.nodes
         assert index.nodes[profile_key].bundle_path == (
-            "sources", node.canonical_id, "profile")
+            "sources", node.canonical_id, "bind")
         # The source holds it...
         assert node.key in {edge.from_key for edge in index.inbound[profile_key]}
         # ...and no profile -- this one or any other -- points back at a source.
@@ -1000,10 +1000,11 @@ _FIXTURE_BUNDLE_PATH = {
     "pack": lambda i: ("packs", i),
     "claim": lambda i: ("packs", i.split("/")[0], "claims", i.split("/", 1)[1]),
     # Positions inside a source since 2026-08-20, keyed `<source>#preparation`.
-    "preparer": lambda i: ("sources", i.split("#")[0], "driver", "preparation"),
-    "mapper": lambda i: ("sources", i.split("#")[0], "driver", "mapper"),
+    # The clause they sit in was renamed on 2026-08-21; the node keys did not move.
+    "preparer": lambda i: ("sources", i.split("#")[0], "prepare"),
+    "mapper": lambda i: ("sources", i.split("#")[0], "map"),
     # A position inside a source since 2026-08-20, keyed `<source>#profile`.
-    "profile": lambda i: ("sources", i.split("#")[0], "profile"),
+    "profile": lambda i: ("sources", i.split("#")[0], "bind"),
     "source_plan": lambda i: ("sources", i),
     "verified_join": lambda i: ("virtual_joins", i),
     "table": lambda i: ("__physical_catalog__", i),
@@ -1111,7 +1112,7 @@ def test_deleting_a_profile_alone_is_blocked_and_names_the_surviving_reacher(tra
     assert [row["key"] for row in plan.blocked] == [profile]
     reachers = plan.blocked[0]["reached_by"]
     assert [row["key"] for row in reachers] == [source]
-    assert reachers[0]["json_pointer"].endswith("/profile")
+    assert reachers[0]["json_pointer"].endswith("/bind")
 
     with pytest.raises(ConfigExplorerError) as refused:
         require_deletable(index, plan, "delete")
@@ -1685,9 +1686,11 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
 
     reduced = copy.deepcopy(original)
     for source in reduced["sources"].values():
-        source["profile"].pop("packs", None)
-        source["driver"]["mapper"].pop("emits", None)
-        source["driver"]["mapper"].pop("input_columns", None)
+        # `bind.packs` and `map.emits` were two of the four fields this test used to
+        # delete and put back.  They are not fields any more -- 2026-08-21 took the
+        # strongest available fix rather than the second strongest -- so a bundle without
+        # them IS the live bundle and there is nothing to rebuild.
+        source["map"].pop("input_columns", None)
     for pack in reduced["packs"].values():
         for claim in pack["claims"].values():
             claim["emit"]["object"].pop("kind", None)
@@ -1702,12 +1705,8 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
 
     rebuilt = copy.deepcopy(reduced)
     for source_id, source in rebuilt["sources"].items():
-        source["profile"]["packs"] = derived[
-            f"bundle.sources.{source_id}.profile.packs"]["value"]
-    for source_id, source in rebuilt["sources"].items():
-        base = f"bundle.sources.{source_id}.driver.mapper"
-        source["driver"]["mapper"]["emits"] = derived[f"{base}.emits"]["value"]
-        source["driver"]["mapper"]["input_columns"] = derived[
+        base = f"bundle.sources.{source_id}.map"
+        source["map"]["input_columns"] = derived[
             f"{base}.input_columns"]["value"]
     for pack_id, pack in rebuilt["packs"].items():
         for claim_id, claim in pack["claims"].items():
@@ -1820,13 +1819,13 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
     catalog = live_physical_catalog()
     bundle = json.loads(
         (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
-    del bundle["sources"]["dt_job"]["profile"]["mappings"][1]["bind"]["count"]
+    del bundle["sources"]["dt_job"]["bind"]["mappings"][1]["bind"]["count"]
     del (bundle["packs"]["lot-lineage@1"]["claims"]["membership"]
          ["emit"]["object"]["qualifiers"]["slot"])
 
     plan = authoring_plan(bundle, catalog)
     by_path = {row["path"]: row for row in plan["fields"]}
-    role = by_path["bundle.sources.dt_job.profile.mappings[1].bind.count"]
+    role = by_path["bundle.sources.dt_job.bind.mappings[1].bind.count"]
     assert role["state"] == "missing"
     assert [item["code"] for item in role["refusals"]] == ["missing_required_role"]
     qualifier = by_path[
@@ -1851,11 +1850,11 @@ def test_column_candidates_are_three_universes_and_not_one(active_setup):
         (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
     plan = authoring_plan(bundle, catalog)
     by_path = {row["path"]: row for row in plan["fields"]}
-    identity = by_path["bundle.sources.lot_event.driver.identity"]
-    ordering = by_path["bundle.sources.lot_event.driver.order_by"]
+    identity = by_path["bundle.sources.lot_event.read.identity"]
+    ordering = by_path["bundle.sources.lot_event.read.order_by"]
     assert identity["universe"] == "PREPARED"
     assert ordering["universe"] == "RELATION"
-    made = set(bundle["sources"]["lot_event"]["driver"]["preparation"]["output_columns"])
+    made = set(bundle["sources"]["lot_event"]["prepare"]["output_columns"])
     assert made & set(identity["candidates"]), "preparer output must be offered here"
     assert not (made & set(ordering["candidates"])), "and never offered here"
 
@@ -1919,8 +1918,8 @@ def test_a_complete_config_reports_no_remaining_work_and_a_broken_one_reports_wh
     # replacement for the same reason it was chosen then: one required value, owned by
     # exactly one layer, whose absence cannot be derived from anything else.
     victim = next(name for name, source in broken["sources"].items()
-                  if isinstance(source, dict) and "unit" in source.get("driver", {}))
-    del broken["sources"][victim]["driver"]["unit"]
+                  if isinstance(source, dict) and "unit" in source.get("read", {}))
+    del broken["sources"][victim]["read"]["unit"]
 
     after = authoring_plan(broken, catalog)
     moved = [step["id"] for step in after["steps"] if step["remaining"]]

@@ -498,7 +498,7 @@ def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic()
 # RETIRED: test_unused_config_implementations_are_also_checked.
 # It pinned that a preparer or mapper NO SOURCE SELECTS is still trust-checked -- the
 # checker walked the two sections rather than what was reachable from a source. THE SHAPE
-# IS GONE: since 2026-08-20 both bodies live at `sources.*.driver.*`, so an unselected one
+# IS GONE: since 2026-08-20 both bodies live inside their source, so an unselected one
 # cannot be written. What the test guarded (both clauses of every declared body are
 # checked, in a deterministic order) is exactly what
 # `test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic` above pins.
@@ -578,7 +578,7 @@ def test_directly_constructed_invalid_bundle_is_revalidated_fail_closed():
             "missing",
             "unknown_join_rule",
             (
-                "bundle.sources.input_rows.driver.preparation."
+                "bundle.sources.input_rows.prepare."
                 "inherit_virtual_join_rules[0]"
             ),
         ),
@@ -586,7 +586,7 @@ def test_directly_constructed_invalid_bundle_is_revalidated_fail_closed():
             "disabled",
             "invalid_driver",
             (
-                "bundle.sources.input_rows.driver.preparation."
+                "bundle.sources.input_rows.prepare."
                 "inherit_virtual_join_rules[0]"
             ),
         ),
@@ -594,7 +594,7 @@ def test_directly_constructed_invalid_bundle_is_revalidated_fail_closed():
             "left_mismatch",
             "invalid_driver",
             (
-                "bundle.sources.input_rows.driver.preparation."
+                "bundle.sources.input_rows.prepare."
                 "inherit_virtual_join_rules[0]"
             ),
         ),
@@ -609,7 +609,7 @@ def test_inherited_join_must_be_present_enabled_and_verified(mutation, code, pat
     raw = logical_bundle()
     catalog = copy.deepcopy(DEFAULT_CATALOG)
     if mutation == "missing":
-        raw["sources"]["input_rows"]["driver"]["preparation"][
+        raw["sources"]["input_rows"]["prepare"][
             "inherit_virtual_join_rules"] = ["missing-rule"]
     elif mutation == "disabled":
         raw["virtual_joins"]["input_to_reference"]["enabled"] = False
@@ -640,19 +640,19 @@ def test_inherited_join_left_keys_must_be_preparer_inputs():
     assert [issue.to_mapping() for issue in errors] == [{
         "code": "invalid_driver",
         "path": (
-            "bundle.sources.input_rows.driver.preparation."
+            "bundle.sources.input_rows.prepare."
             "inherit_virtual_join_rules[0]"
         ),
         "message": (
             "join rule 'input_to_reference' left key column(s) ['join_id'] must be "
-            "declared by bundle.sources.input_rows.driver.preparation.input_columns"
+            "declared by bundle.sources.input_rows.prepare.input_columns"
         ),
     }]
 
 
 def test_source_preparation_cannot_redeclare_join_contract():
     raw = logical_bundle()
-    raw["sources"]["input_rows"]["driver"]["preparation"]["join_key"] = [
+    raw["sources"]["input_rows"]["prepare"]["join_key"] = [
         {"left": "join_id", "right": "join_id"}
     ]
 
@@ -662,7 +662,7 @@ def test_source_preparation_cannot_redeclare_join_contract():
     # them -- which is the `_Problems.exact` behaviour, not a new message.
     assert [issue.to_mapping() for issue in errors] == [{
         "code": "unknown_field",
-        "path": "bundle.sources.input_rows.driver.preparation.join_key",
+        "path": "bundle.sources.input_rows.prepare.join_key",
         "message": (
             "field is not allowed; allowed here: implementation_id (required), "
             "implementation_version (required), input_columns (required), "

@@ -550,11 +550,11 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
     predicate = sorted(raw["vocabulary"])[0]
     entity_type = sorted(raw["entities"])[0]
     source = sorted(raw["sources"])[0]
-    raw["sources"][source]["driver"]["mapper"]["emits"] = "one/claim"
+    raw["sources"][source]["map"]["emits"] = "one/claim"
     raw["packs"][pack]["claims"][claim]["emit"]["object"]["payload"] = {"n": 1}
     raw["vocabulary"][predicate]["colour"] = "blue"
     raw["entities"][entity_type]["allow_null"] = "yes"
-    raw["sources"][source]["driver"]["unit"] = "wafer"
+    raw["sources"][source]["read"]["unit"] = "wafer"
     (root / "ledger_config.json").write_text(
         json.dumps(raw, ensure_ascii=False), encoding="utf-8")
 
@@ -565,11 +565,11 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
     # All five, from ONE run. Named individually so a regression that drops one kind of
     # check cannot hide behind a count.
     for expected in (
-        f"bundle.sources.{source}.driver.mapper.emits",
+        f"bundle.sources.{source}.map.emits",
         f"bundle.packs.{pack}.claims.{claim}.emit.object.payload",
         f"bundle.vocabulary.{predicate}.colour",
         f"bundle.entities.{entity_type}.allow_null",
-        f"bundle.sources.{source}.driver.unit",
+        f"bundle.sources.{source}.read.unit",
     ):
         assert any(expected in line for line in lines), expected
     assert lines[-1].endswith(f"{len(lines) - 1} problem(s) in {root}")

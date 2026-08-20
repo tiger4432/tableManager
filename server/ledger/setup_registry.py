@@ -208,6 +208,16 @@ class SourcePreparerDescriptor:
 
 @dataclass(frozen=True)
 class MapperDescriptor:
+    """One source's mapper.
+
+    🔴 `emits` IS DERIVED, NOT DECLARED, as of 2026-08-21 (owner: 「닿을 수 없다면 선언도
+    닿으면 안됨」).  `map` no longer carries a list of claim refs, because a mapper
+    implementation cannot answer which claims it produces -- it knows `SentenceShape`, and
+    the naming runs config -> mapper in one direction.  The set is built here from
+    `bind.mappings[].use`, the one declaration that owns the answer, so the field a reader
+    already had is still there and the question an author could only get wrong is not.
+    """
+
     mapper_id: str
     version: int
     implementation: ImplementationKey
@@ -252,11 +262,15 @@ class ProfileDescriptor:
     `snapshot_sha256`, telling every reader that profiles are versioned when nothing can
     version them.  Measured before removing it: no execution path read it -- `roleframe`
     and `source_preparation` use `mappings`, `source_id` and `config_path` only.
+
+    🔴 `pack_ids` LEFT ON 2026-08-21 FOR THE SAME MEASUREMENT.  `bind.packs` was
+    `sorted(set(...))` of the packs `mappings[].use` names, checked both ways, and nothing
+    but that check ever read the compiled copy.  A mapping's `use` still names its pack, so
+    the answer is not lost -- only the restatement is.
     """
 
     profile_id: str
     source_id: str
-    pack_ids: tuple[str, ...]
     mappings: tuple[ProfileMappingDescriptor, ...]
     config_path: str
 
@@ -487,18 +501,17 @@ def snapshot_compile_errors(
     issues: list[LedgerSetupValidationError] = list(
         _verified_join_errors(validated, verified_joins))
     for source_id, source in validated.section("sources").items():
-        driver = source["driver"]
         for kind, clause, trusted_keys in (
-            ("source preparer", "preparation", trusted.source_preparers),
-            ("mapper", "mapper", trusted.mappers),
+            ("source preparer", "prepare", trusted.source_preparers),
+            ("mapper", "map", trusted.mappers),
         ):
-            item = driver[clause]
+            item = source[clause]
             key = ImplementationKey(
                 item["implementation_id"], item["implementation_version"])
             if key not in trusted_keys:
                 issues.append(_untrusted_implementation_issue(
                     kind=kind,
-                    path=f"bundle.sources.{source_id}.driver.{clause}",
+                    path=f"bundle.sources.{source_id}.{clause}",
                     key=key,
                     trusted_keys=trusted_keys,
                 ))
@@ -750,7 +763,7 @@ def _compile_preparers(section: Mapping[str, Any]) -> SourcePreparerRegistry:
     """One preparer per SOURCE, keyed by the source it prepares.
 
     🔴 THE KEY IS THE SOURCE ID BECAUSE THE DECLARATION NO LONGER HAS ONE.  The body moved
-    inline to `sources.<id>.driver.preparation` on 2026-08-20, so "which preparer" and
+    inline to `sources.<id>.prepare` on 2026-08-20, so "which preparer" and
     "which source" are the same question and there is nothing else to key on.  The registry
     itself stays: `LedgerSetupSnapshot.registries` publishes it, the explorer reads it, and
     the trust check walks it -- only what identifies a member changed.
@@ -760,7 +773,7 @@ def _compile_preparers(section: Mapping[str, Any]) -> SourcePreparerRegistry:
     """
     builder = _RegistryBuilder(SourcePreparerRegistry)
     for source_id, source in section.items():
-        item = source["driver"]["preparation"]
+        item = source["prepare"]
         builder.add(source_id, SourcePreparerDescriptor(
             preparer_id=source_id,
             version=item["implementation_version"],
@@ -769,7 +782,7 @@ def _compile_preparers(section: Mapping[str, Any]) -> SourcePreparerRegistry:
             input_columns=tuple(item["input_columns"]),
             output_columns=_freeze(item["output_columns"]),
             accepts_verified_join_rules=item["accepts_verified_join_rules"],
-            config_path=f"bundle.sources.{source_id}.driver.preparation",
+            config_path=f"bundle.sources.{source_id}.prepare",
         ))
     return builder.seal()
 
@@ -778,7 +791,7 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
     """One mapper per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
     builder = _RegistryBuilder(MapperRegistry)
     for source_id, source in section.items():
-        item = source["driver"]["mapper"]
+        item = source["map"]
         builder.add(source_id, MapperDescriptor(
             mapper_id=source_id,
             version=item["implementation_version"],
@@ -787,8 +800,9 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
             unit_kind=item["unit"]["kind"],
             unit_columns=tuple(item["unit"].get("columns", ())),
             input_columns=tuple(item["input_columns"]),
-            emits=tuple(item["emits"]),
-            config_path=f"bundle.sources.{source_id}.driver.mapper",
+            emits=tuple(sorted({
+                mapping["use"] for mapping in source["bind"]["mappings"]})),
+            config_path=f"bundle.sources.{source_id}.map",
         ))
     return builder.seal()
 
@@ -797,8 +811,8 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
     """One profile per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
     builder = _RegistryBuilder(ProfileRegistry)
     for source_id, source in section.items():
-        item = source["profile"]
-        path = f"bundle.sources.{source_id}.profile"
+        item = source["bind"]
+        path = f"bundle.sources.{source_id}.bind"
         mappings = tuple(ProfileMappingDescriptor(
             mapping_id=mapping["mapping_id"],
             claim_ref=mapping["use"],
@@ -809,7 +823,6 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
         builder.add(source_id, ProfileDescriptor(
             profile_id=source_id,
             source_id=source_id,
-            pack_ids=tuple(item["packs"]),
             mappings=mappings,
             config_path=path,
         ))
@@ -879,8 +892,12 @@ def _compile_source_plans(
     builder = _RegistryBuilder(SourcePlanRegistry)
     for source_id, item in section.items():
         path = f"bundle.sources.{source_id}"
-        driver = item["driver"]
-        preparation = driver["preparation"]
+        # The COMPILED plan keeps `driver` as the name for the read clause and its two
+        # bodies; only the FILE split.  Nothing downstream of the compiler asks the config
+        # a question, so renaming `SourcePlan.driver` would move `backfill`,
+        # `source_preparation` and `runtime_v2` for a spelling.
+        driver = item["read"]
+        preparation = item["prepare"]
         builder.add(source_id, SourcePlan(
             source_id=source_id,
             relation=item["relation"],

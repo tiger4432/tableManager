@@ -460,8 +460,8 @@ function renderEntityKeys(state) {
 //     2026-08-20; all three of the others are positions inside a source now, so they arrive
 //     with their source rather than as empty declarations of their own.)
 //   * a NEW source gets 5 rows and 0 of them editable.
-//   * `sources.*.driver.preparation.output_columns` (2 fields) -- no candidates, no input.
-//   * `sources.*.driver.occurred_at` (2 fields) -- dict-shaped, so chips only.
+//   * `sources.*.prepare.output_columns` (2 fields) -- no candidates, no input.
+//   * `sources.*.read.occurred_at` (2 fields) -- dict-shaped, so chips only.
 //
 // Renaming is NOT on that list: this editor holds a declaration's BODY, not its name, so
 // it never could rename anything. That dead end was closed from the other side, by letting
@@ -1371,14 +1371,14 @@ function renderAuthoring(state) {
     // draft HOLDS, so an absent value produced no control at all -- and the skeleton hands
     // this row over precisely because the plan knows the path, which left the empty case
     // owned by the one renderer that cannot draw it. Measured on a source built from
-    // nothing: `relation`, `profile_id` and `driver.unit` had no input anywhere, so a new
+    // nothing: `relation`, `profile_id` and `read.unit` had no input anywhere, so a new
     // source could not be given the names that identify it. (`profile_id` retired on
     // 2026-08-20; the source's profile is a body it carries now.) Packs hid this too; they
     // have no plan-owned leaf.
     //
     // Kept on the plan's row rather than falling back to the skeleton's own control,
     // because the row is what carries the candidates and the refusal -- `relation` offers
-    // the tables, `driver.unit` the units. Losing those would trade one silence for another.
+    // the tables, `read.unit` the units. Losing those would trade one silence for another.
     //
     // Only where the person is the one who owes the value: `derived` is the system's to
     // write, and an input there would invite a fight with whatever computes it.

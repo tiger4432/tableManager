@@ -84,7 +84,7 @@ def node_key(kind: str, canonical_id: str) -> str:
 #: to write it from scratch.
 #: `preparer`, `mapper` and `profile` are deliberately absent as of 2026-08-20, for the
 #: same reason `claim` and `binding` are: their bodies moved INSIDE the source plan
-#: (`sources.*.driver.preparation`, `sources.*.driver.mapper`, `sources.*.profile`), so
+#: (`sources.*.prepare`, `sources.*.map`, `sources.*.bind` since the 2026-08-21 rename), so
 #: they are created and deleted with their owner and have no section of their own to be
 #: written into.  Building a source is therefore ONE act -- which is what the profile move
 #: was for: a new source used to need a new profile naming it back before it could save.
@@ -559,8 +559,10 @@ def _node_description(kind: str, raw: Any) -> str:
     if kind == "claim":
         return f"roles {len(raw.get('roles', {}))}개"
     if kind == "profile":
-        return (f"packs {', '.join(map(str, raw.get('packs', []))) or '없음'} · "
-                f"mappings {len(raw.get('mappings', []))}개")
+        # `packs` was named here until 2026-08-21.  It was `sorted(set(...))` of the packs
+        # the mappings already name through `use`, so the line said the same thing twice
+        # and the second copy is the one that left.
+        return f"mappings {len(raw.get('mappings', []))}개"
     if kind == "mapping":
         return f"claim {raw.get('use', '없음')}"
     if kind == "binding":
@@ -940,9 +942,9 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
         # mappings and its bindings; what it loses is the edge back to the source, which
         # was the mutual reference `_walk_roots` had to be designed around.  Containment
         # replaces it: the source names the profile, and nothing names the source.
-        profile_raw = raw.get("profile", {})
+        profile_raw = raw.get("bind", {})
         profile_ref = f"{source_id}#profile"
-        profile_path = ("sources", source_id, "profile")
+        profile_path = ("sources", source_id, "bind")
         profile_key = builder.add_node(
             "profile", profile_ref, profile_raw,
             profile_compiled.get(source_id, profile_raw), profile_path,
@@ -952,11 +954,10 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
             source_key, profile_ref, "profile", "source_profile",
             pointer(*profile_path),
         )
-        for index, pack_id in enumerate(profile_raw.get("packs", [])):
-            builder.add_edge(
-                profile_key, pack_id, "pack", "profile_pack",
-                pointer(*profile_path, "packs", index),
-            )
+        # The `profile_pack` edge retired with `bind.packs` on 2026-08-21.  Nothing is
+        # unreachable for it: every mapping still draws `mapping_claim` at the claim it
+        # uses, and a claim is a position inside its pack, so the pack keeps both its
+        # `used_by` rows and its walk-root status through the same source.
         compiled_mappings = profile_compiled.get(source_id, {}).get("mappings", [])
         for index, mapping in enumerate(profile_raw.get("mappings", [])):
             mapping_id = str(mapping.get("mapping_id", index))
@@ -996,48 +997,45 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
                         binding_key, entity_id, "entity", "binding_entity",
                         entity_pointer,
                     )
-        driver = raw.get("driver", {})
         # 🔴 THE PREPARER AND THE MAPPER ARE POSITIONS INSIDE THE SOURCE, exactly like a
         # `claim` inside a pack: their `bundle_path` EXTENDS the source's, which is what
         # `owning_section` and the left index both read to tell a declaration from a
         # position. So they keep their kinds (and their edges) and stop being rows in the
         # index -- no list of kinds anywhere had to learn about the change.
-        preparation = driver.get("preparation", {})
+        preparation = raw.get("prepare", {})
         preparer_ref = f"{source_id}#preparation"
         builder.add_node(
             "preparer", preparer_ref, preparation,
             preparer_compiled.get(source_id, preparation),
-            ("sources", source_id, "driver", "preparation"), config_file=ledger_file,
-            json_pointer=pointer("sources", source_id, "driver", "preparation"),
+            ("sources", source_id, "prepare"), config_file=ledger_file,
+            json_pointer=pointer("sources", source_id, "prepare"),
         )
         builder.add_edge(
             source_key, preparer_ref, "preparer", "source_preparer",
-            pointer("sources", source_id, "driver", "preparation"),
+            pointer("sources", source_id, "prepare"),
         )
-        mapper_raw = driver.get("mapper", {})
+        mapper_raw = raw.get("map", {})
         mapper_ref = f"{source_id}#mapper"
-        mapper_key = builder.add_node(
+        builder.add_node(
             "mapper", mapper_ref, mapper_raw,
             mapper_compiled.get(source_id, mapper_raw),
-            ("sources", source_id, "driver", "mapper"), config_file=ledger_file,
-            json_pointer=pointer("sources", source_id, "driver", "mapper"),
+            ("sources", source_id, "map"), config_file=ledger_file,
+            json_pointer=pointer("sources", source_id, "map"),
         )
         builder.add_edge(
             source_key, mapper_ref, "mapper", "source_mapper",
-            pointer("sources", source_id, "driver", "mapper"),
+            pointer("sources", source_id, "map"),
         )
-        for index, claim_ref in enumerate(mapper_raw.get("emits", [])):
-            builder.add_edge(
-                mapper_key, claim_ref, "claim", "mapper_emits",
-                pointer("sources", source_id, "driver", "mapper", "emits", index),
-            )
+        # The `mapper_emits` edges retired with `map.emits` on 2026-08-21, for the same
+        # reason as `profile_pack`: a mapper cannot name a claim, so the edge was drawn
+        # from a restatement of `bind.mappings[].use`, and the mapping already draws it.
         for index, join_id in enumerate(
             preparation.get("inherit_virtual_join_rules", []),
         ):
             builder.add_edge(
                 source_key, join_id, "verified_join", "source_verified_join",
                 pointer(
-                    "sources", source_id, "driver", "preparation",
+                    "sources", source_id, "prepare",
                     "inherit_virtual_join_rules", index,
                 ),
             )

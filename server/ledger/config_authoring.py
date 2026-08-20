@@ -29,6 +29,11 @@ entity binding's `keys` against the entity's `keys`.  A field checked for exact 
 against another declaration cannot be written BETTER, only WRONG.  Improving its refusal
 message is the weakest available fix; removing the question is the strongest.
 
+The first two of those three took the strongest fix on 2026-08-21 and are no longer
+fields at all -- `bind` and `map` do not carry them, and `MapperDescriptor.emits` is
+compiled from `bind.mappings[].use`.  A `derived` row still costs the operator a line in
+the file and a row on the screen; a retired one costs neither.
+
 The tiers, strongest first, are recorded per field in ``tier`` so a reader can audit that
 ranking rather than take it on faith:
 ``structural`` > ``derivation`` > ``constrained_input`` > ``diagnostic``.
@@ -90,7 +95,7 @@ STEPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 )
 
 #: The three column universes of §3E, which are NOT one set.  Measured: a preparer output
-#: (`target_id`) passes in `driver.identity` and is refused in `driver.order_by` with
+#: (`target_id`) passes in `read.identity` and is refused in `read.order_by` with
 #: `unknown_column ... is not in relation`.  Same name, different answer, so a single
 #: merged dropdown would hide half the real columns and offer half that do not exist.
 UNIVERSE_RELATION = "RELATION"
@@ -304,7 +309,7 @@ def is_remaining(row: Mapping[str, Any]) -> bool:
     `config_authoring` spells them `state="missing" if required else "unanswered"`, so
     `unanswered` means OPTIONAL AND ABSENT -- a question nobody is obliged to answer.
     Counting it measured 1 remaining on the live config, which is complete and valid
-    (`sources.dt_job.driver.preparation.output_columns`), i.e. a finished setup reporting
+    (`sources.dt_job.prepare.output_columns`), i.e. a finished setup reporting
     unfinished work on the first screen an operator sees.
 
     This is also the predicate the collapse rule has to agree with. If the count says 3
@@ -460,7 +465,7 @@ def versioned_sections() -> frozenset[str]:
         errors = validate_bundle_errors(
             {section: {probe: empty_declaration(section)}}, catalog={})
         # The path must END at the declaration's own name. A source refuses a versioned id
-        # at `...zzprobeid.driver.registration_probe[0].entity_type` and, until 2026-08-20,
+        # at `...zzprobeid.read.registration_probe[0].entity_type` and, until 2026-08-20,
         # at `...zzprobeid.profile_id` -- those are REFERENCES it holds, not its own key,
         # and counting them would have made every section look versioned.
         if any(error.code == "invalid_versioned_id"
@@ -557,7 +562,12 @@ def prepared_columns(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
 
 
 def _driver(source: Any) -> Mapping[str, Any]:
-    driver = source.get("driver") if isinstance(source, Mapping) else None
+    """The source's `read` clause.  Named for the plan it compiles into, not the key.
+
+    `driver` split into `read`/`prepare`/`map` in the FILE on 2026-08-21; `SourceDriverPlan`
+    did not, so this reader keeps the compiled word and changes only which key it opens.
+    """
+    driver = source.get("read") if isinstance(source, Mapping) else None
     return driver if isinstance(driver, Mapping) else {}
 
 
@@ -566,12 +576,12 @@ def _driver_relation(source: Any) -> Any:
 
 
 def _preparation(source: Any) -> Mapping[str, Any]:
-    prep = _driver(source).get("preparation")
+    prep = source.get("prepare") if isinstance(source, Mapping) else None
     return prep if isinstance(prep, Mapping) else {}
 
 
 def _mapper(source: Any) -> Mapping[str, Any]:
-    mapper = _driver(source).get("mapper")
+    mapper = source.get("map") if isinstance(source, Mapping) else None
     return mapper if isinstance(mapper, Mapping) else {}
 
 
@@ -800,15 +810,15 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         source = sources[source_id]
         if not isinstance(source, Mapping):
             continue
-        profile = source.get("profile") if isinstance(source.get("profile"), Mapping) else None
-        profile_base = f"bundle.sources.{source_id}.profile"
+        profile = source.get("bind") if isinstance(source.get("bind"), Mapping) else None
+        profile_base = f"bundle.sources.{source_id}.bind"
         relation = _driver_relation(source)
         physical = relation_columns(catalog, relation)
         prepared = prepared_columns(bundle, catalog, source)
 
         # ------------------------------------------------------------------ preparer
         preparation = _preparation(source)
-        prep_base = f"bundle.sources.{source_id}.driver.preparation"
+        prep_base = f"bundle.sources.{source_id}.prepare"
         if physical:
             inputs = list(_listed(preparation.get("input_columns")))
             # 🔴 THE ONE UNIVERSE THAT MADE THIS MOVE NECESSARY.  A preparer reads the
@@ -856,24 +866,12 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
 
         # -------------------------------------------------------------------- mapper
         mapper = _mapper(source)
-        base = f"bundle.sources.{source_id}.driver.mapper"
-        uses = [mapping.get("use") for mapping in _mappings(profile)]
-        use_paths = tuple(
-            f"{profile_base}.mappings[{index}].use"
-            for index, _ in enumerate(_mappings(profile)))
-        if use_paths:
-            # ① Set equality is checked in BOTH directions; degrees of freedom: zero.
-            yield Field(
-                path=f"{base}.emits", step="sources", label="매퍼 emits",
-                state="derived", tier=TIER_STRUCTURAL,
-                value=sorted({use for use in uses if isinstance(use, str)}),
-                declared=sorted(_listed(mapper.get("emits")), key=str)
-                if "emits" in mapper else _ABSENT,
-                ground=Ground(
-                    "mapper_emits_from_profile_uses",
-                    f"채움: 소스 {source_id}의 프로필 mappings.use {len(use_paths)}건",
-                    use_paths, [use for use in uses if isinstance(use, str)]),
-            )
+        base = f"bundle.sources.{source_id}.map"
+        # `emits` was a `derived` row here until 2026-08-21 -- set equality in BOTH
+        # directions, zero degrees of freedom.  A field the screen fills and never asks is
+        # still a field the file carries, so this round removed the declaration instead:
+        # `MapperDescriptor.emits` is compiled from `bind.mappings[].use` and there is
+        # nothing left to show.
         binding_columns = profile_binding_columns(profile_base, profile) if profile else ()
         if binding_columns:
             yield Field(
@@ -937,30 +935,12 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         source = sources[source_id]
         if not isinstance(source, Mapping):
             continue
-        profile = source.get("profile")
+        profile = source.get("bind")
         if not isinstance(profile, Mapping):
             continue
-        base = f"bundle.sources.{source_id}.profile"
-        used_packs, use_paths = [], []
-        for index, mapping in enumerate(_mappings(profile)):
-            parsed = _claim_ref(mapping.get("use"))
-            if parsed is not None:
-                used_packs.append(parsed[0])
-                use_paths.append(f"{base}.mappings[{index}].use")
-        if use_paths:
-            # ① `packs` ⊇ used AND every declared pack must be used. Zero freedom.
-            yield Field(
-                path=f"{base}.packs", step="sources", label="packs",
-                state="derived", tier=TIER_STRUCTURAL,
-                value=sorted(set(used_packs)),
-                declared=sorted(_listed(profile.get("packs")), key=str)
-                if "packs" in profile else _ABSENT,
-                ground=Ground(
-                    "profile_packs_from_mapping_uses",
-                    f"채움: mappings의 use {len(use_paths)}건이 쓰는 팩",
-                    tuple(use_paths), sorted(set(used_packs))),
-                note="양방향 대조라 작성자가 고칠 여지가 없다.",
-            )
+        base = f"bundle.sources.{source_id}.bind"
+        # `packs` was a `derived` row here on the same terms as the mapper's `emits`, and
+        # left the file with it on 2026-08-21.
         available = prepared_columns(bundle, catalog, source)
         for index, mapping in enumerate(_mappings(profile)):
             yield from _mapping_fields(
@@ -1129,34 +1109,34 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         )
         unit = driver.get("unit")
         yield Field(
-            path=f"{base}.driver.unit", step="sources", label="단위",
+            path=f"{base}.read.unit", step="sources", label="단위",
             state="answered" if unit else "missing", tier=TIER_CONSTRAINED,
             value=unit, declared=unit if unit else _ABSENT,
             candidates=tuple(sorted(_SOURCE_UNITS)),
         )
         identity = list(_listed(driver.get("identity")))
         yield Field(
-            path=f"{base}.driver.identity", step="sources", label="identity",
+            path=f"{base}.read.identity", step="sources", label="identity",
             state="answered" if identity else "missing", tier=TIER_CONSTRAINED,
             value=identity, declared=identity if identity else _ABSENT,
             candidates=tuple(available), universe=UNIVERSE_PREPARED,
         )
         if unit == "row":
             yield Field(
-                path=f"{base}.driver.group_by", step="sources", label="group_by",
+                path=f"{base}.read.group_by", step="sources", label="group_by",
                 state="derived", tier=TIER_STRUCTURAL, value=[],
                 declared=list(_listed(driver.get("group_by")))
                 if "group_by" in driver else _ABSENT,
                 ground=Ground(
                     "group_by_absent_for_row_unit",
                     "채움: unit=row → group_by 없음",
-                    (f"{base}.driver.unit",), "row"),
+                    (f"{base}.read.unit",), "row"),
                 note="unit=row면 이 칸 자체가 없다.",
             )
         elif unit == "group":
             group_by = list(_listed(driver.get("group_by")))
             yield Field(
-                path=f"{base}.driver.group_by", step="sources", label="group_by",
+                path=f"{base}.read.group_by", step="sources", label="group_by",
                 state="answered" if group_by else "missing", tier=TIER_CONSTRAINED,
                 value=group_by, declared=group_by if group_by else _ABSENT,
                 candidates=tuple(identity), universe=UNIVERSE_PREPARED,
@@ -1172,7 +1152,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 ("cursor.columns", cursor.get("columns")),
             ):
                 yield Field(
-                    path=f"{base}.driver.{name}", step="sources", label=name,
+                    path=f"{base}.read.{name}", step="sources", label=name,
                     state="derived", tier=TIER_DERIVATION, value=list(shortest),
                     declared=list(_listed(declared)) if declared is not None else _ABSENT,
                     ground=Ground(
@@ -1197,7 +1177,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         answered = bool(occurred.get("column") or occurred.get("basis"))
         narrowed = bool(physical) and not time_columns
         yield Field(
-            path=f"{base}.driver.occurred_at", step="sources", label="시각",
+            path=f"{base}.read.occurred_at", step="sources", label="시각",
             state="answered" if answered else "missing", tier=TIER_CONSTRAINED,
             value=dict(occurred) if occurred else None,
             declared=dict(occurred) if occurred else _ABSENT,
@@ -1223,7 +1203,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             if not isinstance(probe, Mapping):
                 continue
             yield Field(
-                path=f"{base}.driver.registration_probe[{probe_index}].entity_type",
+                path=f"{base}.read.registration_probe[{probe_index}].entity_type",
                 step="sources", label="등록 탐침 엔터티", state="answered",
                 tier=TIER_CONSTRAINED, value=probe.get("entity_type"),
                 declared=probe.get("entity_type"),

@@ -140,15 +140,23 @@ def _is_missing(value: Any) -> bool:
 
 @dataclass(frozen=True)
 class RoleEmission:
-    """The only value a custom mapper interpretation hook may emit."""
+    """The only value a custom mapper interpretation hook may emit.
+
+    🔴 NO `claim_ref`, AND THE ABSENCE IS THE POINT (owner, 2026-08-20: 「클레임과 맵퍼
+    함수는 완전 별개인데 왜 맵퍼에서 쓸 클레임을 정의함? 프로필에서 해야하는거 아니야?」 ->
+    「닿을 수 없다면 선언도 닿으면 안됨」).  A mapper names a mapping; which CLAIM that
+    mapping realizes is `bind.mappings[].use`, one declaration away, and a mapper that
+    restated it could only restate it wrongly.  `_role_frame_from_emissions` looks the ref
+    up from `mapping_id` against the same Profile the mapper was handed, so the RoleFrame
+    column is unchanged and the disagreement it used to be checked for cannot be written.
+    """
 
     mapping_id: str
-    claim_ref: str
     roles: Mapping[str, Any]
     source_row_refs: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        for name in ("mapping_id", "claim_ref"):
+        for name in ("mapping_id",):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip() or value != value.strip():
                 raise RoleFrameError(
@@ -250,7 +258,7 @@ class BaseLedgerMapper:
                         "raw Atom, LedgerFrame, mappings, and arbitrary values are forbidden",
                     )
                 emissions.append(emission)
-        frame = _role_frame_from_emissions(event_frame.attrs, emissions)
+        frame = _role_frame_from_emissions(event_frame.attrs, emissions, profile)
         return validate_role_frame(context, frame, descriptor, profile)
 
     def interpret_unit(
@@ -289,7 +297,6 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
             }
             out.append(RoleEmission(
                 mapping_id=mapping.mapping_id,
-                claim_ref=mapping.claim_ref,
                 roles=roles,
                 source_row_refs=refs,
             ))
@@ -434,7 +441,6 @@ class ProfileSentences:
             roles[reference.role_id] = values[name]
         return RoleEmission(
             mapping_id=mapping.mapping_id,
-            claim_ref=mapping.claim_ref,
             roles=roles,
             source_row_refs=tuple(refs),
         )
@@ -835,11 +841,19 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
 def _role_frame_from_emissions(
     event_attrs: Mapping[str, Any],
     emissions: Sequence[RoleEmission],
+    profile: ProfileDescriptor,
 ) -> pd.DataFrame:
+    """Fill the RoleFrame, resolving each emission's claim from the Profile that owns it.
+
+    A `mapping_id` the Profile does not have resolves to the empty string rather than
+    raising here.  `validate_role_frame` refuses that same row as `unknown_mapping` one
+    step later, which is the refusal an author can act on -- it names the mapping.
+    """
+    claim_refs = {item.mapping_id: item.claim_ref for item in profile.mappings}
     rows = [{
         "source_event_id": event_attrs["source_event_id"],
         "mapping_id": emission.mapping_id,
-        "claim_ref": emission.claim_ref,
+        "claim_ref": claim_refs.get(emission.mapping_id, ""),
         "roles": emission.roles,
         "source_row_refs": emission.source_row_refs,
     } for emission in emissions]
@@ -907,6 +921,14 @@ def validate_role_frame(
             raise RoleFrameError(
                 "unknown_mapping", f"{row_path}.mapping_id",
                 f"Profile has no mapping {row['mapping_id']!r}")
+        # 🔴 BOTH OF THESE ARE NOW TAUTOLOGIES, AND THAT IS WHY THEY STAY.  They were not
+        # removed; the state they refused stopped being expressible.  `claim_ref` is looked
+        # up from `mapping_id` against this same Profile, so the first compares a value with
+        # its own source; `descriptor.emits` is compiled from those same `use` refs, so the
+        # second does too.  A mapper that invents a `mapping_id` is already refused three
+        # lines up as `unknown_mapping`.  Deleting a check that can no longer fail would
+        # also delete the record of what used to be writable -- and `validate_role_frame`
+        # is a boundary that accepts frames it did not build.
         if row["claim_ref"] != mapping.claim_ref:
             raise RoleFrameError(
                 "invalid_claim_ref", f"{row_path}.claim_ref",

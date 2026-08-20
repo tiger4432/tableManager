@@ -266,334 +266,7 @@
   "sources": {
     "dt_log": {
       "relation": "dt_log",
-      "profile": {
-        "packs": [
-          "dt-assembly@1"
-        ],
-        "mappings": [
-          {
-            "mapping_id": "core_to_dt",
-            "use": "dt-assembly@1/core_to_dt",
-            "bind": {
-              "subject": {
-                "kind": "entity",
-                "entity_type": "CoreDie@1",
-                "keys": {
-                  "core_wafer": {
-                    "kind": "column",
-                    "column": "core_wafer",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "core_x": {
-                    "kind": "column",
-                    "column": "core_x",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "core_y": {
-                    "kind": "column",
-                    "column": "core_y",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "target": {
-                "kind": "entity",
-                "entity_type": "DTDie@1",
-                "keys": {
-                  "dt_lot": {
-                    "kind": "column",
-                    "column": "dt_lot",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_slot": {
-                    "kind": "column",
-                    "column": "dt_slot",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_x": {
-                    "kind": "column",
-                    "column": "dt_offset_x",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_y": {
-                    "kind": "column",
-                    "column": "dt_offset_y",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_at",
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "job": {
-                "kind": "column",
-                "column": "dt_job_id",
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              }
-            }
-          },
-          {
-            "mapping_id": "dt_to_bond",
-            "use": "dt-assembly@1/dt_to_bond",
-            "bind": {
-              "subject": {
-                "kind": "entity",
-                "entity_type": "DTDie@1",
-                "keys": {
-                  "dt_lot": {
-                    "kind": "column",
-                    "column": "dt_lot",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_slot": {
-                    "kind": "column",
-                    "column": "dt_slot",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_x": {
-                    "kind": "column",
-                    "column": "dt_offset_x",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_y": {
-                    "kind": "column",
-                    "column": "dt_offset_y",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "target": {
-                "kind": "entity",
-                "entity_type": "BondComponent@1",
-                "keys": {
-                  "bond_wafer": {
-                    "kind": "column",
-                    "column": "bond_wafer",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "bond_x": {
-                    "kind": "column",
-                    "column": "bond_offset_x",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "bond_y": {
-                    "kind": "column",
-                    "column": "bond_offset_y",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "layer": {
-                    "kind": "column",
-                    "column": "bond_layer",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_at",
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "job": {
-                "kind": "column",
-                "column": "dt_job_id",
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              }
-            }
-          },
-          {
-            "mapping_id": "job_contains_die",
-            "use": "dt-assembly@1/job_contains_die",
-            "bind": {
-              "subject": {
-                "kind": "entity",
-                "entity_type": "DTJob@1",
-                "keys": {
-                  "job_id": {
-                    "kind": "column",
-                    "column": "dt_job_id",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "target": {
-                "kind": "entity",
-                "entity_type": "DTDie@1",
-                "keys": {
-                  "dt_lot": {
-                    "kind": "column",
-                    "column": "dt_lot",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_slot": {
-                    "kind": "column",
-                    "column": "dt_slot",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_x": {
-                    "kind": "column",
-                    "column": "dt_offset_x",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "dt_y": {
-                    "kind": "column",
-                    "column": "dt_offset_y",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_at",
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              }
-            }
-          },
-          {
-            "mapping_id": "job_occupies_slot",
-            "use": "dt-assembly@1/job_occupies_slot",
-            "bind": {
-              "subject": {
-                "kind": "entity",
-                "entity_type": "DTJob@1",
-                "keys": {
-                  "job_id": {
-                    "kind": "column",
-                    "column": "dt_job_id",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "target": {
-                "kind": "entity",
-                "entity_type": "LotSlot@1",
-                "keys": {
-                  "lot": {
-                    "kind": "column",
-                    "column": "dt_lot",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "slot": {
-                    "kind": "column",
-                    "column": "dt_slot",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_at",
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              }
-            }
-          },
-          {
-            "mapping_id": "bond_component",
-            "use": "dt-assembly@1/bond_component",
-            "bind": {
-              "subject": {
-                "kind": "entity",
-                "entity_type": "BondComponent@1",
-                "keys": {
-                  "bond_wafer": {
-                    "kind": "column",
-                    "column": "bond_wafer",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "bond_x": {
-                    "kind": "column",
-                    "column": "bond_offset_x",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "bond_y": {
-                    "kind": "column",
-                    "column": "bond_offset_y",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  },
-                  "layer": {
-                    "kind": "column",
-                    "column": "bond_layer",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "target": {
-                "kind": "entity",
-                "entity_type": "FinalChip@1",
-                "keys": {
-                  "chip_id": {
-                    "kind": "column",
-                    "column": "final_chip",
-                    "binding_origin": "user_declared",
-                    "approval_status": "approved"
-                  }
-                },
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_at",
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              }
-            }
-          }
-        ]
-      },
-      "driver": {
+      "read": {
         "unit": "group",
         "identity": [
           "dt_job_id"
@@ -613,60 +286,332 @@
             "event_at",
             "record_id"
           ]
-        },
-        "preparation": {
-          "implementation_id": "direct-join",
-          "implementation_version": 1,
-          "input_columns": [
-            "dt_job_id"
-          ],
-          "output_columns": {
-            "dt_lot": "string",
-            "dt_slot": "number",
-            "dt_offset_x": "number",
-            "dt_offset_y": "number",
-            "bond_wafer": "string",
-            "bond_offset_x": "number",
-            "bond_offset_y": "number",
-            "bond_layer": "number",
-            "final_chip": "string"
-          },
-          "accepts_verified_join_rules": true,
-          "inherit_virtual_join_rules": [
-            "dt_job_to_inventory"
-          ]
-        },
-        "mapper": {
-          "implementation_id": "declarative-role",
-          "implementation_version": 1,
-          "unit": {
-            "kind": "row"
-          },
-          "input_columns": [
-            "record_id",
-            "event_at",
-            "dt_job_id",
-            "core_wafer",
-            "core_x",
-            "core_y",
-            "dt_lot",
-            "dt_slot",
-            "dt_offset_x",
-            "dt_offset_y",
-            "bond_wafer",
-            "bond_offset_x",
-            "bond_offset_y",
-            "bond_layer",
-            "final_chip"
-          ],
-          "emits": [
-            "dt-assembly@1/core_to_dt",
-            "dt-assembly@1/dt_to_bond",
-            "dt-assembly@1/job_contains_die",
-            "dt-assembly@1/job_occupies_slot",
-            "dt-assembly@1/bond_component"
-          ]
         }
+      },
+      "prepare": {
+        "implementation_id": "direct-join",
+        "implementation_version": 1,
+        "input_columns": [
+          "dt_job_id"
+        ],
+        "output_columns": {
+          "dt_lot": "string",
+          "dt_slot": "number",
+          "dt_offset_x": "number",
+          "dt_offset_y": "number",
+          "bond_wafer": "string",
+          "bond_offset_x": "number",
+          "bond_offset_y": "number",
+          "bond_layer": "number",
+          "final_chip": "string"
+        },
+        "accepts_verified_join_rules": true,
+        "inherit_virtual_join_rules": [
+          "dt_job_to_inventory"
+        ]
+      },
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        },
+        "input_columns": [
+          "record_id",
+          "event_at",
+          "dt_job_id",
+          "core_wafer",
+          "core_x",
+          "core_y",
+          "dt_lot",
+          "dt_slot",
+          "dt_offset_x",
+          "dt_offset_y",
+          "bond_wafer",
+          "bond_offset_x",
+          "bond_offset_y",
+          "bond_layer",
+          "final_chip"
+        ]
+      },
+      "bind": {
+        "mappings": [
+          {
+            "mapping_id": "core_to_dt",
+            "use": "dt-assembly@1/core_to_dt",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "CoreDie@1",
+                "keys": {
+                  "core_wafer": {
+                    "kind": "column",
+                    "column": "core_wafer",
+                    "approval_status": "approved"
+                  },
+                  "core_x": {
+                    "kind": "column",
+                    "column": "core_x",
+                    "approval_status": "approved"
+                  },
+                  "core_y": {
+                    "kind": "column",
+                    "column": "core_y",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "DTDie@1",
+                "keys": {
+                  "dt_lot": {
+                    "kind": "column",
+                    "column": "dt_lot",
+                    "approval_status": "approved"
+                  },
+                  "dt_slot": {
+                    "kind": "column",
+                    "column": "dt_slot",
+                    "approval_status": "approved"
+                  },
+                  "dt_x": {
+                    "kind": "column",
+                    "column": "dt_offset_x",
+                    "approval_status": "approved"
+                  },
+                  "dt_y": {
+                    "kind": "column",
+                    "column": "dt_offset_y",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_at",
+                "approval_status": "approved"
+              },
+              "job": {
+                "kind": "column",
+                "column": "dt_job_id",
+                "approval_status": "approved"
+              }
+            }
+          },
+          {
+            "mapping_id": "dt_to_bond",
+            "use": "dt-assembly@1/dt_to_bond",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "DTDie@1",
+                "keys": {
+                  "dt_lot": {
+                    "kind": "column",
+                    "column": "dt_lot",
+                    "approval_status": "approved"
+                  },
+                  "dt_slot": {
+                    "kind": "column",
+                    "column": "dt_slot",
+                    "approval_status": "approved"
+                  },
+                  "dt_x": {
+                    "kind": "column",
+                    "column": "dt_offset_x",
+                    "approval_status": "approved"
+                  },
+                  "dt_y": {
+                    "kind": "column",
+                    "column": "dt_offset_y",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "BondComponent@1",
+                "keys": {
+                  "bond_wafer": {
+                    "kind": "column",
+                    "column": "bond_wafer",
+                    "approval_status": "approved"
+                  },
+                  "bond_x": {
+                    "kind": "column",
+                    "column": "bond_offset_x",
+                    "approval_status": "approved"
+                  },
+                  "bond_y": {
+                    "kind": "column",
+                    "column": "bond_offset_y",
+                    "approval_status": "approved"
+                  },
+                  "layer": {
+                    "kind": "column",
+                    "column": "bond_layer",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_at",
+                "approval_status": "approved"
+              },
+              "job": {
+                "kind": "column",
+                "column": "dt_job_id",
+                "approval_status": "approved"
+              }
+            }
+          },
+          {
+            "mapping_id": "job_contains_die",
+            "use": "dt-assembly@1/job_contains_die",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "DTJob@1",
+                "keys": {
+                  "job_id": {
+                    "kind": "column",
+                    "column": "dt_job_id",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "DTDie@1",
+                "keys": {
+                  "dt_lot": {
+                    "kind": "column",
+                    "column": "dt_lot",
+                    "approval_status": "approved"
+                  },
+                  "dt_slot": {
+                    "kind": "column",
+                    "column": "dt_slot",
+                    "approval_status": "approved"
+                  },
+                  "dt_x": {
+                    "kind": "column",
+                    "column": "dt_offset_x",
+                    "approval_status": "approved"
+                  },
+                  "dt_y": {
+                    "kind": "column",
+                    "column": "dt_offset_y",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_at",
+                "approval_status": "approved"
+              }
+            }
+          },
+          {
+            "mapping_id": "job_occupies_slot",
+            "use": "dt-assembly@1/job_occupies_slot",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "DTJob@1",
+                "keys": {
+                  "job_id": {
+                    "kind": "column",
+                    "column": "dt_job_id",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "LotSlot@1",
+                "keys": {
+                  "lot": {
+                    "kind": "column",
+                    "column": "dt_lot",
+                    "approval_status": "approved"
+                  },
+                  "slot": {
+                    "kind": "column",
+                    "column": "dt_slot",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_at",
+                "approval_status": "approved"
+              }
+            }
+          },
+          {
+            "mapping_id": "bond_component",
+            "use": "dt-assembly@1/bond_component",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "BondComponent@1",
+                "keys": {
+                  "bond_wafer": {
+                    "kind": "column",
+                    "column": "bond_wafer",
+                    "approval_status": "approved"
+                  },
+                  "bond_x": {
+                    "kind": "column",
+                    "column": "bond_offset_x",
+                    "approval_status": "approved"
+                  },
+                  "bond_y": {
+                    "kind": "column",
+                    "column": "bond_offset_y",
+                    "approval_status": "approved"
+                  },
+                  "layer": {
+                    "kind": "column",
+                    "column": "bond_layer",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "FinalChip@1",
+                "keys": {
+                  "chip_id": {
+                    "kind": "column",
+                    "column": "final_chip",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_at",
+                "approval_status": "approved"
+              }
+            }
+          }
+        ]
       }
     }
   },

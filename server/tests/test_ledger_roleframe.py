@@ -98,7 +98,6 @@ class EquivalentPythonMapper(BaseLedgerMapper):
         row = unit.iloc[0]
         return [RoleEmission(
             mapping_id=mapping.mapping_id,
-            claim_ref=mapping.claim_ref,
             roles={
                 "subject": {"type": "InputEntity@1",
                             "keys": {"input_id": row["source_id"]}},
@@ -209,7 +208,6 @@ def test_pack_compiler_supports_closed_scalar_object_kinds(
     mapping["bind"].pop("target")
     mapping["bind"].pop("event_key")
     mapping["bind"]["result"] = constant(value)
-    driver_mapper(raw)["emits"] = ["movement@1/transition"]
     compiled = snapshot(raw)
 
     result = dry_run_event_frame(
@@ -227,7 +225,6 @@ class InvalidEntityMapper(EquivalentPythonMapper):
         roles["target"] = {"type": "OutputEntity@1", "keys": {"wrong": "OUT-1"}}
         return [RoleEmission(
             mapping_id=emission.mapping_id,
-            claim_ref=emission.claim_ref,
             roles=roles,
             source_row_refs=emission.source_row_refs,
         )]
@@ -252,7 +249,6 @@ class WrongStageEntityMapper(EquivalentPythonMapper):
             "type": "OutputEntity@1", "keys": {"output_id": "OUT-1"}}
         return [RoleEmission(
             mapping_id=emission.mapping_id,
-            claim_ref=emission.claim_ref,
             roles=roles,
             source_row_refs=emission.source_row_refs,
         )]
@@ -447,7 +443,6 @@ class NaiveTimeMapper(EquivalentPythonMapper):
         roles["occurred_at"] = datetime(2026, 8, 17, 10, 30)
         return [RoleEmission(
             mapping_id=emission.mapping_id,
-            claim_ref=emission.claim_ref,
             roles=roles,
             source_row_refs=emission.source_row_refs,
         )]

@@ -160,9 +160,6 @@ def dt_chain_bundle():
             "resolved_dt_y", "inventory_bond_wafer", "resolved_bond_x",
             "resolved_bond_y", "inventory_bond_layer", "inventory_final_chip",
         ],
-        "emits": [
-            "assembly@1/core_to_dt", "assembly@1/dt_to_bond",
-            "assembly@1/core_component"],
     }
     entity_role = {"kind": "entity", "required": True}
     time_role = {"kind": "time", "required": True}
@@ -214,8 +211,15 @@ def dt_chain_bundle():
     raw["sources"] = {
         "dt_log": {
             "relation": "dt_log",
-            "profile": {
-                "packs": ["assembly@1"],
+            "read": {
+                "unit": "group", "identity": ["dt_job_id"],
+                "group_by": ["dt_job_id"], "order_by": ["record_id"],
+                "occurred_at": {"column": "event_at", "timezone": "Asia/Seoul"},
+                "cursor": {"columns": ["event_at", "record_id"]},
+            },
+            "prepare": preparation,
+            "map": mapper,
+            "bind": {
                 "mappings": [
                     {"mapping_id": "core_to_dt", "use": "assembly@1/core_to_dt",
                      "bind": {"subject": core, "target": dt,
@@ -229,14 +233,6 @@ def dt_chain_bundle():
                      "bind": {"subject": core, "target": final_chip,
                               "occurred_at": binding("event_at")}},
                 ],
-            },
-            "driver": {
-                "unit": "group", "identity": ["dt_job_id"],
-                "group_by": ["dt_job_id"], "order_by": ["record_id"],
-                "occurred_at": {"column": "event_at", "timezone": "Asia/Seoul"},
-                "cursor": {"columns": ["event_at", "record_id"]},
-                "preparation": preparation,
-                "mapper": mapper,
             },
         },
     }
@@ -295,9 +291,9 @@ def test_preparer_output_can_own_event_identity_without_entering_cursor_select()
     raw = logical_bundle()
     driver_preparation(raw)["output_columns"][
         "prepared_event_key"] = "string"
-    raw["sources"]["input_rows"]["driver"]["identity"] = [
+    raw["sources"]["input_rows"]["read"]["identity"] = [
         "prepared_event_key"]
-    raw["sources"]["input_rows"]["driver"]["group_by"] = [
+    raw["sources"]["input_rows"]["read"]["group_by"] = [
         "prepared_event_key"]
     compiled = snapshot(raw)
 
@@ -329,9 +325,9 @@ def test_missing_prepared_event_identity_is_structured_and_fail_closed():
     raw = logical_bundle()
     driver_preparation(raw)["output_columns"][
         "prepared_event_key"] = "string"
-    raw["sources"]["input_rows"]["driver"]["identity"] = [
+    raw["sources"]["input_rows"]["read"]["identity"] = [
         "prepared_event_key"]
-    raw["sources"]["input_rows"]["driver"]["group_by"] = [
+    raw["sources"]["input_rows"]["read"]["group_by"] = [
         "prepared_event_key"]
     compiled = snapshot(raw)
 

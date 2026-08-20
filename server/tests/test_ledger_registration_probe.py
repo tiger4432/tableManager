@@ -99,7 +99,7 @@ def _retired_hardcoded_subjects(frame):
 def _plan_with_probe(probe):
     setup = load_setup()
     logical = setup.bundle.to_mapping()
-    logical["sources"]["lot_event"]["driver"]["registration_probe"] = probe
+    logical["sources"]["lot_event"]["read"]["registration_probe"] = probe
     # Re-validating the live bundle must judge it against the SAME physical catalog the
     # load used -- `setup.catalog` carries it -- or the probe would be checked against one
     # world and the plan compiled against another.
@@ -178,7 +178,7 @@ def test_no_probe_answers_None_rather_than_an_empty_set():
 def test_a_malformed_probe_is_refused_at_load_with_its_own_code(probe, code):
     setup = load_setup()
     logical = setup.bundle.to_mapping()
-    logical["sources"]["lot_event"]["driver"]["registration_probe"] = probe
+    logical["sources"]["lot_event"]["read"]["registration_probe"] = probe
     issues = validate_bundle_errors(logical, catalog=setup.catalog)
     assert code in {issue.code for issue in issues}, [i.to_mapping() for i in issues]
     with pytest.raises(LedgerSetupValidationError):

@@ -425,7 +425,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
             if repeated:
                 raise LedgerSetupError(
                     "source_event_split_across_batches",
-                    f"sources.{source}.driver.cursor.columns",
+                    f"sources.{source}.read.cursor.columns",
                     f"{len(repeated)} source event(s) already processed in full came "
                     f"back in a later page, so one event is being split across two "
                     f"batches and its counts describe pages rather than events: "

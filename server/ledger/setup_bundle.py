@@ -30,13 +30,13 @@ CONFIG_FILENAME = "ledger_config.json"
 #: 아니야?」).  The 1:1 was already ENFORCED, not merely observed: a profile had to declare
 #: `source`, and `_cross_validate` refused any value but the id of the source that selected
 #: it -- so a profile could never be shared and a separate section bought nothing.  The body
-#: now lives inline at `sources.*.profile`, and its `source` field is gone with the section:
+#: now lives inline at `sources.*.bind`, and its `source` field is gone with the section:
 #: the source that HOLDS it is the answer that field used to repeat.
 #: 🔴 `source_preparers` AND `mappers` ARE NOT HERE EITHER (owner, 2026-08-20: 「소스플랜
 #: 준비기 맵퍼」).  A preparer's `input_columns` must be columns of a PHYSICAL relation, and
 #: `relation` is declared only by a source -- so a preparer sitting in its own section was
 #: always one hop away from the only declaration that could check it.  Both bodies now live
-#: inline at `sources.*.driver.preparation` and `sources.*.driver.mapper`, where the
+#: inline at `sources.*.prepare` and `sources.*.map`, where the
 #: relation is one key away.  Measured before the move: both were 1:1 with their source, so
 #: no sharing was lost.  What is reused is CODE, not declaration, and that reuse is still
 #: spelled `implementation_id` + `implementation_version`, which both bodies still carry.
@@ -99,7 +99,22 @@ _FORBIDDEN_EXECUTABLE_KEYS = frozenset({
     "module", "function", "path", "python", "sql", "javascript",
     "expression", "eval", "exec",
 })
-_BINDING_ORIGINS = frozenset({"user_declared", "system_suggested", "imported"})
+#: What an unwritten `binding_origin` means, and the ONLY reason it may be left unwritten.
+#:
+#: 🔴 SILENCE MAY ONLY DEFAULT TO THE VALUE THAT GRANTS NOTHING.  `user_declared` is the
+#: plainest kind of authorship -- it permits nothing that writing it out would not, and the
+#: one rule that reads this field (`suggestion_reason`, below) fires on
+#: `system_suggested` alone.  So an absent field and a written `user_declared` are the same
+#: claim, and 40 repetitions of a constant leave the operator's file.
+#:
+#: `approval_status` LOOKS symmetric and is not, which is why it stays required.
+#: `roleframe._evaluate_binding` refuses to execute any binding that does not say
+#: `approved`, so defaulting an absent one to `approved` would turn "approved only if it
+#: says so" into "approved unless it says otherwise" -- and the legacy v1 reader
+#: (`source_profile._binding`) already defaults the same absence to `pending`, so the two
+#: would answer differently about one file.
+_DEFAULT_BINDING_ORIGIN = "user_declared"
+_BINDING_ORIGINS = frozenset({_DEFAULT_BINDING_ORIGIN, "system_suggested", "imported"})
 _APPROVAL_STATUSES = frozenset({"pending", "approved", "rejected"})
 _JOIN_FOLD_RULES = frozenset({"separator", "case", "zero_pad"})
 _IMPLEMENTED_JOIN_FOLD_RULES = frozenset({"separator", "case"})
@@ -356,9 +371,10 @@ def public_bundle_schema() -> dict[str, Any]:
         # `tables` joins the list: naming it here is what turns "I pasted my old section
         # back in" from a silent no-op into `unknown_field` at `ledger_config.tables`.
         # `source_preparers` and `mappers` join it for the same reason on 2026-08-20 --
-        # they retired into `sources.*.driver`, and every config written before that day
-        # still has them.  `profiles` joins them the same evening, retired into
-        # `sources.*.profile`.
+        # they retired into the source, and every config written before that day
+        # still has them.  `profiles` joins them the same evening.  (Where inside the
+        # source they landed changed once more on 2026-08-21: `driver` split into
+        # `read`/`prepare`/`map` and the profile body became `bind`.)
         "forbidden_sections": ["frames", "lookups", "positions",
                                "manifest", "chains", "enrichments", "tables",
                                "source_preparers", "mappers", "profiles"],
@@ -456,9 +472,9 @@ def bundle_readiness_errors(bundle: LedgerSetupBundle
         raise TypeError("readiness requires a validated LedgerSetupBundle")
     problems = _Problems()
     for source_id, source in bundle.section("sources").items():
-        profile = source["profile"]
+        profile = source["bind"]
         for index, mapping in enumerate(profile["mappings"]):
-            base = f"bundle.sources.{source_id}.profile.mappings[{index}].bind"
+            base = f"bundle.sources.{source_id}.bind.mappings[{index}].bind"
             for role in sorted(mapping["bind"]):
                 _binding_readiness(mapping["bind"][role], f"{base}.{role}", problems)
     return problems.finish()
@@ -914,7 +930,7 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
 
 
 def _validate_preparation(item: Any, path: str, problems: _Problems) -> None:
-    """One source's preparer body, at `sources.<id>.driver.preparation`.
+    """One source's preparer body, at `sources.<id>.prepare`.
 
     No `_versioned_id` here and no id at all: the declaration is not named any more, it IS
     the source's preparation clause.  `implementation_id`/`implementation_version` stay,
@@ -946,11 +962,20 @@ def _validate_preparation(item: Any, path: str, problems: _Problems) -> None:
 
 
 def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
-    """One source's mapper body, at `sources.<id>.driver.mapper`."""
+    """One source's mapper body, at `sources.<id>.map`.
+
+    🔴 NO `emits`, AND ITS ABSENCE IS THE POINT (owner, 2026-08-20: 「클레임과 맵퍼 함수는
+    완전 별개인데 왜 맵퍼에서 쓸 클레임을 정의함?」 -> 「닿을 수 없다면 선언도 닿으면 안됨」).
+    A mapper implementation knows `SentenceShape`, never a `claim`; "which claims can this
+    mapper produce" is a question it has no way to answer, and the one declaration that can
+    is `bind.mappings[].use`.  So the field is not moved, it is gone: `MapperDescriptor.emits`
+    is now DERIVED from those same `use` values, which is why the two could never disagree
+    and why the rule that compared them is not written here any more.
+    """
     if not problems.exact(
             item, path,
             required=("implementation_id", "implementation_version", "unit",
-                      "input_columns", "emits")):
+                      "input_columns")):
         return
     _implementation(item, path, problems)
     if problems.exact(
@@ -982,8 +1007,6 @@ def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
                 "unit.columns is only valid for group_by")
     _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
                    allow_empty=True)
-    _nonblank_list(item.get("emits"), f"{path}.emits", problems,
-                   item_form=CLAIM_REF_FORM)
 
 
 def _validate_packs(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -1074,17 +1097,24 @@ def _validate_emission(value: Any, path: str, problems: _Problems) -> None:
 
 
 def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
-    """One source's profile body, at `sources.<id>.profile`.
+    """One source's bind clause, at `sources.<id>.bind`.
 
     No `_versioned_id` here and no id at all -- the same retirement `_validate_preparation`
     took earlier the same day.  `source` is gone with the section for a sharper reason than
     tidiness: it was a REPEAT of the key one level up, and `_cross_validate` refused every
     value except that key, so the only thing an author could do with the field was get it
     wrong.
+
+    🔴 `packs` WENT THE SAME WAY on 2026-08-21, for the third time in the same file.  It was
+    `sorted(set(...))` of the packs the mappings' `use` names, checked for equality in BOTH
+    directions -- an author could not write it better, only wrong.
+
+    🔴 AND IT STAYS A RECORD WITH ONE FIELD (owner: 「ㅇㅇ 남겨」).  `bind: [...]` would read
+    the same today and would have to be unfolded -- with a migration -- the first time
+    `bind` carries anything besides `mappings`.
     """
-    if not problems.exact(profile, path, required=("packs", "mappings")):
+    if not problems.exact(profile, path, required=("mappings",)):
         return
-    _nonblank_list(profile.get("packs"), f"{path}.packs", problems)
     mappings = profile.get("mappings")
     if not _is_list(mappings) or not mappings:
         problems.add("invalid_profile", f"{path}.mappings", "must be a non-empty list")
@@ -1126,14 +1156,14 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
     kind = value.get("kind")
     if kind == "column":
         allowed = ("kind", "column", "binding_origin", "approval_status", "suggestion_reason")
-        required = ("kind", "column", "binding_origin", "approval_status")
+        required = ("kind", "column", "approval_status")
     elif kind == "constant":
         allowed = ("kind", "value", "binding_origin", "approval_status", "suggestion_reason")
-        required = ("kind", "value", "binding_origin", "approval_status")
+        required = ("kind", "value", "approval_status")
     elif kind == "entity":
         allowed = ("kind", "entity_type", "keys", "binding_origin", "approval_status",
                    "suggestion_reason")
-        required = ("kind", "entity_type", "keys", "binding_origin", "approval_status")
+        required = ("kind", "entity_type", "keys", "approval_status")
     else:
         problems.add("invalid_binding", f"{path}.kind",
                      f"unsupported binding kind {kind!r}")
@@ -1157,7 +1187,7 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
                     problems.add(
                         "invalid_binding", f"{path}.keys.{key}.kind",
                         "entity identity keys allow only column or constant bindings")
-    origin = value.get("binding_origin")
+    origin = value.get("binding_origin", _DEFAULT_BINDING_ORIGIN)
     approval = value.get("approval_status")
     if not isinstance(origin, str) or origin not in _BINDING_ORIGINS:
         problems.add("invalid_binding", f"{path}.binding_origin",
@@ -1178,63 +1208,86 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
 
 
 def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
+    """Every source, in the order it RUNS.
+
+    🔴 `driver` NAMED TWO JOBS AT ONCE AND IS GONE (owner, 2026-08-20: 「애초에 지금 컨피그
+    스키마가 잘못돼 있는건데」).  Reading a physical batch and turning it into sentences are
+    different steps with different column universes, and both sat under one key -- which is
+    how the question "where does a preparer go" cost a round the day before.  The four
+    clauses now stand as SIBLINGS of `relation`, and the file reads in the order execution
+    happens:
+
+        relation   the physical table this source reads.  UNMOVED -- `prepared_columns`
+                   starts from it, and moving it would drag that with it for nothing
+        read       unit, identity, group_by, order_by, occurred_at, cursor, probe
+        prepare    the preparer body, character for character as it was
+        map        the mapper body, character for character as it was
+        bind       the profile body, character for character as it was
+
+    The file itself is written `sort_keys=True`, so on disk these sit `bind · map · prepare
+    · read`.  That is deliberate and is not fixed here: the serialization is canonical hash
+    material, and the ORDER A READER SEES is made by the skeleton, which lists them in the
+    order above.
+    """
     for source_id in sorted(section, key=str):
         path = f"bundle.sources.{source_id}"
         _nonblank_id(source_id, path, problems)
         source = section[source_id]
-        if not problems.exact(source, path, required=("relation", "profile", "driver")):
+        if not problems.exact(
+                source, path, required=("relation", "read", "prepare", "map", "bind")):
             continue
         _nonblank_text(source.get("relation"), f"{path}.relation", problems)
-        _validate_profile(source.get("profile"), f"{path}.profile", problems)
-        driver = source.get("driver")
+        # Each clause is judged on its own: one malformed clause must not silence the
+        # other three, or an author fixes four rounds of one refusal at a time.
+        _validate_profile(source.get("bind"), f"{path}.bind", problems)
+        _validate_preparation(source.get("prepare"), f"{path}.prepare", problems)
+        _validate_mapper(source.get("map"), f"{path}.map", problems)
+        read = source.get("read")
         if not problems.exact(
-                driver, f"{path}.driver",
+                read, f"{path}.read",
                 required=("unit", "identity", "group_by", "order_by", "occurred_at",
-                          "cursor", "preparation", "mapper"),
+                          "cursor"),
                 optional=("registration_probe",)):
             continue
         _validate_registration_probe(
-            driver.get("registration_probe"), f"{path}.driver.registration_probe",
+            read.get("registration_probe"), f"{path}.read.registration_probe",
             problems)
-        source_unit = driver.get("unit")
+        source_unit = read.get("unit")
         if not isinstance(source_unit, str) or source_unit not in _SOURCE_UNITS:
-            problems.add("invalid_driver", f"{path}.driver.unit",
+            problems.add("invalid_driver", f"{path}.read.unit",
                          f"must be one of {sorted(_SOURCE_UNITS)}")
         for field in ("identity", "group_by", "order_by"):
-            _nonblank_list(driver.get(field), f"{path}.driver.{field}", problems,
+            _nonblank_list(read.get(field), f"{path}.read.{field}", problems,
                            allow_empty=(field == "group_by"))
-        group_by = driver.get("group_by")
-        identity = driver.get("identity")
+        group_by = read.get("group_by")
+        identity = read.get("identity")
         if source_unit == "row" and _is_list(group_by) and group_by:
-            problems.add("invalid_driver", f"{path}.driver.group_by",
+            problems.add("invalid_driver", f"{path}.read.group_by",
                          "row unit requires an empty group_by list")
         if source_unit == "group" and _is_list(group_by) and not group_by:
-            problems.add("invalid_driver", f"{path}.driver.group_by",
+            problems.add("invalid_driver", f"{path}.read.group_by",
                          "group unit requires at least one group_by column")
         if (_is_list(group_by) and _is_list(identity)
                 and any(isinstance(column, str) and column not in identity
                         for column in group_by)):
-            problems.add("invalid_driver", f"{path}.driver.group_by",
+            problems.add("invalid_driver", f"{path}.read.group_by",
                          "group_by columns must be included in identity")
-        occurred = driver.get("occurred_at")
+        occurred = read.get("occurred_at")
         if problems.exact(
-                occurred, f"{path}.driver.occurred_at",
+                occurred, f"{path}.read.occurred_at",
                 required=("timezone",), optional=("column", "basis")):
-            _occurred_at_origin(occurred, f"{path}.driver.occurred_at", problems)
+            _occurred_at_origin(occurred, f"{path}.read.occurred_at", problems)
             timezone = occurred.get("timezone")
-            _nonblank_text(timezone, f"{path}.driver.occurred_at.timezone", problems)
+            _nonblank_text(timezone, f"{path}.read.occurred_at.timezone", problems)
             if isinstance(timezone, str) and timezone.strip():
                 try:
                     ZoneInfo(timezone)
                 except ZoneInfoNotFoundError:
-                    problems.add("invalid_timezone", f"{path}.driver.occurred_at.timezone",
+                    problems.add("invalid_timezone", f"{path}.read.occurred_at.timezone",
                                  f"unknown timezone {timezone!r}")
-        cursor = driver.get("cursor")
-        if problems.exact(cursor, f"{path}.driver.cursor", required=("columns",)):
-            _nonblank_list(cursor.get("columns"), f"{path}.driver.cursor.columns", problems)
-        _validate_preparation(
-            driver.get("preparation"), f"{path}.driver.preparation", problems)
-        _validate_mapper(driver.get("mapper"), f"{path}.driver.mapper", problems)
+        cursor = read.get("cursor")
+        if problems.exact(cursor, f"{path}.read.cursor", required=("columns",)):
+            _nonblank_list(cursor.get("columns"), f"{path}.read.cursor.columns", problems)
 
 
 def _validate_registration_probe(value: Any, path: str, problems: _Problems) -> None:
@@ -1341,25 +1394,16 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
 
     _cross_vocabulary(vocabulary, entities, problems)
     _cross_packs(packs, vocabulary, problems)
-    # Emitted claim refs are checked for EVERY source, including one whose relation is
-    # undeclared -- "does this pack own this claim" is a question about the ledger file
-    # alone, so skipping it under the relation refusal below would hide a real typo.
-    for source_id, source in sources.items():
-        mapper = source["driver"].get("mapper")
-        if not isinstance(mapper, Mapping):
-            continue
-        for index, claim_ref in enumerate(mapper.get("emits", [])):
-            _known_claim(
-                claim_ref, packs,
-                f"bundle.sources.{source_id}.driver.mapper.emits[{index}]", problems)
-    # The Profile contract is a question about the LEDGER FILE alone -- does this pack own
+    # The bind contract is a question about the LEDGER FILE alone -- does this pack own
     # this claim, does this claim declare this role -- so it is asked for every source,
-    # including one whose relation is undeclared and which the loop below skips.
+    # including one whose relation is undeclared and which the loop below skips.  It is
+    # also where "does this pack own this claim" is answered for the mapper, which used to
+    # restate the same refs in `emits` and be asked separately just above this line.
     for source_id, source in sources.items():
-        profile = source.get("profile")
+        profile = source.get("bind")
         if isinstance(profile, Mapping):
             _cross_profile_contract(
-                f"bundle.sources.{source_id}.profile", profile, packs, problems)
+                f"bundle.sources.{source_id}.bind", profile, packs, problems)
 
     for rule_id, rule in bundle["virtual_joins"].items():
         path = f"bundle.virtual_joins.{rule_id}"
@@ -1403,7 +1447,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             continue
         path = f"bundle.sources.{source_id}"
         relation = source.get("relation")
-        driver = source["driver"]
+        driver = source["read"]
         base_columns = []
         if _is_list(driver.get("order_by")):
             base_columns.extend(driver["order_by"])
@@ -1418,14 +1462,14 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         _relation_columns(relation, base_columns, tables, f"{path}.relation", problems)
         physical = set(_table_columns(tables, relation))
         _cross_registration_probe(
-            driver.get("registration_probe"), f"{path}.driver.registration_probe",
+            driver.get("registration_probe"), f"{path}.read.registration_probe",
             relation, physical, tables, entities, problems)
         table = tables.get(relation)
         if isinstance(table, Mapping):
             ordering_contracts = (
-                (driver.get("order_by"), f"{path}.driver.order_by"),
+                (driver.get("order_by"), f"{path}.read.order_by"),
                 (driver.get("cursor", {}).get("columns"),
-                 f"{path}.driver.cursor.columns"),
+                 f"{path}.read.cursor.columns"),
             )
             for columns, order_path in ordering_contracts:
                 if (_is_list(columns)
@@ -1435,11 +1479,11 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                         "ordering must include every column of a catalog-declared "
                         "business_key, composite_key, or UNIQUE index")
 
-        profile = source.get("profile") if isinstance(source.get("profile"), Mapping) else None
-        profile_path = f"{path}.profile"
+        profile = source.get("bind") if isinstance(source.get("bind"), Mapping) else None
+        profile_path = f"{path}.bind"
 
-        prep = driver.get("preparation") if isinstance(driver.get("preparation"), Mapping) else {}
-        prep_path = f"{path}.driver.preparation"
+        prep = source.get("prepare") if isinstance(source.get("prepare"), Mapping) else {}
+        prep_path = f"{path}.prepare"
         available = set(physical)
         if prep:
             for column in prep.get("input_columns", []):
@@ -1485,11 +1529,11 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             for index, column in enumerate(driver.get(field, [])):
                 if column not in available:
                     problems.add(
-                        "unknown_column", f"{path}.driver.{field}[{index}]",
+                        "unknown_column", f"{path}.read.{field}[{index}]",
                         f"column {column!r} is not in prepared EventFrame schema")
 
-        mapper = driver.get("mapper") if isinstance(driver.get("mapper"), Mapping) else None
-        mapper_path = f"{path}.driver.mapper"
+        mapper = source.get("map") if isinstance(source.get("map"), Mapping) else None
+        mapper_path = f"{path}.map"
         if mapper is not None:
             for column in mapper.get("input_columns", []):
                 if column not in available:
@@ -1506,21 +1550,11 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             _cross_profile_source(profile_path, profile, packs, entities, vocabulary,
                                   available, problems)
         if profile is not None and isinstance(mapper, Mapping):
-            profile_uses = [mapping["use"] for mapping in profile["mappings"]]
-            mapper_emits = list(mapper.get("emits", []))
-            for index, claim_ref in enumerate(mapper_emits):
-                if claim_ref not in profile_uses:
-                    problems.add(
-                        "invalid_mapper", f"{mapper_path}.emits[{index}]",
-                        f"Claim {claim_ref!r} has no mapping in "
-                        f"{source_id!r}'s profile")
-            for index, mapping in enumerate(profile["mappings"]):
-                if mapping["use"] not in mapper_emits:
-                    problems.add(
-                        "invalid_profile",
-                        f"{profile_path}.mappings[{index}].use",
-                        f"Claim {mapping['use']!r} is not declared by "
-                        f"{source_id!r}'s mapper")
+            # The two-direction set equality between `map.emits` and these `use` values
+            # stood here until 2026-08-21.  It is not relaxed -- it is unwritable: the
+            # mapper no longer declares the set, `MapperDescriptor.emits` is compiled FROM
+            # these very refs, and a rule comparing a value with its own source states
+            # nothing.
             mapper_inputs = set(mapper.get("input_columns", []))
             for column, column_path in _profile_binding_columns(profile_path, profile):
                 if column not in mapper_inputs:
@@ -1644,21 +1678,8 @@ def _cross_emission_role(roles: Mapping[str, Any], role_ref: str, path: str,
 
 def _cross_profile_contract(path: str, profile: Mapping[str, Any],
                             packs: Mapping[str, Any], problems: _Problems) -> None:
-    declared_packs = set(profile["packs"])
-    used_packs: set[str] = set()
-    for index, pack_id in enumerate(profile.get("packs", [])):
-        if pack_id not in packs:
-            problems.add("unknown_pack", f"{path}.packs[{index}]",
-                         f"unknown pack {pack_id!r}"
-                         + _did_you_mean(pack_id, packs, "packs"))
     for index, mapping in enumerate(profile.get("mappings", [])):
         mpath = f"{path}.mappings[{index}]"
-        parsed = _parse_claim_ref(mapping["use"])
-        if parsed is not None:
-            used_packs.add(parsed[0])
-            if parsed[0] not in declared_packs:
-                problems.add("invalid_profile", f"{mpath}.use",
-                             f"Pack {parsed[0]!r} is not listed by profile.packs")
         claim = _known_claim(mapping.get("use"), packs, f"{mpath}.use", problems)
         if claim is None:
             continue
@@ -1687,10 +1708,9 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
             if descriptor.get("required") and role not in bindings:
                 problems.add("missing_required_role", f"{mpath}.bind.{role}",
                              f"Claim requires role {role!r}")
-    for index, pack_id in enumerate(profile["packs"]):
-        if pack_id in packs and pack_id not in used_packs:
-            problems.add("invalid_profile", f"{path}.packs[{index}]",
-                         f"Pack {pack_id!r} is declared but unused by mappings")
+    # `packs` was checked here in both directions -- every declared pack had to be used and
+    # every used pack had to be declared -- until 2026-08-21, when the list itself went.
+    # `ProfileDescriptor` no longer carries one either: nothing read it.
     _ambiguous_sentences(path, profile, packs, problems)
 
 

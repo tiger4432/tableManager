@@ -45,25 +45,26 @@ ANCHORS = {
     ("_validate_entities", "path"): "entities.*",
     # The preparer and the mapper moved inside the driver on 2026-08-20 and the profile
     # moved beside them the same evening; each validator function kept its rules and lost
-    # its section, so only the anchor moved.
-    ("_validate_preparation", "path"): "sources.*.driver.preparation",
-    ("_validate_mapper", "path"): "sources.*.driver.mapper",
-    ("_validate_mapper", "f'{path}.unit'"): "sources.*.driver.mapper.unit",
+    # its section, so only the anchor moved.  On 2026-08-21 `driver` itself split into
+    # `read`/`prepare`/`map` and the profile body became `bind` -- again, only the anchors.
+    ("_validate_preparation", "path"): "sources.*.prepare",
+    ("_validate_mapper", "path"): "sources.*.map",
+    ("_validate_mapper", "f'{path}.unit'"): "sources.*.map.unit",
     ("_validate_packs", "path"): "packs.*",
     ("_validate_packs", "cpath"): "packs.*.claims.*",
     ("_validate_packs", "rpath"): "packs.*.claims.*.roles.*",
     ("_validate_emission", "path"): "packs.*.claims.*.emit",
     ("_validate_emission", "f'{path}.object'"): "packs.*.claims.*.emit.object",
-    ("_validate_profile", "path"): "sources.*.profile",
-    ("_validate_profile", "mpath"): "sources.*.profile.mappings.*",
+    ("_validate_profile", "path"): "sources.*.bind",
+    ("_validate_profile", "mpath"): "sources.*.bind.mappings.*",
     ("_validate_binding", "path"): "def:binding",
     ("_validate_sources", "path"): "sources.*",
-    ("_validate_sources", "f'{path}.driver'"): "sources.*.driver",
-    ("_validate_sources", "f'{path}.driver.occurred_at'"):
-        "sources.*.driver.occurred_at",
-    ("_validate_sources", "f'{path}.driver.cursor'"): "sources.*.driver.cursor",
+    ("_validate_sources", "f'{path}.read'"): "sources.*.read",
+    ("_validate_sources", "f'{path}.read.occurred_at'"):
+        "sources.*.read.occurred_at",
+    ("_validate_sources", "f'{path}.read.cursor'"): "sources.*.read.cursor",
     ("_validate_registration_probe", "item_path"):
-        "sources.*.driver.registration_probe.*",
+        "sources.*.read.registration_probe.*",
 }
 
 

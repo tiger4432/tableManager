@@ -39,7 +39,7 @@ def report(db, setup, source_id: str) -> int:
         return 2
     source = sources[source_id]
     relation = source["relation"]
-    driver = source["driver"]
+    driver = source["read"]
     print(f"source {source_id}  ->  relation {relation}")
 
     table = setup.catalog.get(relation)

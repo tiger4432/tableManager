@@ -175,8 +175,29 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
         "sources": {
             source_name: {
                 "relation": source_name,
-                "profile": {
-                    "packs": ["movement@1"],
+                "read": {
+                    "unit": "group",
+                    "identity": [event],
+                    "group_by": [event],
+                    "order_by": [record],
+                    "occurred_at": {"column": occurred, "timezone": "Asia/Seoul"},
+                    "cursor": {"columns": [occurred, record]},
+                },
+                "prepare": {
+                    "implementation_id": "prepare-input",
+                    "implementation_version": 1,
+                    "input_columns": [join_key],
+                    "output_columns": {target_key: "string"},
+                    "accepts_verified_join_rules": True,
+                    "inherit_virtual_join_rules": ["input_to_reference"],
+                },
+                "map": {
+                    "implementation_id": "map-transition-role",
+                    "implementation_version": 1,
+                    "unit": {"kind": "event"},
+                    "input_columns": [source_key, target_key, occurred, event],
+                },
+                "bind": {
                     "mappings": [{
                         "mapping_id": "main_transition",
                         "use": "movement@1/transition",
@@ -188,29 +209,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                         },
                     }],
                 },
-                "driver": {
-                    "unit": "group",
-                    "identity": [event],
-                    "group_by": [event],
-                    "order_by": [record],
-                    "occurred_at": {"column": occurred, "timezone": "Asia/Seoul"},
-                    "cursor": {"columns": [occurred, record]},
-                    "preparation": {
-                        "implementation_id": "prepare-input",
-                        "implementation_version": 1,
-                        "input_columns": [join_key],
-                        "output_columns": {target_key: "string"},
-                        "accepts_verified_join_rules": True,
-                        "inherit_virtual_join_rules": ["input_to_reference"],
-                    },
-                    "mapper": {
-                        "implementation_id": "map-transition-role",
-                        "implementation_version": 1,
-                        "unit": {"kind": "event"},
-                        "input_columns": [source_key, target_key, occurred, event],
-                        "emits": ["movement@1/transition"],
-                    },
-                },
             },
         },
     }
@@ -219,21 +217,21 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
 #: The preparer, the mapper and the profile have no section and no id of their own since
 #: 2026-08-20 -- they are clauses of a source.  These two say so once, so a test that pokes at a body
 #: reads as "this source's mapper" rather than repeating a five-key path.
-MAPPER_PATH = "bundle.sources.input_rows.driver.mapper"
-PREPARATION_PATH = "bundle.sources.input_rows.driver.preparation"
-PROFILE_PATH = "bundle.sources.input_rows.profile"
+MAPPER_PATH = "bundle.sources.input_rows.map"
+PREPARATION_PATH = "bundle.sources.input_rows.prepare"
+PROFILE_PATH = "bundle.sources.input_rows.bind"
 
 
 def driver_mapper(bundle, source_name="input_rows"):
-    return bundle["sources"][source_name]["driver"]["mapper"]
+    return bundle["sources"][source_name]["map"]
 
 
 def driver_preparation(bundle, source_name="input_rows"):
-    return bundle["sources"][source_name]["driver"]["preparation"]
+    return bundle["sources"][source_name]["prepare"]
 
 
 def source_profile(bundle, source_name="input_rows"):
-    return bundle["sources"][source_name]["profile"]
+    return bundle["sources"][source_name]["bind"]
 
 
 def objectless_register_bundle():
@@ -256,7 +254,6 @@ def objectless_register_bundle():
             "object": {"kind": "none"}, "occurred_at": "$occurred_at",
         },
     }}}
-    source_profile(raw)["packs"].append("registration@1")
     source_profile(raw)["mappings"].append({
         "mapping_id": "register_input", "use": "registration@1/register",
         "bind": {
@@ -264,8 +261,6 @@ def objectless_register_bundle():
             "occurred_at": binding("event_at"),
         },
     })
-    driver_mapper(raw)["emits"].append(
-        "registration@1/register")
     return raw
 
 
@@ -338,7 +333,7 @@ def test_public_schema_is_the_single_logical_contract():
     # declaration left sitting in this file that nothing reads is exactly the silent
     # second copy the section was removed for.
     # `source_preparers`/`mappers` joined on 2026-08-20 for the third time in the same
-    # shape: both moved INTO `sources.*.driver`, so a file still carrying them at the root
+    # shape: both moved INTO the source itself, so a file still carrying them at the root
     # has to be named, not skipped.
     assert schema["forbidden_sections"] == [
         "frames", "lookups", "positions", "manifest", "chains", "enrichments",
@@ -401,8 +396,11 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # at the root, the same bodies one level down).
     # was 2a21fed8... while `profiles` was still a root section (same owner, same evening;
     # the body moved to `sources.*.profile` and shed its `source` field).
+    # was b884892c... while a source had `relation` / `profile` / `driver`. On 2026-08-21
+    # `driver` split into `read` / `prepare` / `map`, `profile` became `bind`, and
+    # `map.emits`, `bind.packs` and every default `binding_origin` stopped being written.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "b884892c41e427095611aa2e48ab13b58476d43ff587952a93a38ea72edfa187")
+        "3260c937828e4c7537baf6d0b00ecd62a9cdedca4fd8ec9b8788de7d13582e3d")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -410,7 +408,7 @@ def test_list_order_is_preserved_but_object_order_is_not():
     reversed_keys = reverse_mappings(original)
     assert validate_bundle(original).serialize() == validate_bundle(reversed_keys).serialize()
     changed = copy.deepcopy(original)
-    changed["sources"]["input_rows"]["driver"]["cursor"]["columns"].reverse()
+    changed["sources"]["input_rows"]["read"]["cursor"]["columns"].reverse()
     assert validate_bundle(original).serialize() != validate_bundle(changed).serialize()
 
 
@@ -613,7 +611,7 @@ def test_unknown_relation_and_column_have_exact_paths():
     relation = issue(bundle, "unknown_relation")
     assert relation.path == "bundle.sources.input_rows.relation"
     bundle = logical_bundle()
-    bundle["sources"]["input_rows"]["driver"]["cursor"]["columns"][0] = "missing_col"
+    bundle["sources"]["input_rows"]["read"]["cursor"]["columns"][0] = "missing_col"
     column = issue(bundle, "unknown_column")
     assert column.path == "bundle.sources.input_rows.relation"
     assert "missing_col" in column.message
@@ -621,11 +619,11 @@ def test_unknown_relation_and_column_have_exact_paths():
 
 def test_timezone_must_be_explicit_and_valid():
     bundle = logical_bundle()
-    del bundle["sources"]["input_rows"]["driver"]["occurred_at"]["timezone"]
+    del bundle["sources"]["input_rows"]["read"]["occurred_at"]["timezone"]
     assert any(item.path.endswith("occurred_at.timezone") and item.code == "missing_field"
                for item in validate_bundle_errors(bundle))
     bundle = logical_bundle()
-    bundle["sources"]["input_rows"]["driver"]["occurred_at"]["timezone"] = "Moon/Base"
+    bundle["sources"]["input_rows"]["read"]["occurred_at"]["timezone"] = "Moon/Base"
     assert issue(bundle, "invalid_timezone").path.endswith("occurred_at.timezone")
 
 
@@ -638,26 +636,26 @@ def test_time_origin_requires_exactly_one_of_column_or_basis():
     the honest form; declaring BOTH would leave a reader guessing which one won.
     """
     bundle = logical_bundle()
-    del bundle["sources"]["input_rows"]["driver"]["occurred_at"]["column"]
+    del bundle["sources"]["input_rows"]["read"]["occurred_at"]["column"]
     neither = issue(bundle, "invalid_driver")
-    assert neither.path.endswith("driver.occurred_at")
+    assert neither.path.endswith("read.occurred_at")
     assert "neither" in neither.message
 
     bundle = logical_bundle()
-    bundle["sources"]["input_rows"]["driver"]["occurred_at"]["basis"] = "ingested"
+    bundle["sources"]["input_rows"]["read"]["occurred_at"]["basis"] = "ingested"
     both = issue(bundle, "invalid_driver")
-    assert both.path.endswith("driver.occurred_at")
+    assert both.path.endswith("read.occurred_at")
     assert "both" in both.message
 
 
 def test_time_basis_is_a_closed_list():
     """An open string here would let a typo become a silent claim about time."""
     bundle = logical_bundle()
-    occurred = bundle["sources"]["input_rows"]["driver"]["occurred_at"]
+    occurred = bundle["sources"]["input_rows"]["read"]["occurred_at"]
     del occurred["column"]
     occurred["basis"] = "guessed"
     error = issue(bundle, "invalid_driver")
-    assert error.path.endswith("driver.occurred_at.basis")
+    assert error.path.endswith("read.occurred_at.basis")
     assert "guessed" in error.message
     assert "ingested" in error.message
 
@@ -669,7 +667,7 @@ def test_a_declared_basis_names_no_source_column():
     report a missing column that the author never declared.
     """
     bundle = logical_bundle()
-    occurred = bundle["sources"]["input_rows"]["driver"]["occurred_at"]
+    occurred = bundle["sources"]["input_rows"]["read"]["occurred_at"]
     del occurred["column"]
     occurred["basis"] = "ingested"
     codes = {item.code for item in validate_bundle_errors(bundle)}
@@ -748,7 +746,7 @@ def test_unknown_pack_claim_role_and_join_are_named():
     # are bodies inside the driver now, so there is no id left to misspell and no
     # `unknown_source_preparer` / `unknown_mapper` refusal to raise.
     bundle = logical_bundle()
-    bundle["sources"]["input_rows"]["driver"]["preparation"]["inherit_virtual_join_rules"] = ["absent"]
+    bundle["sources"]["input_rows"]["prepare"]["inherit_virtual_join_rules"] = ["absent"]
     cases.append((bundle, "unknown_join_rule"))
     for value, code in cases:
         assert any(item.code == code for item in validate_bundle_errors(value)), code
@@ -886,21 +884,21 @@ def test_vocabulary_undeclared_qualifier_is_rejected_exactly():
     }]
 
 
-def test_profile_packs_mapping_use_and_mapper_emits_are_mutually_closed():
+def test_the_only_place_a_source_names_a_claim_is_its_bind_mapping():
+    """Retirement of `test_profile_packs_mapping_use_and_mapper_emits_are_mutually_closed`.
+
+    That test drove `bind.packs` and `map.emits` out of agreement with `mappings[].use`
+    and asserted three refusals.  None of the three can be provoked any more, and not
+    because a check was relaxed: neither field exists, so the disagreement has nowhere to
+    be written.  What replaces it is the statement that made them removable -- one
+    declaration names the claim, and the compiled mapper's `emits` is that same set.
+    """
     bundle = logical_bundle()
-    alternate = copy.deepcopy(bundle["packs"]["movement@1"])
-    bundle["packs"]["alternate@1"] = alternate
-    source_profile(bundle)["packs"] = ["alternate@1"]
-    alternate_claim = copy.deepcopy(alternate["claims"]["transition"])
-    bundle["packs"]["movement@1"]["claims"]["secondary"] = alternate_claim
-    driver_mapper(bundle)["emits"] = ["movement@1/secondary"]
-    errors = validate_bundle_errors(bundle)
-    assert any(error.code == "invalid_profile" and error.path.endswith("mappings[0].use")
-               and "profile.packs" in error.message for error in errors)
-    assert any(error.code == "invalid_mapper" and error.path.endswith("emits[0]")
-               for error in errors)
-    assert any(error.code == "invalid_profile" and error.path.endswith("mappings[0].use")
-               and "mapper" in error.message for error in errors)
+    source = bundle["sources"]["input_rows"]
+    assert "packs" not in source["bind"]
+    assert "emits" not in source["map"]
+    validated = validate_bundle(bundle)
+    assert set(validated.to_mapping()["sources"]["input_rows"]["bind"]) == {"mappings"}
 
 
 def test_mapper_inputs_cover_profile_columns_and_preparer_outputs_do_not_collide():
@@ -923,7 +921,7 @@ def test_mapper_inputs_cover_profile_columns_and_preparer_outputs_do_not_collide
 )
 def test_source_unit_and_group_contract_is_fail_closed(unit, group_by):
     bundle = logical_bundle()
-    driver = bundle["sources"]["input_rows"]["driver"]
+    driver = bundle["sources"]["input_rows"]["read"]
     driver["unit"] = unit
     driver["group_by"] = group_by
     assert any(error.code == "invalid_driver" for error in validate_bundle_errors(bundle))
@@ -963,7 +961,7 @@ def test_join_right_side_without_an_exact_unique_key_is_refused():
 
 def test_order_and_cursor_reject_columns_without_catalog_unique_proof():
     bundle = logical_bundle()
-    driver = bundle["sources"]["input_rows"]["driver"]
+    driver = bundle["sources"]["input_rows"]["read"]
     driver["order_by"] = ["event_at"]
     driver["cursor"]["columns"] = ["event_at"]
 
@@ -972,8 +970,8 @@ def test_order_and_cursor_reject_columns_without_catalog_unique_proof():
     assert_structured_errors(errors)
     assert [(error.code, error.path) for error in errors
             if error.code == "invalid_cursor"] == [
-        ("invalid_cursor", "bundle.sources.input_rows.driver.cursor.columns"),
-        ("invalid_cursor", "bundle.sources.input_rows.driver.order_by"),
+        ("invalid_cursor", "bundle.sources.input_rows.read.cursor.columns"),
+        ("invalid_cursor", "bundle.sources.input_rows.read.order_by"),
     ]
 
 
@@ -991,7 +989,7 @@ def _composite_key_catalog():
 
 def test_complete_composite_unique_key_proves_total_order():
     bundle = logical_bundle()
-    driver = bundle["sources"]["input_rows"]["driver"]
+    driver = bundle["sources"]["input_rows"]["read"]
     driver["order_by"] = ["event_at", "event_key", "record_id"]
     driver["cursor"]["columns"] = ["event_at", "event_key", "record_id"]
     assert validate_bundle_errors(bundle, catalog=_composite_key_catalog()) == ()
@@ -999,7 +997,7 @@ def test_complete_composite_unique_key_proves_total_order():
 
 def test_partial_composite_unique_key_does_not_prove_total_order():
     bundle = logical_bundle()
-    driver = bundle["sources"]["input_rows"]["driver"]
+    driver = bundle["sources"]["input_rows"]["read"]
     driver["order_by"] = ["event_at", "event_key"]
     driver["cursor"]["columns"] = ["event_at", "event_key"]
     errors = validate_bundle_errors(bundle, catalog=_composite_key_catalog())
@@ -1013,7 +1011,7 @@ def test_nonunique_index_is_not_a_total_order_proof():
     catalog["input_rows"]["indexes"] = [
         {"name": "idx_event_at", "columns": ["event_at"], "unique": False}]
     bundle = logical_bundle()
-    driver = bundle["sources"]["input_rows"]["driver"]
+    driver = bundle["sources"]["input_rows"]["read"]
     driver["order_by"] = ["event_at"]
     driver["cursor"]["columns"] = ["event_at"]
     errors = validate_bundle_errors(bundle, catalog=catalog)
@@ -1242,7 +1240,7 @@ def test_followup_validation_errors_have_deterministic_order():
     profile["mappings"][0]["bind"]["subject"]["keys"]["input_id"][
         "column"] = "missing_column"
     bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": {"bad": True}}
-    driver = bundle["sources"]["input_rows"]["driver"]
+    driver = bundle["sources"]["input_rows"]["read"]
     driver["order_by"] = ["event_at"]
     driver["cursor"]["columns"] = ["event_at"]
     # was `bundle["chains"]["bad"]`; that section is gone, the follow-up error it
@@ -1286,10 +1284,12 @@ def test_every_json_node_shape_mutation_returns_only_structured_errors():
     # Floor, not a census: it exists so a fixture that quietly shrank cannot make this
     # sweep vacuous. It moved 150 -> 145 when `tables` left the bundle, and 145 -> 140
     # when the preparer and mapper folded into the driver on 2026-08-20: two section nodes,
-    # two id-keyed nodes and the two `*_id` leaves went, `driver.mapper` arrived, net -5
-    # (144 nodes today, was 149). Lower it only alongside a deliberate shape change, and
-    # say which one.
-    assert checked >= 140
+    # two id-keyed nodes and the two `*_id` leaves went, `driver.mapper` arrived, net -5.
+    # 140 -> 136 on 2026-08-21, MEASURED at 141 -> 137: `map.emits` and `bind.packs` each
+    # took their list node and its one item, and `driver` splitting into `read`/`prepare`/
+    # `map` is net zero (one record node out, one in). Lower it only alongside a deliberate
+    # shape change, and say which one.
+    assert checked >= 136
 
 
 def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
@@ -1309,9 +1309,9 @@ def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
                 validate_bundle(candidate)
             checked += 1
     # Same floor, times the six replacement kinds. Was 900 while the bundle carried
-    # `tables`, 894 while the preparer and mapper had their own sections; 864 today
-    # (144 x 6).
-    assert checked >= 840
+    # `tables`, 894 while the preparer and mapper had their own sections; 822 today
+    # (137 x 6).
+    assert checked >= 816
 
 
 def test_common_module_has_no_domain_source_branches_or_runtime_imports():
@@ -1369,7 +1369,7 @@ def test_group_by_mapper_unit_requires_closed_input_columns():
     driver_mapper(valid)["unit"] = {
         "kind": "group_by", "columns": ["target_id"]}
     compiled = validate_bundle(valid).section("sources")
-    assert compiled["input_rows"]["driver"]["mapper"]["unit"] == {
+    assert compiled["input_rows"]["map"]["unit"] == {
         "kind": "group_by", "columns": ("target_id",)}
 
 
@@ -1433,19 +1433,19 @@ def test_an_unknown_reference_separates_a_typo_from_a_declaration_not_written_ye
     disagree on purpose: a single fixture would pass under either rule.
     """
     typo = logical_bundle()
-    driver_mapper(typo)["emits"] = ["movment@1/transition"]
+    source_profile(typo)["mappings"][0]["use"] = "movment@1/transition"
     near = issue(typo, "unknown_pack")
     assert "did you mean 'movement@1'?" in near.message
 
     absent = logical_bundle()
-    driver_mapper(absent)["emits"] = ["shipment@9/transition"]
+    source_profile(absent)["mappings"][0]["use"] = "shipment@9/transition"
     far = issue(absent, "unknown_pack")
     assert "did you mean" not in far.message
     assert "declared packs: 'movement@1'" in far.message
 
     # And the claim half of the same reference, scored against the pack it names.
     wrong_claim = logical_bundle()
-    driver_mapper(wrong_claim)["emits"] = ["movement@1/transitions"]
+    source_profile(wrong_claim)["mappings"][0]["use"] = "movement@1/transitions"
     claim = issue(wrong_claim, "unknown_claim")
     assert "did you mean 'transition'?" in claim.message
 
@@ -1455,20 +1455,22 @@ def test_an_unknown_reference_separates_a_typo_from_a_declaration_not_written_ye
     assert "no packs are declared yet" in issue(empty, "unknown_pack").message
 
 
-def test_a_list_of_references_says_what_one_item_looks_like():
-    """"must be a list with at least one item" leaves the item shape to be guessed.
+def test_a_refusal_about_a_claim_reference_says_how_one_is_spelled():
+    """Replaces the `emits` half of `..._says_what_one_item_looks_like`.
 
-    `emits` takes claim references, and the author who hits this refusal is exactly the one
-    who does not yet know how a claim reference is spelled.
+    That test refused a LIST of claim references and asserted the list's refusal carried
+    the item spelling.  `map.emits` was the only such list and is gone, so the clause it
+    measured has no caller.  The need did not go with it: an author who writes a claim
+    reference wrongly is exactly the one who does not know how one is spelled, and
+    `mappings[].use` is now the only place they write it.
     """
     raw = logical_bundle()
-    driver_mapper(raw)["emits"] = "movement@1/transition"
-    refused = issue(raw, "invalid_type")
-    assert refused.path == f"{MAPPER_PATH}.emits"
-    assert "each item is <pack>@<version>/<claim>" in refused.message
+    source_profile(raw)["mappings"][0]["use"] = "movement@1"
+    refused = issue(raw, "invalid_claim_ref")
+    assert refused.path == f"{PROFILE_PATH}.mappings[0].use"
+    assert "must use <pack>@<version>/<claim>" in refused.message
 
-    # The item-shape clause is opt-in: a list of plain names has nothing extra to say and
-    # must not grow a clause about claim references.
+    # And an ordinary list of names still says nothing about claim references.
     plain = logical_bundle()
     driver_mapper(plain)["input_columns"] = "record_id"
     assert "each item is" not in issue(plain, "invalid_type").message
@@ -1486,11 +1488,11 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     differ rather than that each is separately plausible.
     """
     raw = logical_bundle()
-    driver_mapper(raw)["emits"] = "movement@1/transition"
+    driver_mapper(raw)["input_columns"] = "record_id"
     raw["packs"]["movement@1"]["claims"]["transition"]["emit"]["object"]["payload"] = 1
     raw["vocabulary"]["moves_to@1"]["colour"] = "blue"
     raw["entities"]["InputEntity@1"]["allow_null"] = "yes"
-    raw["sources"]["input_rows"]["driver"]["unit"] = "wafer"
+    raw["sources"]["input_rows"]["read"]["unit"] = "wafer"
     write_tree(tmp_path, raw)
 
     issues = setup_bundle_module.setup_bundle_errors(
@@ -1500,11 +1502,11 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     # All five mistakes, from one read. Named individually so a regression that drops one
     # kind of check cannot hide behind the count.
     for expected in (
-        f"{MAPPER_PATH}.emits",
+        f"{MAPPER_PATH}.input_columns",
         "bundle.packs.movement@1.claims.transition.emit.object.payload",
         "bundle.vocabulary.moves_to@1.colour",
         "bundle.entities.InputEntity@1.allow_null",
-        "bundle.sources.input_rows.driver.unit",
+        "bundle.sources.input_rows.read.unit",
     ):
         assert expected in paths, expected
 
@@ -1564,15 +1566,15 @@ def test_a_column_name_is_judged_against_three_different_universes():
         f"{column!r} must NOT be a relation column or the two universes coincide here")
 
     prepared = copy.deepcopy(base)
-    prepared["sources"]["input_rows"]["driver"]["identity"] = [column]
-    prepared["sources"]["input_rows"]["driver"]["group_by"] = []
+    prepared["sources"]["input_rows"]["read"]["identity"] = [column]
+    prepared["sources"]["input_rows"]["read"]["group_by"] = []
     assert not [
         item for item in validate_bundle_errors(prepared)
         if item.code == "unknown_column"
     ], "driver.identity reads the PREPARED frame, so a preparer output is legal there"
 
     relation = copy.deepcopy(base)
-    relation["sources"]["input_rows"]["driver"]["order_by"] = [column]
+    relation["sources"]["input_rows"]["read"]["order_by"] = [column]
     refused = [
         item for item in validate_bundle_errors(relation)
         if item.code == "unknown_column"

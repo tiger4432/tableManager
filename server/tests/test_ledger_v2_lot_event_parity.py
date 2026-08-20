@@ -253,11 +253,7 @@ def lot_event_bundle():
         "sources": {
             "lot_event": {
                 "relation": "lot_event",
-                "profile": {
-                    "packs": ["lot-lineage@1"],
-                    "mappings": mappings,
-                },
-                "driver": {
+                "read": {
                     "unit": "group",
                     "identity": [EVENT_GROUP_COLUMN],
                     "group_by": [EVENT_GROUP_COLUMN],
@@ -265,25 +261,27 @@ def lot_event_bundle():
                     "occurred_at": {
                         "column": "event_time", "timezone": "Asia/Seoul"},
                     "cursor": {"columns": ["event_time", "row_identity"]},
-                    "preparation": {
-                        "implementation_id": "lot-event-frame",
-                        "implementation_version": 1,
-                        "input_columns": list(LOT_EVENT_COLUMNS),
-                        "output_columns": {
-                            EVENT_GROUP_COLUMN: "string",
-                            SOURCE_EVENT_INCOMPLETE_COLUMN: "boolean",
-                        },
-                        "accepts_verified_join_rules": False,
-                        "inherit_virtual_join_rules": [],
+                },
+                "prepare": {
+                    "implementation_id": "lot-event-frame",
+                    "implementation_version": 1,
+                    "input_columns": list(LOT_EVENT_COLUMNS),
+                    "output_columns": {
+                        EVENT_GROUP_COLUMN: "string",
+                        SOURCE_EVENT_INCOMPLETE_COLUMN: "boolean",
                     },
-                    "mapper": {
-                        "implementation_id": "lot-event-role",
-                        "implementation_version": 1,
-                        "unit": {"kind": "event"},
-                        "input_columns": [*LOT_EVENT_COLUMNS, EVENT_GROUP_COLUMN,
-                                          SOURCE_EVENT_INCOMPLETE_COLUMN],
-                        "emits": [mapping["use"] for mapping in mappings],
-                    },
+                    "accepts_verified_join_rules": False,
+                    "inherit_virtual_join_rules": [],
+                },
+                "map": {
+                    "implementation_id": "lot-event-role",
+                    "implementation_version": 1,
+                    "unit": {"kind": "event"},
+                    "input_columns": [*LOT_EVENT_COLUMNS, EVENT_GROUP_COLUMN,
+                                      SOURCE_EVENT_INCOMPLETE_COLUMN],
+                },
+                "bind": {
+                    "mappings": mappings,
                 },
             },
         },
@@ -524,19 +522,19 @@ def test_two_shape_identical_mappings_with_no_sentence_are_refused_at_compile_ti
     missing it, before anything runs.
     """
     bundle = lot_event_bundle()
-    mappings = bundle["sources"]["lot_event"]["profile"]["mappings"]
+    mappings = bundle["sources"]["lot_event"]["bind"]["mappings"]
     ambiguous = [index for index, mapping in enumerate(mappings)
                  if mapping.get("sentence")]
     assert len(ambiguous) == 2, "the fixture must still contain the ambiguous pair"
 
     for index in ambiguous:
         broken = lot_event_bundle()
-        del broken["sources"]["lot_event"]["profile"]["mappings"][index]["sentence"]
+        del broken["sources"]["lot_event"]["bind"]["mappings"][index]["sentence"]
         with pytest.raises(LedgerSetupValidationError) as exc:
             validate_bundle(broken, catalog=LOT_EVENT_CATALOG)
         assert exc.value.code == "ambiguous_sentence", exc.value.code
         assert exc.value.path == (
-            f"bundle.sources.lot_event.profile.mappings[{index}].sentence"), exc.value.path
+            f"bundle.sources.lot_event.bind.mappings[{index}].sentence"), exc.value.path
         # the message must name the peers, or a reader cannot find the other half
         assert "slot_preserving" in exc.value.message
         assert "shared_wafer" in exc.value.message
