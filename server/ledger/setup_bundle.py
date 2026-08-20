@@ -22,10 +22,16 @@ SETUP_VERSION = 3
 #: The one authoring file. The path does not move: the operator writes here.
 CONFIG_FILENAME = "ledger_config.json"
 
-#: The whole authoring surface, in the order the file declares it.  All five are
+#: The whole authoring surface, in the order the file declares it.  All four are
 #: REQUIRED even when empty: a missing key and an empty one mean different things to a
 #: reader, and "the section does not apply to me" is a decision worth writing down.
 #:
+#: 🔴 `profiles` IS NOT HERE EITHER (owner, 2026-08-20: 「그럼 프로필도 소스랑 묶여야 하는거
+#: 아니야?」).  The 1:1 was already ENFORCED, not merely observed: a profile had to declare
+#: `source`, and `_cross_validate` refused any value but the id of the source that selected
+#: it -- so a profile could never be shared and a separate section bought nothing.  The body
+#: now lives inline at `sources.*.profile`, and its `source` field is gone with the section:
+#: the source that HOLDS it is the answer that field used to repeat.
 #: 🔴 `source_preparers` AND `mappers` ARE NOT HERE EITHER (owner, 2026-08-20: 「소스플랜
 #: 준비기 맵퍼」).  A preparer's `input_columns` must be columns of a PHYSICAL relation, and
 #: `relation` is declared only by a source -- so a preparer sitting in its own section was
@@ -46,7 +52,7 @@ CONFIG_FILENAME = "ledger_config.json"
 #: The physical schema now has exactly one author, `server/config/table_config.json`,
 #: which `_physical_catalog` reads.  See `PHYSICAL_CATALOG_FILENAME`.
 LOGICAL_SECTIONS = (
-    "vocabulary", "entities", "packs", "profiles", "sources",
+    "vocabulary", "entities", "packs", "sources",
 )
 
 #: 🔴 OPTIONAL, AND THE DISTINCTION IS DELIBERATE.  The operator root stops carrying a
@@ -351,10 +357,11 @@ def public_bundle_schema() -> dict[str, Any]:
         # back in" from a silent no-op into `unknown_field` at `ledger_config.tables`.
         # `source_preparers` and `mappers` join it for the same reason on 2026-08-20 --
         # they retired into `sources.*.driver`, and every config written before that day
-        # still has them.
+        # still has them.  `profiles` joins them the same evening, retired into
+        # `sources.*.profile`.
         "forbidden_sections": ["frames", "lookups", "positions",
                                "manifest", "chains", "enrichments", "tables",
-                               "source_preparers", "mappers"],
+                               "source_preparers", "mappers", "profiles"],
     }
 
 
@@ -430,8 +437,6 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
         _validate_entities(value["entities"], problems)
     if isinstance(value.get("packs"), Mapping):
         _validate_packs(value["packs"], problems)
-    if isinstance(value.get("profiles"), Mapping):
-        _validate_profiles(value["profiles"], problems)
     if isinstance(value.get("sources"), Mapping):
         _validate_sources(value["sources"], problems)
 
@@ -450,9 +455,10 @@ def bundle_readiness_errors(bundle: LedgerSetupBundle
     if not isinstance(bundle, LedgerSetupBundle):
         raise TypeError("readiness requires a validated LedgerSetupBundle")
     problems = _Problems()
-    for profile_id, profile in bundle.section("profiles").items():
+    for source_id, source in bundle.section("sources").items():
+        profile = source["profile"]
         for index, mapping in enumerate(profile["mappings"]):
-            base = f"bundle.profiles.{profile_id}.mappings[{index}].bind"
+            base = f"bundle.sources.{source_id}.profile.mappings[{index}].bind"
             for role in sorted(mapping["bind"]):
                 _binding_readiness(mapping["bind"][role], f"{base}.{role}", problems)
     return problems.finish()
@@ -1067,47 +1073,50 @@ def _validate_emission(value: Any, path: str, problems: _Problems) -> None:
                           problems)
 
 
-def _validate_profiles(section: Mapping[str, Any], problems: _Problems) -> None:
-    for profile_id in sorted(section, key=str):
-        path = f"bundle.profiles.{profile_id}"
-        _versioned_id(profile_id, path, problems)
-        profile = section[profile_id]
-        if not problems.exact(profile, path, required=("source", "packs", "mappings")):
+def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
+    """One source's profile body, at `sources.<id>.profile`.
+
+    No `_versioned_id` here and no id at all -- the same retirement `_validate_preparation`
+    took earlier the same day.  `source` is gone with the section for a sharper reason than
+    tidiness: it was a REPEAT of the key one level up, and `_cross_validate` refused every
+    value except that key, so the only thing an author could do with the field was get it
+    wrong.
+    """
+    if not problems.exact(profile, path, required=("packs", "mappings")):
+        return
+    _nonblank_list(profile.get("packs"), f"{path}.packs", problems)
+    mappings = profile.get("mappings")
+    if not _is_list(mappings) or not mappings:
+        problems.add("invalid_profile", f"{path}.mappings", "must be a non-empty list")
+        return
+    seen = set()
+    said = set()
+    for index, mapping in enumerate(mappings):
+        mpath = f"{path}.mappings[{index}]"
+        if not problems.exact(mapping, mpath, required=("mapping_id", "use", "bind"),
+                              optional=("sentence",)):
             continue
-        _nonblank_text(profile.get("source"), f"{path}.source", problems)
-        _nonblank_list(profile.get("packs"), f"{path}.packs", problems)
-        mappings = profile.get("mappings")
-        if not _is_list(mappings) or not mappings:
-            problems.add("invalid_profile", f"{path}.mappings", "must be a non-empty list")
-            continue
-        seen = set()
-        said = set()
-        for index, mapping in enumerate(mappings):
-            mpath = f"{path}.mappings[{index}]"
-            if not problems.exact(mapping, mpath, required=("mapping_id", "use", "bind"),
-                                  optional=("sentence",)):
-                continue
-            mapping_id = mapping.get("mapping_id")
-            _nonblank_text(mapping_id, f"{mpath}.mapping_id", problems)
-            if isinstance(mapping_id, str):
-                if mapping_id in seen:
-                    problems.add("duplicate_id", f"{mpath}.mapping_id",
-                                 f"mapping_id {mapping_id!r} is duplicated")
-                seen.add(mapping_id)
-            if "sentence" in mapping:
-                _nonblank_text(mapping.get("sentence"), f"{mpath}.sentence", problems)
-                if mapping.get("sentence") in said:
-                    problems.add("duplicate_id", f"{mpath}.sentence",
-                                 f"sentence {mapping['sentence']!r} is claimed twice")
-                said.add(mapping.get("sentence"))
-            _claim_ref(mapping.get("use"), f"{mpath}.use", problems)
-            bindings = mapping.get("bind")
-            if not isinstance(bindings, Mapping) or not bindings:
-                problems.add("invalid_profile", f"{mpath}.bind", "must be non-empty")
-            else:
-                for role in sorted(bindings):
-                    _nonblank_id(role, f"{mpath}.bind.{role}", problems)
-                    _validate_binding(bindings[role], f"{mpath}.bind.{role}", problems)
+        mapping_id = mapping.get("mapping_id")
+        _nonblank_text(mapping_id, f"{mpath}.mapping_id", problems)
+        if isinstance(mapping_id, str):
+            if mapping_id in seen:
+                problems.add("duplicate_id", f"{mpath}.mapping_id",
+                             f"mapping_id {mapping_id!r} is duplicated")
+            seen.add(mapping_id)
+        if "sentence" in mapping:
+            _nonblank_text(mapping.get("sentence"), f"{mpath}.sentence", problems)
+            if mapping.get("sentence") in said:
+                problems.add("duplicate_id", f"{mpath}.sentence",
+                             f"sentence {mapping['sentence']!r} is claimed twice")
+            said.add(mapping.get("sentence"))
+        _claim_ref(mapping.get("use"), f"{mpath}.use", problems)
+        bindings = mapping.get("bind")
+        if not isinstance(bindings, Mapping) or not bindings:
+            problems.add("invalid_profile", f"{mpath}.bind", "must be non-empty")
+        else:
+            for role in sorted(bindings):
+                _nonblank_id(role, f"{mpath}.bind.{role}", problems)
+                _validate_binding(bindings[role], f"{mpath}.bind.{role}", problems)
 
 
 def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
@@ -1173,10 +1182,10 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         path = f"bundle.sources.{source_id}"
         _nonblank_id(source_id, path, problems)
         source = section[source_id]
-        if not problems.exact(source, path, required=("relation", "driver", "profile_id")):
+        if not problems.exact(source, path, required=("relation", "profile", "driver")):
             continue
         _nonblank_text(source.get("relation"), f"{path}.relation", problems)
-        _versioned_id(source.get("profile_id"), f"{path}.profile_id", problems)
+        _validate_profile(source.get("profile"), f"{path}.profile", problems)
         driver = source.get("driver")
         if not problems.exact(
                 driver, f"{path}.driver",
@@ -1328,9 +1337,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     entities = bundle["entities"]
     vocabulary = bundle["vocabulary"]
     packs = bundle["packs"]
-    profiles = bundle["profiles"]
     sources = bundle["sources"]
-    event_frame_columns: dict[str, set[str]] = {}
 
     _cross_vocabulary(vocabulary, entities, problems)
     _cross_packs(packs, vocabulary, problems)
@@ -1345,8 +1352,14 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             _known_claim(
                 claim_ref, packs,
                 f"bundle.sources.{source_id}.driver.mapper.emits[{index}]", problems)
-    for profile_id, profile in profiles.items():
-        _cross_profile_contract(profile_id, profile, packs, problems)
+    # The Profile contract is a question about the LEDGER FILE alone -- does this pack own
+    # this claim, does this claim declare this role -- so it is asked for every source,
+    # including one whose relation is undeclared and which the loop below skips.
+    for source_id, source in sources.items():
+        profile = source.get("profile")
+        if isinstance(profile, Mapping):
+            _cross_profile_contract(
+                f"bundle.sources.{source_id}.profile", profile, packs, problems)
 
     for rule_id, rule in bundle["virtual_joins"].items():
         path = f"bundle.virtual_joins.{rule_id}"
@@ -1422,15 +1435,8 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                         "ordering must include every column of a catalog-declared "
                         "business_key, composite_key, or UNIQUE index")
 
-        profile_id = source.get("profile_id")
-        profile = profiles.get(profile_id)
-        if profile is None:
-            problems.add("unknown_profile", f"{path}.profile_id",
-                         f"unknown profile {profile_id!r}"
-                         + _did_you_mean(profile_id, profiles, "profiles"))
-        elif isinstance(profile, Mapping) and profile.get("source") != source_id:
-            problems.add("invalid_profile", f"bundle.profiles.{profile_id}.source",
-                         f"must equal source ID {source_id!r}")
+        profile = source.get("profile") if isinstance(source.get("profile"), Mapping) else None
+        profile_path = f"{path}.profile"
 
         prep = driver.get("preparation") if isinstance(driver.get("preparation"), Mapping) else {}
         prep_path = f"{path}.driver.preparation"
@@ -1493,49 +1499,34 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                     and not driver.get("group_by")):
                 problems.add("invalid_mapper", f"{mapper_path}.unit.kind",
                              "group_by mapper requires source group_by columns")
-        event_frame_columns[source_id] = set(available)
-        if isinstance(profile, Mapping) and isinstance(mapper, Mapping):
+        if profile is not None:
+            # The EventFrame schema this source's Profile binds against is `available`,
+            # which is only known HERE -- so the bind/column half of the Profile contract
+            # is asked inside the source loop, while the file-only half was asked above.
+            _cross_profile_source(profile_path, profile, packs, entities, vocabulary,
+                                  available, problems)
+        if profile is not None and isinstance(mapper, Mapping):
             profile_uses = [mapping["use"] for mapping in profile["mappings"]]
             mapper_emits = list(mapper.get("emits", []))
             for index, claim_ref in enumerate(mapper_emits):
                 if claim_ref not in profile_uses:
                     problems.add(
                         "invalid_mapper", f"{mapper_path}.emits[{index}]",
-                        f"Claim {claim_ref!r} has no mapping in profile {profile_id!r}")
+                        f"Claim {claim_ref!r} has no mapping in "
+                        f"{source_id!r}'s profile")
             for index, mapping in enumerate(profile["mappings"]):
                 if mapping["use"] not in mapper_emits:
                     problems.add(
                         "invalid_profile",
-                        f"bundle.profiles.{profile_id}.mappings[{index}].use",
+                        f"{profile_path}.mappings[{index}].use",
                         f"Claim {mapping['use']!r} is not declared by "
                         f"{source_id!r}'s mapper")
             mapper_inputs = set(mapper.get("input_columns", []))
-            for column, column_path in _profile_binding_columns(profile_id, profile):
+            for column, column_path in _profile_binding_columns(profile_path, profile):
                 if column not in mapper_inputs:
                     problems.add(
                         "invalid_mapper", f"{mapper_path}.input_columns",
                         f"Profile column {column!r} at {column_path} is missing")
-
-    # Every Profile is an authoring contract, including Profiles not selected by a
-    # Source.  Resolve its declared source once and apply the same entity/column
-    # validation used for selected Profiles; keeping this outside the source loop
-    # also prevents duplicate errors for selected Profiles.
-    for profile_id in sorted(profiles, key=str):
-        profile = profiles[profile_id]
-        source_name = profile.get("source")
-        if source_name not in sources:
-            problems.add("unknown_source", f"bundle.profiles.{profile_id}.source",
-                         f"unknown source {source_name!r}"
-                         + _did_you_mean(source_name, sources, "sources"))
-            continue
-        if source_name in unresolved_sources:
-            # Its EventFrame schema is unknown, not empty. Checking columns against an
-            # empty set would report every binding as unknown -- noise under the root
-            # refusal already raised above.
-            continue
-        available = event_frame_columns.get(source_name, set())
-        _cross_profile_source(profile_id, profile, packs, entities, vocabulary,
-                              available, problems)
 
 
 def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any],
@@ -1651,9 +1642,8 @@ def _cross_emission_role(roles: Mapping[str, Any], role_ref: str, path: str,
                      f"Role optionality requires reference {expected!r}")
 
 
-def _cross_profile_contract(profile_id: str, profile: Mapping[str, Any],
+def _cross_profile_contract(path: str, profile: Mapping[str, Any],
                             packs: Mapping[str, Any], problems: _Problems) -> None:
-    path = f"bundle.profiles.{profile_id}"
     declared_packs = set(profile["packs"])
     used_packs: set[str] = set()
     for index, pack_id in enumerate(profile.get("packs", [])):
@@ -1701,7 +1691,7 @@ def _cross_profile_contract(profile_id: str, profile: Mapping[str, Any],
         if pack_id in packs and pack_id not in used_packs:
             problems.add("invalid_profile", f"{path}.packs[{index}]",
                          f"Pack {pack_id!r} is declared but unused by mappings")
-    _ambiguous_sentences(profile_id, profile, packs, problems)
+    _ambiguous_sentences(path, profile, packs, problems)
 
 
 def _sentence_signature(mapping: Mapping[str, Any],
@@ -1741,7 +1731,7 @@ def _sentence_signature(mapping: Mapping[str, Any],
     )
 
 
-def _ambiguous_sentences(profile_id: str, profile: Mapping[str, Any],
+def _ambiguous_sentences(path: str, profile: Mapping[str, Any],
                          packs: Mapping[str, Any], problems: _Problems) -> None:
     """Two mappings a mapper cannot tell apart, and neither says which sentence it is.
 
@@ -1756,7 +1746,6 @@ def _ambiguous_sentences(profile_id: str, profile: Mapping[str, Any],
     ALREADY WORKED breaks, with nothing naming the config that caused it.  So a tie is a
     named compile-time error and never a run-time coin flip.
     """
-    path = f"bundle.profiles.{profile_id}"
     classes: dict[tuple[Any, ...], list[int]] = {}
     for index, mapping in enumerate(profile.get("mappings", [])):
         use = _parse_claim_ref(mapping.get("use"))
@@ -1784,11 +1773,10 @@ def _ambiguous_sentences(profile_id: str, profile: Mapping[str, Any],
                 f"each must declare the sentence it realizes")
 
 
-def _cross_profile_source(profile_id: str, profile: Mapping[str, Any],
+def _cross_profile_source(path: str, profile: Mapping[str, Any],
                           packs: Mapping[str, Any], entities: Mapping[str, Any],
                           vocabulary: Mapping[str, Any], available: set[str],
                           problems: _Problems) -> None:
-    path = f"bundle.profiles.{profile_id}"
     for index, mapping in enumerate(profile["mappings"]):
         mpath = f"{path}.mappings[{index}]"
         for role, binding in mapping["bind"].items():
@@ -1883,11 +1871,11 @@ def _known_claim(value: Any, packs: Mapping[str, Any], path: str,
     return claim
 
 
-def _profile_binding_columns(profile_id: str, profile: Mapping[str, Any]
+def _profile_binding_columns(path: str, profile: Mapping[str, Any]
                              ) -> tuple[tuple[str, str], ...]:
     out: list[tuple[str, str]] = []
     for index, mapping in enumerate(profile["mappings"]):
-        base = f"bundle.profiles.{profile_id}.mappings[{index}].bind"
+        base = f"{path}.mappings[{index}].bind"
         for role in sorted(mapping["bind"]):
             out.extend(_binding_columns(mapping["bind"][role], f"{base}.{role}"))
     return tuple(out)

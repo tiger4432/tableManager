@@ -250,15 +250,13 @@ def lot_event_bundle():
             "Wafer@1": {"keys": ["wafer"]},
         },
         "packs": packs,
-        "profiles": {
-            "lot-event@1": {
-                "source": "lot_event", "packs": ["lot-lineage@1"],
-                "mappings": mappings,
-            },
-        },
         "sources": {
             "lot_event": {
                 "relation": "lot_event",
+                "profile": {
+                    "packs": ["lot-lineage@1"],
+                    "mappings": mappings,
+                },
                 "driver": {
                     "unit": "group",
                     "identity": [EVENT_GROUP_COLUMN],
@@ -287,7 +285,6 @@ def lot_event_bundle():
                         "emits": [mapping["use"] for mapping in mappings],
                     },
                 },
-                "profile_id": "lot-event@1",
             },
         },
     }
@@ -527,19 +524,19 @@ def test_two_shape_identical_mappings_with_no_sentence_are_refused_at_compile_ti
     missing it, before anything runs.
     """
     bundle = lot_event_bundle()
-    mappings = bundle["profiles"]["lot-event@1"]["mappings"]
+    mappings = bundle["sources"]["lot_event"]["profile"]["mappings"]
     ambiguous = [index for index, mapping in enumerate(mappings)
                  if mapping.get("sentence")]
     assert len(ambiguous) == 2, "the fixture must still contain the ambiguous pair"
 
     for index in ambiguous:
         broken = lot_event_bundle()
-        del broken["profiles"]["lot-event@1"]["mappings"][index]["sentence"]
+        del broken["sources"]["lot_event"]["profile"]["mappings"][index]["sentence"]
         with pytest.raises(LedgerSetupValidationError) as exc:
             validate_bundle(broken, catalog=LOT_EVENT_CATALOG)
         assert exc.value.code == "ambiguous_sentence", exc.value.code
         assert exc.value.path == (
-            f"bundle.profiles.lot-event@1.mappings[{index}].sentence"), exc.value.path
+            f"bundle.sources.lot_event.profile.mappings[{index}].sentence"), exc.value.path
         # the message must name the peers, or a reader cannot find the other half
         assert "slot_preserving" in exc.value.message
         assert "shared_wafer" in exc.value.message

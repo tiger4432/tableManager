@@ -120,7 +120,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
     target_key = prefix + "target_id"
     join_key = prefix + "join_id"
     right_relation = prefix + "reference_rows"
-    profile = "input-transition@1"
     return {
         "setup_version": SETUP_VERSION,
         "virtual_joins": {
@@ -173,25 +172,22 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                 },
             },
         },
-        "profiles": {
-            profile: {
-                "source": source_name,
-                "packs": ["movement@1"],
-                "mappings": [{
-                    "mapping_id": "main_transition",
-                    "use": "movement@1/transition",
-                    "bind": {
-                        "subject": entity("InputEntity@1", "input_id", source_key),
-                        "target": entity("OutputEntity@1", "output_id", target_key),
-                        "occurred_at": binding(occurred),
-                        "event_key": binding(event),
-                    },
-                }],
-            },
-        },
         "sources": {
             source_name: {
                 "relation": source_name,
+                "profile": {
+                    "packs": ["movement@1"],
+                    "mappings": [{
+                        "mapping_id": "main_transition",
+                        "use": "movement@1/transition",
+                        "bind": {
+                            "subject": entity("InputEntity@1", "input_id", source_key),
+                            "target": entity("OutputEntity@1", "output_id", target_key),
+                            "occurred_at": binding(occurred),
+                            "event_key": binding(event),
+                        },
+                    }],
+                },
                 "driver": {
                     "unit": "group",
                     "identity": [event],
@@ -215,17 +211,17 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                         "emits": ["movement@1/transition"],
                     },
                 },
-                "profile_id": profile,
             },
         },
     }
 
 
-#: The preparer and the mapper have no section and no id of their own since 2026-08-20 --
-#: they are clauses of a source.  These two say so once, so a test that pokes at a body
+#: The preparer, the mapper and the profile have no section and no id of their own since
+#: 2026-08-20 -- they are clauses of a source.  These two say so once, so a test that pokes at a body
 #: reads as "this source's mapper" rather than repeating a five-key path.
 MAPPER_PATH = "bundle.sources.input_rows.driver.mapper"
 PREPARATION_PATH = "bundle.sources.input_rows.driver.preparation"
+PROFILE_PATH = "bundle.sources.input_rows.profile"
 
 
 def driver_mapper(bundle, source_name="input_rows"):
@@ -236,10 +232,8 @@ def driver_preparation(bundle, source_name="input_rows"):
     return bundle["sources"][source_name]["driver"]["preparation"]
 
 
-def add_unused_profile(bundle):
-    profile = copy.deepcopy(bundle["profiles"]["input-transition@1"])
-    bundle["profiles"]["unused-profile@1"] = profile
-    return profile
+def source_profile(bundle, source_name="input_rows"):
+    return bundle["sources"][source_name]["profile"]
 
 
 def objectless_register_bundle():
@@ -262,8 +256,8 @@ def objectless_register_bundle():
             "object": {"kind": "none"}, "occurred_at": "$occurred_at",
         },
     }}}
-    raw["profiles"]["input-transition@1"]["packs"].append("registration@1")
-    raw["profiles"]["input-transition@1"]["mappings"].append({
+    source_profile(raw)["packs"].append("registration@1")
+    source_profile(raw)["mappings"].append({
         "mapping_id": "register_input", "use": "registration@1/register",
         "bind": {
             "subject": entity("InputEntity@1", "input_id", "source_id"),
@@ -348,7 +342,7 @@ def test_public_schema_is_the_single_logical_contract():
     # has to be named, not skipped.
     assert schema["forbidden_sections"] == [
         "frames", "lookups", "positions", "manifest", "chains", "enrichments",
-        "tables", "source_preparers", "mappers"]
+        "tables", "source_preparers", "mappers", "profiles"]
     # And the contract SAYS where the physical half went, so a screen can name the file
     # instead of leaving an operator to work out an absence.
     assert schema["physical_schema_file"] == "table_config.json"
@@ -405,8 +399,10 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # was 11571931... while `source_preparers` and `mappers` were still root sections
     # (owner ruling 2026-08-20 folded both bodies into `sources.*.driver`; two fewer keys
     # at the root, the same bodies one level down).
+    # was 2a21fed8... while `profiles` was still a root section (same owner, same evening;
+    # the body moved to `sources.*.profile` and shed its `source` field).
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "2a21fed86c21138f3ab6f275775636d21a48b6dd8f54e4313d9c84bfdcb7c204")
+        "b884892c41e427095611aa2e48ab13b58476d43ff587952a93a38ea72edfa187")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -497,7 +493,7 @@ def test_duplicate_json_key_is_rejected_before_normalization(tmp_path):
     write_tree(tmp_path)
     (tmp_path / "ledger_config.json").write_text(
         '{"schema_version":2,"vocabulary":{},"vocabulary":{},'
-        '"entities":{},"packs":{},"profiles":{},"sources":{}}', encoding="utf-8")
+        '"entities":{},"packs":{},"sources":{}}', encoding="utf-8")
     with pytest.raises(LedgerSetupValidationError) as caught:
         load_setup_bundle(tmp_path)
     assert caught.value.code == "duplicate_id"
@@ -601,7 +597,7 @@ def test_text_and_binary_values_are_not_treated_as_json_arrays(value):
 
 def test_declared_lookup_binding_is_rejected():
     bundle = logical_bundle()
-    target = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"]
+    target = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
     target.clear()
     target.update({
         "kind": "declared_lookup", "lookup_id": "x", "select": "y",
@@ -683,7 +679,7 @@ def test_a_declared_basis_names_no_source_column():
 
 def test_entity_binding_requires_exact_registered_identity_keys():
     bundle = logical_bundle()
-    keys = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["subject"]["keys"]
+    keys = source_profile(bundle)["mappings"][0]["bind"]["subject"]["keys"]
     keys["extra"] = binding("source_id")
     error = issue(bundle, "invalid_entity_ref")
     assert error.path.endswith("bind.subject.keys")
@@ -740,13 +736,13 @@ def test_pack_vocabulary_subject_and_object_mismatch_are_rejected():
 def test_unknown_pack_claim_role_and_join_are_named():
     cases = []
     bundle = logical_bundle()
-    bundle["profiles"]["input-transition@1"]["mappings"][0]["use"] = "absent@1/transition"
+    source_profile(bundle)["mappings"][0]["use"] = "absent@1/transition"
     cases.append((bundle, "unknown_pack"))
     bundle = logical_bundle()
-    bundle["profiles"]["input-transition@1"]["mappings"][0]["use"] = "movement@1/absent"
+    source_profile(bundle)["mappings"][0]["use"] = "movement@1/absent"
     cases.append((bundle, "unknown_claim"))
     bundle = logical_bundle()
-    bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["absent"] = binding("event_key")
+    source_profile(bundle)["mappings"][0]["bind"]["absent"] = binding("event_key")
     cases.append((bundle, "unknown_role"))
     # RETIRED 2026-08-20 with the references they measured: the preparer and the mapper
     # are bodies inside the driver now, so there is no id left to misspell and no
@@ -758,7 +754,7 @@ def test_unknown_pack_claim_role_and_join_are_named():
         assert any(item.code == code for item in validate_bundle_errors(value)), code
 
 
-def test_unused_vocabulary_pack_and_profile_are_still_cross_validated():
+def test_unused_vocabulary_and_pack_are_still_cross_validated():
     bundle = logical_bundle()
     bundle["vocabulary"]["unused@1"] = {
         "status": "active", "layer": "ontology", "subjects": ["MissingEntity@1"],
@@ -772,22 +768,27 @@ def test_unused_vocabulary_pack_and_profile_are_still_cross_validated():
             bundle["packs"]["movement@1"]["claims"]["transition"])}
     }
     bundle["packs"]["unused@1"]["claims"]["claim"]["emit"]["predicate"] = "missing@1"
-    bundle["profiles"]["unused-profile@1"] = copy.deepcopy(
-        bundle["profiles"]["input-transition@1"])
-    bundle["profiles"]["unused-profile@1"]["packs"] = ["missing@1"]
-    bundle["profiles"]["unused-profile@1"]["mappings"][0]["use"] = "missing@1/claim"
     errors = validate_bundle_errors(bundle)
     assert any(error.code == "unknown_entity_type"
                and error.path.startswith("bundle.vocabulary.unused@1") for error in errors)
     assert any(error.code == "unknown_predicate"
                and error.path.startswith("bundle.packs.unused@1") for error in errors)
-    assert any(error.code == "unknown_pack"
-               and error.path.startswith("bundle.profiles.unused-profile@1") for error in errors)
 
 
-def test_unused_profile_entity_binding_is_cross_validated_against_its_source():
+# RETIRED 2026-08-20 with the declaration they measured, not because they stopped passing:
+# `test_unused_profile_entity_binding_is_cross_validated_against_its_source`,
+# `test_unused_profile_leaf_column_is_cross_validated_against_event_frame`,
+# `test_normal_unused_profile_still_validates_without_duplicate_errors` and the profile leg
+# of the test above.  All four rested on a profile NO source selects.  The profile is a
+# clause of a source now, so an unselected one cannot be written, and the second validation
+# pass that existed to reach it -- and whose double-reporting the third test pinned -- is
+# gone with it.  The predicates themselves did not retire: the two below assert the same
+# `unknown_entity_type` and `unknown_column` on the only profile there can be.
+
+
+def test_profile_entity_binding_is_cross_validated_against_its_source():
     bundle = logical_bundle()
-    profile = add_unused_profile(bundle)
+    profile = source_profile(bundle)
     profile["mappings"][0]["bind"]["subject"]["entity_type"] = "Missing@1"
 
     errors = validate_bundle_errors(bundle)
@@ -795,12 +796,12 @@ def test_unused_profile_entity_binding_is_cross_validated_against_its_source():
     assert_structured_errors(errors)
     matches = [error for error in errors if error.code == "unknown_entity_type"]
     assert [error.path for error in matches] == [
-        "bundle.profiles.unused-profile@1.mappings[0].bind.subject.entity_type"]
+        f"{PROFILE_PATH}.mappings[0].bind.subject.entity_type"]
 
 
-def test_unused_profile_leaf_column_is_cross_validated_against_event_frame():
+def test_profile_leaf_column_is_cross_validated_against_event_frame():
     bundle = logical_bundle()
-    profile = add_unused_profile(bundle)
+    profile = source_profile(bundle)
     profile["mappings"][0]["bind"]["subject"]["keys"]["input_id"][
         "column"] = "missing_column"
 
@@ -809,13 +810,7 @@ def test_unused_profile_leaf_column_is_cross_validated_against_event_frame():
     assert_structured_errors(errors)
     matches = [error for error in errors if error.code == "unknown_column"]
     assert [error.path for error in matches] == [
-        "bundle.profiles.unused-profile@1.mappings[0].bind.subject.keys.input_id.column"]
-
-
-def test_normal_unused_profile_still_validates_without_duplicate_errors():
-    bundle = logical_bundle()
-    add_unused_profile(bundle)
-    assert validate_bundle_errors(bundle) == ()
+        f"{PROFILE_PATH}.mappings[0].bind.subject.keys.input_id.column"]
 
 
 @pytest.mark.parametrize(
@@ -895,7 +890,7 @@ def test_profile_packs_mapping_use_and_mapper_emits_are_mutually_closed():
     bundle = logical_bundle()
     alternate = copy.deepcopy(bundle["packs"]["movement@1"])
     bundle["packs"]["alternate@1"] = alternate
-    bundle["profiles"]["input-transition@1"]["packs"] = ["alternate@1"]
+    source_profile(bundle)["packs"] = ["alternate@1"]
     alternate_claim = copy.deepcopy(alternate["claims"]["transition"])
     bundle["packs"]["movement@1"]["claims"]["secondary"] = alternate_claim
     driver_mapper(bundle)["emits"] = ["movement@1/secondary"]
@@ -1028,7 +1023,7 @@ def test_nonunique_index_is_not_a_total_order_proof():
 
 def test_missing_required_role_and_disallowed_binding_kind_are_rejected():
     bundle = logical_bundle()
-    del bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["target"]
+    del source_profile(bundle)["mappings"][0]["bind"]["target"]
     assert issue(bundle, "missing_required_role").path.endswith("bind.target")
     bundle = logical_bundle()
     role = bundle["packs"]["movement@1"]["claims"]["transition"]["roles"]["occurred_at"]
@@ -1038,7 +1033,7 @@ def test_missing_required_role_and_disallowed_binding_kind_are_rejected():
 
 def test_duplicate_mapping_id_is_rejected():
     bundle = logical_bundle()
-    mappings = bundle["profiles"]["input-transition@1"]["mappings"]
+    mappings = source_profile(bundle)["mappings"]
     mappings.append(copy.deepcopy(mappings[0]))
     error = issue(bundle, "duplicate_id")
     assert error.path.endswith("mappings[1].mapping_id")
@@ -1046,12 +1041,12 @@ def test_duplicate_mapping_id_is_rejected():
 
 def test_binding_approval_metadata_survives_normalization():
     bundle = logical_bundle()
-    event = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"]
+    event = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
     event["binding_origin"] = "system_suggested"
     event["approval_status"] = "pending"
     event["suggestion_reason"] = "header similarity"
     normalized = validate_bundle(bundle).to_mapping()
-    got = normalized["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"]
+    got = source_profile(normalized)["mappings"][0]["bind"]["event_key"]
     assert got["binding_origin"] == "system_suggested"
     assert got["approval_status"] == "pending"
     assert got["suggestion_reason"] == "header similarity"
@@ -1059,7 +1054,7 @@ def test_binding_approval_metadata_survives_normalization():
 
 def test_system_suggested_requires_a_reason():
     bundle = logical_bundle()
-    event = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"]
+    event = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
     event["binding_origin"] = "system_suggested"
     error = issue(bundle, "invalid_binding")
     assert error.path.endswith("bind.event_key.suggestion_reason")
@@ -1067,7 +1062,7 @@ def test_system_suggested_requires_a_reason():
 
 def test_constant_binding_must_be_finite_deterministic_json():
     bundle = logical_bundle()
-    event = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"]
+    event = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
     event.clear()
     event.update({
         "kind": "constant", "value": float("nan"),
@@ -1085,7 +1080,7 @@ def test_unregistered_symbolic_constant_is_rejected_exactly():
     assert [error.to_mapping() for error in errors] == [{
         "code": "invalid_symbolic_constant",
         "path": (
-            "bundle.profiles.input-transition@1.mappings[0].bind."
+            f"{PROFILE_PATH}.mappings[0].bind."
             "movement_kind.value"
         ),
         "message": (
@@ -1106,7 +1101,7 @@ def symbolic_bundle(value="pick"):
         "allowed_values": ["pick", "place"],
     }
     claim["emit"]["object"]["qualifiers"]["movement_kind"] = "$movement_kind?"
-    claim_binding = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]
+    claim_binding = source_profile(bundle)["mappings"][0]["bind"]
     claim_binding["movement_kind"] = {
         "kind": "constant",
         "value": value,
@@ -1153,7 +1148,7 @@ def test_general_time_constant_is_not_treated_as_symbolic():
     bundle = logical_bundle()
     bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
         "required": [], "optional": ["event_key"]}
-    occurred = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"][
+    occurred = source_profile(bundle)["mappings"][0]["bind"][
         "occurred_at"]
     occurred.clear()
     occurred.update({
@@ -1176,7 +1171,7 @@ def test_binding_approval_never_adds_a_claim_epistemic_class():
 @pytest.mark.parametrize("status", ["pending", "rejected"])
 def test_readiness_blocks_nonapproved_bindings_without_rejecting_draft(status):
     bundle = logical_bundle()
-    event = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"]
+    event = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
     event["approval_status"] = status
     draft = validate_bundle(bundle)
     error = bundle_readiness_errors(draft)[0]
@@ -1188,7 +1183,7 @@ def test_readiness_blocks_nonapproved_bindings_without_rejecting_draft(status):
 
 def test_readiness_walks_nested_entity_key_bindings():
     bundle = logical_bundle()
-    nested = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]["target"]["keys"]["output_id"]
+    nested = source_profile(bundle)["mappings"][0]["bind"]["target"]["keys"]["output_id"]
     nested["approval_status"] = "pending"
     errors = bundle_readiness_errors(validate_bundle(bundle))
     assert errors[0].path.endswith("bind.target.keys.output_id.approval_status")
@@ -1233,7 +1228,7 @@ def test_preparer_must_explicitly_accept_inherited_join_rules():
 def test_errors_have_deterministic_order():
     bundle = logical_bundle()
     bundle["sources"]["input_rows"]["relation"] = "absent"
-    bundle["profiles"]["input-transition@1"]["mappings"][0]["use"] = "missing@1/nope"
+    source_profile(bundle)["mappings"][0]["use"] = "missing@1/nope"
     first = [item.to_mapping() for item in validate_bundle_errors(bundle)]
     second = [item.to_mapping() for item in validate_bundle_errors(reverse_mappings(bundle))]
     assert first == second
@@ -1242,7 +1237,7 @@ def test_errors_have_deterministic_order():
 
 def test_followup_validation_errors_have_deterministic_order():
     bundle = logical_bundle()
-    profile = add_unused_profile(bundle)
+    profile = source_profile(bundle)
     profile["mappings"][0]["bind"]["subject"]["entity_type"] = "Missing@1"
     profile["mappings"][0]["bind"]["subject"]["keys"]["input_id"][
         "column"] = "missing_column"

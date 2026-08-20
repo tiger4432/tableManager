@@ -25,7 +25,7 @@ from ledger.roleframe import (
     mapper_context,
 )
 from test_ledger_roleframe import constant, event_frame, implementations
-from test_ledger_setup_bundle import logical_bundle
+from test_ledger_setup_bundle import logical_bundle, source_profile
 from test_ledger_setup_registry import snapshot
 
 
@@ -68,7 +68,7 @@ def value_object_bundle(*, object_kind="value", role_kind="quantity"):
     claim["roles"].pop("event_key")
     claim["roles"]["result"] = {"kind": role_kind, "required": True}
     claim["emit"]["object"] = {"kind": object_kind, "value": "$result"}
-    mapping = raw["profiles"]["input-transition@1"]["mappings"][0]
+    mapping = source_profile(raw)["mappings"][0]
     mapping["bind"].pop("target")
     mapping["bind"].pop("event_key")
     mapping["bind"]["result"] = constant(BOUND_COUNT)

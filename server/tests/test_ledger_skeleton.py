@@ -43,8 +43,9 @@ ANCHORS = {
     ("_validate_vocabulary", "f'{path}.object'"): "vocabulary.*.object",
     ("_validate_vocabulary", "qpath"): "vocabulary.*.object.qualifiers",
     ("_validate_entities", "path"): "entities.*",
-    # Both bodies moved inside the driver on 2026-08-20; the validator functions kept their
-    # rules and lost their sections, so only the anchor moved.
+    # The preparer and the mapper moved inside the driver on 2026-08-20 and the profile
+    # moved beside them the same evening; each validator function kept its rules and lost
+    # its section, so only the anchor moved.
     ("_validate_preparation", "path"): "sources.*.driver.preparation",
     ("_validate_mapper", "path"): "sources.*.driver.mapper",
     ("_validate_mapper", "f'{path}.unit'"): "sources.*.driver.mapper.unit",
@@ -53,8 +54,8 @@ ANCHORS = {
     ("_validate_packs", "rpath"): "packs.*.claims.*.roles.*",
     ("_validate_emission", "path"): "packs.*.claims.*.emit",
     ("_validate_emission", "f'{path}.object'"): "packs.*.claims.*.emit.object",
-    ("_validate_profiles", "path"): "profiles.*",
-    ("_validate_profiles", "mpath"): "profiles.*.mappings.*",
+    ("_validate_profile", "path"): "sources.*.profile",
+    ("_validate_profile", "mpath"): "sources.*.profile.mappings.*",
     ("_validate_binding", "path"): "def:binding",
     ("_validate_sources", "path"): "sources.*",
     ("_validate_sources", "f'{path}.driver'"): "sources.*.driver",

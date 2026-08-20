@@ -33,7 +33,7 @@ from ledger.source_preparation import (
 )
 from ledger.setup_bundle import LedgerSetupValidationError
 from test_ledger_setup_bundle import (
-    binding, driver_mapper, driver_preparation, logical_bundle)
+    binding, driver_mapper, driver_preparation, logical_bundle, source_profile)
 from test_ledger_setup_registry import snapshot
 
 
@@ -211,27 +211,25 @@ def dt_chain_bundle():
         "bond_y": "resolved_bond_y", "layer": "inventory_bond_layer"})
     final_chip = entity_binding("FinalChip@1", {
         "chip_id": "inventory_final_chip"})
-    raw["profiles"] = {
-        "input-transition@1": {
-            "source": "dt_log", "packs": ["assembly@1"],
-            "mappings": [
-                {"mapping_id": "core_to_dt", "use": "assembly@1/core_to_dt",
-                 "bind": {"subject": core, "target": dt,
-                          "occurred_at": binding("event_at"),
-                          "job": binding("dt_job_id")}},
-                {"mapping_id": "dt_to_bond", "use": "assembly@1/dt_to_bond",
-                 "bind": {"subject": dt, "target": bond,
-                          "occurred_at": binding("event_at"),
-                          "job": binding("dt_job_id")}},
-                {"mapping_id": "core_component", "use": "assembly@1/core_component",
-                 "bind": {"subject": core, "target": final_chip,
-                          "occurred_at": binding("event_at")}},
-            ],
-        },
-    }
     raw["sources"] = {
         "dt_log": {
-            "relation": "dt_log", "profile_id": "input-transition@1",
+            "relation": "dt_log",
+            "profile": {
+                "packs": ["assembly@1"],
+                "mappings": [
+                    {"mapping_id": "core_to_dt", "use": "assembly@1/core_to_dt",
+                     "bind": {"subject": core, "target": dt,
+                              "occurred_at": binding("event_at"),
+                              "job": binding("dt_job_id")}},
+                    {"mapping_id": "dt_to_bond", "use": "assembly@1/dt_to_bond",
+                     "bind": {"subject": dt, "target": bond,
+                              "occurred_at": binding("event_at"),
+                              "job": binding("dt_job_id")}},
+                    {"mapping_id": "core_component", "use": "assembly@1/core_component",
+                     "bind": {"subject": core, "target": final_chip,
+                              "occurred_at": binding("event_at")}},
+                ],
+            },
             "driver": {
                 "unit": "group", "identity": ["dt_job_id"],
                 "group_by": ["dt_job_id"], "order_by": ["record_id"],
@@ -573,7 +571,7 @@ def test_successful_right_row_change_yields_dependency_replay_worklist():
 @pytest.mark.parametrize("status", ["pending", "rejected"])
 def test_unapproved_nested_entity_binding_stops_before_preparer_call(status):
     raw = logical_bundle()
-    raw["profiles"]["input-transition@1"]["mappings"][0]["bind"]["subject"][
+    source_profile(raw)["mappings"][0]["bind"]["subject"][
         "keys"]["input_id"]["approval_status"] = status
     reader = FakeJoinReader()
 
@@ -692,7 +690,7 @@ def test_custom_preparer_free_hook_can_rename_and_calculate_only_declared_output
         "resolved_target": "string"}
     driver_mapper(raw)["input_columns"] = [
         "source_id", "resolved_target", "event_at", "event_key"]
-    raw["profiles"]["input-transition@1"]["mappings"][0]["bind"]["target"][
+    source_profile(raw)["mappings"][0]["bind"]["target"][
         "keys"]["output_id"]["column"] = "resolved_target"
     compiled = snapshot(raw)
 

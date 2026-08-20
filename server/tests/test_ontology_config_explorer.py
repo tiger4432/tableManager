@@ -84,10 +84,12 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     assert by_kind["predicate"] == set(active_setup.snapshot.registries["vocabulary"])
     assert by_kind["entity"] == set(active_setup.snapshot.registries["entities"])
     assert by_kind["pack"] == set(active_setup.snapshot.registries["packs"])
-    assert by_kind["profile"] == set(active_setup.snapshot.registries["profiles"])
-    # Both registries are keyed by the SOURCE they belong to since 2026-08-20, and the
-    # nodes are positions inside it -- `<source>#preparation` / `<source>#mapper` -- so the
-    # pairing is stated rather than assumed equal.
+    # All three registries are keyed by the SOURCE they belong to since 2026-08-20, and the
+    # nodes are positions inside it -- `<source>#profile` / `<source>#preparation` /
+    # `<source>#mapper` -- so the pairing is stated rather than assumed equal.
+    assert by_kind["profile"] == {
+        f"{source_id}#profile"
+        for source_id in active_setup.snapshot.registries["profiles"]}
     assert by_kind["preparer"] == {
         f"{source_id}#preparation"
         for source_id in active_setup.snapshot.registries["source_preparers"]}
@@ -112,23 +114,24 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         assert dict(node.raw) == dict(active_setup.catalog[table_id])
     assert len(by_kind["claim"]) == sum(
         len(pack["claims"]) for pack in bundle["packs"].values())
+    profiles = [source["profile"] for source in bundle["sources"].values()]
     assert len(by_kind["mapping"]) == sum(
-        len(profile["mappings"]) for profile in bundle["profiles"].values())
+        len(profile["mappings"]) for profile in profiles)
     assert len(by_kind["binding"]) == sum(
         len(mapping["bind"])
-        for profile in bundle["profiles"].values()
+        for profile in profiles
         for mapping in profile["mappings"])
     expected = {
         "predicate|slot_map@1",
         "entity|Lot@1",
         "pack|lot-lineage@1",
         "claim|lot-lineage@1/slot_map",
-        "profile|lot-event@1",
-        "mapping|lot-event@1#mapping:slot_preserving",
+        "profile|lot_event#profile",
+        "mapping|lot_event#profile#mapping:slot_preserving",
         "preparer|lot_event#preparation",
         "mapper|lot_event#mapper",
         "source_plan|lot_event",
-        "binding|lot-event@1#mapping:slot_preserving#binding:subject",
+        "binding|lot_event#profile#mapping:slot_preserving#binding:subject",
         "table|lot_event",
     }
     assert expected.issubset(index.nodes)
@@ -142,13 +145,12 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     assert len(index.nodes) == (
         len(bundle["vocabulary"]) + len(bundle["entities"]) + len(bundle["packs"])
         + sum(len(pack["claims"]) for pack in bundle["packs"].values())
-        + len(bundle["profiles"])
-        + sum(len(profile["mappings"]) for profile in bundle["profiles"].values())
+        + sum(len(profile["mappings"]) for profile in profiles)
         + sum(len(mapping["bind"])
-              for profile in bundle["profiles"].values()
+              for profile in profiles
               for mapping in profile["mappings"])
-        # one preparer and one mapper per source, inline in its driver
-        + 2 * len(bundle["sources"])
+        # one profile, one preparer and one mapper per source, inline in the source
+        + 3 * len(bundle["sources"])
         + len(bundle["sources"]) + len(tables)
         + len(active_setup.snapshot.verified_joins))
 
@@ -176,9 +178,9 @@ def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setu
 def test_actual_round_trip_source_profile_claim_predicate(active_setup):
     index = build_explorer_index(active_setup)
     edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
-    assert ("source_plan|lot_event", "profile|lot-event@1", "source_profile") in edges
+    assert ("source_plan|lot_event", "profile|lot_event#profile", "source_profile") in edges
     assert (
-        "mapping|lot-event@1#mapping:slot_preserving",
+        "mapping|lot_event#profile#mapping:slot_preserving",
         "claim|lot-lineage@1/slot_map",
         "mapping_claim",
     ) in edges
@@ -187,8 +189,8 @@ def test_actual_round_trip_source_profile_claim_predicate(active_setup):
         "emits_predicate",
     ) in edges
     assert (
-        "mapping|lot-event@1#mapping:slot_preserving",
-        "binding|lot-event@1#mapping:slot_preserving#binding:subject",
+        "mapping|lot_event#profile#mapping:slot_preserving",
+        "binding|lot_event#profile#mapping:slot_preserving#binding:subject",
         "mapping_binding",
     ) in edges
 
@@ -462,7 +464,7 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "pack|dt-assembly@1",
         "claim|dt-assembly@1/core_to_dt",
         "claim|dt-assembly@1/bond_component",
-        "profile|dt-transfer@1",
+        "profile|dt_log#profile",
         # The sample names the GENERIC implementations the repository ships.  Before
         # self-registration it named "sample-*" ids no class declared, so this round trip
         # only compiled because the support module carried a private trust list.
@@ -471,14 +473,14 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "verified_join|dt_job_to_inventory",
         "source_plan|dt_log",
         "table|dt_log",
-        "binding|dt-transfer@1#mapping:core_to_dt#binding:subject",
+        "binding|dt_log#profile#mapping:core_to_dt#binding:subject",
     }
     assert required.issubset(index.nodes)
     edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
     assert (
-        "source_plan|dt_log", "profile|dt-transfer@1", "source_profile") in edges
+        "source_plan|dt_log", "profile|dt_log#profile", "source_profile") in edges
     assert (
-        "mapping|dt-transfer@1#mapping:core_to_dt",
+        "mapping|dt_log#profile#mapping:core_to_dt",
         "claim|dt-assembly@1/core_to_dt", "mapping_claim") in edges
     assert (
         "claim|dt-assembly@1/core_to_dt",
@@ -487,7 +489,7 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "source_plan|dt_log", "verified_join|dt_job_to_inventory",
         "source_verified_join") in edges
     assert (
-        "mapping|dt-transfer@1#mapping:bond_component",
+        "mapping|dt_log#profile#mapping:bond_component",
         "claim|dt-assembly@1/bond_component", "mapping_claim") in edges
     assert index.nodes["predicate|transferred_to@1"].config_path == (
         "ledger_config.json#/vocabulary/transferred_to@1")
@@ -495,7 +497,7 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
     logical = transfer_sample_setup.bundle.to_mapping()
     mappings = {
         item["mapping_id"]: item
-        for item in logical["profiles"]["dt-transfer@1"]["mappings"]
+        for item in logical["sources"]["dt_log"]["profile"]["mappings"]
     }
     lineage = [
         (
@@ -953,32 +955,34 @@ def test_an_already_dangling_inbound_edge_does_not_make_a_declaration_undeletabl
     }]
 
 
-def test_a_source_plan_and_its_profile_reference_each_other_in_both_directions(active_setup):
-    """🔴 A REFERENTIAL GUARD ALONE CANNOT DELETE A SOURCE PLAN OR ITS PROFILE.
+def test_a_source_plan_holds_its_profile_and_nothing_points_back(active_setup):
+    """🔴 THE MUTUAL REFERENCE IS GONE AS OF 2026-08-20, AND THAT IS ASSERTED, NOT ASSUMED.
 
-    Found by RUNNING the guard over the live index rather than reading it: every single
-    declaration there has at least one resolved referrer, and for this pair the reason is
-    structural rather than incidental.  `build_explorer_index` extracts an edge in each
-    direction -- `profiles.<id>.source` names the source plan, and
-    `sources.<id>.profile_id` names the profile -- so each is the other's only referrer.
+    Until that evening `profiles.<id>.source` named the source plan and
+    `sources.<id>.profile_id` named the profile, so each was the other's only referrer and
+    "refuse while referenced" deadlocked on the pair.  The profile is a clause of the source
+    now: containment replaced the cycle, the source names the profile, and NOTHING names the
+    source.
 
-    "Refuse while referenced, repoint first" therefore deadlocks: neither can be deleted
-    until the other is, and the other cannot be deleted either.  Whoever wires delete and
-    rename needs an owner ruling here (exempt a mutual pair? accept a set of declarations
-    in one draft? require the profile's `source` to be repointed first?).  It is asserted
-    rather than written in a comment because a future edge change that breaks the deadlock
-    should make this test speak up rather than pass silently.
+    The old test asserted the cycle so a future edge change breaking it would speak up.  This
+    one asserts its ABSENCE for the same reason in the other direction -- an edge from a
+    profile back to its source would restore the deadlock, and that must not happen quietly.
+    `deletion_plan` never depended on either shape (it walks reachability), which is why
+    nothing else in this suite had to change for the move.
     """
     index = build_explorer_index(active_setup)
-    pairs = [
-        (node.key, node_key("profile", node.raw["profile_id"]))
-        for node in index.nodes.values() if node.kind == "source_plan"
-    ]
-    assert pairs, "no source plan declared; this test would otherwise be vacuous"
-    for source_key, profile_key in pairs:
+    sources = [node for node in index.nodes.values() if node.kind == "source_plan"]
+    assert sources, "no source plan declared; this test would otherwise be vacuous"
+    for node in sources:
+        profile_key = node_key("profile", f"{node.canonical_id}#profile")
         assert profile_key in index.nodes
-        assert profile_key in {edge.from_key for edge in index.inbound[source_key]}
-        assert source_key in {edge.from_key for edge in index.inbound[profile_key]}
+        assert index.nodes[profile_key].bundle_path == (
+            "sources", node.canonical_id, "profile")
+        # The source holds it...
+        assert node.key in {edge.from_key for edge in index.inbound[profile_key]}
+        # ...and no profile -- this one or any other -- points back at a source.
+        assert not [edge for edge in index.inbound[node.key]
+                    if index.nodes[edge.from_key].kind == "profile"]
 
 
 #: kind -> the `bundle_path` `build_explorer_index` actually builds for it.
@@ -998,7 +1002,8 @@ _FIXTURE_BUNDLE_PATH = {
     # Positions inside a source since 2026-08-20, keyed `<source>#preparation`.
     "preparer": lambda i: ("sources", i.split("#")[0], "driver", "preparation"),
     "mapper": lambda i: ("sources", i.split("#")[0], "driver", "mapper"),
-    "profile": lambda i: ("profiles", i),
+    # A position inside a source since 2026-08-20, keyed `<source>#profile`.
+    "profile": lambda i: ("sources", i.split("#")[0], "profile"),
     "source_plan": lambda i: ("sources", i),
     "verified_join": lambda i: ("virtual_joins", i),
     "table": lambda i: ("__physical_catalog__", i),
@@ -1043,9 +1048,15 @@ def test_deleting_a_source_with_the_profile_only_it_uses_succeeds(transfer_sampl
 
     Scored on the transfer SAMPLE, not the live root: the live `ledger_config.json` is
     gitignored and hand-edited, so a test that pins its exact component would go red for a
-    reason that has nothing to do with this instrument.  The sample carries the same mutual
-    pair (`sources.dt_log.profile_id` and `profiles.dt-transfer@1.source`), which is the
-    property under test, and the assertions below derive the pair rather than name it.
+    reason that has nothing to do with this instrument.  The sample carries the same source
+    and profile, which is the property under test, and the assertions below derive the pair
+    rather than name it.
+
+    🔴 THE CONTRAST MOVED TO THE PROFILE ON 2026-08-20 AND THE POINT DID NOT.  The profile
+    is a clause of the source now, so nothing points at the source any more and in-degree
+    would no longer refuse THERE.  It still refuses on the profile, whose only referrer is
+    the source that is being deleted with it -- which is exactly the case the ruling is
+    about: "a delete whose only referrers are inside the deletion set must succeed".
     """
     from ledger.config_explorer import (
         deletion_plan, require_deletable, require_no_referrers)
@@ -1053,10 +1064,9 @@ def test_deleting_a_source_with_the_profile_only_it_uses_succeeds(transfer_sampl
     index = build_explorer_index(transfer_sample_setup)
     source = next(
         node.key for node in index.nodes.values() if node.kind == "source_plan")
-    profile = node_key("profile", index.nodes[source].raw["profile_id"])
-    # Non-vacuous: this really is the mutual pair that defeats in-degree.
-    assert source in {edge.from_key for edge in index.inbound[profile]}
-    assert profile in {edge.from_key for edge in index.inbound[source]}
+    profile = node_key("profile", f"{index.nodes[source].canonical_id}#profile")
+    # Non-vacuous: the source really is the profile's only referrer.
+    assert {edge.from_key for edge in index.inbound[profile]} == {source}
 
     plan = deletion_plan(index, [source])
     assert plan.blocked == tuple(), (
@@ -1075,33 +1085,33 @@ def test_deleting_a_source_with_the_profile_only_it_uses_succeeds(transfer_sampl
     assert all(key in removed for key, node in index.nodes.items()
                if node.kind in {"mapping", "binding"})
 
-    # And the in-degree fallback, on the same subject, still refuses. This is the exact
-    # wiring the ruling forbids; the two must not be confused.
+    # And the in-degree fallback, on a casualty of the very same plan, still refuses.
+    # This is the exact wiring the ruling forbids; the two must not be confused.
     with pytest.raises(ConfigExplorerError) as refused:
-        require_no_referrers(index, source, "delete")
+        require_no_referrers(index, profile, "delete")
     assert refused.value.code == "declaration_is_referenced"
 
 
 def test_deleting_a_profile_alone_is_blocked_and_names_the_surviving_reacher(transfer_sample_setup):
     """The fallback's real job: a reacher that SURVIVES the deletion.
 
-    Deleting the profile without its source would leave `sources.<id>.profile_id` naming
-    a declaration that no longer exists -- the silent dangling reference this whole thing
-    exists to prevent.  The refusal has to name the source, because "add it to the
-    selection" is the operator's next move and a count cannot carry it.
+    Deleting the profile without its source would leave the source without the clause the
+    grammar requires of it -- the silent breakage this whole thing exists to prevent.  The
+    refusal has to name the source, because "add it to the selection" is the operator's next
+    move and a count cannot carry it.
     """
     from ledger.config_explorer import deletion_plan, require_deletable
 
     index = build_explorer_index(transfer_sample_setup)
     source = next(
         node.key for node in index.nodes.values() if node.kind == "source_plan")
-    profile = node_key("profile", index.nodes[source].raw["profile_id"])
+    profile = node_key("profile", f"{index.nodes[source].canonical_id}#profile")
 
     plan = deletion_plan(index, [profile])
     assert [row["key"] for row in plan.blocked] == [profile]
     reachers = plan.blocked[0]["reached_by"]
     assert [row["key"] for row in reachers] == [source]
-    assert reachers[0]["json_pointer"].endswith("/profile_id")
+    assert reachers[0]["json_pointer"].endswith("/profile")
 
     with pytest.raises(ConfigExplorerError) as refused:
         require_deletable(index, plan, "delete")
@@ -1132,9 +1142,9 @@ def test_a_third_kind_in_the_cycle_goes_with_it_without_a_pair_special_case():
         # kind, and `mapper` stopped being a top-level declaration on 2026-08-20 -- a
         # position inside a source is `unauthorable_here` and would have made this pass
         # for the wrong reason.
-        [("source_plan", "s"), ("profile", "p"), ("pack", "k")],
-        [("source_plan", "s", "profile", "p", "source_profile"),
-         ("profile", "p", "pack", "k", "profile_pack"),
+        [("source_plan", "s"), ("profile", "s#profile"), ("pack", "k")],
+        [("source_plan", "s", "profile", "s#profile", "source_profile"),
+         ("profile", "s#profile", "pack", "k", "profile_pack"),
          ("pack", "k", "source_plan", "s", "mapper_emits")],
     )
     assert self_standing_keys(index) == frozenset(), (
@@ -1142,7 +1152,8 @@ def test_a_third_kind_in_the_cycle_goes_with_it_without_a_pair_special_case():
 
     plan = deletion_plan(index, ["source_plan|s"])
     assert plan.blocked == tuple()
-    assert set(plan.removed_keys) == {"source_plan|s", "profile|p", "pack|k"}
+    assert set(plan.removed_keys) == {
+        "source_plan|s", "profile|s#profile", "pack|k"}
 
 
 def test_a_half_wired_declaration_survives_an_unrelated_deletion():
@@ -1150,27 +1161,25 @@ def test_a_half_wired_declaration_survives_an_unrelated_deletion():
     declaration nothing points at yet.
 
     The second is the normal state of the screen this feeds -- an author creates a pack
-    minutes before any profile uses it.  If in-degree zero were not a walk root, the first
-    unrelated deletion would find that pack unreachable and quietly sweep it.
+    minutes before any source's profile uses it.  If in-degree zero were not a walk root,
+    the first unrelated deletion would find that pack unreachable and quietly sweep it.
     """
     from ledger.config_explorer import deletion_plan
 
     index = _linked_index(
-        [("source_plan", "a"), ("profile", "pa"), ("source_plan", "b"),
-         ("profile", "pb"), ("pack", "shared"), ("pack", "fresh"),
+        [("source_plan", "a"), ("profile", "a#profile"), ("source_plan", "b"),
+         ("profile", "b#profile"), ("pack", "shared"), ("pack", "fresh"),
          ("claim", "fresh/one")],
-        [("source_plan", "a", "profile", "pa", "source_profile"),
-         ("profile", "pa", "source_plan", "a", "profile_source"),
-         ("source_plan", "a", "pack", "shared", "profile_pack"),
-         ("source_plan", "b", "profile", "pb", "source_profile"),
-         ("profile", "pb", "source_plan", "b", "profile_source"),
-         ("source_plan", "b", "pack", "shared", "profile_pack"),
+        [("source_plan", "a", "profile", "a#profile", "source_profile"),
+         ("profile", "a#profile", "pack", "shared", "profile_pack"),
+         ("source_plan", "b", "profile", "b#profile", "source_profile"),
+         ("profile", "b#profile", "pack", "shared", "profile_pack"),
          ("pack", "fresh", "claim", "fresh/one", "contains_claim")],
     )
 
     plan = deletion_plan(index, ["source_plan|a"])
     assert plan.blocked == tuple()
-    assert set(plan.removed_keys) == {"source_plan|a", "profile|pa"}, (
+    assert set(plan.removed_keys) == {"source_plan|a", "profile|a#profile"}, (
         "the shared pack and the half-wired pack are held up by survivors")
 
     # And deleting the half-wired pack ITSELF must still take what it holds up.  This is
@@ -1193,16 +1202,15 @@ def test_pre_existing_garbage_is_not_swept_into_an_unrelated_deletion():
     from ledger.config_explorer import deletion_plan
 
     index = _linked_index(
-        [("source_plan", "s"), ("profile", "p"),
+        [("source_plan", "s"), ("profile", "s#profile"),
          ("entity", "GhostA"), ("entity", "GhostB")],
-        [("source_plan", "s", "profile", "p", "source_profile"),
-         ("profile", "p", "source_plan", "s", "profile_source"),
+        [("source_plan", "s", "profile", "s#profile", "source_profile"),
          ("entity", "GhostA", "entity", "GhostB", "subject_entity"),
          ("entity", "GhostB", "entity", "GhostA", "subject_entity")],
     )
 
     plan = deletion_plan(index, ["source_plan|s"])
-    assert set(plan.removed_keys) == {"source_plan|s", "profile|p"}
+    assert set(plan.removed_keys) == {"source_plan|s", "profile|s#profile"}
     assert not any(key.startswith("entity|Ghost") for key in plan.removed_keys)
 
 
@@ -1314,9 +1322,8 @@ def test_a_verified_join_is_retained_rather_than_deleted():
     from ledger.config_explorer import deletion_plan
 
     index = _linked_index(
-        [("source_plan", "s"), ("profile", "p"), ("verified_join", "j")],
-        [("source_plan", "s", "profile", "p", "source_profile"),
-         ("profile", "p", "source_plan", "s", "profile_source"),
+        [("source_plan", "s"), ("profile", "s#profile"), ("verified_join", "j")],
+        [("source_plan", "s", "profile", "s#profile", "source_profile"),
          ("source_plan", "s", "verified_join", "j", "source_verified_join")],
     )
 
@@ -1328,7 +1335,7 @@ def test_a_verified_join_is_retained_rather_than_deleted():
         "the refusal has to name the section, or the operator has no next move")
 
     plan = deletion_plan(index, ["source_plan|s"])
-    assert set(plan.removed_keys) == {"source_plan|s", "profile|p"}
+    assert set(plan.removed_keys) == {"source_plan|s", "profile|s#profile"}
     assert [row["key"] for row in plan.retained] == ["verified_join|j"]
     assert plan.retained[0]["reason"] == "unauthorable_here"
 
@@ -1387,10 +1394,9 @@ def test_deleting_the_last_source_is_allowed_and_reports_itself_as_a_reset():
 
     # `pack`, not `mapper`: the third declaration only has to be top-level and authorable,
     # and a mapper is a position inside a source since 2026-08-20.
-    nodes = [("source_plan", "s"), ("profile", "p"), ("pack", "k")]
-    edges = [("source_plan", "s", "profile", "p", "source_profile"),
-             ("profile", "p", "source_plan", "s", "profile_source"),
-             ("profile", "p", "pack", "k", "profile_pack")]
+    nodes = [("source_plan", "s"), ("profile", "s#profile"), ("pack", "k")]
+    edges = [("source_plan", "s", "profile", "s#profile", "source_profile"),
+             ("profile", "s#profile", "pack", "k", "profile_pack")]
     index = _linked_index(nodes, edges)
 
     plan = deletion_plan(index, ["source_plan|s"])
@@ -1584,7 +1590,7 @@ def test_deletion_preview_endpoint_names_the_casualties_and_shows_the_blockage(
     _, index, _ = service.active()
     source = next(
         node.key for node in index.nodes.values() if node.kind == "source_plan")
-    profile = node_key("profile", index.nodes[source].raw["profile_id"])
+    profile = node_key("profile", f"{index.nodes[source].canonical_id}#profile")
 
     ok = client.get(
         "/admin/ontology-explorer/deletion-preview", params={"targets": [source]})
@@ -1678,10 +1684,8 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
     assert not validate_bundle_errors(original, catalog=catalog)
 
     reduced = copy.deepcopy(original)
-    for profile in reduced["profiles"].values():
-        profile.pop("packs", None)
-        profile.pop("source", None)
     for source in reduced["sources"].values():
+        source["profile"].pop("packs", None)
         source["driver"]["mapper"].pop("emits", None)
         source["driver"]["mapper"].pop("input_columns", None)
     for pack in reduced["packs"].values():
@@ -1697,9 +1701,9 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
         assert row["ground"]["text"] and row["ground"]["from_paths"]
 
     rebuilt = copy.deepcopy(reduced)
-    for profile_id, profile in rebuilt["profiles"].items():
-        profile["packs"] = derived[f"bundle.profiles.{profile_id}.packs"]["value"]
-        profile["source"] = derived[f"bundle.profiles.{profile_id}.source"]["value"]
+    for source_id, source in rebuilt["sources"].items():
+        source["profile"]["packs"] = derived[
+            f"bundle.sources.{source_id}.profile.packs"]["value"]
     for source_id, source in rebuilt["sources"].items():
         base = f"bundle.sources.{source_id}.driver.mapper"
         source["driver"]["mapper"]["emits"] = derived[f"{base}.emits"]["value"]
@@ -1801,10 +1805,10 @@ def test_closed_lists_come_from_the_validators_own_constants():
     assert set(lists["approval_status"]) == set(setup_bundle._APPROVAL_STATUSES)
     assert set(lists["binding_origin"]) == set(setup_bundle._BINDING_ORIGINS)
     # Steps ship with their labels so the step bar carries no list of its own.
-    # Five since 2026-08-20: the 「준비기·매퍼」 layer named two sections that no longer
-    # exist, and its fields moved into `sources`.
+    # Four since 2026-08-20: the 「준비기·매퍼」 layer and then 「프로필」 named sections that no
+    # longer exist, and all of their fields moved into `sources`.
     assert [step["id"] for step in lists["steps"]] == [
-        "entities", "vocabulary", "packs", "profiles", "sources"]
+        "entities", "vocabulary", "packs", "sources"]
     assert all(step["label"] for step in lists["steps"])
 
 
@@ -1816,13 +1820,13 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
     catalog = live_physical_catalog()
     bundle = json.loads(
         (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
-    del bundle["profiles"]["dt-job@1"]["mappings"][1]["bind"]["count"]
+    del bundle["sources"]["dt_job"]["profile"]["mappings"][1]["bind"]["count"]
     del (bundle["packs"]["lot-lineage@1"]["claims"]["membership"]
          ["emit"]["object"]["qualifiers"]["slot"])
 
     plan = authoring_plan(bundle, catalog)
     by_path = {row["path"]: row for row in plan["fields"]}
-    role = by_path["bundle.profiles.dt-job@1.mappings[1].bind.count"]
+    role = by_path["bundle.sources.dt_job.profile.mappings[1].bind.count"]
     assert role["state"] == "missing"
     assert [item["code"] for item in role["refusals"]] == ["missing_required_role"]
     qualifier = by_path[
@@ -1834,7 +1838,7 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
     assert "$slot" in qualifier["candidates"]
     assert not plan["unattached_refusals"], plan["unattached_refusals"]
     blocked = {step["id"] for step in plan["steps"] if step["status"] == "blocked"}
-    assert blocked == {"packs", "profiles"}
+    assert blocked == {"packs", "sources"}
 
 
 def test_column_candidates_are_three_universes_and_not_one(active_setup):
@@ -1911,9 +1915,12 @@ def test_a_complete_config_reports_no_remaining_work_and_a_broken_one_reports_wh
         f"{[(s['id'], s['remaining']) for s in before['steps']]}")
 
     broken = copy.deepcopy(bundle)
+    # Was `profile_id`, which retired into the source on 2026-08-20.  `driver.unit` is the
+    # replacement for the same reason it was chosen then: one required value, owned by
+    # exactly one layer, whose absence cannot be derived from anything else.
     victim = next(name for name, source in broken["sources"].items()
-                  if isinstance(source, dict) and "profile_id" in source)
-    del broken["sources"][victim]["profile_id"]
+                  if isinstance(source, dict) and "unit" in source.get("driver", {}))
+    del broken["sources"][victim]["driver"]["unit"]
 
     after = authoring_plan(broken, catalog)
     moved = [step["id"] for step in after["steps"] if step["remaining"]]

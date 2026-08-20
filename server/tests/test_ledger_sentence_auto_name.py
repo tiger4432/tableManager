@@ -65,7 +65,7 @@ def test_a_shape_is_named_by_the_attribute_it_was_bound_to():
     stopped resolving.
     """
     declared = {mapping["sentence"]
-                for mapping in lot_event_bundle()["profiles"]["lot-event@1"]["mappings"]
+                for mapping in lot_event_bundle()["sources"]["lot_event"]["profile"]["mappings"]
                 if mapping.get("sentence")}
 
     assert LotEventRoleMapper.SPLIT_SLOT_CARRY.sentence == "split_slot_carry"

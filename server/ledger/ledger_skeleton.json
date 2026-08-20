@@ -471,94 +471,6 @@
         }
       },
       {
-        "key": "profiles",
-        "required": true,
-        "node": {
-          "kind": "map",
-          "keyed_by": "name",
-          "member": "프로필 id",
-          "of": {
-            "kind": "record",
-            "fields": [
-              {
-                "key": "source",
-                "required": true,
-                "node": {
-                  "kind": "leaf",
-                  "hint": "free"
-                }
-              },
-              {
-                "key": "packs",
-                "required": true,
-                "node": {
-                  "kind": "map",
-                  "keyed_by": "index",
-                  "member": "팩",
-                  "of": {
-                    "kind": "leaf",
-                    "hint": "ref",
-                    "section": "packs"
-                  }
-                }
-              },
-              {
-                "key": "mappings",
-                "required": true,
-                "node": {
-                  "kind": "map",
-                  "keyed_by": "index",
-                  "member": "매핑",
-                  "of": {
-                    "kind": "record",
-                    "fields": [
-                      {
-                        "key": "mapping_id",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      },
-                      {
-                        "key": "use",
-                        "required": true,
-                        "label": "쓰는 주장",
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      },
-                      {
-                        "key": "bind",
-                        "required": true,
-                        "label": "역할 바인딩",
-                        "node": {
-                          "kind": "map",
-                          "keyed_by": "name",
-                          "member": "역할",
-                          "of": {
-                            "use": "binding"
-                          }
-                        }
-                      },
-                      {
-                        "key": "sentence",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      }
-                    ]
-                  }
-                }
-              }
-            ]
-          }
-        }
-      },
-      {
         "key": "sources",
         "required": true,
         "node": {
@@ -577,12 +489,79 @@
                 }
               },
               {
-                "key": "profile_id",
+                "key": "profile",
                 "required": true,
+                "label": "프로필",
                 "node": {
-                  "kind": "leaf",
-                  "hint": "ref",
-                  "section": "profiles"
+                  "kind": "record",
+                  "fields": [
+                    {
+                      "key": "packs",
+                      "required": true,
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "팩",
+                        "of": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "packs"
+                        }
+                      }
+                    },
+                    {
+                      "key": "mappings",
+                      "required": true,
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "매핑",
+                        "of": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "mapping_id",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "use",
+                              "required": true,
+                              "label": "쓰는 주장",
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "bind",
+                              "required": true,
+                              "label": "역할 바인딩",
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "역할",
+                                "of": {
+                                  "use": "binding"
+                                }
+                              }
+                            },
+                            {
+                              "key": "sentence",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               },
               {

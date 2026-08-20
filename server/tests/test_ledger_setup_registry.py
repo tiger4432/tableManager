@@ -38,12 +38,14 @@ from test_ledger_setup_bundle import (
     DEFAULT_CATALOG,
     MAPPER_PATH,
     PREPARATION_PATH,
+    PROFILE_PATH,
     driver_mapper,
     driver_preparation,
     load_setup_bundle,
     logical_bundle,
     objectless_register_bundle,
     reverse_mappings,
+    source_profile,
     validate_bundle,
     write_tree,
 )
@@ -149,7 +151,7 @@ def test_registry_tree_compiles_pack_claim_role_and_source_plan():
     # Keyed by the SOURCE now: the mapper is that source's clause, not a named
     # declaration it points at.
     assert source.driver.mapper is compiled.mappers["input_rows"]
-    assert source.profile is compiled.profiles["input-transition@1"]
+    assert source.profile is compiled.profiles["input_rows"]
 
 
 def test_objectless_emission_compiles_without_an_object_role():
@@ -195,7 +197,7 @@ def test_registries_and_descriptors_are_recursively_immutable():
     with pytest.raises(TypeError):
         compiled.entities["InputEntity@1"].key_types["input_id"] = "integer"
     with pytest.raises(TypeError):
-        compiled.profiles["input-transition@1"].mappings[0].bindings["new"] = {}
+        compiled.profiles["input_rows"].mappings[0].bindings["new"] = {}
     with pytest.raises(FrozenInstanceError):
         compiled.packs["movement@1"].version = 2
 
@@ -539,7 +541,7 @@ def test_known_implementation_with_untrusted_version_has_exact_error_path(
 @pytest.mark.parametrize("approval", ["pending", "rejected"])
 def test_snapshot_compiler_requires_every_binding_to_be_approved(approval):
     bundle = logical_bundle()
-    binding = bundle["profiles"]["input-transition@1"]["mappings"][0]["bind"]
+    binding = source_profile(bundle)["mappings"][0]["bind"]
     binding["subject"]["keys"]["input_id"]["approval_status"] = approval
 
     errors = snapshot_compile_errors(validate_bundle(bundle), trusted_implementations())
@@ -547,7 +549,7 @@ def test_snapshot_compiler_requires_every_binding_to_be_approved(approval):
     assert [issue.to_mapping() for issue in errors] == [{
         "code": "binding_not_approved",
         "path": (
-            "bundle.profiles.input-transition@1.mappings[0].bind.subject.keys."
+            f"{PROFILE_PATH}.mappings[0].bind.subject.keys."
             "input_id.approval_status"
         ),
         "message": f"binding approval_status is {approval!r}, expected 'approved'",

@@ -307,7 +307,7 @@ export function reduceFieldFold(state, action) {
 //
 // Every picker built from step 5 onward reads this and holds no copy of its own. A picker
 // that snapshots at mount is the defect the mirror exists to remove: declare a pack, go to
-// the profile that needs it, and the list it captured a minute ago does not have it.
+// the source whose profile needs it, and the list it captured a minute ago does not have it.
 //
 // 🔴 IT READS THE PLAN, NOT THE TREE, AND THAT IS THE WHOLE POINT. `state.items` is the
 // obvious source and it is wrong twice over: `/view` is PAGED (100 at a time) and it is
@@ -316,16 +316,16 @@ export function reduceFieldFold(state, action) {
 // notice a name missing. `authoring.sections` is unpaged and unfiltered.
 //
 // 🔴 IT NEVER MERGES `newDeclaration`. The name being typed is not declared yet. Offering
-// it would let a profile point at a pack the server has never accepted, and a create that
+// it would let a source's profile point at a pack the server has never accepted, and a create
 // was REFUSED would go on showing as though it existed.
 // 🔴 IT ANSWERS FOR THE AUTHORABLE SECTIONS AND NOTHING ELSE, and the picker round will
 // hit that. Derived from the live config on 2026-08-19: every reference edge carries
 // `expected_kind`, so `AUTHORABLE_SECTIONS[expected_kind]` gives the section a picker
-// draws from -- entities, vocabulary, packs, profiles, sources. (`mappers` and
-// `source_preparers` were on that list until 2026-08-20, when both moved inside a source
-// plan and joined the kinds below.)
+// draws from -- entities, vocabulary, packs, sources. (`mappers`, `source_preparers` and
+// `profiles` were on that list until 2026-08-20, when all three moved inside a source plan
+// and joined the kinds below.)
 // The rest of the expected kinds have no section of their own: `claim`, `mapping`,
-// `binding`, `preparer` and `mapper` (they live INSIDE an owner -- a mapper's `emits`
+// `binding`, `preparer`, `mapper` and `profile` (they live INSIDE an owner -- a mapper's `emits`
 // picks claims from across all packs) and `table` (physical, read-only here, its own
 // column universes). Those need a second source that does not exist yet. This is a gap in
 // what is here, not a defect in it.

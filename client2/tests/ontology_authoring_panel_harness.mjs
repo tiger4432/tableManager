@@ -94,29 +94,30 @@ const PLAN = {
   steps: [
     { id: 'entities', label: '엔터티', sections: ['entities'], declared: 3,
       status: 'ready', derived: 0, missing: 0, unanswered: 0, answered: 3 },
-    { id: 'profiles', label: '프로필', sections: ['profiles'], declared: 2,
-      status: 'blocked', derived: 2, missing: 1, unanswered: 0, answered: 4 },
-    { id: 'sources', label: '소스', sections: ['sources'], declared: 0,
+    { id: 'sources', label: '소스', sections: ['sources'], declared: 2,
+      status: 'blocked', derived: 2, missing: 1, unanswered: 1, answered: 0 },
+    { id: 'packs', label: '팩', sections: ['packs'], declared: 0,
       status: 'empty', derived: 0, missing: 0, unanswered: 0, answered: 0 },
   ],
   fields: [
     field({
-      path: 'bundle.profiles.dt-job@1.packs', label: 'packs', step: 'profiles',
+      path: 'bundle.sources.dt_job.profile.packs', label: 'packs', step: 'sources',
       state: 'derived', tier: 'structural', value: ['dt-job@1'],
       declared: ['dt-job@1'], has_declared: true,
       disposition: 'grammar_requires_it',
       ground: {
         rule: 'profile_packs_from_mapping_uses',
         text: '채움: mappings의 use 2건이 쓰는 팩',
-        from_paths: ['bundle.profiles.dt-job@1.mappings[0].use',
-          'bundle.profiles.dt-job@1.mappings[1].use'],
-        from_keys: ['profile|dt-job@1'],
+        from_paths: ['bundle.sources.dt_job.profile.mappings[0].use',
+          'bundle.sources.dt_job.profile.mappings[1].use'],
+        from_keys: ['profile|dt_job#profile'],
         from_value: ['dt-job@1'],
       },
     }),
     field({
-      path: 'bundle.profiles.dt-job@1.mappings[0].bind.subject.keys', label: '식별키 이름',
-      step: 'profiles', state: 'derived', tier: 'structural', value: ['dt_job'],
+      path: 'bundle.sources.dt_job.profile.mappings[0].bind.subject.keys',
+      label: '식별키 이름',
+      step: 'sources', state: 'derived', tier: 'structural', value: ['dt_job'],
       declared: ['lot'], has_declared: true, conflicts: true,
       disposition: 'default_overridable',
       ground: {
@@ -126,11 +127,11 @@ const PLAN = {
       },
     }),
     field({
-      path: 'bundle.profiles.dt-job@1.mappings[1].bind.count', label: '역할 count',
-      step: 'profiles', state: 'missing', tier: 'constrained_input',
+      path: 'bundle.sources.dt_job.profile.mappings[1].bind.count', label: '역할 count',
+      step: 'sources', state: 'missing', tier: 'constrained_input',
       candidates: ['column', 'constant'],
       refusals: [{ code: 'missing_required_role',
-        path: 'bundle.profiles.dt-job@1.mappings[1].bind.count',
+        path: 'bundle.sources.dt_job.profile.mappings[1].bind.count',
         message: "Claim requires role 'count'" }],
     }),
     field({
@@ -155,9 +156,13 @@ const stateWith = (plan) => ({
   detailTab: 'authoring',
   activeSnapshot: { snapshot_hash: 'abc12345', valid: true },
   viewContext: { mode: 'active', context_token: 'active:abc12345' },
+  // 🔴 A SOURCE PLAN, NOT ITS PROFILE, SINCE 2026-08-20. The profile became a clause of
+  // the source and left `authorable_kinds`, so it has no section of its own to light up in
+  // the step bar -- exactly as `preparer` and `mapper` already had none. The step bar
+  // answers for the DECLARATION, and the declaration that holds these rows is the source.
   selection: {
-    key: 'profile|dt-job@1', canonical_id: 'dt-job@1', kind: 'profile',
-    config_path: 'bundle.profiles.dt-job@1', compile_status: 'valid',
+    key: 'source_plan|dt_job', canonical_id: 'dt_job', kind: 'source_plan',
+    config_path: 'bundle.sources.dt_job', compile_status: 'valid',
     config_file: 'ledger_config.json',
   },
   navigation: { back: [], forward: [] },
@@ -219,7 +224,7 @@ const renderFolded = (plan) => {
   check('B3 the ground states its sentence',
     at(derivedGrounds, 0).textContent.includes('채움: mappings의 use 2건이 쓰는 팩'));
   check('B4 the ground names the declaration it came from',
-    at(derivedGrounds, 0).textContent.includes('bundle.profiles.dt-job@1.mappings[0].use'));
+    at(derivedGrounds, 0).textContent.includes('bundle.sources.dt_job.profile.mappings[0].use'));
   check('B5 the ground is inside the field card, not a separate tooltip layer',
     byClass(at(derivedRows, 0), 'oe-ground').length === 1);
   check('B6 the derived value itself is rendered',
@@ -307,7 +312,7 @@ const renderFolded = (plan) => {
   check('E6 the ground is reachable, so the real lever is one click away',
     jumps.length >= 2);
   check('E7 the jump targets the declaration the value came from',
-    jumps.some((node) => node.dataset.value === 'profile|dt-job@1')
+    jumps.some((node) => node.dataset.value === 'profile|dt_job#profile')
       && jumps.some((node) => node.dataset.value === 'entity|DTJob@1'),
     jumps.map((n) => n.dataset.value).join(','));
   check('E8 the blocked structural tier is counted on screen, not absorbed',

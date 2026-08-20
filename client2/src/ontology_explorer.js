@@ -123,10 +123,12 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // the text back through `EDITOR_CHANGED`. No new save path and no new endpoint -- Save
   // still writes the same buffer, so there is exactly one thing that reaches the file.
   //
-  // 🔴 THE SECTION AND THE ID ARE BOTH CHECKED BEFORE WRITING. The live config declares
-  // `packs.dt-job@1` AND `profiles.dt-job@1`, so an id-only check would write a pack's
-  // field into a profile's draft. If the prefix does not match the open draft, or the leaf
-  // does not resolve, nothing is written -- the field belongs to something else.
+  // 🔴 THE SECTION AND THE ID ARE BOTH CHECKED BEFORE WRITING. The live config declared
+  // `packs.dt-job@1` AND `profiles.dt-job@1` until 2026-08-20, so an id-only check would
+  // write a pack's field into a profile's draft. Nothing collides TODAY, which is exactly
+  // when a check like this is cheapest to drop and worst to be missing. If the prefix does
+  // not match the open draft, or the leaf does not resolve, nothing is written -- the field
+  // belongs to something else.
   const editFieldAtPath = (path, value) => {
     const draft = state.draft;
     if (!draft || !state.editorText) return;
@@ -422,9 +424,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // the referrers become `invalid`, which is listed, explained and openable -- the same
   // ordinary state as a declaration written before the thing it names.
   //
-  // 🔴 AND NEVER A REFERENCE-COUNT GUARD. A source and its profile name each other, so
-  // in-degree never reaches zero for either and such a guard refuses everything
-  // (board `ec9f1c2`).
+  // 🔴 AND NEVER A REFERENCE-COUNT GUARD. Every declaration on the live config has a
+  // referrer -- measured: declarations with in-degree 0, zero -- so such a guard refuses
+  // everything (board `ec9f1c2`). The mutual source/profile reference that first made this
+  // obvious retired on 2026-08-20; the measurement did not move with it.
   const deleteDeclaration = async (targetKey) => {
     try {
       const plan = await jsonRequest(

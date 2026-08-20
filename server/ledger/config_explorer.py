@@ -82,15 +82,16 @@ def node_key(kind: str, canonical_id: str) -> str:
 #: two capabilities cannot drift apart. Adding a kind here therefore grants both at once,
 #: which is a decision, not a typo: it says the screen understands the section well enough
 #: to write it from scratch.
-#: `preparer` and `mapper` are deliberately absent as of 2026-08-20, for the same reason
-#: `claim` and `binding` are: their bodies moved INSIDE the source plan
-#: (`sources.*.driver.preparation` and `sources.*.driver.mapper`), so they are created and
-#: deleted with their owner and have no section of their own to be written into.
+#: `preparer`, `mapper` and `profile` are deliberately absent as of 2026-08-20, for the
+#: same reason `claim` and `binding` are: their bodies moved INSIDE the source plan
+#: (`sources.*.driver.preparation`, `sources.*.driver.mapper`, `sources.*.profile`), so
+#: they are created and deleted with their owner and have no section of their own to be
+#: written into.  Building a source is therefore ONE act -- which is what the profile move
+#: was for: a new source used to need a new profile naming it back before it could save.
 AUTHORABLE_SECTIONS: Mapping[str, str] = MappingProxyType({
     "predicate": "vocabulary",
     "entity": "entities",
     "pack": "packs",
-    "profile": "profiles",
     "source_plan": "sources",
 })
 
@@ -197,16 +198,19 @@ def require_no_referrers(index: "ExplorerIndex", key: str, action: str) -> None:
     `deletion_plan` below; this function is the FALLBACK it is built out of, and its name
     does not say so -- a name is a poor carrier for "this is the last resort".  Wire it as
     THE gate and the screen deadlocks: measured
-    on the live root, the number of declarations with no referrer is ZERO, and a source and
-    its profile name each OTHER (`sources.<id>.profile_id` and `profiles.<id>.source`), so
-    neither ever reaches an in-degree of zero.  A screen guarded this way refuses every
-    delete and reads to the author as "this screen cannot delete anything".
+    on the live root, the number of declarations with no referrer is ZERO.  (The mutual
+    reference that first made this vivid -- `sources.<id>.profile_id` naming a profile that
+    named the source back -- is gone as of 2026-08-20, the profile being a body inside the
+    source now.  The ruling does not rest on it: an in-degree gate still refuses every pack
+    and every entity, which is every deletion the screen can offer.)  A screen guarded this
+    way refuses every delete and reads to the author as "this screen cannot delete
+    anything".
 
     The ruling (2026-08-18) is that in-degree is the wrong instrument and the right question
     is REACHABILITY AFTER the deletion, over the whole reference component:
 
-      * the deletable unit is the component, not the node -- a source and the profile only
-        it uses go together, because neither is meaningful alone;
+      * the deletable unit is the component, not the node -- a source and the pack only it
+        uses go together, because neither is meaningful alone;
       * walk from the sources that REMAIN; whatever is then unreachable was only held up by
         what is going away, and goes with it;
       * `referrers()` is what the screen SHOWS before the confirm.  Listing the casualties
@@ -215,8 +219,8 @@ def require_no_referrers(index: "ExplorerIndex", key: str, action: str) -> None:
 
     🔴 The regression to watch: if the screen ever refuses a delete whose only referrers are
     INSIDE the set being deleted, the instrument is wrong again.  Do not special-case the
-    source-profile pair -- the mutual reference is structural and a third kind will join the
-    cycle, at which point a hardcoded pair check dies quietly.
+    pair that happens to be in front of you -- the sharing is structural and another kind
+    will join it, at which point a hardcoded pair check dies quietly.
 
     What the whole thing is for: removing or renaming a referenced declaration does not fail
     at write time.  The file is written, and the breakage surfaces later as a loader error
@@ -248,8 +252,8 @@ def self_standing_keys(index: "ExplorerIndex") -> frozenset[str]:
     In-degree is the wrong GATE (see `require_no_referrers`) but it is the right way to
     name this set, and the two uses must not be confused.  A half-wired declaration is the
     normal state of the screen this feeds: an author creates a pack minutes before any
-    profile uses it.  If such a pack were not a walk root, the first unrelated deletion
-    would find it unreachable and sweep it away.
+    source's profile uses it.  If such a pack were not a walk root, the first unrelated
+    deletion would find it unreachable and sweep it away.
 
     Measured 2026-08-18: the live root has ZERO of these, and the transfer sample has one
     (`table|dt_inventory`).  That is why sources are roots too -- on a fully wired config
@@ -279,9 +283,10 @@ def _walk_roots(index: "ExplorerIndex") -> frozenset[str]:
     """Where a reachability walk starts: sources, plus anything nothing points at.
 
     A `source_plan` is a root because it is the only declaration that stands on its own
-    reason -- everything else in the bundle exists to serve one.  It is a root even though
-    its profile points AT it, which is the whole reason the walk survives the mutual
-    reference that defeats in-degree.
+    reason -- everything else in the bundle exists to serve one.  Rooting the walk at the
+    sources rather than at in-degree zero is what survived the mutual reference a source
+    and its profile used to hold (retired 2026-08-20), and it is still what lets a pack
+    that only one source uses go with that source.
     """
     return frozenset(
         key for key, node in index.nodes.items() if node.kind == "source_plan"
@@ -292,8 +297,8 @@ def _walk_roots(index: "ExplorerIndex") -> frozenset[str]:
 class DeletionPlan:
     """What actually goes when the author deletes `targets`, and what refuses to.
 
-    `removed` is the reference COMPONENT, not the selected nodes.  A source and the
-    profile only it uses go together because neither is meaningful alone; listing the
+    `removed` is the reference COMPONENT, not the selected nodes.  A source and the pack
+    only it uses go together because neither is meaningful alone; listing the
     casualties before the confirm is the guard that prevents the orphan.
 
     The counts are part of the plan rather than something the confirm screen works out,
@@ -358,7 +363,7 @@ def deletion_plan(index: "ExplorerIndex", targets: Iterable[str]) -> DeletionPla
     AFTER the deletion.
 
     🔴 IN-DEGREE IS NOT THE INSTRUMENT.  Measured on the live root: every declaration has
-    a referrer, and a source and its profile name each other, so a screen gated on
+    a referrer -- every pack, every entity, every predicate -- so a screen gated on
     in-degree refuses every delete and reads as "this screen cannot delete anything".
 
     The procedure, which never mentions a kind and so cannot rot when a third kind joins
@@ -554,7 +559,8 @@ def _node_description(kind: str, raw: Any) -> str:
     if kind == "claim":
         return f"roles {len(raw.get('roles', {}))}개"
     if kind == "profile":
-        return f"source {raw.get('source', '없음')} · mappings {len(raw.get('mappings', []))}개"
+        return (f"packs {', '.join(map(str, raw.get('packs', []))) or '없음'} · "
+                f"mappings {len(raw.get('mappings', []))}개")
     if kind == "mapping":
         return f"claim {raw.get('use', '없음')}"
     if kind == "binding":
@@ -867,65 +873,6 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
                     pointer("packs", pack_id, "claims", claim_id, "emit", "predicate"),
                 )
 
-    profile_compiled = registries["profiles"].to_mapping()
-    for profile_id, raw in sorted(bundle["profiles"].items()):
-        compiled = profile_compiled[profile_id]
-        profile_key = builder.add_node(
-            "profile", profile_id, raw, compiled, ("profiles", profile_id),
-            config_file=ledger_file, json_pointer=pointer("profiles", profile_id),
-            version=compiled.get("version"),
-        )
-        builder.add_edge(
-            profile_key, raw.get("source", ""), "source_plan", "profile_source",
-            pointer("profiles", profile_id, "source"),
-        )
-        for index, pack_id in enumerate(raw.get("packs", [])):
-            builder.add_edge(
-                profile_key, pack_id, "pack", "profile_pack",
-                pointer("profiles", profile_id, "packs", index),
-            )
-        for index, mapping in enumerate(raw.get("mappings", [])):
-            mapping_id = str(mapping.get("mapping_id", index))
-            mapping_ref = f"{profile_id}#mapping:{mapping_id}"
-            mapping_pointer = pointer("profiles", profile_id, "mappings", index)
-            mapping_key = builder.add_node(
-                "mapping", mapping_ref, mapping,
-                compiled["mappings"][index],
-                ("profiles", profile_id, "mappings", index),
-                config_file=ledger_file, json_pointer=mapping_pointer,
-            )
-            builder.add_edge(
-                profile_key, mapping_ref, "mapping", "contains_mapping",
-                mapping_pointer,
-            )
-            builder.add_edge(
-                mapping_key, mapping.get("use", ""), "claim", "mapping_claim",
-                pointer("profiles", profile_id, "mappings", index, "use"),
-            )
-            compiled_bindings = compiled["mappings"][index].get("bindings", {})
-            for role_id, binding in sorted(mapping.get("bind", {}).items()):
-                binding_ref = f"{mapping_ref}#binding:{role_id}"
-                binding_pointer = pointer(
-                    "profiles", profile_id, "mappings", index, "bind", role_id)
-                binding_key = builder.add_node(
-                    "binding", binding_ref, binding,
-                    compiled_bindings.get(role_id, binding),
-                    ("profiles", profile_id, "mappings", index, "bind", role_id),
-                    config_file=ledger_file, json_pointer=binding_pointer,
-                )
-                builder.add_edge(
-                    mapping_key, binding_ref, "binding", "mapping_binding",
-                    binding_pointer,
-                )
-                for entity_pointer, entity_id in _entity_binding_refs(
-                    binding,
-                    ("profiles", profile_id, "mappings", index, "bind", role_id),
-                ):
-                    builder.add_edge(
-                        binding_key, entity_id, "entity", "binding_entity",
-                        entity_pointer,
-                    )
-
     # 🔴 TABLE NODES COME FROM `table_config.json` NOW, NOT FROM THE LEDGER FILE.
     # Two consequences worth stating because both are deliberate:
     #  * `config_file` is no longer `ledger_config.json`, so `config_drafts` routes an
@@ -977,6 +924,7 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
     source_compiled = registries["sources"].to_mapping()
     preparer_compiled = registries["source_preparers"].to_mapping()
     mapper_compiled = registries["mappers"].to_mapping()
+    profile_compiled = registries["profiles"].to_mapping()
     for source_id, raw in sorted(bundle["sources"].items()):
         compiled = source_compiled[source_id]
         source_key = builder.add_node(
@@ -987,10 +935,67 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
             source_key, raw.get("relation", ""), "table", "source_relation",
             pointer("sources", source_id, "relation"),
         )
-        builder.add_edge(
-            source_key, raw.get("profile_id", ""), "profile", "source_profile",
-            pointer("sources", source_id, "profile_id"),
+        # 🔴 THE PROFILE IS A POSITION INSIDE THE SOURCE as of 2026-08-20, exactly as the
+        # preparer and the mapper became earlier the same day.  It keeps its kind, its
+        # mappings and its bindings; what it loses is the edge back to the source, which
+        # was the mutual reference `_walk_roots` had to be designed around.  Containment
+        # replaces it: the source names the profile, and nothing names the source.
+        profile_raw = raw.get("profile", {})
+        profile_ref = f"{source_id}#profile"
+        profile_path = ("sources", source_id, "profile")
+        profile_key = builder.add_node(
+            "profile", profile_ref, profile_raw,
+            profile_compiled.get(source_id, profile_raw), profile_path,
+            config_file=ledger_file, json_pointer=pointer(*profile_path),
         )
+        builder.add_edge(
+            source_key, profile_ref, "profile", "source_profile",
+            pointer(*profile_path),
+        )
+        for index, pack_id in enumerate(profile_raw.get("packs", [])):
+            builder.add_edge(
+                profile_key, pack_id, "pack", "profile_pack",
+                pointer(*profile_path, "packs", index),
+            )
+        compiled_mappings = profile_compiled.get(source_id, {}).get("mappings", [])
+        for index, mapping in enumerate(profile_raw.get("mappings", [])):
+            mapping_id = str(mapping.get("mapping_id", index))
+            mapping_ref = f"{profile_ref}#mapping:{mapping_id}"
+            mapping_path = (*profile_path, "mappings", index)
+            mapping_compiled = (compiled_mappings[index]
+                                if index < len(compiled_mappings) else mapping)
+            mapping_key = builder.add_node(
+                "mapping", mapping_ref, mapping, mapping_compiled, mapping_path,
+                config_file=ledger_file, json_pointer=pointer(*mapping_path),
+            )
+            builder.add_edge(
+                profile_key, mapping_ref, "mapping", "contains_mapping",
+                pointer(*mapping_path),
+            )
+            builder.add_edge(
+                mapping_key, mapping.get("use", ""), "claim", "mapping_claim",
+                pointer(*mapping_path, "use"),
+            )
+            compiled_bindings = mapping_compiled.get("bindings", {})
+            for role_id, binding in sorted(mapping.get("bind", {}).items()):
+                binding_ref = f"{mapping_ref}#binding:{role_id}"
+                binding_path = (*mapping_path, "bind", role_id)
+                binding_key = builder.add_node(
+                    "binding", binding_ref, binding,
+                    compiled_bindings.get(role_id, binding), binding_path,
+                    config_file=ledger_file, json_pointer=pointer(*binding_path),
+                )
+                builder.add_edge(
+                    mapping_key, binding_ref, "binding", "mapping_binding",
+                    pointer(*binding_path),
+                )
+                for entity_pointer, entity_id in _entity_binding_refs(
+                    binding, binding_path,
+                ):
+                    builder.add_edge(
+                        binding_key, entity_id, "entity", "binding_entity",
+                        entity_pointer,
+                    )
         driver = raw.get("driver", {})
         # 🔴 THE PREPARER AND THE MAPPER ARE POSITIONS INSIDE THE SOURCE, exactly like a
         # `claim` inside a pack: their `bundle_path` EXTENDS the source's, which is what
@@ -1263,7 +1268,7 @@ def integrity_checks(index: ExplorerIndex, selection: str) -> list[dict[str, str
                        "message": "Role과 emission 계약이 compile됨"})
     elif node.kind in {"profile", "mapping"}:
         common.append({"code": "profile_binding", "status": "valid",
-                       "message": "source·Pack·Role binding이 compile됨"})
+                       "message": "Pack·Role binding이 compile됨"})
     elif node.kind == "source_plan":
         common.append({"code": "source_plan", "status": "valid",
                        "message": "relation·cursor·preparer·mapper 계약이 compile됨"})

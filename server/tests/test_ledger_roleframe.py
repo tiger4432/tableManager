@@ -23,7 +23,7 @@ from ledger.roleframe import (
     mapper_context,
 )
 from test_ledger_setup_bundle import (
-    driver_mapper, logical_bundle, objectless_register_bundle)
+    driver_mapper, logical_bundle, objectless_register_bundle, source_profile)
 from test_ledger_setup_registry import snapshot
 
 
@@ -76,7 +76,7 @@ def constant(value, *, status="approved", origin="user_declared"):
 
 def test_declarative_column_constant_entity_bindings_make_role_frame():
     raw = logical_bundle()
-    raw["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"] = (
+    source_profile(raw)["mappings"][0]["bind"]["event_key"] = (
         constant("fixed-event"))
     compiled = snapshot(raw)
     context = mapper_context(compiled, "input_rows")
@@ -205,7 +205,7 @@ def test_pack_compiler_supports_closed_scalar_object_kinds(
     claim["roles"].pop("event_key")
     claim["roles"]["result"] = {"kind": role_kind, "required": True}
     claim["emit"]["object"] = {"kind": object_kind, "value": "$result"}
-    mapping = raw["profiles"]["input-transition@1"]["mappings"][0]
+    mapping = source_profile(raw)["mappings"][0]
     mapping["bind"].pop("target")
     mapping["bind"].pop("event_key")
     mapping["bind"]["result"] = constant(value)
@@ -358,7 +358,7 @@ def test_group_by_mapper_units_are_internal_and_deterministic():
 def test_binding_approval_metadata_never_creates_claim_class():
     raw_a = logical_bundle()
     raw_b = logical_bundle()
-    raw_b["profiles"]["input-transition@1"]["mappings"][0]["bind"]["event_key"][
+    source_profile(raw_b)["mappings"][0]["bind"]["event_key"][
         "binding_origin"] = "imported"
     compiled_a = snapshot(raw_a)
     compiled_b = snapshot(raw_b)

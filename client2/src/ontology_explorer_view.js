@@ -129,7 +129,7 @@ function renderTree(state) {
   const subjectKey = subject ? (subject.key || `${subject.kind}|${subject.id}`) : null;
   // 🔴 THE DEFAULT LIST IS TOP-LEVEL DECLARATIONS ONLY, AND THE TEST IS THE PATH'S LENGTH.
   // A `mapping` or a `binding` is not a declaration -- its id is synthesised from a pointer
-  // (`<profile>#mapping:<id>#binding:<role>`), it lives INSIDE a profile, and
+  // (`<source>#profile#mapping:<id>#binding:<role>`), it lives INSIDE a profile, and
   // `authorable_bundle_path` refuses it: "cannot be created or removed on this screen".
   // Measured on the owner's config: 62 nodes = 20 declarations + 42 positions, and those 42
   // were taking three and four lines each in a 240px column.
@@ -454,11 +454,11 @@ function renderEntityKeys(state) {
 //
 // What has no other door today, counted on the live config:
 //
-//   * a NEW pack or profile gets **0 authoring rows**. The plan walks what the document
-//     HOLDS, so a declaration whose body is `{}` yields nothing, and without this textarea
-//     there is no way to type the first character. (It read "pack, mapper, profile or
-//     preparer" until 2026-08-20; the last two are positions inside a source now, so they
-//     arrive with their source rather than as an empty declaration of their own.)
+//   * a NEW pack gets **0 authoring rows**. The plan walks what the document HOLDS, so a
+//     declaration whose body is `{}` yields nothing, and without this textarea there is no
+//     way to type the first character. (It read "pack, mapper, profile or preparer" until
+//     2026-08-20; all three of the others are positions inside a source now, so they arrive
+//     with their source rather than as empty declarations of their own.)
 //   * a NEW source gets 5 rows and 0 of them editable.
 //   * `sources.*.driver.preparation.output_columns` (2 fields) -- no candidates, no input.
 //   * `sources.*.driver.occurred_at` (2 fields) -- dict-shaped, so chips only.
@@ -966,9 +966,10 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
 // `AUTHORABLE_SECTIONS`), never from a list written here. A kind-to-section table copied
 // into this file would be a second rule to drift.
 //
-// 🔴 AND THE ID ALONE IS NOT ENOUGH. The live config declares BOTH `packs.dt-job@1` and
-// `profiles.dt-job@1`; matching on the id would make a pack's field look writable while a
-// profile's draft was open, and the write would land in the wrong declaration.
+// 🔴 AND THE ID ALONE IS NOT ENOUGH. The live config declared BOTH `packs.dt-job@1` and
+// `profiles.dt-job@1` until 2026-08-20; matching on the id would make a pack's field look
+// writable while a profile's draft was open, and the write would land in the wrong
+// declaration. Nothing collides today, which is not a reason to stop checking.
 function writablePrefix(state) {
   const draft = state.draft;
   if (!draft || !state.editorText) return '';
@@ -1015,7 +1016,7 @@ function writablePrefix(state) {
 // by it -- owner, mockup 6b: the tree is what makes the screen answer to ANY layer.
 //
 // 🔴 IT ASKS WHAT THE NODE IS, NEVER WHICH DECLARATION IT IS IN. A source's `driver` four
-// deep and a profile's `mappings[0].bind.subject` five deep come out of these same
+// deep and a profile's `mappings[0].bind.subject` six deep come out of these same
 // functions. That is what makes 6b fit where 1b did not: 1b's "claims in pack" column
 // existed for only two of the seven kinds (measured -- pack->claims, profile->mappings; the
 // other five have no such layer), so it needed a branch per kind. A tree needs none.
@@ -1069,7 +1070,7 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
   // finished pack and saw two lines -- `lot-lineage@1` and 「주장 MAP 접힘 · 5」 -- and asked
   // whether it had been pushed. The tree was there and the fold rule was doing exactly what
   // it was told; the result was still not a tree. Folding hides DETAIL, not the shape: the
-  // mockup draws `dt_job`'s relation / profile_id / driver as rows, answered ones included.
+  // mockup draws `dt_job`'s relation / profile / driver as rows, answered ones included.
   //
   // This bites hardest on a FINISHED declaration. An unfinished one opens itself because
   // 「남음」 forces it, so the emptiness only shows up on the declarations that are done --
@@ -1371,12 +1372,13 @@ function renderAuthoring(state) {
     // this row over precisely because the plan knows the path, which left the empty case
     // owned by the one renderer that cannot draw it. Measured on a source built from
     // nothing: `relation`, `profile_id` and `driver.unit` had no input anywhere, so a new
-    // source could not be given the two names that identify it. Packs hid this too; they
+    // source could not be given the names that identify it. (`profile_id` retired on
+    // 2026-08-20; the source's profile is a body it carries now.) Packs hid this too; they
     // have no plan-owned leaf.
     //
     // Kept on the plan's row rather than falling back to the skeleton's own control,
     // because the row is what carries the candidates and the refusal -- `relation` offers
-    // the tables, `profile_id` the profiles. Losing those would trade one silence for another.
+    // the tables, `driver.unit` the units. Losing those would trade one silence for another.
     //
     // Only where the person is the one who owes the value: `derived` is the system's to
     // write, and an input there would invite a fight with whatever computes it.

@@ -57,17 +57,16 @@ SHIPMENT_SETUP = {
                   "occurred_at": {"kind": "time", "required": True}},
         "emit": {"predicate": "register@1", "subject": "$subject",
                  "object": {"kind": "none"}, "occurred_at": "$occurred_at"}}}}},
-    "profiles": {"shipping@1": {
-        "source": "shipment", "packs": ["shipping@1"],
-        "mappings": [{
-            "mapping_id": "first_sight_box", "use": "shipping@1/first_sight",
-            "bind": {
-                "subject": _approved(kind="entity", entity_type="Box@1",
-                                     keys={"box": _column("box")}),
-                "occurred_at": _column("shipped_at")}}]}},
     "sources": {"shipment": {
         "relation": "shipment",
-        "profile_id": "shipping@1",
+        "profile": {
+            "packs": ["shipping@1"],
+            "mappings": [{
+                "mapping_id": "first_sight_box", "use": "shipping@1/first_sight",
+                "bind": {
+                    "subject": _approved(kind="entity", entity_type="Box@1",
+                                         keys={"box": _column("box")}),
+                    "occurred_at": _column("shipped_at")}}]},
         "driver": {
             "unit": "row",
             "identity": ["shipment_id"],

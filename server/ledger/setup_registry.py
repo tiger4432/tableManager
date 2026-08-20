@@ -241,8 +241,20 @@ class ProfileMappingDescriptor:
 
 @dataclass(frozen=True)
 class ProfileDescriptor:
+    """One source's profile, keyed and identified by the source that holds it.
+
+    🔴 NO `version` FIELD, AND THE ABSENCE IS A DECISION.  A preparer and a mapper kept
+    theirs through the same absorption because their bodies still declare
+    `implementation_version` -- a real number that moves when the code contract moves.  A
+    profile body declares no version of any kind once `profile@1` is gone, so the only
+    ways to keep the field were a literal that can never change or a copy of something
+    else's number.  Both would ride into `canonical_content_json` and therefore into
+    `snapshot_sha256`, telling every reader that profiles are versioned when nothing can
+    version them.  Measured before removing it: no execution path read it -- `roleframe`
+    and `source_preparation` use `mappings`, `source_id` and `config_path` only.
+    """
+
     profile_id: str
-    version: int
     source_id: str
     pack_ids: tuple[str, ...]
     mappings: tuple[ProfileMappingDescriptor, ...]
@@ -591,7 +603,7 @@ def compile_setup_snapshot(
     preparers = _compile_preparers(bundle.section("sources"))
     mappers = _compile_mappers(bundle.section("sources"))
     packs = _compile_packs(bundle.section("packs"))
-    profiles = _compile_profiles(bundle.section("profiles"))
+    profiles = _compile_profiles(bundle.section("sources"))
     verified_join_registry = _compile_verified_joins(verified_joins)
     source_plans = _compile_source_plans(
         bundle.section("sources"), preparers, mappers, profiles,
@@ -782,23 +794,24 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
 
 
 def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
+    """One profile per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
     builder = _RegistryBuilder(ProfileRegistry)
-    for profile_id, item in section.items():
-        _, version = _versioned_parts(profile_id)
+    for source_id, source in section.items():
+        item = source["profile"]
+        path = f"bundle.sources.{source_id}.profile"
         mappings = tuple(ProfileMappingDescriptor(
             mapping_id=mapping["mapping_id"],
             claim_ref=mapping["use"],
             bindings=_freeze(mapping["bind"]),
-            config_path=f"bundle.profiles.{profile_id}.mappings[{index}]",
+            config_path=f"{path}.mappings[{index}]",
             sentence=(mapping.get("sentence") or None),
         ) for index, mapping in enumerate(item["mappings"]))
-        builder.add(profile_id, ProfileDescriptor(
-            profile_id=profile_id,
-            version=version,
-            source_id=item["source"],
+        builder.add(source_id, ProfileDescriptor(
+            profile_id=source_id,
+            source_id=source_id,
             pack_ids=tuple(item["packs"]),
             mappings=mappings,
-            config_path=f"bundle.profiles.{profile_id}",
+            config_path=path,
         ))
     return builder.seal()
 
@@ -889,7 +902,7 @@ def _compile_source_plans(
                 registration_probe=_compile_registration_probe(
                     driver.get("registration_probe"), entities),
             ),
-            profile=profiles[item["profile_id"]],
+            profile=profiles[source_id],
             config_path=path,
         ))
     return builder.seal()

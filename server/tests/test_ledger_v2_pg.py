@@ -35,7 +35,7 @@ from ledger.source_preparation import (
 from ledger.store import CursorVersionConflict, LedgerStore
 from ledger_trace import DEFAULT_RESOLVER_CONFIG, SqlClaimLookup, coverage, trace
 from ledger_structure import structure
-from test_ledger_setup_bundle import logical_bundle, logical_catalog
+from test_ledger_setup_bundle import logical_bundle, logical_catalog, source_profile
 from test_ledger_setup_registry import trusted_implementations
 import virtual_join_config
 
@@ -384,7 +384,7 @@ def test_postgres_missing_join_and_ambiguous_reader_leave_atom0_cursor0(clean_pg
 def test_postgres_unapproved_binding_stops_before_atom_or_cursor(clean_pg_v2, status):
     case = clean_pg_v2
     raw = _bundle()
-    raw["profiles"]["input-transition@1"]["mappings"][0]["bind"]["subject"][
+    source_profile(raw)["mappings"][0]["bind"]["subject"][
         "keys"]["input_id"]["approval_status"] = status
 
     with pytest.raises(LedgerSetupValidationError) as exc:

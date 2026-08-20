@@ -255,7 +255,7 @@ const payload = (token, selected = 'entity|A@1') => ({
 {
   const plan = {
     sections: { packs: ['a@1', 'b@1'], entities: ['E@1'], vocabulary: [],
-                mappers: [], profiles: [], sources: [], source_preparers: [] },
+                sources: [] },
     fields: [], steps: [],
   };
   // `items` is what the TREE renders: paged at 100 and narrowed by the search box.
@@ -275,15 +275,15 @@ const payload = (token, selected = 'entity|A@1') => ({
   check('F2 members are NOT the filtered tree page',
     sectionMembers(state, 'packs').length > state.items.length);
 
-  // 🔴 The name being typed is not declared. Merging it would let a profile point at a
-  // pack the server never accepted, and a REFUSED create would keep showing as real.
+  // 🔴 The name being typed is not declared. Merging it would let a source's profile point
+  // at a pack the server never accepted, and a REFUSED create would keep showing as real.
   check('F3 the declaration being typed is never offered as existing',
     !sectionMembers(state, 'packs').includes('typing@1'));
 
   check('F4 an unknown section is empty rather than undefined',
     Array.isArray(sectionMembers(state, 'nope')) && sectionMembers(state, 'nope').length === 0);
   check('F5 called without a section it returns the whole map',
-    Object.keys(sectionMembers(state)).length === 7);
+    Object.keys(sectionMembers(state)).length === Object.keys(plan.sections).length);
 
   // "Nothing declared" and "not read yet" render as the same empty list and mean opposite
   // things -- one is a prerequisite to state, the other is a spinner.

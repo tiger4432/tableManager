@@ -76,15 +76,16 @@ TIER_DIAGNOSTIC = "diagnostic"
 #: The authoring order, which is also the dependency order: a later step references
 #: earlier ones.  Published (id AND label) so the step bar has no list literal in the UI.
 #:
-#: 🔴 FIVE, NOT SIX, SINCE 2026-08-20. The 「준비기·매퍼」 layer named two sections that no
+#: 🔴 FOUR, NOT SIX, SINCE 2026-08-20. The 「준비기·매퍼」 layer named two sections that no
 #: longer exist -- both bodies live inside a source plan now -- so the layer had nothing to
-#: count and would have rendered as a permanently empty band. Their FIELDS did not vanish
-#: with it: they moved to the `sources` step, which is where the operator now writes them.
+#: count and would have rendered as a permanently empty band. 「프로필」 went the same way
+#: the same evening. Their FIELDS did not vanish with the layers: all of them moved to the
+#: `sources` step, which is where the operator now writes them, and a source is therefore
+#: authored in ONE band instead of being started in one and finished in another.
 STEPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("entities", "엔터티", ("entities",)),
     ("vocabulary", "낱말", ("vocabulary",)),
     ("packs", "팩", ("packs",)),
-    ("profiles", "프로필", ("profiles",)),
     ("sources", "소스", ("sources",)),
 )
 
@@ -440,9 +441,10 @@ def versioned_sections() -> frozenset[str]:
         # which is how the first version of this probe measured 0 for all of them.
         errors = validate_bundle_errors(
             {section: {probe: empty_declaration(section)}}, catalog={})
-        # The path must END at the declaration's own name. A source refuses
-        # `...zzprobeid.profile_id` -- that is a REFERENCE it holds, not its own key,
-        # and counting it would have made every section look versioned.
+        # The path must END at the declaration's own name. A source refuses a versioned id
+        # at `...zzprobeid.driver.registration_probe[0].entity_type` and, until 2026-08-20,
+        # at `...zzprobeid.profile_id` -- those are REFERENCES it holds, not its own key,
+        # and counting them would have made every section look versioned.
         if any(error.code == "invalid_versioned_id"
                and error.path == f"bundle.{section}.{probe}"
                for error in errors):
@@ -570,11 +572,11 @@ def _binding_columns(binding: Any, path: str) -> list[tuple[str, str]]:
     return out
 
 
-def profile_binding_columns(profile_id: str, profile: Any
+def profile_binding_columns(path: str, profile: Any
                             ) -> tuple[tuple[str, str], ...]:
     out: list[tuple[str, str]] = []
     for index, mapping in enumerate(_mappings(profile)):
-        base = f"bundle.profiles.{profile_id}.mappings[{index}].bind"
+        base = f"{path}.mappings[{index}].bind"
         bind = mapping.get("bind")
         if not isinstance(bind, Mapping):
             continue
@@ -776,13 +778,12 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
     always has its source, its `relation`, and therefore its column universes.
     """
     sources = _section(bundle, "sources")
-    profiles = _section(bundle, "profiles")
     for source_id in sorted(sources, key=str):
         source = sources[source_id]
         if not isinstance(source, Mapping):
             continue
-        profile_id = source.get("profile_id")
-        profile = profiles.get(profile_id) if isinstance(profile_id, str) else None
+        profile = source.get("profile") if isinstance(source.get("profile"), Mapping) else None
+        profile_base = f"bundle.sources.{source_id}.profile"
         relation = _driver_relation(source)
         physical = relation_columns(catalog, relation)
         prepared = prepared_columns(bundle, catalog, source)
@@ -840,7 +841,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         base = f"bundle.sources.{source_id}.driver.mapper"
         uses = [mapping.get("use") for mapping in _mappings(profile)]
         use_paths = tuple(
-            f"bundle.profiles.{profile_id}.mappings[{index}].use"
+            f"{profile_base}.mappings[{index}].use"
             for index, _ in enumerate(_mappings(profile)))
         if use_paths:
             # ① Set equality is checked in BOTH directions; degrees of freedom: zero.
@@ -852,10 +853,10 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 if "emits" in mapper else _ABSENT,
                 ground=Ground(
                     "mapper_emits_from_profile_uses",
-                    f"채움: 프로필 {profile_id}의 mappings.use {len(use_paths)}건",
+                    f"채움: 소스 {source_id}의 프로필 mappings.use {len(use_paths)}건",
                     use_paths, [use for use in uses if isinstance(use, str)]),
             )
-        binding_columns = profile_binding_columns(profile_id, profile) if profile else ()
+        binding_columns = profile_binding_columns(profile_base, profile) if profile else ()
         if binding_columns:
             yield Field(
                 path=f"{base}.input_columns", step="sources",
@@ -865,7 +866,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 if "input_columns" in mapper else _ABSENT,
                 ground=Ground(
                     "mapper_inputs_from_profile_bindings",
-                    f"채움: 프로필 {profile_id}가 바인딩한 컬럼 "
+                    f"채움: 소스 {source_id}의 프로필이 바인딩한 컬럼 "
                     f"{len({column for column, _ in binding_columns})}개",
                     tuple(path for _, path in binding_columns),
                     sorted({column for column, _ in binding_columns})),
@@ -903,31 +904,25 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
 
 def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                     ) -> Iterable[Field]:
+    """Every source's profile body, walked FROM the source.
+
+    🔴 THE OWNER LOOKUP IS GONE, exactly as it went for the preparer and the mapper.  This
+    function used to walk the `profiles` section and search backwards for the source that
+    selected each member, then derive `profile.source` from what it found -- a field whose
+    only correct value was the key of the thing that pointed at it.  A body inside a source
+    has no such field and needs no such search.
+    """
     sources = _section(bundle, "sources")
     packs = _section(bundle, "packs")
     entities = _section(bundle, "entities")
-    owner = {
-        source.get("profile_id"): source_id
-        for source_id, source in sources.items()
-        if isinstance(source, Mapping) and isinstance(source.get("profile_id"), str)
-    }
-    for profile_id in sorted(_section(bundle, "profiles"), key=str):
-        profile = _section(bundle, "profiles")[profile_id]
+    for source_id in sorted(sources, key=str):
+        source = sources[source_id]
+        if not isinstance(source, Mapping):
+            continue
+        profile = source.get("profile")
         if not isinstance(profile, Mapping):
             continue
-        base = f"bundle.profiles.{profile_id}"
-        source_id = owner.get(profile_id)
-        if isinstance(source_id, str):
-            # ① The pair is checked in both directions; picking one fixes the other.
-            yield Field(
-                path=f"{base}.source", step="profiles", label="source",
-                state="derived", tier=TIER_STRUCTURAL,
-                value=source_id, declared=profile.get("source", _ABSENT),
-                ground=Ground(
-                    "profile_source_from_source_profile_id",
-                    f"채움: sources.{source_id}.profile_id",
-                    (f"bundle.sources.{source_id}.profile_id",), source_id),
-            )
+        base = f"bundle.sources.{source_id}.profile"
         used_packs, use_paths = [], []
         for index, mapping in enumerate(_mappings(profile)):
             parsed = _claim_ref(mapping.get("use"))
@@ -937,7 +932,7 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         if use_paths:
             # ① `packs` ⊇ used AND every declared pack must be used. Zero freedom.
             yield Field(
-                path=f"{base}.packs", step="profiles", label="packs",
+                path=f"{base}.packs", step="sources", label="packs",
                 state="derived", tier=TIER_STRUCTURAL,
                 value=sorted(set(used_packs)),
                 declared=sorted(_listed(profile.get("packs")), key=str)
@@ -948,8 +943,7 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                     tuple(use_paths), sorted(set(used_packs))),
                 note="양방향 대조라 작성자가 고칠 여지가 없다.",
             )
-        source = sources.get(source_id) if source_id else None
-        available = prepared_columns(bundle, catalog, source) if source else ()
+        available = prepared_columns(bundle, catalog, source)
         for index, mapping in enumerate(_mappings(profile)):
             yield from _mapping_fields(
                 base, index, mapping, packs, entities, available)
@@ -962,7 +956,7 @@ def _mapping_fields(base: str, index: int, mapping: Mapping[str, Any],
     parsed = _claim_ref(mapping.get("use"))
     if parsed is None:
         yield Field(
-            path=f"{mpath}.use", step="profiles", label="use",
+            path=f"{mpath}.use", step="sources", label="use",
             state="missing", tier=TIER_CONSTRAINED,
             candidates=tuple(sorted(
                 f"{pack_id}/{claim_id}"
@@ -982,7 +976,7 @@ def _mapping_fields(base: str, index: int, mapping: Mapping[str, Any],
 
     # The row set itself is derived: which roles exist is the Claim's business.
     yield Field(
-        path=f"{mpath}.bind", step="profiles", label="결선할 역할",
+        path=f"{mpath}.bind", step="sources", label="결선할 역할",
         state="derived", tier=TIER_DERIVATION,
         value=sorted(roles, key=str),
         ground=Ground(
@@ -1000,7 +994,7 @@ def _mapping_fields(base: str, index: int, mapping: Mapping[str, Any],
         required = role.get("required") is True
         if not isinstance(binding, Mapping):
             yield Field(
-                path=f"{mpath}.bind.{role_id}", step="profiles",
+                path=f"{mpath}.bind.{role_id}", step="sources",
                 label=f"역할 {role_id}",
                 state="missing" if required else "unanswered",
                 tier=TIER_CONSTRAINED,
@@ -1013,7 +1007,7 @@ def _mapping_fields(base: str, index: int, mapping: Mapping[str, Any],
             )
             continue
         yield Field(
-            path=f"{mpath}.bind.{role_id}.kind", step="profiles",
+            path=f"{mpath}.bind.{role_id}.kind", step="sources",
             label=f"역할 {role_id} 결선 종류", state="answered",
             tier=TIER_CONSTRAINED, value=binding.get("kind"),
             declared=binding.get("kind"),
@@ -1021,7 +1015,7 @@ def _mapping_fields(base: str, index: int, mapping: Mapping[str, Any],
         )
         if role.get("kind") == "symbolic" and binding.get("kind") == "constant":
             yield Field(
-                path=f"{mpath}.bind.{role_id}.value", step="profiles",
+                path=f"{mpath}.bind.{role_id}.value", step="sources",
                 label=f"역할 {role_id} 상수", state="answered",
                 tier=TIER_CONSTRAINED, value=binding.get("value"),
                 declared=binding.get("value"),
@@ -1029,7 +1023,7 @@ def _mapping_fields(base: str, index: int, mapping: Mapping[str, Any],
             )
         if binding.get("kind") == "column":
             yield Field(
-                path=f"{mpath}.bind.{role_id}.column", step="profiles",
+                path=f"{mpath}.bind.{role_id}.column", step="sources",
                 label=f"역할 {role_id} 컬럼", state="answered",
                 tier=TIER_CONSTRAINED, value=binding.get("column"),
                 declared=binding.get("column"),
@@ -1041,7 +1035,7 @@ def _mapping_fields(base: str, index: int, mapping: Mapping[str, Any],
     for role_id in sorted(bind, key=str):
         if role_id not in roles:
             yield Field(
-                path=f"{mpath}.bind.{role_id}", step="profiles",
+                path=f"{mpath}.bind.{role_id}", step="sources",
                 label=f"역할 {role_id}", state="missing", tier=TIER_DIAGNOSTIC,
                 candidates=tuple(sorted(roles, key=str)),
                 refusals=({
@@ -1056,7 +1050,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
                            ) -> Iterable[Field]:
     entity_type = binding.get("entity_type")
     yield Field(
-        path=f"{path}.entity_type", step="profiles", label="엔터티 타입",
+        path=f"{path}.entity_type", step="sources", label="엔터티 타입",
         state="answered" if entity_type else "missing", tier=TIER_CONSTRAINED,
         value=entity_type, declared=entity_type if entity_type else _ABSENT,
         candidates=tuple(sorted(entities, key=str)),
@@ -1071,7 +1065,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
     # ① 오늘의 발단.  The validator demands SET EQUALITY with the entity's keys, so the
     # only remaining question is which column supplies each key.
     yield Field(
-        path=f"{path}.keys", step="profiles", label="식별키 이름",
+        path=f"{path}.keys", step="sources", label="식별키 이름",
         state="derived", tier=TIER_STRUCTURAL,
         # Set equality is the rule (`_binding_refs`), so both sides are compared sorted:
         # a differing ORDER is not a defect and must not render as a conflict.
@@ -1088,7 +1082,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
         child = declared_keys.get(key) if isinstance(declared_keys, Mapping) else None
         column = child.get("column") if isinstance(child, Mapping) else None
         yield Field(
-            path=f"{path}.keys.{key}.column", step="profiles",
+            path=f"{path}.keys.{key}.column", step="sources",
             label=f"키 {key} 공급 컬럼",
             state="answered" if column else "unanswered", tier=TIER_CONSTRAINED,
             value=column, declared=column if column else _ABSENT,
@@ -1098,7 +1092,6 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
 
 def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                    ) -> Iterable[Field]:
-    profiles = _section(bundle, "profiles")
     entities = _section(bundle, "entities")
     for source_id in sorted(_section(bundle, "sources"), key=str):
         source = _section(bundle, "sources")[source_id]
@@ -1115,14 +1108,6 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             value=relation, declared=relation if relation else _ABSENT,
             candidates=tuple(sorted(catalog, key=str)),
             note=f"후보의 출처는 {PHYSICAL_CATALOG_FILENAME}. 없으면 거기서 먼저 선언한다.",
-        )
-        yield Field(
-            path=f"{base}.profile_id", step="sources", label="profile_id",
-            state="answered" if source.get("profile_id") else "missing",
-            tier=TIER_CONSTRAINED, value=source.get("profile_id"),
-            declared=source.get("profile_id", _ABSENT),
-            candidates=tuple(sorted(profiles, key=str)),
-            note="고르면 profiles.<p>.source가 확정된다.",
         )
         unit = driver.get("unit")
         yield Field(
