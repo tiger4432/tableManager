@@ -240,8 +240,12 @@
 #ontology-explorer-root .oe-node-state { margin-top: 5px; color: var(--oe-muted); font-size: 10px; }
 #ontology-explorer-root .oe-arrow { display: grid; place-items: center; color: var(--oe-muted); min-width: 58px; }
 #ontology-explorer-root .oe-arrow small { font-size: 9px; text-align: center; overflow-wrap: anywhere; }
+/* One track, because there is one child. The second track existed for Integrity, which is
+   6b's right-hand column now (`3259243`) -- leaving it declared parked a 267px empty
+   column beside the tree: measured 516px of tree in a 936px middle column. The responsive
+   override below already says `1fr`, so it stops being an override and starts agreeing. */
 #ontology-explorer-root .oe-detail-grid {
-  display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(250px, .65fr);
+  display: grid; grid-template-columns: minmax(0, 1fr);
   gap: 12px; padding: 0 14px 14px;
 }
 #ontology-explorer-root .oe-panel { background: var(--oe-surface); border: 1px solid var(--oe-line); border-radius: 9px; min-width: 0; }

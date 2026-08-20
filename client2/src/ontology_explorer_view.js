@@ -674,7 +674,13 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
     const line = button('', 'toggle-field', row.path, 'oe-field-folded');
     line.setAttribute('aria-expanded', 'false');
     line.append(h('code', 'oe-folded-value', formatValue(row.value)));
-    line.append(h('i', 'oe-folded-why', fold.reason));
+    // 🔴 THE REASON BELONGS TO WHICHEVER COLUMN OWNS IT. In the tree the row's state column
+    // already says 「선언됨」, so repeating it here put the same word at two x-positions and
+    // rendered as one run of text -- `dt_log선언됨`. Outside the tree there IS no state
+    // column, so the reason stays. `bare` already carries that distinction; it does not need
+    // a second flag. The GROUND line is untouched -- it says why the value is what it is,
+    // which the state column never says.
+    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));
     const why = row.ground?.text;
     if (why) line.append(h('small', 'oe-folded-ground', why));
     card.append(line);
