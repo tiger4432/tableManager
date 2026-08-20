@@ -3658,6 +3658,48 @@ mapper.emits      「내가 낼 주장은 이 넷」이라는 «계약»        
 **즉 문장을 만드는 주체는 프로필이고, 매퍼는 재료를 댄다.** `emits` 는 그 둘이 어긋나지 않게
 하는 선언일 뿐 실행의 주체가 아니다.
 
+## ⚖️ pack 은 «claim 의 네임스페이스»다 — 그룹 의미가 코드에 없다 (실측 2026-08-21, 판정 대기)
+
+소유자 질문: 「**팩을 나눠쓸일이 있을까? 클레임도 아니고**」 → 재고 보드에 올리라는 지시.
+
+### 실측 — pack 을 «묶음»으로 다루는 코드가 없다
+
+```
+_cross_packs        setup_bundle.py:1550   for pack: for claim:  검사는 전부 claim 단위
+                                           (predicate 존재 · active) — claim 끼리 보는 검사 0
+_compile_packs      setup_registry.py:702  ClaimDescriptor 를 claim 마다 만든다.
+                                           PackDescriptor 가 든 것은 claims + version 뿐
+런타임 조회          roleframe.py:537 · 980  snapshot.packs.get(pack_id) → .claims[claim_id]
+                                           두 단계 조회 = 사실상 «복합 키»
+```
+**「이 claim 들은 같이 쓰인다」를 강제하는 자리가 한 곳도 없다.**
+
+### 그리고 실제로 일어난 것은 «팩 공유»가 아니라 «claim 복제»다
+
+```
+팩 공유       0건    dt-job@1 · lot-lineage@1 둘 다 소스 하나씩만 쓴다
+claim 복제    1건    register 가 두 팩에 «바이트까지 동일»하게 들어 있다
+```
+```json
+dt-job@1/register      {"emit":{"object":{"kind":"none"},"occurred_at":"$occurred_at",
+                         "predicate":"register@1","subject":"$subject"},
+                        "roles":{"occurred_at":{"kind":"time","required":true},
+                                 "subject":{"kind":"entity","required":true}}}
+lot-lineage@1/register  ← 동일
+```
+**팩 경계가 재사용을 만든 게 아니라 복제를 만들었다.**
+
+### ③이 착지하면 pack 을 지목하는 자리가 «하나»만 남는다
+
+`profile.packs` 는 derived 라 ③에서 사라진다. 그러면 pack id 가 나타나는 곳은
+`profile.mappings[].use` 의 **접두사뿐**이다 — `"lot-lineage@1/register"` 의 앞 절반.
+
+### 판정 대기 — 총괄이 제안하지 않음 (관문 ③)
+
+선택지는 「그대로 둔다」/「claim 을 평평하게 두고 pack 을 없앤다」 둘인데, 후자는 claim id 의
+전역 유일성이 필요해지고 `register` 같은 흔한 이름이 부딪힌다. **크기가 다른 일이라 소유자 판정.**
+대기열에는 넣지 않았다 — 앞에 다섯이 있다.
+
 ## 🐞 열린 문제 (Open Problems)
 
 | #   | 심각도                               | 문제                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 도메인              | 상태                             |
