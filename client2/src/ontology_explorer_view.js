@@ -79,9 +79,46 @@ function renderNewDeclaration(state, kind) {
   return box;
 }
 
+// 🔴 THE ONE ANSWER TO 「WHAT IS THE BODY SHOWING RIGHT NOW」.
+//
+// The left index and the spine each used to work it out for themselves, both from
+// `state.selection`, while the body chose differently -- draft-first. So while a new
+// declaration was being written the body drew `zzprobe@1` and both highlights went on
+// pointing at whatever had been selected before it. Three answers on one screen.
+//
+// This mirrors the body's branch ORDER exactly (`creates_declaration` -> selection ->
+// draft). It is not a fourth opinion; it is the same decision, named, so the highlights can
+// read it instead of guessing. Fixing one highlight would have left the other -- one fault
+// with two symptoms, so it gets one source.
+function subjectOf(state) {
+  const draft = state.draft;
+  if (draft?.creates_declaration) {
+    return { kind: draft.target_kind, id: draft.target_id, path: '' };
+  }
+  if (state.selection) {
+    return {
+      kind: state.selection.kind,
+      id: state.selection.canonical_id,
+      key: state.selection.key,
+      path: state.selection.config_path || '',
+    };
+  }
+  if (draft) return { kind: draft.target_kind, id: draft.target_id, path: '' };
+  return null;
+}
+
+/** The section the subject lives in, when the subject is an authorable kind. */
+function subjectSection(state, subject) {
+  if (!subject) return null;
+  return (state.authoringSchema?.authorable_kinds || [])
+    .find((row) => row.id === subject.kind)?.section || null;
+}
+
 function renderTree(state) {
   const nav = h('nav', 'oe-tree');
   nav.setAttribute('aria-label', '온톨로지 구성 트리');
+  const subject = subjectOf(state);
+  const subjectKey = subject ? (subject.key || `${subject.kind}|${subject.id}`) : null;
   // 🔴 THE DEFAULT LIST IS TOP-LEVEL DECLARATIONS ONLY, AND THE TEST IS THE PATH'S LENGTH.
   // A `mapping` or a `binding` is not a declaration -- its id is synthesised from a pointer
   // (`<profile>#mapping:<id>#binding:<role>`), it lives INSIDE a profile, and
@@ -175,7 +212,9 @@ function renderTree(state) {
       const row = button(item.canonical_id, unread ? 'edit-unread' : 'select',
                          item.key, 'oe-tree-item');
       row.dataset.direct = 'true';
-      row.setAttribute('aria-current', String(item.key === state.selection?.key));
+      // A draft that is creating a declaration has no `key` yet, so the subject is matched
+      // by what it IS -- kind and id -- which is what the index rows are keyed on anyway.
+      row.setAttribute('aria-current', String(item.key === subjectKey));
       row.append(h('small', 'oe-change-label', item.change_status));
       addPopover(row, item);
       group.append(row);
@@ -595,7 +634,9 @@ function renderStepBar(state) {
     bar.append(h('div', 'oe-empty', state.authoringError || (state.loading ? 'Loading' : 'None')));
     return bar;
   }
-  const here = state.selection?.config_path || '';
+  const subject = subjectOf(state);
+  const section = subjectSection(state, subject);
+  const here = subject?.path || '';
   // 🔴 THE TOTAL IS SAID ONCE, AT THE TOP, and each layer says only its own share. The
   // owner's mockup (1b) leads with a single 「N REMAINING」, and that is Rule 7 applied to
   // the spine: a number the operator reads to decide WHETHER to look, before six numbers
@@ -619,8 +660,14 @@ function renderStepBar(state) {
   plan.steps.forEach((step, index) => {
     const item = h('div', `oe-step is-${step.status}`);
     item.dataset.key = `step:${step.id}`;
-    // The step the current selection belongs to, decided by the server's section list.
-    if (step.sections.some((name) => here.includes(name))) item.classList.add('is-here');
+    // The step the SUBJECT belongs to. By section when the subject has one -- a draft has
+    // no config path at all, which is why the spine went blank-or-stale while writing. The
+    // substring test on a path stays only as the fallback for kinds that are not authorable
+    // (mapping, binding, claim, table), which have no section of their own.
+    const isHere = section
+      ? step.sections.includes(section)
+      : Boolean(here) && step.sections.some((name) => here.includes(name));
+    if (isHere) item.classList.add('is-here');
     item.append(h('span', 'oe-step-ord', String(index + 1)));
     item.append(h('b', '', step.label));
     const tally = h('span', 'oe-step-tally');
