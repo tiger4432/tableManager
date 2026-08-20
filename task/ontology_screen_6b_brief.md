@@ -459,6 +459,43 @@ lot-event-live-frame@1                     54px     (2줄)
 
 ③은 한 줄짜리다. 사양이 14px인데 13px로 들어갔다.
 
+### ⚖️ 판정 ② — 좌측은 «최상위 선언»만. 판별식은 종류 목록이 아니라 코드가 이미 쓰는 것
+
+구현자 진단이 맞다. **총괄이 코드에서 직접 확인했고, 코드가 판별식까지 들고 있다:**
+
+```
+config_explorer.py:930   binding_ref = f"{mapping_ref}#binding:{role_id}"
+                         → 프로필 문서 «안»의 JSON 포인터로 «합성»된 이름이다
+config_explorer.py:86    AUTHORABLE_SECTIONS = 일곱 종 (predicate·entity·pack·preparer·
+                         mapper·profile·source_plan). mapping·binding은 없다
+config_explorer.py:97    authorable_bundle_path → "cannot be created or removed on this screen"
+```
+
+🔴 **그리고 판별식을 «종류»로 잡지 말 것 — 그 파일의 주석이 직접 경고한다.**
+
+```
+owning_section() 주석:
+  "THE DISCRIMINATOR IS THE SECTION, NOT THE KIND"
+  "bundle_path ... length 2 is a top-level declaration, longer is nested"
+  종류로 재면 claim을 authorable이 아니라고 부르고 파일에 고아로 남긴다
+```
+
+**판정:** 좌측 기본 목록은 **`bundle_path` 길이가 2인 것**만 그린다. 종류 블랙리스트
+(`mapping`·`binding`을 빼기)는 **쓰지 말 것** — 그건 낱개고, 내일 중첩이 하나 더 생기면 또 새는다.
+길이로 재면 `claim`·`role`과 «아직 없는 것»까지 한 번에 덮인다.
+
+⚠️ **잘리는 것은 «기본 목록»이지 «인덱스»가 아니다.** 같은 인덱스가 「정의 검색」을 먹인다.
+인덱스 자체에서 지우면 자리를 **이름으로 찾을 수 없게 된다** — 지금 되는 일이 안 되게 만드는 것은
+이 걸음이 아니다. 검색 결과에는 계속 나와야 한다.
+
+⚠️ **그리고 「구성 요소 · 62개」가 무엇을 세는지 같이 답할 것.** 목록이 줄면 그 숫자와 목록이
+어긋난다. 세는 대상이 「선언」이면 숫자도 선언 수여야 하고, 「노드 전부」면 목록과 다르다는 걸
+화면이 말해야 한다. **둘 중 하나를 고르고, 고른 대로 화면이 쓰게 할 것** — 안 그러면
+「62개」가 눈앞의 목록과 안 맞는 조용한 거짓말이 된다.
+
+**바뀌는 층:** 좌측 인덱스가 «무엇을 나열하는가» 한 곳 + 총계 문구.
+**그대로인 것:** 검색 · 가운데 트리(자리는 이미 거기 그려진다) · 서버의 인덱스 구성 · 선택 동작.
+
 ### 판정 기준은 그대로
 
 **「클래스가 있는가」가 아니라 「목업처럼 보이는가」.** 이 둘은 좌표·개수가 전부 초록인 채로
