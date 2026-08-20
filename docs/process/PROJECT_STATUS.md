@@ -3788,6 +3788,30 @@ server/tests/test_ledger_setup_boundary.py:218
 3  마이그레이션이 «별명 없는 mapping» 앞에서 멈추는지 확인 (지어내지 않는지)
 ```
 
+#### 📖 옛 `mapping_id` → 새 별명 표 (총괄이 대조로 «도출», 구현자 확인 필요)
+
+`source_translator_ver` 의 `#접미사` 가 «질의 키»다 — `WHERE source_translator_ver LIKE '%#job_die_count'`
+같은 형태가 `ledger/config.py` 주석에 적혀 있다. 별명 라운드가 그 접미사를 바꾸므로 **옛 792행을
+이름으로 다시 찾으려면 이 표가 필요하다.**
+
+```
+lot_event      옛 mapping_id       claim / entity 바인딩                → 새 별명
+               first_sight_lot     register  · subject=Lot@1           → first_sight_holder
+               first_sight_wafer   register  · subject=Wafer@1         → first_sight_item
+               positional_row      membership· subject=Lot, target=Wafer → in_slot
+               pair_field          lineage   · child=Lot, parent=Lot   → descent
+               slot_preserving     slot_map  · sentence=split_slot_carry → split_slot_carry
+               shared_wafer        slot_map  · sentence=merge_slot_join  → merge_slot_join
+
+dt_job         job_register        register  · subject=DTJob@1         → register
+               job_die_count       die_count · subject=DTJob@1         → counted
+```
+**도출 근거:** `use`(팩/claim)와 entity 바인딩 집합이 옛/새 양쪽에서 «일대일»로 맞는다.
+`slot_map` 두 건은 옛 `sentence` 값이 새 별명과 «글자까지 같아» 따로 추론이 필요 없었다.
+
+⚠️ **총괄이 대조로 만든 표이고 구현자 확인을 받지 않았다.** 별명을 실제로 지은 쪽이 맞는지
+한 번 봐야 한다 — 특히 `first_sight_holder`/`item` 이 lot/wafer 와 «반대로» 붙지 않았는지.
+
 ### 소유자 판정 대기 (넷)
 
 ```
