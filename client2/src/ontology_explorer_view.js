@@ -1436,7 +1436,7 @@ export function renderOntologyExplorer(root, state) {
   forward.disabled = !state.navigation.forward.length;
   forward.setAttribute('aria-label', '다음 선택');
   history.append(back, forward);
-  top.append(history, h('div', 'oe-brand', 'Ontology Config Explorer'));
+  top.append(h('div', 'oe-brand', 'Ontology Config Explorer'));
   // 🔴 ABSENCE IS NOT PROGRESS. This read `불러오는 중` whenever there was no hash, so an
   // empty config announced a load that would never finish and the operator waited for it.
   // In-flight and absent are different states and only one of them ends -- `state.loading`
@@ -1448,11 +1448,17 @@ export function renderOntologyExplorer(root, state) {
   searchLabel.append(h('span', 'sr-only', '정의 검색'));
   const search = h('input', 'oe-search');
   search.type = 'search';
-  search.placeholder = 'ID 또는 종류 검색';
+  // 🔴 THE PLACEHOLDER ADVERTISES A KEY, SO THE KEY IS BOUND. The mockup writes
+  // 「이름으로 이동  /」 and a screen that says `/` without listening for it is telling the
+  // operator about something that is not there -- the exact fault this round keeps removing.
+  // The listener lives in the controller; this line is only the promise.
+  search.placeholder = '이름으로 이동  /';
   search.value = state.query;
   search.dataset.action = 'search';
   searchLabel.append(search);
-  top.append(searchLabel);
+  // Mockup order: title · draft id · search, and everything after is pushed right. The
+  // history arrows are that "everything after" here, so they carry the auto margin now.
+  top.append(searchLabel, history);
   windowEl.append(top);
   if (state.error) windowEl.append(h('div', 'oe-error', state.error));
   if (state.removedSelection) {

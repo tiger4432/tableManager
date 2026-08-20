@@ -134,11 +134,13 @@
   font-size: 16px; letter-spacing: -0.015em;
 }
 #ontology-explorer-root .oe-snapshot { color: var(--oe-ok); font-size: 12px; white-space: nowrap; }
-#ontology-explorer-root .oe-history-actions { display: flex; gap: 3.4px; }
+/* The auto margin moved off the search and onto what follows it: the mockup's order is
+   title, id, search, then everything else pushed right. */
+#ontology-explorer-root .oe-history-actions { display: flex; gap: 3.4px; margin-left: auto; }
 /* The mockup's search box, to its own figures: 230px wide, 5x9 padding, 11.5px, mono.
    Colour stays ours per 「컬러만 기존거」 -- the mockup's box sits on a dark accent header
    band that this screen does not have, so its accent-800 ground has nothing to map onto. */
-#ontology-explorer-root .oe-search-wrap { position: relative; margin-left: auto; width: 230px; }
+#ontology-explorer-root .oe-search-wrap { position: relative; width: 230px; }
 /* 🔴 THE LABEL WAS MARKED HIDDEN AND WAS NEVER HIDDEN. `sr-only` is the author's intent --
    readable to a screen reader, not to the eye -- but the class was never defined in this
    stylesheet, so 「정의 검색」 rendered at 63x18px beside a box whose placeholder already

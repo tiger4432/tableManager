@@ -759,6 +759,25 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   };
 
   root.addEventListener('keydown', (event) => {
+    // `/` jumps to the search, because the search box says it does. One listener.
+    //
+    // 🔴 NOT WHILE SOMEBODY IS TYPING. A field is where `/` is a character -- a JSON pointer,
+    // a path, a regex -- so stealing it there would break writing to fix reading. The guard
+    // asks what the event landed ON, not what the screen is doing.
+    if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const el = event.target;
+      const typing = el instanceof HTMLElement
+        && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+      if (!typing) {
+        const box = root.querySelector('.oe-search');
+        if (box) {
+          event.preventDefault();
+          box.focus();
+          box.select();
+          return;
+        }
+      }
+    }
     const target = event.target.closest('button[data-action]');
     if (!target || target.disabled || !['Enter', ' '].includes(event.key)) return;
     event.preventDefault();
