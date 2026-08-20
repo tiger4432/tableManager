@@ -2890,6 +2890,58 @@ push1: 4행 · NULL 0 · 키 4     push2: 4행 · NULL 4 · 키 0(전멸)     pu
 > **스크린샷을 보고** 잡았다. 구현자가 오늘 아침 자기 보고서에 적은 문장과 같다.
 >
 
+> ---
+>
+> ## ⚖️ 소유자 판정 (2026-08-20 오후) — 소스플랜·준비기·매퍼는 «한몸»이다
+>
+> 소유자: 「**프로필 준비기 맵퍼는 그냥 한몸으로 다녀야겠는데**」 → 정정 「**아니다 소스플랜
+> 준비기 맵퍼**」 → 근거 「**1로 하면 table까지 안닿잖나**」 → 확정 「**ㅇㅇ 소스 맞네**」
+>
+> **그릇은 소스플랜이다. 프로필은 밖에 남는다.**
+>
+> **왜 소스인가 — 소유자가 한 문장으로 잘랐다.** 물리 테이블에 닿는 것은 `relation`이고,
+> `relation`은 소스에 있다. 프로필엔 없다. 코드가 그대로 그렇게 짜여 있다:
+> `prepared_columns()`의 출발점이 `relation_columns(catalog, _driver_relation(source))`
+> (`config_authoring.py:508`). 프로필이 준비기·매퍼를 흡수하면 준비기가 자기 `input_columns`를
+> 검사할 테이블이 **다시 한 홉 밖**이 된다 — 구멍이 없어지는 게 아니라 자리만 옮긴다.
+>
+> ```
+> 소스플랜
+>  ├ relation   → table_config 의 컬럼                     ← 물리에 닿는 유일한 지점
+>  ├ preparer     input_columns  ⊆ relation 컬럼
+>  │              output_columns → 새로 만드는 것
+>  └ mapper       input_columns  ⊆ relation ∪ preparer.output_columns
+> ```
+>
+> **실측이 판정을 뒷받침한다:**
+> ```
+> 준비기 lot-event-live-frame@1 inputs ⊆ lot_event 물리 컬럼   True
+> 매퍼   dt-job-role@1          inputs ⊆ dt_log   물리 컬럼   True   (준비기가 통과형이라)
+> 매퍼   lot-event-role@1       inputs ⊆ lot_event 물리 컬럼   False
+>        물리에 없는 것: lot · slots · wafers · row_identity ·
+>                        event_group_key · __source_event_incomplete
+> ```
+> 준비기는 «테이블»을 읽고 매퍼는 «준비기가 내놓은 것»을 읽는다. 셋은 이미 한 사슬인데 선언만
+> 셋으로 흩어져 있고, 그래서 `prepared_columns`가 **번들을 뒤져 셋을 도로 모은다.** 한몸이 되면
+> 그 함수가 하는 일은 「자기 안을 보는 것」이 된다.
+>
+> **공유는 잃지 않는다.** 재사용되는 것은 `implementation_id`(`direct-join` 같은 «코드»,
+> `source_preparation.py:343`)이지 선언이 아니다. 선언은 그 구현의 소스별 설정이고, 실측으로
+> 준비기·매퍼 둘 다 **1:1**이라 공유 사례가 지금 하나도 없다.
+>
+> 🔴 **총괄 정정 하나 — 내가 「준비기의 출력은 어디에도 선언되지 않는다」고 소유자에게 말했고
+> 그건 거짓이었다.** `output_columns`는 선언에도 스켈레톤(`:513`)에도 검증기에도 있다. 그래서
+> 매퍼 후보를 만들 재료는 **오늘 이미 다 있다** — `input_columns`가 자유 입력인 것은 모델이
+> 없어서가 아니라 «연결이 안 된 것»이다. 그리고 `prepared_columns`의 주석은 한 걸음 더 나가
+> 「`input_columns`가 바인딩에서 유도되고 나면 PREPARED가 사람이 고르는 유일한 우주」라고 적는다.
+>
+> ⚠️ **딸려 오는 것:** 준비기·매퍼 층이 비어 척추가 여섯에서 다섯이 된다. 그 자리를 없앨지
+> 다른 뜻을 줄지 **같이 정해야 한다.**
+>
+> **착수 시점: 화면 라운드(6b)가 닫힌 뒤.** config의 «모양»을 바꾸는 일이라 도는 화면 작업 위에
+> 얹지 않는다. 이 판정은 S1(스켈레톤을 모든 config로)과도 맞물린다 — 모양이 먼저 정해져야 한다.
+>
+
 ### 🧭 개발 대기열 ― 사용자 지시 순서대로
 
 | 순 | 주제 | 상태 |
