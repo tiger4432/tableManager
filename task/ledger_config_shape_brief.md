@@ -236,3 +236,51 @@ C  RoleEmission.claim_ref 를 읽는 곳 — compile_role_frame 말고 또 있�
 ⚠️ 그래서 **이 라운드의 착지 확인에서 6·7번(마이그레이션 diff · `unsupported_setup_version`)을 뺀다.**
 나머지는 그대로다 — 특히 **원자 696**.
 
+---
+
+## 🔴 총괄 정정 둘 — 구현자 실측이 지시서를 고쳤다 (2026-08-21 01:0x)
+
+### ① 판정: **「나」 — `binding_origin` 만 생략하고 `approval_status` 는 남긴다**
+
+두 필드가 «대칭이 아니다». 실측:
+```
+roleframe.py:800       binding.approval_status != "approved" → «실행 경로»가 거절한다
+source_profile.py:280  legacy 기본값 = approval_status «PENDING»
+_APPROVAL_STATUSES     {pending, approved, rejected}
+_BINDING_ORIGINS       {user_declared, system_suggested, imported}
+```
+**`approval_status` 는 게이트다.** 생략하고 기본값을 `approved` 로 읽으면
+「승인이라고 말해야 승인」이 **「말 안 하면 승인」으로 뒤집힌다.** 게다가 다른 자리의 기본값은
+`pending` 이라 둘이 어긋난다.
+
+🔴 **원칙 (구현자 문장 그대로 받는다): 생략의 기본값은 «아무것도 주지 않는 값»일 때만 된다.**
+`user_declared` 는 자격이 있고 `approved` 는 없다.
+
+```
+간다     binding_origin 생략        80줄 중 40줄. 위험 0
+안 간다  approval_status 생략       효과는 나머지 40줄, 대신 게이트가 뒤집힌다
+```
+**효과 절반을 포기하고 안전을 산다.** 총괄이 처음에 둘을 한 덩이로 적은 것이 틀렸다.
+
+### ③ 정정: 「대조 안 한다」는 **총괄이 엉뚱한 함수에서 쟀다**
+
+지시서에 「`compile_role_frame` 은 `mapping` 을 찾아 놓고 `claim_ref` 와 대조하지 않는다」고
+적었다. **거짓이다.** 그 대조는 바로 옆 함수에 있다:
+```
+validate_role_frame:910   row["claim_ref"] != mapping.claim_ref → invalid_claim_ref
+                   :914   not in descriptor.emits              → unsupported_claim
+```
+같은 데이터가 두 함수를 다 지난다. **구멍은 없었다.**
+([[a-snippet-reproduced-out-of-context-is-not-the-behaviour]] — 구현자가 그 이름으로 잡았다)
+
+**그래도 ③은 «진행»한다. 근거만 바뀐다.**
+```
+전(틀림)  「대조가 없으니 구멍이다」                    ← 거짓
+후(맞음)  claim_ref 를 mapping_id 에서 «유도»하면
+          :910 은 자기를 자기와 비교하는 «동어반복»이 되고
+          :914 도 use 에서 유도된 emits 와 비교하니 동어반복이 된다
+          매퍼가 모르는 mapping_id 를 내는 경우는 :906 unknown_mapping 이 «이미» 잡는다
+```
+🔴 **가드를 「지우는」 게 아니라, 가드가 막던 상태가 «표현 불가»가 되어 동어반복이 되는 것이다.**
+별명 라운드의 `_ambiguous_sentences` 와 같은 모양이다. 커밋 메시지에 그렇게 적을 것.
+
