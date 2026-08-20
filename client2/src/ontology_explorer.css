@@ -593,8 +593,18 @@
 }
 #ontology-explorer-root .oe-node-label {
   display: flex; align-items: baseline; gap: 6.8px; min-width: 0;
-  overflow-wrap: anywhere;
 }
+/* 🔴 THE ROW KEEPS ONE HEIGHT. At depth the label column is narrow -- 214px less 16px a
+   level, so 134px by depth 5 -- and `allowed_binding_kinds` plus its badge needed 144. The
+   name wrapped, and 30 of 136 rows stood at 57px against the others' 38. Uniform rows are
+   what 「잘 정돈되게」 buys; a column of two heights is not that.
+   Nothing is lost: the name is `title`d, so the whole identifier is one hover away, and it
+   is still in the DOM for search. Scoped to the TREE -- `.oe-node-name` is also the flow
+   node's class, and the flow stacks in a 330px column where wrapping is right. */
+#ontology-explorer-root .oe-node-row .oe-node-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#ontology-explorer-root .oe-node-row .oe-node-badge { flex: none; white-space: nowrap; }
 #ontology-explorer-root .oe-node-row .oe-node-name {
   font-family: var(--oe-font-mono); font-size: 13px; color: var(--oe-text);
 }

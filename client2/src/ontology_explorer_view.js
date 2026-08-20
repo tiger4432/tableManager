@@ -1041,7 +1041,10 @@ function treeRow(depth, label, extras, valueEl, stateEl, cls) {
   // Depth is DATA; the formula turning it into a width lives in the stylesheet.
   row.style.setProperty('--oe-depth', String(depth));
   const name = h('div', 'oe-node-label');
-  name.append(h('span', 'oe-node-name', label));
+  const nameText = h('span', 'oe-node-name', label);
+  // The label column truncates at depth, so the full identifier stays reachable.
+  nameText.title = String(label);
+  name.append(nameText);
   for (const extra of extras || []) name.append(extra);
   row.append(name);
   const value = h('div', 'oe-node-value');
