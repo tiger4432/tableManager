@@ -156,7 +156,10 @@
 #ontology-explorer-root .oe-step-ord {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 18px; height: 18px; margin-right: 6.8px;
-  background: var(--oe-line); color: var(--oe-muted);
+  /* 🔴 `--oe-muted` on `--oe-line` measured 3.68:1 in light at 12px/600. 12px bold is not
+     "large text", so the bar is 4.5:1 and this failed it -- and it is the number the spine
+     is navigated by. Text ink on the same chip measures well clear. */
+  background: var(--oe-line); color: var(--oe-text);
   font-family: var(--oe-font-head); font-weight: 600; font-size: 12px;
 }
 #ontology-explorer-root .oe-step.is-here .oe-step-ord {
@@ -811,9 +814,11 @@
 #ontology-explorer-root .oe-editor-textarea {
   display: block; min-height: 260px; resize: vertical; padding: 10.2px; font-size: 12px;
 }
+/* 14px is the Industry input figure. This line had been overriding the input block back
+   down to 13px, so the spec landed everywhere except the size a person reads. */
 #ontology-explorer-root .oe-key-input,
 #ontology-explorer-root .oe-field-input,
-#ontology-explorer-root .oe-field-select { font-size: 13px; }
+#ontology-explorer-root .oe-field-select { font-size: 14px; }
 #ontology-explorer-root .oe-key-row .oe-key-input { flex: 1; width: auto; }
 /* The datalist wrapper is a span; without this the input inside it cannot be 100% wide. */
 #ontology-explorer-root .oe-form-suggested { display: block; min-width: 0; }
