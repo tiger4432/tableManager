@@ -127,3 +127,74 @@ bind     연결
 | B | 파일 키 정렬 바꾸기 | 순서는 스켈레톤이 만든다. 정렬은 정본 직렬화라 해시 재료다 |
 | C | 「첫 저장 전 후보 0」 | 별건, 소유자 판정 대기 |
 | D | 커서 리셋 승인 장치 | 운영 판정 대기 |
+
+---
+
+## ③ 「닿을 수 없으면 선언도 닿지 않는다」 — 소유자 판정 2026-08-20 23:4x
+
+> 소유자: 「**클레임과 맵퍼 함수는 완전 별개인데 왜 맵퍼에서 쓸 클레임을 정의함? 프로필에서
+> 해야하는거 아니야?**」 → 「**닿을 수 없다면 선언도 닿으면 안됨**」 → 「**진행**」
+
+**이건 결함 수리가 아니라 구조 판정이다.** ①②와 같은 성격이므로 같은 커밋에 붙는다.
+
+### 정본은 하나다 — `profile.mappings[].use`
+
+어느 `claim` 을 쓰는지 정하는 곳은 `profile` 이다. 그런데 그것을 되풀이하는 자리가 셋 있고,
+**셋 다 자유도가 0** 이다.
+
+```
+① driver.mapper.emits      config_authoring.py:867   state="derived"
+                           ground = mapper_emits_from_profile_uses
+                           주석: 「Set equality is checked in BOTH directions;
+                                  degrees of freedom: zero.」
+② profile.packs            config_authoring.py:953   state="derived"
+                           value = sorted(set(used_packs))   ← mappings[].use 에서 나온다
+③ RoleEmission.claim_ref   roleframe.py:146          코드가 claim 을 «이름»으로 든다
+```
+
+### 왜 mapper 쪽이 특히 틀렸나
+
+`mapper` implementation 은 `claim` 을 모른다 — `SentenceShape` 만 안다. 「이 mapper 가 낼 수 있는
+`claim` 이 무엇인가」는 **mapper 쪽에서 대답이 없는 질문**이고, 대답을 가진 것은 `profile` 뿐이다.
+그런데 `emits` 는 `driver.mapper` 안에 앉아 있다. **섹션이 틀렸다.**
+
+`_resolve` 의 주석이 이 설계의 의도를 이미 적어 두었다:
+「the naming runs config -> mapper, so renaming a `mapping_id` cannot reach this file」
+**이름은 config 에서 mapper 로 한 방향으로만 흐른다.** `emits` 와 `claim_ref` 둘만 그 선을 거슬러 있다.
+
+### 무엇을 한다
+
+```
+지운다   driver.mapper.emits
+지운다   profile.packs
+지운다   RoleEmission.claim_ref
+         → compile_role_frame 은 mapping.claim_ref 에서 얻는다
+           (이미 mapping_id 로 mapping 을 찾고 있다 — roleframe.py:1081)
+남긴다   profile.mappings[].use            ← 유일한 정본
+남긴다   RoleEmission.mapping_id           ← profile 이 소유하는 이름
+```
+
+🔴 **부수 효과이지 «이유»가 아니다:** 지금 `compile_role_frame` 은 `mapping` 을 찾아 놓고
+`claim_ref` 와 대조하지 않는다(그 함수에서 `mapping` 은 조회 한 줄과 에러 메시지 한 줄에만 쓰인다).
+`claim_ref` 가 없어지면 **어긋날 두 값이 없어져 그 검사가 필요 없어진다.**
+구멍을 막는 것이 아니라 구멍이 있을 자리를 없앤다.
+
+### 착수 «전»에 셀 것
+
+```
+A  setup_registry.py:790 이 emits 를 MapperDescriptor 에 싣는다 — «실행»이 그 필드를 읽는가
+B  profile.packs 를 읽는 곳 — 검증 말고 실행·화면에 소비자가 있는가
+C  RoleEmission.claim_ref 를 읽는 곳 — compile_role_frame 말고 또 있는가
+```
+**하나라도 실행 소비자가 있으면 멈추고 보고할 것.** 그때는 지우는 게 아니라 출처를 바꾸는 일이 된다.
+
+### 받아들이는 시험
+
+```
+1  config 에서 세 자리가 사라진다 — 라이브·샘플 둘 다
+2  mapper 가 claim 에 닿는 «경로가 없다» — claim_ref 소비자 grep 0건
+3  lot_event 배치 프리뷰 원자 696 · incomplete 0 · DB 쓰기 0     ← 뜻이 안 바뀌었다는 숫자
+4  마이그레이션이 옛 config 에서 emits·packs 를 «떨어낸다» (①②의 스크립트가 같이 한다)
+5  화면에서 그 세 행이 사라지고, 소스 하나를 폼만으로 만들어 저장 → 거절 0
+```
+
