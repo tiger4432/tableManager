@@ -1445,7 +1445,10 @@ export function renderOntologyExplorer(root, state) {
   } else if (state.selection) {
     workspace.append(renderBreadcrumb(state), renderPaths(state));
     const detail = h('section', 'oe-detail-grid');
-    detail.append(renderInspector(state), renderIntegrity(state));
+    // Integrity is the body's third column now, not a card inside the workspace.
+    // Leaving both put the same panel on screen twice, side by side, saying the same
+    // sentence -- seen in the browser, not in the diff.
+    detail.append(renderInspector(state));
     workspace.append(detail);
   } else if (state.draft) {
     // An open draft is the thing being worked on; show it even though nothing is selected.
