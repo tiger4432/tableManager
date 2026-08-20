@@ -1501,7 +1501,7 @@ export function renderOntologyExplorer(root, state) {
     workspace.append(renderRaw(state));
     // The rows are inside `renderRaw`'s editor now, so nothing is appended here.
   } else if (state.selection) {
-    workspace.append(renderBreadcrumb(state), renderPaths(state));
+    workspace.append(renderBreadcrumb(state));
     const detail = h('section', 'oe-detail-grid');
     // Integrity is the body's third column now, not a card inside the workspace.
     // Leaving both put the same panel on screen twice, side by side, saying the same
@@ -1518,10 +1518,16 @@ export function renderOntologyExplorer(root, state) {
     workspace.append(h('div', 'oe-empty', state.loading ? '불러오는 중…' : '표시할 정의가 없습니다.'));
   }
   main.append(workspace);
-  // 6b's third column. It holds Integrity today; what the mockup eventually puts here
-  // (「이 소스가 만드는 것」, the physical prerequisites) is T3 and needs data that does
-  // not exist yet, so this step claims the SLOT and moves the panel that already fits it.
-  main.append(renderIntegrity(state));
+  // 6b's third column. The mockup puts the reference flow here, not across the top of the
+  // work -- owner: 「위에 플로우도 목업에는 오른쪽 패널에 있는데 좀 작게하고」. At 330px the
+  // boxes cannot stand side by side, so "smaller" is a vertical stack at the mockup's own
+  // 11px, which is what its right panel does.
+  //
+  // What the flow SAYS is unchanged, and so is clicking a node -- only where it sits.
+  const side = h('div', 'oe-side');
+  if (state.selection) side.append(renderPaths(state));
+  side.append(renderIntegrity(state));
+  main.append(side);
   // 🔴 THE SPINE IS A BAND ABOVE THE BODY, NOT A COLUMN INSIDE IT. It was appended into
   // `.oe-main` for 1b, where the layers were the left column; 6b makes them a horizontal
   // band and the CSS was moved to match, but this line was not -- so the band was laid out

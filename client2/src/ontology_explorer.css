@@ -266,21 +266,31 @@
 #ontology-explorer-root .oe-section-heading { display: flex; justify-content: space-between; gap: 10.2px; margin-bottom: 10.2px; }
 #ontology-explorer-root .oe-section-heading h2 { font-size: 17px; line-height: 1.2; letter-spacing: -0.015em; }
 #ontology-explorer-root .oe-section-heading span { color: var(--oe-muted); font-size: 12px; }
+/* 🔴 THE FLOW LIVES IN THE 330px COLUMN, SO IT STACKS. Side by side it needed horizontal
+   scroll at this width; the mockup's right panel runs the same chain downward at 11px with
+   8x10 boxes, and that -- not a smaller font on a row that still overflows -- is 「작게」. */
 #ontology-explorer-root .oe-flow {
-  display: flex; align-items: stretch; gap: 6.8px; overflow-x: auto; padding-bottom: 6.8px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+  padding-bottom: 6.8px;
 }
 #ontology-explorer-root .oe-flow[data-current="true"] { border-left: 3px solid var(--oe-accent); padding-left: 6.8px; }
 #ontology-explorer-root .oe-flow-label {
-  flex: 0 0 66px; display: grid; place-items: center; color: var(--oe-ink-meta); font-size: 11px;
+  flex: none; display: block; color: var(--oe-ink-meta); font-size: 11px;
 }
 #ontology-explorer-root .oe-flow + .oe-flow { margin-top: 6.8px; }
 /* A card: transparent, one hairline, square. */
 #ontology-explorer-root .oe-flow-node {
-  flex: 1 0 145px; max-width: 260px; border: 1px solid var(--oe-line);
-  background: transparent; color: var(--oe-text); min-width: 0; padding: 10.2px;
-  display: flex; flex-direction: column; gap: 6.8px;
+  flex: none; max-width: none; border: 1px solid var(--oe-line);
+  background: transparent; color: var(--oe-text); min-width: 0; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 3.4px;
   text-align: left; cursor: pointer;
 }
+/* 🔴 SCOPED TO THE FLOW. `.oe-node-name` and `.oe-node-kind` are the TREE's classes too --
+   the flow node borrowed them. Sizing them unscoped would shrink every row of the tree,
+   which is the collision that already cost a rename once on this screen. */
+#ontology-explorer-root .oe-flow-node .oe-node-name { font-size: 11px; }
+#ontology-explorer-root .oe-flow-node .oe-node-kind { font-size: 9px; }
+#ontology-explorer-root .oe-flow-node .oe-node-state { font-size: 10px; }
 #ontology-explorer-root .oe-flow-node:hover { background: var(--oe-tint-hover); border-color: var(--oe-accent); }
 #ontology-explorer-root .oe-flow-node:active { background: var(--oe-tint-press); }
 #ontology-explorer-root .oe-flow-node[aria-pressed="true"] { border-color: var(--oe-accent); background: var(--oe-accent-soft); }
@@ -640,9 +650,13 @@
 #ontology-explorer-root .oe-node-row.is-root .oe-node-name {
   font-weight: 600; font-size: 14px;
 }
-#ontology-explorer-root .oe-main > .oe-panel {
+#ontology-explorer-root .oe-side {
   overflow: auto; border-left: 1px solid var(--oe-line); background: var(--oe-surface);
+  display: flex; flex-direction: column; min-width: 0;
 }
+#ontology-explorer-root .oe-side > .oe-panel { border: 0; background: transparent; }
+#ontology-explorer-root .oe-side .oe-flow-area { padding: 10.2px; }
+#ontology-explorer-root .oe-side .oe-section-heading h2 { font-size: 13px; }
 
 /* ── The mockup's components, stated once ───────────────────────────────────────────────
    This block sits last on purpose: the design file ends the same way, with the shapes
