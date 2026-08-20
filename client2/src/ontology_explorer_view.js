@@ -276,6 +276,36 @@ function keyValue(label, value) {
   return frag;
 }
 
+// 🔴 ONE TREE, TWO STATES -- NOT TWO TREES. The lead's condition on this step: a second
+// renderer would drift from the first, and the day they disagree is the day nobody believes
+// either. So reading reuses `renderSkeletonForm` and hands it a context that answers "no" to
+// everything editable: no plan rows, no candidates, no CRUD. The context is small BECAUSE
+// reading needs less, not because it is a copy -- the shape, the depths, the fold rule and
+// the counts all come from the same code the editor uses.
+function renderReadTree(state) {
+  const skeleton = state.authoringSchema?.skeleton || null;
+  const section = (state.authoringSchema?.authorable_kinds || [])
+    .find((row) => row.id === state.selection?.kind)?.section || null;
+  const node = skeleton && section ? declarationShape(skeleton, section) : null;
+  const document_ = state.selection?.compiled;
+  if (!node || !document_ || typeof document_ !== 'object') return null;
+  const context = {
+    schema: state.authoringSchema || {},
+    readOnly: true,
+    planRow: () => null,
+    deref: (item) => (item && item.use ? (skeleton.defs || {})[item.use] : item),
+    declared: () => [],
+    rolesNear: () => [],
+    renderRow: () => null,
+    suggest: (row) => row,
+    hot: [],
+    expanded: state.expandedFields || [],
+    absolute: (at) => at,
+  };
+  return renderSkeletonForm(context, node, '', document_, 0,
+                            state.selection.canonical_id);
+}
+
 function renderDefinition(state) {
   const grid = h('div', 'oe-signature');
   const selected = state.selection;
@@ -288,10 +318,19 @@ function renderDefinition(state) {
     keyValue('정의 해시', selected.definition_hash),
     keyValue('변경 상태', selected.change_status),
   );
-  const code = h('pre', 'oe-code');
-  code.append(h('code', '', JSON.stringify(selected.compiled, null, 2)));
   const wrap = h('div', 'oe-definition');
-  wrap.append(grid, code);
+  wrap.append(grid);
+  // The body of a declaration you are READING is the same tree you get when you edit it.
+  // Until now this path had no tree at all -- the owner selected a declaration, saw the old
+  // cards, and asked whether anything had been pushed. The raw dump that used to sit here
+  // is not lost: 「원본 JSON」 is its own tab and shows exactly that.
+  const tree = renderReadTree(state);
+  if (tree) wrap.append(tree);
+  else {
+    const code = h('pre', 'oe-code');
+    code.append(h('code', '', JSON.stringify(selected.compiled, null, 2)));
+    wrap.append(code);
+  }
   return wrap;
 }
 
@@ -1021,7 +1060,7 @@ function renderSkeletonRecord(context, node, path, value, depth) {
     if (!drawn) continue;
     // An optional field the document holds can be taken back out. The tree row owns the
     // chrome now, so the control rides in the label column beside the name.
-    if (field.required === false && current !== undefined) {
+    if (!context.readOnly && field.required === false && current !== undefined) {
       const slot = drawn.querySelector('.oe-node-label');
       if (slot) slot.append(button('−', 'form-clear', at, 'oe-form-remove'));
     }
@@ -1057,9 +1096,10 @@ function renderSkeletonMap(context, node, path, value, depth) {
       depth + 1, String(key));
     if (!drawn) continue;
     const slot = drawn.querySelector('.oe-node-label');
-    if (slot) slot.append(button('−', 'form-remove', at, 'oe-form-remove'));
+    if (!context.readOnly && slot) slot.append(button('−', 'form-remove', at, 'oe-form-remove'));
     box.append(drawn);
   }
+  if (context.readOnly) return box;
   const naming = h('div', 'oe-form-new');
   if (node.keyed_by === 'index') {
     naming.append(button('+ ' + (node.member || '항목'), 'form-append', path, 'oe-form-add'));
@@ -1100,6 +1140,13 @@ function renderTreeLeaf(context, node, path, value, depth, label) {
 // instead (see `renderTreeLeaf`) -- that row is the only thing carrying candidates,
 // refusals and grounds, so the skeleton fills exactly what the plan cannot see.
 function renderSkeletonLeaf(context, node, path, value) {
+  // Reading shows the value; writing shows the control. Same renderer, same rows, same
+  // folding -- 「읽기에서는 편집 컨트롤 대신 값이 그려질 뿐, 무엇이 있는지 보이는 것은 같다」.
+  if (context.readOnly) {
+    if (value === undefined || value === null) return h('span', 'oe-value is-none', 'None');
+    if (typeof value === 'boolean') return h('span', 'oe-value', value ? 'true' : 'false');
+    return h('span', 'oe-value', String(value));
+  }
   if (node.hint === 'flag') {
     const box = h('input', 'oe-role-required');
     box.type = 'checkbox';
