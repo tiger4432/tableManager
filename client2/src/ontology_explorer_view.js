@@ -336,7 +336,14 @@ function renderReadTree(state) {
   const section = (state.authoringSchema?.authorable_kinds || [])
     .find((row) => row.id === state.selection?.kind)?.section || null;
   const node = skeleton && section ? declarationShape(skeleton, section) : null;
-  const document_ = state.selection?.compiled;
+  // 🔴 THE SKELETON DESCRIBES THE CONFIG, SO IT IS WALKED AGAINST THE CONFIG. This read
+  // `compiled` for a while and the mismatch was invisible while the two spelled their
+  // fields alike. The day a source stopped saying `driver`/`profile` and started saying
+  // `read`/`prepare`/`map`/`bind`, every leaf under `sources.*` stopped finding a value --
+  // 53 found became 2 -- and the owner opened a source to four correctly ordered clauses
+  // with nothing inside them. `compiled` is the runtime's own object and it is entitled to
+  // its own names; this tree is the declaration, so it reads what the operator wrote.
+  const document_ = state.selection?.raw;
   if (!node || !document_ || typeof document_ !== 'object') return null;
   const context = {
     schema: state.authoringSchema || {},
