@@ -27,30 +27,129 @@ skeleton  record · map(keyed_by:name) · map(keyed_by:index) · leaf
 
 ---
 
-## CSS — Industry 구조, 우리 색
+## 🔴 디자인은 목업 «그대로» — 색만 우리 것
 
-**가져오는 것:** `_ds/industry-…/styles.css` 의 컴포넌트·타입 스케일·간격·프레임(각진 모서리,
-헤어라인 테두리, `.card`/`.btn`/`.input`/`.tag`/`.table`).
+소유자: 「**css는 이거쓰고 컬러만 기존거**」 · 「**목업이랑 컬러 제외 디자인 똑같이, 폰트,
+버튼 스타일 등등 모두**」 (덧붙임: 「나중에 이런 형태로 시스템 전체 ui 어차피 손볼예정」)
 
-🔴 **색은 기존 것만.** Industry의 색 토큰을 **우리 `--oe-*`에 매핑**한다. 그 세트는 `light-dark()`라
-**두 모드가 같이 따라온다** — 한쪽만 보고 끝내지 말 것.
+**정본은 디자인 프로젝트의 파일이다. 스크린샷에서 눈대중하지 말고 이걸 읽는다:**
 
 ```
---color-bg       -> var(--oe-bg)
---color-surface  -> var(--oe-surface)
---color-text     -> var(--oe-text)
---color-divider  -> var(--oe-line)
---color-accent   -> var(--oe-accent)
+DesignSync  method=get_file
+  projectId 035a768a-4af0-49aa-a7ae-2026c445b24a
+  path      _ds/industry-1952eef9-50dc-4e72-b7b4-ddf3c855b2e2/styles.css
+```
+
+아래는 그 파일에서 뽑은 것 «전부»다(색 제외). 숫자는 그대로 쓴다.
+
+### 폰트 — 두 벌
+
+```
+제목·버튼   "Barlow Condensed", system-ui, sans-serif   weight 600
+본문        "Barlow", system-ui, sans-serif             weight 400
+본문 기본    15px / line-height 1.55
+h1 42 · h2 32 · h3 25 · h4 20 · h5 16 · h6 13
+             line-height 1.12 · letter-spacing -0.015em
+h6만        uppercase + letter-spacing 0.08em
+```
+
+⚠️ **Google Fonts `@import`로 받는다.** 이 박스엔 사내 프록시가 있고 막힌 전례가 있다.
+**`system-ui` 폴백을 반드시 같이 선언**하고, 로드 실패해도 화면이 안 깨지는지 보고할 것.
+막히면 소유자 판정을 받는다 — 임의로 빼지 말 것.
+
+### 간격 — 3.4px의 배수 하나뿐
+
+```
+3.4 · 6.8 · 10.2 · 13.6 · 20.4 · 27.2
+```
+
+### 🔴 모서리는 0 — 이게 이 디자인의 서명이다
+
+토큰은 `2 / 4 / 7px`를 선언하는데 **파일 맨 끝 블록이 전부 덮는다**:
+
+```
+.card, .btn, .input, .tag, .seg, .dialog { border-radius: 0; }
+.card, .dialog { background: transparent; border: 1px solid <divider>; }
+.btn           { border: 1px solid <divider>; }
+```
+
+즉 **각진 모서리 · 투명 배경 · 1px 헤어라인**이 컴포넌트의 기본형이다. 지금 우리 화면의
+`border-radius: 9px` 류가 전부 여기 걸린다.
+
+### 버튼
+
+```
+display inline-flex · align-items center · justify-content center · gap 6px
+font    제목 폰트 600 · 14px / line-height 1.2
+padding 6.8px 12.24px          (space-2  ·  space-3 × 1.2)
+border  1px · radius 0
+icon    36 × 36 · padding 0
+disabled opacity 0.45 · cursor not-allowed
+primary   강조 배경 + 강조 테두리
+secondary 구분선 테두리, 호버 글자색 7% 섞기 → 누름 14%
+ghost     강조 글자 · 테두리 투명 · padding-inline 3.4px, 호버 10% → 누름 18%
+```
+
+🔴 **호버·누름은 고정색이 아니라 「섞기」다** (`color-mix(... N%, transparent)`). 고정 회색으로
+바꾸면 다크에서 죽는다 — 우리 토큰으로 **같은 식**을 쓴다.
+
+### 입력 · 라벨
+
+```
+.input  width 100% · min-height 36px · padding 6px 10px · 14px
+        1px 테두리 · radius 0 · caret 강조색
+        hover 테두리 = 글자색 45% 섞기 · focus-visible 강조 테두리 + outline-offset 0
+label   12px · margin-bottom 5px · 글자색 70% 섞기
+```
+
+### 배지 · 표 · 카드
+
+```
+.tag    11px · letter-spacing 0.02em · padding 3px 10px · radius 0
+.table  14px
+  th    11px · uppercase · letter-spacing 0.08em · 60% · padding 6.8 · 아래 1px
+  td    padding 6.8 · 아래 1px(8%)
+  행 hover 4% 섞기
+.card   flex column · gap 6.8 · padding 10.2 · 투명 + 1px
+  kicker 10px · letter-spacing 0.1em · uppercase · 강조색
+  title  제목 폰트 17px / 1.2
+  body   13px · opacity 0.8
+  meta   11px · 50%
+```
+
+### 포커스 — 지금 우리 화면에 없는 것
+
+```
+:focus          { outline: none; }
+:focus-visible  { outline: 2px solid 강조색; outline-offset: 2px; }
+::selection     { 강조색 30% 섞기 }
+```
+
+### 🔴 바뀌는 축은 색 하나뿐 — 매핑
+
+```
+--color-bg       ->  var(--oe-bg)
+--color-surface  ->  var(--oe-surface)
+--color-text     ->  var(--oe-text)
+--color-divider  ->  var(--oe-line)
+--color-accent   ->  var(--oe-accent)
 (중간 톤이 필요하면 --oe-surface-2 / --oe-muted / --oe-ok / --oe-warn)
 ```
 
-⚠️ **가져오지 «않는» 것 둘 — 확인했다:**
+우리 `--oe-*`는 `light-dark()`라 **두 모드가 같이 따라온다.** 한쪽만 보고 끝내지 말 것.
+
+### 가져오지 «않는» 것 셋 — 확인했다
+
 - `support.js` 는 **디자인 캔버스 런타임**(React로 `<x-dc>`를 그리는 뷰어)이다. 앱과 무관.
 - `_ds_bundle.js` 는 **비어 있다**(`components: []`). Industry는 순수 CSS다.
+- `.blueprint > .corner` 등록마크는 목업 카드의 **액자**다. 우리 화면은 액자가 아니다 —
+  각진 모서리와 헤어라인은 위에서 이미 온다.
 
-⚠️ **폰트:** Industry는 Barlow / Barlow Condensed를 **Google Fonts `@import`**로 받는다.
-이 박스는 사내 프록시가 있고 그게 막힌 전례가 있다. **시스템 폰트 폴백을 반드시 같이 선언**하고,
-로드 실패해도 화면이 깨지지 않는지 보고할 것. (막히면 소유자 판정을 받는다 — 임의로 빼지 말 것)
+### 적용 범위
+
+**이 화면 전부** — 트리 행 · 척추 띠 · 좌측 선언 인덱스 · 우측 패널 · 버튼 · 입력 · 배지.
+🔴 **끝내는 자리는 `#ontology-explorer-root` 안이다.** 어드민 셸 전역 CSS는 이번에 건드리지
+않는다(그건 U1이고 소유자가 「나중에 전체 손볼 예정」이라 하셨다).
 
 ---
 
@@ -83,7 +182,7 @@ skeleton  record · map(keyed_by:name) · map(keyed_by:index) · leaf
 
 ---
 
-## T1 — 이번 걸음. 메인이 트리를 소유한다
+## 6b-T1 — 이번 걸음. 메인이 트리를 소유한다
 
 ### 좌측은 «평평한 선언 인덱스»로 고정
 
@@ -126,13 +225,13 @@ skeleton   kind · keyed_by · hint · required · when                (ledger_s
 
 ---
 
-## ✅ T1 검수 결과 (총괄, 소유자 실화면 8080) — 셋은 닫혔고 둘이 남았다
+## ✅ 6b-T1 검수 결과 (총괄, 소유자 실화면 8080) — 셋은 닫혔고 둘이 남았다
 
 **닫힌 것:** 루트도 자기 행을 갖는다(예외 없이) · 접힌 것이 개수를 말한다(`접힘 · 9`) ·
 깊이 6단 41행이 한 렌더러로 뜬다 · 라벨 열만 −16px씩 줄고 **값 x=571 / 상태 x=745가 41행 전부
 동일** · 두 모드 다 읽힌다. 프로필 다섯 겹도 같은 렌더러(구현자 실측 278행).
 
-### 🔴 T1-a. 트리 옆의 빈 267px — 옮기고 남은 트랙
+### 🔴 6b-T1-a. 트리 옆의 빈 267px — 옮기고 남은 트랙
 
 `.oe-detail-grid`(`client2/src/ontology_explorer.css:243`)가 아직 두 트랙을 선언한다:
 `minmax(0, 1.35fr) minmax(250px, .65fr)`. 그런데 `3259243` 이후 자식은 **하나뿐**이다
@@ -143,7 +242,7 @@ skeleton   kind · keyed_by · hint · required · when                (ledger_s
 가운데 열은 이제 한 덩어리이므로 트랙이 하나면 된다. 반응형 오버라이드(`:368`, `:374`)가
 같은 선택자를 다시 쓰니 **둘 다 보고 고칠 것.**
 
-### 🔴 T1-b. 한 행이 상태를 두 번 말한다
+### 🔴 6b-T1-b. 한 행이 상태를 두 번 말한다
 
 값 칸 안에 `oe-folded-value`(`dt_log`)와 `oe-folded-why`(`선언됨`)가 나란히 놓이는데
 (`ontology_explorer_view.js:676-677`), x=615에서 맞닿고 세로 기준선이 어긋나(y 388 vs 380)
@@ -158,6 +257,58 @@ skeleton   kind · keyed_by · hint · required · when                (ledger_s
 ⚠️ **`oe-folded-ground`(근거 한 줄)는 건드리지 않는다.** 그건 상태가 아니라 «왜 그 값인가»이고
 상태 열이 말하지 않는 것이다.
 
+### ✅ 재검수 — 둘 다 닫혔다 (`551aa93`, 총괄이 소유자 실화면에서)
+
+```
+6b-T1-a   .oe-detail-grid = 1746px 한 트랙 · 자식 1
+          트리 행이 1849px 중 1708px  (전: 936 중 516)
+6b-T1-b   relation · profile_id · 단위 → 값 하나 + 우측 상태 하나. 값 칸의 중복 사라짐
+```
+
+### 🔴 6b-T1-c. 그런데 `이 자리` 행 넷은 아직 «카드»다 — 인자 하나가 자리에서 밀렸다
+
+`renderSkeletonMap`이 맵 자신의 계획 행을 그리는 한 줄:
+
+```js
+if (own) box.append(treeRow(depth + 1, '이 자리', [], context.renderRow(own, true), null));
+```
+
+`renderRow`의 자리는 **`(row, node, bare = false)`**다. 그래서 저 `true`는 `bare`가 아니라
+**`node`**에 들어가고, `bare`는 `false`로 남는다. 스무 줄 아래 `renderTreeLeaf`는 같은 함수를
+**세 인자로** 제대로 부른다 — `context.renderRow(context.suggest(planned, node, path), node, true)`.
+**두 자리가 같은 커밋(`30feb9f`)에서 쓰였고 한쪽만 새 모양을 받았다.**
+
+**실측된 결과 둘:**
+
+```
+① bare=false  →  카드가 자기 머리를 그대로 그린다.
+                 화면: 「이 자리」 행 안에 identity / group_by / order_by 가 굵게 또 있고,
+                 형제 행이 전부 «납작한 줄»인데 이 넷만 테두리 상자다.
+                 그리고 oe-folded-why 가 남아 상태를 값 칸에서 또 말한다 — 실측 4건.
+② node=true   →  editableFor(row, true) 가 스켈레톤 노드 자리에 boolean 을 받는다.
+                 node.kind 가 undefined 라 빈 칸 편집기 갈래가 «영원히» 안 열린다.
+                 오늘은 이 행들이 항상 값을 들고 있어서 안 보인다.
+```
+
+②는 지금 증상이 없다. **그래서 더 위험하다** — 값 없는 맵이 생기는 날 조용히 틀린다.
+
+**🔴 인자만 고치면 안 된다.** 저 줄은 상태 원소로 `null`을 넘긴다 — 즉 이 행들엔 **상태 열이
+아예 없다.** `bare=true`로 바꾸기만 하면 상태를 말하던 유일한 자리가 사라진다.
+`renderTreeLeaf`가 이미 답을 들고 있다:
+
+```js
+const fold = foldDecision(planned, context.expanded);
+state = h('i', 'oe-tier oe-tier--' + planned.tier, fold.open ? planned.tier : fold.reason);
+```
+
+**바뀌는 층:** `renderSkeletonMap`의 그 한 줄 — 세 인자로 부르고, 위 세 줄로 상태 원소를 만들어
+`treeRow`의 마지막 자리에 넘긴다.
+**그대로인 것:** `renderRow` 시그니처 · `renderTreeLeaf` · `foldDecision` · CSS · 다른 호출부.
+
+**확인:** `이 자리` 행이 형제 행과 **같은 줄 모양**이 되고, 값은 값 열에 · 상태는 상태 열(x 한 자리)에
+선다. `.oe-node-row .oe-folded-why` 는 **0**이 되어야 한다 — 단, **다 펼친 뒤에 센다.**
+접혀 있으면 그 행들이 DOM에 없어서 0이 나온다(내가 4를 본 것도 전부 펼친 뒤였다).
+
 ### 판정 기준은 그대로
 
 **「클래스가 있는가」가 아니라 「목업처럼 보이는가」.** 이 둘은 좌표·개수가 전부 초록인 채로
@@ -169,11 +320,11 @@ skeleton   kind · keyed_by · hint · required · when                (ledger_s
 
 | | 무엇 | 왜 나중인가 |
 |---|---|---|
-| T2 | 읽기/편집 두 상태 | 지금은 편집 하나뿐. 뼈대가 선 뒤 |
-| T3 | 물리 전제조건 패널 (`✓ UNIQUE uq_bk_dt_log`) | **새 데이터** — table_config + 실제 인덱스 조회 |
-| T4 | 거절의 행동 버튼 (`+ dt_cell_key 붙이기`) | 🔴 **서버 계약 변경.** 지금 거절은 `code·path·message` 셋뿐이고 「무엇을 하면 되는가」가 없다. 어젯밤 정확히 이 벽에 부딪혔다 |
+| 6b-T2 | 읽기/편집 두 상태 | 지금은 편집 하나뿐. 뼈대가 선 뒤 |
+| 6b-T3 | 물리 전제조건 패널 (`✓ UNIQUE uq_bk_dt_log`) | **새 데이터** — table_config + 실제 인덱스 조회 |
+| 6b-T4 | 거절의 행동 버튼 (`+ dt_cell_key 붙이기`) | 🔴 **서버 계약 변경.** 지금 거절은 `code·path·message` 셋뿐이고 「무엇을 하면 되는가」가 없다. 어젯밤 정확히 이 벽에 부딪혔다 |
 
-**T4를 T1에 끼워 넣지 말 것.** 문구를 파싱해서 버튼을 만들면 그게 두 번째 저자가 된다.
+**6b-T4를 6b-T1에 끼워 넣지 말 것.** 문구를 파싱해서 버튼을 만들면 그게 두 번째 저자가 된다.
 
 ---
 
