@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-19 | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-21 | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/` · `server/ledger_trace_router.py`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -12,7 +12,7 @@
 > **Ledger V2 전환 주의:** 이 문서의 구 translator/source-kind/migration/reset 설명은 legacy
 > 경로의 **역사**와 조회 의미를 이해하기 위한 것이다. 새 Source 설정은 반드시
 > [ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)의 단일 `ledger_config.json`과
-> Preparer → Role mapper → Pack/Profile 경로를 따른다.
+> `read` → `prepare` → `map` → `bind` 경로를 따른다.
 >
 > 🔴 **[2026-08-18] 백필 실행 경로는 하나뿐이다.** 문법별 드라이버 넷과 그것을 고르던
 > `mode` selector가 함께 은퇴했다. **선언이 곧 활성화다** — `server/config/ontology/ledger_config.json`의
@@ -31,13 +31,15 @@
 ## 0. 먼저 고를 것
 
 새 소스는 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md)의 Step 1~9를 따른다.
-v2 선언에는 소스 「문법(`kind`)」이 **없다** — `driver`·`preparer_id`·`mapper_id`·`profile_id`로
-조립한다. 고르는 것은 문법이 아니라 **Python을 쓸지 말지**다.
+v2 선언에는 소스 「문법(`kind`)」이 **없다** — 소스 하나가 `relation`·`read`·`prepare`·`map`·
+`bind` 다섯 절을 실행 순서대로 **직접** 든다(🔴 2026-08-21 `setup_version: 4`; 옛 `driver`와
+`preparer_id`·`mapper_id`·`profile_id` 참조는 은퇴했다). 고르는 것은 문법이 아니라
+**Python을 쓸지 말지**다.
 
 | 소스 모양 | 선택 |
 |---|---|
 | 출력 컬럼이 상속한 verified join에서 그대로 온다 | Preparer `direct-join@1` — Python 0줄 |
-| 업무적 읽기가 Profile binding만으로 표현된다 | Mapper `declarative-role@1` — Python 0줄 |
+| 업무적 읽기가 `bind` binding만으로 표현된다 | Mapper `declarative-role@1` — Python 0줄 |
 | 행을 쪼개거나 도메인 규칙으로 해석해야 한다 | `server/mappers/ledger_v2_*.py`에 전용 mapper 파일 **하나** |
 | 정규화·그룹 조립처럼 계산이 필요하다 | `server/ledger/`에 `BaseSourcePreparer` 하위 클래스 |
 
@@ -57,7 +59,7 @@ v2 선언에는 소스 「문법(`kind`)」이 **없다** — `driver`·`prepare
 |---|---|
 | `config.py` | 소스 문법 검증과 버전 해시 |
 | `source_contract.py` | 선언 → 번역 프로필 → 가능한 Claim → live vocabulary 결합 검사 |
-| `runtime_v2.py` · `source_preparation.py` · `roleframe.py` · `source_profile*.py` | **v2 실행 경로** — Preparer → RoleFrame → Pack/Profile |
+| `runtime_v2.py` · `source_preparation.py` · `roleframe.py` · `source_profile*.py` | **v2 실행 경로** — `prepare` → `map`/RoleFrame → Pack/`bind` |
 | `setup_bundle.py` · `setup_registry.py` · `setup.py` | 단일 `ledger_config.json` 검증·compile과 로드 경계(`load_setup`) |
 | `implementations.py` | 어떤 `implementation_id`가 실행 가능한지 **코드에서 발견**해 답한다 |
 | ⚰️ `*_translator.py` · `translator_pattern.py` · `examples/grouped_translator_template.py` | **파일이 없다.** 이들을 지연 import하던 문법 드라이버 넷이 `backfill.py`에서 빠지고(`d7bfcd0`), 이어서 번역기 다섯과 그것을 재던 테스트가 함께 지워졌다(`e47d325`). `SafeTranslatorTemplate`·`POSSIBLE_EMISSIONS`도 트리에 없다. 이 이름을 찾고 있다면 은퇴한 경로다 — 지금의 대체물은 §0 표의 네 갈래 |
@@ -107,8 +109,8 @@ source rows
 ### ② 선언 작성
 
 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md)의 Step 1~9에 따라
-`ledger_config.json`을 작성한다. 물리 컬럼명은 preparer/mapper descriptor의
-`input_columns`와 `sources.<id>.driver`에만 두고 **구현 코드에는 넣지 않는다.**
+`ledger_config.json`을 작성한다. 물리 컬럼명은 `sources.<id>`의 `relation`·`read`와
+`prepare`/`map`의 `input_columns`에만 두고 **구현 코드에는 넣지 않는다.**
 
 ### ③ 전용 mapper 작성 — 파일 하나
 
@@ -116,24 +118,37 @@ source rows
 `BaseLedgerMapper` 하위 클래스를 두고 세 가지만 쓴다.
 
 1. `implementation_id` / `implementation_version` — 클래스가 자기를 선언한다
-2. **말할 수 있는 문장들** — `SentenceShape` 클래스 속성. 목적어를 갖는가와 qualifier 이름만
-   적는다
+2. **말할 수 있는 문장들** — `SentenceShape` 클래스 속성. 🔴 **속성명이 곧 그 문장의
+   별명이고, 그것이 config의 `bind.mappings` 키다**(2026-08-21 `e795c706`)
 3. `interpret_unit()` — 한 source event를 읽어 `RoleEmission`을 낸다
 
-🔴 **mapper는 선언의 이름을 하나도 모른다.** predicate 철자(`has_wafer@1`), entity type
-이름(`Lot@1`), `mapping_id` 어느 것도 이 파일에 없다 — 그것들은 배포마다 바뀌는 운영자의
-낱말이고, 「다른 스키마의 운영 환경에서 코드 0줄」이 완성 조건이기 때문이다. mapper가 아는
-것은 **문장의 «모양»**이고, 그 모양을 실현하는 Profile mapping을 찾아 주는 것은
-`ledger.roleframe.ProfileSentences`다. 이 배포가 그것을 무엇이라 부르는지 알아야 하면
-`subject_type_of()`/`object_type_of()`로 **묻는다** — 철자를 적어 두지 않는다.
+🔴 **mapper는 선언의 이름을 하나도 모른다.** predicate 철자(`has_wafer@1`)도 entity type
+이름(`Lot@1`)도 이 파일에 없다 — 그것들은 배포마다 바뀌는 운영자의 낱말이고, 「다른 스키마의
+운영 환경에서 코드 0줄」이 완성 조건이기 때문이다. mapper가 아는 것은 **자기가 그 문장을
+부르는 별명**이고, 그 별명이 어느 Claim이 되는지는 `bind.mappings.<별명>.use` 한 칸 옆에
+있다. 배선을 대신해 주는 것은 `ledger.roleframe.ProfileSentences`다.
 
-⚠️ **모양이 같은 문장이 둘이면 config가 갈라 준다.** `lot_event`의 split slot-carry와
-merge slot-join은 predicate·주어·목적어·qualifier 셋이 전부 같고 계산 규칙만 다르다. 그래서
-각자 자기 `SentenceShape`를 갖고(이름은 바인딩된 속성명을 소문자로 딴다:
-`split_slot_carry`·`merge_slot_join`), Profile mapping이 선택 필드
-**`sentence`**로 「내가 그 문장을 실현한다」고 적는다. 모양이 같은 mapping 둘 중 하나라도
-`sentence`가 없으면 **compile 시점에** `ambiguous_sentence`로 거절된다 — 먼저 걸린 쪽을
-대표로 뽑으면, 셋째 mapping이 들어오는 날 대표가 바뀌면서 **이미 돌던 전부**가 깨진다.
+🔴 **문장 해석은 탐색이 아니라 조회다** (2026-08-21 `e795c706`). 종전에는 목적어 유무 → qualifier
+집합 → subject type → object type 순으로 비교하고 **마지막에야** 이름을 봤다. 그런데 이름은
+양쪽이 이미 합의하고 있던 유일한 것이었다 — mapper가 `SentenceShape` 속성으로 선언하고
+config가 그것을 키로 쓴다. 그래서 `_sentence_signature`·`_ambiguous_sentences`·`has_object`와
+`say()`가 받던 `subject_type`/`object_type` selector가 **표현할 수 없는 상태가 돼서** 함께
+없어졌다. `mapping_id`와 `sentence`는 이름 둘을 쓰던 같은 문자열이었고, mapper가 실제로
+선언하는 쪽이 살아남았다.
+
+`lot_event`의 split slot-carry와 merge slot-join은 predicate·주어·목적어·qualifier가 전부
+같고 계산 규칙만 다르다 — 이제는 그냥 별명이 `split_slot_carry`·`merge_slot_join` 둘이다.
+구조 탐색이 **실제로** 실패하던 자리는 `FIRST_SIGHT` 쪽이었다: 같은 소스가 두 번 말하는데
+구조로는 안 갈라져 `subject_type`을 넘겨야 했다. 지금은 `first_sight_holder`·`first_sight_item`
+두 이름이고 selector 인자는 할 일이 없다.
+
+⚠️ **한 `SentenceShape`를 두 별명에 묶지 않는다.** 그러면 클래스가 `ambiguous_sentence_shape`로
+거절한다(`roleframe.SentenceShape.__set_name__`). 문장 둘이면 shape 둘이지, shape 하나에
+이름을 붙여 가르는 것이 아니다.
+
+📌 `subject_type_of()`/`object_type_of()`는 **남아 있지만 라이브 호출자가 0이다** — 별명
+아래서는 entity type 철자를 물을 일이 없어졌다. 지우는 것은 mapper 대상 기능을 없애는 일이라
+범위 밖으로 두고 보고됐다(`80185133`).
 
 시각 해석·raw reference·게이트 호출·거절 격리는 `BaseLedgerMapper.map()` 경계와 공유
 드라이버(`backfill.run`)가 맡는다. `server/ledger/implementations.py`는 편집하지 않는다 —

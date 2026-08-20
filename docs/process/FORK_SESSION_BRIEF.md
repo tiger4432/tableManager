@@ -13,11 +13,13 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
 
 - Ledger V2 1~7단계: `COMPLETE / APPROVED`
 - Ontology Config Explorer 전체 계약: `COMPLETE / APPROVED`
-- production authoring root: `server/config/ontology/` — 🔴 **[2026-08-18] 파일 «하나»**(`ledger_config.json`, `setup_version: 3`). `manifest.json`·`catalog/`·`dataflows/`는 은퇴했고 옮겨진 원본은 `server/config/_ontology_pre_single_file_20260818/`(지원 경로 아님)
-- 현재 선언된 source: `lot_event` — 🔴 **선언이 곧 활성화**라 `mode` selector는 없다. 확인은 `conda run -n assy_manager python -m ledger.setup`(`server/`에서, 쓰기 없음)
+- production authoring root: `server/config/ontology/` — 🔴 **[2026-08-18] 파일 «하나»**(`ledger_config.json`). `manifest.json`·`catalog/`·`dataflows/`는 은퇴했고 옮겨진 원본은 `server/config/_ontology_pre_single_file_20260818/`(지원 경로 아님)
+- 🔴 **[2026-08-21] `setup_version: 4` — 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 든다.** `source_preparers`·`mappers`·`profiles` 세 section은 본문이 소스 안으로 들어가며 은퇴했고, mapping은 mapper가 선언한 **문장 별명**으로 키가 매겨진다(`mapping_id`·`map.emits`·`bind.packs`·기본 `binding_origin` 은퇴; `approval_status`는 필수로 남음). 옛 세대는 `server/scripts/migrate_ledger_config_to_v4.py`. 모양의 정본은 [ONTOLOGY_LEDGER_SETUP §4·§7](../guide/ONTOLOGY_LEDGER_SETUP.md)
+- 현재 선언된 source: 🔴 **여기 세지 않는다**(이 자리는 「`lot_event` 하나」라 적혀 있었고 거짓이 됐다). **선언이 곧 활성화**라 `mode` selector는 없고, 무엇이 선언돼 있는지는 `conda run -n assy_manager python -m ledger.setup`(`server/`에서, 쓰기 없음)이 답한다
 - UI: `http://127.0.0.1:8080/admin.html#ontology`
-- active snapshot 기준: `f6223d6cbd24e2012f8936ecf88447df7b3729039dcd9fc673f96492513c2752`
-  (단일 파일 접기 이후 실측. 이전 값 `57d36c07…`은 manifest 시절이다)
+- active snapshot 기준: 🔴 **여기 적어 두지 않는다.** 이 자리의 `f6223d6c…`는 2026-08-21의
+  config 모양 라운드 넷으로 **낡았다** — `canonical_content_json`이 바뀌면 해시가 움직인다.
+  지금 값은 위 dry-run의 `snapshot_sha256`이 답한다
 - 🔴 **스냅샷 해시는 게이트가 아니다.** 컴파일러를 고치면 뜻이 그대로여도 움직인다
   (2026-08-18 실측: `363c693e`→`fd51baaf`→`f6223d6c`, 세 번 다 원자 디프 0).
   판정은 **원자**로 한다 — 기준선 `task/evidence/ledger_atom_baseline_20260819.json`,

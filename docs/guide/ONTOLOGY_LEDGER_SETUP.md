@@ -1,7 +1,10 @@
 # Ledger V2 설정 작성 가이드
 
 > **Status:** 🟢 Living
-> **Last-verified:** 2026-08-19
+> **Last-verified:** 2026-08-21 — 🔴 **`setup_version: 4`.** 2026-08-20~21의 네 라운드
+> (`087e7d8`·`d64f047e`·`a55f3059`·`e795c706`)로 **section 일곱이 넷이 됐고** 소스 하나가
+> `relation`·`read`·`prepare`·`map`·`bind` 다섯 절을 직접 들고 있다. 옛 root를 들고 있으면
+> `server/scripts/migrate_ledger_config_to_v4.py`가 세대 무관하게 올려 준다(§2.4).
 > **Owner:** Server / Ledger
 > **정본 구현:** `server/ledger/setup_bundle.py`(파일 문법), `setup_registry.py`(compile), `setup.py`(로드 경계)
 > **운영 선언 루트:** `server/config/ontology/` — 파일 **하나**, `ledger_config.json`
@@ -27,14 +30,17 @@ Position/Frame, 마이그레이션·cursor reset 중심의 옛 설정 절차는 
 
 ```text
 server/config/ontology/ledger_config.json
-  ├─ setup_version      현재 정확히 3
+  ├─ setup_version      현재 정확히 4
   ├─ vocabulary         낼 수 있는 술어와 목적어 모양
   ├─ entities           개체의 정체성과 키
   ├─ packs              Role → Claim/LedgerFrame
-  ├─ source_preparers   물리 행 → EventFrame
-  ├─ mappers            EventFrame → RoleEmission
-  ├─ profiles           소스 컬럼 → Pack Role binding
-  ├─ sources            위 선언을 한 실행 단위로 조립 — 여기 있으면 «돈다»
+  ├─ sources            소스 하나가 실행 순서대로 다섯 절을 «직접» 든다 — 여기 있으면 «돈다»
+  │    ├─ relation      읽는 물리 표
+  │    ├─ read          물리 batch를 어떻게 긁나 (unit·identity·group_by·order_by·
+  │    │                occurred_at·cursor·registration_probe)
+  │    ├─ prepare       물리 행 → EventFrame          (옛 `source_preparers` 본문)
+  │    ├─ map           EventFrame → RoleEmission     (옛 `mappers` 본문)
+  │    └─ bind          문장 별명 → Pack Role binding (옛 `profiles` 본문)
   └─ virtual_joins      (선택) 물리 UNIQUE로 검증할 batch join
 
 strict Bundle validation
@@ -48,17 +54,27 @@ strict Bundle validation
   → 기존 gate → LedgerStore → cursor transaction
 ```
 
-핵심은 세 층을 분리하는 것이다. 파일이 하나가 됐다고 층이 섞이는 것은 아니다 — 층은
-이제 **section**으로 나뉜다.
+핵심은 세 층을 분리하는 것이다. 파일이 하나가 됐다고 층이 섞이는 것은 아니다 — 다만
+**층의 경계가 이제 section이 아니라 «절»이기도 하다.** 재사용되는 의미는 자기 section을
+갖고, 소스 하나에만 붙는 배선은 그 소스 안에 산다.
 
-| 층 | 질문 | 소유 section |
+| 층 | 질문 | 사는 곳 |
 |---|---|---|
-| 물리 | 어느 테이블의 어느 컬럼을 어떤 키로 읽나? | **`table_config.json`**(§5) · `virtual_joins`, `sources` |
-| 의미 | 무엇을 개체·관계·시각으로 말하나? | `vocabulary`, `entities`, `packs`, `profiles` |
-| 실행 | 누가 행을 준비하고 Role로 해석하나? | `source_preparers`, `mappers`, `sources` |
+| 물리 | 어느 테이블의 어느 컬럼을 어떤 키로 읽나? | **`table_config.json`**(§5) · `virtual_joins` · `sources.<id>.relation`·`.read` |
+| 의미 | 무엇을 개체·관계·시각으로 말하나? | `vocabulary`, `entities`, `packs` · `sources.<id>.bind` |
+| 실행 | 누가 행을 준비하고 Role로 해석하나? | `sources.<id>.prepare`, `.map` |
 
-`Profile`은 Pack이 아니다. Pack은 재사용 가능한 Claim 문법이고, Profile은 특정 Source의
-컬럼을 그 문법의 Role에 연결하는 배선이다.
+🔴 **왜 셋이 section을 잃었나** (소유자 판정 2026-08-20 「소스플랜 준비기 맵퍼」 ·
+「근데 그럼 프로필도 소스랑 묶여야 하는거 아니야?」). preparer의 `input_columns`는 **물리
+relation의 컬럼**이어야 하는데 `relation`은 소스만 선언한다 — 자기 section에 앉은 preparer는
+자기를 검사해 줄 유일한 선언에서 늘 한 홉 떨어져 있었다. profile 쪽은 1:1이 이미 **강제**돼
+있었다(profile이 `source`를 선언해야 했고, `_cross_validate`가 자기를 고른 소스의 id 외에는
+전부 거절했다). 셋 다 옮기기 전에 소스와 1:1임을 실측했고, **공유되던 것은 하나도 없었다.**
+재사용되는 것은 선언이 아니라 **코드**이고, 그 재사용은 여전히
+`implementation_id` + `implementation_version`으로 적는다.
+
+`bind`(옛 Profile)는 Pack이 아니다. Pack은 재사용 가능한 Claim 문법이고, `bind`는 그 소스의
+컬럼을 그 문법의 Role에 연결하는 배선이다 — 그래서 소스 안에 산다.
 
 ---
 
@@ -149,6 +165,39 @@ conda run -n assy_manager python server/scripts/convert_ontology_to_single_file.
 디렉터리에 쓴다. 🔴 `--root`는 **다섯 파일이 다 있는** root여야 한다 — 위 ①은
 `ledger_config.json`이 없어 이 변환기의 입력이 아니다(②는 입력이 된다).
 
+### 2.4 `setup_version` 3 이하를 들고 있다면 — v4 마이그레이션
+
+2026-08-20~21에 파일 «모양»이 네 라운드에 걸쳐 바뀌었다. 세 라운드는 모양이 아직 움직이던
+중이라 손으로 옮겼고, 모양이 도착한 뒤 **한 스크립트가 넷을 전부 접는다.**
+
+```powershell
+conda run -n assy_manager python -m scripts.migrate_ledger_config_to_v4 <ledger_config.json 경로...> --check
+```
+
+(`server/`에서 실행한다. `--check`는 무엇이 바뀔지만 보고하고 **아무것도 쓰지 않는다**;
+빼면 제자리에 쓴다.)
+
+| 옛 모양 | v4 |
+|---|---|
+| `source_preparers` / `mappers` 절 | 그 본문이 그것을 쓰는 소스 안으로 |
+| `profiles` 절 | 그 본문이 그것을 binding하는 소스 안으로 |
+| `driver` | `read` · `prepare` · `map` · `bind` 넷으로 갈라짐 |
+| `map.emits` · `bind.packs` | 삭제 — 둘 다 `use`의 되풀이였다 |
+| `binding_origin: "user_declared"` | 삭제 — 읽는 쪽이 대는 기본값이다 |
+| `mappings: [ {mapping_id, …} ]` | `mappings: { "<문장 별명>": {…} }` |
+| `setup_version` | `4` |
+
+모든 단계가 **멱등**이다 — 이미 v4인 파일은 바뀌지 않고 다시 쓰이므로 라이브 config·샘플·
+운영자의 묵은 백업이 **같은 명령 하나**를 탄다.
+
+🔴 **별명은 «도출»되지 추측되지 않는다.** mapping의 새 키는 그 소스의 mapper가 어느 문장으로
+해석하느냐이고, 그 답의 유일한 정본은 이 라운드 «전에» mapper가 쓰던 규칙이다 — Claim의
+구조(목적어 유무·qualifier 이름·양끝 entity type 철자)를 그대로 맞춰 본다. **옛
+`mapping_id`를 읽어 이름을 정하는 코드는 한 줄도 없다.** 어느 문장에도 안 걸리거나 이미 다른
+mapping이 가져간 문장에 걸리면 **그 id와 사유를 찍고 파일은 손대지 않는다.** 문장 선언이
+아예 없는 mapper(`declarative-role@1`)의 mapping은 원래 이름을 그대로 키로 쓴다 — 틀릴 문장이
+없다는 관찰이지 추측이 아니다.
+
 ---
 
 ## 3. 작성 전 준비 사항
@@ -169,7 +218,7 @@ conda run -n assy_manager python server/scripts/convert_ontology_to_single_file.
 
 ### row와 group 선택
 
-| 원천 모양 | `source.driver.unit` | `group_by` | 예 |
+| 원천 모양 | `source.read.unit` | `group_by` | 예 |
 |---|---|---|---|
 | 한 행이 독립된 source event | `row` | 반드시 `[]` | 한 행당 측정 1건 |
 | 여러 행이 한 source event를 이룸 | `group` | 1개 이상 | split/merge 한 거래의 여러 wafer 행 |
@@ -182,36 +231,38 @@ physical relation 컬럼이어야 한다.
 
 ## 4. `ledger_config.json` — 하나뿐인 파일과 그 최상위 모양
 
-최상위는 `setup_version` 하나와 section 일곱, 그리고 선택 section 하나다.
+최상위는 `setup_version` 하나와 section **넷**, 그리고 선택 section 하나다.
 
 ```json
 {
-  "setup_version": 3,
+  "setup_version": 4,
   "vocabulary": {},
   "entities": {},
   "packs": {},
-  "source_preparers": {},
-  "mappers": {},
-  "profiles": {},
   "sources": {}
 }
 ```
 
 | 최상위 키 | 필수 | 용도 |
 |---|---:|---|
-| `setup_version` | 예 | 문법 세대. 현재 정확히 `3`. 다른 값은 `unsupported_setup_version` |
+| `setup_version` | 예 | 문법 세대. 현재 정확히 `4`. 다른 값은 `unsupported_setup_version` |
 | `vocabulary` | 예 | 술어의 닫힌 서명 (§7.1) |
 | `entities` | 예 | 개체 ID와 key shape (§7.2) |
 | `packs` | 예 | Role → Claim 문법 (§7.5) |
-| `source_preparers` | 예 | 물리 batch → EventFrame (§7.3) |
-| `mappers` | 예 | EventFrame → RoleEmission (§7.4) |
-| `profiles` | 예 | source 컬럼 → Pack Role binding (§7.6) |
-| `sources` | 예 | 실행 계약 조립 (§7.7) |
+| `sources` | 예 | 소스 하나 = `relation`+`read`+`prepare`+`map`+`bind` (§7.3·§7.4·§7.6·§7.7) |
 | `virtual_joins` | **아니오** | verified read-only batch join (§6) |
 
-🔴 **일곱은 비어 있어도 «있어야» 한다.** 키가 없는 것과 `{}`인 것은 읽는 사람에게 다른
+정본은 `server/ledger/setup_bundle.py`의 `LOGICAL_SECTIONS`(필수 넷) ·
+`OPTIONAL_SECTIONS`(`virtual_joins`) · `SETUP_VERSION`이다. **개수를 외우지 말고 거기서 읽어라.**
+
+🔴 **넷은 비어 있어도 «있어야» 한다.** 키가 없는 것과 `{}`인 것은 읽는 사람에게 다른
 뜻이고, 「이 section은 나에게 해당 없음」은 적어 둘 값어치가 있는 결정이다. 키 자체가
 빠지면 `missing_field`다.
+
+🔴 **`source_preparers`·`mappers`·`profiles` 셋은 이 표에 없다** (소유자 판정 2026-08-20,
+`087e7d8`·`d64f047e`). 없어진 것이 아니라 **본문이 소스 안으로 들어갔다** — §1의 이유와
+§7.3·§7.4·§7.6이 그 이야기다. 옛 root는 §2.4의 마이그레이션이 올려 준다. 이 셋을 다시
+최상위에 적으면 `unknown_field`로 거절된다.
 
 🔴 **`tables`는 이 표에 없다. 없어진 것이 아니라 «옮겨간» 것이다** (소유자 판정,
 2026-08-18: 「ledger json에 tables 왜 또 있어?」). 물리 스키마의 정본은
@@ -224,7 +275,7 @@ physical relation 컬럼이어야 한다.
 버전 필드는 **없다** — `schema_version`을 최상위에 적으면 `unknown_field`로 거절된다.
 표 밖의 다른 키도 마찬가지다.
 
-section 일곱은 사용 여부와 관계없이 전수 검증된다. “아직 Source가 선택하지 않은 Profile”도
+section 넷은 사용 여부와 관계없이 전수 검증된다. 아직 아무 mapping도 쓰지 않는 Pack도
 unknown Entity/column을 숨길 수 없다. 모든 오류는 `code`, 정확한 JSON `path`, `message`로
 돌아오며 여러 오류의 순서도 결정적이다.
 
@@ -391,8 +442,13 @@ config의 `unique: true`만으로 `VerifiedJoinDescriptor`를 만들 수 없다.
 
 ## 7. 의미와 실행 section
 
-여기부터는 §4 표의 나머지 일곱 section을 하나씩 본다. 아래의 JSON 블록은 모두
-`ledger_config.json` 안 해당 키의 **값**이다.
+여기부터는 §4 표의 나머지 section 넷과 **소스가 직접 드는 절 넷**을 하나씩 본다. 아래의
+JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
+
+| 절 | 사는 곳 |
+|---|---|
+| §7.1 `vocabulary` · §7.2 `entities` · §7.5 `packs` | 최상위 section (재사용된다) |
+| §7.3 `prepare` · §7.4 `map` · §7.6 `bind` · §7.7 `relation`+`read` | `sources.<id>` 안 |
 
 ### 7.1 `vocabulary` — 술어의 닫힌 서명
 
@@ -486,9 +542,9 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 | `key_types` | 아니오 | key 이름 → trimmed nonblank type 문자열. 키 집합은 `keys`와 정확히 같아야 한다. |
 | `allow_null` | 아니오 | 명시적 boolean. 생략 시 null key를 허용하는 것으로 추측하지 않는다. |
 
-여기서 `lot`은 논리 key 이름이지 반드시 물리 컬럼명일 필요는 없다. Profile A는 `lot_id`,
-Profile B는 `batch_name`을 같은 `Lot@1.keys.lot`에 binding할 수 있다. 이것이 source 이름과
-column 이름이 바뀌어도 Pack을 재사용할 수 있는 이유다.
+여기서 `lot`은 논리 key 이름이지 반드시 물리 컬럼명일 필요는 없다. 소스 A의 `bind`는
+`lot_id`를, 소스 B의 `bind`는 `batch_name`을 같은 `Lot@1.keys.lot`에 binding할 수 있다.
+이것이 source 이름과 column 이름이 바뀌어도 Pack을 재사용할 수 있는 이유다.
 
 복합 개체 예시는 다음과 같다.
 
@@ -509,46 +565,56 @@ column 이름이 바뀌어도 Pack을 재사용할 수 있는 이유다.
 `key_types.x`에 객체, 배열, null, bool, 숫자 자체, blank 문자열을 넣으면 구조화된 오류로
 거절한다. 닫힌 type enum은 현재 계약에 없으므로 임의 enum을 발명하지 않는다.
 
-### 7.3 `source_preparers` — 물리 batch를 EventFrame으로 준비
+### 7.3 `sources.<id>.prepare` — 물리 batch를 EventFrame으로 준비
 
-`lot_event`의 Preparer descriptor다. 파일에는 범용 `direct-join@1` 선언도 함께 있다.
+`lot_event`의 preparer 절이다. **이름이 없다** — 이 본문이 곧 그 소스의 준비 단계이지,
+어딘가에서 참조되는 별도 선언이 아니다.
 
 ```json
-{
-  "lot-event-live-frame@1": {
-    "implementation_id": "lot-event-live-frame",
-    "implementation_version": 1,
-    "input_columns": [
-      "lot_id",
-      "event_type",
-      "slotnumbers",
-      "waferids",
-      "parent_lot",
-      "child_lot",
-      "txn_seq",
-      "event_time"
-    ],
-    "output_columns": {
-      "lot": "string",
-      "slots": "string",
-      "wafers": "string",
-      "row_identity": "string",
-      "event_group_key": "string",
-      "__source_event_incomplete": "boolean"
-    },
-    "accepts_verified_join_rules": false
-  }
+"prepare": {
+  "implementation_id": "lot-event-live-frame",
+  "implementation_version": 1,
+  "input_columns": [
+    "lot_id",
+    "event_type",
+    "slotnumbers",
+    "waferids",
+    "parent_lot",
+    "child_lot",
+    "txn_seq",
+    "event_time"
+  ],
+  "output_columns": {
+    "lot": "string",
+    "slots": "string",
+    "wafers": "string",
+    "row_identity": "string",
+    "event_group_key": "string",
+    "__source_event_incomplete": "boolean"
+  },
+  "accepts_verified_join_rules": false,
+  "inherit_virtual_join_rules": []
 }
 ```
 
 | 필드 | 설명 |
 |---|---|
-| Preparer ID | versioned registry ID. 예: `lot-event-live-frame@1` |
 | `implementation_id` | trusted code catalog에서 찾을 구현 이름 |
-| `implementation_version` | 구현 계약 버전. ID의 `@1`과 별개로 명시한다. |
+| `implementation_version` | 구현 계약 버전. **재사용되는 것은 이 «코드»이지 선언이 아니다.** |
 | `input_columns` | base physical SELECT와 join left key로 필요한 컬럼 전수 |
 | `output_columns` | Mapper가 받을 EventFrame 컬럼명 → 타입 문자열 |
 | `accepts_verified_join_rules` | physical verification을 통과한 join descriptor 수용 여부 |
+| `inherit_virtual_join_rules` | 상속할 `virtual_joins` 규칙 이름 목록(§6). 안 쓰면 `[]` |
+
+여섯 필드 **전부 필수**다(빈 목록이라도 적는다). 정본은
+`setup_bundle._validate_preparation`.
+
+🔴 **이 절에 «id»는 없다** (소유자 판정 2026-08-20 「소스플랜 준비기 맵퍼」, `087e7d8`).
+preparer의 `input_columns`는 물리 relation의 컬럼이어야 하는데 `relation`을 선언하는 것은
+소스뿐이라, 자기 section에 앉은 preparer는 자기를 검사해 줄 유일한 선언에서 한 홉 떨어져
+있었다. 옮긴 뒤 실측된 것이 그 대가다 — mapper가 받을 수 있는 입력 후보가 `lot_event`에서
+**8개(물리 표)에서 14개(8 + preparer가 만드는 6)로** 늘었다. 그 여섯은 정확히 위
+`output_columns`이고, 옮기기 전에는 mapper에게 **존재를 알릴 방법이 없었다.**
 
 Preparer는 source별 정규화·그룹 조립·virtual join 적용·결측 판정을 담당한다. Pack이나
 LedgerFrame을 만들지 않는다.
@@ -578,54 +644,51 @@ Config는 Python module/function/path를 지정할 수 없다. 다음은 금지�
 `server/ledger/implementations.py`가 그것을 **코드에서 발견해** 신뢰 집합을 만든다. 별도
 목록에 이름을 다시 적을 곳은 없다.
 
-### 7.4 `mappers` — EventFrame에서 Role만 해석
+### 7.4 `sources.<id>.map` — EventFrame에서 Role만 해석
 
-`lot_event`의 mapper descriptor다(파일의 `mappers` section에는 다른 소스의 것도 있다).
+`lot_event`의 mapper 절이다. §7.3과 같이 **이름이 없다.**
 
 ```json
-{
-  "lot-event-role@1": {
-    "implementation_id": "lot-event-role",
-    "implementation_version": 1,
-    "unit": {"kind": "event"},
-    "input_columns": [
-      "lot",
-      "event_type",
-      "slots",
-      "wafers",
-      "parent_lot",
-      "child_lot",
-      "row_identity",
-      "event_time",
-      "event_group_key",
-      "__source_event_incomplete"
-    ],
-    "emits": [
-      "lot-lineage@1/register",
-      "lot-lineage@1/membership",
-      "lot-lineage@1/lineage",
-      "lot-lineage@1/slot_map"
-    ]
-  }
+"map": {
+  "implementation_id": "lot-event-role",
+  "implementation_version": 1,
+  "unit": {"kind": "event"},
+  "input_columns": [
+    "lot",
+    "event_type",
+    "slots",
+    "wafers",
+    "parent_lot",
+    "child_lot",
+    "row_identity",
+    "event_time",
+    "event_group_key",
+    "__source_event_incomplete"
+  ]
 }
 ```
 
 | 필드 | 설명 |
 |---|---|
-| Mapper ID | versioned registry ID |
 | `implementation_id/version` | trusted mapper 코드 선택 |
 | `unit.kind` | `event`, `row`, `group_by` 중 하나 |
 | `unit.columns` | `group_by` mapper에서만 필요한 grouping columns |
 | `input_columns` | Preparer가 만든 EventFrame에서 mapper가 읽을 컬럼 전수 |
-| `emits` | 이 mapper가 낼 수 있는 `Pack@version/claim_id` 전수 |
 
 Mapper는 Atom, predicate payload, Ledger 7컬럼을 직접 만들지 않는다. 공통
 `BaseLedgerMapper.map()` 경계를 통해 `RoleEmission`만 반환한다. subject/object/time/qualifier
 shape는 Pack compiler가 소유한다.
 
-`emits`는 단순 설명이 아니다. Profile `mappings[].use`와 양방향으로 대조된다. Mapper가
-말한 Claim을 Profile이 전혀 매핑하지 않거나, Profile이 Mapper의 emits 밖 Claim을 사용하면
-compile이 실패한다.
+🔴 **`emits`는 없다. 없는 것이 요점이다** (소유자 판정 2026-08-21: 「클레임과 맵퍼 함수는
+완전 별개인데 왜 맵퍼에서 쓸 클레임을 정의함?」 → 「닿을 수 없다면 선언도 닿으면 안됨」,
+`a55f3059`). mapper 구현이 아는 것은 `SentenceShape`이지 **claim이 아니다** — 「이 mapper가 낼
+수 있는 claim」은 그 코드가 답할 방법이 없는 질문이었다. 답을 아는 유일한 선언은
+`bind.mappings.<별명>.use`이므로, 필드는 옮겨간 것이 아니라 **사라졌다**:
+`MapperDescriptor.emits`는 이제 그 `use` 값들에서 **compile 시점에 도출된다.** 그래서 둘이
+어긋날 수 없고, 어긋남을 보던 규칙도 함께 없어졌다.
+
+이것이 이 파일의 일반 규칙이다 — **코드가 닿을 수 없는 것은 선언도 닿지 않는다.** 자유도
+0인 선언은 계약이 아니라 사본이고, 사본은 조용히 갈라진다.
 
 🔴 **단순한 소스는 mapper 코드를 쓰지 않는다.** `ledger.roleframe.DeclarativeRoleMapper`
 (`implementation_id: "declarative-role"`, version 1)는 Profile이 선언한 column/constant/entity
@@ -696,7 +759,7 @@ qualifier가 있는 실제 `membership` Claim은 다음과 같다.
 | Pack ID | 재사용 가능한 도메인 문법 버전. 예: `lot-lineage@1` |
 | Claim ID | Pack 내부 동작 이름. 예: `membership` |
 | `roles.<id>.kind` | `entity`, `time`, `quantity`, `identity`, `order`, `attribute`, `symbolic` |
-| `roles.<id>.required` | Profile binding과 runtime emission에서 필수인지 |
+| `roles.<id>.required` | `bind` binding과 runtime emission에서 필수인지 |
 | `allowed_binding_kinds` | 이 Role에 허용할 `column`, `constant`, `entity` 제한 |
 | `allowed_values` | `symbolic` Role의 닫힌 상수 목록 |
 | `emit.predicate` | Vocabulary ID |
@@ -710,67 +773,88 @@ qualifier가 있는 실제 `membership` Claim은 다음과 같다.
 실재하는 Role이 연결됐는지, 그 Role kind가 위치에 맞는지, Vocabulary의 subject/entity
 type과 qualifier 필드가 닫힌 서명에 맞는지를 전수 대조한다.
 
-### 7.6 `profiles` — 특정 Source 컬럼을 Pack Role에 binding
+### 7.6 `sources.<id>.bind` — 그 Source 컬럼을 Pack Role에 binding
 
-아래는 현재 `first_sight_lot` mapping 전체다.
+아래는 `lot_event`의 `first_sight_holder` mapping 전체다.
 
 ```json
-{
-  "lot-event@1": {
-    "source": "lot_event",
-    "packs": ["lot-lineage@1"],
-    "mappings": [
-      {
-        "mapping_id": "first_sight_lot",
-        "use": "lot-lineage@1/register",
-        "bind": {
-          "subject": {
-            "kind": "entity",
-            "entity_type": "Lot@1",
-            "keys": {
-              "lot": {
-                "kind": "column",
-                "column": "lot",
-                "binding_origin": "user_declared",
-                "approval_status": "approved"
-              }
-            },
-            "binding_origin": "user_declared",
-            "approval_status": "approved"
+"bind": {
+  "mappings": {
+    "first_sight_holder": {
+      "use": "lot-lineage@1/register",
+      "bind": {
+        "subject": {
+          "kind": "entity",
+          "entity_type": "Lot@1",
+          "keys": {
+            "lot": {
+              "kind": "column",
+              "column": "lot",
+              "approval_status": "approved"
+            }
           },
-          "occurred_at": {
-            "kind": "column",
-            "column": "event_time",
-            "binding_origin": "user_declared",
-            "approval_status": "approved"
-          }
+          "approval_status": "approved"
+        },
+        "occurred_at": {
+          "kind": "column",
+          "column": "event_time",
+          "approval_status": "approved"
         }
       }
-    ]
+    }
   }
 }
 ```
 
-이 블록은 Profile 문법 설명을 위한 section fragment다. 실제 `lot-event@1`에는 여섯 mapping이
-있고, 정본은 `server/config/ontology/ledger_config.json`의 `profiles` section이다.
+이 블록은 문법 설명을 위한 **발췌**다. 실제 `lot_event.bind`에는 여섯 mapping이 있고,
+정본은 `server/config/ontology/ledger_config.json`이다.
 
-| Profile 필드 | 설명 |
+| `bind` 필드 | 설명 |
 |---|---|
-| Profile ID | versioned ID. 예: `lot-event@1` |
-| `source` | 이 Profile이 해석할 `sources` key |
-| `packs` | Profile이 사용할 Pack ID의 닫힌 목록 |
-| `mappings` | source EventFrame → Claim Role 배선 목록 |
-| `mapping_id` | Profile 안에서 필수·비공백·유일 |
-| `use` | 정확한 `Pack@version/claim_id` |
-| `sentence` | **(선택)** 이 mapping이 실현하는 **문장의 이름**. 아래 「모양이 같은 mapping 둘」 |
-| `bind` | Claim이 선언한 Role 이름 → binding |
+| `mappings` | **문장 별명 → mapping**인 객체. 비어 있을 수 없다 |
+| `mappings.<별명>` | 그 키가 곧 이 mapping이 실현하는 **문장의 이름**이다 (아래) |
+| `mappings.<별명>.use` | 정확한 `Pack@version/claim_id` |
+| `mappings.<별명>.bind` | Claim이 선언한 Role 이름 → binding |
 
-`mappings`는 비어 있을 수 없다. `packs`에 적은 Pack은 적어도 한 mapping의 `use`에서 실제로
-사용해야 하며, `packs`에 없는 Pack을 mapping이 몰래 사용할 수도 없다.
+`bind`의 필드는 지금 `mappings` 하나뿐이지만 **record로 남는다**(소유자 판정: 「ㅇㅇ 남겨」)
+— `bind: [...]`로 접으면 `mappings` 말고 다른 것이 들어오는 날 마이그레이션을 하며 다시
+펼쳐야 한다.
+
+🔴 **`source`도 `packs`도 없다.** `source`는 한 단계 위 키의 되풀이였고 `_cross_validate`가
+그 키 외의 값을 전부 거절했으므로 **작성자가 할 수 있는 일이 「틀리게 쓰기」뿐이었다**
+(`d64f047e`). `packs`는 그 mapping들의 `use`가 부르는 pack 집합을 `sorted(set(...))` 한 것을
+양방향으로 대조하던 값이라 역시 자유도가 0이었다 — 사라졌고, 필요할 때 도출된다
+(`a55f3059`).
+
+#### mapping의 키가 곧 문장 별명이다 (`e795c706`)
+
+옛 모양은 `mappings`가 **배열**이고 각 항목이 `mapping_id`와 (선택) `sentence`를 들었다.
+어느 mapping이 어느 문장을 실현하는지는 **탐색**이었다 — 목적어 유무를 비교하고, qualifier
+집합을 비교하고, subject type으로 떨어지고, object type으로 떨어지고, **마지막에야** 이름을
+봤다. 그런데 이름은 양쪽이 이미 합의하고 있던 유일한 것이었다: mapper는 그것을
+`SentenceShape` 속성으로 선언하고 config는 그것을 가리킨다.
+
+그래서 mapping은 이제 **그 별명으로 키가 매겨지고 해석은 dict 조회 한 번**이다.
+`mapping_id`와 `sentence`는 이름 둘을 쓰고 있던 같은 문자열이었고, 살아남은 쪽은 **mapper가
+실제로 선언하는 쪽**이다.
+
+```text
+bind.mappings.counted.use             dt-job@1/die_count
+bind.mappings.first_sight_holder      lot_event의 FIRST_SIGHT, 「가진 쪽」에 대해
+bind.mappings.first_sight_item        그리고 「담긴 쪽」에 대해
+```
+
+구조 탐색이 **실제로** 실패하고 있던 자리가 바로 저 둘이다. `lot_event`는 `FIRST_SIGHT`를 두
+번 내는데 구조만으로는 구별이 안 돼 `subject_type`을 넘겨야 했다. 별명 밑에서는 그냥 이름이
+둘이고, selector 인자는 할 일이 없어졌다. 문장 일곱이 mapping 여덟을 섬기던 것이 여덟 이름이
+됐다.
+
+`mappings`는 비어 있을 수 없다. 어느 Pack을 쓰는지는 **각 mapping의 `use`가 말한다** —
+그것을 다시 모아 적는 자리는 없다.
 
 #### binding 종류
 
-V2 canonical Profile의 binding은 다음 세 가지뿐이다.
+V2 canonical binding은 다음 세 가지뿐이다.
 
 **column** — EventFrame의 컬럼 값을 쓴다.
 
@@ -778,7 +862,6 @@ V2 canonical Profile의 binding은 다음 세 가지뿐이다.
 {
   "kind": "column",
   "column": "event_time",
-  "binding_origin": "user_declared",
   "approval_status": "approved"
 }
 ```
@@ -789,7 +872,6 @@ V2 canonical Profile의 binding은 다음 세 가지뿐이다.
 {
   "kind": "constant",
   "value": "track_in",
-  "binding_origin": "user_declared",
   "approval_status": "approved"
 }
 ```
@@ -807,23 +889,19 @@ constant는 임의 문자열을 무조건 통과시키지 않는다. symbolic Ro
     "wafer": {
       "kind": "column",
       "column": "core_wafer",
-      "binding_origin": "user_declared",
       "approval_status": "approved"
     },
     "x": {
       "kind": "column",
       "column": "core_x",
-      "binding_origin": "user_declared",
       "approval_status": "approved"
     },
     "y": {
       "kind": "column",
       "column": "core_y",
-      "binding_origin": "user_declared",
       "approval_status": "approved"
     }
   },
-  "binding_origin": "user_declared",
   "approval_status": "approved"
 }
 ```
@@ -839,59 +917,58 @@ Entity key 집합은 Entity descriptor의 `keys`와 정확히 같아야 한다. 
 
 모든 binding에는 두 필드가 보존된다.
 
-| 필드 | 허용값 | 의미 |
-|---|---|---|
-| `binding_origin` | `user_declared`, `system_suggested`, `imported` | 이 Mapping 설정이 어디서 왔나 |
-| `approval_status` | `pending`, `approved`, `rejected` | 이 Mapping 설정을 실행해도 되는가 |
-| `suggestion_reason` | 문자열 | `system_suggested`일 때 필수인 추천 근거 |
+| 필드 | 필수 | 허용값 | 의미 |
+|---|---:|---|---|
+| `binding_origin` | **아니오** | `user_declared`, `system_suggested`, `imported` | 이 Mapping 설정이 어디서 왔나. **생략하면 `user_declared`** |
+| `approval_status` | **예** | `pending`, `approved`, `rejected` | 이 Mapping 설정을 실행해도 되는가 |
+| `suggestion_reason` | 조건부 | 문자열 | `system_suggested`일 때 필수인 추천 근거 |
 
-이 metadata는 canonical 정규화 Profile에 결정적으로 보존된다. Mapping이 사람이 승인됐다는
+🔴 **둘은 대칭으로 «보이고» 대칭이 아니다** (`a55f3059`). `user_declared`는 가장 밋밋한
+저작권 주장이라 **적어도 아무것도 더 허락하지 않는다** — 그리고 이 필드를 읽는 유일한 규칙
+(`suggestion_reason` 요구)은 `system_suggested`에서만 발화한다. 그래서 안 적은 것과
+`user_declared`라 적은 것은 **같은 주장**이고, 상수 40번이 운영자 파일에서 빠졌다.
+
+`approval_status`는 그럴 수 없어서 **필수로 남았다.** `roleframe._evaluate_binding`은
+`approved`라고 말하지 않은 binding을 실행하지 않고, 레거시 v1 리더(`source_profile._binding`)는
+같은 부재를 `pending`으로 읽는다. 없는 것을 `approved`로 채우면 「말했을 때만 승인」이
+「말하지 않으면 승인」으로 뒤집히고, **한 파일을 두 리더가 다르게 답하게 된다.**
+**침묵은 아무것도 허락하지 않는 값에만 기본값을 줄 수 있다.**
+
+이 metadata는 canonical 정규화 산출물에 결정적으로 보존된다. Mapping이 사람이 승인됐다는
 사실은 **컬럼 배선 승인**일 뿐, 생성되는 원장 Claim을 `pin`, `confirmed` 같은 epistemic
 class로 승격하지 않는다.
 
-초안 validation과 실행 readiness는 분리된다. `pending`/`rejected` Profile은 문법 검토는 할
+초안 validation과 실행 readiness는 분리된다. `pending`/`rejected` binding은 문법 검토는 할
 수 있지만 실행 진입점마다 readiness gate가 차단한다. nested Entity key 하나라도 approved가
 아니면 Atom 0, cursor 미이동이다.
 
-#### 모양이 같은 mapping 둘 — `sentence`
+#### mapper는 여전히 선언의 낱말을 모른다
 
-전용 mapper는 **선언의 이름을 모른다.** predicate 철자도, entity type 철자도, `mapping_id`도
-mapper 코드에 없다 — 그것들은 배포마다 바뀌는 운영자의 낱말이기 때문이다. mapper가 아는
-것은 **문장의 모양**(`ledger.roleframe.SentenceShape`)이고, 그 모양으로 Profile mapping을
-찾아 주는 것이 `ProfileSentences`다. 그래서 이름을 바꿔도 mapper는 그대로다.
+전용 mapper는 **선언의 이름을 모른다.** predicate 철자도, entity type 철자도 mapper 코드에
+없다 — 그것들은 배포마다 바뀌는 운영자의 낱말이기 때문이다. mapper가 아는 것은
+**문장**(`ledger.roleframe.SentenceShape`)이고, 그 문장에 붙은 **별명**이 곧
+`bind.mappings`의 키다. 그래서 pack이나 claim의 이름을 바꿔도 mapper는 그대로다.
 
-모양은 선언에서 계산되며 네 가지로 이뤄진다 — **목적어가 있는가 · qualifier 이름 집합 ·
-subject entity type · object entity type**(`setup_bundle._sentence_signature`). 이 넷이
-같은 mapping이 한 Profile 안에 둘 이상 있으면 mapper가 갈라 볼 수 없다. 그때 각 mapping이
-선택 필드 `sentence`로 **자기가 실현하는 문장의 이름**을 적는다.
+바뀐 것은 **찾는 방법**이다(§7.6). 옛 `ProfileSentences`는 목적어 유무 · qualifier 집합 ·
+subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래도 갈라지지 않으면
+`ambiguous_sentence`로 거절했다. 지금은 별명이 키라서 조회 한 번이고, `_sentence_signature`·
+`_ambiguous_sentences`·`has_object`와 `say()`가 받던 `subject_type`/`object_type` selector가
+**표현할 수 없는 상태가 돼서** 함께 없어졌다.
 
-```json
-{
-  "mapping_id": "slot_preserving",
-  "use": "lot-lineage@1/slot_map",
-  "sentence": "split_slot_carry",
-  "bind": { }
-}
-```
-
-- 이름은 **mapper의 낱말**이지 config의 낱말이 아니다. `LotEventRoleMapper`의
-  `SPLIT_SLOT_CARRY`·`MERGE_SLOT_JOIN` 같은 클래스 속성명을 소문자로 딴 것이고, 그 목록의
-  정본은 mapper 파일이다.
-- **모양이 이미 유일한 mapping은 적지 않는다.** 뻔한 것을 다시 적는 것이 선언이 썩는 방식이다.
-- 모양이 같은 무리에서 하나라도 `sentence`가 비면 **compile 시점에** `ambiguous_sentence`로
-  거절된다(§13.1). 🔴 먼저 걸린 쪽을 대표로 뽑지 않는 이유: 그러면 셋째 mapping이 그 무리에
-  들어오는 날 대표가 조용히 바뀌고, 깨지는 것은 **이미 돌던 전부**다.
+`qualifiers`는 남는다. `say()` 안에서 **두 번째 용도**로 읽히기 때문이다 — 내보내는 키가
+그 문장이 선언한 키인지 자기 검사한다. 그건 mapping을 고르는 일과 무관하고, 두 용도를 한
+덩이로 접었다면 「matcher를 지웠다」면서 자기 검사를 지운 것이 됐을 것이다.
 
 ### 7.7 `sources` — 한 source 실행 계약으로 조립
 
-`lot_event` source 선언 전체다. `sources`에는 다른 소스도 함께 있다 — 지금 무엇이
-선언돼 있는지는 §13.2의 dry-run이 답한다.
+`lot_event` source 선언 전체다(`bind` 본문은 §7.6). `sources`에는 다른 소스도 함께 있다 —
+지금 무엇이 선언돼 있는지는 §13.2의 dry-run이 답한다.
 
 ```json
 {
   "lot_event": {
     "relation": "lot_event",
-    "driver": {
+    "read": {
       "unit": "group",
       "identity": ["event_group_key"],
       "group_by": ["event_group_key"],
@@ -902,37 +979,45 @@ subject entity type · object entity type**(`setup_bundle._sentence_signature`).
       },
       "cursor": {
         "columns": ["event_time", "txn_seq"]
-      },
-      "preparation": {
-        "preparer_id": "lot-event-live-frame@1",
-        "inherit_virtual_join_rules": []
-      },
-      "mapper_id": "lot-event-role@1"
+      }
     },
-    "profile_id": "lot-event@1"
+    "prepare": { },
+    "map":     { },
+    "bind":    { "mappings": { } }
   }
 }
 ```
 
+🔴 **`driver`는 한 키로 두 일을 부르고 있어서 없어졌다** (소유자 판정 2026-08-21: 「애초에
+지금 컨피그 스키마가 잘못돼 있는건데」, `a55f3059`). 물리 batch를 읽는 것과 그것을 문장으로
+바꾸는 것은 **다른 컬럼 우주 위의 다른 단계**인데 한 키가 둘을 다 이름 붙이고 있었다 —
+전날 「preparer를 어디 둘 것인가」에 한 라운드를 통째로 쓰게 만든 것이 그것이다.
+
+다섯 절은 `relation`의 **형제**로 서고, 문서가 읽히는 순서는 **실행이 일어나는 순서**다.
+파일은 `sort_keys=True`로 쓰이므로 디스크에서는 `bind · map · prepare · read` 순으로 앉는데,
+그건 정규 해시 재료라서 고치지 않는다 — **읽는 순서는 스켈레톤이 만든다**(화면 라벨
+읽기 · 준비 · 매핑 · 연결. 키는 영어 그대로).
+
 | 필드 | 설명 |
 |---|---|
-| source ID | `profiles.<id>.source`가 참조하는 이름. **여기 있으면 이 소스는 돈다**(§8) |
-| `relation` | `table_config.json`이 선언한 base physical relation |
-| `driver.unit` | `row` 또는 `group` |
-| `driver.identity` | 결정적인 source event identity 컬럼 |
-| `driver.group_by` | group event 조립 컬럼. row이면 빈 배열 |
-| `driver.order_by` | physical read order. catalog UNIQUE key 전체를 포함해야 함 |
-| `driver.occurred_at.column` | 세계 시각을 담은 physical column |
-| `driver.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
-| `driver.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
+| source ID | **여기 있으면 이 소스는 돈다**(§8) |
+| `relation` | `table_config.json`이 선언한 base physical relation. **안 옮겼다** — `prepared_columns`가 여기서 출발한다 |
+| `read.unit` | `row` 또는 `group` |
+| `read.identity` | 결정적인 source event identity 컬럼 |
+| `read.group_by` | group event 조립 컬럼. row이면 빈 배열 |
+| `read.order_by` | physical read order. catalog UNIQUE key 전체를 포함해야 함 |
+| `read.occurred_at.column` | 세계 시각을 담은 physical column |
+| `read.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
+| `read.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
+| `read.cursor.columns` | physical keyset cursor 컬럼. UNIQUE key 전체를 포함해야 함 |
+| `read.registration_probe` | **(선택)** 이미 등록된 개체를 가려내는 probe |
+| `prepare` | 이 소스의 preparer 본문 (§7.3) |
+| `map` | 이 소스의 mapper 본문 (§7.4) |
+| `bind` | 이 소스의 문장 별명 → Role binding (§7.6) |
 
-`column`과 `basis`는 **정확히 하나**여야 한다. 둘 다 적거나 둘 다 없으면 거절된다.
-자세한 것은 §7.9.
-| `driver.cursor.columns` | physical keyset cursor 컬럼. UNIQUE key 전체를 포함해야 함 |
-| `driver.preparation.preparer_id` | 등록된 Preparer descriptor ID |
-| `inherit_virtual_join_rules` | 이 Source가 물려받을 verified join rule ID 목록 |
-| `driver.mapper_id` | 등록된 Mapper descriptor ID |
-| `profile_id` | 이 Source를 해석할 Profile ID |
+`read`의 여섯(`unit`·`identity`·`group_by`·`order_by`·`occurred_at`·`cursor`)은 필수이고
+`registration_probe`만 선택이다. `occurred_at`의 `column`과 `basis`는 **정확히 하나**여야
+한다 — 둘 다 적거나 둘 다 없으면 거절된다. 자세한 것은 §7.9.
 
 `order_by`와 `cursor.columns`는 각각 유일 키를 완전히 포함해야 한다. 현재 `lot_event`는
 `txn_seq`가 business key이므로 `order_by: ["txn_seq"]`가 전순서를 만들고,
@@ -1117,8 +1202,9 @@ join을 추가할 때:
 
 - 같은 개체인데 source column 이름만 다르다 → 기존 Entity 재사용
 - 같은 관계인데 source 표현만 다르다 → 기존 Vocabulary/Pack 재사용
-- 같은 Claim이지만 source별 컬럼이 다르다 → 새 Profile mapping만 작성
-- EventFrame 조립 방식도 같다 → 기존 Preparer/Mapper 재사용
+- 같은 Claim이지만 source별 컬럼이 다르다 → 새 소스의 `bind.mappings`만 작성
+- EventFrame 조립 방식도 같다 → 같은 `implementation_id`를 그 소스의 `prepare`/`map`에 적는다
+  (선언을 «공유»하는 것이 아니라 **같은 코드를 부르는 것**이다 — §7.3)
 - 그룹 조립이나 도메인 해석이 다르다 → 새 trusted 구현 검토
 
 `Pack`은 물리 테이블 이름을 알아서는 안 된다. 공통 validator와 registry에 `dt_log`,
@@ -1149,12 +1235,16 @@ Claim별로 Role을 열거하고 `emit`에서 Vocabulary 위치에 연결한다.
 Pack은 `object_payload` dict를 Mapper가 알아서 조립하게 하지 않는다. 어떤 Role이 subject,
 object, qualifier인지 Pack이 선언하므로 Mapper는 Role 값만 반환한다.
 
-### Step 7. Preparer/Mapper descriptor 작성
+### Step 7. `prepare`·`map` 절 작성
 
 🔴 **먼저 범용 구현으로 끝나는지 본다.** 다음 둘이면 Python을 한 줄도 쓰지 않는다.
 
 - Preparer `direct-join@1` — 출력 컬럼이 상속한 verified join에서 그대로 오는 경우
-- Mapper `declarative-role@1` — 업무적 읽기가 Profile binding만으로 표현되는 경우
+- Mapper `declarative-role@1` — 업무적 읽기가 `bind` binding만으로 표현되는 경우
+
+이 둘은 `prepare.implementation_id`/`map.implementation_id`에 이름만 적으면 된다. **절
+자체는 언제나 소스가 직접 든다** — 이름 붙은 descriptor를 어딘가에 만들고 참조하는 모양은
+없어졌다(§7.3·§7.4).
 
 전용 구현이 정말 필요하면 다음 코드 경계를 따른다.
 
@@ -1168,19 +1258,23 @@ object, qualifier인지 Pack이 선언하므로 Mapper는 Role 값만 반환한�
 설정에 module path를 넣어 우회하지 않는다. `implementation_id`가 발견되지 않으면
 `untrusted_implementation` 또는 unknown implementation 오류가 정상이다.
 
-### Step 8. Profile 작성
+### Step 8. `bind` 절 작성
 
-1. `source`와 `packs`를 지정한다.
-2. Mapper `emits`의 각 Claim에 `mapping_id`를 만든다.
+1. mapper가 말하는 **문장 별명**마다 `mappings.<별명>` 항목을 만든다. 전용 mapper면 그
+   목록의 정본은 mapper 파일의 `SentenceShape` 속성들이고, `declarative-role@1`이면 별명은
+   그냥 이 mapping을 부를 이름이다.
+2. 각 항목에 `use`(정확한 `Pack@version/claim_id`)를 적는다. **어느 pack을 쓰는지 따로 모아
+   적는 자리는 없다** — `use`가 그 답이다.
 3. required Role을 모두 binding한다.
 4. Entity logical key를 exact set으로 채운다.
-5. 모든 binding과 nested key에 origin/approval을 남긴다.
-6. system suggestion이면 `suggestion_reason`을 쓴다.
+5. 모든 binding과 nested key에 **`approval_status`를 남긴다**(필수).
+   `binding_origin`은 `user_declared`면 **적지 않는다**.
+6. system suggestion이면 `binding_origin: "system_suggested"`와 `suggestion_reason`을 쓴다.
 
 초기 검토 중에는 `approval_status: "pending"`을 사용할 수 있다. 하지만 preview/execute
 readiness를 확인하려면 전부 `approved`여야 한다.
 
-### Step 9. Source driver 조립 — 이것이 「켠다」이다
+### Step 9. `relation`·`read` 조립 — 이것이 「켠다」이다
 
 🔴 **`sources`에 항목을 적는 순간 그 소스는 실행 대상이다.** 앞의 여덟 단계를 끝내고 아래
 증거를 만든 뒤에 적는다.
@@ -1197,9 +1291,11 @@ readiness를 확인하려면 전부 `approved`여야 한다.
 - identity/group_by를 EventFrame schema에 맞춘다.
 - order/cursor가 catalog UNIQUE key 전체를 포함하게 한다.
 - occurred_at physical column과 timezone을 명시한다.
-- Preparer, inherited join, Mapper, Profile ID를 연결한다.
 
-Source 이름과 `Profile.source`는 정확히 일치해야 한다.
+🔴 **연결할 ID가 없다.** 소스 하나를 만드는 것은 이제 **한 번의 행위**다 — `prepare`·`map`·
+`bind`가 같은 항목 안에 있으므로 서로를 이름으로 부르지 않고, 서로를 되가리키는 선언을
+따로 만들 필요도 없다. 그것이 profile을 옮긴 이유이기도 하다: 종전에는 새 소스가 저장되려면
+**자기를 이름으로 되부르는 새 profile**이 먼저 있어야 했다.
 
 ---
 
@@ -1213,25 +1309,26 @@ table_config.json / lot_event
   unique proof: txn_seq business_key
 
 sources.lot_event
-  group by prepared event_group_key
-  order by txn_seq
-  cursor (event_time, txn_seq)
-  occurred_at event_time in Asia/Seoul
-  preparer lot-event-live-frame@1
-  mapper lot-event-role@1
-  profile lot-event@1
+  relation  lot_event
 
-preparer
-  physical lot_id/slotnumbers/waferids/...
-  → EventFrame lot/slots/wafers/event_group_key/...
+  read      group by prepared event_group_key
+            order by txn_seq
+            cursor (event_time, txn_seq)
+            occurred_at event_time in Asia/Seoul
 
-mapper
-  EventFrame event
-  → lot-lineage claim RoleEmission 6종
+  prepare   lot-event-live-frame v1
+            physical lot_id/slotnumbers/waferids/...
+            → EventFrame lot/slots/wafers/event_group_key/...
 
-profile
-  EventFrame lot/wafers/slots/event_time
-  → 각 Claim의 subject/target/slot/occurred_at Role
+  map       lot-event-role v1, unit event
+            EventFrame event
+            → 문장 6개의 RoleEmission
+
+  bind      mappings keyed by sentence:
+              in_slot · descent · split_slot_carry · merge_slot_join
+              first_sight_holder · first_sight_item
+            EventFrame lot/wafers/slots/event_time
+            → 각 Claim의 subject/target/slot/occurred_at Role
 
 pack
   Role
@@ -1241,17 +1338,18 @@ pack
 `sources.lot_event`가 존재한다는 것이 곧 「이 소스는 돈다」이다. 그 위에 얹힌 selector는
 없다.
 
-예를 들어 `membership`은 다음 연결로 완성된다.
+예를 들어 mapper가 말하는 문장 `in_slot`은 다음 연결로 완성된다.
 
 ```text
+bind.mappings.in_slot.use = lot-lineage@1/membership
 EventFrame.lot
-  → Profile subject = Entity Lot@1 {lot}
+  → bind subject = Entity Lot@1 {lot}
 EventFrame.wafers
-  → Profile target = Entity Wafer@1 {wafer}
+  → bind target = Entity Wafer@1 {wafer}
 EventFrame.slots
-  → Profile slot Role
+  → bind slot Role
 EventFrame.event_time
-  → Profile occurred_at Role
+  → bind occurred_at Role
 Pack membership
   → has_wafer@1(subject=Lot, object=Wafer, qualifier.slot)
 Vocabulary has_wafer@1
@@ -1259,8 +1357,9 @@ Vocabulary has_wafer@1
 ```
 
 어느 한 층도 다른 층의 일을 대신하지 않는다. Mapper에 `{"slot": ...}` payload를
-하드코딩하지 않고, Profile이 predicate 이름을 재정의하지 않으며, Pack이 source column을
-읽지 않는다.
+하드코딩하지 않고, `bind`가 predicate 이름을 재정의하지 않으며, Pack이 source column을
+읽지 않는다. **mapper는 `in_slot`이라는 자기 낱말만 알고, 그것이 어느 Claim이 되는지는
+`bind.mappings.in_slot.use` 한 칸 옆에 적혀 있다.**
 
 ---
 
@@ -1307,7 +1406,7 @@ CoreDie@1
 - dependency가 늦게 도착하면 replay 후보로 남길 수 있지만 cursor reset을 자동 실행하지
   않는다.
 
-샘플의 `ledger_config.json` 하나가 `virtual_joins`·각 Entity·Pack·Profile mapping을 함께
+샘플의 `ledger_config.json` 하나가 `virtual_joins`·각 Entity·Pack·소스의 `bind.mappings`를 함께
 보여 주고 그 배포의 물리 스키마는 자기 `table_config.json`이 든다(§5.4). 그러므로 새 transfer source를 설계할 때 복사 가능한 출발점이다. 🔴 이 샘플은
 Preparer `direct-join@1`과 Mapper `declarative-role@1`을 쓴다 — **전용 Python이 0줄인 소스가
 실제로 어떤 모양인지**가 여기 있다.
@@ -1320,42 +1419,33 @@ Preparer `direct-join@1`과 Mapper `declarative-role@1`을 쓴다 — **전용 P
 
 검증은 다음을 모두 전수 대조한다.
 
-- 최상위 exact shape(필수 section 일곱 + `setup_version`, 여분 키 금지)와 config root에 다른
+- 최상위 exact shape(필수 section **넷** + `setup_version`, 여분 키 금지)와 config root에 다른
   JSON이 없음
 - 모든 catalog relation/column/key/index
-- 모든 Vocabulary/Entity/Pack/Profile
+- 모든 Vocabulary/Entity/Pack, 그리고 모든 source의 `read`·`prepare`·`map`·`bind`
 - Pack ↔ Vocabulary subject/object/qualifier
-- Pack Role ↔ Profile binding kind
-- Profile use ↔ Mapper emits
-- Source ↔ Profile/Preparer/Mapper
-- Preparer physical input/output collision와 inherited join
+- Pack Role ↔ `bind` binding kind
+- `bind.mappings[].use` ↔ Pack/Claim registry
+- `prepare` physical input/output collision와 inherited join
 - cursor total order의 catalog UNIQUE 근거
 - unsafe executable key의 임의 깊이 재귀 검사
 - 모든 binding readiness metadata
 
-malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거절된다. 대표 예시는
-다음과 같다.
+malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거절된다. **path는
+소스에서 출발한다** — 그것이 절이 소스 안으로 들어온 부수 효과다. 대표 예시는 다음과 같다.
 
 ```json
 {
   "code": "unknown_entity_type",
-  "path": "bundle.profiles.my-profile@1.mappings[0].bind.subject.entity_type",
+  "path": "bundle.sources.my_source.bind.mappings.my_sentence.bind.subject.entity_type",
   "message": "unknown entity type 'Missing@1'"
 }
 ```
 
 ```json
 {
-  "code": "invalid_mapper",
-  "path": "bundle.profiles.my-profile@1.mappings[0].bind.subject.keys.input_id.column",
-  "message": "Profile column 'missing_column' at bundle.profiles.my-profile@1.mappings[0].bind.subject.keys.input_id.column is missing"
-}
-```
-
-```json
-{
   "code": "invalid_cursor",
-  "path": "bundle.sources.my_source.driver.cursor.columns",
+  "path": "bundle.sources.my_source.read.order_by",
   "message": "ordering must include every column of a catalog-declared business_key, composite_key, or UNIQUE index"
 }
 ```
@@ -1373,20 +1463,20 @@ malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거�
 | code | 뜻 | 먼저 볼 곳 |
 |---|---|---|
 | `unlisted_config_file` | config root에 `ledger_config.json` 말고 다른 `.json`이 있음(재귀) | root 밖으로 옮긴다 |
-| `unsupported_setup_version` | `setup_version`이 `3`이 아님 | 파일 최상위 |
+| `unsupported_setup_version` | `setup_version`이 `4`가 아님 | 파일 최상위 — 옛 세대면 §2.4의 마이그레이션 |
 | `unknown_relation` | `sources.<id>.relation`이 `table_config.json`에 없음 | 🔴 **다른 컬럼 오류보다 먼저 본다**(§5.3) |
-| `ambiguous_sentence` | 한 Profile 안에 mapper가 갈라 볼 수 없는 mapping이 둘 이상인데 `sentence`가 빔 | §7.6의 「모양이 같은 mapping 둘」 |
-| `unknown_source` | Profile/source/join이 없는 source 참조 | source ID와 `Profile.source` |
-| `unknown_pack` / `unknown_claim` | Profile `use`가 registry 밖 | Pack/Claim ID와 version |
-| `missing_required_role` | Claim required Role binding 누락 | `mappings[].bind` |
+| `unknown_source` | join이 없는 source를 참조 | source ID 철자 |
+| `unknown_pack` / `unknown_claim` | `bind.mappings.<별명>.use`가 registry 밖 | Pack/Claim ID와 version |
+| `missing_required_role` | Claim required Role binding 누락 | `bind.mappings.<별명>.bind` |
 | `unknown_role` | Pack에 없는 Role binding | Role 철자 |
 | `invalid_binding` | kind/column/constant/entity shape 오류 | 해당 binding leaf |
-| `duplicate_id` | Profile 내부 mapping ID 또는 catalog index ID 중복 | 해당 `mapping_id`/`name` |
+| `duplicate_id` | JSON 키 중복, 목록 값 중복, catalog index ID 중복 | 그 path |
 | `invalid_symbolic_constant` | Pack 허용 상수 밖 값 | Role `allowed_values` |
 | `missing_required_payload` | Vocabulary required qualifier 누락 | Pack `emit.object.qualifiers` |
 | `unknown_payload_field` | Vocabulary에 없는 qualifier | Pack emit |
 | `unsafe_declaration` | SQL/Python/eval/exec 등 금지 키 | 정확한 nested path |
-| `untrusted_implementation` | config ID가 코드 trusted catalog 밖 | Preparer/Mapper 등록 |
+| `untrusted_implementation` | `prepare`/`map`의 `implementation_id`가 코드 trusted catalog 밖 | 클래스가 자기 id를 선언하는지 |
+| `unsupported_implementation_version` | id는 있는데 `implementation_version`이 코드와 다름 | 클래스의 `implementation_version` |
 | `destructive_approval_required` | reset/from replay 시도 | 별도 사용자 승인 필요 |
 
 ### 13.2 write-free dry-run
@@ -1557,20 +1647,21 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `invalid_mapper` (`Profile column ... is missing`) | physical/EventFrame 층 혼동 | 🔴 **Profile이 binding할 수 있는 컬럼 집합은 정확히 mapper의 `input_columns`다.** `table_config.json`에만 있고 mapper input에 없는 컬럼은 binding할 수 없고, preparer `output_columns`에 있어도 mapper input에 없으면 거절된다 |
+| `invalid_mapper` (`column ... is missing`) | physical/EventFrame 층 혼동 | 🔴 **`bind`가 binding할 수 있는 컬럼 집합은 정확히 `map.input_columns`다.** `table_config.json`에만 있고 mapper input에 없는 컬럼은 binding할 수 없고, `prepare.output_columns`에 있어도 mapper input에 없으면 거절된다 |
 | `invalid_cursor` | order/cursor가 UNIQUE key 전체를 안 포함 | business/composite/UNIQUE index 전체 컬럼 추가 |
-| join은 선언됐는데 compile 실패 | left key가 Preparer input에 없거나 physical proof 없음 | input_columns와 실제 UNIQUE index 확인 |
-| `untrusted_implementation` | sample ID를 production에 복사 | trusted code registry 등록 또는 기존 구현 재사용 |
-| `missing_required_role` | Pack required Role과 Profile bind 불일치 | Claim roles를 기준으로 binding 추가 |
+| join은 선언됐는데 compile 실패 | left key가 `prepare.input_columns`에 없거나 physical proof 없음 | input_columns와 실제 UNIQUE index 확인 |
+| `untrusted_implementation` | sample ID를 production에 복사 | 코드에 그 클래스가 있는지 확인 또는 기존 구현 재사용 |
+| `missing_required_role` | Pack required Role과 `bind` 불일치 | Claim roles를 기준으로 binding 추가 |
 | `unknown_payload_field` | Pack qualifier가 Vocabulary 밖 | Vocabulary를 무작정 넓히지 말고 의미 확인 후 Pack 수정 |
-| `invalid_symbolic_constant` | 허용 목록 밖 상수 | Pack allowed_values 또는 Profile constant를 올바르게 수정 |
+| `invalid_symbolic_constant` | 허용 목록 밖 상수 | Pack allowed_values 또는 constant binding을 올바르게 수정 |
 | draft validation은 되는데 execute 불가 | pending/rejected binding 존재 | nested binding 포함 승인 상태 확인 |
-| `Profile packs`는 맞는데 mapper 오류 | `mappers.emits`와 `mappings.use` 불일치 | 양쪽 Claim 집합을 정확히 맞춤 |
+| mapper가 문장을 못 찾는다 | `bind.mappings`의 **키**가 mapper의 문장 별명과 다름 | mapper 파일의 `SentenceShape` 속성명이 정본이다(§7.6) |
 | join 결과 0건 | inventory 늦은 도착/키 불일치 | 원천·표기·dependency replay 후보 확인; 가짜 값 생성 금지 |
 | join 결과 다건 | 오른쪽 유일성 위반 | 물리 중복 해소와 exact UNIQUE proof; 첫 행 임의 선택 금지 |
 | 화면이 비어 있음 | Admin auth 상태 오해 | token 설정 시 header 누락 `401`·값 불일치 `403`, token 미설정 strict route `503`을 구분 |
 | `unlisted_config_file` | config root 안에 다른 `.json`이 있음(백업 폴더 포함 — 검사는 재귀한다) | root **밖**으로 옮긴다. 옛 다섯 파일은 §2.3 |
-| `unsupported_setup_version` | 파일에 `setup_version: 3`이 없거나 옛 `schema_version`을 씀 | §4의 최상위 모양 |
+| `unsupported_setup_version` | 파일에 `setup_version: 4`가 없거나 옛 세대(`3` 이하·`schema_version`)를 씀 | §2.4의 마이그레이션 → §4의 최상위 모양 |
+| `unknown_field` (`source_preparers`/`mappers`/`profiles`) | 셋이 최상위 section이던 세대의 파일 | §2.4의 마이그레이션 |
 | 안 켠 소스가 돌았다 | `sources`에 적는 것이 곧 켜는 것 | §8. 준비 전이면 `sources`에서 뺀다 |
 | `--legacy`/`--config`가 없다 | 실행 경로가 하나가 됨 | `--ontology-root`로 config root를 지정한다(§13.4) |
 | reset/from이 거절됨 | 파괴적 replay 선행 gate | 우회하지 말고 별도 사용자 승인과 작업 범위 확정 |
@@ -1600,19 +1691,20 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 ### 실행
 
 - [ ] config에 module/path/SQL/Python/expression을 넣지 않았다.
-- [ ] Preparer input/output과 Mapper input이 exact하게 맞는다.
+- [ ] `prepare`의 input/output과 `map.input_columns`가 exact하게 맞는다.
 - [ ] `implementation_id`/version을 가진 클래스가 코드에 실제 있다(범용 `direct-join@1`·
       `declarative-role@1`으로 끝나는지 먼저 확인했다).
-- [ ] Mapper emits와 Profile mapping use가 양방향 일치한다.
-- [ ] **모양이 같은 mapping**(목적어 유무·qualifier 집합·subject/object entity type이 모두 같은 것)이
-      둘 이상이면 각자 `sentence`를 적었다 — 안 적으면 `ambiguous_sentence`(§7.6).
-- [ ] Source ID와 `Profile.source`가 일치한다.
+- [ ] `bind.mappings`의 **키가 mapper의 문장 별명**이다. 전용 mapper면 그 목록의 정본은
+      mapper 파일의 `SentenceShape` 속성들이다(§7.6).
+- [ ] 다섯 절(`relation`·`read`·`prepare`·`map`·`bind`)을 **한 소스 항목 안에** 적었다 —
+      최상위 `source_preparers`/`mappers`/`profiles`는 없다(§4).
 - [ ] 이 소스를 **지금 돌려도 되는 상태**에서만 `sources`에 적었다.
 
 ### 승인/검증
 
-- [ ] 모든 nested binding까지 origin/approval metadata가 있다.
-- [ ] system suggestion마다 suggestion reason이 있다.
+- [ ] 모든 nested binding까지 `approval_status`가 있다(필수). `binding_origin`은
+      `user_declared`면 **적지 않는다**(§7.6의 승인 metadata).
+- [ ] system suggestion마다 `binding_origin: "system_suggested"`와 suggestion reason이 있다.
 - [ ] 실행 전 모든 binding이 approved다.
 - [ ] `python -m ledger.setup` dry-run이 `readiness: "ready"`이고 write 0이다. **초안이면
       `--root <초안폴더>`로 먼저 돌리고, 답의 `config_root`가 그 초안을 가리키는지 본다**(§13.2).
@@ -1631,7 +1723,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | 최상위 section 목록과 필수/선택 구분 | `server/ledger/setup_bundle.py`의 `LOGICAL_SECTIONS`·`OPTIONAL_SECTIONS`·`SETUP_VERSION` |
 | Bundle exact validation | `server/ledger/setup_bundle.py` |
 | Registry/Snapshot compile | `server/ledger/setup_registry.py` |
-| RoleFrame/Pack compile · 범용 mapper · 문장 모양(`SentenceShape`/`ProfileSentences`) | `server/ledger/roleframe.py` |
+| RoleFrame/Pack compile · 범용 mapper · 문장 별명(`SentenceShape`/`ProfileSentences`) | `server/ledger/roleframe.py` |
 | 컬럼 실측(작성 화면) | `server/ledger/column_stats.py` |
 | 삭제가 데려가는 것 | `server/ledger/config_explorer.py`(`deletion_plan`·`referrers`) |
 | Source preparation · 범용 preparer | `server/ledger/source_preparation.py` |
@@ -1639,6 +1731,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | preview/execute | `server/ledger/runtime_v2.py` |
 | 로드 경계와 dry-run 보고 | `server/ledger/setup.py` |
 | 옛 다섯 파일 → 한 파일 변환 | `server/scripts/convert_ontology_to_single_file.py` |
+| 옛 세대 → `setup_version: 4` 마이그레이션(§2.4) | `server/scripts/migrate_ledger_config_to_v4.py` |
 | 현재 production 선언 | `server/config/ontology/ledger_config.json` |
 | transfer file-backed sample | `server/config/sample/ontology/transfer_explorer/ledger_config.json` |
 | Explorer 전체 계약 | `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md` |

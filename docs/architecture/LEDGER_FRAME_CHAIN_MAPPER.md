@@ -12,6 +12,15 @@
 > verified virtual-join rule ID를 상속한다. Registry 등록값은 `server/config/ontology/`의
 > config에서만 컴파일한다. 정확한 목표 구조와 config 목록은
 > [TARGET_ARCHITECTURE_AND_SSOT](../../ledger_v2_redesign_plan_20260817/TARGET_ARCHITECTURE_AND_SSOT.md)가 정본이다.
+>
+> 🔴 **[2026-08-21] 이 문서의 `profile_id`·`profiles`·`binding_origin`은 «레거시 v1 flat
+> config»(`server/config/ledger_config.json`)의 낱말이다 — v2 셋업의 그것과 이름만 같다.**
+> 여기의 `chain_mapper.profile_id`는 `server/ledger/config.py`가 읽는 별개 레지스트리이고,
+> 어느 config에도 선언돼 있지 않다(그래서 이번 라운드들이 건드리지 않았다). v2
+> `ledger_config.json`에는 `profiles` section도 `profile_id`도 **없다** — 소스 하나가
+> `relation`·`read`·`prepare`·`map`·`bind`를 직접 들고, mapping은 문장 별명으로 키가 매겨진다
+> (`setup_version: 4`, [ONTOLOGY_LEDGER_SETUP §4·§7.6](../guide/ONTOLOGY_LEDGER_SETUP.md)).
+> **§5·§6을 v2 작성 지침으로 읽지 말 것.**
 
 ## 1. 결론
 
