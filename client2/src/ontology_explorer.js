@@ -364,7 +364,15 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // compile -- this morning an empty declaration would have been refused.
       const saved = await jsonRequest(`/drafts/${created.draft_id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expected_revision: created.revision, raw: '{}' }),
+        // 🔴 WHAT THE SERVER JUST SEEDED, NOT `{}`. This landed the declaration in the file
+        // immediately -- and wrote an empty object over the containers `drafts/new` had put
+        // there, so the seed was correct on the server and gone by the time anybody saw it.
+        // Measured: the editor opened on `{}` while the draft record held
+        // `{'subjects': [], 'object': {'qualifiers': …}}`.
+        body: JSON.stringify({
+          expected_revision: created.revision,
+          raw: JSON.stringify(created.raw ?? {}),
+        }),
       });
       const record = saved.draft || saved;
       await jsonRequest(`/drafts/${record.draft_id}/activate`, {
