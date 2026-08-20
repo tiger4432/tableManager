@@ -3707,7 +3707,7 @@ lot-lineage@1/register  ← 동일
 
 | 순 | 무엇 | 지시서 | 상태 |
 |---|---|---|---|
-| **1** | 설정 모양 ①②③ — 승인 메타 생략 · `driver`→`read·prepare·map·bind` · `emits`·`packs`·`claim_ref` 삭제 | `task/ledger_config_shape_brief.md` | 🟡 구현자 진행 중 (마이그레이션·`setup_version` 은 2번으로 옮김) |
+| **1** | 설정 모양 ①②③ — 승인 메타 생략 · `driver`→`read·prepare·map·bind` · `emits`·`packs`·`claim_ref` 삭제 | `task/ledger_config_shape_brief.md` | ✅ **착지 `a55f3059` · 총괄이 화면으로 확인 (2026-08-21 02:00)** |
 | **2** | 맵퍼 «별명 문장» — 매칭을 별명 1순위로 · `mappings` 를 별명 키 맵으로 · `mapping_id` 제거 · **마이그레이션 + `setup_version` 4** | `task/ledger_sentence_alias_brief.md` | 🔵 대기 — 소유자 「1순위」 |
 | **3** | 커서 «소스별 지문» + 재스탬프 (읽기 없이) | `task/ledger_per_source_version_brief.md` | 🔵 대기 — 모양 변경이 «다 끝난 뒤» |
 | **4** | `vocabulary.py` 버리기 — 판정·측정 완료, 지시서 미작성 | — | 🔵 대기 |
@@ -3715,6 +3715,23 @@ lot-lineage@1/register  ← 동일
 
 🔴 **라운드 사이의 체크포인트는 «원자 696» 하나다.** 각 라운드가 그 수를 다시 세우고 넘어간다.
 다르면 착지 금지. 나누는 이유가 이것이다 — 합치면 수가 달라졌을 때 원인을 못 가른다.
+
+#### ✅ 1번 착지 검수 — 총괄 실측 (02:00)
+
+```
+화면 depth1     relation · 읽기 · 준비 · 매핑 · 연결        ← ② 흐름 순서 그대로
+척추            4 layers · invalid 0 · config_problems 0
+binding_origin  config 0건 · 화면 0건                        ← ① 「나」 판정 그대로
+approval_status config 40건 «남음»                           ← 게이트라 남겼다
+emits · packs   config 0건 · 화면 0건                         ← ③
+setup_version   3 그대로                                     ← 별명 라운드로 미룸
+줄 수           749 → 694
+dist            클라 변경 8줄이 «전부 주석»(비주석 0) → 리빌드 불필요
+서버            PID 22996 · 01:58:14 기동 > 파일 mtime 01:41:18  ← 총괄이 직접 올림
+```
+⚠️ **불변 측정(전/후 같은 수)은 아직이다** — HEAD 워크트리로 「전」을 재야 한다. 구현자 몫.
+⚠️ 지시서에 없던 `server/scripts/check_source_ordering.py` 가 이 커밋에 섞였다. 되돌리지 않았고,
+다음부터 판정을 받으라고 걸었다(관문 ③).
 
 ### 소유자 판정 대기 (넷)
 
