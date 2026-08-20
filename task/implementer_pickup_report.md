@@ -1,5 +1,58 @@
 # 구현자 인수 — 컴팩트 직전 상태 (2026-08-20)
 
+## ▶ 별명 라운드 착수 전 관문 A·B·C — 재고 보고 (2026-08-21 02:2x)
+
+지시서 `task/ledger_sentence_alias_brief.md`(소유자 「맵퍼 별명문장 부르기 1순위」).
+**셋 다 쟀다. 멈출 이유는 없고, 지시서의 «근거» 하나가 죽은 파일에서 재졌다.**
+
+### A. 오늘 mapping 8개가 서로 다른 별명으로 갈리는가 → **갈린다. 단 하나가 «둘로 이름 붙어야» 한다**
+```
+dt_job     2   job_register · job_die_count            ← REGISTER · COUNTED 로 1:1
+lot_event  6   first_sight_lot · first_sight_wafer     ← 둘 다 FIRST_SIGHT. subject_type 로 갈린다
+               positional_row · pair_field             ← IN_SLOT · DESCENT
+               slot_preserving · shared_wafer          ← SPLIT_SLOT_CARRY · MERGE_SLOT_JOIN
+                                                          이 둘만 «이미» sentence 를 갖고 있다
+살아 있는 shape 7 → mapping 8.  FIRST_SIGHT 가 두 이름으로 갈라져야 8:8 이 된다
+지금 sentence 보유: 8 중 «2». 8/8 이 되어야 한다
+```
+
+### B. `has_object` · `qualifiers` 가 매칭 말고 다른 일을 하는가
+```
+has_object   roleframe.py:503 매칭 · :530 에러 문구        ← 그 밖에 «소비자 없음». 지워도 된다
+qualifiers   :428 say() «자기검사» ← 남아야 한다
+             :505 매칭 · :530 문구                        ← 매칭 쪽만 사라진다
+```
+**둘이 대칭이 아니다.** `qualifiers`는 「내가 내놓는 키가 내가 선언한 키와 같은가」를 `say()` 안에서
+스스로 검사한다. 그건 매칭과 무관하니 남는다.
+
+### C. 「선언되고 안 쓰이는 shape」이 또 있는가 → **살아 있는 매퍼엔 «없다»**
+```
+등록된 role mapper (ledger.implementations.mapper_declarations):
+   dt-job-role@1      <- mappers.ledger_v2_dt_job_mapper       REGISTER · COUNTED     둘 다 쓰임
+   lot-event-role@1   <- mappers.ledger_v2_lot_event_role_mapper  5개 전부 쓰임
+   declarative-role@1 <- ledger.roleframe
+```
+
+### ⚠️ 지시서의 근거 하나가 «죽은 파일»에서 재졌다
+지시서: 「구조 매칭은 이미 금 가 있다 — `ledger_dt_job_mapper.py:24-25` 의 `COUNTED` 와
+`FIRST_WORK` 가 구조가 동일하고 `FIRST_WORK` 는 안 쓰인다」.
+
+**그 파일은 «등록되지 않는다».** v2 실행 경로가 쓰는 것은 `ledger_v2_dt_job_mapper.py`이고
+거기엔 `FIRST_WORK` 가 없다. (그 죽은 파일엔 `RESITER` 오타도 그대로 있다.)
+
+🔴 **그래도 결론은 «더 강한» 살아 있는 증거로 선다.** live `lot_event` 에서 `FIRST_SIGHT` 가
+두 번 나가고 `subject_type=holder` / `item` 으로 갈린다(:210, :220). **구조만으로는 «오늘 이미»
+mapping 을 못 고르고, 그래서 selector 인자가 존재한다.** 잠든 충돌이 아니라 «도는» 반례다.
+
+### 딸려 나온 사실 — 착지 확인 3번의 현재값
+```
+say() 에 subject_type·object_type 인자를 쓰는 자리: :210 :220 :224 :229 :242 …  «0건이 아니다»
+matcher 는 이미 sentence 를 «최후 동점 처리»로 쓴다 (roleframe.py:519-525) — 배선 일부는 있다
+```
+
+**판정 대기: 위 A 의 「FIRST_SIGHT 를 둘로 이름 붙인다」를 매퍼가 하는 게 맞는지만 확인되면 착수.**
+
+
 ## 🔴 「원자 696」은 «설정 모양의 성질이 아니다» — 직접 재서 기제를 찾았다 (2026-08-21 00:5x)
 
 세 라운드의 합격 기준에 박혀 있는 숫자다. **다섯 번 되물었는데, 이제 다시 안 물어도 된다 —
