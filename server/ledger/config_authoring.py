@@ -1012,7 +1012,8 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
             continue
         yield Field(
             path=f"{mpath}.bind.{role_id}.kind", step="sources",
-            label=f"역할 {role_id} 결선 종류", state="answered",
+            label=f"역할 {role_id} 결선 종류",
+            state="answered" if binding.get("kind") else "missing",
             tier=TIER_CONSTRAINED, value=binding.get("kind"),
             declared=binding.get("kind"),
             candidates=tuple(role_binding_kinds(role)),
@@ -1020,7 +1021,8 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
         if role.get("kind") == "symbolic" and binding.get("kind") == "constant":
             yield Field(
                 path=f"{mpath}.bind.{role_id}.value", step="sources",
-                label=f"역할 {role_id} 상수", state="answered",
+                label=f"역할 {role_id} 상수",
+                state="answered" if binding.get("value") else "missing",
                 tier=TIER_CONSTRAINED, value=binding.get("value"),
                 declared=binding.get("value"),
                 candidates=tuple(_listed(role.get("allowed_values"))),
@@ -1028,7 +1030,8 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
         if binding.get("kind") == "column":
             yield Field(
                 path=f"{mpath}.bind.{role_id}.column", step="sources",
-                label=f"역할 {role_id} 컬럼", state="answered",
+                label=f"역할 {role_id} 컬럼",
+                state="answered" if binding.get("column") else "missing",
                 tier=TIER_CONSTRAINED, value=binding.get("column"),
                 declared=binding.get("column"),
                 candidates=tuple(available), universe=UNIVERSE_PREPARED,
@@ -1210,7 +1213,8 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 continue
             yield Field(
                 path=f"{base}.read.registration_probe[{probe_index}].entity_type",
-                step="sources", label="등록 탐침 엔터티", state="answered",
+                step="sources", label="등록 탐침 엔터티",
+                state="answered" if probe.get("entity_type") else "missing",
                 tier=TIER_CONSTRAINED, value=probe.get("entity_type"),
                 declared=probe.get("entity_type"),
                 candidates=single_key,
